@@ -1290,7 +1290,9 @@ renderer.setAnimationLoop((now: number) => {
   if (frame.fpsPressed) hud.toggleFps();
   captureHint.classList.toggle('show', !menu.open && menu.mode === 'kbm' && document.pointerLockElement !== canvas && !chat.typing);
 
-  pickups.group.visible = !menu.onStartScreen; // the weapons' rings look like odd logos from the start view
+  // The weapons lying around: only in Action mode (Yoshi), and never from the start view, where their
+  // rings look like odd logos.
+  pickups.group.visible = !menu.onStartScreen && weapon.enabled;
   portals.group.visible = !menu.onStartScreen;
   if (menu.onStartScreen) weapon.hidden = true; // nor the pistol in your hand: from the start view its barrel is a ring mid-screen
   if (menu.open) {
@@ -1517,7 +1519,7 @@ renderer.setAnimationLoop((now: number) => {
   if (mapTimer > 0.05) {
     mapTimer = 0;
     const blips: Blip[] = [
-      ...pickups.blips().map((b) => ({ ...b, color: '', kind: 'item' as const })),
+      ...(weapon.enabled ? pickups.blips() : []).map((b) => ({ ...b, color: '', kind: 'item' as const })),
       ...cats.blips().map((b) => ({ ...b, color: '#e0a050', kind: 'cat' as const })),
       ...clowns.blips().map((b) => ({ ...b, color: b.kind === 'strongman' ? '#d0782e' : '#12a3a0', kind: 'cat' as const })),
       ...horses.blips().map((b) => ({ ...b, color: '#8a5a3a', kind: 'cat' as const })),
