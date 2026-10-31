@@ -533,10 +533,12 @@ export class Game {
   spawn(name, p, id, now) {
     const to = PORTALS.find((q) => q.id === id);
     const st = p.state;
-    if (!to || p.spawned || !st || !p.joinedAt || now - p.joinTime > 30_000) return;
+    if (!to || p.spawned || !st || !p.joinedAt) return;
     p.spawned = true;
-    if (!p.alive || this.carOf(name) || this.horseOf(name) || (!this.rules.portals && p.role !== 'admin')) return;
-    if (Math.hypot(st.x - p.joinedAt.x, st.z - p.joinedAt.z) > 30) return;
+    // Refused: the page goes back to where the server has the player, so both agree.
+    const no = () => this.send(p.ws, { t: 'spawn', ok: false, x: st.x, z: st.z });
+    if (now - p.joinTime > 30_000 || !p.alive || this.carOf(name) || this.horseOf(name) || (!this.rules.portals && p.role !== 'admin')) return no();
+    if (Math.hypot(st.x - p.joinedAt.x, st.z - p.joinedAt.z) > 30) return no();
     p.nextTravel = now + TRAVEL_MS;
     const [x, z] = to.out;
     Object.assign(p.state, { x, y: TERRAIN.height(x, z), z });

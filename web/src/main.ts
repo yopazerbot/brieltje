@@ -146,10 +146,10 @@ function loaded(): void {
   setTimeout(() => void startCountryside(), 900); // and the countryside's life
 }
 setTimeout(loaded, 25000); // never keep the player waiting forever
-/** The start place picked on the start screen, unless it's the main house (the usual start). */
+/** The start place picked on the start screen (the church by default), or null for the main house, where the world itself starts. */
 let spawnPending: Portal | null = null;
 function startPlace(): Portal | null {
-  let id = (document.getElementById('spawn') as HTMLSelectElement | null)?.value ?? 'house';
+  let id = (document.getElementById('spawn') as HTMLSelectElement | null)?.value ?? 'church'; // the church square unless picked otherwise (Yoshi)
   try {
     id = localStorage.getItem('briel.spawn') ?? id;
   } catch {
@@ -394,6 +394,7 @@ const roadLife = new RoadLife(world, tiles, groundY); // the traffic, parked car
 scene.add(roadLife.group);
 const travelPanel = new TravelPanel();
 const bigMap = new BigMap(document.getElementById('map-mount')!, house.prisms, house.surroundings, house.rooms, house.dips ?? []);
+minimap.setGround((g, k) => bigMap.paintGroundGame(g, k), () => bigMap.groundVersion); // the ground under the minimap, everywhere
 const mapBtn = document.getElementById('map-btn')!;
 
 // Furniture planner: shared through the server when logged in, kept in this browser otherwise.
@@ -1190,6 +1191,11 @@ net.onMessage = (m: ServerMsg) => {
     case 'system':
       chat.system(() => serverText(m.code, m.args, m.text));
       break;
+    case 'spawn':
+      // The start place was refused (the admin turned the portals off): back to where the server has us.
+      player.place(m.x, m.z, groundY(m.x, m.z), player.yaw, 0);
+      player.update(0, NO_INPUT, camera);
+      break;
     case 'travel': {
       const to = PORTALS.find((p) => p.id === m.to);
       if (m.name === me?.username) {
@@ -1682,7 +1688,8 @@ async function buildVillage(): Promise<void> {
     tiles.track(m);
   }
   world.addPrisms(data.prisms ?? []);
-  for (const m of models) world.addPrisms((m.userData.solids as Prism[] | undefined) ?? []);
+  // Each model's blocks for walking into (the town's; Molenhoek's went into the village data above).
+  for (const m of models) world.addPrisms((m.userData.blocks as Prism[] | undefined) ?? []);
   world.addDips(data.dips);
   addDips(data.dips);
   groundCuts.cells.push(...data.groundCuts.cells);

@@ -114,6 +114,8 @@ export class BigMap {
   private s = 0.5;
   private fit = 0.5;
   private dirty = true;
+  /** Goes up when the ground changes (the village arrives), so the minimap draws its piece again. */
+  groundVersion = 0;
   private w = 0;
   private h = 0;
   private dpr = 1;
@@ -201,6 +203,7 @@ export class BigMap {
   addVillage(data: Surroundings & { dips?: DipSpec[] }): void {
     this.addSurroundings(data, data.dips ?? []);
     this.dirty = true;
+    this.groundVersion++;
   }
 
   show(you: { x: number; z: number; yaw: number }, control: Control): void {
@@ -459,6 +462,44 @@ export class BigMap {
 
   // ---- drawing
 
+  /** The ground (fields, roads, buildings, trees) into `g`, whose transform takes map metres; `pxPerM` sets the line widths. */
+  private paintGround(g: CanvasRenderingContext2D, pxPerM: number): void {
+    g.fillStyle = '#e2e8d4';
+    g.fill(this.hull);
+    for (const [layer, fill, stroke, width] of STYLE) {
+      const path = this.paths.get(layer);
+      if (!path) continue;
+      if (stroke && layer === 'road') {
+        g.strokeStyle = stroke;
+        g.lineWidth = (width ?? 1) / pxPerM;
+        g.lineJoin = 'round';
+        g.stroke(path);
+      }
+      g.fillStyle = fill;
+      g.fill(path, 'nonzero');
+      if (stroke && layer !== 'road' && (pxPerM > 0.7 || layer !== 'building')) {
+        g.strokeStyle = stroke;
+        g.lineWidth = (width ?? 1) / pxPerM;
+        g.stroke(path);
+      }
+      if (layer === 'hedge') {
+        g.fillStyle = 'rgba(112, 156, 88, 0.55)';
+        g.fill(this.trees);
+      }
+    }
+  }
+
+  /**
+   * The same ground for the minimap (src/ui/minimap.ts), into `g` whose transform takes the game's
+   * metres (x right, z down): the map's metres are the game's turned and mirrored (see toX, toZ).
+   */
+  paintGroundGame(g: CanvasRenderingContext2D, pxPerM: number): void {
+    g.save();
+    g.transform(-0.746292959, -0.665617623, 0.665617623, -0.746292959, 0, 0);
+    this.paintGround(g, pxPerM);
+    g.restore();
+  }
+
   private drawBase(): void {
     this.dirty = false;
     const g = this.base.getContext('2d')!;
@@ -468,29 +509,7 @@ export class BigMap {
     g.fillRect(0, 0, this.w, this.h);
     // Map metres to the screen.
     g.setTransform(k * this.s, 0, 0, k * this.s, k * (this.w / 2 - this.cu * this.s), k * (this.h / 2 - this.cv * this.s));
-    g.fillStyle = '#e2e8d4';
-    g.fill(this.hull);
-    for (const [layer, fill, stroke, width] of STYLE) {
-      const path = this.paths.get(layer);
-      if (!path) continue;
-      if (stroke && layer === 'road') {
-        g.strokeStyle = stroke;
-        g.lineWidth = (width ?? 1) / this.s;
-        g.lineJoin = 'round';
-        g.stroke(path);
-      }
-      g.fillStyle = fill;
-      g.fill(path, 'nonzero');
-      if (stroke && layer !== 'road' && (this.s > 0.7 || layer !== 'building')) {
-        g.strokeStyle = stroke;
-        g.lineWidth = (width ?? 1) / this.s;
-        g.stroke(path);
-      }
-      if (layer === 'hedge') {
-        g.fillStyle = 'rgba(112, 156, 88, 0.55)';
-        g.fill(this.trees);
-      }
-    }
+    this.paintGround(g, this.s);
     g.setTransform(k, 0, 0, k, 0, 0);
     // Street names, along their streets.
     if (this.s > 0.32) {

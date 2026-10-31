@@ -66,7 +66,7 @@ function material(name: string, extras: { texture?: string; normalScale?: number
 
 /**
  * The town's houses on their spot. The returned object carries `landmark: 'town'`, the outlines it replaces
- * (`replaces`, Ring[]) and its new blocks for walking into (`solids`, Prism[] in the game's heights).
+ * (`replaces`, Ring[]) and its new blocks for walking into (`blocks`, Prism[] in the game's heights).
  */
 export async function loadTown(renderer: THREE.WebGLRenderer, ground: (x: number, z: number) => number): Promise<THREE.Object3D> {
   const gltf = await new GLTFLoader().loadAsync('/models/town.glb');
@@ -95,7 +95,7 @@ export async function loadTown(renderer: THREE.WebGLRenderer, ground: (x: number
   scene.userData.landmark = 'town';
   scene.userData.replaces = JSON.parse((root.userData.replaces as string | undefined) ?? '[]') as Ring[];
   const solids = JSON.parse((root.userData.solids as string | undefined) ?? '[]') as [Ring, number][];
-  scene.userData.solids = solids.map(([ring, h]): Prism => {
+  scene.userData.blocks = solids.map(([ring, h]): Prism => {
     const g = Math.min(...ring.map(([x, z]) => ground(x, z)));
     return { m: 'concrete', y0: g - 0.2, y1: g + h, p: [ring], n: 'town' };
   });

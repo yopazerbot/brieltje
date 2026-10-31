@@ -3,7 +3,7 @@ import { dist, placeName } from '../i18n';
 
 /**
  * Minimap, top left: the plan of the floor you are on, cut at 1.2 m above
- * that floor like a floor plan, turning with your view. Other
+ * that floor like a floor plan, over the big map's ground, turning with your view. Other
  * players are coloured dots (a ring when they are on another floor), cats
  * small orange dots and weapons lying around yellow diamonds. A portal is a ring in its
  * colour; the nearest one off the map is an arrow on the edge with how far it is. A waypoint set on
@@ -15,6 +15,7 @@ const SIZE = 180; // px on screen
 const SCALE = 7; // px per metre
 const PAD = 40; // m of plan around the house drawn into each level image
 const CUT = 1.2; // m above the floor
+const GROUND = 128; // m: the piece of the big map's ground drawn around you, drawn again after moving 40 m
 
 export interface Blip {
   x: number;
@@ -30,6 +31,9 @@ export class Minimap {
   private plans = new Map<string, HTMLCanvasElement>();
   private minX: number;
   private minZ: number;
+  private ground: { paint: (g: CanvasRenderingContext2D, pxPerM: number) => void; version: () => number } | null = null;
+  private groundImage: HTMLCanvasElement | null = null;
+  private groundAt = { x: 0, z: 0, version: -1 };
 
   constructor(prisms: Prism[], private levels: Level[], rooms: Room[]) {
     this.canvas.width = this.canvas.height = SIZE * devicePixelRatio;
@@ -52,10 +56,8 @@ export class Minimap {
         }
       };
       const cut = lv.floor + CUT;
-      // Ground floor: the garden and paving around the house.
+      // Ground floor: the paving around the house (the garden and the rest come from the big map's ground).
       if (lv.id === 'gf') {
-        g.fillStyle = 'rgba(92, 120, 70, 0.55)';
-        g.fillRect(0, 0, w, h);
         for (const p of prisms) {
           if (p.y1 > 0.2 || !['paving', 'road', 'terrace', 'pave_light', 'pave_warm', 'gravel'].includes(p.m)) continue;
           g.fillStyle = 'rgba(150, 150, 145, 0.75)';
@@ -81,6 +83,33 @@ export class Minimap {
     }
   }
 
+  /**
+   * The big map's ground (src/ui/bigmap.ts) under the plan: the minimap shows the fields, roads and
+   * buildings wherever you are, the village too. Drawn into a piece of GROUND metres around you,
+   * again only after moving on, so a frame costs one image copy.
+   */
+  setGround(paint: (g: CanvasRenderingContext2D, pxPerM: number) => void, version: () => number): void {
+    this.ground = { paint, version };
+  }
+
+  private groundPiece(x: number, z: number): HTMLCanvasElement | null {
+    if (!this.ground) return null;
+    const at = this.groundAt;
+    const version = this.ground.version();
+    if (this.groundImage && version === at.version && Math.abs(x - at.x) < 40 && Math.abs(z - at.z) < 40) return this.groundImage;
+    const k = Math.min(devicePixelRatio, 2);
+    const c = this.groundImage ?? document.createElement('canvas');
+    c.width = c.height = GROUND * SCALE * k;
+    const g = c.getContext('2d')!;
+    g.setTransform(k * SCALE, 0, 0, k * SCALE, k * SCALE * (GROUND / 2 - x), k * SCALE * (GROUND / 2 - z));
+    g.fillStyle = '#c3c9b6';
+    g.fillRect(x - GROUND / 2, z - GROUND / 2, GROUND, GROUND);
+    this.ground.paint(g, SCALE);
+    this.groundImage = c;
+    this.groundAt = { x, z, version };
+    return c;
+  }
+
   /** The level whose floor you stand on (or above). */
   private levelAt(feet: number): Level {
     let lv = this.levels[0];
@@ -103,6 +132,8 @@ export class Minimap {
     // Turn the plan so that where you look is up.
     g.translate(SIZE / 2, SIZE / 2);
     g.rotate(yaw);
+    const ground = this.groundPiece(x, z);
+    if (ground) g.drawImage(ground, -(x - this.groundAt.x + GROUND / 2) * SCALE, -(z - this.groundAt.z + GROUND / 2) * SCALE, GROUND * SCALE, GROUND * SCALE);
     g.drawImage(this.plans.get(lv.id)!, -(x - this.minX) * SCALE, -(z - this.minZ) * SCALE);
     // Furniture outlines on this floor.
     g.fillStyle = 'rgba(160, 120, 80, 0.85)';

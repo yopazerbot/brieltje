@@ -81,6 +81,8 @@ export type ServerMsg =
   | { t: 'car'; car: CarState }
   | { t: 'rules'; rules: Rules }
   | ({ t: 'travel'; name: string; to: string; ok: boolean; car?: string | null; text?: string } & Coded)
+  /** The start place picked on the start screen was refused (portals off): where the server has you. */
+  | { t: 'spawn'; ok: false; x: number; z: number }
   | { t: 'mode'; mode: ModeView }
   | { t: 'clowns'; list: ClownSpec[] }
   | { t: 'brutes'; list: BruteView[] }
