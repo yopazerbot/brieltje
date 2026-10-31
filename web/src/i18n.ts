@@ -63,7 +63,7 @@ const en = {
 
   // ---- Start screen
   'start.sub': 'Work in progress',
-  'start.intro': 'The new house, its garden and the street around it.',
+  'start.intro': 'Smetlede and Briel in 3D.',
   'start.invite': 'Play together in person, or have your own house built in?',
   'start.inviteGo': 'Sign up →',
   'start.mobileNote': 'Best on a laptop or desktop. Here you play with touch controls: hold your device sideways and tap Touch screen.',
@@ -618,7 +618,7 @@ const nl = {
 
   // ---- Start screen
   'start.sub': 'In aanbouw',
-  'start.intro': 'Het nieuwe huis, de tuin en de straat errond.',
+  'start.intro': 'Smetlede en Briel in 3D.',
   'start.invite': 'Samen spelen in het echt, of je eigen huis in het spel?',
   'start.inviteGo': 'Schrijf je in →',
   'start.mobileNote': 'Dit speel je het best op een laptop of desktop. Hier speel je met aanraakbediening: houd je toestel liggend en tik op Aanraakscherm.',
