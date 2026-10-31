@@ -47,7 +47,7 @@ from neighbours import features, model_frame, polygons
 ROOT = Path(__file__).resolve().parents[1]
 OUT = ROOT / "data" / "molenhoek.json"
 MIN_X, MAX_X, STEP = 626.0, 936.0, 2.0  # the main line: from the church square to 45 m past the junction
-STUB = 46.0  # m of the branch that turns off at the junction
+STUB = 700.0  # m of the branch that turns off at the junction: all of it, to Oordegemkouter (rebuilt; see the second survey)
 REACH = 14.0  # m: how far to look for a plot on either side
 GROUND = -0.1  # the main house's ground level in the village data
 WALLS = {"nb_red", "nb_brown", "nb_yellow", "nb_white", "nb_grey", "nb_dark"}
@@ -160,6 +160,10 @@ HOUSES = {
         dormer=dict(s=2.2, w=2.6, h=1.6), front_gable=dict(s=(4.4, 7.7), top=9.8, apex_tint="#c98f7e")),
 }
 
+# The branch that turns off at the junction is rebuilt along its whole length (STUB), to Oordegemkouter: Street View's
+# images of August 2026 show the new layout from about 120 m to 640 m (older ones nearer the junction and on the last
+# stretch), and the GRB's centre line runs as one piece, redrawn in 2025, from about 470 m to the end.
+#
 # The second survey (31 Oct 2026): the rest of Molenhoek on the map, down to the church square and on to the
 # junction where the map ends. West of the portal Street View has images of August 2026; east of x = 790 the
 # newest are of 2009 and 2019, so those houses are described as they were then. `front` as a dict lays the
@@ -423,7 +427,7 @@ def plan(specs, centre, walls, grb, others, relief, order="x"):
         # `whole`: the house is the rectangle round its outline (a stepped front the GRB draws in pieces)
         shape = poly.minimum_rotated_rectangle if h.get("whole") else poly
         ring = list(shape.exterior.coords)[:-1]
-        # The front wall: the longest edge facing the street, within 22 m of the centre line.
+        # The front wall: the longest edge facing the street, within 24 m of the centre line (or `reach`).
         best = None
         for i in range(len(ring)):
             a, b = ring[i], ring[(i + 1) % len(ring)]
@@ -438,7 +442,7 @@ def plan(specs, centre, walls, grb, others, relief, order="x"):
             dx, dz = q.x - mx, q.y - mz
             dist = math.hypot(dx, dz)
             face = (nx * dx + nz * dz) / max(dist, 1e-6)
-            if dist < 24 and face > 0.55:
+            if dist < h.get("reach", 24) and face > 0.55:  # `reach`: a house set further back
                 score = L * face - 0.15 * dist
                 if best is None or score > best[0]:
                     best = (score, a, b, (nx, nz))

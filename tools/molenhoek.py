@@ -15,7 +15,7 @@ canopy), plainer windows on the sides and back, the roof with its tiles, ridge, 
 downpipes, chimneys, roof windows, a dormer and solar panels, the lower parts behind under flat roofs,
 and in the front gardens the low walls, fences, clipped hedges, box balls and conifers. The street: west of the traffic island the old concrete road (the
 village draws it) gets its gutters, kerbs and pavements; from the island to 45 m past the junction, and
-on the first stretch of the branch that turns off there, dark asphalt, a concrete gutter with drains, the
+along the whole branch that turns off there to its end at Oordegemkouter, dark asphalt, a concrete gutter with drains, the
 raised red cycle lanes, a kerb, the pavements in grey concrete pavers, and grey pavers on the forecourts
 where the GRB's road surface reaches past the pavement; the island with its keep-left sign, a fire
 hydrant, an electricity cabinet, a warning sign, a bread vending machine; tall conifers along the empty
@@ -860,7 +860,17 @@ def street_outline():
         wl, wr = walk_edge(k, 1), walk_edge(k, -1)
         left.append([round(s["x"] + s["n"][0] * wl, 2), round(s["z"] + s["n"][1] * wl, 2)])
         right.append([round(s["x"] - s["n"][0] * wr, 2), round(s["z"] - s["n"][1] * wr, 2)])
-    return left + right[::-1]
+    if not STUB:
+        return left + right[::-1]
+    # The branch (its whole length since the band along it): the +z edge turns into its mouth, runs out along the
+    # branch's west edge and back along its east edge, and carries on east of the mouth.
+    mouth = [k for k in range(len(ST)) if dist_to_line(band_point(k, walk_edge(k, 1), 1), STUB) < walk_edge(0, 1, STUB) + 0.4]
+    first = next(k for k in range(len(STUB)) if dist_to_line((STUB[k]["x"], STUB[k]["z"]), ST) >= walk_edge(mouth[0] if mouth else 0, 1) + 1.2)
+    edge = lambda k, side: [round(STUB[k]["x"] + STUB[k]["n"][0] * walk_edge(k, side, STUB) * side, 2),
+                            round(STUB[k]["z"] + STUB[k]["n"][1] * walk_edge(k, side, STUB) * side, 2)]
+    branch = [edge(k, 1) for k in range(first, len(STUB))] + [edge(k, -1) for k in range(len(STUB) - 1, first - 1, -1)]
+    m0, m1 = (min(mouth), max(mouth)) if mouth else (len(ST), len(ST) - 1)
+    return left[:m0] + branch + left[m1 + 1:] + right[::-1]
 
 
 def s_ok(k):
@@ -1632,10 +1642,13 @@ root["origin"] = [ORIGIN[0], ORIGIN[1]]
 root["landmark"] = PLACE
 root["outlines"] = [h["outline"] for h in DATA["houses"].values()]
 root["solids"] = SOLIDS
-# Molenhoek's rebuilt stretch: its poles became steel lamp posts, its outline covers the old pavings; elsewhere the
-# street stays the village's.
-root["poles"] = {"line": LINE, "reach": 12.0} if MOLENHOEK else {"line": [], "reach": 0.0}
+# Molenhoek's rebuilt stretch (the branch too, to its end at Oordegemkouter): its poles became steel lamp posts, its
+# outline covers the old pavings; elsewhere the street stays the village's. (The jump from the main line's east end back
+# to the branch's start runs along the main line.)
+root["poles"] = {"line": LINE + (DATA["stub"]["line"] if DATA.get("stub") else []), "reach": 12.0} if MOLENHOEK else {"line": [], "reach": 0.0}
 root["street"] = street_outline() if MOLENHOEK else []
+if MOLENHOEK:
+    root["newStreetFrom"] = WEST_END + 4.0  # east of the island the new asphalt covers the old road (its blocks give way)
 root["clearTrees"] = CLEAR_TREES if MOLENHOEK else []
 tris = 0
 objs = []

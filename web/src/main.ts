@@ -1838,7 +1838,8 @@ async function buildVillage(): Promise<void> {
     return box.getCenter(new THREE.Vector2());
   });
   for (const c of landmarks) detailAt.push([c.x, c.y]);
-  const streetJobs = ['molenhoek', 'kapellenhoek'].map((name) => loadStreetModel(renderer, house.ground, name).catch(() => null)); // world/streetModel.ts
+  // Molenhoek past the old edge of the map comes in three parts along the street (molenhoek_end1..3), each drawn within 350 m as the band's tiles.
+  const streetJobs = ['molenhoek', 'kapellenhoek', 'molenhoek_end1', 'molenhoek_end2', 'molenhoek_end3'].map((name) => loadStreetModel(renderer, house.ground, name).catch(() => null)); // world/streetModel.ts
   // The church and the school (with the square's fittings): our Blender models in place of the blocks
   // built from the open data, which stay for walking into. A model that didn't load leaves its blocks drawn.
   // The houses round the square (world/townCentre.ts) replace the blocks inside the outlines they name.
@@ -1877,7 +1878,7 @@ async function buildVillage(): Promise<void> {
   world.addPrisms(roads.blocks);
   for (const m of models) {
     tiles.group.add(m); // a caster for the village's ground shading, a target for shots
-    tiles.track(m);
+    tiles.track(m, undefined, String(m.userData.landmark).startsWith('molenhoek_end') ? 350 : Infinity);
   }
   world.addPrisms(data.prisms ?? []);
   // Each model's blocks for walking into (the town's; the streets' went into the village data above).

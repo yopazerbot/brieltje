@@ -135,7 +135,7 @@ export class Tiles {
   /** Metres: beyond this a tile is hidden. */
   drawDistance = 725;
   private sets: TileSet[] = [];
-  private tracked: { object: THREE.Object3D; box: THREE.Box3 }[] = [];
+  private tracked: { object: THREE.Object3D; box: THREE.Box3; reach: number }[] = [];
   private wait = 0;
   private last = new THREE.Vector3(Infinity, Infinity, Infinity);
 
@@ -240,9 +240,9 @@ export class Tiles {
     if (count) im.computeBoundingSphere();
   }
 
-  /** Something else that is hidden beyond the draw distance (the house, the bungalow), where it stands. */
-  track(object: THREE.Object3D, box = new THREE.Box3().setFromObject(object)): void {
-    this.tracked.push({ object, box });
+  /** Something else that is hidden beyond the draw distance (the house, the bungalow), where it stands; or beyond each, if nearer. */
+  track(object: THREE.Object3D, box = new THREE.Box3().setFromObject(object), reach = Infinity): void {
+    this.tracked.push({ object, box, reach });
     this.wait = 0;
   }
 
@@ -252,7 +252,7 @@ export class Tiles {
     if (this.wait > 0 && eye.distanceToSquared(this.last) < 30 * 30) return;
     this.wait = 0.25;
     this.last.copy(eye);
-    for (const t of this.tracked) t.object.visible = t.box.distanceToPoint(eye) <= this.drawDistance;
+    for (const t of this.tracked) t.object.visible = t.box.distanceToPoint(eye) <= Math.min(t.reach, this.drawDistance);
     const within = (set: TileSet, reach: number): [number, number] => {
       let a = 0;
       while (a < set.boxes.length && set.boxes[a].distanceToPoint(eye) > reach) a++;

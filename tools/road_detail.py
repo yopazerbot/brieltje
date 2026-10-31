@@ -236,11 +236,22 @@ def centre_lines(road):
 
 def molenhoek_corridor():
     """Molenhoek's rebuilt street (tools/molenhoek.py draws it, data/molenhoek.json): its centre lines widened to
-    beyond its pavements. The road surface there stays the village's."""
+    beyond its pavements. The road surface there stays the village's. Past the junction where the map used to end
+    (x 960) only as far as the rebuilt street runs along the branch (the stub); the last stretch gets its detail here."""
     d = json.loads((ROOT / "data" / "molenhoek.json").read_text(encoding="utf-8"))
     lines = [LineString(d["line"])] + ([LineString(d["stub"]["line"])] if d.get("stub") else [])
-    lines += [l for p, l in model_lines("Wegsegment") if p["LSTRNM"] == "Molenhoek"]
-    return unary_union([l.buffer(9.0) for l in lines])
+    lines += [l.intersection(box(-1e4, -1e4, 960.0, 1e4)) for p, l in model_lines("Wegsegment") if p["LSTRNM"] == "Molenhoek"]
+    return unary_union([l.buffer(9.0) for l in lines if not l.is_empty])
+
+
+def molenhoek_rebuilt():
+    """Where tools/molenhoek.py lays its new street (asphalt, cycle lanes, kerbs and pavements, at least 5.5 m either
+    side of the centre line): east of the traffic island and along the whole branch. The village's road surface
+    stays out of it, or it would lie over the new asphalt."""
+    d = json.loads((ROOT / "data" / "molenhoek.json").read_text(encoding="utf-8"))
+    east = [q for q in d["line"] if q[0] >= 693.0]
+    lines = ([LineString(east)] if len(east) > 1 else []) + ([LineString(d["stub"]["line"])] if d.get("stub") else [])
+    return unary_union([l.buffer(5.5, cap_style=2) for l in lines])
 
 
 def measure(name, line, rays, pavings, corridor, smetlede):
@@ -400,11 +411,11 @@ def ring_out(r):
     return [round(v, 2) for q in r.coords[:-1] for v in q]
 
 
-def fills(road, kept, corridor, centres):
+def fills(road, kept, corridor, centres, rebuilt):
     """The road surface the streets don't cover. On a street's centre line (a junction, where a street gave way)
     and beside a carriageway without kerbs (widenings, lay-bys): the nearest street's carriageway; beyond a
     pavement: pavers (forecourts); on Molenhoek: the village's own road surface. `centres`: every street's centre
-    line widened to its usual carriageway."""
+    line widened to its usual carriageway. `rebuilt`: where Molenhoek's new street lies (nothing of the village's there)."""
     covered = unary_union([whole(a, b) for _, _, run in kept for a, b in zip(run, run[1:])])
     rest = road.difference(covered)
     lines = []
@@ -424,7 +435,9 @@ def fills(road, kept, corridor, centres):
             continue
         piece = piece.simplify(0.03)
         if corridor.contains(piece.representative_point()):
-            add(piece, "road")
+            for g in getattr(piece.difference(rebuilt), "geoms", [piece.difference(rebuilt)]):
+                if g.geom_type == "Polygon" and g.area >= 0.05:
+                    add(g, "road")
             continue
         for part, on_line in ((piece.intersection(zone), True), (piece.difference(zone), False)):
             for g in getattr(part, "geoms", [part]):
@@ -578,7 +591,7 @@ def main():
                    "down there, no images",
         "hide": sorted({key(p) for p in roads} | set(hidden_paths)),
         "runs": runs + path_runs,
-        "fills": fills(road, named, corridor, centres),
+        "fills": fills(road, named, corridor, centres, molenhoek_rebuilt()),
         "school": school_plateau,
         "zebras": [zebra],
         "teeth": give_way(named),

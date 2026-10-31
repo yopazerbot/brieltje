@@ -31,6 +31,8 @@ interface Extras {
   poles: { line: [number, number][]; reach: number };
   /** A rebuilt street's outline: the pavings of the old one inside it give way (empty: the village's street stays) */
   street: [number, number][];
+  /** From which x the rebuilt street is new asphalt over the old road (whose blocks there give way too), if any */
+  newStreetFrom?: number;
   /** The village's trees that give way to the model's conifers: x, z and radius */
   clearTrees: [number, number, number][];
 }
@@ -121,6 +123,8 @@ export function fitStreetModel(data: VillageData, model: THREE.Object3D, first: 
     if (p.d === undefined && mine(p.p[0])) p.lm = name;
     else if (p.d && !/hedge|fence/.test(p.m) && byStreet(p.p[0])) {
       if (p.m !== 'road' && onStreet(p.p[0])) p.lm = name; // pavings the new street covers
+      // The old road where the new asphalt lies over it: drawn by the model, so it can't rise through in a dip.
+      else if (p.m === 'road' && x.newStreetFrom !== undefined && p.p[0].every(([px]) => px > x.newStreetFrom!) && onStreet(p.p[0])) p.lm = name;
       // The old road and the pavings beside the new street: cut finer, so they follow the relief's own squares and
       // stay under the new surfaces (cut every 8 m, they rose through them in places).
       else if (p.p[0].some(([px, pz]) => near(street, px, pz, 4))) p.d = Math.min(p.d, 4);
