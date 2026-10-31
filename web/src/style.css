@@ -285,8 +285,9 @@ body.on-start #hud { display: none; }
    there without buttons. */
 #start-still { display: none; z-index: auto; }
 body.on-start #start-still { display: block; }
-#start-still > .slides-bar { position: fixed; z-index: 20; right: 132px; bottom: 23px; }
-@media (max-width: 1099px), (max-height: 520px) { #start-still > .slides-bar { display: none; } }
+#slides-controls { position: fixed; z-index: 20; right: 132px; bottom: 23px; }
+body:not(.on-start) #slides-controls { display: none; }
+@media (max-width: 1099px), (max-height: 520px) { #slides-controls { display: none; } }
 @media (min-width: 1100px) {
   body.on-start #overlay {
     justify-content: flex-start; padding-left: 6vw;
