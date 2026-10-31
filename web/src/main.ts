@@ -132,7 +132,9 @@ function loaded(): void {
   const begin = () => {
     if (at) {
       arrive(at, null);
-      spawnPending = at; // in multiplayer the server is told first thing (see 'welcome')
+      // In multiplayer the server is told: now if its welcome came already (it usually does), or when it comes.
+      if (welcomed) net.send({ t: 'spawn', to: at.id });
+      else spawnPending = at;
     }
     loading(1);
     setTimeout(() => menu.ready(), 150); // the bar full for a moment, then play
@@ -148,6 +150,7 @@ function loaded(): void {
 setTimeout(loaded, 25000); // never keep the player waiting forever
 /** The start place picked on the start screen (the church by default), or null for the main house, where the world itself starts. */
 let spawnPending: Portal | null = null;
+let welcomed = false; // the server's welcome has come (a start place can be sent straight away)
 function startPlace(): Portal | null {
   let id = (document.getElementById('spawn') as HTMLSelectElement | null)?.value ?? 'church'; // the church square unless picked otherwise (Yoshi)
   try {
@@ -1057,6 +1060,7 @@ net.onMessage = (m: ServerMsg) => {
   switch (m.t) {
     case 'welcome':
       // Started somewhere else than the street: the server moves us there before our first update.
+      welcomed = true;
       if (spawnPending) {
         net.send({ t: 'spawn', to: spawnPending.id });
         spawnPending = null;

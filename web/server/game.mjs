@@ -530,7 +530,7 @@ export class Game {
    */
   /**
    * Where a player starts, picked on the start screen: one of the portal places' arrival spots. The
-   * page sends it right after the welcome. Taken once, in the first 30 seconds, and only while the
+   * page sends it once its world is in. Taken once, in the first 90 seconds, and only while the
    * player is still where the server put them on joining (within 30 m: their first updates may
    * cross it), alive, on foot, with the portals on. So it is a start, never a free trip later.
    */
@@ -541,7 +541,7 @@ export class Game {
     p.spawned = true;
     // Refused: the page goes back to where the server has the player, so both agree.
     const no = () => this.send(p.ws, { t: 'spawn', ok: false, x: st.x, z: st.z });
-    if (now - p.joinTime > 30_000 || !p.alive || this.carOf(name) || this.horseOf(name) || (!this.rules.portals && p.role !== 'admin')) return no();
+    if (now - p.joinTime > 90_000 || !p.alive || this.carOf(name) || this.horseOf(name) || (!this.rules.portals && p.role !== 'admin')) return no();
     if (Math.hypot(st.x - p.joinedAt.x, st.z - p.joinedAt.z) > 30) return no();
     p.nextTravel = now + TRAVEL_MS;
     const [x, z] = to.out;
