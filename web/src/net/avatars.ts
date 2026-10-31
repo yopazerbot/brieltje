@@ -1,0 +1,427 @@
+import * as THREE from 'three';
+import { RoundedBoxGeometry } from 'three/addons/geometries/RoundedBoxGeometry.js';
+import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
+import type { WeaponId } from '../weapon';
+import type { RemoteState } from './client';
+import { gunsReady } from '../weapon';
+import { muzzleFlash } from '../world/effects';
+import { buildSwat, hasSwat, swatReady, type Body, type Outfit as SwatOutfit } from './swat';
+
+/**
+ * Other players. Normally the rigged SWAT character (see swat.ts); if that
+ * model can't be loaded, these block figures stand in.
+ *
+ * Block figures: masked fighters in tactical gear (balaclava, vest with
+ * pouches, cargo trousers, boots), built from simple shapes, no downloads.
+ * Each moving part is one mesh with its colours baked in, so a figure costs
+ * only a few draw calls. The player's colour is on the neck scarf and armband.
+ * Invisible hit boxes (head and body) catch bullets while they fight.
+ */
+
+interface Outfit {
+  jacket: string;
+  pants: string;
+  vest: string;
+  pouch: string;
+  mask: string;
+  gloves: string;
+  boots: string;
+  pads: string;
+  glasses: boolean;
+  beanie?: string;
+}
+
+const OUTFITS: Outfit[] = [
+  { jacket: '#4b4c3b', pants: '#75674c', vest: '#2a2b25', pouch: '#3a3a30', mask: '#141414', gloves: '#1a1a1a', boots: '#1d1b18', pads: '#22231f', glasses: true },
+  { jacket: '#5a4632', pants: '#3b3f47', vest: '#35312a', pouch: '#4a4335', mask: '#1f2620', gloves: '#2a241d', boots: '#2b2219', pads: '#2a2a28', glasses: false, beanie: '#2c3a2c' },
+  { jacket: '#867756', pants: '#8f7f5d', vest: '#4d4636', pouch: '#5e5541', mask: '#2a2620', gloves: '#3a3226', boots: '#3b2f22', pads: '#4a4232', glasses: true },
+  { jacket: '#2e3135', pants: '#4b4e54', vest: '#1c1d1f', pouch: '#2a2c2f', mask: '#0f0f10', gloves: '#141414', boots: '#121212', pads: '#1c1d1f', glasses: false, beanie: '#141414' },
+];
+// The server hands out these colours in order; each gets its own outfit, so everyone sees the same one.
+const COLORS = ['#f2b33d', '#4fa3e0', '#e0614f', '#5cc28a'];
+const SKIN = '#b5876a';
+/** The SWAT suit recoloured per player colour: olive, brown, desert, black. */
+const SWAT_OUTFITS: SwatOutfit[] = [
+  { main: '#4b4c3b', dark: '#25261f' },
+  { main: '#5a4632', dark: '#2a241d' },
+  { main: '#8a7a5a', dark: '#4a4232' },
+  { main: '#3a3d42', dark: '#121212' },
+];
+const GUN = '#1d1e21';
+
+const material = new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.85 });
+const hitMaterial = new THREE.MeshBasicMaterial({ visible: false });
+const headBox = new THREE.SphereGeometry(0.15, 8, 6);
+const bodyBox = new THREE.BoxGeometry(0.5, 1.45, 0.42);
+const UP = new THREE.Vector3(0, 1, 0);
+const v = (x: number, y: number, z: number) => new THREE.Vector3(x, y, z);
+
+/** A shape in one colour, moved into place. */
+function part(geo: THREE.BufferGeometry, color: string, x = 0, y = 0, z = 0): THREE.BufferGeometry {
+  const g = geo.index ? geo.toNonIndexed() : geo;
+  g.deleteAttribute('uv');
+  const c = new THREE.Color(color);
+  const colors = new Float32Array(g.attributes.position.count * 3);
+  for (let i = 0; i < colors.length; i += 3) colors.set([c.r, c.g, c.b], i);
+  g.setAttribute('color', new THREE.BufferAttribute(colors, 3));
+  return g.translate(x, y, z);
+}
+
+/** A rounded arm or leg segment from a to b. */
+function limb(a: THREE.Vector3, b: THREE.Vector3, r: number, color: string): THREE.BufferGeometry {
+  const dir = b.clone().sub(a);
+  const g = new THREE.CapsuleGeometry(r, Math.max(0.001, dir.length()), 3, 8);
+  g.applyQuaternion(new THREE.Quaternion().setFromUnitVectors(UP, dir.normalize()));
+  const mid = a.clone().add(b).multiplyScalar(0.5);
+  return part(g, color, mid.x, mid.y, mid.z);
+}
+
+function mesh(parts: THREE.BufferGeometry[]): THREE.Mesh {
+  const m = new THREE.Mesh(mergeGeometries(parts), material);
+  m.castShadow = true;
+  m.userData.ignoreRay = true;
+  return m;
+}
+
+function nameTag(name: string, color: string): THREE.Sprite {
+  const c = document.createElement('canvas');
+  c.width = 256;
+  c.height = 64;
+  const g = c.getContext('2d')!;
+  g.font = 'bold 30px Bahnschrift, Arial Narrow, sans-serif';
+  const w = Math.min(248, g.measureText(name).width + 28);
+  g.fillStyle = 'rgba(12,14,18,0.75)';
+  g.fillRect((256 - w) / 2, 8, w, 46);
+  g.fillStyle = color;
+  g.fillRect((256 - w) / 2, 8, 5, 46);
+  g.fillStyle = '#f4efe6';
+  g.textAlign = 'center';
+  g.textBaseline = 'middle';
+  g.fillText(name, 128, 32);
+  const tex = new THREE.CanvasTexture(c);
+  tex.colorSpace = THREE.SRGBColorSpace;
+  const s = new THREE.Sprite(new THREE.SpriteMaterial({ map: tex, depthTest: false, transparent: true }));
+  s.scale.set(0.9, 0.225, 1);
+  s.renderOrder = 10;
+  s.userData.ignoreRay = true;
+  return s;
+}
+
+
+/** Feet at y = 0, facing -z (the way the camera looks at yaw 0). */
+function buildFigure(name: string, color: string, o: Outfit): Body {
+  const pose = new THREE.Group(); // tips over when the player dies
+
+  pose.add(mesh([
+    part(new THREE.BoxGeometry(0.34, 0.16, 0.22), o.pants, 0, 0.9, 0),
+    part(new THREE.BoxGeometry(0.36, 0.06, 0.235), '#1a1a18', 0, 0.98, 0), // belt
+    part(new RoundedBoxGeometry(0.42, 0.5, 0.24, 2, 0.07), o.jacket, 0, 1.24, 0),
+    part(new RoundedBoxGeometry(0.44, 0.34, 0.29, 2, 0.05), o.vest, 0, 1.27, 0),
+    ...[-0.11, 0, 0.11].map((x) => part(new RoundedBoxGeometry(0.085, 0.12, 0.05, 1, 0.015), o.pouch, x, 1.18, -0.155)),
+    part(new RoundedBoxGeometry(0.3, 0.2, 0.06, 1, 0.02), o.pouch, 0, 1.22, 0.16), // back pack
+    part(new THREE.CylinderGeometry(0.055, 0.06, 0.1, 10), o.mask, 0, 1.52, 0),
+    part(new THREE.CylinderGeometry(0.085, 0.095, 0.07, 12), color, 0, 1.49, 0), // scarf
+  ]));
+
+  const head = new THREE.Group();
+  head.position.y = 1.55;
+  const headParts = [
+    part(new THREE.SphereGeometry(0.115, 16, 12).scale(1, 1.1, 1.05), o.mask, 0, 0.11, 0),
+    part(new THREE.BoxGeometry(0.16, 0.055, 0.05), SKIN, 0, 0.125, -0.098), // eye slit in the balaclava
+  ];
+  if (o.glasses) {
+    // Tactical goggles: two tinted lenses on a strap, skin showing around them.
+    for (const x of [-0.04, 0.04]) headParts.push(part(new RoundedBoxGeometry(0.064, 0.036, 0.03, 1, 0.01), '#33465a', x, 0.127, -0.124));
+    headParts.push(part(new THREE.BoxGeometry(0.02, 0.012, 0.02), '#111316', 0, 0.13, -0.126));
+    headParts.push(part(new THREE.CylinderGeometry(0.121, 0.121, 0.016, 18, 1, true), '#111316', 0, 0.13, 0));
+  }
+  if (o.beanie) headParts.push(part(new THREE.SphereGeometry(0.124, 16, 8, 0, Math.PI * 2, 0, Math.PI / 2).scale(1, 0.95, 1.06), o.beanie, 0, 0.14, 0));
+  head.add(mesh(headParts));
+  const hitHead = new THREE.Mesh(headBox, hitMaterial);
+  hitHead.position.y = 0.11;
+  hitHead.userData = { player: name, part: 'head' };
+  head.add(hitHead);
+  pose.add(head);
+
+  // Armed: both hands on a pistol in front of the chest; this group follows where they look.
+  const aim = new THREE.Group();
+  aim.position.y = 1.42;
+  const rS = v(0.2, 0, 0), rE = v(0.2, -0.2, -0.17), rH = v(0.05, -0.1, -0.4);
+  const lS = v(-0.2, 0, 0), lE = v(-0.19, -0.22, -0.15), lH = v(-0.01, -0.12, -0.39);
+  aim.add(mesh([
+    part(new THREE.SphereGeometry(0.075, 10, 8), o.jacket, 0.2, 0, 0),
+    part(new THREE.SphereGeometry(0.075, 10, 8), o.jacket, -0.2, 0, 0),
+    limb(rS, rE, 0.055, o.jacket), limb(rE, rH, 0.047, o.jacket),
+    limb(lS, lE, 0.055, o.jacket), limb(lE, lH, 0.047, o.jacket),
+    limb(lS.clone().lerp(lE, 0.35), lS.clone().lerp(lE, 0.6), 0.061, color), // armband
+    part(new THREE.SphereGeometry(0.045, 10, 8), o.gloves, rH.x, rH.y, rH.z),
+    part(new THREE.SphereGeometry(0.045, 10, 8), o.gloves, lH.x, lH.y, lH.z),
+    part(new THREE.BoxGeometry(0.035, 0.045, 0.2), GUN, 0.02, -0.07, -0.5),
+    part(new THREE.BoxGeometry(0.03, 0.09, 0.04), GUN, 0.02, -0.115, -0.43),
+  ]));
+  const flash = muzzleFlash(0.2);
+  flash.position.set(0.02, -0.07, -0.6);
+  aim.add(flash);
+  pose.add(aim);
+
+  // Unarmed (Explore mode): arms hang and swing while walking.
+  const hang = [-1, 1].map((side) => {
+    const g = new THREE.Group();
+    g.position.set(side * 0.2, 1.42, 0);
+    const elbow = v(side * 0.03, -0.27, 0.02);
+    const hand = v(side * 0.04, -0.52, -0.04);
+    const parts = [
+      part(new THREE.SphereGeometry(0.075, 10, 8), o.jacket),
+      limb(v(0, 0, 0), elbow, 0.055, o.jacket),
+      limb(elbow, hand, 0.047, o.jacket),
+      part(new THREE.SphereGeometry(0.045, 10, 8), o.gloves, hand.x, hand.y, hand.z),
+    ];
+    if (side < 0) parts.push(limb(v(0, 0, 0).lerp(elbow, 0.35), v(0, 0, 0).lerp(elbow, 0.6), 0.061, color));
+    g.add(mesh(parts));
+    pose.add(g);
+    return g;
+  }) as [THREE.Group, THREE.Group];
+
+  const legs = [-1, 1].map((side) => {
+    const g = new THREE.Group();
+    g.position.set(side * 0.1, 0.92, 0);
+    g.add(mesh([
+      limb(v(0, 0, 0), v(0, -0.78, 0), 0.075, o.pants),
+      part(new RoundedBoxGeometry(0.11, 0.1, 0.04, 1, 0.015), o.pads, 0, -0.42, -0.07), // knee pad
+      part(new THREE.BoxGeometry(0.035, 0.13, 0.11), o.pouch, side * 0.08, -0.26, 0), // cargo pocket
+      part(new RoundedBoxGeometry(0.13, 0.13, 0.28, 1, 0.03), o.boots, 0, -0.855, -0.04),
+    ]));
+    pose.add(g);
+    return g;
+  }) as [THREE.Group, THREE.Group];
+
+  const hitBody = new THREE.Mesh(bodyBox, hitMaterial);
+  hitBody.position.y = 0.73;
+  hitBody.userData = { player: name, part: 'body' };
+  pose.add(hitBody);
+
+  let fall = 0;
+  let phase = 0;
+  let flashTime = 0;
+  return {
+    root: pose,
+    hits: [hitHead, hitBody],
+    flash() {
+      flashTime = 0.06;
+      flash.fire();
+      return flash.getWorldPosition(new THREE.Vector3());
+    },
+    animate(dt, p) {
+      fall = p.alive ? 0 : Math.min(1, fall + dt * 2.6);
+      const ease = 1 - (1 - fall) * (1 - fall);
+      pose.rotation.x = (ease * Math.PI) / 2; // falls on their back
+      pose.position.y = ease * 0.13;
+      pose.scale.y += ((p.crouch && p.alive ? 0.72 : 1) - pose.scale.y) * Math.min(1, dt * 12);
+      // Walking: legs swing with the speed; arms swing too when no weapon is held.
+      const stride = p.flying ? 0 : Math.min(1, p.speed / 1.6);
+      phase += (p.speed / (0.65 + 0.15 * p.speed)) * Math.PI * dt;
+      const swing = Math.sin(phase) * 0.55 * stride;
+      legs[0].rotation.x = p.flying ? 0.3 : swing;
+      legs[1].rotation.x = p.flying ? 0.12 : -swing;
+      aim.visible = p.armed;
+      hang[0].visible = hang[1].visible = !p.armed;
+      hang[0].rotation.x = -swing * 0.7;
+      hang[1].rotation.x = swing * 0.7;
+      const pitch = Math.max(-0.9, Math.min(0.9, p.pitch));
+      aim.rotation.x = p.alive ? pitch : 0;
+      head.rotation.x = p.alive ? pitch * 0.6 : 0;
+      flashTime -= dt;
+      flash.visible = flashTime > 0;
+    },
+  };
+}
+
+interface Avatar {
+  body: Body;
+  color: string;
+  root: THREE.Group;
+  tag: THREE.Sprite;
+  from: RemoteState | null;
+  to: RemoteState | null;
+  t: number;
+  snap: boolean;
+  speed: number;
+  forward: number;
+  side: number;
+  steps: number;
+}
+
+export class Avatars {
+  /** Names above players: the admin can turn them off (they show through walls). */
+  showNames = true;
+  readonly group = new THREE.Group();
+  /** A footstep of another player at their feet (speed in m/s) */
+  onStep: (name: string, at: THREE.Vector3, speed: number) => void = () => {};
+  private avatars = new Map<string, Avatar>();
+
+  constructor() {
+    // Players who joined before the character and gun models finished loading get them now.
+    void Promise.all([swatReady, gunsReady]).then(() => {
+      for (const [name, a] of [...this.avatars]) {
+        this.remove(name);
+        this.add(name, a.color);
+        Object.assign(this.avatars.get(name)!, { from: a.from, to: a.to, t: a.t });
+        this.avatars.get(name)!.root.visible = a.root.visible;
+      }
+    });
+  }
+
+  add(name: string, color: string): void {
+    if (this.avatars.has(name)) return;
+    const i = COLORS.indexOf(color);
+    const k = i >= 0 ? i : [...name].reduce((h, c) => h + c.charCodeAt(0), 0) % OUTFITS.length;
+    const body = hasSwat() ? buildSwat(name, color, SWAT_OUTFITS[k], hitMaterial, headBox, bodyBox) : buildFigure(name, color, OUTFITS[k]);
+    const root = new THREE.Group();
+    const tag = nameTag(name, color);
+    tag.position.y = 2.0;
+    root.add(body.root, tag);
+    root.visible = false;
+    for (const h of body.hits) h.visible = false; // until their first position arrives
+    this.group.add(root);
+    this.avatars.set(name, { body, color, root, tag, from: null, to: null, t: 1, snap: false, speed: 0, forward: 0, side: 0, steps: 0 });
+  }
+
+  /** A player's colour changed (a team's in the teams game): the outfit that goes with it. */
+  recolor(name: string, color: string): void {
+    const a = this.avatars.get(name);
+    if (!a || a.color === color) return;
+    this.remove(name);
+    this.add(name, color);
+    Object.assign(this.avatars.get(name)!, { from: a.from, to: a.to, t: a.t });
+    this.avatars.get(name)!.root.visible = a.root.visible;
+  }
+
+  remove(name: string): void {
+    const a = this.avatars.get(name);
+    if (!a) return;
+    a.root.removeFromParent();
+    // Block figures own their geometry; SWAT clones share the model's.
+    if (!a.body.shared) {
+      a.root.traverse((o) => {
+        if (o instanceof THREE.Mesh && o.geometry !== headBox && o.geometry !== bodyBox) o.geometry.dispose();
+      });
+    }
+    this.avatars.delete(name);
+  }
+
+  clear(): void {
+    for (const name of [...this.avatars.keys()]) this.remove(name);
+  }
+
+  update(states: RemoteState[], self: string): void {
+    for (const s of states) {
+      if (s.name === self) continue;
+      const a = this.avatars.get(s.name);
+      if (!a) continue;
+      // Just respawned: jump to the new spot instead of sliding across the house.
+      if (a.snap || (s.alive && a.to && !a.to.alive)) {
+        a.snap = false;
+        a.from = s;
+      } else {
+        a.from = a.to ?? s;
+      }
+      a.to = s;
+      a.t = 0;
+      a.root.visible = true;
+    }
+  }
+
+  /** Show a player dying right away (their next update confirms it). */
+  kill(name: string): void {
+    const a = this.avatars.get(name);
+    if (a?.to) a.to = { ...a.to, alive: false };
+    if (a?.from) a.from = { ...a.from, alive: false };
+  }
+
+  /** A player respawned somewhere else: hide them until their new position arrives. */
+  respawn(name: string): void {
+    const a = this.avatars.get(name);
+    if (!a) return;
+    a.snap = true;
+    a.root.visible = false;
+  }
+
+  /** Muzzle flash when another player fires; returns where the muzzle is (for its smoke). */
+  flash(name: string): THREE.Vector3 | null {
+    const a = this.avatars.get(name);
+    return a?.root.visible ? a.body.flash() : null;
+  }
+
+  /** A player was hit by one of your shots: they flinch. */
+  flinch(name: string): void {
+    this.avatars.get(name)?.body.flinch?.();
+  }
+
+  /** Can this player be shot right now (fighting, alive, not just respawned, not in the car)? */
+  canBeHit(name: string): boolean {
+    const s = this.avatars.get(name)?.to;
+    return !!s && s.armed && s.alive !== false && !s.safe && !s.d;
+  }
+
+  /** Players on foot, for the car to stop against. */
+  obstacles(): { x: number; z: number; r: number }[] {
+    return [...this.avatars.values()].filter((a) => a.root.visible && a.to && !a.to.d && a.to.alive !== false).map((a) => ({ x: a.root.position.x, z: a.root.position.z, r: 0.3 }));
+  }
+
+  /** Move each figure smoothly between updates (0.1 s apart) and animate it. */
+  tick(dt: number): void {
+    const now = performance.now();
+    for (const [name, a] of this.avatars) {
+      if (!a.from || !a.to) continue;
+      a.t = Math.min(1, a.t + dt / 0.1);
+      const f = a.from;
+      const t = a.to;
+      const x = f.x + (t.x - f.x) * a.t;
+      const z = f.z + (t.z - f.z) * a.t;
+      // Velocity, and how much of it is forwards and sideways (for walk, strafe and run-back animations).
+      const vx = (x - a.root.position.x) / Math.max(dt, 1e-3);
+      const vz = (z - a.root.position.z) / Math.max(dt, 1e-3);
+      let dy = t.yaw - f.yaw;
+      dy = Math.atan2(Math.sin(dy), Math.cos(dy));
+      const yaw = f.yaw + dy * a.t;
+      const k = 1 - Math.exp(-dt * 10);
+      a.speed += (Math.min(Math.hypot(vx, vz), 8) - a.speed) * k;
+      a.forward += (-vx * Math.sin(yaw) - vz * Math.cos(yaw) - a.forward) * k;
+      a.side += (vx * Math.cos(yaw) - vz * Math.sin(yaw) - a.side) * k;
+      a.root.position.set(x, f.y + (t.y - f.y) * a.t, z);
+      a.root.rotation.y = yaw;
+      const alive = t.alive !== false;
+      a.body.animate(dt, {
+        speed: a.speed, forward: a.forward, side: a.side, armed: t.armed, alive, crouch: !!t.c, flying: t.flying,
+        pitch: f.pitch + (t.pitch - f.pitch) * a.t, weapon: (t.w ?? 'pistol') as WeaponId,
+      });
+
+      // One footstep per stride (about 0.85 m walking, 1.2 m running).
+      a.steps += (a.speed / (0.65 + 0.15 * a.speed)) * dt;
+      if (a.steps >= 1) {
+        a.steps = 0;
+        if (alive && !t.flying && !t.d && a.speed > 0.6 && a.root.visible) this.onStep(name, a.root.position, a.speed);
+      }
+
+      // Just respawned: blink while they can't be hurt. In the car only their name shows, above it.
+      a.body.root.visible = !t.d && (!(t.safe && alive) || Math.floor(now / 120) % 2 === 0);
+      a.tag.visible = alive && this.showNames;
+      for (const h of a.body.hits) h.visible = alive && t.armed && !t.d && a.root.visible;
+    }
+  }
+
+  /** Everyone visible, for the minimap. */
+  blips(): { x: number; y: number; z: number; color: string }[] {
+    return [...this.avatars.values()].filter((a) => a.root.visible && a.to?.alive !== false).map((a) => ({ ...a.root.position, color: a.color }));
+  }
+
+  /** The other players you can see, by name: the big map. */
+  marks(): { name: string; x: number; z: number; color: string }[] {
+    return [...this.avatars.entries()].filter(([, a]) => a.root.visible && a.to?.alive !== false).map(([name, a]) => ({ name, x: a.root.position.x, z: a.root.position.z, color: a.color }));
+  }
+
+  position(name: string): THREE.Vector3 | null {
+    const a = this.avatars.get(name);
+    return a?.root.visible ? a.root.position : null;
+  }
+}

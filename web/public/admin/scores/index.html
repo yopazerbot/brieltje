@@ -1,0 +1,44 @@
+<!doctype html>
+<html lang="nl">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <meta name="robots" content="noindex" />
+  <title>Scorebord · Brieltje</title>
+  <link rel="icon" href="/icon-192.png" />
+  <link rel="stylesheet" href="/admin/scores/scores.css" />
+</head>
+<body>
+  <header>
+    <div class="brand">BRIEL</div>
+    <div class="mode">
+      <div class="mode-title" id="mode-title"></div>
+      <div class="mode-sub" id="mode-sub"></div>
+    </div>
+    <div class="right">
+      <div class="clock" id="clock"></div>
+      <div class="live" id="live"><i></i> <span id="live-text"></span></div>
+    </div>
+  </header>
+
+  <main id="board"></main>
+
+  <div class="banner" id="banner" hidden></div>
+
+  <footer>
+    <div class="join" id="join"></div>
+    <div class="count" id="count"></div>
+    <div class="tools">
+      <button type="button" data-set="nl">NL</button>
+      <button type="button" data-set="en">EN</button>
+      <button type="button" id="full"></button>
+    </div>
+  </footer>
+
+  <div class="gate" id="gate" hidden>
+    <p id="gate-text"></p>
+    <a href="/admin/" id="gate-link"></a>
+  </div>
+  <script src="/admin/scores/scores.js"></script>
+</body>
+</html>

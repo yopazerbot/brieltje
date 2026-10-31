@@ -1,0 +1,6 @@
+[
+  { "w": "rifle", "where": "Carport", "x": 2.2, "z": 11.4, "y": -0.1 },
+  { "w": "rifle", "where": "Garden terrace", "x": 6.5, "z": -4.0, "y": -0.1 },
+  { "w": "shotgun", "where": "Speelruimte", "x": 6.0, "z": 10.5, "y": 3.05 },
+  { "w": "sniper", "where": "Dakterras", "x": 7.6, "z": -2.2, "y": 3.05 }
+]

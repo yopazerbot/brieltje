@@ -1,0 +1,22 @@
+{
+ "plaster": 3.2,
+ "floor_wood": 1.7,
+ "floor_bath": 1.27,
+ "terrace": 1.8,
+ "road": 2.0,
+ "pavers": 1.8,
+ "gravel": 2.25,
+ "field": 3.0,
+ "grass": 2.0,
+ "concrete": 2.71,
+ "stair": 1.83,
+ "hedge": 3.001,
+ "brick": 1.8,
+ "claustra": 1.8,
+ "terrazzo": 1.0,
+ "rust_tile": 0.6,
+ "nb_brick": 1.76,
+ "roof_tiles": 1.2,
+ "floor_tile": 4.8,
+ "cladding": 1.8
+}

@@ -1,0 +1,7 @@
+{
+  "pistol": { "name": "Pistol", "slot": 1, "mag": 15, "delay": 0.16, "auto": false, "reload": 1.4, "body": 34, "head": 100, "pellets": 1, "spread": 0.012, "kick": 0.016, "zoom": 0.7 },
+  "rifle": { "name": "Rifle", "slot": 2, "mag": 30, "delay": 0.1, "auto": true, "reload": 2.2, "body": 26, "head": 100, "pellets": 1, "spread": 0.016, "kick": 0.011, "zoom": 0.65 },
+  "shotgun": { "name": "Shotgun", "slot": 3, "mag": 6, "delay": 0.85, "auto": false, "reload": 2.4, "body": 15, "head": 30, "pellets": 8, "spread": 0.09, "kick": 0.05, "zoom": 0.8 },
+  "sniper": { "name": "Sniper", "slot": 4, "mag": 5, "delay": 1.3, "auto": false, "reload": 2.6, "body": 100, "head": 200, "pellets": 1, "spread": 0.0, "hipSpread": 0.09, "kick": 0.06, "zoom": 0.22 },
+  "bazooka": { "name": "Bazooka", "slot": 5, "mag": 1, "delay": 1.0, "auto": false, "reload": 2.8, "body": 0, "head": 0, "pellets": 1, "spread": 0.0, "kick": 0.12, "zoom": 0.8, "admin": true, "rocket": { "speed": 32, "radius": 5, "damage": 160, "range": 150 } }
+}

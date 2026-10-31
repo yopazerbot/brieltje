@@ -1,0 +1,2861 @@
+{
+ "_source": {
+  "about": "Garden layout. Model coordinates in metres: x left to right on the plan, z garden (negative) to street (positive), y up, y = 0 is the ground floor finished floor (+-0 = TAW 23.97).",
+  "geometry": "Ground floor at 1:50 (Feb 2026). The same garden as the site plan of Sep 2025 except the wadi, which moved 0.575 m towards the street. The lighting plan of 7 Jul 2026 (the model's reference set) has the newer wadi position.",
+  "levels": "site plan level marks (cm vs. +-0), terrain profile T_N_1 (along x = 2.92), section D-D (wadi).",
+  "drainage": "detail foundation plan 1:50 on the same sheet.",
+  "transforms": {
+   "detail ground floor 1:50": "x = (sx - 1138.456) * 0.0176389, z = (sy - 1274.545) * 0.0176389 (sx, sy in PDF points). 596 line ends matched to the model's wall corners (tools/extract_plan.vote_shift), rms 1.5 cm.",
+   "detail foundation 1:50": "as the ground floor with sx + 852.2 pt (section markers A and D are 852.2 pt apart, B and C at the same height). Checked: wadi and house outline land on the ground floor positions.",
+   "site plan 1:200": "x = (sx - 354.065) * 0.0705556 + 4.51, z = (sy - 739.18) * 0.0705556 + 6.01. Roof outline (9.04 x 12.04 m, coping overhang) centred on the 9.02 x 12.02 m house: corners within 1 cm. Plot lines land within 5 cm of the GRB plot; paths and slabs within 3 cm of the detail sheet.",
+   "lighting plan ground floor 1:50": "x = (sx - 170.381) * 0.0176389, z = (sy - 318.899) * 0.0176389, rms 1.5 cm on wall corners.",
+   "terrain profile 1:200": "z = 5.42 - (sx - 492.725) * 0.0705556 (house back face -> z 0.02, front face of the carport notch -> 10.82, plot lines -> 17.02 and -23.04); y = (613.15 - sy) * 0.0705556.",
+   "section D-D 1:75": "distance from the front facade's outer face (sx 567.68) = (567.68 - sx) * 0.0264583; level cm = -23 - (sy - 396.32) * 2.6458. No cut line for D-D is drawn on any site plan."
+  },
+  "checks": {
+   "wadi site plan->detail set centroid shift": [
+    0.025,
+    0.581
+   ],
+   "driveway site plan->detail set": [
+    0.023,
+    0.008
+   ],
+   "front path site plan->detail set": [
+    0.023,
+    0.006
+   ],
+   "wadi area detail set": 19.31,
+   "wadi area site plan": 19.31,
+   "wadi volume from rim area, 0.30 m deep, 1:1 slopes (m3)": 5.06
+  }
+ },
+ "wadi": {
+  "outline": [
+   [
+    3.367,
+    15.954
+   ],
+   [
+    3.446,
+    16.078
+   ],
+   [
+    3.571,
+    16.205
+   ],
+   [
+    3.714,
+    16.311
+   ],
+   [
+    3.871,
+    16.394
+   ],
+   [
+    3.954,
+    16.426
+   ],
+   [
+    4.215,
+    16.5
+   ],
+   [
+    4.393,
+    16.537
+   ],
+   [
+    4.664,
+    16.573
+   ],
+   [
+    4.954,
+    16.589
+   ],
+   [
+    5.254,
+    16.594
+   ],
+   [
+    6.222,
+    16.585
+   ],
+   [
+    7.35,
+    16.594
+   ],
+   [
+    7.809,
+    16.588
+   ],
+   [
+    8.115,
+    16.576
+   ],
+   [
+    8.283,
+    16.559
+   ],
+   [
+    8.449,
+    16.528
+   ],
+   [
+    8.61,
+    16.481
+   ],
+   [
+    8.712,
+    16.438
+   ],
+   [
+    8.809,
+    16.385
+   ],
+   [
+    8.942,
+    16.288
+   ],
+   [
+    9.004,
+    16.224
+   ],
+   [
+    9.061,
+    16.156
+   ],
+   [
+    9.156,
+    16.006
+   ],
+   [
+    9.225,
+    15.843
+   ],
+   [
+    9.25,
+    15.757
+   ],
+   [
+    9.279,
+    15.575
+   ],
+   [
+    9.303,
+    15.288
+   ],
+   [
+    9.299,
+    14.574
+   ],
+   [
+    9.315,
+    14.171
+   ],
+   [
+    9.311,
+    14.046
+   ],
+   [
+    9.289,
+    13.86
+   ],
+   [
+    9.246,
+    13.723
+   ],
+   [
+    9.177,
+    13.597
+   ],
+   [
+    9.134,
+    13.539
+   ],
+   [
+    9.086,
+    13.486
+   ],
+   [
+    8.975,
+    13.394
+   ],
+   [
+    8.83,
+    13.314
+   ],
+   [
+    8.676,
+    13.251
+   ],
+   [
+    8.516,
+    13.206
+   ],
+   [
+    8.352,
+    13.179
+   ],
+   [
+    8.081,
+    13.158
+   ],
+   [
+    7.808,
+    13.153
+   ],
+   [
+    7.536,
+    13.164
+   ],
+   [
+    7.075,
+    13.205
+   ],
+   [
+    6.696,
+    13.217
+   ],
+   [
+    6.506,
+    13.215
+   ],
+   [
+    6.317,
+    13.207
+   ],
+   [
+    5.938,
+    13.174
+   ],
+   [
+    5.369,
+    13.094
+   ],
+   [
+    4.983,
+    13.075
+   ],
+   [
+    4.726,
+    13.084
+   ],
+   [
+    4.634,
+    13.096
+   ],
+   [
+    4.543,
+    13.115
+   ],
+   [
+    4.366,
+    13.171
+   ],
+   [
+    4.198,
+    13.251
+   ],
+   [
+    4.043,
+    13.354
+   ],
+   [
+    3.926,
+    13.459
+   ],
+   [
+    3.819,
+    13.575
+   ],
+   [
+    3.68,
+    13.766
+   ],
+   [
+    3.545,
+    14.003
+   ],
+   [
+    3.461,
+    14.179
+   ],
+   [
+    3.39,
+    14.36
+   ],
+   [
+    3.331,
+    14.545
+   ],
+   [
+    3.285,
+    14.733
+   ],
+   [
+    3.252,
+    14.925
+   ],
+   [
+    3.233,
+    15.118
+   ],
+   [
+    3.226,
+    15.312
+   ],
+   [
+    3.234,
+    15.469
+   ],
+   [
+    3.267,
+    15.675
+   ],
+   [
+    3.307,
+    15.82
+   ]
+  ],
+  "bottom": [
+   [
+    3.631,
+    15.812
+   ],
+   [
+    3.68,
+    15.889
+   ],
+   [
+    3.768,
+    15.978
+   ],
+   [
+    3.874,
+    16.057
+   ],
+   [
+    3.991,
+    16.119
+   ],
+   [
+    4.124,
+    16.165
+   ],
+   [
+    4.365,
+    16.226
+   ],
+   [
+    4.69,
+    16.274
+   ],
+   [
+    4.965,
+    16.289
+   ],
+   [
+    5.254,
+    16.294
+   ],
+   [
+    6.222,
+    16.285
+   ],
+   [
+    7.65,
+    16.291
+   ],
+   [
+    8.192,
+    16.269
+   ],
+   [
+    8.333,
+    16.246
+   ],
+   [
+    8.508,
+    16.199
+   ],
+   [
+    8.651,
+    16.13
+   ],
+   [
+    8.74,
+    16.066
+   ],
+   [
+    8.781,
+    16.023
+   ],
+   [
+    8.822,
+    15.974
+   ],
+   [
+    8.891,
+    15.867
+   ],
+   [
+    8.94,
+    15.749
+   ],
+   [
+    8.957,
+    15.688
+   ],
+   [
+    8.991,
+    15.451
+   ],
+   [
+    9.006,
+    15.186
+   ],
+   [
+    8.998,
+    14.626
+   ],
+   [
+    9.015,
+    14.171
+   ],
+   [
+    9.007,
+    14.014
+   ],
+   [
+    8.985,
+    13.882
+   ],
+   [
+    8.928,
+    13.765
+   ],
+   [
+    8.873,
+    13.698
+   ],
+   [
+    8.808,
+    13.644
+   ],
+   [
+    8.7,
+    13.585
+   ],
+   [
+    8.578,
+    13.535
+   ],
+   [
+    8.451,
+    13.499
+   ],
+   [
+    8.319,
+    13.477
+   ],
+   [
+    8.066,
+    13.458
+   ],
+   [
+    7.811,
+    13.453
+   ],
+   [
+    7.557,
+    13.463
+   ],
+   [
+    7.089,
+    13.505
+   ],
+   [
+    6.701,
+    13.517
+   ],
+   [
+    6.494,
+    13.514
+   ],
+   [
+    6.295,
+    13.506
+   ],
+   [
+    5.908,
+    13.473
+   ],
+   [
+    5.34,
+    13.392
+   ],
+   [
+    4.984,
+    13.375
+   ],
+   [
+    4.754,
+    13.383
+   ],
+   [
+    4.685,
+    13.392
+   ],
+   [
+    4.614,
+    13.407
+   ],
+   [
+    4.476,
+    13.451
+   ],
+   [
+    4.346,
+    13.513
+   ],
+   [
+    4.228,
+    13.59
+   ],
+   [
+    4.092,
+    13.719
+   ],
+   [
+    4.008,
+    13.818
+   ],
+   [
+    3.935,
+    13.925
+   ],
+   [
+    3.811,
+    14.142
+   ],
+   [
+    3.736,
+    14.298
+   ],
+   [
+    3.673,
+    14.46
+   ],
+   [
+    3.62,
+    14.626
+   ],
+   [
+    3.579,
+    14.794
+   ],
+   [
+    3.55,
+    14.965
+   ],
+   [
+    3.532,
+    15.138
+   ],
+   [
+    3.526,
+    15.314
+   ],
+   [
+    3.538,
+    15.483
+   ],
+   [
+    3.56,
+    15.611
+   ],
+   [
+    3.59,
+    15.719
+   ]
+  ],
+  "depth": 0.3,
+  "rim_y": -0.3,
+  "bottom_y": -0.6,
+  "ground_y_around": {
+   "house side": -0.25,
+   "street side": -0.23
+  },
+  "side_slope": "1:1 (45 degrees): 0.30 m wide on plan for 0.30 m depth",
+  "area_rim_m2": 19.31,
+  "area_bottom_m2": 14.55,
+  "volume_m3": 5.06,
+  "inlet": {
+   "path": [
+    [
+     9.64,
+     -6.6
+    ],
+    [
+     11.02,
+     -6.0
+    ],
+    [
+     11.02,
+     11.7
+    ],
+    [
+     8.65,
+     14.15
+    ]
+   ],
+   "note": "Overflow of the rainwater tank (and the terrace drain TW, which joins at z = -1) runs underground along x = 11.02 and ends in the wadi at about (8.65, 14.15). D-D note: 'overloop hemelwaterput aan te sluiten op wadi'. No outlet stone or headwall is drawn."
+  },
+  "overflow": {
+   "path": [
+    [
+     3.1,
+     15.7
+    ],
+    [
+     2.14,
+     16.25
+    ],
+    [
+     2.16,
+     16.64
+    ]
+   ],
+   "note": "RW pipe from the wadi's street-side edge to the street rainwater connection (RWA). Underground."
+  },
+  "note": "Above-ground infiltration wadi ('bovengrondse infiltratie'), label '19,31m2 - 5.070L - 30cm diep'. Outline = the 19.31 m2 fill boundary on the detail set and the lighting plan (blue wave hatch). Section D-D: surrounding ground -23 (street side) and -25 (house side), a small vertical step down to the rim at -30, 1:1 slopes, flat bottom at -60, average groundwater -75. So the bottom lies 0.35-0.37 m below the lawn around it. 'bottom' is the rim offset 0.30 m inwards (derived from the section, not drawn); its frustum volume 5.06 m3 matches the label's 5.07 m3. No planting, gravel or grass is specified for the wadi. In the earlier set (Sep 2025) the same outline sat 0.575 m nearer the house (rim 0.62 m from the facade, 1.00 m from the plot front line, which is what D-D shows); the detail set and the lighting plan move it to 1.05 m from the facade and 0.43 m from the plot line."
+ },
+ "paths": [
+  {
+   "name": "back terrace (uncovered)",
+   "poly": [
+    [
+     1.846,
+     -4.985
+    ],
+    [
+     1.851,
+     -2.982
+    ],
+    [
+     9.035,
+     -2.98
+    ],
+    [
+     2.886,
+     -4.655
+    ],
+    [
+     2.886,
+     -5.99
+    ],
+    [
+     1.317,
+     -5.99
+    ],
+    [
+     1.317,
+     -4.985
+    ]
+   ],
+   "material": "terrace",
+   "y": -0.05,
+   "note": "With the path along the outbuilding (8.11 m2) this 8.81 m2 makes 'terras niet overdekt 16,92 m2' (detail set) = 'pad achtertuin 16,91 m2' (site plan). The covered part under the roof terrace measures 16.46 m2 ('overdekt terras 16,47 m2'), already in the model. The edge towards the lawn runs diagonally from (2.86, -4.66) to (9.04, -2.98). Fill = the legend's 'waterdoorlatende klinkers' (permeable pavers); the hatch is a 0.60 m running grid, so slabs of 60 cm are also possible. Level -5 (site plan mark at (2.76, -4.25), terrain profile)."
+  },
+  {
+   "name": "path along the outbuilding",
+   "poly": [
+    [
+     1.316,
+     -13.985
+    ],
+    [
+     1.316,
+     -4.985
+    ],
+    [
+     0.415,
+     -4.985
+    ],
+    [
+     0.415,
+     -13.985
+    ]
+   ],
+   "material": "paving",
+   "y": -0.05,
+   "note": "0.90 m wide, same fill as the terrace, from the terrace to the far end of the outbuilding."
+  },
+  {
+   "name": "side path (right)",
+   "poly": [
+    [
+     9.935,
+     -2.982
+    ],
+    [
+     9.935,
+     6.061
+    ],
+    [
+     9.035,
+     6.061
+    ],
+    [
+     9.035,
+     -2.982
+    ]
+   ],
+   "material": "paving",
+   "note": "'pad zijtuin 10,06 m2' (the label counts the strip up to z 8.2 as paved; drawn paving is 8.1 m2 plus five slabs): 0.90 m against the right facade, from the back edge of the covered terrace to z = 6.06; same fill. Continues as stepping slabs to the front path. Site plan levels next to it: -20 at z -0.24, -15 at z 0.94."
+  },
+  {
+   "name": "driveway",
+   "poly": [
+    [
+     -2.964,
+     10.818
+    ],
+    [
+     -2.957,
+     17.015
+    ],
+    [
+     3.54,
+     17.015
+    ],
+    [
+     3.422,
+     16.783
+    ],
+    [
+     3.318,
+     16.544
+    ],
+    [
+     3.231,
+     16.299
+    ],
+    [
+     3.159,
+     16.049
+    ],
+    [
+     3.103,
+     15.795
+    ],
+    [
+     3.063,
+     15.537
+    ],
+    [
+     3.04,
+     15.278
+    ],
+    [
+     3.033,
+     15.018
+    ],
+    [
+     3.043,
+     14.758
+    ],
+    [
+     3.069,
+     14.499
+    ],
+    [
+     3.112,
+     14.242
+    ],
+    [
+     3.171,
+     13.989
+    ],
+    [
+     3.247,
+     13.739
+    ],
+    [
+     3.337,
+     13.495
+    ],
+    [
+     3.444,
+     13.258
+    ],
+    [
+     3.565,
+     13.027
+    ],
+    [
+     3.7,
+     12.805
+    ],
+    [
+     3.85,
+     12.592
+    ],
+    [
+     4.012,
+     12.389
+    ],
+    [
+     4.188,
+     12.196
+    ],
+    [
+     4.375,
+     12.015
+    ],
+    [
+     4.375,
+     10.818
+    ]
+   ],
+   "material": "paving",
+   "note": "'oprit in zijtuin 3,60 m2' + carport + 'oprit in voortuinzone 31,43 m2' = 40.3 m2. From the left plot line to a curved right edge (x 4.38 at the house, 3.01 at z 15.1, 3.52 at the street). Dot fill not in the legend; counted as hardened surface in 'voortuin max. 50% verharding, 47,77% verhard'. Material not specified. Ground marks -14 (left side), -22 (near the house), -21 (near the street)."
+  },
+  {
+   "name": "front path",
+   "poly": [
+    [
+     9.072,
+     8.178
+    ],
+    [
+     9.072,
+     9.254
+    ],
+    [
+     9.206,
+     9.33
+    ],
+    [
+     9.331,
+     9.42
+    ],
+    [
+     9.446,
+     9.522
+    ],
+    [
+     9.551,
+     9.635
+    ],
+    [
+     9.643,
+     9.759
+    ],
+    [
+     9.722,
+     9.891
+    ],
+    [
+     9.787,
+     10.03
+    ],
+    [
+     9.838,
+     10.176
+    ],
+    [
+     9.874,
+     10.326
+    ],
+    [
+     9.894,
+     10.478
+    ],
+    [
+     9.899,
+     10.632
+    ],
+    [
+     9.888,
+     10.786
+    ],
+    [
+     9.861,
+     10.937
+    ],
+    [
+     9.704,
+     11.499
+    ],
+    [
+     9.605,
+     11.916
+    ],
+    [
+     9.522,
+     12.336
+    ],
+    [
+     9.455,
+     12.76
+    ],
+    [
+     9.404,
+     13.186
+    ],
+    [
+     9.37,
+     13.613
+    ],
+    [
+     9.352,
+     14.041
+    ],
+    [
+     9.35,
+     14.47
+    ],
+    [
+     9.366,
+     14.899
+    ],
+    [
+     9.397,
+     15.326
+    ],
+    [
+     9.445,
+     15.752
+    ],
+    [
+     9.509,
+     16.176
+    ],
+    [
+     9.589,
+     16.597
+    ],
+    [
+     9.686,
+     17.015
+    ],
+    [
+     10.588,
+     17.015
+    ],
+    [
+     10.488,
+     16.604
+    ],
+    [
+     10.405,
+     16.19
+    ],
+    [
+     10.339,
+     15.773
+    ],
+    [
+     10.289,
+     15.353
+    ],
+    [
+     10.255,
+     14.932
+    ],
+    [
+     10.239,
+     14.509
+    ],
+    [
+     10.239,
+     14.087
+    ],
+    [
+     10.256,
+     13.664
+    ],
+    [
+     10.289,
+     13.243
+    ],
+    [
+     10.34,
+     12.823
+    ],
+    [
+     10.407,
+     12.406
+    ],
+    [
+     10.49,
+     11.992
+    ],
+    [
+     10.643,
+     11.357
+    ],
+    [
+     10.682,
+     11.13
+    ],
+    [
+     10.706,
+     10.901
+    ],
+    [
+     10.716,
+     10.672
+    ],
+    [
+     10.712,
+     10.441
+    ],
+    [
+     10.692,
+     10.212
+    ],
+    [
+     10.658,
+     9.985
+    ],
+    [
+     10.61,
+     9.76
+    ],
+    [
+     10.548,
+     9.538
+    ],
+    [
+     10.472,
+     9.321
+    ],
+    [
+     10.382,
+     9.109
+    ],
+    [
+     10.279,
+     8.903
+    ],
+    [
+     10.183,
+     8.773
+    ],
+    [
+     10.076,
+     8.652
+    ],
+    [
+     9.956,
+     8.543
+    ],
+    [
+     9.827,
+     8.446
+    ],
+    [
+     9.688,
+     8.363
+    ],
+    [
+     9.542,
+     8.294
+    ],
+    [
+     9.39,
+     8.24
+    ],
+    [
+     9.232,
+     8.201
+    ]
+   ],
+   "material": "paving",
+   "note": "'pad in zijtuin 3,62 m2' + 'pad in voortuinzone 4,42 m2' = 8.04 m2. 0.90 m wide, curved: starts at the front door on the right facade (z 8.18 to 9.25), swings out to x 10.72 at z 10.7, reaches the street at x 9.66-10.56. Same dot fill as the driveway."
+  },
+  {
+   "name": "stepping slab",
+   "poly": [
+    [
+     0.487,
+     -4.466
+    ],
+    [
+     1.387,
+     -4.466
+    ],
+    [
+     1.387,
+     -4.686
+    ],
+    [
+     0.487,
+     -4.686
+    ]
+   ],
+   "material": "stepping",
+   "note": "in the lawn in front of the outside stair; 0.90 x 0.22 m, 0.44 m apart, same fill as the terrace"
+  },
+  {
+   "name": "stepping slab",
+   "poly": [
+    [
+     0.487,
+     -4.0
+    ],
+    [
+     1.387,
+     -4.0
+    ],
+    [
+     1.387,
+     -4.22
+    ],
+    [
+     0.487,
+     -4.22
+    ]
+   ],
+   "material": "stepping",
+   "note": "in the lawn in front of the outside stair; 0.90 x 0.22 m, 0.44 m apart, same fill as the terrace"
+  },
+  {
+   "name": "stepping slab",
+   "poly": [
+    [
+     0.487,
+     -3.564
+    ],
+    [
+     1.387,
+     -3.564
+    ],
+    [
+     1.387,
+     -3.784
+    ],
+    [
+     0.487,
+     -3.784
+    ]
+   ],
+   "material": "stepping",
+   "note": "in the lawn in front of the outside stair; 0.90 x 0.22 m, 0.44 m apart, same fill as the terrace"
+  },
+  {
+   "name": "stepping slab",
+   "poly": [
+    [
+     0.487,
+     -3.128
+    ],
+    [
+     1.387,
+     -3.128
+    ],
+    [
+     1.387,
+     -3.348
+    ],
+    [
+     0.487,
+     -3.348
+    ]
+   ],
+   "material": "stepping",
+   "note": "in the lawn in front of the outside stair; 0.90 x 0.22 m, 0.44 m apart, same fill as the terrace"
+  },
+  {
+   "name": "stepping slab",
+   "poly": [
+    [
+     9.035,
+     6.374
+    ],
+    [
+     9.935,
+     6.374
+    ],
+    [
+     9.935,
+     6.154
+    ],
+    [
+     9.035,
+     6.154
+    ]
+   ],
+   "material": "stepping",
+   "note": "between the side path and the front path; 0.90 x 0.22 m, 0.44 m apart, same fill as the terrace"
+  },
+  {
+   "name": "stepping slab",
+   "poly": [
+    [
+     9.035,
+     6.81
+    ],
+    [
+     9.935,
+     6.81
+    ],
+    [
+     9.935,
+     6.59
+    ],
+    [
+     9.035,
+     6.59
+    ]
+   ],
+   "material": "stepping",
+   "note": "between the side path and the front path; 0.90 x 0.22 m, 0.44 m apart, same fill as the terrace"
+  },
+  {
+   "name": "stepping slab",
+   "poly": [
+    [
+     9.035,
+     7.246
+    ],
+    [
+     9.935,
+     7.246
+    ],
+    [
+     9.935,
+     7.026
+    ],
+    [
+     9.035,
+     7.026
+    ]
+   ],
+   "material": "stepping",
+   "note": "between the side path and the front path; 0.90 x 0.22 m, 0.44 m apart, same fill as the terrace"
+  },
+  {
+   "name": "stepping slab",
+   "poly": [
+    [
+     9.035,
+     7.682
+    ],
+    [
+     9.935,
+     7.682
+    ],
+    [
+     9.935,
+     7.462
+    ],
+    [
+     9.035,
+     7.462
+    ]
+   ],
+   "material": "stepping",
+   "note": "between the side path and the front path; 0.90 x 0.22 m, 0.44 m apart, same fill as the terrace"
+  },
+  {
+   "name": "stepping slab",
+   "poly": [
+    [
+     9.035,
+     8.118
+    ],
+    [
+     9.935,
+     8.118
+    ],
+    [
+     9.935,
+     7.898
+    ],
+    [
+     9.035,
+     7.898
+    ]
+   ],
+   "material": "stepping",
+   "note": "between the side path and the front path; 0.90 x 0.22 m, 0.44 m apart, same fill as the terrace"
+  }
+ ],
+ "beds": [
+  {
+   "poly": [
+    [
+     -2.984,
+     -13.985
+    ],
+    [
+     1.387,
+     -13.985
+    ],
+    [
+     1.402,
+     -14.116
+    ],
+    [
+     1.402,
+     -14.248
+    ],
+    [
+     1.387,
+     -14.379
+    ],
+    [
+     1.357,
+     -14.507
+    ],
+    [
+     1.313,
+     -14.631
+    ],
+    [
+     1.255,
+     -14.749
+    ],
+    [
+     1.184,
+     -14.86
+    ],
+    [
+     1.1,
+     -14.962
+    ],
+    [
+     1.005,
+     -15.054
+    ],
+    [
+     0.901,
+     -15.134
+    ],
+    [
+     0.788,
+     -15.202
+    ],
+    [
+     0.668,
+     -15.256
+    ],
+    [
+     0.393,
+     -15.34
+    ],
+    [
+     0.114,
+     -15.41
+    ],
+    [
+     -0.169,
+     -15.465
+    ],
+    [
+     -0.454,
+     -15.504
+    ],
+    [
+     -0.741,
+     -15.528
+    ],
+    [
+     -1.028,
+     -15.536
+    ],
+    [
+     -1.316,
+     -15.53
+    ],
+    [
+     -1.603,
+     -15.507
+    ],
+    [
+     -1.888,
+     -15.47
+    ],
+    [
+     -2.171,
+     -15.417
+    ],
+    [
+     -2.451,
+     -15.349
+    ],
+    [
+     -2.726,
+     -15.266
+    ],
+    [
+     -2.997,
+     -15.168
+    ]
+   ],
+   "note": "darker green shape behind the outbuilding's far end (x -3.0..1.4)"
+  },
+  {
+   "poly": [
+    [
+     1.387,
+     -5.99
+    ],
+    [
+     2.886,
+     -5.99
+    ],
+    [
+     2.886,
+     -4.655
+    ],
+    [
+     5.96,
+     -3.819
+    ],
+    [
+     5.749,
+     -4.013
+    ],
+    [
+     5.549,
+     -4.219
+    ],
+    [
+     5.36,
+     -4.435
+    ],
+    [
+     5.183,
+     -4.661
+    ],
+    [
+     5.019,
+     -4.896
+    ],
+    [
+     4.868,
+     -5.14
+    ],
+    [
+     4.73,
+     -5.392
+    ],
+    [
+     4.606,
+     -5.651
+    ],
+    [
+     4.496,
+     -5.916
+    ],
+    [
+     4.401,
+     -6.187
+    ],
+    [
+     4.32,
+     -6.463
+    ],
+    [
+     4.255,
+     -6.742
+    ],
+    [
+     4.205,
+     -7.025
+    ],
+    [
+     4.17,
+     -7.31
+    ],
+    [
+     4.075,
+     -7.587
+    ],
+    [
+     3.966,
+     -7.86
+    ],
+    [
+     3.842,
+     -8.126
+    ],
+    [
+     3.704,
+     -8.385
+    ],
+    [
+     3.552,
+     -8.636
+    ],
+    [
+     3.386,
+     -8.878
+    ],
+    [
+     3.208,
+     -9.111
+    ],
+    [
+     3.017,
+     -9.334
+    ],
+    [
+     2.814,
+     -9.547
+    ],
+    [
+     2.601,
+     -9.748
+    ],
+    [
+     2.376,
+     -9.937
+    ],
+    [
+     2.142,
+     -10.114
+    ],
+    [
+     1.899,
+     -10.278
+    ],
+    [
+     1.647,
+     -10.428
+    ],
+    [
+     1.387,
+     -10.564
+    ]
+   ],
+   "note": "darker green quarter-round shape between the outbuilding path and the lawn, down to the terrace"
+  },
+  {
+   "poly": [
+    [
+     10.54,
+     0.538
+    ],
+    [
+     10.602,
+     0.623
+    ],
+    [
+     10.676,
+     0.698
+    ],
+    [
+     10.76,
+     0.761
+    ],
+    [
+     10.852,
+     0.812
+    ],
+    [
+     10.951,
+     0.849
+    ],
+    [
+     11.053,
+     0.871
+    ],
+    [
+     11.158,
+     0.878
+    ],
+    [
+     11.263,
+     0.869
+    ],
+    [
+     11.366,
+     0.846
+    ],
+    [
+     11.464,
+     0.808
+    ],
+    [
+     11.543,
+     0.338
+    ],
+    [
+     11.607,
+     -0.133
+    ],
+    [
+     11.656,
+     -0.607
+    ],
+    [
+     11.689,
+     -1.081
+    ],
+    [
+     11.706,
+     -1.557
+    ],
+    [
+     11.708,
+     -2.033
+    ],
+    [
+     11.695,
+     -2.509
+    ],
+    [
+     11.666,
+     -2.984
+    ],
+    [
+     11.621,
+     -3.457
+    ],
+    [
+     11.623,
+     -3.553
+    ],
+    [
+     11.607,
+     -3.648
+    ],
+    [
+     11.576,
+     -3.738
+    ],
+    [
+     11.529,
+     -3.822
+    ],
+    [
+     11.468,
+     -3.896
+    ],
+    [
+     11.395,
+     -3.958
+    ],
+    [
+     11.313,
+     -4.006
+    ],
+    [
+     11.223,
+     -4.039
+    ],
+    [
+     11.128,
+     -4.056
+    ],
+    [
+     11.033,
+     -4.056
+    ],
+    [
+     10.938,
+     -4.039
+    ],
+    [
+     10.848,
+     -4.006
+    ],
+    [
+     10.766,
+     -3.958
+    ],
+    [
+     10.693,
+     -3.896
+    ],
+    [
+     10.632,
+     -3.822
+    ],
+    [
+     10.585,
+     -3.738
+    ],
+    [
+     10.553,
+     -3.648
+    ],
+    [
+     10.538,
+     -3.553
+    ],
+    [
+     10.54,
+     -3.457
+    ],
+    [
+     10.491,
+     -2.959
+    ],
+    [
+     10.457,
+     -2.46
+    ],
+    [
+     10.436,
+     -1.96
+    ],
+    [
+     10.429,
+     -1.46
+    ],
+    [
+     10.436,
+     -0.959
+    ],
+    [
+     10.457,
+     -0.459
+    ],
+    [
+     10.491,
+     0.04
+    ]
+   ],
+   "note": "darker green elongated shape in the right side garden, beside the covered terrace"
+  },
+  {
+   "poly": [
+    [
+     10.92,
+     10.188
+    ],
+    [
+     10.991,
+     10.265
+    ],
+    [
+     11.073,
+     10.331
+    ],
+    [
+     11.163,
+     10.385
+    ],
+    [
+     11.261,
+     10.425
+    ],
+    [
+     11.363,
+     10.451
+    ],
+    [
+     11.467,
+     10.461
+    ],
+    [
+     11.572,
+     10.456
+    ],
+    [
+     11.676,
+     10.437
+    ],
+    [
+     11.775,
+     10.402
+    ],
+    [
+     11.868,
+     10.353
+    ],
+    [
+     11.895,
+     9.878
+    ],
+    [
+     11.907,
+     9.402
+    ],
+    [
+     11.903,
+     8.926
+    ],
+    [
+     11.883,
+     8.451
+    ],
+    [
+     11.848,
+     7.976
+    ],
+    [
+     11.797,
+     7.503
+    ],
+    [
+     11.731,
+     7.032
+    ],
+    [
+     11.649,
+     6.563
+    ],
+    [
+     11.552,
+     6.097
+    ],
+    [
+     11.543,
+     6.001
+    ],
+    [
+     11.518,
+     5.909
+    ],
+    [
+     11.476,
+     5.823
+    ],
+    [
+     11.421,
+     5.745
+    ],
+    [
+     11.352,
+     5.678
+    ],
+    [
+     11.273,
+     5.624
+    ],
+    [
+     11.185,
+     5.585
+    ],
+    [
+     11.092,
+     5.562
+    ],
+    [
+     10.996,
+     5.556
+    ],
+    [
+     10.901,
+     5.567
+    ],
+    [
+     10.809,
+     5.594
+    ],
+    [
+     10.724,
+     5.637
+    ],
+    [
+     10.647,
+     5.694
+    ],
+    [
+     10.581,
+     5.764
+    ],
+    [
+     10.529,
+     5.844
+    ],
+    [
+     10.492,
+     5.932
+    ],
+    [
+     10.47,
+     6.026
+    ],
+    [
+     10.466,
+     6.121
+    ],
+    [
+     10.478,
+     6.217
+    ],
+    [
+     10.485,
+     6.717
+    ],
+    [
+     10.505,
+     7.217
+    ],
+    [
+     10.54,
+     7.716
+    ],
+    [
+     10.589,
+     8.214
+    ],
+    [
+     10.651,
+     8.711
+    ],
+    [
+     10.727,
+     9.206
+    ],
+    [
+     10.817,
+     9.698
+    ]
+   ],
+   "note": "darker green elongated shape in the right side garden, beside the front door"
+  }
+ ],
+ "_beds_note": "Same four shapes on the site plan, the detail set and the lighting plan, fill RGB (0.76, 0.84, 0.77), not in the legend and unlabelled. Most likely planted borders or shrub areas; no species, no height.",
+ "lawn": [
+  {
+   "poly": [
+    [
+     -3.031,
+     -23.044
+    ],
+    [
+     -2.982,
+     17.007
+    ],
+    [
+     -2.957,
+     17.007
+    ],
+    [
+     -2.964,
+     10.818
+    ],
+    [
+     0.0,
+     10.818
+    ],
+    [
+     0.0,
+     -2.98
+    ],
+    [
+     3.546,
+     -2.98
+    ],
+    [
+     1.851,
+     -2.982
+    ],
+    [
+     1.846,
+     -4.985
+    ],
+    [
+     1.317,
+     -4.985
+    ],
+    [
+     1.317,
+     -5.99
+    ],
+    [
+     1.387,
+     -5.99
+    ],
+    [
+     1.387,
+     -10.564
+    ],
+    [
+     1.647,
+     -10.428
+    ],
+    [
+     1.899,
+     -10.278
+    ],
+    [
+     2.142,
+     -10.114
+    ],
+    [
+     2.376,
+     -9.937
+    ],
+    [
+     2.601,
+     -9.748
+    ],
+    [
+     2.814,
+     -9.547
+    ],
+    [
+     3.017,
+     -9.334
+    ],
+    [
+     3.208,
+     -9.111
+    ],
+    [
+     3.386,
+     -8.878
+    ],
+    [
+     3.552,
+     -8.636
+    ],
+    [
+     3.704,
+     -8.385
+    ],
+    [
+     3.842,
+     -8.126
+    ],
+    [
+     3.966,
+     -7.86
+    ],
+    [
+     4.075,
+     -7.587
+    ],
+    [
+     4.17,
+     -7.31
+    ],
+    [
+     4.205,
+     -7.025
+    ],
+    [
+     4.255,
+     -6.742
+    ],
+    [
+     4.32,
+     -6.463
+    ],
+    [
+     4.401,
+     -6.187
+    ],
+    [
+     4.496,
+     -5.916
+    ],
+    [
+     4.606,
+     -5.651
+    ],
+    [
+     4.73,
+     -5.392
+    ],
+    [
+     4.868,
+     -5.14
+    ],
+    [
+     5.019,
+     -4.896
+    ],
+    [
+     5.183,
+     -4.661
+    ],
+    [
+     5.36,
+     -4.435
+    ],
+    [
+     5.549,
+     -4.219
+    ],
+    [
+     5.749,
+     -4.013
+    ],
+    [
+     5.96,
+     -3.819
+    ],
+    [
+     2.886,
+     -4.655
+    ],
+    [
+     9.035,
+     -2.982
+    ],
+    [
+     9.02,
+     -2.98
+    ],
+    [
+     9.02,
+     12.02
+    ],
+    [
+     4.37,
+     12.02
+    ],
+    [
+     4.188,
+     12.196
+    ],
+    [
+     4.012,
+     12.389
+    ],
+    [
+     3.85,
+     12.592
+    ],
+    [
+     3.7,
+     12.805
+    ],
+    [
+     3.565,
+     13.027
+    ],
+    [
+     3.444,
+     13.258
+    ],
+    [
+     3.337,
+     13.495
+    ],
+    [
+     3.247,
+     13.739
+    ],
+    [
+     3.171,
+     13.989
+    ],
+    [
+     3.112,
+     14.242
+    ],
+    [
+     3.069,
+     14.499
+    ],
+    [
+     3.043,
+     14.758
+    ],
+    [
+     3.033,
+     15.018
+    ],
+    [
+     3.04,
+     15.278
+    ],
+    [
+     3.063,
+     15.537
+    ],
+    [
+     3.103,
+     15.795
+    ],
+    [
+     3.159,
+     16.049
+    ],
+    [
+     3.231,
+     16.299
+    ],
+    [
+     3.318,
+     16.544
+    ],
+    [
+     3.422,
+     16.783
+    ],
+    [
+     3.536,
+     17.007
+    ],
+    [
+     9.684,
+     17.007
+    ],
+    [
+     9.589,
+     16.597
+    ],
+    [
+     9.509,
+     16.176
+    ],
+    [
+     9.445,
+     15.752
+    ],
+    [
+     9.397,
+     15.326
+    ],
+    [
+     9.366,
+     14.899
+    ],
+    [
+     9.35,
+     14.47
+    ],
+    [
+     9.352,
+     14.041
+    ],
+    [
+     9.37,
+     13.613
+    ],
+    [
+     9.404,
+     13.186
+    ],
+    [
+     9.455,
+     12.76
+    ],
+    [
+     9.522,
+     12.336
+    ],
+    [
+     9.605,
+     11.916
+    ],
+    [
+     9.704,
+     11.499
+    ],
+    [
+     9.861,
+     10.937
+    ],
+    [
+     9.888,
+     10.786
+    ],
+    [
+     9.899,
+     10.632
+    ],
+    [
+     9.894,
+     10.478
+    ],
+    [
+     9.874,
+     10.326
+    ],
+    [
+     9.838,
+     10.176
+    ],
+    [
+     9.787,
+     10.03
+    ],
+    [
+     9.722,
+     9.891
+    ],
+    [
+     9.643,
+     9.759
+    ],
+    [
+     9.551,
+     9.635
+    ],
+    [
+     9.446,
+     9.522
+    ],
+    [
+     9.331,
+     9.42
+    ],
+    [
+     9.206,
+     9.33
+    ],
+    [
+     9.072,
+     9.254
+    ],
+    [
+     9.072,
+     8.178
+    ],
+    [
+     9.232,
+     8.201
+    ],
+    [
+     9.39,
+     8.24
+    ],
+    [
+     9.542,
+     8.294
+    ],
+    [
+     9.688,
+     8.363
+    ],
+    [
+     9.827,
+     8.446
+    ],
+    [
+     9.956,
+     8.543
+    ],
+    [
+     10.076,
+     8.652
+    ],
+    [
+     10.183,
+     8.773
+    ],
+    [
+     10.279,
+     8.903
+    ],
+    [
+     10.382,
+     9.109
+    ],
+    [
+     10.472,
+     9.321
+    ],
+    [
+     10.548,
+     9.538
+    ],
+    [
+     10.61,
+     9.76
+    ],
+    [
+     10.658,
+     9.985
+    ],
+    [
+     10.692,
+     10.212
+    ],
+    [
+     10.712,
+     10.441
+    ],
+    [
+     10.716,
+     10.672
+    ],
+    [
+     10.706,
+     10.901
+    ],
+    [
+     10.682,
+     11.13
+    ],
+    [
+     10.643,
+     11.357
+    ],
+    [
+     10.49,
+     11.992
+    ],
+    [
+     10.407,
+     12.406
+    ],
+    [
+     10.34,
+     12.823
+    ],
+    [
+     10.289,
+     13.243
+    ],
+    [
+     10.256,
+     13.664
+    ],
+    [
+     10.239,
+     14.087
+    ],
+    [
+     10.239,
+     14.509
+    ],
+    [
+     10.255,
+     14.932
+    ],
+    [
+     10.289,
+     15.353
+    ],
+    [
+     10.339,
+     15.773
+    ],
+    [
+     10.405,
+     16.19
+    ],
+    [
+     10.488,
+     16.604
+    ],
+    [
+     10.586,
+     17.007
+    ],
+    [
+     12.03,
+     17.007
+    ],
+    [
+     11.981,
+     -23.063
+    ]
+   ],
+   "assumed": true
+  }
+ ],
+ "_lawn_note": "Assumed: the plans fill the whole plot light green and draw no lawn or grass hatch. These are the plot (site plan) minus house, covered zone, outbuilding, paving, slabs, wadi and the darker green shapes.",
+ "levels": {
+  "datum": "+-0 = ground floor finished floor = TAW 23.97 (terrain profile marker inside the house). The street axis is -18 = TAW 23.79. The profile's note 'NULPLAS 0.00 = VLOERPAS = TAW23.79' contradicts its own markers; the markers are consistent with each other.",
+  "spot": [
+   {
+    "x": 4.63,
+    "z": -25.61,
+    "y": 0.15,
+    "on_plot": false
+   },
+   {
+    "x": 5.94,
+    "z": -20.21,
+    "y": 0.12,
+    "on_plot": true
+   },
+   {
+    "x": 0.53,
+    "z": -16.5,
+    "y": 0.08,
+    "on_plot": true
+   },
+   {
+    "x": 7.59,
+    "z": -15.11,
+    "y": 0.11,
+    "on_plot": true
+   },
+   {
+    "x": 4.67,
+    "z": -11.37,
+    "y": 0.03,
+    "on_plot": true
+   },
+   {
+    "x": 10.58,
+    "z": -8.91,
+    "y": -0.11,
+    "on_plot": true
+   },
+   {
+    "x": 1.7,
+    "z": -7.58,
+    "y": 0.0,
+    "on_plot": true
+   },
+   {
+    "x": 13.96,
+    "z": -6.22,
+    "y": -0.17,
+    "on_plot": false
+   },
+   {
+    "x": 7.57,
+    "z": -4.5,
+    "y": -0.07,
+    "on_plot": true
+   },
+   {
+    "x": -4.78,
+    "z": -4.34,
+    "y": 0.05,
+    "on_plot": false
+   },
+   {
+    "x": 2.76,
+    "z": -4.25,
+    "y": -0.05,
+    "on_plot": true
+   },
+   {
+    "x": -1.53,
+    "z": -3.04,
+    "y": 0.13,
+    "on_plot": true
+   },
+   {
+    "x": 9.49,
+    "z": -0.24,
+    "y": -0.2,
+    "on_plot": true
+   },
+   {
+    "x": 9.4,
+    "z": 0.94,
+    "y": -0.15,
+    "on_plot": true
+   },
+   {
+    "x": 11.46,
+    "z": 1.38,
+    "y": -0.24,
+    "on_plot": true
+   },
+   {
+    "x": -1.54,
+    "z": 4.03,
+    "y": -0.07,
+    "on_plot": true
+   },
+   {
+    "x": -1.4,
+    "z": 10.22,
+    "y": -0.14,
+    "on_plot": true
+   },
+   {
+    "x": 11.43,
+    "z": 10.32,
+    "y": -0.33,
+    "on_plot": true
+   },
+   {
+    "x": 4.33,
+    "z": 12.4,
+    "y": -0.22,
+    "on_plot": true
+   },
+   {
+    "x": 14.26,
+    "z": 13.01,
+    "y": -0.37,
+    "on_plot": false
+   },
+   {
+    "x": -5.21,
+    "z": 13.06,
+    "y": -0.1,
+    "on_plot": false
+   },
+   {
+    "x": 4.43,
+    "z": 16.56,
+    "y": -0.21,
+    "on_plot": true
+   },
+   {
+    "x": 5.16,
+    "z": 19.11,
+    "y": -0.18,
+    "on_plot": false
+   },
+   {
+    "x": 5.13,
+    "z": 20.72,
+    "y": -0.2,
+    "on_plot": false
+   }
+  ],
+  "_spot_note": "Site plan level marks, y in metres. They read as surveyed ground (irregular, also on neighbouring land); no separate finished-grade levels are drawn. on_plot false = neighbour, field or street.",
+  "profile_x": 2.92,
+  "profile": [
+   {
+    "z": 17.02,
+    "y": -0.21
+   },
+   {
+    "z": 16.13,
+    "y": -0.21
+   },
+   {
+    "z": 16.11,
+    "y": -0.211
+   },
+   {
+    "z": 15.57,
+    "y": -0.246
+   },
+   {
+    "z": 14.45,
+    "y": -0.265
+   },
+   {
+    "z": 14.25,
+    "y": -0.264
+   },
+   {
+    "z": 13.81,
+    "y": -0.265
+   },
+   {
+    "z": 12.82,
+    "y": -0.227
+   },
+   {
+    "z": 11.74,
+    "y": -0.25
+   },
+   {
+    "z": 11.72,
+    "y": -0.249
+   },
+   {
+    "z": 11.65,
+    "y": -0.248
+   },
+   {
+    "z": -5.49,
+    "y": 0.0
+   },
+   {
+    "z": -6.79,
+    "y": -0.008
+   },
+   {
+    "z": -8.31,
+    "y": -0.028
+   },
+   {
+    "z": -9.28,
+    "y": -0.0
+   },
+   {
+    "z": -9.66,
+    "y": 0.003
+   },
+   {
+    "z": -9.95,
+    "y": 0.004
+   },
+   {
+    "z": -13.26,
+    "y": 0.045
+   },
+   {
+    "z": -13.78,
+    "y": 0.055
+   },
+   {
+    "z": -16.21,
+    "y": 0.065
+   },
+   {
+    "z": -18.29,
+    "y": 0.092
+   },
+   {
+    "z": -19.51,
+    "y": 0.095
+   },
+   {
+    "z": -21.68,
+    "y": 0.119
+   },
+   {
+    "z": -22.63,
+    "y": 0.147
+   },
+   {
+    "z": -22.95,
+    "y": 0.151
+   },
+   {
+    "z": -23.04,
+    "y": 0.169
+   }
+  ],
+  "_profile_note": "Ground line of the terrain profile (T_N_1) along x = 2.92, street to back. The house (z 0 to 10.84) and the terrace slab (z 0 to -4.65, top -5) are left out.",
+  "summary": "Front garden -21 to -27 cm (spot marks and profile), so 11-17 cm below the model's -0.10. Left side garden -14 (front), -7 (middle), +13 (level with the back of the covered terrace). Right side -15 to -33. Terraces and covered terrace -5. Back garden: about 0 to -3 next to the terrace, -7 and -11 on the right, +3 at z -11, +8 to +11 at z -15 to -16.5, +12 at z -20, +16 at the back plot line, i.e. up to 26 cm above the model's -0.10. Outbuilding floor +15."
+ },
+ "_vs_model": [
+  "wadi, beds, stepping slabs, side path and the path along the outbuilding are not in the model",
+  "model 'terrace' (x 0.78-9.02, z -5.03 to -2.98) differs: the plan's open terrace has a diagonal lawn edge from (2.86, -4.66) to (9.04, -2.98), and lawn with four slabs at x 0.42-1.85",
+  "model 'driveway' + 'side path' + 'carport': the plan paves from the left plot line (x -2.96) to a curved edge (x 4.38 at the house, 3.01 at z 15.1); no separate side path",
+  "model 'path to front door' (straight, x 9.02-10.3, z 8-17): the plan's path is curved, 0.90 m wide",
+  "model ground is flat at -0.10; the plans put the front garden at about -0.22 and the back garden rising to +0.16",
+  "model hedges on the plot lines are not on the plans"
+ ],
+ "other": [
+  {
+   "name": "outbuilding (bijgebouw)",
+   "poly": [
+    [
+     0.39,
+     -13.993
+    ],
+    [
+     0.39,
+     -4.993
+    ],
+    [
+     -3.009,
+     -4.993
+    ],
+    [
+     -3.009,
+     -13.993
+    ]
+   ],
+   "y_floor": 0.15,
+   "note": "3.40 x 9.00 m, flat roof 30.59 m2, against the left plot line. Detail set: superstructure in a later phase, foundations in the first phase. Floor +15 (terrain profile). Already left out of the model on purpose."
+  },
+  {
+   "name": "rainwater tank (regenwaterput)",
+   "x": 9.28,
+   "z": -6.77,
+   "diameter": 2.5,
+   "manhole": 0.7,
+   "note": "10 000 L, underground, with a square manhole (about 0.7 m, read off the drawing) at its centre. Reuse: toilets, cleaning water, garden tap, washing machine. Overflow to the wadi (see wadi.inlet)."
+  },
+  {
+   "name": "septic tank (septische put)",
+   "x": 0.28,
+   "z": 14.04,
+   "diameter": 2.5,
+   "manhole": 0.7,
+   "note": "3000 L, underground, under the driveway; manhole about 0.7 m square at its centre."
+  },
+  {
+   "name": "utility pit (wachtput)",
+   "poly": [
+    [
+     9.04,
+     10.67
+    ],
+    [
+     10.04,
+     10.67
+    ],
+    [
+     10.04,
+     11.67
+    ],
+    [
+     9.04,
+     11.67
+    ]
+   ],
+   "note": "1 x 1 m pit for the utility connections, beside the right facade near the front; partly under the front path."
+  },
+  {
+   "name": "inspection pit (controleput)",
+   "x": 2.92,
+   "z": 11.76,
+   "diameter": 0.3,
+   "note": "small round cover, underground"
+  },
+  {
+   "name": "street connection DWA (foul water)",
+   "x": 0.29,
+   "z": 16.64,
+   "diameter": 0.3,
+   "note": "small round cover, underground"
+  },
+  {
+   "name": "street connection RWA (rain water)",
+   "x": 2.16,
+   "z": 16.64,
+   "diameter": 0.3,
+   "note": "small round cover, underground"
+  },
+  {
+   "name": "light points outside the walls (lighting plan)",
+   "points": [
+    [
+     8.41,
+     -0.28
+    ],
+    [
+     8.41,
+     -0.48
+    ],
+    [
+     9.12,
+     9.81
+    ],
+    [
+     3.64,
+     -1.99
+    ],
+    [
+     3.64,
+     -0.98
+    ],
+    [
+     2.45,
+     -1.29
+    ]
+   ],
+   "note": "Same symbol as the indoor ceiling points. (9.12, 9.81) is on the right facade beside the front door; the others are under the covered terrace and in the shed (z -2.98..0). No free-standing garden lights are drawn; The detail set has a spare conduit 'wachtbuis elektr tuinzone' to the right side garden."
+  },
+  {
+   "name": "neighbour's outbuilding",
+   "poly": [
+    [
+     -3.009,
+     -13.993
+    ],
+    [
+     -3.009,
+     -4.993
+    ],
+    [
+     -7.066,
+     -4.993
+    ],
+    [
+     -7.066,
+     -13.993
+    ]
+   ],
+   "note": "'bijgebouw buren' drawn hatched against our left plot line, 9.00 m long, same z as our outbuilding."
+  },
+  {
+   "name": "hedges and fences",
+   "note": "None drawn on our plot lines in any set. The model's plot-line hedges are not from the plans."
+  }
+ ]
+}

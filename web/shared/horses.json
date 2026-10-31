@@ -1,0 +1,15 @@
+{
+  "_note": "The horses in the meadow across the road (our own model, tools/horse.py): each walks between its spots (x, z) and grazes at each for `graze` seconds, on the shared clock (horse i is i * 11 s ahead); you can ride them. Speeds in m/s; a gallop uses stamina (0..1 a second; back to galloping from `resume`); a jump clears `height` metres over `time` seconds. Shared by the browser and the server.",
+  "speed": 1.1,
+  "reach": 2.4,
+  "walk": 1.8,
+  "trot": 4.5,
+  "gallop": 10,
+  "stamina": { "drain": 0.11, "regen": 0.07, "resume": 0.3 },
+  "jump": { "height": 1.5, "time": 0.9, "minSpeed": 3 },
+  "herd": [
+    { "coat": "#7a4628", "loop": [[-18, 70], [-6, 64], [2, 82], [-14, 92]], "graze": 28 },
+    { "coat": "#9c5226", "loop": [[-4, 100], [8, 112], [-2, 126], [-16, 112]], "graze": 34 },
+    { "coat": "#c9c4bb", "loop": [[-22, 104], [-10, 118], [-24, 128], [-26, 86]], "graze": 40 }
+  ]
+}

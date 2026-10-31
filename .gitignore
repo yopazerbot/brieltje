@@ -1,0 +1,24 @@
+# Private source documents (plans, renders, photos): copies of the OneDrive originals
+/source/
+# Yoshi's own site photos (iPhone photos contain GPS location)
+/images/
+
+# Generated debug images of the plans
+/data/debug/
+
+# Tooling
+/tools/.venv/
+# Claude Code's worktrees for background agents
+/.claude/worktrees/
+__pycache__/
+node_modules/
+/web/dist/
+.vite/
+
+# Editors and OS
+.vscode/
+.DS_Store
+Thumbs.db
+
+# Local multiplayer data (users, login log) when no database is set
+/web/.data/

@@ -1,0 +1,28 @@
+{
+  "_note": "Cars you can drive, each built in Blender from its published sizes (tools/model_y.py, tools/model_3.py): where it is parked (nose along -z turned by yaw), its size in metres, top speeds in m/s, its paint. reach: how close to a car you get in.",
+  "reach": 1.5,
+  "cars": {
+    "tesla": {
+      "name": "the Tesla",
+      "model": "/models/model-y.glb",
+      "paint": "#0b0c0e",
+      "park": { "x": 2.17, "y": -0.05, "z": 14.5, "yaw": 0 },
+      "length": 4.79,
+      "width": 1.92,
+      "height": 1.62,
+      "maxSpeed": 25,
+      "reverseSpeed": 6
+    },
+    "model3": {
+      "name": "the Model 3",
+      "model": "/models/model-3.glb",
+      "paint": "#1f3c78",
+      "park": { "x": 78.512, "y": -0.08, "z": 181.579, "yaw": 2.4471 },
+      "length": 4.72,
+      "width": 1.85,
+      "height": 1.44,
+      "maxSpeed": 25,
+      "reverseSpeed": 6
+    }
+  }
+}

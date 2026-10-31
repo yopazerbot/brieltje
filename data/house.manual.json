@@ -1,0 +1,231 @@
+{
+  "_about": "Hand-measured additions to the extracted walls, updated to the lighting plan of 2026-07-07. Units: metres. x runs left to right on the plan, z runs from the garden (negative) towards the street. Origin: back-left corner of the 9 x 12 m house volume. Heights are absolute, with the ground floor finished floor at 0.",
+
+  "plan": "house",
+  "_plan_note": "Walls are extracted from this set (solid wall fills). Changes in the newest set (lighting plan 2026-07-07) are applied below as manual edits; see tools/compare_plans.py.",
+
+  "levels": [
+    {"id": "gf", "name": "Ground floor", "floor": 0.00, "ceiling": 2.70, "_note": "section A-A: clear height 270"},
+    {"id": "f1", "name": "1st floor", "floor": 3.05, "ceiling": 5.53, "_note": "facade level marks +305 and +553"},
+    {"id": "f2", "name": "2nd floor", "floor": 5.88, "ceiling": 8.41, "_note": "facade level marks +588 and +841"}
+  ],
+
+  "interiors": {
+    "_note": "Heated inside of each floor. Walls within 11 cm of this outline (and everything outside it) get facade brick; the rest is plaster.",
+    "gf": [[0, 0], [9.02, 0], [9.02, 12.02], [4.34, 12.02], [4.34, 10.84], [0, 10.84]],
+    "f1": [[3.20, 0], [9.02, 0], [9.02, 12.02], [0, 12.02], [0, 3.24], [3.20, 3.24]],
+    "f2": [[0, 3.0], [9.02, 3.0], [9.02, 8.15], [0, 8.15]]
+  },
+
+  "extraRooms": [
+    {"level": "f2", "name": "Berging", "at": [7.6, 4.3], "_note": "no area label in the first set; 5.99 m2 in the lighting plan"}
+  ],
+
+  "finishes": [
+    {"name": "Dakterras", "material": "terrace", "y1": 3.06, "poly": [[1.73, -2.81], [8.62, -2.81], [8.62, 0], [1.73, 0]]},
+    {"name": "Dakterras", "material": "terrace", "y1": 3.06, "poly": [[1.35, 0.304], [0.38, 0.304], [0.38, 3.24], [3.20, 3.24], [3.20, 0.0], [1.35, 0.0]]}
+  ],
+
+  "sun": {"_note": "Direction towards the sun (x, y, z). Late afternoon from the street side.", "dir": [0.55, 0.32, 0.77]},
+
+  "wallHeights": [
+    {"level": "gf", "top": 3.41, "region": [[-0.1, -3.1], [1.8, -3.1], [1.8, -0.01], [-0.1, -0.01]], "_note": "walls along the outside stair rise to the roof terrace parapet"}
+  ],
+
+  "openings": {
+    "gf": [
+      {"at": [6.95, 6.14], "type": "fill", "note": "Yoshi (30 Oct 2026): the 2.04 m opening between the entrance hall and the laundry, along the stair, is a drawing error; the wall continues (the laundry has its own door from the bedroom hall)"},
+      {"at": [6.26, 0.19], "type": "door", "head": 2.39, "note": "main bedroom sliding glass door R0.07, rear facade (panels in doors below)"},
+      {"at": [0.19, 1.98], "type": "window", "sill": 0.05, "head": 2.34, "panes": [[891, "tilt-turn"]], "matte": true, "note": "bathroom, left facade (quote R0.3: tilt-turn, laminated matte film)"},
+      {"at": [0.19, 5.02], "type": "window", "sill": 0.05, "head": 2.34, "panes": [[1044, "tilt-turn"]], "note": "bedroom 2, left facade (quote R0.4: tilt-turn)"},
+      {"at": [0.19, 8.98], "type": "window", "sill": 0.05, "head": 2.34, "panes": [[1051, "tilt-turn"]], "note": "bedroom 3, left facade (quote R0.5: tilt-turn)"},
+      {"at": [8.81, 5.50], "type": "door", "head": 2.68, "leaf": {"glass": true, "matte": true, "hinge": "high"}, "note": "back door, right facade (quote R0.8: glazed door, laminated matte film, hinged on the street side)"},
+      {"at": [8.95, 6.88], "type": "window", "sill": 0.0, "head": 2.68, "panel": "cladding", "note": "beside the stair, right facade: drawn as fixed glass, but Yoshi wants wood like the garden shed (30 Oct 2026)"},
+      {"at": [8.81, 8.53], "type": "door", "head": 2.68, "sidelight": {"width": 0.37, "end": "low", "matte": true}, "leaf": {"hinge": "high"}, "note": "front door (quote R0.1: 350 mm fixed side panel with matte film on the garden side, video, plus a 1100 mm door hinged on the street side)"},
+      {"at": [4.39, 11.20], "type": "window", "sill": 0.94, "head": 2.51, "screen": "claustra", "outside": [-1, 0], "panes": [[800, "tilt-turn"]], "matte": true, "note": "sanitary room window (quote 'badkamer': 800 x 1570 tilt-turn, matte glass) R1.02 towards the carport, behind open brickwork (claustra) in the outer leaf (lighting plan)"}
+    ],
+    "f1": [
+      {"at": [4.65, 7.21], "head": 2.3, "note": "double door hall to living"},
+      {"at": [8.81, 7.70], "type": "window", "sill": 1.08, "head": 2.48, "panes": [[1970, "fixed"]], "note": "stair window, right facade (quote R1.3: fixed)"},
+      {"at": [8.81, 10.16], "type": "window", "sill": 1.08, "head": 2.48, "panes": [[1370, "fixed"], [700, "tilt-turn"]], "note": "play room window, right facade (quote R1.2)"},
+      {"at": [2.25, 11.81], "type": "window", "sill": 0.0, "head": 2.405, "panes": [[1940, "fixed"]], "note": "sitting area, full-height front window (quote R1.1: one fixed pane, 2405 high)"}
+    ],
+    "f2": [
+      {"at": [4.55, 3.21], "type": "window", "sill": 0.735, "head": 2.34, "panes": [[947, "tilt-turn"]], "note": "office 1, rear facade (quote R2.4: tilt-turn, 1605 high)"},
+      {"at": [6.90, 7.94], "type": "window", "sill": 0.53, "head": 2.53, "panes": [[1475, "fixed"]], "note": "front facade (quote R2.1: fixed)"},
+      {"at": [5.795, 5.556], "type": "ignore", "note": "first-set door to the storage room; moved in the lighting plan (see wallEdits)"}
+    ]
+  },
+
+  "wallEdits": [
+    {"level": "gf", "remove": [[-3.3, -14.3], [0.5, -14.3], [0.5, -4.9], [-3.3, -4.9]], "note": "outbuilding: superstructure is a later phase (detail set), not in the lighting plan"},
+    {"level": "gf", "add": [[3.32, -2.90], [3.51, -2.90], [3.51, 0.0], [3.32, 0.0]], "note": "garden shed side wall, block (lighting plan)"},
+    {"level": "gf", "add": [[3.51, -2.90], [3.55, -2.90], [3.55, 0.0], [3.51, 0.0]], "material": "cladding", "note": "garden shed side wall, wood planks facing the covered terrace"},
+    {"level": "gf", "add": [[1.79, -2.90], [2.26, -2.90], [2.26, -2.72], [1.79, -2.72]], "material": "cladding", "note": "garden shed rear wall next to its door: wood planks, as in the rear view render and the rear elevation (6, gevelbekleding in hout)"},
+    {"level": "gf", "add": [[3.55, -0.035], [4.706, -0.035], [4.706, 0.0], [3.55, 0.0]], "material": "cladding", "note": "rear wall under the roof terrace, between the shed and the bedroom slider: wood planks on the brick"},
+    {"level": "gf", "add": [[7.806, -0.035], [9.02, -0.035], [9.02, 0.0], [7.806, 0.0]], "material": "cladding", "note": "rear wall under the roof terrace, right of the bedroom slider: wood planks on the brick"},
+    {"level": "gf", "remove": [[5.70, 8.06], [5.77, 8.06], [5.77, 8.66], [5.70, 8.66]], "note": "thin strip in the hall passage: part of the sliding door opening (Yoshi), not a wall"},
+    {"level": "f1", "remove": [[4.739, 9.82], [4.80, 9.82], [4.80, 10.83], [4.739, 10.83]], "note": "sliding door leaf drawn open along the playroom side of the wall (lighting plan): a door, not wall (see playroom-slider)"},
+    {"level": "f2", "remove": [[5.62, 3.36], [5.96, 3.36], [5.96, 6.03], [5.62, 6.03]], "note": "office 1 / storage wall in its first-set position"},
+    {"level": "f2", "add": [[6.22, 3.38], [6.36, 3.38], [6.36, 5.06], [6.22, 5.06]], "note": "office 1 / storage wall moved 52 cm (office 1 now 7.51 m2)"}
+  ],
+
+  "doors": [
+    {"id": "kitchen-slider", "name": "sliding door", "level": "f1", "y0": 3.05, "y1": 5.32, "open": true, "note": "kitchen to the roof terrace (quote R1.6 + R1.8/02): one glass leaf on the inside track; open, it stands in front of the fixed glass beside it (Yoshi: it closes too)", "panels": [{"a": [4.76, 0.15], "b": [6.7, 0.15], "offset": 0.075, "thickness": 0.05, "glass": true, "outside": -1, "slide": [1.88, 0]}]},
+    {"id": "kitchen-hidden", "name": "door (storeroom)", "level": "f1", "y0": 3.05, "y1": 5.14, "both": true, "replaces": [8.14, 4.46], "note": "Yoshi: the storeroom door is hidden in the oak tall units, flush with their fronts and without a handle; a double-action door that swings either way, away from whoever pushes it (oak jamb and the panel above it: tools/furniture.py)", "panels": [{"a": [8.585, 3.81], "b": [7.655, 3.81], "offset": 0, "thickness": 0.04, "glass": false, "swing": 1.45, "surface": "oak", "handle": false}]},
+    {"id": "bedroom-slider", "name": "sliding door", "level": "gf", "y0": 0.0, "y1": 2.39,
+     "note": "R0.07 sliding glass door, main bedroom to the covered terrace (quote R0.7, Super Slide 70): seen from inside, the left panel slides right, on the inside of the fixed right one",
+     "panels": [
+       {"a": [4.706, 0.19], "b": [6.31, 0.19], "offset": 0.035, "thickness": 0.05, "glass": true, "outside": -1, "slide": [1.45, 0]},
+       {"a": [6.20, 0.19], "b": [7.806, 0.19], "offset": -0.035, "thickness": 0.05, "glass": true, "outside": -1}
+     ]},
+    {"id": "hall-slider", "name": "sliding door", "level": "gf", "y0": 0.0, "y1": 2.11,
+     "note": "between the entrance hall (inkom) and the hall to the bedrooms (nachthal); slides along the bedroom-hall side of the wall",
+     "panels": [
+       {"a": [5.80, 8.066], "b": [5.80, 9.319], "offset": 0.12, "thickness": 0.04, "glass": false, "slide": [0, -1.20]}
+     ]},
+    {"id": "playroom-slider", "name": "sliding door", "level": "f1", "y0": 3.05, "y1": 5.51, "open": true,
+     "note": "between the sitting area and the playroom: the 1.00 m opening at the street end of the wall (lighting plan, lintel Li1.1 above the ceiling), one floor-to-ceiling leaf in rosy oak veneer without a visible handle, sliding along the playroom side of the wall towards the hall",
+     "panels": [
+       {"a": [4.669, 10.58], "b": [4.669, 11.62], "offset": -0.10, "thickness": 0.04, "glass": false, "slide": [0, -1.0], "color": "#c4ad9f", "handle": false}
+     ]},
+    {"id": "living-doors", "name": "glass double door", "level": "f1", "y0": 3.05, "y1": 5.34, "open": true,
+     "note": "hall to the living area (the 1.80 m opening f1-03): two 0.90 m glass leaves in slim rose-bronze frames with black levers, opening into the living area",
+     "panels": [
+       {"a": [4.669, 6.318], "b": [4.669, 7.203], "offset": 0, "thickness": 0.04, "glass": true, "swing": 1.45, "color": "#b08d78"},
+       {"a": [4.669, 8.098], "b": [4.669, 7.213], "offset": 0, "thickness": 0.04, "glass": true, "swing": -1.45, "color": "#b08d78"}
+     ]}
+  ],
+
+  "props": [
+    {"model": "coffee-machine", "x": 5.71, "y": 4.03, "z": 4.043, "yaw": 3.1416, "hit": "black_glass", "note": "Jura E8 in piano black (Yoshi), inside the niche of the tall kitchen units, 3 cm back from the front, facing the kitchen"},
+    {"model": "toilet", "x": 4.163, "y": 0.005, "z": 10.436, "yaw": 3.1416, "solid": true, "hit": "ceramic", "note": "ground floor WC: wall-hung toilet against the end wall, facing the door"},
+    {"model": "toilet", "x": 5.24, "y": 3.055, "z": 4.53, "yaw": 0, "solid": true, "hit": "ceramic", "note": "1st floor WC: against the back wall, clear of the door leaf"}
+  ],
+
+  "_fixtures": "Built-in furniture and decor of the main house from the lighting plan of 7 Jul 2026, drawn by web/src/world/furnishing.ts (item = its parts). x, y (floor), z, yaw (0 = front towards +z), size [width, depth, height]; for lamps and ceiling speakers the height is the ceiling, for wall art the height of its top. Curtains hang gathered beside the windows, their back against the wall.",
+  "fixtures": [
+    {"item": "curtain", "x": 3.49, "y": 3.05, "z": 2.97, "yaw": 1.5708, "size": [0.45, 0.14, 2.48], "note": "kitchen: round the column at the end of the side glazing"},
+    {"item": "curtain", "x": 0.475, "y": 3.05, "z": 5.67, "yaw": 1.5708, "size": [0.55, 0.14, 2.48], "note": "dining: at the end of the corner window, past the window seat"},
+    {"item": "curtain", "x": 0.93, "y": 3.05, "z": 11.545, "yaw": 3.1416, "size": [0.95, 0.14, 2.48], "note": "sitting area: left of the front window"},
+    {"item": "curtain", "x": 3.6, "y": 3.05, "z": 11.545, "yaw": 3.1416, "size": [0.8, 0.14, 2.48], "note": "sitting area: right of the front window"},
+    {"item": "curtain", "x": 8.565, "y": 3.05, "z": 9.15, "yaw": -1.5708, "size": [0.45, 0.14, 2.48], "note": "playroom: both sides of the window"},
+    {"item": "curtain", "x": 8.565, "y": 3.05, "z": 11.27, "yaw": -1.5708, "size": [0.65, 0.14, 2.48]},
+    {"item": "curtain", "x": 4.36, "y": 0.0, "z": 0.465, "yaw": 0, "size": [0.75, 0.14, 2.7], "note": "main bedroom: both sides of the sliding door"},
+    {"item": "curtain", "x": 8.17, "y": 0.0, "z": 0.465, "yaw": 0, "size": [0.8, 0.14, 2.7]},
+    {"item": "curtain", "x": 0.485, "y": 0.0, "z": 4.69, "yaw": 1.5708, "size": [0.55, 0.14, 2.7], "note": "bedroom 2: over one side of the tall window, clear of the bed's head"},
+    {"item": "curtain", "x": 0.485, "y": 0.0, "z": 8.64, "yaw": 1.5708, "size": [0.55, 0.14, 2.7], "note": "bedroom 3: the same"},
+    {"item": "curtain", "x": 2.69, "y": 5.88, "z": 3.467, "yaw": 0, "size": [0.5, 0.14, 2.53], "note": "office 2: at both ends of the corner window; the west one narrow, clear of the desk"},
+    {"item": "curtain", "x": 0.47, "y": 5.88, "z": 5.565, "yaw": 1.5708, "size": [0.24, 0.14, 2.53]},
+    {"item": "relief", "x": 4.58, "y": 3.05, "z": 5.5, "yaw": -1.5708, "size": [0.95, 0.04, 1.95], "note": "dining: white textured plaster art in a black frame on the wall before the glass doors"},
+    {"item": "painting", "x": 0.414, "y": 3.05, "z": 9.9, "yaw": 1.5708, "size": [0.72, 0.03, 2.05], "note": "sitting area: a colourful flower painting over the sofa; our own picture"},
+    {"item": "painting", "x": 5.35, "y": 3.05, "z": 8.737, "yaw": 3.1416, "size": [0.6, 0.03, 2.0], "note": "hall: the same kind of painting, seen through the glass doors from the dining room"},
+    {"item": "cushion", "x": 1.05, "y": 3.6, "z": 3.43, "yaw": 0.15, "size": [0.42, 0.14, 0.42], "note": "window seat: two mustard-striped cushions and a grey one against the glass, two books"},
+    {"item": "cushion", "x": 1.48, "y": 3.6, "z": 3.41, "yaw": -0.1, "size": [0.4, 0.14, 0.4]},
+    {"item": "cushiongrey", "x": 0.62, "y": 3.6, "z": 3.47, "yaw": 0.5, "size": [0.45, 0.14, 0.4]},
+    {"item": "books", "x": 2.05, "y": 3.6, "z": 3.36, "yaw": 0.2, "size": [0.3, 0.2, 0.06]},
+    {"item": "speaker", "x": 4.67, "y": 3.05, "z": 1.29, "yaw": 0, "size": [0.3, 0.3, 2.48], "note": "ceiling speakers in 30 cm recesses (lighting plan: \"uitsparing plafond boxen\"), two in the kitchen, two in the sitting area"},
+    {"item": "speaker", "x": 7.64, "y": 3.05, "z": 1.29, "yaw": 0, "size": [0.3, 0.3, 2.48]},
+    {"item": "speaker", "x": 0.91, "y": 3.05, "z": 8.37, "yaw": 0, "size": [0.3, 0.3, 2.48]},
+    {"item": "speaker", "x": 0.91, "y": 3.05, "z": 11.12, "yaw": 0, "size": [0.3, 0.3, 2.48]},
+    {"item": "islandlamps", "x": 6.95, "y": 3.05, "z": 2.1, "yaw": 0, "size": [1.78, 0.06, 2.48], "note": "kitchen: a rail over the island (lighting plan: \"rail verlichting\", x 6.06 to 7.84) with the two sage pendants of the render keuken_000"},
+    {"item": "ficus", "x": 4.2, "y": 3.05, "z": 0.58, "yaw": 0, "size": [0.4, 0.4, 1.5], "note": "kitchen: a ficus in a silver pot by the glass, left of the sliding door"},
+    {"item": "domelamp", "x": 6.65, "y": 0.0, "z": 2.29, "yaw": 0, "size": [0.42, 0.42, 2.7], "note": "main bedroom: black dome pendant over the foot of the bed"},
+    {"item": "rattandome", "x": 2.64, "y": 0.0, "z": 4.98, "yaw": 0, "size": [0.76, 0.76, 2.7], "note": "bedrooms 2 and 3: the woven shade of the render kinderkamer, at the lighting plan's light points"},
+    {"item": "rattandome", "x": 2.12, "y": 0.0, "z": 8.53, "yaw": 0, "size": [0.76, 0.76, 2.7]},
+    {"item": "cubeshelves", "x": 1.05, "y": 0.0, "z": 6.407, "yaw": 3.1416, "size": [0.9, 0.2, 1.95], "note": "bedrooms 2 and 3: three open white boxes on the wall over the walnut chest"},
+    {"item": "cubeshelves", "x": 1.05, "y": 0.0, "z": 10.336, "yaw": 3.1416, "size": [0.9, 0.2, 1.95]},
+    {"item": "wallshelf", "x": 6.1, "y": 3.05, "z": 9.003, "yaw": 0, "size": [1.0, 0.22, 1.45], "note": "playroom: a floating oak shelf of books over the desk"},
+    {"item": "llama", "x": 7.15, "y": 3.05, "z": 8.9, "yaw": 0, "size": [0.36, 0.01, 1.62], "note": "playroom: a llama of coloured triangles on the wall over the desk; our own drawing"},
+    {"item": "traintrack", "x": 6.7, "y": 3.052, "z": 10.35, "yaw": 0.2, "size": [1.3, 0.9, 0.03], "note": "playroom: a wooden toy railway on the floor"}
+  ],
+
+  "extraOpenings": [
+    {"level": "gf", "rect": [5.715, 8.066, 5.9, 9.319], "dir": [0, 1], "type": "door", "head": 2.11, "note": "the 1.25 m passage between entrance hall and bedroom hall (widened per Yoshi); up to the ceiling like every inside door"},
+    {"level": "gf", "rect": [2.26, -2.90, 3.32, -2.72], "dir": [1, 0], "type": "door", "head": 2.1, "lintel": "cladding", "leaf": {"surface": "cladding"}, "note": "garden shed door, swings in; clad in the same wood planks as the shed's front (rear elevation, 6)"},
+    {"level": "f2", "rect": [6.22, 5.06, 6.36, 5.98], "dir": [0, 1], "type": "door", "head": 2.11, "swing": {"hinge": "high", "side": -1}, "into": "Berging", "note": "storage room door, moved with its wall; hinged at the stair end, opening into the storage room (lighting plan)"}
+  ],
+
+  "beams": [
+    {"y0": 2.48, "y1": 2.70, "poly": [[3.55, -2.98], [8.65, -2.98], [8.65, -2.84], [3.55, -2.84]], "note": "B0.9 along the open edge of the covered terrace"},
+    {"y0": 2.48, "y1": 2.70, "poly": [[8.88, -2.62], [9.02, -2.62], [9.02, 0.0], [8.88, 0.0]], "note": "B0.8 along the right side of the covered terrace"}
+  ],
+
+  "glass": [
+    {"level": "f1", "path": [[3.20, 0.05], [3.20, 2.69]], "sill": 0.0, "head": 2.28, "panes": [[[900, "door"], [1290, "fixed"]]], "note": "kitchen side glazing towards the roof terrace (quote R1.7: door sash and fixed pane); the sash is a glass door that opens (Yoshi), hinged at the end of the run, swinging in"},
+    {"level": "f1", "path": [[3.20, 0.15], [4.76, 0.15]], "sill": 0.0, "head": 2.28, "panes": [[[1220, "fixed"]]], "note": "kitchen rear glazing, fixed (quote R1.6 + R1.8/01)"},
+    {"level": "f1", "path": [[4.76, 0.15], [6.66, 0.15]], "door": true, "head": 2.28, "note": "sliding door to the roof terrace: its leaf is a door (kitchen-slider)"},
+    {"level": "f1", "path": [[6.66, 0.15], [8.62, 0.15]], "sill": 0.0, "head": 2.28, "panes": [[[1925, "fixed"]]], "note": "kitchen rear glazing, fixed; the sliding leaf (kitchen-slider) stands in front of it when open (quote R1.6 + R1.8/02)"},
+    {"level": "f1", "path": [[2.80, 3.24], [0.20, 3.24], [0.20, 5.36]], "sill": 0.552, "head": 2.28, "corner": "glass", "panes": [[[2600, "fixed"]], [[2265, "fixed"]]], "note": "dining corner window with window seat (quote R1.4 + R1.5: one fixed pane per side, 1728 high, glass to glass at the corner)"},
+    {"level": "f2", "path": [[0.20, 3.20], [2.42, 3.20]], "sill": 0.736, "head": 2.34, "panes": [[[1009, "fixed"], [947, "tilt-turn"]]], "note": "office 2 corner window (quote R2.3: fixed pane and tilt-turn sash, 1604 high)"},
+    {"level": "f2", "path": [[0.20, 3.20], [0.20, 5.44]], "sill": 0.736, "head": 2.34, "panes": [[[2077, "fixed"]]], "note": "office 2 corner window (quote R2.2: one fixed pane, 1604 high)"}
+  ],
+
+  "slabs": [
+    {"name": "ground floor", "y0": -0.35, "y1": 0.0, "poly": [[0, 0], [9.02, 0], [9.02, 12.02], [4.34, 12.02], [4.34, 10.84], [0, 10.84]]},
+    {"name": "1st floor", "y0": 2.70, "y1": 3.05, "poly": [[0, 0], [9.02, 0], [9.02, 12.02], [0, 12.02]],
+     "holes": [[[5.949, 6.193], [8.62, 6.193], [8.62, 7.753], [5.70, 7.753], [5.70, 7.093], [5.949, 7.093]],
+               [[0.38, 0.0], [1.35, 0.0], [1.35, 0.304], [0.38, 0.304]]]},
+    {"name": "roof terrace", "y0": 2.70, "y1": 3.05, "poly": [[1.35, -3.0], [9.02, -3.0], [9.02, 0], [1.35, 0]]},
+    {"name": "2nd floor", "y0": 5.53, "y1": 5.88, "poly": [[0, 3.0], [9.02, 3.0], [9.02, 8.15], [0, 8.15]],
+     "holes": [[[5.949, 6.193], [8.62, 6.193], [8.62, 7.753], [5.70, 7.753], [5.70, 7.093], [5.949, 7.093]]]},
+    {"name": "1st floor roof, rear", "material": "roof", "y0": 5.53, "y1": 6.00, "poly": [[0, 0], [9.02, 0], [9.02, 3.0], [0, 3.0]]},
+    {"name": "1st floor roof, front", "material": "roof", "y0": 5.53, "y1": 6.00, "poly": [[0, 8.15], [9.02, 8.15], [9.02, 12.02], [0, 12.02]]},
+    {"name": "2nd floor roof", "material": "roof", "y0": 8.41, "y1": 8.89, "poly": [[0, 3.0], [9.02, 3.0], [9.02, 8.15], [0, 8.15]]}
+  ],
+
+  "facades": {"x": [0.0, 9.02], "z": [-3.0, 0.0, 3.0, 8.15, 12.02], "_note": "the outer faces of the facades (the slab edges): brick within 4.5 cm of one is put on it, so the wall pieces from the plans line up without seams"},
+  "parapets": [
+    {"name": "1st floor roof edge", "y0": 6.00, "y1": 6.22, "width": 0.3, "path": [[0, 3.0], [0, 0], [9.02, 0], [9.02, 3.0]]},
+    {"name": "1st floor roof edge", "y0": 6.00, "y1": 6.22, "width": 0.3, "path": [[0, 8.15], [0, 12.02], [9.02, 12.02], [9.02, 8.15]]},
+    {"name": "2nd floor roof edge", "y0": 8.89, "y1": 9.12, "width": 0.3, "path": [[0, 3.0], [9.02, 3.0], [9.02, 8.15], [0, 8.15], [0, 3.0]]},
+    {"name": "roof terrace, left", "y0": 3.05, "y1": 3.41, "width": 0.38, "path": [[0.19, 0.0], [0.19, 3.24]]},
+    {"name": "roof terrace, rear", "y0": 3.05, "y1": 3.41, "width": 0.38, "path": [[1.73, -2.81], [8.62, -2.81]]},
+    {"name": "roof terrace, right", "y0": 3.05, "y1": 4.10, "width": 0.40, "path": [[8.82, -3.0], [8.82, 0.0]]},
+    {"name": "balustrade", "material": "glass", "y0": 3.41, "y1": 4.10, "width": 0.03, "path": [[0.19, -3.0], [0.19, 3.24]]},
+    {"name": "balustrade", "material": "glass", "y0": 3.41, "y1": 4.10, "width": 0.03, "path": [[1.54, -3.0], [1.54, 0.304]]},
+    {"name": "balustrade", "material": "glass", "y0": 3.41, "y1": 4.10, "width": 0.03, "path": [[1.73, -2.81], [8.62, -2.81]]},
+    {"name": "stairwell railing 1st floor", "material": "rail", "y0": 3.05, "y1": 4.05, "width": 0.05, "path": [[5.70, 7.093], [5.70, 7.753], [7.725, 7.753]]},
+    {"name": "stairwell railing 2nd floor", "material": "rail", "y0": 5.88, "y1": 6.88, "width": 0.05, "path": [[5.70, 7.093], [5.70, 7.753]]}
+  ],
+
+  "stairs": [
+    {"name": "ground to 1st floor", "type": "quarter-turn", "from": 0.00, "to": 3.05, "_note": "16 risers, measured on the 1st floor sheet"},
+    {"name": "1st to 2nd floor", "type": "quarter-turn", "from": 3.05, "to": 5.88},
+    {"name": "outside stair to roof terrace", "type": "straight", "from": -0.10, "to": 3.05, "x": [0.38, 1.35], "z0": -2.776, "tread": 0.22, "risers": 15, "solid": true}
+  ],
+
+  "quarterTurn": {
+    "_note": "Both indoor stairs share this plan. Inner corner of the turn at (7.725, 7.093).",
+    "width": 0.90,
+    "bottom": {"x": [7.725, 8.625], "risers_z": [7.753, 7.533, 7.313]},
+    "winders": [
+      [[7.725, 7.093], [8.625, 7.093], [8.625, 6.720]],
+      [[7.725, 7.093], [8.625, 6.720], [8.625, 6.193]],
+      [[7.725, 7.093], [8.625, 6.193], [8.098, 6.193]],
+      [[7.725, 7.093], [8.098, 6.193], [7.725, 6.193]]
+    ],
+    "top": {"z": [6.193, 7.093], "risers_x": [7.725, 7.505, 7.285, 7.065, 6.845, 6.625, 6.405, 6.185, 5.965]},
+    "rail": {"z": 7.093, "height": 0.9}
+  },
+
+  "site": {
+    "_note": "Plot: 3 m side gardens, about 5 m front garden. Plot line, road and neighbours from the Flemish GRB (plot 1061/D0, 15 x 40 m; tools/neighbours.py).",
+    "ground": -0.10,
+    "noBoundaries": [
+      {"note": "the meadow across the road: no hedge along the plot line through it (Yoshi, 30 Oct 2026); horses graze there", "poly": [[-36, 44], [22, 44], [22, 146], [-36, 146]]}
+    ],
+    "_areas_note": "Terrace, paths, driveway and the rest of the garden: data/garden.json (tools/garden.py).",
+    "areas": [
+      {"name": "covered terrace", "material": "terrace", "y1": -0.05, "poly": [[3.55, -2.98], [9.02, -2.98], [9.02, 0], [3.55, 0]]},
+      {"name": "garden shed", "material": "concrete", "y1": 0.0, "poly": [[1.79, -2.72], [3.32, -2.72], [3.32, 0], [1.79, 0]]}
+    ],
+    "hedges": [
+      {"_note": "on the plot line (GRB, x -3.05)", "y1": 1.7, "width": 0.5, "path": [[-2.8, -22.8], [-2.8, 16.5]]},
+      {"_note": "on the plot line (GRB, x 11.95)", "y1": 1.7, "width": 0.5, "path": [[11.7, -22.8], [11.7, 16.5]]},
+      {"_note": "back of the plot (GRB, z -23.04: the plot is 40 m deep)", "y1": 1.7, "width": 0.5, "path": [[-2.55, -22.8], [11.45, -22.8]]}
+    ]
+  },
+
+  "spawn": {"x": 4.5, "z": 19.0, "yaw": 0, "_note": "in the middle of the lane (GRB road surface) in front of the house, looking at the front facade"}
+}

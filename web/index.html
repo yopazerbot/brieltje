@@ -1,0 +1,283 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover" />
+    <meta name="robots" content="noindex, nofollow, noarchive" />
+    <meta name="author" content="Yoshi Parlevliet" />
+    <title data-nl="Briel: het huis in 3D">Briel Walkthrough</title>
+    <!-- Added to the home screen it opens without the browser's bars (the only full screen an iPhone allows a page). -->
+    <link rel="manifest" href="/manifest.webmanifest" />
+    <link rel="apple-touch-icon" href="/apple-touch-icon.png" />
+    <meta name="apple-mobile-web-app-capable" content="yes" />
+    <meta name="mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+    <meta name="apple-mobile-web-app-title" content="Briel" />
+    <meta name="theme-color" content="#0c0e12" />
+    <link rel="stylesheet" href="/slides/slides.css" />
+    <link rel="stylesheet" href="/src/style.css" />
+  </head>
+  <!-- The texts below are the English ones; src/i18n.ts fills every data-i18n* element in the chosen language. -->
+  <body class="on-start">
+    <canvas id="view"></canvas>
+    <!-- Behind the start screen: a slideshow of renders (public/slides/, made with tools/still/), shown while the start menu is up. -->
+    <div id="start-still" class="slides bg" data-slides></div>
+    <div id="hud">
+      <div id="damage"></div>
+      <div id="brand">BRIEL<span data-i18n="brand.wip">work in progress</span></div>
+      <div id="who"></div>
+      <div id="place"></div>
+      <div id="menu-hint"><kbd>Esc</kbd> <span data-i18n="hud.menu">Menu</span></div>
+      <canvas id="minimap"></canvas>
+      <div id="fps"></div>
+      <div id="crosshair"></div>
+      <div id="hitmarker"></div>
+      <div id="hitdir"></div>
+      <div id="scope"></div>
+      <div id="slots"></div>
+      <div id="prompt"></div>
+      <div id="capture-hint" data-i18n="hud.captureHint">Click to look around</div>
+      <div id="modebar"></div>
+      <div id="blindfold"></div>
+      <!-- Messages for the middle of the top: on a desktop each keeps its own place (the box has
+           display: contents); with touch controls they stack under each other, clear of the buttons. -->
+      <div id="hud-top">
+        <div id="net-status"></div>
+        <div id="banner" class="hidden"><b id="banner-title"></b><small id="banner-sub"></small></div>
+        <div id="scoreboard" class="hidden"><h2 data-i18n="score.title">Scoreboard</h2><p id="score-goal"></p><table id="score-table"></table></div>
+        <div id="death" class="hidden"><b id="death-title"></b><span id="death-sub"></span></div>
+        <div id="killfeed"></div>
+        <div id="toast"></div>
+      </div>
+      <div id="ammo"></div>
+      <div id="nades"></div>
+      <div id="pad"></div>
+      <div id="credit"><span data-i18n="credit.made">Made by Yoshi Parlevliet</span> <a class="gh" href="https://github.com/yopazerbot/brieltje" target="_blank" rel="noopener noreferrer" title="The source code on GitHub" data-i18n-title="credit.source"><svg viewBox="0 0 16 16" width="16" height="16" aria-hidden="true"><path fill="currentColor" d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27.68 0 1.36.09 2 .27 1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.013 8.013 0 0016 8c0-4.42-3.58-8-8-8z"/></svg><span>GitHub</span></a></div>
+      <div id="online"></div>
+      <div id="health" class="hidden"><span class="hp-icon">+</span><span id="hp-value">100</span><div class="hp-bar"><div id="hp-fill"></div></div></div>
+      <div id="planner" class="hidden"></div>
+      <div id="chat-log"></div>
+      <input id="chat-input" maxlength="200" autocomplete="off" spellcheck="false" placeholder="Say something, Enter to send" data-i18n-placeholder="chat.placeholder" />
+    </div>
+    <!-- The portals' list of places and the flash of a trip: above the touch controls (they take every touch under them). -->
+    <div id="travel" class="hidden"><div class="tv-head"><small data-i18n="travel.portal">Portal</small><b id="tv-here"></b></div><div id="tv-list"></div><div id="tv-hint"></div></div>
+    <div id="warp"></div>
+    <button id="map-btn" type="button" title="Map (M)" aria-label="Open the map" data-i18n-title="btn.map" data-i18n-aria="btn.mapAria"><span class="ico">⤢</span></button>
+    <button id="sound-btn" type="button" title="Sound on or off (Shift+M)" data-i18n-title="btn.soundTitle"><span class="ico">🔊</span> <span class="lbl">Sound</span></button>
+    <button id="full-btn" type="button" class="hidden" title="Fill the whole screen" data-i18n-title="btn.fullTitle"><span class="ico">⤢</span> <span class="lbl">Full screen</span></button>
+    <div id="full-hint" class="hidden" data-i18n-rich="full.hint">On an iPhone a page can't fill the screen from Safari. Tap <b>Share</b>, then <b>Add to Home Screen</b>, and start Briel from your home screen: it opens without Safari's bars.</div>
+    <div id="rotate-hint" data-i18n="rotate.hint">Turn your device sideways to play</div>
+    <!-- Hidden until src/start.ts has put it in the chosen language and made its buttons work. -->
+    <div id="overlay" class="hidden">
+      <div class="panel" id="start-panel">
+        <!-- English or Dutch, each in its own language; remembered in this browser (src/i18n.ts). -->
+        <div class="lang-pick" role="group" aria-label="Language" data-i18n-aria="lang.label"><button type="button" class="textbtn" data-lang="en" lang="en">English</button><button type="button" class="textbtn" data-lang="nl" lang="nl">Nederlands</button></div>
+        <h1>BRIEL</h1>
+        <p class="sub" data-i18n="start.sub">Work in progress</p>
+        <p class="intro" data-i18n="start.intro">The new house, its garden and the street around it.</p>
+        <a class="invite" href="/interested/" target="_blank" rel="noopener noreferrer"><span data-i18n="start.invite">Play together in person, or have your own house built in?</span> <b data-i18n="start.inviteGo">Sign up →</b></a>
+        <p id="mobile-note" class="mobile-note hidden" data-i18n="start.mobileNote">Best on a laptop or desktop. Here it works with touch controls: turn your phone sideways and tap Touch screen.</p>
+        <div id="who-box">
+          <label class="field" for="nick" data-i18n="start.name">Your name</label>
+          <input id="nick" maxlength="20" autocomplete="username" spellcheck="false" placeholder="Name" data-i18n-placeholder="start.namePh" />
+          <div class="seg" id="mp-choice">
+            <button class="seg-btn selected" type="button" data-mp="solo"><b data-i18n="start.alone">Alone</b><span data-i18n="start.aloneSub">Just you</span></button>
+            <button class="seg-btn" type="button" data-mp="multi"><b data-i18n="start.together">Together</b><span data-i18n="start.togetherSub">With the PIN</span></button>
+          </div>
+          <div id="mp-pin-row" class="mp-row hidden">
+            <input id="mp-pin" type="password" inputmode="numeric" maxlength="12" autocomplete="off" placeholder="PIN" data-i18n-placeholder="start.pinPh" />
+            <button id="mp-join-btn" class="mini go" type="button" data-i18n="start.join">Join</button>
+          </div>
+          <div id="mp-login" class="mp-row hidden">
+            <input id="mp-pass" type="password" maxlength="200" autocomplete="current-password" placeholder="Admin password" data-i18n-placeholder="start.passPh" />
+            <button id="mp-login-btn" class="mini go" type="button" data-i18n="start.login">Log in</button>
+          </div>
+        </div>
+        <div id="mp-session" class="session hidden">
+          <span><span data-i18n="start.playingAs">Playing together as</span> <b id="mp-name"></b></span>
+          <button id="mp-logout" class="mini" type="button" data-i18n="start.leave">Leave</button>
+        </div>
+        <p id="mp-msg" class="mp-msg"></p>
+        <p class="label" data-i18n="start.mode">Mode</p>
+        <div class="seg" id="mode-start">
+          <button class="seg-btn" type="button" data-play="explore"><b data-i18n="mode.explore">Explore</b><span data-i18n="mode.exploreSub">Walk around</span></button>
+          <button class="seg-btn" type="button" data-play="action"><b data-i18n="mode.action">Action</b><span data-i18n="mode.actionSub">With a pistol</span></button>
+        </div>
+        <p class="label" data-i18n="start.with">Start with</p>
+        <div class="choices start-choices">
+          <button id="choose-kbm" class="choice play" type="button">
+            <b data-i18n="choose.kbm">Keyboard + mouse</b>
+            <span id="kbm-sub">W A S D to walk, mouse to look</span>
+          </button>
+          <button id="choose-pad" class="choice play" type="button">
+            <b data-i18n="choose.pad">Controller</b>
+            <span id="pad-state">DualSense: press any button to connect</span>
+          </button>
+          <button id="choose-touch" class="choice play hidden" type="button">
+            <b data-i18n="choose.touch">Touch screen</b>
+            <span data-i18n="choose.touchSub">A stick under your left thumb, buttons on the right</span>
+          </button>
+        </div>
+        <div class="start-foot">
+          <button class="gfx textbtn" type="button" title="Change the graphics (cycles through the settings)" data-i18n-title="gfx.title"><span data-i18n="gfx.label">Graphics</span> <span class="gfx-value"></span><small class="gfx-detail"></small></button>
+          <button id="mp-account" class="textbtn" type="button" data-i18n="start.admin">Admin</button>
+          <span class="made"><span class="made-by" data-i18n="credit.made">Made by Yoshi Parlevliet</span> <a class="gh" href="https://github.com/yopazerbot/brieltje" target="_blank" rel="noopener noreferrer" title="The source code on GitHub" data-i18n-title="credit.source"><svg viewBox="0 0 16 16" width="16" height="16" aria-hidden="true"><path fill="currentColor" d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27.68 0 1.36.09 2 .27 1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.013 8.013 0 0016 8c0-4.42-3.58-8-8-8z"/></svg><span>GitHub</span></a> <span class="legal-links start-legal"><a href="/legal/terms.html" target="_blank" rel="noopener noreferrer" data-i18n="legal.termsShort">Terms</a> · <a href="/legal/privacy.html" target="_blank" rel="noopener noreferrer" data-i18n="legal.privacyShort">Privacy</a> · <a href="/legal/credits.html" target="_blank" rel="noopener noreferrer" data-i18n="legal.credits">Credits</a></span></span>
+        </div>
+        <!-- The links to the legal pages get ?lang= in the game's language (src/i18n.ts). -->
+        <p class="legal"><span data-i18n="legal.accept">By playing you accept the</span> <a href="/legal/terms.html" target="_blank" rel="noopener noreferrer" data-i18n="legal.terms">terms of use</a> <span data-i18n="legal.and">and the</span> <a href="/legal/privacy.html" target="_blank" rel="noopener noreferrer" data-i18n="legal.privacy">privacy policy</a>. <a href="/legal/credits.html" target="_blank" rel="noopener noreferrer" data-i18n="legal.credits">Credits</a></p>
+      </div>
+      <div class="panel wide hidden" id="pause-panel">
+        <div class="pause-top">
+          <div class="pause-title">
+            <h1 data-i18n="menu.title">MENU</h1>
+            <p class="sub" id="pause-who"></p>
+          </div>
+          <button id="resume" class="choice primary" type="button"><b data-i18n="menu.resume">Resume</b><span id="resume-hint"></span></button>
+        </div>
+        <nav class="tabs" id="menu-tabs">
+          <button class="tab selected" type="button" data-tab="play" data-i18n="tab.play">Play</button>
+          <button class="tab" type="button" data-tab="settings" data-i18n="tab.settings">Settings</button>
+          <button class="tab" type="button" data-tab="controls" data-i18n="tab.controls">Controls</button>
+          <button class="tab" type="button" data-tab="together" data-i18n="tab.together">Together</button>
+          <button class="tab hidden" type="button" data-tab="admin" id="tab-admin" data-i18n="tab.admin">Admin</button>
+        </nav>
+
+        <section class="page" data-page="play">
+          <div class="page-grid">
+            <div class="col">
+              <h2 data-i18n="start.mode">Mode</h2>
+              <div class="seg" id="mode-pause">
+                <button class="seg-btn" type="button" data-play="explore"><b data-i18n="mode.explore">Explore</b><span data-i18n="mode.exploreSub2">No weapon</span></button>
+                <button class="seg-btn" type="button" data-play="action"><b data-i18n="mode.action">Action</b><span data-i18n="mode.actionSub2">Hands and pistol</span></button>
+              </div>
+              <div class="setting">
+                <label class="field" for="speed-pause"><span data-i18n="play.speed">Walking speed</span> <span class="walk-value"></span></label>
+                <input class="speed" id="speed-pause" type="range" min="0.8" max="4" step="0.1" />
+              </div>
+              <button id="switch" class="tool" type="button"><b id="switch-label"></b><span data-i18n="play.switchSub">Change how you play</span></button>
+            </div>
+            <div class="col">
+              <h2 data-i18n="play.house">House</h2>
+              <div class="tools">
+                <button id="planner-btn" class="tool" type="button"><b data-i18n="play.planner">Furniture planner</b><span data-i18n="play.plannerSub">Place, turn and move furniture (P)</span></button>
+                <button id="repair-btn" class="tool" type="button"><b data-i18n="play.repair">Repair windows</b><span data-i18n="play.repairSub">Every broken pane back in</span></button>
+                <button id="resetfurn-btn" class="tool" type="button"><b data-i18n="play.resetFurn">Reset furniture</b><span data-i18n="play.resetFurnSub">Back to the original layout</span></button>
+              </div>
+            </div>
+          </div>
+        </section>
+
+        <section class="page hidden" data-page="settings">
+          <div class="page-grid">
+            <div class="col settings">
+              <h2 data-i18n="set.look">Looking around</h2>
+              <div class="setting"><label class="field" for="set-mouse"><span data-i18n="set.mouse">Mouse sensitivity</span> <span class="set-value" data-for="set-mouse"></span></label><input class="slider" id="set-mouse" type="range" min="0.2" max="3" step="0.05" /></div>
+              <div class="setting"><label class="field" for="set-stick"><span data-i18n="set.stick">Controller look speed</span> <span class="set-value" data-for="set-stick"></span></label><input class="slider" id="set-stick" type="range" min="0.4" max="2.5" step="0.05" /></div>
+              <div class="setting"><label class="field" for="set-fov"><span data-i18n="set.fov">Field of view</span> <span class="set-value" data-for="set-fov"></span></label><input class="slider" id="set-fov" type="range" min="60" max="100" step="1" /></div>
+              <label class="check"><input type="checkbox" id="set-invert" /> <span data-i18n="set.invert">Invert look up / down</span></label>
+              <label class="check"><input type="checkbox" id="set-vibration" /> <span data-i18n="set.vibration">Controller vibration</span></label>
+            </div>
+            <div class="col settings">
+              <h2 data-i18n="lang.label">Language</h2>
+              <div class="seg lang-seg" role="group" aria-label="Language" data-i18n-aria="lang.label">
+                <button class="seg-btn" type="button" data-lang="en" lang="en"><b>English</b></button>
+                <button class="seg-btn" type="button" data-lang="nl" lang="nl"><b>Nederlands</b></button>
+              </div>
+              <!-- The keyboard's layout, for the key names in the hints (src/keys.ts); each choice shows its walking keys. -->
+              <h2 data-i18n="kbd.label">Keyboard</h2>
+              <div class="seg kbd-seg" role="group" aria-label="Keyboard" data-i18n-aria="kbd.label">
+                <button class="seg-btn" type="button" data-kbd="auto"><b data-i18n="kbd.auto">Automatic</b><span></span></button>
+                <button class="seg-btn" type="button" data-kbd="azerty"><b>AZERTY</b><span></span></button>
+                <button class="seg-btn" type="button" data-kbd="qwerty"><b>QWERTY</b><span></span></button>
+              </div>
+              <h2 data-i18n="set.soundGfx">Sound and graphics</h2>
+              <div class="setting"><label class="field" for="set-volume"><span data-i18n="set.volume">Volume</span> <span class="set-value" data-for="set-volume"></span></label><input class="slider" id="set-volume" type="range" min="0" max="1" step="0.05" /></div>
+              <button class="gfx tool" type="button"><b><span class="gfx-label" data-i18n="gfx.label">Graphics</span> <span class="gfx-value"></span></b><span class="gfx-detail"></span></button>
+              <label class="check"><input type="checkbox" id="set-baked" /> <span data-i18n="set.baked">Baked lighting (test: light bounced between walls, faster on weak graphics)</span></label>
+              <button id="set-reset" class="mini" type="button" data-i18n="set.reset">Back to defaults</button>
+            </div>
+          </div>
+        </section>
+
+        <section class="page hidden" data-page="controls">
+          <div id="controls"></div>
+        </section>
+
+        <section class="page hidden" data-page="together">
+          <div class="page-grid">
+            <div class="col">
+              <h2 data-i18n="tog.title">Playing together</h2>
+              <p id="mp-note" class="note"></p>
+              <div id="team-pick" class="hidden">
+                <p class="label" data-i18n="tog.team">Your team</p>
+                <div class="seg" id="team-choice">
+                  <button class="seg-btn" type="button" data-team="house"><b data-i18n="team.house">House</b><span></span></button>
+                  <button class="seg-btn" type="button" data-team="bungalow"><b data-i18n="team.bungalow">Bungalow</b><span></span></button>
+                </div>
+              </div>
+              <div id="mp-join-here" class="mp-row hidden">
+                <input id="mp-nick2" maxlength="20" autocomplete="off" spellcheck="false" placeholder="Your name" data-i18n-placeholder="start.name" />
+                <input id="mp-pin2" type="password" inputmode="numeric" maxlength="12" autocomplete="off" placeholder="PIN" data-i18n-placeholder="start.pinPh" />
+                <button id="mp-join2" class="mini go" type="button" data-i18n="start.join">Join</button>
+              </div>
+              <p id="mp-msg2" class="mp-msg"></p>
+              <button id="mp-leave" class="mini hidden" type="button" data-i18n="tog.leave">Leave, play alone</button>
+            </div>
+            <div class="col hidden" id="scores-col">
+              <h2 data-i18n="tog.scores">Scores</h2>
+              <div class="tools">
+                <button id="leaderboard-btn" class="tool hidden" type="button"><b>Leaderboard</b><span data-i18n="lb.sub">All-time totals</span></button>
+              </div>
+              <div id="leaderboard"></div>
+            </div>
+          </div>
+        </section>
+
+        <section class="page hidden" data-page="admin">
+          <div id="set-admin" class="page-grid hidden">
+            <div class="col">
+              <h2 data-i18n="adm.rules">House rules</h2>
+              <label class="check"><input type="checkbox" id="set-flying" checked /> <span data-i18n="adm.flying">Flying allowed</span></label>
+              <label class="check"><input type="checkbox" id="set-furniture" checked /> <span data-i18n="adm.furniture">Players can move furniture</span></label>
+              <label class="check"><input type="checkbox" id="set-names" checked /> <span data-i18n="adm.names">Names above players (they show through walls)</span></label>
+              <label class="check"><input type="checkbox" id="set-portals" checked /> <span data-i18n="adm.portals">Portals take players from place to place</span></label>
+              <label class="check"><input type="checkbox" id="set-travel" checked /> <span data-i18n="adm.travel">Players can travel from the chat (/church, /house …)</span></label>
+              <div class="setting"><label class="field" for="set-max"><span data-i18n="adm.max">Players at once</span> <span class="set-value" id="set-max-value">4</span></label><input class="slider" id="set-max" type="range" min="2" max="16" step="1" value="4" /></div>
+              <h2 data-i18n="adm.joining">Joining</h2>
+              <label class="check"><input type="checkbox" id="set-pin" checked /> <span data-i18n="adm.pin">New players can join with the PIN</span></label>
+              <div class="setting">
+                <label class="field" for="set-pin-code" data-i18n="adm.pinLabel">PIN</label>
+                <div class="mp-row">
+                  <input id="set-pin-code" type="password" inputmode="numeric" maxlength="12" autocomplete="off" spellcheck="false" />
+                  <button id="set-pin-show" class="mini" type="button" data-i18n="adm.show">Show</button>
+                  <button id="set-pin-save" class="mini" type="button" data-i18n="adm.save">Save</button>
+                </div>
+                <p class="note" id="set-pin-msg" data-i18n="adm.pinNote">4 to 12 digits; longer is harder to guess. Saving logs out everyone who joined with the old PIN.</p>
+              </div>
+            </div>
+            <div class="col">
+              <h2 data-i18n="adm.games">Party games</h2>
+              <div id="game-admin" class="tools">
+                <button class="tool" type="button" data-game="hide"><b data-i18n="game.hide">Hide and seek</b><span data-i18n="game.hideSub">One seeks, the others hide; found players seek too</span></button>
+                <button class="tool" type="button" data-game="tag"><b data-i18n="game.tag">Tag</b><span data-i18n="game.tagSub">Whoever is "it" tags someone else; least time as "it" wins</span></button>
+                <button class="tool" type="button" data-game="treasure"><b data-i18n="game.treasure">Treasure hunt</b><span data-i18n="game.treasureSub">15 coins in and around the house; most coins wins</span></button>
+                <button class="tool" type="button" data-game="teams"><b data-i18n="game.teams">House against bungalow</b><span data-i18n="game.teamsSub">Two teams fight, each starts at its own house; first to 25 kills</span></button>
+                <button class="tool" type="button" data-game="free"><b data-i18n="game.stop">Stop the game</b><span data-i18n="game.stopSub">Back to playing freely</span></button>
+                <button id="newround-btn" class="tool" type="button"><b data-i18n="adm.newRound">New round</b><span data-i18n="adm.newRoundSub">Fighting scores back to zero</span></button>
+                <button id="clearfurn-btn" class="tool" type="button"><b data-i18n="adm.clearFurn">Remove all furniture</b><span data-i18n="adm.clearFurnSub">For everyone</span></button>
+              </div>
+            </div>
+            <div class="col">
+              <h2 data-i18n="adm.people">People</h2>
+              <div id="admin"></div>
+            </div>
+          </div>
+        </section>
+        <p class="made"><span data-i18n="credit.made">Made by Yoshi Parlevliet</span> <a class="gh" href="https://github.com/yopazerbot/brieltje" target="_blank" rel="noopener noreferrer" title="The source code on GitHub" data-i18n-title="credit.source"><svg viewBox="0 0 16 16" width="16" height="16" aria-hidden="true"><path fill="currentColor" d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27.68 0 1.36.09 2 .27 1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.013 8.013 0 0016 8c0-4.42-3.58-8-8-8z"/></svg><span>GitHub</span></a></p>
+      </div>
+    </div>
+    <script src="/lang-early.js"></script>
+    <script src="/slides/slides.js" defer></script>
+    <script type="module" src="/src/start.ts"></script>
+  </body>
+</html>

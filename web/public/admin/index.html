@@ -1,0 +1,104 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <meta name="robots" content="noindex" />
+  <title>Admin · Brieltje</title>
+  <link rel="icon" href="/icon-192.png" />
+  <link rel="stylesheet" href="/interested/interested.css" />
+  <link rel="stylesheet" href="/admin/admin.css" />
+  <link rel="stylesheet" href="/slides/slides.css" />
+</head>
+<body class="admin signed-out">
+<div class="slides bg" data-slides></div>
+<main>
+  <div class="card">
+    <header>
+      <a class="brand" href="/">BRIEL</a>
+      <span class="head-tools">
+        <span class="live" id="live" title="Live"><i></i> Live</span>
+        <a class="btn ghost" href="/admin/scores/" target="_blank" rel="noopener" id="scores-link">Scoreboard ↗</a>
+        <button class="btn ghost" type="button" id="logout" hidden>Log out</button>
+      </span>
+    </header>
+
+    <section id="login" hidden>
+      <h1>Admin</h1>
+      <p class="muted">Log in with the game's admin account.</p>
+      <form id="login-form">
+        <label class="field" for="user">Username</label>
+        <input type="text" id="user" autocomplete="username" value="admin" required />
+        <label class="field" for="pass">Password</label>
+        <input type="password" id="pass" autocomplete="current-password" required />
+        <p class="error" id="login-err" hidden></p>
+        <div class="actions"><button class="btn" type="submit">Log in</button></div>
+      </form>
+    </section>
+
+    <section id="app" hidden>
+      <nav class="tabs" role="tablist">
+        <button type="button" role="tab" data-tab="overview" aria-selected="true">Overview</button>
+        <button type="button" role="tab" data-tab="signups" aria-selected="false">Sign-ups</button>
+        <button type="button" role="tab" data-tab="logins" aria-selected="false">Logins</button>
+        <button type="button" role="tab" data-tab="online" aria-selected="false">Online now</button>
+      </nav>
+
+      <section data-panel="overview">
+        <p class="muted small" id="since"></p>
+        <div class="stats" id="kpis"></div>
+        <div class="charts" id="charts"></div>
+        <h2>How people play <span class="muted small">(last 30 days)</span></h2>
+        <div class="splits" id="splits"></div>
+        <p class="muted small">Counted without cookies and without keeping anything about a person: only daily totals are stored (see the privacy policy).</p>
+      </section>
+
+      <section data-panel="signups" hidden>
+        <p class="muted small" id="storage"></p>
+        <div class="stats" id="stats"></div>
+        <div class="toolbar">
+          <input type="text" id="search" placeholder="Search name, email, street, comments" />
+          <select id="filter">
+            <option value="">Everyone</option>
+            <option value="updates">Wants an email when it's planned</option>
+            <option value="house">Wants their house in the game</option>
+            <option value="new">Status: new</option>
+            <option value="contacted">Status: contacted</option>
+            <option value="modelled">Status: modelled</option>
+            <option value="declined">Status: declined</option>
+          </select>
+          <button class="btn ghost" type="button" id="copy-emails" title="The addresses of everyone shown who wants an email, to paste in Bcc">Copy addresses</button>
+        </div>
+        <p class="muted small" id="copied" hidden></p>
+        <div id="entries"></div>
+        <p class="muted" id="empty" hidden>No sign-ups yet.</p>
+      </section>
+
+      <section data-panel="logins" hidden>
+        <div class="stats" id="login-kpis"></div>
+        <div class="toolbar">
+          <select id="log-filter">
+            <option value="">Everything</option>
+            <option value="in">Logins and joins</option>
+            <option value="failed">Failed attempts</option>
+            <option value="admin">Admin actions</option>
+          </select>
+          <input type="text" id="log-search" placeholder="Search name, address, detail" />
+        </div>
+        <div class="tablewrap"><table class="log"><thead><tr><th>Time</th><th>What</th><th>Name</th><th>Address</th><th>Detail</th></tr></thead><tbody id="log"></tbody></table></div>
+        <p class="muted small">The login log keeps 90 days.</p>
+      </section>
+
+      <section data-panel="online" hidden>
+        <p class="muted" id="online-count"></p>
+        <ul class="online" id="online"></ul>
+      </section>
+    </section>
+  </div>
+  <footer><a href="/interested/">The sign-up page</a> · <a href="/legal/privacy.html">Privacy</a><div class="slides-place" data-slides-controls></div></footer>
+</main>
+<div class="tip" id="tip" hidden></div>
+<script src="/admin/admin.js"></script>
+<script src="/slides/slides.js" defer></script>
+</body>
+</html>

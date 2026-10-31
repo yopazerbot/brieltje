@@ -1,0 +1,23 @@
+/* The slideshow of renders (slides.js): pictures that fade into each other with a slow zoom, and a
+   small bar of buttons. "bg" fills the window behind the page; "hero" is a band at the top. */
+.slides { overflow: hidden; background: #0d0f12; }
+.slides.bg { position: fixed; inset: 0; z-index: -2; }
+.slides.hero { position: relative; height: clamp(170px, 30vh, 320px); }
+.slides.hero::after { content: ""; position: absolute; inset: 0; pointer-events: none; background: linear-gradient(180deg, rgba(13, 15, 18, 0) 45%, #0d0f12); }
+.slide { position: absolute; inset: 0; margin: 0; opacity: 0; transition: opacity 1.6s ease; }
+.slide.on { opacity: 1; }
+.slide img { width: 100%; height: 100%; object-fit: cover; display: block; transform: scale(1.02); transition: transform 9s ease-out; }
+.slide.on img { transform: scale(1.08); }
+.slides.paused .slide img { transition: none; }
+@media (prefers-reduced-motion: reduce) { .slide { transition: opacity 0.4s; } .slide img, .slide.on img { transform: none; transition: none; } }
+
+.slides-bar { display: inline-flex; align-items: center; gap: 6px; padding: 5px 8px; background: rgba(10, 12, 15, 0.72); border: 1px solid rgba(255, 255, 255, 0.14); border-radius: 999px; color: #f4efe6; font: 600 13px/1 "Bahnschrift", "Segoe UI", "Arial Narrow", sans-serif; backdrop-filter: blur(6px); }
+.slides > .slides-bar { position: absolute; right: 16px; bottom: 16px; z-index: 2; }
+.slides-btn { width: 30px; height: 30px; padding: 0; border: 0; border-radius: 50%; background: transparent; color: inherit; font: inherit; font-size: 17px; line-height: 30px; cursor: pointer; }
+.slides-btn:hover, .slides-btn:focus-visible, .slides-dot:hover, .slides-dot:focus-visible { background: rgba(255, 255, 255, 0.14); outline: none; }
+.slides-dots { display: inline-flex; gap: 2px; margin: 0 2px; }
+.slides-dot { width: 22px; height: 22px; padding: 0; border: 0; border-radius: 50%; background: transparent; cursor: pointer; position: relative; }
+.slides-dot::after { content: ""; position: absolute; inset: 7px; border-radius: 50%; background: rgba(244, 239, 230, 0.45); }
+.slides-dot[aria-current="true"]::after { background: #f2b33d; inset: 6px; }
+.slides-caption { padding: 0 6px 0 4px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 260px; opacity: 0.9; }
+@media (max-width: 520px) { .slides-caption { display: none; } }

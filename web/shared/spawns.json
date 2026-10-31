@@ -1,0 +1,23 @@
+[
+  {"name": "Street", "x": 4.5, "z": 19.0, "y": -0.1, "team": "house"},
+  {"name": "Garden", "x": 4.5, "z": -6.0, "y": -0.1, "team": "house"},
+  {"name": "Side path", "x": 10.5, "z": 6.0, "y": -0.1, "team": "house"},
+  {"name": "Slaapkamer 1", "x": 6.0, "z": 1.9, "y": 0, "team": "house"},
+  {"name": "Slaapkamer 2", "x": 2.5, "z": 5.0, "y": 0, "team": "house"},
+  {"name": "Slaapkamer 3", "x": 2.0, "z": 9.0, "y": 0, "team": "house"},
+  {"name": "Inkom", "x": 7.3, "z": 8.3, "y": 0, "team": "house"},
+  {"name": "Keuken", "x": 4.2, "z": 2.1, "y": 3.05, "team": "house"},
+  {"name": "Eetplaats", "x": 3.95, "z": 5.5, "y": 3.05, "team": "house"},
+  {"name": "Zithoek", "x": 3.35, "z": 10.6, "y": 3.05, "team": "house"},
+  {"name": "Speelruimte", "x": 6.7, "z": 10.3, "y": 3.05, "team": "house"},
+  {"name": "Bureau 1", "x": 5.15, "z": 5.45, "y": 5.88, "team": "house"},
+  {"name": "Bureau 2", "x": 2.2, "z": 5.9, "y": 5.88, "team": "house"},
+  {"name": "Woonkamer (bungalow)", "x": 87.2, "z": 185.2, "y": 0.35, "team": "bungalow"},
+  {"name": "Keuken (bungalow)", "x": 86.2, "z": 190.0, "y": 0.35, "team": "bungalow"},
+  {"name": "Slaapkamer 1 (bungalow)", "x": 82.8, "z": 194.2, "y": 0.35, "team": "bungalow"},
+  {"name": "Slaapkamer 2 (bungalow)", "x": 79.1, "z": 190.8, "y": 0.35, "team": "bungalow"},
+  {"name": "Hal (bungalow)", "x": 83.2, "z": 185.9, "y": 0.35, "team": "bungalow"},
+  {"name": "Veranda (bungalow)", "x": 87.6, "z": 194.5, "y": 0.35, "team": "bungalow"},
+  {"name": "Zolderkamer (bungalow)", "x": 81.2, "z": 192.5, "y": 2.97, "team": "bungalow"},
+  {"name": "Zolder (bungalow)", "x": 85.7, "z": 187.0, "y": 2.97, "team": "bungalow"}
+]

@@ -1,0 +1,22 @@
+{
+  "_note": "The second survey of the centre of Smetlede (31 Oct 2026): Street View through the Claude extension, the 25 cm orthophoto, the GRB and the laser scan. Positions in the model's coordinates (x, z in metres); no addresses. tools/school.py builds the school and the square's fittings from this, tools/street.py and tools/build_house.py the rest.",
+  "yard": {
+    "_note": "The school's playground: pale concrete between the front wing, the long block, the low pavilion and the sheds (orthophoto); the passage from the gate is part of it. Under it the street's pavings are only for walking on.",
+    "p": [[449.7, -806.08], [472.79, -801.46], [472.15, -797.93], [475.5, -797.4], [481.64, -840.06], [481.9, -843.0], [468.9, -843.4], [468.83, -841.7], [467.12, -830.27], [462.27, -831.11], [462.41, -829.75], [459.32, -808.96], [452.56, -810.06]]
+  },
+  "pavers": {
+    "_note": "The church square and Smetlededorp through the centre are grey concrete pavers in Street View, not the pale concrete of Briel: road surface inside this outline gets them. It ends to the east at the speed plateau past the school; it takes in the paving in front of the tower and the lane beside it.",
+    "p": [[445, -801], [445, -777], [498, -766], [506, -751], [526, -747.5], [531, -735], [536, -728], [548, -716], [558, -720], [556, -742], [585, -752], [585, -776], [500, -790]]
+  },
+  "lamps": {
+    "_note": "The GRB's poles round the square and along Smetlededorp near the school are street lamps on steel posts with no overhead cables (Street View): grey posts with a flat LED head, a yellow and black striped one at the school's gate, dark green lanterns by the church tower. Matched to the GRB poles by position (within a metre).",
+    "post": [[486.39, -786.98], [467.49, -787.51], [446.64, -793.02], [506.67, -783.86], [526.2, -778.96], [547.24, -773.05], [515.83, -760.34], [527.22, -749.03], [568.84, -767.53]],
+    "striped": [[475.29, -787.44]],
+    "lantern": [[540.07, -738.31], [538.41, -725.49]]
+  },
+  "barriers": {
+    "_note": "For walking and driving into (tools/school.py draws them; the build keeps them as blocks only for that): the 1.8 m mesh fences round the school garden (Street View) and along the playground's south and west sides (made up), and the planter wall with its bed along the nave (Street View).",
+    "fences": [[[475.33, -789.55], [475.34, -796.71]], [[475.33, -789.55], [487.0, -787.92]], [[487.0, -787.92], [487.1, -795.35]], [[449.7, -806.08], [452.56, -810.06]], [[468.9, -843.45], [481.95, -843.05]]],
+    "planter": [[538.63, -740.33], [525.2, -749.84], [524.42, -748.73], [537.84, -739.22]]
+  }
+}

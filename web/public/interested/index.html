@@ -1,0 +1,156 @@
+<!doctype html>
+<html lang="nl">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+  <meta name="robots" content="noindex" />
+  <title>Samen spelen? · Brieltje</title>
+  <link rel="icon" href="/icon-192.png" />
+  <link rel="stylesheet" href="/interested/interested.css" />
+  <link rel="stylesheet" href="/slides/slides.css" />
+</head>
+<body>
+<div class="slides bg" data-slides></div>
+<main>
+  <div class="card">
+    <header>
+      <a class="brand" href="/">BRIEL</a>
+      <div class="langs"><button type="button" data-set="nl">Nederlands</button><button type="button" data-set="en">English</button></div>
+    </header>
+
+    <!-- Welcome -->
+    <section id="s-intro">
+      <h1><span data-lang="nl">Samen spelen, in het echt?</span><span data-lang="en">Play together, in person?</span></h1>
+      <p data-lang="nl">We denken aan een namiddag of avond waarop we Brieltje samen spelen, op één plek, met laptops en controllers. Waar en wanneer hangt af van hoeveel mensen interesse hebben. Laat het weten: het duurt een minuutje.</p>
+      <p data-lang="en">We're thinking of an afternoon or evening playing Brieltje together, in one place, with laptops and controllers. Where and when depends on how many people are interested. Let us know: it takes a minute.</p>
+      <div class="counter" id="counter" hidden><b id="count">0</b><span data-lang="nl">mensen hebben al interesse</span><span data-lang="en">people are interested so far</span></div>
+      <p class="muted small" data-lang="nl">Wil je ook dat je eigen huis in het spel komt? Dat kan, in de tweede stap.</p>
+      <p class="muted small" data-lang="en">Would you like your own house in the game too? You can say so in the second step.</p>
+      <div class="actions"><button class="btn" type="button" id="go"><span data-lang="nl">Ik heb interesse</span><span data-lang="en">I'm interested</span></button></div>
+    </section>
+
+    <form id="form" novalidate hidden>
+      <div class="steps"><i class="on"></i><i id="step2bar"></i></div>
+
+      <!-- Step 1: who and when -->
+      <section id="s-1">
+        <h2><span data-lang="nl">Over jou</span><span data-lang="en">About you</span></h2>
+        <label class="field" for="name"><span data-lang="nl">Naam</span><span data-lang="en">Name</span></label>
+        <input type="text" id="name" autocomplete="name" maxlength="80" required />
+        <p class="error" id="name-err" hidden></p>
+
+        <label class="field" for="email"><span data-lang="nl">E-mailadres</span><span data-lang="en">Email address</span></label>
+        <input type="email" id="email" autocomplete="email" maxlength="200" inputmode="email" required />
+        <p class="error" id="email-err" hidden></p>
+
+        <label class="field" for="address"><span data-lang="nl">Straat</span><span data-lang="en">Street</span> <em><span data-lang="nl">(niet verplicht)</span><span data-lang="en">(optional)</span></em></label>
+        <div class="combo">
+          <input type="text" id="address" autocomplete="off" maxlength="160" role="combobox" aria-autocomplete="list" aria-expanded="false" aria-controls="address-list" />
+          <ul id="address-list" role="listbox" hidden></ul>
+        </div>
+        <p class="muted small" data-lang="nl">Begin te typen, bijvoorbeeld "Briel, Lede", en kies je straat. Een huisnummer mag, hoeft niet.</p>
+        <p class="muted small" data-lang="en">Start typing, for example "Briel, Lede", and pick your street. A house number is up to you.</p>
+
+        <label class="field"><span data-lang="nl">Wanneer past het jou?</span><span data-lang="en">When would suit you?</span> <em><span data-lang="nl">(kies er gerust meer)</span><span data-lang="en">(pick as many as you like)</span></em></label>
+        <div class="chips">
+          <label class="chip"><input type="checkbox" name="when" value="weekday" /><span><span data-lang="nl">Weekdag 's avonds</span><span data-lang="en">Weekday evening</span></span></label>
+          <label class="chip"><input type="checkbox" name="when" value="saturday" /><span><span data-lang="nl">Zaterdag</span><span data-lang="en">Saturday</span></span></label>
+          <label class="chip"><input type="checkbox" name="when" value="sunday" /><span><span data-lang="nl">Zondag</span><span data-lang="en">Sunday</span></span></label>
+        </div>
+
+        <label class="field"><span data-lang="nl">Met hoeveel kom je?</span><span data-lang="en">How many of you would come?</span></label>
+        <div class="stepper">
+          <button type="button" id="less" aria-label="minder / fewer">−</button><output id="party">1</output><button type="button" id="more" aria-label="meer / more">+</button>
+        </div>
+
+        <label class="field" for="comments"><span data-lang="nl">Vragen, opmerkingen of ideeën?</span><span data-lang="en">Questions, comments or ideas?</span> <em><span data-lang="nl">(niet verplicht)</span><span data-lang="en">(optional)</span></em></label>
+        <textarea id="comments" maxlength="2000"></textarea>
+
+        <label class="consent updates"><input type="checkbox" id="updates" /><span><b><span data-lang="nl">Mail me zodra de ontmoeting gepland is</span><span data-lang="en">Email me once the meetup is planned</span></b><br /><span class="muted small"><span data-lang="nl">Met de datum en de plaats. Enkel daarover, en je kunt het altijd stopzetten via je eigen link.</span><span data-lang="en">With the date and the place. Only about that, and you can turn it off any time through your own link.</span></span></span></label>
+
+        <div class="actions"><button class="btn" type="button" id="next"><span data-lang="nl">Volgende</span><span data-lang="en">Next</span></button></div>
+      </section>
+
+      <!-- Step 2: your house in the game? -->
+      <section id="s-2" hidden>
+        <h2><span data-lang="nl">Je eigen huis in het spel?</span><span data-lang="en">Your own house in the game?</span></h2>
+        <p data-lang="nl">Net zoals ons huis kunnen we ook het jouwe bouwen, binnen en buiten, zodat je er in het spel door kunt wandelen. Daarvoor hebben we de 2D-plannen van je huis nodig: de grondplannen van elke verdieping.</p>
+        <p data-lang="en">Just like our house, we can build yours too, inside and out, so you can walk through it in the game. For that we need the 2D plans of your home: the floor plan of each storey.</p>
+        <div class="choice">
+          <button type="button" id="house-yes" aria-pressed="false"><span data-lang="nl">Ja, graag</span><span data-lang="en">Yes, please</span></button>
+          <button type="button" id="house-no" aria-pressed="true"><span data-lang="nl">Nee, bedankt</span><span data-lang="en">No, thanks</span></button>
+        </div>
+
+        <div id="house" hidden>
+          <div class="drop" id="drop" tabindex="0" role="button">
+            <p><b data-lang="nl">Kies bestanden</b><b data-lang="en">Choose files</b> <span data-lang="nl">of sleep ze hierheen</span><span data-lang="en">or drag them here</span></p>
+            <p class="muted small" data-lang="nl">Een PDF of afbeeldingen (JPG, PNG, HEIC, TIFF): een scan, een export of gewoon een foto van een papieren plan. Op je gsm kun je meteen een foto nemen. Tot 10 bestanden van elk 25 MB.</p>
+            <p class="muted small" data-lang="en">A PDF or images (JPG, PNG, HEIC, TIFF): a scan, an export or just a photo of a paper plan. On your phone you can take a photo straight away. Up to 10 files of 25 MB each.</p>
+            <input type="file" id="files" multiple accept=".pdf,.jpg,.jpeg,.png,.heic,.heif,.webp,.tif,.tiff,application/pdf,image/*" hidden />
+          </div>
+          <ul class="files" id="file-list"></ul>
+          <p class="error" id="file-err" hidden></p>
+
+          <div class="note" data-lang="nl"><b>Wat gebeurt er met je plannen?</b> We gebruiken ze alleen om een 3D-model van je huis te bouwen. Yoshi doet dat met de hulp van AI: Claude, een AI-dienst van het Amerikaanse bedrijf Anthropic, leest je plannen en bouwt het model mee op. Anthropic verwerkt je plannen daarvoor, maar gebruikt ze niet om zijn AI te trainen: dat heeft Yoshi uitgeschakeld. De plannen zelf worden nooit gepubliceerd: ze staan beveiligd opgeslagen, en enkel Yoshi en die AI-dienst krijgen ze te zien. Het model dat we ervan maken is wél openbaar: iedereen die het spel speelt kan door je huis wandelen, en het zit in de openbare broncode van het project.</div>
+          <div class="note" data-lang="en"><b>What happens to your plans?</b> We only use them to build a 3D model of your home. Yoshi does that with the help of AI: Claude, an AI service from the American company Anthropic, reads your plans and helps build the model. Anthropic processes your plans for that, but doesn't use them to train its AI: Yoshi has switched that off. The plans themselves are never published: they are stored securely, and only Yoshi and that AI service get to see them. The model we make from them is public: anyone playing the game can walk through your house, and it's part of the project's public source code.</div>
+
+          <label class="consent"><input type="checkbox" id="c-own" /><span><span data-lang="nl">Ik woon in dit huis of heb de toestemming van de eigenaar, en ik mag deze plannen delen.</span><span data-lang="en">I live in this house or have the owner's permission, and I'm allowed to share these plans.</span></span></label>
+          <label class="consent"><input type="checkbox" id="c-model" /><span><span data-lang="nl">Ik ga akkoord dat een 3D-model van mijn huis, binnen en buiten, in het spel komt en openbaar te zien is op brieltje.be en in de openbare broncode.</span><span data-lang="en">I agree that a 3D model of my house, inside and out, goes into the game and is publicly visible on brieltje.be and in the public source code.</span></span></label>
+          <label class="consent"><input type="checkbox" id="c-private" /><span><span data-lang="nl">Ik weet dat mijn plannen nooit gepubliceerd worden en dat ik mijn toestemming altijd kan intrekken. Dan halen we het model uit het spel; kopieën die anderen al van de openbare code maakten, kunnen we niet terughalen.</span><span data-lang="en">I understand my plans are never published and I can withdraw my consent at any time. We then take the model out of the game; copies others already made of the public code can't be recalled.</span></span></label>
+          <label class="consent"><input type="checkbox" id="c-ai" /><span><span data-lang="nl">Ik ga akkoord dat Yoshi AI gebruikt om het model te maken: mijn plannen gaan daarvoor naar Claude, een AI-dienst van Anthropic (VS). Anthropic gebruikt ze niet om zijn AI te trainen.</span><span data-lang="en">I agree that Yoshi uses AI to make the model: my plans go to Claude, an AI service from Anthropic (USA), for that. Anthropic doesn't use them to train its AI.</span></span></label>
+          <p class="error" id="consent-err" hidden></p>
+        </div>
+
+        <!-- A field people don't see: bots fill it in. -->
+        <input type="text" id="website" name="website" tabindex="-1" autocomplete="off" aria-hidden="true" style="position:absolute;left:-9999px;width:1px;height:1px;opacity:0" />
+
+        <p class="muted small" data-lang="nl">We gebruiken je gegevens alleen om de ontmoeting te organiseren en, als je dat wilt, je huis te bouwen. Meer in het <a href="/legal/privacy.html?lang=nl" target="_blank" rel="noopener noreferrer">privacybeleid</a>.</p>
+        <p class="muted small" data-lang="en">We only use your details to organise the meetup and, if you want, to build your house. More in the <a href="/legal/privacy.html?lang=en" target="_blank" rel="noopener noreferrer">privacy policy</a>.</p>
+        <p class="error" id="send-err" hidden></p>
+        <div class="actions">
+          <button class="btn" type="submit" id="send"><span data-lang="nl">Verstuur</span><span data-lang="en">Send</span></button>
+          <button class="btn ghost" type="button" id="back"><span data-lang="nl">Terug</span><span data-lang="en">Back</span></button>
+        </div>
+      </section>
+    </form>
+
+    <!-- Thank you -->
+    <section id="s-done" hidden>
+      <h1><span data-lang="nl">Bedankt</span><span data-lang="en">Thank you</span>, <span id="done-name"></span>!</h1>
+      <p data-lang="nl">Je interesse is genoteerd. Als er genoeg mensen zijn, laten we je via e-mail weten waar en wanneer.</p>
+      <p data-lang="en">Your interest is noted. If enough people join in, we'll email you where and when.</p>
+      <p id="done-house" hidden><span data-lang="nl">Je plannen zijn goed aangekomen. We nemen contact op voor we aan je huis beginnen.</span><span data-lang="en">Your plans arrived safely. We'll get in touch before we start on your house.</span></p>
+      <div class="counter" id="counter2" hidden><b id="count2">0</b><span data-lang="nl">mensen hebben al interesse</span><span data-lang="en">people are interested so far</span></div>
+      <div class="note">
+        <span data-lang="nl"><b>Bewaar deze link.</b> Hiermee kun je je inschrijving later bekijken of intrekken.</span>
+        <span data-lang="en"><b>Keep this link.</b> With it you can look at or withdraw your sign-up later.</span>
+        <div class="linkbox"><input type="text" id="mine" readonly /><button class="btn ghost" type="button" id="copy"><span data-lang="nl">Kopieer</span><span data-lang="en">Copy</span></button></div>
+      </div>
+      <div class="actions"><a class="btn ghost" href="/"><span data-lang="nl">Naar het spel</span><span data-lang="en">To the game</span></a></div>
+    </section>
+
+    <!-- Your sign-up, from your own link -->
+    <section id="s-own" hidden>
+      <h1><span data-lang="nl">Je inschrijving</span><span data-lang="en">Your sign-up</span></h1>
+      <p class="muted"><span data-lang="nl">Dit is wat je stuurde. Enkel wie deze link heeft, ziet het.</span><span data-lang="en">This is what you sent. Only someone with this link can see it.</span></p>
+      <div id="own-body"></div>
+      <p class="error" id="own-err" hidden></p>
+      <div class="actions"><a class="btn" href="/"><span data-lang="nl">Naar het spel</span><span data-lang="en">To the game</span></a></div>
+      <div class="withdraw" id="own-withdraw">
+        <h2><span data-lang="nl">Intrekken</span><span data-lang="en">Withdraw</span></h2>
+        <p class="muted"><span data-lang="nl">Je gegevens en je plannen worden meteen en definitief verwijderd. Je kunt je daarna gewoon opnieuw inschrijven.</span><span data-lang="en">Your details and your plans are removed at once, for good. You can always sign up again afterwards.</span></p>
+        <button class="btn danger" type="button" id="withdraw"><span data-lang="nl">Inschrijving intrekken</span><span data-lang="en">Withdraw my sign-up</span></button>
+      </div>
+    </section>
+  </div>
+  <footer>
+    <a href="/legal/terms.html" target="_blank" rel="noopener noreferrer"><span data-lang="nl">Voorwaarden</span><span data-lang="en">Terms</span></a> ·
+    <a href="/legal/privacy.html" target="_blank" rel="noopener noreferrer">Privacy</a> ·
+    Yoshi Parlevliet CommV · <span data-lang="nl">ondernemingsnummer</span><span data-lang="en">enterprise number</span> 1002.569.036 · <a href="mailto:yoshi@olive-security.be">yoshi@olive-security.be</a>
+    <div class="slides-place" data-slides-controls></div>
+  </footer>
+</main>
+<script src="/interested/interested.js"></script>
+<script src="/slides/slides.js" defer></script>
+</body>
+</html>

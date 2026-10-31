@@ -1,0 +1,40 @@
+/* The terms, privacy policy and credits: plain readable pages in the game's colours. */
+:root { --ink: #f4efe6; --muted: rgba(244, 239, 230, 0.72); --accent: #f2b33d; --panel: #15181d; --line: rgba(255, 255, 255, 0.12); }
+* { box-sizing: border-box; }
+html, body { margin: 0; background: #0d0f12; color: var(--ink); font: 16px/1.6 "Bahnschrift", "Segoe UI", "Arial Narrow", sans-serif; }
+main { max-width: 820px; margin: 0 auto; padding: 32px 20px 64px; }
+/* Under the band of pictures at the top (public/slides/): the page starts a little higher up into it. */
+.slides.hero + main { margin-top: -56px; position: relative; }
+header { display: flex; flex-wrap: wrap; align-items: baseline; justify-content: space-between; gap: 12px; border-bottom: 3px solid var(--accent); padding-bottom: 12px; }
+header .brand { font-size: 28px; font-weight: 700; font-style: italic; letter-spacing: 0.06em; color: var(--ink); text-decoration: none; }
+nav a, .langs button { color: var(--muted); text-decoration: none; margin-left: 14px; font: inherit; background: none; border: 0; cursor: pointer; padding: 0; }
+nav a:hover, nav a[aria-current="page"], .langs button[aria-pressed="true"] { color: var(--accent); }
+.langs { margin-top: 10px; text-align: right; font-size: 14px; }
+h1 { font-size: 30px; font-style: italic; margin: 28px 0 4px; }
+h2 { font-size: 19px; margin: 28px 0 6px; color: var(--accent); letter-spacing: 0.02em; }
+p, li { color: var(--ink); }
+.updated { color: var(--muted); font-size: 14px; margin-top: 0; }
+a { color: var(--accent); }
+ul { padding-left: 22px; }
+table { width: 100%; border-collapse: collapse; margin: 10px 0; font-size: 15px; }
+th, td { text-align: left; vertical-align: top; padding: 8px 10px; border-bottom: 1px solid var(--line); }
+th { color: var(--muted); font-weight: 600; }
+.box { background: var(--panel); border-left: 4px solid var(--accent); padding: 12px 16px; margin: 16px 0; }
+footer { margin-top: 48px; color: var(--muted); font-size: 14px; border-top: 1px solid var(--line); padding-top: 12px; }
+[data-lang] { display: none; }
+html[lang="en"] [data-lang="en"], html[lang="nl"] [data-lang="nl"] { display: block; }
+@media (max-width: 560px) { table, thead, tbody, tr, th, td { display: block; } thead { display: none; } td { border: 0; padding: 2px 0; } tr { border-bottom: 1px solid var(--line); padding: 8px 0; } }
+/* The privacy policy's contents and its tables on a phone (each cell keeps its column's name). */
+.box ul { margin: 6px 0 0; }
+.box li { margin: 2px 0; }
+.toc { margin: 18px 0 8px; padding: 12px 16px; border: 1px solid var(--line); }
+.toc ol { margin: 0; padding-left: 22px; columns: 2 220px; column-gap: 24px; font-size: 15px; }
+.toc a { color: var(--ink); text-decoration: none; }
+.toc a:hover { color: var(--accent); text-decoration: underline; }
+h2[id] { scroll-margin-top: 16px; }
+td:first-child { font-weight: 600; }
+code { font-size: 14px; padding: 1px 5px; background: var(--panel); border-radius: 3px; }
+@media (max-width: 560px) {
+  td[data-label]::before { content: attr(data-label); display: block; margin-top: 6px; font-size: 12px; font-weight: 600; letter-spacing: 0.08em; text-transform: uppercase; color: var(--muted); }
+  td:first-child[data-label]::before { margin-top: 0; }
+}

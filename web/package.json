@@ -1,0 +1,24 @@
+{
+  "name": "briel-walkthrough",
+  "private": true,
+  "version": "0.1.0",
+  "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "build": "tsc --noEmit && vite build",
+    "start": "node server.mjs",
+    "preview": "vite preview",
+    "check": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@types/three": "^0.186.0",
+    "pg": "^8.23.1",
+    "three": "^0.186.1",
+    "typescript": "^7.0.2",
+    "vite": "^8.3.5",
+    "ws": "^8.22.0"
+  },
+  "engines": {
+    "node": ">=22"
+  }
+}
