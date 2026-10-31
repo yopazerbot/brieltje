@@ -277,6 +277,7 @@ export class Avatars {
     const k = i >= 0 ? i : [...name].reduce((h, c) => h + c.charCodeAt(0), 0) % OUTFITS.length;
     const body = hasSwat() ? buildSwat(name, color, SWAT_OUTFITS[k], hitMaterial, headBox, bodyBox) : buildFigure(name, color, OUTFITS[k]);
     const root = new THREE.Group();
+    root.userData.figure = true; // paintball's paint sticks on the body inside the hit boxes (weapon.ts)
     const tag = nameTag(name, color);
     tag.position.y = 2.0;
     root.add(body.root, tag);

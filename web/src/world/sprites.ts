@@ -2,9 +2,9 @@ import * as THREE from 'three';
 
 /**
  * Textures for effects, drawn in code once at start-up (no downloads): soft
- * particles for smoke, fire, sparks and debris; muzzle flashes; and bullet
- * holes per surface. Everything is drawn white or in its own colours on a
- * canvas and tinted where it is used.
+ * particles for smoke, fire, sparks and debris; muzzle flashes; bullet
+ * holes per surface; and paintball's paint splats. Everything is drawn white
+ * or in its own colours on a canvas and tinted where it is used.
  */
 
 /** A repeatable random sequence, so the drawings look the same every visit. */
@@ -310,6 +310,63 @@ export function holeSheet(): THREE.CanvasTexture {
     g.beginPath();
     g.arc(x, y, S * 0.45, 0, Math.PI * 2);
     g.fill();
+  }
+  const t = texture(c);
+  t.anisotropy = 4;
+  return t;
+}
+
+/**
+ * Paint splat sheet, 2 x 2 cells (paintball): four splats drawn white, tinted per splat where it
+ * lands. Each is a lumpy middle with a few spikes and drops thrown round it, lighter and glossy in
+ * the middle like wet paint. Everything stays inside 44% of its cell, so far-off mipmaps don't
+ * bleed into the next one.
+ */
+export function splatSheet(): THREE.CanvasTexture {
+  const S = 256;
+  const [c, g] = canvas(S * 2, S * 2);
+  const rand = random(37);
+  for (let cell = 0; cell < 4; cell++) {
+    const x = (cell % 2) * S + S / 2;
+    const y = Math.floor(cell / 2) * S + S / 2;
+    const R = S * (0.17 + rand() * 0.04);
+    g.save();
+    g.beginPath();
+    g.rect(x - S / 2, y - S / 2, S, S);
+    g.clip();
+    g.fillStyle = '#ffffff';
+    // The middle: points round a circle pushed in and out (some far out, the spikes), joined by curves.
+    const n = 22;
+    const pts: [number, number][] = [];
+    for (let i = 0; i < n; i++) {
+      const a = (i / n) * Math.PI * 2 + rand() * 0.15;
+      const r = rand() < 0.22 ? R * (1.35 + rand() * 0.45) : R * (0.78 + rand() * 0.3);
+      pts.push([x + Math.cos(a) * r, y + Math.sin(a) * r]);
+    }
+    g.beginPath();
+    const mid = (i: number) => [(pts[i % n][0] + pts[(i + 1) % n][0]) / 2, (pts[i % n][1] + pts[(i + 1) % n][1]) / 2];
+    g.moveTo(mid(0)[0], mid(0)[1]);
+    for (let i = 1; i <= n; i++) g.quadraticCurveTo(pts[i % n][0], pts[i % n][1], mid(i)[0], mid(i)[1]);
+    g.fill();
+    // Drops thrown out round it, smaller further out.
+    for (let i = 0; i < 16; i++) {
+      const a = rand() * Math.PI * 2;
+      const d = R * (1.25 + rand() * 1.1);
+      const r = S * (0.008 + rand() * 0.03) * (1.6 - d / (R * 2.4));
+      g.beginPath();
+      g.arc(x + Math.cos(a) * d, y + Math.sin(a) * d, Math.max(1.5, r), 0, Math.PI * 2);
+      g.fill();
+    }
+    // Shading on the paint only: lighter in the middle, a little darker at the edges, and a glint.
+    g.globalCompositeOperation = 'source-atop';
+    const shade = g.createRadialGradient(x, y, R * 0.2, x, y, R * 2.2);
+    shade.addColorStop(0, '#ffffff');
+    shade.addColorStop(0.45, '#e6e6e6');
+    shade.addColorStop(1, '#b4b4b4');
+    g.fillStyle = shade;
+    g.fillRect(x - S / 2, y - S / 2, S, S);
+    blob(g, x - R * 0.3, y - R * 0.35, R * 0.35, '#ffffff', 0.9);
+    g.restore();
   }
   const t = texture(c);
   t.anisotropy = 4;

@@ -1,7 +1,9 @@
 import * as THREE from 'three';
+import { anyPaint, GUN_PAINT, onPaintball, paintball } from '../paintball';
 import { sound } from '../sound';
 import { Decals } from './decals';
 import { Particles, type Spawn } from './particles';
+import { splatSound, Splats, type Paint } from './splats';
 import { flashSheet, HOLE, PARTICLE } from './sprites';
 
 /**
@@ -12,7 +14,22 @@ import { flashSheet, HOLE, PARTICLE } from './sprites';
  * flashes, shell casings and the puff where a player is hit. All particles
  * come from the shared pools in particles.ts. (Bullet tracers were removed at
  * Yoshi's request: with several players shooting they filled the screen.)
+ *
+ * In paintball (paintball.ts) the same calls draw paint instead (splats.ts):
+ * your paintballs fly and splat where they land, figures get paint on them,
+ * the cannon fires a big paint ball and a blast is a burst of colours. No
+ * flashes, fire, smoke, casings, bullet holes or blood.
  */
+
+/** Where a paintball's paint sticks on a figure: its body part (`on`), not the hit box round it; `scale` is the figure's size. */
+export interface Spot {
+  point: THREE.Vector3;
+  normal: THREE.Vector3;
+  on: THREE.Object3D;
+  scale: number;
+}
+
+const UP = new THREE.Vector3(0, 1, 0);
 
 type Kind = 'dust' | 'sparks' | 'wood' | 'earth' | 'chips' | 'fur';
 
@@ -41,6 +58,8 @@ interface Rocket {
   travelled: number;
   speed: number;
   onArrive?: () => void;
+  /** The paint cannon's ball: drops of paint behind it instead of fire and smoke */
+  paint: boolean;
 }
 
 interface Casing {
@@ -66,6 +85,8 @@ const CASING: Record<string, { len: number; r: number; shell?: boolean }> = {
 
 let flashTexture: THREE.CanvasTexture | null = null;
 const flashMats: THREE.MeshBasicMaterial[] = [];
+// A paint gun has no flash: every muzzle flash (yours and the others') shares these materials, so hiding them hides all.
+onPaintball((on) => flashMats.forEach((m) => (m.visible = !on)));
 
 /**
  * A muzzle flash: a star facing down the barrel and two crossed flames along it,
@@ -80,7 +101,7 @@ export function muzzleFlash(size: number): THREE.Group & { fire(): void } {
       const map = flashTexture.clone();
       map.repeat.set(0.5, 1);
       map.offset.set(u0, 0);
-      flashMats.push(new THREE.MeshBasicMaterial({ map, color: new THREE.Color(3.2, 2.6, 1.9), transparent: true, depthWrite: false, blending: THREE.AdditiveBlending, side: THREE.DoubleSide }));
+      flashMats.push(new THREE.MeshBasicMaterial({ map, color: new THREE.Color(3.2, 2.6, 1.9), transparent: true, depthWrite: false, blending: THREE.AdditiveBlending, side: THREE.DoubleSide, visible: !paintball.on }));
     }
   }
   const group = new THREE.Group() as THREE.Group & { fire(): void };
@@ -110,10 +131,13 @@ export function muzzleFlash(size: number): THREE.Group & { fire(): void } {
 
 export class Effects {
   readonly particles = new Particles();
+  readonly splats: Splats;
   private group = new THREE.Group();
   private rockets: Rocket[] = [];
   private rocketBody = new THREE.CylinderGeometry(0.045, 0.045, 0.55, 8).rotateX(Math.PI / 2);
   private rocketMat = new THREE.MeshStandardMaterial({ color: '#4a4d3a', roughness: 0.7 });
+  private paintBall = new THREE.SphereGeometry(0.13, 14, 10);
+  private paintMat = new THREE.MeshStandardMaterial({ color: GUN_PAINT.bazooka, roughness: 0.25 });
   private casings: Casing[] = [];
   private casingMesh: THREE.InstancedMesh;
   private nextCasing = 0;
@@ -124,14 +148,18 @@ export class Effects {
   private m = new THREE.Matrix4();
   private q = new THREE.Quaternion();
   private v = new THREE.Vector3();
+  private ray = new THREE.Raycaster();
 
   constructor(
-    scene: THREE.Scene,
+    private scene: THREE.Scene,
     private decals: Decals,
     /** Height of the ground or floor under (x, z), looking down from y */
     private groundAt: (x: number, z: number, y: number) => number,
   ) {
     scene.add(this.group, this.particles.group);
+    this.splats = new Splats(scene);
+    // Rays from a paint blast also meet sprites (name tags, health bars), which three.js only tests with a camera; they are no wall anyway.
+    this.ray.camera = new THREE.PerspectiveCamera();
     // Casings: one instanced cylinder (brass, or red for shotgun shells), lying along x.
     const geo = new THREE.CylinderGeometry(1, 1, 1, 8).rotateZ(Math.PI / 2);
     this.casingMesh = new THREE.InstancedMesh(geo, new THREE.MeshStandardMaterial({ color: '#ffffff', metalness: 0.9, roughness: 0.3 }), 40);
@@ -228,8 +256,55 @@ export class Effects {
     }
   }
 
-  /** Where a bullet hit a player: a short dark red mist. */
-  hit(point: THREE.Vector3): void {
+  /** One of your shots hit a surface: a hole and a burst (impact), or in paintball a splat where the paintball lands. */
+  shot(point: THREE.Vector3, normal: THREE.Vector3, material: string, on?: THREE.Object3D): void {
+    if (!paintball.on) return this.impact(point, normal, material, on);
+    this.splats.landing(point, (paint, dir) => {
+      this.splats.add(point, normal, paint.color, paint.size, on, dir);
+      this.splash(point, normal, paint.color, paint.size);
+      splatSound(point);
+    });
+  }
+
+  /** The paintball for one pellet of your shot, from the gun to where it hit (paintball only). */
+  paintShot(from: THREE.Vector3, to: THREE.Vector3, paint: Paint): void {
+    this.splats.ball(from, to, paint);
+  }
+
+  /** A cat, clown or strongman hit: a cartoon puff, or in paintball a splash and paint on them (`spot`). */
+  puff(point: THREE.Vector3, spot?: Spot): void {
+    if (paintball.on) this.painted(point, spot);
+    else this.impact(point, UP, 'cat');
+  }
+
+  /** Paint where a paintball hit a figure, once it gets there: a splash, its sound and a blob on the body part. */
+  private painted(point: THREE.Vector3, spot?: Spot): void {
+    this.splats.landing(point, (paint, dir) => {
+      this.splash(point, dir.clone().negate(), paint.color, paint.size);
+      // Big enough to see on a player, not a sheet of paint on a giant: it grows with the root of the figure's size.
+      if (spot) this.splats.stick(spot.point, spot.normal, spot.on, paint.color, Math.min(0.32, paint.size * 0.62) * Math.sqrt(spot.scale));
+      splatSound(point);
+    });
+  }
+
+  /** Drops of paint thrown off a splat, and a quick spray, `size` the splat's (m). */
+  private splash(point: THREE.Vector3, normal: THREE.Vector3, c: THREE.Color, size: number): void {
+    const p = this.v.copy(point).addScaledVector(normal, 0.03).clone();
+    this.throw(p, normal, 1, 0, 0, (s) => {
+      Object.assign(s, { life: 0.2, size0: size * 0.4, size1: size * 1.3, alpha: 0.7, cell: PARTICLE.puff, drag: 6 });
+      s.c0.copy(c);
+      s.c1.copy(c);
+    });
+    this.throw(p, normal, Math.round(6 + size * 20), 2.6, 0.9, (s) => {
+      Object.assign(s, { life: 0.35 + Math.random() * 0.35, size0: 0.02 + size * 0.06, size1: 0.015, alpha: 1, cell: PARTICLE.glow, drag: 1, gravity: 9.8 });
+      s.c0.copy(c);
+      s.c1.copy(c).multiplyScalar(0.8);
+    });
+  }
+
+  /** Where a bullet hit a player: a short dark red mist; in paintball a splash and a blob of paint on them (`spot`). */
+  hit(point: THREE.Vector3, spot?: Spot): void {
+    if (paintball.on) return this.painted(point, spot);
     const up = new THREE.Vector3(0, 0.3, 0);
     this.throw(point, up, 5, 1.2, 1, (s) => {
       Object.assign(s, { life: 0.35 + Math.random() * 0.2, size0: 0.05, size1: 0.28, alpha: 0.75, cell: PARTICLE.puff, drag: 4, gravity: 1 });
@@ -252,19 +327,70 @@ export class Effects {
     });
   }
 
-  /** A bazooka rocket from `from` to `to` with a smoke trail; `onArrive` when it gets there. */
+  /** A bazooka rocket from `from` to `to` with a smoke trail (in paintball the cannon's paint ball); `onArrive` when it gets there. */
   rocket(from: THREE.Vector3, to: THREE.Vector3, speed: number, onArrive?: () => void): void {
     const mesh = new THREE.Group();
-    mesh.add(new THREE.Mesh(this.rocketBody, this.rocketMat));
+    const paint = paintball.on;
+    mesh.add(paint ? new THREE.Mesh(this.paintBall, this.paintMat) : new THREE.Mesh(this.rocketBody, this.rocketMat));
     mesh.traverse((o) => (o.userData.ignoreRay = true));
     mesh.position.copy(from);
     mesh.lookAt(to);
     this.group.add(mesh);
-    this.rockets.push({ mesh, from: from.clone(), dir: to.clone().sub(from).normalize(), length: from.distanceTo(to), travelled: 0, speed, onArrive });
+    this.rockets.push({ mesh, from: from.clone(), dir: to.clone().sub(from).normalize(), length: from.distanceTo(to), travelled: 0, speed, onArrive, paint });
   }
 
-  /** A rocket's explosion: flash, fireball, smoke, debris, embers, dust along the ground and a scorch mark. */
+  /**
+   * Paintball's blast (a paint balloon, the cannon's ball): a burst of paint in every colour,
+   * drops raining down and splats on the ground and the walls round it. No flash, fire or smoke,
+   * and far fewer big see-through particles than the explosion (they cost pixels).
+   */
+  private paintBlast(point: THREE.Vector3, scale: number): void {
+    const b = this.particles.budget * scale;
+    const n = (k: number) => Math.max(1, Math.round(k * b));
+    const k = scale;
+    const colors = Array.from({ length: 4 }, () => new THREE.Color(anyPaint()));
+    // A cloud of spray, quick to clear.
+    this.throw(point, UP, n(14), 3 * k, 0.9, (s, i) => {
+      Object.assign(s, { life: 0.45 + Math.random() * 0.35, size0: 0.6 * k, size1: 2.4 * k, alpha: 0.75, cell: PARTICLE.puff, drag: 4, gravity: 1.5, spin: (Math.random() - 0.5) * 2 });
+      s.c0.copy(colors[i % 4]);
+      s.c1.copy(colors[i % 4]);
+    });
+    // Drops thrown up and out, falling back.
+    this.throw(point, UP, n(46), 7 * k, 1, (s, i) => {
+      Object.assign(s, { life: 0.9 + Math.random() * 0.7, size0: 0.05 + Math.random() * 0.08, size1: 0.04, alpha: 1, cell: PARTICLE.glow, drag: 0.6, gravity: 9.8 });
+      s.c0.copy(colors[i % 4]);
+      s.c1.copy(colors[i % 4]).multiplyScalar(0.8);
+    });
+    // On the ground: a big splat in the middle and smaller ones round it, each in its own colour.
+    const ground = this.groundAt(point.x, point.z, point.y + 0.2);
+    if (point.y - ground < 1.5) {
+      this.splats.add(new THREE.Vector3(point.x, ground + 0.01, point.z), UP, colors[0], 2.6 * k);
+      for (let i = 1; i < 6; i++) {
+        const a = Math.random() * Math.PI * 2;
+        const d = (1 + Math.random() * 1.4) * k;
+        const x = point.x + Math.cos(a) * d;
+        const z = point.z + Math.sin(a) * d;
+        this.splats.add(new THREE.Vector3(x, this.groundAt(x, z, point.y + 0.2) + 0.01, z), UP, colors[i % 4], (0.6 + Math.random() * 0.6) * k);
+      }
+    }
+    // On walls and ceilings round it (a balloon against the house, the cannon's ball on a wall):
+    // a splat where each of five rays from it meets one, bigger the closer it is.
+    const reach = 1.8 * k;
+    [[1, 0, 0], [-1, 0, 0], [0, 0, 1], [0, 0, -1], [0, 1, 0]].forEach(([x, y, z], i) => {
+      this.v.set(x, y, z);
+      this.ray.set(point.clone().addScaledVector(this.v, -0.15), this.v);
+      this.ray.far = reach + 0.15;
+      const hit = this.ray.intersectObjects(this.scene.children, true).find((h) => h.object.visible && h.face && !h.object.userData.ignoreRay && !h.object.userData.player && h.object.userData.clown === undefined && h.object.userData.cat === undefined && h.object.userData.glassIndex === undefined);
+      if (!hit) return;
+      const normal = hit.face!.normal.clone().transformDirection(hit.object.matrixWorld);
+      this.splats.add(hit.point, normal, colors[(i + 1) % 4], 0.5 * k + (1 - hit.distance / this.ray.far) * reach, hit.object);
+    });
+    splatSound(point, true);
+  }
+
+  /** A rocket's explosion: flash, fireball, smoke, debris, embers, dust along the ground and a scorch mark. In paintball a burst of paint. */
   explosion(point: THREE.Vector3, scale = 1): void {
+    if (paintball.on) return this.paintBlast(point, scale);
     const b = this.particles.budget * scale;
     const up = new THREE.Vector3(0, 1, 0);
     const n = (k: number) => Math.max(1, Math.round(k * b));
@@ -322,7 +448,7 @@ export class Effects {
    */
   casing(camera: THREE.Camera, w: string, aim: number): void {
     const spec = CASING[w];
-    if (!spec) return;
+    if (!spec || paintball.on) return; // a paint gun throws nothing out
     const right = new THREE.Vector3(1, 0, 0).applyQuaternion(camera.quaternion);
     const upv = new THREE.Vector3(0, 1, 0).applyQuaternion(camera.quaternion);
     const fwd = new THREE.Vector3(0, 0, -1).applyQuaternion(camera.quaternion);
@@ -364,17 +490,27 @@ export class Effects {
       r.travelled = Math.min(r.length, r.travelled + r.speed * dt);
       r.mesh.position.copy(r.from).addScaledVector(r.dir, r.travelled);
       const tail = this.v.copy(r.mesh.position).addScaledVector(r.dir, -0.35);
-      this.throw(tail, r.dir, 1, 0, 0, (s) => {
-        Object.assign(s, { life: 0.07, size0: 0.45, size1: 0.3, alpha: 1, cell: PARTICLE.glow });
-        s.c0.setRGB(5, 3, 1.2);
-        s.c1.copy(s.c0);
-      }, true);
-      const back = r.dir.clone().negate();
-      this.throw(tail, back, Math.random() < this.particles.budget ? 2 : 1, 0.6, 0.6, (s) => {
-        Object.assign(s, { life: 1.2 + Math.random() * 0.8, size0: 0.15, size1: 0.9, alpha: 0.45, cell: PARTICLE.puff, drag: 2, gravity: -0.3, spin: (Math.random() - 0.5) * 2 });
-        s.c0.set('#d0ccc4');
-        s.c1.set('#a8a49c');
-      });
+      if (r.paint) {
+        // The paint ball spins and drips: drops of its paint fall behind it.
+        r.mesh.rotation.z += dt * 12;
+        this.throw(tail, UP, Math.random() < this.particles.budget ? 2 : 1, 0.8, 1, (s) => {
+          Object.assign(s, { life: 0.5 + Math.random() * 0.4, size0: 0.05, size1: 0.03, alpha: 1, cell: PARTICLE.glow, drag: 1, gravity: 9.8 });
+          s.c0.copy(this.paintMat.color);
+          s.c1.copy(this.paintMat.color);
+        });
+      } else {
+        this.throw(tail, r.dir, 1, 0, 0, (s) => {
+          Object.assign(s, { life: 0.07, size0: 0.45, size1: 0.3, alpha: 1, cell: PARTICLE.glow });
+          s.c0.setRGB(5, 3, 1.2);
+          s.c1.copy(s.c0);
+        }, true);
+        const back = r.dir.clone().negate();
+        this.throw(tail, back, Math.random() < this.particles.budget ? 2 : 1, 0.6, 0.6, (s) => {
+          Object.assign(s, { life: 1.2 + Math.random() * 0.8, size0: 0.15, size1: 0.9, alpha: 0.45, cell: PARTICLE.puff, drag: 2, gravity: -0.3, spin: (Math.random() - 0.5) * 2 });
+          s.c0.set('#d0ccc4');
+          s.c1.set('#a8a49c');
+        });
+      }
       if (r.travelled >= r.length) {
         r.mesh.removeFromParent();
         this.rockets.splice(i, 1);
@@ -382,6 +518,7 @@ export class Effects {
       }
     }
     this.particles.update(dt);
+    this.splats.update(dt);
 
     // Casings: fly, bounce off the floor a couple of times, lie still, then go.
     for (let k = this.casings.length - 1; k >= 0; k--) {

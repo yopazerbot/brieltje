@@ -1,4 +1,5 @@
 import * as THREE from 'three';
+import { anyPaint, paintball } from '../paintball';
 import { sound } from '../sound';
 import type { World } from './collision';
 import SPEC from '../../shared/grenade.json';
@@ -10,6 +11,8 @@ import SPEC from '../../shared/grenade.json';
  * stop and goes off when its fuse runs out. A fast one breaks a window and flies on.
  * Your own grenades go off here (main.ts tells the server); other players' fly from their
  * throw and are taken away when their blast arrives.
+ * In paintball (paintball.ts) each is a paint balloon in a bright colour that bounces with a
+ * squelch, and its blast is a splash of paint (effects.ts); it flies and counts the same.
  */
 export const GRENADE = SPEC as { carry: number; back: number; fuse: number; speed: number; radius: number; damage: number };
 
@@ -39,6 +42,28 @@ function model(): THREE.Group {
     });
   }
   return template.clone();
+}
+
+const balloonShape = new THREE.SphereGeometry(R * 1.25, 14, 10).scale(1, 1.15, 1);
+const knotShape = new THREE.ConeGeometry(R * 0.28, R * 0.5, 8).rotateX(Math.PI);
+const balloons = new Map<string, THREE.MeshStandardMaterial>();
+/** Paintball: a water balloon full of paint, in one of the paint colours, its knot on top. */
+function balloon(): THREE.Group {
+  const color = anyPaint();
+  let mat = balloons.get(color);
+  if (!mat) {
+    mat = new THREE.MeshStandardMaterial({ color, roughness: 0.2 }); // shiny rubber
+    balloons.set(color, mat);
+  }
+  const g = new THREE.Group();
+  const knot = new THREE.Mesh(knotShape, mat);
+  knot.position.y = R * 1.25 * 1.15 + R * 0.15;
+  g.add(new THREE.Mesh(balloonShape, mat), knot);
+  g.traverse((o) => {
+    o.castShadow = true;
+    o.userData.ignoreRay = true;
+  });
+  return g;
 }
 
 interface Live {
@@ -125,7 +150,7 @@ export class Grenades {
   }
 
   private add(from: THREE.Vector3, vel: THREE.Vector3, by: string | null): void {
-    const mesh = model();
+    const mesh = paintball.on ? balloon() : model();
     mesh.position.copy(from);
     this.group.add(mesh);
     const spin = new THREE.Vector3(-8 - Math.random() * 4, (Math.random() - 0.5) * 4, (Math.random() - 0.5) * 3);
@@ -180,12 +205,25 @@ export class Grenades {
     }
   }
 
-  /** A dull knock with a little ring of metal; softer on grass. */
+  /** A dull knock with a little ring of metal; softer on grass. A paint balloon: a rubbery squelch, bending up in pitch. */
   private clunk(at: THREE.Vector3, loud: number, soft: boolean): void {
     const ctx = sound.context();
     const dest = ctx && sound.at(at.x, at.y, at.z, 2);
     if (!ctx || !dest) return;
     const t = ctx.currentTime;
+    if (paintball.on) {
+      const o = ctx.createOscillator();
+      o.type = 'sine';
+      o.frequency.setValueAtTime(110, t);
+      o.frequency.exponentialRampToValueAtTime(240, t + 0.12);
+      const g = ctx.createGain();
+      g.gain.setValueAtTime(0.35 * loud, t);
+      g.gain.exponentialRampToValueAtTime(0.0005, t + 0.16);
+      o.connect(g).connect(dest);
+      o.start(t);
+      o.stop(t + 0.18);
+      return;
+    }
     for (const [f, len, gain] of soft ? [[140, 0.07, 0.25]] : [[190, 0.09, 0.3], [1250 + Math.random() * 200, 0.12, 0.05]]) {
       const o = ctx.createOscillator();
       o.type = 'triangle';

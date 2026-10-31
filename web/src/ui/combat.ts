@@ -1,4 +1,5 @@
 import type { Score } from '../net/client';
+import { anyPaint, onPaintball, paintball } from '../paintball';
 import { sound } from '../sound';
 import { onLang, t } from '../i18n';
 
@@ -6,6 +7,9 @@ import { onLang, t } from '../i18n';
  * Multiplayer fighting on screen: health, red flash when hit, hit marker,
  * kill feed, death screen with respawn countdown, round banner and the
  * scoreboard (hold Tab or the touchpad). The server decides; this shows it.
+ * In paintball (paintball.ts) it says it the friendly way: tagged, not
+ * killed, a splash of paint at the edge of the screen instead of red, and
+ * the health bar in paint (style.css colours it by the page's `paintball`).
  */
 
 const RESPAWN_S = 3;
@@ -42,12 +46,16 @@ export class Combat {
     onLang(() => {
       this.drawTitles();
       this.drawBoard();
-      for (const tag of document.querySelectorAll('#killfeed .hs')) tag.textContent = t('combat.headshotTag');
+      for (const tag of document.querySelectorAll('#killfeed .hs')) tag.textContent = t(paintball.on ? 'paint.bullseyeTag' : 'combat.headshotTag');
+    });
+    onPaintball(() => {
+      this.drawTitles();
+      this.drawBoard();
     });
   }
 
   private drawTitles(): void {
-    $('death-title').textContent = t('combat.killedBy', { name: this.killer });
+    $('death-title').textContent = t(paintball.on ? 'paint.taggedBy' : 'combat.killedBy', { name: this.killer });
     $('banner-title').textContent = this.winner === this.me ? t('combat.youWin') : t('combat.wins', { name: this.winner });
   }
 
@@ -74,7 +82,10 @@ export class Combat {
     this.hp = hp;
     this.flash = 1;
     this.drawHealth();
-    this.tone(110, 0.12, 0.35, 'sine');
+    if (paintball.on) {
+      document.body.style.setProperty('--paint', anyPaint()); // each hit its own colour at the edge of the screen
+      this.splat();
+    } else this.tone(110, 0.12, 0.35, 'sine');
   }
 
   died(killer: string, head: boolean): void {
@@ -87,7 +98,8 @@ export class Combat {
     $('death').dataset.head = head ? '1' : '';
     $('death').classList.remove('hidden');
     this.drawHealth();
-    this.tone(70, 0.4, 0.5, 'triangle');
+    if (paintball.on) this.tone(620, 0.45, 0.3, 'sine', 210); // a cartoon "aww" sliding down
+    else this.tone(70, 0.4, 0.5, 'triangle');
   }
 
   respawned(): void {
@@ -98,14 +110,22 @@ export class Combat {
     this.drawHealth();
   }
 
-  /** A line in the kill feed, top right. */
+  /**
+   * A line in the kill feed, top right. In paintball it reads "X tagged Y" for a player and
+   * "X splattered a strongman" for the game's own figures, with the weapon after it.
+   */
   kill(killer: string, victim: string, head: boolean, weapon = ''): void {
     const color = (n: string) => this.scores.find((s) => s.name === n)?.color ?? '';
     const line = document.createElement('div');
     line.className = 'kf';
     if (killer === this.me || victim === this.me) line.classList.add('me');
-    line.append(span(killer, '', color(killer)), span(weapon ? ` ${weapon} ` : ' ▸ ', 'arrow'), span(victim, '', color(victim)));
-    if (head) line.append(span(t('combat.headshotTag'), 'hs'));
+    if (paintball.on) {
+      const you = victim === t('char.you'); // alone, a strongman tagged you
+      const figure = [t('char.strongman'), t('char.clown'), t('char.cat')].includes(victim);
+      line.append(span(killer, '', color(killer)), span(` ${t(figure ? 'paint.splattered' : 'paint.tagged')} `, 'arrow'), span(you ? t('paint.you') : victim, '', color(victim)));
+      if (weapon) line.append(span(` · ${weapon}`, 'arrow'));
+    } else line.append(span(killer, '', color(killer)), span(weapon ? ` ${weapon} ` : ' ▸ ', 'arrow'), span(victim, '', color(victim)));
+    if (head) line.append(span(t(paintball.on ? 'paint.bullseyeTag' : 'combat.headshotTag'), 'hs'));
     $('killfeed').append(line);
     this.feed.push({ el: line, left: FEED_S });
     if (this.feed.length > 5) this.feed.shift()?.el.remove();
@@ -156,8 +176,9 @@ export class Combat {
 
     if (!this.alive) {
       this.respawnLeft = Math.max(0, this.respawnLeft - dt);
-      const head = $('death').dataset.head ? t('combat.headshot') : '';
-      const text = head + (this.roundLeft > 0 ? t('combat.nextRound') : this.respawnLeft > 0 ? t('combat.backIn', { n: Math.ceil(this.respawnLeft) }) : t('combat.respawning'));
+      const head = $('death').dataset.head ? t(paintball.on ? 'paint.bullseye' : 'combat.headshot') : '';
+      const n = Math.ceil(this.respawnLeft);
+      const text = head + (this.roundLeft > 0 ? t('combat.nextRound') : this.respawnLeft > 0 ? t(paintball.on ? 'paint.backIn' : 'combat.backIn', { n }) : t('combat.respawning'));
       if ($('death-sub').textContent !== text) $('death-sub').textContent = text;
     }
     if (this.roundLeft > 0) {
@@ -182,9 +203,10 @@ export class Combat {
   }
 
   private drawBoard(): void {
-    $('score-goal').textContent = t('combat.goal', { n: this.limit });
+    $('score-goal').textContent = t(paintball.on ? 'paint.goal' : 'combat.goal', { n: this.limit });
     const head = document.createElement('tr');
-    for (const h of ['combat.player', 'combat.kills', 'combat.deaths', 'combat.points'] as const) {
+    const titles = paintball.on ? (['combat.player', 'paint.tags', 'paint.taggedCol', 'combat.points'] as const) : (['combat.player', 'combat.kills', 'combat.deaths', 'combat.points'] as const);
+    for (const h of titles) {
       const th = document.createElement('th');
       th.textContent = t(h);
       head.append(th);
@@ -199,7 +221,7 @@ export class Combat {
         name.className = 'name';
         name.append(span(s.name, '', s.color));
         if (!s.armed) name.append(span(t('combat.exploring'), 'exploring'));
-        else if (!s.alive) name.append(span(t('combat.dead'), 'exploring'));
+        else if (!s.alive) name.append(span(t(paintball.on ? 'paint.out' : 'combat.dead'), 'exploring'));
         const cells = [s.kills, s.deaths, s.points].map((n) => {
           const td = document.createElement('td');
           td.className = 'num';
@@ -212,8 +234,29 @@ export class Combat {
     $('score-table').replaceChildren(head, ...rows);
   }
 
-  /** Short sounds made in code: hit tick, kill ding, getting hurt. */
-  private tone(freq: number, len: number, volume: number, type: OscillatorType): void {
+  /** Paintball: hit by paint, a wet splat close by (noise falling in pitch). */
+  private splat(): void {
+    const ctx = sound.context();
+    const out = sound.out();
+    if (!ctx || !out) return;
+    const t = ctx.currentTime;
+    const buf = ctx.createBuffer(1, Math.ceil(ctx.sampleRate * 0.25), ctx.sampleRate);
+    const data = buf.getChannelData(0);
+    for (let i = 0; i < data.length; i++) data[i] = (Math.random() * 2 - 1) * Math.pow(1 - i / data.length, 3);
+    const noise = ctx.createBufferSource();
+    noise.buffer = buf;
+    const low = ctx.createBiquadFilter();
+    low.type = 'lowpass';
+    low.frequency.setValueAtTime(3000, t);
+    low.frequency.exponentialRampToValueAtTime(300, t + 0.25);
+    const g = ctx.createGain();
+    g.gain.value = 0.45;
+    noise.connect(low).connect(g).connect(out);
+    noise.start(t);
+  }
+
+  /** Short sounds made in code: hit tick, kill ding, getting hurt; `to` slides the pitch there. */
+  private tone(freq: number, len: number, volume: number, type: OscillatorType, to = freq < 200 ? freq * 0.5 : 0): void {
     const ctx = sound.context();
     const out = sound.out();
     if (!ctx || !out) return;
@@ -221,7 +264,7 @@ export class Combat {
     const o = ctx.createOscillator();
     o.type = type;
     o.frequency.setValueAtTime(freq, t);
-    if (freq < 200) o.frequency.exponentialRampToValueAtTime(freq * 0.5, t + len);
+    if (to) o.frequency.exponentialRampToValueAtTime(to, t + len);
     const g = ctx.createGain();
     g.gain.setValueAtTime(volume, t);
     g.gain.exponentialRampToValueAtTime(0.001, t + len);

@@ -3,6 +3,7 @@ import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 import CLOWNS from '../../shared/clowns.json';
 import WEAPONS from '../../shared/weapons.json';
 import { bruteDamage, newBrute, stepBrute, type Brute, type BruteEvent, type Spot } from '../../shared/brutes.mjs';
+import { onPaintball, PAINT, paintball } from '../paintball';
 import { sound } from '../sound';
 import { paintJoints } from './paint';
 import { terrain } from './terrain';
@@ -17,7 +18,8 @@ import { terrain } from './terrain';
  * being sent. Come close and a clown waves, a strongman flexes. Shot, a clown honks and a
  * strongman groans; both fall over backwards and are back after a while. The models are turned
  * by their joints (Body, Head, Arm_L/R, Leg_L/R, and the strongman's Forearm_L/R): no skeleton,
- * no animation clips.
+ * no animation clips. In paintball they get blobs of paint on them, and a strongman's bar fills up
+ * with paint until he is splattered.
  */
 
 export type Kind = keyof typeof CLOWNS.kinds;
@@ -179,6 +181,8 @@ export class Clowns {
 
   /** `floorAt`: the floor under a point; `free`: room for one standing there (no wall in the way). */
   constructor(private floorAt: (x: number, z: number, y: number) => number, private free: (x: number, z: number, y: number) => boolean) {
+    // Paintball or not: the bars are drawn again the other way (health, or paint filling up).
+    onPaintball(() => this.clowns.forEach((c) => c.bar && (c.bar.hp = -1)));
     for (const kind of Object.keys(KINDS) as Kind[]) {
       void new GLTFLoader().loadAsync(KINDS[kind].model).then((gltf) => {
         paintJoints(gltf.scene, JOINTS); // one draw call a joint (a clown: about 6 instead of 27)
@@ -242,6 +246,7 @@ export class Clowns {
         const model = template.clone(true);
         const group = new THREE.Group();
         group.scale.setScalar(KINDS[kind].scale);
+        group.userData.figure = true; // paintball's paint sticks on the body inside the hit box (weapon.ts)
         group.add(model);
         const hit = new THREE.Mesh(HIT, hitMaterial);
         hit.scale.set(KINDS[kind].width / 0.3, KINDS[kind].height / 1.25, KINDS[kind].width / 0.3); // head to toe
@@ -443,7 +448,10 @@ export class Clowns {
     }
   }
 
-  /** The health bar over a strongman: shown once he is hurt, drawn again when his health changes. */
+  /**
+   * The health bar over a strongman: shown once he is hurt, drawn again when his health changes.
+   * In paintball it fills up with paint instead, and when it is full he is splattered.
+   */
   private drawBar(c: Clown, dead: boolean): void {
     const bar = c.bar!;
     const hp = dead ? 0 : c.brain!.hp;
@@ -454,8 +462,15 @@ export class Clowns {
     const g = bar.ctx;
     g.fillStyle = 'rgba(10, 10, 12, 0.75)';
     g.fillRect(0, 0, 128, 16);
-    g.fillStyle = hp > FIGHT.hp * 0.35 ? '#e0b13a' : '#e0503a';
-    g.fillRect(2, 2, Math.round((124 * hp) / FIGHT.hp), 12);
+    if (paintball.on) {
+      const paint = g.createLinearGradient(2, 0, 126, 0);
+      PAINT.forEach((p, i) => paint.addColorStop(i / (PAINT.length - 1), p));
+      g.fillStyle = paint;
+      g.fillRect(2, 2, Math.round((124 * (FIGHT.hp - hp)) / FIGHT.hp), 12);
+    } else {
+      g.fillStyle = hp > FIGHT.hp * 0.35 ? '#e0b13a' : '#e0503a';
+      g.fillRect(2, 2, Math.round((124 * hp) / FIGHT.hp), 12);
+    }
     bar.texture.needsUpdate = true;
   }
 

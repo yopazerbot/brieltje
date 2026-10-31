@@ -1,8 +1,8 @@
 /**
- * Start screen and in-game menu. The start screen: your name, alone or together, Explore or
- * Action, and a start button per way of playing. It works before the world exists: the first
- * start loads the world, with its progress on the chosen button, and play begins by itself once
- * it is ready. The menu: a rail of tabs for the map, playing, playing together, the settings, the
+ * Start screen and in-game menu. The start screen: your name, alone or together, Explore,
+ * Paintball or Action, and a start button per way of playing. It works before the world exists:
+ * the first start loads the world, with its progress on the chosen button, and play begins by
+ * itself once it is ready. The menu: a rail of tabs for the map, playing, playing together, the settings, the
  * controls and (for the admin) the admin's tools; M opens it on the map. Choices, and the tab you
  * left it on, are remembered in this browser.
  */
@@ -13,7 +13,8 @@ import { layout, moveKeys, onKeys, setLayout, type Layout } from '../keys';
 import { controlGroups, key, type Action, type Control } from '../shortcuts';
 
 export type ControlMode = Control;
-export type PlayMode = 'explore' | 'action';
+/** Walking around, Action with paint guns (src/paintball.ts), or Action. */
+export type PlayMode = 'explore' | 'paintball' | 'action';
 
 const GRAPHICS_CYCLE: Mode[] = ['auto', ...ORDER];
 
@@ -40,7 +41,10 @@ const $ = (id: string) => document.getElementById(id)!;
 
 export class Menu {
   mode: ControlMode | null = null;
-  play: PlayMode = load(KEYS.play) === 'explore' ? 'explore' : 'action';
+  /** The mode you picked (see `playing` for the one you play). */
+  play: PlayMode = load(KEYS.play) === 'explore' || load(KEYS.play) === 'paintball' ? (load(KEYS.play) as PlayMode) : 'action';
+  /** The admin's house rule "child-friendly for everyone" (multiplayer): Action plays as Paintball and can't be picked. */
+  private childSafe = false;
   walkSpeed = Math.min(4, Math.max(0.8, Number(load(KEYS.speed)) || 1.4));
   nickname = 'Guest';
   /** Called when play starts or resumes, from a click or key press (so the mouse can be captured). */
@@ -110,6 +114,7 @@ export class Menu {
     // Another language: the controls, the speed, the graphics line, the name and the controller's state again.
     onLang(() => {
       this.fillControls();
+      this.showPlay();
       this.setSpeed(this.walkSpeed, false);
       this.setGraphics(...this.graphicsArgs);
       $('who').textContent = this.shownName;
@@ -194,12 +199,43 @@ export class Menu {
     return this.open && !this.start.classList.contains('hidden');
   }
 
+  /** What you play: the mode you picked, with Action as Paintball while the admin has made the game child-friendly. */
+  get playing(): PlayMode {
+    return this.childSafe && this.play === 'action' ? 'paintball' : this.play;
+  }
+
   setPlay(play: PlayMode, notify = true): void {
+    if (play === 'action' && this.childSafe) return; // its button is off
     this.play = play;
     save(KEYS.play, play);
-    document.querySelectorAll<HTMLButtonElement>('[data-play]').forEach((b) => b.classList.toggle('selected', b.dataset.play === play));
+    this.showPlay();
     if (!this.start.classList.contains('hidden') || !this.pause.classList.contains('hidden')) this.fillControls();
-    if (notify) this.onPlayMode(play);
+    if (notify) this.onPlayMode(this.playing);
+  }
+
+  /**
+   * The admin's rule "child-friendly for everyone" on or off. Your own pick is kept: with the
+   * rule off again, someone who picked Action plays Action again.
+   */
+  setChildSafe(on: boolean): void {
+    if (on === this.childSafe) return;
+    const before = this.playing;
+    this.childSafe = on;
+    this.showPlay();
+    this.fillControls();
+    if (this.playing !== before) this.onPlayMode(this.playing);
+  }
+
+  /** The mode buttons: the one you play lit; Action off, saying why, while the game is child-friendly. */
+  private showPlay(): void {
+    document.querySelectorAll<HTMLButtonElement>('[data-play]').forEach((b) => {
+      b.classList.toggle('selected', b.dataset.play === this.playing);
+      if (b.dataset.play !== 'action') return;
+      b.disabled = this.childSafe;
+      b.title = this.childSafe ? t('mode.actionOffTitle') : '';
+      const sub = b.querySelector('span')!;
+      sub.textContent = t(this.childSafe ? 'mode.actionOff' : (sub.dataset.i18n as 'mode.actionSub' | 'mode.actionSub2'));
+    });
   }
 
   setSpeed(speed: number, notify = true): void {
@@ -315,7 +351,7 @@ export class Menu {
   private fillControls(): void {
     const control = this.mode ?? 'kbm';
     $('controls').replaceChildren(
-      ...controlGroups(control, this.play === 'action').map(({ title, rows }) => {
+      ...controlGroups(control, this.playing !== 'explore').map(({ title, rows }) => {
         const group = document.createElement('div');
         group.className = 'ctl-group';
         const h = document.createElement('h3');

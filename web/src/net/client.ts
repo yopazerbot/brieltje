@@ -59,6 +59,8 @@ export interface Rules {
   portals: boolean;
   /** Players can travel from the chat (/church); the admin always can */
   travel: boolean;
+  /** Child-friendly for everyone: Action plays as Paintball on every page (src/paintball.ts); missing from an older server */
+  paintball?: boolean;
 }
 
 import type { ModeView } from '../ui/games';

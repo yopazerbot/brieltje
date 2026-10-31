@@ -105,8 +105,11 @@ const DEFAULT_FURNITURE = shared('default_furniture.json').pieces.map(([item, x,
 const LAYOUT_VERSION = String(shared('default_furniture.json').version ?? 1);
 // Bumped in the layout file to put the starting layout back once, even over changes (Yoshi, 31 Oct 2026: the furniture was gone).
 const LAYOUT_RESTORE = String(shared('default_furniture.json').restore ?? 0);
-/** House rules the admin sets in the settings, with their defaults. */
-const RULES = { flying: true, furniture: true, names: true, maxPlayers: 4, pin: true, portals: true, travel: true };
+/**
+ * House rules the admin sets in the settings, with their defaults. `paintball` (child-friendly for
+ * everyone) only changes what the pages show: Action as Paintball, with the same hits and scores.
+ */
+const RULES = { flying: true, furniture: true, names: true, maxPlayers: 4, pin: true, portals: true, travel: true, paintball: false };
 /** A valid value for a rule: on/off, or a number of players from 2 to MAX_PLAYERS. */
 const ruleOk = (k, v) => (k === 'maxPlayers' ? Number.isInteger(v) && v >= 2 && v <= MAX_PLAYERS : typeof v === 'boolean');
 /** Weapons only the admin carries (the bazooka), on top of the pistol everyone starts with. */
@@ -677,7 +680,7 @@ export class Game {
     for (const f of list) this.furniture.set(f.id, f);
   }
 
-  /** House rules (flying, players moving furniture, names, how many may play, portals, travelling from the chat), kept across restarts. */
+  /** House rules (flying, players moving furniture, names, how many may play, portals, travelling from the chat, child-friendly), kept across restarts. */
   async loadRules() {
     let saved = {};
     try {
@@ -694,7 +697,7 @@ export class Game {
     if (!changed.length) return;
     for (const k of changed) this.rules[k] = m[k];
     await this.auth.store.setMeta('rules', JSON.stringify(this.rules));
-    const label = { flying: 'flying', furniture: 'moving furniture', names: 'names above players', pin: 'joining with the PIN', portals: 'the portals', travel: 'travelling from the chat' };
+    const label = { flying: 'flying', furniture: 'moving furniture', names: 'names above players', pin: 'joining with the PIN', portals: 'the portals', travel: 'travelling from the chat', paintball: 'child-friendly for everyone' };
     const text = changed.map((k) => (k === 'maxPlayers' ? `the limit to ${this.rules[k]} players` : `${label[k]} ${this.rules[k] ? 'on' : 'off'}`)).join(', ');
     this.auth.log('rules', null, { username: by, detail: text });
     this.broadcast({ t: 'rules', rules: this.rules });

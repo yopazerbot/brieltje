@@ -1,4 +1,5 @@
 import { lang, t } from '../i18n';
+import { paintball, weaponName } from '../paintball';
 import type { WeaponId } from '../weapon';
 
 /** On-screen text while playing: where you are, controller status and frame rate. */
@@ -25,14 +26,14 @@ export class Hud {
   private slotsKey = '';
   /** The weapons you carry, bottom right: slot number and name, the one in your hands highlighted. */
   setSlots(slots: { id: WeaponId; slot: number; owned: boolean; current: boolean }[] | null): void {
-    const key = slots ? lang() + slots.map((s) => `${s.slot}${s.owned ? 1 : 0}${s.current ? 1 : 0}`).join() : '';
+    const key = slots ? lang() + paintball.on + slots.map((s) => `${s.slot}${s.owned ? 1 : 0}${s.current ? 1 : 0}`).join() : '';
     if (key === this.slotsKey) return;
     this.slotsKey = key;
     const box = document.getElementById('slots')!;
     box.replaceChildren(...(slots ?? []).filter((s) => s.owned).map((s) => {
       const d = document.createElement('div');
       d.className = s.current ? 'slot current' : 'slot';
-      d.textContent = `${s.slot}  ${t(`weapon.${s.id}`)}`;
+      d.textContent = `${s.slot}  ${weaponName(s.id)}`;
       return d;
     }));
   }

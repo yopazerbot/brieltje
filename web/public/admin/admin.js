@@ -149,7 +149,7 @@
     );
     const splits = [
       ['Controls', [['Keyboard and mouse', 'starts_kbm'], ['Controller', 'starts_pad'], ['Touch', 'starts_touch']]],
-      ['Mode', [['Explore', 'starts_explore'], ['Action', 'starts_action']]],
+      ['Mode', [['Explore', 'starts_explore'], ['Paintball', 'starts_paintball'], ['Action', 'starts_action']]],
       ['Alone or together', [['Alone', 'starts_alone'], ['Together', 'starts_together']]],
       ['Language', [['Nederlands', 'starts_nl'], ['English', 'starts_en']]],
     ];
@@ -189,7 +189,7 @@
     });
     for (const v of alone) {
       const li = el('li', 'alone');
-      li.append(el('i'), el('span', '', `Alone · ${v.mode === 'action' ? 'Action' : 'Explore'}`),
+      li.append(el('i'), el('span', '', `Alone · ${v.mode === 'action' ? 'Action' : v.mode === 'paintball' ? 'Paintball' : 'Explore'}`),
         el('span', 'muted small', `${CONTROL[v.control] ?? v.control} · ${v.lang === 'nl' ? 'Nederlands' : 'English'} · ${v.minutes < 1 ? 'just started' : `${v.minutes} min`}`));
       items.push(li);
     }

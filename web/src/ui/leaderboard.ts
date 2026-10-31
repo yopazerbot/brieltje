@@ -1,7 +1,8 @@
 import { api, errorText } from '../net/client';
 import { num, onLang, t } from '../i18n';
+import { paintball } from '../paintball';
 
-/** All-time totals per account (kills, deaths, headshots, round wins), in the pause menu. */
+/** All-time totals per account (kills, deaths, headshots, round wins), in the pause menu; in paintball's words while you play it. */
 export class Leaderboard {
   private box = document.getElementById('leaderboard')!;
   private button = document.getElementById('leaderboard-btn')!;
@@ -44,7 +45,8 @@ export class Leaderboard {
     try {
       const { rows } = await api.leaderboard();
       const head = document.createElement('tr');
-      for (const h of ['lb.player', 'lb.kills', 'lb.deaths', 'lb.kd', 'lb.headshots', 'lb.wins'] as const) {
+      const titles = paintball.on ? (['lb.player', 'paint.tags', 'paint.taggedCol', 'paint.ratio', 'paint.bullseyes', 'lb.wins'] as const) : (['lb.player', 'lb.kills', 'lb.deaths', 'lb.kd', 'lb.headshots', 'lb.wins'] as const);
+      for (const h of titles) {
         const th = document.createElement('th');
         th.textContent = t(h);
         head.append(th);
@@ -65,7 +67,7 @@ export class Leaderboard {
       table.append(head, ...body);
       const note = document.createElement('p');
       note.className = 'lb-note';
-      note.textContent = t(rows.length ? 'lb.note' : 'lb.empty');
+      note.textContent = t(rows.length ? 'lb.note' : paintball.on ? 'paint.lbEmpty' : 'lb.empty');
       this.box.replaceChildren(table, note);
     } catch (e) {
       this.box.textContent = errorText(e)();

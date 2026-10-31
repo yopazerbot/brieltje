@@ -30,8 +30,9 @@ import { sound } from './sound';
 import { footstep, surfaceOf } from './footsteps';
 import { SettingsPanel, type Settings } from './settings';
 import { SPECS, Weapon, type WeaponId } from './weapon';
+import { paintball, setPaintball, weaponName as shownWeapon } from './paintball';
 import { Decals } from './world/decals';
-import { Effects } from './world/effects';
+import { Effects, type Spot } from './world/effects';
 import { GRENADE, Grenades } from './world/grenades';
 import { Pickups } from './world/pickups';
 import { Cats } from './world/cats';
@@ -526,7 +527,8 @@ let mapTimer = 0;
 window.addEventListener('keydown', (e) => {
   if (e.code === 'KeyN' && !e.repeat && !typing(e)) settings.toggle('minimap'); // the setting's shortcut (Settings: Minimap)
 });
-weapon.onImpact = (point, normal, material, on) => effects.impact(point, normal, material, on);
+weapon.onImpact = (point, normal, material, on) => effects.shot(point, normal, material, on);
+weapon.onPaintball = (from, to, paint) => effects.paintShot(from, to, paint);
 weapon.onEject = (w) => effects.casing(camera, w, weapon.aimAmount);
 
 player.walkSpeed = menu.walkSpeed;
@@ -562,10 +564,13 @@ player.onLand = (speed) => {
   weapon.land(speed);
 };
 menu.onSpeed = (v) => (player.walkSpeed = v);
-weapon.setEnabled(menu.play === 'action');
+// Paintball is Action with paint guns: the same weapon and fight, shown the friendly way (src/paintball.ts).
+weapon.setEnabled(menu.playing !== 'explore');
+setPaintball(menu.playing === 'paintball');
 menu.onPlayMode = (play) => {
-  weapon.setEnabled(play === 'action');
-  combat.setActive(!!me && play === 'action');
+  weapon.setEnabled(play !== 'explore');
+  setPaintball(play === 'paintball');
+  combat.setActive(!!me && play !== 'explore');
 };
 
 window.addEventListener('keydown', (e) => {
@@ -616,7 +621,7 @@ function showOnline(): void {
 
 const $ = (id: string) => document.getElementById(id)!;
 /** House rules in multiplayer, set by the admin in the settings; alone everything is allowed. */
-const ANYTHING_GOES: Rules = { flying: true, furniture: true, names: true, maxPlayers: 4, pin: true, portals: true, travel: true };
+const ANYTHING_GOES: Rules = { flying: true, furniture: true, names: true, maxPlayers: 4, pin: true, portals: true, travel: true, paintball: false };
 let rules = ANYTHING_GOES;
 const flyBox = $('set-flying') as HTMLInputElement;
 const furnBox = $('set-furniture') as HTMLInputElement;
@@ -625,6 +630,7 @@ const maxSlider = $('set-max') as HTMLInputElement;
 const pinBox = $('set-pin') as HTMLInputElement;
 const portalsBox = $('set-portals') as HTMLInputElement;
 const travelBox = $('set-travel') as HTMLInputElement;
+const paintballBox = $('set-paintball') as HTMLInputElement;
 // The admin can move extremely fast (Yoshi): their own choice, kept on this device; the server lets an admin that fast.
 const turboBox = $('set-turbo') as HTMLInputElement;
 try {
@@ -653,6 +659,8 @@ function applyRules(next: Rules): void {
   pinBox.checked = next.pin ?? true;
   portalsBox.checked = next.portals ?? true;
   travelBox.checked = next.travel ?? true;
+  paintballBox.checked = next.paintball ?? false;
+  menu.setChildSafe(next.paintball ?? false); // child-friendly for everyone: Action plays as Paintball
   maxSlider.value = String(next.maxPlayers ?? 4);
   $('set-max-value').textContent = maxSlider.value;
   avatars.showNames = next.names && !games.hideOthers;
@@ -673,6 +681,7 @@ namesBox.addEventListener('change', () => net.send({ t: 'rules', names: namesBox
 pinBox.addEventListener('change', () => net.send({ t: 'rules', pin: pinBox.checked }));
 portalsBox.addEventListener('change', () => net.send({ t: 'rules', portals: portalsBox.checked }));
 travelBox.addEventListener('change', () => net.send({ t: 'rules', travel: travelBox.checked }));
+paintballBox.addEventListener('change', () => net.send({ t: 'rules', paintball: paintballBox.checked }));
 // The admin's PIN field: filled when the admin logs in, saved on the server.
 const pinCode = $('set-pin-code') as HTMLInputElement;
 const pinMsg = $('set-pin-msg');
@@ -758,9 +767,9 @@ document.querySelectorAll<HTMLButtonElement>('[data-game]').forEach((b) =>
 weapon.onGlassHit = (i, point, from) => {
   if (glass.break(i, point, from)) net.send({ t: 'glass', i });
 };
-weapon.onPlayerHit = (name, body, head, point) => {
+weapon.onPlayerHit = (name, body, head, point, spot) => {
   if (games.friend(name)) return; // your own team in the teams game
-  effects.hit(point);
+  effects.hit(point, spot);
   avatars.flinch(name);
   if (!avatars.canBeHit(name)) return;
   combat.hitMarker();
@@ -773,20 +782,20 @@ function hitAngle(by: string): number | null {
   if (!at) return null;
   return Math.atan2(-(at.x - player.x), -(at.z - player.z)) - player.yaw;
 }
-const weaponName = (w: string) => (w === 'grenade' || w in SPECS ? t(`weapon.${w as WeaponId | 'grenade'}`) : '');
+const weaponName = (w: string) => (w === 'grenade' || w in SPECS ? shownWeapon(w as WeaponId | 'grenade') : '');
 const youName = () => me?.username ?? t('char.you');
 /** A cat hit by a bullet, or caught in your blast (`w` 'grenade' or 'bazooka'). */
 function catHit(i: number, point: THREE.Vector3, w: string): void {
-  effects.impact(point, new THREE.Vector3(0, 1, 0), 'cat'); // a cartoon puff, no blood
+  effects.puff(point); // a cartoon puff (or paint), no blood
   if (!cats.hit(i)) return;
   combat.hitMarker(true);
   combat.kill(youName(), t('char.cat'), false, weaponName(w));
   net.send({ t: 'cat', i, w });
 }
 weapon.onCatHit = (i, point) => catHit(i, point, weapon.current);
-/** A clown hit by your bullet or caught in your blast: it honks and falls over. */
-function clownHit(id: number, point: THREE.Vector3, w: string): void {
-  effects.impact(point, new THREE.Vector3(0, 1, 0), 'cat'); // the same cartoon puff
+/** A clown hit by your bullet or caught in your blast: it honks and falls over. `spot`: where paintball's paint sticks on him. */
+function clownHit(id: number, point: THREE.Vector3, w: string, spot?: Spot): void {
+  effects.puff(point, spot); // the same cartoon puff
   const result = clowns.hit(id, w, !net.connected); // a strongman takes many hits
   if (!result) return;
   combat.hitMarker(result === 'down');
@@ -818,7 +827,7 @@ function soloHurt(amount: number): void {
     if (!net.connected && !combat.alive) respawnAt(HOUSE_SPAWNS[Math.floor(Math.random() * HOUSE_SPAWNS.length)]);
   }, 3000);
 }
-weapon.onClownHit = (id, point) => clownHit(id, point, weapon.current);
+weapon.onClownHit = (id, point, spot) => clownHit(id, point, weapon.current, spot);
 $('newround-btn').addEventListener('click', () => net.send({ t: 'newround' }));
 
 /**
@@ -1382,7 +1391,7 @@ let playClock = 0;
 const visit = Array.from(crypto.getRandomValues(new Uint8Array(6)), (v) => (v % 36).toString(36)).join('');
 function beacon(e: 'start' | 'minute' | 'end'): void {
   // Only what you chose in the game: nothing read from the device.
-  const body = { e, id: visit, mode: weapon.enabled ? 'action' : 'explore', control: menu.mode ?? 'kbm', together: !!me, lang: document.documentElement.lang === 'nl' ? 'nl' : 'en' };
+  const body = { e, id: visit, mode: weapon.enabled ? (paintball.on ? 'paintball' : 'action') : 'explore', control: menu.mode ?? 'kbm', together: !!me, lang: document.documentElement.lang === 'nl' ? 'nl' : 'en' };
   void fetch('/api/stats/beacon', { method: 'POST', keepalive: true, headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) }).catch(() => {});
 }
 // Leaving the page: off the admin's list of who is playing at once, instead of after a quiet minute.

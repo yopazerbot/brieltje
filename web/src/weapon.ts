@@ -1,7 +1,9 @@
 import * as THREE from 'three';
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 import { sound } from './sound';
-import { muzzleFlash } from './world/effects';
+import { muzzleFlash, type Spot } from './world/effects';
+import type { Paint } from './world/splats';
+import { GUN_PAINT, onPaintball, paintball } from './paintball';
 import WEAPONS from '../shared/weapons.json';
 import { t } from './i18n';
 
@@ -18,6 +20,9 @@ import { t } from './i18n';
  * have loaded (or if they can't), simple block guns stand in.
  * The models sit within 20 cm of the camera, closer than any wall can get
  * (the player is 25 cm wide), so they never poke through walls.
+ * In paintball (paintball.ts) the same guns are bright toy markers with a
+ * paint hopper and an air tank, they pop instead of bang, and each pellet is
+ * a paintball you see fly (effects.ts); the hits are the same.
  */
 
 export type WeaponId = 'pistol' | 'rifle' | 'shotgun' | 'sniper' | 'bazooka';
@@ -62,6 +67,135 @@ const FINISH: Record<string, [number, number, number]> = {
 const loadedGuns = new Map<WeaponId, THREE.Group>();
 
 /**
+ * Paintball's toy look: each gun in bright colours instead of black metal. Each of the models'
+ * materials has a role: the body (in the colour of the gun's paint), the trim, the parts that were
+ * black, and the scope's glass. Every copy of a gun shares its materials (in your hands, in the
+ * others' hands, lying in the house), so switching is one pass over a few materials.
+ */
+type Role = 'body' | 'trim' | 'deep' | 'lens';
+const ROLE: Record<string, Role> = {
+  Main: 'body', LightMetal: 'body', Wood: 'body', DarkWood: 'body', Green: 'body',
+  Metal: 'trim', MainLight: 'trim', Grey: 'trim', Black: 'deep', DarkMetal: 'deep', MainDark: 'deep', Glass: 'lens',
+};
+const TOY: Record<WeaponId, Record<Role, string>> = {
+  pistol: { body: GUN_PAINT.pistol, trim: '#ffd23f', deep: '#2f6fe0', lens: '#8fe9ff' },
+  rifle: { body: GUN_PAINT.rifle, trim: '#f4f4ee', deep: '#ff7a1a', lens: '#8fe9ff' },
+  shotgun: { body: GUN_PAINT.shotgun, trim: '#ffd23f', deep: '#ff7a1a', lens: '#8fe9ff' },
+  sniper: { body: GUN_PAINT.sniper, trim: '#f4f4ee', deep: '#ffd23f', lens: '#8fe9ff' },
+  bazooka: { body: GUN_PAINT.bazooka, trim: '#ffd23f', deep: '#9d5cff', lens: '#8fe9ff' },
+};
+/** The materials that change, with their toy colour and their own look (colour, metalness, roughness). */
+const toyParts: { m: THREE.MeshStandardMaterial; color: string; rough: number; real: [THREE.Color, number, number] }[] = [];
+/** The hoppers' and tanks' materials: shown in paintball only. */
+const kitMats: THREE.Material[] = [];
+
+function dress(p: (typeof toyParts)[number], on: boolean): void {
+  if (on) {
+    p.m.color.set(p.color);
+    p.m.metalness = 0;
+    p.m.roughness = p.rough; // smooth plastic
+  } else {
+    p.m.color.copy(p.real[0]);
+    p.m.metalness = p.real[1];
+    p.m.roughness = p.real[2];
+  }
+}
+
+/** One of gun `w`'s materials takes its role's toy colour in paintball. */
+function toy(m: THREE.MeshStandardMaterial, w: WeaponId, role: Role): void {
+  const part = { m, color: TOY[w][role], rough: role === 'lens' ? 0.1 : 0.42, real: [m.color.clone(), m.metalness, m.roughness] as [THREE.Color, number, number] };
+  toyParts.push(part);
+  dress(part, paintball.on);
+}
+
+onPaintball((on) => {
+  for (const p of toyParts) dress(p, on);
+  for (const m of kitMats) m.visible = on;
+});
+
+/**
+ * Each gun's paint hopper and air tank: the hopper's radius, how far forward of the grip it sits
+ * (m) and whether it feeds from the left side, its top just under the line of sight, instead of
+ * from the top (on top it would hide what you aim at; the cannon is aimed past its left side). No
+ * hopper on the pistol or on the sniper (its scope is there). Then the tank's radius and its
+ * stretch under the barrel, as shares of the way from the grip to the muzzle. All within the
+ * gun's length, by which the figures hold it.
+ */
+const KIT: Record<WeaponId, { hopper: number; at: number; side: boolean; tank: number; from: number; to: number }> = {
+  pistol: { hopper: 0, at: 0, side: false, tank: 0.011, from: 0.5, to: 0.85 },
+  rifle: { hopper: 0.042, at: -0.16, side: true, tank: 0.017, from: 0.42, to: 0.68 },
+  shotgun: { hopper: 0.042, at: -0.14, side: true, tank: 0.017, from: 0.5, to: 0.72 },
+  sniper: { hopper: 0, at: 0, side: false, tank: 0.016, from: 0.36, to: 0.6 },
+  bazooka: { hopper: 0.06, at: -0.42, side: false, tank: 0, from: 0, to: 0 },
+};
+/** Each hopper's colour: one that stands out on its gun (a lighter one turns skin-coloured in the sun). */
+const HOPPER: Record<WeaponId, string> = { pistol: '#2f8cff', rifle: '#9d5cff', shotgun: '#ff7a1a', sniper: '#ffd23f', bazooka: '#ffd23f' };
+const kitShapes = { ball: new THREE.SphereGeometry(1, 16, 12), can: new THREE.CylinderGeometry(1, 1, 1, 14) };
+const kitSets = new Map<WeaponId, { hopper: THREE.Material; trim: THREE.Material; tank: THREE.Material }>();
+
+/** Put the hopper on top of `gun` and the tank under its barrel (shown in paintball only), finding its surfaces with rays. */
+function addKit(gun: THREE.Object3D, w: WeaponId): void {
+  const k = KIT[w];
+  let set = kitSets.get(w);
+  if (!set) {
+    // A glossy hopper, its lid and neck in the gun's trim, an aluminium tank.
+    const make = (p: THREE.MeshStandardMaterialParameters) => {
+      const m = new THREE.MeshStandardMaterial({ ...p, visible: paintball.on });
+      kitMats.push(m);
+      return m;
+    };
+    set = {
+      hopper: make({ color: HOPPER[w], roughness: 0.15 }),
+      trim: make({ color: TOY[w].trim, roughness: 0.4 }),
+      tank: make({ color: '#dfe3e8', metalness: 0.5, roughness: 0.3 }),
+    };
+    kitSets.set(w, set);
+  }
+  gun.updateMatrixWorld(true);
+  const box = new THREE.Box3().setFromObject(gun);
+  const x = (box.min.x + box.max.x) / 2;
+  const ray = new THREE.Raycaster();
+  /** Where a ray from `from` (outside the gun) along `dir` meets the gun itself. */
+  const meet = (from: THREE.Vector3, dir: THREE.Vector3) => {
+    ray.set(from, dir);
+    return ray.intersectObject(gun, true).find((h) => !h.object.userData.kit)?.point;
+  };
+  const surface = (z: number, down: boolean) => meet(new THREE.Vector3(x, down ? box.max.y + 1 : box.min.y - 1, z), new THREE.Vector3(0, down ? -1 : 1, 0))?.y;
+  const part = (geo: THREE.BufferGeometry, mat: THREE.Material, px: number, py: number, pz: number, sx: number, sy: number, sz: number, along = false) => {
+    const m = new THREE.Mesh(geo, mat);
+    m.position.set(px, py, pz);
+    m.scale.set(sx, sy, sz);
+    if (along) m.rotation.x = Math.PI / 2;
+    m.userData.kit = true;
+    m.userData.ignoreRay = true;
+    m.castShadow = true;
+    return m;
+  };
+  const top = k.hopper ? surface(k.at, true) : undefined;
+  if (top !== undefined && k.side) {
+    // A side feed: the hopper beside the gun's left flank, its lid just under the top, joined by a short neck.
+    const r = k.hopper;
+    const y = top - r * 1.15;
+    const flank = meet(new THREE.Vector3(box.min.x - 1, y, k.at), new THREE.Vector3(1, 0, 0))?.x ?? box.min.x;
+    const cx = flank - r * 1.2;
+    const neck = part(kitShapes.can, set.trim, flank - r * 0.25, y, k.at, r * 0.3, r * 0.5, r * 0.3);
+    neck.rotation.z = Math.PI / 2;
+    gun.add(neck, part(kitShapes.ball, set.hopper, cx, y, k.at, r, r * 0.85, r * 1.25), part(kitShapes.can, set.trim, cx, y + r * 0.85, k.at, r * 0.55, r * 0.22, r * 0.55));
+  } else if (top !== undefined) {
+    const r = k.hopper;
+    gun.add(
+      part(kitShapes.can, set.trim, x, top + r * 0.3, k.at, r * 0.32, r * 0.6, r * 0.32), // the neck
+      part(kitShapes.ball, set.hopper, x, top + r * 1.25, k.at, r, r * 0.85, r * 1.25),
+      part(kitShapes.can, set.trim, x, top + r * 2, k.at, r * 0.55, r * 0.22, r * 0.55), // the lid
+    );
+  }
+  const len = -box.min.z;
+  const mid = -len * (k.from + k.to) / 2;
+  const under = k.tank ? surface(mid, false) : undefined;
+  if (under !== undefined) gun.add(part(kitShapes.can, set.tank, x, under - k.tank * 1.05, mid, k.tank, len * (k.to - k.from), k.tank, true));
+}
+
+/**
  * The gun models, turned so the barrel points along -z with the grip at the
  * origin (the models have the barrel along +x, up +y, origin at the grip).
  */
@@ -89,8 +223,10 @@ export const gunsReady: Promise<boolean> = Promise.all(
         m.roughness = f[1];
         m.color.multiplyScalar(f[2]);
         m.userData.finished = true;
+        toy(m, w, ROLE[m.name] ?? 'trim');
       }
     });
+    addKit(holder, w);
     loadedGuns.set(w, holder);
   }),
 ).then(
@@ -107,6 +243,18 @@ const wood = new THREE.MeshStandardMaterial({ color: '#7a4a2a', roughness: 0.6 }
 const olive = new THREE.MeshStandardMaterial({ color: '#4a4d3a', roughness: 0.8 });
 const lens = new THREE.MeshStandardMaterial({ color: '#1f3b52', roughness: 0.1, metalness: 0.5 });
 const UP = new THREE.Vector3(0, 1, 0);
+/** The block guns' materials, a set per gun, so each can take its own toy colours in paintball. */
+const blockSets = new Map<WeaponId, { metal: THREE.MeshStandardMaterial; dark: THREE.MeshStandardMaterial; wood: THREE.MeshStandardMaterial; olive: THREE.MeshStandardMaterial; lens: THREE.MeshStandardMaterial }>();
+function blockMats(w: WeaponId): NonNullable<ReturnType<typeof blockSets.get>> {
+  let set = blockSets.get(w);
+  if (!set) {
+    set = { metal: metal.clone(), dark: dark.clone(), wood: wood.clone(), olive: olive.clone(), lens: lens.clone() };
+    const roles: Record<keyof typeof set, Role> = { metal: 'trim', dark: 'deep', wood: 'body', olive: 'body', lens: 'lens' };
+    for (const k of Object.keys(set) as (keyof typeof set)[]) toy(set[k], w, roles[k]);
+    blockSets.set(w, set);
+  }
+  return set;
+}
 
 function box(w: number, h: number, d: number, mat: THREE.Material, x: number, y: number, z: number): THREE.Mesh {
   const m = new THREE.Mesh(new THREE.BoxGeometry(w, h, d), mat);
@@ -145,6 +293,7 @@ interface ViewModel {
 
 /** Gun plus two arms, in metres at real size (scaled down near the camera later). */
 function buildViewModel(id: WeaponId): ViewModel {
+  const { metal, dark, wood, olive, lens } = blockMats(id);
   const root = new THREE.Group();
   const gun = new THREE.Group();
   const muzzle = new THREE.Object3D();
@@ -210,6 +359,7 @@ function buildViewModel(id: WeaponId): ViewModel {
   }
   if (pump) pump.userData.rest = pump.position.clone();
   if (bolt) bolt.userData.rest = bolt.position.clone();
+  addKit(gun, id);
   muzzle.name = 'muzzle';
   gun.add(muzzle);
   const flash = muzzleFlash(FLASH[id]);
@@ -246,7 +396,7 @@ function sightPose(model: THREE.Object3D, w: WeaponId, z: number): THREE.Vector3
   model.updateMatrixWorld(true);
   const points: THREE.Vector3[] = [];
   model.traverse((o) => {
-    if (!(o instanceof THREE.Mesh)) return;
+    if (!(o instanceof THREE.Mesh) || o.userData.kit) return; // the gun's own sights, not paintball's hopper
     const pos = o.geometry.attributes.position;
     for (let i = 0; i < pos.count; i++) points.push(new THREE.Vector3().fromBufferAttribute(pos, i).applyMatrix4(o.matrixWorld));
   });
@@ -278,6 +428,25 @@ const VOICE: Record<WeaponId, { len: number; f0: number; f1: number; thump: numb
 };
 /** The rocket's explosion. */
 const BOOM = { len: 1.6, f0: 2400, f1: 50, thump: 42, gain: 1.0 };
+/**
+ * Paintball's pop per gun: a short puff of air through a band of noise (`f` its middle, Hz) and
+ * a soft low thump, with a hiss of air after it.
+ */
+const POP: Record<WeaponId, { len: number; f: number; thump: number; gain: number }> = {
+  pistol: { len: 0.12, f: 1500, thump: 190, gain: 0.45 },
+  rifle: { len: 0.1, f: 1700, thump: 170, gain: 0.4 },
+  shotgun: { len: 0.22, f: 900, thump: 120, gain: 0.6 },
+  sniper: { len: 0.18, f: 1200, thump: 140, gain: 0.55 },
+  bazooka: { len: 0.35, f: 500, thump: 80, gain: 0.7 },
+};
+/** How big each gun's paint splats are (m across); the shotgun's eight are smaller. */
+const SPLAT: Record<WeaponId, number> = { pistol: 0.5, rifle: 0.45, shotgun: 0.32, sniper: 0.65, bazooka: 0.9 };
+
+/** The figure (a player, a clown, a strongman) a hit box belongs to: the paint goes on its body, not on the box round it. */
+function figureOf(o: THREE.Object3D | null): THREE.Object3D | null {
+  for (let p = o; p; p = p.parent) if (p.userData.figure) return p;
+  return null;
+}
 
 export interface Shot {
   /** Camera kick to apply (radians) */
@@ -299,11 +468,13 @@ export class Weapon {
   spreadMul = 1;
   /** A bullet hit window pane `index` at `point`, fired from `from`. */
   onGlassHit: (index: number, point: THREE.Vector3, from: THREE.Vector3) => void = () => {};
-  /** Bullets (pellets) of one shot that hit another player's body and head. */
-  onPlayerHit: (name: string, body: number, head: number, point: THREE.Vector3) => void = () => {};
+  /** Bullets (pellets) of one shot that hit another player's body and head; in paintball `spot` is where the paint sticks. */
+  onPlayerHit: (name: string, body: number, head: number, point: THREE.Vector3, spot?: Spot) => void = () => {};
   /** A bullet hit one of the cats. */
   onCatHit: (index: number, point: THREE.Vector3) => void = () => {};
-  onClownHit: (id: number, point: THREE.Vector3) => void = () => {};
+  onClownHit: (id: number, point: THREE.Vector3, spot?: Spot) => void = () => {};
+  /** Paintball: a pellet's paintball flies from the gun to `to` (where it hit, or as far as it goes). */
+  onPaintball: (from: THREE.Vector3, to: THREE.Vector3, paint: Paint) => void = () => {};
   /** A bullet hit the house or the ground (`on` is the mesh it hit): a hole, and dust, sparks or chips. */
   onImpact: (point: THREE.Vector3, normal: THREE.Vector3, material: string, on: THREE.Object3D) => void = () => {};
   /** A spent casing leaves the gun (after the shot, or when the pump or bolt is worked). */
@@ -398,7 +569,7 @@ export class Weapon {
 
   get status(): string {
     if (!this.enabled) return '';
-    return this.reloading > 0 ? t('weapon.reloading') : `${this.ammo[this.current]} / ${this.spec.mag}`;
+    return this.reloading > 0 ? t(paintball.on ? 'paint.refilling' : 'weapon.reloading') : `${this.ammo[this.current]} / ${this.spec.mag}`;
   }
 
   /** For the weapon list on screen. */
@@ -428,9 +599,9 @@ export class Weapon {
     if (!this.owned.has(this.current)) this.select('pistol');
   }
 
-  /** A rocket or grenade exploding at `at` (anyone's): a long rumble. */
+  /** A rocket or grenade exploding at `at` (anyone's): a long rumble. In paintball the splash makes its own sound (effects.ts). */
   boom(at: THREE.Vector3): void {
-    this.sound('shot', 1, at, 'bazooka', BOOM);
+    if (!paintball.on) this.sound('shot', 1, at, 'bazooka', BOOM);
   }
 
   /** You throw a grenade: the gun drops out of the way for a moment and comes back up. */
@@ -523,22 +694,26 @@ export class Weapon {
 
     this.camera.updateMatrixWorld();
     const eye = this.camera.getWorldPosition(new THREE.Vector3());
-    const players = new Map<string, { body: number; head: number; point: THREE.Vector3 }>();
+    // Paintball: each pellet is a paintball from the muzzle, in the gun's paint.
+    const paint = paintball.on ? { from: this.models[this.current].muzzle.getWorldPosition(new THREE.Vector3()), color: new THREE.Color(GUN_PAINT[this.current]), size: SPLAT[this.current] } : null;
+    const players = new Map<string, { body: number; head: number; point: THREE.Vector3; spot?: Spot }>();
     for (let i = 0; i < spec.pellets; i++) {
       const a = Math.random() * Math.PI * 2;
       const r = spread * Math.sqrt(Math.random());
       this.raycaster.setFromCamera(new THREE.Vector2(Math.cos(a) * r, Math.sin(a) * r), this.camera);
-      const hit = this.raycaster.intersectObjects(this.scene.children, true).find((h) => h.object.visible && !h.object.userData.ignoreRay && h.face);
+      const hits = this.raycaster.intersectObjects(this.scene.children, true);
+      const hit = hits.find((h) => h.object.visible && !h.object.userData.ignoreRay && h.face);
+      if (paint) this.onPaintball(paint.from, hit ? hit.point : this.raycaster.ray.at(120, new THREE.Vector3()), paint);
       if (!hit || !hit.face) continue;
       const player = hit.object.userData.player as string | undefined;
       if (hit.object.userData.clown !== undefined) {
-        this.onClownHit(hit.object.userData.clown, hit.point.clone());
+        this.onClownHit(hit.object.userData.clown, hit.point.clone(), paint ? this.spot(hits, hit, false) : undefined);
         break;
       }
       if (hit.object.userData.cat !== undefined) {
         this.onCatHit(hit.object.userData.cat, hit.point.clone());
       } else if (player) {
-        const e = players.get(player) ?? { body: 0, head: 0, point: hit.point.clone() };
+        const e = players.get(player) ?? { body: 0, head: 0, point: hit.point.clone(), spot: paint ? this.spot(hits, hit, true) : undefined };
         if (hit.object.userData.part === 'head') e.head++;
         else e.body++;
         players.set(player, e);
@@ -549,10 +724,31 @@ export class Weapon {
         this.onImpact(hit.point.clone(), normal, String(hit.object.userData.material ?? ''), hit.object);
       }
     }
-    for (const [name, e] of players) this.onPlayerHit(name, e.body, e.head, e.point);
+    for (const [name, e] of players) this.onPlayerHit(name, e.body, e.head, e.point, e.spot);
     if (this.ammo[this.current] === 0) this.reload();
     const k = spec.kick * (0.8 + Math.random() * 0.4) * (1 - 0.4 * this.aim);
     return { pitch: k, yaw: spec.auto ? (Math.random() - 0.5) * k * 0.8 : 0 };
+  }
+
+  /**
+   * Paintball: where the paint of a pellet that hit a figure's hit box sticks. Figures are drawn
+   * inside their hit boxes, so it is the first surface of the figure itself along the same ray
+   * (the raycast found those too). A player's paint moves with the hit box (the head's follows the
+   * head, and both hide while the player is out); a clown's or strongman's with his body part.
+   */
+  private spot(hits: THREE.Intersection[], hit: THREE.Intersection, player: boolean): Spot {
+    const figure = figureOf(hit.object);
+    const scale = figure?.scale.x ?? 1;
+    const body = figure
+      ? hits.find((h) => {
+          const m = (h.object as THREE.Mesh).material;
+          return h !== hit && !!h.face && h.object.visible && !Array.isArray(m) && !!m?.visible && h.distance > hit.distance - 0.3 && h.distance < hit.distance + 1.5 * scale && figureOf(h.object) === figure;
+        })
+      : undefined;
+    const back = this.raycaster.ray.direction.clone().negate();
+    if (!body) return { point: hit.point.clone(), normal: back, on: hit.object, scale };
+    const normal = body.face!.normal.clone().transformDirection(body.object.matrixWorld);
+    return { point: body.point.clone(), normal: normal.dot(back) < 0 ? back : normal, on: player ? hit.object : body.object, scale };
   }
 
   /**
@@ -673,7 +869,36 @@ export class Weapon {
     master.connect(dest);
     const out = ctx.createGain();
     out.connect(master);
-    if (kind === 'shot') {
+    if (kind === 'shot' && paintball.on) {
+      // Paintball's pop: a puff of air through a band of noise, a soft thump, and a hiss after it.
+      const p = POP[w];
+      const len = p.len + 0.25;
+      const buf = ctx.createBuffer(1, Math.ceil(ctx.sampleRate * len), ctx.sampleRate);
+      const data = buf.getChannelData(0);
+      for (let i = 0; i < data.length; i++) {
+        const s = i / ctx.sampleRate;
+        data[i] = (Math.random() * 2 - 1) * (s < p.len ? Math.pow(1 - s / p.len, 3) : 0) + (Math.random() * 2 - 1) * 0.06 * Math.max(0, 1 - s / len);
+      }
+      const noise = ctx.createBufferSource();
+      noise.buffer = buf;
+      const band = ctx.createBiquadFilter();
+      band.type = 'bandpass';
+      band.Q.value = 0.9;
+      band.frequency.setValueAtTime(p.f * 1.4, t);
+      band.frequency.exponentialRampToValueAtTime(p.f * 0.7, t + p.len);
+      noise.connect(band).connect(out);
+      const thump = ctx.createOscillator();
+      thump.frequency.setValueAtTime(p.thump, t);
+      thump.frequency.exponentialRampToValueAtTime(p.thump * 0.5, t + 0.08);
+      const tg = ctx.createGain();
+      tg.gain.setValueAtTime(0.5, t);
+      tg.gain.exponentialRampToValueAtTime(0.001, t + 0.1);
+      thump.connect(tg).connect(out);
+      out.gain.setValueAtTime(p.gain, t);
+      noise.start(t);
+      thump.start(t);
+      thump.stop(t + 0.12);
+    } else if (kind === 'shot') {
       const v = voice;
       const buf = ctx.createBuffer(1, ctx.sampleRate * v.len, ctx.sampleRate);
       const data = buf.getChannelData(0);
@@ -697,7 +922,7 @@ export class Weapon {
       thump.start(t);
       thump.stop(t + 0.2);
     } else if (kind === 'throw') {
-      // The pin's click, then a short whoosh rising in pitch.
+      // The pin's click, then a short whoosh rising in pitch (a paint balloon: only the whoosh).
       const buf = ctx.createBuffer(1, ctx.sampleRate * 0.35, ctx.sampleRate);
       const data = buf.getChannelData(0);
       for (let i = 0; i < data.length; i++) data[i] = (Math.random() * 2 - 1) * Math.sin((Math.PI * i) / data.length);
@@ -711,6 +936,7 @@ export class Weapon {
       out.gain.value = 0.22;
       air.connect(band).connect(out);
       air.start(t + 0.05);
+      if (paintball.on) return; // a paint balloon has no pin
       const pin = ctx.createOscillator();
       pin.type = 'square';
       pin.frequency.value = 1900;

@@ -251,7 +251,7 @@ export class Stats {
     const who = this.clientKey(req);
     const id = typeof b.id === 'string' && /^[a-z0-9]{8,16}$/.test(b.id) ? b.id : null;
     const choice = {
-      mode: ONE_OF(b.mode, ['explore', 'action'], 'explore'),
+      mode: ONE_OF(b.mode, ['explore', 'paintball', 'action'], 'explore'),
       control: ONE_OF(b.control, ['kbm', 'pad', 'touch'], 'kbm'),
       together: b.together === true,
       lang: ONE_OF(b.lang, ['nl', 'en'], 'en'),
