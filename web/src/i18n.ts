@@ -66,7 +66,7 @@ const en = {
   'start.intro': 'The new house, its garden and the street around it.',
   'start.invite': 'Play together in person, or have your own house built in?',
   'start.inviteGo': 'Sign up →',
-  'start.mobileNote': 'Best on a laptop or desktop. Here it works with touch controls: turn your phone sideways and tap Touch screen.',
+  'start.mobileNote': 'Best on a laptop or desktop. Here you play with touch controls: hold your device sideways and tap Touch screen.',
   'start.name': 'Your name',
   'start.namePh': 'Name',
   'start.alone': 'Alone',
@@ -79,7 +79,7 @@ const en = {
   'start.passPh': 'Admin password',
   'start.login': 'Log in',
   'start.playingAs': 'Playing together as',
-  'start.leave': 'Leave',
+  'start.leave': 'Play alone',
   'start.mode': 'Mode',
   'start.with': 'Start with',
   'start.at': 'Start at',
@@ -142,7 +142,7 @@ const en = {
   'play.resetFurn': 'Reset furniture',
   'play.resetFurnSub': 'Back to the original layout',
   'set.picture': 'Picture and sound',
-  'set.look': 'Looking around',
+  'set.mousePad': 'Mouse and controller',
   'set.mouse': 'Mouse sensitivity',
   'set.stick': 'Controller look speed',
   'set.fov': 'Field of view',
@@ -621,7 +621,7 @@ const nl = {
   'start.intro': 'Het nieuwe huis, de tuin en de straat errond.',
   'start.invite': 'Samen spelen in het echt, of je eigen huis in het spel?',
   'start.inviteGo': 'Schrijf je in →',
-  'start.mobileNote': 'Dit speel je het best op een laptop of desktop. Hier werkt het met aanraakbediening: draai je gsm een kwartslag en tik op Aanraakscherm.',
+  'start.mobileNote': 'Dit speel je het best op een laptop of desktop. Hier speel je met aanraakbediening: houd je toestel liggend en tik op Aanraakscherm.',
   'start.name': 'Je naam',
   'start.namePh': 'Naam',
   'start.alone': 'Alleen',
@@ -634,7 +634,7 @@ const nl = {
   'start.passPh': 'Wachtwoord beheerder',
   'start.login': 'Aanmelden',
   'start.playingAs': 'Je speelt samen als',
-  'start.leave': 'Stoppen',
+  'start.leave': 'Alleen spelen',
   'start.mode': 'Modus',
   'start.with': 'Starten met',
   'start.at': 'Begin bij',
@@ -649,7 +649,7 @@ const nl = {
   'mode.paintballSub': 'Met verfpistolen · voor iedereen',
   'mode.paintballSub2': 'Verfpistolen · voor iedereen',
   'mode.actionOff': 'Uit · kindvriendelijk voor iedereen',
-  'mode.actionOffTitle': 'De admin heeft het spel kindvriendelijk gemaakt voor iedereen: Actie speelt als Verfballen.',
+  'mode.actionOffTitle': 'De beheerder heeft het spel kindvriendelijk gemaakt voor iedereen: Actie speelt als Verfballen.',
   'choose.kbm': 'Toetsenbord + muis',
   'choose.kbmSub': '{wasd} om te lopen, de muis om rond te kijken',
   'choose.pad': 'Controller',
@@ -696,7 +696,7 @@ const nl = {
   'play.resetFurn': 'Meubels terugzetten',
   'play.resetFurnSub': 'Terug naar de oorspronkelijke opstelling',
   'set.picture': 'Beeld en geluid',
-  'set.look': 'Rondkijken',
+  'set.mousePad': 'Muis en controller',
   'set.mouse': 'Muisgevoeligheid',
   'set.stick': 'Kijksnelheid controller',
   'set.fov': 'Gezichtsveld',
@@ -815,7 +815,7 @@ const nl = {
   'ctl.faster': 'Sneller, trager',
   'ctl.gallop': 'Galopperen',
   'ctl.menu': 'Menu (openen / sluiten)',
-  'ctl.fps': 'Fps-teller',
+  'ctl.fps': 'FPS-teller',
   'ctl.bigMap': 'Kaart (plaatsen, portalen, bestemming)',
   'ctl.menuTabs': 'Tabbladen in het menu',
   'ctl.minimap': 'Minikaart aan / uit',
@@ -1293,7 +1293,7 @@ const DOORS_NL: Record<string, string> = {
 export function doorName(name: string): string {
   if (current === 'en') return name;
   const to = /^door to (.+)$/.exec(name);
-  if (to) return `deur naar ${to[1]}`; // the room's own name, as the plans write it
+  if (to) return `deur naar ${to[1]}`; // the room's own name, as the house data writes it
   if (import.meta.env.DEV && !DOORS_NL[name]) console.warn(`i18n: no Dutch name for the door "${name}"`);
   return DOORS_NL[name] ?? name;
 }

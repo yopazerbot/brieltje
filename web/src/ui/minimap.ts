@@ -2,13 +2,14 @@ import type { Level, Prism, Room } from '../world/houseData';
 import { dist, placeName } from '../i18n';
 
 /**
- * Minimap, top left: the plan of the floor you are on, cut at 1.2 m above
+ * Minimap, top right: the plan of the floor you are on, cut at 1.2 m above
  * that floor like a floor plan, over the big map's ground, turning with your view. Other
  * players are coloured dots (a ring when they are on another floor), cats
  * small orange dots and weapons lying around yellow diamonds. A portal is a ring in its
  * colour; the nearest one off the map is an arrow on the edge with how far it is. A waypoint set on
  * the big map is a yellow pin, or a yellow arrow on the edge with its distance, and the way to it
- * along the roads a blue line.
+ * along the roads a blue line. The floor's name shows under it indoors only (outside it would say
+ * "Ground floor" on the church square), and its words have a dark edge: the village's ground is light.
  */
 
 const SIZE = 180; // px on screen
@@ -117,7 +118,7 @@ export class Minimap {
     return lv;
   }
 
-  draw(x: number, z: number, feet: number, yaw: number, blips: Blip[], shapes: { ring: [number, number][]; y: number }[] = [], portals: { x: number; z: number; color: string }[] = [], waypoint: { x: number; z: number } | null = null, route: { line: [number, number][]; length: number } | null = null): void {
+  draw(x: number, z: number, feet: number, yaw: number, blips: Blip[], shapes: { ring: [number, number][]; y: number }[] = [], portals: { x: number; z: number; color: string }[] = [], waypoint: { x: number; z: number } | null = null, route: { line: [number, number][]; length: number } | null = null, indoors = true): void {
     const g = this.ctx;
     const s = devicePixelRatio;
     const lv = this.levelAt(feet);
@@ -237,7 +238,7 @@ export class Minimap {
         g.textAlign = 'center';
         g.textBaseline = 'middle';
         const m = route ? route.length : d / SCALE;
-        g.fillText(dist(m), 0, 0);
+        label(g, dist(m));
       }
       g.restore();
     }
@@ -257,16 +258,17 @@ export class Minimap {
       g.save();
       g.translate(Math.cos(a) * (rim - 16), Math.sin(a) * (rim - 16));
       g.rotate(-yaw);
-      g.fillStyle = 'rgba(244, 239, 230, 0.85)';
+      g.fillStyle = 'rgba(244, 239, 230, 0.95)';
       g.font = '600 10px Bahnschrift, Arial Narrow, sans-serif';
       g.textAlign = 'center';
       g.textBaseline = 'middle';
       const m = nearest.d / SCALE;
-      g.fillText(dist(m), 0, 0);
+      label(g, dist(m));
       g.restore();
     }
     g.restore();
-    // You: an arrow in the middle, pointing up (where you look).
+    // You: an arrow in the middle, pointing up (where you look), with a dark edge: the roads and the
+    // church square are white on the map, and a white arrow on them was gone.
     g.fillStyle = '#ffffff';
     g.beginPath();
     g.moveTo(SIZE / 2, SIZE / 2 - 7);
@@ -274,15 +276,32 @@ export class Minimap {
     g.lineTo(SIZE / 2, SIZE / 2 + 2);
     g.lineTo(SIZE / 2 - 5, SIZE / 2 + 5);
     g.closePath();
+    g.strokeStyle = 'rgba(12, 14, 18, 0.9)';
+    g.lineWidth = 2.5;
+    g.lineJoin = 'round';
+    g.stroke();
     g.fill();
     g.strokeStyle = 'rgba(255, 255, 255, 0.35)';
     g.lineWidth = 1.5;
     g.beginPath();
     g.arc(SIZE / 2, SIZE / 2, SIZE / 2 - 2, 0, Math.PI * 2);
     g.stroke();
-    g.fillStyle = 'rgba(244, 239, 230, 0.8)';
+    if (!indoors) return;
+    g.fillStyle = 'rgba(244, 239, 230, 0.95)';
     g.font = '600 11px Bahnschrift, Arial Narrow, sans-serif';
     g.textAlign = 'center';
-    g.fillText(placeName(lv.name).toUpperCase(), SIZE / 2, SIZE - 12);
+    g.textBaseline = 'alphabetic';
+    label(g, placeName(lv.name).toUpperCase(), SIZE / 2, SIZE - 12);
   }
+}
+
+/** Words on the map in the current fill colour, with a dark edge so they read on light ground too. */
+function label(g: CanvasRenderingContext2D, text: string, x = 0, y = 0): void {
+  g.save();
+  g.strokeStyle = 'rgba(12, 14, 18, 0.85)';
+  g.lineWidth = 3;
+  g.lineJoin = 'round';
+  g.strokeText(text, x, y);
+  g.restore();
+  g.fillText(text, x, y);
 }

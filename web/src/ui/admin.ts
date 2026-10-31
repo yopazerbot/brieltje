@@ -16,7 +16,7 @@ export class AdminPanel {
 
   show(me: string | null): void {
     this.me = me ?? '';
-    if (me) void this.refresh();
+    if (me) this.refresh().catch(() => {}); // a failed load says so in the tab itself (below)
   }
 
   private message(text: string, bad = false): void {
@@ -52,9 +52,12 @@ export class AdminPanel {
     logBtn.onclick = async () => {
       const open = !logBox.classList.toggle('hidden');
       logBtn.textContent = t(open ? 'adm.hideLog' : 'adm.showLog');
-      if (open) {
+      if (!open) return;
+      try {
         const { log } = await api.audit();
         logBox.replaceChildren(...log.map((e) => el('div', `${e.time}  ${e.event}  ${e.username ?? ''}  ${e.ip ?? ''}  ${e.detail ?? ''}`)));
+      } catch (e) {
+        this.message(errorText(e)(), true); // the server out of reach: said under the list, not a silent error
       }
     };
 

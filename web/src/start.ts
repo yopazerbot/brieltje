@@ -198,22 +198,37 @@ async function login(): Promise<void> {
     setAccount(null, errorText(e));
   }
 }
+/** A join on its way to the server: a second click (Join twice, or Join then a start button) waits for it instead of sending another. */
+let joining: Promise<boolean> | null = null;
 /**
  * Play together with the shared PIN: your name is your name in the game. From the start screen,
  * or from the menu's Together tab while playing alone (`name` then is the name you started with).
+ * True once joined; false with the reason under the fields.
  */
-async function join(name = ($('nick') as HTMLInputElement).value.trim(), pin = $('mp-pin') as HTMLInputElement): Promise<void> {
-  if (!name || name === 'Guest') return setAccount(null, () => t('err.nameFirst'));
-  if (!pin.value) return setAccount(null, () => t('err.pin'));
+function join(name = ($('nick') as HTMLInputElement).value.trim(), pin = $('mp-pin') as HTMLInputElement): Promise<boolean> {
+  const refuse = (text: () => string, field?: HTMLElement) => {
+    setAccount(null, text);
+    field?.focus(); // where to type next
+    return Promise.resolve(false);
+  };
+  if (joining) return joining;
+  if (!name || name === 'Guest') return refuse(() => t('err.nameFirst'), pin.id === 'mp-pin' ? $('nick') : $('mp-nick2'));
+  if (!pin.value) return refuse(() => t('err.pin'), pin);
   // Playing together, with its chat, is for 13 and over: ticked once, remembered on this device.
-  if (!ageOk()) return setAccount(null, () => t('err.age'));
-  try {
-    const account = await api.join(name, pin.value, ageOk());
-    pin.value = '';
-    setAccount(account);
-  } catch (e) {
-    setAccount(null, errorText(e));
-  }
+  if (!ageOk()) return refuse(() => t('err.age'));
+  joining = api
+    .join(name, pin.value, ageOk())
+    .then((account) => {
+      pin.value = '';
+      setAccount(account);
+      return true;
+    })
+    .catch((e: unknown) => {
+      setAccount(null, errorText(e));
+      return false;
+    })
+    .finally(() => (joining = null));
+  return joining;
 }
 // Where to start (one of the portal places), remembered for the next visit; src/main.ts reads it.
 {
@@ -265,10 +280,19 @@ $('mp-login-btn').addEventListener('click', () => void login());
 $('mp-pass').addEventListener('keydown', (e) => {
   if ((e as KeyboardEvent).key === 'Enter') void login();
 });
-const leave = () => void api.logout().finally(() => setAccount(null));
+// Leaving plays alone at once, without waiting for the server: with it out of reach the answer can
+// take seconds (then its session just runs out by itself).
+const leave = () => {
+  setAccount(null);
+  api.logout().catch(() => {});
+};
 $('mp-logout').addEventListener('click', leave);
 $('mp-leave').addEventListener('click', leave);
 api.me().then(setAccount).catch(() => setAccount(null));
+// Together picked but not joined yet: a start button joins first (a PIN typed in and then straight
+// to Touch screen would otherwise start alone), and play starts only if that worked.
+const togetherPicked = () => !!document.querySelector('[data-mp=multi].selected');
+menu.beforeStart = () => (togetherPicked() && !me && !$('mp-pin-row').classList.contains('hidden') ? join() : true);
 // Another language: the texts made here that aren't drawn every frame (the modules redraw their own).
 onLang(() => {
   showSound();
@@ -281,7 +305,7 @@ onLang(() => {
 function padLoop(): void {
   const frame = input.poll();
   menu.setPadState(input.padName);
-  if (frame.confirmPressed) menu.resume('pad');
+  if (frame.confirmPressed) menu.begin('pad');
   else if (frame.squarePressed) menu.cycleGraphics();
   else if (frame.speedStep) menu.setSpeed(menu.walkSpeed + frame.speedStep * 0.2);
   if (menu.world === 'none') requestAnimationFrame(padLoop);
@@ -289,12 +313,14 @@ function padLoop(): void {
 requestAnimationFrame(padLoop);
 
 // ---- The first start fetches and builds the world (main.ts). What needs the click itself happens
-// here: full screen on a touch screen, and the sound (browsers start audio only from a click, tap
-// or key). Capturing the mouse waits for the world; if the browser no longer counts that as part
-// of the click, "Click to look around" asks for one.
-menu.onFirstStart = (mode) => {
+// on the click, before any joining: full screen on a touch screen, and the sound (browsers start
+// audio only from a click, tap or key). Capturing the mouse waits for the world; if the browser no
+// longer counts that as part of the click, "Click to look around" asks for one.
+menu.onStartGesture = (mode) => {
   if (mode === 'touch') fillScreen();
   void sound.context()?.resume();
+};
+menu.onFirstStart = () => {
   import('./main').catch((e: unknown) => {
     console.error(e);
     menu.loadFailed();

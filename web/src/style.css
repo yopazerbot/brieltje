@@ -93,7 +93,7 @@ html, body {
 .choice.primary { border-color: var(--accent); }
 .panel h1 { margin: 0; font-size: 48px; font-style: italic; letter-spacing: 0.08em; }
 /* The start screen's link to the sign-up page (brieltje.be/interested). */
-.invite { display: flex; flex-wrap: wrap; align-items: baseline; justify-content: space-between; gap: 2px 12px; margin: -4px 0 16px; padding: 9px 12px; font-size: 14px; color: var(--ink); text-decoration: none; background: rgba(242, 179, 61, 0.08); border: 1px solid rgba(242, 179, 61, 0.35); border-radius: 4px; }
+.invite { display: flex; flex-wrap: wrap; align-items: baseline; justify-content: space-between; gap: 2px 12px; margin: -4px 0 12px; padding: 9px 12px; font-size: 14px; color: var(--ink); text-decoration: none; background: rgba(242, 179, 61, 0.08); border: 1px solid rgba(242, 179, 61, 0.35); border-radius: 4px; }
 .invite b { color: var(--accent); white-space: nowrap; }
 .invite:hover, .invite:focus-visible { background: rgba(242, 179, 61, 0.16); border-color: var(--accent); outline: none; }
 @media (max-height: 560px) { .invite { margin-bottom: 10px; padding: 6px 10px; font-size: 13px; } }
@@ -227,7 +227,9 @@ input.speed { width: 100%; accent-color: #f2b33d; }
 /* Start screen: name, alone or together, mode, then a start button per way of playing. */
 #start-panel { max-width: 600px; }
 #start-panel .sub { margin-bottom: 8px; }
-.intro { margin: 0 0 20px; font-size: 15px; line-height: 1.45; opacity: 0.85; }
+.intro { margin: 0 0 14px; font-size: 15px; line-height: 1.45; opacity: 0.85; }
+/* Before the short-screen rules below, so they can make it smaller (it stood at the end and won). */
+.mobile-note { margin: 0 0 12px; padding: 10px 12px; font-size: 13px; line-height: 1.45; border-left: 3px solid var(--accent); background: rgba(242, 179, 61, 0.1); }
 .seg { display: flex; gap: 0; margin: 4px 0 14px; border: 1px solid rgba(255, 255, 255, 0.18); border-radius: 2px; }
 .seg-btn {
   flex: 1 1 0; padding: 9px 14px; cursor: pointer; text-align: left; font-family: inherit; color: var(--ink);
@@ -288,6 +290,8 @@ body.on-start #start-still { display: block; }
 #slides-controls { position: fixed; z-index: 20; right: 132px; bottom: 23px; }
 body:not(.on-start) #slides-controls { display: none; }
 @media (max-width: 1099px), (max-height: 520px) { #slides-controls { display: none; } }
+/* Not quite so wide: without the caption, so the bar stays clear of the menu. */
+@media (max-width: 1219px) { #slides-controls .slides-caption { display: none; } }
 @media (min-width: 1100px) {
   body.on-start #overlay {
     justify-content: flex-start; padding-left: 6vw;
@@ -299,7 +303,7 @@ body:not(.on-start) #slides-controls { display: none; }
 .page .gfx.tool .gfx-value { margin-left: 6px; font-size: 15px; }
 .page .gfx.tool .gfx-detail { display: block; margin-top: 2px; font-size: 12px; opacity: 0.7; }
 #mp-join-here { margin: 4px 0 8px; max-width: 440px; }
-.age-check { margin: -2px 0 10px; font-size: 14px; }
+.age-check { margin: -2px 0 8px; font-size: 14px; }
 /* "Start at" on the "Start with" line of the start screen. */
 .label-row { display: flex; align-items: baseline; justify-content: space-between; gap: 12px; }
 .spawn-pick { display: inline-flex; align-items: baseline; gap: 8px; font-size: 12px; font-weight: 700; letter-spacing: 0.14em; text-transform: uppercase; opacity: 0.85; }
@@ -320,6 +324,11 @@ body:not(.on-start) #slides-controls { display: none; }
   .start-choices .choice { padding: 9px 30px 9px 14px; }
   .start-choices .choice b { font-size: 16px; }
   .start-foot { margin-top: 10px; }
+  /* Your name beside Alone / Together, and the PIN beside the age tick: two rows fewer, so the start
+     buttons and the links under them fit (the name's label stays for screen readers; the field says Name). */
+  #who-box { display: grid; grid-template-columns: 1fr 1fr; align-items: center; gap: 0 12px; }
+  #who-box .field { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
+  #who-box #nick, #who-box #mp-choice, #mp-pin-row, #mp-login, #mp-age-row { margin: 0 0 8px; }
 }
 /* A small phone held sideways: tighter still, so Touch screen shows without scrolling. */
 @media (max-height: 440px) {
@@ -329,9 +338,19 @@ body:not(.on-start) #slides-controls { display: none; }
   #start-panel h1, #start-panel .sub { display: inline-block; }
   #start-panel .sub { margin: 0 0 6px 12px; }
   .mobile-note { margin-bottom: 6px; padding: 4px 8px; font-size: 11px; line-height: 1.4; }
-  #who-box #nick { margin-bottom: 6px; }
+  #who-box #nick, #who-box #mp-choice, #mp-pin-row, #mp-login, #mp-age-row { margin-bottom: 6px; }
   .field, .label { margin-bottom: 2px; }
   .seg { margin-bottom: 6px; }
+}
+/* Together picked: the PIN takes the touch screen note's place (it has been read by then). */
+#start-panel:has(#mp-pin-row:not(.hidden), #mp-login:not(.hidden)) .mobile-note { display: none; }
+/* A phone held upright: a narrower panel, so the three modes and "Start at" fit across it. */
+@media (max-width: 520px) and (orientation: portrait) {
+  .panel { padding: 20px 18px; }
+  #start-panel h1 { margin-top: 20px; } /* under English / Nederlands, not behind them */
+  .seg-btn { padding: 8px 9px; }
+  .label-row { flex-wrap: wrap; row-gap: 4px; }
+  .spawn-pick { white-space: nowrap; }
 }
 #mp-pin2 { flex: 0 1 110px; letter-spacing: 0.3em; }
 #online { position: absolute; top: 208px; right: 24px; font-size: 13px; text-align: right; opacity: 0.9; }
@@ -465,6 +484,7 @@ body.paintball #killfeed .kf.me { border-color: var(--paint); }
 #pause-panel {
   display: flex; flex-direction: column; padding: 0; overflow: hidden; max-width: none; max-height: none;
   width: min(1680px, calc(100% - 148px)); height: min(1000px, calc(100% - 68px));
+  overflow: clip; /* not a scroll box either: the footer links' larger tap areas (below) must not let it shift */
 }
 @media (max-width: 1100px) { #pause-panel { width: 100%; } }
 /* The keyboard's place is always seen (the rail, the buttons, the fields, the links). */
@@ -520,7 +540,7 @@ body.paintball #killfeed .kf.me { border-color: var(--paint); }
 #map-mount { position: relative; flex: 1; min-width: 0; }
 .page-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 0 40px; align-items: start; max-width: 1240px; }
 .page-grid .col { min-width: 0; }
-.page #switch { width: 100%; margin-top: 4px; }
+.page #switch { display: block; width: min(100%, 440px); margin: 0 0 16px; }
 .col h2 {
   margin: 22px 0 10px; padding-bottom: 6px; border-bottom: 1px solid rgba(255, 255, 255, 0.12);
   font-size: 13px; font-weight: 700; letter-spacing: 0.18em; text-transform: uppercase; color: var(--accent);
@@ -795,7 +815,6 @@ body.touch #full-hint { top: calc(8px + env(safe-area-inset-top, 0px)); left: ca
   body:has(#overlay:not(.hidden)) #sound-btn .lbl, body:has(#overlay:not(.hidden)) #full-btn .lbl { display: none; }
   body:has(#overlay:not(.hidden)) #full-hint { top: calc(8px + env(safe-area-inset-top, 0px)); left: auto; right: calc(60px + env(safe-area-inset-right, 0px)); }
 }
-.mobile-note { margin: 0 0 12px; padding: 10px 12px; font-size: 13px; line-height: 1.45; border-left: 3px solid var(--accent); background: rgba(242, 179, 61, 0.1); }
 #rotate-hint {
   position: fixed; inset: 0; z-index: 30; display: none; align-items: center; justify-content: center; padding: 24px; text-align: center;
   font-size: 22px; font-weight: 700; font-style: italic; background: rgba(12, 14, 18, 0.92); color: var(--ink);
@@ -989,3 +1008,30 @@ body.touch:not(:has(#overlay:not(.hidden))) #full-hint { left: calc(114px + env(
 html:lang(nl) #touch .t-reload, html:lang(nl) #touch .t-nade, html:lang(nl) body.touch[data-touch=plan] #touch .t-use { font-size: 9px; letter-spacing: 0; }
 /* A tool the admin hasn't allowed (the furniture planner): visible, but greyed out. */
 button.tool:disabled { opacity: 0.45; cursor: not-allowed; }
+
+/* Touch screens: buttons, fields and tick boxes about a fingertip high (40 to 44 px). The small text
+   links keep their look but get an invisible margin to tap (::after), clear of their neighbours. */
+@media (pointer: coarse) {
+  #start-panel .seg-btn, #start-panel .mp-row input, #start-panel .mini, #start-panel #nick, .spawn-pick select { min-height: 40px; }
+  .start-choices .choice.play { min-height: 44px; }
+  #pause-panel .seg-btn, #pause-panel .mini, #pause-panel .mp-row input, #pause-panel .tool { min-height: 44px; }
+  #overlay .check { min-height: 40px; }
+  #overlay .check input { width: 20px; height: 20px; }
+  .advanced summary { padding: 12px 0; }
+  .lang-pick .textbtn, .start-foot .textbtn, .start-foot a, .legal a, .pause-foot a { position: relative; }
+  .lang-pick .textbtn::after, .start-foot .textbtn::after, .start-foot a::after { content: ''; position: absolute; inset: -11px -4px; }
+  .legal a::after, .pause-foot a::after { content: ''; position: absolute; inset: -8px -4px; }
+  /* The slideshow's buttons beside the start screen (a tablet held sideways), in the corner: the
+     Sound button is top right on a touch screen. */
+  #slides-controls { right: calc(16px + env(safe-area-inset-right, 0px)); }
+  #slides-controls .slides-btn { width: 44px; height: 44px; line-height: 44px; }
+  #slides-controls .slides-dot { width: 30px; height: 44px; }
+  #slides-controls .slides-dot::after { inset: 17px 10px; }
+  #slides-controls .slides-dot[aria-current="true"]::after { inset: 16px 9px; }
+}
+/* A phone's browser with its bars showing (Safari held sideways): the note and the word "Mode" go, and
+   the sign-up link while you type the PIN, so the start buttons stay in view. */
+@media (max-height: 360px) {
+  .mobile-note, #start-panel > .label { display: none; }
+  #start-panel:has(#mp-pin-row:not(.hidden), #mp-login:not(.hidden)) .invite { display: none; }
+}

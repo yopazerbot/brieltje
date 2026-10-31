@@ -60,11 +60,22 @@ export class Hud {
     this.fps.classList.toggle('on', on);
   }
 
+  private padText = '';
+  private padLeft = 0;
+  /**
+   * The controller's line bottom left: its name for a few seconds once it connects (as the other
+   * hints, Yoshi), and "no controller found" for as long as you play with one that isn't there.
+   */
   setPad(name: string | null, wanted: boolean): void {
     let text = '';
     if (name) text = t('hud.pad', { name: name.replace(/\s*\(.*\)\s*$/, '') });
     else if (wanted) text = t('hud.noPad');
-    if (this.pad.textContent !== text) this.pad.textContent = text;
+    if (text !== this.padText) {
+      this.padText = text;
+      this.padLeft = name ? 4 : Infinity;
+    }
+    const shown = this.padLeft > 0 ? text : '';
+    if (this.pad.textContent !== shown) this.pad.textContent = shown;
   }
 
   /** Big italic location name, shown for a few seconds when it changes. */
@@ -95,6 +106,7 @@ export class Hud {
   /** Every frame; `ping`: the time there and back to the server in multiplayer (ms), null alone. */
   tick(dt: number, drawCalls: number, scale = 1, quality = '', ping: number | null = null): void {
     if (this.toastTimer > 0 && (this.toastTimer -= dt) <= 0) this.toast.classList.remove('show');
+    this.padLeft -= dt;
     this.frames++;
     this.fpsTime += dt;
     if (this.fpsTime >= 0.5) {

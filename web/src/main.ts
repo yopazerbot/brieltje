@@ -1473,6 +1473,7 @@ let carHint = 0; // the same for the car's speed and keys after getting in
 let wasInCar = false;
 let wasCalm = false;
 let wasFlying = false;
+let inside = false; // in the house's rooms or on its stairs: the minimap names the floor only then
 
 let last = performance.now();
 renderer.setAnimationLoop((now: number) => {
@@ -1706,6 +1707,7 @@ renderer.setAnimationLoop((now: number) => {
 
     const surface = player.ground.name;
     const indoors = !!surface && (roomNames.has(surface) || /floor|stairs/i.test(surface));
+    inside = indoors;
     // Outside, on the village's ground: the street you are in (its real name), not just "street".
     const at = driving || riding ? car : player;
     const street = !indoors && (driving || riding || !surface || surface === 'street') ? streetAt(at.x, at.z) : undefined;
@@ -1757,7 +1759,7 @@ renderer.setAnimationLoop((now: number) => {
     // A waypoint from the big map is done when you reach it.
     if (bigMap.waypoint && Math.hypot(bigMap.waypoint.x - player.x, bigMap.waypoint.z - player.z) < 6) bigMap.waypoint = bigMap.route = null;
     if (bigMap.waypoint && (routeTimer += 0.05) > 0.5) updateRoute();
-    minimap.draw(player.x, player.z, player.feet - terrain.height(player.x, player.z), player.yaw, weapon.enabled ? blips : blips.filter((b) => b.kind !== 'item'), shapes, rules.portals ? portalMarks : [], bigMap.waypoint, bigMap.route);
+    minimap.draw(player.x, player.z, player.feet - terrain.height(player.x, player.z), player.yaw, weapon.enabled ? blips : blips.filter((b) => b.kind !== 'item'), shapes, rules.portals ? portalMarks : [], bigMap.waypoint, bigMap.route, inside);
   }
   horizon.position.x = camera.position.x;
   horizon.position.z = camera.position.z;

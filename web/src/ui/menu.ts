@@ -49,8 +49,15 @@ export class Menu {
   nickname = 'Guest';
   /** Called when play starts or resumes, from a click or key press (so the mouse can be captured). */
   onPlay: (mode: ControlMode) => void = () => {};
-  /** Called on the first start, from the click or key press: the world isn't there yet and starts loading. */
+  /** Called on the first start: the world isn't there yet and starts loading. */
   onFirstStart: (mode: ControlMode) => void = () => {};
+  /** Called on a start button's click or key press itself, for what only works in one (full screen, the sound). */
+  onStartGesture: (mode: ControlMode) => void = () => {};
+  /**
+   * Asked before play starts from the start screen: true, or a promise of whether to go on. With
+   * Together picked but not joined yet, src/start.ts joins first and play starts only if that worked.
+   */
+  beforeStart: () => true | Promise<boolean> = () => true;
   /** The world: not there before the first start, loading after it (the chosen start button shows how far), then ready. */
   world: 'none' | 'loading' | 'ready' = 'none';
   onGraphics: (mode: Mode) => void = () => {};
@@ -79,13 +86,16 @@ export class Menu {
 
   constructor() {
     this.nick.value = load(KEYS.nick);
-    $('choose-kbm').addEventListener('click', () => this.resume('kbm'));
-    $('choose-pad').addEventListener('click', () => this.resume('pad'));
-    $('choose-touch').addEventListener('click', () => this.resume('touch'));
+    $('choose-kbm').addEventListener('click', () => this.begin('kbm'));
+    $('choose-pad').addEventListener('click', () => this.begin('pad'));
+    $('choose-touch').addEventListener('click', () => this.begin('touch'));
     $('resume').addEventListener('click', () => this.resume(this.mode ?? 'kbm'));
     $('switch').addEventListener('click', () => this.resume(this.mode === 'pad' ? 'kbm' : 'pad'));
+    // Enter in the name field: the first start button (Touch screen on a phone, not keyboard and mouse).
     this.nick.addEventListener('keydown', (e) => {
-      if (e.key === 'Enter') this.resume('kbm');
+      if (e.key !== 'Enter') return;
+      const first = document.querySelector<HTMLButtonElement>('.start-choices .choice.play:not(.hidden)');
+      this.begin((first?.id.replace('choose-', '') ?? 'kbm') as ControlMode);
     });
     document.querySelectorAll('.gfx').forEach((b) => b.addEventListener('click', () => this.cycleGraphics()));
     document.querySelectorAll<HTMLButtonElement>('[data-play]').forEach((b) =>
@@ -275,6 +285,18 @@ export class Menu {
     }
   }
 
+  /**
+   * A start button, ✕ on the controller or Enter in the name field, on the start screen. What needs
+   * the click happens now; play starts once `beforeStart` agrees (at once when playing alone).
+   */
+  begin(mode: ControlMode): void {
+    if (this.world === 'loading') return; // started already: the chosen button shows the loading
+    this.onStartGesture(mode);
+    const ok = this.beforeStart();
+    if (ok === true) this.resume(mode);
+    else void ok.then((go) => go && this.resume(mode));
+  }
+
   resume(mode: ControlMode): void {
     if (this.world !== 'ready') {
       // The first start: the world loads first, and play begins by itself once it is ready (ready()).
@@ -380,6 +402,7 @@ export class Menu {
       control === 'kbm' ? t('tog.chatHow', { key: key('chat', control) }) : '',
       control === 'touch' ? '' : t('tog.scoresHow', { key: key('scores', control) }),
     ].filter(Boolean).join('  ·  ');
+    // Above the controls in their tab (where you look for it); it goes back to the game the other way.
     $('switch-label').textContent = t(control === 'pad' ? 'menu.switchToKbm' : 'menu.switchToPad');
     $('switch').classList.toggle('hidden', control === 'touch');
   }

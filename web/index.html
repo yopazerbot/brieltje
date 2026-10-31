@@ -78,7 +78,7 @@
         <p class="sub" data-i18n="start.sub">Work in progress</p>
         <p class="intro" data-i18n="start.intro">The new house, its garden and the street around it.</p>
         <a class="invite" href="/interested/" target="_blank" rel="noopener noreferrer"><span data-i18n="start.invite">Play together in person, or have your own house built in?</span> <b data-i18n="start.inviteGo">Sign up →</b></a>
-        <p id="mobile-note" class="mobile-note hidden" data-i18n="start.mobileNote">Best on a laptop or desktop. Here it works with touch controls: turn your phone sideways and tap Touch screen.</p>
+        <p id="mobile-note" class="mobile-note hidden" data-i18n="start.mobileNote">Best on a laptop or desktop. Here you play with touch controls: hold your device sideways and tap Touch screen.</p>
         <div id="who-box">
           <label class="field" for="nick" data-i18n="start.name">Your name</label>
           <input id="nick" maxlength="20" autocomplete="username" spellcheck="false" placeholder="Name" data-i18n-placeholder="start.namePh" />
@@ -98,7 +98,7 @@
         </div>
         <div id="mp-session" class="session hidden">
           <span><span data-i18n="start.playingAs">Playing together as</span> <b id="mp-name"></b></span>
-          <button id="mp-logout" class="mini" type="button" data-i18n="start.leave">Leave</button>
+          <button id="mp-logout" class="mini" type="button" data-i18n="start.leave">Play alone</button>
         </div>
         <p id="mp-msg" class="mp-msg"></p>
         <p class="label" data-i18n="start.mode">Mode</p>
@@ -186,7 +186,6 @@
                     <label class="field" for="speed-pause"><span data-i18n="play.speed">Walking speed</span> <span class="walk-value"></span></label>
                     <input class="speed" id="speed-pause" type="range" min="0.8" max="4" step="0.1" />
                   </div>
-                  <button id="switch" class="tool" type="button"><b id="switch-label"></b><span data-i18n="play.switchSub">Change how you play</span></button>
                 </div>
                 <div class="col">
                   <h2 data-i18n="play.house">House</h2>
@@ -241,19 +240,22 @@
 
             <section class="page hidden" role="tabpanel" id="page-settings" aria-labelledby="tab-settings" data-page="settings">
               <div class="page-grid">
+                <!-- What you see and hear on the left, with the field of view and the lighting test (a graphics
+                     choice) beside the graphics. On the right the language first (easy to find on a phone,
+                     where the page scrolls), then the mouse and the controller. -->
                 <div class="col settings">
                   <h2 data-i18n="set.picture">Picture and sound</h2>
                   <button class="gfx tool" type="button"><b><span class="gfx-label" data-i18n="gfx.label">Graphics</span> <span class="gfx-value"></span></b><span class="gfx-detail"></span></button>
+                  <div class="setting"><label class="field" for="set-fov"><span data-i18n="set.fov">Field of view</span> <span class="set-value" data-for="set-fov"></span></label><input class="slider" id="set-fov" type="range" min="60" max="100" step="1" /></div>
                   <div class="setting"><label class="field" for="set-volume"><span data-i18n="set.volume">Volume</span> <span class="set-value" data-for="set-volume"></span></label><input class="slider" id="set-volume" type="range" min="0" max="1" step="0.05" /></div>
                   <!-- Settings with a key as their shortcut (src/shortcuts.ts): the key shows beside them for keyboard players. -->
                   <label class="check"><input type="checkbox" id="set-minimap" /> <span data-i18n="set.minimap">Minimap</span> <kbd data-key="minimap"></kbd></label>
                   <label class="check"><input type="checkbox" id="set-fps" /> <span data-i18n="set.fps">FPS counter</span> <kbd data-key="fps"></kbd></label>
-                  <h2 data-i18n="set.look">Looking around</h2>
-                  <div class="setting"><label class="field" for="set-mouse"><span data-i18n="set.mouse">Mouse sensitivity</span> <span class="set-value" data-for="set-mouse"></span></label><input class="slider" id="set-mouse" type="range" min="0.2" max="3" step="0.05" /></div>
-                  <div class="setting"><label class="field" for="set-stick"><span data-i18n="set.stick">Controller look speed</span> <span class="set-value" data-for="set-stick"></span></label><input class="slider" id="set-stick" type="range" min="0.4" max="2.5" step="0.05" /></div>
-                  <div class="setting"><label class="field" for="set-fov"><span data-i18n="set.fov">Field of view</span> <span class="set-value" data-for="set-fov"></span></label><input class="slider" id="set-fov" type="range" min="60" max="100" step="1" /></div>
-                  <label class="check"><input type="checkbox" id="set-invert" /> <span data-i18n="set.invert">Invert look up / down</span></label>
-                  <label class="check"><input type="checkbox" id="set-vibration" /> <span data-i18n="set.vibration">Controller vibration</span></label>
+                  <!-- Tests stay out of the way, folded away under Advanced. -->
+                  <details class="advanced">
+                    <summary data-i18n="set.advanced">Advanced</summary>
+                    <label class="check"><input type="checkbox" id="set-baked" /> <span data-i18n="set.baked">Baked lighting (test: light bounced between walls, faster on weak graphics)</span></label>
+                  </details>
                 </div>
                 <div class="col settings">
                   <h2 data-i18n="set.langKbd">Language and keyboard</h2>
@@ -269,17 +271,20 @@
                     <button class="seg-btn" type="button" data-kbd="azerty"><b>AZERTY</b><span></span></button>
                     <button class="seg-btn" type="button" data-kbd="qwerty"><b>QWERTY</b><span></span></button>
                   </div>
-                  <!-- Tests stay out of the way, folded away under Advanced. -->
-                  <details class="advanced">
-                    <summary data-i18n="set.advanced">Advanced</summary>
-                    <label class="check"><input type="checkbox" id="set-baked" /> <span data-i18n="set.baked">Baked lighting (test: light bounced between walls, faster on weak graphics)</span></label>
-                  </details>
+                  <h2 data-i18n="set.mousePad">Mouse and controller</h2>
+                  <div class="setting"><label class="field" for="set-mouse"><span data-i18n="set.mouse">Mouse sensitivity</span> <span class="set-value" data-for="set-mouse"></span></label><input class="slider" id="set-mouse" type="range" min="0.2" max="3" step="0.05" /></div>
+                  <div class="setting"><label class="field" for="set-stick"><span data-i18n="set.stick">Controller look speed</span> <span class="set-value" data-for="set-stick"></span></label><input class="slider" id="set-stick" type="range" min="0.4" max="2.5" step="0.05" /></div>
+                  <label class="check"><input type="checkbox" id="set-invert" /> <span data-i18n="set.invert">Invert look up / down</span></label>
+                  <label class="check"><input type="checkbox" id="set-vibration" /> <span data-i18n="set.vibration">Controller vibration</span></label>
+                  <!-- Puts back everything on this page but the language and the keyboard (src/settings.ts). -->
                   <button id="set-reset" class="mini" type="button" data-i18n="set.reset">Back to defaults</button>
                 </div>
               </div>
             </section>
 
+            <!-- The controls of the way you play, and the switch to the other one above them (not with touch). -->
             <section class="page hidden" role="tabpanel" id="page-controls" aria-labelledby="tab-controls" data-page="controls">
+              <button id="switch" class="tool" type="button"><b id="switch-label"></b><span data-i18n="play.switchSub">Change how you play</span></button>
               <div id="controls"></div>
             </section>
 
