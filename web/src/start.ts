@@ -229,6 +229,7 @@ let joining: Promise<boolean> | null = null;
 function join(name = ($('nick') as HTMLInputElement).value.trim(), pin = $('mp-pin') as HTMLInputElement): Promise<boolean> {
   const refuse = (text: () => string, field?: HTMLElement) => {
     setAccount(null, text);
+    field?.setAttribute('aria-invalid', 'true'); // outlined until typed in
     field?.focus(); // where to type next
     return Promise.resolve(false);
   };
@@ -281,6 +282,10 @@ document.querySelectorAll<HTMLButtonElement>('[data-mp]').forEach((b) =>
     document.querySelectorAll('[data-mp]').forEach((o) => o.classList.toggle('selected', o === b));
     $('mp-pin-row').classList.toggle('hidden', !multi);
     $('mp-age-row').classList.toggle('hidden', !multi);
+    if (!me) {
+      accountMsg = null; // an old complaint doesn't greet you
+      showAccountText();
+    }
     if (multi) {
       $('mp-login').classList.add('hidden');
       ($('mp-pin') as HTMLInputElement).focus();
@@ -288,6 +293,17 @@ document.querySelectorAll<HTMLButtonElement>('[data-mp]').forEach((b) =>
   }),
 );
 $('mp-join-btn').addEventListener('click', () => void join());
+// Typing in a field that was complained about: the outline and the complaint go.
+for (const id of ['nick', 'mp-pin', 'mp-pin2', 'mp-nick2']) {
+  $(id).addEventListener('input', () => {
+    if ($(id).getAttribute('aria-invalid') !== 'true') return;
+    $(id).removeAttribute('aria-invalid');
+    if (!me) {
+      accountMsg = null;
+      showAccountText();
+    }
+  });
+}
 $('mp-pin').addEventListener('keydown', (e) => {
   if ((e as KeyboardEvent).key === 'Enter') void join();
 });

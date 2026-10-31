@@ -86,11 +86,15 @@
             <button class="seg-btn selected" type="button" data-mp="solo"><b data-i18n="start.alone">Alone</b><span data-i18n="start.aloneSub">Just you</span></button>
             <button class="seg-btn" type="button" data-mp="multi"><b data-i18n="start.together">Together</b><span data-i18n="start.togetherSub">With the PIN</span></button>
           </div>
-          <div id="mp-pin-row" class="mp-row hidden">
-            <input id="mp-pin" type="password" inputmode="numeric" maxlength="12" autocomplete="off" placeholder="PIN" data-i18n-placeholder="start.pinPh" />
-            <button id="mp-join-btn" class="mini go" type="button" data-i18n="start.join">Join</button>
+          <!-- Together picked: the PIN and the age tick in one box under the Together button. -->
+          <div id="mp-together" class="together">
+            <div id="mp-pin-row" class="mp-row hidden">
+              <input id="mp-pin" type="password" inputmode="numeric" maxlength="12" autocomplete="off" placeholder="PIN" aria-describedby="mp-pin-hint" data-i18n-placeholder="start.pinPh" />
+              <button id="mp-join-btn" class="mini go" type="button" data-i18n="start.join">Join</button>
+              <p id="mp-pin-hint" class="pin-hint" data-i18n="start.pinHint">The organiser gives you the PIN.</p>
+            </div>
+            <label id="mp-age-row" class="check age-check hidden"><input type="checkbox" id="mp-age" data-age13 /> <span data-i18n="start.age13">I'm 13 or older</span></label>
           </div>
-          <label id="mp-age-row" class="check age-check hidden"><input type="checkbox" id="mp-age" data-age13 /> <span data-i18n="start.age13">I'm 13 or older</span></label>
           <div id="mp-login" class="mp-row hidden">
             <input id="mp-pass" type="password" maxlength="200" autocomplete="current-password" placeholder="Admin password" data-i18n-placeholder="start.passPh" />
             <button id="mp-login-btn" class="mini go" type="button" data-i18n="start.login">Log in</button>

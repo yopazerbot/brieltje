@@ -184,7 +184,21 @@ input.speed { width: 100%; accent-color: #f2b33d; }
 .mp-row { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; }
 #mp-choice { margin-bottom: 10px; }
 #mp-pin-row { margin-bottom: 8px; }
-#mp-pin { flex: 0 1 140px; letter-spacing: 0.3em; }
+#mp-pin { flex: 1 1 160px; letter-spacing: 0.3em; }
+/* The dots of a typed PIN spaced out; the word in the empty field written normally. */
+#mp-pin:placeholder-shown, #mp-pin2:placeholder-shown { letter-spacing: normal; }
+/* Together picked: the PIN, a line on where it comes from, and the age tick, in one box that hangs
+   under the Alone / Together buttons. Gone when nothing in it shows. */
+.together { margin: -15px 0 14px; padding: 12px 14px; background: rgba(242, 179, 61, 0.06); border: 1px solid rgba(255, 255, 255, 0.18); border-top: none; border-radius: 0 0 2px 2px; }
+.together:not(:has(> :not(.hidden))) { display: none !important; }
+/* A grid, so Join stays beside the PIN however narrow the box (a flex row wrapped it under). */
+#mp-together #mp-pin-row { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 6px 8px; margin: 0; }
+#mp-together #mp-pin, #mp-together #mp-join-btn { min-height: 40px; }
+#mp-together #mp-join-btn { padding: 0 20px; font-size: 14px; }
+.pin-hint { grid-column: 1 / -1; margin: 0; font-size: 12px; opacity: 0.7; }
+#mp-together .age-check { margin: 10px 0 0; }
+#start-panel input[aria-invalid="true"], #start-panel input[aria-invalid="true"]:focus { border-color: #ff8a7a; outline-color: #ff8a7a; }
+#start-panel > .mp-msg { margin: -4px 0 14px; }
 .textlink {
   display: block; margin: 2px 0 8px; padding: 0; cursor: pointer; font-family: inherit; font-size: 12px;
   color: rgba(244, 239, 230, 0.6); background: none; border: none; text-decoration: underline;
@@ -329,6 +343,11 @@ body:not(.on-start) #slides-controls { display: none; }
   #who-box { display: grid; grid-template-columns: 1fr 1fr; align-items: center; gap: 0 12px; }
   #who-box .field { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
   #who-box #nick, #who-box #mp-choice, #mp-pin-row, #mp-login, #mp-age-row { margin: 0 0 8px; }
+  /* The Together box across both columns: the PIN beside the age tick, without the line about the PIN. */
+  .together { grid-column: 1 / -1; display: grid; grid-template-columns: 1fr 1fr; align-items: center; gap: 0 12px; margin: 0 0 8px; padding: 8px 10px; border-top: 1px solid rgba(255, 255, 255, 0.18); border-radius: 2px; }
+  #mp-together #mp-pin-row, #mp-together .age-check { margin: 0; }
+  .pin-hint { display: none; }
+  #start-panel > .mp-msg { margin: 0 0 8px; }
 }
 /* A small phone held sideways: tighter still, so Touch screen shows without scrolling. */
 @media (max-height: 440px) {

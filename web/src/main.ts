@@ -163,7 +163,7 @@ function startPlace(): Portal | null {
   }
   return id === 'house' ? null : PORTALS.find((p) => p.id === id) ?? null;
 }
-THREE.DefaultLoadingManager.onProgress = (_url, done, total) => loading((done / Math.max(1, total)) * 0.8, () => t('load.progress', { done, total }));
+THREE.DefaultLoadingManager.onProgress = (_url, done, total) => loading((done / Math.max(1, total)) * 0.8, () => t('load.progress'));
 const texturesReady = new Promise<void>((resolve) => {
   THREE.DefaultLoadingManager.onLoad = () => resolve();
 });
