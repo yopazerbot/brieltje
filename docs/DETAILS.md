@@ -31,14 +31,15 @@ Open **http://localhost:5173** in Chrome or Edge. Pick a nickname and choose **K
 | Switch weapon | D-pad up / down, L1 | 1 to 4, mouse wheel, Q (A on AZERTY) for the last one |
 | Throw a grenade (Action mode) | R1 | G |
 | Crouch | Hold ○ | Hold Ctrl or C |
-| FPS counter | Create | F |
-| Big map | Press the touchpad | M (or click the minimap; on a phone, tap it) |
-| Minimap on / off | (keyboard only) | N |
+| FPS counter (also in Settings) | Create | F |
+| Map (the menu's first tab; again to play on) | Press the touchpad | M (or click the minimap; on a phone, tap it) |
+| Minimap on / off | Settings | N, or Settings |
 | Scoreboard (multiplayer) | Hold the touchpad | Hold Tab |
-| Sound on / off | (Sound button) | Shift+M |
+| Sound on / off | 🔊 in the menu | Shift+M, or 🔊 in the menu |
 | Chat (multiplayer) | Keyboard only | T or Enter |
 | Portal: pick a place (on its pad) | D-pad up / down, △ | 1 to 5, or the mouse wheel and E |
-| Menu (open and close) | Options | Esc |
+| Menu (open and close) | Options (○ closes it too) | Esc |
+| Menu tabs | L1 / R1 | ↑ / ↓ on the tab rail |
 
 **Portals:** five rings round the map, at the main house, the bungalow, the church, the school and Molenhoek. Step onto a portal's glowing pad (or stop the car on it) and the list of places opens: a number key, the wheel or D-pad and E or △, or a tap on a phone. You come out in front of the other portal, looking at the place; in the car the car comes along, with its passenger. The place you came from is marked "back". The minimap points to the nearest portal. In multiplayer, `/church`, `/house`, `/bungalow`, `/school` or `/molenhoek` in the chat (also `/kerk`, `/huis`, `/location church`) takes you there; the admin can turn the portals and the chat travel off in the settings (Admin: house rules), and the admin can always travel from the chat.
 
@@ -63,11 +64,13 @@ The Railway project has two services: `briel-GTA` (builds from the `web` folder 
 
 **Multiplayer:** 4 players at once to start with; the admin can allow up to 16 in the settings (Admin: players at once), kept across restarts. On the start screen you choose **Solo** or **Multiplayer**; for multiplayer you type your name and the PIN and press Join (no password). A name that belongs to an account (the admin's too) can't be taken, nor a name another player joined with today (it stays theirs for 12 hours, or until they log out). The admin changes the PIN in the settings (Admin: multiplayer PIN, 4 to 12 digits; a new PIN logs out everyone who joined with the old one) and can switch joining with the PIN off there; kicking a guest also keeps their address from joining with the PIN for the 10 minutes. The admin and up to 3 accounts the admin creates in the in-game menu (Admin section) log in with their password instead ("Have an account? Log in with its password"). Wrong PINs count against the address like wrong passwords, and at most 30 wrong PINs an hour are accepted from everyone together; browsers that joined before are never held back by that. The PIN is only checked on the server. The admin can kick players (they are kept out for 10 minutes), reset passwords and see the login log with IP addresses and Belgian time. Chat with T or Enter.
 
-**Phones and tablets:** the start screen advises a laptop or desktop, and offers **Touch screen**: a stick appears where your left thumb touches, drag on the right to look (also while holding Fire). The buttons follow what you do. Walking: Jump in the corner, Use (doors, the Tesla, the horses) above it, Down beside it, Run on the left. In Action mode: Fire in the corner with Aim, Jump, Use, Reload, Nade, next weapon (⇄) and Down round it. In a car: Brake and Use. In the furniture planner (from the menu): Place, Move, Next, Turn, Remove, Use, and Done to stop. ☰ (the menu), sound and full screen are icons top left. In the Tesla the stick drives, brakes and steers. Hold the device sideways; the game asks for full screen where the browser allows it.
+**Phones and tablets:** the start screen advises a laptop or desktop, and offers **Touch screen**: a stick appears where your left thumb touches, drag on the right to look (also while holding Fire). The buttons follow what you do. Walking: Jump in the corner, Use (doors, the Tesla, the horses) above it, Down beside it, Run on the left. In Action mode: Fire in the corner with Aim, Jump, Use, Reload, Nade, next weapon (⇄) and Down round it. In a car: Brake and Use. In the furniture planner (from the menu): Place, Move, Next, Turn, Remove, Use, and Done to stop. ☰ (the menu) and full screen are icons top left; the sound is in the menu's header. In the Tesla the stick drives, brakes and steers. Hold the device sideways; the game asks for full screen where the browser allows it.
 
-**Menu (Esc, or Options):** opens and closes with the same key. Three columns: play (mode, walking speed, graphics) and the house tools, the controls grouped by moving, weapons, house, the Tesla and other, and the settings with multiplayer. After closing it with Esc, click once to capture the mouse again (browsers want a click for that).
+**Menu (Esc, or Options):** opens and closes with the same key, on the tab you left it on. A header with your name and how you play, the sound (and full screen on a phone or tablet) and Resume. On the left a rail of tabs: Map, Play (the mode, walking speed, switching controls, and the house tools), Together (joining with the PIN, or who is online, your team, the scores and Leave), Settings (picture and sound, looking around, language and keyboard, a folded Advanced part), Controls (cards grouped by what you do, for the way you play) and Admin for the admin. The arrow keys move along the rail, L1 and R1 on the controller; on a phone the rail shows icons only. Under the page: the terms, privacy, credits, GitHub and the meetup sign-up. M opens the menu on the Map tab and M again goes back to the game. After closing it with Esc, click once to capture the mouse again (browsers want a click for that).
 
-**Settings (pause menu):** mouse sensitivity, controller look speed, field of view, volume, invert look and controller vibration, remembered in the browser.
+**Map (the menu's first tab):** the whole area, north up: drag, W A S D (Z Q S D) or the left stick to move it, the wheel, + and −, a pinch or R2/L2 to zoom, buttons for where you are and the whole map. A click (or tap) on a place gives its card with Directions; anywhere else sets a waypoint. With the controller ✕ sets one at the cross in the middle. The way along the roads shows on the minimap once you play on. No travelling from the map: the portals are for that. The world isn't drawn while the map shows.
+
+**Settings (pause menu):** graphics, volume, the minimap (N) and the FPS counter (F), mouse sensitivity, controller look speed, field of view, invert look, controller vibration, language and keyboard layout, remembered in the browser. The baked-lighting test is under Advanced.
 
 **Sound:** other players' shots and footsteps come from where they are (3D sound, quieter with distance). Footsteps sound different on wood, tiles, stone, grass and metal.
 
@@ -93,7 +96,7 @@ The Railway project has two services: `briel-GTA` (builds from the `web` folder 
 
 **Windows and outside doors** follow the window maker's quote (private, not in the repo): in `data/house.manual.json` each window has `panes` as the quote draws them (seen from inside, left to right, width in mm and fixed, turn, tilt-turn or slide), and optionally `matte` (frosted glass). A glass wall has one pane list per segment and `"corner": "glass"` for a corner without a post. After editing, run `extract_plan.py` and `build_house.py`.
 
-**Baked lighting (test):** a setting that draws the house with light baked in Blender (light bouncing between walls, cheaper on weak graphics). To rebake after changing the house: export from the dev page, then `blender -b -P tools/bake/bake_lightmap.py -- <glb> <sun.json> <out> 2048 512` and `python tools/bake/encode_lightmap.py <out> web/public/baked`.
+**Baked lighting (test):** a setting (Settings, Advanced) that draws the house with light baked in Blender (light bouncing between walls, cheaper on weak graphics). To rebake after changing the house: export from the dev page, then `blender -b -P tools/bake/bake_lightmap.py -- <glb> <sun.json> <out> 2048 512` and `python tools/bake/encode_lightmap.py <out> web/public/baked`.
 
 **Furniture planner (P, or the menu button):** place furniture at real sizes (beds, wardrobes, sofas, tables, chairs, desks, bookcase, TV unit, rugs, washing machine, lamp, plants, children's furniture, garden sofa, Zwift bike, weight bench). A see-through copy shows where it goes; click to place, mouse wheel to change the piece, R to turn it 45 degrees, right click to pick a piece up and move it, X to remove. Logged in, everyone sees and edits the same furniture (kept in the database, at most 300 pieces; the admin can remove all). Without logging in it is kept in your browser. Furniture shows on the minimap.
 
@@ -101,7 +104,7 @@ The Railway project has two services: `briel-GTA` (builds from the `web` folder 
 
 **Cats:** four cats wander around the garden, the front lawn and the side path, meowing now and then. You can shoot them (no points); they are back after 15 seconds.
 
-**Leaderboard:** the pause menu shows all-time kills, deaths, headshots and round wins per account. Logins survive a redeploy.
+**Leaderboard:** the menu's Together tab shows all-time kills, deaths, headshots and round wins per account. Logins survive a redeploy.
 
 **Fighting (multiplayer, Action mode):** everyone starts with 100 health. Three body hits or one headshot kill. You respawn after 3 seconds at a spawn point away from the others, protected for 2 seconds (until you shoot). A kill is worth 100 points, a headshot kill 150. The first to 10 kills wins the round; 8 seconds later the scores go back to zero. The admin can start a new round from the menu. Players in Explore mode can't be hurt. The server keeps the score and checks each reported hit (both players fighting and alive, fire rate, range).
 

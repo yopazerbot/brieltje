@@ -2,147 +2,20 @@
  * Start screen and in-game menu. The start screen: your name, alone or together, Explore or
  * Action, and a start button per way of playing. It works before the world exists: the first
  * start loads the world, with its progress on the chosen button, and play begins by itself once
- * it is ready. The menu: tabs for playing, settings, the controls, playing together and (for the
- * admin) the admin's tools. Choices are remembered in this browser.
+ * it is ready. The menu: a rail of tabs for the map, playing, playing together, the settings, the
+ * controls and (for the admin) the admin's tools; M opens it on the map. Choices, and the tab you
+ * left it on, are remembered in this browser.
  */
 
 import { ORDER, type Mode, type Quality } from '../graphics';
 import { num, onLang, t } from '../i18n';
-import { keyName, layout, moveKeys, onKeys, setLayout, type Layout } from '../keys';
+import { layout, moveKeys, onKeys, setLayout, type Layout } from '../keys';
+import { controlGroups, key, type Action, type Control } from '../shortcuts';
 
-export type ControlMode = 'kbm' | 'pad' | 'touch';
+export type ControlMode = Control;
 export type PlayMode = 'explore' | 'action';
 
 const GRAPHICS_CYCLE: Mode[] = ['auto', ...ORDER];
-
-type Group = { title: string; rows: [string, string][] };
-
-/** The touch controls: the same groups in a few lines. */
-function touchControls(action: boolean): Group[] {
-  const groups: Group[] = [{
-    title: t('ctl.moving'),
-    rows: [
-      [t('ctl.move'), t('tctl.move')], [t('ctl.look'), t('tctl.look')], [t('tctl.run'), t('tctl.runHow')],
-      [t('tctl.jump'), t('touch.jump')], [t('tctl.crouch'), t('touch.down')],
-    ],
-  }];
-  if (action) {
-    groups.push({
-      title: t('ctl.weapons'),
-      rows: [
-        [t('tctl.shoot'), t('touch.fire')], [t('ctl.aim'), t('tctl.aimHow')], [t('ctl.reload'), t('touch.reload')],
-        [t('tctl.grenade'), t('touch.nade')], [t('tctl.nextWeapon'), '⇄'],
-      ],
-    });
-  }
-  groups.push(
-    { title: t('ctl.house'), rows: [[t('ctl.door'), t('touch.use')]] },
-    {
-      title: t('ctl.planner'),
-      rows: [[t('tctl.start'), t('tctl.startHow')], [t('tctl.place'), t('tctl.placeHow')], [t('tctl.movePiece'), t('tctl.movePieceHow')], [t('tctl.stop'), t('tctl.stopHow')]],
-    },
-    {
-      title: t('ctl.cars'),
-      rows: [[t('ctl.getIn'), t('touch.use')], [t('ctl.drive'), t('tctl.thumbUpDown')], [t('ctl.steer'), t('tctl.thumbLeftRight')], [t('ctl.handbrake'), t('touch.brake')]],
-    },
-    {
-      title: t('ctl.horses'),
-      rows: [
-        [t('ctl.getOn'), t('touch.use')], [t('ctl.faster'), t('tctl.thumbUpDown')], [t('ctl.steer'), t('tctl.thumbLeftRight')],
-        [t('ctl.gallop'), t('touch.run')], [t('ctl.jump'), t('touch.jump')],
-      ],
-    },
-    { title: t('ctl.portals'), rows: [[t('tctl.goElsewhere'), t('tctl.goElsewhereHow')], [t('ctl.withCar'), t('tctl.withCarHow')]] },
-    {
-      title: t('ctl.other'),
-      rows: [[t('ctl.menu'), '☰'], [t('tctl.bigMap'), t('tctl.bigMapHow')], [t('tctl.soundFull'), t('tctl.soundFullHow')], [t('tctl.best'), t('tctl.bestHow')]],
-    },
-  );
-  return groups;
-}
-
-function controls(control: ControlMode, play: PlayMode): Group[] {
-  if (control === 'touch') return touchControls(play === 'action');
-  const kbm = control === 'kbm';
-  const action = play === 'action';
-  // The keys as printed on the player's keyboard: W / S on QWERTY are Z / S on AZERTY (src/keys.ts).
-  const [w, a, s, d] = ['KeyW', 'KeyA', 'KeyS', 'KeyD'].map(keyName);
-  const moving: [string, string][] = [
-    [t('ctl.move'), kbm ? moveKeys() : t('key.leftStick')],
-    [t('ctl.look'), kbm ? t('key.mouse') : t('key.rightStick')],
-    [t('ctl.sprint'), kbm ? t('key.holdShift') : t('key.l3')],
-    [t('ctl.jump'), kbm ? t('key.space') : '✕'],
-  ];
-  if (action) moving.push([t('ctl.crouch'), kbm ? t('key.holdCtrlC') : t('key.holdCircle')]);
-  moving.push(
-    [t('ctl.flyUp'), kbm ? t('key.holdSpace') : t('key.holdCross')],
-    [t('ctl.flyDown'), kbm ? t('key.ctrlC') : '○'],
-    [t('ctl.stopFlying'), kbm ? t('key.doubleSpace') : t('key.doubleCross')],
-  );
-  const groups: Group[] = [{ title: t('ctl.moving'), rows: moving }];
-  if (action) {
-    groups.push({
-      title: t('ctl.weapons'),
-      rows: [
-        [t('ctl.shoot'), kbm ? t('key.leftClick') : 'R2'], [t('ctl.aim'), kbm ? t('key.holdRightClick') : t('key.holdL2')], [t('ctl.reload'), kbm ? 'R' : '□'],
-        [t('ctl.switchWeapon'), kbm ? t('key.weaponKeys', { q: keyName('KeyQ') }) : t('key.weaponPad')],
-        [t('ctl.grenade'), kbm ? 'G' : 'R1'],
-        [t('ctl.pickUp'), t('ctl.pickUpHow')],
-      ],
-    });
-  }
-  groups.push(
-    {
-      title: t('ctl.house'),
-      rows: [
-        [t('ctl.door'), kbm ? (action ? 'E' : t('key.clickOrE')) : action ? '△' : t('key.r2OrTriangle')],
-        [t('ctl.planner'), kbm ? t('key.plannerKbm') : t('key.plannerPad')],
-      ],
-    },
-    {
-      title: t('ctl.cars'),
-      rows: [
-        [t('ctl.getIn'), kbm ? 'E' : '△'],
-        [t('ctl.drive'), kbm ? `${w} / ${s}` : 'R2 / L2'],
-        [t('ctl.steer'), kbm ? `${a} / ${d}` : t('key.leftStick')],
-        [t('ctl.handbrake'), kbm ? t('key.space') : '✕'],
-      ],
-    },
-    {
-      title: t('ctl.portals'),
-      rows: [
-        [t('ctl.pickPlace'), kbm ? t('key.portalKbm') : t('key.portalPad')],
-        [t('ctl.withCar'), t('ctl.withCarHow')],
-        [t('ctl.fromChat'), t('ctl.fromChatHow')],
-      ],
-    },
-    {
-      title: t('ctl.horses'),
-      rows: [
-        [t('ctl.getOn'), kbm ? 'E' : '△'],
-        [t('ctl.faster'), kbm ? `${w} / ${s}` : 'R2 / L2'],
-        [t('ctl.steer'), kbm ? `${a} / ${d}` : t('key.leftStick')],
-        [t('ctl.gallop'), kbm ? t('key.holdShift') : 'L3'],
-        [t('ctl.jump'), kbm ? t('key.space') : '✕'],
-      ],
-    },
-    {
-      title: t('ctl.other'),
-      rows: [
-        [t('ctl.menu'), kbm ? 'Esc' : 'Options'],
-        [t('ctl.fps'), kbm ? 'F' : 'Create'],
-        [t('ctl.bigMap'), kbm ? t('key.bigMapKbm') : t('key.bigMapPad')],
-        [t('ctl.minimap'), kbm ? 'N' : t('key.keyboardOnly')],
-        [t('ctl.walkSpeed'), kbm ? t('key.menuPlay') : t('key.speedPad')],
-        [t('ctl.graphics'), kbm ? t('key.menuSettings') : t('key.squareInMenu')],
-        [t('ctl.chat'), kbm ? t('key.tOrEnter') : t('key.keyboardOnly')],
-        [t('ctl.scoreboard'), kbm ? t('key.holdTab') : t('key.holdTouchpad')],
-        [t('ctl.sound'), kbm ? t('key.soundKbm') : t('key.soundPad')],
-      ],
-    },
-  );
-  return groups;
-}
 
 // Action is the default (Yoshi, 30 Oct 2026): a new key, so a choice remembered from before starts over.
 const KEYS = { nick: 'briel.nickname', play: 'briel.playMode', speed: 'briel.walkSpeed', tab: 'briel.menuTab' };
@@ -179,6 +52,8 @@ export class Menu {
   onGraphics: (mode: Mode) => void = () => {};
   onPlayMode: (play: PlayMode) => void = () => {};
   onSpeed: (speed: number) => void = () => {};
+  /** What the menu shows changed (opened, closed, another tab): main.ts draws the map only while its tab is up. */
+  onPage: () => void = () => {};
   /** When the pause menu opened: the Esc that opened it must not close it again. */
   openedAt = 0;
   private graphicsMode: Mode = 'auto';
@@ -190,6 +65,8 @@ export class Menu {
   private chosenMode: ControlMode = 'kbm';
   private chosen: HTMLButtonElement | null = null;
   private loadText: () => string = () => '';
+  /** The tab showing (or showing next time the pause menu opens). */
+  private current = 'map';
 
   private overlay = $('overlay');
   private start = $('start-panel');
@@ -214,9 +91,21 @@ export class Menu {
       s.addEventListener('input', () => this.setSpeed(Number(s.value))),
     );
     document.querySelectorAll<HTMLButtonElement>('#menu-tabs [data-tab]').forEach((b) => b.addEventListener('click', () => this.showTab(b.dataset.tab!)));
+    // The rail is a tablist: the arrow keys (and Home and End) move between the tabs, each shown at once.
+    $('menu-tabs').addEventListener('keydown', (e) => {
+      const tabs = this.tabs();
+      const i = tabs.indexOf(document.activeElement as HTMLButtonElement);
+      const moves: Record<string, number> = { ArrowDown: i + 1, ArrowRight: i + 1, ArrowUp: i - 1, ArrowLeft: i - 1, Home: 0, End: tabs.length - 1 };
+      if (i < 0 || !(e.key in moves)) return;
+      e.preventDefault();
+      e.stopPropagation(); // not on to the game's keys as well: on the map the arrows would move it
+      const tab = tabs[(moves[e.key] + tabs.length) % tabs.length];
+      this.showTab(tab.dataset.tab!);
+      tab.focus();
+    });
     this.setPlay(this.play, false);
     this.setSpeed(this.walkSpeed, false);
-    this.showTab(load(KEYS.tab) || 'play');
+    this.showTab(load(KEYS.tab) || 'map');
     document.body.classList.add('on-start');
     // Another language: the controls, the speed, the graphics line, the name and the controller's state again.
     onLang(() => {
@@ -253,19 +142,48 @@ export class Menu {
     return this.nickname === 'Guest' ? t('guest') : this.nickname;
   }
 
-  /** One page of the menu: play, settings, controls, together or admin. */
-  showTab(name: string): void {
-    const tab = document.querySelector<HTMLButtonElement>(`#menu-tabs [data-tab="${name}"]`);
-    if (!tab || tab.classList.contains('hidden')) name = 'play';
-    document.querySelectorAll<HTMLButtonElement>('#menu-tabs [data-tab]').forEach((b) => b.classList.toggle('selected', b.dataset.tab === name));
+  /** The tab showing in the pause menu: map, play, together, settings, controls or admin. */
+  get tab(): string {
+    return this.current;
+  }
+
+  /**
+   * One page of the menu. `remember`: the menu opens on it next time too; M shows the map
+   * without that, so Esc still brings back the tab you were on.
+   */
+  showTab(name: string, remember = true): void {
+    if (!this.tabs().some((b) => b.dataset.tab === name)) name = 'map';
+    this.current = name;
+    // A tablist with one tab in the Tab order, the chosen one (the arrow keys reach the others).
+    const onRail = !!document.activeElement?.closest('#menu-tabs'); // the keyboard follows the tab (M, L1 and R1 change it too)
+    document.querySelectorAll<HTMLButtonElement>('#menu-tabs [data-tab]').forEach((b) => {
+      const on = b.dataset.tab === name;
+      b.classList.toggle('selected', on);
+      b.setAttribute('aria-selected', String(on));
+      b.tabIndex = on ? 0 : -1;
+      if (on && onRail) b.focus({ preventScroll: true });
+    });
     document.querySelectorAll<HTMLElement>('#pause-panel [data-page]').forEach((p) => p.classList.toggle('hidden', p.dataset.page !== name));
-    save(KEYS.tab, name);
+    if (remember) save(KEYS.tab, name);
+    this.onPage();
+  }
+
+  /** The next (1) or previous (-1) tab, round past the ends: L1 and R1 on the controller. */
+  stepTab(step: number): void {
+    const tabs = this.tabs();
+    const i = tabs.findIndex((b) => b.dataset.tab === this.current);
+    this.showTab(tabs[(i + step + tabs.length) % tabs.length].dataset.tab!);
+  }
+
+  /** The tabs on the rail (the admin's only for the admin). */
+  private tabs(): HTMLButtonElement[] {
+    return [...document.querySelectorAll<HTMLButtonElement>('#menu-tabs [data-tab]')].filter((b) => !b.classList.contains('hidden'));
   }
 
   /** The admin's tab is there for the admin only. */
   setAdmin(admin: boolean): void {
     $('tab-admin').classList.toggle('hidden', !admin);
-    if (!admin && document.querySelector('#menu-tabs [data-tab="admin"].selected')) this.showTab('play');
+    if (!admin && this.current === 'admin') this.showTab('map');
   }
 
   get open(): boolean {
@@ -337,6 +255,7 @@ export class Menu {
     document.body.classList.remove('on-start');
     // A slider or button keeps the keyboard focus otherwise, and arrow keys would move it instead of you.
     if (document.activeElement instanceof HTMLElement) document.activeElement.blur();
+    this.onPage();
     this.onPlay(mode);
   }
 
@@ -396,18 +315,18 @@ export class Menu {
   private fillControls(): void {
     const control = this.mode ?? 'kbm';
     $('controls').replaceChildren(
-      ...controls(control, this.play).map(({ title, rows }) => {
+      ...controlGroups(control, this.play === 'action').map(({ title, rows }) => {
         const group = document.createElement('div');
         group.className = 'ctl-group';
         const h = document.createElement('h3');
         h.textContent = title;
         const table = document.createElement('table');
-        for (const [action, key] of rows) {
+        for (const [what, how] of rows) {
           const tr = document.createElement('tr');
           const a = document.createElement('td');
           const k = document.createElement('td');
-          a.textContent = action;
-          k.textContent = key;
+          a.textContent = what;
+          k.textContent = how;
           tr.append(a, k);
           table.append(tr);
         }
@@ -416,12 +335,21 @@ export class Menu {
       }),
     );
     $('pause-who').textContent = t('menu.who', { name: this.shownName, control: t(({ pad: 'choose.pad', kbm: 'choose.kbm', touch: 'choose.touch' } as const)[control]) });
-    $('resume-hint').textContent = t(({ pad: 'menu.resumePad', kbm: 'menu.resumeKbm', touch: 'menu.resumeTouch' } as const)[control]);
+    // The key that resumes, on the Resume button; with touch the button is the way (☰ is under the menu).
+    $('resume-hint').textContent = control === 'touch' ? '' : key('menu', control);
+    // The keys beside the menu's own items (the planner, the minimap, the FPS counter), for keyboard players.
+    document.querySelectorAll<HTMLElement>('#pause-panel [data-key]').forEach((el) => (el.textContent = control === 'kbm' ? key(el.dataset.key as Action, control) : ''));
+    // Together: how to chat and see the scores, the way you play (no chat without a keyboard, no scores key on touch).
+    $('tog-keys').textContent = [
+      control === 'kbm' ? t('tog.chatHow', { key: key('chat', control) }) : '',
+      control === 'touch' ? '' : t('tog.scoresHow', { key: key('scores', control) }),
+    ].filter(Boolean).join('  ·  ');
     $('switch-label').textContent = t(control === 'pad' ? 'menu.switchToKbm' : 'menu.switchToPad');
     $('switch').classList.toggle('hidden', control === 'touch');
   }
 
-  showPause(): void {
+  /** The pause menu, on the tab it was left on, or on `tab` (the map, for M) without remembering that. */
+  showPause(tab?: string): void {
     if (!this.open) this.openedAt = performance.now();
     const nick2 = $('mp-nick2') as HTMLInputElement; // the name for joining from the Together tab
     if (!nick2.value && this.nickname !== 'Guest') nick2.value = this.nickname;
@@ -429,6 +357,9 @@ export class Menu {
     this.pause.classList.remove('hidden');
     this.overlay.classList.remove('hidden');
     this.fillControls();
+    this.showTab(tab ?? (load(KEYS.tab) || 'map'), !tab);
+    // The keyboard starts on the rail: the arrow keys change tabs, Tab goes on into the page.
+    this.tabs().find((b) => b.dataset.tab === this.current)?.focus({ preventScroll: true });
   }
 
   setPadState(name: string | null): void {

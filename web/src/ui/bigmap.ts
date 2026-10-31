@@ -4,17 +4,20 @@ import STREETS from '../data/streets.json';
 import type { FrameInput } from '../controls/input';
 import type { DipSpec, Prism, Ring, Room, Surroundings } from '../world/houseData';
 import { dist, onLang, t, type PlainKey } from '../i18n';
+import { moveKeys, typing } from '../keys';
+import { key, type Control } from '../shortcuts';
 
 /**
  * The big map: the whole area at once, north up, drawn from the same data as the world (roads,
  * paving, fields, woods, water, hedges, buildings, trees), with the street names from the road
  * register (tools/streets.py), the portals, the main places called out, and you, the other
- * players, the cars and the horses as they move. M opens and closes it (a short press on the
- * controller's touchpad, the map button over the minimap on a phone). Drag or the left stick
- * moves it, the wheel, a pinch or R2/L2 zooms. A click on a place shows it and gives directions
- * there; a click anywhere else sets a waypoint. The way there along the roads (ui/route.ts) is
- * drawn on this map and on the minimap. No travelling from the map: the portals are for that
- * (Yoshi). The world isn't drawn while the map covers it.
+ * players, the cars and the horses as they move. It is the menu's first tab (mounted in its page):
+ * M opens the menu on it (a short press on the controller's touchpad, a tap on the minimap), and M
+ * again goes back to the game. Drag, W A S D or the left stick moves it, the wheel, a pinch or
+ * R2/L2 zooms. A click on a place shows it and gives directions there; a click anywhere else sets a
+ * waypoint, and ✕ on the controller sets one at the cross in the middle. The way there along the
+ * roads (ui/route.ts) is drawn on this map and on the minimap. No travelling from the map: the
+ * portals are for that (Yoshi). It draws only while its tab shows, and the world isn't drawn then.
  *
  * Each layer is one Path2D in map metres, made once; moving or zooming only redraws those with
  * another transform, so a redraw is a few dozen canvas calls, whatever the number of buildings.
@@ -86,11 +89,12 @@ const fmt = dist;
 
 export class BigMap {
   open = false;
+  /** How you play: the help line, and the cross in the middle for the controller. */
+  control: Control = 'kbm';
   /** Where you asked to go (the minimap points to it), or null */
   waypoint: { x: number; z: number } | null = null;
   /** The way to the waypoint along the roads, and how long it is (main.ts works it out as you move) */
   route: { line: [number, number][]; length: number } | null = null;
-  onClose: () => void = () => {};
   /** A new waypoint: work out the way at once */
   onWaypoint: () => void = () => {};
 
@@ -119,29 +123,22 @@ export class BigMap {
   private touches = new Map<number, { x: number; y: number }>();
   private pinch = 0;
 
-  constructor(prisms: Prism[], surroundings: Surroundings | undefined, rooms: Room[], dips: DipSpec[]) {
+  constructor(parent: HTMLElement, prisms: Prism[], surroundings: Surroundings | undefined, rooms: Room[], dips: DipSpec[]) {
     this.root.id = 'bigmap';
     this.root.className = 'hidden';
     this.base.className = 'bm-base';
     this.top.className = 'bm-top';
     this.card.className = 'bm-card hidden';
     this.help.className = 'bm-help';
-    // The title, the buttons and the legend: elements with their text (never HTML), named again in another language.
-    const named: [HTMLElement | Text, PlainKey, 'text' | 'title'][] = [];
-    const head = document.createElement('div');
-    head.className = 'bm-head';
-    const headTitle = document.createElement('b');
-    const headSub = document.createElement('small');
-    headSub.textContent = 'Briel · Smetlede';
-    head.append(headTitle, headSub);
-    named.push([headTitle, 'map.title', 'text']);
+    // The buttons and the legend: elements with their text (never HTML), named again in another language.
+    const named: [HTMLElement | Text, PlainKey, 'text' | 'title' | 'aria'][] = [];
     const tools = document.createElement('div');
     tools.className = 'bm-tools';
     const button = (label: string, title: PlainKey, act: () => void) => {
       const b = document.createElement('button');
       b.type = 'button';
       b.textContent = label;
-      named.push([b, title, 'title']);
+      named.push([b, title, 'title'], [b, title, 'aria']);
       b.addEventListener('click', (e) => {
         e.stopPropagation();
         act();
@@ -154,8 +151,6 @@ export class BigMap {
       button('◎', 'map.where', () => this.centre(this.you.x, this.you.z, Math.max(this.s, 2))),
       button('⤢', 'map.whole', () => this.whole()),
     );
-    const close = button('✕', 'map.close', () => this.onClose());
-    close.className = 'bm-close';
     const legend = document.createElement('div');
     legend.className = 'bm-legend';
     for (const [icon, key] of [['lg-you', 'map.you'], ['lg-portal', 'map.portal'], ['lg-player', 'map.players'], ['lg-pin', 'map.waypoint']] as const) {
@@ -170,7 +165,9 @@ export class BigMap {
     const name = () => {
       for (const [el, key, what] of named) {
         if (what === 'text') el.textContent = t(key);
-        else if (el instanceof HTMLElement) el.title = t(key);
+        else if (!(el instanceof HTMLElement)) continue;
+        else if (what === 'title') el.title = t(key);
+        else el.setAttribute('aria-label', t(key));
       }
     };
     name();
@@ -181,8 +178,8 @@ export class BigMap {
       this.cardKey = '';
       this.showCard();
     });
-    this.root.append(this.base, this.top, head, tools, close, legend, this.help, this.card);
-    document.body.append(this.root);
+    this.root.append(this.base, this.top, tools, legend, this.help, this.card);
+    parent.append(this.root);
 
     for (const p of prisms) this.addPrism(p);
     for (const r of rooms) if (r.level === 'gf') this.add('home', r.p);
@@ -191,9 +188,10 @@ export class BigMap {
     if (old.length > 2) this.add('bungalow', [hullOf(old.map(([x, z]) => [toU(x, z), toV(x, z)])).map(([u, v]) => [toX(u, v), toZ(u, v)])]);
     this.addSurroundings(surroundings, dips);
     this.addPointerHandlers();
-    window.addEventListener('resize', () => this.open && this.resize());
+    // Its size follows the menu's page (a window resized, the menu's header wrapping), not only the window.
+    new ResizeObserver(() => this.open && this.resize()).observe(this.root);
     window.addEventListener('keydown', (e) => {
-      if (!this.open) return;
+      if (!this.open || typing(e)) return;
       if (e.key === '+' || e.key === '=') this.zoom(1.4, this.w / 2, this.h / 2);
       else if (e.key === '-') this.zoom(1 / 1.4, this.w / 2, this.h / 2);
     });
@@ -205,8 +203,9 @@ export class BigMap {
     this.dirty = true;
   }
 
-  show(you: { x: number; z: number; yaw: number }): void {
+  show(you: { x: number; z: number; yaw: number }, control: Control): void {
     this.open = true;
+    this.control = control;
     this.you = { ...you };
     this.root.classList.remove('hidden');
     this.resize();
@@ -214,8 +213,12 @@ export class BigMap {
     this.showHelp();
   }
 
+  /** The line at the bottom: how to move it and set a waypoint, the way you play (keys from src/shortcuts.ts). */
   private showHelp(): void {
-    this.help.textContent = t(document.body.classList.contains('touch') ? 'map.helpTouch' : 'map.helpKbm');
+    const c = this.control;
+    this.help.textContent = c === 'touch' ? t('map.helpTouch')
+      : c === 'pad' ? t('map.helpPad', { tabs: key('tabs', c), menu: key('menu', c) })
+      : t('map.helpKbm', { move: moveKeys(), map: key('map', c), menu: key('menu', c) });
   }
 
   hide(): void {
@@ -312,6 +315,23 @@ export class BigMap {
     g.stroke();
     g.fill();
     g.restore();
+    // The controller sets a waypoint at the cross in the middle (✕): the map moves under it.
+    if (this.control === 'pad') {
+      const cx = this.w / 2;
+      const cy = this.h / 2;
+      g.beginPath();
+      for (const [dx, dy] of [[1, 0], [-1, 0], [0, 1], [0, -1]]) {
+        g.moveTo(cx + dx * 5, cy + dy * 5);
+        g.lineTo(cx + dx * 14, cy + dy * 14);
+      }
+      g.lineCap = 'round';
+      g.strokeStyle = 'rgba(255, 255, 255, 0.95)';
+      g.lineWidth = 5;
+      g.stroke();
+      g.strokeStyle = '#11151b';
+      g.lineWidth = 2;
+      g.stroke();
+    }
     if (this.selected) this.showCard();
   }
 
@@ -372,8 +392,8 @@ export class BigMap {
 
   private resize(): void {
     this.dpr = Math.min(2, devicePixelRatio || 1);
-    this.w = innerWidth;
-    this.h = innerHeight;
+    this.w = Math.max(1, this.root.clientWidth);
+    this.h = Math.max(1, this.root.clientHeight);
     for (const c of [this.base, this.top]) {
       c.width = Math.round(this.w * this.dpr);
       c.height = Math.round(this.h * this.dpr);
@@ -534,11 +554,11 @@ export class BigMap {
     g.fillStyle = 'rgba(17, 21, 27, 0.8)';
     g.font = '700 13px Bahnschrift, "Arial Narrow", sans-serif';
     g.textAlign = 'center';
-    g.fillText(t('map.north'), this.w - 34, 92);
+    g.fillText(t('map.north'), this.w - 28, 46);
     g.beginPath();
-    g.moveTo(this.w - 34, 62);
-    g.lineTo(this.w - 28, 78);
-    g.lineTo(this.w - 40, 78);
+    g.moveTo(this.w - 28, 16);
+    g.lineTo(this.w - 22, 32);
+    g.lineTo(this.w - 34, 32);
     g.closePath();
     g.fill();
     const metres = [10, 20, 50, 100, 200, 500].find((m) => m * this.s > 70) ?? 1000;
@@ -580,6 +600,11 @@ export class BigMap {
 
   private addPointerHandlers(): void {
     const el = this.top;
+    /** A pointer in the map's own pixels (it sits in the menu's page, not at the window's corner). */
+    const at = (e: { clientX: number; clientY: number }): [number, number] => {
+      const r = el.getBoundingClientRect();
+      return [e.clientX - r.left, e.clientY - r.top];
+    };
     el.addEventListener('pointerdown', (e) => {
       el.setPointerCapture?.(e.pointerId);
       this.touches.set(e.pointerId, { x: e.clientX, y: e.clientY });
@@ -597,7 +622,7 @@ export class BigMap {
         t.y = e.clientY;
         const [a, b] = [...this.touches.values()];
         const d = Math.hypot(a.x - b.x, a.y - b.y);
-        if (this.pinch > 0) this.zoom(d / this.pinch, (a.x + b.x) / 2, (a.y + b.y) / 2);
+        if (this.pinch > 0) this.zoom(d / this.pinch, ...at({ clientX: (a.x + b.x) / 2, clientY: (a.y + b.y) / 2 }));
         this.pinch = d;
         return;
       }
@@ -616,7 +641,7 @@ export class BigMap {
       const was = this.drag;
       this.touches.delete(e.pointerId);
       if (this.touches.size < 2) this.pinch = 0;
-      if (was && !was.moved && this.touches.size === 0) this.click(e.clientX, e.clientY);
+      if (was && !was.moved && this.touches.size === 0) this.click(...at(e));
       if (this.touches.size === 0) this.drag = null;
     };
     el.addEventListener('pointerup', up);
@@ -626,29 +651,57 @@ export class BigMap {
     });
     el.addEventListener('wheel', (e) => {
       e.preventDefault();
-      this.zoom(Math.exp(-e.deltaY * 0.0015), e.clientX, e.clientY);
+      this.zoom(Math.exp(-e.deltaY * 0.0015), ...at(e));
     }, { passive: false });
+  }
+
+  /** (x, z) within `r` pixels of the screen point (sx, sy). */
+  private near(x: number, z: number, sx: number, sy: number, r: number): boolean {
+    const [px, py] = this.screen(x, z);
+    return Math.hypot(px - sx, py - sy) < r;
+  }
+
+  /** The place (or its portal) at a screen point. */
+  private placeAt(sx: number, sy: number): Place | undefined {
+    return PLACES.find((p) => (p.portal && this.near(p.portal.x, p.portal.z, sx, sy, 16)) || this.near(p.x, p.z, sx, sy, 18));
   }
 
   /** A place (or its portal), the waypoint, or else a new waypoint there. */
   private click(sx: number, sy: number): void {
-    const near = (x: number, z: number, r: number) => {
-      const [px, py] = this.screen(x, z);
-      return Math.hypot(px - sx, py - sy) < r;
-    };
-    const place = PLACES.find((p) => (p.portal && near(p.portal.x, p.portal.z, 16)) || near(p.x, p.z, 18));
-    if (place) {
-      this.selected = place;
-    } else if (this.waypoint && near(this.waypoint.x, this.waypoint.z, 16)) {
-      this.selected = 'waypoint';
-    } else {
-      this.waypoint = this.model(sx, sy);
-      this.route = null;
-      this.selected = 'waypoint';
-      this.onWaypoint();
-    }
+    const place = this.placeAt(sx, sy);
+    if (place) this.selected = place;
+    else if (this.waypoint && this.near(this.waypoint.x, this.waypoint.z, sx, sy, 16)) this.selected = 'waypoint';
+    else this.setWaypoint(this.model(sx, sy));
     this.cardKey = '';
     this.showCard();
+  }
+
+  /**
+   * ✕ on the controller, at the cross in the middle: directions to the place there, the waypoint
+   * there taken away again, or else a new waypoint there.
+   */
+  pickCentre(): void {
+    const [sx, sy] = [this.w / 2, this.h / 2];
+    const place = this.placeAt(sx, sy);
+    if (place) this.setWaypoint({ x: place.x, z: place.z });
+    else if (this.waypoint && this.near(this.waypoint.x, this.waypoint.z, sx, sy, 16)) this.removeWaypoint();
+    else this.setWaypoint(this.model(sx, sy));
+    this.cardKey = '';
+    this.showCard();
+  }
+
+  /** Go there: the way is worked out at once (main.ts), and the minimap shows it once you play on. */
+  private setWaypoint(at: { x: number; z: number }): void {
+    this.waypoint = at;
+    this.route = null;
+    this.selected = 'waypoint';
+    this.onWaypoint();
+  }
+
+  private removeWaypoint(): void {
+    this.waypoint = null;
+    this.route = null;
+    this.selected = null;
   }
 
   private cardKey = '';
@@ -683,20 +736,15 @@ export class BigMap {
       b.textContent = t('map.waypoint');
       small.textContent = t(this.route && this.route.line.length > 2 ? 'map.byRoad' : 'map.fromYouWay', { d: fmt(d) });
       act(t('map.remove'), () => {
-        this.waypoint = null;
-        this.route = null;
-        this.selected = null;
+        this.removeWaypoint();
         this.showCard();
       });
     } else {
       b.textContent = t(sel.name);
       small.textContent = t('map.placeSub', { sub: subOf(sel), d: fmt(d) });
       act(t('map.directions'), () => {
-        this.waypoint = { x: sel.x, z: sel.z };
-        this.route = null;
-        this.selected = 'waypoint';
+        this.setWaypoint({ x: sel.x, z: sel.z });
         this.cardKey = '';
-        this.onWaypoint();
         this.showCard();
       }, true);
       if (sel.portal) {

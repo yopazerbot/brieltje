@@ -1,4 +1,5 @@
 import { onLang } from '../i18n';
+import { typing } from '../keys';
 
 /**
  * Chat: messages bottom left, T (or Enter) to type, Enter to send, Esc to cancel. The game's own
@@ -10,6 +11,8 @@ export class Chat {
   private input = document.getElementById('chat-input') as HTMLInputElement;
   private texts = new WeakMap<Element, () => string>();
   enabled = false;
+  /** A menu is open: T and Enter are the menu's then (Enter presses its buttons). */
+  paused: () => boolean = () => false;
 
   constructor() {
     onLang(() => {
@@ -31,7 +34,7 @@ export class Chat {
       e.stopPropagation();
     });
     window.addEventListener('keydown', (e) => {
-      if (!this.enabled || this.typing || e.target instanceof HTMLInputElement) return;
+      if (!this.enabled || this.typing || typing(e) || this.paused()) return;
       if (e.code === 'KeyT' || e.code === 'Enter') {
         e.preventDefault();
         this.open();

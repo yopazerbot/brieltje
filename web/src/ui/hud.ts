@@ -54,8 +54,9 @@ export class Hud {
     if (this.nades.textContent !== text) this.nades.textContent = text;
   }
 
-  toggleFps(): void {
-    this.fps.classList.toggle('on');
+  /** The FPS counter (Settings, or F / Create). */
+  showFps(on: boolean): void {
+    this.fps.classList.toggle('on', on);
   }
 
   setPad(name: string | null, wanted: boolean): void {

@@ -3,6 +3,7 @@ import type { FrameInput } from '../controls/input';
 import type { Kind } from '../world/clowns';
 import { Furnishing, ITEMS, itemGeometry, type Piece } from '../world/furnishing';
 import { furnitureName, onLang, t, type PlainKey } from '../i18n';
+import { key, type Control } from '../shortcuts';
 
 /**
  * Furniture planner (P, or the button in the menu). A see-through copy of the
@@ -38,6 +39,8 @@ export class Planner {
   onClown: (at: { x: number; y: number; z: number; kind: Kind }) => void = () => {};
   onClownRemove: (id: number) => void = () => {};
   clowns = false;
+  /** How you play: the keys on its line. */
+  control: Control = 'kbm';
   private index = 0;
   private yaw = 0;
   private carrying: Piece | null = null;
@@ -84,7 +87,7 @@ export class Planner {
     const size = document.createElement('span');
     size.textContent = t('plan.size', { w: cm(w), d: cm(d), h: cm(h), i: (this.index % this.list.length) + 1, n: this.list.length });
     const keys = document.createElement('small');
-    keys.textContent = t('plan.keys');
+    keys.textContent = key('plannerKeys', this.control); // its keys, from the one table (src/shortcuts.ts)
     this.bar.append(name, size, keys);
     this.ghost.geometry = ghosts[it.id] ?? itemGeometry(it.id);
   }

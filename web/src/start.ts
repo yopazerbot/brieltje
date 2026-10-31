@@ -2,7 +2,8 @@
  * The page's entry: the start screen, which works before the world exists. The page brings only
  * this, the texts and the start picture, and asks the server who you are (/api/me). That covers
  * the language, your name, alone or together (joining with the PIN, the admin's login), the mode,
- * the graphics setting, the controller, and the Sound and Full screen buttons.
+ * the graphics setting, the controller, and the Sound and Full screen buttons (the start screen's,
+ * and the in-game menu's own in its header).
  *
  * The world (main.ts: three.js, the house, its textures, models, sky and sounds) is fetched only
  * when you pick how to play. The chosen start button shows how far it has loaded, and play begins
@@ -12,6 +13,7 @@
 import { Input } from './controls/input';
 import { loadMode, saveMode } from './graphics';
 import { applyStatic, onLang, setLang, t, type Lang } from './i18n';
+import { typing } from './keys';
 import { api, errorText, type Me } from './net/client';
 import { sound } from './sound';
 import { Menu } from './ui/menu';
@@ -25,6 +27,7 @@ document.querySelectorAll<HTMLButtonElement>('[data-lang]').forEach((b) => b.add
 
 export const input = new Input(document.getElementById('view') as HTMLCanvasElement);
 export const menu = new Menu();
+input.menuOpen = () => menu.open;
 // Phones and tablets: Touch screen (offered on any touch screen), and the advice to use a laptop.
 if (navigator.maxTouchPoints > 0) $('choose-touch').classList.remove('hidden');
 if (matchMedia('(pointer: coarse)').matches) {
@@ -34,13 +37,17 @@ if (matchMedia('(pointer: coarse)').matches) {
   $('choose-touch').parentElement!.prepend($('choose-touch'));
 }
 
-// Sound on/off: the button while a menu is open (bottom right, top right on a touch screen), or Shift+M.
+// Sound on/off: the start screen's button (bottom right, top right on a touch screen), the icon in
+// the in-game menu's header, or Shift+M.
 const soundBtn = $('sound-btn');
+const menuSound = $('menu-sound');
 function showSound(): void {
   // Icon and word apart: a phone shows only the icon (style.css).
   soundBtn.children[0].textContent = sound.enabled ? '🔊' : '🔇';
   soundBtn.children[1].textContent = t(sound.enabled ? 'btn.sound' : 'btn.noSound');
   soundBtn.classList.toggle('off', !sound.enabled);
+  menuSound.classList.toggle('off', !sound.enabled); // the crossed-out speaker
+  menuSound.setAttribute('aria-pressed', String(sound.enabled));
 }
 function toggleSound(): void {
   sound.set(!sound.enabled);
@@ -50,9 +57,10 @@ soundBtn.addEventListener('click', () => {
   toggleSound();
   soundBtn.blur();
 });
+menuSound.addEventListener('click', toggleSound);
 window.addEventListener('keydown', (e) => {
   // By the letter on the key, not its place (AZERTY); M alone opens the map (main.ts).
-  if (e.key.toLowerCase() === 'm' && e.shiftKey && !(e.target instanceof HTMLInputElement) && !e.repeat) toggleSound();
+  if (e.key.toLowerCase() === 'm' && e.shiftKey && !e.repeat && !typing(e)) toggleSound();
 });
 showSound();
 
@@ -60,20 +68,30 @@ showSound();
 // iPhone has none for pages; there the game only fills the screen when started from the home screen
 // (manifest.webmanifest), so the button says how. Started from the home screen, no button.
 const fullBtn = $('full-btn');
+const menuFull = $('menu-full'); // the same in the in-game menu's header
 const fullHint = $('full-hint');
 const fsDoc = document as Document & { webkitFullscreenElement?: Element | null; webkitFullscreenEnabled?: boolean; webkitExitFullscreen?: () => void };
 const fsRoot = document.documentElement as HTMLElement & { webkitRequestFullscreen?: () => void };
 const fromHomeScreen = matchMedia('(display-mode: fullscreen), (display-mode: standalone)').matches || (navigator as { standalone?: boolean }).standalone === true;
 const canFill = !!(document.fullscreenEnabled || fsDoc.webkitFullscreenEnabled);
 const isFull = () => !!(document.fullscreenElement || fsDoc.webkitFullscreenElement);
-if (matchMedia('(pointer: coarse)').matches && !fromHomeScreen) fullBtn.classList.remove('hidden');
+if (matchMedia('(pointer: coarse)').matches && !fromHomeScreen) {
+  fullBtn.classList.remove('hidden');
+  menuFull.classList.remove('hidden');
+}
 function showFull(): void {
   fullBtn.children[0].textContent = isFull() ? '⤡' : '⤢';
   fullBtn.children[1].textContent = t(isFull() ? 'btn.exitFull' : 'btn.full');
+  menuFull.title = t(isFull() ? 'btn.exitFull' : 'btn.full');
+  menuFull.setAttribute('aria-label', menuFull.title);
 }
 showFull();
 fullBtn.addEventListener('click', () => {
   fullBtn.blur();
+  toggleFull();
+});
+menuFull.addEventListener('click', toggleFull);
+function toggleFull(): void {
   if (!canFill) {
     fullHint.classList.toggle('hidden');
     return;
@@ -87,11 +105,11 @@ fullBtn.addEventListener('click', () => {
   // Sideways where the browser allows locking it (Android); elsewhere the phone decides.
   const orientation = screen.orientation as ScreenOrientation & { lock?: (o: string) => Promise<void> };
   void entered.then(() => orientation.lock?.('landscape')).catch(() => {});
-});
+}
 document.addEventListener('fullscreenchange', showFull);
 document.addEventListener('webkitfullscreenchange', showFull);
 document.addEventListener('pointerdown', (e) => {
-  if (e.target !== fullBtn) fullHint.classList.add('hidden');
+  if (!(e.target instanceof Element && e.target.closest('#full-btn, #menu-full'))) fullHint.classList.add('hidden');
 });
 /** Starting with touch: full screen and sideways where the browser allows it (Android; an iPhone keeps its bars). Only from a tap. */
 export function fillScreen(): void {
@@ -139,6 +157,33 @@ export function setAccount(account: Me | null, message: (() => string) | null = 
   showAccountText();
   for (const fn of accountListeners) fn(account);
 }
+/**
+ * "I'm 13 or older": asked where you join together, ticked once for this device (localStorage
+ * briel.age13, every such tick box shows it), and sent with the join; the server refuses a join
+ * without it.
+ */
+const AGE = 'briel.age13';
+const ageBoxes = () => [...document.querySelectorAll<HTMLInputElement>('input[data-age13]')];
+const ageOk = () => ageBoxes().some((b) => b.checked);
+let ageSaved = false;
+try {
+  ageSaved = localStorage.getItem(AGE) === '1';
+} catch {
+  // storage blocked: asked again on every visit
+}
+for (const box of ageBoxes()) {
+  box.checked = ageSaved;
+  box.addEventListener('change', () => {
+    for (const other of ageBoxes()) other.checked = box.checked;
+    try {
+      if (box.checked) localStorage.setItem(AGE, '1');
+      else localStorage.removeItem(AGE);
+    } catch {
+      // private window: for this visit
+    }
+  });
+}
+
 /** The admin logs in under the name typed above, with the admin password. */
 async function login(): Promise<void> {
   const user = ($('nick') as HTMLInputElement).value.trim();
@@ -161,35 +206,14 @@ async function join(name = ($('nick') as HTMLInputElement).value.trim(), pin = $
   if (!name || name === 'Guest') return setAccount(null, () => t('err.nameFirst'));
   if (!pin.value) return setAccount(null, () => t('err.pin'));
   // Playing together, with its chat, is for 13 and over: ticked once, remembered on this device.
-  if (!ageConfirmed()) return setAccount(null, () => t('err.age'));
+  if (!ageOk()) return setAccount(null, () => t('err.age'));
   try {
-    const account = await api.join(name, pin.value, true);
+    const account = await api.join(name, pin.value, ageOk());
     pin.value = '';
     setAccount(account);
   } catch (e) {
     setAccount(null, errorText(e));
   }
-}
-/** Whether this device has confirmed being 13 or older (the tick box on the start screen or the Together tab). */
-const AGE_KEY = 'briel.age13';
-function ageConfirmed(): boolean {
-  try {
-    return localStorage.getItem(AGE_KEY) === '1';
-  } catch {
-    return ($('mp-age') as HTMLInputElement).checked; // storage blocked: the tick box itself
-  }
-}
-{
-  const box = $('mp-age') as HTMLInputElement;
-  box.checked = ageConfirmed();
-  box.addEventListener('change', () => {
-    try {
-      if (box.checked) localStorage.setItem(AGE_KEY, '1');
-      else localStorage.removeItem(AGE_KEY);
-    } catch {
-      // storage blocked: ageConfirmed() reads the box
-    }
-  });
 }
 // Alone or together on the start screen; the admin logs in with the admin password (the Admin link).
 document.querySelectorAll<HTMLButtonElement>('[data-mp]').forEach((b) =>

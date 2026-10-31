@@ -1,7 +1,7 @@
 /**
  * Player settings in the pause menu, remembered in this browser: mouse and
- * controller look speed, field of view, volume, inverted look and controller
- * vibration.
+ * controller look speed, field of view, volume, inverted look, controller
+ * vibration, and the minimap and FPS counter (each with a key as its shortcut).
  */
 
 import { num, onLang } from './i18n';
@@ -19,10 +19,15 @@ export interface Settings {
   vibration: boolean;
   /** Baked lighting for the house (test): light bounced between walls, cheaper on weak graphics */
   baked: boolean;
+  /** The minimap top right (N) */
+  minimap: boolean;
+  /** The FPS counter (F, or Create on the controller) */
+  fps: boolean;
 }
 
 const KEY = 'briel.settings';
-const DEFAULTS: Settings = { mouse: 1, stick: 1, fov: 72, volume: 0.8, invert: false, vibration: true, baked: false };
+const DEFAULTS: Settings = { mouse: 1, stick: 1, fov: 72, volume: 0.8, invert: false, vibration: true, baked: false, minimap: true, fps: false };
+const BOXES = [['set-invert', 'invert'], ['set-vibration', 'vibration'], ['set-baked', 'baked'], ['set-minimap', 'minimap'], ['set-fps', 'fps']] as const;
 
 function load(): Settings {
   try {
@@ -57,7 +62,7 @@ export class SettingsPanel {
         this.changed();
       });
     }
-    for (const [id, key] of [['set-invert', 'invert'], ['set-vibration', 'vibration'], ['set-baked', 'baked']] as const) {
+    for (const [id, key] of BOXES) {
       const box = $(id);
       box.checked = this.value[key];
       box.addEventListener('change', () => {
@@ -71,11 +76,16 @@ export class SettingsPanel {
         $(id).value = String(this.value[key]);
         $(id).dispatchEvent(new Event('input'));
       }
-      $('set-invert').checked = DEFAULTS.invert;
-      $('set-vibration').checked = DEFAULTS.vibration;
-      $('set-baked').checked = DEFAULTS.baked;
+      for (const [id, key] of BOXES) $(id).checked = DEFAULTS[key];
       this.changed();
     });
+  }
+
+  /** A setting's shortcut (N for the minimap, F for the FPS counter): on or off, as its tick box. */
+  toggle(key: 'minimap' | 'fps'): void {
+    this.value[key] = !this.value[key];
+    $(`set-${key}`).checked = this.value[key];
+    this.changed();
   }
 
   private changed(): void {

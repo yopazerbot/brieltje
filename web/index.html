@@ -90,7 +90,7 @@
             <input id="mp-pin" type="password" inputmode="numeric" maxlength="12" autocomplete="off" placeholder="PIN" data-i18n-placeholder="start.pinPh" />
             <button id="mp-join-btn" class="mini go" type="button" data-i18n="start.join">Join</button>
           </div>
-          <label id="mp-age-row" class="check age-check hidden"><input type="checkbox" id="mp-age" /> <span data-i18n="start.age13">I'm 13 or older</span></label>
+          <label id="mp-age-row" class="check age-check hidden"><input type="checkbox" id="mp-age" data-age13 /> <span data-i18n="start.age13">I'm 13 or older</span></label>
           <div id="mp-login" class="mp-row hidden">
             <input id="mp-pass" type="password" maxlength="200" autocomplete="current-password" placeholder="Admin password" data-i18n-placeholder="start.passPh" />
             <button id="mp-login-btn" class="mini go" type="button" data-i18n="start.login">Log in</button>
@@ -129,154 +129,198 @@
         <!-- The links to the legal pages get ?lang= in the game's language (src/i18n.ts). -->
         <p class="legal"><span data-i18n="legal.accept">By playing you accept the</span> <a href="/legal/terms.html" target="_blank" rel="noopener noreferrer" data-i18n="legal.terms">terms of use</a> <span data-i18n="legal.and">and the</span> <a href="/legal/privacy.html" target="_blank" rel="noopener noreferrer" data-i18n="legal.privacy">privacy policy</a>.</p>
       </div>
+      <!-- The in-game menu (src/ui/menu.ts): a compact header with Resume and the sound, a rail of tabs on
+           the left (a tablist: the arrow keys move between them, L1 and R1 on the controller), the
+           chosen page to the right and the links in a row under it. The Map tab holds the big map. -->
       <div class="panel wide hidden" id="pause-panel">
-        <div class="pause-top">
+        <header class="pause-top">
           <div class="pause-title">
-            <h1 data-i18n="menu.title">MENU</h1>
+            <h1><span class="pause-brand">BRIEL</span><span class="pause-sep" aria-hidden="true">·</span><span data-i18n="menu.title">Menu</span></h1>
             <p class="sub" id="pause-who"></p>
           </div>
-          <button id="resume" class="choice primary" type="button"><b data-i18n="menu.resume">Resume</b><span id="resume-hint"></span></button>
+          <div class="pause-actions">
+            <!-- Full screen on phones and tablets, the same as the start screen's button (src/start.ts). -->
+            <button id="menu-full" class="icon-btn hidden" type="button" title="Full screen" aria-label="Full screen" data-i18n-title="btn.full" data-i18n-aria="btn.full"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 9V4h5M15 4h5v5M20 15v5h-5M9 20H4v-5"/></svg></button>
+            <button id="menu-sound" class="icon-btn" type="button" aria-pressed="true" title="Sound on or off (Shift+M)" aria-label="Sound" data-i18n-title="btn.soundTitle" data-i18n-aria="btn.sound"><svg class="ico-on" viewBox="0 0 24 24" aria-hidden="true"><path d="M4 9.5h3.5L12 5.5v13l-4.5-4H4z"/><path d="M15.5 9a4.2 4.2 0 0 1 0 6M18 6.5a7.7 7.7 0 0 1 0 11"/></svg><svg class="ico-off" viewBox="0 0 24 24" aria-hidden="true"><path d="M4 9.5h3.5L12 5.5v13l-4.5-4H4z"/><path d="m16 9.5 5 5M21 9.5l-5 5"/></svg></button>
+            <button id="resume" class="resume" type="button"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M7 5v14l12-7z"/></svg><b data-i18n="menu.resume">Resume</b><kbd id="resume-hint">Esc</kbd></button>
+          </div>
+        </header>
+        <div class="pause-body">
+          <nav class="rail" id="menu-tabs" role="tablist" aria-orientation="vertical" aria-label="Menu" data-i18n-aria="hud.menu">
+            <button class="tab" role="tab" type="button" id="tab-map" aria-controls="page-map" data-tab="map"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M9 4 3 6.5V20l6-2.5 6 2.5 6-2.5V4l-6 2.5z"/><path d="M9 4v13.5M15 6.5V20"/></svg><span class="lbl" data-i18n="tab.map">Map</span></button>
+            <button class="tab" role="tab" type="button" id="tab-play" aria-controls="page-play" data-tab="play"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M10 8.5v7l5.5-3.5z"/></svg><span class="lbl" data-i18n="tab.play">Play</span></button>
+            <button class="tab" role="tab" type="button" id="tab-together" aria-controls="page-together" data-tab="together"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="9" cy="8" r="3.2"/><path d="M3 19.5c0-3.3 2.7-5.5 6-5.5s6 2.2 6 5.5"/><circle cx="17" cy="9" r="2.6"/><path d="M16.5 14.2c2.6.2 4.5 2.1 4.5 4.8"/></svg><span class="lbl" data-i18n="tab.together">Together</span></button>
+            <button class="tab" role="tab" type="button" id="tab-settings" aria-controls="page-settings" data-tab="settings"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 6h9M17 6h3M4 12h3M11 12h9M4 18h11M19 18h1"/><circle cx="15" cy="6" r="2"/><circle cx="9" cy="12" r="2"/><circle cx="17" cy="18" r="2"/></svg><span class="lbl" data-i18n="tab.settings">Settings</span></button>
+            <button class="tab" role="tab" type="button" id="tab-controls" aria-controls="page-controls" data-tab="controls"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M7.5 7.5h9a4.5 4.5 0 0 1 4.5 4.5v1.8a3.2 3.2 0 0 1-5.8 1.9l-1-1.4h-4.4l-1 1.4A3.2 3.2 0 0 1 3 13.8V12a4.5 4.5 0 0 1 4.5-4.5z"/><path d="M8 10.2v3.6M6.2 12h3.6"/><path d="M15.5 10.8h.01M17.5 13h.01"/></svg><span class="lbl" data-i18n="tab.controls">Controls</span></button>
+            <button class="tab hidden" role="tab" type="button" id="tab-admin" aria-controls="page-admin" data-tab="admin"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3 4.5 6v5.5c0 4.5 3.2 8.2 7.5 9.5 4.3-1.3 7.5-5 7.5-9.5V6z"/><path d="m9 12 2 2 4-4"/></svg><span class="lbl" data-i18n="tab.admin">Admin</span></button>
+          </nav>
+          <div class="pages">
+            <!-- The big map (src/ui/bigmap.ts) is mounted here; it draws only while this page shows. -->
+            <section class="page map-page" role="tabpanel" id="page-map" aria-labelledby="tab-map" data-page="map">
+              <div id="map-mount"></div>
+            </section>
+
+            <section class="page hidden" role="tabpanel" id="page-play" aria-labelledby="tab-play" data-page="play">
+              <div class="page-grid">
+                <div class="col">
+                  <h2 data-i18n="start.mode">Mode</h2>
+                  <div class="seg mode-big" id="mode-pause">
+                    <button class="seg-btn" type="button" data-play="explore"><b data-i18n="mode.explore">Explore</b><span data-i18n="mode.exploreSub2">No weapon</span></button>
+                    <button class="seg-btn" type="button" data-play="action"><b data-i18n="mode.action">Action</b><span data-i18n="mode.actionSub2">Hands and pistol</span></button>
+                  </div>
+                  <div class="setting">
+                    <label class="field" for="speed-pause"><span data-i18n="play.speed">Walking speed</span> <span class="walk-value"></span></label>
+                    <input class="speed" id="speed-pause" type="range" min="0.8" max="4" step="0.1" />
+                  </div>
+                  <button id="switch" class="tool" type="button"><b id="switch-label"></b><span data-i18n="play.switchSub">Change how you play</span></button>
+                </div>
+                <div class="col">
+                  <h2 data-i18n="play.house">House</h2>
+                  <div class="tools">
+                    <button id="planner-btn" class="tool" type="button"><b><span data-i18n="play.planner">Furniture planner</span> <kbd data-key="planner"></kbd></b><span data-i18n="play.plannerSub">Place, turn and move furniture</span></button>
+                    <button id="repair-btn" class="tool" type="button"><b data-i18n="play.repair">Repair windows</b><span data-i18n="play.repairSub">Every broken pane back in</span></button>
+                    <button id="resetfurn-btn" class="tool" type="button"><b data-i18n="play.resetFurn">Reset furniture</b><span data-i18n="play.resetFurnSub">Back to the original layout</span></button>
+                  </div>
+                </div>
+              </div>
+            </section>
+
+            <section class="page hidden" role="tabpanel" id="page-together" aria-labelledby="tab-together" data-page="together">
+              <div class="page-grid">
+                <div class="col">
+                  <h2 data-i18n="tog.title">Playing together</h2>
+                  <p id="mp-note" class="note"></p>
+                  <!-- Alone: your name and the PIN. Together: who is online (src/main.ts), your team in the teams game. -->
+                  <div id="mp-join-here" class="hidden">
+                    <div class="mp-row">
+                      <input id="mp-nick2" maxlength="20" autocomplete="off" spellcheck="false" placeholder="Your name" aria-label="Your name" data-i18n-placeholder="start.name" data-i18n-aria="start.name" />
+                      <input id="mp-pin2" type="password" inputmode="numeric" maxlength="12" autocomplete="off" placeholder="PIN" aria-label="PIN" data-i18n-placeholder="start.pinPh" data-i18n-aria="start.pinPh" />
+                      <button id="mp-join2" class="mini go" type="button" data-i18n="start.join">Join</button>
+                    </div>
+                    <!-- Joining asks once on this device (localStorage briel.age13, shared with the start screen: src/start.ts). -->
+                    <label class="check"><input type="checkbox" id="mp-age2" data-age13 /> <span data-i18n="start.age13">I'm 13 or older</span></label>
+                  </div>
+                  <p id="mp-msg2" class="mp-msg"></p>
+                  <div id="tog-online" class="hidden">
+                    <p class="label" id="tog-count"></p>
+                    <ul id="tog-players" class="players"></ul>
+                    <p class="note" id="tog-keys"></p>
+                  </div>
+                  <div id="team-pick" class="hidden">
+                    <p class="label" data-i18n="tog.team">Your team</p>
+                    <div class="seg" id="team-choice">
+                      <button class="seg-btn" type="button" data-team="house"><b data-i18n="team.house">House</b><span></span></button>
+                      <button class="seg-btn" type="button" data-team="bungalow"><b data-i18n="team.bungalow">Bungalow</b><span></span></button>
+                    </div>
+                  </div>
+                  <button id="mp-leave" class="mini hidden" type="button" data-i18n="tog.leave">Leave, play alone</button>
+                </div>
+                <div class="col hidden" id="scores-col">
+                  <h2 data-i18n="tog.scores">Scores</h2>
+                  <div class="tools">
+                    <button id="leaderboard-btn" class="tool hidden" type="button"><b>Leaderboard</b><span data-i18n="lb.sub">All-time totals</span></button>
+                  </div>
+                  <div id="leaderboard"></div>
+                </div>
+              </div>
+            </section>
+
+            <section class="page hidden" role="tabpanel" id="page-settings" aria-labelledby="tab-settings" data-page="settings">
+              <div class="page-grid">
+                <div class="col settings">
+                  <h2 data-i18n="set.picture">Picture and sound</h2>
+                  <button class="gfx tool" type="button"><b><span class="gfx-label" data-i18n="gfx.label">Graphics</span> <span class="gfx-value"></span></b><span class="gfx-detail"></span></button>
+                  <div class="setting"><label class="field" for="set-volume"><span data-i18n="set.volume">Volume</span> <span class="set-value" data-for="set-volume"></span></label><input class="slider" id="set-volume" type="range" min="0" max="1" step="0.05" /></div>
+                  <!-- Settings with a key as their shortcut (src/shortcuts.ts): the key shows beside them for keyboard players. -->
+                  <label class="check"><input type="checkbox" id="set-minimap" /> <span data-i18n="set.minimap">Minimap</span> <kbd data-key="minimap"></kbd></label>
+                  <label class="check"><input type="checkbox" id="set-fps" /> <span data-i18n="set.fps">FPS counter</span> <kbd data-key="fps"></kbd></label>
+                  <h2 data-i18n="set.look">Looking around</h2>
+                  <div class="setting"><label class="field" for="set-mouse"><span data-i18n="set.mouse">Mouse sensitivity</span> <span class="set-value" data-for="set-mouse"></span></label><input class="slider" id="set-mouse" type="range" min="0.2" max="3" step="0.05" /></div>
+                  <div class="setting"><label class="field" for="set-stick"><span data-i18n="set.stick">Controller look speed</span> <span class="set-value" data-for="set-stick"></span></label><input class="slider" id="set-stick" type="range" min="0.4" max="2.5" step="0.05" /></div>
+                  <div class="setting"><label class="field" for="set-fov"><span data-i18n="set.fov">Field of view</span> <span class="set-value" data-for="set-fov"></span></label><input class="slider" id="set-fov" type="range" min="60" max="100" step="1" /></div>
+                  <label class="check"><input type="checkbox" id="set-invert" /> <span data-i18n="set.invert">Invert look up / down</span></label>
+                  <label class="check"><input type="checkbox" id="set-vibration" /> <span data-i18n="set.vibration">Controller vibration</span></label>
+                </div>
+                <div class="col settings">
+                  <h2 data-i18n="set.langKbd">Language and keyboard</h2>
+                  <p class="label" data-i18n="lang.label">Language</p>
+                  <div class="seg lang-seg" role="group" aria-label="Language" data-i18n-aria="lang.label">
+                    <button class="seg-btn" type="button" data-lang="en" lang="en"><b>English</b></button>
+                    <button class="seg-btn" type="button" data-lang="nl" lang="nl"><b>Nederlands</b></button>
+                  </div>
+                  <!-- The keyboard's layout, for the key names in the hints (src/keys.ts); each choice shows its walking keys. -->
+                  <p class="label" data-i18n="kbd.label">Keyboard</p>
+                  <div class="seg kbd-seg" role="group" aria-label="Keyboard" data-i18n-aria="kbd.label">
+                    <button class="seg-btn" type="button" data-kbd="auto"><b data-i18n="kbd.auto">Automatic</b><span></span></button>
+                    <button class="seg-btn" type="button" data-kbd="azerty"><b>AZERTY</b><span></span></button>
+                    <button class="seg-btn" type="button" data-kbd="qwerty"><b>QWERTY</b><span></span></button>
+                  </div>
+                  <!-- Tests stay out of the way, folded away under Advanced. -->
+                  <details class="advanced">
+                    <summary data-i18n="set.advanced">Advanced</summary>
+                    <label class="check"><input type="checkbox" id="set-baked" /> <span data-i18n="set.baked">Baked lighting (test: light bounced between walls, faster on weak graphics)</span></label>
+                  </details>
+                  <button id="set-reset" class="mini" type="button" data-i18n="set.reset">Back to defaults</button>
+                </div>
+              </div>
+            </section>
+
+            <section class="page hidden" role="tabpanel" id="page-controls" aria-labelledby="tab-controls" data-page="controls">
+              <div id="controls"></div>
+            </section>
+
+            <section class="page hidden" role="tabpanel" id="page-admin" aria-labelledby="tab-admin" data-page="admin">
+              <div id="set-admin" class="page-grid hidden">
+                <div class="col">
+                  <h2 data-i18n="adm.rules">House rules</h2>
+                  <label class="check"><input type="checkbox" id="set-flying" checked /> <span data-i18n="adm.flying">Flying allowed</span></label>
+                  <label class="check"><input type="checkbox" id="set-furniture" checked /> <span data-i18n="adm.furniture">Players can move furniture</span></label>
+                  <label class="check"><input type="checkbox" id="set-names" checked /> <span data-i18n="adm.names">Names above players (they show through walls)</span></label>
+                  <label class="check"><input type="checkbox" id="set-portals" checked /> <span data-i18n="adm.portals">Portals take players from place to place</span></label>
+                  <label class="check"><input type="checkbox" id="set-travel" checked /> <span data-i18n="adm.travel">Players can travel from the chat (/church, /house …)</span></label>
+                  <div class="setting"><label class="field" for="set-max"><span data-i18n="adm.max">Players at once</span> <span class="set-value" id="set-max-value">4</span></label><input class="slider" id="set-max" type="range" min="2" max="16" step="1" value="4" /></div>
+                  <h2 data-i18n="adm.joining">Joining</h2>
+                  <label class="check"><input type="checkbox" id="set-pin" checked /> <span data-i18n="adm.pin">New players can join with the PIN</span></label>
+                  <div class="setting">
+                    <label class="field" for="set-pin-code" data-i18n="adm.pinLabel">PIN</label>
+                    <div class="mp-row">
+                      <input id="set-pin-code" type="password" inputmode="numeric" maxlength="12" autocomplete="off" spellcheck="false" />
+                      <button id="set-pin-show" class="mini" type="button" data-i18n="adm.show">Show</button>
+                      <button id="set-pin-save" class="mini" type="button" data-i18n="adm.save">Save</button>
+                    </div>
+                    <p class="note" id="set-pin-msg" data-i18n="adm.pinNote">4 to 12 digits; longer is harder to guess. Saving logs out everyone who joined with the old PIN.</p>
+                  </div>
+                </div>
+                <div class="col">
+                  <h2 data-i18n="adm.games">Party games</h2>
+                  <div id="game-admin" class="tools">
+                    <button class="tool" type="button" data-game="hide"><b data-i18n="game.hide">Hide and seek</b><span data-i18n="game.hideSub">One seeks, the others hide; found players seek too</span></button>
+                    <button class="tool" type="button" data-game="tag"><b data-i18n="game.tag">Tag</b><span data-i18n="game.tagSub">Whoever is "it" tags someone else; least time as "it" wins</span></button>
+                    <button class="tool" type="button" data-game="treasure"><b data-i18n="game.treasure">Treasure hunt</b><span data-i18n="game.treasureSub">15 coins in and around the house; most coins wins</span></button>
+                    <button class="tool" type="button" data-game="teams"><b data-i18n="game.teams">House against bungalow</b><span data-i18n="game.teamsSub">Two teams fight, each starts at its own house; first to 25 kills</span></button>
+                    <button class="tool" type="button" data-game="free"><b data-i18n="game.stop">Stop the game</b><span data-i18n="game.stopSub">Back to playing freely</span></button>
+                    <button id="newround-btn" class="tool" type="button"><b data-i18n="adm.newRound">New round</b><span data-i18n="adm.newRoundSub">Fighting scores back to zero</span></button>
+                    <button id="clearfurn-btn" class="tool" type="button"><b data-i18n="adm.clearFurn">Remove all furniture</b><span data-i18n="adm.clearFurnSub">For everyone</span></button>
+                  </div>
+                </div>
+                <div class="col">
+                  <h2 data-i18n="adm.people">People</h2>
+                  <div id="admin"></div>
+                </div>
+              </div>
+            </section>
+
+            <!-- The legal pages get ?lang= in the game's language (src/i18n.ts). Every link opens a new tab
+                 without access to this one (rel="noopener noreferrer": no reverse tabnabbing). "Made by"
+                 shows only where the HUD's credit line is hidden (touch controls). -->
+            <footer class="pause-foot">
+              <span class="made-by" data-i18n="credit.made">Made by Yoshi Parlevliet</span>
+              <span class="legal-links"><a href="/legal/terms.html" target="_blank" rel="noopener noreferrer" data-i18n="legal.termsShort">Terms</a> · <a href="/legal/privacy.html" target="_blank" rel="noopener noreferrer" data-i18n="legal.privacyShort">Privacy</a> · <a href="/legal/credits.html" target="_blank" rel="noopener noreferrer" data-i18n="legal.credits">Credits</a></span>
+              <a class="gh" href="https://github.com/yopazerbot/brieltje" target="_blank" rel="noopener noreferrer" title="The source code on GitHub" data-i18n-title="credit.source"><svg viewBox="0 0 16 16" width="14" height="14" aria-hidden="true"><path fill="currentColor" d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27.68 0 1.36.09 2 .27 1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.013 8.013 0 0016 8c0-4.42-3.58-8-8-8z"/></svg><span>GitHub</span></a>
+              <a class="meetup" href="/interested/" target="_blank" rel="noopener noreferrer"><span data-i18n="menu.meetup">Meet up in person</span> ↗</a>
+            </footer>
+          </div>
         </div>
-        <nav class="tabs" id="menu-tabs">
-          <button class="tab selected" type="button" data-tab="play" data-i18n="tab.play">Play</button>
-          <button class="tab" type="button" data-tab="settings" data-i18n="tab.settings">Settings</button>
-          <button class="tab" type="button" data-tab="controls" data-i18n="tab.controls">Controls</button>
-          <button class="tab" type="button" data-tab="together" data-i18n="tab.together">Together</button>
-          <button class="tab hidden" type="button" data-tab="admin" id="tab-admin" data-i18n="tab.admin">Admin</button>
-        </nav>
-
-        <section class="page" data-page="play">
-          <div class="page-grid">
-            <div class="col">
-              <h2 data-i18n="start.mode">Mode</h2>
-              <div class="seg" id="mode-pause">
-                <button class="seg-btn" type="button" data-play="explore"><b data-i18n="mode.explore">Explore</b><span data-i18n="mode.exploreSub2">No weapon</span></button>
-                <button class="seg-btn" type="button" data-play="action"><b data-i18n="mode.action">Action</b><span data-i18n="mode.actionSub2">Hands and pistol</span></button>
-              </div>
-              <div class="setting">
-                <label class="field" for="speed-pause"><span data-i18n="play.speed">Walking speed</span> <span class="walk-value"></span></label>
-                <input class="speed" id="speed-pause" type="range" min="0.8" max="4" step="0.1" />
-              </div>
-              <button id="switch" class="tool" type="button"><b id="switch-label"></b><span data-i18n="play.switchSub">Change how you play</span></button>
-            </div>
-            <div class="col">
-              <h2 data-i18n="play.house">House</h2>
-              <div class="tools">
-                <button id="planner-btn" class="tool" type="button"><b data-i18n="play.planner">Furniture planner</b><span data-i18n="play.plannerSub">Place, turn and move furniture (P)</span></button>
-                <button id="repair-btn" class="tool" type="button"><b data-i18n="play.repair">Repair windows</b><span data-i18n="play.repairSub">Every broken pane back in</span></button>
-                <button id="resetfurn-btn" class="tool" type="button"><b data-i18n="play.resetFurn">Reset furniture</b><span data-i18n="play.resetFurnSub">Back to the original layout</span></button>
-              </div>
-            </div>
-          </div>
-        </section>
-
-        <section class="page hidden" data-page="settings">
-          <div class="page-grid">
-            <div class="col settings">
-              <h2 data-i18n="set.look">Looking around</h2>
-              <div class="setting"><label class="field" for="set-mouse"><span data-i18n="set.mouse">Mouse sensitivity</span> <span class="set-value" data-for="set-mouse"></span></label><input class="slider" id="set-mouse" type="range" min="0.2" max="3" step="0.05" /></div>
-              <div class="setting"><label class="field" for="set-stick"><span data-i18n="set.stick">Controller look speed</span> <span class="set-value" data-for="set-stick"></span></label><input class="slider" id="set-stick" type="range" min="0.4" max="2.5" step="0.05" /></div>
-              <div class="setting"><label class="field" for="set-fov"><span data-i18n="set.fov">Field of view</span> <span class="set-value" data-for="set-fov"></span></label><input class="slider" id="set-fov" type="range" min="60" max="100" step="1" /></div>
-              <label class="check"><input type="checkbox" id="set-invert" /> <span data-i18n="set.invert">Invert look up / down</span></label>
-              <label class="check"><input type="checkbox" id="set-vibration" /> <span data-i18n="set.vibration">Controller vibration</span></label>
-            </div>
-            <div class="col settings">
-              <h2 data-i18n="lang.label">Language</h2>
-              <div class="seg lang-seg" role="group" aria-label="Language" data-i18n-aria="lang.label">
-                <button class="seg-btn" type="button" data-lang="en" lang="en"><b>English</b></button>
-                <button class="seg-btn" type="button" data-lang="nl" lang="nl"><b>Nederlands</b></button>
-              </div>
-              <!-- The keyboard's layout, for the key names in the hints (src/keys.ts); each choice shows its walking keys. -->
-              <h2 data-i18n="kbd.label">Keyboard</h2>
-              <div class="seg kbd-seg" role="group" aria-label="Keyboard" data-i18n-aria="kbd.label">
-                <button class="seg-btn" type="button" data-kbd="auto"><b data-i18n="kbd.auto">Automatic</b><span></span></button>
-                <button class="seg-btn" type="button" data-kbd="azerty"><b>AZERTY</b><span></span></button>
-                <button class="seg-btn" type="button" data-kbd="qwerty"><b>QWERTY</b><span></span></button>
-              </div>
-              <h2 data-i18n="set.soundGfx">Sound and graphics</h2>
-              <div class="setting"><label class="field" for="set-volume"><span data-i18n="set.volume">Volume</span> <span class="set-value" data-for="set-volume"></span></label><input class="slider" id="set-volume" type="range" min="0" max="1" step="0.05" /></div>
-              <button class="gfx tool" type="button"><b><span class="gfx-label" data-i18n="gfx.label">Graphics</span> <span class="gfx-value"></span></b><span class="gfx-detail"></span></button>
-              <label class="check"><input type="checkbox" id="set-baked" /> <span data-i18n="set.baked">Baked lighting (test: light bounced between walls, faster on weak graphics)</span></label>
-              <button id="set-reset" class="mini" type="button" data-i18n="set.reset">Back to defaults</button>
-            </div>
-          </div>
-        </section>
-
-        <section class="page hidden" data-page="controls">
-          <div id="controls"></div>
-        </section>
-
-        <section class="page hidden" data-page="together">
-          <div class="page-grid">
-            <div class="col">
-              <h2 data-i18n="tog.title">Playing together</h2>
-              <p id="mp-note" class="note"></p>
-              <div id="team-pick" class="hidden">
-                <p class="label" data-i18n="tog.team">Your team</p>
-                <div class="seg" id="team-choice">
-                  <button class="seg-btn" type="button" data-team="house"><b data-i18n="team.house">House</b><span></span></button>
-                  <button class="seg-btn" type="button" data-team="bungalow"><b data-i18n="team.bungalow">Bungalow</b><span></span></button>
-                </div>
-              </div>
-              <div id="mp-join-here" class="mp-row hidden">
-                <input id="mp-nick2" maxlength="20" autocomplete="off" spellcheck="false" placeholder="Your name" data-i18n-placeholder="start.name" />
-                <input id="mp-pin2" type="password" inputmode="numeric" maxlength="12" autocomplete="off" placeholder="PIN" data-i18n-placeholder="start.pinPh" />
-                <button id="mp-join2" class="mini go" type="button" data-i18n="start.join">Join</button>
-              </div>
-              <p id="mp-msg2" class="mp-msg"></p>
-              <button id="mp-leave" class="mini hidden" type="button" data-i18n="tog.leave">Leave, play alone</button>
-            </div>
-            <div class="col hidden" id="scores-col">
-              <h2 data-i18n="tog.scores">Scores</h2>
-              <div class="tools">
-                <button id="leaderboard-btn" class="tool hidden" type="button"><b>Leaderboard</b><span data-i18n="lb.sub">All-time totals</span></button>
-              </div>
-              <div id="leaderboard"></div>
-            </div>
-          </div>
-        </section>
-
-        <section class="page hidden" data-page="admin">
-          <div id="set-admin" class="page-grid hidden">
-            <div class="col">
-              <h2 data-i18n="adm.rules">House rules</h2>
-              <label class="check"><input type="checkbox" id="set-flying" checked /> <span data-i18n="adm.flying">Flying allowed</span></label>
-              <label class="check"><input type="checkbox" id="set-furniture" checked /> <span data-i18n="adm.furniture">Players can move furniture</span></label>
-              <label class="check"><input type="checkbox" id="set-names" checked /> <span data-i18n="adm.names">Names above players (they show through walls)</span></label>
-              <label class="check"><input type="checkbox" id="set-portals" checked /> <span data-i18n="adm.portals">Portals take players from place to place</span></label>
-              <label class="check"><input type="checkbox" id="set-travel" checked /> <span data-i18n="adm.travel">Players can travel from the chat (/church, /house …)</span></label>
-              <div class="setting"><label class="field" for="set-max"><span data-i18n="adm.max">Players at once</span> <span class="set-value" id="set-max-value">4</span></label><input class="slider" id="set-max" type="range" min="2" max="16" step="1" value="4" /></div>
-              <h2 data-i18n="adm.joining">Joining</h2>
-              <label class="check"><input type="checkbox" id="set-pin" checked /> <span data-i18n="adm.pin">New players can join with the PIN</span></label>
-              <div class="setting">
-                <label class="field" for="set-pin-code" data-i18n="adm.pinLabel">PIN</label>
-                <div class="mp-row">
-                  <input id="set-pin-code" type="password" inputmode="numeric" maxlength="12" autocomplete="off" spellcheck="false" />
-                  <button id="set-pin-show" class="mini" type="button" data-i18n="adm.show">Show</button>
-                  <button id="set-pin-save" class="mini" type="button" data-i18n="adm.save">Save</button>
-                </div>
-                <p class="note" id="set-pin-msg" data-i18n="adm.pinNote">4 to 12 digits; longer is harder to guess. Saving logs out everyone who joined with the old PIN.</p>
-              </div>
-            </div>
-            <div class="col">
-              <h2 data-i18n="adm.games">Party games</h2>
-              <div id="game-admin" class="tools">
-                <button class="tool" type="button" data-game="hide"><b data-i18n="game.hide">Hide and seek</b><span data-i18n="game.hideSub">One seeks, the others hide; found players seek too</span></button>
-                <button class="tool" type="button" data-game="tag"><b data-i18n="game.tag">Tag</b><span data-i18n="game.tagSub">Whoever is "it" tags someone else; least time as "it" wins</span></button>
-                <button class="tool" type="button" data-game="treasure"><b data-i18n="game.treasure">Treasure hunt</b><span data-i18n="game.treasureSub">15 coins in and around the house; most coins wins</span></button>
-                <button class="tool" type="button" data-game="teams"><b data-i18n="game.teams">House against bungalow</b><span data-i18n="game.teamsSub">Two teams fight, each starts at its own house; first to 25 kills</span></button>
-                <button class="tool" type="button" data-game="free"><b data-i18n="game.stop">Stop the game</b><span data-i18n="game.stopSub">Back to playing freely</span></button>
-                <button id="newround-btn" class="tool" type="button"><b data-i18n="adm.newRound">New round</b><span data-i18n="adm.newRoundSub">Fighting scores back to zero</span></button>
-                <button id="clearfurn-btn" class="tool" type="button"><b data-i18n="adm.clearFurn">Remove all furniture</b><span data-i18n="adm.clearFurnSub">For everyone</span></button>
-              </div>
-            </div>
-            <div class="col">
-              <h2 data-i18n="adm.people">People</h2>
-              <div id="admin"></div>
-            </div>
-          </div>
-        </section>
-        <p class="made"><span data-i18n="credit.made">Made by Yoshi Parlevliet</span> <a class="gh" href="https://github.com/yopazerbot/brieltje" target="_blank" rel="noopener noreferrer" title="The source code on GitHub" data-i18n-title="credit.source"><svg viewBox="0 0 16 16" width="16" height="16" aria-hidden="true"><path fill="currentColor" d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27.68 0 1.36.09 2 .27 1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.013 8.013 0 0016 8c0-4.42-3.58-8-8-8z"/></svg><span>GitHub</span></a></p>
       </div>
     </div>
     <script src="/lang-early.js"></script>

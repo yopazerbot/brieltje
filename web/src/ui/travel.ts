@@ -1,6 +1,7 @@
 import type { FrameInput } from '../controls/input';
 import { PORTALS, type Portal } from '../../shared/portals.mjs';
 import { dist, lang, onLang, portalName, t } from '../i18n';
+import { key as keyFor } from '../shortcuts';
 
 /**
  * The list of places while you stand on a portal's pad (or stop the car on it): every portal by
@@ -62,8 +63,7 @@ export class TravelPanel {
       row.querySelector('small')!.textContent = p === here ? t('travel.here') : dist(d);
       row.querySelector('em')!.textContent = p.id === back && p !== here ? t('travel.back') : '';
     });
-    const pick = mode === 'pad' ? t('travel.pickPad') : mode === 'touch' ? t('travel.pickTouch') : t('travel.pickKbm', { n: PORTALS.length });
-    this.hint.textContent = t(inCar ? 'travel.driveOn' : 'travel.walkOff', { pick });
+    this.hint.textContent = t(inCar ? 'travel.driveOn' : 'travel.walkOff', { pick: keyFor('portal', mode) });
     this.box.classList.remove('hidden');
   }
 
@@ -74,7 +74,11 @@ export class TravelPanel {
     this.box.classList.add('hidden');
   }
 
-  /** This frame's number key, wheel or D-pad and E: true when the list took them (the weapons and doors don't get them then). */
+  /**
+   * This frame's number key, wheel or D-pad and E: true when the list took them (the weapons and
+   * doors don't get them then). Every number key goes to the list while it shows, even the one for
+   * the portal you stand on, so a digit never also switches the weapon here.
+   */
   handle(frame: FrameInput, mode: 'kbm' | 'pad' | 'touch'): boolean {
     if (!this.here) return false;
     const n = frame.weaponSlot;

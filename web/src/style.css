@@ -91,7 +91,6 @@ html, body {
 .choice b { display: block; font-size: 19px; font-style: italic; }
 .choice span { display: block; margin-top: 4px; font-size: 13px; opacity: 0.75; }
 .choice.primary { border-color: var(--accent); }
-#controls { margin-bottom: 18px; }
 .panel h1 { margin: 0; font-size: 48px; font-style: italic; letter-spacing: 0.08em; }
 /* The start screen's link to the sign-up page (brieltje.be/interested). */
 .invite { display: flex; flex-wrap: wrap; align-items: baseline; justify-content: space-between; gap: 2px 12px; margin: -4px 0 16px; padding: 9px 12px; font-size: 14px; color: var(--ink); text-decoration: none; background: rgba(242, 179, 61, 0.08); border: 1px solid rgba(242, 179, 61, 0.35); border-radius: 4px; }
@@ -426,54 +425,163 @@ input.slider { width: 100%; accent-color: #f2b33d; }
 #planner span { display: block; font-size: 13px; color: var(--accent); letter-spacing: 0.06em; }
 #planner small { display: block; margin-top: 4px; font-size: 12px; opacity: 0.75; }
 
-/* Pause menu: Resume at the top, then tabs (Play, Settings, Controls, Together, and Admin for
-   the admin); each tab a page of two or three columns that stack on narrow screens. */
-.panel.wide { max-width: 1040px; padding: 24px 32px; }
-.pause-top { display: flex; align-items: center; justify-content: space-between; gap: 12px 32px; flex-wrap: wrap; }
-.pause-top .sub { margin-bottom: 0; }
-.pause-top #resume { flex: 0 1 320px; }
-.tabs { display: flex; gap: 4px; margin: 18px 0 0; border-bottom: 1px solid rgba(255, 255, 255, 0.14); overflow-x: auto; }
-.tab {
-  padding: 10px 18px 9px; cursor: pointer; font-family: inherit; font-size: 15px; font-weight: 700; letter-spacing: 0.08em;
-  text-transform: uppercase; color: rgba(244, 239, 230, 0.6); background: none; border: none; border-bottom: 3px solid transparent;
-  white-space: nowrap;
+/* The in-game menu (src/ui/menu.ts): a compact header (the title, who you are, full screen, the
+   sound and Resume), a rail of tabs on the left with the chosen page beside it, and a row of links
+   under the page. Big enough for a useful map: about 1100 x 700 at 1280 x 800, and most of a
+   1920 x 1080 screen. */
+#pause-panel {
+  display: flex; flex-direction: column; padding: 0; overflow: hidden; max-width: none; max-height: none;
+  width: min(1680px, calc(100% - 148px)); height: min(1000px, calc(100% - 68px));
 }
-.tab:hover, .tab:focus-visible { color: var(--ink); outline: none; }
-.tab.selected { color: var(--accent); border-bottom-color: var(--accent); }
-.page { min-height: 340px; padding-top: 18px; }
-.page-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); gap: 0 36px; align-items: start; }
+@media (max-width: 1100px) { #pause-panel { width: 100%; } }
+/* The keyboard's place is always seen (the rail, the buttons, the fields, the links). */
+#pause-panel :focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
+#pause-panel .rail .tab:focus-visible, #pause-panel .seg-btn:focus-visible { outline-offset: -3px; }
+.pause-top {
+  display: flex; align-items: center; justify-content: space-between; gap: 8px 20px; flex-wrap: wrap;
+  padding: 12px 16px 12px 22px; border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+}
+.pause-title { min-width: 0; }
+#pause-panel h1 { display: flex; align-items: baseline; gap: 8px; margin: 0; font-size: 22px; line-height: 1.15; letter-spacing: 0.06em; }
+#pause-panel h1 > span:last-child { font-weight: 600; letter-spacing: 0.03em; }
+.pause-sep { color: var(--accent); font-style: normal; }
+.pause-top .sub { margin: 3px 0 0; font-size: 12px; }
+.pause-actions { display: flex; align-items: center; gap: 8px; margin-left: auto; }
+.icon-btn {
+  display: inline-flex; align-items: center; justify-content: center; width: 42px; height: 42px; padding: 0; cursor: pointer;
+  color: var(--ink); background: rgba(255, 255, 255, 0.06); border: 1px solid rgba(255, 255, 255, 0.18); border-radius: 4px;
+}
+.icon-btn:hover { border-color: var(--accent); }
+.icon-btn svg, .rail svg { width: 22px; height: 22px; flex: none; fill: none; stroke: currentColor; stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round; }
+/* The sound: a speaker with waves, or crossed out. */
+.icon-btn .ico-off, .icon-btn.off .ico-on { display: none; }
+.icon-btn.off .ico-off { display: block; }
+.icon-btn.off { color: rgba(244, 239, 230, 0.6); }
+.resume {
+  display: inline-flex; align-items: center; gap: 10px; height: 42px; padding: 0 10px 0 14px; cursor: pointer;
+  font-family: inherit; color: #14161a; background: var(--accent); border: 0; border-radius: 4px;
+}
+.resume:hover { filter: brightness(1.08); }
+.resume svg { width: 15px; height: 15px; flex: none; fill: currentColor; }
+.resume b { font-size: 17px; font-style: italic; letter-spacing: 0.02em; }
+.resume kbd {
+  padding: 2px 7px; font-family: inherit; font-size: 12px; font-weight: 700; letter-spacing: 0.04em;
+  color: var(--ink); background: rgba(12, 14, 18, 0.78); border-radius: 3px;
+}
+#pause-panel kbd:empty { display: none; }
+.pause-body { flex: 1; min-height: 0; display: grid; grid-template-columns: auto minmax(0, 1fr); }
+.rail {
+  display: flex; flex-direction: column; gap: 2px; width: 184px; padding: 12px 10px; overflow-y: auto;
+  border-right: 1px solid rgba(255, 255, 255, 0.1);
+}
+.rail .tab {
+  display: flex; align-items: center; gap: 12px; width: 100%; min-height: 44px; padding: 8px 12px; cursor: pointer; text-align: left;
+  font-family: inherit; font-size: 16px; font-weight: 600; letter-spacing: 0.02em; color: rgba(244, 239, 230, 0.72);
+  background: none; border: 0; border-radius: 4px;
+}
+.rail .tab:hover { color: var(--ink); background: rgba(255, 255, 255, 0.06); }
+.rail .tab.selected { color: var(--accent); background: rgba(242, 179, 61, 0.12); box-shadow: inset 3px 0 0 var(--accent); }
+.pages { display: flex; flex-direction: column; min-width: 0; min-height: 0; }
+.pages > .page { flex: 1; min-height: 0; overflow-y: auto; padding: 20px 28px 24px; }
+.pages > .map-page { display: flex; padding: 0; overflow: hidden; }
+#map-mount { position: relative; flex: 1; min-width: 0; }
+.page-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 0 40px; align-items: start; max-width: 1240px; }
 .page-grid .col { min-width: 0; }
 .page #switch { width: 100%; margin-top: 4px; }
 .col h2 {
-  margin: 18px 0 10px; padding-bottom: 6px; border-bottom: 1px solid rgba(255, 255, 255, 0.12);
+  margin: 22px 0 10px; padding-bottom: 6px; border-bottom: 1px solid rgba(255, 255, 255, 0.12);
   font-size: 13px; font-weight: 700; letter-spacing: 0.18em; text-transform: uppercase; color: var(--accent);
 }
 .col h2:first-child { margin-top: 0; }
 .col .setting:first-of-type { margin-top: 12px; }
 .col .gfx { margin-top: 4px; }
-.col .choices.toggle .choice { flex: 1 1 110px; }
 .col .settings .setting { margin: 6px 0; }
 .col .check { margin: 6px 0; }
-#controls { columns: 3 240px; column-gap: 32px; }
-.ctl-group { break-inside: avoid; margin-bottom: 14px; }
-.ctl-group h3 { margin: 0 0 4px; font-size: 12px; font-weight: 600; letter-spacing: 0.14em; text-transform: uppercase; opacity: 0.6; }
+.col .label { margin-top: 12px; }
+.col h2 + .label { margin-top: 0; }
+/* Play: the mode first, big. */
+.mode-big .seg-btn { padding: 14px 18px; }
+.mode-big .seg-btn b { font-size: 22px; }
+.mode-big .seg-btn span { font-size: 13px; }
+/* A key beside a menu item (the planner, the minimap ...), for keyboard players. */
+#pause-panel kbd[data-key] {
+  margin-left: 6px; padding: 0 6px; font-family: inherit; font-size: 11px; font-weight: 700; font-style: normal; letter-spacing: 0.04em;
+  color: var(--ink); border: 1px solid rgba(255, 255, 255, 0.3); border-radius: 3px; vertical-align: 1px;
+}
+/* Together: who is online, each with a dot in their colour. */
+.players { display: grid; gap: 4px; margin: 0 0 8px; padding: 0; list-style: none; }
+.players li { display: flex; align-items: center; gap: 8px; font-size: 15px; font-weight: 600; overflow-wrap: anywhere; }
+.players i { flex: none; width: 10px; height: 10px; border-radius: 50%; box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.6); }
+#team-pick { margin-top: 14px; }
+#mp-leave { margin-top: 6px; }
+/* Settings: the test under Advanced, folded away. */
+.advanced { margin: 16px 0 12px; }
+.advanced summary {
+  cursor: pointer; width: fit-content; font-size: 13px; letter-spacing: 0.15em; text-transform: uppercase; color: rgba(244, 239, 230, 0.7);
+}
+.advanced summary:hover { color: var(--ink); }
+.advanced[open] summary { margin-bottom: 4px; }
+/* Controls: a card per group, two columns where there is room. */
+#controls { columns: 2 320px; column-gap: 20px; max-width: 1180px; }
+.ctl-group {
+  break-inside: avoid; margin: 0 0 16px; padding: 12px 14px 8px;
+  background: rgba(255, 255, 255, 0.04); border: 1px solid rgba(255, 255, 255, 0.08); border-radius: 4px;
+}
+.ctl-group h3 { margin: 0 0 6px; font-size: 13px; font-weight: 700; letter-spacing: 0.14em; text-transform: uppercase; color: var(--accent); }
 .ctl-group table { font-size: 14px; table-layout: fixed; }
-.ctl-group td:first-child { width: 50%; }
-.ctl-group td { padding: 4px 10px 4px 0; vertical-align: top; }
-.ctl-group td:last-child { color: var(--accent); padding-right: 0; }
+.ctl-group td:first-child { width: 48%; }
+.ctl-group td { padding: 5px 10px 5px 0; vertical-align: top; }
+.ctl-group tr:first-child td { border-top: 0; }
+.ctl-group td:last-child { color: var(--accent); font-weight: 600; padding-right: 0; }
 .tools { display: grid; gap: 8px; }
 .tool {
-  text-align: left; cursor: pointer; padding: 7px 12px; font-family: inherit; color: var(--ink);
+  text-align: left; cursor: pointer; padding: 8px 12px; font-family: inherit; color: var(--ink);
   background: rgba(255, 255, 255, 0.06); border: 1px solid rgba(255, 255, 255, 0.15); border-radius: 2px;
 }
-.tool:hover, .tool:focus-visible { border-color: var(--accent); background: rgba(242, 179, 61, 0.12); outline: none; }
+.tool:hover, .tool:focus-visible { border-color: var(--accent); background: rgba(242, 179, 61, 0.12); }
 .tool b { display: block; font-size: 15px; }
 .tool span { display: block; margin-top: 2px; font-size: 12px; opacity: 0.7; }
-.note { margin: 0 0 10px; font-size: 13px; opacity: 0.75; }
+.tool b span { display: inline; margin: 0; font-size: inherit; opacity: 1; }
+.note { margin: 0 0 10px; font-size: 13px; line-height: 1.45; opacity: 0.8; }
 #leaderboard table { font-size: 13px; }
-@media (max-width: 720px) {
-  .panel.wide { padding: 20px 18px; }
-  .tab { padding: 8px 12px 7px; font-size: 13px; }
+/* The links under the page. */
+.pause-foot {
+  flex: none; display: flex; flex-wrap: wrap; align-items: center; gap: 4px 18px; padding: 8px 28px;
+  font-size: 12px; letter-spacing: 0.06em; color: rgba(244, 239, 230, 0.7); border-top: 1px solid rgba(255, 255, 255, 0.1);
+}
+.pause-foot .legal-links { margin: 0; }
+.pause-foot a.gh { margin: 0; }
+.pause-foot .meetup { margin-left: auto; font-weight: 600; color: var(--accent); text-decoration: none; }
+.pause-foot .meetup:hover { text-decoration: underline; text-underline-offset: 2px; }
+/* "Made by" only where the HUD's credit line is hidden (touch controls). */
+#pause-panel .made-by { display: none; }
+body.touch #pause-panel .made-by { display: inline; }
+/* A short screen (a phone held sideways): the menu fills it, the rail shows icons only (their names
+   stay for screen readers), the header is one row and the page gets the rest of the height. */
+@media (max-height: 520px) {
+  #overlay:has(> #pause-panel:not(.hidden)) {
+    padding: max(6px, env(safe-area-inset-top, 0px)) max(8px, env(safe-area-inset-right, 0px)) max(6px, env(safe-area-inset-bottom, 0px)) max(8px, env(safe-area-inset-left, 0px));
+  }
+  #pause-panel { width: 100%; height: 100%; }
+  .pause-top { flex-wrap: nowrap; padding: 5px 8px 5px 14px; }
+  .pause-title { display: flex; align-items: baseline; gap: 12px; }
+  #pause-panel h1 { font-size: 17px; white-space: nowrap; }
+  .pause-top .sub { margin: 0; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; font-size: 11px; }
+  .pause-actions { gap: 6px; }
+  .icon-btn, .resume { height: 40px; }
+  .icon-btn { width: 42px; }
+  .resume b { font-size: 15px; }
+  .rail { width: 58px; padding: 6px 6px; gap: 4px; }
+  .rail .tab { justify-content: center; padding: 0; }
+  .rail .tab .lbl { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
+  .pages > .page { padding: 12px 16px 16px; }
+  .page-grid { gap: 0 24px; }
+  .col h2 { margin-top: 16px; }
+  .mode-big .seg-btn { padding: 10px 14px; }
+  .mode-big .seg-btn b { font-size: 18px; }
+  #controls { columns: 1; }
+  .pause-foot { padding: 4px 16px; font-size: 11px; }
+  .pause-body:has(#page-map:not(.hidden)) .pause-foot { display: none; }
 }
 
 #capture-hint {
@@ -641,10 +749,10 @@ body.touch #full-hint { top: calc(8px + env(safe-area-inset-top, 0px)); left: ca
   body.touch #modebar, body.touch #planner, body.touch #hud-top { left: 280px; right: 160px; }
   body.touch #chat-log { width: min(300px, 30vw); max-height: min(140px, calc(100% - 310px)); font-size: 14px; }
 }
-/* With a menu open on a touch screen: those two buttons stand in a strip of their own on the
-   right, beside the panel instead of over its tabs. */
+/* With the start screen open on a touch screen: those two buttons stand in a strip of their own on
+   the right, beside the panel. The in-game menu has them in its header instead (below). */
 @media (pointer: coarse) {
-  #overlay { padding-right: calc(60px + env(safe-area-inset-right, 0px)); }
+  #overlay:has(> #start-panel:not(.hidden)) { padding-right: calc(60px + env(safe-area-inset-right, 0px)); }
   body:has(#overlay:not(.hidden)) #sound-btn, body:has(#overlay:not(.hidden)) #full-btn {
     top: calc(8px + env(safe-area-inset-top, 0px)); bottom: auto; left: auto; right: calc(8px + env(safe-area-inset-right, 0px));
     width: 44px; height: 44px; padding: 0; font-size: 0; letter-spacing: 0; border-radius: 8px;
@@ -734,7 +842,7 @@ body.touch #tv-hint { margin-top: 4px; font-size: 11px; }
 }
 #warp.on { opacity: 1; transition: opacity 0.16s ease-in; }
 
-/* The big map (M): the whole area, north up, over everything but the flash and the menus. */
+/* The button over the minimap: the menu's Map tab (M). */
 #map-btn {
   position: fixed; top: 18px; right: 24px; z-index: 20; width: 180px; height: 180px; padding: 0; border: 0; border-radius: 50%;
   background: transparent; cursor: pointer; color: var(--ink);
@@ -750,21 +858,16 @@ body.touch #map-btn { top: calc(8px + env(safe-area-inset-top, 0px)); right: cal
 body.touch #map-btn .ico { left: 6px; bottom: 6px; width: 26px; height: 26px; }
 @media (min-height: 600px) { body.touch #map-btn { width: 140px; height: 140px; } }
 
-#bigmap { position: fixed; inset: 0; z-index: 28; background: #c3c9b6; touch-action: none; user-select: none; -webkit-user-select: none; color: #1d2025; }
+/* The map: the menu's first tab (src/ui/bigmap.ts in #map-mount), north up, filling the page. */
+#bigmap { position: absolute; inset: 0; overflow: hidden; background: #c3c9b6; touch-action: none; user-select: none; -webkit-user-select: none; color: #1d2025; }
 #bigmap.hidden { display: none; }
 #bigmap canvas { position: absolute; inset: 0; width: 100%; height: 100%; }
 #bigmap .bm-base { pointer-events: none; }
 #bigmap .bm-top { cursor: grab; }
 #bigmap .bm-top:active { cursor: grabbing; }
-#bigmap .bm-head {
-  position: absolute; top: calc(14px + env(safe-area-inset-top, 0px)); left: calc(20px + env(safe-area-inset-left, 0px));
-  display: flex; align-items: baseline; gap: 12px; pointer-events: none;
-}
-#bigmap .bm-head b { font-size: 30px; font-style: italic; letter-spacing: 0.03em; }
-#bigmap .bm-head small { font-size: 12px; font-weight: 700; letter-spacing: 0.25em; text-transform: uppercase; color: #8a6a1c; }
 #bigmap .bm-legend {
-  position: absolute; top: calc(56px + env(safe-area-inset-top, 0px)); left: calc(20px + env(safe-area-inset-left, 0px));
-  display: flex; gap: 14px; font-size: 12px; font-weight: 600; pointer-events: none;
+  position: absolute; top: 10px; left: 12px; display: flex; flex-wrap: wrap; gap: 4px 14px; padding: 5px 10px;
+  font-size: 12px; font-weight: 600; background: rgba(255, 255, 255, 0.72); border-radius: 4px; pointer-events: none;
 }
 #bigmap .bm-legend span { display: flex; align-items: center; gap: 5px; }
 #bigmap .bm-legend i { display: inline-block; width: 12px; height: 12px; }
@@ -775,19 +878,17 @@ body.touch #map-btn .ico { left: 6px; bottom: 6px; width: 26px; height: 26px; }
 #bigmap button {
   font: inherit; color: var(--ink); background: rgba(12, 14, 18, 0.85); border: 1px solid rgba(255, 255, 255, 0.25); border-radius: 6px; cursor: pointer;
 }
-#bigmap button:hover, #bigmap button:focus-visible { border-color: var(--accent); outline: none; }
-#bigmap .bm-close { position: absolute; top: calc(12px + env(safe-area-inset-top, 0px)); right: calc(14px + env(safe-area-inset-right, 0px)); width: 44px; height: 44px; font-size: 18px; }
-#bigmap .bm-tools {
-  position: absolute; right: calc(14px + env(safe-area-inset-right, 0px)); bottom: calc(24px + env(safe-area-inset-bottom, 0px));
-  display: flex; flex-direction: column; gap: 6px;
-}
-#bigmap .bm-tools button { width: 44px; height: 44px; font-size: 20px; font-weight: 700; }
+#bigmap button:hover { border-color: var(--accent); }
+/* Zoom in, zoom out, where you are, the whole map. */
+#bigmap .bm-tools { position: absolute; right: 12px; bottom: 12px; display: flex; flex-direction: column; gap: 6px; }
+#bigmap .bm-tools button { width: 42px; height: 42px; font-size: 20px; font-weight: 700; }
 #bigmap .bm-help {
-  position: absolute; left: 50%; bottom: calc(12px + env(safe-area-inset-bottom, 0px)); transform: translateX(-50%); max-width: calc(100vw - 260px);
-  padding: 5px 12px; font-size: 13px; text-align: center; background: rgba(255, 255, 255, 0.75); border-radius: 4px; pointer-events: none;
+  position: absolute; left: 50%; bottom: 10px; transform: translateX(-50%); width: max-content; max-width: calc(100% - 150px);
+  padding: 5px 12px; font-size: 13px; text-align: center; background: rgba(255, 255, 255, 0.8); border-radius: 4px; pointer-events: none;
 }
+/* A place or the waypoint: clear of the north arrow in the corner. */
 #bigmap .bm-card {
-  position: absolute; top: calc(66px + env(safe-area-inset-top, 0px)); right: calc(72px + env(safe-area-inset-right, 0px)); width: 290px;
+  position: absolute; top: 10px; right: 54px; width: min(290px, calc(100% - 120px));
   padding: 14px 16px 12px; color: var(--ink); background: var(--panel); border-left: 4px solid var(--accent); text-shadow: var(--shadow);
 }
 #bigmap .bm-card.hidden { display: none; }
@@ -798,9 +899,14 @@ body.touch #map-btn .ico { left: 6px; bottom: 6px; width: 26px; height: 26px; }
 #bigmap .bm-row button { padding: 8px 12px; min-height: 40px; font-size: 14px; font-weight: 700; }
 #bigmap .bm-row button.main { background: var(--accent); color: #11151b; border-color: var(--accent); text-shadow: none; }
 #bigmap .bm-x { position: absolute; top: 8px; right: 8px; width: 32px; height: 32px; font-size: 14px; }
-body.touch #bigmap .bm-legend { display: none; }
-body.touch #bigmap .bm-help { max-width: calc(100vw - 140px); font-size: 12px; }
-body.touch #bigmap .bm-card { top: calc(92px + env(safe-area-inset-top, 0px)); right: auto; left: calc(16px + env(safe-area-inset-left, 0px)); width: min(300px, calc(100vw - 100px)); }
+@media (max-height: 520px) {
+  #bigmap .bm-legend { top: 6px; left: 8px; padding: 3px 8px; gap: 2px 10px; font-size: 11px; }
+  #bigmap .bm-tools { right: 8px; bottom: 8px; gap: 5px; }
+  #bigmap .bm-tools button { width: 40px; height: 40px; }
+  #bigmap .bm-help { bottom: 6px; max-width: calc(100% - 130px); padding: 3px 10px; font-size: 11px; }
+  #bigmap .bm-card { top: 40px; padding: 10px 12px; }
+  #bigmap .bm-card b { font-size: 17px; }
+}
 
 /* The link to the source on GitHub, beside "Made by" (start screen, menu, bottom right while playing). It opens a new
    tab without access to this one (rel="noopener noreferrer": no reverse tabnabbing). */
@@ -824,9 +930,14 @@ a.gh:hover, a.gh:focus-visible { color: var(--accent); outline: none; }
   .start-foot .made-by { display: none; }
 }
 
-/* The Sound button only while a menu is open (the start screen or the pause menu): playing, Shift+M (Yoshi). */
+/* The Sound button only on the start screen; in the in-game menu its header has the sound and full
+   screen, and while playing Shift+M (Yoshi). The iPhone's full-screen advice opens under the header. */
 #sound-btn { display: none; }
 body:has(#overlay:not(.hidden)) #sound-btn { display: block; }
+body:has(#overlay:not(.hidden) > #pause-panel:not(.hidden)) :is(#sound-btn, #full-btn) { display: none; }
+body:has(#overlay:not(.hidden) > #pause-panel:not(.hidden)) #full-hint {
+  top: calc(64px + env(safe-area-inset-top, 0px)); right: calc(16px + env(safe-area-inset-right, 0px)); left: auto;
+}
 /* Playing on a touch screen: without the Sound button, Full screen moves up next to ☰. */
 body.touch:not(:has(#overlay:not(.hidden))) #full-btn { left: calc(62px + env(safe-area-inset-left, 0px)); }
 body.touch:not(:has(#overlay:not(.hidden))) #full-hint { left: calc(114px + env(safe-area-inset-left, 0px)); }

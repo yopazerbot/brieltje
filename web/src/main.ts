@@ -57,6 +57,8 @@ import { IndoorLight } from './world/indoorLight';
 import { Portals } from './world/portals';
 import { TravelPanel } from './ui/travel';
 import { BigMap, type Mark } from './ui/bigmap';
+import { key } from './shortcuts';
+import { typing } from './keys';
 import { route } from './ui/route';
 import { HomeLife } from './world/homeLife';
 import { HomeStreet, withoutModelled } from './world/homeStreet';
@@ -364,7 +366,7 @@ scene.add(life.group);
 const roadLife = new RoadLife(world, tiles, groundY); // the traffic, parked cars, street signs and the church bells
 scene.add(roadLife.group);
 const travelPanel = new TravelPanel();
-const bigMap = new BigMap(house.prisms, house.surroundings, house.rooms, house.dips ?? []);
+const bigMap = new BigMap(document.getElementById('map-mount')!, house.prisms, house.surroundings, house.rooms, house.dips ?? []);
 const mapBtn = document.getElementById('map-btn')!;
 
 // Furniture planner: shared through the server when logged in, kept in this browser otherwise.
@@ -424,10 +426,14 @@ function togglePlanner(): void {
   if (!planner.active && !mayFurnish()) return chat.system(() => t('chat.furnOff'));
   planner.toggle();
 }
-plannerBtn.addEventListener('click', togglePlanner);
+// The menu's button starts the planner and goes back to the game to use it.
+plannerBtn.addEventListener('click', () => {
+  togglePlanner();
+  if (planner.active) menu.resume(menu.mode ?? 'kbm');
+});
 touch.onDone = togglePlanner; // the touch controls' Done button
 window.addEventListener('keydown', (e) => {
-  if (e.code === 'KeyP' && !(e.target instanceof HTMLInputElement)) togglePlanner();
+  if (e.code === 'KeyP' && !e.repeat && !typing(e) && !menu.open) togglePlanner(); // while playing; the menu has its button
 });
 document.getElementById('clearfurn-btn')!.addEventListener('click', () => net.send({ t: 'furn', op: 'clear' }));
 document.getElementById('resetfurn-btn')!.addEventListener('click', () => {
@@ -440,7 +446,7 @@ document.getElementById('resetfurn-btn')!.addEventListener('click', () => {
 });
 let mapTimer = 0;
 window.addEventListener('keydown', (e) => {
-  if (e.code === 'KeyN' && !(e.target instanceof HTMLInputElement)) mapBtn.classList.toggle('hidden', document.getElementById('minimap')!.classList.toggle('hidden'));
+  if (e.code === 'KeyN' && !e.repeat && !typing(e)) settings.toggle('minimap'); // the setting's shortcut (Settings: Minimap)
 });
 weapon.onImpact = (point, normal, material, on) => effects.impact(point, normal, material, on);
 weapon.onEject = (w) => effects.casing(camera, w, weapon.aimAmount);
@@ -462,6 +468,10 @@ function applySettings(s: Settings): void {
   touch.haptics = s.vibration; // a tick on the touch buttons where the phone can vibrate
   bakedWanted = s.baked;
   baked.setEnabled(preset.baked || bakedWanted);
+  // The minimap (N) and the FPS counter (F, Create): settings, so touch and controller players have them too.
+  document.getElementById('minimap')!.classList.toggle('hidden', !s.minimap);
+  mapBtn.classList.toggle('hidden', !s.minimap);
+  hud.showFps(s.fps);
 }
 settings.onChange = applySettings;
 applySettings(settings.value);
@@ -483,7 +493,7 @@ menu.onPlayMode = (play) => {
 window.addEventListener('keydown', (e) => {
   // By the letter on the key, not its place: on an AZERTY keyboard M is where QWERTY has ; (movement stays by place: ZQSD is WASD).
   // Shift+M is the sound (src/start.ts, with the Sound and Full screen buttons).
-  if (e.key.toLowerCase() !== 'm' || e.shiftKey || e.target instanceof HTMLInputElement || e.repeat) return;
+  if (e.key.toLowerCase() !== 'm' || e.shiftKey || e.repeat || typing(e)) return;
   toggleMap();
 });
 
@@ -493,23 +503,36 @@ const avatars = new Avatars();
 scene.add(avatars.group);
 avatars.onStep = (_name, at, speed) => footstep(surfaceOf(world.groundAt(at.x, at.z, at.y + 0.3, 0.6).mat), Math.min(1, 0.35 + speed / 5), at);
 const chat = new Chat();
+chat.paused = () => menu.open; // T and Enter belong to the menu while it is open
 const combat = new Combat();
 const leaderboard = new Leaderboard();
 const admin = new AdminPanel();
 const netStatus = document.getElementById('net-status')!;
 const onlineBox = document.getElementById('online')!;
 const online = new Map<string, string>(); // name -> colour
+/** Who is online: in the HUD, and in the menu's Together tab with a dot in each player's colour. Names are text, never HTML. */
 function showOnline(): void {
   onlineBox.replaceChildren();
+  const list = document.getElementById('tog-players')!;
+  list.replaceChildren();
+  document.getElementById('tog-online')!.classList.toggle('hidden', !me || online.size === 0);
   if (!me || online.size === 0) return;
+  const count = t('online.count', { n: online.size, max: rules.maxPlayers ?? 4 });
   const title = document.createElement('div');
-  title.textContent = t('online.count', { n: online.size, max: rules.maxPlayers ?? 4 });
+  title.textContent = count;
   onlineBox.append(title);
+  document.getElementById('tog-count')!.textContent = count;
   for (const [name, color] of online) {
+    const label = name === me.username ? t('online.you', { name }) : name;
     const row = document.createElement('div');
-    row.textContent = name === me.username ? t('online.you', { name }) : name;
+    row.textContent = label;
     row.style.color = color;
     onlineBox.append(row);
+    const item = document.createElement('li');
+    const dot = document.createElement('i');
+    dot.style.background = color;
+    item.append(dot, label);
+    list.append(item);
   }
 }
 
@@ -1168,25 +1191,30 @@ net.onMessage = (m: ServerMsg) => {
 onAccount(followAccount);
 
 /**
- * The big map (ui/bigmap.ts): M, a short press on the controller's touchpad, or the button over
- * the minimap. While it is open you stand still and the world isn't drawn behind it.
+ * The map is the menu's first tab (ui/bigmap.ts in its page). M, a short press on the controller's
+ * touchpad or a tap on the minimap opens the menu there; again, with the map showing, goes back to
+ * the game, and from another tab shows the map. Opening it this way doesn't change the tab Esc
+ * opens the menu on.
  */
 function toggleMap(): void {
-  if (bigMap.open) return closeMap();
-  if (menu.open || menu.onStartScreen || chat.typing) return;
-  document.exitPointerLock?.();
-  travelPanel.hide();
-  bigMap.show(mapYou());
+  if (menu.onStartScreen || chat.typing) return;
+  if (!menu.open) openMenu('map');
+  else if (menu.tab === 'map') menu.resume(menu.mode ?? 'kbm');
+  else menu.showTab('map', false);
 }
-function closeMap(): void {
-  bigMap.hide();
+/** The map draws only while its tab shows in the open menu; the world isn't drawn then (below). */
+function syncMap(): void {
+  const shown = menu.open && !menu.onStartScreen && menu.tab === 'map';
+  if (shown === bigMap.open) return;
+  if (shown) bigMap.show(mapYou(), menu.mode ?? 'kbm');
+  else bigMap.hide();
 }
+menu.onPage = syncMap;
 /** You on the map: where you are and which way you look (in a car, which way it points). */
 function mapYou(): { x: number; z: number; yaw: number } {
   return driving || riding ? { x: car.x, z: car.z, yaw: car.yaw } : { x: player.x, z: player.z, yaw: player.yaw };
 }
 mapBtn.addEventListener('click', () => toggleMap());
-bigMap.onClose = closeMap;
 /** The way to the big map's waypoint along the roads, worked out again twice a second as you move. */
 let routeTimer = 0;
 function updateRoute(): void {
@@ -1196,10 +1224,13 @@ function updateRoute(): void {
 }
 bigMap.onWaypoint = updateRoute;
 
-function openMenu(): void {
-  closeMap();
+/**
+ * The pause menu, on the tab it was left on, or on `tab`. It opens before the mouse is let go, so
+ * the pointer-lock change that follows finds it open and doesn't open it again on another tab.
+ */
+function openMenu(tab?: string): void {
+  menu.showPause(tab);
   document.exitPointerLock?.();
-  menu.showPause();
   if (me?.role === 'admin') admin.show(me.username);
   leaderboard.refresh();
 }
@@ -1244,7 +1275,8 @@ menu.onPlay = (mode) => {
     countedStart = true;
     beacon('start');
   }
-  menuHint.textContent = { pad: 'Options', kbm: 'Esc', touch: '☰' }[mode];
+  menuHint.textContent = key('menu', mode);
+  planner.control = mode;
   touch.show(mode === 'touch');
   if (mode === 'touch') fillScreen(); // the first start asked for it in its tap already (src/start.ts)
   // Keyboard + mouse: capture the mouse so moving it turns the view.
@@ -1265,7 +1297,8 @@ canvas.addEventListener('click', () => {
 });
 const captureHint = $('capture-hint');
 document.addEventListener('pointerlockchange', () => {
-  // Esc releases the mouse in the browser: treat that as pausing.
+  // Esc releases the mouse in the browser: treat that as pausing. When the game let it go itself (M,
+  // the menu opening), the menu is open already and stays on its tab.
   if (!document.pointerLockElement && menu.mode === 'kbm' && !menu.open && !chat.typing) openMenu();
 });
 
@@ -1286,15 +1319,10 @@ renderer.setAnimationLoop((now: number) => {
   const dt = Math.min((now - last) / 1000, 0.05);
   last = now;
   const frame = input.poll();
-  // The big map takes the input while it is open: the stick moves it, Esc, M, ○ or the touchpad close it.
-  if (bigMap.open) {
-    if (frame.menuPressed || frame.mapPressed || (menu.mode === 'pad' && frame.deletePressed)) closeMap();
-    else bigMap.steer(dt, frame, menu.mode === 'pad');
-    Object.assign(frame, NO_INPUT);
-  } else if (frame.mapPressed) toggleMap();
+  if (frame.mapPressed) toggleMap(); // a short press on the touchpad, as M
   menu.setPadState(input.padName);
   hud.setPad(input.padName, menu.mode === 'pad');
-  if (frame.fpsPressed) hud.toggleFps();
+  if (frame.fpsPressed) settings.toggle('fps'); // F, or Create on the controller (Settings: FPS counter)
   captureHint.classList.toggle('show', !menu.open && menu.mode === 'kbm' && document.pointerLockElement !== canvas && !chat.typing);
 
   // The weapons lying around: only in Action mode (Yoshi), and never from the start view, where their
@@ -1305,11 +1333,20 @@ renderer.setAnimationLoop((now: number) => {
   if (menu.open) {
     travelPanel.hide();
     if (menu.onStartScreen) startCamera();
-    // Controller in a menu: ✕ picks the controller on the start screen, ✕ or Options resumes.
-    // Esc closes the pause menu again (not the Esc that just opened it).
-    const close = frame.menuPressed && !menu.onStartScreen && now - menu.openedAt > 300;
-    if (frame.confirmPressed || close) {
+    // Controller in a menu: ✕ picks the controller on the start screen. In the pause menu Options
+    // or ○ resumes, and ✕ too except on the map, where it sets a waypoint at the cross; L1 and R1
+    // change tabs. Esc resumes (not the Esc that just opened it).
+    const pause = !menu.onStartScreen;
+    const back = pause && now - menu.openedAt > 300 && (frame.menuPressed || (menu.mode === 'pad' && frame.deletePressed));
+    if (bigMap.open) {
+      // The Map tab: the left stick (or W A S D) moves it, R2 and L2 zoom.
+      bigMap.steer(dt, frame, menu.mode === 'pad');
+      if (frame.confirmPressed) bigMap.pickCentre();
+    }
+    if (back || (frame.confirmPressed && !bigMap.open)) {
       menu.resume(menu.onStartScreen ? 'pad' : (menu.mode ?? 'pad'));
+    } else if (pause && frame.tabStep) {
+      menu.stepTab(frame.tabStep);
     } else if (frame.squarePressed) {
       menu.cycleGraphics(); // the square button on the controller changes the graphics setting
     } else if (frame.speedStep) {
@@ -1440,12 +1477,13 @@ renderer.setAnimationLoop((now: number) => {
       yaw: player.yaw, pitch: player.pitch, side: dead ? 0 : frame.moveX, sprint: frame.sprint && !player.crouching,
       air: player.flying || player.feet > player.ground.y + 0.05,
     });
-    const key = menu.mode === 'pad' ? (action ? '△' : 'R2') : menu.mode === 'touch' ? t('touch.use') : action ? 'E' : t('key.click');
-    const use = menu.mode === 'pad' ? '△' : menu.mode === 'touch' ? t('touch.use') : 'E';
+    // The keys in the prompts come from the one table (src/shortcuts.ts). In Explore a click opens doors too.
+    const doorKey = key(action ? 'use' : 'click', mode);
+    const use = key('use', mode);
     touch.setState(action, inCar, planner.active);
     const speed = (v: number) => Math.round(Math.abs(v) * 3.6);
     const carLabel = carName(car.id, car.spec.name);
-    let prompt = target ? t(target.open ? 'prompt.close' : 'prompt.open', { key, door: doorName(target.name) }) : '';
+    let prompt = target ? t(target.open ? 'prompt.close' : 'prompt.open', { key: doorKey, door: doorName(target.name) }) : '';
     if (driving) prompt = t('prompt.driving', { speed: speed(car.speed), use });
     else if (tagWho) prompt = t('prompt.tag', { use, name: tagWho });
     else if (riding) prompt = t('prompt.riding', { name: car.driver ?? t('prompt.nobody'), speed: speed(car.speed), use });
@@ -1455,9 +1493,7 @@ renderer.setAnimationLoop((now: number) => {
         : t('prompt.carFull', { a: car.driver ?? '', b: car.passenger ?? '', car: carLabel });
     }
     else if (onHorse) {
-      const gallop = menu.mode === 'pad' ? 'L3' : menu.mode === 'touch' ? t('touch.run') : 'Shift';
-      const jump = menu.mode === 'pad' ? '✕' : menu.mode === 'touch' ? t('touch.jump') : t('key.space');
-      prompt = t('prompt.horse', { speed: speed(horses.ridden!.speed), gallop, breath: Math.round(horses.stamina * 100), jump, use });
+      prompt = t('prompt.horse', { speed: speed(horses.ridden!.speed), gallop: key('sprint', mode), breath: Math.round(horses.stamina * 100), jump: key('jump', mode), use });
     }
     else if (nearHorse >= 0 && !target) prompt = t('prompt.mount', { use });
     if (pad) prompt = ''; // the list says it all
@@ -1466,13 +1502,13 @@ renderer.setAnimationLoop((now: number) => {
     const armed = action && !dead && !inCar;
     hud.setWeapon(armed, dead || inCar ? '' : weapon.status);
     hud.setSlots(armed ? weapon.slots : null);
-    hud.setGrenades(armed && !planner.active ? grenades.count : null, GRENADE.carry, grenades.nextIn, menu.mode === 'pad' ? 'R1' : menu.mode === 'touch' ? t('touch.nade') : 'G');
+    hud.setGrenades(armed && !planner.active ? grenades.count : null, GRENADE.carry, grenades.nextIn, key('grenade', mode));
     hud.setScope(weapon.scoped, inCar);
     // The flying controls for the first few seconds after taking off only (Yoshi: annoying when it stays).
     if (player.flying && !wasFlying) flyHint = 4;
     wasFlying = player.flying;
     flyHint = player.flying ? flyHint - dt : 0;
-    if (flyHint > 0) hud.setPrompt(t(({ pad: 'prompt.flyPad', touch: 'prompt.flyTouch', kbm: 'prompt.flyKbm' } as const)[menu.mode ?? 'kbm']));
+    if (flyHint > 0) hud.setPrompt(t('prompt.fly', { up: key('jump', mode), down: key('down', mode) }));
     calmHint = wasCalm ? calmHint - dt : 0;
     if (calmHint > 0) hud.setPrompt(t('prompt.noShoot'));
 
@@ -1554,8 +1590,8 @@ renderer.setAnimationLoop((now: number) => {
       ...(games.hideOthers ? [] : avatars.marks().map((a) => ({ ...a, kind: 'player' as const }))),
     ];
     bigMap.tick(mapYou(), marks);
-  } else composer.render(dt); // the map covers the screen: no need to draw the world
-  if (!menu.open && !bigMap.open) adaptQuality(dt);
+  } else composer.render(dt); // the menu's Map tab covers most of the screen: the world isn't drawn behind it
+  if (!menu.open) adaptQuality(dt);
   hud.tick(dt, renderer.info.render.calls, preset.scale * dynScale, t(`gfx.${quality}`));
 });
 

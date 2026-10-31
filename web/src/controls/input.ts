@@ -3,6 +3,7 @@
  * controls into one set of values per frame. Sticks: x to the right, y up
  * (forward) positive.
  */
+import { typing } from '../keys';
 import type { TouchControls } from './touch';
 
 const DEAD_ZONE = 0.15;
@@ -43,6 +44,8 @@ export interface FrameInput {
   squarePressed: boolean;
   /** D-pad left/right in menus: walking speed down/up */
   speedStep: number;
+  /** L1 (-1) or R1 (+1) in the menu: the previous or next tab */
+  tabStep: number;
   /** Tab or the touchpad held: show the scoreboard */
   scoreHeld: boolean;
   /** A short press on the controller's touchpad: the big map (M on the keyboard is handled in main.ts) */
@@ -67,7 +70,7 @@ export interface FrameInput {
 export const NO_INPUT: FrameInput = {
   moveX: 0, moveY: 0, lookX: 0, lookY: 0, mouseX: 0, mouseY: 0, sprint: false,
   jumpPressed: false, jumpHeld: false, downHeld: false, clickPressed: false, usePressed: false, aimHeld: false, reloadPressed: false,
-  menuPressed: false, fpsPressed: false, confirmPressed: false, squarePressed: false, speedStep: 0, scoreHeld: false, mapPressed: false, fireHeld: false, weaponSlot: 0, weaponCycle: 0, throwPressed: false, deletePressed: false, anyPadButton: false,
+  menuPressed: false, fpsPressed: false, confirmPressed: false, squarePressed: false, speedStep: 0, tabStep: 0, scoreHeld: false, mapPressed: false, fireHeld: false, weaponSlot: 0, weaponCycle: 0, throwPressed: false, deletePressed: false, anyPadButton: false,
   throttle: 0, brake: 0,
 };
 
@@ -83,6 +86,8 @@ export class Input {
   padName: string | null = null;
   /** On-screen controls on a phone or tablet (when playing with touch) */
   touch: TouchControls | null = null;
+  /** A menu is open (src/start.ts): Tab, Space and the arrow keys then work the page as usual. */
+  menuOpen: () => boolean = () => false;
   private keys = new Set<string>();
   private mouseX = 0;
   private mouseY = 0;
@@ -104,8 +109,8 @@ export class Input {
 
   constructor(private canvas: HTMLCanvasElement) {
     window.addEventListener('keydown', (e) => {
-      if (e.code === 'Escape' && !e.repeat) this.keyMenu = true; // also from a slider in the menu (chat keeps its own Esc)
-      if (e.target instanceof HTMLInputElement) return; // typing a nickname is not walking
+      if (e.code === 'Escape' && !e.repeat) this.keyMenu = true; // also from a field in the menu (the chat keeps its own Esc)
+      if (typing(e)) return; // typing a name is not walking
       if (e.code === 'KeyF' && !e.repeat) this.keyFps = true;
       if (e.code === 'Space' && !e.repeat) this.keyJump = true;
       if (e.code === 'KeyE' && !e.repeat) this.keyUse = true;
@@ -114,7 +119,8 @@ export class Input {
       if (e.code === 'KeyQ' && !e.repeat) this.cycle = 2;
       if (e.code === 'KeyG' && !e.repeat) this.keyThrow = true;
       if ((e.code === 'KeyX' || e.code === 'Delete') && !e.repeat) this.keyDelete = true;
-      if (e.code === 'Space' || e.code === 'Tab' || e.code.startsWith('Arrow')) e.preventDefault(); // no page scrolling or focus jumps
+      // While playing: no page scrolling or focus jumps. In a menu they move the keyboard's focus and the sliders.
+      if (!this.menuOpen() && (e.code === 'Space' || e.code === 'Tab' || e.code.startsWith('Arrow'))) e.preventDefault();
       this.keys.add(e.code);
     });
     window.addEventListener('keyup', (e) => this.keys.delete(e.code));
@@ -228,6 +234,8 @@ export class Input {
       if (edge(BTN.up)) out.weaponCycle = 1;
       if (edge(BTN.r1)) out.throwPressed = true;
       if (edge(BTN.down) || edge(BTN.l1)) out.weaponCycle = -1;
+      if (edge(BTN.l1)) out.tabStep -= 1;
+      if (edge(BTN.r1)) out.tabStep += 1;
       if (edge(BTN.left)) out.speedStep -= 1;
       if (edge(BTN.right)) out.speedStep += 1;
       this.prevButtons = pressed;

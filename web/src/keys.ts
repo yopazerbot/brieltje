@@ -6,7 +6,8 @@
  * Which keyboard: the browser's own layout map where it has one (Chrome and Edge), else a setting
  * (Automatic, AZERTY or QWERTY, remembered in this browser); Automatic without the map takes AZERTY
  * for French and Belgian Dutch browsers. E, R, G, F, N, P, T, X and C sit in the same place on both.
- * The big map's M is read by its letter (e.key), so its hint is always M.
+ * The map's M is read by its letter (e.key), so its hint is always M. Every key and button with
+ * its label per way of playing is in one table, src/shortcuts.ts.
  */
 
 export type Layout = 'auto' | 'azerty' | 'qwerty';
@@ -49,6 +50,15 @@ export function keyName(code: string): string {
   if (printed && /^\S$/.test(printed)) return printed.toUpperCase();
   if (activeLayout() === 'azerty' && AZERTY[code]) return AZERTY[code];
   return code.replace(/^Key/, '');
+}
+
+/**
+ * Typing in a field (a name, the PIN, the chat, the admin's forms): the keys are letters then, and no
+ * shortcut may act on them. Every key listener asks this first.
+ */
+export function typing(e: Event): boolean {
+  const el = e.target;
+  return el instanceof HTMLInputElement || el instanceof HTMLTextAreaElement || el instanceof HTMLSelectElement || (el instanceof HTMLElement && el.isContentEditable);
 }
 
 /** The four keys for walking, "W A S D" or "Z Q S D". */

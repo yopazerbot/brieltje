@@ -18,7 +18,7 @@ The whole project was made with AI. Yoshi Parlevliet, a cybersecurity consultant
 | **The neighbourhood** | Built from Flemish open data (GRB, the DHM laser scan, the orthophoto): over 700 buildings with their roofs, roads, fields, hedges, trees, poles and ponds, on the real relief. The neighbours' facades follow a Street View survey (used as a reference only). |
 | **Smetlede** | The village centre: the Sint-Pharaïldis church and the primary school as our own Blender models, the church square, the streets round it. |
 | **Life** | Birds that fly off when you come near, a robot mower doing its rounds, cows and sheep in the meadows, trees in the wind, cars on the roads, and church bells striking the hours. |
-| **Getting around** | Walk, sprint, fly, drive the Tesla (with a passenger) or ride a horse. Five portals jump between the house, the bungalow, the church, the school and Molenhoek. A big map (M) gives directions along the roads. |
+| **Getting around** | Walk, sprint, fly, drive the Tesla (with a passenger) or ride a horse. Five portals jump between the house, the bungalow, the church, the school and Molenhoek. The map (M, the menu's first tab) gives directions along the roads. |
 | **Together** | Up to 16 players who join with a PIN. Chat, party games (hide and seek, tag, a treasure hunt), house against bungalow, and an Action mode with weapons, grenades and giant strongmen. A leaderboard. |
 | **Anywhere** | Graphics presets with auto-detection, keyboard and mouse, controller, or touch. In English or Dutch (Nederlands), chosen on the start screen or in the settings. Key hints follow an AZERTY or QWERTY keyboard. |
 
@@ -45,7 +45,7 @@ The whole project was made with AI. Yoshi Parlevliet, a cybersecurity consultant
 | Sprint, jump | L3, ✕ | Shift, Space |
 | Fly up / down | Hold ✕ / ○ | Hold Space / Ctrl |
 | Use (doors, cars, horses, portals) | △ | E |
-| Big map | Press the touchpad | M |
+| Map (the menu's first tab) | Press the touchpad | M |
 | Shoot, aim (Action mode) | R2, L2 | Left click, right click |
 | Menu | Options | Esc |
 

@@ -143,8 +143,8 @@ async function call<T>(method: string, path: string, body?: unknown): Promise<T>
 export const api = {
   me: () => call<Me & { online: number; max: number }>('GET', '/api/me'),
   login: (username: string, password: string) => call<Me>('POST', '/api/login', { username, password }),
-  /** `age`: the player confirmed being 13 or older (the server refuses without it). */
-  join: (name: string, pin: string, age: boolean) => call<Me>('POST', '/api/join', { name, pin, age }),
+  /** `age`: "I'm 13 or older" ticked (src/start.ts); sent only then. */
+  join: (name: string, pin: string, age = false) => call<Me>('POST', '/api/join', age ? { name, pin, age: true } : { name, pin }),
   logout: () => call('POST', '/api/logout', {}),
   players: () => call<{ players: { name: string; color: string; role: string }[]; max: number }>('GET', '/api/players'),
   kick: (name: string) => call('POST', '/api/kick', { name }),
