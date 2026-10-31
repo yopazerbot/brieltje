@@ -32,8 +32,8 @@ table.log { width: 100%; border-collapse: collapse; font-size: 14px; }
 table.log th { text-align: left; color: var(--muted); font-weight: 600; padding: 8px; border-bottom: 1px solid var(--line); white-space: nowrap; }
 table.log td { padding: 7px 8px; border-bottom: 1px solid rgba(255, 255, 255, 0.06); vertical-align: top; }
 table.log td:first-child { white-space: nowrap; color: var(--muted); }
-table.log tr.bad td:nth-child(2) { color: var(--bad); }
-table.log tr.good td:nth-child(2) { color: var(--good); }
+table.log tr.ev-bad td:nth-child(2) { color: var(--bad); }
+table.log tr.ev-good td:nth-child(2) { color: var(--good); }
 ul.online { list-style: none; padding: 0; margin: 0; }
 ul.online li { display: flex; align-items: center; gap: 10px; padding: 10px 12px; margin-top: 6px; background: var(--field); border-radius: 6px; }
 ul.online i { width: 12px; height: 12px; border-radius: 50%; }
@@ -75,7 +75,6 @@ ul.online li.alone i { background: transparent; border: 2px solid var(--muted); 
   table.log, table.log tbody { display: block; }
   table.log tr { display: grid; grid-template-columns: 1fr auto; gap: 2px 10px; padding: 10px 2px; border-bottom: 1px solid rgba(255, 255, 255, 0.08); }
   table.log td { padding: 0; border: 0; }
-  table.log tr.bad, table.log tr.good { border-bottom-color: rgba(255, 255, 255, 0.08); }
   table.log td:nth-child(1) { grid-column: 2; grid-row: 1; font-size: 12px; text-align: right; }
   table.log td:nth-child(2) { grid-column: 1; grid-row: 1; font-weight: 700; }
   table.log td:nth-child(3), table.log td:nth-child(4), table.log td:nth-child(5) { grid-column: 1 / -1; font-size: 13px; color: var(--muted); }

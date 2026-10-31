@@ -413,7 +413,7 @@
     const shown = log.filter((e) => (!f || kind(e) === f) && (!q || [e.username, e.ip, e.detail].some((v) => String(v || '').toLowerCase().includes(q))));
     $('log').replaceChildren(...shown.slice(0, 500).map((e) => {
       const [label, tone] = EVENTS[e.event] ?? [e.event, ''];
-      const tr = el('tr', tone);
+      const tr = el('tr', tone && `ev-${tone}`); // not .bad: the form's .bad (red border) would apply
       tr.append(el('td', '', e.time), el('td', '', label), el('td', '', e.username || ''), el('td', '', e.ip || ''), el('td', '', e.detail || ''));
       return tr;
     }));
