@@ -1879,7 +1879,8 @@ function gameTextures(root: THREE.Object3D): void {
 /**
  * The village without the blocks, roofs and windows of the landmarks named (a model stands there instead),
  * nor those of the houses inside the outlines `houses` (the town's model): a wall, plinth or chimney block
- * whose every corner lies in or within 0.4 m of such an outline, as does its middle; a roof whose middle does.
+ * whose every corner lies in or within 0.4 m of such an outline, as does its middle; a roof whose middle does;
+ * a window inside an outline, or on a hidden block or roof with no drawn one under it.
  */
 function withoutLandmarks(data: VillageData, names: string[], houses: Ring[] = []): VillageData {
   const outlines = [...(data.landmarks ?? []).filter((l) => names.includes(l.name)).map((l) => l.p), ...houses];
@@ -1913,11 +1914,35 @@ function withoutLandmarks(data: VillageData, names: string[], houses: Ring[] = [
     return middle(ring);
   };
   const housePart = (ring: Ring) => houses.length > 0 && ring.every(([x, z]) => within(houses, x, z, 0.4)) && within(houses, ...inner(ring), 0);
+  const prisms = (data.prisms ?? []).filter((p) => (!p.lm || !names.includes(p.lm)) && (p.d !== undefined || !housePart(p.p[0])));
+  const roofs = data.roofs.filter((r) => (!r.lm || !names.includes(r.lm)) && !(houses.length > 0 && within(houses, ...middle(r.p), 0)));
+  // A window stands on a wall or a gable. The village's blocks can be a little larger than the model's outline,
+  // so a window on a hidden block or roof can lie just outside the outline; with no drawn wall or gable under
+  // it, it would float in the air.
+  type Carrier = { ring: Ring; y0: number; y1: number; box: [number, number, number, number] };
+  const carrier = (ring: Ring, y0: number, y1: number): Carrier => {
+    const xs = ring.map((q) => q[0]);
+    const zs = ring.map((q) => q[1]);
+    return { ring, y0, y1, box: [Math.min(...xs) - 0.3, Math.max(...xs) + 0.3, Math.min(...zs) - 0.3, Math.max(...zs) + 0.3] };
+  };
+  const keptPrisms = new Set(prisms);
+  const keptRoofs = new Set(roofs);
+  const hidden: Carrier[] = [];
+  const drawn: Carrier[] = [];
+  for (const p of data.prisms ?? []) if (p.d === undefined) (keptPrisms.has(p) ? drawn : hidden).push(carrier(p.p[0], p.y0, p.y1));
+  for (const r of data.roofs) (keptRoofs.has(r) ? drawn : hidden).push(carrier(r.p, r.base ?? r.y, r.ridge));
+  const on = (list: Carrier[], x: number, z: number, y: number) =>
+    list.some((c) => x > c.box[0] && x < c.box[1] && z > c.box[2] && z < c.box[3] && y > c.y0 - 0.3 && y < c.y1 + 0.3 && within([c.ring], x, z, 0.3));
   return {
     ...data,
-    prisms: (data.prisms ?? []).filter((p) => (!p.lm || !names.includes(p.lm)) && (p.d !== undefined || !housePart(p.p[0]))),
-    roofs: data.roofs.filter((r) => (!r.lm || !names.includes(r.lm)) && !(houses.length > 0 && within(houses, ...middle(r.p), 0))),
-    openings: (data.openings ?? []).filter((o) => !inside((o.a[0] + o.b[0]) / 2 - o.n[0] * 0.3, (o.a[1] + o.b[1]) / 2 - o.n[1] * 0.3)),
+    prisms,
+    roofs,
+    openings: (data.openings ?? []).filter((o) => {
+      const x = (o.a[0] + o.b[0]) / 2;
+      const z = (o.a[1] + o.b[1]) / 2;
+      const y = (o.y[0] + o.y[1]) / 2;
+      return !inside(x - o.n[0] * 0.3, z - o.n[1] * 0.3) && !(on(hidden, x, z, y) && !on(drawn, x, z, y));
+    }),
   };
 }
 
