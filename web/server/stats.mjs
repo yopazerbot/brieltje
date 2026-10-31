@@ -1,5 +1,7 @@
 // How popular the game is, for the admin page (web/public/admin/), counted without cookies and
-// without keeping anything about a person. Per day (Belgian date) only totals are stored:
+// without keeping anything about a person. One exception, the owner's choice: starting alone goes in
+// the login log by the name typed and the address, as joining together does (server/auth.mjs keeps
+// the log 90 days; the privacy policy says so). Per day (Belgian date) only totals are stored:
 // - page loads of the game and of the interest page, and distinct visitors: a visitor is a hash
 //   of the address (an IPv4 address or IPv6 /64) and the browser's name with a random salt that
 //   changes every day. The hashes live in memory for that day only; the salt is never stored, so
@@ -9,7 +11,7 @@
 //   player chose in the game, nothing read from the device;
 // - the most players at once.
 // Who is playing right now: the players together by name (the game's roster, with each one's ping), and the ones alone
-// as anonymous visits. Each page makes a random number when it loads and sends it with its reports;
+// by the name they typed. Each page makes a random number when it loads and sends it with its reports;
 // the server keeps a visit in memory until it has been quiet for 75 seconds, and never stores it.
 // A browser that asks not to be tracked (Global Privacy Control or Do Not Track) isn't counted.
 // Logins and failed attempts per day come from the login log (it keeps 90 days).
@@ -22,8 +24,9 @@
 // 15 seconds and the stream ends when it's gone.
 //
 // A flood of reports can't inflate the numbers much: per address 20 starts and 240 minutes an hour
-// (a household playing together), at most 500 visits at once, and only known values count, so
-// nothing typed is ever stored.
+// (a household playing together), at most 500 visits at once, and only known values count. The one
+// typed thing kept is a solo player's name, cleaned to letters, digits and a few signs, at most 20
+// log lines an hour per address.
 
 import { createHash, randomBytes } from 'node:crypto';
 
@@ -32,6 +35,12 @@ const DAYS = 60;
 const QUIET = 75_000; // a visit without a report for this long has stopped playing
 const day = (t = Date.now()) => new Date(t).toLocaleDateString('sv-SE', { timeZone: 'Europe/Brussels' }); // YYYY-MM-DD
 const ONE_OF = (v, list, fallback) => (list.includes(v) ? v : fallback);
+// A solo player's name as typed, cleaned for the log: letters, digits, spaces and _ . ' -, at most 20.
+const soloName = (v) => {
+  const s = typeof v === 'string' ? v.normalize('NFC').replace(/[^\p{L}\p{N} _.'-]/gu, '').replace(/\s+/g, ' ').trim().slice(0, 20) : '';
+  return s && s !== 'Guest' ? s : undefined;
+};
+const MODES = { explore: 'Explore', paintball: 'Paintball', action: 'Action' };
 const OPTED_OUT = (req) => req.headers['sec-gpc'] === '1' || req.headers.dnt === '1';
 const IN = (event) => event === 'join_ok' || event === 'login_ok';
 const FAILED = (event) => /failed|limited|blocked/.test(event);
@@ -53,13 +62,14 @@ class Window {
 }
 
 export class Stats {
-  constructor(store, { json, clientKey, game, readJson, isAdmin }) {
+  constructor(store, { json, clientKey, game, readJson, isAdmin, log }) {
     this.store = store;
     this.json = json;
     this.clientKey = clientKey;
     this.game = game;
     this.readJson = readJson;
     this.isAdmin = isAdmin;
+    this.log = log; // the login log (server/auth.mjs)
     this.pending = {}; // day -> key -> count not yet written
     this.peaks = {}; // day -> most players at once not yet written
     this.today = { day: day(), counts: {} }; // today's totals so far (stored and pending), for the live view
@@ -68,6 +78,7 @@ export class Stats {
     this.seen = new Set();
     this.starts = new Window(3600_000);
     this.minutes = new Window(3600_000);
+    this.soloLog = new Window(3600_000);
     this.visits = new Map(); // anonymous visit number -> { mode, control, together, lang, since, last }
     this.streams = new Set();
     this.dirty = { stats: true, log: [], signups: false };
@@ -146,12 +157,12 @@ export class Stats {
     this.dirty.signups = true;
   }
 
-  /** Who is playing now: the players together by name, the ones alone as anonymous visits. */
+  /** Who is playing now: the players together by name, the ones alone by the name they typed. */
   playing() {
     const now = Date.now();
     for (const [id, v] of this.visits) if (now - v.last > QUIET) this.visits.delete(id);
     const alone = [...this.visits.values()].filter((v) => !v.together)
-      .map((v) => ({ mode: v.mode, control: v.control, lang: v.lang, minutes: Math.floor((now - v.since) / 60_000) }))
+      .map((v) => ({ name: v.name ?? null, mode: v.mode, control: v.control, lang: v.lang, minutes: Math.floor((now - v.since) / 60_000) }))
       .sort((a, b) => b.minutes - a.minutes);
     // With each player's time there and back to the server (to 5 ms, so the list isn't sent again for every millisecond).
     const ping = (name) => {
@@ -261,6 +272,9 @@ export class Stats {
       together: b.together === true,
       lang: ONE_OF(b.lang, ['nl', 'en'], 'en'),
     };
+    const name = soloName(b.name);
+    // Starting alone goes in the login log by the name typed, with the address, like joining together.
+    if (b.e === 'start' && !choice.together && this.soloLog.hit(who, 20)) this.log?.('solo_start', req, { username: name, detail: MODES[choice.mode] });
     if (OPTED_OUT(req)) {
       // not counted
     } else if (b.e === 'start' && this.starts.hit(who, 20)) {
@@ -269,7 +283,7 @@ export class Stats {
       this.bump(`starts_${choice.control}`);
       this.bump(choice.together ? 'starts_together' : 'starts_alone');
       this.bump(`starts_${choice.lang}`);
-      if (id && (this.visits.has(id) || this.visits.size < 500)) this.visits.set(id, { ...choice, since: Date.now(), last: Date.now() });
+      if (id && (this.visits.has(id) || this.visits.size < 500)) this.visits.set(id, { ...choice, name, since: Date.now(), last: Date.now() });
     } else if (b.e === 'minute' && this.minutes.hit(who, 240)) {
       this.bump('minutes');
       const v = id && this.visits.get(id);

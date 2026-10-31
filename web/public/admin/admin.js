@@ -13,7 +13,7 @@
     login_ok: ['Admin logged in', 'good', 'in'], join_ok: ['Joined with the PIN', 'good', 'in'], mp_join: ['Entered the game', '', 'in'],
     login_failed: ['Wrong password', 'bad', 'failed'], pin_failed: ['Wrong PIN', 'bad', 'failed'], pin_limited: ['PIN attempts paused', 'bad', 'failed'],
     login_admin_limited: ['Admin login paused', 'bad', 'failed'], login_blocked_kicked: ['Removed player tried again', 'bad', 'failed'],
-    kick: ['Player removed', '', 'admin'], pin_changed: ['PIN changed', '', 'admin'], rules: ['House rules changed', '', 'admin'], round_won: ['Round won', '', ''],
+    solo_start: ['Started alone', '', 'solo'], kick: ['Player removed', '', 'admin'], pin_changed: ['PIN changed', '', 'admin'], rules: ['House rules changed', '', 'admin'], round_won: ['Round won', '', ''],
   };
   let entries = [];
   let log = [];
@@ -173,7 +173,7 @@
     drawPlaying();
   }
 
-  /** Online now: the players together by name, the ones alone anonymous (what they play, for how long). */
+  /** Online now: the players together by name, the ones alone by the name they typed (what they play, for how long). */
   function drawPlaying() {
     const CONTROL = { kbm: 'keyboard and mouse', pad: 'controller', touch: 'touch' };
     const { together, alone } = playing;
@@ -190,8 +190,8 @@
     });
     for (const v of alone) {
       const li = el('li', 'alone');
-      li.append(el('i'), el('span', '', `Alone · ${v.mode === 'action' ? 'Action' : v.mode === 'paintball' ? 'Paintball' : 'Explore'}`),
-        el('span', 'muted small', `${CONTROL[v.control] ?? v.control} · ${v.lang === 'nl' ? 'Nederlands' : 'English'} · ${v.minutes < 1 ? 'just started' : `${v.minutes} min`}`));
+      li.append(el('i'), el('span', '', v.name || 'No name'),
+        el('span', 'muted small', `alone · ${v.mode === 'action' ? 'Action' : v.mode === 'paintball' ? 'Paintball' : 'Explore'} · ${CONTROL[v.control] ?? v.control} · ${v.lang === 'nl' ? 'Nederlands' : 'English'} · ${v.minutes < 1 ? 'just started' : `${v.minutes} min`}`));
       items.push(li);
     }
     $('online').replaceChildren(...items);

@@ -1416,10 +1416,11 @@ const menuHint = document.querySelector('#menu-hint kbd')!;
 let countedStart = false;
 let playClock = 0;
 // A random number for this visit only (never stored), so the admin can see who plays alone right now.
-const visit = Array.from(crypto.getRandomValues(new Uint8Array(6)), (v) => (v % 36).toString(36)).join('');
+const visit = Array.from(crypto.getRandomValues(new Uint8Array(12)), (v) => (v % 36).toString(36)).join('');
 function beacon(e: 'start' | 'minute' | 'end'): void {
-  // Only what you chose in the game: nothing read from the device.
-  const body = { e, id: visit, mode: weapon.enabled ? (paintball.on ? 'paintball' : 'action') : 'explore', control: menu.mode ?? 'kbm', together: !!me, lang: document.documentElement.lang === 'nl' ? 'nl' : 'en' };
+  // Only what you chose in the game, and on starting alone the name you typed (for the admin's log,
+  // as the privacy policy says): nothing read from the device.
+  const body = { e, id: visit, mode: weapon.enabled ? (paintball.on ? 'paintball' : 'action') : 'explore', control: menu.mode ?? 'kbm', together: !!me, lang: document.documentElement.lang === 'nl' ? 'nl' : 'en', ...(e === 'start' && !me ? { name: menu.nickname } : {}) };
   void fetch('/api/stats/beacon', { method: 'POST', keepalive: true, headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) }).catch(() => {});
 }
 // Leaving the page: off the admin's list of who is playing at once, instead of after a quiet minute.

@@ -66,7 +66,7 @@ await game.loadFurniture();
 await game.loadRules();
 
 const interest = new Interest(store, { json: (...a) => json(...a), clientKey: (req) => bucketOf(clientIp(req)) });
-const stats = new Stats(store, { json: (...a) => json(...a), clientKey: (req) => bucketOf(clientIp(req)), game, readJson: (req) => body(req), isAdmin: (req) => auth.session(req)?.role === 'admin' });
+const stats = new Stats(store, { json: (...a) => json(...a), clientKey: (req) => bucketOf(clientIp(req)), game, readJson: (req) => body(req), isAdmin: (req) => auth.session(req)?.role === 'admin', log: (event, req, extra) => auth.log(event, req, extra) });
 // The admin page's live view hears of new log lines and changed sign-ups.
 auth.onLog = (entry) => stats.logged(entry);
 interest.onChange = () => stats.signupsChanged();

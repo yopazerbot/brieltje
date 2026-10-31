@@ -29,7 +29,7 @@
       <b>In short</b>
       <ul>
         <li>No ads, no tracking cookies, no outside analytics.</li>
-        <li>Playing alone, our server keeps nothing about you.</li>
+        <li>When you start alone, the server notes the name you typed and your IP address in its log.</li>
         <li>Playing together and signing up need a few things. They are listed below, with how long we keep them.</li>
         <li>We count visits as daily totals. That uses no cookies and keeps nothing about you.</li>
         <li>Plans of your home are never published. Only the 3D model of your house becomes public, and only with your consent.</li>
@@ -65,7 +65,7 @@
         <tr><td data-label="What">The name you play under, a session cookie and two device cookies</td><td data-label="Why">To let you in and keep your name for the session. The device cookies remember that this browser joined before, so a lockout against attackers doesn't hit you.</td><td data-label="Legal basis">Needed to give you the game you ask for, under our terms (art. 6(1)(b))</td><td data-label="How long">Session: 12 hours. Device cookies: 90 days.</td></tr>
         <tr><td data-label="What">Where you are and what you do in the game, and chat messages</td><td data-label="Why">To run the shared game. The other players see it.</td><td data-label="Legal basis">Needed to give you the game (art. 6(1)(b))</td><td data-label="How long">Not kept after you leave. Chat is passed on live and never stored.</td></tr>
         <tr><td data-label="What">Scores per name (kills, deaths, headshots, rounds won)</td><td data-label="Why">The leaderboard in Action mode</td><td data-label="Legal basis">Needed to give you the game (art. 6(1)(b))</td><td data-label="How long">Until you ask us to remove them</td></tr>
-        <tr><td data-label="What">The login log: time, IP address, name and what happened (joined, wrong PIN, removed)</td><td data-label="Why">Security and stopping abuse</td><td data-label="Legal basis">Legitimate interest: a safe game (art. 6(1)(f))</td><td data-label="How long">90 days, at most 20,000 entries</td></tr>
+        <tr><td data-label="What">The login log: time, IP address, name and what happened (started alone, joined, wrong PIN, removed)</td><td data-label="Why">Security, stopping abuse, and knowing who plays</td><td data-label="Legal basis">Legitimate interest: a safe game, and knowing who plays it (art. 6(1)(f))</td><td data-label="How long">90 days, at most 20,000 entries</td></tr>
         <tr><td data-label="What">Short counters per IP address</td><td data-label="Why">To stop floods of sign-ups, uploads, logins or messages</td><td data-label="Legal basis">Legitimate interest: a safe game (art. 6(1)(f))</td><td data-label="How long">In the server's memory only, from one minute to one day</td></tr>
         <tr><td data-label="What">Your sign-up on the interest page (<a href="#en-interest">section 4</a>)</td><td data-label="Why">To organise the meetup and contact you about it</td><td data-label="Legal basis">Legitimate interest (art. 6(1)(f)). You choose to sign up and can withdraw at any time.</td><td data-label="How long">Until you withdraw. If we stop organising meetups, we delete all sign-ups.</td></tr>
         <tr><td data-label="What">An email once the meetup is planned, if you tick the box</td><td data-label="Why">To tell you the date and the place</td><td data-label="Legal basis">Your consent (art. 6(1)(a))</td><td data-label="How long">Until you turn it off through your own link, or withdraw</td></tr>
@@ -78,7 +78,7 @@
 
     <h2 id="en-count">3. Counting visits</h2>
     <p>When you open the game or the interest page, the server counts the visit. To count each visitor once per day, it makes a code from your IP address and your browser's name. That code is mixed with a random value that changes every day and is never saved. The codes stay in the server's memory for that day only. Nobody can turn them back into an address, or match yesterday's visitors to today's.</p>
-    <p>The game also tells the server when a game starts, each minute while you play, and when you leave. That message holds only what you chose in the game: the mode, the controls, alone or together, and the language. It also carries a random number that the page makes fresh at every visit, so the admin can see how many people are playing alone right now and what they play. The server keeps that number in memory only, and forgets it a minute after you stop. Nothing about your device or about you is sent.</p>
+    <p>The game also tells the server when a game starts, each minute while you play, and when you leave. That message holds what you chose in the game: the mode, the controls, alone or together, and the language. When you start alone, it also holds the name you typed. The server writes that name with your IP address in the login log, which it keeps 90 days. The message also carries a random number that the page makes fresh at every visit, so the admin can see how many people are playing alone right now and what they play. The server keeps that number in memory only, and forgets it a minute after you stop. Nothing else about your device or about you is sent.</p>
     <p>What we keep are the day's totals: visits, visitors, games started, minutes played and how many chose each option. Those totals say nothing about any person. No cookies or browser storage are used for this.</p>
     <p>If your browser sends <i>Global Privacy Control</i> or <i>Do Not Track</i>, you are not counted at all.</p>
 
@@ -99,7 +99,7 @@
     <h2 id="en-source">5. Where the data comes from, and whether you have to give it</h2>
     <p>Everything we use comes from you or from your browser, except the street suggestions, which come from the Flemish address register.</p>
     <p>Plans of your home can show things about the people you live with. Only upload them if they agree.</p>
-    <p>No law or contract obliges you to give us anything. Playing alone needs nothing. Playing together needs a name, which may be a nickname. Signing up needs a name and an email address, so we can reach you. Without them you can't sign up. Everything else on the form is optional.</p>
+    <p>No law or contract obliges you to give us anything. Playing alone needs no name. Playing together needs a name, which may be a nickname. Signing up needs a name and an email address, so we can reach you. Without them you can't sign up. Everything else on the form is optional.</p>
     <p>We make no automated decisions about you, and we don't profile you. The only automatic measures are a short pause after too many wrong PINs or passwords, to stop people guessing them, and the block on visits from outside Belgium (<a href="#en-recipients">section 7</a>).</p>
 
     <h2 id="en-cookies">6. Cookies and browser storage</h2>
@@ -144,7 +144,7 @@
     <p>You can also complain to the Belgian Data Protection Authority: Gegevensbeschermingsautoriteit, Drukpersstraat 35, 1000 Brussels, <a href="mailto:contact@apd-gba.be">contact@apd-gba.be</a>, <a href="https://www.dataprotectionauthority.be">dataprotectionauthority.be</a>. You don't have to ask us first, though we'd like the chance to fix it.</p>
 
     <h2 id="en-children">10. Children</h2>
-    <p>Walking around alone collects nothing about you, at any age. Playing together and the interest page are for people aged 13 and over, which you confirm with a tick box. For anyone younger, a parent or guardian decides and signs up for them. Sending plans of a house is for adults (18 and over). At a meetup, anyone under 16 comes with a parent or guardian.</p>
+    <p>Playing alone needs no age check. When it starts, the server notes the name typed and the IP address in its log, also for children. A parent or guardian can ask us by email to delete it. Playing together and the interest page are for people aged 13 and over, which you confirm with a tick box. For anyone younger, a parent or guardian decides and signs up for them. Sending plans of a house is for adults (18 and over). At a meetup, anyone under 16 comes with a parent or guardian.</p>
 
     <h2 id="en-changes">11. Changes</h2>
     <p>When this policy changes, the date at the top changes too. If a change affects what you gave us on the interest page, we email you about it first.</p>
@@ -158,7 +158,7 @@
       <b>Kort</b>
       <ul>
         <li>Geen advertenties, geen trackingcookies, geen statistieken van derden.</li>
-        <li>Speel je alleen, dan bewaart onze server niets over jou.</li>
+        <li>Begin je alleen te spelen, dan noteert de server de naam die je typte en je IP-adres in zijn logboek.</li>
         <li>Samen spelen en je inschrijven hebben een paar dingen nodig. Die staan hieronder, met hoelang we ze bewaren.</li>
         <li>We tellen bezoeken als totalen per dag. Daarvoor zijn geen cookies nodig, en het bewaart niets over jou.</li>
         <li>De plannen van je woning worden nooit gepubliceerd. Enkel het 3D-model van je huis wordt openbaar, en enkel met je toestemming.</li>
@@ -194,7 +194,7 @@
         <tr><td data-label="Wat">De naam waaronder je speelt, een sessiecookie en twee apparaatcookies</td><td data-label="Waarom">Om je binnen te laten en je naam te bewaren voor de sessie. De apparaatcookies onthouden dat deze browser al eerder meedeed, zodat een blokkering tegen aanvallers jou niet treft.</td><td data-label="Rechtsgrond">Nodig om je het spel te geven waar je om vraagt, volgens onze voorwaarden (art. 6, lid 1, b)</td><td data-label="Hoelang">Sessie: 12 uur. Apparaatcookies: 90 dagen.</td></tr>
         <tr><td data-label="Wat">Waar je bent en wat je doet in het spel, en chatberichten</td><td data-label="Waarom">Om het gedeelde spel te laten werken. De andere spelers zien het.</td><td data-label="Rechtsgrond">Nodig om je het spel te geven (art. 6, lid 1, b)</td><td data-label="Hoelang">Niet bewaard als je weggaat. Chat wordt meteen doorgegeven en nooit bewaard.</td></tr>
         <tr><td data-label="Wat">Scores per naam (kills, keren uitgeschakeld, kopschoten, gewonnen rondes)</td><td data-label="Waarom">Het klassement in Actie-modus</td><td data-label="Rechtsgrond">Nodig om je het spel te geven (art. 6, lid 1, b)</td><td data-label="Hoelang">Tot je vraagt ze te verwijderen</td></tr>
-        <tr><td data-label="Wat">Het aanmeldlogboek: tijd, IP-adres, naam en wat er gebeurde (meegedaan, foute pincode, verwijderd)</td><td data-label="Waarom">Beveiliging en misbruik stoppen</td><td data-label="Rechtsgrond">Gerechtvaardigd belang: een veilig spel (art. 6, lid 1, f)</td><td data-label="Hoelang">90 dagen, hoogstens 20.000 regels</td></tr>
+        <tr><td data-label="Wat">Het aanmeldlogboek: tijd, IP-adres, naam en wat er gebeurde (alleen begonnen, meegedaan, foute pincode, verwijderd)</td><td data-label="Waarom">Beveiliging, misbruik stoppen en weten wie er speelt</td><td data-label="Rechtsgrond">Gerechtvaardigd belang: een veilig spel, en weten wie het speelt (art. 6, lid 1, f)</td><td data-label="Hoelang">90 dagen, hoogstens 20.000 regels</td></tr>
         <tr><td data-label="Wat">Korte tellers per IP-adres</td><td data-label="Waarom">Om een stortvloed aan inschrijvingen, uploads, aanmeldingen of berichten te stoppen</td><td data-label="Rechtsgrond">Gerechtvaardigd belang: een veilig spel (art. 6, lid 1, f)</td><td data-label="Hoelang">Enkel in het geheugen van de server, van één minuut tot één dag</td></tr>
         <tr><td data-label="Wat">Je inschrijving op de interessepagina (<a href="#nl-interest">punt 4</a>)</td><td data-label="Waarom">Om de ontmoeting te organiseren en je daarover te contacteren</td><td data-label="Rechtsgrond">Gerechtvaardigd belang (art. 6, lid 1, f). Je kiest zelf om je in te schrijven en kunt altijd intrekken.</td><td data-label="Hoelang">Tot je intrekt. Stoppen we met ontmoetingen organiseren, dan wissen we alle inschrijvingen.</td></tr>
         <tr><td data-label="Wat">Een e-mail zodra de ontmoeting gepland is, als je het vakje aanvinkt</td><td data-label="Waarom">Om je de datum en de plaats te laten weten</td><td data-label="Rechtsgrond">Je toestemming (art. 6, lid 1, a)</td><td data-label="Hoelang">Tot je het uitzet via je eigen link, of intrekt</td></tr>
@@ -207,7 +207,7 @@
 
     <h2 id="nl-count">3. Bezoeken tellen</h2>
     <p>Open je het spel of de interessepagina, dan telt de server het bezoek. Om elke bezoeker één keer per dag te tellen, maakt hij een code van je IP-adres en de naam van je browser. Die code wordt gemengd met een willekeurige waarde die elke dag verandert en nooit bewaard wordt. De codes blijven enkel die dag in het geheugen van de server. Niemand kan ze terug omzetten in een adres, of de bezoekers van gisteren koppelen aan die van vandaag.</p>
-    <p>Het spel laat de server ook weten wanneer een spel begint, elke minuut terwijl je speelt, en wanneer je weggaat. Dat bericht bevat enkel wat je in het spel koos: de modus, de besturing, alleen of samen, en de taal. Het draagt ook een willekeurig getal dat de pagina bij elk bezoek opnieuw maakt, zodat de beheerder kan zien hoeveel mensen nu alleen spelen en wat ze spelen. De server houdt dat getal enkel in zijn geheugen, en vergeet het een minuut nadat je stopt. Er wordt niets over je toestel of over jou gestuurd.</p>
+    <p>Het spel laat de server ook weten wanneer een spel begint, elke minuut terwijl je speelt, en wanneer je weggaat. Dat bericht bevat wat je in het spel koos: de modus, de besturing, alleen of samen, en de taal. Begin je alleen, dan bevat het ook de naam die je typte. De server schrijft die naam met je IP-adres in het aanmeldlogboek, dat hij 90 dagen bewaart. Het bericht draagt ook een willekeurig getal dat de pagina bij elk bezoek opnieuw maakt, zodat de beheerder kan zien hoeveel mensen nu alleen spelen en wat ze spelen. De server houdt dat getal enkel in zijn geheugen, en vergeet het een minuut nadat je stopt. Er wordt verder niets over je toestel of over jou gestuurd.</p>
     <p>Wat we bewaren, zijn de totalen per dag: bezoeken, bezoekers, gestarte spellen, gespeelde minuten en hoeveel mensen elke keuze maakten. Die totalen zeggen niets over wie dan ook. Hiervoor worden geen cookies of browseropslag gebruikt.</p>
     <p>Stuurt je browser <i>Global Privacy Control</i> of <i>Do Not Track</i>, dan word je helemaal niet geteld.</p>
 
@@ -228,7 +228,7 @@
     <h2 id="nl-source">5. Waar de gegevens vandaan komen, en of je ze moet geven</h2>
     <p>Alles wat we gebruiken, komt van jou of van je browser. De straatsuggesties komen uit het Vlaamse adressenregister.</p>
     <p>Plannen van je woning kunnen iets tonen over de mensen met wie je samenwoont. Upload ze enkel als zij akkoord gaan.</p>
-    <p>Geen wet of contract verplicht je om ons iets te geven. Alleen spelen vraagt niets. Samen spelen vraagt een naam, en dat mag een bijnaam zijn. Je inschrijven vraagt een naam en een e-mailadres, zodat we je kunnen bereiken. Zonder die twee kun je je niet inschrijven. De rest van het formulier is vrij.</p>
+    <p>Geen wet of contract verplicht je om ons iets te geven. Alleen spelen vraagt geen naam. Samen spelen vraagt een naam, en dat mag een bijnaam zijn. Je inschrijven vraagt een naam en een e-mailadres, zodat we je kunnen bereiken. Zonder die twee kun je je niet inschrijven. De rest van het formulier is vrij.</p>
     <p>We nemen geen geautomatiseerde beslissingen over jou en maken geen profiel van je. De enige automatische maatregelen zijn een korte pauze na te veel foute pincodes of wachtwoorden, om raden te stoppen, en de blokkering van bezoeken van buiten België (<a href="#nl-recipients">punt 7</a>).</p>
 
     <h2 id="nl-cookies">6. Cookies en opslag in je browser</h2>
@@ -273,7 +273,7 @@
     <p>Je kunt ook klacht indienen bij de Gegevensbeschermingsautoriteit, Drukpersstraat 35, 1000 Brussel, <a href="mailto:contact@apd-gba.be">contact@apd-gba.be</a>, <a href="https://www.gegevensbeschermingsautoriteit.be">gegevensbeschermingsautoriteit.be</a>. Je hoeft ons niet eerst te vragen, al krijgen we graag de kans om het recht te zetten.</p>
 
     <h2 id="nl-children">10. Kinderen</h2>
-    <p>Alleen rondwandelen bewaart niets over jou, op welke leeftijd ook. Samen spelen en de interessepagina zijn voor wie 13 jaar of ouder is; dat bevestig je met een vinkje. Voor wie jonger is, beslist een ouder of voogd en schrijft die hem of haar in. Plannen van een huis sturen is voor volwassenen (18 jaar of ouder). Op een ontmoeting komt wie jonger is dan 16 samen met een ouder of voogd.</p>
+    <p>Alleen spelen vraagt geen leeftijdscontrole. Bij het begin noteert de server de getypte naam en het IP-adres in zijn logboek, ook bij kinderen. Een ouder of voogd kan ons per mail vragen om dat te wissen. Samen spelen en de interessepagina zijn voor wie 13 jaar of ouder is; dat bevestig je met een vinkje. Voor wie jonger is, beslist een ouder of voogd en schrijft die hem of haar in. Plannen van een huis sturen is voor volwassenen (18 jaar of ouder). Op een ontmoeting komt wie jonger is dan 16 samen met een ouder of voogd.</p>
 
     <h2 id="nl-changes">11. Wijzigingen</h2>
     <p>Verandert dit beleid, dan verandert ook de datum bovenaan. Raakt een wijziging aan wat je ons op de interessepagina gaf, dan mailen we je er eerst over.</p>
