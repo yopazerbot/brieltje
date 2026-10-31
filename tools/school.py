@@ -108,7 +108,7 @@ bpy.ops.wm.read_factory_settings(use_empty=True)
 # name: (shared game texture, tint, normal scale, mean colour of the result, metres per UV unit)
 SHARED = {
     "school_render": ("nb_brick", "#ece4cf", 0.45, "#d8cfba", 2.4),   # painted blocks: the brick texture at 2.4 times its size
-    "school_brick": ("nb_brick", "#8f5646", 1.0, "#7a4a3c", 1.0),     # the long block's red-brown brick
+    "school_brick": ("town_brick", "#a26454", 1.0, "#9a5643", 0.7),   # the long block's red-brown brick: the town's brick photo (2 m a tile in the game, so 1.4 m here)
     "school_siding": ("plaster", "#c6cac8", 0.3, "#bfc3c1", 1.0),     # light grey boards (their edges are geometry)
     "school_dark": ("concrete", "#686b6e", 0.5, "#4f5153", 1.0),       # anthracite plinths
     "school_stone": ("nb_brick", "#b7b4ad", 0.9, "#a9a69f", 2.0),      # the square's planter wall: grey stone blocks

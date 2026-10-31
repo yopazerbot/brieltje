@@ -62,7 +62,7 @@ NB = json.load(open(os.path.join(ROOT, "data", "neighbours.json"), encoding="utf
 ORIGIN = tuple(SPEC["origin"])
 FAR = SPEC.get("far", 230.0)
 SUN = Vector(SPEC["sun"]).normalized()      # towards the sun, game axes (x, y, z)
-CELL = 0.9                                    # m: wall and roof faces are cut this fine for the baked light
+CELL = 1.6                                    # m: wall and roof faces are cut this fine for the baked light (the shade is soft)
 COLOR_SCALE = 1.6                             # vertex colours are stored divided by this (see pack)
 
 
@@ -305,7 +305,7 @@ def surface(spec):
 
 
 # ---------------------------------------------------------------- openings
-WIDTH = {"w": 1.2, "W": 2.1, "n": 0.7, "d": 1.0, "D": 1.7, "g": 2.5, "G": 3.1, "s": 2.8, "a": 1.15, "_": 1.0, "o": 0.6, "c": 3.0, "r": 1.9}
+WIDTH = {"w": 1.2, "W": 2.1, "n": 0.7, "d": 1.0, "D": 1.7, "g": 2.5, "G": 3.1, "s": 2.8, "a": 1.15, "_": 1.0, "o": 0.6, "c": 3.0, "r": 1.9, "x": 3.0}
 
 
 class Hole:
@@ -355,6 +355,8 @@ def opening_heights(kind, s0, s1, f, storey, fs):
         return Hole(kind, s0, s1, f + (0.05 if storey == 0 else 0.0), f + head + 0.05, storey)
     if kind in "gG":
         return Hole(kind, s0, s1, f + 0.02, f + fs.get("garage_h", 2.25), storey)
+    if kind == "x":  # no wall here: another volume's front stands in this place (a gable over the middle of a facade)
+        return Hole(kind, s0, s1, -50.0, 99.0, storey)
     if kind == "c":  # a carport or passage: an open bay under the floor above
         return Hole(kind, s0, s1, f - 0.05, f + fs.get("garage_h", 2.6), storey)
     if kind == "s":
@@ -370,6 +372,8 @@ def opening_heights(kind, s0, s1, f, storey, fs):
 
 def build_opening(F, h, fs, wallkey, wallcol, rng):
     """Reveals, frame, glass, sill, lintel, door or garage door and shutters for one hole in a facade."""
+    if h.kind == "x":  # only a gap in the wall
+        return
     depth = fs.get("depth", 0.14)
     rows_f, rows_s = fs.get("frame_rows"), fs.get("style_rows")  # per storey, from the ground up
     frame = rows_f[min(h.storey, len(rows_f) - 1)] if rows_f else fs.get("frame", "#f2f0ea")
@@ -606,6 +610,8 @@ def facade(F, length, top, holes, spec, fs, bottom, rng, far_key=None, far_col=N
     fk = ("far", wm)
     face(fk, [F.p(0, bottom), F.p(length, bottom)] + [F.p(s, y) for s, y in reversed(top)], F.out(), shade(wc, 0.85))
     for h in holes:
+        if h.kind == "x":
+            continue
         face(("far", "render"), [F.p(h.s0, h.y0, 0.03), F.p(h.s1, h.y0, 0.03), F.p(h.s1, h.y1, 0.03), F.p(h.s0, h.y1, 0.03)],
              F.out(), "#2b3134" if h.kind not in "dDgG" else shade(fs.get("garage" if h.kind in "gG" else "door", "#4a3426"), 0.8))
 
@@ -743,9 +749,9 @@ def roof(vol, floor, P, L, W, rng):
         top = [P(*q) for q in pts]
         out = (0, 0, 1)
         if len(top) == 4:
-            grid(RK, top[0], top[1], top[2], top[3], out, rc, 1.2)
+            grid(RK, top[0], top[1], top[2], top[3], out, rc, 2.0)
         else:
-            grid_tri(RK, top[0], top[1], top[2], out, rc, 1.2)
+            grid_tri(RK, top[0], top[1], top[2], out, rc, 2.0)
         face(("far", "roof"), top, out, shade(rc, 0.9))
         # The slab: underside and edges in the fascia colour, the edges facing out from the plane's middle.
         bot = [(q[0], q[1], q[2] - th) for q in top]

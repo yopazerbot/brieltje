@@ -1879,7 +1879,20 @@ function withoutLandmarks(data: VillageData, names: string[], houses: Ring[] = [
     });
   const inside = (x: number, z: number) => within(outlines, x, z, 0);
   const middle = (ring: Ring | [number, number][]): [number, number] => [ring.reduce((s, q) => s + q[0], 0) / ring.length, ring.reduce((s, q) => s + q[1], 0) / ring.length];
-  const housePart = (ring: Ring) => houses.length > 0 && ring.every(([x, z]) => within(houses, x, z, 0.4)) && within(houses, ...middle(ring), 0.4);
+  // A point inside a block's own outline (the middle of a diagonal that lies inside it): an L-shaped house's
+  // average corner can lie outside it. Strictly inside the house, so a neighbour's chimney by a shared wall stays.
+  const inner = (ring: Ring): [number, number] => {
+    for (let i = 0; i < ring.length; i++) {
+      for (const k of [2, 3]) {
+        const a = ring[i];
+        const b = ring[(i + k) % ring.length];
+        const m: [number, number] = [(a[0] + b[0]) / 2, (a[1] + b[1]) / 2];
+        if (within([ring], m[0], m[1], 0)) return m;
+      }
+    }
+    return middle(ring);
+  };
+  const housePart = (ring: Ring) => houses.length > 0 && ring.every(([x, z]) => within(houses, x, z, 0.4)) && within(houses, ...inner(ring), 0);
   return {
     ...data,
     prisms: (data.prisms ?? []).filter((p) => (!p.lm || !names.includes(p.lm)) && (p.d !== undefined || !housePart(p.p[0]))),
