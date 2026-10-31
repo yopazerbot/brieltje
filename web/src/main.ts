@@ -1437,6 +1437,7 @@ menu.onPlay = (mode) => {
   touch.show(mode === 'touch');
   if (mode === 'touch') fillScreen(); // the first start asked for it in its tap already (src/start.ts)
   // Keyboard + mouse: capture the mouse so moving it turns the view.
+  resumedAt = performance.now();
   if (mode === 'kbm') lockMouse();
   else document.exitPointerLock?.();
 };
@@ -1453,10 +1454,13 @@ canvas.addEventListener('click', () => {
   if (!menu.open && menu.mode === 'kbm' && document.pointerLockElement !== canvas) lockMouse();
 });
 const captureHint = $('capture-hint');
+let resumedAt = -1e9; // when play last resumed (the menu closed)
 document.addEventListener('pointerlockchange', () => {
   // Esc releases the mouse in the browser: treat that as pausing. When the game let it go itself (M,
-  // the menu opening), the menu is open already and stays on its tab.
-  if (!document.pointerLockElement && menu.mode === 'kbm' && !menu.open && !chat.typing) openMenu();
+  // the menu opening), the menu is open already and stays on its tab. Not just after the menu closed:
+  // the Esc that closed it can still take back the capture asked for on closing, and the menu (on
+  // the map) came straight back, as if Esc didn't close the map (Yoshi). The click hint shows then.
+  if (!document.pointerLockElement && menu.mode === 'kbm' && !menu.open && !chat.typing && performance.now() - resumedAt > 800) openMenu();
 });
 
 window.addEventListener('resize', resize);
