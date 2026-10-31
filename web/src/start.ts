@@ -184,15 +184,36 @@ for (const box of ageBoxes()) {
   });
 }
 
+// Leaving must really end the session, also on a shared laptop or iPad at a meetup: a logout the
+// server never got (out of reach) is remembered on this device and sent again on the next visit,
+// before anyone is let back in. And a join or login answered after leaving is dropped and logged
+// out again, so it can't sign you back in behind your back.
+const LOGOUT = 'briel.logoutPending';
+let accountGen = 0; // goes up on leaving
+const logoutDone = () => {
+  try {
+    localStorage.removeItem(LOGOUT);
+  } catch {}
+};
+function logoutForSure(): void {
+  try {
+    localStorage.setItem(LOGOUT, '1');
+  } catch {}
+  api.logout().then(logoutDone).catch(() => {});
+}
+
 /** The admin logs in under the name typed above, with the admin password. */
 async function login(): Promise<void> {
   const user = ($('nick') as HTMLInputElement).value.trim();
   const pass = $('mp-pass') as HTMLInputElement;
   if (!user) return setAccount(null, () => t('err.nameFirst'));
   if (!pass.value) return setAccount(null, () => t('err.password'));
+  const gen = accountGen;
   try {
     const account = await api.login(user, pass.value);
     pass.value = '';
+    if (gen !== accountGen) return logoutForSure();
+    logoutDone();
     setAccount(account);
   } catch (e) {
     setAccount(null, errorText(e));
@@ -216,10 +237,16 @@ function join(name = ($('nick') as HTMLInputElement).value.trim(), pin = $('mp-p
   if (!pin.value) return refuse(() => t('err.pin'), pin);
   // Playing together, with its chat, is for 13 and over: ticked once, remembered on this device.
   if (!ageOk()) return refuse(() => t('err.age'));
+  const gen = accountGen;
   joining = api
     .join(name, pin.value, ageOk())
     .then((account) => {
       pin.value = '';
+      if (gen !== accountGen) {
+        logoutForSure();
+        return false;
+      }
+      logoutDone();
       setAccount(account);
       return true;
     })
@@ -281,14 +308,22 @@ $('mp-pass').addEventListener('keydown', (e) => {
   if ((e as KeyboardEvent).key === 'Enter') void login();
 });
 // Leaving plays alone at once, without waiting for the server: with it out of reach the answer can
-// take seconds (then its session just runs out by itself).
+// take seconds. The logout itself is made sure of (see logoutForSure).
 const leave = () => {
+  accountGen++;
   setAccount(null);
-  api.logout().catch(() => {});
+  logoutForSure();
 };
 $('mp-logout').addEventListener('click', leave);
 $('mp-leave').addEventListener('click', leave);
-api.me().then(setAccount).catch(() => setAccount(null));
+let logoutPending = false;
+try {
+  logoutPending = localStorage.getItem(LOGOUT) === '1';
+} catch {}
+if (logoutPending) {
+  setAccount(null);
+  logoutForSure(); // left last time while the server was out of reach: finish that first
+} else api.me().then(setAccount).catch(() => setAccount(null));
 // Together picked but not joined yet: a start button joins first (a PIN typed in and then straight
 // to Touch screen would otherwise start alone), and play starts only if that worked.
 const togetherPicked = () => !!document.querySelector('[data-mp=multi].selected');
