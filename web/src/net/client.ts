@@ -143,7 +143,8 @@ async function call<T>(method: string, path: string, body?: unknown): Promise<T>
 export const api = {
   me: () => call<Me & { online: number; max: number }>('GET', '/api/me'),
   login: (username: string, password: string) => call<Me>('POST', '/api/login', { username, password }),
-  join: (name: string, pin: string) => call<Me>('POST', '/api/join', { name, pin }),
+  /** `age`: the player confirmed being 13 or older (the server refuses without it). */
+  join: (name: string, pin: string, age: boolean) => call<Me>('POST', '/api/join', { name, pin, age }),
   logout: () => call('POST', '/api/logout', {}),
   players: () => call<{ players: { name: string; color: string; role: string }[]; max: number }>('GET', '/api/players'),
   kick: (name: string) => call('POST', '/api/kick', { name }),

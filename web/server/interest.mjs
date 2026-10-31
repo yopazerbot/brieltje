@@ -227,6 +227,7 @@ export class Interest {
     const email = clean(b.email, 200).toLowerCase();
     if (!name) return this.json(res, 400, { error: 'name' });
     if (!EMAIL.test(email)) return this.json(res, 400, { error: 'email' });
+    if (b.age !== true) return this.json(res, 400, { error: 'age' }); // 13 or older (younger: a parent signs up)
     const house = b.house === true;
     // Lives there or may share, the model public, the plans never published, and the plans read by
     // an AI service (Claude, by Anthropic) to help build the model.

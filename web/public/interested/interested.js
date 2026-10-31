@@ -9,7 +9,7 @@
   const OK = /\.(pdf|jpe?g|png|heic|heif|webp|tiff?)$/i;
   const T = {
     nl: {
-      name: 'Vul je naam in.', email: 'Vul een geldig e-mailadres in.', consent: 'Vink de vier vakjes aan om je plannen te sturen, of kies "Nee, bedankt".',
+      name: 'Vul je naam in.', email: 'Vul een geldig e-mailadres in.', age: 'Vink aan dat je 13 jaar of ouder bent, of laat een ouder je inschrijven.', consent: 'Vink de vier vakjes aan om je plannen te sturen, of kies "Nee, bedankt".',
       noFiles: 'Kies minstens één plan, of kies "Nee, bedankt".', tooMany: 'Hoogstens 10 bestanden.', tooBig: 'is groter dan 25 MB.', badType: 'is geen PDF of afbeelding (JPG, PNG, HEIC, TIFF).',
       busy: 'Even te veel inschrijvingen. Probeer het over een paar minuten opnieuw.', failed: 'Dat lukte niet. Controleer je verbinding en probeer opnieuw.', type: 'Dat bestand herkennen we niet als plan (PDF of afbeelding: JPG, PNG, HEIC, TIFF).',
       sending: 'Bezig…', uploading: 'Plannen uploaden…', copied: 'Gekopieerd', gone: 'Deze inschrijving bestaat niet (meer).', withdrawn: 'Je inschrijving en je plannen zijn verwijderd.',
@@ -19,7 +19,7 @@
       houseYes: 'Ja, met de plannen hieronder', houseNo: 'Nee', people: (n) => (n === 1 ? '1 persoon' : `${n} personen`), noPlans: 'Er kwamen geen plannen aan.', sent: 'Gestuurd op',
     },
     en: {
-      name: 'Please fill in your name.', email: 'Please fill in a valid email address.', consent: 'Tick the four boxes to send your plans, or choose "No, thanks".',
+      name: 'Please fill in your name.', email: 'Please fill in a valid email address.', age: "Tick that you're 13 or older, or have a parent sign you up.", consent: 'Tick the four boxes to send your plans, or choose "No, thanks".',
       noFiles: 'Choose at least one plan, or choose "No, thanks".', tooMany: 'At most 10 files.', tooBig: 'is larger than 25 MB.', badType: "isn't a PDF or an image (JPG, PNG, HEIC, TIFF).",
       busy: 'Too many sign-ups right now. Please try again in a few minutes.', failed: "That didn't work. Check your connection and try again.", type: "We don't recognise that file as a plan (a PDF or an image: JPG, PNG, HEIC, TIFF).",
       sending: 'Sending…', uploading: 'Uploading plans…', copied: 'Copied', gone: "This sign-up doesn't exist (any more).", withdrawn: 'Your sign-up and your plans have been removed.',
@@ -190,6 +190,8 @@
     error('email-err', validEmail(email) ? '' : t('email'));
     if (!name) return $('name').focus();
     if (!validEmail(email)) return $('email').focus();
+    error('age-err', $('age').checked ? '' : t('age'));
+    if (!$('age').checked) return $('age').focus();
     show($('s-1'), false);
     show($('s-2'));
     $('step2bar').classList.add('on');
@@ -354,6 +356,7 @@
         party,
         comments: $('comments').value.trim(),
         updates: $('updates').checked,
+        age: $('age').checked,
         house,
         consent: house ? { own: $('c-own').checked, model: $('c-model').checked, private: $('c-private').checked, ai: $('c-ai').checked } : null,
         lang,

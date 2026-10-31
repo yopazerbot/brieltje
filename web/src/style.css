@@ -298,6 +298,7 @@ body.on-start #start-still { display: block; }
 .page .gfx.tool .gfx-value { margin-left: 6px; font-size: 15px; }
 .page .gfx.tool .gfx-detail { display: block; margin-top: 2px; font-size: 12px; opacity: 0.7; }
 #mp-join-here { margin: 4px 0 8px; max-width: 440px; }
+.age-check { margin: -2px 0 10px; font-size: 14px; }
 /* A phone held sideways: everything up to the start buttons fits without scrolling. */
 @media (max-height: 520px) {
   .panel { padding: 14px 22px; }

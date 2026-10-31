@@ -160,13 +160,36 @@ async function login(): Promise<void> {
 async function join(name = ($('nick') as HTMLInputElement).value.trim(), pin = $('mp-pin') as HTMLInputElement): Promise<void> {
   if (!name || name === 'Guest') return setAccount(null, () => t('err.nameFirst'));
   if (!pin.value) return setAccount(null, () => t('err.pin'));
+  // Playing together, with its chat, is for 13 and over: ticked once, remembered on this device.
+  if (!ageConfirmed()) return setAccount(null, () => t('err.age'));
   try {
-    const account = await api.join(name, pin.value);
+    const account = await api.join(name, pin.value, true);
     pin.value = '';
     setAccount(account);
   } catch (e) {
     setAccount(null, errorText(e));
   }
+}
+/** Whether this device has confirmed being 13 or older (the tick box on the start screen or the Together tab). */
+const AGE_KEY = 'briel.age13';
+function ageConfirmed(): boolean {
+  try {
+    return localStorage.getItem(AGE_KEY) === '1';
+  } catch {
+    return ($('mp-age') as HTMLInputElement).checked; // storage blocked: the tick box itself
+  }
+}
+{
+  const box = $('mp-age') as HTMLInputElement;
+  box.checked = ageConfirmed();
+  box.addEventListener('change', () => {
+    try {
+      if (box.checked) localStorage.setItem(AGE_KEY, '1');
+      else localStorage.removeItem(AGE_KEY);
+    } catch {
+      // storage blocked: ageConfirmed() reads the box
+    }
+  });
 }
 // Alone or together on the start screen; the admin logs in with the admin password (the Admin link).
 document.querySelectorAll<HTMLButtonElement>('[data-mp]').forEach((b) =>
@@ -174,6 +197,7 @@ document.querySelectorAll<HTMLButtonElement>('[data-mp]').forEach((b) =>
     const multi = b.dataset.mp === 'multi';
     document.querySelectorAll('[data-mp]').forEach((o) => o.classList.toggle('selected', o === b));
     $('mp-pin-row').classList.toggle('hidden', !multi);
+    $('mp-age-row').classList.toggle('hidden', !multi);
     if (multi) {
       $('mp-login').classList.add('hidden');
       ($('mp-pin') as HTMLInputElement).focus();
