@@ -445,15 +445,24 @@ def street_signs(g, nodes, road, buildings):
     out = []
 
     def by_road(at, heading, right=True, off=1.2):
-        """A spot `off` m beside the road's edge at `at`, on the right of someone driving along `heading`."""
+        """A spot `off` m beside the road's edge at `at`, on the right of someone driving along `heading`:
+        never nearer the centre line than MIN_SIDE (where the road surface has a gap, the edge of the drawn
+        road isn't there to go by). Where Molenhoek has its new street, just behind its pavement (the paved
+        forecourts there are part of the GRB's road surface). None if there is no such spot."""
         rx, rz = -heading[1], heading[0]
         if not right:
             rx, rz = -rx, -rz
-        for d in np.arange(1.0, 8.0, 0.2):
-            p = Point(at[0] + rx * d, at[1] + rz * d)
-            if not road.contains(p) and road.distance(p) >= off - 0.6:
-                return p
-        return Point(at)
+        new = NEW_STREET.contains(Point(at))
+        for shift in (0.0, -3.0, 3.0, -6.0, 6.0):  # a little along the road where a drive or side road is in the way
+            for d in np.arange(1.0, 12.0, 0.2):
+                p = Point(at[0] + heading[0] * shift + rx * d, at[1] + heading[1] * shift + rz * d)
+                if d < MIN_SIDE:
+                    continue
+                if new and not NEW_STREET.contains(p) and NEW_STREET.distance(p) >= 0.25:
+                    return p
+                if not new and not road.contains(p) and road.distance(p) >= off - 0.6:
+                    return p
+        return None
 
     def along(line_pts, frac):
         line = LineString(line_pts)
@@ -480,7 +489,7 @@ def street_signs(g, nodes, road, buildings):
                 n = math.hypot(*h)
                 h = (h[0] / n, h[1] / n)
                 s = by_road((p.x, p.y), h)
-                if buildings.distance(s) < 0.6:
+                if s is None or buildings.distance(s) < 0.6:
                     continue
                 out.append([round(s.x, 2), round(s.y, 2), round(math.atan2(-h[0], -h[1]), 3), kind])  # facing the traffic coming in
     # The bus stop: on Kapellenhoek's east side north of Kapelleweg, for the buses to the village.
@@ -498,6 +507,8 @@ def street_signs(g, nodes, road, buildings):
         n = math.hypot(*h)
         h = (h[0] / n, h[1] / n)
         s = by_road((at.x, at.y), h, off=2.2)
+        if s is None:
+            continue
         shelter = car_box(s.x, s.y, math.atan2(h[1], h[0]), 3.2, 1.6)
         if shelter.distance(buildings) < 0.5 or shelter.intersects(road) or shelter.intersects(BLOCK):
             continue
@@ -510,6 +521,29 @@ def street_signs(g, nodes, road, buildings):
 
 MOLENHOEK = None
 BLOCK = None  # hedges and pavings
+MIN_SIDE = 3.2  # m from the centre line: a sign never stands nearer (the half width of a narrow road and a margin)
+
+
+def new_street():
+    """Molenhoek's rebuilt street with its cycle lanes and pavements (data/molenhoek.json, tools/molenhoek.py):
+    its outline up to the pavements' outer edges, as the model draws it."""
+    path = ROOT / "data" / "molenhoek.json"
+    if not path.exists():
+        return Polygon()
+    d = json.loads(path.read_text(encoding="utf-8"))
+    line, left, right = d["line"], d["left"], d["right"]
+    out_l, out_r = [], []
+    for k, (x, z) in enumerate(line):
+        a, b = line[max(0, k - 1)], line[min(len(line) - 1, k + 1)]
+        n = math.hypot(b[0] - a[0], b[1] - a[1])
+        nx, nz = -(b[1] - a[1]) / n, (b[0] - a[0]) / n
+        wl, wr = min(6.8, max(5.5, left[k])), min(6.8, max(5.5, right[k]))
+        out_l.append((x + nx * wl, z + nz * wl))
+        out_r.append((x - nx * wr, z - nz * wr))
+    return Polygon(out_l + out_r[::-1]).buffer(0)
+
+
+NEW_STREET = new_street()
 
 
 def main():

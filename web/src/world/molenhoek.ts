@@ -127,14 +127,46 @@ export function fitVillage(data: VillageData, model: THREE.Object3D, first: numb
     }
     return false;
   };
+  // The pavements' back edges (the street's outline is the one edge west to east, then the other back).
+  const half = street.length / 2;
+  const edges = [street.slice(0, half), street.slice(half)];
+  /** The nearest point on either back edge to (px, pz). */
+  const backEdge = (px: number, pz: number): [number, number] => {
+    let best: [number, number] = [px, pz];
+    let bestD = Infinity;
+    for (const e of edges) {
+      for (let i = 1; i < e.length; i++) {
+        const [ax, az] = e[i - 1];
+        const [bx, bz] = e[i];
+        const dx = bx - ax;
+        const dz = bz - az;
+        const t = Math.max(0, Math.min(1, ((px - ax) * dx + (pz - az) * dz) / (dx * dx + dz * dz || 1)));
+        const d = Math.hypot(ax + dx * t - px, az + dz * t - pz);
+        if (d < bestD) {
+          bestD = d;
+          best = [ax + dx * t, az + dz * t];
+        }
+      }
+    }
+    return best;
+  };
   const posts = new Set<number>();
   (data.poles ?? []).forEach((p, i) => {
     if (!p.k && onStretch(p.x, p.z)) {
       p.k = 'post';
       posts.add(first + i);
-      for (const q of data.prisms ?? []) {
-        // the concrete pole itself: no longer drawn, still there for walking into
-        if (q.m === 'pole' && !q.lm && Math.hypot(q.p[0][0][0] - p.x, q.p[0][0][1] - p.z) < 0.6) q.lm = 'molenhoek';
+      const pole = (data.prisms ?? []).find((q) => q.m === 'pole' && !q.lm && Math.hypot(q.p[0][0][0] - p.x, q.p[0][0][1] - p.z) < 0.6);
+      if (pole) pole.lm = 'molenhoek'; // the concrete pole itself: no longer drawn, still there for walking into
+      // A post that would stand on the new street's lanes or pavement stands just behind the pavement instead,
+      // as the new posts do: off the walking line. Its block for walking into goes with it.
+      if (near(street, p.x, p.z, 0) && street.length >= 4) {
+        const [ex, ez] = backEdge(p.x, p.z);
+        const len = Math.hypot(ex - p.x, ez - p.z) || 1;
+        const nx = ex + ((ex - p.x) / len) * 0.25;
+        const nz = ez + ((ez - p.z) / len) * 0.25;
+        if (pole) pole.p = pole.p.map((ring) => ring.map(([qx, qz]) => [qx + nx - p.x, qz + nz - p.z] as [number, number]));
+        p.x = nx;
+        p.z = nz;
       }
     }
   });

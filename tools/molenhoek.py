@@ -619,6 +619,11 @@ ASPH, GUT, LANE, KERB = 2.5, 2.85, 4.45, 4.6
 Y_ROAD, Y_LANE, Y_KERB, Y_WALK = 0.06, 0.10, 0.15, 0.13
 
 
+def walk_edge(k, side):
+    """How far the pavement reaches from the centre line at station k on one side (+1: +z), as street() draws it."""
+    return min(6.8, max(KERB + 0.9, ST[k]["L"] if side == 1 else ST[k]["R"]))
+
+
 def nearest_station(x, z):
     return min(range(len(ST)), key=lambda k: (ST[k]["x"] - x) ** 2 + (ST[k]["z"] - z) ** 2)
 
@@ -1192,10 +1197,11 @@ def props():
             x, z = pr["at"]
             k = nearest_station(x, z)
             s = ST[k]
-        else:  # given along the street: at station x, d metres to the +z side
+        else:  # given along the street: at station x, d metres to the +z side, or `behind` the pavement on `side`
             k = min(range(len(ST)), key=lambda i: abs(ST[i]["x"] - pr["x"]))
             s = ST[k]
-            x, z = s["x"] + s["n"][0] * pr["d"], s["z"] + s["n"][1] * pr["d"]
+            d = pr["d"] if "d" in pr else pr["side"] * (walk_edge(k, pr["side"]) + pr["behind"])
+            x, z = s["x"] + s["n"][0] * d, s["z"] + s["n"][1] * d
         g0 = terrain(x, z)
         f = Frame((x, z), s["t"], s["n"], g0)
         if pr["k"] == "island":
@@ -1224,8 +1230,10 @@ def props():
             f.box("mh_detail", -0.3, 0.3, 1.66, 1.92, 0.04, 0.06, "#1f5fa8")
             f.box("mh_detail", -0.2, 0.2, 1.74, 1.84, 0.06, 0.065, "#f3f1ec")
             SOLIDS.append(prism_xz([f.xz(-0.06, -0.06), f.xz(0.06, -0.06), f.xz(0.06, 0.06), f.xz(-0.06, 0.06)], g0, g0 + 2.6))
-    # The fire hydrant on the pavement in front of the tall house, red-pink as the survey saw it.
-    hx, hz = 750.1, -714.5
+    # The fire hydrant in front of the tall house, red-pink as the survey saw it: at the back of the pavement.
+    k = min(range(len(ST)), key=lambda i: abs(ST[i]["x"] - 750.1))
+    d = walk_edge(k, 1) + 0.3
+    hx, hz = ST[k]["x"] + ST[k]["n"][0] * d, ST[k]["z"] + ST[k]["n"][1] * d
     g0 = terrain(hx, hz) + 0.1
     tube("mh_detail", (hx, hz, g0), (hx, hz, g0 + 0.75), 0.11, "#c8606c", seg=8)
     tube("mh_detail", (hx, hz, g0 + 0.75), (hx, hz, g0 + 0.85), 0.13, "#b5525e", seg=8)

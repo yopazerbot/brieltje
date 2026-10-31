@@ -155,7 +155,7 @@ HOUSES = {
 PROPS = [
     {"k": "island", "x": 691.5, "d": -3.55, "len": 6.0, "w": 1.3},  # on the north side, where the cycle lane ends: clear of the carriageway
     {"k": "cabinet", "at": [764.0, -728.0]},
-    {"k": "sign_children", "at": [742.2, -727.6]},
+    {"k": "sign_children", "x": 742.2, "side": -1, "behind": 0.35},  # just behind the pavement, clear of the walking line
 ]
 
 
