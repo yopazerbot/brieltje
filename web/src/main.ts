@@ -26,6 +26,8 @@ import spawns from '../shared/spawns.json';
 const HOUSE_SPAWNS = spawns.flatMap((s, i) => (s.team === 'house' ? [i] : []));
 import { api, errorText, Net, type Me, type Rules, type ServerMsg } from './net/client';
 import { Avatars } from './net/avatars';
+import { netClock } from './net/track';
+import { PROTO, readBrute, readCar, readHorse, readPlayer, type Tick } from '../shared/wire.mjs';
 import { sound } from './sound';
 import { footstep, surfaceOf } from './footsteps';
 import { SettingsPanel, type Settings } from './settings';
@@ -53,7 +55,7 @@ import { loadEnvironment } from './world/environment';
 import { house, type DipSpec, type Prism, type Ring, type VillageData } from './world/houseData';
 import { loadProps } from './world/props';
 import { buildHouseMeshes, grassMaterial, groundFamilies, setAnisotropy, surfaceMaterial, tintedMaterial } from './world/houseMeshes';
-import { startDiag } from './ui/diag';
+import { addDiag, startDiag } from './ui/diag';
 import { IndoorLight } from './world/indoorLight';
 import { Portals } from './world/portals';
 import { TravelPanel } from './ui/travel';
@@ -582,6 +584,20 @@ window.addEventListener('keydown', (e) => {
 
 // ---- Multiplayer: join on the start screen; the players (4 at once unless the admin allows more) share the house.
 const net = new Net();
+// ?diag: the connection, worked out again every second (ui/diag.ts).
+let netSeen = { ...net.counts, at: performance.now() };
+addDiag(() => {
+  const c = net.counts;
+  const now = performance.now();
+  const s = Math.max(0.001, (now - netSeen.at) / 1000);
+  const rate = (a: number, b: number) => ((a - b) / 1024 / s).toFixed(1);
+  const line = net.connected
+    ? `net: ping ${net.rtt ?? '?'} ms · ${netClock.rate} ticks/s · others drawn ${Math.round(netClock.delay)} ms behind (late ${Math.round(netClock.late)}, age ${Math.round(netClock.age)})\n` +
+      `net: in ${rate(c.bytesIn, netSeen.bytesIn)} KB/s, ${Math.round((c.msgsIn - netSeen.msgsIn) / s)}/s · out ${rate(c.bytesOut, netSeen.bytesOut)} KB/s, ${Math.round((c.msgsOut - netSeen.msgsOut) / s)}/s`
+    : '';
+  netSeen = { ...c, at: now };
+  return line;
+});
 const avatars = new Avatars();
 scene.add(avatars.group);
 avatars.onStep = (_name, at, speed) => footstep(surfaceOf(world.groundAt(at.x, at.z, at.y + 0.3, 0.6).mat), Math.min(1, 0.35 + speed / 5), at);
@@ -1070,6 +1086,7 @@ net.onMessage = (m: ServerMsg) => {
     case 'welcome':
       // Started somewhere else than the street: the server moves us there before our first update.
       welcomed = true;
+      netClock.reset(); // perhaps a restarted server, with a clock of its own
       if (spawnPending) {
         net.send({ t: 'spawn', to: spawnPending.id });
         spawnPending = null;
@@ -1112,6 +1129,7 @@ net.onMessage = (m: ServerMsg) => {
         const [n, max] = [m.players.length, rules.maxPlayers ?? 4];
         chat.system(() => t('chat.joinedAs', { name: m.you, n, max }));
       }
+      if (m.proto !== PROTO) chat.system(() => t('net.reload')); // the game was updated since this page loaded
       break;
     case 'rules':
       applyRules(m.rules);
@@ -1148,13 +1166,8 @@ net.onMessage = (m: ServerMsg) => {
       showOnline();
       chat.system(() => t('chat.left', { name: m.name }));
       break;
-    case 'states':
-      avatars.update(m.players, me?.username ?? '');
-      for (const s of m.cars ?? []) {
-        const c = carById(s.id);
-        if (c && !(driving && c === car)) c.setPose(s);
-      }
-      if (m.horses) horses.setAll(m.horses, me?.username ?? '');
+    case 's':
+      onTick(m);
       break;
     case 'horse': {
       const h = m.horse;
@@ -1235,9 +1248,6 @@ net.onMessage = (m: ServerMsg) => {
     case 'clowns':
       clowns.setAll(m.list);
       break;
-    case 'brutes':
-      clowns.setBrutes(m.list);
-      break;
     case 'rock':
     case 'stomp':
       clowns.event(m);
@@ -1314,6 +1324,23 @@ net.onMessage = (m: ServerMsg) => {
       break;
   }
 };
+/**
+ * A tick (shared/wire.mjs, twenty a second): the other players, the cars, the horses and the
+ * strongmen, each state with its time on the server's clock; they are drawn a little behind it
+ * (net/track.ts). The car you drive is yours: its states from the server are left out.
+ */
+function onTick(m: Tick): void {
+  const self = me?.username ?? '';
+  netClock.tick(m.st, performance.now());
+  avatars.receive((m.p ?? []).map(readPlayer), m.st, self);
+  for (const e of m.c ?? []) {
+    const s = readCar(e);
+    const c = carById(s.id);
+    if (c && !(driving && c === car)) c.sample(m.st - s.age, s);
+  }
+  horses.receive((m.h ?? []).map(readHorse), m.st, self);
+  if (m.b) clowns.receive(m.b.map(readBrute), m.st); // every other tick
+}
 // Alone or together from here on (perhaps joined on the start screen already): after the handlers
 // above, so the connection's first status and messages reach them.
 onAccount(followAccount);
@@ -1362,7 +1389,8 @@ function openMenu(tab?: string): void {
   if (me?.role === 'admin') admin.show(me.username);
   leaderboard.refresh();
 }
-let sendTimer = 0;
+/** Your last state sent: when, what, and whether it had changed (see the end of the frame). */
+let sent = { at: -1e9, key: '', moved: true };
 let pickupWait = 0;
 menu.setGraphics(mode, quality, gpu);
 menu.onGraphics = (next) => {
@@ -1654,17 +1682,26 @@ renderer.setAnimationLoop((now: number) => {
     calmHint = wasCalm ? calmHint - dt : 0;
     if (calmHint > 0) hud.setPrompt(t('prompt.noShoot'));
 
-    // Tell the others where you are, ten times a second.
-    sendTimer += dt;
-    if (net.connected && sendTimer > 0.1 && !trip?.answer) {
-      sendTimer = 0;
+    // Tell the others where you are: 20 times a second while anything changes, and once more when
+    // it stops (so they see you stand where you stopped), then about three times a second. Each
+    // carries this page's time for it (`ct`), so the others draw it at an even pace (shared/wire.mjs).
+    if (net.connected && !trip?.answer) {
       const r = horses.ridden;
+      const cm = (v: number) => Math.round(v * 100) / 100;
+      const mrad = (v: number) => Math.round(v * 1000) / 1000;
       const where = driving || riding
-        ? { x: car.x, y: car.y, z: car.z, yaw: car.yaw, pitch: 0, flying: false, c: false, d: true, s: car.steer }
+        ? { x: cm(car.x), y: cm(car.y), z: cm(car.z), yaw: mrad(car.yaw), pitch: 0, flying: false, c: false, d: true, s: cm(car.steer) }
         : r
-          ? { x: r.x, y: r.y + r.jump + 1.64, z: r.z, yaw: player.yaw, pitch: player.pitch, flying: false, c: true, hy: r.yaw, hs: r.speed, hj: r.jump } // seated in the saddle
-          : { x: player.x, y: player.feet, z: player.z, yaw: player.yaw, pitch: player.pitch, flying: player.flying, c: player.crouching };
-      net.send({ t: 'state', ...where, armed: weapon.enabled, w: weapon.current });
+          ? { x: cm(r.x), y: cm(r.y + r.jump + 1.64), z: cm(r.z), yaw: mrad(player.yaw), pitch: mrad(player.pitch), flying: false, c: true, hy: mrad(r.yaw), hs: cm(r.speed), hj: cm(r.jump) } // seated in the saddle
+          : { x: cm(player.x), y: cm(player.feet), z: cm(player.z), yaw: mrad(player.yaw), pitch: mrad(player.pitch), flying: player.flying, c: player.crouching };
+      const state = { t: 'state', ...where, armed: weapon.enabled, w: weapon.current };
+      const key = JSON.stringify(state);
+      const changed = key !== sent.key;
+      const every = changed || sent.moved ? 50 : 300;
+      if (now - sent.at >= every - 4) {
+        sent = { at: Math.max(sent.at + every, now - 25), key, moved: changed }; // 20 a second on average at any frame rate
+        net.send({ ...state, ct: Math.round(now) });
+      }
     }
 
     const surface = player.ground.name;
@@ -1682,6 +1719,7 @@ renderer.setAnimationLoop((now: number) => {
     const fill = baked.active ? Math.min(1, 0.9 / exposure) : 1;
     indoorLight.update(dt, indoors && !baked.active, fill);
   }
+  netClock.frame(now); // the time the others are drawn at (net/track.ts)
   avatars.tick(dt);
   for (const c of cars) c.update(dt, driving && c === car, camera.position);
   combat.tick(dt);
@@ -1697,7 +1735,7 @@ renderer.setAnimationLoop((now: number) => {
   life.update(dt, camera.position);
   // Alone, the strongmen fight here, going for you when you fight (in multiplayer the server runs them).
   if (!net.connected) clowns.stepAlone(dt, combat.alive && weapon.enabled && !driving && !riding && !games.peaceful ? { x: player.x, y: player.feet, z: player.z } : null);
-  clowns.update(camera.position, dt);
+  clowns.update(camera.position);
   horses.update(dt, camera.position);
   countryside?.update(dt, camera);
   portals.update(dt, camera, renderer.domElement.height);
@@ -1737,7 +1775,7 @@ renderer.setAnimationLoop((now: number) => {
     bigMap.tick(mapYou(), marks);
   } else composer.render(dt); // the menu's Map tab covers most of the screen: the world isn't drawn behind it
   if (!menu.open) adaptQuality(dt);
-  hud.tick(dt, renderer.info.render.calls, preset.scale * dynScale, t(`gfx.${quality}`));
+  hud.tick(dt, renderer.info.render.calls, preset.scale * dynScale, t(`gfx.${quality}`), net.connected ? net.rtt : null);
 });
 
 // The scene in place behind the start screen while the rest loads.
@@ -2024,12 +2062,15 @@ if (import.meta.env.DEV) {
       getIn,
       getOut,
       horses,
+      clowns,
       mountHorse,
       getOffHorse,
       driving: () => driving,
       furnishing,
       planner,
       avatars,
+      /** The drawing clock for the others (net/track.ts) and the connection, for the network checks. */
+      net: () => ({ delay: netClock.delay, late: netClock.late, age: netClock.age, rate: netClock.rate, rtt: net.rtt, ...net.counts }),
       combat,
       world,
       spawns,

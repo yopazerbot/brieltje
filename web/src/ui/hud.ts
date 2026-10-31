@@ -2,7 +2,7 @@ import { lang, t } from '../i18n';
 import { paintball, weaponName } from '../paintball';
 import type { WeaponId } from '../weapon';
 
-/** On-screen text while playing: where you are, controller status and frame rate. */
+/** On-screen text while playing: where you are, controller status, frame rate and (together) the ping. */
 export class Hud {
   private place = document.getElementById('place')!;
   private fps = document.getElementById('fps')!;
@@ -92,12 +92,14 @@ export class Hud {
     this.toastTimer = 3;
   }
 
-  tick(dt: number, drawCalls: number, scale = 1, quality = ''): void {
+  /** Every frame; `ping`: the time there and back to the server in multiplayer (ms), null alone. */
+  tick(dt: number, drawCalls: number, scale = 1, quality = '', ping: number | null = null): void {
     if (this.toastTimer > 0 && (this.toastTimer -= dt) <= 0) this.toast.classList.remove('show');
     this.frames++;
     this.fpsTime += dt;
     if (this.fpsTime >= 0.5) {
-      this.fps.textContent = t('hud.fps', { fps: Math.round(this.frames / this.fpsTime), calls: drawCalls, quality, scale: Math.round(scale * 100) });
+      this.fps.textContent = t('hud.fps', { fps: Math.round(this.frames / this.fpsTime), calls: drawCalls, quality, scale: Math.round(scale * 100) })
+        + (ping === null ? '' : t('hud.ping', { ms: Math.round(ping) }));
       this.frames = 0;
       this.fpsTime = 0;
     }

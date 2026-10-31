@@ -1,6 +1,8 @@
 import * as THREE from 'three';
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 import HORSES from '../../shared/horses.json';
+import type { HorseSample } from '../../shared/wire.mjs';
+import { netClock, Track } from '../net/track';
 import { sound } from '../sound';
 import type { World } from './collision';
 import { paintJoints } from './paint';
@@ -13,7 +15,8 @@ import { paintJoints } from './paint';
  * You can ride them (E next to one): W to walk and trot, Shift to gallop while it has the breath
  * for it, A/D to steer, Space to jump a hedge or a fence; seen from the saddle, which rises and
  * falls with the horse. A horse you get off stays there and grazes. In multiplayer the server
- * keeps who rides which horse and where it is (see game.mjs).
+ * keeps who rides which horse and where it is (see game.mjs); one someone else rides is drawn a
+ * little behind on the server's clock, between the states it sends (net/track.ts).
  *
  * The model is turned by its joints: the legs (and, when the model has them, the lower legs at
  * the knee and the hock, and the ears), neck, head and tail. The gaits blend into each other with
@@ -79,6 +82,7 @@ interface Horse {
   lastJump: number; // its height a frame ago: rising or falling
   footfall: number[]; // last stride phase of each leg, to hear it land
   fidget: number; // seconds to the next ear flick, head shake or snort
+  track: Track<null>; // someone else rides it: x, z, yaw, speed, jump from the ticks
 }
 
 /** Where a horse is at time t on its walk: walking between spots, or grazing at one (and how far into it). */
@@ -158,8 +162,9 @@ export class Horses {
   private horses: Horse[] = HORSES.herd.map((_, i) => ({
     group: new THREE.Group(), joints: {}, state: { i, x: 0, z: 0, yaw: 0, speed: 0, rider: null, parked: false },
     x: 0, z: 0, y: 0, yaw: 0, speed: 0, gait: i, weights: [1, 0, 0], grazing: 0, lean: 0, bounce: 0, rock: 0, jump: 0, lastJump: 0,
-    footfall: [0, 0, 0, 0], fidget: 3 + i * 4,
+    footfall: [0, 0, 0, 0], fidget: 3 + i * 4, track: new Track<null>([false, false, true, false, false], 10, [0, 1]),
   }));
+  private drawn = [0, 0, 0, 0, 0];
   private offset = 0; // shared clock minus local clock, in seconds
   /** The horse you ride, or -1 */
   mounted = -1;
@@ -204,6 +209,16 @@ export class Horses {
       const was = h.state;
       h.state = { ...s };
       if (!was.parked && !was.rider && (s.parked || s.rider)) Object.assign(h, { x: s.x, z: s.z, yaw: s.yaw }); // from its walk: no slide
+      if (s.rider !== was.rider) h.track.clear();
+    }
+  }
+
+  /** The horses in a tick taken at the server's time `st`: who rides which, where the ridden ones go. */
+  receive(list: HorseSample[], st: number, me: string): void {
+    for (const { age, ...s } of list) {
+      if (s.i === this.mounted && s.rider === me) continue; // yours: you move it
+      this.setAll([s], me);
+      if (s.rider) this.horses[s.i]?.track.push(st - age, [s.x, s.z, s.yaw, s.speed, s.jump], null);
     }
   }
 
@@ -318,17 +333,16 @@ export class Horses {
       if (i === this.mounted) {
         // Yours: ride() moves it.
       } else if (s.rider) {
-        // Someone else rides it: follow their updates smoothly.
-        const k = 1 - Math.exp(-dt * 10);
+        // Someone else rides it: where their states put it at the drawing time.
+        if (h.track.at(netClock.time, this.drawn)) [h.x, h.z, h.yaw, h.speed, h.jump] = this.drawn;
+        h.y = this.world.groundAt(h.x, h.z, h.y + 0.5, 0.4).y;
+      } else if (s.parked) {
+        // Left here: it grazes, now and then looking up (after the last few steps, if someone just got off it).
+        const k = Math.hypot(s.x - h.x, s.z - h.z) < 5 ? 1 - Math.exp(-dt * 8) : 1;
         h.x += (s.x - h.x) * k;
         h.z += (s.z - h.z) * k;
         h.yaw += Math.atan2(Math.sin(s.yaw - h.yaw), Math.cos(s.yaw - h.yaw)) * k;
-        h.speed = s.speed;
-        h.jump += ((s.jump ?? 0) - h.jump) * k;
-        h.y = this.world.groundAt(h.x, h.z, h.y + 0.5, 0.4).y;
-      } else if (s.parked) {
-        // Left here: it grazes, now and then looking up.
-        Object.assign(h, { x: s.x, z: s.z, yaw: s.yaw, speed: 0, jump: 0 });
+        Object.assign(h, { speed: 0, jump: 0 });
         grazing = Math.sin(now * 0.07 + i * 2) > -0.6 ? 1 : 0;
         h.y = this.world.groundAt(h.x, h.z, 0.5, 0).y;
       } else {

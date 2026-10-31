@@ -4,6 +4,8 @@ import CLOWNS from '../../shared/clowns.json';
 import WEAPONS from '../../shared/weapons.json';
 import { bruteDamage, newBrute, stepBrute, type Brute, type BruteEvent, type Spot } from '../../shared/brutes.mjs';
 import { onPaintball, PAINT, paintball } from '../paintball';
+import type { BruteSample } from '../../shared/wire.mjs';
+import { netClock, Track } from '../net/track';
 import { sound } from '../sound';
 import { paintJoints } from './paint';
 import { terrain } from './terrain';
@@ -12,7 +14,8 @@ import { terrain } from './terrain';
  * Characters to shoot at, our own models: clowns (tools/clown.py) strolling round a spot in the
  * gardens, and giant strongmen (tools/strongman.py) on the fields across the map, who fight back:
  * they go for armed players, throw rocks and stomp (shared/brutes.mjs; the server runs them in
- * multiplayer, this file when you play alone), and take many hits (a health bar shows how many).
+ * multiplayer, drawn here a little behind on its clock between the states it sends (net/track.ts);
+ * this file runs them when you play alone), and take many hits (a health bar shows how many).
  * A few stand there from the start, the admin places more with the planner. Each walks a loop on
  * the shared clock (like the cats), so every player sees it in the same place without positions
  * being sent. Come close and a clown waves, a strongman flexes. Shot, a clown honks and a
@@ -37,23 +40,12 @@ export interface ClownSpec {
 type Point = [number, number];
 type Joint = 'Body' | 'Head' | 'Arm_L' | 'Arm_R' | 'Forearm_L' | 'Forearm_R' | 'Leg_L' | 'Leg_R';
 
-/** A strongman as the server sends him, ten times a second. */
-export interface BruteView {
-  id: number;
-  x: number;
-  z: number;
-  yaw: number;
-  speed: number;
-  act: Brute['act'];
-  hp: number;
-}
-
 interface Clown {
   spec: ClownSpec;
   /** A strongman's fight: where he is, what he does, his health */
   brain?: Brute;
-  /** Where the server last said he is (followed smoothly) */
-  goal?: BruteView;
+  /** Multiplayer: where the server says he was, and when (x, z, yaw, speed) */
+  track?: Track<null>;
   /** When his throw or stomp began, and when he let go (s, local clock) */
   actAt: number;
   releasedAt: number;
@@ -176,6 +168,7 @@ export class Clowns {
   private specs: ClownSpec[] = [];
   private offset = 0; // shared clock minus local clock, in seconds
   private rocks: { mesh: THREE.Mesh; from: Spot; to: Spot; start: number; ms: number }[] = [];
+  private pose = [0, 0, 0, 0];
   /** A rock landed or a strongman stomped here: for the dust, the shake and (alone) the damage. */
   onLand: (at: THREE.Vector3, what: 'rock' | 'stomp') => void = () => {};
 
@@ -306,22 +299,32 @@ export class Clowns {
     return 'down';
   }
 
-  /** The strongmen as the server sees them (multiplayer). */
-  setBrutes(list: BruteView[]): void {
+  /**
+   * The strongmen in a tick taken at the server's time `st` (multiplayer): where each was, and what
+   * he does now (a wind-up and his health show at once). One left out of the tick stood still.
+   */
+  receive(list: BruteSample[], st: number): void {
+    const seen = new Set<number>();
     for (const v of list) {
       const c = this.clowns.get(v.id);
       if (!c?.brain) continue;
-      if (!c.goal) Object.assign(c.brain, { x: v.x, z: v.z, yaw: v.yaw }); // first word: be there
+      seen.add(v.id);
+      if (!c.track) {
+        c.track = new Track<null>([false, false, true, false], 4, [0, 1]); // a jump of 4 m: back at his spot
+        Object.assign(c.brain, { x: v.x, z: v.z, yaw: v.yaw }); // first word: be there
+      }
       if (v.act !== c.brain.act) c.actAt = this.now;
-      Object.assign(c.brain, { act: v.act, hp: v.hp, speed: v.speed });
-      c.goal = v;
+      Object.assign(c.brain, { act: v.act, hp: v.hp });
+      c.track.push(st, [v.x, v.z, v.yaw, v.speed], null);
     }
+    for (const c of this.clowns.values()) if (c.track && !seen.has(c.spec.id)) c.track.hold(st);
   }
 
   /** Playing alone: the strongmen fight here, going for you (`me`) if you fight. */
   stepAlone(dt: number, me: { x: number; y: number; z: number } | null): void {
     const now = this.now;
     for (const c of this.clowns.values()) {
+      c.track = undefined; // not the server's any more
       if (!c.brain || now < c.deadUntil) continue;
       if (c.brain.hp <= 0) Object.assign(c.brain, newBrute(c.spec.id, c.spec.x, c.spec.y, c.spec.z, FIGHT)); // back, fresh, at his spot
       const was = c.brain.act;
@@ -393,7 +396,7 @@ export class Clowns {
     return [...this.clowns.values()].filter((c) => now >= c.deadUntil).map((c) => ({ x: c.group.position.x, y: c.group.position.y, z: c.group.position.z, kind: c.kind }));
   }
 
-  update(eye: THREE.Vector3, dt: number): void {
+  update(eye: THREE.Vector3): void {
     const now = this.now;
     this.flyRocks();
     for (const c of this.clowns.values()) {
@@ -403,7 +406,7 @@ export class Clowns {
       c.hit.visible = !dead;
       if (c.bar) this.drawBar(c, dead);
       if (c.brain && !dead) {
-        this.poseBrute(c, eye, dt, now);
+        this.poseBrute(c, eye, now);
         continue;
       }
       if (dead) {
@@ -475,16 +478,10 @@ export class Clowns {
   }
 
   /** A strongman: where his fight has him, walking or striding, winding up a throw or a stomp, flexing when it's quiet. */
-  private poseBrute(c: Clown, eye: THREE.Vector3, dt: number, now: number): void {
+  private poseBrute(c: Clown, eye: THREE.Vector3, now: number): void {
     const b = c.brain!;
     const k = KINDS[c.kind];
-    if (c.goal) {
-      // Multiplayer: follow the server's word smoothly (it speaks ten times a second).
-      const f = 1 - Math.exp(-dt * 8);
-      b.x += (c.goal.x - b.x) * f;
-      b.z += (c.goal.z - b.z) * f;
-      b.yaw += Math.atan2(Math.sin(c.goal.yaw - b.yaw), Math.cos(c.goal.yaw - b.yaw)) * f;
-    }
+    if (c.track?.at(netClock.time, this.pose)) [b.x, b.z, b.yaw, b.speed] = this.pose; // multiplayer: where the server had him
     c.group.visible = true;
     c.model.rotation.x = 0;
     const y = this.floorAt(b.x, b.z, c.spec.y);

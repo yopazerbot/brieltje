@@ -8,7 +8,7 @@
 //   page reports itself (POST /api/stats/beacon: a start, one per minute, an end): only what the
 //   player chose in the game, nothing read from the device;
 // - the most players at once.
-// Who is playing right now: the players together by name (the game's roster), and the ones alone
+// Who is playing right now: the players together by name (the game's roster, with each one's ping), and the ones alone
 // as anonymous visits. Each page makes a random number when it loads and sends it with its reports;
 // the server keeps a visit in memory until it has been quiet for 75 seconds, and never stores it.
 // A browser that asks not to be tracked (Global Privacy Control or Do Not Track) isn't counted.
@@ -153,7 +153,12 @@ export class Stats {
     const alone = [...this.visits.values()].filter((v) => !v.together)
       .map((v) => ({ mode: v.mode, control: v.control, lang: v.lang, minutes: Math.floor((now - v.since) / 60_000) }))
       .sort((a, b) => b.minutes - a.minutes);
-    return { together: this.game.roster(), alone };
+    // With each player's time there and back to the server (to 5 ms, so the list isn't sent again for every millisecond).
+    const ping = (name) => {
+      const ms = this.game.pingOf?.(name);
+      return typeof ms === 'number' ? Math.round(ms / 5) * 5 : null;
+    };
+    return { together: this.game.roster().map((p) => ({ ...p, ping: ping(p.name) })), alone };
   }
 
   peak() {

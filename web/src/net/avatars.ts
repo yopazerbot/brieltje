@@ -2,7 +2,8 @@ import * as THREE from 'three';
 import { RoundedBoxGeometry } from 'three/addons/geometries/RoundedBoxGeometry.js';
 import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
 import type { WeaponId } from '../weapon';
-import type { RemoteState } from './client';
+import type { PlayerSample } from '../../shared/wire.mjs';
+import { netClock, Track } from './track';
 import { gunsReady } from '../weapon';
 import { muzzleFlash } from '../world/effects';
 import { buildSwat, hasSwat, swatReady, type Body, type Outfit as SwatOutfit } from './swat';
@@ -241,15 +242,23 @@ interface Avatar {
   color: string;
   root: THREE.Group;
   tag: THREE.Sprite;
-  from: RemoteState | null;
-  to: RemoteState | null;
-  t: number;
-  snap: boolean;
+  /** Their states from the ticks, drawn a little behind (see track.ts) */
+  track: Track<PlayerSample>;
+  /** The newest state: whether they can be hit, whether they are in a car */
+  latest: PlayerSample | null;
+  /** Shown falling at once when killed, before their states say so */
+  killed: boolean;
+  /** Respawned or through a portal: hidden until a state from their new place (its teleport counter then) comes, or a moment has passed */
+  hiddenWarp: number | null;
+  hiddenAt: number;
   speed: number;
   forward: number;
   side: number;
   steps: number;
 }
+
+const ANGLES = [false, false, false, true, true] as const; // x, y, z, yaw, pitch
+const JUMP = 60; // m between two states: a teleport (the admin's turbo covers 12 m in one)
 
 export class Avatars {
   /** Names above players: the admin can turn them off (they show through walls). */
@@ -258,16 +267,12 @@ export class Avatars {
   /** A footstep of another player at their feet (speed in m/s) */
   onStep: (name: string, at: THREE.Vector3, speed: number) => void = () => {};
   private avatars = new Map<string, Avatar>();
+  private pose = [0, 0, 0, 0, 0];
 
   constructor() {
     // Players who joined before the character and gun models finished loading get them now.
     void Promise.all([swatReady, gunsReady]).then(() => {
-      for (const [name, a] of [...this.avatars]) {
-        this.remove(name);
-        this.add(name, a.color);
-        Object.assign(this.avatars.get(name)!, { from: a.from, to: a.to, t: a.t });
-        this.avatars.get(name)!.root.visible = a.root.visible;
-      }
+      for (const [name, a] of [...this.avatars]) this.rebuild(name, a, a.color);
     });
   }
 
@@ -284,17 +289,25 @@ export class Avatars {
     root.visible = false;
     for (const h of body.hits) h.visible = false; // until their first position arrives
     this.group.add(root);
-    this.avatars.set(name, { body, color, root, tag, from: null, to: null, t: 1, snap: false, speed: 0, forward: 0, side: 0, steps: 0 });
+    this.avatars.set(name, {
+      body, color, root, tag, track: new Track<PlayerSample>(ANGLES, JUMP), latest: null, killed: false, hiddenWarp: null, hiddenAt: 0,
+      speed: 0, forward: 0, side: 0, steps: 0,
+    });
+  }
+
+  /** A new figure for a player (their colour changed, or the models came in), keeping where they are. */
+  private rebuild(name: string, a: Avatar, color: string): void {
+    this.remove(name);
+    this.add(name, color);
+    const b = this.avatars.get(name)!;
+    Object.assign(b, { track: a.track, latest: a.latest, killed: a.killed, hiddenWarp: a.hiddenWarp, hiddenAt: a.hiddenAt });
+    b.root.visible = a.root.visible;
   }
 
   /** A player's colour changed (a team's in the teams game): the outfit that goes with it. */
   recolor(name: string, color: string): void {
     const a = this.avatars.get(name);
-    if (!a || a.color === color) return;
-    this.remove(name);
-    this.add(name, color);
-    Object.assign(this.avatars.get(name)!, { from: a.from, to: a.to, t: a.t });
-    this.avatars.get(name)!.root.visible = a.root.visible;
+    if (a && a.color !== color) this.rebuild(name, a, color);
   }
 
   remove(name: string): void {
@@ -314,36 +327,34 @@ export class Avatars {
     for (const name of [...this.avatars.keys()]) this.remove(name);
   }
 
-  update(states: RemoteState[], self: string): void {
+  /** States from a tick taken at the server's time `st` (each `age` ms before it). */
+  receive(states: PlayerSample[], st: number, self: string): void {
+    const now = performance.now();
     for (const s of states) {
       if (s.name === self) continue;
       const a = this.avatars.get(s.name);
       if (!a) continue;
-      // Just respawned: jump to the new spot instead of sliding across the house.
-      if (a.snap || (s.alive && a.to && !a.to.alive)) {
-        a.snap = false;
-        a.from = s;
-      } else {
-        a.from = a.to ?? s;
-      }
-      a.to = s;
-      a.t = 0;
-      a.root.visible = true;
+      // The server moved them (respawn, portal): jump there instead of sliding across the map.
+      const warped = !!a.latest && s.warp !== a.latest.warp;
+      a.track.push(st - s.age, [s.x, s.y, s.z, s.yaw, s.pitch], s, warped);
+      if (warped) a.killed = false; // back in the game
+      if (a.hiddenWarp !== null && (s.warp !== a.hiddenWarp || now - a.hiddenAt > 1500)) a.hiddenWarp = null;
+      a.latest = s;
     }
   }
 
-  /** Show a player dying right away (their next update confirms it). */
+  /** Show a player dying right away (their next states confirm it). */
   kill(name: string): void {
     const a = this.avatars.get(name);
-    if (a?.to) a.to = { ...a.to, alive: false };
-    if (a?.from) a.from = { ...a.from, alive: false };
+    if (a) a.killed = true;
   }
 
-  /** A player respawned somewhere else: hide them until their new position arrives. */
+  /** A player respawned or went through a portal: hide them until a state from their new place arrives. */
   respawn(name: string): void {
     const a = this.avatars.get(name);
     if (!a) return;
-    a.snap = true;
+    a.hiddenWarp = a.latest?.warp ?? -1;
+    a.hiddenAt = performance.now();
     a.root.visible = false;
   }
 
@@ -360,41 +371,38 @@ export class Avatars {
 
   /** Can this player be shot right now (fighting, alive, not just respawned, not in the car)? */
   canBeHit(name: string): boolean {
-    const s = this.avatars.get(name)?.to;
-    return !!s && s.armed && s.alive !== false && !s.safe && !s.d;
+    const a = this.avatars.get(name);
+    const s = a?.latest;
+    return !!s && s.armed && s.alive && !a.killed && !s.safe && !s.d;
   }
 
   /** Players on foot, for the car to stop against. */
   obstacles(): { x: number; z: number; r: number }[] {
-    return [...this.avatars.values()].filter((a) => a.root.visible && a.to && !a.to.d && a.to.alive !== false).map((a) => ({ x: a.root.position.x, z: a.root.position.z, r: 0.3 }));
+    return [...this.avatars.values()].filter((a) => a.root.visible && a.latest && !a.latest.d && a.latest.alive).map((a) => ({ x: a.root.position.x, z: a.root.position.z, r: 0.3 }));
   }
 
-  /** Move each figure smoothly between updates (0.1 s apart) and animate it. */
+  /** Every frame: each figure where its states put it at the drawing time (see track.ts), animated. */
   tick(dt: number): void {
     const now = performance.now();
+    const p = this.pose;
     for (const [name, a] of this.avatars) {
-      if (!a.from || !a.to) continue;
-      a.t = Math.min(1, a.t + dt / 0.1);
-      const f = a.from;
-      const t = a.to;
-      const x = f.x + (t.x - f.x) * a.t;
-      const z = f.z + (t.z - f.z) * a.t;
+      if (!a.track.at(netClock.time, p) || !a.track.shown) continue;
+      const t = a.track.shown;
+      const [x, y, z, yaw, pitch] = p;
+      if (a.hiddenWarp === null) a.root.visible = true;
       // Velocity, and how much of it is forwards and sideways (for walk, strafe and run-back animations).
       const vx = (x - a.root.position.x) / Math.max(dt, 1e-3);
       const vz = (z - a.root.position.z) / Math.max(dt, 1e-3);
-      let dy = t.yaw - f.yaw;
-      dy = Math.atan2(Math.sin(dy), Math.cos(dy));
-      const yaw = f.yaw + dy * a.t;
       const k = 1 - Math.exp(-dt * 10);
       a.speed += (Math.min(Math.hypot(vx, vz), 8) - a.speed) * k;
       a.forward += (-vx * Math.sin(yaw) - vz * Math.cos(yaw) - a.forward) * k;
       a.side += (vx * Math.cos(yaw) - vz * Math.sin(yaw) - a.side) * k;
-      a.root.position.set(x, f.y + (t.y - f.y) * a.t, z);
+      a.root.position.set(x, y, z);
       a.root.rotation.y = yaw;
-      const alive = t.alive !== false;
+      const alive = t.alive && !a.killed;
       a.body.animate(dt, {
-        speed: a.speed, forward: a.forward, side: a.side, armed: t.armed, alive, crouch: !!t.c, flying: t.flying,
-        pitch: f.pitch + (t.pitch - f.pitch) * a.t, weapon: (t.w ?? 'pistol') as WeaponId,
+        speed: a.speed, forward: a.forward, side: a.side, armed: t.armed, alive, crouch: t.c, flying: t.flying,
+        pitch, weapon: t.w as WeaponId,
       });
 
       // One footstep per stride (about 0.85 m walking, 1.2 m running).
@@ -413,12 +421,12 @@ export class Avatars {
 
   /** Everyone visible, for the minimap. */
   blips(): { x: number; y: number; z: number; color: string }[] {
-    return [...this.avatars.values()].filter((a) => a.root.visible && a.to?.alive !== false).map((a) => ({ ...a.root.position, color: a.color }));
+    return [...this.avatars.values()].filter((a) => a.root.visible && a.latest?.alive !== false).map((a) => ({ ...a.root.position, color: a.color }));
   }
 
   /** The other players you can see, by name: the big map. */
   marks(): { name: string; x: number; z: number; color: string }[] {
-    return [...this.avatars.entries()].filter(([, a]) => a.root.visible && a.to?.alive !== false).map(([name, a]) => ({ name, x: a.root.position.x, z: a.root.position.z, color: a.color }));
+    return [...this.avatars.entries()].filter(([, a]) => a.root.visible && a.latest?.alive !== false).map(([name, a]) => ({ name, x: a.root.position.x, z: a.root.position.z, color: a.color }));
   }
 
   position(name: string): THREE.Vector3 | null {

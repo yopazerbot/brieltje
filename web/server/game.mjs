@@ -1,6 +1,9 @@
 // The shared house: the logged-in players over WebSocket (4 at once unless the admin allows more).
-// Players send their position about 10 times a second; the server forwards
-// everyone's state, chat, door changes and shots. The admin can kick players.
+// Players send their position 20 times a second while they move (a few times a second standing
+// still); twenty times a second the server sends every page what moved (shared/wire.mjs: players,
+// cars, horses, strongmen), and forwards chat, door changes and shots. The admin can kick players.
+// Pages from before protocol 2 (still open during a deploy) get the old full states ten times a
+// second. Every two seconds the server pings each page and keeps the time there and back.
 //
 // Combat (players in Action mode only): the shooter's browser reports a hit,
 // the server checks it is plausible and keeps health, kills, deaths, points,
@@ -15,6 +18,7 @@
 // The portals (shared/portals.mjs): a player on one asks to travel to another, or types /church
 // in the chat (when the admin allows it); the server checks it and moves them (see travel()).
 
+import { randomInt } from 'node:crypto';
 import { readFileSync } from 'node:fs';
 import { WebSocketServer } from 'ws';
 import { Modes, TEAM_COLORS } from './modes.mjs';
@@ -22,9 +26,14 @@ import { bruteDamage, hurtBy, newBrute, stepBrute } from '../shared/brutes.mjs';
 import { makeTerrain } from '../shared/terrain.mjs';
 import { CAR_REACH, PORTALS, portalNear, REACH } from '../shared/portals.mjs';
 import { noShoot } from '../shared/zones.mjs';
+import { bruteEntry, carFields, horseFields, playerFields, PROTO, TICK_MS } from '../shared/wire.mjs';
 
 const MAX_PLAYERS = 16; // the most the admin can allow at once (every player's moves go to every other one)
-const TICK_MS = 100;
+const KEYFRAME = 20; // ticks: everything goes to every page at least this often (once a second), moved or not
+const OLD_EVERY = 2; // ticks: pages from before protocol 2 get the full states every other tick (ten a second, as before)
+const PING_MS = 2000;
+/** The server's own clock for the ticks (ms): monotonic, unlike the wall clock. */
+const mono = () => Math.round(performance.now());
 const COLORS = ['#f2b33d', '#4fa3e0', '#e0614f', '#5cc28a', '#c77dff', '#ff8fab', '#7ae0e6', '#f4e04d', '#a0c4ff', '#ff9f43', '#b8e994', '#e66767', '#9aa5b1', '#d4a373', '#70d6ff', '#e9c46a'];
 
 const shared = (file) => JSON.parse(readFileSync(new URL(`../shared/${file}`, import.meta.url), 'utf8'));
@@ -177,6 +186,12 @@ export class Game {
     // Horses: on their walks until someone rides one; left where they are got off (until a restart).
     this.horses = HORSES.herd.map((_, i) => ({ i, x: 0, z: 0, yaw: 0, speed: 0, rider: null, parked: false }));
     this.modes = new Modes(this); // hide and seek, tag, treasure hunt (the admin starts them)
+    // The ticks (see snapshot): their count, and what each car, horse and strongman looked like in the
+    // last one, kept here so the objects sent in 'car' and 'horse' messages stay as they are.
+    this.tickNo = 0;
+    this.sent = new Map(); // 'c' + car id, 'h' + horse, 'b' + strongman id -> its fields in the last tick
+    this.carAt = {}; // car id -> when its pose was taken (the server's clock, ms)
+    this.horseAt = this.horses.map(() => 0);
     setInterval(() => this.tick(), TICK_MS).unref();
     // Sessions can end while connected (logout, password reset, user deleted,
     // kicked, expired): close those connections within a second.
@@ -206,10 +221,13 @@ export class Game {
       socket.write('HTTP/1.1 503 Service Unavailable\r\n\r\n');
       return socket.destroy();
     }
-    this.wss.handleUpgrade(req, socket, head, (ws) => this.join(ws, session, req));
+    // The page asks for the ticks it reads (/ws?v=2, shared/wire.mjs); without, it is from before them.
+    const v = Number(new URL(req.url, 'http://local').searchParams.get('v'));
+    const proto = v >= PROTO ? PROTO : 1;
+    this.wss.handleUpgrade(req, socket, head, (ws) => this.join(ws, session, req, proto));
   }
 
-  join(ws, session, req) {
+  join(ws, session, req, proto = 1) {
     const name = session.username;
     const old = this.players.get(name);
     if (old) old.ws.close(4000, 'Logged in somewhere else');
@@ -224,6 +242,11 @@ export class Game {
       ws, key: session.key, role: session.role, color, state: null, lastChat: 0, msgs: 0, window: now, address: this.auth.addressOf(req),
       score, hp: HEALTH, alive: true, respawnAt: 0, protectedUntil: now + PROTECT_MS, nextHit: 0, weapons: loadout(session.role), joinTime: now, spawned: false,
       nades: Array(GRENADE.carry).fill(0), thrown: [],
+      // The ticks: which the page reads, when its state was taken (`stamp`, the server's clock), whether
+      // it sent one since the last tick, a counter of the server's moves (respawn, portal), the state
+      // in the last tick, its turn in the keyframe, and the first tick with everything.
+      proto, stamp: mono(), fresh: false, warp: 0, sentKey: '', slot: randomInt(KEYFRAME), full: true,
+      states: 0, others: 0, pingN: 0, pingAt: 0, pingNext: mono() + 500, rtt: null, rttAvg: null, ctGap: null, ctAt: 0,
     };
     // Where the server believes they are: the replaced connection, their last visit, or
     // the street (where everyone starts). Their first update is limited like any other.
@@ -236,7 +259,7 @@ export class Game {
     this.auth.log('mp_join', req, { username: name });
 
     this.send(ws, {
-      t: 'welcome', you: name, role: session.role, color, doors: this.doors, doorDir: this.doorDir, broken: [...this.broken], players: this.roster(),
+      t: 'welcome', proto: PROTO, you: name, role: session.role, color, doors: this.doors, doorDir: this.doorDir, broken: [...this.broken], players: this.roster(),
       time: now, cats: this.catsDown.map((until) => Math.max(0, until - now)), clowns: this.clownList(now), furniture: [...this.furniture.values()], rules: this.rules,
       scores: this.scoreList(), limit: KILL_LIMIT, items: this.items.map((it) => now >= it.until), round: this.roundOver ? { winner: this.roundOver.winner, ms: this.roundOver.until - now } : null,
       cars: Object.values(this.cars), horses: this.horses, mode: this.modes.view(now),
@@ -264,7 +287,7 @@ export class Game {
     return { id, x, y, z, kind, until: 0, ...(kind === 'strongman' ? { brain: newBrute(id, x, y, z, FIGHT) } : {}) };
   }
 
-  /** The strongmen for everyone's browser, ten times a second: where each is, what he does, his health. */
+  /** The strongmen for pages from before protocol 2: where each is, what he does, his health. */
   bruteList() {
     return [...this.clowns.values()]
       .filter((c) => c.brain)
@@ -364,13 +387,14 @@ export class Game {
   }
 
   handle(name, player, raw) {
-    // Flood guard: at most 40 messages a second per player.
+    // Flood guard: at most 80 messages a second per player, of which at most 30 states (a page sends
+    // 20 while moving) and 40 of everything else (shots, hits, doors...).
     const now = Date.now();
     if (now - player.window > 1000) {
       player.window = now;
-      player.msgs = 0;
+      player.msgs = player.states = player.others = 0;
     }
-    if (++player.msgs > 40) return;
+    if (++player.msgs > 80) return;
     let m;
     try {
       m = JSON.parse(String(raw));
@@ -378,6 +402,7 @@ export class Game {
       return;
     }
     if (!m || typeof m !== 'object') return;
+    if (m.t === 'state' ? ++player.states > 30 : ++player.others > 40) return;
     if (this.modes.peaceful && ['hit', 'rocket', 'nade', 'boom'].includes(m.t)) return; // no fighting during a party game
 
     if (m.t === 'state') {
@@ -405,9 +430,22 @@ export class Game {
       player.budget = budget - step;
       player.movedAt = now;
       player.state = next;
-      if (driving) Object.assign(car, { x: next.x, y: next.y, z: next.z, yaw: next.yaw, s: next.s });
-      if (horse) Object.assign(horse, { x: next.x, z: next.z, yaw: num(m.hy, -100, 100), speed: num(m.hs, -2, HORSES.gallop), jump: num(m.hj, 0, HORSES.jump.height) });
+      this.stampState(player, m.ct);
+      if (driving) {
+        Object.assign(car, { x: next.x, y: next.y, z: next.z, yaw: next.yaw, s: next.s });
+        this.carAt[car.id] = player.stamp;
+      }
+      if (horse) {
+        Object.assign(horse, { x: next.x, z: next.z, yaw: num(m.hy, -100, 100), speed: num(m.hs, -2, HORSES.gallop), jump: num(m.hj, 0, HORSES.jump.height) });
+        this.horseAt[horse.i] = player.stamp;
+      }
       if (player.state.armed !== wasArmed) this.broadcast({ t: 'scores', list: this.scoreList() });
+    } else if (m.t === 'pong') {
+      // The answer to the server's ping (see pings): only to the one asked, once.
+      if (!player.pingN || m.n !== player.pingN) return;
+      player.pingN = 0;
+      player.rtt = mono() - player.pingAt;
+      player.rttAvg = player.rttAvg === null ? player.rtt : player.rttAvg * 0.7 + player.rtt * 0.3;
     } else if (m.t === 'chat') {
       const text = String(m.text || '').replace(/[\u0000-\u001f]/g, ' ').trim().slice(0, 200);
       if (!text || now - player.lastChat < 700) return;
@@ -551,6 +589,7 @@ export class Game {
     Object.assign(p.state, { x, y: TERRAIN.height(x, z), z });
     p.budget = 0.5;
     p.movedAt = now;
+    this.moved(p);
   }
 
   travel(name, p, id, chat, now) {
@@ -575,10 +614,12 @@ export class Game {
       Object.assign(q.state, { x, y, z });
       q.budget = 0.5;
       q.movedAt = now;
+      this.moved(q);
     };
     move(p);
     if (car) {
       Object.assign(car, { x, y, z, yaw, s: 0 });
+      this.carAt[car.id] = mono();
       const rider = car.passenger ? this.players.get(car.passenger) : null;
       if (rider?.state) move(rider);
     }
@@ -920,6 +961,7 @@ export class Game {
     if (p.state) Object.assign(p.state, { x: SPAWNS[spawn].x, y: SPAWNS[spawn].y, z: SPAWNS[spawn].z });
     p.movedAt = now;
     p.budget = 0.5;
+    this.moved(p);
     this.broadcast({ t: 'respawn', name, spawn });
   }
 
@@ -977,11 +1019,140 @@ export class Game {
     this.modes.tick(now, TICK_MS);
     if (!this.players.size) return;
     this.stepBrutes(now);
-    this.broadcast({ t: 'brutes', list: this.bruteList() });
+    this.snapshot(now);
+    this.pings();
+  }
+
+  /**
+   * When a player's state was taken, on the server's clock: their page's own time for it (`ct`), lined
+   * up by the smallest gap seen between its clock and ours (the quickest a message came), so jitter
+   * on the way here doesn't show on the other pages. Always between half a second ago and now, and
+   * after the last one. Only used to draw them smoothly elsewhere, never to check anything.
+   */
+  stampState(p, ct) {
+    const t = mono();
+    let at = t;
+    if (typeof ct === 'number' && Number.isFinite(ct)) {
+      const gap = t - ct;
+      // The quickest so far, let go of slowly (2 ms a second) to follow a slower route; a jump of more
+      // than a second (a page whose clock stood still while it slept) starts again.
+      if (p.ctGap === null || gap < p.ctGap || gap - p.ctGap > 1000) p.ctGap = gap;
+      else p.ctGap += Math.min(gap - p.ctGap, (t - p.ctAt) * 0.002);
+      p.ctAt = t;
+      at = ct + p.ctGap;
+    }
+    p.stamp = Math.min(t, Math.max(at, t - 500, p.stamp + 1));
+    p.fresh = true;
+  }
+
+  /** The server moved a player (respawn, portal, start place): their figure jumps there on the other pages. */
+  moved(p) {
+    p.warp = (p.warp + 1) & 3;
+    p.stamp = Math.max(mono(), p.stamp + 1);
+  }
+
+  /**
+   * The tick (shared/wire.mjs) for every page: what moved or changed, and each thing in its turn of
+   * the keyframe; everything for a page that just connected; each page's own player left out. Each
+   * entry is written once and shared by the pages, so a tick costs about one line per thing plus one
+   * list per page. Pages from before protocol 2 get the old full states every other tick.
+   */
+  snapshot(now) {
+    const st = mono();
+    const turn = this.tickNo++ % KEYFRAME;
+    const entry = (id, at, fields) => `[${JSON.stringify(id)},${Math.min(999, Math.max(0, Math.round(st - at)))},${fields.slice(1)}`;
+    const players = [];
+    for (const [name, p] of this.players) {
+      if (!p.state) continue;
+      const fields = JSON.stringify(playerFields(p.state, p.alive, now < p.protectedUntil, p.warp));
+      players.push({ name, json: entry(name, p.stamp, fields), due: p.fresh || fields !== p.sentKey || p.slot === turn });
+      p.sentKey = fields;
+    }
+    // Cars, horses and strongmen: when their driver or rider sent something new, when they changed, in their turn.
+    const things = { c: [], h: [], b: [] };
+    const sent = new Map();
+    const add = (list, key, slot, fields, json, fresh) => {
+      things[list].push({ json, due: fresh || fields !== this.sent.get(key) || slot % KEYFRAME === turn });
+      sent.set(key, fields);
+    };
+    Object.values(this.cars).forEach((c, i) => {
+      const f = JSON.stringify(carFields(c));
+      add('c', `c${c.id}`, i, f, entry(c.id, this.carAt[c.id] ?? 0, f), !!this.players.get(c.driver)?.fresh);
+    });
+    for (const h of this.horses) {
+      const f = JSON.stringify(horseFields(h));
+      add('h', `h${h.i}`, h.i + 5, f, entry(h.i, this.horseAt[h.i], f), !!this.players.get(h.rider)?.fresh);
+    }
+    // The strongmen every other tick (ten a second is plenty for their walk), keeping what was sent until then.
+    const brutes = turn % 2 === 0;
+    for (const c of this.clowns.values()) {
+      if (!c.brain) continue;
+      const key = `b${c.id}`;
+      const json = JSON.stringify(bruteEntry(c.id, c.brain));
+      if (brutes) add('b', key, c.id * 2, json, json, false);
+      else {
+        things.b.push({ json, due: false }); // only for a page that just connected
+        if (this.sent.has(key)) sent.set(key, this.sent.get(key));
+      }
+    }
+    this.sent = sent;
+    for (const p of this.players.values()) p.fresh = false;
+
+    const join = (list, all) => list.filter((e) => all || e.due).map((e) => e.json).join(',');
+    const part = (k, text) => (text ? `,"${k}":[${text}]` : '');
+    // The strongmen's list goes with every other tick even when empty: one left out of it stood still.
+    const rest = (all) => part('c', join(things.c, all)) + part('h', join(things.h, all)) + (brutes || all ? `,"b":[${join(things.b, all)}]` : '');
+    const changed = rest(false);
+    let everything = null;
+    let old = false;
+    for (const [name, p] of this.players) {
+      if (p.proto < PROTO) {
+        old = true;
+        continue;
+      }
+      if (p.ws.readyState !== p.ws.OPEN) continue;
+      const all = p.full;
+      p.full = false;
+      if (all) everything ??= rest(true);
+      const others = join(players.filter((e) => e.name !== name), all);
+      p.ws.send(`{"t":"s","st":${st}${part('p', others)}${all ? everything : changed}}`);
+    }
+    if (old && turn % OLD_EVERY === 0) this.oldStates(now);
+  }
+
+  /** Pages from before protocol 2 (still open during a deploy): the strongmen and everyone's full state, as before. */
+  oldStates(now) {
+    const send = (msg) => {
+      const data = JSON.stringify(msg);
+      for (const p of this.players.values()) if (p.proto < PROTO && p.ws.readyState === p.ws.OPEN) p.ws.send(data);
+    };
+    send({ t: 'brutes', list: this.bruteList() });
     if (this.players.size < 2) return;
     const states = [];
     for (const [name, p] of this.players) if (p.state) states.push({ name, ...p.state, alive: p.alive, safe: now < p.protectedUntil });
-    this.broadcast({ t: 'states', players: states, cars: Object.values(this.cars), horses: this.horses });
+    send({ t: 'states', players: states, cars: Object.values(this.cars), horses: this.horses });
+  }
+
+  /**
+   * Every two seconds a ping to each page (protocol 2), carrying the last time there and back for it
+   * to show. The answer counts only for the ping asked (a random number), once: a page can't make its
+   * time look shorter, and unasked answers are dropped.
+   */
+  pings() {
+    const t = mono();
+    for (const p of this.players.values()) {
+      if (p.proto < PROTO || t < p.pingNext) continue;
+      p.pingNext = t + PING_MS;
+      p.pingN = randomInt(1, 2 ** 31);
+      p.pingAt = t;
+      this.send(p.ws, { t: 'ping', n: p.pingN, rtt: p.rtt });
+    }
+  }
+
+  /** A player's time there and back (ms, smoothed) for the admin's live view; null before the first answer or for an old page. */
+  pingOf(name) {
+    const r = this.players.get(name)?.rttAvg;
+    return typeof r === 'number' ? Math.round(r) : null;
   }
 
   /** Add to someone's totals for the leaderboard (kept in the database). */

@@ -1,6 +1,7 @@
 import type { CarState } from '../world/car';
 import type { Piece } from '../world/furnishing';
 import { serverText, t } from '../i18n';
+import { PROTO, type Tick } from '../../shared/wire.mjs';
 
 /**
  * Talking to the server: login and admin calls (HTTP), and the shared house
@@ -11,28 +12,6 @@ export interface Me {
   username: string;
   /** guest: joined with the shared PIN, no account */
   role: 'admin' | 'guest';
-}
-
-export interface RemoteState {
-  name: string;
-  x: number;
-  y: number;
-  z: number;
-  yaw: number;
-  pitch: number;
-  armed: boolean;
-  flying: boolean;
-  alive: boolean;
-  /** Just respawned: can't be hurt for a moment */
-  safe: boolean;
-  /** Weapon in hand */
-  w?: string;
-  /** Crouching */
-  c?: boolean;
-  /** Driving the Tesla (then x, z and yaw are the car's) */
-  d?: boolean;
-  /** Driving: the front wheels' angle */
-  s?: number;
 }
 
 export interface Score {
@@ -64,7 +43,7 @@ export interface Rules {
 }
 
 import type { ModeView } from '../ui/games';
-import type { BruteView, ClownSpec } from '../world/clowns';
+import type { ClownSpec } from '../world/clowns';
 import type { Spot } from '../../shared/brutes.mjs';
 import type { HorseState } from '../world/horses';
 
@@ -76,7 +55,8 @@ type Coded = { code?: unknown; args?: unknown };
 
 export type ServerMsg =
   | {
-      t: 'welcome'; you: string; role: string; color: string; doors: Record<string, boolean>; doorDir?: Record<string, number>; broken: number[];
+      /** `proto`: the server's protocol (shared/wire.mjs); a different one means this page is out of date (or the server is) */
+      t: 'welcome'; proto?: number; you: string; role: string; color: string; doors: Record<string, boolean>; doorDir?: Record<string, number>; broken: number[];
       players: { name: string; color: string; role: string }[]; scores: Score[]; limit: number; round: { winner: string; ms: number } | null; items: boolean[];
       time: number; cats: number[]; clowns?: ClownSpec[]; furniture: Piece[]; rules?: Rules; cars?: CarState[]; horses?: HorseState[]; mode?: ModeView;
     }
@@ -87,7 +67,8 @@ export type ServerMsg =
   | { t: 'spawn'; ok: false; x: number; z: number }
   | { t: 'mode'; mode: ModeView }
   | { t: 'clowns'; list: ClownSpec[] }
-  | { t: 'brutes'; list: BruteView[] }
+  /** Twenty times a second: what moved (shared/wire.mjs) */
+  | Tick
   | { t: 'rock'; type: 'throw'; id: number; from: Spot; to: Spot; ms: number }
   | { t: 'stomp'; type: 'stomp'; id: number; at: Spot }
   | { t: 'clownhit'; id: number; by: string; ms: number; w: string }
@@ -110,7 +91,6 @@ export type ServerMsg =
   | { t: 'join'; name: string; color: string }
   | { t: 'colors'; list: { name: string; color: string; role: string }[] }
   | { t: 'leave'; name: string }
-  | { t: 'states'; players: RemoteState[]; cars?: CarState[]; horses?: HorseState[] }
   | { t: 'horse'; horse: HorseState }
   | { t: 'chat'; from: string; color: string; text: string }
   | { t: 'door'; id: string; open: boolean; dir?: number; by: string }
@@ -158,11 +138,21 @@ export const api = {
   audit: () => call<{ log: { time: string; event: string; username?: string; ip?: string; detail?: string }[] }>('GET', '/api/audit'),
 };
 
-/** The live connection to the shared house. Reconnects after a dropped connection (not after a kick). */
+/**
+ * The live connection to the shared house. Reconnects after a dropped connection (not after a kick).
+ * It asks for the ticks of protocol 2 (shared/wire.mjs), answers the server's pings at once (the
+ * server times them and tells the page its last time there and back, `rtt`), and counts what goes
+ * through for the diagnostics. No compression on this connection: chat shares it with the game
+ * state, and compressing secrets next to text an attacker can choose leaks them (BREACH).
+ */
 export class Net {
   onMessage: (m: ServerMsg) => void = () => {};
   /** The connection's state, as a function that gives it in the current language ('' when connected). */
   onStatus: (text: () => string) => void = () => {};
+  /** The last time there and back to the server (ms), as the server measured it; null before the first */
+  rtt: number | null = null;
+  /** Everything received and sent since the page opened: bytes and messages */
+  readonly counts = { bytesIn: 0, msgsIn: 0, bytesOut: 0, msgsOut: 0 };
   private ws: WebSocket | null = null;
   private stopped = false;
   private retry = 1000;
@@ -173,7 +163,8 @@ export class Net {
 
   connect(): void {
     this.stopped = false;
-    const url = `${location.protocol === 'https:' ? 'wss' : 'ws'}://${location.host}/ws`;
+    const url = `${location.protocol === 'https:' ? 'wss' : 'ws'}://${location.host}/ws?v=${PROTO}`;
+    this.rtt = null;
     const ws = new WebSocket(url);
     this.ws = ws;
     this.onStatus(() => t('net.connecting'));
@@ -182,12 +173,25 @@ export class Net {
       this.onStatus(() => '');
     };
     ws.onmessage = (e) => {
+      const text = String(e.data);
+      this.counts.bytesIn += text.length;
+      this.counts.msgsIn++;
+      let m: ServerMsg | { t: 'ping'; n: number; rtt: number | null };
       try {
-        const m = JSON.parse(String(e.data)) as ServerMsg;
-        if (m.t === 'kicked') this.stopped = true;
-        this.onMessage(m);
+        m = JSON.parse(text);
       } catch {
-        // ignore malformed messages
+        return; // ignore malformed messages
+      }
+      if (m.t === 'ping') {
+        this.send({ t: 'pong', n: m.n });
+        if (typeof m.rtt === 'number') this.rtt = m.rtt;
+        return;
+      }
+      if (m.t === 'kicked') this.stopped = true;
+      try {
+        this.onMessage(m);
+      } catch (err) {
+        console.error(err); // one bad message never stops the others
       }
     };
     ws.onclose = (e) => {
@@ -211,6 +215,10 @@ export class Net {
   }
 
   send(msg: Record<string, unknown>): void {
-    if (this.ws?.readyState === WebSocket.OPEN) this.ws.send(JSON.stringify(msg));
+    if (this.ws?.readyState !== WebSocket.OPEN) return;
+    const text = JSON.stringify(msg);
+    this.counts.bytesOut += text.length;
+    this.counts.msgsOut++;
+    this.ws.send(text);
   }
 }

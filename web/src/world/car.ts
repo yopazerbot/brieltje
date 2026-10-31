@@ -1,6 +1,8 @@
 import * as THREE from 'three';
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 import CARS from '../../shared/car.json';
+import type { CarSample } from '../../shared/wire.mjs';
+import { netClock, Track } from '../net/track';
 import { sound } from '../sound';
 import type { Point, World } from './collision';
 
@@ -9,7 +11,9 @@ import type { Point, World } from './collision';
  * Model 3 at the bungalow, and a white Model Y and a red Model 3 in the bays by the church in
  * Smetlede. You get in with E (or Triangle) and drive with a camera behind the car; it stops
  * against the house, hedges, fences, trees and other players. In multiplayer one player drives
- * each car at a time and the others see it move (see game.mjs).
+ * each car at a time and the others see it move (see game.mjs), drawn a little behind on the
+ * server's clock between the states it sends (net/track.ts), so it drives smoothly for them and for
+ * the passenger.
  *
  * The models are built in Blender from the cars' published sizes and photos (tools/model_y.py,
  * tools/model_3.py), so they need no licence; both use the same material names, so each gets
@@ -202,13 +206,9 @@ export class Car {
   private pitch = 0;
   private lastSpeed = 0;
   private spin = 0;
-  // Someone else drives it: smooth between their updates (0.1 s apart).
-  private from: CarState | null = null;
-  private to: CarState | null = null;
-  private t = 1;
-  /** Their speed from the last two updates (the frame-by-frame steps are too uneven for the wheels) */
-  private netSpeed = 0;
-  private poseAt = 0;
+  // Someone else drives it (or it stands where it was left): its states from the server, drawn a little behind.
+  private track = new Track<null>([false, false, false, true, false], 10); // x, y, z, yaw, steer
+  private pose = [0, 0, 0, 0, 0];
   // The camera behind the car.
   private camHeading = 0;
   private camYaw = 0;
@@ -274,7 +274,7 @@ export class Car {
     this.camHeading = this.yaw;
     this.camYaw = 0;
     this.camPitch = 0.22;
-    this.from = this.to = null;
+    this.track.clear();
   }
 
   /** You got out: it rolls to a stop where it is. */
@@ -282,31 +282,33 @@ export class Car {
     this.vx = this.vz = this.speed = 0;
     this.braking = false;
     this.pushing = 0;
+    this.track.clear(); // the server's next states start from here
   }
 
   /** Through a portal: standing still at (x, y, z) facing `yaw`, the camera behind it. */
   place(x: number, y: number, z: number, yaw: number): void {
     Object.assign(this, { x, y, z, yaw, steer: 0, speed: 0, vx: 0, vz: 0, lastSpeed: 0, braking: false, camHeading: yaw, camYaw: 0 });
-    this.from = this.to = null;
+    this.track.clear();
   }
 
-  /** Where the server says it is (someone else drives it, or it stands where it was left). */
+  /**
+   * Who sits in it, from the server (someone got in or out). With `snap` (joining), or when it is far
+   * from where it is drawn (through a portal), it is there at once; otherwise the ticks move it.
+   */
   setPose(s: CarState, snap = false): void {
     this.driver = s.driver;
     this.passenger = s.passenger ?? null;
-    if (snap || !this.to || Math.hypot(s.x - this.x, s.z - this.z) > 10) {
+    if (snap || Math.hypot(s.x - this.x, s.z - this.z) > 10) {
       Object.assign(this, { x: s.x, y: s.y, z: s.z, yaw: s.yaw, steer: s.s, speed: 0 });
-      this.from = this.to = s;
-      this.t = 1;
-      return;
+      this.track.clear();
     }
-    const now = performance.now();
-    const gap = (now - this.poseAt) / 1000;
-    if (gap > 0.02 && gap < 1) this.netSpeed = ((s.x - this.to.x) * -Math.sin(s.yaw) + (s.z - this.to.z) * -Math.cos(s.yaw)) / gap;
-    this.poseAt = now;
-    this.from = { id: this.id, x: this.x, y: this.y, z: this.z, yaw: this.yaw, s: this.steer, driver: s.driver, passenger: s.passenger };
-    this.to = s;
-    this.t = 0;
+  }
+
+  /** Where it was at the server's time `t` (a tick: someone else drives it, or it stands). */
+  sample(t: number, s: CarSample): void {
+    this.driver = s.driver;
+    this.passenger = s.passenger;
+    this.track.push(t, [s.x, s.y, s.z, s.yaw, s.s], null, false, !s.driver);
   }
 
   /** One frame at the wheel; `others` are the players around. Returns how hard it hit something (m/s), 0 if it didn't. */
@@ -424,16 +426,13 @@ export class Car {
       this.world.setMoving(this.key, null); // nothing to walk or drive into before it is there
       return;
     }
-    if (!local && this.from && this.to) {
-      this.t = Math.min(1, this.t + dt / 0.1);
-      const f = this.from;
-      const t = this.to;
-      const x = f.x + (t.x - f.x) * this.t;
-      const z = f.z + (t.z - f.z) * this.t;
-      if (performance.now() - this.poseAt > 400) this.netSpeed = 0; // no news: it stands
-      this.speed += (this.netSpeed - this.speed) * (1 - Math.exp(-dt * 6));
+    if (!local && this.track.at(netClock.time, this.pose)) {
+      const [x, y, z, yaw, steer] = this.pose;
+      // Its speed along its heading from how far it moved this frame, smoothed for the wheels and the sound.
+      const v = dt > 0 ? ((x - this.x) * -Math.sin(yaw) + (z - this.z) * -Math.cos(yaw)) / dt : 0;
+      this.speed += (Math.max(-40, Math.min(40, v)) - this.speed) * (1 - Math.exp(-dt * 8));
       this.braking = this.speed - this.lastSpeed < -3 * dt && Math.abs(this.speed) > 0.5;
-      Object.assign(this, { x, z, y: f.y + (t.y - f.y) * this.t, yaw: f.yaw + angle(t.yaw - f.yaw) * this.t, steer: f.s + (t.s - f.s) * this.t });
+      Object.assign(this, { x, y, z, yaw, steer });
     }
     this.group.position.set(this.x, this.y, this.z);
     this.group.rotation.y = this.yaw;

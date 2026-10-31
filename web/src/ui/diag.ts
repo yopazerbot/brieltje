@@ -3,9 +3,16 @@ import * as THREE from 'three';
 /**
  * A diagnostics panel for phones, which have no developer console: open the site with ?diag and
  * it lists the graphics chip, the preset, what the graphics memory holds, WebGL errors, a lost
- * context, files that failed to load and script errors, refreshed every second. With ?diag&plain
- * the materials also drop their textures (flat colours), to tell a texture fault from a lighting one.
+ * context, files that failed to load and script errors, refreshed every second; in multiplayer also
+ * the connection (main.ts adds it with addDiag). With ?diag&plain the materials also drop their
+ * textures (flat colours), to tell a texture fault from a lighting one.
  */
+const extra: (() => string)[] = [];
+/** Another line for the panel, worked out again every second. */
+export function addDiag(line: () => string): void {
+  extra.push(line);
+}
+
 export function startDiag(renderer: THREE.WebGLRenderer, scene: THREE.Scene, quality: () => string): void {
   const params = new URLSearchParams(location.search);
   if (!params.has('diag')) return;
@@ -72,6 +79,7 @@ export function startDiag(renderer: THREE.WebGLRenderer, scene: THREE.Scene, qua
       `in memory: ${r.memory.geometries} geometries, ${r.memory.textures} textures · ${r.programs?.length ?? 0} shaders`,
       `textures on materials: ${seen.size}, ${empty} without a picture${plainDone ? ' · PLAIN (textures off)' : ''}`,
       `webgl errors: ${errors.size ? [...errors].map(([e, n]) => `0x${e.toString(16)}×${n}`).join(' ') : 'none'}`,
+      ...extra.map((f) => f()).filter(Boolean),
       ...notes,
     ].join('\n');
   }, 1000);

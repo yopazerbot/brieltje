@@ -347,6 +347,7 @@ const en = {
   'hud.pad': 'Controller: {name}',
   'hud.noPad': 'No controller found. Press a button on the DualSense to connect.',
   'hud.fps': '{fps} fps · {calls} draw calls · {quality} · {scale}% resolution',
+  'hud.ping': ' · ping {ms} ms',
   'online.count': '{n} of {max} online',
   'online.you': '{name} (you)',
   'role.admin': '{name} (admin)',
@@ -453,6 +454,7 @@ const en = {
   'net.elsewhere': 'Logged in somewhere else.',
   'net.removed': 'You were removed by the admin.',
   'net.ended': 'Your session ended. Log in again.',
+  'net.reload': 'The game has been updated. Reload the page to keep playing together.',
 
   // ---- Portals and travelling
   'portal.house': "Yoshi & Liesl's home",
@@ -899,6 +901,7 @@ const nl = {
   'hud.pad': 'Controller: {name}',
   'hud.noPad': 'Geen controller gevonden. Druk op een knop van de DualSense om te verbinden.',
   'hud.fps': '{fps} fps · {calls} draw calls · {quality} · resolutie {scale}%',
+  'hud.ping': ' · ping {ms} ms',
   'online.count': '{n} van {max} online',
   'online.you': '{name} (jij)',
   'role.admin': '{name} (beheerder)',
@@ -1005,6 +1008,7 @@ const nl = {
   'net.elsewhere': 'Je bent ergens anders aangemeld.',
   'net.removed': 'De beheerder heeft je verwijderd.',
   'net.ended': 'Je sessie is afgelopen. Meld je opnieuw aan.',
+  'net.reload': 'Het spel is bijgewerkt. Laad de pagina opnieuw om samen te blijven spelen.',
 
   // ---- Portals and travelling
   'portal.house': 'Woning Yoshi & Liesl',

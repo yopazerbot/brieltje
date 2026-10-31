@@ -184,7 +184,8 @@
       const li = el('li');
       const dot = el('i');
       dot.style.background = /^#[0-9a-f]{6}$/i.test(p.color) ? p.color : '#888';
-      li.append(dot, el('span', '', p.name), el('span', 'muted small', p.role === 'admin' ? 'together · admin' : 'together'));
+      const ping = Number.isFinite(p.ping) ? ` · ping ${p.ping} ms` : '';
+      li.append(dot, el('span', '', p.name), el('span', 'muted small', `${p.role === 'admin' ? 'together · admin' : 'together'}${ping}`));
       return li;
     });
     for (const v of alone) {
