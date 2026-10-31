@@ -52,7 +52,7 @@ Drawn in code at start-up, no image files: smoke, fire, sparks and debris sprite
 | Roof colours and the shapes of newer buildings; forecourts, drives, yards, pools, hedges and solar panels (orthophoto mosaic, most recent, 25 cm) | Digitaal Vlaanderen, `geo.api.vlaanderen.be/OMWRGBMRVL/wms` (layer Ortho) | Modellicentie Gratis Hergebruik (free reuse, source: Digitaal Vlaanderen) |
 | Road centre lines, poles along the road, ponds and ditches (GRB layers Wegsegment, WPI, WTZ) | Digitaal Vlaanderen, `geo.api.vlaanderen.be/GRB/wfs` | Modellicentie Gratis Hergebruik (free reuse, source: Digitaal Vlaanderen) |
 
-Downloaded once into `source/geo/` (not in git), for a 1.2 km square round the plot; `tools/neighbours.py` turns them into `data/neighbours.json`, `tools/street.py` into `data/street.json`. Which houses have solar panels was checked on the Google Maps satellite view, and the neighbours' walls, frames, doors, garage doors, chimneys and plinths in Street View (reference only: no images or data from Google are in the game, only our own notes of colours and materials).
+Downloaded once into `source/geo/` (not in git), for a 1.2 km square round the plot and a strip beside it for Molenhoek's far end (`tools/geodata.py --strip w`, the same sources and licences); `tools/neighbours.py` turns them into `data/neighbours.json`, `tools/street.py` into `data/street.json`. Which houses have solar panels was checked on the Google Maps satellite view, and the neighbours' walls, frames, doors, garage doors, chimneys and plinths in Street View (reference only: no images or data from Google are in the game, only our own notes of colours and materials).
 
 ## Our Own Models
 

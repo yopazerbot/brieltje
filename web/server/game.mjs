@@ -48,7 +48,7 @@ const FIGHT = CLOWNS.kinds.strongman.fight; // how the strongmen fight back (sha
 
 /** The relief of the surroundings (shared/terrain.mjs): heights above the flat ground. */
 const TERRAIN = makeTerrain(JSON.parse(readFileSync(new URL('../shared/terrain.json', import.meta.url), 'utf8')));
-/** Where anyone can be: the relief's grid (the house, the ring and the village of Smetlede, with a margin). */
+/** Where anyone can be: the relief's grid (the house, the ring, the village of Smetlede and Molenhoek to its end, with a margin). */
 const AREA = {
   x0: TERRAIN.x0, x1: TERRAIN.x0 + (TERRAIN.nx - 1) * TERRAIN.step,
   z0: TERRAIN.z0, z1: TERRAIN.z0 + (TERRAIN.nz - 1) * TERRAIN.step,
@@ -835,7 +835,9 @@ export class Game {
     shooter.protectedUntil = 0;
     const s = shooter.state;
     const from = { x: s.x, y: s.y + 1.5, z: s.z };
-    let to = { x: num(m.tx, -400, 400), y: num(m.ty, -20, 200), z: num(m.tz, -400, 400) };
+    // The target within the area, as positions are (it was ±400 m, which turned rockets fired in the village or on
+    // Molenhoek's far stretch back towards the house).
+    let to = { x: num(m.tx, AREA.x0, AREA.x1), y: num(m.ty, -20, 200), z: num(m.tz, AREA.z0, AREA.z1) };
     let dist = Math.hypot(to.x - from.x, to.y - from.y, to.z - from.z);
     if (dist > spec.rocket.range) {
       const k = spec.rocket.range / dist;

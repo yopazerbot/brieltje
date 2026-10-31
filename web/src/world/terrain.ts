@@ -31,6 +31,68 @@ export function pieceOf(cell: number): [number, number] {
 }
 
 /**
+ * A piece of the ground far off: every `stride`th grid point (16 m squares), without the dips' cuts (a pond that far off
+ * is lost in the haze), and a skirt hanging 2 m down round its edge, so no gap shows where it meets a piece drawn in full.
+ * About a sixteenth of the triangles. Placed round (cx, cz), as the full piece is when it has a coarse one.
+ */
+export function groundPieceCoarse(ground: number, pi: number, pj: number, cx: number, cz: number, stride = 4): THREE.BufferGeometry {
+  const { x0, z0, step } = terrain;
+  const i0 = pi * PIECE;
+  const j0 = pj * PIECE;
+  const i1 = Math.min(i0 + PIECE, terrain.nx - 1);
+  const j1 = Math.min(j0 + PIECE, terrain.nz - 1);
+  const along = (a: number, b: number) => {
+    const out: number[] = [];
+    for (let k = a; k < b; k += stride) out.push(k);
+    out.push(b);
+    return out;
+  };
+  const is = along(i0, i1);
+  const js = along(j0, j1);
+  const pos: number[] = [];
+  const uv: number[] = [];
+  const index: number[] = [];
+  const vertex = (x: number, z: number, y: number) => {
+    pos.push(x - cx, ground + y, z - cz);
+    uv.push(x, -z);
+    return pos.length / 3 - 1;
+  };
+  for (const j of js) for (const i of is) vertex(x0 + i * step, z0 + j * step, terrain.at(i, j));
+  const w = is.length;
+  for (let b = 0; b + 1 < js.length; b++) {
+    for (let a = 0; a + 1 < w; a++) {
+      const p = b * w + a;
+      index.push(p, p + w + 1, p + 1, p, p + w, p + w + 1); // facing up, split along the diagonal as the full piece
+    }
+  }
+  // The skirt: round the edge, each stretch between two edge points down 2 m, seen from either side.
+  const ring: number[] = [];
+  for (let a = 0; a < w; a++) ring.push(a);
+  for (let b = 1; b < js.length; b++) ring.push(b * w + w - 1);
+  for (let a = w - 2; a >= 0; a--) ring.push((js.length - 1) * w + a);
+  for (let b = js.length - 2; b > 0; b--) ring.push(b * w);
+  const drop = (k: number) => {
+    pos.push(pos[k * 3], pos[k * 3 + 1] - 2, pos[k * 3 + 2]);
+    uv.push(uv[k * 2], uv[k * 2 + 1]);
+    return pos.length / 3 - 1;
+  };
+  const low = ring.map(drop);
+  for (let k = 0; k < ring.length; k++) {
+    const a = ring[k];
+    const b = ring[(k + 1) % ring.length];
+    const c = low[(k + 1) % ring.length];
+    const d = low[k];
+    index.push(a, b, c, a, c, d, a, c, b, a, d, c);
+  }
+  const g = new THREE.BufferGeometry();
+  g.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3));
+  g.setAttribute('uv', new THREE.Float32BufferAttribute(uv, 2));
+  g.setIndex(index);
+  g.computeVertexNormals();
+  return g;
+}
+
+/**
  * One piece of the ground (PIECE by PIECE squares of the grid, as `terrain.height`), the squares
  * the dips cut taken out and their remains put in. The ground comes in pieces so the camera's
  * view leaves out what is behind it, and a piece can be made again when dips are added (the

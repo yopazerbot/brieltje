@@ -15,6 +15,12 @@ All of it is open data from Digitaal Vlaanderen:
 Files already there are moved to source/geo/<backup>/ first (as old230/ holds the 230 m data).
 Run from the project root:
     tools/.venv/Scripts/python.exe tools/geodata.py [backup folder name]
+
+A strip beside EXTENT (STRIPS) is fetched the same way into source/geo/strip_<name>/, the files named as
+above: the rest of Molenhoek, which leaves EXTENT to the west, runs on in the strip `w` to its end. The
+tools stitch a strip onto the files of EXTENT (tools/neighbours.py: `raster`, `ortho_image`, `features`),
+so the area fetched before stays exactly as it was.
+    tools/.venv/Scripts/python.exe tools/geodata.py --strip w
 """
 import io
 import json
@@ -29,6 +35,8 @@ from PIL import Image
 ROOT = Path(__file__).resolve().parents[1]
 GEO = ROOT / "source" / "geo"
 EXTENT = (118300, 183600, 119500, 185600)  # x0, y0, x1, y1: 1.2 by 2 km
+# Strips beside EXTENT, as tall as it so the rasters stitch into one rectangle; as wide as whole orthophoto tiles.
+STRIPS = {"w": (117900, 183600, 118300, 185600)}  # west: Molenhoek on to its end, 400 m by 2 km
 LAYERS = ["ADP", "GBG", "GBA", "WBN", "Wegsegment", "WPI", "WTZ", "WLAS", "WGO", "WLI", "IngeschetstGebouw", "TRN", "WGA", "WGR", "WTI"]
 COVERAGES = ["DHMVII_DTM_1m", "DHMVII_DSM_1m"]
 ORTHO_TILE, ORTHO_PX = 400, 1600  # m and px per WMS request: 25 cm a pixel
@@ -54,8 +62,8 @@ def backup(name, folder):
             path.replace(GEO / folder / name)
 
 
-def wfs(layer):
-    x0, y0, x1, y1 = EXTENT
+def wfs(layer, extent=EXTENT):
+    x0, y0, x1, y1 = extent
     url = (f"https://geo.api.vlaanderen.be/GRB/wfs?service=WFS&version=2.0.0&request=GetFeature&typeNames=GRB:{layer}"
            f"&srsName=EPSG:31370&bbox={x0},{y0},{x1},{y1},EPSG:31370&outputFormat=application/json&count=10000")
     data = json.loads(get(url))
@@ -64,9 +72,9 @@ def wfs(layer):
     return data
 
 
-def wcs(coverage):
-    """The coverage over EXTENT as TIFF bytes (the part after the XML in the multipart answer)."""
-    x0, y0, x1, y1 = EXTENT
+def wcs(coverage, extent=EXTENT):
+    """The coverage over `extent` as TIFF bytes (the part after the XML in the multipart answer)."""
+    x0, y0, x1, y1 = extent
     raw = get(f"https://geo.api.vlaanderen.be/DHMV/wcs?service=WCS&version=2.0.1&request=GetCoverage&CoverageId={coverage}"
               f"&format=image/tiff&subset=x({x0},{x1})&subset=y({y0},{y1})")
     start = raw.find(b"II*\x00")
@@ -80,8 +88,8 @@ def wcs(coverage):
     return tiff
 
 
-def ortho():
-    x0, y0, x1, y1 = EXTENT
+def ortho(extent=EXTENT):
+    x0, y0, x1, y1 = extent
     k = ORTHO_PX / ORTHO_TILE
     out = Image.new("RGB", (int((x1 - x0) * k), int((y1 - y0) * k)))
     for ty in range(y0, y1, ORTHO_TILE):
@@ -94,7 +102,31 @@ def ortho():
     return out
 
 
+def strip(name):
+    """A strip beside EXTENT into source/geo/strip_<name>/ (new files only: nothing of EXTENT's is touched)."""
+    extent = STRIPS[name]
+    out = GEO / f"strip_{name}"
+    out.mkdir(exist_ok=True)
+    for layer in LAYERS:
+        data = wfs(layer, extent)
+        (out / f"{layer}_l72.json").write_text(json.dumps(data, separators=(",", ":")), encoding="utf-8")
+        print(f"{name} {layer}: {len(data['features'])} features")
+    for cov in COVERAGES:
+        tiff = wcs(cov, extent)
+        (out / f"{cov}_clean.tif").write_bytes(tiff)
+        print(f"{name} {cov}: {len(tiff) // 1024} KB")
+    img = ortho(extent)
+    img.save(out / "ortho_025m.jpg", quality=90)
+    x0, y0, x1, y1 = extent
+    (out / "ortho_025m.json").write_text(json.dumps({"x0": x0, "y0": y0, "x1": x1, "y1": y1, "px": img.size[0], "py": img.size[1],
+        "source": "Orthofotomozaïek, middenschalig, winteropnamen, kleur, meest recent (Digitaal Vlaanderen, WMS OMWRGBMRVL, layer Ortho)"}),
+        encoding="utf-8")
+    print(f"{name} ortho: {img.size[0]} x {img.size[1]} px")
+
+
 def main():
+    if len(sys.argv) > 2 and sys.argv[1] == "--strip":
+        return strip(sys.argv[2])
     folder = sys.argv[1] if len(sys.argv) > 1 else "old1200"
     for layer in LAYERS:
         data = wfs(layer)

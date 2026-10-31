@@ -2,10 +2,10 @@
 
 Run: tools/.venv/Scripts/python tools/streets.py  ->  web/src/data/streets.json
 
-The road register (Wegenregister, source/geo/Wegsegment_l72.json, fetched by tools/geodata.py)
+The road register (Wegenregister, source/geo/Wegsegment_l72.json and its strip, fetched by tools/geodata.py)
 gives each road's centre line with its street name. A street's pieces are joined, cut to the area
 the game builds (the ring round the plot and the circle round the church, with the band between
-them, as `zone` in tools/neighbours.py) and its name is written along the longest stretches: at the
+them, and the band along the rest of Molenhoek: `zone` in tools/neighbours.py) and its name is written along the longest stretches: at the
 middle of each stretch of at least 70 m, and every 280 m along longer ones. Positions are the
 model's (x, z); the angle is on the map, which has north up (radians, kept between -90 and 90
 degrees so no name is upside down). Unnamed roads ("nvt") get no label.
@@ -23,8 +23,9 @@ from pathlib import Path
 from shapely.geometry import LineString, Point
 from shapely.ops import linemerge, unary_union
 
+from neighbours import band, features
+
 ROOT = Path(__file__).resolve().parent.parent
-SRC = ROOT / "source" / "geo" / "Wegsegment_l72.json"
 OUT = ROOT / "web" / "src" / "data" / "streets.json"
 
 # Lambert 72 → model (as in tools/build_house.py): x = aX + bY + xoff, z = cX + dY + zoff.
@@ -70,8 +71,9 @@ def road_graph(data, area):
 
 
 def main():
-    data = json.loads(SRC.read_text(encoding="utf-8"))
-    zone = unary_union([Point(PLOT).buffer(AREA, 64), Point(CHURCH).buffer(VILLAGE, 64)]).convex_hull.buffer(-15)
+    data = {"features": features("Wegsegment")}
+    hull = unary_union([Point(PLOT).buffer(AREA, 64), Point(CHURCH).buffer(VILLAGE, 64)]).convex_hull
+    zone = (unary_union([hull, band()]) if not band().is_empty else hull).buffer(-15)
     pieces = {}
     for f in data["features"]:
         p = f["properties"]

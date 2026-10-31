@@ -17,9 +17,9 @@ import { terrain, terrainTexture } from './terrain';
  * real-time shadow decide.
  *
  * The village has a texture of its own (bakeVillage), made once its tiles are
- * in. The ground materials read one of the two, the one round where you are
- * (follow): one texture read per pixel, as before the village came. The other
- * area is then far off in the haze.
+ * in, and so has Molenhoek's far stretch. The ground materials read one of them,
+ * the one round where you are (follow): one texture read per pixel, as before the
+ * village came. The others are then far off in the haze.
  */
 
 const HALF = 240; // metres from the centre to the edge of the shaded area
@@ -109,11 +109,12 @@ export class GroundShade {
     groundArea: { value: new THREE.Vector3() },
   };
   private target: THREE.WebGLRenderTarget | null = null;
-  private village: THREE.WebGLRenderTarget | null = null;
-  private villageArea = new THREE.Vector3();
+  /** The areas baked once the village is in (the village, Molenhoek's far stretch): texture, centre x, z and half size */
+  private areas: { key: string; target: THREE.WebGLRenderTarget; area: THREE.Vector3 }[] = [];
   private lastEye = new THREE.Vector3();
   private on = true;
-  private inVillage = false;
+  /** Which area is read: -1 the house's, else one of `areas` */
+  private reading = -1;
 
   constructor(private center: THREE.Vector3) {
     this.uniforms.groundArea.value.set(center.x, center.z, HALF);
@@ -125,21 +126,29 @@ export class GroundShade {
     this.pick();
   }
 
-  /** Read the texture of the area nearer the eye: the house's or the village's. */
+  /** Read the texture of the area whose middle is nearest the eye: the house's, the village's or the far stretch's. */
   follow(eye: THREE.Vector3): void {
     this.lastEye.copy(eye);
-    const v = this.villageArea;
-    const near = !!this.village && Math.hypot(eye.x - v.x, eye.z - v.y) < Math.hypot(eye.x - this.center.x, eye.z - this.center.z);
-    if (near !== this.inVillage) {
-      this.inVillage = near;
+    let best = -1;
+    let bestD = Math.hypot(eye.x - this.center.x, eye.z - this.center.z);
+    this.areas.forEach(({ area }, i) => {
+      const d = Math.hypot(eye.x - area.x, eye.z - area.y);
+      if (d < bestD) {
+        bestD = d;
+        best = i;
+      }
+    });
+    if (best !== this.reading) {
+      this.reading = best;
       this.pick();
     }
   }
 
   private pick(): void {
-    const t = this.inVillage ? this.village : this.target;
+    const a = this.reading >= 0 ? this.areas[this.reading] : null;
+    const t = a ? a.target : this.target;
     this.uniforms.groundShade.value = this.on && t ? t.texture : neutral;
-    if (this.inVillage) this.uniforms.groundArea.value.copy(this.villageArea);
+    if (a) this.uniforms.groundArea.value.copy(a.area);
     else this.uniforms.groundArea.value.set(this.center.x, this.center.z, HALF);
   }
 
@@ -185,14 +194,15 @@ export class GroundShade {
   }
 
   /**
-   * The same for the village: `half` metres round `centre`, `size` texels across (2048, or 1024 on
-   * a phone: 5 MB of graphics memory instead of 22).
+   * The same for the village, or another area (`key`; baked again, it replaces the one of that key): `half`
+   * metres round `centre`, `size` texels across (2048, or 1024 on a phone: 5 MB of graphics memory instead of 22).
    */
-  bakeVillage(renderer: THREE.WebGLRenderer, scene: THREE.Scene, sun: THREE.DirectionalLight, casters: THREE.Object3D[], ground: number, centre: THREE.Vector3, half: number, size: number): void {
-    this.village?.dispose();
-    this.village = this.render(renderer, scene, sun, casters, ground, centre, half, size);
-    this.villageArea.set(centre.x, centre.z, half);
-    this.inVillage = !this.inVillage; // pick() again whichever area it was
+  bakeVillage(renderer: THREE.WebGLRenderer, scene: THREE.Scene, sun: THREE.DirectionalLight, casters: THREE.Object3D[], ground: number, centre: THREE.Vector3, half: number, size: number,
+    key = 'village'): void {
+    const old = this.areas.findIndex((a) => a.key === key);
+    if (old >= 0) this.areas.splice(old, 1)[0].target.dispose();
+    this.areas.push({ key, target: this.render(renderer, scene, sun, casters, ground, centre, half, size), area: new THREE.Vector3(centre.x, centre.z, half) });
+    this.reading = -2; // pick() again whichever area it was
     this.follow(this.lastEye);
   }
 

@@ -945,6 +945,9 @@ def main():
     village["dips"] = [d for d, f in zip(all_dips, late) if f]
     village["landmarks"].sort(key=lambda m: m["name"] != "church")  # the church first: the browser shades the village round it
     village["groundCuts"] = late_cuts
+    nb_area = json.loads((ROOT / "data" / "neighbours.json").read_text(encoding="utf-8")).get("area")
+    if nb_area:
+        village["area"] = nb_area  # the outline of the area the world is built in (the big map)
     village["_source"] = "the surroundings beyond the ring (tools/build_house.py): GRB, DHM Vlaanderen II and the orthophoto (Digitaal Vlaanderen, open data)"
     VILLAGE_OUT.write_text(json.dumps(village, separators=(",", ":")), encoding="utf-8")
     counts = {}

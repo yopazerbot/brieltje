@@ -106,6 +106,8 @@ export class BigMap {
   private paths = new Map<Layer, Path2D>();
   private trees = new Path2D();
   private hull = new Path2D();
+  /** The area the world is built in (map metres), from the village data */
+  private area: [number, number][] | null = null;
   private ponds: { u: number; v: number }[] = [];
   private points: [number, number][] = [];
   // The view: the map point in the middle of the screen (m) and the scale (CSS px a metre).
@@ -200,7 +202,8 @@ export class BigMap {
   }
 
   /** The village and the band to it (once loaded): their roads, buildings, fields, trees and ponds. */
-  addVillage(data: Surroundings & { dips?: DipSpec[] }): void {
+  addVillage(data: Surroundings & { dips?: DipSpec[]; area?: [number, number][] }): void {
+    if (data.area && data.area.length > 2) this.area = data.area.map(([x, z]) => [toU(x, z), toV(x, z)]);
     this.addSurroundings(data, data.dips ?? []);
     this.dirty = true;
     this.groundVersion++;
@@ -384,8 +387,9 @@ export class BigMap {
         this.ponds.push({ u: toU(x, z), v: toV(x, z) });
       }
     }
-    // The area the world is built in: everything outside it is drawn muted.
-    const hull = hullOf(this.points);
+    // The area the world is built in (its outline, once the village is in; until then the hull of what is drawn):
+    // everything outside it is drawn muted.
+    const hull = this.area ?? hullOf(this.points);
     this.hull = new Path2D();
     hull.forEach(([u, v], i) => (i ? this.hull.lineTo(u, v) : this.hull.moveTo(u, v)));
     this.hull.closePath();

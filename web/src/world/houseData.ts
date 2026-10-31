@@ -200,6 +200,8 @@ export interface VillageData extends Surroundings {
   dips: DipSpec[];
   groundCuts: { cells: number[]; tris: number[] };
   landmarks?: Landmark[];
+  /** The outline of the area the world is built in (tools/neighbours.py's zone): the big map mutes what lies outside */
+  area?: [number, number][];
 }
 
 export interface HouseData {

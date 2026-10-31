@@ -123,6 +123,10 @@ interface TileSet {
   shown: [number, number];
   /** The tiles whose small details are shown */
   detail: [number, number];
+  /** Metres: the small details' reach in this set */
+  detailReach: number;
+  /** Metres: how far this set's tiles are drawn at most (the draw distance if that is nearer) */
+  reach: number;
 }
 
 export class Tiles {
@@ -138,9 +142,10 @@ export class Tiles {
   /**
    * A set of tiles (the ring, or the village): each material's pieces merged in tile order into
    * one mesh, each repeated shape into one instanced mesh. `near`: its meshes throw the sun's
-   * shadow round the house.
+   * shadow round the house. `detailReach`: how far its small details are drawn (DETAIL unless given); `reach`: how far its
+   * tiles are drawn at most (the draw distance unless given).
    */
-  addSet(tiles: { key: string; pieces: Piece[] }[], near: boolean): void {
+  addSet(tiles: { key: string; pieces: Piece[] }[], near: boolean, detailReach = DETAIL, reach = Infinity): void {
     const order = tiles
       .map((t) => {
         const [i, j] = t.key.split(',').map(Number);
@@ -164,7 +169,7 @@ export class Tiles {
       const [i, j] = t.key.split(',').map(Number);
       return new THREE.Box3(new THREE.Vector3(CX + (i - 0.5) * TILE - 30, -30, CZ + (j - 0.5) * TILE - 30), new THREE.Vector3(CX + (i + 0.5) * TILE + 30, 80, CZ + (j + 0.5) * TILE + 30));
     });
-    const set: TileSet = { at: order.map((t) => t.at), boxes, runs: [], shown: [0, n - 1], detail: [0, n - 1] };
+    const set: TileSet = { at: order.map((t) => t.at), boxes, runs: [], shown: [0, n - 1], detail: [0, n - 1], detailReach, reach };
     const style = (mesh: THREE.Mesh, p: Piece) => {
       mesh.castShadow = p.shadow && near;
       mesh.receiveShadow = true;
@@ -256,8 +261,8 @@ export class Tiles {
       return [a, b];
     };
     for (const set of this.sets) {
-      const shown = within(set, this.drawDistance);
-      const detail = within(set, Math.min(DETAIL, this.drawDistance));
+      const shown = within(set, Math.min(set.reach, this.drawDistance));
+      const detail = within(set, Math.min(set.detailReach, set.reach, this.drawDistance));
       const same = (p: [number, number], q: [number, number]) => p[0] === q[0] && p[1] === q[1];
       if (same(shown, set.shown) && same(detail, set.detail)) continue;
       set.shown = shown;

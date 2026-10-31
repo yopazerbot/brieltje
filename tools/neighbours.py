@@ -61,7 +61,12 @@ CHURCH, CHURCH_UIDN, VILLAGE = (119018.7, 184084.2), 9757729, 340
 # The primary school east of the church (GRB UIDN): the front wing on Smetlededorp, the long block, the low
 # pavilion and the two sheds round the playground. Our Blender model (tools/school.py) takes their place.
 SCHOOL_UIDNS = {1852114, 9796774, 9758237, 1852643, 5565555}
-TILE_X0, TILE_Y1, TILE_W, TILE_H = 118300, 185600, 1200, 2000  # the height rasters: west and north edge (Lambert 72), metres across and down
+# The strip west of EXTENT (tools/geodata.py --strip w): the rest of Molenhoek, to its end. Where it has been
+# fetched it is stitched on to the west of what was fetched before (`raster`, `ortho_image`, `features`).
+STRIP = GEO / "strip_w"
+HAS_STRIP = (STRIP / "DHMVII_DTM_1m_clean.tif").exists()
+# the height rasters: west and north edge (Lambert 72), metres across and down
+TILE_X0, TILE_Y1, TILE_W, TILE_H = (117900, 185600, 1600, 2000) if HAS_STRIP else (118300, 185600, 1200, 2000)
 OUR_GROUND = -0.1    # model ground level
 # Buildings newer than the laser scan (GRB UIDN): their roof as the 2025 orthophoto shows it.
 # Without an entry: a house gets a flat roof on two storeys, an outbuilding one storey.
@@ -128,13 +133,34 @@ def shaded_parts(poly, kind):
     return out
 
 
+def raster(kind):
+    """A laser raster, "DTM" or "DSM" (metres, a cell a metre), over TILE_X0.. with the strip stitched on."""
+    a = np.array(Image.open(GEO / f"DHMVII_{kind}_1m_clean.tif"), np.float32)
+    if HAS_STRIP:
+        a = np.concatenate([np.array(Image.open(STRIP / f"DHMVII_{kind}_1m_clean.tif"), np.float32), a], axis=1)
+    return a
+
+
+def ortho_image():
+    """The orthophoto (PIL image) and its frame {x0, y0, x1, y1, px, py}, with the strip stitched on."""
+    Image.MAX_IMAGE_PIXELS = None  # 6400 x 8000 px: our own download
+    meta = json.loads((GEO / "ortho_025m.json").read_text(encoding="utf-8"))
+    img = Image.open(GEO / "ortho_025m.jpg").convert("RGB")
+    if HAS_STRIP:
+        sm = json.loads((STRIP / "ortho_025m.json").read_text(encoding="utf-8"))
+        side = Image.open(STRIP / "ortho_025m.jpg").convert("RGB")
+        both = Image.new("RGB", (side.size[0] + img.size[0], img.size[1]))
+        both.paste(side, (0, 0))
+        both.paste(img, (side.size[0], 0))
+        img, meta = both, {**meta, "x0": sm["x0"], "px": both.size[0]}
+    return img, meta
+
+
 class Ortho:
     """The aerial photo around the plot: the typical colour of a roof."""
 
     def __init__(self):
-        meta = json.loads((GEO / "ortho_025m.json").read_text(encoding="utf-8"))
-        Image.MAX_IMAGE_PIXELS = None  # 4800 x 8000 px: our own download
-        self.img = Image.open(GEO / "ortho_025m.jpg").convert("RGB")
+        self.img, meta = ortho_image()
         self.rgb = np.asarray(self.img)
         self.x0, self.y1, self.k = meta["x0"], meta["y1"], meta["px"] / (meta["x1"] - meta["x0"])
 
@@ -181,8 +207,14 @@ class Ortho:
         img.crop((int(cx - r), int(cy - r), int(cx + r), int(cy + r))).save(path, quality=88)
 
 
-def features(name):
-    return json.loads((GEO / f"{name}_l72.json").read_text(encoding="utf-8"))["features"]
+def features(name, strip=True):
+    """A GRB layer's features; with the strip's after them, those the first fetch has already (by OIDN) left out."""
+    out = json.loads((GEO / f"{name}_l72.json").read_text(encoding="utf-8"))["features"]
+    if strip and HAS_STRIP and (STRIP / f"{name}_l72.json").exists():
+        seen = {f["properties"].get("OIDN") for f in out}
+        out += [f for f in json.loads((STRIP / f"{name}_l72.json").read_text(encoding="utf-8"))["features"]
+                if f["properties"].get("OIDN") not in seen]
+    return out
 
 
 def polygons(geom):
@@ -190,10 +222,50 @@ def polygons(geom):
     return [Polygon(c[0], c[1:]) for c in coords]
 
 
-def zone(plot):
-    """The area of the surroundings (Lambert 72): the ring of AREA round the plot, the circle of
-    VILLAGE round the church, and the band between them (the two circles' convex hull)."""
+# Molenhoek past the junction where the area used to end, on to its end where it meets Oordegemkouter (the strip
+# `w`): a band of BAND metres either side of its centre line, for the plots on both sides and the fields behind them
+# as seen from the road. BAND_FROM: that junction (Lambert 72); the band takes the street west of it. It ends square
+# across the road END metres past the street's far end: the last houses of Molenhoek stand round the junction, and
+# Oordegemkouter, which goes on straight ahead, stays out with its houses.
+BAND, BAND_FROM, END = 110.0, (118708.7, 183876.0), 40.0
+_BAND = []
+
+
+def band():
+    """The band along the rest of Molenhoek (Lambert 72); empty without the strip (or with NO_BAND set, to compare)."""
+    if not _BAND:
+        import os
+        if not HAS_STRIP or os.environ.get("NO_BAND"):
+            _BAND.append(Polygon())
+        else:
+            lines = [LineString([p[:2] for p in f["geometry"]["coordinates"]]) for f in features("Wegsegment")
+                     if f["properties"].get("LSTRNM") == "Molenhoek" and f["geometry"]["type"] == "LineString"]
+            rest = linemerge(unary_union(lines)).intersection(box(BAND_FROM[0] - 2000, BAND_FROM[1] - 1000, BAND_FROM[0] + 0.5, BAND_FROM[1] + 1000))
+            # The far end: the line's end furthest from BAND_FROM, and the street's heading over its last 20 m.
+            far, line = max(((Point(c), g) for g in getattr(rest, "geoms", [rest]) for c in (g.coords[0], g.coords[-1])),
+                            key=lambda t: t[0].distance(Point(BAND_FROM)))
+            s = line.project(far)
+            back = line.interpolate(s - 20 if s > 10 else s + 20)
+            n = math.hypot(far.x - back.x, far.y - back.y)
+            dx, dy = (far.x - back.x) / n, (far.y - back.y) / n
+            tx, ty = far.x + dx * END, far.y + dy * END
+            keep = Polygon([(tx - dy * 1000, ty + dx * 1000), (tx + dy * 1000, ty - dx * 1000),
+                            (tx + dy * 1000 - dx * 3000, ty - dx * 1000 - dy * 3000), (tx - dy * 1000 - dx * 3000, ty + dx * 1000 - dy * 3000)])
+            _BAND.append(rest.buffer(BAND, 32).intersection(keep))
+    return _BAND[0]
+
+
+def hull(plot):
+    """The area as it was before the band (Lambert 72): the ring of AREA round the plot, the circle of VILLAGE round
+    the church, and the band between them (the two circles' convex hull)."""
     return unary_union([plot.centroid.buffer(AREA, 64), Point(CHURCH).buffer(VILLAGE, 64)]).convex_hull
+
+
+def zone(plot):
+    """The area of the surroundings (Lambert 72): `hull`, and the band along the rest of Molenhoek (`band`).
+    Whatever is chosen over the whole area (the tallest trees, the roof colours) is chosen for the band on its
+    own, so the area of before keeps what it had."""
+    return unary_union([hull(plot), band()]) if not band().is_empty else hull(plot)
 
 
 def church_tower(poly, ndsm):
@@ -275,7 +347,14 @@ def model_frame():
     """Our plot, the road surface (both Lambert 72) and the affine matrix from Lambert 72 to the
     model (for shapely's affine_transform), from the plot's front and back edges."""
     plot = next(polygons(f["geometry"])[0] for f in features("ADP") if f["properties"]["CAPAKEY"].endswith(PLOT))
-    roads = unary_union([p for f in features("WBN") for p in polygons(f["geometry"])])
+    roads = unary_union([p for f in features("WBN", strip=False) for p in polygons(f["geometry"])])
+    # The strip's road surface beside it, not merged into it: the surface of the first fetch keeps its exact outline.
+    first = {f["properties"].get("OIDN") for f in features("WBN", strip=False)}
+    more = [p for f in features("WBN") if f["properties"].get("OIDN") not in first for p in polygons(f["geometry"])]
+    if more:
+        extra = unary_union(more).difference(roads)
+        parts = lambda g: [q for q in getattr(g, "geoms", [g]) if q.geom_type == "Polygon" and not q.is_empty]
+        roads = shapely.MultiPolygon(parts(roads) + parts(extra))
 
     # Front edge: the plot side touching the road. Back edge: the opposite short side.
     pts = list(plot.minimum_rotated_rectangle.exterior.coords)[:4]
@@ -296,8 +375,8 @@ def main():
     plot, roads, to_model = model_frame()
     model = lambda g: affine_transform(g, to_model)
 
-    dsm = np.array(Image.open(GEO / "DHMVII_DSM_1m_clean.tif"), dtype=np.float32)
-    dtm = np.array(Image.open(GEO / "DHMVII_DTM_1m_clean.tif"), dtype=np.float32)
+    dsm = raster("DSM")
+    dtm = raster("DTM")
     ndsm = dsm - dtm
 
     def cells(poly):
@@ -443,14 +522,17 @@ def main():
         return all(math.dist((x, y), t[0]) >= gap for di in (-1, 0, 1) for dj in (-1, 0, 1) for t in near.get((i + di, j + dj), ()))
 
     cx, cy = centre.x, centre.y
-    beyond = prep(area.difference(centre.buffer(AREA, 64)))
-    # (centre, radius or None for the zone beyond the ring, cap in all or None, more on top, gap, lowest)
+    old = hull(plot)
+    beyond = prep(old.difference(centre.buffer(AREA, 64)))
+    rest = band().difference(old.buffer(0.5)) if not band().is_empty else Polygon()  # no slivers along the old edge
+    in_band = prep(rest) if not rest.is_empty else None
+    # (centre, radius or None for the zone beyond the ring or "band" for the band, cap in all or None, more on top, gap, lowest)
     tiers = [((cx, cy), RADIUS, 60, 0, 4.0, 3.0), ((cx, cy), 240, 320, 0, 4.0, 3.0), ((cx, cy), AREA, 1700, 0, 7.0, 5.0),
-             (CHURCH, 160, None, 260, 4.0, 3.0), (None, None, None, 1400, 7.0, 5.0)]
+             (CHURCH, 160, None, 260, 4.0, 3.0), (None, None, None, 1400, 7.0, 5.0)] + ([(None, "band", None, 450, 7.0, 5.0)] if in_band else [])
     for at, radius, cap, more, gap, low in tiers:
         cap = cap or len(trees) + more
-        if radius is None:  # the zone beyond the ring
-            bx0, by0, bx1, by1 = area.bounds
+        if radius is None or radius == "band":  # the zone beyond the ring, or the band
+            bx0, by0, bx1, by1 = (old if radius is None else rest).bounds
             r0, c0 = max(0, int(TILE_Y1 - by1)), max(0, int(bx0 - TILE_X0))
             window = ndsm[r0:int(TILE_Y1 - by0), c0:int(bx1 - TILE_X0)]
         else:
@@ -462,7 +544,8 @@ def main():
             if h < low or len(trees) >= cap:
                 break
             x, y = TILE_X0 + c0 + col + 0.5, TILE_Y1 - (r0 + row) - 0.5
-            outside = not beyond.contains(Point(x, y)) if radius is None else math.dist((x, y), at) > radius
+            outside = (not beyond.contains(Point(x, y)) if radius is None else not in_band.contains(Point(x, y)) if radius == "band"
+                       else math.dist((x, y), at) > radius)
             if outside or not room(x, y, gap) or keep_out.contains(Point(x, y)):
                 continue
             patch = window[max(0, row - 4):row + 5, max(0, col - 4):col + 5]
@@ -476,9 +559,15 @@ def main():
         tree_out.append({"x": round(p.x, 2), "z": round(p.y, 2), "y": round(base, 2), "h": round(min(h, 25), 1), "r": round(crown, 1)})
 
     road_out = []
+    # The road surface in the area of before as it was cut then; the band's on its own beside it.
+    reach_old = old.buffer(20)
+    reach_band = area.buffer(20).difference(reach_old) if not rest.is_empty else None
     for poly in getattr(roads, "geoms", [roads]):
-        clipped = poly.intersection(area.buffer(20))
+        pieces = [poly.intersection(reach_old)] + ([poly.intersection(reach_band)] if reach_band is not None else [])
+        clipped = shapely.GeometryCollection([g for piece in pieces for g in getattr(piece, "geoms", [piece])])
         for part in getattr(clipped, "geoms", [clipped]):
+            if part.geom_type != "Polygon":
+                continue
             if part.area > 2:
                 m = model(part.simplify(0.2))
                 road_out.append([[[round(x, 2), round(z, 2)] for x, z in ring.coords[:-1]] for ring in [m.exterior, *m.interiors]])
@@ -497,10 +586,12 @@ def main():
             top = float(np.percentile([ndsm[r, c] for r, c in cs], 60)) if cs else 2.6
             canopies.append({"p": [[round(x, 2), round(z, 2)] for x, z in model(poly).exterior.coords[:-1]],
                              "base": round(base, 2), "top": round(min(3.5, max(2.3, top)), 2)})
-    # A handful of roof colours (the photo's colours grouped, k-means), the ring's and the
-    # village's each on their own (the ring keeps the colours it had before the village came).
-    in_ring = [f.centroid.distance(centre) <= AREA for f in footprints]
-    for group in (True, False):
+    # A handful of roof colours (the photo's colours grouped, k-means), the ring's, the village's and the band's
+    # each on their own (the ring keeps the colours it had before the village came, the village those it had
+    # before the band).
+    old_area = prep(hull(plot))
+    in_ring = [0 if f.centroid.distance(centre) <= AREA else 1 if old_area.contains(f.centroid) else 2 for f in footprints]
+    for group in (0, 1, 2):
         roofs_rgb = [(b, q) for b, r in zip(buildings, in_ring) if r == group for q in b["parts"] if q["color"]]
         if len(roofs_rgb) <= 8:
             continue
@@ -517,10 +608,12 @@ def main():
         for b in buildings:
             pitched = [q for q in b["parts"] if q["shape"] != "flat"]
             b["roof"] = max(pitched or b["parts"], key=lambda q: Polygon(q["p"]).area)["color"]
+    # The area as an outline (model, to 2 m): the big map fills it and mutes what lies outside.
+    outline = [[round(x, 1), round(z, 1)] for x, z in model(area.simplify(2.0)).exterior.coords[:-1]]
     OUT.write_text(json.dumps({
         "_source": "GRB and DHM Vlaanderen II (Digitaal Vlaanderen, open data); laser scan 2013-2015",
         "plot": plot_ring, "buildings": buildings, "roads": road_out, "trees": tree_out,
-        "boundaries": bounds, "canopies": canopies,
+        "boundaries": bounds, "canopies": canopies, "area": outline,
     }, separators=(",", ":")), encoding="utf-8")
     shapes = {}
     for b in buildings:

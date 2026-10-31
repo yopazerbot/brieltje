@@ -42,7 +42,7 @@ from shapely.geometry import LineString, Point, Polygon, box
 from shapely.ops import linemerge, nearest_points, unary_union
 
 import old_house
-from neighbours import GEO, TILE_H, TILE_W, TILE_X0, TILE_Y1, features, model_frame, polygons, zone
+from neighbours import TILE_H, TILE_W, TILE_X0, TILE_Y1, band, features, hull, model_frame, ortho_image, polygons, raster, zone
 
 ROOT = Path(__file__).resolve().parents[1]
 OUT = ROOT / "data" / "street.json"
@@ -91,15 +91,14 @@ class Raster:
                            np.float32(Z0) + (np.arange(NZ, dtype=np.float32) + 0.5) * np.float32(CELL))
         LX = inv[0, 0] * (X - xo) + inv[0, 1] * (Z - zo)
         LY = inv[1, 0] * (X - xo) + inv[1, 1] * (Z - zo)
-        meta = json.loads((GEO / "ortho_025m.json").read_text(encoding="utf-8"))
-        Image.MAX_IMAGE_PIXELS = None  # 4800 x 8000 px: our own download (tools/geodata.py)
-        photo = np.asarray(Image.open(GEO / "ortho_025m.jpg").convert("RGB"))
+        img, meta = ortho_image()  # with the strip west of the first fetch stitched on (tools/neighbours.py)
+        photo = np.asarray(img)
         res = (meta["x1"] - meta["x0"]) / meta["px"]
         col = np.clip(((LX - meta["x0"]) / res).astype(int), 0, photo.shape[1] - 1)
         row = np.clip(((meta["y1"] - LY) / res).astype(int), 0, photo.shape[0] - 1)
         self.rgb = photo[row, col].astype(np.int16)  # signed: differences between channels
-        dsm = np.array(Image.open(GEO / "DHMVII_DSM_1m_clean.tif"), dtype=np.float32)
-        dtm = np.array(Image.open(GEO / "DHMVII_DTM_1m_clean.tif"), dtype=np.float32)
+        dsm = raster("DSM")
+        dtm = raster("DTM")
         r1 = np.clip((TILE_Y1 - LY).astype(int), 0, TILE_H - 1)
         c1 = np.clip((LX - TILE_X0).astype(int), 0, TILE_W - 1)
         self.height = np.nan_to_num(dsm[r1, c1] - dtm[r1, c1])
@@ -488,10 +487,38 @@ def solar(buildings):
 # ---------------------------------------------------------------- main
 
 def main():
+    """The area of before (`hull`) as it was, then the band along the rest of Molenhoek on its own (its own raster),
+    so nothing chosen over the whole area changes what the area of before had."""
     plot, roads_l72, to_model = model_frame()
     model = lambda g: affine_transform(g, to_model)
     nb = json.loads((ROOT / "data" / "neighbours.json").read_text(encoding="utf-8"))
-    area = model(zone(plot))
+    old = model(hull(plot))
+    rest = model(band()).difference(old.buffer(0.5)) if not band().is_empty else Polygon()  # no slivers along the old edge
+    touches = lambda line: not rest.is_empty and LineString(line["path"]).intersects(rest)  # a plot line into the band goes with the band
+    out, ras, road = build(old, plot, roads_l72, to_model, nb, lambda line: not touches(line))
+    if not rest.is_empty:
+        more, _, _ = build(rest, plot, roads_l72, to_model, nb, touches)
+        offset = len(out["poles"])
+        for k in ("roads", "poles", "tracks", "water", "pavings", "pools", "hedges", "fields"):
+            out[k] = out[k] + more[k]
+        out["wires"] = out["wires"] + [[a + offset, b + offset] for a, b in more["wires"]]
+        grid(old)  # the check image shows the area of before
+        ras = Raster(to_model)
+    OUT.write_text(json.dumps(out, separators=(",", ":")), encoding="utf-8")
+    pave, field_list = out["pavings"], out["fields"]
+    counts = {}
+    for q in pave:
+        counts[q["m"]] = counts.get(q["m"], 0) + 1
+    print(f"wrote {OUT.relative_to(ROOT)} ({OUT.stat().st_size // 1024} KB): {len(out['roads'])} road pieces, {len(out['poles'])} poles, {len(out['wires'])} spans of cable, "
+          f"{len(out['tracks'])} tracks and paths, {len(out['water'])} ponds and ditches, {len(pave)} pavings {counts}, "
+          f"{len(out['pools'])} pools, {len(out['hedges'])} hedges, {len(out['solar'])} panel arrays, "
+          f"{len(field_list)} fields {dict((k, sum(f['m'] == k for f in field_list)) for k in {f['m'] for f in field_list})}")
+    debug(ras, out, road)
+
+
+def build(area, plot, roads_l72, to_model, nb, mine):
+    """Everything in `area` (model): out (as written), the raster and the road. `mine`: the plot lines it takes."""
+    model = lambda g: affine_transform(g, to_model)
     grid(area)
     road = model(roads_l72).buffer(0).intersection(area)
     ras = Raster(to_model)
@@ -532,6 +559,8 @@ def main():
     # Hedges along the plot lines between gardens, and along the plots' road side.
     hedges = []
     for k, line in enumerate(nb.get("boundaries", [])):
+        if not mine(line):
+            continue
         for seg, h in hedge_runs(LineString(line["path"]), ras, veg):
             hedges.append({"b": k, "path": coords(seg), "h": h})
     fronts = unary_union([p.exterior for p in homes]).intersection(road.buffer(4)).difference(road.buffer(0.3)).difference(buildings.buffer(0.5)).difference(ours)
@@ -541,7 +570,7 @@ def main():
         for seg, h in hedge_runs(line.simplify(0.15), ras, veg):
             hedges.append({"b": -1, "path": coords(seg), "h": min(h, 1.8)})
 
-    panels = solar(nb["buildings"])
+    panels = solar(nb["buildings"]) if mine({"path": [[4.45, -3.0], [4.45, -2.0]]}) else []  # the survey's panels: all in the area of before
     meadow = unary_union([Polygon(a["poly"]) for a in json.loads((ROOT / "data" / "house.manual.json").read_text(encoding="utf-8"))["site"].get("noBoundaries", [])])
     yards = unary_union([Polygon(q["p"][0]).buffer(0) for q in pave] + [Polygon(p).buffer(0.6) for p in pool_list])
     tracks_area = unary_union([LineString(t["path"]).buffer(1.2) for t in track_list]) if track_list else Polygon()
@@ -553,15 +582,7 @@ def main():
         "roads": extra_roads, "poles": pole_list, "wires": wires, "tracks": track_list, "water": ponds,
         "pavings": pave, "pools": pool_list, "hedges": hedges, "solar": panels, "fields": field_list,
     }
-    OUT.write_text(json.dumps(out, separators=(",", ":")), encoding="utf-8")
-    counts = {}
-    for q in pave:
-        counts[q["m"]] = counts.get(q["m"], 0) + 1
-    print(f"wrote {OUT.relative_to(ROOT)} ({OUT.stat().st_size // 1024} KB): {len(extra_roads)} road pieces, {len(pole_list)} poles, {len(wires)} spans of cable, "
-          f"{len(track_list)} tracks and paths, {len(ponds)} ponds and ditches, {len(pave)} pavings {counts}, "
-          f"{len(pool_list)} pools, {len(hedges)} hedges, {len(panels)} panel arrays, "
-          f"{len(field_list)} fields {dict((k, sum(f['m'] == k for f in field_list)) for k in {f['m'] for f in field_list})}")
-    debug(ras, out, road)
+    return out, ras, road
 
 
 def debug(ras, out, road):

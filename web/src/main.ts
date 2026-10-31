@@ -42,7 +42,7 @@ import { Car } from './world/car';
 import CARS from '../shared/car.json';
 import { buildHedges, buildHorizon, buildTile, dipMesh, waterMesh } from './world/surroundings';
 import { GroundShade } from './world/groundShade';
-import { groundPiece, groundPieces, groundSkirt, pieceOf, terrain, type GroundCuts } from './world/terrain';
+import { groundPiece, groundPieceCoarse, groundPieces, groundSkirt, pieceOf, PIECE, terrain, type GroundCuts } from './world/terrain';
 import { splitTiles, Tiles } from './world/tiles';
 import { Baked } from './world/baked';
 import { Furnishing, buildFixtures, footprint, type Piece } from './world/furnishing';
@@ -180,20 +180,41 @@ grassMat.polygonOffsetFactor = 2;
 grassMat.polygonOffsetUnits = 2;
 const groundCuts: GroundCuts = { cells: [...(house.groundCuts?.cells ?? [])], tris: [...(house.groundCuts?.tris ?? [])] };
 const grass = new THREE.Group();
-const groundMeshes = new Map<string, THREE.Mesh>();
+/** Each piece of the ground: drawn in full near the eye, its coarse version (16 m squares) when all of it is further than GROUND_FAR. */
+const groundMeshes = new Map<string, { near: THREE.Mesh; far: THREE.Mesh; box: THREE.Box3 }>();
+const GROUND_FAR = 250;
 /** (Re)make one piece of the ground, with the cuts known now. */
 function layGround(pi: number, pj: number, geometry = groundPiece(house.ground, groundCuts, pi, pj)): void {
   const old = groundMeshes.get(`${pi},${pj}`);
   if (old) {
-    grass.remove(old);
-    old.geometry.dispose();
+    grass.remove(old.near, old.far);
+    old.near.geometry.dispose();
+    old.far.geometry.dispose();
   }
-  const mesh = new THREE.Mesh(geometry, grassMat);
-  mesh.receiveShadow = true;
-  mesh.userData.material = 'grass';
-  mesh.renderOrder = 1; // after the fields, yards and floors on it: the hidden lawn under them isn't shaded first
-  groundMeshes.set(`${pi},${pj}`, mesh);
-  grass.add(mesh);
+  const cx = terrain.x0 + (pi + 0.5) * PIECE * terrain.step;
+  const cz = terrain.z0 + (pj + 0.5) * PIECE * terrain.step;
+  geometry.translate(-cx, 0, -cz);
+  const pieces = [geometry, groundPieceCoarse(house.ground, pi, pj, cx, cz)].map((g) => {
+    const mesh = new THREE.Mesh(g, grassMat);
+    mesh.position.set(cx, 0, cz);
+    mesh.receiveShadow = true;
+    mesh.userData.material = 'grass';
+    mesh.renderOrder = 1; // after the fields, yards and floors on it: the hidden lawn under them isn't shaded first
+    grass.add(mesh);
+    return mesh;
+  });
+  geometry.computeBoundingBox();
+  const box = geometry.boundingBox!.clone().translate(new THREE.Vector3(cx, 0, cz));
+  pieces[1].visible = false;
+  groundMeshes.set(`${pi},${pj}`, { near: pieces[0], far: pieces[1], box });
+}
+/** The near or the far version of each piece of the ground, by how far the eye is from its nearest point. */
+function groundDetail(eye: THREE.Vector3): void {
+  for (const g of groundMeshes.values()) {
+    const near = g.box.distanceToPoint(eye) < GROUND_FAR;
+    g.near.visible = near;
+    g.far.visible = !near;
+  }
 }
 {
   const [pnx, pnz] = groundPieces();
@@ -1774,6 +1795,7 @@ renderer.setAnimationLoop((now: number) => {
   horizon.position.x = camera.position.x;
   horizon.position.z = camera.position.z;
   tiles.update(dt, camera.position);
+  groundDetail(camera.position);
   homeStreet.update(dt, camera.position);
   groundShade.follow(camera.position);
   // The sun's real-time shadow only covers the house: far from it (the village) it isn't worked out.
@@ -1841,9 +1863,17 @@ async function buildVillage(): Promise<void> {
     made.push({ key, pieces: buildTile(t, poles, renderer, house.ground, detail) });
     await new Promise((r) => setTimeout(r, 0)); // one tile at a time, between frames
   }
-  tiles.addSet(made, false); // a set of its own, apart from the ring's (no shadow pass: the sun's shadow is round the house)
+  // A set of its own, apart from the ring's (no shadow pass: the sun's shadow is round the house); Molenhoek's far
+  // stretch (tile columns from x 904 on) too, as each set draws one run of tiles along the line from the house to the church.
+  // Seen from the portal the stretch is a long row of houses down the road: its tiles are drawn within 350 m (the haze
+  // hides a third at that distance) and their small details (frames, glass, posts, lamps) within 100 m, which keeps
+  // its cost within the 1 ms allowed. The road detail (world/roadDetail.ts) the same way.
+  const far = (m: { key: string }) => Number(m.key.split(',')[0]) >= 5;
   const roads = buildRoadDetail(true, renderer, house.ground);
-  tiles.addSet(roads.tiles, false);
+  for (const set of [made, roads.tiles]) {
+    tiles.addSet(set.filter((m) => !far(m)), false);
+    if (set.some(far)) tiles.addSet(set.filter(far), false, 100, 350);
+  }
   world.addPrisms(roads.blocks);
   for (const m of models) {
     tiles.group.add(m); // a caster for the village's ground shading, a target for shots
@@ -1869,6 +1899,16 @@ async function buildVillage(): Promise<void> {
   tiles.showAll(); // every tile throws its shadow, however far the camera is now
   for (const m of models) m.visible = true;
   groundShade.bakeVillage(renderer, scene, sun, [tiles.group], house.ground, centre, 345, phone ? 1024 : 2048);
+  // Molenhoek's far stretch (the area east of the village, x 880 on) has a shaded area of its own.
+  const farPts = (data.area ?? []).filter(([x]) => x > 880);
+  if (farPts.length > 2) {
+    const [x0, x1] = [Math.min(...farPts.map((p) => p[0])), Math.max(...farPts.map((p) => p[0]))];
+    const [z0, z1] = [Math.min(...farPts.map((p) => p[1])), Math.max(...farPts.map((p) => p[1]))];
+    const fx = (x0 + x1) / 2;
+    const fz = (z0 + z1) / 2;
+    const at = new THREE.Vector3(fx, house.ground + terrain.height(fx, fz), fz);
+    groundShade.bakeVillage(renderer, scene, sun, [tiles.group], house.ground, at, Math.max(x1 - x0, z1 - z0) / 2 + 10, phone ? 1024 : 2048, 'molenhoek');
+  }
   village = 'ready';
   for (const c of cars) c.ready = true; // the cars parked in the village (shared/car.json) with it
   void roadLife.load(renderer, scene, camera);

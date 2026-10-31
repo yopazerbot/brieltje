@@ -29,7 +29,7 @@ import numpy as np
 from PIL import Image
 from shapely.affinity import affine_transform
 
-from neighbours import GEO, TILE_H, TILE_W, TILE_X0, TILE_Y1, model_frame, zone
+from neighbours import TILE_H, TILE_W, TILE_X0, TILE_Y1, model_frame, raster, zone
 
 ROOT = Path(__file__).resolve().parents[1]
 OUT = ROOT / "web" / "shared" / "terrain.json"
@@ -54,7 +54,7 @@ def build():
     plot, _, to_model = model_frame()
     a, b, d, e, xo, zo = to_model
     inv = np.linalg.inv(np.array([[a, b], [d, e]]))
-    dtm = np.array(Image.open(GEO / "DHMVII_DTM_1m_clean.tif"), np.float32)
+    dtm = raster("DTM")
     zx0, zz0, zx1, zz1 = affine_transform(zone(plot), to_model).bounds
     x0 = ORIGIN[0] + math.floor((zx0 - MARGIN - ORIGIN[0]) / STEP) * STEP
     z0 = ORIGIN[1] + math.floor((zz0 - MARGIN - ORIGIN[1]) / STEP) * STEP
