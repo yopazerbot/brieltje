@@ -191,6 +191,40 @@ async function etag(file, info) {
  * so the browser asks each visit whether they changed: the ETag answers that without
  * sending them again (304).
  */
+/**
+ * The pages' links to our own scripts and styles get the file's fingerprint (?v=...), so a browser
+ * never runs yesterday's admin.js with today's page. Cloudflare tells browsers to keep CSS and JS for
+ * four hours whatever we send; a changed file gets a new address instead. Files under /assets/ are
+ * named by their content already. The pages are ours and the fingerprints come from files on disk,
+ * so nothing a visitor sends ends up in them.
+ */
+const fingerprints = new Map(); // file -> { mtime, v }
+const pages = new Map(); // page file -> { mtime, body, tag }
+async function fingerprint(file) {
+  const info = await stat(file).catch(() => null);
+  if (!info) return null;
+  const known = fingerprints.get(file);
+  if (known?.mtime === info.mtimeMs) return known.v;
+  const v = createHash('sha256').update(await readFile(file)).digest('base64url').slice(0, 10);
+  fingerprints.set(file, { mtime: info.mtimeMs, v });
+  return v;
+}
+async function pageWithFingerprints(file, info) {
+  const known = pages.get(file);
+  if (known?.mtime === info.mtimeMs) return known;
+  let body = await readFile(file, 'utf8');
+  const links = [...new Set([...body.matchAll(/\s(?:src|href)="(\/(?!assets\/)[\w./-]+\.(?:css|js))"/g)].map((m) => m[1]))];
+  for (const link of links) {
+    const target = resolve(join(DIST, link));
+    if (!target.startsWith(DIST + sep)) continue;
+    const v = await fingerprint(target);
+    if (v) body = body.replaceAll(`"${link}"`, `"${link}?v=${v}"`);
+  }
+  const page = { mtime: info.mtimeMs, body: Buffer.from(body), tag: `"${createHash('sha256').update(body).digest('base64url').slice(0, 20)}"` };
+  pages.set(file, page);
+  return page;
+}
+
 async function serveFile(req, res, url) {
   let file = resolve(join(DIST, decodeURIComponent(url.pathname)));
   if (file !== DIST && !file.startsWith(DIST + sep)) return send(res, 400, 'Bad request');
@@ -207,6 +241,16 @@ async function serveFile(req, res, url) {
     if (!info) return send(res, 404, 'Not found');
   }
   const immutable = url.pathname.startsWith('/assets/');
+  if (extname(file) === '.html') {
+    const page = await pageWithFingerprints(file, info);
+    const headers = { ...HEADERS, 'Cache-Control': 'no-cache', ETag: page.tag };
+    if (String(req.headers['if-none-match'] || '').split(',').map((t) => t.trim().replace(/^W\//, '')).includes(page.tag)) {
+      res.writeHead(304, headers);
+      return res.end();
+    }
+    res.writeHead(200, { ...headers, 'Content-Type': TYPES['.html'], 'Content-Length': page.body.length });
+    return res.end(req.method === 'HEAD' ? undefined : page.body);
+  }
   const packed = /\bbr\b/.test(String(req.headers['accept-encoding'] || '')) ? await stat(`${file}.br`).catch(() => null) : null;
   const tag = `"${await etag(file, info)}${packed ? '-br' : ''}"`;
   const headers = {

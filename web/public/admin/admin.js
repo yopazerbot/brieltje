@@ -51,9 +51,14 @@
     $('login').hidden = true;
     $('app').hidden = false;
     $('logout').hidden = false;
-    stats = await r.json();
-    playing = stats.playing;
-    overview(stats);
+    // Each part on its own, so one that fails doesn't keep the others from loading.
+    try {
+      stats = await r.json();
+      playing = stats.playing ?? playing;
+      overview(stats);
+    } catch (e) {
+      console.error('overview', e);
+    }
     loadSignups();
     loadLog();
     connect();
@@ -102,6 +107,7 @@
       for (const p of document.querySelectorAll('[data-panel]')) p.hidden = p.dataset.panel !== tab;
       if (tab === 'online' || tab === 'overview') refreshStats();
       if (tab === 'logins') loadLog();
+      if (tab === 'signups') loadSignups();
     });
   }
   async function refreshStats() {
