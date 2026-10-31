@@ -229,7 +229,7 @@ export class Clowns {
     const keep = new Set(list.map((s) => s.id));
     for (const [id, c] of this.clowns) {
       if (keep.has(id)) continue;
-      c.group.removeFromParent();
+      this.drop(c);
       this.clowns.delete(id);
     }
     for (const s of list) {
@@ -238,7 +238,7 @@ export class Clowns {
       if (!template) continue; // its model is still loading: added when it is in
       let c = this.clowns.get(s.id);
       if (!c || c.spec.x !== s.x || c.spec.z !== s.z || c.kind !== kind) {
-        if (c) c.group.removeFromParent();
+        if (c) this.drop(c);
         const model = template.clone(true);
         const group = new THREE.Group();
         group.scale.setScalar(KINDS[kind].scale);
@@ -258,6 +258,16 @@ export class Clowns {
         this.clowns.set(s.id, c);
       }
       if (s.ms) c.deadUntil = this.now + s.ms / 1000;
+    }
+  }
+
+  /** One taken away: his body and his health bar too (it hangs apart, over where he walks). */
+  private drop(c: Clown): void {
+    c.group.removeFromParent();
+    if (c.bar) {
+      c.bar.sprite.removeFromParent();
+      c.bar.texture.dispose();
+      (c.bar.sprite.material as THREE.SpriteMaterial).dispose();
     }
   }
 

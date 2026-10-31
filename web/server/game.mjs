@@ -164,7 +164,7 @@ export class Game {
     this.lastPos = new Map(); // username -> last position, so a reconnect is checked against it
     this.catsDown = CATS.cats.map(() => 0); // cat index -> down until
     // Clowns and strongmen: id -> { id, x, y, z, kind, until (down until) }; the starting ones, then the admin's (until a restart).
-    this.clowns = new Map(CLOWNS.spots.map(([x, y, z, kind], i) => [i + 1, this.character(i + 1, x, y, z, kindOf(kind))]));
+    this.clowns = this.startingClowns();
     this.free = groundMap(); // where the strongmen have room to walk
     this.rocks = []; // strongmen's rocks in the air: { id, to, at (lands at) }
     this.nextClown = CLOWNS.spots.length + 1;
@@ -727,6 +727,9 @@ export class Game {
       }
       await this.markFurniture(m.op === 'clear');
       this.broadcast({ t: 'furn', op: 'all', list: [...this.furniture.values()], by: name, reset: m.op === 'reset' });
+      // The characters the admin placed with the planner go too: back to the starting clowns and strongmen.
+      this.clowns = this.startingClowns();
+      this.broadcast({ t: 'clowns', list: this.clownList(Date.now()) });
     } else if (m.op === 'del' && this.furniture.has(m.id)) {
       await store.deleteFurniture(m.id);
       this.furniture.delete(m.id);
@@ -854,6 +857,11 @@ export class Game {
       const d = Math.hypot(s.x - at.x, s.y + 0.9 - at.y, s.z - at.z); // from the middle of the body
       if (d < radius) this.damage(name, shooter, targetName, target, Math.round(damage * (1 - d / radius)), false, w, now);
     }
+  }
+
+  /** The clowns and strongmen everyone starts with (shared/clowns.json), before the admin adds any. */
+  startingClowns() {
+    return new Map(CLOWNS.spots.map(([x, y, z, kind], i) => [i + 1, this.character(i + 1, x, y, z, kindOf(kind))]));
   }
 
   /** Whether a player stands where nobody shoots (the school grounds, shared/zones.mjs). */

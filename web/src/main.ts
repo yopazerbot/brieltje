@@ -514,6 +514,7 @@ document.getElementById('resetfurn-btn')!.addEventListener('click', () => {
   else {
     furnishing.setAll(startLayout());
     localId = -1 - startLayout().length;
+    clowns.setAll(CLOWN_DEFAULTS); // and the characters placed with the planner go
     saveLocalFurniture();
   }
 });
