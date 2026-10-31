@@ -25,8 +25,10 @@
 //
 // A flood of reports can't inflate the numbers much: per address 20 starts and 240 minutes an hour
 // (a household playing together), at most 500 visits at once, and only known values count. The one
-// typed thing kept is a solo player's name, cleaned to letters, digits and a few signs, at most 20
-// log lines an hour per address.
+// typed thing kept is a solo player's name, cleaned to letters, digits and a few signs: at most 20
+// log lines an hour per address and 200 an hour in all. Anyone can send a report, so the names are
+// as typed, never checked; the cap in all keeps a flood from many addresses from pushing the real
+// security lines out of the log (it keeps 20,000 at most).
 
 import { createHash, randomBytes } from 'node:crypto';
 
@@ -79,6 +81,7 @@ export class Stats {
     this.starts = new Window(3600_000);
     this.minutes = new Window(3600_000);
     this.soloLog = new Window(3600_000);
+    this.soloLogAll = new Window(3600_000);
     this.visits = new Map(); // anonymous visit number -> { mode, control, together, lang, since, last }
     this.streams = new Set();
     this.dirty = { stats: true, log: [], signups: false };
@@ -273,8 +276,11 @@ export class Stats {
       lang: ONE_OF(b.lang, ['nl', 'en'], 'en'),
     };
     const name = soloName(b.name);
-    // Starting alone goes in the login log by the name typed, with the address, like joining together.
-    if (b.e === 'start' && !choice.together && this.soloLog.hit(who, 20)) this.log?.('solo_start', req, { username: name, detail: MODES[choice.mode] });
+    // Starting alone goes in the login log by the name typed, with the address, like joining together;
+    // not for a browser that asks not to be tracked.
+    if (b.e === 'start' && !choice.together && !OPTED_OUT(req) && this.soloLog.hit(who, 20) && this.soloLogAll.hit('all', 200)) {
+      this.log?.('solo_start', req, { username: name, detail: MODES[choice.mode] });
+    }
     if (OPTED_OUT(req)) {
       // not counted
     } else if (b.e === 'start' && this.starts.hit(who, 20)) {

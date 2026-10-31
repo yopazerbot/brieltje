@@ -13,7 +13,7 @@
     login_ok: ['Admin logged in', 'good', 'in'], join_ok: ['Joined with the PIN', 'good', 'in'], mp_join: ['Entered the game', '', 'in'],
     login_failed: ['Wrong password', 'bad', 'failed'], pin_failed: ['Wrong PIN', 'bad', 'failed'], pin_limited: ['PIN attempts paused', 'bad', 'failed'],
     login_admin_limited: ['Admin login paused', 'bad', 'failed'], login_blocked_kicked: ['Removed player tried again', 'bad', 'failed'],
-    solo_start: ['Started alone', '', 'solo'], kick: ['Player removed', '', 'admin'], pin_changed: ['PIN changed', '', 'admin'], rules: ['House rules changed', '', 'admin'], round_won: ['Round won', '', ''],
+    solo_start: ['Started alone (name as typed)', '', 'solo'], kick: ['Player removed', '', 'admin'], pin_changed: ['PIN changed', '', 'admin'], rules: ['House rules changed', '', 'admin'], round_won: ['Round won', '', ''],
   };
   let entries = [];
   let log = [];
