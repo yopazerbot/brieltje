@@ -1,6 +1,7 @@
 {
   "_note": "Starting layout of the main house: one piece per row (item, x, y, z, turn, note).",
   "version": 7,
+  "restore": 1,
   "pieces": [
     ["bed180", 7.58, 0.01, 2.06, -1.5708, "master bedroom: headboard against the east wall, foot towards the room"],
     ["nightstand", 8.4, 0.01, 0.86, -1.5708, ""],

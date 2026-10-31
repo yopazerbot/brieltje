@@ -173,6 +173,8 @@ const en = {
   'lb.empty': 'No fights yet. Play a round in Action mode.',
 
   // ---- The admin's tab
+  'adm.you': 'You',
+  'adm.turbo': 'Move extremely fast (15 times, walking and flying)',
   'adm.rules': 'House rules',
   'adm.flying': 'Flying allowed',
   'adm.furniture': 'Players can move furniture',
@@ -191,6 +193,7 @@ const en = {
   'adm.newRound': 'New round',
   'adm.newRoundSub': 'Fighting scores back to zero',
   'adm.clearFurn': 'Remove all furniture',
+  'adm.clearFurnSure': 'Sure? Click again to remove it all',
   'adm.clearFurnSub': 'For everyone',
   'adm.people': 'People',
   'adm.unavailable': 'Admin data unavailable: {msg}',
@@ -266,7 +269,7 @@ const en = {
   'key.rightStick': 'Right stick',
   'key.l3': '{key} (click the left stick)',
   'key.space': 'Space',
-  'key.ctrlC': 'Ctrl or C',
+  'key.ctrlC': 'C',
   'key.leftClick': 'Left click',
   'key.rightClick': 'Right click',
   'key.weaponKeys': '1 to 4, mouse wheel, {q} for the last one',
@@ -693,6 +696,8 @@ const nl = {
   'lb.empty': 'Nog geen gevechten. Speel een ronde in Actie.',
 
   // ---- The admin's tab
+  'adm.you': 'Jij',
+  'adm.turbo': 'Extreem snel bewegen (15 keer zo snel, wandelen en vliegen)',
   'adm.rules': 'Huisregels',
   'adm.flying': 'Vliegen toegestaan',
   'adm.furniture': 'Spelers mogen meubels verzetten',
@@ -711,6 +716,7 @@ const nl = {
   'adm.newRound': 'Nieuwe ronde',
   'adm.newRoundSub': 'Gevechtsscores terug op nul',
   'adm.clearFurn': 'Alle meubels weghalen',
+  'adm.clearFurnSure': 'Zeker? Klik nog eens om alles weg te halen',
   'adm.clearFurnSub': 'Voor iedereen',
   'adm.people': 'Spelers',
   'adm.unavailable': 'Beheergegevens niet beschikbaar: {msg}',
@@ -786,7 +792,7 @@ const nl = {
   'key.rightStick': 'Rechterstick',
   'key.l3': '{key} (druk de linkerstick in)',
   'key.space': 'Spatie',
-  'key.ctrlC': 'Ctrl of C',
+  'key.ctrlC': 'C',
   'key.leftClick': 'Linkermuisknop',
   'key.rightClick': 'Rechtermuisknop',
   'key.weaponKeys': '1 tot 4, scrollwiel, {q} voor het vorige',

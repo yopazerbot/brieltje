@@ -43,7 +43,7 @@ The whole project was made with AI. Yoshi Parlevliet, a cybersecurity consultant
 |---|---|---|
 | Move, look | Left stick, right stick | W A S D (Z Q S D on AZERTY), mouse |
 | Sprint, jump | L3, ✕ | Shift, Space |
-| Fly up / down | Hold ✕ / ○ | Hold Space / Ctrl |
+| Fly up / down | Hold ✕ / ○ | Hold Space / C |
 | Use (doors, cars, horses, portals) | △ | E |
 | Map (the menu's first tab) | Press the touchpad | M |
 | Shoot, aim (Action mode) | R2, L2 | Left click, right click |

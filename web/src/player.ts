@@ -24,10 +24,12 @@ export class Player {
   pitch = 0;
   /** Walking speed in m/s; set from the settings (sprint is 2.5 times this) */
   walkSpeed = 1.4;
+  /** Times faster, walking and flying: 1, or 15 for the admin who asks for it (src/main.ts). */
+  turbo = 1;
   flying = false;
   /** Off when the admin has turned flying off in multiplayer */
   canFly = true;
-  /** Holding Ctrl / C / Circle on the ground: lower, slower, steadier aim, quieter steps */
+  /** Holding C / Circle on the ground: lower, slower, steadier aim, quieter steps */
   crouching = false;
   private crouchT = 0;
   /** 0..1: lowers and tilts the view when you die */
@@ -91,7 +93,7 @@ export class Player {
     // Walking, relative to where you look. Crouching: slow, no sprint.
     this.crouching = !this.flying && input.downHeld;
     this.crouchT += ((this.crouching ? 1 : 0) - this.crouchT) * (1 - Math.exp(-dt * 12));
-    const speed = this.crouching ? this.walkSpeed * 0.45 : this.walkSpeed * (input.sprint ? SPRINT_FACTOR : 1);
+    const speed = (this.crouching ? this.walkSpeed * 0.45 : this.walkSpeed * (input.sprint ? SPRINT_FACTOR : 1)) * this.turbo;
     const sin = Math.sin(this.yaw);
     const cos = Math.cos(this.yaw);
     const tx = (-sin * input.moveY + cos * input.moveX) * speed;
@@ -134,7 +136,7 @@ export class Player {
     camera.rotation.set(this.pitch, this.yaw, this.down * 0.5, 'YXZ');
   }
 
-  /** Jumping, falling, and Minecraft-style flying (hold jump to rise, Ctrl/C or Circle to sink). */
+  /** Jumping, falling, and Minecraft-style flying (hold jump to rise, C or Circle to sink). */
   private vertical(dt: number, input: FrameInput): void {
     const grounded = !this.flying && this.vy <= 0 && this.feet <= this.ground.y + 0.001;
 
@@ -150,7 +152,7 @@ export class Player {
     if (!this.flying && this.canFly && this.holdTime > FLY_HOLD) this.flying = true;
 
     if (this.flying) {
-      this.vy = (input.jumpHeld ? FLY_SPEED : 0) - (input.downHeld ? FLY_SPEED : 0);
+      this.vy = ((input.jumpHeld ? FLY_SPEED : 0) - (input.downHeld ? FLY_SPEED : 0)) * Math.min(this.turbo, 8);
     } else {
       // Walking down stairs: stay on the steps. Only a real drop makes you fall.
       if (this.vy === 0 && this.feet - this.ground.y <= STEP_UP) {

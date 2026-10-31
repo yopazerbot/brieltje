@@ -102,6 +102,8 @@ const FURNITURE = shared('furniture.json'); // planner catalogue: which items ex
 const FURNITURE_IDS = new Set(FURNITURE.items.map((i) => i.id));
 const DEFAULT_FURNITURE = shared('default_furniture.json').pieces.map(([item, x, y, z, yaw]) => ({ item, x, y, z, yaw }));
 const LAYOUT_VERSION = String(shared('default_furniture.json').version ?? 1);
+// Bumped in the layout file to put the starting layout back once, even over changes (Yoshi, 31 Oct 2026: the furniture was gone).
+const LAYOUT_RESTORE = String(shared('default_furniture.json').restore ?? 0);
 /** House rules the admin sets in the settings, with their defaults. */
 const RULES = { flying: true, furniture: true, names: true, maxPlayers: 4, pin: true, portals: true, travel: true };
 /** A valid value for a rule: on/off, or a number of players from 2 to MAX_PLAYERS. */
@@ -118,6 +120,7 @@ const PROTECT_MS = 2000; // can't be hurt just after respawning (ends when you s
 const ROUND_BREAK_MS = 8000;
 const MAX_HIT_RANGE = 120; // m
 const MAX_SPEED = 16; // m/s: sprinting is 10, falling off the roof about 13
+const ADMIN_SPEED = 16 * 15; // m/s: the admin may move extremely fast (src/player.ts turbo)
 const CAR_SPEED = Math.max(...Object.values(CARS.cars).map((c) => c.maxSpeed)) * 1.2; // m/s in a car, with room for network jitter
 const HORSE_SPEED = HORSES.gallop * 1.3; // m/s on horseback
 const TRAVEL_MS = 1500; // at most one trip through the portals this often
@@ -389,7 +392,7 @@ export class Game {
       // speed for its driver; at most half a second's worth stored) and each update spends it,
       // however often updates come. A faked jump only gets as far as running would; a lagging
       // player catches up.
-      const speed = inCar ? CAR_SPEED : horse ? HORSE_SPEED : MAX_SPEED;
+      const speed = inCar ? CAR_SPEED : horse ? HORSE_SPEED : player.role === 'admin' ? ADMIN_SPEED : MAX_SPEED;
       const budget = Math.min(speed * 0.5 + 0.5, player.budget + (speed * (now - player.movedAt)) / 1000);
       const dx = next.x - prev.x, dy = next.y - prev.y, dz = next.z - prev.z;
       const dist = Math.hypot(dx, dy, dz);
@@ -657,7 +660,13 @@ export class Game {
     // planner began).
     const seeded = await store.getMeta('furniture_seeded');
     this.furnitureEdited = (await store.getMeta('furniture_edited')) === '1';
-    if ((!seeded && !list.length) || (seeded && seeded !== LAYOUT_VERSION && !this.furnitureEdited)) {
+    const restore = (await store.getMeta('furniture_restore')) !== LAYOUT_RESTORE;
+    if (restore) {
+      await store.setMeta('furniture_restore', LAYOUT_RESTORE);
+      await store.setMeta('furniture_edited', '0');
+      this.furnitureEdited = false;
+    }
+    if (restore || (!seeded && !list.length) || (seeded && seeded !== LAYOUT_VERSION && !this.furnitureEdited)) {
       await store.clearFurniture();
       for (const f of DEFAULT_FURNITURE) await store.addFurniture({ ...f, by: 'layout' });
       await store.setMeta('furniture_seeded', LAYOUT_VERSION);

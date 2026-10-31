@@ -212,7 +212,8 @@ export class BigMap {
     this.you = { ...you };
     this.root.classList.remove('hidden');
     this.resize();
-    if (!this.selected) this.whole();
+    // Always round where you are (Yoshi), close enough to see the streets; the fit button shows it all.
+    this.centre(you.x, you.z, Math.max(this.fit * 2.5, 1.2));
     this.showHelp();
   }
 

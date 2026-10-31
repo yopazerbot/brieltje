@@ -407,8 +407,15 @@ let localId = -1;
 /** The starting layout, as pieces with local ids. */
 const startLayout = (): Piece[] =>
   DEFAULT_FURNITURE.pieces.map(([item, x, y, z, yaw], i) => ({ id: -1 - i, item: String(item), x: Number(x), y: Number(y), z: Number(z), yaw: Number(yaw) }));
+const LOCAL_RESTORE = 'briel.furnitureRestore';
 function loadLocalFurniture(): void {
   try {
+    // The starting layout put back once when the layout file asks (its "restore" number), over any changes.
+    const restore = String((DEFAULT_FURNITURE as { restore?: number }).restore ?? 0);
+    if (localStorage.getItem(LOCAL_RESTORE) !== restore) {
+      localStorage.removeItem(LOCAL_FURNITURE);
+      localStorage.setItem(LOCAL_RESTORE, restore);
+    }
     const saved = localStorage.getItem(LOCAL_FURNITURE);
     const list = saved === null ? startLayout() : (JSON.parse(saved) as Piece[]);
     furnishing.setAll(list);
@@ -463,7 +470,26 @@ touch.onDone = togglePlanner; // the touch controls' Done button
 window.addEventListener('keydown', (e) => {
   if (e.code === 'KeyP' && !e.repeat && !typing(e) && !menu.open) togglePlanner(); // while playing; the menu has its button
 });
-document.getElementById('clearfurn-btn')!.addEventListener('click', () => net.send({ t: 'furn', op: 'clear' }));
+// Removing all the furniture, for everyone, asks a second click (a stray Enter or ✕ in the menu took it all once).
+{
+  const clear = document.getElementById('clearfurn-btn')!;
+  const label = clear.querySelector('b')!;
+  let armed = 0;
+  clear.addEventListener('click', () => {
+    if (!armed) {
+      label.textContent = t('adm.clearFurnSure');
+      armed = window.setTimeout(() => {
+        armed = 0;
+        label.textContent = t('adm.clearFurn');
+      }, 4000);
+      return;
+    }
+    clearTimeout(armed);
+    armed = 0;
+    label.textContent = t('adm.clearFurn');
+    net.send({ t: 'furn', op: 'clear' });
+  });
+}
 document.getElementById('resetfurn-btn')!.addEventListener('click', () => {
   if (net.connected) net.send({ t: 'furn', op: 'reset' });
   else {
@@ -575,6 +601,24 @@ const maxSlider = $('set-max') as HTMLInputElement;
 const pinBox = $('set-pin') as HTMLInputElement;
 const portalsBox = $('set-portals') as HTMLInputElement;
 const travelBox = $('set-travel') as HTMLInputElement;
+// The admin can move extremely fast (Yoshi): their own choice, kept on this device; the server lets an admin that fast.
+const turboBox = $('set-turbo') as HTMLInputElement;
+try {
+  turboBox.checked = localStorage.getItem('briel.turbo') === '1';
+} catch {
+  // storage blocked: off
+}
+function applyTurbo(): void {
+  player.turbo = me?.role === 'admin' && turboBox.checked ? 15 : 1;
+}
+turboBox.addEventListener('change', () => {
+  try {
+    localStorage.setItem('briel.turbo', turboBox.checked ? '1' : '0');
+  } catch {
+    // storage blocked: for this visit
+  }
+  applyTurbo();
+});
 function applyRules(next: Rules): void {
   rules = next;
   player.canFly = next.flying;
@@ -633,6 +677,7 @@ maxSlider.addEventListener('change', () => net.send({ t: 'rules', maxPlayers: Nu
  * and the connection to the others.
  */
 function followAccount(account: Me | null): void {
+  queueMicrotask(applyTurbo); // after `me` is set below: the admin's speed, or back to normal
   $('mp-join-here').classList.toggle('hidden', !!account);
   $('mp-leave').classList.toggle('hidden', !account);
   $('scores-col').classList.toggle('hidden', !account);
@@ -918,23 +963,30 @@ async function travel(to: Portal, via: 'portal' | 'chat'): Promise<void> {
   warp.style.setProperty('--warp', to.color);
   warp.classList.add('on');
   portals.pulse(player.x, player.feet, player.z, to.color, 'here');
-  if (to.village && village !== 'ready') {
-    hud.announce('Smetlede', t('travel.village'));
-    await loadVillage();
+  // Whatever happens on the way (the village failing to load, say), the flash goes and you can travel
+  // again: once it stayed on screen for good.
+  try {
+    if (to.village && village !== 'ready') {
+      hud.announce('Smetlede', t('travel.village'));
+      await loadVillage();
+    }
+    let ok = true;
+    if (net.connected) {
+      ok = await new Promise<boolean>((resolve) => {
+        trip!.answer = resolve;
+        net.send({ t: 'travel', to: to.id, via });
+        setTimeout(() => resolve(false), 3000);
+      });
+    } else {
+      await new Promise((r) => setTimeout(r, 180)); // the flash at its brightest
+    }
+    if (ok && combat.alive) arrive(to, from);
+  } catch (e) {
+    console.error('travel failed', e);
+  } finally {
+    trip = null;
+    warp.classList.remove('on');
   }
-  let ok = true;
-  if (net.connected) {
-    ok = await new Promise<boolean>((resolve) => {
-      trip!.answer = resolve;
-      net.send({ t: 'travel', to: to.id, via });
-      setTimeout(() => resolve(false), 3000);
-    });
-  } else {
-    await new Promise((r) => setTimeout(r, 180)); // the flash at its brightest
-  }
-  if (ok && combat.alive) arrive(to, from);
-  trip = null;
-  warp.classList.remove('on');
 }
 /** Out of portal `to`: in front of it looking at the place, or the car on its road. */
 function arrive(to: Portal, from: Portal | null): void {

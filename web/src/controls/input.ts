@@ -26,7 +26,7 @@ export interface FrameInput {
   jumpPressed: boolean;
   /** Jump button is held down (hold to fly up) */
   jumpHeld: boolean;
-  /** Fly down is held (Ctrl or C, or Circle on the controller) */
+  /** Fly down is held (C, or Circle on the controller) */
   downHeld: boolean;
   /** Left click (mouse captured) or R2: opens doors in Explore, shoots in Action */
   clickPressed: boolean;
@@ -82,6 +82,9 @@ function stick(x: number, y: number): [number, number] {
   return [(x / mag) * scaled, (y / mag) * scaled];
 }
 
+/** Keys the browser acts on (help, find, reload, caret browsing, the menu bar, quick find, back), kept from it while playing. */
+const BROWSER_KEYS = new Set(['F1', 'F3', 'F5', 'F6', 'F7', 'F10', 'Slash', 'Quote', 'Backspace', 'ContextMenu']);
+
 export class Input {
   padName: string | null = null;
   /** On-screen controls on a phone or tablet (when playing with touch) */
@@ -108,6 +111,10 @@ export class Input {
   private cycle = 0;
 
   constructor(private canvas: HTMLCanvasElement) {
+    window.addEventListener('keyup', (e) => {
+      // Alt on its own opens the browser's menu bar when it's let go.
+      if (!this.menuOpen() && !typing(e) && (e.code === 'AltLeft' || e.code === 'AltRight')) e.preventDefault();
+    });
     window.addEventListener('keydown', (e) => {
       if (e.code === 'Escape' && !e.repeat) this.keyMenu = true; // also from a field in the menu (the chat keeps its own Esc)
       if (typing(e)) return; // typing a name is not walking
@@ -121,6 +128,9 @@ export class Input {
       if ((e.code === 'KeyX' || e.code === 'Delete') && !e.repeat) this.keyDelete = true;
       // While playing: no page scrolling or focus jumps. In a menu they move the keyboard's focus and the sliders.
       if (!this.menuOpen() && (e.code === 'Space' || e.code === 'Tab' || e.code.startsWith('Arrow'))) e.preventDefault();
+      // And everything else stays in the game too (Yoshi): the browser's own keys (find, save, bookmark,
+      // help, reload, the menu bar) do nothing while playing. Ctrl+W and Ctrl+T are the browser's alone.
+      if (!this.menuOpen() && (e.ctrlKey || e.metaKey || e.altKey || BROWSER_KEYS.has(e.code))) e.preventDefault();
       this.keys.add(e.code);
     });
     window.addEventListener('keyup', (e) => this.keys.delete(e.code));
@@ -184,7 +194,7 @@ export class Input {
     out.moveX += (k('KeyD') || k('ArrowRight') ? 1 : 0) - (k('KeyA') || k('ArrowLeft') ? 1 : 0);
     out.sprint = k('ShiftLeft') || k('ShiftRight');
     out.jumpHeld = k('Space');
-    out.downHeld = k('ControlLeft') || k('ControlRight') || k('KeyC');
+    out.downHeld = k('KeyC'); // not Ctrl: Ctrl with a walking key is the browser's (Ctrl+W closes the tab)
     out.scoreHeld = k('Tab');
     out.throttle = k('KeyW') || k('ArrowUp') ? 1 : 0;
     out.brake = k('KeyS') || k('ArrowDown') ? 1 : 0;

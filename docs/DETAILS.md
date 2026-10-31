@@ -24,13 +24,13 @@ Open **http://localhost:5173** in Chrome or Edge. Pick a nickname and choose **K
 | Look | Right stick | Mouse |
 | Sprint | L3 (click the left stick) | Hold Shift |
 | Jump | ✕ | Space |
-| Fly up / down | Hold ✕ / ○ | Hold Space / Ctrl or C |
+| Fly up / down | Hold ✕ / ○ | Hold Space / C |
 | Stop flying | Double-tap ✕ | Double-tap Space |
 | Open or close a door | R2 or △ (△ in Action mode) | Click or E (E in Action mode) |
 | Shoot / aim / reload (Action mode) | R2 / L2 / □ | Left click / right click / R |
 | Switch weapon | D-pad up / down, L1 | 1 to 4, mouse wheel, Q (A on AZERTY) for the last one |
 | Throw a grenade (Action mode) | R1 | G |
-| Crouch | Hold ○ | Hold Ctrl or C |
+| Crouch | Hold ○ | Hold C |
 | FPS counter (also in Settings) | Create | F |
 | Map (the menu's first tab; again to play on) | Press the touchpad | M (or click the minimap; on a phone, tap it) |
 | Minimap on / off | Settings | N, or Settings |
