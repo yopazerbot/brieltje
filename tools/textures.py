@@ -344,6 +344,31 @@ def asphalt(size=1024, seed=41):
     return albedo, normal, rough
 
 
+def road_concrete(size=1024, seed=53):
+    """Concrete road slabs as Kapellenhoek, Kapelleweg and Briel have them (Street View, Oct 2026): a brushed,
+    worn surface with the coarse aggregate showing through in places, small pores and grit, and only a faint
+    mottle: the slabs, joints, cracks and the darker wheel tracks come from the game (web/src/world/roadDetail.ts),
+    so they don't repeat with the texture. Light and neutral, for the game to tint. Tile = 2 m: 2 mm a pixel."""
+    rng = np.random.default_rng(seed)
+    noise = lambda *cells: sum(w * value_noise((size, size), c, rng) for c, w in cells)
+    # The stones: patches where the cement skin has worn off show grey-brown and light chips, 3 to 10 mm.
+    chips = noise((3, 0.55), (5, 0.45))
+    worn = np.clip((noise((48, 0.6), (16, 0.4)) - 0.45) * 2.2, 0, 1)
+    stones = np.clip((chips - 0.56) * 5, 0, 1) * (0.35 + 0.65 * worn)
+    tint = (rng.random(64)[(np.floor(chips * 63)).astype(int)] - 0.5)[..., None] * np.array([0.10, 0.09, 0.07])
+    # Brushed across the slab (the finish of a concrete road): faint streaks along v.
+    streaks = np.asarray(Image.fromarray((value_noise((size, size // 64), 1, rng) * 255).astype(np.uint8)).resize((size, size), Image.BILINEAR), np.float32) / 255
+    pores = np.clip((value_noise((size, size), 2, rng) - 0.9) * 10, 0, 1)
+    grit = rng.random((size, size)) - 0.5
+    mottle = noise((128, 0.6), (64, 0.4))
+    tone = 0.78 + 0.04 * (streaks - 0.5) + 0.05 * grit - 0.1 * (mottle - 0.5) - 0.25 * pores
+    color = tone[..., None] * np.array([1.0, 0.995, 0.975]) - stones[..., None] * (0.17 - tint)
+    height = 0.6 * stones - 0.8 * pores + 0.08 * streaks + 0.015 * grit
+    rough = 0.9 - 0.08 * stones + 0.05 * (mottle - 0.5) + 0.05 * pores
+    return (Image.fromarray((np.clip(color, 0, 1) * 255).astype(np.uint8)), normal_map(height, 1.6),
+            Image.fromarray((np.clip(rough, 0, 1) * 255).astype(np.uint8)))
+
+
 def generated(sizes):
     """The textures made here (no downloads); adds their real sizes in metres to `sizes`."""
     albedo, normal, rough, claustra = brick()
@@ -361,16 +386,18 @@ def generated(sizes):
 
 
 # Generated surfaces with a colour, normal and roughness map: how they are made, the real size of
-# one texture tile in metres and the colour map's size in pixels (the floor tiles' 4.8 m need 2048).
+# one texture tile in metres and the colour map's size in pixels (the floor tiles' 4.8 m need 2048);
+# a fourth number is the normal map's size where 1024 would only add download (the road's fine grit).
 SURFACES = {"nb_brick": (standard_brick, 1.76, 1024), "roof_tiles": (roof_tiles, 1.2, 1024),
-            "floor_tile": (large_tile, 4.8, 2048), "cladding": (slats, 1.8, 1024), "asphalt": (asphalt, 2.0, 1024)}
+            "floor_tile": (large_tile, 4.8, 2048), "cladding": (slats, 1.8, 1024), "asphalt": (asphalt, 2.0, 1024),
+            "road_concrete": (road_concrete, 2.0, 1024, 512)}
 
 
 def surface(name, sizes):
-    make, tile, px = SURFACES[name]
+    make, tile, px, *normal_px = SURFACES[name]
     albedo, normal, rough = make()
     save_webp(albedo, WEB / f"{name}_color.webp", px, 86)
-    save_webp(normal, WEB / f"{name}_normal.webp", 1024, 88)
+    save_webp(normal, WEB / f"{name}_normal.webp", normal_px[0] if normal_px else 1024, 88)
     save_webp(rough, WEB / f"{name}_rough.webp", 512)
     sizes[name] = tile
 

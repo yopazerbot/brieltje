@@ -65,6 +65,7 @@ import { typing } from './keys';
 import { route, streetAt } from './ui/route';
 import { HomeLife } from './world/homeLife';
 import { HomeStreet, withoutModelled } from './world/homeStreet';
+import { buildRoadDetail, roadPaint, withRoadDetail } from './world/roadDetail';
 import { RoadLife } from './world/roadLife';
 import { fitStreetModel, loadStreetModel } from './world/streetModel';
 import { CAR_REACH, CAR_SLOW, findPortal, PORTALS, portalNear, type Portal } from '../shared/portals.mjs';
@@ -233,8 +234,11 @@ const detailAt: [number, number][] = [[4.45, -3]]; // trees get their full crown
 const detail = (x: number, z: number) => detailAt.some(([cx, cz]) => Math.hypot(x - cx, z - cz) < 160);
 // The houses round the two portals at home are our own models (world/homeStreet.ts): their open-data blocks aren't drawn.
 const ringData = withoutModelled(house.surroundings ?? { roofs: [], trees: [] });
-const ringTiles = (s: typeof ringData.kept) => [...splitTiles(s)].map(([key, t]) => ({ key, pieces: buildTile(t, poles, renderer, house.ground, detail) }));
+const ringTiles = (s: typeof ringData.kept) => [...splitTiles(withRoadDetail(s))].map(([key, t]) => ({ key, pieces: buildTile(t, poles, renderer, house.ground, detail) }));
 tiles.addSet(ringTiles(ringData.kept), true);
+// The streets in detail (world/roadDetail.ts) in place of the plain road surface: the ring's now, the village's with it.
+const ringRoads = buildRoadDetail(false, renderer, house.ground);
+tiles.addSet(ringRoads.tiles, true);
 const homeStreet = new HomeStreet(tiles, renderer, house.ground, ringData.removed, (s) => tiles.addSet(ringTiles(s), true));
 const horizon = buildHorizon(center, house.ground);
 scene.add(tiles.group, horizon);
@@ -242,7 +246,7 @@ scene.add(tiles.group, horizon);
 // direction is known (the real-time sun shadow only covers the house).
 const groundShade = new GroundShade(center);
 groundShade.apply(grassMat, 0.35);
-for (const m of groundFamilies(renderer)) groundShade.apply(m);
+for (const m of [...groundFamilies(renderer), roadPaint]) groundShade.apply(m);
 void Promise.all([environmentReady, homeStreet.ready]).then(() => {
   tiles.showAll(); // the ring's tiles beyond the draw distance throw shadows too
   groundShade.bake(renderer, scene, sun, [built.group, hedgeLumps, doors.group, tiles.group], house.ground);
@@ -355,6 +359,7 @@ function adaptQuality(dt: number): void {
 const world = new World(house.prisms, house.ground);
 world.addPrisms(house.surroundings?.prisms ?? []);
 world.addPrisms(homeStreet.blocks);
+world.addPrisms(ringRoads.blocks); // the pavements, a few centimetres up
 world.setDips(house.dips ?? []);
 const player = new Player(world, house.spawn);
 // Phones and tablets: touch controls (offered on any touch screen: src/start.ts).
@@ -1830,13 +1835,16 @@ async function buildVillage(): Promise<void> {
       models.push(street);
     }
   }
-  const drawn = withoutLandmarks(data, models.map((m) => m.userData.landmark as string), models.flatMap((m) => (m.userData.replaces as Ring[] | undefined) ?? []));
+  const drawn = withRoadDetail(withoutLandmarks(data, models.map((m) => m.userData.landmark as string), models.flatMap((m) => (m.userData.replaces as Ring[] | undefined) ?? [])));
   const made: { key: string; pieces: ReturnType<typeof buildTile> }[] = [];
   for (const [key, t] of splitTiles(drawn, first)) {
     made.push({ key, pieces: buildTile(t, poles, renderer, house.ground, detail) });
     await new Promise((r) => setTimeout(r, 0)); // one tile at a time, between frames
   }
   tiles.addSet(made, false); // a set of its own, apart from the ring's (no shadow pass: the sun's shadow is round the house)
+  const roads = buildRoadDetail(true, renderer, house.ground);
+  tiles.addSet(roads.tiles, false);
+  world.addPrisms(roads.blocks);
   for (const m of models) {
     tiles.group.add(m); // a caster for the village's ground shading, a target for shots
     tiles.track(m);

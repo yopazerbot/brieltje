@@ -19,5 +19,6 @@
  "roof_tiles": 1.2,
  "floor_tile": 4.8,
  "cladding": 1.8,
- "asphalt": 2.0
+ "asphalt": 2.0,
+ "road_concrete": 2.0
 }

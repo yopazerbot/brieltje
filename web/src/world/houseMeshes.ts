@@ -61,6 +61,10 @@ const SPECS: Record<string, MatSpec> = {
   nb_roof: { tint: '#45403c', rough: 0.9 },
   nb_hedge: { tex: 'hedge', tint: '#7fa06a', normalScale: 1.5 }, // between gardens (no leafy lumps: there are kilometres)
   kerb: { tex: 'concrete', tint: '#dcd8d0', normalScale: 0.5 }, // concrete edge strip along the road
+  // The streets in detail (world/roadDetail.ts): concrete slabs, asphalt and concrete tiles, tinted per vertex
+  rd_concrete: { tex: 'road_concrete', tint: '#c9c6be', normalScale: 0.8 },
+  rd_asphalt: { tex: 'asphalt', tint: '#55575a', normalScale: 0.9 },
+  rd_tiles: { tex: 'terrace', tint: '#bdbab2', normalScale: 0.7 },
   // The old bungalow down the lane (tools/old_house.py)
   old_brick: { tex: 'brick', tint: '#f6efe2', normalScale: 1.0 },
   old_plinth: { tex: 'brick', tint: '#6e5a50', normalScale: 1.0 },
@@ -410,6 +414,9 @@ const FAMILIES: Record<string, string[]> = {
   pavers: ['pave_light', 'pave_warm', 'pave_grey'],
   gravel: ['gravel', 'track'],
   concrete: ['pole', 'concrete'],
+  rdconcrete: ['rd_concrete'],
+  rdasphalt: ['rd_asphalt'],
+  rdtiles: ['rd_tiles'],
 };
 const FAMILY_OF = new Map(Object.entries(FAMILIES).flatMap(([family, names]) => names.map((n) => [n, family] as const)));
 const families = new Map<string, THREE.MeshStandardMaterial>();
@@ -444,9 +451,9 @@ export function blockMaterial(name: string, renderer: THREE.WebGLRenderer): { ma
   return { material: mat, tint: new THREE.Color(SPECS[name].tint ?? '#ffffff'), tag: FAMILIES[family][0] };
 }
 
-/** The surroundings' ground covers (the road, fields, pavers, gravel), for the ground's shading. */
+/** The surroundings' ground covers (the road, fields, pavers, gravel, the streets' surfaces), for the ground's shading. */
 export function groundFamilies(renderer: THREE.WebGLRenderer): THREE.MeshStandardMaterial[] {
-  return ['road', 'field_soil', 'pave_light', 'gravel'].map((n) => blockMaterial(n, renderer).material as THREE.MeshStandardMaterial);
+  return ['road', 'field_soil', 'pave_light', 'gravel', 'rd_concrete', 'rd_asphalt', 'rd_tiles'].map((n) => blockMaterial(n, renderer).material as THREE.MeshStandardMaterial);
 }
 
 /** A colour on every vertex of a geometry (for the family materials), a byte per channel. */
