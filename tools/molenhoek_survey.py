@@ -4,23 +4,31 @@ Run from the project root (needs source/geo/ from tools/geodata.py):
     tools/.venv/Scripts/python.exe tools/molenhoek_survey.py
 
 Sources, used for measuring only (nothing of them is shipped):
-- GRB Wegsegment (the centre line; the stretch past the portal has a version of February 2026,
-  when the street was rebuilt) and ADP (the plots), Digitaal Vlaanderen, open data;
+- GRB Wegsegment (the centre lines; past the junction where the map ends they have versions of
+  February 2026, after the street was rebuilt), ADP (the plots) and GBG (the buildings, for the
+  houses past the edge of the village data), Digitaal Vlaanderen, open data;
 - web/src/data/village.json (tools/neighbours.py): each house's blocks, from the GRB outline and
   the laser scan's heights, so the model stands on the same plan as the blocks it replaces, which
   stay for walking into;
-- Street View (August 2026), from the street only: what each house looks like (brick and its
-  colour, bands and plinths, windows, doors, shutters and frames, roof and its colour, chimneys,
-  dormers, solar panels) and the street itself: since 2026 a dark asphalt carriageway with a
-  concrete gutter, a raised red cycle lane on either side, a kerb and a pavement of grey concrete
-  pavers; slim steel lamp posts, no overhead cables; a traffic island with a keep-left sign where
-  the new stretch ends towards the church; a fire hydrant on the pavement. Street View has no
-  2026 images east of about x = 790, where the street looks the same as far as can be seen.
+- Street View, from the street only (August 2026 from the church square to x = 790; east of it the
+  newest images are of 2019): what each house looks like (brick and its colour, bands and plinths,
+  windows, doors, shutters and frames, roof and its colour, chimneys, dormers, solar panels) and the
+  street itself: since 2026 a dark asphalt carriageway with a concrete gutter, a raised red cycle
+  lane on either side, a kerb and a pavement of grey concrete pavers; slim steel lamp posts, no
+  overhead cables; a traffic island with a keep-left sign where the new stretch ends towards the
+  church, with the old concrete road, its gutters and pavements beyond; a fire hydrant. From x = 785
+  the 2026 images show the new layout carrying on to the junction.
 The houses are keyed by where they stand (model x, z) and named by position, never by number.
+
+How far: Molenhoek is Smetlede's (the cadastral division of the former municipality, 41066, the
+same as the church's and the main house's plots) from the church square to well past the junction
+where the map ends; the model covers every house on it from the square (where the town centre's
+houses take over) to the corners of that junction, the last ones on the map.
 
 Writes data/molenhoek.json, in model coordinates (x, z):
 - line: the centre line from MIN_X to MAX_X, a point every STEP metres, west to east; left and
   right: the free width either side up to the nearest plot (left is the +z side, the portal's);
+  stub: the same for the first STUB metres of the branch that turns off at the junction;
 - houses: per house its plan (the front wall facing the street, the main body, the lower parts
   behind or beside it as outlines with their heights), which walls stand against a neighbour,
   its ground (as the relief: metres above the main house's ground) and the survey's description;
@@ -32,13 +40,14 @@ from pathlib import Path
 
 from shapely.affinity import affine_transform
 from shapely.geometry import LineString, Point, Polygon
-from shapely.ops import linemerge, unary_union
+from shapely.ops import linemerge, nearest_points, unary_union
 
 from neighbours import features, model_frame, polygons
 
 ROOT = Path(__file__).resolve().parents[1]
 OUT = ROOT / "data" / "molenhoek.json"
-MIN_X, MAX_X, STEP = 640.0, 900.0, 2.0
+MIN_X, MAX_X, STEP = 626.0, 936.0, 2.0  # the main line: from the church square to 45 m past the junction
+STUB = 46.0  # m of the branch that turns off at the junction
 REACH = 14.0  # m: how far to look for a plot on either side
 GROUND = -0.1  # the main house's ground level in the village data
 WALLS = {"nb_red", "nb_brown", "nb_yellow", "nb_white", "nb_grey", "nb_dark"}
@@ -150,6 +159,135 @@ HOUSES = {
         dormer=dict(s=2.2, w=2.6, h=1.6), front_gable=dict(s=(4.4, 7.7), top=9.8, apex_tint="#c98f7e")),
 }
 
+# The second survey (31 Oct 2026): the rest of Molenhoek on the map, down to the church square and on to the
+# junction where the map ends. West of the portal Street View has images of August 2026; east of x = 790 the
+# newest are of 2009 and 2019, so those houses are described as they were then. `front` as a dict lays the
+# openings out evenly along the front: per floor a list of kinds (w window, W wide window, n narrow window,
+# d door, g garage door); options as above. A negative s (in `front`, `porch`, `front_gable`, `chimneys`) is
+# measured from the front's east end. `laser`: a house past the edge of the village data, its outline from the
+# GRB and its ground from the relief; its heights are read off Street View and checked against the laser scan.
+RED, RED2, REDBROWN, BROWNBRICK, GREYBROWN, TAUPE, CREAM = "#bc6650", "#b05f48", "#a35b47", "#a18068", "#9a8f83", "#a89a8a", "#ddcca8"
+ROOF_DARK, ROOF_ORANGE, ROOF_SLATE = "#474a4e", "#b45c3c", "#50555a"
+MORE = {
+    # West of the portal, the south side (Street View, August 2026).
+    "sw_newbuild_west": dict(  # a new build: a brown-grey brick upper floor over a black ground floor, a flat roof
+        at=(647.5, -720.8), depth=None, eaves=6.6, roof="flat", wall="brick", tint="#94877a", coping="#3a3c3e",
+        plinth=(3.0, "#34373a", "render"), frame=BLACK,
+        front=[(-3.4, 3.6, 0.0, 2.6, "w", dict(f=BLACK)), (-8.0, 1.1, 0.0, 2.3, "d", dict(c="#2b2d2f")),
+               (-3.2, 1.3, 3.4, 2.4, "w", dict(f=BLACK)), (-6.2, 0.5, 3.6, 2.0, "w", dict(f=BLACK))]),
+    "sw_newbuild_east": dict(  # its other half: pale cream brick, a recessed entry, a deep window band, a dark roof
+        at=(655.4, -719.1), depth=9.0, eaves=6.3, ridge=9.2, roof="gable", roof_tint="#2f3235", wall="brick", tint=CREAM, frame=BLACK,
+        porch=dict(s=(0.4, 3.4), depth=1.3, h=2.6), solar=dict(s=(0.4, -0.4), rows=2),
+        front=[(1.9, 1.0, 0.0, 2.3, "d", dict(c="#2b2d2f", recess=1.3)), (-1.6, 1.6, 0.6, 1.6, "w", dict(f=BLACK)),
+               (3.6, 5.0, 3.45, 1.35, "w", dict(f=BLACK, surround=0.25, sc="#c9b894"))]),
+    "sw_older_beige": dict(  # a taupe brick house of two floors, roller shutters; a flat-roofed workshop behind it
+        at=(665.4, -720.5), depth=9.0, eaves=5.9, ridge=9.1, roof="gable", roof_tint=ROOF_DARK, wall="brick", tint=TAUPE, frame=WHITE,
+        plinth=(0.4, "#5f5a55"), front=dict(ground=["w", "d", "w"], first=["w", "w"], sh=0.3, door=BROWN), chimneys=[dict(s=0.6, d=4.5, w=0.6, h=1.0)]),
+    "sw_white_gable": dict(  # white render under a steep dark roof with a gable to the street; a red brick garage beside it
+        at=(682.9, -716.0), depth=8.5, eaves=4.4, ridge=9.4, roof="gable", roof_tint="#34373a", wall="render", tint="#f2f1ed", frame=ANTH,
+        front_gable=dict(s=(0.2, 4.4), top=9.0, apex_tint="#f2f1ed"),
+        front=[(1.2, 1.0, 0.0, 2.2, "d", dict(c=ANTH)), (3.1, 1.8, 0.7, 1.4, "w", {}), (2.3, 1.4, 3.3, 1.1, "w", {})]),
+    # West of the portal, the north side.
+    "n_tall_gable": dict(  # a narrow tall house in red brick, its pointed gable to the street, a stone band
+        at=(642.5, -756.2), depth=9.5, eaves=6.6, ridge=10.6, roof="front_gable", roof_tint=ROOF_DARK, wall="brick", tint=RED, frame=WHITE,
+        plinth=(0.45, "#5f5b56", "stone"), bands=[(2.95, 0.18)],
+        front=[(1.2, 1.0, 0.0, 2.3, "d", dict(c=WHITE)), (-1.9, 2.0, 0.6, 1.7, "w", dict(cu=True)),
+               (1.2, 1.0, 3.3, 1.4, "w", dict(sh=1.0, box=True)), (-3.0, 1.0, 3.3, 1.4, "w", dict(cu=True)), (-1.4, 1.0, 3.3, 1.4, "w", {}),
+               (-2.4, 0.8, 6.6, 1.0, "w", {})]),
+    "n_long_shop": dict(  # a long low red brick house and shop under a dark roof: shop windows, a roller shutter, a vending machine
+        at=(654.7, -752.4), depth=8.5, eaves=3.4, ridge=6.8, roof="gable", roof_tint=ROOF_DARK, wall="brick", tint=RED2, frame=WHITE,
+        plinth=(0.4, "#5f5b56", "stone"), eave_board=0.35, vending=7.0,
+        front=dict(ground=["W", "d", "w", "W", "W", "d"], cu=True, sh=0.0)),
+    "n_arched": dict(  # a large old house in red brick: stone surrounds, a stone band, black frames, a gate beside it
+        at=(681.7, -743.1), depth=9.0, eaves=7.1, ridge=12.2, roof="gable", roof_tint=ROOF_SLATE, wall="brick", tint=RED2, frame=BLACK,
+        plinth=(0.5, "#5f5b56", "stone"), bands=[(3.55, 0.22)], chimneys=[dict(s=0.7, d=4.5, w=0.7, h=1.3), dict(s=-0.7, d=4.5, w=0.7, h=1.3)],
+        front=[(1.6, 1.1, 0.8, 2.0, "w", dict(surround=0.16, sc="#cbc5b8")), (-6.0, 1.3, 0.0, 2.9, "d", dict(c="#2a2b2c", surround=0.16, sc="#cbc5b8")),
+               (-1.6, 1.1, 0.8, 2.0, "w", dict(surround=0.16, sc="#cbc5b8")),
+               (1.6, 1.1, 4.1, 1.8, "w", dict(surround=0.16, sc="#cbc5b8")), (-6.0, 1.1, 4.1, 1.8, "w", dict(surround=0.16, sc="#cbc5b8", cu=True)),
+               (-1.6, 1.1, 4.1, 1.8, "w", dict(surround=0.16, sc="#cbc5b8"))]),
+    "n_brown_pantile": dict(  # brown-red brick, orange pantiles, wide windows with brown frames
+        at=(700.0, -741.8), depth=8.0, eaves=5.0, ridge=8.6, roof="gable", roof_tint=ROOF_ORANGE, wall="brick", tint="#ad6a50", frame=BROWN,
+        plinth=(0.4, "#5f5b56"), front=dict(ground=["W", "d", "W"], first=["w", "w", "w"], door="#4a2f24", cu=True)),
+    "n_black_frames": dict(  # red brick done up: an anthracite roof, black frames; a garage in a low link beside it
+        at=(711.6, -743.0), depth=8.5, eaves=6.0, ridge=9.8, roof="gable", roof_tint="#34373a", wall="brick", tint=RED, frame=BLACK,
+        front=dict(ground=["w", "w", "d"], first=["w", "w", "w"], door=BLACK)),
+    # East of the portal, the south side (Street View of 2019).
+    "se_narrow_brown": dict(  # a narrow house in brown-beige brick, white roller shutters, a chimney at its east end
+        at=(801.7, -689.8), depth=8.0, eaves=6.4, ridge=9.6, roof="gable", roof_tint=ROOF_DARK, wall="brick", tint=BROWNBRICK, frame=WHITE,
+        eave_board=0.3, front=dict(ground=["d", "w"], first=["w", "w"], sh=0.5, door=BROWN), chimneys=[dict(s=-0.4, d=4.0, w=0.6, h=1.0)]),
+    "se_gable_dormer": dict(  # red-brown brick, a steep gable dormer over its west half, a french balcony
+        at=(823.8, -672.9), depth=9.0, eaves=6.0, ridge=10.3, roof="gable", roof_tint=ROOF_DARK, wall="brick", tint=REDBROWN, frame=WHITE,
+        front_gable=dict(s=(0.3, 4.3), top=9.6, apex_tint=REDBROWN), front=dict(ground=["W", "d"], first=["w", "w"], door="#2e4a36", cu=True)),
+    "se_cornice": dict(  # red brick, a white cornice along the top of its front, white frames and shutters
+        at=(831.2, -687.4), depth=9.0, eaves=6.8, ridge=9.6, roof="hip", roof_tint=ROOF_DARK, wall="brick", tint=RED, frame=WHITE,
+        plinth=(0.5, "#6a6762", "stone"), bands=[(6.5, 0.3)], front=dict(ground=["d", "W"], first=["w", "W"], sh=0.4, door=WHITE)),
+    "se_pair2_west": dict(  # a pair under one slate roof: this half red-brown, a white door, a french balcony
+        at=(845.9, -685.5), depth=9.0, eaves=6.6, ridge=10.6, roof="gable", roof_tint=ROOF_SLATE, wall="brick", tint=REDBROWN, frame=WHITE,
+        front=dict(ground=["W", "d"], first=["w", "w"], sh=0.3, door=WHITE), chimneys=[dict(s=0.5, d=4.5, w=0.6, h=1.1)]),
+    "se_pair2_east": dict(  # the other half, red brick with a gable dormer
+        at=(852.0, -685.3), depth=9.0, eaves=6.6, ridge=10.6, roof="gable", roof_tint=ROOF_SLATE, wall="brick", tint=RED, frame=WHITE,
+        front_gable=dict(s=(-4.4, -0.8), top=10.0, apex_tint=RED), front=dict(ground=["d", "W"], first=["w", "w"], sh=0.4, door=WHITE),
+        chimneys=[dict(s=-0.5, d=4.5, w=0.6, h=1.1)]),
+    # Past the edge of the village data, the south side, up to the junction (Street View of 2019).
+    "se_bay_pair_west": dict(  # a pair: this half red-brown brick, a pointed gable in the middle, a bay with a slate canopy
+        at=(864.4, -677.5), laser=True, depth=9.0, eaves=6.0, ridge=10.0, roof="gable", roof_tint=ROOF_SLATE, wall="brick", tint=REDBROWN, frame=WHITE,
+        front_gable=dict(s=(1.2, 5.0), top=9.4, apex_tint=REDBROWN), canopy=dict(s=(0.8, 3.6), y=2.6),
+        front=dict(ground=["W", "d"], first=["w", "w"], cu=True, door=WHITE)),
+    "se_bay_pair_east": dict(  # the other half, plain red brick, white shutters
+        at=(870.2, -680.1), laser=True, depth=9.0, eaves=6.0, ridge=10.0, roof="gable", roof_tint=ROOF_SLATE, wall="brick", tint=RED, frame=WHITE,
+        front=dict(ground=["d", "W"], first=["w", "w"], sh=0.5, door=WHITE)),
+    "se_twin_west": dict(whole=True,   # a red-brown brick pair with a steep gable at either outer end, white verges and frames
+        at=(882.1, -673.7), laser=True, depth=9.0, eaves=5.4, ridge=9.6, roof="gable", roof_tint=ROOF_DARK, wall="brick", tint=REDBROWN, frame=WHITE,
+        front_gable=dict(s=(0.0, 3.6), top=9.4, apex_tint=REDBROWN), verge=WHITE,
+        front=dict(ground=["w", "d"], first=["w", "w"], door=ANTH, cu=True)),
+    "se_twin_east": dict(whole=True, 
+        at=(887.3, -673.8), laser=True, depth=9.0, eaves=5.4, ridge=9.6, roof="gable", roof_tint=ROOF_DARK, wall="brick", tint=REDBROWN, frame=WHITE,
+        front_gable=dict(s=(-3.6, 0.0), top=9.4, apex_tint=REDBROWN), verge=WHITE,
+        front=dict(ground=["d", "w"], first=["w", "w"], door=WHITE, cu=True)),
+    "se_corner_west": dict(whole=True,   # the same kind of pair on the corner of the junction
+        at=(899.6, -667.5), laser=True, depth=9.0, eaves=5.4, ridge=9.6, roof="gable", roof_tint=ROOF_DARK, wall="brick", tint=RED2, frame=WHITE,
+        front_gable=dict(s=(0.0, 3.6), top=9.4, apex_tint=RED2), front=dict(ground=["w", "d"], first=["w", "w"], door=BROWN)),
+    "se_corner_east": dict(whole=True, 
+        at=(905.1, -669.1), laser=True, depth=9.0, eaves=5.4, ridge=9.6, roof="gable", roof_tint=ROOF_DARK, wall="brick", tint=RED2, frame=WHITE,
+        front_gable=dict(s=(-3.6, 0.0), top=9.4, apex_tint=RED2), front=dict(ground=["d", "w"], first=["w", "w"], door=BROWN)),
+    # East of the portal, the north side (Street View of 2019).
+    "n_oculus": dict(  # red-brown brick, a steep gable to the street with a round window, an arched garage door, orange pantiles
+        at=(808.5, -730.2), depth=9.5, eaves=4.2, ridge=10.2, roof="front_gable", roof_tint=ROOF_ORANGE, wall="brick", tint=REDBROWN, frame=BROWN,
+        oculus=dict(y=7.6, r=0.45), front=[(-3.0, 2.6, 0.0, 2.4, "g", dict(c="#6a442c", arch=True)), (-4.2, 1.0, 3.4, 1.3, "w", dict(cu=True)),
+                                          (-1.8, 1.0, 3.4, 1.3, "w", dict(cu=True)), (1.4, 1.4, 0.8, 1.4, "w", dict(cu=True))]),
+    "n_orange_row": dict(  # a row of three: this one red brick under orange tiles, green frames
+        at=(823.6, -728.9), depth=9.0, eaves=6.4, ridge=10.0, roof="gable", roof_tint=ROOF_ORANGE, wall="brick", tint=RED, frame="#3f6b4a",
+        front=dict(ground=["W", "d"], first=["w", "w"], cu=True, door="#3f6b4a")),
+    "n_farm_shop": dict(  # the middle one: red brick, a dark roof, white frames, an open garage where they sell from the farm
+        at=(832.5, -723.0), depth=9.0, eaves=6.4, ridge=10.0, roof="gable", roof_tint=ROOF_DARK, wall="brick", tint=RED2, frame=WHITE,
+        porch=dict(s=(-4.0, -1.0), depth=2.4, h=2.6),
+        front=[(1.4, 1.0, 0.0, 2.2, "d", dict(c=WHITE)), (3.4, 1.8, 0.8, 1.4, "w", dict(cu=True)),
+               (1.8, 1.3, 3.6, 1.2, "w", {}), (-2.5, 1.6, 3.6, 1.2, "w", dict(cu=True))]),
+    "n_grey_unit": dict(  # the third: grey-brown brick, a white door, roller shutters
+        at=(841.0, -727.5), depth=9.0, eaves=6.3, ridge=10.0, roof="gable", roof_tint=ROOF_DARK, wall="brick", tint=GREYBROWN, frame=WHITE,
+        front=dict(ground=["d", "W"], first=["w", "w"], sh=0.5, door=WHITE)),
+    "n_pair3_west": dict(  # a pair under one big dark roof: this half grey-brown brick, white frames
+        at=(855.2, -730.3), depth=9.0, eaves=6.4, ridge=10.6, roof="gable", roof_tint=ROOF_DARK, wall="brick", tint=GREYBROWN, frame=WHITE,
+        front=dict(ground=["w", "w", "d"], first=["w", "w", "w"], door=BROWN), chimneys=[dict(s=0.5, d=4.5, w=0.6, h=1.0)]),
+    "n_pair3_east": dict(  # the other half: red brick, its windows framed in a darker brick, a white door
+        at=(860.7, -720.7), depth=9.0, eaves=6.4, ridge=10.6, roof="gable", roof_tint=ROOF_DARK, wall="brick", tint=RED, frame=WHITE, lintels=True,
+        front=dict(ground=["d", "W"], first=["w", "W"], door=WHITE, cu=True), chimneys=[dict(s=-0.5, d=4.5, w=0.6, h=1.0)]),
+    # Past the edge of the village data, the north side, up to the junction.
+    "n_plain_west": dict(  # blurred in Street View at the owners' request: only its brick and roof, plain windows
+        at=(875.3, -716.9), laser=True, depth=9.0, eaves=6.0, ridge=9.8, roof="gable", roof_tint=ROOF_DARK, wall="brick", tint=RED, frame=WHITE,
+        front=dict(ground=["w", "d", "w"], first=["w", "w"])),
+    "n_plain_east": dict(  # red brick, a dark roof
+        at=(881.2, -713.5), laser=True, depth=9.0, eaves=6.0, ridge=9.8, roof="gable", roof_tint=ROOF_DARK, wall="brick", tint=RED2, frame=WHITE,
+        front=dict(ground=["W", "d"], first=["w", "w"], sh=0.4, door=BROWN)),
+    "n_corner_west": dict(  # a pair on the corner of the junction: this half grey-brown brick, white frames
+        at=(895.3, -714.5), laser=True, depth=9.0, eaves=6.0, ridge=9.8, roof="gable", roof_tint=ROOF_DARK, wall="brick", tint=GREYBROWN, frame=WHITE,
+        front=dict(ground=["w", "d"], first=["w", "w"], door=WHITE)),
+    "n_corner_east": dict(  # the other half: red brick, a steep gable to the street, white shutters beside the windows
+        at=(901.7, -715.0), laser=True, depth=9.0, eaves=4.8, ridge=9.8, roof="front_gable", roof_tint=ROOF_DARK, wall="brick", tint=RED, frame=WHITE,
+        shutters="#f0efeb", front=[(-1.8, 1.3, 0.8, 1.4, "w", {}), (1.6, 1.0, 0.0, 2.2, "d", dict(c=WHITE)), (-2.6, 1.2, 3.4, 1.2, "w", {})]),
+}
+HOUSES.update(MORE)
+
 # The street's furniture (model x, z), from the survey: the island where the new stretch ends towards
 # the church, the hydrant, the electricity cabinet, the warning sign for a school route.
 PROPS = [
@@ -159,52 +297,140 @@ PROPS = [
 ]
 
 
+class Relief:
+    """The relief as the browser has it (web/shared/terrain.json, tools/terrain.py): metres above the plot's ground."""
+
+    def __init__(self):
+        d = json.loads((ROOT / "web" / "shared" / "terrain.json").read_text(encoding="utf-8"))
+        digits = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/"
+        value = {c: k for k, c in enumerate(digits)}
+        s, rest, k = d["d"], [], 0
+        while k < len(s):
+            if s[k] == "~":
+                rest.append(((value[s[k + 1]] << 12) | (value[s[k + 2]] << 6) | value[s[k + 3]]) - (1 << 17))
+                k += 4
+            else:
+                rest.append(value[s[k]] - 32)
+                k += 1
+        import numpy as np
+        self.d = d
+        self.g = np.array(rest, np.int64).reshape(d["nz"], d["nx"]).cumsum(1).cumsum(0) / 100.0
+
+    def height(self, x, z):
+        d, g = self.d, self.g
+        fx = min(max((x - d["x0"]) / d["step"], 0.0), d["nx"] - 1.000001)
+        fz = min(max((z - d["z0"]) / d["step"], 0.0), d["nz"] - 1.000001)
+        i, j = int(fx), int(fz)
+        u, v = fx - i, fz - j
+        h00, h11 = g[j, i], g[j + 1, i + 1]
+        if u >= v:
+            return float(h00 + u * (g[j, i + 1] - h00) + v * (h11 - g[j, i + 1]))
+        return float(h00 + v * (g[j + 1, i] - h00) + u * (h11 - g[j + 1, i]))
+
+
+def layout(h, L):
+    """The openings of a front L m long: as listed (a negative s counted from the east end), or laid out evenly
+    from a pattern per floor."""
+    f = h["front"]
+    if isinstance(f, list):
+        return [[s_ + L if s_ < 0 else s_, w, y, hh, kind, opt] for s_, w, y, hh, kind, opt in f]
+    out = []
+    floors = [("ground", 0)] + ([("first", 1)] if h["eaves"] > 4.9 else [])
+    for name, row in floors:
+        kinds = f.get(name, [])
+        for i, k in enumerate(kinds):
+            s_ = 0.6 + (L - 1.2) * (i + 0.5) / len(kinds)
+            opt = {}
+            if f.get("cu") and (i + row) % 2 == 0:
+                opt["cu"] = True
+            if k == "d":
+                out.append([s_, 1.0, 0.0, 2.2, "d", {"c": f.get("door", "#5a4334")}])
+            elif k == "g":
+                out.append([s_, 2.5, 0.0, 2.2, "g", {"c": f.get("garage", "#e9e8e4")}])
+            else:
+                w = {"W": 1.9, "n": 0.6}.get(k, 1.25)
+                y, hh = (0.8, 1.4) if row == 0 else (3.6, 1.25)
+                if f.get("sh") and k != "n":
+                    opt.update(sh=f["sh"] * (1 if (i + row) % 2 else 0.6), box=True)
+                out.append([s_, w, y, hh, "w", opt])
+    return out
+
+
 def main():
     _, _, to_model = model_frame()
     model = lambda g: affine_transform(g, to_model)
-    # The centre line: Molenhoek's pieces merged, cut to the stretch, west to east, resampled.
+    # The centre lines: Molenhoek's pieces merged. The main line runs from the church square (MIN_X) past the
+    # portal to the junction where the map ends and on along the branch that carries on east (to MAX_X); the
+    # stub is the first STUB metres of the branch that turns off there.
     pieces = [model(LineString(f["geometry"]["coordinates"])) for f in features("Wegsegment")
               if f["properties"]["LSTRNM"] == "Molenhoek" and f["geometry"]["type"] == "LineString"]
     merged = linemerge(unary_union(pieces))
     lines = list(getattr(merged, "geoms", [merged]))
-    box = Polygon([(MIN_X, -900), (MAX_X, -900), (MAX_X, -500), (MIN_X, -500)])
-    line = max(lines, key=lambda l: l.intersection(box).length)
-    if line.coords[0][0] > line.coords[-1][0]:
-        line = LineString(line.coords[::-1])
-    pts = []
-    s = 0.0
-    while s <= line.length:
-        p = line.interpolate(s)
-        if MIN_X <= p.x <= MAX_X:
-            pts.append(p)
-        s += STEP
+    west0 = min(lines, key=lambda l: l.distance(Point(746.0, -720.0)))
+    west = west0
+    if west.coords[0][0] > west.coords[-1][0]:
+        west = LineString(west.coords[::-1])
+    junction = Point(west.coords[-1])
+    branches = [l if Point(l.coords[0]).distance(junction) < 0.5 else LineString(l.coords[::-1]) for l in lines if l is not west0]
+    branches = [l for l in branches if Point(l.coords[0]).distance(junction) < 0.5]
+    east = min(branches, key=lambda l: abs(l.coords[-1][1] - junction.y) / max(1.0, abs(l.coords[-1][0] - junction.x)))  # the straight one
+    stub = next(l for l in branches if l is not east)
+    line = LineString(list(west.coords) + list(east.coords)[1:])
+
+    def sample(l, s0, s1):
+        out, s = [], s0
+        while s <= min(s1, l.length) + 1e-6:
+            out.append(l.interpolate(s))
+            s += STEP
+        return out
+
+    pts = [p for p in sample(line, 0.0, line.length) if MIN_X <= p.x <= MAX_X]
+    stub_pts = sample(stub, 0.0, STUB)
     plots = unary_union([model(p) for f in features("ADP") for p in polygons(f["geometry"])])
-    left, right = [], []
-    for k, p in enumerate(pts):
-        a, b = pts[max(0, k - 1)], pts[min(len(pts) - 1, k + 1)]
-        n = math.hypot(b.x - a.x, b.y - a.y)
-        nx, nz = -(b.y - a.y) / n, (b.x - a.x) / n  # the +z side when the line runs to +x
-        for side, out in ((1, left), (-1, right)):
-            ray = LineString([(p.x, p.y), (p.x + nx * side * REACH, p.y + nz * side * REACH)])
-            hit = ray.intersection(plots)
-            out.append(round(min((Point(p.x, p.y).distance(g) for g in getattr(hit, "geoms", [hit]) if not g.is_empty), default=REACH), 2))
-    centre = LineString([(p.x, p.y) for p in pts])
+
+    def widths(ps):
+        left, right = [], []
+        for k, p in enumerate(ps):
+            a, b = ps[max(0, k - 1)], ps[min(len(ps) - 1, k + 1)]
+            n = math.hypot(b.x - a.x, b.y - a.y)
+            nx, nz = -(b.y - a.y) / n, (b.x - a.x) / n  # the +z side when the line runs to +x
+            for side, out in ((1, left), (-1, right)):
+                ray = LineString([(p.x, p.y), (p.x + nx * side * REACH, p.y + nz * side * REACH)])
+                hit = ray.intersection(plots)
+                out.append(round(min((Point(p.x, p.y).distance(g) for g in getattr(hit, "geoms", [hit]) if not g.is_empty), default=REACH), 2))
+        return left, right
+
+    left, right = widths(pts)
+    stub_left, stub_right = widths(stub_pts)
+    centre = unary_union([LineString([(p.x, p.y) for p in pts]), LineString([(p.x, p.y) for p in stub_pts])])
 
     village = json.loads((ROOT / "web" / "src" / "data" / "village.json").read_text(encoding="utf-8"))
     walls = [(p, Polygon(p["p"][0])) for p in village["prisms"] if p["m"] in WALLS and "d" not in p]
+    # Past the edge of the village data: the GRB's own buildings, as blocks of the same kind.
+    grb = [Polygon(list(model(g).exterior.coords)) for f in features("GBG") for g in polygons(f["geometry"])]
+    relief = Relief()
     feet = {}
     for key, h in HOUSES.items():
         at = Point(*h["at"])
+        if h.get("laser"):
+            poly = next((g for g in grb if g.contains(at)), None)
+            if poly is None:
+                raise SystemExit(f"{key}: no GRB building at {h['at']}")
+            ground = min(relief.height(x, z) for x, z in poly.exterior.coords) + GROUND
+            feet[key] = ({"y0": ground, "y1": ground + 3.0}, poly)
+            continue
         base = [(p, poly) for p, poly in walls if poly.contains(at)]
         if not base:
             raise SystemExit(f"{key}: no block at {h['at']}")
         feet[key] = min(base, key=lambda b: b[0]["y0"])
-    others = [poly for p, poly in walls]  # every building, for the walls against a neighbour
+    others = [poly for p, poly in walls] + [g for g in grb if g.centroid.x > 855]  # past the edge of the village data: the GRB's
     houses = {}
     for key, h in HOUSES.items():
         foot, poly = feet[key]
         poly = poly.buffer(0)
-        ring = list(poly.exterior.coords)[:-1]
+        # `whole`: the house is the rectangle round its outline (a stepped front the GRB draws in pieces)
+        shape = poly.minimum_rotated_rectangle if h.get("whole") else poly
+        ring = list(shape.exterior.coords)[:-1]
         # The front wall: the longest edge facing the street, within 22 m of the centre line.
         best = None
         for i in range(len(ring)):
@@ -214,9 +440,9 @@ def main():
                 continue
             mx, mz = (a[0] + b[0]) / 2, (a[1] + b[1]) / 2
             nx, nz = (b[1] - a[1]) / L, -(b[0] - a[0]) / L
-            if poly.contains(Point(mx + nx * 0.2, mz + nz * 0.2)):
+            if shape.contains(Point(mx + nx * 0.2, mz + nz * 0.2)):
                 nx, nz = -nx, -nz
-            q = centre.interpolate(centre.project(Point(mx, mz)))
+            q = nearest_points(centre, Point(mx, mz))[0]
             dx, dz = q.x - mx, q.y - mz
             dist = math.hypot(dx, dz)
             face = (nx * dx + nz * dz) / max(dist, 1e-6)
@@ -240,6 +466,8 @@ def main():
         n = (-o[0], -o[1])
         if h.get("rect"):
             main = Polygon(h["rect"])
+        elif h.get("whole"):
+            main = shape
         elif h["depth"]:
             main = Polygon([a, b, (b[0] + n[0] * h["depth"], b[1] + n[1] * h["depth"]), (a[0] + n[0] * h["depth"], a[1] + n[1] * h["depth"])])
             main = main.intersection(poly).buffer(0)
@@ -262,6 +490,14 @@ def main():
                 out.append(bool(not neighbours.is_empty and e.intersection(neighbours).length > 0.6 * e.length))
             return out
         main_ring = [list(map(lambda v: round(v, 3), c)) for c in list(main.exterior.coords)[:-1]]
+        Lf = math.dist(a, b)
+        fix = lambda v: v + Lf if v < 0 else v
+        h = dict(h)
+        for k_ in ("porch", "front_gable", "solar"):
+            if h.get(k_):
+                h[k_] = {**h[k_], "s": [fix(h[k_]["s"][0]), fix(h[k_]["s"][1]) if h[k_]["s"][1] != 0 or h[k_]["s"][0] >= 0 else Lf]}
+        if h.get("chimneys"):
+            h["chimneys"] = [{**c, "s": fix(c["s"])} for c in h["chimneys"]]
         houses[key] = {
             **{k: v for k, v in h.items() if k not in ("at",)},
             "at": list(h["at"]), "y0": round(y0, 3), "low": round(low, 2),
@@ -270,7 +506,7 @@ def main():
             "main": main_ring, "main_party": against(main_ring),
             "annex": [{"p": [[round(x, 3), round(z, 3)] for x, z in list(g.exterior.coords)[:-1]],
                        "party": against(list(g.exterior.coords)[:-1])} for g in annex],
-            "openings": [list(o_) for o_ in h["front"]],
+            "openings": layout(h, math.dist(a, b)),
         }
         houses[key].pop("front", None)
         houses[key]["front"] = [[round(a[0], 3), round(a[1], 3)], [round(b[0], 3), round(b[1], 3)]]
@@ -278,6 +514,7 @@ def main():
         "_source": "GRB Wegsegment and ADP (Digitaal Vlaanderen, open data); the houses' plans from web/src/data/village.json; "
                    "their looks from a Street View survey (August 2026), described here, no images",
         "line": [[round(p.x, 2), round(p.y, 2)] for p in pts], "left": left, "right": right, "houses": houses, "props": PROPS,
+        "stub": {"line": [[round(p.x, 2), round(p.y, 2)] for p in stub_pts], "left": stub_left, "right": stub_right},
     }, indent=None, separators=(",", ":")), encoding="utf-8")
     print(f"wrote {OUT.relative_to(ROOT)}: {len(pts)} points, {len(houses)} houses")
     for key, h in houses.items():

@@ -5,9 +5,9 @@ import { tintedMaterial } from './houseMeshes';
 import { terrain } from './terrain';
 
 /**
- * The street Molenhoek round its portal: our own Blender model (tools/molenhoek.py) of its seventeen
- * nearest houses and of the street as it was rebuilt in 2026 (asphalt, red cycle lanes, kerbs,
- * pavements), in place of the village's blocks there, which stay for walking into.
+ * The street Molenhoek: our own Blender model (tools/molenhoek.py) of its forty-seven houses from the church
+ * square to the junction where the map ends, and of the street as it was rebuilt in 2026 (asphalt, red cycle
+ * lanes, kerbs, pavements), in place of the village's blocks there, which stay for walking into.
  *
  * Its textured meshes name a shared game texture; the vertex colours tint it, so every brick colour
  * is one draw call and no graphics memory but the asphalt's. The small things (frames, gutters,
@@ -54,8 +54,13 @@ export async function loadMolenhoek(renderer: THREE.WebGLRenderer, ground: numbe
     mesh.receiveShadow = true;
     if (u.lod) small.push(mesh);
   });
+  // The small things come in three parts along the street; each one's distance is measured from its own middle.
   for (const mesh of small) {
+    mesh.geometry.computeBoundingSphere();
+    const middle = mesh.geometry.boundingSphere!.center.clone();
     const lod = new THREE.LOD();
+    lod.position.copy(middle);
+    mesh.position.sub(middle);
     mesh.parent!.add(lod);
     lod.addLevel(mesh, 0);
     lod.addLevel(new THREE.Object3D(), DETAIL);
@@ -98,14 +103,22 @@ export function fitVillage(data: VillageData, model: THREE.Object3D, first: numb
     return outlines.some((o) => near(o, mx, mz, 0.5) || ring.filter(([px, pz]) => near(o, px, pz, 0.35)).length >= ring.length * 0.8);
   };
   const street = x.street;
+  // Only what lies by the street needs the closer looks below.
+  const sx0 = Math.min(...street.map((q) => q[0])) - 5;
+  const sx1 = Math.max(...street.map((q) => q[0])) + 5;
+  const sz0 = Math.min(...street.map((q) => q[1])) - 5;
+  const sz1 = Math.max(...street.map((q) => q[1])) + 5;
+  const byStreet = (ring: [number, number][]) => ring.some(([px, pz]) => px > sx0 && px < sx1 && pz > sz0 && pz < sz1);
   const onStreet = (ring: [number, number][]) => ring.filter(([px, pz]) => near(street, px, pz, 0.2)).length >= ring.length * 0.6;
   for (const p of data.prisms ?? []) {
     if (p.lm) continue;
     if (p.d === undefined && mine(p.p[0])) p.lm = 'molenhoek';
-    else if (p.m === 'road' && p.d) {
-      // The old road under the new one: cut finer, so it follows the relief's own squares and stays under it.
-      if (p.p[0].some(([px, pz]) => px > 640 && px < 900 && pz > -760 && pz < -680)) p.d = 4;
-    } else if (p.d && !/hedge|fence/.test(p.m) && onStreet(p.p[0])) p.lm = 'molenhoek'; // pavings the new street covers
+    else if (p.d && !/hedge|fence/.test(p.m) && byStreet(p.p[0])) {
+      if (p.m !== 'road' && onStreet(p.p[0])) p.lm = 'molenhoek'; // pavings the new street covers
+      // The old road and the pavings beside the new street: cut finer, so they follow the relief's own squares and
+      // stay under the new surfaces (cut every 8 m, they rose through them in places).
+      else if (p.p[0].some(([px, pz]) => near(street, px, pz, 4))) p.d = Math.min(p.d, 4);
+    }
   }
   for (const r of data.roofs) {
     if (!r.lm && mine(r.p)) r.lm = 'molenhoek';

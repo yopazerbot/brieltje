@@ -3,17 +3,21 @@
 Run (Blender 5, no window), from the project root, after tools/molenhoek_survey.py:
   blender -b -P tools/molenhoek.py -- <out.glb>
 
-Our own model of the seventeen houses nearest the Molenhoek portal and of the street in front of
-them, from data/molenhoek.json (the plan from the open data, the survey from Street View, August
-2026; see tools/molenhoek_survey.py). Each house stands on its GRB outline with the heights of the
-village's blocks: its front as the survey describes it (brick and colour, plinth and bands, windows
-with frames, sills, shutters and net curtains, doors, an oriel, a balcony, a porch), plainer windows
-on the sides and back, the roof with its tiles, ridge, fascia, gutters and downpipes, chimneys, roof
-windows, a dormer and solar panels, and the lower parts behind under flat roofs. The street from the
-traffic island at its west end to x = 886: dark asphalt, a concrete gutter with drains, the raised
-red cycle lanes, a kerb, the pavements in grey concrete pavers; the island with its keep-left sign,
-a fire hydrant, an electricity cabinet, a warning sign; tall conifers along the empty plot where the
-portal stands. No people, no house numbers, no lettering.
+Our own model of the forty-seven houses along Molenhoek, from the church square to the junction where
+the map ends, and of the street in front of them, from data/molenhoek.json (the plan from the open data,
+the survey from Street View; see tools/molenhoek_survey.py). Each house stands on its GRB outline with
+the heights of the village's blocks (past the edge of the village data, the GRB's outline on the
+relief, with blocks of its own for walking into): its front as the survey describes it (brick and
+colour, plinth and bands, windows with frames, sills, shutters and net curtains, doors, an oriel, a
+balcony, a porch, a round window, a canopy), plainer windows on the sides and back, the roof with its
+tiles, ridge, fascia, gutters and downpipes, chimneys, roof windows, a dormer and solar panels, and the
+lower parts behind under flat roofs. The street: west of the traffic island the old concrete road (the
+village draws it) gets its gutters, kerbs and pavements; from the island to 45 m past the junction, and
+on the first stretch of the branch that turns off there, dark asphalt, a concrete gutter with drains, the
+raised red cycle lanes, a kerb, the pavements in grey concrete pavers, and grey pavers on the forecourts
+where the GRB's road surface reaches past the pavement; the island with its keep-left sign, a fire
+hydrant, an electricity cabinet, a warning sign, a bread vending machine; tall conifers along the empty
+plot where the portal stands. No people, no house numbers, no lettering.
 
 Frame: the GLB is in the game's own axes (x, y up, z), its origin on the ground at ORIGIN on the
 street by the portal (y = 0 is the relief there, tools/terrain.py); everything else stands on the
@@ -47,7 +51,7 @@ ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 DATA = json.load(open(os.path.join(ROOT, "data", "molenhoek.json"), encoding="utf-8"))
 ORIGIN = (758.0, -719.0)      # on the street by the portal (model x, z)
 GROUND = -0.1                 # the main house's ground in the game (the relief is measured from it)
-WEST_END, EAST_END = 689.0, 886.0  # the rebuilt stretch: the island at its west end, the data's end
+WEST_END, EAST_END = 689.0, 936.0  # the rebuilt stretch: the island at its west end, 45 m past the junction where the map ends
 CURTAIN = "#8e9290"           # a pane with net curtains behind it
 
 
@@ -133,6 +137,7 @@ M["mh_glass"] = principled("mh_glass", 0.06, 0.3)
 M["mh_panel"] = principled("mh_panel", 0.5)
 M["mh_detail"] = principled("mh_detail", 0.55, 0.1)
 M["mh_detail"]["lod"] = 200  # metres: drawn only nearer than this (web/src/world/molenhoek.ts)
+DETAIL_SPLIT = (705.0, 815.0)  # x where the small things go into the next part
 
 BM = {}
 for name in M:
@@ -598,120 +603,212 @@ def outward(ring, i):
 
 
 # ---------------------------------------------------------------- the street
-LINE = DATA["line"]
-LEFT, RIGHT = DATA["left"], DATA["right"]
-
-
-def stations():
-    """The centre line's points in the rebuilt stretch, each with its tangent, normal (+z side) and free widths."""
+def make_stations(line, left, right):
+    """A centre line's points, each with its tangent, normal (+z side) and free widths."""
     out = []
-    for k, (x, z) in enumerate(LINE):
-        a, b = LINE[max(0, k - 1)], LINE[min(len(LINE) - 1, k + 1)]
+    for k, (x, z) in enumerate(line):
+        a, b = line[max(0, k - 1)], line[min(len(line) - 1, k + 1)]
         (tx, tz), _ = unit(a, b)
-        out.append(dict(x=x, z=z, t=(tx, tz), n=(-tz, tx), L=LEFT[k], R=RIGHT[k]))
+        out.append(dict(x=x, z=z, t=(tx, tz), n=(-tz, tx), L=left[k], R=right[k]))
     return out
 
 
-ST = stations()
+LINE = DATA["line"]
+ST = make_stations(LINE, DATA["left"], DATA["right"])
+# The branch that turns off at the junction where the map ends (its first stretch).
+STUB = make_stations(DATA["stub"]["line"], DATA["stub"]["left"], DATA["stub"]["right"]) if DATA.get("stub") else []
 ASPH, GUT, LANE, KERB = 2.5, 2.85, 4.45, 4.6
+OLD_GUT, OLD_KERB, OLD_WALK = 2.75, 3.05, 3.2  # west of the island: the old concrete road's gutter, kerb and pavement
 # Heights above the lawn: the asphalt, the raised cycle lane, the kerb and the pavement (the game measures a block
 # out on the relief from 0.1 m above the lawn, the lawn being at GROUND, so its blocks for walking on add GROUND)
 Y_ROAD, Y_LANE, Y_KERB, Y_WALK = 0.06, 0.10, 0.15, 0.13
+ASPHALT, RED, CONC, KERB_C, PAVE = "#535558", "#b9766f", "#b3b9c0", "#bcc2c8", "#c9c5be"
 
 
-def walk_edge(k, side):
+def walk_edge(k, side, st=None):
     """How far the pavement reaches from the centre line at station k on one side (+1: +z), as street() draws it."""
-    return min(6.8, max(KERB + 0.9, ST[k]["L"] if side == 1 else ST[k]["R"]))
+    s = (st or ST)[k]
+    return min(6.8, max(KERB + 0.9, s["L"] if side == 1 else s["R"]))
 
 
 def nearest_station(x, z):
     return min(range(len(ST)), key=lambda k: (ST[k]["x"] - x) ** 2 + (ST[k]["z"] - z) ** 2)
 
 
-def ribbon(mat, ks, d0f, d1f, lift0, lift1, col, side=1):
+def band_point(k, d, side, st=None):
+    s = (st or ST)[k]
+    return (s["x"] + s["n"][0] * d * side, s["z"] + s["n"][1] * d * side)
+
+
+def ribbon(mat, ks, d0f, d1f, lift0, lift1, col, side=1, st=None):
     """A strip along the stations ks between offsets d0f(k) and d1f(k) on one side (+1: +z), lifted above the relief."""
-    rows = []
-    for k in ks:
-        s = ST[k]
-        d0, d1 = d0f(k), d1f(k)
-        p0 = (s["x"] + s["n"][0] * d0 * side, s["z"] + s["n"][1] * d0 * side)
-        p1 = (s["x"] + s["n"][0] * d1 * side, s["z"] + s["n"][1] * d1 * side)
-        rows.append((p0, p1))
-    for (a0, a1), (b0, b1) in zip(rows, rows[1:]):
+    rows = [(band_point(k, d0f(k), side, st), band_point(k, d1f(k), side, st)) for k in ks]
+    for (a0, a1), (b0, b1), ka, kb in zip(rows, rows[1:], ks, ks[1:]):
+        if kb != ka + 1:  # not next to each other: a gap in the run
+            continue
         pts = [a0, a1, b1, b0]
         face(mat, [(x, z, terrain(x, z) + (lift0 if i in (0, 3) else lift1)) for i, (x, z) in enumerate(pts)], (0, 0, 1), col)
 
 
-def riser(mat, ks, df, y_lo, y_hi, col, side, facing):
+def riser(mat, ks, df, y_lo, y_hi, col, side, facing, st=None):
     """An upright edge along offset df(k): from y_lo to y_hi above the relief, facing out (+1) or in (-1)."""
-    pts = []
-    for k in ks:
-        s = ST[k]
-        d = df(k)
-        pts.append((s["x"] + s["n"][0] * d * side, s["z"] + s["n"][1] * d * side))
-    for k, (a, b) in enumerate(zip(pts, pts[1:])):
-        s = ST[ks[k]]
+    st = st or ST
+    for ka, kb in zip(ks, ks[1:]):
+        if kb != ka + 1:
+            continue
+        a, b = band_point(ka, df(ka), side, st), band_point(kb, df(kb), side, st)
+        s = st[ka]
         out = (s["n"][0] * side * facing, s["n"][1] * side * facing, 0)
         face(mat, [(a[0], a[1], terrain(*a) + y_lo), (b[0], b[1], terrain(*b) + y_lo), (b[0], b[1], terrain(*b) + y_hi), (a[0], a[1], terrain(*a) + y_hi)], out, col)
 
 
-def band_point(k, d, side):
-    s = ST[k]
-    return (s["x"] + s["n"][0] * d * side, s["z"] + s["n"][1] * d * side)
+def walk_blocks(ks, d0f, d1f, side, y, m, st=None):
+    """Blocks for walking and driving on, a little above the relief, in pieces of 20 m."""
+    runs, cur = [], []
+    for k in ks:
+        if cur and k != cur[-1] + 1:
+            runs.append(cur)
+            cur = []
+        cur.append(k)
+    if cur:
+        runs.append(cur)
+    for run in runs:
+        for i in range(0, len(run) - 1, 10):
+            part = run[i:i + 11]
+            if len(part) < 2:
+                continue
+            ring = [band_point(k, d0f(k), side, st) for k in part] + [band_point(k, d1f(k), side, st) for k in part[::-1]]
+            SOLIDS.append({"p": [[round(x, 3), round(z, 3)] for x, z in ring], "y0": -0.3 + GROUND, "y1": y + GROUND, "m": m, "lift": True})
+
+
+def end_cap(st, k, back, d0, d1):
+    s = st[k]
+    a = (s["x"] + s["n"][0] * d0, s["z"] + s["n"][1] * d0)
+    b = (s["x"] + s["n"][0] * d1, s["z"] + s["n"][1] * d1)
+    face("mh_asphalt", [(a[0], a[1], terrain(*a) - 0.06), (b[0], b[1], terrain(*b) - 0.06), (b[0], b[1], terrain(*b) + Y_ROAD), (a[0], a[1], terrain(*a) + Y_ROAD)],
+         (s["t"][0] * back, s["t"][1] * back, 0), ASPHALT)
+
+
+def dist_to_line(p, st):
+    best = 1e9
+    for a, b in zip(st, st[1:]):
+        (tx, tz), L = unit((a["x"], a["z"]), (b["x"], b["z"]))
+        t = max(0, min(L, (p[0] - a["x"]) * tx + (p[1] - a["z"]) * tz))
+        best = min(best, math.hypot(a["x"] + tx * t - p[0], a["z"] + tz * t - p[1]))
+    return best
+
+
+def new_layout(st, ks, mouth=()):
+    """The rebuilt street on stations ks: the asphalt, and either side the gutter with its drains, the raised red
+    cycle lane, the kerb and the pavement; where a side road leaves (`mouth`, stations on the +z side) asphalt instead."""
+    ribbon("mh_asphalt", ks, lambda k: -ASPH, lambda k: ASPH, Y_ROAD, Y_ROAD, ASPHALT, st=st)
+    end_cap(st, ks[-1], 1, -ASPH, ASPH)
+    walk_blocks(ks, lambda k: -ASPH, lambda k: ASPH, 1, Y_ROAD, "road", st)
+    for side in (1, -1):
+        W = lambda k, side=side: walk_edge(k, side, st)
+        lanes = [k for k in ks if not (side == 1 and k in mouth)]
+        ribbon("mh_stone", lanes, lambda k: ASPH, lambda k: GUT, Y_ROAD + 0.002, Y_ROAD + 0.002, CONC, side, st)
+        ribbon("mh_asphalt", lanes, lambda k: GUT, lambda k: LANE, Y_LANE, Y_LANE, RED, side, st)
+        riser("mh_stone", lanes, lambda k: GUT, Y_ROAD, Y_LANE, CONC, side, -1, st)
+        ribbon("mh_stone", lanes, lambda k: LANE, lambda k: KERB, Y_KERB, Y_KERB, KERB_C, side, st)
+        riser("mh_stone", lanes, lambda k: LANE, Y_LANE, Y_KERB, KERB_C, side, -1, st)
+        ribbon("mh_pavers", lanes, lambda k: KERB, W, Y_WALK, Y_WALK, PAVE, side, st)
+        riser("mh_pavers", lanes, W, -0.06, Y_WALK, PAVE, side, 1, st)
+        riser("mh_stone", lanes, lambda k: KERB, Y_WALK, Y_KERB, KERB_C, side, 1, st)
+        walk_blocks(lanes, lambda k: GUT, W, side, Y_WALK, "pave_light", st)
+        for k in lanes[3::10]:  # the drains in the gutter, every 20 m or so
+            s = st[k]
+            x, z = band_point(k, (ASPH + GUT) / 2, side, st)
+            f = Frame((x - s["t"][0] * 0.25, z - s["t"][1] * 0.25), s["t"], (s["n"][0] * side, s["n"][1] * side), terrain(x, z))
+            f.box("mh_detail", 0, 0.5, Y_ROAD - 0.005, Y_ROAD + 0.006, -0.16, 0.16, "#2e3032")
+        if side == 1 and mouth:  # the side road's mouth: asphalt up to the pavement's line
+            m = sorted(mouth)
+            ribbon("mh_asphalt", m, lambda k: ASPH, W, Y_ROAD, Y_ROAD, ASPHALT, 1, st)
+            walk_blocks(m, lambda k: ASPH, W, 1, Y_ROAD, "road", st)
+
+
+# The village's road surface round the street (the GRB's, web/src/data/village.json): its forecourts.
+_VILLAGE = json.load(open(os.path.join(ROOT, "web", "src", "data", "village.json"), encoding="utf-8"))
+ROADS = [q["p"][0] for q in _VILLAGE["prisms"] if q["m"] == "road" and any(600 < x < 960 and -780 < z < -650 for x, z in q["p"][0])]
+del _VILLAGE
+Y_FORE = 0.06
+
+
+def in_road(x, z):
+    for ring in ROADS:
+        hit = False
+        for i in range(len(ring)):
+            (xi, zi), (xj, zj) = ring[i], ring[i - 1]
+            if (zi > z) != (zj > z) and x < (xj - xi) * (z - zi) / (zj - zi) + xi:
+                hit = not hit
+        if hit:
+            return True
+    return False
+
+
+def forecourts():
+    """Where the old road surface reaches on past the pavement's back edge, as far as 4 m: grey pavers a little
+    lower than the pavement, up to where it stops."""
+    for side in (1, -1):
+        reach = {}
+        for k in range(len(ST)):
+            W = walk_edge(k, side)
+            d = W
+            while d < W + 4.0 and in_road(*band_point(k, d + 0.25, side)):
+                d += 0.25
+            if d > W + 0.3:
+                reach[k] = d
+        ks = sorted(reach)
+        W = lambda k, side=side: walk_edge(k, side)
+        ribbon("mh_pavers", ks, W, lambda k: reach[k], Y_FORE, Y_FORE, "#bfbab2", side)
+        riser("mh_pavers", ks, lambda k: reach[k], -0.06, Y_FORE, "#bfbab2", side, 1)
+        walk_blocks(ks, W, lambda k: reach[k], side, Y_FORE, "pave_light")
 
 
 def street():
-    ks = [k for k, s in enumerate(ST) if WEST_END <= s["x"] <= EAST_END]
-    lanes = [k for k in ks if s_ok(k)]
-    ASPHALT, RED, CONC, KERB_C, PAVE = "#535558", "#b9766f", "#b3b9c0", "#bcc2c8", "#c9c5be"
-    ribbon("mh_asphalt", ks, lambda k: -ASPH, lambda k: ASPH, Y_ROAD, Y_ROAD, ASPHALT)
-    for k, back in ((ks[0], -1), (ks[-1], 1)):  # the ends: a low edge down to the old road
-        s = ST[k]
-        a = (s["x"] - s["n"][0] * ASPH, s["z"] - s["n"][1] * ASPH)
-        b = (s["x"] + s["n"][0] * ASPH, s["z"] + s["n"][1] * ASPH)
-        face("mh_asphalt", [(a[0], a[1], terrain(*a) - 0.06), (b[0], b[1], terrain(*b) - 0.06), (b[0], b[1], terrain(*b) + Y_ROAD), (a[0], a[1], terrain(*a) + Y_ROAD)],
-             (s["t"][0] * back, s["t"][1] * back, 0), ASPHALT)
+    # West of the island: the old concrete road stays (the village draws it); a concrete gutter, a kerb and the
+    # pavements of grey pavers either side, as Street View shows them in 2026.
+    old = [k for k, s in enumerate(ST) if s["x"] < WEST_END + 4.0]
     for side in (1, -1):
-        free = (lambda k: ST[k]["L"]) if side == 1 else (lambda k: ST[k]["R"])
-        W = lambda k, free=free: min(6.8, max(KERB + 0.9, free(k)))
-        ribbon("mh_stone", lanes, lambda k: ASPH, lambda k: GUT, Y_ROAD + 0.002, Y_ROAD + 0.002, CONC, side)
-        ribbon("mh_asphalt", lanes, lambda k: GUT, lambda k: LANE, Y_LANE, Y_LANE, RED, side)
-        riser("mh_stone", lanes, lambda k: GUT, Y_ROAD, Y_LANE, CONC, side, -1)
-        ribbon("mh_stone", lanes, lambda k: LANE, lambda k: KERB, Y_KERB, Y_KERB, KERB_C, side)
-        riser("mh_stone", lanes, lambda k: LANE, Y_LANE, Y_KERB, KERB_C, side, -1)
-        ribbon("mh_pavers", lanes, lambda k: KERB, W, Y_WALK, Y_WALK, PAVE, side)
-        riser("mh_pavers", lanes, W, -0.06, Y_WALK, PAVE, side, 1)
-        riser("mh_stone", lanes, lambda k: KERB, Y_WALK, Y_KERB, KERB_C, side, 1)
-        # For walking on: the lane, kerb and pavement as one block a little above the relief, in pieces of 20 m.
-        for i in range(0, len(lanes) - 1, 10):
-            part = lanes[i:i + 11]
-            if len(part) < 2:
-                continue
-            ring = [band_point(k, GUT, side) for k in part] + [band_point(k, W(k), side) for k in part[::-1]]
-            SOLIDS.append({"p": [[round(x, 3), round(z, 3)] for x, z in ring], "y0": -0.3 + GROUND, "y1": Y_WALK + GROUND, "m": "pave_light", "lift": True})
-        # the drains in the gutter, every 20 m or so
-        for k in lanes[3::10]:
-            s = ST[k]
-            d = (ASPH + GUT) / 2
-            x, z = s["x"] + s["n"][0] * d * side, s["z"] + s["n"][1] * d * side
-            f = Frame((x - s["t"][0] * 0.25, z - s["t"][1] * 0.25), s["t"], (s["n"][0] * side, s["n"][1] * side), terrain(x, z))
-            f.box("mh_detail", 0, 0.5, Y_ROAD - 0.005, Y_ROAD + 0.006, -0.16, 0.16, "#2e3032")
-    for i in range(0, len(ks) - 1, 10):  # the carriageway, for walking and driving on
-        part = ks[i:i + 11]
-        if len(part) < 2:
-            continue
-        ring = [band_point(k, -ASPH, 1) for k in part] + [band_point(k, ASPH, 1) for k in part[::-1]]
-        SOLIDS.append({"p": [[round(x, 3), round(z, 3)] for x, z in ring], "y0": -0.3 + GROUND, "y1": Y_ROAD + GROUND, "m": "road", "lift": True})
+        W = lambda k, side=side: walk_edge(k, side)
+        ribbon("mh_stone", old, lambda k: OLD_GUT, lambda k: OLD_KERB, Y_ROAD - 0.02, Y_ROAD - 0.02, CONC, side)
+        ribbon("mh_stone", old, lambda k: OLD_KERB, lambda k: OLD_WALK, Y_KERB, Y_KERB, KERB_C, side)
+        riser("mh_stone", old, lambda k: OLD_KERB, Y_ROAD - 0.02, Y_KERB, KERB_C, side, -1)
+        ribbon("mh_pavers", old, lambda k: OLD_WALK, W, Y_WALK, Y_WALK, PAVE, side)
+        riser("mh_pavers", old, W, -0.06, Y_WALK, PAVE, side, 1)
+        riser("mh_stone", old, lambda k: OLD_WALK, Y_WALK, Y_KERB, KERB_C, side, 1)
+        walk_blocks(old, lambda k: OLD_KERB, W, side, Y_WALK, "pave_light")
+    # From the island to the junction and on: the rebuilt street. Where the branch turns off at the junction,
+    # the main line's +z side gives way to the branch's mouth.
+    ks = [k for k, s in enumerate(ST) if WEST_END <= s["x"] <= EAST_END]
+    mouth = set()
+    if STUB:
+        for k in ks:
+            if dist_to_line(band_point(k, walk_edge(k, 1), 1), STUB) < walk_edge(0, 1, STUB) + 0.4:
+                mouth.add(k)
+    new_layout(ST, ks, mouth)
+    end_cap(ST, ks[0], -1, -ASPH, ASPH)
+    forecourts()
+    if STUB:
+        first = next(k for k in range(len(STUB)) if dist_to_line((STUB[k]["x"], STUB[k]["z"]), ST) >= walk_edge(ks[0], 1) + 1.2)
+        sk = list(range(first, len(STUB)))
+        new_layout(STUB, sk)
+        if mouth:  # between the main line's mouth and where the branch's own layout starts: asphalt
+            m = sorted(mouth)
+            pts = [band_point(m[0], walk_edge(m[0], 1), 1), band_point(m[-1], walk_edge(m[-1], 1), 1),
+                   band_point(first, walk_edge(first, 1, STUB), 1, STUB), band_point(first, walk_edge(first, -1, STUB), -1, STUB)]
+            cx, cz = sum(p[0] for p in pts) / 4, sum(p[1] for p in pts) / 4
+            pts.sort(key=lambda p: math.atan2(p[1] - cz, p[0] - cx))
+            face("mh_asphalt", [(x, z, terrain(x, z) + Y_ROAD - 0.003) for x, z in pts], (0, 0, 1), ASPHALT)
+            SOLIDS.append({"p": [[round(x, 3), round(z, 3)] for x, z in pts], "y0": -0.3 + GROUND, "y1": Y_ROAD + GROUND, "m": "road", "lift": True})
 
 
 def street_outline():
-    """The new street's outline (the pavements' outer edges), for the game to hide what lay on the old one."""
-    ks = [k for k in range(len(ST)) if WEST_END + 4.0 <= ST[k]["x"] <= EAST_END]
+    """The street's outline (the pavements' outer edges), from the church square to the end of the main line, for
+    the game to hide what lay on the old one and to keep posts and signs off it: one edge west to east, the other back."""
     left, right = [], []
-    for k in ks:
-        s = ST[k]
-        wl = min(6.8, max(KERB + 0.9, s["L"]))
-        wr = min(6.8, max(KERB + 0.9, s["R"]))
+    for k, s in enumerate(ST):
+        wl, wr = walk_edge(k, 1), walk_edge(k, -1)
         left.append([round(s["x"] + s["n"][0] * wl, 2), round(s["z"] + s["n"][1] * wl, 2)])
         right.append([round(s["x"] - s["n"][0] * wr, 2), round(s["z"] - s["n"][1] * wr, 2)])
     return left + right[::-1]
@@ -737,7 +834,7 @@ def house(key, H):
     pl = H.get("plinth")
     if pl:
         kind = pl[2] if len(pl) > 2 else "stone"
-        layers = [(-99, "mh_brick" if kind == "brick" else "mh_stone", pl[1]), (pl[0], wall_mat, tint)]
+        layers = [(-99, {"brick": "mh_brick", "render": "mh_render"}.get(kind, "mh_stone"), pl[1]), (pl[0], wall_mat, tint)]
     up = H.get("upper")
     if up:
         layers.append((up["y"], {"brick": "mh_brick", "render": "mh_render", "cladding": "mh_render"}[up["wall"]], up["tint"]))
@@ -833,6 +930,10 @@ def house(key, H):
         for hh_ in holes:
             if hh_.kind in ("a", "ad"):
                 arch_top(f, hh_, tint, frame_c, CURTAIN if hh_.opt.get("cu") else "#252c30")
+            if hh_.kind == "g" and hh_.opt.get("arch"):
+                arch_top(f, hh_, tint, shade(hh_.opt.get("c", "#6a442c"), 0.8), hh_.opt.get("c", "#6a442c"))
+        if is_front:
+            extras_on_front(f, LL, H, base)
     # The roof.
     if roof == "flat" or not rect:
         flat_roof(main, base, E, H)
@@ -862,10 +963,39 @@ def house(key, H):
             holes = [] if an["party"][i] or LL < 2.4 else [Hole(LL / 2 - 0.6, LL / 2 + 0.6, 0.9, 2.1, "w", 0.12, {"f": frame_c})]
             facade(f, LL, [(0, low), (LL, low)], holes, layers)
         flat_roof(ring, base, low, {"coping": "#6d6f72"})
+        if H.get("laser"):
+            SOLIDS.append(prism_xz([tuple(q) for q in ring], base - 0.3, base + low))
+    if H.get("laser"):  # past the edge of the village data there are no blocks to walk into: the model brings its own
+        SOLIDS.append(prism_xz([tuple(q) for q in main], base - 0.3, base + E))
     garden(key, H, base)
 
 
 FRONT = {}
+
+
+def extras_on_front(f, L, H, base):
+    """A round window high in a gable, a slate canopy over the ground floor, a vending machine against the wall."""
+    oc = H.get("oculus")
+    if oc:
+        s0, y, r = L / 2, oc["y"], oc["r"]
+        seg = 14
+        ring = [(s0 + r * math.cos(2 * math.pi * k / seg), y + r * math.sin(2 * math.pi * k / seg)) for k in range(seg)]
+        face("mh_glass", [f.p(a, b, 0.012) for a, b in ring], f.out(), "#252c30")
+        for k in range(seg):
+            a0, a1 = 2 * math.pi * k / seg, 2 * math.pi * (k + 1) / seg
+            q = [(s0 + rr * math.cos(a), y + rr * math.sin(a)) for rr, a in ((r, a0), (r, a1), (r + 0.14, a1), (r + 0.14, a0))]
+            face("mh_stone", [f.p(a, b, 0.014) for a, b in q], f.out(), "#d8d3c8")
+    cn = H.get("canopy")
+    if cn:
+        s0, s1 = cn["s"]
+        y = cn["y"]
+        bottom = [f.p(s0, y, 0.0), f.p(s1, y, 0.0), f.p(s1, y - 0.35, 0.75), f.p(s0, y - 0.35, 0.75)]
+        slab(bottom, plane_up(*bottom[:3]), 0.08, H["roof_tint"], "#f0efeb", "#f0efeb")
+    vd = H.get("vending")
+    if vd:  # a bread vending machine against the wall: a grey cabinet with a dark glazed front (no lettering)
+        f.box("mh_panel", vd - 0.55, vd + 0.55, 0.0, 2.05, 0.0, 0.75, "#d9dadb")
+        f.box("mh_glass", vd - 0.42, vd + 0.2, 0.55, 1.75, 0.75, 0.77, "#2a3136")
+        f.box("mh_panel", vd - 0.62, vd + 0.62, 2.05, 2.2, -0.02, 0.85, "#c73b32")
 
 
 def side_party(ring, party, p, q):
@@ -1318,11 +1448,34 @@ root["origin"] = [ORIGIN[0], ORIGIN[1]]
 root["landmark"] = "molenhoek"
 root["outlines"] = [h["outline"] for h in DATA["houses"].values()]
 root["solids"] = SOLIDS
-root["poles"] = {"line": [p for p in LINE if 630 <= p[0] <= 895], "reach": 12.0}
+root["poles"] = {"line": LINE, "reach": 12.0}
 root["street"] = street_outline()
 root["clearTrees"] = CLEAR_TREES
 tris = 0
 objs = []
+def split_detail():
+    """The small things in three meshes by where they stand along the street (x), so each part's level of detail
+    is measured from its own middle."""
+    src = BM.pop("mh_detail")
+    lay = src.loops.layers.float_color["Color"]
+    parts = {"mh_detail_w": bmesh.new(), "mh_detail_m": bmesh.new(), "mh_detail_e": bmesh.new()}
+    for bm in parts.values():
+        bm.loops.layers.float_color.new("Color")
+    for fc in src.faces:
+        gx = fc.calc_center_median().x + ORIGIN[0]
+        key = "mh_detail_w" if gx < DETAIL_SPLIT[0] else ("mh_detail_m" if gx < DETAIL_SPLIT[1] else "mh_detail_e")
+        bm = parts[key]
+        nf = bm.faces.new([bm.verts.new(v.co) for v in fc.verts])
+        dl = bm.loops.layers.float_color["Color"]
+        for a, b in zip(fc.loops, nf.loops):
+            b[dl] = a[lay]
+    src.free()
+    for key, bm in parts.items():
+        BM[key] = bm
+        M[key] = M["mh_detail"]
+
+
+split_detail()
 for name, bm in BM.items():
     if not bm.faces:
         continue
