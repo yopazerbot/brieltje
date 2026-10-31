@@ -62,19 +62,20 @@ HOUSES = {
     "sw_pair_white": dict(  # west half of a pair: rendered white, a big window in a dark surround
         at=(697.0, -705.0), depth=9.0, eaves=6.1, ridge=9.4, roof="gable", roof_tint="#6e4a3c", wall="render", tint="#f4f3ef",
         plinth=(0.35, "#4d4a47"), frame=ANTH, solar=dict(s=(0.6, 5.4), rows=2),
-        front=[(1.6, 1.1, 0.0, 2.2, "d", dict(c="#2d3033")), (4.0, 2.2, 0.55, 1.6, "w", dict(surround=0.18)),
-               (3.2, 1.7, 3.6, 1.2, "w", dict(surround=0.18, cu=True))],
-        sides=True, chimneys=[]),
+        front=[(5.0, 1.0, 0.0, 2.3, "d", dict(c="#2d3033", recess=1.1)), (2.0, 2.4, 0.55, 1.6, "w", dict(surround=0.18)),
+               (3.4, 1.8, 3.6, 1.2, "w", dict(surround=0.18, cu=True))],
+        porch=dict(s=(4.3, 5.75), depth=1.1, h=2.45), front_wall=dict(h=0.75, tint="#9d4e3c", piers=True), sides=True, chimneys=[]),
     "sw_pair_grey": dict(  # east half: taupe brick, an arched front door, white frames, solar panels
         at=(704.0, -710.0), depth=9.0, eaves=6.1, ridge=9.4, roof="gable", roof_tint="#6e4a3c", wall="brick", tint="#a09284",
-        plinth=(0.45, "#5a5550"), frame=WHITE, solar=dict(s=(0.5, 6.2), rows=2), lintels=True,
-        front=[(1.1, 1.05, 0.0, 2.35, "ad", dict(c=WHITE)), (2.9, 1.15, 0.75, 1.45, "w", dict(cu=True)), (4.9, 1.15, 0.75, 1.45, "w", dict(cu=True)),
-               (1.4, 1.05, 3.55, 1.25, "w", {}), (3.6, 1.05, 3.55, 1.25, "w", dict(cu=True)), (5.8, 1.05, 3.55, 1.25, "w", {})],
-        chimneys=[dict(s=6.6, d=3.5, w=0.7, h=1.3)], front_wall=dict(h=0.75, tint="#9d4e3c", piers=True)),
+        plinth=(0.45, "#5a5550"), frame=WHITE, solar=dict(s=(0.5, 6.2), rows=2), lintels="stone",
+        front=[(1.1, 1.05, 0.0, 2.35, "ad", dict(c=WHITE)), (3.0, 1.2, 0.75, 1.5, "w", dict(cu=True, tr=True)), (5.2, 1.3, 0.75, 1.5, "w", dict(cu=True, tr=True)),
+               (1.6, 1.1, 3.55, 1.3, "w", dict(tr=True)), (3.7, 1.1, 3.55, 1.3, "w", dict(cu=True, tr=True)), (5.8, 1.1, 3.55, 1.3, "w", dict(tr=True))],
+        chimneys=[dict(s=6.6, d=3.5, w=0.7, h=1.3)], hedges=[(2.2, 4.2, 1.4, 0.6, "#4f6e3d")]),
     "sw_balcony_west": dict(  # a 1960s pair in light yellow brick: this half with a balcony and brown railing
         at=(717.0, -704.0), depth=10.0, eaves=6.3, ridge=10.2, roof="gable", roof_tint="#4a4c50", wall="brick", tint="#cbb38c",
         plinth=(0.35, "#6a5a4a"), frame=WHITE, gutter=BROWN,
-        front=[(2.4, 3.2, 0.0, 2.3, "w", dict(f=BROWN, sh=0.0, cu=False)), (5.0, 1.0, 0.0, 2.2, "d", dict(c=BROWN)),
+        front=[(1.3, 1.7, 0.4, 1.9, "w", dict(f=BROWN, sh=1.0, box=True, shc="#9fa09d")), (3.0, 1.0, 0.0, 2.3, "d", dict(f=BROWN, recess=0.0)),
+               (4.7, 1.7, 0.4, 1.9, "w", dict(f=BROWN, sh=1.0, box=True, shc="#9fa09d")),
                (1.4, 0.9, 3.3, 1.45, "d", dict(f=WHITE)), (2.6, 0.9, 3.3, 1.45, "w", dict(cu=True)), (3.8, 0.9, 3.3, 1.45, "w", dict(cu=True))],
         balcony=dict(s=(0.6, 4.4), y=3.15, depth=1.0, rail=BROWN), chimneys=[dict(s=3.0, d=5.0, w=0.6, h=1.1)]),
     "sw_balcony_east": dict(  # the other half: roller shutters, a strip of dark brick by the doors
@@ -96,7 +97,7 @@ HOUSES = {
         upper=dict(y=3.05, wall="cladding", tint="#e6dcc0"), plinth=(0.3, "#7a6a55"), frame=ANTH, eave_board=0.3,
         front=[(2.3, 1.0, 0.0, 2.2, "d", dict(c="#24324a", lights=4)), (5.3, 1.6, 0.8, 1.4, "w", dict(cu=True)),
                (1.6, 1.1, 3.6, 1.2, "w", dict(cu=True)), (4.9, 2.2, 3.6, 1.2, "w", dict(cu=True))],
-        roof_windows=[(2.5, 2.4)], front_wall=dict(h=0.55, tint="#cdb68e", piers=False)),
+        roof_windows=[(2.5, 2.4)], front_wall=dict(h=0.55, tint="#cdb68e", piers=True)),
     "se_gable": dict(  # joined to it on the east: red brick under a steep gable to the street
         at=(775.5, -700.0), depth=8.5, eaves=4.6, ridge=8.9, roof="front_gable", roof_tint="#3f4347", wall="brick", tint="#b3573f",
         plinth=(0.3, "#5a4c44"), frame=WHITE, verge=WHITE,
@@ -122,15 +123,15 @@ HOUSES = {
         roof_windows=[(3.2, 2.2)]),
     "n_bands": dict(  # 1970s: light brick with a dark band, the upper floor over a porch, a low hipped roof
         at=(729.7, -744.8), depth=10.4, rect=[[725.36, -735.66], [731.18, -735.34], [731.77, -745.82], [725.95, -746.15]], eaves=6.4, ridge=8.6, roof="hip", roof_tint="#3c3e42", wall="brick", tint="#cdbb95",
-        plinth=(0.3, "#5a4e44"), frame=BLACK, bands=[(2.95, 0.55, "#6e5848"), (5.6, 0.25, "#6e5848")], porch=dict(s=(2.6, 5.9), depth=1.6, h=2.85),
-        front=[(1.3, 1.6, 0.6, 1.5, "w", dict(cu=True)), (4.5, 1.0, 0.0, 2.2, "d", dict(c="#3f6b4f", recess=1.6)),
-               (3.5, 3.6, 3.65, 1.3, "w", dict(f=BLACK))]),
+        plinth=(0.3, "#5a4e44"), frame=BLACK, bands=[(2.95, 0.55, "#6e5848"), (5.6, 0.25, "#6e5848")], porch=dict(s=(3.1, 5.6), depth=6.0, h=2.85),
+        front=[(0.9, 1.0, 0.6, 1.5, "w", dict(cu=True)), (2.05, 1.0, 0.0, 2.3, "d", dict(c="#3f6b4f")), (2.75, 0.35, 0.0, 2.3, "w", {}),
+               (4.0, 2.8, 3.65, 1.3, "w", dict(f=BLACK)), (1.2, 0.9, 3.75, 1.1, "w", dict(f=BLACK))]),
     "n_pair_west": dict(  # a red brick pair; this half darker brick and anthracite
         at=(743.3, -742.3), depth=9.0, eaves=5.9, ridge=9.9, roof="gable", roof_tint="#4b4d51", wall="brick", tint="#9e4a38",
         plinth=(0.35, "#5c5853", "stone"), frame=ANTH,
         front=[(2.2, 1.9, 0.75, 1.45, "w", dict(cu=True)), (5.4, 1.0, 0.0, 2.25, "d", dict(c=ANTH, glass_strip=True)),
                (1.9, 1.3, 3.55, 1.25, "w", {}), (4.6, 1.1, 3.55, 1.25, "w", {})],
-        chimneys=[dict(s=0.5, d=4.5, w=0.6, h=1.2)]),
+        chimneys=[dict(s=0.5, d=4.5, w=0.6, h=1.2)], hedges=[(0.4, 4.3, 1.5, 0.55, "#3f5f33")], topiary=[(2.6, 1.6, 0.55, "#4a6b39")]),
     "n_pair_east": dict(  # the other half: orange-red brick, white door and frames
         at=(749.3, -743.6), depth=9.0, eaves=5.9, ridge=9.9, roof="gable", roof_tint="#4b4d51", wall="brick", tint="#c06a4c",
         plinth=(0.35, "#5c5853", "stone"), frame=WHITE,
@@ -163,9 +164,18 @@ HOUSES = {
 # junction where the map ends. West of the portal Street View has images of August 2026; east of x = 790 the
 # newest are of 2009 and 2019, so those houses are described as they were then. `front` as a dict lays the
 # openings out evenly along the front: per floor a list of kinds (w window, W wide window, n narrow window,
-# d door, g garage door); options as above. A negative s (in `front`, `porch`, `front_gable`, `chimneys`) is
-# measured from the front's east end. `laser`: a house past the edge of the village data, its outline from the
-# GRB and its ground from the relief; its heights are read off Street View and checked against the laser scan.
+# d door, D glazed double door, g garage door, F french window with a railing); options as above. A negative s
+# (in `front`, `porch`, `front_gable`, `chimneys`) is measured from the front's east end. `laser`: a house past
+# the edge of the village data, its outline from the GRB and its ground from the relief; its heights are read
+# off Street View and checked against the laser scan.
+#
+# The Street View tour (31 Oct 2026, the newest images, house by house, the portal's neighbours first) checked
+# every front against its photo and added: `tr` a top light, `fb` a french balcony's railing, `shc` the colour
+# of a roller shutter, `seg` a segmental stone arch over an opening, `lintels="stone"` pale stone lintels, `sur`
+# (in a `front` dict) a surround on every opening; `hedges` (s0, s1, out, height, colour), `topiary` (s, out,
+# radius, colour) and `garden_conifers` (s, out, height, radius) in the front garden, `fence` a white
+# post-and-rail fence on the plot line; `annex_wall` and `annex_front` the wall and street-side openings of
+# the lower parts. A door above the ground gets steps up to it.
 RED, RED2, REDBROWN, BROWNBRICK, GREYBROWN, TAUPE, CREAM = "#bc6650", "#b05f48", "#a35b47", "#a18068", "#9a8f83", "#a89a8a", "#ddcca8"
 ROOF_DARK, ROOF_ORANGE, ROOF_SLATE = "#474a4e", "#b45c3c", "#50555a"
 MORE = {
@@ -182,11 +192,16 @@ MORE = {
                (3.6, 5.0, 3.45, 1.35, "w", dict(f=BLACK, surround=0.25, sc="#c9b894"))]),
     "sw_older_beige": dict(  # a taupe brick house of two floors, roller shutters; a flat-roofed workshop behind it
         at=(665.4, -720.5), depth=9.0, eaves=5.9, ridge=9.1, roof="gable", roof_tint=ROOF_DARK, wall="brick", tint=TAUPE, frame=WHITE,
-        plinth=(0.4, "#5f5a55"), front=dict(ground=["w", "d", "w"], first=["w", "w"], sh=0.3, door=BROWN), chimneys=[dict(s=0.6, d=4.5, w=0.6, h=1.0)]),
+        plinth=(0.4, "#5f5a55"), front=dict(ground=["w", "d", "w"], first=["w", "w"], sh=0.3, door=BROWN), chimneys=[dict(s=0.6, d=4.5, w=0.6, h=1.0)],
+        fence=dict(h=0.75, c="#eeede9")),
     "sw_white_gable": dict(  # white render under a steep dark roof with a gable to the street; a red brick garage beside it
         at=(682.9, -716.0), depth=8.5, eaves=4.4, ridge=9.4, roof="gable", roof_tint="#34373a", wall="render", tint="#f2f1ed", frame=ANTH,
-        front_gable=dict(s=(0.2, 4.4), top=9.0, apex_tint="#f2f1ed"),
-        front=[(1.2, 1.0, 0.0, 2.2, "d", dict(c=ANTH)), (3.1, 1.8, 0.7, 1.4, "w", {}), (2.3, 1.4, 3.3, 1.1, "w", {})]),
+        front_gable=dict(s=(0.2, 4.4), top=9.0, apex_tint="#f2f1ed"), annex_wall=("brick", "#b05f48"),
+        plinth=(0.5, "#7a7671"),
+        front=[(1.15, 1.0, 0.5, 2.2, "d", dict(c=ANTH, glass_strip=True)), (3.0, 1.7, 1.0, 1.3, "w", {}),
+               (1.1, 0.55, 3.4, 1.15, "w", {}), (2.3, 1.4, 3.4, 1.15, "w", dict(cu=True)), (3.5, 0.55, 3.4, 1.15, "w", {}),
+               (2.3, 0.8, 6.3, 0.55, "w", {})],
+        front_wall=dict(h=0.5, tint="#8b8079", piers=False), hedges=[(2.2, 5.6, 1.3, 0.9, "#40603a")]),
     # West of the portal, the north side.
     "n_tall_gable": dict(  # a narrow tall house in red brick, its pointed gable to the street, a stone band
         at=(642.5, -756.2), depth=9.5, eaves=6.6, ridge=10.6, roof="front_gable", roof_tint=ROOF_DARK, wall="brick", tint=RED, frame=WHITE,
@@ -194,70 +209,82 @@ MORE = {
         front=[(1.2, 1.0, 0.0, 2.3, "d", dict(c=WHITE)), (-1.9, 2.0, 0.6, 1.7, "w", dict(cu=True)),
                (1.2, 1.0, 3.3, 1.4, "w", dict(sh=1.0, box=True)), (-3.0, 1.0, 3.3, 1.4, "w", dict(cu=True)), (-1.4, 1.0, 3.3, 1.4, "w", {}),
                (-2.4, 0.8, 6.6, 1.0, "w", {})]),
-    "n_long_shop": dict(  # a long low red brick house and shop under a dark roof: shop windows, a roller shutter, a vending machine
+    "n_long_shop": dict(  # a long low red brick house and shop under a dark roof: a cross gable, a shuttered window, a vending machine
         at=(654.7, -752.4), depth=8.5, eaves=3.4, ridge=6.8, roof="gable", roof_tint=ROOF_DARK, wall="brick", tint=RED2, frame=WHITE,
-        plinth=(0.4, "#5f5b56", "stone"), eave_board=0.35, vending=7.0,
-        front=dict(ground=["W", "d", "w", "W", "W", "d"], cu=True, sh=0.0)),
-    "n_arched": dict(  # a large old house in red brick: stone surrounds, a stone band, black frames, a gate beside it
+        plinth=(0.4, "#5f5b56", "stone"), eave_board=0.35, vending=4.5, front_gable=dict(s=(7.2, 11.2), top=7.4, apex_tint=RED2),
+        front=[(2.2, 2.0, 0.7, 1.6, "w", dict(sh=1.0, box=True)), (7.0, 1.6, 0.8, 1.4, "w", dict(cu=True)), (9.3, 1.0, 0.0, 2.2, "d", dict(c=WHITE)),
+               (9.2, 1.1, 4.0, 1.0, "w", {}), (12.8, 2.2, 0.7, 1.5, "w", {}), (16.4, 2.2, 0.7, 1.5, "w", dict(cu=True))]),
+    "n_arched": dict(  # a large old house in red brick: segmental stone arches, a stone band, black frames; cream garage doors beside it
         at=(681.7, -743.1), depth=9.0, eaves=7.1, ridge=12.2, roof="gable", roof_tint=ROOF_SLATE, wall="brick", tint=RED2, frame=BLACK,
         plinth=(0.5, "#5f5b56", "stone"), bands=[(3.55, 0.22)], chimneys=[dict(s=0.7, d=4.5, w=0.7, h=1.3), dict(s=-0.7, d=4.5, w=0.7, h=1.3)],
-        front=[(1.6, 1.1, 0.8, 2.0, "w", dict(surround=0.16, sc="#cbc5b8")), (-6.0, 1.3, 0.0, 2.9, "d", dict(c="#2a2b2c", surround=0.16, sc="#cbc5b8")),
-               (-1.6, 1.1, 0.8, 2.0, "w", dict(surround=0.16, sc="#cbc5b8")),
-               (1.6, 1.1, 4.1, 1.8, "w", dict(surround=0.16, sc="#cbc5b8")), (-6.0, 1.1, 4.1, 1.8, "w", dict(surround=0.16, sc="#cbc5b8", cu=True)),
-               (-1.6, 1.1, 4.1, 1.8, "w", dict(surround=0.16, sc="#cbc5b8"))]),
+        front=[(2.1, 1.1, 0.8, 2.0, "w", dict(seg=True, cu=True)), (5.0, 1.2, 0.0, 2.9, "d", dict(c="#2a2b2c", seg=True)),
+               (7.9, 1.1, 0.8, 2.0, "w", dict(seg=True, cu=True)),
+               (2.1, 1.1, 4.1, 1.8, "w", dict(seg=True)), (5.0, 1.1, 4.1, 1.8, "w", dict(seg=True, cu=True)), (7.9, 1.1, 4.1, 1.8, "w", dict(seg=True))],
+        annex_front=[(2.45, 2.6, 0.0, 2.3, "g", dict(c="#d8cfae"))]),
     "n_brown_pantile": dict(  # brown-red brick, orange pantiles, wide windows with brown frames
         at=(700.0, -741.8), depth=8.0, eaves=5.0, ridge=8.6, roof="gable", roof_tint=ROOF_ORANGE, wall="brick", tint="#ad6a50", frame=BROWN,
-        plinth=(0.4, "#5f5b56"), front=dict(ground=["W", "d", "W"], first=["w", "w", "w"], door="#4a2f24", cu=True)),
+        plinth=(0.4, "#5f5b56"), lintels=True, front=dict(ground=["W", "d", "W"], first=["w", "w", "w"], door="#4a2f24", cu=True)),
     "n_black_frames": dict(  # red brick done up: an anthracite roof, black frames; a garage in a low link beside it
         at=(711.6, -743.0), depth=8.5, eaves=6.0, ridge=9.8, roof="gable", roof_tint="#34373a", wall="brick", tint=RED, frame=BLACK,
-        front=dict(ground=["w", "w", "d"], first=["w", "w", "w"], door=BLACK)),
+        front=[(1.6, 2.5, 0.0, 2.25, "g", dict(c="#26282a")), (1.6, 1.2, 3.4, 1.1, "w", dict(f=BLACK)),
+               (5.3, 2.0, 0.7, 1.5, "w", {}), (8.3, 2.0, 0.7, 1.5, "w", {}), (10.9, 1.0, 0.0, 2.3, "d", dict(c="#1f2123", glass_strip=True)),
+               (4.9, 1.3, 3.55, 1.3, "w", {}), (7.4, 1.3, 3.55, 1.3, "w", {}), (9.9, 1.3, 3.55, 1.3, "w", {})]),
     # East of the portal, the south side (Street View of 2019).
-    "se_narrow_brown": dict(  # a narrow house in brown-beige brick, white roller shutters, a chimney at its east end
+    "se_narrow_brown": dict(  # a narrow house in brown-beige brick, white roller shutters, its door at the east end, a chimney at the west
         at=(801.7, -689.8), depth=8.0, eaves=6.4, ridge=9.6, roof="gable", roof_tint=ROOF_DARK, wall="brick", tint=BROWNBRICK, frame=WHITE,
-        eave_board=0.3, front=dict(ground=["d", "w"], first=["w", "w"], sh=0.5, door=BROWN), chimneys=[dict(s=-0.4, d=4.0, w=0.6, h=1.0)]),
-    "se_gable_dormer": dict(  # red-brown brick, a steep gable dormer over its west half, a french balcony
-        at=(823.8, -672.9), depth=9.0, eaves=6.0, ridge=10.3, roof="gable", roof_tint=ROOF_DARK, wall="brick", tint=REDBROWN, frame=WHITE,
-        front_gable=dict(s=(0.3, 4.3), top=9.6, apex_tint=REDBROWN), front=dict(ground=["W", "d"], first=["w", "w"], door="#2e4a36", cu=True)),
+        eave_board=0.3, front=dict(ground=["w", "d"], first=["w", "w"], sh=0.5, door=BROWN), chimneys=[dict(s=0.4, d=4.0, w=0.6, h=1.0)],
+        hedges=[(0.3, 3.6, 1.2, 0.5, "#7a7a3e")]),
+    "se_gable_dormer": dict(  # red-brown brick, a steep gable dormer over its east half, a french balcony
+        at=(831.2, -687.4), depth=9.0, eaves=6.0, ridge=10.3, roof="gable", roof_tint=ROOF_DARK, wall="brick", tint=REDBROWN, frame=WHITE,
+        front_gable=dict(s=(-3.9, -0.2), top=9.6, apex_tint=REDBROWN),
+        front=[(-2.0, 2.0, 0.7, 1.5, "w", dict(cu=True)), (1.3, 1.0, 0.0, 2.3, "d", dict(c="#2e4a36")), (-2.0, 1.2, 3.6, 1.7, "w", dict(fb=True)),
+               (1.6, 0.8, 3.6, 1.2, "w", {})]),
     "se_cornice": dict(  # red brick, a white cornice along the top of its front, white frames and shutters
-        at=(831.2, -687.4), depth=9.0, eaves=6.8, ridge=9.6, roof="hip", roof_tint=ROOF_DARK, wall="brick", tint=RED, frame=WHITE,
+        at=(823.8, -672.9), depth=9.0, eaves=6.8, ridge=9.6, roof="hip", roof_tint=ROOF_DARK, wall="brick", tint=RED, frame=WHITE,
         plinth=(0.5, "#6a6762", "stone"), bands=[(6.5, 0.3)], front=dict(ground=["d", "W"], first=["w", "W"], sh=0.4, door=WHITE)),
     "se_pair2_west": dict(  # a pair under one slate roof: this half red-brown, a white door, a french balcony
         at=(845.9, -685.5), depth=9.0, eaves=6.6, ridge=10.6, roof="gable", roof_tint=ROOF_SLATE, wall="brick", tint=REDBROWN, frame=WHITE,
-        front=dict(ground=["W", "d"], first=["w", "w"], sh=0.3, door=WHITE), chimneys=[dict(s=0.5, d=4.5, w=0.6, h=1.1)]),
+        front=[(1.8, 1.9, 0.8, 1.4, "w", dict(sh=0.3, box=True)), (4.8, 1.0, 0.0, 2.2, "d", dict(c=WHITE)),
+               (1.8, 1.3, 3.6, 1.7, "w", dict(fb=True)), (4.6, 1.2, 3.6, 1.25, "w", dict(sh=0.4, box=True))],
+        chimneys=[dict(s=0.5, d=4.5, w=0.6, h=1.1)], topiary=[(1.0, 1.4, 0.5, "#4f7040"), (2.4, 1.6, 0.45, "#5a7b45")]),
     "se_pair2_east": dict(  # the other half, red brick with a gable dormer
         at=(852.0, -685.3), depth=9.0, eaves=6.6, ridge=10.6, roof="gable", roof_tint=ROOF_SLATE, wall="brick", tint=RED, frame=WHITE,
         front_gable=dict(s=(-4.4, -0.8), top=10.0, apex_tint=RED), front=dict(ground=["d", "W"], first=["w", "w"], sh=0.4, door=WHITE),
-        chimneys=[dict(s=-0.5, d=4.5, w=0.6, h=1.1)]),
+        chimneys=[dict(s=-0.5, d=4.5, w=0.6, h=1.1)], topiary=[(3.6, 1.5, 0.6, "#4a6b3a"), (4.8, 1.3, 0.45, "#58784a")],
+        hedges=[(0.4, 2.4, 1.2, 0.5, "#46683a")]),
     # Past the edge of the village data, the south side, up to the junction (Street View of 2019).
     "se_bay_pair_west": dict(  # a pair: this half red-brown brick, a pointed gable in the middle, a bay with a slate canopy
         at=(864.4, -677.5), laser=True, depth=9.0, eaves=6.0, ridge=10.0, roof="gable", roof_tint=ROOF_SLATE, wall="brick", tint=REDBROWN, frame=WHITE,
         front_gable=dict(s=(1.2, 5.0), top=9.4, apex_tint=REDBROWN), canopy=dict(s=(0.8, 3.6), y=2.6),
-        front=dict(ground=["W", "d"], first=["w", "w"], cu=True, door=WHITE)),
+        front=dict(ground=["W", "D"], first=["w", "w"], cu=True, sh=0.45, door=WHITE), topiary=[(1.6, 1.6, 0.7, "#5b7d48")]),
     "se_bay_pair_east": dict(  # the other half, plain red brick, white shutters
         at=(870.2, -680.1), laser=True, depth=9.0, eaves=6.0, ridge=10.0, roof="gable", roof_tint=ROOF_SLATE, wall="brick", tint=RED, frame=WHITE,
-        front=dict(ground=["d", "W"], first=["w", "w"], sh=0.5, door=WHITE)),
+        front=dict(ground=["d", "W"], first=["w", "w"], sh=0.5, door=WHITE), hedges=[(1.2, 5.6, 2.3, 0.35, "#4a6b3a")]),
     "se_twin_west": dict(whole=True,   # a red-brown brick pair with a steep gable at either outer end, white verges and frames
         at=(882.1, -673.7), laser=True, depth=9.0, eaves=5.4, ridge=9.6, roof="gable", roof_tint=ROOF_DARK, wall="brick", tint=REDBROWN, frame=WHITE,
         front_gable=dict(s=(0.0, 3.6), top=9.4, apex_tint=REDBROWN), verge=WHITE,
-        front=dict(ground=["w", "d"], first=["w", "w"], door=ANTH, cu=True)),
+        front=dict(ground=["W", "d"], first=["F", "w"], door=WHITE, cu=True),
+        garden_conifers=[(0.8, 1.0, 4.2, 0.45), (1.7, 1.0, 4.6, 0.5)], hedges=[(2.4, 6.6, 1.8, 0.45, "#47683a")]),
     "se_twin_east": dict(whole=True, 
         at=(887.3, -673.8), laser=True, depth=9.0, eaves=5.4, ridge=9.6, roof="gable", roof_tint=ROOF_DARK, wall="brick", tint=REDBROWN, frame=WHITE,
         front_gable=dict(s=(-3.6, 0.0), top=9.4, apex_tint=REDBROWN), verge=WHITE,
-        front=dict(ground=["d", "w"], first=["w", "w"], door=WHITE, cu=True)),
+        front=dict(ground=["d", "W"], first=["w", "F"], door=ANTH, cu=True), hedges=[(2.6, 6.6, 1.6, 0.4, "#5d7a4a")]),
     "se_corner_west": dict(whole=True,   # the same kind of pair on the corner of the junction
-        at=(899.6, -667.5), laser=True, depth=9.0, eaves=5.4, ridge=9.6, roof="gable", roof_tint=ROOF_DARK, wall="brick", tint=RED2, frame=WHITE,
-        front_gable=dict(s=(0.0, 3.6), top=9.4, apex_tint=RED2), front=dict(ground=["w", "d"], first=["w", "w"], door=BROWN)),
+        at=(899.6, -667.5), laser=True, depth=9.0, eaves=5.4, ridge=9.6, roof="gable", roof_tint=ROOF_DARK, wall="brick", tint="#9a5e48", frame=WHITE,
+        front_gable=dict(s=(0.0, 3.6), top=9.4, apex_tint="#9a5e48"), verge=WHITE,
+        front=dict(ground=["W", "d"], first=["F", "w"], fsh=0.8, rail="#232425", door=WHITE), hedges=[(0.4, 4.4, 2.2, 0.45, "#3f6a35")]),
     "se_corner_east": dict(whole=True, 
-        at=(905.1, -669.1), laser=True, depth=9.0, eaves=5.4, ridge=9.6, roof="gable", roof_tint=ROOF_DARK, wall="brick", tint=RED2, frame=WHITE,
-        front_gable=dict(s=(-3.6, 0.0), top=9.4, apex_tint=RED2), front=dict(ground=["d", "w"], first=["w", "w"], door=BROWN)),
+        at=(905.1, -669.1), laser=True, depth=9.0, eaves=5.4, ridge=9.6, roof="gable", roof_tint=ROOF_DARK, wall="brick", tint="#9a5e48", frame=WHITE,
+        front_gable=dict(s=(-3.6, 0.0), top=9.4, apex_tint="#9a5e48"), verge=WHITE,
+        front=dict(ground=["d", "W"], first=["w", "F"], fsh=0.8, rail="#efeeea", door=WHITE), hedges=[(2.0, 5.8, 2.2, 0.45, "#3f6a35")]),
     # East of the portal, the north side (Street View of 2019).
     "n_oculus": dict(  # red-brown brick, a steep gable to the street with a round window, an arched garage door, orange pantiles
         at=(808.5, -730.2), depth=9.5, eaves=4.2, ridge=10.2, roof="front_gable", roof_tint=ROOF_ORANGE, wall="brick", tint=REDBROWN, frame=BROWN,
-        oculus=dict(y=7.6, r=0.45), front=[(-3.0, 2.6, 0.0, 2.4, "g", dict(c="#6a442c", arch=True)), (-4.2, 1.0, 3.4, 1.3, "w", dict(cu=True)),
+        oculus=dict(y=7.6, r=0.45), hedges=[(4.4, 7.6, 1.6, 0.45, "#3f5f33")], front=[(-3.0, 2.6, 0.0, 2.4, "g", dict(c="#6a442c", arch=True)), (-4.2, 1.0, 3.4, 1.3, "w", dict(cu=True)),
                                           (-1.8, 1.0, 3.4, 1.3, "w", dict(cu=True)), (1.4, 1.4, 0.8, 1.4, "w", dict(cu=True))]),
     "n_orange_row": dict(  # a row of three: this one red brick under orange tiles, green frames
         at=(823.6, -728.9), depth=9.0, eaves=6.4, ridge=10.0, roof="gable", roof_tint=ROOF_ORANGE, wall="brick", tint=RED, frame="#3f6b4a",
-        front=dict(ground=["W", "d"], first=["w", "w"], cu=True, door="#3f6b4a")),
+        front=dict(ground=["W", "d"], first=["w", "w"], cu=True, door="#3f6b4a"), hedges=[(0.3, 6.5, 1.6, 0.8, "#466a38")]),
     "n_farm_shop": dict(  # the middle one: red brick, a dark roof, white frames, an open garage where they sell from the farm
         at=(832.5, -723.0), depth=9.0, eaves=6.4, ridge=10.0, roof="gable", roof_tint=ROOF_DARK, wall="brick", tint=RED2, frame=WHITE,
         porch=dict(s=(-4.0, -1.0), depth=2.4, h=2.6),
@@ -265,20 +292,21 @@ MORE = {
                (1.8, 1.3, 3.6, 1.2, "w", {}), (-2.5, 1.6, 3.6, 1.2, "w", dict(cu=True))]),
     "n_grey_unit": dict(  # the third: grey-brown brick, a white door, roller shutters
         at=(841.0, -727.5), depth=9.0, eaves=6.3, ridge=10.0, roof="gable", roof_tint=ROOF_DARK, wall="brick", tint=GREYBROWN, frame=WHITE,
-        front=dict(ground=["d", "W"], first=["w", "w"], sh=0.5, door=WHITE)),
+        front=dict(ground=["d", "W"], first=["w", "w", "w"], sh=0.5, door=WHITE)),
     "n_pair3_west": dict(  # a pair under one big dark roof: this half grey-brown brick, white frames
         at=(855.2, -730.3), depth=9.0, eaves=6.4, ridge=10.6, roof="gable", roof_tint=ROOF_DARK, wall="brick", tint=GREYBROWN, frame=WHITE,
         front=dict(ground=["w", "w", "d"], first=["w", "w", "w"], door=BROWN), chimneys=[dict(s=0.5, d=4.5, w=0.6, h=1.0)]),
-    "n_pair3_east": dict(  # the other half: red brick, its windows framed in a darker brick, a white door
-        at=(860.7, -720.7), depth=9.0, eaves=6.4, ridge=10.6, roof="gable", roof_tint=ROOF_DARK, wall="brick", tint=RED, frame=WHITE, lintels=True,
-        front=dict(ground=["d", "W"], first=["w", "W"], door=WHITE, cu=True), chimneys=[dict(s=-0.5, d=4.5, w=0.6, h=1.0)]),
+    "n_pair3_east": dict(  # the other half: red brick, its openings framed in an orange-red brick, a white door, a tall hedge
+        at=(860.7, -720.7), depth=9.0, eaves=6.4, ridge=10.6, roof="gable", roof_tint=ROOF_DARK, wall="brick", tint="#a65a45", frame=WHITE,
+        front=dict(ground=["d", "W"], first=["w", "W"], door=WHITE, cu=True, sur=(0.12, "#c8693f")), chimneys=[dict(s=-0.5, d=4.5, w=0.6, h=1.0)],
+        hedges=[(0.2, 6.1, 1.9, 0.85, "#3c5c32")], garden_conifers=[(6.1, 0.9, 4.4, 0.5)]),
     # Past the edge of the village data, the north side, up to the junction.
     "n_plain_west": dict(  # blurred in Street View at the owners' request: only its brick and roof, plain windows
         at=(875.3, -716.9), laser=True, depth=9.0, eaves=6.0, ridge=9.8, roof="gable", roof_tint=ROOF_DARK, wall="brick", tint=RED, frame=WHITE,
         front=dict(ground=["w", "d", "w"], first=["w", "w"])),
-    "n_plain_east": dict(  # red brick, a dark roof
-        at=(881.2, -713.5), laser=True, depth=9.0, eaves=6.0, ridge=9.8, roof="gable", roof_tint=ROOF_DARK, wall="brick", tint=RED2, frame=WHITE,
-        front=dict(ground=["W", "d"], first=["w", "w"], sh=0.4, door=BROWN)),
+    "n_plain_east": dict(  # red brick, a dark roof, brown frames
+        at=(881.2, -713.5), laser=True, depth=9.0, eaves=6.0, ridge=9.8, roof="gable", roof_tint=ROOF_DARK, wall="brick", tint=RED2, frame=BROWN,
+        front=dict(ground=["d", "W"], first=["w", "W"], sh=0.2, door=BROWN)),
     "n_corner_west": dict(  # a pair on the corner of the junction: this half grey-brown brick, white frames
         at=(895.3, -714.5), laser=True, depth=9.0, eaves=6.0, ridge=9.8, roof="gable", roof_tint=ROOF_DARK, wall="brick", tint=GREYBROWN, frame=WHITE,
         front=dict(ground=["w", "d"], first=["w", "w"], door=WHITE)),
@@ -343,8 +371,17 @@ def layout(h, L):
             opt = {}
             if f.get("cu") and (i + row) % 2 == 0:
                 opt["cu"] = True
+            if f.get("sur"):
+                opt.update(surround=f["sur"][0], sc=f["sur"][1])
             if k == "d":
-                out.append([s_, 1.0, 0.0, 2.2, "d", {"c": f.get("door", "#5a4334")}])
+                out.append([s_, 1.0, 0.0, 2.2, "d", {"c": f.get("door", "#5a4334"), **opt}])
+            elif k == "D":
+                out.append([s_, 1.4, 0.0, 2.25, "d", {"f": f.get("door", "#f1f0ec"), **opt}])
+            elif k == "F":
+                opt.update(fb=True, rail=f.get("rail", "#262829"))
+                if f.get("fsh"):
+                    opt.update(sh=f["fsh"], box=True)
+                out.append([s_, 1.2, 3.3, 1.75, "w", opt])
             elif k == "g":
                 out.append([s_, 2.5, 0.0, 2.2, "g", {"c": f.get("garage", "#e9e8e4")}])
             else:

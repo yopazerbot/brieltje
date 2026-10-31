@@ -8,10 +8,11 @@ the map ends, and of the street in front of them, from data/molenhoek.json (the 
 the survey from Street View; see tools/molenhoek_survey.py). Each house stands on its GRB outline with
 the heights of the village's blocks (past the edge of the village data, the GRB's outline on the
 relief, with blocks of its own for walking into): its front as the survey describes it (brick and
-colour, plinth and bands, windows with frames, sills, shutters and net curtains, doors, an oriel, a
-balcony, a porch, a round window, a canopy), plainer windows on the sides and back, the roof with its
-tiles, ridge, fascia, gutters and downpipes, chimneys, roof windows, a dormer and solar panels, and the
-lower parts behind under flat roofs. The street: west of the traffic island the old concrete road (the
+colour, plinth and bands, windows with frames, top lights, sills, lintels, stone arches, shutters and
+net curtains, french balconies, doors with their steps, an oriel, a balcony, a porch, a round window, a
+canopy), plainer windows on the sides and back, the roof with its tiles, ridge, fascia, gutters and
+downpipes, chimneys, roof windows, a dormer and solar panels, the lower parts behind under flat roofs,
+and in the front gardens the low walls, fences, clipped hedges, box balls and conifers. The street: west of the traffic island the old concrete road (the
 village draws it) gets its gutters, kerbs and pavements; from the island to 45 m past the junction, and
 on the first stretch of the branch that turns off there, dark asphalt, a concrete gutter with drains, the
 raised red cycle lanes, a kerb, the pavements in grey concrete pavers, and grey pavers on the forecourts
@@ -346,7 +347,12 @@ def hole(f, h, layers):
                 y = 0.55 + k * 0.38
                 f.flat("mh_glass", h.s0 + w * 0.42, h.s0 + w * 0.58, h.y0 + y, h.y0 + y + 0.16, d + 0.004, "#3a4448")
         f.flat("mh_detail", h.s0 + w * 0.12, h.s0 + w * 0.16, h.y0 + 0.9, h.y0 + 1.25, d + 0.03, "#c9cbcc")  # the handle bar
-        f.box("mh_stone", h.s0 - 0.08, h.s1 + 0.08, -0.12, 0.0, d, 0.28, "#5f6468")  # the step
+        if h.y0 > 0.25:  # a raised ground floor: steps up to the door
+            n = max(2, int(round(h.y0 / 0.17)))
+            for k in range(n):
+                f.box("mh_stone", h.s0 - 0.15, h.s1 + 0.15, -0.12, h.y0 - k * h.y0 / n, d, 0.3 * (k + 1), "#8d8f8f")
+        else:
+            f.box("mh_stone", h.s0 - 0.08, h.s1 + 0.08, -0.12, 0.0, d, 0.28, "#5f6468")  # the step
     elif h.kind == "g":
         face("mh_panel", pane, f.out(), o.get("c", "#e9e8e4"))
         for k in range(1, int((h.y1 - h.y0) / 0.5)):
@@ -366,20 +372,41 @@ def hole(f, h, layers):
         for k in range(1, n):
             m = h.s0 + w * k / n
             f.flat("mh_detail", m - 0.035, m + 0.035, h.y0 + fw, h.y1 - fw, d + fd + 0.002, c)
-        if h.kind == "w" and h.y1 - h.y0 > 1.75 and n > 1:  # a transom in tall windows
-            t = h.y1 - 0.45
+        if h.kind == "w" and (o.get("tr") or (h.y1 - h.y0 > 1.75 and n > 1)):  # a transom: a top light
+            t = h.y1 - (0.38 if o.get("tr") else 0.45)
             f.flat("mh_detail", h.s0 + fw, h.s1 - fw, t - 0.03, t + 0.03, d + fd + 0.004, c)
         sh = o.get("sh", 0.0)
         if sh > 0:  # a roller shutter, down this far
             y = h.y1 - (h.y1 - h.y0) * sh
-            f.flat("mh_panel", h.s0 + 0.02, h.s1 - 0.02, y, h.y1, d + 0.025, "#e7e6e1")
+            shc = o.get("shc", "#e7e6e1")
+            f.flat("mh_panel", h.s0 + 0.02, h.s1 - 0.02, y, h.y1, d + 0.025, shc)
             for k in range(int((h.y1 - y) / 0.25)):
                 yy = h.y1 - 0.25 * (k + 1)
-                f.flat("mh_detail", h.s0 + 0.03, h.s1 - 0.03, yy - 0.006, yy + 0.006, d + 0.03, "#c4c3be")
+                f.flat("mh_detail", h.s0 + 0.03, h.s1 - 0.03, yy - 0.006, yy + 0.006, d + 0.03, shade(shc, 0.85))
     if o.get("box"):  # the shutter box under the lintel
         f.flat("mh_panel", h.s0 + 0.01, h.s1 - 0.01, h.y1 - 0.2, h.y1, d + 0.045, "#e9e8e3")
     if h.kind in ("w", "a"):
         f.box("mh_stone", h.s0 - 0.05, h.s1 + 0.05, h.y0 - 0.07, h.y0, d, 0.05, "#5d6266")
+    if o.get("fb"):  # a french balcony: a railing across the lower part of the window, just in front of the wall
+        rc = o.get("rail", "#262829")
+        top = h.y0 + 0.95
+        f.box("mh_detail", h.s0 - 0.05, h.s1 + 0.05, top - 0.04, top, 0.03, 0.08, rc)
+        f.box("mh_detail", h.s0 - 0.05, h.s1 + 0.05, h.y0 + 0.06, h.y0 + 0.1, 0.03, 0.08, rc)
+        nb = max(4, int((h.s1 - h.s0) / 0.12))
+        for k in range(1, nb):
+            sb = h.s0 + (h.s1 - h.s0) * k / nb
+            f.flat("mh_detail", sb - 0.012, sb + 0.012, h.y0 + 0.1, top - 0.04, 0.055, rc)
+        for sb in (h.s0 - 0.05, h.s1 + 0.03):
+            f.box("mh_detail", sb, sb + 0.02, h.y0 + 0.06, top, 0.0, 0.08, rc)
+    if o.get("seg"):  # a segmental arch over the opening in a pale stone, with a keystone
+        sc = o.get("segc", "#cfc6b6")
+        cx, half = (h.s0 + h.s1) / 2, (h.s1 - h.s0) / 2 + 0.12
+        rise, band, nseg = 0.2, 0.16, 8
+        for k in range(nseg):
+            a, b = -half + 2 * half * k / nseg, -half + 2 * half * (k + 1) / nseg
+            ya, yb = h.y1 + rise * (1 - (a / half) ** 2), h.y1 + rise * (1 - (b / half) ** 2)
+            face("mh_stone", [f.p(cx + a, ya, 0.012), f.p(cx + b, yb, 0.012), f.p(cx + b, yb + band, 0.012), f.p(cx + a, ya + band, 0.012)], f.out(), sc)
+        f.box("mh_stone", cx - 0.1, cx + 0.1, h.y1 + rise - 0.03, h.y1 + rise + band + 0.07, 0.0, 0.03, shade(sc, 0.93))
 
 
 def arch_top(f, h, wall_col, frame_c, glass):
@@ -948,6 +975,9 @@ def house(key, H):
         downpipes(H, A, B, C, D, base, E, party, fi)
     # The lower parts: flat roofs at the village's lowest height.
     low = max(2.6, min(H["low"], E - 0.3)) if H["low"] < E - 0.2 else E
+    alayers = layers
+    if H.get("annex_wall"):
+        alayers = [(-99, {"brick": "mh_brick", "render": "mh_render"}[H["annex_wall"][0]], H["annex_wall"][1])]
     for an in H["annex"]:
         ring = an["p"]
         for i in range(len(ring)):
@@ -961,7 +991,14 @@ def house(key, H):
             oo = outward(ring, i)
             f = Frame(p, tt, (oo[0], oo[1]), base)
             holes = [] if an["party"][i] or LL < 2.4 else [Hole(LL / 2 - 0.6, LL / 2 + 0.6, 0.9, 2.1, "w", 0.12, {"f": frame_c})]
-            facade(f, LL, [(0, low), (LL, low)], holes, layers)
+            af = H.get("annex_front")
+            if af and not an["party"][i] and oo[0] * H["out"][0] + oo[1] * H["out"][1] > 0.9 and LL > 2.4:
+                if p[0] > q[0]:  # measured from the west end, like the front
+                    p, q = q, p
+                    tt, LL = unit(p, q)
+                    f = Frame(p, tt, (oo[0], oo[1]), base)
+                holes = [Hole(s_ - w / 2, s_ + w / 2, y, y + hh, kind, 0.12, {**opt, "f": opt.get("f", frame_c)}) for (s_, w, y, hh, kind, opt) in af]
+            facade(f, LL, [(0, low), (LL, low)], holes, alayers)
         flat_roof(ring, base, low, {"coping": "#6d6f72"})
         if H.get("laser"):
             SOLIDS.append(prism_xz([tuple(q) for q in ring], base - 0.3, base + low))
@@ -1088,7 +1125,9 @@ def front_details(f, L, H, holes, layers, frame_c, base):
     if st:
         f.flat("mh_brick", st["s"][0], st["s"][1], H.get("plinth", (0,))[0], H["eaves"], 0.005, st["tint"])
     for hl in holes:
-        if hl.kind in ("w", "d", "g") and H.get("lintels"):
+        if hl.kind in ("w", "d", "g") and H.get("lintels") == "stone":
+            f.box("mh_stone", hl.s0 - 0.08, hl.s1 + 0.08, hl.y1, hl.y1 + 0.16, 0.0, 0.03, "#d6d0c4")
+        elif hl.kind in ("w", "d", "g") and H.get("lintels"):
             f.flat("mh_brick", hl.s0 - 0.1, hl.s1 + 0.1, hl.y1, hl.y1 + 0.14, 0.004, shade(tint, 0.8))
         if hl.opt.get("surround"):
             surround(f, hl, hl.opt["surround"], hl.opt.get("sc", frame_c))
@@ -1284,10 +1323,11 @@ def prism_xz(ring, y0, y1):
 
 
 def garden(key, H, base):
-    """In front of a house: a low wall with piers on the plot line, where the survey saw one."""
-    fw = H.get("front_wall")
-    if not fw:
+    """In front of a house, where the survey saw them: a low wall with piers or a white fence on the plot line,
+    clipped hedges and box balls, columnar conifers."""
+    if not any(H.get(k) for k in ("front_wall", "fence", "hedges", "topiary", "garden_conifers")):
         return
+    fw = H.get("front_wall")
     f, L = FRONT[key]
     k = nearest_station(*f.xz(L / 2))
     s = ST[k]
@@ -1306,6 +1346,47 @@ def garden(key, H, base):
     pieces = [(0.0, L)]
     for g0, g1 in gaps:
         pieces = [(a, b) for a0, b0 in pieces for a, b in ((a0, min(b0, g0)), (max(a0, g1), b0)) if b - a > 0.3]
+    def room(sv):  # how far in front of the wall the plot line runs at sv
+        x, z = on_line(sv)
+        x0, z0 = f.xz(sv)
+        return (x - x0) * f.o[0] + (z - z0) * f.o[1]
+    lift = 1.5  # the foliage texture is dark: the surveyed greens lifted to read as they do in the photos
+    for (h0, h1, out, hh, col) in H.get("hedges", []):  # a clipped hedge, kept behind the plot line
+        col = shade(col, lift)
+        out = min(out, min(room(h0), room(h1)) - 0.45)
+        if out < 0.5:
+            continue
+        g = Frame(f.xz(h0, out), f.t, f.o, terrain(*f.xz((h0 + h1) / 2, out)) + 0.1)
+        g.box("mh_foliage", 0, h1 - h0, -0.25, hh, -0.3, 0.3, col)
+        g.box("mh_foliage", 0.06, h1 - h0 - 0.06, hh, hh + 0.07, -0.24, 0.24, shade(col, 1.12))
+        SOLIDS.append(prism_xz([g.xz(0, -0.3), g.xz(h1 - h0, -0.3), g.xz(h1 - h0, 0.3), g.xz(0, 0.3)], g.base - 0.25, g.base + hh))
+    for (sv, out, r, col) in H.get("topiary", []):  # a clipped box ball
+        out = min(out, room(sv) - r - 0.2)
+        if out < r + 0.1:
+            continue
+        x, z = f.xz(sv, out)
+        ball(x, z, terrain(x, z) + 0.1 + r * 0.85, r, shade(col, lift))
+    for k, (sv, out, ch, cr) in enumerate(H.get("garden_conifers", [])):
+        out = min(out, room(sv) - cr - 0.2)
+        if out < cr:
+            continue
+        x, z = f.xz(sv, out)
+        conifer(x, z, ch, cr, "#86a866", 300 + k + int(abs(x) * 10))
+    fc = H.get("fence")
+    if fc:  # white posts and two rails along the plot line
+        for a, b in pieces:
+            p, q = on_line(a), on_line(b)
+            tt, LL = unit(p, q)
+            g = Frame(p, tt, (f.o[0], f.o[1]), terrain(*p) + 0.1)
+            hh = fc.get("h", 0.8)
+            n = max(1, int(LL / 1.8))
+            for k in range(n + 1):
+                g.box("mh_panel", LL * k / n - 0.05, LL * k / n + 0.05, -0.2, hh + 0.05, -0.05, 0.05, fc["c"])
+            for y in (hh * 0.45, hh - 0.06):
+                g.box("mh_panel", 0, LL, y - 0.05, y + 0.05, -0.03, 0.03, fc["c"])
+            SOLIDS.append(prism_xz([g.xz(0, -0.06), g.xz(LL, -0.06), g.xz(LL, 0.06), g.xz(0, 0.06)], g.base - 0.2, g.base + hh))
+    if not fw:
+        return
     h, col = fw["h"], fw["tint"]
     for a, b in pieces:
         p, q = on_line(a), on_line(b)
@@ -1369,6 +1450,23 @@ def props():
     tube("mh_detail", (hx, hz, g0 + 0.75), (hx, hz, g0 + 0.85), 0.13, "#b5525e", seg=8)
     tube("mh_detail", (hx - 0.16, hz, g0 + 0.5), (hx + 0.16, hz, g0 + 0.5), 0.05, "#b5525e", seg=6)
     SOLIDS.append(prism_xz([(hx - 0.12, hz - 0.12), (hx + 0.12, hz - 0.12), (hx + 0.12, hz + 0.12), (hx - 0.12, hz + 0.12)], g0 - 0.1, g0 + 0.85))
+
+
+def ball(x, z, y, r, col):
+    """A clipped round shrub: a low sphere of 8 by 4 faces."""
+    seg, rows = 8, 4
+    rings = []
+    for j in range(1, rows):
+        a = math.pi * j / rows - math.pi / 2
+        rings.append([(x + r * math.cos(a) * math.cos(2 * math.pi * i / seg), z + r * math.cos(a) * math.sin(2 * math.pi * i / seg), y + r * 0.9 * math.sin(a)) for i in range(seg)])
+    bot, top = (x, z, y - r * 0.9), (x, z, y + r * 0.9)
+    for i in range(seg):
+        k = (i + 1) % seg
+        mid = lambda p0, p1: ((p0[0] + p1[0]) / 2 - x, (p0[1] + p1[1]) / 2 - z)
+        face("mh_foliage", [rings[0][k], rings[0][i], bot], (*mid(rings[0][i], rings[0][k]), -0.6), shade(col, 0.8))
+        for ra, rb in zip(rings, rings[1:]):
+            face("mh_foliage", [ra[i], ra[k], rb[k], rb[i]], (*mid(ra[i], ra[k]), 0.0), col)
+        face("mh_foliage", [rings[-1][i], rings[-1][k], top], (*mid(rings[-1][i], rings[-1][k]), 0.6), shade(col, 1.1))
 
 
 def disc(f, s, y, r, col, _):
