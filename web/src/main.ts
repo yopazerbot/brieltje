@@ -59,6 +59,7 @@ import { TravelPanel } from './ui/travel';
 import { BigMap, type Mark } from './ui/bigmap';
 import { route } from './ui/route';
 import { HomeLife } from './world/homeLife';
+import { HomeStreet, withoutModelled } from './world/homeStreet';
 import { RoadLife } from './world/roadLife';
 import { CAR_REACH, CAR_SLOW, findPortal, PORTALS, portalNear, type Portal } from '../shared/portals.mjs';
 import { noShoot } from '../shared/zones.mjs';
@@ -197,7 +198,11 @@ const tiles = new Tiles();
 const poles = [...(house.surroundings?.poles ?? [])];
 const detailAt: [number, number][] = [[4.45, -3]]; // trees get their full crowns within 160 m of these (and the village's landmarks)
 const detail = (x: number, z: number) => detailAt.some(([cx, cz]) => Math.hypot(x - cx, z - cz) < 160);
-tiles.addSet([...splitTiles(house.surroundings ?? { roofs: [], trees: [] })].map(([key, t]) => ({ key, pieces: buildTile(t, poles, renderer, house.ground, detail) })), true);
+// The houses round the two portals at home are our own models (world/homeStreet.ts): their open-data blocks aren't drawn.
+const ringData = withoutModelled(house.surroundings ?? { roofs: [], trees: [] });
+const ringTiles = (s: typeof ringData.kept) => [...splitTiles(s)].map(([key, t]) => ({ key, pieces: buildTile(t, poles, renderer, house.ground, detail) }));
+tiles.addSet(ringTiles(ringData.kept), true);
+const homeStreet = new HomeStreet(tiles, renderer, house.ground, ringData.removed, (s) => tiles.addSet(ringTiles(s), true));
 const horizon = buildHorizon(center, house.ground);
 scene.add(tiles.group, horizon);
 // Shadows and soft corners on the ground of the whole neighbourhood, worked out once the sun's
@@ -205,7 +210,7 @@ scene.add(tiles.group, horizon);
 const groundShade = new GroundShade(center);
 groundShade.apply(grassMat, 0.35);
 for (const m of groundFamilies(renderer)) groundShade.apply(m);
-void environmentReady.then(() => {
+void Promise.all([environmentReady, homeStreet.ready]).then(() => {
   tiles.showAll(); // the ring's tiles beyond the draw distance throw shadows too
   groundShade.bake(renderer, scene, sun, [built.group, hedgeLumps, doors.group, tiles.group], house.ground);
 });
@@ -294,6 +299,7 @@ function adaptQuality(dt: number): void {
 
 const world = new World(house.prisms, house.ground);
 world.addPrisms(house.surroundings?.prisms ?? []);
+world.addPrisms(homeStreet.blocks);
 world.setDips(house.dips ?? []);
 const player = new Player(world, house.spawn);
 // Phones and tablets: touch controls (offered on any touch screen: src/start.ts).
@@ -1536,6 +1542,7 @@ renderer.setAnimationLoop((now: number) => {
   horizon.position.x = camera.position.x;
   horizon.position.z = camera.position.z;
   tiles.update(dt, camera.position);
+  homeStreet.update(dt, camera.position);
   groundShade.follow(camera.position);
   // The sun's real-time shadow only covers the house: far from it (the village) it isn't worked out.
   renderer.shadowMap.autoUpdate = camera.position.distanceTo(center) < 250;
@@ -1778,6 +1785,7 @@ if (import.meta.env.DEV) {
       three: { renderer, scene, sun, ao, composer, environmentReady, applyQuality, autoDetect, quality: () => quality, groundShade },
       tiles,
       home,
+      homeStreet,
       grass,
       horizon,
       village: () => village,
