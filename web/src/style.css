@@ -808,6 +808,8 @@ a.gh { display: inline-flex; align-items: center; gap: 5px; margin-left: 10px; c
 a.gh svg { flex: none; }
 a.gh:hover, a.gh:focus-visible { color: var(--accent); outline: none; }
 .made a.gh { opacity: 1; }
+.made a.credits-link { margin-left: 10px; color: inherit; text-decoration: none; }
+.made a.credits-link:hover, .made a.credits-link:focus-visible { color: var(--accent); outline: none; }
 
 /* The terms, privacy policy and credits (web/public/legal/): a line under the start screen, links in the menu. */
 .legal { margin: 10px 0 0; font-size: 12px; line-height: 1.45; opacity: 0.7; }
