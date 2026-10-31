@@ -427,7 +427,7 @@ const en = {
   'net.ended': 'Your session ended. Log in again.',
 
   // ---- Portals and travelling
-  'portal.house': 'Main house',
+  'portal.house': "Yoshi & Liesl's home",
   'portal.bungalow': 'Bungalow',
   'portal.church': 'Church',
   'portal.school': 'School',
@@ -462,7 +462,7 @@ const en = {
   'map.portalNote': 'A portal stands here: walk onto any portal to come straight here.',
   'map.pond': 'Pond',
   'map.north': 'N',
-  'place.house': 'Main house',
+  'place.house': "Yoshi & Liesl's home",
   'place.bungalow': 'Bungalow',
   'place.church': 'Sint-Pharaïldis church',
   'place.school': 'Primary school',
@@ -951,7 +951,7 @@ const nl = {
   'net.ended': 'Je sessie is afgelopen. Meld je opnieuw aan.',
 
   // ---- Portals and travelling
-  'portal.house': 'Hoofdwoning',
+  'portal.house': 'Woning Yoshi & Liesl',
   'portal.bungalow': 'Bungalow',
   'portal.church': 'Kerk',
   'portal.school': 'School',
@@ -986,7 +986,7 @@ const nl = {
   'map.portalNote': 'Hier staat een portaal: stap op eender welk portaal om meteen hier te komen.',
   'map.pond': 'Vijver',
   'map.north': 'N',
-  'place.house': 'Hoofdwoning',
+  'place.house': 'Woning Yoshi & Liesl',
   'place.bungalow': 'Bungalow',
   'place.church': 'Sint-Pharaïldiskerk',
   'place.school': 'Basisschool',

@@ -252,6 +252,25 @@ composer.addPass(new RenderPass(scene, camera));
 const ao = new GTAOPass(scene, camera, window.innerWidth, window.innerHeight);
 ao.updateGtaoMaterial({ radius: 0.6, distanceExponent: 1.5, thickness: 1.5, scale: 1.2, samples: 12 });
 ao.blendIntensity = 0.9;
+// The ambient occlusion draws every mesh with one plain material: an alpha-tested wire fence, glass or
+// a see-through effect would come out as a solid panel and darken what's round it (a black box by the
+// house on High). Those stay out of its pass, as its own points and lines do.
+{
+  const pass = ao as unknown as { _overrideVisibility: () => void; _visibilityCache: THREE.Object3D[] };
+  const own = pass._overrideVisibility.bind(ao);
+  const seeThrough = (m: THREE.Material) => m.alphaTest > 0 || m.transparent || !m.depthWrite || !m.colorWrite || !m.visible || !!(m as THREE.MeshStandardMaterial).alphaMap;
+  pass._overrideVisibility = () => {
+    own();
+    scene.traverse((o) => {
+      const mesh = o as THREE.Mesh;
+      if (!mesh.isMesh || !o.visible) return;
+      if (([] as THREE.Material[]).concat(mesh.material).some(seeThrough)) {
+        o.visible = false;
+        pass._visibilityCache.push(o);
+      }
+    });
+  };
+}
 composer.addPass(ao);
 composer.addPass(new OutputPass());
 const smaa = new SMAAPass();
@@ -1401,6 +1420,8 @@ let exposure = renderer.toneMappingExposure;
 let shake = 0;
 let flyHint = 0; // seconds the flying controls still show after taking off
 let calmHint = 0; // seconds "no shooting here" still shows on the school grounds
+let horseHint = 0; // seconds the riding keys still show after getting on a horse
+let wasOnHorse = false;
 let wasCalm = false;
 let wasFlying = false;
 
@@ -1583,7 +1604,8 @@ renderer.setAnimationLoop((now: number) => {
         : t('prompt.carFull', { a: car.driver ?? '', b: car.passenger ?? '', car: carLabel });
     }
     else if (onHorse) {
-      prompt = t('prompt.horse', { speed: speed(horses.ridden!.speed), gallop: key('sprint', mode), breath: Math.round(horses.stamina * 100), jump: key('jump', mode), use });
+      // The riding keys for the first few seconds on horseback only (Yoshi, as the flying keys).
+      if (horseHint > 0) prompt = t('prompt.horse', { speed: speed(horses.ridden!.speed), gallop: key('sprint', mode), breath: Math.round(horses.stamina * 100), jump: key('jump', mode), use });
     }
     else if (nearHorse >= 0 && !target) prompt = t('prompt.mount', { use });
     if (pad) prompt = ''; // the list says it all
@@ -1596,6 +1618,10 @@ renderer.setAnimationLoop((now: number) => {
     hud.setScope(weapon.scoped, inCar);
     // The flying controls for the first few seconds after taking off only (Yoshi: annoying when it stays).
     if (player.flying && !wasFlying) flyHint = 4;
+    const onHorseNow = horses.mounted >= 0;
+    if (onHorseNow && !wasOnHorse) horseHint = 5;
+    wasOnHorse = onHorseNow;
+    horseHint = onHorseNow ? horseHint - dt : 0;
     wasFlying = player.flying;
     flyHint = player.flying ? flyHint - dt : 0;
     if (flyHint > 0) hud.setPrompt(t('prompt.fly', { up: key('jump', mode), down: key('down', mode) }));

@@ -16,7 +16,7 @@ export const CAR_SLOW = 3; // m/s
 
 export const PORTALS = [
   {
-    id: 'house', name: 'Main house', sub: 'Briel', color: '#4fc3f7', words: ['home', 'huis', 'thuis', 'main', 'briel', 'hoofdwoning', 'woning'],
+    id: 'house', name: "Yoshi & Liesl's home", sub: 'Briel', color: '#4fc3f7', words: ['home', 'huis', 'thuis', 'main', 'briel', 'hoofdwoning', 'woning', 'yoshi', 'liesl'],
     x: -1.5, z: 24, yaw: -0.294, out: [-0.46, 20.5, -0.5], car: [12, 19.6, Math.PI / 2],
   },
   {
