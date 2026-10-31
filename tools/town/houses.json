@@ -1,0 +1,2231 @@
+{
+ "_note": "The third survey of Smetlede's centre (31 Oct 2026): the houses round the church square and along Smetlededorp to the school, for tools/town/town.py. Plans from the GRB outlines and the laser scan's roof parts (data/neighbours.json, by index in `grb`); walls, openings, roofs and colours read off Street View (August 2026 where the car passed, else April 2023 or older) and the orthophoto. Positions in the model (x, z in metres), colours as seen (sRGB); no addresses, names, signs or lettering. A volume: four corners p0..p3, p0-p1 along the ridge (the low side of a shed roof); faces by edge (0: p0-p1, 1: p1-p2, 2: p2-p3, 3: p3-p0); rows of openings per storey from the ground up (w window, W wide window, n narrow, o small, a arched, d door, D double door, g/G garage door, s shop window, c carport bay, _ blank pier; a number after the letter is its width in m), spread evenly with `margin` at the ends, or `at` [s along the face, token@storey].",
+ "origin": [
+  520.0,
+  -775.0
+ ],
+ "far": 230,
+ "sun": [
+  0.3897,
+  0.742,
+  0.5455
+ ],
+ "houses": [
+  {
+   "id": "long-house",
+   "grb": [
+    79
+   ],
+   "floor_at": [
+    509.0,
+    -771.5
+   ],
+   "_ref": "The long low house on the square's west side: painted brick in cream over a brownish-pink painted plinth, brown shutters, small-paned white windows, orange clay tiles with three chimneys; its gable end on the square in bare red brick; a lower brick wing behind.",
+   "style": {
+    "frame": "#f3f1ea",
+    "style": "old",
+    "panes": [
+     2,
+     3
+    ],
+    "sill": "#8d8b86",
+    "curtains": 0.55,
+    "depth": 0.16
+   },
+   "roofstyle": {
+    "roofc": "#8b4e3b",
+    "fascia": "#f1efe9",
+    "gutter": "#8b9093",
+    "chimney": "#874434"
+   },
+   "vols": [
+    {
+     "p": [
+      [
+       510.53,
+       -759.05
+      ],
+      [
+       497.63,
+       -766.76
+      ],
+      [
+       502.44,
+       -774.82
+      ],
+      [
+       515.34,
+       -767.12
+      ]
+     ],
+     "roof": "gable",
+     "eaves": 3.55,
+     "ridge": 8.3,
+     "wall": "brick:#8a4636",
+     "chimneys": [
+      [
+       0.12,
+       4.7
+      ],
+      [
+       0.5,
+       4.7
+      ],
+      [
+       0.86,
+       4.7
+      ]
+     ],
+     "downpipes": [
+      0.02,
+      0.98
+     ],
+     "faces": {
+      "2": {
+       "wall": "brick:#ebe3d2",
+       "plinth": [
+        0.85,
+        "render:#a1847a"
+       ],
+       "shutters": "#5e3b2b",
+       "at": [
+        [
+         2.6,
+         "w1.25"
+        ],
+        [
+         6.4,
+         "w1.1"
+        ],
+        [
+         8.2,
+         "w1.1"
+        ],
+        [
+         10.0,
+         "d0.95"
+        ],
+        [
+         11.9,
+         "w1.0"
+        ],
+        [
+         13.6,
+         "w1.0"
+        ]
+       ],
+       "door": "#5b3b2c",
+       "door_glass": false,
+       "head": 2.3
+      },
+      "3": {
+       "floors": [
+        0,
+        4.0
+       ],
+       "at": [
+        [
+         4.7,
+         "o0.55@1"
+        ]
+       ],
+       "anchors": 2,
+       "anchor_y": 3.0
+      },
+      "0": {
+       "at": [
+        [
+         3.5,
+         "w1.0"
+        ],
+        [
+         9.0,
+         "d0.9"
+        ],
+        [
+         11.5,
+         "w1.0"
+        ]
+       ],
+       "door": "#5b3b2c",
+       "door_glass": false
+      }
+     }
+    },
+    {
+     "p": [
+      [
+       499.83,
+       -750.72
+      ],
+      [
+       506.19,
+       -761.64
+      ],
+      [
+       510.56,
+       -759.1
+      ],
+      [
+       504.2,
+       -748.18
+      ]
+     ],
+     "roof": "gable",
+     "eaves": 2.6,
+     "ridge": 4.95,
+     "wall": "brick:#874535",
+     "skip": [
+      1
+     ],
+     "faces": {
+      "2": {
+       "rows": [
+        "w d w"
+       ],
+       "margin": 1.5,
+       "head": 2.1,
+       "door": "#4d4a3e"
+      }
+     }
+    }
+   ]
+  },
+  {
+   "id": "barn",
+   "grb": [
+    52
+   ],
+   "floor_at": [
+    498.0,
+    -775.6
+   ],
+   "_ref": "The brick barn at the long house's end: red brick, orange clay tiles, a wide olive-green door on the street, a blank gable on the parking with wall anchors.",
+   "style": {
+    "frame": "#f3f1ea",
+    "style": "old",
+    "sill": "#8d8b86"
+   },
+   "roofstyle": {
+    "roofc": "#8e503c",
+    "fascia": "#7d4a38",
+    "gutter": "#8b9093"
+   },
+   "vols": [
+    {
+     "p": [
+      [
+       493.75,
+       -775.7
+      ],
+      [
+       502.64,
+       -774.7
+      ],
+      [
+       497.68,
+       -766.85
+      ],
+      [
+       490.09,
+       -768.94
+      ]
+     ],
+     "roof": "gable",
+     "eaves": 4.0,
+     "ridge": 8.1,
+     "wall": "brick:#864636",
+     "skip": [
+      1
+     ],
+     "faces": {
+      "0": {
+       "at": [
+        [
+         4.6,
+         "G3.5"
+        ]
+       ],
+       "garage": "#6e7046",
+       "garage_h": 3.0
+      },
+      "3": {
+       "floors": [
+        0,
+        4.2
+       ],
+       "at": [
+        [
+         3.9,
+         "o0.5@1"
+        ]
+       ],
+       "anchors": 3,
+       "anchor_y": 3.4
+      },
+      "2": {
+       "at": [
+        [
+         4.0,
+         "d1.0"
+        ]
+       ],
+       "door": "#6e7046",
+       "door_glass": false
+      }
+     }
+    }
+   ]
+  },
+  {
+   "id": "corner-shop",
+   "grb": [
+    293
+   ],
+   "floor_at": [
+    551.5,
+    -755.0
+   ],
+   "_ref": "The corner house on the square's east side: painted white brick on a grey plinth, a shop window and glazed double door in black frames on the square, two garage doors, wide upper windows with steel guards, a hipped slate-grey roof with three roof windows.",
+   "style": {
+    "frame_rows": [
+     "#2c2f31",
+     "#f4f4f2"
+    ],
+    "style_rows": [
+     "modern",
+     "classic"
+    ],
+    "sill": "#9a9a95",
+    "curtains": 0.3,
+    "low_wide": true,
+    "head": 2.3
+   },
+   "roofstyle": {
+    "roofc": "#3c424a",
+    "fascia": "#f2f2f0",
+    "gutter": "#f0f0ee"
+   },
+   "plinth": [
+    0.4,
+    "render:#5d6062"
+   ],
+   "vols": [
+    {
+     "p": [
+      [
+       549.72,
+       -746.76
+      ],
+      [
+       551.91,
+       -759.56
+      ],
+      [
+       561.54,
+       -757.9
+      ],
+      [
+       559.35,
+       -745.11
+      ]
+     ],
+     "roof": "hip",
+     "eaves": 6.0,
+     "ridge": 9.3,
+     "wall": "brick:#f1efe9",
+     "roofwin": [
+      [
+       0,
+       3.4,
+       0.38,
+       0.8,
+       1.0
+      ],
+      [
+       0,
+       6.5,
+       0.38,
+       0.8,
+       1.0
+      ],
+      [
+       0,
+       9.6,
+       0.38,
+       0.8,
+       1.0
+      ]
+     ],
+     "downpipes": [
+      0.03
+     ],
+     "faces": {
+      "0": {
+       "at": [
+        [
+         1.6,
+         "g2.4"
+        ],
+        [
+         4.2,
+         "g2.4"
+        ],
+        [
+         6.3,
+         "D1.9"
+        ],
+        [
+         8.0,
+         "n0.7"
+        ],
+        [
+         8.9,
+         "n0.7"
+        ],
+        [
+         10.6,
+         "s2.4"
+        ],
+        [
+         12.3,
+         "d0.95"
+        ],
+        [
+         2.2,
+         "W2.2@1"
+        ],
+        [
+         5.5,
+         "W2.2@1"
+        ],
+        [
+         8.4,
+         "w1.2@1"
+        ],
+        [
+         10.9,
+         "W2.2@1"
+        ]
+       ],
+       "garage": "#eeeeec",
+       "door": "#2c2f31",
+       "riser": "#2c2f31"
+      },
+      "1": {
+       "rows": [
+        "w w",
+        "w w"
+       ],
+       "margin": 2.0
+      }
+     }
+    }
+   ]
+  },
+  {
+   "id": "brick-house-east",
+   "grb": [
+    47
+   ],
+   "floor_at": [
+    563.6,
+    -757.8
+   ],
+   "_ref": "A narrow red-brown brick house next to the corner house: a door and window under two windows, white frames, anthracite tiles.",
+   "style": {
+    "frame": "#f3f1ea",
+    "sill": "#8d8b86",
+    "lintel": "#7c4234"
+   },
+   "roofstyle": {
+    "roofc": "#34373b",
+    "fascia": "#f1efe9"
+   },
+   "plinth": [
+    0.5,
+    "render:#55585b"
+   ],
+   "vols": [
+    {
+     "p": [
+      [
+       561.58,
+       -758.08
+      ],
+      [
+       565.7,
+       -757.32
+      ],
+      [
+       564.35,
+       -749.94
+      ],
+      [
+       560.22,
+       -750.7
+      ]
+     ],
+     "roof": "gable",
+     "eaves": 5.1,
+     "ridge": 8.5,
+     "wall": "brick:#7e4535",
+     "chimneys": [
+      [
+       0.5,
+       3.0
+      ]
+     ],
+     "downpipes": [
+      0.97
+     ],
+     "faces": {
+      "0": {
+       "rows": [
+        "d w",
+        "w w"
+       ],
+       "margin": 0.5,
+       "door": "#f1efe9"
+      }
+     }
+    },
+    {
+     "p": [
+      [
+       562.83,
+       -741.69
+      ],
+      [
+       564.35,
+       -749.94
+      ],
+      [
+       560.31,
+       -750.69
+      ],
+      [
+       558.79,
+       -742.43
+      ]
+     ],
+     "roof": "flat",
+     "eaves": 3.05,
+     "wall": "brick:#7e4535",
+     "skip": [
+      1
+     ]
+    }
+   ]
+  },
+  {
+   "id": "blue-trim-house",
+   "grb": [
+    3
+   ],
+   "floor_at": [
+    571.0,
+    -756.4
+   ],
+   "_ref": "Painted white brick with blue surrounds round the windows and a yellow garage door, white frames, anthracite tiles; flat-roofed backs.",
+   "style": {
+    "frame": "#f3f1ea",
+    "panes": [
+     2,
+     2
+    ],
+    "sill": "#8d8b86",
+    "surround": "#2f5d9a",
+    "style": "old"
+   },
+   "roofstyle": {
+    "roofc": "#36393d",
+    "fascia": "#f1efe9"
+   },
+   "plinth": [
+    0.45,
+    "render:#c8a83e"
+   ],
+   "vols": [
+    {
+     "p": [
+      [
+       576.23,
+       -755.4
+      ],
+      [
+       565.71,
+       -757.34
+      ],
+      [
+       564.16,
+       -748.91
+      ],
+      [
+       574.68,
+       -746.97
+      ]
+     ],
+     "roof": "gable",
+     "eaves": 5.8,
+     "ridge": 9.6,
+     "wall": "brick:#efede7",
+     "chimneys": [
+      [
+       0.15,
+       4.3
+      ]
+     ],
+     "faces": {
+      "0": {
+       "rows": [
+        "w w d G2.6",
+        "w w w w"
+       ],
+       "garage": "#d9b33f",
+       "door": "#d9b33f"
+      }
+     }
+    },
+    {
+     "p": [
+      [
+       574.67,
+       -746.89
+      ],
+      [
+       566.61,
+       -748.44
+      ],
+      [
+       565.48,
+       -742.56
+      ],
+      [
+       573.54,
+       -741.02
+      ]
+     ],
+     "roof": "flat",
+     "eaves": 3.15,
+     "wall": "brick:#82463a",
+     "skip": [
+      0
+     ]
+    },
+    {
+     "p": [
+      [
+       566.57,
+       -736.77
+      ],
+      [
+       567.57,
+       -742.18
+      ],
+      [
+       563.07,
+       -743.0
+      ],
+      [
+       562.07,
+       -737.6
+      ]
+     ],
+     "roof": "flat",
+     "eaves": 4.65,
+     "wall": "brick:#a35b45"
+    }
+   ]
+  },
+  {
+   "id": "white-corner",
+   "grb": [
+    695
+   ],
+   "floor_at": [
+    547.3,
+    -773.6
+   ],
+   "_ref": "The renovated house across the street from the corner shop: smooth white render on an anthracite plinth, black frames, a dark grey garage door, three roof windows in anthracite tiles; its gable to the square with two small windows and two air-conditioning units.",
+   "style": {
+    "frame": "#2b2d2f",
+    "style": "modern",
+    "sill": "#3d3f41",
+    "curtains": 0.25,
+    "depth": 0.18
+   },
+   "roofstyle": {
+    "roofc": "#303236",
+    "fascia": "#2f3133",
+    "gutter": "#2f3133"
+   },
+   "plinth": [
+    0.45,
+    "render:#47494b"
+   ],
+   "vols": [
+    {
+     "p": [
+      [
+       552.54,
+       -772.22
+      ],
+      [
+       542.13,
+       -775.04
+      ],
+      [
+       544.88,
+       -785.17
+      ],
+      [
+       555.29,
+       -782.35
+      ]
+     ],
+     "roof": "gable",
+     "eaves": 5.4,
+     "ridge": 9.5,
+     "wall": "render:#f1f0ec",
+     "verge": 0.08,
+     "overhang": 0.2,
+     "roofwin": [
+      [
+       0,
+       2.6,
+       0.42,
+       0.78,
+       1.0
+      ],
+      [
+       0,
+       5.4,
+       0.42,
+       0.78,
+       1.0
+      ],
+      [
+       0,
+       8.2,
+       0.42,
+       0.78,
+       1.0
+      ]
+     ],
+     "faces": {
+      "0": {
+       "at": [
+        [
+         1.8,
+         "g2.5"
+        ],
+        [
+         4.2,
+         "d1.0"
+        ],
+        [
+         6.4,
+         "w1.3"
+        ],
+        [
+         8.9,
+         "w1.3"
+        ],
+        [
+         1.6,
+         "w1.2@1"
+        ],
+        [
+         4.2,
+         "w1.2@1"
+        ],
+        [
+         6.6,
+         "w1.2@1"
+        ],
+        [
+         9.0,
+         "w1.2@1"
+        ]
+       ],
+       "garage": "#3b3e41",
+       "door": "#2b2d2f",
+       "floors": [
+        0,
+        2.9
+       ]
+      },
+      "1": {
+       "floors": [
+        0,
+        2.9,
+        5.6
+       ],
+       "at": [
+        [
+         5.2,
+         "n0.6@1"
+        ],
+        [
+         5.2,
+         "o0.6@2"
+        ]
+       ],
+       "boxes": [
+        [
+         3.2,
+         3.2,
+         0.85,
+         0.6,
+         0.32,
+         "#d9dad7"
+        ],
+        [
+         6.9,
+         3.2,
+         0.85,
+         0.6,
+         0.32,
+         "#d9dad7"
+        ]
+       ]
+      }
+     }
+    },
+    {
+     "p": [
+      [
+       558.27,
+       -793.79
+      ],
+      [
+       555.17,
+       -782.38
+      ],
+      [
+       544.88,
+       -785.17
+      ],
+      [
+       547.98,
+       -796.59
+      ]
+     ],
+     "roof": "flat",
+     "eaves": 3.1,
+     "wall": "render:#e9e8e3",
+     "skip": [
+      1
+     ],
+     "faces": {
+      "2": {
+       "rows": [
+        "w W"
+       ],
+       "margin": 2.0
+      }
+     }
+    }
+   ]
+  },
+  {
+   "id": "grey-house",
+   "grb": [
+    352
+   ],
+   "floor_at": [
+    556.7,
+    -771.4
+   ],
+   "_ref": "Grey-beige painted render, dark brown frames, door and garage door; a lower white annex with a brown garage door; anthracite tiles.",
+   "style": {
+    "frame": "#5a3f2f",
+    "sill": "#8d8b86",
+    "curtains": 0.5
+   },
+   "roofstyle": {
+    "roofc": "#383a3e",
+    "fascia": "#f1efe9"
+   },
+   "plinth": [
+    0.5,
+    "render:#6b6c6c"
+   ],
+   "vols": [
+    {
+     "p": [
+      [
+       560.79,
+       -770.2
+      ],
+      [
+       552.56,
+       -772.35
+      ],
+      [
+       554.01,
+       -777.89
+      ],
+      [
+       562.24,
+       -775.74
+      ]
+     ],
+     "roof": "gable",
+     "eaves": 5.7,
+     "ridge": 8.6,
+     "wall": "render:#bdb5a8",
+     "chimneys": [
+      [
+       0.8,
+       2.9
+      ]
+     ],
+     "faces": {
+      "0": {
+       "rows": [
+        "g2.4 d w w",
+        "w w w w"
+       ],
+       "garage": "#5a3f2f",
+       "door": "#5a3f2f",
+       "margin": 0.5
+      }
+     }
+    },
+    {
+     "p": [
+      [
+       564.81,
+       -769.15
+      ],
+      [
+       560.79,
+       -770.2
+      ],
+      [
+       562.24,
+       -775.74
+      ],
+      [
+       566.26,
+       -774.69
+      ]
+     ],
+     "roof": "gable",
+     "eaves": 3.7,
+     "ridge": 6.7,
+     "wall": "render:#ecebe6",
+     "faces": {
+      "0": {
+       "rows": [
+        "g2.6"
+       ],
+       "garage": "#6a4a34"
+      }
+     }
+    },
+    {
+     "p": [
+      [
+       567.68,
+       -780.0
+      ],
+      [
+       558.49,
+       -782.41
+      ],
+      [
+       557.1,
+       -777.08
+      ],
+      [
+       566.29,
+       -774.68
+      ]
+     ],
+     "roof": "flat",
+     "eaves": 5.6,
+     "wall": "render:#bdb5a8"
+    },
+    {
+     "p": [
+      [
+       554.0,
+       -777.89
+      ],
+      [
+       555.39,
+       -783.21
+      ],
+      [
+       558.49,
+       -782.4
+      ],
+      [
+       557.1,
+       -777.08
+      ]
+     ],
+     "roof": "flat",
+     "eaves": 3.0,
+     "wall": "render:#bdb5a8"
+    }
+   ]
+  },
+  {
+   "id": "brick-row-east",
+   "grb": [
+    568
+   ],
+   "floor_at": [
+    570.2,
+    -767.6
+   ],
+   "_ref": "Red-brown brick, two storeys under orange clay tiles with a long slope to the back, white frames.",
+   "style": {
+    "frame": "#f3f1ea",
+    "sill": "#8d8b86",
+    "lintel": "#7e4535",
+    "curtains": 0.45
+   },
+   "roofstyle": {
+    "roofc": "#874a37",
+    "fascia": "#f1efe9"
+   },
+   "plinth": [
+    0.5,
+    "render:#55585b"
+   ],
+   "vols": [
+    {
+     "p": [
+      [
+       564.47,
+       -769.24
+      ],
+      [
+       576.0,
+       -765.96
+      ],
+      [
+       577.06,
+       -769.69
+      ],
+      [
+       565.53,
+       -772.97
+      ]
+     ],
+     "roof": "shed",
+     "eaves": 5.4,
+     "ridge": 9.3,
+     "wall": "brick:#82463a",
+     "skip": [
+      2
+     ],
+     "chimneys": [
+      [
+       0.3,
+       3.6
+      ],
+      [
+       0.75,
+       3.6
+      ]
+     ],
+     "faces": {
+      "0": {
+       "rows": [
+        "w w d w g2.4",
+        "w w w w w"
+       ],
+       "door": "#5a3b2b",
+       "garage": "#f1efe9"
+      }
+     }
+    },
+    {
+     "p": [
+      [
+       579.37,
+       -777.87
+      ],
+      [
+       568.0,
+       -781.1
+      ],
+      [
+       565.68,
+       -772.93
+      ],
+      [
+       577.05,
+       -769.69
+      ]
+     ],
+     "roof": "shed",
+     "eaves": 2.4,
+     "ridge": 9.3,
+     "wall": "brick:#82463a",
+     "skip": [
+      2
+     ]
+    }
+   ]
+  },
+  {
+   "id": "small-white-house",
+   "grb": [
+    333
+   ],
+   "floor_at": [
+    532.9,
+    -777.4
+   ],
+   "_ref": "The small painted house next to the portal's gap: off-white paint with sandstone-coloured surrounds, iron wall anchors, white frames, a door with a fanlight, dark tiles; its side to the gap with a small window.",
+   "style": {
+    "frame": "#f6f5f1",
+    "sill": "#c9bfa9",
+    "surround": "#d8ccb3",
+    "curtains": 0.6,
+    "floors": [
+     0,
+     2.65
+    ]
+   },
+   "roofstyle": {
+    "roofc": "#393b3e",
+    "fascia": "#f1efe9"
+   },
+   "plinth": [
+    0.45,
+    "render:#a29a8c"
+   ],
+   "vols": [
+    {
+     "p": [
+      [
+       530.08,
+       -778.36
+      ],
+      [
+       535.69,
+       -776.73
+      ],
+      [
+       538.35,
+       -785.84
+      ],
+      [
+       532.74,
+       -787.48
+      ]
+     ],
+     "roof": "gable",
+     "eaves": 4.85,
+     "ridge": 9.0,
+     "wall": "brick:#edebe5",
+     "skip": [
+      3
+     ],
+     "chimneys": [
+      [
+       0.2,
+       2.6
+      ]
+     ],
+     "faces": {
+      "0": {
+       "rows": [
+        "w d w",
+        "w w"
+       ],
+       "margin": 0.5,
+       "door": "#4e3a2d",
+       "fanlight": true,
+       "anchors": 3,
+       "anchor_y": 3.7
+      },
+      "1": {
+       "floors": [
+        0,
+        2.65,
+        4.85
+       ],
+       "at": [
+        [
+         4.7,
+         "o0.55@2"
+        ],
+        [
+         7.6,
+         "w1.0@1"
+        ]
+       ]
+      }
+     }
+    },
+    {
+     "p": [
+      [
+       533.66,
+       -790.63
+      ],
+      [
+       540.13,
+       -788.74
+      ],
+      [
+       539.21,
+       -785.59
+      ],
+      [
+       532.74,
+       -787.48
+      ]
+     ],
+     "roof": "flat",
+     "eaves": 2.62,
+     "wall": "brick:#edebe5",
+     "skip": [
+      2
+     ]
+    }
+   ]
+  },
+  {
+   "id": "yellow-pair",
+   "grb": [
+    518
+   ],
+   "floor_at": [
+    525.2,
+    -779.7
+   ],
+   "_ref": "Two yellow brick houses in a row: wide ground-floor windows and white doors, brown frames, dark grey plinths, anthracite tiles; a long flat-roofed hall behind.",
+   "style": {
+    "frame": "#5b402f",
+    "sill": "#8d8b86",
+    "curtains": 0.55,
+    "lintel": "#b08f5e"
+   },
+   "roofstyle": {
+    "roofc": "#33363a",
+    "fascia": "#f1efe9",
+    "chimney": "#a48058"
+   },
+   "plinth": [
+    0.55,
+    "render:#4b4d4f"
+   ],
+   "vols": [
+    {
+     "p": [
+      [
+       530.22,
+       -778.32
+      ],
+      [
+       520.24,
+       -781.05
+      ],
+      [
+       522.48,
+       -789.25
+      ],
+      [
+       532.46,
+       -786.53
+      ]
+     ],
+     "roof": "gable",
+     "eaves": 5.6,
+     "ridge": 9.5,
+     "wall": "brick:#c9a875",
+     "chimneys": [
+      [
+       0.25,
+       3.0
+      ],
+      [
+       0.75,
+       3.0
+      ]
+     ],
+     "downpipes": [
+      0.02,
+      0.5,
+      0.98
+     ],
+     "faces": {
+      "0": {
+       "at": [
+        [
+         1.1,
+         "d1.0"
+        ],
+        [
+         3.2,
+         "W2.3"
+        ],
+        [
+         6.9,
+         "W2.3"
+        ],
+        [
+         9.1,
+         "d1.0"
+        ],
+        [
+         1.4,
+         "w1.1@1"
+        ],
+        [
+         3.6,
+         "w1.4@1"
+        ],
+        [
+         6.6,
+         "w1.4@1"
+        ],
+        [
+         8.9,
+         "w1.1@1"
+        ]
+       ],
+       "door": "#f2f1ed"
+      }
+     }
+    },
+    {
+     "p": [
+      [
+       538.4,
+       -807.99
+      ],
+      [
+       532.53,
+       -786.51
+      ],
+      [
+       522.48,
+       -789.25
+      ],
+      [
+       528.35,
+       -810.74
+      ]
+     ],
+     "roof": "flat",
+     "eaves": 4.45,
+     "wall": "brick:#b08f62",
+     "skip": [
+      1
+     ]
+    }
+   ]
+  },
+  {
+   "id": "arched-house",
+   "grb": [
+    64
+   ],
+   "floor_at": [
+    512.4,
+    -783.3
+   ],
+   "_ref": "Beige painted render with arched windows in white frames, decorative wall anchors, a white sectional garage door, a blue-stone plinth, dark tiles and a brick chimney.",
+   "style": {
+    "frame": "#f6f5f1",
+    "sill": "#5c5f62",
+    "curtains": 0.55,
+    "lintel": "#e2d5b9",
+    "floors": [
+     0,
+     2.65
+    ]
+   },
+   "roofstyle": {
+    "roofc": "#3b3c3e",
+    "fascia": "#f1efe9",
+    "chimney": "#94503d"
+   },
+   "plinth": [
+    0.5,
+    "render:#55585b"
+   ],
+   "vols": [
+    {
+     "p": [
+      [
+       507.06,
+       -784.57
+      ],
+      [
+       517.65,
+       -781.87
+      ],
+      [
+       520.0,
+       -791.07
+      ],
+      [
+       509.41,
+       -793.78
+      ]
+     ],
+     "roof": "gable",
+     "eaves": 4.5,
+     "ridge": 8.8,
+     "wall": "render:#e3d6bd",
+     "chimneys": [
+      [
+       0.7,
+       3.4
+      ]
+     ],
+     "roofwin": [
+      [
+       0,
+       3.6,
+       0.3,
+       0.7,
+       0.8
+      ],
+      [
+       0,
+       7.4,
+       0.3,
+       0.7,
+       0.8
+      ]
+     ],
+     "faces": {
+      "0": {
+       "at": [
+        [
+         1.9,
+         "g2.6"
+        ],
+        [
+         4.6,
+         "a1.15"
+        ],
+        [
+         6.6,
+         "d1.0"
+        ],
+        [
+         8.7,
+         "a1.15"
+        ],
+        [
+         1.9,
+         "a1.0@1"
+        ],
+        [
+         4.6,
+         "a1.0@1"
+        ],
+        [
+         6.6,
+         "a0.9@1"
+        ],
+        [
+         8.7,
+         "a1.0@1"
+        ]
+       ],
+       "garage": "#f2f1ee",
+       "door": "#f2f1ee",
+       "fanlight": true,
+       "anchors": 4,
+       "anchor_y": 3.85,
+       "head": 2.15
+      }
+     }
+    },
+    {
+     "p": [
+      [
+       515.98,
+       -801.16
+      ],
+      [
+       514.82,
+       -795.78
+      ],
+      [
+       510.06,
+       -796.81
+      ],
+      [
+       511.22,
+       -802.19
+      ]
+     ],
+     "roof": "flat",
+     "eaves": 5.8,
+     "wall": "render:#e3d6bd"
+    },
+    {
+     "p": [
+      [
+       510.06,
+       -796.81
+      ],
+      [
+       517.58,
+       -795.18
+      ],
+      [
+       516.86,
+       -791.83
+      ],
+      [
+       509.33,
+       -793.46
+      ]
+     ],
+     "roof": "shed",
+     "eaves": 2.3,
+     "ridge": 3.85,
+     "wall": "render:#e3d6bd",
+     "skip": [
+      2
+     ]
+    }
+   ]
+  },
+  {
+   "id": "flats",
+   "grb": [
+    214
+   ],
+   "floor_at": [
+    501.0,
+    -785.4
+   ],
+   "_ref": "The new block of flats (newer than the laser scan, so heights from the photos): a red-brick ground floor with open carport bays and a glazed entrance, two storeys of white render with wide black-framed windows, a set-back top floor and a roof terrace behind a glass railing.",
+   "style": {
+    "frame": "#2a2c2e",
+    "style": "modern",
+    "sill": "#3a3c3e",
+    "curtains": 0.2,
+    "depth": 0.2,
+    "garage_h": 2.65
+   },
+   "plinth": [
+    2.75,
+    "brick:#9a4f3c"
+   ],
+   "vols": [
+    {
+     "p": [
+      [
+       494.52,
+       -785.73
+      ],
+      [
+       507.37,
+       -784.26
+      ],
+      [
+       510.36,
+       -798.21
+      ],
+      [
+       496.45,
+       -799.71
+      ]
+     ],
+     "roof": "flat",
+     "eaves": 6.3,
+     "wall": "render:#f1f0ec",
+     "coping": "#2f3133",
+     "railing": [
+      0
+     ],
+     "faces": {
+      "0": {
+       "at": [
+        [
+         2.0,
+         "c3.4"
+        ],
+        [
+         4.6,
+         "d1.2"
+        ],
+        [
+         6.3,
+         "n0.8"
+        ],
+        [
+         9.6,
+         "c3.6"
+        ],
+        [
+         2.3,
+         "W2.6@1"
+        ],
+        [
+         6.3,
+         "W2.4@1"
+        ],
+        [
+         10.4,
+         "W2.6@1"
+        ]
+       ],
+       "floors": [
+        0,
+        3.0
+       ],
+       "door": "#2a2c2e",
+       "bay_depth": 4.5
+      },
+      "1": {
+       "floors": [
+        0,
+        3.0
+       ],
+       "at": [
+        [
+         4.0,
+         "w1.4@1"
+        ],
+        [
+         9.0,
+         "w1.4@1"
+        ]
+       ]
+      },
+      "3": {
+       "floors": [
+        0,
+        3.0
+       ],
+       "at": [
+        [
+         5.0,
+         "w1.4@1"
+        ],
+        [
+         10.0,
+         "w1.4@1"
+        ]
+       ]
+      },
+      "2": {
+       "floors": [
+        0,
+        3.0
+       ],
+       "rows": [
+        "w w",
+        "W W W"
+       ],
+       "margin": 2.0
+      }
+     }
+    },
+    {
+     "p": [
+      [
+       501.6,
+       -786.95
+      ],
+      [
+       507.2,
+       -786.33
+      ],
+      [
+       508.6,
+       -792.9
+      ],
+      [
+       503.0,
+       -793.5
+      ]
+     ],
+     "roof": "flat",
+     "eaves": 9.3,
+     "wall": "render:#f1f0ec",
+     "coping": "#2f3133",
+     "plinth": [
+      0,
+      "render:#f1f0ec"
+     ],
+     "faces": {
+      "0": {
+       "floors": [
+        0,
+        6.3
+       ],
+       "at": [
+        [
+         2.8,
+         "W3.2@1"
+        ]
+       ],
+       "low_wide": true
+      }
+     }
+    }
+   ]
+  },
+  {
+   "id": "chip-shop",
+   "grb": [
+    171
+   ],
+   "floor_at": [
+    491.0,
+    -794.6
+   ],
+   "_ref": "The chip shop's kiosk behind its forecourt: cream render, a grey roller shutter, a door and a small window, a green sign band (no lettering).",
+   "style": {
+    "frame": "#2a2c2e",
+    "style": "modern",
+    "sill": "#8d8b86"
+   },
+   "plinth": [
+    0.3,
+    "render:#6b6c6c"
+   ],
+   "vols": [
+    {
+     "p": [
+      [
+       487.99,
+       -801.2
+      ],
+      [
+       495.71,
+       -800.02
+      ],
+      [
+       494.84,
+       -794.34
+      ],
+      [
+       487.12,
+       -795.53
+      ]
+     ],
+     "roof": "flat",
+     "eaves": 3.0,
+     "wall": "render:#ece7da",
+     "coping": "#b9bcbe",
+     "faces": {
+      "2": {
+       "at": [
+        [
+         1.3,
+         "w1.0"
+        ],
+        [
+         4.0,
+         "g3.0"
+        ],
+        [
+         6.5,
+         "d0.95"
+        ]
+       ],
+       "garage": "#c3c6c8",
+       "door": "#2a2c2e",
+       "band": [
+        "#2e7a3c",
+        2.55,
+        3.05,
+        0.08
+       ]
+      }
+     }
+    }
+   ]
+  },
+  {
+   "id": "cafe",
+   "grb": [
+    83
+   ],
+   "floor_at": [
+    540.8,
+    -724.9
+   ],
+   "_ref": "The café by the church tower (a Street View photo of April 2023 from the owner): a narrow two-storey house of red-orange brick whose front is a crow-stepped gable, four steps a side and a flat top; courses of cream brick at the gable's foot and round the sign board, two lozenges of light brick beside the upper window; that window in olive-green frames with a transom, net curtains, a light stone sill and lintel; below, a white panelled door with a sunburst fanlight in a light brick surround and a step, and a wide window behind a white roller shutter; a blue-stone plinth; a white sign board between the floors with a plain red panel and the café's name. Roof and sides as the laser scan and an older photo from Kerkhofstraat show them: grey tiles, a rendered gable at the back with a chimney.",
+   "style": {
+    "frame": "#f1f0ea",
+    "sill": "#d8d2c4",
+    "curtains": 1.0,
+    "depth": 0.14
+   },
+   "roofstyle": {
+    "roofc": "#4f5054",
+    "fascia": "#efede8",
+    "gutter": "#9a9ea1",
+    "chimney": "#9a4b37",
+    "verge": 0.0
+   },
+   "plinth": [
+    0.5,
+    "render:#4b5257"
+   ],
+   "vols": [
+    {
+     "p": [
+      [
+       535.69,
+       -707.85
+      ],
+      [
+       537.96,
+       -725.14
+      ],
+      [
+       543.64,
+       -724.39
+      ],
+      [
+       541.36,
+       -707.11
+      ]
+     ],
+     "roof": "gable",
+     "eaves": 4.8,
+     "ridge": 6.9,
+     "wall": "brick:#a9553c",
+     "chimneys": [
+      [
+       0.08,
+       2.86,
+       0.55,
+       0.45,
+       0.8
+      ]
+     ],
+     "downpipes": [
+      0.01,
+      0.99
+     ],
+     "stepped": {
+      "face": 1,
+      "steps": 4,
+      "foot": 5.5,
+      "top": 7.75,
+      "flat": 1.1,
+      "thick": 0.3,
+      "cap": "#9d4f38"
+     },
+     "faces": {
+      "1": {
+       "at": [
+        [
+         2.17,
+         "r1.92"
+        ],
+        [
+         4.73,
+         "d0.94"
+        ],
+        [
+         2.16,
+         "w1.36@1"
+        ]
+       ],
+       "floors": [
+        0,
+        3.85
+       ],
+       "head": 2.6,
+       "sill_h": 0.95,
+       "door": "#f1f0ea",
+       "door_glass": false,
+       "fanlight": "sun",
+       "roller": "#ecebe7",
+       "frame_rows": [
+        "#f1f0ea",
+        "#6b744c"
+       ],
+       "panes": [
+        2,
+        1
+       ],
+       "lintel": "#d8d2c4",
+       "band": [
+        "#f4f3ef",
+        3.02,
+        3.62,
+        0.08,
+        0.22,
+        5.4
+       ],
+       "boxes": [
+        [
+         3.95,
+         3.13,
+         1.9,
+         0.38,
+         0.1,
+         "#c32e2a"
+        ],
+        [
+         2.81,
+         3.06,
+         5.18,
+         0.04,
+         0.095,
+         "#c32e2a"
+        ],
+        [
+         2.81,
+         3.54,
+         5.18,
+         0.04,
+         0.095,
+         "#c32e2a"
+        ]
+       ],
+       "text": [
+        {
+         "t": "IN DE OUDE KEET",
+         "s": 1.4,
+         "y": 3.23,
+         "h": 0.15,
+         "c": "#1e1e1e",
+         "d": 0.085
+        }
+       ],
+       "strips": [
+        [
+         0.0,
+         5.73,
+         2.9,
+         2.98,
+         "#e3d6ae"
+        ],
+        [
+         0.0,
+         5.73,
+         3.66,
+         3.74,
+         "#e3d6ae"
+        ],
+        [
+         0.0,
+         5.73,
+         5.36,
+         5.5,
+         "#e3d6ae"
+        ],
+        [
+         4.14,
+         4.26,
+         0.5,
+         2.75,
+         "#e3d6ae"
+        ],
+        [
+         5.2,
+         5.32,
+         0.5,
+         2.75,
+         "#e3d6ae"
+        ],
+        [
+         4.14,
+         5.32,
+         2.69,
+         2.79,
+         "#e3d6ae"
+        ]
+       ],
+       "diamonds": [
+        [
+         3.62,
+         4.62,
+         0.32,
+         0.46,
+         "#e6d39c"
+        ],
+        [
+         0.72,
+         4.62,
+         0.32,
+         0.46,
+         "#e6d39c"
+        ]
+       ]
+      },
+      "3": {
+       "wall": "render:#a4a29c",
+       "at": [
+        [
+         2.86,
+         "o0.5@1"
+        ]
+       ],
+       "floors": [
+        0,
+        4.6
+       ]
+      },
+      "2": {
+       "rows": [
+        "w d w",
+        "n0.8 n0.8"
+       ],
+       "floors": [
+        0,
+        2.75
+       ],
+       "head": 2.0,
+       "margin": 2.5,
+       "door": "#5a3a2a",
+       "door_glass": false
+      },
+      "0": {
+       "at": [
+        [
+         4.0,
+         "n0.7@1"
+        ]
+       ],
+       "floors": [
+        0,
+        2.75
+       ],
+       "head": 2.0
+      }
+     },
+     "verge1": -0.28
+    }
+   ]
+  },
+  {
+   "id": "white-house",
+   "grb": [
+    476
+   ],
+   "floor_at": [
+    529.8,
+    -729.7
+   ],
+   "_ref": "The low white house between the café and the church: painted brick, orange clay tiles, a green garage door and door on Kerkhofstraat, a small window in its gable by the café with the café's hanging sign.",
+   "style": {
+    "frame": "#f3f1ea",
+    "sill": "#8d8b86",
+    "curtains": 0.5,
+    "head": 2.0,
+    "sill_h": 0.9
+   },
+   "roofstyle": {
+    "roofc": "#8f4a37",
+    "fascia": "#f1efe9",
+    "gutter": "#8b9093"
+   },
+   "plinth": [
+    0.45,
+    "render:#55585b"
+   ],
+   "vols": [
+    {
+     "p": [
+      [
+       520.33,
+       -722.32
+      ],
+      [
+       537.29,
+       -720.33
+      ],
+      [
+       538.28,
+       -728.77
+      ],
+      [
+       521.32,
+       -730.76
+      ]
+     ],
+     "roof": "gable",
+     "eaves": 2.5,
+     "ridge": 6.2,
+     "wall": "brick:#eeebe4",
+     "chimneys": [
+      [
+       0.3,
+       4.25
+      ]
+     ],
+     "faces": {
+      "0": {
+       "at": [
+        [
+         3.0,
+         "w1.1"
+        ],
+        [
+         7.2,
+         "g2.4"
+        ],
+        [
+         10.0,
+         "d1.0"
+        ],
+        [
+         13.6,
+         "w1.1"
+        ]
+       ],
+       "garage": "#2f5e3c",
+       "door": "#2f5e3c",
+       "door_glass": false,
+       "head": 2.05
+      },
+      "2": {
+       "rows": [
+        "w w d w w"
+       ],
+       "margin": 2.0,
+       "door": "#5a3a2a",
+       "door_glass": false
+      },
+      "1": {
+       "at": [
+        [
+         6.5,
+         "n0.6"
+        ]
+       ],
+       "head": 1.9,
+       "sill_h": 1.05
+      }
+     }
+    },
+    {
+     "p": [
+      [
+       536.79,
+       -716.02
+      ],
+      [
+       532.13,
+       -716.64
+      ],
+      [
+       532.7,
+       -720.94
+      ],
+      [
+       537.36,
+       -720.32
+      ]
+     ],
+     "roof": "flat",
+     "eaves": 3.2,
+     "wall": "brick:#eeebe4",
+     "skip": [
+      2
+     ]
+    }
+   ]
+  }
+ ],
+ "fittings": [
+  {
+   "k": "bollards",
+   "p": [
+    509.0,
+    -772.2
+   ],
+   "q": [
+    515.5,
+    -768.3
+   ],
+   "n": 3
+  },
+  {
+   "k": "planter",
+   "p": [
+    547.6,
+    -750.5
+   ],
+   "w": 1.3,
+   "d": 1.3,
+   "yaw": -0.17
+  },
+  {
+   "k": "planter",
+   "p": [
+    547.9,
+    -753.4
+   ],
+   "w": 1.3,
+   "d": 1.3,
+   "yaw": -0.17
+  },
+  {
+   "k": "bench",
+   "p": [
+    547.1,
+    -755.9
+   ],
+   "yaw": 1.4
+  },
+  {
+   "k": "flag",
+   "p": [
+    543.93,
+    -724.91
+   ],
+   "c": "#c8302c",
+   "yaw": -3.01,
+   "h": 2.5
+  },
+  {
+   "k": "flag",
+   "p": [
+    538.98,
+    -726.01
+   ],
+   "c": "#1d2c6e",
+   "yaw": 0.131,
+   "h": 2.6
+  },
+  {
+   "k": "planter",
+   "p": [
+    541.39,
+    -725.14
+   ],
+   "w": 0.55,
+   "d": 0.45,
+   "yaw": 0.131
+  },
+  {
+   "k": "letterbox",
+   "p": [
+    541.68,
+    -724.65
+   ],
+   "yaw": -1.439,
+   "y": 1.2
+  },
+  {
+   "k": "hangsign",
+   "p": [
+    538.2,
+    -728.08
+   ],
+   "yaw": 0.12,
+   "c": "#1f4fa6",
+   "y": 2.75
+  }
+ ]
+}

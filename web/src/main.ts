@@ -49,7 +49,7 @@ import { Doors } from './world/doors';
 import { Glass } from './world/glass';
 import { World } from './world/collision';
 import { loadEnvironment } from './world/environment';
-import { house, type DipSpec, type VillageData } from './world/houseData';
+import { house, type DipSpec, type Prism, type Ring, type VillageData } from './world/houseData';
 import { loadProps } from './world/props';
 import { buildHouseMeshes, grassMaterial, groundFamilies, setAnisotropy, surfaceMaterial, tintedMaterial } from './world/houseMeshes';
 import { startDiag } from './ui/diag';
@@ -289,6 +289,9 @@ function applyQuality(q: Quality): void {
     sun.shadow.mapSize.set(preset.shadowMap, preset.shadowMap);
     sun.shadow.map?.dispose();
     sun.shadow.map = null; // rebuilt at the new size on the next frame
+    // Also away from the house, where the shadow isn't updated: without a map every surface that takes the
+    // shadow drew nothing (Auto dropping a preset in the village emptied the screen).
+    renderer.shadowMap.needsUpdate = true;
   }
   setAnisotropy(preset.anisotropy);
   tiles.drawDistance = phone ? Math.min(FAR_PHONE, preset.far) : preset.far;
@@ -1653,7 +1656,12 @@ async function buildVillage(): Promise<void> {
   const molenhoekJob = loadMolenhoek(renderer, house.ground).catch(() => null); // world/molenhoek.ts, alongside the others
   // The church and the school (with the square's fittings): our Blender models in place of the blocks
   // built from the open data, which stay for walking into. A model that didn't load leaves its blocks drawn.
-  const models = (await Promise.all([loadChurch().catch(() => null), loadModel('/models/school.glb').catch(() => null)])).filter(
+  // The houses round the square (world/townCentre.ts) replace the blocks inside the outlines they name.
+  // (?notown in the dev build leaves them out, to compare.)
+  const town = import.meta.env.DEV && location.search.includes('notown')
+    ? Promise.reject(new Error('left out'))
+    : import('./world/townCentre').then(({ loadTown }) => loadTown(renderer, (x, z) => house.ground + terrain.height(x, z)));
+  const models = (await Promise.all([loadChurch().catch(() => null), loadModel('/models/school.glb').catch(() => null), town.catch(() => null)])).filter(
     (m): m is THREE.Object3D => m !== null,
   );
   // The houses of Molenhoek and their street, the same way: fitted into the village data before its tiles are built.
@@ -1662,7 +1670,7 @@ async function buildVillage(): Promise<void> {
     fitMolenhoek(data, molenhoek, first);
     models.push(molenhoek);
   }
-  const drawn = withoutLandmarks(data, models.map((m) => m.userData.landmark as string));
+  const drawn = withoutLandmarks(data, models.map((m) => m.userData.landmark as string), models.flatMap((m) => (m.userData.replaces as Ring[] | undefined) ?? []));
   const made: { key: string; pieces: ReturnType<typeof buildTile> }[] = [];
   for (const [key, t] of splitTiles(drawn, first)) {
     made.push({ key, pieces: buildTile(t, poles, renderer, house.ground, detail) });
@@ -1674,6 +1682,7 @@ async function buildVillage(): Promise<void> {
     tiles.track(m);
   }
   world.addPrisms(data.prisms ?? []);
+  for (const m of models) world.addPrisms((m.userData.solids as Prism[] | undefined) ?? []);
   world.addDips(data.dips);
   addDips(data.dips);
   groundCuts.cells.push(...data.groundCuts.cells);
@@ -1712,6 +1721,16 @@ function startCountryside(): Promise<void> {
 async function loadChurch(): Promise<THREE.Object3D> {
   const root = (await new GLTFLoader().loadAsync('/models/church.glb')).scene;
   gameTextures(root);
+  // The slates are dark blue-grey in every photo; in the game's bright sun the model's own texture came out pale.
+  const slates = new Set<THREE.MeshStandardMaterial>();
+  root.traverse((o) => {
+    const m = (o as THREE.Mesh).material as THREE.MeshStandardMaterial | undefined;
+    if (m?.name === 'church_slate') slates.add(m);
+  });
+  for (const m of slates) {
+    m.color.multiplyScalar(0.5);
+    m.roughness = 0.92; // weathered slate: less of the bright sky in it
+  }
   root.userData.landmark = 'church';
   // Its origin on the church's axis at ground level (Lambert 72 119018.72, 184084.24), turned so
   // its length runs 6.4 degrees north of grid east; walls and plinth reach 1.2 m down for the slope.
@@ -1752,23 +1771,34 @@ function gameTextures(root: THREE.Object3D): void {
   });
 }
 
-/** The village without the blocks, roofs and windows of the landmarks named (a model stands there instead). */
-function withoutLandmarks(data: VillageData, names: string[]): VillageData {
-  const outlines = (data.landmarks ?? []).filter((l) => names.includes(l.name)).map((l) => l.p);
-  const inside = (x: number, z: number) =>
-    outlines.some((ring) => {
+/**
+ * The village without the blocks, roofs and windows of the landmarks named (a model stands there instead),
+ * nor those of the houses inside the outlines `houses` (the town's model): a wall, plinth or chimney block
+ * whose every corner lies in or within 0.4 m of such an outline, as does its middle; a roof whose middle does.
+ */
+function withoutLandmarks(data: VillageData, names: string[], houses: Ring[] = []): VillageData {
+  const outlines = [...(data.landmarks ?? []).filter((l) => names.includes(l.name)).map((l) => l.p), ...houses];
+  const within = (rings: Ring[], x: number, z: number, margin: number) =>
+    rings.some((ring) => {
       let hit = false;
       for (let i = 0, j = ring.length - 1; i < ring.length; j = i++) {
         const [xi, zi] = ring[i];
         const [xj, zj] = ring[j];
         if (zi > z !== zj > z && x < ((xj - xi) * (z - zi)) / (zj - zi) + xi) hit = !hit;
+        const dx = xj - xi;
+        const dz = zj - zi;
+        const t = Math.max(0, Math.min(1, ((x - xi) * dx + (z - zi) * dz) / (dx * dx + dz * dz || 1)));
+        if (margin > 0 && Math.hypot(xi + dx * t - x, zi + dz * t - z) < margin) return true;
       }
       return hit;
     });
+  const inside = (x: number, z: number) => within(outlines, x, z, 0);
+  const middle = (ring: Ring | [number, number][]): [number, number] => [ring.reduce((s, q) => s + q[0], 0) / ring.length, ring.reduce((s, q) => s + q[1], 0) / ring.length];
+  const housePart = (ring: Ring) => houses.length > 0 && ring.every(([x, z]) => within(houses, x, z, 0.4)) && within(houses, ...middle(ring), 0.4);
   return {
     ...data,
-    prisms: (data.prisms ?? []).filter((p) => !p.lm || !names.includes(p.lm)),
-    roofs: data.roofs.filter((r) => !r.lm || !names.includes(r.lm)),
+    prisms: (data.prisms ?? []).filter((p) => (!p.lm || !names.includes(p.lm)) && (p.d !== undefined || !housePart(p.p[0]))),
+    roofs: data.roofs.filter((r) => (!r.lm || !names.includes(r.lm)) && !(houses.length > 0 && within(houses, ...middle(r.p), 0))),
     openings: (data.openings ?? []).filter((o) => !inside((o.a[0] + o.b[0]) / 2 - o.n[0] * 0.3, (o.a[1] + o.b[1]) / 2 - o.n[1] * 0.3)),
   };
 }
