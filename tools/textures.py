@@ -328,6 +328,22 @@ def roof_tiles(size=1024, seed=29):
     return albedo, normal, rough
 
 
+def asphalt(size=1024, seed=41):
+    """Asphalt (Molenhoek's carriageway and its red cycle lanes): fine stone in dark binder, light and
+    neutral so the game can tint it dark grey or red. Tile = 2 m: about 2 mm a pixel, the stones 4 to
+    12 mm, a faint mottle of wear over it."""
+    rng = np.random.default_rng(seed)
+    fine = 0.6 * value_noise((size, size), 4, rng) + 0.4 * value_noise((size, size), 7, rng)
+    stones = np.clip((fine - 0.5) * 3.2, -1, 1)
+    grit = rng.random((size, size)) - 0.5
+    mottle = 0.6 * value_noise((size, size), 96, rng) + 0.4 * value_noise((size, size), 24, rng)
+    tone = 0.7 + 0.1 * stones + 0.04 * grit - 0.08 * (mottle - 0.5)
+    albedo = Image.fromarray((np.clip(np.stack([tone * 1.0, tone * 0.99, tone * 0.98], -1), 0, 1) * 255).astype(np.uint8))
+    normal = normal_map(0.5 * stones, 2.0)
+    rough = Image.fromarray(((0.86 + 0.08 * (0.5 - fine) + 0.04 * (mottle - 0.5)) * 255).clip(0, 255).astype(np.uint8))
+    return albedo, normal, rough
+
+
 def generated(sizes):
     """The textures made here (no downloads); adds their real sizes in metres to `sizes`."""
     albedo, normal, rough, claustra = brick()
@@ -347,7 +363,7 @@ def generated(sizes):
 # Generated surfaces with a colour, normal and roughness map: how they are made, the real size of
 # one texture tile in metres and the colour map's size in pixels (the floor tiles' 4.8 m need 2048).
 SURFACES = {"nb_brick": (standard_brick, 1.76, 1024), "roof_tiles": (roof_tiles, 1.2, 1024),
-            "floor_tile": (large_tile, 4.8, 2048), "cladding": (slats, 1.8, 1024)}
+            "floor_tile": (large_tile, 4.8, 2048), "cladding": (slats, 1.8, 1024), "asphalt": (asphalt, 2.0, 1024)}
 
 
 def surface(name, sizes):

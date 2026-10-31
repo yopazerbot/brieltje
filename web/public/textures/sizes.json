@@ -18,5 +18,6 @@
  "nb_brick": 1.76,
  "roof_tiles": 1.2,
  "floor_tile": 4.8,
- "cladding": 1.8
+ "cladding": 1.8,
+ "asphalt": 2.0
 }

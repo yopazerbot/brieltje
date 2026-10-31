@@ -61,6 +61,7 @@ import { route } from './ui/route';
 import { HomeLife } from './world/homeLife';
 import { HomeStreet, withoutModelled } from './world/homeStreet';
 import { RoadLife } from './world/roadLife';
+import { fitVillage as fitMolenhoek, loadMolenhoek } from './world/molenhoek';
 import { CAR_REACH, CAR_SLOW, findPortal, PORTALS, portalNear, type Portal } from '../shared/portals.mjs';
 import { noShoot } from '../shared/zones.mjs';
 import { carName, doorName, lang, onLang, placeName, plural, portalName, serverText, setLang, t, whoName } from './i18n';
@@ -1584,11 +1585,18 @@ async function buildVillage(): Promise<void> {
     return box.getCenter(new THREE.Vector2());
   });
   for (const c of landmarks) detailAt.push([c.x, c.y]);
+  const molenhoekJob = loadMolenhoek(renderer, house.ground).catch(() => null); // world/molenhoek.ts, alongside the others
   // The church and the school (with the square's fittings): our Blender models in place of the blocks
   // built from the open data, which stay for walking into. A model that didn't load leaves its blocks drawn.
   const models = (await Promise.all([loadChurch().catch(() => null), loadModel('/models/school.glb').catch(() => null)])).filter(
     (m): m is THREE.Object3D => m !== null,
   );
+  // The houses of Molenhoek and their street, the same way: fitted into the village data before its tiles are built.
+  const molenhoek = await molenhoekJob;
+  if (molenhoek) {
+    fitMolenhoek(data, molenhoek, first);
+    models.push(molenhoek);
+  }
   const drawn = withoutLandmarks(data, models.map((m) => m.userData.landmark as string));
   const made: { key: string; pieces: ReturnType<typeof buildTile> }[] = [];
   for (const [key, t] of splitTiles(drawn, first)) {
