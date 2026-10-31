@@ -215,13 +215,14 @@ export class Game {
     this.scores.set(name, score);
     const player = {
       ws, key: session.key, role: session.role, color, state: null, lastChat: 0, msgs: 0, window: now, address: this.auth.addressOf(req),
-      score, hp: HEALTH, alive: true, respawnAt: 0, protectedUntil: now + PROTECT_MS, nextHit: 0, weapons: loadout(session.role), joinedAt: now, spawned: false,
+      score, hp: HEALTH, alive: true, respawnAt: 0, protectedUntil: now + PROTECT_MS, nextHit: 0, weapons: loadout(session.role), joinTime: now, spawned: false,
       nades: Array(GRENADE.carry).fill(0), thrown: [],
     };
     // Where the server believes they are: the replaced connection, their last visit, or
     // the street (where everyone starts). Their first update is limited like any other.
     const at = old?.state ?? this.lastPos.get(name) ?? SPAWNS[0];
     player.state = { x: at.x, y: at.y, z: at.z, yaw: 0, pitch: 0, armed: false, flying: false, w: 'pistol', c: false };
+    player.joinedAt = { x: at.x, z: at.z }; // a start place is only taken from here (see spawn)
     player.movedAt = now;
     player.budget = 0.5;
     this.players.set(name, player);
@@ -505,7 +506,7 @@ export class Game {
       this.lastNewRound = now;
       this.newRound(`${name} started a new round`, 'newRoundBy', { name });
     } else if (m.t === 'spawn' && typeof m.to === 'string') {
-      this.spawn(player, m.to, now);
+      this.spawn(name, player, m.to, now);
     } else if (m.t === 'travel' && typeof m.to === 'string') {
       this.travel(name, player, m.to, m.via === 'chat', now);
     } else if (m.t === 'rules' && player.role === 'admin') {
@@ -524,14 +525,19 @@ export class Game {
    * walking onto a portal does (a position spoofing "teleport hack" can't pick its spot).
    */
   /**
-   * Where a player starts, picked on the start screen: one of the portal places' arrival spots,
-   * once, in the first two minutes after joining (the page sends it before its first update).
-   * Only those fixed spots, so it can't place anyone elsewhere.
+   * Where a player starts, picked on the start screen: one of the portal places' arrival spots. The
+   * page sends it right after the welcome. Taken once, in the first 30 seconds, and only while the
+   * player is still where the server put them on joining (within 30 m: their first updates may
+   * cross it), alive, on foot, with the portals on. So it is a start, never a free trip later.
    */
-  spawn(p, id, now) {
+  spawn(name, p, id, now) {
     const to = PORTALS.find((q) => q.id === id);
-    if (!to || p.spawned || now - p.joinedAt > 120_000 || !p.state) return;
+    const st = p.state;
+    if (!to || p.spawned || !st || !p.joinedAt || now - p.joinTime > 30_000) return;
     p.spawned = true;
+    if (!p.alive || this.carOf(name) || this.horseOf(name) || (!this.rules.portals && p.role !== 'admin')) return;
+    if (Math.hypot(st.x - p.joinedAt.x, st.z - p.joinedAt.z) > 30) return;
+    p.nextTravel = now + TRAVEL_MS;
     const [x, z] = to.out;
     Object.assign(p.state, { x, y: TERRAIN.height(x, z), z });
     p.budget = 0.5;
