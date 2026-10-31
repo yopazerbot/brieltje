@@ -34,7 +34,7 @@ const SPECS: Record<string, MatSpec> = {
   // What the aerial photo shows around the neighbours' houses (tools/street.py)
   pave_light: { tex: 'pavers', tint: '#cdc9c2', normalScale: 0.8 }, // light grey concrete pavers
   pave_warm: { tex: 'pavers', tint: '#cbbfae', normalScale: 0.8 }, // beige pavers
-  pave_grey: { tex: 'pavers', tint: '#8f8d88', normalScale: 0.8 }, // grey concrete pavers: Smetlede's church square and main street (Street View), as dark as they look there
+  pave_grey: { tex: 'pavers', tint: '#9e9c97', normalScale: 0.8 }, // grey concrete pavers: Smetlede's church square and main street (Street View), as dark as they look there
   gravel: { tex: 'gravel', tint: '#d6cab5' },
   track: { tex: 'gravel', tint: '#b7a184' }, // the wheel ruts of the field tracks
   pool_water: { tint: '#3e9fbe', rough: 0.04, metal: 0.1 },

@@ -1077,14 +1077,14 @@ def bake():
                         loc, _, _, dist = tree.ray_cast(q, w, 3.0)
                         if loc is not None:
                             hit += 1.0 - 0.5 * dist / 3.0
-                    ao = 1.0 - 0.72 * hit / n_ao
+                    ao = 1.0 - 0.3 * hit / n_ao  # a light contact shade: the game adds its own light and, on High, its own ambient occlusion
                     lit = 1.0
                     if n.dot(sun) > 0.02:
                         vis = 0
                         for j in jit:
                             loc, _, _, _ = tree.ray_cast(q + j, (sun + j).normalized(), 120.0)
                             vis += loc is None
-                        lit = 0.6 + 0.4 * vis / len(jit)
+                        lit = 0.85 + 0.15 * vis / len(jit)
                     cache[kk] = ao * lit
                     count += 1
                 f_ = cache[kk]
@@ -1144,14 +1144,15 @@ for o in objs:
     o.select_set(True)
 os.makedirs(os.path.dirname(os.path.abspath(OUT)), exist_ok=True)
 bpy.ops.export_scene.gltf(filepath=OUT, export_format="GLB", use_selection=True, export_apply=True, export_yup=True,
-                          export_texcoords=True, export_normals=False, export_extras=True, export_vertex_color="MATERIAL",
+                          export_texcoords=True, export_normals=True, export_extras=True, export_vertex_color="MATERIAL",
                           export_cameras=False, export_lights=False)
 
 
 def pack(path):
     """Make the GLB small: positions as 16-bit integers (KHR_mesh_quantization, the mesh node's scale and offset
-    turn them back into metres, 2 mm steps), no normals (every surface is flat: the game shades it flat), colours
-    as bytes divided by COLOR_SCALE (painted brick needs more than 1 over the reddish texture; the game's material
+    turn them back into metres, 2 mm steps), normals as signed bytes (the game's ambient occlusion on High reads
+    them: without normals it took every house for fully shaded and drew it nearly black), colours as bytes
+    divided by COLOR_SCALE (painted brick needs more than 1 over the reddish texture; the game's material
     multiplies by it again)."""
     import struct
     import numpy as np
@@ -1206,6 +1207,11 @@ def pack(path):
             new = {"POSITION": put(q4, 5122, "VEC3", 34962, True, 8, True)}
             accs[new["POSITION"]]["min"] = [int(x) for x in q.min(0)]
             accs[new["POSITION"]]["max"] = [int(x) for x in q.max(0)]
+            if "NORMAL" in at:
+                nrm = read(at["NORMAL"]).astype(np.float64)
+                n4 = np.zeros((len(nrm), 4), np.int8)
+                n4[:, :3] = np.clip(np.round(nrm * 127), -127, 127).astype(np.int8)
+                new["NORMAL"] = put(n4, 5120, "VEC3", 34962, True, 4)
             if "TEXCOORD_0" in at:
                 new["TEXCOORD_0"] = put(read(at["TEXCOORD_0"]).astype(np.float32), 5126, "VEC2", 34962)
             if "COLOR_0" in at:

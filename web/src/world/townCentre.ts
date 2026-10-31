@@ -9,10 +9,11 @@ import type { Prism, Ring } from './houseData';
  * village leaves them out of the drawing, and brings blocks of its own for what is new (bollards,
  * planters, a bench).
  *
- * The light is baked: the model's colours per vertex carry each surface's colour times its ambient
- * occlusion and the sun's shadow, worked out in Blender. So it needs no real-time shadow (it neither
- * casts into nor samples the sun's shadow map, which only covers the house anyway) and no normals:
- * every surface is flat and drawn with flat shading.
+ * A light shade is baked: the model's colours per vertex carry each surface's colour times a soft contact
+ * shadow and the sun's shadow under eaves and in reveals, worked out in Blender. So it needs no real-time
+ * shadow (it neither casts into nor samples the sun's shadow map, which only covers the house anyway). Its
+ * normals are kept (as bytes): the ambient occlusion on High reads them, and took the houses for fully
+ * shaded without them.
  *
  * Draw calls: five near (brick, render, roof tiles, trim, glass), three far. Within FAR m of the
  * square (230, from the model) the full copy is drawn; beyond it a simple copy of the same volumes,
@@ -49,7 +50,6 @@ function material(name: string, extras: { texture?: string; normalScale?: number
   const m = new THREE.MeshStandardMaterial({
     color: new THREE.Color(COLOR_SCALE, COLOR_SCALE, COLOR_SCALE),
     vertexColors: true,
-    flatShading: true,
     roughness: glass ? 0.06 : (extras.roughness ?? 0.85),
     metalness: glass ? 0.1 : 0,
     envMapIntensity: glass ? 1.6 : 1,
@@ -86,6 +86,7 @@ export async function loadTown(renderer: THREE.WebGLRenderer, ground: (x: number
     (mesh.material as THREE.Material).dispose();
     mesh.material = mat;
     mesh.castShadow = mesh.receiveShadow = false;
+    if (!mesh.geometry.getAttribute('normal')) mesh.geometry.computeVertexNormals(); // an older model without normals
     (name.startsWith('far_') ? far : near).add(mesh);
   }
   const lod = new THREE.LOD();
