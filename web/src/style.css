@@ -959,3 +959,5 @@ body.touch:not(:has(#overlay:not(.hidden))) #full-hint { left: calc(114px + env(
 }
 /* The Dutch words on the small round buttons (Herlaad, Granaat, Gebruik while planning) are longer: a size smaller. */
 html:lang(nl) #touch .t-reload, html:lang(nl) #touch .t-nade, html:lang(nl) body.touch[data-touch=plan] #touch .t-use { font-size: 9px; letter-spacing: 0; }
+/* A tool the admin hasn't allowed (the furniture planner): visible, but greyed out. */
+button.tool:disabled { opacity: 0.45; cursor: not-allowed; }

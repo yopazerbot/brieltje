@@ -177,7 +177,7 @@ const en = {
   'adm.turbo': 'Move extremely fast (15 times, walking and flying)',
   'adm.rules': 'House rules',
   'adm.flying': 'Flying allowed',
-  'adm.furniture': 'Players can move furniture',
+  'adm.furniture': 'Players can use the furniture planner',
   'adm.names': 'Names above players (they show through walls)',
   'adm.portals': 'Portals take players from place to place',
   'adm.travel': 'Players can travel from the chat (/church, /house …)',
@@ -404,7 +404,7 @@ const en = {
   'games.best': ' · best {name} {n}',
 
   // ---- Chat lines made here
-  'chat.furnOff': 'The admin has turned moving furniture off.',
+  'chat.furnOff': 'The admin has turned the furniture planner off.',
   'chat.travelHelp': 'Travel with {list}, or walk onto a portal.',
   'chat.notDown': 'Not while you are down.',
   'chat.joinedAs': 'Joined the house as {name}. {n} of {max} online.',
@@ -700,7 +700,7 @@ const nl = {
   'adm.turbo': 'Extreem snel bewegen (15 keer zo snel, wandelen en vliegen)',
   'adm.rules': 'Huisregels',
   'adm.flying': 'Vliegen toegestaan',
-  'adm.furniture': 'Spelers mogen meubels verzetten',
+  'adm.furniture': 'Spelers mogen de meubelplanner gebruiken',
   'adm.names': 'Namen boven spelers (zichtbaar door muren heen)',
   'adm.portals': 'Portalen brengen spelers van plaats naar plaats',
   'adm.travel': 'Spelers mogen reizen via de chat (/kerk, /huis …)',
@@ -928,7 +928,7 @@ const nl = {
   'games.best': ' · beste: {name} {n}',
 
   // ---- Chat lines made here
-  'chat.furnOff': 'De beheerder heeft meubels verzetten uitgezet.',
+  'chat.furnOff': 'De beheerder heeft de meubelplanner uitgezet.',
   'chat.travelHelp': 'Reis met {list}, of stap op een portaal.',
   'chat.notDown': 'Niet zolang je dood bent.',
   'chat.joinedAs': 'Je doet mee als {name}. {n} van {max} online.',

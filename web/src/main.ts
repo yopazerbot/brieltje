@@ -652,6 +652,10 @@ function applyRules(next: Rules): void {
   $('set-max-value').textContent = maxSlider.value;
   avatars.showNames = next.names && !games.hideOthers;
   if (!mayFurnish()) planner.toggle(false);
+  // The planner's button greyed out for those the admin hasn't allowed it (the server refuses them anyway).
+  const plannerBtn = document.getElementById('planner-btn') as HTMLButtonElement;
+  plannerBtn.disabled = !mayFurnish();
+  plannerBtn.title = mayFurnish() ? '' : t('chat.furnOff');
   planner.clowns = !me || me.role === 'admin'; // alone you may place clowns; in multiplayer the admin
 }
 /** The admin can always arrange the furniture; others when the admin allows it. */
