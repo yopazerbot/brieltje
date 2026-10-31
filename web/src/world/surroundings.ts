@@ -361,14 +361,18 @@ function buildPosts(list: [number, number, number][], ground: number): Piece {
   return { material: postMat, geometry: postGeo, tag: 'concrete', shadow: false, at, small: true };
 }
 
-/** A tree crown: lumpy leaf clusters, darker inside and below. Unit size: about 1 m radius, centred at y = 0. */
-function crown(seed: number, simple = false): THREE.BufferGeometry {
+/**
+ * A tree crown: lumpy leaf clusters, darker inside and below. Unit size: about 1 m radius, centred at y = 0.
+ * Simple: 4 lumps of 20 triangles instead of 6 to 9 of 80; bough: one of 20 (a tall tree's lower boughs).
+ */
+function crown(seed: number, kind: 'full' | 'simple' | 'bough' = 'full'): THREE.BufferGeometry {
   let s = seed;
   const rand = () => ((s = (s * 16807) % 2147483647) / 2147483647);
   const parts: THREE.BufferGeometry[] = [];
-  const n = simple ? 4 : 6 + Math.floor(rand() * 4); // simple: 4 lumps of 20 triangles instead of 6 to 9 of 80
+  const simple = kind !== 'full';
+  const n = kind === 'bough' ? 1 : simple ? 4 : 6 + Math.floor(rand() * 4);
   for (let i = 0; i < n; i++) {
-    const r = simple ? 0.62 : 0.45 + rand() * 0.35;
+    const r = kind === 'bough' ? 0.8 : simple ? 0.62 : 0.45 + rand() * 0.35;
     const g = new THREE.IcosahedronGeometry(r, simple ? 0 : 1);
     const pos = g.attributes.position as THREE.BufferAttribute;
     const nor = g.attributes.normal as THREE.BufferAttribute;
@@ -407,8 +411,11 @@ const TREE_ORDER = 0.4;
 const COVER_ORDER = 0.5;
 const GROUND_COVERS = new Set(['road', 'field_soil', 'field_dark', 'field_crop', 'forest', 'pave_light', 'pave_warm', 'pave_grey', 'gravel', 'track']);
 
-/** The tree shapes: three crowns in full and simplified, and a trunk; made once. */
-let treeShapes: { full: THREE.BufferGeometry[]; simple: THREE.BufferGeometry[]; trunk: THREE.BufferGeometry } | null = null;
+/** m: trees this tall get a second, lower crown (their lower boughs). */
+const LOW_BOUGHS = 15;
+
+/** The tree shapes: three crowns in full and simplified, the lower boughs and a trunk; made once. */
+let treeShapes: { full: THREE.BufferGeometry[]; simple: THREE.BufferGeometry[]; bough: THREE.BufferGeometry; trunk: THREE.BufferGeometry } | null = null;
 
 type Pole = NonNullable<Surroundings['poles']>[number];
 
@@ -481,33 +488,50 @@ export function buildTile(data: TileData, poles: Pole[], renderer: THREE.WebGLRe
 /**
  * Trees: three crown shapes and a trunk, each tree a copy of one. Round the house and the church
  * full crowns that cast shadows; elsewhere (the woods and tree rows further out) simpler crowns
- * (80 triangles instead of about 600) that cast none.
+ * (80 triangles instead of about 600) that cast none. A tall tree has its lower boughs too: a crown
+ * of 20 triangles under the big one, without a shadow, drawn within the draw distance of details.
  */
 function buildTrees(trees: Surroundings['trees'], detail: (x: number, z: number) => boolean): Piece[] {
   treeShapes ??= {
     full: [0, 1, 2].map((k) => crown(1234 + k * 999)),
-    simple: [0, 1, 2].map((k) => crown(1234 + k * 999, true)),
+    simple: [0, 1, 2].map((k) => crown(1234 + k * 999, 'simple')),
+    bough: crown(4321, 'bough').scale(1.15, 1, 1.15),
     trunk: new THREE.CylinderGeometry(0.06, 0.1, 1, 7).translate(0, 0.5, 0),
   };
   const shapes = treeShapes;
   const crowns: THREE.Matrix4[][] = [[], [], [], [], [], []];
+  const boughs: THREE.Matrix4[] = [];
   const trunks: THREE.Matrix4[] = [];
   const q = new THREE.Quaternion();
   const up = new THREE.Vector3(0, 1, 0);
   for (const t of trees) {
     // The shape by position, so a tree looks the same whichever tile or file it comes in.
     const k = (Math.abs(Math.round(t.x * 7 + t.z * 13)) % 3) + (detail(t.x, t.z) ? 0 : 3);
-    const crownR = Math.max(t.r, t.h * 0.22);
-    const crownH = Math.min(t.h * 0.7, crownR * 2.2);
+    // A tall tree's crown is most of its height and wide (the woods' oaks, beeches and poplars of
+    // 20 to 25 m start branching at a third of it); the laser scan's crown radius stops at 4.5 m, so a
+    // tall tree was a small ball on a long bare pole. Trees up to about 15 m hardly change.
+    const crownR = Math.min(7, Math.max(t.r, t.h * 0.26));
+    const crownH = Math.min(t.h * 0.75, Math.max(crownR * 2.2, t.h * 0.6));
     const trunkH = t.h - crownH * 0.6;
-    q.setFromAxisAngle(up, (t.x * 7.3 + t.z * 3.1) % (Math.PI * 2));
+    const turn = (t.x * 7.3 + t.z * 3.1) % (Math.PI * 2);
+    q.setFromAxisAngle(up, turn);
     crowns[k].push(new THREE.Matrix4().compose(new THREE.Vector3(t.x, t.y + t.h - crownH * 0.55, t.z), q, new THREE.Vector3(crownR, crownH * 0.6, crownR)));
-    const girth = Math.max(1, t.h / 8);
+    if (t.h >= LOW_BOUGHS) {
+      // Under it the lower boughs, a little to one side, down to about a quarter of the height: the bare
+      // trunk below them, as at the edge of a wood. No shadow of their own: the crown above casts one over
+      // the same ground.
+      const r = crownR * 0.85;
+      const side = crownR * 0.18;
+      boughs.push(new THREE.Matrix4().compose(
+        new THREE.Vector3(t.x + Math.cos(turn) * side, t.y + t.h * 0.41, t.z + Math.sin(turn) * side), q, new THREE.Vector3(r, t.h * 0.17, r)));
+    }
+    const girth = Math.max(1, t.h / 6.5); // a 25 m trunk about 75 cm across at the foot
     trunks.push(new THREE.Matrix4().compose(new THREE.Vector3(t.x, t.y, t.z), q, new THREE.Vector3(girth, trunkH, girth)));
   }
   const out: Piece[] = crowns.flatMap((at, k) =>
     at.length ? [{ material: leafMat, geometry: k < 3 ? shapes.full[k] : shapes.simple[k - 3], tag: 'hedge', shadow: k < 3, at, order: TREE_ORDER }] : [],
   );
+  if (boughs.length) out.push({ material: leafMat, geometry: shapes.bough, tag: 'hedge', shadow: false, at: boughs, order: TREE_ORDER, small: true });
   out.push({ material: barkMat, geometry: shapes.trunk, tag: 'hedge', shadow: false, at: trunks, order: TREE_ORDER });
   return out;
 }

@@ -6,7 +6,9 @@ Sources (downloaded once into source/geo/, not in git):
 - DHM Vlaanderen II (laser scan, 1 m, flown 2013-2015) via WCS: terrain (DTM)
   and surface (DSM), 1.2 by 2 km (tools/geodata.py). Surface minus terrain gives building and tree heights
   (everything then stands on the model's flat ground), and the
-  shape of each roof part (flat, gable either way, hip, shed: tools/roofs.py).
+  shape of each roof part (flat, gable either way, hip, shed: tools/roofs.py). Tree crowns over a
+  roof are left out (CANOPY, crowns_over); a building the laser saw only crowns over gets usual
+  heights and a gable (under_trees, shaded_parts).
 - Orthophoto (Orthofotomozaïek, middenschalig, winteropnamen, kleur, meest recent,
   25 cm, WMS OMWRGBMRVL): the colour of each roof. Buildings in the GRB that are
   newer than the laser scan get usual heights (two storeys for a house, one for an
@@ -64,6 +66,66 @@ OUR_GROUND = -0.1    # model ground level
 # Buildings newer than the laser scan (GRB UIDN): their roof as the 2025 orthophoto shows it.
 # Without an entry: a house gets a flat roof on two storeys, an outbuilding one storey.
 NEWER = {7305773: {"shape": "hip", "eaves": 3.4, "ridge": 8.0}, 9422468: {"shape": "gable", "eaves": 3.0, "ridge": 5.2}}
+# Tree crowns over the roofs. The laser scan measures the top of whatever is there: over a barn in
+# a wood that is the crowns, 20 to 35 m up, and the barn became a block with towers. No roof here is
+# higher than these (m, by GRB kind; the church and its tower are measured on their own), so points
+# above are crowns.
+CANOPY = {"hoofdgebouw": 14.0, "bijgebouw": 11.0}
+STEEPEST = 1.75      # rise per metre: no roof here is steeper than 60 degrees (the church's spire is its own)
+SHED_AREA = 20.0     # m²: below this a building is a shed or a hut, one storey, whatever the GRB calls it
+
+
+def under_trees(poly, sample, limit, outside, kind):
+    """Whether the laser saw tree crowns instead of this building's roof: most of its points higher
+    than any roof of its kind, or one crown carrying on past its walls at the same height (a roof
+    stops at its walls; outside them is a yard or a garden). A shed (an outbuilding of under 40 m²)
+    as high as a house needs the crown on one side only."""
+    lim, limit[0] = limit[0], None
+    _, h = sample(poly)
+    limit[0] = lim
+    if len(h) < 2:
+        return False
+    if float((h <= lim).mean()) < 0.4:
+        return True
+    top = float(np.median(h))
+    ring = outside(poly, poly)
+    if top < 4.0 or len(ring) < 6:
+        return False
+    shed = kind != "hoofdgebouw" and poly.area < 40 and top >= 5.5
+    return float(np.percentile(ring, 75 if shed else 50)) >= 0.6 * top
+
+
+def crowns_over(poly, parts, outside):
+    """Roof parts that stand well above the rest of the roof, bumpy as a crown is (a roof is a smooth
+    slope), with crowns as high just outside the wall beside them: a tree over that end of the roof
+    (a block shot up from a shed). Returns [(part, height)]: the laser points in the part higher than
+    that are crowns."""
+    main = max(parts, key=lambda p: p[0].intersection(poly).area)[1]
+    out = []
+    for rect, r in parts:
+        piece = rect.intersection(poly)
+        if r is main or r["eaves"] < main["ridge"] + 2.5 or piece.area > 0.4 * poly.area or r.get("rmse", 0) < 1.0:
+            continue
+        ring = outside(piece, poly)
+        if len(ring) >= 4 and float(np.percentile(ring, 75)) >= 0.5 * r["eaves"]:
+            out.append((rect.buffer(0.5), main["ridge"] + 1.0))
+    return out
+
+
+def shaded_parts(poly, kind):
+    """Roofs for a building under trees, which the laser can't see: a gable over each part, as on
+    the old farm buildings round here (eaves a storey up, a storey and a half on a house), a flat
+    roof on a shed."""
+    out = []
+    for rect in roof_parts(poly):
+        _, u, v, _, half = frame(rect)
+        if poly.area < SHED_AREA:
+            r = {"shape": "flat", "eaves": 2.6, "ridge": 2.6}
+        else:
+            eaves = 4.8 if kind == "hoofdgebouw" else 3.0
+            r = {"shape": "gable", "eaves": eaves, "ridge": eaves + min(4.5, 0.8 * half)}  # about 40 degrees
+        out.append((rect, {**r, "ridge_dir": u, "high": v}))
+    return out
 
 
 class Ortho:
@@ -252,13 +314,23 @@ def main():
     centre = plot.centroid
     area = zone(plot)
     within = prep(area)
+    # Everything that is not open ground next to a wall: the buildings and the road, for the ring of
+    # laser points just outside a building (`under_trees`).
+    built = unary_union([p for f in features("GBG") for p in polygons(f["geometry"]) if within.contains(p.centroid)])
+    not_open = prep(unary_union([built.buffer(0.5), roads]))
+
+    def outside(piece, footprint):
+        """Laser heights in a band 1 to 3 m outside a footprint, beside `piece` of it, on open ground."""
+        band = piece.buffer(3.0).difference(footprint.buffer(1.0))
+        pc = [(r, c) for r, c in cells(band) if not not_open.contains(Point(TILE_X0 + c + 0.5, TILE_Y1 - r - 0.5))] if not band.is_empty else []
+        return np.array([ndsm[r, c] for r, c in pc], np.float32)
 
     ortho = Ortho()
     overlay = []  # (footprint, roof parts) in Lambert 72, for the check image on the photo
     rnd = lambda q: [round(float(q[0]), 2), round(float(q[1]), 2)]
     buildings = []
     footprints = []
-    newer = 0
+    newer = shaded = 0
     for f in features("GBG"):
         for poly in polygons(f["geometry"]):
             if not within.contains(poly.centroid) or poly.intersects(plot.buffer(-0.5)):
@@ -268,26 +340,53 @@ def main():
             # and a house on a slope would float or sink. Heights are measured from its own ground.
             base = OUR_GROUND
             kind = f["properties"]["LBLTYPE"]
+            church = f["properties"]["UIDN"] == CHURCH_UIDN
+            # Tree crowns over a roof: the laser sees the crown, not the roof under it. Points higher
+            # than any roof of its kind (CANOPY) are crowns, and so are those over a part that
+            # crowns_over finds (`zones`: the part and the height above which its points are dropped).
+            limit = [None if church else CANOPY.get(kind, CANOPY["bijgebouw"])]
+            zones = []
+
             # A roof per rectangular part, its shape and heights fitted to the laser heights in it.
             def sample(piece):
-                """Laser points in a piece of the footprint, half a metre in from its walls."""
+                """Laser points in a piece of the footprint, half a metre in from its walls (all of
+                a building too small for that), without the tree crowns over it."""
                 inner = piece.buffer(-0.5)
-                pc = (cells(inner) if not inner.is_empty else []) or (cells(piece) if not piece.is_empty else [])
+                pc = cells(inner) if not inner.is_empty else []
+                if not pc or (len(pc) < 3 and piece.area > 0.95 * poly.area):
+                    pc = cells(piece) if not piece.is_empty else []  # a hut of a few square metres: up to its walls
                 xy = np.array([(TILE_X0 + col + 0.5, TILE_Y1 - row - 0.5) for row, col in pc]).reshape(-1, 2)
-                return xy, np.array([ndsm[row, col] for row, col in pc], np.float32)
+                h = np.array([ndsm[row, col] for row, col in pc], np.float32)
+                if limit[0] is None:
+                    return xy, h
+                keep = h <= limit[0]
+                for zone_, top_ in zones:
+                    if len(h):
+                        keep &= ~(shapely.contains_xy(zone_, xy[:, 0], xy[:, 1]) & (h > top_))
+                return xy[keep], h[keep]
 
-            church = f["properties"]["UIDN"] == CHURCH_UIDN
             if church:
                 square, top, peak = church_tower(poly, ndsm)
                 parts = church_parts(poly, sample, Polygon(square))
+                trees = False
             else:
-                parts = decompose(poly, sample)
-            scanned = parts and max(r["ridge"] for _, r in parts) >= 2.0
-            if not scanned:
+                trees = under_trees(poly, sample, limit, outside, kind)
+                parts = [] if trees else decompose(poly, sample)
+                if parts:
+                    zones = crowns_over(poly, parts, outside)
+                    if zones:
+                        parts = decompose(poly, sample)  # again, without the crown
+            # Scanned if the laser saw its main roof: a building newer than the scan is bare ground there,
+            # with at most a tree from beside it over one end.
+            scanned = parts and max(parts, key=lambda p: p[0].intersection(poly).area)[1]["ridge"] >= 2.0
+            if trees:
+                shaded += 1
+                parts = shaded_parts(poly, kind)
+            elif not scanned:
                 # Newer than the laser scan (the GRB has it, the scan doesn't): usual heights.
                 newer += 1
                 look = NEWER.get(f["properties"]["UIDN"])
-                main = kind == "hoofdgebouw"
+                main = kind == "hoofdgebouw" and poly.area >= SHED_AREA  # a hut is one storey whatever the GRB calls it
                 parts = []
                 for i, rect in enumerate(roof_parts(poly)):
                     _, u, v, _, _ = frame(rect)
@@ -297,11 +396,17 @@ def main():
                         top = 6.2 if main else 2.8
                         r = {"shape": "flat", "eaves": top, "ridge": top}
                     parts.append((rect, {**r, "ridge_dir": u, "high": v}))
-            overlay.append((poly, parts, not scanned))
+            overlay.append((poly, parts, not scanned and not trees))
             out_parts = []
             for rect, r in parts:
                 eaves = max(2.3, r["eaves"])
                 ridge = min(max(eaves, r["ridge"]), eaves + 9)
+                if scanned and limit[0] is not None:
+                    # A slope fitted to what the crowns leave stays under them, and no steeper than
+                    # STEEPEST (a spike there is the edge of a crown, not a roof).
+                    _, u, _, half_u, half_v = frame(rect)
+                    run = (half_v if abs(r["ridge_dir"] @ u) > 0.5 else half_u) * (2 if r["shape"] == "shed" else 1)
+                    ridge = max(eaves, min(ridge, limit[0], eaves + STEEPEST * run))
                 ring = [rnd(model(Point(*q)).coords[0]) for q in corners(rect, r["ridge_dir"], r["high"])]
                 out_parts.append({"p": ring, "shape": r["shape"], "eaves": round(eaves, 2), "ridge": round(ridge, 2),
                                   "color": ortho.colour(rect.intersection(poly)) if rect.intersection(poly).area > 2 else None})
@@ -310,9 +415,11 @@ def main():
             pitched = [q for q in out_parts if q["shape"] != "flat"]
             buildings.append({
                 "kind": kind, "p": ring, "base": round(base, 2), "eaves": main_part["eaves"], "ridge": main_part["ridge"],
-                "flat": not pitched, "parts": out_parts, "newer": not scanned,
+                "flat": not pitched, "parts": out_parts, "newer": not scanned and not trees,
                 "roof": (max(pitched, key=lambda q: Polygon(q["p"]).area)["color"] if pitched else main_part["color"]),
             })
+            if trees:
+                buildings[-1]["trees"] = True  # under tree crowns: usual heights (shaded_parts)
             if church:
                 buildings[-1].update({"landmark": "church", "tower": {
                     "p": [rnd(model(Point(*q)).coords[0]) for q in square], "top": round(top, 2), "peak": round(peak, 2)}})
@@ -419,7 +526,7 @@ def main():
     for b in buildings:
         for q in b["parts"]:
             shapes[q["shape"]] = shapes.get(q["shape"], 0) + 1
-    print(f"  roof parts: {shapes}; {newer} buildings newer than the laser scan")
+    print(f"  roof parts: {shapes}; {newer} buildings newer than the laser scan, {shaded} under trees")
     print(f"wrote {OUT.relative_to(ROOT)}: {len(buildings)} buildings, {len(road_out)} road pieces, {len(tree_out)} trees, "
           f"{len(bounds)} plot boundary lines ({sum(LineString(b['path']).length for b in bounds):.0f} m), {len(canopies)} canopies")
     print("  plot in model coordinates:", plot_ring)

@@ -23,7 +23,7 @@ from pathlib import Path
 
 from shapely.geometry import LineString, Point, Polygon, box
 from shapely.affinity import translate
-from shapely.ops import unary_union
+from shapely.ops import linemerge, unary_union
 import shapely
 
 import facades
@@ -42,6 +42,7 @@ VILLAGE_OUT = ROOT / "web/src/data/village.json"  # loaded later (see the module
 CX, CZ = 4.45, -3.0  # the plot's middle (model)
 AREA = 540           # m: the surroundings loaded at the start (tools/neighbours.py)
 TILE = 200           # m: the browser's tiles, centred on the plot's middle (web/src/world/tiles.ts)
+GATE = 8.0           # m: the widest drive or gateway a plot line's fence makes way for
 
 PANE = 0.03       # glass thickness
 COPING = 0.025    # how far the roof-edge copings stand out from the brick
@@ -809,11 +810,26 @@ def main():
         # Hedges stand where the aerial photo shows them (street.json, by plot line); the rest of
         # a plot line gets a fence or nothing.
         clear = unary_union([old_house.clear(), *(Polygon(a["poly"]) for a in man["site"].get("noBoundaries", []))])
+        # Nor does a plot line stand across a way through: the roads, the tracks and footpaths to the
+        # fields (a fence keeps off their strip of land, a real hedge off the ruts or gravel) and, for the
+        # fences, a drive, forecourt or yard it runs across (paved on both sides of it), where a gate
+        # would stand open; along a drive's edge it stays. A plot line that crosses one stops at its edge.
+        roads = [Polygon(r[0], r[1:]).buffer(0) for r in nb["roads"] + st.get("roads", [])]
+        tracks = [LineString(t["path"]) for t in st.get("tracks", [])]
+        ways = unary_union([r.buffer(0.2) for r in roads] + [t.buffer(1.5) for t in tracks])  # a track's own strip of land, about 3 m
+        ruts = unary_union(roads + [t.buffer(1.05) for t in tracks])  # where a real hedge can't be: on the ruts or the gravel
+        paved = [Polygon(q["p"][0], q["p"][1:]).buffer(0) for q in st.get("pavings", [])]
+        paved_index = STRtree(paved)
+
+        def across(line):
+            """The drives and yards that `line` runs across, not along their edge (with a margin)."""
+            hit = [paved[i] for i in paved_index.query(line) if line.intersects(paved[i].buffer(-0.4))]
+            return unary_union(hit).buffer(0.3) if hit else Polygon()
         real = st.get("hedges")
         covered = {}
         for h in real or []:
             covered.setdefault(h["b"], []).append(LineString(h["path"]))
-            rest = LineString(h["path"]).difference(clear)
+            rest = LineString(h["path"]).difference(clear).difference(ruts)
             for seg in getattr(rest, "geoms", [rest]):
                 if seg.geom_type == "LineString" and seg.length >= 1.0:
                     lay_path("nb_hedge", ground - 0.05, ground + h["h"], 0.4 + 0.12 * h["h"], list(seg.coords))
@@ -826,12 +842,33 @@ def main():
                 if seg.geom_type == "LineString" and seg.length >= 1.0:
                     bounds.append({**line, "path": [[round(x, 2), round(z, 2)] for x, z in seg.coords]})
         hedges, fences = facades.garden_lines(bounds, hedges=real is None)
-        for path, h in hedges:
-            lay_path("nb_hedge", ground - 0.05, ground + h, 0.55, path)
-        for path, h in fences:
-            lay_path("fence", ground - 0.05, ground + h, 0.03, path)
-            for post in facades.posts(path, h):  # the browser stands each on the relief
-                side(post[0], post[1])["posts"].append(post)
+        opened = [0.0, 0.0]  # m of plot line left open: on ways, in yards
+        for kind, lines in (("nb_hedge", hedges), ("fence", fences)):
+            for path, h in lines:
+                line = LineString(path)
+                rest = line.difference(ways)
+                opened[0] += line.length - rest.length
+                if kind == "fence":
+                    # Across a drive or a gateway: a few metres. A longer stretch over paving runs between two
+                    # paved yards, and stays.
+                    over = rest.intersection(across(line))
+                    over = linemerge(over) if over.geom_type == "MultiLineString" else over
+                    gates = [g for g in getattr(over, "geoms", [over]) if g.geom_type == "LineString" and g.length <= GATE]
+                    if gates:
+                        length = rest.length
+                        rest = rest.difference(unary_union(gates).buffer(0.01))
+                        opened[1] += length - rest.length
+                for seg in getattr(rest, "geoms", [rest]):
+                    if seg.geom_type != "LineString" or seg.length < 1.5:
+                        continue  # no stub left beside the opening
+                    piece = [[round(x, 2), round(z, 2)] for x, z in seg.coords]
+                    if kind == "nb_hedge":
+                        lay_path("nb_hedge", ground - 0.05, ground + h, 0.55, piece)
+                        continue
+                    lay_path("fence", ground - 0.05, ground + h, 0.03, piece)
+                    for post in facades.posts(piece, h):  # the browser stands each on the relief; one at each side of an opening
+                        side(post[0], post[1])["posts"].append(post)
+        print(f"   plot lines: {opened[0]:.0f} m left open on roads, tracks and paths, {opened[1]:.0f} m across drives and yards")
         # The school's fences and the planter wall on the church square: drawn by our model of the school
         # (tools/school.py), kept here as blocks to walk and drive into.
         barriers = sm.get("barriers", {})
