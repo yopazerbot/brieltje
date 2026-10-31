@@ -391,8 +391,9 @@ let horseWanted = -1; // asked the server for this horse
 let clockOffset = 0; // the shared clock minus this page's (s), for the herds in the meadows
 let countryside: import('./world/countryside').Countryside | null = null;
 horses.onDust = (at) => effects.impact(at, new THREE.Vector3(0, 1, 0), 'cat'); // a little dust at a gallop
-// The cars (the Tesla on our driveway, the Model 3 at the bungalow); they stop against tree
-// trunks too (the trees have no blocks). `car` is the one you are in, or else the nearest.
+// The cars (the Tesla on our driveway, the Model 3 at the bungalow, a Model Y and a Model 3 by the
+// church, there once the village is); they stop against tree trunks too (the trees have no blocks).
+// `car` is the one you are in, or else the nearest.
 const trunks = (house.surroundings?.trees ?? []).map((t) => ({ x: t.x, z: t.z, r: 0.35 }));
 const cars = Object.entries(CARS.cars).map(([id, spec]) => new Car(world, trunks, id, spec));
 for (const c of cars) scene.add(c.group);
@@ -1659,7 +1660,7 @@ renderer.setAnimationLoop((now: number) => {
     indoorLight.update(dt, indoors && !baked.active, fill);
   }
   avatars.tick(dt);
-  for (const c of cars) c.update(dt, driving && c === car);
+  for (const c of cars) c.update(dt, driving && c === car, camera.position);
   combat.tick(dt);
   sound.listen(camera);
   player.lookScale = camera.fov / settings.value.fov; // slower turning while zoomed in
@@ -1690,7 +1691,7 @@ renderer.setAnimationLoop((now: number) => {
       ...(games.hideOthers ? [] : avatars.blips().map((b) => ({ ...b, kind: 'player' as const }))),
     ];
     const shapes = [...furnishing.pieces.values()].filter((p) => !p.item.startsWith('rug')).map((p) => ({ ring: footprint(p), y: p.y }));
-    for (const c of cars) shapes.push({ ring: c.footprint(), y: c.y });
+    for (const c of cars) if (c.ready) shapes.push({ ring: c.footprint(), y: c.y });
     // The floor by the height above the ground there (the village stands 5 m higher than the plot).
     // A waypoint from the big map is done when you reach it.
     if (bigMap.waypoint && Math.hypot(bigMap.waypoint.x - player.x, bigMap.waypoint.z - player.z) < 6) bigMap.waypoint = bigMap.route = null;
@@ -1706,7 +1707,7 @@ renderer.setAnimationLoop((now: number) => {
   renderer.shadowMap.autoUpdate = camera.position.distanceTo(center) < 250;
   if (bigMap.open) {
     const marks: Mark[] = [
-      ...cars.map((c) => ({ x: c.x, z: c.z, yaw: c.yaw, color: c.spec.paint, kind: 'car' as const })),
+      ...cars.filter((c) => c.ready).map((c) => ({ x: c.x, z: c.z, yaw: c.yaw, color: c.spec.paint, kind: 'car' as const })),
       ...horses.blips().map((h) => ({ ...h, color: '#8a5a3a', kind: 'horse' as const })),
       ...(games.hideOthers ? [] : avatars.marks().map((a) => ({ ...a, kind: 'player' as const }))),
     ];
@@ -1791,6 +1792,7 @@ async function buildVillage(): Promise<void> {
   for (const m of models) m.visible = true;
   groundShade.bakeVillage(renderer, scene, sun, [tiles.group], house.ground, centre, 345, phone ? 1024 : 2048);
   village = 'ready';
+  for (const c of cars) c.ready = true; // the cars parked in the village (shared/car.json) with it
   void roadLife.load(renderer, scene, camera);
 }
 
@@ -1969,6 +1971,8 @@ if (import.meta.env.DEV) {
       pickups,
       cats,
       car,
+      cars,
+      currentCar: () => car,
       getIn,
       getOut,
       horses,

@@ -1261,7 +1261,7 @@ export function furnitureName(id: string, fallback: string): string {
 }
 
 /** The cars (shared/car.json), with their article: "the Tesla". */
-const CARS_NL: Record<string, string> = { tesla: 'de Tesla', model3: 'de Model 3' };
+const CARS_NL: Record<string, string> = { tesla: 'de Tesla', model3: 'de Model 3', churchY: 'de witte Model Y', church3: 'de rode Model 3' };
 export function carName(id: string, fallback: string): string {
   return current === 'en' ? fallback : CARS_NL[id] ?? fallback;
 }

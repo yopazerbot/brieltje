@@ -6,10 +6,11 @@
 // the server checks it is plausible and keeps health, kills, deaths, points,
 // respawns and rounds. Players in Explore mode can't be hurt.
 //
-// The cars (the Tesla, the Model 3): one of each for everyone. One player at a time drives a
-// car and one more can ride along as the passenger; the driver's position updates are the
-// car's, so they (and the passenger, who moves with it) may move at the car's speed. A car
-// stays where they leave it and is back on its driveway when the server restarts.
+// The cars (shared/car.json: the Tesla and the Model 3 at home, a Model Y and a Model 3 by the
+// church): one of each for everyone. One player at a time drives a car and one more can ride
+// along as the passenger; the driver's position updates are the car's, so they (and the
+// passenger, who moves with it) may move at the car's speed. A car stays where they leave it
+// and is back in its parking spot when the server restarts.
 //
 // The portals (shared/portals.mjs): a player on one asks to travel to another, or types /church
 // in the chat (when the admin allows it); the server checks it and moves them (see travel()).

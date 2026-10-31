@@ -5,15 +5,21 @@ import { sound } from '../sound';
 import type { Point, World } from './collision';
 
 /**
- * The cars you can drive (shared/car.json): the black Tesla Model Y on our driveway and the blue
- * Model 3 at the bungalow. You get in with E (or Triangle) and drive with a camera behind the
- * car; it stops against the house, hedges, fences, trees and other players. In multiplayer one
- * player drives each car at a time and the others see it move (see game.mjs).
+ * The cars you can drive (shared/car.json): the black Tesla Model Y on our driveway, the blue
+ * Model 3 at the bungalow, and a white Model Y and a red Model 3 in the bays by the church in
+ * Smetlede. You get in with E (or Triangle) and drive with a camera behind the car; it stops
+ * against the house, hedges, fences, trees and other players. In multiplayer one player drives
+ * each car at a time and the others see it move (see game.mjs).
  *
  * The models are built in Blender from the cars' published sizes and photos (tools/model_y.py,
  * tools/model_3.py), so they need no licence; both use the same material names, so each gets
  * the game's materials with its own paint. Their wheels are separate parts with their axle as
- * origin, so they roll and the front ones steer.
+ * origin, so they roll and the front ones steer. Each model is fetched once: two cars of a kind
+ * share its geometry.
+ *
+ * The village's cars are in the game (drawn, solid, within reach) once the village has loaded
+ * (`ready`, set by main.ts); until then they wait at their parking spot's height. A car is drawn
+ * within DRAW m of the eye.
  */
 
 export type CarSpec = (typeof CARS.cars)[keyof typeof CARS.cars];
@@ -58,6 +64,15 @@ const GRIP = 12;        // how fast sideways sliding dies out (1/s)
 const STEER = 0.62;     // rad, the front wheels at full lock (less at speed, see step())
 const CLEAR = 0.3;      // m: lower things (kerbs, paving, a step) don't stop the car
 const SPIN_STEP = 0.3;  // rad: the most a wheel turns per frame on screen (faster, the spokes seem to stand or run back)
+const DRAW = 250;       // m from the eye: further off a car isn't drawn (about 30 draw calls each; the village's parked cars go at 200 m)
+
+/** A model's scene, fetched and parsed once however many cars use it; each car gets its own copy (sharing the geometry). */
+const models = new Map<string, Promise<THREE.Group>>();
+function modelCopy(url: string): Promise<THREE.Group> {
+  let scene = models.get(url);
+  if (!scene) models.set(url, (scene = new GLTFLoader().loadAsync(url).then((gltf) => gltf.scene)));
+  return scene.then((s) => s.clone()); // the original keeps the model's material names (prepare reads them)
+}
 
 // The paint is each car's own (see prepare); the light bars glow; tinted glass you can just see
 // the cabin through. Plain (not clear-coated) materials: the graphics are limited by pixels.
@@ -174,6 +189,8 @@ export class Car {
   driver: string | null = null;
   /** Who rides along in the passenger seat (multiplayer), or null */
   passenger: string | null = null;
+  /** In the game: a village car once the village has loaded (main.ts), the others from the start */
+  ready: boolean;
   private vx = 0;
   private vz = 0;
   private braking = false;
@@ -209,11 +226,12 @@ export class Car {
     this.halfL = spec.length / 2;
     this.halfW = spec.width / 2;
     this.key = `car-${id}`;
+    this.ready = !spec.village;
     this.group.add(this.body, contactShadow(spec));
-    const paint = new THREE.MeshStandardMaterial({ color: spec.paint, roughness: 0.2, metalness: 0.45 });
-    void new GLTFLoader().loadAsync(spec.model).then((gltf) => {
-      const { front, wheels } = prepare(gltf.scene, { Paint: paint, TailLight: this.taillight }, this.blurMat);
-      this.body.add(gltf.scene);
+    const paint = new THREE.MeshStandardMaterial({ color: spec.paint, roughness: 0.2, metalness: spec.metal });
+    void modelCopy(spec.model).then((scene) => {
+      const { front, wheels } = prepare(scene, { Paint: paint, TailLight: this.taillight }, this.blurMat);
+      this.body.add(scene);
       this.front = front;
       this.wheels = wheels;
     }, () => {});
@@ -231,8 +249,9 @@ export class Car {
     return [[1, 1], [1, -1], [-1, -1], [-1, 1]].map(([a, b]) => [x + fx * this.halfL * a - fz * this.halfW * b, z + fz * this.halfL * a + fx * this.halfW * b]);
   }
 
-  /** How far a point on the plan is from the car's sides (0 inside it). */
+  /** How far a point on the plan is from the car's sides (0 inside it); out of reach while it isn't in the game yet. */
   distanceTo(x: number, z: number): number {
+    if (!this.ready) return Infinity;
     const [fx, fz] = this.forward;
     const dx = x - this.x;
     const dz = z - this.z;
@@ -395,8 +414,16 @@ export class Car {
     camera.lookAt(target.x, target.y, target.z);
   }
 
-  /** Every frame: follow the driver (`local`: you drive, or nobody does), then wheels, lean, lights, its block and its sound. */
-  update(dt: number, local: boolean): void {
+  /**
+   * Every frame: follow the driver (`local`: you drive, or nobody does), then wheels, lean, lights,
+   * its block and its sound; drawn when it is in the game and within DRAW m of `eye`.
+   */
+  update(dt: number, local: boolean, eye?: THREE.Vector3): void {
+    this.group.visible = this.ready && (!eye || (this.x - eye.x) ** 2 + (this.z - eye.z) ** 2 < DRAW * DRAW);
+    if (!this.ready) {
+      this.world.setMoving(this.key, null); // nothing to walk or drive into before it is there
+      return;
+    }
     if (!local && this.from && this.to) {
       this.t = Math.min(1, this.t + dt / 0.1);
       const f = this.from;
