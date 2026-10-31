@@ -164,7 +164,7 @@ HOUSES = {
 # junction where the map ends. West of the portal Street View has images of August 2026; east of x = 790 the
 # newest are of 2009 and 2019, so those houses are described as they were then. `front` as a dict lays the
 # openings out evenly along the front: per floor a list of kinds (w window, W wide window, n narrow window,
-# d door, D glazed double door, g garage door, F french window with a railing); options as above. A negative s
+# d door, ad door with a round top, D glazed double door, g garage door, F french window with a railing); options as above. A negative s
 # (in `front`, `porch`, `front_gable`, `chimneys`) is measured from the front's east end. `laser`: a house past
 # the edge of the village data, its outline from the GRB and its ground from the relief; its heights are read
 # off Street View and checked against the laser scan.
@@ -375,6 +375,8 @@ def layout(h, L):
                 opt.update(surround=f["sur"][0], sc=f["sur"][1])
             if k == "d":
                 out.append([s_, 1.0, 0.0, 2.2, "d", {"c": f.get("door", "#5a4334"), **opt}])
+            elif k == "ad":
+                out.append([s_, 1.0, 0.0, 2.35, "ad", {"c": f.get("door", "#5a4334"), **opt}])
             elif k == "D":
                 out.append([s_, 1.4, 0.0, 2.25, "d", {"f": f.get("door", "#f1f0ec"), **opt}])
             elif k == "F":
@@ -391,6 +393,116 @@ def layout(h, L):
                     opt.update(sh=f["sh"] * (1 if (i + row) % 2 else 0.6), box=True)
                 out.append([s_, w, y, hh, "w", opt])
     return out
+
+
+def plan(specs, centre, walls, grb, others, relief, order="x"):
+    """Each house's plan from the survey's description: its block (or, `laser`, the GRB building) at `at`, the
+    front wall facing the street lines `centre`, the main body and the lower parts, which walls stand against a
+    neighbour (`others`), its ground and its openings. `order`: which way a front runs, "x" from its west end
+    (Molenhoek's houses face the street on either side of an east-west line), "view" from its left end as seen
+    from the street."""
+    HOUSES = specs
+    feet = {}
+    for key, h in HOUSES.items():
+        at = Point(*h["at"])
+        if h.get("laser"):
+            poly = next((g for g in grb if g.contains(at)), None)
+            if poly is None:
+                raise SystemExit(f"{key}: no GRB building at {h['at']}")
+            ground = min(relief.height(x, z) for x, z in poly.exterior.coords) + GROUND
+            feet[key] = ({"y0": ground, "y1": ground + 3.0}, poly)
+            continue
+        base = [(p, poly) for p, poly in walls if poly.contains(at)]
+        if not base:
+            raise SystemExit(f"{key}: no block at {h['at']}")
+        feet[key] = min(base, key=lambda b: b[0]["y0"])
+    houses = {}
+    for key, h in HOUSES.items():
+        foot, poly = feet[key]
+        poly = poly.buffer(0)
+        # `whole`: the house is the rectangle round its outline (a stepped front the GRB draws in pieces)
+        shape = poly.minimum_rotated_rectangle if h.get("whole") else poly
+        ring = list(shape.exterior.coords)[:-1]
+        # The front wall: the longest edge facing the street, within 22 m of the centre line.
+        best = None
+        for i in range(len(ring)):
+            a, b = ring[i], ring[(i + 1) % len(ring)]
+            L = math.dist(a, b)
+            if L < 2.5:
+                continue
+            mx, mz = (a[0] + b[0]) / 2, (a[1] + b[1]) / 2
+            nx, nz = (b[1] - a[1]) / L, -(b[0] - a[0]) / L
+            if shape.contains(Point(mx + nx * 0.2, mz + nz * 0.2)):
+                nx, nz = -nx, -nz
+            q = nearest_points(centre, Point(mx, mz))[0]
+            dx, dz = q.x - mx, q.y - mz
+            dist = math.hypot(dx, dz)
+            face = (nx * dx + nz * dz) / max(dist, 1e-6)
+            if dist < 24 and face > 0.55:
+                score = L * face - 0.15 * dist
+                if best is None or score > best[0]:
+                    best = (score, a, b, (nx, nz))
+        if h.get("rect"):  # given: the front wall's west and east ends, then the back corners
+            r = h["rect"]
+            a, b = tuple(r[0]), tuple(r[1])
+            L = math.dist(a, b)
+            o = ((b[1] - a[1]) / L, -(b[0] - a[0]) / L)
+            if Polygon(r).contains(Point((a[0] + b[0]) / 2 + o[0] * 0.2, (a[1] + b[1]) / 2 + o[1] * 0.2)):
+                o = (-o[0], -o[1])
+            best = (0, a, b, o)
+        if best is None:
+            raise SystemExit(f"{key}: no wall facing the street")
+        _, a, b, o = best
+        if (order == "view" and (b[0] - a[0]) * o[1] - (b[1] - a[1]) * o[0] < 0) or (order != "view" and a[0] > b[0]):
+            a, b = b, a
+        n = (-o[0], -o[1])
+        if h.get("rect"):
+            main = Polygon(h["rect"])
+        elif h.get("whole"):
+            main = shape
+        elif h["depth"]:
+            main = Polygon([a, b, (b[0] + n[0] * h["depth"], b[1] + n[1] * h["depth"]), (a[0] + n[0] * h["depth"], a[1] + n[1] * h["depth"])])
+            main = main.intersection(poly).buffer(0)
+            if main.geom_type != "Polygon":
+                main = max(main.geoms, key=lambda g: g.area)
+            main = main.minimum_rotated_rectangle
+        else:
+            main = poly
+        rest = poly.difference(main.buffer(0.05, join_style=2)).buffer(0)
+        annex = [g for g in getattr(rest, "geoms", [rest]) if g.area > 3]
+        # Heights: the village block's foot, as the relief; the lower parts as high as the village's lowest block.
+        y0 = foot["y0"] - GROUND
+        low = foot["y1"] - foot["y0"]
+        mine = poly.buffer(0.2)
+        neighbours = unary_union([q.buffer(0.3) for q in others if not mine.contains(q.representative_point()) and q.distance(poly) < 0.5])
+        def against(ring):
+            out = []
+            for i in range(len(ring)):
+                e = LineString([ring[i], ring[(i + 1) % len(ring)]])
+                out.append(bool(not neighbours.is_empty and e.intersection(neighbours).length > 0.6 * e.length))
+            return out
+        main_ring = [list(map(lambda v: round(v, 3), c)) for c in list(main.exterior.coords)[:-1]]
+        Lf = math.dist(a, b)
+        fix = lambda v: v + Lf if v < 0 else v
+        h = dict(h)
+        for k_ in ("porch", "front_gable", "solar"):
+            if h.get(k_):
+                h[k_] = {**h[k_], "s": [fix(h[k_]["s"][0]), fix(h[k_]["s"][1]) if h[k_]["s"][1] != 0 or h[k_]["s"][0] >= 0 else Lf]}
+        if h.get("chimneys"):
+            h["chimneys"] = [{**c, "s": fix(c["s"])} for c in h["chimneys"]]
+        houses[key] = {
+            **{k: v for k, v in h.items() if k not in ("at",)},
+            "at": list(h["at"]), "y0": round(y0, 3), "low": round(low, 2),
+            "front": [[round(a[0], 3), round(a[1], 3)], [round(b[0], 3), round(b[1], 3)]], "out": [round(o[0], 4), round(o[1], 4)],
+            "outline": [[round(x, 3), round(z, 3)] for x, z in ring],
+            "main": main_ring, "main_party": against(main_ring),
+            "annex": [{"p": [[round(x, 3), round(z, 3)] for x, z in list(g.exterior.coords)[:-1]],
+                       "party": against(list(g.exterior.coords)[:-1])} for g in annex],
+            "openings": layout(h, math.dist(a, b)),
+        }
+        houses[key].pop("front", None)
+        houses[key]["front"] = [[round(a[0], 3), round(a[1], 3)], [round(b[0], 3), round(b[1], 3)]]
+    return houses
 
 
 def main():
@@ -445,108 +557,8 @@ def main():
     walls = [(p, Polygon(p["p"][0])) for p in village["prisms"] if p["m"] in WALLS and "d" not in p]
     # Past the edge of the village data: the GRB's own buildings, as blocks of the same kind.
     grb = [Polygon(list(model(g).exterior.coords)) for f in features("GBG") for g in polygons(f["geometry"])]
-    relief = Relief()
-    feet = {}
-    for key, h in HOUSES.items():
-        at = Point(*h["at"])
-        if h.get("laser"):
-            poly = next((g for g in grb if g.contains(at)), None)
-            if poly is None:
-                raise SystemExit(f"{key}: no GRB building at {h['at']}")
-            ground = min(relief.height(x, z) for x, z in poly.exterior.coords) + GROUND
-            feet[key] = ({"y0": ground, "y1": ground + 3.0}, poly)
-            continue
-        base = [(p, poly) for p, poly in walls if poly.contains(at)]
-        if not base:
-            raise SystemExit(f"{key}: no block at {h['at']}")
-        feet[key] = min(base, key=lambda b: b[0]["y0"])
     others = [poly for p, poly in walls] + [g for g in grb if g.centroid.x > 855]  # past the edge of the village data: the GRB's
-    houses = {}
-    for key, h in HOUSES.items():
-        foot, poly = feet[key]
-        poly = poly.buffer(0)
-        # `whole`: the house is the rectangle round its outline (a stepped front the GRB draws in pieces)
-        shape = poly.minimum_rotated_rectangle if h.get("whole") else poly
-        ring = list(shape.exterior.coords)[:-1]
-        # The front wall: the longest edge facing the street, within 22 m of the centre line.
-        best = None
-        for i in range(len(ring)):
-            a, b = ring[i], ring[(i + 1) % len(ring)]
-            L = math.dist(a, b)
-            if L < 2.5:
-                continue
-            mx, mz = (a[0] + b[0]) / 2, (a[1] + b[1]) / 2
-            nx, nz = (b[1] - a[1]) / L, -(b[0] - a[0]) / L
-            if shape.contains(Point(mx + nx * 0.2, mz + nz * 0.2)):
-                nx, nz = -nx, -nz
-            q = nearest_points(centre, Point(mx, mz))[0]
-            dx, dz = q.x - mx, q.y - mz
-            dist = math.hypot(dx, dz)
-            face = (nx * dx + nz * dz) / max(dist, 1e-6)
-            if dist < 24 and face > 0.55:
-                score = L * face - 0.15 * dist
-                if best is None or score > best[0]:
-                    best = (score, a, b, (nx, nz))
-        if h.get("rect"):  # given: the front wall's west and east ends, then the back corners
-            r = h["rect"]
-            a, b = tuple(r[0]), tuple(r[1])
-            L = math.dist(a, b)
-            o = ((b[1] - a[1]) / L, -(b[0] - a[0]) / L)
-            if Polygon(r).contains(Point((a[0] + b[0]) / 2 + o[0] * 0.2, (a[1] + b[1]) / 2 + o[1] * 0.2)):
-                o = (-o[0], -o[1])
-            best = (0, a, b, o)
-        if best is None:
-            raise SystemExit(f"{key}: no wall facing the street")
-        _, a, b, o = best
-        if a[0] > b[0]:
-            a, b = b, a
-        n = (-o[0], -o[1])
-        if h.get("rect"):
-            main = Polygon(h["rect"])
-        elif h.get("whole"):
-            main = shape
-        elif h["depth"]:
-            main = Polygon([a, b, (b[0] + n[0] * h["depth"], b[1] + n[1] * h["depth"]), (a[0] + n[0] * h["depth"], a[1] + n[1] * h["depth"])])
-            main = main.intersection(poly).buffer(0)
-            if main.geom_type != "Polygon":
-                main = max(main.geoms, key=lambda g: g.area)
-            main = main.minimum_rotated_rectangle
-        else:
-            main = poly
-        rest = poly.difference(main.buffer(0.05, join_style=2)).buffer(0)
-        annex = [g for g in getattr(rest, "geoms", [rest]) if g.area > 3]
-        # Heights: the village block's foot, as the relief; the lower parts as high as the village's lowest block.
-        y0 = foot["y0"] - GROUND
-        low = foot["y1"] - foot["y0"]
-        mine = poly.buffer(0.2)
-        neighbours = unary_union([q.buffer(0.3) for q in others if not mine.contains(q.representative_point()) and q.distance(poly) < 0.5])
-        def against(ring):
-            out = []
-            for i in range(len(ring)):
-                e = LineString([ring[i], ring[(i + 1) % len(ring)]])
-                out.append(bool(not neighbours.is_empty and e.intersection(neighbours).length > 0.6 * e.length))
-            return out
-        main_ring = [list(map(lambda v: round(v, 3), c)) for c in list(main.exterior.coords)[:-1]]
-        Lf = math.dist(a, b)
-        fix = lambda v: v + Lf if v < 0 else v
-        h = dict(h)
-        for k_ in ("porch", "front_gable", "solar"):
-            if h.get(k_):
-                h[k_] = {**h[k_], "s": [fix(h[k_]["s"][0]), fix(h[k_]["s"][1]) if h[k_]["s"][1] != 0 or h[k_]["s"][0] >= 0 else Lf]}
-        if h.get("chimneys"):
-            h["chimneys"] = [{**c, "s": fix(c["s"])} for c in h["chimneys"]]
-        houses[key] = {
-            **{k: v for k, v in h.items() if k not in ("at",)},
-            "at": list(h["at"]), "y0": round(y0, 3), "low": round(low, 2),
-            "front": [[round(a[0], 3), round(a[1], 3)], [round(b[0], 3), round(b[1], 3)]], "out": [round(o[0], 4), round(o[1], 4)],
-            "outline": [[round(x, 3), round(z, 3)] for x, z in ring],
-            "main": main_ring, "main_party": against(main_ring),
-            "annex": [{"p": [[round(x, 3), round(z, 3)] for x, z in list(g.exterior.coords)[:-1]],
-                       "party": against(list(g.exterior.coords)[:-1])} for g in annex],
-            "openings": layout(h, math.dist(a, b)),
-        }
-        houses[key].pop("front", None)
-        houses[key]["front"] = [[round(a[0], 3), round(a[1], 3)], [round(b[0], 3), round(b[1], 3)]]
+    houses = plan(HOUSES, centre, walls, grb, others, Relief())
     OUT.write_text(json.dumps({
         "_source": "GRB Wegsegment and ADP (Digitaal Vlaanderen, open data); the houses' plans from web/src/data/village.json; "
                    "their looks from a Street View survey (August 2026), described here, no images",

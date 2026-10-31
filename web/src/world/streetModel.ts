@@ -5,13 +5,15 @@ import { tintedMaterial } from './houseMeshes';
 import { terrain } from './terrain';
 
 /**
- * The street Molenhoek: our own Blender model (tools/molenhoek.py) of its forty-seven houses from the church
- * square to the junction where the map ends, and of the street as it was rebuilt in 2026 (asphalt, red cycle
- * lanes, kerbs, pavements), in place of the village's blocks there, which stay for walking into.
+ * Streets of houses as our own Blender models (tools/molenhoek.py), in place of the village's blocks there, which
+ * stay for walking into: Molenhoek, its forty-seven houses from the church square to the junction where the map
+ * ends and the street as it was rebuilt in 2026 (asphalt, red cycle lanes, kerbs, pavements); Kapellenhoek, its
+ * houses from the church square to past its junction with Briel and the first stretch of Kapelleweg, on the
+ * village's own street.
  *
- * Its textured meshes name a shared game texture; the vertex colours tint it, so every brick colour
- * is one draw call and no graphics memory but the asphalt's. The small things (frames, gutters,
- * railings, signs) are drawn only within DETAIL metres of the portal's street.
+ * Their textured meshes name a shared game texture; the vertex colours tint it, so every brick colour is one
+ * draw call and no graphics memory but the asphalt's. The small things (frames, gutters, railings, sills, signs)
+ * come in three parts along the street, each drawn only within DETAIL metres of its own middle.
  */
 const DETAIL = 200;
 
@@ -21,22 +23,23 @@ interface Extras {
   /** Each modelled house's GRB outline: the village's blocks inside it give way */
   outlines: [number, number][][];
   /**
-   * The new solid things (garden walls, posts, the cabinet) in world heights, and the new street's surfaces
-   * for walking and driving on (`lift`: heights above the relief), with what a shot sounds like on them
+   * The new solid things (garden walls, hedges, posts, the cabinet) in world heights, and a rebuilt street's
+   * surfaces for walking and driving on (`lift`: heights above the relief), with what a shot sounds like on them
    */
   solids: { p: [number, number][]; y0: number; y1: number; m?: string; lift?: boolean }[];
-  /** The stretch whose concrete poles became steel lamp posts: its centre line and reach */
+  /** A rebuilt stretch whose concrete poles became steel lamp posts: its centre line and reach (empty: none) */
   poles: { line: [number, number][]; reach: number };
-  /** The new street's outline: the pavings of the old one inside it give way */
+  /** A rebuilt street's outline: the pavings of the old one inside it give way (empty: the village's street stays) */
   street: [number, number][];
   /** The village's trees that give way to the model's conifers: x, z and radius */
   clearTrees: [number, number, number][];
 }
 
-export async function loadMolenhoek(renderer: THREE.WebGLRenderer, ground: number): Promise<THREE.Object3D> {
-  // Development only: ?nomolenhoek leaves the village's blocks, for comparing the cost.
-  if (import.meta.env.DEV && new URLSearchParams(location.search).has('nomolenhoek')) throw new Error('off');
-  const scene = (await new GLTFLoader().loadAsync('/models/molenhoek.glb')).scene;
+/** `name`: the model, /models/<name>.glb, and the landmark the village's blocks it replaces are tagged with. */
+export async function loadStreetModel(renderer: THREE.WebGLRenderer, ground: number, name: string): Promise<THREE.Object3D> {
+  // Development only: ?no<name> leaves the village's blocks, for comparing the cost.
+  if (import.meta.env.DEV && new URLSearchParams(location.search).has(`no${name}`)) throw new Error('off');
+  const scene = (await new GLTFLoader().loadAsync(`/models/${name}.glb`)).scene;
   const root = scene.children.find((o) => o.userData.origin) ?? scene;
   const small: THREE.Mesh[] = [];
   scene.traverse((o) => {
@@ -54,10 +57,12 @@ export async function loadMolenhoek(renderer: THREE.WebGLRenderer, ground: numbe
     mesh.receiveShadow = true;
     if (u.lod) small.push(mesh);
   });
-  // The small things come in three parts along the street; each one's distance is measured from its own middle.
+  // Each part of the small things is measured from its own middle (the mesh's packed positions are scaled and
+  // moved by its node, so the middle is taken through that).
   for (const mesh of small) {
     mesh.geometry.computeBoundingSphere();
-    const middle = mesh.geometry.boundingSphere!.center.clone();
+    mesh.updateMatrix();
+    const middle = mesh.geometry.boundingSphere!.center.clone().applyMatrix4(mesh.matrix);
     const lod = new THREE.LOD();
     lod.position.copy(middle);
     mesh.position.sub(middle);
@@ -67,7 +72,7 @@ export async function loadMolenhoek(renderer: THREE.WebGLRenderer, ground: numbe
   }
   const [x, z] = (root.userData as Extras).origin;
   scene.position.set(x, ground + terrain.height(x, z), z);
-  scene.userData = { ...root.userData, landmark: 'molenhoek' };
+  scene.userData = { ...root.userData, landmark: name };
   return scene;
 }
 
@@ -88,14 +93,15 @@ function near(ring: [number, number][], x: number, z: number, slack: number): bo
 }
 
 /**
- * Fits the village data to the model, before its tiles are built: the blocks, roofs and windows of the
- * modelled houses are tagged as the landmark's (so they aren't drawn, but stay for walking into), the
- * new solid things join the blocks for walking into, and the concrete poles along the stretch become
- * steel lamp posts without cables, as the street has had since it was rebuilt. `first`: the number of
- * the village's first pole in the game's list (cables name poles by that number).
+ * Fits the village data to a street model, before its tiles are built: the blocks, roofs and windows of the
+ * modelled houses are tagged as the landmark's (so they aren't drawn, but stay for walking into), the new solid
+ * things join the blocks for walking into, and, where the street was rebuilt, the concrete poles along it become
+ * steel lamp posts without cables. `first`: the number of the village's first pole in the game's list (cables
+ * name poles by that number).
  */
-export function fitVillage(data: VillageData, model: THREE.Object3D, first: number): void {
+export function fitStreetModel(data: VillageData, model: THREE.Object3D, first: number): void {
   const x = model.userData as Extras;
+  const name = x.landmark;
   const outlines = x.outlines;
   const middle = (ring: [number, number][]) => [ring.reduce((s, q) => s + q[0], 0) / ring.length, ring.reduce((s, q) => s + q[1], 0) / ring.length];
   const mine = (ring: [number, number][]) => {
@@ -103,32 +109,33 @@ export function fitVillage(data: VillageData, model: THREE.Object3D, first: numb
     return outlines.some((o) => near(o, mx, mz, 0.5) || ring.filter(([px, pz]) => near(o, px, pz, 0.35)).length >= ring.length * 0.8);
   };
   const street = x.street;
-  // Only what lies by the street needs the closer looks below.
+  // Only what lies by a rebuilt street needs the closer looks below.
   const sx0 = Math.min(...street.map((q) => q[0])) - 5;
   const sx1 = Math.max(...street.map((q) => q[0])) + 5;
   const sz0 = Math.min(...street.map((q) => q[1])) - 5;
   const sz1 = Math.max(...street.map((q) => q[1])) + 5;
-  const byStreet = (ring: [number, number][]) => ring.some(([px, pz]) => px > sx0 && px < sx1 && pz > sz0 && pz < sz1);
+  const byStreet = (ring: [number, number][]) => street.length > 0 && ring.some(([px, pz]) => px > sx0 && px < sx1 && pz > sz0 && pz < sz1);
   const onStreet = (ring: [number, number][]) => ring.filter(([px, pz]) => near(street, px, pz, 0.2)).length >= ring.length * 0.6;
   for (const p of data.prisms ?? []) {
     if (p.lm) continue;
-    if (p.d === undefined && mine(p.p[0])) p.lm = 'molenhoek';
+    if (p.d === undefined && mine(p.p[0])) p.lm = name;
     else if (p.d && !/hedge|fence/.test(p.m) && byStreet(p.p[0])) {
-      if (p.m !== 'road' && onStreet(p.p[0])) p.lm = 'molenhoek'; // pavings the new street covers
+      if (p.m !== 'road' && onStreet(p.p[0])) p.lm = name; // pavings the new street covers
       // The old road and the pavings beside the new street: cut finer, so they follow the relief's own squares and
       // stay under the new surfaces (cut every 8 m, they rose through them in places).
       else if (p.p[0].some(([px, pz]) => near(street, px, pz, 4))) p.d = Math.min(p.d, 4);
     }
   }
   for (const r of data.roofs) {
-    if (!r.lm && mine(r.p)) r.lm = 'molenhoek';
+    if (!r.lm && mine(r.p)) r.lm = name;
   }
   // The broad trees the laser scan saw round the portal give way to the model's conifers.
   data.trees = data.trees.filter((t) => !x.clearTrees.some(([cx, cz, r]) => Math.hypot(t.x - cx, t.z - cz) <= r));
-  data.landmarks = [...(data.landmarks ?? []), ...outlines.map((p) => ({ name: 'molenhoek', p, base: 0, ground: 0 }))];
-  for (const s of x.solids) data.prisms?.push({ m: s.m ?? 'concrete', y0: s.y0, y1: s.y1, p: [s.p], lm: 'molenhoek', ...(s.lift ? { d: 4, n: 'street' } : {}) });
+  data.landmarks = [...(data.landmarks ?? []), ...outlines.map((p) => ({ name, p, base: 0, ground: 0 }))];
+  for (const s of x.solids) data.prisms?.push({ m: s.m ?? 'concrete', y0: s.y0, y1: s.y1, p: [s.p], lm: name, ...(s.lift ? { d: 4, n: 'street' } : {}) });
 
   const { line, reach } = x.poles;
+  if (line.length < 2) return;
   const onStretch = (px: number, pz: number) => {
     for (let i = 1; i < line.length; i++) {
       const [ax, az] = line[i - 1];
@@ -169,7 +176,7 @@ export function fitVillage(data: VillageData, model: THREE.Object3D, first: numb
       p.k = 'post';
       posts.add(first + i);
       const pole = (data.prisms ?? []).find((q) => q.m === 'pole' && !q.lm && Math.hypot(q.p[0][0][0] - p.x, q.p[0][0][1] - p.z) < 0.6);
-      if (pole) pole.lm = 'molenhoek'; // the concrete pole itself: no longer drawn, still there for walking into
+      if (pole) pole.lm = name; // the concrete pole itself: no longer drawn, still there for walking into
       // A post that would stand on the new street's lanes or pavement stands just behind the pavement instead,
       // as the new posts do: off the walking line. Its block for walking into goes with it.
       if (near(street, p.x, p.z, 0) && street.length >= 4) {

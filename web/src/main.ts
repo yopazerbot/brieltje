@@ -66,7 +66,7 @@ import { route, streetAt } from './ui/route';
 import { HomeLife } from './world/homeLife';
 import { HomeStreet, withoutModelled } from './world/homeStreet';
 import { RoadLife } from './world/roadLife';
-import { fitVillage as fitMolenhoek, loadMolenhoek } from './world/molenhoek';
+import { fitStreetModel, loadStreetModel } from './world/streetModel';
 import { CAR_REACH, CAR_SLOW, findPortal, PORTALS, portalNear, type Portal } from '../shared/portals.mjs';
 import { noShoot } from '../shared/zones.mjs';
 import { carName, doorName, lang, onLang, placeName, plural, portalName, serverText, setLang, t, whoName } from './i18n';
@@ -1811,7 +1811,7 @@ async function buildVillage(): Promise<void> {
     return box.getCenter(new THREE.Vector2());
   });
   for (const c of landmarks) detailAt.push([c.x, c.y]);
-  const molenhoekJob = loadMolenhoek(renderer, house.ground).catch(() => null); // world/molenhoek.ts, alongside the others
+  const streetJobs = ['molenhoek', 'kapellenhoek'].map((name) => loadStreetModel(renderer, house.ground, name).catch(() => null)); // world/streetModel.ts
   // The church and the school (with the square's fittings): our Blender models in place of the blocks
   // built from the open data, which stay for walking into. A model that didn't load leaves its blocks drawn.
   // The houses round the square (world/townCentre.ts) replace the blocks inside the outlines they name.
@@ -1822,11 +1822,13 @@ async function buildVillage(): Promise<void> {
   const models = (await Promise.all([loadChurch().catch(() => null), loadModel('/models/school.glb').catch(() => null), town.catch(() => null)])).filter(
     (m): m is THREE.Object3D => m !== null,
   );
-  // The houses of Molenhoek and their street, the same way: fitted into the village data before its tiles are built.
-  const molenhoek = await molenhoekJob;
-  if (molenhoek) {
-    fitMolenhoek(data, molenhoek, first);
-    models.push(molenhoek);
+  // The houses of Molenhoek (and its street) and of Kapellenhoek, the same way: fitted into the village data before its tiles are built.
+  for (const job of streetJobs) {
+    const street = await job;
+    if (street) {
+      fitStreetModel(data, street, first);
+      models.push(street);
+    }
   }
   const drawn = withoutLandmarks(data, models.map((m) => m.userData.landmark as string), models.flatMap((m) => (m.userData.replaces as Ring[] | undefined) ?? []));
   const made: { key: string; pieces: ReturnType<typeof buildTile> }[] = [];
@@ -1840,7 +1842,7 @@ async function buildVillage(): Promise<void> {
     tiles.track(m);
   }
   world.addPrisms(data.prisms ?? []);
-  // Each model's blocks for walking into (the town's; Molenhoek's went into the village data above).
+  // Each model's blocks for walking into (the town's; the streets' went into the village data above).
   for (const m of models) world.addPrisms((m.userData.blocks as Prism[] | undefined) ?? []);
   world.addDips(data.dips);
   addDips(data.dips);

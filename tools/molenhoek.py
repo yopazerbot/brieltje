@@ -1,7 +1,8 @@
-"""Build the street Molenhoek round its portal in Blender: its houses and the rebuilt street.
+"""Build the street Molenhoek round its portal in Blender: its houses and the rebuilt street. The same builder
+makes the houses of Kapellenhoek (tools/kapellenhoek_survey.py): the place's plan is data/<place>.json.
 
-Run (Blender 5, no window), from the project root, after tools/molenhoek_survey.py:
-  blender -b -P tools/molenhoek.py -- <out.glb>
+Run (Blender 5, no window), from the project root, after the place's survey:
+  blender -b -P tools/molenhoek.py -- <out.glb> [molenhoek | kapellenhoek]
 
 Our own model of the forty-seven houses along Molenhoek, from the church square to the junction where
 the map ends, and of the street in front of them, from data/molenhoek.json (the plan from the open data,
@@ -28,7 +29,7 @@ inside them, which stay for walking into), the new solid things for walking into
 surfaces for walking on, the street's outline (the old pavings inside it give way), the village's trees
 that give way to the conifers, and the stretch whose concrete poles became steel lamp posts.
 
-Output: one GLB, one mesh per material, every mesh coloured per vertex:
+Output: one GLB, one mesh per material, every mesh coloured per vertex, packed small (16-bit positions):
 - mh_brick, mh_render, mh_stone, mh_roof, mh_asphalt, mh_pavers, mh_foliage: UVs in metres; their
   glTF extras name a shared game texture, which the game multiplies by the vertex colour, so one
   draw call carries every tint and they add no graphics memory but the asphalt;
@@ -48,9 +49,24 @@ from mathutils import Vector
 
 argv = sys.argv[sys.argv.index("--") + 1:]
 OUT = argv[0]
+PLACE = argv[1] if len(argv) > 1 else "molenhoek"
+MOLENHOEK = PLACE == "molenhoek"  # its rebuilt street, the island, the hydrant and the conifers by the portal are its own
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-DATA = json.load(open(os.path.join(ROOT, "data", "molenhoek.json"), encoding="utf-8"))
-ORIGIN = (758.0, -719.0)      # on the street by the portal (model x, z)
+DATA = json.load(open(os.path.join(ROOT, "data", PLACE + ".json"), encoding="utf-8"))
+ORIGIN = tuple(DATA.get("origin", (758.0, -719.0)))  # Molenhoek's: on the street by the portal (model x, z)
+# Which way a front runs: from its west end (Molenhoek's houses face an east-west street) or, "view", from its left
+# end as seen from the street.
+VIEW = DATA.get("order") == "view"
+# `lean`: no windows on walls that face away from the street, sills and steps among the small things (no texture,
+# drawn near only): fewer triangles for a long street seen from the street.
+LEAN = bool(DATA.get("lean"))
+
+
+def left_first(p, q, o):
+    """Whether the wall from p to q (outward o) already runs the way fronts run."""
+    if VIEW:
+        return (q[0] - p[0]) * o[1] - (q[1] - p[1]) * o[0] >= 0
+    return p[0] <= q[0]
 GROUND = -0.1                 # the main house's ground in the game (the relief is measured from it)
 WEST_END, EAST_END = 689.0, 936.0  # the rebuilt stretch: the island at its west end, 45 m past the junction where the map ends
 CURTAIN = "#8e9290"           # a pane with net curtains behind it
@@ -137,8 +153,9 @@ for name, (tex, ns) in SHARED.items():
 M["mh_glass"] = principled("mh_glass", 0.06, 0.3)
 M["mh_panel"] = principled("mh_panel", 0.5)
 M["mh_detail"] = principled("mh_detail", 0.55, 0.1)
-M["mh_detail"]["lod"] = 200  # metres: drawn only nearer than this (web/src/world/molenhoek.ts)
-DETAIL_SPLIT = (705.0, 815.0)  # x where the small things go into the next part
+M["mh_detail"]["lod"] = 200  # metres: drawn only nearer than this (web/src/world/streetModel.ts)
+DETAIL_SPLIT = tuple(DATA["detail_split"]["at"]) if DATA.get("detail_split") else (705.0, 815.0)  # where the small things go into the next part
+DETAIL_AXIS = DATA["detail_split"]["axis"] if DATA.get("detail_split") else "x"
 
 BM = {}
 for name in M:
@@ -318,6 +335,9 @@ def wall_at(layers, y):
     return mat, col
 
 
+SMALL_STONE = "mh_detail" if LEAN else "mh_stone"  # sills and steps
+
+
 def hole(f, h, layers):
     o = h.opt
     d = -h.depth
@@ -350,9 +370,9 @@ def hole(f, h, layers):
         if h.y0 > 0.25:  # a raised ground floor: steps up to the door
             n = max(2, int(round(h.y0 / 0.17)))
             for k in range(n):
-                f.box("mh_stone", h.s0 - 0.15, h.s1 + 0.15, -0.12, h.y0 - k * h.y0 / n, d, 0.3 * (k + 1), "#8d8f8f")
+                f.box(SMALL_STONE, h.s0 - 0.15, h.s1 + 0.15, -0.12, h.y0 - k * h.y0 / n, d, 0.3 * (k + 1), "#8d8f8f")
         else:
-            f.box("mh_stone", h.s0 - 0.08, h.s1 + 0.08, -0.12, 0.0, d, 0.28, "#5f6468")  # the step
+            f.box(SMALL_STONE, h.s0 - 0.08, h.s1 + 0.08, -0.12, 0.0, d, 0.28, "#5f6468")  # the step
     elif h.kind == "g":
         face("mh_panel", pane, f.out(), o.get("c", "#e9e8e4"))
         for k in range(1, int((h.y1 - h.y0) / 0.5)):
@@ -386,7 +406,7 @@ def hole(f, h, layers):
     if o.get("box"):  # the shutter box under the lintel
         f.flat("mh_panel", h.s0 + 0.01, h.s1 - 0.01, h.y1 - 0.2, h.y1, d + 0.045, "#e9e8e3")
     if h.kind in ("w", "a"):
-        f.box("mh_stone", h.s0 - 0.05, h.s1 + 0.05, h.y0 - 0.07, h.y0, d, 0.05, "#5d6266")
+        f.box(SMALL_STONE, h.s0 - 0.05, h.s1 + 0.05, h.y0 - 0.07, h.y0, d, 0.05, "#5d6266")
     if o.get("fb"):  # a french balcony: a railing across the lower part of the window, just in front of the wall
         rc = o.get("rail", "#262829")
         top = h.y0 + 0.95
@@ -642,6 +662,8 @@ def make_stations(line, left, right):
 
 LINE = DATA["line"]
 ST = make_stations(LINE, DATA["left"], DATA["right"])
+for _extra in DATA.get("lines", []):  # other streets the houses face (each its own stations, one list to search)
+    ST += make_stations(_extra["line"], _extra["left"], _extra["right"])
 # The branch that turns off at the junction where the map ends (its first stretch).
 STUB = make_stations(DATA["stub"]["line"], DATA["stub"]["left"], DATA["stub"]["right"]) if DATA.get("stub") else []
 ASPH, GUT, LANE, KERB = 2.5, 2.85, 4.45, 4.6
@@ -879,7 +901,7 @@ def house(key, H):
     # the rectangle's corners in order: front west, front east, back east, back west
     if rect:
         fa, fb = main[fi], main[(fi + 1) % 4]
-        if fa[0] > fb[0]:
+        if not left_first(fa, fb, outward(main, fi)):
             order = [main[(fi + 1) % 4], main[fi], main[(fi + 3) % 4], main[(fi + 2) % 4]]
         else:
             order = [main[fi], main[(fi + 1) % 4], main[(fi + 2) % 4], main[(fi + 3) % 4]]
@@ -904,8 +926,8 @@ def house(key, H):
         tt, LL = unit(p, q)
         oo = outward(main, i)
         is_front = i == fi
-        # each wall runs west to east as seen from outside when it's the front
-        if is_front and p[0] > q[0]:
+        # the front runs the way fronts run (west to east, or left to right as seen from the street)
+        if is_front and not left_first(p, q, oo):
             p, q = q, p
             tt, LL = unit(p, q)
         f = Frame(p, tt, (oo[0], oo[1]), base)
@@ -941,16 +963,18 @@ def house(key, H):
             if porch:
                 holes.append(Hole(porch["s"][0], porch["s"][1], 0.0, porch["h"], "porch", porch["depth"]))
         elif i in extra:
-            if p[0] > q[0]:  # openings measured from the west end
+            if not left_first(p, q, oo):  # openings measured from the end fronts start at
                 p, q = q, p
                 tt, LL = unit(p, q)
                 f = Frame(p, tt, (oo[0], oo[1]), base)
             holes = [Hole(s_ - w / 2, s_ + w / 2, y, y + hh, kind, 0.13, {**opt, "f": opt.get("f", frame_c)}) for (s_, w, y, hh, kind, opt) in extra[i]]
-        elif not party[i] and LL > 2.5:
+        elif not party[i] and LL > 2.5 and not (LEAN and oo[0] * o[0] + oo[1] * o[1] < -0.3):
             holes = auto_windows(LL, E, max(y for _, y in top), frame_c, top)
         facade(f, LL, top, holes, layers)
         if up and up["wall"] == "cladding":
             boards(f, LL, top, holes, up)
+        if is_front and up and H.get("timber"):
+            timbers(f, LL, top, holes, up["y"], H["timber"])
         if is_front:
             front_details(f, LL, H, holes, layers, frame_c, base)
             FRONT[key] = (f, LL)
@@ -961,6 +985,8 @@ def house(key, H):
                 arch_top(f, hh_, tint, shade(hh_.opt.get("c", "#6a442c"), 0.8), hh_.opt.get("c", "#6a442c"))
         if is_front:
             extras_on_front(f, LL, H, base)
+            if H.get("steps") and roof == "front_gable":
+                stepped_gable(f, LL, E, R, tint)
     # The roof.
     if roof == "flat" or not rect:
         flat_roof(main, base, E, H)
@@ -990,10 +1016,11 @@ def house(key, H):
                 continue
             oo = outward(ring, i)
             f = Frame(p, tt, (oo[0], oo[1]), base)
-            holes = [] if an["party"][i] or LL < 2.4 else [Hole(LL / 2 - 0.6, LL / 2 + 0.6, 0.9, 2.1, "w", 0.12, {"f": frame_c})]
+            faces_away = LEAN and oo[0] * o[0] + oo[1] * o[1] < 0.3
+            holes = [] if an["party"][i] or LL < 2.4 or faces_away else [Hole(LL / 2 - 0.6, LL / 2 + 0.6, 0.9, 2.1, "w", 0.12, {"f": frame_c})]
             af = H.get("annex_front")
             if af and not an["party"][i] and oo[0] * H["out"][0] + oo[1] * H["out"][1] > 0.9 and LL > 2.4:
-                if p[0] > q[0]:  # measured from the west end, like the front
+                if not left_first(p, q, oo):  # measured like the front
                     p, q = q, p
                     tt, LL = unit(p, q)
                     f = Frame(p, tt, (oo[0], oo[1]), base)
@@ -1053,6 +1080,24 @@ def dist_to_ring(p, ring):
         q = (a[0] + tx * s, a[1] + tz * s)
         best = min(best, math.dist(p, q))
     return best
+
+
+def timbers(f, L, top, holes, y0, col):
+    """Half-timbering over the front's upper layer: a beam along its foot, posts every 0.9 m up to the top line
+    (clear of the openings), braces in the outer bays."""
+    def ytop(s):
+        for (s0, ya), (s1, yb) in zip(top, top[1:]):
+            if s1 - s0 > 1e-9 and s0 - 1e-6 <= s <= s1 + 1e-6:
+                return ya + (yb - ya) * (s - s0) / (s1 - s0)
+        return top[-1][1]
+    f.flat("mh_detail", 0.05, L - 0.05, y0, y0 + 0.16, 0.012, col)
+    n = max(2, int(L / 0.9))
+    for k in range(n + 1):
+        sk = 0.12 + (L - 0.24) * k / n
+        y1 = ytop(sk) - 0.12
+        if y1 < y0 + 0.4 or any(hl.s0 - 0.1 < sk < hl.s1 + 0.1 and hl.y1 > y0 for hl in holes):
+            continue
+        f.flat("mh_detail", sk - 0.07, sk + 0.07, y0 + 0.16, y1, 0.012, col)
 
 
 def boards(f, L, top, holes, up):
@@ -1208,6 +1253,19 @@ def front_details(f, L, H, holes, layers, frame_c, base):
             slab(bottom, plane_up(*bottom[:3]), 0.14, H["roof_tint"], "#f0efeb", "#f0efeb")
 
 
+def stepped_gable(f, L, E, R, tint):
+    """A crow-stepped gable: brick steps up both raking edges of the front, standing above the roof line."""
+    n = 5
+    for side in (0, 1):
+        for i in range(n):
+            sa, sb = L / 2 * i / n, L / 2 * (i + 1) / n
+            y1 = E + (R - E) * (i + 1) / n + 0.3
+            a, b = (sa, sb) if side == 0 else (L - sb, L - sa)
+            f.box("mh_brick", a - (0.05 if i == 0 else 0), b, E - 0.2, y1, -0.35, 0.04, shade(tint, 0.95))
+            f.box("mh_stone", a - 0.04, b + 0.04, y1, y1 + 0.06, -0.38, 0.07, "#b9b5ad")
+    f.box("mh_brick", L / 2 - 0.35, L / 2 + 0.35, R - 0.3, R + 0.75, -0.35, 0.04, shade(tint, 0.95))
+
+
 def dist_main_depth(H):
     m = H["main"]
     (ax, az), (bx, bz) = H["front"]
@@ -1270,25 +1328,36 @@ def roof_extras(H, A, B, C, D, base, E, R):
                 rim = [on_slope(sa - 0.015, qa - 0.015, 0.075), on_slope(sa + pw + 0.015, qa - 0.015, 0.075),
                        on_slope(sa + pw + 0.015, qb + 0.015, 0.075), on_slope(sa - 0.015, qb + 0.015, 0.075)]
                 face("mh_detail", rim, tuple(up), "#9da3a8")
-    dm = H.get("dormer")
-    if dm:
-        s, w, h = dm["s"], dm["w"], dm["h"]
+    for dm in ([H["dormer"]] if H.get("dormer") else []) + H.get("dormers", []):
+        s, w, h = dm["s"] + (L if dm["s"] < 0 else 0), dm["w"], dm["h"]
         qf = 1.0
         yf = E + k * qf + 0.1
         qb = qf + (h + 0.1) / k
         yt = yf + h
-        clad = H["roof_tint"]
-        # front, sides and a flat roof
-        face("mh_roof", [P(s - w / 2, qf, yf - 0.1), P(s + w / 2, qf, yf - 0.1), P(s + w / 2, qf, yt), P(s - w / 2, qf, yt)], (-n[0], -n[1], 0), clad)
-        for sx, sg in ((s - w / 2, -1), (s + w / 2, 1)):
-            face("mh_roof", [P(sx, qf, yf - 0.1), P(sx, qb, yt), P(sx, qf, yt)], (t[0] * sg, t[1] * sg, 0), clad)
-        solid("mh_detail", [P(s + a, q, y) for a in (-w / 2 - 0.1, w / 2 + 0.1) for q in (qf - 0.15, qb) for y in (yt, yt + 0.12)], "#55585b")
+        gab = dm.get("gable")
+        clad = dm.get("clad", H["tint"] if gab else H["roof_tint"])
+        cm = "mh_render" if gab and H["wall"] == "render" or dm.get("clad") else ("mh_brick" if gab else "mh_roof")
+        # front, sides and a flat roof, or a little gable roof of its own
+        face(cm, [P(s - w / 2, qf, yf - 0.1), P(s + w / 2, qf, yf - 0.1), P(s + w / 2, qf, yt), P(s - w / 2, qf, yt)], (-n[0], -n[1], 0), clad)
+        if gab:
+            yr = yt + w * 0.5
+            qr = qf + (yr - yf + 0.1) / k  # where its ridge meets the main roof
+            face(cm, [P(s - w / 2, qf, yt), P(s + w / 2, qf, yt), P(s, qf, yr)], (-n[0], -n[1], 0), clad)
+            for sx, sg in ((s - w / 2, -1), (s + w / 2, 1)):
+                face(cm, [P(sx, qf, yf - 0.1), P(sx, qb, yt), P(sx, qf, yt)], (t[0] * sg, t[1] * sg, 0), clad)
+                eave = [P(sx + sg * 0.12, qf - 0.18, yt - 0.06), P(s, qf - 0.18, yr), P(s, qr, yr), P(sx + sg * 0.12, qb + 0.1, yt - 0.06)]
+                slab(eave, plane_up(*eave[:3]), 0.08, H["roof_tint"], "#f0efeb", "#f0efeb")
+        else:
+            for sx, sg in ((s - w / 2, -1), (s + w / 2, 1)):
+                face(cm, [P(sx, qf, yf - 0.1), P(sx, qb, yt), P(sx, qf, yt)], (t[0] * sg, t[1] * sg, 0), clad)
+            solid("mh_detail", [P(s + a, q, y) for a in (-w / 2 - 0.1, w / 2 + 0.1) for q in (qf - 0.15, qb) for y in (yt, yt + 0.12)], "#55585b")
         g = Frame(P(s - 0.65, qf, 0)[:2], t, (-n[0], -n[1]), base)
         face("mh_glass", [g.p(0, yf + 0.25, 0.01), g.p(1.3, yf + 0.25, 0.01), g.p(1.3, yf + 1.25, 0.01), g.p(0, yf + 1.25, 0.01)], g.out(), "#252c30")
         for a, b, c0, c1 in ((0, 1.3, yf + 0.19, yf + 0.25), (0, 1.3, yf + 1.25, yf + 1.31), (-0.06, 0, yf + 0.19, yf + 1.31), (1.3, 1.36, yf + 0.19, yf + 1.31), (0.62, 0.68, yf + 0.25, yf + 1.25)):
             g.flat("mh_detail", a, b, c0, c1, 0.02, H.get("frame", "#232426"))
-        for a, b in ((-0.75, -0.06), (1.36, 2.05)):
-            g.box("mh_panel", a, b, yf + 0.2, yf + 1.3, 0.0, 0.035, H.get("shutters", "#232426"))
+        if not gab:
+            for a, b in ((-0.75, -0.06), (1.36, 2.05)):
+                g.box("mh_panel", a, b, yf + 0.2, yf + 1.3, 0.0, 0.035, H.get("shutters", "#232426"))
 
 
 def downpipes(H, A, B, C, D, base, E, party, fi):
@@ -1351,7 +1420,9 @@ def garden(key, H, base):
         x0, z0 = f.xz(sv)
         return (x - x0) * f.o[0] + (z - z0) * f.o[1]
     lift = 1.5  # the foliage texture is dark: the surveyed greens lifted to read as they do in the photos
+    fix = lambda v: v + L if v < 0 else v  # a negative s: from the front's far end
     for (h0, h1, out, hh, col) in H.get("hedges", []):  # a clipped hedge, kept behind the plot line
+        h0, h1 = fix(h0), fix(h1) if h1 != 0 or h0 >= 0 else L
         col = shade(col, lift)
         out = min(out, min(room(h0), room(h1)) - 0.45)
         if out < 0.5:
@@ -1361,12 +1432,14 @@ def garden(key, H, base):
         g.box("mh_foliage", 0.06, h1 - h0 - 0.06, hh, hh + 0.07, -0.24, 0.24, shade(col, 1.12))
         SOLIDS.append(prism_xz([g.xz(0, -0.3), g.xz(h1 - h0, -0.3), g.xz(h1 - h0, 0.3), g.xz(0, 0.3)], g.base - 0.25, g.base + hh))
     for (sv, out, r, col) in H.get("topiary", []):  # a clipped box ball
+        sv = fix(sv)
         out = min(out, room(sv) - r - 0.2)
         if out < r + 0.1:
             continue
         x, z = f.xz(sv, out)
         ball(x, z, terrain(x, z) + 0.1 + r * 0.85, r, shade(col, lift))
     for k, (sv, out, ch, cr) in enumerate(H.get("garden_conifers", [])):
+        sv = fix(sv)
         out = min(out, room(sv) - cr - 0.2)
         if out < cr:
             continue
@@ -1431,6 +1504,16 @@ def props():
             f.box("mh_stone", -0.45, 0.45, -0.1, 1.15, -0.18, 0.18, "#a9aba8")
             f.box("mh_stone", -0.48, 0.48, 1.15, 1.22, -0.21, 0.21, "#949693")
             SOLIDS.append(prism_xz([f.xz(-0.45, -0.18), f.xz(0.45, -0.18), f.xz(0.45, 0.18), f.xz(-0.45, 0.18)], g0 - 0.1, g0 + 1.22))
+        elif pr["k"] == "give_way":  # a give-way sign: a white triangle with a red border, point down, on a grey post
+            fo = pr["face"]
+            g = Frame((x, z), (fo[1], -fo[0]), (fo[0], fo[1]), g0)
+            tube("mh_detail", g.p(0, -0.2), g.p(0, 2.45), 0.035, "#a3a5a5")
+            tri = [(-0.45, 2.45), (0.45, 2.45), (0.0, 1.67)]
+            face("mh_detail", [(g.xz(sa, 0.05)[0], g.xz(sa, 0.05)[1], g.base + y) for sa, y in tri], (fo[0], fo[1], 0), "#c8202a")
+            inner = [(-0.3, 2.37), (0.3, 2.37), (0.0, 1.85)]
+            face("mh_detail", [(g.xz(sa, 0.055)[0], g.xz(sa, 0.055)[1], g.base + y) for sa, y in inner], (fo[0], fo[1], 0), "#f3f1ec")
+            face("mh_detail", [(g.xz(sa, -0.04)[0], g.xz(sa, -0.04)[1], g.base + y) for sa, y in tri], (-fo[0], -fo[1], 0), "#8f9395")
+            SOLIDS.append(prism_xz([g.xz(-0.06, -0.06), g.xz(0.06, -0.06), g.xz(0.06, 0.06), g.xz(-0.06, 0.06)], g0, g0 + 2.45))
         elif pr["k"] == "sign_children":
             tube("mh_detail", f.p(0, -0.2), f.p(0, 2.6), 0.035, "#a3a5a5")
             tri = [(-0.45, 2.0), (0.45, 2.0), (0.0, 2.78)]
@@ -1441,6 +1524,8 @@ def props():
             f.box("mh_detail", -0.3, 0.3, 1.66, 1.92, 0.04, 0.06, "#1f5fa8")
             f.box("mh_detail", -0.2, 0.2, 1.74, 1.84, 0.06, 0.065, "#f3f1ec")
             SOLIDS.append(prism_xz([f.xz(-0.06, -0.06), f.xz(0.06, -0.06), f.xz(0.06, 0.06), f.xz(-0.06, 0.06)], g0, g0 + 2.6))
+    if not MOLENHOEK:
+        return
     # The fire hydrant in front of the tall house, red-pink as the survey saw it: at the back of the pavement.
     k = min(range(len(ST)), key=lambda i: abs(ST[i]["x"] - 750.1))
     d = walk_edge(k, 1) + 0.3
@@ -1516,11 +1601,12 @@ def conifer(x, z, h, r, col, seed):
 
 
 # ---------------------------------------------------------------- build it
-street()
+if MOLENHOEK:
+    street()
 for key, H in DATA["houses"].items():
     house(key, H)
 props()
-for i, (x, z, h, r, col) in enumerate(CONIFERS):
+for i, (x, z, h, r, col) in enumerate(CONIFERS if MOLENHOEK else []):
     conifer(x, z, h, r, col, 60 + i)
 
 
@@ -1540,15 +1626,17 @@ def metre_uvs(bm):
             lp[uv].uv = (p.dot(t), -p.dot(b))
 
 
-root = bpy.data.objects.new("molenhoek", None)
+root = bpy.data.objects.new(PLACE, None)
 bpy.context.scene.collection.objects.link(root)
 root["origin"] = [ORIGIN[0], ORIGIN[1]]
-root["landmark"] = "molenhoek"
+root["landmark"] = PLACE
 root["outlines"] = [h["outline"] for h in DATA["houses"].values()]
 root["solids"] = SOLIDS
-root["poles"] = {"line": LINE, "reach": 12.0}
-root["street"] = street_outline()
-root["clearTrees"] = CLEAR_TREES
+# Molenhoek's rebuilt stretch: its poles became steel lamp posts, its outline covers the old pavings; elsewhere the
+# street stays the village's.
+root["poles"] = {"line": LINE, "reach": 12.0} if MOLENHOEK else {"line": [], "reach": 0.0}
+root["street"] = street_outline() if MOLENHOEK else []
+root["clearTrees"] = CLEAR_TREES if MOLENHOEK else []
 tris = 0
 objs = []
 def split_detail():
@@ -1560,7 +1648,8 @@ def split_detail():
     for bm in parts.values():
         bm.loops.layers.float_color.new("Color")
     for fc in src.faces:
-        gx = fc.calc_center_median().x + ORIGIN[0]
+        c = fc.calc_center_median()
+        gx = c.x + ORIGIN[0] if DETAIL_AXIS == "x" else -c.y + ORIGIN[1]
         key = "mh_detail_w" if gx < DETAIL_SPLIT[0] else ("mh_detail_m" if gx < DETAIL_SPLIT[1] else "mh_detail_e")
         bm = parts[key]
         nf = bm.faces.new([bm.verts.new(v.co) for v in fc.verts])
@@ -1594,7 +1683,7 @@ for name, bm in BM.items():
     tris += len(me.loop_triangles)
     print(f"{name}: {len(me.loop_triangles)} triangles")
     objs.append(ob)
-print(f"molenhoek: {tris} triangles in {len(objs)} meshes; origin {ORIGIN} at {Y0:.2f} m; {len(SOLIDS)} solids")
+print(f"{PLACE}: {tris} triangles in {len(objs)} meshes; origin {ORIGIN} at {Y0:.2f} m; {len(SOLIDS)} solids")
 bpy.ops.object.select_all(action="DESELECT")
 root.select_set(True)
 for o in objs:
@@ -1603,4 +1692,93 @@ os.makedirs(os.path.dirname(os.path.abspath(OUT)), exist_ok=True)
 bpy.ops.export_scene.gltf(filepath=OUT, export_format="GLB", use_selection=True, export_apply=True, export_yup=True,
                           export_texcoords=True, export_normals=True, export_extras=True, export_vertex_color="ACTIVE",
                           export_cameras=False, export_lights=False)
+
+
+def pack(path):
+    """Make the GLB small, as tools/town/town.py does: positions as 16-bit integers (KHR_mesh_quantization: the mesh
+    node's scale and offset turn them back into metres, steps of a few millimetres), normals as signed bytes, colours
+    as bytes. Texture coordinates stay floats (metres, far from the origin)."""
+    import struct
+    raw = open(path, "rb").read()
+    jlen = struct.unpack("<I", raw[12:16])[0]
+    gl = json.loads(raw[20:20 + jlen])
+    bin_ = raw[20 + jlen + 8:]
+    sizes = {5120: 1, 5121: 1, 5122: 2, 5123: 2, 5125: 4, 5126: 4}
+    comps = {"SCALAR": 1, "VEC2": 2, "VEC3": 3, "VEC4": 4}
+    dtypes = {5120: np.int8, 5121: np.uint8, 5122: np.int16, 5123: np.uint16, 5125: np.uint32, 5126: np.float32}
+
+    def read(i):
+        a = gl["accessors"][i]
+        bv = gl["bufferViews"][a["bufferView"]]
+        n, c = a["count"], comps[a["type"]]
+        start = bv.get("byteOffset", 0) + a.get("byteOffset", 0)
+        stride = bv.get("byteStride", sizes[a["componentType"]] * c)
+        buf = np.frombuffer(bin_, dtype=np.uint8, count=stride * (n - 1) + sizes[a["componentType"]] * c, offset=start)
+        rows = np.lib.stride_tricks.as_strided(buf, shape=(n, sizes[a["componentType"]] * c), strides=(stride, 1))
+        out_ = np.frombuffer(rows.copy().tobytes(), dtype=dtypes[a["componentType"]]).reshape(n, c)
+        return out_ / 65535.0 if a.get("normalized") and a["componentType"] == 5123 else out_
+
+    out = bytearray()
+    views, accs = [], []
+
+    def put(arr, ctype, typ, target, normalized=False, stride=None):
+        while len(out) % 4:
+            out.append(0)
+        data = arr.tobytes()
+        views.append({"buffer": 0, "byteOffset": len(out), "byteLength": len(data), **({"byteStride": stride} if stride else {}),
+                      **({"target": target} if target else {})})
+        out.extend(data)
+        acc = {"bufferView": len(views) - 1, "componentType": ctype, "count": int(arr.shape[0]), "type": typ}
+        if normalized:
+            acc["normalized"] = True
+        accs.append(acc)
+        return len(accs) - 1
+
+    mesh_node = {n["mesh"]: n for n in gl["nodes"] if "mesh" in n}
+    for mi, mesh in enumerate(gl["meshes"]):
+        node = mesh_node[mi]
+        t0 = np.array(node.get("translation", [0, 0, 0]), np.float64)
+        for prim in mesh["primitives"]:
+            at = prim["attributes"]
+            pos = read(at["POSITION"]).astype(np.float64) + t0
+            lo, hi = pos.min(0), pos.max(0)
+            off, half = (lo + hi) / 2, np.maximum((hi - lo) / 2, 1e-4)
+            q = np.round((pos - off) / half * 32767).astype(np.int16)
+            q4 = np.zeros((len(q), 4), np.int16)
+            q4[:, :3] = q
+            new = {"POSITION": put(q4, 5122, "VEC3", 34962, True, 8)}
+            accs[new["POSITION"]]["min"] = [int(x) for x in q.min(0)]
+            accs[new["POSITION"]]["max"] = [int(x) for x in q.max(0)]
+            if "NORMAL" in at:
+                nrm = read(at["NORMAL"]).astype(np.float64)
+                n4 = np.zeros((len(nrm), 4), np.int8)
+                n4[:, :3] = np.clip(np.round(nrm * 127), -127, 127).astype(np.int8)
+                new["NORMAL"] = put(n4, 5120, "VEC3", 34962, True, 4)
+            if "TEXCOORD_0" in at:
+                new["TEXCOORD_0"] = put(read(at["TEXCOORD_0"]).astype(np.float32), 5126, "VEC2", 34962)
+            if "COLOR_0" in at:
+                c = read(at["COLOR_0"]).astype(np.float64)[:, :3]
+                c4 = np.full((len(c), 4), 255, np.uint8)
+                c4[:, :3] = np.clip(np.round(c * 255), 0, 255).astype(np.uint8)
+                new["COLOR_0"] = put(c4, 5121, "VEC4", 34962, True)
+            idx = read(prim["indices"]).reshape(-1)
+            big = idx.max() >= 65535
+            prim["indices"] = put(idx.astype(np.uint32 if big else np.uint16), 5125 if big else 5123, "SCALAR", 34963)
+            prim["attributes"] = new
+        node["translation"] = [float(x) for x in off]
+        node["scale"] = [float(x) for x in half]  # normalized: the shader reads q / 32767
+    gl["accessors"], gl["bufferViews"] = accs, views
+    gl["buffers"] = [{"byteLength": len(out)}]
+    for k in ("extensionsUsed", "extensionsRequired"):
+        gl[k] = sorted(set(gl.get(k, [])) | {"KHR_mesh_quantization"})
+    js = json.dumps(gl, separators=(",", ":")).encode()
+    js += b" " * (-len(js) % 4)
+    while len(out) % 4:
+        out.append(0)
+    glb = struct.pack("<III", 0x46546C67, 2, 12 + 8 + len(js) + 8 + len(out)) + struct.pack("<II", len(js), 0x4E4F534A) + js + \
+        struct.pack("<II", len(out), 0x004E4942) + bytes(out)
+    open(path, "wb").write(glb)
+
+
+pack(OUT)
 print("written", OUT, os.path.getsize(OUT), "bytes")
