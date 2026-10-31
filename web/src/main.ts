@@ -126,13 +126,37 @@ let worldReady = false;
 function loaded(): void {
   if (worldReady) return; // the time limit, and Auto chosen again later in the settings, come here too
   worldReady = true;
-  loading(1);
-  setTimeout(() => menu.ready(), 150); // the bar full for a moment, then play
+  // Where to start, picked on the start screen (src/start.ts): the main house as ever, or another
+  // portal place, arrived at as through its portal. The village's places wait for the village.
+  const at = startPlace();
+  const begin = () => {
+    if (at) {
+      arrive(at, null);
+      spawnPending = at; // in multiplayer the server is told first thing (see 'welcome')
+    }
+    loading(1);
+    setTimeout(() => menu.ready(), 150); // the bar full for a moment, then play
+  };
+  if (at?.village) {
+    loading(0.92, () => t('travel.village'));
+    void loadVillage().then(begin, begin);
+  } else begin();
   setTimeout(() => void loadVillage(), 500); // playing: now the village
   setTimeout(() => life.load(), 900); // and the gardens' things, birds and the mower
   setTimeout(() => void startCountryside(), 900); // and the countryside's life
 }
 setTimeout(loaded, 25000); // never keep the player waiting forever
+/** The start place picked on the start screen, unless it's the main house (the usual start). */
+let spawnPending: Portal | null = null;
+function startPlace(): Portal | null {
+  let id = (document.getElementById('spawn') as HTMLSelectElement | null)?.value ?? 'house';
+  try {
+    id = localStorage.getItem('briel.spawn') ?? id;
+  } catch {
+    // storage blocked: the select's value
+  }
+  return id === 'house' ? null : PORTALS.find((p) => p.id === id) ?? null;
+}
 THREE.DefaultLoadingManager.onProgress = (_url, done, total) => loading((done / Math.max(1, total)) * 0.8, () => t('load.progress', { done, total }));
 const texturesReady = new Promise<void>((resolve) => {
   THREE.DefaultLoadingManager.onLoad = () => resolve();
@@ -951,6 +975,11 @@ net.onStatus = (text) => {
 net.onMessage = (m: ServerMsg) => {
   switch (m.t) {
     case 'welcome':
+      // Started somewhere else than the street: the server moves us there before our first update.
+      if (spawnPending) {
+        net.send({ t: 'spawn', to: spawnPending.id });
+        spawnPending = null;
+      }
       avatars.clear();
       online.clear();
       for (const p of m.players) {

@@ -215,7 +215,7 @@ export class Game {
     this.scores.set(name, score);
     const player = {
       ws, key: session.key, role: session.role, color, state: null, lastChat: 0, msgs: 0, window: now, address: this.auth.addressOf(req),
-      score, hp: HEALTH, alive: true, respawnAt: 0, protectedUntil: now + PROTECT_MS, nextHit: 0, weapons: loadout(session.role),
+      score, hp: HEALTH, alive: true, respawnAt: 0, protectedUntil: now + PROTECT_MS, nextHit: 0, weapons: loadout(session.role), joinedAt: now, spawned: false,
       nades: Array(GRENADE.carry).fill(0), thrown: [],
     };
     // Where the server believes they are: the replaced connection, their last visit, or
@@ -504,6 +504,8 @@ export class Game {
       if (now - (this.lastNewRound || 0) < 2000) return;
       this.lastNewRound = now;
       this.newRound(`${name} started a new round`, 'newRoundBy', { name });
+    } else if (m.t === 'spawn' && typeof m.to === 'string') {
+      this.spawn(player, m.to, now);
     } else if (m.t === 'travel' && typeof m.to === 'string') {
       this.travel(name, player, m.to, m.via === 'chat', now);
     } else if (m.t === 'rules' && player.role === 'admin') {
@@ -521,6 +523,21 @@ export class Game {
    * end is always one of the fixed portals' spots, so a forged message gets no further than
    * walking onto a portal does (a position spoofing "teleport hack" can't pick its spot).
    */
+  /**
+   * Where a player starts, picked on the start screen: one of the portal places' arrival spots,
+   * once, in the first two minutes after joining (the page sends it before its first update).
+   * Only those fixed spots, so it can't place anyone elsewhere.
+   */
+  spawn(p, id, now) {
+    const to = PORTALS.find((q) => q.id === id);
+    if (!to || p.spawned || now - p.joinedAt > 120_000 || !p.state) return;
+    p.spawned = true;
+    const [x, z] = to.out;
+    Object.assign(p.state, { x, y: TERRAIN.height(x, z), z });
+    p.budget = 0.5;
+    p.movedAt = now;
+  }
+
   travel(name, p, id, chat, now) {
     const st = p.state;
     const to = PORTALS.find((q) => q.id === id);

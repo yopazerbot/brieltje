@@ -215,6 +215,23 @@ async function join(name = ($('nick') as HTMLInputElement).value.trim(), pin = $
     setAccount(null, errorText(e));
   }
 }
+// Where to start (one of the portal places), remembered for the next visit; src/main.ts reads it.
+{
+  const spawn = $('spawn') as HTMLSelectElement;
+  try {
+    const saved = localStorage.getItem('briel.spawn');
+    if (saved && [...spawn.options].some((o) => o.value === saved)) spawn.value = saved;
+  } catch {
+    // storage blocked: the main house
+  }
+  spawn.addEventListener('change', () => {
+    try {
+      localStorage.setItem('briel.spawn', spawn.value);
+    } catch {
+      // storage blocked: main.ts reads the select itself
+    }
+  });
+}
 // Alone or together on the start screen; the admin logs in with the admin password (the Admin link).
 document.querySelectorAll<HTMLButtonElement>('[data-mp]').forEach((b) =>
   b.addEventListener('click', () => {
