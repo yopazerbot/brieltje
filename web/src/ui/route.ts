@@ -36,6 +36,17 @@ function nearest(x: number, z: number): { a: number; b: number; p: P; d: number 
   return best;
 }
 
+// Each stretch's street name (tools/streets.py), by its two points.
+const NAMES = STREETS.graph.names as string[];
+const STREET = new Map<number, string>();
+(STREETS.graph.street as number[]).forEach((s, i) => s >= 0 && STREET.set(EDGES[i][0] * 4096 + EDGES[i][1], NAMES[s]));
+
+/** The street you are in: the nearest road's name, if a road is within `within` metres. */
+export function streetAt(x: number, z: number, within = 40): string | undefined {
+  const near = nearest(x, z);
+  return near.d <= within ? STREET.get(near.a * 4096 + near.b) : undefined;
+}
+
 /** The way from `from` to `to` (model x, z): a polyline, and its length in metres. */
 export function route(from: P, to: P): { line: P[]; length: number } {
   const straight = Math.hypot(to[0] - from[0], to[1] - from[1]);

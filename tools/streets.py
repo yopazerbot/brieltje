@@ -13,6 +13,8 @@ degrees so no name is upside down). Unnamed roads ("nvt") get no label.
 It also writes the road network for directions on the map (`graph`): every road's centre line,
 named or not, inside the area and 60 m beyond, simplified to 1.5 m, as points (model x, z, to
 0.1 m) and the stretches between them (pairs of point numbers). Pieces that meet share a point.
+Each stretch has its street's name (a number into `names`, -1 for none): the place line at the top
+left says which street you are in.
 """
 import json
 import math
@@ -40,7 +42,7 @@ def model(x, y):
 
 def road_graph(data, area):
     """Points and stretches of every road centre line inside `area`, pieces that touch sharing a point."""
-    points, index, edges = [], {}, set()
+    points, index, edges = [], {}, {}  # (a, b) -> street name ("" for none)
 
     def point(x, y):
         key = (round(x * 2), round(y * 2))  # within half a metre: the same point
@@ -50,15 +52,21 @@ def road_graph(data, area):
         return index[key]
 
     for f in data["features"]:
+        name = f["properties"].get("LSTRNM") or f["properties"].get("RSTRNM") or ""
+        if name.lower() == "nvt":
+            name = ""
         line = LineString(f["geometry"]["coordinates"]).intersection(area)
         for part in [line] if line.geom_type == "LineString" else list(getattr(line, "geoms", [])):
             if part.geom_type != "LineString" or part.length < 1:
                 continue
             ids = [point(x, y) for x, y in part.simplify(1.5).coords]
             for a, b in zip(ids, ids[1:]):
-                if a != b:
-                    edges.add((min(a, b), max(a, b)))
-    return {"points": points, "edges": sorted(edges)}
+                if a != b and not edges.get((min(a, b), max(a, b))):
+                    edges[(min(a, b), max(a, b))] = name
+    stretches = sorted(edges)
+    names = sorted({n for n in edges.values() if n})
+    return {"points": points, "edges": stretches, "names": names,
+            "street": [names.index(edges[s]) if edges[s] else -1 for s in stretches]}
 
 
 def main():

@@ -60,7 +60,7 @@ import { TravelPanel } from './ui/travel';
 import { BigMap, type Mark } from './ui/bigmap';
 import { key } from './shortcuts';
 import { typing } from './keys';
-import { route } from './ui/route';
+import { route, streetAt } from './ui/route';
 import { HomeLife } from './world/homeLife';
 import { HomeStreet, withoutModelled } from './world/homeStreet';
 import { RoadLife } from './world/roadLife';
@@ -1441,6 +1441,8 @@ let flyHint = 0; // seconds the flying controls still show after taking off
 let calmHint = 0; // seconds "no shooting here" still shows on the school grounds
 let horseHint = 0; // seconds the riding keys still show after getting on a horse
 let wasOnHorse = false;
+let carHint = 0; // the same for the car's speed and keys after getting in
+let wasInCar = false;
 let wasCalm = false;
 let wasFlying = false;
 
@@ -1614,9 +1616,10 @@ renderer.setAnimationLoop((now: number) => {
     const speed = (v: number) => Math.round(Math.abs(v) * 3.6);
     const carLabel = carName(car.id, car.spec.name);
     let prompt = target ? t(target.open ? 'prompt.close' : 'prompt.open', { key: doorKey, door: doorName(target.name) }) : '';
-    if (driving) prompt = t('prompt.driving', { speed: speed(car.speed), use });
+    // The car's speed and keys for the first few seconds in it only (Yoshi, as on a horse).
+    if (driving) prompt = carHint > 0 ? t('prompt.driving', { speed: speed(car.speed), use }) : '';
     else if (tagWho) prompt = t('prompt.tag', { use, name: tagWho });
-    else if (riding) prompt = t('prompt.riding', { name: car.driver ?? t('prompt.nobody'), speed: speed(car.speed), use });
+    else if (riding) prompt = carHint > 0 ? t('prompt.riding', { name: car.driver ?? t('prompt.nobody'), speed: speed(car.speed), use }) : '';
     else if (nearCar && !target) {
       prompt = !carTaken ? t('prompt.drive', { use, car: carLabel })
         : seatFree ? t('prompt.rideAlong', { use, name: car.driver ?? '' })
@@ -1641,6 +1644,10 @@ renderer.setAnimationLoop((now: number) => {
     if (onHorseNow && !wasOnHorse) horseHint = 5;
     wasOnHorse = onHorseNow;
     horseHint = onHorseNow ? horseHint - dt : 0;
+    const inCarNow = driving || riding;
+    if (inCarNow && !wasInCar) carHint = 5;
+    wasInCar = inCarNow;
+    carHint = inCarNow ? carHint - dt : 0;
     wasFlying = player.flying;
     flyHint = player.flying ? flyHint - dt : 0;
     if (flyHint > 0) hud.setPrompt(t('prompt.fly', { up: key('jump', mode), down: key('down', mode) }));
@@ -1662,7 +1669,10 @@ renderer.setAnimationLoop((now: number) => {
 
     const surface = player.ground.name;
     const indoors = !!surface && (roomNames.has(surface) || /floor|stairs/i.test(surface));
-    hud.setPlace(indoors ? placeName(levelName(player.feet)) : t('place.outside'), surface && placeName(surface));
+    // Outside, on the village's ground: the street you are in (its real name), not just "street".
+    const at = driving || riding ? car : player;
+    const street = !indoors && (driving || riding || !surface || surface === 'street') ? streetAt(at.x, at.z) : undefined;
+    hud.setPlace(indoors ? placeName(levelName(player.feet)) : t('place.outside'), street ?? (surface && surface !== 'street' ? placeName(surface) : undefined));
     // Baked lighting has real indoor light levels (a fraction of the sunlit outside), so the
     // eyes adapt much more indoors; real-time fill light on people and furniture is turned
     // down to match. Real-time lighting brightens rooms itself, so it needs only a little.

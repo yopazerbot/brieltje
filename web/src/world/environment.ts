@@ -48,6 +48,16 @@ export async function loadEnvironment(
   scene.environmentRotation.set(0, turn, 0);
   const sunDir = photoSun.clone().applyAxisAngle(new THREE.Vector3(0, 1, 0), turn).normalize();
 
+  // Older iPads (A12/A13 chips) can't filter 32-bit float textures smoothly, and WebGL then reads
+  // the sky as black: the background and, through the light maps, every shaded surface with it.
+  // Half floats filter everywhere, and after the cap above every value fits in one.
+  if (!renderer.extensions.has('OES_texture_float_linear')) {
+    const half = new Uint16Array(data.length);
+    for (let i = 0; i < data.length; i++) half[i] = THREE.DataUtils.toHalfFloat(data[i]);
+    (hdr.image as { data: ArrayBufferView }).data = half;
+    hdr.type = THREE.HalfFloatType;
+  }
+
   scene.background = hdr;
   const pmrem = new THREE.PMREMGenerator(renderer);
   scene.environment = pmrem.fromEquirectangular(hdr).texture;
