@@ -42,7 +42,8 @@ UpperArm.L > LowerArm.L > Hand.L (and .R); Hips > UpperLeg.L > LowerLeg.L > Foot
 figure's own sides (its left is +x); it stands with its feet at the origin and faces +z in the GLB
 (Blender -Y). Animations are named <v>_<Clip> and hold only that variant's bones, sampled at 15 keys a
 second, in place (Root never moves; the hips bob and sway): Walk, Lurch, Idle, Attack, Flinch and Fall
-for the regular four, Stomp, Pound, Idle, Flinch and Fall for the big one. Every clip turns every bone
+for the regular four (and Run for the hoodie: the game's runners), Stomp, Pound, Idle, Flinch and Fall
+for the big one. Every clip turns every bone
 and moves the hips. After Blender's export the file is repacked (identical accessors stored once, weights
 and colours as normalised bytes, channels that never leave a bone's rest translation or scale dropped).
 three.js's GLTFLoader makes repeated names unique: the LOD0 mesh loads as zombie_<v>_1, and the bones of
@@ -480,7 +481,11 @@ VARIANTS = {
                    walk=dict(T=1.7, D=0.86, duty=(0.62, 0.62), lift=(0.04, 0.04), toe=(16, 16), sway=0.028, roll=3.5,
                              yaw=6, width=(0.006, 0.006), k=0.98),
                    lurch=dict(T=1.05, D=1.15, duty=(0.54, 0.54), lift=(0.1, 0.09), toe=(20, 20), sway=0.05, roll=7,
-                              yaw=10, width=(0.012, 0.012), k=0.95)),
+                              yaw=10, width=(0.012, 0.012), k=0.95),
+                   # The runner's sprint (about 3.2 m/s, a player runs 3.5): each foot down a third of the loop,
+                   # so both are off the ground between strides; knees high, leaning in, arms pumping.
+                   run=dict(T=0.667, D=2.13, duty=(0.34, 0.34), lift=(0.2, 0.2), toe=(12, 12), sway=0.018, roll=3,
+                            yaw=11, width=(0.0, 0.0), k=0.97)),
     ),
     "overall": dict(
         col=dict(skin="#a3a383", hair="#8c8a84", cloth="#56708f", roll="#6c86a6", pocket="#475e7a", zip="#3a3f47",
@@ -1563,7 +1568,9 @@ def gait(B, G, fast=False):
     """A looping gait: pose(ph) for phase 0..1, with the hips' bob worked out so planted legs never
     stretch. Each foot is planted for duty of the loop, moving back under the body at the walking speed
     (D per loop), then swings forward; the hips sway over the planted foot, the torso lurches, the head
-    lolls behind, the arms reach and bob."""
+    lolls behind, the arms reach and bob. `fast`: True for the lurch, "run" for the runner's sprint
+    (leaning in, the chest turning against the hips, the arms pumping bent at the elbow, fists closed)."""
+    run = fast == "run"
     S = B.P["style"]
     D, T = G["D"], G["T"]
     offs = {"L": 0.0, "R": 0.5}
@@ -1615,8 +1622,9 @@ def gait(B, G, fast=False):
         lag = 0.08
         cl = math.cos(2 * math.pi * (ph - mid["L"] - lag))
         c2 = math.cos(4 * math.pi * (ph - offs["L"] - 0.06))
-        # The lurch: hurrying, bent well forward, the head bobbing hard and the arms grabbing.
-        hurry, bob = (8.0, 2.2) if fast else (0.0, 1.0)
+        # The lurch: hurrying, bent well forward, the head bobbing hard and the arms grabbing. The run
+        # leans in more but bobs less: it is quick, not frantic.
+        hurry, bob = (11.0, 1.4) if run else (8.0, 2.2) if fast else (0.0, 1.0)
         e = {
             "hips": (hurry * 0.5, G["roll"] * cL, G["yaw"] * cL),
             "spine": (1.5 * bob * c2 + hurry, 0.4 * G["roll"] * cl, -0.4 * G["yaw"] * cL),
@@ -1630,6 +1638,10 @@ def gait(B, G, fast=False):
             sw = math.sin(2 * math.pi * (ph - mid[s]))
             if big:
                 e["arm" + s] = (26 * sw, 0, 6 * c2 + 8 * sw, 6 * sw)
+            elif run:
+                # Pumping against the legs: back as its own foot comes down in front, forward as it pushes
+                # off behind; bent about a right angle at the elbow, hands up as fists, close to the body.
+                e["arm" + s] = (-55 + 30 * sw, -6, 76 + 6 * c2, -30)
             elif fast:
                 # Grabbing in turn: each arm reaches up and claws down twice a loop, out of step.
                 fr = math.sin(2 * math.pi * (2 * ph + (0.0 if s == "L" else 0.4)))
@@ -1761,6 +1773,8 @@ def clips_for(B):
     else:
         w, out["Walk"] = looped(B, "walk")
         _, out["Lurch"] = looped(B, "lurch", True)
+        if "run" in S:
+            _, out["Run"] = looped(B, "run", "run")
         ref = w(0.0)
     idl = idle(B)
     out["Idle"] = (90, lambda t, f=idl: f((t / 3.0) % 1.0), True, None)
@@ -1982,7 +1996,7 @@ for v in ORDER:
 # walking speed (loop distance / loop time); report how far it strays from that (its slide).
 for v in ORDER:
     top, rig, meshes, B = FIG[v]
-    for clip in (("Stomp",) if v == "big" else ("Walk", "Lurch")):
+    for clip in (("Stomp",) if v == "big" else ("Walk", "Lurch", "Run") if "Run" in REPORT[v]["clips"] else ("Walk", "Lurch")):
         rig.animation_data.action = bpy.data.actions[f"{v}_{clip}"]
         ci = REPORT[v]["clips"][clip]
         n = ci["frames"]
@@ -2371,6 +2385,17 @@ if PREVIEW:
             f = pose(v, "Lurch", T * k / 6)
             paths.append(shot(os.path.join(tmp, f"l{v}{k}.png"), (4.2, -1.2, 1.0), (0, -0.05, 0.85), 50, (420, 520), f))
     sheet(paths, 6, os.path.join(PREVIEW, "sheet_lurch.png"))
+    # The runner's sprint: eight frames side on, and four three-quarter from in front (as one comes at you).
+    paths = []
+    show(["hoodie"])
+    T = REPORT["hoodie"]["clips"]["Run"]["seconds"]
+    for k in range(8):
+        f = pose("hoodie", "Run", T * k / 8)
+        paths.append(shot(os.path.join(tmp, f"r{k}.png"), (4.2, -1.2, 1.0), (0, -0.05, 0.85), 50, (420, 520), f))
+    for k in range(4):
+        f = pose("hoodie", "Run", T * k / 4)
+        paths.append(shot(os.path.join(tmp, f"rf{k}.png"), (-2.4, -3.6, 1.3), (0, -0.1, 0.85), 50, (420, 520), f))
+    sheet(paths, 4, os.path.join(PREVIEW, "sheet_run.png"))
     paths = []
     show(["big"])
     for clip in ("Stomp", "Pound"):
