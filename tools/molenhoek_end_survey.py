@@ -96,30 +96,36 @@ def _terrace():
                    [6.16, 2.56, 0.0, head, "g", dict(c=garage, sections=4)],
                    up(0.55, 0.9), up(4.955, cu=True), up(6.96, cu=True)],
             fixtures=[(3.03, 1.3, 0.05, 0.16, 0.015, "#1f2022")],
-            inside=True, faces=_end_faces(end_rect, sill, first)),
+            inside=True, faces=_end_faces(end_rect, sill, first, head, band, dark)),
     }
 
 
-def _end_faces(rect, sill, first):
-    """The end house's other walls (its inside: tools/molenhoek_end_inside.py): glass
-    at every corner of its free side, which the front's corner windows already show. The side wall: a high window
-    at the front corner (the WC's, round the corner from the one in the front), the living room's window, and
-    glass to the floor at the back corner; above them the front bedroom's two and the office's corner. The cut
-    corner: on the ground floor glass all along it, a large fixed pane and a sliding door of two panels towards the
-    back; upstairs a window at each end. The back: glass to the floor at the corner and the kitchen's window; above
-    them the back bedroom's two. Each wall's openings are given from the corner its edge of `rect` starts at, then
-    turned into the builder's way (from the left end as seen from outside). The 8 cm left at each glass corner is
-    the slim brick post the front's corner windows show."""
-    hi, top = 2.36, first + 1.24  # the ground floor's glass up to 2.36 m; upstairs as in the front
-    win = lambda a, b, y0, y1, **o: (a, b, y0, y1, "w", dict(n=1, sill=sill, **o))
-    glass = lambda a, b, y1=hi, **o: (a, b, 0.0, y1, "d", dict(n=1, **o))
+def _end_faces(rect, sill, first, head, band, dark):
+    """The end house's other walls (its inside: tools/molenhoek_end_inside.py): glass at every corner of its free
+    side, which the front's corner windows already show. The side wall: a high window at the front corner (the
+    WC's, round the corner from the one in the front), the living room's window, and glass to the floor in two
+    lights at the back corner; above them the front bedroom's window, its two lights over the living room's, and
+    the office's corner window. The dark band of the front turns the corner and runs along the side wall as far as
+    the far edge of its middle windows, from the ground floor's lintels to the first floor's sills. The cut corner:
+    on the ground floor glass all along it, a large fixed pane with a screen's dark box over it and a sliding door of
+    two panels towards the back; upstairs a window at each end. The back: glass to the floor at the corner and the
+    kitchen's window; above them the back bedroom's two. Every opening of the ground floor has its head at the
+    front's, with a soldier course over every opening as on the front. Each wall's openings, bands and boxes are
+    given from the corner its edge of `rect` starts at, then turned into the builder's way (from the left end as
+    seen from outside). The 8 cm left at each glass corner is the slim brick post the front's corner windows show."""
+    hi, top = head, first + 1.24  # the ground floor's glass up to the front's heads; upstairs as in the front
+    win = lambda a, b, y0, y1, **o: (a, b, y0, y1, "w", dict({"n": 1, "sill": sill, **o}))
+    glass = lambda a, b, y1=hi, **o: (a, b, 0.0, y1, "d", dict({"n": 1, **o}))
     given = {
-        1: [win(0.08, 1.0, 1.49, 2.16), win(2.5, 4.0, 0.95, hi), glass(7.0, 8.144),  # the side wall, from the front corner
-            win(0.08, 1.0, first, top), win(2.5, 4.0, first, top), win(7.0, 8.144, first, top)],
+        1: [win(0.08, 1.0, 1.49, hi), win(2.40, 3.86, 1.0, hi), glass(6.42, 8.144, n=2),  # the side wall, from the front corner
+            win(0.08, 1.0, first, top), win(2.40, 3.86, first, top, n=2), win(6.85, 8.144, first, top)],
         2: [glass(0.08, 5.388, div=[0.5, 0.75]),  # the cut corner, from the side wall's end
             win(0.08, 1.743, first, top), win(3.725, 5.388, first, top)],
         3: [glass(0.08, 1.2), win(2.0, 3.0, 1.05, hi), win(0.08, 1.2, first, top), win(2.0, 3.0, first, top)],  # the back, from the cut corner
     }
+    bands = {1: [(0.0, 3.86, *band, dark)]}  # (s0, s1, y0, y1, tint)
+    fixed = 0.08 + 0.5 * (5.388 - 0.08)  # the cut corner's fixed pane: the first half of its glass
+    boxes = {2: [(0.06, fixed + 0.02, hi - 0.14, hi, -0.13, 0.035, "#3b3e41")]}  # (s0, s1, y0, y1, d0, d1, tint): the screen's box
     n = len(rect)
     area = sum(rect[k][0] * rect[(k + 1) % n][1] - rect[(k + 1) % n][0] * rect[k][1] for k in range(n))
     out = []
@@ -129,15 +135,126 @@ def _end_faces(rect, sill, first):
         tx, tz = (q[0] - p[0]) / L, (q[1] - p[1]) / L
         o = (tz, -tx) if area > 0 else (-tz, tx)
         as_given = (q[0] - p[0]) * o[1] - (q[1] - p[1]) * o[0] >= 0  # tools/molenhoek.py's left_first
+        turn = (lambda a, b: (a, b)) if as_given else (lambda a, b, L=L: (round(L - b, 4), round(L - a, 4)))
         made = []
         for a, b, y0, y1, kind, opt in openings:
-            if not as_given:
-                a, b = L - b, L - a
-                if "div" in opt:
-                    opt = dict(opt, div=sorted(round(1 - f, 4) for f in opt["div"]))
+            a, b = turn(a, b)
+            if not as_given and "div" in opt:
+                opt = dict(opt, div=sorted(round(1 - f, 4) for f in opt["div"]))
             made.append((round((a + b) / 2, 4), round(b - a, 4), y0, round(y1 - y0, 4), kind, opt))
-        out.append(dict(near=(round((p[0] + q[0]) / 2, 3), round((p[1] + q[1]) / 2, 3)), openings=made))
+        face = dict(near=(round((p[0] + q[0]) / 2, 3), round((p[1] + q[1]) / 2, 3)), openings=made, soldiers=True)
+        if i in bands:
+            face["patches"] = [(*turn(a, b), y0, y1, tint) for a, b, y0, y1, tint in bands[i]]
+        if i in boxes:
+            face["boxes"] = [(*turn(a, b), *rest) for a, b, *rest in boxes[i]]
+        out.append(face)
     return out
+
+
+FENCE_IN = 0.06  # m: the garden's fences stand this far inside the plot's edge
+
+
+def _end_garden(h, plot):
+    """The end house's garden, on its GRB plot (`plot`, in model x, z): the free side and the back, up to the lane
+    (Kapelleweg's last stretch) behind and the utility plot at the corner.
+
+    - Fences all round, 1.8 m above the ground outside: grey weathered vertical boards from the house's front corner
+      along the street, round the corner by the utility plot and a few metres along the lane, with a gate by the
+      house; then a black wire fence overgrown with ivy along the rest of the lane (thick at first, then in patches)
+      and between this garden and the neighbour's.
+    - The garden lies at the house's floor level, as the terrace does, so the ground is lowered inside the fences
+      (tools/molenhoek_end_inside.py cuts it out; world/walkIn.ts draws the lawn there). The fences stand on a
+      concrete gravel board that takes up the step to the ground outside.
+    - A terrace of large grey tiles behind the house, round the cut corner (there as far as the planting along the
+      fence) and along the side wall to the shed, and a paved path past the shed to the gate; a lawn in the rest.
+    - A flat-roofed log shed in the front corner, its back to the street fence.
+    - On the utility plot at the corner: a concrete control cabinet with louvred panels, the stainless vent pipes
+      beside it and the concrete slab of the pump well with its steel hatch.
+    - A grey letterbox on a post by the gate, a garden table with four chairs and a closed parasol on the terrace.
+
+    Returns the garden in model x, z (heights for tools/molenhoek.py, which builds it; the inside script reads its
+    lawn and terrace)."""
+    main = Polygon(h["main"])
+    ring = [tuple(q) for q in h["main"]]
+    A, B = tuple(h["front"][0]), tuple(h["front"][1])  # the free corner, the corner at the party wall
+    L = math.dist(A, B)
+    T = ((B[0] - A[0]) / L, (B[1] - A[1]) / L)  # along the front, towards the party wall
+    N = (T[1], -T[0])  # into the house
+    assert N[0] * h["out"][0] + N[1] * h["out"][1] < -0.99
+    W = lambda a, b: (A[0] - T[0] * a + N[0] * b, A[1] - T[1] * a + N[1] * b)  # a: away from the house along the front, b: in from the front line
+    near = lambda p: min(range(len(ring)), key=lambda i: math.dist(ring[i], p))
+    ia = near(A)
+    step = 1 if math.dist(ring[(ia - 1) % len(ring)], B) < 0.05 else -1  # round the outline from the free corner away from the front
+    S, C, P = (ring[(ia + step * k) % len(ring)] for k in (1, 2, 3))  # the side wall's back end, the cut corner's other end, the back's party end
+    unit = lambda p, q: ((q[0] - p[0]) / math.dist(p, q), (q[1] - p[1]) / math.dist(p, q))
+    away = lambda p, q: (lambda t: (t[1], -t[0]) if Point((p[0] + q[0]) / 2 + t[1] * 0.3, (p[1] + q[1]) / 2 - t[0] * 0.3).distance(main) > 0.2
+                         else (-t[1], t[0]))(unit(p, q))  # a wall's outward normal
+    lawn = plot.buffer(-FENCE_IN, join_style=2).difference(main)
+    lawn = max(getattr(lawn, "geoms", [lawn]), key=lambda g: g.area)
+
+    # The fence line: the plot's edge a little inside it, where the house doesn't stand, from the free corner round to the back.
+    edge = LineString(list(plot.buffer(-FENCE_IN, join_style=2).exterior.coords)).difference(main.buffer(0.02))
+    edge = linemerge(edge) if edge.geom_type == "MultiLineString" else edge
+    edge = max(getattr(edge, "geoms", [edge]), key=lambda g: g.length)
+    if Point(edge.coords[0]).distance(Point(A)) > Point(edge.coords[-1]).distance(Point(A)):
+        edge = LineString(edge.coords[::-1])
+    pts = list(edge.coords)
+    segs = [(math.dist(p, q), k) for k, (p, q) in enumerate(zip(pts, pts[1:]))]
+    lane = max(segs)[1]  # the longest edge: along the lane behind
+    corner = max(segs[1:lane])[1]  # the utility plot's edge before it
+    along = lambda k: sum(math.dist(p, q) for p, q in zip(pts[:k], pts[1:k + 1]))
+    s_lane = along(lane)
+
+    def piece(s0, s1):
+        a, b = edge.interpolate(s0), edge.interpolate(s1)
+        inner = [p for p in pts if s0 + 1e-6 < edge.project(Point(p)) < s1 - 1e-6]
+        return [[round(a.x, 3), round(a.y, 3)]] + [[round(x, 3), round(z, 3)] for x, z in inner] + [[round(b.x, 3), round(b.y, 3)]]
+    boards_end, thick_end = s_lane + 3.5, s_lane + 11.5
+    fences = [dict(kind="boards", p=piece(0.0, boards_end), gate=[0.06, 1.06]),
+              dict(kind="ivy", p=piece(boards_end, thick_end), thick=True),
+              dict(kind="ivy", p=piece(thick_end, edge.length), thick=False)]
+
+    # The shed: 3.9 m along the street fence from 1.75 m off the side wall to the fence by the utility plot, 3.4 m deep.
+    front_end = max(0.0, (pts[1][0] - A[0]) * -T[0] + (pts[1][1] - A[1]) * -T[1])  # the street fence's far end, along the front
+    s0, s1, b0, b1 = 1.75, front_end - 0.15, FENCE_IN + 0.1, FENCE_IN + 3.5
+    shed = Polygon([W(s0, b0), W(s1, b0), W(s1, b1), W(s0, b1)])
+
+    # The terrace: 3 m deep behind the house, as far as the planting along the lane's fence in front of the cut corner,
+    # 2 m wide along the side wall from the shed's back to it, and the path past the shed to the gate.
+    out_cut, out_back, out_side = away(S, C), away(C, P), away(A, S)
+    to_lane = Point(S).distance(LineString(pts[lane:lane + 2])) - 0.35
+    t_cut = unit(S, C)
+    cut = Polygon([(S[0] - t_cut[0] * 2.4, S[1] - t_cut[1] * 2.4), C,
+                   (C[0] + out_cut[0] * to_lane, C[1] + out_cut[1] * to_lane),
+                   (S[0] - t_cut[0] * 2.4 + out_cut[0] * to_lane, S[1] - t_cut[1] * 2.4 + out_cut[1] * to_lane)])
+    back = Polygon([C, P, (P[0] + out_back[0] * 3.0, P[1] + out_back[1] * 3.0), (C[0] + out_back[0] * 3.0, C[1] + out_back[1] * 3.0),
+                    (C[0] + out_cut[0] * to_lane, C[1] + out_cut[1] * to_lane)])  # and the wedge between it and the cut corner's
+    side = Polygon([W(0.0, b1 + 0.03), S, (S[0] + out_side[0] * 2.0, S[1] + out_side[1] * 2.0), W(2.0, b1 + 0.03)])
+    path = Polygon([W(0.0, FENCE_IN), W(s0 - 0.03, FENCE_IN), W(s0 - 0.03, b1 + 0.1), W(0.0, b1 + 0.1)])
+    terrace = unary_union([cut, side, path]).buffer(1.2, join_style=1).buffer(-1.2, join_style=1)  # the lawn's corner by the side wall, rounded
+    hedges = unary_union([LineString(f["p"]).buffer(0.3 if f.get("thick") else 0.22, cap_style=2) for f in fences if f["kind"] == "ivy"])
+    terrace = unary_union([terrace, back]).buffer(0.01, join_style=2).buffer(-0.01, join_style=2).intersection(lawn).difference(shed.buffer(0.03, join_style=2)).difference(hedges)
+    terrace = max(getattr(terrace, "geoms", [terrace]), key=lambda g: g.area).simplify(0.02)
+
+    # The utility plot at the corner, outside the fence there: the cabinet, the vent pipes beside it, the pump well's slab.
+    p, q = pts[corner], pts[corner + 1]
+    u, Lc = unit(p, q), math.dist(p, q)
+    o = (u[1], -u[0]) if not lawn.contains(Point((p[0] + q[0]) / 2 + u[1] * 0.5, (p[1] + q[1]) / 2 - u[0] * 0.5)) else (-u[1], u[0])
+    at = lambda f, d: [round(p[0] + u[0] * Lc * f + o[0] * d, 3), round(p[1] + u[1] * Lc * f + o[1] * d, 3)]
+    r = lambda v: [round(v[0], 4), round(v[1], 4)]
+    furn_c = ((S[0] + C[0]) / 2 + out_cut[0] * 1.75 + t_cut[0] * 0.7, (S[1] + C[1]) / 2 + out_cut[1] * 1.75 + t_cut[1] * 0.7)
+    rnd = lambda pts_: [[round(x, 3), round(z, 3)] for x, z in pts_]
+    return dict(
+        level=round(h["y0"] + 0.05 - 0.04, 3),  # the lawn, 4 cm under the floor (the terrace 2 cm)
+        terrace_level=round(h["y0"] + 0.05 - 0.02, 3),
+        lawn=rnd(list(lawn.exterior.coords)[:-1]), terrace=rnd(list(terrace.exterior.coords)[:-1]),
+        fences=fences, shed=dict(p=rnd(shed.exterior.coords[:-1]), h=(2.33, 2.22)),
+        cabinet=dict(at=at(0.62, 0.9), dir=r(u)), vents=[at(f, 0.45) for f in (0.2, 0.3, 0.4)], pad=dict(at=at(0.85, 2.55), dir=r(u)),
+        letterbox=dict(at=[round(v, 3) for v in W(1.35, -0.3)], face=r((-N[0], -N[1]))),
+        table=dict(at=[round(v, 3) for v in furn_c], dir=r(t_cut)),
+        parasol=[round(v, 3) for v in ((S[0] + C[0]) / 2 + out_cut[0] * 1.5 - t_cut[0] * 1.9, (S[1] + C[1]) / 2 + out_cut[1] * 1.5 - t_cut[1] * 1.9)],
+        clear=rnd(list(plot.buffer(-0.02, join_style=2).exterior.coords)[:-1]),
+    )
 
 
 TERRACE = _terrace()
@@ -358,6 +475,13 @@ def main():
     grb = [Polygon(list(model(g).exterior.coords)) for f in features("GBG") for g in polygons(f["geometry"])]
     others = [poly for p, poly in walls] + grb
     houses = plan(HOUSES, branch, walls, grb, others, Relief(), order="view")
+    # The end house's garden on its own plot; the village's trees standing in it (the laser scan's) give way.
+    end = houses["b712l_row_end"]
+    centre = Polygon(end["main"]).centroid
+    plot = next(g for f in features("ADP") for g in map(model, polygons(f["geometry"])) if g.contains(centre))
+    end["garden"] = _end_garden(end, plot)
+    garden_area = Polygon(end["garden"]["clear"])
+    clear_trees = [[t["x"], t["z"], 1.0] for t in village["trees"] if garden_area.contains(Point(t["x"], t["z"]))]
     pts = lambda ps: [[round(p.x, 2), round(p.y, 2)] for p in ps]
     for i, (s0, s1) in enumerate(PARTS, 1):
         mine = {k: h for k, h in houses.items() if s0 <= branch.project(Point(h["at"])) < s1}
@@ -367,11 +491,13 @@ def main():
         xs = sorted(h["at"][0] for h in mine.values())
         split = [round(xs[len(xs) // 3], 1), round(xs[2 * len(xs) // 3], 1)]
         out = ROOT / "data" / f"molenhoek_end{i}.json"
+        extra = {"clear_trees": clear_trees} if any("garden" in h for h in mine.values()) else {}
         out.write_text(json.dumps({
             "_source": "GRB Wegsegment, ADP and GBG (Digitaal Vlaanderen, open data); the houses' plans from web/src/data/village.json; "
                        "their looks from a Street View tour, described in tools/molenhoek_end_survey.py, no images",
             "name": f"molenhoek_end{i}", "origin": [round(mid.x, 2), round(mid.y, 2)], "order": "view", "lean": True,
             "detail_split": {"axis": "x", "at": split}, "line": pts(line), "left": left, "right": right, "houses": mine, "props": [],
+            **extra,
         }, indent=None, separators=(",", ":")), encoding="utf-8")
         print(f"wrote {out.relative_to(ROOT)}: {len(line)} points, {len(mine)} houses, origin {mid.x:.1f} {mid.y:.1f}")
     for key, h in houses.items():

@@ -130,7 +130,8 @@ def shade(h, k):
 bpy.ops.wm.read_factory_settings(use_empty=True)
 # name: (shared game texture, normal scale)
 SHARED = {"mh_brick": ("nb_brick", 1.0), "mh_render": ("plaster", 0.35), "mh_cladding": ("cladding", 0.9), "mh_stone": ("concrete", 0.5),
-          "mh_roof": ("roof_tiles", 1.0), "mh_asphalt": ("asphalt", 0.8), "mh_pavers": ("pavers", 0.8), "mh_foliage": ("hedge", 1.0)}
+          "mh_roof": ("roof_tiles", 1.0), "mh_asphalt": ("asphalt", 0.8), "mh_pavers": ("pavers", 0.8), "mh_foliage": ("hedge", 1.0),
+          "mh_tiles": ("floor_tile", 0.6)}
 M = {}
 
 
@@ -161,6 +162,19 @@ M["mh_detail"]["lod"] = 200  # metres: drawn only nearer than this (web/src/worl
 M["mh_glass_in"] = principled("mh_glass_in", 0.06, 0.3)
 M["mh_panel_in"] = principled("mh_panel_in", 0.5)
 M["mh_glass_in"]["shut"] = M["mh_panel_in"]["shut"] = 1
+# A house's own garden (`yard`): its things in meshes of their own (`_g`, the terrace's tiles anyway), drawn only near,
+# as the small things are, and before the street's walls (`order`), in front of which they mostly stand: what lies
+# behind a shed or a fence is then not shaded for nothing. Its boards, logs, tiles, concrete and ivy take their
+# texture's colour alone (`flat`), without its relief and sheen, as they fill the view close by.
+for name in ("mh_render", "mh_stone", "mh_foliage", "mh_panel", "mh_detail", "mh_tiles"):
+    g = M[name] if name == "mh_tiles" else M[name].copy()
+    if name != "mh_tiles":
+        g.name = name + "_g"
+        M[name + "_g"] = g
+    g["lod"], g["order"] = 200, -0.5
+    if name in ("mh_render", "mh_stone", "mh_foliage", "mh_tiles"):
+        g["flat"] = 1
+IN_YARD = [False]  # whether a garden is being built (its faces go into its own meshes)
 INSIDE = [False]  # whether the house being built is one you can walk into
 DETAIL_SPLIT = tuple(DATA["detail_split"]["at"]) if DATA.get("detail_split") else (705.0, 815.0)  # where the small things go into the next part
 DETAIL_AXIS = DATA["detail_split"]["axis"] if DATA.get("detail_split") else "x"
@@ -183,9 +197,14 @@ def paint_face(bm, f, hexcol):
 
 
 # ---------------------------------------------------------------- geometry helpers (game coordinates)
+def yard_mat(mat):
+    """The mesh a face goes into: a garden's own while one is being built."""
+    return mat + "_g" if IN_YARD[0] and mat + "_g" in BM else mat
+
+
 def face(mat, pts, out=None, col=None):
     """A planar face through game points (x, z, y); turned to face `out` (a game direction (dx, dz, dy))."""
-    bm = BM[mat]
+    bm = BM[yard_mat(mat)]
     vs = [V(*p) for p in pts]
     if out is not None:
         n = Vector((0, 0, 0))
@@ -213,7 +232,7 @@ def solid(mat, pts, col=None):
     bmesh.ops.delete(tmp, geom=list(dead), context="VERTS")
     bmesh.ops.dissolve_limit(tmp, angle_limit=math.radians(0.5), verts=tmp.verts[:], edges=tmp.edges[:])
     bmesh.ops.recalc_face_normals(tmp, faces=tmp.faces[:])
-    bm = BM[mat]
+    bm = BM[yard_mat(mat)]
     for f in tmp.faces:
         paint_face(bm, bm.faces.new([bm.verts.new(v.co) for v in f.verts]), col)
     tmp.free()
@@ -984,7 +1003,7 @@ def build_house(key, H):
     extra = {}
     for fc in H.get("faces", []):
         j = min(range(n_edges), key=lambda i: dist_to_ring(fc["near"], [main[i], main[(i + 1) % n_edges]]))
-        extra[j] = fc["openings"]
+        extra[j] = fc
     for i in range(n_edges):
         p, q = main[i], main[(i + 1) % n_edges]
         tt, LL = unit(p, q)
@@ -1031,10 +1050,12 @@ def build_house(key, H):
                 p, q = q, p
                 tt, LL = unit(p, q)
                 f = Frame(p, tt, (oo[0], oo[1]), base)
-            holes = [Hole(s_ - w / 2, s_ + w / 2, y, y + hh, kind, 0.13, {**opt, "f": opt.get("f", frame_c)}) for (s_, w, y, hh, kind, opt) in extra[i]]
+            holes = [Hole(s_ - w / 2, s_ + w / 2, y, y + hh, kind, 0.13, {**opt, "f": opt.get("f", frame_c)}) for (s_, w, y, hh, kind, opt) in extra[i]["openings"]]
         elif not party[i] and LL > 2.5 and not (LEAN and oo[0] * o[0] + oo[1] * o[1] < -0.3) and not H.get("plain"):
             holes = auto_windows(LL, E, max(y for _, y in top), frame_c, top)  # (`plain`: none, a blank end wall)
-        facade(f, LL, top, holes, layers, patches=front_patches(H, LL, holes) if is_front else ())
+        facade(f, LL, top, holes, layers, patches=front_patches(H, LL, holes) if is_front else face_patches(H, extra.get(i), LL, holes))
+        for s0, s1, y0, y1, d0, d1, col in (extra[i].get("boxes", []) if i in extra and not is_front else []):  # a box on the wall (a screen's)
+            f.box("mh_detail", s0, s1, y0, y1, d0, d1, col)
         if up and up["wall"] == "cladding":
             boards(f, LL, top, holes, up)
         if is_front and up and H.get("timber"):
@@ -1096,6 +1117,8 @@ def build_house(key, H):
     if H.get("laser"):  # past the edge of the village data there are no blocks to walk into: the model brings its own
         SOLIDS.append(prism_xz([tuple(q) for q in main], base - 0.3, base + E))
     garden(key, H, base)
+    if H.get("garden"):
+        yard(H)
 
 
 FRONT = {}
@@ -1224,10 +1247,28 @@ def front_patches(H, L, holes):
     for s0, s1, y0, y1, tint in H.get("patches", []):
         out.append((max(0.0, fix(s0)), L if s1 is None else min(L, fix(s1)), y0, y1, "mh_brick", tint))
     if H.get("soldiers"):
-        for hl in holes:
-            if hl.kind in ("w", "d", "g"):
-                a, b = hl.s0 - 0.03, hl.s1 + 0.03
-                out.append((0.0 if a < 0.15 else a, L if b > L - 0.15 else b, hl.y1, hl.y1 + 0.21, "mh_brick", H["soldiers"]))
+        out += soldier_courses(H, L, holes)
+    return out
+
+
+def soldier_courses(H, L, holes):
+    """A soldier course in the house's `soldiers` tint over every opening (one that nearly reaches a corner runs on to it)."""
+    out = []
+    for hl in holes:
+        if hl.kind in ("w", "d", "g"):
+            a, b = hl.s0 - 0.03, hl.s1 + 0.03
+            out.append((0.0 if a < 0.15 else a, L if b > L - 0.15 else b, hl.y1, hl.y1 + 0.21, "mh_brick", H["soldiers"]))
+    return out
+
+
+def face_patches(H, fc, L, holes):
+    """The other brick in a side or back wall given in `faces`: its own `patches` (s0, s1, y0, y1, tint, along the wall
+    as the builder lays it) and, with `soldiers`, the front's soldier courses over its openings."""
+    if not fc:
+        return ()
+    out = [(max(0.0, s0), min(L, s1), y0, y1, "mh_brick", tint) for s0, s1, y0, y1, tint in fc.get("patches", [])]
+    if fc.get("soldiers") and H.get("soldiers"):
+        out += soldier_courses(H, L, holes)
     return out
 
 
@@ -1557,6 +1598,310 @@ def garden(key, H, base):
         SOLIDS.append(prism_xz([g.xz(0, -0.15), g.xz(LL, -0.15), g.xz(LL, 0.15), g.xz(0, 0.15)], g.base - 0.3, g.base + h + 0.06))
 
 
+# ---------------------------------------------------------------- a house's own garden
+GARDENS = []  # the plots of the gardens built: the village's ground covers, fences and trees inside them give way
+UV_TURN = {}  # material: the direction (game x, z) its flat faces' texture runs along (the terrace's tiles along the house)
+WOOD = "#857d71"  # the boards, grey with the weather
+TILES = "#87898b"  # the terrace's large grey tiles (times the texture's own greys)
+
+
+def inside_ring(x, z, ring):
+    hit = False
+    for i in range(len(ring)):
+        (ax, az), (bx, bz) = ring[i - 1], ring[i]
+        if (az > z) != (bz > z) and x < (bx - ax) * (z - az) / (bz - az) + ax:
+            hit = not hit
+    return hit
+
+
+def jitter(*v):
+    """A number 0..1 from a few others, the same every build."""
+    h = 2166136261
+    for x in v:
+        h ^= int(round(x * 1000)) & 0xFFFFFFFF
+        h = (h * 16777619) & 0xFFFFFFFF
+        h ^= h >> 13
+    return (h % 100000) / 100000
+
+
+def cut_at(pts, s):
+    """A polyline with a corner added s metres along it."""
+    out, done = [pts[0]], 0.0
+    for p, q in zip(pts, pts[1:]):
+        L = math.dist(p, q)
+        if done < s < done + L - 0.05 and s - done > 0.05:
+            k = (s - done) / L
+            out.append((p[0] + (q[0] - p[0]) * k, p[1] + (q[1] - p[1]) * k))
+        out.append(q)
+        done += L
+    return out
+
+
+def runs(pts, step):
+    """A polyline's segments, each cut into equal pieces of at most `step`: (start, direction, length) per piece."""
+    out = []
+    for p, q in zip(pts, pts[1:]):
+        t, L = unit(p, q)
+        if L < 0.05:
+            continue
+        n = max(1, math.ceil(L / step - 1e-6))
+        for k in range(n):
+            out.append(((p[0] + t[0] * L * k / n, p[1] + t[1] * L * k / n), t, L / n))
+    return out
+
+
+def yard(H):
+    """A house's own garden as tools/molenhoek_end_survey.py lays it out (`garden`): the terrace, the fences round it,
+    the shed, and what stands just outside it. Its lawn is the ground, lowered inside the fences to the house's floor
+    level (tools/molenhoek_end_inside.py cuts the relief out there, world/walkIn.ts draws the lawn); the fences stand
+    on a gravel board that takes up the step to the ground outside."""
+    IN_YARD[0] = True
+    try:
+        build_yard(H)
+    finally:
+        IN_YARD[0] = False
+
+
+def build_yard(H):
+    G = H["garden"]
+    lvl, tl, lawn = G["level"], G["terrace_level"], G["lawn"]
+    GARDENS.append(G["clear"])
+    (ax, az), (bx, bz) = H["front"]
+    UV_TURN["mh_tiles"] = unit((ax, az), (bx, bz))[0]
+    main = H["main"]
+
+    # The terrace: large grey tiles laid along the house, a slab whose edge stands 2 cm over the lawn.
+    ring = G["terrace"]
+    face("mh_tiles", [(x, z, tl) for x, z in ring], (0, 0, 1), TILES)
+    for i in range(len(ring)):
+        a, b = ring[i - 1], ring[i]
+        mid = ((a[0] + b[0]) / 2, (a[1] + b[1]) / 2)
+        if dist_to_ring(mid, main) < 0.03:
+            continue  # along the house
+        o = outward(ring, i - 1 if i else len(ring) - 1)
+        face("mh_stone", [(a[0], a[1], lvl - 0.03), (b[0], b[1], lvl - 0.03), (b[0], b[1], tl), (a[0], a[1], tl)], o, "#8e8f8f")
+
+    # The fences: which side of each piece is the street's (away from the lawn), and the ground there.
+    def outside(p, t):
+        n = (t[1], -t[0])
+        m = (p[0] + n[0] * 0.4, p[1] + n[1] * 0.4)
+        return n if not inside_ring(m[0], m[1], lawn) else (-n[0], -n[1])
+
+    def ground_out(p, t, L, o):
+        return max(terrain(p[0] + t[0] * s + o[0] * 0.35, p[1] + t[1] * s + o[1] * 0.35) for s in (0.0, L / 2, L))
+
+    for fence in G["fences"]:
+        pts = fence["p"]
+        if fence["kind"] == "boards":
+            board_fence(pts, fence.get("gate"), lvl, outside, ground_out)
+        else:
+            ivy_fence(pts, fence.get("thick"), lvl, outside, ground_out)
+    log_shed(G["shed"], lvl)
+    utility_plot(G)
+    garden_furniture(G, tl)
+
+
+def board_fence(pts, gate, lvl, outside, ground_out):
+    """A fence of vertical boards with narrow gaps between them, in panels of up to 1.85 m between square posts, on a
+    concrete gravel board, 1.8 m above the ground outside; two rails on the garden side; `gate`: from and to (metres
+    along the fence) a gate of the same boards with a brace, hinges and a black handle."""
+    if gate:
+        pts = cut_at(pts, gate[1])
+    total = sum(math.dist(p, q) for p, q in zip(pts, pts[1:]))
+    s_at = 0.0
+    for p, t, L in runs(pts, 1.85):
+        o = outside(p, t)
+        g = ground_out(p, t, L, o)
+        f = Frame(p, t, o, 0.0)
+        top, foot, plinth = g + 1.8, lvl - 0.12, g + 0.12
+        f.box("mh_stone", 0.0, L, foot, plinth, -0.02, 0.02, "#727370")  # the gravel board
+        is_gate = bool(gate) and s_at + L <= gate[1] + 1e-6
+        b0, b1 = (0.06, L - 0.06) if is_gate else (0.045, L - 0.045)
+        n = max(1, int((b1 - b0) / 0.127))
+        w = (b1 - b0) / n
+        for k in range(n):
+            tint = shade(WOOD, 0.9 + 0.17 * jitter(p[0], p[1], k))
+            f.box("mh_render", b0 + k * w + 0.006, b0 + (k + 1) * w - 0.006, plinth, top - 0.02 * jitter(k, p[0]), -0.011, 0.011, tint)
+        rail = shade(WOOD, 0.82)
+        for y in (plinth + 0.3, top - 0.28):
+            f.box("mh_render", b0, b1, y - 0.035, y + 0.035, -0.046, -0.011, rail)
+        if is_gate:  # the brace on the garden side, the handle and the hinges outside
+            for (s0, y0), (s1, y1) in (((b0 + 0.05, plinth + 0.3), (b1 - 0.05, top - 0.28)),):
+                beam("mh_render", f.p(s0, y0, -0.03), f.p(s1, y1, -0.03), 0.07, 0.03, rail, up=(o[0], o[1], 0))
+            f.box("mh_detail", b1 - 0.12, b1 - 0.06, g + 0.95, g + 1.12, 0.011, 0.03, "#1c1d1f")
+            for y in (plinth + 0.3, top - 0.28):
+                f.box("mh_detail", b0 - 0.02, b0 + 0.25, y - 0.025, y + 0.025, 0.011, 0.018, "#202123")
+        for s in ((0.0, L) if s_at + L >= total - 1e-6 else (0.0,)):  # the posts
+            f.box("mh_render", s - 0.045, s + 0.045, foot, top + 0.03, -0.045, 0.045, shade(WOOD, 0.78))
+        SOLIDS.append({**prism_xz([f.xz(0, -0.06), f.xz(L, -0.06), f.xz(L, 0.06), f.xz(0, 0.06)], foot, top), "m": "cladding"})
+        s_at += L
+
+
+def ivy_fence(pts, thick, lvl, outside, ground_out):
+    """A black wire fence on a concrete base, 1.75 m above the ground outside, overgrown with ivy: one thick green wall
+    (`thick`), or in patches with the fence's posts and rail showing between them."""
+    for p, t, L in runs(pts, 2.5):
+        o = outside(p, t)
+        g = ground_out(p, t, L, o)
+        f = Frame(p, t, o, 0.0)
+        foot = lvl - 0.12
+        f.box("mh_stone", 0.0, L, foot, g + 0.06, -0.02, 0.02, "#6c6d6a")  # the base plate
+        f.box("mh_detail", -0.025, 0.025, foot, g + 1.78, -0.025, 0.025, "#1d2022")  # a post
+        f.box("mh_detail", 0.0, L, g + 1.72, g + 1.745, -0.012, 0.012, "#1d2022")  # the top rail
+        for y in (g + 0.45, g + 1.0):
+            f.box("mh_detail", 0.0, L, y - 0.004, y + 0.004, -0.004, 0.004, "#26292b")  # line wires
+        s = 0.0
+        while s < L - 0.05:
+            j = jitter(p[0], p[1], s)
+            if thick:
+                seg, gap, h, d = 0.9 + 0.5 * j, 0.0, 1.78 + 0.18 * jitter(s, p[1]), 0.21 + 0.06 * j
+            else:
+                seg, gap, h, d = 0.5 + 1.1 * j, 0.15 + 0.7 * jitter(p[1], s), 0.7 + 1.0 * jitter(s, p[0]), 0.12 + 0.06 * j
+            s1 = min(L, s + seg)
+            col = shade("#3f6a33", 1.35 * (0.86 + 0.24 * jitter(j, s)))
+            f.box("mh_foliage", s, s1, foot, g + h - 0.06, -d, d + 0.04, col)
+            f.box("mh_foliage", s + 0.05, s1 - 0.05, g + h - 0.06, g + h, -d + 0.05, d - 0.01, shade(col, 1.12))
+            s = s1 + gap
+        SOLIDS.append({**prism_xz([f.xz(0, -0.08), f.xz(L, -0.08), f.xz(L, 0.08), f.xz(0, 0.08)], foot, g + 1.78), "m": "hedge"})
+    if pts:  # the last post
+        q = pts[-1]
+        t, _ = unit(pts[-2], q)
+        Frame(q, t, outside(q, t), 0.0).box("mh_detail", -0.025, 0.025, lvl - 0.12, terrain(*q) + 1.78, -0.025, 0.025, "#1d2022")
+
+
+def log_shed(S, lvl):
+    """A log shed under a flat roof falling to the back: interlocking logs of 13.5 cm whose ends stand out at the
+    corners, a roof of dark felt with a dark brown fascia, a door of planks on the garden side by the path."""
+    c = S["p"]  # the street side's two corners (the path's first), then the garden side's
+    hf, hb = S["h"]
+    walls = [(c[0], c[1], hf, hf), (c[1], c[2], hf, hb), (c[2], c[3], hb, hb), (c[3], c[0], hb, hf)]
+    log = 0.135
+    rows = int(hf / log) + 1
+    cx, cz = sum(q[0] for q in c) / 4, sum(q[1] for q in c) / 4
+    for wi, (p, q, h0, h1) in enumerate(walls):
+        t, L = unit(p, q)
+        o = (t[1], -t[0])
+        if (p[0] + o[0] - cx) ** 2 + (p[1] + o[1] - cz) ** 2 < (p[0] - cx) ** 2 + (p[1] - cz) ** 2:
+            o = (-o[0], -o[1])
+        f = Frame(p, t, o, lvl)
+        for r in range(rows):
+            y0 = -0.05 + r * log
+            top = min(h0, h1) if h0 != h1 else h0
+            if y0 >= max(h0, h1) - 0.01:
+                break
+            stick = 0.06 if (r + wi) % 2 == 0 else -0.045  # the log ends out at the corners, every other row
+            tint = shade("#7a6852", 0.9 + 0.16 * jitter(wi, r))
+            if y0 + log <= top + 1e-6:
+                f.box("mh_render", -stick if stick > 0 else 0.045, L + stick if stick > 0 else L - 0.045, y0 + 0.012, y0 + log, -0.045, 0.0, tint)
+                f.box("mh_render", 0.045, L - 0.045, y0, y0 + 0.012, -0.045, -0.012, shade(tint, 0.7))  # the joint, set back
+            else:  # the side walls' last logs, cut to the roof's fall
+                ya, yb = min(h0, max(y0, -0.05)), min(h1, max(y0, -0.05))
+                pa = [f.p(0.045, y0, 0.0), f.p(L - 0.045, y0, 0.0), f.p(L - 0.045, max(y0, min(h1, y0 + log)), 0.0), f.p(0.045, max(y0, min(h0, y0 + log)), 0.0)]
+                face("mh_render", pa, f.out(), tint)
+        if wi == 2:  # the garden side: the door, near the path
+            d0, d1 = L - 1.25, L - 0.4
+            f.box("mh_panel", d0, d1, 0.02, 1.88, -0.01, 0.02, "#7a6a55")
+            for k in range(1, 6):
+                f.flat("mh_detail", d0 + k * (d1 - d0) / 6 - 0.006, d0 + k * (d1 - d0) / 6 + 0.006, 0.05, 1.85, 0.021, "#5e5142")
+            f.box("mh_detail", d0 + 0.08, d0 + 0.12, 0.95, 1.12, 0.02, 0.05, "#1e1f21")
+            f.box("mh_detail", d0 - 0.04, d1 + 0.04, 1.88, 1.95, -0.01, 0.03, "#6a5a47")
+    # The roof: overhanging all round, more at the front and the back; dark felt on top, a dark brown fascia.
+    t, L = unit(c[0], c[1])
+    n, D = unit(c[0], c[3])
+    P = lambda s, d, y: (c[0][0] + t[0] * s + n[0] * d, c[0][1] + t[1] * s + n[1] * d, lvl + y)
+    y = lambda d: hf + (hb - hf) * d / D
+    pts = [(-0.12, -0.12), (L + 0.12, -0.12), (L + 0.12, D + 0.22), (-0.12, D + 0.22)]
+    under = [P(s, d, y(d)) for s, d in pts]
+    top = [P(s, d, y(d) + 0.16) for s, d in pts]
+    face("mh_stone", top, plane_up(*top[:3]), "#46484a")
+    face("mh_detail", under, (0, 0, -1), "#5a4a3c")
+    for i in range(4):
+        a, b, at, bt = under[i], under[(i + 1) % 4], top[i], top[(i + 1) % 4]
+        mid = ((a[0] + b[0]) / 2 - (c[0][0] + c[2][0]) / 2, (a[1] + b[1]) / 2 - (c[0][1] + c[2][1]) / 2, 0)
+        face("mh_render", [a, b, bt, at], mid, "#4a3c30")
+    SOLIDS.append({**prism_xz([tuple(q) for q in c], lvl - 0.1, lvl + hf + 0.16), "m": "cladding"})
+
+
+def utility_plot(G):
+    """On the utility plot at the corner, outside the fence: the concrete control cabinet with louvred panels, the
+    stainless vent pipes beside it, the concrete slab of the pump well with its steel hatch; the letterbox by the gate."""
+    cb = G["cabinet"]
+    (x, z), t = cb["at"], tuple(cb["dir"])
+    g = terrain(x, z)
+    f = Frame((x, z), t, (t[1], -t[0]), g)
+    f.box("mh_stone", -0.65, 0.65, -0.15, 1.1, -0.28, 0.28, "#b8b7b1")
+    f.box("mh_stone", -0.68, 0.68, 1.1, 1.16, -0.31, 0.31, "#a9a8a2")
+    for side in (-1, 1):
+        for s0 in (-0.55, 0.05):
+            d = side * 0.28
+            f.box("mh_detail", s0, s0 + 0.5, 0.45, 1.0, min(d, d + side * 0.012), max(d, d + side * 0.012), "#5f6265")
+            for k in range(1, 7):
+                yy = 0.45 + k * 0.55 / 7
+                f.box("mh_detail", s0 + 0.03, s0 + 0.47, yy - 0.012, yy + 0.004, min(d, d + side * 0.024), max(d, d + side * 0.024), "#45484b")
+    SOLIDS.append({**prism_xz([f.xz(-0.68, -0.31), f.xz(0.68, -0.31), f.xz(0.68, 0.31), f.xz(-0.68, 0.31)], g - 0.15, g + 1.16), "m": "concrete"})
+    for k, (vx, vz) in enumerate(G["vents"]):
+        g0 = terrain(vx, vz)
+        h = 0.75 + 0.12 * k
+        r, steel = 0.055, "#b6b9bb"
+        tube("mh_detail", (vx, vz, g0 - 0.1), (vx, vz, g0 + h), r, steel, seg=8)
+        # the swan neck: over the top and down again, its mouth to the ground
+        bend = [(0.0, h), (0.05, h + 0.09), (0.14, h + 0.12), (0.23, h + 0.09), (0.28, h)]
+        for (a0, y0), (a1, y1) in zip(bend, bend[1:]):
+            tube("mh_detail", (vx + t[0] * a0, vz + t[1] * a0, g0 + y0), (vx + t[0] * a1, vz + t[1] * a1, g0 + y1), r, steel, seg=8)
+        tube("mh_detail", (vx + t[0] * 0.28, vz + t[1] * 0.28, g0 + h), (vx + t[0] * 0.28, vz + t[1] * 0.28, g0 + h - 0.14), r * 1.15, steel, seg=8)
+        # (as high as a man: no stepping stones over the fence beside them)
+        SOLIDS.append({**prism_xz([(vx - 0.07, vz - 0.07), (vx + 0.07, vz - 0.07), (vx + 0.07, vz + 0.07), (vx - 0.07, vz + 0.07)], g0 - 0.1, g0 + 1.7), "m": "steel"})
+    pd = G["pad"]
+    (x, z), t = pd["at"], tuple(pd["dir"])
+    g = min(terrain(x + a * t[0] + b * t[1], z + a * t[1] - b * t[0]) for a in (-0.7, 0.7) for b in (-0.6, 0.6))
+    f = Frame((x, z), t, (t[1], -t[0]), g)
+    f.box("mh_stone", -0.7, 0.7, -0.2, 0.07, -0.6, 0.6, "#a9a8a3")
+    f.box("mh_detail", -0.4, 0.4, 0.07, 0.076, -0.3, 0.3, "#6f7275")  # the hatch, chequer plate
+    for k in range(1, 8):
+        f.box("mh_detail", -0.38, 0.38, 0.076, 0.079, -0.3 + k * 0.075 - 0.01, -0.3 + k * 0.075 + 0.01, "#7c7f82")
+    SOLIDS.append({**prism_xz([f.xz(-0.7, -0.6), f.xz(0.7, -0.6), f.xz(0.7, 0.6), f.xz(-0.7, 0.6)], g - 0.2, g + 0.07), "m": "concrete"})
+    lb = G["letterbox"]
+    (x, z), o = lb["at"], tuple(lb["face"])
+    g = terrain(x, z)
+    f = Frame((x, z), (-o[1], o[0]), o, g)
+    f.box("mh_detail", -0.18, 0.18, -0.05, 1.12, -0.15, 0.15, "#64676a")
+    f.box("mh_detail", -0.13, 0.13, 0.93, 0.96, 0.15, 0.157, "#2a2b2d")  # the slot
+    SOLIDS.append({**prism_xz([f.xz(-0.18, -0.15), f.xz(0.18, -0.15), f.xz(0.18, 0.15), f.xz(-0.18, 0.15)], g - 0.05, g + 1.12), "m": "steel"})
+
+
+def garden_furniture(G, tl):
+    """On the terrace: a garden table with a teak top on a white frame and four chairs, and a closed parasol on its base."""
+    tb = G["table"]
+    (x, z), t = tb["at"], tuple(tb["dir"])
+    n = (t[1], -t[0])
+    f = Frame((x, z), t, n, tl)
+    white, teak, sling = "#e7e7e3", "#a57d55", "#8d8f8c"
+    f.box("mh_panel", -0.8, 0.8, 0.71, 0.74, -0.45, 0.45, teak)
+    for s in (-0.74, 0.74):
+        for d in (-0.39, 0.39):
+            f.box("mh_detail", s - 0.025, s + 0.025, 0.0, 0.71, d - 0.025, d + 0.025, white)
+    f.box("mh_detail", -0.76, 0.76, 0.66, 0.71, -0.41, 0.41, white)
+    SOLIDS.append({**prism_xz([f.xz(-0.8, -0.45), f.xz(0.8, -0.45), f.xz(0.8, 0.45), f.xz(-0.8, 0.45)], tl, tl + 0.74), "m": "cladding"})
+    for s in (-0.4, 0.4):
+        for side in (-1, 1):
+            cx, cz = f.xz(s, side * 0.78)
+            cf = Frame((cx, cz), (-t[0] * side, -t[1] * side), (n[0] * side, n[1] * side), tl)  # facing the table
+            cf.box("mh_panel", -0.22, 0.22, 0.42, 0.45, -0.22, 0.2, sling)
+            cf.box("mh_panel", -0.22, 0.22, 0.45, 0.95, 0.17, 0.2, sling)
+            for a in (-0.22, 0.2):
+                for b in (-0.22, 0.2):
+                    cf.box("mh_detail", a, a + 0.025, 0.0, 0.45 if b < 0 else 0.95, b, b + 0.025, white)
+            SOLIDS.append({**prism_xz([cf.xz(-0.23, -0.23), cf.xz(0.23, -0.23), cf.xz(0.23, 0.23), cf.xz(-0.23, 0.23)], tl, tl + 0.45), "m": "steel"})
+    x, z = G["parasol"]
+    f = Frame((x, z), t, n, tl)
+    f.box("mh_detail", -0.25, 0.25, 0.0, 0.08, -0.25, 0.25, "#3b3d3f")
+    tube("mh_detail", (x, z, tl + 0.08), (x, z, tl + 2.45), 0.022, "#4a4c4e", seg=6)
+    ring = lambda y, r: [(x + r * math.cos(a * math.pi / 4), z + r * math.sin(a * math.pi / 4), tl + y) for a in range(8)]
+    solid("mh_panel", ring(0.95, 0.04) + ring(1.25, 0.13) + ring(2.15, 0.11) + ring(2.32, 0.03), "#7d7488")
+    SOLIDS.append({**prism_xz([(x - 0.25, z - 0.25), (x + 0.25, z - 0.25), (x + 0.25, z + 0.25), (x - 0.25, z + 0.25)], tl, tl + 0.08), "m": "steel"})
+    SOLIDS.append({**prism_xz([(x - 0.12, z - 0.12), (x + 0.12, z - 0.12), (x + 0.12, z + 0.12), (x - 0.12, z + 0.12)], tl + 0.08, tl + 2.4), "m": "cladding"})
+
+
 # ---------------------------------------------------------------- street furniture
 def props():
     for pr in DATA["props"]:
@@ -1694,13 +2039,15 @@ for i, (x, z, h, r, col) in enumerate(CONIFERS if MOLENHOEK else []):
 
 
 # ---------------------------------------------------------------- UVs, objects, export
-def metre_uvs(bm):
-    """UVs in metres; up the wall and up the slope point to the texture's top, as on the game's own surfaces."""
+def metre_uvs(bm, turn=None):
+    """UVs in metres; up the wall and up the slope point to the texture's top, as on the game's own surfaces. `turn`:
+    the direction (game x, z) a flat face's texture runs along (else the game's x)."""
     uv = bm.loops.layers.uv.new("UVMap")
+    along = Vector((turn[0], -turn[1], 0)).normalized() if turn else Vector((1, 0, 0))
     for f in bm.faces:
         n = f.normal
         if abs(n.z) > 0.97:
-            t, b = Vector((1, 0, 0)), Vector((0, 1, 0))
+            t, b = along, Vector((-along.y, along.x, 0))
         else:
             t = Vector((0, 0, 1)).cross(n).normalized()
             b = n.cross(t).normalized()
@@ -1722,7 +2069,9 @@ root["poles"] = {"line": LINE + (DATA["stub"]["line"] if DATA.get("stub") else [
 root["street"] = street_outline() if MOLENHOEK else []
 if MOLENHOEK:
     root["newStreetFrom"] = WEST_END + 4.0  # east of the island the new asphalt covers the old road (its blocks give way)
-root["clearTrees"] = CLEAR_TREES if MOLENHOEK else []
+root["clearTrees"] = CLEAR_TREES if MOLENHOEK else DATA.get("clear_trees", [])
+if GARDENS:
+    root["clear"] = GARDENS  # a house's own garden: the village's ground covers, fences and hedges inside it give way
 tris = 0
 objs = []
 def split_detail():
@@ -1754,8 +2103,8 @@ for name, bm in BM.items():
         continue
     bmesh.ops.remove_doubles(bm, verts=bm.verts[:], dist=1e-4)
     bm.normal_update()
-    if name in SHARED:
-        metre_uvs(bm)
+    if name in SHARED or name.removesuffix("_g") in SHARED:
+        metre_uvs(bm, UV_TURN.get(name))
     me = bpy.data.meshes.new(name)
     bm.to_mesh(me)
     me.materials.append(M[name])

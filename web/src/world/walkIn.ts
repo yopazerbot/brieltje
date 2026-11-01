@@ -25,8 +25,10 @@ import type { GroundCuts } from './terrain';
  * the room's light, which world/indoorLight.ts makes warmer and stronger indoors.
  *
  * The relief there lies up to 40 cm above the floor (the street model's floor level is the village
- * block's foot): the ground is cut out under the house and its terrace, as for a pond, and a dip
- * lowers the ground for walking there, so the floors are what you stand on.
+ * block's foot): the ground is cut out under the house and its garden, as for a pond, and a dip
+ * lowers the ground for walking there, so the floors are what you stand on. The garden's lawn lies
+ * at the floor's level too, inside its fences (the street model has them, its terrace and its shed),
+ * drawn in the ground's own material, which takes its look from where it lies.
  */
 const NEAR = 60;
 /** The windows' numbers for breaking them: after the house's own blocks (fewer than 2000), before the doors' glass (3000). */
@@ -59,6 +61,10 @@ interface Data {
   panes: { p: Ring[]; y0: number; y1: number; matte?: number }[];
   groundCuts: GroundCuts;
   dip: DipSpec;
+  /** The garden inside its fences, at the lawn's height (world x, z) */
+  lawn: { p: [number, number][]; y: number };
+  /** The house's plot: the village's ground covers, hedges and fences in it give way to the garden */
+  plot: [number, number][];
 }
 
 /** Patterns of the plain mesh (see patterns()). */
@@ -291,6 +297,10 @@ export interface WalkIn {
   install(world: World, doors: Doors, glass: Glass): void;
   /** Whether (x, z) lies inside it */
   contains(x: number, z: number): boolean;
+  /** Whether (x, z) lies in it or in its garden, inside the garden's fences */
+  encloses(x: number, z: number): boolean;
+  /** The garden's lawn at the floor's level, in the ground's material (`material`: the ground's own) */
+  lawn(material: THREE.Material): THREE.Mesh;
   /** Its ground floor's height when (x, z) lies inside it */
   floorAt(x: number, z: number): number | null;
   /** The floor's name for feet at that height inside it, else null */
@@ -488,11 +498,19 @@ export async function loadWalkIn(renderer: THREE.WebGLRenderer, model: THREE.Obj
     return inside(mx, mz, outline);
   };
   const contains = (x: number, z: number) => inside(x, z, outline);
+  // The village's ground covers, hedges and fences in the plot (world/streetModel.ts marks them): neither drawn nor
+  // walked on, as the garden lies lower than the relief they follow.
+  const inPlot = (p: Prism) => {
+    const r = p.p[0];
+    const mx = r.reduce((t, q) => t + q[0], 0) / r.length;
+    const mz = r.reduce((t, q) => t + q[1], 0) / r.length;
+    return inside(mx, mz, data.plot) || edgeDistance(mx, mz, data.plot) < 0.3;
+  };
   return {
     group: lod,
     rooms: data.rooms,
     groundCuts: data.groundCuts,
-    replaces: (p) => p.d === undefined && p.lm === 'molenhoek_end3' && mine(p),
+    replaces: (p) => p.lm === 'molenhoek_end3' && (p.d === undefined ? mine(p) : inPlot(p)),
     install(w, doors, glass) {
       w.addDips([data.dip]);
       w.addPrisms(blocks);
@@ -511,6 +529,18 @@ export async function loadWalkIn(renderer: THREE.WebGLRenderer, model: THREE.Obj
       inDoors.traverse((o) => (o.castShadow = false)); // inside, nothing takes the sun's shadow
     },
     contains,
+    encloses: (x, z) => contains(x, z) || inside(x, z, data.lawn.p),
+    lawn(material) {
+      const shape = new THREE.Shape(data.lawn.p.map(([x, z]) => new THREE.Vector2(x, -z)));
+      // As the ground's pieces: positions in the world, texture coordinates (x, -z) in metres.
+      const g = new THREE.ShapeGeometry(shape).rotateX(-Math.PI / 2).translate(0, data.lawn.y, 0);
+      const mesh = new THREE.Mesh(g, material);
+      mesh.name = 'end house lawn';
+      mesh.receiveShadow = true;
+      mesh.renderOrder = 1; // as the ground
+      mesh.userData.material = 'grass';
+      return mesh;
+    },
     floorAt: (x, z) => (contains(x, z) ? floor : null),
     level(x, z, feet) {
       if (!contains(x, z)) return null;

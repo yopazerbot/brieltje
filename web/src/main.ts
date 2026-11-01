@@ -923,12 +923,13 @@ maxSlider.addEventListener('change', () => net.send({ t: 'rules', maxPlayers: Nu
 let wasTogether = false; // playing with the others until this account change
 /** Out of the house, the bungalow or the end house at Molenhoek (alone they are shut), in front of the one you were in. */
 function putOutside(): void {
-  if (!inside || driving || riding) return;
-  if (endHouse?.contains(player.x, player.z)) {
+  if (driving || riding) return;
+  if (endHouse?.encloses(player.x, player.z)) { // the end house or its garden: inside its fences there is no way out alone
     const out = PORTALS.find((p) => p.id === 'molenhoek_end');
     if (out) arrive(out, null);
     return;
   }
+  if (!inside) return;
   const bungalow = Math.hypot(player.x - 83.5, player.z - 189.7) < Math.hypot(player.x - 4.5, player.z - 6);
   const to = PORTALS.find((p) => p.id === (bungalow ? 'bungalow' : 'house'));
   if (to) arrive(to, null);
@@ -2253,7 +2254,7 @@ async function buildVillage(): Promise<void> {
   world.addPrisms((data.prisms ?? []).filter((p) => !endHouse?.replaces(p)));
   if (endHouse) {
     endHouse.install(world, doors, glass);
-    scene.add(endHouse.group);
+    scene.add(endHouse.group, endHouse.lawn(grassMat)); // its garden's lawn lies at its floor's level
     for (const r of endHouse.rooms) roomNames.add(r);
     data.groundCuts.cells.push(...endHouse.groundCuts.cells); // the ground cut out under it, with the ponds' below
     data.groundCuts.tris.push(...endHouse.groundCuts.tris);

@@ -11,8 +11,10 @@ corner by the glass of the cut corner, the kitchen along the party wall and the 
 with an oak worktop, tall units with the oven, an island), the stair (a straight flight up from the living room
 with a quarter turn of winders at the top, open oak treads, an oak handrail on steel tubes) and the garage behind
 its sectional door, empty but for a utility corner. First floor (2.90 m up): the landing round the stair, the office,
-three bedrooms and the bathroom (a walk-in shower, a toilet, two basins). The terrace behind the house, 3 m deep,
-wraps round the cut corner. Colours and furniture: grey floor tiles of 80 cm with grey skirting, white walls,
+three bedrooms and the bathroom (a walk-in shower, a toilet, two basins). The garden (tools/molenhoek_end_survey.py lays
+it out, tools/molenhoek.py builds its terrace, fences and shed) lies at the floor's level: the relief is cut out under
+the house and inside the fences, and the lawn is drawn there (world/walkIn.ts); the terrace is walked on here. Colours
+and furniture: grey floor tiles of 80 cm with grey skirting, white walls,
 white flush doors, white frames inside, grey-blue curtains by the glass, a round oak table with tan shell chairs
 under a white dome light, a taupe corner sofa, a white oval coffee table, a low white TV unit, a knitted cream lamp
 shade.
@@ -428,7 +430,12 @@ def glazing():
             mid = big[0] if big[0] > 0.1 else big[1]
             prism(o.quad(mid - 0.035, mid + 0.035, 0.12, 0.20), o.y0, o.y1, "c", FRAME_IN, solid=False)
             continue
-        pane(o, s0, s1, o.y0, o.y1)
+        lights = max(1, int(o.opt.get("n", 1)))  # a window or glass door in lights side by side: a pane each, mullions between
+        cuts = [s0 + (s1 - s0) * k / lights for k in range(lights + 1)]
+        for k in range(lights):
+            pane(o, cuts[k] + (0.03 if k else 0.0), cuts[k + 1] - (0.03 if k < lights - 1 else 0.0), o.y0, o.y1)
+        for m in cuts[1:-1]:
+            prism(o.quad(m - 0.035, m + 0.035, 0.12, 0.20), o.y0, o.y1, "c", FRAME_IN, solid=False)
         frame(o, s0, s1)
         if o.y0 > 0.5:  # a board under it inside, dark stone
             prism(o.quad(-0.03, o.w + 0.03, 0.20, o.depth + 0.025), o.y0 - 0.03, o.y0, "c", "#3e3f41", solid=False)
@@ -721,7 +728,7 @@ def living():
     pendant_shade(2.25, 4.15)
     dome(3.35, 9.2)
     # A grey roman blind, raised, in the living room's side window.
-    win = find("w", 0.95, (0.0, 3.25))
+    win = find("w", 1.0, (0.0, 3.1))
     prism(win.quad(0.02, win.w - 0.02, 0.21, 0.24), win.y1 - 0.42, win.y1, "c", "#8d9195", solid=False)
     for k in range(3):
         y = win.y1 - 0.42 + k * 0.13
@@ -774,9 +781,11 @@ def curtains():
     """Long grey-blue curtains on a ceiling track at both ends of the glass round the dining corner."""
     col = "#8797a1"
     iu0 = 0.42
-    part_sheet((iu0 + 0.1, 6.92), (iu0 + 0.1, 7.90), 0.02, GF_CEIL - 0.04, 0.06, 9, col)
+    side = find("d", 0.0, (0.0, 7.3))  # the glass to the floor in the side wall
+    v0 = min(side.a[1], side.b[1]) + 0.05
+    part_sheet((iu0 + 0.1, v0), (iu0 + 0.1, v0 + 1.1), 0.02, GF_CEIL - 0.04, 0.06, 10, col)
     part_sheet((4.72, INNER.bounds[3] - 0.12), (5.32, INNER.bounds[3] - 0.12), 0.02, GF_CEIL - 0.04, 0.06, 6, col)
-    pts = [(iu0 + 0.1, 6.85)]
+    pts = [(iu0 + 0.1, v0 - 0.05)]
     dn = _dn
     pts.append(corner_in(0.1))
     pts.append(corner_in(0.1, end=True))
@@ -915,46 +924,29 @@ def garage():
         part_rod((u, 0.0, 5.82), (u, GF_CEIL, 5.82), 0.05, "#8b8f91", 10)
 
 
+GARDEN = H["garden"]  # tools/molenhoek_end_survey.py: the terrace, the lawn and their levels (model x, z; heights as the relief)
+LAWN_Y = GARDEN["level"] + GROUND - FLOOR  # the lawn, relative to the floor (-0.04)
+
+
+def garden_poly(ring):
+    """A ring of the garden (world x, z) in floor coordinates."""
+    return Polygon([uv(q) for q in ring]).buffer(0)
+
+
 def terrace():
-    """3 m deep behind the house and 2.1 m wide round the cut corner and along the side wall's glass, to 1.5 m past
-    the side wall's line, in the same grey tiles as inside, 2 cm under the floor."""
-    p0, p1 = edge(DIAG_EDGE)  # the cut corner: from the side wall's end to the back's
-    t, n, _ = inward(DIAG_EDGE)
-    a = (p0[0] - n[0] * 2.1, p0[1] - n[1] * 2.1)
-    on_line = lambda u: (u, a[1] + (u - a[0]) * t[1] / t[0])
-    party = edge(PARTY_EDGE)
-    back_v = max(q[1] for q in RUV) + 3.0
-    pu = party[0][0] + (back_v - party[0][1]) * (party[1][0] - party[0][0]) / (party[1][1] - party[0][1])
-    behind = sorted([q for q in RUV if q[1] > 11], key=lambda q: -q[0])
-    sa, sb = edge(nearest_edge(world(0.0, 4.0)))  # the side wall
-    side_u = sa[0] + (sb[0] - sa[0]) * (6.8 - sa[1]) / (sb[1] - sa[1])
-    poly = Polygon([(side_u, 6.8), (-1.45, 6.8), on_line(-1.45), on_line(2.55), (2.55, back_v), (pu, back_v), *behind, p0])
-    poly = poly.buffer(0).difference(OUTER)
-    poly = max(getattr(poly, "geoms", [poly]), key=lambda g: g.area)
-    poly = Polygon([(round(x, 3), round(y, 3)) for x, y in poly.exterior.coords])
-    prism(poly, -0.32, -0.02, "tile", "#b9bab9", n="Terras")
-    # Its edge where the garden is higher: a concrete kerb up to the ground, a metre at a time.
-    ring = list(poly.exterior.coords)
-    for (ax, ay), (bx, by) in zip(ring, ring[1:]):
-        if OUTER.buffer(0.02).contains(LineString([(ax, ay), (bx, by)])):
-            continue  # along the house
-        L = math.hypot(bx - ax, by - ay)
-        k = max(1, math.ceil(L))
-        for i in range(k):
-            s0, s1 = i / k, (i + 1) / k
-            q0 = (ax + (bx - ax) * s0, ay + (by - ay) * s0)
-            q1 = (ax + (bx - ax) * s1, ay + (by - ay) * s1)
-            top = max(ground_rel(*world(*q)) for q in (q0, q1)) + 0.03
-            strip = LineString([q0, q1]).buffer(0.04, cap_style=2).intersection(poly.buffer(0.001))
-            prism(strip, -0.32, max(top, 0.0), "c", "#a3a29d", n="Terras")
-    return poly
+    """The terrace (tools/molenhoek.py draws its tiles): walked on, 2 cm under the floor, its slab down into the lowered
+    ground. Returns the lawn: the whole garden inside its fences, at its level."""
+    terr = garden_poly(GARDEN["terrace"])
+    prism(terr, -0.32, GARDEN["terrace_level"] + GROUND - FLOOR, "tile", n="Terras", drawn=False)
+    return garden_poly(GARDEN["lawn"])
 
 
-def ground_cut(terr):
-    """The relief taken out under the house and the terrace (it lies up to 40 cm above the floor there), as the
+def ground_cut(lawn):
+    """The relief taken out under the house and the garden (it lies up to 40 cm above the floor there), as the
     browser cuts the ground for a pond (world/terrain.ts): the 4 m squares it touches, and what is left of them in
-    triangles; and a dip for walking, its bottom under the floor (world/collision.ts)."""
-    cut = unary_union([OUTER, terr]).buffer(0)
+    triangles; and a dip for walking, its bottom the lawn (world/collision.ts), which world/walkIn.ts draws."""
+    cut = unary_union([OUTER, lawn]).buffer(0.001, join_style=2).buffer(-0.001, join_style=2)
+    cut = max(getattr(cut, "geoms", [cut]), key=lambda g: g.area)
     wcut = Polygon([world(x, y) for x, y in cut.exterior.coords])
     x0, z0, step, nx = TD["x0"], TD["z0"], TD["step"], TD["nx"]
     minx, minz, maxx, maxz = wcut.bounds
@@ -976,10 +968,12 @@ def ground_cut(terr):
                             continue
                         tris += [round(v, 3) for q in list(t.exterior.coords)[:3] for v in q]
     rim = [[round(x, 3), round(z, 3)] for x, z in list(wcut.exterior.coords)[:-1]]
-    # The dip's bottom (world/collision.ts): GROUND + low - depth, 30 cm under the floor.
+    # The dip's bottom (world/collision.ts): GROUND + low - depth, the lawn's level.
     depth = 0.5
-    low = FLOOR - 0.3 + depth - GROUND
-    return {"cells": cells, "tris": tris}, {"name": "end house", "rim": rim, "bottom": rim, "depth": depth, "low": round(low, 3)}
+    low = FLOOR + LAWN_Y + depth - GROUND
+    lawn_world = [[round(x, 3), round(z, 3)] for x, z in GARDEN["lawn"]]
+    return ({"cells": cells, "tris": tris}, {"name": "end house", "rim": rim, "bottom": rim, "depth": depth, "low": round(low, 3)},
+            {"p": lawn_world, "y": round(FLOOR + LAWN_Y, 3)})
 
 
 def thresholds():
@@ -1052,8 +1046,8 @@ def main():
     bathroom()
     skirting()
     thresholds()
-    terr = terrace()
-    cuts, dip = ground_cut(terr)
+    lawn = terrace()
+    cuts, dip, lawn_out = ground_cut(lawn)
     centre = world(*OUTER.centroid.coords[0])
     theta = math.atan2(T[1], -T[0])  # three.js turns local +x (= -u) onto -T
     data = {
@@ -1065,13 +1059,13 @@ def main():
         "levels": [{"id": "gf", "name": "Ground floor", "floor": 0.0}, {"id": "f1", "name": "1st floor", "floor": F1}],
         "rooms": sorted(set(GF_ROOMS) | set(F1_ROOMS)),
         "prisms": PRISMS, "parts": PARTS, "fixtures": FIXTURES, "props": PROPS, "doors": DOORS, "panes": PANES,
-        "groundCuts": cuts, "dip": dip,
+        "groundCuts": cuts, "dip": dip, "lawn": lawn_out, "plot": GARDEN["clear"],
     }
     path = ROOT / "web" / "src" / "data" / "molenhoek_end_inside.json"
     path.write_text(json.dumps(data, separators=(",", ":")), encoding="utf-8")
     print(f"wrote {path.relative_to(ROOT)}: {len(PRISMS)} blocks, {len(PARTS)} parts, {len(FIXTURES)} pieces, {len(DOORS)} doors, "
           f"{len(PANES)} panes, {path.stat().st_size // 1024} KB; floor {FLOOR:.3f}; inner {INNER.bounds}")
-    print("terrace ground relative to the floor:", [round(ground_rel(*world(x, y)), 2) for x, y in list(terr.exterior.coords)[:-1]])
+    print("garden ground relative to the floor:", [round(ground_rel(*world(x, y)), 2) for x, y in list(lawn.exterior.coords)[:-1]])
     print(f"ground cut: {len(cuts['cells'])} squares, {len(cuts['tris']) // 6} triangles left")
     for name, poly in {**GF_ROOMS, **F1_ROOMS}.items():
         print(f"  {name:14s} {poly.area:6.2f} m2")

@@ -33,8 +33,10 @@ interface Extras {
   street: [number, number][];
   /** From which x the rebuilt street is new asphalt over the old road (whose blocks there give way too), if any */
   newStreetFrom?: number;
-  /** The village's trees that give way to the model's conifers: x, z and radius */
+  /** The village's trees that give way to the model's conifers (or to a house's own garden): x, z and radius */
   clearTrees: [number, number, number][];
+  /** A house's own garden: its plot, where the village's ground covers, hedges and fences give way */
+  clear?: [number, number][][];
 }
 
 /** `name`: the model, /models/<name>.glb, and the landmark the village's blocks it replaces are tagged with. */
@@ -48,15 +50,24 @@ export async function loadStreetModel(renderer: THREE.WebGLRenderer, ground: num
     const mesh = o as THREE.Mesh;
     if (!mesh.isMesh) return;
     const old = mesh.material as THREE.MeshStandardMaterial;
-    const u = old.userData as { texture?: string; normalScale?: number; lod?: number };
+    const u = old.userData as { texture?: string; normalScale?: number; lod?: number; order?: number; flat?: number };
     if (u.texture) {
       const m = tintedMaterial(u.texture, '#ffffff', renderer);
       m.vertexColors = true;
       m.normalScale.setScalar(u.normalScale ?? 1);
+      if (u.flat) {
+        // Flat and matte (a garden's boards, logs, tiles and ivy, close by): the texture's colour alone, two lookups less a pixel.
+        m.normalMap = null;
+        m.roughnessMap = null;
+        m.roughness = 0.92;
+      }
       mesh.material = m;
       old.dispose();
     }
-    mesh.receiveShadow = true;
+    // A house's own garden: before the walls it mostly stands in front of, and no shadow lookups (the sun's shadow
+    // only covers the main house).
+    mesh.receiveShadow = !u.order;
+    if (u.order) mesh.renderOrder = u.order;
     if (u.lod) small.push(mesh);
   });
   // Each part of the small things is measured from its own middle (the mesh's packed positions are scaled and
@@ -132,6 +143,15 @@ export function fitStreetModel(data: VillageData, model: THREE.Object3D, first: 
   }
   for (const r of data.roofs) {
     if (!r.lm && mine(r.p)) r.lm = name;
+  }
+  // A house's own garden (tools/molenhoek.py builds it): the village's ground covers, hedges and fences in its plot
+  // (on its edge too) give way. world/walkIn.ts keeps them out of the blocks for walking on: the garden lies lower.
+  for (const ring of x.clear ?? []) {
+    for (const p of data.prisms ?? []) {
+      if (p.lm || p.d === undefined) continue;
+      const [mx, mz] = middle(p.p[0]);
+      if (near(ring, mx, mz, 0.3)) p.lm = name;
+    }
   }
   // The broad trees the laser scan saw round the portal give way to the model's conifers.
   data.trees = data.trees.filter((t) => !x.clearTrees.some(([cx, cz, r]) => Math.hypot(t.x - cx, t.z - cz) <= r));

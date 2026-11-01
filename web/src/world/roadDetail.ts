@@ -78,6 +78,8 @@ interface Profile {
   /** A concrete core this wide either side of the centre line, asphalt in this tint beyond it (Briel) */
   core?: number;
   edge?: string;
+  /** Concrete: a strip of another surface down the middle of the carriageway, `w` either side of it */
+  middle?: { w: number; m: Surface; tint: string };
   /**
    * Beside a kerb: the gutter of setts, the kerb, the pavement. `setts`: where there is no kerb, the setts lie just
    * outside the carriageway, and the road surface beyond them (the apron) is in `apron` (else the carriageway's).
@@ -85,6 +87,8 @@ interface Profile {
   gutter?: { w: number; tint: string };
   setts?: boolean;
   apron?: Surface;
+  /** The apron's colour (else the pavements') */
+  apronTint?: string;
   kerb?: { h: number; tint: string };
   walk?: { m: Surface; tint: string };
   /** Where no kerb: gravel or earth between the road and the grass, this wide */
@@ -115,6 +119,12 @@ const PROFILES: Record<string, Profile> = {
   kh_dash: { ...KH, dash: true },
   // Kapelleweg: a narrow concrete lane between grass and gravel.
   kw: { road: 'concrete', tint: '#b7b4ac', slab: 5, cracks: 0.3, shoulder: { w: 0.35, tint: EARTH }, wear: 0.2 },
+  // Its last stretch, by the new terrace at Molenhoek's end: two pale concrete strips with dark clinkers between
+  // them, the verge up to the gardens bare earth, not yet finished.
+  kw_path: {
+    road: 'concrete', tint: '#c0bdb5', slab: 5, cracks: 0, middle: { w: 0.45, m: 'clinker', tint: '#4d4744' }, apron: 'gravel', apronTint: '#6f6a62',
+    wear: 0.06,
+  },
   // Briel: narrow concrete, widened with grey asphalt along both edges.
   briel: {
     road: 'concrete', tint: '#b4b1a9', slab: 5, cracks: 0.25, core: 1.75, edge: '#78797b', gutter: { w: 0.3, tint: SETTS }, kerb: { h: 0.1, tint: KERB_TINT },
@@ -477,7 +487,11 @@ class Builder {
       const core = pf.core;
       const lo = (k: number) => (core ? Math.max(inB(k), -core) : inB(k));
       const hi = (k: number) => (core ? Math.min(inA(k), core) : inA(k));
-      const halves: [(k: number) => number, (k: number) => number][] = pf.centreJoint && wide ? [[lo, () => 0], [() => 0, hi]] : [[lo, hi]];
+      const mid = pf.middle;
+      const centre = (k: number) => (lo(k) + hi(k)) / 2;
+      const halves: [(k: number) => number, (k: number) => number][] = mid
+        ? [[lo, (k) => centre(k) - mid.w], [(k) => centre(k) + mid.w, hi]]
+        : pf.centreJoint && wide ? [[lo, () => 0], [() => 0, hi]] : [[lo, hi]];
       for (let k0 = 0; k0 < n - 1; k0 += every) {
         const k1 = Math.min(n - 1, k0 + every);
         const sAt = Math.round(f.s[k0]);
@@ -485,12 +499,21 @@ class Builder {
           const tone = 0.93 + 0.14 * hash(sAt, h, seed);
           this.strip(f, k0, k1, a, b, 'concrete', flatLift, shade(base, tone), halves.length > 1 ? [0, 0.25, 0.5, 0.75, 1] : COLS);
         });
-        // The joint across, sealed dark, and now and then a crack sealed in black.
-        if (k0 > 0) this.line(f, f.s[k0], lo(k0), f.s[k0], hi(k0), 0.04, '#64635f', flatLift);
+        // The joint across, sealed dark (across each concrete strip where the middle is another surface), and now
+        // and then a crack sealed in black.
+        if (k0 > 0) for (const [a, b] of mid ? halves : [[lo, hi]]) this.line(f, f.s[k0], a(k0), f.s[k0], b(k0), 0.04, '#64635f', flatLift);
         if (hash(sAt, 7, seed) < (pf.cracks ?? 0)) this.crack(f, f.s[k0], f.s[k1], lo(k0), hi(k0), hash(sAt, 9, seed));
       }
-      if (halves.length > 1) {
+      if (halves.length > 1 && !mid) {
         for (let k = 0; k < n - 1; k++) this.line(f, f.s[k], 0, f.s[k + 1], 0, 0.025, '#66655f', flatLift);
+      }
+      if (mid) {
+        // The middle strip, each piece of it a shade of its own.
+        const tint = new THREE.Color(mid.tint);
+        for (let k0 = 0; k0 < n - 1; k0 += 8) {
+          this.strip(f, k0, Math.min(n - 1, k0 + 8), (k) => centre(k) - mid.w, (k) => centre(k) + mid.w, mid.m, flatLift,
+            (k, o, out) => out.copy(tint).multiplyScalar(0.92 + 0.12 * hash(k, Math.round(o * 3), seed)), [0, 0.5, 1]);
+        }
       }
       if (core) {
         // The asphalt widening either side of the core.
@@ -557,7 +580,7 @@ class Builder {
           const e0 = (k: number) => sign * (w(k) + st);
           const e1 = (k: number) => sign * (w(k) + reach(k));
           const apronSurface: Surface = pf.apron ?? (pf.core ? 'asphalt' : surface);
-          const apron = pf.apron ? new THREE.Color(pf.walk?.tint ?? PAVERS) : (pf.core ? edgeTint : base).clone().multiplyScalar(0.94);
+          const apron = pf.apron ? new THREE.Color(pf.apronTint ?? pf.walk?.tint ?? PAVERS) : (pf.core ? edgeTint : base).clone().multiplyScalar(0.94);
           if (q(k0) > st || q(k1) > st) this.strip(f, k0, k1, side === 0 ? e0 : e1, side === 0 ? e1 : e0, apronSurface, flatLift, (_k, _o, out) => out.copy(apron), [0, 1]);
           if (pf.shoulder) {
             const sh = pf.shoulder;

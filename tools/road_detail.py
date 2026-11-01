@@ -36,6 +36,9 @@ What the tour showed (the browser's profiles draw it):
   ones where it meets the square and its neighbours (no paint): nose to the planter walls along the nave and the
   transept, and a block of five in the middle of the square. The chip shop's forecourt by the school in the
   square's grey clinkers (`forecourt`). Both are laid over the village data's paving (`patches`).
+Kapelleweg's last stretch, from its junction with Oordegemkouter past the new terrace at Molenhoek's end, has been
+rebuilt since: a lane of two pale concrete strips with a strip of dark brick pavers down the middle, and beside it, up
+to the gardens, a verge of bare earth not yet finished (`STRETCHES`).
 
 How it is measured: each street's centre line is cut into stations every STEP metres; from each, a ray either
 side finds the carriageway's edge on the GRB's lines (or, where it has none, the road surface's own edge) and,
@@ -80,7 +83,8 @@ NARROW = 3.6
 LOOSE = "~loose"  # marks a street's pieces with a loose surface (Wegsegment)
 # Stretches with a profile of their own: (street, from, to metres along its centre line from its first end, profile).
 # Kapellenhoek's centre line starts at the church square.
-STRETCHES = [("Kapellenhoek", 0.0, 165.0, "kh_dash")]
+STRETCHES = [("Kapellenhoek", 0.0, 165.0, "kh_dash"),
+             ("Kapelleweg", 10.0, 72.0, "kw_path")]  # Kapelleweg's from its junction with Oordegemkouter
 # The footpaths ("trage wegen") by name: profile and width (m). Unnamed paths and the earth tracks stay as they are.
 PATHS = {"Smetledekouterwegel": ("path_tiles", 1.0), "Pastorijwegel": ("path_pavers", 2.2), "Kosterstraatje": ("path_gravel", 1.8),
          "Processewijkweg": ("path_gravel", 1.2), "Meentochtwegel": ("path_gravel", 1.2), "Moeyweedreef": ("path_gravel", 1.6)}
