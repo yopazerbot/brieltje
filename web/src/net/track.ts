@@ -15,13 +15,16 @@ import { TICK_MS } from '../../shared/wire.mjs';
  * the drawing time runs at most 15% faster or slower.
  *
  * A track (`Track`): one thing's states with their times, interpolated at the drawing time. When the
- * newest is older than that (a late packet) it carries on at its last speed for at most EXTRA ms and
- * then stands; when the next state comes, the difference is taken out over about 0.1 s instead of
- * in one jump. A teleport (respawn, portal) or a reconnect starts a track again.
+ * newest is older than that (a late packet) it carries on at its last speed for EXTRA ms, then slows
+ * to a stop over about EASE ms more (on WebSocket a lost packet holds up the ones behind it for about
+ * a quarter of a second, then they all come at once); when the next state comes, the difference is
+ * taken out over about 0.1 s instead of in one jump. A teleport (respawn, portal) or a reconnect
+ * starts a track again.
  */
 
 const WINDOW = 4000; // ms of ticks the gap and the delay look back over
-const EXTRA = 120; // ms a thing carries on past its newest state
+const EXTRA = 100; // ms a thing carries on past its newest state at its full speed...
+const EASE = 100; // ...then slowing to a stop over about this long (a lost packet holds the ones behind it for ~250 ms)
 const SETTLE = 80; // ms over which a correction fades
 
 /** The value 9 in 10 are at or under. */
@@ -223,8 +226,10 @@ export class Track<T> {
       b = buf[n - 1];
       const span = b.t - a.t;
       this.shown = b.d;
-      // Late: on at its last speed for a moment, then it stands.
-      f = !b.still && span > 0 && span <= 250 ? 1 + Math.min(r - b.t, EXTRA) / span : 1;
+      // Late: on at its last speed for a moment, then slowing until it stands.
+      const late = r - b.t;
+      const carry = late <= EXTRA ? late : EXTRA + EASE * (1 - Math.exp(-(late - EXTRA) / EASE));
+      f = !b.still && span > 0 && span <= 250 ? 1 + carry / span : 1;
     } else {
       let j = 0;
       while (buf[j + 1].t <= r) j++;
