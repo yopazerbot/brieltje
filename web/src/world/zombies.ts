@@ -13,11 +13,11 @@ import { paintball } from '../paintball';
  * stomp and pound) baked into the file.
  *
  * Cheap to draw: thirty zombies are a handful of draws. When the file loads, every clip of every
- * kind is sampled 30 times a second into one small half-float picture of bone matrices (about 50
- * KB on the graphics card; values a few metres at most, so half floats hold them). Each kind (and
- * its simpler far version, used beyond LOD_FAR m) is one instanced mesh: the vertex shader skins
- * every zombie from that picture at its own frame, blending two frames (or two clips, for a fifth of
- * a second when it changes what it does). So a kind costs one draw and one shadow draw however many
+ * kind is sampled 30 times a second into one half-float picture of bone matrices (60 texels by
+ * about 1,200 rows, 0.6 MB on the graphics card; values a few metres at most, so half floats hold
+ * them). Each kind (and its simpler far version, used beyond LOD_FAR m) is one instanced mesh: the
+ * vertex shader skins every zombie from that picture at its own frame, blending two frames (or two
+ * clips, for a fifth of a second when it changes what it does). So a kind costs one draw however many
  * there are, and nothing per bone on the processor. They stay out of the ambient occlusion pass (its
  * plain material can't pose them: src/main.ts).
  *
