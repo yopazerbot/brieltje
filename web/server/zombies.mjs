@@ -54,6 +54,10 @@ export class ZombieGame {
     this.record = false;
     /** Helper's name -> who they help up, since when (ms), and when the helper was last hurt then */
     this.helping = new Map();
+    /** Player name -> where they went down ({ x, y, z }): they stay there (their page's moves are ignored) and get up there */
+    this.fell = new Map();
+    /** Who was put out of this wave for standing out of every zombie's reach: nobody can help them up (they come back at its end) */
+    this.perchedOut = new Set();
   }
 
   get phase() {
@@ -131,6 +135,7 @@ export class ZombieGame {
       } else if (e.type === 'perchOut') {
         const p = g.players.get(e.name);
         if (p?.alive) {
+          this.perchedOut.add(e.name); // no help up for them: that would undo it (penalty evasion)
           this.modes.say(`${e.name} stayed out of the zombies' reach and is out of this wave.`, 'zPerchOut', { name: e.name });
           g.npcDamage(e.name, p, p.hp, now, 'a zombie');
         }
@@ -151,6 +156,8 @@ export class ZombieGame {
   /** Everyone down comes back at the house's outside start places, as after a respawn (not a death). */
   revive() {
     for (const r of [...this.helping.keys()]) this.letGo(r, 'stop');
+    this.fell.clear();
+    this.perchedOut.clear();
     const names = [...this.down].filter((n) => this.game.players.get(n) && !this.game.players.get(n).alive);
     this.down.clear();
     if (names.length) this.game.gather(names);
@@ -159,6 +166,7 @@ export class ZombieGame {
   /** Everyone who fights is down: the result, the best wave ever (kept), the end screen. */
   over(now) {
     for (const r of [...this.helping.keys()]) this.letGo(r, 'stop');
+    this.fell.clear();
     const wave = this.horde.wave;
     const names = [...this.players].filter((n) => this.game.players.has(n) || this.horde.beaten[n]);
     if (!this.best || wave > this.best.wave) {
@@ -183,8 +191,8 @@ export class ZombieGame {
     if (m.on !== true) return this.letGo(name, 'stop');
     const target = typeof m.name === 'string' ? m.name : '';
     const q = g.players.get(target);
-    if (!q || target === name || q.alive || !this.down.has(target) || this.horde.phase === 'over') return;
-    if (!p.alive || this.down.has(name) || g.inCar(name) || !this.near(p, q)) return;
+    if (!q || target === name || q.alive || !this.down.has(target) || this.perchedOut.has(target) || this.horde.phase === 'over') return;
+    if (!this.canHelp(name, p, now) || !this.near(p, target)) return;
     if (this.helping.get(name)?.target === target) return;
     for (const h of this.helping.values()) if (h.target === target) return; // someone else is helping them
     this.letGo(name, 'stop');
@@ -193,9 +201,19 @@ export class ZombieGame {
     g.send(q.ws, { t: 'revive', op: 'start', by: name, ms: REVIVE_MS });
   }
 
-  /** Two players near enough to help one up (the server's positions). */
-  near(p, q) {
-    const a = p.state, b = q.state;
+  /**
+   * Whether `name` may help someone up (game-logic bypass): they took part in this game and fight as
+   * the horde counts it (armed, on foot), they are up, not down, not in a car and not in their own
+   * moment of spawn protection.
+   */
+  canHelp(name, p, now) {
+    return this.players.has(name) && !!p.alive && !!p.state?.armed && !this.down.has(name) && !this.game.inCar(name) && now >= (p.protectedUntil || 0);
+  }
+
+  /** Helper `p` near enough to help `target` up: from where the server has the helper to where `target` went down. */
+  near(p, target) {
+    const a = p.state;
+    const b = this.fell.get(target) ?? this.game.players.get(target)?.state;
     return !!a && !!b && Math.hypot(a.x - b.x, a.z - b.z) <= REVIVE_REACH && Math.abs(a.y - b.y) < 1.5;
   }
 
@@ -217,7 +235,7 @@ export class ZombieGame {
     for (const [r, h] of [...this.helping]) {
       const p = g.players.get(r);
       const q = g.players.get(h.target);
-      if (!p || !q || !p.alive || q.alive || !this.down.has(h.target) || (p.hurtAt ?? 0) > h.hurt || !this.near(p, q)) {
+      if (!p || !q || q.alive || !this.down.has(h.target) || !this.canHelp(r, p, h.since) || (p.hurtAt ?? 0) > h.hurt || !this.near(p, h.target)) {
         this.letGo(r, 'stop');
         continue;
       }
@@ -227,11 +245,17 @@ export class ZombieGame {
     }
   }
 
-  /** Helped up: up where they lie, with part of their health and a moment's safety; everyone told. */
+  /** Helped up: up where they went down, with part of their health and a moment's safety; everyone told. */
   up(name, q, by, now) {
+    const at = this.fell.get(name);
+    if (at && q.state) {
+      Object.assign(q.state, at);
+      this.game.moved(q);
+    }
+    this.fell.delete(name);
     Object.assign(q, { alive: true, hp: REVIVE_HP, respawnAt: 0, protectedUntil: now + 2000 });
     this.down.delete(name);
-    this.game.broadcast({ t: 'revived', name, by, hp: REVIVE_HP });
+    this.game.broadcast({ t: 'revived', name, by, hp: REVIVE_HP, ...(at ? { x: at.x, y: at.y, z: at.z } : {}) });
     this.modes.say(`${by} helped ${name} up.`, 'zRevived', { name: by, target: name });
     this.modes.send();
   }
@@ -239,6 +263,8 @@ export class ZombieGame {
   /** A player went down (game.zombieHurt or a hit): they wait for the end of the wave. */
   downed(name) {
     this.down.add(name);
+    const s = this.game.players.get(name)?.state;
+    if (s && !this.fell.has(name)) this.fell.set(name, { x: s.x, y: s.y, z: s.z });
     this.downs[name] = (this.downs[name] ?? 0) + 1;
     this.modes.send();
   }
@@ -336,6 +362,8 @@ export class ZombieGame {
   /** The game ends (stopped, or the end screen is over): the zombies go, and whoever is down comes back. */
   stop() {
     for (const r of [...this.helping.keys()]) this.letGo(r, 'stop');
+    this.fell.clear();
+    this.perchedOut.clear();
     this.game.broadcast({ t: 'zgone', ids: [...this.horde.zombies.keys()] });
     this.horde.zombies.clear();
     const now = Date.now();

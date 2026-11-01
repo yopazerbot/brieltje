@@ -1852,6 +1852,11 @@ net.onMessage = (m: ServerMsg) => {
       if (m.name === me?.username) {
         helpedBy = null;
         player.down = 0;
+        // Up where you went down, as the server has it.
+        if (typeof m.x === 'number' && typeof m.z === 'number' && typeof m.y === 'number' && Math.hypot(m.x - player.x, m.z - player.z) > 0.05) {
+          player.place(m.x, m.z, m.y, player.yaw, player.pitch);
+          player.update(0, NO_INPUT, camera);
+        }
         combat.respawned(m.hp);
         weapon.resetLoadout(adminWeapons()); // as the server has it: what you picked up stayed where you fell
       } else avatars.revive(m.name);

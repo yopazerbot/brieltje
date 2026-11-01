@@ -589,6 +589,10 @@ export class Game {
       player.movedAt = now;
       // The edge of the game: a position outside it (only a changed page sends one) is put back just inside.
       this.fenceIn(next, prev);
+      // Down in the Zombies game: they lie where they went down (server/zombies.mjs fell), whatever a
+      // changed page says (state spoofing while down: crawling somewhere to be helped up there).
+      const fell = !player.alive ? this.modes.zombies?.fell.get(name) : null;
+      if (fell) Object.assign(next, fell);
       player.state = next;
       this.stampState(player, m.ct);
       if (driving) {
