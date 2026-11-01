@@ -63,6 +63,12 @@ export interface DoorPanel {
   handle?: boolean;
   /** A solid leaf in one of the house's surfaces (e.g. 'oak'), to match the joinery round it */
   surface?: string;
+  /** With `color` and `outside`: the outer face's colour (anthracite outside, white inside) */
+  colorOut?: string;
+  /** A glass leaf as the street's aluminium doors: this many frosted panes between broad rails, a long bar handle */
+  frost?: number;
+  /** A glass leaf's frame profile, in metres (default 3 cm with `color`, else 6) */
+  frame?: number;
 }
 
 /** A shallow basin in the ground: the rim at ground level, the flat bottom `depth` lower, sloping sides between. */

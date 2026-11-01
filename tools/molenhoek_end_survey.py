@@ -78,6 +78,7 @@ def _terrace():
                     fixtures=[(s(letterbox[0]), 0.9, letterbox[1], 0.42, 0.13, letterbox[2]), (s(1.22), 1.25, 0.08, 0.2, 0.015, "#a7abad")])
 
     cols = (1.94, 3.655, 5.465)  # the door's column and the windows', from the door's end of the house
+    end_rect = [(1502.92, -360.99), (1510.69, -359.06), (1508.66, -351.09), (1503.89, -348.43), (1500.07, -349.37)]
     return {
         "b683l_row": pair_house([(1475.75, -367.78), (1483.0, -365.97), (1480.13, -354.37), (1473.74, -355.95)], (1478.7, -361.4),
                                 light, dark, on_light, "r", (2.0, 3.87, 5.67), True, (0.8, 0.3, "#5e5f5e")),
@@ -88,14 +89,55 @@ def _terrace():
         "b704l_row": pair_house([(1496.3, -362.64), (1502.92, -360.99), (1500.07, -349.37), (1493.43, -351.06)], (1498.2, -356.0),
                                 dark, light, on_dark, "l", cols, False, (0.62, 0.34, box)),
         "b712l_row_end": dict(  # the end house: a small window at its free corner, the door with a side light, the garage
-            common, rect=[(1502.92, -360.99), (1510.69, -359.06), (1508.66, -351.09), (1503.89, -348.43), (1500.07, -349.37)],
+            common, rect=end_rect,
             at=(1506.0, -355.0), tint=light, soldiers=on_light, patches=[(0.0, 7.47, *band, dark)],
             front=[[0.515, 0.87, 1.49, round(head - 1.49, 2), "w", dict(n=1, sill=sill)],
                    [2.15, 1.47, 0.0, head, "d", dict(c=door, frost=3, side=(0.43, "r"), hand="r")],
                    [6.16, 2.56, 0.0, head, "g", dict(c=garage, sections=4)],
                    up(0.55, 0.9), up(4.955, cu=True), up(6.96, cu=True)],
-            fixtures=[(3.03, 1.3, 0.05, 0.16, 0.015, "#1f2022")]),
+            fixtures=[(3.03, 1.3, 0.05, 0.16, 0.015, "#1f2022")],
+            inside=True, faces=_end_faces(end_rect, sill, first)),
     }
+
+
+def _end_faces(rect, sill, first):
+    """The end house's other walls (its inside: tools/molenhoek_end_inside.py): glass
+    at every corner of its free side, which the front's corner windows already show. The side wall: a high window
+    at the front corner (the WC's, round the corner from the one in the front), the living room's window, and
+    glass to the floor at the back corner; above them the front bedroom's two and the office's corner. The cut
+    corner: on the ground floor glass all along it, a large fixed pane and a sliding door of two panels towards the
+    back; upstairs a window at each end. The back: glass to the floor at the corner and the kitchen's window; above
+    them the back bedroom's two. Each wall's openings are given from the corner its edge of `rect` starts at, then
+    turned into the builder's way (from the left end as seen from outside). The 8 cm left at each glass corner is
+    the slim brick post the front's corner windows show."""
+    hi, top = 2.36, first + 1.24  # the ground floor's glass up to 2.36 m; upstairs as in the front
+    win = lambda a, b, y0, y1, **o: (a, b, y0, y1, "w", dict(n=1, sill=sill, **o))
+    glass = lambda a, b, y1=hi, **o: (a, b, 0.0, y1, "d", dict(n=1, **o))
+    given = {
+        1: [win(0.08, 1.0, 1.49, 2.16), win(2.5, 4.0, 0.95, hi), glass(7.0, 8.144),  # the side wall, from the front corner
+            win(0.08, 1.0, first, top), win(2.5, 4.0, first, top), win(7.0, 8.144, first, top)],
+        2: [glass(0.08, 5.388, div=[0.5, 0.75]),  # the cut corner, from the side wall's end
+            win(0.08, 1.743, first, top), win(3.725, 5.388, first, top)],
+        3: [glass(0.08, 1.2), win(2.0, 3.0, 1.05, hi), win(0.08, 1.2, first, top), win(2.0, 3.0, first, top)],  # the back, from the cut corner
+    }
+    n = len(rect)
+    area = sum(rect[k][0] * rect[(k + 1) % n][1] - rect[(k + 1) % n][0] * rect[k][1] for k in range(n))
+    out = []
+    for i, openings in given.items():
+        p, q = rect[i], rect[(i + 1) % n]
+        L = math.dist(p, q)
+        tx, tz = (q[0] - p[0]) / L, (q[1] - p[1]) / L
+        o = (tz, -tx) if area > 0 else (-tz, tx)
+        as_given = (q[0] - p[0]) * o[1] - (q[1] - p[1]) * o[0] >= 0  # tools/molenhoek.py's left_first
+        made = []
+        for a, b, y0, y1, kind, opt in openings:
+            if not as_given:
+                a, b = L - b, L - a
+                if "div" in opt:
+                    opt = dict(opt, div=sorted(round(1 - f, 4) for f in opt["div"]))
+            made.append((round((a + b) / 2, 4), round(b - a, 4), y0, round(y1 - y0, 4), kind, opt))
+        out.append(dict(near=(round((p[0] + q[0]) / 2, 3), round((p[1] + q[1]) / 2, 3)), openings=made))
+    return out
 
 
 TERRACE = _terrace()

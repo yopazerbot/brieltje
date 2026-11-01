@@ -34,6 +34,8 @@ export class Glass {
 
   /** Panes that aren't house blocks (glass in door leaves), with what to do when one breaks or is back */
   private others = new Map<number, (broken: boolean) => void>();
+  /** Panes the server says are broken that aren't here yet (a house whose inside comes later) */
+  private pending = new Set<number>();
 
   constructor(private panes: Map<number, THREE.Mesh>, private world: World, private scene: THREE.Scene) {}
 
@@ -42,6 +44,7 @@ export class Glass {
     for (const [i, pane] of panes) {
       this.panes.set(i, pane);
       this.others.set(i, (broken) => onBreak(i, broken));
+      if (this.pending.delete(i)) this.break(i, null);
     }
   }
 
@@ -74,6 +77,7 @@ export class Glass {
   /** Break pane `index`. `hit` is where the bullet struck (shards fly from there); null breaks it quietly (joining a game). */
   break(index: number, hit: THREE.Vector3 | null, from?: THREE.Vector3): boolean {
     const pane = this.panes.get(index);
+    if (!pane && !this.sealed) this.pending.add(index); // broken before its house came: broken once it does
     if (this.sealed || !pane || this.broken.has(index)) return false;
     this.broken.add(index);
     const box = new THREE.Box3().setFromObject(pane);
@@ -112,6 +116,7 @@ export class Glass {
   }
 
   repair(): void {
+    this.pending.clear();
     for (const index of this.broken) {
       const pane = this.panes.get(index);
       if (pane) pane.visible = true;

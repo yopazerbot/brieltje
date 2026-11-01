@@ -1,6 +1,7 @@
 import * as THREE from 'three';
+import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
 import type { World } from './collision';
-import type { DoorSpec } from './houseData';
+import type { DoorPanel, DoorSpec } from './houseData';
 
 const SPEED = 1.3;  // open/close per second (full travel)
 const REACH = 2.6;  // m, how far away you can open a door
@@ -42,6 +43,7 @@ const outMat = new THREE.MeshStandardMaterial({ color: '#45322e', roughness: 0.5
 const inMat = new THREE.MeshStandardMaterial({ color: '#f1ece1', roughness: 0.5, metalness: 0.05 });
 const frostedMat = new THREE.MeshPhysicalMaterial({ color: '#c3d0d6', roughness: 0.45, transparent: true, opacity: 0.86, side: THREE.DoubleSide });
 const handleMat = new THREE.MeshStandardMaterial({ color: '#2a2a2a', roughness: 0.35, metalness: 0.8 });
+const barMat = new THREE.MeshStandardMaterial({ color: '#c9cbcc', roughness: 0.3, metalness: 0.8 }); // a long bar handle in brushed steel
 
 const tinted = new Map<string, THREE.MeshStandardMaterial>();
 /** A leaf or frame in its own colour (wood veneer, bronze), one material per colour. */
@@ -64,31 +66,57 @@ function metreUV(geo: THREE.BufferGeometry): THREE.BufferGeometry {
   return geo;
 }
 
-/** A panel's mesh, built along +x from 0 to `width`, centred on z = 0, standing from 0 to `height`. */
-function panelMesh(width: number, height: number, thickness: number, glass: boolean, swing = false, outside?: 1 | -1, matte = false, color?: string, handle = true, surface?: THREE.Material): THREE.Group {
+/**
+ * A panel's mesh, built along +x from 0 to `width`, centred on z = 0, standing from 0 to `height`: one mesh per
+ * material (frame, leaf, handle), the glass a mesh of its own (it breaks).
+ */
+function panelMesh(width: number, height: number, thickness: number, glass: boolean, swing = false, outside?: 1 | -1, matte = false, color?: string, handle = true, surface?: THREE.Material, more: Pick<DoorPanel, 'colorOut' | 'frost' | 'frame'> = {}): THREE.Group {
   const g = new THREE.Group();
+  const parts = new Map<THREE.Material, THREE.BufferGeometry[]>();
   const box = (w: number, h: number, d: number, x: number, y: number, mat: THREE.Material, z = 0) => {
-    const m = new THREE.Mesh(new THREE.BoxGeometry(w, h, d), mat);
-    m.position.set(x, y, z);
-    m.castShadow = mat !== glassMat && mat !== frostedMat;
+    if (!parts.has(mat)) parts.set(mat, []);
+    parts.get(mat)!.push(new THREE.BoxGeometry(w, h, d).translate(x, y, z));
+  };
+  const pane = (geos: THREE.BufferGeometry[]) => {
+    const m = new THREE.Mesh(geos.length > 1 ? mergeGeometries(geos) : geos[0], matte ? frostedMat : glassMat);
+    if (geos.length > 1) geos.forEach((geo) => geo.dispose());
     m.receiveShadow = true;
     g.add(m);
+    g.userData.pane = m;
   };
-  // Aluminium: on an outside door brown on the outer half of its depth, white on the inner half.
+  // Aluminium: on an outside door brown on the outer half of its depth, white on the inner half (or, in a colour of
+  // its own, that colour inside and `colorOut` outside).
   const alu = (w: number, h: number, x: number, y: number, fallback: THREE.Material) => {
     if (!outside) return box(w, h, thickness, x, y, fallback);
-    box(w, h, thickness / 2, x, y, outMat, (outside * thickness) / 4);
-    box(w, h, thickness / 2, x, y, inMat, (-outside * thickness) / 4);
+    box(w, h, thickness / 2, x, y, color ? tint(more.colorOut ?? color, glass) : outMat, (outside * thickness) / 4);
+    box(w, h, thickness / 2, x, y, color ? tint(color, glass) : inMat, (-outside * thickness) / 4);
   };
-  if (glass) {
-    const f = color ? 0.03 : 0.06; // frame profile (slim bronze on the inside doors)
+  if (glass && more.frost) {
+    // The street's aluminium doors: frosted panes between broad stiles and rails, a long bar handle on both faces.
+    const frame = color ? tint(color, true) : frameMat;
+    const n = more.frost;
+    const [stile, mid, top, foot] = [0.1, 0.07, 0.11, 0.13];
+    alu(stile, height, stile / 2, height / 2, frame);
+    alu(stile, height, width - stile / 2, height / 2, frame);
+    alu(width - 2 * stile, foot, width / 2, foot / 2, frame);
+    alu(width - 2 * stile, top, width / 2, height - top / 2, frame);
+    const ph = (height - foot - top - mid * (n - 1)) / n;
+    const panes: THREE.BufferGeometry[] = [];
+    for (let k = 0; k < n; k++) {
+      const y = foot + k * (ph + mid);
+      if (k) alu(width - 2 * stile, mid, width / 2, y - mid / 2, frame);
+      panes.push(new THREE.BoxGeometry(width - 2 * stile, ph, 0.012).translate(width / 2, y + ph / 2, 0));
+    }
+    pane(panes);
+    if (handle) for (const side of [1, -1]) box(0.032, 0.7, 0.03, width - 0.12, 1.1, barMat, side * (thickness / 2 + 0.035));
+  } else if (glass) {
+    const f = more.frame ?? (color ? 0.03 : 0.06); // frame profile (slim bronze on the inside doors)
     const frame = color ? tint(color, true) : frameMat;
     alu(width, f, width / 2, f / 2, frame);
     alu(width, f, width / 2, height - f / 2, frame);
     alu(f, height, f / 2, height / 2, frame);
     alu(f, height, width - f / 2, height / 2, frame);
-    box(width - 2 * f, height - 2 * f, 0.012, width / 2, height / 2, matte ? frostedMat : glassMat);
-    g.userData.pane = g.children[g.children.length - 1];
+    pane([new THREE.BoxGeometry(width - 2 * f, height - 2 * f, 0.012).translate(width / 2, height / 2, 0)]);
     if (handle && swing && color) box(0.13, 0.025, thickness + 0.07, width - 0.08, 1.05, handleMat); // lever
     else if (handle) box(0.03, 0.5, thickness + 0.04, width - 0.12, 1.05, handleMat);
   } else if (surface) {
@@ -103,6 +131,13 @@ function panelMesh(width: number, height: number, thickness: number, glass: bool
     // Handle on the far side from the hinge (swinging), or near the edge you pull (sliding).
     if (handle && swing) box(0.13, 0.025, thickness + 0.07, width - 0.09, 1.05, handleMat);
     else if (handle) box(0.03, 0.4, thickness + 0.03, 0.12, 1.05, handleMat);
+  }
+  for (const [mat, geos] of parts) {
+    const m = new THREE.Mesh(geos.length > 1 ? mergeGeometries(geos) : geos[0], mat);
+    if (geos.length > 1) geos.forEach((geo) => geo.dispose());
+    m.castShadow = true;
+    m.receiveShadow = true;
+    g.add(m);
   }
   return g;
 }
@@ -125,39 +160,68 @@ export class Doors {
   private raycaster = new THREE.Raycaster();
   /** Alone, no door opens (Yoshi): the house and the bungalow are for playing together. */
   private locked = false;
+  /** What the server said of doors not here yet (a house whose inside comes later), for when they come. */
+  private pending = new Map<string, { open: boolean; dir?: number }>();
 
   /** `surface`: the house's materials by name, for leaves made of them */
   constructor(specs: DoorSpec[], private world: World, private surface?: (name: string) => THREE.Material) {
     this.raycaster.far = REACH;
+    for (const spec of specs) this.build(spec, this.group, (m) => m, new Map());
+  }
+
+  /**
+   * More doors once they have come (the end house at Molenhoek: world/walkIn.ts), drawn in `parent` (which shows
+   * them only near), their materials through `look`. Returns their glass by its numbers, for breaking it.
+   */
+  add(specs: DoorSpec[], parent: THREE.Object3D, look: (m: THREE.Material) => THREE.Material = (m) => m): Map<number, THREE.Mesh> {
+    const panes = new Map<number, THREE.Mesh>();
     for (const spec of specs) {
-      const start = spec.open ? 1 : 0;
-      const door: Door = { spec, panels: [], open: start, target: start, dir: 1 };
-      spec.panels.forEach((p, i) => {
-        const a = new THREE.Vector2(...p.a);
-        const b = new THREE.Vector2(...p.b);
-        const dir = b.clone().sub(a);
-        const width = dir.length();
-        dir.normalize();
-        const normal = new THREE.Vector2(-dir.y, dir.x);
-        const own = p.surface && this.surface ? this.surface(p.surface) : undefined;
-        const mesh = panelMesh(width, spec.y1 - spec.y0, p.thickness, p.glass, !!p.swing, p.outside, !!p.matte, p.color, p.handle !== false, own);
-        mesh.rotation.y = -Math.atan2(dir.y, dir.x);
-        mesh.userData.door = door;
-        mesh.traverse((o) => (o.userData.door = door));
-        this.group.add(mesh);
-        const panel: Panel = { mesh, a, b, normal, offset: p.offset, thickness: p.thickness, slide: new THREE.Vector2(...(p.slide ?? [0, 0])), swing: p.swing ?? 0, width, key: `${spec.id}-${i}`, broken: false };
-        door.panels.push(panel);
-        const pane = mesh.userData.pane as THREE.Mesh | undefined;
-        if (pane) {
-          const index = DOOR_GLASS + this.panes.size; // same order on every computer: the house data's
-          pane.userData.glassIndex = index;
-          this.panes.set(index, pane);
-          this.glassPanels.set(index, { door, panel });
-        }
-      });
-      this.doors.push(door);
-      this.place(door);
+      const door = this.build(spec, parent, look, panes);
+      const was = this.pending.get(spec.id);
+      if (was) this.set(spec.id, was.open, was.dir);
+      this.pending.delete(spec.id);
+      if (this.locked && spec.panels.some((p) => p.outside)) {
+        door.target = door.open = 0;
+        this.place(door);
+      }
     }
+    return panes;
+  }
+
+  private build(spec: DoorSpec, parent: THREE.Object3D, look: (m: THREE.Material) => THREE.Material, panes: Map<number, THREE.Mesh>): Door {
+    const start = spec.open ? 1 : 0;
+    const door: Door = { spec, panels: [], open: start, target: start, dir: 1 };
+    spec.panels.forEach((p, i) => {
+      const a = new THREE.Vector2(...p.a);
+      const b = new THREE.Vector2(...p.b);
+      const dir = b.clone().sub(a);
+      const width = dir.length();
+      dir.normalize();
+      const normal = new THREE.Vector2(-dir.y, dir.x);
+      const own = p.surface && this.surface ? this.surface(p.surface) : undefined;
+      const mesh = panelMesh(width, spec.y1 - spec.y0, p.thickness, p.glass, !!p.swing, p.outside, !!p.matte, p.color, p.handle !== false, own, p);
+      mesh.rotation.y = -Math.atan2(dir.y, dir.x);
+      mesh.userData.door = door;
+      mesh.traverse((o) => {
+        o.userData.door = door;
+        const m = o as THREE.Mesh;
+        if (m.isMesh) m.material = look(m.material as THREE.Material);
+      });
+      parent.add(mesh);
+      const panel: Panel = { mesh, a, b, normal, offset: p.offset, thickness: p.thickness, slide: new THREE.Vector2(...(p.slide ?? [0, 0])), swing: p.swing ?? 0, width, key: `${spec.id}-${i}`, broken: false };
+      door.panels.push(panel);
+      const pane = mesh.userData.pane as THREE.Mesh | undefined;
+      if (pane) {
+        const index = DOOR_GLASS + this.panes.size; // same order on every computer: the house data's, then the added doors'
+        pane.userData.glassIndex = index;
+        this.panes.set(index, pane);
+        panes.set(index, pane);
+        this.glassPanels.set(index, { door, panel });
+      }
+    });
+    this.doors.push(door);
+    this.place(door);
+    return door;
   }
 
   private place(door: Door): void {
@@ -231,7 +295,10 @@ export class Doors {
   /** Open or close a door because another player did (`dir`: the way a double-action door swings). */
   set(id: string, open: boolean, dir?: number): void {
     const door = this.doors.find((d) => d.spec.id === id);
-    if (!door) return;
+    if (!door) {
+      this.pending.set(id, { open, dir });
+      return;
+    }
     door.target = open ? 1 : 0;
     if (door.spec.both && (dir === 1 || dir === -1) && (open || door.open === 0)) door.dir = dir;
   }

@@ -72,6 +72,7 @@ import { HomeStreet, withoutModelled } from './world/homeStreet';
 import { buildRoadDetail, roadPaint, withRoadDetail } from './world/roadDetail';
 import { RoadLife } from './world/roadLife';
 import { fitStreetModel, loadStreetModel } from './world/streetModel';
+import { loadWalkIn, type WalkIn } from './world/walkIn';
 import { CAR_REACH, CAR_SLOW, findPortal, PORTALS, portalNear, type Portal } from '../shared/portals.mjs';
 import { noShoot } from '../shared/zones.mjs';
 import { loadBounds } from '../shared/bounds.mjs';
@@ -784,9 +785,14 @@ $('set-pin-save').addEventListener('click', async () => {
 maxSlider.addEventListener('input', () => ($('set-max-value').textContent = maxSlider.value));
 maxSlider.addEventListener('change', () => net.send({ t: 'rules', maxPlayers: Number(maxSlider.value) }));
 let wasTogether = false; // playing with the others until this account change
-/** Out of the house or the bungalow (alone they are shut), in front of the one you were in. */
+/** Out of the house, the bungalow or the end house at Molenhoek (alone they are shut), in front of the one you were in. */
 function putOutside(): void {
   if (!inside || driving || riding) return;
+  if (endHouse?.contains(player.x, player.z)) {
+    const out = PORTALS.find((p) => p.id === 'molenhoek_end');
+    if (out) arrive(out, null);
+    return;
+  }
   const bungalow = Math.hypot(player.x - 83.5, player.z - 189.7) < Math.hypot(player.x - 4.5, player.z - 6);
   const to = PORTALS.find((p) => p.id === (bungalow ? 'bungalow' : 'house'));
   if (to) arrive(to, null);
@@ -1549,6 +1555,8 @@ menu.onGraphics = (next) => {
 };
 
 function levelName(feet: number): string {
+  const own = endHouse?.level(player.x, player.z, feet); // the end house at Molenhoek: its own floors, at its own height
+  if (own) return own;
   let name = house.levels[0].name;
   for (const lv of house.levels) if (feet >= lv.floor - 0.3) name = lv.name;
   return name;
@@ -1968,7 +1976,7 @@ renderer.setAnimationLoop((now: number) => {
     // A waypoint from the big map is done when you reach it.
     if (bigMap.waypoint && Math.hypot(bigMap.waypoint.x - player.x, bigMap.waypoint.z - player.z) < 6) bigMap.waypoint = bigMap.route = null;
     if (bigMap.waypoint && (routeTimer += 0.05) > 0.5) updateRoute();
-    minimap.draw(player.x, player.z, player.feet - terrain.height(player.x, player.z), player.yaw, weapon.enabled ? blips : blips.filter((b) => b.kind !== 'item'), shapes, rules.portals ? portalMarks : [], bigMap.waypoint, bigMap.route, inside);
+    minimap.draw(player.x, player.z, player.feet - (endHouse?.floorAt(player.x, player.z) ?? terrain.height(player.x, player.z)), player.yaw, weapon.enabled ? blips : blips.filter((b) => b.kind !== 'item'), shapes, rules.portals ? portalMarks : [], bigMap.waypoint, bigMap.route, inside);
   }
   horizon.position.x = camera.position.x;
   horizon.position.z = camera.position.z;
@@ -2003,6 +2011,8 @@ player.update(0, input.poll(), camera);
  */
 let village: 'waiting' | 'loading' | 'ready' = 'waiting';
 let villageJob: Promise<void> | null = null;
+/** The end house of the new terrace at Molenhoek, to walk into (world/walkIn.ts), once its street model is in. */
+let endHouse: WalkIn | null = null;
 /** Wood smoke from two chimneys by the church square (world/smoke.ts), once the town's model is in. */
 let villageSmoke: Smoke | null = null;
 /** The village, once: later calls wait for the same load (a trip through a portal to it). */
@@ -2037,6 +2047,7 @@ async function buildVillage(): Promise<void> {
     if (street) {
       fitStreetModel(data, street, first);
       models.push(street);
+      if (street.userData.landmark === 'molenhoek_end3') endHouse = await loadWalkIn(renderer, street).catch(() => null);
     }
   }
   const drawn = withRoadDetail(withoutLandmarks(data, models.map((m) => m.userData.landmark as string), models.flatMap((m) => (m.userData.replaces as Ring[] | undefined) ?? [])));
@@ -2061,7 +2072,15 @@ async function buildVillage(): Promise<void> {
     tiles.group.add(m); // a caster for the village's ground shading, a target for shots
     tiles.track(m, undefined, String(m.userData.landmark).startsWith('molenhoek_end') ? 350 : Infinity);
   }
-  world.addPrisms(data.prisms ?? []);
+  // The end house's own walls, floors and doors take the place of its plain block (alone its doors stay shut).
+  world.addPrisms((data.prisms ?? []).filter((p) => !endHouse?.replaces(p)));
+  if (endHouse) {
+    endHouse.install(world, doors, glass);
+    scene.add(endHouse.group);
+    for (const r of endHouse.rooms) roomNames.add(r);
+    data.groundCuts.cells.push(...endHouse.groundCuts.cells); // the ground cut out under it, with the ponds' below
+    data.groundCuts.tris.push(...endHouse.groundCuts.tris);
+  }
   // The smoke: the long house on the square's west side (the chimney by its gable on the square) and a house on
   // the lane to the north-east, both in sight on arriving at the church; their tops measured on the town's model.
   // Thicker than at home: against the pale sky over the square the thin puffs were hard to see.
@@ -2342,6 +2361,7 @@ if (import.meta.env.DEV) {
       horizon,
       village: () => village,
       loadVillage,
+      endHouse: () => endHouse,
       countryside: () => countryside,
       portals,
       roadLife,

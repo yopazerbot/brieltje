@@ -114,8 +114,9 @@ export class World {
     this.addPrisms(prisms);
   }
 
-  /** More blocks after the ones there are (the surroundings, the village). */
-  addPrisms(prisms: Prism[]): void {
+  /** More blocks after the ones there are (the surroundings, the village); returns the first one's number. */
+  addPrisms(prisms: Prism[]): number {
+    const first = this.solids.length;
     for (const p of prisms) {
       let minX = Infinity, maxX = -Infinity, minZ = Infinity, maxZ = -Infinity;
       for (const [x, z] of p.p[0]) {
@@ -138,6 +139,7 @@ export class World {
     const seen = new Uint32Array(this.solids.length);
     seen.set(this.seen);
     this.seen = seen;
+    return first;
   }
 
   /** The blocks whose squares overlap a rectangle on the plan, in their order in the data. */

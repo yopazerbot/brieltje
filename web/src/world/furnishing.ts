@@ -1020,11 +1020,11 @@ function extraGeometry(e: Extra): THREE.BufferGeometry {
 }
 
 /** Extras of the same kind in one mesh each (one draw call per kind); the bike's screen stays apart. */
-function extraMeshes(byShow: Map<Show, THREE.BufferGeometry[]>, into: THREE.Object3D, name: string): void {
+function extraMeshes(byShow: Map<Show, THREE.BufferGeometry[]>, into: THREE.Object3D, name: string, look: (m: THREE.Material) => THREE.Material = (m) => m): void {
   const mats = showMaterials();
   for (const [show, geos] of byShow) {
     if (!geos.length) continue;
-    const mesh = new THREE.Mesh(geos.length > 1 ? mergeGeometries(geos) : geos[0], mats[show]);
+    const mesh = new THREE.Mesh(geos.length > 1 ? mergeGeometries(geos) : geos[0], look(mats[show]));
     if (geos.length > 1) geos.forEach((g) => g.dispose());
     mesh.userData.ignoreRay = true; // bullets hit the piece behind it
     if (show === 'wash') mesh.renderOrder = 2;
@@ -1135,11 +1135,20 @@ function outline(x: number, z: number, yaw: number, w: number, d: number): [numb
  */
 export function buildFixtures(list: FixtureSpec[], world: World): THREE.Group | null {
   if (!list.length) return null;
-  const group = new THREE.Group();
-  group.name = 'fixtures';
   list.forEach((f, i) => {
     if (!NO_BLOCK.has(f.item)) world.setMoving(`fixture-${i}`, outline(f.x, f.z, f.yaw, f.size[0], f.size[1]), f.y, f.y + f.size[2]);
   });
+  return fixtureGroup(list);
+}
+
+/**
+ * Fixtures' meshes alone, without their blocks for walking into (the end house at Molenhoek brings its own:
+ * world/walkIn.ts); `look` changes each material (that house's inside takes no direct sun).
+ */
+export function fixtureGroup(list: FixtureSpec[], look: (m: THREE.Material) => THREE.Material = (m) => m, shadows = true): THREE.Group | null {
+  if (!list.length) return null;
+  const group = new THREE.Group();
+  group.name = 'fixtures';
   const sites = new Map<string, FixtureSpec[]>();
   for (const f of list) {
     const key = `${Math.round(f.x / 60)},${Math.round(f.z / 60)}`;
@@ -1172,19 +1181,21 @@ export function buildFixtures(list: FixtureSpec[], world: World): THREE.Group | 
       }
       for (const [bucket, geos] of buckets) {
         const kind = bucket.split(' ')[0];
-        const mesh = new THREE.Mesh(mergeGeometries(geos), MATERIALS[kind === 'parts' ? 'solid' : (kind as Kind)]);
+        const mesh = new THREE.Mesh(mergeGeometries(geos), look(MATERIALS[kind === 'parts' ? 'solid' : (kind as Kind)]));
         mesh.name = `fixtures ${key}:${bucket === 'parts decor' ? 'decor' : bucket}`;
         geos.forEach((g) => g.dispose());
-        mesh.castShadow = !bucket.endsWith('decor');
+        mesh.castShadow = shadows && !bucket.endsWith('decor');
         mesh.receiveShadow = true;
         mesh.userData.material = 'oak'; // what a bullet hit looks and sounds like
         group.add(mesh);
       }
-      extraMeshes(byShow, group, `fixtures ${key}`);
+      extraMeshes(byShow, group, `fixtures ${key}`, look);
     }
   };
   draw();
-  loadModels((file) => file === 'interior' && draw()); // the only file fixtures draw from
+  // The files these fixtures draw from: the interior's models, and the office chair's and the soundbar's if they have them.
+  const files = new Set(['interior', ...(list.some((f) => f.item === 'officechair') ? ['aeron'] : []), ...(list.some((f) => f.item === 'tvunit') ? ['soundbar'] : [])]);
+  loadModels((file) => files.has(file) && draw());
   return group;
 }
 const HANGING = new Set(['pendants', 'globes', 'rattandome', 'tracklight']);

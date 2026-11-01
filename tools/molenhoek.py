@@ -155,6 +155,13 @@ M["mh_glass"] = principled("mh_glass", 0.06, 0.3)
 M["mh_panel"] = principled("mh_panel", 0.5)
 M["mh_detail"] = principled("mh_detail", 0.55, 0.1)
 M["mh_detail"]["lod"] = 200  # metres: drawn only nearer than this (web/src/world/streetModel.ts)
+# A house you can walk into (`inside`): its panes and its front door's leaf in meshes of their own, which the game
+# shows only from afar; near it the house's own glass you see through and doors that open take their place
+# (web/src/world/walkIn.ts).
+M["mh_glass_in"] = principled("mh_glass_in", 0.06, 0.3)
+M["mh_panel_in"] = principled("mh_panel_in", 0.5)
+M["mh_glass_in"]["shut"] = M["mh_panel_in"]["shut"] = 1
+INSIDE = [False]  # whether the house being built is one you can walk into
 DETAIL_SPLIT = tuple(DATA["detail_split"]["at"]) if DATA.get("detail_split") else (705.0, 815.0)  # where the small things go into the next part
 DETAIL_AXIS = DATA["detail_split"]["axis"] if DATA.get("detail_split") else "x"
 
@@ -360,6 +367,7 @@ def door_step(f, h, d):
 
 def hole(f, h, layers):
     o = h.opt
+    glass_m, leaf_m = ("mh_glass_in", "mh_panel_in") if INSIDE[0] else ("mh_glass", "mh_panel")
     d = -h.depth
     mat, col = wall_at(layers, (h.y0 + h.y1) / 2)
     # Reveals, facing into the opening.
@@ -377,23 +385,23 @@ def hole(f, h, layers):
     pane = [f.p(h.s0, h.y0, d), f.p(h.s1, h.y0, d), f.p(h.s1, h.y1, d), f.p(h.s0, h.y1, d)]
     fw, fd = 0.065, 0.04
     if h.kind == "d" and o.get("frost"):  # an aluminium door: frosted panes between broad rails, a side light, a long bar handle
-        face("mh_panel", pane, f.out(), o.get("c", "#3a3c3f"))
+        face(leaf_m, pane, f.out(), o.get("c", "#3a3c3f"))
         l0, l1 = h.s0, h.s1  # the leaf
         side = o.get("side")  # (width, "l" or "r"): a fixed frosted light beside the leaf
         if side:
             if side[1] == "r":
                 l1 = h.s1 - side[0]
-                f.flat("mh_panel", l1 + 0.05, h.s1 - 0.07, h.y0 + 0.09, h.y1 - 0.09, d + 0.004, FROST)
+                f.flat(leaf_m, l1 + 0.05, h.s1 - 0.07, h.y0 + 0.09, h.y1 - 0.09, d + 0.004, FROST)
             else:
                 l0 = h.s0 + side[0]
-                f.flat("mh_panel", h.s0 + 0.07, l0 - 0.05, h.y0 + 0.09, h.y1 - 0.09, d + 0.004, FROST)
+                f.flat(leaf_m, h.s0 + 0.07, l0 - 0.05, h.y0 + 0.09, h.y1 - 0.09, d + 0.004, FROST)
         n, stile, rail, foot = o["frost"], 0.1, 0.07, 0.13
         ph = (h.y1 - h.y0 - foot - 0.11 - rail * (n - 1)) / n
         for k in range(n):
             y = h.y0 + foot + k * (ph + rail)
-            f.flat("mh_panel", l0 + stile, l1 - stile, y, y + ph, d + 0.004, FROST)
+            f.flat(leaf_m, l0 + stile, l1 - stile, y, y + ph, d + 0.004, FROST)
         hs = l1 - 0.12 if o.get("hand") == "r" else l0 + 0.12  # the handle, on the side away from the hinges
-        f.box("mh_detail", hs - 0.016, hs + 0.016, h.y0 + 0.75, h.y0 + 1.45, d + 0.03, d + 0.075, "#c9cbcc")
+        f.box("mh_panel_in" if INSIDE[0] else "mh_detail", hs - 0.016, hs + 0.016, h.y0 + 0.75, h.y0 + 1.45, d + 0.03, d + 0.075, "#c9cbcc")
         door_step(f, h, d)
     elif h.kind in ("d", "ad") and o.get("c"):  # a solid door leaf
         leaf = o["c"]
@@ -416,7 +424,7 @@ def hole(f, h, layers):
         return
     else:
         glass = CURTAIN if o.get("cu") else "#252c30"
-        face("mh_glass", pane, f.out(), glass)
+        face(glass_m, pane, f.out(), glass)
     c = frame_c
     f.flat("mh_detail", h.s0, h.s0 + fw, h.y0, h.y1, d + fd, c)
     f.flat("mh_detail", h.s1 - fw, h.s1, h.y0, h.y1, d + fd, c)
@@ -425,8 +433,8 @@ def hole(f, h, layers):
     if h.kind in ("w", "a") or (h.kind in ("d", "ad") and not o.get("c")):
         w = h.s1 - h.s0
         n = o.get("n") or (1 if w < 0.95 else (2 if w < 2.0 else 3))  # `n`: lights side by side, as given
-        for k in range(1, n):
-            m = h.s0 + w * k / n
+        parts = [h.s0 + w * k for k in o["div"]] if o.get("div") else [h.s0 + w * k / n for k in range(1, n)]  # `div`: where the lights part, as parts of the width
+        for m in parts:
             f.flat("mh_detail", m - 0.035, m + 0.035, h.y0 + fw, h.y1 - fw, d + fd + 0.002, c)
         if h.kind == "w" and (o.get("tr") or (h.y1 - h.y0 > 1.75 and n > 1)):  # a transom: a top light
             t = h.y1 - (0.38 if o.get("tr") else 0.45)
@@ -918,6 +926,14 @@ def s_ok(k):
 
 # ---------------------------------------------------------------- houses
 def house(key, H):
+    INSIDE[0] = bool(H.get("inside"))
+    try:
+        build_house(key, H)
+    finally:
+        INSIDE[0] = False
+
+
+def build_house(key, H):
     (ax, az), (bx, bz) = H["front"]
     a, b = (ax, az), (bx, bz)
     t, L = unit(a, b)
