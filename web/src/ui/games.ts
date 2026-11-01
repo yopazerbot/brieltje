@@ -49,7 +49,8 @@ export class Games {
   onSend: (msg: Record<string, unknown>) => void = () => {};
   private ends = 0;
   private coins = new Map<number, THREE.Mesh>();
-  private asked = new Set<number>();
+  /** Coins asked for, and when (performance.now()) */
+  private asked = new Map<number, number>();
   private bar = document.getElementById('modebar')!;
   private blind = document.getElementById('blindfold')!;
   private spin = 0;
@@ -164,10 +165,12 @@ export class Games {
     for (const [i, mesh] of this.coins) {
       mesh.rotation.y = this.spin;
       mesh.position.y += Math.sin(this.spin * 1.3 + i) * 0.0015;
-      if (v.kind === 'treasure' && v.phase === 'playing' && !this.asked.has(i)) {
+      if (v.kind === 'treasure' && v.phase === 'playing' && performance.now() - (this.asked.get(i) ?? -Infinity) > 500) {
         const c = mesh.position;
         if (Math.hypot(c.x - x, c.z - z) < 1.1 && Math.abs(c.y - 0.45 - feet) < 1.5) {
-          this.asked.add(i); // once: the server answers by sending the coins left
+          // The server answers a yes by sending the coins left, and a no not at all: it may still have
+          // you a step behind (running, jumping down). So again every half second while you stand on it.
+          this.asked.set(i, performance.now());
           this.onSend({ t: 'coin', i });
         }
       }
