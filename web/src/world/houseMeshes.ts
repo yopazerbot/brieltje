@@ -1,6 +1,7 @@
 import * as THREE from 'three';
 import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
 import type { Prism } from './houseData';
+import { solidNormals } from './normals';
 import { terrain } from './terrain';
 import { rustle } from './wind';
 import sizes from '../../public/textures/sizes.json';
@@ -345,7 +346,7 @@ function drapedGeometry(p: Prism): THREE.BufferGeometry {
   g.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3));
   g.setAttribute('uv', new THREE.Float32BufferAttribute(uv, 2));
   g.computeVertexNormals();
-  return g;
+  return solidNormals(g); // cutting along the grid leaves slivers with no area
 }
 
 /** A block's geometry: extruded, or draped over the relief (p.d). UVs in metres. */
@@ -365,7 +366,7 @@ export function prismGeometry(p: Prism): THREE.BufferGeometry {
   geo.rotateX(-Math.PI / 2);
   geo.translate(0, p.y0, 0);
   geo.clearGroups();
-  return geo;
+  return solidNormals(geo); // an outline with a repeated or an in-line corner gives triangles with no area
 }
 
 /**

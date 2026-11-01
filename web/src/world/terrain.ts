@@ -1,6 +1,7 @@
 import * as THREE from 'three';
 import data from '../../shared/terrain.json';
 import { makeTerrain } from '../../shared/terrain.mjs';
+import { solidNormals } from './normals';
 
 /**
  * The relief of the surroundings (tools/terrain.py, from the laser scan): heights relative to
@@ -89,6 +90,10 @@ export function groundPieceCoarse(ground: number, pi: number, pj: number, cx: nu
   g.setAttribute('uv', new THREE.Float32BufferAttribute(uv, 2));
   g.setIndex(index);
   g.computeVertexNormals();
+  // The skirt's two faces share its corners and point opposite ways, so the hanging corners' normals came out zero:
+  // NaN in the lighting, a black row along the far ground on an Apple chip (world/normals.ts). Lit as the edge above.
+  const n = g.attributes.normal as THREE.BufferAttribute;
+  ring.forEach((top, k) => n.setXYZ(low[k], n.getX(top), n.getY(top), n.getZ(top)));
   return g;
 }
 
@@ -152,7 +157,7 @@ export function groundPiece(ground: number, cuts: GroundCuts, pi: number, pj: nu
   g.setAttribute('uv', new THREE.Float32BufferAttribute(uv, 2));
   g.setIndex(index);
   g.computeVertexNormals();
-  return g;
+  return solidNormals(g); // a cut's remains can hold a sliver with no area
 }
 
 /**

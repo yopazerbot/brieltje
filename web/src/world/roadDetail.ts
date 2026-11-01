@@ -2,6 +2,7 @@ import * as THREE from 'three';
 import data from '../data/roadDetail.json';
 import type { Prism, Surroundings } from './houseData';
 import { blockMaterial, prismGeometry } from './houseMeshes';
+import { solidNormals } from './normals';
 import { terrain } from './terrain';
 import { tileKey, type Piece } from './tiles';
 
@@ -224,7 +225,7 @@ class Mesh {
     g.setAttribute('color', new THREE.BufferAttribute(new Uint8Array(this.col), 3, true));
     g.setIndex(this.idx);
     g.computeVertexNormals();
-    return g;
+    return solidNormals(g); // some of the strips' triangles have no area (world/normals.ts)
   }
 }
 

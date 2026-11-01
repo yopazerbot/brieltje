@@ -3,6 +3,7 @@ import { mergeGeometries, mergeVertices } from 'three/addons/utils/BufferGeometr
 import { terrain } from './terrain';
 import type { DipSpec, Opening, Prism, RoofSpec, Surroundings } from './houseData';
 import { blockMaterial, paint, prismGeometry, tintedMaterial } from './houseMeshes';
+import { solidNormals } from './normals';
 import type { Piece, TileData } from './tiles';
 import { fieldRows } from './fields';
 import { sway } from './wind';
@@ -130,7 +131,7 @@ function sloped(r: RoofSpec, c: THREE.Vector2[], L: number, W: number, along: TH
     const g = new THREE.BufferGeometry().setAttribute('position', new THREE.Float32BufferAttribute(pos, 3));
     g.setAttribute('uv', new THREE.Float32BufferAttribute(uv, 2));
     g.computeVertexNormals();
-    return g;
+    return solidNormals(g); // a gable's triangles can have no area (world/normals.ts)
   };
   // An empty wall set still needs the attributes the merged gables have.
   return { roof: make(roofPos, roofUv), gables: make(wallPos, wallUv), glass: null, frames: null, gableFrames: null, panels: null };
@@ -209,7 +210,7 @@ function roof(r: RoofSpec): RoofParts {
     if (!pos.length) return null;
     const g = new THREE.BufferGeometry().setAttribute('position', new THREE.Float32BufferAttribute(pos, 3));
     g.computeVertexNormals();
-    return g;
+    return solidNormals(g); // a gable round its windows is cut into triangles, some with no area (world/normals.ts)
   };
   if (r.shape === 'hip' || r.shape === 'shed') return { ...sloped(r, c, L, W, along, across, o, wall, tri, quad), gutters: gutter };
 
