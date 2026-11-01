@@ -58,7 +58,7 @@ import { World } from './world/collision';
 import { loadEnvironment } from './world/environment';
 import { house, type DipSpec, type Prism, type Ring, type VillageData } from './world/houseData';
 import { loadProps } from './world/props';
-import { buildHouseMeshes, grassMaterial, groundFamilies, setAnisotropy, surfaceMaterial, tintedMaterial } from './world/houseMeshes';
+import { blockMaterial, buildHouseMeshes, grassMaterial, groundFamilies, setAnisotropy, surfaceMaterial, tintedMaterial } from './world/houseMeshes';
 import { addDiag, startDiag } from './ui/diag';
 import { IndoorLight } from './world/indoorLight';
 import { Portals } from './world/portals';
@@ -2223,6 +2223,8 @@ async function buildVillage(): Promise<void> {
     }
   }
   const drawn = withRoadDetail(withoutLandmarks(data, models.map((m) => m.userData.landmark as string), models.flatMap((m) => (m.userData.replaces as Ring[] | undefined) ?? [])));
+  // The centre's clinkers (the church square and the main street) have a texture of their own, fetched with the village: shaded as the other ground covers.
+  groundShade.apply(blockMaterial('pave_grey', renderer).material as THREE.MeshStandardMaterial);
   const made: { key: string; pieces: ReturnType<typeof buildTile> }[] = [];
   for (const [key, t] of splitTiles(drawn, first)) {
     made.push({ key, pieces: buildTile(t, poles, renderer, house.ground, detail) });

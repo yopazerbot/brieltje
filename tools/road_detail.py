@@ -32,6 +32,10 @@ What the tour showed (the browser's profiles draw it):
   plateau of red-brown pavers with a zebra crossing.
 - The footpaths: Smetledekouterwegel a path of grey concrete tiles through the grass, Pastorijwegel a lane of
   grey pavers, Kosterstraatje and Processewijkweg gravel.
+- The church square (data/smetlede.json, `bays`): parking bays in darker clinkers, each edged with a row of light
+  ones where it meets the square and its neighbours (no paint): nose to the planter walls along the nave and the
+  transept, and a block of five in the middle of the square. The chip shop's forecourt by the school in the
+  square's grey clinkers (`forecourt`). Both are laid over the village data's paving (`patches`).
 
 How it is measured: each street's centre line is cut into stations every STEP metres; from each, a ray either
 side finds the carriageway's edge on the GRB's lines (or, where it has none, the road surface's own edge) and,
@@ -524,6 +528,42 @@ def give_way(kept):
     return out
 
 
+def patches(sm):
+    """The church square's parking bays and the chip shop's forecourt (data/smetlede.json): pieces of clinker in a
+    tint of their own, laid over the village data's paving. A row of bays: its nose line (along the wall the cars
+    face), the way out from it, its depth and where the bays part along the nose line; the light edging (a row of
+    pavers, LINE m wide) runs between the bays (`cuts`), along their back (`rear`) and, for a block standing free,
+    along the nose too (`nose`). The fill is what the edging leaves."""
+    LINE = 0.12
+    bays = sm.get("bays", {})
+    out = []
+    for row in bays.get("rows", []):
+        (ax, az), (bx, bz) = row["nose"]
+        ox, oz = row["out"]
+        n = math.hypot(bx - ax, bz - az)
+        ux, uz = (bx - ax) / n, (bz - az) / n
+        dep = row["depth"]
+
+        def at(s, d):
+            return (ax + ux * s + ox * d, az + uz * s + oz * d)
+        rect = Polygon([at(0, 0), at(n, 0), at(n, dep), at(0, dep)])
+        segs = [LineString([at(c, 0), at(c, dep)]) for c in row["cuts"]] if "cuts" in row["lines"] else []
+        if "rear" in row["lines"]:
+            segs.append(LineString([at(0, dep), at(n, dep)]))
+        if "nose" in row["lines"]:
+            segs.append(LineString([at(0, 0), at(n, 0)]))
+        edging = unary_union([g.buffer(LINE / 2, cap_style="square", join_style="mitre") for g in segs])
+        edging = edging.intersection(rect.buffer(LINE / 2, join_style="mitre"))
+        for g, tint in ((rect.difference(edging), bays["fill"]), (edging, bays["edge"])):
+            for piece in getattr(g, "geoms", [g]):
+                if piece.geom_type == "Polygon" and piece.area > 0.01:
+                    out.append({"t": tint, "r": [ring_out(piece.exterior)] + [ring_out(h) for h in piece.interiors]})
+    fc = sm.get("forecourt")
+    if fc:
+        out.append({"t": fc["tint"], "r": [ring_out(Polygon(fc["p"]).exterior)]})
+    return out
+
+
 def pack(name, profile, run):
     k = [(1 if st["kerb"][0] else 0) | (2 if st["kerb"][1] else 0) | (4 if st["low"][0] else 0) | (8 if st["low"][1] else 0) for st in run]
     return {"name": name, "pf": profile, "s0": round(run[0]["s"], 1), "p": [round(v, 2) for st in run for v in (st["x"], st["z"])],
@@ -595,11 +635,12 @@ def main():
         "school": school_plateau,
         "zebras": [zebra],
         "teeth": give_way(named),
+        "patches": patches(sm),
     }
     OUT.write_text(json.dumps(out, separators=(",", ":"), ensure_ascii=False), encoding="utf-8")
     total = sum(len(r["p"]) // 2 for r in out["runs"])
     print(f"wrote {OUT.relative_to(ROOT)} ({OUT.stat().st_size // 1024} KB): {len(out['runs'])} runs ({total} stations), "
-          f"{len(out['fills'])} fills, {len(out['hide'])} blocks replaced")
+          f"{len(out['fills'])} fills, {len(out['patches'])} patches, {len(out['hide'])} blocks replaced")
     debug(out, road)
 
 

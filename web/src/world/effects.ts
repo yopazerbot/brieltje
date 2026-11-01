@@ -43,7 +43,7 @@ const KIND: Record<string, Kind> = {
 /** Dust colour per surface (brick and plaster dust differ); others fall back to pale plaster. */
 const DUST: Record<string, string> = {
   brick: '#d9cbb0', claustra: '#d9cbb0', nb_wall: '#b88468', old_brick: '#e6dccb', concrete: '#c9c4ba', road: '#cfcac0', terrace: '#c9c4ba', paving: '#c9c4ba',
-  bluestone: '#5d6369', pave_light: '#d6d2ca', pave_warm: '#d2c6b4', gravel: '#cdbfa6', track: '#a8916f', pool_water: '#3e9fbe', pole: '#bdb9b1',
+  bluestone: '#5d6369', pave_light: '#d6d2ca', pave_warm: '#d2c6b4', pave_grey: '#b4b2ac', gravel: '#cdbfa6', track: '#a8916f', pool_water: '#3e9fbe', pole: '#bdb9b1',
   field_soil: '#b39a78', field_dark: '#7d644c', field_crop: '#7f8458', forest: '#5d5640',
   nb_red: '#b06a52', nb_brown: '#8e6450', nb_yellow: '#cdb48e', nb_white: '#e6e0d4', nb_grey: '#a39c93', nb_dark: '#4b4a49', kerb: '#d0ccc4',
 };

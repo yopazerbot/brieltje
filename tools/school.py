@@ -21,7 +21,8 @@ nothing of them is shipped:
   pier and the long block, the long block's red-brown brick under a broad pale roof edge with a chimney,
   the fenced school garden in front of it with two arched polycarbonate bike shelters, the bench on orange
   legs, the three yellow hoop barriers and the orange egg-shaped seat on the pavement; on the square the
-  low stone planter wall along the church's nave, the parking bays in front of it and their blue signs.
+  low stone planter wall along the church's nave and the blue signs of the parking bays in front of it (the bays
+  themselves are clinkers in the square's paving: tools/road_detail.py).
 What the photos don't show is made up in the same style: the playground side of the buildings (windows,
 doors, clerestory windows above the corridor), the play tower's details, the balance posts, the goal, the
 hopscotch, the fence along the playground's south side. The school's board carries coloured squares and
@@ -722,7 +723,7 @@ for k in range(1, 10):  # the net: thin cords
 for y in (0.4, 0.8, 1.2):
     t = y / 1.6
     beam("school_fittings", g(-1.5, 0.9 * (1 - t)) + (gg + y,), g(1.5, 0.9 * (1 - t)) + (gg + y,), 0.015, 0.015, "#d9dcd8")
-# Two benches along the corridor, a bin by the gate.
+# Two benches along the corridor.
 for u in (18.2, 21.0):
     yb = base1
     for du in (-0.75, 0.75):  # concrete feet, a timber seat
@@ -730,9 +731,6 @@ for u in (18.2, 21.0):
         solid("school_dark", [(p[0] + U1[0] * dx + N1[0] * dn, p[1] + U1[1] * dx + N1[1] * dn, yb + y) for dx in (-0.06, 0.06) for dn in (-0.2, 0.2) for y in (-0.1, 0.42)])
     a, b = P1(u - 0.9, DL + 0.55), P1(u + 0.9, DL + 0.55)
     solid("school_fittings", [(q[0] + N1[0] * dn, q[1] + N1[1] * dn, yb + y) for q in (a, b) for dn in (-0.22, 0.22) for y in (0.42, 0.48)], wood)
-x, z = P2(2.6, -0.45)
-tube("school_fittings", (x, z, terrain(x, z)), (x, z, terrain(x, z) + 0.95), 0.27, "#2f4f3a", seg=10)
-tube("school_fittings", (x, z, terrain(x, z) + 0.95), (x, z, terrain(x, z) + 1.0), 0.3, "#263f2f", seg=10)
 
 
 # ---------------------------------------------------------------- the gate, the fences and the school garden
@@ -864,12 +862,9 @@ drape("school_fittings", bed, 0.36, "#4a3c30")
 for k, lx in enumerate(np.arange(LX0 + 0.8, LX1 - 0.4, 1.15)):
     x, z = ch(lx, (WALL_Y + NAVE_FACE) / 2 + 0.05 * ((k % 3) - 1))
     blob("school_fittings", x, z, terrain(x, z) + 0.3, 0.42, 0.5 + 0.12 * (k % 2), ("#58763f", "#6b8a4a", "#4f6e3d")[k % 3], seed=20 + k)
-# Parking bays in front of it, nose to the church, painted white; the two by the tower for disabled drivers.
-for lx in (-16.2, -12.7, -9.2, -6.8, -4.4, -2.0, 0.4):
-    a, b = ch(lx - 0.05, WALL_Y - 0.25), ch(lx + 0.05, WALL_Y - 0.25)
-    c, d = ch(lx + 0.05, WALL_Y - 5.2), ch(lx - 0.05, WALL_Y - 5.2)
-    drape("school_fittings", [a, b, c, d], 0.045, "#eeece6")
-# Their blue signs in front of the wall, and a bin by the chapel.
+# The parking bays in front of it, nose to the church (the two by the tower for disabled drivers), are darker
+# clinkers edged with light ones: tools/road_detail.py lays them in the square's paving (data/smetlede.json).
+# Their blue signs in front of the wall.
 for lx in (-14.45, -10.95):
     x, z = ch(lx, WALL_Y - 0.3)
     g0 = terrain(x, z)
@@ -886,9 +881,7 @@ for lx in (-14.45, -10.95):
     sign.box("school_fittings", 0.28, 0.4, 2.01, 2.09, 0.07, 0.08, "#f4f4f2")
     sign.box("school_fittings", 0.37, 0.43, 2.05, 2.2, 0.07, 0.08, "#f4f4f2")
     sign.box("school_fittings", 0.25, 0.35, 1.5, 1.64, 0.07, 0.08, "#1f5fa8")
-x, z = ch(-16.75, -6.35)
-tube("school_fittings", (x, z, terrain(x, z)), (x, z, terrain(x, z) + 0.9), 0.25, "#2f4f3a", seg=10)
-tube("school_fittings", (x, z, terrain(x, z) + 0.9), (x, z, terrain(x, z) + 0.96), 0.28, "#263f2f", seg=10)
+# No bins: Yoshi asked for none in the game (the one by the chapel and the one by the gate went, 1 Nov 2026).
 
 
 # ---------------------------------------------------------------- UVs, objects, export

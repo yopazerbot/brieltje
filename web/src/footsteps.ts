@@ -13,7 +13,7 @@ const BY_MATERIAL: Record<string, Surface> = {
   floor_tile: 'tile', floor_bath: 'tile', terrazzo: 'tile', rust_tile: 'tile', pink_tile: 'tile',
   ceramic: 'tile', stone: 'tile', pink: 'tile', terracotta: 'tile',
   concrete: 'stone', terrace: 'stone', paving: 'stone', roof: 'stone', road: 'stone', old_stone: 'stone', old_floor: 'tile', old_wood: 'wood',
-  pave_light: 'stone', pave_warm: 'stone', gravel: 'grass', track: 'grass', pool_water: 'tile',
+  pave_light: 'stone', pave_warm: 'stone', pave_grey: 'stone', gravel: 'grass', track: 'grass', pool_water: 'tile',
   field_soil: 'grass', field_dark: 'grass', field_crop: 'grass', forest: 'grass',
   steel: 'metal', rail: 'metal', alu: 'metal', alu_out: 'metal', alu_in: 'metal', hedge: 'grass', nb_hedge: 'grass',
 };

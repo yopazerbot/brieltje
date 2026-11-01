@@ -397,6 +397,39 @@ def road_concrete(size=1024, seed=53):
             Image.fromarray((np.clip(rough, 0, 1) * 255).astype(np.uint8)))
 
 
+def clinker(size=2048, seed=61):
+    """Concrete clinker pavers as Smetlede's church square and main street have them: 22 x 11 cm in stretcher
+    bond, the courses along u, grey with fine light and dark grains in the face, a small chamfer and sanded
+    joints; each paver a little lighter or darker than the next, a faint patina over them. Neutral and light, for
+    the game to tint (the square, its parking bays and their light edging). Tile = 2.2 m: 10 pavers along u and
+    20 courses along v; made at 2048 pixels and saved at half that, so the grains are soft."""
+    rng = np.random.default_rng(seed)
+    px = size / 2.2
+    yy, xx = np.mgrid[0:size, 0:size].astype(np.float32)
+    ch, cw = 0.11 * px, 0.22 * px
+    course = np.floor(yy / ch).astype(int)
+    u = (xx + (course % 2) * (cw / 2)) % size
+    col = np.floor(u / cw).astype(int) % 10
+    # Distance (px) to the paver's nearest edge: the joint, then the chamfer.
+    edge = np.minimum(np.minimum(u % cw, cw - (u % cw)), np.minimum(yy % ch, ch - (yy % ch)))
+    joint = edge < 2.4
+    bevel = np.clip((edge - 2.4) / 5.6, 0, 1)
+    tone = rng.random(20 * 10)[(course % 20) * 10 + col]
+    grains = 0.6 * value_noise((size, size), 2, rng) + 0.4 * rng.random((size, size))
+    light = np.clip((grains - 0.7) * 6, 0, 1)
+    dark = np.clip((0.3 - grains) * 6, 0, 1)
+    fine = rng.random((size, size)) - 0.5
+    patina = 0.6 * value_noise((size, size), 64, rng) + 0.4 * value_noise((size, size), 16, rng)
+    face = 0.71 + 0.1 * (tone - 0.5) - 0.06 * (patina - 0.5) + 0.012 * fine + 0.12 * light - 0.16 * dark
+    face = face * (0.86 + 0.14 * bevel)  # the chamfer catches less light
+    sand = 0.34 + 0.06 * value_noise((size, size), 3, rng)
+    color = np.where(joint, sand, face)[..., None] * np.array([1.0, 1.0, 0.985])
+    height = bevel + 0.05 * light - 0.04 * dark + 0.02 * fine
+    rough = np.where(joint, 0.98, 0.86 + 0.06 * (patina - 0.5) - 0.05 * light)
+    return (Image.fromarray((np.clip(color, 0, 1) * 255).astype(np.uint8)), normal_map(height, 2.2),
+            Image.fromarray((np.clip(rough, 0, 1) * 255).astype(np.uint8)))
+
+
 def generated(sizes):
     """The textures made here (no downloads); adds their real sizes in metres to `sizes`."""
     albedo, normal, rough, claustra = brick()
@@ -418,7 +451,7 @@ def generated(sizes):
 # a fourth number is the normal map's size where 1024 would only add download (the road's fine grit).
 SURFACES = {"nb_brick": (standard_brick, 1.76, 1024), "roof_tiles": (roof_tiles, 1.2, 1024),
             "floor_tile": (large_tile, 4.8, 2048), "cladding": (slats, 1.8, 1024), "asphalt": (asphalt, 2.0, 1024),
-            "road_concrete": (road_concrete, 2.0, 1024, 512)}
+            "road_concrete": (road_concrete, 2.0, 1024, 512), "clinker": (clinker, 2.2, 1024)}
 
 
 def surface(name, sizes):
@@ -460,11 +493,12 @@ def main():
     if "--halves" in sys.argv:  # only remake the half-size copies
         halves()
         return
-    if "--only" in sys.argv:  # one generated surface, e.g. --only floor_tile
+    if "--only" in sys.argv:  # one generated surface, e.g. --only floor_tile (and its half-size copies alone)
+        name = sys.argv[sys.argv.index("--only") + 1]
         sizes = json.loads((WEB / "sizes.json").read_text(encoding="utf-8"))
-        surface(sys.argv[sys.argv.index("--only") + 1], sizes)
+        surface(name, sizes)
         (WEB / "sizes.json").write_text(json.dumps(sizes, indent=1), encoding="utf-8")
-        halves()
+        halves({name})
         return
     if "--grass" in sys.argv:  # only the lawn (ambientCG)
         sizes = json.loads((WEB / "sizes.json").read_text(encoding="utf-8"))

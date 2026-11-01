@@ -472,7 +472,7 @@ function trunkShape(): THREE.BufferGeometry {
  */
 const TREE_ORDER = 0.4;
 const COVER_ORDER = 0.5;
-const GROUND_COVERS = new Set(['road', 'field_soil', 'field_dark', 'field_crop', 'forest', 'pave_light', 'pave_warm', 'pave_grey', 'gravel', 'track']);
+const GROUND_COVERS = new Set(['road', 'field_soil', 'field_dark', 'field_crop', 'forest', 'pave_light', 'pave_warm', 'pave_grey', 'pave_walk', 'gravel', 'track']);
 
 /** m: trees this tall get a second, lower crown (their lower boughs). */
 const LOW_BOUGHS = 15;

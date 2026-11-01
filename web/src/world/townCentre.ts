@@ -7,7 +7,8 @@ import type { Prism, Ring } from './houseData';
  * (tools/town/town.py, from tools/town/houses.json), in place of the blocks the open data gives them.
  * Those blocks stay for walking and driving into; the model names their outlines (`replaces`), so the
  * village leaves them out of the drawing, and brings blocks of its own for what is new (bollards,
- * planters, a bench).
+ * planters, benches, the chip shop's counter and annex, the bus shelter, the beds and notice boards by the
+ * church).
  *
  * A light shade is baked: the model's colours per vertex carry each surface's colour times a soft contact
  * shadow and the sun's shadow under eaves and in reveals, worked out in Blender. So it needs no real-time
@@ -15,7 +16,8 @@ import type { Prism, Ring } from './houseData';
  * normals are kept (as bytes): the ambient occlusion on High reads them, and took the houses for fully
  * shaded without them.
  *
- * Draw calls: five near (brick, render, roof tiles, trim, glass), three far. Within FAR m of the
+ * Draw calls: six near (brick, render, roof tiles, trim, glass, and the bus shelter's clear glass, drawn
+ * see-through after the rest), three far. Within FAR m of the
  * square (230, from the model) the full copy is drawn; beyond it a simple copy of the same volumes,
  * the windows as dark patches; beyond the village's draw distance nothing (the tiles hide it).
  *
@@ -47,6 +49,20 @@ function texture(name: string, kind: 'color' | 'normal' | 'rough', renderer: THR
 
 function material(name: string, extras: { texture?: string; normalScale?: number; roughness?: number }, renderer: THREE.WebGLRenderer): THREE.Material {
   const glass = name.endsWith('glass');
+  if (name.endsWith('clear')) {
+    // Clear glass (the bus shelter's): see-through, both sides, behind everything solid.
+    return new THREE.MeshStandardMaterial({
+      color: new THREE.Color(COLOR_SCALE, COLOR_SCALE, COLOR_SCALE),
+      vertexColors: true,
+      roughness: 0.05,
+      metalness: 0.1,
+      envMapIntensity: 1.6,
+      transparent: true,
+      opacity: 0.2,
+      depthWrite: false,
+      side: THREE.DoubleSide,
+    });
+  }
   const m = new THREE.MeshStandardMaterial({
     color: new THREE.Color(COLOR_SCALE, COLOR_SCALE, COLOR_SCALE),
     vertexColors: true,

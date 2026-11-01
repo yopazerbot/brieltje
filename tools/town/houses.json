@@ -14,7 +14,7 @@
   {
    "id": "long-house",
    "grb": [
-    79
+    89
    ],
    "floor_at": [
     509.0,
@@ -194,7 +194,7 @@
   {
    "id": "barn",
    "grb": [
-    52
+    59
    ],
    "floor_at": [
     498.0,
@@ -280,7 +280,7 @@
   {
    "id": "corner-shop",
    "grb": [
-    293
+    341
    ],
    "floor_at": [
     551.5,
@@ -426,7 +426,7 @@
   {
    "id": "brick-house-east",
    "grb": [
-    47
+    51
    ],
    "floor_at": [
     563.6,
@@ -521,7 +521,7 @@
   {
    "id": "blue-trim-house",
    "grb": [
-    3
+    6
    ],
    "floor_at": [
     571.0,
@@ -641,7 +641,7 @@
   {
    "id": "white-corner",
    "grb": [
-    695
+    808
    ],
    "floor_at": [
     547.3,
@@ -832,7 +832,7 @@
   {
    "id": "grey-house",
    "grb": [
-    352
+    413
    ],
    "floor_at": [
     556.7,
@@ -977,7 +977,7 @@
   {
    "id": "brick-row-east",
    "grb": [
-    568
+    660
    ],
    "floor_at": [
     570.2,
@@ -1078,7 +1078,7 @@
   {
    "id": "small-white-house",
    "grb": [
-    333
+    394
    ],
    "floor_at": [
     532.9,
@@ -1198,7 +1198,7 @@
   {
    "id": "yellow-pair",
    "grb": [
-    518
+    607
    ],
    "floor_at": [
     525.2,
@@ -1330,7 +1330,7 @@
   {
    "id": "arched-house",
    "grb": [
-    64
+    72
    ],
    "floor_at": [
     512.4,
@@ -1502,7 +1502,7 @@
   {
    "id": "flats",
    "grb": [
-    214
+    251
    ],
    "floor_at": [
     501.0,
@@ -1680,21 +1680,25 @@
   {
    "id": "chip-shop",
    "grb": [
-    171
+    202
    ],
    "floor_at": [
     491.0,
     -794.6
    ],
-   "_ref": "The chip shop's kiosk behind its forecourt: cream render, a grey roller shutter, a door and a small window, a green sign band (no lettering).",
+   "_ref": "The chip shop by the school behind its forecourt: white horizontal boards on a grey plinth, a counter under a dark sign band with a green light along its edges (no lettering), closed by a grey roller shutter between aluminium posts, a framed poster case left blank, a cream annex under a lean-to roof; a low bench and a bistro table at the counter.",
    "style": {
     "frame": "#2a2c2e",
     "style": "modern",
-    "sill": "#8d8b86"
+    "sill": "#8d8b86",
+    "boards": [
+     0.2,
+     "#c4c7c7"
+    ]
    },
    "plinth": [
-    0.3,
-    "render:#6b6c6c"
+    0.18,
+    "render:#7e8181"
    ],
    "vols": [
     {
@@ -1717,33 +1721,74 @@
       ]
      ],
      "roof": "flat",
-     "eaves": 3.0,
-     "wall": "render:#ece7da",
-     "coping": "#b9bcbe",
+     "eaves": 3.1,
+     "wall": "render:#f1f1ee",
+     "coping": "#8e9396",
      "faces": {
       "2": {
-       "at": [
-        [
-         1.3,
-         "w1.0"
+       "counter": {
+        "s": [
+         2.05,
+         5.65
         ],
-        [
-         4.0,
-         "g3.0"
+        "d": 1.25,
+        "top": 2.78,
+        "sign": [
+         1.6,
+         5.8,
+         3.52
         ],
-        [
-         6.5,
-         "d0.95"
-        ]
-       ],
-       "garage": "#c3c6c8",
-       "door": "#2a2c2e",
-       "band": [
-        "#2e7a3c",
-        2.55,
-        3.05,
-        0.08
+        "c": "#1c2023",
+        "glow": "#4ade6e",
+        "shutter": "#767b7f",
+        "posts": "#b9bdc0"
+       },
+       "poster": [
+        5.75,
+        7.1,
+        1.0,
+        2.35,
+        "#d3d6d6",
+        "#24282b"
        ]
+      }
+     }
+    },
+    {
+     "p": [
+      [
+       492.779,
+       -793.443
+      ],
+      [
+       494.657,
+       -793.154
+      ],
+      [
+       494.84,
+       -794.34
+      ],
+      [
+       492.962,
+       -794.629
+      ]
+     ],
+     "roof": "shed",
+     "eaves": 2.3,
+     "ridge": 2.75,
+     "wall": "render:#f1f1ee",
+     "roofc": "#54585b",
+     "overhang": 0.12,
+     "verge": 0.06,
+     "downpipes": false,
+     "skip": [
+      2
+     ],
+     "solid": true,
+     "faces": {
+      "0": {
+       "wall": "render:#e4dac2",
+       "boards": null
       }
      }
     }
@@ -1752,7 +1797,7 @@
   {
    "id": "cafe",
    "grb": [
-    83
+    93
    ],
    "floor_at": [
     540.8,
@@ -2010,7 +2055,7 @@
   {
    "id": "white-house",
    "grb": [
-    476
+    557
    ],
    "floor_at": [
     529.8,
@@ -2139,7 +2184,7 @@
   {
    "id": "lane-cottage",
    "grb": [
-    596
+    688
    ],
    "floor_at": [
     549.0,
@@ -2305,7 +2350,7 @@
   {
    "id": "barn-door-house",
    "grb": [
-    577
+    669
    ],
    "floor_at": [
     548.3,
@@ -2444,7 +2489,7 @@
   {
    "id": "lane-new-house",
    "grb": [
-    582
+    674
    ],
    "floor_at": [
     547.4,
@@ -2580,7 +2625,7 @@
   {
    "id": "gable-house-kerkhof",
    "grb": [
-    94
+    106
    ],
    "floor_at": [
     530.6,
@@ -2713,8 +2758,8 @@
   {
    "id": "grey-house-kerkhof",
    "grb": [
-    395,
-    401
+    462,
+    471
    ],
    "floor_at": [
     504.6,
@@ -2885,7 +2930,7 @@
   {
    "id": "narrow-yellow-kerkhof",
    "grb": [
-    650
+    749
    ],
    "floor_at": [
     508.2,
@@ -2963,8 +3008,8 @@
   {
    "id": "tower-house",
    "grb": [
-    271,
-    330
+    315,
+    390
    ],
    "floor_at": [
     441.0,
@@ -3217,7 +3262,7 @@
   {
    "id": "barn-door-row",
    "grb": [
-    38
+    42
    ],
    "floor_at": [
     425.4,
@@ -3440,7 +3485,7 @@
   {
    "id": "mansard-house",
    "grb": [
-    483
+    565
    ],
    "floor_at": [
     438.5,
@@ -3660,7 +3705,7 @@
   {
    "id": "hipped-house-parking",
    "grb": [
-    460
+    539
    ],
    "floor_at": [
     476.0,
@@ -3797,8 +3842,8 @@
   {
    "id": "seventies-pair",
    "grb": [
-    73,
-    292
+    82,
+    340
    ],
    "floor_at": [
     455.0,
@@ -4100,7 +4145,7 @@
   {
    "id": "glazed-brick-row",
    "grb": [
-    705
+    819
    ],
    "floor_at": [
     583.0,
@@ -4327,9 +4372,10 @@
     547.6,
     -750.5
    ],
-   "w": 1.3,
-   "d": 1.3,
-   "yaw": -0.17
+   "w": 0.95,
+   "d": 1.8,
+   "yaw": -0.17,
+   "h": 0.75
   },
   {
    "k": "planter",
@@ -4337,9 +4383,10 @@
     547.9,
     -753.4
    ],
-   "w": 1.3,
-   "d": 1.3,
-   "yaw": -0.17
+   "w": 0.95,
+   "d": 1.8,
+   "yaw": -0.17,
+   "h": 0.75
   },
   {
    "k": "bench",
@@ -4397,6 +4444,205 @@
    "yaw": 0.12,
    "c": "#1f4fa6",
    "y": 2.75
+  },
+  {
+   "k": "bollards",
+   "p": [
+    487.9,
+    -788.75
+   ],
+   "q": [
+    488.0,
+    -794.5
+   ],
+   "n": 4,
+   "c": "#5b4535",
+   "r": 0.085,
+   "h": 0.9,
+   "band": "#b5332d"
+  },
+  {
+   "k": "hoop",
+   "p": [
+    490.45,
+    -788.95
+   ],
+   "yaw": 0.17,
+   "w": 0.9,
+   "h": 0.8
+  },
+  {
+   "k": "lowbench",
+   "p": [
+    491.688,
+    -793.258
+   ],
+   "yaw": 0.153,
+   "w": 1.3
+  },
+  {
+   "k": "bistro",
+   "p": [
+    490.467,
+    -793.213
+   ]
+  },
+  {
+   "k": "shelter",
+   "p": [
+    493.55,
+    -789.7
+   ],
+   "yaw": -1.436,
+   "l": 4.2,
+   "d": 1.5
+  },
+  {
+   "k": "bedwall",
+   "wall": [
+    [
+     525.05,
+     -752.0
+    ],
+    [
+     525.66,
+     -752.85
+    ],
+    [
+     515.91,
+     -759.76
+    ],
+    [
+     515.03,
+     -758.52
+    ]
+   ],
+   "bed": [
+    [
+     525.05,
+     -752.0
+    ],
+    [
+     525.66,
+     -752.85
+    ],
+    [
+     515.91,
+     -759.76
+    ],
+    [
+     515.03,
+     -758.52
+    ],
+    [
+     519.21,
+     -755.56
+    ],
+    [
+     519.49,
+     -755.94
+    ]
+   ],
+   "c": "#b4b1a9"
+  },
+  {
+   "k": "youngtree",
+   "p": [
+    526.71,
+    -753.21
+   ],
+   "island": [
+    [
+     526.08,
+     -751.46
+    ],
+    [
+     525.26,
+     -752.03
+    ],
+    [
+     527.08,
+     -754.6
+    ],
+    [
+     527.9,
+     -754.03
+    ]
+   ]
+  },
+  {
+   "k": "stonebench",
+   "p": [
+    518.71,
+    -758.36
+   ],
+   "yaw": 3.76,
+   "w": 1.8
+  },
+  {
+   "k": "stonebench",
+   "p": [
+    516.88,
+    -759.67
+   ],
+   "yaw": 3.76,
+   "w": 1.6
+  },
+  {
+   "k": "planter",
+   "p": [
+    517.78,
+    -759.03
+   ],
+   "w": 0.45,
+   "d": 0.45,
+   "h": 0.4,
+   "yaw": 3.76
+  },
+  {
+   "k": "board",
+   "p": [
+    519.03,
+    -757.25
+   ],
+   "yaw": 3.76,
+   "w": 2.0,
+   "y": [
+    1.25,
+    1.85
+   ],
+   "c": "#f2f2ef",
+   "frame": "#d4d5d3"
+  },
+  {
+   "k": "board",
+   "p": [
+    516.86,
+    -758.78
+   ],
+   "yaw": 3.76,
+   "w": 1.5,
+   "y": [
+    1.0,
+    1.9
+   ],
+   "c": "#e9ebe5",
+   "frame": "#3f5c47"
+  },
+  {
+   "k": "board",
+   "p": [
+    514.38,
+    -760.72
+   ],
+   "yaw": 3.76,
+   "w": 1.0,
+   "y": [
+    1.0,
+    1.65
+   ],
+   "c": "#cfdcc8",
+   "frame": "#3e6b48"
   }
  ]
 }

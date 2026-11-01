@@ -18,5 +18,20 @@
     "_note": "For walking and driving into (tools/school.py draws them; the build keeps them as blocks only for that): the 1.8 m mesh fences round the school garden (Street View) and along the playground's south and west sides (made up), and the planter wall with its bed along the nave (Street View).",
     "fences": [[[475.33, -789.55], [475.34, -796.71]], [[475.33, -789.55], [487.0, -787.92]], [[487.0, -787.92], [487.1, -795.35]], [[449.7, -806.08], [452.56, -810.06]], [[468.9, -843.45], [481.95, -843.05]]],
     "planter": [[538.63, -740.33], [525.2, -749.84], [524.42, -748.73], [537.84, -739.22]]
+  },
+  "bays": {
+    "_note": "The parking bays on the church square (1 Nov 2026; the orthophoto shows where the cars stand): darker clinkers edged with a row of light ones, no paint. Along the nave nose to its planter wall (the two by the tower wider, for disabled drivers), along the transept nose to its own planter wall, and a block of five in the middle of the square, the cars along x. A row: its nose line, the way out from it, its depth, where the bays part along the nose line (m from its start) and which edges get the light row. tools/road_detail.py lays them over the village data's paving.",
+    "fill": "#5d5c59",
+    "edge": "#dad8d2",
+    "rows": [
+      {"nose": [[538.69, -740.37], [525.14, -749.97]], "out": [0.5783, -0.8159], "depth": 4.95, "cuts": [0, 3.5, 7.0, 9.4, 11.8, 14.2, 16.6], "lines": ["cuts", "rear"]},
+      {"nose": [[525.8, -753.06], [519.68, -757.4]], "out": [0.5783, -0.8159], "depth": 4.95, "cuts": [0, 2.5, 5.0, 7.5], "lines": ["cuts", "rear"]},
+      {"nose": [[539.0, -752.0], [539.0, -764.5]], "out": [1.0, 0.0], "depth": 5.0, "cuts": [0, 2.5, 5.0, 7.5, 10.0, 12.5], "lines": ["cuts", "rear", "nose"]}
+    ]
+  },
+  "forecourt": {
+    "_note": "The chip shop's forecourt by the school: the square's grey clinkers from the pale pavement to its front, between the row of wooden bollards and the block of flats (1 Nov 2026). tools/road_detail.py lays it over the village data's paving.",
+    "tint": "#9a9893",
+    "p": [[487.75, -788.78], [494.7, -787.57], [495.6, -794.6], [494.84, -794.34], [487.75, -795.43]]
   }
 }

@@ -10,6 +10,14 @@ gable (`stepped`: the outline, the parapet's back, the risers and a brick cap on
 courses and lozenges, a sunburst fanlight, a roller-shuttered window and its name lettered on the sign board in
 Blender's own font. Flags and the hanging sign are plain colours with no brand's marks.
 
+The chip shop by the school is clad in white boards (`boards`: a shadow line under each), its counter stands out
+from the front under a dark sign band with a green light along its edges and no lettering (`counter`), its poster
+case is left blank (`poster`) and its annex is a volume of its own (`solid`: a block, as it lies outside the open
+data's outline). The fittings (houses.json `fittings`): bollards (steel, or wooden with a reflector band), planters,
+benches of wood or stone, a bicycle hoop, a bistro table, the bus shelter by the chip shop (a light frame, a pale
+yellow roof edge, clear glass, no stop name or operator's marks), the beds behind low stone walls along the church's
+transept, a young tree in its island, notice boards with blank faces. Each is a block for walking into.
+
 Our own models of the houses a player sees from the church and school portals, from the third survey of the
 village centre (31 Oct 2026, tools/town/houses.json). Used for measuring only, nothing of them is shipped:
 - the plans: the GRB outlines and the roof parts that tools/neighbours.py fits to the DHM Vlaanderen II laser
@@ -39,7 +47,8 @@ Output: one GLB. The near copy, one mesh per material:
 - near_brick, near_render, near_roof: UVs in metres; their extras name a game texture (town_brick, plaster,
   town_roof) and the colour per vertex carries the tint and the baked light;
 - near_trim: frames, doors, shutters, gutters, downpipes, sills' fronts, ridge tiles, fittings, coloured per vertex;
-- near_glass: the panes (dark and glossy, net curtains lighter), coloured per vertex.
+- near_glass: the panes (dark and glossy, net curtains lighter), coloured per vertex;
+- near_clear: clear glass you see through (the bus shelter by the chip shop), drawn see-through by the game.
 The far copy (far_brick, far_render, far_roof): the same volumes without openings, the windows as dark
 patches, for beyond `far` metres from the middle.
 """
@@ -144,6 +153,7 @@ MATS = {
     "roof": ("town_roof", "#55575a", 0.8, 1.0),
     "trim": (None, "#ffffff", 0.55, 1.0),
     "glass": (None, "#20262a", 0.08, 1.0),
+    "clear": (None, "#cfdde6", 0.05, 1.0),   # clear glass you see through (the bus shelter's): drawn see-through by the game
 }
 # The mean linear colour of each game texture: a surface's colour per vertex is its wanted colour divided by
 # this, so the textured surface comes out in the colour named in houses.json (measured on the WebP files).
@@ -170,7 +180,7 @@ def make_material(name, tex, mean, rough, nscale):
 
 for lod in ("near", "far"):
     for name, (tex, mean, rough, nscale) in MATS.items():
-        if lod == "far" and name in ("trim", "glass"):
+        if lod == "far" and name in ("trim", "glass", "clear"):
             continue
         key = (lod, name)
         MAT[key] = make_material(f"{lod}_{name}", tex, mean, rough, nscale)
@@ -544,6 +554,33 @@ def garage(F, h, fs, depth):
     F.box(N, (s0 + s1) / 2 - 0.12, (s0 + s1) / 2 + 0.12, y0 + 0.35, y0 + 0.4, fd - 0.04, fd - 0.02, "#7d7f81")
 
 
+def counter(F, c, bottom, wallcol):
+    """A shop's counter standing out from its front (the chip shop's): sides in the wall's surface from the wall to
+    two aluminium posts, a roller shutter between them, and over it all a dark sign band with a light along its top
+    and bottom edges (no lettering). A block for walking into; the open data's canopy blocks there are left out of
+    the drawing (they stay for walking into)."""
+    N, R = ("near", "trim"), ("near", "render")
+    s0, s1 = c["s"]
+    d, top = c["d"], c["top"]
+    sa, sb, st = c["sign"]
+    for a, b in ((s0, s0 + 0.1), (s1 - 0.1, s1)):
+        F.box(R, a, b, bottom, top, 0.0, d - 0.1, wallcol)
+        F.box(N, a, b, 0.0, top, d - 0.1, d, c["posts"])
+    sh = c["shutter"]
+    F.box(N, s0 + 0.1, s1 - 0.1, 0.02, top - 0.22, d - 0.09, d - 0.06, sh)
+    for k in range(1, int((top - 0.26) / 0.11) + 1):  # the slats
+        y = 0.02 + 0.11 * k
+        F.box(N, s0 + 0.12, s1 - 0.12, y - 0.008, y + 0.008, d - 0.06, d - 0.052, shade(sh, 0.8))
+    F.box(N, s0 + 0.1, s1 - 0.1, top - 0.24, top, d - 0.12, d - 0.03, shade(sh, 0.9))  # the shutter's box
+    F.box(N, sa, sb, top, st, -0.02, d + 0.06, c["c"])
+    for y0, y1 in ((top + 0.06, top + 0.1), (st - 0.1, st - 0.06)):
+        F.box(N, sa + 0.05, sb - 0.05, y0, y1, d + 0.06, d + 0.072, c["glow"])
+    for y0, y1 in ((top - 0.01, top + 0.03), (st - 0.03, st + 0.01)):  # its aluminium edges
+        F.box(N, sa - 0.01, sb + 0.01, y0, y1, -0.02, d + 0.08, c["posts"])
+    solids.append(([list(F.p(s, 0, dd)[:2]) for s, dd in ((s0, 0.0), (s1, 0.0), (s1, d + 0.06), (s0, d + 0.06))], st))
+    replaces.append([list(F.p(s, 0, dd)[:2]) for s, dd in ((sa - 0.3, -0.3), (sb + 0.3, -0.3), (sb + 0.3, d + 0.4), (sa - 0.3, d + 0.4))])
+
+
 # ---------------------------------------------------------------- walls
 def facade(F, length, top, holes, spec, fs, bottom, rng, far_key=None, far_col=None):
     """A wall from s = 0 to `length`, from `bottom` up to the line `top` ([(s, y)]), with its holes; below the
@@ -583,8 +620,28 @@ def facade(F, length, top, holes, spec, fs, bottom, rng, far_key=None, far_col=N
                 if max(ta, tb) - y0 < 1e-4:
                     continue
                 grid(k, F.p(xa, y0), F.p(xb, y0), F.p(xb, tb), F.p(xa, ta), F.out(), c)
+    if fs.get("boards"):  # horizontal boards (weatherboarding): a shadow line under each board, above the plinth
+        step, bc = fs["boards"]
+        lowest_top = min(y for _, y in top)
+        y = max(ph, 0.0) + step
+        while y < lowest_top - 0.08:
+            for xa, xb in zip(xs, xs[1:]):
+                xm = (xa + xb) / 2
+                if xb - xa < 1e-3 or any(h.s0 <= xm <= h.s1 and h.y0 - 0.03 <= y <= h.y1 + 0.03 for h in holes):
+                    continue
+                F.flat(key, xa, xb, y - 0.012, y + 0.012, 0.004, bc)
+            y += step
     for h in holes:
         build_opening(F, h, fs, key, wc, rng)
+    if fs.get("counter"):
+        counter(F, fs["counter"], bottom, wc)
+    if fs.get("poster"):  # a framed poster case on the wall, left blank
+        s0, s1, y0, y1, fc, pc = fs["poster"]
+        F.box(("near", "trim"), s0, s1, y0, y1, 0.0, 0.03, fc)
+        F.flat(("near", "glass"), s0 + 0.06, s1 - 0.06, y0 + 0.06, y1 - 0.06, 0.033, pc)
+        for a, b, c0, c1 in ((s0 + 0.13, s1 - 0.13, y0 + 0.13, y0 + 0.155), (s0 + 0.13, s1 - 0.13, y1 - 0.155, y1 - 0.13),
+                             (s0 + 0.13, s0 + 0.155, y0 + 0.13, y1 - 0.13), (s1 - 0.155, s1 - 0.13, y0 + 0.13, y1 - 0.13)):
+            F.box(("near", "trim"), a, b, c0, c1, 0.033, 0.042, fc)  # a thin inner frame
     for k in range(fs.get("anchors", 0)):  # wall anchors: iron crosses at the upper floor
         s = length * (k + 0.5) / fs["anchors"]
         y = fs.get("anchor_y", 4.6)
@@ -832,16 +889,38 @@ def roof(vol, floor, P, L, W, rng):
 
 
 # ---------------------------------------------------------------- houses
+def ring_distance(pt, ring):
+    """Metres from a point to an outline, 0 inside it."""
+    x, z = pt
+    inside, best = False, 1e9
+    for i in range(len(ring)):
+        (ax, az), (bx, bz) = ring[i], ring[(i + 1) % len(ring)]
+        if (az > z) != (bz > z) and x < (bx - ax) * (z - az) / (bz - az) + ax:
+            inside = not inside
+        dx, dz = bx - ax, bz - az
+        f = max(0.0, min(1.0, ((x - ax) * dx + (z - az) * dz) / (dx * dx + dz * dz or 1)))
+        best = min(best, math.hypot(ax + dx * f - x, az + dz * f - z))
+    return 0.0 if inside else best
+
+
 solids = []      # [ring, height above the ground] for walking into (new things only)
 replaces = []
 for b in SPEC["houses"]:
     rng = random.Random(b["id"])
     for gi in b.get("grb", []):
+        # houses.json names the GRB buildings by their place in data/neighbours.json, which moves when that file is
+        # made again: a building far from the house's front is a stale index (it would hide another house).
+        d = ring_distance(b["floor_at"], NB["buildings"][gi]["p"])
+        if d > 12:
+            raise SystemExit(f"{b['id']}: GRB building {gi} lies {d:.0f} m from its floor_at; data/neighbours.json changed, "
+                             "so the indices in tools/town/houses.json need updating")
         replaces.append(NB["buildings"][gi]["p"])
     fx, fz = b["floor_at"]
     floor = terrain(fx, fz) + b.get("floor_lift", 0.05)
     for vol in b["vols"]:
         p = vol["p"]
+        if vol.get("solid"):  # a volume outside the open data's outlines (an annex): a block of its own
+            solids.append(([list(q) for q in p], vol.get("ridge", vol["eaves"])))
         lowest = min(terrain(x, z) for x, z in p) - 0.4 - floor
         # The volume's plan may be any four-sided shape (the GRB's are seldom square): s along p0-p1, t across
         # towards p3, bilinear between the corners (and straight on beyond them, for the overhangs).
@@ -899,35 +978,183 @@ FITTINGS = []
 for fit in SPEC.get("fittings", []):
     if fit["k"] == "bollards":  # a row of n bollards from p to q
         (ax, az), (bx, bz), n = fit["p"], fit["q"], fit["n"]
-        FITTINGS += [{"k": "bollard", "p": [ax + (bx - ax) * i / (n - 1), az + (bz - az) * i / (n - 1)]} for i in range(n)]
+        FITTINGS += [{**fit, "k": "bollard", "p": [ax + (bx - ax) * i / (n - 1), az + (bz - az) * i / (n - 1)]} for i in range(n)]
     else:
         FITTINGS.append(fit)
+
+
+def bush(bx, bz, y0, r, colour, tall=1.0):
+    """A shrub or a clump of leaves: a rounded, slightly lumpy ball of points round (bx, bz) from y0 up, `tall` times
+    as high as wide (the same spot always gives the same lumps)."""
+    jr = random.Random(f"bush{bx:.2f},{bz:.2f}")
+    pts = []
+    for i, th in enumerate((0.6, 1.25, 1.9, 2.55)):
+        for kk in range(6):
+            a = 2 * math.pi * (kk + 0.5 * i) / 6
+            rr = r * jr.uniform(0.85, 1.08)
+            pts.append((bx + rr * math.sin(th) * math.cos(a), bz + rr * math.sin(th) * math.sin(a), y0 + tall * r * (1 - math.cos(th)) * 0.95))
+    pts.append((bx, bz, y0 + tall * 2 * r * 0.97))
+    pts.append((bx, bz, y0))
+    solid(("near", "trim"), pts, colour)
+
+
+def post_block(x, z, h, r=0.08):
+    solids.append(([[x - r, z - r], [x + r, z - r], [x + r, z + r], [x - r, z + r]], h))
+
+
+NT, NR = ("near", "trim"), ("near", "render")
 for fit in FITTINGS:
     k = fit["k"]
-    x, z = fit["p"]
+    x, z = fit["p"] if "p" in fit else [sum(q[i] for q in fit["bed"]) / len(fit["bed"]) for i in (0, 1)]
     g = terrain(x, z)
-    if k == "bollard":
-        tube(("near", "trim"), (x, z, g - 0.1), (x, z, g + 0.85), 0.07, "#3b3e41", seg=8)
-        tube(("near", "trim"), (x, z, g + 0.85), (x, z, g + 0.92), 0.05, "#3b3e41", seg=8)
-        solids.append(([[x - 0.1, z - 0.1], [x + 0.1, z - 0.1], [x + 0.1, z + 0.1], [x - 0.1, z + 0.1]], 0.95))
+    yaw = fit.get("yaw", 0.0)
+    cu, su = math.cos(yaw), math.sin(yaw)
+
+    def B(a, c, y, x=x, z=z, g=g, cu=cu, su=su):
+        """A point of the fitting: a along its yaw, c across it, y up from the ground at its middle."""
+        return (x + cu * a - su * c, z + su * a + cu * c, g + y)
+
+    def ring_of(a0, a1, c0, c1, B=B):
+        return [list(B(a, c, 0)[:2]) for a, c in ((a0, c0), (a1, c0), (a1, c1), (a0, c1))]
+
+    if k == "bollard":  # steel by default; the chip shop's are wooden posts with a red reflector band
+        c, r, h = fit.get("c", "#3b3e41"), fit.get("r", 0.07), fit.get("h", 0.92)
+        tube(NT, (x, z, g - 0.1), (x, z, g + h - 0.07), r, c, seg=8)
+        tube(NT, (x, z, g + h - 0.07), (x, z, g + h), r - 0.02, c, seg=8)
+        if fit.get("band"):
+            tube(NT, (x, z, g + h - 0.22), (x, z, g + h - 0.14), r + 0.004, fit["band"], seg=8)
+        post_block(x, z, h + 0.03, max(0.1, r + 0.02))
     elif k == "planter":
-        w, d, yaw = fit.get("w", 1.2), fit.get("d", 1.2), fit.get("yaw", 0.0)
-        cu, su = math.cos(yaw), math.sin(yaw)
+        w, d, hp = fit.get("w", 1.2), fit.get("d", 1.2), fit.get("h", 0.55)
         ring = [(x + cu * a - su * c, z + su * a + cu * c) for a, c in ((-w / 2, -d / 2), (w / 2, -d / 2), (w / 2, d / 2), (-w / 2, d / 2))]
-        solid(("near", "render"), [(px, pz, y) for px, pz in ring for y in (g - 0.1, g + 0.55)], "#8d8c88")
+        solid(NR, [(px, pz, y) for px, pz in ring for y in (g - 0.1, g + hp)], "#8d8c88")
         rng = random.Random(f"{x},{z}")
-        for n in range(5):
+        sized = "h" in fit  # the first planters keep their five shrubs; the newer ones get as many as their size takes
+        for n in range(max(2, min(8, round(5 * w * d / 1.4))) if sized else 5):
             bx, bz = x + rng.uniform(-w / 3, w / 3), z + rng.uniform(-d / 3, d / 3)
-            r = rng.uniform(0.25, 0.4)
-            pts = []
-            for i in range(1, 3):
-                th = math.pi * i / 3
-                for kk in range(6):
-                    a = 2 * math.pi * (kk + 0.5 * i) / 6
-                    pts.append((bx + r * math.sin(th) * math.cos(a), bz + r * math.sin(th) * math.sin(a), g + 0.5 + r * (1 - math.cos(th))))
-            pts.append((bx, bz, g + 0.5 + 2 * r))
-            solid(("near", "trim"), pts, rng.choice(["#4f6b3a", "#5a7642", "#47603a"]))
-        solids.append(([list(q) for q in ring], 0.6))
+            r = rng.uniform(0.25, 0.4) * (min(1.0, 0.4 + max(w, d) / 2.5) if sized else 1.0)
+            bush(bx, bz, g + hp - 0.05, r, rng.choice(["#4f6b3a", "#5a7642", "#47603a"]))
+        solids.append(([list(q) for q in ring], hp + 0.05))
+    elif k == "hoop":  # a galvanised bicycle hoop: an arch of tube with a bar across its middle, set in the paving
+        w, h, rb = fit.get("w", 0.9), fit.get("h", 0.8), 0.14
+        line = [(-w / 2, -0.15), (-w / 2, h - rb)]
+        line += [(-w / 2 + rb - rb * math.cos(math.pi / 2 * i / 3), h - rb + rb * math.sin(math.pi / 2 * i / 3)) for i in range(1, 4)]
+        line += [(w / 2 - rb + rb * math.cos(math.pi / 2 * (1 - i / 3)), h - rb + rb * math.sin(math.pi / 2 * (1 - i / 3))) for i in range(0, 3)]
+        line += [(w / 2, h - rb), (w / 2, -0.15)]
+        for (a0, y0), (a1, y1) in zip(line, line[1:]):
+            tube(NT, B(a0, 0, y0), B(a1, 0, y1), 0.03, "#b4b9bd", seg=6)
+        tube(NT, B(-w / 2, 0, h * 0.42), B(w / 2, 0, h * 0.42), 0.022, "#b4b9bd", seg=6)
+        solids.append((ring_of(-w / 2 - 0.04, w / 2 + 0.04, -0.05, 0.05), h))
+    elif k == "lowbench":  # a low wooden bench against a shop's front: slats on two dark frames
+        w = fit.get("w", 1.2)
+        for a in (-w / 2 + 0.12, w / 2 - 0.12):
+            solid(NT, [B(a + da, c, y) for da in (-0.03, 0.03) for c in (-0.16, 0.16) for y in (0.0, 0.36)], "#2b2d2f")
+        for c in (-0.11, 0.0, 0.11):
+            solid(NT, [B(a, c + dc, y) for a in (-w / 2, w / 2) for dc in (-0.045, 0.045) for y in (0.36, 0.4)], "#5b4636")
+        solids.append((ring_of(-w / 2, w / 2, -0.17, 0.17), 0.42))
+    elif k == "bistro":  # a small round bistro table: a black top on one leg and a cross foot
+        top = [B(math.cos(2 * math.pi * i / 12) * 0.3, math.sin(2 * math.pi * i / 12) * 0.3, y) for i in range(12) for y in (0.71, 0.74)]
+        solid(NT, top, "#1f2122")
+        tube(NT, B(0, 0, 0.03), B(0, 0, 0.71), 0.025, "#1f2122", seg=6)
+        for a in (0.0, math.pi / 2):
+            solid(NT, [B(math.cos(a) * s - math.sin(a) * t, math.sin(a) * s + math.cos(a) * t, y)
+                       for s in (-0.25, 0.25) for t in (-0.025, 0.025) for y in (0.0, 0.035)], "#1f2122")
+        solids.append((ring_of(-0.3, 0.3, -0.3, 0.3), 0.75))
+    elif k == "stonebench":  # a bench of grey stone: a slab on two blocks
+        w, sc = fit.get("w", 1.8), fit.get("c", "#a9a69e")
+        for a in (-w / 2 + 0.3, w / 2 - 0.3):
+            solid(NR, [B(a + da, c, y) for da in (-0.2, 0.2) for c in (-0.19, 0.19) for y in (-0.05, 0.36)], shade(sc, 0.94))
+        solid(NR, [B(a, c, y) for a in (-w / 2, w / 2) for c in (-0.24, 0.24) for y in (0.36, 0.46)], sc)
+        solids.append((ring_of(-w / 2, w / 2, -0.24, 0.24), 0.48))
+    elif k == "board":  # a notice board on two posts, its face to +c (the square) left blank
+        w, (y0, y1) = fit["w"], fit["y"]
+        for a in (-w / 2 + 0.1, w / 2 - 0.1):
+            p0, p1 = B(a, 0, -0.1), B(a, 0, y1 + 0.04)
+            tube(NT, p0, p1, 0.035, fit.get("post", "#7f8487"), seg=6)
+            post_block(p0[0], p0[1], y1)
+        solid(NT, [B(a, c, y) for a in (-w / 2, w / 2) for c in (0.04, 0.085) for y in (y0, y1)], fit["frame"])
+        face(NT, [B(-w / 2 + 0.05, 0.087, y0 + 0.05), B(w / 2 - 0.05, 0.087, y0 + 0.05), B(w / 2 - 0.05, 0.087, y1 - 0.05),
+                  B(-w / 2 + 0.05, 0.087, y1 - 0.05)], (-su, cu, 0), fit["c"])
+    elif k == "youngtree":  # a young tree in an island with a low kerb: its trunk tied to two stakes, a light crown
+        isl = fit["island"]
+        gi = min(terrain(px, pz) for px, pz in isl)
+        for i in range(4):
+            (ax, az), (bx, bz) = isl[i], isl[(i + 1) % 4]
+            nx, nz = (bz - az), -(bx - ax)
+            nl = math.hypot(nx, nz)
+            cx_, cz_ = sum(q[0] for q in isl) / 4, sum(q[1] for q in isl) / 4
+            if nx * (cx_ - ax) + nz * (cz_ - az) < 0:
+                nx, nz = -nx, -nz
+            ix, iz = nx / nl * 0.12, nz / nl * 0.12
+            solid(NR, [(px, pz, gi + y) for px, pz in ((ax, az), (bx, bz), (ax + ix, az + iz), (bx + ix, bz + iz)) for y in (-0.05, 0.12)], "#c4c3bd")
+        face(NT, [(px, pz, gi + 0.07) for px, pz in isl], (0, 0, 1), "#4d4035")
+        tube(NT, (x, z, g), (x, z, g + 3.2), 0.06, "#6e6052", seg=6)
+        sx, sz = -su * 0.28, cu * 0.28
+        for sg in (1, -1):
+            tube(NT, (x + sx * sg, z + sz * sg, g), (x + sx * sg, z + sz * sg, g + 1.7), 0.03, "#a58a62", seg=5)
+        tube(NT, (x + sx, z + sz, g + 1.45), (x - sx, z - sz, g + 1.45), 0.02, "#a58a62", seg=5)
+        rng = random.Random(f"tree{x},{z}")
+        for n in range(9):  # a slim crown of leafy clumps from 2.2 to about 4.5 m
+            a, rr = rng.uniform(0, 2 * math.pi), rng.uniform(0.1, 0.5)
+            y = 2.2 + 1.8 * n / 8 + rng.uniform(-0.15, 0.15)
+            bush(x + math.cos(a) * rr, z + math.sin(a) * rr, g + y, rng.uniform(0.4, 0.62) * (1.0 - 0.3 * abs(n - 3.5) / 4.5),
+                 rng.choice(["#6f8f45", "#7d9a4c", "#8ea24f", "#9aa652"]), tall=1.05)
+        solids.append(([list(q) for q in isl], 0.13))
+        post_block(x, z, 3.0, 0.15)
+    elif k == "bedwall":  # a raised bed behind a low wall of grey stone blocks: the wall along `wall`, the bed inside `bed`
+        h, th, sc = fit.get("h", 0.5), fit.get("t", 0.36), fit["c"]
+        wall, bed = fit["wall"], fit["bed"]
+        for (ax, az), (bx, bz) in zip(wall, wall[1:]):
+            ln = math.hypot(bx - ax, bz - az)
+            ux, uz = (bx - ax) / ln, (bz - az) / ln
+            nx, nz = -uz * th / 2, ux * th / 2
+            n = max(1, round(ln / 2.0))
+            for i in range(n):
+                s0, s1 = ln * i / n - (th / 2 if i == 0 else 0), ln * (i + 1) / n + (th / 2 if i == n - 1 else 0)
+                ends = [(ax + ux * s, az + uz * s) for s in (s0, s1)]
+                gw = min(terrain(px, pz) for px, pz in ends)
+                solid(("near", "brick"), [(px + nx * sg, pz + nz * sg, gw + y) for px, pz in ends for sg in (1, -1) for y in (-0.25, h)], sc)
+        gb = min(terrain(px, pz) for px, pz in bed)
+        face(NT, [(px, pz, gb + h - 0.12) for px, pz in bed], (0, 0, 1), "#4a3c30")
+        rng = random.Random(f"bed{x},{z}")
+        (fx0, fz0), (fx1, fz1) = wall[1], wall[2]  # the long front: shrubs and grasses along it, inside the wall
+        ln = math.hypot(fx1 - fx0, fz1 - fz0)
+        ux, uz = (fx1 - fx0) / ln, (fz1 - fz0) / ln
+        inx, inz = (bed[-1][0] - fx0), (bed[-1][1] - fz0)
+        dep = abs(-uz * inx + ux * inz)
+        side = 1 if (-uz * inx + ux * inz) > 0 else -1
+        s = 0.5
+        while s < ln - 0.4:
+            dd = rng.uniform(0.35, max(0.4, dep - 0.4))
+            px, pz = fx0 + ux * s - uz * side * dd, fz0 + uz * s + ux * side * dd
+            if rng.random() < 0.35 or s > ln * 0.6:  # ornamental grasses, towards the sacristy most
+                bush(px, pz, gb + h - 0.15, rng.uniform(0.22, 0.32), rng.choice(["#a4a466", "#9a9a5e", "#b0aa70"]), tall=1.8)
+            else:
+                bush(px, pz, gb + h - 0.15, rng.uniform(0.3, 0.48), rng.choice(["#58763f", "#6b8a4a", "#4f6e3d", "#7a4a3e"]))
+            s += rng.uniform(0.7, 1.1)
+        solids.append(([list(q) for q in bed], h))
+    elif k == "shelter":  # a bus shelter: a light steel frame, a flat roof with a pale yellow edge, clear glass at the back and the ends
+        L, D, H = fit.get("l", 4.2), fit.get("d", 1.5), fit.get("h", 2.35)
+        fr = "#c3c7ca"
+        for a in (-L / 2 + 0.04, 0.0, L / 2 - 0.04):
+            for c in (-D / 2 + 0.06, D / 2 - 0.06):  # c > 0 is the back
+                solid(NT, [B(a + da, c + dc, y) for da in (-0.035, 0.035) for dc in (-0.035, 0.035) for y in (0.0, H)], fr)
+                if c < 0:
+                    post_block(*B(a, c, 0)[:2], H)
+        for c in (-D / 2 + 0.06, D / 2 - 0.06):
+            solid(NT, [B(a, c + dc, y) for a in (-L / 2, L / 2) for dc in (-0.035, 0.035) for y in (H - 0.1, H)], fr)
+        solid(NT, [B(a, c, y) for a in (-L / 2 - 0.12, L / 2 + 0.12) for c in (-D / 2 - 0.15, D / 2 + 0.08) for y in (H, H + 0.08)], "#dadcdc")
+        for a0, a1, c0, c1 in ((-L / 2 - 0.15, L / 2 + 0.15, -D / 2 - 0.18, -D / 2 - 0.15), (-L / 2 - 0.15, L / 2 + 0.15, D / 2 + 0.08, D / 2 + 0.11),
+                               (-L / 2 - 0.15, -L / 2 - 0.12, -D / 2 - 0.18, D / 2 + 0.11), (L / 2 + 0.12, L / 2 + 0.15, -D / 2 - 0.18, D / 2 + 0.11)):
+            solid(NT, [B(a, c, y) for a in (a0, a1) for c in (c0, c1) for y in (H - 0.04, H + 0.12)], "#e0c95e")  # the roof's pale yellow edge
+        gl = [(-L / 2 + 0.04, D / 2 - 0.06, L / 2 - 0.04, D / 2 - 0.06), (-L / 2 + 0.04, D / 2 - 0.06, -L / 2 + 0.04, -D / 2 + 0.5),
+              (L / 2 - 0.04, D / 2 - 0.06, L / 2 - 0.04, -D / 2 + 0.5)]
+        for a0, c0, a1, c1 in gl:
+            face(("near", "clear"), [B(a0, c0, 0.12), B(a1, c1, 0.12), B(a1, c1, H - 0.1), B(a0, c0, H - 0.1)], None, "#cfdde6")
+            solids.append((ring_of(min(a0, a1) - 0.05, max(a0, a1) + 0.05, min(c0, c1) - 0.05, max(c0, c1) + 0.05), H))
+        for a in (-L / 2 + 0.6, L / 2 - 0.6):  # the bench along the back
+            solid(NT, [B(a + da, c, y) for da in (-0.03, 0.03) for c in (D / 2 - 0.4, D / 2 - 0.1) for y in (0.0, 0.45)], fr)
+        solid(NT, [B(a, c, y) for a in (-L / 2 + 0.35, L / 2 - 0.35) for c in (D / 2 - 0.45, D / 2 - 0.1) for y in (0.45, 0.5)], "#e4e6e6")
     elif k == "bench":
         yaw = fit.get("yaw", 0.0)
         cu, su = math.cos(yaw), math.sin(yaw)
@@ -999,7 +1226,7 @@ def bake():
             polys.append([off + v.index for v in f.verts])
 
     for key, bm in BM.items():
-        if key[0] == "near":
+        if key[0] == "near" and key[1] != "clear":  # clear glass casts no shade
             bm.normal_update()
             bm.verts.ensure_lookup_table()
             bm.verts.index_update()
@@ -1062,7 +1289,7 @@ def bake():
     cache = {}
     count = 0
     for key, bm in BM.items():
-        if key[0] != "near" or key[1] == "glass":
+        if key[0] != "near" or key[1] in ("glass", "clear"):
             continue
         lay = bm.loops.layers.float_color["Color"]
         for f in bm.faces:

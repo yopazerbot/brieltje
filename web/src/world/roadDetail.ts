@@ -22,6 +22,10 @@ import { tileKey, type Piece } from './tiles';
  * the road surface they cover pixel for pixel. The old road blocks stay for walking on; the pavements and the
  * school's plateau get blocks of their own, a few centimetres high (a kerb is no wall: the player steps up 50 cm,
  * a car rolls over 30).
+ *
+ * In Smetlede's centre, whose grey clinkers the village data draws: the parking bays on the church square in darker
+ * clinkers edged with a row of light ones, and the chip shop's forecourt by the school in the square's clinkers
+ * (`patches`, from data/smetlede.json), laid a few centimetres over the paving they lie on.
  */
 
 interface Run {
@@ -52,6 +56,8 @@ interface Detail {
   hide: string[];
   runs: Run[];
   fills: { m: string; r: number[][] }[];
+  /** Clinkers laid over the village's paving in a tint of their own (the square's bays, the chip shop's forecourt) */
+  patches?: { t: string; r: number[][] }[];
   school: { p: number[]; w: number[]; x: [number, number]; red: [number, number] };
   zebras: Spot[];
   teeth: Spot[];
@@ -59,7 +65,7 @@ interface Detail {
 
 const DETAIL = data as unknown as Detail;
 
-type Surface = 'concrete' | 'asphalt' | 'pavers' | 'tiles' | 'gravel';
+type Surface = 'concrete' | 'asphalt' | 'pavers' | 'tiles' | 'gravel' | 'clinker';
 
 /** How each kind of street looks (tools/road_detail.py's PROFILES say which street is which). */
 interface Profile {
@@ -135,12 +141,13 @@ const PROFILES: Record<string, Profile> = {
 };
 
 /** The material behind each surface: the village's own families, tinted per vertex. */
-const MATERIAL: Record<Surface, string> = { concrete: 'rd_concrete', asphalt: 'rd_asphalt', pavers: 'pave_grey', tiles: 'rd_tiles', gravel: 'gravel' };
+const MATERIAL: Record<Surface, string> = { concrete: 'rd_concrete', asphalt: 'rd_asphalt', pavers: 'pave_walk', tiles: 'rd_tiles', gravel: 'gravel', clinker: 'pave_grey' };
 /** What a bullet hitting each one looks and sounds like. */
-const TAG: Record<Surface, string> = { concrete: 'road', asphalt: 'road', pavers: 'pave_light', tiles: 'pave_light', gravel: 'gravel' };
+const TAG: Record<Surface, string> = { concrete: 'road', asphalt: 'road', pavers: 'pave_light', tiles: 'pave_light', gravel: 'gravel', clinker: 'pave_grey' };
 
 const KERB = 0.12; // m: the kerb's width (tools/road_detail.py measures the pavement from its back)
 const LIFT = 0.006; // m: the paint, joints and iron above the surface they lie on
+const PATCH_LIFT = 0.03; // m: the bays and the forecourt above the village's paving (its blocks follow the relief more coarsely)
 const COVER_ORDER = 0.5; // drawn with the other ground covers (world/surroundings.ts)
 const PIECE = 10; // stations in one piece of a strip (25 m): each piece goes into the tile it lies in
 const AREA = 540; // m round the plot's middle: the ring's (loaded at the start); beyond, the village's
@@ -667,6 +674,30 @@ class Builder {
     g.dispose();
   }
 
+  /** Clinkers in the tint `t` over the village's paving: a parking bay's dark fill or light edging, a forecourt. */
+  patch(t: string, rings: number[][]): void {
+    const r0 = rings[0];
+    let cx = 0;
+    let cz = 0;
+    for (let i = 0; i < r0.length; i += 2) {
+      cx += r0[i];
+      cz += r0[i + 1];
+    }
+    cx /= r0.length / 2;
+    cz /= r0.length / 2;
+    if (!this.parts.mine(cx, cz)) return;
+    const p: [number, number][][] = rings.map((r) => Array.from({ length: r.length / 2 }, (_, i) => [r[2 * i], r[2 * i + 1]] as [number, number]));
+    const g = prismGeometry({ m: 'pave_grey', y0: this.road + PATCH_LIFT - 0.01, y1: this.road + PATCH_LIFT, p, d: 4 });
+    const tint = new THREE.Color(t);
+    const mesh = this.parts.get(cx, cz, this.material('clinker'), 'pave_grey', COVER_ORDER);
+    const pos = g.attributes.position;
+    const uv = g.attributes.uv;
+    const first = mesh.pos.length / 3;
+    for (let i = 0; i < pos.count; i++) mesh.vertex(pos.getX(i), pos.getY(i), pos.getZ(i), uv.getX(i), uv.getY(i), tint);
+    for (let i = 0; i < pos.count; i += 3) mesh.idx.push(first + i, first + i + 1, first + i + 2);
+    g.dispose();
+  }
+
   /**
    * The school's plateau on Smetlededorp: the carriageway raised 6 cm with a ramp at either end, grey pavers as
    * the street, red-brown ones where the crossing is, and the zebra on it.
@@ -684,7 +715,7 @@ class Builder {
     const isRed = (k: number) => f.x[k] >= s.red[0] && f.x[k] <= s.red[1];
     for (const [k0, k1, r] of spans(f.n, isRed)) {
       const tint = r ? red : grey;
-      this.strip(f, k0, k1, wb, wa, 'pavers', (k) => lift(k), (k, _o, out) => out.copy(tint).multiplyScalar(0.96 + 0.08 * hash(k, 5)), [0, 0.5, 1], 1, 'pave_grey', COVER_ORDER - 0.05);
+      this.strip(f, k0, k1, wb, wa, 'clinker', (k) => lift(k), (k, _o, out) => out.copy(tint).multiplyScalar(0.96 + 0.08 * hash(k, 5)), [0, 0.5, 1], 1, 'pave_grey', COVER_ORDER - 0.05);
     }
     // Its sides: the step down to the street's pavers.
     this.riser(f, 0, f.n - 1, wa, () => this.road - 0.02, lift, '#7d7c79', true);
@@ -755,6 +786,7 @@ export function buildRoadDetail(village: boolean, renderer: THREE.WebGLRenderer,
   for (const r of DETAIL.runs) b.run(r);
   for (const fl of DETAIL.fills) b.fill(fl.m, fl.r);
   if (village) b.school(DETAIL.school, DETAIL.zebras);
+  for (const p of DETAIL.patches ?? []) b.patch(p.t, p.r);
   for (const t of DETAIL.teeth) b.teeth(t);
   return { tiles: b.parts.tiles(), blocks: b.parts.blocks };
 }
