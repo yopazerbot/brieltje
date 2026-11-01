@@ -333,13 +333,22 @@ let quality: Quality = mode === 'auto' ? guessFromName(gpu) : mode;
 let preset: Preset = PRESETS[quality];
 let dynScale = 1;
 
-/** Resize everything to the window at the current render scale. */
+/**
+ * Resize everything to the window. The canvas keeps the preset's scale: a dip while frames run long changes only
+ * what the scene is drawn into (rescale), stretched onto the canvas by the last pass. A new canvas size clears the
+ * canvas, and on an iPhone that showed as a dark flicker in the sky whenever the resolution dipped or rose again.
+ */
 function resize(): void {
-  const scale = preset.scale * dynScale;
   camera.aspect = window.innerWidth / window.innerHeight;
   camera.updateProjectionMatrix();
-  renderer.setPixelRatio(scale);
+  renderer.setPixelRatio(preset.scale);
   renderer.setSize(window.innerWidth, window.innerHeight);
+  rescale();
+}
+
+/** The scene's drawing resolution: the preset's, dipped while frames run long. */
+function rescale(): void {
+  const scale = preset.scale * dynScale;
   composer.setPixelRatio(scale);
   composer.setSize(window.innerWidth, window.innerHeight);
   const aoDiv = preset.ao === 'full' ? 1 : 2;
@@ -393,7 +402,7 @@ function adaptQuality(dt: number, now: number): void {
     const lowest = quality === 'low' ? 0.6 : 0.75;
     if (dynScale > lowest) {
       dynScale = Math.max(lowest, dynScale - 0.1);
-      resize();
+      rescale();
     } else if (mode === 'auto' && quality !== 'low') {
       applyQuality(ORDER[ORDER.indexOf(quality) - 1]);
       menu.setGraphics(mode, quality, gpu);
@@ -401,7 +410,7 @@ function adaptQuality(dt: number, now: number): void {
   } else if (fastTime > 4 && dynScale < 1) {
     fastTime = 0;
     dynScale = Math.min(1, dynScale + 0.1);
-    resize();
+    rescale();
   }
 }
 
