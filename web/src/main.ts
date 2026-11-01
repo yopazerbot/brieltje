@@ -706,6 +706,8 @@ weapon.onImpact = (point, normal, material, on) => effects.shot(point, normal, m
 weapon.onPaintball = (from, to, paint) => effects.paintShot(from, to, paint);
 weapon.onEject = (w) => effects.casing(camera, w, weapon.aimAmount);
 
+/** The walking speed together: the real pace for everyone (alone, the menu's own). Running is 2.5 times it. */
+const REAL_WALK = 1.4;
 player.walkSpeed = menu.walkSpeed;
 
 // Settings (pause menu): look speed, field of view, volume, inverted look, vibration.
@@ -738,7 +740,7 @@ player.onLand = (speed) => {
   footstep(surfaceOf(player.ground.mat), Math.min(1, speed / 6));
   weapon.land(speed);
 };
-menu.onSpeed = (v) => (player.walkSpeed = v);
+menu.onSpeed = (v) => (player.walkSpeed = me ? REAL_WALK : v);
 // Paintball is Action with paint guns: the same weapon and fight, shown the friendly way (src/paintball.ts).
 weapon.setEnabled(menu.playing !== 'explore');
 setPaintball(menu.playing === 'paintball');
@@ -938,6 +940,10 @@ function followAccount(account: Me | null): void {
   // Alone, the house and the bungalow are shut (Yoshi): no door opens and no pane breaks. Leaving
   // the others from inside, you are put out in front.
   doors.lock(!account);
+  // Together everyone walks and runs at the real pace; alone, the speed you chose (the server holds
+  // running to the real pace too, server/game.mjs).
+  player.walkSpeed = account ? REAL_WALK : menu.walkSpeed;
+  menu.lockSpeed(account ? REAL_WALK : null);
   glass.seal(!account);
   if (!account && wasTogether) putOutside();
   wasTogether = !!account;

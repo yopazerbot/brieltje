@@ -1278,3 +1278,8 @@ html:lang(nl) #touch .t-reload, html:lang(nl) #touch .t-nade, html:lang(nl) body
   #fb-comment { min-height: 48px; }
   #feedback .fb-note { margin-top: 8px; }
 }
+
+/* Together the walking speed is the real pace: the slider is off, with a line saying why. */
+.speed-locked { margin: 6px 0 0; font-size: 13px; color: var(--muted, rgba(245, 239, 228, 0.7)); }
+input.speed:disabled { opacity: 0.5; cursor: not-allowed; }
+

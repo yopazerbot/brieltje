@@ -182,7 +182,10 @@ const RESPAWN_MS = 3000;
 const PROTECT_MS = 2000; // can't be hurt just after respawning (ends when you shoot)
 const ROUND_BREAK_MS = 8000;
 const MAX_HIT_RANGE = 120; // m
-const MAX_SPEED = 16; // m/s: sprinting is 10, falling off the roof about 13
+const MAX_SPEED = 16; // m/s up or down: falling off the roof is about 13
+// m/s across, on foot or flying: running at the real pace (1.4 m/s walking, 2.5 times that running,
+// fixed together: src/main.ts REAL_WALK), with room for network jitter. Only a changed page goes faster.
+const RUN_SPEED = 1.4 * 2.5 * 1.3;
 const ADMIN_SPEED = 16 * 15; // m/s: the admin may move extremely fast (src/player.ts turbo)
 const CAR_SPEED = Math.max(...Object.values(CARS.cars).map((c) => c.maxSpeed)) * 1.2; // m/s in a car, with room for network jitter
 const HORSE_SPEED = HORSES.gallop * 1.3; // m/s on horseback
@@ -323,7 +326,7 @@ export class Game {
     player.state = { x: at.x, y: at.y, z: at.z, yaw: 0, pitch: 0, armed: false, flying: false, w: 'pistol', c: false };
     player.joinedAt = { x: at.x, z: at.z }; // a start place is only taken from here (see spawn)
     player.movedAt = now;
-    player.budget = 0.5;
+    player.budget = player.vbudget = 0.5;
     this.players.set(name, player);
     this.auth.log('mp_join', req, { username: name });
 
@@ -491,13 +494,21 @@ export class Game {
       // speed for its driver; at most half a second's worth stored) and each update spends it,
       // however often updates come. A faked jump only gets as far as running would; a lagging
       // player catches up.
-      const speed = inCar ? CAR_SPEED : horse ? HORSE_SPEED : player.role === 'admin' ? ADMIN_SPEED : MAX_SPEED;
-      const budget = Math.min(speed * 0.5 + 0.5, player.budget + (speed * (now - player.movedAt)) / 1000);
+      // Across and up or down each have a budget: on foot running is held to the real pace while a fall
+      // from the roof may still be fast (the admin's extremely fast walking keeps its own).
+      const speed = inCar ? CAR_SPEED : horse ? HORSE_SPEED : player.role === 'admin' ? ADMIN_SPEED : RUN_SPEED;
+      const vspeed = inCar || horse || player.role === 'admin' ? speed : MAX_SPEED;
+      const secs = (now - player.movedAt) / 1000;
+      const budget = Math.min(speed * 0.5 + 0.5, player.budget + speed * secs);
+      const vbudget = Math.min(vspeed * 0.5 + 0.5, (player.vbudget ?? 0.5) + vspeed * secs);
       const dx = next.x - prev.x, dy = next.y - prev.y, dz = next.z - prev.z;
-      const dist = Math.hypot(dx, dy, dz);
-      const step = Math.min(dist, budget);
-      if (dist > step) Object.assign(next, { x: prev.x + (dx * step) / dist, y: prev.y + (dy * step) / dist, z: prev.z + (dz * step) / dist });
+      const across = Math.hypot(dx, dz);
+      const step = Math.min(across, budget);
+      const vstep = Math.min(Math.abs(dy), vbudget);
+      if (across > step) Object.assign(next, { x: prev.x + (dx * step) / across, z: prev.z + (dz * step) / across });
+      if (Math.abs(dy) > vstep) next.y = prev.y + Math.sign(dy) * vstep;
       player.budget = budget - step;
+      player.vbudget = vbudget - vstep;
       player.movedAt = now;
       // The edge of the game: a position outside it (only a changed page sends one) is put back just inside.
       this.fenceIn(next, prev);
@@ -668,7 +679,7 @@ export class Game {
     if (!this.fence().inside(x, z)) return no(); // a game in the house: only a start near it
     p.nextTravel = now + TRAVEL_MS;
     Object.assign(p.state, { x, y: TERRAIN.height(x, z), z });
-    p.budget = 0.5;
+    p.budget = p.vbudget = 0.5;
     p.movedAt = now;
     this.moved(p);
   }
@@ -694,7 +705,7 @@ export class Game {
     const y = TERRAIN.height(x, z); // near enough: the player's next update has their feet exactly
     const move = (q) => {
       Object.assign(q.state, { x, y, z });
-      q.budget = 0.5;
+      q.budget = q.vbudget = 0.5;
       q.movedAt = now;
       this.moved(q);
     };
@@ -1244,7 +1255,7 @@ export class Game {
     // Until the player's own update arrives, they are at the spawn point (so the next pick avoids it).
     if (p.state) Object.assign(p.state, { x: pos.x, y: pos.y, z: pos.z });
     p.movedAt = now;
-    p.budget = 0.5;
+    p.budget = p.vbudget = 0.5;
     this.moved(p);
     this.broadcast({ t: 'respawn', name, spawn, ...(at ? { x: at.x, z: at.z } : {}) });
   }

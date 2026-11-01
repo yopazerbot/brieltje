@@ -263,7 +263,24 @@ export class Menu {
     });
   }
 
+  /**
+   * Together everyone walks at the real pace (Yoshi, 1 Nov 2026): the slider shows it and is off, with
+   * a line saying why. Your own speed is kept for playing alone again.
+   */
+  lockSpeed(real: number | null): void {
+    this.speedLock = real;
+    document.querySelectorAll<HTMLInputElement>('input.speed').forEach((s) => {
+      s.disabled = real !== null;
+      s.value = String(real ?? this.walkSpeed);
+      fillRange(s);
+    });
+    document.querySelectorAll('.speed-locked').forEach((e) => e.classList.toggle('hidden', real === null));
+    document.querySelectorAll('.walk-value').forEach((e) => (e.textContent = `${num(real ?? this.walkSpeed, 1)} m/s`));
+  }
+  private speedLock: number | null = null;
+
   setSpeed(speed: number, notify = true): void {
+    if (this.speedLock !== null) return; // together: the real pace
     this.walkSpeed = Math.round(Math.min(4, Math.max(0.8, speed)) * 10) / 10;
     save(KEYS.speed, String(this.walkSpeed));
     document.querySelectorAll<HTMLInputElement>('input.speed').forEach((s) => {
