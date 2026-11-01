@@ -1,4 +1,4 @@
-/** A rectangle on the plan: its middle, heading (the game's yaw), half length and half width. */
+/** A rectangle seen from above: its middle, heading (the game's yaw), half length and half width. */
 export interface Box {
   x: number;
   z: number;

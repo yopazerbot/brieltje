@@ -1,5 +1,5 @@
 // Where a placed car may stand (the planner's Teslas: src/ui/planner.ts, src/main.ts and
-// server/game.mjs): a car's outline on the plan, points spread over it, whether two outlines
+// server/game.mjs): a car's outline seen from above, points spread over it, whether two outlines
 // overlap, whether a point is indoors, and (for the server) whether an outline is clear of the
 // house data's blocks. Plain functions, no three.js, shared by the page and the server so both judge
 // a spot the same way. A car's heading is the game's yaw: nose along -z, turned by yaw (as in
@@ -86,7 +86,7 @@ const CELL = 16;
 
 /**
  * The house data's blocks (`prisms`: walls, hedges, fences, the neighbours' and the village's
- * houses) made ready for one question: whether a rectangle on the plan is clear of all of them
+ * houses) made ready for one question: whether a rectangle seen from above is clear of all of them
  * between heights y0 and y1. The same test as the page's (World.boxFree in src/world/collision.ts):
  * a corner inside a block, a block's corner inside the rectangle, or their sides crossing. A block on
  * the relief (`d`) follows the ground, `height(x, z)`, at the rectangle's middle. The blocks are
@@ -147,7 +147,7 @@ export function makeSolids(prisms, height) {
 /**
  * Whether a point is indoors: over a floor of the house or the bungalow. Those are the house data's
  * blocks (`prisms`) named after a room (`rooms`), a floor or the stairs, and the bungalow's, which
- * are named "... (old house)" (its drive apart). The main house's ground floor covers its whole plan.
+ * are named "... (old house)" (its drive apart). The main house's ground floor covers the whole house.
  */
 export function makeIndoors(prisms, rooms) {
   const names = new Set(rooms);
