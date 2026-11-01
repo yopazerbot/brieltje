@@ -53,6 +53,13 @@
       <div id="capture-hint" data-i18n="hud.captureHint">Click to look around</div>
       <div id="modebar"></div>
       <div id="blindfold"></div>
+      <!-- Zombies (src/ui/games.ts): the end screen. -->
+      <div id="zend" class="hidden">
+        <h2 id="zend-title"></h2>
+        <p id="zend-sub"></p>
+        <table id="zend-table"></table>
+        <p id="zend-best"></p>
+      </div>
       <!-- Messages for the middle of the top: on a desktop each keeps its own place (the box has
            display: contents); with touch controls they stack under each other, clear of the buttons. -->
       <div id="hud-top">
@@ -87,6 +94,15 @@
       <dl id="cc-rows"></dl>
       <button id="cc-close" type="button"><b data-i18n="cc.closeNow">Close now</b><small id="cc-count"></small></button>
       <p class="cc-more" data-i18n="cc.more">All controls are in the menu, under Controls.</p>
+    </div>
+    <!-- Zombies (src/ui/games.ts): an explorer is told how to join in, with one tap on the Play tab's mode
+         buttons. Outside the HUD and after the touch controls, so a finger reaches it; the menu covers it. -->
+    <div id="zexplore">
+      <p data-i18n="z.explore">You're exploring. Pick Paintball or Action to help beat the zombies.</p>
+      <div class="seg">
+        <button class="seg-btn" type="button" data-play="paintball"><b data-i18n="mode.paintball">Paintball</b><span data-i18n="mode.paintballSub2">Paint guns · for everyone</span></button>
+        <button class="seg-btn" type="button" data-play="action"><b data-i18n="mode.action">Action</b><span data-i18n="mode.actionSub2">Hands and pistol</span></button>
+      </div>
     </div>
     <!-- The feedback card after two minutes of play (src/ui/feedback.ts): above the touch controls. -->
     <div id="feedback" class="hidden" role="dialog" aria-modal="true" aria-labelledby="fb-title">
@@ -240,6 +256,13 @@
                     <button id="repair-btn" class="tool" type="button"><b data-i18n="play.repair">Repair windows</b><span data-i18n="play.repairSub">Every broken pane back in</span></button>
                     <button id="resetfurn-btn" class="tool" type="button"><b data-i18n="play.resetFurn">Reset furniture</b><span data-i18n="play.resetFurnSub">Back to the original layout</span></button>
                   </div>
+                  <!-- Alone: the Zombies game, run in this page (src/main.ts). Together the admin starts it for everyone. -->
+                  <div id="zombies-solo">
+                    <h2 data-i18n="play.party">Party game</h2>
+                    <div class="tools">
+                      <button id="zombies-btn" class="tool" type="button"><b id="zombies-btn-title" data-i18n="game.zombies">Zombies</b><span id="zombies-btn-sub" data-i18n="play.zombiesSub">Waves of zombies come for you. How long do you last?</span></button>
+                    </div>
+                  </div>
                 </div>
                 <!-- Where /location goes, for touch and the controller too: the portals and the streets (src/ui/places.ts). -->
                 <div class="col places-col" id="places">
@@ -390,6 +413,7 @@
                     <button class="tool" type="button" data-game="tag"><b data-i18n="game.tag">Tag</b><span data-i18n="game.tagSub">Whoever is "it" tags someone else; least time as "it" wins</span></button>
                     <button class="tool" type="button" data-game="treasure"><b data-i18n="game.treasure">Treasure hunt</b><span data-i18n="game.treasureSub">15 coins in and around the house; most coins wins</span></button>
                     <button class="tool" type="button" data-game="teams"><b data-i18n="game.teams">House against bungalow</b><span data-i18n="game.teamsSub">Two teams fight, each starts at its own house; first to 25 kills</span></button>
+                    <button class="tool" type="button" data-game="zombies"><b data-i18n="game.zombies">Zombies</b><span data-i18n="game.zombiesSub">Everyone together against waves of zombies</span></button>
                     <button class="tool" type="button" data-game="free"><b data-i18n="game.stop">Stop the game</b><span data-i18n="game.stopSub">Back to playing freely</span></button>
                   </div>
                   <!-- Stopping is asked again here, in the page (src/main.ts). -->

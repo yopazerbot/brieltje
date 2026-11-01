@@ -448,6 +448,15 @@ function figureOf(o: THREE.Object3D | null): THREE.Object3D | null {
   return null;
 }
 
+/** A zombie a shot hit: its id, the pellets on its body and head, where the first landed and along which ray. */
+export interface ZombieHit {
+  id: number;
+  body: number;
+  head: number;
+  point: THREE.Vector3;
+  ray: THREE.Ray;
+}
+
 export interface Shot {
   /** Camera kick to apply (radians) */
   pitch: number;
@@ -473,6 +482,11 @@ export class Weapon {
   /** A bullet hit one of the cats. */
   onCatHit: (index: number, point: THREE.Vector3) => void = () => {};
   onClownHit: (id: number, point: THREE.Vector3, spot?: Spot) => void = () => {};
+  /**
+   * One shot's pellets that hit zombies (the Zombies game), per zombie: pellets on the body and the
+   * head, where the first hit, and its ray (paintball's paint is found on the posed body from it).
+   */
+  onZombieHit: (hits: ZombieHit[], paint: Paint | null) => void = () => {};
   /** Paintball: a pellet's paintball flies from the gun to `to` (where it hit, or as far as it goes). */
   onPaintball: (from: THREE.Vector3, to: THREE.Vector3, paint: Paint) => void = () => {};
   /** A bullet hit the house or the ground (`on` is the mesh it hit): a hole, and dust, sparks or chips. */
@@ -697,6 +711,7 @@ export class Weapon {
     // Paintball: each pellet is a paintball from the muzzle, in the gun's paint.
     const paint = paintball.on ? { from: this.models[this.current].muzzle.getWorldPosition(new THREE.Vector3()), color: new THREE.Color(GUN_PAINT[this.current]), size: SPLAT[this.current] } : null;
     const players = new Map<string, { body: number; head: number; point: THREE.Vector3; spot?: Spot }>();
+    const zombies = new Map<number, ZombieHit>();
     for (let i = 0; i < spec.pellets; i++) {
       const a = Math.random() * Math.PI * 2;
       const r = spread * Math.sqrt(Math.random());
@@ -706,6 +721,14 @@ export class Weapon {
       if (paint) this.onPaintball(paint.from, hit ? hit.point : this.raycaster.ray.at(120, new THREE.Vector3()), paint);
       if (!hit || !hit.face) continue;
       const player = hit.object.userData.player as string | undefined;
+      const zombie = hit.object.userData.zombie as number | undefined;
+      if (zombie !== undefined) {
+        const e = zombies.get(zombie) ?? { id: zombie, body: 0, head: 0, point: hit.point.clone(), ray: this.raycaster.ray.clone() };
+        if (hit.object.userData.part === 'head') e.head++;
+        else e.body++;
+        zombies.set(zombie, e);
+        continue;
+      }
       if (hit.object.userData.clown !== undefined) {
         this.onClownHit(hit.object.userData.clown, hit.point.clone(), paint ? this.spot(hits, hit, false) : undefined);
         break;
@@ -726,6 +749,7 @@ export class Weapon {
       }
     }
     for (const [name, e] of players) this.onPlayerHit(name, e.body, e.head, e.point, e.spot);
+    if (zombies.size) this.onZombieHit([...zombies.values()], paint);
     if (this.ammo[this.current] === 0) this.reload();
     const k = spec.kick * (0.8 + Math.random() * 0.4) * (1 - 0.4 * this.aim);
     return { pitch: k, yaw: spec.auto ? (Math.random() - 0.5) * k * 0.8 : 0 };

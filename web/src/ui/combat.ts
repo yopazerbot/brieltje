@@ -41,6 +41,8 @@ export class Combat {
   private feed: { el: HTMLElement; left: number }[] = [];
   private killer = '';
   private winner = '';
+  /** Down in the Zombies game: back once the wave is beaten, not after a countdown (its line, or null) */
+  waiting: (() => string) | null = null;
 
   constructor() {
     // Another language: the death screen's and the banner's titles and the scoreboard (the lines under them follow each frame).
@@ -122,7 +124,7 @@ export class Combat {
     if (killer === this.me || victim === this.me) line.classList.add('me');
     if (paintball.on) {
       const you = victim === t('char.you'); // alone, a strongman tagged you
-      const figure = [t('char.strongman'), t('char.clown'), t('char.cat')].includes(victim);
+      const figure = [t('char.strongman'), t('char.clown'), t('char.cat'), t('char.zombie'), t('char.bigZombie')].includes(victim);
       line.append(span(killer, '', color(killer)), span(` ${t(figure ? 'paint.splattered' : 'paint.tagged')} `, 'arrow'), span(you ? t('paint.you') : victim, '', color(victim)));
       if (weapon) line.append(span(` · ${weapon}`, 'arrow'));
     } else line.append(span(killer, '', color(killer)), span(weapon ? ` ${weapon} ` : ' ▸ ', 'arrow'), span(victim, '', color(victim)));
@@ -179,7 +181,7 @@ export class Combat {
       this.respawnLeft = Math.max(0, this.respawnLeft - dt);
       const head = $('death').dataset.head ? t(paintball.on ? 'paint.bullseye' : 'combat.headshot') : '';
       const n = Math.ceil(this.respawnLeft);
-      const text = head + (this.roundLeft > 0 ? t('combat.nextRound') : this.respawnLeft > 0 ? t(paintball.on ? 'paint.backIn' : 'combat.backIn', { n }) : t('combat.respawning'));
+      const text = this.waiting ? this.waiting() : head + (this.roundLeft > 0 ? t('combat.nextRound') : this.respawnLeft > 0 ? t(paintball.on ? 'paint.backIn' : 'combat.backIn', { n }) : t('combat.respawning'));
       if ($('death-sub').textContent !== text) $('death-sub').textContent = text;
     }
     if (this.roundLeft > 0) {

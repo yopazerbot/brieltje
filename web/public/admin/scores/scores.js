@@ -14,6 +14,7 @@
       emptyBig: 'Nog niemand speelt samen', emptySub: 'Open brieltje.be, kies Samen en vul de pincode in.',
       join: 'Speel mee op ', count: '{a} samen · {b} alleen', live: 'Live', retry: 'Opnieuw verbinden…', full: 'Volledig scherm (F)',
       gate: 'Log eerst in op de beheerpagina.', gateLink: 'Naar de beheerpagina', out: 'uit',
+      zombies: 'Zombies', wave: 'golf {n}', break: 'pauze', zleft: 'nog {n} zombies', zbeaten: 'Zombies verslagen', zbest: 'Beste ooit: golf {n}', down: 'neer',
     },
     en: {
       free: 'Free play', hide: 'Hide and seek', tag: 'Tag', treasure: 'Treasure hunt', teams: 'House against bungalow',
@@ -24,6 +25,7 @@
       emptyBig: "Nobody's playing together yet", emptySub: 'Open brieltje.be, choose Together and enter the PIN.',
       join: 'Play along at ', count: '{a} together · {b} alone', live: 'Live', retry: 'Reconnecting…', full: 'Full screen (F)',
       gate: 'Log in on the admin page first.', gateLink: 'To the admin page', out: 'out',
+      zombies: 'Zombies', wave: 'wave {n}', break: 'break', zleft: '{n} zombies left', zbeaten: 'Zombies beaten', zbest: 'Best ever: wave {n}', down: 'down',
     },
   };
   let lang = 'nl';
@@ -85,7 +87,9 @@
     const kind = mode.kind || 'free';
     const left = mode.ms !== undefined ? mode.ms - (Date.now() - boardAt) : 0;
     $('mode-title').textContent = t(kind);
+    const z = mode.zombies;
     $('mode-sub').textContent = kind === 'free' ? t('firstTo', { n: board.limit })
+      : kind === 'zombies' && z ? [t('wave', { n: z.wave }), mode.phase === 'break' ? `${t('break')} · ${t('left', { t: clock(left) })}` : mode.phase === 'wave' ? t('zleft', { n: z.left }) : t('done')].join(' · ')
       : [t(mode.phase) ?? '', mode.phase !== 'done' ? t('left', { t: clock(left) }) : ''].filter(Boolean).join(' · ');
     const players = board.players;
     const main = $('board');
@@ -101,7 +105,7 @@
     banner(kind, mode);
   }
 
-  /** The ranking for free play, tag, the treasure hunt and hide and seek. */
+  /** The ranking for free play, tag, the treasure hunt, hide and seek and Zombies. */
   function ranking(kind, mode, players) {
     const box = el('div', 'rows');
     if (kind === 'tag') {
@@ -121,6 +125,18 @@
       const wrap = el('div');
       const n = Array.isArray(mode.coins) ? mode.coins.length : Number(mode.coins) || 0;
       wrap.append(box, el('div', 'note', t('coinsLeft', { n })));
+      return wrap;
+    }
+    if (kind === 'zombies') {
+      // Zombies: everyone's zombies beaten, most first; who is down waits for the wave's end.
+      const beaten = mode.zombies?.beaten || {};
+      const down = new Set(mode.zombies?.down || []);
+      const list = [...players].sort((a, b) => (beaten[b.name] ?? 0) - (beaten[a.name] ?? 0));
+      box.append(head([t('zbeaten')]));
+      list.forEach((p, i) => box.append(row(i + 1, p, [beaten[p.name] ?? 0], { lead: true, out: down.has(p.name), note: down.has(p.name) ? t('down') : '' })));
+      const wrap = el('div');
+      wrap.append(box);
+      if (mode.zombies?.best) wrap.append(el('div', 'note', t('zbest', { n: mode.zombies.best.wave })));
       return wrap;
     }
     if (kind === 'hide') {

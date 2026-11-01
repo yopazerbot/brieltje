@@ -74,6 +74,9 @@ export type ServerMsg =
   | { t: 'rock'; type: 'throw'; id: number; from: Spot; to: Spot; ms: number }
   | { t: 'stomp'; type: 'stomp'; id: number; at: Spot }
   | { t: 'clownhit'; id: number; by: string; ms: number; w: string }
+  /** The Zombies game: zombie `id` beaten by `by` with weapon `w`; fallen ones taken away (server/zombies.mjs) */
+  | { t: 'zdown'; id: number; by: string; w: string }
+  | { t: 'zgone'; ids: number[] }
   | { t: 'rocket'; name: string; x: number; y: number; z: number; tx: number; ty: number; tz: number }
   | { t: 'blast'; by: string; x: number; y: number; z: number; w?: string }
   | { t: 'nade'; name: string; x: number; y: number; z: number; vx: number; vy: number; vz: number }
@@ -90,7 +93,8 @@ export type ServerMsg =
   | { t: 'round'; winner: string; ms: number }
   | ({ t: 'newround'; text: string } & Coded)
   | { t: 'glass'; i: number; by: string }
-  | { t: 'repair'; by: string }
+  /** `quiet`: the server put them back itself (the Zombies game began): no line in the chat */
+  | { t: 'repair'; by: string; quiet?: boolean }
   | { t: 'join'; name: string; color: string }
   | { t: 'colors'; list: { name: string; color: string; role: string }[] }
   | { t: 'leave'; name: string }

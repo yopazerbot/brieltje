@@ -495,6 +495,37 @@ body.touch #full-hint { top: calc(8px + env(safe-area-inset-top, 0px)); left: ca
   font-size: 28px; font-weight: 700; color: var(--ink); background: #050608;
 }
 #blindfold.show { display: flex; }
+/* Zombies: the explorer's card under the game's bar (one tap on a mode joins in), and the end screen. */
+#zexplore {
+  position: fixed; left: 50%; top: 66px; transform: translateX(-50%); display: none; width: min(440px, calc(100vw - 32px));
+  padding: 10px 14px; text-align: center; color: var(--ink); background: var(--panel); border-left: 3px solid var(--accent);
+}
+#zexplore.show { display: block; }
+#zexplore p { margin: 0 0 8px; font-size: 15px; font-weight: 600; }
+#zexplore .seg { margin: 0; justify-content: center; }
+#zexplore .seg-btn { flex: 1; padding: 8px 10px; }
+#zexplore .seg-btn span { font-size: 12px; }
+body.touch #zexplore .seg-btn span { display: none; }
+body.touch #zexplore { top: 52px; width: min(380px, calc(100vw - 400px)); padding: 6px 10px; }
+body.touch #zexplore p { font-size: 13px; margin-bottom: 6px; }
+#zend {
+  position: absolute; left: 50%; top: 50%; transform: translate(-50%, -50%); z-index: 2;
+  width: min(480px, calc(100vw - 32px)); max-height: calc(100vh - 140px); overflow: auto; padding: 18px 24px;
+  background: var(--panel); border-left: 4px solid var(--accent); text-shadow: none; text-align: center;
+}
+#zend.hidden { display: none; }
+body.zend-on #death { display: none; }
+#zend h2 { margin: 0; font-size: 34px; letter-spacing: 0.03em; }
+#zend-sub { margin: 4px 0 14px; font-size: 13px; letter-spacing: 0.12em; text-transform: uppercase; color: var(--accent); }
+#zend-table { width: 100%; border-collapse: collapse; font-size: 17px; text-align: left; }
+#zend-table th { font-size: 12px; letter-spacing: 0.12em; text-transform: uppercase; opacity: 0.7; padding: 4px 8px; }
+#zend-table th:last-child, #zend-table td.num { text-align: right; }
+#zend-table td { padding: 6px 8px; border-top: 1px solid rgba(255, 255, 255, 0.08); font-weight: 600; }
+#zend-table tr.me td { background: rgba(242, 179, 61, 0.12); }
+#zend-best { margin: 14px 0 0; font-size: 15px; font-weight: 700; color: var(--accent); }
+/* With touch controls: in the free band between the stick (left) and the buttons (right). */
+body.touch #zend { left: calc(50% - 42px); width: min(380px, calc(100vw - 460px)); min-width: 280px; padding: 12px 16px; max-height: calc(100vh - 90px); }
+body.touch #zend h2 { font-size: 24px; }
 /* On a phone the text keeps clear of the buttons on both sides. */
 body.touch #blindfold { padding: 24px 150px; font-size: 20px; line-height: 1.35; }
 .context-lost {

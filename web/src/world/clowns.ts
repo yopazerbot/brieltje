@@ -171,6 +171,8 @@ export class Clowns {
   private pose = [0, 0, 0, 0];
   /** A rock landed or a strongman stomped here: for the dust, the shake and (alone) the damage. */
   onLand: (at: THREE.Vector3, what: 'rock' | 'stomp') => void = () => {};
+  /** Standing aside (the Zombies game): none of them drawn, hit or fighting; back as they were after. */
+  paused = false;
 
   /** `floorAt`: the floor under a point; `free`: room for one standing there (no wall in the way). */
   constructor(private floorAt: (x: number, z: number, y: number) => number, private free: (x: number, z: number, y: number) => boolean) {
@@ -322,6 +324,7 @@ export class Clowns {
 
   /** Playing alone: the strongmen fight here, going for you (`me`) if you fight. */
   stepAlone(dt: number, me: { x: number; y: number; z: number } | null): void {
+    if (this.paused) return;
     const now = this.now;
     for (const c of this.clowns.values()) {
       c.track = undefined; // not the server's any more
@@ -385,6 +388,7 @@ export class Clowns {
   /** The ones that are up within `radius` of a point (a blast). */
   near(p: THREE.Vector3, radius: number): number[] {
     const now = this.now;
+    if (this.paused) return [];
     return [...this.clowns.values()]
       .filter((c) => now >= c.deadUntil && c.group.position.distanceTo(p) < radius + 0.4 * KINDS[c.kind].scale)
       .map((c) => c.spec.id);
@@ -393,11 +397,18 @@ export class Clowns {
   /** The ones that are up, for the minimap. */
   blips(): { x: number; y: number; z: number; kind: Kind }[] {
     const now = this.now;
+    if (this.paused) return [];
     return [...this.clowns.values()].filter((c) => now >= c.deadUntil).map((c) => ({ x: c.group.position.x, y: c.group.position.y, z: c.group.position.z, kind: c.kind }));
   }
 
   update(eye: THREE.Vector3): void {
     const now = this.now;
+    this.group.visible = !this.paused;
+    if (this.paused) {
+      // Their hit boxes too (a ray doesn't care that the group is hidden).
+      for (const c of this.clowns.values()) c.hit.visible = false;
+      return;
+    }
     this.flyRocks();
     for (const c of this.clowns.values()) {
       const k = KINDS[c.kind];

@@ -277,6 +277,31 @@ export class Effects {
     else this.impact(point, UP, 'cat');
   }
 
+  /**
+   * A zombie hit (world/zombies.ts): a puff of grey-green dust, never blood; in paintball a splash
+   * where the paintball lands (the zombie paints its own spot on itself).
+   */
+  zombieHit(point: THREE.Vector3): void {
+    if (paintball.on) return this.painted(point);
+    this.throw(point.clone(), UP, 7, 0.9, 0.6, (s) => {
+      Object.assign(s, { life: 0.5 + Math.random() * 0.4, size0: 0.08, size1: 0.38, alpha: 0.55, cell: PARTICLE.puff, drag: 3, gravity: -0.1, spin: (Math.random() - 0.5) * 2 });
+      s.c0.set('#a4ad92');
+      s.c1.set('#7e8770');
+    });
+  }
+
+  /** A zombie beaten in paintball: it vanishes in a big puff of paint. */
+  vanish(point: THREE.Vector3): void {
+    const c = new THREE.Color(anyPaint());
+    this.throw(point.clone(), UP, 10, 1.6, 1, (s) => {
+      Object.assign(s, { life: 0.45 + Math.random() * 0.35, size0: 0.25, size1: 1.1, alpha: 0.8, cell: PARTICLE.puff, drag: 4, gravity: -0.4, spin: (Math.random() - 0.5) * 3 });
+      s.c0.copy(c);
+      s.c1.set(anyPaint());
+    });
+    this.splash(point, UP, c, 0.6);
+    splatSound(point);
+  }
+
   /** Paint where a paintball hit a figure, once it gets there: a splash, its sound and a blob on the body part. */
   private painted(point: THREE.Vector3, spot?: Spot): void {
     this.splats.landing(point, (paint, dir) => {

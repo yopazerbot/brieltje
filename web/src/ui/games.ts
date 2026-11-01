@@ -1,20 +1,36 @@
 import * as THREE from 'three';
-import { listOf, onLang, plural, serverText, t } from '../i18n';
+import { lang, listOf, onLang, plural, serverText, t } from '../i18n';
+import { paintball } from '../paintball';
 
 /**
  * Games in multiplayer (the admin starts them, the server keeps them): hide and seek, tag, a
- * treasure hunt, and the house against the bungalow (two teams). Here: the bar at the top with
- * the clock and your role or the score, the seeker's closed eyes while the others hide, the
- * coins, whom you can tag, and the choice of team in the menu.
+ * treasure hunt, the house against the bungalow (two teams) and Zombies (everyone against waves of
+ * zombies; alone too, src/main.ts runs it then). Here: the bar at the top with the clock and your
+ * role or the score, the seeker's closed eyes while the others hide, the coins, whom you can tag,
+ * the choice of team in the menu, and for Zombies the wave, the end screen and how an explorer joins in.
  */
 
 export type Team = 'house' | 'bungalow';
 const TEAM_NAMES = { house: 'team.house', bungalow: 'team.bungalow' } as const;
-const TITLES: Partial<Record<string, 'game.hide' | 'game.tag' | 'game.treasure' | 'game.teams'>> = { hide: 'game.hide', tag: 'game.tag', treasure: 'game.treasure', teams: 'game.teams' };
+const TITLES: Partial<Record<string, 'game.hide' | 'game.tag' | 'game.treasure' | 'game.teams' | 'game.zombies'>> = { hide: 'game.hide', tag: 'game.tag', treasure: 'game.treasure', teams: 'game.teams', zombies: 'game.zombies' };
+
+/** The Zombies game in a mode's view (server/zombies.mjs view). */
+export interface ZombiesView {
+  wave: number;
+  left: number;
+  big: boolean;
+  fighters: number;
+  standing: number;
+  beaten: Record<string, number>;
+  ms: number;
+  down: string[];
+  best: { wave: number; names: string[]; at: string } | null;
+  record: boolean;
+}
 
 export interface ModeView {
-  kind: 'free' | 'hide' | 'tag' | 'treasure' | 'teams';
-  phase?: 'hiding' | 'seeking' | 'playing' | 'done';
+  kind: 'free' | 'hide' | 'tag' | 'treasure' | 'teams' | 'zombies';
+  phase?: 'hiding' | 'seeking' | 'playing' | 'break' | 'wave' | 'done';
   ms?: number;
   /** The game's name in English (this page names it by `kind`) */
   title?: string;
@@ -30,6 +46,7 @@ export interface ModeView {
   teams?: Record<string, Team>;
   score?: Record<Team, number>;
   goal?: number;
+  zombies?: ZombiesView;
 }
 
 // Coins as big as a hand (0.35 m), turning and bobbing at chest height, each with a glint that keeps
@@ -69,7 +86,12 @@ export class Games {
   readonly group = new THREE.Group();
   /** Send a message to the server */
   onSend: (msg: Record<string, unknown>) => void = () => {};
+  /** Zombies: a new wave began (its number, how many come, whether a big one is in it): the banner. */
+  onWave: (wave: number, count: number, big: boolean) => void = () => {};
   private ends = 0;
+  private zend = document.getElementById('zend')!;
+  private zexplore = document.getElementById('zexplore')!;
+  private zendKey = '';
   private coins = new Map<number, THREE.Mesh>();
   /** Coins asked for, and when (performance.now()) */
   private asked = new Map<number, number>();
@@ -90,7 +112,11 @@ export class Games {
   }
 
   set(view: ModeView): void {
+    const before = this.view;
     this.view = view ?? { kind: 'free' };
+    // Zombies: a wave that just began gets its banner.
+    const z = this.view.zombies;
+    if (this.view.kind === 'zombies' && this.view.phase === 'wave' && z && (before.kind !== 'zombies' || (before.zombies?.wave ?? 0) < z.wave)) this.onWave(z.wave, z.left, z.big);
     this.ends = performance.now() + (this.view.ms ?? 0);
     this.setOffline(false); // the server's word on the game, fresh
     const keep = new Set((this.view.coins ?? []).map((c) => c.i));
@@ -177,9 +203,24 @@ export class Games {
     return this.active && this.view.phase !== 'done';
   }
 
-  /** A party game is on: no fighting (the teams game is a fight). */
+  /** A party game is on: no fighting (the teams game is a fight, and Zombies one against the zombies). */
   get peaceful(): boolean {
-    return this.active && this.view.kind !== 'teams';
+    return this.active && this.view.kind !== 'teams' && this.view.kind !== 'zombies';
+  }
+
+  /** The Zombies game is played (not once its end screen shows): no cars, horses or flying, the houses shut. */
+  get zombies(): boolean {
+    return this.view.kind === 'zombies' && this.view.phase !== 'done';
+  }
+
+  /** The clowns and strongmen stand aside (hidden) during the Zombies game, its end screen too. */
+  get standAside(): boolean {
+    return this.view.kind === 'zombies';
+  }
+
+  /** Zombies: down, waiting for the wave to be beaten. */
+  isDown(name: string): boolean {
+    return this.zombies && !!this.view.zombies?.down.includes(name);
   }
 
   /** Your team in the teams game. */
@@ -256,12 +297,20 @@ export class Games {
       if (this.blind.textContent !== text) this.blind.textContent = text;
     }
     this.bar.classList.toggle('show', this.active);
+    // Zombies: an explorer is told how to join in (one tap on Paintball or Action), and the end screen.
+    this.zexplore.classList.toggle('show', this.zombies && this.exploring);
+    this.showEnd();
     if (!this.active) return;
     const titleKey = TITLES[v.kind];
     const title = titleKey ? t(titleKey) : v.title ?? '';
     let text = `${title} · ${clock(left)} · `;
     if (v.phase === 'done') text = `${title} · ${serverText(v.resultCode, v.resultArgs, v.result ?? '')}`;
-    else if (v.kind === 'hide') {
+    else if (v.kind === 'zombies') {
+      const z = v.zombies;
+      if (!z) text = title;
+      else if (v.phase === 'break') text = `${title} · ${z.wave ? t('z.barBreak', { n: z.wave, time: clock(left) }) : t('z.barFirst', { time: clock(left) })}`;
+      else text = `${title} · ${t('z.barWave', { n: z.wave, left: z.left, standing: z.standing, fighters: z.fighters })}`;
+    } else if (v.kind === 'hide') {
       const seekers = v.seekers ?? [];
       if (v.phase === 'hiding') text += this.seeker ? t('games.youSeekHide') : plural(seekers.length, 'games.hide.one', 'games.hide.other', { names: listOf(seekers) });
       else text += this.seeker ? t('games.youSeek', { use }) : t('games.stayHidden');
@@ -277,5 +326,46 @@ export class Games {
       text += t('games.coins', { n: v.coins?.length ?? 0, mine: counts[this.me] ?? 0 }) + (best && best[1] > 0 ? t('games.best', { name: best[0], n: best[1] }) : '');
     }
     if (this.bar.textContent !== text) this.bar.textContent = text;
+  }
+
+  /**
+   * The Zombies game's end screen, while its result shows: the wave reached, each player's zombies
+   * beaten (most first) and the best wave ever. Drawn again only when something in it changes.
+   */
+  private showEnd(): void {
+    const v = this.view;
+    const z = v.zombies;
+    const on = v.kind === 'zombies' && v.phase === 'done' && !!z;
+    this.zend.classList.toggle('hidden', !on);
+    document.body.classList.toggle('zend-on', on); // the death screen steps aside for it (style.css)
+    if (!on || !z) {
+      this.zendKey = '';
+      return;
+    }
+    const key = JSON.stringify([z, lang(), paintball.on, this.me]);
+    if (key === this.zendKey) return;
+    this.zendKey = key;
+    document.getElementById('zend-title')!.textContent = t('z.endTitle', { n: z.wave });
+    document.getElementById('zend-sub')!.textContent = t(paintball.on ? 'z.endSubPaint' : 'z.endSub');
+    const head = document.createElement('tr');
+    for (const k of ['combat.player', paintball.on ? 'z.colPaint' : 'z.col'] as const) {
+      const th = document.createElement('th');
+      th.textContent = t(k);
+      head.append(th);
+    }
+    const rows = Object.entries(z.beaten).sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0])).map(([name, n]) => {
+      const tr = document.createElement('tr');
+      if (name === this.me) tr.className = 'me';
+      const a = document.createElement('td');
+      a.textContent = name; // a player's name: text, never HTML
+      const b = document.createElement('td');
+      b.className = 'num';
+      b.textContent = String(n);
+      tr.append(a, b);
+      return tr;
+    });
+    document.getElementById('zend-table')!.replaceChildren(head, ...rows);
+    const best = z.best;
+    document.getElementById('zend-best')!.textContent = z.record ? t('z.record', { n: z.wave }) : best ? t('z.best', { n: best.wave, names: listOf(best.names.slice(0, 6)) }) : '';
   }
 }

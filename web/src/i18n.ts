@@ -148,6 +148,9 @@ const en = {
   'play.repairSub': 'Every broken pane back in',
   'play.resetFurn': 'Reset furniture',
   'play.resetFurnSub': 'Back to the original layout',
+  'play.party': 'Party game',
+  'play.zombiesSub': 'Waves of zombies come for you. How long do you last?',
+  'play.zombiesStop': 'Stop Zombies',
   'play.places': 'Places',
   'play.placesSub': 'Go straight to a portal or a street.',
   'play.streets': 'Streets',
@@ -236,6 +239,8 @@ const en = {
   'game.treasureSub': '15 coins in and around the house; most coins wins',
   'game.teams': 'House against bungalow',
   'game.teamsSub': 'Two teams fight, each starts at its own house; first to 25 kills',
+  'game.zombies': 'Zombies',
+  'game.zombiesSub': 'Everyone together against waves of zombies',
   'game.teamsSub.paint': 'Two teams, each starts at its own house; first team to tag the others 25 times',
   'game.stop': 'Stop the game',
   'game.stopSub': 'Back to playing freely',
@@ -436,6 +441,8 @@ const en = {
   'char.cat': 'a cat',
   'char.clown': 'a clown',
   'char.strongman': 'a strongman',
+  'char.zombie': 'a zombie',
+  'char.bigZombie': 'a big zombie',
   'combat.killedBy': 'Killed by {name}',
   'combat.headshot': 'Headshot · ',
   'combat.headshotTag': 'HEADSHOT',
@@ -492,6 +499,24 @@ const en = {
   'games.isIt': '{name} is it · your time {n} s',
   'games.coins': '{n} coins left · you {mine}',
   'games.best': ' · best {name} {n}',
+  // The Zombies game (src/ui/games.ts, src/main.ts)
+  'z.barFirst': 'first wave in {time}',
+  'z.barBreak': 'wave {n} beaten · next in {time}',
+  'z.barWave': 'wave {n} · {left} left · {standing} of {fighters} standing',
+  'z.banner': 'Wave {n}',
+  'z.bannerSub': '{count} zombies are coming',
+  'z.bannerBig': '{count} zombies · a big one too',
+  'z.explore': "You're exploring. Pick Paintball or Action to help beat the zombies.",
+  'z.downWait': 'Back once this wave is beaten',
+  'z.soloStart': 'Zombies! The first wave comes in 8 seconds.',
+  'z.endTitle': 'Wave {n} reached',
+  'z.endSub': 'The zombies caught everyone',
+  'z.endSubPaint': 'Everyone got tagged',
+  'z.col': 'Zombies beaten',
+  'z.colPaint': 'Zombies splattered',
+  'z.best': 'Best ever: wave {n} ({names})',
+  'z.record': 'A new best ever: wave {n}!',
+  'z.noModels': "The zombies' models didn't load. Reload the page to try again.",
 
   // ---- Chat lines made here
   'chat.furnOff': 'The admin has turned the furniture planner off.',
@@ -627,6 +652,16 @@ const en = {
   'srv.itAway': '{name}, who is it, dropped out. Waiting 15 seconds for them to come back.',
   'srv.teamsDraw': "Time's up: a draw, {house} to {bungalow}",
   'srv.teamsTime': "Time's up: team {team} wins, {house} to {bungalow}",
+  'srv.zombiesStarted': '{name} started Zombies. Beat the waves together. The first one comes in 8 seconds.',
+  'srv.zWave': 'Wave {n}: {count} zombies are coming!',
+  'srv.zWaveBig': 'Wave {n}: {count} zombies are coming. A big one is with them!',
+  'srv.zCleared': 'Wave {n} beaten! The next one comes in 15 seconds.',
+  'srv.zOver': 'The zombies caught everyone at wave {n}.',
+  'srv.zOver.paint': 'Everyone got tagged at wave {n}.',
+  'srv.zOverBest': "The zombies caught everyone at wave {n}. That's a new best ever!",
+  'srv.zOverBest.paint': "Everyone got tagged at wave {n}. That's a new best ever!",
+  'srv.zNoCar': 'No driving during Zombies.',
+  'srv.zNoHorse': 'No riding during Zombies.',
   'srv.ready': 'Ready or not, here {name} comes!',
   'srv.hiddenWin.one': "Time's up: {names} stayed hidden and wins",
   'srv.hiddenWin.other': "Time's up: {names} stayed hidden and win",
@@ -793,6 +828,9 @@ const nl = {
   'play.repairSub': 'Elke gebroken ruit terug op zijn plaats',
   'play.resetFurn': 'Meubels terugzetten',
   'play.resetFurnSub': 'Terug naar de oorspronkelijke opstelling',
+  'play.party': 'Partyspel',
+  'play.zombiesSub': 'Golven zombies komen op je af. Hoe lang hou jij het vol?',
+  'play.zombiesStop': 'Stop Zombies',
   'play.places': 'Plaatsen',
   'play.placesSub': 'Ga meteen naar een portaal of een straat.',
   'play.streets': 'Straten',
@@ -881,6 +919,8 @@ const nl = {
   'game.treasureSub': '15 munten in en rond het huis; wie de meeste vindt, wint',
   'game.teams': 'Huis tegen bungalow',
   'game.teamsSub': 'Twee teams vechten, elk start bij zijn eigen huis; het eerste team aan 25 kills wint',
+  'game.zombies': 'Zombies',
+  'game.zombiesSub': 'Iedereen samen tegen golven zombies',
   'game.teamsSub.paint': 'Twee teams, elk start bij zijn eigen huis; het eerste team dat de anderen 25 keer geraakt heeft, wint',
   'game.stop': 'Spel stoppen',
   'game.stopSub': 'Terug naar vrij spelen',
@@ -1082,6 +1122,8 @@ const nl = {
   'char.cat': 'een kat',
   'char.clown': 'een clown',
   'char.strongman': 'een krachtpatser',
+  'char.zombie': 'een zombie',
+  'char.bigZombie': 'een grote zombie',
   'combat.killedBy': 'Gedood door {name}',
   'combat.headshot': 'Headshot · ',
   'combat.headshotTag': 'HEADSHOT',
@@ -1137,6 +1179,23 @@ const nl = {
   'games.isIt': '{name} is de tikker · jouw tijd {n} s',
   'games.coins': 'nog {n} munten · jij {mine}',
   'games.best': ' · beste: {name} {n}',
+  'z.barFirst': 'eerste golf over {time}',
+  'z.barBreak': 'golf {n} verslagen · volgende over {time}',
+  'z.barWave': 'golf {n} · nog {left} · {standing} van {fighters} overeind',
+  'z.banner': 'Golf {n}',
+  'z.bannerSub': '{count} zombies komen eraan',
+  'z.bannerBig': '{count} zombies · ook een grote',
+  'z.explore': 'Je verkent nu. Kies Verfballen of Actie om de zombies mee te verslaan.',
+  'z.downWait': 'Terug zodra deze golf verslagen is',
+  'z.soloStart': 'Zombies! De eerste golf komt over 8 seconden.',
+  'z.endTitle': 'Golf {n} gehaald',
+  'z.endSub': 'De zombies hebben iedereen te pakken',
+  'z.endSubPaint': 'Iedereen is geraakt',
+  'z.col': 'Zombies verslagen',
+  'z.colPaint': 'Zombies bespat',
+  'z.best': 'Beste ooit: golf {n} ({names})',
+  'z.record': 'Nieuw record: golf {n}!',
+  'z.noModels': 'De zombies zijn niet geladen. Laad de pagina opnieuw om het nog eens te proberen.',
 
   // ---- Chat lines made here
   'chat.furnOff': 'De beheerder heeft de meubelplanner uitgezet.',
@@ -1272,6 +1331,16 @@ const nl = {
   'srv.itAway': 'Tikker {name} is weggevallen. We wachten 15 seconden tot die terugkomt.',
   'srv.teamsDraw': 'De tijd is om: gelijkspel, {house}–{bungalow}',
   'srv.teamsTime': 'De tijd is om: team {team} wint, {house}–{bungalow}',
+  'srv.zombiesStarted': '{name} startte Zombies. Versla de golven samen. De eerste komt over 8 seconden.',
+  'srv.zWave': 'Golf {n}: {count} zombies komen eraan!',
+  'srv.zWaveBig': 'Golf {n}: {count} zombies komen eraan. Er is een grote bij!',
+  'srv.zCleared': 'Golf {n} verslagen! De volgende komt over 15 seconden.',
+  'srv.zOver': 'De zombies hadden iedereen te pakken in golf {n}.',
+  'srv.zOver.paint': 'Iedereen was geraakt in golf {n}.',
+  'srv.zOverBest': 'De zombies hadden iedereen te pakken in golf {n}. Dat is een nieuw record!',
+  'srv.zOverBest.paint': 'Iedereen was geraakt in golf {n}. Dat is een nieuw record!',
+  'srv.zNoCar': 'Niet rijden tijdens Zombies.',
+  'srv.zNoHorse': 'Niet paardrijden tijdens Zombies.',
   'srv.ready': 'Wie niet weg is, is gezien! {name} komt eraan!',
   'srv.hiddenWin.one': 'De tijd is om: {names} bleef verstopt en wint',
   'srv.hiddenWin.other': 'De tijd is om: {names} bleven verstopt en winnen',
@@ -1558,7 +1627,7 @@ export function portalNames(p: { id: string; name: string }): string[] {
 /** Who did it, for the kill feed and the death screen: a player's name, or one of the game's own ("a strongman"). */
 export function whoName(name: string): string {
   // Player names are 2 to 20 letters, digits, - or _ (server/auth.mjs): never one of these.
-  const own: Record<string, PlainKey> = { 'a strongman': 'char.strongman', 'a clown': 'char.clown', 'a cat': 'char.cat' };
+  const own: Record<string, PlainKey> = { 'a strongman': 'char.strongman', 'a clown': 'char.clown', 'a cat': 'char.cat', 'a zombie': 'char.zombie', 'a big zombie': 'char.bigZombie' };
   return Object.hasOwn(own, name) ? t(own[name]) : name;
 }
 
@@ -1583,7 +1652,7 @@ function validArgs(a: unknown): ServerArgs | null {
 
 const RULES = ['flying', 'furniture', 'names', 'pin', 'portals', 'travel', 'paintball'] as const;
 const TEAMS: Partial<Record<string, PlainKey>> = { house: 'team.house', bungalow: 'team.bungalow' };
-const GAMES: Partial<Record<string, PlainKey>> = { hide: 'game.hide', tag: 'game.tag', treasure: 'game.treasure', teams: 'game.teams' };
+const GAMES: Partial<Record<string, PlainKey>> = { hide: 'game.hide', tag: 'game.tag', treasure: 'game.treasure', teams: 'game.teams', zombies: 'game.zombies' };
 
 /**
  * A message from the server in the current language: its `code` (a 'srv.' key) with its `args`, or

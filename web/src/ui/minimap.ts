@@ -23,7 +23,7 @@ export interface Blip {
   z: number;
   y: number;
   color: string;
-  kind: 'player' | 'cat' | 'item' | 'coin';
+  kind: 'player' | 'cat' | 'item' | 'coin' | 'zombie';
 }
 
 export class Minimap {
@@ -161,6 +161,15 @@ export class Minimap {
         g.lineTo(-4, 0);
         g.closePath();
         g.fill();
+      } else if (b.kind === 'zombie') {
+        // A zombie of the Zombies game: a small green dot with a dark edge, readable on grass and street.
+        g.beginPath();
+        g.arc(0, 0, 2.6, 0, Math.PI * 2);
+        g.fillStyle = b.color;
+        g.fill();
+        g.strokeStyle = 'rgba(16, 24, 12, 0.9)';
+        g.lineWidth = 1.2;
+        g.stroke();
       } else if (b.kind === 'coin') {
         // A treasure hunt's coin: gold with a dark edge, faint on another floor.
         g.beginPath();

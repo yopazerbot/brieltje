@@ -13,7 +13,10 @@ import { fillScreen, input, me, menu, onAccount, setAccount } from './start';
 import { TouchControls } from './controls/touch';
 import { Games, type ModeView } from './ui/games';
 import { CLOWN_DEFAULTS, Clowns, KINDS } from './world/clowns';
-import { hurtBy } from '../shared/brutes.mjs';
+import { bruteDamage, hurtBy } from '../shared/brutes.mjs';
+import { Zombies } from './world/zombies';
+import { BIG as BIG_ZOMBIE, Horde, makeIndoors as houseGround, makeNav } from '../shared/zombies.mjs';
+import WEAPON_SPECS from '../shared/weapons.json';
 import { Horses } from './world/horses';
 import { AdminPanel } from './ui/admin';
 import { Chat } from './ui/chat';
@@ -31,7 +34,7 @@ const OUTSIDE_SPAWNS = HOUSE_SPAWNS.filter((i) => spawns[i].outside);
 import { api, errorText, Net, type Me, type Rules, type ServerMsg } from './net/client';
 import { Avatars } from './net/avatars';
 import { netClock } from './net/track';
-import { PROTO, readBrute, readCar, readHorse, readPlayer, type Tick } from '../shared/wire.mjs';
+import { PROTO, readBrute, readCar, readHorse, readPlayer, readZombie, type Tick } from '../shared/wire.mjs';
 import { sound } from './sound';
 import { footstep, surfaceOf } from './footsteps';
 import { SettingsPanel, type Settings } from './settings';
@@ -312,7 +315,8 @@ ao.blendIntensity = 0.9;
     scene.traverse((o) => {
       const mesh = o as THREE.Mesh;
       if (!mesh.isMesh || !o.visible) return;
-      if (([] as THREE.Material[]).concat(mesh.material).some(seeThrough)) {
+      // The zombies (world/zombies.ts) are posed in their own shader, which the pass's material lacks: out too.
+      if (o.userData.noAO || ([] as THREE.Material[]).concat(mesh.material).some(seeThrough)) {
         o.visible = false;
         pass._visibilityCache.push(o);
       }
@@ -457,6 +461,9 @@ const clowns = new Clowns(
 clowns.setAll(CLOWN_DEFAULTS);
 scene.add(clowns.group);
 let localClown = 1000; // ids for clowns placed alone
+// The Zombies game's zombies (our own models, world/zombies.ts): the server's together, this page's alone.
+const zombies = new Zombies((x, z, y) => world.groundAt(x, z, y, 0).y);
+scene.add(zombies.group, zombies.hits);
 // Three horses grazing in the meadow across the road.
 const horses = new Horses(world);
 scene.add(horses.group);
@@ -774,7 +781,7 @@ setPaintball(menu.playing === 'paintball');
 menu.onPlayMode = (play) => {
   weapon.setEnabled(play !== 'explore');
   setPaintball(play === 'paintball');
-  combat.setActive(!!me && play !== 'explore');
+  combat.setActive((!!me || !!solo) && play !== 'explore'); // health shows together, and in a Zombies game alone
 };
 
 window.addEventListener('keydown', (e) => {
@@ -871,8 +878,9 @@ turboBox.addEventListener('change', () => {
 });
 function applyRules(next: Rules): void {
   rules = next;
-  player.canFly = next.flying;
-  if (!next.flying) player.flying = false;
+  // No flying in the Zombies game (out of their reach for good; the server holds to it too).
+  player.canFly = next.flying && !games.zombies;
+  if (!player.canFly) player.flying = false;
   flyBox.checked = next.flying;
   furnBox.checked = next.furniture;
   namesBox.checked = next.names;
@@ -968,13 +976,14 @@ function putOutside(): void {
 function followAccount(account: Me | null): void {
   queueMicrotask(applyTurbo); // after `me` is set below: the admin's speed, or back to normal
   // Alone, the house and the bungalow are shut (Yoshi): no door opens and no pane breaks. Leaving
-  // the others from inside, you are put out in front.
-  doors.lock(!account);
+  // the others from inside, you are put out in front. Playing together, a Zombies game alone stops.
+  if (account) stopSolo();
+  doors.lock(!account || games.zombies);
   // Together everyone walks and runs at the real pace; alone, the speed you chose (the server holds
   // running to the real pace too, server/game.mjs).
   player.walkSpeed = account ? REAL_WALK : menu.walkSpeed;
   menu.lockSpeed(account ? REAL_WALK : null);
-  glass.seal(!account);
+  glass.seal(!account || games.zombies);
   if (!account && wasTogether) putOutside();
   wasTogether = !!account;
   $('mp-join-here').classList.toggle('hidden', !!account);
@@ -1013,6 +1022,7 @@ function followAccount(account: Me | null): void {
   }
   showOnline();
   combat.setActive(!!account && weapon.enabled);
+  showSoloButton();
 }
 // Another language: the texts made here that aren't drawn every frame (the modules redraw their own).
 onLang(() => {
@@ -1029,6 +1039,8 @@ chat.onSend = (text) => {
   else chat.system(() => t('chat.aloneHint')); // alone nothing is sent anywhere: only commands
 };
 games.onSend = (msg) => net.send(msg);
+// Zombies: a short banner as each wave begins (the big italic line, as on arriving through a portal).
+games.onWave = (n, count, big) => hud.announce(t('z.banner', { n }), t(big ? 'z.bannerBig' : 'z.bannerSub', { count }));
 // The admin's games: a game starts at once; stopping one is asked again in the page, since a slip of the
 // finger would end it for everyone.
 const stopAsk = $('stop-confirm');
@@ -1074,7 +1086,8 @@ weapon.onPlayerHit = (name, body, head, point, spot) => {
 
 /** Which way a hit came from, relative to where you look (0 = ahead, positive = left). */
 function hitAngle(by: string): number | null {
-  const at = avatars.position(by);
+  // A zombie's swipe: from the nearest one (the server names only the kind).
+  const at = by === 'a zombie' || by === 'a big zombie' ? zombies.nearest(player.x, player.z) : avatars.position(by);
   if (!at) return null;
   return Math.atan2(-(at.x - player.x), -(at.z - player.z)) - player.yaw;
 }
@@ -1126,6 +1139,160 @@ function soloHurt(amount: number): void {
 weapon.onClownHit = (id, point, spot) => clownHit(id, point, weapon.current, spot);
 $('newround-btn').addEventListener('click', () => net.send({ t: 'newround' }));
 
+// ---- The Zombies game (shared/zombies.mjs). Together the server runs it: a shot that hits zombies
+// is told to it (zhit), which checks it and keeps their health. Alone it runs here (`solo`).
+/** A zombie's name in the kill feed and on the death screen. */
+const zombieName = (big: boolean) => whoName(big ? 'a big zombie' : 'a zombie');
+/** One shot's hits on zombies: a puff (or paint that sticks to them), and the hits for the server, or here alone. */
+weapon.onZombieHit = (hits, paint) => {
+  const w = weapon.current;
+  const spec = WEAPON_SPECS[w];
+  for (const h of hits) {
+    effects.zombieHit(h.point);
+    if (paint) zombies.paint(h.id, h.ray, paint.color, paint.size);
+  }
+  if (net.connected) {
+    combat.hitMarker();
+    net.send({ t: 'zhit', w, hits: hits.map((h) => [h.id, h.body, h.head]) });
+    return;
+  }
+  if (!solo) return;
+  const now = performance.now();
+  for (const h of hits) zombieResult(h.id, solo.horde.hit(h.id, h.body * spec.body + h.head * spec.head, SOLO_ME, now), w);
+};
+/** Alone: what a hit did. Beaten: it falls (or vanishes in paint) and the kill feed says so. */
+function zombieResult(id: number, res: 'down' | 'hurt' | null, w: string): void {
+  if (!res) return;
+  combat.hitMarker(res === 'down');
+  if (res !== 'down') return;
+  zombies.beaten(id);
+  combat.kill(youName(), zombieName(zombies.isBig(id)), false, weaponName(w));
+}
+zombies.onVanish = (at) => effects.vanish(at);
+
+/** Alone: the Zombies game in this page: the horde (shared/zombies.mjs), its end, the best wave kept in this browser. */
+const SOLO_ME = 'me';
+const SOLO_BEST = 'briel.zombiesBest';
+let solo: { horde: Horde; endAt: number; best: number; record: boolean; key: string } | null = null;
+function soloBest(): number {
+  try {
+    return Math.max(0, Math.floor(Number(localStorage.getItem(SOLO_BEST)) || 0));
+  } catch {
+    return 0; // storage blocked
+  }
+}
+/**
+ * Start the Zombies game alone (the Play tab's button): the grid round the house and the bungalow
+ * with the cars where they stand, out of any car or saddle, at one of the house's outside places.
+ */
+function startSolo(): void {
+  if (me || solo) return;
+  getOut(false);
+  getOffHorse(false);
+  planner.toggle(false);
+  const boxes = cars.filter((c) => c.ready && edges.party.inside(c.x, c.z)).map((c) => ({ x: c.x, z: c.z, yaw: c.yaw, halfL: c.spec.length / 2, halfW: c.spec.width / 2 }));
+  const nav = makeNav({ prisms: [...house.prisms, ...(house.surroundings?.prisms ?? []), ...homeStreet.blocks], height: (x, z) => terrain.height(x, z), edge: edges.party, indoors: houseGround(house.prisms), boxes });
+  const horde = new Horde(nav, nav.edgeSpots(edges.party.ring), { height: (x, z) => house.ground + terrain.height(x, z), home: { x: 4.5, z: 18 } });
+  horde.start(performance.now());
+  solo = { horde, endAt: 0, best: soloBest(), record: false, key: '' };
+  respawnAt(OUTSIDE_SPAWNS[Math.floor(Math.random() * OUTSIDE_SPAWNS.length)]);
+  combat.setActive(weapon.enabled); // your health on screen while they come
+  chat.system(() => t('z.soloStart'));
+  soloView(true);
+  showSoloButton();
+}
+/** Stop it (the button again, the end screen over, or playing together): the zombies go, you're back up. */
+function stopSolo(): void {
+  if (!solo) return;
+  const wasDown = !combat.alive;
+  solo = null;
+  zombies.clear();
+  games.set({ kind: 'free' });
+  combat.setActive(!!me && weapon.enabled);
+  if (wasDown && !me) respawnAt(OUTSIDE_SPAWNS[Math.floor(Math.random() * OUTSIDE_SPAWNS.length)]);
+  showSoloButton();
+}
+/** The game's view for the bar and the end screen, as the server's would be (src/ui/games.ts); set when it changes. */
+function soloView(force = false): void {
+  if (!solo) return;
+  const h = solo.horde;
+  const now = performance.now();
+  const over = h.phase === 'over';
+  const mine = h.beaten[SOLO_ME] ?? 0;
+  const name = menu.nickname.trim() || youName(); // alone: the name typed on the start screen
+  const fighter = weapon.enabled && !driving && !riding;
+  const key = [h.phase, h.wave, h.left, combat.alive, fighter, mine, lang()].join();
+  if (!force && key === solo.key) return;
+  solo.key = key;
+  const ms = over ? Math.max(0, solo.endAt - now) : h.phase === 'break' ? Math.max(0, h.until - now) : 0;
+  games.set({
+    kind: 'zombies', phase: h.phase === 'over' ? 'done' : h.phase, ms, title: 'Zombies',
+    result: `The zombies caught everyone at wave ${h.wave}.`, resultCode: solo.record ? 'zOverBest' : 'zOver', resultArgs: { n: h.wave },
+    zombies: {
+      wave: h.wave, left: h.left, big: h.bigWave, fighters: fighter ? 1 : 0, standing: fighter && combat.alive ? 1 : 0, beaten: { [name]: mine }, ms,
+      down: [], best: solo.best ? { wave: solo.best, names: [name], at: '' } : null, record: solo.record,
+    },
+  });
+}
+/** Alone, every frame: the horde's step and what came of it. */
+function soloTick(dt: number): void {
+  if (!solo) return;
+  const h = solo.horde;
+  const now = performance.now();
+  if (h.phase === 'over' && now >= solo.endAt) return stopSolo();
+  const fighter = weapon.enabled && !driving && !riding && !planner.active;
+  for (const e of h.tick(now, dt, [{ name: SOLO_ME, x: player.x, y: player.feet, z: player.z, alive: combat.alive, fighter, safe: false }])) {
+    if (e.type === 'wave') chat.system(() => t(e.big ? 'srv.zWaveBig' : 'srv.zWave', { n: e.wave, count: e.count }));
+    else if (e.type === 'cleared') chat.system(() => t('srv.zCleared', { n: e.wave }));
+    else if (e.type === 'swipe') soloZombieHurt(e.damage, h.zombies.get(e.id)?.kind === BIG_ZOMBIE, h.zombies.get(e.id));
+    else if (e.type === 'over') {
+      solo.endAt = now + 15000;
+      solo.record = e.wave > solo.best;
+      if (solo.record) {
+        solo.best = e.wave;
+        try {
+          localStorage.setItem(SOLO_BEST, String(e.wave));
+        } catch {
+          // storage blocked: the best for this visit only
+        }
+      }
+      // As the server words it: its friendly twin in Paintball ("Iedereen was geraakt").
+      const [n, code] = [e.wave, solo.record ? 'zOverBest' : 'zOver'];
+      chat.system(() => serverText(code, { n }, `The zombies caught everyone at wave ${n}.`));
+      soloView(true);
+    }
+  }
+  zombies.follow(h);
+  soloView();
+}
+/** Alone, a zombie's swipe (or a big one's pound) landed: your health goes down; at nothing the game is over (you were the only one). */
+function soloZombieHurt(amount: number, big: boolean, from?: { x: number; z: number }): void {
+  if (!combat.alive) return;
+  combat.hurt(Math.max(0, combat.hp - amount));
+  rumble(0.8, 0.5, 180);
+  if (from) combat.hitFrom(Math.atan2(-(from.x - player.x), -(from.z - player.z)) - player.yaw);
+  if (combat.hp > 0) return;
+  combat.died(zombieName(big), false);
+  combat.kill(zombieName(big), t('char.you'), false, '');
+}
+/** The Play tab's button: Zombies alone, or Stop Zombies while it runs; together the admin starts it for everyone. */
+function showSoloButton(): void {
+  $('zombies-solo').classList.toggle('hidden', !!me);
+  const title = $('zombies-btn-title');
+  const sub = $('zombies-btn-sub');
+  title.dataset.i18n = solo ? 'play.zombiesStop' : 'game.zombies';
+  sub.dataset.i18n = solo ? 'game.stopSub' : 'play.zombiesSub';
+  title.textContent = t(solo ? 'play.zombiesStop' : 'game.zombies');
+  sub.textContent = t(solo ? 'game.stopSub' : 'play.zombiesSub');
+}
+$('zombies-btn').addEventListener('click', () => {
+  if (solo) stopSolo();
+  else {
+    startSolo();
+    menu.resume(menu.mode ?? 'kbm');
+  }
+});
+
 /**
  * The admin's bazooka. In multiplayer the server sets off the blast when the rocket arrives
  * (and decides who it hurts); alone, the rocket explodes here.
@@ -1152,6 +1319,8 @@ function explode(at: THREE.Vector3, mine: boolean, w: 'bazooka' | 'grenade' = 'b
   for (const i of glass.near(at, radius * 0.7)) if (glass.break(i, at, at)) net.send({ t: 'glass', i });
   for (const i of cats.near(at, radius)) catHit(i, at, w);
   for (const id of clowns.near(at, radius)) clownHit(id, at, w);
+  // Alone, zombies caught in it lose health here (together the server works it out from the blast).
+  if (solo) for (const [id, res] of solo.horde.blast(at.x, at.z, radius, bruteDamage(w, WEAPON_SPECS), SOLO_ME, performance.now())) zombieResult(id, res, w);
 }
 
 /**
@@ -1203,8 +1372,9 @@ function adminWeapons(): WeaponId[] {
   return !me || me.role === 'admin' ? ['bazooka'] : [];
 }
 
-/** Get in: alone right away; in multiplayer once the server says the car is yours. */
+/** Get in: alone right away; in multiplayer once the server says the car is yours. Not during the Zombies game (the server refuses too). */
 function getIn(): void {
+  if (games.zombies) return chat.system(() => t('srv.zNoCar'));
   if (!net.connected) return startDriving();
   net.send({ t: 'car', op: 'in', id: car.id });
   wantCar = true;
@@ -1237,6 +1407,7 @@ function getOut(tell = true): void {
 
 /** Get on horse i: alone right away; in multiplayer once the server says it's yours. */
 function mountHorse(i: number): void {
+  if (games.zombies) return chat.system(() => t('srv.zNoHorse'));
   if (!net.connected) {
     horses.mount(i, me?.username ?? 'you');
     planner.toggle(false);
@@ -1412,6 +1583,19 @@ function followGame(view: ModeView): void {
     teamsMenu = true;
     if (!weapon.enabled) chat.system(() => t('games.teamsExplore'));
   }
+  // Zombies: an explorer is told how to join in; the houses shut while it runs; its zombies gone after it.
+  if (games.zombies && before.kind !== 'zombies' && !weapon.enabled) chat.system(() => t('z.explore'));
+  if (games.view.kind !== 'zombies') zombies.clear();
+  shutHouses();
+}
+/**
+ * The house and the bungalow are shut alone (Yoshi) and during the Zombies game: no door opens and no
+ * pane breaks, so nobody hides inside from the zombies (the server holds to it too).
+ */
+function shutHouses(): void {
+  const shut = !me || games.zombies;
+  doors.lock(shut);
+  glass.seal(shut);
 }
 // Ended for good (another tab took over, the session ended, a new PIN): back to playing alone, as after
 // a kick. Else the page stayed as it was: the others frozen in place, a game's bar counting down, and a
@@ -1428,6 +1612,7 @@ net.onMessage = (m: ServerMsg) => {
         spawnPending = null;
       }
       avatars.clear();
+      zombies.clear(); // the server's, as its first tick has them
       online.clear();
       for (const p of m.players) {
         online.set(p.name, p.color);
@@ -1554,7 +1739,7 @@ net.onMessage = (m: ServerMsg) => {
     }
     case 'repair':
       glass.repair();
-      chat.system(() => t('chat.repaired', { name: m.by }));
+      if (!m.quiet) chat.system(() => t('chat.repaired', { name: m.by }));
       break;
     case 'shot': {
       const at = avatars.position(m.name);
@@ -1596,6 +1781,14 @@ net.onMessage = (m: ServerMsg) => {
     case 'clownhit':
       clowns.down(m.id, m.ms / 1000);
       combat.kill(m.by, whoName(clowns.name(m.id)), false, weaponName(m.w));
+      break;
+    case 'zdown': // a zombie beaten (server/zombies.mjs): it falls, or vanishes in paint
+      zombies.beaten(m.id);
+      // In the kill feed: your own, and the big ones (sixteen players beat over a hundred in a wave: a flood otherwise).
+      if (m.by === me?.username || zombies.isBig(m.id)) combat.kill(m.by, zombieName(zombies.isBig(m.id)), false, weaponName(m.w));
+      break;
+    case 'zgone': // fallen zombies taken away, or all of them when the game ends
+      zombies.gone(m.ids);
       break;
     case 'furn':
       if (m.op === 'put') furnishing.put(m.f);
@@ -1684,6 +1877,7 @@ function onTick(m: Tick): void {
   }
   horses.receive((m.h ?? []).map(readHorse), m.st, self);
   if (m.b) clowns.receive(m.b.map(readBrute), m.st); // every other tick
+  if (m.z) zombies.receive(m.z.map(readZombie), m.st); // the same, during the Zombies game
 }
 // Alone or together from here on (perhaps joined on the start screen already): after the handlers
 // above, so the connection's first status and messages reach them.
@@ -1900,7 +2094,12 @@ renderer.setAnimationLoop((now: number) => {
   pickups.group.visible = !menu.onStartScreen && weapon.enabled;
   portals.group.visible = !menu.onStartScreen;
   if (menu.onStartScreen) weapon.hidden = true; // nor the pistol in your hand: from the start view its barrel is a ring mid-screen
-  games.setExploring(!!me && !weapon.enabled); // the teams game's hint in the menu follows a change of mode there
+  games.setExploring(!weapon.enabled); // the teams game's and Zombies' hints follow a change of mode
+  // The Zombies game: the clowns and strongmen stand aside, nobody flies, and whoever is down waits for the wave.
+  clowns.paused = games.standAside;
+  player.canFly = rules.flying && !games.zombies;
+  if (!player.canFly) player.flying = false;
+  combat.waiting = games.view.kind !== 'zombies' ? null : games.zombies && !solo ? () => t('z.downWait') : () => '';
   if (menu.open) {
     travelPanel.hide();
     if (menu.onStartScreen) startCamera();
@@ -2018,9 +2217,10 @@ renderer.setAnimationLoop((now: number) => {
     games.update(dt, player.x, player.feet, player.z, key('use', mode));
     // The cars: E or Triangle next to one gets you in (unless two are in it already), and out again.
     if (!inCar && !wantCar) car = cars.reduce((a, b) => (b.distanceTo(player.x, player.z) < a.distanceTo(player.x, player.z) ? b : a));
-    const nearCar = !inCar && !onHorse && !dead && !planner.active && car.distanceTo(player.x, player.z) < CARS.reach && Math.abs(player.feet - car.y) < 1;
+    // Not during the Zombies game (getIn and mountHorse say why if tried anyway).
+    const nearCar = !inCar && !onHorse && !dead && !planner.active && !games.zombies && car.distanceTo(player.x, player.z) < CARS.reach && Math.abs(player.feet - car.y) < 1;
     // The horses: E next to one gets you on it, and off again.
-    const nearHorse = !inCar && !onHorse && !dead && !planner.active && !nearCar && horseWanted < 0 ? horses.nearest(player.x, player.z) : -1;
+    const nearHorse = !inCar && !onHorse && !dead && !planner.active && !nearCar && !games.zombies && horseWanted < 0 ? horses.nearest(player.x, player.z) : -1;
     const carTaken = !!car.driver && car.driver !== me?.username;
     const seatFree = carTaken && !car.passenger;
     if ((driving || riding) && frame.usePressed) getOut();
@@ -2166,6 +2366,9 @@ renderer.setAnimationLoop((now: number) => {
   // Alone, the strongmen fight here, going for you when you fight (in multiplayer the server runs them).
   if (!net.connected) clowns.stepAlone(dt, combat.alive && weapon.enabled && !driving && !riding && !games.peaceful ? { x: player.x, y: player.feet, z: player.z } : null);
   clowns.update(camera.position);
+  // The Zombies game: alone its horde steps here; together the server's ticks move them. Then they're drawn.
+  if (!net.connected) soloTick(dt);
+  zombies.update(dt, camera.position);
   horses.update(dt, camera.position);
   // The others, after the horses: a rider sits in the saddle where it is drawn this frame.
   avatars.tick(dt, camera.position, driving || riding || horses.mounted >= 0 ? null : { x: player.x, z: player.z });
@@ -2183,6 +2386,7 @@ renderer.setAnimationLoop((now: number) => {
       ...horses.blips().map((b) => ({ ...b, color: '#8a5a3a', kind: 'cat' as const })),
       ...(games.hideOthers ? [] : avatars.blips().map((b) => ({ ...b, kind: 'player' as const }))),
       ...games.coinSpots().map((c) => ({ ...c, color: '#f2c14e', kind: 'coin' as const })), // the hunt's coins left
+      ...zombies.blips().map((z) => ({ ...z, color: z.big ? '#4f7a3a' : '#8fb070', kind: 'zombie' as const })), // the Zombies game's, small dots
     ];
     const shapes = [...furnishing.pieces.values()].filter((p) => !p.item.startsWith('rug')).map((p) => ({ ring: footprint(p), y: p.y }));
     for (const c of cars) if (c.ready) shapes.push({ ring: c.footprint(), y: c.y });
@@ -2591,6 +2795,8 @@ if (import.meta.env.DEV) {
       getOut,
       horses,
       clowns,
+      zombies,
+      zombiesSolo: { start: startSolo, stop: stopSolo, state: () => solo },
       mountHorse,
       getOffHorse,
       driving: () => driving,
