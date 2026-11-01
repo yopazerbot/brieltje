@@ -1,7 +1,8 @@
 """Download the CC0 textures and sky, generate the facade brick, and write
 web-sized versions for the walkthrough.
 
-- Poly Haven textures (CC0) go to source/textures/<id>/ at 2k (not in git)
+- Poly Haven textures (CC0) go to source/textures/<id>/ at 2k (not in git); the lawn is ambientCG's
+  (CC0), from source/textures/<id>/ at 1k
 - The facade brick is generated to match the real brick: "gevelsteen lichtbeige
   genuanceerd" (light beige, blended) per the plan legend, long format of about
   29 x 5 cm with thin recessed joints (size from the site photo of 2026-08-25)
@@ -20,10 +21,14 @@ Only the half-size copies:
     tools/.venv/Scripts/python.exe tools/textures.py --halves
 One generated surface (and the half-size copies):
     tools/.venv/Scripts/python.exe tools/textures.py --only floor_tile
+Only the lawn (and its half-size copies):
+    tools/.venv/Scripts/python.exe tools/textures.py --grass
 """
+import io
 import json
 import sys
 import urllib.request
+import zipfile
 from pathlib import Path
 
 import numpy as np
@@ -50,12 +55,15 @@ TEXTURES = {
     "pavers": ("patterned_concrete_pavers", 1024),  # the forecourts and drives
     "gravel": ("gravel_floor", 512),  # gravel yards, field tracks, footpaths
     "field": ("dry_mud_field_001", 1024),  # ploughed fields, crops, the floor of the woods
-    "grass": ("leafy_grass", 1024),
     "concrete": ("concrete_wall_008", 1024),
     "stair": ("oak_veneer_01", 1024),
     "hedge": ("forest_leaves_02", 512),
 }
 MAPS = {"color": ["Diffuse"], "normal": ["nor_gl"], "rough": ["Rough", "arm"]}
+# From ambientCG (CC0) instead: material name -> (asset id, web size in pixels, real size of a tile in metres). The
+# lawn: short mown grass, green with a little yellow, as the lawns and meadows are at the end of October (the
+# blades are 2 to 3 cm long at 1.2 m a tile). It took over from Poly Haven's leafy_grass, half dead leaves.
+AMBIENTCG = {"grass": ("Grass004", 1024, 1.2)}
 
 
 def fetch(url, dest):
@@ -102,6 +110,26 @@ def poly_haven(meta):
         sizes[name] = round(dims[0] / 1000, 3)
         print(f"{name:11s} <- {asset} ({sizes[name]} m)")
     return sizes
+
+
+def ambient_cg(sizes):
+    """The ambientCG textures: their 1k download (a zip, kept in source/textures/<id>/), its colour, normal (OpenGL)
+    and roughness maps as web versions. Adds their real sizes in metres to `sizes`."""
+    for name, (asset, size, metres) in AMBIENTCG.items():
+        src = fetch(f"https://ambientcg.com/get?file={asset}_1K-JPG.zip", SRC / asset / f"{asset}_1K-JPG.zip")
+        with zipfile.ZipFile(src) as z:
+            for kind, part in (("color", "Color"), ("normal", "NormalGL"), ("rough", "Roughness")):
+                img = Image.open(io.BytesIO(z.read(f"{asset}_1K-JPG_{part}.jpg"))).convert("L" if kind == "rough" else "RGB")
+                if kind == "rough":
+                    # Its roughness (about 0.26) is glossy for grass: the sun made a white patch on every lawn. Its
+                    # variation kept, between 0.72 and 0.96, as matte as the leafy grass before it. It hardly varies:
+                    # a quarter of the size does (a seventh of the download).
+                    r = np.asarray(img, np.float32) / 255
+                    lo, hi = np.percentile(r, [2, 98])
+                    img = Image.fromarray((np.clip(0.72 + 0.24 * (r - lo) / (hi - lo), 0, 1) * 255).astype(np.uint8))
+                save_webp(img, WEB / f"{name}_{kind}.webp", size // 4 if kind == "rough" else size)
+        sizes[name] = metres
+        print(f"{name:11s} <- ambientCG {asset} ({metres} m)")
 
 
 def value_noise(shape, cell, rng):
@@ -411,12 +439,14 @@ def sky():
     print("sky        <-", HDRI, f"({src.stat().st_size // 1024} KB)")
 
 
-def halves():
-    """Every web texture again at half size in textures/half/, for phones and tablets: a quarter of
-    the graphics memory and of the download. Made here rather than in the browser, where shrinking
-    them through a canvas is the one step only phones took (and iPhones showed black walls)."""
+def halves(names=None):
+    """Every web texture (or those of the surfaces `names`) again at half size in textures/half/, for phones and
+    tablets: a quarter of the graphics memory and of the download. Made here rather than in the browser, where
+    shrinking them through a canvas is the one step only phones took (and iPhones showed black walls)."""
     (WEB / "half").mkdir(exist_ok=True)
     for src in sorted(WEB.glob("*.webp")):
+        if names and src.stem.rsplit("_", 1)[0] not in names:
+            continue
         img = Image.open(src)
         img.load()
         half = img.resize((max(1, img.width // 2), max(1, img.height // 2)), Image.LANCZOS)
@@ -436,12 +466,19 @@ def main():
         (WEB / "sizes.json").write_text(json.dumps(sizes, indent=1), encoding="utf-8")
         halves()
         return
+    if "--grass" in sys.argv:  # only the lawn (ambientCG)
+        sizes = json.loads((WEB / "sizes.json").read_text(encoding="utf-8"))
+        ambient_cg(sizes)
+        (WEB / "sizes.json").write_text(json.dumps(sizes, indent=1), encoding="utf-8")
+        halves(set(AMBIENTCG))
+        return
     if "--generated" in sys.argv:
         sizes = json.loads((WEB / "sizes.json").read_text(encoding="utf-8"))
         regrade()
     else:
         meta = api("assets?t=textures")
         sizes = poly_haven(meta)
+        ambient_cg(sizes)
     generated(sizes)
     if "--generated" not in sys.argv:
         sky()

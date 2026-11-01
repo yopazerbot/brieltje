@@ -467,9 +467,12 @@ export function paint(g: THREE.BufferGeometry, c: THREE.Color): THREE.BufferGeom
   return g;
 }
 
-/** Grass for the whole surroundings, with the real-size lawn texture. */
+/**
+ * Grass for the whole surroundings, with the real-size lawn texture, a little less green than the photo
+ * (in the low sun the texture's own green turns to a golf course).
+ */
 export function grassMaterial(renderer: THREE.WebGLRenderer): THREE.MeshStandardMaterial {
-  const mat = new THREE.MeshStandardMaterial({ color: '#c9d8b4', roughness: 1 });
+  const mat = new THREE.MeshStandardMaterial({ color: '#d4cfc8', roughness: 1 });
   mat.map = texture('grass', 'color', renderer);
   mat.normalMap = texture('grass', 'normal', renderer);
   mat.roughnessMap = texture('grass', 'rough', renderer);

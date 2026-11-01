@@ -22,9 +22,15 @@ road) and WTZ (water surfaces). From them, in model coordinates:
   orthophoto shows them; as quads in 3D (rows of tilted panels on a flat roof).
 - roads: pieces of the paved road that the GRB's road surface leaves out (a strip along the
   centre line, 4.6 m wide).
-- fields: the plots without a building, as the photo shows them: bare soil (light or dark),
-  crops and nursery rows (mixed green and soil), or the floor of a wood (the laser scan's
-  trees over most of it); grass plots stay lawn. A metre of grass is kept along their edges.
+- fields: the plots without a building. Where the farmers declare a crop on them this year
+  (tools/crops.py) the crop (`c`), each crop a field of its own; declared grassland stays grass.
+  The rest as the photo shows it: bare soil (light or dark), crops and nursery rows (mixed green
+  and soil), or the floor of a wood (the laser scan's trees over most of it); grass plots stay
+  lawn. A metre of grass is kept along their edges. Each field carries the direction of its
+  rows along its long side, and a number of its own (`r`).
+- lawns: the gardens (plots with a house) that are mown in stripes, about half of them, with the
+  stripes' direction and width; meadows: the declared grassland and fallow. For the grass
+  (web/src/world/groundShade.ts).
 
 Nothing here is keyed by address: the survey's houses are model positions.
 Writes data/street.json and a check image data/debug/street.png; tools/build_house.py builds them.
@@ -40,7 +46,9 @@ from PIL import Image, ImageDraw
 from shapely.affinity import affine_transform
 from shapely.geometry import LineString, Point, Polygon, box
 from shapely.ops import linemerge, nearest_points, unary_union
+from shapely.strtree import STRtree
 
+import crops
 import old_house
 from neighbours import TILE_H, TILE_W, TILE_X0, TILE_Y1, band, features, hull, model_frame, ortho_image, polygons, raster, zone
 
@@ -363,12 +371,21 @@ def cut(line, d0, d1):
     return LineString(pts)
 
 
-def fields(ras, veg, plots, homes, keep_out, area):
-    """The surface of every plot without a building, by what the photo and the laser scan show."""
+# The declared crops (tools/crops.py) that cover the ground green at the end of October get the green-over-soil
+# surface; the others (maize stubble, a winter cereal just up) bare soil.
+GREEN_CROPS = {"beet", "leek", "tagetes", "cover", "fauna", "avenue", "fruit", "shrubs", "roses", "hedgeplants"}
+MEADOWS = {"grass", "fallow"}  # these stay grass: meadows (tools/crops.py)
+
+
+def fields(ras, veg, plots, homes, keep_out, area, declared):
+    """The surface of every plot without a building: where the farmers' declarations of this year (tools/crops.py)
+    cover it, the crop declared (`c`), each crop a field of its own half a metre in from where they meet; the rest
+    by what the photo and the laser scan show."""
     out = []
     R, G, B = ras.rgb[..., 0], ras.rgb[..., 1], ras.rgb[..., 2]
     V = (R + G + B) / 3
     home = unary_union(homes)
+    index = STRtree([poly for poly, _ in declared])
     for p in plots:
         if p.area < 600 or p.intersection(home).area > 5:
             continue
@@ -381,15 +398,80 @@ def fields(ras, veg, plots, homes, keep_out, area):
                 continue
             green = float(veg[inside].mean())
             tall = float((ras.height[inside] > 3).mean())
+            soil = "field_soil" if float(V[inside].mean()) > 140 else "field_dark"
             if tall > 0.4:
-                kind = "forest"
+                photo = "forest"  # trees over most of it (the woods, and nurseries grown tall): their floor
             elif green > 0.65:
-                continue  # grass: the lawn
+                photo = None  # grass: the lawn
             elif green < 0.3:
-                kind = "field_soil" if float(V[inside].mean()) > 140 else "field_dark"
+                photo = soil
             else:
-                kind = "field_crop"
-            out.append({"m": kind, "p": rings(q.simplify(0.4))})
+                photo = "field_crop"
+            cover = []
+            if photo != "forest":
+                for k in index.query(q):
+                    poly, crop = declared[k]
+                    for piece in parts_of(q.intersection(poly).buffer(-0.5, join_style="mitre"), "Polygon"):
+                        if piece.area < 150:
+                            continue
+                        cover.append(piece.buffer(0.5, join_style="mitre"))
+                        if crop in MEADOWS:
+                            continue  # grass: a meadow
+                        m = "field_crop" if crop in GREEN_CROPS else (photo if photo in ("field_soil", "field_dark") else "field_soil")
+                        out.append({"m": m, "c": crop, "r": rows(piece), "p": rings(piece.simplify(0.4))})
+            if photo is None:
+                continue
+            left = q.difference(unary_union(cover)) if cover else q
+            for r in parts_of(left.buffer(-1.0, join_style="mitre").buffer(1.0, join_style="mitre").intersection(q), "Polygon"):
+                if r.area >= 300:  # not the slivers where a declared parcel misses the plot's line
+                    out.append({"m": photo, "r": rows(r), "p": rings(r.simplify(0.4))})
+    return out
+
+
+def rows(field):
+    """Which way a field's rows run, along its long side (degrees from the x axis), and a number of its own (0 to 99),
+    both from the whole field: the browser gets it in pieces (one per tile, and cut along a grid), and every piece
+    draws the same rows."""
+    r = list(field.minimum_rotated_rectangle.exterior.coords)[:4]
+    a, b = max([(r[0], r[1]), (r[1], r[2])], key=lambda e: math.dist(*e))
+    c = field.centroid
+    seed = int((math.sin(round(c.x) * 12.9898 + round(c.y) * 78.233) * 43758.5453) % 1 * 100)
+    return [round(math.degrees(math.atan2(b[1] - a[1], b[0] - a[0])) % 180, 1), seed]
+
+
+def lawns(homes, area, ours):
+    """The gardens' lawns: every plot with a house (not the farms), about half of them mown in stripes. Each: the
+    stripes' direction along the plot's long side (degrees from the x axis), their width, and the plot's outline.
+    The browser draws the stripes only where it draws grass, so the plot's paving and buildings needn't come out."""
+    out = []
+    for p in homes:
+        q = p.intersection(area)
+        if q.is_empty or not 80 < q.area < 4000 or p.intersection(ours).area > 5:
+            continue  # nothing here, a farm, or our own plot and the bungalow's (a robot mows ours)
+        c = p.centroid
+        h = (math.sin(round(c.x, 1) * 12.9898 + round(c.y, 1) * 78.233) * 43758.5453) % 1
+        if h >= 0.5:
+            continue  # mown by a robot or by no one in particular: no stripes
+        r = list(p.minimum_rotated_rectangle.exterior.coords)[:4]
+        a, b = max([(r[0], r[1]), (r[1], r[2])], key=lambda e: math.dist(*e))
+        angle = math.degrees(math.atan2(b[1] - a[1], b[0] - a[0])) % 180
+        width = 0.5 + 0.45 * ((h * 7.31) % 1)
+        for piece in parts_of(q.simplify(0.4), "Polygon"):
+            if piece.area > 40:
+                out.append({"a": round(angle, 1), "w": round(width, 2), "p": [coords(piece.exterior, 1)[:-1]]})
+    return out
+
+
+def meadows(declared, area):
+    """The grassland and fallow the farmers declare (tools/crops.py): meadows, a little rougher than a lawn, and
+    fallow left alone rougher still (`k`: grass or fallow)."""
+    out = []
+    for poly, crop in declared:
+        if crop not in MEADOWS:
+            continue
+        for piece in parts_of(poly.intersection(area).simplify(0.4), "Polygon"):
+            if piece.area > 150:
+                out.append({"k": crop, "p": [coords(piece.exterior, 1)[:-1]] + [coords(h, 1)[:-1] for h in piece.interiors]})
     return out
 
 
@@ -499,7 +581,7 @@ def main():
     if not rest.is_empty:
         more, _, _ = build(rest, plot, roads_l72, to_model, nb, touches)
         offset = len(out["poles"])
-        for k in ("roads", "poles", "tracks", "water", "pavings", "pools", "hedges", "fields"):
+        for k in ("roads", "poles", "tracks", "water", "pavings", "pools", "hedges", "fields", "lawns", "meadows"):
             out[k] = out[k] + more[k]
         out["wires"] = out["wires"] + [[a + offset, b + offset] for a, b in more["wires"]]
         grid(old)  # the check image shows the area of before
@@ -574,13 +656,15 @@ def build(area, plot, roads_l72, to_model, nb, mine):
     meadow = unary_union([Polygon(a["poly"]) for a in json.loads((ROOT / "data" / "house.manual.json").read_text(encoding="utf-8"))["site"].get("noBoundaries", [])])
     yards = unary_union([Polygon(q["p"][0]).buffer(0) for q in pave] + [Polygon(p).buffer(0.6) for p in pool_list])
     tracks_area = unary_union([LineString(t["path"]).buffer(1.2) for t in track_list]) if track_list else Polygon()
-    field_list = fields(ras, veg, all_plots, homes, unary_union([keep_out, meadow, yards, tracks_area, road.buffer(1.0)]), area)
+    declared = crops.parcels(model)
+    field_list = fields(ras, veg, all_plots, homes, unary_union([keep_out, meadow, yards, tracks_area, road.buffer(1.0)]), area, declared)
 
     out = {
         "_source": "GRB (Wegsegment, WPI, WTZ, ADP) and the orthophoto (Digitaal Vlaanderen, open data); laser scan DHM II 2013-2015; "
                    "solar panels from a look at the Google Maps satellite view, 2026-10-30 (reference only)",
         "roads": extra_roads, "poles": pole_list, "wires": wires, "tracks": track_list, "water": ponds,
         "pavings": pave, "pools": pool_list, "hedges": hedges, "solar": panels, "fields": field_list,
+        "lawns": lawns(homes, area, ours), "meadows": meadows(declared, area),
     }
     return out, ras, road
 

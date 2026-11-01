@@ -166,15 +166,17 @@ def main():
         else:
             sheep += len(animals)
 
-    # Crows on bare fields: a spot well inside a few of them, not by the houses.
+    # Crows on bare fields (stubble and soil; the nurseries and green crops are no use to them): a spot well
+    # inside a few of them, not by the houses.
     crows = []
     bare = [Polygon(p["p"][0]).buffer(0) for p in prisms if p["m"] in ("field_soil", "field_dark")]
-    bare = [f for f in bare if f.area > 3000 and f.centroid.within(ring) and not f.centroid.within(out_zone)]
+    bare = [f for f in bare if f.area > 1500 and f.centroid.within(ring) and not f.centroid.within(out_zone)]
     rng.shuffle(bare)
     for f in bare:
         if len(crows) >= 6:
             break
-        c = polylabel(f.buffer(-8) if f.buffer(-8).geom_type == "Polygon" else f, 1.0)
+        inner = f.buffer(-8)
+        c = polylabel(inner if inner.geom_type == "Polygon" and not inner.is_empty else f, 1.0)
         if any(math.dist((c.x, c.y), (o[0], o[1])) < 120 for o in crows):
             continue
         crows.append([r2(c.x), r2(c.y), rng.randint(6, 11)])

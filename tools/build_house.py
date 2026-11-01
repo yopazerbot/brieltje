@@ -659,15 +659,15 @@ def main():
     ter = terrain.load()
     b.target = b.outside
 
-    def lay(material, y0, y1, geom, cell, name=None):
+    def lay(material, y0, y1, geom, cell, name=None, **extra):
         """Out on the relief: the browser cuts it along a grid of `cell` metres (d) and lifts each piece.
         Cut along the tiles first, so each piece lies in one."""
         geom = geom if geom.is_valid else geom.buffer(0)
         for piece in tile_pieces(geom):
             if ter.flat(piece):
-                b.add(material, y0, y1, piece, name)
+                b.add(material, y0, y1, piece, name, **extra)
             else:
-                b.add(material, y0, y1, piece, name, d=cell)
+                b.add(material, y0, y1, piece, name, d=cell, **extra)
 
     def lay_path(material, y0, y1, width, points, cell=8.0):
         lay(material, y0, y1, LineString(points).buffer(width / 2, cap_style="flat", join_style="mitre"), cell)
@@ -706,8 +706,14 @@ def main():
                 lay_tagged(q["m"], ground - 0.05, ground + 0.025, paving.intersection(yard), 8.0, "school")
             else:
                 lay(q["m"], ground - 0.05, ground + 0.025, paving, 8.0)
-        for q in st.get("fields", []):  # just above the lawn, under the tracks and the yards
-            lay(q["m"], ground - 0.05, ground + 0.03, Polygon(q["p"][0], q["p"][1:]).buffer(0), 16.0)
+        for q in st.get("fields", []):  # just above the lawn, under the tracks and the yards; with its crop (c) and its rows (r)
+            lay(q["m"], ground - 0.05, ground + 0.03, Polygon(q["p"][0], q["p"][1:]).buffer(0), 16.0, **{k: q[k] for k in ("c", "r") if k in q})
+        # The grass round about (web/src/world/groundShade.ts): the gardens mown in stripes and the meadows, each
+        # loaded with the side its middle lies on.
+        for key in ("lawns", "meadows"):
+            for g in st.get(key, []):
+                mid = Polygon(g["p"][0]).centroid
+                side(mid.x, mid.y).setdefault("grass", {"lawns": [], "meadows": []})[key].append(g)
         for p in st.get("pools", []):
             pool = Polygon(p)
             lift = ter.height(pool.centroid.x, pool.centroid.y)

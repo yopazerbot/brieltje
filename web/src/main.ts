@@ -269,8 +269,10 @@ scene.add(tiles.group, horizon);
 // Shadows and soft corners on the ground of the whole neighbourhood, worked out once the sun's
 // direction is known (the real-time sun shadow only covers the house).
 const groundShade = new GroundShade(center);
-groundShade.apply(grassMat, 0.35);
-for (const m of [...groundFamilies(renderer), roadPaint]) groundShade.apply(m);
+groundShade.apply(grassMat, 0.35, true);
+groundShade.addGrass(house.surroundings?.grass); // the gardens' stripes and the meadows
+// The garden's own paths, drive and planted borders too (not the terraces: one is on the roof).
+for (const m of [...groundFamilies(renderer), roadPaint, surfaceMaterial('paving', renderer), surfaceMaterial('bed', renderer)]) groundShade.apply(m as THREE.MeshStandardMaterial);
 void Promise.all([environmentReady, homeStreet.ready]).then(() => {
   tiles.showAll(); // the ring's tiles beyond the draw distance throw shadows too
   groundShade.bake(renderer, scene, sun, [built.group, hedgeLumps, doors.group, tiles.group], house.ground);
@@ -1937,6 +1939,7 @@ async function buildVillage(): Promise<void> {
   const centre = new THREE.Vector3(c.x, house.ground + terrain.height(c.x, c.y), c.y);
   tiles.showAll(); // every tile throws its shadow, however far the camera is now
   for (const m of models) m.visible = true;
+  groundShade.addGrass(data.grass);
   groundShade.bakeVillage(renderer, scene, sun, [tiles.group], house.ground, centre, 345, phone ? 1024 : 2048);
   // Molenhoek's far stretch (the area east of the village, x 880 on) has a shaded area of its own.
   const farPts = (data.area ?? []).filter(([x]) => x > 880);
@@ -1948,6 +1951,8 @@ async function buildVillage(): Promise<void> {
     const at = new THREE.Vector3(fx, house.ground + terrain.height(fx, fz), fz);
     groundShade.bakeVillage(renderer, scene, sun, [tiles.group], house.ground, at, Math.max(x1 - x0, z1 - z0) / 2 + 10, phone ? 1024 : 2048, 'molenhoek');
   }
+  // And the whole map, coarse, for the ground beyond those areas.
+  groundShade.bakeAll(renderer, scene, sun, [built.group, hedgeLumps, tiles.group], house.ground, phone ? 1024 : 2048);
   village = 'ready';
   for (const c of cars) c.ready = true; // the cars parked in the village (shared/car.json) with it
   void roadLife.load(renderer, scene, camera);

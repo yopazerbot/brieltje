@@ -2,7 +2,7 @@
 
 ## Textures and Sky
 
-All from [Poly Haven](https://polyhaven.com), released as CC0 (public domain). Thank you to the Poly Haven team and contributors.
+From [Poly Haven](https://polyhaven.com), released as CC0 (public domain). Thank you to the Poly Haven team and contributors. The lawn is from [ambientCG](https://ambientcg.com), also CC0 (see below).
 
 | Used for | Poly Haven asset |
 |---|---|
@@ -15,7 +15,6 @@ All from [Poly Haven](https://polyhaven.com), released as CC0 (public domain). T
 | Neighbours' forecourts, drives and yards | `patterned_concrete_pavers` |
 | Gravel yards, field tracks and footpaths | `gravel_floor` |
 | Fields and the floor of the woods | `dry_mud_field_001` |
-| Lawn | `leafy_grass` |
 | Garden shed cladding | `wood_planks` |
 | Concrete stairs and beams | `concrete_wall_008` |
 | Indoor stair | `oak_veneer_01` |
@@ -23,6 +22,10 @@ All from [Poly Haven](https://polyhaven.com), released as CC0 (public domain). T
 | Brick of the houses round Smetlede's church square and of the school's long block (made lighter and greyer, then coloured per house) | `red_brick` |
 | Roof tiles of the houses round Smetlede's church square (made nearly grey, then coloured per roof) | `roof_tiles` |
 | Sky and daylight | `kloofendal_48d_partly_cloudy_puresky` |
+
+| Used for | ambientCG asset | Licence |
+|---|---|---|
+| Lawns, meadows and verges (made more matte in `tools/textures.py`; the stripes, rough grass and tussocks are drawn in the game) | [`Grass004`](https://ambientcg.com/a/Grass004) | CC0 1.0 |
 
 ## Facade Brick
 
@@ -51,8 +54,9 @@ Drawn in code at start-up, no image files: smoke, fire, sparks and debris sprite
 | Building and tree heights, and the relief of the ground (DHM Vlaanderen II, laser scan 2013-2015) | Digitaal Vlaanderen, `geo.api.vlaanderen.be/DHMV/wcs` | Modellicentie Gratis Hergebruik (free reuse, source: Digitaal Vlaanderen) |
 | Roof colours and the shapes of newer buildings; forecourts, drives, yards, pools, hedges and solar panels (orthophoto mosaic, most recent, 25 cm) | Digitaal Vlaanderen, `geo.api.vlaanderen.be/OMWRGBMRVL/wms` (layer Ortho) | Modellicentie Gratis Hergebruik (free reuse, source: Digitaal Vlaanderen) |
 | Road centre lines, poles along the road, ponds and ditches (GRB layers Wegsegment, WPI, WTZ) | Digitaal Vlaanderen, `geo.api.vlaanderen.be/GRB/wfs` | Modellicentie Gratis Hergebruik (free reuse, source: Digitaal Vlaanderen) |
+| What grows on the fields, the meadows (the main crop declared on each agricultural parcel this year, Landbouwgebruikspercelen; only the crop's name is used) | Departement Landbouw en Visserij, `geo.api.vlaanderen.be/Landbgebrperc/wfs` | Modellicentie Gratis Hergebruik (free reuse, source: Dept. LV) |
 
-Downloaded once into `source/geo/` (not in git), for a 1.2 km square round the plot and a strip beside it for Molenhoek's far end (`tools/geodata.py --strip w`, the same sources and licences); `tools/neighbours.py` turns them into `data/neighbours.json`, `tools/street.py` into `data/street.json`. Which houses have solar panels was checked on the Google Maps satellite view, and the neighbours' walls, frames, doors, garage doors, chimneys and plinths in Street View (reference only: no images or data from Google are in the game, only our own notes of colours and materials).
+Downloaded once into `source/geo/` (not in git), for a 1.2 km square round the plot and a strip beside it for Molenhoek's far end (`tools/geodata.py --strip w`, the same sources and licences; the crops with `tools/crops.py`); `tools/neighbours.py` turns them into `data/neighbours.json`, `tools/street.py` into `data/street.json`. Which houses have solar panels was checked on the Google Maps satellite view, and the neighbours' walls, frames, doors, garage doors, chimneys and plinths in Street View (reference only: no images or data from Google are in the game, only our own notes of colours and materials).
 
 ## Our Own Models
 

@@ -22,6 +22,10 @@ export interface Prism {
   d?: number;
   /** Part of a landmark (the church), so a model can take its place */
   lm?: string;
+  /** A field's crop as the farmers declare it this year (tools/crops.py), drawn in its rows (world/fields.ts) */
+  c?: string;
+  /** A field's rows: their direction (degrees from the x axis) and a number of its own (0 to 99), the same for all its pieces */
+  r?: [number, number];
 }
 
 export interface Level {
@@ -178,6 +182,16 @@ export interface Surroundings {
   solar?: { q: [number, number, number][]; n: [number, number]; flat?: boolean }[];
   /** The surroundings' blocks (walls, ground covers, hedges, fences), apart from the house's */
   prisms?: Prism[];
+  /** The gardens mown in stripes and the meadows, for the grass (world/groundShade.ts) */
+  grass?: GrassData;
+}
+
+/** The gardens mown in stripes and the meadows (tools/street.py). */
+export interface GrassData {
+  /** A garden's outline, its stripes' direction (degrees from the x axis) and width (m) */
+  lawns: { a: number; w: number; p: Ring[] }[];
+  /** Declared grassland, or fallow left alone (`k`: grass or fallow; rougher) */
+  meadows: { k: string; p: Ring[] }[];
 }
 
 /**
