@@ -33,6 +33,7 @@ import { CAR_REACH, PORTALS, portalNear, REACH } from '../shared/portals.mjs';
 import { noShoot } from '../shared/zones.mjs';
 import { boxesOverlap, boxPoints, clearOfPortals, makeIndoors, makeSolids } from '../shared/parking.mjs';
 import { bruteEntry, carFields, horseFields, playerFields, PROTO, TICK_MS } from '../shared/wire.mjs';
+import { makeIndoors as houseGround, makeNav } from '../shared/zombies.mjs';
 
 const MAX_PLAYERS = 16; // the most the admin can allow at once (every player's moves go to every other one)
 const KEYFRAME = 20; // ticks: everything goes to every page at least this often (once a second), moved or not
@@ -149,6 +150,14 @@ const SOLIDS = makeSolids([
 ], (x, z) => TERRAIN.height(x, z));
 const INDOORS = makeIndoors([...HOUSE.prisms, ...(HOUSE.surroundings?.prisms ?? [])], HOUSE.rooms.map((r) => r.name));
 /**
+ * The Zombies game (server/zombies.mjs): the ground floors of the house and the bungalow, shut while
+ * it runs; and what the zombies walk round (the house's, the surroundings' and the two portal
+ * streets' blocks: none of the village's lie in the party area). The cars are added at each start,
+ * where they stand then (nobody drives during the game).
+ */
+const HOUSE_GROUND = houseGround(HOUSE.prisms);
+const ZOMBIE_PRISMS = [...HOUSE.prisms, ...(HOUSE.surroundings?.prisms ?? []), ...Object.values(houseData('homestreet.json').clusters).flatMap((c) => c.blocks ?? [])];
+/**
  * The cars parked along the village's streets (src/data/roads.json, drawn by src/world/traffic.ts):
  * each a block of its model's size, as the page makes it (the sizes are in public/models/traffic.glb).
  * A placed car can't stand on one either.
@@ -250,7 +259,8 @@ export class Game {
     this.placing = 0; // placed Teslas on their way into the database (they count towards the most)
     // Horses: on their walks until someone rides one; left where they are got off (until a restart).
     this.horses = HORSES.herd.map((_, i) => ({ i, x: 0, z: 0, yaw: 0, speed: 0, rider: null, parked: false }));
-    this.modes = new Modes(this); // hide and seek, tag, treasure hunt (the admin starts them)
+    this.modes = new Modes(this); // hide and seek, tag, treasure hunt, the teams, Zombies (the admin starts them)
+    this.zombieBest = null; // the best wave ever in the Zombies game (loadRules, saveZombieBest)
     // The ticks (see snapshot): their count, and what each car, horse and strongman looked like in the
     // last one, kept here so the objects sent in 'car' and 'horse' messages stay as they are.
     this.tickNo = 0;
@@ -379,6 +389,7 @@ export class Game {
 
   /** The strongmen take a step; what they throw lands later, a stomp hurts at once. */
   stepBrutes(now) {
+    if (this.modes.state.kind === 'zombies') return; // they stand aside during the Zombies game (the pages hide them)
     const fighting = !this.roundOver && !this.modes.peaceful;
     const targets = fighting
       ? [...this.players].filter(([n, p]) => p.alive && p.state?.armed && !this.inCar(n) && now >= p.protectedUntil).map(([name, p]) => ({ name, x: p.state.x, y: p.state.y, z: p.state.z }))
@@ -421,20 +432,55 @@ export class Game {
     this.broadcast({ t: 'clownhit', id: c.id, by: name, ms: CLOWNS.respawnSeconds * 1000, w });
   }
 
-  /** Health taken by a strongman: like damage(), but nobody scores the kill. */
-  npcDamage(targetName, target, amount, now) {
+  /** Health taken by a strongman (or a zombie, `by`): like damage(), but nobody scores the kill. */
+  npcDamage(targetName, target, amount, now, by = 'a strongman') {
     if (!target.alive || amount <= 0 || this.calm(target)) return;
     target.hp = Math.max(0, target.hp - amount);
-    if (target.hp > 0) return this.send(target.ws, { t: 'hurt', hp: target.hp, by: 'a strongman' });
+    if (target.hp > 0) return this.send(target.ws, { t: 'hurt', hp: target.hp, by });
     target.alive = false;
-    target.respawnAt = now + RESPAWN_MS;
+    // In the Zombies game whoever goes down waits for the end of the wave (server/zombies.mjs revive).
+    const zombies = this.modes.zombies;
+    target.respawnAt = zombies ? Infinity : now + RESPAWN_MS;
     this.releaseCar(targetName);
     this.releaseHorse(targetName);
     target.score.deaths++;
     target.weapons = loadout(target.role); // dropped what they picked up
-    this.broadcast({ t: 'kill', killer: 'a strongman', victim: targetName, head: false, w: 'strongman' });
+    this.broadcast({ t: 'kill', killer: by, victim: targetName, head: false, w: by === 'a strongman' ? 'strongman' : 'zombie' });
     this.stats(targetName, { deaths: 1 });
     this.broadcast({ t: 'scores', list: this.scoreList() });
+    zombies?.downed(targetName);
+  }
+
+  /** A zombie's swipe (or a big one's pound) landed on a player who fights, unless they're just back. */
+  zombieHurt(name, p, amount, big, now) {
+    if (!p.alive || !p.state?.armed || this.inCar(name) || now < p.protectedUntil) return;
+    this.npcDamage(name, p, amount, now, big ? 'a big zombie' : 'a zombie');
+  }
+
+  /** A weapon's numbers (shared/weapons.json), or null for a name that isn't one. */
+  weaponSpec(w) {
+    return typeof w === 'string' && Object.hasOwn(WEAPONS, w) ? WEAPONS[w] : null;
+  }
+
+  /**
+   * What the zombies walk on for a new game (server/zombies.mjs): the grid over the party area with
+   * the cars where they stand now, the places along its edge where zombies come in, where they go
+   * when nobody fights (the house) and the ground's height. About 40 ms.
+   */
+  zombieGround() {
+    const boxes = Object.values(this.cars).filter((c) => BOUNDS.party.inside(c.x, c.z)).map((c) => {
+      const s = carSpec(c);
+      return { x: c.x, z: c.z, yaw: c.yaw, halfL: s.length / 2, halfW: s.width / 2 };
+    });
+    const height = (x, z) => HOUSE.ground + TERRAIN.height(x, z);
+    const nav = makeNav({ prisms: ZOMBIE_PRISMS, height: (x, z) => TERRAIN.height(x, z), edge: BOUNDS.party, indoors: HOUSE_GROUND, boxes });
+    return { nav, spots: nav.edgeSpots(BOUNDS.party.ring), home: { x: 4.5, z: 18 }, height };
+  }
+
+  /** The best wave ever reached in the Zombies game ({ wave, names, at }), kept with the rules. */
+  saveZombieBest(best) {
+    this.zombieBest = best;
+    this.auth.store.setMeta('zombies_best', JSON.stringify(best)).catch((e) => console.error('zombies best failed', String(e)));
   }
 
   clownList(now = Date.now()) {
@@ -487,7 +533,7 @@ export class Game {
     }
     if (!m || typeof m !== 'object') return;
     if (m.t === 'state' ? ++player.states > 30 : ++player.others > 40) return;
-    if (this.modes.peaceful && ['hit', 'rocket', 'nade', 'boom', 'shot'].includes(m.t)) return; // no fighting during a party game
+    if (this.modes.noShooting && ['hit', 'rocket', 'nade', 'boom', 'shot'].includes(m.t)) return; // no fighting during a party game
 
     if (m.t === 'state') {
       const prev = player.state;
@@ -498,7 +544,8 @@ export class Game {
       const horse = this.horseOf(name);
       const next = {
         ...where(m),
-        yaw: num(m.yaw, -100, 100), pitch: num(m.pitch, -2, 2), armed: !!m.armed, flying: !!m.flying && this.rules.flying && !inCar,
+        // No flying in the Zombies game: hovering over the zombies would be out of their reach for good.
+        yaw: num(m.yaw, -100, 100), pitch: num(m.pitch, -2, 2), armed: !!m.armed, flying: !!m.flying && this.rules.flying && !inCar && !this.modes.zombies,
         w: player.weapons.has(m.w) ? m.w : 'pistol', c: !!m.c && !inCar, d: inCar, s: driving ? num(m.s, -1, 1) : 0,
       };
       // Never faster than anyone can move: a movement budget refills at MAX_SPEED (the car's
@@ -523,6 +570,9 @@ export class Game {
       player.movedAt = now;
       // The edge of the game: a position outside it (only a changed page sends one) is put back just inside.
       this.fenceIn(next, prev);
+      // In the Zombies game the house and the bungalow are shut (the pages lock their doors): a changed
+      // page that walks in anyway stays where it was outside.
+      if (this.modes.zombies && HOUSE_GROUND(next.x, next.z)) this.keepOut(next, prev);
       player.state = next;
       this.stampState(player, m.ct);
       if (driving) {
@@ -555,7 +605,7 @@ export class Game {
       if (m.dir === 1 || m.dir === -1) this.doorDir[m.id] = m.dir;
       this.broadcast({ t: 'door', id: m.id, open: !!m.open, dir: this.doorDir[m.id] ?? 1, by: name }, name);
     } else if (m.t === 'glass' && Number.isInteger(m.i) && m.i >= 0 && m.i < 4000) { // house blocks, then door glass from 3000
-      if (this.broken.size >= 200 || this.broken.has(m.i)) return;
+      if (this.broken.size >= 200 || this.broken.has(m.i) || this.modes.zombies) return; // the houses stay shut in the Zombies game
       this.broken.add(m.i);
       this.broadcast({ t: 'glass', i: m.i, by: name }, name);
     } else if (m.t === 'repair') {
@@ -575,6 +625,11 @@ export class Game {
       if (now < (player.nextFurn || 0)) return;
       player.nextFurn = now + 150;
       this.furnish(name, player, m).catch((e) => console.error('furniture failed', String(e)));
+    } else if (m.t === 'clownhit' && this.modes.state.kind === 'zombies') {
+      // The clowns and strongmen stand aside during the Zombies game (the pages hide them).
+    } else if (m.t === 'zhit') {
+      // A shot that hit zombies (server/zombies.mjs checks it as a hit on a strongman is checked).
+      this.modes.zombies?.hit(name, player, m, now);
     } else if (m.t === 'clownhit' && this.clowns.has(m.id) && this.clowns.get(m.id).brain) {
       // A strongman takes a while to bring down: each shot (a shotgun blast counts once) takes health.
       // Bullets only: blasts are set off here on the server (blast()), so nobody can claim one.
@@ -622,6 +677,8 @@ export class Game {
     } else if (m.t === 'car') {
       if (now < (player.nextCar || 0)) return;
       player.nextCar = now + 300;
+      // No driving in the Zombies game: a car is out of the zombies' reach, and nobody runs them over at a family game.
+      if (m.op === 'in' && this.modes.zombies) return this.send(player.ws, { t: 'system', text: 'No driving during Zombies.', code: 'zNoCar' });
       if (m.op === 'in' && Object.hasOwn(this.cars, m.id)) this.enterCar(name, player, this.cars[m.id]);
       else if (m.op === 'out') this.releaseCar(name);
     } else if (m.t === 'tesla') {
@@ -629,6 +686,7 @@ export class Game {
     } else if (m.t === 'horse') {
       if (now < (player.nextCar || 0)) return;
       player.nextCar = now + 300;
+      if (m.op === 'on' && this.modes.zombies) return this.send(player.ws, { t: 'system', text: 'No riding during Zombies.', code: 'zNoHorse' });
       if (m.op === 'on' && Number.isInteger(m.i) && this.horses[m.i]) this.mountHorse(name, player, this.horses[m.i], now);
       else if (m.op === 'off') this.releaseHorse(name);
     } else if (m.t === 'rocket') {
@@ -821,14 +879,38 @@ export class Game {
    */
   fenceAll() {
     const fence = this.fence();
+    const shut = !!this.modes.zombies;
     for (const [name, p] of this.players) {
       const s = p.state;
-      if (!s || fence.inside(s.x, s.z)) continue;
+      if (!s) continue;
+      if (shut && HOUSE_GROUND(s.x, s.z)) {
+        // In the Zombies game nobody is in the house or the bungalow (joined there, or there when it began).
+        this.keepOut(s, null);
+        this.moved(p);
+        continue;
+      }
+      if (fence.inside(s.x, s.z)) continue;
       this.releaseCar(name);
       this.releaseHorse(name);
       this.fenceIn(s, null);
       this.moved(p);
     }
+  }
+
+  /**
+   * A state `s` on the ground floor of the house or the bungalow while they are shut (the Zombies
+   * game), moved in place: back to `prev` when that was outside, else to the nearest of the house's
+   * outside start places (shared/spawns.json).
+   */
+  keepOut(s, prev) {
+    let to = prev && !HOUSE_GROUND(prev.x, prev.z) ? prev : null;
+    if (!to) {
+      const outside = SPAWNS.filter((q) => q.outside);
+      to = outside.reduce((a, b) => (Math.hypot(b.x - s.x, b.z - s.z) < Math.hypot(a.x - s.x, a.z - s.z) ? b : a));
+      s.y = to.y;
+    }
+    s.x = to.x;
+    s.z = to.z;
   }
 
   /** The car a player is in (driving or riding along), if any. */
@@ -901,6 +983,15 @@ export class Game {
       saved = JSON.parse((await this.auth.store.getMeta('rules')) || '{}');
     } catch {
       // unreadable: the defaults
+    }
+    // The best wave ever in the Zombies game (saveZombieBest): only a whole number and a short list of names.
+    try {
+      const best = JSON.parse((await this.auth.store.getMeta('zombies_best')) || 'null');
+      if (best && Number.isInteger(best.wave) && best.wave > 0) {
+        this.zombieBest = { wave: best.wave, names: (Array.isArray(best.names) ? best.names : []).filter((n) => typeof n === 'string').slice(0, 16), at: String(best.at ?? '').slice(0, 10) };
+      }
+    } catch {
+      // unreadable: none yet
     }
     for (const k of Object.keys(RULES)) if (ruleOk(k, saved[k])) this.rules[k] = saved[k];
     // The limit to start with went from 4 to 16 players (1 Nov 2026: 16 cost about 2% of a core). The
@@ -1193,9 +1284,12 @@ export class Game {
     this.broadcast({ t: 'blast', by: name, w, x: at.x, y: at.y, z: at.z }, w === 'grenade' ? name : undefined);
     const shooter = this.players.get(name);
     if (!shooter || this.roundOver) return;
-    // Strongmen caught in it lose health too (less at the edge of the blast; they're big).
+    // Zombies caught in it lose health (server/zombies.mjs), as the strongmen do.
+    this.modes.zombies?.blast(name, at, radius, bruteDamage(w, WEAPONS), w, now);
+    // Strongmen caught in it lose health too (less at the edge of the blast; they're big). Not during
+    // the Zombies game, when they stand aside.
     for (const c of this.clowns.values()) {
-      if (!c.brain || now < c.until) continue;
+      if (!c.brain || now < c.until || this.modes.state.kind === 'zombies') continue;
       const d = Math.hypot(c.brain.x - at.x, c.brain.z - at.z);
       if (d < radius + 1) this.hurtBrute(c, name, Math.round(bruteDamage(w, WEAPONS) * (1 - (0.5 * d) / (radius + 1))), w, now);
     }
@@ -1419,7 +1513,7 @@ export class Game {
       p.sentKey = fields;
     }
     // Cars, horses and strongmen: when their driver or rider sent something new, when they changed, in their turn.
-    const things = { c: [], h: [], b: [] };
+    const things = { c: [], h: [], b: [], z: [] };
     const sent = new Map();
     const add = (list, key, slot, fields, json, fresh) => {
       things[list].push({ json, due: fresh || fields !== this.sent.get(key) || slot % KEYFRAME === turn });
@@ -1445,13 +1539,25 @@ export class Game {
         if (this.sent.has(key)) sent.set(key, this.sent.get(key));
       }
     }
+    // The zombies of the Zombies game the same way, with the strongmen's ticks (each a line of about 30 bytes).
+    const zombies = this.modes.state.kind === 'zombies' ? this.modes.state.z.entries() : null;
+    for (const e of zombies ?? []) {
+      const key = `z${e[0]}`;
+      const json = JSON.stringify(e);
+      if (brutes) add('z', key, e[0] * 2, json, json, false);
+      else {
+        things.z.push({ json, due: false });
+        if (this.sent.has(key)) sent.set(key, this.sent.get(key));
+      }
+    }
     this.sent = sent;
     for (const p of this.players.values()) p.fresh = false;
 
     const join = (list, all) => list.filter((e) => all || e.due).map((e) => e.json).join(',');
     const part = (k, text) => (text ? `,"${k}":[${text}]` : '');
-    // The strongmen's list goes with every other tick even when empty: one left out of it stood still.
-    const rest = (all) => part('c', join(things.c, all)) + part('h', join(things.h, all)) + (brutes || all ? `,"b":[${join(things.b, all)}]` : '');
+    // The strongmen's list goes with every other tick even when empty: one left out of it stood still. The zombies' too, while the game runs.
+    const rest = (all) => part('c', join(things.c, all)) + part('h', join(things.h, all)) + (brutes || all ? `,"b":[${join(things.b, all)}]` : '')
+      + (zombies && (brutes || all) ? `,"z":[${join(things.z, all)}]` : '');
     const changed = rest(false);
     let everything = null;
     let old = false;

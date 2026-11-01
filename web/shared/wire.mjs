@@ -7,6 +7,7 @@
 //   c   cars       [id, age, x, y, z, yaw, steer, driver, passenger]
 //   h   horses     [i, age, x, z, yaw, speed, jump, rider, parked (0 or 1)]
 //   b   strongmen  [id, x, z, yaw, speed, act, hp]
+//   z   zombies    [id, x, z, yaw, state, hp]  (the Zombies game: state = act + 4 * kind, see zombieEntry)
 // `age`: how long before `st` that state was where it says (ms). A player's state carries the time
 // their own page took it, lined up with the server's clock (game.mjs), so network jitter on the way
 // in doesn't show as a stutter. Positions are rounded to the centimetre, angles to a milliradian.
@@ -14,7 +15,8 @@
 // What is in a tick: a player, car or horse when its player sent something new or it changed, and
 // each of them once a second whatever happened (spread over the ticks), so nobody waits long for the
 // full picture. The strongmen go with every other tick (ten a second is plenty for their walk): the
-// list is there even when empty, with those who changed; one left out of it stood still. A page that
+// list is there even when empty, with those who changed; one left out of it stood still. The zombies
+// go the same way during the Zombies game (a fallen one is taken away by a 'zgone' message). A page that
 // just connected gets everything in its first tick. Each page's own player is left out of its ticks,
 // and empty lists of players, cars and horses are left out.
 
@@ -55,6 +57,18 @@ export function bruteEntry(id, b) {
   return [id, r2(b.x), r2(b.z), angle(b.yaw), r2(b.speed), b.act, b.hp];
 }
 
+/** What a zombie does: walking, swiping (or pounding), staggering from a hit, fallen. */
+export const ZOMBIE_ACTS = ['walk', 'attack', 'hurt', 'down'];
+
+/**
+ * A zombie (shared/zombies.mjs): [id, x, z, yaw, state, hp]. `state` is its act (ZOMBIE_ACTS) plus 4
+ * times its kind (0 to 3 the regular ones, 4 the big one); its yaw to the centiradian. Its speed
+ * the page works out from how it moves.
+ */
+export function zombieEntry(z) {
+  return [z.id, r2(z.x), r2(z.z), Math.round(angle(z.yaw) * 100) / 100, Math.max(0, ZOMBIE_ACTS.indexOf(z.act)) + 4 * z.kind, Math.round(z.hp)];
+}
+
 /** A player entry as the page uses it (the shape of the old 'states' list, plus the teleport counter). */
 export function readPlayer(e) {
   const f = n(e[7]);
@@ -71,6 +85,11 @@ export function readCar(e) {
 
 export function readHorse(e) {
   return { i: n(e[0]), age: n(e[1]), x: n(e[2]), z: n(e[3]), yaw: n(e[4]), speed: n(e[5]), jump: n(e[6]), rider: e[7] ?? null, parked: !!e[8] };
+}
+
+export function readZombie(e) {
+  const s = Math.max(0, Math.floor(n(e[4])));
+  return { id: n(e[0]), x: n(e[1]), z: n(e[2]), yaw: n(e[3]), act: ZOMBIE_ACTS[s % 4], kind: Math.min(4, Math.floor(s / 4)), hp: n(e[5]) };
 }
 
 export function readBrute(e) {

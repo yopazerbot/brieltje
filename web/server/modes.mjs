@@ -1,11 +1,13 @@
-// Games the admin starts from the menu: hide and seek, tag, a treasure hunt, and two teams
-// (the house against the bungalow). The server keeps the game: who seeks or is "it", the clock,
-// the coins, the teams and their score, and it checks every tag and every coin against where
-// the players really are. No fighting during the party games; in the teams game only between
-// the teams. Hide and seek, tag and the treasure hunt are played at the house in Briel: everyone
-// is gathered there when one starts (game.mjs gather; the game's edge keeps them near, see fence).
+// Games the admin starts from the menu: hide and seek, tag, a treasure hunt, two teams (the house
+// against the bungalow) and Zombies (everyone one team against waves of zombies, server/zombies.mjs).
+// The server keeps the game: who seeks or is "it", the clock, the coins, the teams and their score,
+// the zombies, and it checks every tag and every coin against where the players really are. No
+// fighting during the party games; in the teams game only between the teams, in Zombies only at the
+// zombies. Hide and seek, tag, the treasure hunt and Zombies are played at the house in Briel:
+// everyone is gathered there when one starts (game.mjs gather; the game's edge keeps them near, see fence).
 
 import { readFileSync } from 'node:fs';
+import { DONE_MS as ZOMBIES_DONE_MS, ZombieGame } from './zombies.mjs';
 
 const HIDE_MS = 30_000; // the seeker counts with eyes shut
 const SEEK_MS = 180_000;
@@ -23,7 +25,7 @@ const GRACE_MS = 15_000; // a seeker or "it" whose connection drops has this lon
 export const TEAM_GOAL = 25; // kills of the other team that win the teams game
 export const TEAM_NAMES = { house: 'House', bungalow: 'Bungalow' };
 export const TEAM_COLORS = { house: '#4fa3e0', bungalow: '#ff9f43' };
-export const KINDS = { hide: 'Hide and seek', tag: 'Tag', treasure: 'Treasure hunt', teams: 'House against bungalow' };
+export const KINDS = { hide: 'Hide and seek', tag: 'Tag', treasure: 'Treasure hunt', teams: 'House against bungalow', zombies: 'Zombies' };
 
 // Where coins can lie: inside the rooms of the house (from the house data) and a few places outside.
 const HOUSE = JSON.parse(readFileSync(new URL('../src/data/house.json', import.meta.url), 'utf8'));
@@ -70,9 +72,23 @@ export class Modes {
     return this.state.kind !== 'free';
   }
 
-  /** A party game is on: nobody fights (the teams game is a fight). */
+  /**
+   * A party game is on: nobody fights another player (the teams game is a fight), the strongmen go for
+   * nobody and a new round leaves everyone where they are. In Zombies the players do shoot, at the
+   * zombies only (see noShooting and friends).
+   */
   get peaceful() {
     return this.active && this.state.kind !== 'teams';
+  }
+
+  /** No shots, grenades or rockets at all (hide and seek, tag, the treasure hunt). */
+  get noShooting() {
+    return this.peaceful && this.state.kind !== 'zombies';
+  }
+
+  /** The Zombies game being played (not once its result shows), or null. */
+  get zombies() {
+    return this.state.kind === 'zombies' && this.state.phase !== 'done' ? this.state.z : null;
   }
 
 
@@ -81,8 +97,9 @@ export class Modes {
     return this.state.kind === 'teams' ? this.state.teams[name] ?? null : null;
   }
 
-  /** Two players on the same team: they can't hurt each other. */
+  /** Two players on the same team: they can't hurt each other. In Zombies everyone is on one team. */
   friends(a, b) {
+    if (this.state.kind === 'zombies') return true;
     const t = this.teamOf(a);
     return !!t && t === this.teamOf(b);
   }
@@ -142,6 +159,8 @@ export class Modes {
       seekers: s.seekers ? [...s.seekers].filter((n) => this.game.players.has(n)) : undefined, it: s.it, times: s.times, coins: s.coins, counts: s.counts,
       result: s.result, resultCode: s.resultCode, resultArgs: s.resultArgs,
       teams: s.teams && this.here(s.teams), score: s.score, goal: s.kind === 'teams' ? TEAM_GOAL : undefined,
+      // Zombies: the wave, how many are left, who stands, everyone's count and the best ever; the break's countdown.
+      ...(s.kind === 'zombies' ? { zombies: s.z.view(now), ms: s.phase === 'done' ? Math.max(0, s.until - now) : s.z.ms(now) } : {}),
     };
   }
 
@@ -171,6 +190,7 @@ export class Modes {
     if (kind === 'free') {
       if (!this.active) return;
       const teams = this.state.kind === 'teams';
+      if (this.state.kind === 'zombies') this.state.z.stop();
       this.state = { kind: 'free' };
       if (teams) this.game.teamsChanged(this.names(), false);
       this.send();
@@ -180,8 +200,9 @@ export class Modes {
     }
     if (!Object.hasOwn(KINDS, kind)) return;
     const names = this.names();
-    if (names.length < 2 && kind !== 'treasure') return this.say(`${KINDS[kind]} needs at least two players`, 'needTwo', { kind });
+    if (names.length < 2 && kind !== 'treasure' && kind !== 'zombies') return this.say(`${KINDS[kind]} needs at least two players`, 'needTwo', { kind });
     const fromTeams = this.state.kind === 'teams' && kind !== 'teams';
+    if (this.state.kind === 'zombies') this.state.z.stop(); // straight from a Zombies game to another game: its zombies go
     if (kind === 'hide') {
       // `players`: who took part, so someone back after a dropped connection plays on as before (see join).
       const seeker = this.pick(names);
@@ -198,6 +219,16 @@ export class Modes {
       this.say(`${by} started House against bungalow: first team to ${TEAM_GOAL} kills. Switch teams in the menu.`, 'teamsStarted', { name: by, n: TEAM_GOAL });
       this.game.roundOver = null; // the teams' score counts now
       this.game.teamsChanged(names);
+    } else if (kind === 'zombies') {
+      // Everyone at the house first, then the horde: its grid takes the cars where they stand now. The
+      // houses stay shut during the game: every pane whole again for everyone (no way in by a broken one).
+      this.game.gather(names);
+      this.game.roundOver = null;
+      this.game.broken.clear();
+      this.game.broadcast({ t: 'repair', by, quiet: true });
+      const z = new ZombieGame(this.game, this, names, now);
+      this.state = { kind, phase: z.phase, until: z.horde.until, z };
+      this.say(`${by} started Zombies. Beat the waves together. The first one comes in 8 seconds.`, 'zombiesStarted', { name: by });
     } else if (kind === 'tag') {
       const it = this.pick(names);
       this.state = { kind, phase: 'playing', until: now + TAG_MS, it, last: null, lastAt: 0, times: byName(names.map((n) => [n, 0])) };
@@ -217,7 +248,7 @@ export class Modes {
       this.state = { kind, phase: 'playing', until: now + HUNT_MS, coins, counts: byName(names.map((n) => [n, 0])) };
       this.say(`${by} started a treasure hunt: ${COINS} coins in and around the house`, 'huntStarted', { name: by, n: COINS });
     }
-    if (kind !== 'teams') this.game.gather(names); // played at the house: everyone there, spread out
+    if (kind !== 'teams' && kind !== 'zombies') this.game.gather(names); // played at the house: everyone there, spread out
     // Straight from the teams game to another one: everyone back in their own colours, and the
     // fighting scores start again.
     if (fromTeams) {
@@ -277,7 +308,8 @@ export class Modes {
 
   /** The game is over: its result (as for `say`) shows in the bar for a while and goes in the chat. */
   finish(result, code, args) {
-    this.state = { ...this.state, phase: 'done', until: Date.now() + DONE_MS, result, resultCode: code, resultArgs: args };
+    const long = this.state.kind === 'zombies'; // the end screen: the wave, everyone's zombies and the best ever
+    this.state = { ...this.state, phase: 'done', until: Date.now() + (long ? ZOMBIES_DONE_MS : DONE_MS), result, resultCode: code, resultArgs: args };
     this.say(result, code, args);
     this.send();
   }
@@ -305,6 +337,7 @@ export class Modes {
       if (s.it === name) s.itBack = 0; // "it" is back in time
     }
     if (s.kind === 'treasure') s.counts[name] ??= 0;
+    if (s.kind === 'zombies' && s.phase !== 'done') s.z.join(name, this.game.players.get(name));
     if (this.active) this.send();
   }
 
@@ -332,6 +365,11 @@ export class Modes {
         return this.send();
       }
       if (this.names().length < 2) return this.finish('Not enough players', 'notEnough');
+    } else if (s.kind === 'zombies' && !this.names().length) {
+      // Nobody left: the game ends without a result (there is nobody to show it to).
+      s.z.stop();
+      this.state = { kind: 'free' };
+      return;
     }
     this.send();
   }
@@ -369,9 +407,15 @@ export class Modes {
     if (!this.active) return;
     if (s.phase !== 'done' && this.graceOver(now)) return;
     if (s.kind === 'tag' && s.phase === 'playing' && s.it in s.times && this.game.players.has(s.it)) s.times[s.it] += dt / 1000;
+    if (s.kind === 'zombies' && s.phase !== 'done') {
+      // The horde keeps its own clock: its breaks and waves (and its end, through finish).
+      s.z.tick(now, dt);
+      return;
+    }
     if (now < s.until) return;
     if (s.phase === 'done') {
       const teams = s.kind === 'teams';
+      if (s.kind === 'zombies') s.z.stop();
       this.state = { kind: 'free' };
       if (teams) {
         this.game.teamsChanged(this.names(), false);

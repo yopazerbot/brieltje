@@ -15,6 +15,7 @@ export interface Tick {
   c?: Entry[];
   h?: Entry[];
   b?: Entry[];
+  z?: Entry[];
 }
 
 export interface PlayerSample {
@@ -69,6 +70,22 @@ export interface BruteSample {
   hp: number;
 }
 
+export type ZombieAct = 'walk' | 'attack' | 'hurt' | 'down';
+export const ZOMBIE_ACTS: ZombieAct[];
+
+export interface ZombieSample {
+  id: number;
+  x: number;
+  z: number;
+  yaw: number;
+  act: ZombieAct;
+  /** 0 to 3: the regular ones (shared/zombies.mjs VARIANTS); 4: the big one */
+  kind: number;
+  hp: number;
+}
+
+export function zombieEntry(z: { id: number; x: number; z: number; yaw: number; act: string; kind: number; hp: number }): Entry;
+export function readZombie(e: Entry): ZombieSample;
 export function readPlayer(e: Entry): PlayerSample;
 export function readCar(e: Entry): CarSample;
 export function readHorse(e: Entry): HorseSample;
