@@ -1917,13 +1917,14 @@ def log_shed(S, lvl):
                 ya, yb = min(h0, max(y0, -0.05)), min(h1, max(y0, -0.05))
                 pa = [f.p(0.045, y0, 0.0), f.p(L - 0.045, y0, 0.0), f.p(L - 0.045, max(y0, min(h1, y0 + log)), 0.0), f.p(0.045, max(y0, min(h0, y0 + log)), 0.0)]
                 face("mh_render", pa, f.out(), tint)
-        if wi == 2:  # the garden side: the door, near the path
+        if wi == 2:  # the garden side: the door, near the path, its frame under the roof
             d0, d1 = L - 1.25, L - 0.4
-            f.box("mh_panel", d0, d1, 0.02, 1.88, -0.01, 0.02, "#7a6a55")
+            dt = min(1.88, h0 - 0.12)
+            f.box("mh_panel", d0, d1, 0.02, dt, -0.01, 0.02, "#7a6a55")
             for k in range(1, 6):
-                f.flat("mh_detail", d0 + k * (d1 - d0) / 6 - 0.006, d0 + k * (d1 - d0) / 6 + 0.006, 0.05, 1.85, 0.021, "#5e5142")
+                f.flat("mh_detail", d0 + k * (d1 - d0) / 6 - 0.006, d0 + k * (d1 - d0) / 6 + 0.006, 0.05, dt - 0.03, 0.021, "#5e5142")
             f.box("mh_detail", d0 + 0.08, d0 + 0.12, 0.95, 1.12, 0.02, 0.05, "#1e1f21")
-            f.box("mh_detail", d0 - 0.04, d1 + 0.04, 1.88, 1.95, -0.01, 0.03, "#6a5a47")
+            f.box("mh_detail", d0 - 0.04, d1 + 0.04, dt, dt + 0.07, -0.01, 0.03, "#6a5a47")
     # The roof: overhanging all round, more at the front and the back; dark felt on top, a dark brown fascia.
     t, L = unit(c[0], c[1])
     n, D = unit(c[0], c[3])

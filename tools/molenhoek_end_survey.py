@@ -230,7 +230,8 @@ def _end_garden(h, plot):
               dict(kind="ivy", p=piece(boards_end, thick_end), thick=True),
               dict(kind="ivy", p=piece(thick_end, edge.length), thick=False)]
 
-    # The shed: 3.9 m along the street fence from 1.75 m off the side wall to the fence by the utility plot, 3.4 m deep.
+    # The shed: 3.9 m along the street fence from 1.75 m off the side wall to the fence by the utility plot, 3.4 m deep,
+    # its walls 1.90 m high at the street and 1.85 m at the garden: from the street its roof shows 30 to 40 cm over the fence.
     front_end = max(0.0, (pts[1][0] - A[0]) * -T[0] + (pts[1][1] - A[1]) * -T[1])  # the street fence's far end, along the front
     s0, s1, b0, b1 = 1.75, front_end - 0.15, FENCE_IN + 0.1, FENCE_IN + 3.5
     shed = Polygon([W(s0, b0), W(s1, b0), W(s1, b1), W(s0, b1)])
@@ -264,7 +265,7 @@ def _end_garden(h, plot):
         level=round(h["y0"] + 0.05 - 0.04, 3),  # the lawn, 4 cm under the floor (the terrace 2 cm)
         terrace_level=round(h["y0"] + 0.05 - 0.02, 3),
         lawn=rnd(list(lawn.exterior.coords)[:-1]), terrace=rnd(list(terrace.exterior.coords)[:-1]),
-        fences=fences, shed=dict(p=rnd(shed.exterior.coords[:-1]), h=(2.33, 2.22)),
+        fences=fences, shed=dict(p=rnd(shed.exterior.coords[:-1]), h=(1.9, 1.85)),
         cabinet=dict(at=at(0.62, 0.9), dir=r(u)), vents=[at(f, 0.45) for f in (0.2, 0.3, 0.4)], pad=dict(at=at(0.85, 2.55), dir=r(u)),
         letterbox=dict(at=[round(v, 3) for v in W(1.35, -0.3)], face=r((-N[0], -N[1]))),
         table=dict(at=[round(v, 3) for v in furn_c], dir=r(t_cut)),
