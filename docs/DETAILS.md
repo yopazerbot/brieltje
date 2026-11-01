@@ -36,12 +36,12 @@ Open **http://localhost:5173** in Chrome or Edge. Pick a nickname and choose **K
 | Minimap on / off | Settings | N, or Settings |
 | Scoreboard (multiplayer) | Hold the touchpad | Hold Tab |
 | Sound on / off | 🔊 in the menu | Shift+M, or 🔊 in the menu |
-| Chat (multiplayer) | Keyboard only | T or Enter |
+| Chat (alone: commands only) | Keyboard only | T or Enter |
 | Portal: pick a place (on its pad) | D-pad up / down, △ | 1 to 5, or the mouse wheel and E |
 | Menu (open and close) | Options (○ closes it too) | Esc |
 | Menu tabs | L1 / R1 | ↑ / ↓ on the tab rail |
 
-**Portals:** five rings round the map, at the main house, the bungalow, the church, the school and Molenhoek. Step onto a portal's glowing pad (or stop the car on it) and the list of places opens: a number key, the wheel or D-pad and E or △, or a tap on a phone. You come out in front of the other portal, looking at the place; in the car the car comes along, with its passenger. The place you came from is marked "back". The minimap points to the nearest portal. In multiplayer, `/church`, `/house`, `/bungalow`, `/school` or `/molenhoek` in the chat (also `/kerk`, `/huis`, `/location church`) takes you there; the admin can turn the portals and the chat travel off in the settings (Admin: house rules), and the admin can always travel from the chat.
+**Portals:** five rings round the map, at the main house, the bungalow, the church, the school and Molenhoek. Step onto a portal's glowing pad (or stop the car on it) and the list of places opens: a number key, the wheel or D-pad and E or △, or a tap on a phone. You come out in front of the other portal, looking at the place; in the car the car comes along, with its passenger. The place you came from is marked "back". The minimap points to the nearest portal. In the chat, alone too, `/location` and a name takes you to a portal or a street: `/location church`, `/location Kapellenhoek` (also `/locatie`, `/tp`, `/ga naar`, and the short `/church`, `/kerk`, `/huis`). Capitals, accents, spaces and hyphens don't matter. The start of a name is enough when only one place starts that way. `/location` alone lists every place. Each of the 26 streets has a spot near the middle of its longest stretch, on the pavement or the road's edge (`tools/places.py`, `web/shared/places.json`); a car you drive comes along to its lane. Without a keyboard, the menu's Play tab lists the same places (a tap, or the D-pad and △). In multiplayer the admin can turn the portals and the chat travel off in the settings (Admin: house rules), and the admin can always travel from the chat.
 
 At the start you choose **Explore** (just walking around) or **Action** (hands and a pistol). Walking speed is a slider on the start screen and in the menu (D-pad left/right on the controller).
 
