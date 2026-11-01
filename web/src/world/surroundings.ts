@@ -6,6 +6,8 @@ import { blockMaterial, paint, prismGeometry, tintedMaterial } from './houseMesh
 import type { Piece, TileData } from './tiles';
 import { fieldRows } from './fields';
 import { sway } from './wind';
+import { paneGeometry, paneLook, paneMaterial, COVER } from './windows';
+import { waterClock, waterMaterial } from './water';
 
 /**
  * Around the plot, from Flemish open data (GRB footprints, DHM laser heights;
@@ -18,7 +20,8 @@ import { sway } from './wind';
  * The neighbours' roofs carry tiles in their own colour, their gables the
  * brick of the walls below, and their walls windows, doors and garage doors
  * (made up in the style of the street by tools/facades.py): frames, doors
- * and sills are one draw call, the glass (dark, reflecting the sky) another.
+ * and sills are one draw call, the glass (mirroring the sky, with curtains,
+ * nets and blinds behind it: world/windows.ts) another.
  * Fence posts along the garden fences are one more. Every pitched roof has gutters along its
  * eaves and downpipes to the ground (zinc grey unless the street survey says otherwise), all in
  * one draw call too. The street lamps on the poles, the cables between the poles and the solar
@@ -38,8 +41,8 @@ const leafMat = new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 
 sway(leafMat, 0.03, 0.012, true); // the crowns move in the wind and are turning (world/wind.ts)
 const gutterMat = new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.4, metalness: 0.55 });
 const frameMat = new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.55 });
-// Opaque, nearly black and glossy: from outside, windows mostly mirror the sky.
-const paneMat = new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.05, metalness: 0.1, envMapIntensity: 1.6 });
+// Opaque and glossy: from outside, windows mostly mirror the sky over what hangs behind them (world/windows.ts).
+const paneMat = paneMaterial();
 const postMat = new THREE.MeshStandardMaterial({ color: '#cfccc4', roughness: 0.9 });
 const lampMat = new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.45, metalness: 0.5 });
 const cableMat = new THREE.MeshStandardMaterial({ color: '#1d1e20', roughness: 0.6 });
@@ -304,14 +307,14 @@ function slab(at: THREE.Vector3, d: THREE.Vector3, n: THREE.Vector3, w: number, 
 
 /**
  * Windows, doors and garage doors on the neighbours' walls: a frame standing a few
- * centimetres proud of the brick, dark glass (or a door panel) in it, a centre bar on wide
- * windows and a stone sill under each window.
+ * centimetres proud of the brick, glass (or a door panel) in it, a centre bar on wide
+ * windows and a stone sill under each window. `ground`: the flat ground's height, to tell
+ * the ground floor's windows from those above.
  */
-function buildOpenings(list: Opening[]): Piece[] {
+function buildOpenings(list: Opening[], ground: number): Piece[] {
   const solid: THREE.BufferGeometry[] = [];
   const glass: THREE.BufferGeometry[] = [];
   const sill = new THREE.Color('#d8d3c7');
-  const panes = ['#1d252b', '#1d252b', '#262d33', '#3b3a38', '#2c2a28'].map((c) => new THREE.Color(c));
   list.forEach((o, i) => {
     const a = new THREE.Vector3(o.a[0], 0, o.a[1]);
     const b = new THREE.Vector3(o.b[0], 0, o.b[1]);
@@ -327,13 +330,14 @@ function buildOpenings(list: Opening[]): Piece[] {
     const frame = new THREE.Color(o.f);
     solid.push(slab(out(0.02), d, n, w + 0.1, h + 0.1, 0.05, frame));
     if (o.k === 'w') {
-      glass.push(slab(out(0.048), d, n, w, h, 0.01, panes[i % panes.length]));
+      const upper = y0 - (ground + terrain.height(mid.x, mid.z)) > 2;
+      glass.push(paneGeometry(out(0.053), d, n, w, h, paneLook(mid.x, mid.z, n.x, n.z, upper, i, h >= 1.9), mid.x + mid.y + mid.z * 1.7));
       if (w > 1.3) solid.push(slab(out(0.056), d, n, 0.06, h, 0.02, frame));
       if (h < 1.9) solid.push(slab(out(0.06).setY(y0 - 0.075), d, n, w + 0.2, 0.05, 0.14, sill)); // not under garden doors
     } else if (o.k === 'd') {
       const panel = new THREE.Color(o.c ?? '#6b4a32');
       solid.push(slab(out(0.05), d, n, w, h, 0.02, panel));
-      glass.push(slab(out(0.062).setY(y0 + h * 0.72), d, n, w * 0.3, h * 0.35, 0.01, panes[0]));
+      glass.push(paneGeometry(out(0.067).setY(y0 + h * 0.72), d, n, w * 0.3, h * 0.35, { ...paneLook(mid.x, mid.z, n.x, n.z, false, i), cell: COVER.none }, mid.x + mid.z * 1.7));
       solid.push(slab(out(0.07).addScaledVector(d, w * 0.38).setY(y0 + 1.05), d, n, 0.03, 0.18, 0.03, new THREE.Color('#9a9a96')));
     } else {
       // Garage door: horizontal sections with a groove between them.
@@ -477,7 +481,7 @@ export function buildTile(data: TileData, poles: Pole[], renderer: THREE.WebGLRe
     out.push({ material: mat, geometry: geos.length > 1 ? mergeGeometries(geos) : geos[0], tag, shadow, order, small });
     if (geos.length > 1) geos.forEach((g) => g.dispose());
   }
-  if (data.openings?.length) out.push(...buildOpenings(data.openings));
+  if (data.openings?.length) out.push(...buildOpenings(data.openings, ground));
   if (data.poleIds.length || data.wires?.length) out.push(...buildLamps(poles, data.poleIds, data.wires ?? [], ground));
   if (data.solar?.length) out.push(...buildSolar(data.solar));
   if (data.posts?.length) out.push(buildPosts(data.posts, ground));
@@ -718,7 +722,8 @@ export function waterMesh(d: DipSpec, ground: number): THREE.Mesh | null {
   const t = d.water / d.depth;
   const ring = d.rim.map(([x, z], i) => new THREE.Vector2(x + (d.bottom[i][0] - x) * t, -(z + (d.bottom[i][1] - z) * t)));
   const g = new THREE.ShapeGeometry(new THREE.Shape(ring)).rotateX(-Math.PI / 2).translate(0, ground + (d.low ?? 0) - d.water, 0);
-  const mesh = new THREE.Mesh(g, new THREE.MeshStandardMaterial({ color: '#3c4a3e', roughness: 0.06, metalness: 0.15 }));
+  const mesh = new THREE.Mesh(g, waterMaterial()); // rippling in the wind (world/water.ts)
+  mesh.onBeforeRender = waterClock;
   mesh.receiveShadow = true;
   mesh.userData.material = 'glass';
   mesh.name = `${d.name} water`;

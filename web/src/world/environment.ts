@@ -1,12 +1,14 @@
 import * as THREE from 'three';
 import { HDRLoader } from 'three/addons/loaders/HDRLoader.js';
+import { Sky } from './sky';
 
 /**
  * Sky and sunlight from a real photographed sky (Poly Haven HDRI, CC0).
  * The sky image lights every surface softly; the sun itself is a directional
  * light that casts the sharp shadows, placed where the sun is in the photo.
  * The sky is turned so the sun comes from the side we want (house.sun).
- * Distance haze takes the sky's colour at the horizon.
+ * Distance haze takes the sky's colour at the horizon. The sky seen is
+ * drawn by world/sky.ts, where its clouds drift.
  */
 export async function loadEnvironment(
   renderer: THREE.WebGLRenderer,
@@ -44,7 +46,6 @@ export async function loadEnvironment(
 
   // Turn the sky around the vertical axis so its sun sits at the wanted compass direction.
   const turn = Math.atan2(photoSun.z, photoSun.x) - Math.atan2(wantedSunDir.z, wantedSunDir.x);
-  scene.backgroundRotation.set(0, turn, 0);
   scene.environmentRotation.set(0, turn, 0);
   const sunDir = photoSun.clone().applyAxisAngle(new THREE.Vector3(0, 1, 0), turn).normalize();
 
@@ -58,7 +59,7 @@ export async function loadEnvironment(
     hdr.type = THREE.HalfFloatType;
   }
 
-  scene.background = hdr;
+  scene.add(new Sky(hdr, turn, sunDir).mesh);
   const pmrem = new THREE.PMREMGenerator(renderer);
   scene.environment = pmrem.fromEquirectangular(hdr).texture;
   pmrem.dispose();

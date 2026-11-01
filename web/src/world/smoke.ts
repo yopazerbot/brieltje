@@ -1,10 +1,11 @@
 import * as THREE from 'three';
 
 /**
- * Wood smoke from two chimneys: the house across the street from the main house and the bungalow.
- * Each puff is a small soft disc turned to the camera that rises, grows, drifts off with the
- * wind (from the south-west) and fades; all of it in the vertex shader from one clock, one draw
- * call for both chimneys, no texture (the fragment shader draws the soft, lumpy edge). Puffs are
+ * Wood smoke from chimneys: at home the house across the street from the main house and the
+ * bungalow (world/homeLife.ts), in the village two chimneys by the church square (main.ts). Each
+ * puff is a small soft disc turned to the camera that rises, grows, drifts off with the wind (from
+ * the south-west) and fades; all of it in the vertex shader from one clock, one draw call for each
+ * set of chimneys, no texture (the fragment shader draws the soft, lumpy edge). Puffs are
  * see-through and cost pixels, so Medium and up only.
  */
 
@@ -15,6 +16,7 @@ const vertexShader = /* glsl */ `
   attribute vec3 aSrc;
   attribute float aSeed;
   uniform float uTime;
+  uniform float uOpacity;
   uniform vec3 uWind;
   varying vec2 vUv;
   varying float vAlpha;
@@ -27,7 +29,7 @@ const vertexShader = /* glsl */ `
     vec4 mv = viewMatrix * vec4(p, 1.0);
     mv.xy += position.xy * (0.35 + age * 2.1);
     vUv = position.xy + 0.5;
-    vAlpha = smoothstep(0.0, 0.08, age) * pow(1.0 - age, 1.4) * 0.5;
+    vAlpha = smoothstep(0.0, 0.08, age) * pow(1.0 - age, 1.4) * uOpacity;
     vSeed = aSeed;
     gl_Position = projectionMatrix * mv;
   }`;
@@ -50,15 +52,18 @@ const fragmentShader = /* glsl */ `
 export class Smoke {
   readonly mesh: THREE.Mesh;
   private time = { value: 0 };
+  /** The middle of its chimneys */
+  private centre = new THREE.Vector3();
 
-  /** `chimneys`: the middle of each chimney's top. */
-  constructor(chimneys: THREE.Vector3[]) {
+  /** `chimneys`: the middle of each chimney's top; `opacity`: how thick a fresh puff is. */
+  constructor(chimneys: THREE.Vector3[], opacity = 0.5) {
     const g = new THREE.InstancedBufferGeometry();
     g.setAttribute('position', new THREE.Float32BufferAttribute([-0.5, -0.5, 0, 0.5, -0.5, 0, 0.5, 0.5, 0, -0.5, 0.5, 0], 3));
     g.setIndex([0, 1, 2, 0, 2, 3]);
     const src: number[] = [];
     const seed: number[] = [];
     chimneys.forEach((c, j) => {
+      this.centre.addScaledVector(c, 1 / chimneys.length);
       for (let i = 0; i < PUFFS; i++) {
         src.push(c.x, c.y + 0.1, c.z);
         seed.push((i + 0.37 * j + 0.2 * Math.sin(i * 12.9 + j)) / PUFFS);
@@ -70,7 +75,7 @@ export class Smoke {
     this.mesh = new THREE.Mesh(
       g,
       new THREE.ShaderMaterial({
-        uniforms: { uTime: this.time, uWind: { value: new THREE.Vector3(-0.95, 0.0, 0.3) }, uColor: { value: new THREE.Color(0.6, 0.62, 0.66) } },
+        uniforms: { uTime: this.time, uOpacity: { value: opacity }, uWind: { value: new THREE.Vector3(-0.95, 0.0, 0.3) }, uColor: { value: new THREE.Color(0.6, 0.62, 0.66) } },
         vertexShader,
         fragmentShader,
         transparent: true,
@@ -84,5 +89,11 @@ export class Smoke {
 
   update(dt: number): void {
     this.time.value += dt;
+  }
+
+  /** Drawn and worked out only within `reach` metres of its chimneys, and when `fine` (Medium and up, not a phone). */
+  follow(dt: number, eye: THREE.Vector3, fine: boolean, reach = 250): void {
+    this.mesh.visible = fine && eye.distanceTo(this.centre) < reach;
+    if (this.mesh.visible) this.update(dt);
   }
 }

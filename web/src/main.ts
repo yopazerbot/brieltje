@@ -1,10 +1,10 @@
 import * as THREE from 'three';
 import { EffectComposer } from 'three/addons/postprocessing/EffectComposer.js';
 import { GTAOPass } from 'three/addons/postprocessing/GTAOPass.js';
-import { OutputPass } from 'three/addons/postprocessing/OutputPass.js';
 import { RenderPass } from 'three/addons/postprocessing/RenderPass.js';
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 import { SMAAPass } from 'three/addons/postprocessing/SMAAPass.js';
+import { gradedOutput } from './grade';
 import { NO_INPUT } from './controls/input';
 import { FAR_PHONE, gpuName, guessFromName, loadMode, ORDER, pickQuality, PRESETS, saveMode, timeFrames, type Mode, type Preset, type Quality } from './graphics';
 import { Player } from './player';
@@ -66,6 +66,7 @@ import { key } from './shortcuts';
 import { typing } from './keys';
 import { route, streetAt } from './ui/route';
 import { HomeLife } from './world/homeLife';
+import { Smoke } from './world/smoke';
 import { HomeStreet, withoutModelled } from './world/homeStreet';
 import { buildRoadDetail, roadPaint, withRoadDetail } from './world/roadDetail';
 import { RoadLife } from './world/roadLife';
@@ -278,7 +279,7 @@ void Promise.all([environmentReady, homeStreet.ready]).then(() => {
 // Post-processing: ambient occlusion darkens corners and contact areas the
 // way real light does (computed at half resolution, which is hard to tell
 // apart and far cheaper); SMAA smooths jagged edges; the output pass applies
-// tone mapping.
+// tone mapping and the colour grade (src/grade.ts).
 const target = new THREE.WebGLRenderTarget(window.innerWidth, window.innerHeight, { type: THREE.HalfFloatType });
 const composer = new EffectComposer(renderer, target);
 composer.addPass(new RenderPass(scene, camera));
@@ -305,7 +306,7 @@ ao.blendIntensity = 0.9;
   };
 }
 composer.addPass(ao);
-composer.addPass(new OutputPass());
+composer.addPass(gradedOutput());
 const smaa = new SMAAPass();
 composer.addPass(smaa);
 
@@ -1793,6 +1794,7 @@ renderer.setAnimationLoop((now: number) => {
   pickups.update(dt, !net.connected);
   cats.update(dt);
   life.update(dt, camera.position);
+  villageSmoke?.follow(dt, camera.position, !phone && quality !== 'low');
   // Alone, the strongmen fight here, going for you when you fight (in multiplayer the server runs them).
   if (!net.connected) clowns.stepAlone(dt, combat.alive && weapon.enabled && !driving && !riding && !games.peaceful ? { x: player.x, y: player.feet, z: player.z } : null);
   clowns.update(camera.position);
@@ -1851,6 +1853,8 @@ player.update(0, input.poll(), camera);
  */
 let village: 'waiting' | 'loading' | 'ready' = 'waiting';
 let villageJob: Promise<void> | null = null;
+/** Wood smoke from two chimneys by the church square (world/smoke.ts), once the town's model is in. */
+let villageSmoke: Smoke | null = null;
 /** The village, once: later calls wait for the same load (a trip through a portal to it). */
 function loadVillage(): Promise<void> {
   return (villageJob ??= buildVillage());
@@ -1908,6 +1912,13 @@ async function buildVillage(): Promise<void> {
     tiles.track(m, undefined, String(m.userData.landmark).startsWith('molenhoek_end') ? 350 : Infinity);
   }
   world.addPrisms(data.prisms ?? []);
+  // The smoke: the long house on the square's west side (the chimney by its gable on the square) and a house on
+  // the lane to the north-east, both in sight on arriving at the church; their tops measured on the town's model.
+  // Thicker than at home: against the pale sky over the square the thin puffs were hard to see.
+  if (models.some((m) => m.userData.landmark === 'town')) {
+    villageSmoke = new Smoke([new THREE.Vector3(511.39, 13.95, -764.01), new THREE.Vector3(551.64, 16.79, -723.79)], 0.75);
+    scene.add(villageSmoke.mesh);
+  }
   // Each model's blocks for walking into (the town's; the streets' went into the village data above).
   for (const m of models) world.addPrisms((m.userData.blocks as Prism[] | undefined) ?? []);
   world.addDips(data.dips);
