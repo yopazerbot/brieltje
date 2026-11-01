@@ -145,7 +145,7 @@ export class Countryside {
   private settings(): void {
     const off = this.off;
     const low = this.o.phone || this.o.quality() === 'low';
-    wind.strength.value = low || off.has('wind') ? 0 : 1;
+    wind.strength.value = this.o.phone || off.has('wind') ? 0 : 1; // on Low too: it is a few vertex sums, under 0.1 ms there
     this.herds.low = low;
     rowDetail.value = this.o.phone || off.has('rows') ? 0 : 1;
     // Switched off: hidden. Switched on: update() draws what is in view.

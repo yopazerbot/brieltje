@@ -8,11 +8,11 @@ import * as THREE from 'three';
  *
  * The wind blows from the south-west, the usual wind here. The shapes are drawn as instances, so
  * a tree's place (its instance matrix) gives it its own timing; nothing is worked out per tree on
- * the processor. Off on Low and on phones (`strength` 0: the shader skips it).
+ * the processor. Off on phones (`strength` 0: the shader skips it).
  *
  * It is the end of October: the tree crowns can also be turning, about two in three of them, some
  * to ochre (birch, poplar), some to orange-brown (beech, oak) and some to brown, each by its own
- * share; the rest stay green. Also in the shader, from the tree's place.
+ * share; the rest stay green, each a shade of its own. Also in the shader, from the tree's place.
  */
 
 // From the south-west towards the north-east, in the model (grid north is (-0.666, 0.746)).
@@ -69,6 +69,8 @@ export function sway(material: THREE.MeshStandardMaterial, lean: number, flutter
           // How far this tree has turned, and to which colour, from its place; light and dark within the crown kept.
           vec2 aRoot = floor(instanceMatrix[3].xz * 2.0);
           float aHash = fract(sin(dot(aRoot, vec2(12.9898, 78.233))) * 43758.5453);
+          // Each tree its own green: a little lighter or darker, yellower or bluer.
+          vColor.rgb *= (0.86 + 0.28 * fract(aHash * 91.37)) * mix(vec3(1.06, 1.03, 0.8), vec3(0.95, 1.0, 1.12), fract(aHash * 53.71));
           float aKind = fract(aHash * 17.31);
           float aTurn = smoothstep(0.3, 1.0, aHash) * 0.7 * autumn;
           vec3 aCol = aKind < 0.4 ? vec3(0.2, 0.15, 0.025) : aKind < 0.75 ? vec3(0.21, 0.09, 0.02) : vec3(0.13, 0.08, 0.03);
@@ -81,5 +83,41 @@ export function sway(material: THREE.MeshStandardMaterial, lean: number, flutter
   };
   const key = material.customProgramCacheKey.bind(material);
   material.customProgramCacheKey = () => `${key()}|sway${lean}${turning ? '|autumn' : ''}`;
+  material.needsUpdate = true;
+}
+
+/**
+ * The leaves of the clipped hedges tremble: the plain hedge blocks (no leafy lumps, there are kilometres
+ * of them) read their textures a few millimetres off, the offset rippling over the surface at about a
+ * leaf's size and following the gusts. Nothing moves, so no gap can open along a hedge's edges; a few
+ * sums per pixel. Off where the wind is off.
+ */
+export function rustle(material: THREE.MeshStandardMaterial): void {
+  const before = material.onBeforeCompile;
+  material.onBeforeCompile = (shader, renderer) => {
+    before.call(material, shader, renderer);
+    shader.uniforms.windTime = wind.time;
+    shader.uniforms.windStrength = wind.strength;
+    const offset = (chunk: string, uv: string) => THREE.ShaderChunk[chunk as keyof typeof THREE.ShaderChunk].split(uv).join(`(${uv} + rustleUv)`);
+    shader.vertexShader = shader.vertexShader
+      .replace('#include <common>', '#include <common>\nuniform float windTime;\nuniform float windStrength;\nvarying vec3 vRustleAt;\nvarying float vRustleGust;')
+      .replace(
+        '#include <begin_vertex>',
+        `#include <begin_vertex>
+        vRustleAt = (modelMatrix * vec4(transformed, 1.0)).xyz;
+        vRustleGust = windStrength * (0.55 + 0.45 * sin(windTime * 0.23 - dot(vRustleAt.xz, vec2(${DIR.x.toFixed(3)}, ${DIR.y.toFixed(3)})) * 0.012));`,
+      );
+    shader.fragmentShader = shader.fragmentShader
+      .replace('#include <common>', '#include <common>\nuniform float windTime;\nvarying vec3 vRustleAt;\nvarying float vRustleGust;')
+      .replace(
+        '#include <map_fragment>',
+        `vec2 rustleUv = vRustleGust * 0.002 * vec2(sin(dot(vRustleAt, vec3(31.0, 23.0, 27.0)) + windTime * 6.3), sin(dot(vRustleAt, vec3(-19.0, 29.0, 35.0)) + windTime * 4.9));
+        ${offset('map_fragment', 'vMapUv')}`,
+      )
+      .replace('#include <roughnessmap_fragment>', offset('roughnessmap_fragment', 'vRoughnessMapUv'))
+      .replace('#include <normal_fragment_maps>', offset('normal_fragment_maps', 'vNormalMapUv'));
+  };
+  const key = material.customProgramCacheKey.bind(material);
+  material.customProgramCacheKey = () => `${key()}|rustle`;
   material.needsUpdate = true;
 }

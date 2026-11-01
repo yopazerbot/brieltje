@@ -2,6 +2,7 @@ import * as THREE from 'three';
 import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
 import type { Prism } from './houseData';
 import { terrain } from './terrain';
+import { rustle } from './wind';
 import sizes from '../../public/textures/sizes.json';
 
 /** Real-world width of each texture tile in metres (from Poly Haven, or our own brick). */
@@ -215,6 +216,7 @@ function makeMaterial(name: string, renderer: THREE.WebGLRenderer): THREE.Materi
     mat.alphaTest = 0.5; // open brickwork: light passes through the gaps
     mat.side = THREE.DoubleSide;
   }
+  if (name === 'hedge' || name === 'nb_hedge') rustle(mat); // their leaves tremble in the wind (world/wind.ts)
   return mat;
 }
 
