@@ -409,7 +409,7 @@ export class Game {
     }
     if (!m || typeof m !== 'object') return;
     if (m.t === 'state' ? ++player.states > 30 : ++player.others > 40) return;
-    if (this.modes.peaceful && ['hit', 'rocket', 'nade', 'boom'].includes(m.t)) return; // no fighting during a party game
+    if (this.modes.peaceful && ['hit', 'rocket', 'nade', 'boom', 'shot'].includes(m.t)) return; // no fighting during a party game
 
     if (m.t === 'state') {
       const prev = player.state;
@@ -472,11 +472,13 @@ export class Game {
       this.broken.clear();
       this.broadcast({ t: 'repair', by: name });
     } else if (m.t === 'shot') {
+      // Every page plays each shot (a gunshot, smoke): only from someone who can fire, at most at the
+      // weapon's rate (70% of its delay, as for hits). A page could otherwise send forty a second.
       if (this.calm(player)) return; // the school grounds (shared/zones.mjs)
-      this.broadcast({
-        t: 'shot', name, w: player.weapons.has(m.w) ? m.w : 'pistol',
-        ...where(m),
-      }, name);
+      const w = player.weapons.has(m.w) ? m.w : 'pistol';
+      if (!player.alive || !player.state?.armed || this.inCar(name) || now < (player.nextShot || 0)) return;
+      player.nextShot = now + WEAPONS[w].delay * 700;
+      this.broadcast({ t: 'shot', name, w, ...where(m) }, name);
     } else if (m.t === 'furn') {
       if (now < (player.nextFurn || 0)) return;
       player.nextFurn = now + 150;
