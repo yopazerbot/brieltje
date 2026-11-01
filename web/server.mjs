@@ -155,7 +155,7 @@ async function api(req, res, url) {
     // A new guest cookie goes with the answer, a refusal too: wrong PINs are counted per browser by it.
     const guest = r.guest ? [auth.guestCookie(r.guest)] : [];
     if (r.error) return json(res, r.status, { error: r.error, code: r.code, args: r.args }, guest.length ? { 'Set-Cookie': guest } : {});
-    return json(res, 200, { username: r.username, role: r.role }, { 'Set-Cookie': [auth.cookie(r.token), auth.pinCookie(r.device), ...guest] });
+    return json(res, 200, { username: r.username, role: r.role }, { 'Set-Cookie': [auth.cookie(r.token), ...guest] });
   }
   const s = auth.session(req);
   if (path === '/api/me' && method === 'GET') {

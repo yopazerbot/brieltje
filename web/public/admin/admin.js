@@ -19,7 +19,8 @@
   const EVENTS = {
     login_ok: ['Admin logged in', 'good', 'in'], join_ok: ['Joined with the PIN', 'good', 'in'], mp_join: ['Entered the game', '', 'in'],
     login_failed: ['Wrong password', 'bad', 'failed'], pin_failed: ['Wrong PIN', 'bad', 'failed'], pin_limited: ['PIN guessing paused for everyone', 'bad', 'failed'],
-    pin_limited_address: ['PIN guessing paused for everyone at an address', 'bad', 'failed'], join_refused_kick: ['New browser refused after a kick', 'bad', 'failed'],
+    pin_limited_address: ['PIN guessing paused for everyone at an address', 'bad', 'failed'], pin_limited_device: ['PIN guessing paused for one browser', 'bad', 'failed'],
+    join_refused_kick: ['New browser refused after a kick', 'bad', 'failed'],
     login_admin_limited: ['Admin login paused', 'bad', 'failed'], login_blocked_kicked: ['Removed player tried again', 'bad', 'failed'], lockouts_lifted: ['Lockouts lifted', '', 'admin'],
     solo_start: ['Started alone (name as typed)', '', 'solo'], kick: ['Player removed', '', 'admin'], pin_changed: ['PIN changed', '', 'admin'], rules: ['House rules changed', '', 'admin'], round_won: ['Round won', '', ''],
   };
