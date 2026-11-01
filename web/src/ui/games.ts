@@ -157,8 +157,8 @@ export class Games {
     this.onSend({ t: 'tag', target: name });
   }
 
-  /** Every frame: the clock and your role at the top, the eyes shut, the coins turning and picked up. */
-  update(dt: number, x: number, feet: number, z: number): void {
+  /** Every frame: the clock and your role at the top, the eyes shut, the coins turning and picked up. `use`: the key or button that tags, for the way you play. */
+  update(dt: number, x: number, feet: number, z: number, use = 'E'): void {
     const v = this.view;
     const left = this.ends - performance.now();
     this.spin += dt * 2.4;
@@ -189,13 +189,13 @@ export class Games {
     else if (v.kind === 'hide') {
       const seekers = v.seekers ?? [];
       if (v.phase === 'hiding') text += this.seeker ? t('games.youSeekHide') : plural(seekers.length, 'games.hide.one', 'games.hide.other', { names: listOf(seekers) });
-      else text += t(this.seeker ? 'games.youSeek' : 'games.stayHidden');
+      else text += this.seeker ? t('games.youSeek', { use }) : t('games.stayHidden');
     } else if (v.kind === 'teams') {
       const s = v.score ?? { house: 0, bungalow: 0 };
       text += t('games.teamsLine', { h: s.house, b: s.bungalow, goal: v.goal ?? '', team: this.team ? t(TEAM_NAMES[this.team]) : '–' });
     } else if (v.kind === 'tag') {
       const mine = Math.round(v.times?.[this.me] ?? 0);
-      text += v.it === this.me ? t('games.youreIt', { n: mine }) : t('games.isIt', { name: v.it ?? '', n: mine });
+      text += v.it === this.me ? t('games.youreIt', { n: mine, use }) : t('games.isIt', { name: v.it ?? '', n: mine });
     } else {
       const counts = v.counts ?? {};
       const best = Object.entries(counts).sort((a, b) => b[1] - a[1])[0];

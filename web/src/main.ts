@@ -1692,7 +1692,7 @@ renderer.setAnimationLoop((now: number) => {
       target.toggle();
       if (target.locked) lockHint = 4;
     }
-    games.update(dt, player.x, player.feet, player.z);
+    games.update(dt, player.x, player.feet, player.z, key('use', mode));
     // The cars: E or Triangle next to one gets you in (unless two are in it already), and out again.
     if (!inCar && !wantCar) car = cars.reduce((a, b) => (b.distanceTo(player.x, player.z) < a.distanceTo(player.x, player.z) ? b : a));
     const nearCar = !inCar && !onHorse && !dead && !planner.active && car.distanceTo(player.x, player.z) < CARS.reach && Math.abs(player.feet - car.y) < 1;
