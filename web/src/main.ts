@@ -366,8 +366,19 @@ applyQuality(quality);
 
 let slowTime = 0;
 let fastTime = 0;
-/** During play: dip the resolution when frames run long; in Auto, drop a preset if that is not enough. */
-function adaptQuality(dt: number): void {
+/** Seconds after play begins or resumes when the resolution is left alone: what comes into view loads then. */
+const SETTLE = 4;
+/**
+ * During play: dip the resolution when frames run long; in Auto, drop a preset if that is not enough.
+ * Called before the frame is drawn: a new size clears the canvas, and after drawing the page showed
+ * through for a frame (a dark flash, two or three times while joining).
+ */
+function adaptQuality(dt: number, now: number): void {
+  // The first seconds load and compile the world round you: hitches once, not a slow computer.
+  if (now - resumedAt < SETTLE * 1000) {
+    slowTime = fastTime = 0;
+    return;
+  }
   if (dt > 1 / 52) slowTime += dt;
   else slowTime = Math.max(0, slowTime - dt);
   if (dt < 1 / 58) fastTime += dt;
@@ -2176,6 +2187,7 @@ renderer.setAnimationLoop((now: number) => {
   groundShade.follow(camera.position);
   // The sun's real-time shadow only covers the house: far from it (the village) it isn't worked out.
   renderer.shadowMap.autoUpdate = camera.position.distanceTo(center) < 250;
+  if (!menu.open) adaptQuality(dt, now); // before drawing (see there)
   if (bigMap.open) {
     const marks: Mark[] = [
       ...cars.filter((c) => c.ready).map((c) => ({ x: c.x, z: c.z, yaw: c.yaw, color: c.spec.paint, kind: 'car' as const })),
@@ -2185,7 +2197,6 @@ renderer.setAnimationLoop((now: number) => {
     ];
     bigMap.tick(mapYou(), marks);
   } else composer.render(dt); // the menu's Map tab covers most of the screen: the world isn't drawn behind it
-  if (!menu.open) adaptQuality(dt);
   hud.tick(dt, renderer.info.render.calls, preset.scale * dynScale, t(`gfx.${quality}`), net.connected ? net.rtt : null);
 });
 
