@@ -833,6 +833,18 @@ games.onSend = (msg) => net.send(msg);
 document.querySelectorAll<HTMLButtonElement>('[data-game]').forEach((b) =>
   b.addEventListener('click', () => net.send({ t: 'mode', kind: b.dataset.game })),
 );
+// Lift every lockout on joining (wrong PINs, kicks), for a meetup where a few typos or one kick keep people out.
+$('set-unlock').addEventListener('click', async () => {
+  const msg = $('set-unlock-msg');
+  try {
+    await api.unlock();
+    msg.textContent = t('adm.unlocked');
+    msg.classList.remove('bad');
+  } catch (e) {
+    msg.textContent = errorText(e)();
+    msg.classList.add('bad');
+  }
+});
 weapon.onGlassHit = (i, point, from, normal, pane) => {
   if (glass.break(i, point, from)) net.send({ t: 'glass', i });
   else if (!glass.breakable) {

@@ -152,8 +152,10 @@ async function api(req, res, url) {
     // Playing together (with its chat) is for 13 and over: the page asks, and only sends this once ticked.
     if (b.age !== true) return refuse(res, { error: 'Confirm that you are 13 or older to play together.', code: 'age', status: 400 });
     const r = await auth.join(req, b.name, b.pin, (name) => game.players.has(name), game.rules.pin, () => game.full());
-    if (r.error) return refuse(res, r);
-    return json(res, 200, { username: r.username, role: r.role }, { 'Set-Cookie': [auth.cookie(r.token), auth.pinCookie(r.device)] });
+    // A new guest cookie goes with the answer, a refusal too: wrong PINs are counted per browser by it.
+    const guest = r.guest ? [auth.guestCookie(r.guest)] : [];
+    if (r.error) return json(res, r.status, { error: r.error, code: r.code, args: r.args }, guest.length ? { 'Set-Cookie': guest } : {});
+    return json(res, 200, { username: r.username, role: r.role }, { 'Set-Cookie': [auth.cookie(r.token), auth.pinCookie(r.device), ...guest] });
   }
   const s = auth.session(req);
   if (path === '/api/me' && method === 'GET') {
@@ -177,6 +179,11 @@ async function api(req, res, url) {
     return json(res, 200, { ok: true });
   }
   if (path === '/api/audit' && method === 'GET') return json(res, 200, { log: await store.recentLog(60) });
+  // Lift every lockout on joining (wrong PINs, kicks): the in-game admin tab's button.
+  if (path === '/api/lockouts' && method === 'POST') {
+    await body(req);
+    return json(res, 200, { lifted: auth.liftLockouts(s.username) });
+  }
   // The multiplayer PIN: the admin sees and changes it (never sent to anyone else).
   if (path === '/api/pin' && method === 'GET') return json(res, 200, { pin: auth.pin });
   if (path === '/api/pin' && method === 'POST') {

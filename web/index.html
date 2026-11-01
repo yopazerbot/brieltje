@@ -350,6 +350,11 @@
                     </div>
                     <p class="note" id="set-pin-msg" data-i18n="adm.pinNote">4 to 12 digits; longer is harder to guess. Saving logs out everyone who joined with the old PIN.</p>
                   </div>
+                  <!-- Lockouts after wrong PINs or a kick (server/auth.mjs), lifted for everyone at once. -->
+                  <div class="setting">
+                    <div class="mp-row"><button id="set-unlock" class="mini" type="button" data-i18n="adm.unlock">Lift lockouts</button></div>
+                    <p class="note" id="set-unlock-msg" data-i18n="adm.unlockNote">Lets back in everyone kept out by wrong PINs or a kick.</p>
+                  </div>
                 </div>
                 <div class="col">
                   <h2 data-i18n="adm.games">Party games</h2>
