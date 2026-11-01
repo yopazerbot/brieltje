@@ -194,6 +194,7 @@ export class TouchControls {
     out.jumpHeld ||= holds('jump');
     out.downHeld ||= holds('down');
     out.usePressed ||= has('use');
+    out.useHeld ||= holds('use');
     out.clickPressed ||= has('fire');
     out.fireHeld ||= holds('fire');
     out.aimHeld ||= this.aimOn || has('lift'); // the planner picks up on the press

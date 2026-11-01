@@ -12,6 +12,8 @@ export class Hud {
   private ammo = document.getElementById('ammo')!;
   private nades = document.getElementById('nades')!;
   private crosshair = document.getElementById('crosshair')!;
+  private ring = document.getElementById('ring')!;
+  private ringArc = this.ring.querySelector('circle.arc') as SVGCircleElement;
   private lastPlace = '';
   private toastTimer = 0;
   private frames = 0;
@@ -41,6 +43,15 @@ export class Hud {
   }
 
   /** The sniper's scope; `noCross` hides the crosshair too (driving, with the camera behind the car). */
+  /** The ring round the crosshair filling up while you help a teammate up (0..1); null hides it. */
+  setRing(progress: number | null): void {
+    this.ring.classList.toggle('show', progress !== null);
+    if (progress === null) return;
+    const len = 2 * Math.PI * 18;
+    this.ringArc.style.strokeDasharray = `${len}`;
+    this.ringArc.style.strokeDashoffset = `${len * (1 - Math.max(0, Math.min(1, progress)))}`;
+  }
+
   setScope(on: boolean, noCross = false): void {
     document.getElementById('scope')!.classList.toggle('show', on);
     this.crosshair.classList.toggle('hidden', on || noCross);

@@ -482,6 +482,12 @@ export class Avatars {
     if (a) a.killed = true;
   }
 
+  /** Helped up where they lay (Zombies): they get up there (their states say so too). */
+  revive(name: string): void {
+    const a = this.avatars.get(name);
+    if (a) a.killed = false;
+  }
+
   /** A player respawned or went through a portal: hide them until a state from their new place arrives. */
   respawn(name: string): void {
     const a = this.avatars.get(name);

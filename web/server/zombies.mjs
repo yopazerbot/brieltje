@@ -14,7 +14,8 @@
 // claims to hover or stand in a wall) is warned, and out of the wave if they stay (perch).
 //
 // Who goes down waits for the end of the wave (their page shows it), then everyone comes back at
-// the house's outside start places. When everyone who fights is down at once, the game is over: the
+// the house's outside start places, unless a teammate helps them up first: holding Use next to them
+// for REVIVE_MS on the server's clock (help), they're up where they lie with part of their health. When everyone who fights is down at once, the game is over: the
 // wave reached, each player's zombies beaten and the best wave ever (kept in the database's meta
 // table, as the rules are) show for DONE_MS.
 
@@ -31,6 +32,10 @@ const MAX_HITS = 8; // zombies one shot can claim (the shotgun's eight pellets)
  * the shot came here.
  */
 const LINE_SLACK = 0.65;
+/** ms a teammate holds Use next to a downed player to help them up; m apart on the server's positions (the page asks 1.5: room for its lag); the health they come back with */
+const REVIVE_MS = 3000;
+const REVIVE_REACH = 1.9;
+const REVIVE_HP = 50;
 
 export class ZombieGame {
   /** A new game for the players `names` (gathered at the house by modes.start); `best`: the best wave ever so far. */
@@ -47,6 +52,8 @@ export class ZombieGame {
     this.downs = Object.create(null);
     this.best = game.zombieBest;
     this.record = false;
+    /** Helper's name -> who they help up, since when (ms), and when the helper was last hurt then */
+    this.helping = new Map();
   }
 
   get phase() {
@@ -100,6 +107,7 @@ export class ZombieGame {
   tick(now, dt) {
     const g = this.game;
     let changed = false;
+    this.helpTick(now);
     const events = this.horde.tick(now, dt / 1000, this.roster(now));
     this.sync();
     for (const e of events) {
@@ -142,6 +150,7 @@ export class ZombieGame {
 
   /** Everyone down comes back at the house's outside start places, as after a respawn (not a death). */
   revive() {
+    for (const r of [...this.helping.keys()]) this.letGo(r, 'stop');
     const names = [...this.down].filter((n) => this.game.players.get(n) && !this.game.players.get(n).alive);
     this.down.clear();
     if (names.length) this.game.gather(names);
@@ -149,6 +158,7 @@ export class ZombieGame {
 
   /** Everyone who fights is down: the result, the best wave ever (kept), the end screen. */
   over(now) {
+    for (const r of [...this.helping.keys()]) this.letGo(r, 'stop');
     const wave = this.horde.wave;
     const names = [...this.players].filter((n) => this.game.players.has(n) || this.horde.beaten[n]);
     if (!this.best || wave > this.best.wave) {
@@ -157,6 +167,73 @@ export class ZombieGame {
       this.game.saveZombieBest(this.best);
     }
     this.modes.finish(`The zombies caught everyone at wave ${wave}.${this.record ? " That's a new best ever!" : ''}`, this.record ? 'zOverBest' : 'zOver', { n: wave, best: this.best.wave });
+  }
+
+  /**
+   * A player helps a downed teammate up (`m.on` true: holding Use next to them) or lets go (false).
+   * Refused in silence unless it could be (forged or instant revives): the helper up, on foot and not
+   * down, the other down in this game, both here, within REVIVE_REACH on the server's positions, and
+   * nobody else helping them. The time runs on the server's clock (helpTick): a page can't make it
+   * shorter, and only its "let go" ends it early. At most four of these a second per player.
+   */
+  help(name, p, m, now) {
+    const g = this.game;
+    if (now < (p.nextRevive || 0)) return;
+    p.nextRevive = now + 250;
+    if (m.on !== true) return this.letGo(name, 'stop');
+    const target = typeof m.name === 'string' ? m.name : '';
+    const q = g.players.get(target);
+    if (!q || target === name || q.alive || !this.down.has(target) || this.horde.phase === 'over') return;
+    if (!p.alive || this.down.has(name) || g.inCar(name) || !this.near(p, q)) return;
+    if (this.helping.get(name)?.target === target) return;
+    for (const h of this.helping.values()) if (h.target === target) return; // someone else is helping them
+    this.letGo(name, 'stop');
+    this.helping.set(name, { target, since: now, hurt: p.hurtAt ?? 0 });
+    g.send(p.ws, { t: 'revive', op: 'start', name: target, ms: REVIVE_MS });
+    g.send(q.ws, { t: 'revive', op: 'start', by: name, ms: REVIVE_MS });
+  }
+
+  /** Two players near enough to help one up (the server's positions). */
+  near(p, q) {
+    const a = p.state, b = q.state;
+    return !!a && !!b && Math.hypot(a.x - b.x, a.z - b.z) <= REVIVE_REACH && Math.abs(a.y - b.y) < 1.5;
+  }
+
+  /** `name` stops helping (let go, moved away, hit, gone): both pages are told (`op`). */
+  letGo(name, op) {
+    const h = this.helping.get(name);
+    if (!h) return;
+    this.helping.delete(name);
+    const g = this.game;
+    const p = g.players.get(name);
+    const q = g.players.get(h.target);
+    if (p) g.send(p.ws, { t: 'revive', op, name: h.target });
+    if (q) g.send(q.ws, { t: 'revive', op, by: name });
+  }
+
+  /** Every tick: each help still holds (both here, the helper up, near and not hurt since, the other still down); after REVIVE_MS they're up. */
+  helpTick(now) {
+    const g = this.game;
+    for (const [r, h] of [...this.helping]) {
+      const p = g.players.get(r);
+      const q = g.players.get(h.target);
+      if (!p || !q || !p.alive || q.alive || !this.down.has(h.target) || (p.hurtAt ?? 0) > h.hurt || !this.near(p, q)) {
+        this.letGo(r, 'stop');
+        continue;
+      }
+      if (now - h.since < REVIVE_MS) continue;
+      this.helping.delete(r);
+      this.up(h.target, q, r, now);
+    }
+  }
+
+  /** Helped up: up where they lie, with part of their health and a moment's safety; everyone told. */
+  up(name, q, by, now) {
+    Object.assign(q, { alive: true, hp: REVIVE_HP, respawnAt: 0, protectedUntil: now + 2000 });
+    this.down.delete(name);
+    this.game.broadcast({ t: 'revived', name, by, hp: REVIVE_HP });
+    this.modes.say(`${by} helped ${name} up.`, 'zRevived', { name: by, target: name });
+    this.modes.send();
   }
 
   /** A player went down (game.zombieHurt or a hit): they wait for the end of the wave. */
@@ -258,6 +335,7 @@ export class ZombieGame {
 
   /** The game ends (stopped, or the end screen is over): the zombies go, and whoever is down comes back. */
   stop() {
+    for (const r of [...this.helping.keys()]) this.letGo(r, 'stop');
     this.game.broadcast({ t: 'zgone', ids: [...this.horde.zombies.keys()] });
     this.horde.zombies.clear();
     const now = Date.now();

@@ -107,9 +107,10 @@ export class Combat {
     else this.tone(70, 0.4, 0.5, 'triangle');
   }
 
-  respawned(): void {
+  /** Back up: after a respawn at full health, or helped up by a teammate with `hp` (Zombies). */
+  respawned(hp = 100): void {
     this.alive = true;
-    this.hp = 100;
+    this.hp = hp;
     this.respawnLeft = 0;
     $('death').classList.add('hidden');
     this.drawHealth();

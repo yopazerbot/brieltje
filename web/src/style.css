@@ -121,6 +121,12 @@ button, input, select, textarea { font-family: inherit; }
   background-image: linear-gradient(#fff, #fff), linear-gradient(#fff, #fff);
   background-size: 2px 18px, 18px 2px; background-position: center; background-repeat: no-repeat; opacity: 0.85; }
 #crosshair.hidden { display: none; }
+/* Zombies: the ring that fills while you help a teammate up. */
+#ring { position: absolute; left: 50%; top: 50%; width: 64px; height: 64px; margin: -32px 0 0 -32px; display: none; transform: rotate(-90deg); }
+#ring.show { display: block; }
+#ring circle { fill: none; stroke-width: 4; }
+#ring .track { stroke: rgba(0, 0, 0, 0.35); }
+#ring .arc { stroke: var(--accent); stroke-linecap: round; transition: stroke-dashoffset 0.1s linear; }
 
 #prompt {
   position: absolute; left: 50%; top: calc(50% + 40px); transform: translateX(-50%);

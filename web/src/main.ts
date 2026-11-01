@@ -1841,6 +1841,22 @@ net.onMessage = (m: ServerMsg) => {
       if (m.by === me?.username || zombies.isBig(m.id)) combat.zombie(m.by, zombieName(zombies.isBig(m.id)), weaponName(m.w));
       if (m.double) combat.double(m.by); // one sniper's bullet, two zombies: everyone's feed
       break;
+    case 'revive': // helping a teammate up (you: `name`), or being helped up (`by`): it starts or stops
+      if (m.name && helping?.name === m.name) {
+        if (m.op === 'start') Object.assign(helping, { start: performance.now(), ms: m.ms ?? 3000 });
+        else helping = null;
+      }
+      if (m.by) helpedBy = m.op === 'start' ? m.by : null;
+      break;
+    case 'revived': // helped up where they lay, with part of their health
+      if (m.name === me?.username) {
+        helpedBy = null;
+        player.down = 0;
+        combat.respawned(m.hp);
+        weapon.resetLoadout(adminWeapons()); // as the server has it: what you picked up stayed where you fell
+      } else avatars.revive(m.name);
+      if (helping?.name === m.name) helping = null;
+      break;
     case 'zgone': // fallen zombies taken away, or all of them when the game ends
       zombies.gone(m.ids);
       break;
@@ -2094,6 +2110,26 @@ let flyHint = 0; // seconds the flying controls still show after taking off
 let edgeHint = 0; // seconds "you can't go further" still shows after pushing against the edge of the game
 let calmHint = 0; // seconds "no shooting here" still shows on the school grounds
 let lockHint = 0; // seconds "only in multiplayer" still shows after trying a door or a pane alone
+/**
+ * Zombies together: helping a downed teammate up. You hold Use next to them; the server keeps the
+ * time (server/zombies.mjs help) and says when it starts (`start`, then the ring fills), stops or is
+ * done. `helpedBy`: who is helping you up while you're down.
+ */
+const REVIVE_REACH = 1.5; // m
+let helping: { name: string; asked: number; start: number; ms: number } | null = null;
+let helpedBy: string | null = null;
+/** The nearest downed teammate within reach of you, or null. */
+function downedNear(): string | null {
+  let best: string | null = null;
+  let bd = REVIVE_REACH;
+  for (const name of games.view.zombies?.down ?? []) {
+    const at = avatars.position(name);
+    if (!at || Math.abs(at.y - player.feet) > 1.5) continue;
+    const d = Math.hypot(at.x - player.x, at.z - player.z);
+    if (d <= bd) [best, bd] = [name, d];
+  }
+  return best;
+}
 let horseHint = 0; // seconds the riding keys still show after getting on a horse
 let wasOnHorse = false;
 let carHint = 0; // the same for the car's speed and keys after getting in
@@ -2154,7 +2190,7 @@ renderer.setAnimationLoop((now: number) => {
   clowns.paused = games.standAside;
   player.canFly = rules.flying && !games.zombies;
   if (!player.canFly) player.flying = false;
-  combat.waiting = games.view.kind !== 'zombies' ? null : games.zombies && !solo ? () => t('z.downWait') : () => '';
+  combat.waiting = games.view.kind !== 'zombies' ? null : games.zombies && !solo ? () => (helpedBy ? t('z.helping', { name: helpedBy }) : t('z.downWait')) : () => '';
   if (menu.open) {
     travelPanel.hide();
     if (menu.onStartScreen) startCamera();
@@ -2264,7 +2300,18 @@ renderer.setAnimationLoop((now: number) => {
     // Party games: a seeker or "it" next to someone tags them with E (or a click).
     const tagWho = inCar || dead ? null : games.target([...online.keys()], (n) => avatars.position(n), player.x, player.feet, player.z);
     if (tagWho && (frame.usePressed || frame.clickPressed)) games.tag(tagWho);
-    const target = inCar || onHorse || tagWho ? null : doors.lookedAt(camera);
+    // Zombies together: next to a downed teammate, holding Use helps them up (not a door then).
+    const downed = games.zombies && !!me && !dead && !inCar && !onHorse && !planner.active ? downedNear() : null;
+    if (downed && frame.useHeld) {
+      if (helping?.name !== downed || (!helping.start && now - helping.asked > 1000)) {
+        helping = { name: downed, asked: now, start: 0, ms: helping?.name === downed ? helping.ms : 3000 };
+        net.send({ t: 'revive', name: downed, on: true });
+      }
+    } else if (helping) {
+      net.send({ t: 'revive', name: helping.name, on: false });
+      helping = null;
+    }
+    const target = inCar || onHorse || tagWho || downed ? null : doors.lookedAt(camera);
     if (target && (frame.usePressed || (!action && !planner.active && frame.clickPressed))) {
       target.toggle();
       if (target.locked) lockHint = 4;
@@ -2334,6 +2381,8 @@ renderer.setAnimationLoop((now: number) => {
       if (horseHint > 0) prompt = t('prompt.horse', { speed: speed(horses.ridden!.speed), gallop: key('sprint', mode), breath: Math.round(horses.stamina * 100), jump: key('jump', mode), use });
     }
     else if (nearHorse >= 0 && !target) prompt = t('prompt.mount', { use });
+    if (downed) prompt = helping?.start ? t('prompt.reviving', { name: downed }) : t('prompt.revive', { use, name: downed });
+    hud.setRing(helping ? (helping.start ? (now - helping.start) / helping.ms : 0) : null);
     if (pad) prompt = ''; // the list says it all
     else if (!inCar && portalNear(player.x, player.z) && (onHorse || !rules.portals || games.fenced)) prompt = t(onHorse ? 'prompt.horsePortal' : games.fenced ? 'prompt.portalGame' : 'prompt.portalsOff');
     hud.setPrompt(prompt);

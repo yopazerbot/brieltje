@@ -77,6 +77,8 @@ export type ServerMsg =
   /** The Zombies game: zombie `id` beaten by `by` with weapon `w`; fallen ones taken away (server/zombies.mjs) */
   | { t: 'zdown'; id: number; by: string; w: string; double?: boolean }
   | { t: 'zgone'; ids: number[] }
+  | { t: 'revive'; op: 'start' | 'stop'; name?: string; by?: string; ms?: number }
+  | { t: 'revived'; name: string; by: string; hp: number }
   | { t: 'rocket'; name: string; x: number; y: number; z: number; tx: number; ty: number; tz: number }
   | { t: 'blast'; by: string; x: number; y: number; z: number; w?: string }
   | { t: 'nade'; name: string; x: number; y: number; z: number; vx: number; vy: number; vz: number }

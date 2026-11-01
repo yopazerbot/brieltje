@@ -32,6 +32,8 @@ export interface FrameInput {
   clickPressed: boolean;
   /** E or Triangle: opens doors in both modes */
   usePressed: boolean;
+  /** E, Triangle or the touch Use button held down (helping a teammate up in Zombies) */
+  useHeld: boolean;
   /** Right mouse button or L2 held: aim down the sights */
   aimHeld: boolean;
   /** R key or Square while playing: reload */
@@ -69,7 +71,7 @@ export interface FrameInput {
 
 export const NO_INPUT: FrameInput = {
   moveX: 0, moveY: 0, lookX: 0, lookY: 0, mouseX: 0, mouseY: 0, sprint: false,
-  jumpPressed: false, jumpHeld: false, downHeld: false, clickPressed: false, usePressed: false, aimHeld: false, reloadPressed: false,
+  jumpPressed: false, jumpHeld: false, downHeld: false, clickPressed: false, usePressed: false, useHeld: false, aimHeld: false, reloadPressed: false,
   menuPressed: false, fpsPressed: false, confirmPressed: false, squarePressed: false, speedStep: 0, tabStep: 0, scoreHeld: false, mapPressed: false, fireHeld: false, weaponSlot: 0, weaponCycle: 0, throwPressed: false, deletePressed: false, anyPadButton: false,
   throttle: 0, brake: 0,
 };
@@ -195,6 +197,7 @@ export class Input {
     out.sprint = k('ShiftLeft') || k('ShiftRight');
     out.jumpHeld = k('Space');
     out.downHeld = k('KeyC'); // not Ctrl: Ctrl with a walking key is the browser's (Ctrl+W closes the tab)
+    out.useHeld = k('KeyE');
     out.scoreHeld = k('Tab');
     out.throttle = k('KeyW') || k('ArrowUp') ? 1 : 0;
     out.brake = k('KeyS') || k('ArrowDown') ? 1 : 0;
@@ -228,6 +231,7 @@ export class Input {
       out.downHeld ||= !!pressed[BTN.circle];
       if (edge(BTN.r2)) out.clickPressed = true;
       if (edge(BTN.triangle)) out.usePressed = true;
+      out.useHeld ||= !!pressed[BTN.triangle];
       out.aimHeld ||= (p.buttons[BTN.l2]?.value ?? 0) > 0.3;
       out.throttle = Math.max(out.throttle, p.buttons[BTN.r2]?.value ?? 0);
       out.brake = Math.max(out.brake, p.buttons[BTN.l2]?.value ?? 0);

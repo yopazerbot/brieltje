@@ -439,6 +439,7 @@ export class Game {
   npcDamage(targetName, target, amount, now, by = 'a strongman') {
     if (!target.alive || amount <= 0 || this.calm(target)) return;
     target.hp = Math.max(0, target.hp - amount);
+    target.hurtAt = now; // a teammate helping someone up lets go when hit (server/zombies.mjs help)
     if (target.hp > 0) return this.send(target.ws, { t: 'hurt', hp: target.hp, by });
     target.alive = false;
     // In the Zombies game whoever goes down waits for the end of the wave (server/zombies.mjs revive).
@@ -647,6 +648,9 @@ export class Game {
     } else if (m.t === 'zhit') {
       // A shot that hit zombies (server/zombies.mjs checks it as a hit on a strongman is checked).
       this.modes.zombies?.hit(name, player, m, now);
+    } else if (m.t === 'revive') {
+      // Helping a downed teammate up, or letting go (server/zombies.mjs help: the time on the server's clock).
+      this.modes.zombies?.help(name, player, m, now);
     } else if (m.t === 'clownhit' && this.clowns.has(m.id) && this.clowns.get(m.id).brain) {
       // A strongman takes a while to bring down: each shot (a shotgun blast counts once) takes health.
       // Bullets only: blasts are set off here on the server (blast()), so nobody can claim one.
