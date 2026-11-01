@@ -82,6 +82,14 @@ Our own layout (`data/garden.json`): paths, terrace, driveway, planted borders, 
 | [Blender](https://www.blender.org) | Running the model scripts in `tools/` (a tool, not shipped) | GPL |
 | [Shapely](https://shapely.readthedocs.io), [PyMuPDF](https://pymupdf.readthedocs.io), [Pillow](https://python-pillow.org), NumPy | The data tools in `tools/` (not shipped) | BSD, AGPL, MIT-CMU, BSD |
 
+## Typeface and wordmark
+
+| Font | Used for | Author | Licence |
+|---|---|---|---|
+| [Alegreya Sans](https://github.com/huertatipografica/Alegreya-Sans), Medium (500) and ExtraBold (800), Latin subset, `web/public/fonts/*.woff2` (the files Google Fonts serves) | Every text in the game, the interest page and its admin page | The Alegreya Sans Project Authors (Huerta Tipográfica) | SIL Open Font License 1.1 (`web/public/fonts/OFL.txt`) |
+
+The Brieltje wordmark (`web/public/brand/wordmark.svg`, and the `<symbol id="wordmark">` in `web/index.html`) is the word in Alegreya Sans ExtraBold's outlines, with the dots of the i and the j drawn as two lit windows. The icon (`web/public/favicon.svg`, `icon-192.png`, `icon-512.png`, `apple-touch-icon.png`) is our own drawing.
+
 ## Reference only
 
 Google Street View and Google Maps were looked at to describe the neighbours' facades and the village; no images or data from them are in this repository.
