@@ -32,6 +32,10 @@ const MAX_PLAYERS = 16; // the most the admin can allow at once (every player's 
 const KEYFRAME = 20; // ticks: everything goes to every page at least this often (once a second), moved or not
 const OLD_EVERY = 2; // ticks: pages from before protocol 2 get the full states every other tick (ten a second, as before)
 const PING_MS = 2000;
+// A page that sends nothing this long, not even the answer to a ping (a phone or tablet gone to sleep,
+// Wi-Fi gone without a goodbye), is let go: its connection can stay open on our side for many minutes,
+// and with it its place in the house, the car it drove and its part in a game ("it" in tag).
+const SILENT_MS = 30_000;
 /** The server's own clock for the ticks (ms): monotonic, unlike the wall clock. */
 const mono = () => Math.round(performance.now());
 const COLORS = ['#f2b33d', '#4fa3e0', '#e0614f', '#5cc28a', '#c77dff', '#ff8fab', '#7ae0e6', '#f4e04d', '#a0c4ff', '#ff9f43', '#b8e994', '#e66767', '#9aa5b1', '#d4a373', '#70d6ff', '#e9c46a'];
@@ -247,6 +251,7 @@ export class Game {
       // in the last tick, its turn in the keyframe, and the first tick with everything.
       proto, stamp: mono(), fresh: false, warp: 0, sentKey: '', slot: randomInt(KEYFRAME), full: true,
       states: 0, others: 0, pingN: 0, pingAt: 0, pingNext: mono() + 500, rtt: null, rttAvg: null, ctGap: null, ctAt: 0,
+      heard: mono(), // the last message from the page (see SILENT_MS)
     };
     // Where the server believes they are: the replaced connection, their last visit, or
     // the street (where everyone starts). Their first update is limited like any other.
@@ -379,6 +384,7 @@ export class Game {
 
   /** A message from a player's browser. A mistake handling one is logged, never fatal to the server. */
   receive(name, player, raw) {
+    player.heard = mono();
     try {
       this.handle(name, player, raw);
     } catch (e) {
@@ -1138,12 +1144,18 @@ export class Game {
   /**
    * Every two seconds a ping to each page (protocol 2), carrying the last time there and back for it
    * to show. The answer counts only for the ping asked (a random number), once: a page can't make its
-   * time look shorter, and unasked answers are dropped.
+   * time look shorter, and unasked answers are dropped. A page that sent nothing for SILENT_MS is let
+   * go (its 'close' frees what it held); it connects again when it wakes up, back where it was.
    */
   pings() {
     const t = mono();
     for (const p of this.players.values()) {
-      if (p.proto < PROTO || t < p.pingNext) continue;
+      if (p.proto < PROTO) continue;
+      if (t - p.heard > SILENT_MS) {
+        p.ws.terminate();
+        continue;
+      }
+      if (t < p.pingNext) continue;
       p.pingNext = t + PING_MS;
       p.pingN = randomInt(1, 2 ** 31);
       p.pingAt = t;
