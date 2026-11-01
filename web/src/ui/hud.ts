@@ -18,9 +18,11 @@ export class Hud {
   private fpsTime = 0;
 
   /** Small hint under the crosshair, e.g. "E  Open WC door". Empty hides it. */
-  setPrompt(text: string): void {
+  /** `warn`: a refusal (red edge, may run over two lines). */
+  setPrompt(text: string, warn = false): void {
     if (this.prompt.textContent !== text) this.prompt.textContent = text;
     this.prompt.classList.toggle('show', !!text);
+    this.prompt.classList.toggle('warn', warn && !!text);
   }
 
   private slotsKey = '';

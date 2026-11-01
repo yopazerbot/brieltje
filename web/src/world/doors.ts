@@ -123,6 +123,8 @@ export class Doors {
   private glassPanels = new Map<number, { door: Door; panel: Panel }>();
   private doors: Door[] = [];
   private raycaster = new THREE.Raycaster();
+  /** Alone, no door opens (Yoshi): the house and the bungalow are for playing together. */
+  private locked = false;
 
   /** `surface`: the house's materials by name, for leaves made of them */
   constructor(specs: DoorSpec[], private world: World, private surface?: (name: string) => THREE.Material) {
@@ -193,7 +195,7 @@ export class Doors {
   }
 
   /** The door you are looking at within reach, if any. */
-  lookedAt(camera: THREE.Camera, scene: THREE.Object3D): { name: string; open: boolean; toggle: () => void } | null {
+  lookedAt(camera: THREE.Camera, scene: THREE.Object3D): { name: string; open: boolean; locked: boolean; toggle: () => void } | null {
     camera.updateMatrixWorld();
     this.raycaster.setFromCamera(new THREE.Vector2(0, 0), camera);
     const hits = this.raycaster.intersectObjects([scene], true);
@@ -203,7 +205,9 @@ export class Doors {
     return {
       name: door.spec.name,
       open: door.target === 1,
+      locked: this.locked,
       toggle: () => {
+        if (this.locked) return;
         door.target = door.target === 1 ? 0 : 1;
         const p = door.panels[0];
         if (door.spec.both && door.target === 1 && door.open === 0 && p) {
@@ -230,6 +234,20 @@ export class Doors {
     if (!door) return;
     door.target = open ? 1 : 0;
     if (door.spec.both && (dir === 1 || dir === -1) && (open || door.open === 0)) door.dir = dir;
+  }
+
+  /**
+   * Alone (true): every door stays as it is, and the outside ones (those with an outer face) shut
+   * at once, so nobody walks in. Together (false): the server's doors again (its welcome sets them).
+   */
+  lock(on: boolean): void {
+    this.locked = on;
+    if (!on) return;
+    for (const door of this.doors) {
+      if (!door.spec.panels.some((p) => p.outside)) continue;
+      door.target = door.open = 0;
+      this.place(door);
+    }
   }
 
   setAll(states: Record<string, boolean>, dirs: Record<string, number> = {}): void {

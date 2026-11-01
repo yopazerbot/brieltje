@@ -1,7 +1,7 @@
 [
-  {"name": "Street", "x": 4.5, "z": 19.0, "y": -0.1, "team": "house"},
-  {"name": "Garden", "x": 4.5, "z": -6.0, "y": -0.1, "team": "house"},
-  {"name": "Side path", "x": 10.5, "z": 6.0, "y": -0.1, "team": "house"},
+  {"name": "Street", "x": 4.5, "z": 19.0, "y": -0.1, "team": "house", "outside": true},
+  {"name": "Garden", "x": 4.5, "z": -6.0, "y": -0.1, "team": "house", "outside": true},
+  {"name": "Side path", "x": 10.5, "z": 6.0, "y": -0.1, "team": "house", "outside": true},
   {"name": "Slaapkamer 1", "x": 6.0, "z": 1.9, "y": 0, "team": "house"},
   {"name": "Slaapkamer 2", "x": 2.5, "z": 5.0, "y": 0, "team": "house"},
   {"name": "Slaapkamer 3", "x": 2.0, "z": 9.0, "y": 0, "team": "house"},

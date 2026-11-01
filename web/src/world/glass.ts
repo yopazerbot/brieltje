@@ -29,6 +29,8 @@ const shardMat = new THREE.MeshStandardMaterial({
 export class Glass {
   private broken = new Set<number>();
   private shards: Shard[] = [];
+  /** Alone, the panes hold (Yoshi): nobody shoots their way into the house or the bungalow. */
+  private sealed = false;
 
   /** Panes that aren't house blocks (glass in door leaves), with what to do when one breaks or is back */
   private others = new Map<number, (broken: boolean) => void>();
@@ -72,7 +74,7 @@ export class Glass {
   /** Break pane `index`. `hit` is where the bullet struck (shards fly from there); null breaks it quietly (joining a game). */
   break(index: number, hit: THREE.Vector3 | null, from?: THREE.Vector3): boolean {
     const pane = this.panes.get(index);
-    if (!pane || this.broken.has(index)) return false;
+    if (this.sealed || !pane || this.broken.has(index)) return false;
     this.broken.add(index);
     const box = new THREE.Box3().setFromObject(pane);
     pane.visible = false;
@@ -96,6 +98,17 @@ export class Glass {
     }
     this.shatterSound(hit);
     return true;
+  }
+
+  /** Alone (true): every pane whole again and unbreakable. Together (false): breakable, as the server has them. */
+  seal(on: boolean): void {
+    this.sealed = on;
+    if (on) this.repair();
+  }
+
+  /** Whether a shot or a grenade breaks panes now (not alone). */
+  get breakable(): boolean {
+    return !this.sealed;
   }
 
   repair(): void {

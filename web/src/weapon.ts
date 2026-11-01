@@ -466,8 +466,8 @@ export class Weapon {
   baseFov = 72;
   /** Accuracy factor from how you move: crouching is steadier, running is not */
   spreadMul = 1;
-  /** A bullet hit window pane `index` at `point`, fired from `from`. */
-  onGlassHit: (index: number, point: THREE.Vector3, from: THREE.Vector3) => void = () => {};
+  /** A bullet hit window pane `index` at `point`, fired from `from`; `normal` is the pane's face there, `pane` its mesh. */
+  onGlassHit: (index: number, point: THREE.Vector3, from: THREE.Vector3, normal: THREE.Vector3, pane: THREE.Object3D) => void = () => {};
   /** Bullets (pellets) of one shot that hit another player's body and head; in paintball `spot` is where the paint sticks. */
   onPlayerHit: (name: string, body: number, head: number, point: THREE.Vector3, spot?: Spot) => void = () => {};
   /** A bullet hit one of the cats. */
@@ -718,7 +718,8 @@ export class Weapon {
         else e.body++;
         players.set(player, e);
       } else if (hit.object.userData.glassIndex !== undefined) {
-        this.onGlassHit(hit.object.userData.glassIndex, hit.point.clone(), eye);
+        const normal = hit.face.normal.clone().transformDirection(hit.object.matrixWorld);
+        this.onGlassHit(hit.object.userData.glassIndex, hit.point.clone(), eye, normal, hit.object);
       } else {
         const normal = hit.face.normal.clone().transformDirection(hit.object.matrixWorld);
         this.onImpact(hit.point.clone(), normal, String(hit.object.userData.material ?? ''), hit.object);

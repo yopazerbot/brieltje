@@ -24,6 +24,8 @@ import spawns from '../shared/spawns.json';
 
 /** The spawn points round the house (the bungalow's are for its team in the teams game). */
 const HOUSE_SPAWNS = spawns.flatMap((s, i) => (s.team === 'house' ? [i] : []));
+/** Those out of doors: alone the house is shut, so you come back in the street or the garden. */
+const OUTSIDE_SPAWNS = HOUSE_SPAWNS.filter((i) => spawns[i].outside);
 import { api, errorText, Net, type Me, type Rules, type ServerMsg } from './net/client';
 import { Avatars } from './net/avatars';
 import { netClock } from './net/track';
@@ -749,6 +751,14 @@ $('set-pin-save').addEventListener('click', async () => {
 });
 maxSlider.addEventListener('input', () => ($('set-max-value').textContent = maxSlider.value));
 maxSlider.addEventListener('change', () => net.send({ t: 'rules', maxPlayers: Number(maxSlider.value) }));
+let wasTogether = false; // playing with the others until this account change
+/** Out of the house or the bungalow (alone they are shut), in front of the one you were in. */
+function putOutside(): void {
+  if (!inside || driving || riding) return;
+  const bungalow = Math.hypot(player.x - 83.5, player.z - 189.7) < Math.hypot(player.x - 4.5, player.z - 6);
+  const to = PORTALS.find((p) => p.id === (bungalow ? 'bungalow' : 'house'));
+  if (to) arrive(to, null);
+}
 /**
  * Alone or together: joining with the PIN and the admin's login work on the start screen, before
  * the world exists (src/start.ts). The world follows, once it is there and on every change
@@ -757,6 +767,12 @@ maxSlider.addEventListener('change', () => net.send({ t: 'rules', maxPlayers: Nu
  */
 function followAccount(account: Me | null): void {
   queueMicrotask(applyTurbo); // after `me` is set below: the admin's speed, or back to normal
+  // Alone, the house and the bungalow are shut (Yoshi): no door opens and no pane breaks. Leaving
+  // the others from inside, you are put out in front.
+  doors.lock(!account);
+  glass.seal(!account);
+  if (!account && wasTogether) putOutside();
+  wasTogether = !!account;
   $('mp-join-here').classList.toggle('hidden', !!account);
   $('mp-leave').classList.toggle('hidden', !account);
   $('scores-col').classList.toggle('hidden', !account);
@@ -806,8 +822,13 @@ games.onSend = (msg) => net.send(msg);
 document.querySelectorAll<HTMLButtonElement>('[data-game]').forEach((b) =>
   b.addEventListener('click', () => net.send({ t: 'mode', kind: b.dataset.game })),
 );
-weapon.onGlassHit = (i, point, from) => {
+weapon.onGlassHit = (i, point, from, normal, pane) => {
   if (glass.break(i, point, from)) net.send({ t: 'glass', i });
+  else if (!glass.breakable) {
+    // Alone the panes hold: the bullet chips off, and the way in is explained.
+    effects.shot(point, normal, 'black_glass', pane);
+    lockHint = 4;
+  }
 };
 weapon.onPlayerHit = (name, body, head, point, spot) => {
   if (games.friend(name)) return; // your own team in the teams game
@@ -866,7 +887,7 @@ function soloHurt(amount: number): void {
   combat.died(t('char.strongman'), false);
   combat.kill(t('char.strongman'), t('char.you'), false, '');
   setTimeout(() => {
-    if (!net.connected && !combat.alive) respawnAt(HOUSE_SPAWNS[Math.floor(Math.random() * HOUSE_SPAWNS.length)]);
+    if (!net.connected && !combat.alive) respawnAt(OUTSIDE_SPAWNS[Math.floor(Math.random() * OUTSIDE_SPAWNS.length)]);
   }, 3000);
 }
 weapon.onClownHit = (id, point, spot) => clownHit(id, point, weapon.current, spot);
@@ -1498,6 +1519,7 @@ let exposure = renderer.toneMappingExposure;
 let shake = 0;
 let flyHint = 0; // seconds the flying controls still show after taking off
 let calmHint = 0; // seconds "no shooting here" still shows on the school grounds
+let lockHint = 0; // seconds "only in multiplayer" still shows after trying a door or a pane alone
 let horseHint = 0; // seconds the riding keys still show after getting on a horse
 let wasOnHorse = false;
 let carHint = 0; // the same for the car's speed and keys after getting in
@@ -1625,7 +1647,10 @@ renderer.setAnimationLoop((now: number) => {
     const tagWho = inCar || dead ? null : games.target([...online.keys()], (n) => avatars.position(n), player.x, player.feet, player.z);
     if (tagWho && (frame.usePressed || frame.clickPressed)) games.tag(tagWho);
     const target = inCar || onHorse || tagWho ? null : doors.lookedAt(camera, scene);
-    if (target && (frame.usePressed || (!action && !planner.active && frame.clickPressed))) target.toggle();
+    if (target && (frame.usePressed || (!action && !planner.active && frame.clickPressed))) {
+      target.toggle();
+      if (target.locked) lockHint = 4;
+    }
     games.update(dt, player.x, player.feet, player.z);
     // The cars: E or Triangle next to one gets you in (unless two are in it already), and out again.
     if (!inCar && !wantCar) car = cars.reduce((a, b) => (b.distanceTo(player.x, player.z) < a.distanceTo(player.x, player.z) ? b : a));
@@ -1675,7 +1700,7 @@ renderer.setAnimationLoop((now: number) => {
     touch.setState(action, inCar, planner.active);
     const speed = (v: number) => Math.round(Math.abs(v) * 3.6);
     const carLabel = carName(car.id, car.spec.name);
-    let prompt = target ? t(target.open ? 'prompt.close' : 'prompt.open', { key: doorKey, door: doorName(target.name) }) : '';
+    let prompt = target ? t(target.locked ? 'prompt.locked' : target.open ? 'prompt.close' : 'prompt.open', { key: doorKey, door: doorName(target.name) }) : '';
     // The car's speed and keys for the first few seconds in it only (Yoshi, as on a horse).
     if (driving) prompt = carHint > 0 ? t('prompt.driving', { speed: speed(car.speed), use }) : '';
     else if (tagWho) prompt = t('prompt.tag', { use, name: tagWho });
@@ -1713,6 +1738,8 @@ renderer.setAnimationLoop((now: number) => {
     if (flyHint > 0) hud.setPrompt(t('prompt.fly', { up: key('jump', mode), down: key('down', mode) }));
     calmHint = wasCalm ? calmHint - dt : 0;
     if (calmHint > 0) hud.setPrompt(t('prompt.noShoot'));
+    lockHint -= dt;
+    if (lockHint > 0 || target?.locked) hud.setPrompt(t('prompt.locked'), true);
 
     // Tell the others where you are: 20 times a second while anything changes, and once more when
     // it stops (so they see you stand where you stopped), then about three times a second. Each
