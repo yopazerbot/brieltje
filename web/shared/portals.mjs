@@ -35,6 +35,17 @@ export const PORTALS = [
     id: 'molenhoek', name: 'Molenhoek', sub: 'Smetlede', color: '#ff8a80', words: ['molen', 'mill'], village: true,
     x: 758, z: -709.5, yaw: -0.197, out: [758.9, -714.4, 1.373], car: [745, -720.5, 1.373],
   },
+  // Molenhoek is nearly a kilometre long (Yoshi, 1 Nov 2026): its middle, halfway along the street,
+  // and its end by the new terrace near Oordegemkouter, where you come out looking at the end house.
+  // Pads on the edge of the pavement, never on the road.
+  {
+    id: 'molenhoek_mid', name: 'Middle of Molenhoek', sub: 'Smetlede', color: '#ffd54f', words: ['midden', 'mid', 'middle', 'middenmolenhoek', 'molenhoekmidden'], village: true,
+    x: 1061.05, z: -565.54, yaw: -0.732, out: [1062.72, -567.4, -2.303], car: [1064.4, -569.26, -2.303],
+  },
+  {
+    id: 'molenhoek_end', name: 'End of Molenhoek', sub: 'Smetlede', color: '#ff80ab', words: ['einde', 'eind', 'end', 'eindmolenhoek', 'molenhoekeinde'], village: true,
+    x: 1513.23, z: -360.98, yaw: 0.932, out: [1508.01, -364.85, 2.898], car: [1509.09, -369.22, -1.814],
+  },
 ];
 
 /** The portal a word in the chat names: its id or one of its words, else the first whose name starts with it. */

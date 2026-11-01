@@ -1107,7 +1107,11 @@ function arrive(to: Portal, from: Portal | null): void {
   hud.announce(portalName(to), to.sub);
 }
 /** The word for a portal in the chat, in the current language (both languages' words always work: shared/portals.mjs). */
-const portalWord = (p: Portal) => (lang() === 'nl' ? ({ house: 'huis', church: 'kerk' } as Record<string, string>)[p.id] ?? p.id : p.id);
+const PORTAL_WORDS: Record<'nl' | 'en', Record<string, string>> = {
+  nl: { house: 'huis', church: 'kerk', molenhoek_mid: 'midden', molenhoek_end: 'einde' },
+  en: { molenhoek_mid: 'mid', molenhoek_end: 'end' },
+};
+const portalWord = (p: Portal) => PORTAL_WORDS[lang() === 'nl' ? 'nl' : 'en'][p.id] ?? p.id;
 /** Words before the place that change nothing: /go church, /ga naar kerk, /tp school. */
 const TRAVEL_WORDS = new Set(['location', 'go', 'goto', 'to', 'tp', 'travel', 'teleport', 'ga', 'gaan', 'naar', 'reis', 'reizen']);
 /** Chat commands: /church, /house, /location school, /kerk, /ga naar huis ... and /places for the list. */
