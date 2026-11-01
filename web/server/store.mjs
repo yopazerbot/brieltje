@@ -1,5 +1,6 @@
-// Sessions, furniture, fighting stats, the login log, the interest page's sign-ups (server/interest.mjs)
-// and the daily totals of how much the game is played (server/stats.mjs).
+// Sessions, furniture, fighting stats, the login log, the interest page's sign-ups (server/interest.mjs),
+// the daily totals of how much the game is played (server/stats.mjs) and players' feedback
+// (server/feedback.mjs).
 // Railway: Postgres via DATABASE_URL. Local development without it: a JSON
 // file in web/.data/ (not in git).
 // Sessions are stored by a hash of their token, never the token itself.
@@ -26,7 +27,7 @@ async function replace(from, to) {
 class FileStore {
   constructor(file) {
     this.file = file;
-    this.data = { audit: [], sessions: [], stats: {}, meta: {}, furniture: [], interest: [], interestId: 0, daily: {} };
+    this.data = { audit: [], sessions: [], stats: {}, meta: {}, furniture: [], interest: [], interestId: 0, daily: {}, feedback: [], feedbackId: 0 };
   }
   async init() {
     await mkdir(resolve(this.file, '..'), { recursive: true });
@@ -195,6 +196,27 @@ class FileStore {
   async interestBytes() {
     return this.data.interest.reduce((a, r) => a + r.data.files.reduce((b, f) => b + f.size, 0), 0);
   }
+  async addFeedback(entry) {
+    const id = ++this.data.feedbackId;
+    this.data.feedback.push({ id, at: Date.now(), ...entry });
+    this.data.feedback = this.data.feedback.slice(-5000);
+    await this.save();
+    return id;
+  }
+  async listFeedback(limit) {
+    return this.data.feedback.slice(-limit).reverse().map(({ at, ...row }) => row);
+  }
+  async deleteFeedback(id) {
+    this.data.feedback = this.data.feedback.filter((r) => r.id !== id);
+    await this.save();
+  }
+  /** The addresses go after `days`; the rest stays until the admin deletes it. */
+  async pruneFeedbackIps(days) {
+    const old = Date.now() - days * 86400_000;
+    let n = 0;
+    for (const r of this.data.feedback) if (r.at < old && r.ip) delete r.ip, n++;
+    if (n) await this.save();
+  }
 }
 
 class PgStore {
@@ -256,6 +278,11 @@ class PgStore {
         at timestamptz not null default now(),
         data jsonb not null,
         token_hash text not null
+      );
+      create table if not exists feedback (
+        id serial primary key,
+        at timestamptz not null default now(),
+        data jsonb not null
       );`);
   }
   async loadSessions(now) {
@@ -332,6 +359,22 @@ class PgStore {
   async recentLog(limit) {
     const r = await this.pool.query('select time_be as time, event, username, ip, detail from audit_log order by id desc limit $1', [limit]);
     return r.rows;
+  }
+  async addFeedback(entry) {
+    const r = await this.pool.query('insert into feedback (data) values ($1) returning id', [entry]);
+    return r.rows[0].id;
+  }
+  async listFeedback(limit) {
+    const r = await this.pool.query('select id, data from feedback order by id desc limit $1', [limit]);
+    return r.rows.map(({ id, data }) => ({ id, ...data }));
+  }
+  async deleteFeedback(id) {
+    await this.pool.query('delete from feedback where id = $1', [id]);
+  }
+  /** The addresses go after `days`; the rest stays until the admin deletes it. */
+  async pruneFeedbackIps(days) {
+    const r = await this.pool.query("update feedback set data = data - 'ip' where at < now() - make_interval(days => $1::int) and data ? 'ip'", [days]);
+    if (r.rowCount) console.log(JSON.stringify({ event: 'feedback_ips_pruned', n: r.rowCount }));
   }
   async addInterest(data, tokenHash) {
     const r = await this.pool.query('insert into interest (data, token_hash) values ($1, $2) returning id', [data, tokenHash]);

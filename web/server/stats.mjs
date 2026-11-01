@@ -18,7 +18,7 @@
 //
 // Admin only: GET /api/admin/stats (60 days), GET /api/admin/audit (the log), and
 // GET /api/admin/live, a stream (Server-Sent Events) with today's numbers, who is playing, new log
-// lines, a nudge when the sign-ups change, and the scoreboard (the game's scores, round and game
+// lines, a nudge when the sign-ups or the feedback change, and the scoreboard (the game's scores, round and game
 // mode, for web/public/admin/scores/). It is built from memory every second, and only sent when
 // something changed, so a page left open costs next to nothing; the session is checked again every
 // 15 seconds and the stream ends when it's gone.
@@ -84,7 +84,7 @@ export class Stats {
     this.soloLogAll = new Window(3600_000);
     this.visits = new Map(); // anonymous visit number -> { mode, control, together, lang, since, last }
     this.streams = new Set();
-    this.dirty = { stats: true, log: [], signups: false };
+    this.dirty = { stats: true, log: [], signups: false, feedback: false };
     this.lastPlaying = '';
     this.lastBoard = '';
     this.boardAt = 0;
@@ -160,6 +160,11 @@ export class Stats {
     this.dirty.signups = true;
   }
 
+  /** New or deleted feedback (server/feedback.mjs): open admin pages fetch it again. */
+  feedbackChanged() {
+    this.dirty.feedback = true;
+  }
+
   /** Who is playing now: the players together by name, the ones alone by the name they typed. */
   playing() {
     const now = Date.now();
@@ -202,7 +207,7 @@ export class Stats {
     this.peak();
     if (!this.streams.size) {
       this.dirty.log = [];
-      this.dirty.signups = false;
+      this.dirty.signups = this.dirty.feedback = false;
       return;
     }
     const playing = this.playing();
@@ -214,7 +219,8 @@ export class Stats {
     if (this.dirty.stats) this.send('today', { day: this.today.day, counts: this.todayCounts() });
     if (this.dirty.log.length) this.send('log', this.dirty.log);
     if (this.dirty.signups) this.send('signups', {});
-    this.dirty = { stats: false, log: [], signups: false };
+    if (this.dirty.feedback) this.send('feedback', {});
+    this.dirty = { stats: false, log: [], signups: false, feedback: false };
     // The scoreboard: when the scores or the game change, and every 10 seconds to keep its clocks
     // right (the page counts down by itself in between).
     const board = this.game.board();

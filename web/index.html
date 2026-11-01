@@ -69,6 +69,20 @@
     <button id="full-btn" type="button" class="hidden" title="Fill the whole screen" data-i18n-title="btn.fullTitle"><span class="ico">⤢</span> <span class="lbl">Full screen</span></button>
     <div id="full-hint" class="hidden" data-i18n-rich="full.hint">On an iPhone a page can't fill the screen from Safari. Tap <b>Share</b>, then <b>Add to Home Screen</b>, and start Briel from your home screen: it opens without Safari's bars.</div>
     <div id="rotate-hint" data-i18n="rotate.hint">Turn your device sideways to play</div>
+    <!-- The feedback card after two minutes of play (src/ui/feedback.ts): above the touch controls. -->
+    <div id="feedback" class="hidden" role="dialog" aria-modal="true" aria-labelledby="fb-title">
+      <button type="button" id="fb-close" aria-label="Close" data-i18n-aria="fb.close">×</button>
+      <h2 id="fb-title" data-i18n="fb.title">Enjoying Brieltje?</h2>
+      <p class="fb-sub" data-i18n="fb.sub">A quick rating helps Yoshi. Everything here is optional.</p>
+      <div class="fb-stars" role="radiogroup" aria-label="Your rating" data-i18n-aria="fb.stars"></div>
+      <textarea id="fb-comment" rows="3" maxlength="600" placeholder="Anything you want to say? (optional)" data-i18n-placeholder="fb.comment" aria-label="Comment" data-i18n-aria="fb.commentAria"></textarea>
+      <p class="fb-status" role="status"></p>
+      <div class="fb-actions">
+        <button type="button" id="fb-later" data-i18n="fb.later">No thanks</button>
+        <button type="button" id="fb-send" data-i18n="fb.send">Send</button>
+      </div>
+      <p class="fb-note"><span data-i18n="fb.note">Sent with your name and IP address, so Yoshi knows who wrote it.</span> <a href="/legal/privacy.html" target="_blank" rel="noopener" data-i18n="fb.privacy">Privacy</a></p>
+    </div>
     <!-- Hidden until src/start.ts has put it in the chosen language and made its buttons work. -->
     <div id="overlay" class="hidden">
       <div class="panel" id="start-panel">

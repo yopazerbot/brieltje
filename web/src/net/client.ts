@@ -136,6 +136,8 @@ export const api = {
   pin: () => call<{ pin: string }>('GET', '/api/pin'),
   setPin: (pin: string) => call<{ ok: boolean; loggedOut: number }>('POST', '/api/pin', { pin }),
   audit: () => call<{ log: { time: string; event: string; username?: string; ip?: string; detail?: string }[] }>('GET', '/api/audit'),
+  /** Stars (1 to 5) and a comment, either may be left out (src/ui/feedback.ts, server/feedback.mjs). */
+  feedback: (b: { stars: number | null; comment: string; name: string; mode: string; lang: string }) => call('POST', '/api/feedback', b),
 };
 
 /**

@@ -40,6 +40,7 @@
       <nav class="tabs" role="tablist">
         <button type="button" role="tab" data-tab="overview" aria-selected="true">Overview</button>
         <button type="button" role="tab" data-tab="signups" aria-selected="false">Sign-ups</button>
+        <button type="button" role="tab" data-tab="feedback" aria-selected="false">Feedback</button>
         <button type="button" role="tab" data-tab="logins" aria-selected="false">Logins</button>
         <button type="button" role="tab" data-tab="online" aria-selected="false">Online now</button>
       </nav>
@@ -72,6 +73,26 @@
         <p class="muted small" id="copied" hidden></p>
         <div id="entries"></div>
         <p class="muted" id="empty" hidden>No sign-ups yet.</p>
+      </section>
+
+      <section data-panel="feedback" hidden>
+        <div class="stats" id="fb-kpis"></div>
+        <div class="fb-spread" id="fb-spread"></div>
+        <div class="toolbar">
+          <select id="fb-filter">
+            <option value="">Everything</option>
+            <option value="comment">With a comment</option>
+            <option value="5">5 stars</option>
+            <option value="4">4 stars</option>
+            <option value="3">3 stars</option>
+            <option value="2">2 stars</option>
+            <option value="1">1 star</option>
+          </select>
+          <input type="text" id="fb-search" placeholder="Search name, address, comment" />
+        </div>
+        <div class="tablewrap"><table class="log fb"><thead><tr><th>Time</th><th>Stars</th><th>Comment</th><th>Name</th><th>Address</th><th>Playing</th><th></th></tr></thead><tbody id="fb-rows"></tbody></table></div>
+        <p class="muted" id="fb-empty" hidden>No feedback yet.</p>
+        <p class="muted small">A player alone gives the name they typed. It isn't checked. Addresses are removed after 90 days.</p>
       </section>
 
       <section data-panel="logins" hidden>

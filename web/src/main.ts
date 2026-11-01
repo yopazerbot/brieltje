@@ -20,6 +20,7 @@ import { Chat } from './ui/chat';
 import { Combat } from './ui/combat';
 import { Leaderboard } from './ui/leaderboard';
 import { Minimap, type Blip } from './ui/minimap';
+import { ASK_AFTER, FeedbackCard } from './ui/feedback';
 import spawns from '../shared/spawns.json';
 
 /** The spawn points round the house (the bungalow's are for its team in the teams game). */
@@ -1504,13 +1505,25 @@ canvas.addEventListener('click', () => {
   if (!menu.open && menu.mode === 'kbm' && document.pointerLockElement !== canvas) lockMouse();
 });
 const captureHint = $('capture-hint');
+// After two minutes of play, once in this browser: stars and a comment for Yoshi (ui/feedback.ts).
+const feedback = new FeedbackCard();
+let askClock = 0; // seconds played with the menu closed and the page in view
+let padStick = 0; // the controller's stick on the card: -1, 0 or 1 (a star per push)
+feedback.send = (stars, comment) => api.feedback({
+  stars, comment, name: me ? '' : menu.nickname, lang: document.documentElement.lang === 'nl' ? 'nl' : 'en',
+  mode: weapon.enabled ? (paintball.on ? 'paintball' : 'action') : 'explore',
+});
+// Closed with a click or a tap: back to looking around at once (a click may capture the mouse).
+feedback.onClose = (click) => {
+  if (click && !menu.open && menu.mode === 'kbm') lockMouse();
+};
 let resumedAt = -1e9; // when play last resumed (the menu closed)
 document.addEventListener('pointerlockchange', () => {
   // Esc releases the mouse in the browser: treat that as pausing. When the game let it go itself (M,
   // the menu opening), the menu is open already and stays on its tab. Not just after the menu closed:
   // the Esc that closed it can still take back the capture asked for on closing, and the menu (on
   // the map) came straight back, as if Esc didn't close the map (Yoshi). The click hint shows then.
-  if (!document.pointerLockElement && menu.mode === 'kbm' && !menu.open && !chat.typing && performance.now() - resumedAt > 800) openMenu();
+  if (!document.pointerLockElement && menu.mode === 'kbm' && !menu.open && !chat.typing && !feedback.open && performance.now() - resumedAt > 800) openMenu();
 });
 
 window.addEventListener('resize', resize);
@@ -1535,12 +1548,23 @@ let last = performance.now();
 renderer.setAnimationLoop((now: number) => {
   const dt = Math.min((now - last) / 1000, 0.05);
   last = now;
-  const frame = input.poll();
+  const polled = input.poll();
+  // The feedback card takes the keys while it shows, and for a moment after (its Esc isn't the menu's).
+  const card = feedback.open || now - feedback.closedAt < 250;
+  const frame = card ? { ...NO_INPUT } : polled;
+  if (feedback.open && menu.mode === 'pad') {
+    // A controller: the stick picks the stars, ✕ sends, ○ or Options closes.
+    const stick = Math.abs(polled.moveX) > 0.6 ? Math.sign(polled.moveX) : 0;
+    if (stick && stick !== padStick) feedback.step(stick);
+    padStick = stick;
+    if (polled.confirmPressed) void feedback.submit(false);
+    else if (polled.deletePressed || polled.menuPressed) feedback.close(false);
+  }
   if (frame.mapPressed) toggleMap(); // a short press on the touchpad, as M
   menu.setPadState(input.padName);
   hud.setPad(input.padName, menu.mode === 'pad');
   if (frame.fpsPressed) settings.toggle('fps'); // F, or Create on the controller (Settings: FPS counter)
-  captureHint.classList.toggle('show', !menu.open && menu.mode === 'kbm' && document.pointerLockElement !== canvas && !chat.typing);
+  captureHint.classList.toggle('show', !menu.open && menu.mode === 'kbm' && document.pointerLockElement !== canvas && !chat.typing && !card);
 
   // The weapons lying around: only in Action mode (Yoshi), and never from the start view, where their
   // rings look like odd logos.
@@ -1575,6 +1599,10 @@ renderer.setAnimationLoop((now: number) => {
       playClock -= 60;
       beacon('minute');
     }
+    // The feedback card at a quiet moment after two minutes: not while down, driving, riding along,
+    // furnishing, typing in the chat or travelling.
+    if (feedback.due && !feedback.open && document.visibilityState === 'visible' && (askClock += dt) >= ASK_AFTER
+      && combat.alive && !driving && !riding && !planner.active && !chat.typing && !trip) feedback.show();
     // Dead: the view sinks to the floor; you can look around but not move or shoot.
     const dead = !combat.alive;
     player.down += ((dead ? 1 : 0) - player.down) * (1 - Math.exp(-dt * 5));
@@ -2169,6 +2197,9 @@ if (import.meta.env.DEV) {
       driving: () => driving,
       furnishing,
       planner,
+      feedback,
+      /** Seconds played towards the feedback card, and what holds it back. */
+      askState: () => ({ askClock, menuOpen: menu.open, trip: !!trip, typing: chat.typing, driving, riding, alive: combat.alive }),
       avatars,
       /** The drawing clock for the others (net/track.ts) and the connection, for the network checks. */
       net: () => ({ delay: netClock.delay, late: netClock.late, age: netClock.age, rate: netClock.rate, rtt: net.rtt, ...net.counts }),

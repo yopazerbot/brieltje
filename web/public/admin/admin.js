@@ -1,9 +1,10 @@
-// The admin page (brieltje.be/admin): log in with the game's admin account, then four tabs, kept
+// The admin page (brieltje.be/admin): log in with the game's admin account, then five tabs, kept
 // current by a live stream (GET /api/admin/live: today's numbers, who is playing, new log lines,
-// changed sign-ups); the 60 days behind the charts are fetched again every minute.
+// changed sign-ups and feedback); the 60 days behind the charts are fetched again every minute.
 // Overview: how much the game is played (server/stats.mjs: daily totals only, nothing per person)
 // with the last 30 days as bar charts and how people play. Sign-ups: the interest page's sign-ups
-// (server/interest.mjs) with status, notes, plans and delete. Logins: the login log. Online now.
+// (server/interest.mjs) with status, notes, plans and delete. Feedback: players' stars and comments
+// (server/feedback.mjs) with their name, address and time. Logins: the login log. Online now.
 // Everything a visitor typed or a server log holds is shown with textContent, never as HTML.
 (() => {
   const $ = (id) => document.getElementById(id);
@@ -17,6 +18,7 @@
   };
   let entries = [];
   let log = [];
+  let feedback = [];
   let tab = 'overview';
   let stats = null; // the last /api/admin/stats answer, today's numbers updated live
   let playing = { together: [], alone: [] };
@@ -60,6 +62,7 @@
       console.error('overview', e);
     }
     loadSignups();
+    loadFeedback();
     loadLog();
     connect();
   }
@@ -94,6 +97,7 @@
       log = [...JSON.parse(e.data).reverse(), ...log].slice(0, 2000);
       if (tab === 'logins') drawLog();
     });
+    live.addEventListener('feedback', () => loadFeedback());
     live.addEventListener('signups', () => {
       // Not while a note is being typed: it would be drawn over.
       if (document.activeElement?.closest?.('#entries')) return;
@@ -108,6 +112,7 @@
       if (tab === 'online' || tab === 'overview') refreshStats();
       if (tab === 'logins') loadLog();
       if (tab === 'signups') loadSignups();
+      if (tab === 'feedback') loadFeedback();
     });
   }
   async function refreshStats() {
@@ -389,6 +394,76 @@
   $('filter').addEventListener('change', draw);
 
   // ---- the login log
+  // ---- feedback
+  async function loadFeedback() {
+    const r = await fetch('/api/admin/feedback').catch(() => null);
+    if (!r?.ok) return;
+    feedback = (await r.json()).rows;
+    drawFeedback();
+  }
+  const starText = (n) => (n ? '\u2605'.repeat(n) + '\u2606'.repeat(5 - n) : '\u2013');
+  function drawFeedback() {
+    const rated = feedback.filter((f) => f.stars);
+    const week = Date.now() - 7 * 86400_000;
+    const avg = rated.length ? rated.reduce((a, f) => a + f.stars, 0) / rated.length : 0;
+    const kpis = [
+      ['Average rating', rated.length ? `${avg.toFixed(1)} \u2605` : '\u2013'],
+      ['Ratings', fmt(rated.length)],
+      ['Comments', fmt(feedback.filter((f) => f.comment).length)],
+      ['Last 7 days', fmt(feedback.filter((f) => Date.parse(String(f.time).replace(' ', 'T')) >= week).length)],
+    ];
+    $('fb-kpis').replaceChildren(...kpis.map(([label, value]) => {
+      const s = el('div', 'stat');
+      s.append(el('b', '', value), el('span', 'muted small', label));
+      return s;
+    }));
+    const most = Math.max(1, ...[1, 2, 3, 4, 5].map((n) => rated.filter((f) => f.stars === n).length));
+    $('fb-spread').replaceChildren(...[5, 4, 3, 2, 1].map((n) => {
+      const count = rated.filter((f) => f.stars === n).length;
+      const row = el('div');
+      const bar = el('i');
+      bar.style.width = `${(count / most) * 100}%`;
+      const track = el('span');
+      track.append(bar);
+      row.append(el('span', '', `${n} \u2605`), track, el('span', '', String(count)));
+      return row;
+    }));
+    const f = $('fb-filter').value;
+    const q = $('fb-search').value.trim().toLowerCase();
+    const shown = feedback.filter((x) => (!f || (f === 'comment' ? !!x.comment : x.stars === Number(f)))
+      && (!q || [x.name, x.ip, x.comment].some((v) => String(v || '').toLowerCase().includes(q))));
+    $('fb-empty').hidden = feedback.length > 0;
+    $('fb-rows').replaceChildren(...shown.slice(0, 500).map((x) => {
+      const tr = el('tr');
+      const name = el('td', '', x.name || 'No name');
+      name.append(el('span', 'tag', x.typed ? 'alone, as typed' : 'together'));
+      const del = el('button', 'btn ghost', 'Delete');
+      del.type = 'button';
+      let armed = false;
+      del.addEventListener('click', async () => {
+        if (!armed) {
+          armed = true;
+          del.textContent = 'Sure?';
+          setTimeout(() => { armed = false; del.textContent = 'Delete'; }, 4000);
+          return;
+        }
+        const r = await post(`/api/admin/feedback/${x.id}`, null, 'DELETE');
+        if (r.ok) {
+          feedback = feedback.filter((y) => y !== x);
+          drawFeedback();
+        }
+      });
+      const actions = el('td');
+      actions.append(del);
+      const mode = { explore: 'Explore', action: 'Action', paintball: 'Paintball' }[x.mode] ?? '';
+      tr.append(el('td', '', x.time), el('td', 'stars', starText(x.stars)), el('td', 'comment', x.comment || ''), name,
+        el('td', '', x.ip || ''), el('td', '', [mode, x.lang?.toUpperCase()].filter(Boolean).join(' \u00b7 ')), actions);
+      return tr;
+    }));
+  }
+  $('fb-filter').addEventListener('change', drawFeedback);
+  $('fb-search').addEventListener('input', drawFeedback);
+
   async function loadLog() {
     const r = await fetch('/api/admin/audit?limit=1000').catch(() => null);
     if (!r?.ok) return;
@@ -443,6 +518,7 @@
     await post('/api/logout', {});
     entries = [];
     log = [];
+    feedback = [];
     start();
   });
   start();
