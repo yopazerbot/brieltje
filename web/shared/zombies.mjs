@@ -1359,10 +1359,12 @@ export class Horde {
       const s = this.spots[i];
       const d = this.spotD[i];
       if (d < lo + 1 || d >= ZOMBIE.fieldReach - 15 || !joined.has(nav.region(s.node))) continue;
-      // Past spawnMax only as a last resort (far ones take long to come, and the field must reach them).
+      // Past spawnMax only as a last resort (far ones take long to come, and the field must reach them):
+      // more so after a few looks found nothing nearer out of everyone's sight.
       if (d > max) {
-        weight[i] = 1e-6;
-        total += 1e-6;
+        const w = this.starved >= 3 ? 0.15 : 1e-6;
+        weight[i] = w;
+        total += w;
         continue;
       }
       let w = d < best ? (d - lo) / (best - lo) : d <= far ? 1 : 1 - (0.9 * (d - far)) / (max - far);
@@ -1371,7 +1373,8 @@ export class Horde {
       weight[i] = w;
       total += w;
     }
-    for (let tries = 0; tries < 14 && total > 1e-9; tries++) {
+    const tries0 = this.starved >= 1 ? 48 : 14;
+    for (let tries = 0; tries < tries0 && total > 1e-9; tries++) {
       let r = this.rand() * total;
       let i = 0;
       for (; i < weight.length - 1; i++) {
@@ -1382,11 +1385,12 @@ export class Horde {
       const s = this.spots[i];
       total -= weight[i];
       weight[i] = 0;
-      // As things are now (the players moved since the last field): far enough from all, seen by none.
+      // As things are now (the players moved since the last field): far enough from all, seen by none
+      // (only after 10 s with nowhere else, past spawnMax: a wave never stalls for good).
       const fair = (x, z) => {
         for (const p of targets) {
           const d = Math.hypot(p.x - x, p.z - z);
-          if (d < lo || (d < max + 10 && nav.clear(x, z, p.x, p.z, true) && !(this.starved >= 4 && d > 30))) return false;
+          if (d < lo || (d < max + 10 && nav.clear(x, z, p.x, p.z, true) && !(this.starved >= 20 && d > max))) return false;
         }
         return true;
       };
