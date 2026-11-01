@@ -1,22 +1,26 @@
-/* The interest page and its admin page: the game's dark panel over the start picture, friendly on a phone. */
+/* The interest page and its admin page: the game's dark panel over the start picture, friendly on a phone.
+   In the game's typeface, Alegreya Sans (SIL OFL, /fonts/, the same files as the game). */
+@font-face { font-family: 'Alegreya Sans'; font-style: normal; font-weight: 500; font-display: swap; src: url('/fonts/alegreya-sans-500.woff2') format('woff2'); }
+@font-face { font-family: 'Alegreya Sans'; font-style: normal; font-weight: 800; font-display: swap; src: url('/fonts/alegreya-sans-800.woff2') format('woff2'); }
 :root {
   --ink: #f4efe6; --muted: rgba(244, 239, 230, 0.7); --accent: #f2b33d; --panel: rgba(16, 19, 24, 0.92);
   --field: rgba(255, 255, 255, 0.06); --line: rgba(255, 255, 255, 0.16); --bad: #ff8a80; --good: #69f0ae;
 }
 * { box-sizing: border-box; }
-html, body { margin: 0; min-height: 100%; color: var(--ink); font: 16px/1.5 "Bahnschrift", "Segoe UI", "Arial Narrow", sans-serif; }
+html, body { margin: 0; min-height: 100%; color: var(--ink); font: 500 17px/1.5 "Alegreya Sans", "Segoe UI", system-ui, sans-serif; }
 body { background: #0d0f12; }
 /* The slideshow of renders behind the card (public/slides/); its buttons sit in the footer. */
 .slides-place { margin-top: 14px; }
 body::before { content: ""; position: fixed; inset: 0; background: linear-gradient(180deg, rgba(8, 10, 14, 0.55), rgba(8, 10, 14, 0.85)); z-index: -1; }
 main { width: min(640px, 100%); margin: 0 auto; padding: 28px 16px 48px; }
-.card { background: var(--panel); border-left: 4px solid var(--accent); padding: 26px 26px 22px; box-shadow: 0 20px 60px rgba(0, 0, 0, 0.4); }
+.card { background: rgba(22, 32, 42, 0.95); border-radius: 20px; padding: 26px 26px 22px; box-shadow: 0 20px 60px rgba(0, 0, 0, 0.4); }
 header { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-bottom: 6px; }
-.brand { font-size: 30px; font-weight: 700; font-style: italic; letter-spacing: 0.06em; color: var(--ink); text-decoration: none; }
+.brand { font-size: 30px; font-weight: 800; line-height: 1; color: var(--ink); text-decoration: none; }
+.brand img { display: block; width: auto; height: 36px; }
 .langs button { background: none; border: 0; color: var(--muted); font: inherit; font-size: 14px; cursor: pointer; padding: 4px 6px; }
 .langs button[aria-pressed="true"] { color: var(--accent); }
-h1 { font-size: 30px; line-height: 1.15; font-style: italic; margin: 18px 0 10px; }
-h2 { font-size: 22px; font-style: italic; margin: 6px 0 8px; }
+h1 { font-size: 32px; font-weight: 800; line-height: 1.15; margin: 18px 0 10px; }
+h2 { font-size: 23px; font-weight: 800; margin: 6px 0 8px; }
 p { margin: 0 0 12px; }
 .muted { color: var(--muted); }
 .small { font-size: 13px; }
