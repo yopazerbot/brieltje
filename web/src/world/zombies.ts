@@ -122,6 +122,8 @@ interface Z extends ZombieState {
   head: THREE.Mesh;
   body: THREE.Mesh;
   groanIn: number;
+  /** Metres to its next footfall (heard close by) */
+  stepIn: number;
   /** The near model's rows and blend this frame (for the hit boxes and the paint), and which model is drawn */
   rowA: number;
   rowB: number;
@@ -209,14 +211,38 @@ function skinnedDepth(bones: THREE.Texture): THREE.MeshDepthMaterial {
   return m;
 }
 
-/** A soft groan, made in code: a low buzz through a vowel-like filter, sliding down. Quiet, and the big one lower. */
-function groan(at: THREE.Vector3, big: boolean): void {
+/**
+ * How the zombies sound by how close they are: groans more often and louder the nearer they come (on
+ * top of the panner's own fall-off), from where they stand. Quiet past FAR_SOUND, and nothing past
+ * HEAR. Runners puff as they sprint, the big one groans low and thumps; close by, their feet shuffle.
+ * Never a scream: it is a family game. At most VOICES sounds at once and GROANS groans a second.
+ */
+const HEAR = 40; // m
+const FAR_SOUND = 30; // m: from here on the slowest and quietest
+const VOICES = 7;
+const GROANS = 4;
+const STEPS_NEAR = 9; // m: feet heard this close
+
+/** 0 far off .. 1 right next to you. */
+const nearness = (d: number) => Math.max(0, Math.min(1, 1 - (d - 2) / (FAR_SOUND - 2)));
+
+/** Seconds to a zombie's next groan at distance `d`: about every 9 s far off, every 2 s close by (runners more often, the big one less). */
+export function groanGap(d: number, kind: number): number {
+  const n = nearness(d);
+  const [far, near] = kind === BIG ? [10, 3] : kind === RUNNER ? [7, 1.4] : [9, 2.1];
+  return (far + (near - far) * n) * (0.75 + Math.random() * 0.5);
+}
+
+/** A soft groan, made in code: a low buzz through a vowel-like filter, sliding down. `near` (0..1) makes it a little louder; the big one lower, a runner shorter and higher. */
+function groan(at: THREE.Vector3, kind: number, near: number): number {
+  const big = kind === BIG;
+  const run = kind === RUNNER;
   const ctx = sound.context();
   const dest = sound.at(at.x, at.y + 1.5, at.z, big ? 5 : 3);
-  if (!ctx || !dest) return;
+  if (!ctx || !dest) return 0;
   const t = ctx.currentTime;
-  const len = 0.7 + Math.random() * 0.5;
-  const f0 = (big ? 62 : 95) * (0.9 + Math.random() * 0.25);
+  const len = run ? 0.4 + Math.random() * 0.2 : 0.7 + Math.random() * 0.5;
+  const f0 = (big ? 62 : run ? 120 : 95) * (0.9 + Math.random() * 0.25);
   const o = ctx.createOscillator();
   o.type = 'sawtooth';
   o.frequency.setValueAtTime(f0, t);
@@ -234,13 +260,72 @@ function groan(at: THREE.Vector3, big: boolean): void {
   f.frequency.linearRampToValueAtTime(big ? 330 : 430, t + len);
   const g = ctx.createGain();
   g.gain.setValueAtTime(0.0001, t);
-  g.gain.exponentialRampToValueAtTime(big ? 0.32 : 0.2, t + 0.12);
+  g.gain.exponentialRampToValueAtTime((big ? 0.32 : 0.2) * (0.6 + 0.6 * near), t + 0.12);
   g.gain.exponentialRampToValueAtTime(0.0001, t + len);
   o.connect(f).connect(g).connect(dest);
   o.start(t);
   wob.start(t);
   o.stop(t + len + 0.05);
   wob.stop(t + len + 0.05);
+  return len;
+}
+
+/** A runner's puff: two quick breaths of soft noise, "hff-hff", from where it runs. */
+function huff(at: THREE.Vector3, near: number): number {
+  const ctx = sound.context();
+  const dest = sound.at(at.x, at.y + 1.5, at.z, 3);
+  if (!ctx || !dest) return 0;
+  const t = ctx.currentTime;
+  const buf = ctx.createBuffer(1, Math.ceil(ctx.sampleRate * 0.12), ctx.sampleRate);
+  const data = buf.getChannelData(0);
+  for (let i = 0; i < data.length; i++) data[i] = (Math.random() * 2 - 1) * Math.sin((Math.PI * i) / data.length) ** 2;
+  for (const k of [0, 0.19]) {
+    const n = ctx.createBufferSource();
+    n.buffer = buf;
+    const f = ctx.createBiquadFilter();
+    f.type = 'bandpass';
+    f.Q.value = 1.2;
+    f.frequency.value = 900 + Math.random() * 300;
+    const g = ctx.createGain();
+    g.gain.value = 0.12 * (0.6 + 0.6 * near);
+    n.connect(f).connect(g).connect(dest);
+    n.start(t + k);
+  }
+  return 0.35;
+}
+
+/** A footfall close by: a soft scuff of noise, or the big one's thump. */
+function step(at: THREE.Vector3, big: boolean): number {
+  const ctx = sound.context();
+  const dest = sound.at(at.x, at.y + 0.1, at.z, 2);
+  if (!ctx || !dest) return 0;
+  const t = ctx.currentTime;
+  if (big) {
+    const o = ctx.createOscillator();
+    o.frequency.setValueAtTime(70, t);
+    o.frequency.exponentialRampToValueAtTime(38, t + 0.18);
+    const g = ctx.createGain();
+    g.gain.setValueAtTime(0.0001, t);
+    g.gain.exponentialRampToValueAtTime(0.4, t + 0.01);
+    g.gain.exponentialRampToValueAtTime(0.0001, t + 0.22);
+    o.connect(g).connect(dest);
+    o.start(t);
+    o.stop(t + 0.25);
+    return 0.25;
+  }
+  const buf = ctx.createBuffer(1, Math.ceil(ctx.sampleRate * 0.09), ctx.sampleRate);
+  const data = buf.getChannelData(0);
+  for (let i = 0; i < data.length; i++) data[i] = (Math.random() * 2 - 1) * (1 - i / data.length) ** 2;
+  const n = ctx.createBufferSource();
+  n.buffer = buf;
+  const f = ctx.createBiquadFilter();
+  f.type = 'lowpass';
+  f.frequency.value = 1400;
+  const g = ctx.createGain();
+  g.gain.value = 0.07;
+  n.connect(f).connect(g).connect(dest);
+  n.start(t);
+  return 0.1;
 }
 
 /** A swipe's swish (noise through a sweeping filter), or the big one's pound (a low thump). */
@@ -344,8 +429,12 @@ export class Zombies {
   private pose = [0, 0, 0, 0];
   private patches = shadowPatches(MAX * 2);
   private clock = 0;
-  private groans = 0; // groans started in the last second, at most three
+  private groans = 0; // groans started in the last second, at most GROANS
   private groanClock = 0;
+  /** When each sound playing now ends (this.clock): at most VOICES at once */
+  private voices: number[] = [];
+  /** Sounds asked for since the page began, by kind and how near (for the checks in the dev build; counted with no sound too) */
+  readonly heard = { groanNear: 0, groanFar: 0, huff: 0, step: 0, skipped: 0 };
   /** A zombie fell (in paintball: vanished) here: for the puff */
   onVanish: (at: THREE.Vector3) => void = () => {};
 
@@ -545,7 +634,7 @@ export class Zombies {
     return {
       ...s, track: null, seen: performance.now(), y: s.y ?? 0, floor: s.y ?? NaN, ground: 0, groundAt: [NaN, NaN], floorAt: NaN, lx: s.x, lz: s.z, speed: 0, clip: 'Idle', time: Math.random() * 2, from: '', fromTime: 0, blend: 1,
       actAt: this.clock, phase: Math.random(), flash: 0, fade: 0, downAt: s.act === 'down' ? this.clock - 5 : 0, puffed: false, slot: -1, spots: [], hits, head, body,
-      groanIn: 2 + Math.random() * 6, rowA: 0, rowB: 0, mix: 0, lod: 0,
+      groanIn: 2 + Math.random() * 6, stepIn: Math.random(), rowA: 0, rowB: 0, mix: 0, lod: 0,
     };
   }
 
@@ -772,6 +861,35 @@ export class Zombies {
     this.paintTex.needsUpdate = true;
   }
 
+  /** One zombie's sounds this frame (see HEAR): a groan or puff when its time comes, a footfall every stride close by. */
+  private voice(z: Z, eye: THREE.Vector3, dt: number): void {
+    const d = Math.hypot(z.x - eye.x, z.y + 1 - eye.y, z.z - eye.z);
+    const near = nearness(d);
+    this.voices = this.voices.filter((end) => end > this.clock);
+    const free = () => this.voices.length < VOICES;
+    if ((z.groanIn -= dt) <= 0) {
+      z.groanIn = groanGap(d, z.kind);
+      if (d < HEAR && this.groans < GROANS && free()) {
+        this.groans++;
+        const sprinting = z.kind === RUNNER && z.speed > RUN_FROM;
+        if (sprinting) this.heard.huff++;
+        else if (d < 10) this.heard.groanNear++;
+        else this.heard.groanFar++;
+        this.voices.push(this.clock + (sprinting ? huff(_v.set(z.x, z.y, z.z), near) : groan(_v.set(z.x, z.y, z.z), z.kind, near)));
+      } else if (d < HEAR) this.heard.skipped++;
+    }
+    if (z.speed > 0.3 && d < STEPS_NEAR) {
+      z.stepIn -= z.speed * dt;
+      if (z.stepIn <= 0) {
+        z.stepIn = z.kind === BIG ? 0.75 : z.kind === RUNNER ? 1.05 : 0.6;
+        if (free()) {
+          this.heard.step++;
+          this.voices.push(this.clock + step(_v.set(z.x, z.y, z.z), z.kind === BIG));
+        }
+      }
+    }
+  }
+
   /** Which clip a zombie plays for what it does and how fast it goes. */
   private clipFor(z: Z): string {
     const big = z.kind === BIG;
@@ -860,14 +978,8 @@ export class Zombies {
       // Fading: a fallen one after two seconds; in paintball at once, in a puff.
       const since = z.downAt ? this.clock - z.downAt : -1;
       z.fade = since < 0 ? 1 : paintball.on ? Math.max(0, 1 - since / PUFF_S) : Math.max(0, 1 - Math.max(0, since - 2) / FALL_FADE);
-      // Groans now and then, near enough to hear; at most three a second.
-      if (!z.downAt && (z.groanIn -= dt) <= 0) {
-        z.groanIn = 3 + Math.random() * 7;
-        if (this.groans < 3 && Math.hypot(z.x - eye.x, z.z - eye.z) < 30) {
-          this.groans++;
-          groan(_v.set(z.x, z.y, z.z), z.kind === BIG);
-        }
-      }
+      // Its sounds: groans (a runner's puffs) the more often the nearer, its feet close by.
+      if (!z.downAt) this.voice(z, eye, dt);
       if (z.fade <= 0) {
         z.body.visible = z.head.visible = false;
         continue;
