@@ -24,6 +24,7 @@ import { WebSocketServer } from 'ws';
 import { Modes, TEAM_COLORS } from './modes.mjs';
 import { bruteDamage, hurtBy, newBrute, stepBrute } from '../shared/brutes.mjs';
 import { makeTerrain } from '../shared/terrain.mjs';
+import { loadBounds } from '../shared/bounds.mjs';
 import { CAR_REACH, PORTALS, portalNear, REACH } from '../shared/portals.mjs';
 import { noShoot } from '../shared/zones.mjs';
 import { bruteEntry, carFields, horseFields, playerFields, PROTO, TICK_MS } from '../shared/wire.mjs';
@@ -57,8 +58,13 @@ const AREA = {
   x0: TERRAIN.x0, x1: TERRAIN.x0 + (TERRAIN.nx - 1) * TERRAIN.step,
   z0: TERRAIN.z0, z1: TERRAIN.z0 + (TERRAIN.nz - 1) * TERRAIN.step,
 };
-/** A position from a message, kept within the area (heights: from below the lowest ground to above the church tower). */
-const where = (m) => ({ x: num(m.x, AREA.x0, AREA.x1), y: num(m.y, -20, 100), z: num(m.z, AREA.z0, AREA.z1) });
+/** A position from a message, kept within the area (heights: from below the lowest ground to above the flying ceiling). */
+const where = (m) => ({ x: num(m.x, AREA.x0, AREA.x1), y: num(m.y, -20, 200), z: num(m.z, AREA.z0, AREA.z1) });
+/**
+ * The edge of the game (tools/bounds.py, shared/bounds.mjs): the outline round the built-up area, the
+ * one round the two houses while a game in the house runs, and the flying ceiling. Inside AREA.
+ */
+const BOUNDS = loadBounds(shared('bounds.json'));
 
 /**
  * Where a strongman has room to stand: a map of the ground in 1 m squares with every wall, hedge,
@@ -267,7 +273,9 @@ export class Game {
     };
     // Where the server believes they are: the replaced connection, their last visit, or
     // the street (where everyone starts). Their first update is limited like any other.
-    const at = old?.state ?? this.lastPos.get(name) ?? SPAWNS[0];
+    // A place outside the edge that holds now (a game in the house began while they were away) is the street too.
+    let at = old?.state ?? this.lastPos.get(name) ?? SPAWNS[0];
+    if (!this.fence().inside(at.x, at.z)) at = SPAWNS[0];
     player.state = { x: at.x, y: at.y, z: at.z, yaw: 0, pitch: 0, armed: false, flying: false, w: 'pistol', c: false };
     player.joinedAt = { x: at.x, z: at.z }; // a start place is only taken from here (see spawn)
     player.movedAt = now;
@@ -447,6 +455,8 @@ export class Game {
       if (dist > step) Object.assign(next, { x: prev.x + (dx * step) / dist, y: prev.y + (dy * step) / dist, z: prev.z + (dz * step) / dist });
       player.budget = budget - step;
       player.movedAt = now;
+      // The edge of the game: a position outside it (only a changed page sends one) is put back just inside.
+      this.fenceIn(next, prev);
       player.state = next;
       this.stampState(player, m.ct);
       if (driving) {
@@ -604,8 +614,9 @@ export class Game {
     const no = () => this.send(p.ws, { t: 'spawn', ok: false, x: st.x, z: st.z });
     if (now - p.joinTime > 90_000 || !p.alive || this.carOf(name) || this.horseOf(name) || (!this.rules.portals && p.role !== 'admin')) return no();
     if (Math.hypot(st.x - p.joinedAt.x, st.z - p.joinedAt.z) > 30) return no();
-    p.nextTravel = now + TRAVEL_MS;
     const [x, z] = to.out;
+    if (!this.fence().inside(x, z)) return no(); // a game in the house: only a start near it
+    p.nextTravel = now + TRAVEL_MS;
     Object.assign(p.state, { x, y: TERRAIN.height(x, z), z });
     p.budget = 0.5;
     p.movedAt = now;
@@ -618,6 +629,7 @@ export class Game {
     // The refusal's English text, and its code for a page in another language (src/i18n.ts).
     const no = (text = '', code = undefined) => this.send(p.ws, { t: 'travel', name, to: id, ok: false, text, code });
     if (!to || !st || !p.alive || now < (p.nextTravel || 0)) return no();
+    if (this.fenced()) return no("You can't travel during the game.", 'travelGame'); // everyone stays near the house (see fence)
     if (chat && !this.rules.travel && p.role !== 'admin') return no('The admin has turned travelling from the chat off. Walk to a portal.', 'travelChatOff');
     if (!chat && !this.rules.portals) return no('The admin has turned the portals off.', 'travelPortalsOff');
     const car = this.carOf(name);
@@ -692,6 +704,53 @@ export class Game {
 
   horseOf(name) {
     return this.horses.find((h) => h.rider === name) ?? null;
+  }
+
+  /**
+   * A game in the house is being played (not once its result shows): everyone stays near the two
+   * houses and nobody travels. All four games are played round them (the teams start at their house).
+   */
+  fenced() {
+    return this.modes.active && this.modes.state.phase !== 'done';
+  }
+
+  /** The edge that holds now (shared/bounds.json): round the two houses during a game in the house, else round the built-up area. */
+  fence() {
+    return this.fenced() ? BOUNDS.party : BOUNDS.map;
+  }
+
+  /**
+   * A player's new state `s` (a driver's is the car's, a rider's the horse's) kept inside the edge
+   * and under the flying ceiling, in place: a point outside goes to the nearest point 30 cm inside;
+   * if none is found, back to `prev` (or the street when that is outside too). Against a page that
+   * was changed to walk, drive or fly out of the game (position spoofing): the others, the hit and
+   * pickup checks and the portals only ever see a place inside. Cheap: one look-up in a grid for a
+   * point well inside, a few edges near the edge (shared/bounds.mjs).
+   */
+  fenceIn(s, prev) {
+    const fence = this.fence();
+    const back = fence.putBack(s.x, s.z, 0.3);
+    const to = back ?? (prev && fence.inside(prev.x, prev.z) ? prev : SPAWNS[0]);
+    s.x = to.x;
+    s.z = to.z;
+    s.y = Math.min(s.y, TERRAIN.height(s.x, s.z) + BOUNDS.ceiling + 2);
+  }
+
+  /**
+   * Every tick: anyone outside the edge that holds now (a game in the house began while they were
+   * elsewhere) goes inside it, and their figure jumps there for the others. A car or horse they had
+   * stays where it is (their page gets out too: src/main.ts). One grid look-up a player when all are inside.
+   */
+  fenceAll() {
+    const fence = this.fence();
+    for (const [name, p] of this.players) {
+      const s = p.state;
+      if (!s || fence.inside(s.x, s.z)) continue;
+      this.releaseCar(name);
+      this.releaseHorse(name);
+      this.fenceIn(s, null);
+      this.moved(p);
+    }
   }
 
   /** The car a player is in (driving or riding along), if any. */
@@ -1044,6 +1103,7 @@ export class Game {
     for (const [name, p] of this.players) if (!p.alive && !this.roundOver && now >= p.respawnAt) this.respawn(name, p, now);
     this.modes.tick(now, TICK_MS);
     if (!this.players.size) return;
+    this.fenceAll();
     this.stepBrutes(now);
     this.snapshot(now);
     this.pings();
