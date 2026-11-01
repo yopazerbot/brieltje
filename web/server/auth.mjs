@@ -55,8 +55,9 @@ const PIN_RE = /^\d{4,12}$/;
 // child's typos don't stop the others. Per address, whatever the cookies (a guesser who drops or swaps
 // them is a new browser each time): 10 in 5 minutes pause it for 2 minutes, and an hourly cap pauses it
 // longer. Every wrong PIN, from anywhere, counts towards an hourly cap overall too, against guessers
-// spread over many addresses; it only trips when those wrong PINs come from at least 3 addresses, so
-// one address (a venue's typos, or one attacker) never trips it alone. Browsers that joined with the
+// spread over many addresses; it only trips when those wrong PINs come from at least 2 addresses, so
+// one address (a venue's typos, or one attacker) never trips it alone, and no group of addresses gets
+// past the overall cap. Browsers that joined with the
 // current PIN (the server's own list, see `known`) skip the address and overall counts, so a tripped
 // cap only stops new browsers, and the admin's "Lift lockouts" clears it. The hourly caps go with the
 // PIN's length. Guessing the PIN takes on average (half of all PINs tried):
@@ -64,7 +65,7 @@ const PIN_RE = /^\d{4,12}$/;
 // - 6 digits or more: 60 an hour per address, 100 overall. 6 digits about 7 months (from many
 //   addresses at 100 an hour), about a year from one (60 an hour).
 // A meetup's typos stay under the 6-digit caps: use 6 digits for a meetup. What is left: someone with
-// 3 or more addresses can stop new browsers from joining for up to an hour (DECISIONS.md).
+// 2 or more addresses can stop new browsers from joining for up to an hour (DECISIONS.md).
 const DEVICE_PIN_FAILS = 5; // per browser in DEVICE_PIN_WINDOW_MS
 const DEVICE_PIN_WINDOW_MS = 15 * 60_000;
 const BURST_PIN_FAILS = 10; // per address in BURST_WINDOW_MS ...
@@ -72,7 +73,7 @@ const BURST_WINDOW_MS = 5 * 60_000;
 const BURST_PAUSE_MS = 2 * 60_000; // ... pause that address this long
 /** The hourly caps for the current PIN: per address and for every wrong PIN together. */
 const pinCaps = (pin) => (pin.length >= 6 ? { address: 60, all: 100 } : { address: 30, all: 30 });
-const OVERALL_ADDRESSES = 3; // the overall cap trips only with wrong PINs from at least this many addresses
+const OVERALL_ADDRESSES = 2; // the overall cap trips only with wrong PINs from at least this many addresses
 const GUEST_DEVICE = '#guest'; // what the guest cookie, telling browsers apart for the counts above, is signed for
 const KICK_MS = 10 * 60_000; // a kicked player's name and browser stay out this long
 const JOINED_KEEP = 256; // browsers remembered per address for kicks (see noteJoin)
