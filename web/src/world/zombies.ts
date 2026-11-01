@@ -508,6 +508,11 @@ export class Zombies {
     }
   }
 
+  /** The pictures the shaders read (the bone matrices, the paint), to upload before a wave comes. */
+  textures(): THREE.Texture[] {
+    return this.boneTex ? [this.boneTex, this.paintTex] : [];
+  }
+
   /** How many are shown, for the diagnostics. */
   get count(): number {
     return this.zs.size;

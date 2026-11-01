@@ -464,6 +464,19 @@ let localClown = 1000; // ids for clowns placed alone
 // The Zombies game's zombies (our own models, world/zombies.ts): the server's together, this page's alone.
 const zombies = new Zombies((x, z, y) => world.groundAt(x, z, y, 0).y);
 scene.add(zombies.group, zombies.hits);
+// Their shaders compile in the background (see precompile) once the models and the sky's light are in, and again
+// as a Zombies game begins (a moment if nothing changed): hidden until a wave comes, they would compile on first
+// draw and stop the game just as the zombies appear. The sky's light changes their shader, so not before it.
+// (?zcold in the dev build leaves it out, to measure that stop.)
+function prepareZombies(): void {
+  if (import.meta.env.DEV && location.search.includes('zcold')) return;
+  void Promise.all([zombies.ready, environmentReady]).then(([ok]) => {
+    if (!ok) return;
+    for (const tx of zombies.textures()) renderer.initTexture(tx); // the bone picture (0.6 MB) up now, not with the first zombie
+    return precompile(zombies.group);
+  });
+}
+prepareZombies();
 // Three horses grazing in the meadow across the road.
 const horses = new Horses(world);
 scene.add(horses.group);
@@ -1186,6 +1199,7 @@ function soloBest(): number {
  */
 function startSolo(): void {
   if (me || solo) return;
+  prepareZombies();
   getOut(false);
   getOffHorse(false);
   planner.toggle(false);
@@ -1585,7 +1599,10 @@ function followGame(view: ModeView): void {
     if (!weapon.enabled) chat.system(() => t('games.teamsExplore'));
   }
   // Zombies: an explorer is told how to join in; the houses shut while it runs; its zombies gone after it.
-  if (games.zombies && before.kind !== 'zombies' && !weapon.enabled) chat.system(() => t('z.explore'));
+  if (games.zombies && before.kind !== 'zombies') {
+    prepareZombies(); // their shaders for the light as it is now, during the break before wave 1
+    if (!weapon.enabled) chat.system(() => t('z.explore'));
+  }
   if (games.view.kind !== 'zombies') zombies.clear();
   shutHouses();
 }
