@@ -506,6 +506,16 @@ def plan(specs, centre, walls, grb, others, relief, order="x"):
         }
         houses[key].pop("front", None)
         houses[key]["front"] = [[round(a[0], 3), round(a[1], 3)], [round(b[0], 3), round(b[1], 3)]]
+    # `level`: the houses of one row built on one floor level, the highest of their grounds (a new terrace whose
+    # bands and window heads run straight along it)
+    rows = {}
+    for key, h in HOUSES.items():
+        if h.get("level"):
+            rows.setdefault(h["level"], []).append(key)
+    for keys in rows.values():
+        y0 = max(houses[k]["y0"] for k in keys)
+        for k in keys:
+            houses[k]["y0"] = y0
     return houses
 
 

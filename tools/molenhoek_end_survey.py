@@ -14,9 +14,11 @@ Sources, used for measuring only (nothing of them is shipped):
   draws along the whole branch), of 2009 nearer the junction and on the last stretch. What each house looks like is described
   below. Two houses are blurred in Street View at their owners' request and keep the village's blocks; so do a
   workshop, a feed mill's silos and a farm, the houses hidden behind others or far back from the road, and the house
-  on the straight branch (its address is on another street).
-The houses are keyed by where they stand: b and the metres along the branch from the junction, l or r as seen
-walking away from it; never by number. Each front runs from its left end as seen from the street (`order` "view"):
+  on the straight branch (its address is on another street);
+- photos taken from the street (Nov 2026) of the new terrace near the junction with Oordegemkouter, which Street View
+  shows only as the houses that stood there in 2009 (see `_terrace`).
+The houses are keyed by where they stand: b and the metres along the branch from the junction (past the end of its
+centre line, along its last direction), l or r as seen walking away from it; never by number. Each front runs from its left end as seen from the street (`order` "view"):
 a negative s counts from its right end.
 
 Writes data/molenhoek_end1.json, 2 and 3 (from the junction to 230 m, to 480 m and to the end), in the form of
@@ -30,7 +32,7 @@ from shapely.affinity import affine_transform
 from shapely.geometry import LineString, Point, Polygon
 from shapely.ops import linemerge, unary_union
 
-from kapellenhoek_survey import BOX, BROWN_SH, HEDGE, HEDGE_DARK
+from kapellenhoek_survey import BOX, HEDGE, HEDGE_DARK
 from molenhoek_survey import ANTH, BLACK, BROWN, ROOF_DARK, ROOF_ORANGE, ROOF_SLATE, WALLS, WHITE, Relief, plan
 from neighbours import features, model_frame, polygons
 
@@ -40,6 +42,63 @@ JUNCTION = (891.5, -693.2)  # where the branch leaves the main line (model x, z)
 PARTS = [(0.0, 230.0), (230.0, 480.0), (480.0, 1000.0)]  # metres along the branch
 TILES, RED_ROOF, BROWN_ROOF, PANTILE = "#7a3b2f", "#8c4a36", "#5a3e30", "#b9603f"
 SHOP_GREEN, GREEN_SH = "#3f6b4a", "#2f4a3a"
+
+
+def _terrace():
+    """The new terrace near the junction with Oordegemkouter, five houses from the older house they lean against to
+    the neighbour's garden: two storeys under flat roofs with a thin dark coping, all on one floor level, in two
+    bricks laid in large blocks. A pair in dark chocolate-brown brick with a band of light beige brick across the
+    middle, from the ground floor's lintels to the first floor's sills, between the outer edges of their doors; a pair
+    the other way round; the end house in the light brick with a dark band from its free corner to its garage. Soldier
+    courses of the light brick over every opening, pale stone sills, anthracite frames, aluminium doors with three
+    frosted panes and a long bar handle, a letterbox and a bell plate by each door. Measured on photos taken from the
+    street (Nov 2026, for reference only): the heights on the end house seen square on, the widths along the pairs
+    through the perspective of the photos taken at an angle, scaled by the GRB's fronts. `rect`: the GRB outline,
+    its front first (the end house stands past the end of Molenhoek's centre line, which runs out in front of the
+    row: its front isn't the edge facing the street's last point)."""
+    dark, light = "#7e7368", "#eae0c8"  # as the game lights them (blue sky in the shade): dark chocolate brown and light beige
+    on_dark, on_light = "#f2eada", "#ccc2a9"  # the soldier courses
+    sill, door, garage, box = "#c2c2bc", ANTH, "#3b3f43", "#2e3033"
+    head, band, first, top = 2.16, (2.37, 3.77), 3.84, 5.98  # door and window heads, the band, the first floor's windows, the wall's top
+    common = dict(depth=0, eaves=top, ridge=top, roof="flat", roof_tint="#3a3c3f", wall="brick", frame=ANTH, coping="#3d4043",
+                  coping_h=0.07, plain=True, level="terrace")
+    win = lambda s, w=1.0, cu=False: [s, w, 0.92, round(head - 0.92, 2), "w", dict(n=1, sill=sill, cu=cu)]
+    up = lambda s, w=1.0, cu=False: [s, w, first, 1.24, "w", dict(n=1, sill=sill, cu=cu)]
+    fdoor = lambda s, hand: [s, 0.98, 0.0, head, "d", dict(c=door, frost=3, hand=hand)]
+
+    def pair_house(rect, at, tint, other, soldiers, door_end, cols, cu, letterbox):
+        """One of a pair: its door at the pair's outer end, `cols` the door's and the windows' middles counted from
+        that end; the band from the door's outer edge to the party wall."""
+        k = 1 if door_end == "l" else -1
+        s = lambda v: k * v
+        edge = cols[0] - 0.49
+        return dict(common, rect=rect, at=at, tint=tint, soldiers=soldiers,
+                    patches=[(edge, None, *band, other)] if k == 1 else [(0.0, -edge, *band, other)],
+                    front=[fdoor(s(cols[0]), door_end), win(s(cols[1])), win(s(cols[2]))] + [up(s(c), cu=cu) for c in cols],
+                    fixtures=[(s(letterbox[0]), 0.9, letterbox[1], 0.42, 0.13, letterbox[2]), (s(1.22), 1.25, 0.08, 0.2, 0.015, "#a7abad")])
+
+    cols = (1.94, 3.655, 5.465)  # the door's column and the windows', from the door's end of the house
+    return {
+        "b683l_row": pair_house([(1475.75, -367.78), (1483.0, -365.97), (1480.13, -354.37), (1473.74, -355.95)], (1478.7, -361.4),
+                                light, dark, on_light, "r", (2.0, 3.87, 5.67), True, (0.8, 0.3, "#5e5f5e")),
+        "b690l_row": pair_house([(1483.0, -365.97), (1489.64, -364.31), (1486.78, -352.72), (1480.13, -354.37)], (1484.9, -359.3),
+                                light, dark, on_light, "l", cols, True, (0.8, 0.3, "#5e5f5e")),
+        "b697l_row": pair_house([(1489.64, -364.31), (1496.3, -362.64), (1493.43, -351.06), (1486.78, -352.72)], (1491.5, -357.7),
+                                dark, light, on_dark, "r", cols, True, (0.62, 0.34, box)),
+        "b704l_row": pair_house([(1496.3, -362.64), (1502.92, -360.99), (1500.07, -349.37), (1493.43, -351.06)], (1498.2, -356.0),
+                                dark, light, on_dark, "l", cols, False, (0.62, 0.34, box)),
+        "b712l_row_end": dict(  # the end house: a small window at its free corner, the door with a side light, the garage
+            common, rect=[(1502.92, -360.99), (1510.69, -359.06), (1508.66, -351.09), (1503.89, -348.43), (1500.07, -349.37)],
+            at=(1506.0, -355.0), tint=light, soldiers=on_light, patches=[(0.0, 7.47, *band, dark)],
+            front=[[0.515, 0.87, 1.49, round(head - 1.49, 2), "w", dict(n=1, sill=sill)],
+                   [2.15, 1.47, 0.0, head, "d", dict(c=door, frost=3, side=(0.43, "r"), hand="r")],
+                   [6.16, 2.56, 0.0, head, "g", dict(c=garage, sections=4)],
+                   up(0.55, 0.9), up(4.955, cu=True), up(6.96, cu=True)],
+            fixtures=[(3.03, 1.3, 0.05, 0.16, 0.015, "#1f2022")]),
+    }
+
+
+TERRACE = _terrace()
 
 HOUSES = {
     "b043l_pair": dict(  # a pair under one roof: light grey-beige brick, dark red-brown tiles, two white gabled dormers, an arched door
@@ -217,18 +276,7 @@ HOUSES = {
         at=(1470.26, -361.86), depth=9.0, eaves=5.8, ridge=9.2, roof="gable", roof_tint="#3a3c3f", wall="render", tint="#c5c0b5",
         plinth=(1.0, "#6d6a66", "stone"), frame=WHITE, shutters="#d9cdb4",
         front=dict(ground=["g", "d", "W"], first=["w", "w", "w"], garage="#2f3134", door="#3a3c3f")),
-    "b683l_white": dict(  # one storey of white render under orange pantiles, behind a white garden wall
-        at=(1478.18, -360.96), depth=8.0, eaves=3.0, ridge=6.4, roof="hip", roof_tint=PANTILE, wall="render", tint="#efede8", frame=WHITE,
-        front=dict(ground=["w", "w"]), front_wall=dict(h=1.4, tint="#efede8", piers=False)),
-    "b694r_white_west": dict(  # by the junction: a long white house, two storeys, a slate roof, brown shutters; a white garden wall
-        at=(1491.54, -357.68), depth=9.0, eaves=5.6, ridge=9.0, roof="gable", roof_tint="#4a4c50", wall="render", tint="#efede8", frame=WHITE,
-        shutters=BROWN_SH, front=dict(ground=["W", "d", "w"], first=["w", "w", "w"], door=BROWN), front_wall=dict(h=1.2, tint="#efede8", piers=True)),
-    "b694r_white_east": dict(  # its other part
-        at=(1498.18, -356.02), depth=9.0, eaves=5.6, ridge=9.0, roof="gable", roof_tint="#4a4c50", wall="render", tint="#efede8", frame=WHITE,
-        shutters=BROWN_SH, front=dict(ground=["w", "W", "w"], first=["w", "w", "w"])),
-    "b694r_last": dict(  # the street's last house, behind a tall hedge and trees: red brick, red-brown tiles
-        at=(1505.57, -355.07), depth=9.0, eaves=3.4, ridge=8.0, roof="gable", roof_tint=TILES, wall="brick", tint="#a9573f", frame=WHITE,
-        front=dict(ground=["w", "d", "W"], door=BROWN), hedges=[(0.0, 12.0, 4.0, 2.2, HEDGE_DARK)]),
+    **TERRACE,
 }
 
 

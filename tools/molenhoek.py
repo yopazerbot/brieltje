@@ -9,9 +9,10 @@ the map ends, and of the street in front of them, from data/molenhoek.json (the 
 the survey from Street View; see tools/molenhoek_survey.py). Each house stands on its GRB outline with
 the heights of the village's blocks (past the edge of the village data, the GRB's outline on the
 relief, with blocks of its own for walking into): its front as the survey describes it (brick and
-colour, plinth and bands, windows with frames, top lights, sills, lintels, stone arches, shutters and
-net curtains, french balconies, doors with their steps, an oriel, a balcony, a porch, a round window, a
-canopy), plainer windows on the sides and back, the roof with its tiles, ridge, fascia, gutters and
+colour, plinth and bands, blocks of another brick laid into the wall and soldier courses, windows with
+frames, top lights, sills, lintels, stone arches, shutters and net curtains, french balconies, doors with
+their steps, aluminium doors with frosted panes, sectional garage doors, letterboxes and bell plates, an
+oriel, a balcony, a porch, a round window, a canopy), plainer windows on the sides and back, the roof with its tiles, ridge, fascia, gutters and
 downpipes, chimneys, roof windows, a dormer and solar panels, the lower parts behind under flat roofs,
 and in the front gardens the low walls, fences, clipped hedges, box balls and conifers. The street: west of the traffic island the old concrete road (the
 village draws it) gets its gutters, kerbs and pavements; from the island to 45 m past the junction, and
@@ -291,16 +292,18 @@ def layer_at(layers, y):
     return cur
 
 
-def facade(f, length, top, holes, layers, bottom=-1.2):
+def facade(f, length, top, holes, layers, bottom=-1.2, patches=()):
     """A wall from s = 0 to length: its surface from `bottom` up to the line `top` ([(s, y)], straight
     between; two points at one s make a step), without the holes. `layers`: [(from y, material, colour)]
-    up the wall (a plinth, an upper floor in another finish)."""
+    up the wall (a plinth, an upper floor in another finish). `patches`: [(s0, s1, y0, y1, material, colour)],
+    rectangles of another brick laid into the wall itself (a band that stops short of the corners, soldier
+    courses over the openings); a later one lies over an earlier one."""
     def ytop(s):
         for (s0, y0), (s1, y1) in zip(top, top[1:]):
             if s1 - s0 > 1e-9 and s0 - 1e-6 <= s <= s1 + 1e-6:
                 return y0 + (y1 - y0) * (s - s0) / (s1 - s0)
         return top[-1][1]
-    xs = sorted({0.0, length, *[s for h in holes for s in (h.s0, h.s1)], *[s for s, _ in top]})
+    xs = sorted({0.0, length, *[s for h in holes for s in (h.s0, h.s1)], *[s for s, _ in top], *[s for p in patches for s in p[:2]]})
     xs = [s for s in xs if -1e-6 <= s <= length + 1e-6]
     bounds = [L[0] for L in layers[1:]]
     for xa, xb in zip(xs, xs[1:]):
@@ -309,15 +312,21 @@ def facade(f, length, top, holes, layers, bottom=-1.2):
         xm = (xa + xb) / 2
         ta_top, tb_top = ytop(xa + 1e-4), ytop(xb - 1e-4)
         cuts = sorted((h.y0, h.y1) for h in holes if h.s0 <= xm <= h.s1)
+        here = [p for p in patches if p[0] <= xm <= p[1]]
+        strip_bounds = sorted(set(bounds) | {y for p in here for y in p[2:4]}) if here else bounds
         spans, y = [], bottom
         for y0, y1 in cuts:
             spans.append((y, y0))
             y = y1
         spans.append((y, None))
         for ya, yb in spans:
-            ys = [ya] + [b for b in bounds if b > ya + 1e-4 and (yb is None or b < yb - 1e-4)] + [yb]
+            ys = [ya] + [b for b in strip_bounds if b > ya + 1e-4 and (yb is None or b < yb - 1e-4)] + [yb]
             for y0, y1 in zip(ys, ys[1:]):
                 _, mat, col = layer_at(layers, y0 + 1e-3)
+                ym = y0 + 1e-3 if y1 is None else (y0 + y1) / 2
+                for p in here:
+                    if p[2] <= ym <= p[3]:
+                        mat, col = p[4], p[5]
                 if y1 is None:
                     ta, tb = ta_top, tb_top
                 else:
@@ -336,6 +345,17 @@ def wall_at(layers, y):
 
 
 SMALL_STONE = "mh_detail" if LEAN else "mh_stone"  # sills and steps
+FROST = "#c4ccc7"  # frosted glass
+
+
+def door_step(f, h, d):
+    """The step at a door, or steps up to a raised ground floor."""
+    if h.y0 > 0.25:
+        n = max(2, int(round(h.y0 / 0.17)))
+        for k in range(n):
+            f.box(SMALL_STONE, h.s0 - 0.15, h.s1 + 0.15, -0.12, h.y0 - k * h.y0 / n, d, 0.3 * (k + 1), "#8d8f8f")
+    else:
+        f.box(SMALL_STONE, h.s0 - 0.08, h.s1 + 0.08, -0.12, 0.0, d, 0.28, "#5f6468")
 
 
 def hole(f, h, layers):
@@ -356,7 +376,26 @@ def hole(f, h, layers):
     frame_c = o.get("f", o.get("frame", "#f1f0ec"))
     pane = [f.p(h.s0, h.y0, d), f.p(h.s1, h.y0, d), f.p(h.s1, h.y1, d), f.p(h.s0, h.y1, d)]
     fw, fd = 0.065, 0.04
-    if h.kind in ("d", "ad") and o.get("c"):  # a solid door leaf
+    if h.kind == "d" and o.get("frost"):  # an aluminium door: frosted panes between broad rails, a side light, a long bar handle
+        face("mh_panel", pane, f.out(), o.get("c", "#3a3c3f"))
+        l0, l1 = h.s0, h.s1  # the leaf
+        side = o.get("side")  # (width, "l" or "r"): a fixed frosted light beside the leaf
+        if side:
+            if side[1] == "r":
+                l1 = h.s1 - side[0]
+                f.flat("mh_panel", l1 + 0.05, h.s1 - 0.07, h.y0 + 0.09, h.y1 - 0.09, d + 0.004, FROST)
+            else:
+                l0 = h.s0 + side[0]
+                f.flat("mh_panel", h.s0 + 0.07, l0 - 0.05, h.y0 + 0.09, h.y1 - 0.09, d + 0.004, FROST)
+        n, stile, rail, foot = o["frost"], 0.1, 0.07, 0.13
+        ph = (h.y1 - h.y0 - foot - 0.11 - rail * (n - 1)) / n
+        for k in range(n):
+            y = h.y0 + foot + k * (ph + rail)
+            f.flat("mh_panel", l0 + stile, l1 - stile, y, y + ph, d + 0.004, FROST)
+        hs = l1 - 0.12 if o.get("hand") == "r" else l0 + 0.12  # the handle, on the side away from the hinges
+        f.box("mh_detail", hs - 0.016, hs + 0.016, h.y0 + 0.75, h.y0 + 1.45, d + 0.03, d + 0.075, "#c9cbcc")
+        door_step(f, h, d)
+    elif h.kind in ("d", "ad") and o.get("c"):  # a solid door leaf
         leaf = o["c"]
         face("mh_panel", pane, f.out(), leaf)
         w = h.s1 - h.s0
@@ -367,16 +406,13 @@ def hole(f, h, layers):
                 y = 0.55 + k * 0.38
                 f.flat("mh_glass", h.s0 + w * 0.42, h.s0 + w * 0.58, h.y0 + y, h.y0 + y + 0.16, d + 0.004, "#3a4448")
         f.flat("mh_detail", h.s0 + w * 0.12, h.s0 + w * 0.16, h.y0 + 0.9, h.y0 + 1.25, d + 0.03, "#c9cbcc")  # the handle bar
-        if h.y0 > 0.25:  # a raised ground floor: steps up to the door
-            n = max(2, int(round(h.y0 / 0.17)))
-            for k in range(n):
-                f.box(SMALL_STONE, h.s0 - 0.15, h.s1 + 0.15, -0.12, h.y0 - k * h.y0 / n, d, 0.3 * (k + 1), "#8d8f8f")
-        else:
-            f.box(SMALL_STONE, h.s0 - 0.08, h.s1 + 0.08, -0.12, 0.0, d, 0.28, "#5f6468")  # the step
+        door_step(f, h, d)
     elif h.kind == "g":
         face("mh_panel", pane, f.out(), o.get("c", "#e9e8e4"))
-        for k in range(1, int((h.y1 - h.y0) / 0.5)):
-            f.flat("mh_detail", h.s0 + 0.03, h.s1 - 0.03, h.y0 + k * 0.5 - 0.012, h.y0 + k * 0.5 + 0.012, d + 0.004, shade(o.get("c", "#e9e8e4"), 0.82))
+        n = o.get("sections")  # a sectional door in this many panels; else a joint every half metre
+        joints = [h.y0 + (h.y1 - h.y0) * k / n for k in range(1, n)] if n else [h.y0 + k * 0.5 for k in range(1, int((h.y1 - h.y0) / 0.5))]
+        for y in joints:
+            f.flat("mh_detail", h.s0 + 0.03, h.s1 - 0.03, y - 0.012, y + 0.012, d + 0.004, shade(o.get("c", "#e9e8e4"), 0.82))
         return
     else:
         glass = CURTAIN if o.get("cu") else "#252c30"
@@ -388,7 +424,7 @@ def hole(f, h, layers):
     f.flat("mh_detail", h.s0 + fw, h.s1 - fw, h.y0, h.y0 + fw, d + fd, c)
     if h.kind in ("w", "a") or (h.kind in ("d", "ad") and not o.get("c")):
         w = h.s1 - h.s0
-        n = 1 if w < 0.95 else (2 if w < 2.0 else 3)
+        n = o.get("n") or (1 if w < 0.95 else (2 if w < 2.0 else 3))  # `n`: lights side by side, as given
         for k in range(1, n):
             m = h.s0 + w * k / n
             f.flat("mh_detail", m - 0.035, m + 0.035, h.y0 + fw, h.y1 - fw, d + fd + 0.002, c)
@@ -405,8 +441,9 @@ def hole(f, h, layers):
                 f.flat("mh_detail", h.s0 + 0.03, h.s1 - 0.03, yy - 0.006, yy + 0.006, d + 0.03, shade(shc, 0.85))
     if o.get("box"):  # the shutter box under the lintel
         f.flat("mh_panel", h.s0 + 0.01, h.s1 - 0.01, h.y1 - 0.2, h.y1, d + 0.045, "#e9e8e3")
-    if h.kind in ("w", "a"):
-        f.box(SMALL_STONE, h.s0 - 0.05, h.s1 + 0.05, h.y0 - 0.07, h.y0, d, 0.05, "#5d6266")
+    if h.kind in ("w", "a"):  # the sill (`sill`: its colour, a pale stone)
+        over = 0.07 if o.get("sill") else 0.05
+        f.box(SMALL_STONE, h.s0 - over, h.s1 + over, h.y0 - 0.07, h.y0, d, 0.05, o.get("sill", "#5d6266"))
     if o.get("fb"):  # a french balcony: a railing across the lower part of the window, just in front of the wall
         rc = o.get("rail", "#262829")
         top = h.y0 + 0.95
@@ -594,13 +631,14 @@ def flat_roof(ring, base, E, H):
     else:
         face("mh_stone", [(x, z, base + E - 0.05) for x, z in ring], (0, 0, 1), "#4f5154")
         col = H.get("coping", "#7c7f82")
+        ch = H.get("coping_h", 0.1)  # how far it stands above the wall: a thin aluminium coping less
         n = len(ring)
         for i in range(n):
             a, b = ring[i], ring[(i + 1) % n]
             o = outward(ring, i)
             t, L = unit(a, b)
             f = Frame(a, t, (o[0], o[1]), base)
-            f.box("mh_stone", -0.03, L + 0.03, E - 0.02, E + 0.1, -0.25, 0.04, col)
+            f.box("mh_stone", -0.03, L + 0.03, E - 0.02, E + ch, -0.25, 0.04, col)
 
 
 def offset_ring(ring, d):
@@ -978,9 +1016,9 @@ def house(key, H):
                 tt, LL = unit(p, q)
                 f = Frame(p, tt, (oo[0], oo[1]), base)
             holes = [Hole(s_ - w / 2, s_ + w / 2, y, y + hh, kind, 0.13, {**opt, "f": opt.get("f", frame_c)}) for (s_, w, y, hh, kind, opt) in extra[i]]
-        elif not party[i] and LL > 2.5 and not (LEAN and oo[0] * o[0] + oo[1] * o[1] < -0.3):
-            holes = auto_windows(LL, E, max(y for _, y in top), frame_c, top)
-        facade(f, LL, top, holes, layers)
+        elif not party[i] and LL > 2.5 and not (LEAN and oo[0] * o[0] + oo[1] * o[1] < -0.3) and not H.get("plain"):
+            holes = auto_windows(LL, E, max(y for _, y in top), frame_c, top)  # (`plain`: none, a blank end wall)
+        facade(f, LL, top, holes, layers, patches=front_patches(H, LL, holes) if is_front else ())
         if up and up["wall"] == "cladding":
             boards(f, LL, top, holes, up)
         if is_front and up and H.get("timber"):
@@ -1161,10 +1199,29 @@ def auto_windows(L, E, R, frame_c, top):
     return holes
 
 
+def front_patches(H, L, holes):
+    """The other brick laid into the front wall: `patches` [(s0, s1, y0, y1, tint)] (a negative s counts from the
+    far end, an s1 of None is the far end), and `soldiers`: a soldier course in that tint over every opening (one
+    that nearly reaches a corner runs on to it)."""
+    fix = lambda v: v + L if v < 0 else v
+    out = []
+    for s0, s1, y0, y1, tint in H.get("patches", []):
+        out.append((max(0.0, fix(s0)), L if s1 is None else min(L, fix(s1)), y0, y1, "mh_brick", tint))
+    if H.get("soldiers"):
+        for hl in holes:
+            if hl.kind in ("w", "d", "g"):
+                a, b = hl.s0 - 0.03, hl.s1 + 0.03
+                out.append((0.0 if a < 0.15 else a, L if b > L - 0.15 else b, hl.y1, hl.y1 + 0.21, "mh_brick", H["soldiers"]))
+    return out
+
+
 def front_details(f, L, H, holes, layers, frame_c, base):
     """What stands on the front: bands, a strip of other brick, lintels, surrounds, shutters beside the
-    windows, the oriel, a balcony, a porch's back wall and door, a tower, a carport."""
+    windows, the oriel, a balcony, a porch's back wall and door, a tower, a carport, letterboxes and bell plates."""
     tint = H["tint"]
+    for s, y, w, hh, dep, col in H.get("fixtures", []):  # small boxes on the wall: a letterbox, a bell plate
+        s = s + L if s < 0 else s
+        f.box("mh_detail", s - w / 2, s + w / 2, y, y + hh, 0.0, dep, col)
     for band in H.get("bands", []):
         y, hh = band[0], band[1]
         col = band[2] if len(band) > 2 else "#ece9e2"
