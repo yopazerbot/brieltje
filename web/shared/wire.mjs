@@ -7,7 +7,7 @@
 //   c   cars       [id, age, x, y, z, yaw, steer, driver, passenger]
 //   h   horses     [i, age, x, z, yaw, speed, jump, rider, parked (0 or 1)]
 //   b   strongmen  [id, x, z, yaw, speed, act, hp]
-//   z   zombies    [id, x, z, yaw, state, hp]  (the Zombies game: state = act + 4 * kind, see zombieEntry)
+//   z   zombies    [id, x, z, yaw, state, hp, y]  (the Zombies game: state = act + 4 * kind, see zombieEntry)
 // `age`: how long before `st` that state was where it says (ms). A player's state carries the time
 // their own page took it, lined up with the server's clock (game.mjs), so network jitter on the way
 // in doesn't show as a stutter. Positions are rounded to the centimetre, angles to a milliradian.
@@ -61,12 +61,13 @@ export function bruteEntry(id, b) {
 export const ZOMBIE_ACTS = ['walk', 'attack', 'hurt', 'down'];
 
 /**
- * A zombie (shared/zombies.mjs): [id, x, z, yaw, state, hp]. `state` is its act (ZOMBIE_ACTS) plus 4
- * times its kind (0 to 3 the regular ones, 4 the big one); its yaw to the centiradian. Its speed
- * the page works out from how it moves.
+ * A zombie (shared/zombies.mjs): [id, x, z, yaw, state, hp, y]. `state` is its act (ZOMBIE_ACTS) plus 4
+ * times its kind (0 to 3 the regular ones, 4 the big one); its yaw to the centiradian; `y` the floor
+ * it walks on (in the houses one of several; last, so a page from before it reads the rest). Its
+ * speed the page works out from how it moves.
  */
 export function zombieEntry(z) {
-  return [z.id, r2(z.x), r2(z.z), Math.round(angle(z.yaw) * 100) / 100, Math.max(0, ZOMBIE_ACTS.indexOf(z.act)) + 4 * z.kind, Math.round(z.hp)];
+  return [z.id, r2(z.x), r2(z.z), Math.round(angle(z.yaw) * 100) / 100, Math.max(0, ZOMBIE_ACTS.indexOf(z.act)) + 4 * z.kind, Math.round(z.hp), r2(z.y ?? 0)];
 }
 
 /** A player entry as the page uses it (the shape of the old 'states' list, plus the teleport counter). */
@@ -89,7 +90,7 @@ export function readHorse(e) {
 
 export function readZombie(e) {
   const s = Math.max(0, Math.floor(n(e[4])));
-  return { id: n(e[0]), x: n(e[1]), z: n(e[2]), yaw: n(e[3]), act: ZOMBIE_ACTS[s % 4], kind: Math.min(4, Math.floor(s / 4)), hp: n(e[5]) };
+  return { id: n(e[0]), x: n(e[1]), z: n(e[2]), yaw: n(e[3]), act: ZOMBIE_ACTS[s % 4], kind: Math.min(4, Math.floor(s / 4)), hp: n(e[5]), y: typeof e[6] === 'number' && Number.isFinite(e[6]) ? e[6] : null };
 }
 
 export function readBrute(e) {

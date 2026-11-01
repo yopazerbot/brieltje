@@ -15,7 +15,7 @@ import { Games, type ModeView } from './ui/games';
 import { CLOWN_DEFAULTS, Clowns, KINDS } from './world/clowns';
 import { bruteDamage, hurtBy } from '../shared/brutes.mjs';
 import { Zombies } from './world/zombies';
-import { BIG as BIG_ZOMBIE, bigOf, Horde, makeIndoors as houseGround, makeNav } from '../shared/zombies.mjs';
+import { BIG as BIG_ZOMBIE, bigOf, Horde, houseAreas, makeNav } from '../shared/zombies.mjs';
 import WEAPON_SPECS from '../shared/weapons.json';
 import { Horses } from './world/horses';
 import { AdminPanel } from './ui/admin';
@@ -998,14 +998,15 @@ function putOutside(): void {
 function followAccount(account: Me | null): void {
   queueMicrotask(applyTurbo); // after `me` is set below: the admin's speed, or back to normal
   // Alone, the house and the bungalow are shut (Yoshi): no door opens and no pane breaks. Leaving
-  // the others from inside, you are put out in front. Playing together, a Zombies game alone stops.
+  // the others from inside, you are put out in front. Playing together (a Zombies game too) they are
+  // open; a Zombies game alone stops.
   if (account) stopSolo();
-  doors.lock(!account || games.zombies);
+  doors.lock(!account);
   // Together everyone walks and runs at the real pace; alone, the speed you chose (the server holds
   // running to the real pace too, server/game.mjs).
   player.walkSpeed = account ? REAL_WALK : menu.walkSpeed;
   menu.lockSpeed(account ? REAL_WALK : null);
-  glass.seal(!account || games.zombies);
+  glass.seal(!account);
   if (!account && wasTogether) putOutside();
   wasTogether = !!account;
   $('mp-join-here').classList.toggle('hidden', !!account);
@@ -1205,6 +1206,8 @@ function soloBest(): number {
 /**
  * Start the Zombies game alone (the Play tab's button): the grid round the house and the bungalow
  * with the cars where they stand, out of any car or saddle, at one of the house's outside places.
+ * Alone the houses stay shut (their doors in the grid as walls), but the outside stair and the roof
+ * terrace are the zombies' too.
  */
 function startSolo(): void {
   if (me || solo) return;
@@ -1213,8 +1216,11 @@ function startSolo(): void {
   getOffHorse(false);
   planner.toggle(false);
   const boxes = cars.filter((c) => c.ready && edges.party.inside(c.x, c.z)).map((c) => ({ x: c.x, z: c.z, yaw: c.yaw, halfL: c.spec.length / 2, halfW: c.spec.width / 2 }));
-  const nav = makeNav({ prisms: [...house.prisms, ...(house.surroundings?.prisms ?? []), ...homeStreet.blocks], height: (x, z) => terrain.height(x, z), edge: edges.party, indoors: houseGround(house.prisms), boxes });
-  const horde = new Horde(nav, nav.edgeSpots(edges.party.ring), { height: (x, z) => house.ground + terrain.height(x, z), home: { x: 4.5, z: 18 } });
+  const nav = makeNav({
+    prisms: [...house.prisms, ...(house.surroundings?.prisms ?? []), ...homeStreet.blocks], height: (x, z) => terrain.height(x, z), base: house.ground,
+    edge: edges.party, boxes, areas: houseAreas(house.prisms), doors: house.doors, shut: true, panes: house.prisms.length,
+  });
+  const horde = new Horde(nav, nav.spawnSpots(), { home: { x: 4.5, z: 18 } });
   horde.start(performance.now());
   solo = { horde, endAt: 0, best: soloBest(), record: false, key: '' };
   respawnAt(OUTSIDE_SPAWNS[Math.floor(Math.random() * OUTSIDE_SPAWNS.length)]);
@@ -1266,6 +1272,13 @@ function soloTick(dt: number): void {
   for (const e of h.tick(now, dt, [{ name: SOLO_ME, x: player.x, y: player.feet, z: player.z, alive: combat.alive, fighter, safe: false }])) {
     if (e.type === 'wave') chat.system(() => t(e.bigs > 1 ? 'srv.zWaveBigs' : e.big ? 'srv.zWaveBig' : 'srv.zWave', { n: e.wave, count: e.count }));
     else if (e.type === 'cleared') chat.system(() => t('srv.zCleared', { n: e.wave }));
+    else if (e.type === 'runners') runnersComing(true);
+    else if (e.type === 'perch') chat.system(() => t('srv.zPerch', { n: Math.round(e.ms / 1000) }));
+    else if (e.type === 'perchOut' && combat.alive) {
+      // Out of the zombies' reach too long: out (alone, the game is over).
+      chat.system(() => t('srv.zPerchOut', { name: youName() }));
+      soloZombieHurt(combat.hp, false);
+    }
     else if (e.type === 'swipe') soloZombieHurt(e.damage, h.zombies.get(e.id)?.kind === BIG_ZOMBIE, h.zombies.get(e.id));
     else if (e.type === 'over') {
       solo.endAt = now + 15000;
@@ -1286,6 +1299,11 @@ function soloTick(dt: number): void {
   }
   zombies.follow(h);
   soloView();
+}
+/** The game's first runners are out: a heads-up in the banner (`line`: and the chat, alone; together the server's line is there). */
+function runnersComing(line: boolean): void {
+  hud.announce(t('z.runners'), t('z.runnersSub'));
+  if (line) chat.system(() => t('srv.zRunners'));
 }
 /** Alone, a zombie's swipe (or a big one's pound) landed: your health goes down; at nothing the game is over (you were the only one). */
 function soloZombieHurt(amount: number, big: boolean, from?: { x: number; z: number }): void {
@@ -1607,7 +1625,7 @@ function followGame(view: ModeView): void {
     teamsMenu = true;
     if (!weapon.enabled) chat.system(() => t('games.teamsExplore'));
   }
-  // Zombies: an explorer is told how to join in; the houses shut while it runs; its zombies gone after it.
+  // Zombies: an explorer is told how to join in; its zombies gone after it.
   if (games.zombies && before.kind !== 'zombies') {
     prepareZombies(); // their shaders for the light as it is now, during the break before wave 1
     if (!weapon.enabled) chat.system(() => t('z.explore'));
@@ -1616,13 +1634,13 @@ function followGame(view: ModeView): void {
   shutHouses();
 }
 /**
- * The house and the bungalow are shut alone (Yoshi) and during the Zombies game: no door opens and no
- * pane breaks, so nobody hides inside from the zombies (the server holds to it too).
+ * The house and the bungalow are shut alone (Yoshi): no door opens and no pane breaks. Together they
+ * are open, in a Zombies game too: the zombies follow you in (shared/zombies.mjs), up the stairs and
+ * through the doors, so a house is no place to hide.
  */
 function shutHouses(): void {
-  const shut = !me || games.zombies;
-  doors.lock(shut);
-  glass.seal(shut);
+  doors.lock(!me);
+  glass.seal(!me);
 }
 // Ended for good (another tab took over, the session ended, a new PIN): back to playing alone, as after
 // a kick. Else the page stayed as it was: the others frozen in place, a game's bar counting down, and a
@@ -1853,6 +1871,7 @@ net.onMessage = (m: ServerMsg) => {
       break;
     case 'system':
       chat.system(() => serverText(m.code, m.args, m.text));
+      if (m.code === 'zRunners') runnersComing(false); // the game's first runners: the banner too
       break;
     case 'spawn':
       // The start place was refused (the admin turned the portals off): back to where the server has us.

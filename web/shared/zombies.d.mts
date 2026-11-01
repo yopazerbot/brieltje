@@ -4,8 +4,11 @@ import type { Bounds } from './bounds.mjs';
 
 export const VARIANTS: string[];
 export const BIG: number;
+/** The runners' kind (the teen in the hoodie) */
+export const RUNNER: number;
 export const ZOMBIE: {
   cell: number;
+  fine: number;
   firstBreak: number;
   break: number;
   maxAlive: number;
@@ -29,24 +32,68 @@ export const ZOMBIE: {
   fieldEvery: number;
   spawnMin: number;
   spawnBest: number;
+  spawnFar: number;
   spawnMax: number;
+  runFrom: number;
+  runShare: number;
+  runGrow: number;
+  runMax: number;
+  runSpeed: number;
+  runTop: number;
+  perchWarn: number;
+  perchMs: number;
+  shoveMs: number;
+  shoveFor: number;
 };
 
 export function waveSize(n: number, players: number): number;
 export function bigOf(n: number): number;
 export function aliveCap(players: number): number;
-export function zombieStats(n: number, big: boolean, jitter?: number): { speed: number; hp: number; damage: number };
+export function runnersOf(n: number, size: number): number;
+export function zombieStats(n: number, big: boolean, jitter?: number, runner?: boolean): { speed: number; hp: number; damage: number };
 export function spawnEvery(n: number): number;
 
 interface Prism {
   p: number[][][];
   y0: number;
   y1: number;
-  d?: number;
+  d?: number | boolean;
   n?: string;
+  m?: string;
 }
 
-export function makeIndoors(prisms: Prism[]): (x: number, z: number) => boolean;
+interface DoorSpec {
+  id: string;
+  y0: number;
+  y1: number;
+  open?: boolean;
+  both?: boolean;
+  panels: { a: number[]; b: number[]; offset?: number; thickness?: number; glass?: boolean; swing?: number; slide?: number[] }[];
+}
+
+export interface Area {
+  minX: number;
+  maxX: number;
+  minZ: number;
+  maxZ: number;
+}
+
+export function houseAreas(prisms: Prism[], pad?: number): Area[];
+
+/** Where zombies come out: a spot on the open ground and its node. */
+export interface Spot {
+  x: number;
+  z: number;
+  node: number;
+}
+
+export interface Seed {
+  node: number;
+  /** m from the node's square to the player */
+  gap: number;
+  x: number;
+  z: number;
+}
 
 export interface Nav {
   cell: number;
@@ -54,30 +101,54 @@ export interface Nav {
   z0: number;
   nx: number;
   nz: number;
+  nodes: number;
+  outdoor: number;
+  ground(x: number, z: number): number;
   walkable(x: number, z: number): boolean;
+  inHouse(x: number, z: number): boolean;
   clear(ax: number, az: number, bx: number, bz: number, sight?: boolean): boolean;
-  field(sources: { x: number; z: number }[], until?: { x: number; z: number }[] | null): void;
-  distance(x: number, z: number): number;
-  joined(x: number, z: number, tx: number, tz: number): boolean;
-  next(x: number, z: number): { x: number; z: number } | null;
-  edgeSpots(ring: number[][], step?: number, inset?: number): { x: number; z: number }[];
+  locate(x: number, y: number, z: number, up?: number): number;
+  seed(x: number, y: number, z: number, accept?: ((node: number, x: number, z: number, gap: number) => boolean) | null): Seed | null;
+  step(k: number, x: number, z: number): number;
+  y(k: number, x?: number, z?: number): number;
+  px(k: number): number;
+  pz(k: number): number;
+  open(k: number): boolean;
+  field(sources: number[], until?: number[] | null): void;
+  distance(k: number): number;
+  region(k: number): number;
+  readonly version: number;
+  joined(a: number, b: number): boolean;
+  next(k: number): number;
+  walk(k: number, ax: number, az: number, bx: number, bz: number): number;
+  reach(ax: number, ay: number, az: number, bx: number, by: number, bz: number): boolean;
+  setPanes(list: Iterable<number>): void;
+  spawnSpots(): Spot[];
+  floors(): { x: number; z: number; y: number; open: boolean; links: number; node: number }[];
 }
 
 export function makeNav(o: {
   prisms: Prism[];
   height: (x: number, z: number) => number;
+  base?: number;
   edge: Bounds;
-  indoors?: (x: number, z: number) => boolean;
   boxes?: { x: number; z: number; yaw: number; halfL: number; halfW: number }[];
+  areas?: Area[];
+  doors?: DoorSpec[];
+  shut?: boolean;
+  panes?: number;
 }): Nav;
 
 export type ZombieAct = 'walk' | 'attack' | 'hurt' | 'down';
 
 export interface Zombie {
   id: number;
-  /** 0 to 3 a regular one (VARIANTS), 4 the big one */
+  /** 0 to 3 a regular one (VARIANTS; RUNNER the runners), 4 the big one */
   kind: number;
   x: number;
+  /** The floor it walks on, and its node on the grid */
+  y: number;
+  node: number;
   z: number;
   yaw: number;
   speed: number;
@@ -105,19 +176,25 @@ export interface HordePlayer {
 }
 
 export type HordeEvent =
-  | { type: 'wave'; wave: number; count: number; big: boolean; bigs: number }
+  | { type: 'wave'; wave: number; count: number; big: boolean; bigs: number; runners: number }
   | { type: 'spawn'; id: number }
+  | { type: 'runners' }
   | { type: 'swipe'; id: number; name: string; damage: number }
+  | { type: 'door'; id: string; dir: number }
+  | { type: 'perch'; name: string; ms: number }
+  | { type: 'perchOut'; name: string }
   | { type: 'cleared'; wave: number }
   | { type: 'gone'; ids: number[] }
   | { type: 'over'; wave: number };
 
 export class Horde {
-  constructor(nav: Nav, spots: { x: number; z: number }[], o?: { height?: (x: number, z: number) => number; home?: { x: number; z: number }; rand?: () => number });
+  constructor(nav: Nav, spots: Spot[], o?: { home?: { x: number; z: number }; rand?: () => number; doors?: DoorSpec[]; doorOpen?: (id: string) => boolean });
+  nav: Nav;
   phase: 'break' | 'wave' | 'over';
   wave: number;
   until: number;
   toSpawn: number;
+  runners: number;
   bigs: number;
   cap: number;
   zombies: Map<number, Zombie>;
@@ -127,5 +204,6 @@ export class Horde {
   start(now: number): void;
   tick(now: number, dt: number, players: HordePlayer[]): HordeEvent[];
   hit(id: number, amount: number, by: string, now: number): 'down' | 'hurt' | null;
-  blast(x: number, z: number, radius: number, amount: number, by: string, now: number): [number, 'down' | 'hurt'][];
+  blast(x: number, z: number, radius: number, amount: number, by: string, now: number, y?: number | null): [number, 'down' | 'hurt'][];
+  reachOf(p: { x: number; y: number; z: number }): (Seed & { ok: boolean }) | null;
 }

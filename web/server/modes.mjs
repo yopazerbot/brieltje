@@ -220,8 +220,8 @@ export class Modes {
       this.game.roundOver = null; // the teams' score counts now
       this.game.teamsChanged(names);
     } else if (kind === 'zombies') {
-      // Everyone at the house first, then the horde: its grid takes the cars where they stand now. The
-      // houses stay shut during the game: every pane whole again for everyone (no way in by a broken one).
+      // Everyone at the house first, then the horde: its grid takes the cars where they stand now. Every
+      // pane whole again for everyone: a fresh house for the game (the zombies come in through a broken one).
       this.game.gather(names);
       this.game.roundOver = null;
       this.game.broken.clear();

@@ -33,7 +33,7 @@ import { CAR_REACH, PORTALS, portalNear, REACH } from '../shared/portals.mjs';
 import { noShoot } from '../shared/zones.mjs';
 import { boxesOverlap, boxPoints, clearOfPortals, makeIndoors, makeSolids } from '../shared/parking.mjs';
 import { bruteEntry, carFields, horseFields, playerFields, PROTO, TICK_MS } from '../shared/wire.mjs';
-import { makeIndoors as houseGround, makeNav } from '../shared/zombies.mjs';
+import { houseAreas, makeNav } from '../shared/zombies.mjs';
 
 const MAX_PLAYERS = 16; // the most the admin can allow at once (every player's moves go to every other one)
 const KEYFRAME = 20; // ticks: everything goes to every page at least this often (once a second), moved or not
@@ -150,13 +150,16 @@ const SOLIDS = makeSolids([
 ], (x, z) => TERRAIN.height(x, z));
 const INDOORS = makeIndoors([...HOUSE.prisms, ...(HOUSE.surroundings?.prisms ?? [])], HOUSE.rooms.map((r) => r.name));
 /**
- * The Zombies game (server/zombies.mjs): the ground floors of the house and the bungalow, shut while
- * it runs; and what the zombies walk round (the house's, the surroundings' and the two portal
- * streets' blocks: none of the village's lie in the party area). The cars are added at each start,
- * where they stand then (nobody drives during the game).
+ * The Zombies game (server/zombies.mjs): what the zombies walk round and on (the house's blocks first,
+ * so their glass keeps the page's numbers, then the surroundings' and the two portal streets': none
+ * of the village's lie in the party area), with every floor of the house and the bungalow in a finer
+ * grid of their own (HOUSE_AREAS) and their doors, open during the game as at any time together. The
+ * cars are added at each start, where they stand then (nobody drives during the game).
  */
-const HOUSE_GROUND = houseGround(HOUSE.prisms);
 const ZOMBIE_PRISMS = [...HOUSE.prisms, ...(HOUSE.surroundings?.prisms ?? []), ...Object.values(houseData('homestreet.json').clusters).flatMap((c) => c.blocks ?? [])];
+const HOUSE_AREAS = houseAreas(HOUSE.prisms);
+/** The house data's doors: whether each stands open before anyone touched it (the page's default too). */
+const DOOR_OPEN = Object.fromEntries(HOUSE.doors.map((d) => [d.id, !!d.open]));
 /**
  * The cars parked along the village's streets (src/data/roads.json, drawn by src/world/traffic.ts):
  * each a block of its model's size, as the page makes it (the sizes are in public/models/traffic.glb).
@@ -464,17 +467,32 @@ export class Game {
 
   /**
    * What the zombies walk on for a new game (server/zombies.mjs): the grid over the party area with
-   * the cars where they stand now, the places along its edge where zombies come in, where they go
-   * when nobody fights (the house) and the ground's height. About 40 ms.
+   * the cars where they stand now and every floor of the two houses, the places over the open ground
+   * where zombies come out, where they go when nobody fights (the house), and the doors with whether
+   * each stands open now (a zombie shoves a shut one open: zombieDoor). About 40 ms.
    */
   zombieGround() {
     const boxes = Object.values(this.cars).filter((c) => BOUNDS.party.inside(c.x, c.z)).map((c) => {
       const s = carSpec(c);
       return { x: c.x, z: c.z, yaw: c.yaw, halfL: s.length / 2, halfW: s.width / 2 };
     });
-    const height = (x, z) => HOUSE.ground + TERRAIN.height(x, z);
-    const nav = makeNav({ prisms: ZOMBIE_PRISMS, height: (x, z) => TERRAIN.height(x, z), edge: BOUNDS.party, indoors: HOUSE_GROUND, boxes });
-    return { nav, spots: nav.edgeSpots(BOUNDS.party.ring), home: { x: 4.5, z: 18 }, height };
+    const nav = makeNav({
+      prisms: ZOMBIE_PRISMS, height: (x, z) => TERRAIN.height(x, z), base: HOUSE.ground, edge: BOUNDS.party, boxes,
+      areas: HOUSE_AREAS, doors: HOUSE.doors, shut: false, panes: HOUSE.prisms.length,
+    });
+    nav.setPanes(this.broken);
+    return { nav, spots: nav.spawnSpots(), home: { x: 4.5, z: 18 }, doors: HOUSE.doors, doorOpen: (id) => this.doors[id] ?? DOOR_OPEN[id] ?? true };
+  }
+
+  /**
+   * A zombie shoved door `id` open (shared/zombies.mjs): for every page, as a player's toggle is. Only
+   * the house data's doors; the horde shoves one door at most once in 1.5 s.
+   */
+  zombieDoor(id, dir) {
+    if (!Object.hasOwn(DOOR_OPEN, id)) return;
+    this.doors[id] = true;
+    if (dir === 1 || dir === -1) this.doorDir[id] = dir;
+    this.broadcast({ t: 'door', id, open: true, dir: this.doorDir[id] ?? 1, by: '' });
   }
 
   /** The best wave ever reached in the Zombies game ({ wave, names, at }), kept with the rules. */
@@ -570,9 +588,6 @@ export class Game {
       player.movedAt = now;
       // The edge of the game: a position outside it (only a changed page sends one) is put back just inside.
       this.fenceIn(next, prev);
-      // In the Zombies game the house and the bungalow are shut (the pages lock their doors): a changed
-      // page that walks in anyway stays where it was outside.
-      if (this.modes.zombies && HOUSE_GROUND(next.x, next.z)) this.keepOut(next, prev);
       player.state = next;
       this.stampState(player, m.ct);
       if (driving) {
@@ -605,14 +620,16 @@ export class Game {
       if (m.dir === 1 || m.dir === -1) this.doorDir[m.id] = m.dir;
       this.broadcast({ t: 'door', id: m.id, open: !!m.open, dir: this.doorDir[m.id] ?? 1, by: name }, name);
     } else if (m.t === 'glass' && Number.isInteger(m.i) && m.i >= 0 && m.i < 4000) { // house blocks, then door glass from 3000
-      if (this.broken.size >= 200 || this.broken.has(m.i) || this.modes.zombies) return; // the houses stay shut in the Zombies game
+      if (this.broken.size >= 200 || this.broken.has(m.i)) return;
       this.broken.add(m.i);
       this.broadcast({ t: 'glass', i: m.i, by: name }, name);
+      this.modes.zombies?.panes(this.broken); // a way in for the zombies too
     } else if (m.t === 'repair') {
       if (now - (this.lastRepair || 0) < 2000) return;
       this.lastRepair = now;
       this.broken.clear();
       this.broadcast({ t: 'repair', by: name });
+      this.modes.zombies?.panes(this.broken);
     } else if (m.t === 'shot') {
       // Every page plays each shot (a gunshot, smoke): only from someone who can fire, at most at the
       // weapon's rate (70% of its delay, as for hits). A page could otherwise send forty a second.
@@ -879,38 +896,15 @@ export class Game {
    */
   fenceAll() {
     const fence = this.fence();
-    const shut = !!this.modes.zombies;
     for (const [name, p] of this.players) {
       const s = p.state;
       if (!s) continue;
-      if (shut && HOUSE_GROUND(s.x, s.z)) {
-        // In the Zombies game nobody is in the house or the bungalow (joined there, or there when it began).
-        this.keepOut(s, null);
-        this.moved(p);
-        continue;
-      }
       if (fence.inside(s.x, s.z)) continue;
       this.releaseCar(name);
       this.releaseHorse(name);
       this.fenceIn(s, null);
       this.moved(p);
     }
-  }
-
-  /**
-   * A state `s` on the ground floor of the house or the bungalow while they are shut (the Zombies
-   * game), moved in place: back to `prev` when that was outside, else to the nearest of the house's
-   * outside start places (shared/spawns.json).
-   */
-  keepOut(s, prev) {
-    let to = prev && !HOUSE_GROUND(prev.x, prev.z) ? prev : null;
-    if (!to) {
-      const outside = SPAWNS.filter((q) => q.outside);
-      to = outside.reduce((a, b) => (Math.hypot(b.x - s.x, b.z - s.z) < Math.hypot(a.x - s.x, a.z - s.z) ? b : a));
-      s.y = to.y;
-    }
-    s.x = to.x;
-    s.z = to.z;
   }
 
   /** The car a player is in (driving or riding along), if any. */
@@ -1285,7 +1279,7 @@ export class Game {
     const shooter = this.players.get(name);
     if (!shooter || this.roundOver) return;
     // Zombies caught in it lose health (server/zombies.mjs), as the strongmen do.
-    this.modes.zombies?.blast(name, at, radius, bruteDamage(w, WEAPONS), w, now);
+    this.modes.zombies?.blast(name, at, radius, bruteDamage(w, WEAPONS), w, now); // on its floor (at.y)
     // Strongmen caught in it lose health too (less at the edge of the blast; they're big). Not during
     // the Zombies game, when they stand aside.
     for (const c of this.clowns.values()) {

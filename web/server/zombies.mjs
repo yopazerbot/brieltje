@@ -7,6 +7,12 @@
 // within MAX_RANGE, and no more pellets than the gun fires. Blasts are set off on the server (a
 // rocket) or checked there (a grenade), and hurt zombies through Horde.blast.
 //
+// The house and the bungalow are open as at any time together: the zombies follow the players in,
+// up the stairs and through the doors (a shut one a zombie shoves open: game.zombieDoor, for every
+// page) and through a pane that was shot out (panes). A swipe never goes through a wall, a floor, a
+// whole pane or a shut door. Whoever stands where no zombie can get at them (a ledge, or a page that
+// claims to hover or stand in a wall) is warned, and out of the wave if they stay (perch).
+//
 // Who goes down waits for the end of the wave (their page shows it), then everyone comes back at
 // the house's outside start places. When everyone who fights is down at once, the game is over: the
 // wave reached, each player's zombies beaten and the best wave ever (kept in the database's meta
@@ -25,8 +31,8 @@ export class ZombieGame {
   constructor(game, modes, names, now) {
     this.game = game;
     this.modes = modes;
-    const { nav, spots, home, height } = game.zombieGround();
-    this.horde = new Horde(nav, spots, { height, home });
+    const { nav, spots, home, doors, doorOpen } = game.zombieGround();
+    this.horde = new Horde(nav, spots, { home, doors, doorOpen });
     this.horde.start(now);
     /** Who took part (any time in this game), and who is down until the wave is beaten */
     this.players = new Set(names);
@@ -100,6 +106,20 @@ export class ZombieGame {
       } else if (e.type === 'swipe') {
         const p = g.players.get(e.name);
         if (p) g.zombieHurt(e.name, p, e.damage, this.horde.zombies.get(e.id)?.kind === BIG, now);
+      } else if (e.type === 'door') {
+        g.zombieDoor(e.id, e.dir);
+      } else if (e.type === 'runners') {
+        this.modes.say('Runners! Some zombies sprint at you. Dodge them!', 'zRunners');
+      } else if (e.type === 'perch') {
+        const p = g.players.get(e.name);
+        const n = Math.round(e.ms / 1000);
+        if (p) g.send(p.ws, { t: 'system', text: `The zombies can't reach you there. Come down within ${n} seconds, or you're out of this wave.`, code: 'zPerch', args: { n } });
+      } else if (e.type === 'perchOut') {
+        const p = g.players.get(e.name);
+        if (p?.alive) {
+          this.modes.say(`${e.name} stayed out of the zombies' reach and is out of this wave.`, 'zPerchOut', { name: e.name });
+          g.npcDamage(e.name, p, p.hp, now, 'a zombie');
+        }
       } else if (e.type === 'cleared') {
         this.revive();
         this.modes.say(`Wave ${e.wave} beaten! The next one comes in 15 seconds.`, 'zCleared', { n: e.wave });
@@ -171,10 +191,15 @@ export class ZombieGame {
     for (const h of hits) this.damage(h.id, h.amount, name, w, now);
   }
 
-  /** A blast (a rocket's or a grenade's, set off by `name`): every zombie near it loses health. */
+  /** A blast (a rocket's or a grenade's, set off by `name`): every zombie near it on its floor loses health. */
   blast(name, at, radius, amount, w, now) {
     if (this.horde.phase === 'over') return;
-    for (const [id, res] of this.horde.blast(at.x, at.z, radius, amount, name, now)) if (res === 'down') this.beat(id, name, w);
+    for (const [id, res] of this.horde.blast(at.x, at.z, radius, amount, name, now, Number.isFinite(at.y) ? at.y : null)) if (res === 'down') this.beat(id, name, w);
+  }
+
+  /** The panes broken now (game.broken): the zombies come through those that are out. */
+  panes(broken) {
+    this.horde.nav.setPanes(broken);
   }
 
   damage(id, amount, by, w, now) {
@@ -188,7 +213,7 @@ export class ZombieGame {
     this.modes.send();
   }
 
-  /** The zombies for a tick (shared/wire.mjs): [id, x, z, yaw, state, hp], those up and those lying down. */
+  /** The zombies for a tick (shared/wire.mjs): [id, x, z, yaw, state, hp, y], those up and those lying down. */
   entries() {
     return [...this.horde.zombies.values()].map((z) => zombieEntry(z));
   }

@@ -1,6 +1,6 @@
 import * as THREE from 'three';
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
-import { BIG, VARIANTS, type Horde } from '../../shared/zombies.mjs';
+import { BIG, RUNNER, VARIANTS, type Horde } from '../../shared/zombies.mjs';
 import type { ZombieAct, ZombieSample } from '../../shared/wire.mjs';
 import { netClock, Track } from '../net/track';
 import { sound } from '../sound';
@@ -9,8 +9,10 @@ import { paintball } from '../paintball';
 /**
  * The Zombies game's zombies on screen (shared/zombies.mjs runs them: the server together, the page
  * alone). Our own Blender models (tools/zombies.py, web/public/models/zombies.glb): four kinds and
- * a big one, each rigged, with their clips (walk, lurch, idle, swipe, flinch, fall; the big one's
- * stomp and pound) baked into the file.
+ * a big one, each rigged, with their clips (walk, lurch, idle, swipe, flinch, fall; the runners'
+ * sprint, the hoodie's own; the big one's stomp and pound) baked into the file. In the houses the
+ * server says which floor one walks on (its tick's `y`); the page's own ground gives the exact height
+ * there (a stair's step), and the figure eases up and down the steps.
  *
  * Cheap to draw: thirty zombies are a handful of draws. When the file loads, every clip of every
  * kind is sampled 30 times a second into one half-float picture of bone matrices (60 texels by
@@ -39,8 +41,9 @@ const SPOTS = 8; // paint spots per zombie
 const SLOTS = 64; // zombies with paint at once (rows of the paint picture)
 const BLEND = 0.18; // s to change from one clip to the next
 /** The walking clips: played at the pace their feet keep on the ground (measured from the clip as it loads), so they don't slide. */
-const WALKS = new Set(['Walk', 'Lurch', 'Stomp']);
+const WALKS = new Set(['Walk', 'Lurch', 'Stomp', 'Run']);
 const LURCH_FROM = 0.95; // m/s: faster than this a regular zombie lurches (about its lurch's own pace)
+const RUN_FROM = 1.6; // m/s: faster than this a runner sprints (its run's own pace is about 3.2)
 const FALL_FADE = 0.9; // s the fallen body takes to fade, from 2 s after the fall
 const PUFF_S = 0.22; // s a beaten zombie takes to vanish in paintball
 
@@ -83,14 +86,20 @@ export interface ZombieState {
   yaw: number;
   act: ZombieAct;
   hp: number;
+  /** The floor it walks on (the server's tick, or the horde alone); null from a server before it */
+  y?: number | null;
 }
 
 interface Z extends ZombieState {
-  /** Multiplayer: where the server had it (x, z, yaw) */
+  /** Multiplayer: where the server had it (x, z, yaw, floor) */
   track: Track<null> | null;
   seen: number;
   y: number;
+  /** The floor it walks on as the game has it (NaN: not told), the ground found under it there and where that was looked up */
+  floor: number;
+  ground: number;
   groundAt: [number, number];
+  floorAt: number;
   /** Where it was drawn last frame (its speed comes from how far it went since) */
   lx: number;
   lz: number;
@@ -332,7 +341,7 @@ export class Zombies {
   private paintTex: THREE.DataTexture;
   private paintData = new Uint16Array(SPOTS * 2 * 4 * SLOTS);
   private freeSlots = Array.from({ length: SLOTS }, (_, i) => SLOTS - 1 - i);
-  private pose = [0, 0, 0];
+  private pose = [0, 0, 0, 0];
   private patches = shadowPatches(MAX * 2);
   private clock = 0;
   private groans = 0; // groans started in the last second, at most three
@@ -534,7 +543,7 @@ export class Zombies {
     hits.add(body, head);
     this.hits.add(hits);
     return {
-      ...s, track: null, seen: performance.now(), y: 0, groundAt: [NaN, NaN], lx: s.x, lz: s.z, speed: 0, clip: 'Idle', time: Math.random() * 2, from: '', fromTime: 0, blend: 1,
+      ...s, track: null, seen: performance.now(), y: s.y ?? 0, floor: s.y ?? NaN, ground: 0, groundAt: [NaN, NaN], floorAt: NaN, lx: s.x, lz: s.z, speed: 0, clip: 'Idle', time: Math.random() * 2, from: '', fromTime: 0, blend: 1,
       actAt: this.clock, phase: Math.random(), flash: 0, fade: 0, downAt: s.act === 'down' ? this.clock - 5 : 0, puffed: false, slot: -1, spots: [], hits, head, body,
       groanIn: 2 + Math.random() * 6, rowA: 0, rowB: 0, mix: 0, lod: 0,
     };
@@ -572,12 +581,14 @@ export class Zombies {
         this.zs.set(s.id, z);
       }
       if (!z.track) {
-        z.track = new Track<null>([false, false, true], 4, [0, 1]);
+        z.track = new Track<null>([false, false, true, false], 4, [0, 1]);
         Object.assign(z, { x: s.x, z: s.z, yaw: s.yaw });
       }
       z.seen = now;
       this.set(z, s);
-      z.track.push(st, [s.x, s.z, s.yaw], null);
+      // Its floor goes along (a server from before it sends none: then its own ground is looked up near where it was).
+      if (typeof s.y === 'number') z.floor = s.y;
+      z.track.push(st, [s.x, s.z, s.yaw, Number.isFinite(z.floor) ? z.floor : 0], null);
     }
     for (const z of this.zs.values()) if (z.track && !seen.has(z.id)) z.track.hold(st);
   }
@@ -592,7 +603,7 @@ export class Zombies {
         this.zs.set(q.id, z);
       }
       z.track = null;
-      Object.assign(z, { x: q.x, z: q.z, yaw: q.yaw });
+      Object.assign(z, { x: q.x, z: q.z, yaw: q.yaw, floor: q.y });
       z.seen = performance.now();
       this.set(z, q);
     }
@@ -767,7 +778,12 @@ export class Zombies {
     if (z.downAt) return 'Fall';
     if (z.act === 'attack') return big ? 'Pound' : 'Attack';
     if (z.act === 'hurt') return 'Flinch';
-    if (z.speed > 0.15) return big ? 'Stomp' : z.speed > LURCH_FROM ? 'Lurch' : 'Walk';
+    if (z.speed > 0.15) {
+      if (big) return 'Stomp';
+      // A runner sprints (the hoodie's own run, when the file has it).
+      if (z.kind === RUNNER && z.speed > RUN_FROM && this.kinds[z.kind]?.rigs[0].clips.has('Run')) return 'Run';
+      return z.speed > LURCH_FROM ? 'Lurch' : 'Walk';
+    }
     return 'Idle';
   }
 
@@ -804,17 +820,26 @@ export class Zombies {
       }
       const k = this.kinds[z.kind];
       if (!k) continue;
-      if (z.track?.at(netClock.time, this.pose)) [z.x, z.z, z.yaw] = this.pose;
+      if (z.track?.at(netClock.time, this.pose)) {
+        [z.x, z.z, z.yaw] = this.pose;
+        if (Number.isFinite(z.floor)) z.floor = this.pose[3];
+      }
       // How fast it goes, from where it was drawn last frame (the server's ticks, or the horde alone, moved it since).
       const jump = Math.hypot(z.x - z.lx, z.z - z.lz);
       const moved = jump > 3 ? 0 : jump / Math.max(dt, 1e-3);
       z.lx = z.x;
       z.lz = z.z;
       z.speed += (Math.min(moved, 4) - z.speed) * (1 - Math.exp(-dt * 8));
-      if (Math.hypot(z.x - z.groundAt[0], z.z - z.groundAt[1]) > 0.25 || Number.isNaN(z.groundAt[0])) {
-        z.y = this.floorAt(z.x, z.z, z.y + 0.6);
+      // Its feet: the highest ground at most a step over the floor it walks on (so the ground floor
+      // under the first, a stair's step on the stairs), looked up again every 12 cm or a change of
+      // floor; it eases up and down to it, and goes there at once when new or far off (a spawn).
+      const hint = Number.isFinite(z.floor) ? z.floor : z.y;
+      if (Math.hypot(z.x - z.groundAt[0], z.z - z.groundAt[1]) > 0.12 || Number.isNaN(z.groundAt[0]) || Math.abs(hint - z.floorAt) > 0.15) {
+        z.ground = this.floorAt(z.x, z.z, hint + (Number.isFinite(z.floor) ? 0.45 : 0.6));
         z.groundAt = [z.x, z.z];
+        z.floorAt = hint;
       }
+      z.y = Math.abs(z.ground - z.y) > 1.5 ? z.ground : z.y + (z.ground - z.y) * (1 - Math.exp(-dt * 14));
       // The clip: a change blends in over BLEND; walking ones step with the ground covered.
       const want = this.clipFor(z);
       if (want !== z.clip) {

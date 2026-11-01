@@ -526,6 +526,8 @@ const en = {
   'z.best': 'Best ever: wave {n} ({names})',
   'z.record': 'A new best ever: wave {n}!',
   'z.noModels': "The zombies' models didn't load. Reload the page to try again.",
+  'z.runners': 'Runners!',
+  'z.runnersSub': 'Some zombies sprint at you. Dodge them!',
 
   // ---- Chat lines made here
   'chat.furnOff': 'The admin has turned the furniture planner off.',
@@ -672,6 +674,9 @@ const en = {
   'srv.zOverBest.paint': "Everyone got tagged at wave {n}. That's a new best ever!",
   'srv.zNoCar': 'No driving during Zombies.',
   'srv.zNoHorse': 'No riding during Zombies.',
+  'srv.zRunners': 'Runners! Some zombies sprint at you. Dodge them!',
+  'srv.zPerch': "The zombies can't reach you there. Go where they can within {n} seconds, or you're out of this wave.",
+  'srv.zPerchOut': "{name} stayed out of the zombies' reach and is out of this wave.",
   'srv.ready': 'Ready or not, here {name} comes!',
   'srv.hiddenWin.one': "Time's up: {names} stayed hidden and wins",
   'srv.hiddenWin.other': "Time's up: {names} stayed hidden and win",
@@ -1214,6 +1219,8 @@ const nl = {
   'z.best': 'Beste ooit: golf {n} ({names})',
   'z.record': 'Nieuw record: golf {n}!',
   'z.noModels': 'De zombies zijn niet geladen. Laad de pagina opnieuw om het nog eens te proberen.',
+  'z.runners': 'Ze rennen!',
+  'z.runnersSub': 'Sommige zombies sprinten op je af. Ontwijk ze!',
 
   // ---- Chat lines made here
   'chat.furnOff': 'De beheerder heeft de meubelplanner uitgezet.',
@@ -1360,6 +1367,9 @@ const nl = {
   'srv.zOverBest.paint': 'Iedereen was geraakt in golf {n}. Dat is een nieuw record!',
   'srv.zNoCar': 'Niet rijden tijdens Zombies.',
   'srv.zNoHorse': 'Niet paardrijden tijdens Zombies.',
+  'srv.zRunners': 'Ze rennen! Sommige zombies sprinten op je af. Ontwijk ze!',
+  'srv.zPerch': 'De zombies kunnen je daar niet bereiken. Ga binnen {n} seconden ergens waar ze bij je kunnen, anders lig je uit deze golf.',
+  'srv.zPerchOut': '{name} bleef buiten het bereik van de zombies en ligt uit deze golf.',
   'srv.ready': 'Wie niet weg is, is gezien! {name} komt eraan!',
   'srv.hiddenWin.one': 'De tijd is om: {names} bleef verstopt en wint',
   'srv.hiddenWin.other': 'De tijd is om: {names} bleven verstopt en winnen',
