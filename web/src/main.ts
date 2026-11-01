@@ -1513,6 +1513,8 @@ feedback.send = (stars, comment) => api.feedback({
   stars, comment, name: me ? '' : menu.nickname, lang: document.documentElement.lang === 'nl' ? 'nl' : 'en',
   mode: weapon.enabled ? (paintball.on ? 'paintball' : 'action') : 'explore',
 });
+// The menu's Feedback button: the same card, above the menu, whenever a player wants.
+$('menu-feedback').addEventListener('click', () => feedback.show());
 // Closed with a click or a tap: back to looking around at once (a click may capture the mouse).
 feedback.onClose = (click) => {
   if (click && !menu.open && menu.mode === 'kbm') lockMouse();

@@ -7,7 +7,7 @@ const STAR = 'M12 2.5l2.9 6.1 6.6.8-4.9 4.6 1.3 6.5L12 17.3l-5.9 3.2 1.3-6.5L2.5
 
 /**
  * The feedback card (Yoshi, 1 Nov 2026): after two minutes of play, once in this browser, 1 to 5
- * stars and a comment, both optional. Closing it (×, "No thanks", Esc, or ○ and Options on a
+ * stars and a comment, both optional. The menu's Feedback button opens it whenever a player wants. Closing it (×, "No thanks", Esc, or ○ and Options on a
  * controller) means it won't ask again; nor will it after sending. It goes to server/feedback.mjs,
  * which keeps it with the name, the address and the time for the admin page (the privacy policy
  * says so; the card links to it).
@@ -82,8 +82,8 @@ export class FeedbackCard {
   show(): void {
     if (this.open) return;
     this.open = true;
+    if (!this.asked) this.remember('asked'); // a reload doesn't ask again either (and "sent" stays "sent")
     this.asked = true;
-    this.remember('asked'); // a reload doesn't ask again either
     this.chosen = 0;
     this.paint(0);
     this.comment.value = '';
@@ -121,8 +121,9 @@ export class FeedbackCard {
       this.root.classList.add('sent');
       this.status.textContent = t('fb.thanks');
       setTimeout(() => this.close(click), 1400);
-    } catch {
-      this.status.textContent = t('fb.error');
+    } catch (e) {
+      // Three an hour from one address (server/feedback.mjs): a thank-you, not an error.
+      this.status.textContent = t((e as { status?: number })?.status === 429 ? 'fb.tooMany' : 'fb.error');
       this.ready();
     }
   }
