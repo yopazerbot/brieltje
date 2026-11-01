@@ -1181,7 +1181,13 @@ weapon.onZombieHit = (hits, paint) => {
   }
   if (!solo) return;
   const now = performance.now();
-  for (const h of hits) zombieResult(h.id, solo.horde.hit(h.id, h.body * spec.body + h.head * spec.head, SOLO_ME, now), w);
+  let downs = 0;
+  for (const h of hits) {
+    const res = solo.horde.hit(h.id, h.body * spec.body + h.head * spec.head, SOLO_ME, now);
+    if (res === 'down') downs++;
+    zombieResult(h.id, res, w);
+  }
+  if (downs > 1 && (spec as { pierce?: number }).pierce) combat.double(''); // one sniper's bullet, two zombies
 };
 /** Alone: what a hit did. Beaten: it falls (or vanishes in paint) and the kill feed says so. */
 function zombieResult(id: number, res: 'down' | 'hurt' | null, w: string): void {
@@ -1833,6 +1839,7 @@ net.onMessage = (m: ServerMsg) => {
       zombies.beaten(m.id);
       // In the kill feed: your own, and the big ones (sixteen players beat over a hundred in a wave: a flood otherwise).
       if (m.by === me?.username || zombies.isBig(m.id)) combat.zombie(m.by, zombieName(zombies.isBig(m.id)), weaponName(m.w));
+      if (m.double) combat.double(m.by); // one sniper's bullet, two zombies: everyone's feed
       break;
     case 'zgone': // fallen zombies taken away, or all of them when the game ends
       zombies.gone(m.ids);

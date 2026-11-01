@@ -36,6 +36,8 @@ interface Spec {
   body: number;
   head: number;
   pellets: number;
+  /** A bullet goes on through the first zombie it hits and can hit this many in all (the sniper's: a double) */
+  pierce?: number;
   spread: number;
   hipSpread?: number;
   kick: number;
@@ -727,6 +729,17 @@ export class Weapon {
         if (hit.object.userData.part === 'head') e.head++;
         else e.body++;
         zombies.set(zombie, e);
+        // The sniper's bullet goes on through it: the next zombie behind on the same line, if nothing else
+        // (a wall, a pane, a player) comes first. Its own other hit box doesn't count.
+        for (let k = hits.indexOf(hit) + 1, left = (spec.pierce ?? 1) - 1; left > 0 && k < hits.length; k++) {
+          const h = hits[k];
+          if (!h.object.visible || h.object.userData.ignoreRay || !h.face) continue;
+          const next = h.object.userData.zombie as number | undefined;
+          if (next === zombie || (next !== undefined && zombies.has(next))) continue;
+          if (next === undefined) break;
+          zombies.set(next, { id: next, body: h.object.userData.part === 'head' ? 0 : 1, head: h.object.userData.part === 'head' ? 1 : 0, point: h.point.clone(), ray: this.raycaster.ray.clone() });
+          left--;
+        }
         continue;
       }
       if (hit.object.userData.clown !== undefined) {

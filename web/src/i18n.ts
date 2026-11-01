@@ -526,6 +526,7 @@ const en = {
   'z.best': 'Best ever: wave {n} ({names})',
   'z.record': 'A new best ever: wave {n}!',
   'z.noModels': "The zombies' models didn't load. Reload the page to try again.",
+  'z.double': 'Double!',
   'z.runners': 'Runners!',
   'z.runnersSub': 'Some zombies sprint at you. Dodge them!',
 
@@ -1219,6 +1220,7 @@ const nl = {
   'z.best': 'Beste ooit: golf {n} ({names})',
   'z.record': 'Nieuw record: golf {n}!',
   'z.noModels': 'De zombies zijn niet geladen. Laad de pagina opnieuw om het nog eens te proberen.',
+  'z.double': 'Dubbel!',
   'z.runners': 'Ze rennen!',
   'z.runnersSub': 'Sommige zombies sprinten op je af. Ontwijk ze!',
 

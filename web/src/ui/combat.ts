@@ -148,6 +148,16 @@ export class Combat {
     this.addLine(line, mine);
   }
 
+  /** The Zombies game: one sniper's bullet beat two zombies, "Robin · Double!" ("You · Double!"; the same in paintball). */
+  double(by: string): void {
+    const mine = !by || by === this.me;
+    const line = document.createElement('div');
+    line.className = mine ? 'kf me' : 'kf';
+    const color = this.scores.find((s) => s.name === by)?.color ?? '';
+    line.append(span(mine ? t('char.you') : by, '', mine ? '' : color), span(' · ', 'arrow'), span(t('z.double'), 'hs'));
+    this.addLine(line, mine);
+  }
+
   /** The Zombies game: a zombie caught a player, "A zombie caught Robin" ("... caught you"); in paintball "tagged". */
   caught(victim: string, zombie: string): void {
     const mine = !victim || victim === this.me;

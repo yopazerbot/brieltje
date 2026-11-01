@@ -25,6 +25,12 @@ export const DONE_MS = 15_000;
 const BEST_KEY = 'zombies_best';
 const MAX_RANGE = 100; // m from the shooter to the zombie, on the server's positions
 const MAX_HITS = 8; // zombies one shot can claim (the shotgun's eight pellets)
+/**
+ * m: how far off the shot's line (from the shooter through the first zombie, on the server's
+ * positions) the second zombie of a sniper's double may stand: its size and the time it moved while
+ * the shot came here.
+ */
+const LINE_SLACK = 0.65;
 
 export class ZombieGame {
   /** A new game for the players `names` (gathered at the house by modes.start); `best`: the best wave ever so far. */
@@ -162,13 +168,17 @@ export class ZombieGame {
 
   /**
    * A page says one shot of weapon `m.w` hit zombies: `m.hits` = [[id, body, head], ...] (pellets on
-   * each). Refused, in silence, unless it could be true; see the top of this file.
+   * each). Refused, in silence, unless it could be true; see the top of this file. The sniper's bullet
+   * goes through (spec.pierce): two zombies, one bullet each, the second behind the first on the line
+   * from the shooter through the first, on the server's positions; else only the nearer counts. Both
+   * beaten by it: a double, in everyone's kill feed.
    */
   hit(name, p, m, now) {
     const g = this.game;
     const w = m.w;
     const spec = g.weaponSpec(w);
-    if (!spec || spec.rocket || !Array.isArray(m.hits) || !m.hits.length || m.hits.length > MAX_HITS) return;
+    const pierce = spec?.pierce ?? 1;
+    if (!spec || spec.rocket || !Array.isArray(m.hits) || !m.hits.length || m.hits.length > (pierce > 1 ? pierce : MAX_HITS)) return;
     if (!p.alive || !p.state?.armed || !p.weapons.has(w) || p.state.w !== w || g.inCar(name) || g.calm(p)) return;
     if (this.horde.phase === 'over' || now < (p.nextZombie || 0)) return;
     const seen = new Set();
@@ -180,15 +190,29 @@ export class ZombieGame {
       if (!Number.isInteger(id) || !Number.isInteger(body) || !Number.isInteger(head) || body < 0 || head < 0 || body + head < 1 || seen.has(id)) return;
       seen.add(id);
       pellets += body + head;
+      if (pierce > 1 && body + head !== 1) return; // one bullet through each
       const z = this.horde.zombies.get(id);
       if (!z || z.act === 'down') continue; // gone or down already (another player's shot came first): no harm in that
-      if (Math.hypot(z.x - p.state.x, z.z - p.state.z) > MAX_RANGE) continue;
-      hits.push({ id, amount: body * spec.body + head * spec.head });
+      const d = Math.hypot(z.x - p.state.x, z.z - p.state.z);
+      if (d > MAX_RANGE) continue;
+      hits.push({ id, amount: body * spec.body + head * spec.head, z, d });
     }
-    if (pellets > spec.pellets) return;
+    if (pellets > spec.pellets * (pierce > 1 ? m.hits.length : 1)) return;
+    if (pierce > 1 && hits.length > 1) {
+      // The nearer first; the other must be behind it on the shot's line.
+      hits.sort((a, b) => a.d - b.d);
+      const [a, b] = hits;
+      const ax = a.z.x - p.state.x, az = a.z.z - p.state.z;
+      const bx = b.z.x - p.state.x, bz = b.z.z - p.state.z;
+      const along = (bx * ax + bz * az) / Math.max(a.d, 1e-3);
+      const off = Math.abs(bx * az - bz * ax) / Math.max(a.d, 1e-3);
+      const size = (a.z.kind === BIG ? 0.8 : 0.35) + (b.z.kind === BIG ? 0.8 : 0.35);
+      if (!(along > a.d && off <= size + LINE_SLACK && Math.abs(b.z.y - a.z.y) < 2.5)) hits.length = 1;
+    }
     p.nextZombie = now + spec.delay * 700; // 70% of the fire delay, for network jitter (as for hits on players)
     p.protectedUntil = 0; // shooting ends your own spawn protection
-    for (const h of hits) this.damage(h.id, h.amount, name, w, now);
+    let downs = 0;
+    for (const h of hits) if (this.damage(h.id, h.amount, name, w, now, pierce > 1 && downs === 1)) downs++;
   }
 
   /** A blast (a rocket's or a grenade's, set off by `name`): every zombie near it on its floor loses health. */
@@ -202,14 +226,17 @@ export class ZombieGame {
     this.horde.nav.setPanes(broken);
   }
 
-  damage(id, amount, by, w, now) {
-    if (this.horde.hit(id, amount, by, now) === 'down') this.beat(id, by, w);
+  /** Zombie `id` takes `amount` from `by`; true when that beat it. `double`: a second one beaten by the same bullet. */
+  damage(id, amount, by, w, now, double = false) {
+    if (this.horde.hit(id, amount, by, now) !== 'down') return false;
+    this.beat(id, by, w, double);
+    return true;
   }
 
-  /** Zombie `id` is beaten by `by`: the kill feed (in friendly words on a paintball page), and the count left. */
-  beat(id, by, w) {
+  /** Zombie `id` is beaten by `by`: the kill feed (in friendly words on a paintball page), and the count left. `double`: the second of a double. */
+  beat(id, by, w, double = false) {
     this.players.add(by);
-    this.game.broadcast({ t: 'zdown', id, by, w });
+    this.game.broadcast({ t: 'zdown', id, by, w, ...(double ? { double: true } : {}) });
     this.modes.send();
   }
 

@@ -75,7 +75,7 @@ export type ServerMsg =
   | { t: 'stomp'; type: 'stomp'; id: number; at: Spot }
   | { t: 'clownhit'; id: number; by: string; ms: number; w: string }
   /** The Zombies game: zombie `id` beaten by `by` with weapon `w`; fallen ones taken away (server/zombies.mjs) */
-  | { t: 'zdown'; id: number; by: string; w: string }
+  | { t: 'zdown'; id: number; by: string; w: string; double?: boolean }
   | { t: 'zgone'; ids: number[] }
   | { t: 'rocket'; name: string; x: number; y: number; z: number; tx: number; ty: number; tz: number }
   | { t: 'blast'; by: string; x: number; y: number; z: number; w?: string }
