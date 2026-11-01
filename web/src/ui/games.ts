@@ -32,8 +32,30 @@ export interface ModeView {
   goal?: number;
 }
 
-const coinGeo = new THREE.CylinderGeometry(0.17, 0.17, 0.03, 24).rotateX(Math.PI / 2);
-const coinMat = new THREE.MeshStandardMaterial({ color: '#f2c14e', metalness: 0.85, roughness: 0.25, emissive: '#5a3c00', emissiveIntensity: 0.4 });
+// Coins as big as a hand (0.35 m), turning and bobbing at chest height, each with a glint that keeps
+// its size on screen, so it shows from across the garden. One texture and one material for all.
+const COIN_LIFT = 0.6; // m: the coin's middle above where it lies
+const coinGeo = new THREE.CylinderGeometry(0.35, 0.35, 0.05, 28).rotateX(Math.PI / 2);
+const coinMat = new THREE.MeshStandardMaterial({ color: '#f2c14e', metalness: 0.85, roughness: 0.25, emissive: '#5a3c00', emissiveIntensity: 0.5 });
+const glintMat = new THREE.SpriteMaterial({ map: glintTexture(), color: '#fff4c2', blending: THREE.AdditiveBlending, transparent: true, depthWrite: false, sizeAttenuation: false });
+
+/** A soft four-pointed star on a small canvas, for the coins' glint. */
+function glintTexture(): THREE.Texture {
+  const c = document.createElement('canvas');
+  c.width = c.height = 64;
+  const g = c.getContext('2d')!;
+  const glow = g.createRadialGradient(32, 32, 0, 32, 32, 32);
+  glow.addColorStop(0, 'rgba(255,255,255,1)');
+  glow.addColorStop(0.25, 'rgba(255,236,170,0.55)');
+  glow.addColorStop(1, 'rgba(255,220,120,0)');
+  g.fillStyle = glow;
+  g.fillRect(0, 0, 64, 64);
+  g.fillStyle = 'rgba(255,255,255,0.9)';
+  for (const [w, h] of [[3, 30], [30, 3]]) g.fillRect(32 - w / 2, 32 - h / 2, w, h); // the star's rays
+  const tex = new THREE.CanvasTexture(c);
+  tex.colorSpace = THREE.SRGBColorSpace;
+  return tex;
+}
 const REACH = { hide: 2.0, tag: 1.6 }; // a little less than the server allows: network delay
 
 const clock = (ms: number) => {
@@ -54,6 +76,11 @@ export class Games {
   private bar = document.getElementById('modebar')!;
   private blind = document.getElementById('blindfold')!;
   private spin = 0;
+  /** Playing in Explore (no weapon): out of the teams game's fight (see setExploring) */
+  private exploring = false;
+  /** The connection is down: the bar greyed, its clock stopped at `frozen` ms (see setOffline) */
+  private offline = false;
+  private frozen = 0;
 
   constructor() {
     document.querySelectorAll<HTMLButtonElement>('#team-choice [data-team]').forEach((b) =>
@@ -65,6 +92,7 @@ export class Games {
   set(view: ModeView): void {
     this.view = view ?? { kind: 'free' };
     this.ends = performance.now() + (this.view.ms ?? 0);
+    this.setOffline(false); // the server's word on the game, fresh
     const keep = new Set((this.view.coins ?? []).map((c) => c.i));
     for (const [i, mesh] of this.coins) {
       if (keep.has(i)) continue;
@@ -74,8 +102,14 @@ export class Games {
     for (const c of this.view.coins ?? []) {
       if (this.coins.has(c.i)) continue;
       const mesh = new THREE.Mesh(coinGeo, coinMat);
-      mesh.position.set(c.x, c.y + 0.45, c.z);
+      mesh.position.set(c.x, c.y + COIN_LIFT, c.z);
       mesh.userData.ignoreRay = true;
+      mesh.userData.y = c.y + COIN_LIFT; // where it bobs around
+      const glint = new THREE.Sprite(glintMat);
+      glint.position.y = 0.42;
+      glint.scale.setScalar(0.05);
+      glint.userData.ignoreRay = true;
+      mesh.add(glint);
       this.group.add(mesh);
       this.coins.set(c.i, mesh);
     }
@@ -83,10 +117,42 @@ export class Games {
     this.showTeams();
   }
 
-  /** The menu's choice of team, while the teams game runs. */
+  /**
+   * The connection is down (`off`), or back: the bar greys and its clock stops, since the server may
+   * have ended the game meanwhile (a restart). The welcome after reconnecting brings the game as it is.
+   */
+  setOffline(off: boolean): void {
+    if (off && !this.offline) this.frozen = this.ends - performance.now();
+    this.offline = off;
+    this.bar.classList.toggle('stale', off);
+  }
+
+  /** Playing in Explore or not: in the teams game an explorer is told how to take part (the menu's team picker). */
+  setExploring(exploring: boolean): void {
+    if (exploring === this.exploring) return;
+    this.exploring = exploring;
+    this.showTeams();
+  }
+
+  /** The coins still to find during a hunt, for the maps. */
+  coinSpots(): { x: number; y: number; z: number }[] {
+    if (this.view.kind !== 'treasure' || this.view.phase !== 'playing') return [];
+    return [...this.coins.values()].map((m) => ({ x: m.position.x, y: m.userData.y - COIN_LIFT, z: m.position.z }));
+  }
+
+  /** A player's part shown on their figure: "it" in tag, a seeker in hide and seek (also while hiding), else none. */
+  roleOf(name: string): 'it' | 'seeker' | null {
+    const v = this.view;
+    if (v.kind === 'tag' && v.phase === 'playing' && v.it === name) return 'it';
+    if (v.kind === 'hide' && v.phase !== 'done' && v.seekers?.includes(name)) return 'seeker';
+    return null;
+  }
+
+  /** The menu's choice of team, while the teams game runs; for an explorer, how to take part. */
   private showTeams(): void {
     const playing = this.view.kind === 'teams' && this.view.phase === 'playing';
     document.getElementById('team-pick')!.classList.toggle('hidden', !playing);
+    document.getElementById('team-explore')!.classList.toggle('hidden', !playing || !this.exploring);
     if (playing) {
       const teams = Object.values(this.view.teams ?? {});
       document.querySelectorAll<HTMLButtonElement>('#team-choice [data-team]').forEach((b) => {
@@ -168,14 +234,15 @@ export class Games {
   /** Every frame: the clock and your role at the top, the eyes shut, the coins turning and picked up. `use`: the key or button that tags, for the way you play. */
   update(dt: number, x: number, feet: number, z: number, use = 'E'): void {
     const v = this.view;
-    const left = this.ends - performance.now();
+    const left = this.offline ? this.frozen : this.ends - performance.now();
     this.spin += dt * 2.4;
+    glintMat.opacity = 0.55 + 0.45 * Math.sin(this.spin * 2.2); // the glints twinkle together
     for (const [i, mesh] of this.coins) {
       mesh.rotation.y = this.spin;
-      mesh.position.y += Math.sin(this.spin * 1.3 + i) * 0.0015;
+      mesh.position.y = mesh.userData.y + Math.sin(this.spin * 1.5 + i) * 0.08;
       if (v.kind === 'treasure' && v.phase === 'playing' && performance.now() - (this.asked.get(i) ?? -Infinity) > 500) {
         const c = mesh.position;
-        if (Math.hypot(c.x - x, c.z - z) < 1.1 && Math.abs(c.y - 0.45 - feet) < 1.5) {
+        if (Math.hypot(c.x - x, c.z - z) < 1.1 && Math.abs(mesh.userData.y - COIN_LIFT - feet) < 1.5) {
           // The server answers a yes by sending the coins left, and a no not at all: it may still have
           // you a step behind (running, jumping down). So again every half second while you stand on it.
           this.asked.set(i, performance.now());

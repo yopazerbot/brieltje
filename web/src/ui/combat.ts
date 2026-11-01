@@ -29,6 +29,7 @@ export class Combat {
   alive = true;
   me = '';
   private limit = 10;
+  private teams: { goal: number; score: { house: number; bungalow: number } } | null = null;
   private scores: Score[] = [];
   private active = false;
   private held = false;
@@ -202,8 +203,17 @@ export class Combat {
     $('hp-fill').style.width = `${this.hp}%`;
   }
 
+  /** The teams game (its goal and the teams' score) for the scoreboard's heading, or null outside it. */
+  setTeams(teams: { goal: number; score: { house: number; bungalow: number } } | null): void {
+    this.teams = teams;
+    this.drawBoard();
+  }
+
   private drawBoard(): void {
-    $('score-goal').textContent = t(paintball.on ? 'paint.goal' : 'combat.goal', { n: this.limit });
+    const tm = this.teams;
+    $('score-goal').textContent = tm
+      ? t(paintball.on ? 'paint.teamsGoal' : 'combat.teamsGoal', { n: tm.goal, h: tm.score.house, b: tm.score.bungalow })
+      : t(paintball.on ? 'paint.goal' : 'combat.goal', { n: this.limit });
     const head = document.createElement('tr');
     const titles = paintball.on ? (['combat.player', 'paint.tags', 'paint.taggedCol', 'combat.points'] as const) : (['combat.player', 'combat.kills', 'combat.deaths', 'combat.points'] as const);
     for (const h of titles) {

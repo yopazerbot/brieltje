@@ -195,7 +195,7 @@ export class Modes {
         teams[n] = count <= Object.keys(teams).length - count ? 'house' : 'bungalow';
       }
       this.state = { kind, phase: 'playing', until: now + TEAMS_MS, teams, score: { house: 0, bungalow: 0 }, switched: byName() };
-      this.say(`${by} started House against bungalow: first team to ${TEAM_GOAL} kills. Switch teams in the menu (Together).`, 'teamsStarted', { name: by, n: TEAM_GOAL });
+      this.say(`${by} started House against bungalow: first team to ${TEAM_GOAL} kills. Switch teams in the menu.`, 'teamsStarted', { name: by, n: TEAM_GOAL });
       this.game.roundOver = null; // the teams' score counts now
       this.game.teamsChanged(names);
     } else if (kind === 'tag') {

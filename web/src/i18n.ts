@@ -170,6 +170,8 @@ const en = {
   'tog.noteAlone': 'You are playing alone. Together you play in the same world as the others: you see each other, chat and play party games. Type your name and the PIN you were given.',
   'team.house': 'House',
   'team.bungalow': 'Bungalow',
+  'role.it': 'It',
+  'role.seeker': 'Seeker',
   'lb.button': 'Leaderboard',
   'lb.sub': 'All-time totals',
   'lb.hide': 'Hide leaderboard',
@@ -229,6 +231,7 @@ const en = {
   'game.treasureSub': '15 coins in and around the house; most coins wins',
   'game.teams': 'House against bungalow',
   'game.teamsSub': 'Two teams fight, each starts at its own house; first to 25 kills',
+  'game.teamsSub.paint': 'Two teams, each starts at its own house; first team to tag the others 25 times',
   'game.stop': 'Stop the game',
   'game.stopSub': 'Back to playing freely',
   'game.stopAsk': 'Stop the game for everyone?',
@@ -421,6 +424,7 @@ const en = {
   'combat.respawning': 'Respawning…',
   'combat.newRoundIn': 'New round in {n}',
   'combat.goal': 'First to {n} kills wins the round · kill 100 · headshot +50',
+  'combat.teamsGoal': 'First team to {n} kills wins · House {h} – {b} Bungalow',
   'combat.player': 'Player',
   'combat.kills': 'Kills',
   'combat.deaths': 'Deaths',
@@ -443,6 +447,7 @@ const en = {
   'paint.splattered': 'splattered',
   'paint.you': 'you',
   'paint.goal': 'First to tag {n} times wins the round · tag 100 · bullseye +50',
+  'paint.teamsGoal': 'First team to tag the others {n} times wins · House {h} – {b} Bungalow',
   'paint.tags': 'Tags',
   'paint.taggedCol': 'Tagged',
   'paint.out': 'tagged',
@@ -460,6 +465,7 @@ const en = {
   'games.youSeek': 'You seek: tag everyone you find ({use})',
   'games.stayHidden': 'Stay hidden',
   'games.teamsLine': 'House {h} – {b} Bungalow · first to {goal} · you: {team}',
+  'games.teamsExplore': "You're exploring. Pick Paintball or Action to take part.",
   'games.youreIt': "You're it! Tag someone ({use}) · your time {n} s",
   'games.isIt': '{name} is it · your time {n} s',
   'games.coins': '{n} coins left · you {mine}',
@@ -562,7 +568,8 @@ const en = {
   'srv.gameStopped': '{name} stopped the game',
   'srv.needTwo': '{kind} needs at least two players',
   'srv.hideStarted': '{name} started hide and seek: {seeker} seeks. Hide! (30 seconds)',
-  'srv.teamsStarted': '{name} started House against bungalow: first team to {n} kills. Switch teams in the menu (Together).',
+  'srv.teamsStarted': '{name} started House against bungalow: first team to {n} kills. Switch teams in the menu.',
+  'srv.teamsStarted.paint': '{name} started House against bungalow: the first team to tag the others {n} times wins. Switch teams in the menu.',
   'srv.tagStarted': '{name} started tag: {it} is it. The least time as "it" wins.',
   'srv.huntStarted': '{name} started a treasure hunt: {n} coins in and around the house',
   'srv.found': '{name} found {target}',
@@ -766,6 +773,8 @@ const nl = {
   'tog.noteAlone': 'Je speelt alleen. Samen speel je in dezelfde wereld als de anderen: je ziet elkaar, je kunt chatten en partyspelletjes spelen. Typ je naam en de pincode die je kreeg.',
   'team.house': 'Huis',
   'team.bungalow': 'Bungalow',
+  'role.it': 'Tikker',
+  'role.seeker': 'Zoeker',
   'lb.button': 'Klassement',
   'lb.sub': 'Alle rondes ooit samengeteld',
   'lb.hide': 'Klassement verbergen',
@@ -825,6 +834,7 @@ const nl = {
   'game.treasureSub': '15 munten in en rond het huis; wie de meeste vindt, wint',
   'game.teams': 'Huis tegen bungalow',
   'game.teamsSub': 'Twee teams vechten, elk start bij zijn eigen huis; het eerste team aan 25 kills wint',
+  'game.teamsSub.paint': 'Twee teams, elk start bij zijn eigen huis; het eerste team dat de anderen 25 keer geraakt heeft, wint',
   'game.stop': 'Spel stoppen',
   'game.stopSub': 'Terug naar vrij spelen',
   'game.stopAsk': 'Het spel voor iedereen stoppen?',
@@ -1018,6 +1028,7 @@ const nl = {
   'combat.respawning': 'Je komt terug…',
   'combat.newRoundIn': 'Nieuwe ronde over {n}',
   'combat.goal': 'Wie eerst aan {n} kills is, wint de ronde · kill 100 · headshot +50',
+  'combat.teamsGoal': 'Het eerste team aan {n} kills wint · Huis {h} – {b} Bungalow',
   'combat.player': 'Speler',
   'combat.kills': 'Kills',
   'combat.deaths': 'Gestorven',
@@ -1039,6 +1050,7 @@ const nl = {
   'paint.splattered': 'bespatte',
   'paint.you': 'jou',
   'paint.goal': 'Wie eerst {n} keer raak schiet, wint de ronde · raak 100 · voltreffer +50',
+  'paint.teamsGoal': 'Het eerste team dat de anderen {n} keer geraakt heeft, wint · Huis {h} – {b} Bungalow',
   'paint.tags': 'Raak',
   'paint.taggedCol': 'Geraakt',
   'paint.out': 'geraakt',
@@ -1056,6 +1068,7 @@ const nl = {
   'games.youSeek': 'Jij zoekt: tik iedereen aan die je vindt ({use})',
   'games.stayHidden': 'Blijf verstopt',
   'games.teamsLine': 'Huis {h} – {b} Bungalow · eerst aan {goal} · jij: {team}',
+  'games.teamsExplore': 'Je verkent nu. Kies Verfballen of Actie om mee te doen.',
   'games.youreIt': 'Jij bent de tikker! Tik iemand ({use}) · jouw tijd {n} s',
   'games.isIt': '{name} is de tikker · jouw tijd {n} s',
   'games.coins': 'nog {n} munten · jij {mine}',
@@ -1158,7 +1171,8 @@ const nl = {
   'srv.gameStopped': '{name} heeft het spel gestopt',
   'srv.needTwo': 'Voor {kind} zijn minstens twee spelers nodig',
   'srv.hideStarted': '{name} is verstoppertje begonnen: {seeker} zoekt. Verstop je! (30 seconden)',
-  'srv.teamsStarted': '{name} is Huis tegen bungalow begonnen: het eerste team aan {n} kills wint. Wissel van team in het menu (Samen).',
+  'srv.teamsStarted': '{name} is Huis tegen bungalow begonnen: het eerste team aan {n} kills wint. Wissel van team in het menu.',
+  'srv.teamsStarted.paint': '{name} is Huis tegen bungalow begonnen: het eerste team dat de anderen {n} keer geraakt heeft, wint. Wissel van team in het menu.',
   'srv.tagStarted': '{name} is tikkertje begonnen: {it} is de tikker. Wie het kortst tikker is, wint.',
   'srv.huntStarted': '{name} is een schattenjacht begonnen: {n} munten in en rond het huis',
   'srv.found': '{name} heeft {target} gevonden',
@@ -1317,6 +1331,22 @@ const isKey = (k: string | undefined): k is Key => !!k && Object.hasOwn(en, k);
 const any = (key: Key) => DICTS[current][key];
 
 /**
+ * Child-friendly words (Paintball, by choice or the admin's rule; src/paintball.ts): a text with a
+ * `.paint` twin ("tag the others 25 times" for "25 kills") uses it, in the HTML and in the server's
+ * messages.
+ */
+let friendly = false;
+export function setFriendly(on: boolean): void {
+  if (on === friendly) return;
+  friendly = on;
+  applyStatic();
+}
+const variant = (key: Key): Key => {
+  const twin = `${key}.paint`;
+  return friendly && isKey(twin) ? twin : key;
+};
+
+/**
  * The static HTML in the current language: `data-i18n` (the text), `data-i18n-rich` (text with
  * **bold**), `data-i18n-title`, `data-i18n-placeholder` and `data-i18n-aria` (aria-label). Also
  * the page's title, its lang attribute and the language buttons.
@@ -1325,7 +1355,7 @@ export function applyStatic(root: ParentNode = document): void {
   const each = (attr: string, set: (el: HTMLElement, text: string) => void) => {
     root.querySelectorAll<HTMLElement>(`[${attr}]`).forEach((el) => {
       const key = el.getAttribute(attr) ?? undefined;
-      if (isKey(key)) set(el, any(key));
+      if (isKey(key)) set(el, any(variant(key)));
       else if (import.meta.env.DEV) console.error(`i18n: no text for ${attr}="${key}"`);
     });
   };
@@ -1479,7 +1509,7 @@ export function serverText(code: unknown, args: unknown, fallback: string): stri
   const names = a.names;
   if (Array.isArray(names) && Object.hasOwn(en, `${key}.one`)) key = `${key}.${names.length === 1 ? 'one' : 'other'}`;
   if (!isKey(key)) return fallback;
-  const text = DICTS[current][key];
+  const text = DICTS[current][variant(key)];
   // Every placeholder must be filled; a server that sent too little gets its own text shown.
   for (const m of text.matchAll(/\{(\w+)\}/g)) if (!Object.hasOwn(params, m[1])) return fallback;
   return fill(text, params);

@@ -68,7 +68,7 @@ export interface Mark {
   color: string;
   name?: string;
   yaw?: number;
-  kind: 'player' | 'car' | 'horse';
+  kind: 'player' | 'car' | 'horse' | 'coin';
 }
 
 const portal = (id: string) => PORTALS.find((p) => p.id === id);
@@ -282,7 +282,7 @@ export class BigMap {
         g.restore();
       } else {
         g.beginPath();
-        g.arc(x, y, m.kind === 'horse' ? 3.5 : 5.5, 0, Math.PI * 2);
+        g.arc(x, y, m.kind === 'horse' || m.kind === 'coin' ? 3.5 : 5.5, 0, Math.PI * 2); // a hunt's coin: small and gold
         g.fillStyle = m.color;
         g.fill();
         g.strokeStyle = 'rgba(255, 255, 255, 0.95)';

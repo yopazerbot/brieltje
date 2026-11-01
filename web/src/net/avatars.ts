@@ -7,6 +7,47 @@ import { netClock, Track } from './track';
 import { gunsReady } from '../weapon';
 import { muzzleFlash } from '../world/effects';
 import { buildSwat, hasSwat, swatReady, type Body, type Outfit as SwatOutfit } from './swat';
+import { onLang, t } from '../i18n';
+
+/**
+ * A player's part in a party game, shown on their figure for everyone: "it" in tag, a seeker in hide
+ * and seek. A ring at the feet in the part's colour and its word above the head (behind walls it
+ * hides, like the figure). One ring shape and one label picture per word, shared by all figures.
+ */
+export type Role = 'it' | 'seeker';
+const ROLE_COLOR: Record<Role, string> = { it: '#ff5a4f', seeker: '#f2b33d' };
+const ringGeo = new THREE.RingGeometry(0.45, 0.6, 32).rotateX(-Math.PI / 2);
+const ringMat: Record<Role, THREE.MeshBasicMaterial> = {
+  it: new THREE.MeshBasicMaterial({ color: ROLE_COLOR.it, transparent: true, opacity: 0.9, depthWrite: false }),
+  seeker: new THREE.MeshBasicMaterial({ color: ROLE_COLOR.seeker, transparent: true, opacity: 0.9, depthWrite: false }),
+};
+const labels = new Map<string, THREE.SpriteMaterial>(); // role and word -> its picture
+
+function roleLabel(role: Role): THREE.SpriteMaterial {
+  const word = t(role === 'it' ? 'role.it' : 'role.seeker');
+  const key = `${role}:${word}`;
+  let mat = labels.get(key);
+  if (mat) return mat;
+  const c = document.createElement('canvas');
+  c.width = 256;
+  c.height = 64;
+  const g = c.getContext('2d')!;
+  g.font = 'bold 34px Bahnschrift, Arial Narrow, sans-serif';
+  const w = Math.min(248, g.measureText(word.toUpperCase()).width + 36);
+  g.fillStyle = ROLE_COLOR[role];
+  g.beginPath();
+  g.roundRect((256 - w) / 2, 6, w, 52, 10);
+  g.fill();
+  g.fillStyle = '#14161a';
+  g.textAlign = 'center';
+  g.textBaseline = 'middle';
+  g.fillText(word.toUpperCase(), 128, 33);
+  const tex = new THREE.CanvasTexture(c);
+  tex.colorSpace = THREE.SRGBColorSpace;
+  mat = new THREE.SpriteMaterial({ map: tex, transparent: true });
+  labels.set(key, mat);
+  return mat;
+}
 
 /**
  * Other players. Normally the rigged SWAT character (see swat.ts); if that
@@ -251,6 +292,9 @@ interface Avatar {
   /** Respawned or through a portal: hidden until a state from their new place (its teleport counter then) comes, or a moment has passed */
   hiddenWarp: number | null;
   hiddenAt: number;
+  /** Their part in a party game, its ring and its word (see Role) */
+  role: Role | null;
+  marks: THREE.Object3D[];
   speed: number;
   forward: number;
   side: number;
@@ -274,6 +318,35 @@ export class Avatars {
     void Promise.all([swatReady, gunsReady]).then(() => {
       for (const [name, a] of [...this.avatars]) this.rebuild(name, a, a.color);
     });
+    // Another language: the parts' words again.
+    onLang(() => {
+      for (const [name, a] of this.avatars) {
+        const role = a.role;
+        this.setRole(name, null);
+        this.setRole(name, role);
+      }
+    });
+  }
+
+  /** A player's part in a party game (null: none): its ring and word on their figure. */
+  setRole(name: string, role: Role | null): void {
+    const a = this.avatars.get(name);
+    if (!a || a.role === role) return;
+    for (const m of a.marks) m.removeFromParent();
+    a.marks = [];
+    a.role = role;
+    if (!role) return;
+    const ring = new THREE.Mesh(ringGeo, ringMat[role]);
+    ring.position.y = 0.04;
+    ring.renderOrder = 2;
+    const label = new THREE.Sprite(roleLabel(role));
+    label.position.y = 2.32;
+    label.scale.set(0.8, 0.2, 1);
+    for (const m of [ring, label]) {
+      m.userData.ignoreRay = true;
+      a.root.add(m);
+    }
+    a.marks = [ring, label];
   }
 
   add(name: string, color: string): void {
@@ -291,7 +364,7 @@ export class Avatars {
     this.group.add(root);
     this.avatars.set(name, {
       body, color, root, tag, track: new Track<PlayerSample>(ANGLES, JUMP), latest: null, killed: false, hiddenWarp: null, hiddenAt: 0,
-      speed: 0, forward: 0, side: 0, steps: 0,
+      role: null, marks: [], speed: 0, forward: 0, side: 0, steps: 0,
     });
   }
 
@@ -302,6 +375,7 @@ export class Avatars {
     const b = this.avatars.get(name)!;
     Object.assign(b, { track: a.track, latest: a.latest, killed: a.killed, hiddenWarp: a.hiddenWarp, hiddenAt: a.hiddenAt });
     b.root.visible = a.root.visible;
+    this.setRole(name, a.role);
   }
 
   /** A player's colour changed (a team's in the teams game): the outfit that goes with it. */
@@ -313,6 +387,7 @@ export class Avatars {
   remove(name: string): void {
     const a = this.avatars.get(name);
     if (!a) return;
+    for (const m of a.marks) m.removeFromParent(); // their ring shape is shared: not disposed below
     a.root.removeFromParent();
     // Block figures own their geometry; SWAT clones share the model's.
     if (!a.body.shared) {
@@ -415,6 +490,7 @@ export class Avatars {
       // Just respawned: blink while they can't be hurt. In the car only their name shows, above it.
       a.body.root.visible = !t.d && (!(t.safe && alive) || Math.floor(now / 120) % 2 === 0);
       a.tag.visible = alive && this.showNames;
+      for (const m of a.marks) m.visible = alive; // the part shows also when names are off (hide and seek)
       for (const h of a.body.hits) h.visible = alive && t.armed && !t.d && a.root.visible;
     }
   }

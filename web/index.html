@@ -263,6 +263,14 @@
                       <button class="seg-btn" type="button" data-team="house"><b data-i18n="team.house">House</b><span></span></button>
                       <button class="seg-btn" type="button" data-team="bungalow"><b data-i18n="team.bungalow">Bungalow</b><span></span></button>
                     </div>
+                    <!-- Exploring has no weapon: out of the fight. The Play tab's mode buttons, here too (src/ui/menu.ts). -->
+                    <div id="team-explore" class="hidden">
+                      <p class="note" data-i18n="games.teamsExplore">You're exploring. Pick Action or Paintball to take part.</p>
+                      <div class="seg">
+                        <button class="seg-btn" type="button" data-play="paintball"><b data-i18n="mode.paintball">Paintball</b><span data-i18n="mode.paintballSub2">Paint guns · for everyone</span></button>
+                        <button class="seg-btn" type="button" data-play="action"><b data-i18n="mode.action">Action</b><span data-i18n="mode.actionSub2">Hands and pistol</span></button>
+                      </div>
+                    </div>
                   </div>
                   <button id="mp-leave" class="mini hidden" type="button" data-i18n="tog.leave">Leave, play alone</button>
                 </div>

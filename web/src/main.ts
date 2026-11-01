@@ -11,7 +11,7 @@ import { Player } from './player';
 import { Hud } from './ui/hud';
 import { fillScreen, input, me, menu, onAccount, setAccount } from './start';
 import { TouchControls } from './controls/touch';
-import { Games } from './ui/games';
+import { Games, type ModeView } from './ui/games';
 import { CLOWN_DEFAULTS, Clowns, KINDS } from './world/clowns';
 import { hurtBy } from '../shared/brutes.mjs';
 import { Horses } from './world/horses';
@@ -1173,7 +1173,26 @@ let netText: () => string = () => '';
 net.onStatus = (text) => {
   netText = text;
   netStatus.textContent = text();
+  games.setOffline(!net.connected && !!me); // the game's bar greys and stops while the connection is down
 };
+/** The menu opens at the team picker the first time after the teams game starts (see openMenu). */
+let teamsMenu = false;
+/**
+ * A game's state from the server: the bar and the coins, everyone's part on their figure ("it",
+ * seekers), the scoreboard's heading in the teams game. When the teams game starts, an explorer is
+ * told how to take part, and the next menu opens at the team picker.
+ */
+function followGame(view: ModeView): void {
+  const before = games.view;
+  games.set(view);
+  for (const name of online.keys()) avatars.setRole(name, games.roleOf(name));
+  const teams = games.view.kind === 'teams' && games.view.phase === 'playing';
+  combat.setTeams(teams ? { goal: games.view.goal ?? 25, score: games.view.score ?? { house: 0, bungalow: 0 } } : null);
+  if (teams && !(before.kind === 'teams' && before.phase === 'playing')) {
+    teamsMenu = true;
+    if (!weapon.enabled) chat.system(() => t('games.teamsExplore'));
+  }
+}
 // Ended for good (another tab took over, the session ended, a new PIN): back to playing alone, as after
 // a kick. Else the page stayed as it was: the others frozen in place, a game's bar counting down, and a
 // seeker's eyes shut with no way to move.
@@ -1214,7 +1233,7 @@ net.onMessage = (m: ServerMsg) => {
       clowns.setAll(m.clowns ?? CLOWN_DEFAULTS);
       furnishing.setAll(m.furniture ?? []);
       games.me = m.you;
-      games.set(m.mode ?? { kind: 'free' });
+      followGame(m.mode ?? { kind: 'free' });
       applyRules(m.rules ?? ANYTHING_GOES);
       getOut(false); // alone you may have been driving: the shared cars are where the server has them
       getOffHorse(false); // or riding
@@ -1232,7 +1251,7 @@ net.onMessage = (m: ServerMsg) => {
       applyRules(m.rules);
       break;
     case 'mode':
-      games.set(m.mode);
+      followGame(m.mode);
       applyRules(rules); // names over heads off during hide and seek, back on after
       break;
     case 'rocket': {
@@ -1253,6 +1272,7 @@ net.onMessage = (m: ServerMsg) => {
     }
     case 'join':
       avatars.add(m.name, m.color);
+      avatars.setRole(m.name, games.roleOf(m.name));
       online.set(m.name, m.color);
       showOnline();
       chat.system(() => t('chat.joined', { name: m.name }));
@@ -1481,9 +1501,15 @@ bigMap.onWaypoint = updateRoute;
 
 /**
  * The pause menu, on the tab it was left on, or on `tab`. It opens before the mouse is let go, so
- * the pointer-lock change that follows finds it open and doesn't open it again on another tab.
+ * the pointer-lock change that follows finds it open and doesn't open it again on another tab. The
+ * first time after the teams game starts, on the team picker (Together): on a phone the menu's tabs
+ * show only their icons, and "switch teams in the menu" should lead straight there.
  */
 function openMenu(tab?: string): void {
+  if (!tab && teamsMenu && games.view.kind === 'teams' && games.view.phase === 'playing') {
+    tab = 'together';
+    teamsMenu = false;
+  }
   menu.showPause(tab);
   document.exitPointerLock?.();
   if (me?.role === 'admin') admin.show(me.username);
@@ -1635,6 +1661,7 @@ renderer.setAnimationLoop((now: number) => {
   pickups.group.visible = !menu.onStartScreen && weapon.enabled;
   portals.group.visible = !menu.onStartScreen;
   if (menu.onStartScreen) weapon.hidden = true; // nor the pistol in your hand: from the start view its barrel is a ring mid-screen
+  games.setExploring(!!me && !weapon.enabled); // the teams game's hint in the menu follows a change of mode there
   if (menu.open) {
     travelPanel.hide();
     if (menu.onStartScreen) startCamera();
@@ -1912,6 +1939,7 @@ renderer.setAnimationLoop((now: number) => {
       ...clowns.blips().map((b) => ({ ...b, color: b.kind === 'strongman' ? '#d0782e' : '#12a3a0', kind: 'cat' as const })),
       ...horses.blips().map((b) => ({ ...b, color: '#8a5a3a', kind: 'cat' as const })),
       ...(games.hideOthers ? [] : avatars.blips().map((b) => ({ ...b, kind: 'player' as const }))),
+      ...games.coinSpots().map((c) => ({ ...c, color: '#f2c14e', kind: 'coin' as const })), // the hunt's coins left
     ];
     const shapes = [...furnishing.pieces.values()].filter((p) => !p.item.startsWith('rug')).map((p) => ({ ring: footprint(p), y: p.y }));
     for (const c of cars) if (c.ready) shapes.push({ ring: c.footprint(), y: c.y });
@@ -1934,6 +1962,7 @@ renderer.setAnimationLoop((now: number) => {
       ...cars.filter((c) => c.ready).map((c) => ({ x: c.x, z: c.z, yaw: c.yaw, color: c.spec.paint, kind: 'car' as const })),
       ...horses.blips().map((h) => ({ ...h, color: '#8a5a3a', kind: 'horse' as const })),
       ...(games.hideOthers ? [] : avatars.marks().map((a) => ({ ...a, kind: 'player' as const }))),
+      ...games.coinSpots().map((c) => ({ x: c.x, z: c.z, color: '#f2c14e', kind: 'coin' as const })),
     ];
     bigMap.tick(mapYou(), marks);
   } else composer.render(dt); // the menu's Map tab covers most of the screen: the world isn't drawn behind it

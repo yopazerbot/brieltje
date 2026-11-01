@@ -482,11 +482,16 @@ body.touch #full-hint { top: calc(8px + env(safe-area-inset-top, 0px)); left: ca
   background: var(--panel); border-bottom: 3px solid var(--accent);
 }
 #modebar.show { display: block; }
+/* The connection is down: the game may be over on the server, so the bar greys and its clock stops. */
+#modebar.stale { opacity: 0.5; }
+/* Above the chat's lines in the HUD; the touch buttons (outside the HUD) stay usable. */
 #blindfold {
-  position: fixed; inset: 0; display: none; align-items: center; justify-content: center; padding: 24px; text-align: center;
+  position: fixed; inset: 0; z-index: 1; display: none; align-items: center; justify-content: center; padding: 24px; text-align: center;
   font-size: 28px; font-weight: 700; color: var(--ink); background: #050608;
 }
 #blindfold.show { display: flex; }
+/* On a phone the text keeps clear of the buttons on both sides. */
+body.touch #blindfold { padding: 24px 150px; font-size: 20px; line-height: 1.35; }
 .context-lost {
   position: fixed; inset: 0; z-index: 100; display: flex; align-items: center; justify-content: center; padding: 24px; text-align: center;
   font-size: 18px; line-height: 1.5; background: rgba(12, 14, 18, 0.94); color: var(--ink);

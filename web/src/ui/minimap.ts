@@ -23,7 +23,7 @@ export interface Blip {
   z: number;
   y: number;
   color: string;
-  kind: 'player' | 'cat' | 'item';
+  kind: 'player' | 'cat' | 'item' | 'coin';
 }
 
 export class Minimap {
@@ -161,6 +161,15 @@ export class Minimap {
         g.lineTo(-4, 0);
         g.closePath();
         g.fill();
+      } else if (b.kind === 'coin') {
+        // A treasure hunt's coin: gold with a dark edge, faint on another floor.
+        g.beginPath();
+        g.arc(0, 0, 3.5, 0, Math.PI * 2);
+        g.fillStyle = other ? 'rgba(242, 193, 78, 0.35)' : b.color;
+        g.fill();
+        g.strokeStyle = 'rgba(60, 40, 0, 0.8)';
+        g.lineWidth = 1.2;
+        g.stroke();
       } else {
         g.beginPath();
         g.arc(0, 0, b.kind === 'cat' ? 2.5 : 4.5, 0, Math.PI * 2);

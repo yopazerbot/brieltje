@@ -8,7 +8,7 @@
  * in Action, each seeing their own. The modules ask `paintball.on` when they draw something and
  * listen with `onPaintball` for what is already on screen. No three.js here: the HUD's texts use it.
  */
-import { t } from './i18n';
+import { setFriendly, t } from './i18n';
 
 let on = false;
 const listeners: ((on: boolean) => void)[] = [];
@@ -24,6 +24,7 @@ export function setPaintball(next: boolean): void {
   if (next === on) return;
   on = next;
   document.body.classList.toggle('paintball', on);
+  setFriendly(on); // the texts with friendly twins ("tag", not "kill")
   for (const fn of listeners) fn(on);
 }
 
