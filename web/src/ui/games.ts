@@ -19,11 +19,15 @@ export interface ZombiesView {
   wave: number;
   left: number;
   big: boolean;
+  /** How many big ones the wave brings */
+  bigs?: number;
   fighters: number;
   standing: number;
   beaten: Record<string, number>;
   ms: number;
   down: string[];
+  /** Player name -> times down in this game */
+  downs?: Record<string, number>;
   best: { wave: number; names: string[]; at: string } | null;
   record: boolean;
 }
@@ -86,8 +90,8 @@ export class Games {
   readonly group = new THREE.Group();
   /** Send a message to the server */
   onSend: (msg: Record<string, unknown>) => void = () => {};
-  /** Zombies: a new wave began (its number, how many come, whether a big one is in it): the banner. */
-  onWave: (wave: number, count: number, big: boolean) => void = () => {};
+  /** Zombies: a new wave began (its number, how many come, how many big ones are in it): the banner. */
+  onWave: (wave: number, count: number, bigs: number) => void = () => {};
   private ends = 0;
   private zend = document.getElementById('zend')!;
   private zexplore = document.getElementById('zexplore')!;
@@ -116,7 +120,7 @@ export class Games {
     this.view = view ?? { kind: 'free' };
     // Zombies: a wave that just began gets its banner.
     const z = this.view.zombies;
-    if (this.view.kind === 'zombies' && this.view.phase === 'wave' && z && (before.kind !== 'zombies' || (before.zombies?.wave ?? 0) < z.wave)) this.onWave(z.wave, z.left, z.big);
+    if (this.view.kind === 'zombies' && this.view.phase === 'wave' && z && (before.kind !== 'zombies' || (before.zombies?.wave ?? 0) < z.wave)) this.onWave(z.wave, z.left, z.bigs ?? (z.big ? 1 : 0));
     this.ends = performance.now() + (this.view.ms ?? 0);
     this.setOffline(false); // the server's word on the game, fresh
     const keep = new Set((this.view.coins ?? []).map((c) => c.i));

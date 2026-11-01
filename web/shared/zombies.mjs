@@ -483,7 +483,7 @@ export class Horde {
     this.bigAt = Math.floor(this.toSpawn * 0.6); // the big ones come once a good part of the wave is out
     this.cap = aliveCap(this.players);
     this.nextSpawn = now + 400;
-    ev.push({ type: 'wave', wave: this.wave, count: this.toSpawn + this.bigs, big: this.bigs > 0 });
+    ev.push({ type: 'wave', wave: this.wave, count: this.toSpawn + this.bigs, big: this.bigs > 0, bigs: this.bigs });
   }
 
   /** Zombies out of the edge, one at a time, while there is room under the cap. */

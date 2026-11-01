@@ -43,6 +43,8 @@ export class Combat {
   private winner = '';
   /** Down in the Zombies game: back once the wave is beaten, not after a countdown (its line, or null) */
   waiting: (() => string) | null = null;
+  /** The Zombies game for the scoreboard: the wave, everyone's zombies beaten and times down, who is down now; null outside it */
+  private zombies: { wave: number; beaten: Record<string, number>; downs: Record<string, number>; down: string[]; best: number | null } | null = null;
 
   constructor() {
     // Another language: the death screen's and the banner's titles and the scoreboard (the lines under them follow each frame).
@@ -129,14 +131,49 @@ export class Combat {
       if (weapon) line.append(span(` · ${weapon}`, 'arrow'));
     } else line.append(span(killer, '', color(killer)), span(weapon ? ` ${weapon} ` : ' ▸ ', 'arrow'), span(victim, '', color(victim)));
     if (head) line.append(span(t(paintball.on ? 'paint.bullseyeTag' : 'combat.headshotTag'), 'hs'));
+    this.addLine(line, killer === this.me);
+  }
+
+  /**
+   * The Zombies game: a zombie beaten, in plain words, "Robin beat a zombie · Rifle" ("You beat ..."
+   * for your own, `by` empty alone); in paintball "splattered", with the paint gun's name.
+   */
+  zombie(by: string, zombie: string, weapon = ''): void {
+    const mine = !by || by === this.me;
+    const line = document.createElement('div');
+    line.className = mine ? 'kf me' : 'kf';
+    const color = this.scores.find((s) => s.name === by)?.color ?? '';
+    line.append(span(mine ? t('char.you') : by, '', mine ? '' : color), span(` ${t(paintball.on ? 'paint.splattered' : 'z.feedBeat')} `, 'arrow'), span(zombie));
+    if (weapon) line.append(span(` · ${weapon}`, 'arrow'));
+    this.addLine(line, mine);
+  }
+
+  /** The Zombies game: a zombie caught a player, "A zombie caught Robin" ("... caught you"); in paintball "tagged". */
+  caught(victim: string, zombie: string): void {
+    const mine = !victim || victim === this.me;
+    const line = document.createElement('div');
+    line.className = mine ? 'kf me' : 'kf';
+    const color = this.scores.find((s) => s.name === victim)?.color ?? '';
+    line.append(span(zombie.charAt(0).toUpperCase() + zombie.slice(1)), span(` ${t(paintball.on ? 'paint.tagged' : 'z.feedCaught')} `, 'arrow'), span(mine ? t('paint.you') : victim, '', mine ? '' : color));
+    this.addLine(line, false);
+  }
+
+  /** A line into the kill feed (at most five, each fading after FEED_S); your own kill marks the crosshair and dings. */
+  private addLine(line: HTMLElement, mine: boolean): void {
     $('killfeed').append(line);
     this.feed.push({ el: line, left: FEED_S });
     if (this.feed.length > 5) this.feed.shift()?.el.remove();
-    if (killer === this.me) {
+    if (mine) {
       this.hitMarker(true);
       this.tone(880, 0.07, 0.25, 'sine');
       setTimeout(() => this.tone(1320, 0.1, 0.25, 'sine'), 80);
     }
+  }
+
+  /** The Zombies game for the scoreboard (Tab): zombies beaten and times down instead of kills and deaths; null outside it. */
+  setZombies(z: { wave: number; beaten: Record<string, number>; downs?: Record<string, number>; down: string[]; best: { wave: number } | null } | null): void {
+    this.zombies = z ? { wave: z.wave, beaten: z.beaten, downs: z.downs ?? {}, down: z.down, best: z.best?.wave ?? null } : null;
+    this.drawBoard();
   }
 
   /** Red arc around the crosshair pointing to where a hit came from (radians, 0 = ahead, positive = left). */
@@ -212,6 +249,7 @@ export class Combat {
   }
 
   private drawBoard(): void {
+    if (this.zombies) return this.drawZombies(this.zombies);
     const tm = this.teams;
     $('score-goal').textContent = tm
       ? t(paintball.on ? 'paint.teamsGoal' : 'combat.teamsGoal', { n: tm.goal, h: tm.score.house, b: tm.score.bungalow })
@@ -235,6 +273,39 @@ export class Combat {
         if (!s.armed) name.append(span(t('combat.exploring'), 'exploring'));
         else if (!s.alive) name.append(span(t(paintball.on ? 'paint.out' : 'combat.dead'), 'exploring'));
         const cells = [s.kills, s.deaths, s.points].map((n) => {
+          const td = document.createElement('td');
+          td.className = 'num';
+          td.textContent = String(n);
+          return td;
+        });
+        tr.append(name, ...cells);
+        return tr;
+      });
+    $('score-table').replaceChildren(head, ...rows);
+  }
+
+  /** The scoreboard during Zombies: the wave (and the best ever), each player's zombies beaten (most first) and times down; who waits for the wave's end. */
+  private drawZombies(z: NonNullable<Combat['zombies']>): void {
+    $('score-goal').textContent = z.best ? t('z.boardBest', { n: z.wave, best: z.best }) : t('z.board', { n: z.wave });
+    const head = document.createElement('tr');
+    for (const h of ['combat.player', paintball.on ? 'z.colPaint' : 'z.col', paintball.on ? 'z.colDownsPaint' : 'z.colDowns'] as const) {
+      const th = document.createElement('th');
+      th.textContent = t(h);
+      head.append(th);
+    }
+    const down = new Set(z.down);
+    const rows = [...this.scores]
+      .sort((a, b) => (z.beaten[b.name] ?? 0) - (z.beaten[a.name] ?? 0) || (z.downs[a.name] ?? 0) - (z.downs[b.name] ?? 0))
+      .map((s) => {
+        const tr = document.createElement('tr');
+        if (s.name === this.me) tr.className = 'me';
+        if (down.has(s.name)) tr.classList.add('dead');
+        const name = document.createElement('td');
+        name.className = 'name';
+        name.append(span(s.name, '', s.color));
+        if (!s.armed) name.append(span(t('combat.exploring'), 'exploring'));
+        else if (down.has(s.name)) name.append(span(t(paintball.on ? 'paint.out' : 'z.down'), 'exploring'));
+        const cells = [z.beaten[s.name] ?? 0, z.downs[s.name] ?? 0].map((n) => {
           const td = document.createElement('td');
           td.className = 'num';
           td.textContent = String(n);

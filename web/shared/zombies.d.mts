@@ -105,7 +105,7 @@ export interface HordePlayer {
 }
 
 export type HordeEvent =
-  | { type: 'wave'; wave: number; count: number; big: boolean }
+  | { type: 'wave'; wave: number; count: number; big: boolean; bigs: number }
   | { type: 'spawn'; id: number }
   | { type: 'swipe'; id: number; name: string; damage: number }
   | { type: 'cleared'; wave: number }

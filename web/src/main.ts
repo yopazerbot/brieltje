@@ -15,7 +15,7 @@ import { Games, type ModeView } from './ui/games';
 import { CLOWN_DEFAULTS, Clowns, KINDS } from './world/clowns';
 import { bruteDamage, hurtBy } from '../shared/brutes.mjs';
 import { Zombies } from './world/zombies';
-import { BIG as BIG_ZOMBIE, Horde, makeIndoors as houseGround, makeNav } from '../shared/zombies.mjs';
+import { BIG as BIG_ZOMBIE, bigOf, Horde, makeIndoors as houseGround, makeNav } from '../shared/zombies.mjs';
 import WEAPON_SPECS from '../shared/weapons.json';
 import { Horses } from './world/horses';
 import { AdminPanel } from './ui/admin';
@@ -1040,7 +1040,7 @@ chat.onSend = (text) => {
 };
 games.onSend = (msg) => net.send(msg);
 // Zombies: a short banner as each wave begins (the big italic line, as on arriving through a portal).
-games.onWave = (n, count, big) => hud.announce(t('z.banner', { n }), t(big ? 'z.bannerBig' : 'z.bannerSub', { count }));
+games.onWave = (n, count, bigs) => hud.announce(t('z.banner', { n }), t(bigs > 1 ? 'z.bannerBigs' : bigs ? 'z.bannerBig' : 'z.bannerSub', { count }));
 // The admin's games: a game starts at once; stopping one is asked again in the page, since a slip of the
 // finger would end it for everyone.
 const stopAsk = $('stop-confirm');
@@ -1163,10 +1163,9 @@ weapon.onZombieHit = (hits, paint) => {
 /** Alone: what a hit did. Beaten: it falls (or vanishes in paint) and the kill feed says so. */
 function zombieResult(id: number, res: 'down' | 'hurt' | null, w: string): void {
   if (!res) return;
-  combat.hitMarker(res === 'down');
-  if (res !== 'down') return;
+  if (res !== 'down') return combat.hitMarker();
   zombies.beaten(id);
-  combat.kill(youName(), zombieName(zombies.isBig(id)), false, weaponName(w));
+  combat.zombie('', zombieName(zombies.isBig(id)), weaponName(w)); // "You beat a zombie · Pistol" (marks the crosshair)
 }
 zombies.onVanish = (at) => effects.vanish(at);
 
@@ -1229,7 +1228,7 @@ function soloView(force = false): void {
     kind: 'zombies', phase: h.phase === 'over' ? 'done' : h.phase, ms, title: 'Zombies',
     result: `The zombies caught everyone at wave ${h.wave}.`, resultCode: solo.record ? 'zOverBest' : 'zOver', resultArgs: { n: h.wave },
     zombies: {
-      wave: h.wave, left: h.left, big: h.bigWave, fighters: fighter ? 1 : 0, standing: fighter && combat.alive ? 1 : 0, beaten: { [name]: mine }, ms,
+      wave: h.wave, left: h.left, big: h.bigWave, bigs: bigOf(h.wave), fighters: fighter ? 1 : 0, standing: fighter && combat.alive ? 1 : 0, beaten: { [name]: mine }, ms,
       down: [], best: solo.best ? { wave: solo.best, names: [name], at: '' } : null, record: solo.record,
     },
   });
@@ -1242,7 +1241,7 @@ function soloTick(dt: number): void {
   if (h.phase === 'over' && now >= solo.endAt) return stopSolo();
   const fighter = weapon.enabled && !driving && !riding && !planner.active;
   for (const e of h.tick(now, dt, [{ name: SOLO_ME, x: player.x, y: player.feet, z: player.z, alive: combat.alive, fighter, safe: false }])) {
-    if (e.type === 'wave') chat.system(() => t(e.big ? 'srv.zWaveBig' : 'srv.zWave', { n: e.wave, count: e.count }));
+    if (e.type === 'wave') chat.system(() => t(e.bigs > 1 ? 'srv.zWaveBigs' : e.big ? 'srv.zWaveBig' : 'srv.zWave', { n: e.wave, count: e.count }));
     else if (e.type === 'cleared') chat.system(() => t('srv.zCleared', { n: e.wave }));
     else if (e.type === 'swipe') soloZombieHurt(e.damage, h.zombies.get(e.id)?.kind === BIG_ZOMBIE, h.zombies.get(e.id));
     else if (e.type === 'over') {
@@ -1273,7 +1272,7 @@ function soloZombieHurt(amount: number, big: boolean, from?: { x: number; z: num
   if (from) combat.hitFrom(Math.atan2(-(from.x - player.x), -(from.z - player.z)) - player.yaw);
   if (combat.hp > 0) return;
   combat.died(zombieName(big), false);
-  combat.kill(zombieName(big), t('char.you'), false, '');
+  combat.caught('', zombieName(big)); // "A zombie caught you"
 }
 /** The Play tab's button: Zombies alone, or Stop Zombies while it runs; together the admin starts it for everyone. */
 function showSoloButton(): void {
@@ -1579,6 +1578,8 @@ function followGame(view: ModeView): void {
   for (const name of online.keys()) avatars.setRole(name, games.roleOf(name));
   const teams = games.view.kind === 'teams' && games.view.phase === 'playing';
   combat.setTeams(teams ? { goal: games.view.goal ?? 25, score: games.view.score ?? { house: 0, bungalow: 0 } } : null);
+  // Zombies: the scoreboard (Tab) shows everyone's zombies beaten and times down, as the end screen does.
+  combat.setZombies(games.view.kind === 'zombies' ? games.view.zombies ?? null : null);
   if (teams && !(before.kind === 'teams' && before.phase === 'playing')) {
     teamsMenu = true;
     if (!weapon.enabled) chat.system(() => t('games.teamsExplore'));
@@ -1759,7 +1760,9 @@ net.onMessage = (m: ServerMsg) => {
       if (hitAngle(m.by) !== null) combat.hitFrom(hitAngle(m.by)!);
       break;
     case 'kill':
-      combat.kill(whoName(m.killer), m.victim, m.head, weaponName(m.w));
+      // A zombie's in plain words ("A zombie caught Robin"); a player's as "killer weapon victim".
+      if (m.killer === 'a zombie' || m.killer === 'a big zombie') combat.caught(m.victim, whoName(m.killer));
+      else combat.kill(whoName(m.killer), m.victim, m.head, weaponName(m.w));
       if (m.victim === me?.username) {
         combat.died(whoName(m.killer), m.head);
         rumble(1, 1, 450);
@@ -1785,7 +1788,7 @@ net.onMessage = (m: ServerMsg) => {
     case 'zdown': // a zombie beaten (server/zombies.mjs): it falls, or vanishes in paint
       zombies.beaten(m.id);
       // In the kill feed: your own, and the big ones (sixteen players beat over a hundred in a wave: a flood otherwise).
-      if (m.by === me?.username || zombies.isBig(m.id)) combat.kill(m.by, zombieName(zombies.isBig(m.id)), false, weaponName(m.w));
+      if (m.by === me?.username || zombies.isBig(m.id)) combat.zombie(m.by, zombieName(zombies.isBig(m.id)), weaponName(m.w));
       break;
     case 'zgone': // fallen zombies taken away, or all of them when the game ends
       zombies.gone(m.ids);

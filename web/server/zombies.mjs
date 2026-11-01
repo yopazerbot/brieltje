@@ -12,7 +12,7 @@
 // wave reached, each player's zombies beaten and the best wave ever (kept in the database's meta
 // table, as the rules are) show for DONE_MS.
 
-import { BIG, Horde } from '../shared/zombies.mjs';
+import { BIG, bigOf, Horde } from '../shared/zombies.mjs';
 import { zombieEntry } from '../shared/wire.mjs';
 
 export const DONE_MS = 15_000;
@@ -31,6 +31,8 @@ export class ZombieGame {
     /** Who took part (any time in this game), and who is down until the wave is beaten */
     this.players = new Set(names);
     this.down = new Set();
+    /** Player name -> times down in this game (the scoreboard's column) */
+    this.downs = Object.create(null);
     this.best = game.zombieBest;
     this.record = false;
   }
@@ -69,8 +71,8 @@ export class ZombieGame {
     const beaten = Object.create(null);
     for (const n of this.players) if (here(n) || h.beaten[n]) beaten[n] = h.beaten[n] ?? 0;
     return {
-      wave: h.wave, left: h.left, big: h.bigWave, fighters, standing, beaten, ms: this.ms(now),
-      down: [...this.down].filter(here), best: this.best, record: this.record,
+      wave: h.wave, left: h.left, big: h.bigWave, bigs: bigOf(h.wave), fighters, standing, beaten, ms: this.ms(now),
+      down: [...this.down].filter(here), downs: { ...this.downs }, best: this.best, record: this.record,
     };
   }
 
@@ -91,8 +93,9 @@ export class ZombieGame {
     for (const e of events) {
       if (e.type === 'wave') {
         // Everyone who fights is counted for the wave's size; the line says how many come.
-        const big = e.big ? 'zWaveBig' : 'zWave';
-        this.modes.say(`Wave ${e.wave}: ${e.count} zombies are coming!${e.big ? ' A big one is with them!' : ''}`, big, { n: e.wave, count: e.count });
+        const code = e.bigs > 1 ? 'zWaveBigs' : e.big ? 'zWaveBig' : 'zWave';
+        const more = e.bigs > 1 ? ' Big ones are with them!' : e.big ? ' A big one is with them!' : '';
+        this.modes.say(`Wave ${e.wave}: ${e.count} zombies are coming!${more}`, code, { n: e.wave, count: e.count });
         changed = true;
       } else if (e.type === 'swipe') {
         const p = g.players.get(e.name);
@@ -133,6 +136,7 @@ export class ZombieGame {
   /** A player went down (game.zombieHurt or a hit): they wait for the end of the wave. */
   downed(name) {
     this.down.add(name);
+    this.downs[name] = (this.downs[name] ?? 0) + 1;
     this.modes.send();
   }
 
