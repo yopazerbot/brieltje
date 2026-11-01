@@ -27,6 +27,12 @@ export const KINDS = { hide: 'Hide and seek', tag: 'Tag', treasure: 'Treasure hu
 const HOUSE = JSON.parse(readFileSync(new URL('../src/data/house.json', import.meta.url), 'utf8'));
 const OUTSIDE = [[2.2, -0.05, 15.6], [6.5, -0.05, -1.4], [4.5, -0.05, -8], [8.5, -0.05, -15], [0.6, -0.05, -12], [10.8, -0.05, 6], [-1.6, -0.05, 4], [5.9, 3.06, -1.6]];
 
+/**
+ * A table keyed by player names, without the keys every object has: a player called "constructor"
+ * or "__proto__" (both fit the name rules) scores like anyone else.
+ */
+const byName = (entries = []) => Object.assign(Object.create(null), Object.fromEntries(entries));
+
 function inside(x, z, ring) {
   let hit = false;
   for (let i = 0, j = ring.length - 1; i < ring.length; j = i++) {
@@ -78,28 +84,36 @@ export class Modes {
     return !!t && t === this.teamOf(b);
   }
 
-  /** The team with fewer players (the house when even). */
+  /** The team with fewer players here now (the house when even). */
   smaller() {
     const n = { house: 0, bungalow: 0 };
-    for (const t of Object.values(this.state.teams)) n[t]++;
+    for (const t of Object.values(this.here(this.state.teams))) n[t]++;
     return n.bungalow < n.house ? 'bungalow' : 'house';
+  }
+
+  /** Of a table by player names, the players here now (those away keep their part for when they're back). */
+  here(table) {
+    return byName(Object.entries(table).filter(([n]) => this.game.players.has(n)));
   }
 
   /**
    * A player picks a team. Waiting to respawn: they will at its house. Alive: they start again
    * there at once, but only at full health and once in SWITCH_MS (a switch must not heal anyone
-   * or bring them back early).
+   * or bring them back early). Waiting, at most one switch a second: each one is a line in
+   * everyone's chat, and a page sending forty a second would flood it.
    */
   choose(name, team) {
     const s = this.state;
     const p = this.game.players.get(name);
     if (s.kind !== 'teams' || s.phase !== 'playing' || !p || typeof team !== 'string' || !Object.hasOwn(TEAM_NAMES, team) || s.teams[name] === team) return;
     const now = Date.now();
-    if (p.alive && (p.hp < this.game.fullHealth || now < (s.switched[name] ?? 0))) {
+    const since = now - (s.switched[name] ?? -Infinity);
+    if (!p.alive && since < 1000) return;
+    if (p.alive && (p.hp < this.game.fullHealth || since < SWITCH_MS)) {
       return this.game.send(p.ws, { t: 'system', text: 'Switch teams at full health (at most every 15 seconds), or while you wait to come back', code: 'teamWait' });
     }
     s.teams[name] = team;
-    s.switched[name] = now + SWITCH_MS;
+    s.switched[name] = now;
     this.say(`${name} joined team ${TEAM_NAMES[team]}`, 'teamJoined', { name, team });
     this.game.teamsChanged([name], p.alive);
     this.send();
@@ -116,15 +130,15 @@ export class Modes {
     else this.send();
   }
 
-  /** What every browser gets: the game, the phase and its time left, roles and scores. */
+  /** What every browser gets: the game, the phase and its time left, roles and scores (seekers and teams of the players here). */
   view(now = Date.now()) {
     const s = this.state;
     if (s.kind === 'free') return { kind: 'free' };
     return {
       kind: s.kind, phase: s.phase, ms: Math.max(0, s.until - now), title: KINDS[s.kind],
-      seekers: s.seekers ? [...s.seekers] : undefined, it: s.it, times: s.times, coins: s.coins, counts: s.counts,
+      seekers: s.seekers ? [...s.seekers].filter((n) => this.game.players.has(n)) : undefined, it: s.it, times: s.times, coins: s.coins, counts: s.counts,
       result: s.result, resultCode: s.resultCode, resultArgs: s.resultArgs,
-      teams: s.teams, score: s.score, goal: s.kind === 'teams' ? TEAM_GOAL : undefined,
+      teams: s.teams && this.here(s.teams), score: s.score, goal: s.kind === 'teams' ? TEAM_GOAL : undefined,
     };
   }
 
@@ -160,27 +174,29 @@ export class Modes {
       this.say(`${by} stopped the game`, 'gameStopped', { name: by });
       return;
     }
-    if (!KINDS[kind]) return;
+    if (!Object.hasOwn(KINDS, kind)) return;
     const names = this.names();
     if (names.length < 2 && kind !== 'treasure') return this.say(`${KINDS[kind]} needs at least two players`, 'needTwo', { kind });
+    const fromTeams = this.state.kind === 'teams' && kind !== 'teams';
     if (kind === 'hide') {
+      // `players`: who took part, so someone back after a dropped connection plays on as before (see join).
       const seeker = this.pick(names);
-      this.state = { kind, phase: 'hiding', until: now + HIDE_MS, seekers: new Set([seeker]), first: seeker };
+      this.state = { kind, phase: 'hiding', until: now + HIDE_MS, seekers: new Set([seeker]), first: seeker, players: new Set(names) };
       this.say(`${by} started hide and seek: ${seeker} seeks. Hide! (30 seconds)`, 'hideStarted', { name: by, seeker });
     } else if (kind === 'teams') {
       // Everyone on a team, the teams as even as can be (in random order); each starts at its house.
-      const teams = {};
+      const teams = byName();
       for (const n of [...names].sort(() => Math.random() - 0.5)) {
         const count = Object.values(teams).filter((t) => t === 'house').length;
         teams[n] = count <= Object.keys(teams).length - count ? 'house' : 'bungalow';
       }
-      this.state = { kind, phase: 'playing', until: now + TEAMS_MS, teams, score: { house: 0, bungalow: 0 }, switched: {} };
+      this.state = { kind, phase: 'playing', until: now + TEAMS_MS, teams, score: { house: 0, bungalow: 0 }, switched: byName() };
       this.say(`${by} started House against bungalow: first team to ${TEAM_GOAL} kills. Switch teams in the menu (Together).`, 'teamsStarted', { name: by, n: TEAM_GOAL });
       this.game.roundOver = null; // the teams' score counts now
       this.game.teamsChanged(names);
     } else if (kind === 'tag') {
       const it = this.pick(names);
-      this.state = { kind, phase: 'playing', until: now + TAG_MS, it, last: null, lastAt: 0, times: Object.fromEntries(names.map((n) => [n, 0])) };
+      this.state = { kind, phase: 'playing', until: now + TAG_MS, it, last: null, lastAt: 0, times: byName(names.map((n) => [n, 0])) };
       this.say(`${by} started tag: ${it} is it. The least time as "it" wins.`, 'tagStarted', { name: by, it });
     } else {
       const rooms = HOUSE.rooms.filter((r) => r.p?.[0]?.length >= 3);
@@ -194,9 +210,11 @@ export class Modes {
         const [x, y, z] = spots.splice(Math.floor(Math.random() * spots.length), 1)[0];
         coins.push({ i: coins.length, x: +x.toFixed(2), y: +y.toFixed(2), z: +z.toFixed(2) });
       }
-      this.state = { kind, phase: 'playing', until: now + HUNT_MS, coins, counts: Object.fromEntries(names.map((n) => [n, 0])) };
+      this.state = { kind, phase: 'playing', until: now + HUNT_MS, coins, counts: byName(names.map((n) => [n, 0])) };
       this.say(`${by} started a treasure hunt: ${COINS} coins in and around the house`, 'huntStarted', { name: by, n: COINS });
     }
+    // Straight from the teams game to another one: everyone back in their own colours.
+    if (fromTeams) this.game.teamsChanged(names, false);
     this.send();
   }
 
@@ -255,30 +273,38 @@ export class Modes {
     this.send();
   }
 
+  /**
+   * Someone connected during a game. Back after a dropped connection (or a new connection that
+   * replaced the old one): their part as before, their team, their time as "it", their coins, still
+   * hiding or seeking. New: too late to hide, so they help seeking; in the teams game the smaller
+   * team, starting at its house.
+   */
   join(name) {
     const s = this.state;
     if (s.kind === 'teams' && s.phase === 'playing') {
-      s.teams[name] = this.smaller();
-      this.game.teamsChanged([name]);
+      const back = name in s.teams;
+      if (!back) s.teams[name] = this.smaller();
+      this.game.teamsChanged([name], !back);
     }
-    if (s.kind === 'hide') s.seekers.add(name); // too late to hide: helps seeking
+    if (s.kind === 'hide') {
+      if (!s.players.has(name)) s.seekers.add(name);
+      s.players.add(name);
+    }
     if (s.kind === 'tag') s.times[name] ??= 0;
     if (s.kind === 'treasure') s.counts[name] ??= 0;
     if (this.active) this.send();
   }
 
+  /** Someone left during a game: it goes on without them if it can. Their part is kept for when they're back (see join). */
   leave(name) {
     const s = this.state;
     if (!this.active || s.phase === 'done') return;
     if (s.kind === 'hide') {
-      s.seekers.delete(name);
       const names = this.names();
-      if (!s.seekers.size) return names.length >= 2 ? this.finish('The seeker left: the hiders win', 'seekerLeft') : this.finish('Not enough players', 'notEnough');
+      if (names.length < 2) return this.finish('Not enough players', 'notEnough');
+      if (!names.some((n) => s.seekers.has(n))) return this.finish('The seeker left: the hiders win', 'seekerLeft');
       if (!names.some((n) => !s.seekers.has(n))) return this.finish('The seekers found everyone!', 'foundAll');
-    } else if (s.kind === 'teams') {
-      delete s.teams[name];
     } else if (s.kind === 'tag') {
-      delete s.times[name];
       const names = this.names();
       if (names.length < 2) return this.finish('Not enough players', 'notEnough');
       if (s.it === name) {
@@ -319,7 +345,7 @@ export class Modes {
       return this.finish(`Time's up: ${hidden.join(', ')} stayed hidden and win${hidden.length === 1 ? 's' : ''}`, 'hiddenWin', { names: hidden });
     }
     if (s.kind === 'tag') {
-      const ranked = Object.entries(s.times).sort((a, b) => a[1] - b[1]);
+      const ranked = Object.entries(this.here(s.times)).sort((a, b) => a[1] - b[1]); // who is still here: leaving early is no way to win
       if (!ranked.length) return this.finish('Nobody played', 'nobodyPlayed');
       return this.finish(`${ranked[0][0]} wins: only ${Math.round(ranked[0][1])} s as "it"`, 'tagWon', { name: ranked[0][0], n: Math.round(ranked[0][1]) });
     }
