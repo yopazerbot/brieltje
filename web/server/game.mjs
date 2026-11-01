@@ -1014,7 +1014,11 @@ export class Game {
     this.broadcast({ t: 'scores', list: this.scoreList() });
   }
 
-  /** Scores back to zero; everyone who fights (or is dead) starts again at a spawn point. `code` and `args`: `text` for a page in another language. */
+  /**
+   * Scores back to zero; everyone who fights (or is dead) starts again at a spawn point, except during
+   * a party game, where nobody fights and a hider would be pulled out of their hiding place. `code` and
+   * `args`: `text` for a page in another language.
+   */
   newRound(text, code, args) {
     const now = Date.now();
     this.roundOver = null;
@@ -1024,7 +1028,7 @@ export class Game {
       this.scores.set(name, p.score);
     }
     this.broadcast({ t: 'newround', text, code, args });
-    for (const [name, p] of this.players) if (p.state?.armed || !p.alive) this.respawn(name, p, now);
+    if (!this.modes.peaceful) for (const [name, p] of this.players) if (p.state?.armed || !p.alive) this.respawn(name, p, now);
     this.broadcast({ t: 'scores', list: this.scoreList() });
   }
 
