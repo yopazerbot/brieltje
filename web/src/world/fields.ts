@@ -104,8 +104,10 @@ export function fieldRows(g: THREE.BufferGeometry, p: Prism): void {
 /** Rows on (1) or off (0) at once, for the graphics settings. */
 export const rowDetail = { value: 1 };
 
-/** Draw the rows with the fields' material (chained after what it already has: the ground's shading). */
+/** Draw the rows with the fields' material (chained after what it already has: the ground's shading). Once: again, nothing changes. */
 export function patchFields(material: THREE.MeshStandardMaterial): void {
+  if (material.userData.rows) return;
+  material.userData.rows = true;
   const before = material.onBeforeCompile;
   material.onBeforeCompile = (shader, renderer) => {
     before.call(material, shader, renderer);

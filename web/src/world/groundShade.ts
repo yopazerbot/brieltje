@@ -194,6 +194,9 @@ function coverMaterial(rgb: string): THREE.ShaderMaterial {
 }
 
 /** The gardens' stripes and the meadows into the cover image's fourth channel (a 1: a garden, its stripes worked out here). */
+/** The cover image's colours, kept for every bake (a disposed material's shader is compiled anew the next time). */
+const covers = { fields: coverMaterial('1.0, 0.0, 0.0'), tracks: coverMaterial('0.0, 1.0, 0.0'), water: coverMaterial('0.0, 0.0, 1.0') };
+
 const grassCover = new THREE.ShaderMaterial({
   vertexShader: `attribute vec4 grass;
     varying vec4 vGrass;
@@ -246,6 +249,12 @@ export class GroundShade {
   private all: THREE.WebGLRenderTarget | null = null;
   /** The areas baked once the village is in (the village, Molenhoek's far stretch): texture, centre x, z and half size */
   private areas: { key: string; target: THREE.WebGLRenderTarget; area: THREE.Vector3 }[] = [];
+  /**
+   * The pass that puts a bake together, kept from one bake to the next: made and disposed each time, its large
+   * shader was compiled anew for every bake, and the village's two and the whole map's stopped the game for a
+   * third of a second each.
+   */
+  private combine: FullScreenQuad | null = null;
   private lastEye = new THREE.Vector3();
   private on = true;
   /** Which area is read: -1 the house's, else one of `areas` */
@@ -466,8 +475,8 @@ export class GroundShade {
     const cover = new THREE.WebGLRenderTarget(size, size, { minFilter: THREE.LinearFilter, magFilter: THREE.LinearFilter, generateMipmaps: false });
     const fields = blockMaterial('field_soil', renderer).material;
     const tracks = blockMaterial('gravel', renderer).material;
-    const asCover = new Map<THREE.Material, THREE.ShaderMaterial>([[fields, coverMaterial('1.0, 0.0, 0.0')], [tracks, coverMaterial('0.0, 1.0, 0.0')]]);
-    const waterCover = coverMaterial('0.0, 0.0, 1.0');
+    const asCover = new Map<THREE.Material, THREE.ShaderMaterial>([[fields, covers.fields], [tracks, covers.tracks]]);
+    const waterCover = covers.water;
     // Nothing else is drawn: whatever shares a group with the casters (the furniture in the house's) is hidden too.
     const swapped: [THREE.Mesh, THREE.Material | THREE.Material[]][] = [];
     const casting = new Set(shown);
@@ -502,7 +511,6 @@ export class GroundShade {
     renderer.autoClear = autoClear;
     renderer.setClearColor(clearColor, clearAlpha);
     for (const [o, m] of swapped) o.material = m;
-    for (const m of [...asCover.values(), waterCover]) m.dispose();
     lawns?.geometry.dispose();
     scene.background = background;
     scene.fog = fog;
@@ -517,34 +525,34 @@ export class GroundShade {
 
     const out = new THREE.WebGLRenderTarget(size, size, { generateMipmaps: true, minFilter: THREE.LinearMipmapLinearFilter, magFilter: THREE.LinearFilter });
     const relief = terrainTexture();
-    const quad = new FullScreenQuad(
+    const uniforms = {
+      sunDepth: { value: sunTarget.depthTexture },
+      topDepth: { value: topTarget.depthTexture },
+      solidDepth: { value: solidTarget.depthTexture },
+      cover: { value: cover.texture },
+      sunMatrix: { value: vp(sunCam) },
+      topMatrix: { value: vp(topCam) },
+      liveMatrix: { value: live },
+      area: { value: new THREE.Vector3(center.x, center.z, half) },
+      ground: { value: ground },
+      sunBias: { value: Math.max(0.35, (2.5 * r) / depth) / (sunCam.far - sunCam.near) }, // more where a texel is wide (the whole map's)
+      topRange: { value: new THREE.Vector2(topY - topCam.near, topCam.far - topCam.near) },
+      terrainMap: { value: relief },
+      terrainArea: { value: new THREE.Vector3(terrain.x0, terrain.z0, terrain.step) },
+      terrainSize: { value: new THREE.Vector2(terrain.nx, terrain.nz) },
+      sunTap: { value: (1.5 * 2 * r) / depth }, // a texel and a half of the sun's image, as before
+    };
+    this.combine ??= new FullScreenQuad(
       new THREE.ShaderMaterial({
-        uniforms: {
-          sunDepth: { value: sunTarget.depthTexture },
-          topDepth: { value: topTarget.depthTexture },
-          solidDepth: { value: solidTarget.depthTexture },
-          cover: { value: cover.texture },
-          sunMatrix: { value: vp(sunCam) },
-          topMatrix: { value: vp(topCam) },
-          liveMatrix: { value: live },
-          area: { value: new THREE.Vector3(center.x, center.z, half) },
-          ground: { value: ground },
-          sunBias: { value: Math.max(0.35, (2.5 * r) / depth) / (sunCam.far - sunCam.near) }, // more where a texel is wide (the whole map's)
-          topRange: { value: new THREE.Vector2(topY - topCam.near, topCam.far - topCam.near) },
-          terrainMap: { value: relief },
-          terrainArea: { value: new THREE.Vector3(terrain.x0, terrain.z0, terrain.step) },
-          terrainSize: { value: new THREE.Vector2(terrain.nx, terrain.nz) },
-          sunTap: { value: (1.5 * 2 * r) / depth }, // a texel and a half of the sun's image, as before
-        },
+        uniforms,
         vertexShader: 'varying vec2 vUv; void main() { vUv = uv; gl_Position = vec4(position.xy, 0.0, 1.0); }',
         fragmentShader: COMBINE,
       }),
     );
+    Object.assign((this.combine.material as THREE.ShaderMaterial).uniforms, uniforms);
     renderer.setRenderTarget(out);
-    quad.render(renderer);
+    this.combine.render(renderer);
     renderer.setRenderTarget(before);
-    quad.dispose();
-    (quad.material as THREE.Material).dispose();
     for (const t of [sunTarget, topTarget, solidTarget, cover]) t.dispose();
     relief.dispose();
     out.texture.anisotropy = 4;

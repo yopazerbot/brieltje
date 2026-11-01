@@ -60,6 +60,7 @@ import { loadEnvironment } from './world/environment';
 import { house, type DipSpec, type Prism, type Ring, type VillageData } from './world/houseData';
 import { loadProps } from './world/props';
 import { blockMaterial, buildHouseMeshes, grassMaterial, groundFamilies, setAnisotropy, surfaceMaterial, tintedMaterial } from './world/houseMeshes';
+import { patchFields } from './world/fields';
 import { addDiag, startDiag } from './ui/diag';
 import { IndoorLight } from './world/indoorLight';
 import { Portals } from './world/portals';
@@ -159,7 +160,7 @@ function loaded(): void {
     void loadVillage().then(begin, begin);
   } else begin();
   setTimeout(() => void loadVillage(), 500); // playing: now the village
-  setTimeout(() => life.load(), 900); // and the gardens' things, birds and the mower
+  setTimeout(() => life.load(precompile), 900); // and the gardens' things, birds and the mower
   setTimeout(() => void startCountryside(), 900); // and the countryside's life
 }
 setTimeout(loaded, 25000); // never keep the player waiting forever
@@ -281,6 +282,9 @@ groundShade.apply(grassMat, 0.35, true);
 groundShade.addGrass(house.surroundings?.grass); // the gardens' stripes and the meadows
 // The garden's own paths, drive and planted borders too (not the terraces: one is on the roof).
 for (const m of [...groundFamilies(renderer), roadPaint, surfaceMaterial('paving', renderer), surfaceMaterial('bed', renderer)]) groundShade.apply(m as THREE.MeshStandardMaterial);
+// The fields' rows (world/fields.ts) from the start: their large shader is compiled while loading. Added when the
+// countryside came, the fields waited for it, and the game stopped for up to two seconds just after it began.
+patchFields(blockMaterial('field_soil', renderer).material as THREE.MeshStandardMaterial);
 void Promise.all([environmentReady, homeStreet.ready]).then(() => {
   tiles.showAll(); // the ring's tiles beyond the draw distance throw shadows too
   groundShade.bake(renderer, scene, sun, [built.group, hedgeLumps, doors.group, tiles.group], house.ground);
@@ -2220,8 +2224,22 @@ let villageSmoke: Smoke | null = null;
 function loadVillage(): Promise<void> {
   return (villageJob ??= buildVillage());
 }
+/**
+ * Compiles `root`'s shaders in the background (where the browser can), for the composer's target as the game draws
+ * them (no tone mapping there, another colour space: other shaders). Kept out of the scene meanwhile, what comes in
+ * later (the village, the countryside, the gardens' life) is drawn without the game stopping for the compiling.
+ */
+function precompile(root: THREE.Object3D): Promise<unknown> {
+  const was = renderer.getRenderTarget();
+  renderer.setRenderTarget(composer.readBuffer);
+  const done = renderer.compileAsync(root, camera, scene);
+  renderer.setRenderTarget(was);
+  return done.catch(() => undefined);
+}
 async function buildVillage(): Promise<void> {
   village = 'loading';
+  // A frame between the big steps: built all at once, it stopped the game for a second just after it began.
+  const between = () => new Promise((r) => setTimeout(r, 0));
   const data = (await import('./data/village.json')).default as unknown as VillageData;
   const first = poles.length;
   poles.push(...(data.poles ?? []));
@@ -2250,8 +2268,10 @@ async function buildVillage(): Promise<void> {
       models.push(street);
       if (street.userData.landmark === 'molenhoek_end3') endHouse = await loadWalkIn(renderer, street).catch(() => null);
     }
+    await between();
   }
   const drawn = withRoadDetail(withoutLandmarks(data, models.map((m) => m.userData.landmark as string), models.flatMap((m) => (m.userData.replaces as Ring[] | undefined) ?? [])));
+  await between();
   // The centre's clinkers (the church square and the main street) have a texture of their own, fetched with the village: shaded as the other ground covers.
   groundShade.apply(blockMaterial('pave_grey', renderer).material as THREE.MeshStandardMaterial);
   const made: { key: string; pieces: ReturnType<typeof buildTile> }[] = [];
@@ -2266,6 +2286,9 @@ async function buildVillage(): Promise<void> {
   // its cost within the 1 ms allowed. The road detail (world/roadDetail.ts) the same way.
   const far = (m: { key: string }) => Number(m.key.split(',')[0]) >= 5;
   const roads = buildRoadDetail(true, renderer, house.ground);
+  await between();
+  // What the village adds to the scene from here on is drawn once its shaders are compiled (below).
+  const before = new Set([...scene.children, ...tiles.group.children]);
   for (const set of [made, roads.tiles]) {
     tiles.addSet(set.filter((m) => !far(m)), false);
     if (set.some(far)) tiles.addSet(set.filter(far), false, 100, 350);
@@ -2291,6 +2314,14 @@ async function buildVillage(): Promise<void> {
     villageSmoke = new Smoke([new THREE.Vector3(511.39, 13.95, -764.01), new THREE.Vector3(551.64, 16.79, -723.79)], 0.75);
     scene.add(villageSmoke.mesh);
   }
+  // Their shaders compile first, out of the scene (in the background where the browser can): drawn at once, they
+  // stopped the game for half a second while they compiled. Then they go back where they belong.
+  const fresh = [...scene.children, ...tiles.group.children].filter((o) => !before.has(o));
+  const homes = fresh.map((o) => o.parent!);
+  const aside = new THREE.Group();
+  aside.add(...fresh);
+  await precompile(aside);
+  fresh.forEach((o, i) => homes[i].add(o));
   // Each model's blocks for walking into (the town's; the streets' went into the village data above).
   for (const m of models) world.addPrisms((m.userData.blocks as Prism[] | undefined) ?? []);
   world.addDips(data.dips);
@@ -2303,14 +2334,19 @@ async function buildVillage(): Promise<void> {
   }
   for (const t of data.trees) trunks.push({ x: t.x, z: t.z, r: 0.35 });
   portals.settle(); // the village's paving under its portals
+  await between();
   bigMap.addVillage(data);
   await environmentReady;
+  await between();
   const c = landmarks[0] ?? new THREE.Vector2(521.5, -744.2); // the church
   const centre = new THREE.Vector3(c.x, house.ground + terrain.height(c.x, c.y), c.y);
   tiles.showAll(); // every tile throws its shadow, however far the camera is now
   for (const m of models) m.visible = true;
   groundShade.addGrass(data.grass);
   groundShade.bakeVillage(renderer, scene, sun, [tiles.group], house.ground, centre, 345, phone ? 1024 : 2048);
+  await between();
+  tiles.showAll(); // the frame between may have hidden the far tiles again
+  for (const m of models) m.visible = true;
   // Molenhoek's far stretch (the area east of the village, x 880 on) has a shaded area of its own.
   const farPts = (data.area ?? []).filter(([x]) => x > 880);
   if (farPts.length > 2) {
@@ -2321,19 +2357,26 @@ async function buildVillage(): Promise<void> {
     const at = new THREE.Vector3(fx, house.ground + terrain.height(fx, fz), fz);
     groundShade.bakeVillage(renderer, scene, sun, [tiles.group], house.ground, at, Math.max(x1 - x0, z1 - z0) / 2 + 10, phone ? 1024 : 2048, 'molenhoek');
   }
+  await between();
+  tiles.showAll();
+  for (const m of models) m.visible = true;
   // And the whole map, coarse, for the ground beyond those areas.
   groundShade.bakeAll(renderer, scene, sun, [built.group, hedgeLumps, tiles.group], house.ground, phone ? 1024 : 2048);
   village = 'ready';
   for (const c of cars) c.ready = true; // the cars parked in the village (shared/car.json) with it
-  void roadLife.load(renderer, scene, camera);
+  void roadLife.load(renderer, scene, camera, precompile);
 }
 
 /** The countryside's life (world/countryside.ts): herds, birds, bales, field rows, wind and sounds; a chunk of its own. */
 let countryJob: Promise<void> | null = null;
 function startCountryside(): Promise<void> {
-  return (countryJob ??= import('./world/countryside').then(({ Countryside }) => {
+  return (countryJob ??= import('./world/countryside').then(async ({ Countryside }) => {
     const indoors = () => !!player.ground.name && (roomNames.has(player.ground.name) || /floor|stairs/i.test(player.ground.name));
     countryside = new Countryside({ scene, renderer, world, now: () => performance.now() / 1000 + clockOffset, quality: () => quality, phone, far: () => tiles.drawDistance, indoors });
+    // Its herds, birds, ducks and bales: out of the scene until their shaders are in.
+    scene.remove(countryside.group);
+    await precompile(countryside.group);
+    scene.add(countryside.group);
   }));
 }
 
@@ -2403,8 +2446,12 @@ function gameTextures(root: THREE.Object3D): void {
  */
 function withoutLandmarks(data: VillageData, names: string[], houses: Ring[] = []): VillageData {
   const outlines = [...(data.landmarks ?? []).filter((l) => names.includes(l.name)).map((l) => l.p), ...houses];
+  // The outlines' boxes: a point outside one (with the margin) is neither in nor near that outline.
+  const boxes = new Map(outlines.map((ring) => [ring, new THREE.Box2().setFromPoints(ring.map(([x, z]) => new THREE.Vector2(x, z)))]));
   const within = (rings: Ring[], x: number, z: number, margin: number) =>
     rings.some((ring) => {
+      const b = boxes.get(ring);
+      if (b && (x < b.min.x - margin || x > b.max.x + margin || z < b.min.y - margin || z > b.max.y + margin)) return false;
       let hit = false;
       for (let i = 0, j = ring.length - 1; i < ring.length; j = i++) {
         const [xi, zi] = ring[i];

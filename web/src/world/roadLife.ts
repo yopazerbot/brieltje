@@ -39,23 +39,25 @@ export class RoadLife {
   }
 
   /**
-   * Once, when the village is in (its pavings carry the parked cars). Their shaders are
-   * compiled straight away, in the background where the browser can, so the first car that comes
-   * into view doesn't stall a frame.
+   * Once, when the village is in (its pavings carry the parked cars). The traffic and the new roadside
+   * pieces stay out of the scene until `prepare` has compiled their shaders (in the background where the
+   * browser can: main.ts precompile), so the first car that comes into view doesn't stall a frame.
    */
-  load(renderer: THREE.WebGLRenderer, scene: THREE.Scene, camera: THREE.Camera): Promise<void> {
+  load(renderer: THREE.WebGLRenderer, scene: THREE.Scene, camera: THREE.Camera,
+    prepare: (o: THREE.Object3D) => Promise<unknown> = (o) => renderer.compileAsync(o, camera, scene)): Promise<void> {
     return (this.loading ??= (async () => {
       const data = (await import('../data/roads.json')).default as unknown as Parameters<typeof buildRoadside>[0] & Parameters<Traffic['load']>[0];
+      const home = this.group.parent;
+      const aside = new THREE.Group();
+      aside.add(this.group);
+      const before = new Set(this.tiles.group.children);
       buildRoadside(data, this.tiles, this.groundAt);
+      const fresh = this.tiles.group.children.filter((o) => !before.has(o));
+      aside.add(...fresh);
       await this.traffic.load(data);
-      // Everything shown for a moment: the compile looks at what it finds now, then waits for the
-      // graphics driver in the background.
-      const hidden = this.traffic.group.children.filter((o) => !o.visible);
-      for (const o of hidden) o.visible = true;
-      this.tiles.showAll(); // the next update hides the far tiles again
-      const done = [renderer.compileAsync(this.group, camera, scene), renderer.compileAsync(this.tiles.group, camera, scene)];
-      for (const o of hidden) o.visible = false;
-      await Promise.all(done).catch(() => {});
+      await prepare(aside).catch(() => undefined);
+      this.tiles.group.add(...fresh);
+      home?.add(this.group);
     })());
   }
 

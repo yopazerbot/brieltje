@@ -89,6 +89,19 @@ export async function loadStreetModel(renderer: THREE.WebGLRenderer, ground: num
   return scene;
 }
 
+/** An outline's box on the plan: min x, min z, max x, max z. */
+type Box = [number, number, number, number];
+function boxOf(ring: [number, number][]): Box {
+  const b: Box = [Infinity, Infinity, -Infinity, -Infinity];
+  for (const [x, z] of ring) {
+    b[0] = Math.min(b[0], x);
+    b[1] = Math.min(b[1], z);
+    b[2] = Math.max(b[2], x);
+    b[3] = Math.max(b[3], z);
+  }
+  return b;
+}
+
 /** Whether (x, z) lies inside the outline or within `slack` metres of it. */
 function near(ring: [number, number][], x: number, z: number, slack: number): boolean {
   let hit = false;
@@ -106,6 +119,71 @@ function near(ring: [number, number][], x: number, z: number, slack: number): bo
 }
 
 /**
+ * near() for a long outline asked about many points (a rebuilt street's, hundreds of corners): its edges sorted into
+ * 4 m squares. A point is measured against the edges in the squares round it, and counted in or out over the edges
+ * in its row on the shorter side; the same sums on the same edges, so the same answers, without going round it all.
+ */
+function nearTo(ring: [number, number][]): (x: number, z: number, slack: number) => boolean {
+  const C = 4;
+  const cell = (cx: number, cz: number) => (cx + 10000) * 20000 + cz + 10000;
+  const cells = new Map<number, number[]>();
+  const n = ring.length;
+  let [minX, maxX] = [Infinity, -Infinity];
+  for (let i = 0, j = n - 1; i < n; j = i++) {
+    const [xi, zi] = ring[i];
+    const [xj, zj] = ring[j];
+    minX = Math.min(minX, xi);
+    maxX = Math.max(maxX, xi);
+    for (let cx = Math.floor(Math.min(xi, xj) / C); cx <= Math.floor(Math.max(xi, xj) / C); cx++) {
+      for (let cz = Math.floor(Math.min(zi, zj) / C); cz <= Math.floor(Math.max(zi, zj) / C); cz++) {
+        const k = cell(cx, cz);
+        const list = cells.get(k);
+        if (list) list.push(i);
+        else cells.set(k, [i]);
+      }
+    }
+  }
+  const seen = new Int32Array(n);
+  let query = 0;
+  /** Each edge (by its first corner i) in the squares from (cx0, cz0) to (cx1, cz1), once. */
+  const edges = (cx0: number, cx1: number, cz0: number, cz1: number, f: (i: number) => void) => {
+    query++;
+    for (let cx = cx0; cx <= cx1; cx++) {
+      for (let cz = cz0; cz <= cz1; cz++) {
+        for (const i of cells.get(cell(cx, cz)) ?? []) {
+          if (seen[i] === query) continue;
+          seen[i] = query;
+          f(i);
+        }
+      }
+    }
+  };
+  return (x, z, slack) => {
+    let best = Infinity;
+    edges(Math.floor((x - slack) / C), Math.floor((x + slack) / C), Math.floor((z - slack) / C), Math.floor((z + slack) / C), (i) => {
+      const [xi, zi] = ring[i];
+      const [xj, zj] = ring[(i + n - 1) % n];
+      const dx = xj - xi;
+      const dz = zj - zi;
+      const t = Math.max(0, Math.min(1, ((x - xi) * dx + (z - zi) * dz) / (dx * dx + dz * dz || 1)));
+      best = Math.min(best, Math.hypot(xi + dx * t - x, zi + dz * t - z));
+    });
+    if (best <= slack) return true;
+    // In or out: the edges crossed going east (or west, the shorter way) from the point; the same count either way.
+    const east = maxX - x < x - minX;
+    const cx = Math.floor(x / C);
+    const cz = Math.floor(z / C);
+    let hit = false;
+    edges(east ? cx : Math.floor(minX / C), east ? Math.floor(maxX / C) : cx, cz, cz, (i) => {
+      const [xi, zi] = ring[i];
+      const [xj, zj] = ring[(i + n - 1) % n];
+      if (zi > z !== zj > z && x < ((xj - xi) * (z - zi)) / (zj - zi) + xi === east) hit = !hit;
+    });
+    return hit;
+  };
+}
+
+/**
  * Fits the village data to a street model, before its tiles are built: the blocks, roofs and windows of the
  * modelled houses are tagged as the landmark's (so they aren't drawn, but stay for walking into), the new solid
  * things join the blocks for walking into, and, where the street was rebuilt, the concrete poles along it become
@@ -117,9 +195,17 @@ export function fitStreetModel(data: VillageData, model: THREE.Object3D, first: 
   const name = x.landmark;
   const outlines = x.outlines;
   const middle = (ring: [number, number][]) => [ring.reduce((s, q) => s + q[0], 0) / ring.length, ring.reduce((s, q) => s + q[1], 0) / ring.length];
+  // Each outline's box first: nearly every block in the village lies far from them all, and the box says so at once
+  // (testing every corner against every outline took a second, and froze the game just after it began).
+  const boxes = outlines.map(boxOf);
   const mine = (ring: [number, number][]) => {
     const [mx, mz] = middle(ring);
-    return outlines.some((o) => near(o, mx, mz, 0.5) || ring.filter(([px, pz]) => near(o, px, pz, 0.35)).length >= ring.length * 0.8);
+    const [x0, z0, x1, z1] = boxOf(ring);
+    return outlines.some((o, k) => {
+      const b = boxes[k];
+      if (ring.length && (x1 < b[0] - 0.5 || x0 > b[2] + 0.5 || z1 < b[1] - 0.5 || z0 > b[3] + 0.5)) return false; // neither test below can hold
+      return near(o, mx, mz, 0.5) || ring.filter(([px, pz]) => near(o, px, pz, 0.35)).length >= ring.length * 0.8;
+    });
   };
   const street = x.street;
   // Only what lies by a rebuilt street needs the closer looks below.
@@ -128,7 +214,8 @@ export function fitStreetModel(data: VillageData, model: THREE.Object3D, first: 
   const sz0 = Math.min(...street.map((q) => q[1])) - 5;
   const sz1 = Math.max(...street.map((q) => q[1])) + 5;
   const byStreet = (ring: [number, number][]) => street.length > 0 && ring.some(([px, pz]) => px > sx0 && px < sx1 && pz > sz0 && pz < sz1);
-  const onStreet = (ring: [number, number][]) => ring.filter(([px, pz]) => near(street, px, pz, 0.2)).length >= ring.length * 0.6;
+  const nearStreet = nearTo(street);
+  const onStreet = (ring: [number, number][]) => ring.filter(([px, pz]) => nearStreet(px, pz, 0.2)).length >= ring.length * 0.6;
   for (const p of data.prisms ?? []) {
     if (p.lm) continue;
     if (p.d === undefined && mine(p.p[0])) p.lm = name;
@@ -138,7 +225,7 @@ export function fitStreetModel(data: VillageData, model: THREE.Object3D, first: 
       else if (p.m === 'road' && x.newStreetFrom !== undefined && p.p[0].every(([px]) => px > x.newStreetFrom!) && onStreet(p.p[0])) p.lm = name;
       // The old road and the pavings beside the new street: cut finer, so they follow the relief's own squares and
       // stay under the new surfaces (cut every 8 m, they rose through them in places).
-      else if (p.p[0].some(([px, pz]) => near(street, px, pz, 4))) p.d = Math.min(p.d, 4);
+      else if (p.p[0].some(([px, pz]) => nearStreet(px, pz, 4))) p.d = Math.min(p.d, 4);
     }
   }
   for (const r of data.roofs) {
@@ -147,9 +234,11 @@ export function fitStreetModel(data: VillageData, model: THREE.Object3D, first: 
   // A house's own garden (tools/molenhoek.py builds it): the village's ground covers, hedges and fences in its plot
   // (on its edge too) give way. world/walkIn.ts keeps them out of the blocks for walking on: the garden lies lower.
   for (const ring of x.clear ?? []) {
+    const [x0, z0, x1, z1] = boxOf(ring);
     for (const p of data.prisms ?? []) {
       if (p.lm || p.d === undefined) continue;
       const [mx, mz] = middle(p.p[0]);
+      if (mx < x0 - 0.3 || mx > x1 + 0.3 || mz < z0 - 0.3 || mz > z1 + 0.3) continue;
       if (near(ring, mx, mz, 0.3)) p.lm = name;
     }
   }

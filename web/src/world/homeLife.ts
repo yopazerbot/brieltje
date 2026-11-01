@@ -41,27 +41,30 @@ export class HomeLife {
     this.group.userData.life = this; // for the automated checks
   }
 
-  /** Fetch the models and set everything up (once). */
-  load(): void {
+  /** Fetch the models and set everything up (once). `prepare` readies their shaders before they are shown (main.ts). */
+  load(prepare: (o: THREE.Object3D) => Promise<unknown> = async () => undefined): void {
     if (this.loading) return;
     this.loading = true;
-    void new GLTFLoader().loadAsync('/models/garden.glb').then((gltf) => {
+    void new GLTFLoader().loadAsync('/models/garden.glb').then(async (gltf) => {
       const models = new Map(gltf.scene.children.map((o) => [o.name, o]));
+      const fresh = new THREE.Group();
       this.yard = new Yard(models, this.world, this.groundY);
-      this.group.add(this.yard.group);
+      fresh.add(this.yard.group);
       if (models.has('Mower')) {
         this.mower = new Mower(painted(models.get('Mower')!), this.groundY);
-        this.group.add(this.mower.mesh);
+        fresh.add(this.mower.mesh);
       }
       if (models.has('Bird')) {
         this.birds = new Birds(models.get('Bird')!, this.groundY);
-        this.group.add(this.birds.group);
+        fresh.add(this.birds.group);
         const birds = this.birds;
         this.song = new Birdsong((at, radius) => birds.sitting(at, radius), [HOUSE, BUNGALOW]);
       }
       this.butterflies = new Butterflies(this.groundY);
       this.smoke = new Smoke([new THREE.Vector3(17.38, 11.23, 23.76), new THREE.Vector3(85.85, 6.92, 186.91)]);
-      this.group.add(this.butterflies.mesh, this.smoke.mesh);
+      fresh.add(this.butterflies.mesh, this.smoke.mesh);
+      await prepare(fresh);
+      this.group.add(...fresh.children);
     }, () => {}); // missing: the gardens stay as they were
   }
 
