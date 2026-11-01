@@ -80,8 +80,8 @@ export class Hud {
     if (this.pad.textContent !== shown) this.pad.textContent = shown;
   }
 
-  /** Big italic location name, shown for a few seconds when it changes. */
-  setPlace(level: string, surface: string | undefined): void {
+  /** The location name, shown big for a few seconds when the floor changes, with the hamlet (`area`) under it. */
+  setPlace(level: string, surface: string | undefined, area: string): void {
     const label = surface && surface.toLowerCase() !== level.toLowerCase() ? `${level} · ${surface}` : level;
     if (label === this.lastPlace) return;
     const levelChanged = !this.lastPlace.startsWith(level);
@@ -89,7 +89,7 @@ export class Hud {
     this.place.textContent = label;
     if (levelChanged) {
       const small = document.createElement('small');
-      small.textContent = 'Briel';
+      small.textContent = area;
       this.toast.replaceChildren(level, small);
       this.toast.classList.add('show');
       this.toastTimer = 3;

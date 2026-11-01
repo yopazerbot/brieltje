@@ -1802,7 +1802,9 @@ renderer.setAnimationLoop((now: number) => {
     // Outside, on the village's ground: the street you are in (its real name), not just "street".
     const at = driving || riding ? car : player;
     const street = !indoors && (driving || riding || !surface || surface === 'street') ? streetAt(at.x, at.z) : undefined;
-    hud.setPlace(indoors ? placeName(levelName(player.feet)) : t('place.outside'), street ?? (surface && surface !== 'street' ? placeName(surface) : undefined));
+    // The hamlet under the floor's name: the nearest portal's (Briel by the house and the bungalow, Smetlede in the village).
+    const area = PORTALS.reduce((a, b) => (Math.hypot(b.x - at.x, b.z - at.z) < Math.hypot(a.x - at.x, a.z - at.z) ? b : a)).sub;
+    hud.setPlace(indoors ? placeName(levelName(player.feet)) : t('place.outside'), street ?? (surface && surface !== 'street' ? placeName(surface) : undefined), area);
     // Baked lighting has real indoor light levels (a fraction of the sunlit outside), so the
     // eyes adapt much more indoors; real-time fill light on people and furniture is turned
     // down to match. Real-time lighting brightens rooms itself, so it needs only a little.
