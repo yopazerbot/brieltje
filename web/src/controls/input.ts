@@ -62,6 +62,8 @@ export interface FrameInput {
   weaponCycle: number;
   /** G or R1: throw a grenade (R1 changes the piece in the furniture planner) */
   throwPressed: boolean;
+  /** G, R1 or the touch grenade button held down (Zombies: held, it places a claymore) */
+  throwHeld: boolean;
   /** Driving: accelerate (W or Up, or R2 as far as it is pressed), 0..1 */
   throttle: number;
   /** Driving: brake, then reverse (S or Down, or L2), 0..1 */
@@ -72,7 +74,7 @@ export interface FrameInput {
 export const NO_INPUT: FrameInput = {
   moveX: 0, moveY: 0, lookX: 0, lookY: 0, mouseX: 0, mouseY: 0, sprint: false,
   jumpPressed: false, jumpHeld: false, downHeld: false, clickPressed: false, usePressed: false, useHeld: false, aimHeld: false, reloadPressed: false,
-  menuPressed: false, fpsPressed: false, confirmPressed: false, squarePressed: false, speedStep: 0, tabStep: 0, scoreHeld: false, mapPressed: false, fireHeld: false, weaponSlot: 0, weaponCycle: 0, throwPressed: false, deletePressed: false, anyPadButton: false,
+  menuPressed: false, fpsPressed: false, confirmPressed: false, squarePressed: false, speedStep: 0, tabStep: 0, scoreHeld: false, mapPressed: false, fireHeld: false, weaponSlot: 0, weaponCycle: 0, throwPressed: false, throwHeld: false, deletePressed: false, anyPadButton: false,
   throttle: 0, brake: 0,
 };
 
@@ -198,6 +200,7 @@ export class Input {
     out.jumpHeld = k('Space');
     out.downHeld = k('KeyC'); // not Ctrl: Ctrl with a walking key is the browser's (Ctrl+W closes the tab)
     out.useHeld = k('KeyE');
+    out.throwHeld = k('KeyG');
     out.scoreHeld = k('Tab');
     out.throttle = k('KeyW') || k('ArrowUp') ? 1 : 0;
     out.brake = k('KeyS') || k('ArrowDown') ? 1 : 0;
@@ -247,6 +250,7 @@ export class Input {
       if (edge(BTN.circle)) out.deletePressed = true;
       if (edge(BTN.up)) out.weaponCycle = 1;
       if (edge(BTN.r1)) out.throwPressed = true;
+      out.throwHeld ||= !!pressed[BTN.r1];
       if (edge(BTN.down) || edge(BTN.l1)) out.weaponCycle = -1;
       if (edge(BTN.l1)) out.tabStep -= 1;
       if (edge(BTN.r1)) out.tabStep += 1;

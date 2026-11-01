@@ -62,9 +62,9 @@ export class Hud {
     this.crosshair.classList.toggle('gun', armed);
   }
 
-  /** Grenades in your pocket, out of `carry`, and when the next is back; null hides the line. */
-  setGrenades(count: number | null, carry = 0, nextIn = 0, key = 'G'): void {
-    const text = count === null ? '' : `${key}  ${'●'.repeat(count)}${'○'.repeat(carry - count)}${count < carry ? `  ${Math.ceil(nextIn)} s` : ''}`;
+  /** Grenades in your pocket, out of `carry`, and when the next is back; null hides the line. `mines`: claymores carried (Zombies), how to place them. */
+  setGrenades(count: number | null, carry = 0, nextIn = 0, key = 'G', mines = ''): void {
+    const text = count === null ? '' : `${key}  ${'●'.repeat(count)}${'○'.repeat(carry - count)}${count < carry ? `  ${Math.ceil(nextIn)} s` : ''}${mines ? `   ·   ${mines}` : ''}`;
     if (this.nades.textContent !== text) this.nades.textContent = text;
   }
 

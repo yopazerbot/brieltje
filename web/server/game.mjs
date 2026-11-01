@@ -652,6 +652,12 @@ export class Game {
     } else if (m.t === 'zhit') {
       // A shot that hit zombies (server/zombies.mjs checks it as a hit on a strongman is checked).
       this.modes.zombies?.hit(name, player, m, now);
+    } else if (m.t === 'zitem') {
+      // Walking over a reward (server/zombies.mjs take: there, within reach, of use, taken once).
+      this.modes.zombies?.take(name, player, m, now);
+    } else if (m.t === 'claymore') {
+      // Placing a claymore (server/zombies.mjs place: carried, on a floor near the player, two down at most).
+      this.modes.zombies?.place(name, player, m, now);
     } else if (m.t === 'revive') {
       // Helping a downed teammate up, or letting go (server/zombies.mjs help: the time on the server's clock).
       this.modes.zombies?.help(name, player, m, now);

@@ -16,6 +16,8 @@ import { CLOWN_DEFAULTS, Clowns, KINDS } from './world/clowns';
 import { bruteDamage, hurtBy } from '../shared/brutes.mjs';
 import { Zombies } from './world/zombies';
 import { BIG as BIG_ZOMBIE, bigOf, Horde, houseAreas, makeNav } from '../shared/zombies.mjs';
+import { Loot, LOOT } from '../shared/loot.mjs';
+import { Rewards } from './world/rewards';
 import WEAPON_SPECS from '../shared/weapons.json';
 import { Horses } from './world/horses';
 import { AdminPanel } from './ui/admin';
@@ -460,6 +462,9 @@ const grenades = new Grenades(world);
 scene.add(grenades.group);
 const pickups = new Pickups((x, z, y) => world.groundAt(x, z, y + 0.3, 0).y);
 scene.add(pickups.group);
+// The Zombies game's rewards lying and the claymores down (shared/loot.mjs: the server's together, this page's alone).
+const rewards = new Rewards();
+scene.add(rewards.group);
 const cats = new Cats((x, z) => world.groundAt(x, z, 0.5, 0).y);
 scene.add(cats.group);
 // Clowns (our own model): a few from the start; the admin places more with the planner.
@@ -1114,7 +1119,49 @@ function hitAngle(by: string): number | null {
   if (!at) return null;
   return Math.atan2(-(at.x - player.x), -(at.z - player.z)) - player.yaw;
 }
-const weaponName = (w: string) => (w === 'grenade' || w in SPECS ? shownWeapon(w as WeaponId | 'grenade') : '');
+const weaponName = (w: string) => (w === 'grenade' || w in SPECS ? shownWeapon(w as WeaponId | 'grenade') : w === 'claymore' ? mineName() : '');
+/** A claymore's name, or in paintball a paint mine's. */
+const mineName = () => t(paintball.on ? 'loot.paintMine' : 'loot.claymore');
+
+/**
+ * Zombies' rewards (shared/loot.mjs): what you have (`kit`: the guns with bigger magazines, the scope,
+ * claymores carried), from the server together or this page's own loot alone. `holdT`: how long the
+ * grenade key is held (a tap throws a grenade, held it places a claymore you carry).
+ */
+let kit = { ammo: [] as string[], scope: false, claymores: 0 };
+let holdT = 0;
+let rewardWait = 0;
+const HOLD_S = 0.45;
+function applyKit(k: { ammo: string[]; scope: boolean; claymores: number }, fresh?: string): void {
+  kit = { ammo: [...k.ammo], scope: k.scope, claymores: k.claymores };
+  weapon.setKit(kit.ammo, kit.scope, fresh);
+}
+/** What you just took: on your gun or in your pocket, said in a banner and the chat. */
+function gift(kind: string, w: string | undefined, k: { ammo: string[]; scope: boolean; claymores: number }): void {
+  applyKit(k, kind === 'ammo' ? w : undefined);
+  if (kind === 'ammo' && w && w in SPECS) {
+    const name = weaponName(w);
+    const n = weapon.magOf(w as WeaponId);
+    hud.announce(t(paintball.on ? 'loot.ammoPaint' : 'loot.ammo'), t('loot.ammoSub', { w: name, n }));
+  } else if (kind === 'scope') hud.announce(t('loot.scope'), t('loot.scopeSub'));
+  else if (kind === 'claymore') hud.announce(mineName(), t('loot.mineSub', { key: key('grenade', menu.mode ?? 'kbm') }));
+}
+/** Place a claymore you carry on the ground a step in front of you, facing where you look. */
+function placeClaymore(): void {
+  const fx = -Math.sin(player.yaw), fz = -Math.cos(player.yaw);
+  const x = player.x + fx * 0.9, z = player.z + fz * 0.9;
+  const y = world.groundAt(x, z, player.feet + 0.4, 0).y;
+  if (Math.abs(y - player.feet) > 0.6 || world.blocked({ x: player.x, y: player.feet + 0.3, z: player.z }, { x, y: y + 0.3, z })) {
+    chat.system(() => serverText('zMineSpot', {}, ''));
+    return;
+  }
+  if (net.connected) net.send({ t: 'claymore', x, y, z, yaw: player.yaw });
+  else if (solo) {
+    const r = solo.loot.place(SOLO_ME, { x: player.x, y: player.feet, z: player.z }, { x, y, z, yaw: player.yaw }, performance.now());
+    if (r.mine) applyKit(solo.loot.kit(SOLO_ME));
+    else chat.system(() => serverText(r.why === 'max' ? 'zMineMax' : r.why === 'none' ? 'zMineNone' : 'zMineSpot', {}, ''));
+  }
+}
 const youName = () => me?.username ?? t('char.you');
 /** A cat hit by a bullet, or caught in your blast (`w` 'grenade' or 'bazooka'). */
 function catHit(i: number, point: THREE.Vector3, w: string): void {
@@ -1194,6 +1241,9 @@ function zombieResult(id: number, res: 'down' | 'hurt' | null, w: string): void 
   if (!res) return;
   if (res !== 'down') return combat.hitMarker();
   zombies.beaten(id);
+  // Maybe a reward where it fell (the wave's last leaves one when none fell yet).
+  const z = solo?.horde.zombies.get(id);
+  if (solo && z) solo.loot.drop(z, performance.now(), solo.horde.left === 0);
   combat.zombie('', zombieName(zombies.isBig(id)), weaponName(w)); // "You beat a zombie · Pistol" (marks the crosshair)
 }
 zombies.onVanish = (at) => effects.vanish(at);
@@ -1201,7 +1251,7 @@ zombies.onVanish = (at) => effects.vanish(at);
 /** Alone: the Zombies game in this page: the horde (shared/zombies.mjs), its end, the best wave kept in this browser. */
 const SOLO_ME = 'me';
 const SOLO_BEST = 'briel.zombiesBest';
-let solo: { horde: Horde; endAt: number; best: number; record: boolean; key: string } | null = null;
+let solo: { horde: Horde; loot: Loot; endAt: number; best: number; record: boolean; key: string } | null = null;
 function soloBest(): number {
   try {
     return Math.max(0, Math.floor(Number(localStorage.getItem(SOLO_BEST)) || 0));
@@ -1228,7 +1278,8 @@ function startSolo(): void {
   });
   const horde = new Horde(nav, nav.spawnSpots(), { home: { x: 4.5, z: 18 } });
   horde.start(performance.now());
-  solo = { horde, endAt: 0, best: soloBest(), record: false, key: '' };
+  solo = { horde, loot: new Loot(nav), endAt: 0, best: soloBest(), record: false, key: '' };
+  applyKit({ ammo: [], scope: false, claymores: 0 });
   respawnAt(OUTSIDE_SPAWNS[Math.floor(Math.random() * OUTSIDE_SPAWNS.length)]);
   combat.setActive(weapon.enabled); // your health on screen while they come
   chat.system(() => t('z.soloStart'));
@@ -1241,6 +1292,8 @@ function stopSolo(): void {
   const wasDown = !combat.alive;
   solo = null;
   zombies.clear();
+  rewards.clear();
+  applyKit({ ammo: [], scope: false, claymores: 0 });
   games.set({ kind: 'free' });
   combat.setActive(!!me && weapon.enabled);
   if (wasDown && !me) respawnAt(OUTSIDE_SPAWNS[Math.floor(Math.random() * OUTSIDE_SPAWNS.length)]);
@@ -1276,7 +1329,10 @@ function soloTick(dt: number): void {
   if (h.phase === 'over' && now >= solo.endAt) return stopSolo();
   const fighter = weapon.enabled && !driving && !riding && !planner.active;
   for (const e of h.tick(now, dt, [{ name: SOLO_ME, x: player.x, y: player.feet, z: player.z, alive: combat.alive, fighter, safe: false }])) {
-    if (e.type === 'wave') chat.system(() => t(e.bigs > 1 ? 'srv.zWaveBigs' : e.big ? 'srv.zWaveBig' : 'srv.zWave', { n: e.wave, count: e.count }));
+    if (e.type === 'wave') {
+      solo.loot.wave();
+      chat.system(() => t(e.bigs > 1 ? 'srv.zWaveBigs' : e.big ? 'srv.zWaveBig' : 'srv.zWave', { n: e.wave, count: e.count }));
+    }
     else if (e.type === 'cleared') chat.system(() => t('srv.zCleared', { n: e.wave }));
     else if (e.type === 'runners') runnersComing(true);
     else if (e.type === 'perch') chat.system(() => t('srv.zPerch', { n: Math.round(e.ms / 1000) }));
@@ -1303,6 +1359,15 @@ function soloTick(dt: number): void {
       soloView(true);
     }
   }
+  // Alone the rewards are this page's: items lying too long go, a claymore a zombie walks into goes off.
+  const { booms } = solo.loot.tick(now, h.zombies.values());
+  for (const { mine: m, ids } of booms) {
+    explode(new THREE.Vector3(m.x, m.y + 0.25, m.z), false, 'grenade');
+    for (const id of ids) zombieResult(id, h.hit(id, LOOT.damage, SOLO_ME, now), 'claymore');
+  }
+  const lv = solo.loot.view();
+  rewards.setItems(lv.items);
+  rewards.setMines(lv.mines);
   zombies.follow(h);
   soloView();
 }
@@ -1637,6 +1702,12 @@ function followGame(view: ModeView): void {
     if (!weapon.enabled) chat.system(() => t('z.explore'));
   }
   if (games.view.kind !== 'zombies') zombies.clear();
+  // The rewards lying and the claymores down, as the server has them; your rewards end with the game.
+  if (!solo) {
+    rewards.setItems(games.view.kind === 'zombies' ? games.view.zombies?.items ?? [] : []);
+    rewards.setMines(games.view.kind === 'zombies' ? games.view.zombies?.mines ?? [] : []);
+    if (games.view.kind !== 'zombies' && (kit.claymores || kit.scope || kit.ammo.length)) applyKit({ ammo: [], scope: false, claymores: 0 });
+  }
   shutHouses();
 }
 /**
@@ -1847,6 +1918,14 @@ net.onMessage = (m: ServerMsg) => {
         else helping = null;
       }
       if (m.by) helpedBy = m.op === 'start' ? m.by : null;
+      break;
+    case 'zgift': // a reward you took, or what you have now (placed a claymore, back after a dropped connection)
+      if (m.kind === 'placed' || m.kind === 'kit') applyKit(m.kit);
+      else gift(m.kind, m.w, m.kit);
+      break;
+    case 'zboom': // a claymore went off (the server hurt the zombies in front of it)
+      explode(new THREE.Vector3(m.x, m.y + 0.25, m.z), false, 'grenade');
+      rewards.boom(m.id);
       break;
     case 'revived': // helped up where they lay, with part of their health
       if (m.name === me?.username) {
@@ -2360,7 +2439,34 @@ renderer.setAnimationLoop((now: number) => {
     wasCalm = calm;
     if (action && (frame.clickPressed || (weapon.isAuto && frame.fireHeld)) && !dead && !planner.active && !inCar && !calm) fire();
     if (action && frame.reloadPressed && !dead && !inCar) weapon.reload();
-    if (action && frame.throwPressed && !dead && !planner.active && !inCar && !calm) throwGrenade();
+    // The grenade key: a tap throws a grenade; with a claymore in your pocket (Zombies), held it places it.
+    if (action && !dead && !planner.active && !inCar && !calm) {
+      if (kit.claymores > 0 && games.zombies) {
+        if (frame.throwPressed) holdT = 1e-4;
+        if (holdT > 0 && frame.throwHeld) {
+          holdT += dt;
+          if (holdT >= HOLD_S) {
+            holdT = 0;
+            placeClaymore();
+          }
+        } else if (holdT > 0) {
+          holdT = 0;
+          throwGrenade();
+        }
+      } else if (frame.throwPressed) throwGrenade();
+    } else holdT = 0;
+    // Walk over a reward to take it (the server decides together).
+    if (action && !dead && !inCar && games.zombies) {
+      const it = rewards.near(player.x, player.feet, player.z);
+      if (it >= 0 && now > rewardWait) {
+        rewardWait = now + 400;
+        if (net.connected) net.send({ t: 'zitem', id: it });
+        else if (solo) {
+          const got = solo.loot.take(SOLO_ME, { x: player.x, y: player.feet, z: player.z, w: weapon.current }, it, performance.now());
+          if (got) gift(got.kind, got.w, got.kit);
+        }
+      }
+    }
     weapon.update(dt, inCar ? 0 : Math.min(1, Math.hypot(frame.moveX, frame.moveY)), frame.aimHeld && !inCar, {
       yaw: player.yaw, pitch: player.pitch, side: dead ? 0 : frame.moveX, sprint: frame.sprint && !player.crouching,
       air: player.flying || player.feet > player.ground.y + 0.05,
@@ -2394,7 +2500,7 @@ renderer.setAnimationLoop((now: number) => {
     const armed = action && !dead && !inCar;
     hud.setWeapon(armed, dead || inCar ? '' : weapon.status);
     hud.setSlots(armed ? weapon.slots : null);
-    hud.setGrenades(armed && !planner.active ? grenades.count : null, GRENADE.carry, grenades.nextIn, key('grenade', mode));
+    hud.setGrenades(armed && !planner.active ? grenades.count : null, GRENADE.carry, grenades.nextIn, key('grenade', mode), kit.claymores && games.zombies ? t('loot.mines', { name: mineName(), n: kit.claymores, key: key('grenade', mode) }) : '');
     hud.setScope(weapon.scoped, inCar);
     // The flying controls for the first few seconds after taking off only (Yoshi: annoying when it stays).
     if (player.flying && !wasFlying) flyHint = 4;
@@ -2469,6 +2575,7 @@ renderer.setAnimationLoop((now: number) => {
   effects.update(dt);
   grenades.update(dt);
   pickups.update(dt, !net.connected);
+  rewards.update(dt);
   cats.update(dt);
   life.update(dt, camera.position);
   villageSmoke?.follow(dt, camera.position, !phone && quality !== 'low');
@@ -2490,6 +2597,7 @@ renderer.setAnimationLoop((now: number) => {
     mapTimer = 0;
     const blips: Blip[] = [
       ...(weapon.enabled ? pickups.blips() : []).map((b) => ({ ...b, color: '', kind: 'item' as const })),
+      ...(weapon.enabled ? rewards.blips() : []).map((b) => ({ ...b, kind: 'coin' as const })), // the Zombies game's rewards
       ...cats.blips().map((b) => ({ ...b, color: '#e0a050', kind: 'cat' as const })),
       ...clowns.blips().map((b) => ({ ...b, color: b.kind === 'strongman' ? '#d0782e' : '#12a3a0', kind: 'cat' as const })),
       ...horses.blips().map((b) => ({ ...b, color: '#8a5a3a', kind: 'cat' as const })),
@@ -2906,6 +3014,9 @@ if (import.meta.env.DEV) {
       clowns,
       zombies,
       zombiesSolo: { start: startSolo, stop: stopSolo, state: () => solo },
+      /** Zombies' rewards: those lying and the claymores down, and what you have. */
+      rewards,
+      kit: () => kit,
       mountHorse,
       getOffHorse,
       driving: () => driving,

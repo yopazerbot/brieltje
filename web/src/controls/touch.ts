@@ -200,6 +200,7 @@ export class TouchControls {
     out.aimHeld ||= this.aimOn || has('lift'); // the planner picks up on the press
     out.reloadPressed ||= has('reload');
     out.throwPressed ||= has('nade');
+    out.throwHeld ||= holds('nade');
     out.deletePressed ||= has('remove');
     if (has('weapon')) out.weaponCycle = 1;
     out.menuPressed ||= has('menu');

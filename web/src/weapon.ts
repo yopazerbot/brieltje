@@ -5,6 +5,7 @@ import { muzzleFlash, type Spot } from './world/effects';
 import type { Paint } from './world/splats';
 import { GUN_PAINT, onPaintball, paintball } from './paintball';
 import WEAPONS from '../shared/weapons.json';
+import { LOOT } from '../shared/loot.mjs';
 import { t } from './i18n';
 
 /**
@@ -467,6 +468,41 @@ export interface Shot {
   rocket?: { from: THREE.Vector3; to: THREE.Vector3 };
 }
 
+/**
+ * A scope (Zombies' reward) on top of a gun: a dark tube with a glinting lens at each end, along
+ * the barrel over the middle of the gun, sized to it; wherever the loaded model has its top.
+ */
+function scopeOn(gun: THREE.Group, r: number): THREE.Group {
+  gun.updateWorldMatrix(true, true);
+  const inv = gun.matrixWorld.clone().invert();
+  const box = new THREE.Box3();
+  const part = new THREE.Box3();
+  gun.traverse((o) => {
+    const m = o as THREE.Mesh;
+    if (!m.isMesh || !m.visible || m.userData.hand || !m.geometry) return;
+    if (!m.geometry.boundingBox) m.geometry.computeBoundingBox();
+    box.union(part.copy(m.geometry.boundingBox!).applyMatrix4(m.matrixWorld.clone().premultiply(inv)));
+  });
+  const g = new THREE.Group();
+  if (box.isEmpty()) return g;
+  const len = Math.max(0.1, Math.min(0.2, (box.max.z - box.min.z) * 0.38));
+  const tube = new THREE.Mesh(new THREE.CylinderGeometry(r, r, len, 16).rotateX(Math.PI / 2), new THREE.MeshStandardMaterial({ color: '#1d2024', roughness: 0.4, metalness: 0.6 }));
+  const glass = new THREE.MeshStandardMaterial({ color: '#7fd8ff', roughness: 0.05, metalness: 0.2, emissive: '#2a6c88', emissiveIntensity: 0.6 });
+  g.add(tube);
+  for (const s of [-1, 1]) {
+    const lens = new THREE.Mesh(new THREE.CylinderGeometry(r * 1.15, r * 1.15, 0.012, 16).rotateX(Math.PI / 2), glass);
+    lens.position.z = (s * len) / 2;
+    g.add(lens);
+  }
+  const mount = new THREE.Mesh(new THREE.BoxGeometry(r * 0.9, r * 1.4, len * 0.5), tube.material);
+  mount.position.y = -r * 1.1;
+  g.add(mount);
+  g.position.set((box.min.x + box.max.x) / 2, box.max.y + r * 1.6, (box.min.z + box.max.z) / 2 + (box.max.z - box.min.z) * 0.08);
+  g.traverse((o) => (o.castShadow = false));
+  gun.add(g);
+  return g;
+}
+
 export class Weapon {
   readonly root = new THREE.Group();
   enabled = false;
@@ -477,6 +513,10 @@ export class Weapon {
   baseFov = 72;
   /** Accuracy factor from how you move: crouching is steadier, running is not */
   spreadMul = 1;
+  /** Zombies' rewards (shared/loot.mjs): the guns with the bigger magazines, and the scope on the rifle and the pistol */
+  private bigMags = new Set<WeaponId>();
+  private scopeOn = false;
+  private scopes = new Map<WeaponId, THREE.Group>();
   /** A bullet hit window pane `index` at `point`, fired from `from`; `normal` is the pane's face there, `pane` its mesh. */
   onGlassHit: (index: number, point: THREE.Vector3, from: THREE.Vector3, normal: THREE.Vector3, pane: THREE.Object3D) => void = () => {};
   /** Bullets (pellets) of one shot that hit another player's body and head; in paintball `spot` is where the paint sticks. */
@@ -547,6 +587,42 @@ export class Weapon {
       m.muzzle.position.copy(tip.position);
       m.flash.position.copy(tip.position);
     }
+    // A scope already on: on the loaded guns now.
+    for (const s of this.scopes.values()) s.removeFromParent();
+    this.scopes.clear();
+    if (this.scopeOn) this.setKit([...this.bigMags], true);
+  }
+
+  /** A gun's magazine: its own, or half as big again with the bigger ammo pack (Zombies). */
+  magOf(w: WeaponId): number {
+    return Math.round(SPECS[w].mag * (this.bigMags.has(w) ? LOOT.bigMag : 1));
+  }
+
+  /** Whether gun `w` has a scope on (Zombies: the rifle and the pistol, once you found one). */
+  hasScope(w: WeaponId): boolean {
+    return this.scopeOn && LOOT.scoped.includes(w);
+  }
+
+  /**
+   * What the Zombies game's rewards gave you: the guns with the bigger magazines, and the scope.
+   * `fresh`: the gun of an ammo pack just taken, filled up now.
+   */
+  setKit(ammo: string[], scope: boolean, fresh?: string): void {
+    this.bigMags = new Set(ammo.filter((w): w is WeaponId => w in SPECS));
+    if (fresh && fresh in SPECS) {
+      this.ammo[fresh as WeaponId] = this.magOf(fresh as WeaponId);
+      if (fresh === this.current) this.reloading = 0;
+    }
+    for (const w of WEAPON_IDS) this.ammo[w] = Math.min(this.ammo[w], this.magOf(w));
+    this.scopeOn = scope;
+    for (const w of LOOT.scoped as WeaponId[]) {
+      let s = this.scopes.get(w);
+      if (scope && !s) {
+        s = scopeOn(this.models[w].gun, w === 'rifle' ? 0.024 : 0.018);
+        this.scopes.set(w, s);
+      }
+      if (s) s.visible = scope;
+    }
   }
 
   get spec(): Spec {
@@ -567,9 +643,9 @@ export class Weapon {
     this.dipVel -= Math.min(1.2, speed * 0.12);
   }
 
-  /** Looking through the sniper scope (the view model hides, the scope overlay shows). */
+  /** Looking through the sniper scope, or a found one (the view model hides, the scope overlay shows). */
   get scoped(): boolean {
-    return this.enabled && !this.hiddenFlag && this.current === 'sniper' && this.aim > 0.85 && this.reloading <= 0;
+    return this.enabled && !this.hiddenFlag && (this.current === 'sniper' || this.hasScope(this.current)) && this.aim > 0.85 && this.reloading <= 0;
   }
 
   setEnabled(on: boolean): void {
@@ -585,7 +661,7 @@ export class Weapon {
 
   get status(): string {
     if (!this.enabled) return '';
-    return this.reloading > 0 ? t(paintball.on ? 'paint.refilling' : 'weapon.reloading') : `${this.ammo[this.current]} / ${this.spec.mag}`;
+    return this.reloading > 0 ? t(paintball.on ? 'paint.refilling' : 'weapon.reloading') : `${this.ammo[this.current]} / ${this.magOf(this.current)}`;
   }
 
   /** For the weapon list on screen. */
@@ -595,7 +671,7 @@ export class Weapon {
 
   /** Full magazines (after respawning). */
   refill(): void {
-    for (const w of WEAPON_IDS) this.ammo[w] = SPECS[w].mag;
+    for (const w of WEAPON_IDS) this.ammo[w] = this.magOf(w);
     this.reloading = 0;
   }
 
@@ -635,7 +711,7 @@ export class Weapon {
   /** Picked up a weapon: it is yours with a full magazine, and in your hands. */
   give(w: WeaponId): void {
     this.owned.add(w);
-    this.ammo[w] = SPECS[w].mag;
+    this.ammo[w] = this.magOf(w);
     this.select(w);
   }
 
@@ -662,7 +738,7 @@ export class Weapon {
   }
 
   reload(): void {
-    if (this.enabled && this.reloading <= 0 && this.ammo[this.current] < this.spec.mag) {
+    if (this.enabled && this.reloading <= 0 && this.ammo[this.current] < this.magOf(this.current)) {
       this.reloading = this.spec.reload;
       this.sound('reload');
     }
@@ -705,6 +781,7 @@ export class Weapon {
 
     // Spread: the sniper rifle is only accurate through the scope; aiming steadies the others.
     let spread = this.current === 'sniper' ? (this.aim > 0.85 ? 0 : spec.hipSpread ?? 0.09) : spec.spread * (spec.pellets > 1 ? 1 : 1 - 0.6 * this.aim);
+    if (this.hasScope(this.current) && this.aim > 0.85) spread *= 0.25; // steady through a found scope
     spread = spread * this.spreadMul + this.bloom;
     if (spec.auto) this.bloom = Math.min(0.03, this.bloom + 0.005);
 
@@ -803,7 +880,7 @@ export class Weapon {
     this.cycleTime = Math.max(0, this.cycleTime - dt);
     if (this.reloading > 0) {
       this.reloading -= dt;
-      if (this.reloading <= 0) this.ammo[this.current] = spec.mag;
+      if (this.reloading <= 0) this.ammo[this.current] = this.magOf(this.current);
     }
     this.bloom = Math.max(0, this.bloom - dt * 0.06);
     this.flashTime = Math.max(0, this.flashTime - dt);
@@ -880,7 +957,9 @@ export class Weapon {
     }
 
     m.root.visible = !this.scoped && !this.hiddenFlag;
-    const fov = this.baseFov * (1 - (1 - spec.zoom) * this.aim);
+    // A found scope zooms further: 0.3 on the rifle, 0.42 on the pistol (the sniper's 0.22).
+    const zoom = this.hasScope(this.current) ? (this.current === 'rifle' ? 0.3 : 0.42) : spec.zoom;
+    const fov = this.baseFov * (1 - (1 - zoom) * this.aim);
     if (Math.abs(this.camera.fov - fov) > 0.01) {
       this.camera.fov = fov;
       this.camera.updateProjectionMatrix();

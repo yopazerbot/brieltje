@@ -13,6 +13,12 @@
 // whole pane or a shut door. Whoever stands where no zombie can get at them (a ledge, or a page that
 // claims to hover or stand in a wall) is warned, and out of the wave if they stay (perch).
 //
+// Rewards (shared/loot.mjs): a beaten zombie sometimes leaves one (a bigger ammo pack, a scope, a
+// claymore). The server keeps them: what lies where, who has what, every pickup (take: an item that
+// is there, within reach of the server's position, useful to them; taken once) and every claymore
+// placed (place: carried, on a floor near the player, at most two down) and set off (each tick, by the
+// zombies the server has; its blast only hurts zombies).
+//
 // Who goes down waits for the end of the wave (their page shows it), then everyone comes back at
 // the house's outside start places, unless a teammate helps them up first: holding Use next to them
 // for REVIVE_MS on the server's clock (help), they're up where they lie with part of their health. When everyone who fights is down at once, the game is over: the
@@ -20,6 +26,7 @@
 // table, as the rules are) show for DONE_MS.
 
 import { BIG, bigOf, Horde } from '../shared/zombies.mjs';
+import { Loot, LOOT } from '../shared/loot.mjs';
 import { zombieEntry } from '../shared/wire.mjs';
 
 export const DONE_MS = 15_000;
@@ -44,6 +51,8 @@ export class ZombieGame {
     this.modes = modes;
     const { nav, spots, home, doors, doorOpen } = game.zombieGround();
     this.horde = new Horde(nav, spots, { home, doors, doorOpen });
+    /** The rewards: what lies where, the claymores down, who has what */
+    this.loot = new Loot(nav);
     this.horde.start(now);
     /** Who took part (any time in this game), and who is down until the wave is beaten */
     this.players = new Set(names);
@@ -96,6 +105,7 @@ export class ZombieGame {
     return {
       wave: h.wave, left: h.left, big: h.bigWave, bigs: bigOf(h.wave), fighters, standing, beaten, ms: this.ms(now),
       down: [...this.down].filter(here), downs: { ...this.downs }, best: this.best, record: this.record,
+      ...this.loot.view(),
     };
   }
 
@@ -116,6 +126,7 @@ export class ZombieGame {
     this.sync();
     for (const e of events) {
       if (e.type === 'wave') {
+        this.loot.wave();
         // Everyone who fights is counted for the wave's size; the line says how many come.
         const code = e.bigs > 1 ? 'zWaveBigs' : e.big ? 'zWaveBig' : 'zWave';
         const more = e.bigs > 1 ? ' Big ones are with them!' : e.big ? ' A big one is with them!' : '';
@@ -150,7 +161,51 @@ export class ZombieGame {
         return;
       }
     }
+    // The rewards: items lying too long go; a claymore a zombie walked into goes off (zombies only).
+    const { gone, booms } = this.loot.tick(now, this.horde.zombies.values());
+    if (gone.length) changed = true;
+    for (const { mine: m, ids } of booms) {
+      g.broadcast({ t: 'zboom', id: m.id, x: m.x, y: m.y, z: m.z, yaw: m.yaw, by: m.owner });
+      for (const id of ids) this.damage(id, LOOT.damage, m.owner, 'claymore', now);
+      changed = true;
+    }
     if (changed) this.modes.send();
+  }
+
+  /**
+   * A page says its player walked over item `m.id`: theirs if it is there, within reach of where the
+   * server has them, of use to them, and they fight (forged pickups and duplicates: taken once, by
+   * one). Their page gets what they have now; everyone sees it gone.
+   */
+  take(name, p, m, now) {
+    const g = this.game;
+    if (now < (p.nextItem || 0)) return;
+    p.nextItem = now + 250;
+    if (!Number.isInteger(m.id) || !p.alive || !p.state?.armed || g.inCar(name) || this.horde.phase === 'over') return;
+    const s = p.state;
+    const got = this.loot.take(name, { x: s.x, y: s.y, z: s.z, w: s.w }, m.id, now);
+    if (!got) return;
+    g.send(p.ws, { t: 'zgift', kind: got.kind, w: got.w, kit: got.kit });
+    this.modes.send();
+  }
+
+  /**
+   * A page places a claymore its player carries at `m` ({ x, y, z, yaw }): on a floor near where the
+   * server has them (shared/loot.mjs place). Refused with a word why; everyone sees it placed.
+   */
+  place(name, p, m, now) {
+    const g = this.game;
+    if (now < (p.nextMine || 0)) return;
+    p.nextMine = now + 400;
+    if (!p.alive || !p.state?.armed || g.inCar(name) || g.calm(p) || this.horde.phase === 'over') return;
+    const s = p.state;
+    const r = this.loot.place(name, { x: s.x, y: s.y, z: s.z }, { x: m.x, y: m.y, z: m.z, yaw: m.yaw }, now);
+    if (!r.mine) {
+      const why = { none: ['zMineNone', 'You have no claymore.'], max: ['zMineMax', 'You have two down already.'], spot: ['zMineSpot', 'No room for it there.'] }[r.why];
+      return g.send(p.ws, { t: 'system', text: why[1], code: why[0] });
+    }
+    g.send(p.ws, { t: 'zgift', kind: 'placed', kit: this.loot.kit(name) });
+    this.modes.send();
   }
 
   /** Everyone down comes back at the house's outside start places, as after a respawn (not a death). */
@@ -340,6 +395,9 @@ export class ZombieGame {
   beat(id, by, w, double = false) {
     this.players.add(by);
     this.game.broadcast({ t: 'zdown', id, by, w, ...(double ? { double: true } : {}) });
+    // Maybe a reward where it fell (the wave's last leaves one when none fell yet).
+    const z = this.horde.zombies.get(id);
+    if (z) this.loot.drop(z, Date.now(), this.horde.left === 0);
     this.modes.send();
   }
 
@@ -351,6 +409,7 @@ export class ZombieGame {
   /** Someone joined: they take part; down when they left, they wait for the wave as before (no coming back early by reconnecting). */
   join(name, p) {
     this.players.add(name);
+    if (p && this.loot.kits.has(name)) this.game.send(p.ws, { t: 'zgift', kind: 'kit', kit: this.loot.kit(name) }); // back: what they had
     if (this.down.has(name) && this.horde.phase === 'wave' && p) {
       p.alive = false;
       p.hp = 0;
@@ -362,6 +421,7 @@ export class ZombieGame {
   /** The game ends (stopped, or the end screen is over): the zombies go, and whoever is down comes back. */
   stop() {
     for (const r of [...this.helping.keys()]) this.letGo(r, 'stop');
+    this.loot.clear();
     this.fell.clear();
     this.perchedOut.clear();
     this.game.broadcast({ t: 'zgone', ids: [...this.horde.zombies.keys()] });
