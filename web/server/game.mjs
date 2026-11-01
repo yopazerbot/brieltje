@@ -1,4 +1,4 @@
-// The shared house: the logged-in players over WebSocket (4 at once unless the admin allows more).
+// The shared house: the logged-in players over WebSocket (16 at once unless the admin allows fewer).
 // Players send their position 20 times a second while they move (a few times a second standing
 // still); twenty times a second the server sends every page what moved (shared/wire.mjs: players,
 // cars, horses, strongmen), and forwards chat, door changes and shots. The admin can kick players.
@@ -128,7 +128,7 @@ const LAYOUT_RESTORE = String(shared('default_furniture.json').restore ?? 0);
  * House rules the admin sets in the settings, with their defaults. `paintball` (child-friendly for
  * everyone) only changes what the pages show: Action as Paintball, with the same hits and scores.
  */
-const RULES = { flying: true, furniture: true, names: true, maxPlayers: 4, pin: true, portals: true, travel: true, paintball: false };
+const RULES = { flying: true, furniture: true, names: true, maxPlayers: MAX_PLAYERS, pin: true, portals: true, travel: true, paintball: false };
 /** A valid value for a rule: on/off, or a number of players from 2 to MAX_PLAYERS. */
 const ruleOk = (k, v) => (k === 'maxPlayers' ? Number.isInteger(v) && v >= 2 && v <= MAX_PLAYERS : typeof v === 'boolean');
 /** Weapons only the admin carries (the bazooka), on top of the pistol everyone starts with. */
@@ -812,6 +812,14 @@ export class Game {
       // unreadable: the defaults
     }
     for (const k of Object.keys(RULES)) if (ruleOk(k, saved[k])) this.rules[k] = saved[k];
+    // The limit to start with went from 4 to 16 players (1 Nov 2026: 16 cost about 2% of a core). The
+    // saved rules carry every rule, so a 4 saved before then is most likely the old default: raised
+    // once. A limit the admin sets from now on stays.
+    if ((await this.auth.store.getMeta('rules_limit16')) !== '1') {
+      if (this.rules.maxPlayers === 4) this.rules.maxPlayers = MAX_PLAYERS;
+      await this.auth.store.setMeta('rules', JSON.stringify(this.rules));
+      await this.auth.store.setMeta('rules_limit16', '1');
+    }
   }
 
   /** The admin changed rules in the settings: store them and tell everyone. */

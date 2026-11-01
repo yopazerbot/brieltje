@@ -30,7 +30,7 @@ export interface Rules {
   furniture: boolean;
   /** Names above other players (they show through walls) */
   names: boolean;
-  /** How many may play at once (the admin chooses, 4 to start with) */
+  /** How many may play at once (the admin chooses, 16 to start with) */
   maxPlayers: number;
   /** New players can join with the shared PIN */
   pin: boolean;

@@ -621,7 +621,7 @@ window.addEventListener('keydown', (e) => {
   toggleMap();
 });
 
-// ---- Multiplayer: join on the start screen; the players (4 at once unless the admin allows more) share the house.
+// ---- Multiplayer: join on the start screen; the players (16 at once unless the admin allows fewer) share the house.
 const net = new Net();
 // ?diag: the connection, worked out again every second (ui/diag.ts).
 let netSeen = { ...net.counts, at: performance.now() };
@@ -655,7 +655,7 @@ function showOnline(): void {
   list.replaceChildren();
   document.getElementById('tog-online')!.classList.toggle('hidden', !me || online.size === 0);
   if (!me || online.size === 0) return;
-  const count = t('online.count', { n: online.size, max: rules.maxPlayers ?? 4 });
+  const count = t('online.count', { n: online.size, max: rules.maxPlayers ?? 16 });
   const title = document.createElement('div');
   title.textContent = count;
   onlineBox.append(title);
@@ -676,7 +676,7 @@ function showOnline(): void {
 
 const $ = (id: string) => document.getElementById(id)!;
 /** House rules in multiplayer, set by the admin in the settings; alone everything is allowed. */
-const ANYTHING_GOES: Rules = { flying: true, furniture: true, names: true, maxPlayers: 4, pin: true, portals: true, travel: true, paintball: false };
+const ANYTHING_GOES: Rules = { flying: true, furniture: true, names: true, maxPlayers: 16, pin: true, portals: true, travel: true, paintball: false };
 let rules = ANYTHING_GOES;
 const flyBox = $('set-flying') as HTMLInputElement;
 const furnBox = $('set-furniture') as HTMLInputElement;
@@ -716,7 +716,7 @@ function applyRules(next: Rules): void {
   travelBox.checked = next.travel ?? true;
   paintballBox.checked = next.paintball ?? false;
   menu.setChildSafe(next.paintball ?? false); // child-friendly for everyone: Action plays as Paintball
-  maxSlider.value = String(next.maxPlayers ?? 4);
+  maxSlider.value = String(next.maxPlayers ?? 16);
   $('set-max-value').textContent = maxSlider.value;
   avatars.showNames = next.names && !games.hideOthers;
   if (!mayFurnish()) planner.toggle(false);
@@ -1219,7 +1219,7 @@ net.onMessage = (m: ServerMsg) => {
       for (const s of m.cars ?? []) carById(s.id)?.setPose(s, true);
       horses.setAll(m.horses ?? [], m.you);
       {
-        const [n, max] = [m.players.length, rules.maxPlayers ?? 4];
+        const [n, max] = [m.players.length, rules.maxPlayers ?? 16];
         chat.system(() => t('chat.joinedAs', { name: m.you, n, max }));
       }
       if (m.proto !== PROTO) chat.system(() => t('net.reload')); // the game was updated since this page loaded
