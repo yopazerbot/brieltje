@@ -19,12 +19,13 @@ const VIGNETTE = 0.15;
 /**
  * Before tone mapping: an iPhone stores a value past the half floats' end (65504) as infinity where this PC
  * clamps it, and infinity turns into NaN in the tone mapping, which the edge smoothing then spreads into black
- * blocks. Capped (a white so bright it stays white), and a NaN that came in anyway is dropped.
+ * blocks. A NaN that came in anyway is dropped first (min() of a NaN gives the other value on some chips, which
+ * showed it white), then the rest is capped (a white so bright it stays white).
  */
 const SAFE = /* glsl */ `
-		gl_FragColor.rgb = min(gl_FragColor.rgb, vec3(60000.0));
 		vec3 nanTest = gl_FragColor.rgb; // GLSL ES 1.00 (the pass's own) has no isnan(): only NaN differs from itself
 		if (nanTest.r != nanTest.r || nanTest.g != nanTest.g || nanTest.b != nanTest.b) gl_FragColor.rgb = vec3(0.0);
+		gl_FragColor.rgb = min(gl_FragColor.rgb, vec3(60000.0));
 
 		// tone mapping`;
 
