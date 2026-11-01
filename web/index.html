@@ -364,6 +364,17 @@
                     <button class="tool" type="button" data-game="treasure"><b data-i18n="game.treasure">Treasure hunt</b><span data-i18n="game.treasureSub">15 coins in and around the house; most coins wins</span></button>
                     <button class="tool" type="button" data-game="teams"><b data-i18n="game.teams">House against bungalow</b><span data-i18n="game.teamsSub">Two teams fight, each starts at its own house; first to 25 kills</span></button>
                     <button class="tool" type="button" data-game="free"><b data-i18n="game.stop">Stop the game</b><span data-i18n="game.stopSub">Back to playing freely</span></button>
+                  </div>
+                  <!-- Stopping is asked again here, in the page (src/main.ts). -->
+                  <div id="stop-confirm" class="setting hidden">
+                    <p class="note" data-i18n="game.stopAsk">Stop the game for everyone?</p>
+                    <div class="mp-row">
+                      <button id="stop-yes" class="mini go" type="button" data-i18n="game.stopYes">Stop</button>
+                      <button id="stop-no" class="mini" type="button" data-i18n="game.stopNo">Keep playing</button>
+                    </div>
+                  </div>
+                  <h2 data-i18n="adm.startOver">Start over</h2>
+                  <div class="tools">
                     <button id="newround-btn" class="tool" type="button"><b data-i18n="adm.newRound">New round</b><span data-i18n="adm.newRoundSub">Fighting scores back to zero</span></button>
                     <button id="clearfurn-btn" class="tool" type="button"><b data-i18n="adm.clearFurn">Remove all furniture</b><span data-i18n="adm.clearFurnSub">For everyone</span></button>
                   </div>

@@ -204,6 +204,7 @@ const en = {
   'adm.unlockNote': 'Lets back in everyone kept out by wrong PINs or a kick.',
   'adm.unlocked': 'Lifted. Everyone can join again.',
   'adm.games': 'Party games',
+  'adm.startOver': 'Start over',
   'adm.newRound': 'New round',
   'adm.newRoundSub': 'Fighting scores back to zero',
   'adm.clearFurn': 'Remove all furniture',
@@ -229,6 +230,9 @@ const en = {
   'game.teamsSub': 'Two teams fight, each starts at its own house; first to 25 kills',
   'game.stop': 'Stop the game',
   'game.stopSub': 'Back to playing freely',
+  'game.stopAsk': 'Stop the game for everyone?',
+  'game.stopYes': 'Stop',
+  'game.stopNo': 'Keep playing',
 
   // ---- Controls (the menu's Controls tab)
   'ctl.moving': 'Moving',
@@ -788,6 +792,7 @@ const nl = {
   'adm.save': 'Bewaar',
   'adm.pinNote': '4 tot 12 cijfers; hoe langer, hoe moeilijker te raden. Bewaren meldt iedereen af die met de oude pincode meedeed.',
   'adm.games': 'Groepsspelletjes',
+  'adm.startOver': 'Opnieuw beginnen',
   'adm.newRound': 'Nieuwe ronde',
   'adm.newRoundSub': 'Gevechtsscores terug op nul',
   'adm.clearFurn': 'Alle meubels weghalen',
@@ -816,6 +821,9 @@ const nl = {
   'game.teamsSub': 'Twee teams vechten, elk start bij zijn eigen huis; het eerste team aan 25 kills wint',
   'game.stop': 'Spel stoppen',
   'game.stopSub': 'Terug naar vrij spelen',
+  'game.stopAsk': 'Het spel voor iedereen stoppen?',
+  'game.stopYes': 'Stoppen',
+  'game.stopNo': 'Verder spelen',
 
   // ---- Controls (the menu's Controls tab)
   'ctl.moving': 'Bewegen',

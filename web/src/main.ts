@@ -830,9 +830,20 @@ onLang(() => {
 
 chat.onSend = (text) => (text.startsWith('/') ? command(text) : net.send({ t: 'chat', text }));
 games.onSend = (msg) => net.send(msg);
+// The admin's games: a game starts at once; stopping one is asked again in the page, since a slip of the
+// finger would end it for everyone.
+const stopAsk = $('stop-confirm');
 document.querySelectorAll<HTMLButtonElement>('[data-game]').forEach((b) =>
-  b.addEventListener('click', () => net.send({ t: 'mode', kind: b.dataset.game })),
+  b.addEventListener('click', () => {
+    stopAsk.classList.toggle('hidden', b.dataset.game !== 'free' || !games.active);
+    if (b.dataset.game !== 'free') net.send({ t: 'mode', kind: b.dataset.game });
+  }),
 );
+$('stop-yes').addEventListener('click', () => {
+  stopAsk.classList.add('hidden');
+  net.send({ t: 'mode', kind: 'free' });
+});
+$('stop-no').addEventListener('click', () => stopAsk.classList.add('hidden'));
 // Lift every lockout on joining (wrong PINs, kicks), for a meetup where a few typos or one kick keep people out.
 $('set-unlock').addEventListener('click', async () => {
   const msg = $('set-unlock-msg');
