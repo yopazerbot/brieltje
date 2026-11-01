@@ -24,11 +24,12 @@ import type { GroundCuts } from './terrain';
  * walls through the roof: the inside's surfaces take no direct sun (sunless), only the sky's and
  * the room's light, which world/indoorLight.ts makes warmer and stronger indoors.
  *
- * The relief there lies up to 40 cm above the floor (the street model's floor level is the village
- * block's foot): the ground is cut out under the house and its garden, as for a pond, and a dip
- * lowers the ground for walking there, so the floors are what you stand on. The garden's lawn lies
- * at the floor's level too, inside its fences (the street model has them, its terrace and its shed),
- * drawn in the ground's own material, which takes its look from where it lies.
+ * Its floor stands about 16 cm above the pavement in front, with a stone step at the front door. The
+ * ground is cut out under the house and its garden, as for a pond, and a dip sets the ground for
+ * walking there at the lawn's height, so the floors are what you stand on. The garden's lawn lies at
+ * the floor's level, inside its fences, above the relief at the back, where it falls away (the street
+ * model has the fences on gravel boards that take up the step, its terrace and its shed), drawn in
+ * the ground's own material, which takes its look from where it lies.
  */
 const NEAR = 60;
 /** The windows' numbers for breaking them: after the house's own blocks (fewer than 2000), before the doors' glass (3000). */
@@ -499,7 +500,7 @@ export async function loadWalkIn(renderer: THREE.WebGLRenderer, model: THREE.Obj
   };
   const contains = (x: number, z: number) => inside(x, z, outline);
   // The village's ground covers, hedges and fences in the plot (world/streetModel.ts marks them): neither drawn nor
-  // walked on, as the garden lies lower than the relief they follow.
+  // walked on, as the garden lies at the floor's level, not on the relief they follow.
   const inPlot = (p: Prism) => {
     const r = p.p[0];
     const mx = r.reduce((t, q) => t + q[0], 0) / r.length;

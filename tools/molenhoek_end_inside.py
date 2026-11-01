@@ -11,9 +11,11 @@ corner by the glass of the cut corner, the kitchen along the party wall and the 
 with an oak worktop, tall units with the oven, an island), the stair (a straight flight up from the living room
 with a quarter turn of winders at the top, open oak treads, an oak handrail on steel tubes) and the garage behind
 its sectional door, empty but for a utility corner. First floor (2.90 m up): the landing round the stair, the office,
-three bedrooms and the bathroom (a walk-in shower, a toilet, two basins). The garden (tools/molenhoek_end_survey.py lays
-it out, tools/molenhoek.py builds its terrace, fences and shed) lies at the floor's level: the relief is cut out under
-the house and inside the fences, and the lawn is drawn there (world/walkIn.ts); the terrace is walked on here. Colours
+three bedrooms and the bathroom (a walk-in shower, a toilet, two basins). The floor stands about 16 cm above the
+pavement in front (the street model's stone step at the front door, its ramp at the garage, both walked on here). The
+garden (tools/molenhoek_end_survey.py lays it out, tools/molenhoek.py builds its terrace, fences and shed) lies at the
+floor's level, up to 40 cm above the relief at the back, where it falls away: the relief is cut out under the house and
+inside the fences, and the lawn is drawn there (world/walkIn.ts); the terrace is walked on here. Colours
 and furniture: grey floor tiles of 80 cm with grey skirting, white walls,
 white flush doors, white frames inside, grey-blue curtains by the glass, a round oak table with tan shell chairs
 under a white dome light, a taupe corner sofa, a white oval coffee table, a low white TV unit, a knitted cream lamp
@@ -272,23 +274,15 @@ def block(u, v, w, d, face, y0, y1, room):
 
 
 # ---------------------------------------------------------------- walls
-def head_room(o):
-    """How high an opening is for walking through: the front door 25 cm more than it shows, as the pavement in front
-    of it lies about 35 cm above the floor (the street model's floor level is the village block's foot), and from
-    there a head would only just clear the lintel. The closed leaf and the lintel still leave no gap between them."""
-    return o.y1 + (0.25 if o.kind == "d" and o.opt.get("frost") else 0.0)
-
-
 def exterior_walls():
     band_solid = OUTER.difference(INNER)
     band_drawn = DRAWN.difference(INNER)
-    ys = sorted({-0.3, ROOF, COPING} | {o.y0 for o in OPENINGS} | {o.y1 for o in OPENINGS} | {head_room(o) for o in OPENINGS})
+    ys = sorted({-0.3, ROOF, COPING} | {o.y0 for o in OPENINGS} | {o.y1 for o in OPENINGS})
     for ya, yb in zip(ys, ys[1:]):
-        shown = unary_union([o.cut() for o in OPENINGS if o.y0 <= ya + 1e-6 and o.y1 >= yb - 1e-6] or [Polygon()])
-        walked = unary_union([o.cut() for o in OPENINGS if o.y0 <= ya + 1e-6 and head_room(o) >= yb - 1e-6] or [Polygon()])
+        holes = unary_union([o.cut() for o in OPENINGS if o.y0 <= ya + 1e-6 and o.y1 >= yb - 1e-6] or [Polygon()])
         if yb <= ROOF + 1e-6:
-            prism(band_drawn.difference(shown), ya, yb, "wall", solid=False)
-        prism(band_solid.difference(walked), ya, yb, "c", drawn=False)
+            prism(band_drawn.difference(holes), ya, yb, "wall", solid=False)
+        prism(band_solid.difference(holes), ya, yb, "c", drawn=False)
 
 
 # The inside doors: where each stands (its hinge, the other end of its leaf's opening), which way it opens, and the
@@ -934,16 +928,17 @@ def garden_poly(ring):
 
 
 def terrace():
-    """The terrace (tools/molenhoek.py draws its tiles): walked on, 2 cm under the floor, its slab down into the lowered
-    ground. Returns the lawn: the whole garden inside its fences, at its level."""
+    """The terrace (tools/molenhoek.py draws its tiles): walked on, 2 cm under the floor, its slab down into the ground.
+    Returns the lawn: the whole garden inside its fences, at its level."""
     terr = garden_poly(GARDEN["terrace"])
     prism(terr, -0.32, GARDEN["terrace_level"] + GROUND - FLOOR, "tile", n="Terras", drawn=False)
     return garden_poly(GARDEN["lawn"])
 
 
 def ground_cut(lawn):
-    """The relief taken out under the house and the garden (it lies up to 40 cm above the floor there), as the
-    browser cuts the ground for a pond (world/terrain.ts): the 4 m squares it touches, and what is left of them in
+    """The relief taken out under the house and the garden (the lawn lies 6 to 40 cm above it there, a flat lawn over
+    the ground's 4 m triangles would flicker where they come close, and the fences' gravel boards close the edge), as
+    the browser cuts the ground for a pond (world/terrain.ts): the 4 m squares it touches, and what is left of them in
     triangles; and a dip for walking, its bottom the lawn (world/collision.ts), which world/walkIn.ts draws."""
     cut = unary_union([OUTER, lawn]).buffer(0.001, join_style=2).buffer(-0.001, join_style=2)
     cut = max(getattr(cut, "geoms", [cut]), key=lambda g: g.area)
@@ -978,7 +973,9 @@ def ground_cut(lawn):
 
 def thresholds():
     """At the openings down to the floor, the floor carried through the wall to the street model's own sill, named
-    after the room it leads into (so the place doesn't read outside in the doorway)."""
+    after the room it leads into (so the place doesn't read outside in the doorway). Outside, for walking on: the
+    street model's stone step at the front door and its ramp up to the garage door (tools/molenhoek.py door_step and
+    garage_ramp), the ramp in four strips, each as high as the ramp at its middle."""
     from shapely.geometry import Point
     for o in OPENINGS:
         if o.y0 > 0.05:
@@ -987,6 +984,14 @@ def thresholds():
         into = Point(o.at(o.w / 2, o.depth + 0.3))
         room = next((k for k, poly in GF_ROOMS.items() if poly.contains(into)), None)
         prism(o.quad(0.0, o.w, 0.12, o.depth + 0.01), -0.3, -0.003, "c", col, n=room)
+        if o.kind == "d" and o.opt.get("down"):
+            prism(o.quad(-0.08, o.w + 0.08, -0.28, 0.12), -0.3, -0.003, "c", drawn=False)
+        if o.kind == "g" and o.opt.get("ramp"):
+            depth = o.opt["ramp"]
+            foot = sum(ground_rel(*world(*o.at(s, -depth))) for s in (-0.1, o.w + 0.1)) / 2 - 0.01
+            for k in range(4):
+                e0, e1 = depth * k / 4, depth * (k + 1) / 4
+                prism(o.quad(-0.1, o.w + 0.1, -e1, -e0), foot - 0.3, foot * (e0 + e1) / 2 / depth, "c", drawn=False)
 
 
 # ---------------------------------------------------------------- the relief (for the terrace's foot)

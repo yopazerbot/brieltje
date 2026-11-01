@@ -393,13 +393,31 @@ FROST = "#c4ccc7"  # frosted glass
 
 
 def door_step(f, h, d):
-    """The step at a door, or steps up to a raised ground floor."""
+    """The step at a door, or steps up to a raised ground floor. `down`: the floor stands above the pavement, and the
+    step reaches down into it."""
     if h.y0 > 0.25:
         n = max(2, int(round(h.y0 / 0.17)))
         for k in range(n):
             f.box(SMALL_STONE, h.s0 - 0.15, h.s1 + 0.15, -0.12, h.y0 - k * h.y0 / n, d, 0.3 * (k + 1), "#8d8f8f")
     else:
-        f.box(SMALL_STONE, h.s0 - 0.08, h.s1 + 0.08, -0.12, 0.0, d, 0.28, "#5f6468")
+        low = -0.12
+        if h.opt.get("down"):
+            low = min(low, min(terrain(*f.xz(s, e)) for s in (h.s0 - 0.08, h.s1 + 0.08) for e in (0.0, 0.28)) - f.base - 0.05)
+        f.box(SMALL_STONE, h.s0 - 0.08, h.s1 + 0.08, low, 0.0, d, 0.28, "#5f6468")
+
+
+def garage_ramp(f, h, depth):
+    """A ramp of grey pavers in front of a garage door whose floor stands above the drive: from the door's sill down
+    to the ground `depth` m out (into the paving there), square at its sides."""
+    s0, s1 = h.s0 - 0.1, h.s1 + 0.1
+    low = lambda s, e: terrain(*f.xz(s, e)) - f.base - 0.01  # the ground, from the floor
+    a, b = f.p(s0, 0.0, 0.0), f.p(s1, 0.0, 0.0)
+    c, d = f.p(s1, low(s1, depth), depth), f.p(s0, low(s0, depth), depth)
+    up, grey = (0, 0, 1), "#bfbab2"  # as the forecourts
+    face("mh_pavers", [a, d, c], up, grey)
+    face("mh_pavers", [a, c, b], up, grey)
+    for s, out, top, foot in ((s0, -1, a, d), (s1, 1, b, c)):
+        face("mh_pavers", [top, foot, f.p(s, low(s, 0.0), 0.0)], f.along(out), shade(grey, 0.9))
 
 
 def hole(f, h, layers):
@@ -461,6 +479,8 @@ def hole(f, h, layers):
         joints = [h.y0 + (h.y1 - h.y0) * k / n for k in range(1, n)] if n else [h.y0 + k * 0.5 for k in range(1, int((h.y1 - h.y0) / 0.5))]
         for y in joints:
             f.flat("mh_detail", h.s0 + 0.03, h.s1 - 0.03, y - 0.012, y + 0.012, d + 0.004, shade(o.get("c", "#e9e8e4"), 0.82))
+        if o.get("ramp"):
+            garage_ramp(f, h, o["ramp"])
         return
     else:
         glass = CURTAIN if o.get("cu") else "#252c30"
@@ -1751,9 +1771,9 @@ def runs(pts, step):
 
 def yard(H):
     """A house's own garden as tools/molenhoek_end_survey.py lays it out (`garden`): the terrace, the fences round it,
-    the shed, and what stands just outside it. Its lawn is the ground, lowered inside the fences to the house's floor
-    level (tools/molenhoek_end_inside.py cuts the relief out there, world/walkIn.ts draws the lawn); the fences stand
-    on a gravel board that takes up the step to the ground outside."""
+    the shed, and what stands just outside it. Its lawn lies at the house's floor level inside the fences, above the
+    relief where it falls away and below it where it rises (tools/molenhoek_end_inside.py cuts the relief out there,
+    world/walkIn.ts draws the lawn). The fences stand on a gravel board that takes up the step to the ground outside."""
     IN_YARD[0] = True
     try:
         build_yard(H)
@@ -1812,8 +1832,8 @@ def board_fence(pts, gate, lvl, outside, ground_out):
         o = outside(p, t)
         g = ground_out(p, t, L, o)
         f = Frame(p, t, o, 0.0)
-        top, foot, plinth = g + 1.8, lvl - 0.12, g + 0.12
-        f.box("mh_stone", 0.0, L, foot, plinth, -0.02, 0.02, "#727370")  # the gravel board
+        top, foot, plinth = g + 1.8, min(lvl, g) - 0.12, max(lvl, g) + 0.12
+        f.box("mh_stone", 0.0, L, foot, plinth, -0.02, 0.02, "#727370")  # the gravel board, both sides' grounds
         is_gate = bool(gate) and s_at + L <= gate[1] + 1e-6
         b0, b1 = (0.06, L - 0.06) if is_gate else (0.045, L - 0.045)
         n = max(1, int((b1 - b0) / 0.127))
@@ -1843,8 +1863,8 @@ def ivy_fence(pts, thick, lvl, outside, ground_out):
         o = outside(p, t)
         g = ground_out(p, t, L, o)
         f = Frame(p, t, o, 0.0)
-        foot = lvl - 0.12
-        f.box("mh_stone", 0.0, L, foot, g + 0.06, -0.02, 0.02, "#6c6d6a")  # the base plate
+        foot = min(lvl, g) - 0.12
+        f.box("mh_stone", 0.0, L, foot, max(lvl, g) + 0.06, -0.02, 0.02, "#6c6d6a")  # the base plate, both sides' grounds
         f.box("mh_detail", -0.025, 0.025, foot, g + 1.78, -0.025, 0.025, "#1d2022")  # a post
         f.box("mh_detail", 0.0, L, g + 1.72, g + 1.745, -0.012, 0.012, "#1d2022")  # the top rail
         for y in (g + 0.45, g + 1.0):
@@ -1865,7 +1885,7 @@ def ivy_fence(pts, thick, lvl, outside, ground_out):
     if pts:  # the last post
         q = pts[-1]
         t, _ = unit(pts[-2], q)
-        Frame(q, t, outside(q, t), 0.0).box("mh_detail", -0.025, 0.025, lvl - 0.12, terrain(*q) + 1.78, -0.025, 0.025, "#1d2022")
+        Frame(q, t, outside(q, t), 0.0).box("mh_detail", -0.025, 0.025, min(lvl, terrain(*q)) - 0.12, terrain(*q) + 1.78, -0.025, 0.025, "#1d2022")
 
 
 def log_shed(S, lvl):

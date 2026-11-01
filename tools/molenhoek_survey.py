@@ -508,16 +508,32 @@ def plan(specs, centre, walls, grb, others, relief, order="x"):
         houses[key].pop("front", None)
         houses[key]["front"] = [[round(a[0], 3), round(a[1], 3)], [round(b[0], 3), round(b[1], 3)]]
     # `level`: the houses of one row built on one floor level, the highest of their grounds (a new terrace whose
-    # bands and window heads run straight along it)
+    # bands and window heads run straight along it). Those grounds are the village blocks' feet, which lie 0.3 m
+    # under the lowest ground round each block. `threshold`: the row's floor this far above the relief in front of
+    # its front doors, on average. The street in front of a new row is level; the relief's 4 m grid rises and falls.
     rows = {}
     for key, h in HOUSES.items():
         if h.get("level"):
             rows.setdefault(h["level"], []).append(key)
     for keys in rows.values():
-        y0 = max(houses[k]["y0"] for k in keys)
+        threshold = HOUSES[keys[0]].get("threshold")
+        if threshold is None:
+            y0 = max(houses[k]["y0"] for k in keys)
+        else:
+            grounds = [g for k in keys for g in door_grounds(houses[k], relief)]
+            y0 = round(sum(grounds) / len(grounds) + threshold - 0.05, 3)  # the builder's floor is y0 + 0.05
         for k in keys:
             houses[k]["y0"] = y0
     return houses
+
+
+def door_grounds(h, relief, out=0.5):
+    """The relief `out` m in front of the middle of each of a house's front doors on the ground floor."""
+    (ax, az), (bx, bz) = h["front"]
+    L = math.dist((ax, az), (bx, bz))
+    t, o = ((bx - ax) / L, (bz - az) / L), h["out"]
+    return [relief.height(ax + t[0] * s + o[0] * out, az + t[1] * s + o[1] * out)
+            for s, w, y, hh, kind, opt in h["openings"] if kind in ("d", "ad") and y < 0.05]
 
 
 def main():

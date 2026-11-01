@@ -58,16 +58,19 @@ def _terrace():
     street (Nov 2026, for reference only): the heights on the end house seen square on, the widths along the pairs
     through the perspective of the photos taken at an angle, scaled by the GRB's fronts. `rect`: the GRB outline,
     its front first (the end house stands past the end of Molenhoek's centre line, which runs out in front of the
-    row: its front isn't the edge facing the street's last point)."""
+    row: its front isn't the edge facing the street's last point). The floor stands 15 cm above the relief in front
+    of the doors on average (`threshold`), with a dark stone step at each door down to the pavement (`down`) and a
+    ramp of pavers up to the end house's garage (`ramp`). The pavement in front is level. The relief's 4 m grid rises
+    by 20 cm towards the row's first house."""
     dark, light = "#7e7368", "#eae0c8"  # as the game lights them (blue sky in the shade): dark chocolate brown and light beige
     on_dark, on_light = "#f2eada", "#ccc2a9"  # the soldier courses
     sill, door, garage, box = "#c2c2bc", ANTH, "#3b3f43", "#2e3033"
     head, band, first, top = 2.16, (2.37, 3.77), 3.84, 5.98  # door and window heads, the band, the first floor's windows, the wall's top
     common = dict(depth=0, eaves=top, ridge=top, roof="flat", roof_tint="#3a3c3f", wall="brick", frame=ANTH, coping="#3d4043",
-                  coping_h=0.07, plain=True, level="terrace")
+                  coping_h=0.07, plain=True, level="terrace", threshold=0.15)
     win = lambda s, w=1.0, cu=False: [s, w, 0.92, round(head - 0.92, 2), "w", dict(n=1, sill=sill, cu=cu)]
     up = lambda s, w=1.0, cu=False: [s, w, first, 1.24, "w", dict(n=1, sill=sill, cu=cu)]
-    fdoor = lambda s, hand: [s, 0.98, 0.0, head, "d", dict(c=door, frost=3, hand=hand)]
+    fdoor = lambda s, hand: [s, 0.98, 0.0, head, "d", dict(c=door, frost=3, hand=hand, down=True)]
 
     def pair_house(rect, at, tint, other, soldiers, door_end, cols, cu, letterbox):
         """One of a pair: its door at the pair's outer end, `cols` the door's and the windows' middles counted from
@@ -95,8 +98,8 @@ def _terrace():
             common, rect=end_rect,
             at=(1506.0, -355.0), tint=light, soldiers=on_light, patches=[(0.0, 7.47, *band, dark)],
             front=[[0.515, 0.87, 1.49, round(head - 1.49, 2), "w", dict(n=1, sill=sill)],
-                   [2.15, 1.47, 0.0, head, "d", dict(c=door, frost=3, side=(0.43, "r"), hand="r")],
-                   [6.16, 2.56, 0.0, head, "g", dict(c=garage, sections=4)],
+                   [2.15, 1.47, 0.0, head, "d", dict(c=door, frost=3, side=(0.43, "r"), hand="r", down=True)],
+                   [6.16, 2.56, 0.0, head, "g", dict(c=garage, sections=4, ramp=0.8)],
                    up(0.55, 0.9), up(4.955, cu=True), up(6.96, cu=True)],
             fixtures=[(3.03, 1.3, 0.05, 0.16, 0.015, "#1f2022")],
             inside=True, faces=_end_faces(end_rect, sill, first, head, band, dark)),
@@ -175,9 +178,9 @@ def _end_garden(h, plot):
       along the street, round the corner by the utility plot and a few metres along the lane, with a gate by the
       house; then a black wire fence overgrown with ivy along the rest of the lane (thick at first, then in patches)
       and between this garden and the neighbour's.
-    - The garden lies at the house's floor level, as the terrace does, so the ground is lowered inside the fences
-      (tools/molenhoek_end_inside.py cuts it out; world/walkIn.ts draws the lawn there). The fences stand on a
-      concrete gravel board that takes up the step to the ground outside.
+    - The garden lies at the house's floor level, as the terrace does, above the relief at the back, where it falls
+      away (tools/molenhoek_end_inside.py cuts the relief out inside the fences; world/walkIn.ts draws the lawn there).
+      The fences stand on a concrete gravel board that takes up the step to the ground outside.
     - A terrace of large grey tiles behind the house, round the cut corner (there as far as the planting along the
       fence) and along the side wall to the shed, and a paved path past the shed to the gate; a lawn in the rest.
     - A flat-roofed log shed in the front corner, its back to the street fence.
