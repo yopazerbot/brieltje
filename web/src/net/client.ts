@@ -151,6 +151,11 @@ export class Net {
   onMessage: (m: ServerMsg) => void = () => {};
   /** The connection's state, as a function that gives it in the current language ('' when connected). */
   onStatus: (text: () => string) => void = () => {};
+  /**
+   * The server ended the connection for good (logged in somewhere else, the session ended, removed):
+   * no reconnecting. Why, in the current language.
+   */
+  onEnded: (why: () => string) => void = () => {};
   /** The last time there and back to the server (ms), as the server measured it; null before the first */
   rtt: number | null = null;
   /** Everything received and sent since the page opened: bytes and messages */
@@ -209,6 +214,7 @@ export class Net {
       if (this.stopped || e.code === 4000 || e.code === 4001 || e.code === 4002) {
         const why = ({ 4000: 'net.elsewhere', 4001: 'net.removed', 4002: 'net.ended' } as const)[e.code as 4000 | 4001 | 4002];
         this.onStatus(() => (why ? t(why) : ''));
+        if (!this.stopped && why) this.onEnded(() => t(why));
         return;
       }
       // Full (4003): said, and tried again a little later like a dropped connection, until there is room.

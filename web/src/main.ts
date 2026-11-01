@@ -1136,6 +1136,10 @@ net.onStatus = (text) => {
   netText = text;
   netStatus.textContent = text();
 };
+// Ended for good (another tab took over, the session ended, a new PIN): back to playing alone, as after
+// a kick. Else the page stayed as it was: the others frozen in place, a game's bar counting down, and a
+// seeker's eyes shut with no way to move.
+net.onEnded = (why) => setAccount(null, why);
 net.onMessage = (m: ServerMsg) => {
   switch (m.t) {
     case 'welcome':
