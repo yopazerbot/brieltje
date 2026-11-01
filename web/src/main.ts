@@ -1379,6 +1379,9 @@ net.onMessage = (m: ServerMsg) => {
       break;
     }
     case 'kicked':
+      // Said at the top too: leaving drops the connection before its close could say it, and the
+      // message under the join fields is out of sight while playing.
+      net.onStatus(() => t('net.removed'));
       setAccount(null, () => t('net.removed'));
       break;
   }
