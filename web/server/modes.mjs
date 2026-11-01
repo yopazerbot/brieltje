@@ -2,7 +2,8 @@
 // (the house against the bungalow). The server keeps the game: who seeks or is "it", the clock,
 // the coins, the teams and their score, and it checks every tag and every coin against where
 // the players really are. No fighting during the party games; in the teams game only between
-// the teams.
+// the teams. Hide and seek, tag and the treasure hunt are played at the house in Briel: everyone
+// is gathered there when one starts (game.mjs gather; the game's edge keeps them near, see fence).
 
 import { readFileSync } from 'node:fs';
 
@@ -18,6 +19,7 @@ const NO_TAG_BACK_MS = 3000;
 const COINS = 15;
 const TEAMS_MS = 600_000;
 const SWITCH_MS = 15_000; // at most one team switch this often
+const GRACE_MS = 15_000; // a seeker or "it" whose connection drops has this long to come back
 export const TEAM_GOAL = 25; // kills of the other team that win the teams game
 export const TEAM_NAMES = { house: 'House', bungalow: 'Bungalow' };
 export const TEAM_COLORS = { house: '#4fa3e0', bungalow: '#ff9f43' };
@@ -72,6 +74,7 @@ export class Modes {
   get peaceful() {
     return this.active && this.state.kind !== 'teams';
   }
+
 
   /** In the teams game: the player's team ('house' or 'bungalow'), else null. */
   teamOf(name) {
@@ -172,6 +175,7 @@ export class Modes {
       if (teams) this.game.teamsChanged(this.names(), false);
       this.send();
       this.say(`${by} stopped the game`, 'gameStopped', { name: by });
+      if (teams) this.game.freshRound(); // the kills of the teams game would end the next round at once
       return;
     }
     if (!Object.hasOwn(KINDS, kind)) return;
@@ -213,8 +217,13 @@ export class Modes {
       this.state = { kind, phase: 'playing', until: now + HUNT_MS, coins, counts: byName(names.map((n) => [n, 0])) };
       this.say(`${by} started a treasure hunt: ${COINS} coins in and around the house`, 'huntStarted', { name: by, n: COINS });
     }
-    // Straight from the teams game to another one: everyone back in their own colours.
-    if (fromTeams) this.game.teamsChanged(names, false);
+    if (kind !== 'teams') this.game.gather(names); // played at the house: everyone there, spread out
+    // Straight from the teams game to another one: everyone back in their own colours, and the
+    // fighting scores start again.
+    if (fromTeams) {
+      this.game.teamsChanged(names, false);
+      this.game.freshRound();
+    }
     this.send();
   }
 
@@ -289,42 +298,85 @@ export class Modes {
     if (s.kind === 'hide') {
       if (!s.players.has(name)) s.seekers.add(name);
       s.players.add(name);
+      if (s.seekers.has(name)) s.seekerBack = 0; // a seeker is back in time
     }
-    if (s.kind === 'tag') s.times[name] ??= 0;
+    if (s.kind === 'tag') {
+      s.times[name] ??= 0;
+      if (s.it === name) s.itBack = 0; // "it" is back in time
+    }
     if (s.kind === 'treasure') s.counts[name] ??= 0;
     if (this.active) this.send();
   }
 
-  /** Someone left during a game: it goes on without them if it can. Their part is kept for when they're back (see join). */
+  /**
+   * Someone left during a game: it goes on without them if it can. Their part is kept for when
+   * they're back (see join). The last seeker, or "it", has GRACE_MS to come back (a phone's Wi-Fi
+   * blinking) before the game goes on without them (see tick).
+   */
   leave(name) {
     const s = this.state;
     if (!this.active || s.phase === 'done') return;
     if (s.kind === 'hide') {
       const names = this.names();
+      if (s.seekers.has(name) && !names.some((n) => s.seekers.has(n))) {
+        s.seekerBack = Date.now() + GRACE_MS;
+        this.say(`The seeker ${name} dropped out. Waiting 15 seconds for them to come back.`, 'seekerAway', { name });
+        return this.send();
+      }
       if (names.length < 2) return this.finish('Not enough players', 'notEnough');
-      if (!names.some((n) => s.seekers.has(n))) return this.finish('The seeker left: the hiders win', 'seekerLeft');
       if (!names.some((n) => !s.seekers.has(n))) return this.finish('The seekers found everyone!', 'foundAll');
     } else if (s.kind === 'tag') {
-      const names = this.names();
-      if (names.length < 2) return this.finish('Not enough players', 'notEnough');
       if (s.it === name) {
-        s.it = this.pick(names);
-        this.say(`${name} left: ${s.it} is it`, 'itLeft', { name, it: s.it });
+        s.itBack = Date.now() + GRACE_MS;
+        this.say(`${name}, who is it, dropped out. Waiting 15 seconds for them to come back.`, 'itAway', { name });
+        return this.send();
       }
+      if (this.names().length < 2) return this.finish('Not enough players', 'notEnough');
     }
     this.send();
   }
 
-  /** Every tick: the clock, and the time "it" has been it. */
+  /** A seeker or "it" who dropped out and wasn't back in time: the game goes on without them. */
+  graceOver(now) {
+    const s = this.state;
+    const names = this.names();
+    if (s.kind === 'hide' && s.seekerBack && now >= s.seekerBack) {
+      s.seekerBack = 0;
+      if (names.some((n) => s.seekers.has(n))) return false;
+      if (names.length >= 2) this.finish('The seeker left: the hiders win', 'seekerLeft');
+      else this.finish('Not enough players', 'notEnough');
+      return true;
+    }
+    if (s.kind === 'tag' && s.itBack && now >= s.itBack) {
+      s.itBack = 0;
+      if (this.game.players.has(s.it)) return false;
+      if (names.length < 2) {
+        this.finish('Not enough players', 'notEnough');
+        return true;
+      }
+      const gone = s.it;
+      s.it = this.pick(names);
+      s.last = null;
+      this.say(`${gone} left: ${s.it} is it`, 'itLeft', { name: gone, it: s.it });
+      this.send();
+    }
+    return false;
+  }
+
+  /** Every tick: the clock, and the time "it" has been it (while there). */
   tick(now, dt) {
     const s = this.state;
     if (!this.active) return;
-    if (s.kind === 'tag' && s.phase === 'playing' && s.it in s.times) s.times[s.it] += dt / 1000;
+    if (s.phase !== 'done' && this.graceOver(now)) return;
+    if (s.kind === 'tag' && s.phase === 'playing' && s.it in s.times && this.game.players.has(s.it)) s.times[s.it] += dt / 1000;
     if (now < s.until) return;
     if (s.phase === 'done') {
       const teams = s.kind === 'teams';
       this.state = { kind: 'free' };
-      if (teams) this.game.teamsChanged(this.names(), false);
+      if (teams) {
+        this.game.teamsChanged(this.names(), false);
+        this.game.freshRound(); // the kills of the teams game would end the next round at once
+      }
       return this.send();
     }
     if (s.kind === 'teams') {

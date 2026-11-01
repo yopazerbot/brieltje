@@ -1055,15 +1055,19 @@ function getOffHorse(tell = true): void {
   if (tell) net.send({ t: 'horse', op: 'off' });
 }
 
-/** Back in the game at spawn point `i` (chosen by the server, away from the others). */
-function respawnAt(i: number): void {
+/**
+ * Back in the game at spawn point `i` (chosen by the server, away from the others), or at `x, z` near
+ * it when the server spreads everyone out (a party game gathers them at the house).
+ */
+function respawnAt(i: number, at?: { x?: number; z?: number }): void {
   getOut(false);
   getOffHorse(false);
   const s = spawns[i];
   if (s) {
+    const [x, z] = typeof at?.x === 'number' && typeof at?.z === 'number' ? [at.x, at.z] : [s.x, s.z];
     const [mx, mz] = s.team === 'bungalow' ? [83.5, 189.7] : [4.5, 6];
-    const yaw = Math.atan2(-(mx - s.x), -(mz - s.z)); // facing the middle of the house (or the bungalow)
-    player.place(s.x, s.z, world.groundAt(s.x, s.z, s.y + 0.3, 0).y, yaw, 0);
+    const yaw = Math.atan2(-(mx - x), -(mz - z)); // facing the middle of the house (or the bungalow)
+    player.place(x, z, world.groundAt(x, z, s.y + 0.3, 0).y, yaw, 0);
   }
   player.down = 0;
   player.update(0, NO_INPUT, camera);
@@ -1370,7 +1374,7 @@ net.onMessage = (m: ServerMsg) => {
       showOnline();
       break;
     case 'respawn':
-      if (m.name === me?.username) respawnAt(m.spawn);
+      if (m.name === me?.username) respawnAt(m.spawn, m);
       else avatars.respawn(m.name);
       break;
     case 'round':

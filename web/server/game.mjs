@@ -1038,8 +1038,11 @@ export class Game {
     }
   }
 
-  /** Back to full health at the spawn point furthest from the others (one of the best three, for variety). */
-  respawn(name, p, now) {
+  /**
+   * Back to full health at the spawn point furthest from the others (one of the best three, for
+   * variety), or at `at` ({ spawn, x, y, z }: a place near spawn point `spawn`, see gather).
+   */
+  respawn(name, p, now, at = null) {
     this.releaseCar(name);
     this.releaseHorse(name);
     p.hp = HEALTH;
@@ -1047,19 +1050,51 @@ export class Game {
     p.weapons = loadout(p.role);
     p.nades.fill(0);
     p.protectedUntil = now + PROTECT_MS;
-    // At the player's team's house in the teams game, else round the house; away from the others.
-    const team = this.modes.teamOf(name) ?? 'house';
-    const others = [...this.players].filter(([n, o]) => n !== name && o.alive && o.state).map(([, o]) => o.state);
-    const ranked = SPAWNS.map((s, i) => ({
-      i, team: s.team, d: others.length ? Math.min(...others.map((o) => Math.hypot(o.x - s.x, (o.y - s.y) * 2, o.z - s.z))) : Math.random(),
-    })).filter((s, _, all) => s.team === team || !all.some((q) => q.team === team)).sort((x, y) => y.d - x.d);
-    const spawn = ranked[Math.floor(Math.random() * Math.min(3, ranked.length))].i;
+    let spawn = at?.spawn;
+    if (!at) {
+      // At the player's team's house in the teams game, else round the house; away from the others.
+      const team = this.modes.teamOf(name) ?? 'house';
+      const others = [...this.players].filter(([n, o]) => n !== name && o.alive && o.state).map(([, o]) => o.state);
+      const ranked = SPAWNS.map((s, i) => ({
+        i, team: s.team, d: others.length ? Math.min(...others.map((o) => Math.hypot(o.x - s.x, (o.y - s.y) * 2, o.z - s.z))) : Math.random(),
+      })).filter((s, _, all) => s.team === team || !all.some((q) => q.team === team)).sort((x, y) => y.d - x.d);
+      spawn = ranked[Math.floor(Math.random() * Math.min(3, ranked.length))].i;
+    }
+    const pos = at ?? SPAWNS[spawn];
     // Until the player's own update arrives, they are at the spawn point (so the next pick avoids it).
-    if (p.state) Object.assign(p.state, { x: SPAWNS[spawn].x, y: SPAWNS[spawn].y, z: SPAWNS[spawn].z });
+    if (p.state) Object.assign(p.state, { x: pos.x, y: pos.y, z: pos.z });
     p.movedAt = now;
     p.budget = 0.5;
     this.moved(p);
-    this.broadcast({ t: 'respawn', name, spawn });
+    this.broadcast({ t: 'respawn', name, spawn, ...(at ? { x: at.x, z: at.z } : {}) });
+  }
+
+  /**
+   * Everyone to the house in Briel for a party game (hide and seek, tag, the treasure hunt): spread
+   * round its outside start places, each on open ground (no wall, hedge or fence within a metre, as
+   * the strongmen need), clear of the cars and inside the game's edge (see fence), the places taken
+   * in turn so the players share them out. As a respawn (out of cars, off horses, full health), not a
+   * death. A nicer start than fenceAll alone, which only puts those outside the edge just inside it.
+   */
+  gather(names) {
+    const now = Date.now();
+    const outside = SPAWNS.map((s, i) => ({ ...s, i })).filter((s) => s.team === 'house' && s.outside);
+    const cars = Object.values(this.cars);
+    const fence = this.fence();
+    const spots = [];
+    for (const [r, n] of [[0, 1], [1.6, 6], [3.2, 10]]) { // each place's middle, then rings round it
+      for (let k = 0; k < n; k++) {
+        for (const s of outside) {
+          const x = s.x + r * Math.sin((k / n) * Math.PI * 2);
+          const z = s.z + r * Math.cos((k / n) * Math.PI * 2);
+          if (this.free(x, z) && fence.inside(x, z) && cars.every((c) => Math.hypot(x - c.x, z - c.z) > 3.5)) spots.push({ spawn: s.i, x: +x.toFixed(2), y: s.y, z: +z.toFixed(2) });
+        }
+      }
+    }
+    [...names].sort(() => Math.random() - 0.5).forEach((name, k) => {
+      const p = this.players.get(name);
+      if (p) this.respawn(name, p, now, spots.length ? spots[k % spots.length] : null);
+    });
   }
 
   /** Health at the start and after a respawn. */
@@ -1089,6 +1124,11 @@ export class Game {
     this.broadcast({ t: 'scores', list: this.scoreList() });
   }
 
+  /** A new fighting round, as after a won round (and after the teams game, see Modes). */
+  freshRound() {
+    this.newRound(`New round: first to ${KILL_LIMIT} kills`, 'newRound', { n: KILL_LIMIT });
+  }
+
   /**
    * Scores back to zero; everyone who fights (or is dead) starts again at a spawn point, except during
    * a party game, where nobody fights and a hider would be pulled out of their hiding place. `code` and
@@ -1115,7 +1155,7 @@ export class Game {
         this.broadcast({ t: 'item', i, ready: true });
       }
     });
-    if (this.roundOver && now >= this.roundOver.until) this.newRound(`New round: first to ${KILL_LIMIT} kills`, 'newRound', { n: KILL_LIMIT });
+    if (this.roundOver && now >= this.roundOver.until) this.freshRound();
     for (const [name, p] of this.players) if (!p.alive && !this.roundOver && now >= p.respawnAt) this.respawn(name, p, now);
     this.modes.tick(now, TICK_MS);
     if (!this.players.size) return;

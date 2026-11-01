@@ -83,7 +83,8 @@ export type ServerMsg =
   | { t: 'furn'; op: 'put'; f: Piece }
   | { t: 'furn'; op: 'del'; id: number }
   | { t: 'furn'; op: 'all'; list: Piece[]; by: string; reset: boolean }
-  | { t: 'respawn'; name: string; spawn: number }
+  /** `x, z`: where near the spawn point, when the server spreads everyone out (a party game's start) */
+  | { t: 'respawn'; name: string; spawn: number; x?: number; z?: number }
   | { t: 'round'; winner: string; ms: number }
   | ({ t: 'newround'; text: string } & Coded)
   | { t: 'glass'; i: number; by: string }
