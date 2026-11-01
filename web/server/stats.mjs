@@ -13,14 +13,18 @@
 // - the most players at once.
 // The day's salt and the day's hashes are kept in the store for that day only (Yoshi, 1 Nov 2026):
 // a redeploy restarts the server, and with the salt in memory only, every restart counted everyone
-// again. The store keeps a random seed per day; the salt is that seed run through a key made from
-// the admin password, which is a Railway variable and never in the store, so a copy of the database
-// alone can't rebuild anyone's hash. A server that starts takes the day's seed from the store; the
-// first seed stored for a day wins, so the old and the new server share one while Railway overlaps
-// them, and a hash counts once because the store adds it in one statement. When the Belgian day
-// turns, the seed and the hashes of the day before are deleted (within a minute; also at start), so
-// yesterday's visitors can't be matched to today's or traced back. Changing the admin password
-// during a day changes the salt, and that day counts its visitors again from then on.
+// again. The store keeps a random seed per day; the salt is that seed run through STATS_SECRET (a
+// Railway variable of at least 32 random bytes, never in the store), so a copy of the database alone
+// can't rebuild anyone's hash. The key is its own random secret on purpose: a salt key made from a
+// password would let a database copy test password guesses offline (hash your own address and browser
+// name under each guess until it matches a stored hash). A server that starts takes the day's seed
+// from the store; the first seed stored for a day wins, so the old and the new server share one while
+// Railway overlaps them, and a hash counts once because the store adds it in one statement. When the
+// Belgian day turns, the seed and the hashes of the day before are deleted (within a minute; also at
+// start), so yesterday's visitors can't be matched to today's or traced back. Without STATS_SECRET
+// (local development, or before it is set) nothing is stored: the salt and the hashes stay in memory
+// as before, and a restart can count a visitor again. Changing STATS_SECRET during a day changes the
+// salt, and that day counts its visitors again from then on.
 // Not counted: the admin's own visits and games (any request with the admin's session), browsers
 // that ask not to be tracked (Global Privacy Control or Do Not Track), bots by their browser name,
 // and pages loaded ahead of time (Sec-Purpose or Purpose: prefetch, prerender).
@@ -44,7 +48,8 @@
 // overlapping servers count nothing twice.
 //
 // A flood of reports can't inflate the numbers much: per address 20 starts and 240 minutes an hour
-// (a household playing together), at most 500 visits at once, and only known values count. The one
+// (a household playing together), 60 new visitors or players an hour (each one a row in the store
+// for the day), at most 500 visits at once, and only known values count. The one
 // typed thing kept is a solo player's name, cleaned to letters, digits and a few signs: at most 20
 // log lines an hour per address and 200 an hour in all. Anyone can send a report, so the names are
 // as typed, never checked; the cap in all keeps a flood from many addresses from pushing the real
@@ -90,6 +95,26 @@ const AHEAD = (req) => /prefetch|prerender|preview/i.test([req.headers['sec-purp
 const IN = (event) => event === 'join_ok' || event === 'login_ok';
 const FAILED = (event) => /failed|limited|blocked/.test(event);
 const nameKey = (s) => String(s).normalize('NFC').trim().toLowerCase();
+
+let warned = false;
+/**
+ * STATS_SECRET as a key: at least 32 bytes in base64url (made with randomBytes), or null. Anything
+ * shorter counts as absent. One warning per process, never with the value.
+ */
+function statsKey(secret) {
+  const s = typeof secret === 'string' ? secret.trim() : '';
+  const key = /^[A-Za-z0-9_-]+$/.test(s) ? Buffer.from(s, 'base64url') : null;
+  if (key && key.length >= 32) return key;
+  if (!warned) {
+    warned = true;
+    console.warn(JSON.stringify({
+      event: 'stats_secret_missing',
+      detail: s ? 'STATS_SECRET is not 32 or more bytes in base64url: ignored' : 'STATS_SECRET is not set',
+      effect: 'visitor codes stay in memory only: a restart can count a visitor again',
+    }));
+  }
+  return null;
+}
 
 class Window {
   constructor(ms) {
@@ -144,10 +169,10 @@ function names(rows, from, to, until) {
 
 export class Stats {
   /**
-   * `secret`: a value kept outside the store (server.mjs gives the admin password) that locks the
-   * day's seed. `now`: the clock, for tests; the server leaves it at Date.now.
+   * `secret`: STATS_SECRET, kept outside the store, which locks the day's seed; without it nothing
+   * about visitors is stored. `now`: the clock, for tests; the server leaves it at Date.now.
    */
-  constructor(store, { json, clientKey, game, readJson, isAdmin, log, secret = '', now = Date.now }) {
+  constructor(store, { json, clientKey, game, readJson, isAdmin, log, secret, now = Date.now }) {
     this.store = store;
     this.json = json;
     this.clientKey = clientKey;
@@ -156,7 +181,7 @@ export class Stats {
     this.isAdmin = isAdmin;
     this.log = log; // the login log (server/auth.mjs)
     this.now = now;
-    this.saltKey = createHmac('sha256', 'brieltje visitor codes').update(String(secret ?? '')).digest();
+    this.key = statsKey(secret); // null: the salt and the hashes stay in memory, nothing is stored
     this.pending = {}; // day -> key -> count not yet written
     this.peaks = {}; // day -> most players at once not yet written
     this.today = { day: this.day(), counts: {} }; // today's totals so far (stored and pending), for the live view
@@ -172,6 +197,7 @@ export class Stats {
     this.minutes = new Window(3600_000);
     this.soloLog = new Window(3600_000);
     this.soloLogAll = new Window(3600_000);
+    this.newPerAddress = new Window(3600_000);
     this.visits = new Map(); // anonymous visit number -> { mode, control, together, lang, since, last }
     this.streams = new Set();
     this.dirty = { stats: true, log: [], signups: false, feedback: false };
@@ -298,11 +324,16 @@ export class Stats {
     return !!ua && !BOT.test(ua) && !OPTED_OUT(req) && !AHEAD(req) && !this.isAdmin(req);
   }
 
-  /** The day's salt: the day's seed from the store, run through the key that isn't in the store. */
+  /**
+   * The day's salt: the day's seed from the store, run through STATS_SECRET (which isn't in the store).
+   * Without STATS_SECRET: a random salt in memory only, and nothing stored.
+   */
   saltFor(d) {
     if (this.salt?.day !== d) {
-      const p = this.store.visitSeed(d, randomBytes(18).toString('base64url'))
-        .then((seed) => createHmac('sha256', this.saltKey).update(String(seed)).digest());
+      const fresh = randomBytes(32);
+      const p = this.key
+        ? this.store.visitSeed(d, fresh.toString('base64url')).then((seed) => createHmac('sha256', this.key).update(`brieltje visitor salt\0${seed}`).digest())
+        : Promise.resolve(fresh);
       this.salt = { day: d, p };
       this.seen = new Set();
       p.catch(() => {
@@ -315,14 +346,19 @@ export class Stats {
   /**
    * Whether this browser is new on day `d` as a `kind` ('game', 'interest' or 'player'). The kind
    * is in the hash, so the store's rows can't be matched to each other. The store decides, so a
-   * restart or a second server never counts a browser twice.
+   * restart or a second server never counts a browser twice (without STATS_SECRET: this server's
+   * memory decides, as before).
    */
   async firstToday(req, d, kind) {
     const salt = await this.saltFor(d);
     const who = createHash('sha256').update(salt).update(`${kind}\0${this.clientKey(req)}\0${String(req.headers['user-agent'] || '')}`)
       .digest('base64url').slice(0, 22);
     if (this.seen.has(who)) return false;
+    // At most 60 new browsers an hour from one address (far more than a household, or a mobile network's
+    // shared address, brings here): a flood of made-up browser names can't fill the store or the numbers.
+    if (!this.newPerAddress.hit(`${kind}:${this.clientKey(req)}`, 60)) return false;
     this.seen.add(who);
+    if (!this.key) return true;
     try {
       return await this.store.seeVisitor(d, who);
     } catch (e) {
@@ -591,6 +627,7 @@ export class Stats {
       interest: signups.length,
       since: rows.length ? rows.map((r) => r.day).sort()[0] : null,
       detailSince: this.detailSince || null,
+      restartProof: !!this.key, // STATS_SECRET set: the day's codes are kept, so a restart counts nobody again
     });
   }
 }

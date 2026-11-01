@@ -8,6 +8,9 @@
 //   DATABASE_URL       Postgres for users and the login log (local: JSON file)
 //   TRUST_CLOUDFLARE   1 when the domain runs through Cloudflare: then only requests
 //                      that came through Cloudflare are answered (see viaCloudflare)
+//   STATS_SECRET       at least 32 random bytes, base64url: locks the day's visitor seed in the
+//                      store (server/stats.mjs). Without it visitors are counted in memory only,
+//                      and a restart can count one again.
 
 import { createHash } from 'node:crypto';
 import { createServer } from 'node:http';
@@ -67,8 +70,8 @@ await game.loadFurniture();
 await game.loadRules();
 
 const interest = new Interest(store, { json: (...a) => json(...a), clientKey: (req) => bucketOf(clientIp(req)) });
-// The admin password also locks the day's visitor seed in the store (server/stats.mjs): it is a Railway variable, never in the database.
-const stats = new Stats(store, { json: (...a) => json(...a), clientKey: (req) => bucketOf(clientIp(req)), game, readJson: (req) => body(req), isAdmin: (req) => auth.session(req)?.role === 'admin', log: (event, req, extra) => auth.log(event, req, extra), secret: process.env.ADMIN_PASSWORD });
+// STATS_SECRET locks the day's visitor seed in the store (server/stats.mjs): a Railway variable of its own, never in the database.
+const stats = new Stats(store, { json: (...a) => json(...a), clientKey: (req) => bucketOf(clientIp(req)), game, readJson: (req) => body(req), isAdmin: (req) => auth.session(req)?.role === 'admin', log: (event, req, extra) => auth.log(event, req, extra), secret: process.env.STATS_SECRET });
 const feedback = new Feedback(store, { json: (...a) => json(...a), readJson: (req) => body(req), clientKey: (req) => bucketOf(clientIp(req)), clientIp, session: (req) => auth.session(req), time: beTime });
 // The admin page's live view hears of new log lines, changed sign-ups and feedback.
 auth.onLog = (entry) => stats.logged(entry);

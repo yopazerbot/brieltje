@@ -330,6 +330,7 @@
       $('how-before').hidden = !(stats.since && stats.since < w.full);
       $('how-before').textContent = `Visitors before ${dayLong(w.full)} can be counted more than once. Each restart of the server counted them again.`;
     }
+    $('how-secret').hidden = stats.restartProof !== false;
     $('since').textContent = stats.since ? `Counting since ${dayName(stats.since)}.` : 'Counting has just started. The numbers fill up from today.';
     drawPlaying();
   }
@@ -351,17 +352,18 @@
     const playerDays = detail ? cur.filter((d) => d.day >= detail.day).length : 0;
     const partial = cur[0].day < full; // the period starts before players were counted whole
     const inflated = cur.some((d) => d.day < full && d.game_visitors); // days whose restarts counted visitors again
+    const noSecret = stats.restartProof === false ? 'No STATS_SECRET yet: restarts can count some twice.' : '';
     const games = v.alone + v.together;
     const avgNow = v.starts ? v.minutes / v.starts : null;
     const avgBefore = v.prev.starts && v.prev.minutes !== null ? v.prev.minutes / v.prev.starts : null;
     const tiles = [
       {
         lead: true, value: playerDays ? fmt(v.players) : '–', label: multi ? 'Players (once a day each)' : 'Players',
-        delta: change(v.players, v.prev.players), note: [!playerDays ? 'Not counted on these days.' : partial ? `Counted since ${sinceText(detail)}.` : '', multi && playerDays ? perDay(v.players, playerDays) : ''],
+        delta: change(v.players, v.prev.players), note: [!playerDays ? 'Not counted on these days.' : partial ? `Counted since ${sinceText(detail)}.` : '', multi && playerDays ? perDay(v.players, playerDays) : '', playerDays ? noSecret : ''],
       },
       {
         value: fmt(v.visitors), label: multi ? 'Visitors (once a day each)' : 'Visitors', delta: change(v.visitors, v.prev.visitors),
-        note: [multi ? perDay(v.visitors, n) : '', inflated ? `Before ${dayShort(full)}, restarts counted some twice.` : ''],
+        note: [multi ? perDay(v.visitors, n) : '', inflated ? `Before ${dayShort(full)}, restarts counted some twice.` : '', noSecret],
       },
       { value: fmt(v.names.all), label: 'Different players (by name)', delta: change(v.names.all, v.prev.names), note: `${fmt(v.names.together)} together · ${fmt(v.names.alone)} alone` },
       { value: fmt(v.peak), label: 'Most players at once', delta: change(v.peak, v.prev.peak) },
