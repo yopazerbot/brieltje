@@ -37,6 +37,15 @@ interface Extras {
   clearTrees: [number, number, number][];
   /** A house's own garden: its plot, where the village's ground covers, hedges and fences give way */
   clear?: [number, number][][];
+  /** Buildings gone since the village data was made, where a house stands now: their blocks, roofs and windows go */
+  gone?: [number, number][][];
+  /**
+   * The village's ground covers round such a house (old pavings, a lane's dirt tracks), each by its material, first
+   * corner and corner count: replaced by the pieces of it that lie outside the house's plot (outline and holes each)
+   */
+  cuts?: { at: [number, number]; m: string; n: number; p?: [number, number][][][] }[];
+  /** Where they were cut: the village's fence posts there go too */
+  cleared?: [number, number][][];
 }
 
 /** `name`: the model, /models/<name>.glb, and the landmark the village's blocks it replaces are tagged with. */
@@ -198,6 +207,35 @@ export function fitStreetModel(data: VillageData, model: THREE.Object3D, first: 
   // Each outline's box first: nearly every block in the village lies far from them all, and the box says so at once
   // (testing every corner against every outline took a second, and froze the game just after it began).
   const boxes = outlines.map(boxOf);
+  /** Whether (px, pz) lies in one of the outlines or within `slack` of it, their boxes asked first. */
+  const inAny = (rings: [number, number][][], bs: Box[], px: number, pz: number, slack: number) =>
+    rings.some((o, k) => px > bs[k][0] - slack && px < bs[k][2] + slack && pz > bs[k][1] - slack && pz < bs[k][3] + slack && near(o, px, pz, slack));
+  // Buildings gone since the village data was made: neither drawn nor walked into (the house there now brings its own
+  // block), their windows with them.
+  const gone = x.gone ?? [];
+  if (gone.length > 0) {
+    const goneBoxes = gone.map(boxOf);
+    const inGone = (ring: [number, number][]) => {
+      const [mx, mz] = middle(ring);
+      return inAny(gone, goneBoxes, mx, mz, 0.3);
+    };
+    data.prisms = (data.prisms ?? []).filter((p) => p.lm !== undefined || p.d !== undefined || !inGone(p.p[0]));
+    data.roofs = data.roofs.filter((r) => r.lm !== undefined || !inGone(r.p));
+    data.openings = (data.openings ?? []).filter((o) => !inAny(gone, goneBoxes, (o.a[0] + o.b[0]) / 2, (o.a[1] + o.b[1]) / 2, 1.0));
+  }
+  // The village's ground covers round such a house: each replaced by what of it lies outside the plot.
+  for (const c of x.cuts ?? []) {
+    const list = data.prisms ?? [];
+    const i = list.findIndex(
+      (p) => !p.lm && p.d !== undefined && p.m === c.m && p.p[0].length === c.n && Math.abs(p.p[0][0][0] - c.at[0]) < 1e-3 && Math.abs(p.p[0][0][1] - c.at[1]) < 1e-3,
+    );
+    if (i >= 0) list.splice(i, 1, ...(c.p ?? []).map((rings) => ({ ...list[i], p: rings })));
+  }
+  const cleared = x.cleared ?? [];
+  if (cleared.length > 0 && data.posts) {
+    const clearedBoxes = cleared.map(boxOf);
+    data.posts = data.posts.filter(([px, pz]) => !inAny(cleared, clearedBoxes, px, pz, 0));
+  }
   const mine = (ring: [number, number][]) => {
     const [mx, mz] = middle(ring);
     const [x0, z0, x1, z1] = boxOf(ring);

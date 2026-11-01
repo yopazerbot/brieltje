@@ -16,7 +16,10 @@ Sources, used for measuring only (nothing of them is shipped):
   workshop, a feed mill's silos and a farm, the houses hidden behind others or far back from the road, and the house
   on the straight branch (its address is on another street);
 - photos taken from the street (Nov 2026) of the new terrace near the junction with Oordegemkouter, which Street View
-  shows only as the houses that stood there in 2009 (see `_terrace`).
+  shows only as the houses that stood there in 2009 (see `_terrace`);
+- the brick house at Meulewegel's corner with Molenhoek as it stands (Nov 2026), newer than the GRB's buildings and
+  the orthophoto, which still have the white pair, the shed and the villa across the lane that it and its building site
+  replaced (see `_cube` and `_cube_site`).
 The houses are keyed by where they stand: b and the metres along the branch from the junction (past the end of its
 centre line, along its last direction), l or r as seen walking away from it; never by number. Each front runs from its left end as seen from the street (`order` "view"):
 a negative s counts from its right end.
@@ -126,6 +129,14 @@ def _end_faces(rect, sill, first, head, band, dark):
     bands = {1: [(0.0, 3.86, *band, dark)]}  # (s0, s1, y0, y1, tint)
     fixed = 0.08 + 0.5 * (5.388 - 0.08)  # the cut corner's fixed pane: the first half of its glass
     boxes = {2: [(0.06, fixed + 0.02, hi - 0.14, hi, -0.13, 0.035, "#3b3e41")]}  # (s0, s1, y0, y1, d0, d1, tint): the screen's box
+    return _as_built(rect, given, bands, boxes, soldiers=True)
+
+
+def _as_built(rect, given, bands=None, boxes=None, soldiers=False):
+    """A house's other walls for the builder's `faces`: each wall's openings (s0, s1, y0, y1, kind, options), bands and
+    boxes given from the corner its edge of `rect` starts at, turned into the builder's way (from the left end as seen
+    from outside)."""
+    bands, boxes = bands or {}, boxes or {}
     n = len(rect)
     area = sum(rect[k][0] * rect[(k + 1) % n][1] - rect[(k + 1) % n][0] * rect[k][1] for k in range(n))
     out = []
@@ -142,7 +153,9 @@ def _end_faces(rect, sill, first, head, band, dark):
             if not as_given and "div" in opt:
                 opt = dict(opt, div=sorted(round(1 - f, 4) for f in opt["div"]))
             made.append((round((a + b) / 2, 4), round(b - a, 4), y0, round(y1 - y0, 4), kind, opt))
-        face = dict(near=(round((p[0] + q[0]) / 2, 3), round((p[1] + q[1]) / 2, 3)), openings=made, soldiers=True)
+        face = dict(near=(round((p[0] + q[0]) / 2, 3), round((p[1] + q[1]) / 2, 3)), openings=made)
+        if soldiers:
+            face["soldiers"] = True
         if i in bands:
             face["patches"] = [(*turn(a, b), y0, y1, tint) for a, b, y0, y1, tint in bands[i]]
         if i in boxes:
@@ -254,6 +267,152 @@ def _end_garden(h, plot):
         table=dict(at=[round(v, 3) for v in furn_c], dir=r(t_cut)),
         parasol=[round(v, 3) for v in ((S[0] + C[0]) / 2 + out_cut[0] * 1.5 - t_cut[0] * 1.9, (S[1] + C[1]) / 2 + out_cut[1] * 1.5 - t_cut[1] * 1.9)],
         clear=rnd(list(plot.buffer(-0.02, join_style=2).exterior.coords)[:-1]),
+    )
+
+
+# The brick house at Meulewegel's corner with Molenhoek: its frame on the plan. The front (towards Molenhoek) stands
+# parallel to the GRB's front of the pair of white houses that stood here before it, CUBE_BACK m further back; its
+# side along the lane parallel to Meulewegel's centre line, CUBE_LANE m from it. u runs along the front from the lane
+# corner, v into the plot from the front.
+CUBE_OLD = (1358.94, -406.99)  # the old pair's front corner by the lane (GRB)
+CUBE_T = (-0.98816, -0.15334)  # along the front, away from the lane
+CUBE_N = (-0.15334, 0.98816)   # into the plot
+CUBE_BACK, CUBE_LANE, CUBE_OLD_LANE = 4.4, 4.4, 4.17  # m behind the old front; m from the lane's centre line (the old side: 4.17)
+CUBE_W, CUBE_D, CUBE_E = 7.2, 8.6, 6.2  # the front, the side, the coping's top above the floor
+
+
+CUBE_F = (CUBE_OLD[0] + CUBE_N[0] * CUBE_BACK + CUBE_T[0] * (CUBE_LANE - CUBE_OLD_LANE),
+          CUBE_OLD[1] + CUBE_N[1] * CUBE_BACK + CUBE_T[1] * (CUBE_LANE - CUBE_OLD_LANE))  # the front's corner by the lane
+
+
+def _cube_at(u, v):
+    """A point of the brick house's frame (u along the front from the lane corner, v into the plot) in model x, z."""
+    return (round(CUBE_F[0] + CUBE_T[0] * u + CUBE_N[0] * v, 3), round(CUBE_F[1] + CUBE_T[1] * u + CUBE_N[1] * v, 3))
+
+
+def _cube_uv(x, z):
+    """A model point in the brick house's frame (u, v)."""
+    return ((x - CUBE_F[0]) * CUBE_T[0] + (z - CUBE_F[1]) * CUBE_T[1], (x - CUBE_F[0]) * CUBE_N[0] + (z - CUBE_F[1]) * CUBE_N[1])
+
+
+def _cube():
+    """The brick house at Meulewegel's corner with Molenhoek, as it stands (Nov 2026). It was built since 2025 where a
+    pair of white houses and a shed by the lane stood, which the GRB still has (`_cube_site` clears them), and further
+    back than they stood, behind a drive of gravel. A two-storey cube under a flat roof with a thin black coping, in
+    red-brown brick: long thin bricks, mottled, with lighter mortar.
+    - The front, towards Molenhoek: a band of windows across the first floor, in black frames, two units of three
+      lights (the second light of each with its blind down), turning the corner on the lane's side as a glass corner.
+      On the ground floor a tall narrow window and a flush black door with a bell plate beside it. Light stone sills
+      (the band's are black), a black plinth strip at the foot of the walls and the concrete footing under it where the
+      ground falls away.
+    - The side along the lane: the band's return, a tall window on the ground floor and a tall narrow one upstairs. At
+      the back corner a brick box on the first floor stands out over the lane's side and the garden, black underneath,
+      with a tall narrow window under it.
+    - The other side: a narrow window on each floor and a wall light; the back: glass doors to the terrace and a window
+      upstairs. Behind, a brick garden wall round the terrace and a steel flue pipe.
+    Its size: the front about 1.2 times its height, which is taken as 6.2 m to the coping."""
+    sill, dark = "#cfccc4", "#202123"
+    W, D, E = CUBE_W, CUBE_D, CUBE_E
+    band = (3.85, 4.72)
+    rect = [_cube_at(0, 0), _cube_at(W, 0), _cube_at(W, D), _cube_at(0, D)]
+    win = lambda a, b, y0, y1, **o: (a, b, y0, y1, "w", dict({"n": 1, "sill": sill, **o}))
+    given = {
+        1: [win(2.4, 3.0, 3.3, 5.05), win(3.6, 4.2, 0.5, 2.55)],  # the side away from the lane, from the front
+        2: [(3.6, 6.6, 0.0, 2.5, "d", dict(n=2)), win(1.0, 2.6, 3.8, 5.0, n=2)],  # the back, from the far side
+        3: [win(D - 0.7, D, *band, sill=dark, corner=True),  # the lane's side, from the back: the band's return,
+            win(D - 2.0, D - 0.9, 0.3, 2.55),  # the tall window on the ground floor,
+            win(D - 4.9, D - 4.2, 3.25, 5.05),  # the tall narrow one upstairs
+            win(D - 8.3, D - 7.75, 1.3, 2.95)],  # and the one under the box
+    }
+    boxes = {1: [(5.1, 5.24, 1.85, 2.05, 0.0, 0.1, "#262729")]}  # the wall light
+    box = [(-0.45, D - 2.2), (0.0, D - 2.2), (0.0, D), (3.0, D), (3.0, D + 1.0), (-0.45, D + 1.0)]
+    return dict(
+        laser=True, rect=rect, at=_cube_at(W / 2, D / 2), depth=0, eaves=E, ridge=E, roof="flat", roof_tint="#3a3c3f",
+        **{"raise": 0.65},  # the floor a third of a metre above the front's ground (the plot falls away towards the back)
+        wall="brick", tint="#946a58", long_brick=True,  # red-brown as the game lights it (sky in the shade, sun on the lane's side)
+        frame="#1b1c1e", coping="#1d1e20", coping_h=0.06, plain=True,
+        plinth=(0.12, "#1c1d1f", "stone"), footing=(-0.12, "#a8a7a1"),
+        front=[[1.725, 3.45, band[0], round(band[1] - band[0], 2), "w", dict(n=3, sill=dark, blind=[1], corner=True)],
+               [4.8, 2.7, band[0], round(band[1] - band[0], 2), "w", dict(n=3, sill=dark, blind=[1])],
+               [3.915, 0.73, 0.4, 2.15, "w", dict(n=1, sill=sill)],
+               [5.11, 0.98, 0.0, 2.55, "d", dict(c="#1b1c1e", bar=True)]],
+        fixtures=[(5.82, 1.25, 0.08, 0.24, 0.015, "#2a2b2d")],
+        faces=_as_built(rect, given, boxes=boxes),
+        overhang=dict(p=[_cube_at(u, v) for u, v in box], y=(3.05, E), against=[1, 2], soffit="#1c1d1f"),
+    )
+
+
+def _cube_site(h, plots, roads, grb, village, lane):
+    """Round the brick house (`h`, planned): what the builder lays out and what of the village gives way.
+    - The ground: gravel from the pavement to the front, as far as 2 m past the house; rough ground (the building site)
+      in the corner by the lane's mouth, along the lane's side and the other side, in cells of 1.5 m on the relief.
+      Across the lane, where a villa stood behind its lawn, the plot lies bare now: earth in cells of 3 m. The heaps,
+      pallets and machines on the site now are left out.
+    - A concrete manhole slab in the gravel, the garden wall, the flue pipe.
+    - `gone`: the GRB's buildings that stood on the plot (the white pair and the shed by the lane) and across the lane
+      (the villa): the village's blocks, roofs and windows there go, for walking into too (the house brings its own).
+    - `cuts`: the village's ground covers (the old pavings, the lane's dirt tracks, the villa's lawn) cut away on these
+      plots and along the lane (tools/road_detail.py draws its surface): what of each lies outside, by the cover it
+      replaces; `cleared`: where they were cut, for the fence posts and trees.
+    `plots`: the GRB plots (model x, z), `roads`: the road surface, `grb`: the GRB buildings, `village`: web/src/data/
+    village.json, `lane`: Meulewegel's centre line."""
+    W, D = CUBE_W, CUBE_D
+    quad = lambda u0, u1, v0, v1: Polygon([_cube_at(u0, v0), _cube_at(u1, v0), _cube_at(u1, v1), _cube_at(u0, v1)])
+    # The plot and its neighbour's (the pair's two), the strip along the lane behind and the shed's own small plot; the
+    # villa's plot across the lane.
+    probes = [(W / 2, -2.0), (W + 1.5, D / 2), (W / 2, D + 7.0), (-0.5, D + 9.4)]
+    mine = [p for p in plots if any(p.contains(Point(_cube_at(u, v))) for u, v in probes)]
+    # (its front part: the shed at its far end, by Kapelleweg, still stands)
+    across = next(p for p in plots if p.contains(Point(_cube_at(-8.0, D / 2)))).intersection(quad(-60.0, 0.0, -12.0, D + 40.0))
+    land = unary_union(mine).buffer(0.01).difference(roads.buffer(0.02))
+    house = Polygon(h["main"]).buffer(0.02, join_style=2)
+    lane_edge = -(CUBE_LANE - 1.45 - 1.2)  # u of the lane's earth apron's outer edge (tools/road_detail.py)
+    apron = LineString(lane.coords).buffer(1.45 + 1.2, cap_style=2)
+    corner = quad(lane_edge, 1.2, -12.0, -4.5)
+    rough = unary_union([corner, quad(lane_edge, 0.0, -4.5, D), quad(W, W + 2.0, 0.0, D + 1.0)]).intersection(land).difference(house)
+    gravel = quad(lane_edge, W + 2.0, -12.0, 0.0).intersection(land).difference(corner).difference(house)
+    bare = across.buffer(-0.05, join_style=2).difference(roads.buffer(0.02)).difference(apron)
+
+    def cells(area, kind, size):
+        uv = [_cube_uv(x, z) for x, z in area.convex_hull.exterior.coords]
+        u0, u1 = math.floor(min(u for u, _ in uv) / size), math.ceil(max(u for u, _ in uv) / size)
+        v0, v1 = math.floor(min(v for _, v in uv) / size), math.ceil(max(v for _, v in uv) / size)
+        out = []
+        for i in range(u0, u1):
+            for j in range(v0, v1):
+                c = quad(i * size, (i + 1) * size, j * size, (j + 1) * size).intersection(area)
+                for g in getattr(c, "geoms", [c]):
+                    if g.geom_type == "Polygon" and g.area > 0.01:
+                        out.append([kind, [[round(x, 3), round(z, 3)] for x, z in list(g.exterior.coords)[:-1]]])
+        return out
+    ground = cells(gravel, "g", 1.5) + cells(rough, "r", 1.5) + cells(bare, "r", 3.0)
+
+    # What gives way: the plot from the road to past the old shed, the villa's plot, the lane's corridor to Kapelleweg.
+    lot = unary_union([quad(-CUBE_LANE, W + 4.0, -12.0, D + 16.0).intersection(unary_union(mine).buffer(0.01)), across.buffer(0.01)])
+    corridor = LineString([lane.interpolate(4.0 + k * (lane.length - 6.0) / 40) for k in range(41)]).buffer(3.0, cap_style=2)
+    gone = [g for g in grb if lot.contains(g.representative_point()) and g.intersection(lot).area > 0.5 * g.area]
+    cut = unary_union([lot, corridor] + [g.buffer(0.3, join_style=2) for g in gone])
+    cuts = []
+    for p in village["prisms"]:
+        if "d" not in p or p["m"] == "road":
+            continue
+        shape = Polygon(p["p"][0], p["p"][1:]).buffer(0)
+        if not shape.intersects(cut) or shape.intersection(cut).area < 0.05:
+            continue
+        rest = shape.difference(cut)
+        pieces = [g for g in getattr(rest, "geoms", [rest]) if g.geom_type == "Polygon" and g.area > 0.05]
+        ring = lambda r: [[round(x, 3), round(z, 3)] for x, z in list(r.coords)[:-1]]
+        cuts.append(dict(at=p["p"][0][0], m=p["m"], n=len(p["p"][0]), p=[[ring(g.exterior)] + [ring(r) for r in g.interiors] for g in pieces]))
+    at = lambda u, v: list(_cube_at(u, v))
+    return dict(
+        ground=ground,
+        slab=dict(at=at(2.9, -2.8), dir=list(CUBE_T), size=[1.0, 0.9], top=0.12),
+        wall=dict(p=[at(0.1, D), at(0.1, D + 4.0), at(3.5, D + 4.0)], top=1.4, t=0.2, tint=h["tint"], coping="#c8c4bb"),
+        flue=dict(at=at(0.9, D + 1.4), top=3.4, r=0.09),
+        gone=[[[round(x, 3), round(z, 3)] for x, z in list(g.exterior.coords)[:-1]] for g in gone],
+        cuts=cuts,
+        cleared=[[[round(x, 3), round(z, 3)] for x, z in list(g.simplify(0.05).exterior.coords)[:-1]] for g in getattr(cut, "geoms", [cut])],
+        trees=[[t["x"], t["z"], 1.0] for t in village["trees"] if cut.contains(Point(t["x"], t["z"]))],
     )
 
 
@@ -389,20 +548,9 @@ HOUSES = {
     "b535l_red": dict(  # red brick, two storeys, white frames
         at=(1337.05, -405.2), depth=9.0, eaves=6.0, ridge=10.0, roof="gable", roof_tint="#3e4043", wall="brick", tint="#b05f48", frame=WHITE,
         front=dict(ground=["W", "d"], first=["w", "w"], door=WHITE)),
-    "b549l_white": dict(  # white render, two storeys, roof windows, a white door
-        at=(1349.82, -405.99), depth=9.0, eaves=6.0, ridge=9.6, roof="gable", roof_tint="#3e4043", wall="render", tint="#efede8", frame="#8f9396",
-        front=dict(ground=["W", "d"], first=["W", "w"], door=WHITE), roof_windows=[(2.0, 1.2)]),
-    "b554l_white": dict(  # white render, two storeys, a dark roof
-        at=(1354.7, -398.7), depth=9.0, eaves=6.0, ridge=9.8, roof="gable", roof_tint="#3e4043", wall="render", tint="#efede8", frame=WHITE,
-        front=dict(ground=["W", "d"], first=["w", "w"], door=BROWN)),
-    "b562l_behind": dict(  # set back: small, red-brown brick
-        at=(1356.64, -384.37), reach=30, depth=8.0, eaves=3.2, ridge=7.4, roof="gable", roof_tint="#7a4636", wall="brick", tint="#9a5a46", frame=WHITE,
-        front=dict(ground=["w", "d"], door=BROWN)),
-    "b578l_villa": dict(  # set back behind a lawn: white render, a dark roof with three white dormers
-        at=(1373.74, -381.73), depth=10.0, eaves=3.6, ridge=9.2, roof="gable", roof_tint="#3e4043", wall="render", tint="#f0eee9", frame=WHITE,
-        front=dict(ground=["W", "w", "d", "w", "W"], door=WHITE),
-        dormers=[dict(s=3.5, w=1.5, h=1.3, gable=True, clad="#f1efe9"), dict(s=7.5, w=1.5, h=1.3, gable=True, clad="#f1efe9"),
-                 dict(s=-3.5, w=1.5, h=1.3, gable=True, clad="#f1efe9")], chimneys=[dict(s=-2.0, d=4.5, w=0.7, h=1.3)]),
+    # The white pair that stood here and the shed by the lane behind it are gone: the brick house (`_cube`) stands in
+    # their place, further back. So is the villa across the lane, behind its lawn: its plot lies bare (`_cube_site`).
+    "b555l_cube": _cube(),
     "b611l_shop": dict(  # a shop, one storey under a flat roof: big windows in green frames
         at=(1407.78, -374.43), depth=12.0, eaves=4.0, ridge=4.0, roof="flat", roof_tint="#3a3c3f", wall="render", tint="#eceae4", frame=SHOP_GREEN,
         front=dict(ground=["W", "D", "W"], door=SHOP_GREEN)),
@@ -482,6 +630,16 @@ def main():
     end["garden"] = _end_garden(end, plot)
     garden_area = Polygon(end["garden"]["clear"])
     clear_trees = [[t["x"], t["z"], 1.0] for t in village["trees"] if garden_area.contains(Point(t["x"], t["z"]))]
+    # The brick house at Meulewegel's corner: its drive and rough ground, its garden wall, and what of the village gives way.
+    meule = [model(LineString([p[:2] for p in f["geometry"]["coordinates"]])) for f in features("Wegsegment")
+             if f["properties"].get("LSTRNM") == "Meulewegel" and f["geometry"]["type"] == "LineString"]
+    lane = linemerge(unary_union(meule)) if len(meule) > 1 else meule[0]
+    if Point(lane.coords[0]).distance(branch) > Point(lane.coords[-1]).distance(branch):
+        lane = LineString(lane.coords[::-1])  # from Molenhoek to Kapelleweg
+    roads = unary_union([model(p) for f in features("WBN") for p in polygons(f["geometry"])])
+    plot_list = [model(p) for f in features("ADP") for p in polygons(f["geometry"])]
+    houses["b555l_cube"]["site"] = _cube_site(houses["b555l_cube"], plot_list, roads, grb, village, lane)
+    clear_trees += houses["b555l_cube"]["site"].pop("trees")
     pts = lambda ps: [[round(p.x, 2), round(p.y, 2)] for p in ps]
     for i, (s0, s1) in enumerate(PARTS, 1):
         mine = {k: h for k, h in houses.items() if s0 <= branch.project(Point(h["at"])) < s1}

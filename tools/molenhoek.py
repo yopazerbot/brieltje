@@ -37,6 +37,10 @@ Output: one GLB, one mesh per material, every mesh coloured per vertex, packed s
 - mh_glass: the panes (dark, or light where net curtains hang behind them) and the solar panels;
 - mh_panel: doors, garage doors, roller shutters, surrounds; mh_detail: frames, sills' edges,
   gutters, downpipes, railings, ridge caps, posts and signs (drawn only within 200 m).
+- mh_gravel: round a house newer than the village data (`site`), its drive's gravel and a building site's bare earth,
+  in cells on the relief (drawn only within 200 m). The root's extras then also carry the buildings that stood there
+  (`gone`: the village's blocks, roofs and windows go, for walking into too) and the village's ground covers cut away
+  round it (`cuts`, `cleared`).
 """
 import json
 import math
@@ -131,7 +135,11 @@ bpy.ops.wm.read_factory_settings(use_empty=True)
 # name: (shared game texture, normal scale)
 SHARED = {"mh_brick": ("nb_brick", 1.0), "mh_render": ("plaster", 0.35), "mh_cladding": ("cladding", 0.9), "mh_stone": ("concrete", 0.5),
           "mh_roof": ("roof_tiles", 1.0), "mh_asphalt": ("asphalt", 0.8), "mh_pavers": ("pavers", 0.8), "mh_foliage": ("hedge", 1.0),
-          "mh_tiles": ("floor_tile", 0.6)}
+          "mh_tiles": ("floor_tile", 0.6), "mh_gravel": ("gravel", 0.8)}
+# Long thin bricks (a house's `long_brick`): its brick faces take the shared brick texture stretched along and squeezed
+# up, so its bricks are twice as long and a fifth thinner, in the same mesh and draw call.
+LONG_UV = (0.5, 1.25)
+LONG = [False]
 M = {}
 
 
@@ -156,6 +164,7 @@ M["mh_glass"] = principled("mh_glass", 0.06, 0.3)
 M["mh_panel"] = principled("mh_panel", 0.5)
 M["mh_detail"] = principled("mh_detail", 0.55, 0.1)
 M["mh_detail"]["lod"] = 200  # metres: drawn only nearer than this (web/src/world/streetModel.ts)
+M["mh_gravel"]["lod"], M["mh_gravel"]["flat"] = 200, 1  # a drive's gravel and rough ground: near only, its texture's colour alone
 # A house you can walk into (`inside`): its panes and its front door's leaf in meshes of their own, which the game
 # shows only from afar; near it the house's own glass you see through and doors that open take their place
 # (web/src/world/walkIn.ts).
@@ -202,6 +211,12 @@ def yard_mat(mat):
     return mat + "_g" if IN_YARD[0] and mat + "_g" in BM else mat
 
 
+def mark_long(bm, mat, f):
+    """While a house of long thin bricks is built, its brick faces are marked (metre_uvs stretches their texture)."""
+    if LONG[0] and mat == "mh_brick" and f is not None:
+        f[bm.faces.layers.int["long"]] = 1  # the layer is made before the house is built (house())
+
+
 def face(mat, pts, out=None, col=None):
     """A planar face through game points (x, z, y); turned to face `out` (a game direction (dx, dz, dy))."""
     bm = BM[yard_mat(mat)]
@@ -219,6 +234,7 @@ def face(mat, pts, out=None, col=None):
     except ValueError:
         return None
     paint_face(bm, f, col)
+    mark_long(bm, mat, f)
     return f
 
 
@@ -234,7 +250,9 @@ def solid(mat, pts, col=None):
     bmesh.ops.recalc_face_normals(tmp, faces=tmp.faces[:])
     bm = BM[yard_mat(mat)]
     for f in tmp.faces:
-        paint_face(bm, bm.faces.new([bm.verts.new(v.co) for v in f.verts]), col)
+        nf = bm.faces.new([bm.verts.new(v.co) for v in f.verts])
+        paint_face(bm, nf, col)
+        mark_long(bm, mat, nf)
     tmp.free()
 
 
@@ -432,7 +450,10 @@ def hole(f, h, layers):
             for k in range(o["lights"]):
                 y = 0.55 + k * 0.38
                 f.flat("mh_glass", h.s0 + w * 0.42, h.s0 + w * 0.58, h.y0 + y, h.y0 + y + 0.16, d + 0.004, "#3a4448")
-        f.flat("mh_detail", h.s0 + w * 0.12, h.s0 + w * 0.16, h.y0 + 0.9, h.y0 + 1.25, d + 0.03, "#c9cbcc")  # the handle bar
+        if o.get("bar"):  # a long bar handle, the leaf's colour a shade lighter
+            f.box("mh_detail", h.s0 + 0.1, h.s0 + 0.13, h.y0 + 0.75, h.y0 + 1.95, d + 0.01, d + 0.06, shade(leaf, 1.9))
+        else:
+            f.flat("mh_detail", h.s0 + w * 0.12, h.s0 + w * 0.16, h.y0 + 0.9, h.y0 + 1.25, d + 0.03, "#c9cbcc")  # the handle bar
         door_step(f, h, d)
     elif h.kind == "g":
         face("mh_panel", pane, f.out(), o.get("c", "#e9e8e4"))
@@ -455,6 +476,12 @@ def hole(f, h, layers):
         parts = [h.s0 + w * k for k in o["div"]] if o.get("div") else [h.s0 + w * k / n for k in range(1, n)]  # `div`: where the lights part, as parts of the width
         for m in parts:
             f.flat("mh_detail", m - 0.035, m + 0.035, h.y0 + fw, h.y1 - fw, d + fd + 0.002, c)
+        for k in o.get("blind", []):  # `blind`: these lights (0 from the left) with a blind down behind the glass, in two panes
+            a, b = h.s0 + w * k / n, h.s0 + w * (k + 1) / n
+            f.flat("mh_panel", a + 0.03, b - 0.03, h.y0 + fw, h.y1 - fw, d + 0.004, "#8a8680")
+            f.flat("mh_detail", (a + b) / 2 - 0.022, (a + b) / 2 + 0.022, h.y0 + fw, h.y1 - fw, d + fd + 0.002, c)
+        if o.get("corner") and h.s0 < 0.01:  # `corner`: glass round the wall's corner, its frames meeting in a slim post
+            f.box("mh_detail", -0.005, 0.135, h.y0 - 0.005, h.y1 + 0.005, -h.depth - 0.005, 0.005, c)
         if h.kind == "w" and (o.get("tr") or (h.y1 - h.y0 > 1.75 and n > 1)):  # a transom: a top light
             t = h.y1 - (0.38 if o.get("tr") else 0.45)
             f.flat("mh_detail", h.s0 + fw, h.s1 - fw, t - 0.03, t + 0.03, d + fd + 0.004, c)
@@ -946,10 +973,16 @@ def s_ok(k):
 # ---------------------------------------------------------------- houses
 def house(key, H):
     INSIDE[0] = bool(H.get("inside"))
+    LONG[0] = bool(H.get("long_brick"))
+    if LONG[0] and "long" not in BM["mh_brick"].faces.layers.int:  # made now: a new layer would lose the faces held
+        BM["mh_brick"].faces.layers.int.new("long")
     try:
         build_house(key, H)
+        if H.get("site"):
+            site(H)
     finally:
         INSIDE[0] = False
+        LONG[0] = False
 
 
 def build_house(key, H):
@@ -967,6 +1000,9 @@ def build_house(key, H):
     if pl:
         kind = pl[2] if len(pl) > 2 else "stone"
         layers = [(-99, {"brick": "mh_brick", "render": "mh_render"}.get(kind, "mh_stone"), pl[1]), (pl[0], wall_mat, tint)]
+    fo = H.get("footing")  # (top, colour): the concrete footing under the plinth, showing where the ground falls away
+    if fo:
+        layers = [(-99, "mh_stone", fo[1]), (fo[0], *layers[0][1:])] + layers[1:]
     up = H.get("upper")
     if up:
         layers.append((up["y"], {"brick": "mh_brick", "render": "mh_render", "cladding": "mh_render"}[up["wall"]], up["tint"]))
@@ -1081,6 +1117,8 @@ def build_house(key, H):
         pitched(A, D, C, B, base, E, R, H, party_ends=(False, False))
     elif roof == "hip":
         hipped(A, B, C, D, base, E, R, H)
+    if H.get("overhang"):
+        overhang(H, base)
     if rect:
         roof_extras(H, A, B, C, D, base, E, R)
         downpipes(H, A, B, C, D, base, E, party, fi)
@@ -1598,6 +1636,67 @@ def garden(key, H, base):
         SOLIDS.append(prism_xz([g.xz(0, -0.15), g.xz(LL, -0.15), g.xz(LL, 0.15), g.xz(0, 0.15)], g.base - 0.3, g.base + h + 0.06))
 
 
+def overhang(H, base):
+    """A box on the upper floor standing out of the walls (`overhang`): its outline, whose edges in `against` lie on the
+    house's walls and stay open, from y0 to y1 above the floor in the wall's brick, its underside in `soffit`, a flat
+    top behind the house's coping."""
+    ov = H["overhang"]
+    ring, (y0, y1) = ov["p"], ov["y"]
+    wall = {"brick": "mh_brick", "render": "mh_render", "cladding": "mh_cladding"}[H["wall"]]
+    for i in range(len(ring)):
+        if i in ov.get("against", []):
+            continue
+        a, b = ring[i], ring[(i + 1) % len(ring)]
+        o = outward(ring, i)
+        face(wall, [(a[0], a[1], base + y0), (b[0], b[1], base + y0), (b[0], b[1], base + y1), (a[0], a[1], base + y1)], o, H["tint"])
+        t, L = unit(a, b)
+        Frame(a, t, (o[0], o[1]), base).box("mh_stone", -0.03, L + 0.03, y1 - 0.02, y1 + H.get("coping_h", 0.1), -0.25, 0.04, H.get("coping", "#7c7f82"))
+    face("mh_detail", [(x, z, base + y0) for x, z in ring], (0, 0, -1), ov.get("soffit", "#2a2b2d"))
+    face("mh_stone", [(x, z, base + y1 - 0.05) for x, z in ring], (0, 0, 1), "#4f5154")
+    SOLIDS.append(prism_xz(ring, base + y0, base + y1))
+
+
+GONE, CUTS, CLEARED = [], [], []  # round a house (`site`): the village's buildings gone, its ground covers cut, where
+
+
+def site(H):
+    """Round a house (`site`, tools/molenhoek_end_survey.py): its drive of gravel and the rough ground of a building site
+    in cells on the relief, a concrete manhole slab, a brick garden wall with a pale coping and a steel flue pipe. What of
+    the village gives way goes to the root's extras."""
+    S = H["site"]
+    base = H["y0"] + 0.05
+    for kind, ring in S["ground"]:
+        cx, cz = sum(p[0] for p in ring) / len(ring), sum(p[1] for p in ring) / len(ring)
+        k = jitter(cx, cz)
+        col = shade("#8a7b6b", 0.92 + 0.16 * k) if kind == "g" else shade("#746346", 0.85 + 0.3 * k)
+        face("mh_gravel", [(x, z, terrain(x, z) + 0.035) for x, z in ring], (0, 0, 1), col)
+    sl = S["slab"]
+    (sx, sz), t, (a, b) = sl["at"], sl["dir"], sl["size"]
+    g0 = terrain(sx, sz)
+    f = Frame((sx, sz), t, (t[1], -t[0]), g0)
+    f.box("mh_stone", -a / 2, a / 2, -0.15, sl["top"], -b / 2, b / 2, "#a5a49e")
+    f.box("mh_stone", -0.35, 0.35, sl["top"], sl["top"] + 0.006, -0.3, 0.3, "#8f8e89")  # its cover's seam
+    SOLIDS.append(prism_xz([f.xz(-a / 2, -b / 2), f.xz(a / 2, -b / 2), f.xz(a / 2, b / 2), f.xz(-a / 2, b / 2)], g0 - 0.15, g0 + sl["top"]))
+    w = S["wall"]
+    pts = w["p"]
+    for p, q in zip(pts, pts[1:]):
+        tt, L = unit(p, q)
+        g = Frame(p, tt, (tt[1], -tt[0]), base)
+        ends = (-w["t"] / 2 if p is not pts[0] else 0.0, L + w["t"] / 2)
+        low = min(terrain(*g.xz(s)) for s in (0.0, L / 2, L)) - base - 0.2
+        g.box("mh_brick", ends[0], ends[1], low, w["top"], -w["t"] / 2, w["t"] / 2, w["tint"])
+        g.box("mh_stone", ends[0] - 0.02, ends[1] + 0.02, w["top"], w["top"] + 0.05, -w["t"] / 2 - 0.03, w["t"] / 2 + 0.03, w["coping"])
+        SOLIDS.append(prism_xz([g.xz(ends[0], -w["t"] / 2), g.xz(ends[1], -w["t"] / 2), g.xz(ends[1], w["t"] / 2), g.xz(ends[0], w["t"] / 2)], base + low, base + w["top"] + 0.05))
+    fl = S["flue"]
+    (fx, fz), r = fl["at"], fl["r"]
+    tube("mh_detail", (fx, fz, terrain(fx, fz) - 0.1), (fx, fz, base + fl["top"]), r, "#b9bcbd", seg=8)
+    tube("mh_detail", (fx, fz, base + fl["top"]), (fx, fz, base + fl["top"] + 0.08), r + 0.025, "#a7aaab", seg=8)
+    SOLIDS.append({**prism_xz([(fx - r, fz - r), (fx + r, fz - r), (fx + r, fz + r), (fx - r, fz + r)], terrain(fx, fz) - 0.1, base + fl["top"]), "m": "steel"})
+    GONE.extend(S["gone"])
+    CUTS.extend(S["cuts"])
+    CLEARED.extend(S["cleared"])
+
+
 # ---------------------------------------------------------------- a house's own garden
 GARDENS = []  # the plots of the gardens built: the village's ground covers, fences and trees inside them give way
 UV_TURN = {}  # material: the direction (game x, z) its flat faces' texture runs along (the terrace's tiles along the house)
@@ -2044,6 +2143,7 @@ def metre_uvs(bm, turn=None):
     the direction (game x, z) a flat face's texture runs along (else the game's x)."""
     uv = bm.loops.layers.uv.new("UVMap")
     along = Vector((turn[0], -turn[1], 0)).normalized() if turn else Vector((1, 0, 0))
+    long = bm.faces.layers.int.get("long")  # faces of long thin bricks (mark_long)
     for f in bm.faces:
         n = f.normal
         if abs(n.z) > 0.97:
@@ -2051,9 +2151,12 @@ def metre_uvs(bm, turn=None):
         else:
             t = Vector((0, 0, 1)).cross(n).normalized()
             b = n.cross(t).normalized()
+        ku, kv = LONG_UV if long is not None and f[long] else (1.0, 1.0)
         for lp in f.loops:
             p = lp.vert.co
-            lp[uv].uv = (p.dot(t), -p.dot(b))
+            lp[uv].uv = (p.dot(t) * ku, -p.dot(b) * kv)
+    if long is not None:
+        bm.faces.layers.int.remove(long)
 
 
 root = bpy.data.objects.new(PLACE, None)
@@ -2072,6 +2175,11 @@ if MOLENHOEK:
 root["clearTrees"] = CLEAR_TREES if MOLENHOEK else DATA.get("clear_trees", [])
 if GARDENS:
     root["clear"] = GARDENS  # a house's own garden: the village's ground covers, fences and hedges inside it give way
+if GONE:
+    root["gone"] = GONE  # buildings that stood where a house (`site`) stands now: the village's blocks, roofs, windows there go
+if CUTS:
+    root["cuts"] = CUTS  # the village's ground covers round it: each replaced by what of it lies outside
+    root["cleared"] = CLEARED  # where they were cut: the fence posts there go too
 tris = 0
 objs = []
 def split_detail():

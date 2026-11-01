@@ -38,7 +38,9 @@ What the tour showed (the browser's profiles draw it):
   square's grey clinkers (`forecourt`). Both are laid over the village data's paving (`patches`).
 Kapelleweg's last stretch, from its junction with Oordegemkouter past the new terrace at Molenhoek's end, has been
 rebuilt since: a lane of two pale concrete strips with a strip of dark brick pavers down the middle, and beside it, up
-to the gardens, a verge of bare earth not yet finished (`STRETCHES`).
+to the gardens, a verge of bare earth not yet finished (`STRETCHES`). So has Meulewegel, the lane from Molenhoek to
+Kapelleweg by the brick house at its corner (`LANES`): the village data has no road surface for it, so it is drawn on
+its GRB centre line.
 
 How it is measured: each street's centre line is cut into stations every STEP metres; from each, a ray either
 side finds the carriageway's edge on the GRB's lines (or, where it has none, the road surface's own edge) and,
@@ -57,7 +59,7 @@ from pathlib import Path
 from PIL import Image, ImageDraw
 from shapely.affinity import affine_transform
 from shapely.geometry import LineString, Point, Polygon, box
-from shapely.ops import linemerge, unary_union
+from shapely.ops import linemerge, substring, unary_union
 from shapely.prepared import prep
 from shapely.strtree import STRtree
 
@@ -85,6 +87,11 @@ LOOSE = "~loose"  # marks a street's pieces with a loose surface (Wegsegment)
 # Kapellenhoek's centre line starts at the church square.
 STRETCHES = [("Kapellenhoek", 0.0, 165.0, "kh_dash"),
              ("Kapelleweg", 10.0, 72.0, "kw_path")]  # Kapelleweg's from its junction with Oordegemkouter
+# Lanes without a road surface in the village data, drawn on their GRB centre line with a street's profile: name:
+# (profile, half its width, the earth either side, the street it leaves, metres left off where it leaves it and at its
+# other end). Meulewegel, from Molenhoek to Kapelleweg, rebuilt as Kapelleweg's last stretch: two pale concrete strips
+# with dark clinkers between them, bare earth either side (the village drew it as an earth track that stopped short).
+LANES = {"Meulewegel": ("kw_path", 1.45, 1.2, "Molenhoek", 5.5, 2.6)}
 # The footpaths ("trage wegen") by name: profile and width (m). Unnamed paths and the earth tracks stay as they are.
 PATHS = {"Smetledekouterwegel": ("path_tiles", 1.0), "Pastorijwegel": ("path_pavers", 2.2), "Kosterstraatje": ("path_gravel", 1.8),
          "Processewijkweg": ("path_gravel", 1.2), "Meentochtwegel": ("path_gravel", 1.2), "Moeyweedreef": ("path_gravel", 1.6)}
@@ -482,6 +489,27 @@ def paths(gravel):
     return out, hide
 
 
+def lanes():
+    """The LANES: a run each on its GRB centre line, from the street it leaves, and the village's earth tracks and
+    gravel along it that it replaces."""
+    village = json.loads((ROOT / "web" / "src" / "data" / "village.json").read_text(encoding="utf-8"))
+    segs = model_lines("Wegsegment")
+    out, hide = [], []
+    for name, (profile, half, earth, street, skip0, skip1) in LANES.items():
+        parts = [l for p, l in segs if p.get("LSTRNM") == name]
+        line = linemerge(unary_union(parts)) if len(parts) > 1 else parts[0]
+        leaves = unary_union([l for p, l in segs if p.get("LSTRNM") == street])
+        if Point(line.coords[-1]).distance(leaves) < Point(line.coords[0]).distance(leaves):
+            line = LineString(line.coords[::-1])
+        piece = substring(line, skip0, line.length - skip1)
+        pts = resample(piece, STEP)
+        out.append({"name": name, "pf": profile, "s0": skip0, "p": [round(v, 2) for q in pts for v in (q.x, q.y)],
+                    "w": [half] * (2 * len(pts)), "k": [0] * len(pts), "q": [earth] * (2 * len(pts))})
+        zone = piece.buffer(half + earth)
+        hide += [key(p) for p in village["prisms"] if p["m"] in ("track", "gravel") and p.get("d") and zone.contains(poly(p).representative_point())]
+    return out, hide
+
+
 def school(rays):
     """The school's plateau on Smetlededorp's paved stretch (the village data draws its pavers): its own short run
     of stations along the centre line, the carriageway's width from the GRB's lines."""
@@ -628,13 +656,14 @@ def main():
             runs.append(pack(name, profile, part))
             named.append((name, profile, part))
     path_runs, hidden_paths = paths(gravel)
+    lane_runs, hidden_lanes = lanes()
     school_plateau, zebra = school(rays)
     out = {
         "_source": "GRB Wegsegment, WGO, WTI (Digitaal Vlaanderen, open data) and the road surface of web/src/data/house.json and "
                    "village.json via tools/road_detail.py; each street's make-up from a Street View tour (31 Oct 2026), written "
                    "down there, no images",
-        "hide": sorted({key(p) for p in roads} | set(hidden_paths)),
-        "runs": runs + path_runs,
+        "hide": sorted({key(p) for p in roads} | set(hidden_paths) | set(hidden_lanes)),
+        "runs": runs + path_runs + lane_runs,
         "fills": fills(road, named, corridor, centres, molenhoek_rebuilt()),
         "school": school_plateau,
         "zebras": [zebra],

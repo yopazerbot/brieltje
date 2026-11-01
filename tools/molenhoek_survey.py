@@ -410,10 +410,11 @@ def plan(specs, centre, walls, grb, others, relief, order="x"):
     for key, h in HOUSES.items():
         at = Point(*h["at"])
         if h.get("laser"):
-            poly = next((g for g in grb if g.contains(at)), None)
+            # its own outline (`rect`): a house newer than the GRB's buildings; `raise`: its floor above the lowest ground
+            poly = Polygon(h["rect"]) if h.get("rect") else next((g for g in grb if g.contains(at)), None)
             if poly is None:
                 raise SystemExit(f"{key}: no GRB building at {h['at']}")
-            ground = min(relief.height(x, z) for x, z in poly.exterior.coords) + GROUND
+            ground = min(relief.height(x, z) for x, z in poly.exterior.coords) + GROUND + h.get("raise", 0.0)
             feet[key] = ({"y0": ground, "y1": ground + 3.0}, poly)
             continue
         base = [(p, poly) for p, poly in walls if poly.contains(at)]
