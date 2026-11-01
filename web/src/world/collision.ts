@@ -1,3 +1,4 @@
+import type { Bounds } from '../../shared/bounds.mjs';
 import type { Prism, Ring } from './houseData';
 import { terrain } from './terrain';
 
@@ -99,6 +100,14 @@ export class World {
   private moving = new Map<string, Solid>();
 
   private dips: { rim: Ring; bottom: Ring; depth: number; low: number; minX: number; maxX: number; minZ: number; maxZ: number }[] = [];
+
+  /**
+   * The edge of the game (shared/bounds.mjs): the outline nobody walks, rides or drives past (main.ts
+   * sets the big one, or the one round the two houses while a game in the house runs), and the
+   * ceiling for flying, in metres above the ground under you. Null and Infinity: no edge.
+   */
+  bounds: Bounds | null = null;
+  ceiling = Infinity;
 
   /** `prisms`: the house's blocks (their numbers are the house data's: broken windows use them). */
   constructor(prisms: Prism[], private baseGround: number) {
@@ -225,6 +234,28 @@ export class World {
       return ground - (ground - bottom) * Math.min(1, Math.hypot(x - cx, z - cz) / d.depth);
     }
     return ground;
+  }
+
+  /** Keep a circle (the player) inside the edge of the game, sliding along it as along a wall; true when it pushed. */
+  keepIn(pos: { x: number; z: number }, radius: number): boolean {
+    return !!this.bounds?.keepIn(pos, radius);
+  }
+
+  /**
+   * Whether a rectangle (a car, a horse) may go to (cx, cz, yaw) as far as the edge of the game goes:
+   * inside it, or, for one already over it (the game's area shrank round it), at least further in
+   * than where it is (`from`).
+   */
+  boxInBounds(cx: number, cz: number, yaw: number, halfL: number, halfW: number, from: { x: number; z: number; yaw: number }): boolean {
+    const b = this.bounds;
+    if (!b || b.boxInside(cx, cz, yaw, halfL, halfW)) return true;
+    if (b.boxInside(from.x, from.z, from.yaw, halfL, halfW)) return false; // the usual case: against the edge
+    return b.depth(cx, cz) > b.depth(from.x, from.z);
+  }
+
+  /** The highest anyone flies at (x, z): `ceiling` above the bare ground there. */
+  skyAt(x: number, z: number): number {
+    return this.baseGround + terrain.height(x, z) + this.ceiling;
   }
 
   groundAt(x: number, z: number, feet: number, stepUp: number): Ground {

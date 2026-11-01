@@ -173,6 +173,8 @@ export class Horses {
   private blown = false;
   private jumpT = -1; // seconds into your jump, or -1
   private look = { yaw: 0, pitch: 0 };
+  /** The horse you ride ran into the edge of the game this frame (main.ts says so) */
+  atEdge = false;
   /** A hoof landed at a gallop on soft ground: a little dust there. */
   onDust: (at: THREE.Vector3) => void = () => {};
 
@@ -300,8 +302,10 @@ export class Horses {
     }
     const x = h.x + Math.sin(h.yaw) * h.speed * dt;
     const z = h.z + Math.cos(h.yaw) * h.speed * dt;
-    // In the air it clears what is lower than its belly is high.
-    if (this.world.boxFree(x, z, h.yaw, 1.1, 0.35, h.y + 0.4 + h.jump, h.y + 1.7 + h.jump, `horse-${h.state.i}`)) [h.x, h.z] = [x, z];
+    // In the air it clears what is lower than its belly is high, but never the edge of the game
+    // (shared/bounds.mjs), however high it jumps: there it stops, as at a wall too tall to jump.
+    this.atEdge = !this.world.boxInBounds(x, z, h.yaw, 1.1, 0.35, { x: h.x, z: h.z, yaw: h.yaw });
+    if (!this.atEdge && this.world.boxFree(x, z, h.yaw, 1.1, 0.35, h.y + 0.4 + h.jump, h.y + 1.7 + h.jump, `horse-${h.state.i}`)) [h.x, h.z] = [x, z];
     else h.speed *= 0.3;
     h.y = this.world.groundAt(h.x, h.z, h.y + 0.5, 0.4).y;
     Object.assign(h.state, { x: h.x, z: h.z, yaw: h.yaw, speed: h.speed, jump: h.jump });

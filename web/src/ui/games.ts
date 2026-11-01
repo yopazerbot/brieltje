@@ -103,6 +103,14 @@ export class Games {
     return this.view.kind !== 'free';
   }
 
+  /**
+   * A game in the house is being played (any of the four; not once its result shows): everyone stays
+   * near the two houses (shared/bounds.json `party`) and nobody travels. The server holds to it too.
+   */
+  get fenced(): boolean {
+    return this.active && this.view.phase !== 'done';
+  }
+
   /** A party game is on: no fighting (the teams game is a fight). */
   get peaceful(): boolean {
     return this.active && this.view.kind !== 'teams';

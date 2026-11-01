@@ -106,6 +106,7 @@ export class BigMap {
   private paths = new Map<Layer, Path2D>();
   private trees = new Path2D();
   private hull = new Path2D();
+  private edge: Path2D | null = null;
   /** The area the world is built in (map metres), from the village data */
   private area: [number, number][] | null = null;
   private ponds: { u: number; v: number }[] = [];
@@ -157,7 +158,7 @@ export class BigMap {
     );
     const legend = document.createElement('div');
     legend.className = 'bm-legend';
-    for (const [icon, key] of [['lg-you', 'map.you'], ['lg-portal', 'map.portal'], ['lg-player', 'map.players'], ['lg-pin', 'map.waypoint']] as const) {
+    for (const [icon, key] of [['lg-you', 'map.you'], ['lg-portal', 'map.portal'], ['lg-player', 'map.players'], ['lg-pin', 'map.waypoint'], ['lg-edge', 'map.edge']] as const) {
       const item = document.createElement('span');
       const i = document.createElement('i');
       i.className = icon;
@@ -199,6 +200,15 @@ export class BigMap {
       if (e.key === '+' || e.key === '=') this.zoom(1.4, this.w / 2, this.h / 2);
       else if (e.key === '-') this.zoom(1 / 1.4, this.w / 2, this.h / 2);
     });
+  }
+
+  /** The edge of the game (shared/bounds.json, the one that holds now): drawn as a dashed line, so you see how far you can go. */
+  setEdge(ring: number[][]): void {
+    const path = new Path2D();
+    ring.forEach(([x, z], i) => (i ? path.lineTo(toU(x, z), toV(x, z)) : path.moveTo(toU(x, z), toV(x, z))));
+    path.closePath();
+    this.edge = path;
+    this.dirty = true;
   }
 
   /** The village and the band to it (once loaded): their roads, buildings, fields, trees and ponds. */
@@ -515,6 +525,15 @@ export class BigMap {
     // Map metres to the screen.
     g.setTransform(k * this.s, 0, 0, k * this.s, k * (this.w / 2 - this.cu * this.s), k * (this.h / 2 - this.cv * this.s));
     this.paintGround(g, this.s);
+    if (this.edge) {
+      // The edge of the game: a soft dashed line (the minimap leaves it out).
+      g.setLineDash([7 / this.s, 5 / this.s]);
+      g.lineWidth = 1.6 / this.s;
+      g.lineJoin = 'round';
+      g.strokeStyle = 'rgba(70, 58, 44, 0.6)';
+      g.stroke(this.edge);
+      g.setLineDash([]);
+    }
     g.setTransform(k, 0, 0, k, 0, 0);
     // Street names, along their streets.
     if (this.s > 0.32) {

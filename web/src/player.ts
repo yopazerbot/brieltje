@@ -43,6 +43,8 @@ export class Player {
   onStep: (speed: number) => void = () => {};
   onLand: (speed: number) => void = () => {};
   ground: Ground = { y: 0 };
+  /** This frame you pushed against the edge of the game or flew into its ceiling (main.ts says so) */
+  atEdge = false;
   private vx = 0;
   private vz = 0;
   private vy = 0;
@@ -102,7 +104,9 @@ export class Player {
     this.vx += (tx - this.vx) * blend;
     this.vz += (tz - this.vz) * blend;
 
-    // Move in small steps so fast movement can't skip through thin glass.
+    // Move in small steps so fast movement can't skip through thin glass. The edge of the game
+    // stops you like a wall, after the walls (none of them can push you over it).
+    this.atEdge = false;
     const dist = Math.hypot(this.vx, this.vz) * dt;
     const steps = Math.max(1, Math.ceil(dist / 0.08));
     const pos = { x: this.x, z: this.z };
@@ -110,6 +114,7 @@ export class Player {
       pos.x += (this.vx * dt) / steps;
       pos.z += (this.vz * dt) / steps;
       this.world.resolve(pos, this.feet, RADIUS, STEP_UP, HEIGHT);
+      if (this.world.keepIn(pos, RADIUS)) this.atEdge = true;
       this.ground = this.world.groundAt(pos.x, pos.z, this.feet, STEP_UP);
       if (this.ground.y > this.feet && this.vy <= 0) this.feet = this.ground.y; // step up
     }
@@ -170,6 +175,13 @@ export class Player {
         next = Math.max(this.feet, ceiling - HEIGHT - 0.01);
         this.vy = 0;
       }
+    }
+    // The ceiling over the game (shared/bounds.json): high enough to see the village from above.
+    const sky = this.world.skyAt(this.x, this.z);
+    if (next > sky) {
+      if (this.vy > 0) this.atEdge = true;
+      next = Math.max(this.ground.y, sky);
+      this.vy = Math.min(this.vy, 0);
     }
     if (next <= this.ground.y) {
       next = this.ground.y;

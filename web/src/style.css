@@ -579,6 +579,7 @@ body.touch #map-btn .ico { left: 6px; bottom: 6px; width: 26px; height: 26px; }
 #bigmap .lg-portal { border-radius: 50%; border: 3px solid #b388ff; background: #11151b; box-sizing: border-box; }
 #bigmap .lg-player { border-radius: 50%; background: #4fa3e0; border: 2px solid #fff; box-sizing: border-box; }
 #bigmap .lg-pin { border-radius: 50% 50% 50% 0; transform: rotate(-45deg); background: #f2b33d; border: 1.5px solid #11151b; box-sizing: border-box; }
+#bigmap .bm-legend i.lg-edge { width: 16px; height: 2px; background: repeating-linear-gradient(90deg, rgba(70, 58, 44, 0.8) 0 4px, transparent 4px 7px); }
 #bigmap button {
   font: inherit; color: var(--ink); background: rgba(12, 14, 18, 0.85); border: 1px solid rgba(255, 255, 255, 0.25); border-radius: 6px; cursor: pointer;
 }

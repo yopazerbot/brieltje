@@ -195,6 +195,8 @@ export class Car {
   passenger: string | null = null;
   /** In the game: a village car once the village has loaded (main.ts), the others from the start */
   ready: boolean;
+  /** At the wheel this frame it ran into the edge of the game (main.ts says so) */
+  atEdge = false;
   private vx = 0;
   private vz = 0;
   private braking = false;
@@ -316,6 +318,7 @@ export class Car {
     const near = [...others, ...this.trees.filter((o) => Math.abs(o.x - this.x) < 8 && Math.abs(o.z - this.z) < 8)];
     const steps = Math.max(1, Math.ceil(dt * 120));
     let impact = 0;
+    this.atEdge = false;
     for (let i = 0; i < steps; i++) impact = Math.max(impact, this.step(dt / steps, input, near));
     this.braking = (input.brake > 0.05 && this.speed > 0.3) || (input.throttle > 0.05 && this.speed < -0.3) || (input.handbrake && Math.abs(this.speed) > 0.3);
     this.pushing = input.throttle || input.brake;
@@ -365,14 +368,21 @@ export class Car {
     const z = this.z + vz * dt;
 
     let impact = 0;
-    // Already stuck in something (a door swung into it): let it drive out.
-    if (this.free(x, z, yaw, others) || !this.free(this.x, this.z, this.yaw, others)) {
+    // Already stuck in something (a door swung into it): let it drive out. The edge of the game
+    // (shared/bounds.mjs) stops it like a wall, stuck or not.
+    const stuck = !this.free(this.x, this.z, this.yaw, others);
+    const from = { x: this.x, z: this.z, yaw: this.yaw };
+    const fenced = (x: number, z: number, yaw: number) => this.world.boxInBounds(x, z, yaw, this.halfL, this.halfW, from);
+    const can = (x: number, z: number, yaw: number, inBounds = fenced(x, z, yaw)) => inBounds && (stuck || this.free(x, z, yaw, others));
+    const ahead = fenced(x, z, yaw);
+    if (!ahead) this.atEdge = true;
+    if (can(x, z, yaw, ahead)) {
       Object.assign(this, { x, z, yaw });
-    } else if (this.free(x, this.z, this.yaw, others)) {
+    } else if (can(x, this.z, this.yaw)) {
       impact = Math.abs(vz); // slides along a wall
       this.x = x;
       vz = 0;
-    } else if (this.free(this.x, z, this.yaw, others)) {
+    } else if (can(this.x, z, this.yaw)) {
       impact = Math.abs(vx);
       this.z = z;
       vx = 0;

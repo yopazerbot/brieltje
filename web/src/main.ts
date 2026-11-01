@@ -74,6 +74,8 @@ import { RoadLife } from './world/roadLife';
 import { fitStreetModel, loadStreetModel } from './world/streetModel';
 import { CAR_REACH, CAR_SLOW, findPortal, PORTALS, portalNear, type Portal } from '../shared/portals.mjs';
 import { noShoot } from '../shared/zones.mjs';
+import { loadBounds } from '../shared/bounds.mjs';
+import BOUNDS from '../shared/bounds.json';
 import { carName, doorName, lang, onLang, placeName, plural, portalName, serverText, setLang, t, whoName } from './i18n';
 
 // The world. This module is fetched and run on the first start (src/start.ts, the page's entry,
@@ -388,6 +390,10 @@ world.addPrisms(house.surroundings?.prisms ?? []);
 world.addPrisms(homeStreet.blocks);
 world.addPrisms(ringRoads.blocks); // the pavements, a few centimetres up
 world.setDips(house.dips ?? []);
+// The edge of the game (shared/bounds.json): round the built-up area, or round the two houses while a game in the house runs.
+const edges = loadBounds(BOUNDS);
+world.bounds = edges.map;
+world.ceiling = edges.ceiling;
 const player = new Player(world, house.spawn);
 // Phones and tablets: touch controls (offered on any touch screen: src/start.ts).
 const touch = new TouchControls();
@@ -452,6 +458,7 @@ const roadLife = new RoadLife(world, tiles, groundY); // the traffic, parked car
 scene.add(roadLife.group);
 const travelPanel = new TravelPanel();
 const bigMap = new BigMap(document.getElementById('map-mount')!, house.prisms, house.surroundings, house.rooms, house.dips ?? []);
+bigMap.setEdge(edges.map.ring);
 minimap.setGround((g, k) => bigMap.paintGroundGame(g, k), () => bigMap.groundVersion); // the ground under the minimap, everywhere
 const mapBtn = document.getElementById('map-btn')!;
 
@@ -1057,6 +1064,10 @@ const portalMarks = PORTALS.map((p) => ({ x: p.x, z: p.z, color: p.color }));
 travelPanel.onPick = (p) => void travel(p, 'portal');
 async function travel(to: Portal, via: 'portal' | 'chat'): Promise<void> {
   if (trip || !combat.alive || planner.active || games.blindfolded) return;
+  if (games.fenced) {
+    chat.system(() => t('srv.travelGame')); // a game in the house: everyone stays near it (the server refuses too)
+    return;
+  }
   if (via === 'chat') {
     if (riding) getOut(); // the driver keeps the car
     if (horses.mounted >= 0) getOffHorse();
@@ -1547,6 +1558,7 @@ const roomNames = new Set(house.rooms.map((r) => r.name));
 let exposure = renderer.toneMappingExposure;
 let shake = 0;
 let flyHint = 0; // seconds the flying controls still show after taking off
+let edgeHint = 0; // seconds "you can't go further" still shows after pushing against the edge of the game
 let calmHint = 0; // seconds "no shooting here" still shows on the school grounds
 let lockHint = 0; // seconds "only in multiplayer" still shows after trying a door or a pane alone
 let horseHint = 0; // seconds the riding keys still show after getting on a horse
@@ -1574,6 +1586,18 @@ renderer.setAnimationLoop((now: number) => {
     else if (polled.deletePressed || polled.menuPressed) feedback.close(false);
   }
   if (frame.mapPressed) toggleMap(); // a short press on the touchpad, as M
+  // The edge of the game: round the two houses while a game in the house runs (the map shows it at
+  // once). Caught outside it (the game began while you were away), you get out of the car or off the
+  // horse, and walking puts you in.
+  const fence = games.fenced ? edges.party : edges.map;
+  if (world.bounds !== fence) {
+    world.bounds = fence;
+    bigMap.setEdge(fence.ring);
+    if (!fence.inside(player.x, player.z)) {
+      getOut();
+      getOffHorse();
+    }
+  }
   menu.setPadState(input.padName);
   hud.setPad(input.padName, menu.mode === 'pad');
   if (frame.fpsPressed) settings.toggle('fps'); // F, or Create on the controller (Settings: FPS counter)
@@ -1668,7 +1692,7 @@ renderer.setAnimationLoop((now: number) => {
     // The portals: on a pad (or stopped on one in the car) the list of places opens, and takes the
     // number keys, the wheel or D-pad and E. Not on horseback, nor from the passenger seat.
     const mode = menu.mode ?? 'kbm';
-    let pad = !rules.portals || trip || dead || planner.active || riding || onHorse || games.blindfolded ? null
+    let pad = !rules.portals || trip || dead || planner.active || riding || onHorse || games.fenced ? null
       : driving ? (Math.abs(car.speed) < CAR_SLOW ? portalNear(car.x, car.z, CAR_REACH) : null)
       : portalNear(player.x, player.z);
     if (pad && !driving && Math.abs(player.feet - portals.groundOf(pad)) > 1.5) pad = null; // flying over it
@@ -1760,7 +1784,7 @@ renderer.setAnimationLoop((now: number) => {
     }
     else if (nearHorse >= 0 && !target) prompt = t('prompt.mount', { use });
     if (pad) prompt = ''; // the list says it all
-    else if (!inCar && portalNear(player.x, player.z) && (onHorse || !rules.portals)) prompt = t(onHorse ? 'prompt.horsePortal' : 'prompt.portalsOff');
+    else if (!inCar && portalNear(player.x, player.z) && (onHorse || !rules.portals || games.fenced)) prompt = t(onHorse ? 'prompt.horsePortal' : games.fenced ? 'prompt.portalGame' : 'prompt.portalsOff');
     hud.setPrompt(prompt);
     const armed = action && !dead && !inCar;
     hud.setWeapon(armed, dead || inCar ? '' : weapon.status);
@@ -1780,6 +1804,10 @@ renderer.setAnimationLoop((now: number) => {
     wasFlying = player.flying;
     flyHint = player.flying ? flyHint - dt : 0;
     if (flyHint > 0) hud.setPrompt(t('prompt.fly', { up: key('jump', mode), down: key('down', mode) }));
+    // Against the edge of the game or its ceiling: a short line saying so (and why, during a game in the house).
+    if (driving ? car.atEdge : onHorse ? horses.atEdge : !riding && player.atEdge) edgeHint = 2.5;
+    edgeHint -= dt;
+    if (edgeHint > 0) hud.setPrompt(t(games.fenced ? 'prompt.edgeGame' : 'prompt.edge'));
     calmHint = wasCalm ? calmHint - dt : 0;
     if (calmHint > 0) hud.setPrompt(t('prompt.noShoot'));
     lockHint -= dt;
@@ -2220,6 +2248,7 @@ if (import.meta.env.DEV) {
       net: () => ({ delay: netClock.delay, late: netClock.late, age: netClock.age, rate: netClock.rate, rtt: net.rtt, ...net.counts }),
       combat,
       world,
+      edges,
       spawns,
       respawnAt,
       fire,
