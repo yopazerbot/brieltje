@@ -314,7 +314,16 @@ ao.blendIntensity = 0.9;
     own();
     scene.traverse((o) => {
       const mesh = o as THREE.Mesh;
-      if (!mesh.isMesh || !o.visible) return;
+      if (!o.visible) return;
+      // A sprite (a portal's name, a player's name tag) turns to face the eye in its own shader, which the pass's
+      // material lacks too: drawn as a flat card standing in the world, it darkened the sky round it (a dark wedge
+      // by the portals' names on High and Ultra, moving as you walked).
+      if ((o as THREE.Sprite).isSprite) {
+        o.visible = false;
+        pass._visibilityCache.push(o);
+        return;
+      }
+      if (!mesh.isMesh) return;
       // The zombies (world/zombies.ts) are posed in their own shader, which the pass's material lacks: out too.
       if (o.userData.noAO || ([] as THREE.Material[]).concat(mesh.material).some(seeThrough)) {
         o.visible = false;
