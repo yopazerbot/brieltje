@@ -6,7 +6,7 @@ import type { PlayerSample } from '../../shared/wire.mjs';
 import { netClock, Track } from './track';
 import { gunsReady } from '../weapon';
 import { muzzleFlash } from '../world/effects';
-import { buildSwat, hasSwat, swatReady, type Body, type Outfit as SwatOutfit } from './swat';
+import { buildSwat, hasSwat, SEAT_HIP, swatReady, type Body, type Outfit as SwatOutfit } from './swat';
 import { onLang, t } from '../i18n';
 
 /**
@@ -42,9 +42,8 @@ function roleLabel(role: Role): THREE.SpriteMaterial {
   g.textAlign = 'center';
   g.textBaseline = 'middle';
   g.fillText(word.toUpperCase(), 128, 33);
-  const tex = new THREE.CanvasTexture(c);
-  tex.colorSpace = THREE.SRGBColorSpace;
-  mat = new THREE.SpriteMaterial({ map: tex, transparent: true });
+  mat = new THREE.SpriteMaterial({ map: cropped(c, w + 2), transparent: true });
+  mat.userData.width = (w + 2) / 256;
   labels.set(key, mat);
   return mat;
 }
@@ -140,13 +139,21 @@ function nameTag(name: string, color: string): THREE.Sprite {
   g.textAlign = 'center';
   g.textBaseline = 'middle';
   g.fillText(name, 128, 32);
-  const tex = new THREE.CanvasTexture(c);
-  tex.colorSpace = THREE.SRGBColorSpace;
-  const s = new THREE.Sprite(new THREE.SpriteMaterial({ map: tex, depthTest: false, transparent: true }));
-  s.scale.set(0.9, 0.225, 1);
+  const s = new THREE.Sprite(new THREE.SpriteMaterial({ map: cropped(c, w + 2), depthTest: false, transparent: true }));
+  s.userData.width = (w + 2) / 256; // the share of the picture the box takes: the sprite is only that wide
+  s.scale.set(0.9 * s.userData.width, 0.225, 1);
   s.renderOrder = 10;
   s.userData.ignoreRay = true;
   return s;
+}
+
+/** A label's picture, cut to the box in its middle (`w` of 256 px wide): no see-through pixels drawn beside it. */
+function cropped(c: HTMLCanvasElement, w: number): THREE.CanvasTexture {
+  const tex = new THREE.CanvasTexture(c);
+  tex.colorSpace = THREE.SRGBColorSpace;
+  tex.repeat.set(w / 256, 1);
+  tex.offset.set((256 - w) / 512, 0);
+  return tex;
 }
 
 
@@ -278,6 +285,39 @@ function buildFigure(name: string, color: string, o: Outfit): Body {
   };
 }
 
+/**
+ * A soft dark patch on the ground under each figure: away from the house the sun's real-time
+ * shadow isn't worked out, and without it a figure seems to float. One draw for all of them.
+ */
+function shadowPatches(n: number): THREE.InstancedMesh {
+  const c = document.createElement('canvas');
+  c.width = c.height = 64;
+  const g = c.getContext('2d')!;
+  const grad = g.createRadialGradient(32, 32, 0, 32, 32, 32);
+  grad.addColorStop(0, 'rgba(255,255,255,1)');
+  grad.addColorStop(0.45, 'rgba(255,255,255,0.7)');
+  grad.addColorStop(1, 'rgba(255,255,255,0)');
+  g.fillStyle = grad;
+  g.fillRect(0, 0, 64, 64);
+  const tex = new THREE.CanvasTexture(c);
+  const mat = new THREE.MeshBasicMaterial({ color: '#000000', alphaMap: tex, transparent: true, opacity: 0.32, depthWrite: false, polygonOffset: true, polygonOffsetFactor: -2, polygonOffsetUnits: -2 });
+  const mesh = new THREE.InstancedMesh(new THREE.PlaneGeometry(1, 1).rotateX(-Math.PI / 2), mat, n);
+  mesh.count = 0;
+  mesh.frustumCulled = false; // spread over the map: one draw, a few pixels each
+  mesh.renderOrder = 1;
+  mesh.userData.ignoreRay = true;
+  mesh.raycast = () => {};
+  return mesh;
+}
+
+/** A seat on a horse someone rides: the saddle's point and the way the horse faces (+z at 0). */
+export interface Seat {
+  x: number;
+  y: number;
+  z: number;
+  yaw: number;
+}
+
 interface Avatar {
   body: Body;
   color: string;
@@ -299,10 +339,20 @@ interface Avatar {
   forward: number;
   side: number;
   steps: number;
+  /** Where their states put them last frame (the figure may stand a little aside, see `push`) */
+  x: number;
+  y: number;
+  z: number;
+  vy: number;
+  /** How far the figure stands aside so it isn't inside another one (m; only drawn, never sent) */
+  push: THREE.Vector2;
+  want: THREE.Vector2;
 }
 
 const ANGLES = [false, false, false, true, true] as const; // x, y, z, yaw, pitch
 const JUMP = 60; // m between two states: a teleport (the admin's turbo covers 12 m in one)
+const APART = 0.6; // m: two figures closer than this are drawn nudged apart
+const MAX_PUSH = 0.35; // m the most a figure is drawn aside
 
 export class Avatars {
   /** Names above players: the admin can turn them off (they show through walls). */
@@ -310,10 +360,17 @@ export class Avatars {
   readonly group = new THREE.Group();
   /** A footstep of another player at their feet (speed in m/s) */
   onStep: (name: string, at: THREE.Vector3, speed: number) => void = () => {};
+  /** The height of the ground under a point (m), looking down from `y`: for jumps, falls and the shadow patch. */
+  groundAt: ((x: number, z: number, y: number) => number) | null = null;
+  /** The saddle of the horse a player rides (drawn this frame), or null on foot. */
+  seatOf: ((name: string) => Seat | null) | null = null;
   private avatars = new Map<string, Avatar>();
   private pose = [0, 0, 0, 0, 0];
+  private shadows = shadowPatches(16);
+  private m = new THREE.Matrix4();
 
   constructor() {
+    this.group.add(this.shadows);
     // Players who joined before the character and gun models finished loading get them now.
     void Promise.all([swatReady, gunsReady]).then(() => {
       for (const [name, a] of [...this.avatars]) this.rebuild(name, a, a.color);
@@ -341,7 +398,7 @@ export class Avatars {
     ring.renderOrder = 2;
     const label = new THREE.Sprite(roleLabel(role));
     label.position.y = 2.32;
-    label.scale.set(0.8, 0.2, 1);
+    label.scale.set(0.8 * label.material.userData.width, 0.2, 1);
     for (const m of [ring, label]) {
       m.userData.ignoreRay = true;
       a.root.add(m);
@@ -364,7 +421,7 @@ export class Avatars {
     this.group.add(root);
     this.avatars.set(name, {
       body, color, root, tag, track: new Track<PlayerSample>(ANGLES, JUMP), latest: null, killed: false, hiddenWarp: null, hiddenAt: 0,
-      role: null, marks: [], speed: 0, forward: 0, side: 0, steps: 0,
+      role: null, marks: [], speed: 0, forward: 0, side: 0, steps: 0, x: NaN, y: 0, z: 0, vy: 0, push: new THREE.Vector2(), want: new THREE.Vector2(),
     });
   }
 
@@ -389,6 +446,7 @@ export class Avatars {
     if (!a) return;
     for (const m of a.marks) m.removeFromParent(); // their ring shape is shared: not disposed below
     a.root.removeFromParent();
+    a.body.dispose?.();
     // Block figures own their geometry; SWAT clones share the model's.
     if (!a.body.shared) {
       a.root.traverse((o) => {
@@ -456,42 +514,136 @@ export class Avatars {
     return [...this.avatars.values()].filter((a) => a.root.visible && a.latest && !a.latest.d && a.latest.alive).map((a) => ({ x: a.root.position.x, z: a.root.position.z, r: 0.3 }));
   }
 
-  /** Every frame: each figure where its states put it at the drawing time (see track.ts), animated. */
-  tick(dt: number): void {
+  /**
+   * Every frame: each figure where its states put it at the drawing time (see track.ts), animated.
+   * `eye`: the camera, for how much detail each figure gets and how big its name is drawn;
+   * `me`: where you stand on foot, so a figure you walk into steps aside rather than wrap round you.
+   */
+  tick(dt: number, eye?: THREE.Vector3, me?: { x: number; z: number } | null): void {
     const now = performance.now();
     const p = this.pose;
+    const k = 1 - Math.exp(-dt * 10);
+    const walkers: Avatar[] = [];
+    let patches = 0;
     for (const [name, a] of this.avatars) {
       if (!a.track.at(netClock.time, p) || !a.track.shown) continue;
       const t = a.track.shown;
       const [x, y, z, yaw, pitch] = p;
       if (a.hiddenWarp === null) a.root.visible = true;
-      // Velocity, and how much of it is forwards and sideways (for walk, strafe and run-back animations).
-      const vx = (x - a.root.position.x) / Math.max(dt, 1e-3);
-      const vz = (z - a.root.position.z) / Math.max(dt, 1e-3);
-      const k = 1 - Math.exp(-dt * 10);
+      // Velocity, and how much of it is forwards and sideways (for walk, strafe and run-back animations),
+      // from where their states put them (a teleport or the first state isn't a run).
+      const jumped = Number.isNaN(a.x) || Math.hypot(x - a.x, z - a.z) > 3;
+      const vx = jumped ? 0 : (x - a.x) / Math.max(dt, 1e-3);
+      const vz = jumped ? 0 : (z - a.z) / Math.max(dt, 1e-3);
+      const vy = jumped ? 0 : (y - a.y) / Math.max(dt, 1e-3);
+      a.x = x;
+      a.y = y;
+      a.z = z;
       a.speed += (Math.min(Math.hypot(vx, vz), 8) - a.speed) * k;
       a.forward += (-vx * Math.sin(yaw) - vz * Math.cos(yaw) - a.forward) * k;
       a.side += (vx * Math.cos(yaw) - vz * Math.sin(yaw) - a.side) * k;
-      a.root.position.set(x, y, z);
-      a.root.rotation.y = yaw;
+      a.vy += (Math.max(-20, Math.min(20, vy)) - a.vy) * Math.min(1, k * 2);
       const alive = t.alive && !a.killed;
+      const far = eye ? Math.hypot(x - eye.x, y - eye.y, z - eye.z) : 0;
+      // The ground under them: for jumps and falls, and for their shadow patch (only near enough to see).
+      const ground = this.groundAt && !t.d && far < 80 ? this.groundAt(x, z, y) : y;
+      // On a horse: in its saddle as it is drawn (it bounces and rocks), facing its way.
+      const seat = alive && !t.d && this.seatOf ? this.seatOf(name) : null;
+      if (seat) a.root.position.set(seat.x, seat.y - SEAT_HIP, seat.z);
+      else a.root.position.set(x + a.push.x, y, z + a.push.y);
+      a.root.rotation.y = yaw;
       a.body.animate(dt, {
-        speed: a.speed, forward: a.forward, side: a.side, armed: t.armed, alive, crouch: t.c, flying: t.flying,
-        pitch, weapon: t.w as WeaponId,
+        speed: a.speed, forward: a.forward, side: a.side, armed: t.armed, alive, crouch: t.c && !seat, flying: t.flying,
+        pitch, weapon: t.w as WeaponId, yaw, air: Math.max(0, y - ground), vy: a.vy, seat: seat ? seat.yaw + Math.PI : null, far,
       });
 
-      // One footstep per stride (about 0.85 m walking, 1.2 m running).
-      a.steps += (a.speed / (0.65 + 0.15 * a.speed)) * dt;
-      if (a.steps >= 1) {
-        a.steps = 0;
-        if (alive && !t.flying && !t.d && a.speed > 0.6 && a.root.visible) this.onStep(name, a.root.position, a.speed);
+      // A footstep as each foot comes down (the block figures: one per stride, about 0.85 m walking, 1.2 m running).
+      let step = false;
+      if (a.body.footfall !== undefined) step = a.body.footfall;
+      else {
+        a.steps += (a.speed / (0.65 + 0.15 * a.speed)) * dt;
+        if (a.steps >= 1) {
+          a.steps = 0;
+          step = true;
+        }
       }
+      if (step && alive && !t.flying && !t.d && !seat && a.speed > 0.6 && a.root.visible) this.onStep(name, a.root.position, a.speed);
 
       // Just respawned: blink while they can't be hurt. In the car only their name shows, above it.
       a.body.root.visible = !t.d && (!(t.safe && alive) || Math.floor(now / 120) % 2 === 0);
       a.tag.visible = alive && this.showNames;
       for (const m of a.marks) m.visible = alive; // the part shows also when names are off (hide and seek)
       for (const h of a.body.hits) h.visible = alive && t.armed && !t.d && a.root.visible;
+      // The name keeps a readable size on screen (about a thirtieth of its height) from 4.5 m out
+      // to 45 m, then shrinks; always over the head.
+      const size = Math.min(10, Math.max(1, far / 4.5));
+      const low = (a.body.crouched ?? 0) * 0.42;
+      a.tag.scale.set(0.9 * size * a.tag.userData.width, 0.225 * size, 1);
+      a.tag.position.y = 1.9 + 0.12 * size - low;
+      const label = a.marks[1] as THREE.Sprite | undefined;
+      if (label) {
+        label.scale.set(0.8 * size * label.material.userData.width, 0.2 * size, 1);
+        label.position.y = a.tag.position.y + 0.25 * size;
+      }
+      // Their shadow patch, on the ground under them: smaller and fainter the higher they are.
+      const air = Math.max(0, y - ground);
+      if (a.root.visible && a.body.root.visible && !seat && air < 2.5 && far < 80 && patches < this.shadows.instanceMatrix.count) {
+        const s = (alive ? 0.85 : 1.25) * (1 - air / 3.2);
+        this.m.makeScale(s, 1, s).setPosition(a.root.position.x, ground + 0.03, a.root.position.z);
+        this.shadows.setMatrixAt(patches++, this.m);
+      }
+      if (alive && !t.d && !seat && !t.flying && a.root.visible) walkers.push(a);
+      else if (!alive) a.want.copy(a.push); // fallen: lies where they fell
+      else a.want.set(0, 0);
+    }
+    this.shadows.count = patches;
+    this.shadows.instanceMatrix.needsUpdate = true;
+    this.apart(walkers, dt, me);
+  }
+
+  /**
+   * Figures standing in one another are drawn nudged apart (and one you walk into steps aside): a
+   * crowd at a door looks like people, not one body with eight heads. Only the drawing moves: their
+   * states, and where the server has them, stay as they are; nobody is blocked.
+   */
+  private apart(walkers: Avatar[], dt: number, me?: { x: number; z: number } | null): void {
+    for (const a of walkers) a.want.set(0, 0);
+    for (let i = 0; i < walkers.length; i++) {
+      const a = walkers[i];
+      for (let j = i + 1; j < walkers.length; j++) {
+        const b = walkers[j];
+        if (Math.abs(a.y - b.y) > 1.2) continue; // on another floor
+        let dx = a.x - b.x;
+        let dz = a.z - b.z;
+        let d = Math.hypot(dx, dz);
+        if (d >= APART) continue;
+        const each = (APART - d) / 2;
+        if (d < 1e-3) [dx, dz, d] = [Math.cos(i * 2.4), Math.sin(i * 2.4), 1]; // on the very same spot: some way apart
+        const f = each / d;
+        a.want.x += dx * f;
+        a.want.y += dz * f;
+        b.want.x -= dx * f;
+        b.want.y -= dz * f;
+      }
+      if (me) {
+        const dx = a.x - me.x;
+        const dz = a.z - me.z;
+        const d = Math.hypot(dx, dz);
+        if (d < APART && d > 1e-3) {
+          a.want.x += (dx / d) * (APART - d);
+          a.want.y += (dz / d) * (APART - d);
+        }
+      }
+    }
+    const k = 1 - Math.exp(-dt * 6);
+    for (const a of this.avatars.values()) {
+      if (a.want.length() > MAX_PUSH) a.want.setLength(MAX_PUSH);
+      const before = a.push.clone();
+      a.push.lerp(a.want, k);
+      if (walkers.includes(a)) {
+        a.root.position.x += a.push.x - before.x;
+        a.root.position.z += a.push.y - before.y;
+      }
     }
   }
 

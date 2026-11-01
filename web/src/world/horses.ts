@@ -264,6 +264,22 @@ export class Horses {
     return { x: h.x + sx * 0.9, z: h.z + sz * 0.9, y: h.y };
   }
 
+  /**
+   * The saddle of the horse someone else rides, as drawn this frame (it rises, falls and rocks with
+   * the horse), and the way the horse faces: their figure sits there (net/avatars.ts). Null when
+   * they ride none.
+   */
+  seat(rider: string): { x: number; y: number; z: number; yaw: number } | null {
+    const i = this.horses.findIndex((h) => h.state.rider === rider);
+    if (i < 0 || i === this.mounted) return null;
+    const h = this.horses[i];
+    h.group.updateMatrixWorld();
+    const p = this.seatPoint.set(0, SADDLE, 0.01).applyMatrix4(h.group.matrixWorld);
+    return { x: p.x, y: p.y, z: p.z, yaw: h.yaw };
+  }
+
+  private seatPoint = new THREE.Vector3();
+
   /** The horse you ride: where it is, for your own state, the map and the prompt. */
   get ridden(): { x: number; y: number; z: number; yaw: number; speed: number; jump: number; i: number } | null {
     const h = this.horses[this.mounted];

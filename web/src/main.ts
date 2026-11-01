@@ -778,6 +778,8 @@ addDiag(() => {
 const avatars = new Avatars();
 scene.add(avatars.group);
 avatars.onStep = (_name, at, speed) => footstep(surfaceOf(world.groundAt(at.x, at.z, at.y + 0.3, 0.6).mat), Math.min(1, 0.35 + speed / 5), at);
+avatars.groundAt = (x, z, y) => world.groundAt(x, z, y + 0.3, 0.6).y;
+avatars.seatOf = (name) => horses.seat(name); // a rider sits in the saddle as their horse is drawn
 const chat = new Chat();
 chat.paused = () => menu.open; // T and Enter belong to the menu while it is open
 const combat = new Combat();
@@ -2109,7 +2111,6 @@ renderer.setAnimationLoop((now: number) => {
     indoorLight.update(dt, indoors && !baked.active, fill);
   }
   netClock.frame(now); // the time the others are drawn at (net/track.ts)
-  avatars.tick(dt);
   for (const c of cars) c.update(dt, driving && c === car, camera.position);
   combat.tick(dt);
   sound.listen(camera);
@@ -2127,6 +2128,8 @@ renderer.setAnimationLoop((now: number) => {
   if (!net.connected) clowns.stepAlone(dt, combat.alive && weapon.enabled && !driving && !riding && !games.peaceful ? { x: player.x, y: player.feet, z: player.z } : null);
   clowns.update(camera.position);
   horses.update(dt, camera.position);
+  // The others, after the horses: a rider sits in the saddle where it is drawn this frame.
+  avatars.tick(dt, camera.position, driving || riding || horses.mounted >= 0 ? null : { x: player.x, z: player.z });
   countryside?.update(dt, camera);
   portals.update(dt, camera, renderer.domElement.height);
   // The traffic stops for people and for cars someone drives, never for a parked car (Yoshi: a Tesla on the drive held it up).
