@@ -21,6 +21,7 @@ import { Combat } from './ui/combat';
 import { Leaderboard } from './ui/leaderboard';
 import { Minimap, type Blip } from './ui/minimap';
 import { ASK_AFTER, FeedbackCard } from './ui/feedback';
+import { ControlsCard } from './ui/controlsCard';
 import spawns from '../shared/spawns.json';
 
 /** The spawn points round the house (the bungalow's are for its team in the teams game). */
@@ -1758,6 +1759,8 @@ menu.onPlay = (mode) => {
   if (!countedStart) {
     countedStart = true;
     beacon('start');
+    // The most important controls for the way you play, once, when you start (ui/controlsCard.ts).
+    controlsCard.show(mode, weapon.enabled);
   }
   menuHint.textContent = key('menu', mode);
   planner.control = mode;
@@ -1781,6 +1784,9 @@ canvas.addEventListener('click', () => {
   if (!menu.open && menu.mode === 'kbm' && document.pointerLockElement !== canvas) lockMouse();
 });
 const captureHint = $('capture-hint');
+// The most important controls when you start playing; the menu's Controls tab shows them again.
+const controlsCard = new ControlsCard();
+$('cc-reopen').addEventListener('click', () => controlsCard.show(menu.mode ?? 'kbm', weapon.enabled, true));
 // After two minutes of play, once in this browser: stars and a comment for Yoshi (ui/feedback.ts).
 const feedback = new FeedbackCard();
 let askClock = 0; // seconds played with the menu closed and the page in view
@@ -1838,6 +1844,14 @@ renderer.setAnimationLoop((now: number) => {
     padStick = stick;
     if (polled.confirmPressed) void feedback.submit(false);
     else if (polled.deletePressed || polled.menuPressed) feedback.close(false);
+  }
+  // The controls card shown at the start: a click or ✕ closes it and does nothing else (no shot,
+  // no jump); opening the menu closes it too, unless the menu opened it.
+  if (controlsCard.open && !controlsCard.fromMenu) {
+    if (frame.clickPressed || (menu.mode === 'pad' && frame.jumpPressed)) {
+      controlsCard.close();
+      frame.clickPressed = frame.jumpPressed = false;
+    } else if (menu.open) controlsCard.close();
   }
   if (frame.mapPressed) toggleMap(); // a short press on the touchpad, as M
   // The edge of the game: round the two houses while a game in the house runs (the map shows it at

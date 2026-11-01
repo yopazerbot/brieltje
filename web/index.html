@@ -81,6 +81,13 @@
     <button id="full-btn" type="button" class="hidden" title="Fill the whole screen" data-i18n-title="btn.fullTitle"><span class="ico">⤢</span> <span class="lbl">Full screen</span></button>
     <div id="full-hint" class="hidden" data-i18n-rich="full.hint">On an iPhone a page can't fill the screen from Safari. Tap <b>Share</b>, then <b>Add to Home Screen</b>, and start Brieltje from your home screen: it opens without Safari's bars.</div>
     <div id="rotate-hint" data-i18n="rotate.hint">Turn your device sideways to play</div>
+    <!-- The most important controls when you start playing (src/ui/controlsCard.ts); the menu's Controls tab opens it again. -->
+    <div id="controls-card" class="hidden" role="dialog" aria-labelledby="cc-title">
+      <h2 id="cc-title" data-i18n="cc.title">How to play</h2>
+      <dl id="cc-rows"></dl>
+      <button id="cc-close" type="button"><b data-i18n="cc.closeNow">Close now</b><small id="cc-count"></small></button>
+      <p class="cc-more" data-i18n="cc.more">All controls are in the menu, under Controls.</p>
+    </div>
     <!-- The feedback card after two minutes of play (src/ui/feedback.ts): above the touch controls. -->
     <div id="feedback" class="hidden" role="dialog" aria-modal="true" aria-labelledby="fb-title">
       <button type="button" id="fb-close" aria-label="Close" data-i18n-aria="fb.close">×</button>
@@ -340,6 +347,7 @@
 
             <!-- The controls of the way you play, and the switch to the other one above them (not with touch). -->
             <section class="page hidden" role="tabpanel" id="page-controls" aria-labelledby="tab-controls" data-page="controls">
+              <button id="cc-reopen" class="tool" type="button"><b data-i18n="cc.reopen">Show the most important controls</b><span data-i18n="cc.reopenSub">A short card with the keys</span></button>
               <button id="switch" class="tool" type="button"><b id="switch-label"></b><span data-i18n="play.switchSub">Change how you play</span></button>
               <div id="controls"></div>
             </section>

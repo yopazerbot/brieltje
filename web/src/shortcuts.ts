@@ -86,6 +86,22 @@ export function key(action: Action, control: Control, actionMode = false): strin
 
 export type Group = { title: string; rows: [string, string][] };
 
+/** The few controls shown when you start playing (ui/controlsCard.ts): moving, the use key, the map and the menu; shooting in Action. */
+export function essentials(control: Control, action: boolean): [string, string][] {
+  const k = (a: Action) => key(a, control, action);
+  const touch = control === 'touch';
+  const rows: [string, string][] = [
+    [t('ctl.move'), touch ? t('cc.tMove') : k('move')], // short: the Controls tab says it in full
+    [t('ctl.look'), touch ? t('cc.tLook') : k('look')],
+    [t('ctl.sprint'), control === 'kbm' ? t('key.hold', { key: k('sprint') }) : k('sprint')],
+    [t('cc.jumpFly'), control === 'touch' ? k('jump') : t('cc.jumpFlyHow', { key: k('jump') })],
+    [t('cc.use'), action || control === 'touch' ? k('use') : t('key.or', { a: k('click'), b: k('use') })],
+  ];
+  if (action) rows.push([t('cc.shoot'), k('shoot')]);
+  rows.push([t('cc.map'), k('map')], [t('ctl.menu'), k('menu')]);
+  return rows;
+}
+
 /** The Controls tab: the table grouped by what you do, for this way of playing and mode. */
 export function controlGroups(control: Control, action: boolean): Group[] {
   return control === 'touch' ? touchGroups(action) : padOrKeyGroups(control, action);

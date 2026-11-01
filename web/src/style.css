@@ -1289,3 +1289,32 @@ html:lang(nl) #touch .t-reload, html:lang(nl) #touch .t-nade, html:lang(nl) body
 .speed-locked { margin: 6px 0 0; font-size: 13px; color: var(--muted, rgba(245, 239, 228, 0.7)); }
 input.speed:disabled { opacity: 0.5; cursor: not-allowed; }
 
+/* The most important controls when you start playing (src/ui/controlsCard.ts): to the left, clear of
+   the crosshair; you can walk while it shows. */
+#controls-card {
+  position: fixed; z-index: 39; left: max(16px, env(safe-area-inset-left, 0px)); top: 50%; transform: translateY(-50%);
+  width: min(350px, calc(100vw - 32px)); max-height: calc(100vh - 32px); overflow-y: auto;
+  padding: 18px 20px 14px; color: var(--ink);
+  background: var(--dusk); border-radius: var(--r-panel); box-shadow: 0 18px 48px rgba(0, 0, 0, 0.45), inset 0 1px 0 rgba(255, 255, 255, 0.05);
+}
+#controls-card.hidden { display: none; }
+#controls-card h2 { margin: 0 0 10px; font-size: 21px; font-weight: 800; line-height: 1.2; }
+#cc-rows { display: grid; grid-template-columns: auto 1fr; gap: 6px 14px; margin: 0 0 14px; font-size: 15px; line-height: 1.3; }
+#cc-rows dt { color: var(--ink-soft); }
+#cc-rows dd { margin: 0; font-weight: 700; }
+#cc-close {
+  display: flex; align-items: baseline; justify-content: center; gap: 10px; width: 100%; padding: 10px 14px;
+  font: inherit; color: #1a1408; background: var(--lamp); border: 0; border-radius: var(--r-tile); cursor: pointer;
+}
+#cc-close:hover, #cc-close:focus-visible { background: var(--lamp-bright); outline: none; }
+#cc-close b { font-size: 16px; font-weight: 800; }
+#cc-close small { font-size: 13px; opacity: 0.8; }
+#controls-card .cc-more { margin: 10px 0 0; font-size: 12.5px; color: var(--ink-faint); text-align: center; }
+body.touch #controls-card { top: calc(8px + env(safe-area-inset-top, 0px)); transform: none; left: 50%; translate: -50% 0; max-height: calc(100vh - 16px); }
+@media (max-height: 460px) {
+  #controls-card { padding: 12px 16px 10px; }
+  #controls-card h2 { font-size: 18px; margin-bottom: 6px; }
+  #cc-rows { gap: 3px 12px; font-size: 13.5px; margin-bottom: 8px; }
+  #controls-card .cc-more { display: none; }
+}
+
