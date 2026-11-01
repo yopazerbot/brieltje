@@ -483,6 +483,10 @@ export class Game {
       player.lastChat = now;
       this.broadcast({ t: 'chat', from: name, color: player.color, text });
     } else if (m.t === 'door' && typeof m.id === 'string' && /^[a-z0-9-]{1,30}$/.test(m.id)) {
+      // Every page swings the door and plays its sound: at most five a second per player (a message
+      // flood would slam doors on every page). Pressing E as fast as one can stays under it.
+      if (now < (player.nextDoor || 0)) return;
+      player.nextDoor = now + 200;
       if (!(m.id in this.doors) && Object.keys(this.doors).length >= 100) return;
       this.doors[m.id] = !!m.open;
       if (m.dir === 1 || m.dir === -1) this.doorDir[m.id] = m.dir;
