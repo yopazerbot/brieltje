@@ -262,7 +262,8 @@ export class Game {
     this.scores.set(name, score);
     const player = {
       ws, key: session.key, role: session.role, color, state: null, lastChat: 0, msgs: 0, window: now, address: this.auth.addressOf(req),
-      device: this.auth.guestDevice(req), // the browser's guest cookie: what a kick keeps out (server/auth.mjs)
+      // The browser's guest cookie and "knew the PIN" cookie: what a kick keeps out (server/auth.mjs).
+      device: this.auth.guestDevice(req)?.id ?? null, pinId: this.auth.pinCookieId(req),
       score, hp: HEALTH, alive: true, respawnAt: 0, protectedUntil: now + PROTECT_MS, nextHit: 0, weapons: loadout(session.role), joinTime: now, spawned: false,
       nades: Array(GRENADE.carry).fill(0), thrown: [],
       // The ticks: which the page reads, when its state was taken (`stamp`, the server's clock), whether
@@ -766,7 +767,8 @@ export class Game {
 
   async kick(target, by) {
     const p = this.players.get(target);
-    const ended = this.auth.kick(target, p?.device ? [p.device] : []); // memory first, so they are out right away
+    // Memory first, so they are out right away; with the browser, address and cookies of their connection.
+    const ended = this.auth.kick(target, p ? { devices: [p.device], addresses: [p.address], pins: [p.pinId] } : {});
     this.auth.log('kick', null, { username: target, detail: `by ${by}` });
     if (p) {
       this.send(p.ws, { t: 'kicked' });

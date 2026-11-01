@@ -50,16 +50,24 @@ const NAME_RE = /^[a-z0-9_-]{2,20}$/;
 const ADMIN_KEY = '#admin'; // what the admin's device cookie is signed for, whatever the name
 const START_PIN = process.env.MULTIPLAYER_PIN ?? '0473'; // until the admin sets one in the game; empty: none
 const PIN_RE = /^\d{4,12}$/;
-// Wrong PINs (online guessing of a 4-digit PIN, often from behind a shared address: a meetup's Wi-Fi is
-// one address for everyone there). Per browser (its guest cookie) a few, then that browser waits. Per
-// address a ceiling a whole venue never reaches, but slow for a guesser who drops cookies: 60 an hour
-// is 1,440 a day, so the 10,000 PINs of 4 digits take a week to go through (3.5 days on average). All
-// addresses together 100 an hour (from browsers that never joined), more than one venue can reach, so
-// it only stops guessers spread over many addresses: 4 days to go through them all, 2 on average.
+// Wrong PINs: online guessing, often from behind a shared address (a meetup's Wi-Fi is one address for
+// everyone there). Per browser (its guest cookie) a few, then only that browser waits, so one child's
+// typos don't stop the others. A guesser who drops or swaps cookies is a new browser each time, so the
+// address counts too, whatever the cookies: 10 in 5 minutes pause it for 2 minutes, and an hourly cap
+// pauses it for longer. All addresses together have an hourly cap too, against guessers spread over
+// many addresses. Browsers that joined with this PIN before skip the address and overall counts.
+// The hourly caps go with the PIN's length (an hour of guessing, at the cap, covers this much):
+// - 4 or 5 digits: 30 an hour per address and overall. 10,000 PINs take 2 weeks to go through, a
+//   week on average; 5 digits about 70 days on average.
+// - 6 digits or more: 60 an hour per address, 100 overall. A million PINs take about 7 months on
+//   average at 100 an hour, and a meetup's typos don't reach the caps.
 const DEVICE_PIN_FAILS = 5; // per browser in DEVICE_PIN_WINDOW_MS
 const DEVICE_PIN_WINDOW_MS = 15 * 60_000;
-const ADDRESS_PIN_FAILS = 60; // per address in an hour
-const PIN_FAILS = 100; // from all addresses together in an hour
+const BURST_PIN_FAILS = 10; // per address in BURST_WINDOW_MS ...
+const BURST_WINDOW_MS = 5 * 60_000;
+const BURST_PAUSE_MS = 2 * 60_000; // ... pause that address this long
+/** The hourly caps for the current PIN: per address and from all addresses together. */
+const pinCaps = (pin) => (pin.length >= 6 ? { address: 60, all: 100 } : { address: 30, all: 30 });
 const PIN_DEVICE = '#pin'; // what the device cookie of a browser that joined with the PIN is signed for
 const GUEST_DEVICE = '#guest'; // what the guest cookie, telling browsers apart for the counts above, is signed for
 const KICK_MS = 10 * 60_000; // a kicked player's name and browser stay out this long
@@ -196,11 +204,15 @@ export class Auth {
     this.adminFails = new Attempts(3600_000); // tries at the admin password, all addresses together (one key)
     this.pinFails = new Attempts(3600_000); // wrong PINs, all addresses together (one key)
     this.pinByDevice = new Attempts(DEVICE_PIN_WINDOW_MS); // wrong PINs per browser (its guest cookie)
-    this.pinByAddress = new Attempts(3600_000); // wrong PINs per address (bucketOf)
+    this.pinByAddress = new Attempts(3600_000); // wrong PINs per address (bucketOf), for the hourly cap
+    this.pinBurst = new Attempts(BURST_WINDOW_MS); // wrong PINs per address, for the short pause
+    this.pinPaused = new Map(); // address -> until: paused after a burst of wrong PINs
     this.pin = START_PIN;
     this.pinGen = 0; // raised whenever the PIN changes: a join checked against an older PIN doesn't count
     this.blocked = new Map(); // username -> until (kicked)
     this.blockedDevices = new Map(); // guest cookie id -> until: a kicked player's browser, for PIN joins
+    this.kickedFrom = new Map(); // address -> { at, until }: a kick there; browsers first seen since then wait
+    this.revokedPins = new Map(); // a kicked player's "knew the PIN" cookie (its random part) -> until
     this.epoch = new Map(); // username -> counter, raised whenever their sessions are revoked
     setInterval(() => this.cleanup(), 60_000).unref();
     setInterval(() => this.pruneLog(), 3600_000).unref();
@@ -232,7 +244,7 @@ export class Auth {
     if (savedPin && PIN_RE.test(savedPin)) this.pin = savedPin;
     for (const s of await this.store.loadSessions(Date.now())) {
       const valid = s.role === 'admin' ? adminOk : s.role === 'guest' && !!this.pin && s.username !== ADMIN;
-      if (valid) this.sessions.set(s.key, { username: s.username, role: s.role, expires: s.expires });
+      if (valid) this.sessions.set(s.key, { username: s.username, role: s.role, expires: s.expires, ...(s.device ? { device: s.device } : {}) });
       else await this.store.deleteSession(s.key);
     }
   }
@@ -264,31 +276,46 @@ export class Auth {
     this.pinFails.cleanup(now);
     this.pinByDevice.cleanup(now);
     this.pinByAddress.cleanup(now);
-    for (const [u, until] of this.blocked) if (until < now) this.blocked.delete(u);
-    for (const [d, until] of this.blockedDevices) if (until < now) this.blockedDevices.delete(d);
+    this.pinBurst.cleanup(now);
+    for (const map of [this.blocked, this.blockedDevices, this.pinPaused, this.revokedPins]) {
+      for (const [k, until] of map) if (until < now) map.delete(k);
+    }
+    for (const [a, k] of this.kickedFrom) if (k.until < now) this.kickedFrom.delete(a);
   }
 
   /**
-   * The admin lifts every lockout on joining: the wrong-PIN counts (per browser, per address, all
-   * together) and the kicks (names and browsers). For a meetup where a few typos or one kick would
-   * otherwise keep people out. Guesses at the admin password still count.
+   * The admin lifts every lockout on joining: the wrong-PIN counts and pauses (per browser, per
+   * address, all together) and the kicks (names, browsers, addresses). For a meetup where a few
+   * typos or one kick would otherwise keep people out. Guesses at the admin password still count.
    */
   liftLockouts(by) {
-    const lifted = this.pinByDevice.map.size + this.pinByAddress.map.size + this.pinFails.map.size + this.blocked.size + this.blockedDevices.size;
+    const maps = [this.blocked, this.blockedDevices, this.pinPaused, this.kickedFrom, this.revokedPins];
+    const lifted = this.pinByDevice.map.size + this.pinByAddress.map.size + this.pinFails.map.size + maps.reduce((n, m) => n + m.size, 0);
     this.pinByDevice = new Attempts(DEVICE_PIN_WINDOW_MS);
     this.pinByAddress = new Attempts(3600_000);
+    this.pinBurst = new Attempts(BURST_WINDOW_MS);
     this.pinFails = new Attempts(3600_000);
-    this.blocked.clear();
-    this.blockedDevices.clear();
+    for (const m of maps) m.clear();
     this.log('lockouts_lifted', null, { username: by, detail: `${lifted} lifted` });
     return lifted;
   }
 
-  /** The guest cookie's id (its random part, checked against its signature), or null. */
-  guestDevice(req) {
-    const m = String(req.headers.cookie || '').match(new RegExp(`(?:^|;\\s*)${this.names.guest}=([0-9a-z]+)\\.([A-Za-z0-9_-]{16})\\.([A-Za-z0-9_-]{43})`));
+  /** A signed device cookie `cookie` for `name`: its random part and when it was made, or null. */
+  deviceCookieOf(req, cookie, name) {
+    const m = String(req.headers.cookie || '').match(new RegExp(`(?:^|;\\s*)${cookie}=([0-9a-z]+)\\.([A-Za-z0-9_-]{16})\\.([A-Za-z0-9_-]{43})`));
     if (!m || !this.deviceKey || Date.now() - parseInt(m[1], 36) > DEVICE_MS) return null;
-    return sameText(m[3], this.deviceMac(m[1], m[2], GUEST_DEVICE)) ? m[2] : null;
+    return sameText(m[3], this.deviceMac(m[1], m[2], name)) ? { id: m[2], issued: parseInt(m[1], 36) } : null;
+  }
+
+  /** The guest cookie: its id (`id`) and when it was made (`issued`, signed, so it can't be backdated), or null. */
+  guestDevice(req) {
+    return this.deviceCookieOf(req, this.names.guest, GUEST_DEVICE);
+  }
+
+  /** Whether this browser joined with the current PIN before, and wasn't kicked since (see kick). */
+  joinedBefore(req) {
+    const c = this.deviceCookieOf(req, this.names.pin, this.pinDevice());
+    return !!c && !this.revokedPins.has(c.id);
   }
 
   guestCookie(value) {
@@ -387,22 +414,34 @@ export class Auth {
     const now = Date.now();
     // The browser's guest cookie, or a new one (set with this answer, a wrong PIN too): its id is what
     // the wrong PINs per browser and a kick count against. A guesser who drops it is a new browser
-    // each time, and meets the ceiling per address instead.
+    // each time; the counts per address hold whatever the cookies.
     const known = this.guestDevice(req);
     const guest = known ? undefined : this.newDevice(GUEST_DEVICE);
-    const dev = known ?? guest.split('.')[1];
+    const dev = known?.id ?? guest.split('.')[1];
     const out = (r) => (guest ? { ...r, guest } : r);
-    if ((this.blockedDevices.get(dev) || 0) > now) return out({ error: 'You were removed by the admin. Try again later.', code: 'removed', status: 403 });
+    const removed = { error: 'You were removed by the admin. Try again later.', code: 'removed', status: 403 };
+    if ((this.blockedDevices.get(dev) || 0) > now) return out(removed);
+    // Right after a kick from this address, browsers first seen there since (a private window, cleared
+    // cookies: a new identity) wait too. The others there, known from before, go on joining.
+    const kick = this.kickedFrom.get(ip);
+    if (kick && kick.until > now && (!known || known.issued > kick.at)) {
+      this.log('join_refused_kick', req, { username: String(nickname || '').slice(0, 20) });
+      return out({ error: 'Someone on this network was just removed by the admin. Ask the admin to let you in.', code: 'kickedHere', status: 403 });
+    }
     const name = String(nickname || '').trim().toLowerCase();
     if (!NAME_RE.test(name)) return out({ error: 'Your name: 2 to 20 characters, letters, digits, - or _.', code: 'nameFormat', status: 400 });
-    const joinedBefore = this.knownDevice(req, this.pinDevice(), this.names.pin);
+    const joinedBefore = this.joinedBefore(req);
+    const caps = pinCaps(this.pin);
     if (this.pinByDevice.count(dev, now) >= DEVICE_PIN_FAILS) {
       return out({ error: 'Too many wrong PINs on this device. Ask the admin to lift the lockout.', code: 'pinDevice', status: 429 });
     }
-    if (!joinedBefore && this.pinByAddress.count(ip, now) >= ADDRESS_PIN_FAILS) {
+    if (!joinedBefore && (this.pinPaused.get(ip) || 0) > now) {
+      return out({ error: 'Too many wrong PINs from this network. Try again in 2 minutes.', code: 'pinPaused', status: 429 });
+    }
+    if (!joinedBefore && this.pinByAddress.count(ip, now) >= caps.address) {
       return out({ error: 'Too many wrong PINs from this network. Ask the admin to lift the lockout.', code: 'pinNetwork', status: 429 });
     }
-    if (!joinedBefore && this.pinFails.count('pin', now) >= PIN_FAILS) {
+    if (!joinedBefore && this.pinFails.count('pin', now) >= caps.all) {
       return out({ error: 'Too many wrong PINs lately. Try again in an hour.', code: 'pinTooMany', status: 429 });
     }
     const gen = this.pinGen;
@@ -410,10 +449,17 @@ export class Auth {
     if (!sameText(String(pin || ''), this.pin)) {
       this.pinByDevice.add(dev, now);
       this.pinByAddress.add(ip, now);
+      this.pinBurst.add(ip, now);
       this.pinFails.add('pin', now);
       this.log('pin_failed', req, { username: name });
-      if (this.pinByAddress.count(ip, now) === ADDRESS_PIN_FAILS) this.log('pin_limited_address', req, {});
-      if (this.pinFails.count('pin', now) === PIN_FAILS) this.log('pin_limited', req, {});
+      // A pause for everyone at an address, or everywhere, shows in the admin page's log: the admin
+      // can lift it there with "Lift lockouts". Every wrong PIN while the last 5 minutes hold 10 pauses
+      // the address again (only the first is logged), so the end of a pause gives no free burst.
+      const burst = this.pinBurst.count(ip, now);
+      if (burst >= BURST_PIN_FAILS) this.pinPaused.set(ip, now + BURST_PAUSE_MS);
+      if (burst === BURST_PIN_FAILS) this.log('pin_limited_address', req, { detail: `${BURST_PIN_FAILS} wrong in 5 minutes: paused 2 minutes` });
+      if (this.pinByAddress.count(ip, now) === caps.address) this.log('pin_limited_address', req, { detail: `${caps.address} wrong in an hour` });
+      if (this.pinFails.count('pin', now) === caps.all) this.log('pin_limited', req, { detail: `${caps.all} wrong in an hour` });
       return out({ error: 'Wrong PIN.', code: 'wrongPin', status: 401 });
     }
     // Full: said here, before a session is made (the game's connection would only be refused).
@@ -424,15 +470,17 @@ export class Auth {
       return out({ error: `${name} is taken today (a name stays with whoever joined with it). Pick another name.`, code: 'nameToday', args: { name }, status: 409 });
     }
     const until = this.blocked.get(name);
-    if (until && until > now) return out({ error: 'You were removed by the admin. Try again later.', code: 'removed', status: 403 });
+    if (until && until > now) return out(removed);
     const changed = out({ error: 'The PIN has just been changed. Ask for the new one.', code: 'pinChanged', status: 401 });
     if (this.pinGen !== gen) return changed; // changed while the name was checked
     const token = randomBytes(32).toString('base64url');
     const key = keyOf(token);
-    // The name is taken here, before the first await: two joins at once can't both get it.
-    this.sessions.set(key, { username: name, role: 'guest', expires: now + SESSION_MS, ip, device: dev });
+    const knew = this.newDevice(device); // the "knew the PIN" cookie: its id goes with the session, for a kick to revoke
+    // The name is taken here, before the first await: two joins at once can't both get it. The browser's
+    // id is kept with the session in the store too, so a kick after a restart still keeps that browser out.
+    this.sessions.set(key, { username: name, role: 'guest', expires: now + SESSION_MS, ip, device: dev, pinId: knew.split('.')[1] });
     try {
-      await this.store.saveSession(key, name, 'guest', now + SESSION_MS);
+      await this.store.saveSession(key, name, 'guest', now + SESSION_MS, dev);
     } catch (e) {
       this.sessions.delete(key);
       throw e;
@@ -443,7 +491,12 @@ export class Auth {
       return changed;
     }
     this.log('join_ok', req, { username: name, detail: 'pin' });
-    return out({ token, username: name, role: 'guest', device: this.newDevice(device) });
+    return out({ token, username: name, role: 'guest', device: knew });
+  }
+
+  /** The id of this browser's "knew the PIN" cookie for the current PIN, or null (see kick). */
+  pinCookieId(req) {
+    return this.deviceCookieOf(req, this.names.pin, this.pinDevice())?.id ?? null;
   }
 
   /** What a PIN device cookie is signed for: it only counts for the PIN it was earned with. */
@@ -495,17 +548,26 @@ export class Auth {
   }
 
   /**
-   * Remove someone: keep their name out for KICK_MS and end their sessions. Their browser (the
-   * guest cookie they joined with, and `devices`: the one their game connection came with) can't
-   * join with the PIN for those minutes either, under another name. Only that browser: everyone
-   * else on the same Wi-Fi keeps joining. Someone who clears their cookies gets back in under
-   * another name, and can be kicked again.
+   * Remove someone: keep their name out for KICK_MS and end their sessions. Their browser (the guest
+   * cookie they joined with, and `devices`: the one their game connection came with) can't join with
+   * the PIN for those minutes either, under another name. A new identity doesn't help: at the
+   * addresses they played from (`addresses`), browsers first seen after the kick wait those minutes
+   * too, while everyone known there from before keeps joining. Their "knew the PIN" cookie (`pins`)
+   * no longer lets them skip the counts of wrong PINs.
    */
-  async kick(username, devices = []) {
-    const until = Date.now() + KICK_MS;
+  async kick(username, { devices = [], addresses = [], pins = [] } = {}) {
+    const now = Date.now();
+    const until = now + KICK_MS;
     this.blocked.set(username, until);
-    for (const s of this.sessions.values()) if (s.username === username && s.device) this.blockedDevices.set(s.device, until);
+    for (const s of this.sessions.values()) {
+      if (s.username !== username) continue;
+      devices = [...devices, s.device];
+      addresses = [...addresses, s.ip];
+      pins = [...pins, s.pinId];
+    }
     for (const d of devices) if (d) this.blockedDevices.set(d, until);
+    for (const a of addresses) if (a) this.kickedFrom.set(a, { at: now, until });
+    for (const p of pins) if (p) this.revokedPins.set(p, now + DEVICE_MS);
     await this.endSessionsOf(username);
   }
 }

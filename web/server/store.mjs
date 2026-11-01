@@ -48,8 +48,9 @@ class FileStore {
     this.data.sessions = this.data.sessions.filter((s) => s.expires > now);
     return this.data.sessions;
   }
-  async saveSession(key, username, role, expires) {
-    this.data.sessions.push({ key, username, role, expires });
+  /** `device`: the guest cookie's id of the browser that joined (server/auth.mjs kick), if any. */
+  async saveSession(key, username, role, expires, device = null) {
+    this.data.sessions.push({ key, username, role, expires, ...(device ? { device } : {}) });
     await this.save();
   }
   async deleteSession(key) {
@@ -278,6 +279,7 @@ class PgStore {
         role text not null,
         expires bigint not null
       );
+      alter table sessions add column if not exists device text;
       create table if not exists furniture (
         id serial primary key,
         item text not null,
@@ -332,11 +334,11 @@ class PgStore {
   }
   async loadSessions(now) {
     await this.pool.query('delete from sessions where expires <= $1', [now]);
-    const r = await this.pool.query('select key, username, role, expires from sessions');
+    const r = await this.pool.query('select key, username, role, expires, device from sessions');
     return r.rows.map((s) => ({ ...s, expires: Number(s.expires) }));
   }
-  async saveSession(key, username, role, expires) {
-    await this.pool.query('insert into sessions (key, username, role, expires) values ($1, $2, $3, $4)', [key, username, role, expires]);
+  async saveSession(key, username, role, expires, device = null) {
+    await this.pool.query('insert into sessions (key, username, role, expires, device) values ($1, $2, $3, $4, $5)', [key, username, role, expires, device]);
   }
   async deleteSession(key) {
     await this.pool.query('delete from sessions where key = $1', [key]);
