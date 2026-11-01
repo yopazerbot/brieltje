@@ -242,7 +242,8 @@ export class Interest {
       when: Array.isArray(b.when) ? WHEN.filter((w) => b.when.includes(w)) : [],
       party: Math.max(1, Math.min(10, Math.round(Number(b.party) || 1))),
       comments: clean(b.comments, 2000).replace(/ {2,}/g, ' '),
-      // An email once the meetup is planned, only if ticked (consent, with its time as proof).
+      // An email once the meetup is planned, unless unticked (Yoshi, 1 Nov 2026: on by default). It is
+      // about the meetup they signed up for, not marketing: legitimate interest, with the time kept.
       updates: b.updates === true, updatesAt: b.updates === true ? new Date().toISOString() : null,
       house, consent: house ? { ...consent, at: new Date().toISOString() } : null,
       lang: b.lang === 'en' ? 'en' : 'nl',
