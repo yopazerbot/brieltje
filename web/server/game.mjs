@@ -137,6 +137,26 @@ const SOLIDS = makeSolids([
   ...Object.values(houseData('homestreet.json').clusters).flatMap((c) => c.blocks ?? []),
 ], (x, z) => TERRAIN.height(x, z));
 const INDOORS = makeIndoors([...HOUSE.prisms, ...(HOUSE.surroundings?.prisms ?? [])], HOUSE.rooms.map((r) => r.name));
+/**
+ * The cars parked along the village's streets (src/data/roads.json, drawn by src/world/traffic.ts):
+ * each a block of its model's size, as the page makes it (the sizes are in public/models/traffic.glb).
+ * A placed car can't stand on one either.
+ */
+const PARKED = (() => {
+  try {
+    const glb = readFileSync(new URL('../public/models/traffic.glb', import.meta.url));
+    const nodes = JSON.parse(glb.subarray(20, 20 + glb.readUInt32LE(12)).toString('utf8')).nodes;
+    const size = Object.fromEntries(nodes.filter((n) => n.extras?.length).map((n) => [n.name, n.extras]));
+    const kinds = ['hatch', 'estate', 'van']; // as in traffic.ts
+    return houseData('roads.json').parked.flatMap(([x, z, yaw, k]) => {
+      const s = size[kinds[k]];
+      return s ? [{ x, z, yaw, halfL: s.length / 2 - 0.05, halfW: s.width / 2 - 0.02 }] : [];
+    });
+  } catch (e) {
+    console.error(JSON.stringify({ event: 'parked_cars_unread', error: String(e) }));
+    return [];
+  }
+})();
 const HORSES = shared('horses.json'); // the horses: their walks on the shared clock, riding speeds
 const FURNITURE = shared('furniture.json'); // planner catalogue: which items exist, how many may be placed
 const FURNITURE_IDS = new Set(FURNITURE.items.map((i) => i.id));
@@ -1004,8 +1024,9 @@ export class Game {
    * it can: inside the edge of the game (shared/bounds.mjs) and the server's area; off the portals'
    * pads and the spots where people and cars come out of them (shared/portals.mjs); on the ground (not
    * on a roof, upstairs or in the air); outdoors (not over a floor of the house or the bungalow); clear
-   * of every wall, hedge, fence and house (shared/parking.mjs, the page's own test); not on another
-   * car (`self`: the one being moved) or on a player standing there.
+   * of every wall, hedge, fence and house (shared/parking.mjs, the page's own test); not on a car
+   * parked in the village's streets, another car of the game (`self`: the one being moved) or a player
+   * standing there. The page also keeps clear of the gardens' small things, bales and furniture.
    */
   parkingProblem(kind, { x, y, z, yaw }, self) {
     const spec = CARS.cars[PLACED.kinds[kind].base];
@@ -1021,6 +1042,7 @@ export class Game {
     if (boxPoints(x, z, yaw, halfL, halfW, 0.5).some(([px, pz]) => INDOORS(px, pz))) return ['teslaInside', 'Cars stay outdoors.'];
     if (!SOLIDS.boxFree(x, z, yaw, halfL, halfW, y + 0.3, y + spec.height)) return room; // 0.3: kerbs and paving don't count, as for driving
     const box = { x, z, yaw, halfL, halfW };
+    if (PARKED.some((p) => boxesOverlap(box, p))) return room;
     for (const c of Object.values(this.cars)) {
       const s = carSpec(c);
       if (c.id !== self && boxesOverlap(box, { x: c.x, z: c.z, yaw: c.yaw, halfL: s.length / 2, halfW: s.width / 2 }, 0.1)) return room;
