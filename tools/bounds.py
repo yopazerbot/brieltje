@@ -261,7 +261,7 @@ def main():
         "map": ring_out(big),
         "party": ring_out(party),
     }
-    OUT.write_text(json.dumps(out, separators=(",", ":")) + "\n", encoding="utf-8")
+    OUT.write_text(json.dumps(out, separators=(",", ":")) + "\n", encoding="utf-8", newline="\n")
     nearest = min(big.exterior.distance(Point(x, z)) for _n, x, z, s in named if s)
     print(f"map: {len(out['map'])} points, {big.area / 1e6:.2f} km2, {big.length / 1000:.1f} km round, "
           f"x {big.bounds[0]:.0f}..{big.bounds[2]:.0f}, z {big.bounds[1]:.0f}..{big.bounds[3]:.0f}; nearest portal or spawn {nearest:.1f} m from the edge")
