@@ -5,7 +5,14 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover" />
     <meta name="robots" content="noindex, nofollow, noarchive" />
     <meta name="author" content="Yoshi Parlevliet" />
-    <title data-nl="Briel: het huis in 3D">Briel Walkthrough</title>
+    <title data-nl="Brieltje: Smetlede en Briel in 3D">Brieltje: Smetlede and Briel in 3D</title>
+    <meta name="description" content="Brieltje: walk through Smetlede and Briel (Lede) in 3D, alone or together." />
+    <meta name="application-name" content="Brieltje" />
+    <link rel="icon" href="/favicon.svg" type="image/svg+xml" />
+    <link rel="icon" href="/icon-192.png" type="image/png" sizes="192x192" />
+    <!-- The brand's typeface (Alegreya Sans, SIL OFL; web/public/fonts/): fetched at once, so the start screen opens in it. -->
+    <link rel="preload" href="/fonts/alegreya-sans-500.woff2" as="font" type="font/woff2" crossorigin />
+    <link rel="preload" href="/fonts/alegreya-sans-800.woff2" as="font" type="font/woff2" crossorigin />
     <!-- Added to the home screen it opens without the browser's bars (the only full screen an iPhone allows a page). -->
     <link rel="manifest" href="/manifest.webmanifest" />
     <link rel="apple-touch-icon" href="/apple-touch-icon.png" />
@@ -13,12 +20,17 @@
     <meta name="mobile-web-app-capable" content="yes" />
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
     <meta name="apple-mobile-web-app-title" content="Brieltje" />
-    <meta name="theme-color" content="#0c0e12" />
+    <meta name="theme-color" content="#16202a" />
     <link rel="stylesheet" href="/slides/slides.css" />
     <link rel="stylesheet" href="/src/style.css" />
   </head>
   <!-- The texts below are the English ones; src/i18n.ts fills every data-i18n* element in the chosen language. -->
   <body class="on-start">
+    <!-- The wordmark (src/style.css .wordmark): "Brieltje" in Alegreya Sans ExtraBold's outlines (SIL OFL), the dots
+         of the i and the j drawn as two lit windows. Used by the start screen, the menu's header and the HUD. -->
+    <svg width="0" height="0" style="position: absolute" aria-hidden="true" focusable="false">
+      <symbol id="wordmark" viewBox="0 0 2993 898"><path d="M500 518Q500 615 422 662Q345 708 192 708Q92 708 1 702H0L9 511L0 57L254 56Q357 56 415 98Q473 140 473 219Q473 270 448 308Q422 347 375 369Q440 385 470 422Q500 458 500 518ZM191 168H159L155 325L241 329Q275 319 292 298Q308 277 308 241Q308 200 282 184Q257 168 191 168ZM336 511Q336 480 317 462Q298 443 258 434L153 436L152 495L155 592Q207 596 222 596Q276 596 306 574Q336 552 336 511ZM883 235V380L867 385Q853 378 830 378Q776 378 731 436V495L738 702H580L588 511L581 244L732 232V322H739Q786 233 859 233Q865 233 883 235ZM948 511 943 244 1100 232 1093 495 1099 702H941ZM1587 494 1325 496Q1332 548 1361 573Q1390 598 1443 598Q1496 598 1583 567L1595 575L1571 688Q1491 713 1426 713Q1311 713 1246 648Q1180 583 1180 469Q1180 355 1243 290Q1306 224 1414 224Q1507 224 1558 274Q1610 324 1610 413Q1610 442 1604 474ZM1473 396Q1473 327 1413 327Q1379 327 1357 350Q1335 372 1327 414L1471 410ZM1834 495 1841 702H1683L1691 510L1685 11L1842 0ZM2224 571 2235 583 2220 674Q2170 702 2116 709Q2043 705 2005 670Q1967 636 1967 576L1972 485L1971 332H1909L1904 324L1911 238H1970V158L2115 115L2126 125L2122 238H2232L2237 247L2230 332H2119L2113 534Q2113 563 2124 574Q2134 586 2160 586Q2190 586 2224 571ZM2484 234 2475 495 2482 672Q2482 751 2440 805Q2399 859 2308 898L2254 828V814Q2295 792 2314 759Q2332 726 2332 676V511L2328 332H2255L2246 323L2253 238H2332L2479 231ZM2970 494 2708 496Q2715 548 2744 573Q2773 598 2826 598Q2879 598 2966 567L2978 575L2954 688Q2874 713 2809 713Q2694 713 2628 648Q2563 583 2563 469Q2563 355 2626 290Q2689 224 2797 224Q2890 224 2942 274Q2993 324 2993 413Q2993 442 2987 474ZM2856 396Q2856 327 2796 327Q2762 327 2740 350Q2718 372 2710 414L2854 410Z"/><rect x="944" y="0" width="153" height="153" rx="14" style="fill: var(--wm-window, #f2b544)"/><rect x="2316" y="0" width="153" height="153" rx="14" style="fill: var(--wm-window, #f2b544)"/></symbol>
+    </svg>
     <canvas id="view"></canvas>
     <!-- Behind the start screen: a slideshow of renders (public/slides/, made with tools/still/), shown while the start menu is up. -->
     <div id="start-still" class="slides bg" data-slides></div>
@@ -26,7 +38,7 @@
     <div id="slides-controls" data-slides-controls></div>
     <div id="hud">
       <div id="damage"></div>
-      <div id="brand">BRIEL<span data-i18n="brand.wip">work in progress</span></div>
+      <div id="brand"><svg class="wordmark" viewBox="0 0 2993 898" role="img" aria-label="Brieltje"><use href="#wordmark"/></svg><span data-i18n="brand.wip">Work in progress</span></div>
       <div id="who"></div>
       <div id="place"></div>
       <div id="menu-hint"><kbd>Esc</kbd> <span data-i18n="hud.menu">Menu</span></div>
@@ -67,7 +79,7 @@
     <button id="map-btn" type="button" title="Map (M)" aria-label="Open the map" data-i18n-title="btn.map" data-i18n-aria="btn.mapAria"><span class="ico">⤢</span></button>
     <button id="sound-btn" type="button" title="Sound on or off (Shift+M)" data-i18n-title="btn.soundTitle"><span class="ico">🔊</span> <span class="lbl">Sound</span></button>
     <button id="full-btn" type="button" class="hidden" title="Fill the whole screen" data-i18n-title="btn.fullTitle"><span class="ico">⤢</span> <span class="lbl">Full screen</span></button>
-    <div id="full-hint" class="hidden" data-i18n-rich="full.hint">On an iPhone a page can't fill the screen from Safari. Tap <b>Share</b>, then <b>Add to Home Screen</b>, and start Briel from your home screen: it opens without Safari's bars.</div>
+    <div id="full-hint" class="hidden" data-i18n-rich="full.hint">On an iPhone a page can't fill the screen from Safari. Tap <b>Share</b>, then <b>Add to Home Screen</b>, and start Brieltje from your home screen: it opens without Safari's bars.</div>
     <div id="rotate-hint" data-i18n="rotate.hint">Turn your device sideways to play</div>
     <!-- The feedback card after two minutes of play (src/ui/feedback.ts): above the touch controls. -->
     <div id="feedback" class="hidden" role="dialog" aria-modal="true" aria-labelledby="fb-title">
@@ -85,14 +97,16 @@
     </div>
     <!-- Hidden until src/start.ts has put it in the chosen language and made its buttons work. -->
     <div id="overlay" class="hidden">
+      <!-- The start screen: the wordmark and a welcome, then your name, alone or together, the mode and
+           where to start, and the start buttons; the first is the one to press (style.css). -->
       <div class="panel" id="start-panel">
-        <!-- English or Dutch, each in its own language; remembered in this browser (src/i18n.ts). -->
-        <div class="lang-pick" role="group" aria-label="Language" data-i18n-aria="lang.label"><button type="button" class="textbtn" data-lang="en" lang="en">English</button><button type="button" class="textbtn" data-lang="nl" lang="nl">Nederlands</button></div>
-        <h1>BRIEL</h1>
-        <p class="sub" data-i18n="start.sub">Work in progress</p>
-        <p class="intro" data-i18n="start.intro">Smetlede and Briel in 3D.</p>
-        <a class="invite" href="/interested/" target="_blank" rel="noopener noreferrer"><span data-i18n="start.invite">Play together in person, or have your own house built in?</span> <b data-i18n="start.inviteGo">Sign up →</b></a>
-        <p id="mobile-note" class="mobile-note hidden" data-i18n="start.mobileNote">Best on a laptop or desktop. Here you play with touch controls: hold your device sideways and tap Touch screen.</p>
+        <header class="start-head">
+          <h1 class="start-brand"><svg class="wordmark" viewBox="0 0 2993 898" role="img" aria-label="Brieltje"><use href="#wordmark"/></svg></h1>
+          <!-- English or Dutch, each in its own language; remembered in this browser (src/i18n.ts). -->
+          <div class="lang-pick" role="group" aria-label="Language" data-i18n-aria="lang.label"><button type="button" class="textbtn" data-lang="en" lang="en">English</button><button type="button" class="textbtn" data-lang="nl" lang="nl">Nederlands</button></div>
+        </header>
+        <p class="intro"><span data-i18n="start.intro">Welcome to Smetlede and Briel.</span> <span class="wip" data-i18n="start.sub">Work in progress</span></p>
+        <p id="mobile-note" class="mobile-note hidden" data-i18n="start.mobileNote">Best on a laptop or desktop. Hold your device sideways to play by touch.</p>
         <div id="who-box">
           <label class="field" for="nick" data-i18n="start.name">Your name</label>
           <input id="nick" maxlength="20" autocomplete="username" spellcheck="false" placeholder="Name" data-i18n-placeholder="start.namePh" />
@@ -119,14 +133,14 @@
           <button id="mp-logout" class="mini" type="button" data-i18n="start.leave">Play alone</button>
         </div>
         <p id="mp-msg" class="mp-msg"></p>
-        <p class="label" data-i18n="start.mode">Mode</p>
+        <p class="label" data-i18n="start.mode">Game mode</p>
         <div class="seg" id="mode-start">
           <button class="seg-btn" type="button" data-play="explore"><b data-i18n="mode.explore">Explore</b><span data-i18n="mode.exploreSub">Walk around</span></button>
           <button class="seg-btn" type="button" data-play="paintball"><b data-i18n="mode.paintball">Paintball</b><span data-i18n="mode.paintballSub">With paint guns · for everyone</span></button>
           <button class="seg-btn" type="button" data-play="action"><b data-i18n="mode.action">Action</b><span data-i18n="mode.actionSub">With a pistol</span></button>
         </div>
         <div class="label-row">
-          <p class="label" data-i18n="start.with">Start with</p>
+          <p class="label" data-i18n="start.with">Play with</p>
           <!-- Where you start: one of the portal places (src/main.ts arrives there once the world is loaded). -->
           <label class="spawn-pick" for="spawn"><span data-i18n="start.at">Start at</span>
             <select id="spawn">
@@ -140,7 +154,7 @@
         </div>
         <div class="choices start-choices">
           <button id="choose-kbm" class="choice play" type="button">
-            <b data-i18n="choose.kbm">Keyboard + mouse</b>
+            <b data-i18n="choose.kbm">Keyboard and mouse</b>
             <span id="kbm-sub">W A S D to walk, mouse to look</span>
           </button>
           <button id="choose-pad" class="choice play" type="button">
@@ -152,6 +166,8 @@
             <span data-i18n="choose.touchSub">A stick under your left thumb, buttons on the right</span>
           </button>
         </div>
+        <!-- The sign-up page for meetups and houses in the game (brieltje.be/interested). -->
+        <a class="invite" href="/interested/" target="_blank" rel="noopener noreferrer"><span class="invite-text"><b data-i18n="start.invite">Play together in person?</b> <span class="invite-house" data-i18n="start.inviteHouse">Your own house can be in the game too.</span></span> <span class="invite-go" data-i18n="start.inviteGo">Sign up</span></a>
         <div class="start-foot">
           <button class="gfx textbtn" type="button" title="Change the graphics (cycles through the settings)" data-i18n-title="gfx.title"><span data-i18n="gfx.label">Graphics</span> <span class="gfx-value"></span><small class="gfx-detail"></small></button>
           <button id="mp-account" class="textbtn" type="button" data-i18n="start.admin">Admin</button>
@@ -166,7 +182,7 @@
       <div class="panel wide hidden" id="pause-panel">
         <header class="pause-top">
           <div class="pause-title">
-            <h1><span class="pause-brand">BRIEL</span><span class="pause-sep" aria-hidden="true">·</span><span data-i18n="menu.title">Menu</span></h1>
+            <h1><svg class="wordmark" viewBox="0 0 2993 898" role="img" aria-label="Brieltje"><use href="#wordmark"/></svg><span class="pause-label" data-i18n="menu.title">Menu</span></h1>
             <p class="sub" id="pause-who"></p>
           </div>
           <div class="pause-actions">
@@ -359,7 +375,7 @@
               <span class="made-by" data-i18n="credit.made">Made by Yoshi Parlevliet</span>
               <span class="legal-links"><a href="/legal/terms.html" target="_blank" rel="noopener noreferrer" data-i18n="legal.termsShort">Terms</a> · <a href="/legal/privacy.html" target="_blank" rel="noopener noreferrer" data-i18n="legal.privacyShort">Privacy</a> · <a href="/legal/credits.html" target="_blank" rel="noopener noreferrer" data-i18n="legal.credits">Credits</a></span>
               <a class="gh" href="https://github.com/yopazerbot/brieltje" target="_blank" rel="noopener noreferrer" title="The source code on GitHub" data-i18n-title="credit.source"><svg viewBox="0 0 16 16" width="14" height="14" aria-hidden="true"><path fill="currentColor" d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27.68 0 1.36.09 2 .27 1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.013 8.013 0 0016 8c0-4.42-3.58-8-8-8z"/></svg><span>GitHub</span></a>
-              <a class="meetup" href="/interested/" target="_blank" rel="noopener noreferrer"><span data-i18n="menu.meetup">Meet up in person</span> ↗</a>
+              <a class="meetup" href="/interested/" target="_blank" rel="noopener noreferrer" data-i18n="menu.meetup">Meet up in person</a>
             </footer>
           </div>
         </div>

@@ -39,6 +39,15 @@ function save(key: string, value: string): void {
 
 const $ = (id: string) => document.getElementById(id)!;
 
+/** A slider's filled part, up to its knob (style.css draws it from --fill). */
+function fillRange(r: HTMLInputElement): void {
+  const min = Number(r.min) || 0;
+  const max = Number(r.max) || 100;
+  r.style.setProperty('--fill', `${((Number(r.value) - min) / (max - min || 1)) * 100}%`);
+}
+/** Every slider in the start screen and the menu: their values also change from code (the D-pad, Back to defaults, the admin's rules). */
+const fillRanges = () => document.querySelectorAll<HTMLInputElement>('#overlay input[type=range]').forEach(fillRange);
+
 export class Menu {
   mode: ControlMode | null = null;
   /** The mode you picked (see `playing` for the one you play). */
@@ -139,6 +148,12 @@ export class Menu {
       this.showKeyboard();
     });
     this.showKeyboard();
+    // The sliders' fill follows dragging at once, and a click (Back to defaults) a moment later.
+    this.overlay.addEventListener('input', (e) => {
+      if (e.target instanceof HTMLInputElement && e.target.type === 'range') fillRange(e.target);
+    });
+    this.overlay.addEventListener('click', () => setTimeout(fillRanges));
+    fillRanges();
   }
 
   /** The keyboard choice in Settings (each with its walking keys) and the start button's line. */
@@ -251,7 +266,10 @@ export class Menu {
   setSpeed(speed: number, notify = true): void {
     this.walkSpeed = Math.round(Math.min(4, Math.max(0.8, speed)) * 10) / 10;
     save(KEYS.speed, String(this.walkSpeed));
-    document.querySelectorAll<HTMLInputElement>('input.speed').forEach((s) => (s.value = String(this.walkSpeed)));
+    document.querySelectorAll<HTMLInputElement>('input.speed').forEach((s) => {
+      s.value = String(this.walkSpeed);
+      fillRange(s);
+    });
     document.querySelectorAll('.walk-value').forEach((e) => (e.textContent = `${num(this.walkSpeed, 1)} m/s`));
     if (notify) this.onSpeed(this.walkSpeed);
   }
@@ -416,6 +434,7 @@ export class Menu {
     this.pause.classList.remove('hidden');
     this.overlay.classList.remove('hidden');
     this.fillControls();
+    fillRanges();
     this.showTab(tab ?? (load(KEYS.tab) || 'map'), !tab);
     // The keyboard starts on the rail: the arrow keys change tabs, Tab goes on into the page.
     this.tabs().find((b) => b.dataset.tab === this.current)?.focus({ preventScroll: true });

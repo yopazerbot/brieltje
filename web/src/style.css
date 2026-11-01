@@ -1,8 +1,46 @@
+/* Brieltje's look (DECISIONS.md, 1 Nov 2026): the village at dusk with its lights coming on. Slate
+   blue panels like the roofs after sunset, warm off-white text, and lamplight amber for what to press
+   and what is chosen, as in the wordmark's two lit windows. One typeface, Alegreya Sans (SIL OFL,
+   web/public/fonts/, Latin only), in two weights: 500 for text, 800 for headings and buttons. */
+@font-face {
+  font-family: 'Alegreya Sans';
+  font-style: normal;
+  font-weight: 500;
+  font-display: swap;
+  src: url('/fonts/alegreya-sans-500.woff2') format('woff2');
+  unicode-range: U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC, U+0304, U+0308, U+0329, U+2000-206F, U+20AC, U+2122, U+2191, U+2193, U+2212, U+2215, U+FEFF, U+FFFD;
+}
+@font-face {
+  font-family: 'Alegreya Sans';
+  font-style: normal;
+  font-weight: 800;
+  font-display: swap;
+  src: url('/fonts/alegreya-sans-800.woff2') format('woff2');
+  unicode-range: U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC, U+0304, U+0308, U+0329, U+2000-206F, U+20AC, U+2122, U+2191, U+2193, U+2212, U+2215, U+FEFF, U+FFFD;
+}
+
 :root {
-  --ink: #f4efe6;
-  --shadow: 0 2px 0 rgba(0, 0, 0, 0.85), 0 0 12px rgba(0, 0, 0, 0.5);
-  --accent: #f2b33d;
-  --panel: rgba(12, 14, 18, 0.82);
+  --ink: #f5efe4;          /* text */
+  --ink-soft: #bcc5ce;     /* second lines, labels (9:1 on dusk) */
+  --ink-faint: #95a1ad;    /* small print (5.7:1 on dusk) */
+  --dusk: #16202a;         /* panels */
+  --dusk-deep: #101820;    /* the menu's rail, the page behind */
+  --dusk-raised: #1f2b37;  /* fields, tiles, buttons */
+  --dusk-high: #2a3846;    /* their hover, empty tracks */
+  --line: rgba(220, 230, 240, 0.11);
+  --line-strong: rgba(220, 230, 240, 0.22);
+  --lamp: #f2b544;         /* lamplight: the button to press, what is chosen */
+  --lamp-bright: #f7c867;
+  --lamp-soft: rgba(242, 181, 68, 0.13);
+  --lamp-line: rgba(242, 181, 68, 0.6);
+  --bad: #ff9c8a;
+  --accent: var(--lamp);   /* the HUD's name for it */
+  --panel: rgba(18, 27, 36, 0.86); /* the HUD's boxes over the 3D view (no blur: the GPU is busy enough) */
+  --shadow: 0 1px 2px rgba(0, 0, 0, 0.85), 0 0 10px rgba(0, 0, 0, 0.45);
+  --font: 'Alegreya Sans', 'Segoe UI', system-ui, -apple-system, sans-serif;
+  --r-panel: 20px;
+  --r-tile: 12px;
+  --r-field: 10px;
 }
 
 * { box-sizing: border-box; }
@@ -11,10 +49,21 @@ html, body {
   margin: 0;
   height: 100%;
   overflow: hidden;
-  background: #0d0f12;
+  background: var(--dusk-deep);
   color: var(--ink);
-  font-family: "Bahnschrift", "Arial Narrow", "Segoe UI", sans-serif;
+  font-family: var(--font);
+  font-weight: 500;
+  -webkit-font-smoothing: antialiased;
+  -webkit-text-size-adjust: 100%;
+  text-size-adjust: 100%;
 }
+button, input, select, textarea { font-family: inherit; }
+.hidden { display: none !important; }
+/* For screen readers only. */
+.sr-only { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
+
+/* The wordmark (the <symbol id="wordmark"> in index.html): the letters in currentColor, the windows in lamplight. */
+.wordmark { display: block; width: auto; aspect-ratio: 2993 / 898; fill: currentColor; --wm-window: var(--lamp); }
 
 #view { display: block; width: 100vw; height: 100vh; touch-action: none; }
 
@@ -22,13 +71,17 @@ html, body {
 /* The top-middle messages' box: no box of its own on a desktop, a stack with touch controls. */
 #hud-top { display: contents; }
 
-#brand {
-  position: absolute; top: 18px; left: 24px;
-  font-size: 30px; font-weight: 700; letter-spacing: 0.08em; font-style: italic;
-}
-#brand span {
-  margin-left: 10px; font-size: 13px; font-style: normal; letter-spacing: 0.2em;
-  text-transform: uppercase; color: var(--accent);
+/* The wordmark top left while playing, with "Work in progress" beside it. A dark outline round the
+   letters (drawn under them) keeps it readable on a bright sky; nothing in it moves. */
+#brand { position: absolute; top: 16px; left: 24px; display: flex; align-items: center; gap: 10px; }
+#brand .wordmark { height: 28px; color: var(--ink); stroke: rgba(8, 12, 16, 0.6); stroke-width: 64px; stroke-linejoin: round; paint-order: stroke; }
+#brand span { font-size: 13px; font-weight: 800; color: var(--ink); opacity: 0.85; }
+/* The menu's key, always in view while playing. */
+#menu-hint { position: absolute; top: 104px; left: 24px; font-size: 14px; opacity: 0.9; }
+#menu-hint kbd {
+  display: inline-block; min-width: 34px; margin-right: 6px; padding: 2px 8px; text-align: center;
+  font-family: inherit; font-size: 13px; font-weight: 800; color: var(--dusk); background: var(--lamp); border-radius: 6px;
+  box-shadow: 0 2px 0 rgba(0, 0, 0, 0.5); text-shadow: none;
 }
 
 #who {
@@ -51,7 +104,7 @@ html, body {
 
 #toast {
   position: absolute; bottom: 64px; right: 48px;
-  font-size: 44px; font-weight: 700; font-style: italic; letter-spacing: 0.03em;
+  font-size: 44px; font-weight: 700; letter-spacing: 0.03em;
   color: var(--ink); opacity: 0; transition: opacity 0.6s ease;
 }
 #toast.show { opacity: 1; }
@@ -59,59 +112,6 @@ html, body {
   display: block; text-align: right; font-size: 16px; font-style: normal;
   letter-spacing: 0.25em; text-transform: uppercase; color: var(--accent);
 }
-
-#overlay {
-  position: fixed; inset: 0; display: flex; align-items: center; justify-content: center;
-  background: radial-gradient(ellipse at center, rgba(0, 0, 0, 0.35), rgba(0, 0, 0, 0.75));
-  padding: 16px max(16px, env(safe-area-inset-right, 0px)) 16px max(16px, env(safe-area-inset-left, 0px)); /* clear of a phone's notch */
-}
-#overlay.hidden, .panel.hidden { display: none; }
-
-.panel {
-  background: var(--panel); padding: 28px 36px; border-left: 4px solid var(--accent);
-  width: 100%; max-width: 560px;
-}
-.field, .label {
-  display: block; margin: 0 0 6px; font-size: 13px; letter-spacing: 0.15em;
-  text-transform: uppercase; color: rgba(244, 239, 230, 0.7);
-}
-#nick {
-  width: 100%; margin-bottom: 20px; padding: 10px 12px;
-  font-family: inherit; font-size: 20px; font-weight: 600; color: var(--ink);
-  background: rgba(255, 255, 255, 0.06); border: 1px solid rgba(255, 255, 255, 0.18); border-radius: 2px;
-}
-#nick:focus { outline: none; border-color: var(--accent); }
-.choices { display: flex; gap: 12px; flex-wrap: wrap; margin-top: 4px; }
-.choice {
-  flex: 1 1 200px; text-align: left; cursor: pointer; padding: 14px 16px;
-  font-family: inherit; color: var(--ink);
-  background: rgba(255, 255, 255, 0.06); border: 1px solid rgba(255, 255, 255, 0.15); border-radius: 2px;
-}
-.choice:hover, .choice:focus-visible, .choice.selected { border-color: var(--accent); background: rgba(242, 179, 61, 0.12); outline: none; }
-.choice b { display: block; font-size: 19px; font-style: italic; }
-.choice span { display: block; margin-top: 4px; font-size: 13px; opacity: 0.75; }
-.choice.primary { border-color: var(--accent); }
-.panel h1 { margin: 0; font-size: 48px; font-style: italic; letter-spacing: 0.08em; }
-/* The start screen's link to the sign-up page (brieltje.be/interested). */
-.invite { display: flex; flex-wrap: wrap; align-items: baseline; justify-content: space-between; gap: 2px 12px; margin: -4px 0 12px; padding: 9px 12px; font-size: 14px; color: var(--ink); text-decoration: none; background: rgba(242, 179, 61, 0.08); border: 1px solid rgba(242, 179, 61, 0.35); border-radius: 4px; }
-.invite b { color: var(--accent); white-space: nowrap; }
-.invite:hover, .invite:focus-visible { background: rgba(242, 179, 61, 0.16); border-color: var(--accent); outline: none; }
-@media (max-height: 560px) { .invite { margin-bottom: 10px; padding: 6px 10px; font-size: 13px; } }
-.panel .sub { margin: 2px 0 18px; color: var(--accent); letter-spacing: 0.15em; text-transform: uppercase; font-size: 13px; }
-.panel table { border-collapse: collapse; width: 100%; font-size: 15px; }
-.panel th { text-align: left; color: var(--accent); font-weight: 600; padding: 4px 12px 4px 0; }
-.panel td { padding: 4px 12px 4px 0; border-top: 1px solid rgba(255, 255, 255, 0.08); }
-
-.gfx {
-  display: flex; align-items: baseline; gap: 10px; flex-wrap: wrap; width: 100%; margin-top: 14px;
-  padding: 10px 14px; cursor: pointer; text-align: left; font-family: inherit; color: var(--ink);
-  background: transparent; border: 1px dashed rgba(255, 255, 255, 0.22); border-radius: 2px;
-}
-.gfx:hover, .gfx:focus-visible { border-color: var(--accent); outline: none; }
-.gfx b { font-size: 13px; letter-spacing: 0.15em; text-transform: uppercase; color: rgba(244, 239, 230, 0.7); font-weight: 600; }
-.gfx-value { font-size: 17px; font-weight: 700; font-style: italic; color: var(--accent); }
-.gfx-detail { flex-basis: 100%; font-size: 12px; opacity: 0.6; }
-
 
 #crosshair {
   position: absolute; left: 50%; top: 50%; width: 6px; height: 6px; margin: -3px 0 0 -3px;
@@ -132,21 +132,13 @@ html, body {
 #prompt.warn { white-space: pre-line; text-align: center; max-width: calc(100vw - 32px); border-left-color: #ff6b6b; }
 
 #ammo {
-  position: absolute; right: 48px; bottom: 140px; font-size: 32px; font-weight: 700; font-style: italic;
+  position: absolute; right: 48px; bottom: 140px; font-size: 32px; font-weight: 700;
 }
 
 #nades { position: absolute; right: 48px; bottom: 184px; font-size: 15px; font-weight: 700; letter-spacing: 0.08em; opacity: 0.85; }
 
-#credit { position: absolute; right: 16px; bottom: 10px; font-size: 11px; letter-spacing: 0.08em; opacity: 0.55; }
-
-.choices.toggle .choice { flex: 1 1 160px; }
-.choice.small { padding: 10px 14px; }
-.choice.small b { font-size: 16px; }
-.setting { margin: 14px 0 16px; }
-.setting .field { display: flex; justify-content: space-between; }
-.walk-value, .set-value { color: var(--accent); letter-spacing: 0.05em; text-transform: none; }
-input.speed { width: 100%; accent-color: #f2b33d; }
-.made { margin: 16px 0 0; font-size: 12px; letter-spacing: 0.1em; opacity: 0.55; text-align: right; }
+/* Who made it and the source, bottom right while playing: small and quiet. */
+#credit { position: absolute; right: 16px; bottom: 10px; display: flex; align-items: center; font-size: 13px; opacity: 0.7; }
 
 #sound-btn {
   position: fixed; right: 16px; bottom: 28px; z-index: 20; cursor: pointer;
@@ -172,7 +164,7 @@ input.speed { width: 100%; accent-color: #f2b33d; }
   display: flex; flex-direction: column; gap: 2px; font-size: 15px;
 }
 #chat-log .line { background: rgba(12, 14, 18, 0.55); padding: 3px 8px; transition: opacity 1s; }
-#chat-log .line.system { color: var(--accent); font-style: italic; }
+#chat-log .line.system { color: var(--accent); }
 #chat-log .line.old { opacity: 0; }
 #chat-log.active .line.old { opacity: 1; }
 #chat-input {
@@ -182,198 +174,6 @@ input.speed { width: 100%; accent-color: #f2b33d; }
 }
 #chat-input.show { display: block; }
 
-#mp-box { margin: 4px 0 14px; }
-.mp-row { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; }
-#mp-choice { margin-bottom: 10px; }
-#mp-pin-row { margin-bottom: 8px; }
-#mp-pin { flex: 1 1 160px; letter-spacing: 0.3em; }
-/* The dots of a typed PIN spaced out; the word in the empty field written normally. */
-#mp-pin:placeholder-shown, #mp-pin2:placeholder-shown { letter-spacing: normal; }
-/* Together picked: the PIN, a line on where it comes from, and the age tick, in one box that hangs
-   under the Alone / Together buttons. Gone when nothing in it shows. */
-.together { margin: -15px 0 14px; padding: 12px 14px; background: rgba(242, 179, 61, 0.06); border: 1px solid rgba(255, 255, 255, 0.18); border-top: none; border-radius: 0 0 2px 2px; }
-.together:not(:has(> :not(.hidden))) { display: none !important; }
-/* A grid, so Join stays beside the PIN however narrow the box (a flex row wrapped it under). */
-#mp-together #mp-pin-row { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 6px 8px; margin: 0; }
-#mp-together #mp-pin, #mp-together #mp-join-btn { min-height: 40px; }
-#mp-together #mp-join-btn { padding: 0 20px; font-size: 14px; }
-.pin-hint { grid-column: 1 / -1; margin: 0; font-size: 12px; opacity: 0.7; }
-#mp-together .age-check { margin: 10px 0 0; }
-#start-panel input[aria-invalid="true"], #start-panel input[aria-invalid="true"]:focus { border-color: #ff8a7a; outline-color: #ff8a7a; }
-#start-panel > .mp-msg { margin: -4px 0 14px; }
-.textlink {
-  display: block; margin: 2px 0 8px; padding: 0; cursor: pointer; font-family: inherit; font-size: 12px;
-  color: rgba(244, 239, 230, 0.6); background: none; border: none; text-decoration: underline;
-}
-.textlink:hover, .textlink:focus-visible { color: var(--accent); outline: none; }
-.mp-row input, .admin-row input {
-  flex: 1 1 120px; min-width: 0; padding: 7px 9px; font-family: inherit; font-size: 15px; color: var(--ink);
-  background: rgba(255, 255, 255, 0.06); border: 1px solid rgba(255, 255, 255, 0.18); border-radius: 2px;
-}
-.mp-msg { margin: 6px 0 0; font-size: 13px; opacity: 0.75; }
-.mp-msg.bad, .admin-msg.bad { color: #ff8a7a; opacity: 1; }
-.mini {
-  padding: 6px 12px; cursor: pointer; font-family: inherit; font-size: 13px; font-weight: 600; color: var(--ink);
-  background: rgba(255, 255, 255, 0.08); border: 1px solid rgba(255, 255, 255, 0.25); border-radius: 2px;
-}
-.mini:hover { border-color: var(--accent); }
-.mini.danger:hover { border-color: #ff8a7a; color: #ff8a7a; }
-.hidden { display: none !important; }
-#admin .admin-block:first-child { margin-top: 0; }
-.admin-block { margin: 8px 0; }
-.admin-row { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; margin-top: 6px; }
-.admin-row span { flex: 1 1 auto; }
-.admin-log { max-height: 180px; overflow: auto; margin-top: 8px; font: 12px/1.5 Consolas, monospace; opacity: 0.85; }
-.admin-msg { font-size: 13px; }
-.panel { max-height: calc(100vh - 32px); overflow-y: auto; }
-
-#menu-hint { position: absolute; top: 104px; left: 24px; font-size: 14px; letter-spacing: 0.06em; opacity: 0.9; }
-#menu-hint kbd {
-  display: inline-block; min-width: 34px; margin-right: 6px; padding: 2px 7px; text-align: center;
-  font-family: inherit; font-size: 13px; font-weight: 700; color: #111; background: var(--accent); border-radius: 3px;
-  box-shadow: 0 2px 0 rgba(0, 0, 0, 0.6); text-shadow: none;
-}
-
-
-#who-box #nick { margin-bottom: 12px; }
-#who-box .field { display: flex; justify-content: space-between; }
-.mp-msg { margin: 6px 0 0; min-height: 0; }
-.mp-msg:empty { display: none; }
-
-/* Start screen: name, alone or together, mode, then a start button per way of playing. */
-#start-panel { max-width: 600px; }
-#start-panel .sub { margin-bottom: 8px; }
-.intro { margin: 0 0 14px; font-size: 15px; line-height: 1.45; opacity: 0.85; }
-/* Before the short-screen rules below, so they can make it smaller (it stood at the end and won). */
-.mobile-note { margin: 0 0 12px; padding: 10px 12px; font-size: 13px; line-height: 1.45; border-left: 3px solid var(--accent); background: rgba(242, 179, 61, 0.1); }
-.seg { display: flex; gap: 0; margin: 4px 0 14px; border: 1px solid rgba(255, 255, 255, 0.18); border-radius: 2px; }
-.seg-btn {
-  flex: 1 1 0; padding: 9px 14px; cursor: pointer; text-align: left; font-family: inherit; color: var(--ink);
-  background: transparent; border: none; border-right: 1px solid rgba(255, 255, 255, 0.12);
-}
-.seg-btn:last-child { border-right: none; }
-.seg-btn b { display: block; font-size: 16px; font-style: italic; }
-.seg-btn span { display: block; margin-top: 2px; font-size: 12px; opacity: 0.7; }
-.seg-btn:hover, .seg-btn:focus-visible { background: rgba(255, 255, 255, 0.06); outline: none; }
-.seg-btn.selected { background: rgba(242, 179, 61, 0.16); box-shadow: inset 0 -3px 0 var(--accent); }
-.seg-btn:disabled { cursor: not-allowed; opacity: 0.45; background: transparent; }
-#mp-pin-row, #mp-login { margin: -4px 0 14px; }
-.mini.go { border-color: var(--accent); background: rgba(242, 179, 61, 0.18); }
-.session {
-  display: flex; align-items: center; justify-content: space-between; gap: 12px; margin: 0 0 14px; padding: 10px 14px;
-  font-size: 15px; background: rgba(242, 179, 61, 0.1); border-left: 3px solid var(--accent);
-}
-.session.hidden { display: none; }
-.start-choices .choice.play { flex: 1 1 150px; position: relative; padding-right: 34px; }
-.start-choices .choice.play::after {
-  content: '\25B6'; position: absolute; right: 14px; top: 50%; transform: translateY(-50%); font-size: 14px; color: var(--accent);
-}
-/* The first start (src/ui/menu.ts): the chosen button fills up as the world loads, with the
-   percentage in place of its arrow and what is loading on its second line (only the percentage
-   where the second lines are hidden); the other start buttons wait. */
-.start-choices .choice.play.loading { display: grid; isolation: isolate; border-color: var(--accent); cursor: progress; }
-.start-choices .choice.play.loading::before {
-  content: ''; position: absolute; inset: 0; z-index: -1; background: rgba(242, 179, 61, 0.3);
-  transform-origin: left; transform: scaleX(var(--load, 0)); transition: transform 0.25s ease;
-}
-.start-choices .choice.play.loading::after { content: attr(data-pct); right: 10px; font-size: 12px; font-weight: 700; }
-/* What is loading goes over the button's own second line, which stays (unseen) so the button keeps its height. */
-.start-choices .choice.loading > span { grid-area: 2 / 1; }
-.start-choices .choice.loading > span:not(.load-line) { visibility: hidden; }
-.start-choices .choice .load-line { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-.start-choices .choice.play:disabled { opacity: 0.4; pointer-events: none; }
-.start-choices .choice.play.failed::before, .start-choices .choice.play.failed::after { content: none; }
-.start-choices .choice.failed .load-line { display: block; white-space: normal; }
-.start-foot { display: flex; align-items: baseline; gap: 18px; flex-wrap: wrap; margin-top: 18px; }
-.start-foot .made { margin: 0 0 0 auto; }
-.textbtn {
-  padding: 0; cursor: pointer; font-family: inherit; font-size: 13px; letter-spacing: 0.06em; color: rgba(244, 239, 230, 0.7);
-  background: none; border: none;
-}
-.textbtn:hover, .textbtn:focus-visible { color: var(--accent); outline: none; }
-.start-foot .gfx { display: inline; width: auto; margin: 0; padding: 0; border: none; }
-.start-foot .gfx .gfx-value { font-size: 13px; margin-left: 4px; }
-.start-foot .gfx .gfx-detail { display: none; }
-/* While the start screen is up: no game HUD behind it, a rendered still of the house. On a wide
-   screen the panel stands on the left and the house shows beside it. */
-body.on-start #hud { display: none; }
-/* The start screen's slideshow of renders (public/slides/): in front of the game's canvas, behind the
-   menu. On a wide screen the menu stands on the left and the buttons sit bottom right, beside the
-   Sound button; on a narrower one the menu fills the middle, so the pictures change by themselves
-   there without buttons. */
-#start-still { display: none; z-index: auto; }
-body.on-start #start-still { display: block; }
-#slides-controls { position: fixed; z-index: 20; right: 132px; bottom: 23px; }
-body:not(.on-start) #slides-controls { display: none; }
-@media (max-width: 1099px), (max-height: 520px) { #slides-controls { display: none; } }
-/* Not quite so wide: without the caption, so the bar stays clear of the menu. */
-@media (max-width: 1219px) { #slides-controls .slides-caption { display: none; } }
-@media (min-width: 1100px) {
-  body.on-start #overlay {
-    justify-content: flex-start; padding-left: 6vw;
-    background: linear-gradient(90deg, rgba(0, 0, 0, 0.7), rgba(0, 0, 0, 0.35) 45%, rgba(0, 0, 0, 0.05) 75%);
-  }
-}
-.page .gfx.tool { display: block; width: 100%; margin: 4px 0 8px; border-style: solid; }
-.page .gfx.tool b { font-size: 15px; letter-spacing: 0; text-transform: none; color: var(--ink); font-weight: 700; }
-.page .gfx.tool .gfx-value { margin-left: 6px; font-size: 15px; }
-.page .gfx.tool .gfx-detail { display: block; margin-top: 2px; font-size: 12px; opacity: 0.7; }
-#mp-join-here { margin: 4px 0 8px; max-width: 440px; }
-.age-check { margin: -2px 0 8px; font-size: 14px; }
-/* "Start at" on the "Start with" line of the start screen. */
-.label-row { display: flex; align-items: baseline; justify-content: space-between; gap: 12px; }
-.spawn-pick { display: inline-flex; align-items: baseline; gap: 8px; font-size: 12px; font-weight: 700; letter-spacing: 0.14em; text-transform: uppercase; opacity: 0.85; }
-.spawn-pick select { padding: 4px 8px; font: inherit; font-size: 14px; letter-spacing: 0; text-transform: none; color: var(--accent); background: rgba(0, 0, 0, 0.35); border: 1px solid rgba(255, 255, 255, 0.2); border-radius: 2px; cursor: pointer; }
-.spawn-pick select:focus-visible { outline: none; border-color: var(--accent); }
-/* A phone held sideways: everything up to the start buttons fits without scrolling. */
-@media (max-height: 520px) {
-  .panel { padding: 14px 22px; }
-  .panel h1 { font-size: 30px; }
-  #start-panel .sub { margin-bottom: 6px; }
-  .intro { display: none; }
-  .mobile-note { margin-bottom: 8px; padding: 6px 10px; font-size: 12px; }
-  #nick { margin-bottom: 8px; padding: 6px 10px; font-size: 16px; }
-  .field, .label { margin-bottom: 4px; font-size: 11px; }
-  .seg { margin-bottom: 8px; }
-  .seg-btn { padding: 6px 12px; }
-  .seg-btn span, .start-choices .choice span { display: none; }
-  .start-choices .choice { padding: 9px 30px 9px 14px; }
-  .start-choices .choice b { font-size: 16px; }
-  .start-foot { margin-top: 10px; }
-  /* Your name beside Alone / Together, and the PIN beside the age tick: two rows fewer, so the start
-     buttons and the links under them fit (the name's label stays for screen readers; the field says Name). */
-  #who-box { display: grid; grid-template-columns: 1fr 1fr; align-items: center; gap: 0 12px; }
-  #who-box .field { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
-  #who-box #nick, #who-box #mp-choice, #mp-pin-row, #mp-login, #mp-age-row { margin: 0 0 8px; }
-  /* The Together box across both columns: the PIN beside the age tick, without the line about the PIN. */
-  .together { grid-column: 1 / -1; display: grid; grid-template-columns: 1fr 1fr; align-items: center; gap: 0 12px; margin: 0 0 8px; padding: 8px 10px; border-top: 1px solid rgba(255, 255, 255, 0.18); border-radius: 2px; }
-  #mp-together #mp-pin-row, #mp-together .age-check { margin: 0; }
-  .pin-hint { display: none; }
-  #start-panel > .mp-msg { margin: 0 0 8px; }
-}
-/* A small phone held sideways: tighter still, so Touch screen shows without scrolling. */
-@media (max-height: 440px) {
-  #overlay { padding-top: 8px; padding-bottom: 8px; }
-  .panel { max-height: calc(100vh - 16px); }
-  #start-panel { padding-top: 10px; padding-bottom: 10px; }
-  #start-panel h1, #start-panel .sub { display: inline-block; }
-  #start-panel .sub { margin: 0 0 6px 12px; }
-  .mobile-note { margin-bottom: 6px; padding: 4px 8px; font-size: 11px; line-height: 1.4; }
-  #who-box #nick, #who-box #mp-choice, #mp-pin-row, #mp-login, #mp-age-row { margin-bottom: 6px; }
-  .field, .label { margin-bottom: 2px; }
-  .seg { margin-bottom: 6px; }
-}
-/* Together picked: the PIN takes the touch screen note's place (it has been read by then). */
-#start-panel:has(#mp-pin-row:not(.hidden), #mp-login:not(.hidden)) .mobile-note { display: none; }
-/* A phone held upright: a narrower panel, so the three modes and "Start at" fit across it. */
-@media (max-width: 520px) and (orientation: portrait) {
-  .panel { padding: 20px 18px; }
-  #start-panel h1 { margin-top: 20px; } /* under English / Nederlands, not behind them */
-  .seg-btn { padding: 8px 9px; }
-  .label-row { flex-wrap: wrap; row-gap: 4px; }
-  .spawn-pick { white-space: nowrap; }
-}
-#mp-pin2 { flex: 0 1 110px; letter-spacing: 0.3em; }
 #online { position: absolute; top: 208px; right: 24px; font-size: 13px; text-align: right; opacity: 0.9; }
 
 /* Multiplayer fighting */
@@ -396,7 +196,7 @@ body:not(.on-start) #slides-controls { display: none; }
 }
 #health {
   position: absolute; left: 50%; bottom: 22px; transform: translateX(-50%);
-  display: flex; align-items: center; gap: 10px; font-size: 34px; font-weight: 700; font-style: italic;
+  display: flex; align-items: center; gap: 10px; font-size: 34px; font-weight: 700;
 }
 .hp-icon { color: var(--accent); font-style: normal; }
 .hp-bar { width: 160px; height: 8px; background: rgba(255, 255, 255, 0.15); box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.5); }
@@ -413,17 +213,17 @@ body:not(.on-start) #slides-controls { display: none; }
 #killfeed .arrow { opacity: 0.7; }
 #killfeed .hs { margin-left: 8px; font-size: 11px; letter-spacing: 0.12em; color: var(--accent); }
 #death { position: absolute; left: 50%; top: 36%; transform: translate(-50%, -50%); text-align: center; }
-#death b { display: block; font-size: 44px; font-style: italic; letter-spacing: 0.03em; }
+#death b { display: block; font-size: 44px; letter-spacing: 0.03em; }
 #death span { font-size: 18px; color: var(--accent); letter-spacing: 0.08em; }
 #banner { position: absolute; left: 50%; top: 18%; transform: translateX(-50%); text-align: center; white-space: nowrap; }
-#banner b { display: block; font-size: 42px; font-style: italic; }
+#banner b { display: block; font-size: 42px; }
 #banner small { display: block; font-size: 15px; letter-spacing: 0.15em; text-transform: uppercase; color: var(--accent); }
 #scoreboard {
   position: absolute; left: 50%; top: 52%; transform: translate(-50%, -50%);
   width: min(560px, calc(100vw - 32px)); padding: 18px 24px;
   background: var(--panel); border-left: 4px solid var(--accent); text-shadow: none;
 }
-#scoreboard h2 { margin: 0; font-size: 28px; font-style: italic; letter-spacing: 0.06em; }
+#scoreboard h2 { margin: 0; font-size: 28px; letter-spacing: 0.06em; }
 #score-goal { margin: 2px 0 12px; font-size: 12px; letter-spacing: 0.12em; text-transform: uppercase; color: var(--accent); }
 #score-table { width: 100%; border-collapse: collapse; font-size: 17px; }
 #score-table th { text-align: left; font-size: 12px; letter-spacing: 0.12em; text-transform: uppercase; opacity: 0.7; padding: 4px 8px; }
@@ -431,16 +231,7 @@ body:not(.on-start) #slides-controls { display: none; }
 #score-table td { padding: 6px 8px; border-top: 1px solid rgba(255, 255, 255, 0.08); font-weight: 600; }
 #score-table tr.me td { background: rgba(242, 179, 61, 0.12); }
 #score-table tr.dead td.name span:first-child { opacity: 0.5; }
-#score-table .exploring { margin-left: 8px; font-size: 12px; font-weight: 400; font-style: italic; opacity: 0.6; }
-
-#leaderboard table { margin-top: 10px; font-size: 14px; }
-#leaderboard td:not(:first-child), #leaderboard th:not(:first-child) { text-align: right; }
-.lb-note { margin: 6px 0 0; font-size: 12px; opacity: 0.6; }
-
-.settings .setting { margin: 8px 0; }
-.check { display: flex; align-items: center; gap: 8px; margin: 8px 0; font-size: 14px; cursor: pointer; }
-.check input { accent-color: #f2b33d; width: 16px; height: 16px; }
-input.slider { width: 100%; accent-color: #f2b33d; }
+#score-table .exploring { margin-left: 8px; font-size: 12px; font-weight: 400; opacity: 0.6; }
 
 /* Weapons */
 #slots { position: absolute; right: 48px; bottom: 210px; display: flex; flex-direction: column; align-items: flex-end; gap: 2px; font-size: 14px; }
@@ -494,173 +285,9 @@ body.paintball #killfeed .kf.me { border-color: var(--paint); }
   position: absolute; left: 50%; bottom: 74px; transform: translateX(-50%); text-align: center;
   padding: 8px 16px; background: var(--panel); border-bottom: 3px solid #7fd18b; text-shadow: none; white-space: nowrap;
 }
-#planner b { display: block; font-size: 20px; font-style: italic; }
+#planner b { display: block; font-size: 20px; }
 #planner span { display: block; font-size: 13px; color: var(--accent); letter-spacing: 0.06em; }
 #planner small { display: block; margin-top: 4px; font-size: 12px; opacity: 0.75; }
-
-/* The in-game menu (src/ui/menu.ts): a compact header (the title, who you are, full screen, the
-   sound and Resume), a rail of tabs on the left with the chosen page beside it, and a row of links
-   under the page. Big enough for a useful map: about 1100 x 700 at 1280 x 800, and most of a
-   1920 x 1080 screen. */
-#pause-panel {
-  display: flex; flex-direction: column; padding: 0; overflow: hidden; max-width: none; max-height: none;
-  width: min(1680px, calc(100% - 148px)); height: min(1000px, calc(100% - 68px));
-  overflow: clip; /* not a scroll box either: the footer links' larger tap areas (below) must not let it shift */
-}
-@media (max-width: 1100px) { #pause-panel { width: 100%; } }
-/* The keyboard's place is always seen (the rail, the buttons, the fields, the links). */
-#pause-panel :focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
-#pause-panel .rail .tab:focus-visible, #pause-panel .seg-btn:focus-visible { outline-offset: -3px; }
-.pause-top {
-  display: flex; align-items: center; justify-content: space-between; gap: 8px 20px; flex-wrap: wrap;
-  padding: 12px 16px 12px 22px; border-bottom: 1px solid rgba(255, 255, 255, 0.1);
-}
-.pause-title { min-width: 0; }
-#pause-panel h1 { display: flex; align-items: baseline; gap: 8px; margin: 0; font-size: 22px; line-height: 1.15; letter-spacing: 0.06em; }
-#pause-panel h1 > span:last-child { font-weight: 600; letter-spacing: 0.03em; }
-.pause-sep { color: var(--accent); font-style: normal; }
-.pause-top .sub { margin: 3px 0 0; font-size: 12px; }
-.pause-actions { display: flex; align-items: center; gap: 8px; margin-left: auto; }
-.icon-btn {
-  display: inline-flex; align-items: center; justify-content: center; width: 42px; height: 42px; padding: 0; cursor: pointer;
-  color: var(--ink); background: rgba(255, 255, 255, 0.06); border: 1px solid rgba(255, 255, 255, 0.18); border-radius: 4px;
-}
-.icon-btn:hover { border-color: var(--accent); }
-/* An icon button with its word beside it (Feedback); on short screens the icon alone. */
-.icon-btn.labelled { width: auto; gap: 7px; padding: 0 13px 0 10px; font: inherit; font-size: 15px; font-weight: 600; }
-.icon-btn svg, .rail svg { width: 22px; height: 22px; flex: none; fill: none; stroke: currentColor; stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round; }
-/* The sound: a speaker with waves, or crossed out. */
-.icon-btn .ico-off, .icon-btn.off .ico-on { display: none; }
-.icon-btn.off .ico-off { display: block; }
-.icon-btn.off { color: rgba(244, 239, 230, 0.6); }
-.resume {
-  display: inline-flex; align-items: center; gap: 10px; height: 42px; padding: 0 10px 0 14px; cursor: pointer;
-  font-family: inherit; color: #14161a; background: var(--accent); border: 0; border-radius: 4px;
-}
-.resume:hover { filter: brightness(1.08); }
-.resume svg { width: 15px; height: 15px; flex: none; fill: currentColor; }
-.resume b { font-size: 17px; font-style: italic; letter-spacing: 0.02em; }
-.resume kbd {
-  padding: 2px 7px; font-family: inherit; font-size: 12px; font-weight: 700; letter-spacing: 0.04em;
-  color: var(--ink); background: rgba(12, 14, 18, 0.78); border-radius: 3px;
-}
-#pause-panel kbd:empty { display: none; }
-.pause-body { flex: 1; min-height: 0; display: grid; grid-template-columns: auto minmax(0, 1fr); }
-.rail {
-  display: flex; flex-direction: column; gap: 2px; width: 184px; padding: 12px 10px; overflow-y: auto;
-  border-right: 1px solid rgba(255, 255, 255, 0.1);
-}
-.rail .tab {
-  display: flex; align-items: center; gap: 12px; width: 100%; min-height: 44px; padding: 8px 12px; cursor: pointer; text-align: left;
-  font-family: inherit; font-size: 16px; font-weight: 600; letter-spacing: 0.02em; color: rgba(244, 239, 230, 0.72);
-  background: none; border: 0; border-radius: 4px;
-}
-.rail .tab:hover { color: var(--ink); background: rgba(255, 255, 255, 0.06); }
-.rail .tab.selected { color: var(--accent); background: rgba(242, 179, 61, 0.12); box-shadow: inset 3px 0 0 var(--accent); }
-.pages { display: flex; flex-direction: column; min-width: 0; min-height: 0; }
-.pages > .page { flex: 1; min-height: 0; overflow-y: auto; padding: 20px 28px 24px; }
-.pages > .map-page { display: flex; padding: 0; overflow: hidden; }
-#map-mount { position: relative; flex: 1; min-width: 0; }
-.page-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 0 40px; align-items: start; max-width: 1240px; }
-.page-grid .col { min-width: 0; }
-.page #switch { display: block; width: min(100%, 440px); margin: 0 0 16px; }
-.col h2 {
-  margin: 22px 0 10px; padding-bottom: 6px; border-bottom: 1px solid rgba(255, 255, 255, 0.12);
-  font-size: 13px; font-weight: 700; letter-spacing: 0.18em; text-transform: uppercase; color: var(--accent);
-}
-.col h2:first-child { margin-top: 0; }
-.col .setting:first-of-type { margin-top: 12px; }
-.col .gfx { margin-top: 4px; }
-.col .settings .setting { margin: 6px 0; }
-.col .check { margin: 6px 0; }
-.col .label { margin-top: 12px; }
-.col h2 + .label { margin-top: 0; }
-/* Play: the mode first, big. */
-.mode-big .seg-btn { padding: 14px 18px; }
-.mode-big .seg-btn b { font-size: 22px; }
-.mode-big .seg-btn span { font-size: 13px; }
-/* A key beside a menu item (the planner, the minimap ...), for keyboard players. */
-#pause-panel kbd[data-key] {
-  margin-left: 6px; padding: 0 6px; font-family: inherit; font-size: 11px; font-weight: 700; font-style: normal; letter-spacing: 0.04em;
-  color: var(--ink); border: 1px solid rgba(255, 255, 255, 0.3); border-radius: 3px; vertical-align: 1px;
-}
-/* Together: who is online, each with a dot in their colour. */
-.players { display: grid; gap: 4px; margin: 0 0 8px; padding: 0; list-style: none; }
-.players li { display: flex; align-items: center; gap: 8px; font-size: 15px; font-weight: 600; overflow-wrap: anywhere; }
-.players i { flex: none; width: 10px; height: 10px; border-radius: 50%; box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.6); }
-#team-pick { margin-top: 14px; }
-#mp-leave { margin-top: 6px; }
-/* Settings: the test under Advanced, folded away. */
-.advanced { margin: 16px 0 12px; }
-.advanced summary {
-  cursor: pointer; width: fit-content; font-size: 13px; letter-spacing: 0.15em; text-transform: uppercase; color: rgba(244, 239, 230, 0.7);
-}
-.advanced summary:hover { color: var(--ink); }
-.advanced[open] summary { margin-bottom: 4px; }
-/* Controls: a card per group, two columns where there is room. */
-#controls { columns: 2 320px; column-gap: 20px; max-width: 1180px; }
-.ctl-group {
-  break-inside: avoid; margin: 0 0 16px; padding: 12px 14px 8px;
-  background: rgba(255, 255, 255, 0.04); border: 1px solid rgba(255, 255, 255, 0.08); border-radius: 4px;
-}
-.ctl-group h3 { margin: 0 0 6px; font-size: 13px; font-weight: 700; letter-spacing: 0.14em; text-transform: uppercase; color: var(--accent); }
-.ctl-group table { font-size: 14px; table-layout: fixed; }
-.ctl-group td:first-child { width: 48%; }
-.ctl-group td { padding: 5px 10px 5px 0; vertical-align: top; }
-.ctl-group tr:first-child td { border-top: 0; }
-.ctl-group td:last-child { color: var(--accent); font-weight: 600; padding-right: 0; }
-.tools { display: grid; gap: 8px; }
-.tool {
-  text-align: left; cursor: pointer; padding: 8px 12px; font-family: inherit; color: var(--ink);
-  background: rgba(255, 255, 255, 0.06); border: 1px solid rgba(255, 255, 255, 0.15); border-radius: 2px;
-}
-.tool:hover, .tool:focus-visible { border-color: var(--accent); background: rgba(242, 179, 61, 0.12); }
-.tool b { display: block; font-size: 15px; }
-.tool span { display: block; margin-top: 2px; font-size: 12px; opacity: 0.7; }
-.tool b span { display: inline; margin: 0; font-size: inherit; opacity: 1; }
-.note { margin: 0 0 10px; font-size: 13px; line-height: 1.45; opacity: 0.8; }
-#leaderboard table { font-size: 13px; }
-/* The links under the page. */
-.pause-foot {
-  flex: none; display: flex; flex-wrap: wrap; align-items: center; gap: 4px 18px; padding: 8px 28px;
-  font-size: 12px; letter-spacing: 0.06em; color: rgba(244, 239, 230, 0.7); border-top: 1px solid rgba(255, 255, 255, 0.1);
-}
-.pause-foot .legal-links { margin: 0; }
-.pause-foot a.gh { margin: 0; }
-.pause-foot .meetup { margin-left: auto; font-weight: 600; color: var(--accent); text-decoration: none; }
-.pause-foot .meetup:hover { text-decoration: underline; text-underline-offset: 2px; }
-/* "Made by" only where the HUD's credit line is hidden (touch controls). */
-#pause-panel .made-by { display: none; }
-body.touch #pause-panel .made-by { display: inline; }
-/* A short screen (a phone held sideways): the menu fills it, the rail shows icons only (their names
-   stay for screen readers), the header is one row and the page gets the rest of the height. */
-@media (max-height: 520px) {
-  #overlay:has(> #pause-panel:not(.hidden)) {
-    padding: max(6px, env(safe-area-inset-top, 0px)) max(8px, env(safe-area-inset-right, 0px)) max(6px, env(safe-area-inset-bottom, 0px)) max(8px, env(safe-area-inset-left, 0px));
-  }
-  #pause-panel { width: 100%; height: 100%; }
-  .pause-top { flex-wrap: nowrap; padding: 5px 8px 5px 14px; }
-  .pause-title { display: flex; align-items: baseline; gap: 12px; }
-  #pause-panel h1 { font-size: 17px; white-space: nowrap; }
-  .pause-top .sub { margin: 0; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; font-size: 11px; }
-  .pause-actions { gap: 6px; }
-  .icon-btn, .resume { height: 40px; }
-  .icon-btn { width: 42px; }
-  .icon-btn.labelled { padding: 0; }
-  .icon-btn.labelled span { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
-  .resume b { font-size: 15px; }
-  .rail { width: 58px; padding: 6px 6px; gap: 4px; }
-  .rail .tab { justify-content: center; padding: 0; }
-  .rail .tab .lbl { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
-  .pages > .page { padding: 12px 16px 16px; }
-  .page-grid { gap: 0 24px; }
-  .col h2 { margin-top: 16px; }
-  .mode-big .seg-btn { padding: 10px 14px; }
-  .mode-big .seg-btn b { font-size: 18px; }
-  #controls { columns: 1; }
-  .pause-foot { padding: 4px 16px; font-size: 11px; }
-  .pause-body:has(#page-map:not(.hidden)) .pause-foot { display: none; }
-}
 
 #capture-hint {
   position: absolute; left: 50%; top: calc(50% + 40px); transform: translateX(-50%);
@@ -842,7 +469,7 @@ body.touch #full-hint { top: calc(8px + env(safe-area-inset-top, 0px)); left: ca
 }
 #rotate-hint {
   position: fixed; inset: 0; z-index: 30; display: none; align-items: center; justify-content: center; padding: 24px; text-align: center;
-  font-size: 22px; font-weight: 700; font-style: italic; background: rgba(12, 14, 18, 0.92); color: var(--ink);
+  font-size: 22px; font-weight: 700; background: rgba(16, 24, 32, 0.95); color: var(--ink);
 }
 @media (orientation: portrait) {
   body.touch #rotate-hint { display: flex; }
@@ -857,7 +484,7 @@ body.touch #full-hint { top: calc(8px + env(safe-area-inset-top, 0px)); left: ca
 #modebar.show { display: block; }
 #blindfold {
   position: fixed; inset: 0; display: none; align-items: center; justify-content: center; padding: 24px; text-align: center;
-  font-size: 28px; font-weight: 700; font-style: italic; color: var(--ink); background: #050608;
+  font-size: 28px; font-weight: 700; color: var(--ink); background: #050608;
 }
 #blindfold.show { display: flex; }
 .context-lost {
@@ -873,7 +500,7 @@ body.touch #full-hint { top: calc(8px + env(safe-area-inset-top, 0px)); left: ca
 #travel.hidden { display: none; }
 #travel .tv-head { display: flex; align-items: baseline; gap: 10px; margin: 0 4px 8px; }
 #travel .tv-head small { font-size: 12px; letter-spacing: 0.25em; text-transform: uppercase; color: var(--accent); }
-#travel .tv-head b { font-size: 22px; font-style: italic; }
+#travel .tv-head b { font-size: 22px; }
 #travel .tv-row {
   display: grid; grid-template-columns: 26px 14px 1fr auto; align-items: center; gap: 8px; width: 100%;
   margin: 2px 0; padding: 7px 8px; border: 0; border-radius: 3px; background: transparent; color: var(--ink);
@@ -969,7 +596,7 @@ body.touch #map-btn .ico { left: 6px; bottom: 6px; width: 26px; height: 26px; }
   padding: 14px 16px 12px; color: var(--ink); background: var(--panel); border-left: 4px solid var(--accent); text-shadow: var(--shadow);
 }
 #bigmap .bm-card.hidden { display: none; }
-#bigmap .bm-card b { display: block; font-size: 20px; font-style: italic; padding-right: 30px; }
+#bigmap .bm-card b { display: block; font-size: 20px; padding-right: 30px; }
 #bigmap .bm-card small { display: block; margin-top: 2px; font-size: 13px; opacity: 0.8; }
 #bigmap .bm-card p { margin: 0; font-size: 13px; line-height: 1.35; opacity: 0.85; flex-basis: 100%; }
 #bigmap .bm-row { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 10px; }
@@ -985,20 +612,529 @@ body.touch #map-btn .ico { left: 6px; bottom: 6px; width: 26px; height: 26px; }
   #bigmap .bm-card b { font-size: 17px; }
 }
 
+/* ---- The overlay: the start screen and the in-game menu ------------------------------------------
+   Solid panels without blur: the start screen stands on the slideshow, the menu on the live 3D view
+   (the world isn't drawn behind its Map tab; behind the other tabs the panel hides it). */
+#overlay {
+  position: fixed; inset: 0; display: flex; align-items: center; justify-content: center;
+  padding: max(16px, env(safe-area-inset-top, 0px)) max(16px, env(safe-area-inset-right, 0px)) max(16px, env(safe-area-inset-bottom, 0px)) max(16px, env(safe-area-inset-left, 0px));
+  background: rgba(9, 14, 19, 0.62);
+}
+#overlay.hidden, .panel.hidden { display: none; }
+body.on-start #overlay { background: linear-gradient(180deg, rgba(9, 14, 19, 0.2), rgba(9, 14, 19, 0.55)); }
+.panel {
+  width: 100%; max-height: 100%; overflow-y: auto; overscroll-behavior: contain;
+  color: var(--ink); background: var(--dusk); border-radius: var(--r-panel);
+  box-shadow: 0 30px 80px rgba(3, 7, 11, 0.5), inset 0 1px 0 rgba(255, 255, 255, 0.05);
+  scrollbar-width: thin; scrollbar-color: var(--dusk-high) transparent;
+}
+/* The keyboard's place is always seen: a lamplight ring on whatever has the focus. */
+#overlay :focus-visible { outline: 2px solid var(--lamp); outline-offset: 2px; }
+
+/* ---- Start screen: the wordmark and a welcome, your name, alone or together, the mode and where to
+   start, then a start button per way of playing (the first is the one to press). On a wide screen
+   the panel stands on the left and the slideshow of the village shows beside it. */
+#start-panel { position: relative; max-width: 580px; padding: 26px 32px 20px; background: rgba(22, 32, 42, 0.95); }
+.start-head { display: flex; align-items: flex-start; justify-content: space-between; gap: 16px; }
+.start-brand { margin: 0; line-height: 0; }
+.start-brand .wordmark { height: 54px; }
+/* English or Nederlands: a small pill top right. */
+.lang-pick { display: flex; flex: none; gap: 2px; padding: 3px; background: var(--dusk-deep); border-radius: 999px; }
+.lang-pick .textbtn { padding: 6px 12px; border-radius: 999px; font-size: 14px; font-weight: 800; color: var(--ink-soft); }
+.lang-pick .textbtn:hover { color: var(--ink); }
+.lang-pick .textbtn.selected { color: var(--ink); background: var(--dusk-high); }
+.intro { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 12px; margin: 12px 0 22px; font-size: 20px; line-height: 1.3; }
+.wip { padding: 3px 10px; font-size: 13px; font-weight: 800; line-height: 1.3; color: var(--lamp); background: var(--lamp-soft); border-radius: 999px; }
+.mobile-note { margin: -8px 0 18px; padding: 10px 14px; font-size: 14.5px; line-height: 1.4; color: var(--ink-soft); background: var(--dusk-raised); border-radius: var(--r-field); }
+/* Together picked: the PIN takes the touch screen note's place (it has been read by then). */
+#start-panel:has(#mp-pin-row:not(.hidden), #mp-login:not(.hidden)) .mobile-note { display: none; }
+
+/* Labels: sentence case, in the heavy weight. */
+.field, .label { display: block; margin: 0 0 8px; font-size: 15px; font-weight: 800; line-height: 1.3; color: var(--ink); }
+#who-box { margin: 0 0 20px; }
+#who-box .field { display: flex; justify-content: space-between; }
+#nick {
+  display: block; width: 100%; margin: 0 0 12px; padding: 11px 14px; font-size: 18px; font-weight: 500; color: var(--ink);
+  background: var(--dusk-raised); border: 1px solid var(--line-strong); border-radius: var(--r-field);
+}
+#nick::placeholder, .mp-row input::placeholder, #fb-comment::placeholder { color: var(--ink-faint); opacity: 1; }
+#overlay #nick:focus, #overlay .mp-row input:focus, #overlay .admin-row input:focus { outline: 2px solid var(--lamp); outline-offset: 1px; border-color: transparent; }
+#overlay input[aria-invalid="true"] { border-color: var(--bad); }
+#overlay input[aria-invalid="true"]:focus { outline-color: var(--bad); }
+
+/* Choices side by side (alone or together, the mode, the language, the keyboard, the team): tiles,
+   the chosen one lit. */
+.seg { display: flex; gap: 6px; margin: 0 0 20px; }
+.seg-btn {
+  flex: 1 1 0; min-width: 0; padding: 10px 14px; cursor: pointer; text-align: left; color: var(--ink);
+  background: var(--dusk-raised); border: 1px solid transparent; border-radius: var(--r-tile);
+  transition: background-color 0.15s, border-color 0.15s;
+}
+.seg-btn b { display: block; font-size: 16.5px; font-weight: 800; line-height: 1.25; }
+.seg-btn span { display: block; margin-top: 2px; font-size: 13.5px; line-height: 1.3; color: var(--ink-soft); }
+.seg-btn:hover { background: var(--dusk-high); }
+.seg-btn.selected { background: var(--lamp-soft); border-color: var(--lamp-line); }
+.seg-btn.selected b { color: var(--lamp); }
+.seg-btn:disabled { cursor: not-allowed; opacity: 0.45; background: var(--dusk-raised); }
+#mp-choice { margin: 0; }
+
+/* Together picked: the PIN, a line on where it comes from and the age tick, in a box under the
+   Alone / Together tiles. Gone when nothing in it shows. */
+.together { margin: 8px 0 0; padding: 12px 14px; background: var(--dusk-raised); border-radius: var(--r-tile); }
+.together:not(:has(> :not(.hidden))) { display: none !important; }
+/* A grid, so Join stays beside the PIN however narrow the box (a flex row wrapped it under). */
+#mp-together #mp-pin-row { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 6px 8px; margin: 0; }
+#mp-together #mp-pin, #mp-together #mp-join-btn { min-height: 42px; }
+#mp-together #mp-join-btn { padding: 0 22px; }
+.pin-hint { grid-column: 1 / -1; margin: 0; font-size: 13.5px; color: var(--ink-soft); }
+#mp-together .age-check { margin: 10px 0 0; }
+#mp-login { margin: 8px 0 0; }
+#mp-pin, #mp-pin2 { letter-spacing: 0.3em; }
+#mp-pin2 { flex: 0 1 120px; }
+/* The dots of a typed PIN spaced out; the word in the empty field written normally. */
+#mp-pin:placeholder-shown, #mp-pin2:placeholder-shown { letter-spacing: normal; }
+.mp-row { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; }
+.mp-row input, .admin-row input {
+  flex: 1 1 120px; min-width: 0; padding: 9px 12px; font-size: 16px; font-weight: 500; color: var(--ink);
+  background: rgba(6, 10, 14, 0.35); border: 1px solid var(--line-strong); border-radius: var(--r-field);
+}
+.mp-msg { margin: 6px 0 0; font-size: 14px; line-height: 1.4; color: var(--ink-soft); }
+.mp-msg:empty { display: none; }
+.mp-msg.bad, .admin-msg.bad { color: var(--bad); }
+#start-panel > .mp-msg { margin: -8px 0 16px; }
+/* Joined: who you play as, and the way back to playing alone. */
+.session {
+  display: flex; align-items: center; justify-content: space-between; gap: 12px; margin: 0 0 20px; padding: 10px 10px 10px 16px;
+  font-size: 16px; background: var(--lamp-soft); border-radius: var(--r-tile);
+}
+.session.hidden { display: none; }
+
+/* Small buttons (Join, Log in, Show, Save, Kick ...). */
+.mini {
+  padding: 8px 14px; cursor: pointer; font-size: 14.5px; font-weight: 800; color: var(--ink);
+  background: var(--dusk-high); border: 0; border-radius: var(--r-field); transition: background-color 0.15s;
+}
+.mini:hover { background: #354657; }
+.mini.go { color: var(--dusk); background: var(--lamp); }
+.mini.go:hover { background: var(--lamp-bright); }
+.mini.danger:hover { color: var(--bad); }
+
+/* Tick boxes: a rounded square, lamplight with a tick when on. */
+.check { display: flex; align-items: center; gap: 10px; margin: 8px 0; font-size: 15.5px; line-height: 1.35; cursor: pointer; }
+.check input {
+  -webkit-appearance: none; appearance: none; flex: none; width: 20px; height: 20px; margin: 0; cursor: pointer;
+  border: 2px solid var(--ink-faint); border-radius: 6px; background: transparent center / 14px no-repeat;
+  transition: background-color 0.15s, border-color 0.15s, background-position 0.15s;
+}
+.check input:checked {
+  background-color: var(--lamp); border-color: var(--lamp);
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'%3E%3Cpath d='M3.2 8.4l3 3L12.8 4.8' fill='none' stroke='%2316202a' stroke-width='2.4' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E");
+}
+/* Settings that switch at once (the settings and the admin's house rules): a row each, the label on
+   the left, a switch on the right. Agreeing to something (the age) stays a tick box. */
+.settings .check, #set-admin .check { justify-content: space-between; gap: 12px; margin: 0; padding: 11px 0; border-bottom: 1px solid var(--line); }
+.settings .check > span, #set-admin .check > span { flex: 1; }
+.settings .check kbd, #set-admin .check kbd { order: 1; }
+.settings .check input, #set-admin .check input {
+  order: 2; width: 42px; height: 24px; border: 0; border-radius: 999px; background-color: var(--dusk-high);
+  background-image: radial-gradient(circle, var(--ink) 0 8px, transparent 8.5px); background-size: 24px 24px; background-position: 0 0;
+}
+.settings .check input:checked, #set-admin .check input:checked {
+  background-color: var(--lamp); background-image: radial-gradient(circle, var(--dusk) 0 8px, transparent 8.5px); background-position: 18px 0;
+}
+
+/* Sliders: a track filled in lamplight up to the knob (--fill, set by src/ui/menu.ts). */
+input[type=range] { -webkit-appearance: none; appearance: none; display: block; width: 100%; height: 26px; margin: 0; background: transparent; cursor: pointer; }
+input[type=range]::-webkit-slider-runnable-track { height: 6px; border-radius: 999px; background: linear-gradient(90deg, var(--lamp) var(--fill, 0%), var(--dusk-high) var(--fill, 0%)); }
+input[type=range]::-moz-range-track { height: 6px; border-radius: 999px; background: var(--dusk-high); }
+input[type=range]::-moz-range-progress { height: 6px; border-radius: 999px; background: var(--lamp); }
+input[type=range]::-webkit-slider-thumb { -webkit-appearance: none; width: 20px; height: 20px; margin-top: -7px; border: 0; border-radius: 50%; background: var(--ink); box-shadow: 0 1px 4px rgba(0, 0, 0, 0.45); }
+input[type=range]::-moz-range-thumb { width: 20px; height: 20px; border: 0; border-radius: 50%; background: var(--ink); box-shadow: 0 1px 4px rgba(0, 0, 0, 0.45); }
+#overlay input[type=range]:focus-visible { outline: none; }
+input[type=range]:focus-visible::-webkit-slider-thumb { box-shadow: 0 0 0 3px var(--dusk), 0 0 0 5px var(--lamp); }
+input[type=range]:focus-visible::-moz-range-thumb { box-shadow: 0 0 0 3px var(--dusk), 0 0 0 5px var(--lamp); }
+.setting { margin: 0 0 16px; }
+.setting .field { display: flex; justify-content: space-between; gap: 12px; margin-bottom: 4px; font-size: 15.5px; font-weight: 500; }
+.walk-value, .set-value { font-weight: 800; color: var(--lamp); }
+
+/* "Play with" and "Start at" on one line. */
+.label-row { display: flex; align-items: center; justify-content: space-between; gap: 6px 12px; margin: 0 0 8px; }
+.label-row .label { margin: 0; }
+.spawn-pick { display: inline-flex; align-items: center; gap: 8px; font-size: 14.5px; color: var(--ink-soft); }
+.spawn-pick select {
+  -webkit-appearance: none; appearance: none; padding: 6px 32px 6px 12px; cursor: pointer; font-size: 15px; font-weight: 800; color: var(--ink);
+  background: var(--dusk-raised) url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 12 8'%3E%3Cpath d='M1.5 1.5 6 6l4.5-4.5' fill='none' stroke='%23bcc5ce' stroke-width='1.8' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E") right 11px center / 11px no-repeat;
+  border: 1px solid var(--line-strong); border-radius: var(--r-field);
+}
+.spawn-pick select option { color: var(--ink); background: var(--dusk); }
+
+/* The start buttons. The one to press: the first way to play (keyboard and mouse; touch on a phone or
+   tablet), or the controller once one is connected. The others are quieter. */
+.start-choices { display: grid; grid-template-columns: repeat(auto-fit, minmax(170px, 1fr)); gap: 10px; margin: 0 0 18px; }
+.choice {
+  position: relative; display: block; min-width: 0; padding: 14px 46px 14px 16px; cursor: pointer; text-align: left; color: var(--ink);
+  background: var(--dusk-raised); border: 1px solid var(--line-strong); border-radius: var(--r-tile);
+  transition: background-color 0.15s, border-color 0.15s;
+}
+.choice b { display: block; font-size: 18px; font-weight: 800; line-height: 1.25; }
+.choice > span { display: block; margin-top: 3px; font-size: 13.5px; line-height: 1.3; color: var(--ink-soft); }
+.choice:hover { background: var(--dusk-high); }
+/* A play mark at the end of each. */
+.start-choices .choice::after {
+  content: ''; position: absolute; right: 18px; top: 50%; width: 11px; height: 13px; margin-top: -6.5px;
+  background: currentColor; clip-path: polygon(0 0, 100% 50%, 0 100%);
+}
+.start-choices > .choice:first-child:not(:disabled), .start-choices > #choose-pad.selected:not(:disabled) { color: var(--dusk); background: var(--lamp); border-color: var(--lamp); }
+.start-choices > .choice:first-child:not(:disabled) > span, .start-choices > #choose-pad.selected:not(:disabled) > span { color: rgba(22, 32, 42, 0.8); }
+.start-choices > .choice:first-child:not(:disabled):hover, .start-choices > #choose-pad.selected:not(:disabled):hover { background: var(--lamp-bright); }
+.start-choices:has(> #choose-pad.selected) > .choice:first-child:not(#choose-pad):not(.loading) { color: var(--ink); background: var(--dusk-raised); border-color: var(--line-strong); }
+.start-choices:has(> #choose-pad.selected) > .choice:first-child:not(#choose-pad):not(.loading):hover { background: var(--dusk-high); }
+.start-choices:has(> #choose-pad.selected) > .choice:first-child:not(#choose-pad):not(.loading) > span { color: var(--ink-soft); }
+/* The first start (src/ui/menu.ts): the chosen button lights up from the left as the world loads,
+   with the percentage in place of its mark and what is loading on its second line (only the
+   percentage where the second lines are hidden); the other start buttons wait. */
+#start-panel .start-choices .choice.play.loading { display: grid; isolation: isolate; overflow: hidden; cursor: progress; color: var(--dusk); background: #c38d2c; border-color: #c38d2c; }
+#start-panel .start-choices .choice.play.loading > span { color: rgba(22, 32, 42, 0.85); }
+.start-choices .choice.play.loading::before {
+  content: ''; position: absolute; inset: 0; z-index: -1; background: var(--lamp-bright);
+  transform-origin: left; transform: scaleX(var(--load, 0)); transition: transform 0.25s ease;
+}
+.start-choices .choice.play.loading::after { content: attr(data-pct); right: 14px; width: auto; height: auto; margin: 0; transform: translateY(-50%); clip-path: none; background: none; font-size: 13px; font-weight: 800; }
+/* What is loading goes over the button's own second line, which stays (unseen) so the button keeps its height. */
+.start-choices .choice.loading > span { grid-area: 2 / 1; }
+.start-choices .choice.loading > span:not(.load-line) { visibility: hidden; }
+.start-choices .choice .load-line { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+#start-panel .start-choices .choice.play:disabled { opacity: 0.45; pointer-events: none; color: var(--ink); background: var(--dusk-raised); border-color: var(--line-strong); }
+#start-panel .start-choices .choice.play:disabled > span { color: var(--ink-soft); }
+.start-choices .choice.play.failed::before, .start-choices .choice.play.failed::after { content: none; }
+.start-choices .choice.failed .load-line { display: block; white-space: normal; }
+@media (prefers-reduced-motion: reduce) { .start-choices .choice.play.loading::before { transition: none; } }
+
+/* The sign-up page (brieltje.be/interested): quieter than the start buttons above it. */
+.invite {
+  display: flex; align-items: center; justify-content: space-between; gap: 6px 16px; margin: 0 0 16px; padding: 12px 16px;
+  color: var(--ink); text-decoration: none; border: 1px solid var(--line-strong); border-radius: var(--r-tile); transition: background-color 0.15s;
+}
+.invite:hover { background: var(--dusk-raised); }
+.invite-text { min-width: 0; font-size: 15px; line-height: 1.35; }
+.invite-text b { font-weight: 800; }
+.invite-house { display: block; font-size: 14px; color: var(--ink-soft); }
+.invite-go { flex: none; font-weight: 800; color: var(--lamp); }
+
+/* The bottom row: the graphics, the admin's login, who made it, the source, the credits. */
+.start-foot { display: flex; align-items: center; gap: 6px 18px; flex-wrap: wrap; font-size: 14px; color: var(--ink-soft); }
+.textbtn { padding: 0; cursor: pointer; font-size: 14px; font-weight: 500; color: var(--ink-soft); background: none; border: none; }
+.textbtn:hover { color: var(--ink); }
+.start-foot .gfx { display: inline; width: auto; margin: 0; padding: 0; border: none; background: none; }
+.start-foot .gfx .gfx-value { margin-left: 4px; font-weight: 800; color: var(--ink); }
+.start-foot .gfx .gfx-detail { display: none; }
+.made { display: inline-flex; align-items: center; flex-wrap: wrap; gap: 4px 14px; margin: 0 0 0 auto; font-size: 13.5px; color: var(--ink-faint); }
+.made a.gh, .made a.credits-link { margin: 0; color: var(--ink-soft); text-decoration: none; }
+.made a.gh:hover, .made a.credits-link:hover { color: var(--ink); }
+
+/* While the start screen is up: no game HUD behind it, the slideshow of the village (public/slides/)
+   in front of the game's canvas and behind the menu. On a wide screen its buttons sit bottom right,
+   beside the Sound button; on a narrower one the pictures change by themselves without buttons. */
+body.on-start #hud { display: none; }
+#start-still { display: none; z-index: auto; }
+body.on-start #start-still { display: block; }
+#slides-controls { position: fixed; z-index: 20; right: 136px; bottom: 23px; }
+#slides-controls .slides-bar { font-family: var(--font); font-weight: 800; background: rgba(16, 24, 32, 0.82); border-color: var(--line-strong); }
+#slides-controls .slides-dot[aria-current="true"]::after { background: var(--lamp); }
+body:not(.on-start) #slides-controls { display: none; }
+@media (max-width: 1099px), (max-height: 520px) { #slides-controls { display: none; } }
+/* Not quite so wide: without the caption, so the bar stays clear of the menu. */
+@media (max-width: 1219px) { #slides-controls .slides-caption { display: none; } }
+@media (min-width: 1100px) {
+  body.on-start #overlay {
+    justify-content: flex-start; padding-left: max(6vw, env(safe-area-inset-left, 0px));
+    background: linear-gradient(90deg, rgba(9, 14, 19, 0.6), rgba(9, 14, 19, 0.22) 48%, rgba(9, 14, 19, 0) 72%);
+  }
+}
+/* A big screen: a little larger all round. */
+@media (min-width: 1700px) and (min-height: 960px) {
+  #start-panel { max-width: 620px; padding: 32px 38px 24px; }
+  .start-brand .wordmark { height: 62px; }
+}
+
+/* A laptop's or tablet's screen (up to 900 px high): a little tighter, so the PIN box of Together fits
+   without scrolling too (the sign-up link's second line makes way for it). */
+@media (min-height: 521px) and (max-height: 900px) {
+  #start-panel { padding: 20px 28px 16px; }
+  .start-brand .wordmark { height: 48px; }
+  #start-panel .intro { margin: 8px 0 16px; font-size: 19px; }
+  #start-panel .mobile-note { margin: -4px 0 14px; padding: 8px 12px; }
+  #start-panel .field, #start-panel .label { margin-bottom: 6px; }
+  #start-panel #who-box { margin-bottom: 14px; }
+  #start-panel #nick { margin-bottom: 10px; padding: 9px 14px; }
+  #start-panel .seg { margin-bottom: 14px; }
+  #start-panel .seg-btn { padding: 8px 12px; }
+  #start-panel .start-choices { margin-bottom: 14px; }
+  #start-panel .choice { padding-top: 12px; padding-bottom: 12px; }
+  #start-panel .invite { margin-bottom: 12px; padding: 9px 14px; }
+  #start-panel .legal { margin-top: 8px; }
+  #start-panel:has(#mp-pin-row:not(.hidden), #mp-login:not(.hidden)) .invite-house { display: none; }
+}
+/* A phone held sideways: everything up to the start buttons fits without scrolling. */
+@media (max-height: 520px) {
+  #start-panel { padding: 14px 20px 12px; }
+  .start-brand .wordmark { height: 32px; }
+  .intro { display: none; }
+  .start-head { margin-bottom: 10px; }
+  .lang-pick .textbtn { padding: 4px 10px; font-size: 13px; }
+  .mobile-note { margin: 0 0 8px; padding: 6px 10px; font-size: 13px; }
+  #nick { padding: 7px 12px; font-size: 16px; }
+  .field, .label { margin-bottom: 4px; font-size: 13.5px; }
+  .seg { margin-bottom: 8px; }
+  .seg-btn { padding: 7px 12px; }
+  .seg-btn b { font-size: 15.5px; }
+  .seg-btn span, .start-choices .choice > span { display: none; }
+  .label-row { margin-bottom: 6px; }
+  .spawn-pick select { padding-top: 4px; padding-bottom: 4px; }
+  .start-choices { margin-bottom: 8px; }
+  .start-choices .choice { padding: 10px 40px 10px 14px; }
+  .start-choices .choice b { font-size: 16.5px; }
+  .invite { margin-bottom: 8px; padding: 7px 12px; }
+  .invite-text { font-size: 14px; }
+  .invite-house { display: none; }
+  .legal { margin-top: 6px; }
+  /* Your name beside Alone / Together, and the PIN beside the age tick: two rows fewer, so the start
+     buttons and the links under them fit (the name's label stays for screen readers; the field says Name). */
+  #who-box { display: grid; grid-template-columns: 1fr 1fr; align-items: center; gap: 0 10px; margin-bottom: 8px; }
+  #who-box .field { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
+  #who-box #nick, #who-box #mp-choice { margin: 0; }
+  /* The Together box across both columns: the PIN beside the age tick, without the line about the PIN. */
+  .together { grid-column: 1 / -1; display: grid; grid-template-columns: 1fr 1fr; align-items: center; gap: 0 12px; margin: 8px 0 0; padding: 8px 10px; }
+  #mp-login { grid-column: 1 / -1; }
+  #mp-together #mp-pin-row, #mp-together .age-check { margin: 0; }
+  #mp-together #mp-pin, #mp-together #mp-join-btn { min-height: 38px; }
+  .pin-hint { display: none; }
+  #start-panel > .mp-msg { margin: 0 0 8px; }
+  .session { margin-bottom: 8px; padding: 6px 6px 6px 12px; }
+}
+/* A small phone held sideways: tighter still, so the start buttons show without scrolling. */
+@media (max-height: 440px) {
+  #overlay { padding-top: max(8px, env(safe-area-inset-top, 0px)); padding-bottom: max(8px, env(safe-area-inset-bottom, 0px)); }
+  #start-panel { padding-top: 10px; padding-bottom: 10px; border-radius: 16px; }
+  .start-head { margin-bottom: 6px; }
+  .start-brand .wordmark { height: 28px; }
+  .mobile-note { margin-bottom: 6px; padding: 4px 8px; font-size: 12.5px; line-height: 1.35; }
+  .field, .label { margin-bottom: 3px; }
+  .seg { margin-bottom: 6px; }
+  #who-box { margin-bottom: 6px; }
+  .start-choices, .invite { margin-bottom: 6px; }
+  .invite { padding-top: 6px; padding-bottom: 6px; }
+}
+/* A phone's browser with its bars showing (Safari held sideways): the note and the word "Game mode" go,
+   and the sign-up link while you type the PIN, so the start buttons stay in view. */
+@media (max-height: 360px) {
+  .mobile-note, #start-panel > .label { display: none; }
+  #start-panel:has(#mp-pin-row:not(.hidden), #mp-login:not(.hidden)) .invite { display: none; }
+}
+/* A phone held upright: a narrower panel, so the three modes and "Start at" fit across it. */
+@media (max-width: 520px) and (orientation: portrait) {
+  #start-panel { padding: 20px 18px 16px; }
+  .start-head { flex-wrap: wrap-reverse; }
+  .start-brand .wordmark { height: 44px; }
+  .intro { font-size: 18px; margin-bottom: 18px; }
+  .seg-btn { padding: 9px 10px; }
+  .seg-btn span { font-size: 13px; }
+  .label-row { flex-wrap: wrap; }
+  .spawn-pick { white-space: nowrap; }
+  .start-choices { grid-template-columns: 1fr; }
+  .made { margin-left: 0; }
+}
+
+/* ---- Shared bits of the menu pages ---- */
+.tools { display: grid; gap: 8px; }
+.tool {
+  display: block; width: 100%; padding: 12px 16px; cursor: pointer; text-align: left; color: var(--ink);
+  background: var(--dusk-raised); border: 1px solid transparent; border-radius: var(--r-tile); transition: background-color 0.15s;
+}
+.tool:hover { background: var(--dusk-high); }
+.tool b { display: block; font-size: 16px; font-weight: 800; line-height: 1.3; }
+.tool span { display: block; margin-top: 2px; font-size: 13.5px; line-height: 1.35; color: var(--ink-soft); }
+.tool b span { display: inline; margin: 0; font-size: inherit; color: inherit; }
+/* A tool the admin hasn't allowed (the furniture planner): visible, but greyed out. */
+button.tool:disabled { opacity: 0.45; cursor: not-allowed; }
+.page .gfx.tool { margin: 0 0 6px; }
+.page .gfx.tool .gfx-label { display: inline; margin: 0; font-size: inherit; color: inherit; } /* the word "Graphics", not a line under it */
+.page .gfx.tool .gfx-value { margin-left: 6px; color: var(--lamp); }
+.page .gfx.tool .gfx-detail { display: block; margin-top: 2px; }
+.note { margin: 0 0 12px; font-size: 15px; line-height: 1.5; color: var(--ink-soft); }
+.panel table { border-collapse: collapse; width: 100%; font-size: 15px; }
+.panel th { text-align: left; font-weight: 800; color: var(--ink-soft); padding: 6px 12px 6px 0; }
+.panel td { padding: 6px 12px 6px 0; border-top: 1px solid var(--line); }
+
+/* ---- The in-game menu (src/ui/menu.ts): a header (the wordmark, who you are, full screen, the sound
+   and Resume), a rail of tabs on the left with the chosen page beside it, and a row of links under
+   the page. Big enough for a useful map: about 1100 x 700 at 1280 x 800, and most of a 1920 x 1080
+   screen. */
+#pause-panel {
+  display: flex; flex-direction: column; padding: 0; max-width: none; max-height: none;
+  width: min(1680px, calc(100% - 148px)); height: min(1000px, calc(100% - 68px));
+  overflow: clip; /* not a scroll box either: the footer links' larger tap areas (below) must not let it shift */
+}
+@media (max-width: 1100px) { #pause-panel { width: 100%; } }
+#pause-panel .rail .tab:focus-visible, #pause-panel .seg-btn:focus-visible, #pause-panel .tool:focus-visible { outline-offset: -2px; }
+.pause-top {
+  display: flex; align-items: center; justify-content: space-between; gap: 8px 20px; flex-wrap: wrap;
+  padding: 14px 16px 14px 24px; border-bottom: 1px solid var(--line);
+}
+.pause-title { min-width: 0; }
+#pause-panel h1 { display: flex; align-items: center; gap: 14px; margin: 0; font-size: 17px; font-weight: 800; line-height: 1.2; }
+#pause-panel h1 .wordmark { flex: none; height: 30px; }
+.pause-label { padding-left: 14px; border-left: 1px solid var(--line-strong); color: var(--ink-soft); }
+.pause-top .sub { margin: 6px 0 0; font-size: 14px; color: var(--ink-soft); }
+.pause-actions { display: flex; align-items: center; gap: 8px; margin-left: auto; }
+.icon-btn {
+  display: inline-flex; align-items: center; justify-content: center; width: 44px; height: 44px; padding: 0; cursor: pointer;
+  color: var(--ink); background: var(--dusk-raised); border: 0; border-radius: var(--r-tile); transition: background-color 0.15s;
+}
+.icon-btn:hover { background: var(--dusk-high); }
+.icon-btn svg, .rail svg { width: 22px; height: 22px; flex: none; fill: none; stroke: currentColor; stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round; }
+/* The sound: a speaker with waves, or crossed out. */
+.icon-btn .ico-off, .icon-btn.off .ico-on { display: none; }
+.icon-btn.off .ico-off { display: block; }
+.icon-btn.off { color: var(--ink-faint); }
+.resume {
+  display: inline-flex; align-items: center; gap: 10px; height: 44px; padding: 0 10px 0 16px; cursor: pointer;
+  color: var(--dusk); background: var(--lamp); border: 0; border-radius: var(--r-tile); transition: background-color 0.15s;
+}
+.resume:hover { background: var(--lamp-bright); }
+.resume svg { width: 14px; height: 14px; flex: none; fill: currentColor; }
+.resume b { font-size: 17px; font-weight: 800; }
+.resume kbd { padding: 2px 8px; font-family: inherit; font-size: 12.5px; font-weight: 800; color: var(--ink); background: rgba(22, 32, 42, 0.85); border-radius: 6px; }
+#pause-panel kbd:empty { display: none; }
+.pause-body { flex: 1; min-height: 0; display: grid; grid-template-columns: auto minmax(0, 1fr); }
+.rail { display: flex; flex-direction: column; gap: 4px; width: 200px; padding: 14px 12px; overflow-y: auto; background: var(--dusk-deep); }
+.rail .tab {
+  display: flex; align-items: center; gap: 12px; width: 100%; min-height: 46px; padding: 8px 14px; cursor: pointer; text-align: left;
+  font-size: 16.5px; font-weight: 800; color: var(--ink-soft); background: none; border: 0; border-radius: var(--r-tile);
+  transition: background-color 0.15s, color 0.15s;
+}
+.rail .tab:hover { color: var(--ink); background: rgba(255, 255, 255, 0.04); }
+.rail .tab.selected { color: var(--ink); background: var(--dusk-raised); }
+.rail .tab.selected svg { color: var(--lamp); }
+.pages { display: flex; flex-direction: column; min-width: 0; min-height: 0; }
+.pages > .page { flex: 1; min-height: 0; overflow-y: auto; padding: 24px 32px 28px; scrollbar-width: thin; scrollbar-color: var(--dusk-high) transparent; }
+.pages > .map-page { display: flex; padding: 0; overflow: hidden; }
+#map-mount { position: relative; flex: 1; min-width: 0; }
+.page-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 8px 48px; align-items: start; max-width: 1240px; }
+.page-grid .col { min-width: 0; }
+.page #switch { width: min(100%, 440px); margin: 0 0 22px; }
+.col h2 { margin: 30px 0 10px; font-size: 20px; font-weight: 800; line-height: 1.25; color: var(--ink); }
+.col h2:first-child { margin-top: 0; }
+.col .label { margin: 18px 0 8px; font-size: 14.5px; color: var(--ink-soft); }
+.col h2 + .label { margin-top: 4px; }
+.settings .setting, #set-admin .setting { margin: 0; padding: 10px 0 8px; border-bottom: 1px solid var(--line); }
+#set-admin .setting .mp-row { margin-top: 4px; }
+#set-reset { margin-top: 16px; }
+/* Play: the mode first, big. */
+.mode-big .seg-btn { padding: 14px 18px; }
+.mode-big .seg-btn b { font-size: 21px; }
+.mode-big .seg-btn span { font-size: 14px; }
+.lang-seg .seg-btn b, .kbd-seg .seg-btn b { font-size: 16px; }
+/* A key beside a menu item (the planner, the minimap ...), for keyboard players. */
+#pause-panel kbd[data-key] {
+  margin-left: 8px; padding: 1px 7px; font-family: inherit; font-size: 12px; font-weight: 800; line-height: 1.4; color: var(--ink-soft);
+  border: 1px solid var(--line-strong); border-bottom-width: 2px; border-radius: 6px; vertical-align: 1px;
+}
+/* Together: who is online, each with a dot in their colour. */
+.players { display: grid; margin: 0 0 10px; padding: 0; list-style: none; }
+.players li { display: flex; align-items: center; gap: 10px; padding: 8px 0; font-size: 16px; font-weight: 800; border-bottom: 1px solid var(--line); overflow-wrap: anywhere; }
+.players i { flex: none; width: 12px; height: 12px; border-radius: 50%; box-shadow: 0 0 0 2px rgba(0, 0, 0, 0.25); }
+#mp-join-here { margin: 8px 0 10px; max-width: 460px; }
+#mp-join-here .mp-row { margin-bottom: 4px; }
+#team-pick { margin-top: 18px; }
+#mp-leave { margin-top: 10px; }
+#leaderboard table { margin-top: 10px; font-size: 14px; }
+#leaderboard td:not(:first-child), #leaderboard th:not(:first-child) { text-align: right; }
+.lb-note { margin: 8px 0 0; font-size: 13px; color: var(--ink-faint); }
+/* Settings: the test under Advanced, folded away. */
+.advanced { margin: 12px 0 6px; }
+.advanced summary { cursor: pointer; width: fit-content; padding: 6px 0; font-size: 15px; font-weight: 800; color: var(--ink-soft); }
+.advanced summary:hover { color: var(--ink); }
+.advanced .check { border-bottom: 0; }
+/* Controls: a list per group, two columns where there is room. */
+#controls { columns: 2 340px; column-gap: 48px; max-width: 1180px; }
+.ctl-group { break-inside: avoid; margin: 0 0 26px; }
+.ctl-group h3 { margin: 0 0 6px; font-size: 18px; font-weight: 800; color: var(--ink); }
+.ctl-group table { font-size: 15px; table-layout: fixed; }
+.ctl-group td { padding: 7px 12px 7px 0; vertical-align: top; color: var(--ink-soft); }
+.ctl-group td:first-child { width: 48%; }
+.ctl-group td:last-child { padding-right: 0; font-weight: 800; color: var(--ink); }
+/* The admin's tab. */
+#admin .admin-block:first-child { margin-top: 0; }
+.admin-block { margin: 8px 0; }
+.admin-row { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; padding: 6px 0; border-bottom: 1px solid var(--line); }
+.admin-row span { flex: 1 1 auto; font-weight: 800; }
+.admin-log { max-height: 200px; overflow: auto; margin-top: 10px; padding: 8px 10px; font: 12px/1.5 Consolas, monospace; color: var(--ink-soft); background: var(--dusk-deep); border-radius: var(--r-field); }
+.admin-msg { font-size: 14px; }
+/* The links under the page. */
+.pause-foot {
+  flex: none; display: flex; flex-wrap: wrap; align-items: center; gap: 4px 20px; padding: 10px 32px;
+  font-size: 13.5px; color: var(--ink-faint); border-top: 1px solid var(--line);
+}
+.pause-foot .legal-links { margin: 0; }
+.pause-foot a.gh { margin: 0; color: var(--ink-soft); }
+.pause-foot .meetup { margin-left: auto; font-weight: 800; color: var(--lamp); text-decoration: none; }
+.pause-foot .meetup:hover { text-decoration: underline; text-underline-offset: 3px; }
+/* "Made by" only where the HUD's credit line is hidden (touch controls). */
+#pause-panel .made-by { display: none; }
+body.touch #pause-panel .made-by { display: inline; }
+/* Narrow (a window or phone held upright, with a keyboard or controller): the rail shows icons only. */
+@media (max-width: 640px) {
+  .rail { width: 62px; padding: 10px 8px; }
+  .rail .tab { justify-content: center; padding: 0; }
+  .rail .tab .lbl { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
+  .pages > .page { padding: 18px 16px 20px; }
+  .page-grid { grid-template-columns: minmax(0, 1fr); }
+  #controls { columns: 1; }
+  .pause-top { padding: 10px 10px 10px 16px; }
+  .pause-label { display: none; }
+  .pause-foot { padding: 8px 16px; }
+  .pause-foot .meetup { margin-left: 0; }
+}
+/* A short screen (a phone held sideways): the menu fills it, the rail shows icons only (their names
+   stay for screen readers), the header is one row and the page gets the rest of the height. */
+@media (max-height: 520px) {
+  #overlay:has(> #pause-panel:not(.hidden)) {
+    padding: max(6px, env(safe-area-inset-top, 0px)) max(8px, env(safe-area-inset-right, 0px)) max(6px, env(safe-area-inset-bottom, 0px)) max(8px, env(safe-area-inset-left, 0px));
+  }
+  #pause-panel { width: 100%; height: 100%; border-radius: 16px; }
+  .pause-top { flex-wrap: nowrap; padding: 5px 8px 5px 14px; }
+  .pause-title { display: flex; align-items: center; gap: 12px; }
+  #pause-panel h1 .wordmark { height: 22px; }
+  .pause-label { display: none; }
+  .pause-top .sub { margin: 0; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; font-size: 13px; }
+  .pause-actions { gap: 6px; }
+  .icon-btn, .resume { height: 40px; }
+  .icon-btn { width: 42px; }
+  .resume b { font-size: 15.5px; }
+  .rail { width: 60px; padding: 6px; gap: 4px; }
+  .rail .tab { justify-content: center; min-height: 44px; padding: 0; }
+  .rail .tab .lbl { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
+  .pages > .page { padding: 12px 16px 16px; }
+  .page-grid { gap: 0 24px; }
+  .col h2 { margin-top: 18px; font-size: 18px; }
+  .mode-big .seg-btn { padding: 10px 14px; }
+  .mode-big .seg-btn b { font-size: 18px; }
+  #controls { columns: 1; }
+  .pause-foot { padding: 4px 16px; font-size: 12.5px; }
+  .pause-body:has(#page-map:not(.hidden)) .pause-foot { display: none; }
+}
+
+/* ---- Links and buttons outside the panels ---- */
 /* The link to the source on GitHub, beside "Made by" (start screen, menu, bottom right while playing). It opens a new
    tab without access to this one (rel="noopener noreferrer": no reverse tabnabbing). */
 a.gh { display: inline-flex; align-items: center; gap: 5px; margin-left: 10px; color: inherit; text-decoration: none; pointer-events: auto; }
 a.gh svg { flex: none; }
-a.gh:hover, a.gh:focus-visible { color: var(--accent); outline: none; }
-.made a.gh { opacity: 1; }
-.made a.credits-link { margin-left: 10px; color: inherit; text-decoration: none; }
-.made a.credits-link:hover, .made a.credits-link:focus-visible { color: var(--accent); outline: none; }
-
+a.gh:hover { color: var(--ink); }
 /* The terms, privacy policy and credits (web/public/legal/): a line under the start screen, links in the menu. */
-.legal { margin: 10px 0 0; font-size: 12px; line-height: 1.45; opacity: 0.7; }
-.legal a, .legal-links a { color: inherit; text-decoration: underline; text-underline-offset: 2px; }
-.legal a:hover, .legal-links a:hover, .legal a:focus-visible, .legal-links a:focus-visible { color: var(--accent); outline: none; }
-.legal-links { margin-left: 12px; }
+.legal { margin: 12px 0 0; font-size: 13px; line-height: 1.45; color: var(--ink-faint); }
+.legal a, .legal-links a { color: inherit; text-decoration: underline; text-decoration-color: rgba(149, 161, 173, 0.5); text-underline-offset: 2px; }
+.legal a:hover, .legal-links a:hover { color: var(--ink); }
 .start-legal { display: none; }
 /* A short screen (a phone held sideways): the links go into the start screen's bottom row instead of a line of their own. */
 @media (max-height: 430px) {
@@ -1006,6 +1142,14 @@ a.gh:hover, a.gh:focus-visible { color: var(--accent); outline: none; }
   .start-legal { display: inline; }
   .start-foot .made-by { display: none; }
 }
+/* The start screen's Sound button (bottom right; top right on a touch screen). */
+#sound-btn, #full-btn {
+  padding: 8px 14px; font-size: 14px; font-weight: 800; letter-spacing: 0; color: var(--ink);
+  background: var(--dusk); border: 1px solid var(--line-strong); border-radius: var(--r-field);
+}
+#sound-btn:hover, #full-btn:hover { background: var(--dusk-raised); }
+#sound-btn:focus-visible, #full-btn:focus-visible { outline: 2px solid var(--lamp); outline-offset: 2px; }
+#full-hint { border-left: 0; border-radius: var(--r-tile); background: var(--dusk); }
 
 /* The Sound button only on the start screen; in the in-game menu its header has the sound and full
    screen, and while playing Shift+M (Yoshi). The iPhone's full-screen advice opens under the header. */
@@ -1018,33 +1162,27 @@ body:has(#overlay:not(.hidden) > #pause-panel:not(.hidden)) #full-hint {
 /* Playing on a touch screen: without the Sound button, Full screen moves up next to ☰. */
 body.touch:not(:has(#overlay:not(.hidden))) #full-btn { left: calc(62px + env(safe-area-inset-left, 0px)); }
 body.touch:not(:has(#overlay:not(.hidden))) #full-hint { left: calc(114px + env(safe-area-inset-left, 0px)); }
-
-/* The language, English or Nederlands (src/i18n.ts): top right on the start screen, a choice in the settings. */
-#start-panel { position: relative; }
-.lang-pick { position: absolute; top: 14px; right: 18px; display: flex; gap: 2px; }
-.lang-pick .textbtn { padding: 4px 8px; border-radius: 2px; font-size: 12px; }
-.lang-pick .textbtn.selected { color: var(--ink); box-shadow: inset 0 -2px 0 var(--accent); }
-.lang-seg .seg-btn b, .kbd-seg .seg-btn b { font-size: 15px; }
-.page .gfx.tool .gfx-label { display: inline; margin: 0; font-size: inherit; opacity: 1; } /* the word "Graphics", not a line under it */
-@media (max-height: 440px) {
-  .lang-pick { top: 8px; right: 12px; }
-}
 /* The Dutch words on the small round buttons (Herlaad, Granaat, Gebruik while planning) are longer: a size smaller. */
 html:lang(nl) #touch .t-reload, html:lang(nl) #touch .t-nade, html:lang(nl) body.touch[data-touch=plan] #touch .t-use { font-size: 9px; letter-spacing: 0; }
-/* A tool the admin hasn't allowed (the furniture planner): visible, but greyed out. */
-button.tool:disabled { opacity: 0.45; cursor: not-allowed; }
 
 /* Touch screens: buttons, fields and tick boxes about a fingertip high (40 to 44 px). The small text
    links keep their look but get an invisible margin to tap (::after), clear of their neighbours. */
 @media (pointer: coarse) {
   #start-panel .seg-btn, #start-panel .mp-row input, #start-panel .mini, #start-panel #nick, .spawn-pick select { min-height: 40px; }
   .start-choices .choice.play { min-height: 44px; }
+  .lang-pick .textbtn { min-height: 36px; }
   #pause-panel .seg-btn, #pause-panel .mini, #pause-panel .mp-row input, #pause-panel .tool { min-height: 44px; }
   #overlay .check { min-height: 40px; }
-  #overlay .check input { width: 20px; height: 20px; }
+  #overlay .check input { width: 22px; height: 22px; }
+  #overlay .settings .check input, #overlay #set-admin .check input { width: 44px; height: 26px; background-size: 26px 26px; }
+  #overlay .settings .check input:checked, #overlay #set-admin .check input:checked { background-position: 18px 0; }
+  input[type=range] { height: 34px; }
+  input[type=range]::-webkit-slider-thumb { width: 24px; height: 24px; margin-top: -9px; }
+  input[type=range]::-moz-range-thumb { width: 24px; height: 24px; }
   .advanced summary { padding: 12px 0; }
-  .lang-pick .textbtn, .start-foot .textbtn, .start-foot a, .legal a, .pause-foot a { position: relative; }
-  .lang-pick .textbtn::after, .start-foot .textbtn::after, .start-foot a::after { content: ''; position: absolute; inset: -11px -4px; }
+  .start-foot .textbtn, .start-foot a, .legal a, .pause-foot a, .invite-go { position: relative; }
+  /* (Less below than above: within the panel's own padding, so the tap areas never make it scroll.) */
+  .start-foot .textbtn::after, .start-foot a::after { content: ''; position: absolute; inset: -11px -4px -9px; }
   .legal a::after, .pause-foot a::after { content: ''; position: absolute; inset: -8px -4px; }
   /* The slideshow's buttons beside the start screen (a tablet held sideways), in the corner: the
      Sound button is top right on a touch screen. */
@@ -1054,61 +1192,78 @@ button.tool:disabled { opacity: 0.45; cursor: not-allowed; }
   #slides-controls .slides-dot::after { inset: 17px 10px; }
   #slides-controls .slides-dot[aria-current="true"]::after { inset: 16px 9px; }
 }
-/* A phone's browser with its bars showing (Safari held sideways): the note and the word "Mode" go, and
-   the sign-up link while you type the PIN, so the start buttons stay in view. */
-@media (max-height: 360px) {
-  .mobile-note, #start-panel > .label { display: none; }
-  #start-panel:has(#mp-pin-row:not(.hidden), #mp-login:not(.hidden)) .invite { display: none; }
+
+/* The map in the menu (src/ui/bigmap.ts): its buttons and the card of a place in the brand's shapes. */
+#bigmap button { border-radius: var(--r-field); background: rgba(22, 32, 42, 0.9); border-color: var(--line-strong); }
+#bigmap button:hover { background: var(--dusk-raised); border-color: var(--line-strong); }
+#bigmap .bm-legend, #bigmap .bm-help { border-radius: 999px; }
+#bigmap .bm-card { border-left: 0; border-radius: 16px; background: rgba(22, 32, 42, 0.95); text-shadow: none; box-shadow: 0 12px 30px rgba(0, 0, 0, 0.35); }
+#bigmap .bm-card b { font-weight: 800; }
+#bigmap .bm-row button.main { background: var(--lamp); color: var(--dusk); border-color: var(--lamp); }
+#bigmap .bm-row button.main:hover { background: var(--lamp-bright); }
+
+/* An icon button with its word beside it (Feedback, in the menu's header); on short screens the icon alone. */
+.icon-btn.labelled { width: auto; gap: 8px; padding: 0 15px 0 12px; font-size: 15.5px; font-weight: 800; }
+@media (max-width: 640px), (max-height: 520px) {
+  .icon-btn.labelled { width: 42px; padding: 0; }
+  .icon-btn.labelled span { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
 }
 
-/* The feedback card after two minutes of play (src/ui/feedback.ts). */
+/* The feedback card (src/ui/feedback.ts): after two minutes of play, or from the menu's Feedback
+   button. Over the live 3D view, so solid and without blur. */
 #feedback {
   position: fixed; z-index: 40; left: 50%; top: 50%; transform: translate(-50%, -50%);
-  width: min(380px, calc(100vw - 32px)); max-height: calc(100vh - 32px); overflow-y: auto;
-  padding: 22px 24px 16px; background: rgba(12, 14, 18, 0.94); border-left: 4px solid var(--accent);
-  color: var(--ink); text-align: center; box-shadow: 0 10px 40px rgba(0, 0, 0, 0.5);
+  width: min(400px, calc(100vw - 32px)); max-height: calc(100vh - 32px); overflow-y: auto;
+  padding: 28px 26px 18px; color: var(--ink); text-align: center;
+  background: var(--dusk); border-radius: var(--r-panel); box-shadow: 0 24px 60px rgba(0, 0, 0, 0.5), inset 0 1px 0 rgba(255, 255, 255, 0.05);
 }
 #feedback.hidden { display: none; }
-#feedback h2 { margin: 0 0 4px; font-size: 24px; font-style: italic; }
-#feedback .fb-sub { margin: 0 0 14px; font-size: 14px; opacity: 0.8; }
+#feedback h2 { margin: 0 0 6px; padding: 0 28px; font-size: 26px; font-weight: 800; line-height: 1.2; }
+#feedback .fb-sub { margin: 0 0 16px; font-size: 15.5px; line-height: 1.4; color: var(--ink-soft); }
 #fb-close {
-  position: absolute; top: 6px; right: 8px; width: 34px; height: 34px; padding: 0; border: 0; border-radius: 50%;
-  background: transparent; color: var(--ink); font: 400 26px/1 sans-serif; cursor: pointer; opacity: 0.7;
+  position: absolute; top: 10px; right: 10px; width: 36px; height: 36px; padding: 0; border: 0; border-radius: 50%;
+  background: transparent; color: var(--ink-soft); font: 400 26px/1 var(--font); cursor: pointer;
 }
-#fb-close:hover, #fb-close:focus-visible { opacity: 1; background: rgba(255, 255, 255, 0.1); outline: none; }
-#feedback .fb-stars { display: flex; justify-content: center; gap: 4px; margin: 0 0 14px; }
+#fb-close:hover { color: var(--ink); background: var(--dusk-raised); }
+#feedback :focus-visible { outline: 2px solid var(--lamp); outline-offset: 2px; }
+/* Five stars, lit in lamplight up to the one picked. */
+#feedback .fb-stars { display: flex; justify-content: center; gap: 4px; margin: 0 0 16px; }
 #feedback .fb-star {
-  width: 46px; height: 46px; padding: 4px; border: 0; border-radius: 6px; background: transparent; cursor: pointer;
-  color: rgba(244, 239, 230, 0.28); transition: color 0.1s, transform 0.1s;
+  width: 48px; height: 48px; padding: 4px; border: 0; border-radius: var(--r-field); background: transparent; cursor: pointer;
+  color: #637384; transition: color 0.12s, transform 0.12s; /* an empty star: 3:1 on the card */
 }
 #feedback .fb-star svg { display: block; width: 100%; height: 100%; fill: currentColor; }
-#feedback .fb-star.on { color: var(--accent); }
+#feedback .fb-star.on { color: var(--lamp); }
 #feedback .fb-star:hover { transform: scale(1.08); }
-#feedback .fb-star:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
+@media (prefers-reduced-motion: reduce) { #feedback .fb-star { transition: none; } #feedback .fb-star:hover { transform: none; } }
 #fb-comment {
-  display: block; width: 100%; padding: 8px 10px; resize: vertical; min-height: 64px;
-  font: inherit; font-size: 15px; color: var(--ink); background: rgba(255, 255, 255, 0.07);
-  border: 1px solid rgba(255, 255, 255, 0.2); border-radius: 3px;
+  display: block; width: 100%; min-height: 72px; padding: 10px 12px; resize: vertical;
+  font-size: 16px; font-weight: 500; line-height: 1.4; color: var(--ink);
+  background: var(--dusk-raised); border: 1px solid var(--line-strong); border-radius: var(--r-field);
 }
-#fb-comment:focus { border-color: var(--accent); outline: none; }
-#feedback .fb-status { min-height: 1.3em; margin: 8px 0 4px; font-size: 14px; }
-#feedback.sent .fb-status { color: var(--accent); font-size: 18px; font-weight: 700; }
+#feedback #fb-comment:focus { outline: 2px solid var(--lamp); outline-offset: 1px; border-color: transparent; }
+#feedback .fb-status { min-height: 1.3em; margin: 8px 0 6px; font-size: 14.5px; color: var(--ink-soft); }
+#feedback.sent .fb-status { margin: 4px 0 8px; font-size: 20px; font-weight: 800; color: var(--lamp); }
 #feedback.sent .fb-stars, #feedback.sent #fb-comment, #feedback.sent .fb-actions, #feedback.sent .fb-sub { display: none; }
+/* Send is the one to press; No thanks stays quiet beside it. */
 #feedback .fb-actions { display: flex; gap: 10px; justify-content: center; }
 #feedback .fb-actions button {
-  flex: 1; max-width: 150px; padding: 9px 12px; font: inherit; font-size: 16px; color: var(--ink); cursor: pointer;
-  background: rgba(255, 255, 255, 0.06); border: 1px solid rgba(255, 255, 255, 0.2); border-radius: 3px;
+  flex: 1; max-width: 160px; min-height: 44px; padding: 10px 14px; font-size: 16px; font-weight: 800; color: var(--ink); cursor: pointer;
+  background: var(--dusk-raised); border: 0; border-radius: var(--r-tile); transition: background-color 0.15s;
 }
-#feedback #fb-send { border-color: var(--accent); background: rgba(242, 179, 61, 0.18); font-weight: 700; }
-#feedback .fb-actions button:hover:not(:disabled), #feedback .fb-actions button:focus-visible { border-color: var(--accent); outline: none; }
-#feedback #fb-send:disabled { opacity: 0.45; cursor: not-allowed; }
-#feedback .fb-note { margin: 12px 0 0; font-size: 12px; opacity: 0.65; }
-#feedback .fb-note a { color: inherit; }
+#feedback .fb-actions button:hover:not(:disabled) { background: var(--dusk-high); }
+#feedback #fb-send { color: var(--dusk); background: var(--lamp); }
+#feedback #fb-send:hover:not(:disabled) { background: var(--lamp-bright); }
+#feedback #fb-send:disabled { cursor: not-allowed; color: var(--ink-faint); background: var(--dusk-raised); }
+#feedback .fb-note { margin: 14px 0 0; font-size: 13px; }
+#feedback .fb-note a { color: var(--ink-faint); text-underline-offset: 2px; }
+#feedback .fb-note a:hover { color: var(--ink); }
 @media (max-height: 460px) {
-  #feedback { padding: 14px 18px 10px; }
-  #feedback h2 { font-size: 20px; }
-  #feedback .fb-sub { margin-bottom: 8px; }
+  #feedback { padding: 16px 20px 10px; }
+  #feedback h2 { font-size: 21px; }
+  #feedback .fb-sub { margin-bottom: 8px; font-size: 14.5px; }
   #feedback .fb-stars { margin-bottom: 8px; }
-  #feedback .fb-star { width: 40px; height: 40px; }
+  #feedback .fb-star { width: 42px; height: 42px; }
   #fb-comment { min-height: 48px; }
+  #feedback .fb-note { margin-top: 8px; }
 }
