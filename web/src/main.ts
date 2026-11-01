@@ -1997,7 +1997,7 @@ renderer.setAnimationLoop((now: number) => {
     // Party games: a seeker or "it" next to someone tags them with E (or a click).
     const tagWho = inCar || dead ? null : games.target([...online.keys()], (n) => avatars.position(n), player.x, player.feet, player.z);
     if (tagWho && (frame.usePressed || frame.clickPressed)) games.tag(tagWho);
-    const target = inCar || onHorse || tagWho ? null : doors.lookedAt(camera, scene);
+    const target = inCar || onHorse || tagWho ? null : doors.lookedAt(camera);
     if (target && (frame.usePressed || (!action && !planner.active && frame.clickPressed))) {
       target.toggle();
       if (target.locked) lockHint = 4;

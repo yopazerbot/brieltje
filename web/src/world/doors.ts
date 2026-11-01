@@ -5,6 +5,9 @@ import type { DoorPanel, DoorSpec } from './houseData';
 
 const SPEED = 1.3;  // open/close per second (full travel)
 const REACH = 2.6;  // m, how far away you can open a door
+const CENTRE = new THREE.Vector2(0, 0);
+/** Whether an object and everything it hangs in are shown (the end house's doors only near it). */
+const shown = (o: THREE.Object3D | null): boolean => !o || (o.visible && shown(o.parent));
 /** Glass in door leaves breaks like a window; its numbers start here, after the house's own blocks (the server allows up to 4000). */
 export const DOOR_GLASS = 3000;
 
@@ -158,6 +161,8 @@ export class Doors {
   private glassPanels = new Map<number, { door: Door; panel: Panel }>();
   private doors: Door[] = [];
   private raycaster = new THREE.Raycaster();
+  private eye = new THREE.Vector3();
+  private front = new THREE.Vector3();
   /** Alone, no door opens (Yoshi): the house and the bungalow are for playing together. */
   private locked = false;
   /** What the server said of doors not here yet (a house whose inside comes later), for when they come. */
@@ -258,14 +263,29 @@ export class Doors {
     }
   }
 
-  /** The door you are looking at within reach, if any. */
-  lookedAt(camera: THREE.Camera, scene: THREE.Object3D): { name: string; open: boolean; locked: boolean; toggle: () => void } | null {
+  /**
+   * The door you are looking at within reach, if any. The ray goes only to the leaves of the doors near
+   * you, and the collision plan says whether a wall or a window stands in front (every 2 cm). It went
+   * through every triangle in view before: 15 to 20 ms a frame at the house, far more at Molenhoek.
+   */
+  lookedAt(camera: THREE.Camera): { name: string; open: boolean; locked: boolean; toggle: () => void } | null {
     camera.updateMatrixWorld();
-    this.raycaster.setFromCamera(new THREE.Vector2(0, 0), camera);
-    const hits = this.raycaster.intersectObjects([scene], true);
-    const first = hits.find((h) => h.object.visible && !(h.object as THREE.Mesh).userData.ignoreRay);
+    const eye = camera.getWorldPosition(this.eye);
+    const leaves: THREE.Object3D[] = [];
+    for (const d of this.doors) {
+      if (eye.y < d.spec.y0 - REACH || eye.y > d.spec.y1 + REACH) continue;
+      for (const p of d.panels) {
+        // A leaf swings round its hinge (a) or slides: within reach of it, wherever it stands now.
+        if (Math.hypot(eye.x - p.a.x, eye.z - p.a.y) < REACH + p.width + p.slide.length() + Math.abs(p.offset || 0) + 0.5 && shown(p.mesh)) leaves.push(p.mesh);
+      }
+    }
+    if (!leaves.length) return null;
+    this.raycaster.setFromCamera(CENTRE, camera);
+    const first = this.raycaster.intersectObjects(leaves, true).find((h) => h.object.visible && !h.object.userData.ignoreRay);
     const door = first?.object.userData.door as Door | undefined;
-    if (!door) return null;
+    if (!first || !door) return null;
+    // Up to just before the leaf (its own outline is solid too).
+    if (this.world.blocked(eye, this.raycaster.ray.at(Math.max(0, first.distance - 0.04), this.front), 0.02)) return null;
     return {
       name: door.spec.name,
       open: door.target === 1,

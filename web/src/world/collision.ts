@@ -314,13 +314,13 @@ export class World {
     return null;
   }
 
-  /** Whether a block stands between a and b (checked every 10 cm): a blast does not go through walls. */
-  blocked(a: Point, b: Point): boolean {
+  /** Whether a block stands between a and b (checked every `step`, 10 cm): a blast does not go through walls. */
+  blocked(a: Point, b: Point, step = 0.1): boolean {
     const len = Math.hypot(b.x - a.x, b.y - a.y, b.z - a.z);
     const moving = [...this.moving.values()];
     const hit = (s: Solid, x: number, y: number, z: number) =>
       !(s.off || x < s.minX || x > s.maxX || z < s.minZ || z > s.maxZ || y <= this.lo(s, x, z) || y >= this.hi(s, x, z)) && inside(x, z, s.rings);
-    for (let t = 0.1; t < len; t += 0.1) {
+    for (let t = step; t < len; t += step) {
       const k = t / len;
       const x = a.x + (b.x - a.x) * k;
       const y = a.y + (b.y - a.y) * k;
