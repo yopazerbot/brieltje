@@ -263,7 +263,7 @@ export class Game {
     const player = {
       ws, key: session.key, role: session.role, color, state: null, lastChat: 0, msgs: 0, window: now, address: this.auth.addressOf(req),
       // The browser's guest cookie and "knew the PIN" cookie: what a kick keeps out (server/auth.mjs).
-      device: this.auth.guestDevice(req)?.id ?? null, pinId: this.auth.pinCookieId(req),
+      device: this.auth.guestDevice(req), pinId: this.auth.pinCookieId(req),
       score, hp: HEALTH, alive: true, respawnAt: 0, protectedUntil: now + PROTECT_MS, nextHit: 0, weapons: loadout(session.role), joinTime: now, spawned: false,
       nades: Array(GRENADE.carry).fill(0), thrown: [],
       // The ticks: which the page reads, when its state was taken (`stamp`, the server's clock), whether
@@ -283,6 +283,7 @@ export class Game {
     player.movedAt = now;
     player.budget = 0.5;
     this.players.set(name, player);
+    this.auth.noteDevice(player.address, player.device); // a browser playing here, for kicks (also after a restart)
     this.auth.log('mp_join', req, { username: name });
 
     this.send(ws, {
