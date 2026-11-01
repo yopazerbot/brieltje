@@ -1204,7 +1204,7 @@ export class Game {
       if (this.modes.friends(name, targetName)) continue; // the same team
       if (this.calm(target)) continue; // on the school grounds
       const s = target.state;
-      const d = Math.hypot(s.x - at.x, s.y + 0.9 - at.y, s.z - at.z); // from the middle of the body
+      const d = Math.hypot(s.x - at.x, s.y + (s.c ? 0.65 : 0.9) - at.y, s.z - at.z); // from the middle of the body (lower crouching)
       if (d < radius) this.damage(name, shooter, targetName, target, Math.round(damage * (1 - d / radius)), false, w, now);
     }
   }
