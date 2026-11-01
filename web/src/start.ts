@@ -343,7 +343,20 @@ if (logoutPending) {
 // Together picked but not joined yet: a start button joins first (a PIN typed in and then straight
 // to Touch screen would otherwise start alone), and play starts only if that worked.
 const togetherPicked = () => !!document.querySelector('[data-mp=multi].selected');
-menu.beforeStart = () => (togetherPicked() && !me && !$('mp-pin-row').classList.contains('hidden') ? join() : true);
+/** A name is needed to play, alone too (Yoshi, 1 Nov 2026): the field outlined and focused, the message under it. */
+function nameMissing(): boolean {
+  const nick = $('nick') as HTMLInputElement;
+  const name = nick.value.trim();
+  if (me || (name && name !== 'Guest' && name !== 'Gast')) return false;
+  setAccount(null, () => t('err.nameFirst'));
+  nick.setAttribute('aria-invalid', 'true'); // outlined until typed in
+  nick.focus();
+  return true;
+}
+menu.beforeStart = () => {
+  if (nameMissing()) return Promise.resolve(false);
+  return togetherPicked() && !me && !$('mp-pin-row').classList.contains('hidden') ? join() : true;
+};
 // Another language: the texts made here that aren't drawn every frame (the modules redraw their own).
 onLang(() => {
   showSound();
