@@ -9,7 +9,8 @@ const STAR = 'M12 2.5l2.9 6.1 6.6.8-4.9 4.6 1.3 6.5L12 17.3l-5.9 3.2 1.3-6.5L2.5
  * The feedback card (Yoshi, 1 Nov 2026): after two minutes of play, once in this browser, 1 to 5
  * stars and a comment, both optional. Closing it (×, "No thanks", Esc, or ○ and Options on a
  * controller) means it won't ask again; nor will it after sending. It goes to server/feedback.mjs,
- * which keeps it with the name, the address and the time for the admin page (the card says so).
+ * which keeps it with the name, the address and the time for the admin page (the privacy policy
+ * says so; the card links to it).
  */
 export class FeedbackCard {
   open = false;
