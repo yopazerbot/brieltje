@@ -151,7 +151,7 @@ async function api(req, res, url) {
     const b = await body(req);
     // Playing together (with its chat) is for 13 and over: the page asks, and only sends this once ticked.
     if (b.age !== true) return refuse(res, { error: 'Confirm that you are 13 or older to play together.', code: 'age', status: 400 });
-    const r = await auth.join(req, b.name, b.pin, (name) => game.players.has(name), game.rules.pin);
+    const r = await auth.join(req, b.name, b.pin, (name) => game.players.has(name), game.rules.pin, () => game.full());
     if (r.error) return refuse(res, r);
     return json(res, 200, { username: r.username, role: r.role }, { 'Set-Cookie': [auth.cookie(r.token), auth.pinCookie(r.device)] });
   }

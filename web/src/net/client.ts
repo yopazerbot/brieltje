@@ -158,6 +158,8 @@ export class Net {
   private ws: WebSocket | null = null;
   private stopped = false;
   private retry = 1000;
+  /** How many may play, from the server's last 'full' message */
+  private fullAt = 0;
 
   get connected(): boolean {
     return this.ws?.readyState === WebSocket.OPEN;
@@ -178,7 +180,7 @@ export class Net {
       const text = String(e.data);
       this.counts.bytesIn += text.length;
       this.counts.msgsIn++;
-      let m: ServerMsg | { t: 'ping'; n: number; rtt: number | null };
+      let m: ServerMsg | { t: 'ping'; n: number; rtt: number | null } | { t: 'full'; max?: unknown };
       try {
         m = JSON.parse(text);
       } catch {
@@ -187,6 +189,11 @@ export class Net {
       if (m.t === 'ping') {
         this.send({ t: 'pong', n: m.n });
         if (typeof m.rtt === 'number') this.rtt = m.rtt;
+        return;
+      }
+      if (m.t === 'full') {
+        // No room in the house: the close that follows says so (see onclose).
+        this.fullAt = typeof m.max === 'number' ? m.max : 0;
         return;
       }
       if (m.t === 'kicked') this.stopped = true;
@@ -204,7 +211,9 @@ export class Net {
         this.onStatus(() => (why ? t(why) : ''));
         return;
       }
-      this.onStatus(() => t('net.lost'));
+      // Full (4003): said, and tried again a little later like a dropped connection, until there is room.
+      const max = this.fullAt;
+      this.onStatus(() => (e.code === 4003 ? t('net.full', { n: max }) : t('net.lost')));
       setTimeout(() => !this.stopped && this.connect(), this.retry);
       this.retry = Math.min(15000, this.retry * 2);
     };

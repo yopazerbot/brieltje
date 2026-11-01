@@ -476,6 +476,7 @@ const en = {
   'net.elsewhere': 'Logged in somewhere else.',
   'net.removed': 'You were removed by the admin.',
   'net.ended': 'Your session ended. Log in again.',
+  'net.full': 'The house is full ({n} players). Waiting for a free place…',
   'net.reload': 'The game has been updated. Reload the page to keep playing together.',
 
   // ---- Portals and travelling
@@ -574,6 +575,7 @@ const en = {
   'srv.removed': 'You were removed by the admin. Try again later.',
   'srv.nameInUse': '{name} is in use by a player. Pick another name.',
   'srv.pinOff': 'Joining with the PIN is switched off right now.',
+  'srv.full': 'The house is full right now. Ask the admin to allow more players.',
   'srv.age': "Tick that you're 13 or older to play together.",
   'srv.pinTooMany': 'Too many wrong PINs lately. Try again in an hour.',
   'srv.wrongPin': 'Wrong PIN.',
@@ -1051,6 +1053,7 @@ const nl = {
   'net.elsewhere': 'Je bent ergens anders aangemeld.',
   'net.removed': 'De beheerder heeft je verwijderd.',
   'net.ended': 'Je sessie is afgelopen. Meld je opnieuw aan.',
+  'net.full': 'Het huis is vol ({n} spelers). Even wachten op een vrije plaats…',
   'net.reload': 'Het spel is bijgewerkt. Laad de pagina opnieuw om samen te blijven spelen.',
 
   // ---- Portals and travelling
@@ -1149,6 +1152,7 @@ const nl = {
   'srv.removed': 'De beheerder heeft je verwijderd. Probeer het later opnieuw.',
   'srv.nameInUse': 'Een speler gebruikt de naam {name}. Kies een andere naam.',
   'srv.pinOff': 'Meedoen met de pincode staat nu uit.',
+  'srv.full': 'Het huis is nu vol. Vraag de beheerder om meer spelers toe te laten.',
   'srv.age': 'Vink aan dat je 13 jaar of ouder bent om samen te spelen.',
   'srv.pinTooMany': 'De laatste tijd te veel verkeerde pincodes. Probeer het over een uur opnieuw.',
   'srv.wrongPin': 'Verkeerde pincode.',

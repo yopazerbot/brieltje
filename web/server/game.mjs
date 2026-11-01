@@ -221,14 +221,26 @@ export class Game {
       return socket.destroy();
     }
     const already = this.players.has(session.username);
-    if (!already && this.players.size >= this.rules.maxPlayers) {
-      socket.write('HTTP/1.1 503 Service Unavailable\r\n\r\n');
-      return socket.destroy();
-    }
     // The page asks for the ticks it reads (/ws?v=2, shared/wire.mjs); without, it is from before them.
     const v = Number(new URL(req.url, 'http://local').searchParams.get('v'));
     const proto = v >= PROTO ? PROTO : 1;
+    if (!already && this.full(session.role)) {
+      // A browser can't read why an upgrade was refused (it only sees a dropped connection), so the page
+      // is told in a message and a close of its own; it tries again later (src/net/client.ts).
+      return this.wss.handleUpgrade(req, socket, head, (ws) => {
+        this.send(ws, { t: 'full', max: this.rules.maxPlayers });
+        ws.close(4003, 'The house is full');
+      });
+    }
     this.wss.handleUpgrade(req, socket, head, (ws) => this.join(ws, session, req, proto));
+  }
+
+  /**
+   * No room for one more: as many as the admin allows play. The admin always gets in (up to
+   * MAX_PLAYERS), since raising the limit or kicking someone is only done from inside the game.
+   */
+  full(role = 'guest') {
+    return this.players.size >= (role === 'admin' ? MAX_PLAYERS : this.rules.maxPlayers);
   }
 
   join(ws, session, req, proto = 1) {

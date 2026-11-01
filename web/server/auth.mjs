@@ -329,10 +329,11 @@ export class Auth {
 
   /**
    * Join multiplayer with a name and the shared PIN. `online(name)`: someone plays under that
-   * name right now (taking it would throw them out). The PIN is checked before anything about
-   * the name is told, so names can't be probed without it.
+   * name right now (taking it would throw them out). `full()`: as many play as the admin allows.
+   * The PIN is checked before anything about the name or the house is told, so neither can be
+   * probed without it.
    */
-  async join(req, nickname, pin, online, allowed = true) {
+  async join(req, nickname, pin, online, allowed = true, full = () => false) {
     if (!this.pin || !allowed) return { error: 'Joining with the PIN is switched off right now.', code: 'pinOff', status: 403 };
     const ip = bucketOf(clientIp(req));
     const now = Date.now();
@@ -352,6 +353,8 @@ export class Auth {
       if (this.pinFails.count('pin', now) === PIN_FAILS) this.log('pin_limited', req, {});
       return { error: 'Wrong PIN.', code: 'wrongPin', status: 401 };
     }
+    // Full: said here, before a session is made (the game's connection would only be refused).
+    if (full()) return { error: 'The house is full right now. Ask the admin to allow more players.', code: 'full', status: 503 };
     if (name === ADMIN) return { error: 'That name is taken. Pick another name.', code: 'nameTaken', status: 409 };
     if (online(name)) return { error: `Someone is playing as ${name} right now. Pick another name.`, code: 'nameOnline', args: { name }, status: 409 };
     if ([...this.sessions.values()].some((s) => s.username === name && s.expires > now)) {
