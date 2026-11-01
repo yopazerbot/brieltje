@@ -1,6 +1,6 @@
 // Sessions, furniture, fighting stats, the login log, the interest page's sign-ups (server/interest.mjs),
-// the daily totals of how much the game is played (server/stats.mjs) and players' feedback
-// (server/feedback.mjs).
+// the daily totals of how much the game is played (server/stats.mjs) with the day's visitor codes
+// (kept for that Belgian day only) and players' feedback (server/feedback.mjs).
 // Railway: Postgres via DATABASE_URL. Local development without it: a JSON
 // file in web/.data/ (not in git).
 // Sessions are stored by a hash of their token, never the token itself.
@@ -11,6 +11,7 @@ import { mkdir, readFile, rename, writeFile } from 'node:fs/promises';
 import { resolve } from 'node:path';
 
 const MAX_LOG = 500;
+const NAMED = ['join_ok', 'mp_join', 'solo_start', 'login_ok']; // the login log's lines with a player's (or the admin's) name
 
 /** Replace a file. On Windows a virus scanner can hold a file it just saw written for a moment: try again for up to a second. */
 async function replace(from, to) {
@@ -27,7 +28,7 @@ async function replace(from, to) {
 class FileStore {
   constructor(file) {
     this.file = file;
-    this.data = { audit: [], sessions: [], stats: {}, meta: {}, furniture: [], interest: [], interestId: 0, daily: {}, feedback: [], feedbackId: 0 };
+    this.data = { audit: [], sessions: [], stats: {}, meta: {}, furniture: [], interest: [], interestId: 0, daily: {}, feedback: [], feedbackId: 0, visits: null };
   }
   async init() {
     await mkdir(resolve(this.file, '..'), { recursive: true });
@@ -163,6 +164,41 @@ class FileStore {
   async listDaily(from) {
     return Object.entries(this.data.daily).filter(([day]) => day >= from).flatMap(([day, keys]) => Object.entries(keys).map(([key, value]) => ({ day, key, value })));
   }
+  /** The day's seed for the visitor codes (server/stats.mjs): the stored one, or `fresh` for a day without one. */
+  async visitSeed(day, fresh) {
+    if (this.data.visits?.day === day) return this.data.visits.seed;
+    this.data.visits = { day, seed: fresh, seen: {} };
+    await this.save();
+    return fresh;
+  }
+  /** Whether a visitor code is new on `day` (it is kept until the day is forgotten). */
+  async seeVisitor(day, hash) {
+    const v = this.data.visits;
+    if (v?.day !== day) return true;
+    if (v.seen[hash]) return false;
+    v.seen[hash] = 1;
+    await this.save();
+    return true;
+  }
+  /** The seed and the codes of days before `day` deleted. */
+  async forgetVisits(day) {
+    if (!this.data.visits || this.data.visits.day >= day) return;
+    this.data.visits = null;
+    await this.save();
+  }
+  /** Who played per day: the names in the login log (joined together, started alone, the admin's logins) with their first time that day. */
+  async logNames(from) {
+    const rows = new Map();
+    for (const e of this.data.audit) {
+      const day = String(e.time).slice(0, 10);
+      if (day < from || !NAMED.includes(e.event) || !e.username) continue;
+      const k = `${day}|${e.event}|${e.username}`;
+      const r = rows.get(k);
+      if (!r) rows.set(k, { day, event: e.event, username: e.username, first: e.time });
+      else if (e.time < r.first) r.first = e.time;
+    }
+    return [...rows.values()];
+  }
   /** Login log entries per day and event since `from` (YYYY-MM-DD; the file keeps the last MAX_LOG entries). */
   async logCounts(from) {
     const counts = new Map();
@@ -283,6 +319,15 @@ class PgStore {
         id serial primary key,
         at timestamptz not null default now(),
         data jsonb not null
+      );
+      create table if not exists visit_seed (
+        day text primary key,
+        seed text not null
+      );
+      create table if not exists visit_seen (
+        day text not null,
+        hash text not null,
+        primary key (day, hash)
       );`);
   }
   async loadSessions(now) {
@@ -394,16 +439,48 @@ class PgStore {
   async deleteInterest(id) {
     await this.pool.query('delete from interest where id = $1', [id]);
   }
+  /** A day's counts in one statement, so a failed write adds nothing and can be tried again whole. */
   async addDaily(day, counts) {
-    for (const [k, n] of Object.entries(counts)) {
-      await this.pool.query('insert into daily (day, key, value) values ($1, $2, $3) on conflict (day, key) do update set value = daily.value + excluded.value', [day, k, n]);
-    }
+    const keys = Object.keys(counts);
+    if (!keys.length) return;
+    await this.pool.query(
+      `insert into daily (day, key, value) select $1::text, k, v from unnest($2::text[], $3::bigint[]) as t(k, v)
+       on conflict (day, key) do update set value = daily.value + excluded.value`,
+      [day, keys, keys.map((k) => counts[k])]);
   }
   async maxDaily(day, key, n) {
     await this.pool.query('insert into daily (day, key, value) values ($1, $2, $3) on conflict (day, key) do update set value = greatest(daily.value, excluded.value)', [day, key, n]);
   }
   async listDaily(from) {
     const r = await this.pool.query('select day, key, value from daily where day >= $1', [from]);
+    return r.rows;
+  }
+  /**
+   * The day's seed for the visitor codes (server/stats.mjs): the first one stored for the day wins,
+   * so servers that overlap during a redeploy share it.
+   */
+  async visitSeed(day, fresh) {
+    await this.pool.query('insert into visit_seed (day, seed) values ($1, $2) on conflict (day) do nothing', [day, fresh]);
+    const r = await this.pool.query('select seed from visit_seed where day = $1', [day]);
+    return r.rows[0]?.seed ?? fresh; // gone already: a server past midnight deleted the day as it ended
+  }
+  /** Whether a visitor code is new on `day`: one statement, so two servers never both count it. */
+  async seeVisitor(day, hash) {
+    const r = await this.pool.query('insert into visit_seen (day, hash) values ($1, $2) on conflict do nothing', [day, hash]);
+    return r.rowCount === 1;
+  }
+  /** The seeds and the codes of days before `day` deleted (never a later day's, whatever a server's clock says). */
+  async forgetVisits(day) {
+    await this.pool.query('delete from visit_seed where day < $1', [day]);
+    await this.pool.query('delete from visit_seen where day < $1', [day]);
+  }
+  /** Who played per day: the names in the login log (joined together, started alone, the admin's logins) with their first time that day. */
+  async logNames(from) {
+    const r = await this.pool.query(
+      `select left(time_be, 10) as day, event, username, min(time_be) as first from audit_log
+       where left(time_be, 10) >= $1 and event = any($2::text[]) and username is not null and username <> ''
+       group by 1, 2, 3`,
+      [from, NAMED]);
     return r.rows;
   }
   /** Login log entries per day (its Belgian time's date) and event since `from` (YYYY-MM-DD). */

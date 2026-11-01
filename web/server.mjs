@@ -67,15 +67,17 @@ await game.loadFurniture();
 await game.loadRules();
 
 const interest = new Interest(store, { json: (...a) => json(...a), clientKey: (req) => bucketOf(clientIp(req)) });
-const stats = new Stats(store, { json: (...a) => json(...a), clientKey: (req) => bucketOf(clientIp(req)), game, readJson: (req) => body(req), isAdmin: (req) => auth.session(req)?.role === 'admin', log: (event, req, extra) => auth.log(event, req, extra) });
+// The admin password also locks the day's visitor seed in the store (server/stats.mjs): it is a Railway variable, never in the database.
+const stats = new Stats(store, { json: (...a) => json(...a), clientKey: (req) => bucketOf(clientIp(req)), game, readJson: (req) => body(req), isAdmin: (req) => auth.session(req)?.role === 'admin', log: (event, req, extra) => auth.log(event, req, extra), secret: process.env.ADMIN_PASSWORD });
 const feedback = new Feedback(store, { json: (...a) => json(...a), readJson: (req) => body(req), clientKey: (req) => bucketOf(clientIp(req)), clientIp, session: (req) => auth.session(req), time: beTime });
 // The admin page's live view hears of new log lines, changed sign-ups and feedback.
 auth.onLog = (entry) => stats.logged(entry);
 interest.onChange = () => stats.signupsChanged();
 feedback.onChange = () => stats.feedbackChanged();
-// A redeploy stops the server: write the day's totals first.
+// A redeploy stops the server: no new connections, then the counting that waits for the store and the day's totals written.
 process.once('SIGTERM', () => {
-  stats.flush().catch(() => {}).finally(() => process.exit(0));
+  server.close();
+  stats.close().catch((e) => console.error('stats flush failed', String(e))).finally(() => process.exit(0));
 });
 
 function send(res, status, body, headers = {}) {
