@@ -18,7 +18,7 @@
       <a class="brand" href="/">Brieltje</a>
       <span class="head-tools">
         <span class="live" id="live" title="Live"><i></i> Live</span>
-        <a class="btn ghost" href="/admin/scores/" target="_blank" rel="noopener" id="scores-link">Scoreboard ↗</a>
+        <a class="btn ghost" href="/admin/scores/" target="_blank" rel="noopener" id="scores-link"><span class="long">Scoreboard</span><span class="short">Scores</span> ↗</a>
         <button class="btn ghost" type="button" id="logout" hidden>Log out</button>
       </span>
     </header>
@@ -37,24 +37,82 @@
     </section>
 
     <section id="app" hidden>
-      <nav class="tabs" role="tablist">
-        <button type="button" role="tab" data-tab="overview" aria-selected="true">Overview</button>
-        <button type="button" role="tab" data-tab="signups" aria-selected="false">Sign-ups</button>
-        <button type="button" role="tab" data-tab="feedback" aria-selected="false">Feedback</button>
-        <button type="button" role="tab" data-tab="logins" aria-selected="false">Logins</button>
-        <button type="button" role="tab" data-tab="online" aria-selected="false">Online now</button>
-      </nav>
+      <!-- Sticky: the tabs, and on the overview the period every number follows. -->
+      <div class="topbar" id="topbar">
+        <nav class="tabs" role="tablist" aria-label="Admin" id="tabs">
+          <button type="button" role="tab" id="tab-overview" aria-controls="panel-overview" data-tab="overview" aria-selected="true">Overview</button>
+          <button type="button" role="tab" id="tab-signups" aria-controls="panel-signups" data-tab="signups" aria-selected="false" tabindex="-1">Sign-ups</button>
+          <button type="button" role="tab" id="tab-feedback" aria-controls="panel-feedback" data-tab="feedback" aria-selected="false" tabindex="-1">Feedback</button>
+          <button type="button" role="tab" id="tab-logins" aria-controls="panel-logins" data-tab="logins" aria-selected="false" tabindex="-1">Logins</button>
+          <button type="button" role="tab" id="tab-online" aria-controls="panel-online" data-tab="online" aria-selected="false" tabindex="-1">Online now <span class="count" id="online-badge" hidden></span></button>
+        </nav>
+        <div class="seg period" id="period" role="group" aria-label="Period">
+          <button type="button" data-period="today" aria-pressed="true">Today</button>
+          <button type="button" data-period="yesterday" aria-pressed="false">Yesterday</button>
+          <button type="button" data-period="d7" aria-pressed="false">7 days</button>
+          <button type="button" data-period="d30" aria-pressed="false">30 days</button>
+        </div>
+      </div>
 
-      <section data-panel="overview">
-        <p class="muted small" id="since"></p>
-        <div class="stats" id="kpis"></div>
+      <section data-panel="overview" id="panel-overview" role="tabpanel" aria-labelledby="tab-overview">
+        <div class="now">
+          <span class="now-n"><i aria-hidden="true"></i><b id="now-n">0</b> playing now</span>
+          <span class="muted small" id="now-split"></span>
+          <span class="now-links"><a href="#online">Who is playing</a><a href="/admin/scores/" target="_blank" rel="noopener">Scoreboard ↗</a></span>
+        </div>
+        <div class="period-head">
+          <div>
+            <h2 id="period-title">Today</h2>
+            <p class="muted small" id="period-range"></p>
+            <p class="muted small" id="period-compare"></p>
+          </div>
+          <details class="how" id="how">
+            <summary>How we count</summary>
+            <ul>
+              <li><b>Players</b> are browsers that started a game. Each one counts once a day.</li>
+              <li><b>Visitors</b> are browsers that opened the game page. Each one counts once a day.</li>
+              <li>A browser is its internet address together with the browser's name. The server hashes that pair with a code that changes every Belgian day.</li>
+              <li>Two people at home on one connection with the same browser count as one.</li>
+              <li>One person on a phone and on a laptop counts as two.</li>
+              <li>A phone that moves from Wi-Fi to mobile data can count twice.</li>
+              <li>Nobody can be recognised on a later day. A period of several days adds up each day's count.</li>
+              <li><b>Different players</b> come from the names in the login log. Players together have their name in the game. Players alone have the name they typed, which nobody checks. Players alone who typed no name are missing.</li>
+              <li><b>Time played</b> adds a minute for each full minute of play with the game in view. A game shorter than a minute adds nothing.</li>
+              <li><b>Most at once</b> is the highest number playing at the same moment. The server checks every second.</li>
+              <li><b>Not counted:</b> your own visits and games as admin. Browsers that ask not to be tracked. Bots and link previews. Pages loaded ahead of time.</li>
+              <li><b>Today</b> starts at 00:00 Belgian time. It is compared with yesterday until the same time.</li>
+              <li id="how-since" hidden></li>
+              <li id="how-before" hidden></li>
+            </ul>
+          </details>
+        </div>
+        <div class="stats kpis" id="kpis"></div>
+
+        <div class="chart hours">
+          <div class="chart-head">
+            <div>
+              <h3>When people play</h3>
+              <div class="total" id="hours-sub"></div>
+            </div>
+            <div class="seg small" id="hours-metric" role="group" aria-label="Measure">
+              <button type="button" data-metric="players" aria-pressed="true">Players</button>
+              <button type="button" data-metric="visitors" aria-pressed="false">Visitors</button>
+              <button type="button" data-metric="starts" aria-pressed="false">Games</button>
+              <button type="button" data-metric="minutes" aria-pressed="false">Minutes</button>
+            </div>
+          </div>
+          <div id="hours"></div>
+        </div>
+
+        <h2 class="sub">Per day <span class="muted small">last 30 days</span></h2>
         <div class="charts" id="charts"></div>
-        <h2>How people play <span class="muted small">(last 30 days)</span></h2>
+        <h2 class="sub">How people play <span class="muted small" id="splits-period"></span></h2>
         <div class="splits" id="splits"></div>
-        <p class="muted small">Counted without cookies and without keeping anything about a person: only daily totals are stored (see the privacy policy).</p>
+        <p class="muted small" id="since"></p>
+        <p class="muted small">Counted without cookies. Only totals per day and per hour are kept. The privacy policy explains it.</p>
       </section>
 
-      <section data-panel="signups" hidden>
+      <section data-panel="signups" id="panel-signups" role="tabpanel" aria-labelledby="tab-signups" hidden>
         <p class="muted small" id="storage"></p>
         <div class="stats" id="stats"></div>
         <div class="toolbar">
@@ -75,7 +133,7 @@
         <p class="muted" id="empty" hidden>No sign-ups yet.</p>
       </section>
 
-      <section data-panel="feedback" hidden>
+      <section data-panel="feedback" id="panel-feedback" role="tabpanel" aria-labelledby="tab-feedback" hidden>
         <div class="stats" id="fb-kpis"></div>
         <div class="fb-spread" id="fb-spread"></div>
         <div class="toolbar">
@@ -95,7 +153,7 @@
         <p class="muted small">A player alone gives the name they typed. It isn't checked. Addresses are removed after 90 days.</p>
       </section>
 
-      <section data-panel="logins" hidden>
+      <section data-panel="logins" id="panel-logins" role="tabpanel" aria-labelledby="tab-logins" hidden>
         <div class="stats" id="login-kpis"></div>
         <div class="toolbar">
           <select id="log-filter">
@@ -111,9 +169,9 @@
         <p class="muted small">The login log keeps 90 days.</p>
       </section>
 
-      <section data-panel="online" hidden>
+      <section data-panel="online" id="panel-online" role="tabpanel" aria-labelledby="tab-online" hidden>
         <p class="muted" id="online-count"></p>
-        <ul class="online" id="online"></ul>
+        <ul class="online" id="online-list"></ul>
       </section>
     </section>
   </div>

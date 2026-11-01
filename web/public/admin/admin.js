@@ -1,10 +1,16 @@
 // The admin page (brieltje.be/admin): log in with the game's admin account, then five tabs, kept
 // current by a live stream (GET /api/admin/live: today's numbers, who is playing, new log lines,
-// changed sign-ups and feedback); the 60 days behind the charts are fetched again every minute.
-// Overview: how much the game is played (server/stats.mjs: daily totals only, nothing per person)
-// with the last 30 days as bar charts and how people play. Sign-ups: the interest page's sign-ups
-// (server/interest.mjs) with status, notes, plans and delete. Feedback: players' stars and comments
-// (server/feedback.mjs) with their name, address and time. Logins: the login log. Online now.
+// changed sign-ups and feedback); the 60 days behind the overview are fetched again every minute.
+// The address's hash picks the tab (#overview, #signups, #feedback, #logins, #online), so a tab can be
+// linked and back and forward work. The last tab, the period and the hour chart's measure are
+// remembered in this browser (localStorage, keys starting with briel.admin.), a convenience only.
+// Overview: how much the game is played (server/stats.mjs: totals per day and per hour, nothing per
+// person) for a period (today since 00:00 Belgian time, yesterday, 7 or 30 days) against the period
+// before, by the hour, per day for 30 days, and how people play. Every date comes from the server's
+// Belgian calendar: the page never takes a day from the browser's time zone.
+// Sign-ups: the interest page's sign-ups (server/interest.mjs) with status, notes, plans and delete.
+// Feedback: players' stars and comments (server/feedback.mjs) with their name, address and time.
+// Logins: the login log. Online now.
 // Everything a visitor typed or a server log holds is shown with textContent, never as HTML.
 (() => {
   const $ = (id) => document.getElementById(id);
@@ -16,10 +22,38 @@
     login_admin_limited: ['Admin login paused', 'bad', 'failed'], login_blocked_kicked: ['Removed player tried again', 'bad', 'failed'],
     solo_start: ['Started alone (name as typed)', '', 'solo'], kick: ['Player removed', '', 'admin'], pin_changed: ['PIN changed', '', 'admin'], rules: ['House rules changed', '', 'admin'], round_won: ['Round won', '', ''],
   };
+  const TABS = ['overview', 'signups', 'feedback', 'logins', 'online'];
+  const PERIODS = { today: 'Today', yesterday: 'Yesterday', d7: 'Last 7 days', d30: 'Last 30 days' };
+  // The hour chart's measures: the button, and a number of them in a tooltip.
+  const METRICS = {
+    players: ['Players', (n) => count(n, 'player')],
+    visitors: ['Visitors', (n) => count(n, 'visitor')],
+    starts: ['Games started', (n) => count(n, 'game')],
+    minutes: ['Minutes played', (n) => `${fmt(n)} min played`],
+  };
+  // Remembered in this browser, a convenience only: a private window or blocked storage starts at the defaults.
+  const saved = {
+    get(k) {
+      try {
+        return localStorage.getItem(`briel.admin.${k}`);
+      } catch {
+        return null;
+      }
+    },
+    set(k, v) {
+      try {
+        localStorage.setItem(`briel.admin.${k}`, v);
+      } catch {
+        // not kept
+      }
+    },
+  };
   let entries = [];
   let log = [];
   let feedback = [];
   let tab = 'overview';
+  let period = Object.hasOwn(PERIODS, saved.get('period') ?? '') ? saved.get('period') : 'today';
+  let metric = Object.hasOwn(METRICS, saved.get('hours') ?? '') ? saved.get('hours') : 'players';
   let stats = null; // the last /api/admin/stats answer, today's numbers updated live
   let playing = { together: [], alone: [] };
   let live = null;
@@ -37,7 +71,30 @@
   const post = (url, data, method = 'POST') =>
     fetch(url, { method, headers: { 'Content-Type': 'application/json' }, body: data ? JSON.stringify(data) : undefined });
   const fmt = (n) => Math.round(n).toLocaleString('en-GB');
-  const dayName = (d) => new Date(`${d}T12:00:00`).toLocaleDateString('en-GB', { weekday: 'short', day: 'numeric', month: 'short' });
+  const count = (n, one) => `${fmt(n || 0)} ${Math.round(n || 0) === 1 ? one : `${one}s`}`;
+  const hh = (i) => String(i).padStart(2, '0');
+  // Dates as the server's Belgian calendar gives them (YYYY-MM-DD), drawn at noon UTC in UTC: no time zone can shift them.
+  const cal = (d) => {
+    const [y, m, n] = d.split('-').map(Number);
+    return new Date(Date.UTC(y, m - 1, n, 12));
+  };
+  const dayFmt = (d, o) => cal(d).toLocaleDateString('en-GB', { timeZone: 'UTC', ...o });
+  const dayName = (d) => dayFmt(d, { weekday: 'short', day: 'numeric', month: 'short' });
+  const dayShort = (d) => dayFmt(d, { day: 'numeric', month: 'short' });
+  const dayLong = (d) => dayFmt(d, { weekday: 'long', day: 'numeric', month: 'long' });
+  const nextDay = (d) => new Date(cal(d).getTime() + 86400_000).toISOString().slice(0, 10);
+  const dur = (min) => {
+    const m = Math.round(min);
+    return m < 60 ? `${m} min` : `${Math.floor(m / 60)} h ${hh(m % 60)} min`;
+  };
+  const avgDur = (min) => (min < 10 ? `${(Math.round(min * 10) / 10).toFixed(1)} min` : dur(min));
+  const debounce = (fn, ms) => {
+    let t = 0;
+    return () => {
+      clearTimeout(t);
+      t = setTimeout(fn, ms);
+    };
+  };
 
   // ---- logging in, and the tabs
   async function start() {
@@ -53,11 +110,12 @@
     $('login').hidden = true;
     $('app').hidden = false;
     $('logout').hidden = false;
+    selectTab(tabFromHash() ?? (TABS.includes(saved.get('tab')) ? saved.get('tab') : 'overview'), 'replace');
     // Each part on its own, so one that fails doesn't keep the others from loading.
     try {
       stats = await r.json();
       playing = stats.playing ?? playing;
-      overview(stats);
+      overview();
     } catch (e) {
       console.error('overview', e);
     }
@@ -68,6 +126,7 @@
   }
 
   // ---- live
+  const soon = debounce(() => refreshStats(), 1500);
   function connect() {
     live?.close();
     live = new EventSource('/api/admin/live');
@@ -82,12 +141,15 @@
       if (live.readyState === EventSource.CLOSED) setTimeout(start, 3000); // refused: logged out elsewhere?
     });
     live.addEventListener('today', (e) => {
-      const { day, counts } = JSON.parse(e.data);
+      const msg = JSON.parse(e.data);
       if (!stats) return;
       const last = stats.days[stats.days.length - 1];
-      if (last.day !== day) return void refreshStats(); // a new day: fetch the 60 days again
-      Object.assign(last, counts);
-      if (tab === 'overview') overview(stats);
+      if (last.day !== msg.day) return void refreshStats(); // a new Belgian day: fetch the 60 days again
+      Object.assign(last, msg.counts);
+      // (A server from before this page, during a redeploy's overlap, sends neither.)
+      if (msg.now) stats.now = msg.now;
+      if (msg.names && stats.periods?.today) stats.periods.today.names.cur = msg.names;
+      if (tab === 'overview') overview();
     });
     live.addEventListener('playing', (e) => {
       playing = JSON.parse(e.data);
@@ -97,73 +159,417 @@
       log = [...JSON.parse(e.data).reverse(), ...log].slice(0, 2000);
       if (tab === 'logins') drawLog();
     });
-    live.addEventListener('feedback', () => loadFeedback());
+    live.addEventListener('feedback', () => {
+      loadFeedback();
+      soon();
+    });
     live.addEventListener('signups', () => {
+      soon();
       // Not while a note is being typed: it would be drawn over.
       if (document.activeElement?.closest?.('#entries')) return;
       loadSignups();
     });
   }
-  for (const b of document.querySelectorAll('.tabs button')) {
+
+  const nav = $('tabs');
+  const bar = $('topbar');
+  const tabButtons = [...nav.querySelectorAll('[role="tab"]')];
+  function tabFromHash() {
+    const h = location.hash.slice(1);
+    return TABS.includes(h) ? h : null;
+  }
+  /** Shows a tab. `how`: 'push' (a click: a new history entry), 'replace' (the start) or 'none' (back, forward, a link). */
+  function selectTab(name, how) {
+    const was = tab;
+    tab = name;
+    for (const b of tabButtons) {
+      const on = b.dataset.tab === name;
+      b.setAttribute('aria-selected', String(on));
+      b.tabIndex = on ? 0 : -1;
+    }
+    for (const p of document.querySelectorAll('[data-panel]')) p.hidden = p.dataset.panel !== name;
+    $('period').hidden = name !== 'overview';
+    if (location.hash !== `#${name}`) {
+      if (how === 'push') history.pushState(null, '', `#${name}`);
+      else if (how === 'replace') history.replaceState(null, '', `#${name}`);
+    }
+    saved.set('tab', name);
+    // The chosen tab in view in the bar, and the new tab from its top when the page was scrolled down a long one.
+    const b = tabButtons.find((x) => x.dataset.tab === name);
+    nav.scrollTo({ left: Math.max(0, b.offsetLeft - (nav.clientWidth - b.offsetWidth) / 2), behavior: how === 'replace' ? 'auto' : 'smooth' });
+    const top = $('app').getBoundingClientRect().top + scrollY - 4;
+    if (was !== name && scrollY > top) scrollTo({ top });
+    fades();
+    hideTip();
+  }
+  function openTab(name, how) {
+    selectTab(name, how);
+    if (name === 'online' || name === 'overview') refreshStats();
+    if (name === 'logins') loadLog();
+    if (name === 'signups') loadSignups();
+    if (name === 'feedback') loadFeedback();
+  }
+  for (const b of tabButtons) b.addEventListener('click', () => openTab(b.dataset.tab, 'push'));
+  nav.addEventListener('keydown', (e) => {
+    const i = tabButtons.findIndex((b) => b.dataset.tab === tab);
+    const j = { ArrowRight: i + 1, ArrowLeft: i - 1, Home: 0, End: tabButtons.length - 1 }[e.key];
+    if (j === undefined) return;
+    e.preventDefault();
+    const b = tabButtons[(j + tabButtons.length) % tabButtons.length];
+    b.focus();
+    openTab(b.dataset.tab, 'push');
+  });
+  const fromHistory = () => {
+    const t = tabFromHash() ?? 'overview';
+    if (t !== tab && !$('app').hidden) openTab(t, 'none');
+  };
+  addEventListener('popstate', fromHistory);
+  addEventListener('hashchange', fromHistory);
+  /** The fade on a side of the tab bar that has more tabs. */
+  function fades() {
+    const more = nav.scrollWidth - nav.clientWidth;
+    nav.classList.toggle('fade-l', nav.scrollLeft > 2);
+    nav.classList.toggle('fade-r', nav.scrollLeft < more - 2);
+  }
+  nav.addEventListener('scroll', fades, { passive: true });
+  addEventListener('scroll', () => {
+    bar.classList.toggle('stuck', scrollY > 0 && bar.getBoundingClientRect().top <= 0.5);
+    hideTip();
+  }, { passive: true });
+  addEventListener('resize', debounce(() => {
+    fades();
+    if (tab === 'overview') overview();
+  }, 150));
+  for (const b of document.querySelectorAll('#period button')) {
     b.addEventListener('click', () => {
-      tab = b.dataset.tab;
-      for (const x of document.querySelectorAll('.tabs button')) x.setAttribute('aria-selected', String(x === b));
-      for (const p of document.querySelectorAll('[data-panel]')) p.hidden = p.dataset.panel !== tab;
-      if (tab === 'online' || tab === 'overview') refreshStats();
-      if (tab === 'logins') loadLog();
-      if (tab === 'signups') loadSignups();
-      if (tab === 'feedback') loadFeedback();
+      period = b.dataset.period;
+      saved.set('period', period);
+      overview();
+    });
+  }
+  for (const b of document.querySelectorAll('#hours-metric button')) {
+    b.addEventListener('click', () => {
+      metric = b.dataset.metric;
+      saved.set('hours', metric);
+      overview();
     });
   }
   async function refreshStats() {
     const r = await fetch('/api/admin/stats').catch(() => null);
+    if (r?.status === 401 || r?.status === 403) return void start(); // the session is gone: the login form, not old numbers
     if (!r?.ok) return;
     stats = await r.json();
-    overview(stats);
+    overview();
   }
   setInterval(() => { if (!$('app').hidden) refreshStats(); }, 60_000);
 
   // ---- overview
-  function overview(data) {
-    const days = data.days; // oldest first, 60 days
-    const last = (n) => days.slice(-n);
-    const sum = (list, k) => list.reduce((a, d) => a + (d[k] || 0), 0);
-    const max = (list, k) => list.reduce((a, d) => Math.max(a, d[k] || 0), 0);
-    $('since').textContent = data.since ? `Counting since ${dayName(data.since)}.` : 'Counting has just started: the numbers fill up from today.';
-    const kpis = [
-      ['Playing now', playing.together.length + playing.alone.length],
-      ['Visitors today', sum(last(1), 'game_visitors')],
-      ['Visitors, 7 days', sum(last(7), 'game_visitors')],
-      ['Visitors, 30 days', sum(last(30), 'game_visitors')],
-      ['Games started, 30 days', sum(last(30), 'starts')],
-      ['Hours played, 30 days', sum(last(30), 'minutes') / 60],
-      ['Most players at once, 30 days', max(last(30), 'peak_players')],
-      ['Interest sign-ups', data.interest],
+  /** The period's days and the days before, with the days from which each number was counted whole. */
+  function windowOf(p) {
+    const P = stats.periods[p];
+    const range = (a, b) => stats.days.filter((d) => d.day >= a && d.day <= b);
+    const detail = stats.detailSince ? { day: stats.detailSince.slice(0, 10), time: stats.detailSince.slice(11, 16) } : null;
+    return {
+      p, P, cur: range(P.from, P.to), prev: range(P.prevFrom, P.prevTo), detail,
+      // Players, hours and visitors that a restart doesn't count again: whole from this day.
+      full: detail ? (detail.time === '00:00' ? detail.day : nextDay(detail.day)) : '9999-12-31',
+      // Games and minutes: whole from the first day with any number.
+      base: stats.since ?? '9999-12-31',
+    };
+  }
+  const sinceText = (s) => `${dayName(s.day)}, ${s.time}`;
+  const sum = (list, k) => list.reduce((a, d) => a + (d[k] || 0), 0);
+  const most = (list, k) => list.reduce((a, d) => Math.max(a, d[k] || 0), 0);
+  /** Yesterday until now's time: its hours before this one, and the part of this hour that has passed. */
+  function untilNow(row, m) {
+    const { hour, time } = stats.now;
+    const h = row?.hours?.[m] ?? [];
+    let n = 0;
+    for (let i = 0; i < hour; i++) n += h[i] || 0;
+    return n + (h[hour] || 0) * (Number(time.slice(3, 5)) / 60);
+  }
+  /** What the period is compared with, in words. */
+  const against = (p) => ({ today: `yesterday until ${stats.now.time}`, yesterday: 'the day before', d7: 'the 7 days before', d30: 'the 30 days before' })[p];
+
+  function values(w) {
+    const { p, P, cur, prev, full, base } = w;
+    const today = p === 'today';
+    // The period before, only when it was counted whole: for today, yesterday until now from its hours.
+    const before = (k, hours, from) => (today ? (P.prevFrom >= full ? untilNow(prev[0], hours) : null) : (P.prevFrom >= from ? sum(prev, k) : null));
+    return {
+      players: sum(cur, 'game_players'), visitors: sum(cur, 'game_visitors'), starts: sum(cur, 'starts'), minutes: sum(cur, 'minutes'),
+      peak: most(cur, 'peak_players'), alone: sum(cur, 'starts_alone'), together: sum(cur, 'starts_together'), names: P.names.cur,
+      signups: sum(cur, 'signups'), rated: sum(cur, 'fb_rated'), stars: sum(cur, 'fb_stars'), comments: sum(cur, 'fb_comments'),
+      prev: {
+        players: before('game_players', 'players', full),
+        visitors: before('game_visitors', 'visitors', full),
+        starts: before('starts', 'starts', base),
+        minutes: before('minutes', 'minutes', base),
+        peak: today || P.prevFrom < base ? null : most(prev, 'peak_players'),
+        names: P.prevFrom >= base ? P.names.prev.all : null,
+        signups: today ? P.signupsPrev : sum(prev, 'signups'),
+      },
+    };
+  }
+
+  function overview() {
+    if (!stats?.periods) return;
+    for (const b of document.querySelectorAll('#period button')) b.setAttribute('aria-pressed', String(b.dataset.period === period));
+    for (const b of document.querySelectorAll('#hours-metric button')) b.setAttribute('aria-pressed', String(b.dataset.metric === metric));
+    const w = windowOf(period);
+    $('period-title').textContent = PERIODS[period];
+    $('period-range').textContent = period === 'today' ? 'Since 00:00, Belgian time.' : period === 'yesterday' ? `${dayLong(w.P.from)}.` : `${dayShort(w.P.from)} – today.`;
+    $('period-compare').textContent = `Compared with ${against(period)}.`;
+    kpis(w);
+    hoursChart(w);
+    dayCharts(w);
+    splits(w);
+    if (w.detail) {
+      $('how-since').hidden = false;
+      $('how-since').textContent = `Players and hours are counted since ${sinceText(w.detail)}.`;
+      $('how-before').hidden = !(stats.since && stats.since < w.full);
+      $('how-before').textContent = `Visitors before ${dayLong(w.full)} can be counted more than once. Each restart of the server counted them again.`;
+    }
+    $('since').textContent = stats.since ? `Counting since ${dayName(stats.since)}.` : 'Counting has just started. The numbers fill up from today.';
+    drawPlaying();
+  }
+
+  /** A change against the period before: an arrow, how much, and in words for the tooltip. */
+  function change(a, b, f = fmt, eps = 0.5) {
+    if (b === null || b === undefined || !Number.isFinite(b)) return null;
+    const d = a - b;
+    if (Math.abs(d) < eps) return { cls: 'same', text: '±0', title: `The same as ${against(period)}` };
+    return { cls: d > 0 ? 'up' : 'down', text: `${d > 0 ? '▲' : '▼'} ${f(Math.abs(d))}`, title: `${f(Math.abs(d))} ${d > 0 ? 'more' : 'less'} than ${against(period)}` };
+  }
+
+  function kpis(w) {
+    const v = values(w);
+    const { cur, detail, full } = w;
+    const n = cur.length;
+    const multi = n > 1;
+    const perDay = (x, days) => (days ? `${(x / days).toFixed(x / days < 10 ? 1 : 0)} a day on average.` : '');
+    const playerDays = detail ? cur.filter((d) => d.day >= detail.day).length : 0;
+    const partial = cur[0].day < full; // the period starts before players were counted whole
+    const inflated = cur.some((d) => d.day < full && d.game_visitors); // days whose restarts counted visitors again
+    const games = v.alone + v.together;
+    const avgNow = v.starts ? v.minutes / v.starts : null;
+    const avgBefore = v.prev.starts && v.prev.minutes !== null ? v.prev.minutes / v.prev.starts : null;
+    const tiles = [
+      {
+        lead: true, value: playerDays ? fmt(v.players) : '–', label: multi ? 'Players (once a day each)' : 'Players',
+        delta: change(v.players, v.prev.players), note: [!playerDays ? 'Not counted on these days.' : partial ? `Counted since ${sinceText(detail)}.` : '', multi && playerDays ? perDay(v.players, playerDays) : ''],
+      },
+      {
+        value: fmt(v.visitors), label: multi ? 'Visitors (once a day each)' : 'Visitors', delta: change(v.visitors, v.prev.visitors),
+        note: [multi ? perDay(v.visitors, n) : '', inflated ? `Before ${dayShort(full)}, restarts counted some twice.` : ''],
+      },
+      { value: fmt(v.names.all), label: 'Different players (by name)', delta: change(v.names.all, v.prev.names), note: `${fmt(v.names.together)} together · ${fmt(v.names.alone)} alone` },
+      { value: fmt(v.peak), label: 'Most players at once', delta: change(v.peak, v.prev.peak) },
+      { value: fmt(v.starts), label: 'Games started', delta: change(v.starts, v.prev.starts), note: multi ? perDay(v.starts, n) : '' },
+      { value: dur(v.minutes), label: 'Time played', delta: change(v.minutes, v.prev.minutes, dur) },
+      { value: avgNow === null ? '–' : avgDur(avgNow), label: 'Average per game', delta: avgNow === null ? null : change(avgNow, avgBefore, avgDur, 0.05) },
+      { value: games ? `${Math.round((100 * v.alone) / games)}%` : '–', label: 'Games alone', note: games ? `${fmt(v.alone)} alone · ${fmt(v.together)} together` : '' },
+      { wide: true, value: fmt(v.signups), label: 'Interest sign-ups', delta: change(v.signups, v.prev.signups), note: `${fmt(stats.interest)} in all.` },
+      {
+        wide: true, value: v.rated ? `${(v.stars / v.rated).toFixed(1)} ★` : '–', label: 'Feedback rating',
+        note: `${count(v.rated, 'rating')} · ${count(v.comments, 'comment')}`,
+      },
     ];
-    $('kpis').replaceChildren(...kpis.map(([label, value]) => {
-      const s = el('div', 'stat');
-      s.append(el('b', '', fmt(value)), el('span', 'muted small', label));
+    $('kpis').replaceChildren(...tiles.map((t) => {
+      const s = el('div', `stat${t.lead ? ' lead' : ''}${t.wide ? ' wide' : ''}`);
+      const top = el('div', 'top');
+      top.append(el('b', '', t.value));
+      if (t.delta) {
+        const d = el('span', `delta ${t.delta.cls}`, t.delta.text);
+        d.title = t.delta.title;
+        top.append(d);
+      }
+      s.append(top, el('span', 'label', t.label));
+      for (const line of [].concat(t.note ?? [])) if (line) s.append(el('span', 'kpi-note', line));
       return s;
     }));
-    const month = last(30);
-    $('charts').replaceChildren(
-      chart('Visitors per day', month, 'game_visitors', 'visitors'),
-      chart('Games started per day', month, 'starts', 'games'),
-      chart('Minutes played per day', month, 'minutes', 'minutes'),
-      chart('Interest page visitors per day', month, 'interest_visitors', 'visitors'),
-    );
-    const splits = [
+  }
+
+  /** When people play: 24 bars, the hours of the period's days added up (only days that have hours). */
+  function hoursChart(w) {
+    const { p, cur, detail, full } = w;
+    const box = $('hours');
+    const counted = detail ? cur.filter((d) => d.day >= detail.day) : [];
+    if (!counted.length) {
+      $('hours-sub').replaceChildren();
+      const msg = el('p', 'empty-chart');
+      msg.append(el('span', '', 'No hours for this period.'), el('span', '', detail ? `Hours are counted since ${sinceText(detail)}.` : 'Hours are counted from the next start of the server.'));
+      box.replaceChildren(msg);
+      return;
+    }
+    const keys = Object.keys(METRICS);
+    const sums = Object.fromEntries(keys.map((m) => [m, Array(24).fill(0)]));
+    for (const d of counted) for (const m of keys) (d.hours?.[m] ?? []).forEach((n, i) => (sums[m][i] += n));
+    const today = p === 'today';
+    const nowHour = today ? stats.now.hour : 23;
+    const lines = ['Belgian time.'];
+    if (today) lines.push(`Until ${stats.now.time}.`);
+    else if (counted.length > 1) lines.push(`${counted.length} days added up.`);
+    if (cur[0].day < full) lines.push(`Hours are counted since ${sinceText(detail)}.`);
+    $('hours-sub').replaceChildren(...lines.map((t) => el('span', '', t)));
+    const range = (i) => `${hh(i)}:00–${hh((i + 1) % 24)}:00`;
+    box.replaceChildren();
+    bars(box, {
+      n: 24,
+      series: [{ values: sums[metric].map((x, i) => (i > nowHour ? null : x)) }],
+      label: (i) => (i % 3 === 0 ? hh(i) : null),
+      tip: (i) => [`${range(i)}${today && i === nowHour ? ', so far' : ''}`, keys.map((m) => [METRICS[m][1](sums[m][i]), m === metric])],
+      aria: `${METRICS[metric][0]} per hour, Belgian time`,
+    });
+    box.append(table(['Hour', ...keys.map((m) => METRICS[m][0])], sums.players.map((_, i) => [range(i), ...keys.map((m) => fmt(sums[m][i]))]).filter((_, i) => i <= nowHour)));
+  }
+
+  /** The last 30 days as bars, the period's days lit: players with visitors behind them, games, minutes, the interest page. */
+  function dayCharts(w) {
+    const month = stats.days.slice(-30);
+    const { P, detail } = w;
+    const off = (i) => month[i].day < P.from || month[i].day > P.to;
+    const counted = (d) => !!detail && d.day >= detail.day;
+    const dayTip = (i) => {
+      const d = month[i];
+      return [dayName(d.day), [
+        [counted(d) ? count(d.game_players, 'player') : 'Players not counted yet', false],
+        [count(d.game_visitors, 'visitor'), false],
+        [count(d.starts, 'game'), false],
+        [`${dur(d.minutes || 0)} played`, false],
+      ]];
+    };
+    const charts = [
+      {
+        title: 'Players and visitors', legend: [['Visitors', 'back'], ['Players', '']],
+        series: [{ key: 'game_visitors', cls: 'back' }, { key: 'game_players', cls: 'front', width: 0.5, only: counted }],
+        columns: ['Visitors', 'Players'],
+      },
+      { title: 'Games started', series: [{ key: 'starts' }], total: (t) => `${count(t, 'game')} in 30 days.`, columns: ['Games'] },
+      { title: 'Minutes played', series: [{ key: 'minutes' }], total: (t) => `${dur(t)} in 30 days.`, columns: ['Minutes'] },
+      {
+        title: 'Interest page visitors', series: [{ key: 'interest_visitors' }], total: (t) => `${count(t, 'visitor')} in 30 days.`, columns: ['Visitors'],
+        tip: (i) => [dayName(month[i].day), [[count(month[i].interest_visitors, 'visitor'), true]]],
+      },
+    ];
+    const boxes = charts.map((c) => {
+      const box = el('div', 'chart');
+      box.append(el('h3', '', c.title));
+      if (c.legend) {
+        const legend = el('div', 'legend');
+        for (const [label, cls] of c.legend) {
+          const item = el('span');
+          item.append(el('i', cls), document.createTextNode(label));
+          legend.append(item);
+        }
+        box.append(legend);
+      } else {
+        box.append(el('div', 'total', c.total(sum(month, c.series[0].key))));
+      }
+      return box;
+    });
+    $('charts').replaceChildren(...boxes);
+    charts.forEach((c, k) => {
+      const series = c.series.map((s) => ({ ...s, values: month.map((d) => (s.only && !s.only(d) ? null : d[s.key] || 0)) }));
+      bars(boxes[k], {
+        n: month.length, series, dim: off, tip: c.tip ?? dayTip, aria: `${c.title} per day, last 30 days`,
+        // The last day (today), and every seventh day back from it.
+        label: (i) => ((month.length - 1 - i) % 7 === 0 ? dayShort(month[i].day) : null),
+      });
+      boxes[k].append(table(['Day', ...c.columns], [...month].reverse().map((d) => [dayName(d.day), ...c.series.map((s) => (s.only && !s.only(d) ? '–' : fmt(d[s.key] || 0)))])));
+    });
+  }
+
+  /** The numbers behind a chart, folded away. */
+  function table(head, rows) {
+    const details = el('details');
+    details.append(el('summary', '', 'As a table'));
+    const t = el('table');
+    const tr = el('tr');
+    for (const h of head) tr.append(el('th', '', h));
+    t.append(tr);
+    for (const row of rows) {
+      const r = el('tr');
+      for (const c of row) r.append(el('td', '', c));
+      t.append(r);
+    }
+    details.append(t);
+    return details;
+  }
+
+  /** Steps for the top of a chart's scale that halve to whole numbers: 2, 4, 6, 8, 10, 20, 40 ... */
+  function niceTop(top) {
+    for (let e = 1; ; e *= 10) for (const f of [2, 4, 6, 8, 10]) if (f * e >= top) return f * e;
+  }
+
+  /**
+   * Bars from one baseline, in an SVG as wide as its box so the labels keep their size on a phone.
+   * `series` are drawn back to front (null: no bar), each `width` a share of the bar; `dim(i)` fades a
+   * bar outside the period; `tip(i)` gives [title, [[line, strong]...]] for hover, focus or a tap.
+   */
+  function bars(box, { n, series, label, dim, tip: tipOf, aria }) {
+    const inner = box.clientWidth - (parseFloat(getComputedStyle(box).paddingLeft) || 0) * 2;
+    const W = inner > 0 ? Math.max(240, Math.round(inner)) : 480; // 480 while the tab is hidden: drawn again when it shows
+    const H = 160;
+    const L = 34;
+    const B = 20;
+    const T = 8;
+    const top = niceTop(Math.max(1, ...series.flatMap((s) => s.values.map((v) => v || 0))));
+    const s = svg('svg', { viewBox: `0 0 ${W} ${H}`, width: W, height: H, role: 'img', 'aria-label': aria });
+    for (const f of [0, 0.5, 1]) {
+      const y = H - B - (H - B - T) * f;
+      s.append(svg('line', { x1: L, x2: W, y1: y, y2: y, class: 'grid' }));
+      const t = svg('text', { x: L - 6, y: y + 4, 'text-anchor': 'end', class: 'axis' });
+      t.textContent = fmt(top * f);
+      s.append(t);
+    }
+    const slot = (W - L) / n;
+    for (let i = 0; i < n; i++) {
+      const hit = svg('rect', { x: L + i * slot, y: T, width: slot, height: H - B - T, class: 'hit', tabindex: 0 });
+      const [title, lines] = tipOf(i);
+      hit.setAttribute('aria-label', [title, ...lines.map((l) => l[0])].join(', '));
+      hover(hit, () => tipOf(i));
+      s.append(hit);
+      for (const se of series) {
+        const v = se.values[i];
+        if (v === null || v === undefined) continue;
+        const bw = Math.min(26, slot * 0.72) * (se.width ?? 1);
+        const x = L + i * slot + (slot - bw) / 2;
+        const h = ((H - B - T) * v) / top;
+        if (h <= 0) continue;
+        const y = H - B - h;
+        const r = Math.min(4, bw / 2, h);
+        s.append(svg('path', {
+          class: `bar${se.cls ? ` ${se.cls}` : ''}${dim?.(i) ? ' off' : ''}`,
+          d: `M${x},${H - B}V${y + r}Q${x},${y} ${x + r},${y}H${x + bw - r}Q${x + bw},${y} ${x + bw},${y + r}V${H - B}Z`,
+        }));
+      }
+      const text = label?.(i);
+      if (text) {
+        const t = svg('text', { x: Math.min(W - 14, Math.max(L + 14, L + i * slot + slot / 2)), y: H - 4, 'text-anchor': 'middle', class: 'axis' });
+        t.textContent = text;
+        s.append(t);
+      }
+    }
+    box.append(s);
+  }
+
+  /** How people play: the period's games by controls, mode, alone or together and language. */
+  function splits(w) {
+    const { cur } = w;
+    $('splits-period').textContent = `(${PERIODS[period].toLowerCase()})`;
+    const groups = [
       ['Controls', [['Keyboard and mouse', 'starts_kbm'], ['Controller', 'starts_pad'], ['Touch', 'starts_touch']]],
       ['Mode', [['Explore', 'starts_explore'], ['Paintball', 'starts_paintball'], ['Action', 'starts_action']]],
       ['Alone or together', [['Alone', 'starts_alone'], ['Together', 'starts_together']]],
       ['Language', [['Nederlands', 'starts_nl'], ['English', 'starts_en']]],
     ];
-    $('splits').replaceChildren(...splits.map(([title, rows]) => {
+    $('splits').replaceChildren(...groups.map(([title, rows]) => {
       const box = el('div', 'split');
       box.append(el('h3', '', title));
-      const total = rows.reduce((a, [, k]) => a + sum(month, k), 0);
+      const total = rows.reduce((a, [, k]) => a + sum(cur, k), 0);
       for (const [label, k] of rows) {
-        const n = sum(month, k);
+        const n = sum(cur, k);
         const row = el('div', 'row');
         row.append(el('span', '', label), el('span', 'muted', total ? `${fmt(n)} · ${Math.round((100 * n) / total)}%` : '0'));
         const track = el('div', 'track');
@@ -175,7 +581,6 @@
       }
       return box;
     }));
-    drawPlaying();
   }
 
   /** Online now: the players together by name, the ones alone by the name they typed (what they play, for how long). */
@@ -199,72 +604,47 @@
         el('span', 'muted small', `alone · ${v.mode === 'action' ? 'Action' : v.mode === 'paintball' ? 'Paintball' : 'Explore'} · ${CONTROL[v.control] ?? v.control} · ${v.lang === 'nl' ? 'Nederlands' : 'English'} · ${v.minutes < 1 ? 'just started' : `${v.minutes} min`}`));
       items.push(li);
     }
-    $('online').replaceChildren(...items);
-    // The "Playing now" number on the overview follows without redrawing the charts.
-    const tile = document.querySelector('#kpis .stat b');
-    if (tile) tile.textContent = fmt(together.length + alone.length);
+    $('online-list').replaceChildren(...items);
+    // The overview's strip and the tab's badge follow without redrawing the charts.
+    const n = together.length + alone.length;
+    $('now-n').textContent = fmt(n);
+    $('now-split').textContent = n ? `${together.length} together · ${alone.length} alone` : '';
+    document.querySelector('.now').classList.toggle('on', n > 0);
+    $('online-badge').hidden = !n;
+    $('online-badge').textContent = String(n);
   }
 
-  /** Bars, one per day, from one baseline: hover or focus a day for its number; the same numbers as a table below. */
-  function chart(title, days, key, unit) {
-    const box = el('div', 'chart');
-    const total = days.reduce((a, d) => a + (d[key] || 0), 0);
-    box.append(el('h3', '', title), el('div', 'total', `${fmt(total)} ${unit} in 30 days`));
-    const W = 480, H = 150, L = 26, B = 18, T = 6;
-    const top = Math.max(1, ...days.map((d) => d[key] || 0));
-    const nice = top <= 5 ? 5 : top <= 10 ? 10 : Math.ceil(top / 10) * 10;
-    const s = svg('svg', { viewBox: `0 0 ${W} ${H}`, role: 'img', 'aria-label': `${title}, last 30 days` });
-    for (const f of [0, 0.5, 1]) {
-      const y = H - B - (H - B - T) * f;
-      s.append(svg('line', { x1: L, x2: W, y1: y, y2: y, class: 'grid' }));
-      const t = svg('text', { x: L - 4, y: y + 3, 'text-anchor': 'end', class: 'axis' });
-      t.textContent = fmt(nice * f);
-      s.append(t);
-    }
-    const slot = (W - L) / days.length;
-    const bw = Math.min(24, slot * 0.7);
-    days.forEach((d, i) => {
-      const v = d[key] || 0;
-      const h = ((H - B - T) * v) / nice;
-      const x = L + i * slot + (slot - bw) / 2;
-      const y = H - B - h;
-      const r = Math.min(4, bw / 2, h);
-      const hit = svg('rect', { x: L + i * slot, y: T, width: slot, height: H - B - T, class: 'hit', tabindex: 0 });
-      const show = (e) => tip(e, `${fmt(v)} ${unit}`, dayName(d.day));
-      hit.addEventListener('pointermove', show);
-      hit.addEventListener('focus', (e) => tip(e, `${fmt(v)} ${unit}`, dayName(d.day)));
-      hit.addEventListener('pointerleave', () => ($('tip').hidden = true));
-      hit.addEventListener('blur', () => ($('tip').hidden = true));
-      s.append(hit);
-      if (h > 0) s.append(svg('path', { class: 'bar', d: `M${x},${H - B}V${y + r}Q${x},${y} ${x + r},${y}H${x + bw - r}Q${x + bw},${y} ${x + bw},${y + r}V${H - B}Z` }));
-      else s.append(svg('rect', { class: 'bar', x, y: H - B - 0.01, width: bw, height: 0.01 }));
-      if (i % 7 === days.length % 7) {
-        const t = svg('text', { x: L + i * slot + slot / 2, y: H - 4, 'text-anchor': 'middle', class: 'axis' });
-        t.textContent = new Date(`${d.day}T12:00:00`).toLocaleDateString('en-GB', { day: 'numeric', month: 'short' });
-        s.append(t);
-      }
+  // ---- the tooltip: hover with a mouse, a tap on a phone (until the next tap elsewhere), or keyboard focus
+  function hover(target, content) {
+    const show = (e) => tip(e, ...content());
+    target.addEventListener('pointerenter', (e) => e.pointerType !== 'touch' && show(e));
+    target.addEventListener('pointermove', (e) => e.pointerType !== 'touch' && show(e));
+    target.addEventListener('pointerleave', (e) => e.pointerType !== 'touch' && hideTip());
+    target.addEventListener('pointerdown', (e) => {
+      if (e.pointerType !== 'touch') return;
+      for (const x of document.querySelectorAll('.hit.picked')) x.classList.remove('picked');
+      target.classList.add('picked');
+      show(e);
     });
-    box.append(s);
-    const details = el('details');
-    details.append(el('summary', '', 'As a table'));
-    const table = el('table');
-    for (const d of [...days].reverse()) {
-      const tr = el('tr');
-      tr.append(el('td', '', dayName(d.day)), el('td', '', fmt(d[key] || 0)));
-      table.append(tr);
-    }
-    details.append(table);
-    box.append(details);
-    return box;
+    target.addEventListener('focus', show);
+    target.addEventListener('blur', hideTip);
   }
-  function tip(e, value, label) {
+  function hideTip() {
+    $('tip').hidden = true;
+    for (const x of document.querySelectorAll('.hit.picked')) x.classList.remove('picked');
+  }
+  document.addEventListener('pointerdown', (e) => {
+    if (!e.target.closest?.('.hit')) hideTip();
+  });
+  function tip(e, title, lines = []) {
     const t = $('tip');
-    t.replaceChildren(el('b', '', value), el('span', 'muted', label));
+    t.replaceChildren(el('b', '', title), ...lines.map(([text, strong]) => el('span', strong ? 'on' : '', text)));
     t.hidden = false;
     const r = e.target.getBoundingClientRect();
-    const x = e.clientX ?? r.left + r.width / 2;
-    t.style.left = `${Math.min(innerWidth - 160, x + 12)}px`;
-    t.style.top = `${(e.clientY ?? r.top) - 48}px`;
+    const x = e.clientX || r.left + r.width / 2;
+    const y = e.clientY || r.top + 24;
+    t.style.left = `${Math.max(8, Math.min(innerWidth - t.offsetWidth - 8, x + 12))}px`;
+    t.style.top = `${Math.max(8, y - t.offsetHeight - 14)}px`;
   }
 
   // ---- sign-ups
