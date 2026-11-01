@@ -434,7 +434,7 @@ def roadside(road, buildings_list, buildings, pavings, hedges, area):
                 if (mid.x + ox - on_road.x) ** 2 + (mid.y + oz - on_road.y) ** 2 > (mid.x - ox - on_road.x) ** 2 + (mid.y - oz - on_road.y) ** 2:
                     ox, oz = -ox, -oz
                 p = Point(px + ox * 0.35, pz + oz * 0.35)
-                if buildings.distance(p) > 0.15 and hedges.distance(p) > 0.5:
+                if buildings.distance(p) > 0.15 and hedges.distance(p) > 0.5 and all(math.hypot(p.x - nx, p.y - nz) > 3 for nx, nz in NO_BIKE):
                     bikes.append([round(p.x, 2), round(p.y, 2), round(math.atan2(-ox, oz), 3)])  # along the wall: its right side out
     return boxes, bikes
 
@@ -521,6 +521,8 @@ def street_signs(g, nodes, road, buildings):
 
 MOLENHOEK = None
 BLOCK = None  # hedges and pavings
+# No bike against these front walls (Yoshi): the end house of the new terrace at Molenhoek, which can be walked into.
+NO_BIKE = [(1508.0, -360.1)]
 MIN_SIDE = 3.2  # m from the centre line: a sign never stands nearer (the half width of a narrow road and a margin)
 
 
