@@ -852,7 +852,9 @@ export class Game {
   /** Furniture planner: place or move ('put'), remove ('del'), or (admin) remove all ('clear'). */
   async furnish(name, player, m) {
     const store = this.auth.store;
-    if (!this.rules.furniture && player.role !== 'admin') return; // the admin turned it off
+    // A refusal is said to the one who tried (it used to happen in silence: "nothing happens").
+    const refuse = (code, text, args) => this.send(player.ws, { t: 'system', text, code, ...(args ? { args } : {}) });
+    if (!this.rules.furniture && player.role !== 'admin') return refuse('furnOff', 'The admin has turned the furniture planner off.'); // the admin turned it off
     if (m.op === 'clear' || m.op === 'reset') {
       if (player.role !== 'admin') return;
       await store.clearFurniture();
@@ -876,13 +878,18 @@ export class Game {
       await this.markFurniture(true);
       this.broadcast({ t: 'furn', op: 'del', id: m.id });
     } else if (m.op === 'put' && FURNITURE_IDS.has(m.item)) {
-      const f = { item: m.item, x: num(m.x, -60, 60), y: num(m.y, -1, 12), z: num(m.z, -60, 60), yaw: num(m.yaw, -7, 7), by: name };
+      // Anywhere inside the edge of the game, not only round the house: a piece placed at the church
+      // used to be pulled back to within 60 m of the house, so it seemed never to arrive.
+      const x = num(m.x, AREA.x0, AREA.x1);
+      const z = num(m.z, AREA.z0, AREA.z1);
+      if (!BOUNDS.map.inside(x, z)) return refuse('furnOutside', 'Furniture can only stand inside the edge of the game.');
+      const f = { item: m.item, x, y: num(m.y, -20, 200), z, yaw: num(m.yaw, -7, 7), by: name };
       if (m.id !== undefined) {
         if (!this.furniture.has(m.id)) return;
         f.id = m.id;
         await store.updateFurniture(f.id, f);
       } else {
-        if (this.furniture.size >= FURNITURE.max) return;
+        if (this.furniture.size >= FURNITURE.max) return refuse('furnFull', `There is no room for more furniture (${FURNITURE.max} pieces). The admin can remove some.`, { n: FURNITURE.max });
         f.id = await store.addFurniture(f);
       }
       this.furniture.set(f.id, f);

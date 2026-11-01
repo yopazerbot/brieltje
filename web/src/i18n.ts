@@ -473,6 +473,10 @@ const en = {
 
   // ---- Chat lines made here
   'chat.furnOff': 'The admin has turned the furniture planner off.',
+  'adm.notConnected': 'Not connected right now. Try again in a moment.',
+  'srv.furnOff': 'The admin has turned the furniture planner off.',
+  'srv.furnOutside': 'Furniture can only stand inside the edge of the game.',
+  'srv.furnFull': 'There is no room for more furniture ({n} pieces). The admin can remove some.',
   'chat.travelHelp': 'Travel with {list}, or walk onto a portal.',
   'chat.notDown': 'Not while you are down.',
   'chat.joinedAs': 'Joined the house as {name}. {n} of {max} online.',
@@ -1076,6 +1080,10 @@ const nl = {
 
   // ---- Chat lines made here
   'chat.furnOff': 'De beheerder heeft de meubelplanner uitgezet.',
+  'adm.notConnected': 'Even niet verbonden. Probeer het zo opnieuw.',
+  'srv.furnOff': 'De beheerder heeft de meubelplanner uitgezet.',
+  'srv.furnOutside': 'Meubels kunnen enkel binnen de rand van het spel staan.',
+  'srv.furnFull': 'Er kunnen geen meubels meer bij ({n} stuks). De beheerder kan er weghalen.',
   'chat.travelHelp': 'Reis met {list}, of stap op een portaal.',
   'chat.notDown': 'Niet zolang je dood bent.',
   'chat.joinedAs': 'Je doet mee als {name}. {n} van {max} online.',

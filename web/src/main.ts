@@ -465,6 +465,11 @@ const mapBtn = document.getElementById('map-btn')!;
 // Furniture planner: shared through the server when logged in, kept in this browser otherwise.
 const furnishing = new Furnishing(world);
 home.add(furnishing.group);
+// Furniture round the house and the bungalow hides with them from far off; a piece placed elsewhere
+// (a chair on the church square) is drawn on its own, or it would vanish with the house as you place it.
+const homeArea = new THREE.Box3().setFromObject(built.group).expandByScalar(20);
+furnishing.homeArea = (x, z) => x >= homeArea.min.x && x <= homeArea.max.x && z >= homeArea.min.z && z <= homeArea.max.z;
+scene.add(furnishing.away);
 tiles.track(home, new THREE.Box3().setFromObject(built.group));
 const planner = new Planner(scene, furnishing, [built.group, baked.group, grass]);
 const LOCAL_FURNITURE = 'briel.furniture';
@@ -730,13 +735,29 @@ function applyRules(next: Rules): void {
 function mayFurnish(): boolean {
   return rules.furniture || me?.role === 'admin';
 }
-flyBox.addEventListener('change', () => net.send({ t: 'rules', flying: flyBox.checked }));
-furnBox.addEventListener('change', () => net.send({ t: 'rules', furniture: furnBox.checked }));
-namesBox.addEventListener('change', () => net.send({ t: 'rules', names: namesBox.checked }));
-pinBox.addEventListener('change', () => net.send({ t: 'rules', pin: pinBox.checked }));
-portalsBox.addEventListener('change', () => net.send({ t: 'rules', portals: portalsBox.checked }));
-travelBox.addEventListener('change', () => net.send({ t: 'rules', travel: travelBox.checked }));
-paintballBox.addEventListener('change', () => net.send({ t: 'rules', paintball: paintballBox.checked }));
+/**
+ * A house rule switch: sent to the server, which tells everyone (and this page) the new rules. Flipped
+ * while the connection is down (a tab woken from sleep, reconnecting), it springs back and says so:
+ * it used to stay on while the server never heard of it.
+ */
+function ruleSwitch(box: HTMLInputElement, rule: keyof Rules): void {
+  box.addEventListener('change', () => {
+    if (!net.connected) {
+      box.checked = !box.checked;
+      chat.system(() => t('adm.notConnected'));
+      hud.setPrompt(t('adm.notConnected'));
+      return;
+    }
+    net.send({ t: 'rules', [rule]: box.checked });
+  });
+}
+ruleSwitch(flyBox, 'flying');
+ruleSwitch(furnBox, 'furniture');
+ruleSwitch(namesBox, 'names');
+ruleSwitch(pinBox, 'pin');
+ruleSwitch(portalsBox, 'portals');
+ruleSwitch(travelBox, 'travel');
+ruleSwitch(paintballBox, 'paintball');
 // The admin's PIN field: filled when the admin logs in, saved on the server.
 const pinCode = $('set-pin-code') as HTMLInputElement;
 const pinMsg = $('set-pin-msg');

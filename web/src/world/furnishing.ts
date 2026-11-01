@@ -1201,6 +1201,13 @@ export function footprint(p: Piece): [number, number][] {
 
 export class Furnishing {
   readonly group = new THREE.Group();
+  /**
+   * Pieces placed away from the house and the bungalow (a bench on the church square): drawn on their
+   * own, since `group` hides with the house from far off and they would vanish with it (main.ts).
+   */
+  readonly away = new THREE.Group();
+  /** Whether a piece at (x, z) belongs with the house (main.ts sets the area round both houses). */
+  homeArea: (x: number, z: number) => boolean = () => true;
   readonly pieces = new Map<number, Piece>();
   private meshes = new Map<string, { mesh: THREE.InstancedMesh; ids: number[] }>();
   private shown = new THREE.Group();
@@ -1264,10 +1271,12 @@ export class Furnishing {
 
   /** One instanced mesh per kind of furniture; collision boxes for everything but rugs. */
   private rebuild(): void {
+    // One instanced mesh per kind and per place: with the house, or away from it.
     const byItem = new Map<string, Piece[]>();
     for (const p of this.pieces.values()) {
-      if (!byItem.has(p.item)) byItem.set(p.item, []);
-      byItem.get(p.item)!.push(p);
+      const key = `${p.item}|${this.homeArea(p.x, p.z) ? 'home' : 'away'}`;
+      if (!byItem.has(key)) byItem.set(key, []);
+      byItem.get(key)!.push(p);
     }
     for (const [item, entry] of this.meshes) {
       if (!byItem.has(item)) {
@@ -1279,8 +1288,10 @@ export class Furnishing {
     const m = new THREE.Matrix4();
     const q = new THREE.Quaternion();
     const up = new THREE.Vector3(0, 1, 0);
-    for (const [item, list] of byItem) {
-      let entry = this.meshes.get(item);
+    for (const [key, list] of byItem) {
+      const item = list[0].item;
+      const home = key.endsWith('|home');
+      let entry = this.meshes.get(key);
       if (!entry || entry.mesh.instanceMatrix.count < list.length) {
         entry?.mesh.removeFromParent();
         entry?.mesh.dispose();
@@ -1289,9 +1300,9 @@ export class Furnishing {
         mesh.castShadow = mesh.receiveShadow = true;
         mesh.userData.material = 'oak';
         mesh.name = `furniture:${item}`;
-        this.group.add(mesh);
+        (home ? this.group : this.away).add(mesh);
         entry = { mesh, ids: [] };
-        this.meshes.set(item, entry);
+        this.meshes.set(key, entry);
       }
       entry.ids = list.map((p) => p.id);
       list.forEach((p, i) => {
