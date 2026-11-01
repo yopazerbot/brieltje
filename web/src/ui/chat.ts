@@ -1,9 +1,10 @@
-import { onLang } from '../i18n';
+import { onLang, t } from '../i18n';
 import { typing } from '../keys';
 
 /**
  * Chat: messages bottom left, T (or Enter) to type, Enter to send, Esc to cancel. The game's own
  * lines are written again in another language when it changes; what players typed stays as it is.
+ * Alone it opens too, for commands (/location kerk): main.ts answers anything else with a hint.
  */
 export class Chat {
   onSend: (text: string) => void = () => {};
@@ -11,6 +12,8 @@ export class Chat {
   private input = document.getElementById('chat-input') as HTMLInputElement;
   private texts = new WeakMap<Element, () => string>();
   enabled = false;
+  /** Playing alone: the field asks for a command. */
+  private alone = false;
   /** A menu is open: T and Enter are the menu's then (Enter presses its buttons). */
   paused: () => boolean = () => false;
 
@@ -20,6 +23,7 @@ export class Chat {
         const text = this.texts.get(line);
         if (text) line.textContent = text();
       }
+      this.input.placeholder = t(this.alone ? 'chat.placeholderAlone' : 'chat.placeholder');
     });
     this.input.addEventListener('keydown', (e) => {
       if (e.key === 'Enter') {
@@ -63,6 +67,12 @@ export class Chat {
     this.enabled = on;
     this.log.style.display = on ? '' : 'none';
     if (!on) this.close();
+  }
+
+  /** Alone or together: what the empty field says. */
+  setAlone(alone: boolean): void {
+    this.alone = alone;
+    this.input.placeholder = t(alone ? 'chat.placeholderAlone' : 'chat.placeholder');
   }
 
   /** A line from the game itself, made by `text` in the current language (as text, never as HTML). */

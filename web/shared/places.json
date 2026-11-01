@@ -1,0 +1,361 @@
+{
+ "_source": "tools/places.py: a spot on every named street of web/src/data/streets.json, inside web/shared/bounds.json",
+ "places": [
+  {
+   "id": "street:beekbosweg",
+   "name": "Beekbosweg",
+   "sub": "Briel",
+   "x": 189.61,
+   "z": 374.56,
+   "yaw": 3.058,
+   "car": [
+    189.71,
+    374.56,
+    3.058
+   ]
+  },
+  {
+   "id": "street:boomrede",
+   "name": "Boomrede",
+   "sub": "Briel",
+   "x": -203.19,
+   "z": -364.73,
+   "yaw": -2.943,
+   "car": [
+    -202.6,
+    -364.85,
+    -2.943
+   ]
+  },
+  {
+   "id": "street:bovenweg",
+   "name": "Bovenweg",
+   "sub": "Smetlede",
+   "x": 255.88,
+   "z": -791.63,
+   "yaw": -1.942,
+   "car": [
+    256.1,
+    -792.19,
+    -1.942
+   ],
+   "village": true
+  },
+  {
+   "id": "street:bredenweg",
+   "name": "Bredenweg",
+   "sub": "Smetlede",
+   "x": -0.31,
+   "z": -569.61,
+   "yaw": -1.057,
+   "car": [
+    -0.97,
+    -570.76,
+    -1.057
+   ],
+   "village": true
+  },
+  {
+   "id": "street:briel",
+   "name": "Briel",
+   "sub": "Briel",
+   "x": 258.23,
+   "z": -362.91,
+   "yaw": 1.657,
+   "car": [
+    258.36,
+    -361.38,
+    1.657
+   ]
+  },
+  {
+   "id": "street:diepestraat",
+   "name": "Diepestraat",
+   "sub": "Smetlede",
+   "x": 42.04,
+   "z": -503.14,
+   "yaw": 0.158,
+   "car": [
+    41.45,
+    -503.04,
+    0.158
+   ],
+   "village": true
+  },
+  {
+   "id": "street:eekbosdreef",
+   "name": "Eekbosdreef",
+   "sub": "Briel",
+   "x": -164.12,
+   "z": -202.47,
+   "yaw": 1.933,
+   "car": [
+    -163.87,
+    -201.81,
+    1.933
+   ]
+  },
+  {
+   "id": "street:kapellenhoek",
+   "name": "Kapellenhoek",
+   "sub": "Smetlede",
+   "x": 604.69,
+   "z": -377.62,
+   "yaw": 2.863,
+   "car": [
+    605.08,
+    -377.51,
+    2.863
+   ],
+   "village": true
+  },
+  {
+   "id": "street:kapelleweg",
+   "name": "Kapelleweg",
+   "sub": "Smetlede",
+   "x": 1360.96,
+   "z": -328.37,
+   "yaw": 1.247,
+   "car": [
+    1361.49,
+    -329.95,
+    1.247
+   ],
+   "village": true
+  },
+  {
+   "id": "street:kerkhofstraat",
+   "name": "Kerkhofstraat",
+   "sub": "Smetlede",
+   "x": 428.56,
+   "z": -661.53,
+   "yaw": 2.164,
+   "car": [
+    429.7,
+    -659.83,
+    2.164
+   ],
+   "village": true
+  },
+  {
+   "id": "street:koningsbosweg",
+   "name": "Koningsbosweg",
+   "sub": "Briel",
+   "x": -289.69,
+   "z": -88.08,
+   "yaw": 0.335,
+   "car": [
+    -290.35,
+    -87.85,
+    0.335
+   ]
+  },
+  {
+   "id": "street:kosterstraatje",
+   "name": "Kosterstraatje",
+   "sub": "Smetlede",
+   "x": 544.03,
+   "z": -850.92,
+   "yaw": -0.34,
+   "car": [
+    543.46,
+    -851.12,
+    -0.34
+   ],
+   "village": true
+  },
+  {
+   "id": "street:meuleweg",
+   "name": "Meuleweg",
+   "sub": "Smetlede",
+   "x": 1357.81,
+   "z": -462.9,
+   "yaw": 0.149,
+   "car": [
+    1357.42,
+    -462.84,
+    0.149
+   ],
+   "village": true
+  },
+  {
+   "id": "street:meulewegel",
+   "name": "Meulewegel",
+   "sub": "Smetlede",
+   "x": 1353.72,
+   "z": -373.36,
+   "yaw": 2.971,
+   "car": [
+    1356.77,
+    -372.84,
+    2.971
+   ],
+   "village": true
+  },
+  {
+   "id": "street:moeyweedreef",
+   "name": "Moeyweedreef",
+   "sub": "Briel",
+   "x": -24.55,
+   "z": 379.67,
+   "yaw": -0.226,
+   "car": [
+    -25.04,
+    379.56,
+    -0.226
+   ]
+  },
+  {
+   "id": "street:molenhoek",
+   "name": "Molenhoek",
+   "sub": "Smetlede",
+   "x": 1167.3,
+   "z": -485.45,
+   "yaw": 0.967,
+   "car": [
+    1165.54,
+    -482.9,
+    0.967
+   ],
+   "village": true
+  },
+  {
+   "id": "street:oordegemkouter",
+   "name": "Oordegemkouter",
+   "sub": "Smetlede",
+   "x": 1506.24,
+   "z": -363.76,
+   "yaw": -1.758,
+   "car": [
+    1506.81,
+    -366.8,
+    -1.758
+   ],
+   "village": true
+  },
+  {
+   "id": "street:pastorijwegel",
+   "name": "Pastorijwegel",
+   "sub": "Smetlede",
+   "x": 451.4,
+   "z": -719.66,
+   "yaw": -0.113,
+   "car": [
+    448.32,
+    -720.01,
+    -0.113
+   ],
+   "village": true
+  },
+  {
+   "id": "street:pontweg",
+   "name": "Pontweg",
+   "sub": "Smetlede",
+   "x": 1059.95,
+   "z": -693.98,
+   "yaw": -1.5,
+   "car": [
+    1059.87,
+    -695.17,
+    -1.5
+   ],
+   "village": true
+  },
+  {
+   "id": "street:processewijkweg",
+   "name": "Processewijkweg",
+   "sub": "Smetlede",
+   "x": 322.2,
+   "z": -803.57,
+   "yaw": 2.787,
+   "car": [
+    322.25,
+    -803.55,
+    2.787
+   ],
+   "village": true
+  },
+  {
+   "id": "street:schildekensstraat",
+   "name": "Schildekensstraat",
+   "sub": "Smetlede",
+   "x": 289.03,
+   "z": -873.03,
+   "yaw": -2.61,
+   "car": [
+    291.48,
+    -874.48,
+    -2.61
+   ],
+   "village": true
+  },
+  {
+   "id": "street:smetlededorp",
+   "name": "Smetlededorp",
+   "sub": "Smetlede",
+   "x": 457.72,
+   "z": -788.57,
+   "yaw": 1.345,
+   "car": [
+    457.48,
+    -787.5,
+    1.345
+   ],
+   "village": true
+  },
+  {
+   "id": "street:smetledekouterwegel",
+   "name": "Smetledekouterwegel",
+   "sub": "Smetlede",
+   "x": 245.49,
+   "z": -458.51,
+   "yaw": -0.501,
+   "car": [
+    245.31,
+    -458.61,
+    -0.501
+   ],
+   "village": true
+  },
+  {
+   "id": "street:stefaan-glorieuxstraat",
+   "name": "Stefaan Glorieuxstraat",
+   "sub": "Smetlede",
+   "x": 581.77,
+   "z": -963.38,
+   "yaw": 3.096,
+   "car": [
+    583.83,
+    -963.29,
+    3.096
+   ],
+   "village": true
+  },
+  {
+   "id": "street:vaerenbergwegel",
+   "name": "Vaerenbergwegel",
+   "sub": "Briel",
+   "x": 149.35,
+   "z": 159.95,
+   "yaw": -0.088,
+   "car": [
+    148.75,
+    159.9,
+    -0.088
+   ]
+  },
+  {
+   "id": "street:walleweederede",
+   "name": "Walleweederede",
+   "sub": "Briel",
+   "x": 470.06,
+   "z": 69.69,
+   "yaw": -3.076,
+   "car": [
+    470.06,
+    69.69,
+    -3.076
+   ]
+  }
+ ]
+}

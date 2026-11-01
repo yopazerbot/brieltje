@@ -511,7 +511,8 @@ body.touch #blindfold { padding: 24px 150px; font-size: 20px; line-height: 1.35;
 #travel .tv-head { display: flex; align-items: baseline; gap: 10px; margin: 0 4px 8px; }
 #travel .tv-head small { font-size: 12px; letter-spacing: 0.25em; text-transform: uppercase; color: var(--accent); }
 #travel .tv-head b { font-size: 22px; }
-#travel .tv-row {
+/* The menu's list of places (#places, src/ui/places.ts) is drawn with the same rows. */
+:is(#travel, #places) .tv-row {
   display: grid; grid-template-columns: 26px 14px 1fr auto; align-items: center; gap: 8px; width: 100%;
   margin: 2px 0; padding: 7px 8px; border: 0; border-radius: 3px; background: transparent; color: var(--ink);
   font: inherit; font-size: 17px; text-align: left; text-shadow: var(--shadow); cursor: pointer;
@@ -520,16 +521,21 @@ body.touch #blindfold { padding: 24px 150px; font-size: 20px; line-height: 1.35;
   display: inline-block; min-width: 22px; padding: 1px 0; text-align: center; font: 700 13px/1.3 Consolas, monospace;
   border: 1px solid rgba(255, 255, 255, 0.35); border-radius: 3px;
 }
-#travel .tv-row i { width: 12px; height: 12px; border-radius: 50%; background: var(--dot); box-shadow: 0 0 8px var(--dot); }
-#travel .tv-row small { font-size: 13px; opacity: 0.75; }
+:is(#travel, #places) .tv-row i { width: 12px; height: 12px; border-radius: 50%; background: var(--dot); box-shadow: 0 0 8px var(--dot); }
+:is(#travel, #places) .tv-row small { font-size: 13px; opacity: 0.75; }
 #travel .tv-row em {
   grid-column: 3 / 5; font-style: normal; font-size: 11px; letter-spacing: 0.2em; text-transform: uppercase; color: var(--accent);
 }
 #travel .tv-row em:empty { display: none; }
-#travel .tv-row.chosen { background: rgba(255, 255, 255, 0.12); box-shadow: inset 3px 0 0 var(--dot); }
-#travel .tv-row.here { opacity: 0.4; cursor: default; }
-#travel .tv-row:not(.here):hover { background: rgba(255, 255, 255, 0.08); }
+:is(#travel, #places) .tv-row.chosen { background: rgba(255, 255, 255, 0.12); box-shadow: inset 3px 0 0 var(--dot); }
+#travel .tv-row.here, #places .tv-row:disabled { opacity: 0.4; cursor: default; }
+#travel .tv-row:not(.here):hover, #places .tv-row:not(:disabled):hover { background: rgba(255, 255, 255, 0.08); }
 #tv-hint { margin: 8px 4px 0; font-size: 12px; opacity: 0.75; line-height: 1.4; }
+/* In the menu: across the Play tab under the other two columns, the rows in columns of their own, no number keys. */
+.page-grid .places-col { grid-column: 1 / -1; }
+.place-list { display: grid; grid-template-columns: repeat(auto-fill, minmax(210px, 1fr)); gap: 0 12px; }
+#places .tv-row { grid-template-columns: 14px 1fr auto; margin: 0; }
+body.touch #places .tv-row { min-height: 44px; }
 /* On a phone: the places two by two at the top, beside the minimap, and no numbers. */
 /* It stands in the middle of the top like the other messages (which make way while it is open). */
 body.touch #travel {

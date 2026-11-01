@@ -20,6 +20,7 @@
 //
 // The portals (shared/portals.mjs): a player on one asks to travel to another, or types /church
 // in the chat (when the admin allows it); the server checks it and moves them (see travel()).
+// From the chat (or the menu's list) also to a street: /location kapellenhoek (shared/places.json).
 
 import { randomInt } from 'node:crypto';
 import { readFileSync } from 'node:fs';
@@ -73,6 +74,16 @@ const BOUNDS = loadBounds(shared('bounds.json'));
 const houseData = (file) => JSON.parse(readFileSync(new URL(`../src/data/${file}`, import.meta.url), 'utf8'));
 const HOUSE = houseData('house.json');
 const VILLAGE = houseData('village.json');
+/**
+ * A spot on every named street (tools/places.py): where /location kapellenhoek takes you, on foot
+ * (`out`) or with the car (`car`). Only these: a trip never ends where the page says. A spot
+ * outside the edge (the edge changed, places.json not made again) is left out.
+ */
+const PLACES = new Map(
+  shared('places.json').places
+    .filter((p) => BOUNDS.map.inside(p.x, p.z) && BOUNDS.map.inside(p.car[0], p.car[1]))
+    .map((p) => [p.id, { id: p.id, street: true, out: [p.x, p.z, p.yaw], car: p.car }]),
+);
 
 /**
  * Where a strongman has room to stand: a map of the ground in 1 m squares with every wall, hedge,
@@ -643,7 +654,10 @@ export class Game {
       this.newRound(`${name} started a new round`, 'newRoundBy', { name });
     } else if (m.t === 'spawn' && typeof m.to === 'string') {
       this.spawn(name, player, m.to, now);
-    } else if (m.t === 'travel' && typeof m.to === 'string') {
+    } else if (m.t === 'travel' && typeof m.to === 'string' && m.to.length <= 64) {
+      // At most four asks a second (a page asks once a trip); more go unanswered, so a flood costs nothing.
+      if (now < (player.nextTravelAsk || 0)) return;
+      player.nextTravelAsk = now + 250;
       this.travel(name, player, m.to, m.via === 'chat', now);
     } else if (m.t === 'rules' && player.role === 'admin') {
       this.setRules(m, name).catch((e) => console.error('rules failed', String(e)));
@@ -659,6 +673,8 @@ export class Game {
    * TRAVEL_MS; a driver takes the car and its passenger along, a passenger can't go alone. The
    * end is always one of the fixed portals' spots, so a forged message gets no further than
    * walking onto a portal does (a position spoofing "teleport hack" can't pick its spot).
+   * A street's spot (PLACES, /location kapellenhoek) the same way, from the chat only (it has no
+   * pad); an id that is neither is refused. The end must be inside the edge that holds now.
    */
   /**
    * Where a player starts, picked on the start screen: one of the portal places' arrival spots. The
@@ -686,10 +702,10 @@ export class Game {
 
   travel(name, p, id, chat, now) {
     const st = p.state;
-    const to = PORTALS.find((q) => q.id === id);
+    const to = PORTALS.find((q) => q.id === id) ?? PLACES.get(id);
     // The refusal's English text, and its code for a page in another language (src/i18n.ts).
     const no = (text = '', code = undefined) => this.send(p.ws, { t: 'travel', name, to: id, ok: false, text, code });
-    if (!to || !st || !p.alive || now < (p.nextTravel || 0)) return no();
+    if (!to || !st || !p.alive || now < (p.nextTravel || 0) || (to.street && !chat)) return no();
     if (this.fenced()) return no("You can't travel during the game.", 'travelGame'); // everyone stays near the house (see fence)
     if (chat && !this.rules.travel && p.role !== 'admin') return no('The admin has turned travelling from the chat off. Walk to a portal.', 'travelChatOff');
     if (!chat && !this.rules.portals) return no('The admin has turned the portals off.', 'travelPortalsOff');
@@ -700,8 +716,9 @@ export class Game {
       const on = portalNear(st.x, st.z, (car ? CAR_REACH : REACH) + TRAVEL_SLACK);
       if (!on || on === to) return no();
     }
-    p.nextTravel = now + TRAVEL_MS;
     const [x, z, yaw] = car ? to.car : to.out;
+    if (!this.fence().inside(x, z)) return no();
+    p.nextTravel = now + TRAVEL_MS;
     const y = TERRAIN.height(x, z); // near enough: the player's next update has their feet exactly
     const move = (q) => {
       Object.assign(q.state, { x, y, z });

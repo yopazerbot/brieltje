@@ -123,7 +123,14 @@ function padOrKeyGroups(control: 'kbm' | 'pad', action: boolean): Group[] {
       ],
     },
     { title: t('ctl.cars'), rows: [[t('ctl.getIn'), k('use')], [t('ctl.drive'), k('drive')], [t('ctl.steer'), k('steer')], [t('ctl.handbrake'), k('handbrake')]] },
-    { title: t('ctl.portals'), rows: [[t('ctl.pickPlace'), k('portal')], [t('ctl.withCar'), t('ctl.withCarHow')], [t('ctl.fromChat'), t('ctl.fromChatHow')]] },
+    {
+      title: t('ctl.portals'),
+      rows: [
+        [t('ctl.pickPlace'), k('portal')], [t('ctl.withCar'), t('ctl.withCarHow')],
+        ...(kbm ? [[t('ctl.fromChat'), t('ctl.fromChatHow')] as [string, string]] : []),
+        [t('ctl.fromMenu'), kbm ? t('ctl.fromMenuHow') : t('ctl.fromMenuPad', { use: k('use') })],
+      ],
+    },
     {
       title: t('ctl.horses'),
       rows: [
@@ -174,7 +181,10 @@ function touchGroups(action: boolean): Group[] {
       title: t('ctl.horses'),
       rows: [[t('ctl.getOn'), k('use')], [t('ctl.faster'), k('drive')], [t('ctl.steer'), k('steer')], [t('ctl.gallop'), k('sprint')], [t('ctl.jump'), k('jump')]],
     },
-    { title: t('ctl.portals'), rows: [[t('tctl.goElsewhere'), t('tctl.goElsewhereHow')], [t('ctl.withCar'), t('tctl.withCarHow')]] },
+    {
+      title: t('ctl.portals'),
+      rows: [[t('tctl.goElsewhere'), t('tctl.goElsewhereHow')], [t('ctl.withCar'), t('tctl.withCarHow')], [t('ctl.fromMenu'), t('tctl.fromMenuHow')]],
+    },
     {
       title: t('ctl.other'),
       rows: [[t('ctl.menu'), k('menu')], [t('tctl.bigMap'), k('map')], [t('tctl.soundFull'), t('tctl.soundFullHow')], [t('tctl.best'), t('tctl.bestHow')]],

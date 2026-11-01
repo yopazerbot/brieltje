@@ -63,6 +63,8 @@ import { addDiag, startDiag } from './ui/diag';
 import { IndoorLight } from './world/indoorLight';
 import { Portals } from './world/portals';
 import { TravelPanel } from './ui/travel';
+import { PlacesList } from './ui/places';
+import { destination, DESTINATIONS, findPlace, fold, foundLine, placeLines, type Destination } from './places';
 import { BigMap, type Mark } from './ui/bigmap';
 import { key } from './shortcuts';
 import { typing } from './keys';
@@ -950,7 +952,8 @@ function followAccount(account: Me | null): void {
   $('mp-join-here').classList.toggle('hidden', !!account);
   $('mp-leave').classList.toggle('hidden', !account);
   $('scores-col').classList.toggle('hidden', !account);
-  chat.setEnabled(!!account);
+  chat.setEnabled(true); // alone too, for commands (/location kerk)
+  chat.setAlone(!account);
   admin.show(account?.role === 'admin' ? account.username : null);
   $('newround-btn').classList.toggle('hidden', account?.role !== 'admin');
   $('clearfurn-btn').classList.toggle('hidden', account?.role !== 'admin');
@@ -992,7 +995,11 @@ onLang(() => {
   if (menu.open && !menu.onStartScreen && me?.role === 'admin') admin.show(me.username);
 });
 
-chat.onSend = (text) => (text.startsWith('/') ? command(text) : net.send({ t: 'chat', text }));
+chat.onSend = (text) => {
+  if (text.startsWith('/')) command(text);
+  else if (me) net.send({ t: 'chat', text });
+  else chat.system(() => t('chat.aloneHint')); // alone nothing is sent anywhere: only commands
+};
 games.onSend = (msg) => net.send(msg);
 // The admin's games: a game starts at once; stopping one is asked again in the page, since a slip of the
 // finger would end it for everyone.
@@ -1243,17 +1250,18 @@ function respawnAt(i: number, at?: { x?: number; z?: number }): void {
 /**
  * Travelling through the portals (shared/portals.mjs), from a portal's pad or from the chat
  * (/church): a flash in the portal's colour and you come out at the other one, in the car if you
- * drive it (the passenger comes along). In multiplayer the server checks the trip and moves you
- * there for the others; meanwhile your position isn't sent, so it can't pull you back. A place in
- * the village waits for the village if it is still loading.
+ * drive it (the passenger comes along). From the chat and the menu's list also to a street
+ * (/location kapellenhoek: shared/places.json, src/places.ts). In multiplayer the server checks
+ * the trip and moves you there for the others; meanwhile your position isn't sent, so it can't
+ * pull you back. A place in the village waits for the village if it is still loading.
  */
-let trip: { to: Portal; answer?: (ok: boolean) => void } | null = null;
+let trip: { to: Destination; answer?: (ok: boolean) => void } | null = null;
 let cameFrom: string | null = null; // the portal you last came from: "back" in the next list
 let justArrived: string | null = null; // the portal you came out of: its pad waits until you have stepped off it
 const warp = $('warp');
 const portalMarks = PORTALS.map((p) => ({ x: p.x, z: p.z, color: p.color }));
 travelPanel.onPick = (p) => void travel(p, 'portal');
-async function travel(to: Portal, via: 'portal' | 'chat'): Promise<void> {
+async function travel(to: Destination, via: 'portal' | 'chat'): Promise<void> {
   if (trip || !combat.alive || planner.active || games.blindfolded) return;
   if (games.fenced) {
     chat.system(() => t('srv.travelGame')); // a game in the house: everyone stays near it (the server refuses too)
@@ -1295,7 +1303,7 @@ async function travel(to: Portal, via: 'portal' | 'chat'): Promise<void> {
   }
 }
 /** Out of portal `to`: in front of it looking at the place, or the car on its road. */
-function arrive(to: Portal, from: Portal | null): void {
+function arrive(to: Destination, from: Portal | null): void {
   const [x, z, yaw] = driving ? to.car : to.out;
   const y = groundY(x, z);
   if (driving) car.place(x, y, z, yaw);
@@ -1308,25 +1316,45 @@ function arrive(to: Portal, from: Portal | null): void {
   portals.pulse(x, y, z, to.color, false);
   hud.announce(portalName(to), to.sub);
 }
-/** The word for a portal in the chat, in the current language (both languages' words always work: shared/portals.mjs). */
-const PORTAL_WORDS: Record<'nl' | 'en', Record<string, string>> = {
-  nl: { house: 'huis', church: 'kerk', molenhoek_mid: 'midden', molenhoek_end: 'einde' },
-  en: { molenhoek_mid: 'mid', molenhoek_end: 'end' },
-};
-const portalWord = (p: Portal) => PORTAL_WORDS[lang() === 'nl' ? 'nl' : 'en'][p.id] ?? p.id;
-/** Words before the place that change nothing: /go church, /ga naar kerk, /tp school. */
-const TRAVEL_WORDS = new Set(['location', 'go', 'goto', 'to', 'tp', 'travel', 'teleport', 'ga', 'gaan', 'naar', 'reis', 'reizen']);
-/** Chat commands: /church, /house, /location school, /kerk, /ga naar huis ... and /places for the list. */
+/** Words before the place that change nothing: /go church, /ga naar de kerk, /tp school, /locatie kapellenhoek. */
+const TRAVEL_WORDS = new Set(['location', 'locatie', 'go', 'goto', 'to', 'tp', 'travel', 'teleport', 'ga', 'gaan', 'naar', 'reis', 'reizen', 'the', 'de', 'het']);
+/** Words that ask for the list of every place, like /location alone. */
+const LIST_WORDS = new Set(['places', 'plaatsen', 'list', 'lijst', 'help']);
+/**
+ * Chat commands: /church, /house, /location school, /location kapellenhoek, /kerk, /ga naar huis ...
+ * A name fits one place, several (their list) or none (the closest names: src/places.ts);
+ * /location alone lists every place.
+ */
 function command(text: string): void {
-  const words = text.slice(1).trim().toLowerCase().split(/\s+/);
-  while (words.length > 1 && TRAVEL_WORDS.has(words[0])) words.shift();
-  const word = TRAVEL_WORDS.has(words[0]) ? '' : words[0];
-  const to = findPortal(word);
-  if (!to) return chat.system(() => t('chat.travelHelp', { list: PORTALS.map((p) => `/${portalWord(p)}`).join(' ') }));
-  if (!rules.travel && me?.role !== 'admin') return chat.system(() => t('srv.travelChatOff'));
-  if (!combat.alive) return chat.system(() => t('chat.notDown'));
-  void travel(to, 'chat');
+  const words = text.slice(1).trim().toLowerCase().split(/\s+/).filter(Boolean);
+  while (words.length && TRAVEL_WORDS.has(words[0])) words.shift();
+  const typed = words.join(' ');
+  if (!fold(typed) || (words.length === 1 && LIST_WORDS.has(words[0]))) {
+    for (const line of placeLines()) chat.system(line);
+    return;
+  }
+  const found = findPlace(typed);
+  if ('to' in found) go(found.to);
+  else chat.system(foundLine(typed, found));
 }
+/** Why you can't go somewhere from the chat or the menu's list now (the server refuses too), or null. */
+function travelBlock(): (() => string) | null {
+  if (games.fenced) return () => t('srv.travelGame');
+  if (!rules.travel && me?.role !== 'admin') return () => t('srv.travelChatOff');
+  if (!combat.alive) return () => t('chat.notDown');
+  return null;
+}
+/** To a place from the chat or the menu's list. */
+function go(to: Destination): void {
+  const why = travelBlock();
+  if (why) chat.system(why);
+  else void travel(to, 'chat');
+}
+const placesList = new PlacesList();
+placesList.onPick = (to) => {
+  menu.resume(menu.mode ?? 'kbm');
+  go(to);
+};
 $('repair-btn').addEventListener('click', () => {
   glass.repair();
   net.send({ t: 'repair' });
@@ -1582,7 +1610,7 @@ net.onMessage = (m: ServerMsg) => {
       player.update(0, NO_INPUT, camera);
       break;
     case 'travel': {
-      const to = PORTALS.find((p) => p.id === m.to);
+      const to = destination(m.to); // a portal or a street (src/places.ts)
       if (m.name === me?.username) {
         if (trip && trip.to === to && trip.answer) trip.answer(m.ok);
         else if (m.ok && to) arrive(to, null); // a late answer: the server has you there already
@@ -1835,6 +1863,7 @@ renderer.setAnimationLoop((now: number) => {
   if (menu.open) {
     travelPanel.hide();
     if (menu.onStartScreen) startCamera();
+    else if (menu.tab === 'play') placesList.show(driving ? car.x : player.x, driving ? car.z : player.z, menu.mode ?? 'kbm', travelBlock());
     // Controller in a menu: ✕ picks the controller on the start screen. In the pause menu Options
     // or ○ resumes, and ✕ too except on the map, where it sets a waypoint at the cross; L1 and R1
     // change tabs. Esc resumes (not the Esc that just opened it).
@@ -1849,6 +1878,8 @@ renderer.setAnimationLoop((now: number) => {
       menu.resume(menu.onStartScreen ? 'pad' : (menu.mode ?? 'pad'));
     } else if (pause && frame.tabStep) {
       menu.stepTab(frame.tabStep);
+    } else if (pause && menu.tab === 'play' && menu.mode === 'pad' && placesList.handle(frame)) {
+      // The Play tab's list of places took the D-pad's up and down, or Triangle.
     } else if (frame.squarePressed) {
       menu.cycleGraphics(); // the square button on the controller changes the graphics setting
     } else if (frame.speedStep) {
@@ -2507,7 +2538,10 @@ if (import.meta.env.DEV) {
       countryside: () => countryside,
       portals,
       roadLife,
-      travel: (word: string, via: 'portal' | 'chat' = 'chat') => travel(findPortal(word)!, via),
+      travel: (word: string, via: 'portal' | 'chat' = 'chat') => travel(findPortal(word) ?? destination(word)!, via),
+      /** Every portal and street spot (src/places.ts), and a chat command as if typed: command('/location kerk'). */
+      places: DESTINATIONS,
+      command,
       i18n: { t, setLang, lang, serverText },
       chat,
       bigMap,

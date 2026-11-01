@@ -31,6 +31,7 @@ const en = {
   'credit.made': 'Made by Yoshi Parlevliet',
   'credit.source': 'The source code on GitHub',
   'chat.placeholder': 'Say something, Enter to send',
+  'chat.placeholderAlone': 'Type a command, like /location church',
   'btn.map': 'Map (M)',
   'btn.mapAria': 'Open the map',
   'btn.soundTitle': 'Sound on or off (Shift+M)',
@@ -147,6 +148,9 @@ const en = {
   'play.repairSub': 'Every broken pane back in',
   'play.resetFurn': 'Reset furniture',
   'play.resetFurnSub': 'Back to the original layout',
+  'play.places': 'Places',
+  'play.placesSub': 'Go straight to a portal or a street.',
+  'play.streets': 'Streets',
   'set.picture': 'Picture and sound',
   'set.mousePad': 'Mouse and controller',
   'set.mouse': 'Mouse sensitivity',
@@ -272,8 +276,11 @@ const en = {
   'ctl.pickPlace': 'Pick a place (standing on a portal)',
   'ctl.withCar': 'With the car',
   'ctl.withCarHow': 'Stop on the portal, then pick',
-  'ctl.fromChat': 'From the chat (together)',
-  'ctl.fromChatHow': '/church, /house, /bungalow, /school, /molenhoek, /mid, /end',
+  'ctl.fromChat': 'From the chat',
+  'ctl.fromChatHow': '/location church · /location Kapellenhoek · /location for the list',
+  'ctl.fromMenu': 'From the menu',
+  'ctl.fromMenuHow': 'Play › Places',
+  'ctl.fromMenuPad': 'Play › Places · D-pad ↑↓ and {use}',
   'ctl.getOn': 'Get on / off',
   'ctl.faster': 'Faster, slower',
   'ctl.gallop': 'Gallop',
@@ -336,6 +343,7 @@ const en = {
   'tctl.goElsewhere': 'Go somewhere else',
   'tctl.goElsewhereHow': 'Walk onto a portal, tap a place',
   'tctl.withCarHow': 'Stop on the portal, tap a place',
+  'tctl.fromMenuHow': 'Play › Places · tap a place',
   'tctl.bigMap': 'Map',
   'tctl.bigMapHow': 'Tap the minimap',
   'tctl.soundFull': 'Sound, full screen',
@@ -478,7 +486,12 @@ const en = {
   'srv.furnOff': 'The admin has turned the furniture planner off.',
   'srv.furnOutside': 'Furniture can only stand inside the edge of the game.',
   'srv.furnFull': 'There is no room for more furniture ({n} pieces). The admin can remove some.',
-  'chat.travelHelp': 'Travel with {list}, or walk onto a portal.',
+  'chat.travelHelp': 'Type /location and a name. Example: /location church.',
+  'chat.aloneHint': 'Alone you can only type commands, like /location church.',
+  'chat.placesList': 'Places: {list}.',
+  'chat.streetsList': 'Streets: {list}.',
+  'chat.placeMany': '“{q}” fits more than one place: {list}.',
+  'chat.placeNone': 'No place is called “{q}”. Did you mean {list}?',
   'chat.notDown': 'Not while you are down.',
   'chat.joinedAs': 'Joined the house as {name}. {n} of {max} online.',
   'chat.joined': '{name} joined',
@@ -641,6 +654,7 @@ const en = {
   'rule.off': '{rule} off',
   'rule.max': 'the limit to {n} players',
   'list.and': '{a} and {b}',
+  'list.or': '{a} or {b}',
 } as const;
 
 export type Key = keyof typeof en;
@@ -655,6 +669,7 @@ const nl = {
   'credit.made': 'Gemaakt door Yoshi Parlevliet',
   'credit.source': 'De broncode op GitHub',
   'chat.placeholder': 'Zeg iets, Enter om te versturen',
+  'chat.placeholderAlone': 'Typ een commando, zoals /location kerk',
   'btn.map': 'Kaart (M)',
   'btn.mapAria': 'Open de kaart',
   'btn.soundTitle': 'Geluid aan of uit (Shift+M)',
@@ -765,6 +780,9 @@ const nl = {
   'play.repairSub': 'Elke gebroken ruit terug op zijn plaats',
   'play.resetFurn': 'Meubels terugzetten',
   'play.resetFurnSub': 'Terug naar de oorspronkelijke opstelling',
+  'play.places': 'Plaatsen',
+  'play.placesSub': 'Ga meteen naar een portaal of een straat.',
+  'play.streets': 'Straten',
   'set.picture': 'Beeld en geluid',
   'set.mousePad': 'Muis en controller',
   'set.mouse': 'Muisgevoeligheid',
@@ -890,8 +908,11 @@ const nl = {
   'ctl.pickPlace': 'Kies een plaats (op een portaal)',
   'ctl.withCar': 'Met de auto',
   'ctl.withCarHow': 'Stop op het portaal en kies',
-  'ctl.fromChat': 'Via de chat (samen)',
-  'ctl.fromChatHow': '/kerk, /huis, /bungalow, /school, /molenhoek, /midden, /einde',
+  'ctl.fromChat': 'Via de chat',
+  'ctl.fromChatHow': '/location kerk · /location Kapellenhoek · /location voor de lijst',
+  'ctl.fromMenu': 'Via het menu',
+  'ctl.fromMenuHow': 'Spelen › Plaatsen',
+  'ctl.fromMenuPad': 'Spelen › Plaatsen · D-pad ↑↓ en {use}',
   'ctl.getOn': 'Opstappen / afstappen',
   'ctl.faster': 'Sneller, trager',
   'ctl.gallop': 'Galopperen',
@@ -954,6 +975,7 @@ const nl = {
   'tctl.goElsewhere': 'Naar een andere plaats',
   'tctl.goElsewhereHow': 'Stap op een portaal, tik op een plaats',
   'tctl.withCarHow': 'Stop op het portaal, tik op een plaats',
+  'tctl.fromMenuHow': 'Spelen › Plaatsen · tik op een plaats',
   'tctl.bigMap': 'Kaart',
   'tctl.bigMapHow': 'Tik op de minikaart',
   'tctl.soundFull': 'Geluid, volledig scherm',
@@ -1096,7 +1118,12 @@ const nl = {
   'srv.furnOff': 'De beheerder heeft de meubelplanner uitgezet.',
   'srv.furnOutside': 'Meubels kunnen enkel binnen de rand van het spel staan.',
   'srv.furnFull': 'Er kunnen geen meubels meer bij ({n} stuks). De beheerder kan er weghalen.',
-  'chat.travelHelp': 'Reis met {list}, of stap op een portaal.',
+  'chat.travelHelp': 'Typ /location en een naam. Bijvoorbeeld: /location kerk.',
+  'chat.aloneHint': "Alleen spelend kan je enkel commando's typen, zoals /location kerk.",
+  'chat.placesList': 'Plaatsen: {list}.',
+  'chat.streetsList': 'Straten: {list}.',
+  'chat.placeMany': '‘{q}’ past bij meer dan één plaats: {list}.',
+  'chat.placeNone': 'Geen enkele plaats heet ‘{q}’. Bedoel je {list}?',
   'chat.notDown': 'Niet zolang je dood bent.',
   'chat.joinedAs': 'Je doet mee als {name}. {n} van {max} online.',
   'chat.joined': '{name} doet mee',
@@ -1258,6 +1285,7 @@ const nl = {
   'rule.off': '{rule} uit',
   'rule.max': 'maximaal {n} spelers tegelijk',
   'list.and': '{a} en {b}',
+  'list.or': '{a} of {b}',
 } as const satisfies Record<Key, string>;
 
 /** The {names} in a string. */
@@ -1321,10 +1349,10 @@ export function dist(m: number): string {
   return m < 950 ? `${Math.round(m / 10) * 10} m` : `${num(m / 1000, 1)} km`;
 }
 
-/** Names as a list: "a, b and c". */
-export function listOf(names: string[]): string {
+/** Names as a list: "a, b and c" (or "a, b or c"). */
+export function listOf(names: string[], word: 'and' | 'or' = 'and'): string {
   if (names.length < 2) return names[0] ?? '';
-  return t('list.and', { a: names.slice(0, -1).join(', '), b: names[names.length - 1] });
+  return t(word === 'or' ? 'list.or' : 'list.and', { a: names.slice(0, -1).join(', '), b: names[names.length - 1] });
 }
 
 /** Call `fn` whenever the language changes (to redraw text that isn't drawn every frame). */
@@ -1493,6 +1521,12 @@ export function teslaLabel(kind: string, fallback: string): string {
 export function portalName(p: { id: string; name: string }): string {
   const key = `portal.${p.id}`;
   return isKey(key) ? any(key) : p.name;
+}
+
+/** A portal's name in both languages: either one finds it in the chat (src/places.ts). */
+export function portalNames(p: { id: string; name: string }): string[] {
+  const key = `portal.${p.id}`;
+  return isKey(key) ? [en[key], nl[key]] : [p.name];
 }
 
 /** Who did it, for the kill feed and the death screen: a player's name, or one of the game's own ("a strongman"). */
