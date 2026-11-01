@@ -54,5 +54,21 @@
       "maxSpeed": 25,
       "reverseSpeed": 6
     }
+  },
+  "placed": {
+    "_note": "Teslas placed with the furniture planner: by the admin in multiplayer, by anyone alone. At most max at once (each car is about 30 draw calls). Each kind drives like the car named in base (its model, size and speeds) in a paint of its own. name: as in the prompt, with its article; label: in the planner's list.",
+    "max": 12,
+    "kinds": {
+      "modelY-white": { "base": "tesla", "label": "Tesla Model Y (white)", "name": "the white Model Y", "paint": "#e9eae7", "metal": 0.1 },
+      "modelY-black": { "base": "tesla", "label": "Tesla Model Y (black)", "name": "the black Model Y", "paint": "#0b0c0e", "metal": 0.45 },
+      "modelY-grey": { "base": "tesla", "label": "Tesla Model Y (grey)", "name": "the grey Model Y", "paint": "#3e4146", "metal": 0.5 },
+      "modelY-blue": { "base": "tesla", "label": "Tesla Model Y (blue)", "name": "the blue Model Y", "paint": "#1f3c78", "metal": 0.45 },
+      "modelY-red": { "base": "tesla", "label": "Tesla Model Y (red)", "name": "the red Model Y", "paint": "#9a1419", "metal": 0.45 },
+      "model3-white": { "base": "model3", "label": "Tesla Model 3 (white)", "name": "the white Model 3", "paint": "#e9eae7", "metal": 0.1 },
+      "model3-black": { "base": "model3", "label": "Tesla Model 3 (black)", "name": "the black Model 3", "paint": "#0b0c0e", "metal": 0.45 },
+      "model3-grey": { "base": "model3", "label": "Tesla Model 3 (grey)", "name": "the grey Model 3", "paint": "#3e4146", "metal": 0.5 },
+      "model3-blue": { "base": "model3", "label": "Tesla Model 3 (blue)", "name": "the blue Model 3", "paint": "#1f3c78", "metal": 0.45 },
+      "model3-red": { "base": "model3", "label": "Tesla Model 3 (red)", "name": "the red Model 3", "paint": "#9a1419", "metal": 0.45 }
+    }
   }
 }

@@ -61,6 +61,8 @@ export type ServerMsg =
       time: number; cats: number[]; clowns?: ClownSpec[]; furniture: Piece[]; rules?: Rules; cars?: CarState[]; horses?: HorseState[]; mode?: ModeView;
     }
   | { t: 'car'; car: CarState }
+  /** The Teslas placed with the planner, after one was placed, moved or taken away (each with its kind) */
+  | { t: 'teslas'; list: CarState[] }
   | { t: 'rules'; rules: Rules }
   | ({ t: 'travel'; name: string; to: string; ok: boolean; car?: string | null; text?: string } & Coded)
   /** The start place picked on the start screen was refused (portals off): where the server has you. */

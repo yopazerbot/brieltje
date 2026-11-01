@@ -288,6 +288,11 @@ body.paintball #killfeed .kf.me { border-color: var(--paint); }
 #planner b { display: block; font-size: 20px; }
 #planner span { display: block; font-size: 13px; color: var(--accent); letter-spacing: 0.06em; }
 #planner small { display: block; margin-top: 4px; font-size: 12px; opacity: 0.75; }
+#planner em { display: block; margin-top: 2px; font-size: 13px; font-style: normal; }
+/* A Tesla only the admin may place (multiplayer): greyed out, with the reason under it. */
+#planner.locked { border-bottom-color: #8a8f96; }
+#planner.locked b, #planner.locked span { opacity: 0.45; }
+#planner.locked em { color: #ffcf8a; }
 
 #capture-hint {
   position: absolute; left: 50%; top: calc(50% + 40px); transform: translateX(-50%);

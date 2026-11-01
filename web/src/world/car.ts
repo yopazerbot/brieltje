@@ -1,5 +1,6 @@
 import * as THREE from 'three';
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
+import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
 import CARS from '../../shared/car.json';
 import type { CarSample } from '../../shared/wire.mjs';
 import { netClock, Track } from '../net/track';
@@ -24,9 +25,24 @@ import type { Point, World } from './collision';
  * The village's cars are in the game (drawn, solid, within reach) once the village has loaded
  * (`ready`, set by main.ts); until then they wait at their parking spot's height. A car is drawn
  * within DRAW m of the eye.
+ *
+ * More Teslas can be placed with the furniture planner (shared/car.json: placed; the admin's in
+ * multiplayer, anyone's alone): each is one of these cars in a paint of its own, with a `kind`, and
+ * is taken away again with dispose().
  */
 
 export type CarSpec = (typeof CARS.cars)[keyof typeof CARS.cars];
+type Kind = keyof typeof CARS.placed.kinds;
+/** The most placed Teslas at once. */
+export const PLACED_MAX = CARS.placed.max;
+
+/** A placed Tesla's spec (its base car's model, size and speeds in its own paint), standing at `at`; null for a kind the catalogue doesn't know. */
+export function placedSpec(kind: string, at: { x: number; y: number; z: number; yaw: number }): CarSpec | null {
+  if (!Object.hasOwn(CARS.placed.kinds, kind)) return null;
+  const k = CARS.placed.kinds[kind as Kind];
+  const base = CARS.cars[k.base as keyof typeof CARS.cars];
+  return { ...base, name: k.name, paint: k.paint, metal: k.metal, village: false, park: { x: at.x, y: at.y, z: at.z, yaw: at.yaw } };
+}
 
 export interface CarState {
   /** Which car (shared/car.json) */
@@ -41,6 +57,8 @@ export interface CarState {
   driver: string | null;
   /** Who rides along in the passenger seat (multiplayer), or null */
   passenger?: string | null;
+  /** A Tesla placed with the planner: its kind (shared/car.json: placed) */
+  kind?: string;
 }
 
 export interface DriveInput {
@@ -98,6 +116,39 @@ const MATERIALS: Record<string, THREE.Material> = {
   Plate: new THREE.MeshStandardMaterial({ color: '#e8e8e2', roughness: 0.5 }),
 };
 const taillight = () => new THREE.MeshStandardMaterial({ color: '#5a0a0d', roughness: 0.2, emissive: '#ff2020', emissiveIntensity: 0.5 });
+/** The parts that cast the car's shadow: the body, its glass and trim, the seats, the tyres. */
+const SHADOW_PARTS = new Set(['Paint', 'Glass', 'Trim', 'Interior', 'Tyre']);
+
+/**
+ * A model's shape in one geometry (positions and normals), for the planner's see-through copy of a
+ * Tesla: a box of the car's size until the model is in, then `ready` runs once.
+ */
+const shapes = new Map<string, THREE.BufferGeometry>();
+export function carShape(spec: { model: string; width: number; length: number; height: number }, ready: () => void): THREE.BufferGeometry {
+  const have = shapes.get(spec.model);
+  if (have) return have;
+  if (!shapes.has(`${spec.model} box`)) {
+    shapes.set(`${spec.model} box`, new THREE.BoxGeometry(spec.width, spec.height, spec.length).translate(0, spec.height / 2, 0));
+    void modelCopy(spec.model).then((scene) => {
+      scene.updateMatrixWorld(true);
+      const parts: THREE.BufferGeometry[] = [];
+      scene.traverse((o) => {
+        if (!(o instanceof THREE.Mesh)) return;
+        let g = o.geometry.clone().applyMatrix4(o.matrixWorld);
+        if (g.index) g = g.toNonIndexed();
+        for (const k of Object.keys(g.attributes)) if (k !== 'position' && k !== 'normal') g.deleteAttribute(k);
+        if (!g.attributes.normal) g.computeVertexNormals();
+        parts.push(g);
+      });
+      const merged = mergeGeometries(parts);
+      parts.forEach((g) => g.dispose());
+      if (!merged) return;
+      shapes.set(spec.model, merged);
+      ready();
+    }, () => {});
+  }
+  return shapes.get(`${spec.model} box`)!;
+}
 
 // A disc over the spokes that fades in at speed: the wheels look like they spin fast instead of strobing.
 const blurMaterial = () => new THREE.MeshStandardMaterial({ color: '#1d1e21', roughness: 0.45, metalness: 0.5, transparent: true, opacity: 0, depthWrite: false });
@@ -129,7 +180,9 @@ function prepare(scene: THREE.Group, own: Record<string, THREE.Material>, blurMa
       const name = (o.material as THREE.Material).name;
       o.material = own[name] ?? MATERIALS[name] ?? MATERIALS.Trim;
       o.userData.part = name;
-      o.castShadow = true;
+      // Only the parts that make the shadow's outline cast one: the small ones flush with the body and
+      // the wheels' insides (behind the tyre) would be 24 more draw calls a car in the shadow pass.
+      o.castShadow = SHADOW_PARTS.has(name);
       o.userData.material = name === 'Glass' || name === 'LampGlass' ? 'black_glass' : 'steel'; // bullets spark off it
       if (name === 'Glass') o.renderOrder = 1; // after the cabin behind it
       o.userData.vehicle = true; // bullet holes stay on it when it drives off (see Decals)
@@ -197,6 +250,8 @@ export class Car {
   ready: boolean;
   /** At the wheel this frame it ran into the edge of the game (main.ts says so) */
   atEdge = false;
+  /** Where it was put: its parking spot, or for a placed Tesla where the planner put it */
+  park: { x: number; y: number; z: number; yaw: number };
   private vx = 0;
   private vz = 0;
   private braking = false;
@@ -216,22 +271,28 @@ export class Car {
   private camYaw = 0;
   private camPitch = 0.22;
   private lookIdle = 0;
-  private audio: { at: PannerNode; whine: OscillatorNode; hum: GainNode; filter: BiquadFilterNode; road: GainNode } | null = null;
+  private audio: { at: PannerNode; whine: OscillatorNode; tyres: AudioBufferSourceNode; hum: GainNode; filter: BiquadFilterNode; road: GainNode } | null = null;
   private halfL: number;
   private halfW: number;
   private key: string; // its moving block in the collision world
   private taillight = taillight();
   private blurMat = blurMaterial();
+  private paint: THREE.MeshStandardMaterial;
+  private gone = false;
 
-  constructor(private world: World, private trees: Obstacle[], readonly id: string, readonly spec: CarSpec) {
+  /** `kind`: a Tesla placed with the planner (shared/car.json: placed), null for the game's own four. */
+  constructor(private world: World, private trees: Obstacle[], readonly id: string, readonly spec: CarSpec, readonly kind: string | null = null) {
     ({ x: this.x, y: this.y, z: this.z, yaw: this.yaw } = spec.park);
+    this.park = { ...spec.park };
     this.halfL = spec.length / 2;
     this.halfW = spec.width / 2;
     this.key = `car-${id}`;
     this.ready = !spec.village;
+    this.group.userData.car = id; // the planner finds a placed one by it
     this.group.add(this.body, contactShadow(spec));
-    const paint = new THREE.MeshStandardMaterial({ color: spec.paint, roughness: 0.2, metalness: spec.metal });
+    const paint = (this.paint = new THREE.MeshStandardMaterial({ color: spec.paint, roughness: 0.2, metalness: spec.metal }));
     void modelCopy(spec.model).then((scene) => {
+      if (this.gone) return;
       const { front, wheels } = prepare(scene, { Paint: paint, TailLight: this.taillight }, this.blurMat);
       this.body.add(scene);
       this.front = front;
@@ -467,6 +528,31 @@ export class Car {
     this.hum(local);
   }
 
+  /**
+   * A placed Tesla taken away: out of the scene and the collision world, its own materials, shadow
+   * patch and wheel blur let go (the model's geometry is shared with the other cars of its kind),
+   * its sound stopped. Whoever was in it got out first (main.ts).
+   */
+  dispose(): void {
+    this.gone = true;
+    this.group.removeFromParent();
+    this.world.setMoving(this.key, null);
+    this.group.traverse((o) => {
+      if (!(o instanceof THREE.Mesh) || !o.userData.ignoreRay) return; // the shadow patch and the blur discs are this car's own
+      o.geometry.dispose();
+      const mat = o.material as THREE.MeshBasicMaterial;
+      mat.map?.dispose();
+      mat.dispose();
+    });
+    for (const m of [this.paint, this.taillight, this.blurMat]) m.dispose();
+    if (this.audio) {
+      this.audio.whine.stop();
+      this.audio.tyres.stop();
+      this.audio.at.disconnect();
+      this.audio = null;
+    }
+  }
+
   /** It hit something: a thud from where it is. */
   bump(strength: number): void {
     const c = sound.context();
@@ -509,7 +595,7 @@ export class Car {
       tyres.connect(filter).connect(road).connect(at);
       whine.start();
       tyres.start();
-      this.audio = { at, whine, hum, filter, road };
+      this.audio = { at, whine, tyres, hum, filter, road };
     }
     const a = this.audio;
     const t = c.currentTime;

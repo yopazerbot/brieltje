@@ -555,6 +555,16 @@ const en = {
   'plan.keysPad': 'R2 place · L1/R1 change · {turn} turn · L2 pick up · {remove} remove',
   'plan.clown': 'Clown (walks around, can be shot)',
   'plan.strongman': 'Strongman, a giant (walks around, can be shot)',
+  'plan.teslaLocked': 'Only the admin can place Teslas.',
+  'plan.teslaCount': '{n} of {max} Teslas placed',
+  'plan.teslaBusy': 'Someone is in that car.',
+  'srv.teslaAdmin': 'Only the admin can place Teslas.',
+  'srv.teslaRoom': "There's no room for the car there.",
+  'srv.teslaInside': "A car can't go indoors.",
+  'srv.teslaEdge': "That's past the edge of the game.",
+  'srv.teslaFull': 'There can be {max} Teslas at most.',
+  'srv.teslaBusy': 'Someone is in that car.',
+  'srv.teslaPortal': 'The portals stay free.',
 
   // ---- Messages from the server, by code (the server sends the same English text along)
   'srv.kicked': '{name} was removed by the admin',
@@ -1162,6 +1172,16 @@ const nl = {
   'plan.keysPad': 'R2: neerzetten · L1/R1: ander stuk · {turn}: draaien · L2: verzetten · {remove}: weghalen',
   'plan.clown': 'Clown (wandelt rond, je kunt erop schieten)',
   'plan.strongman': 'Krachtpatser, een reus (wandelt rond, je kunt erop schieten)',
+  'plan.teslaLocked': "Alleen de beheerder kan Tesla's neerzetten.",
+  'plan.teslaCount': "{n} van {max} Tesla's neergezet",
+  'plan.teslaBusy': 'Er zit iemand in die auto.',
+  'srv.teslaAdmin': "Alleen de beheerder kan Tesla's neerzetten.",
+  'srv.teslaRoom': 'Daar is geen plaats voor de auto.',
+  'srv.teslaInside': 'Een auto kan niet binnen staan.',
+  'srv.teslaEdge': 'Dat ligt voorbij de rand van het spel.',
+  'srv.teslaFull': "Er kunnen hoogstens {max} Tesla's staan.",
+  'srv.teslaBusy': 'Er zit iemand in die auto.',
+  'srv.teslaPortal': 'De portalen blijven vrij.',
 
   // ---- Messages from the server, by code
   'srv.kicked': 'De beheerder heeft {name} verwijderd',
@@ -1446,10 +1466,25 @@ export function furnitureName(id: string, fallback: string): string {
   return FURNITURE_NL[id] ?? fallback;
 }
 
-/** The cars (shared/car.json), with their article: "the Tesla". */
-const CARS_NL: Record<string, string> = { tesla: 'de Tesla', model3: 'de Model 3', churchY: 'de witte Model Y', church3: 'de rode Model 3' };
+/** The cars (shared/car.json), with their article: "the Tesla"; the Teslas placed with the planner by their kind. */
+const CARS_NL: Record<string, string> = {
+  tesla: 'de Tesla', model3: 'de Model 3', churchY: 'de witte Model Y', church3: 'de rode Model 3',
+  'modelY-white': 'de witte Model Y', 'modelY-black': 'de zwarte Model Y', 'modelY-grey': 'de grijze Model Y', 'modelY-blue': 'de blauwe Model Y', 'modelY-red': 'de rode Model Y',
+  'model3-white': 'de witte Model 3', 'model3-black': 'de zwarte Model 3', 'model3-grey': 'de grijze Model 3', 'model3-blue': 'de blauwe Model 3', 'model3-red': 'de rode Model 3',
+};
 export function carName(id: string, fallback: string): string {
   return current === 'en' ? fallback : CARS_NL[id] ?? fallback;
+}
+
+/** A Tesla's line in the planner's list, by its kind (shared/car.json keeps the English one). */
+const TESLAS_NL: Record<string, string> = {
+  'modelY-white': 'Tesla Model Y (wit)', 'modelY-black': 'Tesla Model Y (zwart)', 'modelY-grey': 'Tesla Model Y (grijs)', 'modelY-blue': 'Tesla Model Y (blauw)', 'modelY-red': 'Tesla Model Y (rood)',
+  'model3-white': 'Tesla Model 3 (wit)', 'model3-black': 'Tesla Model 3 (zwart)', 'model3-grey': 'Tesla Model 3 (grijs)', 'model3-blue': 'Tesla Model 3 (blauw)', 'model3-red': 'Tesla Model 3 (rood)',
+};
+export function teslaLabel(kind: string, fallback: string): string {
+  if (current === 'en') return fallback;
+  if (import.meta.env.DEV && !TESLAS_NL[kind]) console.warn(`i18n: no Dutch name for the Tesla "${kind}"`);
+  return TESLAS_NL[kind] ?? fallback;
 }
 
 /** A portal's name (shared/portals.mjs keeps the English one), by its id. */

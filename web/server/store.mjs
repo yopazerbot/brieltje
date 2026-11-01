@@ -1,6 +1,7 @@
-// Sessions, furniture, fighting stats, the login log, the interest page's sign-ups (server/interest.mjs),
-// the daily totals of how much the game is played (server/stats.mjs) with the day's visitor codes
-// (kept for that Belgian day only) and players' feedback (server/feedback.mjs).
+// Sessions, furniture and the Teslas placed with the planner, fighting stats, the login log, the
+// interest page's sign-ups (server/interest.mjs), the daily totals of how much the game is played
+// (server/stats.mjs) with the day's visitor codes (kept for that Belgian day only) and players'
+// feedback (server/feedback.mjs).
 // Railway: Postgres via DATABASE_URL. Local development without it: a JSON
 // file in web/.data/ (not in git).
 // Sessions are stored by a hash of their token, never the token itself.
@@ -28,7 +29,7 @@ async function replace(from, to) {
 class FileStore {
   constructor(file) {
     this.file = file;
-    this.data = { audit: [], sessions: [], stats: {}, meta: {}, furniture: [], interest: [], interestId: 0, daily: {}, feedback: [], feedbackId: 0, visits: null };
+    this.data = { audit: [], sessions: [], stats: {}, meta: {}, furniture: [], cars: [], interest: [], interestId: 0, daily: {}, feedback: [], feedbackId: 0, visits: null };
   }
   async init() {
     await mkdir(resolve(this.file, '..'), { recursive: true });
@@ -106,6 +107,29 @@ class FileStore {
   }
   async clearFurniture() {
     this.data.furniture = [];
+    await this.save();
+  }
+  // Teslas placed with the planner (server/game.mjs): where each was put, kept like furniture.
+  async listCars() {
+    return this.data.cars;
+  }
+  async addCar(c) {
+    const id = (this.data.meta.carId = (this.data.meta.carId || 0) + 1);
+    this.data.cars.push({ id, kind: c.kind, x: c.x, y: c.y, z: c.z, yaw: c.yaw, by: c.by });
+    await this.save();
+    return id;
+  }
+  async updateCar(id, c) {
+    const row = this.data.cars.find((r) => r.id === id);
+    if (row) Object.assign(row, { x: c.x, y: c.y, z: c.z, yaw: c.yaw, by: c.by });
+    await this.save();
+  }
+  async deleteCar(id) {
+    this.data.cars = this.data.cars.filter((r) => r.id !== id);
+    await this.save();
+  }
+  async clearCars() {
+    this.data.cars = [];
     await this.save();
   }
   async setMeta(key, value) {
@@ -294,6 +318,13 @@ class PgStore {
         by_user text,
         at timestamptz not null default now()
       );
+      create table if not exists placed_cars (
+        id serial primary key,
+        kind text not null,
+        x double precision not null, y double precision not null, z double precision not null, yaw double precision not null,
+        by_user text,
+        at timestamptz not null default now()
+      );
       create table if not exists meta (
         key text primary key,
         value text not null
@@ -379,6 +410,23 @@ class PgStore {
   }
   async clearFurniture() {
     await this.pool.query('delete from furniture');
+  }
+  async listCars() {
+    const r = await this.pool.query('select id, kind, x, y, z, yaw, by_user as by from placed_cars order by id');
+    return r.rows;
+  }
+  async addCar(c) {
+    const r = await this.pool.query('insert into placed_cars (kind, x, y, z, yaw, by_user) values ($1, $2, $3, $4, $5, $6) returning id', [c.kind, c.x, c.y, c.z, c.yaw, c.by]);
+    return r.rows[0].id;
+  }
+  async updateCar(id, c) {
+    await this.pool.query('update placed_cars set x = $2, y = $3, z = $4, yaw = $5, by_user = $6, at = now() where id = $1', [id, c.x, c.y, c.z, c.yaw, c.by]);
+  }
+  async deleteCar(id) {
+    await this.pool.query('delete from placed_cars where id = $1', [id]);
+  }
+  async clearCars() {
+    await this.pool.query('delete from placed_cars');
   }
   async getMeta(key) {
     const r = await this.pool.query('select value from meta where key = $1', [key]);

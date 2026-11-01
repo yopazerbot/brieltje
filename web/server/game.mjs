@@ -15,6 +15,9 @@
 // passenger, who moves with it) may move at the car's speed. A car stays where they leave it
 // and is back in its parking spot when the server restarts.
 //
+// The admin places more Teslas with the planner (at most PLACED.max, see placeCar): each is a car like
+// the others, kept in the database where it was put, gone with the furniture's clear or reset.
+//
 // The portals (shared/portals.mjs): a player on one asks to travel to another, or types /church
 // in the chat (when the admin allows it); the server checks it and moves them (see travel()).
 
@@ -27,6 +30,7 @@ import { makeTerrain } from '../shared/terrain.mjs';
 import { loadBounds } from '../shared/bounds.mjs';
 import { CAR_REACH, PORTALS, portalNear, REACH } from '../shared/portals.mjs';
 import { noShoot } from '../shared/zones.mjs';
+import { boxesOverlap, boxPoints, clearOfPortals, makeIndoors, makeSolids } from '../shared/parking.mjs';
 import { bruteEntry, carFields, horseFields, playerFields, PROTO, TICK_MS } from '../shared/wire.mjs';
 
 const MAX_PLAYERS = 16; // the most the admin can allow at once (every player's moves go to every other one)
@@ -65,6 +69,10 @@ const where = (m) => ({ x: num(m.x, AREA.x0, AREA.x1), y: num(m.y, -20, 200), z:
  * one round the two houses while a game in the house runs, and the flying ceiling. Inside AREA.
  */
 const BOUNDS = loadBounds(shared('bounds.json'));
+/** The house data (src/data/): the house and its surroundings, and the village. */
+const houseData = (file) => JSON.parse(readFileSync(new URL(`../src/data/${file}`, import.meta.url), 'utf8'));
+const HOUSE = houseData('house.json');
+const VILLAGE = houseData('village.json');
 
 /**
  * Where a strongman has room to stand: a map of the ground in 1 m squares with every wall, hedge,
@@ -74,9 +82,6 @@ const BOUNDS = loadBounds(shared('bounds.json'));
  * array read, however many blocks there are.
  */
 function groundMap() {
-  const read = (file) => JSON.parse(readFileSync(new URL(`../src/data/${file}`, import.meta.url), 'utf8'));
-  const HOUSE = read('house.json');
-  const VILLAGE = read('village.json');
   const prisms = [...HOUSE.prisms, ...(HOUSE.surroundings?.prisms ?? []), ...(VILLAGE.prisms ?? [])];
   const ox = Math.floor(AREA.x0);
   const oz = Math.floor(AREA.z0);
@@ -117,6 +122,21 @@ function groundMap() {
   };
 }
 const CARS = shared('car.json'); // the cars: where each is parked, its size and top speed
+/** The Teslas the admin places with the planner (shared/car.json): how many at most, the kinds (a car above in a paint of its own). */
+const PLACED = CARS.placed;
+/** A car's size and speeds: its own, or for a placed one its kind's base car's. */
+const carSpec = (car) => CARS.cars[car.id] ?? CARS.cars[PLACED.kinds[car.kind]?.base];
+const TESLA_MS = 400; // ms: at most one place, move or removal this often per player
+/**
+ * Where a placed car can't stand: the blocks of the house, its surroundings, the street models'
+ * walls and fences, and the village (the same as the page's collision), and the floors of the house
+ * and the bungalow (indoors).
+ */
+const SOLIDS = makeSolids([
+  ...HOUSE.prisms, ...(HOUSE.surroundings?.prisms ?? []), ...(VILLAGE.prisms ?? []),
+  ...Object.values(houseData('homestreet.json').clusters).flatMap((c) => c.blocks ?? []),
+], (x, z) => TERRAIN.height(x, z));
+const INDOORS = makeIndoors([...HOUSE.prisms, ...(HOUSE.surroundings?.prisms ?? [])], HOUSE.rooms.map((r) => r.name));
 const HORSES = shared('horses.json'); // the horses: their walks on the shared clock, riding speeds
 const FURNITURE = shared('furniture.json'); // planner catalogue: which items exist, how many may be placed
 const FURNITURE_IDS = new Set(FURNITURE.items.map((i) => i.id));
@@ -193,6 +213,7 @@ export class Game {
     this.nextClown = CLOWNS.spots.length + 1;
     this.furniture = new Map(); // id -> placed piece (kept in the database)
     this.cars = Object.fromEntries(Object.entries(CARS.cars).map(([id, c]) => [id, { id, ...c.park, s: 0, driver: null, passenger: null }]));
+    this.placing = 0; // placed Teslas on their way into the database (they count towards the most)
     // Horses: on their walks until someone rides one; left where they are got off (until a restart).
     this.horses = HORSES.herd.map((_, i) => ({ i, x: 0, z: 0, yaw: 0, speed: 0, rider: null, parked: false }));
     this.modes = new Modes(this); // hide and seek, tag, treasure hunt (the admin starts them)
@@ -561,6 +582,8 @@ export class Game {
       player.nextCar = now + 300;
       if (m.op === 'in' && Object.hasOwn(this.cars, m.id)) this.enterCar(name, player, this.cars[m.id]);
       else if (m.op === 'out') this.releaseCar(name);
+    } else if (m.t === 'tesla') {
+      this.placeCar(name, player, m, now).catch((e) => console.error('tesla failed', String(e)));
     } else if (m.t === 'horse') {
       if (now < (player.nextCar || 0)) return;
       player.nextCar = now + 300;
@@ -671,7 +694,7 @@ export class Game {
     const st = p.state;
     if (this.carOf(name) || !p.alive || !st) return this.send(p.ws, { t: 'car', car });
     // Close to its outline: the middle of the car plus its half diagonal and the reach.
-    const spec = CARS.cars[car.id];
+    const spec = carSpec(car);
     const near = Math.hypot(spec.length, spec.width) / 2 + CARS.reach + 0.5;
     if (Math.hypot(st.x - car.x, st.z - car.z) > near || Math.abs(st.y - car.y) > 1.5) return this.send(p.ws, { t: 'car', car });
     if (!car.driver) car.driver = name;
@@ -806,6 +829,21 @@ export class Game {
       console.log(JSON.stringify({ event: 'furniture_layout', version: LAYOUT_VERSION, replaced: seeded }));
     }
     for (const f of list) this.furniture.set(f.id, f);
+    await this.loadPlaced();
+  }
+
+  /**
+   * The Teslas placed with the planner, from the database: each where it was put (as a car is back in
+   * its parking spot after a restart). A row the catalogue no longer knows, or with a broken number,
+   * is left out.
+   */
+  async loadPlaced() {
+    for (const r of await this.auth.store.listCars()) {
+      const spot = [r.x, r.y, r.z, r.yaw].map(Number);
+      if (!Object.hasOwn(PLACED.kinds, r.kind) || !spot.every(Number.isFinite) || this.placedList().length >= PLACED.max) continue;
+      const [x, y, z, yaw] = spot;
+      this.cars[`p${r.id}`] = { id: `p${r.id}`, kind: r.kind, x, y, z, yaw, s: 0, driver: null, passenger: null };
+    }
   }
 
   /** House rules (flying, players moving furniture, names, how many may play, portals, travelling from the chat, child-friendly), kept across restarts. */
@@ -872,6 +910,7 @@ export class Game {
       // The characters the admin placed with the planner go too: back to the starting clowns and strongmen.
       this.clowns = this.startingClowns();
       this.broadcast({ t: 'clowns', list: this.clownList(Date.now()) });
+      await this.clearPlaced(); // and the Teslas (the four of the game stay)
     } else if (m.op === 'del' && this.furniture.has(m.id)) {
       await store.deleteFurniture(m.id);
       this.furniture.delete(m.id);
@@ -896,6 +935,118 @@ export class Game {
       await this.markFurniture(true);
       this.broadcast({ t: 'furn', op: 'put', f });
     }
+  }
+
+  /** The Teslas placed with the planner (not the four of the game). */
+  placedList() {
+    return Object.values(this.cars).filter((c) => c.kind);
+  }
+
+  /** Everyone's list of placed Teslas, after one was placed, moved or taken away. */
+  sendPlaced() {
+    this.broadcast({ t: 'teslas', list: this.placedList() });
+  }
+
+  /**
+   * The planner's Teslas (shared/car.json: placed): the admin places one ('put'), moves one placed
+   * before ('put' with its id) or takes one away ('del'). Nobody else may, and never one someone is
+   * in. The page checks the spot as it shows it, and the server checks it again (parkingProblem):
+   * a changed page or a hand-written message gets no further than the planner would. Its own clock
+   * (TESLA_MS) on top of the flood guard: each one is a database write. A refusal tells the admin why.
+   */
+  async placeCar(name, player, m, now) {
+    if (now < (player.nextTesla || 0)) return;
+    player.nextTesla = now + TESLA_MS;
+    const no = ([code, text]) => this.send(player.ws, { t: 'system', text, code, args: { max: PLACED.max } });
+    if (player.role !== 'admin') return no(['teslaAdmin', 'Only the admin can place Teslas.']);
+    const store = this.auth.store;
+    const placed = typeof m.id === 'string' && Object.hasOwn(this.cars, m.id) && this.cars[m.id].kind ? this.cars[m.id] : null;
+    if (m.op === 'del') {
+      if (!placed) return;
+      if (placed.driver || placed.passenger) return no(['teslaBusy', 'Someone is in that car.']);
+      delete this.cars[placed.id];
+      delete this.carAt[placed.id];
+      this.sendPlaced();
+      await store.deleteCar(Number(placed.id.slice(1)));
+      return;
+    }
+    if (m.op !== 'put' || typeof m.kind !== 'string' || !Object.hasOwn(PLACED.kinds, m.kind)) return;
+    if (m.id !== undefined && (!placed || placed.kind !== m.kind)) return; // a move: a placed car, of the kind it is
+    if (![m.x, m.y, m.z, m.yaw].every((v) => typeof v === 'number' && Number.isFinite(v))) return;
+    if (placed && (placed.driver || placed.passenger)) return no(['teslaBusy', 'Someone is in that car.']);
+    const r = (v, k) => Math.round(v * k) / k;
+    const spot = { x: r(m.x, 100), y: r(m.y, 100), z: r(m.z, 100), yaw: r(Math.atan2(Math.sin(m.yaw), Math.cos(m.yaw)), 1000) };
+    const why = this.parkingProblem(m.kind, spot, placed?.id);
+    if (why) return no(why);
+    if (placed) {
+      Object.assign(placed, spot, { s: 0 });
+      this.carAt[placed.id] = mono();
+      this.sendPlaced();
+      await store.updateCar(Number(placed.id.slice(1)), { ...spot, by: name });
+      return;
+    }
+    if (this.placedList().length + this.placing >= PLACED.max) return no(['teslaFull', `${PLACED.max} Teslas is the most.`]);
+    this.placing++;
+    let row;
+    try {
+      row = await store.addCar({ kind: m.kind, ...spot, by: name });
+    } finally {
+      this.placing--;
+    }
+    const id = `p${row}`;
+    this.cars[id] = { id, kind: m.kind, ...spot, s: 0, driver: null, passenger: null };
+    this.carAt[id] = mono();
+    this.sendPlaced();
+  }
+
+  /**
+   * Why a placed car of `kind` can't stand at `spot` (a refusal's code and English text), or null when
+   * it can: inside the edge of the game (shared/bounds.mjs) and the server's area; off the portals'
+   * pads and the spots where people and cars come out of them (shared/portals.mjs); on the ground (not
+   * on a roof, upstairs or in the air); outdoors (not over a floor of the house or the bungalow); clear
+   * of every wall, hedge, fence and house (shared/parking.mjs, the page's own test); not on another
+   * car (`self`: the one being moved) or on a player standing there.
+   */
+  parkingProblem(kind, { x, y, z, yaw }, self) {
+    const spec = CARS.cars[PLACED.kinds[kind].base];
+    const halfL = spec.length / 2;
+    const halfW = spec.width / 2;
+    const room = ['teslaRoom', "There's no room for the car there."];
+    if (x < AREA.x0 || x > AREA.x1 || z < AREA.z0 || z > AREA.z1 || !BOUNDS.map.boxInside(x, z, yaw, halfL, halfW)) {
+      return ['teslaEdge', "That's past the edge of the game."];
+    }
+    if (!clearOfPortals({ x, z, yaw, halfL, halfW }, PORTALS, REACH)) return ['teslaPortal', 'The portals stay free.'];
+    const ground = HOUSE.ground + TERRAIN.height(x, z);
+    if (y < ground - 1.5 || y > ground + 0.5) return room; // the page puts it on paving or a kerb at most 0.3 m up
+    if (boxPoints(x, z, yaw, halfL, halfW, 0.5).some(([px, pz]) => INDOORS(px, pz))) return ['teslaInside', 'Cars stay outdoors.'];
+    if (!SOLIDS.boxFree(x, z, yaw, halfL, halfW, y + 0.3, y + spec.height)) return room; // 0.3: kerbs and paving don't count, as for driving
+    const box = { x, z, yaw, halfL, halfW };
+    for (const c of Object.values(this.cars)) {
+      const s = carSpec(c);
+      if (c.id !== self && boxesOverlap(box, { x: c.x, z: c.z, yaw: c.yaw, halfL: s.length / 2, halfW: s.width / 2 }, 0.1)) return room;
+    }
+    for (const [n, p] of this.players) {
+      const st = p.state;
+      if (st && !this.inCar(n) && Math.abs(st.y - y) < 2 && boxesOverlap(box, { x: st.x, z: st.z, yaw: 0, halfL: 0.35, halfW: 0.35 })) return room;
+    }
+    return null;
+  }
+
+  /**
+   * The furniture's clear or reset: every placed Tesla goes. Whoever is in one gets out first (their
+   * page puts them by the door, as when the server takes a car back), then the cars go, for everyone.
+   */
+  async clearPlaced() {
+    const list = this.placedList();
+    if (!list.length) return;
+    for (const c of list) {
+      if (c.driver) this.releaseCar(c.driver);
+      if (c.passenger) this.releaseCar(c.passenger);
+      delete this.cars[c.id];
+      delete this.carAt[c.id];
+    }
+    this.sendPlaced();
+    await this.auth.store.clearCars();
   }
 
   /**

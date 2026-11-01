@@ -41,7 +41,8 @@ import { Effects, type Spot } from './world/effects';
 import { GRENADE, Grenades } from './world/grenades';
 import { Pickups } from './world/pickups';
 import { Cats } from './world/cats';
-import { Car } from './world/car';
+import { Car, placedSpec, PLACED_MAX, type CarState } from './world/car';
+import { boxesOverlap, boxPoints, clearOfPortals, makeIndoors } from '../shared/parking.mjs';
 import CARS from '../shared/car.json';
 import { buildHedges, buildHorizon, buildTile, dipMesh, waterMesh } from './world/surroundings';
 import { GroundShade } from './world/groundShade';
@@ -73,7 +74,7 @@ import { buildRoadDetail, roadPaint, withRoadDetail } from './world/roadDetail';
 import { RoadLife } from './world/roadLife';
 import { fitStreetModel, loadStreetModel } from './world/streetModel';
 import { loadWalkIn, type WalkIn } from './world/walkIn';
-import { CAR_REACH, CAR_SLOW, findPortal, PORTALS, portalNear, type Portal } from '../shared/portals.mjs';
+import { CAR_REACH, CAR_SLOW, findPortal, PORTALS, portalNear, REACH, type Portal } from '../shared/portals.mjs';
 import { noShoot } from '../shared/zones.mjs';
 import { loadBounds } from '../shared/bounds.mjs';
 import BOUNDS from '../shared/bounds.json';
@@ -526,6 +527,131 @@ planner.onRemove = (id) => {
     saveLocalFurniture();
   }
 };
+
+// Teslas placed with the planner (shared/car.json: placed): real cars like the four above, in
+// `cars` with a `kind`. In multiplayer the admin's: the server keeps them, checks every spot and
+// decides who drives. Alone anyone's, kept in this browser where they were put.
+const indoorsAt = makeIndoors([...house.prisms, ...(house.surroundings?.prisms ?? [])], house.rooms.map((r) => r.name));
+const placedCars = () => cars.filter((c) => c.kind);
+/** A placed Tesla taken away: if you sit in it, you get out first. */
+function removePlaced(c: Car): void {
+  if (c === car && (driving || riding)) getOut(false);
+  if (c === car) {
+    wantCar = false;
+    car = cars[0];
+  }
+  c.dispose();
+  if (cars.includes(c)) cars.splice(cars.indexOf(c), 1);
+}
+/** A placed Tesla into the game (drawn, solid, drivable); null for an unknown kind or one too many. */
+function addPlaced(st: CarState): Car | null {
+  const spec = placedSpec(st.kind ?? '', st);
+  if (!spec || placedCars().length >= PLACED_MAX) return null;
+  const c = new Car(world, trunks, st.id, spec, st.kind);
+  cars.push(c);
+  scene.add(c.group);
+  return c;
+}
+/**
+ * The placed Teslas as `list` has them (the server's, or this browser's alone): new ones in, the
+ * others taken away, a parked one put where the list says (the admin moved it). One someone else
+ * drives follows its ticks; the one you drive stays yours.
+ */
+function setPlaced(list: CarState[]): void {
+  const want = new Map(list.filter((st) => typeof st.id === 'string' && st.kind).map((st) => [st.id, st]));
+  for (const c of placedCars()) if (want.get(c.id)?.kind !== c.kind) removePlaced(c);
+  for (const st of want.values()) {
+    const c = carById(st.id) ?? addPlaced(st);
+    if (!c) continue;
+    c.driver = st.driver ?? null;
+    c.passenger = st.passenger ?? null;
+    c.park = { x: st.x, y: st.y, z: st.z, yaw: st.yaw };
+    const turned = Math.abs(Math.atan2(Math.sin(c.yaw - st.yaw), Math.cos(c.yaw - st.yaw))) > 0.002;
+    const moved = Math.hypot(c.x - st.x, c.z - st.z) > 0.02 || Math.abs(c.y - st.y) > 0.02;
+    if (!st.driver && !(driving && c === car) && (moved || turned)) c.place(st.x, st.y, st.z, st.yaw);
+  }
+  planner.refresh();
+}
+/**
+ * Whether a Tesla of `kind` may stand at (x, z) facing `yaw`, as the server checks it again
+ * (game.mjs parkingProblem), and its height there: on the ground (the drive, the road or the grass,
+ * not on a wall or a roof), inside the edge of the game, off the portals, outdoors, clear of walls,
+ * hedges, fences, furniture, trees, other cars and people. `id`: the placed one being moved.
+ */
+function teslaFits(kind: string, x: number, z: number, yaw: number, floorY: number, id?: string): { ok: boolean; y: number } {
+  const bare = house.ground + terrain.height(x, z);
+  const y = world.groundAt(x, z, bare + 0.3, 0).y; // paving and kerbs, a few centimetres up
+  const spec = placedSpec(kind, { x, y, z, yaw });
+  if (!spec || floorY > bare + 2) return { ok: false, y };
+  const halfL = spec.length / 2;
+  const halfW = spec.width / 2;
+  const box = { x, z, yaw, halfL, halfW };
+  const people = [...avatars.obstacles(), ...(driving || riding ? [] : [{ x: player.x, z: player.z, r: 0.35 }]), ...trunks];
+  const ok = y >= bare - 1.5
+    && edges.map.boxInside(x, z, yaw, halfL, halfW) && (!world.bounds || world.bounds.boxInside(x, z, yaw, halfL, halfW))
+    && clearOfPortals(box, PORTALS, REACH)
+    && !boxPoints(x, z, yaw, halfL, halfW, 0.5).some(([px, pz]) => indoorsAt(px, pz))
+    && !cars.some((c) => c.ready && c.id !== id && boxesOverlap(box, { x: c.x, z: c.z, yaw: c.yaw, halfL: c.spec.length / 2, halfW: c.spec.width / 2 }, 0.1))
+    && !people.some((o) => boxesOverlap(box, { x: o.x, z: o.z, yaw: 0, halfL: o.r, halfW: o.r }))
+    && world.boxFree(x, z, yaw, halfL, halfW, y + 0.3, y + spec.height, id ? `car-${id}` : undefined);
+  return { ok, y };
+}
+planner.carFits = teslaFits;
+planner.carCount = () => placedCars().length;
+planner.pickCar = (ray) => {
+  const hit = ray.intersectObjects(placedCars().filter((c) => c.group.visible).map((c) => c.group), true).find((h) => !h.object.userData.ignoreRay);
+  let o: THREE.Object3D | null = hit?.object ?? null;
+  while (o && o.userData.car === undefined) o = o.parent;
+  const c = o ? carById(o.userData.car) : undefined;
+  if (!hit || !c?.kind) return null;
+  const mine = c === car && (driving || riding || wantCar);
+  return { id: c.id, kind: c.kind, yaw: c.yaw, distance: hit.distance, busy: mine || !!c.driver || !!c.passenger };
+};
+planner.onCarBusy = () => chat.system(() => t('plan.teslaBusy'));
+const LOCAL_CARS = 'briel.cars';
+let localCar = 1; // ids for the Teslas placed alone ('l1', 'l2' ...)
+planner.onCar = (c) => {
+  if (net.connected) return net.send({ t: 'tesla', op: 'put', ...c });
+  const at = { x: c.x, y: c.y, z: c.z, yaw: c.yaw };
+  const moved = c.id ? carById(c.id) : undefined;
+  if (moved?.kind) {
+    moved.place(at.x, at.y, at.z, at.yaw);
+    moved.park = at;
+  } else addPlaced({ id: `l${localCar++}`, kind: c.kind, ...at, s: 0, driver: null });
+  saveLocalCars();
+  planner.refresh();
+};
+planner.onCarRemove = (id) => {
+  if (net.connected) return net.send({ t: 'tesla', op: 'del', id });
+  const c = carById(id);
+  if (c?.kind) removePlaced(c);
+  saveLocalCars();
+  planner.refresh();
+};
+/** Alone: the Teslas placed in this browser, each where it was put (one driven off is back there next time). */
+function loadLocalCars(): void {
+  let list: CarState[] = [];
+  try {
+    const saved: unknown = JSON.parse(localStorage.getItem(LOCAL_CARS) ?? '[]');
+    const ok = (v: unknown): v is CarState =>
+      !!v && typeof v === 'object' && /^l\d{1,6}$/.test(String((v as CarState).id)) && typeof (v as CarState).kind === 'string'
+      && [(v as CarState).x, (v as CarState).y, (v as CarState).z, (v as CarState).yaw].every((n) => typeof n === 'number' && Number.isFinite(n));
+    if (Array.isArray(saved)) list = saved.filter(ok).slice(0, PLACED_MAX).map(({ id, kind, x, y, z, yaw }) => ({ id, kind, x, y, z, yaw, s: 0, driver: null }));
+  } catch {
+    // unreadable, or a private window: none
+  }
+  for (const c of placedCars()) removePlaced(c); // all of them anew, where they were put
+  setPlaced(list);
+  localCar = Math.max(0, ...list.map((st) => Number(st.id.slice(1)))) + 1;
+}
+function saveLocalCars(): void {
+  try {
+    localStorage.setItem(LOCAL_CARS, JSON.stringify(placedCars().map((c) => ({ id: c.id, kind: c.kind, ...c.park }))));
+  } catch {
+    // private window: they last for this visit
+  }
+}
+loadLocalCars();
 const plannerBtn = document.getElementById('planner-btn')!;
 function togglePlanner(): void {
   if (driving || riding) return;
@@ -567,7 +693,9 @@ document.getElementById('resetfurn-btn')!.addEventListener('click', () => {
     furnishing.setAll(startLayout());
     localId = -1 - startLayout().length;
     clowns.setAll(CLOWN_DEFAULTS); // and the characters placed with the planner go
+    for (const c of placedCars()) removePlaced(c); // and the Teslas (the four of the game stay)
     saveLocalFurniture();
+    saveLocalCars();
   }
 });
 let mapTimer = 0;
@@ -731,6 +859,8 @@ function applyRules(next: Rules): void {
   plannerBtn.disabled = !mayFurnish();
   plannerBtn.title = mayFurnish() ? '' : t('chat.furnOff');
   planner.clowns = !me || me.role === 'admin'; // alone you may place clowns; in multiplayer the admin
+  planner.cars = !me || me.role === 'admin'; // and Teslas (the server refuses anyone else's)
+  planner.refresh();
 }
 /** The admin can always arrange the furniture; others when the admin allows it. */
 function mayFurnish(): boolean {
@@ -842,6 +972,7 @@ function followAccount(account: Me | null): void {
     combat.me = '';
     combat.reset([], 10, null);
     loadLocalFurniture();
+    loadLocalCars(); // the Teslas placed alone, instead of the shared ones
   }
   showOnline();
   combat.setActive(!!account && weapon.enabled);
@@ -1266,6 +1397,7 @@ net.onMessage = (m: ServerMsg) => {
       getOffHorse(false); // or riding
       wantCar = false;
       horseWanted = -1;
+      setPlaced((m.cars ?? []).filter((s) => s.kind)); // the Teslas placed with the planner, instead of those placed alone
       for (const s of m.cars ?? []) carById(s.id)?.setPose(s, true);
       horses.setAll(m.horses ?? [], m.you);
       {
@@ -1344,6 +1476,9 @@ net.onMessage = (m: ServerMsg) => {
       if (!mine) c.setPose(m.car);
       break;
     }
+    case 'teslas': // one was placed, moved or taken away (and whoever sat in a car taken away got out first, in a 'car')
+      setPlaced(m.list);
+      break;
     case 'chat':
       chat.add(m.from, m.color, m.text);
       break;
@@ -1850,7 +1985,7 @@ renderer.setAnimationLoop((now: number) => {
     const use = key('use', mode);
     touch.setState(action, inCar, planner.active);
     const speed = (v: number) => Math.round(Math.abs(v) * 3.6);
-    const carLabel = carName(car.id, car.spec.name);
+    const carLabel = carName(car.kind ?? car.id, car.spec.name);
     let prompt = target ? t(target.locked ? 'prompt.locked' : target.open ? 'prompt.close' : 'prompt.open', { key: doorKey, door: doorName(target.name) }) : '';
     // The car's speed and keys for the first few seconds in it only (Yoshi, as on a horse).
     if (driving) prompt = carHint > 0 ? t('prompt.driving', { speed: speed(car.speed), use }) : '';
@@ -2327,6 +2462,7 @@ if (import.meta.env.DEV) {
       car,
       cars,
       currentCar: () => car,
+      teslas: { fits: teslaFits, placed: placedCars },
       getIn,
       getOut,
       horses,

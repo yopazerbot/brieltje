@@ -1273,11 +1273,17 @@ export class Furnishing {
 
   /** The piece hit by a ray, if any. */
   pick(raycaster: THREE.Raycaster): Piece | null {
+    return this.pickHit(raycaster)?.piece ?? null;
+  }
+
+  /** The piece hit by a ray and how far along it (m), if any. */
+  pickHit(raycaster: THREE.Raycaster): { piece: Piece; distance: number } | null {
     const hit = raycaster.intersectObjects([...this.meshes.values()].map((m) => m.mesh), false)[0];
     if (!hit || hit.instanceId === undefined) return null;
     const entry = [...this.meshes.values()].find((m) => m.mesh === hit.object);
     const id = entry?.ids[hit.instanceId];
-    return id === undefined ? null : this.pieces.get(id) ?? null;
+    const piece = id === undefined ? undefined : this.pieces.get(id);
+    return piece ? { piece, distance: hit.distance } : null;
   }
 
   /** One instanced mesh per kind of furniture; collision boxes for everything but rugs. */
