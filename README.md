@@ -10,17 +10,34 @@ Smetlede and Briel in 3D: a walkable model of the village of Smetlede (Lede, Bel
 
 The whole project was made with AI. Yoshi Parlevliet, a cybersecurity consultant rather than a game developer, directed it, and [Claude Code](https://claude.com/claude-code) wrote the game, the data tools and the Blender scripts. Every choice and the reason for it is in [DECISIONS.md](DECISIONS.md).
 
+## New: Zombies
+
+![The five zombies of the Zombies game](docs/screenshots/zombies-lineup.webp)
+
+The newest game in Brieltje (November 2026). Zombies come for the house and the bungalow in waves, from every side and always out of sight. Each wave is bigger, a little faster and a little tougher than the last. The waves never end: how far do you get? Play it alone from the menu's Play tab (your best wave is kept), or together when the admin starts it for everyone.
+
+- **Five zombies**, our own Blender models, rigged and animated: a thin one in a torn shirt, a teen in a red hoodie, an old mechanic in overalls, a farmer in wellies, and a big one in a white vest. From wave 3 the hoodies sprint. Every fifth wave brings big ones, who stomp and pound the ground round them.
+- **No safe room.** Together the houses are open, and the zombies follow you in: up the stairs, onto the roof terrace, through the doors. A shut door holds them for a moment. Whoever perches where no zombie can reach is warned, and then out of the wave.
+- **Helping each other up.** A teammate who is down gets up again when you hold Use (E or △) next to them for 3 seconds.
+- **Rewards.** Beaten zombies sometimes drop one: a bigger ammo pack, a scope for the rifle and the pistol, or a claymore (hold G or R1 to place it).
+- **The sniper's double.** One bullet can go through two zombies.
+- **Sound.** They groan more often and louder as they come closer, from where they stand. A sprinting runner puffs.
+- **Fair.** In multiplayer the server decides every hit, swipe, pickup and help.
+
+![A runner in a red hoodie comes across the back garden](docs/screenshots/zombies.webp)
+
 ## What's in it
 
 | | |
 |---|---|
-| **Smetlede** | The village centre as our own Blender models: the Sint-Pharaïldis church, the café beside its tower, the primary school, and some 27 houses round the church square and along the streets to the school. Molenhoek with its houses and the street as it was rebuilt in 2026. You start on the church square. |
+| **Smetlede** | The village centre as our own Blender models: the Sint-Pharaïldis church, the café beside its tower, the primary school with the chip shop by it, and the houses round the church square. Molenhoek from the church square to its end at Oordegemkouter, on the street as it was rebuilt in 2026, and Kapellenhoek to past Briel: more than 180 houses of our own. At Molenhoek's end you can walk into the end house of the new terrace. You start on the church square, or at another portal of your choice. |
 | **Briel** | The hamlet between the fields: the houses along Briel, the bungalow, and the farms and meadows round them. |
 | **Everything else** | Built from Flemish open data (GRB, the DHM laser scan, the orthophoto): some 800 buildings with their roofs, roads, fields, hedges, trees, poles and ponds, on the real relief. Facades follow a Street View survey (used as a reference only). |
 | **Our house** | Real scale: walls, stairs, doors and windows. Rooms furnished with our own Blender models, and a furniture planner to rearrange them. |
 | **Life** | Birds that fly off when you come near, a robot mower doing its rounds, cows and sheep in the meadows, trees in the wind, cars on the roads, and church bells striking the hours. |
-| **Getting around** | Walk, sprint, fly, drive a Tesla (with a passenger) or ride a horse. Pick where you start: one of five portals, which also jump between our house, the bungalow, the church, the school and Molenhoek. The map (M, the menu's first tab) gives directions along the roads. |
-| **Together** | Up to 16 players who join with a PIN. Chat, party games (hide and seek, tag, a treasure hunt), house against bungalow, and an Action mode with weapons, grenades and giant strongmen (no shooting on the school grounds). A leaderboard, and a scoreboard to project at a meetup. |
+| **Getting around** | Walk, sprint, fly, drive a Tesla (with a passenger) or ride a horse. Seven portals jump between our house, the bungalow, the church, the school and three places along Molenhoek. `/location` in the chat, or the menu's Play tab, takes you to any portal or to 26 streets. The map (M, the menu's first tab) gives directions along the roads. |
+| **Ways to play** | Explore (just walking around), Paintball (paint guns, for everyone) or Action (a pistol, then a rifle, a shotgun, a sniper rifle and grenades, against each other, giant strongmen and clowns; no shooting on the school grounds). |
+| **Together** | Up to 16 players who join with a PIN. Chat, party games (hide and seek, tag, a treasure hunt, Zombies), and house against bungalow. A leaderboard, and a scoreboard to project at a meetup. |
 | **Anywhere** | Graphics presets with auto-detection, keyboard and mouse, controller, or touch. In English or Dutch (Nederlands), chosen on the start screen or in the settings. Key hints follow an AZERTY or QWERTY keyboard. |
 
 ## Screenshots
@@ -49,7 +66,9 @@ The whole project was made with AI. Yoshi Parlevliet, a cybersecurity consultant
 | Fly up / down | Hold ✕ / ○ | Hold Space / C |
 | Use (doors, cars, horses, portals) | △ | E |
 | Map (the menu's first tab) | Press the touchpad | M |
-| Shoot, aim (Action mode) | R2, L2 | Left click, right click |
+| Shoot, aim (Action, Paintball) | R2, L2 | Left click, right click |
+| Throw a grenade; hold to place a claymore (Zombies) | R1 | G |
+| Help a teammate up (Zombies) | Hold △ for 3 s | Hold E for 3 s |
 | Menu | Options | Esc |
 
 Every control is listed in the game's menu (Controls), and in [docs/DETAILS.md](docs/DETAILS.md).
@@ -75,7 +94,7 @@ It listens on http://localhost:8080. Without `DATABASE_URL` (Postgres) it keeps 
 
 ## How it's made
 
-- **The game:** Three.js (WebGL) in TypeScript, built with Vite. A small Node server with WebSockets runs multiplayer, and the server checks every move, shot and trip.
+- **The game:** Three.js (WebGL) in TypeScript, built with Vite. A small Node server with WebSockets runs multiplayer, and the server checks every move, shot and trip. In Zombies it also runs the horde: a grid of the ground and the houses' floors, a distance field the zombies walk down, and every hit and swipe.
 - **The world's data:** Python and Blender scripts in [`tools/`](tools) turn the open data and our own measurements into `web/src/data/*.json` and `web/public/models/*.glb`. Private source files are not in this repository; what the game needs is already built.
 - **Performance:** the graphics chip is the limit, so most things are instanced, animated in shaders and hidden beyond a draw distance. On the development PC a frame takes about 10 to 15 ms at Medium.
 - **Security:** scrypt password hashes, `__Host-` cookies, same-origin checks, rate limits, and the server deciding every hit and trip. Cloudflare sits in front.

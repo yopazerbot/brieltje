@@ -1,6 +1,6 @@
 # Progress
 
-Last update: 2026-10-31
+Last update: 2026-11-02
 
 ## Done
 
@@ -69,14 +69,24 @@ Last update: 2026-10-31
 | **31 Oct, road life** | Traffic on the shared clock: two cars round the Briel loop and past our house, four through the village (a car and a white van in along Kapellenhoek and out along Molenhoek, through the centre to Stefaan Glorieuxstraat, down Kapellenhoek). They slow for bends and junctions, stop and honk for whoever stands in their lane, and are heard as they pass. 98 cars parked on the drives along the road and in the outer streets. Street name plates, the village's name signs, zone 30 signs, a bus stop with a shelter, letterboxes, bikes against front walls. The church bells strike the hours and half hours, Belgian time, heard from the tower. |
 | **31 Oct, Nederlands** | The whole game in English or in Belgian Dutch (Flemish, informal "je"): the start screen, every menu tab and controls list, the HUD and its prompts, the chat's own lines, the portals, the big map, the furniture planner, the party games, the touch buttons, and the server's messages and refusals. Chosen top right on the start screen or in Settings and remembered in the browser; a first visit follows the browser's language. A switch takes effect at once, also in multiplayer. The key hints follow the keyboard: Z Q S D on AZERTY, W A S D on QWERTY (detected, or set in Settings). |
 | **Fighting** | Masked fighters in tactical gear (one outfit per player colour), health, hit marker, kill feed, death screen, respawn at 13 spawn points, points, scoreboard (Tab / touchpad), rounds to 10 kills |
+| **31 Oct, Paintball** | A third way to play beside Explore and Action: paint guns for everyone, paint that sticks. A house rule makes Action child-friendly. |
+| **31 Oct, the village grows** | Smetlede's houses round the church square and the café by the tower, Molenhoek from the church square to its end at Oordegemkouter, and Kapellenhoek to past Briel: more than 180 houses of our own, built in Blender after a Street View tour. The streets in detail: concrete slabs, setts, kerbs, pavements, footpaths and the school's zebra. A white Model Y and a red Model 3 in the bays by the church. |
+| **31 Oct, smoother together** | Other players move smoothly: 20 updates a second, drawn a tenth of a second behind. On the start screen you pick where to start: one of the portal places. |
+| **1 Nov, looks** | Sky in the village's windows with curtains behind, a warmer grade, drifting clouds, chimney smoke and rippling ponds. Trees with clumps of leaves and a ragged outline, each one its own. Contact shadows round everything on the ground, the farmers' real crops in the fields, lawns in stripes. Brieltje's own look: the Alegreya Sans typeface, a wordmark with two lit windows, an icon of a village house at dusk. |
+| **1 Nov, the edge of the game** | An outline round the built-up area and a ceiling. Nobody walks, flies, drives or rides past it, the server holds every player inside, and the big map shows it. |
+| **1 Nov, getting around** | Two more portals along Molenhoek, its middle and its end: seven in all. `/location` takes you to any portal or to one of 26 streets, from the chat (alone too) or the menu's Play tab. The admin places Teslas with the furniture planner. Together everyone walks and runs at the real pace. |
+| **1 Nov, Molenhoek's end** | The new terrace at Molenhoek's far end as it stands, with its end house to walk into: its free side, its garden and the lane behind, at the street's level. The brick house at the lane's corner. |
+| **1 Nov, players and joining** | Players' figures in one draw each, feet in step, with crouch, jump, flying and riding poses. The most important controls when you start, with a button that counts down. Joining without a stall: the village, the countryside, the gardens and the traffic come in after play begins without stopping the game (the longest frame in the first 10 s went from about 1 s to 0.15 to 0.3 s). Sixteen players at once to start with. |
+| **1 Nov, Apple** | No black sky or dark flicker on Macs and iPhones: no surface normals of zero length, the canvas keeps its size, and the last pass drops NaN and caps infinite pixels. |
+| **1 Nov, Zombies** | A party game for one team, alone or together: endless waves round the house and the bungalow, from every side and out of sight. Five zombies of our own, rigged in Blender with walk, lurch, run, idle, swipe, flinch and fall clips: four kinds and a big one. Runners from wave 3, big ones every fifth wave. Together the houses open and the zombies follow you in and up the stairs; a perch out of their reach gets you out of the wave. Helping teammates up, rewards (a bigger ammo pack, a scope, a claymore), the sniper's double, and groans that come nearer. The server runs the horde on a grid and a distance field and decides every hit; the page draws thirty zombies in a handful of draws. |
+| **2 Nov, poster images** | The five zombies at print size on transparent backgrounds, their line-up, and Blender renders of the game's village, house and bungalow (`docs/poster/`). |
 
 ## Next
 
-1. Play a round with friends; tune damage, respawn time and the kill limit.
-2. Blender light bake: light bouncing between walls, baked into textures (Blender is installed).
-3. Window frames (grey/brown aluminium), door leaves, kitchen and bathrooms from the supplier plans.
-4. Furniture in the style of the reference images (CC0 models).
-5. Optional: a sunset "fly-in" camera move on the start screen, inspired by the walkthrough video.
+1. A LAN night for 20 to 30 players: more players at once than the 16 of now, the zombies' waves scaled for them, and a start script for a local server.
+2. The houses of the street models at the street's level everywhere, as the end house at Molenhoek is now.
+3. The Blender light bake (light bouncing between walls) as the default, once it is denoised.
+4. Play rounds with friends; tune the waves, the damage and the respawn times.
 
 ## Blocked
 
