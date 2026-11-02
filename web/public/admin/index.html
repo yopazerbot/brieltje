@@ -146,9 +146,10 @@
             <div><label class="field" for="gn-until">Until</label><input type="time" id="gn-until" /></div>
           </div>
           <p class="muted small">An empty field shows "Nog te bepalen" (to be decided) on the page.</p>
+          <label class="consent gn-open"><input type="checkbox" id="gn-open" checked /><span><b>Open for registrations</b><br /><span class="muted small">Untick and save when the hall is full. The page then says the registrations are closed. Whoever signed up can still look at or cancel theirs.</span></span></label>
           <div class="actions"><button class="btn" type="submit" id="gn-save">Save</button><span class="muted small" id="gn-saved" aria-live="polite"></span></div>
         </form>
-        <h2 class="sub">Registrations</h2>
+        <h2 class="sub">Registrations <span class="badge" id="gn-state"></span></h2>
         <div class="stats" id="gn-kpis"></div>
         <div class="toolbar">
           <input type="text" id="gn-search" placeholder="Search name, email, ideas" />

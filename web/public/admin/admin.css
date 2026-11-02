@@ -195,6 +195,9 @@ table.fb td:last-child { white-space: nowrap; }
   width: 100%; padding: 11px 12px; font: inherit; color: var(--ink); background: var(--field); border: 1px solid var(--line); border-radius: 6px; outline: none; color-scheme: dark;
 }
 .gn-night .actions { margin-top: 12px; }
+.gn-open { margin-top: 14px; }
+#gn-state { vertical-align: middle; margin-left: 6px; background: rgba(105, 240, 174, 0.15); color: var(--good); }
+#gn-state.closed { background: rgba(255, 138, 128, 0.15); color: var(--bad); }
 table.gn td.num, table.gn th:nth-child(4), table.gn th:nth-child(5) { text-align: right; }
 table.gn td.num { font-weight: 700; color: var(--accent); }
 table.gn td.comment { white-space: pre-wrap; overflow-wrap: anywhere; min-width: 220px; }

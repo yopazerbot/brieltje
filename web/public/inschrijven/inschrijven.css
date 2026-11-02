@@ -13,5 +13,10 @@
 .count .muted { display: block; line-height: 1.35; }
 .count .stepper { flex: none; }
 .under { margin-top: 8px; }
+.note p:last-child { margin-bottom: 0; }
+.note p { margin-bottom: 8px; }
+.note.capacity { margin-top: 22px; }
+.note.closed { margin-top: 18px; padding: 16px 18px; font-size: 17px; }
+.note.closed .muted { font-size: 15px; }
 .privacy { margin-top: 18px; }
 @media (max-width: 520px) { .pair { grid-template-columns: 1fr; } .event > div { grid-template-columns: 1fr; } .stepper button { width: 42px; } .stepper output { min-width: 44px; } }

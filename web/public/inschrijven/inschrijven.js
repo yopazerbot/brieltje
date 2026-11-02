@@ -56,7 +56,8 @@
     }
     return /^en\b/i.test(navigator.language || '') ? 'en' : 'nl';
   };
-  let night = { place: '', date: '', from: '', until: '' }; // as the admin set them, drawn again when the language changes
+  let night = { place: '', date: '', from: '', until: '', open: true }; // as the admin set them, drawn again when the language changes
+  let known = false; // whether the server said yet if the registrations are open
   let ownEntry = null;
   const setLang = (l) => {
     lang = l;
@@ -87,12 +88,18 @@
       }));
     }
     for (const p of document.querySelectorAll('[data-later]')) show(p, !(place && date && time));
+    // Closed (the hall is full): a thank-you instead of the form.
+    show($('form'), known && night.open !== false);
+    show($('intro'), night.open !== false);
+    show($('closed'), known && night.open === false);
   }
+  // If the server can't be asked, the form shows: sending tells whether it is still open.
   const loadNight = () =>
-    fetch('/api/gamenight').then((r) => (r.ok ? r.json() : null)).then((d) => {
+    fetch('/api/gamenight').then((r) => (r.ok ? r.json() : null)).catch(() => null).then((d) => {
       if (d) night = d;
+      known = true;
       drawNight();
-    }).catch(() => {});
+    });
 
   /** Your registration as labelled rows. */
   function drawOwn(e) {
@@ -201,6 +208,13 @@
       const body = { lastName, firstName, email, players: count.players, watchers: count.watchers, wishes: $('wishes').value.trim(), age: true, lang, website: $('website').value };
       const r = await fetch('/api/gamenight', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
       if (r.status === 429) throw new Error('busy');
+      if (r.status === 409) {
+        // Closed while this page was open: the hall filled up.
+        night.open = false;
+        drawNight();
+        scrollTo({ top: 0, behavior: 'smooth' });
+        return;
+      }
       if (!r.ok) throw new Error('failed');
       const { id, token } = await r.json();
       done = { players: count.players, watchers: count.watchers };

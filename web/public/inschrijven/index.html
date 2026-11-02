@@ -23,12 +23,27 @@
     <!-- The form, under the night's place, date and time -->
     <section id="s-form">
       <h1><span data-lang="nl">Inschrijven voor de game night</span><span data-lang="en">Sign up for the game night</span></h1>
-      <p data-lang="nl">Kom Brieltje samen spelen, op één plek. Schrijf je hieronder in. Zo weten we hoeveel laptops en pc's we nodig hebben.</p>
-      <p data-lang="en">Come and play Brieltje together, in one place. Sign up below. That tells us how many laptops and PCs we need.</p>
+      <div id="intro">
+        <p data-lang="nl">Kom Brieltje samen spelen, op één plek. Schrijf je hieronder in. Zo weten we hoeveel laptops en pc's we nodig hebben.</p>
+        <p data-lang="en">Come and play Brieltje together, in one place. Sign up below. That tells us how many laptops and PCs we need.</p>
+      </div>
       <dl class="event" data-event></dl>
       <p class="muted small" data-later hidden><span data-lang="nl">Wat nog niet vastligt, mailen we je zodra het bekend is.</span><span data-lang="en">We'll email you whatever isn't set yet as soon as it is.</span></p>
 
-      <form id="form" novalidate>
+      <!-- When the admin closed the registrations: the hall is full. -->
+      <div class="note closed" id="closed" hidden>
+        <div data-lang="nl">
+          <p><b>De inschrijvingen zijn gesloten.</b> De zaal is vol. Bedankt voor je interesse!</p>
+          <p class="muted">Ben je al ingeschreven? Via je eigen link kun je je inschrijving nog bekijken.</p>
+        </div>
+        <div data-lang="en">
+          <p><b>Registrations are closed.</b> The hall is full. Thank you for your interest!</p>
+          <p class="muted">Already signed up? Your own link still shows your registration.</p>
+        </div>
+      </div>
+
+      <!-- Shown once the page knows the registrations are open (no flash of a form that then goes). -->
+      <form id="form" novalidate hidden>
         <div class="pair">
           <div>
             <label class="field" for="last"><span data-lang="nl">Naam</span><span data-lang="en">Last name</span></label>
@@ -79,6 +94,18 @@
         <!-- A field people don't see: bots fill it in. -->
         <input type="text" id="website" name="website" tabindex="-1" autocomplete="off" aria-hidden="true" style="position:absolute;left:-9999px;width:1px;height:1px;opacity:0" />
 
+        <!-- The hall's capacity (Yoshi, 2 Nov 2026): watched, closed when full, a registration turned down or cancelled if there are more than places. -->
+        <div class="note capacity">
+          <div data-lang="nl">
+            <p><b>De plaatsen zijn beperkt.</b> Ook toeschouwers nemen een plaats in. We houden de inschrijvingen in het oog. Zodra de zaal vol is, sluiten we ze.</p>
+            <p>Komen er toch meer inschrijvingen binnen dan er plaats is? Dan kunnen we een inschrijving weigeren of annuleren. We laten het je dan meteen weten.</p>
+          </div>
+          <div data-lang="en">
+            <p><b>Places are limited.</b> Spectators take up a place too. We keep an eye on the registrations. Once the hall is full, we close them.</p>
+            <p>Do more registrations come in than there is room for? Then we may have to turn one down or cancel it. We'll let you know straight away.</p>
+          </div>
+        </div>
+
         <p class="muted small privacy" data-lang="nl">We gebruiken je gegevens alleen om de game night te organiseren. Meer in het <a href="/legal/privacy.html?lang=nl#nl-gamenight" target="_blank" rel="noopener noreferrer">privacybeleid</a>.</p>
         <p class="muted small privacy" data-lang="en">We only use your details to organise the game night. More in the <a href="/legal/privacy.html?lang=en#en-gamenight" target="_blank" rel="noopener noreferrer">privacy policy</a>.</p>
         <p class="error" id="send-err" hidden></p>
@@ -93,8 +120,8 @@
       <dl class="event" data-event></dl>
       <p class="muted small" data-later hidden><span data-lang="nl">Wat nog niet vastligt, mailen we je zodra het bekend is.</span><span data-lang="en">We'll email you whatever isn't set yet as soon as it is.</span></p>
       <div class="note">
-        <span data-lang="nl"><b>Bewaar deze link.</b> Hiermee kun je je inschrijving later bekijken of je uitschrijven.</span>
-        <span data-lang="en"><b>Keep this link.</b> With it you can look at your registration later, or cancel it.</span>
+        <span data-lang="nl"><b>Bewaar deze link.</b> Hiermee kun je je inschrijving later bekijken of je uitschrijven. Kun je uiteindelijk niet komen? Schrijf je dan uit. Zo komt je plaats vrij voor iemand anders.</span>
+        <span data-lang="en"><b>Keep this link.</b> With it you can look at your registration later, or cancel it. Can't make it in the end? Then cancel. That frees your place for someone else.</span>
         <div class="linkbox"><input type="text" id="mine" readonly /><button class="btn ghost" type="button" id="copy"><span data-lang="nl">Kopieer</span><span data-lang="en">Copy</span></button></div>
       </div>
       <div class="actions"><a class="btn ghost" href="/"><span data-lang="nl">Naar het spel</span><span data-lang="en">To the game</span></a></div>

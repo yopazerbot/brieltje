@@ -798,15 +798,17 @@
     $('gn-date').value = e.date || '';
     $('gn-from').value = e.from || '';
     $('gn-until').value = e.until || '';
+    $('gn-open').checked = e.open !== false;
   }
   $('gn-form').addEventListener('submit', async (ev) => {
     ev.preventDefault();
     $('gn-save').disabled = true;
-    const r = await post('/api/admin/gamenight/event', { place: $('gn-place').value.trim(), date: $('gn-date').value, from: $('gn-from').value, until: $('gn-until').value }).catch(() => null);
+    const r = await post('/api/admin/gamenight/event', { place: $('gn-place').value.trim(), date: $('gn-date').value, from: $('gn-from').value, until: $('gn-until').value, open: $('gn-open').checked }).catch(() => null);
     $('gn-save').disabled = false;
     if (r?.ok) {
       night.event = await r.json();
       fillNight();
+      drawGamenight();
     }
     $('gn-saved').textContent = r?.ok ? `Saved at ${new Date().toLocaleTimeString('nl-BE', { hour: '2-digit', minute: '2-digit' })}. The page shows it now.` : 'Saving failed.';
   });
@@ -829,6 +831,9 @@
       s.append(el('b', '', value), el('span', 'muted small', label));
       return s;
     }));
+    const open = night.event?.open !== false;
+    $('gn-state').textContent = open ? 'Open' : 'Closed';
+    $('gn-state').classList.toggle('closed', !open);
     $('gn-empty').hidden = all.length > 0;
     $('gn-clear').hidden = !all.length;
     $('gn-rows').replaceChildren(...gnShown().map((e) => {

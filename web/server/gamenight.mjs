@@ -1,9 +1,11 @@
 // The game night page (web/public/inschrijven/, Yoshi, 2 Nov 2026): signing up for the game night
 // with a name, a first name, an email address, how many come to play (each needs a laptop or PC) and
 // how many to watch, and ideas or wishes. The place, the date and the time are the admin's to set on
-// the admin page. Until then the page says they are still to be decided.
+// the admin page. Until then the page says they are still to be decided. The admin closes the
+// registrations when the hall is full; the page says so, and that a registration may be turned down
+// or cancelled if more come in than there is room for.
 //
-// Public: GET /api/gamenight (the place, the date and the time), POST /api/gamenight (a sign-up),
+// Public: GET /api/gamenight (the place, the date, the time, open or closed), POST /api/gamenight (a sign-up),
 // GET and DELETE /api/gamenight/:id with the sign-up's own secret, to see or cancel it. The secret
 // travels in the X-Gamenight-Token header, never in a URL that could end up in a log.
 // Admin only: GET /api/admin/gamenight (the details and every sign-up), POST /api/admin/gamenight/event
@@ -82,7 +84,10 @@ export class GameNight {
     return (await this.json(res, 404, { error: 'Not found' }), true);
   }
 
-  /** The place, the date ('YYYY-MM-DD') and the times ('HH:MM'): empty while still to be decided. */
+  /**
+   * The place, the date ('YYYY-MM-DD') and the times ('HH:MM'): empty while still to be decided. `open`:
+   * whether the night takes registrations. The admin closes it when the hall is full (Yoshi, 2 Nov 2026).
+   */
   async event() {
     if (!this.details) {
       let saved = {};
@@ -96,6 +101,7 @@ export class GameNight {
         date: isDate(saved.date) ? saved.date : '',
         from: TIME.test(saved.from ?? '') ? saved.from : '',
         until: TIME.test(saved.until ?? '') ? saved.until : '',
+        open: saved.open !== false,
       };
     }
     return this.details;
@@ -108,8 +114,11 @@ export class GameNight {
       date: isDate(b.date) ? b.date : '',
       from: typeof b.from === 'string' && TIME.test(b.from) ? b.from : '',
       until: typeof b.until === 'string' && TIME.test(b.until) ? b.until : '',
+      open: b.open !== false,
     };
+    const was = (await this.event()).open;
     await this.store.setMeta('gamenight_event', JSON.stringify(d));
+    if (d.open !== was) console.log(JSON.stringify({ event: d.open ? 'gamenight_opened' : 'gamenight_closed' }));
     this.details = d;
     this.onChange();
     this.json(res, 200, d);
@@ -118,6 +127,7 @@ export class GameNight {
   async signUp(req, res) {
     const b = await this.readJson(req);
     if (b.website) return this.json(res, 200, { id: 0, token: '' }); // the trap field: a bot, pretend it worked
+    if (!(await this.event()).open) return this.json(res, 409, { error: 'closed' }); // the hall is full
     const lastName = clean(b.lastName, 80);
     const firstName = clean(b.firstName, 80);
     const email = clean(b.email, 200).toLowerCase();
