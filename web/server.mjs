@@ -21,6 +21,7 @@ import { openStore } from './server/store.mjs';
 import { Auth, beTime, bucketOf, CLOUDFLARE_ONLY, clientIp, viaCloudflare } from './server/auth.mjs';
 import { Feedback } from './server/feedback.mjs';
 import { Game } from './server/game.mjs';
+import { GameNight } from './server/gamenight.mjs';
 import { Interest } from './server/interest.mjs';
 import { Stats } from './server/stats.mjs';
 
@@ -73,10 +74,12 @@ const interest = new Interest(store, { json: (...a) => json(...a), clientKey: (r
 // STATS_SECRET locks the day's visitor seed in the store (server/stats.mjs): a Railway variable of its own, never in the database.
 const stats = new Stats(store, { json: (...a) => json(...a), clientKey: (req) => bucketOf(clientIp(req)), game, readJson: (req) => body(req), isAdmin: (req) => auth.session(req)?.role === 'admin', log: (event, req, extra) => auth.log(event, req, extra), secret: process.env.STATS_SECRET });
 const feedback = new Feedback(store, { json: (...a) => json(...a), readJson: (req) => body(req), clientKey: (req) => bucketOf(clientIp(req)), clientIp, session: (req) => auth.session(req), time: beTime });
-// The admin page's live view hears of new log lines, changed sign-ups and feedback.
+const gamenight = new GameNight(store, { json: (...a) => json(...a), readJson: (req) => body(req), clientKey: (req) => bucketOf(clientIp(req)) });
+// The admin page's live view hears of new log lines, changed sign-ups, feedback and the game night.
 auth.onLog = (entry) => stats.logged(entry);
 interest.onChange = () => stats.signupsChanged();
 feedback.onChange = () => stats.feedbackChanged();
+gamenight.onChange = () => stats.gamenightChanged();
 // A redeploy stops the server: no new connections, then the counting that waits for the store and the day's totals written.
 process.once('SIGTERM', () => {
   server.close();
@@ -137,6 +140,9 @@ async function api(req, res, url) {
   // Players' stars and comments (server/feedback.mjs), and the admin's list of them.
   if ((path === '/api/feedback' || path.startsWith('/api/admin/feedback'))
     && await feedback.handle(req, res, url, auth.session(req)?.role === 'admin')) return;
+  // The game night page: its details, sign-ups and own links (server/gamenight.mjs), and the admin's list.
+  if ((path === '/api/gamenight' || path.startsWith('/api/gamenight/') || path.startsWith('/api/admin/gamenight'))
+    && await gamenight.handle(req, res, url, auth.session(req)?.role === 'admin')) return;
   // How much the game is played (server/stats.mjs): the page's beacon, and the admin's numbers and log.
   if ((path === '/api/stats/beacon' || path === '/api/admin/stats' || path === '/api/admin/audit' || path === '/api/admin/live')
     && await stats.handle(req, res, url, auth.session(req)?.role === 'admin')) return;

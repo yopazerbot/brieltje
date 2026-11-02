@@ -42,6 +42,7 @@
         <nav class="tabs" role="tablist" aria-label="Admin" id="tabs">
           <button type="button" role="tab" id="tab-overview" aria-controls="panel-overview" data-tab="overview" aria-selected="true">Overview</button>
           <button type="button" role="tab" id="tab-signups" aria-controls="panel-signups" data-tab="signups" aria-selected="false" tabindex="-1">Sign-ups</button>
+          <button type="button" role="tab" id="tab-gamenight" aria-controls="panel-gamenight" data-tab="gamenight" aria-selected="false" tabindex="-1">Game night</button>
           <button type="button" role="tab" id="tab-feedback" aria-controls="panel-feedback" data-tab="feedback" aria-selected="false" tabindex="-1">Feedback</button>
           <button type="button" role="tab" id="tab-logins" aria-controls="panel-logins" data-tab="logins" aria-selected="false" tabindex="-1">Logins</button>
           <button type="button" role="tab" id="tab-online" aria-controls="panel-online" data-tab="online" aria-selected="false" tabindex="-1">Online now <span class="count" id="online-badge" hidden></span></button>
@@ -134,6 +135,32 @@
         <p class="muted" id="empty" hidden>No sign-ups yet.</p>
       </section>
 
+      <section data-panel="gamenight" id="panel-gamenight" role="tabpanel" aria-labelledby="tab-gamenight" hidden>
+        <form class="gn-night" id="gn-form">
+          <h2 class="sub">The night <span class="muted small">as <a href="/inschrijven/" target="_blank" rel="noopener">brieltje.be/inschrijven</a> shows it</span></h2>
+          <label class="field" for="gn-place">Place</label>
+          <input type="text" id="gn-place" maxlength="200" placeholder="To be decided" />
+          <div class="gn-when">
+            <div><label class="field" for="gn-date">Date</label><input type="date" id="gn-date" /></div>
+            <div><label class="field" for="gn-from">From</label><input type="time" id="gn-from" /></div>
+            <div><label class="field" for="gn-until">Until</label><input type="time" id="gn-until" /></div>
+          </div>
+          <p class="muted small">An empty field shows "Nog te bepalen" (to be decided) on the page.</p>
+          <div class="actions"><button class="btn" type="submit" id="gn-save">Save</button><span class="muted small" id="gn-saved" aria-live="polite"></span></div>
+        </form>
+        <h2 class="sub">Registrations</h2>
+        <div class="stats" id="gn-kpis"></div>
+        <div class="toolbar">
+          <input type="text" id="gn-search" placeholder="Search name, email, ideas" />
+          <button class="btn ghost" type="button" id="gn-copy" title="The addresses of everyone shown, to paste in Bcc">Copy addresses</button>
+          <button class="btn danger" type="button" id="gn-clear">Delete all</button>
+        </div>
+        <p class="muted small" id="gn-copied" hidden></p>
+        <div class="tablewrap"><table class="log gn"><thead><tr><th>Signed up</th><th>Name</th><th>Email</th><th>Players</th><th>Spectators</th><th>Ideas or wishes</th><th></th></tr></thead><tbody id="gn-rows"></tbody></table></div>
+        <p class="muted" id="gn-empty" hidden>No registrations yet.</p>
+        <p class="muted small">After the night, delete all registrations. The privacy policy promises that within a month.</p>
+      </section>
+
       <section data-panel="feedback" id="panel-feedback" role="tabpanel" aria-labelledby="tab-feedback" hidden>
         <div class="stats" id="fb-kpis"></div>
         <div class="fb-spread" id="fb-spread"></div>
@@ -176,7 +203,7 @@
       </section>
     </section>
   </div>
-  <footer><a href="/interested/">The sign-up page</a> · <a href="/legal/privacy.html">Privacy</a><div class="slides-place" data-slides-controls></div></footer>
+  <footer><a href="/interested/">The sign-up page</a> · <a href="/inschrijven/">The game night page</a> · <a href="/legal/privacy.html">Privacy</a><div class="slides-place" data-slides-controls></div></footer>
 </main>
 <div class="tip" id="tip" hidden></div>
 <script src="/admin/admin.js"></script>

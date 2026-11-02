@@ -1,7 +1,7 @@
 // Sessions, furniture and the Teslas placed with the planner, fighting stats, the login log, the
 // interest page's sign-ups (server/interest.mjs), the daily totals of how much the game is played
-// (server/stats.mjs) with the day's visitor codes (kept for that Belgian day only) and players'
-// feedback (server/feedback.mjs).
+// (server/stats.mjs) with the day's visitor codes (kept for that Belgian day only), players'
+// feedback (server/feedback.mjs) and the game night's sign-ups (server/gamenight.mjs).
 // Railway: Postgres via DATABASE_URL. Local development without it: a JSON
 // file in web/.data/ (not in git).
 // Sessions are stored by a hash of their token, never the token itself.
@@ -29,7 +29,7 @@ async function replace(from, to) {
 class FileStore {
   constructor(file) {
     this.file = file;
-    this.data = { audit: [], sessions: [], stats: {}, meta: {}, furniture: [], cars: [], interest: [], interestId: 0, daily: {}, feedback: [], feedbackId: 0, visits: null };
+    this.data = { audit: [], sessions: [], stats: {}, meta: {}, furniture: [], cars: [], interest: [], interestId: 0, daily: {}, feedback: [], feedbackId: 0, gamenight: [], gamenightId: 0, visits: null };
   }
   async init() {
     await mkdir(resolve(this.file, '..'), { recursive: true });
@@ -278,6 +278,29 @@ class FileStore {
     for (const r of this.data.feedback) if (r.at < old && r.ip) delete r.ip, n++;
     if (n) await this.save();
   }
+  async addGamenight(data, tokenHash) {
+    const id = ++this.data.gamenightId;
+    this.data.gamenight.push({ id, data, tokenHash });
+    await this.save();
+    return id;
+  }
+  async getGamenight(id) {
+    return this.data.gamenight.find((r) => r.id === id) ?? null;
+  }
+  async listGamenight() {
+    return [...this.data.gamenight].reverse().map(({ id, data }) => ({ id, data }));
+  }
+  async deleteGamenight(id) {
+    this.data.gamenight = this.data.gamenight.filter((r) => r.id !== id);
+    await this.save();
+  }
+  /** Every sign-up gone (after the night): how many there were. */
+  async clearGamenight() {
+    const n = this.data.gamenight.length;
+    this.data.gamenight = [];
+    await this.save();
+    return n;
+  }
 }
 
 class PgStore {
@@ -352,6 +375,12 @@ class PgStore {
         id serial primary key,
         at timestamptz not null default now(),
         data jsonb not null
+      );
+      create table if not exists gamenight (
+        id serial primary key,
+        at timestamptz not null default now(),
+        data jsonb not null,
+        token_hash text not null
       );
       create table if not exists visit_seed (
         day text primary key,
@@ -558,6 +587,26 @@ class PgStore {
   async interestBytes() {
     const r = await this.pool.query("select coalesce(sum((f->>'size')::bigint), 0)::bigint as n from interest, jsonb_array_elements(data->'files') f");
     return Number(r.rows[0].n);
+  }
+  async addGamenight(data, tokenHash) {
+    const r = await this.pool.query('insert into gamenight (data, token_hash) values ($1, $2) returning id', [data, tokenHash]);
+    return r.rows[0].id;
+  }
+  async getGamenight(id) {
+    const r = await this.pool.query('select id, data, token_hash from gamenight where id = $1', [id]);
+    return r.rows[0] ? { id: r.rows[0].id, data: r.rows[0].data, tokenHash: r.rows[0].token_hash } : null;
+  }
+  async listGamenight() {
+    const r = await this.pool.query('select id, data from gamenight order by id desc');
+    return r.rows;
+  }
+  async deleteGamenight(id) {
+    await this.pool.query('delete from gamenight where id = $1', [id]);
+  }
+  /** Every sign-up gone (after the night): how many there were. */
+  async clearGamenight() {
+    const r = await this.pool.query('delete from gamenight');
+    return r.rowCount;
   }
   /** Entries older than `days` out, and all but the newest `rows` (a flood of failed logins can't fill the database). */
   async pruneLog(days, rows) {

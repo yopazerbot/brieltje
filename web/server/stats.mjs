@@ -200,7 +200,7 @@ export class Stats {
     this.newPerAddress = new Window(3600_000);
     this.visits = new Map(); // anonymous visit number -> { mode, control, together, lang, since, last }
     this.streams = new Set();
-    this.dirty = { stats: true, log: [], signups: false, feedback: false };
+    this.dirty = { stats: true, log: [], signups: false, feedback: false, gamenight: false };
     this.lastPlaying = '';
     this.lastBoard = '';
     this.boardAt = 0;
@@ -407,6 +407,11 @@ export class Stats {
     this.dirty.feedback = true;
   }
 
+  /** The game night's sign-ups or details changed (server/gamenight.mjs): open admin pages fetch them again. */
+  gamenightChanged() {
+    this.dirty.gamenight = true;
+  }
+
   /** Who is playing now: the players together by name, the ones alone by the name they typed. */
   playing() {
     const now = Date.now();
@@ -448,7 +453,7 @@ export class Stats {
     this.peak();
     if (!this.streams.size) {
       this.dirty.log = [];
-      this.dirty.signups = this.dirty.feedback = false;
+      this.dirty.signups = this.dirty.feedback = this.dirty.gamenight = false;
       return;
     }
     const playing = this.playing();
@@ -461,7 +466,8 @@ export class Stats {
     if (this.dirty.log.length) this.send('log', this.dirty.log);
     if (this.dirty.signups) this.send('signups', {});
     if (this.dirty.feedback) this.send('feedback', {});
-    this.dirty = { stats: false, log: [], signups: false, feedback: false };
+    if (this.dirty.gamenight) this.send('gamenight', {});
+    this.dirty = { stats: false, log: [], signups: false, feedback: false, gamenight: false };
     // The scoreboard: when the scores or the game change, and every 10 seconds to keep its clocks
     // right (the page counts down by itself in between).
     const board = this.game.board();

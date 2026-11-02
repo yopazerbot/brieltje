@@ -31,7 +31,8 @@ html[lang="en"] [data-lang="en"], html[lang="nl"] [data-lang="nl"] { display: bl
 .toc ol { margin: 0; padding-left: 22px; columns: 2 220px; column-gap: 24px; font-size: 15px; }
 .toc a { color: var(--ink); text-decoration: none; }
 .toc a:hover { color: var(--accent); text-decoration: underline; }
-h2[id] { scroll-margin-top: 16px; }
+h2[id], h3[id] { scroll-margin-top: 16px; }
+h3 { font-size: 17px; margin: 20px 0 4px; }
 td:first-child { font-weight: 600; }
 code { font-size: 14px; padding: 1px 5px; background: var(--panel); border-radius: 3px; }
 @media (max-width: 560px) {

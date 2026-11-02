@@ -16,8 +16,8 @@ const COMMENT = 600; // characters (the text box's maxlength too)
 const IP_DAYS = 90;
 const MODES = ['explore', 'action', 'paintball'];
 
-/** Times per key within a window. */
-class Window {
+/** Times per key within a window (also the game night's, server/gamenight.mjs). */
+export class Window {
   constructor(ms) {
     this.ms = ms;
     this.map = new Map();

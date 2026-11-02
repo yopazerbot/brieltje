@@ -1,7 +1,7 @@
 // The admin page (brieltje.be/admin): log in with the game's admin account, then five tabs, kept
 // current by a live stream (GET /api/admin/live: today's numbers, who is playing, new log lines,
 // changed sign-ups and feedback); the 60 days behind the overview are fetched again every minute.
-// The address's hash picks the tab (#overview, #signups, #feedback, #logins, #online), so a tab can be
+// The address's hash picks the tab (#overview, #signups, #gamenight, #feedback, #logins, #online), so a tab can be
 // linked and back and forward work. The last tab, the period and the hour chart's measure are
 // remembered in this browser (localStorage, keys starting with briel.admin.), a convenience only.
 // Overview: how much the game is played (server/stats.mjs: totals per day and per hour, nothing per
@@ -9,6 +9,7 @@
 // before, by the hour, per day for 30 days, and how people play. Every date comes from the server's
 // Belgian calendar: the page never takes a day from the browser's time zone.
 // Sign-ups: the interest page's sign-ups (server/interest.mjs) with status, notes, plans and delete.
+// Game night: the night's place, date and time, and its registrations (server/gamenight.mjs).
 // Feedback: players' stars and comments (server/feedback.mjs) with their name, address and time.
 // Logins: the login log. Online now.
 // Everything a visitor typed or a server log holds is shown with textContent, never as HTML.
@@ -24,7 +25,7 @@
     login_admin_limited: ['Admin login paused', 'bad', 'failed'], login_blocked_kicked: ['Removed player tried again', 'bad', 'failed'], lockouts_lifted: ['Lockouts lifted', '', 'admin'],
     solo_start: ['Started alone (name as typed)', '', 'solo'], kick: ['Player removed', '', 'admin'], pin_changed: ['PIN changed', '', 'admin'], rules: ['House rules changed', '', 'admin'], round_won: ['Round won', '', ''],
   };
-  const TABS = ['overview', 'signups', 'feedback', 'logins', 'online'];
+  const TABS = ['overview', 'signups', 'gamenight', 'feedback', 'logins', 'online'];
   const PERIODS = { today: 'Today', yesterday: 'Yesterday', d7: 'Last 7 days', d30: 'Last 30 days' };
   // The hour chart's measures: the button, and a number of them in a tooltip.
   const METRICS = {
@@ -53,6 +54,7 @@
   let entries = [];
   let log = [];
   let feedback = [];
+  let night = { event: null, entries: [] }; // the game night: its details and registrations
   let tab = 'overview';
   let period = Object.hasOwn(PERIODS, saved.get('period') ?? '') ? saved.get('period') : 'today';
   let metric = Object.hasOwn(METRICS, saved.get('hours') ?? '') ? saved.get('hours') : 'players';
@@ -122,6 +124,7 @@
       console.error('overview', e);
     }
     loadSignups();
+    loadGamenight();
     loadFeedback();
     loadLog();
     connect();
@@ -165,6 +168,8 @@
       loadFeedback();
       soon();
     });
+    // Not while the night's details are being typed: they would be drawn over.
+    live.addEventListener('gamenight', () => loadGamenight(!document.activeElement?.closest?.('#gn-form')));
     live.addEventListener('signups', () => {
       soon();
       // Not while a note is being typed: it would be drawn over.
@@ -209,6 +214,7 @@
     if (name === 'online' || name === 'overview') refreshStats();
     if (name === 'logins') loadLog();
     if (name === 'signups') loadSignups();
+    if (name === 'gamenight') loadGamenight();
     if (name === 'feedback') loadFeedback();
   }
   for (const b of tabButtons) b.addEventListener('click', () => openTab(b.dataset.tab, 'push'));
@@ -777,6 +783,122 @@
   $('search').addEventListener('input', draw);
   $('filter').addEventListener('change', draw);
 
+  // ---- the game night
+  /** The registrations, and the night's details into the form unless `form` is false (they are being typed). */
+  async function loadGamenight(form = true) {
+    const r = await fetch('/api/admin/gamenight').catch(() => null);
+    if (!r?.ok) return;
+    night = await r.json();
+    if (form) fillNight();
+    drawGamenight();
+  }
+  function fillNight() {
+    const e = night.event ?? {};
+    $('gn-place').value = e.place || '';
+    $('gn-date').value = e.date || '';
+    $('gn-from').value = e.from || '';
+    $('gn-until').value = e.until || '';
+  }
+  $('gn-form').addEventListener('submit', async (ev) => {
+    ev.preventDefault();
+    $('gn-save').disabled = true;
+    const r = await post('/api/admin/gamenight/event', { place: $('gn-place').value.trim(), date: $('gn-date').value, from: $('gn-from').value, until: $('gn-until').value }).catch(() => null);
+    $('gn-save').disabled = false;
+    if (r?.ok) {
+      night.event = await r.json();
+      fillNight();
+    }
+    $('gn-saved').textContent = r?.ok ? `Saved at ${new Date().toLocaleTimeString('nl-BE', { hour: '2-digit', minute: '2-digit' })}. The page shows it now.` : 'Saving failed.';
+  });
+  const gnShown = () => {
+    const q = $('gn-search').value.trim().toLowerCase();
+    return night.entries.filter((e) => !q || [e.firstName, e.lastName, e.email, e.wishes].some((v) => (v || '').toLowerCase().includes(q)));
+  };
+  function drawGamenight() {
+    const all = night.entries;
+    const players = all.reduce((a, e) => a + e.players, 0);
+    const watchers = all.reduce((a, e) => a + e.watchers, 0);
+    const kpis = [
+      ['Registrations', fmt(all.length)],
+      ['Players: laptops or PCs needed', fmt(players)],
+      ['Spectators', fmt(watchers)],
+      ['People in all', fmt(players + watchers)],
+    ];
+    $('gn-kpis').replaceChildren(...kpis.map(([label, value]) => {
+      const s = el('div', 'stat');
+      s.append(el('b', '', value), el('span', 'muted small', label));
+      return s;
+    }));
+    $('gn-empty').hidden = all.length > 0;
+    $('gn-clear').hidden = !all.length;
+    $('gn-rows').replaceChildren(...gnShown().map((e) => {
+      const tr = el('tr');
+      const mail = el('a', '', e.email);
+      mail.href = `mailto:${encodeURIComponent(e.email).replace(/%40/g, '@')}`;
+      const email = el('td');
+      email.append(mail);
+      const name = el('td', '', `${e.firstName} ${e.lastName}`);
+      name.append(el('span', 'tag', e.lang === 'en' ? 'English' : 'Nederlands'));
+      const del = el('button', 'btn ghost', 'Delete');
+      del.type = 'button';
+      let armed = false;
+      del.addEventListener('click', async () => {
+        if (!armed) {
+          armed = true;
+          del.textContent = 'Sure?';
+          setTimeout(() => { armed = false; del.textContent = 'Delete'; }, 4000);
+          return;
+        }
+        const r = await post(`/api/admin/gamenight/${e.id}`, null, 'DELETE');
+        if (r.ok) {
+          night.entries = night.entries.filter((x) => x !== e);
+          drawGamenight();
+        }
+      });
+      const actions = el('td');
+      actions.append(del);
+      // The counts carry their names for the phone, where the table becomes a card without its header.
+      const num = (n, label) => {
+        const td = el('td', 'num', String(n));
+        td.dataset.label = label;
+        return td;
+      };
+      tr.append(el('td', '', new Date(e.at).toLocaleString('nl-BE', { dateStyle: 'short', timeStyle: 'short' })), name, email,
+        num(e.players, 'Players'), num(e.watchers, 'Spectators'), el('td', 'comment', e.wishes || ''), actions);
+      return tr;
+    }));
+  }
+  // Everyone shown, ready for Bcc (never To: they don't see each other).
+  $('gn-copy').addEventListener('click', async () => {
+    const list = gnShown().map((e) => e.email);
+    $('gn-copied').hidden = false;
+    if (!list.length) return ($('gn-copied').textContent = 'Nobody to copy.');
+    try {
+      await navigator.clipboard.writeText(list.join(', '));
+      $('gn-copied').textContent = `${list.length} address${list.length === 1 ? '' : 'es'} copied. Paste them in Bcc.`;
+    } catch {
+      $('gn-copied').textContent = list.join(', ');
+    }
+  });
+  let clearArmed = 0;
+  $('gn-clear').addEventListener('click', async () => {
+    const b = $('gn-clear');
+    if (!clearArmed) {
+      b.textContent = `Sure? Delete all ${night.entries.length}`;
+      clearArmed = setTimeout(() => { clearArmed = 0; b.textContent = 'Delete all'; }, 4000);
+      return;
+    }
+    clearTimeout(clearArmed);
+    clearArmed = 0;
+    b.textContent = 'Delete all';
+    const r = await post('/api/admin/gamenight', null, 'DELETE');
+    if (r.ok) {
+      night.entries = [];
+      drawGamenight();
+    }
+  });
+  $('gn-search').addEventListener('input', drawGamenight);
+
   // ---- the login log
   // ---- feedback
   async function loadFeedback() {
@@ -903,6 +1025,7 @@
     entries = [];
     log = [];
     feedback = [];
+    night = { event: null, entries: [] };
     start();
   });
   start();
