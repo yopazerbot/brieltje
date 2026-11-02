@@ -658,6 +658,9 @@ export class Game {
     } else if (m.t === 'claymore') {
       // Placing a claymore (server/zombies.mjs place: carried, on a floor near the player, two down at most).
       this.modes.zombies?.place(name, player, m, now);
+    } else if (m.t === 'stakes') {
+      // Planting a row of stakes (server/zombies.mjs stakes: carried, on a floor near the player, as a claymore).
+      this.modes.zombies?.stakes(name, player, m, now);
     } else if (m.t === 'revive') {
       // Helping a downed teammate up, or letting go (server/zombies.mjs help: the time on the server's clock).
       this.modes.zombies?.help(name, player, m, now);

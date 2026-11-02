@@ -290,6 +290,20 @@ export class Effects {
     });
   }
 
+  /** A row of stakes worn through by the zombies (world/rewards.ts): splinters and a little dust where a stake stood. */
+  splinters(point: THREE.Vector3): void {
+    this.throw(point.clone(), UP, 7, 2.2, 0.9, (s) => {
+      Object.assign(s, { life: 0.6 + Math.random() * 0.5, size0: 0.03, size1: 0.025, alpha: 1, cell: PARTICLE.chip, drag: 0.5, gravity: 9.8, spin: (Math.random() - 0.5) * 30 });
+      s.c0.set('#a87a4c');
+      s.c1.set('#8a6238');
+    });
+    this.throw(point.clone(), UP, 2, 0.5, 0.6, (s) => {
+      Object.assign(s, { life: 0.7 + Math.random() * 0.5, size0: 0.1, size1: 0.4, alpha: 0.4, cell: PARTICLE.puff, drag: 3, gravity: -0.1, spin: (Math.random() - 0.5) * 2 });
+      s.c0.set('#c8a982');
+      s.c1.set('#b09070');
+    });
+  }
+
   /** A zombie beaten in paintball: it vanishes in a big puff of paint. */
   vanish(point: THREE.Vector3): void {
     const c = new THREE.Color(anyPaint());

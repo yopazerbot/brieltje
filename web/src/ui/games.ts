@@ -30,9 +30,13 @@ export interface ZombiesView {
   downs?: Record<string, number>;
   best: { wave: number; names: string[]; at: string } | null;
   record: boolean;
-  /** The rewards lying ([id, kind, x, y, z]) and the claymores down ([id, x, y, z, yaw, owner]): shared/loot.mjs view */
-  items?: [number, 'ammo' | 'scope' | 'claymore', number, number, number][];
+  /**
+   * The rewards lying ([id, kind, x, y, z]), the claymores down ([id, x, y, z, yaw, owner]) and the rows
+   * of stakes ([id, x, y, z, yaw, a, b, standing, owner]): shared/loot.mjs view
+   */
+  items?: [number, 'ammo' | 'scope' | 'claymore' | 'stakes', number, number, number][];
   mines?: [number, number, number, number, number, string][];
+  stakes?: [number, number, number, number, number, number, number, number, string][];
 }
 
 export interface ModeView {

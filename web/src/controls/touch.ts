@@ -199,6 +199,7 @@ export class TouchControls {
     out.fireHeld ||= holds('fire');
     out.aimHeld ||= this.aimOn || has('lift'); // the planner picks up on the press
     out.reloadPressed ||= has('reload');
+    out.reloadHeld ||= holds('reload');
     out.throwPressed ||= has('nade');
     out.throwHeld ||= holds('nade');
     out.deletePressed ||= has('remove');

@@ -1537,9 +1537,11 @@ export class Horde {
     const stop = can && td < (big ? ZOMBIE.bigFrom * 0.85 : ZOMBIE.attackFrom * 0.8);
     const want = dist > 0.05 ? Math.atan2(gx - z.x, gz - z.z) : z.yaw;
     z.yaw = turn(z.yaw, want, (big ? 1.6 : z.kind === RUNNER ? 5.5 : 3.2) * dt);
-    // Slower while still turning round: it shuffles round, rather than sliding sideways.
+    // Slower while still turning round: it shuffles round, rather than sliding sideways. Slower in a
+    // row of stakes too, and a moment after (shared/loot.mjs sets `slow` and `slowUntil`).
     const facing = Math.max(0, Math.cos(wrap(want - z.yaw)));
-    const speed = stop ? 0 : z.top * (0.3 + 0.7 * facing);
+    const wading = now < (z.slowUntil ?? 0) ? z.slow ?? 1 : 1;
+    const speed = stop ? 0 : z.top * (0.3 + 0.7 * facing) * wading;
     const vx = Math.sin(z.yaw) * speed + push.x;
     const vz = Math.cos(z.yaw) * speed + push.z;
     const bx = z.x;

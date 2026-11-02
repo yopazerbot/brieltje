@@ -163,6 +163,9 @@ export interface Zombie {
   next: number;
   downAt: number;
   target: string | null;
+  /** In a row of stakes (shared/loot.mjs): the share of its pace it walks at, until slowUntil (ms) */
+  slow?: number;
+  slowUntil?: number;
 }
 
 export interface HordePlayer {

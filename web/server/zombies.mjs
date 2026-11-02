@@ -14,10 +14,11 @@
 // claims to hover or stand in a wall) is warned, and out of the wave if they stay (perch).
 //
 // Rewards (shared/loot.mjs): a beaten zombie sometimes leaves one (a bigger ammo pack, a scope, a
-// claymore). The server keeps them: what lies where, who has what, every pickup (take: an item that
-// is there, within reach of the server's position, useful to them; taken once) and every claymore
-// placed (place: carried, on a floor near the player, at most two down) and set off (each tick, by the
-// zombies the server has; its blast only hurts zombies).
+// claymore), and a big one a bundle of stakes too. The server keeps them: what lies where, who has
+// what, every pickup (take: an item that is there, within reach of the server's position, useful to
+// them; taken once), every claymore placed (place: carried, on a floor near the player, at most two
+// down) and set off (each tick, by the zombies the server has; its blast only hurts zombies), and
+// every row of stakes planted (stakes: as a claymore) and worn through (each tick, by its zombies).
 //
 // Who goes down waits for the end of the wave (their page shows it), then everyone comes back at
 // the house's outside start places, unless a teammate helps them up first: holding Use next to them
@@ -161,12 +162,17 @@ export class ZombieGame {
         return;
       }
     }
-    // The rewards: items lying too long go; a claymore a zombie walked into goes off (zombies only).
-    const { gone, booms } = this.loot.tick(now, this.horde.zombies.values());
-    if (gone.length) changed = true;
+    // The rewards: items lying too long go; a claymore a zombie walked into goes off (zombies only); the
+    // zombies in a row of stakes wade through it and wear it (a stake falls, or the row is gone).
+    const { gone, booms, broke, worn } = this.loot.tick(now, this.horde.zombies.values());
+    if (gone.length || worn) changed = true;
     for (const { mine: m, ids } of booms) {
       g.broadcast({ t: 'zboom', id: m.id, x: m.x, y: m.y, z: m.z, yaw: m.yaw, by: m.owner });
       for (const id of ids) this.damage(id, LOOT.damage, m.owner, 'claymore', now);
+      changed = true;
+    }
+    for (const r of broke) {
+      g.broadcast({ t: 'zbroke', id: r.id });
       changed = true;
     }
     if (changed) this.modes.send();
@@ -202,6 +208,25 @@ export class ZombieGame {
     const r = this.loot.place(name, { x: s.x, y: s.y, z: s.z }, { x: m.x, y: m.y, z: m.z, yaw: m.yaw }, now);
     if (!r.mine) {
       const why = { none: ['zMineNone', 'You have no claymore.'], max: ['zMineMax', 'You have two down already.'], spot: ['zMineSpot', 'No room for it there.'] }[r.why];
+      return g.send(p.ws, { t: 'system', text: why[1], code: why[0] });
+    }
+    g.send(p.ws, { t: 'zgift', kind: 'placed', kit: this.loot.kit(name) });
+    this.modes.send();
+  }
+
+  /**
+   * A page plants a row of the stakes its player carries at `m` ({ x, y, z, yaw }), as a claymore is
+   * placed (shared/loot.mjs placeStakes: how far it goes is the server's, not the page's).
+   */
+  stakes(name, p, m, now) {
+    const g = this.game;
+    if (now < (p.nextStakes || 0)) return;
+    p.nextStakes = now + 400;
+    if (!p.alive || !p.state?.armed || g.inCar(name) || g.calm(p) || this.horde.phase === 'over') return;
+    const s = p.state;
+    const r = this.loot.placeStakes(name, { x: s.x, y: s.y, z: s.z }, { x: m.x, y: m.y, z: m.z, yaw: m.yaw });
+    if (!r.row) {
+      const why = { none: ['zStakesNone', 'You have no stakes.'], max: ['zStakesMax', 'Enough stakes are down already.'], spot: ['zStakesSpot', 'No room for them there.'] }[r.why];
       return g.send(p.ws, { t: 'system', text: why[1], code: why[0] });
     }
     g.send(p.ws, { t: 'zgift', kind: 'placed', kit: this.loot.kit(name) });

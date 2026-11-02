@@ -20,6 +20,7 @@ The newest game in Brieltje (November 2026). Zombies come for the house and the 
 - **No safe room.** Together the houses are open, and the zombies follow you in: up the stairs, onto the roof terrace, through the doors. A shut door holds them for a moment. Whoever perches where no zombie can reach is warned, and then out of the wave.
 - **Helping each other up.** A teammate who is down gets up again when you hold Use (E or △) next to them for 3 seconds.
 - **Rewards.** Beaten zombies sometimes drop one: a bigger ammo pack, a scope for the rifle and the pistol, or a claymore (hold G or R1 to place it).
+- **Stakes.** A big one also drops a bundle of wooden stakes. Hold R (□ on the controller) to plant a row in front of you. Zombies wade through it slowly, and it wears out after about ten of them. A row works best in a gate, a doorway or on a stair.
 - **The sniper's double.** One bullet can go through two zombies.
 - **Sound.** They groan more often and louder as they come closer, from where they stand. A sprinting runner puffs.
 - **Fair.** In multiplayer the server decides every hit, swipe, pickup and help.
@@ -68,6 +69,7 @@ The newest game in Brieltje (November 2026). Zombies come for the house and the 
 | Map (the menu's first tab) | Press the touchpad | M |
 | Shoot, aim (Action, Paintball) | R2, L2 | Left click, right click |
 | Throw a grenade; hold to place a claymore (Zombies) | R1 | G |
+| Reload; hold to plant a row of stakes (Zombies) | □ | R |
 | Help a teammate up (Zombies) | Hold △ for 3 s | Hold E for 3 s |
 | Menu | Options | Esc |
 

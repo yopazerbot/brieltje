@@ -2,7 +2,7 @@
 
 import type { Nav, Zombie } from './zombies.mjs';
 
-export type LootKind = 'ammo' | 'scope' | 'claymore';
+export type LootKind = 'ammo' | 'scope' | 'claymore' | 'stakes';
 
 export const LOOT: {
   chance: number;
@@ -27,12 +27,28 @@ export const LOOT: {
   blastCone: number;
   close: number;
   damage: number;
+  bundle: number;
+  stakesCarry: number;
+  stakesPlaced: number;
+  stakesAll: number;
+  stakesApart: number;
+  stakeGap: number;
+  stakeHalf: number;
+  front: number;
+  back: number;
+  slow: number;
+  bigSlow: number;
+  slowMs: number;
+  hold: number;
+  bigWear: number;
 };
 
 export interface Kit {
   ammo: string[];
   scope: boolean;
   claymores: number;
+  /** Rows of stakes carried */
+  stakes: number;
 }
 
 export interface Item {
@@ -54,17 +70,41 @@ export interface Mine {
   armedAt: number;
 }
 
+/** A row of stakes: its middle, facing (the way the stakes lean), m along it each side, wear, stakes standing, zombies in it. */
+export interface Row {
+  id: number;
+  owner: string;
+  x: number;
+  y: number;
+  z: number;
+  yaw: number;
+  a: number;
+  b: number;
+  wear: number;
+  up: number;
+  in: Set<number>;
+}
+
+type At = { x: number; y: number; z: number; yaw: number };
+
 export class Loot {
   constructor(nav: Nav, rand?: () => number);
   items: Map<number, Item>;
   mines: Map<number, Mine>;
+  rows: Map<number, Row>;
   kits: Map<string, Kit>;
   kit(name: string): Kit;
   wave(): void;
-  drop(z: Zombie, now: number, last?: boolean): Item | null;
+  drop(z: Zombie, now: number, last?: boolean): Item[];
   take(name: string, p: { x: number; y: number; z: number; w: string }, id: number, now: number): { kind: LootKind; w?: string; kit: Kit } | null;
-  place(name: string, p: { x: number; y: number; z: number }, at: { x: number; y: number; z: number; yaw: number }, now: number): { mine?: Mine; why?: 'none' | 'max' | 'spot' };
-  tick(now: number, zombies: Iterable<Zombie>): { gone: number[]; booms: { mine: Mine; ids: number[] }[] };
-  view(): { items: [number, LootKind, number, number, number][]; mines: [number, number, number, number, number, string][] };
+  place(name: string, p: { x: number; y: number; z: number }, at: At, now: number): { mine?: Mine; why?: 'none' | 'max' | 'spot' };
+  spot(p: { x: number; y: number; z: number }, at: At): (At & { node: number }) | null;
+  placeStakes(name: string, p: { x: number; y: number; z: number }, at: At): { row?: Row; why?: 'none' | 'max' | 'spot' };
+  tick(now: number, zombies: Iterable<Zombie>): { gone: number[]; booms: { mine: Mine; ids: number[] }[]; broke: Row[]; worn: boolean };
+  view(): {
+    items: [number, LootKind, number, number, number][];
+    mines: [number, number, number, number, number, string][];
+    stakes: [number, number, number, number, number, number, number, number, string][];
+  };
   clear(): void;
 }

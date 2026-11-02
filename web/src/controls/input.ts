@@ -38,6 +38,8 @@ export interface FrameInput {
   aimHeld: boolean;
   /** R key or Square while playing: reload */
   reloadPressed: boolean;
+  /** R, Square or the touch reload button held down (Zombies: held, it plants a row of stakes) */
+  reloadHeld: boolean;
   menuPressed: boolean;
   fpsPressed: boolean;
   /** Cross on the controller: confirm in menus */
@@ -73,7 +75,7 @@ export interface FrameInput {
 
 export const NO_INPUT: FrameInput = {
   moveX: 0, moveY: 0, lookX: 0, lookY: 0, mouseX: 0, mouseY: 0, sprint: false,
-  jumpPressed: false, jumpHeld: false, downHeld: false, clickPressed: false, usePressed: false, useHeld: false, aimHeld: false, reloadPressed: false,
+  jumpPressed: false, jumpHeld: false, downHeld: false, clickPressed: false, usePressed: false, useHeld: false, aimHeld: false, reloadPressed: false, reloadHeld: false,
   menuPressed: false, fpsPressed: false, confirmPressed: false, squarePressed: false, speedStep: 0, tabStep: 0, scoreHeld: false, mapPressed: false, fireHeld: false, weaponSlot: 0, weaponCycle: 0, throwPressed: false, throwHeld: false, deletePressed: false, anyPadButton: false,
   throttle: 0, brake: 0,
 };
@@ -200,6 +202,7 @@ export class Input {
     out.jumpHeld = k('Space');
     out.downHeld = k('KeyC'); // not Ctrl: Ctrl with a walking key is the browser's (Ctrl+W closes the tab)
     out.useHeld = k('KeyE');
+    out.reloadHeld = k('KeyR');
     out.throwHeld = k('KeyG');
     out.scoreHeld = k('Tab');
     out.throttle = k('KeyW') || k('ArrowUp') ? 1 : 0;
@@ -242,6 +245,7 @@ export class Input {
         out.squarePressed = true;
         out.reloadPressed = true;
       }
+      out.reloadHeld ||= !!pressed[BTN.square];
       const now = performance.now();
       if (edge(BTN.touchpad)) this.touchpadAt = now;
       out.scoreHeld ||= !!pressed[BTN.touchpad] && now - this.touchpadAt > 250;
