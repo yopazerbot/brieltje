@@ -821,6 +821,8 @@ input[type=range]:focus-visible::-moz-range-thumb { box-shadow: 0 0 0 3px var(--
   border: 1px solid var(--line-strong); border-radius: var(--r-field);
 }
 .spawn-pick select option { color: var(--ink); background: var(--dusk); }
+/* Where Zombies is played (the Play tab alone, the admin's games together). */
+.zombies-where { display: flex; justify-content: space-between; margin: 0 0 8px; }
 
 /* The start buttons. The one to press: the first way to play (keyboard and mouse; touch on a phone or
    tablet), or the controller once one is connected. The others are quieter. */

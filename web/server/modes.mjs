@@ -8,6 +8,7 @@
 
 import { readFileSync } from 'node:fs';
 import { DONE_MS as ZOMBIES_DONE_MS, ZombieGame } from './zombies.mjs';
+import { arenaOf, portalOf } from '../shared/arenas.mjs';
 
 const HIDE_MS = 30_000; // the seeker counts with eyes shut
 const SEEK_MS = 180_000;
@@ -184,8 +185,8 @@ export class Modes {
     return list[Math.floor(Math.random() * list.length)];
   }
 
-  /** The admin starts a game (or 'free' to stop one). */
-  start(kind, by) {
+  /** The admin starts a game (or 'free' to stop one); Zombies at `place` (shared/arenas.mjs). */
+  start(kind, by, place = 'house') {
     const now = Date.now();
     if (kind === 'free') {
       if (!this.active) return;
@@ -220,15 +221,17 @@ export class Modes {
       this.game.roundOver = null; // the teams' score counts now
       this.game.teamsChanged(names);
     } else if (kind === 'zombies') {
-      // Everyone at the house first, then the horde: its grid takes the cars where they stand now. Every
-      // pane whole again for everyone: a fresh house for the game (the zombies come in through a broken one).
-      this.game.gather(names);
+      // Everyone at the place first (home, or a portal in Smetlede), then the horde: its grid takes the cars
+      // where they stand now. Every pane whole again for everyone: a fresh house for the game (the zombies
+      // come in through a broken one).
+      const arena = arenaOf(place);
+      this.game.gather(names, arena);
       this.game.roundOver = null;
       this.game.broken.clear();
       this.game.broadcast({ t: 'repair', by, quiet: true });
-      const z = new ZombieGame(this.game, this, names, now);
+      const z = new ZombieGame(this.game, this, names, now, arena);
       this.state = { kind, phase: z.phase, until: z.horde.until, z };
-      this.say(`${by} started Zombies. Beat the waves together. The first one comes in 8 seconds.`, 'zombiesStarted', { name: by });
+      this.say(`${by} started Zombies (${portalOf(arena).name}). Beat the waves together. The first one comes in 8 seconds.`, 'zombiesStartedAt', { name: by, place: arena.id });
     } else if (kind === 'tag') {
       const it = this.pick(names);
       this.state = { kind, phase: 'playing', until: now + TAG_MS, it, last: null, lastAt: 0, times: byName(names.map((n) => [n, 0])) };

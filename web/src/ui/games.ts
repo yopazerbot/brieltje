@@ -30,6 +30,8 @@ export interface ZombiesView {
   downs?: Record<string, number>;
   best: { wave: number; names: string[]; at: string } | null;
   record: boolean;
+  /** Where it is played (shared/arenas.mjs): home, or a portal in Smetlede */
+  place?: string;
   /**
    * The rewards lying ([id, kind, x, y, z]), the claymores down ([id, x, y, z, yaw, owner]) and the rows
    * of stakes ([id, x, y, z, yaw, a, b, standing, owner]): shared/loot.mjs view

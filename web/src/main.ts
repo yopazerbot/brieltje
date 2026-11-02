@@ -85,7 +85,8 @@ import { fitStreetModel, loadStreetModel } from './world/streetModel';
 import { loadWalkIn, type WalkIn } from './world/walkIn';
 import { CAR_REACH, CAR_SLOW, findPortal, PORTALS, portalNear, REACH, type Portal } from '../shared/portals.mjs';
 import { noShoot } from '../shared/zones.mjs';
-import { loadBounds } from '../shared/bounds.mjs';
+import { loadBounds, type Bounds } from '../shared/bounds.mjs';
+import { arenaEdge, arenaHome, arenaOf, arenaPrisms, portalOf, type Arena } from '../shared/arenas.mjs';
 import BOUNDS from '../shared/bounds.json';
 import { carName, doorName, lang, onLang, placeName, plural, portalName, serverText, setLang, t, whoName } from './i18n';
 
@@ -1079,7 +1080,7 @@ const stopAsk = $('stop-confirm');
 document.querySelectorAll<HTMLButtonElement>('[data-game]').forEach((b) =>
   b.addEventListener('click', () => {
     stopAsk.classList.toggle('hidden', b.dataset.game !== 'free' || !games.active);
-    if (b.dataset.game !== 'free') net.send({ t: 'mode', kind: b.dataset.game });
+    if (b.dataset.game !== 'free') net.send({ t: 'mode', kind: b.dataset.game, ...(b.dataset.game === 'zombies' ? { place: ($('zombies-place-admin') as HTMLSelectElement).value } : {}) });
   }),
 );
 $('stop-yes').addEventListener('click', () => {
@@ -1307,37 +1308,69 @@ zombies.onVanish = (at) => effects.vanish(at);
 
 /** Alone: the Zombies game in this page: the horde (shared/zombies.mjs), its end, the best wave kept in this browser. */
 const SOLO_ME = 'me';
-const SOLO_BEST = 'briel.zombiesBest';
-let solo: { horde: Horde; loot: Loot; endAt: number; best: number; record: boolean; key: string } | null = null;
-function soloBest(): number {
+/** The best wave alone, per place (home's under its key from before the places), and the place picked last. */
+const soloBestKey = (a: Arena) => (a.id === 'house' ? 'briel.zombiesBest' : `briel.zombiesBest.${a.id}`);
+const SOLO_PLACE = 'briel.zombiesPlace';
+let solo: { horde: Horde; loot: Loot; arena: Arena; endAt: number; best: number; record: boolean; key: string } | null = null;
+let soloStarting = false;
+function soloBest(a: Arena): number {
   try {
-    return Math.max(0, Math.floor(Number(localStorage.getItem(SOLO_BEST)) || 0));
+    return Math.max(0, Math.floor(Number(localStorage.getItem(soloBestKey(a))) || 0));
   } catch {
     return 0; // storage blocked
   }
 }
+/** The edge of the Zombies game at place `id` (shared/arenas.mjs), worked out once a place. */
+const arenaEdges = new Map<string, Bounds>();
+function edgeOf(id: string | undefined): Bounds {
+  const a = arenaOf(id);
+  let e = arenaEdges.get(a.id);
+  if (!e) arenaEdges.set(a.id, (e = arenaEdge(a, edges)));
+  return e;
+}
+/** Up at the start of Zombies place `a`: one of the house's outside places, or by its portal, facing it. */
+function respawnAtArena(a: Arena): void {
+  const p = a.id === 'house' ? undefined : portalOf(a);
+  if (!p) return respawnAt(OUTSIDE_SPAWNS[Math.floor(Math.random() * OUTSIDE_SPAWNS.length)]);
+  respawnAt(OUTSIDE_SPAWNS[0], { x: p.out[0], z: p.out[1], y: house.ground + terrain.height(p.out[0], p.out[1]), fx: p.x, fz: p.z });
+}
 /**
- * Start the Zombies game alone (the Play tab's button): the grid round the house and the bungalow
- * with the cars where they stand, out of any car or saddle, at one of the house's outside places.
- * Alone the houses stay shut (their doors in the grid as walls), but the outside stair and the roof
- * terrace are the zombies' too.
+ * Start the Zombies game alone (the Play tab's button) at place `id` (shared/arenas.mjs), out of any car
+ * or saddle, at its start, with the cars where they stand. At home the grid round the house and the
+ * bungalow: alone the houses stay shut (their doors in the grid as walls), but the outside stair and
+ * the roof terrace are the zombies' too. In Smetlede the village comes in first (on a first visit it
+ * takes a moment); its blocks, hedges and fences round the portal are the zombies' walls.
  */
-function startSolo(): void {
-  if (me || solo) return;
+async function startSolo(id: string): Promise<void> {
+  if (me || solo || soloStarting) return;
+  const arena = arenaOf(id);
+  const edge = edgeOf(arena.id);
+  let prisms: Prism[];
+  if (arena.center) {
+    soloStarting = true;
+    try {
+      if (village !== 'ready') hud.announce('Smetlede', t('travel.village'));
+      await loadVillage();
+      const data = (await import('./data/village.json')).default as unknown as VillageData;
+      prisms = arenaPrisms(data.prisms ?? [], edge);
+    } finally {
+      soloStarting = false;
+    }
+    if (me || solo) return; // joined a game together meanwhile
+  } else prisms = [...house.prisms, ...(house.surroundings?.prisms ?? []), ...homeStreet.blocks];
   prepareZombies();
   getOut(false);
   getOffHorse(false);
   planner.toggle(false);
-  const boxes = cars.filter((c) => c.ready && edges.party.inside(c.x, c.z)).map((c) => ({ x: c.x, z: c.z, yaw: c.yaw, halfL: c.spec.length / 2, halfW: c.spec.width / 2 }));
-  const nav = makeNav({
-    prisms: [...house.prisms, ...(house.surroundings?.prisms ?? []), ...homeStreet.blocks], height: (x, z) => terrain.height(x, z), base: house.ground,
-    edge: edges.party, boxes, areas: houseAreas(house.prisms), doors: house.doors, shut: true, panes: house.prisms.length,
-  });
-  const horde = new Horde(nav, nav.spawnSpots(), { home: { x: 4.5, z: 18 } });
+  const boxes = cars.filter((c) => c.ready && edge.inside(c.x, c.z)).map((c) => ({ x: c.x, z: c.z, yaw: c.yaw, halfL: c.spec.length / 2, halfW: c.spec.width / 2 }));
+  const nav = arena.center
+    ? makeNav({ prisms, height: (x, z) => terrain.height(x, z), base: house.ground, edge, boxes, areas: [], doors: [], shut: true, panes: 0 })
+    : makeNav({ prisms, height: (x, z) => terrain.height(x, z), base: house.ground, edge, boxes, areas: houseAreas(house.prisms), doors: house.doors, shut: true, panes: house.prisms.length });
+  const horde = new Horde(nav, nav.spawnSpots(), { home: arenaHome(arena) });
   horde.start(performance.now());
-  solo = { horde, loot: new Loot(nav), endAt: 0, best: soloBest(), record: false, key: '' };
+  solo = { horde, loot: new Loot(nav), arena, endAt: 0, best: soloBest(arena), record: false, key: '' };
   applyKit(NO_KIT);
-  respawnAt(OUTSIDE_SPAWNS[Math.floor(Math.random() * OUTSIDE_SPAWNS.length)]);
+  respawnAtArena(arena);
   combat.setActive(weapon.enabled); // your health on screen while they come
   chat.system(() => t('z.soloStart'));
   soloView(true);
@@ -1347,13 +1380,14 @@ function startSolo(): void {
 function stopSolo(): void {
   if (!solo) return;
   const wasDown = !combat.alive;
+  const arena = solo.arena;
   solo = null;
   zombies.clear();
   rewards.clear();
   applyKit(NO_KIT);
   games.set({ kind: 'free' });
   combat.setActive(!!me && weapon.enabled);
-  if (wasDown && !me) respawnAt(OUTSIDE_SPAWNS[Math.floor(Math.random() * OUTSIDE_SPAWNS.length)]);
+  if (wasDown && !me) respawnAtArena(arena);
   showSoloButton();
 }
 /** The game's view for the bar and the end screen, as the server's would be (src/ui/games.ts); set when it changes. */
@@ -1374,7 +1408,7 @@ function soloView(force = false): void {
     result: `The zombies caught everyone at wave ${h.wave}.`, resultCode: solo.record ? 'zOverBest' : 'zOver', resultArgs: { n: h.wave },
     zombies: {
       wave: h.wave, left: h.left, big: h.bigWave, bigs: bigOf(h.wave), fighters: fighter ? 1 : 0, standing: fighter && combat.alive ? 1 : 0, beaten: { [name]: mine }, ms,
-      down: [], best: solo.best ? { wave: solo.best, names: [name], at: '' } : null, record: solo.record,
+      down: [], best: solo.best ? { wave: solo.best, names: [name], at: '' } : null, record: solo.record, place: solo.arena.id,
     },
   });
 }
@@ -1405,7 +1439,7 @@ function soloTick(dt: number): void {
       if (solo.record) {
         solo.best = e.wave;
         try {
-          localStorage.setItem(SOLO_BEST, String(e.wave));
+          localStorage.setItem(soloBestKey(solo.arena), String(e.wave));
         } catch {
           // storage blocked: the best for this visit only
         }
@@ -1461,11 +1495,27 @@ function showSoloButton(): void {
   sub.dataset.i18n = solo ? 'game.stopSub' : 'play.zombiesSub';
   title.textContent = t(solo ? 'play.zombiesStop' : 'game.zombies');
   sub.textContent = t(solo ? 'game.stopSub' : 'play.zombiesSub');
+  zombiesPlace.disabled = !!solo; // where it is played: picked before it starts
 }
+/** Where Zombies is played alone (the Play tab), kept from last time; together the admin picks (the admin tab). */
+const zombiesPlace = $('zombies-place') as HTMLSelectElement;
+try {
+  const kept = localStorage.getItem(SOLO_PLACE);
+  if (kept && [...zombiesPlace.options].some((o) => o.value === kept)) zombiesPlace.value = kept;
+} catch {
+  // storage blocked: home
+}
+zombiesPlace.addEventListener('change', () => {
+  try {
+    localStorage.setItem(SOLO_PLACE, zombiesPlace.value);
+  } catch {
+    // storage blocked: for this visit only
+  }
+});
 $('zombies-btn').addEventListener('click', () => {
   if (solo) stopSolo();
   else {
-    startSolo();
+    void startSolo(zombiesPlace.value);
     menu.resume(menu.mode ?? 'kbm');
   }
 });
@@ -1604,17 +1654,20 @@ function getOffHorse(tell = true): void {
 
 /**
  * Back in the game at spawn point `i` (chosen by the server, away from the others), or at `x, z` near
- * it when the server spreads everyone out (a party game gathers them at the house).
+ * it when the server spreads everyone out (a party game gathers them at the house). Zombies at another
+ * portal gathers them there: `y` the ground's height and `fx, fz` the portal to face.
  */
-function respawnAt(i: number, at?: { x?: number; z?: number }): void {
+function respawnAt(i: number, at?: { x?: number; z?: number; y?: number; fx?: number; fz?: number }): void {
   getOut(false);
   getOffHorse(false);
   const s = spawns[i];
   if (s) {
     const [x, z] = typeof at?.x === 'number' && typeof at?.z === 'number' ? [at.x, at.z] : [s.x, s.z];
-    const [mx, mz] = s.team === 'bungalow' ? [83.5, 189.7] : [4.5, 6];
-    const yaw = Math.atan2(-(mx - x), -(mz - z)); // facing the middle of the house (or the bungalow)
-    player.place(x, z, world.groundAt(x, z, s.y + 0.3, 0).y, yaw, 0);
+    const there = typeof at?.fx === 'number' && typeof at?.fz === 'number';
+    const [mx, mz] = there ? [at!.fx!, at!.fz!] : s.team === 'bungalow' ? [83.5, 189.7] : [4.5, 6];
+    const yaw = Math.atan2(-(mx - x), -(mz - z)); // facing the middle of the house (or the bungalow, or the portal)
+    const y = there && typeof at?.y === 'number' ? at.y : s.y;
+    player.place(x, z, world.groundAt(x, z, y + 0.3, 0).y, yaw, 0);
   }
   player.down = 0;
   player.update(0, NO_INPUT, camera);
@@ -2324,7 +2377,7 @@ renderer.setAnimationLoop((now: number) => {
   // The edge of the game: round the two houses while a game in the house runs (the map shows it at
   // once). Caught outside it (the game began while you were away), you get out of the car or off the
   // horse, and walking puts you in.
-  const fence = games.fenced ? edges.party : edges.map;
+  const fence = games.fenced ? (games.view.kind === 'zombies' ? edgeOf(games.view.zombies?.place) : edges.party) : edges.map;
   if (world.bounds !== fence) {
     world.bounds = fence;
     bigMap.setEdge(fence.ring);
@@ -2619,7 +2672,9 @@ renderer.setAnimationLoop((now: number) => {
     // Against the edge of the game or its ceiling: a short line saying so (and why, during a game in the house).
     if (driving ? car.atEdge : onHorse ? horses.atEdge : !riding && player.atEdge) edgeHint = 2.5;
     edgeHint -= dt;
-    if (edgeHint > 0) hud.setPrompt(t(games.fenced ? 'prompt.edgeGame' : 'prompt.edge'));
+    // Zombies away from home: the edge is round its place, not the house.
+    const away = games.view.kind === 'zombies' && arenaOf(games.view.zombies?.place).id !== 'house';
+    if (edgeHint > 0) hud.setPrompt(t(games.fenced ? (away ? 'prompt.edgeHere' : 'prompt.edgeGame') : 'prompt.edge'));
     calmHint = wasCalm ? calmHint - dt : 0;
     if (calmHint > 0) hud.setPrompt(t('prompt.noShoot'));
     lockHint -= dt;

@@ -261,6 +261,17 @@
                   <!-- Alone: the Zombies game, run in this page (src/main.ts). Together the admin starts it for everyone. -->
                   <div id="zombies-solo">
                     <h2 data-i18n="play.party">Party game</h2>
+                    <!-- Where: by one of the portals, not the school (no shooting on its grounds): shared/arenas.mjs. -->
+                    <label class="spawn-pick zombies-where" for="zombies-place"><span data-i18n="z.where">Where</span>
+                      <select id="zombies-place">
+                        <option value="house" data-i18n="portal.house" selected>Yoshi &amp; Liesl's home</option>
+                        <option value="bungalow" data-i18n="portal.bungalow">Bungalow</option>
+                        <option value="church" data-i18n="portal.church">Church</option>
+                        <option value="molenhoek" data-i18n="portal.molenhoek">Molenhoek</option>
+                        <option value="molenhoek_mid" data-i18n="portal.molenhoek_mid">Middle of Molenhoek</option>
+                        <option value="molenhoek_end" data-i18n="portal.molenhoek_end">End of Molenhoek</option>
+                      </select>
+                    </label>
                     <div class="tools">
                       <button id="zombies-btn" class="tool" type="button"><b id="zombies-btn-title" data-i18n="game.zombies">Zombies</b><span id="zombies-btn-sub" data-i18n="play.zombiesSub">Waves of zombies come for you. How long do you last?</span></button>
                     </div>
@@ -410,6 +421,17 @@
                 </div>
                 <div class="col">
                   <h2 data-i18n="adm.games">Party games</h2>
+                  <!-- Where Zombies is played for everyone (shared/arenas.mjs); the other games are at the house. -->
+                  <label class="spawn-pick zombies-where" for="zombies-place-admin"><span data-i18n="z.whereAdmin">Zombies at</span>
+                    <select id="zombies-place-admin">
+                      <option value="house" data-i18n="portal.house" selected>Yoshi &amp; Liesl's home</option>
+                      <option value="bungalow" data-i18n="portal.bungalow">Bungalow</option>
+                      <option value="church" data-i18n="portal.church">Church</option>
+                      <option value="molenhoek" data-i18n="portal.molenhoek">Molenhoek</option>
+                      <option value="molenhoek_mid" data-i18n="portal.molenhoek_mid">Middle of Molenhoek</option>
+                      <option value="molenhoek_end" data-i18n="portal.molenhoek_end">End of Molenhoek</option>
+                    </select>
+                  </label>
                   <div id="game-admin" class="tools">
                     <button class="tool" type="button" data-game="hide"><b data-i18n="game.hide">Hide and seek</b><span data-i18n="game.hideSub">One seeks, the others hide; found players seek too</span></button>
                     <button class="tool" type="button" data-game="tag"><b data-i18n="game.tag">Tag</b><span data-i18n="game.tagSub">Whoever is "it" tags someone else; least time as "it" wins</span></button>

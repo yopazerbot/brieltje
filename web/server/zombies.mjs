@@ -1,13 +1,15 @@
 // The Zombies party game on the server (server/modes.mjs starts and stops it; shared/zombies.mjs
-// runs the horde). Everyone is one team round the house and the bungalow; the zombies come in
-// waves. The server keeps all of it: where every zombie is and what it does, its health, every hit
+// runs the horde). Everyone is one team at the place the admin picked (shared/arenas.mjs): round the
+// house and the bungalow, or by a portal in Smetlede, inside its edge; the zombies come in waves. The
+// server keeps all of it: where every zombie is and what it does, its health, every hit
 // on it and every swipe it lands. A page only says "my shot hit zombie 12" (zhit), and that is
 // checked the way a hit on a strongman is (game.mjs clownhit): a weapon the player carries and
 // holds, its fire rate, alive, armed, not on the school grounds, and here also a zombie that is up,
 // within MAX_RANGE, and no more pellets than the gun fires. Blasts are set off on the server (a
 // rocket) or checked there (a grenade), and hurt zombies through Horde.blast.
 //
-// The house and the bungalow are open as at any time together: the zombies follow the players in,
+// At home the house and the bungalow are open as at any time together (in Smetlede every building is
+// shut to the zombies, its walls theirs): the zombies follow the players in,
 // up the stairs and through the doors (a shut one a zombie shoves open: game.zombieDoor, for every
 // page) and through a pane that was shot out (panes). A swipe never goes through a wall, a floor, a
 // whole pane or a shut door. Whoever stands where no zombie can get at them (a ledge, or a page that
@@ -22,14 +24,16 @@
 // every turret set up (turret: as a claymore), its aim and its shots (each tick; zombies only).
 //
 // Who goes down waits for the end of the wave (their page shows it), then everyone comes back at
-// the house's outside start places, unless a teammate helps them up first: holding Use next to them
-// for REVIVE_MS on the server's clock (help), they're up where they lie with part of their health. When everyone who fights is down at once, the game is over: the
-// wave reached, each player's zombies beaten and the best wave ever (kept in the database's meta
-// table, as the rules are) show for DONE_MS.
+// the place's start (the house's outside start places, or by the portal), unless a teammate helps
+// them up first: holding Use next to them for REVIVE_MS on the server's clock (help), they're up
+// where they lie with part of their health. When everyone who fights is down at once, the game is
+// over: the wave reached, each player's zombies beaten and the best wave ever at that place (kept in
+// the database's meta table, as the rules are) show for DONE_MS.
 
 import { BIG, bigOf, Horde } from '../shared/zombies.mjs';
 import { Loot, LOOT } from '../shared/loot.mjs';
 import { zombieEntry } from '../shared/wire.mjs';
+import { arenaOf } from '../shared/arenas.mjs';
 
 export const DONE_MS = 15_000;
 const BEST_KEY = 'zombies_best';
@@ -47,11 +51,16 @@ const REVIVE_REACH = 1.9;
 const REVIVE_HP = 50;
 
 export class ZombieGame {
-  /** A new game for the players `names` (gathered at the house by modes.start); `best`: the best wave ever so far. */
-  constructor(game, modes, names, now) {
+  /**
+   * A new game for the players `names` at `arena` (shared/arenas.mjs: home, or a portal in Smetlede;
+   * gathered there by modes.start). Its `edge` holds while it runs (game.fence).
+   */
+  constructor(game, modes, names, now, arena = arenaOf('house')) {
     this.game = game;
     this.modes = modes;
-    const { nav, spots, home, doors, doorOpen } = game.zombieGround();
+    this.arena = arena;
+    const { nav, spots, home, doors, doorOpen, edge } = game.zombieGround(arena);
+    this.edge = edge;
     this.horde = new Horde(nav, spots, { home, doors, doorOpen });
     /** The rewards: what lies where, the claymores down, who has what */
     this.loot = new Loot(nav);
@@ -61,7 +70,7 @@ export class ZombieGame {
     this.down = new Set();
     /** Player name -> times down in this game (the scoreboard's column) */
     this.downs = Object.create(null);
-    this.best = game.zombieBest;
+    this.best = game.zombieBests[arena.id] ?? null;
     this.record = false;
     /** Helper's name -> who they help up, since when (ms), and when the helper was last hurt then */
     this.helping = new Map();
@@ -106,7 +115,7 @@ export class ZombieGame {
     for (const n of this.players) if (here(n) || h.beaten[n]) beaten[n] = h.beaten[n] ?? 0;
     return {
       wave: h.wave, left: h.left, big: h.bigWave, bigs: bigOf(h.wave), fighters, standing, beaten, ms: this.ms(now),
-      down: [...this.down].filter(here), downs: { ...this.downs }, best: this.best, record: this.record,
+      down: [...this.down].filter(here), downs: { ...this.downs }, best: this.best, record: this.record, place: this.arena.id,
       ...this.loot.view(),
     };
   }
@@ -264,7 +273,7 @@ export class ZombieGame {
     this.perchedOut.clear();
     const names = [...this.down].filter((n) => this.game.players.get(n) && !this.game.players.get(n).alive);
     this.down.clear();
-    if (names.length) this.game.gather(names);
+    if (names.length) this.game.gather(names, this.arena);
   }
 
   /** Everyone who fights is down: the result, the best wave ever (kept), the end screen. */
@@ -276,7 +285,7 @@ export class ZombieGame {
     if (!this.best || wave > this.best.wave) {
       this.best = { wave, names: names.slice(0, 16), at: new Date(now).toISOString().slice(0, 10) };
       this.record = true;
-      this.game.saveZombieBest(this.best);
+      this.game.saveZombieBest(this.arena.id, this.best);
     }
     this.modes.finish(`The zombies caught everyone at wave ${wave}.${this.record ? " That's a new best ever!" : ''}`, this.record ? 'zOverBest' : 'zOver', { n: wave, best: this.best.wave });
   }
@@ -459,6 +468,8 @@ export class ZombieGame {
   /** Someone joined: they take part; down when they left, they wait for the wave as before (no coming back early by reconnecting). */
   join(name, p) {
     this.players.add(name);
+    // Out of the place (just joined, at the house's start places): to its start, not just inside its edge (maybe in a wall).
+    if (p?.state && !this.edge.inside(p.state.x, p.state.z) && !this.down.has(name)) this.game.gather([name], this.arena);
     if (p && this.loot.kits.has(name)) this.game.send(p.ws, { t: 'zgift', kind: 'kit', kit: this.loot.kit(name) }); // back: what they had
     if (this.down.has(name) && this.horde.phase === 'wave' && p) {
       p.alive = false;

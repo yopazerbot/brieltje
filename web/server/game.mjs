@@ -34,6 +34,7 @@ import { noShoot } from '../shared/zones.mjs';
 import { boxesOverlap, boxPoints, clearOfPortals, makeIndoors, makeSolids } from '../shared/parking.mjs';
 import { bruteEntry, carFields, horseFields, playerFields, PROTO, TICK_MS } from '../shared/wire.mjs';
 import { houseAreas, makeNav } from '../shared/zombies.mjs';
+import { arenaEdge, arenaHome, arenaPrisms, ARENAS, portalOf } from '../shared/arenas.mjs';
 
 const MAX_PLAYERS = 16; // the most the admin can allow at once (every player's moves go to every other one)
 const KEYFRAME = 20; // ticks: everything goes to every page at least this often (once a second), moved or not
@@ -158,6 +159,8 @@ const INDOORS = makeIndoors([...HOUSE.prisms, ...(HOUSE.surroundings?.prisms ?? 
  */
 const ZOMBIE_PRISMS = [...HOUSE.prisms, ...(HOUSE.surroundings?.prisms ?? []), ...Object.values(houseData('homestreet.json').clusters).flatMap((c) => c.blocks ?? [])];
 const HOUSE_AREAS = houseAreas(HOUSE.prisms);
+/** Where the best wave at Zombies place `id` is kept (meta table): home's key from before the places, the others with their id. */
+const bestKey = (id) => (id === 'house' ? 'zombies_best' : 'zombies_best_' + id);
 /** The house data's doors: whether each stands open before anyone touched it (the page's default too). */
 const DOOR_OPEN = Object.fromEntries(HOUSE.doors.map((d) => [d.id, !!d.open]));
 /**
@@ -263,7 +266,7 @@ export class Game {
     // Horses: on their walks until someone rides one; left where they are got off (until a restart).
     this.horses = HORSES.herd.map((_, i) => ({ i, x: 0, z: 0, yaw: 0, speed: 0, rider: null, parked: false }));
     this.modes = new Modes(this); // hide and seek, tag, treasure hunt, the teams, Zombies (the admin starts them)
-    this.zombieBest = null; // the best wave ever in the Zombies game (loadRules, saveZombieBest)
+    this.zombieBests = Object.create(null); // place id -> the best wave ever in the Zombies game there (loadRules, saveZombieBest)
     // The ticks (see snapshot): their count, and what each car, horse and strongman looked like in the
     // last one, kept here so the objects sent in 'car' and 'horse' messages stay as they are.
     this.tickNo = 0;
@@ -467,22 +470,28 @@ export class Game {
   }
 
   /**
-   * What the zombies walk on for a new game (server/zombies.mjs): the grid over the party area with
-   * the cars where they stand now and every floor of the two houses, the places over the open ground
-   * where zombies come out, where they go when nobody fights (the house), and the doors with whether
-   * each stands open now (a zombie shoves a shut one open: zombieDoor). About 40 ms.
+   * What the zombies walk on for a new game at `arena` (shared/arenas.mjs; server/zombies.mjs): at home
+   * the grid over the party area with every floor of the two houses and their doors, with whether each
+   * stands open now (a zombie shoves a shut one open: zombieDoor); in Smetlede the grid over its circle
+   * with the village's blocks, hedges and fences, the buildings shut. The cars where they stand now,
+   * the places over the open ground where zombies come out, where they go when nobody fights, and the
+   * edge. About 40 ms at home, 5 in the village.
    */
-  zombieGround() {
-    const boxes = Object.values(this.cars).filter((c) => BOUNDS.party.inside(c.x, c.z)).map((c) => {
+  zombieGround(arena) {
+    const edge = arenaEdge(arena, BOUNDS);
+    const boxes = Object.values(this.cars).filter((c) => edge.inside(c.x, c.z)).map((c) => {
       const s = carSpec(c);
       return { x: c.x, z: c.z, yaw: c.yaw, halfL: s.length / 2, halfW: s.width / 2 };
     });
-    const nav = makeNav({
-      prisms: ZOMBIE_PRISMS, height: (x, z) => TERRAIN.height(x, z), base: HOUSE.ground, edge: BOUNDS.party, boxes,
-      areas: HOUSE_AREAS, doors: HOUSE.doors, shut: false, panes: HOUSE.prisms.length,
-    });
-    nav.setPanes(this.broken);
-    return { nav, spots: nav.spawnSpots(), home: { x: 4.5, z: 18 }, doors: HOUSE.doors, doorOpen: (id) => this.doors[id] ?? DOOR_OPEN[id] ?? true };
+    const height = (x, z) => TERRAIN.height(x, z);
+    const nav = arena.center
+      ? makeNav({ prisms: arenaPrisms(VILLAGE.prisms ?? [], edge), height, base: HOUSE.ground, edge, boxes, areas: [], doors: [], shut: true, panes: 0 })
+      : makeNav({ prisms: ZOMBIE_PRISMS, height, base: HOUSE.ground, edge, boxes, areas: HOUSE_AREAS, doors: HOUSE.doors, shut: false, panes: HOUSE.prisms.length });
+    if (!arena.center) nav.setPanes(this.broken);
+    return {
+      nav, edge, spots: nav.spawnSpots(), home: arenaHome(arena), doors: arena.center ? [] : HOUSE.doors,
+      doorOpen: (id) => this.doors[id] ?? DOOR_OPEN[id] ?? true,
+    };
   }
 
   /**
@@ -496,10 +505,13 @@ export class Game {
     this.broadcast({ t: 'door', id, open: true, dir: this.doorDir[id] ?? 1, by: '' });
   }
 
-  /** The best wave ever reached in the Zombies game ({ wave, names, at }), kept with the rules. */
-  saveZombieBest(best) {
-    this.zombieBest = best;
-    this.auth.store.setMeta('zombies_best', JSON.stringify(best)).catch((e) => console.error('zombies best failed', String(e)));
+  /**
+   * The best wave ever reached in the Zombies game at place `id` ({ wave, names, at }), kept with the
+   * rules: home's under its first key (its record from before the places stays), the others' with their id.
+   */
+  saveZombieBest(id, best) {
+    this.zombieBests[id] = best;
+    this.auth.store.setMeta(bestKey(id), JSON.stringify(best)).catch((e) => console.error('zombies best failed', String(e)));
   }
 
   clownList(now = Date.now()) {
@@ -736,7 +748,8 @@ export class Game {
       const count = (v) => (Number.isInteger(v) && v >= 0 ? v : 0);
       this.hit(name, player, m.target, m.w, count(m.body), count(m.head), now);
     } else if (m.t === 'mode' && player.role === 'admin' && typeof m.kind === 'string') {
-      this.modes.start(m.kind, name);
+      // `place`: where Zombies is played (shared/arenas.mjs; an unknown one plays at home).
+      this.modes.start(m.kind, name, typeof m.place === 'string' ? m.place.slice(0, 30) : 'house');
     } else if (m.t === 'tag') {
       this.modes.tag(name, m.target);
     } else if (m.t === 'coin') {
@@ -887,9 +900,12 @@ export class Game {
     return this.modes.active && this.modes.state.phase !== 'done';
   }
 
-  /** The edge that holds now (shared/bounds.json): round the two houses during a game in the house, else round the built-up area. */
+  /**
+   * The edge that holds now (shared/bounds.json): round the two houses during a game in the house, or
+   * round the place Zombies is played at (shared/arenas.mjs), else round the built-up area.
+   */
   fence() {
-    return this.fenced() ? BOUNDS.party : BOUNDS.map;
+    return this.fenced() ? (this.modes.zombies?.edge ?? BOUNDS.party) : BOUNDS.map;
   }
 
   /**
@@ -998,14 +1014,16 @@ export class Game {
     } catch {
       // unreadable: the defaults
     }
-    // The best wave ever in the Zombies game (saveZombieBest): only a whole number and a short list of names.
-    try {
-      const best = JSON.parse((await this.auth.store.getMeta('zombies_best')) || 'null');
-      if (best && Number.isInteger(best.wave) && best.wave > 0) {
-        this.zombieBest = { wave: best.wave, names: (Array.isArray(best.names) ? best.names : []).filter((n) => typeof n === 'string').slice(0, 16), at: String(best.at ?? '').slice(0, 10) };
+    // The best wave ever in the Zombies game at each place (saveZombieBest): only a whole number and a short list of names.
+    for (const { id } of ARENAS) {
+      try {
+        const best = JSON.parse((await this.auth.store.getMeta(bestKey(id))) || 'null');
+        if (best && Number.isInteger(best.wave) && best.wave > 0) {
+          this.zombieBests[id] = { wave: best.wave, names: (Array.isArray(best.names) ? best.names : []).filter((n) => typeof n === 'string').slice(0, 16), at: String(best.at ?? '').slice(0, 10) };
+        }
+      } catch {
+        // unreadable: none yet
       }
-    } catch {
-      // unreadable: none yet
     }
     for (const k of Object.keys(RULES)) if (ruleOk(k, saved[k])) this.rules[k] = saved[k];
     // The limit to start with went from 4 to 16 players (1 Nov 2026: 16 cost about 2% of a core). The
@@ -1382,7 +1400,8 @@ export class Game {
     p.movedAt = now;
     p.budget = p.vbudget = 0.5;
     this.moved(p);
-    this.broadcast({ t: 'respawn', name, spawn, ...(at ? { x: at.x, z: at.z } : {}) });
+    // In Smetlede (Zombies there) also the height to stand at and what to face: the spawn point is the house's.
+    this.broadcast({ t: 'respawn', name, spawn, ...(at ? { x: at.x, z: at.z } : {}), ...(at?.face ? { y: +at.y.toFixed(2), fx: at.face[0], fz: at.face[1] } : {}) });
   }
 
   /**
@@ -1392,18 +1411,24 @@ export class Game {
    * in turn so the players share them out. As a respawn (out of cars, off horses, full health), not a
    * death. A nicer start than fenceAll alone, which only puts those outside the edge just inside it.
    */
-  gather(names) {
+  gather(names, arena = null) {
     const now = Date.now();
-    const outside = SPAWNS.map((s, i) => ({ ...s, i })).filter((s) => s.team === 'house' && s.outside);
+    // The places to spread round: the house's outside start places, or, for Zombies started at another
+    // portal (the bungalow's has no outside start places), where you come out of it, facing it.
+    const portal = arena && arena.id !== 'house' ? portalOf(arena) : null;
+    const outside = portal
+      ? [{ i: SPAWNS.findIndex((s) => s.team === 'house' && s.outside), x: portal.out[0], z: portal.out[1], y: HOUSE.ground + TERRAIN.height(portal.out[0], portal.out[1]), face: [portal.x, portal.z] }]
+      : SPAWNS.map((s, i) => ({ ...s, i })).filter((s) => s.team === 'house' && s.outside);
     const cars = Object.values(this.cars);
-    const fence = this.fence();
+    const fence = arena ? arenaEdge(arena, BOUNDS) : this.fence();
     const spots = [];
-    for (const [r, n] of [[0, 1], [1.6, 6], [3.2, 10]]) { // each place's middle, then rings round it
+    for (const [r, n] of [[0, 1], [1.6, 6], [3.2, 10], [4.8, 14]]) { // each place's middle, then rings round it
       for (let k = 0; k < n; k++) {
         for (const s of outside) {
           const x = s.x + r * Math.sin((k / n) * Math.PI * 2);
           const z = s.z + r * Math.cos((k / n) * Math.PI * 2);
-          if (this.free(x, z) && fence.inside(x, z) && cars.every((c) => Math.hypot(x - c.x, z - c.z) > 3.5)) spots.push({ spawn: s.i, x: +x.toFixed(2), y: s.y, z: +z.toFixed(2) });
+          const y = portal ? HOUSE.ground + TERRAIN.height(x, z) : s.y;
+          if (this.free(x, z) && fence.inside(x, z) && cars.every((c) => Math.hypot(x - c.x, z - c.z) > 3.5)) spots.push({ spawn: s.i, x: +x.toFixed(2), y, z: +z.toFixed(2), ...(s.face ? { face: s.face } : {}) });
         }
       }
     }

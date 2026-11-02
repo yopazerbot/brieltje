@@ -416,6 +416,7 @@ const en = {
   'prompt.portalGame': "You can't travel during the game.",
   'prompt.edge': "You can't go further.",
   'prompt.edgeGame': 'During the game you stay near the house.',
+  'prompt.edgeHere': 'During the game you stay where it is played.',
   'prompt.fly': 'Flying · hold {up} up, {down} down',
   'prompt.noShoot': 'School grounds · no shooting here',
   'prompt.locked': 'Only accessible in multiplayer.\nWant to look around solo? Contact Yoshi at yoshi@olive-security.be',
@@ -515,6 +516,8 @@ const en = {
   'z.explore': "You're exploring. Pick Paintball or Action to help beat the zombies.",
   'z.downWait': 'Back once this wave is beaten',
   'z.soloStart': 'Zombies! The first wave comes in 8 seconds.',
+  'z.where': 'Where',
+  'z.whereAdmin': 'Zombies at',
   'z.endTitle': 'Wave {n} reached',
   'z.endSub': 'The zombies caught everyone',
   'z.endSubPaint': 'Everyone got tagged',
@@ -686,6 +689,7 @@ const en = {
   'srv.teamsDraw': "Time's up: a draw, {house} to {bungalow}",
   'srv.teamsTime': "Time's up: team {team} wins, {house} to {bungalow}",
   'srv.zombiesStarted': '{name} started Zombies. Beat the waves together. The first one comes in 8 seconds.',
+  'srv.zombiesStartedAt': '{name} started Zombies ({place}). Beat the waves together. The first one comes in 8 seconds.',
   'srv.zWave': 'Wave {n}: {count} zombies are coming!',
   'srv.zWaveBig': 'Wave {n}: {count} zombies are coming. A big one is with them!',
   'srv.zWaveBigs': 'Wave {n}: {count} zombies are coming. Big ones are with them!',
@@ -1145,6 +1149,7 @@ const nl = {
   'prompt.portalGame': 'Tijdens het spel kan je niet reizen.',
   'prompt.edge': 'Verder kan je niet.',
   'prompt.edgeGame': 'Tijdens het spel blijf je bij het huis.',
+  'prompt.edgeHere': 'Tijdens het spel blijf je waar het gespeeld wordt.',
   'prompt.fly': 'Vliegen · houd {up} ingedrukt om te stijgen, {down} om te dalen',
   'prompt.noShoot': 'Schoolterrein · hier wordt niet geschoten',
   'prompt.locked': 'Alleen toegankelijk in multiplayer.\nWil je solo rondkijken? Contacteer Yoshi via yoshi@olive-security.be',
@@ -1242,6 +1247,8 @@ const nl = {
   'z.explore': 'Je verkent nu. Kies Verfballen of Actie om de zombies mee te verslaan.',
   'z.downWait': 'Terug zodra deze golf verslagen is',
   'z.soloStart': 'Zombies! De eerste golf komt over 8 seconden.',
+  'z.where': 'Waar',
+  'z.whereAdmin': 'Plaats voor Zombies',
   'z.endTitle': 'Golf {n} gehaald',
   'z.endSub': 'De zombies hebben iedereen te pakken',
   'z.endSubPaint': 'Iedereen is geraakt',
@@ -1412,6 +1419,7 @@ const nl = {
   'srv.teamsDraw': 'De tijd is om: gelijkspel, {house}–{bungalow}',
   'srv.teamsTime': 'De tijd is om: team {team} wint, {house}–{bungalow}',
   'srv.zombiesStarted': '{name} startte Zombies. Versla de golven samen. De eerste komt over 8 seconden.',
+  'srv.zombiesStartedAt': '{name} startte Zombies ({place}). Versla de golven samen. De eerste komt over 8 seconden.',
   'srv.zWave': 'Golf {n}: {count} zombies komen eraan!',
   'srv.zWaveBig': 'Golf {n}: {count} zombies komen eraan. Er is een grote bij!',
   'srv.zWaveBigs': 'Golf {n}: {count} zombies komen eraan. Er zijn grote bij!',
@@ -1761,9 +1769,11 @@ export function serverText(code: unknown, args: unknown, fallback: string): stri
   for (const [k, v] of Object.entries(a)) {
     const team = k === 'team' && typeof v === 'string' ? TEAMS[v] : undefined;
     const game = k === 'kind' && typeof v === 'string' ? GAMES[v] : undefined;
+    const place = k === 'place' && typeof v === 'string' && isKey(`portal.${v}`) ? (`portal.${v}` as PlainKey) : undefined; // where Zombies is played: a portal's name
     if (Array.isArray(v)) params[k] = listOf(v);
     else if (team) params[k] = t(team);
     else if (game) params[k] = t(game);
+    else if (place) params[k] = t(place);
     else params[k] = typeof v === 'boolean' ? String(v) : v;
   }
   if (code === 'rules') {
