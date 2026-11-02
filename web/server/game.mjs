@@ -270,6 +270,14 @@ export class Game {
     this.rocks = []; // strongmen's rocks in the air: { id, to, at (lands at) }
     this.nextClown = CLOWNS.spots.length + 1;
     this.furniture = new Map(); // id -> placed piece (kept in the database)
+    /**
+     * Who may take away what a player spawned (/remove): 'f12', 't p3', 'c7' (a piece, a Tesla, a
+     * character) -> the session that spawned it. A session, not the name a piece shows (`by`): a guest's
+     * name can be taken again once they leave, or picked to look like an owner tag ('layout'). Kept
+     * here only, never sent (a session key is a secret); gone with a restart, after which only the
+     * admin takes them away.
+     */
+    this.owners = new Map();
     this.cars = Object.fromEntries(Object.entries(CARS.cars).map(([id, c]) => [id, { id, ...c.park, s: 0, driver: null, passenger: null }]));
     this.placing = 0; // placed Teslas on their way into the database (they count towards the most)
     // Horses: on their walks until someone rides one; left where they are got off (until a restart).
@@ -721,13 +729,15 @@ export class Game {
         else {
           at = this.spawnSpot(player, m);
           if (!at) return no('spawnFar', 'That is too far from you.');
-          if ([...this.clowns.values()].filter((c) => c.by === name).length >= SPAWN_CHARACTERS) return no('spawnCharacters', `You have ${SPAWN_CHARACTERS} out already. Take one away with /remove.`);
+          if (this.ownedBy(player, 'c') >= SPAWN_CHARACTERS) return no('spawnCharacters', `You have ${SPAWN_CHARACTERS} out already. Take one away with /remove.`);
         }
         const id = this.nextClown++;
-        this.clowns.set(id, { ...this.character(id, at.x, at.y, at.z, kindOf(m.kind)), by: name });
+        this.clowns.set(id, this.character(id, at.x, at.y, at.z, kindOf(m.kind)));
+        this.owners.set(`c${id}`, player.key);
       } else if (m.op === 'remove' && this.clowns.has(m.id)) {
-        if (!admin && this.clowns.get(m.id).by !== name) return no('spawnNotYours', 'You can only take away what you spawned yourself.');
+        if (!admin && this.owners.get(`c${m.id}`) !== player.key) return no('spawnNotYours', 'You can only take away what you spawned yourself.');
         this.clowns.delete(m.id);
+        this.owners.delete(`c${m.id}`);
       } else return;
       this.broadcast({ t: 'clowns', list: this.clownList(now) });
     } else if (m.t === 'cat' && Number.isInteger(m.i) && m.i >= 0 && m.i < CATS.cats.length) {
@@ -1090,6 +1100,7 @@ export class Game {
       if (player.role !== 'admin') return;
       await store.clearFurniture();
       this.furniture.clear();
+      this.owners.clear(); // the characters and Teslas go below too: nothing spawned is left
       if (m.op === 'reset') {
         for (const f of DEFAULT_FURNITURE) {
           const piece = { ...f, by: 'layout' };
@@ -1106,9 +1117,10 @@ export class Game {
       await this.clearPlaced(); // and the Teslas (the four of the game stay)
     } else if (m.op === 'del' && this.furniture.has(m.id)) {
       // Taken away (/remove): the admin's any piece, everyone else's only what they spawned themselves.
-      if (!admin && this.furniture.get(m.id).by !== name) return refuse('spawnNotYours', 'You can only take away what you spawned yourself.');
+      if (!admin && this.owners.get(`f${m.id}`) !== player.key) return refuse('spawnNotYours', 'You can only take away what you spawned yourself.');
       await store.deleteFurniture(m.id);
       this.furniture.delete(m.id);
+      this.owners.delete(`f${m.id}`);
       await this.markFurniture(true);
       this.broadcast({ t: 'furn', op: 'del', id: m.id });
     } else if (m.op === 'put' && m.id === undefined && FURNITURE_IDS.has(m.item)) {
@@ -1118,13 +1130,21 @@ export class Game {
       const at = this.spawnSpot(player, m);
       if (!at) return refuse('spawnFar', 'That is too far from you.');
       if (this.furniture.size >= FURNITURE.max) return refuse('furnFull', `There is no room for more furniture (${FURNITURE.max} pieces). The admin can remove some.`, { n: FURNITURE.max });
-      if (!admin && [...this.furniture.values()].filter((f) => f.by === name).length >= SPAWN_EACH) return refuse('spawnMany', `You have ${SPAWN_EACH} things out already. Take some away with /remove.`, { n: SPAWN_EACH });
+      if (!admin && this.ownedBy(player, 'f') >= SPAWN_EACH) return refuse('spawnMany', `You have ${SPAWN_EACH} things out already. Take some away with /remove.`, { n: SPAWN_EACH });
       const f = { item: m.item, ...at, yaw: num(m.yaw, -7, 7), by: name };
       f.id = await store.addFurniture(f);
       this.furniture.set(f.id, f);
+      this.owners.set(`f${f.id}`, player.key);
       await this.markFurniture(true);
       this.broadcast({ t: 'furn', op: 'put', f });
     }
+  }
+
+  /** How many things of a kind (`prefix`: 'f' furniture, 't' Teslas, 'c' characters) player `p`'s session has spawned and still has out. */
+  ownedBy(p, prefix) {
+    let n = 0;
+    for (const [k, owner] of this.owners) if (owner === p.key && k[0] === prefix) n++;
+    return n;
   }
 
   /**
@@ -1168,10 +1188,11 @@ export class Game {
     const placed = typeof m.id === 'string' && Object.hasOwn(this.cars, m.id) && this.cars[m.id].kind ? this.cars[m.id] : null;
     if (m.op === 'del') {
       if (!placed) return;
-      if (!admin && placed.by !== name) return no(['spawnNotYours', 'You can only take away what you spawned yourself.']);
+      if (!admin && this.owners.get(`t${placed.id}`) !== player.key) return no(['spawnNotYours', 'You can only take away what you spawned yourself.']);
       if (placed.driver || placed.passenger) return no(['teslaBusy', 'Someone is in that car.']);
       delete this.cars[placed.id];
       delete this.carAt[placed.id];
+      this.owners.delete(`t${placed.id}`);
       this.sendPlaced();
       await store.deleteCar(Number(placed.id.slice(1)));
       return;
@@ -1182,7 +1203,7 @@ export class Game {
     if (m.id !== undefined && (!placed || placed.kind !== m.kind)) return; // a move: a placed car, of the kind it is
     if (![m.x, m.y, m.z, m.yaw].every((v) => typeof v === 'number' && Number.isFinite(v))) return;
     if (!admin && (!player.state || Math.hypot(m.x - player.state.x, m.z - player.state.z) > SPAWN_REACH + 3 || Math.abs(m.y - player.state.y) > 3)) return no(['spawnFar', 'That is too far from you.']);
-    if (!admin && !placed && this.placedList().filter((c) => c.by === name).length >= SPAWN_CARS) return no(['spawnCars', `You have ${SPAWN_CARS} Teslas out already. Take one away with /remove.`]);
+    if (!admin && !placed && this.ownedBy(player, 't') >= SPAWN_CARS) return no(['spawnCars', `You have ${SPAWN_CARS} Teslas out already. Take one away with /remove.`]);
     if (placed && (placed.driver || placed.passenger)) return no(['teslaBusy', 'Someone is in that car.']);
     const r = (v, k) => Math.round(v * k) / k;
     const spot = { x: r(m.x, 100), y: r(m.y, 100), z: r(m.z, 100), yaw: r(Math.atan2(Math.sin(m.yaw), Math.cos(m.yaw)), 1000) };
@@ -1205,6 +1226,7 @@ export class Game {
     }
     const id = `p${row}`;
     this.cars[id] = { id, kind: m.kind, ...spot, s: 0, driver: null, passenger: null, by: name };
+    this.owners.set(`t${id}`, player.key);
     this.carAt[id] = mono();
     this.sendPlaced();
   }
@@ -1256,6 +1278,7 @@ export class Game {
       if (c.passenger) this.releaseCar(c.passenger);
       delete this.cars[c.id];
       delete this.carAt[c.id];
+      this.owners.delete(`t${c.id}`);
     }
     this.sendPlaced();
     await this.auth.store.clearCars();
