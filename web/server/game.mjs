@@ -661,6 +661,9 @@ export class Game {
     } else if (m.t === 'stakes') {
       // Planting a row of stakes (server/zombies.mjs stakes: carried, on a floor near the player, as a claymore).
       this.modes.zombies?.stakes(name, player, m, now);
+    } else if (m.t === 'turret') {
+      // Setting up a turret (server/zombies.mjs turret: carried, on a floor near the player; it aims and shoots on the server).
+      this.modes.zombies?.turret(name, player, m, now);
     } else if (m.t === 'revive') {
       // Helping a downed teammate up, or letting go (server/zombies.mjs help: the time on the server's clock).
       this.modes.zombies?.help(name, player, m, now);

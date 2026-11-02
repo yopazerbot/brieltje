@@ -1571,9 +1571,10 @@ export class Horde {
   /**
    * Zombie `id` takes `amount` of health from `by`: 'down' when that beat it (it counts for them),
    * 'hurt' when it took it (it staggers; the big one only from a heavy hit), null when it was down
-   * already or there is no such zombie.
+   * already or there is no such zombie. `flinch` false: no stagger (a turret's steady fire would hold
+   * its zombie still for good).
    */
-  hit(id, amount, by, now) {
+  hit(id, amount, by, now, flinch = true) {
     const z = this.zombies.get(id);
     if (!z || z.act === 'down' || !(amount > 0)) return null;
     z.hp = Math.max(0, z.hp - amount);
@@ -1582,7 +1583,7 @@ export class Horde {
       this.beaten[by] = (this.beaten[by] ?? 0) + 1;
       return 'down';
     }
-    if (z.kind !== BIG || amount >= 60) Object.assign(z, { act: 'hurt', actAt: now, until: now + ZOMBIE.hurtMs, struck: true });
+    if (flinch && (z.kind !== BIG || amount >= 60)) Object.assign(z, { act: 'hurt', actAt: now, until: now + ZOMBIE.hurtMs, struck: true });
     return 'hurt';
   }
 

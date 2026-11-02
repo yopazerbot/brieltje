@@ -758,6 +758,12 @@ export class Zombies {
     return [...this.zs.values()].map((z) => ({ id: z.id, kind: z.kind, x: z.x, y: z.y, z: z.z, act: z.act, hp: z.hp, clip: z.clip, lod: z.lod, down: !!z.downAt }));
   }
 
+  /** Where a shot at zombie `id` lands: its chest as drawn now (a turret's aim), or null when it isn't up here. */
+  chest(id: number): THREE.Vector3 | null {
+    const z = this.zs.get(id);
+    return z && !z.downAt ? new THREE.Vector3(z.x, z.y + (z.kind === BIG ? 1.6 : 1.1), z.z) : null;
+  }
+
   /** Whether `id` is a big one (for the kill feed's name). */
   isBig(id: number): boolean {
     return this.zs.get(id)?.kind === BIG;

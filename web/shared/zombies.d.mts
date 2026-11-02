@@ -206,7 +206,7 @@ export class Horde {
   readonly bigWave: boolean;
   start(now: number): void;
   tick(now: number, dt: number, players: HordePlayer[]): HordeEvent[];
-  hit(id: number, amount: number, by: string, now: number): 'down' | 'hurt' | null;
+  hit(id: number, amount: number, by: string, now: number, flinch?: boolean): 'down' | 'hurt' | null;
   blast(x: number, z: number, radius: number, amount: number, by: string, now: number, y?: number | null): [number, 'down' | 'hurt'][];
   reachOf(p: { x: number; y: number; z: number }): (Seed & { ok: boolean }) | null;
 }

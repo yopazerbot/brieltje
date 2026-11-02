@@ -8,16 +8,19 @@ import { sound } from '../sound';
 /**
  * The Zombies game's rewards on screen (shared/loot.mjs keeps them: the server together, the page
  * alone): each lies where its zombie fell as a glowing ring on the ground with a beam of light and
- * its sign turning above it (a box of ammo, a scope, a claymore, a bundle of stakes), so it shows
- * from across the garden; walk over it to take it. And the claymores placed: a small curved box on
- * two legs on the floor, facing the way it goes off, with a light blinking once it is armed (in
+ * its sign turning above it (a box of ammo, a scope, a claymore, a bundle of stakes, a turret), so
+ * it shows from across the garden; walk over it to take it. And the claymores placed: a small curved
+ * box on two legs on the floor, facing the way it goes off, with a light blinking once it is armed (in
  * paintball a bright paint mine). Shared geometry, the parts of one material merged: three or four
  * draws a reward, three a claymore. The rows of stakes: sharpened poles leaning the way the row
  * faces, lashed to a rail, each on the ground under it; as the zombies wear a row its stakes tip over
  * one by one, and when it's worn through it bursts in splinters. All rows are two instanced draws.
+ * The turrets: a tripod whose head unfolds, turns to the zombie it shoots (the server says which, in
+ * each shot) and flashes; its eye goes from green to amber to blinking red as its rounds run out, and
+ * when they are out it is gone in a puff. Four draws a turret, five as it flashes.
  */
 
-const COLORS: Record<LootKind, string> = { ammo: '#f2c14e', scope: '#5fd3f3', claymore: '#ff7a45', stakes: '#9be36b' };
+const COLORS: Record<LootKind, string> = { ammo: '#f2c14e', scope: '#5fd3f3', claymore: '#ff7a45', stakes: '#9be36b', turret: '#c58cff' };
 const REACH = 1.0; // m: the page asks for one this close (the server allows LOOT.reach)
 
 const ringGeo = new THREE.RingGeometry(0.3, 0.4, 32).rotateX(-Math.PI / 2);
@@ -153,7 +156,58 @@ function mineModel(paint: boolean): { g: THREE.Group; led: THREE.Mesh } {
   return { g, led };
 }
 
-/** A reward's sign above its ring: an ammo box, a scope, a claymore, a bundle of stakes. */
+// A turret: three splayed legs and a hub (its foot at the origin), and the head that turns on it: a
+// box with an ammo can at its side, a barrel with a muzzle brake out of its front (-z), an eye that
+// shows how many rounds are left, and a flash at the muzzle. The parts of one material merged.
+const TURRET_Y = 0.5;
+/** It is built at this much of its size: a third bigger, so it reads from across the garden (about 0.75 m tall). */
+const TURRET_SIZE = 1.35;
+const legGeoT = new THREE.CylinderGeometry(0.014, 0.018, 0.56, 6).translate(0, -0.28, 0);
+const legsGeo = mergeGeometries([
+  ...[0, 1, 2].map((i) => legGeoT.clone().rotateX(0.42).rotateY((i * Math.PI * 2) / 3 + Math.PI / 3).translate(0, TURRET_Y, 0)),
+  new THREE.CylinderGeometry(0.04, 0.045, 0.1, 10).translate(0, TURRET_Y + 0.02, 0),
+]);
+const headGeo = mergeGeometries([
+  new THREE.BoxGeometry(0.16, 0.13, 0.26).translate(0, 0.07, 0.02),
+  new THREE.BoxGeometry(0.07, 0.09, 0.13).translate(0.115, 0.06, 0.05),
+]);
+const barrelGeo = mergeGeometries([
+  new THREE.CylinderGeometry(0.017, 0.017, 0.3, 10).rotateX(Math.PI / 2).translate(0, 0.075, -0.25),
+  new THREE.CylinderGeometry(0.026, 0.026, 0.06, 10).rotateX(Math.PI / 2).translate(0, 0.075, -0.39),
+]);
+const eyeGeo = new THREE.SphereGeometry(0.022, 10, 8);
+const flashGeo = new THREE.ConeGeometry(0.05, 0.18, 8, 1, true).rotateX(-Math.PI / 2).translate(0, 0.075, -0.5);
+const flashMat = new THREE.MeshBasicMaterial({ color: '#ffd38a', transparent: true, opacity: 0.9, depthWrite: false, blending: THREE.AdditiveBlending });
+/** Where the turret's muzzle is in its head (for the shots' sound and smoke). */
+const MUZZLE = new THREE.Vector3(0, 0.075, -0.43);
+
+interface TurretModel {
+  g: THREE.Group;
+  head: THREE.Group;
+  tilt: THREE.Group;
+  eye: THREE.Mesh;
+  flash: THREE.Mesh;
+}
+function turretModel(paint: boolean): TurretModel {
+  const g = new THREE.Group();
+  const body = new THREE.Group();
+  body.scale.setScalar(TURRET_SIZE);
+  const head = new THREE.Group();
+  const tilt = new THREE.Group();
+  head.position.y = TURRET_Y + 0.06;
+  g.add(body);
+  body.add(new THREE.Mesh(legsGeo, mats.leg), head);
+  head.add(tilt);
+  const eye = new THREE.Mesh(eyeGeo, new THREE.MeshBasicMaterial({ color: '#3a0d0a' }));
+  eye.position.set(-0.045, 0.14, -0.08);
+  const flash = new THREE.Mesh(flashGeo, flashMat);
+  flash.visible = false;
+  tilt.add(new THREE.Mesh(headGeo, paint ? mats.minePaint : mats.mine), new THREE.Mesh(barrelGeo, mats.tube), eye, flash);
+  g.traverse((o) => (o.userData.ignoreRay = true));
+  return { g, head, tilt, eye, flash };
+}
+
+/** A reward's sign above its ring: an ammo box, a scope, a claymore, a bundle of stakes, a turret. */
 function sign(kind: LootKind): THREE.Group {
   const g = new THREE.Group();
   if (kind === 'ammo') {
@@ -169,6 +223,11 @@ function sign(kind: LootKind): THREE.Group {
       s.position.set(-0.24, dy - 0.03, dx);
       g.add(s);
     }
+  } else if (kind === 'turret') {
+    const t = turretModel(paintball.on);
+    t.g.scale.setScalar(0.5);
+    t.g.position.y = -0.3;
+    g.add(t.g);
   } else {
     const m = mineModel(paintball.on).g;
     m.position.y = -0.12;
@@ -202,6 +261,10 @@ export class Rewards {
   private clock = 0;
   /** A row of stakes burst: where its stakes stood (the caller throws the splinters). */
   onBurst: (points: THREE.Vector3[]) => void = () => {};
+  /** The turrets up: their model, yaw as set up, where they aim (and how far up), when they last shot, rounds left. */
+  private turrets = new Map<number, { m: TurretModel; set: number; aim: number; pitch: number; born: number; shotAt: number; flashLeft: number; rounds: number; paint: boolean }>();
+  /** A turret ran out of rounds and folded away: where (the caller puffs). */
+  onSpent: (at: THREE.Vector3) => void = () => {};
 
   /** `ground`: the floor's height at (x, z) near height y, for each stake's foot. */
   constructor(private ground: (x: number, z: number, y: number) => number = (_x, _z, y) => y) {
@@ -255,6 +318,49 @@ export class Rewards {
       changed = true;
     }
     if (changed) this.layStakes();
+  }
+
+  /**
+   * The turrets up now ([id, x, y, z, yaw as set up, owner]): new ones unfold, gone ones (spent) go
+   * in a puff (`onSpent`), unless `quiet` (the game ended).
+   */
+  setTurrets(list: [number, number, number, number, number, string][], quiet = false): void {
+    const ids = new Set(list.map((t) => t[0]));
+    for (const [id, t] of this.turrets) {
+      if (ids.has(id) && t.paint === paintball.on) continue;
+      t.m.g.removeFromParent();
+      this.turrets.delete(id);
+      if (!quiet && !ids.has(id)) this.onSpent(t.m.g.position.clone().setY(t.m.g.position.y + (TURRET_Y + 0.1) * TURRET_SIZE));
+    }
+    for (const [id, x, y, z, yaw] of list) {
+      if (this.turrets.has(id)) continue;
+      const m = turretModel(paintball.on);
+      m.g.position.set(x, y, z);
+      m.head.rotation.y = yaw;
+      this.group.add(m.g);
+      this.turrets.set(id, { m, set: yaw, aim: yaw, pitch: 0, born: this.clock, shotAt: -9, flashLeft: 0, rounds: LOOT.turretRounds, paint: paintball.on });
+    }
+  }
+
+  /**
+   * Turret `id` shot at a zombie at `at` (its chest; null when this page doesn't have it): it aims
+   * there, flashes, and its eye shows the `rounds` left. Where its muzzle is, or null with no such turret.
+   */
+  fire(id: number, at: THREE.Vector3 | null, rounds: number): THREE.Vector3 | null {
+    const t = this.turrets.get(id);
+    if (!t) return null;
+    const base = t.m.g.position;
+    if (at) {
+      t.aim = Math.atan2(-(at.x - base.x), -(at.z - base.z));
+      t.pitch = Math.atan2(at.y - (base.y + (TURRET_Y + 0.13) * TURRET_SIZE), Math.hypot(at.x - base.x, at.z - base.z));
+    }
+    t.shotAt = this.clock;
+    t.flashLeft = 0.06;
+    t.rounds = rounds;
+    t.m.flash.visible = true;
+    t.m.flash.rotation.z = Math.random() * Math.PI;
+    t.m.g.updateMatrixWorld(true);
+    return t.m.tilt.localToWorld(MUZZLE.clone());
   }
 
   /** Row `id` was worn through: it bursts in splinters and is gone. */
@@ -375,6 +481,7 @@ export class Rewards {
     this.setItems([]);
     this.setMines([]);
     this.setStakes([]);
+    this.setTurrets([], true);
   }
 
   /** The item within reach of your feet (the nearest), or -1. */
@@ -393,9 +500,30 @@ export class Rewards {
     return [...this.items.values()].map((s) => ({ x: s.x, y: s.y, z: s.z, color: COLORS[s.kind] }));
   }
 
-  /** Every frame: the signs turn and bob, the beams breathe, an armed claymore blinks, a worn stake tips over. */
+  /** Every frame: the signs turn and bob, the beams breathe, an armed claymore blinks, a worn stake tips over, a turret unfolds, aims and flashes. */
   update(dt: number): void {
     this.clock += dt;
+    for (const t of this.turrets.values()) {
+      // Unfolding: the head rises out of the hub, the barrel down; then it turns to where it shoots,
+      // or, a while after its last shot, looks slowly round about the way it was set up.
+      const up = Math.min(1, (this.clock - t.born) / (LOOT.turretArm / 1000));
+      t.m.head.position.y = TURRET_Y + 0.06 - 0.12 * (1 - up);
+      const idle = this.clock - t.shotAt > 1.5;
+      const want = idle ? t.set + 0.6 * Math.sin((this.clock - t.born) * 0.7) : t.aim;
+      const d = Math.atan2(Math.sin(want - t.m.head.rotation.y), Math.cos(want - t.m.head.rotation.y));
+      const turn = (idle ? 0.8 : 7) * dt;
+      t.m.head.rotation.y += Math.max(-turn, Math.min(turn, d));
+      const pitch = up < 1 ? -0.5 * (1 - up) : idle ? 0 : t.pitch;
+      t.m.tilt.rotation.x += (pitch - t.m.tilt.rotation.x) * Math.min(1, dt * 10);
+      // The eye: green while it's full, amber past half, red at the last fifth (blinking once armed).
+      const f = t.rounds / LOOT.turretRounds;
+      const eye = t.m.eye.material as THREE.MeshBasicMaterial;
+      eye.color.set(up < 1 ? '#3a0d0a' : f > 0.5 ? '#4cff6a' : f > 0.2 ? '#ffb030' : Math.floor(this.clock * 4) % 2 ? '#ff2a1a' : '#3a0d0a');
+      if (t.flashLeft > 0) {
+        t.flashLeft -= dt;
+        if (t.flashLeft <= 0) t.m.flash.visible = false;
+      }
+    }
     if (this.tipping) {
       for (const row of this.rows.values()) {
         for (const s of row.stakes) {

@@ -126,7 +126,7 @@ function padOrKeyGroups(control: 'kbm' | 'pad', action: boolean): Group[] {
       rows: [
         [t('ctl.shoot'), k('shoot')], [t('ctl.aim'), hold('aim')], [t('ctl.reload'), k('reload')],
         [t('ctl.switchWeapon'), k('weapons')], [t('ctl.grenade'), k('grenade')], [t('ctl.pickUp'), t('ctl.pickUpHow')],
-        [t('ctl.claymore'), hold('grenade')], [t('ctl.stakes'), hold('reload')],
+        [t('ctl.claymore'), hold('grenade')], [t('ctl.stakes'), hold('reload')], [t('ctl.turret'), hold('use')],
       ],
     });
   }
@@ -186,7 +186,7 @@ function touchGroups(action: boolean): Group[] {
       title: t('ctl.weapons'),
       rows: [
         [t('tctl.shoot'), k('shoot')], [t('ctl.aim'), t('tctl.aimHow')], [t('ctl.reload'), k('reload')], [t('tctl.grenade'), k('grenade')], [t('tctl.nextWeapon'), k('weapons')],
-        [t('ctl.claymore'), t('key.hold', { key: k('grenade') })], [t('ctl.stakes'), t('key.hold', { key: k('reload') })],
+        [t('ctl.claymore'), t('key.hold', { key: k('grenade') })], [t('ctl.stakes'), t('key.hold', { key: k('reload') })], [t('ctl.turret'), t('key.hold', { key: k('use') })],
       ],
     });
   }

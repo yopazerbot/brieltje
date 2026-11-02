@@ -14,11 +14,12 @@
 // claims to hover or stand in a wall) is warned, and out of the wave if they stay (perch).
 //
 // Rewards (shared/loot.mjs): a beaten zombie sometimes leaves one (a bigger ammo pack, a scope, a
-// claymore), and a big one a bundle of stakes too. The server keeps them: what lies where, who has
+// claymore), and a big one a bundle of stakes and a turret too. The server keeps them: what lies where, who has
 // what, every pickup (take: an item that is there, within reach of the server's position, useful to
 // them; taken once), every claymore placed (place: carried, on a floor near the player, at most two
-// down) and set off (each tick, by the zombies the server has; its blast only hurts zombies), and
-// every row of stakes planted (stakes: as a claymore) and worn through (each tick, by its zombies).
+// down) and set off (each tick, by the zombies the server has; its blast only hurts zombies), every
+// row of stakes planted (stakes: as a claymore) and worn through (each tick, by its zombies), and
+// every turret set up (turret: as a claymore), its aim and its shots (each tick; zombies only).
 //
 // Who goes down waits for the end of the wave (their page shows it), then everyone comes back at
 // the house's outside start places, unless a teammate helps them up first: holding Use next to them
@@ -164,8 +165,12 @@ export class ZombieGame {
     }
     // The rewards: items lying too long go; a claymore a zombie walked into goes off (zombies only); the
     // zombies in a row of stakes wade through it and wear it (a stake falls, or the row is gone).
-    const { gone, booms, broke, worn } = this.loot.tick(now, this.horde.zombies.values());
-    if (gone.length || worn) changed = true;
+    const { gone, booms, broke, worn, shots, spent } = this.loot.tick(now, this.horde.zombies.values());
+    if (gone.length || worn || spent.length) changed = true;
+    // The turrets' shots this tick: everyone sees each one fired at its zombie ([turret, zombie, rounds
+    // left]), then it is hurt as by anyone's bullet, for the turret's owner.
+    if (shots.length) g.broadcast({ t: 'zfire', s: shots.map(({ turret: t, id }) => [t.id, id, t.rounds]) });
+    for (const { turret: t, id } of shots) this.damage(id, LOOT.turretDamage, t.owner, 'turret', now);
     for (const { mine: m, ids } of booms) {
       g.broadcast({ t: 'zboom', id: m.id, x: m.x, y: m.y, z: m.z, yaw: m.yaw, by: m.owner });
       for (const id of ids) this.damage(id, LOOT.damage, m.owner, 'claymore', now);
@@ -227,6 +232,25 @@ export class ZombieGame {
     const r = this.loot.placeStakes(name, { x: s.x, y: s.y, z: s.z }, { x: m.x, y: m.y, z: m.z, yaw: m.yaw });
     if (!r.row) {
       const why = { none: ['zStakesNone', 'You have no stakes.'], max: ['zStakesMax', 'Enough stakes are down already.'], spot: ['zStakesSpot', 'No room for them there.'] }[r.why];
+      return g.send(p.ws, { t: 'system', text: why[1], code: why[0] });
+    }
+    g.send(p.ws, { t: 'zgift', kind: 'placed', kit: this.loot.kit(name) });
+    this.modes.send();
+  }
+
+  /**
+   * A page sets up the turret its player carries at `m` ({ x, y, z, yaw }), as a claymore is placed;
+   * from then on it aims and shoots on the server alone (shared/loot.mjs turretTick).
+   */
+  turret(name, p, m, now) {
+    const g = this.game;
+    if (now < (p.nextTurret || 0)) return;
+    p.nextTurret = now + 400;
+    if (!p.alive || !p.state?.armed || g.inCar(name) || g.calm(p) || this.horde.phase === 'over') return;
+    const s = p.state;
+    const r = this.loot.placeTurret(name, { x: s.x, y: s.y, z: s.z }, { x: m.x, y: m.y, z: m.z, yaw: m.yaw }, now);
+    if (!r.turret) {
+      const why = { none: ['zTurretNone', 'You have no turret.'], max: ['zTurretMax', 'Your turret is still going.'], all: ['zTurretAll', 'Enough turrets are up already.'], spot: ['zMineSpot', 'No room for it there.'] }[r.why];
       return g.send(p.ws, { t: 'system', text: why[1], code: why[0] });
     }
     g.send(p.ws, { t: 'zgift', kind: 'placed', kit: this.loot.kit(name) });
@@ -409,9 +433,9 @@ export class ZombieGame {
     this.horde.nav.setPanes(broken);
   }
 
-  /** Zombie `id` takes `amount` from `by`; true when that beat it. `double`: a second one beaten by the same bullet. */
+  /** Zombie `id` takes `amount` from `by`; true when that beat it. `double`: a second one beaten by the same bullet. A turret's shot (`w` turret) doesn't make it flinch. */
   damage(id, amount, by, w, now, double = false) {
-    if (this.horde.hit(id, amount, by, now) !== 'down') return false;
+    if (this.horde.hit(id, amount, by, now, w !== 'turret') !== 'down') return false;
     this.beat(id, by, w, double);
     return true;
   }

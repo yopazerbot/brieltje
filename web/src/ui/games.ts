@@ -34,9 +34,11 @@ export interface ZombiesView {
    * The rewards lying ([id, kind, x, y, z]), the claymores down ([id, x, y, z, yaw, owner]) and the rows
    * of stakes ([id, x, y, z, yaw, a, b, standing, owner]): shared/loot.mjs view
    */
-  items?: [number, 'ammo' | 'scope' | 'claymore' | 'stakes', number, number, number][];
+  items?: [number, 'ammo' | 'scope' | 'claymore' | 'stakes' | 'turret', number, number, number][];
   mines?: [number, number, number, number, number, string][];
   stakes?: [number, number, number, number, number, number, number, number, string][];
+  /** The turrets up: [id, x, y, z, yaw as set up, owner] */
+  turrets?: [number, number, number, number, number, string][];
 }
 
 export interface ModeView {

@@ -467,6 +467,7 @@ const rewards = new Rewards((x, z, y) => world.groundAt(x, z, y + 0.4, 0).y);
 rewards.onBurst = (points) => {
   for (const p of points) effects.splinters(p);
 };
+rewards.onSpent = (at) => effects.puff(at);
 scene.add(rewards.group);
 const cats = new Cats((x, z) => world.groundAt(x, z, 0.5, 0).y);
 scene.add(cats.group);
@@ -1122,7 +1123,7 @@ function hitAngle(by: string): number | null {
   if (!at) return null;
   return Math.atan2(-(at.x - player.x), -(at.z - player.z)) - player.yaw;
 }
-const weaponName = (w: string) => (w === 'grenade' || w in SPECS ? shownWeapon(w as WeaponId | 'grenade') : w === 'claymore' ? mineName() : '');
+const weaponName = (w: string) => (w === 'grenade' || w in SPECS ? shownWeapon(w as WeaponId | 'grenade') : w === 'claymore' ? mineName() : w === 'turret' ? t('loot.turret') : '');
 /** A claymore's name, or in paintball a paint mine's. */
 const mineName = () => t(paintball.on ? 'loot.paintMine' : 'loot.claymore');
 
@@ -1130,17 +1131,19 @@ const mineName = () => t(paintball.on ? 'loot.paintMine' : 'loot.claymore');
  * Zombies' rewards (shared/loot.mjs): what you have (`kit`: the guns with bigger magazines, the scope,
  * claymores and rows of stakes carried), from the server together or this page's own loot alone.
  * `holdT`: how long the grenade key is held (a tap throws a grenade, held it places a claymore you
- * carry); `stakeT` the reload key (a tap reloads, held it plants a row of the stakes you carry).
+ * carry); `stakeT` the reload key (a tap reloads, held it plants a row of the stakes you carry);
+ * `useT` the Use key with nothing to use (held, it sets up the turret you carry).
  */
-type Kit = { ammo: string[]; scope: boolean; claymores: number; stakes?: number };
-const NO_KIT = { ammo: [], scope: false, claymores: 0, stakes: 0 };
-let kit = { ammo: [] as string[], scope: false, claymores: 0, stakes: 0 };
+type Kit = { ammo: string[]; scope: boolean; claymores: number; stakes?: number; turrets?: number };
+const NO_KIT = { ammo: [], scope: false, claymores: 0, stakes: 0, turrets: 0 };
+let kit = { ammo: [] as string[], scope: false, claymores: 0, stakes: 0, turrets: 0 };
 let holdT = 0;
 let stakeT = 0;
+let useT = 0;
 let rewardWait = 0;
 const HOLD_S = 0.45;
 function applyKit(k: Kit, fresh?: string): void {
-  kit = { ammo: [...k.ammo], scope: k.scope, claymores: k.claymores, stakes: k.stakes ?? 0 };
+  kit = { ammo: [...k.ammo], scope: k.scope, claymores: k.claymores, stakes: k.stakes ?? 0, turrets: k.turrets ?? 0 };
   weapon.setKit(kit.ammo, kit.scope, fresh);
 }
 /** What you just took: on your gun or in your pocket, said in a banner and the chat. */
@@ -1153,6 +1156,7 @@ function gift(kind: string, w: string | undefined, k: Kit): void {
   } else if (kind === 'scope') hud.announce(t('loot.scope'), t('loot.scopeSub'));
   else if (kind === 'claymore') hud.announce(mineName(), t('loot.mineSub', { key: key('grenade', menu.mode ?? 'kbm') }));
   else if (kind === 'stakes') hud.announce(t('loot.stakes'), t('loot.stakesSub', { key: key('reload', menu.mode ?? 'kbm') }));
+  else if (kind === 'turret') hud.announce(t('loot.turret'), t('loot.turretSub', { key: key('use', menu.mode ?? 'kbm') }));
 }
 /** Where something goes on the ground `ahead` m in front of you, or null (a wall between, a drop or a step up). */
 function spotAhead(ahead: number): { x: number; y: number; z: number } | null {
@@ -1175,6 +1179,31 @@ function placeClaymore(): void {
     if (r.mine) applyKit(solo.loot.kit(SOLO_ME));
     else chat.system(() => serverText(r.why === 'max' ? 'zMineMax' : r.why === 'none' ? 'zMineNone' : 'zMineSpot', {}, ''));
   }
+}
+/** Set up the turret you carry on the ground a step in front of you; it aims and shoots by itself (the server's, together). */
+function setUpTurret(): void {
+  const at = spotAhead(1.0);
+  if (!at) {
+    chat.system(() => serverText('zMineSpot', {}, ''));
+    return;
+  }
+  if (net.connected) net.send({ t: 'turret', ...at, yaw: player.yaw });
+  else if (solo) {
+    const r = solo.loot.placeTurret(SOLO_ME, { x: player.x, y: player.feet, z: player.z }, { ...at, yaw: player.yaw }, performance.now());
+    if (r.turret) applyKit(solo.loot.kit(SOLO_ME));
+    else chat.system(() => serverText({ none: 'zTurretNone', max: 'zTurretMax', all: 'zTurretAll', spot: 'zMineSpot' }[r.why ?? 'spot'], {}, ''));
+  }
+}
+/**
+ * A turret shot at zombie `zid`: it turns there and flashes, its shot is heard (softly, near ones only),
+ * and the zombie gets a puff (or paint).
+ */
+function turretShot(tid: number, zid: number, rounds: number): void {
+  const at = zombies.chest(zid);
+  const muzzle = rewards.fire(tid, at, rounds);
+  if (!muzzle || camera.position.distanceTo(muzzle) > 45) return;
+  weapon.remoteShot(muzzle, 'rifle', 0.35);
+  if (at) effects.zombieHit(at);
 }
 /** Plant a row of the stakes you carry across where you look, a long step in front of you (how wide is the floor's, on the server together). */
 function plantStakes(): void {
@@ -1267,7 +1296,7 @@ weapon.onZombieHit = (hits, paint) => {
 /** Alone: what a hit did. Beaten: it falls (or vanishes in paint) and the kill feed says so. */
 function zombieResult(id: number, res: 'down' | 'hurt' | null, w: string): void {
   if (!res) return;
-  if (res !== 'down') return combat.hitMarker();
+  if (res !== 'down') return w === 'turret' ? undefined : combat.hitMarker(); // a turret's hits aren't yours to see
   zombies.beaten(id);
   // Maybe a reward where it fell (the wave's last leaves one when none fell yet).
   const z = solo?.horde.zombies.get(id);
@@ -1389,16 +1418,22 @@ function soloTick(dt: number): void {
   }
   // Alone the rewards are this page's: items lying too long go, a claymore a zombie walks into goes off,
   // a row of stakes the zombies wore through bursts.
-  const { booms, broke } = solo.loot.tick(now, h.zombies.values());
+  const { booms, broke, shots } = solo.loot.tick(now, h.zombies.values());
   for (const { mine: m, ids } of booms) {
     explode(new THREE.Vector3(m.x, m.y + 0.25, m.z), false, 'grenade');
     for (const id of ids) zombieResult(id, h.hit(id, LOOT.damage, SOLO_ME, now), 'claymore');
   }
   for (const r of broke) rewards.burst(r.id);
+  // A turret's shot: no flinch (its steady fire would hold the zombie still).
+  for (const { turret: tu, id } of shots) {
+    turretShot(tu.id, id, tu.rounds);
+    zombieResult(id, h.hit(id, LOOT.turretDamage, SOLO_ME, now, false), 'turret');
+  }
   const lv = solo.loot.view();
   rewards.setItems(lv.items);
   rewards.setMines(lv.mines);
   rewards.setStakes(lv.stakes);
+  rewards.setTurrets(lv.turrets);
   zombies.follow(h);
   soloView();
 }
@@ -1738,7 +1773,8 @@ function followGame(view: ModeView): void {
     rewards.setItems(games.view.kind === 'zombies' ? games.view.zombies?.items ?? [] : []);
     rewards.setMines(games.view.kind === 'zombies' ? games.view.zombies?.mines ?? [] : []);
     rewards.setStakes(games.view.kind === 'zombies' ? games.view.zombies?.stakes ?? [] : []);
-    if (games.view.kind !== 'zombies' && (kit.claymores || kit.stakes || kit.scope || kit.ammo.length)) applyKit(NO_KIT);
+    rewards.setTurrets(games.view.kind === 'zombies' ? games.view.zombies?.turrets ?? [] : [], games.view.kind !== 'zombies');
+    if (games.view.kind !== 'zombies' && (kit.claymores || kit.stakes || kit.turrets || kit.scope || kit.ammo.length)) applyKit(NO_KIT);
   }
   shutHouses();
 }
@@ -1961,6 +1997,9 @@ net.onMessage = (m: ServerMsg) => {
       break;
     case 'zbroke': // a row of stakes the zombies wore through
       rewards.burst(m.id);
+      break;
+    case 'zfire': // the turrets' shots this tick: [turret, zombie, rounds left] (the server hurts the zombies)
+      for (const [tid, zid, rounds] of m.s) turretShot(tid, zid, rounds);
       break;
     case 'revived': // helped up where they lay, with part of their health
       if (m.name === me?.username) {
@@ -2485,6 +2524,17 @@ renderer.setAnimationLoop((now: number) => {
         }
       } else stakeT = 0;
     } else stakeT = 0;
+    // The Use key held with a turret in your pocket (Zombies), with nothing else to use (no door, nobody to help up): it sets it up.
+    if (action && !dead && !planner.active && !inCar && !calm && kit.turrets > 0 && games.zombies && !downed && !target && !tagWho) {
+      if (frame.usePressed) useT = 1e-4;
+      if (useT > 0 && frame.useHeld) {
+        useT += dt;
+        if (useT >= HOLD_S) {
+          useT = 0;
+          setUpTurret();
+        }
+      } else useT = 0;
+    } else useT = 0;
     // The grenade key: a tap throws a grenade; with a claymore in your pocket (Zombies), held it places it.
     if (action && !dead && !planner.active && !inCar && !calm) {
       if (kit.claymores > 0 && games.zombies) {
@@ -2549,6 +2599,7 @@ renderer.setAnimationLoop((now: number) => {
     const pocket = games.zombies ? [
       kit.claymores ? t('loot.mines', { name: mineName(), n: kit.claymores, key: key('grenade', mode) }) : '',
       kit.stakes ? t('loot.stakesCount', { n: kit.stakes, key: key('reload', mode) }) : '',
+      kit.turrets ? t('loot.turretCount', { key: key('use', mode) }) : '',
     ].filter(Boolean).join('   ·   ') : '';
     hud.setGrenades(armed && !planner.active ? grenades.count : null, GRENADE.carry, grenades.nextIn, key('grenade', mode), pocket);
     hud.setScope(weapon.scoped, inCar);
