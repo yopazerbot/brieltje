@@ -95,7 +95,7 @@ export class Loot {
   kits: Map<string, Kit>;
   kit(name: string): Kit;
   wave(): void;
-  drop(z: Zombie, now: number, last?: boolean): Item[];
+  drop(z: Zombie, now: number, last?: boolean, fighters?: string[]): Item[];
   take(name: string, p: { x: number; y: number; z: number; w: string }, id: number, now: number): { kind: LootKind; w?: string; kit: Kit } | null;
   place(name: string, p: { x: number; y: number; z: number }, at: At, now: number): { mine?: Mine; why?: 'none' | 'max' | 'spot' };
   spot(p: { x: number; y: number; z: number }, at: At): (At & { node: number }) | null;

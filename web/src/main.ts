@@ -1271,7 +1271,7 @@ function zombieResult(id: number, res: 'down' | 'hurt' | null, w: string): void 
   zombies.beaten(id);
   // Maybe a reward where it fell (the wave's last leaves one when none fell yet).
   const z = solo?.horde.zombies.get(id);
-  if (solo && z) solo.loot.drop(z, performance.now(), solo.horde.left === 0);
+  if (solo && z) solo.loot.drop(z, performance.now(), solo.horde.left === 0, [SOLO_ME]);
   combat.zombie('', zombieName(zombies.isBig(id)), weaponName(w)); // "You beat a zombie · Pistol" (marks the crosshair)
 }
 zombies.onVanish = (at) => effects.vanish(at);

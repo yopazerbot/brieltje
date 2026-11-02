@@ -469,35 +469,70 @@ export interface Shot {
 }
 
 /**
- * A scope (Zombies' reward) on top of a gun: a dark tube with a glinting lens at each end, along
- * the barrel over the middle of the gun, sized to it; wherever the loaded model has its top.
+ * A found scope's size (Zombies' reward), as real ones: its tube's radius, the front lens's (the
+ * wider bell), its length (m), and where its middle sits, as a share of the gun's length from the
+ * back: over the rifle's receiver, over the pistol's slide.
  */
-function scopeOn(gun: THREE.Group, r: number): THREE.Group {
+const SCOPE: Partial<Record<WeaponId, { r: number; bell: number; len: number; at: number }>> = {
+  rifle: { r: 0.013, bell: 0.021, len: 0.28, at: 0.4 },
+  pistol: { r: 0.011, bell: 0.015, len: 0.13, at: 0.5 },
+};
+const scopeMetal = new THREE.MeshStandardMaterial({ color: '#1d2024', roughness: 0.45, metalness: 0.6 });
+const scopeGlass = new THREE.MeshStandardMaterial({ color: '#1f3644', roughness: 0.05, metalness: 0.4, emissive: '#12313e', emissiveIntensity: 0.3 });
+
+/**
+ * A scope (Zombies' reward) on top of gun `w`: a dark tube, the front lens in a wider bell and the
+ * eyepiece at the back, on two rings, along the barrel over the receiver (SCOPE). Fitted to the gun's
+ * own shape: its own visible parts only (not the hands, nor the muzzle flash, which reaches far past
+ * the barrel and once pushed the scope out over the muzzle), and standing on the highest point of the
+ * gun under it. The front is the muzzle's end (-z).
+ */
+function scopeOn(gun: THREE.Group, w: WeaponId, skip: THREE.Object3D): THREE.Group {
+  const g = new THREE.Group();
+  const size = SCOPE[w];
+  if (!size) return g;
   gun.updateWorldMatrix(true, true);
   const inv = gun.matrixWorld.clone().invert();
-  const box = new THREE.Box3();
-  const part = new THREE.Box3();
+  const shown = (o: THREE.Object3D) => {
+    for (let p: THREE.Object3D | null = o; p && p !== gun; p = p.parent) if (!p.visible || p === skip || p.userData.hand) return false;
+    return true;
+  };
+  const pts: THREE.Vector3[] = [];
   gun.traverse((o) => {
     const m = o as THREE.Mesh;
-    if (!m.isMesh || !m.visible || m.userData.hand || !m.geometry) return;
-    if (!m.geometry.boundingBox) m.geometry.computeBoundingBox();
-    box.union(part.copy(m.geometry.boundingBox!).applyMatrix4(m.matrixWorld.clone().premultiply(inv)));
+    if (!m.isMesh || !m.geometry || !shown(m)) return;
+    const pos = m.geometry.attributes.position;
+    const to = m.matrixWorld.clone().premultiply(inv);
+    for (let i = 0; i < pos.count; i++) pts.push(new THREE.Vector3().fromBufferAttribute(pos, i).applyMatrix4(to));
   });
-  const g = new THREE.Group();
-  if (box.isEmpty()) return g;
-  const len = Math.max(0.1, Math.min(0.2, (box.max.z - box.min.z) * 0.38));
-  const tube = new THREE.Mesh(new THREE.CylinderGeometry(r, r, len, 16).rotateX(Math.PI / 2), new THREE.MeshStandardMaterial({ color: '#1d2024', roughness: 0.4, metalness: 0.6 }));
-  const glass = new THREE.MeshStandardMaterial({ color: '#7fd8ff', roughness: 0.05, metalness: 0.2, emissive: '#2a6c88', emissiveIntensity: 0.6 });
-  g.add(tube);
+  if (!pts.length) return g;
+  const back = Math.max(...pts.map((p) => p.z));
+  const front = Math.min(...pts.map((p) => p.z));
+  const { r, bell, len, at } = size;
+  const cz = back - (back - front) * at;
+  // What it stands on: the gun's top under it, and the middle of that ridge sideways.
+  const under = pts.filter((p) => Math.abs(p.z - cz) < len / 2);
+  const top = Math.max(...under.map((p) => p.y));
+  const ridge = under.filter((p) => p.y > top - 0.004).map((p) => p.x);
+  const gap = r * 1.4; // the rings' height
+  g.position.set((Math.min(...ridge) + Math.max(...ridge)) / 2, top + gap + r, cz);
+  // A cylinder along the barrel (its bottom, -y, to the front, -z), its middle `z` m along it.
+  const along = (geo: THREE.BufferGeometry, z: number) => geo.rotateX(Math.PI / 2).translate(0, 0, z);
+  const parts: [THREE.BufferGeometry, THREE.Material][] = [
+    [along(new THREE.CylinderGeometry(r, r, len * 0.7, 20), 0), scopeMetal],
+    // The bell: wide at the front, narrowing to the tube; the eyepiece at the back.
+    [along(new THREE.CylinderGeometry(r, bell, len * 0.18, 20, 1, true), -len * 0.44), scopeMetal],
+    [along(new THREE.CylinderGeometry(r * 1.2, r * 1.2, len * 0.12, 20, 1, true), len * 0.44), scopeMetal],
+    // The lenses: the front one facing ahead (-z) just inside the bell, the eyepiece's facing you.
+    [new THREE.CircleGeometry(bell * 0.86, 20).rotateY(Math.PI).translate(0, 0, -len * 0.53 + 0.002), scopeGlass],
+    [new THREE.CircleGeometry(r, 20).translate(0, 0, len * 0.5 - 0.002), scopeGlass],
+  ];
+  for (const [geo, mat] of parts) g.add(new THREE.Mesh(geo, mat));
   for (const s of [-1, 1]) {
-    const lens = new THREE.Mesh(new THREE.CylinderGeometry(r * 1.15, r * 1.15, 0.012, 16).rotateX(Math.PI / 2), glass);
-    lens.position.z = (s * len) / 2;
-    g.add(lens);
+    const ring = new THREE.Mesh(new THREE.BoxGeometry(r * 1.3, gap + r, r * 1.4), scopeMetal);
+    ring.position.set(0, -(gap + r) / 2, s * len * 0.2);
+    g.add(ring);
   }
-  const mount = new THREE.Mesh(new THREE.BoxGeometry(r * 0.9, r * 1.4, len * 0.5), tube.material);
-  mount.position.y = -r * 1.1;
-  g.add(mount);
-  g.position.set((box.min.x + box.max.x) / 2, box.max.y + r * 1.6, (box.min.z + box.max.z) / 2 + (box.max.z - box.min.z) * 0.08);
   g.traverse((o) => (o.castShadow = false));
   gun.add(g);
   return g;
@@ -618,7 +653,7 @@ export class Weapon {
     for (const w of LOOT.scoped as WeaponId[]) {
       let s = this.scopes.get(w);
       if (scope && !s) {
-        s = scopeOn(this.models[w].gun, w === 'rifle' ? 0.024 : 0.018);
+        s = scopeOn(this.models[w].gun, w, this.models[w].flash);
         this.scopes.set(w, s);
       }
       if (s) s.visible = scope;

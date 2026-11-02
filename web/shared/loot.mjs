@@ -113,9 +113,11 @@ export class Loot {
 
   /**
    * Zombie `z` was beaten: what it leaves where it fell (a list, often empty). `last`: the wave's last.
-   * A big one leaves a bundle of stakes as well, beside its reward (both where it stood).
+   * A big one leaves a bundle of stakes as well, beside its reward (both where it stood). `fighters`:
+   * who plays now; when every one of them has a scope, no scope falls (it would lie there for nobody:
+   * walking over it did nothing).
    */
-  drop(z, now, last = false) {
+  drop(z, now, last = false, fighters = []) {
     const out = [];
     const leave = (kind, side) => {
       const x = z.x + side * Math.cos(z.yaw), zz = z.z - side * Math.sin(z.yaw);
@@ -129,9 +131,11 @@ export class Loot {
     if (this.items.size >= LOOT.lying + (big ? 1 : 0)) return out;
     const p = big ? LOOT.bigChance : z.kind === RUNNER ? LOOT.runnerChance : LOOT.chance;
     if (!(this.rand() < p) && !(last && !this.dropped)) return out;
-    let r = this.rand();
-    let kind = LOOT.weights[0][0];
-    for (const [k, w] of LOOT.weights) {
+    const scoped = fighters.length > 0 && fighters.every((n) => this.kits.get(n)?.scope);
+    const weights = LOOT.weights.filter(([k]) => !(k === 'scope' && scoped));
+    let r = this.rand() * weights.reduce((sum, [, w]) => sum + w, 0);
+    let kind = weights[0][0];
+    for (const [k, w] of weights) {
       if (r < w) {
         kind = k;
         break;

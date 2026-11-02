@@ -422,7 +422,8 @@ export class ZombieGame {
     this.game.broadcast({ t: 'zdown', id, by, w, ...(double ? { double: true } : {}) });
     // Maybe a reward where it fell (the wave's last leaves one when none fell yet).
     const z = this.horde.zombies.get(id);
-    if (z) this.loot.drop(z, Date.now(), this.horde.left === 0);
+    const fighters = [...this.game.players].filter(([, p]) => p.state?.armed).map(([n]) => n);
+    if (z) this.loot.drop(z, Date.now(), this.horde.left === 0, fighters);
     this.modes.send();
   }
 
