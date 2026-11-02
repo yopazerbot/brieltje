@@ -533,7 +533,13 @@ function scopeOn(gun: THREE.Group, w: WeaponId, skip: THREE.Object3D): THREE.Gro
     ring.position.set(0, -(gap + r) / 2, s * len * 0.2);
     g.add(ring);
   }
-  g.traverse((o) => (o.castShadow = false));
+  // As the rest of the gun in your hands: no shadow, and your shots go through it. Without that, every
+  // shot aimed through the scope hit the scope itself: a hole right in front of your eye (the "cracked
+  // pane" in the middle of the view), and the bullet never reached anything.
+  g.traverse((o) => {
+    o.castShadow = false;
+    o.userData.ignoreRay = true;
+  });
   gun.add(g);
   return g;
 }
@@ -1001,9 +1007,9 @@ export class Weapon {
     }
   }
 
-  /** Another player's shot: that weapon's sound, from where they stand. */
-  remoteShot(at: THREE.Vector3, w: WeaponId = 'pistol'): void {
-    this.sound('shot', 1, at, w);
+  /** Another player's shot (or a turret's, at a lower `volume`): that weapon's sound, from where they stand. */
+  remoteShot(at: THREE.Vector3, w: WeaponId = 'pistol', volume = 1): void {
+    this.sound('shot', volume, at, w);
   }
 
   private show(): void {
