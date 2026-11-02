@@ -83,7 +83,7 @@ export interface DipSpec {
   low?: number;
 }
 
-/** Built-in furniture (tools/old_house.py): drawn like the planner's pieces, at its own size, not movable. */
+/** Built-in furniture (tools/old_house.py): drawn like the catalogue's pieces, at its own size, not movable. */
 export interface FixtureSpec {
   item: string;
   x: number;

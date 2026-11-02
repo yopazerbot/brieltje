@@ -430,7 +430,7 @@ export class Menu {
     $('pause-who').textContent = t('menu.who', { name: this.shownName, control: t(({ pad: 'choose.pad', kbm: 'choose.kbm', touch: 'choose.touch' } as const)[control]) });
     // The key that resumes, on the Resume button; with touch the button is the way (☰ is under the menu).
     $('resume-hint').textContent = control === 'touch' ? '' : key('menu', control);
-    // The keys beside the menu's own items (the planner, the minimap, the FPS counter), for keyboard players.
+    // The keys beside the menu's own items (the minimap, the FPS counter), for keyboard players.
     document.querySelectorAll<HTMLElement>('#pause-panel [data-key]').forEach((el) => (el.textContent = control === 'kbm' ? key(el.dataset.key as Action, control) : ''));
     // Together: how to chat and see the scores, the way you play (no chat without a keyboard, no scores key on touch).
     $('tog-keys').textContent = [

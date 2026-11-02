@@ -78,7 +78,6 @@
       <div id="credit"><span data-i18n="credit.made">Made by Yoshi Parlevliet</span> <a class="gh" href="https://github.com/yopazerbot/brieltje" target="_blank" rel="noopener noreferrer" title="The source code on GitHub" data-i18n-title="credit.source"><svg viewBox="0 0 16 16" width="16" height="16" aria-hidden="true"><path fill="currentColor" d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27.68 0 1.36.09 2 .27 1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.013 8.013 0 0016 8c0-4.42-3.58-8-8-8z"/></svg><span>GitHub</span></a></div>
       <div id="online"></div>
       <div id="health" class="hidden"><span class="hp-icon">+</span><span id="hp-value">100</span><div class="hp-bar"><div id="hp-fill"></div></div></div>
-      <div id="planner" class="hidden"></div>
       <div id="chat-log"></div>
       <input id="chat-input" maxlength="200" autocomplete="off" spellcheck="false" placeholder="Say something, Enter to send" data-i18n-placeholder="chat.placeholder" />
     </div>
@@ -254,7 +253,6 @@
                 <div class="col">
                   <h2 data-i18n="play.house">House</h2>
                   <div class="tools">
-                    <button id="planner-btn" class="tool" type="button"><b><span data-i18n="play.planner">Furniture planner</span> <kbd data-key="planner"></kbd></b><span data-i18n="play.plannerSub">Place, turn and move furniture</span></button>
                     <button id="repair-btn" class="tool" type="button"><b data-i18n="play.repair">Repair windows</b><span data-i18n="play.repairSub">Every broken pane back in</span></button>
                     <button id="resetfurn-btn" class="tool" type="button"><b data-i18n="play.resetFurn">Reset furniture</b><span data-i18n="play.resetFurnSub">Back to the original layout</span></button>
                   </div>
@@ -395,7 +393,7 @@
                   <label class="check"><input type="checkbox" id="set-turbo" /> <span data-i18n="adm.turbo">Move extremely fast (15 times, walking and flying)</span></label>
                   <h2 data-i18n="adm.rules">House rules</h2>
                   <label class="check"><input type="checkbox" id="set-flying" checked /> <span data-i18n="adm.flying">Flying allowed</span></label>
-                  <label class="check"><input type="checkbox" id="set-furniture" checked /> <span data-i18n="adm.furniture">Players can use the furniture planner</span></label>
+                  <label class="check"><input type="checkbox" id="set-spawn" /> <span data-i18n="adm.spawn">Players can spawn things with /name</span></label>
                   <label class="check"><input type="checkbox" id="set-names" checked /> <span data-i18n="adm.names">Names above players (they show through walls)</span></label>
                   <label class="check"><input type="checkbox" id="set-portals" checked /> <span data-i18n="adm.portals">Portals take players from place to place</span></label>
                   <label class="check"><input type="checkbox" id="set-travel" checked /> <span data-i18n="adm.travel">Players can travel from the chat (/church, /house …)</span></label>

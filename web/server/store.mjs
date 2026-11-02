@@ -1,4 +1,4 @@
-// Sessions, furniture and the Teslas placed with the planner, fighting stats, the login log, the
+// Sessions, furniture and the spawned Teslas, fighting stats, the login log, the
 // interest page's sign-ups (server/interest.mjs), the daily totals of how much the game is played
 // (server/stats.mjs) with the day's visitor codes (kept for that Belgian day only), players'
 // feedback (server/feedback.mjs) and the game night's sign-ups (server/gamenight.mjs).
@@ -109,7 +109,7 @@ class FileStore {
     this.data.furniture = [];
     await this.save();
   }
-  // Teslas placed with the planner (server/game.mjs): where each was put, kept like furniture.
+  // Teslas spawned with /tesla (server/game.mjs): where each was put, kept like furniture.
   async listCars() {
     return this.data.cars;
   }

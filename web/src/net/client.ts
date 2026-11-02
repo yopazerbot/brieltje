@@ -27,7 +27,8 @@ export interface Score {
 /** House rules the admin sets in the settings (multiplayer) */
 export interface Rules {
   flying: boolean;
-  furniture: boolean;
+  /** Players may spawn things with /name (src/spawn.ts); off at first */
+  spawn: boolean;
   /** Names above other players (they show through walls) */
   names: boolean;
   /** How many may play at once (the admin chooses, 16 to start with) */
@@ -61,7 +62,7 @@ export type ServerMsg =
       time: number; cats: number[]; clowns?: ClownSpec[]; furniture: Piece[]; rules?: Rules; cars?: CarState[]; horses?: HorseState[]; mode?: ModeView;
     }
   | { t: 'car'; car: CarState }
-  /** The Teslas placed with the planner, after one was placed, moved or taken away (each with its kind) */
+  /** The spawned Teslas, after one was spawned, moved or taken away (each with its kind) */
   | { t: 'teslas'; list: CarState[] }
   | { t: 'rules'; rules: Rules }
   | ({ t: 'travel'; name: string; to: string; ok: boolean; car?: string | null; text?: string } & Coded)

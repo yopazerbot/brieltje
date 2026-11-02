@@ -58,11 +58,11 @@ export interface FrameInput {
   fireHeld: boolean;
   /** Weapon key 1 to 4 pressed this frame (0: none) */
   weaponSlot: number;
-  /** X or Delete (Circle on the controller): remove, in the furniture planner */
+  /** X or Delete (Circle on the controller): back out of the menu with a controller, close the feedback card */
   deletePressed: boolean;
   /** Next (+1) or previous (-1) weapon: mouse wheel, D-pad up/down, L1; 2 = Q, back to the last one */
   weaponCycle: number;
-  /** G or R1: throw a grenade (R1 changes the piece in the furniture planner) */
+  /** G or R1: throw a grenade */
   throwPressed: boolean;
   /** G, R1 or the touch grenade button held down (Zombies: held, it places a claymore) */
   throwHeld: boolean;

@@ -13,7 +13,7 @@ import type { GroundCuts } from './terrain';
  * A street model's house you can walk into: the end house of the new terrace at Molenhoek
  * (tools/molenhoek_end_inside.py writes its inside, web/src/data/molenhoek_end_inside.json). Its
  * walls, floors, ceilings, stair, kitchen and bathroom are blocks (one mesh per surface, the
- * plain-coloured ones in one with their colour per vertex), its furniture the planner's pieces or
+ * plain-coloured ones in one with their colour per vertex), its furniture the catalogue's pieces or
  * simple shapes in that style, its doors the house's door system and its windows breakable panes.
  *
  * It is drawn only within NEAR metres. Further off the street model's own panes and front door
@@ -381,7 +381,7 @@ export async function loadWalkIn(renderer: THREE.WebGLRenderer, model: THREE.Obj
   early.userData.ignoreRay = true;
   local.add(early, plain);
 
-  // Furniture: the planner's pieces, in the house's own frame.
+  // Furniture: the catalogue's pieces, in the house's own frame.
   // No shadows from them: the sun's would fall only inside, where it is not drawn (see sunless).
   const pieces = fixtureGroup(data.fixtures, (m) => sunless(m), false);
   if (pieces) local.add(pieces);

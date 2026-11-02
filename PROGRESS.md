@@ -84,6 +84,7 @@ Last update: 2026-11-02
 | **2 Nov, Zombies: the scope fixed** | Your own shots hit the found scope when you aimed through it: a cracked hole in front of your eye, and nothing reached the zombie. Shots now pass through it. It also sits over the receiver at a real scope's size, and no scope drops when everyone has one. |
 | **2 Nov, Zombies: turret** | A big zombie also drops a turret. Hold Use to set it up: it shoots the nearest zombie it sees for 100 rounds, then folds away, about a sixth of a rifle. The server aims it and decides every hit. |
 | **2 Nov, Zombies: pick the place** | Alone or together, Zombies is played where you pick: at home, or by a portal in Smetlede (the church square, three spots along Molenhoek). The game's edge closes round that place, the zombies walk round the village's walls and hedges, and the best wave is kept per place. Not at the school (no shooting there). |
+| **2 Nov, spawning with /name** | The furniture planner is gone. Type a name in the chat and it appears in front of you: furniture, a Tesla, a clown or a strongman (/sofa, /tesla red, /krachtpatser); /remove takes away what you look at. Together only when the admin turns it on (off at first); the server checks where, how many and whose. |
 
 ## Next
 

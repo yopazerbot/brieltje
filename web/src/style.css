@@ -287,18 +287,7 @@ body.paintball #killfeed .kf.me { border-color: var(--paint); }
 #minimap { position: absolute; top: 18px; right: 24px; width: 180px; height: 180px; }
 #minimap.hidden { display: none; }
 
-#planner {
-  position: absolute; left: 50%; bottom: 74px; transform: translateX(-50%); text-align: center;
-  padding: 8px 16px; background: var(--panel); border-bottom: 3px solid #7fd18b; text-shadow: none; white-space: nowrap;
-}
-#planner b { display: block; font-size: 20px; }
-#planner span { display: block; font-size: 13px; color: var(--accent); letter-spacing: 0.06em; }
-#planner small { display: block; margin-top: 4px; font-size: 12px; opacity: 0.75; }
-#planner em { display: block; margin-top: 2px; font-size: 13px; font-style: normal; }
 /* A Tesla only the admin may place (multiplayer): greyed out, with the reason under it. */
-#planner.locked { border-bottom-color: #8a8f96; }
-#planner.locked b, #planner.locked span { opacity: 0.45; }
-#planner.locked em { color: #ffcf8a; }
 
 #capture-hint {
   position: absolute; left: 50%; top: calc(50% + 40px); transform: translateX(-50%);
@@ -340,23 +329,19 @@ body:has(#travel:not(.hidden)) #capture-hint { left: auto; right: calc(50% - 60p
    the same places with its own buttons (Place, Move, Next, Turn, Remove, and Use for doors);
    its Done stands in the row top left. */
 #touch .t-fire { right: 26px; bottom: 30px; width: 84px; height: 84px; font-size: 14px; border-color: rgba(255, 120, 100, 0.6); }
-#touch .t-aim, #touch .t-lift { right: 40px; bottom: 128px; }
+#touch .t-aim { right: 40px; bottom: 128px; }
 #touch .t-jump { right: 126px; bottom: 26px; width: 62px; height: 62px; }
 #touch .t-use { right: 126px; bottom: 104px; width: 62px; height: 62px; }
-#touch .t-reload, #touch .t-nade, #touch .t-remove, #touch .t-weapon, #touch .t-down {
+#touch .t-reload, #touch .t-nade, #touch .t-weapon, #touch .t-down {
   width: 46px; height: 46px; font-size: 10px; letter-spacing: 0.02em;
 }
 #touch .t-reload { right: 204px; bottom: 30px; }
-#touch .t-nade, #touch .t-remove { right: 204px; bottom: 88px; }
+#touch .t-nade { right: 204px; bottom: 88px; }
 #touch .t-weapon { right: 204px; bottom: 146px; font-size: 18px; }
 #touch .t-down { right: 266px; bottom: 30px; }
 #touch .t-run { left: 12px; bottom: 176px; width: 50px; height: 50px; }
 #touch .t-menu { left: 12px; width: 44px; height: 44px; border-radius: 8px; font-size: 20px; }
-body.touch[data-touch=plan] #touch .t-fire { border-color: rgba(127, 209, 139, 0.75); }
-body.touch[data-touch=plan] #touch .t-nade { right: 126px; bottom: 104px; width: 62px; height: 62px; font-size: 12px; }
-body.touch[data-touch=plan] #touch .t-use { right: 204px; bottom: 146px; width: 46px; height: 46px; font-size: 10px; } /* doors, while planning */
 /* Done leaves the planner: in the row top left, like the menu. */
-#touch .t-done { left: 162px; right: auto; top: calc(8px + env(safe-area-inset-top, 0px)); bottom: auto; width: 64px; height: 44px; border-radius: 8px; font-size: 12px; border-color: rgba(127, 209, 139, 0.75); }
 /* Walking (Explore, or on a horse) and in a car: fewer buttons, so Jump (the handbrake in a car)
    takes the corner, Use stands above it and Down beside it. */
 body.touch[data-touch=walk] #touch .t-jump, body.touch[data-touch=car] #touch .t-jump { right: 26px; bottom: 26px; width: 76px; height: 76px; font-size: 13px; }
@@ -366,7 +351,7 @@ body.touch[data-touch=walk] #touch .t-down { right: 120px; bottom: 30px; width: 
    the status bar on a tablet started from the home screen. */
 #hud { left: env(safe-area-inset-left, 0px); right: env(safe-area-inset-right, 0px); top: env(safe-area-inset-top, 0px); }
 #touch .tbtn { translate: calc(-1 * env(safe-area-inset-right, 0px)) 0; }
-#touch .t-run, #touch .t-menu, #touch .t-done, #touch .stick:not(.active) { translate: env(safe-area-inset-left, 0px) 0; }
+#touch .t-run, #touch .t-menu, #touch .stick:not(.active) { translate: env(safe-area-inset-left, 0px) 0; }
 #touch .t-menu { top: calc(8px + env(safe-area-inset-top, 0px)); }
 
 /* The HUD round the touch controls, on phones and tablets alike: the menu, sound and full screen
@@ -397,18 +382,11 @@ body.touch #chat-log {
 body.touch #chat-log .line { padding: 2px 7px; }
 /* The middle of the top, between the place line and the map: the party game's bar, the planner's,
    and under them the messages (connection, round, death, kills, the place's name) stacked. */
-body.touch #modebar, body.touch #planner, body.touch #hud-top { left: 240px; right: 130px; transform: none; }
-body.touch #modebar, body.touch #planner { top: 8px; width: -webkit-fit-content; width: fit-content; max-width: none; margin: 0 auto; }
+body.touch #modebar, body.touch #hud-top { left: 240px; right: 130px; transform: none; }
+body.touch #modebar { top: 8px; width: -webkit-fit-content; width: fit-content; max-width: none; margin: 0 auto; }
 body.touch #modebar { padding: 6px 12px; font-size: 12px; }
-body.touch #modebar.show ~ #planner { top: 58px; }
-body.touch #planner { bottom: auto; padding: 5px 12px; white-space: normal; }
-body.touch #planner b { font-size: 16px; }
-body.touch #planner span { font-size: 12px; }
-body.touch #planner small { display: none; }
 body.touch #hud-top { position: absolute; top: 8px; display: flex; flex-direction: column; align-items: center; gap: 6px; text-align: center; }
 body.touch #modebar.show ~ #hud-top { top: 58px; }
-body.touch:has(#planner:not(.hidden)) #hud-top { top: 64px; }
-body.touch:has(#planner:not(.hidden)) #modebar.show ~ #hud-top { top: 114px; }
 body.touch #hud-top > * { position: static; transform: none; }
 body.touch #hud-top > :empty { display: none; }
 body.touch #net-status { font-size: 13px; }
@@ -462,7 +440,7 @@ body.touch #full-hint { top: calc(8px + env(safe-area-inset-top, 0px)); left: ca
   body.touch #ammo { top: 156px; font-size: 24px; }
   body.touch #place, body.touch #online { font-size: 13px; max-width: 260px; }
   body.touch #online { top: 80px; }
-  body.touch #modebar, body.touch #planner, body.touch #hud-top { left: 280px; right: 160px; }
+body.touch #modebar, body.touch #hud-top { left: 280px; right: 160px; }
   body.touch #chat-log { width: min(300px, 30vw); max-height: min(140px, calc(100% - 310px)); font-size: 14px; }
 }
 /* With the start screen open on a touch screen: those two buttons stand in a strip of their own on
@@ -1219,7 +1197,7 @@ body:has(#overlay:not(.hidden) > #pause-panel:not(.hidden)) #full-hint {
 body.touch:not(:has(#overlay:not(.hidden))) #full-btn { left: calc(62px + env(safe-area-inset-left, 0px)); }
 body.touch:not(:has(#overlay:not(.hidden))) #full-hint { left: calc(114px + env(safe-area-inset-left, 0px)); }
 /* The Dutch words on the small round buttons (Herlaad, Granaat, Gebruik while planning) are longer: a size smaller. */
-html:lang(nl) #touch .t-reload, html:lang(nl) #touch .t-nade, html:lang(nl) body.touch[data-touch=plan] #touch .t-use { font-size: 9px; letter-spacing: 0; }
+html:lang(nl) #touch .t-reload, html:lang(nl) #touch .t-nade { font-size: 9px; letter-spacing: 0; }
 
 /* Touch screens: buttons, fields and tick boxes about a fingertip high (40 to 44 px). The small text
    links keep their look but get an invisible margin to tap (::after), clear of their neighbours. */

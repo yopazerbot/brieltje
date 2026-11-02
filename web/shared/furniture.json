@@ -1,5 +1,5 @@
 {
-  "_note": "Furniture planner catalogue: real sizes in metres (width along x, depth along z, height). Shared by the browser and the server.",
+  "_note": "The furniture catalogue (spawned with /name in the chat, src/spawn.ts): real sizes in metres (width along x, depth along z, height). Shared by the browser and the server.",
   "max": 300,
   "items": [
     { "id": "bed180", "name": "Bed 180 x 200", "size": [1.8, 2.1, 1.0] },

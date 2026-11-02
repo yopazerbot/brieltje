@@ -1,4 +1,4 @@
-// Where a placed car may stand (the planner's Teslas: src/ui/planner.ts, src/main.ts and
+// Where a placed car may stand (the Teslas spawned with /tesla: src/main.ts and
 // server/game.mjs): a car's outline seen from above, points spread over it, whether two outlines
 // overlap, whether a point is indoors, and (for the server) whether an outline is clear of the
 // house data's blocks. Plain functions, no three.js, shared by the page and the server so both judge

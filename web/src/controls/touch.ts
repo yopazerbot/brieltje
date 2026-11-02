@@ -10,38 +10,33 @@ import { onLang, t, type PlainKey } from '../i18n';
 const STICK_R = 56; // px: how far the stick's knob goes from where the thumb landed
 const LOOK = 1.6;   // look speed: a drag in px counts as this many mouse px
 
-type Button = 'fire' | 'aim' | 'jump' | 'use' | 'reload' | 'nade' | 'weapon' | 'down' | 'run' | 'menu' | 'lift' | 'remove' | 'done';
+type Button = 'fire' | 'aim' | 'jump' | 'use' | 'reload' | 'nade' | 'weapon' | 'down' | 'run' | 'menu';
 
 /**
  * Which buttons show depends on what you are doing: walking (Explore, or on a horse), fighting
- * (Action on foot), in a car (at the wheel or riding along) or planning furniture. Each state
+ * (Action on foot) or in a car (at the wheel or riding along). Each state
  * has its own arrangement in style.css (`body[data-touch=...]`), so no button is left where it
  * makes no sense, and the HUD keeps clear of the ones that show.
  */
-export type TouchState = 'walk' | 'fight' | 'car' | 'plan';
+export type TouchState = 'walk' | 'fight' | 'car';
 
 // Each button's label (src/i18n.ts) in the states it shows in; '⇄' and '☰' are signs, the same in every language.
 const BUTTONS: [Button, Partial<Record<TouchState, PlainKey | '⇄' | '☰'>>][] = [
-  ['fire', { fight: 'touch.fire', plan: 'touch.place' }],
+  ['fire', { fight: 'touch.fire' }],
   ['aim', { fight: 'touch.aim' }],
-  ['lift', { plan: 'touch.move' }], // pick up a placed piece to move it
-  ['reload', { fight: 'touch.reload', plan: 'touch.turn' }],
-  ['nade', { fight: 'touch.nade', plan: 'touch.next' }], // the next piece of furniture
-  ['remove', { plan: 'touch.remove' }],
+  ['reload', { fight: 'touch.reload' }],
+  ['nade', { fight: 'touch.nade' }],
   ['weapon', { fight: '⇄' }],
-  ['done', { plan: 'touch.done' }],
-  ['jump', { walk: 'touch.jump', fight: 'touch.jump', car: 'touch.brake', plan: 'touch.jump' }], // the handbrake in a car
-  ['use', { walk: 'touch.use', fight: 'touch.use', car: 'touch.use', plan: 'touch.use' }],
-  ['down', { walk: 'touch.down', fight: 'touch.down', plan: 'touch.down' }],
-  ['run', { walk: 'touch.run', fight: 'touch.run', plan: 'touch.run' }],
-  ['menu', { walk: '☰', fight: '☰', car: '☰', plan: '☰' }],
+  ['jump', { walk: 'touch.jump', fight: 'touch.jump', car: 'touch.brake' }], // the handbrake in a car
+  ['use', { walk: 'touch.use', fight: 'touch.use', car: 'touch.use' }],
+  ['down', { walk: 'touch.down', fight: 'touch.down' }],
+  ['run', { walk: 'touch.run', fight: 'touch.run' }],
+  ['menu', { walk: '☰', fight: '☰', car: '☰' }],
 ];
 const label = (k: PlainKey | '⇄' | '☰') => (k === '⇄' || k === '☰' ? k : t(k));
 
 export class TouchControls {
   readonly root = document.createElement('div');
-  /** The planner's Done button: leave the furniture planner. */
-  onDone: () => void = () => {};
   /** A short tick on each button press where the browser can vibrate (Android; Safari can't). */
   haptics = true;
   private stickBase = document.createElement('div');
@@ -149,7 +144,6 @@ export class TouchControls {
     this.held.set(b, e.pointerId);
     if (b === 'aim') this.aimOn = !this.aimOn;
     if (b === 'run') this.runOn = !this.runOn;
-    if (b === 'done') this.onDone();
     this.els.get('aim')?.classList.toggle('on', this.aimOn);
     this.els.get('run')?.classList.toggle('on', this.runOn);
     this.els.get(b)?.classList.add('down');
@@ -161,9 +155,9 @@ export class TouchControls {
     document.body.classList.toggle('touch', on);
   }
 
-  /** Which buttons show: fighting on foot, walking, in a car, or planning furniture. */
-  setState(action: boolean, inCar: boolean, planning = false): void {
-    const state: TouchState = inCar ? 'car' : planning ? 'plan' : action ? 'fight' : 'walk';
+  /** Which buttons show: fighting on foot, walking, or in a car. */
+  setState(action: boolean, inCar: boolean): void {
+    const state: TouchState = inCar ? 'car' : action ? 'fight' : 'walk';
     if (state === this.state) return;
     this.state = state;
     document.body.dataset.touch = state; // the layout for this state (style.css)
@@ -197,12 +191,11 @@ export class TouchControls {
     out.useHeld ||= holds('use');
     out.clickPressed ||= has('fire');
     out.fireHeld ||= holds('fire');
-    out.aimHeld ||= this.aimOn || has('lift'); // the planner picks up on the press
+    out.aimHeld ||= this.aimOn;
     out.reloadPressed ||= has('reload');
     out.reloadHeld ||= holds('reload');
     out.throwPressed ||= has('nade');
     out.throwHeld ||= holds('nade');
-    out.deletePressed ||= has('remove');
     if (has('weapon')) out.weaponCycle = 1;
     out.menuPressed ||= has('menu');
     this.pressed.clear();

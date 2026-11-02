@@ -16,7 +16,7 @@ import { terrain } from './terrain';
  * they go for armed players, throw rocks and stomp (shared/brutes.mjs; the server runs them in
  * multiplayer, drawn here a little behind on its clock between the states it sends (net/track.ts);
  * this file runs them when you play alone), and take many hits (a health bar shows how many).
- * A few stand there from the start, the admin places more with the planner. Each walks a loop on
+ * A few stand there from the start, more are spawned with /clown or /strongman. Each walks a loop on
  * the shared clock (like the cats), so every player sees it in the same place without positions
  * being sent. Come close and a clown waves, a strongman flexes. Shot, a clown honks and a
  * strongman groans; both fall over backwards and are back after a while. The models are turned

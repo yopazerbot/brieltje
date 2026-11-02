@@ -26,7 +26,7 @@ import type { Point, World } from './collision';
  * (`ready`, set by main.ts); until then they wait at their parking spot's height. A car is drawn
  * within DRAW m of the eye.
  *
- * More Teslas can be placed with the furniture planner (shared/car.json: placed; the admin's in
+ * More Teslas can be spawned with /tesla (shared/car.json: placed; together the admin's, or a player's when the admin allows it, in
  * multiplayer, anyone's alone): each is one of these cars in a paint of its own, with a `kind`, and
  * is taken away again with dispose().
  */
@@ -57,7 +57,7 @@ export interface CarState {
   driver: string | null;
   /** Who rides along in the passenger seat (multiplayer), or null */
   passenger?: string | null;
-  /** A Tesla placed with the planner: its kind (shared/car.json: placed) */
+  /** A spawned Tesla: its kind (shared/car.json: placed) */
   kind?: string;
 }
 
@@ -120,7 +120,7 @@ const taillight = () => new THREE.MeshStandardMaterial({ color: '#5a0a0d', rough
 const SHADOW_PARTS = new Set(['Paint', 'Glass', 'Trim', 'Interior', 'Tyre']);
 
 /**
- * A model's shape in one geometry (positions and normals), for the planner's see-through copy of a
+ * A model's shape in one geometry (positions and normals), for a see-through copy of a
  * Tesla: a box of the car's size until the model is in, then `ready` runs once.
  */
 const shapes = new Map<string, THREE.BufferGeometry>();
@@ -250,7 +250,7 @@ export class Car {
   ready: boolean;
   /** At the wheel this frame it ran into the edge of the game (main.ts says so) */
   atEdge = false;
-  /** Where it was put: its parking spot, or for a placed Tesla where the planner put it */
+  /** Where it was put: its parking spot, or for a spawned Tesla where it was spawned */
   park: { x: number; y: number; z: number; yaw: number };
   private vx = 0;
   private vz = 0;
@@ -280,7 +280,7 @@ export class Car {
   private paint: THREE.MeshStandardMaterial;
   private gone = false;
 
-  /** `kind`: a Tesla placed with the planner (shared/car.json: placed), null for the game's own four. */
+  /** `kind`: a spawned Tesla (shared/car.json: placed), null for the game's own four. */
   constructor(private world: World, private trees: Obstacle[], readonly id: string, readonly spec: CarSpec, readonly kind: string | null = null) {
     ({ x: this.x, y: this.y, z: this.z, yaw: this.yaw } = spec.park);
     this.park = { ...spec.park };
@@ -288,7 +288,7 @@ export class Car {
     this.halfW = spec.width / 2;
     this.key = `car-${id}`;
     this.ready = !spec.village;
-    this.group.userData.car = id; // the planner finds a placed one by it
+    this.group.userData.car = id; // /remove finds a spawned one by it
     this.group.add(this.body, contactShadow(spec));
     const paint = (this.paint = new THREE.MeshStandardMaterial({ color: spec.paint, roughness: 0.2, metalness: spec.metal }));
     void modelCopy(spec.model).then((scene) => {

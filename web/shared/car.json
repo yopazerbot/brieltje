@@ -56,7 +56,7 @@
     }
   },
   "placed": {
-    "_note": "Teslas placed with the furniture planner: by the admin in multiplayer, by anyone alone. At most max at once (each car is about 30 draw calls). Each kind drives like the car named in base (its model, size and speeds) in a paint of its own. name: as in the prompt, with its article; label: in the planner's list.",
+    "_note": "Teslas spawned with /tesla in the chat: alone by anyone, together by the admin, and by the others when the admin allows spawning. At most max at once (each car is about 30 draw calls). Each kind drives like the car named in base (its model, size and speeds) in a paint of its own. name: as in the prompt, with its article; label: in the planner's list.",
     "max": 12,
     "kinds": {
       "modelY-white": { "base": "tesla", "label": "Tesla Model Y (white)", "name": "the white Model Y", "paint": "#e9eae7", "metal": 0.1 },

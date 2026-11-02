@@ -2,7 +2,7 @@
  * Every key and button the game answers to, in one table, per way of playing: keyboard and mouse,
  * the controller, or touch. The menu's Controls tab is built from it, and the hints in the game
  * read their key names from it too (the HUD's menu key, the prompts, the portals' list, the map's
- * help, the furniture planner's line, the Resume button), so the two can't drift apart.
+ * help, the Resume button), so the two can't drift apart.
  *
  * A key read by its place on the keyboard (e.code: walking, E, Q ...) is named as the player's
  * keyboard prints it (src/keys.ts: Z Q S D on AZERTY). M and Shift+M are read by their letter, so
@@ -45,13 +45,6 @@ const TABLE = {
   use: { kbm: place('KeyE'), pad: named('△'), touch: say('touch.use') },
   /** Doors in Explore mode also open with a click (R2), which shoots in Action mode. */
   click: { kbm: say('key.click'), pad: named('R2'), touch: say('touch.use') },
-  /** Remove a piece in the furniture planner. */
-  remove: { kbm: place('KeyX'), pad: named('○'), touch: say('touch.remove') },
-  planner: { kbm: place('KeyP'), pad: say('key.menuPlay'), touch: say('tctl.startHow') },
-  plannerKeys: {
-    kbm: (): string => t('plan.keys', { turn: key('reload', 'kbm'), remove: key('remove', 'kbm'), stop: key('planner', 'kbm') }),
-    pad: (): string => t('plan.keysPad', { turn: key('reload', 'pad'), remove: key('remove', 'pad') }),
-  },
   /** Faster and slower (a car, a horse). */
   drive: { kbm: () => `${keyName('KeyW')} / ${keyName('KeyS')}`, pad: named('R2 / L2'), touch: say('tctl.thumbUpDown') },
   steer: { kbm: () => `${keyName('KeyA')} / ${keyName('KeyD')}`, pad: say('key.leftStick'), touch: say('tctl.thumbLeftRight') },
@@ -135,8 +128,8 @@ function padOrKeyGroups(control: 'kbm' | 'pad', action: boolean): Group[] {
       title: t('ctl.house'),
       rows: [
         [t('ctl.door'), action ? k('use') : t('key.or', { a: k('click'), b: k('use') })],
-        [t('ctl.planner'), k('planner')],
-        [t('ctl.inPlanner'), k('plannerKeys')],
+        // Spawning things with /name (src/spawn.ts) is typed in the chat: a keyboard's.
+        ...(kbm ? [[t('ctl.spawn'), t('ctl.spawnHow')], [t('ctl.despawn'), t('ctl.despawnHow')]] as [string, string][] : []),
       ],
     },
     { title: t('ctl.cars'), rows: [[t('ctl.getIn'), k('use')], [t('ctl.drive'), k('drive')], [t('ctl.steer'), k('steer')], [t('ctl.handbrake'), k('handbrake')]] },
@@ -192,10 +185,6 @@ function touchGroups(action: boolean): Group[] {
   }
   groups.push(
     { title: t('ctl.house'), rows: [[t('ctl.door'), k('use')]] },
-    {
-      title: t('ctl.planner'),
-      rows: [[t('tctl.start'), k('planner')], [t('tctl.place'), t('tctl.placeHow')], [t('tctl.movePiece'), t('tctl.movePieceHow')], [t('tctl.stop'), t('tctl.stopHow')]],
-    },
     { title: t('ctl.cars'), rows: [[t('ctl.getIn'), k('use')], [t('ctl.drive'), k('drive')], [t('ctl.steer'), k('steer')], [t('ctl.handbrake'), k('handbrake')]] },
     {
       title: t('ctl.horses'),

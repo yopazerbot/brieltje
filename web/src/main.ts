@@ -12,7 +12,7 @@ import { Hud } from './ui/hud';
 import { fillScreen, input, me, menu, onAccount, setAccount } from './start';
 import { TouchControls } from './controls/touch';
 import { Games, type ModeView } from './ui/games';
-import { CLOWN_DEFAULTS, Clowns, KINDS } from './world/clowns';
+import { CLOWN_DEFAULTS, Clowns, KINDS, type Kind } from './world/clowns';
 import { bruteDamage, hurtBy } from '../shared/brutes.mjs';
 import { Zombies } from './world/zombies';
 import { BIG as BIG_ZOMBIE, bigOf, Horde, houseAreas, makeNav } from '../shared/zombies.mjs';
@@ -57,7 +57,7 @@ import { splitTiles, Tiles } from './world/tiles';
 import { Baked } from './world/baked';
 import { Furnishing, buildFixtures, footprint, type Piece } from './world/furnishing';
 import DEFAULT_FURNITURE from '../shared/default_furniture.json';
-import { Planner } from './ui/planner';
+import { findThing, thingNames, type Thing } from './spawn';
 import { Doors } from './world/doors';
 import { Glass } from './world/glass';
 import { World } from './world/collision';
@@ -451,7 +451,7 @@ home.add(doors.group);
 const games = new Games();
 scene.add(games.group);
 loadProps(house.props ?? [], scene, world);
-// Built-in furniture (the bungalow's book wall and jacuzzi): drawn like the planner's, not movable.
+// Built-in furniture (the bungalow's book wall and jacuzzi): drawn like the other pieces, not movable.
 const fixtures = buildFixtures(house.fixtures ?? [], world);
 if (fixtures) home.add(fixtures);
 scene.add(camera); // the weapon hangs off the camera
@@ -472,7 +472,7 @@ rewards.onSpent = (at) => effects.puff(at);
 scene.add(rewards.group);
 const cats = new Cats((x, z) => world.groundAt(x, z, 0.5, 0).y);
 scene.add(cats.group);
-// Clowns (our own model): a few from the start; the admin places more with the planner.
+// Clowns (our own model): a few from the start; more spawned with /clown or /strongman.
 const clowns = new Clowns(
   (x, z, y) => world.groundAt(x, z, y + 0.5, 0).y,
   (x, z, y) => world.boxFree(x, z, 0, 0.3, 0.3, y + 0.35, y + 1.2),
@@ -530,7 +530,8 @@ bigMap.setEdge(edges.map.ring);
 minimap.setGround((g, k) => bigMap.paintGroundGame(g, k), () => bigMap.groundVersion); // the ground under the minimap, everywhere
 const mapBtn = document.getElementById('map-btn')!;
 
-// Furniture planner: shared through the server when logged in, kept in this browser otherwise.
+// The furniture: shared through the server when logged in, kept in this browser otherwise. New pieces
+// come with /name in the chat (src/spawn.ts), and /remove takes one away (see spawnThing).
 const furnishing = new Furnishing(world);
 home.add(furnishing.group);
 // Furniture round the house and the bungalow hides with them from far off; a piece placed elsewhere
@@ -539,7 +540,6 @@ const homeArea = new THREE.Box3().setFromObject(built.group).expandByScalar(20);
 furnishing.homeArea = (x, z) => x >= homeArea.min.x && x <= homeArea.max.x && z >= homeArea.min.z && z <= homeArea.max.z;
 scene.add(furnishing.away);
 tiles.track(home, new THREE.Box3().setFromObject(built.group));
-const planner = new Planner(scene, furnishing, [built.group, baked.group, grass]);
 const LOCAL_FURNITURE = 'briel.furniture';
 let localId = -1;
 /** The starting layout, as pieces with local ids. */
@@ -570,33 +570,34 @@ function saveLocalFurniture(): void {
   }
 }
 loadLocalFurniture();
-planner.onPlace = (p) => {
+/** A new piece of furniture (spawned with /name): the server's together, this browser's alone. */
+function putFurniture(p: Omit<Piece, 'id'>): void {
   if (net.connected) net.send({ t: 'furn', op: 'put', ...p });
   else {
-    furnishing.put({ ...p, id: p.id ?? localId-- });
+    furnishing.put({ ...p, id: localId-- });
     saveLocalFurniture();
   }
-};
-planner.clownGroup = clowns.group;
-planner.onClown = (at) => {
-  if (net.connected) net.send({ t: 'clown', op: 'add', ...at });
-  else clowns.setAll([...clowns.list, { id: localClown++, ...at }]);
-};
-planner.onClownRemove = (id) => {
-  if (net.connected) net.send({ t: 'clown', op: 'remove', id });
-  else clowns.setAll(clowns.list.filter((c) => c.id !== id));
-};
-planner.onRemove = (id) => {
+}
+function removeFurniture(id: number): void {
   if (net.connected) net.send({ t: 'furn', op: 'del', id });
   else {
     furnishing.remove(id);
     saveLocalFurniture();
   }
-};
+}
+/** A clown or a strongman spawned with /clown or /strongman, or taken away. */
+function addClown(at: { x: number; y: number; z: number; kind: Kind }): void {
+  if (net.connected) net.send({ t: 'clown', op: 'add', ...at });
+  else clowns.setAll([...clowns.list, { id: localClown++, ...at }]);
+}
+function removeClown(id: number): void {
+  if (net.connected) net.send({ t: 'clown', op: 'remove', id });
+  else clowns.setAll(clowns.list.filter((c) => c.id !== id));
+}
 
-// Teslas placed with the planner (shared/car.json: placed): real cars like the four above, in
-// `cars` with a `kind`. In multiplayer the admin's: the server keeps them, checks every spot and
-// decides who drives. Alone anyone's, kept in this browser where they were put.
+// Teslas spawned with /tesla (shared/car.json: placed): real cars like the four above, in `cars` with a
+// `kind`. In multiplayer the server keeps them, checks every spot and decides who drives (the admin's
+// any, a player's their own when the admin allows spawning). Alone anyone's, kept in this browser.
 const indoorsAt = makeIndoors([...house.prisms, ...(house.surroundings?.prisms ?? [])], house.rooms.map((r) => r.name));
 const placedCars = () => cars.filter((c) => c.kind);
 /** A placed Tesla taken away: if you sit in it, you get out first. */
@@ -636,7 +637,6 @@ function setPlaced(list: CarState[]): void {
     const moved = Math.hypot(c.x - st.x, c.z - st.z) > 0.02 || Math.abs(c.y - st.y) > 0.02;
     if (!st.driver && !(driving && c === car) && (moved || turned)) c.place(st.x, st.y, st.z, st.yaw);
   }
-  planner.refresh();
 }
 /**
  * Whether a Tesla of `kind` may stand at (x, z) facing `yaw`, as the server checks it again
@@ -662,38 +662,30 @@ function teslaFits(kind: string, x: number, z: number, yaw: number, floorY: numb
     && world.boxFree(x, z, yaw, halfL, halfW, y + 0.3, y + spec.height, id ? `car-${id}` : undefined);
   return { ok, y };
 }
-planner.carFits = teslaFits;
-planner.carCount = () => placedCars().length;
-planner.pickCar = (ray) => {
+/** The spawned Tesla a ray hits (/remove), with how far along it and whether someone is in it. */
+function pickTesla(ray: THREE.Raycaster): { c: Car; distance: number; busy: boolean } | null {
   const hit = ray.intersectObjects(placedCars().filter((c) => c.group.visible).map((c) => c.group), true).find((h) => !h.object.userData.ignoreRay);
   let o: THREE.Object3D | null = hit?.object ?? null;
   while (o && o.userData.car === undefined) o = o.parent;
   const c = o ? carById(o.userData.car) : undefined;
   if (!hit || !c?.kind) return null;
   const mine = c === car && (driving || riding || wantCar);
-  return { id: c.id, kind: c.kind, yaw: c.yaw, distance: hit.distance, busy: mine || !!c.driver || !!c.passenger };
-};
-planner.onCarBusy = () => chat.system(() => t('plan.teslaBusy'));
+  return { c, distance: hit.distance, busy: mine || !!c.driver || !!c.passenger };
+}
 const LOCAL_CARS = 'briel.cars';
 let localCar = 1; // ids for the Teslas placed alone ('l1', 'l2' ...)
-planner.onCar = (c) => {
+/** A new Tesla of `kind` (spawned with /tesla): the server's together, this browser's alone. */
+function placeTesla(c: { kind: string; x: number; y: number; z: number; yaw: number }): void {
   if (net.connected) return net.send({ t: 'tesla', op: 'put', ...c });
-  const at = { x: c.x, y: c.y, z: c.z, yaw: c.yaw };
-  const moved = c.id ? carById(c.id) : undefined;
-  if (moved?.kind) {
-    moved.place(at.x, at.y, at.z, at.yaw);
-    moved.park = at;
-  } else addPlaced({ id: `l${localCar++}`, kind: c.kind, ...at, s: 0, driver: null });
+  addPlaced({ id: `l${localCar++}`, kind: c.kind, x: c.x, y: c.y, z: c.z, yaw: c.yaw, s: 0, driver: null });
   saveLocalCars();
-  planner.refresh();
-};
-planner.onCarRemove = (id) => {
+}
+function removeTesla(id: string): void {
   if (net.connected) return net.send({ t: 'tesla', op: 'del', id });
   const c = carById(id);
   if (c?.kind) removePlaced(c);
   saveLocalCars();
-  planner.refresh();
-};
+}
 /** Alone: the Teslas placed in this browser, each where it was put (one driven off is back there next time). */
 function loadLocalCars(): void {
   let list: CarState[] = [];
@@ -718,21 +710,6 @@ function saveLocalCars(): void {
   }
 }
 loadLocalCars();
-const plannerBtn = document.getElementById('planner-btn')!;
-function togglePlanner(): void {
-  if (driving || riding) return;
-  if (!planner.active && !mayFurnish()) return chat.system(() => t('chat.furnOff'));
-  planner.toggle();
-}
-// The menu's button starts the planner and goes back to the game to use it.
-plannerBtn.addEventListener('click', () => {
-  togglePlanner();
-  if (planner.active) menu.resume(menu.mode ?? 'kbm');
-});
-touch.onDone = togglePlanner; // the touch controls' Done button
-window.addEventListener('keydown', (e) => {
-  if (e.code === 'KeyP' && !e.repeat && !typing(e) && !menu.open) togglePlanner(); // while playing; the menu has its button
-});
 // Removing all the furniture, for everyone, asks a second click (a stray Enter or ✕ in the menu took it all once).
 {
   const clear = document.getElementById('clearfurn-btn')!;
@@ -758,7 +735,7 @@ document.getElementById('resetfurn-btn')!.addEventListener('click', () => {
   else {
     furnishing.setAll(startLayout());
     localId = -1 - startLayout().length;
-    clowns.setAll(CLOWN_DEFAULTS); // and the characters placed with the planner go
+    clowns.setAll(CLOWN_DEFAULTS); // and the characters spawned go
     for (const c of placedCars()) removePlaced(c); // and the Teslas (the four of the game stay)
     saveLocalFurniture();
     saveLocalCars();
@@ -880,10 +857,10 @@ function showOnline(): void {
 
 const $ = (id: string) => document.getElementById(id)!;
 /** House rules in multiplayer, set by the admin in the settings; alone everything is allowed. */
-const ANYTHING_GOES: Rules = { flying: true, furniture: true, names: true, maxPlayers: 16, pin: true, portals: true, travel: true, paintball: false };
+const ANYTHING_GOES: Rules = { flying: true, spawn: true, names: true, maxPlayers: 16, pin: true, portals: true, travel: true, paintball: false };
 let rules = ANYTHING_GOES;
 const flyBox = $('set-flying') as HTMLInputElement;
-const furnBox = $('set-furniture') as HTMLInputElement;
+const spawnBox = $('set-spawn') as HTMLInputElement;
 const namesBox = $('set-names') as HTMLInputElement;
 const maxSlider = $('set-max') as HTMLInputElement;
 const pinBox = $('set-pin') as HTMLInputElement;
@@ -914,7 +891,7 @@ function applyRules(next: Rules): void {
   player.canFly = next.flying && !games.zombies;
   if (!player.canFly) player.flying = false;
   flyBox.checked = next.flying;
-  furnBox.checked = next.furniture;
+  spawnBox.checked = next.spawn ?? false;
   namesBox.checked = next.names;
   pinBox.checked = next.pin ?? true;
   portalsBox.checked = next.portals ?? true;
@@ -924,18 +901,10 @@ function applyRules(next: Rules): void {
   maxSlider.value = String(next.maxPlayers ?? 16);
   $('set-max-value').textContent = maxSlider.value;
   avatars.showNames = next.names && !games.hideOthers;
-  if (!mayFurnish()) planner.toggle(false);
-  // The planner's button greyed out for those the admin hasn't allowed it (the server refuses them anyway).
-  const plannerBtn = document.getElementById('planner-btn') as HTMLButtonElement;
-  plannerBtn.disabled = !mayFurnish();
-  plannerBtn.title = mayFurnish() ? '' : t('chat.furnOff');
-  planner.clowns = !me || me.role === 'admin'; // alone you may place clowns; in multiplayer the admin
-  planner.cars = !me || me.role === 'admin'; // and Teslas (the server refuses anyone else's)
-  planner.refresh();
 }
-/** The admin can always arrange the furniture; others when the admin allows it. */
-function mayFurnish(): boolean {
-  return rules.furniture || me?.role === 'admin';
+/** Spawning with /name: alone always; together the admin always, the others when the admin allows it (off at first). */
+function maySpawn(): boolean {
+  return !me || rules.spawn || me.role === 'admin';
 }
 /**
  * A house rule switch: sent to the server, which tells everyone (and this page) the new rules. Flipped
@@ -954,7 +923,7 @@ function ruleSwitch(box: HTMLInputElement, rule: keyof Rules): void {
   });
 }
 ruleSwitch(flyBox, 'flying');
-ruleSwitch(furnBox, 'furniture');
+ruleSwitch(spawnBox, 'spawn');
 ruleSwitch(namesBox, 'names');
 ruleSwitch(pinBox, 'pin');
 ruleSwitch(portalsBox, 'portals');
@@ -1361,7 +1330,6 @@ async function startSolo(id: string): Promise<void> {
   prepareZombies();
   getOut(false);
   getOffHorse(false);
-  planner.toggle(false);
   const boxes = cars.filter((c) => c.ready && edge.inside(c.x, c.z)).map((c) => ({ x: c.x, z: c.z, yaw: c.yaw, halfL: c.spec.length / 2, halfW: c.spec.width / 2 }));
   const nav = arena.center
     ? makeNav({ prisms, height: (x, z) => terrain.height(x, z), base: house.ground, edge, boxes, areas: [], doors: [], shut: true, panes: 0 })
@@ -1418,7 +1386,7 @@ function soloTick(dt: number): void {
   const h = solo.horde;
   const now = performance.now();
   if (h.phase === 'over' && now >= solo.endAt) return stopSolo();
-  const fighter = weapon.enabled && !driving && !riding && !planner.active;
+  const fighter = weapon.enabled && !driving && !riding;
   for (const e of h.tick(now, dt, [{ name: SOLO_ME, x: player.x, y: player.feet, z: player.z, alive: combat.alive, fighter, safe: false }])) {
     if (e.type === 'wave') {
       solo.loot.wave();
@@ -1610,14 +1578,12 @@ function startDriving(): void {
   driving = true;
   wantCar = false;
   car.enter();
-  planner.toggle(false);
 }
 /** In the passenger seat: the car (someone else drives) carries you, the camera behind it. */
 function startRiding(): void {
   riding = true;
   wantCar = false;
   car.enter();
-  planner.toggle(false);
 }
 /** Out by your door (or wherever there is room), facing where the camera looked. `tell`: let the server know. */
 function getOut(tell = true): void {
@@ -1637,7 +1603,6 @@ function mountHorse(i: number): void {
   if (games.zombies) return chat.system(() => t('srv.zNoHorse'));
   if (!net.connected) {
     horses.mount(i, me?.username ?? 'you');
-    planner.toggle(false);
     return;
   }
   net.send({ t: 'horse', op: 'on', i });
@@ -1691,7 +1656,7 @@ const warp = $('warp');
 const portalMarks = PORTALS.map((p) => ({ x: p.x, z: p.z, color: p.color }));
 travelPanel.onPick = (p) => void travel(p, 'portal');
 async function travel(to: Destination, via: 'portal' | 'chat'): Promise<void> {
-  if (trip || !combat.alive || planner.active || games.blindfolded) return;
+  if (trip || !combat.alive || games.blindfolded) return;
   if (games.fenced) {
     chat.system(() => t('srv.travelGame')); // a game in the house: everyone stays near it (the server refuses too)
     return;
@@ -1756,6 +1721,18 @@ const LIST_WORDS = new Set(['places', 'plaatsen', 'list', 'lijst', 'help']);
  */
 function command(text: string): void {
   const words = text.slice(1).trim().toLowerCase().split(/\s+/).filter(Boolean);
+  // Spawning (src/spawn.ts): /spawn lists everything, /spawn sofa or just /sofa spawns one, /remove
+  // takes away what you look at. A bare name only when every word is a whole word of a thing's name
+  // (else it is a place: /church), and never after a travel word (/ga naar ...).
+  if (words.length === 1 && REMOVE_WORDS.has(words[0])) return removeThing();
+  if (words.length && SPAWN_WORDS.has(words[0])) {
+    const rest = words.slice(1).join(' ');
+    if (!rest) return spawnList();
+    const thing = findThing(rest);
+    return thing ? spawnThing(thing) : chat.system(() => t('spawn.unknown', { name: rest }));
+  }
+  const exact = words.length && !TRAVEL_WORDS.has(words[0]) ? findThing(words.join(' '), true) : null;
+  if (exact) return spawnThing(exact);
   while (words.length && TRAVEL_WORDS.has(words[0])) words.shift();
   const typed = words.join(' ');
   if (!fold(typed) || (words.length === 1 && LIST_WORDS.has(words[0]))) {
@@ -1765,6 +1742,72 @@ function command(text: string): void {
   const found = findPlace(typed);
   if ('to' in found) go(found.to);
   else chat.system(foundLine(typed, found));
+}
+/** The words that list what can be spawned (/spawn) or spawn the name after them, and those that take a thing away. */
+const SPAWN_WORDS = new Set(['spawn', 'zet', 'maak']);
+const REMOVE_WORDS = new Set(['remove', 'weg', 'verwijder', 'delete', 'despawn']);
+/** /spawn alone: how it works, and every thing's name in this page's language. */
+function spawnList(): void {
+  chat.system(() => t('spawn.help'));
+  chat.system(() => t('spawn.listFurniture', { list: thingNames('furniture').join(', ') }));
+  chat.system(() => t('spawn.listCars', { list: thingNames('tesla').join(', ') }));
+  chat.system(() => t('spawn.listCharacters', { list: thingNames('character').join(', ') }));
+}
+/** An angle between -pi and pi. */
+const wrapAngle = (a: number) => Math.atan2(Math.sin(a), Math.cos(a));
+/**
+ * Spawn `thing` in front of you: a piece of furniture 2 m ahead, its front to you (a quarter turn at a time), a character a little further
+ * on the ground, a Tesla side-on where it fits (as the server checks a parking spot). Alone in this page;
+ * together through the server, which checks it again (and refuses it with a word when it may not).
+ */
+function spawnThing(thing: Thing): void {
+  if (!maySpawn()) return chat.system(() => t('srv.spawnOff'));
+  if (!combat.alive || driving || riding || trip) return chat.system(() => t('spawn.notNow'));
+  const fx = -Math.sin(player.yaw), fz = -Math.cos(player.yaw);
+  const eye = { x: player.x, y: player.feet + 1.2, z: player.z };
+  // A spot `d` m ahead on the floor near your level, with no wall between it and you; or null.
+  const ahead = (d: number) => {
+    const x = player.x + fx * d, z = player.z + fz * d;
+    const y = world.groundAt(x, z, player.feet + 0.8, 0).y;
+    return Math.abs(y - player.feet) < 1.5 && !world.blocked(eye, { x, y: y + 0.5, z }) ? { x: +x.toFixed(2), y: +y.toFixed(3), z: +z.toFixed(2) } : null;
+  };
+  if (thing.kind === 'tesla') {
+    for (const d of [4.5, 6, 3.5]) {
+      for (const yaw of [player.yaw + Math.PI / 2, player.yaw]) {
+        const x = player.x + fx * d, z = player.z + fz * d;
+        const fit = teslaFits(thing.id, x, z, yaw, player.feet);
+        if (!fit.ok || world.blocked(eye, { x, y: fit.y + 0.8, z })) continue;
+        placeTesla({ kind: thing.id, x: +x.toFixed(2), y: +fit.y.toFixed(3), z: +z.toFixed(2), yaw: +wrapAngle(yaw).toFixed(4) });
+        return chat.system(() => t('spawn.done', { name: thing.label() }));
+      }
+    }
+    return chat.system(() => t('spawn.noRoom'));
+  }
+  const spot = ahead(thing.kind === 'character' ? (thing.id === 'strongman' ? 5 : 3) : 2) ?? ahead(1.2);
+  if (!spot) return chat.system(() => t('spawn.noRoom'));
+  if (thing.kind === 'character') addClown({ ...spot, kind: thing.id as Kind });
+  else putFurniture({ item: thing.id, ...spot, yaw: +wrapAngle(Math.round(player.yaw / (Math.PI / 2)) * (Math.PI / 2)).toFixed(4) }); // its front to you, square to where you look
+  chat.system(() => t('spawn.done', { name: thing.label() }));
+}
+/**
+ * /remove: the thing you look at within 12 m, the nearest of a piece of furniture, a spawned Tesla or a
+ * character. Alone anything; together the server takes away your own (the admin's any) and says so if not.
+ */
+function removeThing(): void {
+  const ray = new THREE.Raycaster();
+  ray.far = 12;
+  camera.updateMatrixWorld();
+  ray.setFromCamera(new THREE.Vector2(0, 0), camera);
+  const furn = furnishing.pickHit(ray);
+  const tesla = pickTesla(ray);
+  const character = ray.intersectObject(clowns.group, true).find((h) => h.object.userData.clown !== undefined);
+  const options = [
+    furn ? { d: furn.distance, go: () => removeFurniture(furn.piece.id) } : null,
+    tesla ? { d: tesla.distance, go: () => (tesla.busy ? chat.system(() => t('spawn.teslaBusy')) : removeTesla(tesla.c.id)) } : null,
+    character ? { d: character.distance, go: () => removeClown(character.object.userData.clown) } : null,
+  ].filter((o) => o !== null);
+  if (!options.length) return chat.system(() => t('spawn.lookAt'));
+  options.sort((a, b) => a.d - b.d)[0].go();
 }
 /** Why you can't go somewhere from the chat or the menu's list now (the server refuses too), or null. */
 function travelBlock(): (() => string) | null {
@@ -1887,7 +1930,7 @@ net.onMessage = (m: ServerMsg) => {
       getOffHorse(false); // or riding
       wantCar = false;
       horseWanted = -1;
-      setPlaced((m.cars ?? []).filter((s) => s.kind)); // the Teslas placed with the planner, instead of those placed alone
+      setPlaced((m.cars ?? []).filter((s) => s.kind)); // the Teslas spawned together, instead of those spawned alone
       for (const s of m.cars ?? []) carById(s.id)?.setPose(s, true);
       horses.setAll(m.horses ?? [], m.you);
       {
@@ -1941,7 +1984,6 @@ net.onMessage = (m: ServerMsg) => {
       if (mine && horses.mounted !== h.i) {
         if (horseWanted === h.i) {
           horses.mount(h.i, me!.username);
-          planner.toggle(false);
         } else net.send({ t: 'horse', op: 'off' }); // not asked for (an old connection's): give it back
       } else if (!mine && horses.mounted === h.i) getOffHorse(false); // taken back: you died or respawned
       if (horseWanted === h.i) horseWanted = -1;
@@ -2263,7 +2305,6 @@ menu.onPlay = (mode) => {
     controlsCard.show(mode, weapon.enabled);
   }
   menuHint.textContent = key('menu', mode);
-  planner.control = mode;
   touch.show(mode === 'touch');
   if (mode === 'touch') fillScreen(); // the first start asked for it in its tap already (src/start.ts)
   // Keyboard + mouse: capture the mouse so moving it turns the view.
@@ -2436,7 +2477,7 @@ renderer.setAnimationLoop((now: number) => {
     // The feedback card at a quiet moment after two minutes: not while down, driving, riding along,
     // furnishing, typing in the chat or travelling.
     if (feedback.due && !feedback.open && document.visibilityState === 'visible' && (askClock += dt) >= ASK_AFTER
-      && combat.alive && !driving && !riding && !planner.active && !chat.typing && !trip) feedback.show();
+      && combat.alive && !driving && !riding && !chat.typing && !trip) feedback.show();
     // Dead: the view sinks to the floor; you can look around but not move or shoot.
     const dead = !combat.alive;
     player.down += ((dead ? 1 : 0) - player.down) * (1 - Math.exp(-dt * 5));
@@ -2483,13 +2524,12 @@ renderer.setAnimationLoop((now: number) => {
     combat.showBoard(frame.scoreHeld && !!me);
     const inCar = driving || riding;
     const onHorse = horses.mounted >= 0; // you may shoot from the saddle
-    weapon.hidden = dead || planner.active || inCar || games.peaceful;
-    planner.update(frame, camera);
+    weapon.hidden = dead || inCar || games.peaceful;
 
     // The portals: on a pad (or stopped on one in the car) the list of places opens, and takes the
     // number keys, the wheel or D-pad and E. Not on horseback, nor from the passenger seat.
     const mode = menu.mode ?? 'kbm';
-    let pad = !rules.portals || trip || dead || planner.active || riding || onHorse || games.fenced ? null
+    let pad = !rules.portals || trip || dead || riding || onHorse || games.fenced ? null
       : driving ? (Math.abs(car.speed) < CAR_SLOW ? portalNear(car.x, car.z, CAR_REACH) : null)
       : portalNear(player.x, player.z);
     if (pad && !driving && Math.abs(player.feet - portals.groundOf(pad)) > 1.5) pad = null; // flying over it
@@ -2512,7 +2552,7 @@ renderer.setAnimationLoop((now: number) => {
     const tagWho = inCar || dead ? null : games.target([...online.keys()], (n) => avatars.position(n), player.x, player.feet, player.z);
     if (tagWho && (frame.usePressed || frame.clickPressed)) games.tag(tagWho);
     // Zombies together: next to a downed teammate, holding Use helps them up (not a door then).
-    const downed = games.zombies && !!me && !dead && !inCar && !onHorse && !planner.active ? downedNear() : null;
+    const downed = games.zombies && !!me && !dead && !inCar && !onHorse ? downedNear() : null;
     if (downed && frame.useHeld) {
       if (helping?.name !== downed || (!helping.start && now - helping.asked > 1000)) {
         helping = { name: downed, asked: now, start: 0, ms: helping?.name === downed ? helping.ms : 3000 };
@@ -2523,7 +2563,7 @@ renderer.setAnimationLoop((now: number) => {
       helping = null;
     }
     const target = inCar || onHorse || tagWho || downed ? null : doors.lookedAt(camera);
-    if (target && (frame.usePressed || (!action && !planner.active && frame.clickPressed))) {
+    if (target && (frame.usePressed || (!action && frame.clickPressed))) {
       target.toggle();
       if (target.locked) lockHint = 4;
     }
@@ -2531,16 +2571,16 @@ renderer.setAnimationLoop((now: number) => {
     // The cars: E or Triangle next to one gets you in (unless two are in it already), and out again.
     if (!inCar && !wantCar) car = cars.reduce((a, b) => (b.distanceTo(player.x, player.z) < a.distanceTo(player.x, player.z) ? b : a));
     // Not during the Zombies game (getIn and mountHorse say why if tried anyway).
-    const nearCar = !inCar && !onHorse && !dead && !planner.active && !games.zombies && car.distanceTo(player.x, player.z) < CARS.reach && Math.abs(player.feet - car.y) < 1;
+    const nearCar = !inCar && !onHorse && !dead && !games.zombies && car.distanceTo(player.x, player.z) < CARS.reach && Math.abs(player.feet - car.y) < 1;
     // The horses: E next to one gets you on it, and off again.
-    const nearHorse = !inCar && !onHorse && !dead && !planner.active && !nearCar && !games.zombies && horseWanted < 0 ? horses.nearest(player.x, player.z) : -1;
+    const nearHorse = !inCar && !onHorse && !dead && !nearCar && !games.zombies && horseWanted < 0 ? horses.nearest(player.x, player.z) : -1;
     const carTaken = !!car.driver && car.driver !== me?.username;
     const seatFree = carTaken && !car.passenger;
     if ((driving || riding) && frame.usePressed) getOut();
     else if (onHorse && frame.usePressed) getOffHorse();
     else if (nearCar && !target && (!carTaken || seatFree) && !wantCar && frame.usePressed) getIn();
     else if (nearHorse >= 0 && !target && frame.usePressed) mountHorse(nearHorse);
-    if (action && !dead && !planner.active && !inCar) {
+    if (action && !dead && !inCar) {
       if (frame.weaponSlot) weapon.selectSlot(frame.weaponSlot);
       if (frame.weaponCycle) weapon.cycle(frame.weaponCycle === 2 ? 0 : frame.weaponCycle);
       // Walk over a weapon to take it (the server decides in multiplayer).
@@ -2564,10 +2604,10 @@ renderer.setAnimationLoop((now: number) => {
     if (calm && !wasCalm) calmHint = 4;
     if (calm && (frame.clickPressed || frame.throwPressed)) calmHint = 2;
     wasCalm = calm;
-    if (action && (frame.clickPressed || (weapon.isAuto && frame.fireHeld)) && !dead && !planner.active && !inCar && !calm) fire();
+    if (action && (frame.clickPressed || (weapon.isAuto && frame.fireHeld)) && !dead && !inCar && !calm) fire();
     if (action && frame.reloadPressed && !dead && !inCar) weapon.reload();
     // The reload key held, with stakes in your pocket (Zombies): it plants a row (the tap reloads as ever).
-    if (action && !dead && !planner.active && !inCar && !calm && kit.stakes > 0 && games.zombies) {
+    if (action && !dead && !inCar && !calm && kit.stakes > 0 && games.zombies) {
       if (frame.reloadPressed) stakeT = 1e-4;
       if (stakeT > 0 && frame.reloadHeld) {
         stakeT += dt;
@@ -2578,7 +2618,7 @@ renderer.setAnimationLoop((now: number) => {
       } else stakeT = 0;
     } else stakeT = 0;
     // The Use key held with a turret in your pocket (Zombies), with nothing else to use (no door, nobody to help up): it sets it up.
-    if (action && !dead && !planner.active && !inCar && !calm && kit.turrets > 0 && games.zombies && !downed && !target && !tagWho) {
+    if (action && !dead && !inCar && !calm && kit.turrets > 0 && games.zombies && !downed && !target && !tagWho) {
       if (frame.usePressed) useT = 1e-4;
       if (useT > 0 && frame.useHeld) {
         useT += dt;
@@ -2589,7 +2629,7 @@ renderer.setAnimationLoop((now: number) => {
       } else useT = 0;
     } else useT = 0;
     // The grenade key: a tap throws a grenade; with a claymore in your pocket (Zombies), held it places it.
-    if (action && !dead && !planner.active && !inCar && !calm) {
+    if (action && !dead && !inCar && !calm) {
       if (kit.claymores > 0 && games.zombies) {
         if (frame.throwPressed) holdT = 1e-4;
         if (holdT > 0 && frame.throwHeld) {
@@ -2623,7 +2663,7 @@ renderer.setAnimationLoop((now: number) => {
     // The keys in the prompts come from the one table (src/shortcuts.ts). In Explore a click opens doors too.
     const doorKey = key(action ? 'use' : 'click', mode);
     const use = key('use', mode);
-    touch.setState(action, inCar, planner.active);
+    touch.setState(action, inCar);
     const speed = (v: number) => Math.round(Math.abs(v) * 3.6);
     const carLabel = carName(car.kind ?? car.id, car.spec.name);
     let prompt = target ? t(target.locked ? 'prompt.locked' : target.open ? 'prompt.close' : 'prompt.open', { key: doorKey, door: doorName(target.name) }) : '';
@@ -2654,7 +2694,7 @@ renderer.setAnimationLoop((now: number) => {
       kit.stakes ? t('loot.stakesCount', { n: kit.stakes, key: key('reload', mode) }) : '',
       kit.turrets ? t('loot.turretCount', { key: key('use', mode) }) : '',
     ].filter(Boolean).join('   ·   ') : '';
-    hud.setGrenades(armed && !planner.active ? grenades.count : null, GRENADE.carry, grenades.nextIn, key('grenade', mode), pocket);
+    hud.setGrenades(armed ? grenades.count : null, GRENADE.carry, grenades.nextIn, key('grenade', mode), pocket);
     hud.setScope(weapon.scoped, inCar);
     // The flying controls for the first few seconds after taking off only (Yoshi: annoying when it stays).
     if (player.flying && !wasFlying) flyHint = 4;
@@ -3177,7 +3217,6 @@ if (import.meta.env.DEV) {
       getOffHorse,
       driving: () => driving,
       furnishing,
-      planner,
       feedback,
       /** Seconds played towards the feedback card, and what holds it back. */
       askState: () => ({ askClock, menuOpen: menu.open, trip: !!trip, typing: chat.typing, driving, riding, alive: combat.alive }),

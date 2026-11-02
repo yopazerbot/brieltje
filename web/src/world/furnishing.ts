@@ -8,7 +8,7 @@ import type { FixtureSpec } from './houseData';
 import { drawCode, drawDesktop, drawLlama, drawPainting, drawPrint, drawRide, washTexture } from './screens';
 
 /**
- * Furniture placed with the planner: simple shapes at real sizes (a bed is
+ * Furniture spawned with /name (src/spawn.ts): simple shapes at real sizes (a bed is
  * 160 x 200 cm), coloured per part. Every piece of the same kind is drawn in
  * one go (instancing) with one shared material, so a furnished house stays
  * light on weak graphics. Pieces are solid to walk into, except rugs.
@@ -744,7 +744,7 @@ function parts(id: string, [w, d, h]: [number, number, number]): Part[] {
     }
     case 'bench':
       return [box(w, d, h - 0.08, 0, 0, 0, C.oak), box(w - 0.04, d - 0.04, 0.08, 0, h - 0.08, 0, C.beige)];
-    // ---- Built in (fixtures from the house data, not in the planner)
+    // ---- Built in (fixtures from the house data, not in the catalogue)
     case 'curtain': {
       // A sheer curtain gathered beside a window: soft, uneven folds about
       // 12 cm apart from just over the floor to a white track under the ceiling, the deeper folds a
@@ -1127,8 +1127,8 @@ function outline(x: number, z: number, yaw: number, w: number, d: number): [numb
 
 /**
  * Built-in furniture from the house data (the bungalow's book wall and jacuzzi; the main house's
- * curtains, lamps, art, cushions and stools): the planner's parts at the fixture's
- * own size, solid unless they hang, sit on a wall or lie flat, and not in the planner. Per site
+ * curtains, lamps, art, cushions and stools): the catalogue's parts at the fixture's
+ * own size, solid unless they hang, sit on a wall or lie flat, and not in the catalogue. Per site
  * (the main house, the bungalow) one mesh for the coloured parts, one for each textured kind (weave,
  * lattice, cloth) and one per kind of extra, drawn again as the Blender models come in. Parts flat
  * on a wall, the seat or the floor go in meshes of their own that cast no shadow.

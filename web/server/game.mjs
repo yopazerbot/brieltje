@@ -15,7 +15,7 @@
 // passenger, who moves with it) may move at the car's speed. A car stays where they leave it
 // and is back in its parking spot when the server restarts.
 //
-// The admin places more Teslas with the planner (at most PLACED.max, see placeCar): each is a car like
+// More Teslas are spawned with /tesla (at most PLACED.max, see placeCar): each is a car like
 // the others, kept in the database where it was put, gone with the furniture's clear or reset.
 //
 // The portals (shared/portals.mjs): a player on one asks to travel to another, or types /church
@@ -135,7 +135,7 @@ function groundMap() {
   };
 }
 const CARS = shared('car.json'); // the cars: where each is parked, its size and top speed
-/** The Teslas the admin places with the planner (shared/car.json): how many at most, the kinds (a car above in a paint of its own). */
+/** The Teslas spawned with /tesla (shared/car.json): how many at most, the kinds (a car above in a paint of its own). */
 const PLACED = CARS.placed;
 /** A car's size and speeds: its own, or for a placed one its kind's base car's. */
 const carSpec = (car) => CARS.cars[car.id] ?? CARS.cars[PLACED.kinds[car.kind]?.base];
@@ -184,7 +184,7 @@ const PARKED = (() => {
   }
 })();
 const HORSES = shared('horses.json'); // the horses: their walks on the shared clock, riding speeds
-const FURNITURE = shared('furniture.json'); // planner catalogue: which items exist, how many may be placed
+const FURNITURE = shared('furniture.json'); // the catalogue: which items exist, how many may be placed
 const FURNITURE_IDS = new Set(FURNITURE.items.map((i) => i.id));
 const DEFAULT_FURNITURE = shared('default_furniture.json').pieces.map(([item, x, y, z, yaw]) => ({ item, x, y, z, yaw }));
 const LAYOUT_VERSION = String(shared('default_furniture.json').version ?? 1);
@@ -194,7 +194,16 @@ const LAYOUT_RESTORE = String(shared('default_furniture.json').restore ?? 0);
  * House rules the admin sets in the settings, with their defaults. `paintball` (child-friendly for
  * everyone) only changes what the pages show: Action as Paintball, with the same hits and scores.
  */
-const RULES = { flying: true, furniture: true, names: true, maxPlayers: MAX_PLAYERS, pin: true, portals: true, travel: true, paintball: false };
+const RULES = { flying: true, spawn: false, names: true, maxPlayers: MAX_PLAYERS, pin: true, portals: true, travel: true, paintball: false };
+/**
+ * Spawning with /name (Yoshi, 2 Nov 2026: everyone may, unless the admin has it off, as it is at first):
+ * how far from where the server has you a thing may appear (m), and how many each player may have out
+ * at once (furniture; Teslas; clowns and strongmen). The admin isn't counted.
+ */
+const SPAWN_REACH = 8;
+const SPAWN_EACH = 20;
+const SPAWN_CARS = 2;
+const SPAWN_CHARACTERS = 2;
 /** A valid value for a rule: on/off, or a number of players from 2 to MAX_PLAYERS. */
 const ruleOk = (k, v) => (k === 'maxPlayers' ? Number.isInteger(v) && v >= 2 && v <= MAX_PLAYERS : typeof v === 'boolean');
 /** Weapons only the admin carries (the bazooka), on top of the pistol everyone starts with. */
@@ -657,7 +666,7 @@ export class Game {
       this.broadcast({ t: 'shot', name, w, ...where(m) }, name);
     } else if (m.t === 'furn') {
       if (now < (player.nextFurn || 0)) return;
-      player.nextFurn = now + 150;
+      player.nextFurn = now + 400; // each one a database write
       this.furnish(name, player, m).catch((e) => console.error('furniture failed', String(e)));
     } else if (m.t === 'clownhit' && this.modes.state.kind === 'zombies') {
       // The clowns and strongmen stand aside during the Zombies game (the pages hide them).
@@ -696,15 +705,28 @@ export class Game {
       player.nextCat = now + 300;
       c.until = now + CLOWNS.respawnSeconds * 1000;
       this.broadcast({ t: 'clownhit', id: m.id, by: name, ms: CLOWNS.respawnSeconds * 1000, w: m.w === 'grenade' ? 'grenade' : player.state.w }, name);
-    } else if (m.t === 'clown' && player.role === 'admin') {
-      // The admin places a clown (from the planner) or takes one away.
-      if (m.op === 'add' && this.clowns.size < CLOWNS.max) {
-        const x = num(m.x, AREA.x0, AREA.x1);
-        const y = num(m.y, -20, 40);
-        const z = num(m.z, AREA.z0, AREA.z1);
+    } else if (m.t === 'clown') {
+      // A clown or a strongman spawned with /clown, /strongman, or one taken away with /remove: the admin
+      // always and any; the others when the admin allows spawning, near themselves, SPAWN_CHARACTERS each,
+      // and only their own taken away.
+      if (now < (player.nextClown || 0)) return;
+      player.nextClown = now + 400;
+      const admin = player.role === 'admin';
+      const no = (code, text) => this.send(player.ws, { t: 'system', text, code, args: { n: SPAWN_CHARACTERS } });
+      if (m.op === 'add') {
+        if (!admin && !this.rules.spawn) return no('spawnOff', 'The admin has turned spawning off.');
+        if (this.clowns.size >= CLOWNS.max) return;
+        let at;
+        if (admin) at = { x: +num(m.x, AREA.x0, AREA.x1).toFixed(2), y: +num(m.y, -20, 40).toFixed(2), z: +num(m.z, AREA.z0, AREA.z1).toFixed(2) };
+        else {
+          at = this.spawnSpot(player, m);
+          if (!at) return no('spawnFar', 'That is too far from you.');
+          if ([...this.clowns.values()].filter((c) => c.by === name).length >= SPAWN_CHARACTERS) return no('spawnCharacters', `You have ${SPAWN_CHARACTERS} out already. Take one away with /remove.`);
+        }
         const id = this.nextClown++;
-        this.clowns.set(id, this.character(id, +x.toFixed(2), +y.toFixed(2), +z.toFixed(2), kindOf(m.kind)));
+        this.clowns.set(id, { ...this.character(id, at.x, at.y, at.z, kindOf(m.kind)), by: name });
       } else if (m.op === 'remove' && this.clowns.has(m.id)) {
+        if (!admin && this.clowns.get(m.id).by !== name) return no('spawnNotYours', 'You can only take away what you spawned yourself.');
         this.clowns.delete(m.id);
       } else return;
       this.broadcast({ t: 'clowns', list: this.clownList(now) });
@@ -993,7 +1015,7 @@ export class Game {
   }
 
   /**
-   * The Teslas placed with the planner, from the database: each where it was put (as a car is back in
+   * The spawned Teslas, from the database: each where it was put (as a car is back in
    * its parking spot after a restart). A row the catalogue no longer knows, or with a broken number,
    * is left out.
    */
@@ -1002,11 +1024,11 @@ export class Game {
       const spot = [r.x, r.y, r.z, r.yaw].map(Number);
       if (!Object.hasOwn(PLACED.kinds, r.kind) || !spot.every(Number.isFinite) || this.placedList().length >= PLACED.max) continue;
       const [x, y, z, yaw] = spot;
-      this.cars[`p${r.id}`] = { id: `p${r.id}`, kind: r.kind, x, y, z, yaw, s: 0, driver: null, passenger: null };
+      this.cars[`p${r.id}`] = { id: `p${r.id}`, kind: r.kind, x, y, z, yaw, s: 0, driver: null, passenger: null, by: typeof r.by === 'string' ? r.by : '' };
     }
   }
 
-  /** House rules (flying, players moving furniture, names, how many may play, portals, travelling from the chat, child-friendly), kept across restarts. */
+  /** House rules (flying, players spawning things with /name, names, how many may play, portals, travelling from the chat, child-friendly), kept across restarts. */
   async loadRules() {
     let saved = {};
     try {
@@ -1042,7 +1064,7 @@ export class Game {
     if (!changed.length) return;
     for (const k of changed) this.rules[k] = m[k];
     await this.auth.store.setMeta('rules', JSON.stringify(this.rules));
-    const label = { flying: 'flying', furniture: 'moving furniture', names: 'names above players', pin: 'joining with the PIN', portals: 'the portals', travel: 'travelling from the chat', paintball: 'child-friendly for everyone' };
+    const label = { flying: 'flying', spawn: 'spawning things with /name', names: 'names above players', pin: 'joining with the PIN', portals: 'the portals', travel: 'travelling from the chat', paintball: 'child-friendly for everyone' };
     const text = changed.map((k) => (k === 'maxPlayers' ? `the limit to ${this.rules[k]} players` : `${label[k]} ${this.rules[k] ? 'on' : 'off'}`)).join(', ');
     this.auth.log('rules', null, { username: by, detail: text });
     this.broadcast({ t: 'rules', rules: this.rules });
@@ -1058,12 +1080,12 @@ export class Game {
     await this.auth.store.setMeta('furniture_edited', edited ? '1' : '0');
   }
 
-  /** Furniture planner: place or move ('put'), remove ('del'), or (admin) remove all ('clear'). */
+  /** Furniture: spawn a piece ('put', with /name), take one away ('del'), or (admin) remove all ('clear') or put the starting layout back ('reset'). */
   async furnish(name, player, m) {
     const store = this.auth.store;
     // A refusal is said to the one who tried (it used to happen in silence: "nothing happens").
     const refuse = (code, text, args) => this.send(player.ws, { t: 'system', text, code, ...(args ? { args } : {}) });
-    if (!this.rules.furniture && player.role !== 'admin') return refuse('furnOff', 'The admin has turned the furniture planner off.'); // the admin turned it off
+    const admin = player.role === 'admin';
     if (m.op === 'clear' || m.op === 'reset') {
       if (player.role !== 'admin') return;
       await store.clearFurniture();
@@ -1078,37 +1100,46 @@ export class Game {
       }
       await this.markFurniture(m.op === 'clear');
       this.broadcast({ t: 'furn', op: 'all', list: [...this.furniture.values()], by: name, reset: m.op === 'reset' });
-      // The characters the admin placed with the planner go too: back to the starting clowns and strongmen.
+      // The characters spawned go too: back to the starting clowns and strongmen.
       this.clowns = this.startingClowns();
       this.broadcast({ t: 'clowns', list: this.clownList(Date.now()) });
       await this.clearPlaced(); // and the Teslas (the four of the game stay)
     } else if (m.op === 'del' && this.furniture.has(m.id)) {
+      // Taken away (/remove): the admin's any piece, everyone else's only what they spawned themselves.
+      if (!admin && this.furniture.get(m.id).by !== name) return refuse('spawnNotYours', 'You can only take away what you spawned yourself.');
       await store.deleteFurniture(m.id);
       this.furniture.delete(m.id);
       await this.markFurniture(true);
       this.broadcast({ t: 'furn', op: 'del', id: m.id });
-    } else if (m.op === 'put' && FURNITURE_IDS.has(m.item)) {
-      // Anywhere inside the edge of the game, not only round the house: a piece placed at the church
-      // used to be pulled back to within 60 m of the house, so it seemed never to arrive.
-      const x = num(m.x, AREA.x0, AREA.x1);
-      const z = num(m.z, AREA.z0, AREA.z1);
-      if (!BOUNDS.map.inside(x, z)) return refuse('furnOutside', 'Furniture can only stand inside the edge of the game.');
-      const f = { item: m.item, x, y: num(m.y, -20, 200), z, yaw: num(m.yaw, -7, 7), by: name };
-      if (m.id !== undefined) {
-        if (!this.furniture.has(m.id)) return;
-        f.id = m.id;
-        await store.updateFurniture(f.id, f);
-      } else {
-        if (this.furniture.size >= FURNITURE.max) return refuse('furnFull', `There is no room for more furniture (${FURNITURE.max} pieces). The admin can remove some.`, { n: FURNITURE.max });
-        f.id = await store.addFurniture(f);
-      }
+    } else if (m.op === 'put' && m.id === undefined && FURNITURE_IDS.has(m.item)) {
+      // Spawned with /name (the planner, and moving pieces with it, is gone): the admin always, the others
+      // when the admin allows it (off at first); in front of where the server has them, inside the game's edge.
+      if (!admin && !this.rules.spawn) return refuse('spawnOff', 'The admin has turned spawning off.');
+      const at = this.spawnSpot(player, m);
+      if (!at) return refuse('spawnFar', 'That is too far from you.');
+      if (this.furniture.size >= FURNITURE.max) return refuse('furnFull', `There is no room for more furniture (${FURNITURE.max} pieces). The admin can remove some.`, { n: FURNITURE.max });
+      if (!admin && [...this.furniture.values()].filter((f) => f.by === name).length >= SPAWN_EACH) return refuse('spawnMany', `You have ${SPAWN_EACH} things out already. Take some away with /remove.`, { n: SPAWN_EACH });
+      const f = { item: m.item, ...at, yaw: num(m.yaw, -7, 7), by: name };
+      f.id = await store.addFurniture(f);
       this.furniture.set(f.id, f);
       await this.markFurniture(true);
       this.broadcast({ t: 'furn', op: 'put', f });
     }
   }
 
-  /** The Teslas placed with the planner (not the four of the game). */
+  /**
+   * Where something spawned with /name may stand (furniture, a character): numbers, within SPAWN_REACH
+   * of where the server has the player and 3 m above or below them, inside the edge that holds now.
+   * { x, y, z }, or null. Against a changed page placing things across the map or out of the game.
+   */
+  spawnSpot(player, m) {
+    const s = player.state;
+    if (!s || ![m.x, m.y, m.z].every((v) => typeof v === 'number' && Number.isFinite(v))) return null;
+    if (Math.hypot(m.x - s.x, m.z - s.z) > SPAWN_REACH || Math.abs(m.y - s.y) > 3 || !this.fence().inside(m.x, m.z)) return null;
+    return { x: +m.x.toFixed(3), y: +m.y.toFixed(3), z: +m.z.toFixed(3) };
+  }
+
+  /** The spawned Teslas (not the four of the game). */
   placedList() {
     return Object.values(this.cars).filter((c) => c.kind);
   }
@@ -1119,21 +1150,25 @@ export class Game {
   }
 
   /**
-   * The planner's Teslas (shared/car.json: placed): the admin places one ('put'), moves one placed
-   * before ('put' with its id) or takes one away ('del'). Nobody else may, and never one someone is
-   * in. The page checks the spot as it shows it, and the server checks it again (parkingProblem):
-   * a changed page or a hand-written message gets no further than the planner would. Its own clock
-   * (TESLA_MS) on top of the flood guard: each one is a database write. A refusal tells the admin why.
+   * The spawned Teslas (shared/car.json: placed): one spawned ('put'), one moved ('put' with its id,
+   * the admin's) or one taken away ('del'): the admin any, the others their own when the admin allows
+   * spawning, and never one someone is in. The page checks the spot as it shows it, and the server
+   * checks it again (parkingProblem): a changed page or a hand-written message gets no further than
+   * the page would. Its own clock (TESLA_MS) on top of the flood guard: each one is a database write.
+   * A refusal says why.
    */
   async placeCar(name, player, m, now) {
     if (now < (player.nextTesla || 0)) return;
     player.nextTesla = now + TESLA_MS;
-    const no = ([code, text]) => this.send(player.ws, { t: 'system', text, code, args: { max: PLACED.max } });
-    if (player.role !== 'admin') return no(['teslaAdmin', 'Only the admin can place Teslas.']);
+    const no = ([code, text]) => this.send(player.ws, { t: 'system', text, code, args: { max: PLACED.max, n: SPAWN_CARS } });
+    // Spawned with /tesla: the admin always (and only the admin moves one), the others when the admin
+    // allows spawning, near where the server has them, SPAWN_CARS each; each takes away only their own.
+    const admin = player.role === 'admin';
     const store = this.auth.store;
     const placed = typeof m.id === 'string' && Object.hasOwn(this.cars, m.id) && this.cars[m.id].kind ? this.cars[m.id] : null;
     if (m.op === 'del') {
       if (!placed) return;
+      if (!admin && placed.by !== name) return no(['spawnNotYours', 'You can only take away what you spawned yourself.']);
       if (placed.driver || placed.passenger) return no(['teslaBusy', 'Someone is in that car.']);
       delete this.cars[placed.id];
       delete this.carAt[placed.id];
@@ -1142,8 +1177,12 @@ export class Game {
       return;
     }
     if (m.op !== 'put' || typeof m.kind !== 'string' || !Object.hasOwn(PLACED.kinds, m.kind)) return;
+    if (!admin && !this.rules.spawn) return no(['spawnOff', 'The admin has turned spawning off.']);
+    if (!admin && m.id !== undefined) return; // moving one: the admin's
     if (m.id !== undefined && (!placed || placed.kind !== m.kind)) return; // a move: a placed car, of the kind it is
     if (![m.x, m.y, m.z, m.yaw].every((v) => typeof v === 'number' && Number.isFinite(v))) return;
+    if (!admin && (!player.state || Math.hypot(m.x - player.state.x, m.z - player.state.z) > SPAWN_REACH + 3 || Math.abs(m.y - player.state.y) > 3)) return no(['spawnFar', 'That is too far from you.']);
+    if (!admin && !placed && this.placedList().filter((c) => c.by === name).length >= SPAWN_CARS) return no(['spawnCars', `You have ${SPAWN_CARS} Teslas out already. Take one away with /remove.`]);
     if (placed && (placed.driver || placed.passenger)) return no(['teslaBusy', 'Someone is in that car.']);
     const r = (v, k) => Math.round(v * k) / k;
     const spot = { x: r(m.x, 100), y: r(m.y, 100), z: r(m.z, 100), yaw: r(Math.atan2(Math.sin(m.yaw), Math.cos(m.yaw)), 1000) };
@@ -1165,7 +1204,7 @@ export class Game {
       this.placing--;
     }
     const id = `p${row}`;
-    this.cars[id] = { id, kind: m.kind, ...spot, s: 0, driver: null, passenger: null };
+    this.cars[id] = { id, kind: m.kind, ...spot, s: 0, driver: null, passenger: null, by: name };
     this.carAt[id] = mono();
     this.sendPlaced();
   }
