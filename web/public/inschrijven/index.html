@@ -61,6 +61,15 @@
         <input type="email" id="email" autocomplete="email" maxlength="200" inputmode="email" required />
         <p class="error" id="email-err" hidden></p>
 
+        <!-- The street, required: the night is first of all for Smetlede. Suggestions from the Flemish address register, through our server. -->
+        <label class="field" for="address"><span data-lang="nl">Adres</span><span data-lang="en">Address</span></label>
+        <div class="combo">
+          <input type="text" id="address" autocomplete="off" maxlength="160" required role="combobox" aria-autocomplete="list" aria-expanded="false" aria-controls="address-list" aria-describedby="address-help" />
+          <ul id="address-list" role="listbox" hidden></ul>
+        </div>
+        <p class="error" id="address-err" hidden></p>
+        <p class="muted small under" id="address-help"><span data-lang="nl">De game night is er in de eerste plaats voor Smetlede. Daarom vragen we je straat. Begin te typen, bijvoorbeeld "Briel, Lede", en kies je straat. Een huisnummer mag, maar hoeft niet.</span><span data-lang="en">The game night is first of all for Smetlede. That's why we ask for your street. Start typing, for example "Briel, Lede", and pick your street. A house number is up to you.</span></p>
+
         <label class="field" id="people-label"><span data-lang="nl">Met hoeveel kom je?</span><span data-lang="en">How many of you are coming?</span></label>
         <div class="counts" role="group" aria-labelledby="people-label">
           <div class="count">

@@ -814,7 +814,7 @@
   });
   const gnShown = () => {
     const q = $('gn-search').value.trim().toLowerCase();
-    return night.entries.filter((e) => !q || [e.firstName, e.lastName, e.email, e.wishes].some((v) => (v || '').toLowerCase().includes(q)));
+    return night.entries.filter((e) => !q || [e.firstName, e.lastName, e.email, e.address, e.wishes].some((v) => (v || '').toLowerCase().includes(q)));
   };
   function drawGamenight() {
     const all = night.entries;
@@ -842,7 +842,9 @@
       mail.href = `mailto:${encodeURIComponent(e.email).replace(/%40/g, '@')}`;
       const email = el('td');
       email.append(mail);
+      // The street under the name: the night is first of all for Smetlede.
       const name = el('td', '', `${e.firstName} ${e.lastName}`);
+      if (e.address) name.append(el('span', 'street', e.address));
       name.append(el('span', 'tag', e.lang === 'en' ? 'English' : 'Nederlands'));
       const del = el('button', 'btn ghost', 'Delete');
       del.type = 'button';

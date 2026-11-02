@@ -139,8 +139,7 @@
         <form class="gn-night" id="gn-form">
           <h2 class="sub">The night <span class="muted small">as <a href="/inschrijven/" target="_blank" rel="noopener">brieltje.be/inschrijven</a> shows it</span></h2>
           <label class="field" for="gn-place">Place</label>
-          <input type="text" id="gn-place" maxlength="200" placeholder="To be decided" />
-          <div class="gn-when">
+          <input type="text" id="gn-place" maxlength="200" placeholder="To be decided" />          <div class="gn-when">
             <div><label class="field" for="gn-date">Date</label><input type="date" id="gn-date" /></div>
             <div><label class="field" for="gn-from">From</label><input type="time" id="gn-from" /></div>
             <div><label class="field" for="gn-until">Until</label><input type="time" id="gn-until" /></div>
@@ -152,12 +151,12 @@
         <h2 class="sub">Registrations <span class="badge" id="gn-state"></span></h2>
         <div class="stats" id="gn-kpis"></div>
         <div class="toolbar">
-          <input type="text" id="gn-search" placeholder="Search name, email, ideas" />
-          <button class="btn ghost" type="button" id="gn-copy" title="The addresses of everyone shown, to paste in Bcc">Copy addresses</button>
+          <input type="text" id="gn-search" placeholder="Search name, email, street, ideas" />
+          <button class="btn ghost" type="button" id="gn-copy" title="The email addresses of everyone shown, to paste in Bcc">Copy emails</button>
           <button class="btn danger" type="button" id="gn-clear">Delete all</button>
         </div>
         <p class="muted small" id="gn-copied" hidden></p>
-        <div class="tablewrap"><table class="log gn"><thead><tr><th>Signed up</th><th>Name</th><th>Email</th><th>Players</th><th>Spectators</th><th>Ideas or wishes</th><th></th></tr></thead><tbody id="gn-rows"></tbody></table></div>
+        <div class="tablewrap"><table class="log gn"><thead><tr><th>Signed up</th><th>Name and street</th><th>Email</th><th>Players</th><th>Spectators</th><th>Ideas or wishes</th><th></th></tr></thead><tbody id="gn-rows"></tbody></table></div>
         <p class="muted" id="gn-empty" hidden>No registrations yet.</p>
         <p class="muted small">After the night, delete all registrations. The privacy policy promises that within a month.</p>
       </section>

@@ -7,23 +7,23 @@
   const MAX = 10; // players, and spectators
   const T = {
     nl: {
-      lastName: 'Vul je naam in.', firstName: 'Vul je voornaam in.', email: 'Vul een geldig e-mailadres in.', people: 'Tel minstens één speler of toeschouwer.',
+      lastName: 'Vul je naam in.', firstName: 'Vul je voornaam in.', email: 'Vul een geldig e-mailadres in.', address: 'Vul je straat en gemeente in.', people: 'Tel minstens één speler of toeschouwer.',
       age: 'Vink aan dat je 13 jaar of ouder bent, of laat een ouder je inschrijven.',
       busy: 'Even te veel inschrijvingen. Probeer het over een paar minuten opnieuw.', failed: 'Dat lukte niet. Controleer je verbinding en probeer opnieuw.',
       sending: 'Bezig…', copied: 'Gekopieerd', gone: 'Deze inschrijving bestaat niet (meer).', cancelled: 'Je bent uitgeschreven. Je gegevens zijn gewist.',
       sure: 'Zeker? Klik nog eens om je uit te schrijven',
       place: 'Locatie', date: 'Datum', time: 'Tijdstip', tbd: 'Nog te bepalen', from: (t) => `vanaf ${t}`, until: (t) => `tot ${t}`,
-      name_: 'Naam', email_: 'E-mail', people_: 'Met hoeveel', wishes_: 'Ideeën of wensen', sent: 'Ingeschreven op',
+      name_: 'Naam', email_: 'E-mail', address_: 'Adres', people_: 'Met hoeveel', wishes_: 'Ideeën of wensen', sent: 'Ingeschreven op',
       players: (n) => (n === 1 ? '1 speler' : `${n} spelers`), watchers: (n) => (n === 1 ? '1 toeschouwer' : `${n} toeschouwers`), and: 'en',
     },
     en: {
-      lastName: 'Please fill in your last name.', firstName: 'Please fill in your first name.', email: 'Please fill in a valid email address.', people: 'Count at least one player or spectator.',
+      lastName: 'Please fill in your last name.', firstName: 'Please fill in your first name.', email: 'Please fill in a valid email address.', address: 'Please fill in your street and town.', people: 'Count at least one player or spectator.',
       age: "Tick that you're 13 or older, or have a parent sign you up.",
       busy: 'Too many sign-ups right now. Please try again in a few minutes.', failed: "That didn't work. Check your connection and try again.",
       sending: 'Sending…', copied: 'Copied', gone: "This registration doesn't exist (any more).", cancelled: "You're no longer signed up. Your details have been removed.",
       sure: 'Sure? Click again to cancel',
       place: 'Place', date: 'Date', time: 'Time', tbd: 'To be decided', from: (t) => `from ${t}`, until: (t) => `until ${t}`,
-      name_: 'Name', email_: 'Email', people_: 'How many', wishes_: 'Ideas or wishes', sent: 'Signed up on',
+      name_: 'Name', email_: 'Email', address_: 'Address', people_: 'How many', wishes_: 'Ideas or wishes', sent: 'Signed up on',
       players: (n) => (n === 1 ? '1 player' : `${n} players`), watchers: (n) => (n === 1 ? '1 spectator' : `${n} spectators`), and: 'and',
     },
   };
@@ -113,6 +113,7 @@
     };
     row(t('name_'), `${e.firstName} ${e.lastName}`);
     row(t('email_'), e.email);
+    if (e.address) row(t('address_'), e.address);
     row(t('people_'), party(e.players, e.watchers));
     if (e.wishes) row(t('wishes_'), el('div', 'own-text', e.wishes));
     if (e.at) row(t('sent'), new Date(e.at).toLocaleString(lang === 'nl' ? 'nl-BE' : 'en-GB', { dateStyle: 'long', timeStyle: 'short' }));
@@ -175,9 +176,67 @@
     });
   }
 
+  // ---- the street, with suggestions from the Flemish address register (through our server), as on the interest page
+  const input = $('address');
+  const list = $('address-list');
+  let timer = 0;
+  let choice = -1;
+  let asked = '';
+  const close = () => {
+    show(list, false);
+    input.setAttribute('aria-expanded', 'false');
+    input.removeAttribute('aria-activedescendant');
+    choice = -1;
+  };
+  const choose = (i) => {
+    const items = [...list.children];
+    if (!items[i]) return;
+    input.value = items[i].textContent;
+    input.classList.remove('bad');
+    error('address-err');
+    close();
+  };
+  const mark = (i) => {
+    choice = i;
+    [...list.children].forEach((li, k) => li.setAttribute('aria-selected', String(k === i)));
+    input.setAttribute('aria-activedescendant', `addr-${i}`);
+  };
+  input.addEventListener('input', () => {
+    clearTimeout(timer);
+    const q = input.value.trim();
+    if (q.length < 3) return close();
+    timer = setTimeout(async () => {
+      asked = q;
+      const r = await fetch(`/api/address?q=${encodeURIComponent(q)}`).then((x) => x.json()).catch(() => ({ suggestions: [] }));
+      if (asked !== q || !r.suggestions?.length) return close();
+      list.replaceChildren(...r.suggestions.map((s, i) => {
+        const li = el('li', '', s);
+        li.setAttribute('role', 'option');
+        li.id = `addr-${i}`;
+        li.addEventListener('mousedown', (e) => {
+          e.preventDefault();
+          choose(i);
+        });
+        return li;
+      }));
+      show(list);
+      input.setAttribute('aria-expanded', 'true');
+      choice = -1;
+    }, 220);
+  });
+  input.addEventListener('keydown', (e) => {
+    if (list.hidden) return;
+    const n = list.children.length;
+    if (e.key === 'ArrowDown') { e.preventDefault(); mark((choice + 1) % n); }
+    else if (e.key === 'ArrowUp') { e.preventDefault(); mark((choice - 1 + n) % n); }
+    else if (e.key === 'Enter' && choice >= 0) { e.preventDefault(); choose(choice); }
+    else if (e.key === 'Escape') close();
+  });
+  input.addEventListener('blur', () => setTimeout(close, 120));
+
   // ---- checking and sending
   const validEmail = (v) => /^[^\s@]{1,64}@[^\s@]{1,190}\.[^\s@]{2,24}$/.test(v);
-  for (const k of ['last', 'first', 'email']) $(k).addEventListener('input', () => { $(k).classList.remove('bad'); error(`${k}-err`); });
+  for (const k of ['last', 'first', 'email', 'address']) $(k).addEventListener('input', () => { $(k).classList.remove('bad'); error(`${k}-err`); });
   $('age').addEventListener('change', () => error('age-err'));
   $('form').addEventListener('submit', async (e) => {
     e.preventDefault();
@@ -185,10 +244,12 @@
     const lastName = $('last').value.trim();
     const firstName = $('first').value.trim();
     const email = $('email').value.trim();
+    const address = input.value.trim();
     const checks = [
       ['last', !!lastName, 'lastName'],
       ['first', !!firstName, 'firstName'],
       ['email', validEmail(email), 'email'],
+      ['address', address.length >= 3, 'address'],
     ];
     for (const [id, ok, msg] of checks) {
       $(id).classList.toggle('bad', !ok);
@@ -205,7 +266,7 @@
     send.disabled = true;
     send.textContent = t('sending');
     try {
-      const body = { lastName, firstName, email, players: count.players, watchers: count.watchers, wishes: $('wishes').value.trim(), age: true, lang, website: $('website').value };
+      const body = { lastName, firstName, email, address, players: count.players, watchers: count.watchers, wishes: $('wishes').value.trim(), age: true, lang, website: $('website').value };
       const r = await fetch('/api/gamenight', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
       if (r.status === 429) throw new Error('busy');
       if (r.status === 409) {

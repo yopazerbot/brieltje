@@ -190,10 +190,18 @@ table.fb td:last-child { white-space: nowrap; }
 /* The game night: its details as a small form, the registrations as a table like the feedback's. */
 .gn-night { max-width: 640px; }
 .gn-night h2.sub { margin-top: 6px; }
-.gn-when { display: grid; grid-template-columns: 1.4fr 1fr 1fr; gap: 0 12px; }
+.gn-when { display: grid; grid-template-columns: minmax(0, 1.4fr) minmax(0, 1fr) minmax(0, 1fr); gap: 0 12px; }
+.gn-when > div { min-width: 0; }
+/*
+ * The date and the times look like the text fields. Safari on an iPhone draws its own: wider than the
+ * phone when empty, with no height, the value centred (Yoshi's screenshot, 2 Nov 2026). Without its
+ * own look, with no minimum width, a fixed height and the value on the left, they fit.
+ */
 .admin input[type="date"], .admin input[type="time"] {
-  width: 100%; padding: 11px 12px; font: inherit; color: var(--ink); background: var(--field); border: 1px solid var(--line); border-radius: 6px; outline: none; color-scheme: dark;
+  -webkit-appearance: none; appearance: none; display: block; width: 100%; min-width: 0; max-width: 100%; height: 52px; margin: 0;
+  padding: 12px 14px; font: inherit; line-height: 1.5; text-align: left; color: var(--ink); background: var(--field); border: 1px solid var(--line); border-radius: 6px; outline: none; color-scheme: dark;
 }
+.admin input[type="date"]::-webkit-date-and-time-value, .admin input[type="time"]::-webkit-date-and-time-value { margin: 0; text-align: left; }
 .gn-night .actions { margin-top: 12px; }
 .gn-open { margin-top: 14px; }
 #gn-state { vertical-align: middle; margin-left: 6px; background: rgba(105, 240, 174, 0.15); color: var(--good); }
@@ -201,10 +209,11 @@ table.fb td:last-child { white-space: nowrap; }
 table.gn td.num, table.gn th:nth-child(4), table.gn th:nth-child(5) { text-align: right; }
 table.gn td.num { font-weight: 700; color: var(--accent); }
 table.gn td.comment { white-space: pre-wrap; overflow-wrap: anywhere; min-width: 220px; }
+table.gn td .street { display: block; font-size: 14px; color: var(--ink); font-weight: 500; }
 table.gn td .tag { display: block; padding: 0; border: 0; background: none; font-size: 12px; color: var(--muted); }
 table.gn td:last-child { white-space: nowrap; }
 @media (max-width: 640px) {
-  .gn-when { grid-template-columns: 1fr 1fr; }
+  .gn-when { grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); }
   .gn-when > div:first-child { grid-column: 1 / -1; }
   .toolbar #gn-copy, .toolbar #gn-clear { flex: 1 1 0; }
   /* A registration as a card: the name and the time, the address, the two counts side by side with their names, the ideas. */

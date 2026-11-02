@@ -1,6 +1,7 @@
 // The game night page (web/public/inschrijven/, Yoshi, 2 Nov 2026): signing up for the game night
-// with a name, a first name, an email address, how many come to play (each needs a laptop or PC) and
-// how many to watch, and ideas or wishes. The place, the date and the time are the admin's to set on
+// with a name, a first name, an email address, a street (the night is first of all for Smetlede; the
+// page suggests streets through /api/address, server/interest.mjs), how many come to play (each needs
+// a laptop or PC) and how many to watch, and ideas or wishes. The place, the date and the time are the admin's to set on
 // the admin page. Until then the page says they are still to be decided. The admin closes the
 // registrations when the hall is full; the page says so, and that a registration may be turned down
 // or cancelled if more come in than there is room for.
@@ -131,16 +132,19 @@ export class GameNight {
     const lastName = clean(b.lastName, 80);
     const firstName = clean(b.firstName, 80);
     const email = clean(b.email, 200).toLowerCase();
+    // The street (a house number is up to them): the night is first of all for Smetlede (Yoshi, 2 Nov 2026).
+    const address = clean(b.address, 160);
     const players = people(b.players);
     const watchers = people(b.watchers);
     if (!lastName) return this.json(res, 400, { error: 'lastName' });
     if (!firstName) return this.json(res, 400, { error: 'firstName' });
     if (!EMAIL.test(email)) return this.json(res, 400, { error: 'email' });
+    if (address.length < 3) return this.json(res, 400, { error: 'address' });
     if (players === null || watchers === null || players + watchers < 1) return this.json(res, 400, { error: 'people' });
     if (b.age !== true) return this.json(res, 400, { error: 'age' }); // 13 or older (younger: a parent signs up)
     if (!this.signups.hit(this.clientKey(req), 5) || !this.daily.hit('all', 300)) return this.json(res, 429, { error: 'busy' });
     const token = randomBytes(18).toString('base64url');
-    const entry = { lastName, firstName, email, players, watchers, wishes: text(b.wishes), lang: b.lang === 'en' ? 'en' : 'nl', at: new Date().toISOString() };
+    const entry = { lastName, firstName, email, address, players, watchers, wishes: text(b.wishes), lang: b.lang === 'en' ? 'en' : 'nl', at: new Date().toISOString() };
     const id = await this.store.addGamenight(entry, sha256(token));
     console.log(JSON.stringify({ event: 'gamenight_signup', id, players, watchers }));
     this.onChange();
@@ -161,8 +165,8 @@ export class GameNight {
       this.onChange();
       return this.json(res, 200, { ok: true });
     }
-    const { lastName, firstName, email, players, watchers, wishes, at } = row.data;
-    this.json(res, 200, { lastName, firstName, email, players, watchers, wishes, at, event: await this.event() });
+    const { lastName, firstName, email, address, players, watchers, wishes, at } = row.data;
+    this.json(res, 200, { lastName, firstName, email, address: address ?? '', players, watchers, wishes, at, event: await this.event() });
   }
 
   async list(res) {
