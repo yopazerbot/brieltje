@@ -53,7 +53,7 @@ The newest game in Brieltje (November 2026). Zombies come in waves, from every s
 | ![The café beside the church tower](docs/screenshots/cafe.webp) | ![The church of Smetlede](docs/screenshots/church.webp) |
 | The café beside the church tower | The church of Smetlede from its square |
 | ![The school playground](docs/screenshots/school.webp) | ![Cows in a meadow](docs/screenshots/meadow.webp) |
-| The primary school's playground | Cows in the meadows round the house |
+| The primary school's playground, with covered bike stands by the gate | Cows in the meadows round the house |
 | ![A portal in front of the church](docs/screenshots/portal.webp) | ![The map in the menu](docs/screenshots/map.webp) |
 | A portal on the church square | The map, the menu's first tab: Smetlede round the church |
 | ![Molenhoek with its houses and new cycle lanes](docs/screenshots/street.webp) | ![The kitchen and dining corner](docs/screenshots/kitchen.webp) |
