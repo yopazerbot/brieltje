@@ -6,6 +6,8 @@ Smetlede and Briel in 3D: a walkable model of the village of Smetlede (Lede, Bel
 
 ![Smetlede, its church and school, rendered in Blender from the game](web/public/start/town-2560.webp)
 
+For in-person play, [express interest](https://brieltje.be/interested/) or [check game night registration](https://brieltje.be/inschrijven/).
+
 ![The house, rendered in Blender from the game](web/public/start/house-2560.webp)
 
 The whole project was made with AI. Yoshi Parlevliet, a cybersecurity consultant rather than a game developer, directed development and used both [OpenAI Codex](https://openai.com/codex/) and [Claude Code](https://claude.com/claude-code) to build the game, the data tools and the Blender scripts. Every choice and the reason for it is in [DECISIONS.md](DECISIONS.md).

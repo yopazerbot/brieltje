@@ -4,6 +4,8 @@ Last update: 2026-11-03
 
 ## Done
 
+The welcome screen highlights touch controls on phones. The game menus, admin and event forms now share selection and keyboard-focus cues.
+
 On 3 November, the village gained a custom brick dormer house and six outdoor Action weapon pickups, from the bungalow to the end of Molenhoek.
 
 | Item | Notes |

@@ -180,6 +180,8 @@ tools/.venv/bin/python -m unittest discover -s tools -p 'test_*.py'
 
 ## Folder Layout
 
+`web/public/menu-theme.css` holds the panel, focus and selection styles shared by the game menus, admin and event pages.
+
 | Folder | Contents |
 |---|---|
 | `docs\` | Inventory of the source material and the original handover brief |
