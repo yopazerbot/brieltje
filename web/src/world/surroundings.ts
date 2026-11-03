@@ -644,10 +644,12 @@ function centreLamp(kind: 'post' | 'striped' | 'lantern'): THREE.BufferGeometry 
     const top = kind === 'striped' ? 6.5 : 6.0;
     if (kind === 'striped') {
       for (let k = 0, y = 0; y < top; k++, y += 0.5) parts.push(tube(0.085, 0.085, y, Math.min(top, y + 0.5), k % 2 ? '#1c1c1c' : '#e2b320'));
+      // The crossing arm reaches out over the road from the school gate.
+      parts.push(box(4.3, 0.13, 0.12, 2.1, top, 0, '#e2b320'), box(0.66, 0.08, 0.19, 3.88, top - 0.1, 0, '#414348'));
     } else {
       parts.push(tube(0.1, 0.1, 0, 0.6, '#9a9c9c'), tube(0.08, 0.07, 0.6, top, '#a3a5a5'));
+      parts.push(box(0.62, 0.05, 0.05, 0.31, top, 0, '#8d9196'), box(0.56, 0.08, 0.24, 0.62 + 0.24, top - 0.02, 0, '#3b3e42'));
     }
-    parts.push(box(0.62, 0.05, 0.05, 0.31, top, 0, '#8d9196'), box(0.56, 0.08, 0.24, 0.62 + 0.24, top - 0.02, 0, '#3b3e42'));
   }
   return mergeGeometries(parts);
 }

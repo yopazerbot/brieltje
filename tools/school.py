@@ -788,10 +788,10 @@ def shelter(cx, cz, length, r=1.12, spring=0.95):
                 z = cz + ax[1] * s + side[1] * r * math.cos(a)
                 pts.append((x, z, terrain(cx, cz) + spring + r * math.sin(a)))
         face("school_clear", [pts[0], pts[2], pts[3], pts[1]], (0, 0, 1))
-    for s in np.linspace(-length / 2, length / 2, 3):
+    for s in np.linspace(-length / 2, length / 2, 4):
         prev = None
-        for k in range(6):
-            a = math.pi * k / 5
+        for k in range(hs + 1):
+            a = math.pi * k / hs
             x = cx + ax[0] * s + side[0] * (r + 0.01) * math.cos(a)
             z = cz + ax[1] * s + side[1] * (r + 0.01) * math.cos(a)
             p = (x, z, terrain(cx, cz) + spring + (r + 0.01) * math.sin(a))
@@ -826,8 +826,9 @@ for dw in (-0.75, 0.75):
         beam("school_fittings", q + (terrain(*q) - 0.05,), q + (terrain(*q) + 0.44,), 0.06, 0.06, "#e07a22")
     beam("school_fittings", (p[0] - V2[0] * 0.22, p[1] - V2[1] * 0.22, terrain(*p) + 0.42), (p[0] + V2[0] * 0.22, p[1] + V2[1] * 0.22, terrain(*p) + 0.42),
          0.07, 0.05, "#e07a22")
-solid("school_fittings", [(bc[0] + W2[0] * dw + V2[0] * dv, bc[1] + W2[1] * dw + V2[1] * dv, terrain(*bc) + y)
-                          for dw in (-0.95, 0.95) for dv in (-0.24, 0.24) for y in (0.44, 0.5)], "#6d625a")
+for dv in (-0.18, -0.06, 0.06, 0.18):
+    solid("school_fittings", [(bc[0] + W2[0] * dw + V2[0] * v, bc[1] + W2[1] * dw + V2[1] * v, terrain(*bc) + y)
+                              for dw in (-0.95, 0.95) for v in (dv - 0.052, dv + 0.052) for y in (0.44, 0.5)], "#6d625a")
 for x, z in ((474.0, -786.4), (476.4, -786.05), (478.8, -785.7)):
     a, b = (x - W2[0] * 0.5, z - W2[1] * 0.5), (x + W2[0] * 0.5, z + W2[1] * 0.5)
     for p in (a, b):

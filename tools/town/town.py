@@ -1152,9 +1152,14 @@ for fit in FITTINGS:
         for a0, c0, a1, c1 in gl:
             face(("near", "clear"), [B(a0, c0, 0.12), B(a1, c1, 0.12), B(a1, c1, H - 0.1), B(a0, c0, H - 0.1)], None, "#cfdde6")
             solids.append((ring_of(min(a0, a1) - 0.05, max(a0, a1) + 0.05, min(c0, c1) - 0.05, max(c0, c1) + 0.05), H))
+        # Short yellow visibility marks on the back pane, raised just clear of the glass.
+        for i in range(int((L - 0.24) / 0.15)):
+            a = -L / 2 + 0.17 + 0.15 * i
+            c = D / 2 - 0.075
+            face(NT, [B(a, c, 1.05), B(a + 0.055, c, 1.05), B(a + 0.055, c, 1.31), B(a, c, 1.31)], (su, -cu, 0), "#e1ba45")
         for a in (-L / 2 + 0.6, L / 2 - 0.6):  # the bench along the back
             solid(NT, [B(a + da, c, y) for da in (-0.03, 0.03) for c in (D / 2 - 0.4, D / 2 - 0.1) for y in (0.0, 0.45)], fr)
-        solid(NT, [B(a, c, y) for a in (-L / 2 + 0.35, L / 2 - 0.35) for c in (D / 2 - 0.45, D / 2 - 0.1) for y in (0.45, 0.5)], "#e4e6e6")
+        solid(NT, [B(a, c, y) for a in (-L / 2 + 0.35, L / 2 - 0.35) for c in (D / 2 - 0.45, D / 2 - 0.1) for y in (0.45, 0.5)], "#36587d")
     elif k == "bench":
         yaw = fit.get("yaw", 0.0)
         cu, su = math.cos(yaw), math.sin(yaw)
