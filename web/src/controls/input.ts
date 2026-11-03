@@ -201,7 +201,7 @@ export class Input {
     out.moveX += (k('KeyD') || k('ArrowRight') ? 1 : 0) - (k('KeyA') || k('ArrowLeft') ? 1 : 0);
     out.sprint = k('ShiftLeft') || k('ShiftRight');
     out.jumpHeld = k('Space');
-    out.downHeld = k('KeyC'); // not Ctrl: Ctrl with a walking key is the browser's (Ctrl+W closes the tab)
+    out.downHeld = k('ControlLeft') || k('ControlRight') || k('KeyC');
     out.useHeld = k('KeyE');
     out.reloadHeld = k('KeyR');
     out.throwHeld = k('KeyG');
