@@ -3047,6 +3047,7 @@ async function loadModel(url: string): Promise<THREE.Object3D> {
   scene.position.set(x, house.ground + terrain.height(x, z), z);
   scene.userData.landmark = root.userData.landmark;
   scene.userData.replaces = root.userData.replaces;
+  scene.userData.blocks = root.userData.blocks;
   return scene;
 }
 

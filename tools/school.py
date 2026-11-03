@@ -760,9 +760,14 @@ solid("school_brick", [(pier[0] + U1[0] * du + N1[0] * dn, pier[1] + U1[1] * du 
 solid("school_stone", [(pier[0] + U1[0] * du + N1[0] * dn, pier[1] + U1[1] * du + N1[1] * dn, pg + y)
                        for du in (-0.25, 0.25) for dn in (-0.25, 0.25) for y in (2.3, 2.4)])
 # The gate's two leaves, open: swung in against the corridor's end and the long block.
+gate_blocks = []
 for hinge, direction in ((P1(L1 + 0.5, D1 + 0.15), N1), (P2(0.85, -0.12), V2)):
     end = (hinge[0] + direction[0] * 1.42, hinge[1] + direction[1] * 1.42)
     hy = terrain(*hinge) + 0.06
+    normal = (direction[1] * 0.025, -direction[0] * 0.025)
+    ring = [[p[0] + sign * normal[0], p[1] + sign * normal[1]]
+            for p, sign in ((hinge, 1), (end, 1), (end, -1), (hinge, -1))]
+    gate_blocks.append({"m": "steel", "p": [ring], "y0": hy - 0.1, "y1": hy + 1.95 - 0.1})
     for y in (0.0, 1.95):
         beam("school_fittings", hinge + (hy + y,), end + (hy + y,), 0.04, 0.05, black)
     for k in range(13):
@@ -904,6 +909,7 @@ root = bpy.data.objects.new("smetlede_school", None)
 bpy.context.scene.collection.objects.link(root)
 root["origin"] = [ORIGIN[0], ORIGIN[1]]
 root["landmark"] = "school"
+root["blocks"] = gate_blocks
 tris = 0
 objs = []
 for name, bm in BM.items():

@@ -967,6 +967,20 @@ for b in SPEC["houses"]:
             if st and st["face"] == i:
                 top = stepped_top(length, st)
             holes = layout(fs, length) if str(i) in vol.get("faces", {}) else []
+            # A solid strip immediately behind the visible wall, inset around open carport bays.
+            if not vol.get("solid"):
+                def wall_strip(s0, s1, d0, d1):
+                    if s1 > s0:
+                        solids.append(([list(F.p(s, 0, d)[:2]) for s, d in ((s0, d0), (s1, d0), (s1, d1), (s0, d1))], e))
+                cursor = 0
+                for bay in sorted((h for h in holes if h.kind == "c" and h.y0 < 0.5), key=lambda h: h.s0):
+                    back = -fs.get("bay_depth", 2.5)
+                    wall_strip(cursor, bay.s0, -0.12, 0)
+                    wall_strip(bay.s0 - 0.12, bay.s0, back, 0)
+                    wall_strip(bay.s1, bay.s1 + 0.12, back, 0)
+                    wall_strip(bay.s0, bay.s1, back - 0.12, back)
+                    cursor = bay.s1
+                wall_strip(cursor, length, -0.12, 0)
             spec = {"wall": vol.get("wall", b.get("wall", "brick:#a85a42")), "plinth": vol.get("plinth", b.get("plinth"))}
             facade(F, length, top, holes, spec, fs, lowest, rng)
             if st and st["face"] == i:

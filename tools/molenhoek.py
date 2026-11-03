@@ -1170,10 +1170,22 @@ def build_house(key, H):
                 holes = [Hole(s_ - w / 2, s_ + w / 2, y, y + hh, kind, 0.12, {**opt, "f": opt.get("f", frame_c)}) for (s_, w, y, hh, kind, opt) in af]
             facade(f, LL, [(0, low), (LL, low)], holes, alayers)
         flat_roof(ring, base, low, {"coping": "#6d6f72"})
-        if H.get("laser"):
-            SOLIDS.append(prism_xz([tuple(q) for q in ring], base - 0.3, base + low))
-    if H.get("laser"):  # past the edge of the village data there are no blocks to walk into: the model brings its own
-        SOLIDS.append(prism_xz([tuple(q) for q in main], base - 0.3, base + E))
+        if not H.get("inside") or H.get("laser"):
+            SOLIDS.append(prism_xz(ring, min(base, *(terrain(*q) for q in ring)) - 0.3, base + low))
+    if not H.get("inside") or H.get("laser"):
+        # Use the drawn footprint. Indent the front at the porch so the porch remains open.
+        body = list(main)
+        porch = H.get("porch")
+        if porch and not H.get("laser"):
+            start, end = main[fi], main[(fi + 1) % len(main)]
+            direction, length = unit(start, end)
+            normal = outward(main, fi)
+            s0, s1 = porch["s"]
+            if not left_first(start, end, normal):
+                s0, s1 = length - s1, length - s0
+            wall = Frame(start, direction, normal, base)
+            body[fi+1:fi+1] = [wall.xz(s, d) for s, d in ((s0, 0), (s0, -porch["depth"]), (s1, -porch["depth"]), (s1, 0))]
+        SOLIDS.append(prism_xz(body, min(base, *(terrain(*q) for q in main)) - 0.3, base + E))
     garden(key, H, base)
     if H.get("garden"):
         yard(H)
