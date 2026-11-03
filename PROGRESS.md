@@ -4,6 +4,8 @@ Last update: 2026-11-03
 
 ## Done
 
+Planted pike rows now stop players on foot until the rail breaks.
+
 Walking now stops at the modeled village façades and school gate leaves. The Controls tab groups the quick guide and input switch and explains when a controller needs connecting.
 
 The school frontage now has a longer crossing arm, finer bike-shelter ribs, a slatted bench and visibility marks on the bus shelter.

@@ -31,7 +31,7 @@ Open **http://localhost:5173** in Chrome or Edge. Pick a nickname and choose **K
 | Switch weapon | D-pad up / down, L1 | 1 to 4, mouse wheel, Q (A on AZERTY) for the last one |
 | Throw a grenade (Action mode) | R1 | G |
 | Place a claymore (Zombies, once you carry one) | Hold R1 | Hold G |
-| Plant a row of stakes (Zombies, once you carry some) | Hold □ | Hold R |
+| Plant a row of stakes (Zombies, blocks players on foot until it breaks) | Hold □ | Hold R |
 | Set up a turret (Zombies, once you carry one; nothing else to use near you) | Hold △ | Hold E |
 | Help a teammate up (Zombies) | Hold △ for 3 s next to them | Hold E for 3 s next to them |
 | Crouch | Hold ○ | Hold C |
