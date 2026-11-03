@@ -688,6 +688,9 @@ inner_roofs = [gable_roof("x", NAVE_X0 - 1, CROSS_X, NAVE_HW, NAVE_E, RIDGE, OVE
 roof = union(outer_roofs, "roof")
 inner = union(inner_roofs, "roof_in")
 boolean(roof, [inner], "DIFFERENCE")
+# The nave overlaps the tower. Cut its slates as well as the brick so no roof face
+# crosses the maintenance stair; use the same voids as the shared collision data.
+boolean(roof, [box("maintenance_void", *c["box"], "church_slate") for c in ACCESS["cuts"]], "DIFFERENCE")
 add(roof, "church_slate")
 
 

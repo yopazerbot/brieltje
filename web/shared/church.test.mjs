@@ -1,6 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
+import { Box3, Triangle, Vector3 } from 'three';
 import { makeChurch, churchPrisms } from './church.mjs';
 import { makeTerrain } from './terrain.mjs';
 import { loadBounds } from './bounds.mjs';
@@ -19,6 +20,42 @@ const edge = arenaEdge(arenaOf('church'), loadBounds(read('./bounds.json')));
 const nav = makeNav({ prisms: arenaPrisms(churchPrisms(village.prisms, church), edge), height,
   base: house.ground, edge, areas: [church.area], doors: [], shut: true, panes: 0 });
 const seed = (p) => nav.seed(p.x, p.y, p.z);
+
+test('the exported slate roof stays outside the tower stair void', () => {
+  const glb=readFileSync(new URL('../public/models/church.glb',import.meta.url));
+  assert.equal(glb.toString('ascii',0,4),'glTF');
+  const jsonSize=glb.readUInt32LE(12), binStart=28+jsonSize;
+  const model=JSON.parse(glb.toString('utf8',20,20+jsonSize));
+  const node=model.nodes.find(n=>n.name==='church_slate');
+  // The exporter bakes transforms and writes glTF's Y-up coordinates into the vertices.
+  assert.ok(node && !node.matrix && !node.rotation && !node.translation && !node.scale);
+  const voids=data.cuts.map(({box:[x0,n0,y0,x1,n1,y1]})=>
+    new Box3(new Vector3(x0,y0,-n1),new Vector3(x1,y1,-n0)).expandByScalar(-.01));
+  const nave=new Box3(new Vector3(-10.1,12.15,-.2),new Vector3(-9.9,12.5,.2));
+  let checked=0, naveCovered=false;
+  for(const primitive of model.meshes[node.mesh].primitives){
+    const pos=model.accessors[primitive.attributes.POSITION], ids=model.accessors[primitive.indices];
+    assert.equal(pos.componentType,5126);
+    assert.equal(pos.type,'VEC3');
+    const pv=model.bufferViews[pos.bufferView], iv=model.bufferViews[ids.bufferView];
+    const po=binStart+(pv.byteOffset??0)+(pos.byteOffset??0), io=binStart+(iv.byteOffset??0)+(ids.byteOffset??0);
+    const size=ids.componentType===5123?2:ids.componentType===5125?4:0;
+    assert.ok(size,'expected unsigned short or integer indices');
+    const vertex=(i)=>{
+      const index=size===2?glb.readUInt16LE(io+i*size):glb.readUInt32LE(io+i*size);
+      const off=po+index*(pv.byteStride??12);
+      return new Vector3(glb.readFloatLE(off),glb.readFloatLE(off+4),glb.readFloatLE(off+8));
+    };
+    for(let i=0;i<ids.count;i+=3){
+      const triangle=new Triangle(vertex(i),vertex(i+1),vertex(i+2));
+      for(const box of voids)assert.ok(!box.intersectsTriangle(triangle),`slate triangle ${i/3} crosses the stair void`);
+      naveCovered ||= nave.intersectsTriangle(triangle);
+      checked++;
+    }
+  }
+  assert.ok(checked>0);
+  assert.ok(naveCovered,'the exterior nave roof must remain');
+});
 
 test('all 84 steps and firing bays join the outside ground, inside the church arena', () => {
   const entry = seed(church.anchors.entry);
