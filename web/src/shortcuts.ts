@@ -66,6 +66,7 @@ const TABLE = {
   speed: { kbm: say('key.menuPlay'), pad: say('key.speedPad') },
   graphics: { kbm: say('key.menuSettings'), pad: say('key.squareInMenu') },
   chat: { kbm: () => t('key.or', { a: keyName('KeyT'), b: 'Enter' }) },
+  ping: { kbm: place('KeyV') },
   scores: { kbm: () => t('key.hold', { key: 'Tab' }), pad: say('key.holdTouchpad') },
   sound: { kbm: named('Shift+M') },
 } satisfies Record<string, Entry>;
@@ -159,6 +160,7 @@ function padOrKeyGroups(control: 'kbm' | 'pad', action: boolean): Group[] {
         [t('ctl.fps'), t('key.orSetting', { key: k('fps') })],
         [t('ctl.minimap'), kbm ? t('key.orSetting', { key: k('minimap') }) : t('key.menuSettings')],
         [t('ctl.chat'), kbm ? k('chat') : t('key.keyboardOnly')],
+        ...(kbm ? [[t('tactics.ping'), k('ping')]] as [string, string][] : []),
         [t('ctl.scoreboard'), k('scores')],
         [t('ctl.sound'), kbm ? t('key.soundKbm', { key: k('sound') }) : t('key.soundPad')],
       ],

@@ -1324,6 +1324,7 @@ input.speed:disabled { opacity: 0.5; cursor: not-allowed; }
 .tactical-markers span { position: absolute; transform: translate(-50%, -50%); color: #d0f4ff; background: #12222dda; border-radius: 6px; padding: 4px 7px; font-size: 13px; max-width: 180px; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
 .team-ping { position: fixed; top: 210px; right: 24px; z-index: 35; padding: 10px 14px; min-height: 44px; border: 1px solid #7fbacb; border-radius: 9px; background: #182c39e8; color: #e7f8ff; font: inherit; cursor: pointer; }
 .team-ping:focus-visible { outline: 2px solid var(--lamp); outline-offset: 2px; }
+body:not(.touch) .team-ping { display: none; }
 .team-ping[hidden], .placement-guide[hidden], .tactical-markers[hidden] { display: none; }
 #health.taking-hit { outline: 2px solid #ffad91; outline-offset: 5px; border-radius: 5px; }
 #modebar.prepare { border: 1px solid #83cdb3; background: #132d28ed; }
