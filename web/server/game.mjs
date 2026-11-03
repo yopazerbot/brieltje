@@ -33,7 +33,7 @@ import { CAR_REACH, PORTALS, portalNear, REACH } from '../shared/portals.mjs';
 import { noShoot } from '../shared/zones.mjs';
 import { boxesOverlap, boxPoints, clearOfPortals, makeIndoors, makeSolids } from '../shared/parking.mjs';
 import { bruteEntry, carFields, horseFields, playerFields, PROTO, TICK_MS } from '../shared/wire.mjs';
-import { houseAreas, makeNav } from '../shared/zombies.mjs';
+import { houseAreas, makeNav, MAX_ADMIN_WAVE } from '../shared/zombies.mjs';
 import { arenaEdge, arenaHome, arenaPrisms, ARENAS, portalOf } from '../shared/arenas.mjs';
 import { churchPrisms, makeChurch } from '../shared/church.mjs';
 
@@ -803,6 +803,11 @@ export class Game {
     } else if (m.t === 'mode' && player.role === 'admin' && typeof m.kind === 'string') {
       // `place`: where Zombies is played (shared/arenas.mjs; an unknown one plays at home).
       this.modes.start(m.kind, name, typeof m.place === 'string' ? m.place.slice(0, 30) : 'house');
+    } else if (m.t === 'zwave' && player.role === 'admin') {
+      const zombies = this.modes.zombies;
+      if (!zombies || now < (player.nextWave || 0) || !Number.isInteger(m.wave) || m.wave < 1 || m.wave > MAX_ADMIN_WAVE) return;
+      player.nextWave = now + 1000;
+      zombies.selectWave(m.wave, name, now);
     } else if (m.t === 'tag') {
       this.modes.tag(name, m.target);
     } else if (m.t === 'coin') {

@@ -441,6 +441,14 @@
                     <button class="tool" type="button" data-game="zombies"><b data-i18n="game.zombies">Zombies</b><span data-i18n="game.zombiesSub">Everyone together against waves of zombies</span></button>
                     <button class="tool" type="button" data-game="free"><b data-i18n="game.stop">Stop the game</b><span data-i18n="game.stopSub">Back to playing freely</span></button>
                   </div>
+                  <form id="zombies-wave-admin" class="setting hidden">
+                    <label for="zombies-wave-number" data-i18n="z.waveChoose">Choose a wave</label>
+                    <div class="mp-row">
+                      <input id="zombies-wave-number" class="wave-number" type="number" min="1" max="9999" step="1" required value="1" inputmode="numeric" aria-describedby="zombies-wave-note" />
+                      <button class="mini go" type="submit" data-i18n="z.waveSwitch">Switch now</button>
+                    </div>
+                    <p id="zombies-wave-note" class="note" data-i18n="z.waveNote">Replaces the zombies immediately and brings downed teammates back. Gear stays. Custom runs do not set best-wave records.</p>
+                  </form>
                   <!-- Stopping is asked again here, in the page (src/main.ts). -->
                   <div id="stop-confirm" class="setting hidden">
                     <p class="note" data-i18n="game.stopAsk">Stop the game for everyone?</p>

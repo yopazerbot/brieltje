@@ -30,6 +30,8 @@ export interface ZombiesView {
   downs?: Record<string, number>;
   best: { wave: number; names: string[]; at: string } | null;
   record: boolean;
+  /** The admin selected a wave; this run cannot replace the normal record. */
+  custom?: boolean;
   /** Where it is played (shared/arenas.mjs): home, or a portal in Smetlede */
   place?: string;
   /**
@@ -131,7 +133,7 @@ export class Games {
     this.view = view ?? { kind: 'free' };
     // Zombies: a wave that just began gets its banner.
     const z = this.view.zombies;
-    if (this.view.kind === 'zombies' && this.view.phase === 'wave' && z && (before.kind !== 'zombies' || (before.zombies?.wave ?? 0) < z.wave)) this.onWave(z.wave, z.left, z.bigs ?? (z.big ? 1 : 0));
+    if (this.view.kind === 'zombies' && this.view.phase === 'wave' && z && (before.kind !== 'zombies' || (before.zombies?.wave ?? 0) !== z.wave)) this.onWave(z.wave, z.left, z.bigs ?? (z.big ? 1 : 0));
     this.ends = performance.now() + (this.view.ms ?? 0);
     this.setOffline(false); // the server's word on the game, fresh
     const keep = new Set((this.view.coins ?? []).map((c) => c.i));
@@ -342,6 +344,7 @@ export class Games {
       const best = Object.entries(counts).sort((a, b) => b[1] - a[1])[0];
       text += t('games.coins', { n: v.coins?.length ?? 0, mine: counts[this.me] ?? 0 }) + (best && best[1] > 0 ? t('games.best', { name: best[0], n: best[1] }) : '');
     }
+    if (v.kind === 'zombies' && v.zombies?.custom) text += ` · ${t('z.custom')}`;
     if (this.bar.textContent !== text) this.bar.textContent = text;
   }
 

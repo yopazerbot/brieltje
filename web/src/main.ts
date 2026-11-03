@@ -79,6 +79,7 @@ import { route, streetAt } from './ui/route';
 import { HomeLife } from './world/homeLife';
 import { Smoke } from './world/smoke';
 import { LOOT_LABELS, Tactics } from './ui/tactics';
+import { ZombieWaveControl } from './ui/zombieWave';
 import { HomeStreet, withoutModelled } from './world/homeStreet';
 import { buildRoadDetail, roadPaint, withRoadDetail } from './world/roadDetail';
 import { RoadLife } from './world/roadLife';
@@ -1054,6 +1055,9 @@ games.onWave = (n, count, bigs) => hud.announce(t('z.banner', { n }), t(bigs > 1
 // The admin's games: a game starts at once; stopping one is asked again in the page, since a slip of the
 // finger would end it for everyone.
 const stopAsk = $('stop-confirm');
+const zombieWaveControl = new ZombieWaveControl((wave) => {
+  if (net.connected && me?.role === 'admin') net.send({ t: 'zwave', wave });
+});
 document.querySelectorAll<HTMLButtonElement>('[data-game]').forEach((b) =>
   b.addEventListener('click', () => {
     stopAsk.classList.toggle('hidden', b.dataset.game !== 'free' || !games.active);
@@ -1855,6 +1859,7 @@ net.onStatus = (text) => {
   netText = text;
   netStatus.textContent = text();
   games.setOffline(!net.connected && !!me); // the game's bar greys and stops while the connection is down
+  zombieWaveControl.update(games.view, net.connected && me?.role === 'admin');
 };
 /** The menu opens at the team picker the first time after the teams game starts (see openMenu). */
 let teamsMenu = false;
@@ -1866,6 +1871,7 @@ let teamsMenu = false;
 function followGame(view: ModeView): void {
   const before = games.view;
   games.set(view);
+  zombieWaveControl.update(view, net.connected && me?.role === 'admin');
   for (const name of online.keys()) avatars.setRole(name, games.roleOf(name));
   const teams = games.view.kind === 'teams' && games.view.phase === 'playing';
   combat.setTeams(teams ? { goal: games.view.goal ?? 25, score: games.view.score ?? { house: 0, bungalow: 0 } } : null);

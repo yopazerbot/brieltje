@@ -72,6 +72,7 @@ export class ZombieGame {
     this.downs = Object.create(null);
     this.best = game.zombieBests[arena.id] ?? null;
     this.record = false;
+    this.custom = false; // Chosen waves never replace the normal best-wave record.
     /** Helper's name -> who they help up, since when (ms), and when the helper was last hurt then */
     this.helping = new Map();
     /** Player name -> where they went down ({ x, y, z }): they stay there (their page's moves are ignored) and get up there */
@@ -115,7 +116,7 @@ export class ZombieGame {
     for (const n of this.players) if (here(n) || h.beaten[n]) beaten[n] = h.beaten[n] ?? 0;
     return {
       wave: h.wave, left: h.left, big: h.bigWave, bigs: bigOf(h.wave), fighters, standing, beaten, ms: this.ms(now),
-      down: [...this.down].filter(here), downs: { ...this.downs }, best: this.best, record: this.record, place: this.arena.id,
+      down: [...this.down].filter(here), downs: { ...this.downs }, best: this.best, record: this.record, custom: this.custom, place: this.arena.id,
       ...this.loot.view(),
     };
   }
@@ -128,6 +129,29 @@ export class ZombieGame {
     s.until = this.horde.until;
   }
 
+  /** The admin replaces the wave immediately; equipment stays and downed teammates return. */
+  selectWave(wave, by, now) {
+    const events = this.horde.selectWave(now, wave, this.roster(now).filter((p) => p.fighter).length);
+    if (!events) return false;
+    this.custom = true;
+    this.revive();
+    for (const e of events) {
+      if (e.type === 'gone') this.game.broadcast({ t: 'zgone', ids: e.ids });
+      else if (e.type === 'wave') this.waveStarted(e);
+    }
+    this.sync();
+    this.modes.say(`${by} selected wave ${wave}. This custom run does not set records.`, 'zWaveSelected', { name: by, n: wave });
+    this.modes.send();
+    return true;
+  }
+
+  waveStarted(e) {
+    this.loot.wave();
+    const code = e.bigs > 1 ? 'zWaveBigs' : e.big ? 'zWaveBig' : 'zWave';
+    const more = e.bigs > 1 ? ' Big ones are with them!' : e.big ? ' A big one is with them!' : '';
+    this.modes.say(`Wave ${e.wave}: ${e.count} zombies are coming!${more}`, code, { n: e.wave, count: e.count });
+  }
+
   /** Every tick (`dt` in ms): the horde's step, and what came of it. */
   tick(now, dt) {
     const g = this.game;
@@ -137,11 +161,8 @@ export class ZombieGame {
     this.sync();
     for (const e of events) {
       if (e.type === 'wave') {
-        this.loot.wave();
         // Everyone who fights is counted for the wave's size; the line says how many come.
-        const code = e.bigs > 1 ? 'zWaveBigs' : e.big ? 'zWaveBig' : 'zWave';
-        const more = e.bigs > 1 ? ' Big ones are with them!' : e.big ? ' A big one is with them!' : '';
-        this.modes.say(`Wave ${e.wave}: ${e.count} zombies are coming!${more}`, code, { n: e.wave, count: e.count });
+        this.waveStarted(e);
         changed = true;
       } else if (e.type === 'swipe') {
         const p = g.players.get(e.name);
@@ -282,12 +303,12 @@ export class ZombieGame {
     this.fell.clear();
     const wave = this.horde.wave;
     const names = [...this.players].filter((n) => this.game.players.has(n) || this.horde.beaten[n]);
-    if (!this.best || wave > this.best.wave) {
+    if (!this.custom && (!this.best || wave > this.best.wave)) {
       this.best = { wave, names: names.slice(0, 16), at: new Date(now).toISOString().slice(0, 10) };
       this.record = true;
       this.game.saveZombieBest(this.arena.id, this.best);
     }
-    this.modes.finish(`The zombies caught everyone at wave ${wave}.${this.record ? " That's a new best ever!" : ''}`, this.record ? 'zOverBest' : 'zOver', { n: wave, best: this.best.wave });
+    this.modes.finish(`The zombies caught everyone at wave ${wave}.${this.record ? " That's a new best ever!" : ''}`, this.record ? 'zOverBest' : 'zOver', { n: wave, best: this.best?.wave ?? 0 });
   }
 
   /**

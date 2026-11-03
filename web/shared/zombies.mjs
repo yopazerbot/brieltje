@@ -22,6 +22,8 @@ export const VARIANTS = ['shirt', 'hoodie', 'overall', 'farmer'];
 export const BIG = 4;
 /** The runners are always the teen in the hoodie (so you know one from afar); the others walk. */
 export const RUNNER = 1;
+/** A chosen wave stays within practical integer sizes; normal progression is unchanged. */
+export const MAX_ADMIN_WAVE = 9999;
 const WALKERS = [0, 2, 3];
 
 export const ZOMBIE = {
@@ -1133,6 +1135,23 @@ export class Horde {
   start(now) {
     this.phase = 'break';
     this.until = now + ZOMBIE.firstBreak;
+  }
+
+  /** Replace the current horde at a chosen difficulty, retaining scores and unique zombie IDs. */
+  selectWave(now, wave, players) {
+    if (!Number.isInteger(wave) || wave < 1 || wave > MAX_ADMIN_WAVE || this.phase === 'over') return null;
+    const ids = [...this.zombies.keys()];
+    this.zombies.clear();
+    this.seeds.clear();
+    this.perch = Object.create(null);
+    this.warned = Object.create(null);
+    this.shielded = Object.create(null);
+    this.starved = 0;
+    this.until = 0;
+    this.wave = wave - 1;
+    const events = ids.length ? [{ type: 'gone', ids }] : [];
+    this.begin(now, players, events);
+    return events;
   }
 
   /** Zombies still to beat in this wave: those up and those still to come. */

@@ -6,6 +6,7 @@ export const VARIANTS: string[];
 export const BIG: number;
 /** The runners' kind (the teen in the hoodie) */
 export const RUNNER: number;
+export const MAX_ADMIN_WAVE: number;
 export const ZOMBIE: {
   cell: number;
   fine: number;
@@ -205,6 +206,7 @@ export class Horde {
   readonly left: number;
   readonly bigWave: boolean;
   start(now: number): void;
+  selectWave(now: number, wave: number, players: number): HordeEvent[] | null;
   tick(now: number, dt: number, players: HordePlayer[]): HordeEvent[];
   hit(id: number, amount: number, by: string, now: number, flinch?: boolean): 'down' | 'hurt' | null;
   blast(x: number, z: number, radius: number, amount: number, by: string, now: number, y?: number | null): [number, 'down' | 'hurt'][];
