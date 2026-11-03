@@ -78,6 +78,7 @@ import { typing } from './keys';
 import { route, streetAt } from './ui/route';
 import { HomeLife } from './world/homeLife';
 import { Smoke } from './world/smoke';
+import { LOOT_LABELS, Tactics } from './ui/tactics';
 import { HomeStreet, withoutModelled } from './world/homeStreet';
 import { buildRoadDetail, roadPaint, withRoadDetail } from './world/roadDetail';
 import { RoadLife } from './world/roadLife';
@@ -466,6 +467,9 @@ scene.add(pickups.group);
 // The Zombies game's rewards lying and the claymores down (shared/loot.mjs: the server's together, this page's alone).
 const rewards = new Rewards((x, z, y) => world.groundAt(x, z, y + 0.4, 0).y,
   (id, ring, bottom, top) => world.setMoving(`stakes-${id}`, ring, bottom, top, true));
+const tactics = new Tactics(scene, () => {
+  if (net.connected && !menu.open && combat.alive) net.send({ t: 'rally' });
+});
 rewards.onBurst = (points) => {
   for (const p of points) effects.splinters(p);
 };
@@ -1112,7 +1116,11 @@ let holdT = 0;
 let stakeT = 0;
 let useT = 0;
 let rewardWait = 0;
-const HOLD_S = 0.45;
+let placementRequest = 0;
+let placementSent = 0;
+let placementResult: { id: number; ok: boolean; why?: string; a?: number; b?: number } | null = null;
+let placementPoint: { x: number; z: number; kind: string; yaw: number } | null = null;
+const HOLD_S = 0.8;
 function applyKit(k: Kit, fresh?: string): void {
   kit = { ammo: [...k.ammo], scope: k.scope, claymores: k.claymores, stakes: k.stakes ?? 0, turrets: k.turrets ?? 0 };
   weapon.setKit(kit.ammo, kit.scope, fresh);
@@ -1221,7 +1229,10 @@ clowns.onLand = (at, what) => {
   if (net.connected || !combat.alive || driving || riding || !weapon.enabled || Math.abs(player.feet - at.y) > 2.5) return;
   const f = KINDS.strongman.fight;
   const hp = what === 'stomp' ? hurtBy(Math.hypot(player.x - at.x, player.z - at.z), f.stompRadius, f.stompDamage) : hurtBy(Math.hypot(player.x - at.x, player.z - at.z), f.rockRadius, f.rockDamage);
-  if (hp > 0) soloHurt(hp);
+  if (hp > 0) {
+    combat.hitFrom(Math.atan2(-(at.x - player.x), -(at.z - player.z)) - player.yaw);
+    soloHurt(hp);
+  }
 };
 /** Alone, a strongman hurt you: your health goes down here; at nothing you're out for 3 seconds. */
 function soloHurt(amount: number): void {
@@ -1368,7 +1379,8 @@ function soloView(force = false): void {
   const mine = h.beaten[SOLO_ME] ?? 0;
   const name = menu.nickname.trim() || youName(); // alone: the name typed on the start screen
   const fighter = weapon.enabled && !driving && !riding;
-  const key = [h.phase, h.wave, h.left, combat.alive, fighter, mine, lang()].join();
+  const key = [h.phase, h.wave, h.left, combat.alive, fighter, mine, lang(),
+    [...solo.loot.items.keys()].join('-'), solo.loot.mines.size, solo.loot.rows.size, solo.loot.turrets.size].join();
   if (!force && key === solo.key) return;
   solo.key = key;
   const ms = over ? Math.max(0, solo.endAt - now) : h.phase === 'break' ? Math.max(0, h.until - now) : 0;
@@ -1376,6 +1388,7 @@ function soloView(force = false): void {
     kind: 'zombies', phase: h.phase === 'over' ? 'done' : h.phase, ms, title: 'Zombies',
     result: `The zombies caught everyone at wave ${h.wave}.`, resultCode: solo.record ? 'zOverBest' : 'zOver', resultArgs: { n: h.wave },
     zombies: {
+      ...solo.loot.view(),
       wave: h.wave, left: h.left, big: h.bigWave, bigs: bigOf(h.wave), fighters: fighter ? 1 : 0, standing: fighter && combat.alive ? 1 : 0, beaten: { [name]: mine }, ms,
       down: [], best: solo.best ? { wave: solo.best, names: [name], at: '' } : null, record: solo.record, place: solo.arena.id,
     },
@@ -2042,7 +2055,14 @@ net.onMessage = (m: ServerMsg) => {
     case 'hurt':
       combat.hurt(m.hp);
       rumble(0.8, 0.5, 180);
-      if (hitAngle(m.by) !== null) combat.hitFrom(hitAngle(m.by)!);
+      if (m.from) combat.hitFrom(Math.atan2(-(m.from.x - player.x), -(m.from.z - player.z)) - player.yaw);
+      else if (hitAngle(m.by) !== null) combat.hitFrom(hitAngle(m.by)!);
+      break;
+    case 'rally':
+      tactics.called(m.name, m.x, m.y, m.z);
+      break;
+    case 'placement':
+      if (m.id === placementRequest) placementResult = m;
       break;
     case 'kill':
       // A zombie's in plain words ("A zombie caught Robin"); a player's as "killer weapon victim".
@@ -2597,7 +2617,7 @@ renderer.setAnimationLoop((now: number) => {
       }
       // Accuracy: steady when crouching, worse when running or in the air.
       const moving = Math.hypot(frame.moveX, frame.moveY);
-      weapon.spreadMul = player.crouching ? 0.6 : player.flying || player.feet > player.ground.y + 0.05 ? 2 : frame.sprint && moving ? 1.8 : moving ? 1.25 : 1;
+      weapon.spreadMul = player.crouching ? 0.6 : player.flying || player.feet > player.ground.y + 0.05 ? 2 : frame.sprint && moving ? 1.8 : moving ? (weapon.current === 'rifle' ? 1.1 : weapon.current === 'sniper' ? 1.8 : 1.25) : 1;
     }
     // The school grounds: no shooting or throwing (shared/zones.mjs; the server refuses too). Said on
     // the way in and whenever you try.
@@ -2773,6 +2793,39 @@ renderer.setAnimationLoop((now: number) => {
   grenades.update(dt);
   pickups.update(dt, !net.connected);
   rewards.update(dt);
+  const placing = !menu.open && combat.alive && games.zombies
+    ? holdT > 0 ? 'claymore' : stakeT > 0 ? 'stakes' : useT > 0 ? 'turret' : null
+    : null;
+  const placeAt = placing ? spotAhead(placing === 'stakes' ? 1.3 : placing === 'turret' ? 1 : .9) : null;
+  let placeOK = !!placeAt;
+  if (placing && placeAt) {
+    if (solo) {
+      placementResult = { id: 0, ...solo.loot.preview(placing, SOLO_ME, { x: player.x, y: player.feet, z: player.z }, { ...placeAt, yaw: player.yaw }, performance.now()) };
+    } else if (net.connected) {
+      const changed = !placementPoint || placementPoint.kind !== placing || Math.hypot(placeAt.x - placementPoint.x, placeAt.z - placementPoint.z) > .08 || Math.abs(player.yaw - placementPoint.yaw) > .08;
+      if (changed) placementResult = null;
+      if (performance.now() - placementSent > 180) {
+        placementPoint = { ...placeAt, kind: placing, yaw: player.yaw };
+        placementSent = performance.now();
+        net.send({ t: 'placement', id: ++placementRequest, kind: placing, ...placeAt, yaw: player.yaw });
+      }
+    }
+    placeOK = placeOK && !!placementResult?.ok;
+  } else {
+    placementResult = null;
+    placementPoint = null;
+  }
+  tactics.placement(placing, placeAt, player.yaw, placeOK, placementResult?.why,
+    placementResult?.a !== undefined && placementResult?.b !== undefined ? [placementResult.a, placementResult.b] : undefined);
+  const cooperative = games.zombies || games.view.kind === 'teams';
+  const teammates = cooperative && !games.hideOthers ? avatars.marks().filter((p) => games.zombies || games.friend(p.name))
+    .map((p) => ({ ...p, y: avatars.position(p.name)?.y ?? player.feet })) : [];
+  if (games.zombies && games.view.phase === 'break') {
+    for (const [, kind, x, y, z] of games.view.zombies?.items ?? []) {
+      if (Math.hypot(x - player.x, z - player.z) < 45) teammates.push({ name: kind === 'claymore' ? mineName() : t(LOOT_LABELS[kind]), x, y: y - 1.2, z, color: '' });
+    }
+  }
+  tactics.update(camera, !menu.open && combat.alive && cooperative, teammates, net.connected);
   cats.update(dt);
   life.update(dt, camera.position);
   villageSmoke?.follow(dt, camera.position, !phone && quality !== 'low');

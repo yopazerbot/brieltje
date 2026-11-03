@@ -145,7 +145,7 @@ export class ZombieGame {
         changed = true;
       } else if (e.type === 'swipe') {
         const p = g.players.get(e.name);
-        if (p) g.zombieHurt(e.name, p, e.damage, this.horde.zombies.get(e.id)?.kind === BIG, now);
+        if (p) g.zombieHurt(e.name, p, e.damage, this.horde.zombies.get(e.id)?.kind === BIG, now, this.horde.zombies.get(e.id));
       } else if (e.type === 'door') {
         g.zombieDoor(e.id, e.dir);
       } else if (e.type === 'runners') {

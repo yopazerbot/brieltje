@@ -127,6 +127,7 @@ export class Loot {
   place(name: string, p: { x: number; y: number; z: number }, at: At, now: number): { mine?: Mine; why?: 'none' | 'max' | 'spot' };
   spot(p: { x: number; y: number; z: number }, at: At): (At & { node: number }) | null;
   placeStakes(name: string, p: { x: number; y: number; z: number }, at: At): { row?: Row; why?: 'none' | 'max' | 'spot' };
+  preview(kind: 'claymore' | 'stakes' | 'turret', name: string, p: { x: number; y: number; z: number }, at: At, now: number): { ok: boolean; why?: 'none' | 'max' | 'all' | 'spot'; a?: number; b?: number };
   placeTurret(name: string, p: { x: number; y: number; z: number }, at: At, now: number): { turret?: Turret; why?: 'none' | 'max' | 'all' | 'spot' };
   sees(t: Turret, q: Zombie): number;
   tick(now: number, zombies: Iterable<Zombie>): { gone: number[]; booms: { mine: Mine; ids: number[] }[]; broke: Row[]; worn: boolean; shots: { turret: Turret; id: number }[]; spent: Turret[] };

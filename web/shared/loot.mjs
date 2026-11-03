@@ -122,6 +122,19 @@ export class Loot {
     return k;
   }
 
+  /** Check placement with the same rules on a disposable copy of the inventories and placed objects. */
+  preview(kind, name, player, at, now) {
+    const probe = new Loot(this.nav, this.rand);
+    const kit = this.kits.get(name) ?? { ammo: [], scope: false, claymores: 0, stakes: 0, turrets: 0 };
+    probe.kits.set(name, { ...kit, ammo: [...kit.ammo] });
+    probe.mines = new Map(this.mines);
+    probe.rows = new Map(this.rows);
+    probe.turrets = new Map(this.turrets);
+    const result = kind === 'stakes' ? probe.placeStakes(name, player, at)
+      : kind === 'turret' ? probe.placeTurret(name, player, at, now) : probe.place(name, player, at, now);
+    return { ok: !result.why, why: result.why, a: result.row?.a, b: result.row?.b };
+  }
+
   /** A new wave began. */
   wave() {
     this.dropped = false;
@@ -380,6 +393,15 @@ export class Loot {
         q.slow = big ? LOOT.bigSlow : LOOT.slow;
         q.slowUntil = now + LOOT.slowMs;
         if (!was.has(q.id)) r.wear += big ? LOOT.bigWear : 1;
+        // A big zombie pounds the rail; the extra wear lands with its animation.
+        if (big && q.act === 'walk' && now >= q.next) {
+          Object.assign(q, { act: 'attack', actAt: now, until: now + ZOMBIE.bigAttackMs, next: now + ZOMBIE.bigEvery, struck: true, speed: 0 });
+          q.barricadeAt = now + ZOMBIE.bigImpact;
+        }
+        if (big && q.barricadeAt && now >= q.barricadeAt) {
+          r.wear += LOOT.bigWear;
+          q.barricadeAt = 0;
+        }
       }
       if (r.wear >= LOOT.hold) {
         this.rows.delete(r.id);

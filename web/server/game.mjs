@@ -443,7 +443,7 @@ export class Game {
       if (!p.alive || !p.state?.armed || this.inCar(name) || now < p.protectedUntil) continue;
       const s = p.state;
       if (Math.abs(s.y - at.y) > 2.5) continue;
-      this.npcDamage(name, p, hurtBy(Math.hypot(s.x - at.x, s.z - at.z), radius, damage), now);
+      this.npcDamage(name, p, hurtBy(Math.hypot(s.x - at.x, s.z - at.z), radius, damage), now, 'a strongman', at);
     }
   }
 
@@ -456,11 +456,11 @@ export class Game {
   }
 
   /** Health taken by a strongman (or a zombie, `by`): like damage(), but nobody scores the kill. */
-  npcDamage(targetName, target, amount, now, by = 'a strongman') {
+  npcDamage(targetName, target, amount, now, by = 'a strongman', from) {
     if (!target.alive || amount <= 0 || this.calm(target)) return;
     target.hp = Math.max(0, target.hp - amount);
     target.hurtAt = now; // a teammate helping someone up lets go when hit (server/zombies.mjs help)
-    if (target.hp > 0) return this.send(target.ws, { t: 'hurt', hp: target.hp, by });
+    if (target.hp > 0) return this.send(target.ws, { t: 'hurt', hp: target.hp, by, ...(from ? { from: { x: from.x, z: from.z } } : {}) });
     target.alive = false;
     // In the Zombies game whoever goes down waits for the end of the wave (server/zombies.mjs revive).
     const zombies = this.modes.zombies;
@@ -476,9 +476,9 @@ export class Game {
   }
 
   /** A zombie's swipe (or a big one's pound) landed on a player who fights, unless they're just back. */
-  zombieHurt(name, p, amount, big, now) {
+  zombieHurt(name, p, amount, big, now, from) {
     if (!p.alive || !p.state?.armed || this.inCar(name) || now < p.protectedUntil) return;
-    this.npcDamage(name, p, amount, now, big ? 'a big zombie' : 'a zombie');
+    this.npcDamage(name, p, amount, now, big ? 'a big zombie' : 'a zombie', from);
   }
 
   /** A weapon's numbers (shared/weapons.json), or null for a name that isn't one. */
@@ -633,6 +633,16 @@ export class Game {
         this.horseAt[horse.i] = player.stamp;
       }
       if (player.state.armed !== wasArmed) this.broadcast({ t: 'scores', list: this.scoreList() });
+    } else if (m.t === 'rally') {
+      const state = player.state;
+      if (!player.alive || !state?.armed || now - (player.lastRally ?? 0) < 3000) return;
+      if (!['zombies', 'teams'].includes(this.modes.state.kind) || this.modes.state.phase === 'done') return;
+      player.lastRally = now;
+      for (const [who, other] of this.players) {
+        if (!other.state?.armed) continue;
+        if (!this.modes.friends(name, who)) continue;
+        this.send(other.ws, { t: 'rally', name, x: state.x, y: state.y, z: state.z });
+      }
     } else if (m.t === 'pong') {
       // The answer to the server's ping (see pings): only to the one asked, once.
       if (!player.pingN || m.n !== player.pingN) return;
@@ -693,6 +703,14 @@ export class Game {
     } else if (m.t === 'turret') {
       // Setting up a turret (server/zombies.mjs turret: carried, on a floor near the player; it aims and shoots on the server).
       this.modes.zombies?.turret(name, player, m, now);
+    } else if (m.t === 'placement') {
+      const game = this.modes.zombies;
+      if (!game || !player.alive || !player.state?.armed || this.inCar(name) || this.calm(player) || now - (player.lastPreview ?? 0) < 150) return;
+      if (!['claymore', 'stakes', 'turret'].includes(m.kind) || !Number.isSafeInteger(m.id) || m.id < 0 || m.id > 1000000000) return;
+      if (![m.x, m.y, m.z, m.yaw].every((v) => typeof v === 'number' && Number.isFinite(v))) return;
+      player.lastPreview = now;
+      const result = game.loot.preview(m.kind, name, player.state, m, now);
+      this.send(player.ws, { t: 'placement', id: m.id, ...result });
     } else if (m.t === 'revive') {
       // Helping a downed teammate up, or letting go (server/zombies.mjs help: the time on the server's clock).
       this.modes.zombies?.help(name, player, m, now);

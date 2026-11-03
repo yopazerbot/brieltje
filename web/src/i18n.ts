@@ -22,6 +22,14 @@
 export type Lang = 'en' | 'nl';
 
 const en = {
+  'tactics.place': '{item} · Hold to place',
+  'tactics.blocked': '{item} · Move to clear, level ground',
+  'tactics.limit': '{item} · Placement limit reached',
+  'tactics.empty': '{item} · You have none left',
+  'tactics.ping': 'Come here',
+  'tactics.sent': 'Ping sent',
+  'tactics.call': '{name} calls you',
+  'tactics.prepare': 'Reload and prepare · {n} rewards on the map',
   // ---- The page, the HUD's fixed parts
   'page.title': 'Brieltje: Smetlede and Briel in 3D',
   'brand.wip': 'Work in progress',
@@ -753,6 +761,14 @@ const en = {
 export type Key = keyof typeof en;
 
 const nl = {
+  'tactics.place': '{item} · Houd ingedrukt om te plaatsen',
+  'tactics.blocked': '{item} · Zoek een vrij, vlak plekje',
+  'tactics.limit': '{item} · Je hebt er al genoeg geplaatst',
+  'tactics.empty': '{item} · Je hebt er geen meer',
+  'tactics.ping': 'Kom hier',
+  'tactics.sent': 'Signaal verstuurd',
+  'tactics.call': '{name} roept je',
+  'tactics.prepare': 'Herlaad en bereid je voor · {n} beloningen op de kaart',
   // ---- The page, the HUD's fixed parts
   'page.title': 'Brieltje: Smetlede en Briel in 3D',
   'brand.wip': 'In aanbouw',

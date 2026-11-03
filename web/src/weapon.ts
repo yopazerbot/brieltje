@@ -821,7 +821,9 @@ export class Weapon {
     }
 
     // Spread: the sniper rifle is only accurate through the scope; aiming steadies the others.
-    let spread = this.current === 'sniper' ? (this.aim > 0.85 ? 0 : spec.hipSpread ?? 0.09) : spec.spread * (spec.pellets > 1 ? 1 : 1 - 0.6 * this.aim);
+    let spread = this.current === 'sniper'
+      ? (this.aim > 0.85 ? .015 * Math.max(0, this.spreadMul - 1) : spec.hipSpread ?? 0.09)
+      : spec.spread * (1 - (spec.pellets > 1 ? .25 : .6) * this.aim);
     if (this.hasScope(this.current) && this.aim > 0.85) spread *= 0.25; // steady through a found scope
     spread = spread * this.spreadMul + this.bloom;
     if (spec.auto) this.bloom = Math.min(0.03, this.bloom + 0.005);

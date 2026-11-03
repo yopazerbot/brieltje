@@ -1519,6 +1519,15 @@ export class Horde {
     if (straight) [gx, gz] = [tgt.x, tgt.z];
     else if (next >= 0) [gx, gz] = [nav.px(next), nav.pz(next)];
     else if (tgt ?? any) [gx, gz] = [(tgt ?? any).x, (tgt ?? any).z];
+    // Outdoors, runners approach from alternate flanks, then close directly for the swipe.
+    if (straight && tgt && z.kind === RUNNER && td > 3 && td < 12 && z.node < nav.outdoor && !nav.inHouse(tgt.x, tgt.z)) {
+      const side = z.id % 2 ? 1 : -1;
+      const dx = tgt.x - z.x, dz = tgt.z - z.z;
+      const distance = Math.hypot(dx, dz);
+      const width = Math.min(2.2, distance * .3) * side;
+      const x = tgt.x - dz / distance * width, zz = tgt.z + dx / distance * width;
+      if (nav.clear(z.x, z.z, x, zz)) [gx, gz] = [x, zz];
+    }
     // A shut door in the way: it shoves it open (everyone sees it swing) and stands a moment.
     const dist = Math.hypot(gx - z.x, gz - z.z);
     if (this.doors.length && dist > 0.05) {

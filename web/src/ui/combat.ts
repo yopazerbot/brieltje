@@ -84,7 +84,12 @@ export class Combat {
   }
 
   hurt(hp: number): void {
+    const damage = hp < this.hp;
     this.hp = hp;
+    if (!damage) {
+      this.drawHealth();
+      return;
+    }
     this.flash = 1;
     this.drawHealth();
     if (paintball.on) {
@@ -219,6 +224,7 @@ export class Combat {
 
   tick(dt: number): void {
     this.flash = Math.max(0, this.flash - dt * 2.5);
+    $('health').classList.toggle('taking-hit', this.flash > .2 && this.alive);
     $('damage').style.opacity = String(this.alive ? this.flash : Math.max(0.55, this.flash));
     this.dirTime = Math.max(0, this.dirTime - dt);
     $('hitdir').style.opacity = String(Math.min(1, this.dirTime));

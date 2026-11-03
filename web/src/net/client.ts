@@ -90,7 +90,9 @@ export type ServerMsg =
   | { t: 'blast'; by: string; x: number; y: number; z: number; w?: string }
   | { t: 'nade'; name: string; x: number; y: number; z: number; vx: number; vy: number; vz: number }
   | { t: 'scores'; list: Score[] }
-  | { t: 'hurt'; hp: number; by: string }
+  | { t: 'hurt'; hp: number; by: string; from?: { x: number; z: number } }
+  | { t: 'rally'; name: string; x: number; y: number; z: number }
+  | { t: 'placement'; id: number; ok: boolean; why?: 'none' | 'max' | 'all' | 'spot'; a?: number; b?: number }
   | { t: 'kill'; killer: string; victim: string; head: boolean; w: string }
   | { t: 'item'; i: number; ready: boolean; by?: string }
   | { t: 'cat'; i: number; by: string; ms: number; w: string }

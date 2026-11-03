@@ -312,6 +312,8 @@ export class Games {
       if (this.blind.textContent !== text) this.blind.textContent = text;
     }
     this.bar.classList.toggle('show', this.active);
+    this.bar.classList.toggle('prepare', v.kind === 'zombies' && v.phase === 'break');
+    this.bar.classList.toggle('imminent', v.kind === 'zombies' && v.phase === 'break' && left > 0 && left <= 3000);
     // Zombies: an explorer is told how to join in (one tap on Paintball or Action), and the end screen.
     this.zexplore.classList.toggle('show', this.zombies && this.exploring);
     this.showEnd();
@@ -323,7 +325,7 @@ export class Games {
     else if (v.kind === 'zombies') {
       const z = v.zombies;
       if (!z) text = title;
-      else if (v.phase === 'break') text = `${title} · ${z.wave ? t('z.barBreak', { n: z.wave, time: clock(left) }) : t('z.barFirst', { time: clock(left) })}`;
+      else if (v.phase === 'break') text = `${title} · ${z.wave ? t('z.barBreak', { n: z.wave, time: clock(left) }) : t('z.barFirst', { time: clock(left) })} · ${t('tactics.prepare', { n: (z.items ?? []).length })}`;
       else text = `${title} · ${t('z.barWave', { n: z.wave, left: z.left, standing: z.standing, fighters: z.fighters })}`;
     } else if (v.kind === 'hide') {
       const seekers = v.seekers ?? [];
