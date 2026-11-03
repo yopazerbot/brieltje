@@ -2883,7 +2883,7 @@ async function buildVillage(): Promise<void> {
   const town = import.meta.env.DEV && location.search.includes('notown')
     ? Promise.reject(new Error('left out'))
     : import('./world/townCentre').then(({ loadTown }) => loadTown(renderer, (x, z) => house.ground + terrain.height(x, z)));
-  const models = (await Promise.all([loadChurch().catch(() => null), loadModel('/models/school.glb').catch(() => null), town.catch(() => null)])).filter(
+  const models = (await Promise.all([loadChurch().catch(() => null), loadModel('/models/school.glb').catch(() => null), loadModel('/models/dormer_house.glb').catch(() => null), town.catch(() => null)])).filter(
     (m): m is THREE.Object3D => m !== null,
   );
   // The houses of Molenhoek (and its street) and of Kapellenhoek, the same way: fitted into the village data before its tiles are built.
@@ -3046,6 +3046,7 @@ async function loadModel(url: string): Promise<THREE.Object3D> {
   const [x, z] = (root.userData.origin as [number, number] | undefined) ?? [0, 0];
   scene.position.set(x, house.ground + terrain.height(x, z), z);
   scene.userData.landmark = root.userData.landmark;
+  scene.userData.replaces = root.userData.replaces;
   return scene;
 }
 
