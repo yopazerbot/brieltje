@@ -690,7 +690,11 @@ export function makeNav({ prisms, height, base = 0, edge, boxes = [], areas = []
   const { FY, FCOL, fblk, colStart, colPrStart, COLPR } = fl;
   const m = FY.length;
   const N = n + m;
-  const enabled = new Uint8Array(m).fill(1);
+  // An indoor grid is rectangular; a church arena is round. Its corner floors must not
+  // open a way outside the actual game's edge (or onto the neighbouring school grounds).
+  const inEdge = new Uint8Array(m);
+  for (let v = 0; v < m; v++) inEdge[v] = +edge.inside(colX(FCOL[v]), colZ(FCOL[v]));
+  const enabled = inEdge.slice();
   const paned = []; // floors a pane closes
   for (let v = 0; v < m; v++) {
     if (!fblk[v].length) continue;
@@ -1023,7 +1027,7 @@ export function makeNav({ prisms, height, base = 0, edge, boxes = [], areas = []
     setPanes(list) {
       broken = new Set(list);
       for (const v of paned) {
-        let on = 1;
+        let on = inEdge[v];
         for (let e = blkStart[v]; e < blkStart[v + 1]; e++) if (!broken.has(blkPane[e])) on = 0;
         if (on !== enabled[v]) {
           enabled[v] = on;

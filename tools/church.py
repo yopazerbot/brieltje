@@ -62,6 +62,7 @@ PREVIEW = argv[1] if len(argv) > 1 else ""
 CAMERAS = argv[2] if len(argv) > 2 else ""
 CONTEXT = argv[3] if len(argv) > 3 else ""
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+ACCESS = json.load(open(os.path.join(ROOT, "web", "shared", "church.json"), encoding="utf-8"))
 
 # ---------------------------------------------------------------- measurements (metres)
 GR = -1.2                    # walls and plinth start this far below the origin
@@ -556,12 +557,15 @@ for x, w, z0, h in ((-12.7, 0.55, 0.95, 0.95), (-7.45, 0.78, 1.0, 1.55), (-2.35,
 # The west door: round-arched in a bluestone frame between Tuscan pilasters under a brick
 # entablature and a drip moulding, a wooden transom and a blind fanlight; paired windows above.
 W = face_x(TW_X0, -1)
-DOOR_W, DOOR_Z, DOOR_TOP = 1.6, 0.3, 3.75
+DOOR_W, DOOR_Z, DOOR_TOP = 2.16, 0.3, 3.75
 door = [(-DOOR_W / 2, DOOR_Z), (DOOR_W / 2, DOOR_Z)] + arch(DOOR_W, DOOR_TOP, DOOR_W / 2)
 BRICK_CUTS.append(outline_prism("cut", W, door, 0.4, -0.35, "church_brick"))
 STONE_CUTS.append(outline_prism("cut", W, door, 0.4, -0.35, "church_stone"))
-add(outline_prism("door", W, [(-DOOR_W / 2, DOOR_Z), (DOOR_W / 2, DOOR_Z), (DOOR_W / 2, 2.95), (-DOOR_W / 2, 2.95)], -0.35, -0.28,
-                  "church_fittings", "wood"), "church_fittings")
+# The open leaves reveal only the shaded tower vestibule. The maintenance stair is inside;
+# a leaf cannot be shut on the zombies to turn the roof into an unreachable safe room.
+for sy in (-1, 1):
+    y0, y1 = sorted((sy * (DOOR_W/2 - .035), sy * (DOOR_W/2 + .035)))
+    add(box("open_door", TW_X0-.05, y0, DOOR_Z, TW_X0+1.02, y1, 2.95, "church_fittings", "wood"), "church_fittings")
 add(outline_prism("transom", W, [(-DOOR_W / 2, 2.95), (DOOR_W / 2, 2.95), (DOOR_W / 2, 3.08), (-DOOR_W / 2, 3.08)], -0.35, -0.22,
                   "church_fittings", "wood"), "church_fittings")
 add(outline_prism("fanlight", W, [(-DOOR_W / 2, 3.08), (DOOR_W / 2, 3.08)] + arch(DOOR_W, DOOR_TOP, DOOR_W / 2)[1:-1], -0.34, -0.3,
@@ -617,6 +621,11 @@ for sy in (1, -1):   # the north-west corner from the plinth, the south-west one
         z, k = top, k + 1
 
 # ---------------------------------------------------------------- brick: union, openings
+for c in ACCESS["cuts"]:
+    cut = box("maintenance_void", *c["box"], "church_brick")
+    BRICK_CUTS.append(cut)
+    # The plinth is cut separately below; its Boolean consumes its own copy.
+    STONE_CUTS.append(box("maintenance_void", *c["box"], "church_stone"))
 brick = union(bricks, "brick")
 boolean(brick, BRICK_CUTS, "DIFFERENCE")
 add(brick, "church_brick")
@@ -821,6 +830,13 @@ for sg in (1, -1):
     b = (NAVE_X0 - 0.27, sg * TW_HW, RIDGE - (TW_HW / NAVE_HW) * (RIDGE - NAVE_E))
     add(oriented_box("verge", a, b, 0.05, 0.2, (0, 0, -1), "church_trim"), "church_trim")
 
+
+# The shared stair, landings, roof walk and cover. Their polygons also drive the player,
+# server and zombie collision: no invisible ramp or client-only way onto the roof.
+for p in ACCESS["visible"]:
+    mat = "church_stone" if p["m"] == "concrete" else "church_fittings"
+    paint = None if mat == "church_stone" else "wood" if p["m"] == "stair" else "metal"
+    add(plan_prism(p["n"], p["p"][0], p["y0"], p["y1"], mat, paint), mat)
 
 # ---------------------------------------------------------------- UVs, join per material, export
 def metre_uvs(obj, scale=1.0):

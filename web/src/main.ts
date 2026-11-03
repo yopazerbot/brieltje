@@ -89,6 +89,8 @@ import { noShoot } from '../shared/zones.mjs';
 import { loadBounds, type Bounds } from '../shared/bounds.mjs';
 import { arenaEdge, arenaHome, arenaOf, arenaPrisms, portalOf, type Arena } from '../shared/arenas.mjs';
 import BOUNDS from '../shared/bounds.json';
+import CHURCH_DATA from '../shared/church.json';
+import { churchPrisms, makeChurch } from '../shared/church.mjs';
 import { carName, doorName, lang, onLang, placeName, plural, portalName, serverText, setLang, t, whoName } from './i18n';
 
 // The world. This module is fetched and run on the first start (src/start.ts, the page's entry,
@@ -431,6 +433,7 @@ function adaptQuality(dt: number, now: number): void {
   }
 }
 
+const churchAccess = makeChurch(CHURCH_DATA, house.ground + terrain.height(...CHURCH_DATA.origin as [number, number]));
 const world = new World(house.prisms, house.ground);
 world.addPrisms(house.surroundings?.prisms ?? []);
 world.addPrisms(homeStreet.blocks);
@@ -1333,7 +1336,7 @@ async function startSolo(id: string): Promise<void> {
       if (village !== 'ready') hud.announce('Smetlede', t('travel.village'));
       await loadVillage();
       const data = (await import('./data/village.json')).default as unknown as VillageData;
-      prisms = arenaPrisms(data.prisms ?? [], edge);
+      prisms = arenaPrisms(churchPrisms(data.prisms ?? [], churchAccess), edge);
     } finally {
       soloStarting = false;
     }
@@ -1344,7 +1347,7 @@ async function startSolo(id: string): Promise<void> {
   getOffHorse(false);
   const boxes = cars.filter((c) => c.ready && edge.inside(c.x, c.z)).map((c) => ({ x: c.x, z: c.z, yaw: c.yaw, halfL: c.spec.length / 2, halfW: c.spec.width / 2 }));
   const nav = arena.center
-    ? makeNav({ prisms, height: (x, z) => terrain.height(x, z), base: house.ground, edge, boxes, areas: [], doors: [], shut: true, panes: 0 })
+    ? makeNav({ prisms, height: (x, z) => terrain.height(x, z), base: house.ground, edge, boxes, areas: arena.id === 'church' ? [churchAccess.area] : [], doors: [], shut: true, panes: 0 })
     : makeNav({ prisms, height: (x, z) => terrain.height(x, z), base: house.ground, edge, boxes, areas: houseAreas(house.prisms), doors: house.doors, shut: true, panes: house.prisms.length });
   const horde = new Horde(nav, nav.spawnSpots(), { home: arenaHome(arena) });
   horde.start(performance.now());
@@ -2979,7 +2982,7 @@ async function buildVillage(): Promise<void> {
     tiles.track(m, undefined, String(m.userData.landmark).startsWith('molenhoek_end') ? 350 : Infinity);
   }
   // The end house's own walls, floors and doors take the place of its plain block (alone its doors stay shut).
-  world.addPrisms((data.prisms ?? []).filter((p) => !endHouse?.replaces(p)));
+  world.addPrisms(churchPrisms(data.prisms ?? [], churchAccess).filter((p) => !endHouse?.replaces(p)));
   if (endHouse) {
     endHouse.install(world, doors, glass);
     scene.add(endHouse.group, endHouse.lawn(grassMat)); // its garden's lawn lies at its floor's level
@@ -3081,10 +3084,9 @@ async function loadChurch(): Promise<THREE.Object3D> {
   root.userData.landmark = 'church';
   // Its origin on the church's axis at ground level (Lambert 72 119018.72, 184084.24), turned so
   // its length runs 6.4 degrees north of grid east; walls and plinth reach 1.2 m down for the slope.
-  const x = 521.51;
-  const z = -744.15;
+  const [x, z] = CHURCH_DATA.origin;
   root.position.set(x, house.ground + terrain.height(x, z), z);
-  root.rotation.y = 2.525;
+  root.rotation.y = CHURCH_DATA.yaw;
   return root;
 }
 

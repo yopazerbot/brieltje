@@ -35,6 +35,7 @@ import { boxesOverlap, boxPoints, clearOfPortals, makeIndoors, makeSolids } from
 import { bruteEntry, carFields, horseFields, playerFields, PROTO, TICK_MS } from '../shared/wire.mjs';
 import { houseAreas, makeNav } from '../shared/zombies.mjs';
 import { arenaEdge, arenaHome, arenaPrisms, ARENAS, portalOf } from '../shared/arenas.mjs';
+import { churchPrisms, makeChurch } from '../shared/church.mjs';
 
 const MAX_PLAYERS = 16; // the most the admin can allow at once (every player's moves go to every other one)
 const KEYFRAME = 20; // ticks: everything goes to every page at least this often (once a second), moved or not
@@ -76,6 +77,8 @@ const BOUNDS = loadBounds(shared('bounds.json'));
 const houseData = (file) => JSON.parse(readFileSync(new URL(`../src/data/${file}`, import.meta.url), 'utf8'));
 const HOUSE = houseData('house.json');
 const VILLAGE = houseData('village.json');
+const CHURCH_DATA = shared('church.json');
+const CHURCH = makeChurch(CHURCH_DATA, HOUSE.ground + TERRAIN.height(...CHURCH_DATA.origin));
 /**
  * A spot on every named street (tools/places.py): where /location kapellenhoek takes you, on foot
  * (`out`) or with the car (`car`). Only these: a trip never ends where the page says. A spot
@@ -146,7 +149,7 @@ const TESLA_MS = 400; // ms: at most one place, move or removal this often per p
  * and the bungalow (indoors).
  */
 const SOLIDS = makeSolids([
-  ...HOUSE.prisms, ...(HOUSE.surroundings?.prisms ?? []), ...(VILLAGE.prisms ?? []),
+  ...HOUSE.prisms, ...(HOUSE.surroundings?.prisms ?? []), ...churchPrisms(VILLAGE.prisms ?? [], CHURCH),
   ...Object.values(houseData('homestreet.json').clusters).flatMap((c) => c.blocks ?? []),
 ], (x, z) => TERRAIN.height(x, z));
 const INDOORS = makeIndoors([...HOUSE.prisms, ...(HOUSE.surroundings?.prisms ?? [])], HOUSE.rooms.map((r) => r.name));
@@ -502,7 +505,7 @@ export class Game {
     });
     const height = (x, z) => TERRAIN.height(x, z);
     const nav = arena.center
-      ? makeNav({ prisms: arenaPrisms(VILLAGE.prisms ?? [], edge), height, base: HOUSE.ground, edge, boxes, areas: [], doors: [], shut: true, panes: 0 })
+      ? makeNav({ prisms: arenaPrisms(churchPrisms(VILLAGE.prisms ?? [], CHURCH), edge), height, base: HOUSE.ground, edge, boxes, areas: arena.id === 'church' ? [CHURCH.area] : [], doors: [], shut: true, panes: 0 })
       : makeNav({ prisms: ZOMBIE_PRISMS, height, base: HOUSE.ground, edge, boxes, areas: HOUSE_AREAS, doors: HOUSE.doors, shut: false, panes: HOUSE.prisms.length });
     if (!arena.center) nav.setPanes(this.broken);
     return {
