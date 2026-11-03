@@ -8,7 +8,7 @@ import json
 import math
 from pathlib import Path
 
-from shapely.geometry import Polygon, box
+from shapely.geometry import LineString, Point, Polygon, box
 from shapely.ops import unary_union
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -79,12 +79,38 @@ def build():
         top = FLOOR + (ROOF - FLOOR) * (k + 1) / COUNT
         add(visible, Polygon(p), top-.16, top, "stair", "church-stairs")
         anchors.append([round(CX + 1.25*math.cos(a), 5), round(1.25*math.sin(a), 5), round(top, 5)])
-    add(visible, box(-14.85, -1.0, -13.2, 1.0), ROOF-.15, ROOF, "steel", "church-roof")
+
+    def guard(a, b, height, post=False):
+        rail = LineString([a, b]).buffer(.035, cap_style="square", join_style="mitre")
+        for lo, hi in ((.56, .66), (.99, 1.09)):
+            add(visible, rail, height+lo, height+hi, "steel", "church-stair-rail")
+        if post:
+            add(visible, Point(a).buffer(.035, cap_style="square"), height, height+1.09,
+                "steel", "church-stair-rail")
+
+    # Leave the first tread open to the entrance and the final two open to the landing.
+    # Two short overlapping bars per tread follow the rise without extra draw calls.
+    for k in range(1, COUNT-2):
+        for half in range(2):
+            t = k + half/2
+            a = math.pi + (t-.5)*TURN
+            b = a + TURN/2
+            ends = [(CX + 1.85*math.cos(v), 1.85*math.sin(v)) for v in (a, b)]
+            h = FLOOR + (ROOF-FLOOR)*(t+.5)/COUNT
+            guard(*ends, h, post=half == 0 and k % 2 == 1)
+
+    # The last treads enter from the south. Fill the old gap beside the centre post,
+    # guarding the remaining landing edges while leaving that approach open.
+    add(visible, box(CX+.22, -.72, -13.2, 1.0), ROOF-.15, ROOF, "steel", "church-roof")
+    end = math.pi + (COUNT-2.5)*TURN
+    corner = (CX + 1.85*math.cos(end), 1.85*math.sin(end))
+    for a, b in ((corner, (-14.45, -.72)), ((-14.45, -.72), (-13.9, -.72)),
+                 ((CX+.22, -.72), (CX+.22, 1.0)), ((CX+.22, 1.0), (-13.9, 1.0))):
+        guard(a, b, ROOF, post=True)
     deck = unary_union([box(-13.65, -1.10, 8.0, 1.10),
                         *(box(x, -1.60, x+3, 1.60) for x in (-8.5, -2.0, 4.5))])
     add(visible, deck, ROOF-.15, ROOF, "steel", "church-roof")
     # Low solid screens give partial cover. The top rails and posts leave an open view.
-    from shapely.geometry import LineString, Point
     coords = list(deck.exterior.coords)
     for a, b in zip(coords, coords[1:]):
         if max(a[0], b[0]) < -13.4:

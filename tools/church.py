@@ -533,6 +533,8 @@ for k in range(4):
     n = Vector((math.cos(a), math.sin(a), 0))
     f = Face(Vector((TW_CX, 0, 0)) + n * TW_HW, Vector((-math.sin(a), math.cos(a), 0)), n)
     for s in (-0.63, 0.63):
+        if k == 0:
+            continue  # The east pair of louvres and sills would obstruct the roof exit.
         g = Face(f.p(s, 0), f.t, f.n)
         opening = [(-0.41, 13.3), (0.41, 13.3)] + arch(0.82, 14.87, 0.41)
         BRICK_CUTS.append(outline_prism("cut", g, opening, 0.3, -0.45, "church_brick"))

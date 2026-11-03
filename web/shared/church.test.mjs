@@ -59,6 +59,20 @@ test('walls and floors block attacks, while an open roof firing lane stays open'
   assert.equal(nav.reach(low.x,low.y,low.z,high.x,high.y,high.z),false);
 });
 
+test('the outer stair rail stops crossings at every guarded tread and leaves the view above clear', () => {
+  for (let k=1;k<82;k++) {
+    const [x,z,y]=data.anchors.stairs[k], angle=Math.atan2(z,x+15.93);
+    const across=(rise)=>{
+      // Keep the swipe short: the nav samples attacks every 10 cm, wider than a rail.
+      const a=church.point([-15.93+1.77*Math.cos(angle),1.77*Math.sin(angle),y+rise]);
+      const b=church.point([-15.93+1.93*Math.cos(angle),1.93*Math.sin(angle),y+rise]);
+      return nav.reach(a.x,a.y,a.z,b.x,b.y,b.z);
+    };
+    assert.equal(across(1),false,`missing guard at step ${k}`);
+    assert.ok(across(1.5),`view blocked above step ${k}`);
+  }
+});
+
 test('a real wave reaches a roof player without an unreachable-perch exemption', () => {
   let random=17;
   const rand=()=>{random=(random*1664525+1013904223)>>>0;return random/2**32;};
