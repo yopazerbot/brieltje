@@ -28,9 +28,12 @@ const vertexShader = /* glsl */ `
   varying vec3 vDir;
   void main() {
     vDir = position;
-    // Round the eye whatever its position (only the camera's turn), at the very back of the depth range.
+    // Round the eye whatever its position (only the camera's turn), exactly on the far plane (depth 1, what the
+    // depth buffer is cleared to, so it still passes the depth test where nothing was drawn). Not a hair in front of
+    // it: with z at 0.9999999 of w, ANGLE on Metal (measured in Chrome on a Mac; Safari uses the same backend) dropped
+    // whole triangles of the box for some headings, and the sky showed black in wedges that came and went as the eye turned.
     gl_Position = projectionMatrix * vec4(mat3(viewMatrix) * position, 1.0);
-    gl_Position.z = gl_Position.w * 0.9999999;
+    gl_Position.z = gl_Position.w;
   }`;
 
 const fragmentShader = /* glsl */ `
