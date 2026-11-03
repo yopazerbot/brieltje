@@ -118,6 +118,8 @@ The Railway project has two services: `briel-GTA` (builds from the `web` folder 
 
 ## Rebuild the House Data
 
+The village dormer house is a separate exterior. From the repository root, run `blender -b -P tools/dormer_house.py -- web/public/models/dormer_house.glb`. An optional second output path saves an editable Blender file.
+
 The 3D blocks are built from private source drawings (not in the repo; the built result is in `web/src/data/house.json`). To regenerate them after changing the extraction or `data/house.manual.json`:
 
 ```

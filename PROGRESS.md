@@ -1,8 +1,10 @@
 # Progress
 
-Last update: 2026-11-02
+Last update: 2026-11-03
 
 ## Done
+
+On 3 November, the village gained a custom brick dormer house and six outdoor Action weapon pickups, from the bungalow to the end of Molenhoek.
 
 | Item | Notes |
 |---|---|
