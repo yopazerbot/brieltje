@@ -4,6 +4,8 @@ Last update: 2026-11-03
 
 ## Done
 
+During multiplayer Zombies, the admin can switch straight to a chosen wave, higher or lower, from Admin → Party games. The old zombies go, downed teammates return and gear stays. Chosen-wave runs are marked custom and do not replace normal best-wave records.
+
 Either Ctrl key crouches while held, with the controls updated in both languages.
 
 All seven portal destinations accept both top-row and numpad number keys.

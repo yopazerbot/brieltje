@@ -36,6 +36,7 @@ The newest game in Brieltje (November 2026). Zombies come in waves, from every s
 - **The sniper's double.** One bullet can go through two zombies.
 - **Sound.** They groan more often and louder as they come closer, from where they stand. A sprinting runner puffs.
 - **Fair.** In multiplayer the server decides every hit, swipe, pickup and help.
+- **Admin wave control.** During multiplayer Zombies, open Admin → Party games to switch immediately to any wave from 1 to 9999, higher or lower. It replaces the zombies and brings downed teammates back while keeping your gear. These custom runs do not replace best-wave records.
 
 ![A runner in a red hoodie comes across the back garden](docs/screenshots/zombies.webp)
 
