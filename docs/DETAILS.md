@@ -24,7 +24,7 @@ Open **http://localhost:5173** in Chrome or Edge. Pick a nickname and choose **K
 | Look | Right stick | Mouse |
 | Sprint | L3 (click the left stick) | Hold Shift |
 | Jump | ✕ | Space |
-| Fly up / down | Hold ✕ / ○ | Hold Space / C |
+| Fly up / down | Hold ✕ / ○ | Hold Space / Ctrl |
 | Stop flying | Double-tap ✕ | Double-tap Space |
 | Open or close a door | R2 or △ (△ in Action mode) | Click or E (E in Action mode) |
 | Shoot / aim / reload (Action mode) | R2 / L2 / □ | Left click / right click / R |
@@ -34,7 +34,7 @@ Open **http://localhost:5173** in Chrome or Edge. Pick a nickname and choose **K
 | Plant a row of stakes (Zombies, blocks players on foot until it breaks) | Hold □ | Hold R |
 | Set up a turret (Zombies, once you carry one; nothing else to use near you) | Hold △ | Hold E |
 | Help a teammate up (Zombies) | Hold △ for 3 s next to them | Hold E for 3 s next to them |
-| Crouch | Hold ○ | Hold C |
+| Crouch | Hold ○ | Hold Ctrl (C also works) |
 | FPS counter (also in Settings) | Create | F |
 | Map (the menu's first tab; again to play on) | Press the touchpad | M (or click the minimap; on a phone, tap it) |
 | Minimap on / off | Settings | N, or Settings |
@@ -45,7 +45,7 @@ Open **http://localhost:5173** in Chrome or Edge. Pick a nickname and choose **K
 | Menu (open and close) | Options (○ closes it too) | Esc |
 | Menu tabs | L1 / R1 | ↑ / ↓ on the tab rail |
 
-**Portals:** seven rings round the map: at the main house, the bungalow, the church, the school, and at the start, the middle and the end of Molenhoek. Step onto a portal's glowing pad (or stop the car on it) and the list of places opens: a number key, the wheel or D-pad and E or △, or a tap on a phone. You come out in front of the other portal, looking at the place; in the car the car comes along, with its passenger. The place you came from is marked "back". The minimap points to the nearest portal. In the chat, alone too, `/location` and a name takes you to a portal or a street: `/location church`, `/location Kapellenhoek` (also `/locatie`, `/tp`, `/ga naar`, and the short `/church`, `/kerk`, `/huis`). Capitals, accents, spaces and hyphens don't matter. The start of a name is enough when only one place starts that way. `/location` alone lists every place. Each of the 26 streets has a spot near the middle of its longest stretch, on the pavement or the road's edge (`tools/places.py`, `web/shared/places.json`); a car you drive comes along to its lane. Without a keyboard, the menu's Play tab lists the same places (a tap, or the D-pad and △). In multiplayer the admin can turn the portals and the chat travel off in the settings (Admin: house rules), and the admin can always travel from the chat.
+**Portals:** seven rings round the map: at the main house, the bungalow, the church, the school, and at the start, the middle and the end of Molenhoek. Step onto a portal's glowing pad (or stop the car on it) and the list of places opens: a number key from 1 to 7 (top row or numpad), the wheel or D-pad and E or △, or a tap on a phone. You come out in front of the other portal, looking at the place; in the car the car comes along, with its passenger. The place you came from is marked "back". The minimap points to the nearest portal. In the chat, alone too, `/location` and a name takes you to a portal or a street: `/location church`, `/location Kapellenhoek` (also `/locatie`, `/tp`, `/ga naar`, and the short `/church`, `/kerk`, `/huis`). Capitals, accents, spaces and hyphens don't matter. The start of a name is enough when only one place starts that way. `/location` alone lists every place. Each of the 26 streets has a spot near the middle of its longest stretch, on the pavement or the road's edge (`tools/places.py`, `web/shared/places.json`); a car you drive comes along to its lane. Without a keyboard, the menu's Play tab lists the same places (a tap, or the D-pad and △). In multiplayer the admin can turn the portals and the chat travel off in the settings (Admin: house rules), and the admin can always travel from the chat.
 
 At the start you choose **Explore** (just walking around), **Paintball** (paint guns, for everyone; the paint sticks where it lands) or **Action** (hands and a pistol). In multiplayer the admin can make Action child-friendly with a house rule. Walking speed is a slider on the start screen and in the menu (D-pad left/right on the controller).
 
@@ -123,6 +123,8 @@ The Railway project has two services: `briel-GTA` (builds from the `web` folder 
 **Run the server locally:** `cd web`, `npm run build`, then start it with `ADMIN_PASSWORD` set and run `npm start`. Without `DATABASE_URL` it keeps users in `web/.data/` (not in git). During `npm run dev`, the login and multiplayer calls are forwarded to that server on port 8080.
 
 ## Rebuild the House Data
+
+The square's grey paving follows the terrain grid and its diagonals in `world/houseMeshes.ts`. This keeps the thin layer of clinkers above the underlying lawn.
 
 The village building models also carry their collision geometry. After changing a residential street footprint, rebuild it with `blender -b -P tools/molenhoek.py -- web/public/models/<street>.glb <street>`, using the same street identifier for both arguments.
 

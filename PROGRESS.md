@@ -4,6 +4,12 @@ Last update: 2026-11-03
 
 ## Done
 
+Either Ctrl key crouches while held, with the controls updated in both languages.
+
+All seven portal destinations accept both top-row and numpad number keys.
+
+The square's grey paving follows the terrain triangles, closing the grass patches that poked through it.
+
 Equipment placement now has previews checked with the placement rules. Team games have teammate markers and a Come here ping. Damage feedback uses the attacking zombie's position, wave breaks highlight preparation and rewards, runners approach from the sides, big zombies pound barricades, and rifle, shotgun and sniper handling is more distinct.
 
 Planted pike rows now stop players on foot until the rail breaks.

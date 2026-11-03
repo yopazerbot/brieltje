@@ -10,6 +10,10 @@ For in-person play, [express interest](https://brieltje.be/interested/) or [chec
 
 During play, open the menu’s Controls tab for a quick guide or to switch between a connected controller and the keyboard.
 
+At a portal, use 1–7 on the number row or numpad to pick a destination.
+
+The village square's paving follows the ground under it.
+
 In team games, press V or tap **Come here** to mark your position for teammates for eight seconds. Markers show their distance and direction. While holding an equipment action in Zombies, a green preview shows where it fits. The break between waves highlights rewards nearby and gives you time to reload and prepare.
 
 ![The house, rendered in Blender from the game](web/public/start/house-2560.webp)
@@ -71,7 +75,7 @@ The newest game in Brieltje (November 2026). Zombies come in waves, from every s
 |---|---|---|
 | Move, look | Left stick, right stick | W A S D (Z Q S D on AZERTY), mouse |
 | Sprint, jump | L3, ✕ | Shift, Space |
-| Fly up / down | Hold ✕ / ○ | Hold Space / C |
+| Fly up / down | Hold ✕ / ○ | Hold Space / Ctrl |
 | Use (doors, cars, horses, portals) | △ | E |
 | Map (the menu's first tab) | Press the touchpad | M |
 | Shoot, aim (Action, Paintball) | R2, L2 | Left click, right click |
