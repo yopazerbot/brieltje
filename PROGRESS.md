@@ -10,7 +10,7 @@ All seven portal destinations accept both top-row and numpad number keys.
 
 The square's grey paving follows the terrain triangles, closing the grass patches that poked through it.
 
-Equipment placement now has previews checked with the placement rules. Team games have teammate markers and a Come here ping. Damage feedback uses the attacking zombie's position, wave breaks highlight preparation and rewards, runners approach from the sides, big zombies pound barricades, and rifle, shotgun and sniper handling is more distinct.
+Equipment placement now has previews checked with the placement rules. Team games have teammate markers and a Come here ping: V is listed in Controls, with the on-screen button only for touch players. Damage feedback uses the attacking zombie's position, wave breaks highlight preparation and rewards, runners approach from the sides, big zombies pound barricades, and rifle, shotgun and sniper handling is more distinct.
 
 Planted pike rows now stop players on foot until the rail breaks.
 
@@ -103,7 +103,7 @@ On 3 November, the village gained a custom brick dormer house and six outdoor Ac
 | **2 Nov, Zombies: turret** | A big zombie also drops a turret. Hold Use to set it up: it shoots the nearest zombie it sees for 100 rounds, then folds away, about a sixth of a rifle. The server aims it and decides every hit. |
 | **2 Nov, Zombies: pick the place** | Alone or together, Zombies is played where you pick: at home, or by a portal in Smetlede (the church square, three spots along Molenhoek). The game's edge closes round that place, the zombies walk round the village's walls and hedges, and the best wave is kept per place. Not at the school (no shooting there). |
 | **2 Nov, spawning with /name** | The furniture planner is gone. Type a name in the chat and it appears in front of you: furniture, a Tesla, a clown or a strongman (/sofa, /tesla red, /krachtpatser); /remove takes away what you look at. Together only when the admin turns it on (off at first); the server checks where, how many and whose. |
-| **3 Nov, church roof** | The open tower doors lead to a hidden spiral stair and a roof walk with three firing bays and partial cover. A steel rail guards the stair and the wider upper landing; the obstructing louvres at the roof doorway are removed. The route works in solo play and multiplayer. Regular and big zombies follow it up; the existing unreachable-perch penalty stays. The visible steps and the shared collision data are built together. |
+| **3 Nov, church roof** | The open tower doors lead to a hidden spiral stair and a roof walk with three firing bays and partial cover. A steel rail guards the stair and the wider upper landing; the obstructing louvres at the roof doorway are removed and the nave roof is cut back around the staircase. The route works in solo play and multiplayer. Regular and big zombies follow it up; the existing unreachable-perch penalty stays. The visible steps and the shared collision data are built together. |
 
 ## Next
 

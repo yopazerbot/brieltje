@@ -51,7 +51,7 @@ At the start you choose **Explore** (just walking around), **Paintball** (paint 
 
 The DualSense works over Bluetooth once it is paired with Windows. Chrome only reports a controller after you press one of its buttons while the page is open.
 
-Team games have a Come here button, also on V with a keyboard. It marks the sender's current game position for eight seconds, once every three seconds. Teammate markers show direction and distance. Holding a Zombies equipment action for 0.8 seconds places it, with a preview while held. Multiplayer previews use the server's placement rules, including inventory and the available space.
+In team games, V calls teammates; it is listed in the keyboard Controls tab without a permanent HUD button. Touch players have a Come here button. It marks the sender's current game position for eight seconds, once every three seconds. Teammate markers show direction and distance. Holding a Zombies equipment action for 0.8 seconds places it, with a preview while held. Multiplayer previews use the server's placement rules, including inventory and the available space.
 
 During a wave break, the top bar prompts reloading and preparation, counts rewards and highlights the final three seconds. Rewards within 45 metres have distance labels. Outdoors, runners approach from alternate sides while they have a clear route. Big zombies pause to pound planted pike rails.
 
@@ -203,6 +203,8 @@ This is a fictional maintenance route for the game, not a surveyed church interi
 
 `web/shared/church.json` holds the shared steps, rails, floor, cover and wall geometry. The browser,
 server and zombie navigation use `web/shared/church.mjs` to place it on the church's ground.
+The tower void cuts both brick and the visible slate roof, keeping the nave roof out of the stairs.
+The church tests check the exported roof triangles as well as navigation.
 The round zombie arena also clips its indoor grid, keeping its corners inside the boundary.
 Rebuild the data and visible model from the repository root:
 

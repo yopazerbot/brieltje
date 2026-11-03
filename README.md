@@ -14,7 +14,7 @@ At a portal, use 1–7 on the number row or numpad to pick a destination.
 
 The village square's paving follows the ground under it.
 
-In team games, press V or tap **Come here** to mark your position for teammates for eight seconds. Markers show their distance and direction. While holding an equipment action in Zombies, a green preview shows where it fits. The break between waves highlights rewards nearby and gives you time to reload and prepare.
+In team games, press V to mark your position for teammates for eight seconds; the shortcut is listed in Controls without a permanent HUD hint. Touch players tap **Come here**. Markers show their distance and direction. While holding an equipment action in Zombies, a green preview shows where it fits. The break between waves highlights rewards nearby and gives you time to reload and prepare.
 
 ![The house, rendered in Blender from the game](web/public/start/house-2560.webp)
 
