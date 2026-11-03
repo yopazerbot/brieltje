@@ -278,13 +278,31 @@ function clipToBox(poly: [number, number][], x0: number, z0: number, x1: number,
   return pts;
 }
 
+/** Keep one side of a terrain cell's diagonal, so paving follows both ground triangles. */
+function clipDiagonal(poly: [number, number][], gx: number, gz: number, side: number): [number, number][] {
+  const out: [number, number][] = [];
+  for (let i = 0; i < poly.length; i++) {
+    const a = poly[(i + poly.length - 1) % poly.length], b = poly[i];
+    const da = ((a[0] - gx) - (a[1] - gz)) * side;
+    const db = ((b[0] - gx) - (b[1] - gz)) * side;
+    if ((da >= 0) !== (db >= 0)) {
+      const t = da / (da - db);
+      out.push([a[0] + (b[0] - a[0]) * t, a[1] + (b[1] - a[1]) * t]);
+    }
+    if (db >= 0) out.push(b);
+  }
+  return out;
+}
+
 /**
  * A block out on the relief (p.d metres): its outline triangulated, every triangle cut along
  * the grid (so no piece is bigger than a square) and each corner lifted onto the ground; a
  * hedge or fence also gets its sides, in pieces of at most a square, lifted the same way.
  */
 function drapedGeometry(p: Prism): THREE.BufferGeometry {
-  const cell = p.d!;
+  // The square's clinkers sit only 2 cm above the grass and must follow the ground's diagonals.
+  const precise = p.m === 'pave_grey';
+  const cell = precise ? terrain.step : p.d!;
   const pos: number[] = [];
   const uv: number[] = [];
   const up = (x: number, z: number, y: number) => [x, y + terrain.height(x, z), z];
@@ -301,12 +319,15 @@ function drapedGeometry(p: Prism): THREE.BufferGeometry {
     for (let gx = gx0; gx < Math.max(...xs); gx += cell) {
       for (let gz = gz0; gz < Math.max(...zs); gz += cell) {
         const piece = clipToBox(t, gx, gz, gx + cell, gz + cell);
-        for (let k = 1; k + 1 < piece.length; k++) {
-          let [a, b, c] = [piece[0], piece[k], piece[k + 1]];
-          if ((b[1] - a[1]) * (c[0] - a[0]) - (b[0] - a[0]) * (c[1] - a[1]) < 0) [b, c] = [c, b]; // facing up
-          for (const v of [a, b, c]) {
-            pos.push(...up(v[0], v[1], p.y1));
-            uv.push(v[0], -v[1]);
+        const pieces = precise ? [clipDiagonal(piece, gx, gz, 1), clipDiagonal(piece, gx, gz, -1)] : [piece];
+        for (const polygon of pieces) {
+          for (let k = 1; k + 1 < polygon.length; k++) {
+            let [a, b, c] = [polygon[0], polygon[k], polygon[k + 1]];
+            if ((b[1] - a[1]) * (c[0] - a[0]) - (b[0] - a[0]) * (c[1] - a[1]) < 0) [b, c] = [c, b]; // facing up
+            for (const v of [a, b, c]) {
+              pos.push(...up(v[0], v[1], p.y1));
+              uv.push(v[0], -v[1]);
+            }
           }
         }
       }
