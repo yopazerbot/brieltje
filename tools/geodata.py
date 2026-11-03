@@ -21,6 +21,7 @@ above: the rest of Molenhoek, which leaves EXTENT to the west, runs on in the st
 tools stitch a strip onto the files of EXTENT (tools/neighbours.py: `raster`, `ortho_image`, `features`),
 so the area fetched before stays exactly as it was.
     tools/.venv/Scripts/python.exe tools/geodata.py --strip w
+    tools/.venv/Scripts/python.exe tools/geodata.py --strip e
 """
 import io
 import json
@@ -36,7 +37,10 @@ ROOT = Path(__file__).resolve().parents[1]
 GEO = ROOT / "source" / "geo"
 EXTENT = (118300, 183600, 119500, 185600)  # x0, y0, x1, y1: 1.2 by 2 km
 # Strips beside EXTENT, as tall as it so the rasters stitch into one rectangle; as wide as whole orthophoto tiles.
-STRIPS = {"w": (117900, 183600, 118300, 185600)}  # west: Molenhoek on to its end, 400 m by 2 km
+STRIPS = {
+    "w": (117900, 183600, 118300, 185600),  # west: Molenhoek on to its end
+    "e": (119500, 183600, 119900, 185600),  # east: 400 m more of the village and countryside
+}
 LAYERS = ["ADP", "GBG", "GBA", "WBN", "Wegsegment", "WPI", "WTZ", "WLAS", "WGO", "WLI", "IngeschetstGebouw", "TRN", "WGA", "WGR", "WTI"]
 COVERAGES = ["DHMVII_DTM_1m", "DHMVII_DSM_1m"]
 ORTHO_TILE, ORTHO_PX = 400, 1600  # m and px per WMS request: 25 cm a pixel
@@ -106,7 +110,7 @@ def strip(name):
     """A strip beside EXTENT into source/geo/strip_<name>/ (new files only: nothing of EXTENT's is touched)."""
     extent = STRIPS[name]
     out = GEO / f"strip_{name}"
-    out.mkdir(exist_ok=True)
+    out.mkdir(parents=True, exist_ok=True)
     for layer in LAYERS:
         data = wfs(layer, extent)
         (out / f"{layer}_l72.json").write_text(json.dumps(data, separators=(",", ":")), encoding="utf-8")
@@ -128,6 +132,7 @@ def main():
     if len(sys.argv) > 2 and sys.argv[1] == "--strip":
         return strip(sys.argv[2])
     folder = sys.argv[1] if len(sys.argv) > 1 else "old1200"
+    GEO.mkdir(parents=True, exist_ok=True)
     for layer in LAYERS:
         data = wfs(layer)
         backup(f"{layer}_l72.json", folder)

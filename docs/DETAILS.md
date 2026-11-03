@@ -134,6 +134,48 @@ tools/.venv\Scripts\pip install -r tools/requirements.txt
 
 Private source files are not in the repo; the tools that read them expect them in `source\` (git-ignored). Everything the game needs is already built into `web/src/data/` and `web/public/`.
 
+### Rebuilding the eastward extension
+
+The map follows roads, houses and alleys up to about 400 m geographically east of the original
+ring and village. The game's axes are rotated: east is decreasing model x and z. The extension
+keeps 55 m beside streets, 25 m beside footpaths and earth tracks, and gardens round their houses.
+Only areas joined to the original map are built. It adds no crop fields; the existing field
+detail stays in the original area. Relief supports the streets and buildings as elsewhere.
+
+Install `tools/requirements.txt`, then run from the repository root (on Windows,
+use `tools/.venv/Scripts/python` instead of `tools/.venv/bin/python`):
+
+```
+tools/.venv/bin/python tools/geodata.py           # first time only: the original open data
+tools/.venv/bin/python tools/geodata.py --strip w # first time only: keep Molenhoek's western end
+tools/.venv/bin/python tools/geodata.py --strip e # the additional 400 m by 2 km source strip
+tools/.venv/bin/python tools/crops.py
+tools/.venv/bin/python tools/neighbours.py
+tools/.venv/bin/python tools/terrain.py
+tools/.venv/bin/python tools/street.py
+tools/.venv/bin/python tools/build_house.py
+tools/.venv/bin/python tools/streets.py
+tools/.venv/bin/python tools/roads.py
+tools/.venv/bin/python tools/road_detail.py
+tools/.venv/bin/python tools/bounds.py
+tools/.venv/bin/python tools/places.py
+```
+
+The source downloads stay in the ignored `source/geo/` folder; commit the generated JSON
+with the code so a fresh checkout can play the extension. The existing extracted house
+data is enough: rebuilding the map does not need the private source drawings or Blender.
+Only complete strips are stitched into the height rasters and orthophoto, in geographic
+west-to-east order. Existing features win when a building or road crosses a download edge.
+The eastern fields and tree budget are generated separately from the original area and
+Molenhoek's band. `bounds.py` checks that every building, portal and spawn fits inside the
+playable boundary; `places.py` chooses safe destinations on the expanded road network.
+
+Run the strip and geographic direction checks with:
+
+```
+tools/.venv/bin/python -m unittest discover -s tools -p 'test_*.py'
+```
+
 ## Folder Layout
 
 | Folder | Contents |
