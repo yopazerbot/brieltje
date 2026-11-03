@@ -36,6 +36,7 @@ import { zombieEntry } from '../shared/wire.mjs';
 import { arenaOf } from '../shared/arenas.mjs';
 
 export const DONE_MS = 15_000;
+export const RECONNECT_MS = 15_000;
 const BEST_KEY = 'zombies_best';
 const MAX_RANGE = 100; // m from the shooter to the zombie, on the server's positions
 const MAX_HITS = 8; // zombies one shot can claim (the shotgun's eight pellets)
@@ -79,6 +80,9 @@ export class ZombieGame {
     this.fell = new Map();
     /** Who was put out of this wave for standing out of every zombie's reach: nobody can help them up (they come back at its end) */
     this.perchedOut = new Set();
+    // Only the same authenticated session can reclaim a disconnected survivor's grace.
+    this.away = new Map();
+    this.reconnecting = false;
   }
 
   get phase() {
@@ -116,7 +120,7 @@ export class ZombieGame {
     for (const n of this.players) if (here(n) || h.beaten[n]) beaten[n] = h.beaten[n] ?? 0;
     return {
       wave: h.wave, left: h.left, big: h.bigWave, bigs: bigOf(h.wave), fighters, standing, beaten, ms: this.ms(now),
-      down: [...this.down].filter(here), downs: { ...this.downs }, best: this.best, record: this.record, custom: this.custom, place: this.arena.id,
+      down: [...this.down].filter(here), downs: { ...this.downs }, best: this.best, record: this.record, custom: this.custom, reconnecting: this.reconnecting, place: this.arena.id,
       ...this.loot.view(),
     };
   }
@@ -134,6 +138,7 @@ export class ZombieGame {
     const events = this.horde.selectWave(now, wave, this.roster(now).filter((p) => p.fighter).length);
     if (!events) return false;
     this.custom = true;
+    this.reconnecting = false;
     this.revive();
     for (const e of events) {
       if (e.type === 'gone') this.game.broadcast({ t: 'zgone', ids: e.ids });
@@ -155,9 +160,20 @@ export class ZombieGame {
   /** Every tick (`dt` in ms): the horde's step, and what came of it. */
   tick(now, dt) {
     const g = this.game;
+    const roster = this.roster(now);
+    for (const [name, away] of this.away) {
+      const p = g.players.get(name);
+      if (now >= away.until || this.down.has(name) || (p && (p.key !== away.key || !p.alive || p.state?.armed))) this.away.delete(name);
+    }
+    const waiting = !roster.some((p) => p.fighter && p.alive) && this.away.size > 0;
+    if (waiting !== this.reconnecting) {
+      this.reconnecting = waiting;
+      this.modes.send();
+    }
+    if (waiting) return; // A dropped connection is not a death; wait for its first armed state too.
     let changed = false;
     this.helpTick(now);
-    const events = this.horde.tick(now, dt / 1000, this.roster(now));
+    const events = this.horde.tick(now, dt / 1000, roster);
     this.sync();
     for (const e of events) {
       if (e.type === 'wave') {
@@ -486,9 +502,20 @@ export class ZombieGame {
     return [...this.horde.zombies.values()].map((z) => zombieEntry(z));
   }
 
+  /** A connection dropped: allow a live fighter to reconnect briefly, without reviving anyone. */
+  leave(name, p, now) {
+    if (p?.alive && p.state?.armed && this.players.has(name) && !this.down.has(name)) {
+      this.away.set(name, { key: p.key, until: now + RECONNECT_MS });
+    }
+    this.letGo(name, 'stop');
+    for (const [helper, h] of this.helping) if (h.target === name) this.letGo(helper, 'stop');
+  }
+
   /** Someone joined: they take part; down when they left, they wait for the wave as before (no coming back early by reconnecting). */
   join(name, p) {
     this.players.add(name);
+    if (this.away.get(name)?.key !== p?.key) this.away.delete(name);
+    this.horde.fieldAt = -Infinity;
     // Out of the place (just joined, at the house's start places): to its start, not just inside its edge (maybe in a wall).
     if (p?.state && !this.edge.inside(p.state.x, p.state.z) && !this.down.has(name)) this.game.gather([name], this.arena);
     if (p && this.loot.kits.has(name)) this.game.send(p.ws, { t: 'zgift', kind: 'kit', kit: this.loot.kit(name) }); // back: what they had
@@ -506,6 +533,8 @@ export class ZombieGame {
     this.loot.clear();
     this.fell.clear();
     this.perchedOut.clear();
+    this.away.clear();
+    this.reconnecting = false;
     this.game.broadcast({ t: 'zgone', ids: [...this.horde.zombies.keys()] });
     this.horde.zombies.clear();
     const now = Date.now();

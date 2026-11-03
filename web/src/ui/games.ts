@@ -32,6 +32,8 @@ export interface ZombiesView {
   record: boolean;
   /** The admin selected a wave; this run cannot replace the normal record. */
   custom?: boolean;
+  /** No connected survivor while an authenticated teammate is briefly reconnecting. */
+  reconnecting?: boolean;
   /** Where it is played (shared/arenas.mjs): home, or a portal in Smetlede */
   place?: string;
   /**
@@ -327,6 +329,7 @@ export class Games {
     else if (v.kind === 'zombies') {
       const z = v.zombies;
       if (!z) text = title;
+      else if (z.reconnecting) text = `${title} · ${t('z.reconnecting', { n: Math.max(1, z.wave) })}`;
       else if (v.phase === 'break') text = `${title} · ${z.wave ? t('z.barBreak', { n: z.wave, time: clock(left) }) : t('z.barFirst', { time: clock(left) })} · ${t('tactics.prepare', { n: (z.items ?? []).length })}`;
       else text = `${title} · ${t('z.barWave', { n: z.wave, left: z.left, standing: z.standing, fighters: z.fighters })}`;
     } else if (v.kind === 'hide') {

@@ -7,7 +7,7 @@
 // everyone is gathered there when one starts (game.mjs gather; the game's edge keeps them near, see fence).
 
 import { readFileSync } from 'node:fs';
-import { DONE_MS as ZOMBIES_DONE_MS, ZombieGame } from './zombies.mjs';
+import { DONE_MS as ZOMBIES_DONE_MS, RECONNECT_MS as ZOMBIES_RECONNECT_MS, ZombieGame } from './zombies.mjs';
 import { arenaOf, portalOf } from '../shared/arenas.mjs';
 
 const HIDE_MS = 30_000; // the seeker counts with eyes shut
@@ -340,7 +340,10 @@ export class Modes {
       if (s.it === name) s.itBack = 0; // "it" is back in time
     }
     if (s.kind === 'treasure') s.counts[name] ??= 0;
-    if (s.kind === 'zombies' && s.phase !== 'done') s.z.join(name, this.game.players.get(name));
+    if (s.kind === 'zombies' && s.phase !== 'done') {
+      s.emptyUntil = 0;
+      s.z.join(name, this.game.players.get(name));
+    }
     if (this.active) this.send();
   }
 
@@ -349,7 +352,7 @@ export class Modes {
    * they're back (see join). The last seeker, or "it", has GRACE_MS to come back (a phone's Wi-Fi
    * blinking) before the game goes on without them (see tick).
    */
-  leave(name) {
+  leave(name, player, now = Date.now()) {
     const s = this.state;
     if (!this.active || s.phase === 'done') return;
     if (s.kind === 'hide') {
@@ -368,11 +371,9 @@ export class Modes {
         return this.send();
       }
       if (this.names().length < 2) return this.finish('Not enough players', 'notEnough');
-    } else if (s.kind === 'zombies' && !this.names().length) {
-      // Nobody left: the game ends without a result (there is nobody to show it to).
-      s.z.stop();
-      this.state = { kind: 'free' };
-      return;
+    } else if (s.kind === 'zombies') {
+      s.z.leave(name, player, now);
+      if (!this.names().length) s.emptyUntil = now + ZOMBIES_RECONNECT_MS;
     }
     this.send();
   }
@@ -411,6 +412,15 @@ export class Modes {
     if (s.phase !== 'done' && this.graceOver(now)) return;
     if (s.kind === 'tag' && s.phase === 'playing' && s.it in s.times && this.game.players.has(s.it)) s.times[s.it] += dt / 1000;
     if (s.kind === 'zombies' && s.phase !== 'done') {
+      if (!this.game.players.size) {
+        s.emptyUntil ||= now + ZOMBIES_RECONNECT_MS;
+        if (now >= s.emptyUntil) {
+          s.z.stop();
+          this.state = { kind: 'free' };
+          this.send();
+        }
+        return;
+      }
       // The horde keeps its own clock: its breaks and waves (and its end, through finish).
       s.z.tick(now, dt);
       return;

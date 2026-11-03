@@ -394,7 +394,7 @@ export class Game {
         this.players.delete(name);
         this.releaseCar(name);
         this.releaseHorse(name);
-        this.modes.leave(name);
+        this.modes.leave(name, player);
         this.broadcast({ t: 'leave', name });
         this.broadcast({ t: 'scores', list: this.scoreList() });
       }
