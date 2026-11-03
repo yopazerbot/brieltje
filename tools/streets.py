@@ -23,7 +23,7 @@ from pathlib import Path
 from shapely.geometry import LineString, Point
 from shapely.ops import linemerge, unary_union
 
-from neighbours import band, features
+from neighbours import features, zone as world_zone
 
 ROOT = Path(__file__).resolve().parent.parent
 OUT = ROOT / "web" / "src" / "data" / "streets.json"
@@ -31,8 +31,6 @@ OUT = ROOT / "web" / "src" / "data" / "streets.json"
 # Lambert 72 → model (as in tools/build_house.py): x = aX + bY + xoff, z = cX + dY + zoff.
 A, B, C, D, XOFF, ZOFF = -0.746292959, -0.665617623, -0.665617623, 0.746292959, 211874.050655751, -58903.965184599
 PLOT = (118911.0, 184981.0)  # the plot's middle (model 4.45, -3)
-AREA = 540
-CHURCH, VILLAGE = (119018.7, 184084.2), 340  # as tools/neighbours.py
 MIN_STRETCH = 70  # m
 EVERY = 280  # m between names along a long street
 
@@ -72,8 +70,7 @@ def road_graph(data, area):
 
 def main():
     data = {"features": features("Wegsegment")}
-    hull = unary_union([Point(PLOT).buffer(AREA, 64), Point(CHURCH).buffer(VILLAGE, 64)]).convex_hull
-    zone = (unary_union([hull, band()]) if not band().is_empty else hull).buffer(-15)
+    zone = world_zone(Point(PLOT)).buffer(-15)
     pieces = {}
     for f in data["features"]:
         p = f["properties"]

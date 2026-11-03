@@ -40,11 +40,13 @@ from PIL import Image, ImageDraw
 
 from roofs import corners, decompose, fit, frame, roof_parts
 import shapely
-from shapely.affinity import affine_transform, rotate
+from shapely.affinity import affine_transform, rotate, translate
 from shapely.geometry import LineString, Point, Polygon, box
 from shapely.ops import linemerge, unary_union
 from shapely.prepared import prep
 from shapely.strtree import STRtree
+
+from geodata import EXTENT, STRIPS, LAYERS
 
 ROOT = Path(__file__).resolve().parents[1]
 GEO = ROOT / "source" / "geo"
@@ -61,12 +63,28 @@ CHURCH, CHURCH_UIDN, VILLAGE = (119018.7, 184084.2), 9757729, 340
 # The primary school east of the church (GRB UIDN): the front wing on Smetlededorp, the long block, the low
 # pavilion and the two sheds round the playground. Our Blender model (tools/school.py) takes their place.
 SCHOOL_UIDNS = {1852114, 9796774, 9758237, 1852643, 5565555}
-# The strip west of EXTENT (tools/geodata.py --strip w): the rest of Molenhoek, to its end. Where it has been
-# fetched it is stitched on to the west of what was fetched before (`raster`, `ortho_image`, `features`).
-STRIP = GEO / "strip_w"
-HAS_STRIP = (STRIP / "DHMVII_DTM_1m_clean.tif").exists()
-# the height rasters: west and north edge (Lambert 72), metres across and down
-TILE_X0, TILE_Y1, TILE_W, TILE_H = (117900, 185600, 1600, 2000) if HAS_STRIP else (118300, 185600, 1200, 2000)
+# A strip is used only after its whole download is present. A partial fetch must not move the
+# raster's origin or open an area whose buildings, heights or photo are still missing.
+STRIP_FILES = [f"{layer}_l72.json" for layer in LAYERS] + [
+    "DHMVII_DTM_1m_clean.tif", "DHMVII_DSM_1m_clean.tif", "ortho_025m.jpg", "ortho_025m.json"]
+
+
+def available_strips():
+    return {name: extent for name, extent in STRIPS.items()
+            if all((GEO / f"strip_{name}" / file).exists() for file in STRIP_FILES)}
+
+
+ACTIVE_STRIPS = available_strips()
+HAS_STRIP = "w" in ACTIVE_STRIPS  # the existing Molenhoek band
+SOURCES = sorted([(GEO, EXTENT)] + [(GEO / f"strip_{name}", extent) for name, extent in ACTIVE_STRIPS.items()],
+                 key=lambda item: item[1][0])
+for (_, left), (_, right) in zip(SOURCES, SOURCES[1:]):
+    if left[2] != right[0] or left[1::2] != right[1::2]:
+        raise ValueError("Geodata strips must be contiguous and have the same north and south edges")
+# The height rasters: west and north edge (Lambert 72), metres across and down.
+TILE_X0, TILE_Y1 = SOURCES[0][1][0], EXTENT[3]
+TILE_W, TILE_H = SOURCES[-1][1][2] - TILE_X0, EXTENT[3] - EXTENT[1]
+EAST = 400.0  # metres in Lambert 72, rather than along the rotated model's x axis
 OUR_GROUND = -0.1    # model ground level
 # Buildings newer than the laser scan (GRB UIDN): their roof as the 2025 orthophoto shows it.
 # Without an entry: a house gets a flat roof on two storeys, an outbuilding one storey.
@@ -135,25 +153,36 @@ def shaded_parts(poly, kind):
 
 def raster(kind):
     """A laser raster, "DTM" or "DSM" (metres, a cell a metre), over TILE_X0.. with the strip stitched on."""
-    a = np.array(Image.open(GEO / f"DHMVII_{kind}_1m_clean.tif"), np.float32)
-    if HAS_STRIP:
-        a = np.concatenate([np.array(Image.open(STRIP / f"DHMVII_{kind}_1m_clean.tif"), np.float32), a], axis=1)
-    return a
+    parts = []
+    for folder, (x0, y0, x1, y1) in SOURCES:
+        with Image.open(folder / f"DHMVII_{kind}_1m_clean.tif") as img:
+            if img.size != (x1 - x0, y1 - y0):
+                raise ValueError(f"{folder}: {kind} raster does not match its extent")
+            parts.append(np.array(img, np.float32))
+    return np.concatenate(parts, axis=1)
 
 
 def ortho_image():
     """The orthophoto (PIL image) and its frame {x0, y0, x1, y1, px, py}, with the strip stitched on."""
-    Image.MAX_IMAGE_PIXELS = None  # 6400 x 8000 px: our own download
-    meta = json.loads((GEO / "ortho_025m.json").read_text(encoding="utf-8"))
-    img = Image.open(GEO / "ortho_025m.jpg").convert("RGB")
-    if HAS_STRIP:
-        sm = json.loads((STRIP / "ortho_025m.json").read_text(encoding="utf-8"))
-        side = Image.open(STRIP / "ortho_025m.jpg").convert("RGB")
-        both = Image.new("RGB", (side.size[0] + img.size[0], img.size[1]))
-        both.paste(side, (0, 0))
-        both.paste(img, (side.size[0], 0))
-        img, meta = both, {**meta, "x0": sm["x0"], "px": both.size[0]}
-    return img, meta
+    Image.MAX_IMAGE_PIXELS = None  # our own downloaded tiles, stitched at 25 cm per pixel
+    images, frames = [], []
+    for folder, extent in SOURCES:
+        meta = json.loads((folder / "ortho_025m.json").read_text(encoding="utf-8"))
+        with Image.open(folder / "ortho_025m.jpg") as source:
+            img = source.convert("RGB")
+        if tuple(meta[k] for k in ("x0", "y0", "x1", "y1")) != extent or img.size != (meta["px"], meta["py"]):
+            raise ValueError(f"{folder}: orthophoto does not match its frame")
+        if frames and (meta["py"] != frames[0]["py"] or
+                       meta["px"] / (meta["x1"] - meta["x0"]) != frames[0]["px"] / (frames[0]["x1"] - frames[0]["x0"])):
+            raise ValueError(f"{folder}: orthophotos must have the same resolution")
+        images.append(img)
+        frames.append(meta)
+    both = Image.new("RGB", (sum(img.width for img in images), images[0].height))
+    offset = 0
+    for img in images:
+        both.paste(img, (offset, 0))
+        offset += img.width
+    return both, {**frames[0], "x1": frames[-1]["x1"], "px": both.width}
 
 
 class Ortho:
@@ -210,10 +239,16 @@ class Ortho:
 def features(name, strip=True):
     """A GRB layer's features; with the strip's after them, those the first fetch has already (by OIDN) left out."""
     out = json.loads((GEO / f"{name}_l72.json").read_text(encoding="utf-8"))["features"]
-    if strip and HAS_STRIP and (STRIP / f"{name}_l72.json").exists():
-        seen = {f["properties"].get("OIDN") for f in out}
-        out += [f for f in json.loads((STRIP / f"{name}_l72.json").read_text(encoding="utf-8"))["features"]
-                if f["properties"].get("OIDN") not in seen]
+    seen = {f["properties"].get("OIDN") for f in out}
+    for side in ACTIVE_STRIPS if strip else ():
+        path = GEO / f"strip_{side}" / f"{name}_l72.json"
+        if not path.exists():
+            continue
+        for f in json.loads(path.read_text(encoding="utf-8"))["features"]:
+            oid = f["properties"].get("OIDN")
+            if oid not in seen:
+                out.append(f)
+                seen.add(oid)
     return out
 
 
@@ -262,10 +297,38 @@ def hull(plot):
 
 
 def zone(plot):
-    """The area of the surroundings (Lambert 72): `hull`, and the band along the rest of Molenhoek (`band`).
-    Whatever is chosen over the whole area (the tallest trees, the roof colours) is chosen for the band on its
-    own, so the area of before keeps what it had."""
-    return unary_union([hull(plot), band()]) if not band().is_empty else hull(plot)
+    """The original hull, Molenhoek's western band and the eastward extension (Lambert 72).
+    Tree budgets, roof colours and ground covers are chosen separately for each extension.
+    """
+    return unary_union([hull(plot), band(), east(plot)])
+
+
+def east(plot):
+    """Roads, houses and alleys up to 400 m east, activated by `geodata.py --strip e`.
+
+    Keep gardens beside the roads, rather than a whole strip of fields. Only the component
+    joined to the original area is built: no isolated houses beyond an unreachable field.
+    """
+    if "e" not in ACTIVE_STRIPS:
+        return Polygon()
+    old = hull(plot)
+    limit = unary_union([old, translate(old, xoff=EAST)]).convex_hull
+    ways = []
+    for feature in features("Wegsegment"):
+        geometry = feature.get("geometry")
+        if not geometry or geometry["type"] != "LineString":
+            continue
+        line = LineString([p[:2] for p in geometry["coordinates"]])
+        kind = feature["properties"].get("LBLMORF", "")
+        reach = 25 if kind == "aardeweg" or kind.startswith("wandel") else 55
+        ways.append(line.buffer(reach, 16))
+    corridor = unary_union(ways).intersection(limit)
+    gardens = [p.buffer(15, 8).intersection(limit) for f in features("GBG") for p in polygons(f["geometry"])
+               if corridor.contains(p.centroid) and not old.contains(p.centroid)]
+    joined = unary_union([old, corridor, *gardens])
+    connected = next(p for p in getattr(joined, "geoms", [joined])
+                     if p.geom_type == "Polygon" and p.contains(plot.centroid))
+    return connected.difference(old)
 
 
 def church_tower(poly, ndsm):
@@ -526,13 +589,16 @@ def main():
     beyond = prep(old.difference(centre.buffer(AREA, 64)))
     rest = band().difference(old.buffer(0.5)) if not band().is_empty else Polygon()  # no slivers along the old edge
     in_band = prep(rest) if not rest.is_empty else None
+    eastern = east(plot).difference(old.buffer(0.5))
+    in_east = prep(eastern) if not eastern.is_empty else None
     # (centre, radius or None for the zone beyond the ring or "band" for the band, cap in all or None, more on top, gap, lowest)
     tiers = [((cx, cy), RADIUS, 60, 0, 4.0, 3.0), ((cx, cy), 240, 320, 0, 4.0, 3.0), ((cx, cy), AREA, 1700, 0, 7.0, 5.0),
              (CHURCH, 160, None, 260, 4.0, 3.0), (None, None, None, 1400, 7.0, 5.0)] + ([(None, "band", None, 450, 7.0, 5.0)] if in_band else [])
+    tiers += [(None, "east", None, 300, 7.0, 5.0)] if in_east else []
     for at, radius, cap, more, gap, low in tiers:
         cap = cap or len(trees) + more
-        if radius is None or radius == "band":  # the zone beyond the ring, or the band
-            bx0, by0, bx1, by1 = (old if radius is None else rest).bounds
+        if radius is None or isinstance(radius, str):
+            bx0, by0, bx1, by1 = (old if radius is None else rest if radius == "band" else eastern).bounds
             r0, c0 = max(0, int(TILE_Y1 - by1)), max(0, int(bx0 - TILE_X0))
             window = ndsm[r0:int(TILE_Y1 - by0), c0:int(bx1 - TILE_X0)]
         else:
@@ -545,6 +611,7 @@ def main():
                 break
             x, y = TILE_X0 + c0 + col + 0.5, TILE_Y1 - (r0 + row) - 0.5
             outside = (not beyond.contains(Point(x, y)) if radius is None else not in_band.contains(Point(x, y)) if radius == "band"
+                       else not in_east.contains(Point(x, y)) if radius == "east"
                        else math.dist((x, y), at) > radius)
             if outside or not room(x, y, gap) or keep_out.contains(Point(x, y)):
                 continue
@@ -561,9 +628,10 @@ def main():
     road_out = []
     # The road surface in the area of before as it was cut then; the band's on its own beside it.
     reach_old = old.buffer(20)
-    reach_band = area.buffer(20).difference(reach_old) if not rest.is_empty else None
+    reach_band = band().buffer(20).difference(reach_old) if in_band else None
+    reach_east = area.buffer(20).difference(unary_union([reach_old, band().buffer(20)])) if in_east else None
     for poly in getattr(roads, "geoms", [roads]):
-        pieces = [poly.intersection(reach_old)] + ([poly.intersection(reach_band)] if reach_band is not None else [])
+        pieces = [poly.intersection(reach) for reach in (reach_old, reach_band, reach_east) if reach is not None]
         clipped = shapely.GeometryCollection([g for piece in pieces for g in getattr(piece, "geoms", [piece])])
         for part in getattr(clipped, "geoms", [clipped]):
             if part.geom_type != "Polygon":
@@ -590,8 +658,9 @@ def main():
     # each on their own (the ring keeps the colours it had before the village came, the village those it had
     # before the band).
     old_area = prep(hull(plot))
-    in_ring = [0 if f.centroid.distance(centre) <= AREA else 1 if old_area.contains(f.centroid) else 2 for f in footprints]
-    for group in (0, 1, 2):
+    in_ring = [0 if f.centroid.distance(centre) <= AREA else 1 if old_area.contains(f.centroid)
+               else 3 if in_east and in_east.contains(f.centroid) else 2 for f in footprints]
+    for group in (0, 1, 2, 3):
         roofs_rgb = [(b, q) for b, r in zip(buildings, in_ring) if r == group for q in b["parts"] if q["color"]]
         if len(roofs_rgb) <= 8:
             continue

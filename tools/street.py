@@ -50,7 +50,7 @@ from shapely.strtree import STRtree
 
 import crops
 import old_house
-from neighbours import TILE_H, TILE_W, TILE_X0, TILE_Y1, band, features, hull, model_frame, ortho_image, polygons, raster, zone
+from neighbours import TILE_H, TILE_W, TILE_X0, TILE_Y1, band, east, features, hull, model_frame, ortho_image, polygons, raster, zone
 
 ROOT = Path(__file__).resolve().parents[1]
 OUT = ROOT / "data" / "street.json"
@@ -576,14 +576,23 @@ def main():
     nb = json.loads((ROOT / "data" / "neighbours.json").read_text(encoding="utf-8"))
     old = model(hull(plot))
     rest = model(band()).difference(old.buffer(0.5)) if not band().is_empty else Polygon()  # no slivers along the old edge
-    touches = lambda line: not rest.is_empty and LineString(line["path"]).intersects(rest)  # a plot line into the band goes with the band
-    out, ras, road = build(old, plot, roads_l72, to_model, nb, lambda line: not touches(line))
-    if not rest.is_empty:
-        more, _, _ = build(rest, plot, roads_l72, to_model, nb, touches)
+    eastern = model(east(plot)).difference(old.buffer(0.5))
+    regions = [old] + [part for part in (rest, eastern) if not part.is_empty]
+
+    def owner(line):
+        # A plot line crossing the old edge goes with its extension, once only.
+        path = LineString(line["path"])
+        return next((i for i in range(len(regions) - 1, 0, -1) if path.intersects(regions[i])), 0)
+
+    out, ras, road = build(old, plot, roads_l72, to_model, nb, lambda line: owner(line) == 0)
+    for i, region in enumerate(regions[1:], 1):
+        more, _, _ = build(region, plot, roads_l72, to_model, nb, lambda line: owner(line) == i,
+                           grow_fields=not region.equals(eastern))
         offset = len(out["poles"])
         for k in ("roads", "poles", "tracks", "water", "pavings", "pools", "hedges", "fields", "lawns", "meadows"):
             out[k] = out[k] + more[k]
         out["wires"] = out["wires"] + [[a + offset, b + offset] for a, b in more["wires"]]
+    if len(regions) > 1:
         grid(old)  # the check image shows the area of before
         ras = Raster(to_model)
     OUT.write_text(json.dumps(out, separators=(",", ":")), encoding="utf-8")
@@ -598,7 +607,7 @@ def main():
     debug(ras, out, road)
 
 
-def build(area, plot, roads_l72, to_model, nb, mine):
+def build(area, plot, roads_l72, to_model, nb, mine, grow_fields=True):
     """Everything in `area` (model): out (as written), the raster and the road. `mine`: the plot lines it takes."""
     model = lambda g: affine_transform(g, to_model)
     grid(area)
@@ -657,7 +666,7 @@ def build(area, plot, roads_l72, to_model, nb, mine):
     yards = unary_union([Polygon(q["p"][0]).buffer(0) for q in pave] + [Polygon(p).buffer(0.6) for p in pool_list])
     tracks_area = unary_union([LineString(t["path"]).buffer(1.2) for t in track_list]) if track_list else Polygon()
     declared = crops.parcels(model)
-    field_list = fields(ras, veg, all_plots, homes, unary_union([keep_out, meadow, yards, tracks_area, road.buffer(1.0)]), area, declared)
+    field_list = fields(ras, veg, all_plots, homes, unary_union([keep_out, meadow, yards, tracks_area, road.buffer(1.0)]), area, declared) if grow_fields else []
 
     out = {
         "_source": "GRB (Wegsegment, WPI, WTZ, ADP) and the orthophoto (Digitaal Vlaanderen, open data); laser scan DHM II 2013-2015; "
