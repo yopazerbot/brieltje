@@ -118,6 +118,8 @@ The Railway project has two services: `briel-GTA` (builds from the `web` folder 
 
 ## Rebuild the House Data
 
+The village building models also carry their collision geometry. After changing a residential street footprint, rebuild it with `blender -b -P tools/molenhoek.py -- web/public/models/<street>.glb <street>`, using the same street identifier for both arguments.
+
 For the school frontage, run `blender -b -P tools/school.py -- web/public/models/school.glb`. The bus shelter belongs to the square and rebuilds with `blender -b -P tools/town/town.py -- web/public/models/town.glb`. If the town builder reports a footprint mismatch after a village-data update, match the old polygon to its exact current outline before updating its index.
 
 The village dormer house is a separate exterior. From the repository root, run `blender -b -P tools/dormer_house.py -- web/public/models/dormer_house.glb`. An optional second output path saves an editable Blender file.
