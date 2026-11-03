@@ -4,6 +4,8 @@ Last update: 2026-11-03
 
 ## Done
 
+Zombies keeps the current game through brief connection drops, including both players reconnecting together. A disconnected survivor gets 15 seconds to return if the connected teammate is down. Actual deaths still end the game when every fighter is down. An endurance test clears 40 waves without a wave limit.
+
 During multiplayer Zombies, the admin can switch straight to a chosen wave, higher or lower, from Admin → Party games. The old zombies go, downed teammates return and gear stays. Chosen-wave runs are marked custom and do not replace normal best-wave records.
 
 Either Ctrl key crouches while held, with the controls updated in both languages.
