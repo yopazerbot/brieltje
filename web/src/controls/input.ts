@@ -128,7 +128,8 @@ export class Input {
       if (e.code === 'Space' && !e.repeat) this.keyJump = true;
       if (e.code === 'KeyE' && !e.repeat) this.keyUse = true;
       if (e.code === 'KeyR' && !e.repeat) this.keyReload = true;
-      if (/^Digit[1-5]$/.test(e.code) && !e.repeat) this.slot = Number(e.code.slice(5));
+      const digit = /^(?:Digit|Numpad)([1-7])$/.exec(e.code);
+      if (digit && !e.repeat) this.slot = Number(digit[1]);
       if (e.code === 'KeyQ' && !e.repeat) this.cycle = 2;
       if (e.code === 'KeyG' && !e.repeat) this.keyThrow = true;
       if ((e.code === 'KeyX' || e.code === 'Delete') && !e.repeat) this.keyDelete = true;
