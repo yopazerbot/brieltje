@@ -194,12 +194,14 @@ tools/.venv/bin/python -m unittest discover -s tools -p 'test_*.py'
 
 The church's front doors open into the tower. An 84-step spiral stair hidden inside it reaches
 the roof walk, 12.7 m above the church ground. The walk has three wider firing bays, low solid
-cover and open upper rails. You can walk up and back down without jumping or flying. It stays
+cover and open upper rails. A steel rail follows the stair's exposed edge and guards the wider
+upper landing. The belfry louvres on the exit face are removed so the doorway is clear. You can
+walk up and back down without jumping or flying. It stays
 open in solo play, multiplayer and Zombies at the church. Regular and big zombies use the same
 stairs; standing above the route where they cannot reach still triggers the existing penalty.
 This is a fictional maintenance route for the game, not a surveyed church interior.
 
-`web/shared/church.json` holds the shared steps, floor, cover and wall geometry. The browser,
+`web/shared/church.json` holds the shared steps, rails, floor, cover and wall geometry. The browser,
 server and zombie navigation use `web/shared/church.mjs` to place it on the church's ground.
 The round zombie arena also clips its indoor grid, keeping its corners inside the boundary.
 Rebuild the data and visible model from the repository root:
