@@ -10,6 +10,8 @@ For in-person play, [express interest](https://brieltje.be/interested/) or [chec
 
 During play, open the menu’s Controls tab for a quick guide or to switch between a connected controller and the keyboard.
 
+In team games, press V or tap **Come here** to mark your position for teammates for eight seconds. Markers show their distance and direction. While holding an equipment action in Zombies, a green preview shows where it fits. The break between waves highlights rewards nearby and gives you time to reload and prepare.
+
 ![The house, rendered in Blender from the game](web/public/start/house-2560.webp)
 
 The whole project was made with AI. Yoshi Parlevliet, a cybersecurity consultant rather than a game developer, directed development and used both [OpenAI Codex](https://openai.com/codex/) and [Claude Code](https://claude.com/claude-code) to build the game, the data tools and the Blender scripts. Every choice and the reason for it is in [DECISIONS.md](DECISIONS.md).

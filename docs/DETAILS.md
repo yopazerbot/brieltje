@@ -51,6 +51,12 @@ At the start you choose **Explore** (just walking around), **Paintball** (paint 
 
 The DualSense works over Bluetooth once it is paired with Windows. Chrome only reports a controller after you press one of its buttons while the page is open.
 
+Team games have a Come here button, also on V with a keyboard. It marks the sender's current game position for eight seconds, once every three seconds. Teammate markers show direction and distance. Holding a Zombies equipment action for 0.8 seconds places it, with a preview while held. Multiplayer previews use the server's placement rules, including inventory and the available space.
+
+During a wave break, the top bar prompts reloading and preparation, counts rewards and highlights the final three seconds. Rewards within 45 metres have distance labels. Outdoors, runners approach from alternate sides while they have a clear route. Big zombies pause to pound planted pike rails.
+
+Moving with a rifle adds 10 percent to its spread. Aiming a shotgun tightens its pellet spread by 25 percent. A scoped sniper is accurate while stationary and gains spread while moving.
+
 ## Hosting (Railway)
 
 The Railway project has two services: `briel-GTA` (builds from the `web` folder of `main` and runs `web/server.mjs`) and `Postgres` (accounts and the login log). Anyone with the URL can walk around alone. Multiplayer needs the PIN (or an account). Search engines are asked not to index the site.
