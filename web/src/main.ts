@@ -464,7 +464,8 @@ scene.add(grenades.group);
 const pickups = new Pickups((x, z, y) => world.groundAt(x, z, y + 0.3, 0).y);
 scene.add(pickups.group);
 // The Zombies game's rewards lying and the claymores down (shared/loot.mjs: the server's together, this page's alone).
-const rewards = new Rewards((x, z, y) => world.groundAt(x, z, y + 0.4, 0).y);
+const rewards = new Rewards((x, z, y) => world.groundAt(x, z, y + 0.4, 0).y,
+  (id, ring, bottom, top) => world.setMoving(`stakes-${id}`, ring, bottom, top, true));
 rewards.onBurst = (points) => {
   for (const p of points) effects.splinters(p);
 };

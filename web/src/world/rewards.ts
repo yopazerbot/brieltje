@@ -4,6 +4,7 @@ import type { LootKind } from '../../shared/loot.mjs';
 import { LOOT } from '../../shared/loot.mjs';
 import { paintball } from '../paintball';
 import { sound } from '../sound';
+import type { Ring } from './houseData';
 
 /**
  * The Zombies game's rewards on screen (shared/loot.mjs keeps them: the server together, the page
@@ -267,7 +268,8 @@ export class Rewards {
   onSpent: (at: THREE.Vector3) => void = () => {};
 
   /** `ground`: the floor's height at (x, z) near height y, for each stake's foot. */
-  constructor(private ground: (x: number, z: number, y: number) => number = (_x, _z, y) => y) {
+  constructor(private ground: (x: number, z: number, y: number) => number,
+              private stakeBarrier: (id: number, ring: Ring | null, bottom?: number, top?: number) => void) {
     this.group.name = 'rewards';
     for (const m of [this.stakeMesh, this.railMesh]) {
       m.count = 0;
@@ -288,6 +290,7 @@ export class Rewards {
     const ids = new Set(list.map((r) => r[0]));
     for (const id of this.rows.keys()) {
       if (ids.has(id)) continue;
+      this.stakeBarrier(id, null);
       this.rows.delete(id);
       changed = true;
     }
@@ -314,6 +317,13 @@ export class Rewards {
       }));
       for (const s of stakes) if (s.rank >= up) s.fall = 1; // worn already when this page came
       this.rows.set(id, { x, y, z, yaw, a, b, up, stakes });
+      // The rail still spans a worn row until it bursts. Follow its actual clipped length and yaw.
+      const cos = Math.cos(yaw), sin = Math.sin(yaw);
+      const ring: Ring = [[a - 0.15, RAIL_Z - 0.05], [b + 0.15, RAIL_Z - 0.05],
+                          [b + 0.15, FOOT + 0.05], [a - 0.15, FOOT + 0.05]].map(
+        ([u, back]) => [x + cos * u + sin * back, z - sin * u + cos * back]);
+      const floors = ring.map(([px, pz]) => this.ground(px, pz, y));
+      this.stakeBarrier(id, ring, Math.min(...floors), Math.max(...floors) + (POLE + 0.2) * Math.cos(LEAN));
       woodSound(new THREE.Vector3(x, y, z), 'knock');
       changed = true;
     }
@@ -372,6 +382,7 @@ export class Rewards {
     for (const p of points) p.y = this.ground(p.x, p.z, row.y) + 0.35;
     woodSound(new THREE.Vector3(row.x, row.y, row.z), 'burst');
     this.onBurst(points);
+    this.stakeBarrier(id, null);
     this.rows.delete(id);
     this.layStakes();
   }

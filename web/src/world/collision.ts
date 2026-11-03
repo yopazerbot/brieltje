@@ -98,6 +98,7 @@ export class World {
   private search = 0;
   /** Moving parts such as door panels, keyed by name; updated while they move. */
   private moving = new Map<string, Solid>();
+  private walkingBarriers = new Map<string, Solid>();
 
   private dips: { rim: Ring; bottom: Ring; depth: number; low: number; minX: number; maxX: number; minZ: number; maxZ: number }[] = [];
 
@@ -181,14 +182,15 @@ export class World {
   }
 
   /** Set (or with null, remove) a moving solid: a flat outline between two heights. */
-  setMoving(key: string, ring: Ring | null, y0 = 0, y1 = 0): void {
+  setMoving(key: string, ring: Ring | null, y0 = 0, y1 = 0, walkingOnly = false): void {
+    const solids = walkingOnly ? this.walkingBarriers : this.moving;
     if (!ring) {
-      this.moving.delete(key);
+      solids.delete(key);
       return;
     }
     const xs = ring.map((v) => v[0]);
     const zs = ring.map((v) => v[1]);
-    this.moving.set(key, { y0, y1, rings: [ring], minX: Math.min(...xs), maxX: Math.max(...xs), minZ: Math.min(...zs), maxZ: Math.max(...zs) });
+    solids.set(key, { y0, y1, rings: [ring], minX: Math.min(...xs), maxX: Math.max(...xs), minZ: Math.min(...zs), maxZ: Math.max(...zs) });
   }
 
   /** Lowest underside between fromY and toY above a circle at (x, z), or null when the way up is clear. */
@@ -385,7 +387,7 @@ export class World {
   resolve(pos: { x: number; z: number }, feet: number, radius: number, stepUp: number, height: number): void {
     const lo = feet + stepUp;
     const hi = feet + height;
-    const moving = [...this.moving.values()];
+    const moving = [...this.moving.values(), ...this.walkingBarriers.values()];
     for (let iter = 0; iter < 4; iter++) {
       let moved = false;
       const near = this.near(pos.x - radius, pos.z - radius, pos.x + radius, pos.z + radius).map((i) => this.solids[i]);
