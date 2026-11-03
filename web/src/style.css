@@ -818,12 +818,12 @@ input[type=range]:focus-visible::-moz-range-thumb { box-shadow: 0 0 0 3px var(--
   content: ''; position: absolute; right: 18px; top: 50%; width: 11px; height: 13px; margin-top: -6.5px;
   background: currentColor; clip-path: polygon(0 0, 100% 50%, 0 100%);
 }
-.start-choices > .choice:first-child:not(:disabled), .start-choices > #choose-pad.selected:not(:disabled) { color: var(--dusk); background: var(--lamp); border-color: var(--lamp); }
-.start-choices > .choice:first-child:not(:disabled) > span, .start-choices > #choose-pad.selected:not(:disabled) > span { color: rgba(22, 32, 42, 0.8); }
-.start-choices > .choice:first-child:not(:disabled):hover, .start-choices > #choose-pad.selected:not(:disabled):hover { background: var(--lamp-bright); }
-.start-choices:has(> #choose-pad.selected) > .choice:first-child:not(#choose-pad):not(.loading) { color: var(--ink); background: var(--dusk-raised); border-color: var(--line-strong); }
-.start-choices:has(> #choose-pad.selected) > .choice:first-child:not(#choose-pad):not(.loading):hover { background: var(--dusk-high); }
-.start-choices:has(> #choose-pad.selected) > .choice:first-child:not(#choose-pad):not(.loading) > span { color: var(--ink-soft); }
+.start-choices > .choice:is(#choose-kbm, #choose-touch):not(:disabled), .start-choices > #choose-pad.selected:not(:disabled) { color: var(--dusk); background: var(--lamp); border-color: var(--lamp); }
+.start-choices > .choice:is(#choose-kbm, #choose-touch):not(:disabled) > span, .start-choices > #choose-pad.selected:not(:disabled) > span { color: rgba(22, 32, 42, 0.8); }
+.start-choices > .choice:is(#choose-kbm, #choose-touch):not(:disabled):hover, .start-choices > #choose-pad.selected:not(:disabled):hover { background: var(--lamp-bright); }
+.start-choices:has(> #choose-pad.selected) > .choice:is(#choose-kbm, #choose-touch):not(#choose-pad):not(.loading) { color: var(--ink); background: var(--dusk-raised); border-color: var(--line-strong); }
+.start-choices:has(> #choose-pad.selected) > .choice:is(#choose-kbm, #choose-touch):not(#choose-pad):not(.loading):hover { background: var(--dusk-high); }
+.start-choices:has(> #choose-pad.selected) > .choice:is(#choose-kbm, #choose-touch):not(#choose-pad):not(.loading) > span { color: var(--ink-soft); }
 /* The first start (src/ui/menu.ts): the chosen button lights up from the left as the world loads,
    with the percentage in place of its mark and what is loading on its second line (only the
    percentage where the second lines are hidden); the other start buttons wait. */

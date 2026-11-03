@@ -9,13 +9,14 @@
   <link rel="stylesheet" href="/interested/interested.css" />
   <link rel="stylesheet" href="/admin/admin.css" />
   <link rel="stylesheet" href="/slides/slides.css" />
+  <link rel="stylesheet" href="/menu-theme.css" />
 </head>
 <body class="admin signed-out">
 <div class="slides bg" data-slides></div>
 <main>
   <div class="card">
     <header>
-      <a class="brand" href="/">Brieltje</a>
+      <a class="brand" href="/"><img src="/brand/wordmark.svg" alt="Brieltje" width="120" height="36" /></a>
       <span class="head-tools">
         <span class="live" id="live" title="Live"><i></i> Live</span>
         <a class="btn ghost" href="/admin/scores/" target="_blank" rel="noopener" id="scores-link"><span class="long">Scoreboard</span><span class="short">Scores</span> ↗</a>
@@ -31,7 +32,7 @@
         <input type="text" id="user" autocomplete="username" value="admin" required />
         <label class="field" for="pass">Password</label>
         <input type="password" id="pass" autocomplete="current-password" required />
-        <p class="error" id="login-err" hidden></p>
+        <p class="error" id="login-err" role="alert" hidden></p>
         <div class="actions"><button class="btn" type="submit">Log in</button></div>
       </form>
     </section>

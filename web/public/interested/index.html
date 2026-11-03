@@ -9,6 +9,7 @@
   <link rel="icon" href="/icon-192.png" type="image/png" sizes="192x192" />
   <link rel="stylesheet" href="/interested/interested.css" />
   <link rel="stylesheet" href="/slides/slides.css" />
+  <link rel="stylesheet" href="/menu-theme.css" />
 </head>
 <body>
 <div class="slides bg" data-slides></div>
@@ -35,13 +36,13 @@
 
       <!-- Step 1: who and when -->
       <section id="s-1">
-        <h2><span data-lang="nl">Over jou</span><span data-lang="en">About you</span></h2>
+        <h2 tabindex="-1"><span data-lang="nl">1/2 · Over jou</span><span data-lang="en">1/2 · About you</span></h2>
         <label class="field" for="name"><span data-lang="nl">Naam</span><span data-lang="en">Name</span></label>
-        <input type="text" id="name" autocomplete="name" maxlength="80" required />
+        <input type="text" id="name" aria-describedby="name-err" autocomplete="name" maxlength="80" required />
         <p class="error" id="name-err" hidden></p>
 
         <label class="field" for="email"><span data-lang="nl">E-mailadres</span><span data-lang="en">Email address</span></label>
-        <input type="email" id="email" autocomplete="email" maxlength="200" inputmode="email" required />
+        <input type="email" id="email" aria-describedby="email-err" autocomplete="email" maxlength="200" inputmode="email" required />
         <p class="error" id="email-err" hidden></p>
 
         <label class="field" for="address"><span data-lang="nl">Straat</span><span data-lang="en">Street</span> <em><span data-lang="nl">(niet verplicht)</span><span data-lang="en">(optional)</span></em></label>
@@ -70,7 +71,7 @@
 
         <label class="consent updates"><input type="checkbox" id="updates" checked /><span><b><span data-lang="nl">Mail me zodra de ontmoeting gepland is</span><span data-lang="en">Email me once the meetup is planned</span></b><br /><span class="muted small"><span data-lang="nl">Met de datum en de plaats. Enkel daarover, en je kunt het altijd stopzetten via je eigen link.</span><span data-lang="en">With the date and the place. Only about that, and you can turn it off any time through your own link.</span></span></span></label>
 
-        <label class="consent"><input type="checkbox" id="age" /><span><span data-lang="nl">Ik ben 13 jaar of ouder.</span><span data-lang="en">I'm 13 or older.</span> <span class="muted small"><span data-lang="nl">Jonger? Dan schrijft een ouder of voogd je in.</span><span data-lang="en">Younger? Then a parent or guardian signs you up.</span></span></span></label>
+        <label class="consent"><input type="checkbox" id="age" aria-describedby="age-err" /><span><span data-lang="nl">Ik ben 13 jaar of ouder.</span><span data-lang="en">I'm 13 or older.</span> <span class="muted small"><span data-lang="nl">Jonger? Dan schrijft een ouder of voogd je in.</span><span data-lang="en">Younger? Then a parent or guardian signs you up.</span></span></span></label>
         <p class="error" id="age-err" hidden></p>
 
         <div class="actions"><button class="btn" type="button" id="next"><span data-lang="nl">Volgende</span><span data-lang="en">Next</span></button></div>
@@ -78,7 +79,7 @@
 
       <!-- Step 2: your house in the game? -->
       <section id="s-2" hidden>
-        <h2><span data-lang="nl">Je eigen huis in het spel?</span><span data-lang="en">Your own house in the game?</span></h2>
+        <h2 tabindex="-1"><span data-lang="nl">2/2 · Je eigen huis in het spel?</span><span data-lang="en">2/2 · Your own house in the game?</span></h2>
         <p data-lang="nl">Net zoals ons huis kunnen we ook het jouwe bouwen, binnen en buiten, zodat je er in het spel door kunt wandelen. Daarvoor hebben we de 2D-plannen van je huis nodig: de grondplannen van elke verdieping.</p>
         <p data-lang="en">Just like our house, we can build yours too, inside and out, so you can walk through it in the game. For that we need the 2D plans of your home: the floor plan of each storey.</p>
         <div class="choice">
@@ -121,7 +122,7 @@
 
     <!-- Thank you -->
     <section id="s-done" hidden>
-      <h1><span data-lang="nl">Bedankt</span><span data-lang="en">Thank you</span>, <span id="done-name"></span>!</h1>
+      <h1 tabindex="-1"><span data-lang="nl">Bedankt</span><span data-lang="en">Thank you</span>, <span id="done-name"></span>!</h1>
       <p data-lang="nl">Je interesse is genoteerd. Als er genoeg mensen zijn, laten we je via e-mail weten waar en wanneer.</p>
       <p data-lang="en">Your interest is noted. If enough people join in, we'll email you where and when.</p>
       <p id="done-house" hidden><span data-lang="nl">Je plannen zijn goed aangekomen. We nemen contact op voor we aan je huis beginnen.</span><span data-lang="en">Your plans arrived safely. We'll get in touch before we start on your house.</span></p>

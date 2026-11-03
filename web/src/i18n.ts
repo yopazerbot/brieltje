@@ -70,7 +70,7 @@ const en = {
   // The sign-up link under the start buttons (brieltje.be/interested): three short lines
   'start.invite': 'Play together in person?',
   'start.inviteHouse': 'Your own house can be in the game too.',
-  'start.inviteGo': 'Sign up',
+  'start.inviteGo': "I'm interested",
   'start.mobileNote': 'Best on a laptop or desktop. Hold your device sideways to play by touch.',
   'start.name': 'Your name',
   'start.namePh': 'Name',
@@ -795,7 +795,7 @@ const nl = {
   'start.intro': 'Welkom in Smetlede en Briel.',
   'start.invite': 'Samen spelen in het echt?',
   'start.inviteHouse': 'Ook je eigen huis kan in het spel.',
-  'start.inviteGo': 'Schrijf je in',
+  'start.inviteGo': 'Ik heb interesse',
   'start.mobileNote': 'Het best op een laptop of computer. Houd je toestel liggend om met aanraakbediening te spelen.',
   'start.name': 'Je naam',
   'start.namePh': 'Naam',

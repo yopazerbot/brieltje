@@ -284,7 +284,7 @@
       if (id) $('mine').value = `${location.origin}/inschrijven/#mine=${id}.${token}`;
       show($('s-form'), false);
       show($('s-done'));
-      scrollTo({ top: 0, behavior: 'smooth' });
+      $('s-done').querySelector('h1').focus();
     } catch (err) {
       error('send-err', t(err.message === 'busy' ? 'busy' : 'failed'));
       send.disabled = false;

@@ -10,6 +10,7 @@
   <link rel="stylesheet" href="/interested/interested.css" />
   <link rel="stylesheet" href="/inschrijven/inschrijven.css" />
   <link rel="stylesheet" href="/slides/slides.css" />
+  <link rel="stylesheet" href="/menu-theme.css" />
 </head>
 <body>
 <div class="slides bg" data-slides></div>
@@ -47,24 +48,24 @@
         <div class="pair">
           <div>
             <label class="field" for="last"><span data-lang="nl">Naam</span><span data-lang="en">Last name</span></label>
-            <input type="text" id="last" autocomplete="family-name" maxlength="80" required />
+            <input type="text" id="last" aria-describedby="last-err" autocomplete="family-name" maxlength="80" required />
             <p class="error" id="last-err" hidden></p>
           </div>
           <div>
             <label class="field" for="first"><span data-lang="nl">Voornaam</span><span data-lang="en">First name</span></label>
-            <input type="text" id="first" autocomplete="given-name" maxlength="80" required />
+            <input type="text" id="first" aria-describedby="first-err" autocomplete="given-name" maxlength="80" required />
             <p class="error" id="first-err" hidden></p>
           </div>
         </div>
 
         <label class="field" for="email"><span data-lang="nl">E-mailadres</span><span data-lang="en">Email address</span></label>
-        <input type="email" id="email" autocomplete="email" maxlength="200" inputmode="email" required />
+        <input type="email" id="email" aria-describedby="email-err" autocomplete="email" maxlength="200" inputmode="email" required />
         <p class="error" id="email-err" hidden></p>
 
         <!-- The street, required: the night is first of all for Smetlede. Suggestions from the Flemish address register, through our server. -->
         <label class="field" for="address"><span data-lang="nl">Adres</span><span data-lang="en">Address</span></label>
         <div class="combo">
-          <input type="text" id="address" autocomplete="off" maxlength="160" required role="combobox" aria-autocomplete="list" aria-expanded="false" aria-controls="address-list" aria-describedby="address-help" />
+          <input type="text" id="address" autocomplete="off" maxlength="160" required role="combobox" aria-autocomplete="list" aria-expanded="false" aria-controls="address-list" aria-describedby="address-help address-err" />
           <ul id="address-list" role="listbox" hidden></ul>
         </div>
         <p class="error" id="address-err" hidden></p>
@@ -97,7 +98,7 @@
         <label class="field" for="wishes"><span data-lang="nl">Ideeën of wensen?</span><span data-lang="en">Ideas or wishes?</span> <em><span data-lang="nl">(niet verplicht)</span><span data-lang="en">(optional)</span></em></label>
         <textarea id="wishes" maxlength="1000"></textarea>
 
-        <label class="consent"><input type="checkbox" id="age" /><span><span data-lang="nl">Ik ben 13 jaar of ouder.</span><span data-lang="en">I'm 13 or older.</span> <span class="muted small"><span data-lang="nl">Jonger? Dan schrijft een ouder of voogd je in.</span><span data-lang="en">Younger? Then a parent or guardian signs you up.</span></span></span></label>
+        <label class="consent"><input type="checkbox" id="age" aria-describedby="age-err" /><span><span data-lang="nl">Ik ben 13 jaar of ouder.</span><span data-lang="en">I'm 13 or older.</span> <span class="muted small"><span data-lang="nl">Jonger? Dan schrijft een ouder of voogd je in.</span><span data-lang="en">Younger? Then a parent or guardian signs you up.</span></span></span></label>
         <p class="error" id="age-err" hidden></p>
 
         <!-- A field people don't see: bots fill it in. -->
@@ -124,7 +125,7 @@
 
     <!-- Thank you -->
     <section id="s-done" hidden>
-      <h1><span data-lang="nl">Bedankt</span><span data-lang="en">Thank you</span>, <span id="done-name"></span>!</h1>
+      <h1 tabindex="-1"><span data-lang="nl">Bedankt</span><span data-lang="en">Thank you</span>, <span id="done-name"></span>!</h1>
       <p><span data-lang="nl">Je bent ingeschreven:</span><span data-lang="en">You're signed up:</span> <b id="done-people"></b>.</p>
       <dl class="event" data-event></dl>
       <p class="muted small" data-later hidden><span data-lang="nl">Wat nog niet vastligt, mailen we je zodra het bekend is.</span><span data-lang="en">We'll email you whatever isn't set yet as soon as it is.</span></p>

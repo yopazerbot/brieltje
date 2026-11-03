@@ -195,12 +195,13 @@
     show($('s-1'), false);
     show($('s-2'));
     $('step2bar').classList.add('on');
-    scrollTo({ top: 0, behavior: 'smooth' });
+    $('s-2').querySelector('h2').focus();
   });
   $('back').addEventListener('click', () => {
     show($('s-2'), false);
     show($('s-1'));
     $('step2bar').classList.remove('on');
+    $('s-1').querySelector('h2').focus();
   });
   for (const k of ['name', 'email']) $(k).addEventListener('input', () => { $(k).classList.remove('bad'); error(`${k}-err`); });
 
@@ -382,7 +383,7 @@
       if (id) $('mine').value = `${location.origin}/interested/#mine=${id}.${token}`;
       show($('form'), false);
       show($('s-done'));
-      scrollTo({ top: 0, behavior: 'smooth' });
+      $('s-done').querySelector('h1').focus();
       loadCount();
     } catch (err) {
       error('send-err', t(err.message === 'busy' ? 'busy' : err.message === 'type' ? 'type' : 'failed'));
