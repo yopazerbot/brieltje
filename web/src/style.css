@@ -1322,13 +1322,13 @@ input.speed:disabled { opacity: 0.5; cursor: not-allowed; }
 .placement-guide[data-valid=false] { color: #ffc0b6; background: #321e23eb; }
 .tactical-markers { position: fixed; inset: 0; z-index: 14; pointer-events: none; }
 .tactical-markers span { position: absolute; transform: translate(-50%, -50%); color: #d0f4ff; background: #12222dda; border-radius: 6px; padding: 4px 7px; font-size: 13px; max-width: 180px; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
-.team-ping { position: fixed; top: max(82px, env(safe-area-inset-top)); right: 18px; z-index: 35; padding: 10px 14px; min-height: 44px; border: 1px solid #7fbacb; border-radius: 9px; background: #182c39e8; color: #e7f8ff; font: inherit; cursor: pointer; }
+.team-ping { position: fixed; top: 210px; right: 24px; z-index: 35; padding: 10px 14px; min-height: 44px; border: 1px solid #7fbacb; border-radius: 9px; background: #182c39e8; color: #e7f8ff; font: inherit; cursor: pointer; }
 .team-ping:focus-visible { outline: 2px solid var(--lamp); outline-offset: 2px; }
 .team-ping[hidden], .placement-guide[hidden], .tactical-markers[hidden] { display: none; }
 #health.taking-hit { outline: 2px solid #ffad91; outline-offset: 5px; border-radius: 5px; }
 #modebar.prepare { border: 1px solid #83cdb3; background: #132d28ed; }
 #modebar.imminent { border-color: var(--lamp); color: #ffe0a0; }
-body.touch .team-ping { right: 145px; top: 12px; font-size: 14px; }
+body.touch .team-ping { right: 145px; top: 58px; font-size: 14px; }
 #controls-card h2 { margin: 0 0 10px; font-size: 21px; font-weight: 800; line-height: 1.2; }
 #cc-rows { display: grid; grid-template-columns: auto 1fr; gap: 6px 14px; margin: 0 0 14px; font-size: 15px; line-height: 1.3; }
 #cc-rows dt { color: var(--ink-soft); }
