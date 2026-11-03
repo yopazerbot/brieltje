@@ -104,6 +104,8 @@ On 3 November, the village gained a custom brick dormer house and six outdoor Ac
 | **2 Nov, Zombies: pick the place** | Alone or together, Zombies is played where you pick: at home, or by a portal in Smetlede (the church square, three spots along Molenhoek). The game's edge closes round that place, the zombies walk round the village's walls and hedges, and the best wave is kept per place. Not at the school (no shooting there). |
 | **2 Nov, spawning with /name** | The furniture planner is gone. Type a name in the chat and it appears in front of you: furniture, a Tesla, a clown or a strongman (/sofa, /tesla red, /krachtpatser); /remove takes away what you look at. Together only when the admin turns it on (off at first); the server checks where, how many and whose. |
 
+| **3 Nov, church roof** | The open tower doors lead to a hidden spiral stair and a roof walk with three firing bays and partial cover. The route works in solo play and multiplayer. Regular and big zombies follow it up; the existing unreachable-perch penalty stays. The visible steps and the shared collision data are built together. |
+
 ## Next
 
 1. A LAN night for 20 to 30 players: more players at once than the 16 of now, the zombies' waves scaled for them, and a start script for a local server.
