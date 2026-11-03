@@ -382,8 +382,10 @@
 
             <!-- The controls of the way you play, and the switch to the other one above them (not with touch). -->
             <section class="page hidden" role="tabpanel" id="page-controls" aria-labelledby="tab-controls" data-page="controls">
-              <button id="cc-reopen" class="tool" type="button"><b data-i18n="cc.reopen">Show the most important controls</b><span data-i18n="cc.reopenSub">A short card with the keys</span></button>
-              <button id="switch" class="tool" type="button"><b id="switch-label"></b><span data-i18n="play.switchSub">Change how you play</span></button>
+              <div class="control-actions">
+                <button id="cc-reopen" class="tool" type="button"><b data-i18n="cc.reopen">Show quick controls</b><span data-i18n="cc.reopenSub">Open the short controls card</span></button>
+                <button id="switch" class="tool" type="button"><b id="switch-label"></b><span id="switch-hint"></span></button>
+              </div>
               <div id="controls"></div>
             </section>
 

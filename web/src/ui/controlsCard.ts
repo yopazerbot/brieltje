@@ -33,6 +33,7 @@ export class ControlsCard {
     this.shown = { control, action };
     this.fill(control, action);
     this.root.classList.remove('hidden');
+    if (fromMenu) this.root.querySelector<HTMLButtonElement>('#cc-close')!.focus();
     this.open = true;
     this.left = SHOW_FOR;
     this.tick();
@@ -48,7 +49,9 @@ export class ControlsCard {
     if (!this.open) return;
     this.open = false;
     window.clearInterval(this.timer);
+    const returnFocus = this.fromMenu && this.root.contains(document.activeElement);
     this.root.classList.add('hidden');
+    if (returnFocus) document.getElementById('cc-reopen')?.focus({ preventScroll: true });
   }
 
   private tick(): void {

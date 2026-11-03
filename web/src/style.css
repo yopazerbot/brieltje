@@ -1056,7 +1056,10 @@ button.tool:disabled { opacity: 0.45; cursor: not-allowed; }
 #map-mount { position: relative; flex: 1; min-width: 0; }
 .page-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 8px 48px; align-items: start; max-width: 1240px; }
 .page-grid .col { min-width: 0; }
-.page #switch { width: min(100%, 440px); margin: 0 0 22px; }
+.control-actions { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 220px), 1fr)); gap: 10px; max-width: 680px; margin-bottom: 22px; }
+.control-actions .tool { border-color: var(--line-strong); }
+.control-actions .tool:enabled:hover { border-color: var(--lamp); }
+.control-actions .tool:disabled { opacity: 1; color: var(--ink-soft); background: transparent; border-style: dashed; }
 .col h2 { margin: 30px 0 10px; font-size: 20px; font-weight: 800; line-height: 1.25; color: var(--ink); }
 .col h2:first-child { margin-top: 0; }
 .col .label { margin: 18px 0 8px; font-size: 14.5px; color: var(--ink-soft); }

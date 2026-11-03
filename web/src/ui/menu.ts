@@ -80,6 +80,7 @@ export class Menu {
   /** The last setGraphics call, to write it again in another language. */
   private graphicsArgs: [Mode, Quality | null, string, number | undefined] = ['auto', null, '', undefined];
   private padText = '';
+  private padConnected = false;
   private account: string | null = null;
   /** The way of playing picked while the world loads, its button, and what the loading does (a function: drawn again in another language). */
   private chosenMode: ControlMode = 'kbm';
@@ -440,6 +441,13 @@ export class Menu {
     // Above the controls in their tab (where you look for it); it goes back to the game the other way.
     $('switch-label').textContent = t(control === 'pad' ? 'menu.switchToKbm' : 'menu.switchToPad');
     $('switch').classList.toggle('hidden', control === 'touch');
+    this.updateSwitch();
+  }
+
+  private updateSwitch(): void {
+    const unavailable = this.mode !== 'pad' && !this.padConnected;
+    ($('switch') as HTMLButtonElement).disabled = unavailable;
+    $('switch-hint').textContent = t(unavailable ? 'play.connectPad' : 'play.switchSub');
   }
 
   /** The pause menu, on the tab it was left on, or on `tab` (the map, for M) without remembering that. */
@@ -462,6 +470,8 @@ export class Menu {
     const key = `${name}`;
     if (key === this.padText) return;
     this.padText = key;
+    this.padConnected = !!name;
+    this.updateSwitch();
     $('pad-state').textContent = name ? t('pad.connected', { name: name.replace(/\s*\(.*\)\s*$/, '') }) : t('pad.connect');
     $('choose-pad').classList.toggle('selected', !!name);
   }
