@@ -86,7 +86,7 @@ These rules are firm. A pull request that breaks one can't be merged.
 ## Contact
 
 - Questions, ideas and bugs: open a GitHub issue.
-- Security problems or anything private: email Yoshi at yoshi@olive-security.be.
+- Security problems or anything private: email Yoshi at yoshi@brieltje.be.
 
 ## Licence
 
