@@ -454,6 +454,37 @@ def frame(o, s0, s1, col=FRAME_IN, fw=0.06):
     prism(o.quad(s0, s1, d0, d1), o.y0, o.y0 + fw, "c", col, solid=False)
 
 
+def corner_frame_parts():
+    """Mitred white corner posts where two window frames meet, overlapping their ends by 5 mm."""
+    parts = []
+    for i, a in enumerate(OPENINGS):
+        if a.kind == "g":
+            continue
+        for b in OPENINGS[i + 1:]:
+            if a.i == b.i or b.kind == "g":
+                continue
+            y0, y1 = max(a.y0, b.y0), min(a.y1, b.y1)
+            if y1 <= y0:
+                continue
+            for sa, ca, pa in ((0, a.corner_a, a.a), (a.w, a.corner_b, a.b)):
+                for sb, cb, pb in ((0, b.corner_a, b.a), (b.w, b.corner_b, b.b)):
+                    if not ca or not cb or math.dist(pa, pb) > 0.2:
+                        continue
+                    span = lambda o, s: (-0.01, min(o.w, 0.24)) if s == 0 else (max(0, o.w - 0.24), o.w + 0.01)
+                    # Join the end caps, rather than only their intersection: the latter leaves
+                    # a slit on either side when the glass turns through the cut corner.
+                    post = unary_union([a.quad(*span(a, sa), 0.115, 0.225),
+                                        b.quad(*span(b, sb), 0.115, 0.225)]).convex_hull
+                    if post.area > 1e-6:
+                        parts.append((post, y0, y1))
+    return parts
+
+
+def corner_frames():
+    for post, y0, y1 in corner_frame_parts():
+        prism(post, y0, y1, "c", FRAME_IN, solid=False)
+
+
 def slider_layout(o):
     """A glass wall parted by `div`: its largest part fixed glass; the two at the other end the sliding door, the one
     at the end sliding in front of its neighbour. Returns their spans along the opening."""
@@ -1039,6 +1070,7 @@ def main():
     floors()
     door_like = glazing()
     doors(door_like)
+    corner_frames()
     stair()
     kitchen()
     living()
