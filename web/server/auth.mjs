@@ -24,8 +24,8 @@
 //   browser, and new browsers at their address, from joining with the PIN for those 10 minutes
 //   (else they would be back at once under another name), not the rest of the venue. The admin
 //   can switch PIN joining off, and can lift every lockout at once from the game's admin tab.
-// - The admin changes the PIN in the settings (kept in the store; MULTIPLAYER_PIN, or 0473,
-//   is only the PIN to start with). A new PIN logs out everyone who joined with the old one,
+// - The admin sets the PIN in the settings (kept in the store; no default PIN).
+//   Joining stays closed until then. A new PIN logs out everyone who joined with the old one,
 //   their browsers stop counting as known, and the counts of wrong PINs start again.
 
 import { randomBytes, scrypt, timingSafeEqual, createHash, createHmac } from 'node:crypto';
@@ -49,7 +49,6 @@ const ADMIN_FAILS = 20; // tries at the admin password in an hour, from browsers
 const DEVICE_MS = 90 * 24 * 3600_000;
 const NAME_RE = /^[a-z0-9_-]{2,20}$/;
 const ADMIN_KEY = '#admin'; // what the admin's device cookie is signed for, whatever the name
-const START_PIN = process.env.MULTIPLAYER_PIN ?? '0473'; // until the admin sets one in the game; empty: none
 const PIN_RE = /^\d{4,12}$/;
 // Wrong PINs: online guessing, often from behind a shared address (a meetup's Wi-Fi is one address for
 // everyone there). Counted per browser (its guest cookie): a few, then only that browser waits, so one
@@ -204,7 +203,7 @@ export class Auth {
     this.sessions = new Map(); // hash of the token -> { username, role, expires, ip, device }
     this.failures = new Attempts(FAIL_WINDOW_MS); // wrong admin passwords per address (bucketOf)
     this.adminFails = new Attempts(3600_000); // tries at the admin password, all addresses together (one key)
-    this.pin = START_PIN;
+    this.pin = ''; // only an admin-saved PIN enables guest joining
     this.pinGen = 0; // raised whenever the PIN changes: a join checked against an older PIN doesn't count
     this.resetPinCounts();
     // Browsers that joined with the current PIN (only a successful join puts one here): they skip the
