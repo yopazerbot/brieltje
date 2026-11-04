@@ -1,7 +1,7 @@
 """Review renders for tools/parachute/parachute.py, which imports this file (it is not run on its own).
 
 The figure is the game's swat.glb, posed on the parachute's guides the way the browser preview poses it
-(web/src/dev/parachutePilot.ts): the pelvis follows Pilot, the legs reach Foot_X with Shin_X as the knee's
+(web/src/world/parachutePilot.ts): the pelvis follows Pilot, the legs reach Foot_X with Shin_X as the knee's
 pole, the arms reach Grip_X with Elbow_X as the elbow's pole, and the fingers curl round the toggles.
 Cycles on the GPU (Metal) when there is one; tiles are put together with ffmpeg.
 """
