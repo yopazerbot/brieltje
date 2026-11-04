@@ -14,6 +14,8 @@ Automatic rifle fire keeps a consistent pace across frame rates. Its extra sprea
 
 Other players keep closed hands aligned with each gun's grips while moving, aiming and firing.
 
+Street-house floors meet the terrain at their entrances, with foundations continuing down slopes. Outdoor surfaces have softer bump detail and grass margins beside roads and paving are less uniform.
+
 At a portal, use 1–7 on the number row or numpad to pick a destination.
 
 The village square's paving follows the ground under it.

@@ -223,6 +223,23 @@ Run the route, attack and zombie checks from `web/`:
 node --test --test-isolation=none shared/church.test.mjs
 ```
 
+## Street-house ground levels and outdoor finishes
+
+`tools/building_ground.py` places ordinary house floors 5 cm above entrance terrain, rather than at the underground foot of a collision block. Explicit raised floors remain unchanged; shared-row threshold rules still run afterwards. Foundations sample the terrain along each wall. Regenerate with:
+
+```
+tools/.venv/Scripts/python.exe tools/molenhoek_survey.py
+tools/.venv/Scripts/python.exe tools/molenhoek_end_survey.py
+tools/.venv/Scripts/python.exe tools/kapellenhoek_survey.py
+blender -b -t 2 -P tools/molenhoek.py -- web/public/models/molenhoek.glb molenhoek
+blender -b -t 2 -P tools/molenhoek.py -- web/public/models/molenhoek_end1.glb molenhoek_end1
+blender -b -t 2 -P tools/molenhoek.py -- web/public/models/molenhoek_end2.glb molenhoek_end2
+blender -b -t 2 -P tools/molenhoek.py -- web/public/models/molenhoek_end3.glb molenhoek_end3
+blender -b -t 2 -P tools/molenhoek.py -- web/public/models/kapellenhoek.glb kapellenhoek
+```
+
+Run `tools/.venv/Scripts/python.exe -m unittest discover -s tools -p 'test_*.py'` to check entrance levels and the terrain tools. Shared texture bump defaults live in `web/src/world/surfaceFinish.ts`; explicit material strengths override them. Road and paving margins reuse the path channel of the ground-shading bake at reduced strength, so no extra texture reads are added during play.
+
 ## Weapon timing
 
 Third-person hand posing lives in `web/src/net/grip.ts`, called after body animation in `swat.ts`. Each weapon defines wrist anchors in metres. Fingers use a sampled closed-hand shooting pose, wrists align with the gun's aiming frame, and placement is kept within both arms' reach. The corrections are restored before the next animation update so they never accumulate.

@@ -4,6 +4,10 @@ Last update: 2026-11-04
 
 ## Done
 
+Corrected 145 street-house floor levels that used buried collision-block feet. Six deliberate raised or shared-threshold exceptions stay as chosen; foundations reach the ground on slopes. Five street models and their collision solids were regenerated. All 13 Python tests and the build pass; software-rendered views and a corrected-house collision check pass, including Low at touch-emulated phone size.
+
+Shared outdoor textures use softer bump defaults while retaining explicit material strengths. Grass has gentle irregular margins beside roads and paving, using the existing baked shading without added per-frame texture reads. No real phone, two-client network check or frame-time measurement was run for this pass.
+
 Player gun holding uses closed fingers, stable wrist orientations and separate grip positions for each weapon. Gun placement stays within both arms' reach. Build and 75 software-rendered pose checks pass. The game loads on Low at desktop and touch-emulated phone sizes. No real phone or two-client network check was run.
 
 Zombies keeps the current game through brief connection drops, including both players reconnecting together. A disconnected survivor gets 15 seconds to return if the connected teammate is down. Actual deaths still end the game when every fighter is down. An endurance test clears 40 waves without a wave limit.
