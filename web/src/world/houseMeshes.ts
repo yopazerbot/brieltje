@@ -5,6 +5,7 @@ import { solidNormals } from './normals';
 import { terrain } from './terrain';
 import { rustle } from './wind';
 import sizes from '../../public/textures/sizes.json';
+import { textureNormalScale } from './surfaceFinish';
 
 /** Real-world width of each texture tile in metres (from Poly Haven, or our own brick). */
 const TILE: Record<string, number> = sizes;
@@ -178,6 +179,7 @@ export function tintedMaterial(tex: string, tint: string, renderer: THREE.WebGLR
   mat.map = texture(tex, 'color', renderer);
   mat.normalMap = texture(tex, 'normal', renderer);
   mat.roughnessMap = texture(tex, 'rough', renderer);
+  mat.normalScale.setScalar(textureNormalScale(tex));
   return mat;
 }
 
@@ -206,7 +208,7 @@ function makeMaterial(name: string, renderer: THREE.WebGLRenderer): THREE.Materi
     if (!spec.colorOnly) {
       mat.normalMap = texture(spec.tex, 'normal', renderer, spec.rotate);
       mat.roughnessMap = texture(spec.tex, 'rough', renderer, spec.rotate);
-      const n = spec.normalScale ?? 1;
+      const n = spec.normalScale ?? textureNormalScale(spec.tex);
       mat.normalScale.set(n, n);
     }
   }
@@ -470,7 +472,7 @@ export function blockMaterial(name: string, renderer: THREE.WebGLRenderer): { ma
     mat.map = texture(first.tex!, 'color', renderer);
     mat.normalMap = texture(first.tex!, 'normal', renderer);
     mat.roughnessMap = texture(first.tex!, 'rough', renderer);
-    const n = first.normalScale ?? 1;
+    const n = first.normalScale ?? textureNormalScale(first.tex!);
     mat.normalScale.set(n, n);
     families.set(family, mat);
   }
@@ -500,5 +502,6 @@ export function grassMaterial(renderer: THREE.WebGLRenderer): THREE.MeshStandard
   mat.map = texture('grass', 'color', renderer);
   mat.normalMap = texture('grass', 'normal', renderer);
   mat.roughnessMap = texture('grass', 'rough', renderer);
+  mat.normalScale.setScalar(textureNormalScale('grass'));
   return mat;
 }

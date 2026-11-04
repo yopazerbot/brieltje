@@ -63,7 +63,7 @@ export async function loadStreetModel(renderer: THREE.WebGLRenderer, ground: num
     if (u.texture) {
       const m = tintedMaterial(u.texture, '#ffffff', renderer);
       m.vertexColors = true;
-      m.normalScale.setScalar(u.normalScale ?? 1);
+      if (u.normalScale !== undefined) m.normalScale.setScalar(u.normalScale);
       if (u.flat) {
         // Flat and matte (a garden's boards, logs, tiles and ivy, close by): the texture's colour alone, two lookups less a pixel.
         m.normalMap = null;

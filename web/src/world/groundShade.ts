@@ -195,7 +195,7 @@ function coverMaterial(rgb: string): THREE.ShaderMaterial {
 
 /** The gardens' stripes and the meadows into the cover image's fourth channel (a 1: a garden, its stripes worked out here). */
 /** The cover image's colours, kept for every bake (a disposed material's shader is compiled anew the next time). */
-const covers = { fields: coverMaterial('1.0, 0.0, 0.0'), tracks: coverMaterial('0.0, 1.0, 0.0'), water: coverMaterial('0.0, 0.0, 1.0') };
+const covers = { fields: coverMaterial('1.0, 0.0, 0.0'), tracks: coverMaterial('0.0, 1.0, 0.0'), roadEdges: coverMaterial('0.0, 0.45, 0.0'), water: coverMaterial('0.0, 0.0, 1.0') };
 
 const grassCover = new THREE.ShaderMaterial({
   vertexShader: `attribute vec4 grass;
@@ -476,6 +476,11 @@ export class GroundShade {
     const fields = blockMaterial('field_soil', renderer).material;
     const tracks = blockMaterial('gravel', renderer).material;
     const asCover = new Map<THREE.Material, THREE.ShaderMaterial>([[fields, covers.fields], [tracks, covers.tracks]]);
+    // Reuse a gentler path margin for paved edges too. Grass grows unevenly beside roads and paving;
+    // the existing lawn mask still keeps deliberately mown gardens neat. This is baked once.
+    for (const name of ['road', 'rd_concrete', 'rd_asphalt', 'rd_tiles', 'pave_light', 'pave_grey']) {
+      asCover.set(blockMaterial(name, renderer).material, covers.roadEdges);
+    }
     const waterCover = covers.water;
     // Nothing else is drawn: whatever shares a group with the casters (the furniture in the house's) is hidden too.
     const swapped: [THREE.Mesh, THREE.Material | THREE.Material[]][] = [];
