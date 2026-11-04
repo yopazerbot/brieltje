@@ -241,6 +241,16 @@ blender -b -t 2 -P tools/molenhoek.py -- web/public/models/kapellenhoek.glb kape
 
 Run `tools/.venv/Scripts/python.exe -m unittest discover -s tools -p 'test_*.py'` to check entrance levels and the terrain tools. Shared texture bump defaults live in `web/src/world/surfaceFinish.ts`; explicit material strengths override them. Road and paving margins reuse the path channel of the ground-shading bake at reduced strength, so no extra texture reads are added during play.
 
+## Security regression checks
+
+`server/constant-time-text.mjs` compares padded UTF-8 buffers using `timingSafeEqual`, then checks their original byte lengths. It replaces temporary SHA-256 text-comparison digests; the stored scrypt startup fingerprint and cookie formats are unchanged. `server/auth-security.test.mjs` checks login, tampered device signatures, restored sessions and rate limits with a random in-memory credential and store.
+
+`src/world/network-state.test.mjs` exercises the actual state-update methods with prototype names and malformed indices, followed by normal valid updates. From `web/`, run:
+
+```
+node --test server/*.test.mjs shared/*.test.mjs src/world/network-state.test.mjs src/world/vegetation.test.mjs
+```
+
 ## Vegetation and recent geometry repairs
 
 Shared tree shapes live in `web/src/world/vegetation.ts`: a connected canopy in full and simplified forms, and a tapered forked trunk. The existing instance batches, leaf texture, wind and seasonal shader are used. Near canopies have 980 triangles, far canopies 180 and the shared bark mesh 54. The separate lower-crown batch is gone. `surroundings.ts` places the trees and the smaller hedge clumps. Run `node --test src/world/vegetation.test.mjs` from `web/` to check seams, lighting normals and geometry budgets.

@@ -14,6 +14,8 @@ Automatic rifle fire keeps a consistent pace across frame rates. Its extra sprea
 
 Other players keep closed hands aligned with each gun's grips while moving, aiming and firing.
 
+Network-fed object IDs are checked before updating game state. Login retains existing sessions and device cookies while comparing credentials without temporary password digests.
+
 Street-house floors meet the terrain at their entrances, with foundations continuing down slopes. Outdoor surfaces have softer bump detail and grass margins beside roads and paving are less uniform.
 
 Trees have connected irregular canopies and branching trunks, with finer clumps on clipped hedges. The detailed brick house is on its corrected plot along Molenhoek, and the walk-in house's corner window frames meet without open slits.
