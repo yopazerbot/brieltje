@@ -1,9 +1,8 @@
-# Parachute arrival: assets
+# Parachute arrival
 
 A steerable parachute for arriving on the map by air: on the first arrival and on eligible respawns.
-This folder is the hand-off for the gameplay work. It holds assets, animation and an isolated
-preview. Nothing in the game uses them yet: spawning, movement, combat, multiplayer messages and the
-server's checks are unchanged.
+This folder holds the assets, their animation and an isolated preview, and since the gameplay work
+(see [In the game](#in-the-game)) how the game uses them.
 
 ![Beauty render](beauty.jpg)
 
@@ -16,7 +15,7 @@ server's checks are unchanged.
 | `tools/parachute/renders.py` | The review renders (imported by the generator) |
 | `docs/parachute/manifest.json` | Generated: exported node names and transforms, materials, clips, bounds, budgets |
 | `web/parachute-preview.html`, `web/src/dev/parachutePreview.ts` | The separate preview page (dev server only) |
-| `web/src/dev/parachutePilot.ts` | Preview-only pose adapter: the game's figure on the parachute's guides |
+| `web/src/world/parachutePilot.ts` | Pose adapter: the game's figure on the parachute's guides (the game and the preview) |
 | `docs/parachute/*.jpg`, `turntable.mp4` | Review images |
 
 `web/public/` is copied into the build, so the GLB ships with the game but nothing loads it yet
@@ -156,7 +155,7 @@ the game. Keys at 15 a second.
 
 The game's figure keeps its own mesh and skeleton. The parachute carries **pose guides**, and a small
 adapter poses the figure on them after the parachute's mixer has run. The preview's adapter is
-`web/src/dev/parachutePilot.ts`; the renders do the same in Blender (`renders.py`).
+`web/src/world/parachutePilot.ts`; the renders do the same in Blender (`renders.py`).
 
 | Figure bone (three.js name) | Follows |
 |---|---|
@@ -270,10 +269,42 @@ not proposed flight rules.
 More renders: `views.jpg` (front, side, rear and underside with a 1.8 m pole), `lods.jpg` (LOD0 and
 LOD1 from 25 m), `turntable.mp4`.
 
-## Integration note
+## In the game
 
-How the assets map to the moments of an arrival. These are suggestions for the gameplay work, not
-decisions.
+What the gameplay work built on these assets. The numbers are in `web/shared/parachute.mjs`, shared by
+the page and the server.
+
+| Moment | Alone | Together |
+|---|---|---|
+| First arrival at a start place (the church by default) | by parachute | by parachute: the server answers the start with a drop |
+| Starting at the house (no start place) | on foot | on foot |
+| Respawn after a death | by parachute (the outside places) | by parachute only onto a place outside; into a room on foot |
+| Zombies: the start, the return between waves, joining late | by parachute | by parachute |
+| Zombies: a teammate's revive | on foot, where you fell | on foot, where you fell |
+| Party games (hide and seek, tag, treasure, teams) | unchanged | unchanged |
+
+- **The drop:** 18 m over the place, packed for 0.6 s, then under the canopy: 4 m/s forward, 3.6 m/s
+  down, a flare at 3 m. It starts 13 m behind the place, facing it as a respawn does, so without
+  steering you land on the place the server picked (measured: 0.5 m off). About 5 s in all.
+- **Steering:** the left and right movement keys, the left stick or the touch joystick turn you at up
+  to 1.1 rad/s; turning with the mouse turns you too. Forward and back nudge the glide by 8 %. No
+  jumping, flying, crouching or shooting; the gun is put away and a hint says to steer.
+- **The server decides.** It starts every drop (`startDrop` in `web/server/game.mjs`) and keeps the
+  player in it until the page says it landed (not in the first 1.2 s, when older messages can still
+  come) or 15 s have passed. Across, a drop is slower than running, so the movement budget holds it as
+  it is; down, it is far under the 16 m/s limit.
+- **Combat:** under a parachute a player is calm, as on the school grounds (`calm`): they can't shoot
+  and nobody hurts them, zombies and strongmen included. Landing gives the usual 2 s of protection.
+- **The others** see a flag in the tick (`FLAG.chute`, bit 8 of a player's flags, above the teleport
+  counter, so an older page reads the rest as before) and draw the parachute on the figure in the
+  player's colour (`web/src/world/parachutes.ts`), posed by the adapter. Steering shows from how fast
+  they turn. Someone first seen low down is drawn with the canopy open. The figure doesn't blink
+  while protected under a parachute.
+- **Your own:** drawn over and round you (the pack, leg loops and toggles hidden: nobody is in them).
+- **The model** is fetched after the world is in (0.13 MB), before anyone drops.
+- **The admin's rule** "Players arrive by parachute" (on by default) turns it all off together.
+
+How the assets were meant to map to an arrival, as handed over before the gameplay work:
 
 - **First arrival:** place `ParachuteRoot` at the player's feet in the air, play `Deploy` at once (its
   first frame is the packed state) or hold that frame for a short free fall first.
@@ -300,7 +331,9 @@ Respawns that could use it:
 
 ## Decisions left for the gameplay work
 
-Not decided or built here:
+As listed before the gameplay work; [In the game](#in-the-game) says what was chosen. Still open:
+roofs and trees as landing places (the game's ground includes roofs, so a steered drop can land on
+one), sounds, and a key to open the parachute early. The list as it was:
 
 - Server-authoritative descent: who moves a falling player, the speeds the server accepts (today it
   caps vertical speed at 16 m/s and height at 120 m over the ground), and what the other players see.
