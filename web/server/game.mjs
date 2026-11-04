@@ -36,6 +36,7 @@ import { bruteEntry, carFields, horseFields, playerFields, PROTO, TICK_MS } from
 import { houseAreas, makeNav, MAX_ADMIN_WAVE } from '../shared/zombies.mjs';
 import { arenaEdge, arenaHome, arenaPrisms, ARENAS, portalOf } from '../shared/arenas.mjs';
 import { churchPrisms, makeChurch } from '../shared/church.mjs';
+import { DROP, dropStart } from '../shared/parachute.mjs';
 
 const MAX_PLAYERS = 16; // the most the admin can allow at once (every player's moves go to every other one)
 const KEYFRAME = 20; // ticks: everything goes to every page at least this often (once a second), moved or not
@@ -197,7 +198,7 @@ const LAYOUT_RESTORE = String(shared('default_furniture.json').restore ?? 0);
  * House rules the admin sets in the settings, with their defaults. `paintball` (child-friendly for
  * everyone) only changes what the pages show: Action as Paintball, with the same hits and scores.
  */
-const RULES = { flying: true, spawn: false, names: true, maxPlayers: MAX_PLAYERS, pin: true, portals: true, travel: true, paintball: false };
+const RULES = { flying: true, spawn: false, names: true, maxPlayers: MAX_PLAYERS, pin: true, portals: true, travel: true, paintball: false, parachute: true };
 /**
  * Spawning with /name (Yoshi, 2 Nov 2026: everyone may, unless the admin has it off, as it is at first):
  * how far from where the server has you a thing may appear (m), and how many each player may have out
@@ -598,7 +599,11 @@ export class Game {
         // No flying in the Zombies game: hovering over the zombies would be out of their reach for good.
         yaw: num(m.yaw, -100, 100), pitch: num(m.pitch, -2, 2), armed: !!m.armed, flying: !!m.flying && this.rules.flying && !inCar && !this.modes.zombies,
         w: player.weapons.has(m.w) ? m.w : 'pistol', c: !!m.c && !inCar, d: inCar, s: driving ? num(m.s, -1, 1) : 0,
+        // Under a parachute: only while the server has them dropping (a page can't claim one, see drop).
+        chute: !!m.pc && this.dropping(player, now),
       };
+      // The page says it landed (not before its first messages from the sky can have come), or the drop took too long.
+      if (player.drop && (!this.dropping(player, now) || (!m.pc && now - player.drop.from > DROP.graceMs))) this.landed(player, now);
       // Never faster than anyone can move: a movement budget refills at MAX_SPEED (the car's
       // speed for its driver; at most half a second's worth stored) and each update spends it,
       // however often updates come. A faked jump only gets as far as running would; a lagging
@@ -857,13 +862,21 @@ export class Game {
     const no = () => this.send(p.ws, { t: 'spawn', ok: false, x: st.x, z: st.z });
     if (now - p.joinTime > 90_000 || !p.alive || this.carOf(name) || this.horseOf(name) || (!this.rules.portals && p.role !== 'admin')) return no();
     if (Math.hypot(st.x - p.joinedAt.x, st.z - p.joinedAt.z) > 30) return no();
-    const [x, z] = to.out;
+    const [x, z, yaw] = to.out;
     if (!this.fence().inside(x, z)) return no(); // a game in the house: only a start near it
     p.nextTravel = now + TRAVEL_MS;
-    Object.assign(p.state, { x, y: TERRAIN.height(x, z), z });
+    const ground = TERRAIN.height(x, z);
+    // Arriving by parachute (the admin's rule): over the start place, the page told so (it is there already, on the ground).
+    const drop = this.rules.parachute;
+    const from = drop ? dropStart(x, z, yaw) : { x, z }; // behind the place: it lands there
+    Object.assign(p.state, { x: from.x, y: drop ? ground + DROP.height : ground, z: from.z });
     p.budget = p.vbudget = 0.5;
     p.movedAt = now;
     this.moved(p);
+    if (drop) {
+      this.startDrop(p, now);
+      this.send(p.ws, { t: 'spawn', ok: true, drop: 1, x, z });
+    }
   }
 
   travel(name, p, id, chat, now) {
@@ -887,6 +900,7 @@ export class Game {
     p.nextTravel = now + TRAVEL_MS;
     const y = TERRAIN.height(x, z); // near enough: the player's next update has their feet exactly
     const move = (q) => {
+      if (q.drop) this.landed(q, now);
       Object.assign(q.state, { x, y, z });
       q.budget = q.vbudget = 0.5;
       q.movedAt = now;
@@ -1100,7 +1114,7 @@ export class Game {
     if (!changed.length) return;
     for (const k of changed) this.rules[k] = m[k];
     await this.auth.store.setMeta('rules', JSON.stringify(this.rules));
-    const label = { flying: 'flying', spawn: 'spawning things with /name', names: 'names above players', pin: 'joining with the PIN', portals: 'the portals', travel: 'travelling from the chat', paintball: 'child-friendly for everyone' };
+    const label = { flying: 'flying', spawn: 'spawning things with /name', names: 'names above players', pin: 'joining with the PIN', portals: 'the portals', travel: 'travelling from the chat', paintball: 'child-friendly for everyone', parachute: 'arriving by parachute' };
     const text = changed.map((k) => (k === 'maxPlayers' ? `the limit to ${this.rules[k]} players` : `${label[k]} ${this.rules[k] ? 'on' : 'off'}`)).join(', ');
     this.auth.log('rules', null, { username: by, detail: text });
     this.broadcast({ t: 'rules', rules: this.rules });
@@ -1430,7 +1444,29 @@ export class Game {
 
   /** Whether a player stands where nobody shoots (the school grounds, shared/zones.mjs). */
   calm(p) {
-    return !!(p?.state && noShoot(p.state.x, p.state.z));
+    return !!(p?.state && noShoot(p.state.x, p.state.z)) || this.dropping(p, Date.now());
+  }
+
+  /**
+   * Under a parachute (shared/parachute.mjs): from a respawn or start the server chose, until the page
+   * says it landed or DROP.maxMs. Calm like the school grounds (see calm): nobody shoots from the air
+   * and nobody, zombies and strongmen included, hurts someone in it.
+   */
+  dropping(p, now) {
+    return !!p?.drop && now < p.drop.until;
+  }
+
+  /** A drop begins: protected until it ends (see calm and landed). */
+  startDrop(p, now) {
+    p.drop = { from: now, until: now + DROP.maxMs };
+    p.protectedUntil = p.drop.until;
+  }
+
+  /** On the ground (or the drop took too long, or they travelled): the usual short protection after a respawn. */
+  landed(p, now) {
+    p.drop = null;
+    p.protectedUntil = now + PROTECT_MS;
+    if (p.state) p.state.chute = false;
   }
 
   /** Take `amount` health from a target; a kill scores for the shooter (and can end the round). */
@@ -1464,7 +1500,7 @@ export class Game {
    * Back to full health at the spawn point furthest from the others (one of the best three, for
    * variety), or at `at` ({ spawn, x, y, z }: a place near spawn point `spawn`, see gather).
    */
-  respawn(name, p, now, at = null) {
+  respawn(name, p, now, at = null, drop = false) {
     this.releaseCar(name);
     this.releaseHorse(name);
     p.hp = HEALTH;
@@ -1483,13 +1519,23 @@ export class Game {
       spawn = ranked[Math.floor(Math.random() * Math.min(3, ranked.length))].i;
     }
     const pos = at ?? SPAWNS[spawn];
+    // By parachute (the admin's rule): only onto open ground, a place outside (never into a room).
+    const fly = drop && this.rules.parachute && (at ? true : !!SPAWNS[spawn]?.outside);
+    p.drop = null;
+    if (fly) this.startDrop(p, now);
     // Until the player's own update arrives, they are at the spawn point (so the next pick avoids it).
-    if (p.state) Object.assign(p.state, { x: pos.x, y: pos.y, z: pos.z });
+    // A drop starts behind the place, facing it as the page does (the portal, else the house or the bungalow), and lands on it.
+    const face = at?.face ?? (SPAWNS[spawn]?.team === 'bungalow' ? [83.5, 189.7] : [4.5, 6]);
+    const from = fly ? dropStart(pos.x, pos.z, Math.atan2(-(face[0] - pos.x), -(face[1] - pos.z))) : pos;
+    if (p.state) Object.assign(p.state, { x: from.x, y: pos.y + (fly ? DROP.height : 0), z: from.z, chute: false });
     p.movedAt = now;
     p.budget = p.vbudget = 0.5;
     this.moved(p);
     // In Smetlede (Zombies there) also the height to stand at and what to face: the spawn point is the house's.
-    this.broadcast({ t: 'respawn', name, spawn, ...(at ? { x: at.x, z: at.z } : {}), ...(at?.face ? { y: +at.y.toFixed(2), fx: at.face[0], fz: at.face[1] } : {}) });
+    this.broadcast({
+      t: 'respawn', name, spawn, ...(at ? { x: at.x, z: at.z } : {}), ...(at?.face ? { y: +at.y.toFixed(2), fx: at.face[0], fz: at.face[1] } : {}),
+      ...(fly ? { drop: 1, ...(at && !at.face ? { y: +at.y.toFixed(2) } : {}) } : {}),
+    });
   }
 
   /**
@@ -1499,7 +1545,7 @@ export class Game {
    * in turn so the players share them out. As a respawn (out of cars, off horses, full health), not a
    * death. A nicer start than fenceAll alone, which only puts those outside the edge just inside it.
    */
-  gather(names, arena = null) {
+  gather(names, arena = null, drop = false) {
     const now = Date.now();
     // The places to spread round: the house's outside start places, or, for Zombies started at another
     // portal (the bungalow's has no outside start places), where you come out of it, facing it.
@@ -1522,7 +1568,7 @@ export class Game {
     }
     [...names].sort(() => Math.random() - 0.5).forEach((name, k) => {
       const p = this.players.get(name);
-      if (p) this.respawn(name, p, now, spots.length ? spots[k % spots.length] : null);
+      if (p) this.respawn(name, p, now, spots.length ? spots[k % spots.length] : null, drop);
     });
   }
 
@@ -1585,7 +1631,10 @@ export class Game {
       }
     });
     if (this.roundOver && now >= this.roundOver.until) this.freshRound();
-    for (const [name, p] of this.players) if (!p.alive && !this.roundOver && now >= p.respawnAt) this.respawn(name, p, now);
+    for (const [name, p] of this.players) {
+      if (!p.alive && !this.roundOver && now >= p.respawnAt) this.respawn(name, p, now, null, true); // after a death: by parachute onto open ground
+      else if (p.drop && !this.dropping(p, now)) this.landed(p, now); // a drop that took too long (a page gone quiet)
+    }
     this.modes.tick(now, TICK_MS);
     if (!this.players.size) return;
     this.fenceAll();
