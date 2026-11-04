@@ -14,6 +14,7 @@ import { TouchControls } from './controls/touch';
 import { Games, type ModeView } from './ui/games';
 import { CLOWN_DEFAULTS, Clowns, KINDS, type Kind } from './world/clowns';
 import { bruteDamage, hurtBy } from '../shared/brutes.mjs';
+import { prepareShotRaycasts } from './world/shotRaycast';
 import { Zombies } from './world/zombies';
 import { BIG as BIG_ZOMBIE, bigOf, Horde, houseAreas, makeNav } from '../shared/zombies.mjs';
 import { Loot, LOOT } from '../shared/loot.mjs';
@@ -3052,6 +3053,7 @@ async function buildVillage(): Promise<void> {
   for (const m of models) m.visible = true;
   // And the whole map, coarse, for the ground beyond those areas.
   groundShade.bakeAll(renderer, scene, sun, [built.group, hedgeLumps, tiles.group], house.ground, phone ? 1024 : 2048);
+  await prepareShotRaycasts(scene);
   village = 'ready';
   for (const c of cars) c.ready = true; // the cars parked in the village (shared/car.json) with it
   void roadLife.load(renderer, scene, camera, precompile);
