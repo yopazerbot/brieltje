@@ -10,20 +10,6 @@ For in-person play, [express interest](https://brieltje.be/interested/) or [chec
 
 During play, open the menu’s Controls tab for a quick guide or to switch between a connected controller and the keyboard.
 
-Automatic rifle fire keeps a consistent pace across frame rates. Its extra spread stays with the rifle when you switch weapons.
-
-The admin sets the multiplayer PIN in the game's settings. There is no default joining code.
-
-Static map surfaces are indexed during loading to reduce pauses when firing, especially with the shotgun's eight pellets.
-
-Other players keep closed hands aligned with each gun's grips while moving, aiming and firing.
-
-Network-fed object IDs are checked before updating game state. Login retains existing sessions and device cookies while comparing credentials without temporary password digests.
-
-Street-house floors meet the terrain at their entrances, with foundations continuing down slopes. Outdoor surfaces have softer bump detail and grass margins beside roads and paving are less uniform.
-
-Trees have connected irregular canopies and branching trunks, with finer clumps on clipped hedges. The detailed brick house is on its corrected plot along Molenhoek, and the walk-in house's corner window frames meet without open slits.
-
 At a portal, use 1–7 on the number row or numpad to pick a destination.
 
 The village square's paving follows the ground under it.
@@ -33,6 +19,15 @@ In team games, press V to mark your position for teammates for eight seconds; th
 ![The house, rendered in Blender from the game](web/public/start/house-2560.webp)
 
 The whole project was made with AI. Yoshi Parlevliet, a cybersecurity consultant rather than a game developer, directed development and used both [OpenAI Codex](https://openai.com/codex/) and [Claude Code](https://claude.com/claude-code) to build the game, the data tools and the Blender scripts. Every choice and the reason for it is in [DECISIONS.md](DECISIONS.md).
+
+## Recent updates — 4 November 2026
+
+- **Smoother shooting.** Static map surfaces are indexed during loading to reduce firing pauses, especially with the shotgun's eight pellets. In a Low-preset touch-emulated test, the eight-ray search fell from 280 ms to 30 ms with identical hits. These are local software-rendered measurements, not real-phone frame rates. Automatic rifle fire also keeps a consistent pace across frame rates, and extra spread stays with each weapon when you switch.
+- **Better gun holding.** Other players keep closed hands aligned with each gun's grips while moving, aiming and firing.
+- **More natural surroundings.** Street-house floors meet the terrain at their entrances, with foundations continuing down slopes. Outdoor surfaces have softer bump detail, less uniform grass margins, connected irregular tree canopies, branching trunks and finer hedge clumps. The detailed brick house is on its corrected Molenhoek plot, and the walk-in house's corner window frames meet without open slits.
+- **Admin-set multiplayer codes.** The admin saves the joining PIN in the game's settings. There is no hardcoded code or environment-variable fallback. Guest joining stays closed until a PIN is saved; saved PINs survive restarts, and changing one logs out guests who joined with the old PIN.
+- **Security fixes.** Addressed the nine reported CodeQL findings in credential comparisons and network-fed object updates. Existing admin sessions, device cookies and guessing limits remain compatible. The build and 32 automated tests pass; multiplayer PIN setup was also checked with two local clients.
+- **One contact address.** Game text and public pages now use [yoshi@brieltje.be](mailto:yoshi@brieltje.be). The privacy regulator's separate complaint address is preserved.
 
 ## New: Zombies
 
@@ -66,7 +61,7 @@ The newest game in Brieltje (November 2026). Zombies come in waves, from every s
 | **Life** | Birds that fly off when you come near, a robot mower doing its rounds, cows and sheep in the meadows, trees in the wind, cars on the roads, and church bells striking the hours. |
 | **Getting around** | Walk, sprint, fly, drive a Tesla (with a passenger) or ride a horse. Seven portals jump between our house, the bungalow, the church, the school and three places along Molenhoek. `/location` in the chat, or the menu's Play tab, takes you to any portal or to 33 streets. The map (M, the menu's first tab) gives directions along the roads. |
 | **Ways to play** | Explore (just walking around), Paintball (paint guns, for everyone) or Action (a pistol, then a rifle, a shotgun, a sniper rifle and grenades, against each other, giant strongmen and clowns; no shooting on the school grounds). |
-| **Together** | Up to 16 players who join with a PIN. Chat, party games (hide and seek, tag, a treasure hunt, Zombies), and house against bungalow. A leaderboard, and a scoreboard to project at a meetup. |
+| **Together** | Up to 16 players who join with a PIN set by the admin. Chat, party games (hide and seek, tag, a treasure hunt, Zombies), and house against bungalow. A leaderboard, and a scoreboard to project at a meetup. |
 | **Anywhere** | Graphics presets with auto-detection, keyboard and mouse, controller, or touch. In English or Dutch (Nederlands), chosen on the start screen or in the settings. Key hints follow an AZERTY or QWERTY keyboard. |
 
 ## Screenshots
@@ -122,6 +117,8 @@ ADMIN_PASSWORD=choose-one npm start
 ```
 
 It listens on http://localhost:8080. Without `DATABASE_URL` (Postgres) it keeps its players in `web/.data/`.
+
+Open the game, use the **Admin** login with your admin password, then save a multiplayer PIN in the admin settings (4 to 12 digits). Give that PIN to your players. Until you save one, guest joining stays closed.
 
 ## How it's made
 
