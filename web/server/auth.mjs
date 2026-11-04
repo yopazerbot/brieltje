@@ -31,6 +31,7 @@
 import { randomBytes, scrypt, timingSafeEqual, createHash, createHmac } from 'node:crypto';
 import { promisify } from 'node:util';
 import { BlockList, isIP, isIPv6 } from 'node:net';
+import { sameText } from './constant-time-text.mjs';
 
 const scryptAsync = promisify(scrypt);
 const ADMIN = (process.env.ADMIN_USERNAME || 'admin').toLowerCase();
@@ -187,12 +188,6 @@ async function verifyHash(password, stored) {
   const expected = Buffer.from(hash, 'base64');
   const actual = await scryptAsync(password, Buffer.from(salt, 'base64'), expected.length, { N: +n, r: +r, p: +p });
   return timingSafeEqual(Buffer.from(actual), expected);
-}
-
-function sameText(a, b) {
-  const x = createHash('sha256').update(a).digest();
-  const y = createHash('sha256').update(b).digest();
-  return timingSafeEqual(x, y);
 }
 
 /** What the server keeps for a session token. */
