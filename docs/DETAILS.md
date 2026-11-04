@@ -225,6 +225,8 @@ node --test --test-isolation=none shared/church.test.mjs
 
 ## Weapon timing
 
+Third-person hand posing lives in `web/src/net/grip.ts`, called after body animation in `swat.ts`. Each weapon defines wrist anchors in metres. Fingers use a sampled closed-hand shooting pose, wrists align with the gun's aiming frame, and placement is kept within both arms' reach. The corrections are restored before the next animation update so they never accumulate.
+
 The frame advances the firing cooldown before checking the trigger. Held automatic fire retains at most 30 percent of the weapon's interval as timing credit, with at most one shot per frame. Releasing the trigger discards that credit. Extra spread is stored per weapon and decays while holstered; respawning clears it.
 
 ## Folder Layout
