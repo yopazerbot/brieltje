@@ -14,6 +14,8 @@ Automatic rifle fire keeps a consistent pace across frame rates. Its extra sprea
 
 The admin sets the multiplayer PIN in the game's settings. There is no default joining code.
 
+Static map surfaces are indexed during loading to reduce pauses when firing, especially with the shotgun's eight pellets.
+
 Other players keep closed hands aligned with each gun's grips while moving, aiming and firing.
 
 Network-fed object IDs are checked before updating game state. Login retains existing sessions and device cookies while comparing credentials without temporary password digests.

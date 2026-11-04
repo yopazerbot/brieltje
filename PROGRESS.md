@@ -4,6 +4,8 @@ Last update: 2026-11-04
 
 ## Done
 
+Reduced shotgun pauses with a spatial index of static map triangles, prepared during village loading. Same-session alternating eight-ray checks improved from 377–548 ms to 24–49 ms across three views with identical hits. A fresh Low touch-mode square check improved from 280 ms to 30 ms; actual shotgun calls took 28–39 ms there. Software rendering and a shared graphics chip, not real-phone frame-rate measurements. Build and 32 Node tests pass. Test processes stopped and temporary browser profiles removed.
+
 Multiplayer joining now requires a PIN saved by the admin in settings. Removed the hardcoded and environment fallback; existing saved PINs remain valid. Build, four authentication tests and an isolated two-client server check pass, including refusing guest and unauthenticated PIN changes. Test server stopped and temporary data deleted.
 
 Brieltje's contact text and mail links now use yoshi@brieltje.be in both game languages, the registration and interest pages, legal pages, footers and contributor documentation. The regulator's separate complaint address is preserved. Build and all 15 public contact links across five pages were checked.
