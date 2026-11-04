@@ -1,6 +1,7 @@
 import * as THREE from 'three';
 import type { FrameInput } from './controls/input';
 import type { Ground, World } from './world/collision';
+import { DROP } from '../shared/parachute.mjs';
 
 const EYE = 1.65;          // m, eye height above the floor
 const HEIGHT = 1.8;        // m, body height for head clearance
@@ -45,6 +46,15 @@ export class Player {
   ground: Ground = { y: 0 };
   /** This frame you pushed against the edge of the game or flew into its ceiling (main.ts says so) */
   atEdge = false;
+  /**
+   * Under a parachute (shared/parachute.mjs): seconds since the drop began, or null on your feet. You
+   * glide forward and steer left and right (or turn with the mouse); no jumping, flying or crouching.
+   */
+  chute: number | null = null;
+  /** Your feet over the ground under you (m): for the parachute's flare */
+  air = 0;
+  /** Landed from a drop */
+  onChuteLand: () => void = () => {};
   private vx = 0;
   private vz = 0;
   private vy = 0;
@@ -70,7 +80,12 @@ export class Player {
 
   /** Put the player somewhere directly, camera included (used by the dev test hook). */
   place(x: number, z: number, feet: number, yaw: number, pitch: number): void {
-    Object.assign(this, { x, z, feet, yaw, pitch, vx: 0, vz: 0, vy: 0, eyeY: feet + EYE, flying: false });
+    Object.assign(this, { x, z, feet, yaw, pitch, vx: 0, vz: 0, vy: 0, eyeY: feet + EYE, flying: false, chute: null });
+  }
+
+  /** Start a drop from where you are (place yourself up high first): packed for a moment, then the canopy. */
+  startDrop(): void {
+    Object.assign(this, { chute: 0, flying: false, vy: -2, vx: 0, vz: 0 });
   }
 
   /**
@@ -96,10 +111,17 @@ export class Player {
     this.crouching = !this.flying && input.downHeld;
     this.crouchT += ((this.crouching ? 1 : 0) - this.crouchT) * (1 - Math.exp(-dt * 12));
     const speed = (this.crouching ? this.walkSpeed * 0.45 : this.walkSpeed * (input.sprint ? SPRINT_FACTOR : 1)) * this.turbo;
+    if (this.chute !== null) {
+      // Left and right steer (the parachute turns), forward and back push the glide a little faster or slower.
+      this.chute += dt;
+      this.crouching = false;
+      this.yaw -= input.moveX * DROP.turn * dt;
+    }
     const sin = Math.sin(this.yaw);
     const cos = Math.cos(this.yaw);
-    const tx = (-sin * input.moveY + cos * input.moveX) * speed;
-    const tz = (-cos * input.moveY - sin * input.moveX) * speed;
+    const glide = this.chute === null ? 0 : this.chute < DROP.fall ? 0.5 : this.air < DROP.flareAt ? 1.5 : DROP.glide * (1 + 0.08 * input.moveY);
+    const tx = this.chute === null ? (-sin * input.moveY + cos * input.moveX) * speed : -sin * glide;
+    const tz = this.chute === null ? (-cos * input.moveY - sin * input.moveX) * speed : -cos * glide;
     const blend = 1 - Math.exp(-12 * dt);
     this.vx += (tx - this.vx) * blend;
     this.vz += (tz - this.vz) * blend;
@@ -121,7 +143,9 @@ export class Player {
     this.x = pos.x;
     this.z = pos.z;
 
-    this.vertical(dt, input);
+    if (this.chute !== null) this.descend(dt);
+    else this.vertical(dt, input);
+    this.air = Math.max(0, this.feet - this.ground.y);
 
     // Camera: smooth the height so stairs feel like steps, not jolts.
     const moving = Math.hypot(this.vx, this.vz);
@@ -139,6 +163,30 @@ export class Player {
 
     camera.position.set(this.x, this.eyeY - this.down * 1.3, this.z);
     camera.rotation.set(this.pitch, this.yaw, this.down * 0.5, 'YXZ');
+  }
+
+  /**
+   * Under the parachute: falling packed, then sinking under the canopy, slower in the flare near the
+   * ground; on your feet when you touch it (or when a drop takes far too long).
+   */
+  private descend(dt: number): void {
+    const t = this.chute ?? 0;
+    const air = this.feet - this.ground.y;
+    if (t < DROP.fall) this.vy = Math.max(-12, this.vy - GRAVITY * dt);
+    else {
+      const sink = air < DROP.flareAt ? 1.2 : DROP.sink;
+      this.vy += (-sink - this.vy) * (1 - Math.exp(-dt * (t < DROP.fall + DROP.deploy ? 1.6 : 3)));
+    }
+    let next = this.feet + this.vy * dt;
+    const sky = this.world.skyAt(this.x, this.z);
+    if (next > sky) next = sky;
+    if (next <= this.ground.y || t > DROP.maxMs / 1000) {
+      next = Math.max(next, this.ground.y);
+      this.vy = 0;
+      this.chute = null;
+      this.onChuteLand();
+    }
+    this.feet = next;
   }
 
   /** Jumping, falling, and Minecraft-style flying (hold jump to rise, C or Circle to sink). */
