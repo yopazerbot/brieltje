@@ -582,7 +582,7 @@ export class Weapon {
   private flashTime = 0;
   private sway = 0;
   private aim = 0;
-  private bloom = 0;
+  private bloom = Object.fromEntries(WEAPON_IDS.map((w) => [w, 0])) as Record<WeaponId, number>;
   private raise = 1;
   private cycleTime = 0;
   private previous: WeaponId = 'pistol';
@@ -712,7 +712,10 @@ export class Weapon {
 
   /** Full magazines (after respawning). */
   refill(): void {
-    for (const w of WEAPON_IDS) this.ammo[w] = this.magOf(w);
+    for (const w of WEAPON_IDS) {
+      this.ammo[w] = this.magOf(w);
+      this.bloom[w] = 0;
+    }
     this.reloading = 0;
   }
 
@@ -785,6 +788,12 @@ export class Weapon {
     }
   }
 
+  /** Advance before checking the trigger. Only held automatic fire carries a small timing remainder. */
+  advanceFire(dt: number, held: boolean): void {
+    const floor = held && this.isAuto && this.cooldown > 0 ? -Math.min(dt, this.spec.delay * 0.3) : 0;
+    this.cooldown = Math.max(floor, this.cooldown - dt);
+  }
+
   /** Fire once if ready. */
   shoot(): Shot | null {
     const spec = this.spec;
@@ -796,7 +805,7 @@ export class Weapon {
       return null;
     }
     this.ammo[this.current]--;
-    this.cooldown = spec.delay;
+    this.cooldown = spec.delay + (spec.auto ? this.cooldown : 0);
     this.cycleTime = spec.delay;
     this.flashTime = 0.05;
     this.models[this.current].flash.fire();
@@ -825,8 +834,8 @@ export class Weapon {
       ? (this.aim > 0.85 ? .015 * Math.max(0, this.spreadMul - 1) : spec.hipSpread ?? 0.09)
       : spec.spread * (1 - (spec.pellets > 1 ? .25 : .6) * this.aim);
     if (this.hasScope(this.current) && this.aim > 0.85) spread *= 0.25; // steady through a found scope
-    spread = spread * this.spreadMul + this.bloom;
-    if (spec.auto) this.bloom = Math.min(0.03, this.bloom + 0.005);
+    spread = spread * this.spreadMul + this.bloom[this.current];
+    if (spec.auto) this.bloom[this.current] = Math.min(0.03, this.bloom[this.current] + 0.005);
 
     this.camera.updateMatrixWorld();
     const eye = this.camera.getWorldPosition(new THREE.Vector3());
@@ -918,14 +927,13 @@ export class Weapon {
     const spec = this.spec;
     const m = this.models[this.current];
     this.clock += dt;
-    this.cooldown = Math.max(0, this.cooldown - dt);
     const cycleBefore = this.cycleTime;
     this.cycleTime = Math.max(0, this.cycleTime - dt);
     if (this.reloading > 0) {
       this.reloading -= dt;
       if (this.reloading <= 0) this.ammo[this.current] = this.magOf(this.current);
     }
-    this.bloom = Math.max(0, this.bloom - dt * 0.06);
+    for (const w of WEAPON_IDS) this.bloom[w] = Math.max(0, this.bloom[w] - dt * 0.06);
     this.flashTime = Math.max(0, this.flashTime - dt);
     m.flash.visible = this.flashTime > 0;
     this.raise = Math.min(1, this.raise + dt * 3.5);

@@ -2634,6 +2634,7 @@ renderer.setAnimationLoop((now: number) => {
     if (calm && !wasCalm) calmHint = 4;
     if (calm && (frame.clickPressed || frame.throwPressed)) calmHint = 2;
     wasCalm = calm;
+    weapon.advanceFire(dt, action && frame.fireHeld && !dead && !inCar && !calm);
     if (action && (frame.clickPressed || (weapon.isAuto && frame.fireHeld)) && !dead && !inCar && !calm) fire();
     if (action && frame.reloadPressed && !dead && !inCar) weapon.reload();
     // The reload key held, with stakes in your pocket (Zombies): it plants a row (the tap reloads as ever).
