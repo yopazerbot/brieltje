@@ -205,12 +205,13 @@ export class Horses {
   /** Who rides which horse and where the ridden and parked ones are (from the server). */
   setAll(list: HorseState[], me: string): void {
     for (const s of list) {
-      if (typeof s.i !== 'number' || !Number.isInteger(s.i) || s.i < 0 || s.i >= this.horses.length) continue;
-      const h = this.horses[s.i];
+      const index = s.i;
+      if (typeof index !== 'number' || !Number.isInteger(index) || index < 0 || index >= this.horses.length) continue;
+      const h = this.horses[index];
       if (!h) continue;
-      if (s.i === this.mounted && s.rider === me) continue; // yours: you move it
+      if (index === this.mounted && s.rider === me) continue; // yours: you move it
       const was = h.state;
-      h.state = { ...s };
+      h.state = { ...s, i: index };
       if (!was.parked && !was.rider && (s.parked || s.rider)) Object.assign(h, { x: s.x, z: s.z, yaw: s.yaw }); // from its walk: no slide
       if (s.rider !== was.rider) h.track.clear();
     }

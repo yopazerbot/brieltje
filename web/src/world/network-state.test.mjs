@@ -59,3 +59,14 @@ test('glass only dispatches registered numeric callbacks and checks their type',
   assert.deepEqual(calls, [true]);
   assert.deepEqual(fallback, [[8, true]]);
 });
+
+test('horse lookup uses the same ID that passed validation', () => {
+  const update = method('./horses.ts', '  setAll(list:', 'setAll');
+  const horse = { state: { parked: false, rider: '' }, track: { clear() {} } };
+  let reads = 0;
+  const state = { get i() { return reads++ === 0 ? 0 : '__proto__'; }, parked: true, rider: 'test', x: 4, z: 5, yaw: 1 };
+  update.call({ horses: [horse], mounted: -1 }, [state], 'me');
+  assert.equal(horse.state.i, 0);
+  assert.equal(horse.x, 4);
+  assert.equal(Object.hasOwn(Array.prototype, 'state'), false);
+});
