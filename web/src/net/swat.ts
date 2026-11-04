@@ -4,6 +4,7 @@ import * as SkeletonUtils from 'three/addons/utils/SkeletonUtils.js';
 import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
 import { gunModel, WEAPON_IDS, type WeaponId } from '../weapon';
 import { muzzleFlash } from '../world/effects';
+import { GRIPS, gripPose, fitGrip, alignHand } from './grip';
 
 /**
  * Other players as a rigged, animated character: the "SWAT" model by
@@ -112,8 +113,6 @@ const TWIST = 1.05; // rad the upper body turns before the legs step round (stan
 const MAX_TWIST = 1.4;
 /** Long guns are drawn a little smaller in the figures' hands: the model's arms are short. */
 const GUN_SCALE: Record<WeaponId, number> = { pistol: 1, rifle: 0.85, shotgun: 0.85, sniper: 0.82, bazooka: 0.85 };
-/** Where the support hand holds a long gun: this share of the way from the grip to the muzzle. */
-const FORE_END: Record<WeaponId, number> = { pistol: 0, rifle: 0.26, shotgun: 0.3, sniper: 0.24, bazooka: 0.22 };
 /** The palette's columns: what each part of the model is painted with. */
 const SLOT = { main: 0, dark: 1, skin: 2, visor: 3, helmet: 4 } as const;
 const SLOTS = 8;
@@ -128,6 +127,7 @@ interface Template {
   lift: number;
   /** The nine parts merged into one skinned mesh painted from a palette (false: the parts as loaded) */
   merged: boolean;
+  grip: ReturnType<typeof gripPose>;
 }
 let template: Template | null = null;
 
@@ -235,7 +235,10 @@ export const swatReady: Promise<boolean> = new GLTFLoader().loadAsync('/models/s
       THREE.AnimationUtils.makeClipAdditive(flinch);
     }
     const merged = mergeParts(gltf.scene);
-    template = { scene: gltf.scene, clips, flinch, scale, lift: -box.min.y * scale, merged };
+    const reference = SkeletonUtils.clone(gltf.scene);
+    reference.rotation.y = Math.PI;
+    const grip = gripPose(reference, clips.get('Run_Shoot') ?? clips.get(CLIPS.armedIdle)!);
+    template = { scene: gltf.scene, clips, flinch, scale, lift: -box.min.y * scale, merged, grip };
     return true;
   },
   () => false,
@@ -390,6 +393,12 @@ export function buildSwat(name: string, color: string, outfit: Outfit, hitMateri
     r: { upper: bone('UpperArmR'), lower: bone('LowerArmR'), wrist: bone('WristR') },
     l: { upper: bone('UpperArmL'), lower: bone('LowerArmL'), wrist: bone('WristL') },
   };
+  const armList = [arms.r, arms.l];
+  root.updateWorldMatrix(true, true);
+  const armLengths = armList.map((arm) => {
+    const elbow = worldPos(arm.lower, new THREE.Vector3());
+    return worldPos(arm.upper, new THREE.Vector3()).distanceTo(elbow) + elbow.distanceTo(worldPos(arm.wrist, new THREE.Vector3()));
+  });
   // The feet hang from the root, not from the shins: lowering the hips leaves them planted.
   const legs = (['L', 'R'] as const).map((s) => ({
     upper: bone(`UpperLeg${s}`), lower: bone(`LowerLeg${s}`), ankle: bone(`LowerLeg${s}_end`), foot: bone(`Foot${s}`),
@@ -400,7 +409,8 @@ export function buildSwat(name: string, color: string, outfit: Outfit, hitMateri
   // The bones posed here after the clips, and their pose straight from the clips. The mixer only
   // writes a bone whose value changed (and never one no clip moves, like the abdomen), so each
   // frame they are put back to the clips' pose first: what is done here never adds up.
-  const touched = [hips, ...spine, neck, head, ...legs.flatMap((l) => [l.upper, l.lower, l.foot]), arms.r.upper, arms.r.lower, arms.l.upper, arms.l.lower].filter(Boolean);
+  const fingers = [...t.grip.fingers].map(([name, q]) => ({ bone: bone(name), q })).filter((f) => !!f.bone);
+  const touched = [hips, ...spine, neck, head, ...legs.flatMap((l) => [l.upper, l.lower, l.foot]), arms.r.upper, arms.r.lower, arms.r.wrist, arms.l.upper, arms.l.lower, arms.l.wrist, ...fingers.map((f) => f.bone)].filter(Boolean);
   const clipPose = touched.map((b) => ({ b, q: b.quaternion.clone(), p: b.position.clone() }));
 
   // Without the merged figure, the player's colour goes on a scarf round the neck.
@@ -537,6 +547,9 @@ export function buildSwat(name: string, color: string, outfit: Outfit, hitMateri
   const v = new THREE.Vector3();
   const target = new THREE.Vector3();
   const pole = new THREE.Vector3();
+  const gripFrame = new THREE.Quaternion();
+  const gripOffsets = [new THREE.Vector3(), new THREE.Vector3()];
+  const shoulders = [new THREE.Vector3(), new THREE.Vector3()];
   const fwd = new THREE.Vector3();
   const right = new THREE.Vector3();
   const UP = new THREE.Vector3(0, 1, 0);
@@ -798,20 +811,28 @@ export function buildSwat(name: string, color: string, outfit: Outfit, hitMateri
       else gunAt.copy(shoulder).addScaledVector(side, -0.14).addScaledVector(upAxis, 0.02).addScaledVector(barrel, 0.36);
       gunAt.addScaledVector(barrel, -kick * (long ? 0.05 : 0.04));
       basis.makeBasis(side, upAxis, back);
-      shownGun.quaternion.setFromRotationMatrix(basis).premultiply(rootQ.clone().invert());
+      gripFrame.setFromRotationMatrix(basis);
+      const anchors = GRIPS[p.weapon];
+      gripOffsets[0].copy(anchors.right).applyQuaternion(gripFrame);
+      gripOffsets[1].copy(anchors.left).applyQuaternion(gripFrame);
+      for (let i = 0; i < armList.length; i++) worldPos(armList[i].upper, shoulders[i]);
+      fitGrip(gunAt, gripOffsets, shoulders, armLengths);
+      shownGun.quaternion.copy(gripFrame).premultiply(rootQ.clone().invert());
       shownGun.position.copy(root.worldToLocal(gunAt.clone()));
       shownGun.updateMatrixWorld(true);
 
       // Hands: on a long gun the right wrist just behind and above the grip, the left under
       // the fore-end; on the pistol the left hand cups the right. Elbows point down and out.
-      target.copy(gunAt).addScaledVector(back, 0.05).addScaledVector(upAxis, 0.02);
+      for (const f of fingers) f.bone.quaternion.copy(f.q);
+      target.copy(gunAt).add(gripOffsets[0]);
       pole.copy(shoulder).addScaledVector(UP, -0.5).addScaledVector(side, 0.35).addScaledVector(back, 0.2);
       reach(arms.r.upper, arms.r.lower, arms.r.wrist, target, pole);
-      if (long) target.copy(gunAt).addScaledVector(barrel, -box.min.z * FORE_END[p.weapon]).addScaledVector(upAxis, -0.05).addScaledVector(back, 0.06);
-      else target.copy(gunAt).addScaledVector(side, -0.03).addScaledVector(upAxis, -0.04).addScaledVector(back, 0.04);
+      alignHand(arms.r.wrist, gripFrame, t.grip.right);
+      target.copy(gunAt).add(gripOffsets[1]);
       const left = worldPos(arms.l.upper, new THREE.Vector3());
       pole.copy(left).addScaledVector(UP, -0.5).addScaledVector(side, -0.3).addScaledVector(back, 0.1);
       reach(arms.l.upper, arms.l.lower, arms.l.wrist, target, pole);
+      alignHand(arms.l.wrist, gripFrame, t.grip.left);
     },
   };
   return body;
