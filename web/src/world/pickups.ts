@@ -46,6 +46,7 @@ export class Pickups {
   }
 
   setReady(i: number, ready: boolean): void {
+    if (typeof i !== 'number' || !Number.isInteger(i) || i < 0 || i >= this.items.length || typeof ready !== 'boolean') return;
     const it = this.items[i];
     if (!it) return;
     it.ready = ready;

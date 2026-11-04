@@ -55,8 +55,9 @@ export class Glass {
   }
 
   private setSolid(index: number, on: boolean): void {
+    if (typeof index !== 'number' || !Number.isSafeInteger(index) || index < 0) return;
     const other = this.others.get(index);
-    if (other) other(!on);
+    if (typeof other === 'function') other(!on);
     else this.world.setSolid(index, on);
   }
 

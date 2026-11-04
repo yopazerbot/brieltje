@@ -143,6 +143,7 @@ export class Cats {
 
   /** Someone else shot cat i, back in `seconds`. */
   down(i: number, seconds: number): void {
+    if (typeof i !== 'number' || !Number.isInteger(i) || i < 0 || i >= this.cats.length) return;
     const c = this.cats[i];
     if (c) c.deadUntil = this.now + seconds;
   }

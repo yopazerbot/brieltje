@@ -205,6 +205,7 @@ export class Horses {
   /** Who rides which horse and where the ridden and parked ones are (from the server). */
   setAll(list: HorseState[], me: string): void {
     for (const s of list) {
+      if (typeof s.i !== 'number' || !Number.isInteger(s.i) || s.i < 0 || s.i >= this.horses.length) continue;
       const h = this.horses[s.i];
       if (!h) continue;
       if (s.i === this.mounted && s.rider === me) continue; // yours: you move it

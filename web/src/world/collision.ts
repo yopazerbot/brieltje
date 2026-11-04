@@ -177,6 +177,7 @@ export class World {
 
   /** Switch a block (by its number in the house data) off or back on: broken windows. */
   setSolid(index: number, on: boolean): void {
+    if (typeof index !== 'number' || !Number.isInteger(index) || index < 0 || index >= this.solids.length) return;
     const s = this.solids[index];
     if (s) s.off = !on;
   }
