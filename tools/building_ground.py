@@ -18,7 +18,7 @@ def frontage_base(house, relief):
     # The high entrance fixes a level floor; existing steps meet the lower entrances.
     return round(max(relief.height(a[0] + direction[0] * s + house["out"][0] * 0.5,
                                    a[1] + direction[1] * s + house["out"][1] * 0.5)
-                     for s in positions), 3)
+                     for s in positions) + house.get("threshold", 0.05) - 0.05, 3)
 
 
 def wall_bottom(a, b, base, height):

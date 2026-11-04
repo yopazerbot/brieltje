@@ -28,6 +28,9 @@ class BuildingGroundTests(unittest.TestCase):
             house = {**self.house, flag: value}
             self.assertEqual(frontage_base(house, Relief()), -1)
 
+    def test_standalone_threshold_follows_its_entrance(self):
+        self.assertEqual(frontage_base({**self.house, "threshold": 0.3}, Relief()), 1.06)
+
     def test_foundation_reaches_a_dip_between_wall_ends(self):
         bottom = wall_bottom((0, 0), (10, 0), 1, lambda x, z: -2 if 4 <= x <= 6 else 0)
         self.assertEqual(bottom, -3.25)
