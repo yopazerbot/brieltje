@@ -4,6 +4,10 @@ Last update: 2026-11-04
 
 ## Done
 
+The detailed brick house replaces the simpler cube on Yoshi's green-marked plot. Its misplaced copy and old clearing overrides are removed, restoring the original village buildings there. The walk-in house's glass-corner frames now have joined white posts, closing the visible slits.
+
+Trees use connected irregular canopies, gently bent forked trunks and no separate floating lower crowns. Hedge clumps are smaller with broader colour variation. Existing shared leaf textures, wind and seasonal colours remain. Build, 16 Python tests and two vegetation geometry tests pass, with rendered site, interior, forest and street checks plus a fresh Low touch-mode startup. No real-phone, two-client network or frame-time check was run.
+
 Corrected 145 street-house floor levels that used buried collision-block feet. Six deliberate raised or shared-threshold exceptions stay as chosen; foundations reach the ground on slopes. Five street models and their collision solids were regenerated. All 13 Python tests and the build pass; software-rendered views and a corrected-house collision check pass, including Low at touch-emulated phone size.
 
 Shared outdoor textures use softer bump defaults while retaining explicit material strengths. Grass has gentle irregular margins beside roads and paving, using the existing baked shading without added per-frame texture reads. No real phone, two-client network check or frame-time measurement was run for this pass.

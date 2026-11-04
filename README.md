@@ -16,6 +16,8 @@ Other players keep closed hands aligned with each gun's grips while moving, aimi
 
 Street-house floors meet the terrain at their entrances, with foundations continuing down slopes. Outdoor surfaces have softer bump detail and grass margins beside roads and paving are less uniform.
 
+Trees have connected irregular canopies and branching trunks, with finer clumps on clipped hedges. The detailed brick house is on its corrected plot along Molenhoek, and the walk-in house's corner window frames meet without open slits.
+
 At a portal, use 1–7 on the number row or numpad to pick a destination.
 
 The village square's paving follows the ground under it.
