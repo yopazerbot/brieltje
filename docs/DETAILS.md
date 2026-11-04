@@ -253,6 +253,8 @@ node --test server/*.test.mjs shared/*.test.mjs src/world/network-state.test.mjs
 
 ## Vegetation and recent geometry repairs
 
+Brieltje's public contact address is `yoshi@brieltje.be`, including both game translations and public-page mail links. The privacy regulator's complaint address is a separate third-party contact.
+
 Shared tree shapes live in `web/src/world/vegetation.ts`: a connected canopy in full and simplified forms, and a tapered forked trunk. The existing instance batches, leaf texture, wind and seasonal shader are used. Near canopies have 980 triangles, far canopies 180 and the shared bark mesh 54. The separate lower-crown batch is gone. `surroundings.ts` places the trees and the smaller hedge clumps. Run `node --test src/world/vegetation.test.mjs` from `web/` to check seams, lighting normals and geometry budgets.
 
 The detailed brick house's corrected plot is set by `CUBE_F`, `CUBE_T` and `CUBE_N` in `tools/molenhoek_end_survey.py`; its site work is confined to that plot. The misplaced model and its clearing overrides are removed. Regenerate the branch survey and `molenhoek_end2` and `molenhoek_end3` with the commands above.
