@@ -1,0 +1,940 @@
+{
+ "asset": "web/public/models/parachute.glb",
+ "generator": "blender -b -P tools/parachute/parachute.py -- (Blender 5.2.3 LTS)",
+ "licence": "Our own work for Brieltje, under the project's licence (CC BY-NC 4.0). No third-party parts.",
+ "variant": "B",
+ "units": "metres",
+ "up": "+Y",
+ "forward": "-Z",
+ "right": "+X",
+ "origin": "ParachuteRoot = the pilot's foot origin (where the feet stand); the game's Body.root goes on the same spot",
+ "file_bytes": 597460,
+ "meshes": [
+  {
+   "name": "Parachute_LOD0",
+   "triangles": 5658,
+   "primitives": [
+    {
+     "material": "Parachute_Canopy",
+     "triangles": 1152,
+     "vertices": 1012
+    },
+    {
+     "material": "Parachute_Accent",
+     "triangles": 1818,
+     "vertices": 1094
+    },
+    {
+     "material": "Parachute_Gear",
+     "triangles": 2688,
+     "vertices": 2571
+    }
+   ]
+  },
+  {
+   "name": "Parachute_LOD1",
+   "triangles": 1064,
+   "primitives": [
+    {
+     "material": "Parachute_Canopy",
+     "triangles": 160,
+     "vertices": 180
+    },
+    {
+     "material": "Parachute_Accent",
+     "triangles": 304,
+     "vertices": 294
+    },
+    {
+     "material": "Parachute_Gear",
+     "triangles": 600,
+     "vertices": 643
+    }
+   ]
+  }
+ ],
+ "materials": [
+  {
+   "name": "Parachute_Canopy",
+   "baseColorFactor": [
+    1,
+    1,
+    1,
+    1
+   ],
+   "emissiveFactor": [
+    0.2428,
+    0.2231,
+    0.1846
+   ],
+   "roughness": 0.8199999928474426,
+   "metallic": 0,
+   "vertexColours": true,
+   "doubleSided": false
+  },
+  {
+   "name": "Parachute_Accent",
+   "baseColorFactor": [
+    0.7519,
+    0.1734,
+    0.0385,
+    1
+   ],
+   "emissiveFactor": [
+    0.2105,
+    0.0486,
+    0.0108
+   ],
+   "roughness": 0.8199999928474426,
+   "metallic": 0,
+   "vertexColours": true,
+   "doubleSided": false
+  },
+  {
+   "name": "Parachute_Gear",
+   "baseColorFactor": [
+    1,
+    1,
+    1,
+    1
+   ],
+   "emissiveFactor": [
+    0,
+    0,
+    0
+   ],
+   "roughness": 0.8199999928474426,
+   "metallic": 0,
+   "vertexColours": true,
+   "doubleSided": false
+  }
+ ],
+ "accent_material": "Parachute_Accent: set color to the player's colour and emissive to that colour x 0.28 (its vertex colours are white)",
+ "nodes": {
+  "Brake_L": {
+   "index": 0,
+   "parent": "Canopy",
+   "translation": [
+    -1.8176,
+    -0.1911,
+    -0.2826
+   ],
+   "rotation": [
+    0,
+    0,
+    0,
+    1
+   ],
+   "scale": [
+    1,
+    1,
+    1
+   ],
+   "rest_position_in_root": [
+    -1.8176,
+    5.2174,
+    0.3411
+   ]
+  },
+  "Brake_R": {
+   "index": 1,
+   "parent": "Canopy",
+   "translation": [
+    1.8176,
+    -0.1911,
+    -0.2826
+   ],
+   "rotation": [
+    0,
+    0,
+    0,
+    1
+   ],
+   "scale": [
+    1,
+    1,
+    1
+   ],
+   "rest_position_in_root": [
+    1.8176,
+    5.2174,
+    0.3411
+   ]
+  },
+  "Canopy": {
+   "index": 11,
+   "parent": "Root",
+   "translation": [
+    0,
+    -0.15,
+    5.5
+   ],
+   "rotation": [
+    0,
+    0,
+    0,
+    1
+   ],
+   "scale": [
+    1,
+    1,
+    1
+   ],
+   "rest_position_in_root": [
+    0.0,
+    5.5,
+    0.15
+   ]
+  },
+  "Grip_L": {
+   "index": 12,
+   "parent": "Root",
+   "translation": [
+    -0.2853,
+    0.24,
+    1.4846
+   ],
+   "rotation": [
+    0,
+    0,
+    0,
+    1
+   ],
+   "scale": [
+    1,
+    1,
+    1
+   ],
+   "rest_position_in_root": [
+    -0.2853,
+    1.4846,
+    -0.24
+   ]
+  },
+  "Grip_R": {
+   "index": 13,
+   "parent": "Root",
+   "translation": [
+    0.2853,
+    0.24,
+    1.4846
+   ],
+   "rotation": [
+    0,
+    0,
+    0,
+    1
+   ],
+   "scale": [
+    1,
+    1,
+    1
+   ],
+   "rest_position_in_root": [
+    0.2853,
+    1.4846,
+    -0.24
+   ]
+  },
+  "Elbow_L": {
+   "index": 14,
+   "parent": "Pilot",
+   "translation": [
+    -0.4905,
+    -0.1072,
+    0.3606
+   ],
+   "rotation": [
+    0,
+    0,
+    0,
+    1
+   ],
+   "scale": [
+    1,
+    1,
+    1
+   ],
+   "rest_position_in_root": [
+    -0.4909,
+    1.2184,
+    0.0808
+   ]
+  },
+  "Elbow_R": {
+   "index": 15,
+   "parent": "Pilot",
+   "translation": [
+    0.4913,
+    -0.1072,
+    0.3606
+   ],
+   "rotation": [
+    0,
+    0,
+    0,
+    1
+   ],
+   "scale": [
+    1,
+    1,
+    1
+   ],
+   "rest_position_in_root": [
+    0.4909,
+    1.2184,
+    0.0808
+   ]
+  },
+  "Pack": {
+   "index": 16,
+   "parent": "Pilot",
+   "translation": [
+    0.0004,
+    -0.1803,
+    0.3422
+   ],
+   "rotation": [
+    0,
+    0,
+    0,
+    1
+   ],
+   "scale": [
+    1,
+    1,
+    1
+   ],
+   "rest_position_in_root": [
+    0.0,
+    1.2,
+    0.1539
+   ]
+  },
+  "RiserFront_L": {
+   "index": 17,
+   "parent": "Pilot",
+   "translation": [
+    -0.1346,
+    0.1404,
+    0.5022
+   ],
+   "rotation": [
+    0,
+    0,
+    0,
+    1
+   ],
+   "scale": [
+    1,
+    1,
+    1
+   ],
+   "rest_position_in_root": [
+    -0.135,
+    1.36,
+    -0.1668
+   ]
+  },
+  "RiserFront_R": {
+   "index": 18,
+   "parent": "Pilot",
+   "translation": [
+    0.1354,
+    0.1404,
+    0.5022
+   ],
+   "rotation": [
+    0,
+    0,
+    0,
+    1
+   ],
+   "scale": [
+    1,
+    1,
+    1
+   ],
+   "rest_position_in_root": [
+    0.135,
+    1.36,
+    -0.1668
+   ]
+  },
+  "RiserRear_L": {
+   "index": 19,
+   "parent": "Pilot",
+   "translation": [
+    -0.1346,
+    0.1404,
+    0.5022
+   ],
+   "rotation": [
+    0,
+    0,
+    0,
+    1
+   ],
+   "scale": [
+    1,
+    1,
+    1
+   ],
+   "rest_position_in_root": [
+    -0.135,
+    1.36,
+    -0.1668
+   ]
+  },
+  "RiserRear_R": {
+   "index": 20,
+   "parent": "Pilot",
+   "translation": [
+    0.1354,
+    0.1404,
+    0.5022
+   ],
+   "rotation": [
+    0,
+    0,
+    0,
+    1
+   ],
+   "scale": [
+    1,
+    1,
+    1
+   ],
+   "rest_position_in_root": [
+    0.135,
+    1.36,
+    -0.1668
+   ]
+  },
+  "Foot_L": {
+   "index": 21,
+   "parent": "Shin_L",
+   "translation": [
+    0.0,
+    -0.025,
+    -0.505
+   ],
+   "rotation": [
+    0,
+    0,
+    0,
+    1
+   ],
+   "scale": [
+    1,
+    1,
+    1
+   ],
+   "rest_position_in_root": [
+    -0.1193,
+    0.0242,
+    -0.0614
+   ]
+  },
+  "Shin_L": {
+   "index": 22,
+   "parent": "Thigh_L",
+   "translation": [
+    -0.0,
+    0.0419,
+    -0.4263
+   ],
+   "rotation": [
+    0,
+    0,
+    0,
+    1
+   ],
+   "scale": [
+    1,
+    1,
+    1
+   ],
+   "rest_position_in_root": [
+    -0.1193,
+    0.5292,
+    -0.0865
+   ]
+  },
+  "Thigh_L": {
+   "index": 23,
+   "parent": "Pilot",
+   "translation": [
+    -0.1188,
+    0.0182,
+    0.0977
+   ],
+   "rotation": [
+    0,
+    0,
+    0,
+    1
+   ],
+   "scale": [
+    1,
+    1,
+    1
+   ],
+   "rest_position_in_root": [
+    -0.1193,
+    0.9555,
+    -0.0446
+   ]
+  },
+  "Foot_R": {
+   "index": 24,
+   "parent": "Shin_R",
+   "translation": [
+    0,
+    -0.025,
+    -0.505
+   ],
+   "rotation": [
+    0,
+    0,
+    0,
+    1
+   ],
+   "scale": [
+    1,
+    1,
+    1
+   ],
+   "rest_position_in_root": [
+    0.1193,
+    0.0242,
+    -0.0614
+   ]
+  },
+  "Shin_R": {
+   "index": 25,
+   "parent": "Thigh_R",
+   "translation": [
+    0,
+    0.0419,
+    -0.4263
+   ],
+   "rotation": [
+    0,
+    0,
+    0,
+    1
+   ],
+   "scale": [
+    1,
+    1,
+    1
+   ],
+   "rest_position_in_root": [
+    0.1193,
+    0.5292,
+    -0.0865
+   ]
+  },
+  "Thigh_R": {
+   "index": 26,
+   "parent": "Pilot",
+   "translation": [
+    0.1197,
+    0.0182,
+    0.0977
+   ],
+   "rotation": [
+    0,
+    0,
+    0,
+    1
+   ],
+   "scale": [
+    1,
+    1,
+    1
+   ],
+   "rest_position_in_root": [
+    0.1193,
+    0.9555,
+    -0.0446
+   ]
+  },
+  "Pilot": {
+   "index": 27,
+   "parent": "Root",
+   "translation": [
+    -0.0004,
+    0.0264,
+    0.8578
+   ],
+   "rotation": [
+    0,
+    0,
+    0,
+    1
+   ],
+   "scale": [
+    1,
+    1,
+    1
+   ],
+   "rest_position_in_root": [
+    -0.0004,
+    0.8578,
+    -0.0264
+   ]
+  },
+  "Toggle_L": {
+   "index": 28,
+   "parent": "Root",
+   "translation": [
+    -0.2853,
+    0.24,
+    1.4846
+   ],
+   "rotation": [
+    0,
+    0,
+    0,
+    1
+   ],
+   "scale": [
+    1,
+    1,
+    1
+   ],
+   "rest_position_in_root": [
+    -0.2853,
+    1.4846,
+    -0.24
+   ]
+  },
+  "Toggle_R": {
+   "index": 29,
+   "parent": "Root",
+   "translation": [
+    0.2853,
+    0.24,
+    1.4846
+   ],
+   "rotation": [
+    0,
+    0,
+    0,
+    1
+   ],
+   "scale": [
+    1,
+    1,
+    1
+   ],
+   "rest_position_in_root": [
+    0.2853,
+    1.4846,
+    -0.24
+   ]
+  },
+  "Root": {
+   "index": 30,
+   "parent": "Parachute_Rig",
+   "translation": [
+    0,
+    0,
+    0
+   ],
+   "rotation": [
+    -0.70711,
+    0,
+    0,
+    0.70711
+   ],
+   "scale": [
+    1,
+    1,
+    1
+   ],
+   "rest_position_in_root": [
+    0.0,
+    0.0,
+    -0.0
+   ]
+  },
+  "Parachute_Rig": {
+   "index": 33,
+   "parent": "ParachuteRoot",
+   "translation": [
+    0,
+    0,
+    0
+   ],
+   "rotation": [
+    0,
+    0,
+    0,
+    1
+   ],
+   "scale": [
+    1,
+    1,
+    1
+   ],
+   "rest_position_in_root": [
+    0,
+    0,
+    0
+   ]
+  },
+  "ParachuteRoot": {
+   "index": 34,
+   "parent": null,
+   "translation": [
+    0,
+    0,
+    0
+   ],
+   "rotation": [
+    0,
+    0,
+    0,
+    1
+   ],
+   "scale": [
+    1,
+    1,
+    1
+   ],
+   "rest_position_in_root": [
+    0,
+    0,
+    0
+   ]
+  }
+ },
+ "clips": {
+  "Deploy": {
+   "seconds": 1.8,
+   "frames": 54,
+   "loop": false,
+   "loop_seam_m": null,
+   "bounds_gltf": {
+    "min": [
+     -2.9479,
+     0.7619,
+     -1.6632
+    ],
+    "max": [
+     3.047,
+     5.7607,
+     1.5734
+    ]
+   },
+   "canopy_bounds_gltf": {
+    "min": [
+     -2.9479,
+     1.1781,
+     -1.6632
+    ],
+    "max": [
+     3.047,
+     5.7607,
+     1.5734
+    ]
+   },
+   "line_head_clearance_m": 0.1,
+   "line_torso_clearance_m": 0.173,
+   "exported_seconds": 1.8,
+   "channels": 93
+  },
+  "Flare": {
+   "seconds": 0.8,
+   "frames": 24,
+   "loop": false,
+   "loop_seam_m": null,
+   "bounds_gltf": {
+    "min": [
+     -2.8639,
+     0.7564,
+     -1.0808
+    ],
+    "max": [
+     2.9505,
+     5.7532,
+     2.3817
+    ]
+   },
+   "canopy_bounds_gltf": {
+    "min": [
+     -2.8639,
+     3.8258,
+     -1.0808
+    ],
+    "max": [
+     2.9505,
+     5.7532,
+     2.3817
+    ]
+   },
+   "line_head_clearance_m": 0.211,
+   "line_torso_clearance_m": 0.172,
+   "exported_seconds": 0.8,
+   "channels": 93
+  },
+  "Glide_Idle": {
+   "seconds": 3.0,
+   "frames": 90,
+   "loop": true,
+   "loop_seam_m": 0.0,
+   "bounds_gltf": {
+    "min": [
+     -2.9538,
+     0.7703,
+     -1.1463
+    ],
+    "max": [
+     2.9528,
+     5.7581,
+     1.4715
+    ]
+   },
+   "canopy_bounds_gltf": {
+    "min": [
+     -2.9538,
+     4.4318,
+     -1.1463
+    ],
+    "max": [
+     2.9528,
+     5.7581,
+     1.4715
+    ]
+   },
+   "line_head_clearance_m": 0.208,
+   "line_torso_clearance_m": 0.201,
+   "exported_seconds": 3,
+   "channels": 93
+  },
+  "Glide_Left": {
+   "seconds": 3.0,
+   "frames": 90,
+   "loop": true,
+   "loop_seam_m": 0.0,
+   "bounds_gltf": {
+    "min": [
+     -3.7517,
+     0.7702,
+     -1.1262
+    ],
+    "max": [
+     1.8414,
+     5.841,
+     1.6409
+    ]
+   },
+   "canopy_bounds_gltf": {
+    "min": [
+     -3.7517,
+     3.2433,
+     -1.1262
+    ],
+    "max": [
+     1.8414,
+     5.841,
+     1.6409
+    ]
+   },
+   "line_head_clearance_m": 0.173,
+   "line_torso_clearance_m": 0.195,
+   "exported_seconds": 3,
+   "channels": 93
+  },
+  "Glide_Right": {
+   "seconds": 3.0,
+   "frames": 90,
+   "loop": true,
+   "loop_seam_m": 0.0,
+   "bounds_gltf": {
+    "min": [
+     -1.8353,
+     0.7704,
+     -1.1207
+    ],
+    "max": [
+     3.7433,
+     5.8638,
+     1.6406
+    ]
+   },
+   "canopy_bounds_gltf": {
+    "min": [
+     -1.8353,
+     3.2705,
+     -1.1207
+    ],
+    "max": [
+     3.7433,
+     5.8638,
+     1.6406
+    ]
+   },
+   "line_head_clearance_m": 0.178,
+   "line_torso_clearance_m": 0.195,
+   "exported_seconds": 3,
+   "channels": 93
+  },
+  "Land_Collapse": {
+   "seconds": 2.4,
+   "frames": 72,
+   "loop": false,
+   "loop_seam_m": null,
+   "bounds_gltf": {
+    "min": [
+     -2.8639,
+     0.0356,
+     -3.9944
+    ],
+    "max": [
+     2.9514,
+     5.6486,
+     2.3261
+    ]
+   },
+   "canopy_bounds_gltf": {
+    "min": [
+     -2.8639,
+     0.0356,
+     -3.9944
+    ],
+    "max": [
+     2.9514,
+     5.6486,
+     2.3261
+    ]
+   },
+   "line_head_clearance_m": 0.207,
+   "line_torso_clearance_m": 0.104,
+   "exported_seconds": 2.4,
+   "channels": 93
+  }
+ },
+ "pilot_pose_guides": {
+  "Pilot": "pelvis: the figure's Body bone follows its change from rest",
+  "Thigh_X / Shin_X / Foot_X": "heads at the figure's hip, knee and ankle; the legs reach the ankle by two-bone IK with the knee as pole; Foot.X follows Foot_X's change",
+  "Grip_X": "the palm's centre: the wrist goes 5 cm short of it towards the shoulder (two-bone IK, Elbow_X as pole)",
+  "figure_scale": 0.98922,
+  "figure": "web/public/models/swat.glb (Quaternius, CC0), not included in this file"
+ },
+ "dimensions": {
+  "span_flat_m": 6.0,
+  "span_projected_m": 5.696,
+  "tip_drop_m": 0.812,
+  "chord_centre_m": 2.45,
+  "chord_tip_m": 0.77,
+  "cells": 9,
+  "trim_deg": 7.0,
+  "canopy_pivot_height_m": 5.5,
+  "riser_length_m": 0.48,
+  "max_thickness_m": 0.417
+ }
+}
