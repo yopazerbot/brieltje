@@ -223,6 +223,10 @@ Run the route, attack and zombie checks from `web/`:
 node --test --test-isolation=none shared/church.test.mjs
 ```
 
+## Weapon timing
+
+The frame advances the firing cooldown before checking the trigger. Held automatic fire retains at most 30 percent of the weapon's interval as timing credit, with at most one shot per frame. Releasing the trigger discards that credit. Extra spread is stored per weapon and decays while holstered; respawning clears it.
+
 ## Folder Layout
 
 `web/public/menu-theme.css` holds the panel, focus and selection styles shared by the game menus, admin and event pages.

@@ -10,6 +10,8 @@ For in-person play, [express interest](https://brieltje.be/interested/) or [chec
 
 During play, open the menu’s Controls tab for a quick guide or to switch between a connected controller and the keyboard.
 
+Automatic rifle fire keeps a consistent pace across frame rates. Its extra spread stays with the rifle when you switch weapons.
+
 At a portal, use 1–7 on the number row or numpad to pick a destination.
 
 The village square's paving follows the ground under it.
