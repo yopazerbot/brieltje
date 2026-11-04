@@ -10,13 +10,14 @@ import { sway } from './wind';
 import { paneGeometry, paneLook, paneMaterial, COVER } from './windows';
 import { waterClock, waterMaterial } from './water';
 import { leafy } from './leaves';
+import { treeCrown, treeTrunk } from './vegetation';
 
 /**
  * Around the plot, from Flemish open data (GRB footprints, DHM laser heights;
  * see tools/neighbours.py): the pitched roofs and gables of neighbouring
  * houses (their walls are ordinary blocks), and trees where the laser scan
- * found tall vegetation. Trees are made in code: a tapered trunk and a crown
- * of lumpy leaf clusters, in three shapes, drawn as instances (a few draw
+ * found tall vegetation. Trees are made in code: a tapered, forked trunk and a connected
+ * irregular crown, in three shapes, drawn as instances (a few draw
  * calls for all of them).
  *
  * The neighbours' roofs carry tiles in their own colour, their gables the
@@ -392,81 +393,6 @@ function leafBall(r: number, detail: number, rand: () => number, lumpy = 1): THR
 }
 
 /**
- * A tree crown: balls of leaves round a core, darker inside and below (the leaves there get less of the
- * sky), each ball a little lighter or darker than the next. Unit size: about 1 m radius, centred at y = 0.
- * Full: a core and 12 to 14 balls of 80 triangles; simple: a core of 80 and five of 20; bough: three of
- * 20 (a tall tree's lower boughs). The leaves (world/leaves.ts) give the balls their texture and outline.
- */
-function crown(seed: number, kind: 'full' | 'simple' | 'bough' = 'full'): THREE.BufferGeometry {
-  let s = seed;
-  const rand = () => ((s = (s * 16807) % 2147483647) / 2147483647);
-  // Balls as [x, y, z, radius, detail]: on a shell round the middle, fewer underneath, the core inside.
-  // The core comes last: where the balls round it are drawn first, the graphics chip skips what they hide of it.
-  const balls: [number, number, number, number, number][] = [];
-  const n = kind === 'full' ? 12 + Math.floor(rand() * 3) : kind === 'simple' ? 5 : 3;
-  for (let i = 0; i < n; i++) {
-    // A spiral down the shell, so the balls spread evenly whatever their number.
-    const y = 0.92 - (1.7 * (i + 0.5)) / n;
-    const a = i * 2.39996 + rand() * 0.6;
-    const ring = Math.sqrt(1 - y * y);
-    const d = kind === 'bough' ? 0.45 : 0.5 + rand() * 0.1;
-    const r = kind === 'full' ? 0.3 + rand() * 0.12 : kind === 'simple' ? 0.4 + rand() * 0.08 : 0.5 + rand() * 0.1;
-    balls.push([Math.cos(a) * ring * d, y * d * 0.85 + 0.08, Math.sin(a) * ring * d, r, kind === 'full' ? 1 : 0]);
-  }
-  if (kind !== 'bough') balls.push([0, 0.05, 0, kind === 'full' ? 0.6 : 0.68, 1]);
-  const parts: THREE.BufferGeometry[] = [];
-  const tints: number[] = [];
-  for (const [x, y, z, r, detail] of balls) {
-    const g = leafBall(r, detail, rand).translate(x, y, z);
-    // The normals between the ball's own and the whole crown's: lit as one crown, not as a heap of balls.
-    const pos = g.attributes.position as THREE.BufferAttribute;
-    const nor = g.attributes.normal as THREE.BufferAttribute;
-    const own = new THREE.Vector3();
-    const whole = new THREE.Vector3();
-    for (let k = 0; k < pos.count; k++) {
-      own.fromBufferAttribute(nor, k);
-      whole.fromBufferAttribute(pos, k).normalize();
-      own.lerp(whole, 0.5).normalize();
-      nor.setXYZ(k, own.x, own.y, own.z);
-    }
-    parts.push(g);
-    tints.push(0.88 + rand() * 0.24);
-  }
-  const geo = mergeGeometries(parts);
-  const pos = geo.attributes.position as THREE.BufferAttribute;
-  const colors = new Float32Array(pos.count * 3);
-  const light = new THREE.Color('#628040');
-  const dark = new THREE.Color('#203318');
-  const c = new THREE.Color();
-  const p = new THREE.Vector3();
-  let k = 0;
-  parts.forEach((part, b) => {
-    for (let i = 0; i < part.attributes.position.count; i++, k++) {
-      p.fromBufferAttribute(pos, k);
-      // Out in the crown and up: lit. Deep inside and underneath: in the crown's own shade.
-      const out = Math.min(1, p.length() / 0.95);
-      const up = Math.min(1, Math.max(0, p.y * 0.6 + 0.5));
-      c.copy(dark).lerp(light, Math.min(1, out * out * 0.55 + up * 0.5)).multiplyScalar(tints[b]);
-      colors.set([c.r, c.g, c.b], k * 3);
-    }
-    part.dispose();
-  });
-  geo.setAttribute('color', new THREE.BufferAttribute(colors, 3));
-  // As wide as the old single lumps reached (about 1 either way), less the cut-away outline.
-  return kind === 'bough' ? geo : geo.scale(1.15, 1, 1.15);
-}
-
-/** A trunk 1 m tall, tapering; darker towards the top, where it goes up into the crown's shade. */
-function trunkShape(): THREE.BufferGeometry {
-  const g = new THREE.CylinderGeometry(0.06, 0.1, 1, 7, 2).translate(0, 0.5, 0);
-  const pos = g.attributes.position as THREE.BufferAttribute;
-  const colors = new Float32Array(pos.count * 3);
-  for (let k = 0; k < pos.count; k++) colors.fill(1 - 0.55 * THREE.MathUtils.smoothstep(pos.getY(k), 0.3, 1), k * 3, k * 3 + 3);
-  g.setAttribute('color', new THREE.BufferAttribute(colors, 3));
-  return g;
-}
-
-/**
  * Drawing order (opaque things go by material otherwise): walls and roofs first, then trees,
  * then the ground covers, then the lawn (main.ts). What a house hides is then not worked out first:
  * the graphics chip skips pixels behind what is already drawn.
@@ -475,11 +401,8 @@ const TREE_ORDER = 0.4;
 const COVER_ORDER = 0.5;
 const GROUND_COVERS = new Set(['road', 'field_soil', 'field_dark', 'field_crop', 'forest', 'pave_light', 'pave_warm', 'pave_grey', 'pave_walk', 'gravel', 'track']);
 
-/** m: trees this tall get a second, lower crown (their lower boughs). */
-const LOW_BOUGHS = 15;
-
-/** The tree shapes: three crowns in full and simplified, the lower boughs and a trunk; made once. */
-let treeShapes: { full: THREE.BufferGeometry[]; simple: THREE.BufferGeometry[]; bough: THREE.BufferGeometry; trunk: THREE.BufferGeometry } | null = null;
+/** Three connected crowns in full and simplified forms, and a forked trunk; made once. */
+let treeShapes: { full: THREE.BufferGeometry[]; simple: THREE.BufferGeometry[]; trunk: THREE.BufferGeometry } | null = null;
 
 type Pole = NonNullable<Surroundings['poles']>[number];
 
@@ -552,19 +475,17 @@ export function buildTile(data: TileData, poles: Pole[], renderer: THREE.WebGLRe
 /**
  * Trees: three crown shapes and a trunk, each tree a copy of one. Round the house and the church
  * full crowns that cast shadows; elsewhere (the woods and tree rows further out) simpler crowns
- * (180 triangles instead of about 1000) that cast none. A tall tree has its lower boughs too: a crown
- * of 20 triangles under the big one, without a shadow, drawn within the draw distance of details.
+ * (180 triangles instead of 980) that cast none. Lower branches belong to the same crown,
+ * so they keep its colour and never look like separate floating balls.
  */
 function buildTrees(trees: Surroundings['trees'], detail: (x: number, z: number) => boolean): Piece[] {
   treeShapes ??= {
-    full: [0, 1, 2].map((k) => crown(1234 + k * 999)),
-    simple: [0, 1, 2].map((k) => crown(1234 + k * 999, 'simple')),
-    bough: crown(4321, 'bough').scale(1.15, 1, 1.15),
-    trunk: trunkShape(),
+    full: [0, 1, 2].map((k) => treeCrown(1234 + k * 999)),
+    simple: [0, 1, 2].map((k) => treeCrown(1234 + k * 999, true)),
+    trunk: treeTrunk(),
   };
   const shapes = treeShapes;
   const crowns: THREE.Matrix4[][] = [[], [], [], [], [], []];
-  const boughs: THREE.Matrix4[] = [];
   const trunks: THREE.Matrix4[] = [];
   const q = new THREE.Quaternion();
   const lean = new THREE.Quaternion();
@@ -591,22 +512,12 @@ function buildTrees(trees: Surroundings['trees'], detail: (x: number, z: number)
     lean.setFromAxisAngle(axis.set(Math.cos(h(4) * 6.283), 0, Math.sin(h(4) * 6.283)), tilt).multiply(q);
     const size = new THREE.Vector3(crownR * (0.88 + 0.24 * h(1)), crownH * 0.6 * (0.9 + 0.2 * h(5)), crownR * (0.88 + 0.24 * h(2)));
     crowns[k].push(new THREE.Matrix4().compose(new THREE.Vector3(t.x, t.y + t.h - crownH * 0.55, t.z), lean, size));
-    if (t.h >= LOW_BOUGHS) {
-      // Under it the lower boughs, a little to one side, down to about a quarter of the height: the bare
-      // trunk below them, as at the edge of a wood. No shadow of their own: the crown above casts one over
-      // the same ground.
-      const r = crownR * 0.85;
-      const side = crownR * 0.18;
-      boughs.push(new THREE.Matrix4().compose(
-        new THREE.Vector3(t.x + Math.cos(turn) * side, t.y + t.h * 0.41, t.z + Math.sin(turn) * side), q, new THREE.Vector3(r, t.h * 0.17, r)));
-    }
     const girth = Math.max(1, t.h / 6.5); // a 25 m trunk about 75 cm across at the foot
     trunks.push(new THREE.Matrix4().compose(new THREE.Vector3(t.x, t.y, t.z), q, new THREE.Vector3(girth, trunkH, girth)));
   }
   const out: Piece[] = crowns.flatMap((at, k) =>
     at.length ? [{ material: leafMat, geometry: k < 3 ? shapes.full[k] : shapes.simple[k - 3], tag: 'hedge', shadow: k < 3, at, order: TREE_ORDER }] : [],
   );
-  if (boughs.length) out.push({ material: leafMat, geometry: shapes.bough, tag: 'hedge', shadow: false, at: boughs, order: TREE_ORDER, small: true });
   out.push({ material: barkMat, geometry: shapes.trunk, tag: 'hedge', shadow: false, at: trunks, order: TREE_ORDER });
   return out;
 }
@@ -950,13 +861,14 @@ export function buildHedges(prisms: Prism[]): THREE.Object3D {
     for (let t = 0.1; t < length - 0.05; t += 0.3) {
       // Half sunk into the block: the texture still shows between them.
       const places: [THREE.Vector2, number][] = [];
-      for (const off of [-0.6, 0, 0.6]) places.push([mid(t + (rand() - 0.5) * 0.1, off), p.y1 - 0.06]);
+      for (const off of [-0.5, 0.5]) places.push([mid(t + (rand() - 0.5) * 0.1, off), p.y1 - 0.05 + (rand() - 0.5) * 0.04]);
       for (const side of [-1, 1]) for (const h of [0.35, 0.65, 0.92]) places.push([mid(t + (rand() - 0.5) * 0.15, side), p.y0 + (p.y1 - p.y0) * h]);
       for (const [pt, y] of places) {
-        const r = 0.13 + rand() * 0.09;
+        const r = 0.1 + rand() * 0.07;
         q.setFromEuler(new THREE.Euler(rand() * 3, rand() * 3, rand() * 3));
         spots.push(new THREE.Matrix4().compose(new THREE.Vector3(pt.x, y, pt.y), q, new THREE.Vector3(r, r * 0.85, r)));
-        colors.push(new THREE.Color('#2c4121').lerp(new THREE.Color('#4f6b33'), rand()));
+        const patch = 0.5 + 0.5 * Math.sin(pt.x * 0.23 + pt.y * 0.19);
+        colors.push(new THREE.Color('#34482b').lerp(new THREE.Color('#526641'), 0.2 + patch * 0.55 + rand() * 0.15));
       }
     }
   }
