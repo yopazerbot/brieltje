@@ -304,6 +304,10 @@ the page and the server.
 - **The model** is fetched after the world is in (0.13 MB), before anyone drops.
 - **The admin's rule** "Players arrive by parachute" (on by default) turns it all off together.
 
+| | |
+|---|---|
+| ![Another player under a parachute, seen from the street](game_other_player.jpg) | ![Your own drop into the Zombies game, looking up](game_first_person.jpg) |
+
 How the assets were meant to map to an arrival, as handed over before the gameplay work:
 
 - **First arrival:** place `ParachuteRoot` at the player's feet in the air, play `Deploy` at once (its
