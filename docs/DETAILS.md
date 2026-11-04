@@ -64,7 +64,7 @@ The Railway project has two services: `briel-GTA` (builds from the `web` folder 
 | Variable on `briel-GTA` | Value |
 |---|---|
 | `ADMIN_PASSWORD` | Your admin password (set it yourself in Railway). Username: `admin` |
-| `MULTIPLAYER_PIN` | Optional: the PIN to start with (without it `0473`). Once the admin sets a PIN in the game's settings, that one counts (kept in the database) |
+| Multiplayer PIN | Set by the admin in the game's settings and kept in the database. No default or environment-variable fallback; guest joining stays closed until a PIN is saved. |
 | `DATABASE_URL` | `${{Postgres.DATABASE_URL}}` (already set) |
 | `TRUST_CLOUDFLARE` | `1` (already set): log the real visitor IP behind Cloudflare, and only answer requests that came through Cloudflare (Railway also answers for the domain when someone connects to it directly) |
 

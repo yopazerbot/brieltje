@@ -4,6 +4,8 @@ Last update: 2026-11-04
 
 ## Done
 
+Multiplayer joining now requires a PIN saved by the admin in settings. Removed the hardcoded and environment fallback; existing saved PINs remain valid. Build, four authentication tests and an isolated two-client server check pass, including refusing guest and unauthenticated PIN changes. Test server stopped and temporary data deleted.
+
 Brieltje's contact text and mail links now use yoshi@brieltje.be in both game languages, the registration and interest pages, legal pages, footers and contributor documentation. The regulator's separate complaint address is preserved. Build and all 15 public contact links across five pages were checked.
 
 Addressed the nine reported CodeQL findings: login uses padded timing-safe text comparison, and network-fed cat, horse, pickup, collision and glass updates validate IDs before lookup or dispatch. Horse IDs are captured once and kept stable through the update. Existing scrypt fingerprints, device signatures, admin sessions and guessing limits remain compatible. Build and 29 Node tests pass; an isolated local server accepts admin and guest logins and two authenticated multiplayer clients. Test processes and isolated test data were removed.

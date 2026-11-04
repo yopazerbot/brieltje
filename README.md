@@ -12,6 +12,8 @@ During play, open the menu’s Controls tab for a quick guide or to switch betwe
 
 Automatic rifle fire keeps a consistent pace across frame rates. Its extra spread stays with the rifle when you switch weapons.
 
+The admin sets the multiplayer PIN in the game's settings. There is no default joining code.
+
 Other players keep closed hands aligned with each gun's grips while moving, aiming and firing.
 
 Network-fed object IDs are checked before updating game state. Login retains existing sessions and device cookies while comparing credentials without temporary password digests.
