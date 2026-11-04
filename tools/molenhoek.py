@@ -57,6 +57,8 @@ OUT = argv[0]
 PLACE = argv[1] if len(argv) > 1 else "molenhoek"
 MOLENHOEK = PLACE == "molenhoek"  # its rebuilt street, the island, the hydrant and the conifers by the portal are its own
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+sys.path.insert(0, os.path.join(ROOT, "tools"))
+from building_ground import wall_bottom
 DATA = json.load(open(os.path.join(ROOT, "data", PLACE + ".json"), encoding="utf-8"))
 ORIGIN = tuple(DATA.get("origin", (758.0, -719.0)))  # Molenhoek's: on the street by the portal (model x, z)
 # Which way a front runs: from its west end (Molenhoek's houses face an east-west street) or, "view", from its left
@@ -342,6 +344,8 @@ def facade(f, length, top, holes, layers, bottom=-1.2, patches=()):
     up the wall (a plinth, an upper floor in another finish). `patches`: [(s0, s1, y0, y1, material, colour)],
     rectangles of another brick laid into the wall itself (a band that stops short of the corners, soldier
     courses over the openings); a later one lies over an earlier one."""
+    if bottom == -1.2:
+        bottom = wall_bottom(f.xz(0, 0), f.xz(length, 0), f.base, terrain)
     def ytop(s):
         for (s0, y0), (s1, y1) in zip(top, top[1:]):
             if s1 - s0 > 1e-9 and s0 - 1e-6 <= s <= s1 + 1e-6:

@@ -37,6 +37,7 @@ Writes data/molenhoek.json, in model coordinates (x, z):
 import json
 import math
 from pathlib import Path
+from building_ground import frontage_base
 
 from shapely.affinity import affine_transform
 from shapely.geometry import LineString, Point, Polygon
@@ -507,9 +508,10 @@ def plan(specs, centre, walls, grb, others, relief, order="x"):
         }
         houses[key].pop("front", None)
         houses[key]["front"] = [[round(a[0], 3), round(a[1], 3)], [round(b[0], 3), round(b[1], 3)]]
-    # `level`: the houses of one row built on one floor level, the highest of their grounds (a new terrace whose
-    # bands and window heads run straight along it). Those grounds are the village blocks' feet, which lie 0.3 m
-    # under the lowest ground round each block. `threshold`: the row's floor this far above the relief in front of
+        # Collision blocks extend underground; their foot is not the floor of a visible house.
+        houses[key]["y0"] = frontage_base(houses[key], relief)
+    # `level`: the houses of one row built on one floor level, the highest entrance ground (a new terrace whose
+    # bands and window heads run straight along it). `threshold`: the row's floor this far above the relief in front of
     # its front doors, on average. The street in front of a new row is level; the relief's 4 m grid rises and falls.
     rows = {}
     for key, h in HOUSES.items():
