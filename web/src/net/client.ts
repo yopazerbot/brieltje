@@ -41,6 +41,8 @@ export interface Rules {
   travel: boolean;
   /** Child-friendly for everyone: Action plays as Paintball on every page (src/paintball.ts); missing from an older server */
   paintball?: boolean;
+  /** Arriving by parachute: respawns on open ground, the start place and the Zombies game (shared/parachute.mjs); missing from an older server */
+  parachute?: boolean;
 }
 
 import type { ModeView } from '../ui/games';
@@ -68,6 +70,7 @@ export type ServerMsg =
   | ({ t: 'travel'; name: string; to: string; ok: boolean; car?: string | null; text?: string } & Coded)
   /** The start place picked on the start screen was refused (portals off): where the server has you. */
   | { t: 'spawn'; ok: false; x: number; z: number }
+  | { t: 'spawn'; ok: true; drop?: 1; x: number; z: number }
   | { t: 'mode'; mode: ModeView }
   | { t: 'clowns'; list: ClownSpec[] }
   /** Twenty times a second: what moved (shared/wire.mjs) */
@@ -100,7 +103,7 @@ export type ServerMsg =
   | { t: 'furn'; op: 'del'; id: number }
   | { t: 'furn'; op: 'all'; list: Piece[]; by: string; reset: boolean }
   /** `x, z`: where near the spawn point, when the server spreads everyone out (a party game's start) */
-  | { t: 'respawn'; name: string; spawn: number; x?: number; z?: number; y?: number; fx?: number; fz?: number }
+  | { t: 'respawn'; name: string; spawn: number; x?: number; z?: number; y?: number; fx?: number; fz?: number; drop?: 1 }
   | { t: 'round'; winner: string; ms: number }
   | ({ t: 'newround'; text: string } & Coded)
   | { t: 'glass'; i: number; by: string }

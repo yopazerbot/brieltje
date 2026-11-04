@@ -357,6 +357,11 @@ const MAX_PUSH = 0.35; // m the most a figure is drawn aside
 export class Avatars {
   /** Names above players: the admin can turn them off (they show through walls). */
   showNames = true;
+  /**
+   * Each frame for each figure after it is posed: whether they are under a parachute and how high over
+   * the ground (world/parachutes.ts draws it and poses the figure in its harness).
+   */
+  onFigure: (name: string, root: THREE.Group, body: Body, colour: string, chute: boolean, air: number, dt: number) => void = () => {};
   readonly group = new THREE.Group();
   /** A footstep of another player at their feet (speed in m/s) */
   onStep: (name: string, at: THREE.Vector3, speed: number) => void = () => {};
@@ -562,6 +567,7 @@ export class Avatars {
         speed: a.speed, forward: a.forward, side: a.side, armed: t.armed, alive, crouch: t.c && !seat, flying: t.flying,
         pitch, weapon: t.w as WeaponId, yaw, air: Math.max(0, y - ground), vy: a.vy, seat: seat ? seat.yaw + Math.PI : null, far,
       });
+      this.onFigure(name, a.root, a.body, a.color, !!t.chute && alive && !t.d, ground === y && far >= 80 ? 99 : Math.max(0, y - ground), dt); // far off the ground isn't looked up: not flaring
 
       // A footstep as each foot comes down (the block figures: one per stride, about 0.85 m walking, 1.2 m running).
       let step = false;
@@ -575,8 +581,8 @@ export class Avatars {
       }
       if (step && alive && !t.flying && !t.d && !seat && a.speed > 0.6 && a.root.visible) this.onStep(name, a.root.position, a.speed);
 
-      // Just respawned: blink while they can't be hurt. In the car only their name shows, above it.
-      a.body.root.visible = !t.d && (!(t.safe && alive) || Math.floor(now / 120) % 2 === 0);
+      // Just respawned: blink while they can't be hurt (not under a parachute: it shows why). In the car only their name shows, above it.
+      a.body.root.visible = !t.d && (!(t.safe && alive && !t.chute) || Math.floor(now / 120) % 2 === 0);
       a.tag.visible = alive && this.showNames;
       for (const m of a.marks) m.visible = alive; // the part shows also when names are off (hide and seek)
       for (const h of a.body.hits) h.visible = alive && t.armed && !t.d && a.root.visible;

@@ -1,9 +1,9 @@
 import * as THREE from 'three';
 
 /**
- * Preview only (web/parachute-preview.html): the game's player figure (net/swat.ts) posed on the
- * parachute's pose guides after the parachute's clip has played. The game doesn't use this file; it shows
- * how the figure and the parachute fit, and is a starting point for the gameplay work.
+ * The game's player figure (net/swat.ts) posed on the parachute's pose guides after the parachute's clip
+ * has played: other players under a parachute (world/parachutes.ts) and the preview page
+ * (web/parachute-preview.html).
  *
  * Which bone follows which guide (figure bone <- parachute node). three.js drops the dot from the
  * figure's bone names ('UpperArm.L' loads as 'UpperArmL'); the parachute's nodes use underscores.

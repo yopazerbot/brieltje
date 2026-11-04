@@ -2,7 +2,7 @@ import * as THREE from 'three';
 import { GLTFLoader, type GLTF } from 'three/addons/loaders/GLTFLoader.js';
 import * as SkeletonUtils from 'three/addons/utils/SkeletonUtils.js';
 import { buildSwat, swatReady, type Body, type Outfit } from '../net/swat';
-import { PilotPose } from './parachutePilot';
+import { PilotPose } from '../world/parachutePilot';
 
 /**
  * A separate page for the parachute's assets (web/parachute-preview.html, only on the dev server: the

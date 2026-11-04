@@ -36,6 +36,8 @@ const HOUSE_SPAWNS = spawns.flatMap((s, i) => (s.team === 'house' ? [i] : []));
 const OUTSIDE_SPAWNS = HOUSE_SPAWNS.filter((i) => spawns[i].outside);
 import { api, errorText, Net, type Me, type Rules, type ServerMsg } from './net/client';
 import { Avatars } from './net/avatars';
+import { Parachutes } from './world/parachutes';
+import { DROP, dropStart } from '../shared/parachute.mjs';
 import { netClock } from './net/track';
 import { PROTO, readBrute, readCar, readHorse, readPlayer, readZombie, type Tick } from '../shared/wire.mjs';
 import { sound } from './sound';
@@ -159,6 +161,7 @@ function loaded(): void {
   const begin = () => {
     if (at) {
       arrive(at, null);
+      if (!me && rules.parachute !== false) beginDrop(); // alone: by parachute (together the server says so, see 'spawn')
       // In multiplayer the server is told: now if its welcome came already (it usually does), or when it comes.
       if (welcomed) net.send({ t: 'spawn', to: at.id });
       else spawnPending = at;
@@ -172,6 +175,7 @@ function loaded(): void {
   } else begin();
   setTimeout(() => void loadVillage(), 500); // playing: now the village
   setTimeout(() => life.load(precompile), 900); // and the gardens' things, birds and the mower
+  setTimeout(() => rules.parachute !== false && parachutes.load(), 1200); // and the parachute, ready before anyone drops in
   setTimeout(() => void startCountryside(), 900); // and the countryside's life
 }
 setTimeout(loaded, 25000); // never keep the player waiting forever
@@ -830,6 +834,23 @@ const avatars = new Avatars();
 scene.add(avatars.group);
 avatars.onStep = (_name, at, speed) => footstep(surfaceOf(world.groundAt(at.x, at.z, at.y + 0.3, 0.6).mat), Math.min(1, 0.35 + speed / 5), at);
 avatars.groundAt = (x, z, y) => world.groundAt(x, z, y + 0.3, 0.6).y;
+// Arriving by parachute (shared/parachute.mjs): the others' on their figures, yours overhead (world/parachutes.ts).
+const parachutes = new Parachutes();
+const myChute = new THREE.Group();
+scene.add(myChute);
+avatars.onFigure = (name, root, body, colour, chute, air, dt) => parachutes.fly(name, root, body, colour, chute, air, dt, camera.position);
+/**
+ * Start a drop onto where you stand now (on the ground there, facing your way): from the drop's height over
+ * it, a little behind it so it lands there without steering (shared/parachute.mjs), packed for a moment,
+ * then under the canopy. Alone when the rules allow it; together when the server says so.
+ */
+function beginDrop(): void {
+  if (driving || riding || horses.mounted >= 0) return;
+  const from = dropStart(player.x, player.z, player.yaw);
+  player.place(from.x, from.z, player.feet + DROP.height, player.yaw, 0.75); // looking up: the canopy opens overhead
+  player.startDrop();
+  player.update(0, NO_INPUT, camera);
+}
 avatars.seatOf = (name) => horses.seat(name); // a rider sits in the saddle as their horse is drawn
 const chat = new Chat();
 chat.paused = () => menu.open; // T and Enter belong to the menu while it is open
@@ -867,7 +888,7 @@ function showOnline(): void {
 
 const $ = (id: string) => document.getElementById(id)!;
 /** House rules in multiplayer, set by the admin in the settings; alone everything is allowed. */
-const ANYTHING_GOES: Rules = { flying: true, spawn: true, names: true, maxPlayers: 16, pin: true, portals: true, travel: true, paintball: false };
+const ANYTHING_GOES: Rules = { flying: true, spawn: true, names: true, maxPlayers: 16, pin: true, portals: true, travel: true, paintball: false, parachute: true };
 let rules = ANYTHING_GOES;
 const flyBox = $('set-flying') as HTMLInputElement;
 const spawnBox = $('set-spawn') as HTMLInputElement;
@@ -877,6 +898,7 @@ const pinBox = $('set-pin') as HTMLInputElement;
 const portalsBox = $('set-portals') as HTMLInputElement;
 const travelBox = $('set-travel') as HTMLInputElement;
 const paintballBox = $('set-paintball') as HTMLInputElement;
+const parachuteBox = $('set-parachute') as HTMLInputElement;
 // The admin can move extremely fast (Yoshi): their own choice, kept on this device; the server lets an admin that fast.
 const turboBox = $('set-turbo') as HTMLInputElement;
 try {
@@ -907,6 +929,7 @@ function applyRules(next: Rules): void {
   portalsBox.checked = next.portals ?? true;
   travelBox.checked = next.travel ?? true;
   paintballBox.checked = next.paintball ?? false;
+  parachuteBox.checked = next.parachute ?? true;
   menu.setChildSafe(next.paintball ?? false); // child-friendly for everyone: Action plays as Paintball
   maxSlider.value = String(next.maxPlayers ?? 16);
   $('set-max-value').textContent = maxSlider.value;
@@ -939,6 +962,7 @@ ruleSwitch(pinBox, 'pin');
 ruleSwitch(portalsBox, 'portals');
 ruleSwitch(travelBox, 'travel');
 ruleSwitch(paintballBox, 'paintball');
+ruleSwitch(parachuteBox, 'parachute');
 // The admin's PIN field: filled when the admin logs in, saved on the server.
 const pinCode = $('set-pin-code') as HTMLInputElement;
 const pinMsg = $('set-pin-msg');
@@ -1250,7 +1274,9 @@ function soloHurt(amount: number): void {
   combat.died(t('char.strongman'), false);
   combat.kill(t('char.strongman'), t('char.you'), false, '');
   setTimeout(() => {
-    if (!net.connected && !combat.alive) respawnAt(OUTSIDE_SPAWNS[Math.floor(Math.random() * OUTSIDE_SPAWNS.length)]);
+    if (net.connected || combat.alive) return;
+    respawnAt(OUTSIDE_SPAWNS[Math.floor(Math.random() * OUTSIDE_SPAWNS.length)]);
+    if (rules.parachute !== false) beginDrop();
   }, 3000);
 }
 weapon.onClownHit = (id, point, spot) => clownHit(id, point, weapon.current, spot);
@@ -1320,8 +1346,9 @@ function edgeOf(id: string | undefined): Bounds {
 /** Up at the start of Zombies place `a`: one of the house's outside places, or by its portal, facing it. */
 function respawnAtArena(a: Arena): void {
   const p = a.id === 'house' ? undefined : portalOf(a);
-  if (!p) return respawnAt(OUTSIDE_SPAWNS[Math.floor(Math.random() * OUTSIDE_SPAWNS.length)]);
-  respawnAt(OUTSIDE_SPAWNS[0], { x: p.out[0], z: p.out[1], y: house.ground + terrain.height(p.out[0], p.out[1]), fx: p.x, fz: p.z });
+  if (!p) respawnAt(OUTSIDE_SPAWNS[Math.floor(Math.random() * OUTSIDE_SPAWNS.length)]);
+  else respawnAt(OUTSIDE_SPAWNS[0], { x: p.out[0], z: p.out[1], y: house.ground + terrain.height(p.out[0], p.out[1]), fx: p.x, fz: p.z });
+  if (rules.parachute !== false) beginDrop(); // into the game by parachute, as together
 }
 /**
  * Start the Zombies game alone (the Play tab's button) at place `id` (shared/arenas.mjs), out of any car
@@ -2165,8 +2192,10 @@ net.onMessage = (m: ServerMsg) => {
       showOnline();
       break;
     case 'respawn':
-      if (m.name === me?.username) respawnAt(m.spawn, m);
-      else avatars.respawn(m.name);
+      if (m.name === me?.username) {
+        respawnAt(m.spawn, m);
+        if (m.drop) beginDrop(); // the server chose open ground, by parachute
+      } else avatars.respawn(m.name);
       break;
     case 'round':
       combat.round(m.winner, m.ms);
@@ -2181,6 +2210,11 @@ net.onMessage = (m: ServerMsg) => {
       if (m.code === 'zRunners') runnersComing(false); // the game's first runners: the banner too
       break;
     case 'spawn':
+      if (m.ok) {
+        // The start place, by parachute: up over where we arrived.
+        if (m.drop && player.chute === null) beginDrop();
+        break;
+      }
       // The start place was refused (the admin turned the portals off): back to where the server has us.
       player.place(m.x, m.z, groundY(m.x, m.z), player.yaw, 0);
       player.update(0, NO_INPUT, camera);
@@ -2555,7 +2589,7 @@ renderer.setAnimationLoop((now: number) => {
     combat.showBoard(frame.scoreHeld && !!me);
     const inCar = driving || riding;
     const onHorse = horses.mounted >= 0; // you may shoot from the saddle
-    weapon.hidden = dead || inCar || games.peaceful;
+    weapon.hidden = dead || inCar || games.peaceful || player.chute !== null; // hands on the toggles under a parachute
 
     // The portals: on a pad (or stopped on one in the car) the list of places opens, and takes the
     // number keys, the wheel or D-pad and E. Not on horseback, nor from the passenger seat.
@@ -2631,10 +2665,11 @@ renderer.setAnimationLoop((now: number) => {
     }
     // The school grounds: no shooting or throwing (shared/zones.mjs; the server refuses too). Said on
     // the way in and whenever you try.
-    const calm = action && !!noShoot(player.x, player.z);
-    if (calm && !wasCalm) calmHint = 4;
-    if (calm && (frame.clickPressed || frame.throwPressed)) calmHint = 2;
-    wasCalm = calm;
+    const school = action && !!noShoot(player.x, player.z);
+    if (school && !wasCalm) calmHint = 4;
+    if (school && (frame.clickPressed || frame.throwPressed)) calmHint = 2;
+    wasCalm = school;
+    const calm = school || player.chute !== null; // nobody shoots from under a parachute (the server holds to it too)
     weapon.advanceFire(dt, action && frame.fireHeld && !dead && !inCar && !calm);
     if (action && (frame.clickPressed || (weapon.isAuto && frame.fireHeld)) && !dead && !inCar && !calm) fire();
     if (action && frame.reloadPressed && !dead && !inCar) weapon.reload();
@@ -2748,7 +2783,8 @@ renderer.setAnimationLoop((now: number) => {
     const away = games.view.kind === 'zombies' && arenaOf(games.view.zombies?.place).id !== 'house';
     if (edgeHint > 0) hud.setPrompt(t(games.fenced ? (away ? 'prompt.edgeHere' : 'prompt.edgeGame') : 'prompt.edge'));
     calmHint = wasCalm ? calmHint - dt : 0;
-    if (calmHint > 0) hud.setPrompt(t('prompt.noShoot'));
+    if (player.chute !== null) hud.setPrompt(t('prompt.chute'));
+    else if (calmHint > 0) hud.setPrompt(t('prompt.noShoot'));
     lockHint -= dt;
     if (lockHint > 0 || target?.locked) hud.setPrompt(t('prompt.locked'), true);
 
@@ -2763,7 +2799,7 @@ renderer.setAnimationLoop((now: number) => {
         ? { x: cm(car.x), y: cm(car.y), z: cm(car.z), yaw: mrad(car.yaw), pitch: 0, flying: false, c: false, d: true, s: cm(car.steer) }
         : r
           ? { x: cm(r.x), y: cm(r.y + r.jump + 1.64), z: cm(r.z), yaw: mrad(player.yaw), pitch: mrad(player.pitch), flying: false, c: true, hy: mrad(r.yaw), hs: cm(r.speed), hj: cm(r.jump) } // seated in the saddle
-          : { x: cm(player.x), y: cm(player.feet), z: cm(player.z), yaw: mrad(player.yaw), pitch: mrad(player.pitch), flying: player.flying, c: player.crouching };
+          : { x: cm(player.x), y: cm(player.feet), z: cm(player.z), yaw: mrad(player.yaw), pitch: mrad(player.pitch), flying: player.flying, c: player.crouching, ...(player.chute !== null ? { pc: 1 } : {}) };
       const state = { t: 'state', ...where, armed: weapon.enabled, w: weapon.current };
       const key = JSON.stringify(state);
       const changed = key !== sent.key;
@@ -2849,6 +2885,11 @@ renderer.setAnimationLoop((now: number) => {
   horses.update(dt, camera.position);
   // The others, after the horses: a rider sits in the saddle where it is drawn this frame.
   avatars.tick(dt, camera.position, driving || riding || horses.mounted >= 0 ? null : { x: player.x, z: player.z });
+  myChute.position.set(player.x, player.feet, player.z);
+  myChute.rotation.y = player.yaw;
+  parachutes.far = quality === 'low' ? 15 : 35;
+  parachutes.fly('', myChute, null, (me && online.get(me.username)) || '#e0733a', player.chute !== null, player.air, dt, camera.position, player.chute);
+  parachutes.sweep();
   countryside?.update(dt, camera);
   portals.update(dt, camera, renderer.domElement.height);
   // The traffic stops for people and for cars someone drives, never for a parked car (Yoshi: a Tesla on the drive held it up).
@@ -3259,6 +3300,8 @@ if (import.meta.env.DEV) {
   Object.assign(window, {
     briel: {
       player,
+      beginDrop,
+      parachutes,
       doors,
       weapon,
       glass,

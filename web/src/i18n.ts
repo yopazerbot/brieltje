@@ -209,6 +209,7 @@ const en = {
   'adm.portals': 'Portals take players from place to place',
   'adm.travel': 'Players can travel from the chat (/church, /house …)',
   'adm.paintball': 'Child-friendly for everyone: Action plays as Paintball',
+  'adm.parachute': 'Players arrive by parachute (respawns, the start, Zombies)',
   'adm.max': 'Players at once',
   'adm.joining': 'Joining',
   'adm.pin': 'New players can join with the PIN',
@@ -414,6 +415,7 @@ const en = {
   'prompt.edgeHere': 'During the game you stay where it is played.',
   'prompt.fly': 'Flying · hold {up} up, {down} down',
   'prompt.noShoot': 'School grounds · no shooting here',
+  'prompt.chute': 'Under your parachute · steer left and right',
   'prompt.locked': 'Only accessible in multiplayer.\nWant to look around solo? Contact Yoshi at yoshi@brieltje.be',
   'fb.title': 'Enjoying Brieltje?',
   'fb.sub': 'A quick rating helps Yoshi. Everything here is optional.',
@@ -757,6 +759,7 @@ const en = {
   'rule.portals': 'the portals',
   'rule.travel': 'travelling from the chat',
   'rule.paintball': 'child-friendly for everyone',
+  'rule.parachute': 'arriving by parachute',
   'rule.on': '{rule} on',
   'rule.off': '{rule} off',
   'rule.max': 'the limit to {n} players',
@@ -948,6 +951,7 @@ const nl = {
   'adm.portals': 'Portalen brengen spelers van plaats naar plaats',
   'adm.travel': 'Spelers mogen reizen via de chat (/kerk, /huis …)',
   'adm.paintball': 'Kindvriendelijk voor iedereen: Actie speelt als Verfballen',
+  'adm.parachute': 'Spelers komen binnen met een parachute (respawn, start, Zombies)',
   'adm.max': 'Spelers tegelijk',
   'adm.joining': 'Meedoen',
   'adm.pin': 'Nieuwe spelers mogen meedoen met de pincode',
@@ -1154,6 +1158,7 @@ const nl = {
   'prompt.edgeHere': 'Tijdens het spel blijf je waar het gespeeld wordt.',
   'prompt.fly': 'Vliegen · houd {up} ingedrukt om te stijgen, {down} om te dalen',
   'prompt.noShoot': 'Schoolterrein · hier wordt niet geschoten',
+  'prompt.chute': 'Aan je parachute · stuur naar links en rechts',
   'prompt.locked': 'Alleen toegankelijk in multiplayer.\nWil je solo rondkijken? Contacteer Yoshi via yoshi@brieltje.be',
   'fb.title': 'Vind je Brieltje leuk?',
   'fb.sub': 'Een snelle score helpt Yoshi. Alles hier is vrijblijvend.',
@@ -1493,6 +1498,7 @@ const nl = {
   'rule.portals': 'portalen',
   'rule.travel': 'reizen via de chat',
   'rule.paintball': 'kindvriendelijk voor iedereen',
+  'rule.parachute': 'binnenkomen met een parachute',
   'rule.on': '{rule} aan',
   'rule.off': '{rule} uit',
   'rule.max': 'maximaal {n} spelers tegelijk',
@@ -1772,7 +1778,7 @@ function validArgs(a: unknown): ServerArgs | null {
   return out;
 }
 
-const RULES = ['flying', 'spawn', 'names', 'pin', 'portals', 'travel', 'paintball'] as const;
+const RULES = ['flying', 'spawn', 'names', 'pin', 'portals', 'travel', 'paintball', 'parachute'] as const;
 const TEAMS: Partial<Record<string, PlainKey>> = { house: 'team.house', bungalow: 'team.bungalow' };
 const GAMES: Partial<Record<string, PlainKey>> = { hide: 'game.hide', tag: 'game.tag', treasure: 'game.treasure', teams: 'game.teams', zombies: 'game.zombies' };
 
