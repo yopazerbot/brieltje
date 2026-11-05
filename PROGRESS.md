@@ -4,17 +4,16 @@ Last update: 2026-11-05
 
 <!-- The handover: rewrite these four at the end of every session (AGENTS.md, "Working efficiently"). Keep each short. -->
 
-**Live:** brieltje.be runs `main`. The newest work there: garden trees that no longer overlap, the moved kentia palms, softer shadows across the village, the parachute's assets (preview page only), and the working-efficiently rules, dev tools (`tools/dev/`) and code map (`docs/CODEMAP.md`).
+**Live:** brieltje.be runs `main`. New on 5 Nov: baked light and wear on the ten building models of our own (shade, bounced light, the sun's shadow across the village, dirt, streaks, green), and GPU-compressed KTX2 textures (half size on phones, Yoshi's choice). Also the working-efficiently rules, dev tools (`tools/dev/`) and code map (`docs/CODEMAP.md`).
 
-**In progress:**
-- Baked light and wear for the building models (the merger, 5 Nov). Written but not committed: `tools/bake/lightmap_uv.py` (light layouts, already run on the ten models in `tools/bake/buildings.json`), `tools/bake/export_scene.js` (the world for Blender) and `tools/bake/bake_buildings.py` (Cycles on the RTX 5070). A first test bake ran. Still to do: `tools/bake/encode_buildings.py` (light and wear textures), the game's side (the shader and loading) and checks on Low and on a phone.
-- GPU-compressed textures (KTX2): a worker in its own worktree, based on the main of the morning of 5 Nov; its branch needs bringing onto the current `main`.
+**In progress:** nothing half done. Next on the list from the graphics ideas: TAA with upscaling on High and Ultra, then cascaded sun shadows, reflections and bloom.
 
-**Next command:** `blender -b -P tools/bake/bake_buildings.py -- <export dir> <work dir> 512`, after a new export (the models' layouts change when their tools run again).
+**Next command:** to re-bake after a model changed, see `docs/DETAILS.md` ("Baked light and wear"): `tools/bake/lightmap_uv.py`, the export in the dev page, `tools/bake/bake_buildings.py`, `tools/bake/encode_buildings.py`.
 
 **Open questions:**
-- How much extra download phones may get for the light textures and the compressed textures.
-- Whether the main house's interior gets the same bake (the old "Baked lighting (test)" setting).
+- Whether the main house (outside and the rooms) gets the same bake; it is built in code, so it needs its own export step (the old "Baked lighting (test)" setting is still there).
+- The village's open-data blocks (about 250 houses) keep real-time light; whether they get a cheaper bake too.
+- Not tested on a real iPhone, iPad or Android phone.
 
 ## Done
 
