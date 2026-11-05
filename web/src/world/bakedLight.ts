@@ -13,8 +13,8 @@ import { halfSize, loadFile } from './textureFiles';
  *   dimmed by it, so the whole village has shadows, not only the 17 m round the main house.
  * - the sky's reflections dimmed where little sky is seen, so recesses don't shine.
  * - wear: dirt splashed up at the foot of walls, dust in corners and under sills and eaves, streaks where rain
- *   runs down, green on damp shaded walls and on roofs that get little sun. Patchy, with a little noise in the
- *   world's own coordinates on top, so no two walls look alike.
+ *   runs down. Patchy, with a little noise in the world's own coordinates on top, so no two walls look alike.
+ *   No green: the wear page's G channel (algae and moss) isn't drawn (Yoshi: it made the houses ugly).
  *
  * Costs per pixel of a baked surface: four texture reads more than before (light, wear, noise twice; the sky's
  * even light is read once, as before); on Low two (no noise): measured on this PC's integrated chip at the
@@ -110,8 +110,6 @@ vec4 bakeTexel = texture2D( lightMap, vLightMapUv );
   #endif
   float grime = clamp( wear.r * ( 0.55 + 0.9 * patchy ) + wear.b * smoothstep( 0.5, 0.8, runs ) * 0.6, 0.0, 1.0 );
   diffuseColor.rgb *= mix( vec3( 1.0 ), vec3( 0.6, 0.56, 0.5 ), grime * 0.8 );
-  float green = clamp( wear.g * ( 0.5 + patchy ), 0.0, 1.0 );
-  diffuseColor.rgb = mix( diffuseColor.rgb, vec3( 0.12, 0.16, 0.07 ) + diffuseColor.rgb * 0.3, green * 0.5 );
 }
 `;
 /** The sky's light from the page (stored as its square root), the hemisphere's fill as far as the sky is open. */
@@ -119,9 +117,16 @@ const INDIRECT = /* glsl */ `
 float bakeOpen = 1.0;
 #if defined( RE_IndirectDiffuse )
   vec3 bakeIrradiance = bakeTexel.rgb * bakeTexel.rgb * lightMapIntensity;
+  float bakeLum = dot( bakeIrradiance, vec3( 0.2126, 0.7152, 0.0722 ) );
   #if defined( USE_ENVMAP ) && defined( ENVMAP_TYPE_CUBE_UV )
     vec3 bakeSky = getIBLIrradiance( geometryNormal );
-    bakeOpen = clamp( dot( bakeIrradiance, vec3( 0.2126, 0.7152, 0.0722 ) ) / max( dot( bakeSky, vec3( 0.2126, 0.7152, 0.0722 ) ), 1e-4 ), 0.0, 1.0 );
+    float skyLum = max( dot( bakeSky, vec3( 0.2126, 0.7152, 0.0722 ) ), 1e-4 );
+    bakeOpen = clamp( bakeLum / skyLum, 0.0, 1.0 );
+    // The bake's brightness in the open sky's colour, as on surfaces without a bake: its own colour (the light
+    // bounced off lawns and hedges) tinted walls green in blotches (Yoshi). A little of it stays.
+    bakeIrradiance = mix( bakeSky * ( bakeLum / skyLum ), bakeIrradiance, 0.15 );
+  #else
+    bakeIrradiance = mix( vec3( bakeLum ), bakeIrradiance, 0.15 );
   #endif
   irradiance = bakeIrradiance + irradiance * bakeOpen;
 #endif
