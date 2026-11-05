@@ -145,43 +145,71 @@ function adopt(t: THREE.Texture, c: THREE.CompressedTexture): void {
  * THREE.DefaultLoadingManager until its picture is in, so the game's "textures ready" waits for transcoding.
  */
 export function loadTexture(name: string, color: boolean, renderer: THREE.WebGLRenderer): THREE.Texture {
+  const { texture } = loadFile(`${KTX2}/${name}.ktx2`, `${WEBP}/${name}.webp`, color, renderer, { flipY: true, counted: true });
+  // The full-size WebP file, whichever form is fetched: tools/still/export_scene.js hands it to Blender.
+  texture.userData.src = `/textures/${name}.webp`;
+  return texture;
+}
+
+/** Whether this is a phone or tablet, which gets the half-size files (here and in world/bakedLight.ts). */
+export const halfSize = HALF;
+
+/**
+ * Any texture with a KTX2 file and a WebP file of the same picture (the baked light's pages, world/bakedLight.ts):
+ * the KTX2 one where it can be transcoded, the WebP one otherwise. `flipY`: how the WebP file is uploaded (true,
+ * as THREE.TextureLoader does, for files whose KTX2 copy is stored flipped; false for files laid out as glTF's
+ * UVs, whose KTX2 copy isn't). `counted`: an item of THREE.DefaultLoadingManager until its picture is in.
+ * `ready` resolves once the picture is in (true) or both files failed (false).
+ */
+export function loadFile(
+  ktx2Url: string,
+  webpUrl: string,
+  color: boolean,
+  renderer: THREE.WebGLRenderer,
+  { flipY, counted = false }: { flipY: boolean; counted?: boolean },
+): { texture: THREE.Texture; ready: Promise<boolean> } {
   const t = new THREE.Texture();
   t.colorSpace = color ? THREE.SRGBColorSpace : THREE.NoColorSpace;
-  // The full-size WebP file, whichever form is fetched: tools/still/export_scene.js hands it to Blender.
-  t.userData.src = `/textures/${name}.webp`;
   const manager = THREE.DefaultLoadingManager;
-  const item = `texture:${name}`;
-  manager.itemStart(item);
+  const item = `texture:${webpUrl}`;
+  if (counted) manager.itemStart(item);
+  let settle: (ok: boolean) => void = () => {};
+  const ready = new Promise<boolean>((r) => (settle = r));
+  const finish = (ok: boolean) => {
+    if (counted) {
+      if (!ok) manager.itemError(item);
+      manager.itemEnd(item);
+    }
+    settle(ok);
+  };
   const webp = () => {
     new THREE.ImageLoader().load(
-      `${WEBP}/${name}.webp`,
+      webpUrl,
       (image) => {
         t.image = image;
+        t.flipY = flipY;
         t.needsUpdate = true;
         stats.webp++;
         stats.bytes += (image.width * image.height * 4 * 4) / 3;
-        manager.itemEnd(item);
+        finish(true);
       },
       undefined,
-      () => {
-        manager.itemError(item);
-        manager.itemEnd(item);
-      },
+      () => finish(false),
     );
   };
   const fellBack = (why: unknown) => {
-    console.warn(`textures: ${name}.ktx2 failed, fetching the WebP file instead`, why);
+    console.warn(`textures: ${ktx2Url} failed, fetching the WebP file instead`, why);
     stats.fellBack++;
     webp();
   };
   const l = loader(renderer);
   if (!l) {
     webp();
-    return t;
+    return { texture: t, ready };
   }
   // The file is fetched while the transcoder starts; it is transcoded once the transcoder has shown it works.
   new THREE.FileLoader().setResponseType('arraybuffer').load(
-    `${KTX2}/${name}.ktx2`,
+    ktx2Url,
     (buffer) => {
       void working.then((ok) => {
         if (!ok) {
@@ -192,7 +220,7 @@ export function loadTexture(name: string, color: boolean, renderer: THREE.WebGLR
           buffer as ArrayBuffer,
           (c) => {
             adopt(t, c);
-            manager.itemEnd(item);
+            finish(true);
           },
           fellBack,
         );
@@ -201,5 +229,5 @@ export function loadTexture(name: string, color: boolean, renderer: THREE.WebGLR
     undefined,
     fellBack,
   );
-  return t;
+  return { texture: t, ready };
 }
