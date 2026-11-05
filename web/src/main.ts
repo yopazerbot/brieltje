@@ -289,7 +289,19 @@ tiles.addSet(ringTiles(ringData.kept), true);
 const ringRoads = buildRoadDetail(false, renderer, house.ground);
 tiles.addSet(ringRoads.tiles, true);
 const homeStreet = new HomeStreet(tiles, renderer, house.ground, ringData.removed, (s) => tiles.addSet(ringTiles(s), true));
-void homeStreet.ready.then(() => bakeLight(homeStreet.group, renderer)); // its baked light and wear (world/bakedLight.ts)
+/**
+ * The houses at home's baked light and wear (world/bakedLight.ts), part of loading as the sky and the textures: their
+ * materials change and compile behind the loading screen, before the graphics test measures a frame. Pages that
+ * fail, or don't come within HOME_BAKE_MS, are left out: loading goes on and the houses keep real-time light.
+ */
+const HOME_BAKE_MS = 8000;
+const homeBakeReady: Promise<void> = homeStreet.ready
+  .then(() => {
+    const until = performance.now() + HOME_BAKE_MS;
+    return Promise.race([bakeLight(homeStreet.group, renderer, until), new Promise<void>((r) => setTimeout(r, HOME_BAKE_MS))]);
+  })
+  .then(() => precompile(homeStreet.group))
+  .then(() => undefined, () => undefined);
 const horizon = buildHorizon(center, house.ground);
 scene.add(tiles.group, horizon);
 // Shadows and soft corners on the ground of the whole neighbourhood, worked out once the sun's
@@ -3272,6 +3284,7 @@ async function autoDetect(): Promise<void> {
   menu.setGraphics('auto', null, gpu);
   await environmentReady;
   await texturesReady;
+  await homeBakeReady;
   const keep = { x: player.x, z: player.z, feet: player.feet, yaw: player.yaw, pitch: player.pitch };
   const still = NO_INPUT;
   const views: [number, number, number, number, number][] = [
@@ -3299,7 +3312,7 @@ async function autoDetect(): Promise<void> {
   loaded();
 }
 if (mode === 'auto') void autoDetect().catch(loaded);
-else void Promise.all([environmentReady, texturesReady]).then(loaded, loaded);
+else void Promise.all([environmentReady, texturesReady, homeBakeReady]).then(loaded, loaded);
 
 // Development only: lets automated checks move the player without a controller.
 if (import.meta.env.DEV) {

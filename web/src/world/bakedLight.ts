@@ -211,9 +211,11 @@ async function page(file: string, colour: boolean, renderer: THREE.WebGLRenderer
 
 /**
  * Put the baked light on a loaded model's surfaces that have a light layout. Resolves once done (or when there
- * is no bake for it, or it doesn't match: those surfaces keep the real-time light).
+ * is no bake for it, or it doesn't match: those surfaces keep the real-time light). `until` (performance.now()
+ * ms): pages that come in later are not used, so a slow download can't switch materials (and compile their
+ * shaders) after loading has gone on without it.
  */
-export async function bakeLight(root: THREE.Object3D, renderer: THREE.WebGLRenderer): Promise<void> {
+export async function bakeLight(root: THREE.Object3D, renderer: THREE.WebGLRenderer, until = Infinity): Promise<void> {
   if (import.meta.env.DEV && new URLSearchParams(location.search).has('nobake')) return; // for comparing
   const byModel = new Map<string, THREE.Mesh[]>();
   root.traverse((o) => {
@@ -235,6 +237,7 @@ export async function bakeLight(root: THREE.Object3D, renderer: THREE.WebGLRende
         const pages = await Promise.all(
           Array.from({ length: info.pages }, (_, p) => Promise.all([page(`${model}_${p}`, true, renderer), page(`${model}_${p}_wear`, false, renderer)])),
         );
+        if (performance.now() > until) return; // too late: loading went on without it
         const cache = new Map<string, THREE.Material>();
         for (const mesh of fits) {
           const [light, wear] = pages[mesh.userData.lm as number];
