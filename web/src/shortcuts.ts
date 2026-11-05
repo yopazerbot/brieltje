@@ -130,7 +130,7 @@ function padOrKeyGroups(control: 'kbm' | 'pad', action: boolean): Group[] {
       rows: [
         [t('ctl.door'), action ? k('use') : t('key.or', { a: k('click'), b: k('use') })],
         // Spawning things with /name (src/spawn.ts) is typed in the chat: a keyboard's.
-        ...(kbm ? [[t('ctl.spawn'), t('ctl.spawnHow')], [t('ctl.despawn'), t('ctl.despawnHow')]] as [string, string][] : []),
+        ...(kbm ? [[t('ctl.spawn'), t('ctl.spawnHow')], [t('ctl.despawn'), t('ctl.despawnHow')], [t('ctl.parachute'), t('ctl.parachuteHow')]] as [string, string][] : []),
       ],
     },
     { title: t('ctl.cars'), rows: [[t('ctl.getIn'), k('use')], [t('ctl.drive'), k('drive')], [t('ctl.steer'), k('steer')], [t('ctl.handbrake'), k('handbrake')]] },

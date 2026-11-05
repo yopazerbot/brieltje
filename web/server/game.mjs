@@ -38,6 +38,9 @@ import { arenaEdge, arenaHome, arenaPrisms, ARENAS, portalOf } from '../shared/a
 import { churchPrisms, makeChurch } from '../shared/church.mjs';
 import { DROP, dropStart, HOME_DROP } from '../shared/parachute.mjs';
 
+/** /parachute (manualDrop): once every CHUTE_MS, and not within HURT_CALM_MS of being hit. */
+const CHUTE_MS = 60_000;
+const HURT_CALM_MS = 10_000;
 const MAX_PLAYERS = 16; // the most the admin can allow at once (every player's moves go to every other one)
 const KEYFRAME = 20; // ticks: everything goes to every page at least this often (once a second), moved or not
 const OLD_EVERY = 2; // ticks: pages from before protocol 2 get the full states every other tick (ten a second, as before)
@@ -825,6 +828,8 @@ export class Game {
       this.newRound(`${name} started a new round`, 'newRoundBy', { name });
     } else if (m.t === 'spawn' && typeof m.to === 'string') {
       this.spawn(name, player, m.to, now);
+    } else if (m.t === 'chute') {
+      this.manualDrop(name, player, now, m);
     } else if (m.t === 'travel' && typeof m.to === 'string' && m.to.length <= 64) {
       // At most four asks a second (a page asks once a trip); more go unanswered, so a flood costs nothing.
       if (now < (player.nextTravelAsk || 0)) return;
@@ -887,6 +892,37 @@ export class Game {
    * only while the server still has the player within 30 m of that start (a drop onto where they are, as a
    * fresh join is). Otherwise nothing changes: the page stays on its feet.
    */
+  /**
+   * /parachute in the chat (Yoshi): a drop onto where the player stands, landing there as at a start. The server
+   * decides it: the admin's rule on, alive, on foot, outdoors, not under a parachute already, no game of the menu going on
+   * (Zombies or a party game: a drop is out of every fight), not hit in the last HURT_CALM_MS (no escaping a fight
+   * under the canopy, where nobody can be hurt), inside the game's edge, and at most once every CHUTE_MS. A refusal
+   * says why with a code the page translates.
+   */
+  manualDrop(name, p, now, m = {}) {
+    const st = p.state;
+    if (!st) return;
+    const no = (code, args = {}) => this.send(p.ws, { t: 'chute', ok: false, code, args });
+    if (!this.rules.parachute) return no('chuteOff');
+    if (!p.alive || this.carOf(name) || this.horseOf(name) || this.dropping(p, now) || this.modes.active) return no('chuteNotNow');
+    if (now - (p.hurtAt ?? -Infinity) < HURT_CALM_MS) return no('chuteFight');
+    if (now < (p.nextChute ?? 0)) return no('chuteWait', { s: Math.ceil((p.nextChute - now) / 1000) });
+    // The way in the page picked (clear of roofs and trees: main.ts clearApproach), else their facing. Only the
+    // direction: where they land is where the server has them, and every check above holds whatever it is.
+    const yaw = typeof m.yaw === 'number' && Number.isFinite(m.yaw) && Math.abs(m.yaw) < 100 ? m.yaw : Number.isFinite(st.yaw) ? st.yaw : 0;
+    const from = dropStart(st.x, st.z, yaw); // behind where they stand: they land there
+    if (INDOORS(st.x, st.z)) return no('chuteIndoors'); // from above it would land on the roof
+    if (!this.fence().inside(st.x, st.z) || !this.fence().inside(from.x, from.z)) return no('chuteNotNow');
+    p.nextChute = now + CHUTE_MS;
+    const x = st.x, z = st.z;
+    Object.assign(st, { x: from.x, y: HOUSE.ground + TERRAIN.height(x, z) + DROP.height, z: from.z });
+    p.budget = p.vbudget = 0.5;
+    p.movedAt = now;
+    this.moved(p);
+    this.startDrop(p, now);
+    this.send(p.ws, { t: 'spawn', ok: true, drop: 1, x: Math.round(x * 100) / 100, z: Math.round(z * 100) / 100, yaw });
+  }
+
   homeDrop(name, p, now) {
     const st = p.state;
     if (p.spawned || !st) return;
@@ -1497,6 +1533,7 @@ export class Game {
   damage(name, shooter, targetName, target, amount, head, w, now) {
     if (!target.alive) return;
     target.hp = Math.max(0, target.hp - amount);
+    target.hurtAt = now; // no parachute out of a fight (manualDrop)
     if (target.hp > 0) return this.send(target.ws, { t: 'hurt', hp: target.hp, by: name });
 
     target.alive = false;

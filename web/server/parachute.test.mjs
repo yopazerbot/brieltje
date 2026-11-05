@@ -147,3 +147,45 @@ test('a start place by parachute tells the page where it lands and facing which 
   const from = dropStart(sent[0].x, sent[0].z, sent[0].yaw);
   assert.ok(Math.abs(p.state.x - from.x) < 1e-9 && Math.abs(p.state.z - from.z) < 1e-9);
 });
+
+test('/parachute drops onto where the player stands, then not again for a minute', () => {
+  const now = Date.now();
+  const { g, sent } = startGame();
+  g.modes = { active: false };
+  const p = joined(now - 120_000, { x: 4.5, y: -0.1, z: 19 }); // in the lane, long after joining
+  p.state.yaw = 0.4;
+  g.manualDrop('a', p, now);
+  assert.deepEqual(sent[0], { t: 'spawn', ok: true, drop: 1, x: 4.5, z: 19, yaw: 0.4 });
+  assert.equal(g.dropping(p, now), true);
+  const from = dropStart(4.5, 19, 0.4);
+  assert.ok(Math.abs(p.state.x - from.x) < 1e-9 && Math.abs(p.state.z - from.z) < 1e-9);
+  assert.ok(p.state.y > DROP.height - 5);
+  // Landed (the drop is over): still a minute between two.
+  g.landed(p, now + 12_000);
+  p.state = { ...p.state, x: 4.5, y: -0.1, z: 19 };
+  g.manualDrop('a', p, now + 30_000);
+  assert.deepEqual(sent[1], { t: 'chute', ok: false, code: 'chuteWait', args: { s: 30 } });
+  g.manualDrop('a', p, now + 61_000);
+  assert.equal(sent[2].t, 'spawn');
+});
+
+test('no /parachute with the rule off, dead, in a game, just after a hit, indoors, or under a parachute already', () => {
+  const now = Date.now();
+  const cases = [
+    ['chuteOff', { parachute: false }, (p) => p, false],
+    ['chuteNotNow', {}, (p) => ({ ...p, alive: false }), false],
+    ['chuteNotNow', {}, (p) => p, true], // a game of the menu (Zombies, a party game)
+    ['chuteFight', {}, (p) => ({ ...p, hurtAt: now - 5000 }), false],
+    ['chuteIndoors', {}, (p) => ({ ...p, state: { ...p.state, x: 2.5, y: -0.1, z: 5 } }), false], // a bedroom of the house
+    ['chuteNotNow', {}, (p) => ({ ...p, drop: { from: now - 1000, until: now + 9000 } }), false],
+  ];
+  for (const [code, rules, change, active] of cases) {
+    const { g, sent } = startGame(rules);
+    g.modes = { active };
+    const p = change(joined(now - 120_000));
+    const before = { ...p.state };
+    g.manualDrop('a', p, now);
+    assert.deepEqual(sent, [{ t: 'chute', ok: false, code, args: {} }], code);
+    assert.deepEqual(p.state, before);
+  }
+});

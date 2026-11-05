@@ -72,6 +72,8 @@ export type ServerMsg =
   | { t: 'spawn'; ok: false; x: number; z: number }
   /** Taken: by parachute onto (x, z), coming in facing `yaw` (the start place's, or the house's start: HOME_DROP) */
   | { t: 'spawn'; ok: true; drop?: 1; x: number; z: number; yaw?: number }
+  /** /parachute refused (server/game.mjs manualDrop): why, as a code the page translates */
+  | ({ t: 'chute'; ok: false } & Coded)
   | { t: 'mode'; mode: ModeView }
   | { t: 'clowns'; list: ClownSpec[] }
   /** Twenty times a second: what moved (shared/wire.mjs) */

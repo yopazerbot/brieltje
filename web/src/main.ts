@@ -37,7 +37,7 @@ const OUTSIDE_SPAWNS = HOUSE_SPAWNS.filter((i) => spawns[i].outside);
 import { api, errorText, Net, type Me, type Rules, type ServerMsg } from './net/client';
 import { Avatars } from './net/avatars';
 import { Parachutes } from './world/parachutes';
-import { DROP, dropStart, HOME_DROP } from '../shared/parachute.mjs';
+import { DROP, dropStart, fly, HOME_DROP } from '../shared/parachute.mjs';
 import { netClock } from './net/track';
 import { PROTO, readBrute, readCar, readHorse, readPlayer, readZombie, type Tick } from '../shared/wire.mjs';
 import { sound } from './sound';
@@ -866,11 +866,11 @@ avatars.onFigure = (name, root, body, colour, chute, air, dt) => parachutes.fly(
  * (shared/parachute.mjs), the free fall, then under the canopy. Alone when the rules allow it; together
  * when the server says so. The view keeps its pitch: player.ts eases it down, up at the canopy and ahead.
  */
-function beginDrop(at?: { x: number; z: number; yaw: number }): void {
+function beginDrop(at?: { x: number; z: number; yaw: number; feet?: number }): void {
   if (driving || riding || horses.mounted >= 0) return;
   const [x, z, yaw] = at ? [at.x, at.z, at.yaw] : [player.x, player.z, player.yaw];
   const from = dropStart(x, z, yaw);
-  player.place(from.x, from.z, (at ? groundY(x, z) : player.feet) + DROP.height, yaw, player.pitch);
+  player.place(from.x, from.z, (at ? at.feet ?? groundY(x, z) : player.feet) + DROP.height, yaw, player.pitch);
   player.startDrop();
   player.update(0, NO_INPUT, camera);
 }
@@ -1797,6 +1797,7 @@ function command(text: string): void {
   // takes away what you look at. A bare name only when every word is a whole word of a thing's name
   // (else it is a place: /church), and never after a travel word (/ga naar ...).
   if (words.length === 1 && REMOVE_WORDS.has(words[0])) return removeThing();
+  if (words.length === 1 && CHUTE_WORDS.has(words[0])) return chuteCommand();
   if (words.length && SPAWN_WORDS.has(words[0])) {
     const rest = words.slice(1).join(' ');
     if (!rest) return spawnList();
@@ -1814,6 +1815,43 @@ function command(text: string): void {
   const found = findPlace(typed);
   if ('to' in found) go(found.to);
   else chat.system(foundLine(typed, found));
+}
+/** /parachute: a drop onto where you stand. */
+const CHUTE_WORDS = new Set(['parachute', 'chute', 'para']);
+/**
+ * /parachute (Yoshi): a drop from high up onto where you stand, as at a start. Alone the page starts it (on foot,
+ * alive, outdoors, not in the Zombies game); together it asks the server, which checks again and decides it
+ * (server/game.mjs manualDrop: also a minute between drops and none just after being hit).
+ */
+function chuteCommand(): void {
+  if (rules.parachute === false) return chat.system(() => t('srv.chuteOff'));
+  if (!combat.alive || driving || riding || horses.mounted >= 0 || trip || player.chute !== null || solo) return chat.system(() => t('srv.chuteNotNow'));
+  const ground = player.ground.name;
+  if (ground && (roomNames.has(ground) || /floor|stairs/i.test(ground))) return chat.system(() => t('srv.chuteIndoors'));
+  const yaw = clearApproach(player.x, player.z, player.feet, player.yaw);
+  if (net.connected) net.send({ t: 'chute', yaw: +yaw.toFixed(3) });
+  else beginDrop({ x: player.x, z: player.z, yaw, feet: player.feet });
+}
+/** A drop's course every 0.1 s (shared/parachute.mjs): its height and how far it has come, for clearApproach. */
+const DROP_PATH = fly(1 / 10).path;
+/**
+ * The way in for a drop onto (x, z) at `feet`: your own facing first, then turned an eighth at a time either way, the
+ * first whose glide passes over everything on its way. Roofs, walls and crowns count as ground, so a glide over the
+ * house across the lane landed on its roof instead of in the lane.
+ */
+function clearApproach(x: number, z: number, feet: number, yaw0: number): number {
+  for (let k = 0; k < 8; k++) {
+    const yaw = yaw0 + (k % 2 ? 1 : -1) * Math.ceil(k / 2) * (Math.PI / 4);
+    const fx = -Math.sin(yaw), fz = -Math.cos(yaw);
+    const clear = DROP_PATH.every((p) => {
+      const back = DROP.reach - p.x;
+      if (back < 0.8) return true; // the touchdown itself
+      const h = feet + p.y;
+      return world.groundAt(x - fx * back, z - fz * back, h + 0.5, 0).y < h - 0.6;
+    });
+    if (clear) return yaw;
+  }
+  return yaw0;
 }
 /** The words that list what can be spawned (/spawn) or spawn the name after them, and those that take a thing away. */
 const SPAWN_WORDS = new Set(['spawn', 'zet', 'maak']);
@@ -2245,6 +2283,9 @@ net.onMessage = (m: ServerMsg) => {
       // The start place was refused (the admin turned the portals off): back to where the server has us.
       player.place(m.x, m.z, groundY(m.x, m.z), player.yaw, 0);
       player.update(0, NO_INPUT, camera);
+      break;
+    case 'chute':
+      chat.system(() => serverText(m.code, m.args ?? {}, t('srv.chuteNotNow')));
       break;
     case 'travel': {
       const to = destination(m.to); // a portal or a street (src/places.ts)
