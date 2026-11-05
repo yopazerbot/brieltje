@@ -3113,13 +3113,20 @@ async function buildVillage(): Promise<void> {
   // hides a third at that distance) and their small details (frames, glass, posts, lamps) within 100 m, which keeps
   // its cost within the 1 ms allowed. The road detail (world/roadDetail.ts) the same way.
   const far = (m: { key: string }) => Number(m.key.split(',')[0]) >= 5;
+  // The way to the Sparrenhof and the wood round it (tiles from x 304 and z 297 on, north of the ring) the same way: a set
+  // of its own, as it lies across the line from the house to the church, and mostly trees, drawn within 350 m.
+  const northwest = (m: { key: string }) => {
+    const [i, j] = m.key.split(',').map(Number);
+    return i >= 2 && j >= 2;
+  };
   const roads = buildRoadDetail(true, renderer, house.ground);
   await between();
   // What the village adds to the scene from here on is drawn once its shaders are compiled (below).
   const before = new Set([...scene.children, ...tiles.group.children]);
   for (const set of [made, roads.tiles]) {
-    tiles.addSet(set.filter((m) => !far(m)), false);
+    tiles.addSet(set.filter((m) => !far(m) && !northwest(m)), false);
     if (set.some(far)) tiles.addSet(set.filter(far), false, 100, 350);
+    if (set.some(northwest)) tiles.addSet(set.filter(northwest), false, 100, 350);
   }
   world.addPrisms(roads.blocks);
   await bakes;
@@ -3185,6 +3192,15 @@ async function buildVillage(): Promise<void> {
     const fz = (z0 + z1) / 2;
     const at = new THREE.Vector3(fx, house.ground + terrain.height(fx, fz), fz);
     groundShade.bakeVillage(renderer, scene, sun, [tiles.group], house.ground, at, Math.max(x1 - x0, z1 - z0) / 2 + 10, phone ? 1024 : 2048, 'molenhoek');
+  }
+  // So has the Sparrenhof with its forecourt and the wood round it (its portal in shared/portals.mjs), 180 m round.
+  const cafe = PORTALS.find((p) => p.id === 'sparrenhof');
+  if (cafe) {
+    await between();
+    tiles.showAll();
+    for (const m of models) m.visible = true;
+    const at = new THREE.Vector3(cafe.x, house.ground + terrain.height(cafe.x, cafe.z), cafe.z);
+    groundShade.bakeVillage(renderer, scene, sun, [tiles.group], house.ground, at, 180, phone ? 1024 : 2048, 'sparrenhof');
   }
   await between();
   tiles.showAll();
