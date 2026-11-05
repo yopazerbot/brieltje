@@ -75,6 +75,8 @@ Our own layout (`data/garden.json`): paths, terrace, driveway, planted borders, 
 | Library | Used for | Licence |
 |---|---|---|
 | [three.js](https://threejs.org) | 3D rendering in the browser | MIT |
+| [Basis Universal](https://github.com/BinomialLLC/basis_universal) transcoder, three.js's copy (`web/public/basis/`, with its `LICENSE.txt` and `NOTICE.txt`); its `.js` changed so it runs without `eval` (described at the top of the file). Basis Universal™ © 2016–2026 Binomial LLC; "Basis Universal" is a trademark of Binomial LLC | Unpacking the compressed textures (KTX2) in the browser | Apache 2.0 |
+| [Basis Universal](https://github.com/BinomialLLC/basis_universal) encoder `basisu` v2.10, built for WASI (`tools/ktx2.py` fetches it into `tools/.bin/`) | Making the compressed textures in `web/public/textures/ktx2/` (a tool, not shipped) | Apache 2.0 |
 | [ws](https://github.com/websockets/ws) | The multiplayer WebSocket server | MIT |
 | [node-postgres (pg)](https://node-postgres.com) | The player database on the server | MIT |
 | [Vite](https://vite.dev) and [TypeScript](https://www.typescriptlang.org) | Building the game | MIT, Apache 2.0 |
