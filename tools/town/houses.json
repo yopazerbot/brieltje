@@ -1,5 +1,5 @@
 {
- "_note": "The third survey of Smetlede's centre (31 Oct 2026): the houses round the church square and along Smetlededorp to the school, for tools/town/town.py. Plans from the GRB outlines and the laser scan's roof parts (data/neighbours.json, by index in `grb`); walls, openings, roofs and colours read off Street View (August 2026 where the car passed, else April 2023 or older) and the orthophoto. Positions in the model (x, z in metres), colours as seen (sRGB); no addresses, names, signs or lettering. A volume: four corners p0..p3, p0-p1 along the ridge (the low side of a shed roof); faces by edge (0: p0-p1, 1: p1-p2, 2: p2-p3, 3: p3-p0); rows of openings per storey from the ground up (w window, W wide window, n narrow, o small, a arched, d door, D double door, g/G garage door, s shop window, c carport bay, _ blank pier; a number after the letter is its width in m), spread evenly with `margin` at the ends, or `at` [s along the face, token@storey].",
+ "_note": "The third survey of Smetlede's centre (31 Oct 2026): the houses round the church square and along Smetlededorp to the school, for tools/town/town.py. Plans from the GRB outlines and the laser scan's roof parts (data/neighbours.json, by index in `grb`); walls, openings, roofs and colours read off Street View (August 2026 where the car passed, else April 2023 or older) and the orthophoto. Positions in the model (x, z in metres), colours as seen (sRGB); no addresses, names, signs or lettering. A volume: four corners p0..p3, p0-p1 along the ridge (the low side of a shed roof); faces by edge (0: p0-p1, 1: p1-p2, 2: p2-p3, 3: p3-p0); rows of openings per storey from the ground up (w window, W wide window, n narrow, o small, a arched, d door, D double door, g/G garage door, s shop window, c carport bay, _ blank pier; a number after the letter is its width in m), spread evenly with `margin` at the ends, or `at` [s along the face, token@storey] with an optional third element: that opening's own settings over the face's (\"y\": [sill, head] above its storey's floor, frame, panes, surround, bars, glass ...). Some houses were corrected after the photos Yoshi took on 5 November 2026 (their `_ref` says what).",
  "origin": [
   520.0,
   -775.0
@@ -286,29 +286,33 @@
     551.5,
     -755.0
    ],
-   "_ref": "The corner house on the square's east side: painted white brick on a grey plinth, a shop window and glazed double door in black frames on the square, two garage doors, wide upper windows with steel guards, a hipped slate-grey roof with three roof windows.",
+   "_ref": "The corner house on the square's east side: painted white brick, a hipped roof of dark slates with three roof windows. Corrected after the photos Yoshi took on 5 November 2026: white, not grey; white frames; an open porch at the corner behind a white pillar, a display window over a panel of basket-weave brick, two narrow windows, a black glazed double door and two black doors; above, four wide windows of three or two parts, white guard bars across the side panes of two of them. No company's name or logo.",
    "style": {
     "frame_rows": [
-     "#2c2f31",
+     "#f4f4f2",
      "#f4f4f2"
     ],
     "style_rows": [
-     "modern",
+     "classic",
      "classic"
     ],
-    "sill": "#9a9a95",
-    "curtains": 0.3,
-    "low_wide": true,
-    "head": 2.3
+    "transom": false,
+    "sill": "#e6e6e2",
+    "curtains": 0.15,
+    "floors": [
+     0,
+     3.0
+    ],
+    "bay_depth": 1.3
    },
    "roofstyle": {
     "roofc": "#3c424a",
     "fascia": "#f2f2f0",
-    "gutter": "#f0f0ee"
+    "gutter": "#c9cbcb"
    },
    "plinth": [
-    0.4,
-    "render:#5d6062"
+    0.12,
+    "render:#b9b9b4"
    ],
    "vols": [
     {
@@ -333,7 +337,7 @@
      "roof": "hip",
      "eaves": 6.0,
      "ridge": 9.3,
-     "wall": "brick:#f1efe9",
+     "wall": "brick:#fbf7ef",
      "roofwin": [
       [
        0,
@@ -364,53 +368,186 @@
       "0": {
        "at": [
         [
-         1.6,
-         "g2.4"
+         12.19,
+         "c0.8"
         ],
         [
-         4.2,
-         "g2.4"
+         9.89,
+         "w2.3",
+         {
+          "y": [
+           1.1,
+           2.4
+          ],
+          "panes": [
+           1,
+           1
+          ],
+          "glass": "#3a464f"
+         }
         ],
         [
-         6.3,
-         "D1.9"
+         8.06,
+         "n0.52",
+         {
+          "y": [
+           1.4,
+           2.35
+          ],
+          "panes": [
+           1,
+           1
+          ]
+         }
         ],
         [
-         8.0,
-         "n0.7"
+         7.17,
+         "n0.52",
+         {
+          "y": [
+           1.4,
+           2.35
+          ],
+          "panes": [
+           1,
+           1
+          ]
+         }
         ],
         [
-         8.9,
-         "n0.7"
+         5.21,
+         "D2.55",
+         {
+          "y": [
+           0.05,
+           2.3
+          ],
+          "frame": "#2c2f31",
+          "door": "#2c2f31"
+         }
         ],
         [
-         10.6,
-         "s2.4"
+         2.71,
+         "d1.03",
+         {
+          "y": [
+           0.05,
+           2.2
+          ],
+          "door_glass": false,
+          "frame": "#2c2f31",
+          "door": "#2c2f31"
+         }
         ],
         [
-         12.3,
-         "d0.95"
+         1.0,
+         "d1.26",
+         {
+          "y": [
+           0.05,
+           2.2
+          ],
+          "door_glass": false,
+          "frame": "#2c2f31",
+          "door": "#2c2f31"
+         }
         ],
         [
-         2.2,
-         "W2.2@1"
+         10.16,
+         "W3.13@1",
+         {
+          "y": [
+           0.41,
+           1.95
+          ],
+          "panes": [
+           3,
+           1
+          ],
+          "cuts": [
+           0.27,
+           0.75
+          ],
+          "bars": {
+           "n": 5,
+           "top": 0.5,
+           "cols": [
+            0,
+            2
+           ],
+           "c": "#f4f4f2"
+          }
+         }
         ],
         [
-         5.5,
-         "W2.2@1"
+         7.48,
+         "w1.4@1",
+         {
+          "y": [
+           0.93,
+           1.95
+          ],
+          "panes": [
+           2,
+           1
+          ]
+         }
         ],
         [
-         8.4,
-         "w1.2@1"
+         5.14,
+         "W2.52@1",
+         {
+          "y": [
+           0.27,
+           1.95
+          ],
+          "panes": [
+           3,
+           1
+          ],
+          "cuts": [
+           0.31,
+           0.67
+          ],
+          "bars": {
+           "n": 5,
+           "top": 0.5,
+           "cols": [
+            0,
+            2
+           ],
+           "c": "#f4f4f2"
+          }
+         }
         ],
         [
-         10.9,
-         "W2.2@1"
+         1.99,
+         "W2.75@1",
+         {
+          "y": [
+           0.79,
+           2.05
+          ],
+          "panes": [
+           3,
+           1
+          ],
+          "cuts": [
+           0.28,
+           0.68
+          ]
+         }
         ]
        ],
-       "garage": "#eeeeec",
-       "door": "#2c2f31",
-       "riser": "#2c2f31"
+       "weave": [
+        [
+         6.9,
+         11.05,
+         0.15,
+         1.0,
+         "#d6d6d1"
+        ]
+       ]
       },
       "1": {
        "rows": [
@@ -647,7 +784,7 @@
     547.3,
     -773.6
    ],
-   "_ref": "The renovated house across the street from the corner shop: smooth white render on an anthracite plinth, black frames, a dark grey garage door, three roof windows in anthracite tiles; its gable to the square with two small windows and two air-conditioning units.",
+   "_ref": "The renovated house across the street from the corner shop: smooth white render on a grey plinth, black frames, a black garage door, three roof windows side by side in anthracite tiles; its gable to the square with two small windows and two air-conditioning units. Corrected after the photos Yoshi took on 5 November 2026: every window black-framed with a row of small lights along its top, the black door with a glazed transom, the roof windows close together.",
    "style": {
     "frame": "#2b2d2f",
     "style": "modern",
@@ -661,8 +798,8 @@
     "gutter": "#2f3133"
    },
    "plinth": [
-    0.45,
-    "render:#47494b"
+    0.3,
+    "render:#76787a"
    ],
    "vols": [
     {
@@ -693,67 +830,147 @@
      "roofwin": [
       [
        0,
-       2.6,
-       0.42,
-       0.78,
-       1.0
+       6.25,
+       0.43,
+       1.2,
+       1.1
       ],
       [
        0,
-       5.4,
-       0.42,
-       0.78,
-       1.0
+       4.99,
+       0.43,
+       1.2,
+       1.1
       ],
       [
        0,
-       8.2,
-       0.42,
-       0.78,
-       1.0
+       3.73,
+       0.43,
+       1.2,
+       1.1
       ]
      ],
      "faces": {
       "0": {
        "at": [
         [
-         1.8,
-         "g2.5"
-        ],
-        [
-         4.2,
-         "d1.0"
-        ],
-        [
-         6.4,
-         "w1.3"
-        ],
-        [
-         8.9,
-         "w1.3"
-        ],
-        [
          1.6,
-         "w1.2@1"
+         "g2.9",
+         {
+          "y": [
+           0.02,
+           2.15
+          ]
+         }
         ],
         [
-         4.2,
-         "w1.2@1"
+         4.3,
+         "d0.95",
+         {
+          "y": [
+           0.05,
+           2.53
+          ]
+         }
         ],
         [
-         6.6,
-         "w1.2@1"
+         7.13,
+         "w1.3",
+         {
+          "y": [
+           0.6,
+           2.17
+          ],
+          "panes": [
+           1,
+           1
+          ],
+          "toplight": 0.3
+         }
         ],
         [
-         9.0,
-         "w1.2@1"
+         8.89,
+         "w1.25",
+         {
+          "y": [
+           0.6,
+           2.17
+          ],
+          "panes": [
+           1,
+           1
+          ],
+          "toplight": 0.3
+         }
+        ],
+        [
+         0.6,
+         "w0.85@1",
+         {
+          "y": [
+           0.5,
+           1.75
+          ],
+          "panes": [
+           1,
+           1
+          ],
+          "toplight": 0.25
+         }
+        ],
+        [
+         3.3,
+         "w0.85@1",
+         {
+          "y": [
+           0.5,
+           1.75
+          ],
+          "panes": [
+           1,
+           1
+          ],
+          "toplight": 0.25
+         }
+        ],
+        [
+         7.02,
+         "w0.9@1",
+         {
+          "y": [
+           0.5,
+           1.75
+          ],
+          "panes": [
+           1,
+           1
+          ],
+          "toplight": 0.25
+         }
+        ],
+        [
+         9.15,
+         "w0.85@1",
+         {
+          "y": [
+           0.5,
+           1.75
+          ],
+          "panes": [
+           1,
+           1
+          ],
+          "toplight": 0.25
+         }
         ]
        ],
-       "garage": "#3b3e41",
+       "garage": "#2a2c2e",
        "door": "#2b2d2f",
+       "door_glass": false,
+       "fanlight": true,
        "floors": [
         0,
-        2.9
+        2.85
        ]
       },
       "1": {
@@ -791,7 +1008,10 @@
         ]
        ]
       }
-     }
+     },
+     "downpipes": [
+      0.97
+     ]
     },
     {
      "p": [
@@ -1084,11 +1304,10 @@
     532.9,
     -777.4
    ],
-   "_ref": "The small painted house next to the portal's gap: off-white paint with sandstone-coloured surrounds, iron wall anchors, white frames, a door with a fanlight, dark tiles; its side to the gap with a small window.",
+   "_ref": "The small painted house next to the portal's gap: off-white paint, white frames, dark tiles. Corrected after the photos Yoshi took on 5 November 2026: two small upper windows, four iron fleurs-de-lis between the floors, three openings below in salmon-brown surrounds with arched heads (a window, the white door with its glazed head, a window), a black letterbox at the corner, its gable to the gap in stained grey cement render without windows.",
    "style": {
     "frame": "#f6f5f1",
-    "sill": "#c9bfa9",
-    "surround": "#d8ccb3",
+    "sill": "#9d978c",
     "curtains": 0.6,
     "floors": [
      0,
@@ -1138,30 +1357,148 @@
      ],
      "faces": {
       "0": {
-       "rows": [
-        "w d w",
-        "w w"
+       "at": [
+        [
+         1.24,
+         "w0.9",
+         {
+          "y": [
+           0.9,
+           2.6
+          ],
+          "surround": "#bf9f8c",
+          "surround_w": 0.12,
+          "surround_mat": "render",
+          "surround_arch": true
+         }
+        ],
+        [
+         2.9,
+         "d0.88",
+         {
+          "y": [
+           0.05,
+           2.55
+          ],
+          "surround": "#bf9f8c",
+          "surround_w": 0.12,
+          "surround_mat": "render",
+          "surround_arch": true
+         }
+        ],
+        [
+         4.7,
+         "w0.95",
+         {
+          "y": [
+           0.9,
+           2.6
+          ],
+          "surround": "#bf9f8c",
+          "surround_w": 0.12,
+          "surround_mat": "render",
+          "surround_arch": true
+         }
+        ],
+        [
+         1.26,
+         "w0.68@1",
+         {
+          "y": [
+           1.22,
+           2.0
+          ],
+          "panes": [
+           1,
+           1
+          ],
+          "transom": false
+         }
+        ],
+        [
+         4.7,
+         "w0.72@1",
+         {
+          "y": [
+           1.22,
+           2.0
+          ],
+          "panes": [
+           1,
+           1
+          ],
+          "transom": false
+         }
+        ]
        ],
-       "margin": 0.5,
-       "door": "#4e3a2d",
-       "fanlight": true,
-       "anchors": 3,
-       "anchor_y": 3.7
+       "door": "#efeee8",
+       "panes": [
+        1,
+        1
+       ],
+       "transom": false,
+       "anchor_at": [
+        0.3,
+        2.06,
+        3.79,
+        5.55
+       ],
+       "anchor_y": 3.4,
+       "anchor_style": "lis",
+       "anchor_c": "#5d5047",
+       "boxes": [
+        [
+         5.58,
+         1.05,
+         0.24,
+         0.34,
+         0.12,
+         "#1f2123"
+        ]
+       ]
       },
       "1": {
+       "wall": "render:#9a978f",
        "floors": [
         0,
         2.65,
         4.85
        ],
-       "at": [
+       "strips": [
         [
-         4.7,
-         "o0.55@2"
+         0.0,
+         9.5,
+         -0.4,
+         0.45,
+         "render:#7f7c75"
         ],
         [
-         7.6,
-         "w1.0@1"
+         0.3,
+         9.2,
+         4.45,
+         4.85,
+         "render:#8b8880"
+        ],
+        [
+         2.0,
+         2.45,
+         1.4,
+         4.45,
+         "render:#8a877f"
+        ],
+        [
+         6.1,
+         6.5,
+         2.1,
+         4.45,
+         "render:#8c8981"
+        ],
+        [
+         4.0,
+         5.3,
+         0.45,
+         1.6,
+         "render:#a3a098"
         ]
        ]
       }
@@ -1204,12 +1541,18 @@
     525.2,
     -779.7
    ],
-   "_ref": "Two yellow brick houses in a row: wide ground-floor windows and white doors, brown frames, dark grey plinths, anthracite tiles; a long flat-roofed hall behind.",
+   "_ref": "A yellow brick house with a strip of brown brick at its west end; a long flat-roofed hall behind. Corrected after the photos Yoshi took on 5 November 2026: one house with its white door in the middle (not two), white frames in thick surrounds of brown stone, the upper windows in three parts with leaded diamond panes either side, a light grey stone plinth, the gable above the small white house hung with slates.",
    "style": {
-    "frame": "#5b402f",
-    "sill": "#8d8b86",
-    "curtains": 0.55,
-    "lintel": "#b08f5e"
+    "frame": "#f2f1ed",
+    "sill": "#8f8a80",
+    "curtains": 0.8,
+    "surround": "#7f6b5c",
+    "surround_w": 0.17,
+    "surround_mat": "render",
+    "floors": [
+     0,
+     2.85
+    ]
    },
    "roofstyle": {
     "roofc": "#33363a",
@@ -1217,8 +1560,8 @@
     "chimney": "#a48058"
    },
    "plinth": [
-    0.55,
-    "render:#4b4d4f"
+    0.6,
+    "render:#8e8c87"
    ],
    "vols": [
     {
@@ -1243,7 +1586,7 @@
      "roof": "gable",
      "eaves": 5.6,
      "ridge": 9.5,
-     "wall": "brick:#d6b886",
+     "wall": "brick:#c2a571",
      "chimneys": [
       [
        0.25,
@@ -1263,39 +1606,118 @@
       "0": {
        "at": [
         [
-         1.1,
-         "d1.0"
+         2.3,
+         "W2.25",
+         {
+          "y": [
+           0.67,
+           2.23
+          ],
+          "panes": [
+           1,
+           1
+          ],
+          "transom": false
+         }
         ],
         [
-         3.2,
-         "W2.3"
+         4.85,
+         "d0.9"
         ],
         [
-         6.9,
-         "W2.3"
+         6.95,
+         "W1.95",
+         {
+          "y": [
+           0.67,
+           2.23
+          ],
+          "panes": [
+           1,
+           1
+          ],
+          "transom": false
+         }
         ],
         [
-         9.1,
-         "d1.0"
+         2.3,
+         "W2.25@1",
+         {
+          "y": [
+           0.73,
+           2.08
+          ],
+          "panes": [
+           3,
+           1
+          ],
+          "cuts": [
+           0.25,
+           0.75
+          ],
+          "leaded": [
+           0,
+           2
+          ],
+          "transom": false
+         }
         ],
         [
-         1.4,
-         "w1.1@1"
+         4.85,
+         "n0.6@1",
+         {
+          "y": [
+           0.73,
+           2.08
+          ],
+          "panes": [
+           1,
+           1
+          ],
+          "transom": false
+         }
         ],
         [
-         3.6,
-         "w1.4@1"
-        ],
-        [
-         6.6,
-         "w1.4@1"
-        ],
-        [
-         8.9,
-         "w1.1@1"
+         6.95,
+         "W1.95@1",
+         {
+          "y": [
+           0.73,
+           2.08
+          ],
+          "panes": [
+           3,
+           1
+          ],
+          "cuts": [
+           0.25,
+           0.75
+          ],
+          "leaded": [
+           0,
+           2
+          ],
+          "transom": false
+         }
         ]
        ],
-       "door": "#f2f1ed"
+       "door": "#f2f1ed",
+       "door_glass": false,
+       "strips": [
+        [
+         8.6,
+         10.6,
+         -0.5,
+         5.6,
+         "#6e4a3c"
+        ]
+       ]
+      },
+      "1": {
+       "wall": "brick:#6e4a3c"
+      },
+      "3": {
+       "wall": "render:#53565b"
       }
      }
     },
@@ -1336,7 +1758,7 @@
     512.4,
     -783.3
    ],
-   "_ref": "Beige painted render with arched windows in white frames, decorative wall anchors, a white sectional garage door, a blue-stone plinth, dark tiles and a brick chimney.",
+   "_ref": "Grey-beige painted render with arched windows in white frames below, decorative wall anchors, a white sectional garage door, a blue-stone plinth, dark tiles and a brick chimney. Corrected after the photos Yoshi took on 5 November 2026: greyer render, four small square windows just under the eaves instead of arched ones, no roof windows on the front.",
    "style": {
     "frame": "#f6f5f1",
     "sill": "#5c5f62",
@@ -1379,70 +1801,98 @@
      "roof": "gable",
      "eaves": 4.5,
      "ridge": 8.8,
-     "wall": "render:#e3d6bd",
+     "wall": "render:#bdb5a6",
      "chimneys": [
       [
        0.7,
        3.4
       ]
      ],
-     "roofwin": [
-      [
-       0,
-       3.6,
-       0.3,
-       0.7,
-       0.8
-      ],
-      [
-       0,
-       7.4,
-       0.3,
-       0.7,
-       0.8
-      ]
-     ],
      "faces": {
       "0": {
        "at": [
         [
-         1.9,
-         "g2.6"
+         1.6,
+         "g2.5"
         ],
         [
-         4.6,
-         "a1.15"
+         4.3,
+         "a1.0"
         ],
         [
-         6.6,
+         6.4,
          "d1.0"
         ],
         [
-         8.7,
-         "a1.15"
+         8.9,
+         "a1.05"
         ],
         [
-         1.9,
-         "a1.0@1"
+         1.5,
+         "w0.5@1",
+         {
+          "y": [
+           1.05,
+           1.5
+          ],
+          "panes": [
+           1,
+           1
+          ],
+          "transom": false
+         }
         ],
         [
-         4.6,
-         "a1.0@1"
+         4.1,
+         "w0.5@1",
+         {
+          "y": [
+           1.05,
+           1.5
+          ],
+          "panes": [
+           1,
+           1
+          ],
+          "transom": false
+         }
         ],
         [
-         6.6,
-         "a0.9@1"
+         6.4,
+         "w0.5@1",
+         {
+          "y": [
+           1.05,
+           1.5
+          ],
+          "panes": [
+           1,
+           1
+          ],
+          "transom": false
+         }
         ],
         [
-         8.7,
-         "a1.0@1"
+         9.0,
+         "w0.5@1",
+         {
+          "y": [
+           1.05,
+           1.5
+          ],
+          "panes": [
+           1,
+           1
+          ],
+          "transom": false
+         }
         ]
        ],
        "garage": "#f2f1ee",
        "door": "#f2f1ee",
        "fanlight": true,
        "anchors": 4,
-       "anchor_y": 3.85,
+       "anchor_y": 3.3,
        "head": 2.15
       }
      }
@@ -1468,7 +1918,7 @@
      ],
      "roof": "flat",
      "eaves": 5.8,
-     "wall": "render:#e3d6bd"
+     "wall": "render:#bdb5a6"
     },
     {
      "p": [
@@ -1492,7 +1942,7 @@
      "roof": "shed",
      "eaves": 2.3,
      "ridge": 3.85,
-     "wall": "render:#e3d6bd",
+     "wall": "render:#bdb5a6",
      "skip": [
       2
      ]
@@ -2061,7 +2511,7 @@
     529.8,
     -729.7
    ],
-   "_ref": "The low white house between the café and the church: painted brick, orange clay tiles, a green garage door and door on Kerkhofstraat, a small window in its gable by the café with the café's hanging sign.",
+   "_ref": "The old barn between the café and the church: orange clay pantiles, weathered dark at the end by the church, a green garage door and door on Kerkhofstraat. Corrected after the photos Yoshi took on 5 November 2026: its gable by the café painted white over the brick, on a pale blue-grey plinth, with one window in a stone surround; its long wall to the square in grey cement render with patches (a filled-in opening, old paint, bare brick at its foot and in a band under the eaves), one small window of glass blocks, older dark brick towards the church.",
    "style": {
     "frame": "#f3f1ea",
     "sill": "#8d8b86",
@@ -2070,7 +2520,7 @@
     "sill_h": 0.9
    },
    "roofstyle": {
-    "roofc": "#9c4a33",
+    "roofc": "#a85a3c",
     "fascia": "#f1efe9",
     "gutter": "#8b9093"
    },
@@ -2134,24 +2584,112 @@
        "head": 2.05
       },
       "2": {
-       "rows": [
-        "w w d w w"
+       "wall": "render:#aaa28e",
+       "plinth": null,
+       "at": [
+        [
+         5.0,
+         "w0.5",
+         {
+          "y": [
+           1.35,
+           1.75
+          ],
+          "glass": "#b8bcba",
+          "panes": [
+           3,
+           2
+          ],
+          "transom": false,
+          "frame": "#ecebe6"
+         }
+        ]
        ],
-       "margin": 2.0,
-       "door": "#5a3a2a",
-       "door_glass": false
+       "strips": [
+        [
+         7.6,
+         17.1,
+         -0.4,
+         2.1,
+         "brick:#6e5446"
+        ],
+        [
+         0.0,
+         17.1,
+         2.12,
+         2.5,
+         "brick:#8d5a45"
+        ],
+        [
+         0.1,
+         1.3,
+         -0.4,
+         0.45,
+         "brick:#a8644c"
+        ],
+        [
+         1.3,
+         7.6,
+         -0.4,
+         0.3,
+         "render:#8d8676"
+        ],
+        [
+         1.5,
+         1.85,
+         1.0,
+         1.9,
+         "render:#c4beae"
+        ],
+        [
+         0.6,
+         1.0,
+         0.7,
+         1.2,
+         "render:#9da3a5"
+        ],
+        [
+         3.6,
+         4.0,
+         1.4,
+         1.75,
+         "render:#9da3a5"
+        ]
+       ]
       },
       "1": {
        "at": [
         [
-         6.5,
-         "n0.6"
+         6.2,
+         "w0.8",
+         {
+          "y": [
+           0.85,
+           2.05
+          ],
+          "panes": [
+           1,
+           1
+          ],
+          "transom": false,
+          "surround": "#a9aaa6",
+          "surround_w": 0.1,
+          "surround_mat": "render"
+         }
         ]
        ],
-       "head": 1.9,
-       "sill_h": 1.05
+       "plinth": [
+        0.55,
+        "render:#a8b0b6"
+       ]
       }
-     }
+     },
+     "weather": [
+      "#3a302c",
+      0.45,
+      0.08,
+      0.7
+     ]
     },
     {
      "p": [
@@ -2190,16 +2728,16 @@
     549.0,
     -737.3
    ],
-   "_ref": "On the lane past the square's north-east corner (April 2023): a low red brick cottage with its eaves along the lane, three windows with net curtains, dark pantiles and a roof window; in front of it a flat-roofed brick garage with a brown up-and-over door and a glass-block window.",
+   "_ref": "On the lane past the square's north-east corner: a low red brick cottage with its eaves along the lane, dark tiles with moss and a roof window; in front of it a flat-roofed brick garage with a weathered rust-red door under a timber beam and a glass-block window. Corrected after the photos Yoshi took on 5 November 2026: old salmon-red brick, a window, a dark timber door and a window, dark brown frames with net curtains, heavy timber lintels.",
    "style": {
-    "frame": "#f3f1ea",
+    "frame": "#4b2f24",
     "sill": "#8d8b86",
-    "curtains": 0.9,
+    "curtains": 0.95,
     "head": 2.05,
     "sill_h": 0.9
    },
    "roofstyle": {
-    "roofc": "#3b3836",
+    "roofc": "#3e4148",
     "fascia": "#f1efe9"
    },
    "plinth": [
@@ -2229,7 +2767,7 @@
      "roof": "gable",
      "eaves": 3.0,
      "ridge": 6.8,
-     "wall": "brick:#a45a43",
+     "wall": "brick:#a3705e",
      "roofwin": [
       [
        0,
@@ -2247,12 +2785,34 @@
      ],
      "faces": {
       "0": {
-       "rows": [
-        "w w w"
+       "at": [
+        [
+         1.45,
+         "w0.9"
+        ],
+        [
+         4.05,
+         "d0.9",
+         {
+          "beam": null
+         }
+        ],
+        [
+         6.65,
+         "w0.9"
+        ]
        ],
-       "margin": 1.0
+       "beam": "#3f2c22",
+       "door": "#3e2c22",
+       "door_glass": false
       }
-     }
+     },
+     "weather": [
+      "#4a4f49",
+      0.3,
+      0.3,
+      0.6
+     ]
     },
     {
      "p": [
@@ -2275,21 +2835,38 @@
      ],
      "roof": "flat",
      "eaves": 3.0,
-     "wall": "brick:#a05843",
+     "wall": "brick:#8a5444",
      "coping": "#8e8f8f",
      "faces": {
       "3": {
        "at": [
         [
-         2.0,
-         "g2.4"
+         3.79,
+         "g2.7",
+         {
+          "y": [
+           0.02,
+           2.6
+          ]
+         }
         ],
         [
-         4.4,
+         1.2,
          "o0.6"
         ]
        ],
-       "garage": "#6a4632"
+       "garage": "#7a3a2c",
+       "garage_ribs": "v",
+       "boxes": [
+        [
+         3.79,
+         2.62,
+         3.15,
+         0.22,
+         0.05,
+         "#4b3a2e"
+        ]
+       ]
       }
      }
     },
@@ -2356,11 +2933,11 @@
     548.3,
     -728.0
    ],
-   "_ref": "On the lane opposite the café: an old two-storey red brick house with a wide dark timber double door under a row of small panes, a window over it patched in newer brick, stone sills, a letterbox; dark tiles; a long low back.",
+   "_ref": "On the lane opposite the café: a two-storey house of bright red brick with slabs of light stone over its windows and door, grey frames, a grey concrete plinth; at its north end an older bay of dark brown brick with a grey sectional garage door (a row of small windows, a door let into it), new brick patched in over it, a small window above, and a rusty letterbox pillar in front; dark slates; a long low back. Corrected after the photos Yoshi took on 5 November 2026: the timber barn door is gone.",
    "style": {
-    "frame": "#e9e7e1",
-    "sill": "#9d9a92",
-    "curtains": 0.5,
+    "frame": "#8f9193",
+    "sill": "#bdb8ab",
+    "curtains": 0.6,
     "floors": [
      0,
      3.1
@@ -2371,8 +2948,8 @@
     "fascia": "#efede8"
    },
    "plinth": [
-    0.4,
-    "render:#5d5f61"
+    0.55,
+    "render:#9d9a92"
    ],
    "vols": [
     {
@@ -2397,7 +2974,7 @@
      "roof": "gable",
      "eaves": 6.4,
      "ridge": 9.9,
-     "wall": "brick:#a65b45",
+     "wall": "brick:#a8503a",
      "chimneys": [
       [
        0.85,
@@ -2408,50 +2985,97 @@
       "2": {
        "at": [
         [
-         2.2,
-         "w1.0"
+         10.35,
+         "d0.9",
+         {
+          "door": "#8c8e8f",
+          "lintel_stone": "#c4beb2"
+         }
         ],
         [
-         5.7,
-         "G2.8"
+         7.2,
+         "w1.0",
+         {
+          "y": [
+           1.25,
+           2.85
+          ],
+          "lintel_stone": "#c4beb2"
+         }
         ],
         [
-         8.9,
-         "w1.0"
+         2.9,
+         "G3.0",
+         {
+          "y": [
+           0.02,
+           2.65
+          ],
+          "garage": "#a5a6a2",
+          "garage_windows": 3,
+          "wicket": 0.4,
+          "frame": "#c9cac7"
+         }
         ],
         [
-         2.2,
-         "w1.0@1"
+         10.35,
+         "w1.0@1",
+         {
+          "lintel_stone": "#c4beb2"
+         }
         ],
         [
-         5.7,
-         "w1.3@1"
+         7.2,
+         "w1.0@1",
+         {
+          "lintel_stone": "#c4beb2"
+         }
         ],
         [
-         8.9,
-         "w1.0@1"
+         1.9,
+         "w0.8@1",
+         {
+          "y": [
+           0.85,
+           1.75
+          ],
+          "surround": "#bdb6a8",
+          "surround_mat": "render",
+          "surround_w": 0.12
+         }
         ]
        ],
-       "garage": "#3d2f26",
-       "garage_h": 2.7,
-       "head": 2.3,
        "strips": [
         [
-         4.3,
-         7.1,
+         0.0,
+         4.75,
+         -0.4,
+         6.4,
+         "#6c4640"
+        ],
+        [
+         1.0,
+         4.4,
          2.75,
-         3.0,
-         "#6a5a4c"
+         3.55,
+         "#c4674a"
+        ],
+        [
+         6.6,
+         7.8,
+         0.75,
+         1.25,
+         "#c4674a"
         ]
        ],
        "boxes": [
         [
-         4.0,
-         1.0,
-         0.36,
-         0.26,
-         0.1,
-         "#9a9ea2"
+         4.45,
+         0.0,
+         0.5,
+         1.3,
+         0.45,
+         "#5e3424"
         ]
        ]
       }
@@ -2495,7 +3119,7 @@
     547.4,
     -719.3
    ],
-   "_ref": "Next to it towards Kerkhofstraat: a newer two-storey red brick house, a dark door with glass strips, white roller shutters, a band of brick on edge at the first floor, a chimney on its gable to the street.",
+   "_ref": "Next to it towards Kerkhofstraat: a newer two-storey house of dark brown brick, a dark door with glass strips, white roller shutters (down on the photos of 5 November), a band of brick on edge at the first floor, a chimney on its gable to the street.",
    "style": {
     "frame": "#3c3e41",
     "style": "modern",
@@ -2537,7 +3161,7 @@
      "roof": "gable",
      "eaves": 5.4,
      "ridge": 9.8,
-     "wall": "brick:#aa5641",
+     "wall": "brick:#7d4034",
      "chimneys": [
       [
        0.08,
@@ -2553,27 +3177,28 @@
         ],
         [
          4.4,
-         "w1.6"
+         "r1.6"
         ],
         [
          1.6,
-         "w1.1@1"
+         "r1.1@1"
         ],
         [
          4.4,
-         "w1.6@1"
+         "r1.6@1"
         ]
        ],
        "door": "#3c3e41",
        "strips": [
         [
-         0.0,
+         0,
          6.8,
          2.6,
          2.78,
-         "#8c4532"
+         "#6a3127"
         ]
-       ]
+       ],
+       "roller": "#f1f0ec"
       },
       "3": {
        "at": [
@@ -4643,6 +5268,72 @@
    ],
    "c": "#cfdcc8",
    "frame": "#3e6b48"
+  },
+  {
+   "k": "paving",
+   "bed": [
+    [
+     537.6,
+     -776.55
+    ],
+    [
+     542.13,
+     -775.04
+    ],
+    [
+     544.85,
+     -785.1
+    ],
+    [
+     540.25,
+     -785.66
+    ]
+   ],
+   "c": "#8f8e89",
+   "_ref": "the paved drive in the gap"
+  },
+  {
+   "k": "fence",
+   "p": [
+    538.35,
+    -785.84
+   ],
+   "q": [
+    540.25,
+    -785.66
+   ],
+   "h": 1.8,
+   "c": "#4a3b30",
+   "_ref": "a dark wooden fence"
+  },
+  {
+   "k": "fence",
+   "p": [
+    539.69,
+    -783.74
+   ],
+   "q": [
+    540.25,
+    -785.66
+   ],
+   "h": 1.8,
+   "c": "#b3a48b",
+   "_ref": "a weathered fence panel"
+  },
+  {
+   "k": "fence",
+   "p": [
+    540.25,
+    -785.66
+   ],
+   "q": [
+    544.85,
+    -785.1
+   ],
+   "h": 1.9,
+   "c": "#1e2022",
+   "panel": 2.3,
+   "_ref": "the black board gate across the drive"
   }
  ]
 }
