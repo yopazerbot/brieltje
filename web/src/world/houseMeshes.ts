@@ -6,6 +6,7 @@ import { terrain } from './terrain';
 import { rustle } from './wind';
 import sizes from '../../public/textures/sizes.json';
 import { textureNormalScale } from './surfaceFinish';
+import { loadTexture } from './textureFiles';
 
 /** Real-world width of each texture tile in metres (from Poly Haven, or our own brick). */
 const TILE: Record<string, number> = sizes;
@@ -102,23 +103,19 @@ const SPECS: Record<string, MatSpec> = {
   niche: { tint: '#c79a6a', emissive: '#ffcf8f', rough: 0.6 },
 };
 
-const loader = new THREE.TextureLoader();
 const cache = new Map<string, THREE.Texture>();
 
 /**
- * Phones and tablets get every texture at half size: a quarter of the graphics memory and of the
- * download. At full size the textures take about 290 MB, more than many phones give a page, and
- * a phone that runs out drops the 3D view. The half-size files are made beforehand
- * (tools/textures.py), so the phone neither shrinks them nor downloads the full ones.
+ * At full size and as plain pixels the textures take about 290 MB of graphics memory, more than many
+ * phones give a page, and a phone that runs out drops the 3D view. So they come as KTX2 files that
+ * stay compressed on the chip, or, where the browser can't use those, as WebP files at half size on
+ * phones and tablets (world/textureFiles.ts).
  */
-const HALF = matchMedia('(pointer: coarse)').matches;
-const FOLDER = HALF ? '/textures/half' : '/textures';
-
 function texture(name: string, kind: 'color' | 'normal' | 'rough', renderer: THREE.WebGLRenderer, rotate = false): THREE.Texture {
   const key = `${name}_${kind}_${rotate}`;
   let t = cache.get(key);
   if (!t) {
-    t = loader.load(`${FOLDER}/${name}_${kind}.webp`);
+    t = loadTexture(`${name}_${kind}`, kind === 'color', renderer);
     t.wrapS = t.wrapT = THREE.RepeatWrapping;
     t.anisotropy = Math.min(4, renderer.capabilities.getMaxAnisotropy());
     t.colorSpace = kind === 'color' ? THREE.SRGBColorSpace : THREE.NoColorSpace;
@@ -139,7 +136,9 @@ export function setAnisotropy(level: number): void {
   for (const t of cache.values()) {
     if (t.anisotropy !== level) {
       t.anisotropy = level;
-      if (t.image) t.needsUpdate = true; // still loading: it uploads with this level once it is in
+      // Loaded: upload again with the new level (a KTX2 texture keeps its transcoded data for this).
+      // Still loading (no image yet, KTX2 or WebP): it uploads with this level once it is in.
+      if (t.image) t.needsUpdate = true;
     }
   }
 }

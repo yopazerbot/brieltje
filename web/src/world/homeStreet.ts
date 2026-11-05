@@ -2,6 +2,7 @@ import * as THREE from 'three';
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 import type { Prism, Surroundings } from './houseData';
 import { tintedMaterial } from './houseMeshes';
+import { loadTexture } from './textureFiles';
 import { terrain } from './terrain';
 import type { Tiles } from './tiles';
 import data from '../data/homestreet.json';
@@ -108,8 +109,6 @@ export function withoutModelled(s: Surroundings): { kept: Surroundings; removed:
 
 /** Development only: ?nohomestreet leaves the open-data houses as they were (for measuring what the models cost). */
 const OFF = import.meta.env.DEV && new URLSearchParams(location.search).has('nohomestreet');
-const HALF = matchMedia('(pointer: coarse)').matches;
-const FOLDER = HALF ? '/textures/half' : '/textures';
 
 export class HomeStreet {
   readonly group = new THREE.Group();
@@ -128,12 +127,10 @@ export class HomeStreet {
   /** `restore`: draw these open-data buildings after all (the models didn't load). */
   constructor(private tiles: Tiles, renderer: THREE.WebGLRenderer, ground: number, private removed: Surroundings, private restore: (s: Surroundings) => void) {
     this.group.name = 'homeStreet';
-    const loader = new THREE.TextureLoader();
     const tex = (name: string, color: boolean) => {
-      const t = loader.load(`${FOLDER}/${name}.webp`);
+      const t = loadTexture(name, color, renderer); // KTX2 or WebP, as everywhere (world/textureFiles.ts)
       t.wrapS = t.wrapT = THREE.RepeatWrapping;
       t.anisotropy = this.reference?.anisotropy ?? 1;
-      t.colorSpace = color ? THREE.SRGBColorSpace : THREE.NoColorSpace;
       this.own.push(t);
       return t;
     };

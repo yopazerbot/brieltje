@@ -3,8 +3,11 @@ import { join, resolve } from 'node:path';
 import { brotliCompressSync, constants } from 'node:zlib';
 import { defineConfig, type Plugin } from 'vite';
 
-/** Files worth compressing; images are compressed already. */
-const PACK = /\.(js|css|html|json|svg|txt|hdr|glb)$/;
+/**
+ * Files worth compressing; images are compressed already. So are the KTX2 textures (brotli takes
+ * 0.1 % off them); the texture transcoder's .wasm goes from 527 to 204 KB.
+ */
+const PACK = /\.(js|css|html|json|svg|txt|hdr|glb|wasm)$/;
 
 /**
  * After the build, a brotli copy (.br) next to every file it shrinks by at least a tenth.
