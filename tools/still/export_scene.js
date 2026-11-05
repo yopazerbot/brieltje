@@ -31,6 +31,8 @@
     if (mats.some((m) => m && m.side === 1)) { o.visible = false; unseen.push(o); return; }
     // Birds, flies and sparks drawn as instances with attributes of their own: glTF can't carry those either.
     if (o.geometry?.isInstancedBufferGeometry || Object.values(o.geometry?.attributes ?? {}).some((x) => x.isInstancedBufferAttribute)) { o.visible = false; unseen.push(o); return; }
+    // Leaves (tree crowns, hedges): render_still.py gives them a leafy look of their own.
+    if (o.userData.material === 'hedge' || /foliage|hedge/i.test(o.name)) for (const m of mats) if (m) m.userData = { ...m.userData, foliage: true };
     if (o.isInstancedMesh && o.instanceColor) {
       // Colour per instance (hedge clumps): the range, for Blender to pick from per object.
       const c = o.instanceColor.array;

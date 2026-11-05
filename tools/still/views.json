@@ -2,5 +2,7 @@
   "_": "The slideshow's views (web/public/start/), in game metres: the camera, what it looks at, the vertical field of view. The house is the start screen's own camera (export_scene.js).",
   "town": { "position": [540, 40, -655], "target": [480, 8, -765], "fov": 55 },
   "house": null,
-  "bungalow": { "position": [102, 4.5, 176.5], "target": [86.3, 2.2, 192.6], "fov": 60 }
+  "bungalow": { "position": [102, 4.5, 176.5], "target": [86.3, 2.2, 192.6], "fov": 60 },
+  "school": { "position": [480, 6.1, -842], "target": [458, 7.2, -803], "fov": 62 },
+  "sparrenhof": { "position": [635, -4.6, 950], "target": [662, -4.2, 956], "fov": 44 }
 }

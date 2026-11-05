@@ -1,5 +1,6 @@
 // The slideshow of renders behind the start screen and the site's other pages: the town with its
-// church and school, the house, the bungalow (tools/still/, Blender). Any element with
+// church and school, the house, the bungalow, the school's playground and the café Sparrenhof
+// (tools/still/, Blender). Any element with
 // data-slides becomes one; class "bg" fills the window behind the page, class "hero" is a band at
 // the top. Back, pause and next buttons and a dot per slide go into the element, or into
 // [data-slides-controls] when the page has one (a footer, so they never cover the page on a phone).
@@ -12,6 +13,8 @@
     { src: '/start/town', focus: '72% 50%', nl: 'Smetlede: de kerk en de school', en: 'Smetlede: the church and the school' },
     { src: '/start/house', focus: '58% 45%', nl: 'Het nieuwe huis', en: 'The new house' },
     { src: '/start/bungalow', focus: '66% 50%', nl: 'De bungalow', en: 'The bungalow' },
+    { src: '/start/school', focus: '60% 50%', nl: 'Smetlede: de speelplaats van de school', en: "Smetlede: the school's playground" },
+    { src: '/start/sparrenhof', focus: '50% 50%', nl: 'Café Sparrenhof aan het bos', en: 'Café Sparrenhof by the wood' },
   ];
   const WORDS = {
     nl: { prev: 'Vorige', next: 'Volgende', pause: 'Pauzeren', play: 'Afspelen', go: 'Naar beeld {n}: {c}', label: 'Beelden uit het spel' },

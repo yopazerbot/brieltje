@@ -253,6 +253,41 @@ for mat in bpy.data.materials:
         else:
             mul.inputs[1].default_value = base.default_value[:3]
         nt.links.new(mul.outputs[0], base)
+    if bsdf and mat.get("foliage") and bsdf.inputs["Base Color"].links:
+        # Leaves (tree crowns and hedge clumps): the game's leaf shader (world/leaves.ts) lightens their dark vertex
+        # greens and breaks them into clumps of leaves; here a leaf-sized noise does that, in colour and relief, and
+        # some light comes through them. Without it the crowns rendered as smooth near-black balls.
+        tex = nt.nodes.new("ShaderNodeTexNoise")
+        tex.inputs["Scale"].default_value = 3.5
+        tex.inputs["Detail"].default_value = 6.0
+        geo = nt.nodes.new("ShaderNodeTexCoord")
+        nt.links.new(geo.outputs["Object"], tex.inputs["Vector"])
+        ramp = nt.nodes.new("ShaderNodeMapRange")
+        nt.links.new(tex.outputs["Fac"], ramp.inputs["Value"])
+        ramp.inputs["From Min"].default_value, ramp.inputs["From Max"].default_value = 0.3, 0.7
+        ramp.inputs["To Min"].default_value, ramp.inputs["To Max"].default_value = 1.6, 3.4
+        lift = nt.nodes.new("ShaderNodeVectorMath")
+        lift.operation = "SCALE"
+        base = bsdf.inputs["Base Color"]
+        nt.links.new(base.links[0].from_socket, lift.inputs[0])
+        nt.links.new(ramp.outputs["Result"], lift.inputs["Scale"])
+        nt.links.new(lift.outputs[0], base)
+        bump = nt.nodes.new("ShaderNodeBump")
+        bump.inputs["Strength"].default_value = 0.6
+        nt.links.new(tex.outputs["Fac"], bump.inputs["Height"])
+        nt.links.new(bump.outputs["Normal"], bsdf.inputs["Normal"])
+        bsdf.inputs["Roughness"].default_value = 0.85
+        bsdf.inputs["Subsurface Weight"].default_value = 0.15
+        # Light through the leaves: seen from under a crown against the sky, a solid ball would be black.
+        out = next((n for n in nt.nodes if n.type == "OUTPUT_MATERIAL" and n.is_active_output), None)
+        if out and out.inputs["Surface"].links and out.inputs["Surface"].links[0].from_node == bsdf:
+            through = nt.nodes.new("ShaderNodeBsdfTranslucent")
+            nt.links.new(lift.outputs[0], through.inputs["Color"])
+            mix = nt.nodes.new("ShaderNodeMixShader")
+            mix.inputs["Fac"].default_value = 0.35
+            nt.links.new(bsdf.outputs[0], mix.inputs[1])
+            nt.links.new(through.outputs[0], mix.inputs[2])
+            nt.links.new(mix.outputs[0], out.inputs["Surface"])
     haze_on(mat)
 print(f"{len(bpy.data.materials)} materials: {rebuilt} with the game's textures, {glass} glass; {len(images)} texture files")
 
@@ -267,6 +302,21 @@ if zoom:
     cam.data.shift_x, cam.data.shift_y = sx, sy
 scene.render.engine = "CYCLES"
 scene.cycles.device = "CPU"
+# The graphics card when Cycles can use one (OptiX first, as tools/bake/bake_buildings.py): much faster.
+prefs = bpy.context.preferences.addons["cycles"].preferences
+for kind in ("OPTIX", "CUDA", "HIP", "METAL"):
+    try:
+        prefs.compute_device_type = kind
+        prefs.get_devices()
+    except TypeError:
+        continue
+    gpus = [d for d in prefs.devices if d.type == kind]
+    if gpus:
+        for d in prefs.devices:
+            d.use = d.type == kind
+        scene.cycles.device = "GPU"
+        print("rendering on", kind, [d.name for d in gpus])
+        break
 if os.environ.get("STILL_THREADS"):  # leave cores free for other work
     scene.render.threads_mode = "FIXED"
     scene.render.threads = int(os.environ["STILL_THREADS"])
