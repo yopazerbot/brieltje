@@ -330,7 +330,15 @@ class Builder {
 
   material(s: Surface | 'kerb'): THREE.Material {
     let m = this.mats.get(s);
-    if (!m) this.mats.set(s, (m = blockMaterial(s === 'kerb' ? 'concrete' : MATERIAL[s], this.renderer).material));
+    if (!m) {
+      const name = s === 'kerb' ? 'concrete' : MATERIAL[s];
+      m = blockMaterial(name, this.renderer).material;
+      // The street's own surfaces lie at the old road's height over blocks triangulated differently: far off
+      // the old (lighter) surface showed through in stripes. Pulled a little forward in depth, they always win.
+      // Only these, which nothing else uses; less than the paint's, which stays on top (roadPaint).
+      if (name.startsWith('rd_')) Object.assign(m, { polygonOffset: true, polygonOffsetFactor: -1, polygonOffsetUnits: -1 });
+      this.mats.set(s, m);
+    }
     return m;
   }
 
