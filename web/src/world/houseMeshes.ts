@@ -216,6 +216,11 @@ function makeMaterial(name: string, renderer: THREE.WebGLRenderer): THREE.Materi
     mat.emissive.set(spec.emissive);
     mat.emissiveIntensity = 1.2;
   }
+  if (name === 'bluestone') {
+    // The sills' tops lie level with the bottom of the plaster window reveals, which flickered through them in
+    // white patches. Pulled a little forward in depth, the sill always wins (nothing else uses this material).
+    Object.assign(mat, { polygonOffset: true, polygonOffsetFactor: -1, polygonOffsetUnits: -1 });
+  }
   if (name === 'claustra') {
     mat.alphaTest = 0.5; // open brickwork: light passes through the gaps
     mat.side = THREE.DoubleSide;
