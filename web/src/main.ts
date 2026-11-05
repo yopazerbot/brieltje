@@ -1488,6 +1488,9 @@ function soloTick(dt: number): void {
   const h = solo.horde;
   const now = performance.now();
   if (h.phase === 'over' && now >= solo.endAt) return stopSolo();
+  // Not in the air: the break holds while you come down by parachute, and ends 4 s after you land (as together:
+  // server/zombies.mjs LANDED_MS).
+  if (h.phase === 'break' && player.chute !== null) h.until = Math.max(h.until, now + 4000);
   const fighter = weapon.enabled && !driving && !riding;
   for (const e of h.tick(now, dt, [{ name: SOLO_ME, x: player.x, y: player.feet, z: player.z, alive: combat.alive, fighter, safe: false }])) {
     if (e.type === 'wave') {

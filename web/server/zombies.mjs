@@ -36,6 +36,8 @@ import { zombieEntry } from '../shared/wire.mjs';
 import { arenaOf } from '../shared/arenas.mjs';
 
 export const DONE_MS = 15_000;
+/** ms after the last parachute is down before a wave may come (tick: the break holds while anyone drops) */
+export const LANDED_MS = 4_000;
 export const RECONNECT_MS = 15_000;
 const BEST_KEY = 'zombies_best';
 const MAX_RANGE = 100; // m from the shooter to the zombie, on the server's positions
@@ -173,6 +175,14 @@ export class ZombieGame {
     if (waiting) return; // A dropped connection is not a death; wait for its first armed state too.
     let changed = false;
     this.helpTick(now);
+    // Nobody meets a wave in the air: while anyone is still coming down by parachute (the start, those back
+    // between waves, a late join), the break holds, and ends LANDED_MS after the last one is down.
+    // (A second at a time, so the bar's clock is sent once a second, not with every tick.)
+    if (this.horde.phase === 'break' && this.horde.until < now + LANDED_MS - 1000 && roster.some((r) => g.dropping(g.players.get(r.name), now))) {
+      this.horde.until = now + LANDED_MS;
+      this.sync();
+      changed = true;
+    }
     const events = this.horde.tick(now, dt / 1000, roster);
     this.sync();
     for (const e of events) {
