@@ -88,7 +88,7 @@ import { ZombieWaveControl } from './ui/zombieWave';
 import { HomeStreet, withoutModelled } from './world/homeStreet';
 import { buildRoadDetail, roadPaint, withRoadDetail } from './world/roadDetail';
 import { RoadLife } from './world/roadLife';
-import { fitStreetModel, loadStreetModel } from './world/streetModel';
+import { clearOpenGround, fitStreetModel, loadStreetModel } from './world/streetModel';
 import { bakeLight, setBakeDetail } from './world/bakedLight';
 import { loadWalkIn, type WalkIn } from './world/walkIn';
 import { CAR_REACH, CAR_SLOW, findPortal, PORTALS, portalNear, REACH, type Portal } from '../shared/portals.mjs';
@@ -3098,6 +3098,7 @@ async function buildVillage(): Promise<void> {
   }
   // The models' baked light and wear (world/bakedLight.ts), fetched while the village's tiles are built.
   const bakes = Promise.all(models.map((m) => bakeLight(m, renderer)));
+  for (const m of models) clearOpenGround(data, m.userData.clear as [number, number][][] | undefined); // their forecourts free of trees
   const drawn = withRoadDetail(withoutLandmarks(data, models.map((m) => m.userData.landmark as string), models.flatMap((m) => (m.userData.replaces as Ring[] | undefined) ?? [])));
   await between();
   // The centre's clinkers (the church square and the main street) have a texture of their own, fetched with the village: shaded as the other ground covers.
@@ -3266,6 +3267,7 @@ async function loadModel(url: string): Promise<THREE.Object3D> {
   scene.position.set(x, house.ground + terrain.height(x, z), z);
   scene.userData.landmark = root.userData.landmark;
   scene.userData.replaces = root.userData.replaces;
+  scene.userData.clear = root.userData.clear; // open ground the village's trees give way on (clearOpenGround)
   // Blocks measured from the origin's ground (`blocksOnGround`: tools/sparrenhof.py) go up with it.
   const lift = root.userData.blocksOnGround ? scene.position.y : 0;
   scene.userData.blocks = ((root.userData.blocks as Prism[] | undefined) ?? []).map((p) => ({ ...p, y0: p.y0 + lift, y1: p.y1 + lift }));

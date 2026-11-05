@@ -50,7 +50,7 @@ export const PORTALS = [
   // between the road and the café, facing its front; the car on the forecourt beside it.
   {
     id: 'sparrenhof', name: 'Sparrenhof', sub: 'Oud-Smetlede', color: '#d7a86e', words: ['cafe', 'café', 'sparren'], village: true,
-    x: 647, z: 955, yaw: -1.477, out: [650.78, 954.64, -1.477], car: [646, 946, -1.477],
+    x: 638, z: 942, yaw: -2.196, out: [641.25, 944.35, -2.196], car: [646, 946, -1.477], // beside the forecourt, not in front of the café's door (Yoshi's photos)
   },
 ];
 

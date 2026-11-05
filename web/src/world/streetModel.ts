@@ -98,6 +98,15 @@ export async function loadStreetModel(renderer: THREE.WebGLRenderer, ground: num
   return scene;
 }
 
+/**
+ * A model's open ground (its root's `clear`: rings on the plan, such as the café Sparrenhof's forecourt and terrace):
+ * the village's trees standing in it, or with their trunk within 1.5 m of it, give way. In place, as fitStreetModel.
+ */
+export function clearOpenGround(data: VillageData, rings: [number, number][][] | undefined): void {
+  if (!rings?.length) return;
+  data.trees = data.trees.filter((t) => !rings.some((ring) => near(ring, t.x, t.z, 1.5)));
+}
+
 /** An outline's box on the plan: min x, min z, max x, max z. */
 type Box = [number, number, number, number];
 function boxOf(ring: [number, number][]): Box {

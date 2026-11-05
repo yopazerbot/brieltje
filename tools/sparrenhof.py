@@ -889,6 +889,10 @@ root["landmark"] = "sparrenhof"
 root["replaces"] = [[list(p) for p in OUTLINE], [list(p) for p in CANOPY]]
 root["blocks"] = blocks
 root["blocksOnGround"] = True
+# Open ground with no tree in it (the game drops the village's trees there): the building, the forecourt with its setts
+# and gravel, and the terrace, as in the photos of 5 November (the wood starts behind and beside them).
+OPEN = [[(-12.5, -12.0), (-4.0, -15.5), (15.12, -22.5), (27.0, -5.0), (28.0, 16.5), (16.0, 17.0), (BU + 1.0, 10.5), (-6.5, 10.5)]]
+root["clear"] = [[[round(c, 2) for c in P(u, d)] for u, d in ring] for ring in OPEN] + [[list(p) for p in OUTLINE]]
 tris = 0
 objs = []
 for name, bm in BM.items():
