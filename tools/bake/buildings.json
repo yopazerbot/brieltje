@@ -1,0 +1,15 @@
+{
+  "page": 2048,
+  "models": {
+    "church": { "texel": 0.1 },
+    "school": { "texel": 0.1 },
+    "dormer_house": { "texel": 0.1 },
+    "town": { "texel": 0.1 },
+    "homestreet": { "texel": 0.1 },
+    "molenhoek": { "texel": 0.15 },
+    "kapellenhoek": { "texel": 0.15 },
+    "molenhoek_end1": { "texel": 0.15 },
+    "molenhoek_end2": { "texel": 0.15 },
+    "molenhoek_end3": { "texel": 0.12 }
+  }
+}
