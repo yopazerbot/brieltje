@@ -48,6 +48,7 @@ file's opening comment; run it again after adding, moving or removing a module.
 - `web/src/weapon.ts`: "Action" mode: first-person hands holding a pistol, rifle, shotgun or sniper rifle, like Counter-Strike.
 - `web/src/world/ambience.ts`: The sounds of the countryside, all made in code (nothing to download):
 - `web/src/world/baked.ts`: Baked lighting (Blender Cycles, tools/bake/): the sun, the sky and the light bouncing between walls, stored in one texture for the whole house.
+- `web/src/world/bakedLight.ts`: Baked light and wear on our own building models (tools/bake/: the light worked out in Blender's Cycles from the sky photo and the sun, with the whole...
 - `web/src/world/bells.ts`: The bells of the church of Smetlede: at every full hour the hour bell strikes the hour (one to twelve strokes), at the half hour a higher bell strikes once.
 - `web/src/world/birds.ts`: Birds round the main house and the bungalow: sparrows in the hedges, blackbirds and a robin on the lawns, wood pigeons on the roof edges and ridges,...
 - `web/src/world/birdsong.ts`: Birdsong round the main house and the bungalow, made in code (no sound files): a blackbird's fluting phrases, a robin's thin warble, sparrows chirping, the...
@@ -98,6 +99,7 @@ file's opening comment; run it again after adding, moving or removing a module.
 - `web/src/world/surfaceFinish.ts`: Keep small surface relief from reading as deep grooves across an entire street.
 - `web/src/world/surroundings.ts`: Around the plot, from Flemish open data (GRB footprints, DHM laser heights; see tools/neighbours.py): the pitched roofs and gables of neighbouring houses...
 - `web/src/world/terrain.ts`: The relief of the surroundings (tools/terrain.py, from the laser scan): heights relative to the model's flat ground, flat round the plot and the bungalow.
+- `web/src/world/textureFiles.ts`: The surface textures in web/public/textures, fetched in the form that costs the graphics chip least.
 - `web/src/world/tiles.ts`: The surroundings in tiles of TILE metres, centred on the plot's middle (tools/build_house.py cuts the ground covers, hedges and fences along the same...
 - `web/src/world/townCentre.ts`: The houses round Smetlede's church square and along the street to the school: our own Blender models (tools/town/town.py, from tools/town/houses.json), in...
 - `web/src/world/traffic.ts`: The traffic on the village's roads and the cars parked on the drives (tools/roads.py writes the routes and the spots to web/src/data/roads.json; the cars...
@@ -133,8 +135,13 @@ file's opening comment; run it again after adding, moving or removing a module.
 ## tools
 
 - `tools/aeron.py`: Build the office chair (after the classic Herman Miller Aeron, size B, graphite) for the game in Blender.
+- `tools/bake/bake_buildings.py`: Bake the light of the building models in Blender (Cycles, on the graphics card when there is one).
 - `tools/bake/bake_lightmap.py`: Bake the house's lighting in Blender (Cycles): sun, sky and light bouncing between walls.
+- `tools/bake/encode_buildings.py`: Turn the baked passes (tools/bake/bake_buildings.py) into the game's light and wear textures.
 - `tools/bake/encode_lightmap.py`: Turn the baked light (lightmap.npy from bake_lightmap.py) into a WebP for the web.
+- `tools/bake/export_scene.js`: The game's world for baking the light of the building models (tools/bake/bake_buildings.py).
+- `tools/bake/lightmap_uv.py`: Give a building model a second UV map (TEXCOORD_1) for baked light, in place.
+- `tools/basisu.mjs`: Runs the Basis Universal command-line encoder (basisu, built for WASI: tools/.bin/basisu/basisu_st.wasm) in Node's own WebAssembly runtime, so no native...
 - `tools/bounds.py`: The edge of the game: where you can walk, ride, drive and fly (web/shared/bounds.json).
 - `tools/build_house.py`: Turn the extracted walls plus the hand-measured additions into 3D blocks.
 - `tools/building_ground.py`: Place level house floors at their entrances and carry walls into sloping ground.
@@ -164,6 +171,7 @@ file's opening comment; run it again after adding, moving or removing a module.
 - `tools/icon.py`: Draw the app icon (home screen on phones and tablets): the house as a light block with its windows on a dark ground, the accent line under it.
 - `tools/interior.py`: Build the main house's furniture and decor in Blender.
 - `tools/kapellenhoek_survey.py`: The street Kapellenhoek from the church square to past its junction with Briel, and the first stretch of Kapelleweg: the survey, and the plan...
+- `tools/ktx2.py`: GPU-compressed copies (KTX2, Basis Universal) of every surface texture in web/public/textures/.
 - `tools/model_3.py`: Build the Tesla Model 3 (Highland facelift, 2024+, Deep Blue Metallic) for the game in Blender, from its real sizes.
 - `tools/model_y.py`: Build the Tesla Model Y (2025, black) for the game in Blender, from its real sizes.
 - `tools/molenhoek.py`: Build the street Molenhoek round its portal in Blender: its houses and the rebuilt street.
