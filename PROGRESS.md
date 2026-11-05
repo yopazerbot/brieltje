@@ -1,6 +1,20 @@
 # Progress
 
-Last update: 2026-11-04
+Last update: 2026-11-05
+
+<!-- The handover: rewrite these four at the end of every session (AGENTS.md, "Working efficiently"). Keep each short. -->
+
+**Live:** brieltje.be runs `main`. The newest work there: garden trees that no longer overlap, the moved kentia palms, softer shadows across the village, the parachute's assets (preview page only), and the working-efficiently rules, dev tools (`tools/dev/`) and code map (`docs/CODEMAP.md`).
+
+**In progress:**
+- Baked light and wear for the building models (the merger, 5 Nov). Written but not committed: `tools/bake/lightmap_uv.py` (light layouts, already run on the ten models in `tools/bake/buildings.json`), `tools/bake/export_scene.js` (the world for Blender) and `tools/bake/bake_buildings.py` (Cycles on the RTX 5070). A first test bake ran. Still to do: `tools/bake/encode_buildings.py` (light and wear textures), the game's side (the shader and loading) and checks on Low and on a phone.
+- GPU-compressed textures (KTX2): a worker in its own worktree, based on the main of the morning of 5 Nov; its branch needs bringing onto the current `main`.
+
+**Next command:** `blender -b -P tools/bake/bake_buildings.py -- <export dir> <work dir> 512`, after a new export (the models' layouts change when their tools run again).
+
+**Open questions:**
+- How much extra download phones may get for the light textures and the compressed textures.
+- Whether the main house's interior gets the same bake (the old "Baked lighting (test)" setting).
 
 ## Done
 
