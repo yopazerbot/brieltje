@@ -2,14 +2,16 @@
 // then a few measured runs of briel.bench(), per graphics preset.
 //
 //   node tools/dev/bench.mjs [--url http://localhost:5200/] [--quality low,medium,high,ultra] [--at x,z,feet,yaw,pitch]
-//                            [--frames 120] [--runs 3] [--village] [--phone] [--port 9341]
+//                            [--frames 120] [--runs 3] [--village] [--phone] [--igpu] [--port 9341]
+//
+// --igpu asks Chromium for the low-power graphics chip (this PC's integrated Radeon): a stand-in for weak machines.
 //
 // Other agents share the graphics chip: compare two versions by alternating them (A, B, A, B) in one session,
 // and say the chip was shared when you report the numbers (AGENTS.md).
 import { launch, options, startGame } from './cdp.mjs';
 
-const o = options({ url: 'http://localhost:5200/', quality: 'low', at: '', frames: '120', runs: '3', village: false, phone: false, port: '9341' });
-const b = await launch({ port: Number(o.port) });
+const o = options({ url: 'http://localhost:5200/', quality: 'low', at: '', frames: '120', runs: '3', village: false, phone: false, igpu: false, port: '9341' });
+const b = await launch({ port: Number(o.port), extra: o.igpu ? ['--force_low_power_gpu'] : [] });
 try {
   await startGame(b, o.url, { phone: o.phone, village: o.village });
   if (o.at) {
@@ -17,6 +19,7 @@ try {
     await b.evaluate(`briel.teleport(${x}, ${z}, ${feet}, ${yaw}, ${pitch})`, false);
   }
   await b.sleep(2000);
+  console.log('gpu:', await b.evaluate("(() => { const gl = document.createElement('canvas').getContext('webgl2'); const e = gl.getExtension('WEBGL_debug_renderer_info'); return gl.getParameter(e.UNMASKED_RENDERER_WEBGL); })()", false));
   for (const q of o.quality.split(',')) {
     await b.evaluate(`briel.three.applyQuality(${JSON.stringify(q)})`, false);
     await b.sleep(500);
