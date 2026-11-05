@@ -20,6 +20,12 @@ export interface Preset {
   ao: 'off' | 'half' | 'full';
   /** Sun shadow detail; 0 switches sun shadows off */
   shadowMap: 0 | 1024 | 2048 | 4096;
+  /**
+   * How soft the sun shadows' edges are, in texels of the shadow map (three's PCF filter, 5 samples
+   * whatever the radius, so no extra cost). About 4 cm on High and Ultra, as a real sun's penumbra a few
+   * metres from what casts it; 1 is three's own hard edge.
+   */
+  shadowSoft: number;
   /** Edge smoothing */
   smaa: boolean;
   /** Sharpness of textures seen at an angle */
@@ -34,10 +40,10 @@ export interface Preset {
 }
 
 export const PRESETS: Record<Quality, Preset> = {
-  low: { label: 'Low', scale: 0.55, ao: 'off', shadowMap: 1024, smaa: false, anisotropy: 1, baked: false, far: 550 },
-  medium: { label: 'Medium', scale: 0.8, ao: 'off', shadowMap: 2048, smaa: true, anisotropy: 2, baked: false, far: 725 },
-  high: { label: 'High', scale: 1, ao: 'half', shadowMap: 2048, smaa: true, anisotropy: 4, baked: false, far: 725 },
-  ultra: { label: 'Ultra', scale: 1, ao: 'full', shadowMap: 4096, smaa: true, anisotropy: 8, baked: false, far: 725 },
+  low: { label: 'Low', scale: 0.55, ao: 'off', shadowMap: 1024, shadowSoft: 1, smaa: false, anisotropy: 1, baked: false, far: 550 },
+  medium: { label: 'Medium', scale: 0.8, ao: 'off', shadowMap: 2048, shadowSoft: 1.5, smaa: true, anisotropy: 2, baked: false, far: 725 },
+  high: { label: 'High', scale: 1, ao: 'half', shadowMap: 2048, shadowSoft: 2.5, smaa: true, anisotropy: 4, baked: false, far: 725 },
+  ultra: { label: 'Ultra', scale: 1, ao: 'full', shadowMap: 4096, shadowSoft: 5, smaa: true, anisotropy: 8, baked: false, far: 725 },
 };
 /** A phone or tablet's draw distance, whatever the preset. */
 export const FAR_PHONE = 450;

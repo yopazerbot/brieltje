@@ -382,6 +382,7 @@ function applyQuality(q: Quality): void {
   ao.enabled = preset.ao !== 'off';
   smaa.enabled = preset.smaa;
   sun.castShadow = preset.shadowMap > 0;
+  sun.shadow.radius = preset.shadowSoft; // softer edges on the bigger presets (graphics.ts)
   if (preset.shadowMap && sun.shadow.mapSize.x !== preset.shadowMap) {
     sun.shadow.mapSize.set(preset.shadowMap, preset.shadowMap);
     sun.shadow.map?.dispose();
