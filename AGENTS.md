@@ -51,6 +51,7 @@ Start the tool in that folder, not in the main checkout. Claude Code's subagents
 - **Keep output small.** Filter what a command prints (`grep`, `head`, `tail`). Send big output to a temp file and look only at the part you need. Run long jobs (builds of models, bakes, renders) in the background.
 - **Plan short.** A few lines: the files, the approach, the checks. Then work.
 - **Helpers only for parallel work.** Start another agent only for a job that runs alongside yours and doesn't touch the same files. A lookup you can do in a few searches, you do yourself.
+- **Which model.** Use the strongest model your tool offers for planning, security changes, the graphics pipeline (renderer, shaders, lighting, bakes) and the review before a push. A mid-tier model may build from a written plan that names the files, the approach and the checks. Claude Code has both as agents: `.claude/agents/implementer.md` and `.claude/agents/reviewer.md`.
 - **Hand over at the end.** Before you stop, write what is live, what is half done, the next command to run and the open questions. The merger puts that at the top of `PROGRESS.md`; a worker puts it in its report.
 
 ## Files many agents touch
