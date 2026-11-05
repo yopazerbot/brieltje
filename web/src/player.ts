@@ -1,7 +1,7 @@
 import * as THREE from 'three';
 import type { FrameInput } from './controls/input';
 import type { Ground, World } from './world/collision';
-import { DROP } from '../shared/parachute.mjs';
+import { DROP, dropGlide, dropSink } from '../shared/parachute.mjs';
 
 const EYE = 1.65;          // m, eye height above the floor
 const HEIGHT = 1.8;        // m, body height for head clearance
@@ -55,6 +55,21 @@ export class Player {
   air = 0;
   /** Landed from a drop */
   onChuteLand: () => void = () => {};
+  /**
+   * The drop's camera (shared/parachute.mjs): the view looks down in the free fall, up as the canopy opens and
+   * ahead for the glide, eased, until you look round yourself. It rolls into turns and swings a little under
+   * the canopy (a pendulum: `roll` and `swing`, springs that settle by themselves after landing), and the knees
+   * give on touchdown (`dip`). Only the camera: where you aim and what the others see don't change.
+   */
+  private autoLook = false;
+  private steer = 0;
+  private roll = 0;
+  private rollV = 0;
+  private swing = 0;
+  private swingV = 0;
+  private dip = -1;
+  private lastVy = 0;
+  private lastStep = 0;
   private vx = 0;
   private vz = 0;
   private vy = 0;
@@ -80,12 +95,12 @@ export class Player {
 
   /** Put the player somewhere directly, camera included (used by the dev test hook). */
   place(x: number, z: number, feet: number, yaw: number, pitch: number): void {
-    Object.assign(this, { x, z, feet, yaw, pitch, vx: 0, vz: 0, vy: 0, eyeY: feet + EYE, flying: false, chute: null });
+    Object.assign(this, { x, z, feet, yaw, pitch, vx: 0, vz: 0, vy: 0, eyeY: feet + EYE, flying: false, chute: null, roll: 0, rollV: 0, swing: 0, swingV: 0, dip: -1 });
   }
 
-  /** Start a drop from where you are (place yourself up high first): packed for a moment, then the canopy. */
+  /** Start a drop from where you are (place yourself up high first): the free fall, then the canopy. */
   startDrop(): void {
-    Object.assign(this, { chute: 0, flying: false, vy: -2, vx: 0, vz: 0 });
+    Object.assign(this, { chute: 0, flying: false, vy: 0, vx: 0, vz: 0, steer: 0, autoLook: true, lastVy: 0, lastStep: performance.now() });
   }
 
   /**
@@ -101,9 +116,15 @@ export class Player {
   }
 
   update(dt: number, input: FrameInput, camera: THREE.PerspectiveCamera): void {
+    // A drop keeps to the clock, not to the frames: the server ends it after DROP.maxMs whatever the page
+    // does, so slow frames (the village loading behind it, a slow phone) must not stretch it. Steps of at most 0.5 s.
+    const wall = performance.now();
+    if (this.chute !== null && dt > 0) dt = Math.min(0.5, Math.max(dt, (wall - this.lastStep) / 1000));
+    if (dt > 0) this.lastStep = wall;
     this.clock += dt;
 
     const [turn, tilt] = this.look(dt, input);
+    if (turn !== 0 || tilt !== 0) this.autoLook = false; // looking round yourself: the drop's camera lets go
     this.yaw -= turn;
     this.pitch = Math.max(-1.45, Math.min(1.45, this.pitch + tilt));
 
@@ -112,14 +133,16 @@ export class Player {
     this.crouchT += ((this.crouching ? 1 : 0) - this.crouchT) * (1 - Math.exp(-dt * 12));
     const speed = (this.crouching ? this.walkSpeed * 0.45 : this.walkSpeed * (input.sprint ? SPRINT_FACTOR : 1)) * this.turbo;
     if (this.chute !== null) {
-      // Left and right steer (the parachute turns), forward and back push the glide a little faster or slower.
+      // Left and right steer (the parachute turns, picking up the turn and letting go of it gently), forward
+      // and back push the glide a little faster or slower.
       this.chute += dt;
       this.crouching = false;
-      this.yaw -= input.moveX * DROP.turn * dt;
-    }
+      this.steer += (input.moveX - this.steer) * (1 - Math.exp(-dt * 4));
+      this.yaw -= this.steer * DROP.turn * dt;
+    } else this.steer = 0;
     const sin = Math.sin(this.yaw);
     const cos = Math.cos(this.yaw);
-    const glide = this.chute === null ? 0 : this.chute < DROP.fall ? 0.5 : this.air < DROP.flareAt ? 1.5 : DROP.glide * (1 + 0.08 * input.moveY);
+    const glide = this.chute === null ? 0 : dropGlide(this.chute, this.air, input.moveY);
     const tx = this.chute === null ? (-sin * input.moveY + cos * input.moveX) * speed : -sin * glide;
     const tz = this.chute === null ? (-cos * input.moveY - sin * input.moveX) * speed : -cos * glide;
     const blend = 1 - Math.exp(-12 * dt);
@@ -161,8 +184,45 @@ export class Player {
     const follow = !onFoot || target < this.eyeY - 0.4 ? 1 : 1 - Math.exp(-dt * 16);
     this.eyeY += (target - this.eyeY) * follow;
 
-    camera.position.set(this.x, this.eyeY - this.down * 1.3, this.z);
-    camera.rotation.set(this.pitch, this.yaw, this.down * 0.5, 'YXZ');
+    this.dropCamera(dt);
+    // Touching down from a drop: the knees give a little and straighten again (0.45 s).
+    let knees = 0;
+    if (this.dip >= 0) {
+      this.dip += dt / 0.45;
+      knees = this.dip < 1 ? 0.3 * Math.sin(Math.PI * this.dip) * (1 - this.dip * 0.4) : 0;
+      if (this.dip >= 1) this.dip = -1;
+    }
+    camera.position.set(this.x, this.eyeY - this.down * 1.3 - knees, this.z);
+    camera.rotation.set(this.pitch + this.swing, this.yaw, this.down * 0.5 + this.roll, 'YXZ');
+  }
+
+  /**
+   * The drop's camera, each frame: where it looks (until you look yourself), its roll into turns and its
+   * swing, two lightly damped springs (a pendulum of about 2.4 s, as the pilot hangs under the canopy).
+   * On your feet the springs only settle.
+   */
+  private dropCamera(dt: number): void {
+    const t = this.chute;
+    if (t !== null && this.autoLook) {
+      // Down at the ground in the free fall, up at the canopy as it opens, then ahead and down to where you land.
+      const opening = t >= DROP.fall + 0.2 && t < DROP.fall + DROP.deploy + 0.9;
+      const look = t < DROP.fall + 0.2 ? -0.85 : opening ? 1.2 : this.air < DROP.flareAt * 2 ? -0.12 : -0.35;
+      this.pitch += (look - this.pitch) * (1 - Math.exp(-dt * (opening ? 2.4 : 1.5)));
+    }
+    // The roll follows the steering (into the turn), the swing the canopy's pull as it opens and brakes the
+    // fall (the pilot swings forward under it, then back).
+    const ay = dt > 0 ? (this.vy - this.lastVy) / dt : 0;
+    this.lastVy = this.vy;
+    const open = t !== null && t > DROP.fall + DROP.open;
+    const bank = open ? -this.steer * 0.16 : 0;
+    const pull = open && t < DROP.fall + DROP.open + DROP.brake ? Math.max(-0.1, Math.min(0, -ay * 0.011)) : 0;
+    const w = (2 * Math.PI) / 2.4; // rad/s: the pendulum
+    const step = Math.min(dt, 1 / 30);
+    this.rollV += (w * w * (bank - this.roll) - 2 * 0.35 * w * this.rollV) * step;
+    this.roll += this.rollV * step;
+    this.swingV += (w * w * (pull - this.swing) - 2 * 0.3 * w * this.swingV) * step;
+    this.swing += this.swingV * step;
+    if (t === null && Math.abs(this.roll) + Math.abs(this.swing) + Math.abs(this.rollV) + Math.abs(this.swingV) < 1e-4) this.roll = this.rollV = this.swing = this.swingV = 0;
   }
 
   /**
@@ -171,16 +231,12 @@ export class Player {
    */
   private descend(dt: number): void {
     const t = this.chute ?? 0;
-    const air = this.feet - this.ground.y;
-    if (t < DROP.fall) this.vy = Math.max(-12, this.vy - GRAVITY * dt);
-    else {
-      const sink = air < DROP.flareAt ? 1.2 : DROP.sink;
-      this.vy += (-sink - this.vy) * (1 - Math.exp(-dt * (t < DROP.fall + DROP.deploy ? 1.6 : 3)));
-    }
+    this.vy = dropSink(t, this.feet - this.ground.y, this.vy, dt);
     let next = this.feet + this.vy * dt;
     const sky = this.world.skyAt(this.x, this.z);
     if (next > sky) next = sky;
     if (next <= this.ground.y || t > DROP.maxMs / 1000) {
+      if (next <= this.ground.y) this.dip = 0; // on your feet: the knees give
       next = Math.max(next, this.ground.y);
       this.vy = 0;
       this.chute = null;

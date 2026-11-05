@@ -856,14 +856,16 @@ const myChute = new THREE.Group();
 scene.add(myChute);
 avatars.onFigure = (name, root, body, colour, chute, air, dt) => parachutes.fly(name, root, body, colour, chute, air, dt, camera.position);
 /**
- * Start a drop onto where you stand now (on the ground there, facing your way): from the drop's height over
- * it, a little behind it so it lands there without steering (shared/parachute.mjs), packed for a moment,
- * then under the canopy. Alone when the rules allow it; together when the server says so.
+ * Start a drop onto where you stand now (on the ground there, facing your way), or onto `at` facing its
+ * yaw: from the drop's height over it, a little behind it so it lands there without steering
+ * (shared/parachute.mjs), the free fall, then under the canopy. Alone when the rules allow it; together
+ * when the server says so. The view keeps its pitch: player.ts eases it down, up at the canopy and ahead.
  */
-function beginDrop(): void {
+function beginDrop(at?: { x: number; z: number; yaw: number }): void {
   if (driving || riding || horses.mounted >= 0) return;
-  const from = dropStart(player.x, player.z, player.yaw);
-  player.place(from.x, from.z, player.feet + DROP.height, player.yaw, 0.75); // looking up: the canopy opens overhead
+  const [x, z, yaw] = at ? [at.x, at.z, at.yaw] : [player.x, player.z, player.yaw];
+  const from = dropStart(x, z, yaw);
+  player.place(from.x, from.z, (at ? groundY(x, z) : player.feet) + DROP.height, yaw, player.pitch);
   player.startDrop();
   player.update(0, NO_INPUT, camera);
 }
@@ -2799,7 +2801,7 @@ renderer.setAnimationLoop((now: number) => {
     const away = games.view.kind === 'zombies' && arenaOf(games.view.zombies?.place).id !== 'house';
     if (edgeHint > 0) hud.setPrompt(t(games.fenced ? (away ? 'prompt.edgeHere' : 'prompt.edgeGame') : 'prompt.edge'));
     calmHint = wasCalm ? calmHint - dt : 0;
-    if (player.chute !== null) hud.setPrompt(t('prompt.chute'));
+    if (player.chute !== null) hud.setPrompt(t(player.chute < DROP.fall ? 'prompt.fall' : 'prompt.chute'));
     else if (calmHint > 0) hud.setPrompt(t('prompt.noShoot'));
     lockHint -= dt;
     if (lockHint > 0 || target?.locked) hud.setPrompt(t('prompt.locked'), true);

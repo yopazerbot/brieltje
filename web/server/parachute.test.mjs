@@ -1,10 +1,13 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { DROP, dropStart } from '../shared/parachute.mjs';
+import { readFileSync } from 'node:fs';
+import { DROP, dropSince, dropStart, fly, HOME_DROP } from '../shared/parachute.mjs';
 import { FLAG, playerFields, readPlayer } from '../shared/wire.mjs';
 import { Game } from './game.mjs';
 
 const state = { x: 1, y: 20, z: 2, yaw: 0, pitch: 0, armed: true, w: 'pistol', c: false, flying: false };
+const MAX_SPEED = 16; // m/s down: the server's limit (game.mjs)
+const RUN_SPEED = 1.4 * 2.5 * 1.3; // m/s across on foot (game.mjs)
 
 test('the parachute flag travels in a tick without touching the teleport counter', () => {
   for (const warp of [0, 1, 2, 3]) {
@@ -25,6 +28,37 @@ test('a drop starts DROP.reach behind the place it lands on, whichever way it fa
     assert.ok(Math.abs(s.x + -Math.sin(yaw) * DROP.reach - 10) < 1e-9);
     assert.ok(Math.abs(s.z + -Math.cos(yaw) * DROP.reach + 5) < 1e-9);
   }
+});
+
+test('a drop comes from high up, mostly straight down, in about 11 s, inside what the server allows', () => {
+  assert.ok(DROP.height >= 60, 'much higher than the old 18 m');
+  assert.ok(DROP.time > 9.5 && DROP.time < 12.5, `takes ${DROP.time} s`);
+  assert.ok(DROP.reach < 16, `starts ${DROP.reach} m from where it lands`);
+  // Ends by DROP.maxMs with room to spare, and not much later: that is how long it protects at most.
+  assert.ok(DROP.maxMs >= DROP.time * 1000 + 3000 && DROP.maxMs <= DROP.time * 1000 + 6000);
+  // At any frame rate a page runs (the game's step is at most 0.05 s): under the server's speed limits,
+  // and landing where the server expects (within half a metre of DROP.reach, on time).
+  for (const dt of [1 / 20, 1 / 30, 1 / 60, 1 / 144]) {
+    const f = fly(dt);
+    assert.ok(f.down < MAX_SPEED - 1.5, `down ${f.down} m/s at dt ${dt}`);
+    assert.ok(f.across * 1.08 < RUN_SPEED, `across ${f.across} m/s at dt ${dt}`); // pushing forward adds 8 %
+    assert.ok(Math.abs(f.reach - DROP.reach) < 0.5, `reach ${f.reach} at dt ${dt}`);
+    assert.ok(Math.abs(f.time - DROP.time) < 0.2);
+  }
+  // The free fall really is one: most of the height goes before the canopy is open.
+  const open = fly().path.find((p) => p.t >= DROP.fall + DROP.open + DROP.brake);
+  assert.ok(open.y < DROP.height * 0.3 && open.x < 3, `canopy open at ${open.y} m, ${open.x} m along`);
+  // Someone first seen part way down is drawn as far along as they are.
+  assert.equal(dropSince(0), 0);
+  assert.ok(Math.abs(dropSince(DROP.height - open.y) - (DROP.fall + DROP.open + DROP.brake)) < 0.1);
+});
+
+test('the house drop lands on the house start, in the lane', () => {
+  const house = JSON.parse(readFileSync(new URL('../src/data/house.json', import.meta.url), 'utf8'));
+  assert.equal(HOME_DROP.x, house.spawn.x);
+  assert.equal(HOME_DROP.z, house.spawn.z);
+  const spawns = JSON.parse(readFileSync(new URL('../shared/spawns.json', import.meta.url), 'utf8'));
+  assert.equal(Math.hypot(spawns[0].x - HOME_DROP.x, spawns[0].z - HOME_DROP.z), 0, 'where the server has everyone who joins');
 });
 
 test('under a parachute nobody shoots or is hurt, until landing gives the usual short protection', () => {
