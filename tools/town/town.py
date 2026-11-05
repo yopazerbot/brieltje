@@ -1293,10 +1293,12 @@ for fit in FITTINGS:
         while s < ln - 0.4:
             dd = rng.uniform(0.35, max(0.4, dep - 0.4))
             px, pz = fx0 + ux * s - uz * side * dd, fz0 + uz * s + ux * side * dd
-            if rng.random() < 0.35 or s > ln * 0.6:  # ornamental grasses, towards the sacristy most
-                bush(px, pz, gb + h - 0.15, rng.uniform(0.22, 0.32), rng.choice(["#a4a466", "#9a9a5e", "#b0aa70"]), tall=1.8)
+            # As in the photos of 5 November: straw-coloured ornamental grasses (towards the sacristy most), dried
+            # rust-brown hydrangeas and a few grey-green shrubs.
+            if rng.random() < 0.35 or s > ln * 0.6:
+                bush(px, pz, gb + h - 0.15, rng.uniform(0.22, 0.32), rng.choice(["#b8a878", "#c2b282", "#a89868"]), tall=1.8)
             else:
-                bush(px, pz, gb + h - 0.15, rng.uniform(0.3, 0.48), rng.choice(["#58763f", "#6b8a4a", "#4f6e3d", "#7a4a3e"]))
+                bush(px, pz, gb + h - 0.15, rng.uniform(0.3, 0.48), rng.choice(["#8a5a3c", "#7a4a32", "#9a6a48", "#7d8a6e", "#6f7c62"]))
             s += rng.uniform(0.7, 1.1)
         solids.append(([list(q) for q in bed], h))
     elif k == "shelter":  # a bus shelter: a light steel frame, a flat roof with a pale yellow edge, clear glass at the back and the ends
