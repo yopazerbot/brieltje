@@ -10,8 +10,9 @@ compressed in graphics memory, four to eight times smaller than the WebP files d
   vertically: a compressed texture can't be flipped on upload as the WebP ones are (flipY).
 
 Reads the full-size WebP files (made by tools/textures.py, tools/town/textures.py and
-tools/homestreet/textures.py) and writes web/public/textures/ktx2/<name>.ktx2. Run it again whenever one
-of those tools changes a texture.
+tools/homestreet/textures.py) and writes web/public/textures/ktx2/<name>.ktx2; with --half, the half-size
+ones (web/public/textures/half/, for phones and tablets) into web/public/textures/ktx2/half/. Run it again
+(both ways) whenever one of those tools changes a texture.
 
 The encoder is basisu v2.10 (github.com/BinomialLLC/basis_universal, Apache 2.0) built for WASI, which
 Node runs (tools/basisu.mjs): no native binary, nothing to install. It is fetched once into tools/.bin/
@@ -19,6 +20,8 @@ Node runs (tools/basisu.mjs): no native binary, nothing to install. It is fetche
 
 Run from the project root:
     tools/.venv/Scripts/python.exe tools/ktx2.py
+The phones' half-size set:
+    tools/.venv/Scripts/python.exe tools/ktx2.py --half
 Only some textures (names without .webp):
     tools/.venv/Scripts/python.exe tools/ktx2.py --only brick_color brick_normal
 """
@@ -87,9 +90,9 @@ def kind(name: str) -> str:
     sys.exit(f"{name}: not a _color, _normal or _rough texture")
 
 
-def encode(wasm: Path, name: str, tmp: Path) -> tuple[str, int]:
+def encode(wasm: Path, name: str, tmp: Path, src: Path, dst: Path) -> tuple[str, int]:
     png = tmp / f"{name}.png"
-    Image.open(WEB / f"{name}.webp").save(png, compress_level=1)
+    Image.open(src / f"{name}.webp").save(png, compress_level=1)
     noisy = kind(name) == "normal" and name.removesuffix("_normal") in NOISY_NORMALS
     args = (NOISY if noisy else MODES[kind(name)]) + COMMON + ["-file", png.name, "-output_file", f"{name}.ktx2"]
     run = subprocess.run(["node", "--no-warnings", str(RUNNER), str(wasm), str(tmp), *args],
@@ -97,32 +100,34 @@ def encode(wasm: Path, name: str, tmp: Path) -> tuple[str, int]:
     out = tmp / f"{name}.ktx2"
     if run.returncode != 0 or not out.exists():
         sys.exit(f"{name}: basisu failed\n{run.stdout[-2000:]}\n{run.stderr[-2000:]}")
-    OUT.mkdir(exist_ok=True)
-    (OUT / f"{name}.ktx2").write_bytes(out.read_bytes())
+    dst.mkdir(exist_ok=True, parents=True)
+    (dst / f"{name}.ktx2").write_bytes(out.read_bytes())
     png.unlink()
     out.unlink()
-    return name, (OUT / f"{name}.ktx2").stat().st_size
+    return name, (dst / f"{name}.ktx2").stat().st_size
 
 
 def main() -> None:
     ap = argparse.ArgumentParser(description=__doc__.split("\n")[0])
     ap.add_argument("--only", nargs="+", metavar="NAME", help="these textures only (file names without .webp)")
+    ap.add_argument("--half", action="store_true", help="the half-size set for phones and tablets (textures/half/)")
     ap.add_argument("--jobs", type=int, default=max(1, min(6, (os.cpu_count() or 2) // 4)),
                     help="encoders at once (default: a quarter of the processor's threads, at most 6)")
     a = ap.parse_args()
-    names = a.only or sorted(p.stem for p in WEB.glob("*.webp"))
+    src, dst = (WEB / "half", OUT / "half") if a.half else (WEB, OUT)
+    names = a.only or sorted(p.stem for p in src.glob("*.webp"))
     wasm = fetch_encoder()
     with tempfile.TemporaryDirectory(prefix="ktx2-") as t, ThreadPoolExecutor(a.jobs) as pool:
-        for name, size in pool.map(lambda n: encode(wasm, n, Path(t)), names):
+        for name, size in pool.map(lambda n: encode(wasm, n, Path(t), src, dst), names):
             print(f"{name:28s} {size / 1024:8.0f} KB")
     if not a.only:
         known = {f"{n}.ktx2" for n in names}
-        for stale in OUT.glob("*.ktx2"):
+        for stale in dst.glob("*.ktx2"):
             if stale.name not in known:
                 print("removing", stale.name, "(no WebP file of that name)")
                 stale.unlink()
     total = lambda folder, pattern: sum(p.stat().st_size for p in folder.glob(pattern))
-    print(f"KTX2 {total(OUT, '*.ktx2') / 1e6:.2f} MB, WebP {total(WEB, '*.webp') / 1e6:.2f} MB, "
+    print(f"KTX2 {total(OUT, '*.ktx2') / 1e6:.2f} MB, half-size KTX2 {total(OUT / 'half', '*.ktx2') / 1e6:.2f} MB, WebP {total(WEB, '*.webp') / 1e6:.2f} MB, "
           f"half-size WebP {total(WEB / 'half', '*.webp') / 1e6:.2f} MB")
 
 

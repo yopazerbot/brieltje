@@ -7,7 +7,8 @@ import { addDiag } from '../ui/diag';
  *
  * Where the browser can transcode Basis Universal, each texture comes from textures/ktx2/ (tools/ktx2.py):
  * it stays compressed on the chip (BC7 on desktops, ETC2 or ASTC on phones and Apple), four to eight times
- * smaller than the WebP file decoded to plain pixels. Phones and tablets then get the full size as well.
+ * smaller than the WebP file decoded to plain pixels. Phones and tablets get the half-size copies
+ * (textures/ktx2/half/, Yoshi's choice: about 5 MB to download instead of 19, and the sharpness they had).
  * Where it can't (no WebAssembly, no compressed format on the chip, a transcoder that doesn't start), or when
  * a KTX2 file fails to load or transcode, the WebP file is fetched instead: the full size on desktops, the
  * half size on phones and tablets (textures/half/, a quarter of the memory). Only one of the two is fetched
@@ -26,7 +27,7 @@ import { addDiag } from '../ui/diag';
 
 const HALF = matchMedia('(pointer: coarse)').matches;
 const WEBP = HALF ? '/textures/half' : '/textures';
-const KTX2 = '/textures/ktx2';
+const KTX2 = HALF ? '/textures/ktx2/half' : '/textures/ktx2';
 const SKIP_KTX2 = new URLSearchParams(location.search).has('webp');
 /**
  * How long the transcoder may take to start (fetch 0.27 MB, compile, first texture) before the WebP files are
