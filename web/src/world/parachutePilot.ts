@@ -49,6 +49,8 @@ interface Rest {
 
 export class PilotPose {
   private rest = new Map<THREE.Object3D, Rest>();
+  /** The pose the figure had before `apply` (its own animation), for mixing */
+  private keep = new Map<THREE.Object3D, Rest>();
   /** Rest matrices in the holder's space, of the guides and of the figure's bones that follow them. */
   private restH = new Map<THREE.Object3D, THREE.Matrix4>();
   private guides = new Map<string, THREE.Object3D>();
@@ -84,6 +86,7 @@ export class PilotPose {
       if (!b) continue;
       this.bones.set(n, b);
       this.rest.set(b, { p: b.position.clone(), q: b.quaternion.clone(), s: b.scale.clone() });
+      this.keep.set(b, { p: new THREE.Vector3(), q: new THREE.Quaternion(), s: new THREE.Vector3() });
       this.restH.set(b, inHolder(b));
     }
     this.head = this.bone('Head');
@@ -169,8 +172,13 @@ export class PilotPose {
     this.turn(lower, _c.clone().sub(_b), end.sub(_b));
   }
 
-  /** Pose the figure on the guides. Call after the parachute's mixer has run and its matrices are current. */
-  apply(hideHead = false): void {
+  /**
+   * Pose the figure on the guides. Call after the parachute's mixer has run and its matrices are current.
+   * `weight` below 1 mixes that pose with the one the figure had (its own animation): to hand it back gently.
+   */
+  apply(hideHead = false, weight = 1): void {
+    const mix = weight < 1;
+    if (mix) for (const [b, k] of this.keep) k.p.copy(b.position), k.q.copy(b.quaternion), k.s.copy(b.scale);
     for (const [b, r] of this.rest) {
       b.position.copy(r.p);
       b.quaternion.copy(r.q);
@@ -192,6 +200,13 @@ export class PilotPose {
     for (const c of this.curl) c.bone.quaternion.copy(c.q);
     const hr = this.rest.get(this.head)!;
     this.head.scale.copy(hr.s).multiplyScalar(hideHead ? 0.001 : 1);
+    if (mix) {
+      for (const [b, k] of this.keep) {
+        b.position.lerpVectors(k.p, b.position, weight);
+        b.quaternion.slerpQuaternions(k.q, b.quaternion, weight);
+        b.scale.lerpVectors(k.s, b.scale, weight);
+      }
+    }
     this.figure.updateMatrixWorld(true);
   }
 
