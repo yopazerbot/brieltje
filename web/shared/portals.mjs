@@ -46,6 +46,12 @@ export const PORTALS = [
     id: 'molenhoek_end', name: 'End of Molenhoek', sub: 'Smetlede', color: '#ff80ab', words: ['einde', 'eind', 'end', 'eindmolenhoek', 'molenhoekeinde'], village: true,
     x: 1513.23, z: -360.98, yaw: 0.932, out: [1508.01, -364.85, 2.898], car: [1509.09, -369.22, -1.814],
   },
+  // The Sparrenhof, a café on Oud-Smetlede at the edge of a wood (Yoshi, 5 Nov 2026): the pad on its gravel forecourt
+  // between the road and the café, facing its front; the car on the forecourt beside it.
+  {
+    id: 'sparrenhof', name: 'Sparrenhof', sub: 'Oud-Smetlede', color: '#d7a86e', words: ['cafe', 'café', 'sparren'], village: true,
+    x: 647, z: 955, yaw: -1.477, out: [650.78, 954.64, -1.477], car: [646, 946, -1.477],
+  },
 ];
 
 /** The portal a word in the chat names: its id or one of its words, else the first whose name starts with it. */

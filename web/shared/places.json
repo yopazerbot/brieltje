@@ -5,13 +5,13 @@
    "id": "street:beekbosweg",
    "name": "Beekbosweg",
    "sub": "Briel",
-   "x": 189.72,
-   "z": 373.22,
-   "yaw": 3.059,
+   "x": 189.61,
+   "z": 374.6,
+   "yaw": 3.058,
    "car": [
-    189.82,
-    373.22,
-    3.059
+    189.7,
+    374.6,
+    3.058
    ]
   },
   {
@@ -25,6 +25,20 @@
     387.28,
     -1092.15,
     1.578
+   ],
+   "village": true
+  },
+  {
+   "id": "street:blekte",
+   "name": "Blekte",
+   "sub": "Oud-Smetlede",
+   "x": 724.27,
+   "z": 474.84,
+   "yaw": 1.337,
+   "car": [
+    723.71,
+    477.2,
+    1.337
    ],
    "village": true
   },
@@ -127,12 +141,12 @@
    "id": "street:kapellenhoek",
    "name": "Kapellenhoek",
    "sub": "Smetlede",
-   "x": 604.69,
-   "z": -377.62,
+   "x": 585.43,
+   "z": -317.04,
    "yaw": 2.863,
    "car": [
-    605.08,
-    -377.51,
+    587.59,
+    -316.42,
     2.863
    ],
    "village": true
@@ -141,12 +155,12 @@
    "id": "street:kapelleweg",
    "name": "Kapelleweg",
    "sub": "Smetlede",
-   "x": 1360.92,
-   "z": -328.39,
+   "x": 1360.9,
+   "z": -328.4,
    "yaw": 1.247,
    "car": [
-    1361.45,
-    -329.96,
+    1361.43,
+    -329.97,
     1.247
    ],
    "village": true
@@ -224,12 +238,12 @@
    "id": "street:moeyweedreef",
    "name": "Moeyweedreef",
    "sub": "Briel",
-   "x": -24.56,
-   "z": 379.7,
+   "x": -24.29,
+   "z": 378.55,
    "yaw": -0.226,
    "car": [
-    -25.04,
-    379.58,
+    -24.78,
+    378.43,
     -0.226
    ]
   },
@@ -251,13 +265,27 @@
    "id": "street:oordegemkouter",
    "name": "Oordegemkouter",
    "sub": "Smetlede",
-   "x": 1506.24,
+   "x": 1506.22,
    "z": -363.76,
    "yaw": -1.758,
    "car": [
-    1506.81,
+    1506.8,
     -366.8,
     -1.758
+   ],
+   "village": true
+  },
+  {
+   "id": "street:oud-smetlede",
+   "name": "Oud-Smetlede",
+   "sub": "Oud-Smetlede",
+   "x": 681.87,
+   "z": 476.86,
+   "yaw": -2.87,
+   "car": [
+    683.61,
+    476.37,
+    -2.87
    ],
    "village": true
   },
@@ -432,13 +460,13 @@
    "id": "street:walleweederede",
    "name": "Walleweederede",
    "sub": "Briel",
-   "x": 469.99,
-   "z": 68.62,
-   "yaw": -3.076,
+   "x": 468.42,
+   "z": 105.96,
+   "yaw": 3.012,
    "car": [
-    469.99,
-    68.62,
-    -3.076
+    468.42,
+    105.96,
+    3.012
    ]
   },
   {
