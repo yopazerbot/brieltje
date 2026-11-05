@@ -4,7 +4,7 @@ Last update: 2026-11-05
 
 <!-- The handover: rewrite these four at the end of every session (AGENTS.md, "Working efficiently"). Keep each short. -->
 
-**Live:** brieltje.be runs `main`. New on 5 Nov: baked light and wear on the ten building models of our own (shade, bounced light, the sun's shadow across the village, dirt, streaks, green), and GPU-compressed KTX2 textures (half size on phones, Yoshi's choice). Also the working-efficiently rules, dev tools (`tools/dev/`) and code map (`docs/CODEMAP.md`).
+**Live:** brieltje.be runs `main`. New on 5 Nov: arriving by parachute (#3 by LaurensRiviere, merged through #5: start places, respawns outside, Zombies; your own view shows only the canopy and its lines; admin switch "Players arrive by parachute"), baked light and wear on the ten building models of our own (shade, bounced light, the sun's shadow across the village, dirt and streaks; no green, Yoshi's call), and GPU-compressed KTX2 textures (half size on phones, Yoshi's choice). Also the working-efficiently rules, dev tools (`tools/dev/`) and code map (`docs/CODEMAP.md`).
 
 **In progress:** nothing half done. Next on the list from the graphics ideas: TAA with upscaling on High and Ultra, then cascaded sun shadows, reflections and bloom.
 
