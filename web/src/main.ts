@@ -37,7 +37,7 @@ const OUTSIDE_SPAWNS = HOUSE_SPAWNS.filter((i) => spawns[i].outside);
 import { api, errorText, Net, type Me, type Rules, type ServerMsg } from './net/client';
 import { Avatars } from './net/avatars';
 import { Parachutes } from './world/parachutes';
-import { DROP, dropStart } from '../shared/parachute.mjs';
+import { DROP, dropStart, HOME_DROP } from '../shared/parachute.mjs';
 import { netClock } from './net/track';
 import { PROTO, readBrute, readCar, readHorse, readPlayer, readZombie, type Tick } from '../shared/wire.mjs';
 import { sound } from './sound';
@@ -166,6 +166,11 @@ function loaded(): void {
       // In multiplayer the server is told: now if its welcome came already (it usually does), or when it comes.
       if (welcomed) net.send({ t: 'spawn', to: at.id });
       else spawnPending = at;
+    } else if (rules.parachute !== false) {
+      // The house's start by parachute too (Yoshi), down the lane onto it: alone now, together when the server says so.
+      if (!me) beginDrop(HOME_DROP);
+      if (welcomed) net.send({ t: 'spawn', to: 'home' });
+      else spawnPending = 'home';
     }
     loading(1);
     setTimeout(() => menu.ready(), 150); // the bar full for a moment, then play
@@ -181,7 +186,7 @@ function loaded(): void {
 }
 setTimeout(loaded, 25000); // never keep the player waiting forever
 /** The start place picked on the start screen (the church by default), or null for the main house, where the world itself starts. */
-let spawnPending: Portal | null = null;
+let spawnPending: Portal | 'home' | null = null; // sent with the server's welcome: a start place, or the house's start by parachute
 let welcomed = false; // the server's welcome has come (a start place can be sent straight away)
 function startPlace(): Portal | null {
   let id = (document.getElementById('spawn') as HTMLSelectElement | null)?.value ?? 'church'; // the church square unless picked otherwise (Yoshi)
@@ -1962,7 +1967,11 @@ net.onMessage = (m: ServerMsg) => {
       // Started somewhere else than the street: the server moves us there before our first update.
       welcomed = true;
       netClock.reset(); // perhaps a restarted server, with a clock of its own
-      if (spawnPending) {
+      if (spawnPending === 'home') {
+        // The house's start by parachute: only while still near it (not after walking off alone first).
+        if (Math.hypot(player.x - HOME_DROP.x, player.z - HOME_DROP.z) < 30) net.send({ t: 'spawn', to: 'home' });
+        spawnPending = null;
+      } else if (spawnPending) {
         net.send({ t: 'spawn', to: spawnPending.id });
         spawnPending = null;
       }
@@ -2229,8 +2238,8 @@ net.onMessage = (m: ServerMsg) => {
       break;
     case 'spawn':
       if (m.ok) {
-        // The start place, by parachute: up over where we arrived.
-        if (m.drop && player.chute === null) beginDrop();
+        // The start place (or the house's start), by parachute: up over where the server has us land.
+        if (m.drop && player.chute === null) beginDrop({ x: m.x, z: m.z, yaw: m.yaw ?? player.yaw });
         break;
       }
       // The start place was refused (the admin turned the portals off): back to where the server has us.

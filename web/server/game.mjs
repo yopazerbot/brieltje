@@ -36,7 +36,7 @@ import { bruteEntry, carFields, horseFields, playerFields, PROTO, TICK_MS } from
 import { houseAreas, makeNav, MAX_ADMIN_WAVE } from '../shared/zombies.mjs';
 import { arenaEdge, arenaHome, arenaPrisms, ARENAS, portalOf } from '../shared/arenas.mjs';
 import { churchPrisms, makeChurch } from '../shared/church.mjs';
-import { DROP, dropStart } from '../shared/parachute.mjs';
+import { DROP, dropStart, HOME_DROP } from '../shared/parachute.mjs';
 
 const MAX_PLAYERS = 16; // the most the admin can allow at once (every player's moves go to every other one)
 const KEYFRAME = 20; // ticks: everything goes to every page at least this often (once a second), moved or not
@@ -854,6 +854,7 @@ export class Game {
    * cross it), alive, on foot, with the portals on. So it is a start, never a free trip later.
    */
   spawn(name, p, id, now) {
+    if (id === 'home') return this.homeDrop(name, p, now);
     const to = PORTALS.find((q) => q.id === id);
     const st = p.state;
     if (!to || p.spawned || !st || !p.joinedAt) return;
@@ -875,8 +876,31 @@ export class Game {
     this.moved(p);
     if (drop) {
       this.startDrop(p, now);
-      this.send(p.ws, { t: 'spawn', ok: true, drop: 1, x, z });
+      this.send(p.ws, { t: 'spawn', ok: true, drop: 1, x, z, yaw });
     }
+  }
+
+  /**
+   * A fresh arrival at the house's start (the page's own start in the lane in front of the house, where the
+   * server has everyone who joins): by parachute when the admin's rule is on, down the lane onto it
+   * (HOME_DROP). Never a trip: taken once with the start places, in the first 90 seconds, alive, on foot, and
+   * only while the server still has the player within 30 m of that start (a drop onto where they are, as a
+   * fresh join is). Otherwise nothing changes: the page stays on its feet.
+   */
+  homeDrop(name, p, now) {
+    const st = p.state;
+    if (p.spawned || !st) return;
+    p.spawned = true;
+    const { x, z, yaw } = HOME_DROP;
+    if (!this.rules.parachute || now - p.joinTime > 90_000 || !p.alive || this.carOf(name) || this.horseOf(name)) return;
+    if (Math.hypot(st.x - x, st.z - z) > 30 || !this.fence().inside(x, z)) return;
+    const from = dropStart(x, z, yaw); // behind the start, along the lane: it lands there
+    Object.assign(st, { x: from.x, y: HOUSE.ground + TERRAIN.height(x, z) + DROP.height, z: from.z });
+    p.budget = p.vbudget = 0.5;
+    p.movedAt = now;
+    this.moved(p);
+    this.startDrop(p, now);
+    this.send(p.ws, { t: 'spawn', ok: true, drop: 1, x, z, yaw });
   }
 
   travel(name, p, id, chat, now) {

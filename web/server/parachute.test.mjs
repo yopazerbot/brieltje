@@ -76,3 +76,74 @@ test('under a parachute nobody shoots or is hurt, until landing gives the usual 
   assert.equal(g.calm(p), false);
   assert.ok(p.protectedUntil > now + 1000 && p.protectedUntil <= now + 1000 + 5000);
 });
+
+/** A game with just enough for a start: no cars or horses, the edge everywhere, messages kept. */
+function startGame(rules = {}) {
+  const g = Object.create(Game.prototype);
+  const sent = [];
+  Object.assign(g, {
+    rules: { parachute: true, portals: true, ...rules },
+    carOf: () => null,
+    horseOf: () => null,
+    fence: () => ({ inside: () => true }),
+    send: (_ws, m) => sent.push(m),
+  });
+  return { g, sent };
+}
+const joined = (now, at = { x: 4.5, y: -0.1, z: 19 }) => ({
+  ws: {}, alive: true, spawned: false, joinTime: now, joinedAt: { x: at.x, z: at.z }, protectedUntil: now + 2000, drop: null, warp: 0, stamp: 0,
+  state: { x: at.x, y: at.y, z: at.z, yaw: 0, pitch: 0, armed: false, flying: false, w: 'pistol', c: false },
+});
+
+test('a fresh arrival at the house drops when the server says so, once, and only onto where it is', () => {
+  const now = Date.now();
+  const { g, sent } = startGame();
+  const p = joined(now);
+  g.spawn('a', p, 'home', now + 2000);
+  assert.equal(sent.length, 1);
+  assert.deepEqual(sent[0], { t: 'spawn', ok: true, drop: 1, x: HOME_DROP.x, z: HOME_DROP.z, yaw: HOME_DROP.yaw });
+  assert.equal(g.dropping(p, now + 2000), true);
+  assert.equal(p.protectedUntil, now + 2000 + DROP.maxMs);
+  const from = dropStart(HOME_DROP.x, HOME_DROP.z, HOME_DROP.yaw);
+  assert.ok(Math.abs(p.state.x - from.x) < 1e-9 && Math.abs(p.state.z - from.z) < 1e-9);
+  assert.ok(p.state.y > DROP.height - 5);
+  // Once: a second ask, or a start place after it, does nothing.
+  g.spawn('a', p, 'home', now + 3000);
+  g.spawn('a', p, 'church', now + 3000);
+  assert.equal(sent.length, 1);
+});
+
+test('no house drop with the rule off, late, far from the start, dead, or for an unknown place', () => {
+  const now = Date.now();
+  const cases = [
+    [{ parachute: false }, joined(now), now + 1000],
+    [{}, joined(now), now + 91_000],
+    [{}, joined(now, { x: 40, y: 0, z: 19 }), now + 1000], // a reconnect elsewhere: no free trip to the house
+    [{}, { ...joined(now), alive: false }, now + 1000],
+  ];
+  for (const [rules, p, at] of cases) {
+    const { g, sent } = startGame(rules);
+    const before = { ...p.state };
+    g.spawn('a', p, 'home', at);
+    assert.equal(sent.length, 0);
+    assert.equal(p.drop, null);
+    assert.deepEqual(p.state, before);
+  }
+  const { g, sent } = startGame();
+  const p = joined(now);
+  g.spawn('a', p, 'nowhere', now + 1000);
+  assert.equal(sent.length, 0);
+  assert.equal(p.spawned, false);
+});
+
+test('a start place by parachute tells the page where it lands and facing which way', () => {
+  const now = Date.now();
+  const { g, sent } = startGame();
+  const p = joined(now);
+  g.spawn('a', p, 'church', now + 1000);
+  assert.equal(sent.length, 1);
+  assert.equal(sent[0].drop, 1);
+  assert.equal(typeof sent[0].yaw, 'number');
+  const from = dropStart(sent[0].x, sent[0].z, sent[0].yaw);
+  assert.ok(Math.abs(p.state.x - from.x) < 1e-9 && Math.abs(p.state.z - from.z) < 1e-9);
+});

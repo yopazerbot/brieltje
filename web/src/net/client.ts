@@ -70,7 +70,8 @@ export type ServerMsg =
   | ({ t: 'travel'; name: string; to: string; ok: boolean; car?: string | null; text?: string } & Coded)
   /** The start place picked on the start screen was refused (portals off): where the server has you. */
   | { t: 'spawn'; ok: false; x: number; z: number }
-  | { t: 'spawn'; ok: true; drop?: 1; x: number; z: number }
+  /** Taken: by parachute onto (x, z), coming in facing `yaw` (the start place's, or the house's start: HOME_DROP) */
+  | { t: 'spawn'; ok: true; drop?: 1; x: number; z: number; yaw?: number }
   | { t: 'mode'; mode: ModeView }
   | { t: 'clowns'; list: ClownSpec[] }
   /** Twenty times a second: what moved (shared/wire.mjs) */
