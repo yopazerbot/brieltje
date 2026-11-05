@@ -3083,7 +3083,7 @@ async function buildVillage(): Promise<void> {
   const town = import.meta.env.DEV && location.search.includes('notown')
     ? Promise.reject(new Error('left out'))
     : import('./world/townCentre').then(({ loadTown }) => loadTown(renderer, (x, z) => house.ground + terrain.height(x, z)));
-  const models = (await Promise.all([loadChurch().catch(() => null), loadModel('/models/school.glb').catch(() => null), loadModel('/models/dormer_house.glb').catch(() => null), town.catch(() => null)])).filter(
+  const models = (await Promise.all([loadChurch().catch(() => null), loadModel('/models/school.glb').catch(() => null), loadModel('/models/dormer_house.glb').catch(() => null), loadModel('/models/sparrenhof.glb').catch(() => null), town.catch(() => null)])).filter(
     (m): m is THREE.Object3D => m !== null,
   );
   // The houses of Molenhoek (and its street) and of Kapellenhoek, the same way: fitted into the village data before its tiles are built.
@@ -3266,7 +3266,9 @@ async function loadModel(url: string): Promise<THREE.Object3D> {
   scene.position.set(x, house.ground + terrain.height(x, z), z);
   scene.userData.landmark = root.userData.landmark;
   scene.userData.replaces = root.userData.replaces;
-  scene.userData.blocks = root.userData.blocks;
+  // Blocks measured from the origin's ground (`blocksOnGround`: tools/sparrenhof.py) go up with it.
+  const lift = root.userData.blocksOnGround ? scene.position.y : 0;
+  scene.userData.blocks = ((root.userData.blocks as Prism[] | undefined) ?? []).map((p) => ({ ...p, y0: p.y0 + lift, y1: p.y1 + lift }));
   return scene;
 }
 
