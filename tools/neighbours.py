@@ -21,8 +21,8 @@ model x = 4.45. Model +z points from the garden to the street; +x is to the
 left when looking at the street.
 
 The area is `zone`: the ring of AREA round the plot, the circle of VILLAGE round the church of
-Smetlede (with the school next to it) and the band between them, along the road to the village.
-The church gets a tower with a spire from the laser scan's peak (`church_tower`); everything
+Smetlede (with the school next to it) and the band between them, along the road to the village; then the
+bands along Molenhoek, the eastward extension and the way to the Sparrenhof (`sparrenhof`). The church gets a tower with a spire from the laser scan's peak (`church_tower`); everything
 else in the village is built as in the ring.
 
 Also, for the facades and gardens drawn around the plot: which wall of each
@@ -297,10 +297,67 @@ def hull(plot):
 
 
 def zone(plot):
-    """The original hull, Molenhoek's western band and the eastward extension (Lambert 72).
+    """The original hull, Molenhoek's western band, the eastward extension and the way to the Sparrenhof (Lambert 72).
     Tree budgets, roof colours and ground covers are chosen separately for each extension.
     """
+    return unary_union([before(plot), sparrenhof(plot)])
+
+
+def before(plot):
+    """The area before the way to the Sparrenhof (Lambert 72): the hull, Molenhoek's band and the eastward extension."""
     return unary_union([hull(plot), band(), east(plot)])
+
+
+# The Sparrenhof (Yoshi, 5 Nov 2026): a café on Oud-Smetlede at the edge of a wood, about 1.2 km north-west of the plot,
+# in the strip `w2` (tools/geodata.py). The map reaches it along the streets that lead there from the area before, with
+# what the open data gives on the way, as in the ring. SPARRENHOF: its forecourt (Lambert 72), between the café and the
+# road. AROUND_CAFE: metres round it (the café, the forecourt, the lane beside it and the wood round them); STREET_SIDE:
+# metres either side of a street's centre line on the way (as beside the streets of the eastward extension). Its trees:
+# at most SPARRENHOF_TREES, SPARRENHOF_GAP metres apart at least, as in the woods of the outer ring.
+SPARRENHOF, AROUND_CAFE, STREET_SIDE = (117797.5, 185267.5), 150.0, 55.0
+SPARRENHOF_TREES, SPARRENHOF_GAP = 1500, 7.0
+
+
+def way_to(start, end):
+    """The shortest way along the streets (not the paths or tracks) from near `start` to near `end` (Lambert 72 points),
+    as [(piece of centre line, its street's name)], or [] if the streets don't join them."""
+    import networkx as nx
+    g = nx.Graph()
+    key = lambda c: (round(c[0], 1), round(c[1], 1))
+    for f in features("Wegsegment"):
+        geometry, props = f.get("geometry"), f["properties"]
+        kind = props.get("LBLMORF", "")
+        if not geometry or geometry["type"] != "LineString" or kind == "aardeweg" or kind.startswith("wandel"):
+            continue
+        coords = [p[:2] for p in geometry["coordinates"]]
+        for a, b in zip(coords, coords[1:]):
+            g.add_edge(key(a), key(b), w=math.dist(a, b), name=props.get("LSTRNM", ""))
+    if not g:
+        return []
+    near = lambda p: min(g.nodes, key=lambda n: (math.dist(n, p), n))
+    try:
+        path = nx.shortest_path(g, near(start), near(end), weight="w")
+    except nx.NetworkXNoPath:
+        return []
+    return [(LineString([a, b]), g.edges[a, b]["name"]) for a, b in zip(path, path[1:])]
+
+
+def sparrenhof(plot):
+    """The way to the Sparrenhof (Lambert 72), with `geodata.py --strip w2`: AROUND_CAFE round its forecourt, the streets
+    from the area before to it (the shortest way from the plot: Oud-Smetlede) STREET_SIDE either side, and the gardens of
+    the houses along them. Only what is joined to the area before, and without it."""
+    if "w2" not in ACTIVE_STRIPS:
+        return Polygon()
+    old = before(plot)
+    steps = [line.buffer(STREET_SIDE, 16) for line, _ in way_to((plot.centroid.x, plot.centroid.y), SPARRENHOF)
+             if not old.contains(line)]
+    corridor = unary_union(steps + [Point(SPARRENHOF).buffer(AROUND_CAFE, 32)])
+    gardens = [p.buffer(15, 8) for f in features("GBG") for p in polygons(f["geometry"])
+               if corridor.contains(p.centroid) and not old.contains(p.centroid)]
+    joined = unary_union([old, corridor, *gardens])
+    connected = next((p for p in getattr(joined, "geoms", [joined])
+                      if p.geom_type == "Polygon" and p.contains(plot.centroid)), Polygon())
+    return connected.difference(old)
 
 
 def east(plot):
@@ -591,14 +648,20 @@ def main():
     in_band = prep(rest) if not rest.is_empty else None
     eastern = east(plot).difference(old.buffer(0.5))
     in_east = prep(eastern) if not eastern.is_empty else None
+    # The way to the Sparrenhof: the wood round the café reads as a wood, a tree every SPARRENHOF_GAP metres where the
+    # laser saw one.
+    northwest = sparrenhof(plot)
+    in_northwest = prep(northwest) if not northwest.is_empty else None
     # (centre, radius or None for the zone beyond the ring or "band" for the band, cap in all or None, more on top, gap, lowest)
     tiers = [((cx, cy), RADIUS, 60, 0, 4.0, 3.0), ((cx, cy), 240, 320, 0, 4.0, 3.0), ((cx, cy), AREA, 1700, 0, 7.0, 5.0),
              (CHURCH, 160, None, 260, 4.0, 3.0), (None, None, None, 1400, 7.0, 5.0)] + ([(None, "band", None, 450, 7.0, 5.0)] if in_band else [])
     tiers += [(None, "east", None, 300, 7.0, 5.0)] if in_east else []
+    tiers += [(None, "sparrenhof", None, SPARRENHOF_TREES, SPARRENHOF_GAP, 5.0)] if in_northwest else []
+    regions = {"band": (rest, in_band), "east": (eastern, in_east), "sparrenhof": (northwest, in_northwest)}
     for at, radius, cap, more, gap, low in tiers:
         cap = cap or len(trees) + more
         if radius is None or isinstance(radius, str):
-            bx0, by0, bx1, by1 = (old if radius is None else rest if radius == "band" else eastern).bounds
+            bx0, by0, bx1, by1 = (old if radius is None else regions[radius][0]).bounds
             r0, c0 = max(0, int(TILE_Y1 - by1)), max(0, int(bx0 - TILE_X0))
             window = ndsm[r0:int(TILE_Y1 - by0), c0:int(bx1 - TILE_X0)]
         else:
@@ -610,8 +673,8 @@ def main():
             if h < low or len(trees) >= cap:
                 break
             x, y = TILE_X0 + c0 + col + 0.5, TILE_Y1 - (r0 + row) - 0.5
-            outside = (not beyond.contains(Point(x, y)) if radius is None else not in_band.contains(Point(x, y)) if radius == "band"
-                       else not in_east.contains(Point(x, y)) if radius == "east"
+            outside = (not beyond.contains(Point(x, y)) if radius is None
+                       else not regions[radius][1].contains(Point(x, y)) if isinstance(radius, str)
                        else math.dist((x, y), at) > radius)
             if outside or not room(x, y, gap) or keep_out.contains(Point(x, y)):
                 continue
@@ -629,9 +692,11 @@ def main():
     # The road surface in the area of before as it was cut then; the band's on its own beside it.
     reach_old = old.buffer(20)
     reach_band = band().buffer(20).difference(reach_old) if in_band else None
-    reach_east = area.buffer(20).difference(unary_union([reach_old, band().buffer(20)])) if in_east else None
+    area_before = before(plot)
+    reach_east = area_before.buffer(20).difference(unary_union([reach_old, band().buffer(20)])) if in_east else None
+    reach_northwest = area.buffer(20).difference(area_before.buffer(20)) if in_northwest else None
     for poly in getattr(roads, "geoms", [roads]):
-        pieces = [poly.intersection(reach) for reach in (reach_old, reach_band, reach_east) if reach is not None]
+        pieces = [poly.intersection(reach) for reach in (reach_old, reach_band, reach_east, reach_northwest) if reach is not None]
         clipped = shapely.GeometryCollection([g for piece in pieces for g in getattr(piece, "geoms", [piece])])
         for part in getattr(clipped, "geoms", [clipped]):
             if part.geom_type != "Polygon":
@@ -659,8 +724,9 @@ def main():
     # before the band).
     old_area = prep(hull(plot))
     in_ring = [0 if f.centroid.distance(centre) <= AREA else 1 if old_area.contains(f.centroid)
-               else 3 if in_east and in_east.contains(f.centroid) else 2 for f in footprints]
-    for group in (0, 1, 2, 3):
+               else 3 if in_east and in_east.contains(f.centroid)
+               else 4 if in_northwest and in_northwest.contains(f.centroid) else 2 for f in footprints]
+    for group in (0, 1, 2, 3, 4):
         roofs_rgb = [(b, q) for b, r in zip(buildings, in_ring) if r == group for q in b["parts"] if q["color"]]
         if len(roofs_rgb) <= 8:
             continue

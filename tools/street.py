@@ -50,7 +50,7 @@ from shapely.strtree import STRtree
 
 import crops
 import old_house
-from neighbours import TILE_H, TILE_W, TILE_X0, TILE_Y1, band, east, features, hull, model_frame, ortho_image, polygons, raster, zone
+from neighbours import TILE_H, TILE_W, TILE_X0, TILE_Y1, band, east, features, hull, model_frame, ortho_image, polygons, raster, sparrenhof, zone
 
 ROOT = Path(__file__).resolve().parents[1]
 OUT = ROOT / "data" / "street.json"
@@ -577,7 +577,9 @@ def main():
     old = model(hull(plot))
     rest = model(band()).difference(old.buffer(0.5)) if not band().is_empty else Polygon()  # no slivers along the old edge
     eastern = model(east(plot)).difference(old.buffer(0.5))
-    regions = [old] + [part for part in (rest, eastern) if not part.is_empty]
+    # The way to the Sparrenhof, after the others: no crop fields there either, only the woods' floor under the trees.
+    northwest = model(sparrenhof(plot))
+    regions = [old] + [part for part in (rest, eastern, northwest) if not part.is_empty]
 
     def owner(line):
         # A plot line crossing the old edge goes with its extension, once only.
@@ -587,7 +589,7 @@ def main():
     out, ras, road = build(old, plot, roads_l72, to_model, nb, lambda line: owner(line) == 0)
     for i, region in enumerate(regions[1:], 1):
         more, _, _ = build(region, plot, roads_l72, to_model, nb, lambda line: owner(line) == i,
-                           grow_fields=not region.equals(eastern))
+                           grow_fields=False if region.equals(eastern) else "forest" if region.equals(northwest) else True)
         offset = len(out["poles"])
         for k in ("roads", "poles", "tracks", "water", "pavings", "pools", "hedges", "fields", "lawns", "meadows"):
             out[k] = out[k] + more[k]
@@ -667,6 +669,8 @@ def build(area, plot, roads_l72, to_model, nb, mine, grow_fields=True):
     tracks_area = unary_union([LineString(t["path"]).buffer(1.2) for t in track_list]) if track_list else Polygon()
     declared = crops.parcels(model)
     field_list = fields(ras, veg, all_plots, homes, unary_union([keep_out, meadow, yards, tracks_area, road.buffer(1.0)]), area, declared) if grow_fields else []
+    if grow_fields == "forest":  # only the woods' floor, no crops
+        field_list = [f for f in field_list if f["m"] == "forest"]
 
     out = {
         "_source": "GRB (Wegsegment, WPI, WTZ, ADP) and the orthophoto (Digitaal Vlaanderen, open data); laser scan DHM II 2013-2015; "

@@ -7,7 +7,7 @@ from unittest.mock import patch
 
 import numpy as np
 from PIL import Image
-from shapely.geometry import Point, Polygon
+from shapely.geometry import LineString, Point, Polygon
 
 import neighbours as nb
 
@@ -69,6 +69,37 @@ class MapExtensionTests(unittest.TestCase):
             extension = nb.east(plot)
             self.assertTrue(extension.contains(Point(119600, 184981)))
             self.assertFalse(extension.contains(Point(119550, 184550)))
+
+    def test_without_sparrenhof_download_keeps_area(self):
+        plot = Point(118911, 184981)
+        with patch.object(nb, "ACTIVE_STRIPS", {"e": ()}), patch.object(nb, "band", return_value=Polygon()):
+            self.assertTrue(nb.sparrenhof(plot).is_empty)
+            self.assertTrue(nb.zone(plot).equals(nb.before(plot)))
+
+    def test_way_to_sparrenhof_follows_the_street(self):
+        # A street from the plot west and on north-west to the café, a track beside it that is shorter, and a street
+        # that goes elsewhere.
+        cafe = nb.SPARRENHOF
+        bend = (118300, 184700)
+        street = {"LBLMORF": "weg bestaande uit één rijbaan", "LSTRNM": "Oud-Smetlede"}
+        roads = [([(118911, 184981), (118500, 184800), bend], street), ([bend, (cafe[0] + 5, cafe[1])], street),
+                 ([(118911, 184981), (cafe[0] + 5, cafe[1])], {"LBLMORF": "aardeweg", "LSTRNM": "nvt"}),
+                 ([bend, (118300, 184200)], {"LBLMORF": "weg bestaande uit één rijbaan", "LSTRNM": "Elders"})]
+        features = [{"geometry": {"type": "LineString", "coordinates": line}, "properties": props} for line, props in roads]
+        plot = Point(118911, 184981)
+        with patch.object(nb, "features", side_effect=lambda name, **kw: features if name == "Wegsegment" else []), \
+                patch.object(nb, "ACTIVE_STRIPS", {"w2": ()}), patch.object(nb, "band", return_value=Polygon()):
+            way = nb.way_to((plot.x, plot.y), cafe)
+            self.assertEqual({name for _, name in way}, {"Oud-Smetlede"})
+            extension = nb.sparrenhof(plot)
+            old = nb.hull(plot)
+            self.assertLess(extension.intersection(old).area, 1e-6)
+            self.assertTrue(extension.contains(Point(cafe)))
+            self.assertTrue(extension.contains(Point(cafe[0] - 140, cafe[1])))  # the wood round the café
+            mid = LineString([bend, cafe]).interpolate(0.5, normalized=True)
+            self.assertTrue(extension.contains(Point(mid.x + 50 * 0.6, mid.y + 50 * 0.8)))  # beside the street
+            self.assertFalse(extension.contains(Point(118300, 184150)))  # the street that goes elsewhere
+            self.assertFalse(extension.contains(Point(118137, 185181)))  # the field beside the shorter track
 
     def test_rasters_and_photos_align_west_base_east(self):
         with tempfile.TemporaryDirectory() as folder:
