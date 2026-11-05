@@ -4,18 +4,17 @@ Last update: 2026-11-05
 
 <!-- The handover: rewrite these four at the end of every session (AGENTS.md, "Working efficiently"). Keep each short. -->
 
-**Live:** brieltje.be runs `main`. New on 5 Nov: arriving by parachute (#3 by LaurensRiviere, merged through #5), since the evening from 80 m with a free fall, smoother to watch, and also at a fresh start at the house; the church square after Yoshi's photos of 5 November (the church's west door, calvary chapel, quoins, antennas, flags, memorial stones; the houses round the square; the gate behind the portal stands open); garden fences can be jumped over; baked light and wear on the ten building models of our own (no green, Yoshi's call), part of loading for the houses at home; GPU-compressed KTX2 textures (half size on phones). Also the working-efficiently rules, dev tools (`tools/dev/`) and code map (`docs/CODEMAP.md`).
+**Live:** brieltje.be runs `main`. New on 5 Nov: the skydive arrival (170 m, free fall you steer, open the parachute yourself, third person; starts, respawns, Zombies with waves waiting for the landing, and `/parachute`); the café Sparrenhof (our own Blender model) and the map up Oud-Smetlede to it, with an eighth portal; the church square after Yoshi's photos; garden fences to jump over; baked light and wear on our own building models; GPU-compressed KTX2 textures; new start-screen stills (with the school and the Sparrenhof) and the README for 5 November.
 
-**In progress:** nothing half done. The parachute worker's worktree (`.claude/worktrees/agent-aeb5e2df2c154e7e2`) is still locked by its process; its work is on `main`: remove it once unlocked.
+**In progress:** nothing half done. The worktree `.claude/worktrees/agent-aeb5e2df2c154e7e2` is still locked by its old process; its work is on `main`: remove it once unlocked.
 
-**Next command:** to re-bake after a model changed, see `docs/DETAILS.md` ("Baked light and wear"): `tools/bake/lightmap_uv.py`, the export in the dev page, `tools/bake/bake_buildings.py`, `tools/bake/encode_buildings.py`.
+**Next command:** a re-bake after a model changed: `docs/DETAILS.md` ("Baked light and wear"). New stills: the views are in `tools/still/views.json`; export each from the dev page with `tools/still/export_scene.js` (`window.stillView` set to the view, the player moved near it), then `blender -b -P tools/still/render_still.py -- <dir> <out.png> 2560 256 [exposure]` and `tools/still/encode_still.py`.
 
 **Open questions:**
-- The ping spikes at the start of play are not the bake: with and without `?nobake` the page stalls about 1 s just after loading and 0.7 to 1.9 s about 5 to 7 s into play, when the village is built. Whether to spread the village's building over more frames.
-- Whether the main house (outside and the rooms) gets the same bake; it is built in code, so it needs its own export step (the old "Baked lighting (test)" setting is still there).
-- The village's open-data blocks (about 250 houses) keep real-time light; whether they get a cheaper bake too.
-- From the graphics ideas, next: TAA with upscaling on High and Ultra, then cascaded sun shadows, reflections and bloom.
-- Not tested on a real iPhone, iPad or Android phone, nor with a real controller under a parachute.
+- Tree crowns seen from below render as dark smooth shapes in Cycles (the Sparrenhof and bungalow stills); a leaf-card or alpha-leaf look in the renders would fix it.
+- The ping spikes at the start of play come from the village being built a few seconds in; whether to spread it over more frames.
+- Whether the main house gets the same bake; the village's open-data blocks keep real-time light.
+- Not tested on a real iPhone, iPad, Android phone or controller (the skydive's touch buttons were only emulated).
 
 ## Done
 
