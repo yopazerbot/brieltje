@@ -386,6 +386,8 @@ const en = {
   'touch.use': 'Use',
   'touch.down': 'Down',
   'touch.run': 'Run',
+  'touch.open': 'Open',
+  'touch.dive': 'Dive',
 
   // ---- HUD while playing
   'hud.pad': 'Controller: {name}',
@@ -417,8 +419,9 @@ const en = {
   'prompt.edgeHere': 'During the game you stay where it is played.',
   'prompt.fly': 'Flying · hold {up} up, {down} down',
   'prompt.noShoot': 'School grounds · no shooting here',
-  'prompt.chute': 'Under your parachute · steer left and right',
-  'prompt.fall': 'Free fall · your parachute opens by itself',
+  'prompt.chute': 'Under your parachute · {move}: left and right turn, forward is faster, back brakes',
+  'prompt.fall': 'Free fall · {move} to steer · hold {dive} to dive · {open} opens your parachute',
+  'prompt.stick': 'the stick',
   'prompt.locked': 'Only accessible in multiplayer.\nWant to look around solo? Contact Yoshi at yoshi@brieltje.be',
   'fb.title': 'Enjoying Brieltje?',
   'fb.sub': 'A quick rating helps Yoshi. Everything here is optional.',
@@ -1136,6 +1139,8 @@ const nl = {
   'touch.use': 'Gebruik',
   'touch.down': 'Omlaag',
   'touch.run': 'Ren',
+  'touch.open': 'Open',
+  'touch.dive': 'Duik',
 
   // ---- HUD while playing
   'hud.pad': 'Controller: {name}',
@@ -1168,8 +1173,9 @@ const nl = {
   'prompt.edgeHere': 'Tijdens het spel blijf je waar het gespeeld wordt.',
   'prompt.fly': 'Vliegen · houd {up} ingedrukt om te stijgen, {down} om te dalen',
   'prompt.noShoot': 'Schoolterrein · hier wordt niet geschoten',
-  'prompt.chute': 'Aan je parachute · stuur naar links en rechts',
-  'prompt.fall': 'Vrije val · je parachute gaat vanzelf open',
+  'prompt.chute': 'Aan je parachute · {move}: links en rechts draaien, vooruit gaat sneller, achteruit remt',
+  'prompt.fall': 'Vrije val · stuur met {move} · houd {dive} ingedrukt om te duiken · {open} opent je parachute',
+  'prompt.stick': 'de stick',
   'prompt.locked': 'Alleen toegankelijk in multiplayer.\nWil je solo rondkijken? Contacteer Yoshi via yoshi@brieltje.be',
   'fb.title': 'Vind je Brieltje leuk?',
   'fb.sub': 'Een snelle score helpt Yoshi. Alles hier is vrijblijvend.',

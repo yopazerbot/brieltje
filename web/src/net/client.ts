@@ -41,7 +41,7 @@ export interface Rules {
   travel: boolean;
   /** Child-friendly for everyone: Action plays as Paintball on every page (src/paintball.ts); missing from an older server */
   paintball?: boolean;
-  /** Arriving by parachute: respawns on open ground, the start place and the Zombies game (shared/parachute.mjs); missing from an older server */
+  /** Arriving by parachute: respawns on open ground, the start places and /parachute (shared/parachute.mjs); missing from an older server */
   parachute?: boolean;
 }
 
@@ -70,8 +70,8 @@ export type ServerMsg =
   | ({ t: 'travel'; name: string; to: string; ok: boolean; car?: string | null; text?: string } & Coded)
   /** The start place picked on the start screen was refused (portals off): where the server has you. */
   | { t: 'spawn'; ok: false; x: number; z: number }
-  /** Taken: by parachute onto (x, z), coming in facing `yaw` (the start place's, or the house's start: HOME_DROP) */
-  | { t: 'spawn'; ok: true; drop?: 1; x: number; z: number; yaw?: number }
+  /** Taken: by parachute onto (x, z), coming in facing `yaw` (the start place's, or the house's start: HOME_DROP), starting over (sx, sz) */
+  | { t: 'spawn'; ok: true; drop?: 1; x: number; z: number; yaw?: number; sx?: number; sz?: number }
   /** /parachute refused (server/game.mjs manualDrop): why, as a code the page translates */
   | ({ t: 'chute'; ok: false } & Coded)
   | { t: 'mode'; mode: ModeView }
@@ -106,7 +106,7 @@ export type ServerMsg =
   | { t: 'furn'; op: 'del'; id: number }
   | { t: 'furn'; op: 'all'; list: Piece[]; by: string; reset: boolean }
   /** `x, z`: where near the spawn point, when the server spreads everyone out (a party game's start) */
-  | { t: 'respawn'; name: string; spawn: number; x?: number; z?: number; y?: number; fx?: number; fz?: number; drop?: 1 }
+  | { t: 'respawn'; name: string; spawn: number; x?: number; z?: number; y?: number; fx?: number; fz?: number; drop?: 1; sx?: number; sz?: number }
   | { t: 'round'; winner: string; ms: number }
   | ({ t: 'newround'; text: string } & Coded)
   | { t: 'glass'; i: number; by: string }

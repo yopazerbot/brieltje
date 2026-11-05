@@ -358,10 +358,10 @@ export class Avatars {
   /** Names above players: the admin can turn them off (they show through walls). */
   showNames = true;
   /**
-   * Each frame for each figure after it is posed: whether they are under a parachute and how high over
-   * the ground (world/parachutes.ts draws it and poses the figure in its harness).
+   * Each frame for each figure after it is posed: whether they are in a drop, whether its canopy is out, and how
+   * high over the ground (world/parachutes.ts draws it and poses the figure in its harness).
    */
-  onFigure: (name: string, root: THREE.Group, body: Body, colour: string, chute: boolean, air: number, dt: number) => void = () => {};
+  onFigure: (name: string, root: THREE.Group, body: Body, colour: string, chute: boolean, open: boolean, air: number, dt: number) => void = () => {};
   readonly group = new THREE.Group();
   /** A footstep of another player at their feet (speed in m/s) */
   onStep: (name: string, at: THREE.Vector3, speed: number) => void = () => {};
@@ -411,11 +411,16 @@ export class Avatars {
     a.marks = [ring, label];
   }
 
-  add(name: string, color: string): void {
-    if (this.avatars.has(name)) return;
+  /** A player's figure in their colour and outfit, as everyone draws it. */
+  figure(name: string, color: string): Body {
     const i = COLORS.indexOf(color);
     const k = i >= 0 ? i : [...name].reduce((h, c) => h + c.charCodeAt(0), 0) % OUTFITS.length;
-    const body = hasSwat() ? buildSwat(name, color, SWAT_OUTFITS[k], hitMaterial, headBox, bodyBox) : buildFigure(name, color, OUTFITS[k]);
+    return hasSwat() ? buildSwat(name, color, SWAT_OUTFITS[k], hitMaterial, headBox, bodyBox) : buildFigure(name, color, OUTFITS[k]);
+  }
+
+  add(name: string, color: string): void {
+    if (this.avatars.has(name)) return;
+    const body = this.figure(name, color);
     const root = new THREE.Group();
     root.userData.figure = true; // paintball's paint sticks on the body inside the hit boxes (weapon.ts)
     const tag = nameTag(name, color);
@@ -567,7 +572,7 @@ export class Avatars {
         speed: a.speed, forward: a.forward, side: a.side, armed: t.armed, alive, crouch: t.c && !seat, flying: t.flying,
         pitch, weapon: t.w as WeaponId, yaw, air: Math.max(0, y - ground), vy: a.vy, seat: seat ? seat.yaw + Math.PI : null, far,
       });
-      this.onFigure(name, a.root, a.body, a.color, !!t.chute && alive && !t.d, ground === y && far >= 80 ? 99 : Math.max(0, y - ground), dt); // far off the ground isn't looked up: not flaring
+      this.onFigure(name, a.root, a.body, a.color, !!t.chute && alive && !t.d, !!t.open, ground === y && far >= 80 ? 99 : Math.max(0, y - ground), dt); // far off the ground isn't looked up: not flaring
 
       // A footstep as each foot comes down (the block figures: one per stride, about 0.85 m walking, 1.2 m running).
       let step = false;

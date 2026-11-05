@@ -47,6 +47,13 @@ interface Rest {
   s: THREE.Vector3;
 }
 
+/**
+ * Where a free fall puts the hands, elbows, ankles and knees instead of the guides (world/parachutes.ts: the box
+ * position, tracking, a dive), in the parachute's own space (m: the figure upright at rest, forward -z). See apply.
+ */
+export type FallPose = Record<'Grip_L' | 'Grip_R' | 'Elbow_L' | 'Elbow_R' | 'Foot_L' | 'Foot_R' | 'Shin_L' | 'Shin_R', THREE.Vector3>;
+const _f = new THREE.Vector3();
+
 export class PilotPose {
   private rest = new Map<THREE.Object3D, Rest>();
   /** The pose the figure had before `apply` (its own animation), for mixing */
@@ -64,7 +71,7 @@ export class PilotPose {
    * holder: the group both are in, at the foot origin; chute: the parachute's scene (its guides at rest);
    * figure: the figure's root (Body.root from net/swat.ts), at rest.
    */
-  constructor(private holder: THREE.Object3D, chute: THREE.Object3D, private figure: THREE.Object3D) {
+  constructor(private holder: THREE.Object3D, private chute: THREE.Object3D, private figure: THREE.Object3D) {
     // Start from the figure's bind pose (arms out, as in Blender), not the pose its nodes load in.
     figure.traverse((o) => (o as THREE.SkinnedMesh).isSkinnedMesh && (o as THREE.SkinnedMesh).skeleton.pose());
     holder.updateMatrixWorld(true);
@@ -175,8 +182,9 @@ export class PilotPose {
   /**
    * Pose the figure on the guides. Call after the parachute's mixer has run and its matrices are current.
    * `weight` below 1 mixes that pose with the one the figure had (its own animation): to hand it back gently.
+   * `fall` moves the hands, elbows, ankles and knees that much (0..1) towards `fallPose` instead (a free fall).
    */
-  apply(hideHead = false, weight = 1): void {
+  apply(hideHead = false, weight = 1, fall = 0, fallPose: FallPose | null = null): void {
     const mix = weight < 1;
     if (mix) for (const [b, k] of this.keep) k.p.copy(b.position), k.q.copy(b.quaternion), k.s.copy(b.scale);
     for (const [b, r] of this.rest) {
@@ -185,16 +193,20 @@ export class PilotPose {
       b.scale.copy(r.s);
     }
     this.holder.updateMatrixWorld(true);
+    const at = (n: keyof FallPose): THREE.Vector3 => {
+      const p = this.guide(n).getWorldPosition(new THREE.Vector3());
+      return fallPose && fall > 0 ? p.lerp(_f.copy(fallPose[n]).applyMatrix4(this.chute.matrixWorld), fall) : p;
+    };
     this.follow('Body', 'Pilot');
     for (const [s] of SIDES) {
-      const ankle = this.guide(`Foot_${s}`).getWorldPosition(new THREE.Vector3());
-      const knee = this.guide(`Shin_${s}`).getWorldPosition(new THREE.Vector3());
+      const ankle = at(`Foot_${s}`);
+      const knee = at(`Shin_${s}`);
       this.reach(this.bone(`UpperLeg${s}`), this.bone(`LowerLeg${s}`), this.bone(`LowerLeg${s}_end`), ankle, knee);
       this.follow(`Foot${s}`, `Foot_${s}`);
-      const grip = this.guide(`Grip_${s}`).getWorldPosition(new THREE.Vector3());
+      const grip = at(`Grip_${s}`);
       const shoulder = this.bone(`UpperArm${s}`).getWorldPosition(new THREE.Vector3());
       const wrist = grip.clone().addScaledVector(grip.clone().sub(shoulder).normalize(), -0.05);
-      const elbow = this.guide(`Elbow_${s}`).getWorldPosition(new THREE.Vector3());
+      const elbow = at(`Elbow_${s}`);
       this.reach(this.bone(`UpperArm${s}`), this.bone(`LowerArm${s}`), this.bone(`Wrist${s}`), wrist, elbow);
     }
     for (const c of this.curl) c.bone.quaternion.copy(c.q);

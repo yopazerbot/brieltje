@@ -2,7 +2,7 @@
 
 export const PROTO: number;
 export const TICK_MS: number;
-export const FLAG: { armed: number; flying: number; crouch: number; car: number; alive: number; safe: number; chute: number };
+export const FLAG: { armed: number; flying: number; crouch: number; car: number; alive: number; safe: number; chute: number; open: number };
 
 /** One entry of a tick's list, as it travels. */
 export type Entry = unknown[];
@@ -34,8 +34,10 @@ export interface PlayerSample {
   safe: boolean;
   warp: number;
   w: string;
-  /** Under a parachute (shared/parachute.mjs) */
+  /** In a drop (shared/parachute.mjs) */
   chute: boolean;
+  /** Its canopy is out (before it: the free fall) */
+  open: boolean;
 }
 
 export interface CarSample {

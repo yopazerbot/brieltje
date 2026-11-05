@@ -36,8 +36,10 @@ const HOUSE_SPAWNS = spawns.flatMap((s, i) => (s.team === 'house' ? [i] : []));
 const OUTSIDE_SPAWNS = HOUSE_SPAWNS.filter((i) => spawns[i].outside);
 import { api, errorText, Net, type Me, type Rules, type ServerMsg } from './net/client';
 import { Avatars } from './net/avatars';
+import type { Body } from './net/swat';
 import { Parachutes } from './world/parachutes';
-import { DROP, dropStart, fly, HOME_DROP } from '../shared/parachute.mjs';
+import { DropView } from './world/dropView';
+import { DROP, dropStart, HOME_DROP } from '../shared/parachute.mjs';
 import { netClock } from './net/track';
 import { PROTO, readBrute, readCar, readHorse, readPlayer, readZombie, type Tick } from '../shared/wire.mjs';
 import { sound } from './sound';
@@ -855,24 +857,46 @@ const avatars = new Avatars();
 scene.add(avatars.group);
 avatars.onStep = (_name, at, speed) => footstep(surfaceOf(world.groundAt(at.x, at.z, at.y + 0.3, 0.6).mat), Math.min(1, 0.35 + speed / 5), at);
 avatars.groundAt = (x, z, y) => world.groundAt(x, z, y + 0.3, 0.6).y;
-// Arriving by parachute (shared/parachute.mjs): the others' on their figures, yours overhead (world/parachutes.ts).
+// Arriving by parachute (shared/parachute.mjs): everyone's on their figures (world/parachutes.ts), yours filmed
+// from behind while you jump (world/dropView.ts).
 const parachutes = new Parachutes();
 const myChute = new THREE.Group();
 scene.add(myChute);
-avatars.onFigure = (name, root, body, colour, chute, air, dt) => parachutes.fly(name, root, body, colour, chute, air, dt, camera.position);
+const dropView = new DropView((colour) => avatars.figure(me?.username ?? '', colour), myChute, (x, z, y) => world.groundAt(x, z, y, 0).y);
+avatars.onFigure = (name, root, body, colour, chute, open, air, dt) => parachutes.fly(name, root, body, colour, chute, open, air, dt, camera.position);
 /**
  * Start a drop onto where you stand now (on the ground there, facing your way), or onto `at` facing its
- * yaw: from the drop's height over it, a little behind it so it lands there without steering
- * (shared/parachute.mjs), the free fall, then under the canopy. Alone when the rules allow it; together
- * when the server says so. The view keeps its pitch: player.ts eases it down, up at the canopy and ahead.
+ * yaw: from the drop's height over it, DROP.reach behind it so it lands there without steering
+ * (shared/parachute.mjs). A skydive you steer yourself: the free fall, the canopy you open (or that opens by
+ * itself), and a landing wherever you steer to. Alone when the rules allow it; together when the server says so,
+ * from where it says (`sx`, `sz`). A start beyond the game's edge is straight over the place instead.
  */
-function beginDrop(at?: { x: number; z: number; yaw: number; feet?: number }): void {
+function beginDrop(at?: { x: number; z: number; yaw: number; feet?: number; sx?: number; sz?: number }, from?: { sx?: number; sz?: number }): void {
   if (driving || riding || horses.mounted >= 0) return;
+  parachutes.load(); // in case it isn't in yet
   const [x, z, yaw] = at ? [at.x, at.z, at.yaw] : [player.x, player.z, player.yaw];
-  const from = dropStart(x, z, yaw);
-  player.place(from.x, from.z, (at ? at.feet ?? groundY(x, z) : player.feet) + DROP.height, yaw, player.pitch);
+  const told = from ?? at;
+  const given = typeof told?.sx === 'number' && typeof told?.sz === 'number';
+  let start = given ? { x: told!.sx!, z: told!.sz! } : dropStart(x, z, yaw);
+  if (!given && world.bounds && !world.bounds.inside(start.x, start.z)) start = { x, z };
+  player.place(start.x, start.z, (at ? at.feet ?? groundY(x, z) : player.feet) + DROP.height, yaw, player.pitch);
   player.startDrop();
   player.update(0, NO_INPUT, camera);
+}
+/** Your figure for your parachute (world/dropView.ts), from your first drop on. */
+let ownFigure: Body | null = null;
+/** Your colour, as the others see it. */
+const myColour = () => (me && online.get(me.username)) || '#e0733a';
+/** After the player has moved: a drop filmed from behind (or the camera on its way back into your eyes). */
+function filmDrop(dt: number): void {
+  dropView.update(dt, camera, player, parachutes.has('', ownFigure));
+}
+/** The hint in a drop, with the keys of the way you play: the free fall's, then the canopy's. */
+function dropPrompt(mode: 'kbm' | 'pad' | 'touch'): string {
+  const move = mode === 'touch' ? t('prompt.stick') : key('move', mode);
+  if (player.canopy !== null) return t('prompt.chute', { move });
+  const [dive, open] = mode === 'touch' ? [t('touch.dive'), t('touch.open')] : [key('down', mode), key('jump', mode)];
+  return t('prompt.fall', { move, dive, open });
 }
 avatars.seatOf = (name) => horses.seat(name); // a rider sits in the saddle as their horse is drawn
 const chat = new Chat();
@@ -1816,42 +1840,20 @@ function command(text: string): void {
   if ('to' in found) go(found.to);
   else chat.system(foundLine(typed, found));
 }
-/** /parachute: a drop onto where you stand. */
+/** /parachute: a skydive over where you stand. */
 const CHUTE_WORDS = new Set(['parachute', 'chute', 'para']);
 /**
- * /parachute (Yoshi): a drop from high up onto where you stand, as at a start. Alone the page starts it (on foot,
- * alive, outdoors, not in the Zombies game); together it asks the server, which checks again and decides it
- * (server/game.mjs manualDrop: also a minute between drops and none just after being hit).
+ * /parachute (Yoshi): a skydive from high up over where you stand, flown freely from there, as at a start. Alone
+ * the page starts it (on foot, alive, outdoors, not in the Zombies game); together it asks the server, which
+ * checks again and decides it (server/game.mjs manualDrop: also a minute between drops and none just after being hit).
  */
 function chuteCommand(): void {
   if (rules.parachute === false) return chat.system(() => t('srv.chuteOff'));
   if (!combat.alive || driving || riding || horses.mounted >= 0 || trip || player.chute !== null || solo) return chat.system(() => t('srv.chuteNotNow'));
   const ground = player.ground.name;
   if (ground && (roomNames.has(ground) || /floor|stairs/i.test(ground))) return chat.system(() => t('srv.chuteIndoors'));
-  const yaw = clearApproach(player.x, player.z, player.feet, player.yaw);
-  if (net.connected) net.send({ t: 'chute', yaw: +yaw.toFixed(3) });
-  else beginDrop({ x: player.x, z: player.z, yaw, feet: player.feet });
-}
-/** A drop's course every 0.1 s (shared/parachute.mjs): its height and how far it has come, for clearApproach. */
-const DROP_PATH = fly(1 / 10).path;
-/**
- * The way in for a drop onto (x, z) at `feet`: your own facing first, then turned an eighth at a time either way, the
- * first whose glide passes over everything on its way. Roofs, walls and crowns count as ground, so a glide over the
- * house across the lane landed on its roof instead of in the lane.
- */
-function clearApproach(x: number, z: number, feet: number, yaw0: number): number {
-  for (let k = 0; k < 8; k++) {
-    const yaw = yaw0 + (k % 2 ? 1 : -1) * Math.ceil(k / 2) * (Math.PI / 4);
-    const fx = -Math.sin(yaw), fz = -Math.cos(yaw);
-    const clear = DROP_PATH.every((p) => {
-      const back = DROP.reach - p.x;
-      if (back < 0.8) return true; // the touchdown itself
-      const h = feet + p.y;
-      return world.groundAt(x - fx * back, z - fz * back, h + 0.5, 0).y < h - 0.6;
-    });
-    if (clear) return yaw;
-  }
-  return yaw0;
+  if (net.connected) net.send({ t: 'chute' });
+  else beginDrop({ x: player.x, z: player.z, yaw: player.yaw, feet: player.feet });
 }
 /** The words that list what can be spawned (/spawn) or spawn the name after them, and those that take a thing away. */
 const SPAWN_WORDS = new Set(['spawn', 'zet', 'maak']);
@@ -2259,7 +2261,7 @@ net.onMessage = (m: ServerMsg) => {
     case 'respawn':
       if (m.name === me?.username) {
         respawnAt(m.spawn, m);
-        if (m.drop) beginDrop(); // the server chose open ground, by parachute
+        if (m.drop) beginDrop(undefined, m); // the server chose open ground, by parachute (and where it starts)
       } else avatars.respawn(m.name);
       break;
     case 'round':
@@ -2277,7 +2279,7 @@ net.onMessage = (m: ServerMsg) => {
     case 'spawn':
       if (m.ok) {
         // The start place (or the house's start), by parachute: up over where the server has us land.
-        if (m.drop && player.chute === null) beginDrop({ x: m.x, z: m.z, yaw: m.yaw ?? player.yaw });
+        if (m.drop && player.chute === null) beginDrop({ x: m.x, z: m.z, yaw: m.yaw ?? player.yaw, sx: m.sx, sz: m.sz });
         break;
       }
       // The start place was refused (the admin turned the portals off): back to where the server has us.
@@ -2601,6 +2603,11 @@ renderer.setAnimationLoop((now: number) => {
     } else if (frame.speedStep) {
       menu.setSpeed(menu.walkSpeed + frame.speedStep * 0.2);
     }
+    // A drop goes on behind the menu, hands off (the server holds it to the clock and to coming down).
+    if (pause && player.chute !== null) {
+      player.update(dt, NO_INPUT, camera);
+      filmDrop(dt);
+    }
   } else {
     if (frame.menuPressed && !chat.typing) openMenu();
     if (document.visibilityState === 'visible' && (playClock += dt) >= 60) {
@@ -2646,6 +2653,7 @@ renderer.setAnimationLoop((now: number) => {
       const still = games.blindfolded ? NO_INPUT : { ...NO_INPUT, mouseX: frame.mouseX, mouseY: frame.mouseY, lookX: frame.lookX, lookY: frame.lookY };
       player.update(dt, dead || games.blindfolded ? still : frame, camera);
     }
+    filmDrop(dt); // in a drop: filmed from behind
     // A blast nearby shakes the view for a moment (on top of where you look, so aim comes back).
     if (shake > 0.002) {
       const t = now / 1000;
@@ -2657,7 +2665,7 @@ renderer.setAnimationLoop((now: number) => {
     combat.showBoard(frame.scoreHeld && !!me);
     const inCar = driving || riding;
     const onHorse = horses.mounted >= 0; // you may shoot from the saddle
-    weapon.hidden = dead || inCar || games.peaceful || player.chute !== null; // hands on the toggles under a parachute
+    weapon.hidden = dead || inCar || games.peaceful || player.chute !== null || dropView.outside; // in a drop, and until the camera is back in your eyes
 
     // The portals: on a pad (or stopped on one in the car) the list of places opens, and takes the
     // number keys, the wheel or D-pad and E. Not on horseback, nor from the passenger seat.
@@ -2798,7 +2806,7 @@ renderer.setAnimationLoop((now: number) => {
     // The keys in the prompts come from the one table (src/shortcuts.ts). In Explore a click opens doors too.
     const doorKey = key(action ? 'use' : 'click', mode);
     const use = key('use', mode);
-    touch.setState(action, inCar);
+    touch.setState(action, inCar, player.chute === null ? null : player.canopy === null ? 'fall' : 'canopy');
     const speed = (v: number) => Math.round(Math.abs(v) * 3.6);
     const carLabel = carName(car.kind ?? car.id, car.spec.name);
     let prompt = target ? t(target.locked ? 'prompt.locked' : target.open ? 'prompt.close' : 'prompt.open', { key: doorKey, door: doorName(target.name) }) : '';
@@ -2830,7 +2838,8 @@ renderer.setAnimationLoop((now: number) => {
       kit.turrets ? t('loot.turretCount', { key: key('use', mode) }) : '',
     ].filter(Boolean).join('   ·   ') : '';
     hud.setGrenades(armed ? grenades.count : null, GRENADE.carry, grenades.nextIn, key('grenade', mode), pocket);
-    hud.setScope(weapon.scoped, inCar);
+    hud.setScope(weapon.scoped, inCar || dropView.outside);
+    document.body.classList.toggle('drop', dropView.outside); // filmed from behind: the hints go low, clear of your figure (style.css)
     // The flying controls for the first few seconds after taking off only (Yoshi: annoying when it stays).
     if (player.flying && !wasFlying) flyHint = 4;
     const onHorseNow = horses.mounted >= 0;
@@ -2851,7 +2860,7 @@ renderer.setAnimationLoop((now: number) => {
     const away = games.view.kind === 'zombies' && arenaOf(games.view.zombies?.place).id !== 'house';
     if (edgeHint > 0) hud.setPrompt(t(games.fenced ? (away ? 'prompt.edgeHere' : 'prompt.edgeGame') : 'prompt.edge'));
     calmHint = wasCalm ? calmHint - dt : 0;
-    if (player.chute !== null) hud.setPrompt(t(player.chute < DROP.fall ? 'prompt.fall' : 'prompt.chute'));
+    if (player.chute !== null) hud.setPrompt(dropPrompt(mode));
     else if (calmHint > 0) hud.setPrompt(t('prompt.noShoot'));
     lockHint -= dt;
     if (lockHint > 0 || target?.locked) hud.setPrompt(t('prompt.locked'), true);
@@ -2867,7 +2876,7 @@ renderer.setAnimationLoop((now: number) => {
         ? { x: cm(car.x), y: cm(car.y), z: cm(car.z), yaw: mrad(car.yaw), pitch: 0, flying: false, c: false, d: true, s: cm(car.steer) }
         : r
           ? { x: cm(r.x), y: cm(r.y + r.jump + 1.64), z: cm(r.z), yaw: mrad(player.yaw), pitch: mrad(player.pitch), flying: false, c: true, hy: mrad(r.yaw), hs: cm(r.speed), hj: cm(r.jump) } // seated in the saddle
-          : { x: cm(player.x), y: cm(player.feet), z: cm(player.z), yaw: mrad(player.yaw), pitch: mrad(player.pitch), flying: player.flying, c: player.crouching, ...(player.chute !== null ? { pc: 1 } : {}) };
+          : { x: cm(player.x), y: cm(player.feet), z: cm(player.z), yaw: mrad(player.yaw), pitch: mrad(player.pitch), flying: player.flying, c: player.crouching, ...(player.chute !== null ? { pc: 1, ...(player.canopy !== null ? { po: 1 } : {}) } : {}) };
       const state = { t: 'state', ...where, armed: weapon.enabled, w: weapon.current };
       const key = JSON.stringify(state);
       const changed = key !== sent.key;
@@ -2956,7 +2965,15 @@ renderer.setAnimationLoop((now: number) => {
   myChute.position.set(player.x, player.feet, player.z);
   myChute.rotation.y = player.yaw;
   parachutes.far = quality === 'low' ? 15 : 35;
-  parachutes.fly('', myChute, null, (me && online.get(me.username)) || '#e0733a', player.chute !== null, player.air, dt, camera.position, player.chute);
+  // Your own figure while filmed from behind: its own animation first (as the others'), then the parachute poses it.
+  ownFigure = dropView.own(myColour(), player.chute !== null);
+  if (ownFigure?.root.visible) {
+    ownFigure.animate(dt, {
+      speed: 0, forward: 0, side: 0, armed: false, alive: true, crouch: false, flying: false, pitch: 0, weapon: weapon.current,
+      yaw: player.yaw, air: player.air, vy: 0, seat: null, far: camera.position.distanceTo(myChute.position),
+    });
+  }
+  parachutes.fly('', myChute, ownFigure, myColour(), player.chute !== null, player.canopy !== null, player.air, dt, camera.position, player.canopy, dropView.outside);
   parachutes.sweep();
   countryside?.update(dt, camera);
   portals.update(dt, camera, renderer.domElement.height);
@@ -3374,6 +3391,7 @@ if (import.meta.env.DEV) {
       player,
       beginDrop,
       parachutes,
+      dropView,
       doors,
       weapon,
       glass,

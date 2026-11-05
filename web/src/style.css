@@ -297,6 +297,9 @@ body.paintball #killfeed .kf.me { border-color: var(--paint); }
 #capture-hint.show { display: block; }
 /* Both at once: the hint goes under the prompt, and beside the portal's list instead of under it. */
 #prompt.show + #capture-hint { top: calc(50% + 80px); }
+/* In a drop, filmed from behind (src/world/dropView.ts): the hints low on the screen, clear of your figure in the middle. */
+body.drop #prompt { top: auto; bottom: 96px; }
+body.drop #capture-hint, body.drop #prompt.show + #capture-hint { top: auto; bottom: 56px; }
 body:has(#travel:not(.hidden)) #capture-hint { left: auto; right: calc(50% - 60px); transform: none; }
 /* A short window (a laptop's browser): the kill feed stands left of who is online, clear of the weapons. */
 @media (max-height: 720px) {
@@ -347,6 +350,9 @@ body:has(#travel:not(.hidden)) #capture-hint { left: auto; right: calc(50% - 60p
 body.touch[data-touch=walk] #touch .t-jump, body.touch[data-touch=car] #touch .t-jump { right: 26px; bottom: 26px; width: 76px; height: 76px; font-size: 13px; }
 body.touch[data-touch=walk] #touch .t-use, body.touch[data-touch=car] #touch .t-use { right: 33px; bottom: 118px; }
 body.touch[data-touch=walk] #touch .t-down { right: 120px; bottom: 30px; width: 52px; height: 52px; }
+/* In a drop's free fall: Open (the canopy) in the corner, Dive beside it; under the canopy the stick alone. */
+body.touch[data-touch=fall] #touch .t-jump { right: 26px; bottom: 26px; width: 76px; height: 76px; font-size: 13px; border-color: var(--accent); }
+body.touch[data-touch=fall] #touch .t-down { right: 120px; bottom: 30px; width: 52px; height: 52px; }
 /* Clear of the notch on phones held sideways (the page runs under it: viewport-fit=cover), and of
    the status bar on a tablet started from the home screen. */
 #hud { left: env(safe-area-inset-left, 0px); right: env(safe-area-inset-right, 0px); top: env(safe-area-inset-top, 0px); }
@@ -417,10 +423,11 @@ body.touch:has(#scoreboard:not(.hidden)) #hud-top > :is(#death, #killfeed, #toas
    prompt is centred under the crosshair). */
 body.touch #prompt, body.touch #health { left: 210px; right: 320px; width: -webkit-fit-content; width: fit-content; margin: 0 auto; transform: none; }
 body.touch #prompt { right: 258px; }
-body.touch[data-touch=walk] #prompt, body.touch[data-touch=car] #prompt { right: 210px; }
+body.touch[data-touch=walk] #prompt, body.touch[data-touch=car] #prompt, body.touch[data-touch=fall] #prompt, body.touch[data-touch=canopy] #prompt { right: 210px; }
 body.touch[data-touch=walk] #health { right: 180px; }
 body.touch[data-touch=car] #health { right: 110px; }
 body.touch #prompt { top: calc(50% + 26px); white-space: normal; text-align: center; font-size: 14px; }
+body.touch.drop #prompt { top: auto; bottom: calc(64px + env(safe-area-inset-bottom, 0px)); }
 body.touch #health { bottom: calc(14px + env(safe-area-inset-bottom, 0px)); gap: 8px; font-size: 22px; }
 body.touch .hp-bar { width: 72px; }
 /* Sound and full screen while playing: icons in the row beside ☰. */

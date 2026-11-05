@@ -14,11 +14,12 @@ type Button = 'fire' | 'aim' | 'jump' | 'use' | 'reload' | 'nade' | 'weapon' | '
 
 /**
  * Which buttons show depends on what you are doing: walking (Explore, or on a horse), fighting
- * (Action on foot) or in a car (at the wheel or riding along). Each state
+ * (Action on foot), in a car (at the wheel or riding along), or in a drop (shared/parachute.mjs): the
+ * free fall (Open the canopy, Dive) and under the canopy (the stick steers). Each state
  * has its own arrangement in style.css (`body[data-touch=...]`), so no button is left where it
  * makes no sense, and the HUD keeps clear of the ones that show.
  */
-export type TouchState = 'walk' | 'fight' | 'car';
+export type TouchState = 'walk' | 'fight' | 'car' | 'fall' | 'canopy';
 
 // Each button's label (src/i18n.ts) in the states it shows in; '⇄' and '☰' are signs, the same in every language.
 const BUTTONS: [Button, Partial<Record<TouchState, PlainKey | '⇄' | '☰'>>][] = [
@@ -27,11 +28,11 @@ const BUTTONS: [Button, Partial<Record<TouchState, PlainKey | '⇄' | '☰'>>][]
   ['reload', { fight: 'touch.reload' }],
   ['nade', { fight: 'touch.nade' }],
   ['weapon', { fight: '⇄' }],
-  ['jump', { walk: 'touch.jump', fight: 'touch.jump', car: 'touch.brake' }], // the handbrake in a car
+  ['jump', { walk: 'touch.jump', fight: 'touch.jump', car: 'touch.brake', fall: 'touch.open' }], // the handbrake in a car, the canopy in a free fall
   ['use', { walk: 'touch.use', fight: 'touch.use', car: 'touch.use' }],
-  ['down', { walk: 'touch.down', fight: 'touch.down' }],
+  ['down', { walk: 'touch.down', fight: 'touch.down', fall: 'touch.dive' }],
   ['run', { walk: 'touch.run', fight: 'touch.run' }],
-  ['menu', { walk: '☰', fight: '☰', car: '☰' }],
+  ['menu', { walk: '☰', fight: '☰', car: '☰', fall: '☰', canopy: '☰' }],
 ];
 const label = (k: PlainKey | '⇄' | '☰') => (k === '⇄' || k === '☰' ? k : t(k));
 
@@ -155,9 +156,9 @@ export class TouchControls {
     document.body.classList.toggle('touch', on);
   }
 
-  /** Which buttons show: fighting on foot, walking, or in a car. */
-  setState(action: boolean, inCar: boolean): void {
-    const state: TouchState = inCar ? 'car' : action ? 'fight' : 'walk';
+  /** Which buttons show: in a drop (its free fall or under the canopy), fighting on foot, walking, or in a car. */
+  setState(action: boolean, inCar: boolean, drop: 'fall' | 'canopy' | null = null): void {
+    const state: TouchState = drop ?? (inCar ? 'car' : action ? 'fight' : 'walk');
     if (state === this.state) return;
     this.state = state;
     document.body.dataset.touch = state; // the layout for this state (style.css)

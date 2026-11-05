@@ -1,7 +1,7 @@
 import * as THREE from 'three';
 import type { FrameInput } from './controls/input';
 import type { Ground, World } from './world/collision';
-import { DROP, dropGlide, dropSink } from '../shared/parachute.mjs';
+import { DROP, dropStep } from '../shared/parachute.mjs';
 
 const EYE = 1.65;          // m, eye height above the floor
 const HEIGHT = 1.8;        // m, body height for head clearance
@@ -47,28 +47,25 @@ export class Player {
   /** This frame you pushed against the edge of the game or flew into its ceiling (main.ts says so) */
   atEdge = false;
   /**
-   * Under a parachute (shared/parachute.mjs): seconds since the drop began, or null on your feet. You
-   * glide forward and steer left and right (or turn with the mouse); no jumping, flying or crouching.
+   * In a drop (shared/parachute.mjs): seconds since it began, or null on your feet. The free fall first: the
+   * move keys steer it, the dive key (crouch) dives, jump opens the canopy. No jumping, flying or crouching.
    */
   chute: number | null = null;
-  /** Your feet over the ground under you (m): for the parachute's flare */
+  /** Seconds since your canopy began to open, or null (on your feet, or still in the free fall) */
+  canopy: number | null = null;
+  /** Your feet over the ground under you (m): for opening the canopy by itself and for the flare */
   air = 0;
   /** Landed from a drop */
   onChuteLand: () => void = () => {};
   /**
-   * The drop's camera (shared/parachute.mjs): the view looks down in the free fall, up as the canopy opens and
-   * ahead for the glide, eased, until you look round yourself. It rolls into turns and swings a little under
-   * the canopy (a pendulum: `roll` and `swing`, springs that settle by themselves after landing), and the knees
-   * give on touchdown (`dip`). Only the camera: where you aim and what the others see don't change.
+   * The drop's look (shared/parachute.mjs): the view (filmed from behind you, src/world/dropView.ts) looks down
+   * in the free fall and ahead under the canopy, eased, until you look round yourself. The knees give on
+   * touchdown (`dip`). Only the camera: where you aim and what the others see don't change.
    */
   private autoLook = false;
-  private steer = 0;
-  private roll = 0;
-  private rollV = 0;
-  private swing = 0;
-  private swingV = 0;
+  /** Under the canopy: the steering, picked up and let go of gently (-1 left .. 1 right) */
+  steer = 0;
   private dip = -1;
-  private lastVy = 0;
   private lastStep = 0;
   private vx = 0;
   private vz = 0;
@@ -95,12 +92,13 @@ export class Player {
 
   /** Put the player somewhere directly, camera included (used by the dev test hook). */
   place(x: number, z: number, feet: number, yaw: number, pitch: number): void {
-    Object.assign(this, { x, z, feet, yaw, pitch, vx: 0, vz: 0, vy: 0, eyeY: feet + EYE, flying: false, chute: null, roll: 0, rollV: 0, swing: 0, swingV: 0, dip: -1 });
+    Object.assign(this, { x, z, feet, yaw, pitch, vx: 0, vz: 0, vy: 0, eyeY: feet + EYE, flying: false, chute: null, canopy: null, dip: -1 });
   }
 
   /** Start a drop from where you are (place yourself up high first): the free fall, then the canopy. */
   startDrop(): void {
-    Object.assign(this, { chute: 0, flying: false, vy: 0, vx: 0, vz: 0, steer: 0, autoLook: true, lastVy: 0, lastStep: performance.now() });
+    Object.assign(this, { chute: 0, canopy: null, flying: false, vy: 0, vx: 0, vz: 0, steer: 0, autoLook: true, lastStep: performance.now() });
+    this.air = Math.max(0, this.feet - this.world.groundAt(this.x, this.z, this.feet, 0).y);
   }
 
   /**
@@ -133,21 +131,26 @@ export class Player {
     this.crouchT += ((this.crouching ? 1 : 0) - this.crouchT) * (1 - Math.exp(-dt * 12));
     const speed = (this.crouching ? this.walkSpeed * 0.45 : this.walkSpeed * (input.sprint ? SPRINT_FACTOR : 1)) * this.turbo;
     if (this.chute !== null) {
-      // Left and right steer (the parachute turns, picking up the turn and letting go of it gently), forward
-      // and back push the glide a little faster or slower.
+      // The skydive (shared/parachute.mjs): in the free fall the move keys track and slide and the dive key
+      // dives; jump opens the canopy. Under it left and right turn (picked up and let go of gently), forward
+      // and back glide faster or brake.
       this.chute += dt;
       this.crouching = false;
-      this.steer += (input.moveX - this.steer) * (1 - Math.exp(-dt * 4));
+      this.steer += ((this.canopy === null ? 0 : input.moveX) - this.steer) * (1 - Math.exp(-dt * 4));
       this.yaw -= this.steer * DROP.turn * dt;
-    } else this.steer = 0;
-    const sin = Math.sin(this.yaw);
-    const cos = Math.cos(this.yaw);
-    const glide = this.chute === null ? 0 : dropGlide(this.chute, this.air, input.moveY);
-    const tx = this.chute === null ? (-sin * input.moveY + cos * input.moveX) * speed : -sin * glide;
-    const tz = this.chute === null ? (-cos * input.moveY - sin * input.moveX) * speed : -cos * glide;
-    const blend = 1 - Math.exp(-12 * dt);
-    this.vx += (tx - this.vx) * blend;
-    this.vz += (tz - this.vz) * blend;
+      const s = { t: this.chute, open: this.canopy, vx: this.vx, vz: this.vz, vy: this.vy, air: this.air };
+      dropStep(s, { moveX: input.moveX, moveY: input.moveY, dive: input.downHeld, open: input.jumpPressed }, this.yaw, dt);
+      Object.assign(this, { canopy: s.open, vx: s.vx, vz: s.vz, vy: s.vy });
+    } else {
+      this.steer = 0;
+      const sin = Math.sin(this.yaw);
+      const cos = Math.cos(this.yaw);
+      const tx = (-sin * input.moveY + cos * input.moveX) * speed;
+      const tz = (-cos * input.moveY - sin * input.moveX) * speed;
+      const blend = 1 - Math.exp(-12 * dt);
+      this.vx += (tx - this.vx) * blend;
+      this.vz += (tz - this.vz) * blend;
+    }
 
     // Move in small steps so fast movement can't skip through thin glass. The edge of the game
     // stops you like a wall, after the walls (none of them can push you over it).
@@ -184,7 +187,12 @@ export class Player {
     const follow = !onFoot || target < this.eyeY - 0.4 ? 1 : 1 - Math.exp(-dt * 16);
     this.eyeY += (target - this.eyeY) * follow;
 
-    this.dropCamera(dt);
+    // The drop's look, until you look round yourself: down at the ground below in the free fall, ahead and
+    // down to where you are going under the canopy, nearly level for the touchdown.
+    if (this.chute !== null && this.autoLook) {
+      const look = this.canopy === null ? -0.6 : this.air < 12 ? -0.18 : -0.32;
+      this.pitch += (look - this.pitch) * (1 - Math.exp(-dt * 1.5));
+    }
     // Touching down from a drop: the knees give a little and straighten again (0.45 s).
     let knees = 0;
     if (this.dip >= 0) {
@@ -193,53 +201,22 @@ export class Player {
       if (this.dip >= 1) this.dip = -1;
     }
     camera.position.set(this.x, this.eyeY - this.down * 1.3 - knees, this.z);
-    camera.rotation.set(this.pitch + this.swing, this.yaw, this.down * 0.5 + this.roll, 'YXZ');
+    camera.rotation.set(this.pitch, this.yaw, this.down * 0.5, 'YXZ');
   }
 
   /**
-   * The drop's camera, each frame: where it looks (until you look yourself), its roll into turns and its
-   * swing, two lightly damped springs (a pendulum of about 2.4 s, as the pilot hangs under the canopy).
-   * On your feet the springs only settle.
-   */
-  private dropCamera(dt: number): void {
-    const t = this.chute;
-    if (t !== null && this.autoLook) {
-      // Down at the ground in the free fall, up at the canopy as it opens, then ahead and down to where you land.
-      const opening = t >= DROP.fall + 0.2 && t < DROP.fall + DROP.deploy + 0.9;
-      const look = t < DROP.fall + 0.2 ? -0.85 : opening ? 1.2 : this.air < DROP.flareAt * 2 ? -0.12 : -0.35;
-      this.pitch += (look - this.pitch) * (1 - Math.exp(-dt * (opening ? 2.4 : 1.5)));
-    }
-    // The roll follows the steering (into the turn), the swing the canopy's pull as it opens and brakes the
-    // fall (the pilot swings forward under it, then back).
-    const ay = dt > 0 ? (this.vy - this.lastVy) / dt : 0;
-    this.lastVy = this.vy;
-    const open = t !== null && t > DROP.fall + DROP.open;
-    const bank = open ? -this.steer * 0.16 : 0;
-    const pull = open && t < DROP.fall + DROP.open + DROP.brake ? Math.max(-0.1, Math.min(0, -ay * 0.011)) : 0;
-    const w = (2 * Math.PI) / 2.4; // rad/s: the pendulum
-    const step = Math.min(dt, 1 / 30);
-    this.rollV += (w * w * (bank - this.roll) - 2 * 0.35 * w * this.rollV) * step;
-    this.roll += this.rollV * step;
-    this.swingV += (w * w * (pull - this.swing) - 2 * 0.3 * w * this.swingV) * step;
-    this.swing += this.swingV * step;
-    if (t === null && Math.abs(this.roll) + Math.abs(this.swing) + Math.abs(this.rollV) + Math.abs(this.swingV) < 1e-4) this.roll = this.rollV = this.swing = this.swingV = 0;
-  }
-
-  /**
-   * Under the parachute: falling packed, then sinking under the canopy, slower in the flare near the
-   * ground; on your feet when you touch it (or when a drop takes far too long).
+   * In a drop: falling, then sinking under the canopy, slower in the flare near the ground (dropStep set the
+   * speed); on your feet when you touch the ground, roofs included (or when a drop takes far too long). Never
+   * up: no ceiling to keep to (the drop starts over the flying ceiling, and the server allows that only now).
    */
   private descend(dt: number): void {
     const t = this.chute ?? 0;
-    this.vy = dropSink(t, this.feet - this.ground.y, this.vy, dt);
-    let next = this.feet + this.vy * dt;
-    const sky = this.world.skyAt(this.x, this.z);
-    if (next > sky) next = sky;
+    let next = this.feet + Math.min(0, this.vy) * dt;
     if (next <= this.ground.y || t > DROP.maxMs / 1000) {
       if (next <= this.ground.y) this.dip = 0; // on your feet: the knees give
       next = Math.max(next, this.ground.y);
       this.vy = 0;
-      this.chute = null;
+      this.chute = this.canopy = null;
       this.onChuteLand();
     }
     this.feet = next;

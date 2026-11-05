@@ -24,8 +24,11 @@
 export const PROTO = 2;
 /** How often the server sends a tick (ms). */
 export const TICK_MS = 50;
-/** A player's flags. `chute` (under a parachute, shared/parachute.mjs) is above the teleport counter: a page from before it reads the rest as ever. */
-export const FLAG = { armed: 1, flying: 2, crouch: 4, car: 8, alive: 16, safe: 32, chute: 256 };
+/**
+ * A player's flags. `chute` (in a drop, shared/parachute.mjs) and `open` (its canopy is out: before it, the free
+ * fall) are above the teleport counter: a page from before them reads the rest as ever.
+ */
+export const FLAG = { armed: 1, flying: 2, crouch: 4, car: 8, alive: 16, safe: 32, chute: 256, open: 512 };
 /** Bits 6 and 7 of the flags: a counter that goes up when the server moves the player (respawn, portal, start place), so the page jumps the figure there instead of sliding it. */
 const WARP = 64;
 
@@ -38,7 +41,7 @@ const n = (v) => (typeof v === 'number' && Number.isFinite(v) ? v : 0);
 /** A player's state without the name and age: [x, y, z, yaw, pitch, flags, weapon]. */
 export function playerFields(s, alive, safe, warp) {
   const f = (s.armed ? FLAG.armed : 0) | (s.flying ? FLAG.flying : 0) | (s.c ? FLAG.crouch : 0) | (s.d ? FLAG.car : 0)
-    | (alive ? FLAG.alive : 0) | (safe ? FLAG.safe : 0) | ((warp & 3) * WARP) | (s.chute ? FLAG.chute : 0);
+    | (alive ? FLAG.alive : 0) | (safe ? FLAG.safe : 0) | ((warp & 3) * WARP) | (s.chute ? FLAG.chute : 0) | (s.chute && s.open ? FLAG.open : 0);
   return [r2(s.x), r2(s.y), r2(s.z), angle(s.yaw), Math.round(s.pitch * 100) / 100, f, s.w ?? 'pistol'];
 }
 
@@ -76,7 +79,7 @@ export function readPlayer(e) {
   return {
     name: String(e[0]), age: n(e[1]), x: n(e[2]), y: n(e[3]), z: n(e[4]), yaw: n(e[5]), pitch: n(e[6]),
     armed: !!(f & FLAG.armed), flying: !!(f & FLAG.flying), c: !!(f & FLAG.crouch), d: !!(f & FLAG.car), alive: !!(f & FLAG.alive), safe: !!(f & FLAG.safe),
-    warp: Math.floor(f / WARP) & 3, w: typeof e[8] === 'string' ? e[8] : 'pistol', chute: !!(f & FLAG.chute),
+    warp: Math.floor(f / WARP) & 3, w: typeof e[8] === 'string' ? e[8] : 'pistol', chute: !!(f & FLAG.chute), open: !!(f & FLAG.open),
   };
 }
 

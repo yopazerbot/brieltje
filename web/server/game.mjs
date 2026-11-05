@@ -229,6 +229,10 @@ const MAX_SPEED = 16; // m/s up or down: falling off the roof is about 13
 // fixed together: src/main.ts REAL_WALK), with room for network jitter. Only a changed page goes faster.
 const RUN_SPEED = 1.4 * 2.5 * 1.3;
 const ADMIN_SPEED = 16 * 15; // m/s: the admin may move extremely fast (src/player.ts turbo)
+// m/s across in a drop the server started (shared/parachute.mjs: the free fall's tracking at most), with room
+// for network jitter as running has; and how far up a drop may go (m, refilling at `rate` m/s): next to nothing.
+const DROP_SPEED = DROP.across * 1.3;
+const DROP_RISE = { max: 0.6, rate: 0.5 };
 const CAR_SPEED = Math.max(...Object.values(CARS.cars).map((c) => c.maxSpeed)) * 1.2; // m/s in a car, with room for network jitter
 const HORSE_SPEED = HORSES.gallop * 1.3; // m/s on horseback
 const TRAVEL_MS = 1500; // at most one trip through the portals this often
@@ -602,8 +606,9 @@ export class Game {
         // No flying in the Zombies game: hovering over the zombies would be out of their reach for good.
         yaw: num(m.yaw, -100, 100), pitch: num(m.pitch, -2, 2), armed: !!m.armed, flying: !!m.flying && this.rules.flying && !inCar && !this.modes.zombies,
         w: player.weapons.has(m.w) ? m.w : 'pistol', c: !!m.c && !inCar, d: inCar, s: driving ? num(m.s, -1, 1) : 0,
-        // Under a parachute: only while the server has them dropping (a page can't claim one, see drop).
+        // In a drop, and its canopy out: only while the server has them dropping (a page can't claim one, see drop).
         chute: !!m.pc && this.dropping(player, now),
+        open: !!m.pc && !!m.po && this.dropping(player, now),
       };
       // The page says it landed (not before its first messages from the sky can have come), or the drop took too long.
       if (player.drop && (!this.dropping(player, now) || (!m.pc && now - player.drop.from > DROP.graceMs))) this.landed(player, now);
@@ -612,13 +617,24 @@ export class Game {
       // however often updates come. A faked jump only gets as far as running would; a lagging
       // player catches up.
       // Across and up or down each have a budget: on foot running is held to the real pace while a fall
-      // from the roof may still be fast (the admin's extremely fast walking keeps its own).
-      const speed = inCar ? CAR_SPEED : horse ? HORSE_SPEED : player.role === 'admin' ? ADMIN_SPEED : RUN_SPEED;
+      // from the roof may still be fast (the admin's extremely fast walking keeps its own). In a drop the
+      // server started (and only then) across goes up to the skydive's speed, down as fast as a fall, and
+      // up next to nothing (stepping onto a roof's edge): nobody climbs in a drop.
+      const drop = this.dropping(player, now);
+      const speed = inCar ? CAR_SPEED : horse ? HORSE_SPEED : player.role === 'admin' ? ADMIN_SPEED : drop ? DROP_SPEED : RUN_SPEED;
       const vspeed = inCar || horse || player.role === 'admin' ? speed : MAX_SPEED;
       const secs = (now - player.movedAt) / 1000;
       const budget = Math.min(speed * 0.5 + 0.5, player.budget + speed * secs);
       const vbudget = Math.min(vspeed * 0.5 + 0.5, (player.vbudget ?? 0.5) + vspeed * secs);
-      const dx = next.x - prev.x, dy = next.y - prev.y, dz = next.z - prev.z;
+      const dx = next.x - prev.x, dz = next.z - prev.z;
+      let dy = next.y - prev.y;
+      // (Not in its first moments: a state from before the page knew of the drop, on the ground, can still come.)
+      if (drop && dy > 0 && player.role !== 'admin' && now - player.drop.from > DROP.graceMs) {
+        const rise = Math.min(DROP_RISE.max, player.drop.rise + DROP_RISE.rate * secs);
+        dy = Math.min(dy, rise);
+        player.drop.rise = rise - dy;
+        next.y = prev.y + dy;
+      }
       const across = Math.hypot(dx, dz);
       const step = Math.min(across, budget);
       const vstep = Math.min(Math.abs(dy), vbudget);
@@ -628,12 +644,14 @@ export class Game {
       player.vbudget = vbudget - vstep;
       player.movedAt = now;
       // The edge of the game: a position outside it (only a changed page sends one) is put back just inside.
-      this.fenceIn(next, prev);
+      // The ceiling too, but in a drop the one it started under (it starts over the flying ceiling).
+      this.fenceIn(next, prev, drop ? player.drop.top : -Infinity);
       // Down in the Zombies game: they lie where they went down (server/zombies.mjs fell), whatever a
       // changed page says (state spoofing while down: crawling somewhere to be helped up there).
       const fell = !player.alive ? this.modes.zombies?.fell.get(name) : null;
       if (fell) Object.assign(next, fell);
       player.state = next;
+      if (drop) this.dropCheck(player, now); // on the ground, or not coming down: the drop ends
       this.stampState(player, m.ct);
       if (driving) {
         Object.assign(car, { x: next.x, y: next.y, z: next.z, yaw: next.yaw, s: next.s });
@@ -829,7 +847,7 @@ export class Game {
     } else if (m.t === 'spawn' && typeof m.to === 'string') {
       this.spawn(name, player, m.to, now);
     } else if (m.t === 'chute') {
-      this.manualDrop(name, player, now, m);
+      this.manualDrop(name, player, now);
     } else if (m.t === 'travel' && typeof m.to === 'string' && m.to.length <= 64) {
       // At most four asks a second (a page asks once a trip); more go unanswered, so a flood costs nothing.
       if (now < (player.nextTravelAsk || 0)) return;
@@ -874,14 +892,14 @@ export class Game {
     const ground = TERRAIN.height(x, z);
     // Arriving by parachute (the admin's rule): over the start place, the page told so (it is there already, on the ground).
     const drop = this.rules.parachute;
-    const from = drop ? dropStart(x, z, yaw) : { x, z }; // behind the place: it lands there
+    const from = drop ? this.dropFrom(x, z, yaw) : { x, z }; // behind the place: without steering it lands there
     Object.assign(p.state, { x: from.x, y: drop ? ground + DROP.height : ground, z: from.z });
     p.budget = p.vbudget = 0.5;
     p.movedAt = now;
     this.moved(p);
     if (drop) {
       this.startDrop(p, now);
-      this.send(p.ws, { t: 'spawn', ok: true, drop: 1, x, z, yaw });
+      this.send(p.ws, { t: 'spawn', ok: true, drop: 1, x, z, yaw, sx: from.x, sz: from.z });
     }
   }
 
@@ -893,13 +911,14 @@ export class Game {
    * fresh join is). Otherwise nothing changes: the page stays on its feet.
    */
   /**
-   * /parachute in the chat (Yoshi): a drop onto where the player stands, landing there as at a start. The server
-   * decides it: the admin's rule on, alive, on foot, outdoors, not under a parachute already, no game of the menu going on
-   * (Zombies or a party game: a drop is out of every fight), not hit in the last HURT_CALM_MS (no escaping a fight
-   * under the canopy, where nobody can be hurt), inside the game's edge, and at most once every CHUTE_MS. A refusal
-   * says why with a code the page translates.
+   * /parachute in the chat (Yoshi): a skydive from high over where the player stands, flown freely from there. The
+   * server decides it: the admin's rule on, alive, on foot, outdoors, not in a drop already, no game of the menu going
+   * on (Zombies or a party game: a drop is out of every fight), not hit in the last HURT_CALM_MS (no escaping a fight
+   * in the air, where nobody can be hurt), inside the game's edge, and at most once every CHUTE_MS. A refusal says
+   * why with a code the page translates. It starts behind them facing their way (hands off, it lands where they
+   * stand), or straight over them near the edge.
    */
-  manualDrop(name, p, now, m = {}) {
+  manualDrop(name, p, now) {
     const st = p.state;
     if (!st) return;
     const no = (code, args = {}) => this.send(p.ws, { t: 'chute', ok: false, code, args });
@@ -907,20 +926,18 @@ export class Game {
     if (!p.alive || this.carOf(name) || this.horseOf(name) || this.dropping(p, now) || this.modes.active) return no('chuteNotNow');
     if (now - (p.hurtAt ?? -Infinity) < HURT_CALM_MS) return no('chuteFight');
     if (now < (p.nextChute ?? 0)) return no('chuteWait', { s: Math.ceil((p.nextChute - now) / 1000) });
-    // The way in the page picked (clear of roofs and trees: main.ts clearApproach), else their facing. Only the
-    // direction: where they land is where the server has them, and every check above holds whatever it is.
-    const yaw = typeof m.yaw === 'number' && Number.isFinite(m.yaw) && Math.abs(m.yaw) < 100 ? m.yaw : Number.isFinite(st.yaw) ? st.yaw : 0;
-    const from = dropStart(st.x, st.z, yaw); // behind where they stand: they land there
-    if (INDOORS(st.x, st.z)) return no('chuteIndoors'); // from above it would land on the roof
-    if (!this.fence().inside(st.x, st.z) || !this.fence().inside(from.x, from.z)) return no('chuteNotNow');
+    if (INDOORS(st.x, st.z)) return no('chuteIndoors'); // go outside first
+    if (!this.fence().inside(st.x, st.z)) return no('chuteNotNow');
     p.nextChute = now + CHUTE_MS;
     const x = st.x, z = st.z;
+    const yaw = Number.isFinite(st.yaw) ? st.yaw : 0;
+    const from = this.dropFrom(x, z, yaw);
     Object.assign(st, { x: from.x, y: HOUSE.ground + TERRAIN.height(x, z) + DROP.height, z: from.z });
     p.budget = p.vbudget = 0.5;
     p.movedAt = now;
     this.moved(p);
     this.startDrop(p, now);
-    this.send(p.ws, { t: 'spawn', ok: true, drop: 1, x: Math.round(x * 100) / 100, z: Math.round(z * 100) / 100, yaw });
+    this.send(p.ws, { t: 'spawn', ok: true, drop: 1, x: Math.round(x * 100) / 100, z: Math.round(z * 100) / 100, yaw, sx: from.x, sz: from.z });
   }
 
   homeDrop(name, p, now) {
@@ -930,13 +947,13 @@ export class Game {
     const { x, z, yaw } = HOME_DROP;
     if (!this.rules.parachute || now - p.joinTime > 90_000 || !p.alive || this.carOf(name) || this.horseOf(name)) return;
     if (Math.hypot(st.x - x, st.z - z) > 30 || !this.fence().inside(x, z)) return;
-    const from = dropStart(x, z, yaw); // behind the start, along the lane: it lands there
+    const from = this.dropFrom(x, z, yaw); // behind the start, along the lane: without steering it lands there
     Object.assign(st, { x: from.x, y: HOUSE.ground + TERRAIN.height(x, z) + DROP.height, z: from.z });
     p.budget = p.vbudget = 0.5;
     p.movedAt = now;
     this.moved(p);
     this.startDrop(p, now);
-    this.send(p.ws, { t: 'spawn', ok: true, drop: 1, x, z, yaw });
+    this.send(p.ws, { t: 'spawn', ok: true, drop: 1, x, z, yaw, sx: from.x, sz: from.z });
   }
 
   travel(name, p, id, chat, now) {
@@ -1048,13 +1065,13 @@ export class Game {
    * pickup checks and the portals only ever see a place inside. Cheap: one look-up in a grid for a
    * point well inside, a few edges near the edge (shared/bounds.mjs).
    */
-  fenceIn(s, prev) {
+  fenceIn(s, prev, top = -Infinity) {
     const fence = this.fence();
     const back = fence.putBack(s.x, s.z, 0.3);
     const to = back ?? (prev && fence.inside(prev.x, prev.z) ? prev : SPAWNS[0]);
     s.x = to.x;
     s.z = to.z;
-    s.y = Math.min(s.y, TERRAIN.height(s.x, s.z) + BOUNDS.ceiling + 2);
+    s.y = Math.min(s.y, Math.max(TERRAIN.height(s.x, s.z) + BOUNDS.ceiling + 2, top)); // `top`: a drop's own ceiling (see startDrop)
   }
 
   /**
@@ -1070,7 +1087,7 @@ export class Game {
       if (fence.inside(s.x, s.z)) continue;
       this.releaseCar(name);
       this.releaseHorse(name);
-      this.fenceIn(s, null);
+      this.fenceIn(s, null, this.dropping(p, Date.now()) ? p.drop.top : -Infinity);
       this.moved(p);
     }
   }
@@ -1508,25 +1525,61 @@ export class Game {
   }
 
   /**
-   * Under a parachute (shared/parachute.mjs): from a respawn or start the server chose, until the page
-   * says it landed or DROP.maxMs. Calm like the school grounds (see calm): nobody shoots from the air
-   * and nobody, zombies and strongmen included, hurts someone in it.
+   * In a drop (shared/parachute.mjs): from a respawn, start or /parachute the server chose, until the page
+   * says it landed, the server sees it on the ground or not coming down (dropCheck), or DROP.maxMs. Calm like
+   * the school grounds (see calm): nobody shoots from the air and nobody, zombies and strongmen included,
+   * hurts someone in it. Only meanwhile may they move as fast as a skydive (see the state's budgets).
    */
   dropping(p, now) {
     return !!p?.drop && now < p.drop.until;
   }
 
-  /** A drop begins: protected until it ends (see calm and landed). */
+  /**
+   * A drop begins, from where the player's state is now (high up): protected until it ends (see calm and
+   * landed). `top`: its ceiling; `rise`: what is left of its tiny allowance to go up; `markY`, `markAt`: where it
+   * was at the start of the stretch dropCheck measures; `low`: since when it is on the bare ground.
+   */
   startDrop(p, now) {
-    p.drop = { from: now, until: now + DROP.maxMs };
+    const y = p.state?.y ?? 0;
+    p.drop = { from: now, until: now + DROP.maxMs, top: y + 0.5, rise: DROP_RISE.max, markY: y, markAt: now, low: 0 };
     p.protectedUntil = p.drop.until;
+  }
+
+  /**
+   * Where a drop onto (x, z) facing `yaw` starts: DROP.reach behind it (it lands there without steering), or
+   * straight over it when that would be beyond the edge that holds now.
+   */
+  dropFrom(x, z, yaw) {
+    const from = dropStart(x, z, yaw);
+    return this.fence().inside(from.x, from.z) ? from : { x, z };
+  }
+
+  /**
+   * A drop ends when the server sees it over: the player on the bare ground under them for a second (a page
+   * keeping its parachute flag on the ground stays protected no longer), or not coming down by DROP.hoverMin
+   * m/s on average over DROP.hoverMs (nobody hovers: the slowest canopy sinks faster than that, and a roof
+   * isn't the bare ground). Each state and each tick (a page gone quiet doesn't come down either).
+   */
+  dropCheck(p, now) {
+    const d = p.drop;
+    if (!d || !p.state || now - d.from <= DROP.graceMs) return;
+    const { x, y, z } = p.state;
+    if (y - (HOUSE.ground + TERRAIN.height(x, z)) < 0.5) {
+      d.low ||= now;
+      if (now - d.low >= 1000) return this.landed(p, now);
+    } else d.low = 0;
+    if (now - d.markAt >= DROP.hoverMs) {
+      if (d.markY - y < (DROP.hoverMin * (now - d.markAt)) / 1000) return this.landed(p, now);
+      d.markY = y;
+      d.markAt = now;
+    }
   }
 
   /** On the ground (or the drop took too long, or they travelled): the usual short protection after a respawn. */
   landed(p, now) {
     p.drop = null;
     p.protectedUntil = now + PROTECT_MS;
-    if (p.state) p.state.chute = false;
+    if (p.state) p.state.chute = p.state.open = false;
   }
 
   /** Take `amount` health from a target; a kill scores for the shooter (and can end the round). */
@@ -1583,19 +1636,20 @@ export class Game {
     // By parachute (the admin's rule): only onto open ground, a place outside (never into a room).
     const fly = drop && this.rules.parachute && (at ? true : !!SPAWNS[spawn]?.outside);
     p.drop = null;
-    if (fly) this.startDrop(p, now);
     // Until the player's own update arrives, they are at the spawn point (so the next pick avoids it).
-    // A drop starts behind the place, facing it as the page does (the portal, else the house or the bungalow), and lands on it.
+    // A drop starts behind the place, facing it as the page does (the portal, else the house or the bungalow): without
+    // steering it lands on it.
     const face = at?.face ?? (SPAWNS[spawn]?.team === 'bungalow' ? [83.5, 189.7] : [4.5, 6]);
-    const from = fly ? dropStart(pos.x, pos.z, Math.atan2(-(face[0] - pos.x), -(face[1] - pos.z))) : pos;
-    if (p.state) Object.assign(p.state, { x: from.x, y: pos.y + (fly ? DROP.height : 0), z: from.z, chute: false });
+    const from = fly ? this.dropFrom(pos.x, pos.z, Math.atan2(-(face[0] - pos.x), -(face[1] - pos.z))) : pos;
+    if (p.state) Object.assign(p.state, { x: from.x, y: pos.y + (fly ? DROP.height : 0), z: from.z, chute: false, open: false });
+    if (fly) this.startDrop(p, now);
     p.movedAt = now;
     p.budget = p.vbudget = 0.5;
     this.moved(p);
     // In Smetlede (Zombies there) also the height to stand at and what to face: the spawn point is the house's.
     this.broadcast({
       t: 'respawn', name, spawn, ...(at ? { x: at.x, z: at.z } : {}), ...(at?.face ? { y: +at.y.toFixed(2), fx: at.face[0], fz: at.face[1] } : {}),
-      ...(fly ? { drop: 1, ...(at && !at.face ? { y: +at.y.toFixed(2) } : {}) } : {}),
+      ...(fly ? { drop: 1, sx: from.x, sz: from.z, ...(at && !at.face ? { y: +at.y.toFixed(2) } : {}) } : {}),
     });
   }
 
@@ -1695,6 +1749,7 @@ export class Game {
     for (const [name, p] of this.players) {
       if (!p.alive && !this.roundOver && now >= p.respawnAt) this.respawn(name, p, now, null, true); // after a death: by parachute onto open ground
       else if (p.drop && !this.dropping(p, now)) this.landed(p, now); // a drop that took too long (a page gone quiet)
+      else if (p.drop) this.dropCheck(p, now); // or not coming down
     }
     this.modes.tick(now, TICK_MS);
     if (!this.players.size) return;
