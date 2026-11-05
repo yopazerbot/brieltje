@@ -274,64 +274,96 @@ LOD1 from 25 m), `turntable.mp4`.
 What the gameplay work built on these assets. The numbers are in `web/shared/parachute.mjs`, shared by
 the page and the server.
 
+A skydive you fly yourself (Yoshi, November 2026: "this is how I want the parachute thing to work", after
+a battle-royale skydive): a free fall you steer, a canopy you open, a landing wherever you steer to, filmed
+from behind. Our own version: no aircraft, the game's own figure and parachute.
+
 | Moment | Alone | Together |
 |---|---|---|
 | First arrival at a start place (the church by default) | by parachute | by parachute: the server answers the start with a drop |
 | Starting at the house (no start place) | by parachute, down the lane onto the house's start | by parachute: the page asks (`home`), the server decides |
-| Respawn after a death | by parachute (the outside places) | by parachute only onto a place outside; into a room on foot |
-| Zombies: the start, the return between waves, joining late | by parachute | by parachute |
+| Respawn after a death (Action, Paintball) | by parachute (the outside places) | by parachute only onto a place outside; into a room on foot |
+| `/parachute` in the chat | over where you stand | over where you stand, if the server agrees (below) |
+| Zombies: the start, the return between waves, joining late | on foot | on foot |
 | Zombies: a teammate's revive | on foot, where you fell | on foot, where you fell |
 | Party games (hide and seek, tag, treasure, teams) | unchanged | unchanged |
 
-- **The drop:** 80 m over the place. First 4 s of free fall, straight down, picking up speed to at most
-  14 m/s (the server allows 16). Then the canopy opens (the Deploy clip, 1.8 s): it starts to brake the
-  fall 0.55 s in, eased over 1.5 s down to 4.2 m/s, with no jolt, while the forward speed picks up to
-  3.2 m/s. A short glide, a flare at 3 m (1.5 m/s forward, 1.2 m/s down), and on your feet. 10.8 s in
-  all. Coming down mostly straight keeps the drop close to its place: it starts 13.8 m behind it
-  (`DROP.reach`), facing it as a respawn does, so without steering you land on the place the server
-  picked (measured: 0.1 m off) and the whole path stays inside a Zombies arena. The canopy is fully
-  open about 16 m up; the last stretch comes in at about 50°, clear of the houses round a street.
-  `DROP.reach` and `DROP.time` are not typed in: `fly()` in `web/shared/parachute.mjs` flies the drop
-  as the page does when the file loads, so the page, the server and the tests always agree.
-- **The house's start:** the drop lands on the house's own start in the lane (`HOME_DROP`), coming down
-  the lane from the west, facing east (the house on your left), because the houses across the lane are
-  in the way of an approach facing the house.
-- **Steering:** the left and right movement keys, the left stick or the touch joystick turn you at up
-  to 1.1 rad/s, picked up and let go of gently; turning with the mouse turns you too. Forward and back
-  nudge the glide by 8 %. No jumping, flying, crouching or shooting; the gun is put away and a hint says
-  what is happening (free fall, then steering).
-- **Your camera:** it keeps your pitch when the drop begins and eases it: down at the ground in the free
-  fall, up at the canopy as it opens, ahead and down to the landing place for the glide, near level for
-  the touchdown. Looking round yourself stops that for the rest of the drop. The view rolls into turns
-  and swings a little as the canopy opens (two lightly damped springs, a pendulum of 2.4 s), and the
-  knees give on touchdown (0.3 m, 0.45 s). Only the camera: where you aim and what others see don't change.
-- **The server decides.** It starts every drop (`startDrop` in `web/server/game.mjs`) and keeps the
-  player in it until the page says it landed (not in the first 1.2 s, when older messages can still
-  come) or 15 s have passed (`DROP.maxMs`, about 4 s more than a drop takes). Across, a drop is slower
-  than running, so the movement budget holds it as it is; down, the free fall stays under the 16 m/s
-  limit. The house's start (`homeDrop`) is taken once, with the start places, in the first 90 s, alive,
-  on foot, and only while the server still has the player within 30 m of it: a drop onto where a fresh
-  join already is, never a trip.
-- **Combat:** under a parachute a player is calm, as on the school grounds (`calm`): they can't shoot
-  and nobody hurts them, zombies and strongmen included. Landing gives the usual 2 s of protection.
-- **The others** see a flag in the tick (`FLAG.chute`, bit 8 of a player's flags, above the teleport
-  counter, so an older page reads the rest as before) and draw the parachute on the figure in the
-  player's colour (`web/src/world/parachutes.ts`), posed by the adapter. In the free fall the figure lies
-  face down, arms out (Deploy's first frame), and swings upright as the canopy pulls. Under the canopy it
-  swings a little round the canopy: out of a turn and back, and through once after the opening's surge.
-  Every change of clip is an eased cross-fade (Deploy to the glides 0.45 s, Flare 0.35 s,
-  Land_Collapse 0.3 s), Land_Collapse plays at 0.8 of its speed so the canopy settles softly, the
-  figure is handed back to its own animation over 0.7 s after landing, and the pack and harness shrink
-  away in the last 0.3 s instead of vanishing. Steering shows from how fast they turn. Someone first seen
-  part way down is drawn as far along as their height says (`dropSince`). The figure doesn't blink
-  while protected under a parachute.
-- **Your own:** drawn over and round you (the pack, leg loops and toggles hidden: nobody is in them).
+- **The jump:** 170 m over the place's ground, no plane. Hands off, you fall straight down, the canopy
+  opens by itself 45 m over the ground under you, and the glide takes you onto the place the server
+  picked: the drop starts 39.2 m behind it (`DROP.reach`), facing it, or straight over it where that start
+  would be beyond the game's edge. 22 s hands off. `DROP.reach` and `DROP.time` are not typed in: `fly()`
+  in `web/shared/parachute.mjs` flies the drop as the page does (`dropStep`) when the file loads, so the
+  page, the server and the tests always agree.
+- **The free fall:** lying flat you fall at 10.5 m/s, picking it up as a body does. Forward tracks: up to
+  12 m/s ahead and 12 m/s down. Back brakes the track (2 m/s back at most). Left and right slide sideways
+  at 6 m/s (diagonals no faster than 12). The mouse, the right stick or a drag turns you. The dive key
+  (Ctrl or C, ○, the touch Dive button) puts your head down: 14.5 m/s down (the server allows 16).
+  Speeds across follow the keys within about a second.
+- **The canopy:** the jump key (Space, ✕, the touch Open button) opens it, from 1 s into the drop on;
+  else it opens by itself at 45 m. It opens as the Deploy clip does (1.8 s), braking the fall from 0.55 s
+  on, eased over 1.3 s: no jolt. Hands off it glides 5.5 m/s ahead and sinks 4.5 m/s. Forward: 7.5 ahead,
+  5.8 down. Back brakes: 2.5 ahead, 3.2 down. Left and right turn at up to 1.2 rad/s, picked up and let go
+  of gently. It flares by itself 3 m over the ground (1.5 ahead, 1.2 down).
+- **How far:** tracking all the way reaches about 180 m (19 s); opening at once and gliding fast about
+  215 m (30 s); sliding the whole free fall, about 80 m to the side. The slowest legal drop (opened at once,
+  braked all the way) takes 52 s. You land wherever you steer to inside the game's edge; roofs and trees
+  are ground, as on foot. No jumping, flying, crouching or shooting; the gun is put away.
+- **Your camera** (`web/src/world/dropView.ts`): the drop is filmed from behind and a little above your
+  own figure, the map below. It leaves your eyes over 0.9 s at the start and comes back into them over
+  0.6 s on landing. In the free fall it is 3.6 m behind your hips; as the canopy opens it backs off to
+  7.5 m behind a point 3 m over your feet, so the canopy shows; near the ground it comes a little closer.
+  It sits 17 % of its distance above the line it looks along, so your figure is a little below the
+  middle, and stays 0.8 m over the ground under it. It turns with you; looking up and down swings it round
+  you. Until you look yourself it eases down at the ground in the free fall and ahead under the canopy.
+  The crosshair goes and the hints go low on the screen, clear of your figure. The knees give on touchdown
+  (0.3 m, 0.45 s). One extra skinned figure: nothing else on the graphics chip.
+- **Your figure** is the one the others see, in your colour, posed by the parachute as theirs are: made
+  at your first drop (`Avatars.figure`), with no hit boxes, and hidden whenever the camera is in your eyes.
+  The harness, grips and toggles hide then too.
+- **The hints** say what to do with the keys of the way you play (keyboard as printed, AZERTY or QWERTY,
+  the controller, touch): in the free fall the move keys, the dive key and the opening key; under the
+  canopy the move keys. On touch the free fall shows Open in the corner and Dive beside it; under the
+  canopy the stick alone.
+- **The house's start:** the drop lands on the house's own start in the lane (`HOME_DROP`) hands off,
+  coming down the lane from the west, facing east (the house on your left).
+- **The server decides.** It starts every drop (`startDrop` in `web/server/game.mjs`): a start place, the
+  house's start, a respawn, `/parachute`. The page can't start, lengthen or fake one: the flags it sends
+  (`pc` in a drop, `po` with the canopy out) count only while the server has it dropping. Only then does
+  the movement budget allow a skydive: across up to 15.6 m/s (`DROP.across` 12 times 1.3, the margin
+  running has), down up to 16 m/s as ever, up next to nothing (0.6 m, refilling at 0.5 m/s: a roof's
+  edge) once the first 1.2 s are over (older messages from the ground can still come then), and the
+  ceiling is the one the drop started under (it starts over the 120 m flying ceiling). Outside a drop
+  nothing changes. A drop ends when the page says it landed (not in the first 1.2 s), when the server
+  sees the player on the bare ground under them for a second, when they don't come down 1.5 m/s on
+  average over a 4 s stretch (`DROP.hoverMin`, `DROP.hoverMs`: the braked canopy sinks 3.2, so nobody
+  hovers; checked on every state and every tick, so a page gone quiet ends it too), or after 68.7 s
+  (`DROP.maxMs`: the slowest legal drop onto ground 25 m below the place, and 5 s to spare). The house's
+  start (`homeDrop`) is taken once, with the start places, in the first 90 s, alive, on foot, and only
+  while the server still has the player within 30 m of it.
+- **`/parachute`:** the rule on, alive, on foot, outdoors, not in a drop, no game of the menu going on,
+  not within 10 s of a hit, once a minute (`manualDrop`). It starts 170 m over where you stand, behind
+  you facing your way, and you fly it from there.
+- **Combat:** in a drop a player is calm, as on the school grounds (`calm`): they can't shoot and nobody
+  hurts them, zombies and strongmen included. Landing gives the usual 2 s of protection.
+- **The others** see two flags in the tick (`FLAG.chute`, bit 8, in a drop; `FLAG.open`, bit 9, the canopy
+  out; both above the teleport counter, so an older page reads the rest as before) and draw the parachute
+  on the figure in the player's colour (`web/src/world/parachutes.ts`), posed by the adapter. In the free
+  fall the figure lies face down in the box position (hands out level with the head, knees bent, feet
+  up), leans into how it moves (head lower and arms back tracking, head first and arms in diving, banked
+  sliding sideways: worked out from where it is drawn), and swings upright as the canopy pulls. The
+  canopy opens when the flag comes. Under the canopy it swings a little round the canopy: out of a turn
+  and back, and through once after the opening's surge. Every change of clip is an eased cross-fade
+  (Deploy to the glides 0.45 s, Flare 0.35 s, Land_Collapse 0.3 s), Land_Collapse plays at 0.8 of its
+  speed, the figure is handed back to its own animation over 0.7 s after landing, and the pack and harness
+  shrink away in the last 0.3 s. Someone first seen with the canopy out is drawn under it at once. The
+  figure doesn't blink while protected in a drop.
 - **The model** is fetched after the world is in (0.13 MB), before anyone drops.
 - **The admin's rule** "Players arrive by parachute" (on by default) turns it all off together.
 
 | | |
 |---|---|
-| ![Another player under a parachute, seen from the street](game_other_player.jpg) | ![Your own drop, looking up: only the canopy and its lines](game_first_person.jpg) |
+| ![The free fall, filmed from behind](game_free_fall.jpg) | ![Under the canopy, filmed from behind](game_canopy.jpg) |
+| ![Another player under a parachute, seen from the street](game_other_player.jpg) | |
 
 How the assets were meant to map to an arrival, as handed over before the gameplay work:
 
@@ -361,8 +393,9 @@ Respawns that could use it:
 ## Decisions left for the gameplay work
 
 As listed before the gameplay work; [In the game](#in-the-game) says what was chosen. Still open:
-roofs and trees as landing places (the game's ground includes roofs, so a steered drop can land on
-one), sounds, and a key to open the parachute early. The list as it was:
+sounds (the wind in the free fall, the canopy opening), and whether roofs and trees should stay landing
+places (the game's ground includes them, so a freely steered drop lands on one where you steer to). The
+list as it was:
 
 - Server-authoritative descent: who moves a falling player, the speeds the server accepts (today it
   caps vertical speed at 16 m/s and height at 120 m over the ground), and what the other players see.
