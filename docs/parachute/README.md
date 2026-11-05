@@ -306,7 +306,7 @@ the page and the server.
 
 | | |
 |---|---|
-| ![Another player under a parachute, seen from the street](game_other_player.jpg) | ![Your own drop into the Zombies game, looking up](game_first_person.jpg) |
+| ![Another player under a parachute, seen from the street](game_other_player.jpg) | ![Your own drop, looking up: only the canopy and its lines](game_first_person.jpg) |
 
 How the assets were meant to map to an arrival, as handed over before the gameplay work:
 

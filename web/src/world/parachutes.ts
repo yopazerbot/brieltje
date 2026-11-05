@@ -24,8 +24,12 @@ const GLOW = 0.28; // the accent's emissive: the player's colour times this (as 
 /** Everything the clips reach (docs/parachute/manifest.json): a skinned mesh is culled by it, not by its rest pose. */
 const REACH = new THREE.Box3(new THREE.Vector3(-3.8, 0, -4.1), new THREE.Vector3(3.8, 5.9, 2.4));
 const SPHERE = REACH.getBoundingSphere(new THREE.Sphere());
-/** Your own: these parts would hang round the camera with nobody in them. */
-const HIDDEN_OWN = ['Pack', 'Thigh_L', 'Thigh_R', 'Toggle_L', 'Toggle_R'];
+/**
+ * Your own: only the canopy and its lines overhead, so the view stays free (Yoshi: "keep the view obstruction
+ * by the parachute harness as limited as possible"). The harness (Pilot: arms, risers, pack, legs), the grips
+ * and the toggles start a hand's width from the eye and filled the screen's sides as broad dark slabs.
+ */
+const HIDDEN_OWN = ['Pilot', 'Grip_L', 'Grip_R', 'Toggle_L', 'Toggle_R'];
 
 interface Flight {
   holder: THREE.Object3D;
