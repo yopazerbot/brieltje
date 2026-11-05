@@ -1168,6 +1168,24 @@ def post_block(x, z, h, r=0.08):
     solids.append(([[x - r, z - r], [x + r, z - r], [x + r, z + r], [x - r, z + r]], h))
 
 
+def open_gate(fit):
+    """A gate standing open (`open`: 1 or -1, the side of the line p-q the leaves swing to): two leaves from the posts,
+    swung back against the sides, drawn as fences of their own without a block for walking into, so the way is free
+    (Yoshi: the path behind the church portal shouldn't be obstructed)."""
+    (x, z), (x2, z2) = fit["p"], fit["q"]
+    ln = math.hypot(x2 - x, z2 - z)
+    ux, uz = (x2 - x) / ln, (z2 - z) / ln
+    sx, sz = -uz * fit["open"], ux * fit["open"]
+    a, half = math.radians(100), ln / 2
+    leaves = []
+    for (hx, hz), (dx, dz) in (((x, z), (ux, uz)), ((x2, z2), (-ux, -uz))):
+        end = [hx + (dx * math.cos(a) + sx * math.sin(a)) * half, hz + (dz * math.cos(a) + sz * math.sin(a)) * half]
+        leaves.append({**{k: v for k, v in fit.items() if k != "open"}, "p": [hx, hz], "q": end, "panel": half, "walk": False})
+    return leaves
+
+
+FITTINGS = [leaf for fit in FITTINGS for leaf in (open_gate(fit) if fit["k"] == "fence" and fit.get("open") else [fit])]
+
 NT, NR = ("near", "trim"), ("near", "render")
 for fit in FITTINGS:
     k = fit["k"]
@@ -1398,7 +1416,8 @@ for fit in FITTINGS:
             px, pz = x + ux * s, z + uz * s
             gp = terrain(px, pz)
             solid(NT, [(px + dx, pz + dz, gp + y) for dx in (-0.045, 0.045) for dz in (-0.045, 0.045) for y in (-0.1, h + 0.05)], fit.get("post", shade(c, 0.8)))
-        solids.append(([[x + nx * 2, z + nz * 2], [x2 + nx * 2, z2 + nz * 2], [x2 - nx * 2, z2 - nz * 2], [x - nx * 2, z - nz * 2]], h))
+        if fit.get("walk", True):  # an open gate's leaves (open_gate) don't stop anyone
+            solids.append(([[x + nx * 2, z + nz * 2], [x2 + nx * 2, z2 + nz * 2], [x2 - nx * 2, z2 - nz * 2], [x - nx * 2, z - nz * 2]], h))
     elif k == "paving":  # a paved drive or yard: a slab of pavers on the relief inside the four corners `bed`
         q = fit["bed"]
         # cut into 1.5 m cells, each corner on the relief, a few centimetres up
