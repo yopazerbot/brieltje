@@ -44,9 +44,10 @@
       const tex = {};
       for (const k of KEYS) {
         const tx = m[k];
-        const src = tx && tx.image && tx.image.src;
+        // The game's textures note their full-size WebP file (world/textureFiles.ts): a KTX2 one has no image.src.
+        const src = tx && ((tx.userData && tx.userData.src) || (tx.image && tx.image.src));
         if (src && src.includes('/textures/')) {
-          tex[k] = { src: new URL(src).pathname, repeat: tx.repeat.toArray(), offset: tx.offset.toArray(), rotation: tx.rotation, center: tx.center.toArray() };
+          tex[k] = { src: new URL(src, location.href).pathname, repeat: tx.repeat.toArray(), offset: tx.offset.toArray(), rotation: tx.rotation, center: tx.center.toArray() };
           stripped.push([m, k, tx]);
           m[k] = null;
         }

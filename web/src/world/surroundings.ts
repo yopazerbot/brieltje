@@ -11,6 +11,7 @@ import { paneGeometry, paneLook, paneMaterial, COVER } from './windows';
 import { waterClock, waterMaterial } from './water';
 import { leafy } from './leaves';
 import { treeCrown, treeTrunk } from './vegetation';
+import { spaceTrees } from './treeSpacing';
 
 /**
  * Around the plot, from Flemish open data (GRB footprints, DHM laser heights;
@@ -468,7 +469,7 @@ export function buildTile(data: TileData, poles: Pole[], renderer: THREE.WebGLRe
   if (data.poleIds.length || data.wires?.length) out.push(...buildLamps(poles, data.poleIds, data.wires ?? [], ground));
   if (data.solar?.length) out.push(...buildSolar(data.solar));
   if (data.posts?.length) out.push(buildPosts(data.posts, ground));
-  if (data.trees.length) out.push(...buildTrees(data.trees, detail));
+  if (data.trees.length) out.push(...buildTrees(data.trees, detail, data.prisms ?? []));
   return out;
 }
 
@@ -478,13 +479,29 @@ export function buildTile(data: TileData, poles: Pole[], renderer: THREE.WebGLRe
  * (180 triangles instead of 980) that cast none. Lower branches belong to the same crown,
  * so they keep its colour and never look like separate floating balls.
  */
-function buildTrees(trees: Surroundings['trees'], detail: (x: number, z: number) => boolean): Piece[] {
+function buildTrees(allTrees: Surroundings['trees'], detail: (x: number, z: number) => boolean, prisms: NonNullable<Surroundings['prisms']>): Piece[] {
   treeShapes ??= {
     full: [0, 1, 2].map((k) => treeCrown(1234 + k * 999)),
     simple: [0, 1, 2].map((k) => treeCrown(1234 + k * 999, true)),
     trunk: treeTrunk(),
   };
   const shapes = treeShapes;
+  // Round the house and the church no crown grows into another crown, a hedge or a wall: it shrinks
+  // to fit, or the tree is left out (world/treeSpacing.ts). The woods further out stay as they are.
+  const wholeR = (t: { r: number; h: number }) => Math.min(7, Math.max(t.r, t.h * 0.26));
+  const near = allTrees.filter((t) => detail(t.x, t.z));
+  const share = new Map<Surroundings['trees'][number], number>();
+  if (near.length) {
+    const solid = prisms.filter((p) => p.m === 'hedge' || (!GROUND_COVERS.has(p.m) && p.y1 - p.y0 >= 1.5));
+    const kept = spaceTrees(
+      near,
+      solid.map((p) => ({ ring: p.p[0] as [number, number][], height: p.y1 - p.y0 })),
+      wholeR,
+      (t) => t.h - Math.min(t.h * 0.75, Math.max(wholeR(t) * 2.2, t.h * 0.6)) * 1.18,
+    );
+    near.forEach((t, i) => share.set(t, kept[i]));
+  }
+  const trees = allTrees.filter((t) => share.get(t) !== 0);
   const crowns: THREE.Matrix4[][] = [[], [], [], [], [], []];
   const trunks: THREE.Matrix4[] = [];
   const q = new THREE.Quaternion();
@@ -497,7 +514,7 @@ function buildTrees(trees: Surroundings['trees'], detail: (x: number, z: number)
     // A tall tree's crown is most of its height and wide (the woods' oaks, beeches and poplars of
     // 20 to 25 m start branching at a third of it); the laser scan's crown radius stops at 4.5 m, so a
     // tall tree was a small ball on a long bare pole. Trees up to about 15 m hardly change.
-    const crownR = Math.min(7, Math.max(t.r, t.h * 0.26));
+    const crownR = wholeR(t) * (share.get(t) ?? 1);
     const crownH = Math.min(t.h * 0.75, Math.max(crownR * 2.2, t.h * 0.6));
     const trunkH = t.h - crownH * 0.6;
     const turn = (t.x * 7.3 + t.z * 3.1) % (Math.PI * 2);

@@ -1,6 +1,19 @@
 # Progress
 
-Last update: 2026-11-04
+Last update: 2026-11-05
+
+<!-- The handover: rewrite these four at the end of every session (AGENTS.md, "Working efficiently"). Keep each short. -->
+
+**Live:** brieltje.be runs `main`. New on 5 Nov: baked light and wear on the ten building models of our own (shade, bounced light, the sun's shadow across the village, dirt, streaks, green), and GPU-compressed KTX2 textures (half size on phones, Yoshi's choice). Also the working-efficiently rules, dev tools (`tools/dev/`) and code map (`docs/CODEMAP.md`).
+
+**In progress:** nothing half done. Next on the list from the graphics ideas: TAA with upscaling on High and Ultra, then cascaded sun shadows, reflections and bloom.
+
+**Next command:** to re-bake after a model changed, see `docs/DETAILS.md` ("Baked light and wear"): `tools/bake/lightmap_uv.py`, the export in the dev page, `tools/bake/bake_buildings.py`, `tools/bake/encode_buildings.py`.
+
+**Open questions:**
+- Whether the main house (outside and the rooms) gets the same bake; it is built in code, so it needs its own export step (the old "Baked lighting (test)" setting is still there).
+- The village's open-data blocks (about 250 houses) keep real-time light; whether they get a cheaper bake too.
+- Not tested on a real iPhone, iPad or Android phone.
 
 ## Done
 

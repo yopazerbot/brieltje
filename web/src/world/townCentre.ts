@@ -1,6 +1,7 @@
 import * as THREE from 'three';
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 import type { Prism, Ring } from './houseData';
+import { loadTexture } from './textureFiles';
 
 /**
  * The houses round Smetlede's church square and along the street to the school: our own Blender models
@@ -25,8 +26,6 @@ import type { Prism, Ring } from './houseData';
  * model once the village loads; the render takes the game's plaster texture.
  */
 
-const HALF = matchMedia('(pointer: coarse)').matches; // phones get the half-size textures, as everywhere
-const FOLDER = HALF ? '/textures/half' : '/textures';
 /** Metres per texture tile (the UVs are in metres). */
 const TILE: Record<string, number> = { town_brick: 1.4, town_roof: 3.6, plaster: 3.2 };
 /** The model stores its vertex colours divided by this (painted brick is lighter than the brick texture's mean). */
@@ -37,9 +36,8 @@ function texture(name: string, kind: 'color' | 'normal' | 'rough', renderer: THR
   const key = `${name}_${kind}`;
   let t = textures.get(key);
   if (!t) {
-    t = new THREE.TextureLoader().load(`${FOLDER}/${key}.webp`);
+    t = loadTexture(key, kind === 'color', renderer); // KTX2 or WebP, as everywhere (world/textureFiles.ts)
     t.wrapS = t.wrapT = THREE.RepeatWrapping;
-    t.colorSpace = kind === 'color' ? THREE.SRGBColorSpace : THREE.NoColorSpace;
     t.anisotropy = Math.min(4, renderer.capabilities.getMaxAnisotropy());
     t.repeat.setScalar(1 / (TILE[name] ?? 2));
     textures.set(key, t);

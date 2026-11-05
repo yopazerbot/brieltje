@@ -87,6 +87,7 @@ import { HomeStreet, withoutModelled } from './world/homeStreet';
 import { buildRoadDetail, roadPaint, withRoadDetail } from './world/roadDetail';
 import { RoadLife } from './world/roadLife';
 import { fitStreetModel, loadStreetModel } from './world/streetModel';
+import { bakeLight, setBakeDetail } from './world/bakedLight';
 import { loadWalkIn, type WalkIn } from './world/walkIn';
 import { CAR_REACH, CAR_SLOW, findPortal, PORTALS, portalNear, REACH, type Portal } from '../shared/portals.mjs';
 import { noShoot } from '../shared/zones.mjs';
@@ -288,6 +289,7 @@ tiles.addSet(ringTiles(ringData.kept), true);
 const ringRoads = buildRoadDetail(false, renderer, house.ground);
 tiles.addSet(ringRoads.tiles, true);
 const homeStreet = new HomeStreet(tiles, renderer, house.ground, ringData.removed, (s) => tiles.addSet(ringTiles(s), true));
+void homeStreet.ready.then(() => bakeLight(homeStreet.group, renderer)); // its baked light and wear (world/bakedLight.ts)
 const horizon = buildHorizon(center, house.ground);
 scene.add(tiles.group, horizon);
 // Shadows and soft corners on the ground of the whole neighbourhood, worked out once the sun's
@@ -386,6 +388,7 @@ function applyQuality(q: Quality): void {
   ao.enabled = preset.ao !== 'off';
   smaa.enabled = preset.smaa;
   sun.castShadow = preset.shadowMap > 0;
+  sun.shadow.radius = preset.shadowSoft; // softer edges on the bigger presets (graphics.ts)
   if (preset.shadowMap && sun.shadow.mapSize.x !== preset.shadowMap) {
     sun.shadow.mapSize.set(preset.shadowMap, preset.shadowMap);
     sun.shadow.map?.dispose();
@@ -395,6 +398,7 @@ function applyQuality(q: Quality): void {
     renderer.shadowMap.needsUpdate = true;
   }
   setAnisotropy(preset.anisotropy);
+  setBakeDetail(q !== 'low'); // the baked wear's fine pattern (world/bakedLight.ts)
   tiles.drawDistance = phone ? Math.min(FAR_PHONE, preset.far) : preset.far;
   baked.setEnabled(preset.baked || bakedWanted);
   dynScale = 1;
@@ -3002,6 +3006,8 @@ async function buildVillage(): Promise<void> {
     }
     await between();
   }
+  // The models' baked light and wear (world/bakedLight.ts), fetched while the village's tiles are built.
+  const bakes = Promise.all(models.map((m) => bakeLight(m, renderer)));
   const drawn = withRoadDetail(withoutLandmarks(data, models.map((m) => m.userData.landmark as string), models.flatMap((m) => (m.userData.replaces as Ring[] | undefined) ?? [])));
   await between();
   // The centre's clinkers (the church square and the main street) have a texture of their own, fetched with the village: shaded as the other ground covers.
@@ -3026,6 +3032,7 @@ async function buildVillage(): Promise<void> {
     if (set.some(far)) tiles.addSet(set.filter(far), false, 100, 350);
   }
   world.addPrisms(roads.blocks);
+  await bakes;
   for (const m of models) {
     tiles.group.add(m); // a caster for the village's ground shading, a target for shots
     tiles.track(m, undefined, String(m.userData.landmark).startsWith('molenhoek_end') ? 350 : Infinity);

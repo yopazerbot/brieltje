@@ -40,6 +40,7 @@ const TYPES = {
   '.jpg': 'image/jpeg',
   '.webp': 'image/webp',
   '.ktx2': 'image/ktx2',
+  '.wasm': 'application/wasm',
   '.hdr': 'application/octet-stream',
   '.glb': 'model/gltf-binary',
   '.svg': 'image/svg+xml',
@@ -47,6 +48,9 @@ const TYPES = {
   '.woff2': 'font/woff2',
 };
 
+// script-src 'wasm-unsafe-eval': the texture transcoder (public/basis/, world/textureFiles.ts) is
+// WebAssembly, and compiling it needs this. It allows WebAssembly compilation only, not eval() or
+// new Function(); the module is our own same-origin file (connect-src 'self'), so no other source opens.
 const HEADERS = {
   'X-Robots-Tag': 'noindex, nofollow, noarchive, nosnippet, noimageindex',
   'X-Content-Type-Options': 'nosniff',
@@ -57,7 +61,7 @@ const HEADERS = {
   'Cross-Origin-Opener-Policy': 'same-origin',
   'Cross-Origin-Resource-Policy': 'same-origin',
   'Content-Security-Policy':
-    "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; " +
+    "default-src 'self'; script-src 'self' 'wasm-unsafe-eval'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; " +
     "connect-src 'self' data: blob:; worker-src 'self' blob:; frame-ancestors 'none'; base-uri 'none'; form-action 'none'",
 };
 

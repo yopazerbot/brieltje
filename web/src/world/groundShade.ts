@@ -93,18 +93,19 @@ void main() {
   float base = ground + terrainAt(xz); // the ground here, on the relief
   vec3 p = vec3(xz.x, base + 0.06, xz.y);
 
-  // Sun: is anything between this spot and the sun? Nine taps for a soft edge, each a spot of the ground of
-  // its own round this one (a tap beside it in the sun's image would see the ground covers, the fields and
-  // the pavers, standing higher or lower on a slope, and shade them in a fine hatch).
+  // Sun: is anything between this spot and the sun? 25 taps for a soft edge (baked once, so they cost only
+  // the bake), a little wider than the nine there were and a smooth fade instead of their steps. Each is a spot
+  // of the ground of its own round this one (a tap beside it in the sun's image would see the ground covers,
+  // the fields and the pavers, standing higher or lower on a slope, and shade them in a fine hatch).
   float d;
   float lit = 0.0;
-  for (int x = -1; x <= 1; x++)
-    for (int y = -1; y <= 1; y++) {
-      vec2 tap = xz + vec2(x, y) * sunTap;
+  for (int x = -2; x <= 2; x++)
+    for (int y = -2; y <= 2; y++) {
+      vec2 tap = xz + vec2(x, y) * (sunTap * 0.6);
       vec2 uv = project(sunMatrix, vec3(tap.x, ground + terrainAt(tap) + 0.06, tap.y), d);
       lit += d - sunBias <= texture2D(sunDepth, uv).r ? 1.0 : 0.0;
     }
-  lit /= 9.0;
+  lit /= 25.0;
   // Where the real-time shadow reaches, leave it to that one (it also sees people and furniture).
   float ld;
   vec2 live = abs(project(liveMatrix, p, ld) * 2.0 - 1.0);

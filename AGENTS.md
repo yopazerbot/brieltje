@@ -39,11 +39,20 @@ Start the tool in that folder, not in the main checkout. Claude Code's subagents
 
 ## Before you start (workers)
 
-- **Your git identity.** `git config user.email` must end in `@users.noreply.github.com`. If it doesn't, stop and tell Yoshi: every commit is public, and a real address would end up in it. Don't change git's settings yourself.
 - **Your base.** `git merge-base HEAD main` (`origin/main` in the cloud) should be the newest commit on `main`. If it isn't, say so in your report.
 - **Who else is working.** `git worktree list` shows the other worktrees. For each one in use, `git -C <folder> status --short` and `git log --oneline main..<branch>` show what it changes. In the cloud, look at the open branches and draft pull requests. If another agent is changing the same files or the same feature, tell Yoshi before you start.
 - **Packages.** `web/node_modules` is not shared between worktrees. If it is missing, run `npm ci` in `web/`. That leaves `package-lock.json` as it is.
 - **Scope.** Stay inside your task. Something else broken goes in your report. Don't fix it on the side.
+
+## Working efficiently (any session)
+
+- **Find, don't read.** Search for the function, key or row you need and read only those lines. `docs/CODEMAP.md` says which module holds what. Never read `main.ts`, `i18n.ts` or `DECISIONS.md` whole.
+- **Reuse the dev tools.** `tools/dev/` has the headless browser driver (`cdp.mjs`), screenshots (`shot.mjs`) and frame timing (`bench.mjs`). Use them instead of writing a new driver. A check worth keeping goes there too.
+- **Keep output small.** Filter what a command prints (`grep`, `head`, `tail`). Send big output to a temp file and look only at the part you need. Run long jobs (builds of models, bakes, renders) in the background.
+- **Plan short.** A few lines: the files, the approach, the checks. Then work.
+- **Helpers only for parallel work.** Start another agent only for a job that runs alongside yours and doesn't touch the same files. A lookup you can do in a few searches, you do yourself.
+- **Which model.** Use the strongest model your tool offers for planning, security changes, the graphics pipeline (renderer, shaders, lighting, bakes) and the review before a push. A mid-tier model may build from a written plan that names the files, the approach and the checks. Claude Code has both as agents: `.claude/agents/implementer.md` and `.claude/agents/reviewer.md`.
+- **Hand over at the end.** Before you stop, write what is live, what is half done, the next command to run and the open questions. The merger puts that at the top of `PROGRESS.md`; a worker puts it in its report.
 
 ## Files many agents touch
 
