@@ -76,6 +76,15 @@ function crosses(a: [number, number], b: [number, number], c: [number, number], 
 }
 
 /** Metres: the side of a square of the grid that finds the blocks near a point. */
+/**
+ * Garden fences (wire mesh on concrete posts, 1.05 or 1.3 m) are low enough to jump over (Yoshi): their block stops
+ * at FENCE_HOP over its foot, within a jump's reach (half a metre up, then a half-metre step). Taller fences, walls and
+ * hedges keep their height. Only walking changes: the zombies' paths (shared/zombies.mjs) keep the fences whole.
+ */
+const FENCE_HOP = 0.95;
+const FENCE_LOW = 1.4;
+const hopOver = (p: Prism): number => (p.m === 'fence' && p.y1 - p.y0 <= FENCE_LOW ? Math.min(p.y1, p.y0 + FENCE_HOP) : p.y1);
+
 const CELL = 16;
 const cellOf = (v: number) => Math.floor(v / CELL);
 const cellKey = (i: number, j: number) => (i + 32768) * 65536 + (j + 32768);
@@ -127,7 +136,7 @@ export class World {
         maxZ = Math.max(maxZ, z);
       }
       const index = this.solids.length;
-      this.solids.push({ y0: p.y0, y1: p.y1, lift: !!p.d, rings: p.p, name: p.n, mat: p.m, minX, maxX, minZ, maxZ });
+      this.solids.push({ y0: p.y0, y1: hopOver(p), lift: !!p.d, rings: p.p, name: p.n, mat: p.m, minX, maxX, minZ, maxZ });
       for (let i = cellOf(minX); i <= cellOf(maxX); i++) {
         for (let j = cellOf(minZ); j <= cellOf(maxZ); j++) {
           const k = cellKey(i, j);
