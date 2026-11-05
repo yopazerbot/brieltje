@@ -11,14 +11,14 @@ that layout and the game checks the id before it uses a bake, so a model that wa
 
 The rest of the model stays as it was: vertices are only split where a piece's edge needs two
 UVs, and every other attribute is copied along. Glass, foliage, the small things (frames,
-gutters, railings: their own LOD meshes), fittings and a model's far version are left out: they
-keep real-time light.
+gutters, railings: their own LOD meshes), fittings, ground surfaces (roads, pavers, yards) and a
+model's far version are left out: they keep real-time light.
 
   tools/.venv/Scripts/python.exe tools/bake/lightmap_uv.py            (every model in buildings.json)
   tools/.venv/Scripts/python.exe tools/bake/lightmap_uv.py molenhoek  (one of them)
 
 tools/bake/buildings.json names the models and their texel size (metres per texel on walls and
-roofs; ground surfaces get 2.5 times that). --dry only prints the sizes.
+roofs). --dry only prints the sizes.
 """
 import hashlib
 import json
@@ -36,7 +36,9 @@ CHART_COS = math.cos(math.radians(30))  # a piece grows over triangles within 30
 
 # Meshes that keep real-time light: see-through, leaves, small details, loose fittings.
 SKIP_WORDS = ("glass", "clear", "foliage", "detail", "fittings", "trim", "_in")
-# Ground surfaces: coarser texels (only the houses' shadows and some sky light matter there).
+# Ground surfaces (roads, pavers, yards, terraces) keep real-time light too: the ground's own shading
+# (world/groundShade.ts) already gives them the houses' shadows, and a rebuilt road lying in the
+# village's ground came out of the bake black, where that ground covered it (Yoshi, 5 Nov 2026).
 GROUND_WORDS = ("asphalt", "pavers", "yard", "slab", "pave")
 
 
@@ -320,7 +322,8 @@ def process(path: Path, texel: float, page_size: int, dry: bool) -> dict:
 
     jobs = []  # per mesh: list of (primitive, tris, chart rects)
     for mi, mesh in enumerate(j["meshes"]):
-        mesh.setdefault("extras", {}).pop("lm", None)
+        for key in ("lm", "lmModel", "lmId", "lmSize"):  # a mesh left out this time keeps no old notes
+            mesh.setdefault("extras", {}).pop(key, None)
         for prim in mesh["primitives"]:
             prim["attributes"].pop("TEXCOORD_1", None)
         nodes = mesh_node.get(mi, [])
@@ -330,9 +333,10 @@ def process(path: Path, texel: float, page_size: int, dry: bool) -> dict:
         extras = mat.get("extras") or {}
         # A model's far version (the town's, beyond 230 m) too: there the light needs no detail.
         far = name.startswith("far_")
-        if len(nodes) != 1 or far or any(w in name or w in mname for w in SKIP_WORDS) or extras.get("lod") or mat.get("alphaMode") == "BLEND":
+        ground = any(w in name or w in mname for w in GROUND_WORDS)
+        if len(nodes) != 1 or far or ground or any(w in name or w in mname for w in SKIP_WORDS) or extras.get("lod") or mat.get("alphaMode") == "BLEND":
             continue
-        size = texel * (2.5 if any(w in name or w in mname for w in GROUND_WORDS) else 1.0)
+        size = texel
         m = world[nodes[0]]
         pieces = []
         for prim in mesh["primitives"]:
