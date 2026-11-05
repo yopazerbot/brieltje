@@ -8,6 +8,8 @@
 
 # Tooling
 /tools/.venv/
+# Downloaded command-line tools (tools/ktx2.py fetches the texture encoder here)
+/tools/.bin/
 # Claude Code's worktrees for background agents
 /.claude/worktrees/
 __pycache__/
