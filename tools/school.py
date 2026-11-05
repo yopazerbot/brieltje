@@ -22,7 +22,10 @@ nothing of them is shipped:
   the fenced school garden in front of it with two arched polycarbonate bike shelters, the bench on orange
   legs, the three yellow hoop barriers and the orange egg-shaped seat on the pavement; on the square the
   low stone planter wall along the church's nave and the blue signs of the parking bays in front of it (the bays
-  themselves are clinkers in the square's paving: tools/road_detail.py).
+  themselves are clinkers in the square's paving: tools/road_detail.py);
+- the photos Yoshi took on 5 November 2026 on the square: the planter's autumn planting (straw-coloured
+  grasses, a few grey-green shrubs, dried hydrangeas by the transept), the parking signs on orange posts in
+  the bed, and the two white flagpoles there with the Flemish flag and the Belgian tricolour.
 What the photos don't show is made up in the same style: the playground side of the buildings (windows,
 doors, clerestory windows above the corridor), the play tower's details, the balance posts, the goal, the
 hopscotch, the fence along the playground's south side. The school's board carries coloured squares and
@@ -865,28 +868,114 @@ for lx0, lx1, y0, y1 in ((LX0, LX1, WALL_Y - 0.18, WALL_Y + 0.18), (LX0 - 0.18, 
         solid("school_stone", [c + (terrain(*c) + h,) for c in corners for h in (-0.25, 0.5)])
 bed = [ch(LX0 + 0.18, WALL_Y + 0.18), ch(LX1 - 0.18, WALL_Y + 0.18), ch(LX1 - 0.18, NAVE_FACE - 0.02), ch(LX0 + 0.18, NAVE_FACE - 0.02)]
 drape("school_fittings", bed, 0.36, "#4a3c30")
-for k, lx in enumerate(np.arange(LX0 + 0.8, LX1 - 0.4, 1.15)):
-    x, z = ch(lx, (WALL_Y + NAVE_FACE) / 2 + 0.05 * ((k % 3) - 1))
-    blob("school_fittings", x, z, terrain(x, z) + 0.3, 0.42, 0.5 + 0.12 * (k % 2), ("#58763f", "#6b8a4a", "#4f6e3d")[k % 3], seed=20 + k)
+# What grows in it in autumn (the photos Yoshi took on 5 Nov 2026): straw-coloured ornamental grasses along
+# most of it, a few low grey-green shrubs, and dried hydrangeas, rust brown, at its east end by the transept.
+STRAW = ("#c4a86c", "#b39457", "#cfb67e", "#a98c55")
+
+
+def tuft(x, z, y, r, h, seed):
+    """An ornamental grass in autumn: a straw-coloured mound with blades fanning out of it."""
+    rng = np.random.default_rng(seed)
+    blob("school_fittings", x, z, y - 0.05, r * 0.6, h * 0.45, STRAW[3], seed=seed)
+    for k in range(10):
+        a = 2 * math.pi * (k + rng.uniform(-0.35, 0.35)) / 10
+        b = (x + 0.1 * r * math.cos(a), z + 0.1 * r * math.sin(a))
+        reach = rng.uniform(0.7, 1.0)
+        tip = (x + reach * r * math.cos(a), z + reach * r * math.sin(a), y + h * rng.uniform(0.8, 1.15))
+        side = (-math.sin(a) * 0.022, math.cos(a) * 0.022)
+        solid("school_fittings", [(b[0] + side[0], b[1] + side[1], y), (b[0] - side[0], b[1] - side[1], y),
+                                  (b[0], b[1], y + h * 0.55), tip], STRAW[(seed + k + 1) % 4])
+
+
+for k, lx in enumerate(np.arange(LX0 + 0.55, -6.2, 0.72)):
+    x, z = ch(lx, (WALL_Y + NAVE_FACE) / 2 + 0.16 * ((k % 2) * 2 - 1))
+    tuft(x, z, terrain(x, z) + 0.36, 0.38 + 0.06 * (k % 3), 0.75 + 0.1 * (k % 2), 20 + k)
+for k, lx in enumerate(np.arange(-5.8, -3.6, 0.55)):
+    x, z = ch(lx, (WALL_Y + NAVE_FACE) / 2 + 0.12 * ((k % 2) * 2 - 1))
+    blob("school_fittings", x, z, terrain(x, z) + 0.32, 0.28, 0.38, ("#7f8b74", "#6f7c66")[k % 2], seed=50 + k)
+for k, lx in enumerate(np.arange(-3.2, LX1 - 0.3, 0.75)):
+    x, z = ch(lx, (WALL_Y + NAVE_FACE) / 2 + 0.1 * ((k % 2) * 2 - 1))
+    blob("school_fittings", x, z, terrain(x, z) + 0.3, 0.46, 0.75 + 0.1 * (k % 2), ("#8a5a3c", "#7a4b33", "#966a48")[k % 3], seed=60 + k)
 # The parking bays in front of it, nose to the church (the two by the tower for disabled drivers), are darker
 # clinkers edged with light ones: tools/road_detail.py lays them in the square's paving (data/smetlede.json).
-# Their blue signs in front of the wall.
+# Their signs stand in the bed on orange posts: a blue panel with a white P, the wheelchair at its foot.
 for lx in (-14.45, -10.95):
-    x, z = ch(lx, WALL_Y - 0.3)
+    x, z = ch(lx, WALL_Y + 0.35)
     g0 = terrain(x, z)
-    tube("school_fittings", (x, z, g0 - 0.2), (x, z, g0 + 2.35), 0.035, "#8f9395", seg=6)
-    t = ch(lx + 1, WALL_Y - 0.3)
+    tube("school_fittings", (x, z, g0 - 0.2), (x, z, g0 + 2.05), 0.03, "#e0682c", seg=6)
+    t = ch(lx + 1, WALL_Y + 0.35)
     d = ((t[0] - x), (t[1] - z))
-    o = ch(lx, WALL_Y - 1.3)
+    o = ch(lx, WALL_Y - 0.65)
     out = (o[0] - x, o[1] - z)
     sign = Frame((x - d[0] * 0.3, z - d[1] * 0.3), d, out, g0)
-    sign.box("school_fittings", 0, 0.6, 1.75, 2.35, 0.04, 0.07, "#1f5fa8")
-    sign.box("school_fittings", 0.0, 0.6, 1.42, 1.72, 0.04, 0.07, "#f2f2ef")
-    sign.box("school_fittings", 0.2, 0.28, 1.88, 2.24, 0.07, 0.08, "#f4f4f2")          # the P
-    sign.box("school_fittings", 0.28, 0.4, 2.15, 2.24, 0.07, 0.08, "#f4f4f2")
-    sign.box("school_fittings", 0.28, 0.4, 2.01, 2.09, 0.07, 0.08, "#f4f4f2")
-    sign.box("school_fittings", 0.37, 0.43, 2.05, 2.2, 0.07, 0.08, "#f4f4f2")
-    sign.box("school_fittings", 0.25, 0.35, 1.5, 1.64, 0.07, 0.08, "#1f5fa8")
+    sign.box("school_fittings", 0, 0.6, 1.2, 2.1, 0.03, 0.06, "#1f5fa8")
+    sign.box("school_fittings", 0.1, 0.19, 1.5, 2.0, 0.06, 0.07, "#f4f4f2")          # the P
+    sign.box("school_fittings", 0.19, 0.36, 1.92, 2.0, 0.06, 0.07, "#f4f4f2")
+    sign.box("school_fittings", 0.19, 0.36, 1.7, 1.78, 0.06, 0.07, "#f4f4f2")
+    sign.box("school_fittings", 0.34, 0.42, 1.74, 1.96, 0.06, 0.07, "#f4f4f2")
+    sign.box("school_fittings", 0.38, 0.52, 1.26, 1.38, 0.06, 0.07, "#f4f4f2")       # the wheelchair: wheel, seat, back, head
+    sign.box("school_fittings", 0.44, 0.54, 1.38, 1.42, 0.06, 0.07, "#f4f4f2")
+    sign.box("school_fittings", 0.42, 0.45, 1.38, 1.5, 0.06, 0.07, "#f4f4f2")
+    sign.box("school_fittings", 0.415, 0.455, 1.52, 1.56, 0.06, 0.07, "#f4f4f2")
+# Two white flagpoles in the bed against the nave, just behind the signs (photos of 5 Nov 2026): the
+# Flemish flag (yellow, a black lion with red tongue and claws) on the west one, the Belgian tricolour on
+# the east one, hanging on a still day. Each flag is a grid of flat-coloured cells, drawn on both sides.
+LION = [(0.30, 0.86), (0.36, 0.92), (0.46, 0.90), (0.52, 0.80), (0.56, 0.66), (0.66, 0.58), (0.74, 0.46), (0.80, 0.56), (0.84, 0.74),
+        (0.90, 0.80), (0.92, 0.70), (0.86, 0.50), (0.78, 0.32), (0.70, 0.24), (0.74, 0.12), (0.66, 0.10), (0.60, 0.20), (0.52, 0.26),
+        (0.46, 0.16), (0.48, 0.10), (0.38, 0.10), (0.40, 0.30), (0.42, 0.44), (0.30, 0.46), (0.22, 0.40), (0.18, 0.46), (0.28, 0.56),
+        (0.24, 0.64), (0.16, 0.62), (0.14, 0.70), (0.30, 0.72), (0.26, 0.80)]   # rampant, facing the pole (u across, v up)
+RED_BITS = [(0.24, 0.79), (0.17, 0.45), (0.15, 0.67), (0.40, 0.11), (0.68, 0.11)]   # tongue and claws
+
+
+def inside(poly, u, v):
+    hit = False
+    for (u0, v0), (u1, v1) in zip(poly, poly[1:] + poly[:1]):
+        if (v0 > v) != (v1 > v) and u < u0 + (v - v0) * (u1 - u0) / (v1 - v0):
+            hit = not hit
+    return hit
+
+
+def flemish(u, v):
+    if any(math.hypot(u - a, v - b) < 0.055 for a, b in RED_BITS):
+        return "#c8302f"
+    return "#1b1a18" if inside(LION, u, v) else "#f2d21e"
+
+
+def belgian(u, v):
+    return ("#1b1a18", "#f2cf1f", "#d0303a")[min(2, int(u * 3))]
+
+
+def flag(lx, colour, nu, nv, wave_seed):
+    """A flagpole in the bed at local x `lx` with its flag hanging from the top, a little to the west and out."""
+    px, pz = ch(lx, NAVE_FACE - 0.32)
+    g0 = terrain(px, pz)
+    top = g0 + 6.5
+    tube("school_fittings", (px, pz, g0 - 0.2), (px, pz, top), 0.038, "#f1f1ee", seg=6)
+    tube("school_fittings", (px, pz, top), (px, pz, top + 0.07), 0.05, "#f1f1ee", seg=6)
+    w = ch(lx - 1, NAVE_FACE - 0.32 - 0.35)           # the fly's direction: west and a little out from the wall
+    fly = Vector((w[0] - px, w[1] - pz, 0)).normalized()
+    nrm = Vector((-fly.y, fly.x, 0))                    # across the flag (horizontal)
+    H, L, droop = 1.0, 1.5, math.radians(62)
+    rng = np.random.default_rng(wave_seed)
+    phase = rng.uniform(0, math.pi)
+
+    def at(u, v, off):
+        """The point at u (0 at the pole, 1 at the fly) and v (1 at the top) of the hanging flag."""
+        a = u * L
+        p = Vector((px, pz, top - 0.1)) + fly * (0.04 + a * math.cos(droop)) + Vector((0, 0, -(1 - v) * H - a * math.sin(droop)))
+        p += nrm * (0.07 * u * math.sin(2 * math.pi * u * 1.6 + phase + 1.2 * v) + off)
+        return (p.x, p.y, p.z)
+
+    for i in range(nu):
+        for j in range(nv):
+            u0, u1, v0, v1 = i / nu, (i + 1) / nu, j / nv, (j + 1) / nv
+            c = colour((u0 + u1) / 2, (v0 + v1) / 2)
+            for off, sgn in ((0.002, 1), (-0.002, -1)):
+                face("school_fittings", [at(u0, v0, off), at(u1, v0, off), at(u1, v1, off), at(u0, v1, off)], (nrm.x * sgn, nrm.y * sgn, 0), c)
+
+
+flag(-14.15, flemish, 15, 10, 1)
+flag(-10.65, belgian, 6, 3, 2)
 # No bins: Yoshi asked for none in the game (the one by the chapel and the one by the gate went, 1 Nov 2026).
 
 
