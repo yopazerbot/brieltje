@@ -337,7 +337,7 @@ def manual_opening(e):
     along_x = e["dir"][0] == 1
     o = {"center": [(x0 + x1) / 2, (z0 + z1) / 2], "dir": e["dir"], "width": (x1 - x0) if along_x else (z1 - z0),
          "thickness": (z1 - z0) if along_x else (x1 - x0), "type": e["type"], "sill": e.get("sill", 0.0), "head": e["head"]}
-    for key in ("lintel", "leaf", "swing", "into"):  # the wall above it if not brick; the door leaf's finish; how it hangs; the room behind it
+    for key in ("lintel", "leaf", "swing", "into", "panel"):  # the wall above it if not brick; the door leaf's finish; how it hangs; the room behind it; a window's panel instead of glass
         if key in e:
             o[key] = e[key]
     return o
@@ -374,15 +374,19 @@ def build_level(b, lv, data, man):
         if o["type"] == "fill":
             b.wall(f, c, rect)
             continue
+        # Above and below the opening only what isn't wall already: an opening is a few centimetres wider than
+        # the gap in the walls, and the overlap drew two faces in one plane, which showed as thin dark lines down
+        # from the sills' ends (Yoshi, 5 Nov 2026).
+        fill = rect.difference(walls)
         if o["type"] == "door" and inside_opening(o, interior) and not any(m.distance(Point(o["center"])) < 0.4 for m in moved):
             o["head"] = round(c - f, 3)  # doors inside the house go up to the ceiling (Yoshi)
         if o["head"] < c - f - 0.01:
             if o.get("lintel"):
-                b.add(o["lintel"], f + o["head"], c, rect)
+                b.add(o["lintel"], f + o["head"], c, fill)
             else:
-                b.wall(f + o["head"], c, rect)
+                b.wall(f + o["head"], c, fill)
         if o["type"] == "window":
-            b.wall(f, f + o["sill"], rect)
+            b.wall(f, f + o["sill"], fill)
             if o.get("panel"):
                 # Not glass: a panel of this finish (the garden shed's wood), set 4 cm back from the
                 # brick, with plastered wall behind it.

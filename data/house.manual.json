@@ -65,6 +65,7 @@
     {"level": "gf", "add": [[3.55, -0.035], [4.706, -0.035], [4.706, 0.0], [3.55, 0.0]], "material": "cladding", "note": "rear wall under the roof terrace, between the shed and the bedroom slider: wood planks on the brick"},
     {"level": "gf", "add": [[7.806, -0.035], [9.02, -0.035], [9.02, 0.0], [7.806, 0.0]], "material": "cladding", "note": "rear wall under the roof terrace, right of the bedroom slider: wood planks on the brick"},
     {"level": "gf", "remove": [[5.70, 8.06], [5.77, 8.06], [5.77, 8.66], [5.70, 8.66]], "note": "thin strip in the hall passage: part of the sliding door opening (Yoshi), not a wall"},
+    {"level": "f1", "remove": [[8.639, 8.702], [9.02, 8.702], [9.02, 9.309], [8.639, 9.309]], "note": "the pier between the two windows over the front door: a dark chocolate panel instead of brick (Yoshi, 5 Nov 2026; extraOpenings)"},
     {"level": "f1", "remove": [[4.739, 9.82], [4.80, 9.82], [4.80, 10.83], [4.739, 10.83]], "note": "sliding door leaf drawn open along the playroom side of the wall (lighting plan): a door, not wall (see playroom-slider)"},
     {"level": "f2", "remove": [[5.62, 3.36], [5.96, 3.36], [5.96, 6.03], [5.62, 6.03]], "note": "office 1 / storage wall in its first-set position"},
     {"level": "f2", "add": [[6.22, 3.38], [6.36, 3.38], [6.36, 5.06], [6.22, 5.06]], "note": "office 1 / storage wall moved 52 cm (office 1 now 7.51 m2)"}
@@ -141,6 +142,7 @@
   ],
 
   "extraOpenings": [
+    {"level": "f1", "rect": [8.639, 8.702, 9.02, 9.309], "dir": [0, 1], "type": "window", "sill": 1.08, "head": 2.48, "panel": "alu_out", "note": "Yoshi: the strip between the two windows over the front door is a panel in the windows' dark chocolate, not brick; brick below the sills as beside it"},
     {"level": "gf", "rect": [5.715, 8.066, 5.9, 9.319], "dir": [0, 1], "type": "door", "head": 2.11, "note": "the 1.25 m passage between entrance hall and bedroom hall (widened per Yoshi); up to the ceiling like every inside door"},
     {"level": "gf", "rect": [2.26, -2.90, 3.32, -2.72], "dir": [1, 0], "type": "door", "head": 2.1, "lintel": "cladding", "leaf": {"surface": "cladding"}, "note": "garden shed door, swings in; clad in the same wood planks as the shed's front (rear elevation, 6)"},
     {"level": "f2", "rect": [6.22, 5.06, 6.36, 5.98], "dir": [0, 1], "type": "door", "head": 2.11, "swing": {"hinge": "high", "side": -1}, "into": "Berging", "note": "storage room door, moved with its wall; hinged at the stair end, opening into the storage room (lighting plan)"}
