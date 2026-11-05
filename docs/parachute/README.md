@@ -291,8 +291,10 @@ the page and the server.
   jumping, flying, crouching or shooting; the gun is put away and a hint says to steer.
 - **The server decides.** It starts every drop (`startDrop` in `web/server/game.mjs`) and keeps the
   player in it until the page says it landed (not in the first 1.2 s, when older messages can still
-  come) or 15 s have passed. Across, a drop is slower than running, so the movement budget holds it as
-  it is; down, it is far under the 16 m/s limit.
+  come), or until it ends the drop itself (`dropOver`): the page's feet are within 1 m of the landing
+  place, or higher than sinking 3.6 m/s from the start allows after 2 s of slack (a page hovering under
+  the flag loses it after about 2 s), or 8 s have passed. Across, a drop is slower than running, so the
+  movement budget holds it as it is; down, it is far under the 16 m/s limit.
 - **Combat:** under a parachute a player is calm, as on the school grounds (`calm`): they can't shoot
   and nobody hurts them, zombies and strongmen included. Landing gives the usual 2 s of protection.
 - **The others** see a flag in the tick (`FLAG.chute`, bit 8 of a player's flags, above the teleport

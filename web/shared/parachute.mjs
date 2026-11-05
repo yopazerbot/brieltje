@@ -13,7 +13,8 @@ export const DROP = {
   sink: 3.6, // m/s down under the open canopy
   turn: 1.1, // rad/s at full steering
   flareAt: 3, // m over the ground: the flare slows the landing
-  maxMs: 15000, // ms: a drop taking longer ends there (it takes about 6 s)
+  maxMs: 8000, // ms: a drop taking longer ends there (it takes about 5 s)
+  slack: 2, // s a page may lag behind sinking DROP.sink from the start (its messages' delay, the flare) before the server ends its drop
   graceMs: 1200, // ms after the start before the page can end it (messages already on their way)
   reach: 13, // m a drop goes forward without steering (measured in the game)
 };

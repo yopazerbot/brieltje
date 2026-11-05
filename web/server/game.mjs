@@ -594,16 +594,17 @@ export class Game {
       const driving = car?.driver === name;
       const inCar = !!car;
       const horse = this.horseOf(name);
+      const at = where(m);
+      // The drop ends when the page says it landed, or the server sees it down or not sinking (see dropOver).
+      if (player.drop && this.dropOver(player, !!m.pc, at.y, now)) this.landed(player, now);
       const next = {
-        ...where(m),
+        ...at,
         // No flying in the Zombies game: hovering over the zombies would be out of their reach for good.
         yaw: num(m.yaw, -100, 100), pitch: num(m.pitch, -2, 2), armed: !!m.armed, flying: !!m.flying && this.rules.flying && !inCar && !this.modes.zombies,
         w: player.weapons.has(m.w) ? m.w : 'pistol', c: !!m.c && !inCar, d: inCar, s: driving ? num(m.s, -1, 1) : 0,
         // Under a parachute: only while the server has them dropping (a page can't claim one, see drop).
         chute: !!m.pc && this.dropping(player, now),
       };
-      // The page says it landed (not before its first messages from the sky can have come), or the drop took too long.
-      if (player.drop && (!this.dropping(player, now) || (!m.pc && now - player.drop.from > DROP.graceMs))) this.landed(player, now);
       // Never faster than anyone can move: a movement budget refills at MAX_SPEED (the car's
       // speed for its driver; at most half a second's worth stored) and each update spends it,
       // however often updates come. A faked jump only gets as far as running would; a lagging
@@ -874,7 +875,7 @@ export class Game {
     p.movedAt = now;
     this.moved(p);
     if (drop) {
-      this.startDrop(p, now);
+      this.startDrop(p, now, ground);
       this.send(p.ws, { t: 'spawn', ok: true, drop: 1, x, z });
     }
   }
@@ -1449,17 +1450,31 @@ export class Game {
 
   /**
    * Under a parachute (shared/parachute.mjs): from a respawn or start the server chose, until the page
-   * says it landed or DROP.maxMs. Calm like the school grounds (see calm): nobody shoots from the air
+   * says it landed, the server sees it down or not sinking (see dropOver), or DROP.maxMs. Calm like the school grounds (see calm): nobody shoots from the air
    * and nobody, zombies and strongmen included, hurts someone in it.
    */
   dropping(p, now) {
     return !!p?.drop && now < p.drop.until;
   }
 
-  /** A drop begins: protected until it ends (see calm and landed). */
-  startDrop(p, now) {
-    p.drop = { from: now, until: now + DROP.maxMs };
+  /** A drop begins, `floor`: the height of the place it lands on. Protected until it ends (see calm and landed). */
+  startDrop(p, now, floor) {
+    p.drop = { from: now, until: now + DROP.maxMs, floor };
     p.protectedUntil = p.drop.until;
+  }
+
+  /**
+   * Whether an update ends the drop, `y` the page's feet: it says it landed (not before its first
+   * messages from the sky can have come), its feet are within a metre of the landing place, or they are
+   * higher than sinking DROP.sink from the start allows (with DROP.slack). A page can't keep its drop's
+   * protection by holding the flag: hovering ends it after DROP.slack, sinking slowly before DROP.maxMs.
+   */
+  dropOver(p, pc, y, now) {
+    const d = p.drop;
+    if (!this.dropping(p, now)) return true;
+    const t = (now - d.from) / 1000;
+    if (t * 1000 <= DROP.graceMs) return false;
+    return !pc || y < d.floor + 1 || y > d.floor + DROP.height - DROP.sink * (t - DROP.slack);
   }
 
   /** On the ground (or the drop took too long, or they travelled): the usual short protection after a respawn. */
@@ -1522,7 +1537,7 @@ export class Game {
     // By parachute (the admin's rule): only onto open ground, a place outside (never into a room).
     const fly = drop && this.rules.parachute && (at ? true : !!SPAWNS[spawn]?.outside);
     p.drop = null;
-    if (fly) this.startDrop(p, now);
+    if (fly) this.startDrop(p, now, pos.y);
     // Until the player's own update arrives, they are at the spawn point (so the next pick avoids it).
     // A drop starts behind the place, facing it as the page does (the portal, else the house or the bungalow), and lands on it.
     const face = at?.face ?? (SPAWNS[spawn]?.team === 'bungalow' ? [83.5, 189.7] : [4.5, 6]);

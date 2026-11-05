@@ -10,6 +10,7 @@ export const DROP: {
   flareAt: number;
   maxMs: number;
   graceMs: number;
+  slack: number;
   reach: number;
 };
 
