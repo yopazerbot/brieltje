@@ -18,6 +18,16 @@ benches of wood or stone, a bicycle hoop, a bistro table, the bus shelter by the
 yellow roof edge, clear glass, no stop name or operator's marks), the beds behind low stone walls along the church's
 transept, a young tree in its island, notice boards with blank faces. Each is a block for walking into.
 
+Corrected after the photos Yoshi took on 5 November 2026 (houses.json `_ref` says what changed per house): an
+opening can carry its own settings (`at` [s, token, {...}]: its sill and head, frame, panes and where the mullions
+stand, surround), with surrounds of stone and arched heads (`surround_arch`), leaded diamond panes (`leaded`), guard
+bars (`bars`), a row of small top lights (`toplight`), stone slabs or timber beams over the opening (`lintel_stone`,
+`beam`), glass of its own colour (glass blocks), garage doors with upright ribs, small windows and a door let in;
+on a wall: big patches of another brick or render round the openings (`strips` with a surface), basket-weave brick
+(`weave`), fleurs-de-lis as wall anchors at given places; weathered roof tiles in patches (`weather`); and as
+fittings a paved drive (`paving`) and board fences and gates (`fence`). Everything still goes into the same few
+meshes, one per material: no extra draw calls.
+
 Our own models of the houses a player sees from the church and school portals, from the third survey of the
 village centre (31 Oct 2026, tools/town/houses.json). Used for measuring only, nothing of them is shipped:
 - the plans: the GRB outlines and the roof parts that tools/neighbours.py fits to the DHM Vlaanderen II laser
@@ -233,7 +243,8 @@ def grid(key, a, b, c, d, out, paint, cell=CELL):
                 q = bot.lerp(top, v)
                 return (q.x, q.y, q.z)
             u0, u1, v0, v1 = i / nu, (i + 1) / nu, j / nv, (j + 1) / nv
-            face(key, [P(u0, v0), P(u1, v0), P(u1, v1), P(u0, v1)], out, paint)
+            # paint: a colour, or a function of the cell's middle (u, v) giving one (weathered patches)
+            face(key, [P(u0, v0), P(u1, v0), P(u1, v1), P(u0, v1)], out, paint((u0 + u1) / 2, (v0 + v1) / 2) if callable(paint) else paint)
 
 
 def grid_tri(key, a, b, c, out, paint, cell=CELL):
@@ -319,8 +330,9 @@ WIDTH = {"w": 1.2, "W": 2.1, "n": 0.7, "d": 1.0, "D": 1.7, "g": 2.5, "G": 3.1, "
 
 
 class Hole:
-    def __init__(self, kind, s0, s1, y0, y1, storey=0):
+    def __init__(self, kind, s0, s1, y0, y1, storey=0, opt=None):
         self.kind, self.s0, self.s1, self.y0, self.y1, self.storey = kind, s0, s1, y0, y1, storey
+        self.opt = opt or {}  # this opening's own settings over the face's (an `at` item's third element)
 
 
 def layout(fs, length):
@@ -349,12 +361,20 @@ def layout(fs, length):
             if kind != "_":
                 holes.append(opening_heights(kind, s, s + w, f, k, fs))
             s += w + gap
-    for s, tok in fs.get("at", []):
+    for item in fs.get("at", []):
+        # [s, token] or [s, token, {settings}]: "y": [sill, head] from the storey's floor, and any of the face's
+        # settings for this opening alone (frame, panes, surround, bars, glass, door, garage ...)
+        s, tok = item[0], item[1]
+        opt = item[2] if len(item) > 2 else {}
         kind = tok[0]
         w = float(tok[1:].split("@")[0]) if len(tok) > 1 and tok[1] != "@" else WIDTH[kind]
         k = int(tok.split("@")[1]) if "@" in tok else 0
         f = floors[k] if k < len(floors) else floors[-1]
-        holes.append(opening_heights(kind, s - w / 2, s + w / 2, f, k, fs))
+        h = opening_heights(kind, s - w / 2, s + w / 2, f, k, fs)
+        if "y" in opt:
+            h.y0, h.y1 = f + opt["y"][0], f + opt["y"][1]
+        h.opt = opt
+        holes.append(h)
     return holes
 
 
@@ -388,7 +408,8 @@ def build_opening(F, h, fs, wallkey, wallcol, rng):
     rows_f, rows_s = fs.get("frame_rows"), fs.get("style_rows")  # per storey, from the ground up
     frame = rows_f[min(h.storey, len(rows_f) - 1)] if rows_f else fs.get("frame", "#f2f0ea")
     style = rows_s[min(h.storey, len(rows_s) - 1)] if rows_s else fs.get("style", "classic")
-    fs = {**fs, "frame": frame, "style": style}
+    fs = {**fs, "frame": frame, "style": style, **h.opt}
+    frame, style = fs["frame"], fs["style"]
     s0, s1, y0, y1 = h.s0, h.s1, h.y0, h.y1
     w = s1 - s0
     N = ("near", "trim")
@@ -402,12 +423,31 @@ def build_opening(F, h, fs, wallkey, wallcol, rng):
         F.flat(wallkey, s0, s1, y0, y1, -dd, shade(wallcol, 0.75))
         face(("near", "render"), [F.p(s0, y0 + 0.04, 0), F.p(s1, y0 + 0.04, 0), F.p(s1, y0 + 0.04, -dd), F.p(s0, y0 + 0.04, -dd)], (0, 0, 1), "#8d8b86")
         return
-    # A painted band round the opening (the blue or sandstone surrounds of older houses).
+    # A painted band round the opening (the blue or sandstone surrounds of older houses), or a band of stone;
+    # `surround_arch`: its head a shallow arch, the glass (a window's, a door's fanlight) filling it.
     if fs.get("surround"):
-        sc, bw = fs["surround"], 0.14
-        F.flat(wallkey, s0 - bw, s1 + bw, y1, y1 + bw, 0.006, sc)
-        F.flat(wallkey, s0 - bw, s0, y0 - (0.07 if h.kind not in "dDgG" else 0), y1, 0.006, sc)
-        F.flat(wallkey, s1, s1 + bw, y0 - (0.07 if h.kind not in "dDgG" else 0), y1, 0.006, sc)
+        sc, bw = fs["surround"], fs.get("surround_w", 0.14)
+        sk = ("near", fs["surround_mat"]) if fs.get("surround_mat") else wallkey
+        F.flat(sk, s0 - bw, s0, y0 - (0.07 if h.kind not in "dDgG" else 0), y1, 0.006, sc)
+        F.flat(sk, s1, s1 + bw, y0 - (0.07 if h.kind not in "dDgG" else 0), y1, 0.006, sc)
+        if fs.get("surround_arch"):
+            n, cx, rise = 8, (s0 + s1) / 2, 0.3 * w
+            def arc(i, r):
+                a = math.pi * i / n
+                return cx - math.cos(a) * r, y1 + math.sin(a) * rise * r / (w / 2)
+            for i in range(n):
+                (a0, b0), (a1, b1) = arc(i, w / 2), arc(i + 1, w / 2)
+                (c0, d0), (c1, d1) = arc(i, w / 2 + bw), arc(i + 1, w / 2 + bw)
+                face(sk, [F.p(a0, b0, 0.006), F.p(a1, b1, 0.006), F.p(c1, d1, 0.006), F.p(c0, d0, 0.006)], F.out(), sc)
+                # the glass in the arch's head: on the wall's face (the hole itself stays square), framed by the band
+                face(("near", "glass"), [F.p(cx, y1, 0.004), F.p(a1, b1, 0.004), F.p(a0, b0, 0.004)], F.out(), "#283035")
+            F.box(("near", "trim"), s0, s1, y1 - 0.03, y1 + 0.03, 0.0, 0.012, frame)
+        else:
+            F.flat(sk, s0 - bw, s1 + bw, y1, y1 + bw, 0.006, sc)
+    if fs.get("lintel_stone"):  # a slab of stone over the opening, standing out a little
+        F.box(("near", "render"), s0 - 0.12, s1 + 0.12, y1, y1 + 0.22, 0.0, 0.03, fs["lintel_stone"])
+    if fs.get("beam"):  # a timber lintel over the opening, reaching well past it
+        F.box(("near", "trim"), s0 - 0.24, s1 + 0.24, y1, y1 + 0.2, 0.0, 0.035, fs["beam"])
     # Reveals: the wall's own surface turned into the opening.
     F_in = -depth
     for sx, sgn in ((s0, 1), (s1, -1)):  # the side reveals face into the opening
@@ -463,7 +503,9 @@ def build_opening(F, h, fs, wallkey, wallcol, rng):
     F.box(N, s1 - fw, s1, y0, y1, fd - 0.05, fd, frame)
     curtains = fs.get("curtains", 0.5) > rng.random() and h.kind != "s"
     top_dark = "#283035"
-    if curtains:
+    if fs.get("glass"):  # glass of its own colour: glass blocks, a pane catching the sky
+        F.flat(GL, s0 + fw, s1 - fw, y0 + fw, y1 - fw, gd, fs["glass"])
+    elif curtains:
         ym = y0 + fw + (y1 - y0 - 2 * fw) * rng.uniform(0.45, 0.62)
         F.flat(GL, s0 + fw, s1 - fw, y0 + fw, ym, gd, rng.choice(["#9f998d", "#aaa497", "#938d82"]))  # net curtains, in the room's shade
         F.flat(GL, s0 + fw, s1 - fw, ym, y1 - fw, gd, top_dark)
@@ -476,8 +518,10 @@ def build_opening(F, h, fs, wallkey, wallcol, rng):
     if h.kind == "W" and style == "modern":
         cols = 2
     bar = 0.05 if style != "old" else 0.035
-    for i in range(1, cols):
-        s = s0 + w * i / cols
+    # Where the mullions stand (fractions of the width): even, or `cuts` (a wide pane between two narrow ones).
+    cuts = fs.get("cuts") or [i / cols for i in range(1, cols)]
+    for c in cuts:
+        s = s0 + w * c
         F.box(N, s - bar / 2, s + bar / 2, y0, y1, fd - 0.04, fd - 0.005, frame)
     for j in range(1, rows):
         y = y0 + (y1 - y0) * j / rows
@@ -485,6 +529,38 @@ def build_opening(F, h, fs, wallkey, wallcol, rng):
     if style == "classic" and rows == 1 and h.kind in "wWa" and fs.get("transom", True):
         y = y0 + (y1 - y0) * 0.72
         F.box(N, s0, s1, y - 0.03, y + 0.03, fd - 0.04, fd - 0.005, frame)
+    edges = [s0] + [s0 + w * c for c in cuts] + [s1]  # the panes' sides, left to right
+    if fs.get("toplight"):  # a band of small panes along the top (modern frames with a row of little lights)
+        yt = y1 - fw - fs["toplight"]
+        F.box(N, s0, s1, yt - bar / 2, yt + bar / 2, fd - 0.04, fd - 0.005, frame)
+        n = max(2, round(w / 0.3))
+        for i in range(1, n):
+            s = s0 + w * i / n
+            F.box(N, s - 0.02, s + 0.02, yt, y1, fd - 0.04, fd - 0.005, frame)
+    for i in fs.get("leaded", []):  # leaded lights: a lattice of diamonds of thin lead over these panes
+        a, b = edges[i] + fw, edges[i + 1] - fw
+        lo, hi = y0 + fw, y1 - fw
+        dw, dh = 0.14, 0.2           # a diamond's width and height
+        nw, nh = (b - a) / dw, (hi - lo) / dh
+        for sg in (1, -1):
+            # the lines s = a + dw * (k + sg * (y - lo) / dh), each cut to the pane
+            for k in range(math.floor(-nh if sg > 0 else 0), math.ceil(nw if sg > 0 else nw + nh) + 1):
+                if sg > 0:
+                    ya, yb = max(lo, lo - k * dh), min(hi, lo + (nw - k) * dh)
+                else:
+                    ya, yb = max(lo, lo + (k - nw) * dh), min(hi, lo + k * dh)
+                if yb - ya < 0.03:
+                    continue
+                sa, sb = (a + dw * (k + sg * (y - lo) / dh) for y in (ya, yb))
+                t = 0.006
+                face(N, [F.p(sa, ya - t, gd + 0.004), F.p(sb, yb - t, gd + 0.004), F.p(sb, yb + t, gd + 0.004), F.p(sa, ya + t, gd + 0.004)], F.out(), "#4a4c4e")
+    if fs.get("bars"):  # guard bars across the lower part of these panes (a window that opens to the floor)
+        g = fs["bars"]
+        for i in g.get("cols", range(len(edges) - 1)):
+            a, b = edges[i], edges[i + 1]
+            for j in range(g.get("n", 5)):
+                y = y0 + 0.12 + (y1 - y0) * g.get("top", 0.6) * j / max(1, g.get("n", 5) - 1)
+                F.box(N, a + 0.02, b - 0.02, y - 0.014, y + 0.014, -depth + 0.025, -depth + 0.05, g.get("c", frame))
     if h.kind == "s":
         F.box(N, s0, s1, y0 - 0.4, y0, -depth + 0.03, 0.0, fs.get("riser", "#2e3134"))
         if fs.get("sign"):
@@ -547,11 +623,28 @@ def garage(F, h, fs, depth):
     c = fs.get("garage", "#ece9e2")
     fd = -depth + 0.02
     F.box(N, s0, s1, y0, y1, fd - 0.08, fd - 0.04, c)
-    n = 5
-    for k in range(1, n):
-        y = y0 + (y1 - y0) * k / n
-        F.box(N, s0 + 0.03, s1 - 0.03, y - 0.012, y + 0.012, fd - 0.04, fd - 0.03, shade(c, 0.78))
-    F.box(N, (s0 + s1) / 2 - 0.12, (s0 + s1) / 2 + 0.12, y0 + 0.35, y0 + 0.4, fd - 0.04, fd - 0.02, "#7d7f81")
+    if fs.get("garage_ribs") == "v":  # an old up-and-over door: upright ribs
+        n = max(4, round((s1 - s0) / 0.22))
+        for k in range(1, n):
+            s = s0 + (s1 - s0) * k / n
+            F.box(N, s - 0.012, s + 0.012, y0 + 0.03, y1 - 0.03, fd - 0.04, fd - 0.03, shade(c, 0.78))
+    else:  # a sectional door: its panels
+        n = 5
+        for k in range(1, n):
+            y = y0 + (y1 - y0) * k / n
+            F.box(N, s0 + 0.03, s1 - 0.03, y - 0.012, y + 0.012, fd - 0.04, fd - 0.03, shade(c, 0.78))
+    for k in range(fs.get("garage_windows", 0)):  # a row of small windows across one panel
+        s = s0 + (s1 - s0) * (k + 0.5) / fs["garage_windows"]
+        F.box(N, s - 0.2, s + 0.2, y0 + (y1 - y0) * 0.64, y0 + (y1 - y0) * 0.72, fd - 0.04, fd - 0.025, "#e8e8e4")
+        F.flat(("near", "glass"), s - 0.16, s + 0.16, y0 + (y1 - y0) * 0.65, y0 + (y1 - y0) * 0.71, fd - 0.024, "#2c3338")
+    if fs.get("wicket"):  # a door let into the garage door, at this fraction of its width
+        a = s0 + (s1 - s0) * fs["wicket"]
+        for s in (a - 0.45, a + 0.45):
+            F.box(N, s - 0.015, s + 0.015, y0 + 0.05, y0 + 2.05, fd - 0.04, fd - 0.025, shade(c, 0.7))
+        F.box(N, a - 0.45, a + 0.45, y0 + 2.03, y0 + 2.06, fd - 0.04, fd - 0.025, shade(c, 0.7))
+        F.box(N, a + 0.28, a + 0.36, y0 + 1.0, y0 + 1.03, fd - 0.04, fd - 0.0, "#5e6062")
+    else:
+        F.box(N, (s0 + s1) / 2 - 0.12, (s0 + s1) / 2 + 0.12, y0 + 0.35, y0 + 0.4, fd - 0.04, fd - 0.02, "#7d7f81")
 
 
 def counter(F, c, bottom, wallcol):
@@ -642,13 +735,26 @@ def facade(F, length, top, holes, spec, fs, bottom, rng, far_key=None, far_col=N
         for a, b, c0, c1 in ((s0 + 0.13, s1 - 0.13, y0 + 0.13, y0 + 0.155), (s0 + 0.13, s1 - 0.13, y1 - 0.155, y1 - 0.13),
                              (s0 + 0.13, s0 + 0.155, y0 + 0.13, y1 - 0.13), (s1 - 0.155, s1 - 0.13, y0 + 0.13, y1 - 0.13)):
             F.box(("near", "trim"), a, b, c0, c1, 0.033, 0.042, fc)  # a thin inner frame
-    for k in range(fs.get("anchors", 0)):  # wall anchors: iron crosses at the upper floor
-        s = length * (k + 0.5) / fs["anchors"]
+    anchors = fs.get("anchor_at") or [length * (k + 0.5) / fs["anchors"] for k in range(fs.get("anchors", 0))]
+    for s in anchors:  # wall anchors: iron crosses at the upper floor, or fleurs-de-lis (`anchor_style` "lis")
         y = fs.get("anchor_y", 4.6)
-        F.box(("near", "trim"), s - 0.03, s + 0.03, y - 0.28, y + 0.28, 0.0, 0.03, "#2a2a2a")
-        F.box(("near", "trim"), s - 0.2, s + 0.2, y - 0.025, y + 0.025, 0.0, 0.03, "#2a2a2a")
-        F.box(("near", "trim"), s - 0.09, s + 0.09, y + 0.12, y + 0.16, 0.0, 0.03, "#2a2a2a")
-        F.box(("near", "trim"), s - 0.09, s + 0.09, y - 0.16, y - 0.12, 0.0, 0.03, "#2a2a2a")
+        ac = fs.get("anchor_c", "#2a2a2a")
+        if fs.get("anchor_style") == "lis":
+            NT_ = ("near", "trim")
+            F.box(NT_, s - 0.025, s + 0.025, y - 0.3, y + 0.2, 0.0, 0.03, ac)            # the stem
+            F.box(NT_, s - 0.11, s + 0.11, y - 0.06, y - 0.02, 0.0, 0.035, ac)           # the band across it
+            face(NT_, [F.p(s, y + 0.2, 0.031), F.p(s + 0.05, y + 0.26, 0.031), F.p(s, y + 0.36, 0.031), F.p(s - 0.05, y + 0.26, 0.031)], F.out(), ac)
+            for sg in (1, -1):                                                          # the petals curling out and down
+                pts = [(0.02, 0.0), (0.1, 0.1), (0.17, 0.08), (0.19, -0.02), (0.15, -0.08)]
+                for (a0, b0), (a1, b1) in zip(pts, pts[1:]):
+                    face(NT_, [F.p(s + sg * a0, y + b0 - 0.018, 0.031), F.p(s + sg * a1, y + b1 - 0.018, 0.031),
+                               F.p(s + sg * a1, y + b1 + 0.018, 0.031), F.p(s + sg * a0, y + b0 + 0.018, 0.031)], F.out(), ac)
+                face(NT_, [F.p(s + sg * 0.02, y - 0.2, 0.031), F.p(s + sg * 0.09, y - 0.3, 0.031), F.p(s + sg * 0.05, y - 0.31, 0.031)], F.out(), ac)
+        else:
+            F.box(("near", "trim"), s - 0.03, s + 0.03, y - 0.28, y + 0.28, 0.0, 0.03, ac)
+            F.box(("near", "trim"), s - 0.2, s + 0.2, y - 0.025, y + 0.025, 0.0, 0.03, ac)
+            F.box(("near", "trim"), s - 0.09, s + 0.09, y + 0.12, y + 0.16, 0.0, 0.03, ac)
+            F.box(("near", "trim"), s - 0.09, s + 0.09, y - 0.16, y - 0.12, 0.0, 0.03, ac)
     for s, y, w, h, d, c in fs.get("boxes", []):  # things on the wall: air conditioning units, letterboxes, lamps
         F.box(("near", "trim"), s - w / 2, s + w / 2, y, y + h, 0.0, d, c)
     if fs.get("band"):  # a band across the facade: a shop's sign board, a painted cornice
@@ -656,8 +762,38 @@ def facade(F, length, top, holes, spec, fs, bottom, rng, far_key=None, far_col=N
         d = fs["band"][3] if len(fs["band"]) > 3 else 0.06
         b0, b1 = (fs["band"][4], fs["band"][5]) if len(fs["band"]) > 5 else (0.05, length - 0.05)
         F.box(("near", "trim"), b0, b1, y0, y1, 0.0, d, c)
-    for s0, s1, y0, y1, c in fs.get("strips", []):  # courses of another brick laid in the wall (light bands)
-        F.flat(key, max(0.0, s0), min(length, s1), y0, y1, 0.006, c)
+    big = 0
+    for s0, s1, y0, y1, c in fs.get("strips", []):  # courses of another brick laid in the wall (light bands), patches
+        k, c = (("near", c.split(":")[0]), c.split(":")[1]) if ":" in c else (key, c)  # "render:#hex": another surface
+        s0, s1 = max(0.0, s0), min(length, s1)
+        if y1 - y0 <= 0.6:
+            F.flat(k, s0, s1, y0, y1, 0.006, c)
+            continue
+        dd = 0.002 + 0.002 * big  # big patches under the bands and surrounds, a later one over an earlier one
+        big += 1
+        # A big patch (another brick, a render): round the openings in it, cut into cells for the light.
+        xs = sorted({s0, s1, *[s for h in holes for s in (h.s0, h.s1) if s0 < s < s1]})
+        for xa, xb in zip(xs, xs[1:]):
+            xm, y = (xa + xb) / 2, y0
+            for ha, hb in sorted((h.y0, h.y1) for h in holes if h.s0 <= xm <= h.s1) + [(y1, y1)]:
+                if min(ha, y1) - y > 1e-3:
+                    F.flat(k, xa, xb, y, min(ha, y1), dd, c, cell=CELL)
+                y = max(y, hb)
+    for s0, s1, y0, y1, c in fs.get("weave", []):  # a panel of basket-weave brick: pairs of bricks turned each way
+        bs = 0.22
+        nx, ny = max(1, round((s1 - s0) / bs)), max(1, round((y1 - y0) / bs))
+        cw, ch = (s1 - s0) / nx, (y1 - y0) / ny
+        for i in range(nx):
+            for j in range(ny):
+                a, b = s0 + i * cw, y0 + j * ch
+                if (i + j) % 2:   # a joint across the middle of the square: two bricks lying
+                    F.flat(key, a + 0.01, a + cw - 0.01, b + ch / 2 - 0.006, b + ch / 2 + 0.006, 0.007, c)
+                else:             # a joint up the middle: two bricks standing
+                    F.flat(key, a + cw / 2 - 0.006, a + cw / 2 + 0.006, b + 0.01, b + ch - 0.01, 0.007, c)
+        for i in range(nx + 1):
+            F.flat(key, s0 + i * cw - 0.007, s0 + i * cw + 0.007, y0, y1, 0.0075, c)
+        for j in range(ny + 1):
+            F.flat(key, s0, s1, y0 + j * ch - 0.007, y0 + j * ch + 0.007, 0.0075, c)
     for s, y, w, h, c in fs.get("diamonds", []):  # lozenges of light brick
         face(key, [F.p(s, y - h / 2, 0.007), F.p(s + w / 2, y, 0.007), F.p(s, y + h / 2, 0.007), F.p(s - w / 2, y, 0.007)], F.out(), c)
         face(key, [F.p(s, y - h / 4, 0.009), F.p(s + w / 4, y, 0.009), F.p(s, y + h / 4, 0.009), F.p(s - w / 4, y, 0.009)], F.out(), shade(c, 0.86))
@@ -802,10 +938,26 @@ def roof(vol, floor, P, L, W, rng):
                 face(("near", "glass"), [(q[0], q[1], q[2] + 0.002) for q in pane[::-1]], None, "#9fb0b5")
                 solid(NT, [P(s + ds * k, t + dt * k, e + y) for s, t in ((s0, t0), (s1, t1)) for k in (0.09, 0.15) for y in (1.33, 1.38)], "#2c2e30")
         return
+    paint = rc
+    if vol.get("weather"):
+        # Weathered tiles: patches darkened with soot or moss, the more often towards one end of the ridge
+        # ([colour, share at the p0 end, share at the p1 end, cell size]).
+        wc_, f0, f1, wcell = vol["weather"]
+        wr = random.Random(f"weather{vol['p'][0]}")
+
+        def paint(u, v):
+            if wr.random() < f0 + (f1 - f0) * u:
+                t = wr.uniform(0.45, 1.0)  # each patch a little different
+                return "#%02x%02x%02x" % tuple(round(int(rc[i:i + 2], 16) * (1 - t) + int(wc_[i:i + 2], 16) * t) for i in (1, 3, 5))
+            return shade(rc, wr.uniform(0.93, 1.06))
     for pts, fascia_edges in planes:
         top = [P(*q) for q in pts]
         out = (0, 0, 1)
-        if len(top) == 4:
+        if len(top) == 4 and vol.get("weather"):
+            # u along the ridge from the p0 end: the planes run p0 -> p1 (first) or p1 -> p0 (second)
+            back = pts[0][0] > pts[1][0]
+            grid(RK, top[0], top[1], top[2], top[3], out, (lambda u, v, back=back: paint(1 - u if back else u, v)), wcell)
+        elif len(top) == 4:
             grid(RK, top[0], top[1], top[2], top[3], out, rc, 2.0)
         else:
             grid_tri(RK, top[0], top[1], top[2], out, rc, 2.0)
@@ -1221,6 +1373,43 @@ for fit in FITTINGS:
         ux, uz = math.cos(yaw), math.sin(yaw)
         y0 = fit.get("y", 1.0)
         solid(("near", "trim"), [(x + ux * t + uz * s, z + uz * t - ux * s, g + y0 + yy) for t in (0.0, 0.16) for s in (-0.16, 0.16) for yy in (0.0, 0.32)], c)
+    elif k == "fence":  # a fence or gate of upright boards from p to q, on posts, `h` high (a block for walking into)
+        x2, z2 = fit["q"]
+        h, c = fit.get("h", 1.8), fit["c"]
+        ln = math.hypot(x2 - x, z2 - z)
+        ux, uz = (x2 - x) / ln, (z2 - z) / ln
+        nx, nz = -uz * 0.025, ux * 0.025
+        n = max(1, round(ln / fit.get("panel", 1.8)))
+        for i in range(n):  # panel by panel, each on the ground at its middle
+            a, b = ln * i / n, ln * (i + 1) / n
+            gp = terrain(x + ux * (a + b) / 2, z + uz * (a + b) / 2)
+            solid(NT, [(x + ux * s + nx * sg, z + uz * s + nz * sg, gp + y) for s in (a + 0.04, b - 0.04) for sg in (1, -1) for y in (0.04, h)], c)
+            for j in range(1, round((b - a) / 0.15)):  # the joints between the boards, on both faces
+                s = a + 0.15 * j
+                for sg in (1, -1):
+                    face(NT, [(x + ux * (s - 0.008) + nx * sg * 1.1, z + uz * (s - 0.008) + nz * sg * 1.1, gp + 0.06),
+                              (x + ux * (s + 0.008) + nx * sg * 1.1, z + uz * (s + 0.008) + nz * sg * 1.1, gp + 0.06),
+                              (x + ux * (s + 0.008) + nx * sg * 1.1, z + uz * (s + 0.008) + nz * sg * 1.1, gp + h - 0.02),
+                              (x + ux * (s - 0.008) + nx * sg * 1.1, z + uz * (s - 0.008) + nz * sg * 1.1, gp + h - 0.02)], (nx * sg, nz * sg, 0), shade(c, 0.7))
+        for i in range(n + 1):  # posts
+            s = ln * i / n
+            px, pz = x + ux * s, z + uz * s
+            gp = terrain(px, pz)
+            solid(NT, [(px + dx, pz + dz, gp + y) for dx in (-0.045, 0.045) for dz in (-0.045, 0.045) for y in (-0.1, h + 0.05)], fit.get("post", shade(c, 0.8)))
+        solids.append(([[x + nx * 2, z + nz * 2], [x2 + nx * 2, z2 + nz * 2], [x2 - nx * 2, z2 - nz * 2], [x - nx * 2, z - nz * 2]], h))
+    elif k == "paving":  # a paved drive or yard: a slab of pavers on the relief inside the four corners `bed`
+        q = fit["bed"]
+        # cut into 1.5 m cells, each corner on the relief, a few centimetres up
+        nu = max(1, math.ceil(max(math.dist(q[0], q[1]), math.dist(q[3], q[2])) / 1.5))
+        nv = max(1, math.ceil(max(math.dist(q[0], q[3]), math.dist(q[1], q[2])) / 1.5))
+
+        def at(u, v, q=q):
+            px = (1 - u) * (1 - v) * q[0][0] + u * (1 - v) * q[1][0] + u * v * q[2][0] + (1 - u) * v * q[3][0]
+            pz = (1 - u) * (1 - v) * q[0][1] + u * (1 - v) * q[1][1] + u * v * q[2][1] + (1 - u) * v * q[3][1]
+            return (px, pz, terrain(px, pz) + fit.get("lift", 0.04))
+        for i in range(nu):
+            for j in range(nv):
+                face(NR, [at(i / nu, j / nv), at((i + 1) / nu, j / nv), at((i + 1) / nu, (j + 1) / nv), at(i / nu, (j + 1) / nv)], (0, 0, 1), fit["c"])
     elif k == "line":  # paint on the paving: a white line from p to q, 12 cm wide
         x2, z2 = fit["q"]
         d = Vector((x2 - x, z2 - z, 0))
