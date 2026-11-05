@@ -39,7 +39,6 @@ Start the tool in that folder, not in the main checkout. Claude Code's subagents
 
 ## Before you start (workers)
 
-- **Your git identity.** `git config user.email` must end in `@users.noreply.github.com`. If it doesn't, stop and tell Yoshi: every commit is public, and a real address would end up in it. Don't change git's settings yourself.
 - **Your base.** `git merge-base HEAD main` (`origin/main` in the cloud) should be the newest commit on `main`. If it isn't, say so in your report.
 - **Who else is working.** `git worktree list` shows the other worktrees. For each one in use, `git -C <folder> status --short` and `git log --oneline main..<branch>` show what it changes. In the cloud, look at the open branches and draft pull requests. If another agent is changing the same files or the same feature, tell Yoshi before you start.
 - **Packages.** `web/node_modules` is not shared between worktrees. If it is missing, run `npm ci` in `web/`. That leaves `package-lock.json` as it is.
