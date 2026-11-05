@@ -284,14 +284,21 @@ from behind. Our own version: no aircraft, the game's own figure and parachute.
 | Starting at the house (no start place) | by parachute, down the lane onto the house's start | by parachute: the page asks (`home`), the server decides |
 | Respawn after a death (Action, Paintball) | by parachute (the outside places) | by parachute only onto a place outside; into a room on foot |
 | `/parachute` in the chat | over where you stand | over where you stand, if the server agrees (below) |
-| Zombies: the start, the return between waves, joining late | on foot | on foot |
+| Zombies: the start, the return between waves, joining late | by parachute, inside the place's edge | by parachute, inside the place's edge |
 | Zombies: a teammate's revive | on foot, where you fell | on foot, where you fell |
 | Party games (hide and seek, tag, treasure, teams) | unchanged | unchanged |
 
 - **The jump:** 170 m over the place's ground, no plane. Hands off, you fall straight down, the canopy
   opens by itself 45 m over the ground under you, and the glide takes you onto the place the server
-  picked: the drop starts 39.2 m behind it (`DROP.reach`), facing it, or straight over it where that start
-  would be beyond the game's edge. 22 s hands off. `DROP.reach` and `DROP.time` are not typed in: `fly()`
+  picked: the drop starts 39.2 m behind it (`DROP.reach`), facing it, or straight over it where that way in
+  would leave the edge that holds (`dropFrom`: the game's, or a Zombies place's). 22 s hands off.
+- **Zombies** (Yoshi: "Zombie starts/respawns also parachute!"): the start (everyone gathered into the
+  place), the return between waves for those who were down, and a late join drop in too. Each drop starts
+  over the place with its whole way in inside the place's edge (the ~48 m circle in Smetlede, kept inside
+  the map; the party area at home), and the edge holds it however it is steered: the page's edge and the
+  server's fence are that edge while the game runs (measured alone at the church, tracking straight out:
+  never further than 47.7 m from the middle). The first wave comes 8 s after the start, so it can arrive
+  while you are still in the air; nobody hurts you there. A teammate's revive stays on foot. `DROP.reach` and `DROP.time` are not typed in: `fly()`
   in `web/shared/parachute.mjs` flies the drop as the page does (`dropStep`) when the file loads, so the
   page, the server and the tests always agree.
 - **The free fall:** lying flat you fall at 10.5 m/s, picking it up as a body does. Forward tracks: up to
