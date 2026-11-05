@@ -4,16 +4,18 @@ Last update: 2026-11-05
 
 <!-- The handover: rewrite these four at the end of every session (AGENTS.md, "Working efficiently"). Keep each short. -->
 
-**Live:** brieltje.be runs `main`. New on 5 Nov: arriving by parachute (#3 by LaurensRiviere, merged through #5: start places, respawns outside, Zombies; your own view shows only the canopy and its lines; admin switch "Players arrive by parachute"), baked light and wear on the ten building models of our own (shade, bounced light, the sun's shadow across the village, dirt and streaks; no green, Yoshi's call), and GPU-compressed KTX2 textures (half size on phones, Yoshi's choice). Also the working-efficiently rules, dev tools (`tools/dev/`) and code map (`docs/CODEMAP.md`).
+**Live:** brieltje.be runs `main`. New on 5 Nov: arriving by parachute (#3 by LaurensRiviere, merged through #5), since the evening from 80 m with a free fall, smoother to watch, and also at a fresh start at the house; the church square after Yoshi's photos of 5 November (the church's west door, calvary chapel, quoins, antennas, flags, memorial stones; the houses round the square; the gate behind the portal stands open); garden fences can be jumped over; baked light and wear on the ten building models of our own (no green, Yoshi's call), part of loading for the houses at home; GPU-compressed KTX2 textures (half size on phones). Also the working-efficiently rules, dev tools (`tools/dev/`) and code map (`docs/CODEMAP.md`).
 
-**In progress:** nothing half done. Next on the list from the graphics ideas: TAA with upscaling on High and Ultra, then cascaded sun shadows, reflections and bloom.
+**In progress:** nothing half done. The parachute worker's worktree (`.claude/worktrees/agent-aeb5e2df2c154e7e2`) is still locked by its process; its work is on `main`: remove it once unlocked.
 
 **Next command:** to re-bake after a model changed, see `docs/DETAILS.md` ("Baked light and wear"): `tools/bake/lightmap_uv.py`, the export in the dev page, `tools/bake/bake_buildings.py`, `tools/bake/encode_buildings.py`.
 
 **Open questions:**
+- The ping spikes at the start of play are not the bake: with and without `?nobake` the page stalls about 1 s just after loading and 0.7 to 1.9 s about 5 to 7 s into play, when the village is built. Whether to spread the village's building over more frames.
 - Whether the main house (outside and the rooms) gets the same bake; it is built in code, so it needs its own export step (the old "Baked lighting (test)" setting is still there).
 - The village's open-data blocks (about 250 houses) keep real-time light; whether they get a cheaper bake too.
-- Not tested on a real iPhone, iPad or Android phone.
+- From the graphics ideas, next: TAA with upscaling on High and Ultra, then cascaded sun shadows, reflections and bloom.
+- Not tested on a real iPhone, iPad or Android phone, nor with a real controller under a parachute.
 
 ## Done
 
