@@ -310,7 +310,7 @@ export class ZombieGame {
     this.perchedOut.clear();
     const names = [...this.down].filter((n) => this.game.players.get(n) && !this.game.players.get(n).alive);
     this.down.clear();
-    if (names.length) this.game.gather(names, this.arena, true); // back by parachute (not a teammate's help: that is up where you fell)
+    if (names.length) this.game.gather(names, this.arena); // back on foot at the start places (a teammate's help: up where you fell)
   }
 
   /** Everyone who fights is down: the result, the best wave ever (kept), the end screen. */
@@ -517,7 +517,7 @@ export class ZombieGame {
     if (this.away.get(name)?.key !== p?.key) this.away.delete(name);
     this.horde.fieldAt = -Infinity;
     // Out of the place (just joined, at the house's start places): to its start, not just inside its edge (maybe in a wall).
-    if (p?.state && !this.edge.inside(p.state.x, p.state.z) && !this.down.has(name)) this.game.gather([name], this.arena, true);
+    if (p?.state && !this.edge.inside(p.state.x, p.state.z) && !this.down.has(name)) this.game.gather([name], this.arena);
     if (p && this.loot.kits.has(name)) this.game.send(p.ws, { t: 'zgift', kind: 'kit', kit: this.loot.kit(name) }); // back: what they had
     if (this.down.has(name) && this.horde.phase === 'wave' && p) {
       p.alive = false;

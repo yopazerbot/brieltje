@@ -1658,9 +1658,10 @@ export class Game {
    * round its outside start places, each on open ground (no wall, hedge or fence within a metre, as
    * the strongmen need), clear of the cars and inside the game's edge (see fence), the places taken
    * in turn so the players share them out. As a respawn (out of cars, off horses, full health), not a
-   * death. A nicer start than fenceAll alone, which only puts those outside the edge just inside it.
+   * death, and on foot (Yoshi: no parachute in the Zombies game). A nicer start than fenceAll alone, which only
+   * puts those outside the edge just inside it.
    */
-  gather(names, arena = null, drop = false) {
+  gather(names, arena = null) {
     const now = Date.now();
     // The places to spread round: the house's outside start places, or, for Zombies started at another
     // portal (the bungalow's has no outside start places), where you come out of it, facing it.
@@ -1683,7 +1684,7 @@ export class Game {
     }
     [...names].sort(() => Math.random() - 0.5).forEach((name, k) => {
       const p = this.players.get(name);
-      if (p) this.respawn(name, p, now, spots.length ? spots[k % spots.length] : null, drop);
+      if (p) this.respawn(name, p, now, spots.length ? spots[k % spots.length] : null);
     });
   }
 

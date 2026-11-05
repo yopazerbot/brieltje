@@ -1390,12 +1390,14 @@ function edgeOf(id: string | undefined): Bounds {
   if (!e) arenaEdges.set(a.id, (e = arenaEdge(a, edges)));
   return e;
 }
-/** Up at the start of Zombies place `a`: one of the house's outside places, or by its portal, facing it. */
+/**
+ * Up at the start of Zombies place `a`: one of the house's outside places, or by its portal, facing it. On
+ * foot, as together (Yoshi: no parachute in the Zombies game).
+ */
 function respawnAtArena(a: Arena): void {
   const p = a.id === 'house' ? undefined : portalOf(a);
   if (!p) respawnAt(OUTSIDE_SPAWNS[Math.floor(Math.random() * OUTSIDE_SPAWNS.length)]);
   else respawnAt(OUTSIDE_SPAWNS[0], { x: p.out[0], z: p.out[1], y: house.ground + terrain.height(p.out[0], p.out[1]), fx: p.x, fz: p.z });
-  if (rules.parachute !== false) beginDrop(); // into the game by parachute, as together
 }
 /**
  * Start the Zombies game alone (the Play tab's button) at place `id` (shared/arenas.mjs), out of any car

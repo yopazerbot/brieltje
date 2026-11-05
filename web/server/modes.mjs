@@ -225,7 +225,7 @@ export class Modes {
       // where they stand now. Every pane whole again for everyone: a fresh house for the game (the zombies
       // come in through a broken one).
       const arena = arenaOf(place);
-      this.game.gather(names, arena, true); // everyone drops in by parachute (the first wave comes after 8 s)
+      this.game.gather(names, arena); // everyone there on foot (the first wave comes after 8 s)
       this.game.roundOver = null;
       this.game.broken.clear();
       this.game.broadcast({ t: 'repair', by, quiet: true });

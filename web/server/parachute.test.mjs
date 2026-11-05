@@ -4,6 +4,7 @@ import { readFileSync } from 'node:fs';
 import { DROP, dropStart, dropStep, fly, HOME_DROP } from '../shared/parachute.mjs';
 import { FLAG, playerFields, readPlayer } from '../shared/wire.mjs';
 import { Game } from './game.mjs';
+import { ZombieGame } from './zombies.mjs';
 
 const state = { x: 1, y: 20, z: 2, yaw: 0, pitch: 0, armed: true, w: 'pistol', c: false, flying: false };
 const MAX_SPEED = 16; // m/s down: the server's limit (game.mjs)
@@ -364,4 +365,23 @@ test('a respawn after a death drops onto open ground, told where it starts; neve
   assert.deepEqual([m.sx, m.sz], [p.state.x, p.state.z]);
   assert.ok(Math.abs(p.state.y - (spawns[outside].y + DROP.height)) < 1e-9);
   assert.equal(p.drop.top, p.state.y + 0.5);
+});
+
+test('the Zombies game gathers on foot: its start, the return between waves and a late join never drop', () => {
+  const now = Date.now();
+  const { g, told } = startGame();
+  for (const n of ['a', 'b']) g.players.set(n, { ...joined(now), alive: false });
+  g.gather(['a', 'b']);
+  for (const n of ['a', 'b']) assert.equal(g.players.get(n).drop, null);
+  assert.ok(told.length === 2 && told.every((m) => m.t === 'respawn' && !m.drop));
+  // The game's own calls: no way left to ask gather for a drop.
+  assert.equal(Game.prototype.gather.length, 1);
+  const asked = [];
+  const zg = Object.create(ZombieGame.prototype);
+  Object.assign(zg, {
+    helping: new Map(), fell: new Map(), perchedOut: new Set(), down: new Set(['a']), arena: { id: 'house' },
+    game: { players: new Map([['a', { alive: false }]]), gather: (...args) => asked.push(args) },
+  });
+  zg.revive();
+  assert.deepEqual(asked, [[['a'], { id: 'house' }]]);
 });
