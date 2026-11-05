@@ -36,7 +36,7 @@ import { bruteEntry, carFields, horseFields, playerFields, PROTO, TICK_MS } from
 import { houseAreas, makeNav, MAX_ADMIN_WAVE } from '../shared/zombies.mjs';
 import { arenaEdge, arenaHome, arenaPrisms, ARENAS, portalOf } from '../shared/arenas.mjs';
 import { churchPrisms, makeChurch } from '../shared/church.mjs';
-import { DROP, dropStart, HOME_DROP } from '../shared/parachute.mjs';
+import { DROP, dropFrom, HOME_DROP } from '../shared/parachute.mjs';
 
 /** /parachute (manualDrop): once every CHUTE_MS, and not within HURT_CALM_MS of being hit. */
 const CHUTE_MS = 60_000;
@@ -1546,12 +1546,12 @@ export class Game {
   }
 
   /**
-   * Where a drop onto (x, z) facing `yaw` starts: DROP.reach behind it (it lands there without steering), or
-   * straight over it when that would be beyond the edge that holds now.
+   * Where a drop onto (x, z) facing `yaw` starts (shared/parachute.mjs dropFrom): DROP.reach behind it (it lands
+   * there without steering) when that whole way in is inside `fence` (the edge that holds now, or a Zombies
+   * place's about to hold), else straight over it.
    */
-  dropFrom(x, z, yaw) {
-    const from = dropStart(x, z, yaw);
-    return this.fence().inside(from.x, from.z) ? from : { x, z };
+  dropFrom(x, z, yaw, fence = this.fence()) {
+    return dropFrom(x, z, yaw, (a, b) => fence.inside(a, b));
   }
 
   /**
@@ -1614,7 +1614,7 @@ export class Game {
    * Back to full health at the spawn point furthest from the others (one of the best three, for
    * variety), or at `at` ({ spawn, x, y, z }: a place near spawn point `spawn`, see gather).
    */
-  respawn(name, p, now, at = null, drop = false) {
+  respawn(name, p, now, at = null, drop = false, fence = this.fence()) {
     this.releaseCar(name);
     this.releaseHorse(name);
     p.hp = HEALTH;
@@ -1638,9 +1638,10 @@ export class Game {
     p.drop = null;
     // Until the player's own update arrives, they are at the spawn point (so the next pick avoids it).
     // A drop starts behind the place, facing it as the page does (the portal, else the house or the bungalow): without
-    // steering it lands on it.
+    // steering it lands on it. Its whole way in inside `fence` (a Zombies place's edge for its gathering), else
+    // straight over the place.
     const face = at?.face ?? (SPAWNS[spawn]?.team === 'bungalow' ? [83.5, 189.7] : [4.5, 6]);
-    const from = fly ? this.dropFrom(pos.x, pos.z, Math.atan2(-(face[0] - pos.x), -(face[1] - pos.z))) : pos;
+    const from = fly ? this.dropFrom(pos.x, pos.z, Math.atan2(-(face[0] - pos.x), -(face[1] - pos.z)), fence) : pos;
     if (p.state) Object.assign(p.state, { x: from.x, y: pos.y + (fly ? DROP.height : 0), z: from.z, chute: false, open: false });
     if (fly) this.startDrop(p, now);
     p.movedAt = now;
@@ -1658,10 +1659,12 @@ export class Game {
    * round its outside start places, each on open ground (no wall, hedge or fence within a metre, as
    * the strongmen need), clear of the cars and inside the game's edge (see fence), the places taken
    * in turn so the players share them out. As a respawn (out of cars, off horses, full health), not a
-   * death, and on foot (Yoshi: no parachute in the Zombies game). A nicer start than fenceAll alone, which only
-   * puts those outside the edge just inside it.
+   * death. A nicer start than fenceAll alone, which only puts those outside the edge just inside it.
+   * `drop`: by parachute (the Zombies game: Yoshi, "Zombie starts/respawns also parachute!"), each drop
+   * starting over the place's edge with its whole way in inside it (respawn, dropFrom). The edge keeps it
+   * there however it is steered (fenceIn: the game's fence is that edge as long as the game runs).
    */
-  gather(names, arena = null) {
+  gather(names, arena = null, drop = false) {
     const now = Date.now();
     // The places to spread round: the house's outside start places, or, for Zombies started at another
     // portal (the bungalow's has no outside start places), where you come out of it, facing it.
@@ -1684,7 +1687,7 @@ export class Game {
     }
     [...names].sort(() => Math.random() - 0.5).forEach((name, k) => {
       const p = this.players.get(name);
-      if (p) this.respawn(name, p, now, spots.length ? spots[k % spots.length] : null);
+      if (p) this.respawn(name, p, now, spots.length ? spots[k % spots.length] : null, drop, fence);
     });
   }
 

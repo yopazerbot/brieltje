@@ -39,7 +39,7 @@ import { Avatars } from './net/avatars';
 import type { Body } from './net/swat';
 import { Parachutes } from './world/parachutes';
 import { DropView } from './world/dropView';
-import { DROP, dropStart, HOME_DROP } from '../shared/parachute.mjs';
+import { DROP, dropFrom, dropStart, HOME_DROP } from '../shared/parachute.mjs';
 import { netClock } from './net/track';
 import { PROTO, readBrute, readCar, readHorse, readPlayer, readZombie, type Tick } from '../shared/wire.mjs';
 import { sound } from './sound';
@@ -869,16 +869,16 @@ avatars.onFigure = (name, root, body, colour, chute, open, air, dt) => parachute
  * yaw: from the drop's height over it, DROP.reach behind it so it lands there without steering
  * (shared/parachute.mjs). A skydive you steer yourself: the free fall, the canopy you open (or that opens by
  * itself), and a landing wherever you steer to. Alone when the rules allow it; together when the server says so,
- * from where it says (`sx`, `sz`). A start beyond the game's edge is straight over the place instead.
+ * from where it says (`sx`, `sz`). Alone a way in that leaves `edge` (the game's, or a Zombies place's) starts
+ * straight over the place instead (shared/parachute.mjs dropFrom), and the edge keeps the drop inside.
  */
-function beginDrop(at?: { x: number; z: number; yaw: number; feet?: number; sx?: number; sz?: number }, from?: { sx?: number; sz?: number }): void {
+function beginDrop(at?: { x: number; z: number; yaw: number; feet?: number; sx?: number; sz?: number }, from?: { sx?: number; sz?: number }, edge = world.bounds): void {
   if (driving || riding || horses.mounted >= 0) return;
   parachutes.load(); // in case it isn't in yet
   const [x, z, yaw] = at ? [at.x, at.z, at.yaw] : [player.x, player.z, player.yaw];
   const told = from ?? at;
   const given = typeof told?.sx === 'number' && typeof told?.sz === 'number';
-  let start = given ? { x: told!.sx!, z: told!.sz! } : dropStart(x, z, yaw);
-  if (!given && world.bounds && !world.bounds.inside(start.x, start.z)) start = { x, z };
+  const start = given ? { x: told!.sx!, z: told!.sz! } : edge ? dropFrom(x, z, yaw, (a, b) => edge.inside(a, b)) : dropStart(x, z, yaw);
   player.place(start.x, start.z, (at ? at.feet ?? groundY(x, z) : player.feet) + DROP.height, yaw, player.pitch);
   player.startDrop();
   player.update(0, NO_INPUT, camera);
@@ -1391,13 +1391,17 @@ function edgeOf(id: string | undefined): Bounds {
   return e;
 }
 /**
- * Up at the start of Zombies place `a`: one of the house's outside places, or by its portal, facing it. On
- * foot, as together (Yoshi: no parachute in the Zombies game).
+ * Up at the start of Zombies place `a`: one of the house's outside places, or by its portal, facing it. By
+ * parachute, as together (Yoshi: "Zombie starts/respawns also parachute!"), starting over the place's edge.
  */
 function respawnAtArena(a: Arena): void {
   const p = a.id === 'house' ? undefined : portalOf(a);
   if (!p) respawnAt(OUTSIDE_SPAWNS[Math.floor(Math.random() * OUTSIDE_SPAWNS.length)]);
   else respawnAt(OUTSIDE_SPAWNS[0], { x: p.out[0], z: p.out[1], y: house.ground + terrain.height(p.out[0], p.out[1]), fx: p.x, fz: p.z });
+  if (rules.parachute !== false) {
+    world.bounds = edgeOf(a.id); // the place's edge from the first step of the drop (the frame's fence follows)
+    beginDrop(undefined, undefined, world.bounds);
+  }
 }
 /**
  * Start the Zombies game alone (the Play tab's button) at place `id` (shared/arenas.mjs), out of any car

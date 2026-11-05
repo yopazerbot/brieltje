@@ -164,6 +164,18 @@ export function dropStart(x, z, yaw) {
 }
 
 /**
+ * Where a drop onto (x, z) facing `yaw` really starts: at dropStart when its whole way in, hands off, is inside
+ * the edge that holds (`inside(x, z)`: the game's, or a Zombies place's circle), else straight over the place.
+ * Either way the drop starts over ground inside the edge, and the edge keeps it there however it is steered.
+ */
+export function dropFrom(x, z, yaw, inside) {
+  const from = dropStart(x, z, yaw);
+  const n = Math.ceil(DROP.reach / 4);
+  for (let i = 0; i <= n; i++) if (!inside(from.x + ((x - from.x) * i) / n, from.z + ((z - from.z) * i) / n)) return { x, z };
+  return from;
+}
+
+/**
  * The house's start (the world's own start in front of the house, src/data/house.json's spawn): the drop for
  * a fresh arrival there lands on it coming along the lane from the west, clear of the houses across the lane
  * (yaw as a camera's: facing east, the house on your left).

@@ -5,6 +5,12 @@ import { DROP, dropStart, dropStep, fly, HOME_DROP } from '../shared/parachute.m
 import { FLAG, playerFields, readPlayer } from '../shared/wire.mjs';
 import { Game } from './game.mjs';
 import { ZombieGame } from './zombies.mjs';
+import { arenaEdge, arenaOf } from '../shared/arenas.mjs';
+import { loadBounds } from '../shared/bounds.mjs';
+import { makeTerrain } from '../shared/terrain.mjs';
+
+const BOUNDS = loadBounds(JSON.parse(readFileSync(new URL('../shared/bounds.json', import.meta.url), 'utf8')));
+const TERRAIN = makeTerrain(JSON.parse(readFileSync(new URL('../shared/terrain.json', import.meta.url), 'utf8')));
 
 const state = { x: 1, y: 20, z: 2, yaw: 0, pitch: 0, armed: true, w: 'pistol', c: false, flying: false };
 const MAX_SPEED = 16; // m/s down: the server's limit (game.mjs)
@@ -367,15 +373,28 @@ test('a respawn after a death drops onto open ground, told where it starts; neve
   assert.equal(p.drop.top, p.state.y + 0.5);
 });
 
-test('the Zombies game gathers on foot: its start, the return between waves and a late join never drop', () => {
+test('the Zombies game drops everyone in: its start, the return between waves and a late join, inside the place', () => {
   const now = Date.now();
-  const { g, told } = startGame();
-  for (const n of ['a', 'b']) g.players.set(n, { ...joined(now), alive: false });
-  g.gather(['a', 'b']);
-  for (const n of ['a', 'b']) assert.equal(g.players.get(n).drop, null);
-  assert.ok(told.length === 2 && told.every((m) => m.t === 'respawn' && !m.drop));
-  // The game's own calls: no way left to ask gather for a drop.
-  assert.equal(Game.prototype.gather.length, 1);
+  for (const arena of [arenaOf('church'), arenaOf('molenhoek_end'), arenaOf('house')]) {
+    const edge = arenaEdge(arena, BOUNDS);
+    const { g, told } = startGame();
+    for (const n of ['a', 'b', 'c']) g.players.set(n, { ...joined(now), alive: false });
+    g.gather(['a', 'b', 'c'], arena, true);
+    assert.equal(told.length, 3);
+    for (const m of told) {
+      const p = g.players.get(m.name);
+      assert.ok(m.t === 'respawn' && m.drop === 1 && g.dropping(p, now), `${arena.id}: ${m.name} drops`);
+      assert.deepEqual([m.sx, m.sz], [p.state.x, p.state.z]);
+      // Its whole way in, hands off, over the place's own ground: from the start to the spot, inside the edge.
+      const spot = { x: m.x ?? p.state.x, z: m.z ?? p.state.z };
+      for (let k = 0; k <= 20; k++) {
+        const x = m.sx + ((spot.x - m.sx) * k) / 20, z = m.sz + ((spot.z - m.sz) * k) / 20;
+        assert.ok(edge.inside(x, z), `${arena.id}: the way in leaves the edge at ${x}, ${z}`);
+      }
+      assert.ok(p.state.y > DROP.height - 30);
+    }
+  }
+  // The game's own calls ask for a drop: the return between waves (and a late join, the same call).
   const asked = [];
   const zg = Object.create(ZombieGame.prototype);
   Object.assign(zg, {
@@ -383,5 +402,22 @@ test('the Zombies game gathers on foot: its start, the return between waves and 
     game: { players: new Map([['a', { alive: false }]]), gather: (...args) => asked.push(args) },
   });
   zg.revive();
-  assert.deepEqual(asked, [[['a'], { id: 'house' }]]);
+  assert.deepEqual(asked, [[['a'], { id: 'house' }, true]]);
+});
+
+test('steered freely, a drop in a Zombies place stays inside its edge', () => {
+  const now = Date.now();
+  const arena = arenaOf('church');
+  const edge = arenaEdge(arena, BOUNDS);
+  const { g } = startGame();
+  g.fence = () => edge; // the game's fence while it runs (game.mjs fence)
+  const [cx, cz] = arena.center;
+  const p = joined(now, { x: cx, y: 0, z: cz });
+  p.state.y = TERRAIN.height(cx, cz) + DROP.height;
+  p.page = { ...p.state };
+  g.startDrop(p, now);
+  // Tracking straight out of the circle at 12 m/s for 12 s (and sliding), as fast as a drop may.
+  const seen = drive(g, p, now, 240, 50, () => ({ dx: 0.45, dy: -0.6, dz: 0.3 }), () => ({ pc: 1 }));
+  for (const s of seen) assert.ok(edge.inside(s.x, s.z), `out of the edge at ${s.x}, ${s.z}`);
+  assert.ok(Math.hypot(seen.at(-1).x - cx, seen.at(-1).z - cz) > arena.radius - 6, 'it did reach the edge');
 });

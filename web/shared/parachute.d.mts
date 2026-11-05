@@ -66,4 +66,5 @@ export function fly(
   path: { t: number; y: number; x: number; side: number; open: number | null }[];
 };
 export function dropStart(x: number, z: number, yaw: number): { x: number; z: number };
+export function dropFrom(x: number, z: number, yaw: number, inside: (x: number, z: number) => boolean): { x: number; z: number };
 export const HOME_DROP: { x: number; z: number; yaw: number };
