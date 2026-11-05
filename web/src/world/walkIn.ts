@@ -490,7 +490,8 @@ export async function loadWalkIn(renderer: THREE.WebGLRenderer, model: THREE.Obj
       fromInside = now;
       local.renderOrder = outDoors.renderOrder = inDoors.renderOrder = now ? -1 : 2; // a group's order comes first in the sort
     }
-    inDoors.visible = now || edgeDistance(eye.x, eye.z, outline) < 3;
+    // Seen through the glass front door from the street: closer than 3 m only, the hall's doors looked open from further off.
+    inDoors.visible = now || edgeDistance(eye.x, eye.z, outline) < 15;
   };
   const mine = (p: Prism) => {
     const r = p.p[0];
