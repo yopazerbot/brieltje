@@ -20,8 +20,15 @@ tower under a bell-cast octagonal slate spire with a small gable on each face, a
   calvary chapel beside the tower;
 - photos of the south side (Onroerend Erfgoed 2007; Wikimedia Commons 2011, 2012) with a camera
   solved on the plan: tower cornice 16.0 m, spire to 25.4 m, ball 26.4 m, weathercock 29.6 m,
-  the window heights and spacing, the colours.
-No clock faces: none of the photos shows one.
+  the window heights and spacing, the colours;
+- the photos Yoshi took on 5 November 2026 from the square, for the details: the white-painted west
+  door (pilasters, entablature, arch with a keystone, cream tympanum, doors of vertical boards), the
+  rough ironstone quoins, the calvary chapel's open porch (white scalloped bargeboards, white walls,
+  a painted back wall with the crucifix over a mound of rocks, an iron railing with spear tips), the
+  telecom antennas on the spire, the octagon pattern of the leaded windows, the grey memorial stones
+  and the iron wall anchors on the nave, the white eaves boards and brown downpipes, the iron bars
+  of the sacristy windows.
+No clock faces: none of the photos shows one. No text on the memorial stones.
 
 Model space (Blender): x along the church's axis towards the choir (east), y to the north, z up;
 in the GLB (y up) that is x east, y up, z south. The origin is on the church's axis level with the
@@ -38,8 +45,9 @@ Output: one GLB with one mesh per material, so six draw calls:
   colour of the result, for a loader that keeps the GLB's own material.
 - church_slate: roofs and spire, with its own 512 px slate texture (UVs in tiles of 1.2 m).
 - church_glass: the leaded windows behind their iron armature, with a 128 px texture per panel.
-- church_fittings: gutters and verge flashings painted wine red, doors, louvres, downpipes,
-  crosses and the weathercock, coloured per vertex.
+- church_fittings: white eaves boards and verges, brown downpipes, doors, louvres, crosses and the
+  weathercock, the antennas, the memorial stones, the chapel's walls, painting, crucifix and
+  railing, coloured per vertex.
 With preview_dir it renders daylight views from the square there under the game's sky photo, and
 every camera in cameras.json (a list of {name, pos, yaw, pitch, roll, f_px, w, h, cx, cy}: the
 position in model metres, the view direction in degrees, the focal length and principal point in
@@ -98,11 +106,13 @@ bpy.ops.wm.read_factory_settings(use_empty=True)
 SHARED = {
     "church_brick": ("nb_brick", "#905d4c", 1.0, "#73483a"),
     "church_stone": ("concrete", "#dcd4c8", 0.6, "#796e55"),
-    "church_trim": ("plaster", "#cdbd9f", 0.35, "#c2b498"),
+    "church_trim": ("plaster", "#e2dccd", 0.35, "#d6d0c2"),   # the surrounds are painted off-white (photos of 5 Nov 2026)
 }
 PAINT = {  # vertex colours of the fittings (sRGB)
-    "wine": "#7e4c55", "wood": "#4a3326", "louvre": "#3e3a36", "metal": "#2e2f31", "zinc": "#8f918f",
-    "gilt": "#a8843f", "dark": "#2a2624", "white": "#e9e5dc",
+    "wood": "#4a3326", "louvre": "#3e3a36", "metal": "#2e2f31", "zinc": "#8f918f", "lead": "#4b4c4e",
+    "gilt": "#a8843f", "dark": "#2a2624", "white": "#e9e5dc", "board": "#ddd8cc", "cream": "#e4dcc2",
+    "brown": "#58402f", "antenna": "#76797b", "granite": "#8e8b85", "marble": "#cbc8c0", "pier": "#b3b2ac",
+    "corpus": "#e3d8c6", "cloth": "#efebe2", "rock": "#4d4640", "iron": "#1f1f21",
 }
 M = {}
 
@@ -160,18 +170,22 @@ def slate_texture(n=512, seed=11):
 
 
 def glass_texture(n=128, seed=5):
-    """One panel of a leaded window between its iron bars: diamond quarries of dark cathedral glass
-    (greenish grey, each pane a little different) in lead cames, the light grey iron armature along
-    the panel's bottom and left edge (the windows tile it, so the bars run between panels)."""
+    """One panel of a leaded window between its iron bars, as the photos of 5 Nov 2026 show them: an
+    octagon of lead cames with a smaller one inside it, a small diamond in each corner (where four
+    panels meet they make a whole one), dark cathedral glass (greenish grey, each pane a little
+    different), and the iron armature along the panel's bottom and left edge (the windows tile it,
+    so the bars run between panels)."""
     rng = np.random.default_rng(seed)
     y, x = (np.mgrid[0:n, 0:n] + 0.5) / n
-    a, b = x + y, x - y          # diamond lattice, two quarries across a panel
-    ia, ib = np.floor(a * 2), np.floor(b * 2)
-    tone = rng.normal(0, 0.10, (8, 8))[(ia.astype(int) + 4) % 8, (ib.astype(int) + 4) % 8]
+    dx, dy = np.abs(x - 0.5), np.abs(y - 0.5)
+    octa = np.maximum(np.maximum(dx, dy), (dx + dy) * 0.74)       # an octagon's "radius"
+    corner = np.abs(x - np.round(x)) + np.abs(y - np.round(y))      # distance to the panel's corners, as a diamond
+    region = np.where(octa < 0.27, 0, np.where(octa < 0.4, 1, np.where(corner < 0.2, 2, 3)))
+    tone = rng.normal(0, 0.12, 4)[region] + rng.normal(0, 0.03, (n, n))
     glass = np.array([0.040, 0.050, 0.052]) * (1 + tone)[..., None]
     glass = glass * (0.85 + 0.3 * y)[..., None]                      # the sky's reflection, lighter at the top
-    lead = (np.abs(a * 2 - np.round(a * 2)) < 0.035) | (np.abs(b * 2 - np.round(b * 2)) < 0.035)
-    lin = np.where(lead[..., None], np.array([0.075, 0.075, 0.072]), glass)
+    lead = (np.abs(octa - 0.4) < 0.016) | (np.abs(octa - 0.27) < 0.014) | (np.abs(corner - 0.2) < 0.016)
+    lin = np.where(lead[..., None], np.array([0.085, 0.085, 0.08]), glass)
     bar = (x < 0.035) | (y < 0.035)
     lin = np.where(bar[..., None], np.array([0.16, 0.16, 0.155]), lin)
     return np.where(lin <= 0.0031308, lin * 12.92, 1.055 * lin ** (1 / 2.4) - 0.055)
@@ -221,7 +235,7 @@ def hull(name, pts, mat, paint=None):
     for p in pts:
         bm.verts.new(p)
     res = bmesh.ops.convex_hull(bm, input=bm.verts[:])
-    bmesh.ops.delete(bm, geom=[g for g in res["geom_interior"] + res["geom_unused"] if isinstance(g, bmesh.types.BMVert)],
+    bmesh.ops.delete(bm, geom=list({g for g in res["geom_interior"] + res["geom_unused"] if isinstance(g, bmesh.types.BMVert)}),
                      context="VERTS")
     bmesh.ops.dissolve_limit(bm, angle_limit=math.radians(0.5), verts=bm.verts[:], edges=bm.edges[:])
     return to_object(bm, name, mat, paint)
@@ -408,11 +422,11 @@ BRICK_CUTS, STONE_CUTS = [], []   # openings, subtracted from the brick and the 
 GLASS_UV = []                     # per glass object: (object, face, left s, bottom z, panel width, panel height)
 
 
-def window(face, s, z0, w, h, rise, surround=0.27, hood=True, ears=True, sill=True, panel=0.36, recess=0.2,
-           glass=True, n=8):
+def window(face, s, z0, w, h, rise, surround=0.27, hood=True, ears=True, sill=True, panel=0.48, recess=0.2,
+           glass=True, n=8, bars=False):
     """A window in a wall face: glass from z0 to the crown at z0 + h, w wide, centred at s; a
     cement surround round the sides and top with ears at the top corners, a curved drip moulding
-    over it and a bluestone sill."""
+    over it and a bluestone sill; with `bars`, iron bars across it (the sacristies)."""
     f = Face(face.p(s, 0), face.t, face.n)
     top = arch(w, z0 + h, rise, n)
     opening = [(-w / 2, z0), (w / 2, z0)] + top
@@ -425,8 +439,17 @@ def window(face, s, z0, w, h, rise, surround=0.27, hood=True, ears=True, sill=Tr
         if (g.data.polygons[0].normal - f.n).length > 1:
             g.data.flip_normals()
         cols = max(1, round(w / panel))
-        GLASS_UV.append((g, f, -w / 2, z0, w / cols, panel * 1.1))
+        GLASS_UV.append((g, f, -w / 2, z0, w / cols, w / cols))
         add(g, "church_glass")
+    if bars:
+        nb = max(2, round(w / 0.2))
+        for i in range(1, nb):
+            bs = -w / 2 + w * i / nb
+            add(outline_prism("bar", f, [(bs - 0.012, z0), (bs + 0.012, z0), (bs + 0.012, z0 + h - rise), (bs - 0.012, z0 + h - rise)],
+                              -recess + 0.05, -recess + 0.075, "church_fittings", "iron"), "church_fittings")
+        for bz in (z0 + 0.35 * h, z0 + 0.72 * h):
+            add(outline_prism("bar", f, [(-w / 2, bz - 0.015), (w / 2, bz - 0.015), (w / 2, bz + 0.015), (-w / 2, bz + 0.015)],
+                              -recess + 0.075, -recess + 0.095, "church_fittings", "iron"), "church_fittings")
     if surround:
         inner = [(w / 2, z0 - 0.01)] + top + [(-w / 2, z0 - 0.01)]
         outer = [(w / 2 + surround, z0 - 0.01)] + arch(w, z0 + h, rise, n, surround) + [(-w / 2 - surround, z0 - 0.01)]
@@ -522,11 +545,11 @@ for face in (S, N):
     window(ch, sg * 12.0, 5.7, 1.0, 1.75, 0.16, surround=0.2)
     sa = face_y(face.n.y * SA_Y1, int(face.n.y))
     for x in (10.25, 12.45):
-        window(sa, sg * x, 1.95, 0.9, 1.65, 0.12, surround=0.18, panel=0.3)
+        window(sa, sg * x, 1.95, 0.9, 1.65, 0.12, surround=0.18, panel=0.3, bars=True)
 E = face_x(CH_X1, 1)
 vent(E, 0, 10.6, 0.7)
 for y in (-5.85, 5.85):
-    window(face_x(SA_X1, 1), -y, 1.95, 0.9, 1.65, 0.12, surround=0.18, panel=0.3)
+    window(face_x(SA_X1, 1), -y, 1.95, 0.9, 1.65, 0.12, surround=0.18, panel=0.3, bars=True)
 # Belfry: two round-arched openings a face with louvres.
 for k in range(4):
     a = k * math.pi / 2
@@ -550,14 +573,43 @@ for k in range(4):
     for s in (-1.68, -0.56, 0.56, 1.68):   # iron wall anchors under the string course
         add(outline_prism("anchor", f, [(s - 0.025, 11.55), (s + 0.025, 11.55), (s + 0.025, 12.5), (s - 0.025, 12.5)], -0.01, 0.03,
                           "church_fittings", "metal", back=False), "church_fittings")
-# Grave stones and memorial plaques against the nave's south wall (among them the priest Modestus
-# Glorieux's), light stone with rounded tops.
-for x, w, z0, h in ((-12.7, 0.55, 0.95, 0.95), (-7.45, 0.78, 1.0, 1.55), (-2.35, 0.62, 0.95, 1.25)):
-    f = Face(S.p(x, 0), S.t, S.n)
-    add(outline_prism("plaque", f, [(-w / 2, z0), (w / 2, z0)] + arch(w, z0 + h, w / 2, 6), -0.01, 0.09, "church_trim", back=False),
-        "church_trim")
-# The west door: round-arched in a bluestone frame between Tuscan pilasters under a brick
-# entablature and a drip moulding, a wooden transom and a blind fanlight; paired windows above.
+# Three memorial stones against the nave's south wall (photos of 5 Nov 2026), no text on them: under
+# the first window a grey slab on a base with a gabled top and a round medallion, between the second
+# and third windows a pale tablet on a console with a rounded top, a carved panel and a small cross,
+# under the fourth window a grey slab on a base with a cross on top.
+def stone(name, f, outline, d0, d1, paint):
+    add(outline_prism(name, f, outline, d0, d1, "church_fittings", paint, back=False), "church_fittings")
+
+
+f = Face(S.p(-12.7, 0), S.t, S.n)
+stone("stone_base", f, [(-0.42, -0.6), (0.42, -0.6), (0.42, 0.75), (-0.42, 0.75)], -0.01, 0.42, "granite")
+stone("stone_slab", f, [(-0.3, 0.75), (0.3, 0.75), (0.3, 1.95), (0.2, 2.08), (0, 2.2), (-0.2, 2.08), (-0.3, 1.95)], -0.01, 0.3, "granite")
+add(cylinder("medallion", f.p(0, 1.98, 0.29), f.p(0, 1.98, 0.33), 0.085, "church_fittings", "granite", 8), "church_fittings")
+f = Face(S.p(-7.45, 0), S.t, S.n)
+stone("tablet_console", f, [(-0.3, 0.95), (0.3, 0.95), (0.42, 1.18), (-0.42, 1.18)], -0.01, 0.16, "marble")
+stone("tablet", f, [(-0.42, 1.18), (0.42, 1.18)] + arch(0.84, 2.45, 0.3, 6), -0.01, 0.1, "marble")
+stone("tablet_panel", f, [(-0.3, 1.32), (0.3, 1.32)] + arch(0.6, 2.3, 0.2, 6), 0.09, 0.115, "cloth")
+stone("tablet_cross", f, [(-0.025, 2.4), (0.025, 2.4), (0.025, 2.66), (-0.025, 2.66)], -0.01, 0.06, "marble")
+stone("tablet_cross", f, [(-0.08, 2.53), (0.08, 2.53), (0.08, 2.58), (-0.08, 2.58)], -0.01, 0.06, "marble")
+f = Face(S.p(-2.35, 0), S.t, S.n)
+stone("stone_base", f, [(-0.32, -0.6), (0.32, -0.6), (0.32, 0.62), (-0.32, 0.62)], -0.01, 0.36, "granite")
+stone("stone_slab", f, [(-0.24, 0.62), (0.24, 0.62), (0.24, 1.78), (0, 1.9), (-0.24, 1.78)], -0.01, 0.27, "granite")
+stone("stone_cross", f, [(-0.035, 1.85), (0.035, 1.85), (0.035, 2.22), (-0.035, 2.22)], 0.1, 0.17, "granite")
+stone("stone_cross", f, [(-0.12, 2.06), (0.12, 2.06), (0.12, 2.13), (-0.12, 2.13)], 0.1, 0.17, "granite")
+# Iron wall anchors at the top of the nave's walls, between the windows, and two courses of brick
+# corbelled out under the eaves boards.
+for face in (S, N):
+    sg = 1 if face is S else -1
+    for x in (-14.6, -10.85, -7.45, -4.05, -0.75):
+        add(outline_prism("anchor", face, [(sg * x - 0.025, 5.45), (sg * x + 0.025, 5.45), (sg * x + 0.025, 6.2), (sg * x - 0.025, 6.2)], -0.01,
+                          0.03, "church_fittings", "metal", back=False), "church_fittings")
+        add(outline_prism("anchor", face, [(sg * x - 0.07, 5.8), (sg * x + 0.07, 5.8), (sg * x + 0.07, 5.86), (sg * x - 0.07, 5.86)], 0.02,
+                          0.04, "church_fittings", "metal", back=False), "church_fittings")
+    add(outline_prism("corbel", face, [(sg * (TR_X0 - 0.02), 6.48), (sg * (NAVE_X0 + 0.02), 6.48), (sg * (NAVE_X0 + 0.02), 6.74),
+                                       (sg * (TR_X0 - 0.02), 6.74)], -0.02, 0.05, "church_brick", back=False), "church_brick")
+# The west door, as the photos of 5 Nov 2026 show it: painted off-white, round-arched with a keystone
+# between Tuscan pilasters under a plain entablature, a white transom, a cream tympanum and doors of
+# white vertical boards; paired windows above.
 W = face_x(TW_X0, -1)
 DOOR_W, DOOR_Z, DOOR_TOP = 2.16, 0.3, 3.75
 door = [(-DOOR_W / 2, DOOR_Z), (DOOR_W / 2, DOOR_Z)] + arch(DOOR_W, DOOR_TOP, DOOR_W / 2)
@@ -567,14 +619,20 @@ STONE_CUTS.append(outline_prism("cut", W, door, 0.4, -0.35, "church_stone"))
 # a leaf cannot be shut on the zombies to turn the roof into an unreachable safe room.
 for sy in (-1, 1):
     y0, y1 = sorted((sy * (DOOR_W/2 - .035), sy * (DOOR_W/2 + .035)))
-    add(box("open_door", TW_X0-.05, y0, DOOR_Z, TW_X0+1.02, y1, 2.95, "church_fittings", "wood"), "church_fittings")
+    for i in range(8):   # the leaf in eight vertical boards, a shade apart, so their joints show
+        x = TW_X0 - 0.05 + i * (1.07 / 8)
+        add(box("open_door", x, y0, DOOR_Z, x + 1.07 / 8, y1, 2.95, "church_fittings", ("white", "board")[i % 2]), "church_fittings")
 add(outline_prism("transom", W, [(-DOOR_W / 2, 2.95), (DOOR_W / 2, 2.95), (DOOR_W / 2, 3.08), (-DOOR_W / 2, 3.08)], -0.35, -0.22,
-                  "church_fittings", "wood"), "church_fittings")
+                  "church_fittings", "white"), "church_fittings")
 add(outline_prism("fanlight", W, [(-DOOR_W / 2, 3.08), (DOOR_W / 2, 3.08)] + arch(DOOR_W, DOOR_TOP, DOOR_W / 2)[1:-1], -0.34, -0.3,
-                  "church_trim"), "church_trim")
+                  "church_fittings", "cream"), "church_fittings")
 add(band_prism("door_frame", W, [(DOOR_W / 2, DOOR_Z)] + arch(DOOR_W, DOOR_TOP, DOOR_W / 2) + [(-DOOR_W / 2, DOOR_Z)],
                [(DOOR_W / 2 + 0.2, DOOR_Z)] + arch(DOOR_W, DOOR_TOP, DOOR_W / 2, 8, 0.2) + [(-DOOR_W / 2 - 0.2, DOOR_Z)], -0.05, 0.05,
-               "church_stone"), "church_stone")
+               "church_trim"), "church_trim")
+add(outline_prism("keystone", W, [(-0.13, DOOR_TOP + 0.02), (0.13, DOOR_TOP + 0.02), (0.13, 4.12), (-0.13, 4.12)], -0.02, 0.07,
+                  "church_trim", back=False), "church_trim")
+add(outline_prism("keystone_diamond", W, [(0, DOOR_TOP + 0.1), (0.09, 3.96), (0, 4.06), (-0.09, 3.96)], 0.06, 0.085, "church_trim",
+                  back=False), "church_trim")
 def west_block(name, x0, x1, z0, z1, out, mat):
     """A flat block on the tower's west face (pilasters, capitals, the entablature)."""
     add(outline_prism(name, W, [(x0, z0), (x1, z0), (x1, z1), (x0, z1)], -0.02, out, mat, back=False), mat)
@@ -582,44 +640,199 @@ def west_block(name, x0, x1, z0, z1, out, mat):
 
 for sg in (1, -1):
     x0, x1 = sorted((sg * 1.02, sg * 1.45))
-    west_block("pilaster", x0, x1, -0.3, 3.95, 0.12, "church_stone")
+    west_block("pilaster", x0, x1, -0.3, 3.95, 0.12, "church_trim")
     x0, x1 = sorted((sg * 0.97, sg * 1.5))
-    west_block("capital", x0, x1, 3.95, 4.12, 0.16, "church_stone")
-    west_block("base", x0, x1, -0.3, 0.55, 0.16, "church_stone")
-west_block("frieze", -1.5, 1.5, 4.12, 4.62, 0.1, "church_brick")
-west_block("cornice", -1.62, 1.62, 4.62, 4.8, 0.22, "church_stone")
+    west_block("capital", x0, x1, 3.95, 4.12, 0.16, "church_trim")
+    west_block("base", x0, x1, -0.3, 0.55, 0.16, "church_trim")
+west_block("frieze", -1.5, 1.5, 4.12, 4.62, 0.1, "church_trim")
+west_block("cornice", -1.62, 1.62, 4.62, 4.8, 0.22, "church_trim")
 for s in (-0.42, 0.42):
     window(W, s, 5.6, 0.55, 1.55, 0.275, surround=0.14, hood=False, ears=False, panel=0.28)
 west_block("imposts", -0.95, 0.95, 6.83, 6.93, 0.05, "church_trim")
-# The calvary chapel's open front in its west wall, under a white wooden gable.
-C = Face(Vector((TW_X0, (AN_Y0 + AN_Y1) / 2, 0)), W.t, W.n)
-niche = [(-1.3, 0.95), (1.3, 0.95), (1.3, 2.75), (0, 3.45), (-1.3, 2.75)]
-BRICK_CUTS.append(outline_prism("cut", C, niche, 0.4, -0.8, "church_brick"))
-add(outline_prism("niche_back", C, niche, -0.8, -0.74, "church_fittings", "dark"), "church_fittings")
-add(outline_prism("mound", C, [(-1.25, 0.95), (1.25, 0.95), (0.9, 1.25), (0, 1.38), (-0.9, 1.25)], -0.75, -0.25, "church_stone"),
-    "church_stone")
-add(outline_prism("cross_v", C, [(-0.06, 1.2), (0.06, 1.2), (0.06, 3.2), (-0.06, 3.2)], -0.72, -0.64, "church_fittings", "wood"),
-    "church_fittings")
-add(outline_prism("cross_h", C, [(-0.62, 2.72), (0.62, 2.72), (0.62, 2.84), (-0.62, 2.84)], -0.72, -0.64, "church_fittings", "wood"),
-    "church_fittings")
-add(outline_prism("corpus", C, [(-0.08, 1.75), (0.08, 1.75), (0.1, 2.6), (0.5, 2.78), (0.5, 2.84), (0, 2.75), (-0.5, 2.84), (-0.5, 2.78),
-                                (-0.1, 2.6)], -0.64, -0.58, "church_trim"), "church_trim")
-for sg in (1, -1):
-    add(oriented_box("barge", C.p(sg * 1.45, 2.68, 0.2), C.p(0, 3.6, 0.2), 0.22, 0.05, C.n, "church_fittings", "white"),
-        "church_fittings")
-add(outline_prism("rail", C, [(-1.3, 0.95), (1.3, 0.95), (1.3, 1.95), (-1.3, 1.95)], 0.02, 0.04, "church_fittings", "metal"),
-    "church_fittings")
+# The calvary chapel (photos of 5 Nov 2026): an open porch in its west wall under a gable of white
+# bargeboards with a scalloped lower edge; white walls and ceiling inside; the back wall painted (a dark
+# sky with a pale glow behind the cross, a red streak over a town on a low horizon); the crucifix over a
+# mound of rocks on a white base with a grey slab; an iron railing with spear tips and a gate across the
+# front. Above the gable's north slope the wall is hung with slates up to the lean-to roof, and a grey
+# rendered pier closes the south corner. The fine wire mesh over the opening is left out.
+C = Face(Vector((TW_X0, (AN_Y0 + AN_Y1) / 2, 0)), W.t, W.n)   # s runs south, from the middle of the chapel's front
+PL, PR = (AN_Y0 + AN_Y1) / 2 + TW_HW - 0.01, 1.1                # the opening: from 1 cm into the tower's side to the pier
+PZ0, FOOT, APEX, DEPTH = 0.05, 3.0, 4.3, 1.75
+SC = (PL + PR) / 2
+gable_z = lambda s: FOOT + (APEX - FOOT) * (1 - abs(s - SC) / ((PR - PL) / 2))
+lean_z = lambda s: AN_E + (C.o.y - s - AN_Y0) / (AN_Y1 - AN_Y0) * (AN_TOP - AN_E)   # the lean-to roof's surface over the front
+opening = [(PL, PZ0), (PR, PZ0), (PR, FOOT), (SC, APEX), (PL, FOOT)]
+BRICK_CUTS.append(outline_prism("cut", C, opening, 0.4, -DEPTH, "church_brick"))
+STONE_CUTS.append(outline_prism("cut", C, opening, 0.4, -DEPTH, "church_stone"))
+INSIDE = C.p(SC, 1.8, -DEPTH / 2)
 
-# ---------------------------------------------------------------- quoins: sandstone blocks on the tower's west corners
-for sy in (1, -1):   # the north-west corner from the plinth, the south-west one above the chapel's roof
-    z, k, y = (PLINTH if sy > 0 else AN_TOP), 0, sy * TW_HW
+
+def inner(name, pts, paint):
+    """A face on the inside of the porch, turned towards its middle."""
+    bm = bmesh.new()
+    f = bm.faces.new([bm.verts.new(p) for p in pts])
+    bm.normal_update()
+    if f.normal.dot(INSIDE - f.calc_center_median()) < 0:
+        f.normal_flip()
+    return add(to_object(bm, name, "church_fittings", paint, recalc=False), "church_fittings")
+
+
+for s in (PL + 0.005, PR - 0.005):
+    inner("porch_wall", [C.p(s, PZ0, 0), C.p(s, FOOT, 0), C.p(s, FOOT, -DEPTH + 0.01), C.p(s, PZ0, -DEPTH + 0.01)], "white")
+for s in (PL + 0.005, PR - 0.005):
+    inner("porch_ceiling", [C.p(s, FOOT - 0.005, 0), C.p(SC, APEX - 0.005, 0), C.p(SC, APEX - 0.005, -DEPTH + 0.01),
+                            C.p(s, FOOT - 0.005, -DEPTH + 0.01)], "white")
+
+
+def painting_colour(s, z):
+    """The back wall's painting (linear RGB): a dark sky with a pale glow round the cross, a red streak
+    over a town of ochre walls and towers on the horizon, dark ground in front."""
+    mix = lambda a, b, t: tuple(x + (y - x) * t for x, y in zip(srgb(a), srgb(b)))
+    rel = s - SC
+    if z < 1.45:
+        return mix("#2f2822", "#5b4b36", max(0.0, (z - 1.0) / 0.45))
+    if z < 1.75:
+        col = int((s - PL) / 0.19)
+        tall = col % 3 == 1 and abs(rel) > 0.25
+        if z < 1.66 or tall:
+            return srgb("#7a6646") if col % 2 == 0 else srgb("#4f4231")
+        return srgb("#3a2c26")
+    if 1.76 < z < 1.82:
+        return srgb("#8c2f25")
+    glow = math.exp(-((rel / 0.6) ** 2 + ((z - 2.5) / 0.6) ** 2))
+    return mix("#221d1a", "#a99d88", glow)
+
+
+ss = np.linspace(PL + 0.006, PR - 0.006, 14)
+zs = [0.75, 1.1, 1.38, 1.5, 1.62, 1.7, 1.74, 1.79, 1.84, 1.95, 2.15, 2.4, 2.65, 2.85, FOOT]
+bm = bmesh.new()
+grid = [[bm.verts.new(C.p(s, z, -DEPTH + 0.008)) for s in ss] for z in zs]
+apex_v = bm.verts.new(C.p(SC, APEX - 0.01, -DEPTH + 0.008))
+for j in range(len(zs) - 1):
+    for i in range(len(ss) - 1):
+        bm.faces.new((grid[j][i], grid[j][i + 1], grid[j + 1][i + 1], grid[j + 1][i]))
+for i in range(len(ss) - 1):
+    bm.faces.new((grid[-1][i], grid[-1][i + 1], apex_v))
+bm.normal_update()
+for f in bm.faces:
+    if f.normal.dot(C.n) < 0:   # towards the square
+        f.normal_flip()
+lay = bm.loops.layers.float_color.new("Color")
+for f in bm.faces:
+    for lp in f.loops:
+        q = lp.vert.co - C.o
+        lp[lay] = (*painting_colour(q.dot(C.t), q.z), 1.0)
+add(to_object(bm, "painting", "church_fittings", recalc=False), "church_fittings")
+# The base under the mound: white plaster with a grey slab in the middle; the rocks; the crucifix.
+add(outline_prism("calvary_base", C, [(PL + 0.01, PZ0), (PR - 0.01, PZ0), (PR - 0.01, 0.74), (0.55, 0.86), (SC, 0.92), (-1.05, 0.86),
+                                      (PL + 0.01, 0.74)], -DEPTH + 0.005, -DEPTH + 0.75, "church_fittings", "white"), "church_fittings")
+add(outline_prism("calvary_slab", C, [(SC - 0.38, 0.12), (SC + 0.38, 0.12), (SC + 0.38, 0.72), (SC - 0.38, 0.72)], -DEPTH + 0.74,
+                  -DEPTH + 0.765, "church_fittings", "granite", back=False), "church_fittings")
+rng = np.random.default_rng(3)
+half = (PR - PL) / 2 - 0.08
+pts = []
+for s in np.linspace(PL + 0.08, PR - 0.08, 9):
+    t = (s - SC) / half
+    for d in (-DEPTH + 0.02, -DEPTH + 0.35, -DEPTH + 0.68):
+        top = 0.78 + 0.5 * (1 - t * t) * (1.0 if d < -DEPTH + 0.5 else 0.6) + rng.uniform(-0.05, 0.05)
+        pts.append(C.p(s + rng.uniform(-0.04, 0.04), top, d))
+pts += [C.p(s, 0.7, d) for s in (PL + 0.06, PR - 0.06) for d in (-DEPTH + 0.02, -DEPTH + 0.68)]
+add(hull("rocks", pts, "church_fittings", "rock"), "church_fittings")
+CD = -DEPTH + 0.16   # the cross's front face
+add(outline_prism("cross_v", C, [(SC - 0.05, 1.0), (SC + 0.05, 1.0), (SC + 0.05, 3.4), (SC - 0.05, 3.4)], -DEPTH + 0.06, CD,
+                  "church_fittings", "dark"), "church_fittings")
+add(outline_prism("cross_h", C, [(SC - 0.62, 2.98), (SC + 0.62, 2.98), (SC + 0.62, 3.08), (SC - 0.62, 3.08)], -DEPTH + 0.06, CD,
+                  "church_fittings", "dark"), "church_fittings")
+cp = lambda s, z, d: C.p(SC + s, z, CD + d)
+add(sphere("head", cp(0.02, 2.86, 0.1), 0.095, "church_fittings", "corpus", 8, 5), "church_fittings")
+add(hull("torso", [cp(sx * w, z, d) for z, w in ((2.74, 0.19), (2.25, 0.13)) for sx in (-1, 1) for d in (0.01, 0.18)],
+         "church_fittings", "corpus"), "church_fittings")
+add(hull("cloth", [cp(sx * w, z, d) for z, w in ((2.3, 0.15), (2.0, 0.19)) for sx in (-1, 1) for d in (0.0, 0.2)] + [cp(0.24, 1.88, 0.1)],
+         "church_fittings", "cloth"), "church_fittings")
+add(hull("legs", [cp(sx * w, z, d) for z, w in ((2.02, 0.13), (1.7, 0.08)) for sx in (-1, 1) for d in (0.02, 0.15)] +
+         [cp(0, 1.45, 0.04), cp(0, 1.45, 0.12)], "church_fittings", "corpus"), "church_fittings")
+for sx in (-1, 1):
+    add(oriented_box("arm", cp(sx * 0.16, 2.7, 0.04), cp(sx * 0.6, 3.07, 0.04), 0.085, 0.09, C.n, "church_fittings", "corpus"),
+        "church_fittings")
+# The railing: bars with spear tips between two rails, the gate's two posts a little stouter.
+for s in np.arange(PL + 0.08, PR - 0.04, 0.115):
+    r, tip = (0.016, 1.2) if abs(abs(s - SC) - 0.45) > 0.06 else (0.03, 1.24)
+    add(hull("rail_bar", [C.p(s + a, z, 0.03 + b) for a in (-r, r) for b in (-r, r) for z in (-0.25, 1.08)] + [C.p(s, tip, 0.03)],
+             "church_fittings", "iron"), "church_fittings")
+for z in (0.12, 0.98):
+    add(outline_prism("rail", C, [(PL + 0.02, z), (PR - 0.02, z), (PR - 0.02, z + 0.035), (PL + 0.02, z + 0.035)], 0.012, 0.048,
+                      "church_fittings", "iron"), "church_fittings")
+
+
+def bargeboard(s0, s1):
+    """A white bargeboard from the gable's foot at s0 to its apex at s1, its lower edge scalloped."""
+    z0, z1 = gable_z(s0) - 0.04, gable_z(s1) - 0.04
+    n = max(4, round(abs(s1 - s0) / 0.13))
+    edge = []
+    for i in range(n * 4 + 1):
+        t = i / (n * 4)
+        dip = 0.05 * math.sin(math.pi * (i % 4) / 4)          # a scallop every 4 points
+        edge.append((s0 + (s1 - s0) * t, z0 + (z1 - z0) * t - 0.15 - dip))
+    outline = [(s0, z0 + 0.1), (s1, z1 + 0.1)] + edge[::-1]
+    if s1 < s0:
+        outline = outline[::-1]
+    add(outline_prism("bargeboard", C, outline, -0.01, 0.06, "church_fittings", "white"), "church_fittings")
+
+
+bargeboard(PL - 0.02, SC)
+bargeboard(PR + 0.06, SC)
+add(outline_prism("slate_hung", C, [(PL - 0.02, FOOT + 0.08), (SC, APEX + 0.08), (SC, lean_z(SC) - 0.06), (PL - 0.02, lean_z(PL) - 0.06)],
+                  -0.01, 0.025, "church_slate", back=False), "church_slate")
+add(outline_prism("pier", C, [(PR + 0.005, -0.3), (C.o.y - AN_Y0 + 0.01, -0.3), (C.o.y - AN_Y0 + 0.01, FOOT + 0.05), (PR + 0.005, FOOT + 0.05)],
+                  -0.01, 0.025, "church_fittings", "pier", back=False), "church_fittings")
+for z in np.arange(0.6, FOOT, 0.42):   # its render scored in blocks
+    add(outline_prism("pier_joint", C, [(PR + 0.005, z), (C.o.y - AN_Y0 + 0.01, z), (C.o.y - AN_Y0 + 0.01, z + 0.015), (PR + 0.005, z + 0.015)],
+                      0.02, 0.027, "church_fittings", "zinc", back=False), "church_fittings")
+
+# ---------------------------------------------------------------- quoins: rough ironstone blocks on the tower's west corners
+# Irregular blocks of varying size, long and short in turn, standing a little proud of the brick, with a
+# few odd stones beside them so the edge into the brick is ragged (photos of 5 Nov 2026). The north-west
+# corner from the plinth; the south-west one from the plinth on the west face (beside the chapel's
+# porch) and on the south face above the chapel's roof.
+rng = np.random.default_rng(17)
+
+
+def rough_block(x0, x1, y0, y1, z0, z1, out):
+    """A block on a face, `out` its outward axis ('x-' or 'y+' / 'y-'), its front a little uneven."""
+    pts = []
+    for x in (x0, x1):
+        for y in (y0, y1):
+            for z in (z0, z1):
+                p = [x, y, z]
+                front = (out == "x-" and x == x0) or (out == "y+" and y == y1) or (out == "y-" and y == y0)
+                if front:
+                    j = rng.uniform(-0.008, 0.008)
+                    if out == "x-":
+                        p[0] += j
+                    else:
+                        p[1] += j if out == "y+" else -j
+                pts.append(tuple(p))
+    add(hull("quoin", pts, "church_stone"), "church_stone")
+
+
+for sy in (1, -1):
+    z, k, y = PLINTH, 0, sy * TW_HW
     while z < 10.2 - 0.05:
-        top = min(z + 0.3, 10.2)
-        w_west, w_side = (0.45, 0.24) if k % 2 == 0 else (0.24, 0.45)
+        top = min(z + rng.uniform(0.2, 0.36), 10.2)
+        long_, short_ = rng.uniform(0.36, 0.62), rng.uniform(0.17, 0.3)
+        w_west, w_side = (long_, short_) if k % 2 == 0 else (short_, long_)
+        o = rng.uniform(0.012, 0.035)
         y0, y1 = sorted((y, y - sy * w_west))
-        add(box("quoin", TW_X0 - 0.015, y0, z, TW_X0, y1, top, "church_stone"), "church_stone")
-        y0, y1 = sorted((y, y + sy * 0.015))
-        add(box("quoin", TW_X0, y0, z, TW_X0 + w_side, y1, top, "church_stone"), "church_stone")
+        rough_block(TW_X0 - o, TW_X0, y0, y1, z, top, "x-")
+        odd = min(rng.uniform(0.12, 0.28), 0.68 - w_west)   # clear of the door's pilasters and cornice
+        if rng.random() < 0.3 and odd > 0.08:   # an odd stone beside it, further into the brick
+            ya = y - sy * (w_west + 0.02)
+            y0, y1 = sorted((ya, ya - sy * odd))
+            zz = rng.uniform(z, (z + top) / 2)
+            rough_block(TW_X0 - o * 0.7, TW_X0, y0, y1, zz, min(zz + rng.uniform(0.1, 0.18), top), "x-")
+        if sy > 0 or z >= AN_TOP:
+            y0, y1 = sorted((y, y + sy * o))
+            rough_block(TW_X0, TW_X0 + w_side, y0, y1, z, top, "y+" if sy > 0 else "y-")
         z, k = top, k + 1
 
 # ---------------------------------------------------------------- brick: union, openings
@@ -748,11 +961,11 @@ for k in range(4):
     pts = [Vector((TW_CX, 0, 0)) + rot @ Vector((d, s, z)) for d in (1.2, TW_FACE - 0.05)
            for s, z in ((-GW - 0.08, TW_TOP - 0.05), (GW + 0.08, TW_TOP - 0.05), (0, TW_GABLE + 0.09))]
     add(hull("gable_roof", pts, "church_slate"), "church_slate")
-    for sg in (1, -1):   # the wine-red flashing along the gable's slopes
+    for sg in (1, -1):   # the lead flashing along the gable's slopes
         a = Vector((TW_CX, 0, 0)) + rot @ Vector((TW_FACE - 0.05, sg * (GW + 0.06), TW_TOP - 0.02))
         b = Vector((TW_CX, 0, 0)) + rot @ Vector((TW_FACE - 0.05, 0, TW_GABLE + 0.07))
-        add(oriented_box("flashing", a, b, 0.2, 0.06, (0, 0, 1), "church_fittings", "wine"), "church_fittings")
-add(box("cornice_edge", TW_X0 - 0.2, -TW_HW - 0.2, TW_TOP - 0.06, TW_X1 + 0.2, TW_HW + 0.2, TW_TOP, "church_fittings", "wine"),
+        add(oriented_box("flashing", a, b, 0.2, 0.06, (0, 0, 1), "church_fittings", "lead"), "church_fittings")
+add(box("cornice_edge", TW_X0 - 0.2, -TW_HW - 0.2, TW_TOP - 0.06, TW_X1 + 0.2, TW_HW + 0.2, TW_TOP, "church_fittings", "lead"),
     "church_fittings")
 # The metal top: a short cone, the ball, the rod with a cross and the weathercock.
 add(hull("cap", [(TW_CX + 0.13 * math.cos(a), 0.13 * math.sin(a), TIP - 0.5) for a in np.linspace(0, 2 * math.pi, 8, endpoint=False)] +
@@ -768,6 +981,19 @@ for dy in (-0.012, 0.012):
     bm.faces.new([bm.verts.new((TW_CX + x, dy, 29.25 + z)) for x, z in COCK])
 bmesh.ops.bridge_loops(bm, edges=bm.edges[:])
 add(to_object(bm, "cock", "church_fittings", "gilt"), "church_fittings")
+# Telecom antennas round the spire (photos of 5 Nov 2026): tall grey panels held off the slates on
+# brackets, two above each other on the west face, one long one on each of the other faces.
+ap = lambda z: P_K * (TIP - z) / (TIP - KINK)   # the spire's apothem at height z
+for k, spans in enumerate((((19.0, 20.85), (21.05, 22.9)), ((19.5, 22.4),), ((19.4, 22.3),), ((19.5, 22.4),))):
+    a = math.pi + k * math.pi / 2     # the octagon faces on the axes: west, south, east, north
+    n = Vector((math.cos(a), math.sin(a), 0))
+    c = Vector((TW_CX, 0, 0))
+    for z0, z1 in spans:
+        p0, p1 = c + n * (ap(z0) + 0.2) + Vector((0, 0, z0)), c + n * (ap(z1) + 0.2) + Vector((0, 0, z1))
+        add(oriented_box("antenna", p0, p1, 0.3, 0.13, n, "church_fittings", "antenna"), "church_fittings")
+        for z in (z0 + 0.25, z1 - 0.25):
+            add(oriented_box("antenna_bracket", c + n * (ap(z) - 0.05) + Vector((0, 0, z)), c + n * (ap(z) + 0.22) + Vector((0, 0, z)),
+                             0.05, 0.05, (0, 0, 1), "church_fittings", "zinc"), "church_fittings")
 
 # ---------------------------------------------------------------- copings, kneelers, crosses, gutters, downpipes
 def coping(face_axis, at, half, e, ridge, face):
@@ -800,15 +1026,15 @@ for y, z in ((0, RIDGE + 1.98), (0.38, RIDGE + 1.41), (-0.38, RIDGE + 1.41)):
     add(sphere("knob", (CH_X1 - 0.24, y, z), 0.06, "church_fittings", "metal", 6, 4), "church_fittings")
 
 
-def gutter(a, b, z, out):
-    """A wine-red gutter along an eaves edge from a to b (plan points), its top at z, `out` the
-    outward direction."""
+def gutter(a, b, z, out, paint="white"):
+    """The white eaves board with its gutter along an eaves edge from a to b (plan points), its top at z,
+    `out` the outward direction (the photos of 5 Nov 2026; the chapel's gutter is brown)."""
     a, b, o = Vector((*a, 0)), Vector((*b, 0)), Vector((*out, 0))
     pts = []
     for p in (a, b):
-        for d, zz in ((0.0, z), (0.16, z), (0.0, z - 0.2), (0.14, z - 0.2)):
+        for d, zz in ((0.0, z), (0.16, z), (0.0, z - 0.3), (0.16, z - 0.3)):
             pts.append(p + o * d + Vector((0, 0, zz)))
-    add(hull("gutter", pts, "church_fittings", "wine"), "church_fittings")
+    add(hull("gutter", pts, "church_fittings", paint), "church_fittings")
 
 
 def eave_z(e, ridge, hw):
@@ -827,13 +1053,15 @@ for sg in (1, -1):
     gutter((TR_X1, sg * (SA_Y1 + 0.25)), (SA_X1 + 0.25, sg * (SA_Y1 + 0.25)), zs + 0.02, (0, sg))
     gutter((SA_X1 + 0.25, sg * (SA_Y1 + 0.25)), (SA_X1 + 0.25, sg * CH_HW), zs + 0.02, (1, 0))
     for x, y, top in ((NAVE_X0 + 0.12, NAVE_HW + 0.1, ze), (TR_X0 - 0.15, NAVE_HW + 0.1, ze), (SA_X1 - 0.15, SA_Y1 + 0.1, zs)):
-        add(cylinder("downpipe", (x, sg * y, -0.2), (x, sg * y, top - 0.15), 0.05, "church_fittings", "zinc"), "church_fittings")
-gutter((TW_X0 - 0.2, AN_Y0 - 0.25), (NAVE_X0, AN_Y0 - 0.25), AN_E - 0.25 * s_an + 0.02, (0, -1))
-# The verge of the nave's west gable: a light flashing under the slates' edge.
+        add(cylinder("downpipe", (x, sg * y, -0.2), (x, sg * y, top - 0.15), 0.05, "church_fittings", "brown"), "church_fittings")
+gutter((TW_X0 - 0.2, AN_Y0 - 0.25), (NAVE_X0, AN_Y0 - 0.25), AN_E - 0.25 * s_an + 0.02, (0, -1), "brown")
+add(cylinder("downpipe", (TW_X0 + 0.12, AN_Y0 - 0.12, -0.2), (TW_X0 + 0.12, AN_Y0 - 0.12, AN_E - 0.4), 0.05, "church_fittings", "brown"),
+    "church_fittings")
+# The verge of the nave's west gable: white boards under the slates' edge.
 for sg in (1, -1):
     a = (NAVE_X0 - 0.27, sg * (NAVE_HW + OVER), ze)
     b = (NAVE_X0 - 0.27, sg * TW_HW, RIDGE - (TW_HW / NAVE_HW) * (RIDGE - NAVE_E))
-    add(oriented_box("verge", a, b, 0.05, 0.2, (0, 0, -1), "church_trim"), "church_trim")
+    add(oriented_box("verge", a, b, 0.06, 0.3, (0, 0, -1), "church_fittings", "white"), "church_fittings")
 
 
 # The shared stair, landings, roof walk and cover. Their polygons also drive the player,
