@@ -153,6 +153,7 @@
           note.append(t('insideNote'));
           const tick = el('input');
           tick.type = 'checkbox';
+          tick.addEventListener('change', () => error('own-err'));
           const lab = el('label', 'consent');
           lab.append(tick, el('span', '', t('insideConfirm')));
           const go = el('button', 'btn danger', t('insideApply'));
