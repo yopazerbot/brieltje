@@ -155,13 +155,13 @@
    "id": "street:kapelleweg",
    "name": "Kapelleweg",
    "sub": "Smetlede",
-   "x": 1360.9,
-   "z": -328.4,
-   "yaw": 1.247,
+   "x": 1082.07,
+   "z": -342.49,
+   "yaw": 1.705,
    "car": [
-    1361.43,
-    -329.97,
-    1.247
+    1082.18,
+    -341.72,
+    1.705
    ],
    "village": true
   },
@@ -210,12 +210,12 @@
    "id": "street:meuleweg",
    "name": "Meuleweg",
    "sub": "Smetlede",
-   "x": 1357.81,
-   "z": -462.9,
+   "x": 1357.67,
+   "z": -461.84,
    "yaw": 0.149,
    "car": [
-    1357.42,
-    -462.84,
+    1357.57,
+    -461.82,
     0.149
    ],
    "village": true
@@ -238,12 +238,12 @@
    "id": "street:moeyweedreef",
    "name": "Moeyweedreef",
    "sub": "Briel",
-   "x": -24.29,
-   "z": 378.55,
+   "x": -24.32,
+   "z": 378.68,
    "yaw": -0.226,
    "car": [
-    -24.78,
-    378.43,
+    -24.81,
+    378.57,
     -0.226
    ]
   },
@@ -265,13 +265,13 @@
    "id": "street:oordegemkouter",
    "name": "Oordegemkouter",
    "sub": "Smetlede",
-   "x": 1506.22,
-   "z": -363.76,
-   "yaw": -1.758,
+   "x": 1726.85,
+   "z": -335.2,
+   "yaw": -1.708,
    "car": [
-    1506.8,
-    -366.8,
-    -1.758
+    1727.26,
+    -338.15,
+    -1.708
    ],
    "village": true
   },
@@ -307,12 +307,12 @@
    "id": "street:pontweg",
    "name": "Pontweg",
    "sub": "Smetlede",
-   "x": 1059.95,
-   "z": -693.98,
+   "x": 1059.82,
+   "z": -693.97,
    "yaw": -1.5,
    "car": [
-    1059.87,
-    -695.17,
+    1059.73,
+    -695.16,
     -1.5
    ],
    "village": true
@@ -405,12 +405,12 @@
    "id": "street:smetledestraat",
    "name": "Smetledestraat",
    "sub": "Briel",
-   "x": -746.86,
-   "z": -260.52,
+   "x": -747.27,
+   "z": -260.37,
    "yaw": -1.229,
    "car": [
-    -747.49,
-    -262.29,
+    -747.9,
+    -262.15,
     -1.229
    ],
    "village": true
@@ -455,6 +455,20 @@
     159.9,
     -0.088
    ]
+  },
+  {
+   "id": "street:vrommensweide",
+   "name": "Vrommensweide",
+   "sub": "Smetlede",
+   "x": 1711.81,
+   "z": -318.27,
+   "yaw": -0.383,
+   "car": [
+    1710.7,
+    -318.72,
+    -0.383
+   ],
+   "village": true
   },
   {
    "id": "street:walleweederede",

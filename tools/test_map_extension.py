@@ -131,6 +131,62 @@ class MapExtensionTests(unittest.TestCase):
                 with self.assertRaisesRegex(ValueError, "raster does not match"):
                     nb.raster("DTM")
 
+    def test_southern_download_waits_for_the_complete_northern_row(self):
+        with tempfile.TemporaryDirectory() as folder:
+            geo = Path(folder)
+            for name in ("s", "w", "e", "w2"):
+                side = geo / f"strip_{name}"
+                side.mkdir()
+                for file in nb.STRIP_FILES:
+                    (side / file).touch()
+                with patch.object(nb, "GEO", geo):
+                    self.assertEqual("s" in nb.available_strips(), name == "w2")
+
+    def test_southern_raster_and_photo_keep_north_at_the_top(self):
+        with tempfile.TemporaryDirectory() as folder:
+            sources = []
+            for name, extent, value in (("north", (0, 2, 4, 4), 20), ("south", (0, 0, 4, 2), 80)):
+                path = Path(folder) / name
+                path.mkdir()
+                sources.append((path, extent))
+                Image.fromarray(np.full((2, 4), value, np.float32)).save(path / "DHMVII_DTM_1m_clean.tif")
+                Image.new("RGB", (8, 4), (value, 0, 0)).save(path / "ortho_025m.jpg", quality=100, subsampling=0)
+                (path / "ortho_025m.json").write_text(json.dumps(dict(zip(
+                    ("x0", "y0", "x1", "y1", "px", "py"), (*extent, 8, 4)))))
+            with patch.object(nb, "SOURCES", sources):
+                heights = nb.raster("DTM")
+                np.testing.assert_array_equal(heights[:, 0], [20, 20, 80, 80])
+                image, frame = nb.ortho_image()
+                self.assertEqual(image.size, (8, 8))
+                self.assertEqual((frame["y0"], frame["y1"], frame["py"]), (0, 4, 8))
+                self.assertLessEqual(abs(image.getpixel((1, 1))[0] - 20), 1)
+                self.assertLessEqual(abs(image.getpixel((1, 6))[0] - 80), 1)
+
+    def test_missing_mosaic_corner_is_rejected(self):
+        with self.assertRaisesRegex(ValueError, "without gaps"):
+            nb.source_frame([(Path("north"), (0, 2, 4, 4)), (Path("south"), (0, 0, 2, 2))])
+
+    def test_southern_homes_follow_the_road_without_open_fields(self):
+        plot = Point(118911, 184981)
+        bend = (118100, 183740)
+        street = {"LBLMORF": "weg bestaande uit één rijbaan", "LSTRNM": "connecting street"}
+        roads = [([(plot.x, plot.y), bend, nb.KOUTER], street),
+                 ([bend, (117600, 184200)], street)]
+        features = [{"geometry": {"type": "LineString", "coordinates": line}, "properties": props}
+                    for line, props in roads]
+        with patch.object(nb, "features", side_effect=lambda name, **kw: features if name == "Wegsegment" else []), \
+                patch.object(nb, "ACTIVE_STRIPS", {"s": ()}), patch.object(nb, "band", return_value=Polygon()):
+            old = nb.before(plot)
+            extension = nb.kouter(plot)
+            self.assertTrue(extension.contains(Point(nb.KOUTER)))
+            self.assertTrue(nb.zone(plot).contains(Point(nb.KOUTER)))
+            self.assertLess(extension.intersection(old).area, 1e-6)
+            self.assertTrue(old.difference(nb.zone(plot)).is_empty)
+            self.assertFalse(extension.contains(Point(117600, 184200)))
+            self.assertFalse(extension.contains(Point(118000, 183300)))
+        with patch.object(nb, "ACTIVE_STRIPS", {}):
+            self.assertTrue(nb.kouter(plot).is_empty)
+
     def test_features_keep_base_priority_and_deduplicate_both_strips(self):
         self.geo.stop()
         with tempfile.TemporaryDirectory() as folder:
@@ -145,6 +201,28 @@ class MapExtensionTests(unittest.TestCase):
                 self.assertEqual([f["properties"]["OIDN"] for f in merged], [1, 2, 3, 4])
                 self.assertEqual(merged[0]["properties"]["from"], "")
                 self.assertEqual(len(nb.features("GBG", strip=False)), 2)
+
+
+class SouthernWorldTests(unittest.TestCase):
+    @classmethod
+    def setUpClass(cls):
+        root = Path(__file__).resolve().parents[1]
+        cls.custom = json.loads((root / "data/kouter_house.json").read_text())
+        cls.village = json.loads((root / "web/src/data/village.json").read_text())
+        cls.edge = Polygon(json.loads((root / "web/shared/bounds.json").read_text())["map"])
+
+    def test_garden_collision_is_in_the_shared_world(self):
+        actual = [p for p in self.village["prisms"] if p.get("lm") == "kouter_house"]
+        self.assertEqual(actual, self.custom["solids"])
+        self.assertGreater(len(actual), 10)
+        self.assertTrue(all(self.edge.covers(Polygon(p["p"][0])) for p in actual))
+
+    def test_the_driveway_is_reachable_and_not_blocked_by_estimated_hedges(self):
+        approach = LineString(self.custom["approach"]).buffer(.3)
+        self.assertTrue(self.edge.covers(approach))
+        for p in self.village["prisms"]:
+            if p["y1"] - p["y0"] > .4 and p["m"] != "road":
+                self.assertFalse(Polygon(p["p"][0], p["p"][1:]).intersects(approach), p["m"])
 
 
 if __name__ == "__main__":

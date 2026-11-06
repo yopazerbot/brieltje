@@ -576,7 +576,13 @@ def main():
         "plates": plates(model, area, road, buildings),
         "signs": street_signs(g, nodes, road, buildings),
     }
-    out["boxes"], out["bikes"] = roadside(road, buildings_list, buildings, st["pavings"], hedges, area)
+    roadside_houses = buildings_list
+    custom_garden = ROOT / "data/kouter_house.json"
+    if custom_garden.exists():
+        # This house has its own letterbox and garden fittings; don't put a guessed second one by its drive.
+        own = unary_union([Polygon(p) for p in json.loads(custom_garden.read_text(encoding="utf-8"))["clear"]])
+        roadside_houses = [b for b in buildings_list if not own.contains(Polygon(b["p"]).centroid)]
+    out["boxes"], out["bikes"] = roadside(road, roadside_houses, buildings, st["pavings"], hedges, area)
     spots = portal_spots()
     assert len(spots) >= 15, "portals.mjs: the portals' spots weren't found"
     for key in ("parked", "plates", "signs", "boxes", "bikes"):

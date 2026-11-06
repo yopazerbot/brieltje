@@ -70,20 +70,29 @@ STRIP_FILES = [f"{layer}_l72.json" for layer in LAYERS] + [
 
 
 def available_strips():
-    return {name: extent for name, extent in STRIPS.items()
-            if all((GEO / f"strip_{name}" / file).exists() for file in STRIP_FILES)}
+    ready = {name: extent for name, extent in STRIPS.items()
+             if all((GEO / f"strip_{name}" / file).exists() for file in STRIP_FILES)}
+    # The southern row spans all three side strips. Keep it inactive until the rectangle above is complete too.
+    if not all(name in ready for name in ("w", "e", "w2")):
+        ready.pop("s", None)
+    return ready
+
+
+def source_frame(sources):
+    """The rectangle covered by complete downloads, including rows south of the original one; reject holes."""
+    coverage = unary_union([box(*extent) for _, extent in sources])
+    if not coverage.equals(box(*coverage.bounds)):
+        raise ValueError("Geodata downloads must cover one rectangle without gaps")
+    return tuple(int(v) for v in coverage.bounds)
 
 
 ACTIVE_STRIPS = available_strips()
 HAS_STRIP = "w" in ACTIVE_STRIPS  # the existing Molenhoek band
 SOURCES = sorted([(GEO, EXTENT)] + [(GEO / f"strip_{name}", extent) for name, extent in ACTIVE_STRIPS.items()],
                  key=lambda item: item[1][0])
-for (_, left), (_, right) in zip(SOURCES, SOURCES[1:]):
-    if left[2] != right[0] or left[1::2] != right[1::2]:
-        raise ValueError("Geodata strips must be contiguous and have the same north and south edges")
 # The height rasters: west and north edge (Lambert 72), metres across and down.
-TILE_X0, TILE_Y1 = SOURCES[0][1][0], EXTENT[3]
-TILE_W, TILE_H = SOURCES[-1][1][2] - TILE_X0, EXTENT[3] - EXTENT[1]
+TILE_X0, TILE_Y0, TILE_X1, TILE_Y1 = source_frame(SOURCES)
+TILE_W, TILE_H = TILE_X1 - TILE_X0, TILE_Y1 - TILE_Y0
 EAST = 400.0  # metres in Lambert 72, rather than along the rotated model's x axis
 OUR_GROUND = -0.1    # model ground level
 # Buildings newer than the laser scan (GRB UIDN): their roof as the 2025 orthophoto shows it.
@@ -153,36 +162,36 @@ def shaded_parts(poly, kind):
 
 def raster(kind):
     """A laser raster, "DTM" or "DSM" (metres, a cell a metre), over TILE_X0.. with the strip stitched on."""
-    parts = []
+    west, south, east, north = source_frame(SOURCES)
+    joined = np.empty((north - south, east - west), np.float32)
     for folder, (x0, y0, x1, y1) in SOURCES:
         with Image.open(folder / f"DHMVII_{kind}_1m_clean.tif") as img:
             if img.size != (x1 - x0, y1 - y0):
                 raise ValueError(f"{folder}: {kind} raster does not match its extent")
-            parts.append(np.array(img, np.float32))
-    return np.concatenate(parts, axis=1)
+            row, col = north - y1, x0 - west
+            joined[row:row + y1 - y0, col:col + x1 - x0] = np.asarray(img, np.float32)
+    return joined
 
 
 def ortho_image():
     """The orthophoto (PIL image) and its frame {x0, y0, x1, y1, px, py}, with the strip stitched on."""
     Image.MAX_IMAGE_PIXELS = None  # our own downloaded tiles, stitched at 25 cm per pixel
-    images, frames = [], []
+    west, south, east, north = source_frame(SOURCES)
+    both, scale = None, None
     for folder, extent in SOURCES:
         meta = json.loads((folder / "ortho_025m.json").read_text(encoding="utf-8"))
         with Image.open(folder / "ortho_025m.jpg") as source:
             img = source.convert("RGB")
         if tuple(meta[k] for k in ("x0", "y0", "x1", "y1")) != extent or img.size != (meta["px"], meta["py"]):
             raise ValueError(f"{folder}: orthophoto does not match its frame")
-        if frames and (meta["py"] != frames[0]["py"] or
-                       meta["px"] / (meta["x1"] - meta["x0"]) != frames[0]["px"] / (frames[0]["x1"] - frames[0]["x0"])):
+        k = meta["px"] / (meta["x1"] - meta["x0"])
+        if meta["py"] / (meta["y1"] - meta["y0"]) != k or scale is not None and k != scale:
             raise ValueError(f"{folder}: orthophotos must have the same resolution")
-        images.append(img)
-        frames.append(meta)
-    both = Image.new("RGB", (sum(img.width for img in images), images[0].height))
-    offset = 0
-    for img in images:
-        both.paste(img, (offset, 0))
-        offset += img.width
-    return both, {**frames[0], "x1": frames[-1]["x1"], "px": both.width}
+        if both is None:
+            scale = k
+            both = Image.new("RGB", (round((east - west) * k), round((north - south) * k)))
+        both.paste(img, (round((extent[0] - west) * k), round((north - extent[3]) * k)))
+    return both, {"x0": west, "y0": south, "x1": east, "y1": north, "px": both.width, "py": both.height}
 
 
 class Ortho:
@@ -297,10 +306,10 @@ def hull(plot):
 
 
 def zone(plot):
-    """The original hull, Molenhoek's western band, the eastward extension and the way to the Sparrenhof (Lambert 72).
+    """The original hull, Molenhoek's western band, the eastward extension, Sparrenhof and southern homes (Lambert 72).
     Tree budgets, roof colours and ground covers are chosen separately for each extension.
     """
-    return unary_union([before(plot), sparrenhof(plot)])
+    return unary_union([before(plot), sparrenhof(plot), kouter(plot)])
 
 
 def before(plot):
@@ -352,6 +361,27 @@ def sparrenhof(plot):
     steps = [line.buffer(STREET_SIDE, 16) for line, _ in way_to((plot.centroid.x, plot.centroid.y), SPARRENHOF)
              if not old.contains(line)]
     corridor = unary_union(steps + [Point(SPARRENHOF).buffer(AROUND_CAFE, 32)])
+    gardens = [p.buffer(15, 8) for f in features("GBG") for p in polygons(f["geometry"])
+               if corridor.contains(p.centroid) and not old.contains(p.centroid)]
+    joined = unary_union([old, corridor, *gardens])
+    connected = next((p for p in getattr(joined, "geoms", [joined])
+                      if p.geom_type == "Polygon" and p.contains(plot.centroid)), Polygon())
+    return connected.difference(old)
+
+
+KOUTER, KOUTER_AROUND = (117709.6, 183519.9), 85.0
+
+
+def kouter(plot):
+    """The southern homes, their gardens and the streets that connect them to the existing map."""
+    if "s" not in ACTIVE_STRIPS:
+        return Polygon()
+    old = unary_union([before(plot), sparrenhof(plot)])
+    way = way_to((plot.centroid.x, plot.centroid.y), KOUTER)
+    if not way:
+        return Polygon()
+    corridor = unary_union([line.buffer(STREET_SIDE, 16) for line, _ in way] +
+                          [Point(KOUTER).buffer(KOUTER_AROUND, 32)])
     gardens = [p.buffer(15, 8) for f in features("GBG") for p in polygons(f["geometry"])
                if corridor.contains(p.centroid) and not old.contains(p.centroid)]
     joined = unary_union([old, corridor, *gardens])
@@ -652,12 +682,16 @@ def main():
     # laser saw one.
     northwest = sparrenhof(plot)
     in_northwest = prep(northwest) if not northwest.is_empty else None
+    southern = kouter(plot)
+    in_south = prep(southern) if not southern.is_empty else None
     # (centre, radius or None for the zone beyond the ring or "band" for the band, cap in all or None, more on top, gap, lowest)
     tiers = [((cx, cy), RADIUS, 60, 0, 4.0, 3.0), ((cx, cy), 240, 320, 0, 4.0, 3.0), ((cx, cy), AREA, 1700, 0, 7.0, 5.0),
              (CHURCH, 160, None, 260, 4.0, 3.0), (None, None, None, 1400, 7.0, 5.0)] + ([(None, "band", None, 450, 7.0, 5.0)] if in_band else [])
     tiers += [(None, "east", None, 300, 7.0, 5.0)] if in_east else []
     tiers += [(None, "sparrenhof", None, SPARRENHOF_TREES, SPARRENHOF_GAP, 5.0)] if in_northwest else []
-    regions = {"band": (rest, in_band), "east": (eastern, in_east), "sparrenhof": (northwest, in_northwest)}
+    tiers += [(None, "kouter", None, 180, 7.0, 5.0)] if in_south else []
+    regions = {"band": (rest, in_band), "east": (eastern, in_east), "sparrenhof": (northwest, in_northwest),
+               "kouter": (southern, in_south)}
     for at, radius, cap, more, gap, low in tiers:
         cap = cap or len(trees) + more
         if radius is None or isinstance(radius, str):
@@ -694,9 +728,10 @@ def main():
     reach_band = band().buffer(20).difference(reach_old) if in_band else None
     area_before = before(plot)
     reach_east = area_before.buffer(20).difference(unary_union([reach_old, band().buffer(20)])) if in_east else None
-    reach_northwest = area.buffer(20).difference(area_before.buffer(20)) if in_northwest else None
+    reach_northwest = northwest.buffer(20).difference(area_before.buffer(20)) if in_northwest else None
+    reach_south = southern.buffer(20).difference(unary_union([area_before, northwest]).buffer(20)) if in_south else None
     for poly in getattr(roads, "geoms", [roads]):
-        pieces = [poly.intersection(reach) for reach in (reach_old, reach_band, reach_east, reach_northwest) if reach is not None]
+        pieces = [poly.intersection(reach) for reach in (reach_old, reach_band, reach_east, reach_northwest, reach_south) if reach is not None]
         clipped = shapely.GeometryCollection([g for piece in pieces for g in getattr(piece, "geoms", [piece])])
         for part in getattr(clipped, "geoms", [clipped]):
             if part.geom_type != "Polygon":
@@ -725,8 +760,9 @@ def main():
     old_area = prep(hull(plot))
     in_ring = [0 if f.centroid.distance(centre) <= AREA else 1 if old_area.contains(f.centroid)
                else 3 if in_east and in_east.contains(f.centroid)
-               else 4 if in_northwest and in_northwest.contains(f.centroid) else 2 for f in footprints]
-    for group in (0, 1, 2, 3, 4):
+               else 4 if in_northwest and in_northwest.contains(f.centroid)
+               else 5 if in_south and in_south.contains(f.centroid) else 2 for f in footprints]
+    for group in (0, 1, 2, 3, 4, 5):
         roofs_rgb = [(b, q) for b, r in zip(buildings, in_ring) if r == group for q in b["parts"] if q["color"]]
         if len(roofs_rgb) <= 8:
             continue

@@ -50,7 +50,7 @@ from shapely.strtree import STRtree
 
 import crops
 import old_house
-from neighbours import TILE_H, TILE_W, TILE_X0, TILE_Y1, band, east, features, hull, model_frame, ortho_image, polygons, raster, sparrenhof, zone
+from neighbours import TILE_H, TILE_W, TILE_X0, TILE_Y1, band, east, features, hull, kouter, model_frame, ortho_image, polygons, raster, sparrenhof, zone
 
 ROOT = Path(__file__).resolve().parents[1]
 OUT = ROOT / "data" / "street.json"
@@ -579,7 +579,8 @@ def main():
     eastern = model(east(plot)).difference(old.buffer(0.5))
     # The way to the Sparrenhof, after the others: no crop fields there either, only the woods' floor under the trees.
     northwest = model(sparrenhof(plot))
-    regions = [old] + [part for part in (rest, eastern, northwest) if not part.is_empty]
+    southern = model(kouter(plot))
+    regions = [old] + [part for part in (rest, eastern, northwest, southern) if not part.is_empty]
 
     def owner(line):
         # A plot line crossing the old edge goes with its extension, once only.
@@ -589,7 +590,8 @@ def main():
     out, ras, road = build(old, plot, roads_l72, to_model, nb, lambda line: owner(line) == 0)
     for i, region in enumerate(regions[1:], 1):
         more, _, _ = build(region, plot, roads_l72, to_model, nb, lambda line: owner(line) == i,
-                           grow_fields=False if region.equals(eastern) else "forest" if region.equals(northwest) else True)
+                           grow_fields=False if region.equals(eastern) or region.equals(southern)
+                           else "forest" if region.equals(northwest) else True)
         offset = len(out["poles"])
         for k in ("roads", "poles", "tracks", "water", "pavings", "pools", "hedges", "fields", "lawns", "meadows"):
             out[k] = out[k] + more[k]

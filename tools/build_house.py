@@ -958,6 +958,25 @@ def main():
     nb_area = json.loads((ROOT / "data" / "neighbours.json").read_text(encoding="utf-8")).get("area")
     if nb_area:
         village["area"] = nb_area  # the outline of the area the world is built in (the big map)
+    # The southern house's own garden replaces the estimated paving and hedges. These blocks are shared
+    # with the server too, so walking, car placement and shots agree with the detailed model.
+    garden_model = ROOT / "data/kouter_house.json"
+    if garden_model.exists():
+        custom = json.loads(garden_model.read_text(encoding="utf-8"))
+        clear = unary_union([Polygon(p) for p in custom["clear"]])
+        clipped = []
+        for p in village["prisms"]:
+            if p.get("d") is not None and not p.get("lm") and p["m"] != "road":
+                shape = Polygon(p["p"][0], p["p"][1:])
+                if shape.intersects(clear):
+                    clipped.extend({**p, "p": ring} for ring in rings(shape.difference(clear)))
+                else:
+                    clipped.append(p)
+            else:
+                clipped.append(p)
+        village["prisms"] = clipped + custom["solids"]
+        village["posts"] = [p for p in village["posts"] if not clear.contains(Point(p[0], p[1]))]
+        village["trees"] = [t for t in village["trees"] if clear.distance(Point(t["x"], t["z"])) > 1.5]
     village["_source"] = "the surroundings beyond the ring (tools/build_house.py): GRB, DHM Vlaanderen II and the orthophoto (Digitaal Vlaanderen, open data)"
     VILLAGE_OUT.write_text(json.dumps(village, separators=(",", ":")), encoding="utf-8")
     counts = {}

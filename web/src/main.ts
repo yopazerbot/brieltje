@@ -3083,7 +3083,7 @@ async function buildVillage(): Promise<void> {
   const town = import.meta.env.DEV && location.search.includes('notown')
     ? Promise.reject(new Error('left out'))
     : import('./world/townCentre').then(({ loadTown }) => loadTown(renderer, (x, z) => house.ground + terrain.height(x, z)));
-  const models = (await Promise.all([loadChurch().catch(() => null), loadModel('/models/school.glb').catch(() => null), loadModel('/models/dormer_house.glb').catch(() => null), loadModel('/models/sparrenhof.glb').catch(() => null), town.catch(() => null)])).filter(
+  const models = (await Promise.all([loadChurch().catch(() => null), loadModel('/models/school.glb').catch(() => null), loadModel('/models/dormer_house.glb').catch(() => null), loadModel('/models/sparrenhof.glb').catch(() => null), loadModel('/models/kouter_house.glb').catch(() => null), town.catch(() => null)])).filter(
     (m): m is THREE.Object3D => m !== null,
   );
   // The houses of Molenhoek (and its street) and of Kapellenhoek, the same way: fitted into the village data before its tiles are built.
@@ -3133,7 +3133,7 @@ async function buildVillage(): Promise<void> {
   await bakes;
   for (const m of models) {
     tiles.group.add(m); // a caster for the village's ground shading, a target for shots
-    tiles.track(m, undefined, String(m.userData.landmark).startsWith('molenhoek_end') ? 350 : Infinity);
+    tiles.track(m, undefined, String(m.userData.landmark).startsWith('molenhoek_end') || m.userData.landmark === 'kouter_house' ? 350 : Infinity);
   }
   // The end house's own walls, floors and doors take the place of its plain block (alone its doors stay shut).
   world.addPrisms(churchPrisms(data.prisms ?? [], churchAccess).filter((p) => !endHouse?.replaces(p)));
