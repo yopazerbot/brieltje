@@ -674,6 +674,7 @@
       ['People in all', entries.reduce((a, e) => a + (e.party || 1), 0)],
       ['Want an email when planned', n((e) => e.updates)],
       ['Want their house in', n((e) => e.house)],
+      ['Inside public (they chose it)', n((e) => e.house && e.inside === 'public')],
       ['Weekday evening', n((e) => e.when.includes('weekday'))],
       ['Saturday', n((e) => e.when.includes('saturday'))],
       ['Sunday', n((e) => e.when.includes('sunday'))],
@@ -708,12 +709,13 @@
     for (const w of e.when) tags.append(el('span', 'badge', WHEN[w] || w));
     if (e.updates) tags.append(el('span', 'badge mail', 'Email when planned'));
     if (e.house) tags.append(el('span', 'badge house', 'House in the game'));
+    if (e.house) tags.append(el('span', e.inside === 'public' ? 'badge warn' : 'badge house', e.inside === 'public' ? 'Inside: public (their choice)' : 'Inside: private (locked with a code)'));
     main.append(el('h3', '', e.name), meta, lines, tags);
     if (e.comments) main.append(el('p', '', e.comments));
     if (e.house) {
       const plans = el('div', 'plans');
       if (e.consent) {
-        plans.append(el('div', 'meta', `Consent given ${new Date(e.consent.at).toLocaleString('nl-BE')}: lives there or has permission, model public, plans never published${e.consent.ai ? ', plans may go to Claude (Anthropic).' : '.'}`));
+        plans.append(el('div', 'meta', `Consent given ${new Date(e.consent.at).toLocaleString('nl-BE')}: lives there or has permission, outside model public, plans never published${e.consent.ai ? ', plans may go to Claude (Anthropic).' : '.'}`));
         // Signed up before the AI question was asked: these plans may not go to Claude without asking first.
         if (!e.consent.ai) plans.append(el('div', 'meta warn', 'No consent for AI: ask before giving these plans to Claude.'));
       }

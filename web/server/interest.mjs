@@ -6,7 +6,8 @@
 // they go to web/.data/plans/.
 //
 // Public: POST /api/interest (a sign-up), PUT /api/interest/:id/plans (one file, raw body),
-// GET and DELETE /api/interest/:id with the sign-up's own secret (to see or withdraw it; the secret
+// GET, PATCH and DELETE /api/interest/:id with the sign-up's own secret (to see, change or withdraw it;
+// PATCH switches the update email and the inside of the home between private and public; the secret
 // travels in the X-Interest-Token header, never in a URL that could end up in a log),
 // GET /api/interest/count, GET /api/address?q= (street suggestions from the Flemish address
 // register, fetched by the server so the visitor's typing doesn't go to a third party).
@@ -31,6 +32,10 @@ const MAX_TOTAL = 4 * 1024 * 1024 * 1024; // all plans together: the bucket is p
 const UPLOAD_HOURS = 24; // plans can be added this long after signing up
 const WHEN = ['weekday', 'saturday', 'sunday'];
 const STATUS = ['new', 'contacted', 'modelled', 'declined'];
+// What happens to the inside of a modelled home: locked behind a code only the owner gets (the default), or
+// open to everyone and in the public repository (only on an explicit choice). See server/homes.mjs.
+const INSIDE = ['private', 'public'];
+const insideOf = (data) => (data?.inside === 'public' ? 'public' : 'private'); // missing or odd: private
 const TYPES = {
   pdf: { mime: 'application/pdf', test: (b) => b.subarray(0, 5).toString('latin1') === '%PDF-' },
   png: { mime: 'image/png', test: (b) => b.subarray(0, 8).equals(Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a])) },
@@ -134,6 +139,7 @@ export class Interest {
     this.daily = new Window(24 * 3600_000);
     this.uploads = new Window(3600_000);
     this.lookups = new Window(60_000);
+    this.changes = new Window(3600_000); // changes of the inside choice, per sender
     this.busy = 0; // uploads being received now
     this.uploading = new Set(); // sign-ups with an upload in progress: one at a time each
     this.cache = new Map(); // address lookups, a few hundred at most
@@ -233,6 +239,11 @@ export class Interest {
     // an AI service (Claude, by Anthropic) to help build the model.
     const consent = { own: b.consent?.own === true, model: b.consent?.model === true, private: b.consent?.private === true, ai: b.consent?.ai === true };
     if (house && !(consent.own && consent.model && consent.private && consent.ai)) return this.json(res, 400, { error: 'consent' });
+    // The inside of the home: private unless the page sent 'public' together with its own explicit
+    // confirmation, and only for a sign-up with a house. Any other value is refused, never guessed.
+    if (b.inside !== undefined && !INSIDE.includes(b.inside)) return this.json(res, 400, { error: 'inside' });
+    const inside = b.inside === 'public' ? 'public' : 'private';
+    if (inside === 'public' && !(house && b.consent?.inside === true)) return this.json(res, 400, { error: 'inside' });
     const who = this.clientKey(req);
     if (!this.signups.hit(who, 5) || !this.daily.hit('all', 300)) return this.json(res, 429, { error: 'busy' });
     const token = randomBytes(18).toString('base64url');
@@ -246,6 +257,7 @@ export class Interest {
       // about the meetup they signed up for, not marketing: legitimate interest, with the time kept.
       updates: b.updates === true, updatesAt: b.updates === true ? new Date().toISOString() : null,
       house, consent: house ? { ...consent, at: new Date().toISOString() } : null,
+      inside, insideAt: inside === 'public' ? new Date().toISOString() : null,
       lang: b.lang === 'en' ? 'en' : 'nl',
       files: [], status: 'new', note: '',
       at: new Date().toISOString(),
@@ -328,20 +340,35 @@ export class Interest {
     if (req.method === 'PATCH') {
       sameOrigin(req);
       const b = await readJson(req, 1024);
-      if (typeof b.updates !== 'boolean') return this.json(res, 400, { error: 'updates' });
-      await this.store.updateInterest(id, { updates: b.updates, updatesAt: b.updates ? new Date().toISOString() : null });
+      const patch = {};
+      if (b.updates !== undefined) {
+        if (typeof b.updates !== 'boolean') return this.json(res, 400, { error: 'updates' });
+        patch.updates = b.updates;
+        patch.updatesAt = b.updates ? new Date().toISOString() : null;
+      }
+      if (b.inside !== undefined) {
+        // private <-> public. Public needs a house and the same explicit confirmation as at sign-up.
+        if (!INSIDE.includes(b.inside)) return this.json(res, 400, { error: 'inside' });
+        if (!this.changes.hit(this.clientKey(req), 30)) return this.json(res, 429, { error: 'busy' });
+        if (b.inside === 'public' && !(row.data.house && b.confirm === true)) return this.json(res, 400, { error: 'inside' });
+        patch.inside = b.inside;
+        patch.insideAt = b.inside === 'public' ? new Date().toISOString() : null;
+      }
+      if (!Object.keys(patch).length) return this.json(res, 400, { error: 'updates' });
+      await this.store.updateInterest(id, patch);
+      if (patch.inside) console.log(JSON.stringify({ event: 'interest_inside', id, inside: patch.inside }));
       this.changed();
       return this.json(res, 200, { ok: true });
     }
     const { name, email, address, when, party, comments, updates, house, files, at } = row.data;
-    this.json(res, 200, { name, email, address, when, party, comments, updates: !!updates, house, files: files.map((f) => ({ name: f.name, size: f.size })), at });
+    this.json(res, 200, { name, email, address, when, party, comments, updates: !!updates, house, inside: insideOf(row.data), files: files.map((f) => ({ name: f.name, size: f.size })), at });
   }
 
   async list(res) {
     const rows = await this.store.listInterest();
     this.json(res, 200, {
       storage: this.storage,
-      entries: rows.map(({ id, data }) => ({ id, ...data, files: data.files.map((f) => ({ name: f.name, size: f.size, type: f.type })) })),
+      entries: rows.map(({ id, data }) => ({ id, ...data, inside: insideOf(data), files: data.files.map((f) => ({ name: f.name, size: f.size, type: f.type })) })),
     });
   }
 
