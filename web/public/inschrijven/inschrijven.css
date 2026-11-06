@@ -1,0 +1,22 @@
+/* The game night page, on top of interested.css: the night's details, the names side by side, players and spectators. */
+.event { margin: 18px 0 10px; padding: 2px 16px; background: var(--field); border: 1px solid var(--line); border-radius: 10px; }
+/* The values line up with your registration's rows below on the own link (.own-row: 150px and 16px). */
+.event > div { display: grid; grid-template-columns: 134px 1fr; gap: 4px 16px; padding: 11px 0; }
+.event > div + div { border-top: 1px solid var(--line); }
+.event dt { padding-top: 3px; font-size: 12px; font-weight: 700; letter-spacing: 0.12em; text-transform: uppercase; color: var(--muted); }
+.event dd { margin: 0; font-size: 18px; font-weight: 700; min-width: 0; overflow-wrap: anywhere; }
+.event dd.tbd { font-size: 17px; font-weight: 500; font-style: italic; color: var(--muted); }
+.pair { display: grid; grid-template-columns: 1fr 1fr; gap: 0 12px; }
+.counts { display: grid; gap: 10px; }
+.count { display: flex; align-items: center; justify-content: space-between; gap: 14px; padding: 12px 14px; background: var(--field); border: 1px solid var(--line); border-radius: 8px; }
+.count b { display: block; font-size: 18px; }
+.count .muted { display: block; line-height: 1.35; }
+.count .stepper { flex: none; }
+.under { margin-top: 8px; }
+.note p:last-child { margin-bottom: 0; }
+.note p { margin-bottom: 8px; }
+.note.capacity { margin-top: 22px; }
+.note.closed { margin-top: 18px; padding: 16px 18px; font-size: 17px; }
+.note.closed .muted { font-size: 15px; }
+.privacy { margin-top: 18px; }
+@media (max-width: 520px) { .pair { grid-template-columns: 1fr; } .event > div { grid-template-columns: 1fr; } .stepper button { width: 42px; } .stepper output { min-width: 44px; } }

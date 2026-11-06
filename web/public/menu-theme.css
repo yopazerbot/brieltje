@@ -1,0 +1,48 @@
+/* Shared controls for the game menus, event forms and admin pages. */
+:root {
+  --menu-accent: #f2b544;
+  --accent: var(--menu-accent);
+  --menu-edge: #42505d;
+  --menu-surface: #1b2733;
+}
+:is(#start-panel, #pause-panel, .card) {
+  color-scheme: dark;
+  background-image: linear-gradient(145deg, #243341, #17212b 48%, #151e27);
+  box-shadow: inset 0 1px 0 #56616a, 0 18px 55px #060a1066;
+}
+.card > header {
+  padding-bottom: 12px;
+  border-bottom: 1px solid var(--menu-edge);
+}
+.card .langs {
+  display: inline-flex;
+  padding: 3px;
+  background: #111a22;
+  border-radius: 999px;
+}
+.card .langs button { min-height: 36px; padding: 4px 10px; border-radius: inherit; }
+.card .langs button[aria-pressed="true"] { color: #fff4d6; background: #36444f; }
+.card label.field { font-size: 15px; letter-spacing: .02em; text-transform: none; color: var(--ink); }
+.card :is(input, textarea, select) { color-scheme: dark; }
+.card :is(button, a, input, select, textarea):focus-visible,
+#overlay :is(button, a, select, input):focus-visible,
+.tools button:focus-visible {
+  outline: 2px solid var(--menu-accent);
+  outline-offset: 2px;
+}
+#pause-panel .rail .tab.selected,
+.admin .tabs button[aria-selected="true"] {
+  background-color: var(--menu-surface);
+  box-shadow: inset 0 -3px var(--menu-accent);
+}
+@media (hover: hover) {
+  .card :is(.langs button, .seg button, .tabs button, .btn.ghost):hover {
+    box-shadow: inset 0 0 0 1px var(--menu-edge);
+  }
+}
+@media (pointer: coarse) {
+  .card .langs button, .admin .seg button { min-height: 44px; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .admin .live.on i { animation: none; }
+}

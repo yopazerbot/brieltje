@@ -1,0 +1,165 @@
+<!doctype html>
+<html lang="nl">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+  <meta name="robots" content="noindex" />
+  <title>Inschrijven voor de game night · Brieltje</title>
+  <link rel="icon" href="/favicon.svg" type="image/svg+xml" />
+  <link rel="icon" href="/icon-192.png" type="image/png" sizes="192x192" />
+  <link rel="stylesheet" href="/interested/interested.css" />
+  <link rel="stylesheet" href="/inschrijven/inschrijven.css" />
+  <link rel="stylesheet" href="/slides/slides.css" />
+  <link rel="stylesheet" href="/menu-theme.css" />
+</head>
+<body>
+<div class="slides bg" data-slides></div>
+<main>
+  <div class="card">
+    <header>
+      <a class="brand" href="/"><img src="/brand/wordmark.svg" alt="Brieltje" width="120" height="36" /></a>
+      <div class="langs"><button type="button" data-set="nl">Nederlands</button><button type="button" data-set="en">English</button></div>
+    </header>
+
+    <!-- The form, under the night's place, date and time -->
+    <section id="s-form">
+      <h1><span data-lang="nl">Inschrijven voor de game night</span><span data-lang="en">Sign up for the game night</span></h1>
+      <div id="intro">
+        <p data-lang="nl">Kom Brieltje samen spelen, op één plek. Schrijf je hieronder in. Zo weten we hoeveel laptops en pc's we nodig hebben.</p>
+        <p data-lang="en">Come and play Brieltje together, in one place. Sign up below. That tells us how many laptops and PCs we need.</p>
+      </div>
+      <dl class="event" data-event></dl>
+      <p class="muted small" data-later hidden><span data-lang="nl">Wat nog niet vastligt, mailen we je zodra het bekend is.</span><span data-lang="en">We'll email you whatever isn't set yet as soon as it is.</span></p>
+
+      <!-- When the admin closed the registrations: the hall is full. -->
+      <div class="note closed" id="closed" hidden>
+        <div data-lang="nl">
+          <p><b>De inschrijvingen zijn gesloten.</b> De zaal is vol. Bedankt voor je interesse!</p>
+          <p class="muted">Ben je al ingeschreven? Via je eigen link kun je je inschrijving nog bekijken.</p>
+        </div>
+        <div data-lang="en">
+          <p><b>Registrations are closed.</b> The hall is full. Thank you for your interest!</p>
+          <p class="muted">Already signed up? Your own link still shows your registration.</p>
+        </div>
+      </div>
+
+      <!-- Shown once the page knows the registrations are open (no flash of a form that then goes). -->
+      <form id="form" novalidate hidden>
+        <div class="pair">
+          <div>
+            <label class="field" for="last"><span data-lang="nl">Naam</span><span data-lang="en">Last name</span></label>
+            <input type="text" id="last" aria-describedby="last-err" autocomplete="family-name" maxlength="80" required />
+            <p class="error" id="last-err" hidden></p>
+          </div>
+          <div>
+            <label class="field" for="first"><span data-lang="nl">Voornaam</span><span data-lang="en">First name</span></label>
+            <input type="text" id="first" aria-describedby="first-err" autocomplete="given-name" maxlength="80" required />
+            <p class="error" id="first-err" hidden></p>
+          </div>
+        </div>
+
+        <label class="field" for="email"><span data-lang="nl">E-mailadres</span><span data-lang="en">Email address</span></label>
+        <input type="email" id="email" aria-describedby="email-err" autocomplete="email" maxlength="200" inputmode="email" required />
+        <p class="error" id="email-err" hidden></p>
+
+        <!-- The street, required: the night is first of all for Smetlede. Suggestions from the Flemish address register, through our server. -->
+        <label class="field" for="address"><span data-lang="nl">Adres</span><span data-lang="en">Address</span></label>
+        <div class="combo">
+          <input type="text" id="address" autocomplete="off" maxlength="160" required role="combobox" aria-autocomplete="list" aria-expanded="false" aria-controls="address-list" aria-describedby="address-help address-err" />
+          <ul id="address-list" role="listbox" hidden></ul>
+        </div>
+        <p class="error" id="address-err" hidden></p>
+        <p class="muted small under" id="address-help"><span data-lang="nl">De game night is er in de eerste plaats voor Smetlede. Daarom vragen we je straat. Begin te typen, bijvoorbeeld "Briel, Lede", en kies je straat. Een huisnummer mag, maar hoeft niet.</span><span data-lang="en">The game night is first of all for Smetlede. That's why we ask for your street. Start typing, for example "Briel, Lede", and pick your street. A house number is up to you.</span></p>
+
+        <label class="field" id="people-label"><span data-lang="nl">Met hoeveel kom je?</span><span data-lang="en">How many of you are coming?</span></label>
+        <div class="counts" role="group" aria-labelledby="people-label">
+          <div class="count">
+            <div>
+              <b><span data-lang="nl">Spelers</span><span data-lang="en">Players</span></b>
+              <span class="muted small"><span data-lang="nl">Jezelf meegerekend als je speelt. Elke speler heeft een laptop of pc nodig.</span><span data-lang="en">Count yourself if you play. Each player needs a laptop or PC.</span></span>
+            </div>
+            <div class="stepper">
+              <button type="button" data-step="players" data-by="-1" aria-label="minder spelers / fewer players">−</button><output id="players" aria-live="polite">1</output><button type="button" data-step="players" data-by="1" aria-label="meer spelers / more players">+</button>
+            </div>
+          </div>
+          <div class="count">
+            <div>
+              <b><span data-lang="nl">Toeschouwers</span><span data-lang="en">Spectators</span></b>
+              <span class="muted small"><span data-lang="nl">Komen mee, maar spelen niet.</span><span data-lang="en">Come along, but don't play.</span></span>
+            </div>
+            <div class="stepper">
+              <button type="button" data-step="watchers" data-by="-1" aria-label="minder toeschouwers / fewer spectators">−</button><output id="watchers" aria-live="polite">0</output><button type="button" data-step="watchers" data-by="1" aria-label="meer toeschouwers / more spectators">+</button>
+            </div>
+          </div>
+        </div>
+        <p class="error" id="people-err" hidden></p>
+        <p class="muted small under"><span data-lang="nl">Jonger dan 16? Kom samen met een ouder of voogd.</span><span data-lang="en">Under 16? Come with a parent or guardian.</span></p>
+
+        <label class="field" for="wishes"><span data-lang="nl">Ideeën of wensen?</span><span data-lang="en">Ideas or wishes?</span> <em><span data-lang="nl">(niet verplicht)</span><span data-lang="en">(optional)</span></em></label>
+        <textarea id="wishes" maxlength="1000"></textarea>
+
+        <label class="consent"><input type="checkbox" id="age" aria-describedby="age-err" /><span><span data-lang="nl">Ik ben 13 jaar of ouder.</span><span data-lang="en">I'm 13 or older.</span> <span class="muted small"><span data-lang="nl">Jonger? Dan schrijft een ouder of voogd je in.</span><span data-lang="en">Younger? Then a parent or guardian signs you up.</span></span></span></label>
+        <p class="error" id="age-err" hidden></p>
+
+        <!-- A field people don't see: bots fill it in. -->
+        <input type="text" id="website" name="website" tabindex="-1" autocomplete="off" aria-hidden="true" style="position:absolute;left:-9999px;width:1px;height:1px;opacity:0" />
+
+        <!-- The hall's capacity (Yoshi, 2 Nov 2026): watched, closed when full, a registration turned down or cancelled if there are more than places. -->
+        <div class="note capacity">
+          <div data-lang="nl">
+            <p><b>De plaatsen zijn beperkt.</b> Ook toeschouwers nemen een plaats in. We houden de inschrijvingen in het oog. Zodra de zaal vol is, sluiten we ze.</p>
+            <p>Komen er toch meer inschrijvingen binnen dan er plaats is? Dan kunnen we een inschrijving weigeren of annuleren. We laten het je dan meteen weten.</p>
+          </div>
+          <div data-lang="en">
+            <p><b>Places are limited.</b> Spectators take up a place too. We keep an eye on the registrations. Once the hall is full, we close them.</p>
+            <p>Do more registrations come in than there is room for? Then we may have to turn one down or cancel it. We'll let you know straight away.</p>
+          </div>
+        </div>
+
+        <p class="muted small privacy" data-lang="nl">We gebruiken je gegevens alleen om de game night te organiseren. Meer in het <a href="/legal/privacy.html?lang=nl#nl-gamenight" target="_blank" rel="noopener noreferrer">privacybeleid</a>.</p>
+        <p class="muted small privacy" data-lang="en">We only use your details to organise the game night. More in the <a href="/legal/privacy.html?lang=en#en-gamenight" target="_blank" rel="noopener noreferrer">privacy policy</a>.</p>
+        <p class="error" id="send-err" hidden></p>
+        <div class="actions"><button class="btn" type="submit" id="send"><span data-lang="nl">Inschrijven</span><span data-lang="en">Sign up</span></button></div>
+      </form>
+    </section>
+
+    <!-- Thank you -->
+    <section id="s-done" hidden>
+      <h1 tabindex="-1"><span data-lang="nl">Bedankt</span><span data-lang="en">Thank you</span>, <span id="done-name"></span>!</h1>
+      <p><span data-lang="nl">Je bent ingeschreven:</span><span data-lang="en">You're signed up:</span> <b id="done-people"></b>.</p>
+      <dl class="event" data-event></dl>
+      <p class="muted small" data-later hidden><span data-lang="nl">Wat nog niet vastligt, mailen we je zodra het bekend is.</span><span data-lang="en">We'll email you whatever isn't set yet as soon as it is.</span></p>
+      <div class="note">
+        <span data-lang="nl"><b>Bewaar deze link.</b> Hiermee kun je je inschrijving later bekijken of je uitschrijven. Kun je uiteindelijk niet komen? Schrijf je dan uit. Zo komt je plaats vrij voor iemand anders.</span>
+        <span data-lang="en"><b>Keep this link.</b> With it you can look at your registration later, or cancel it. Can't make it in the end? Then cancel. That frees your place for someone else.</span>
+        <div class="linkbox"><input type="text" id="mine" readonly /><button class="btn ghost" type="button" id="copy"><span data-lang="nl">Kopieer</span><span data-lang="en">Copy</span></button></div>
+      </div>
+      <div class="actions"><a class="btn ghost" href="/"><span data-lang="nl">Naar het spel</span><span data-lang="en">To the game</span></a></div>
+    </section>
+
+    <!-- Your registration, from your own link -->
+    <section id="s-own" hidden>
+      <h1><span data-lang="nl">Je inschrijving</span><span data-lang="en">Your registration</span></h1>
+      <p class="muted"><span data-lang="nl">Dit is wat je stuurde. Enkel wie deze link heeft, ziet het.</span><span data-lang="en">This is what you sent. Only someone with this link can see it.</span></p>
+      <dl class="event" data-event></dl>
+      <div id="own-body"></div>
+      <p class="error" id="own-err" hidden></p>
+      <div class="actions"><a class="btn" href="/"><span data-lang="nl">Naar het spel</span><span data-lang="en">To the game</span></a></div>
+      <div class="withdraw" id="own-cancel">
+        <h2><span data-lang="nl">Uitschrijven</span><span data-lang="en">Cancel</span></h2>
+        <p class="muted"><span data-lang="nl">Kun je toch niet komen? Schrijf je dan uit. Je gegevens worden meteen gewist. Je kunt je daarna gewoon opnieuw inschrijven.</span><span data-lang="en">Can't make it after all? Then cancel here. Your details are removed at once. You can always sign up again afterwards.</span></p>
+        <button class="btn danger" type="button" id="cancel"><span data-lang="nl">Uitschrijven</span><span data-lang="en">Cancel my registration</span></button>
+      </div>
+    </section>
+  </div>
+  <footer>
+    <a href="/legal/terms.html" target="_blank" rel="noopener noreferrer"><span data-lang="nl">Voorwaarden</span><span data-lang="en">Terms</span></a> ·
+    <a href="/legal/privacy.html" target="_blank" rel="noopener noreferrer">Privacy</a> ·
+    Yoshi Parlevliet CommV · <span data-lang="nl">ondernemingsnummer</span><span data-lang="en">enterprise number</span> 1002.569.036<br /><a href="mailto:yoshi@brieltje.be">yoshi@brieltje.be</a>
+    <div class="slides-place" data-slides-controls></div>
+  </footer>
+</main>
+<script src="/inschrijven/inschrijven.js"></script>
+<script src="/slides/slides.js" defer></script>
+</body>
+</html>

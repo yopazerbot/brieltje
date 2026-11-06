@@ -1,0 +1,220 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <meta name="robots" content="noindex" />
+  <title>Admin · Brieltje</title>
+  <link rel="icon" href="/icon-192.png" />
+  <link rel="stylesheet" href="/interested/interested.css" />
+  <link rel="stylesheet" href="/admin/admin.css" />
+  <link rel="stylesheet" href="/slides/slides.css" />
+  <link rel="stylesheet" href="/menu-theme.css" />
+</head>
+<body class="admin signed-out">
+<div class="slides bg" data-slides></div>
+<main>
+  <div class="card">
+    <header>
+      <a class="brand" href="/"><img src="/brand/wordmark.svg" alt="Brieltje" width="120" height="36" /></a>
+      <span class="head-tools">
+        <span class="live" id="live" title="Live"><i></i> Live</span>
+        <a class="btn ghost" href="/admin/scores/" target="_blank" rel="noopener" id="scores-link"><span class="long">Scoreboard</span><span class="short">Scores</span> ↗</a>
+        <button class="btn ghost" type="button" id="logout" hidden>Log out</button>
+      </span>
+    </header>
+
+    <section id="login" hidden>
+      <h1>Admin</h1>
+      <p class="muted">Log in with the game's admin account.</p>
+      <form id="login-form">
+        <label class="field" for="user">Username</label>
+        <input type="text" id="user" autocomplete="username" value="admin" required />
+        <label class="field" for="pass">Password</label>
+        <input type="password" id="pass" autocomplete="current-password" required />
+        <p class="error" id="login-err" role="alert" hidden></p>
+        <div class="actions"><button class="btn" type="submit">Log in</button></div>
+      </form>
+    </section>
+
+    <section id="app" hidden>
+      <!-- Sticky: the tabs, and on the overview the period every number follows. -->
+      <div class="topbar" id="topbar">
+        <nav class="tabs" role="tablist" aria-label="Admin" id="tabs">
+          <button type="button" role="tab" id="tab-overview" aria-controls="panel-overview" data-tab="overview" aria-selected="true">Overview</button>
+          <button type="button" role="tab" id="tab-signups" aria-controls="panel-signups" data-tab="signups" aria-selected="false" tabindex="-1">Sign-ups</button>
+          <button type="button" role="tab" id="tab-gamenight" aria-controls="panel-gamenight" data-tab="gamenight" aria-selected="false" tabindex="-1">Game night</button>
+          <button type="button" role="tab" id="tab-feedback" aria-controls="panel-feedback" data-tab="feedback" aria-selected="false" tabindex="-1">Feedback</button>
+          <button type="button" role="tab" id="tab-homes" aria-controls="panel-homes" data-tab="homes" aria-selected="false" tabindex="-1">Homes</button>
+          <button type="button" role="tab" id="tab-logins" aria-controls="panel-logins" data-tab="logins" aria-selected="false" tabindex="-1">Logins</button>
+          <button type="button" role="tab" id="tab-online" aria-controls="panel-online" data-tab="online" aria-selected="false" tabindex="-1">Online now <span class="count" id="online-badge" hidden></span></button>
+        </nav>
+        <div class="seg period" id="period" role="group" aria-label="Period">
+          <button type="button" data-period="today" aria-pressed="true">Today</button>
+          <button type="button" data-period="yesterday" aria-pressed="false">Yesterday</button>
+          <button type="button" data-period="d7" aria-pressed="false">7 days</button>
+          <button type="button" data-period="d30" aria-pressed="false">30 days</button>
+        </div>
+      </div>
+
+      <section data-panel="overview" id="panel-overview" role="tabpanel" aria-labelledby="tab-overview">
+        <div class="now">
+          <span class="now-n"><i aria-hidden="true"></i><b id="now-n">0</b> playing now</span>
+          <span class="muted small" id="now-split"></span>
+          <span class="now-links"><a href="#online">Who is playing</a><a href="/admin/scores/" target="_blank" rel="noopener">Scoreboard ↗</a></span>
+        </div>
+        <div class="period-head">
+          <div>
+            <h2 id="period-title">Today</h2>
+            <p class="muted small" id="period-range"></p>
+            <p class="muted small" id="period-compare"></p>
+          </div>
+          <details class="how" id="how">
+            <summary>How we count</summary>
+            <ul>
+              <li><b>Players</b> are browsers that started a game. Each one counts once a day.</li>
+              <li><b>Visitors</b> are browsers that opened the game page. Each one counts once a day.</li>
+              <li>A browser is its internet address together with the browser's name. The server hashes that pair with a code that changes every Belgian day.</li>
+              <li>Two people at home on one connection with the same browser count as one.</li>
+              <li>One person on a phone and on a laptop counts as two.</li>
+              <li>A phone that moves from Wi-Fi to mobile data can count twice.</li>
+              <li>Nobody can be recognised on a later day. A period of several days adds up each day's count.</li>
+              <li><b>Different players</b> come from the names in the login log. Players together have their name in the game. Players alone have the name they typed, which nobody checks. Players alone who typed no name are missing.</li>
+              <li><b>Time played</b> adds a minute for each full minute of play with the game in view. A game shorter than a minute adds nothing.</li>
+              <li><b>Most at once</b> is the highest number playing at the same moment. The server checks every second.</li>
+              <li><b>Not counted:</b> your own visits and games as admin. Browsers that ask not to be tracked. Bots and link previews. Pages loaded ahead of time.</li>
+              <li><b>Today</b> starts at 00:00 Belgian time. It is compared with yesterday until the same time.</li>
+              <li id="how-secret" hidden><b>The server has no STATS_SECRET yet.</b> Until it has one, a restart can count a visitor again.</li>
+              <li id="how-since" hidden></li>
+              <li id="how-before" hidden></li>
+            </ul>
+          </details>
+        </div>
+        <div class="stats kpis" id="kpis"></div>
+
+        <div class="chart hours">
+          <div class="chart-head">
+            <div>
+              <h3>When people play</h3>
+              <div class="total" id="hours-sub"></div>
+            </div>
+            <div class="seg small" id="hours-metric" role="group" aria-label="Measure">
+              <button type="button" data-metric="players" aria-pressed="true">Players</button>
+              <button type="button" data-metric="visitors" aria-pressed="false">Visitors</button>
+              <button type="button" data-metric="starts" aria-pressed="false">Games</button>
+              <button type="button" data-metric="minutes" aria-pressed="false">Minutes</button>
+            </div>
+          </div>
+          <div id="hours"></div>
+        </div>
+
+        <h2 class="sub">Per day <span class="muted small">last 30 days</span></h2>
+        <div class="charts" id="charts"></div>
+        <h2 class="sub">How people play <span class="muted small" id="splits-period"></span></h2>
+        <div class="splits" id="splits"></div>
+        <p class="muted small" id="since"></p>
+        <p class="muted small">Counted without cookies. Only totals per day and per hour are kept. The privacy policy explains it.</p>
+      </section>
+
+      <section data-panel="signups" id="panel-signups" role="tabpanel" aria-labelledby="tab-signups" hidden>
+        <p class="muted small" id="storage"></p>
+        <div class="stats" id="stats"></div>
+        <div class="toolbar">
+          <input type="text" id="search" placeholder="Search name, email, street, comments" />
+          <select id="filter">
+            <option value="">Everyone</option>
+            <option value="updates">Wants an email when it's planned</option>
+            <option value="house">Wants their house in the game</option>
+            <option value="new">Status: new</option>
+            <option value="contacted">Status: contacted</option>
+            <option value="modelled">Status: modelled</option>
+            <option value="declined">Status: declined</option>
+          </select>
+          <button class="btn ghost" type="button" id="copy-emails" title="The addresses of everyone shown who wants an email, to paste in Bcc">Copy addresses</button>
+        </div>
+        <p class="muted small" id="copied" hidden></p>
+        <div id="entries"></div>
+        <p class="muted" id="empty" hidden>No sign-ups yet.</p>
+      </section>
+
+      <section data-panel="gamenight" id="panel-gamenight" role="tabpanel" aria-labelledby="tab-gamenight" hidden>
+        <form class="gn-night" id="gn-form">
+          <h2 class="sub">The night <span class="muted small">as <a href="/inschrijven/" target="_blank" rel="noopener">brieltje.be/inschrijven</a> shows it</span></h2>
+          <label class="field" for="gn-place">Place</label>
+          <input type="text" id="gn-place" maxlength="200" placeholder="To be decided" />          <div class="gn-when">
+            <div><label class="field" for="gn-date">Date</label><input type="date" id="gn-date" /></div>
+            <div><label class="field" for="gn-from">From</label><input type="time" id="gn-from" /></div>
+            <div><label class="field" for="gn-until">Until</label><input type="time" id="gn-until" /></div>
+          </div>
+          <p class="muted small">An empty field shows "Nog te bepalen" (to be decided) on the page.</p>
+          <label class="consent gn-open"><input type="checkbox" id="gn-open" checked /><span><b>Open for registrations</b><br /><span class="muted small">Untick and save when the hall is full. The page then says the registrations are closed. Whoever signed up can still look at or cancel theirs.</span></span></label>
+          <div class="actions"><button class="btn" type="submit" id="gn-save">Save</button><span class="muted small" id="gn-saved" aria-live="polite"></span></div>
+        </form>
+        <h2 class="sub">Registrations <span class="badge" id="gn-state"></span></h2>
+        <div class="stats" id="gn-kpis"></div>
+        <div class="toolbar">
+          <input type="text" id="gn-search" placeholder="Search name, email, street, ideas" />
+          <button class="btn ghost" type="button" id="gn-copy" title="The email addresses of everyone shown, to paste in Bcc">Copy emails</button>
+          <button class="btn danger" type="button" id="gn-clear">Delete all</button>
+        </div>
+        <p class="muted small" id="gn-copied" hidden></p>
+        <div class="tablewrap"><table class="log gn"><thead><tr><th>Signed up</th><th>Name and street</th><th>Email</th><th>Players</th><th>Spectators</th><th>Ideas or wishes</th><th></th></tr></thead><tbody id="gn-rows"></tbody></table></div>
+        <p class="muted" id="gn-empty" hidden>No registrations yet.</p>
+        <p class="muted small">After the night, delete all registrations. The privacy policy promises that within a month.</p>
+      </section>
+
+      <section data-panel="feedback" id="panel-feedback" role="tabpanel" aria-labelledby="tab-feedback" hidden>
+        <div class="stats" id="fb-kpis"></div>
+        <div class="fb-spread" id="fb-spread"></div>
+        <div class="toolbar">
+          <select id="fb-filter">
+            <option value="">Everything</option>
+            <option value="comment">With a comment</option>
+            <option value="5">5 stars</option>
+            <option value="4">4 stars</option>
+            <option value="3">3 stars</option>
+            <option value="2">2 stars</option>
+            <option value="1">1 star</option>
+          </select>
+          <input type="text" id="fb-search" placeholder="Search name, address, comment" />
+        </div>
+        <div class="tablewrap"><table class="log fb"><thead><tr><th>Time</th><th>Stars</th><th>Comment</th><th>Name</th><th>Address</th><th>Playing</th><th></th></tr></thead><tbody id="fb-rows"></tbody></table></div>
+        <p class="muted" id="fb-empty" hidden>No feedback yet.</p>
+        <p class="muted small">A player alone gives the name they typed. It isn't checked. Addresses are removed after 90 days.</p>
+      </section>
+
+      <section data-panel="homes" id="panel-homes" role="tabpanel" aria-labelledby="tab-homes" hidden>
+        <div class="tablewrap"><table class="log fb"><thead><tr><th>Home</th><th>State</th><th>Code set</th><th>Expires</th><th>Opened</th><th>Wrong tries</th><th></th></tr></thead><tbody id="homes-rows"></tbody></table></div>
+        <p class="muted small" id="private-status"></p>
+        <p class="muted" id="homes-empty" hidden>No homes are registered yet (web/shared/homes.mjs).</p>
+        <p class="muted small">These three homes are always locked, alone and together, in the Teams and Zombies games too. You always get in without a code. A code is shown once, when it is made. Only a hash of it is kept. A new code replaces the old one and ends the access of everyone who used it. Switching a code off or letting it expire does the same.</p>
+      </section>
+      <section data-panel="logins" id="panel-logins" role="tabpanel" aria-labelledby="tab-logins" hidden>
+        <div class="stats" id="login-kpis"></div>
+        <div class="toolbar">
+          <select id="log-filter">
+            <option value="">Everything</option>
+            <option value="in">Logins and joins</option>
+            <option value="solo">Played alone</option>
+            <option value="failed">Failed attempts</option>
+            <option value="admin">Admin actions</option>
+          </select>
+          <input type="text" id="log-search" placeholder="Search name, address, detail" />
+        </div>
+        <div class="tablewrap"><table class="log"><thead><tr><th>Time</th><th>What</th><th>Name</th><th>Address</th><th>Detail</th></tr></thead><tbody id="log"></tbody></table></div>
+        <p class="muted small">The login log keeps 90 days.</p>
+      </section>
+
+      <section data-panel="online" id="panel-online" role="tabpanel" aria-labelledby="tab-online" hidden>
+        <p class="muted" id="online-count"></p>
+        <ul class="online" id="online-list"></ul>
+      </section>
+    </section>
+  </div>
+  <footer><a href="/interested/">The sign-up page</a> · <a href="/inschrijven/">The game night page</a> · <a href="/legal/privacy.html">Privacy</a><div class="slides-place" data-slides-controls></div></footer>
+</main>
+<div class="tip" id="tip" hidden></div>
+<script src="/admin/admin.js"></script>
+<script src="/slides/slides.js" defer></script>
+</body>
+</html>

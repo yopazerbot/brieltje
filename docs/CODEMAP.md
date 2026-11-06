@@ -1,0 +1,224 @@
+# Code map
+
+One line per module: where to look before you search. Made by `node tools/dev/codemap.mjs` from each
+file's opening comment; run it again after adding, moving or removing a module.
+
+## web/src
+
+- `web/src/controls/input.ts`: Combines the DualSense (browser Gamepad API), keyboard/mouse and the touch controls into one set of values per frame.
+- `web/src/controls/touch.ts`: Touch controls for phones and tablets: a stick that appears under the left thumb, drag anywhere on the right to look (also while holding Fire), and buttons...
+- `web/src/dev/parachutePreview.ts`: A separate page for the parachute's assets (web/parachute-preview.html, only on the dev server: the build leaves it out).
+- `web/src/footsteps.ts`: Footsteps made in code: a short burst of filtered noise (plus a low thump on wood and tiles) that sounds different per floor.
+- `web/src/grade.ts`: The output pass (tone mapping and the screen's colour space, the last full-screen step before the edge smoothing) with a light colour grade folded in, so...
+- `web/src/graphics.ts`: Graphics quality presets and automatic selection.
+- `web/src/i18n.ts`: The game's two languages: English and Dutch (Belgian Dutch, Flemish usage, informal "je").
+- `web/src/keys.ts`: The letters printed on the player's keys.
+- `web/src/main.ts`: The spawn points round the house (the bungalow's are for its team in the teams game).
+- `web/src/net/avatars.ts`: A player's part in a party game, shown on their figure for everyone: "it" in tag, a seeker in hide and seek.
+- `web/src/net/client.ts`: Talking to the server: login and admin calls (HTTP), and the shared house (WebSocket).
+- `web/src/net/grip.ts`: Wrist anchors in metres in the gun's frame: right, up, back along the barrel.
+- `web/src/net/swat.ts`: Other players as a rigged, animated character: the "SWAT" model by Quaternius (CC0, poly.pizza/m/Btfn3G5Xv4), recoloured per player, with a helmet in their...
+- `web/src/net/track.ts`: Drawing the others smoothly (shared/wire.mjs).
+- `web/src/paintball.ts`: Paintball: Action with paint guns, for everyone.
+- `web/src/places.ts`: Where /location goes (Yoshi, 1 Nov 2026): the portals (shared/portals.mjs) and a spot on every named street (shared/places.json, tools/places.py).
+- `web/src/player.ts`: The player on foot: walking, sprinting, jumping, crouching and flying, with collision against the world.
+- `web/src/settings.ts`: Player settings in the pause menu, remembered in this browser: mouse and controller look speed, field of view, volume, inverted look, controller vibration,...
+- `web/src/shortcuts.ts`: Every key and button the game answers to, in one table, per way of playing: keyboard and mouse, the controller, or touch.
+- `web/src/sound.ts`: Sound on/off and volume, remembered in this browser.
+- `web/src/spawn.ts`: What you can spawn with /name in the chat (src/main.ts command; Yoshi, 2 Nov 2026, in place of the furniture planner): every piece of furniture...
+- `web/src/start.ts`: The page's entry: the start screen, which works before the world exists.
+- `web/src/ui/admin.ts`: The admin's tab in the menu: who is online (with a kick button) and the login log.
+- `web/src/ui/bigmap.ts`: The big map: the whole area at once, north up, drawn from the same data as the world (roads, paving, fields, woods, water, hedges, buildings, trees), with...
+- `web/src/ui/chat.ts`: Chat: messages bottom left, T (or Enter) to type, Enter to send, Esc to cancel.
+- `web/src/ui/combat.ts`: Multiplayer fighting on screen: health, red flash when hit, hit marker, kill feed, death screen with respawn countdown, round banner and the scoreboard...
+- `web/src/ui/controlsCard.ts`: Seconds the card stays before it closes by itself.
+- `web/src/ui/diag.ts`: A diagnostics panel for phones, which have no developer console: open the site with ?diag and it lists the graphics chip, the preset, what the graphics...
+- `web/src/ui/feedback.ts`: The feedback card: after two minutes of play, once per browser, 1 to 5 stars and an optional comment.
+- `web/src/ui/games.ts`: Games in multiplayer (the admin starts them, the server keeps them): hide and seek, tag, a treasure hunt, the house against the bungalow (two teams) and...
+- `web/src/ui/homeCode.ts`: The characters of a code (server/homes.mjs ALPHABET: no I, O, 0 or 1)
+- `web/src/ui/hud.ts`: On-screen text while playing: where you are, controller status, frame rate and (together) the ping.
+- `web/src/ui/leaderboard.ts`: All-time totals per account (kills, deaths, headshots, round wins), in the pause menu; in paintball's words while you play it.
+- `web/src/ui/menu.ts`: Start screen and in-game menu.
+- `web/src/ui/minimap.ts`: Minimap, top right: the plan of the floor you are on, cut at 1.2 m above that floor like a floor plan, over the big map's ground, turning with your view.
+- `web/src/ui/places.ts`: The menu's list of places (the Play tab), for those without a keyboard for /location: the portals, then the streets, each with how far it is, as the...
+- `web/src/ui/route.ts`: Directions along the roads, like a car's navigation: from where you are to the waypoint set on the big map, over the road register's centre lines...
+- `web/src/ui/speedometer.ts`: A quiet, permanent speed readout while driving or riding along; metres per second in, km/h on screen.
+- `web/src/ui/tactics.ts`: Small world-space placement guides and screen-space cooperative markers.
+- `web/src/ui/travel.ts`: The list of places while you stand on a portal's pad (or stop the car on it): every portal by its number, how far it is, the one you came from marked "back"...
+- `web/src/ui/zombieWave.ts`: The admin's wave picker; the server authorizes and applies every change.
+- `web/src/weapon.ts`: "Action" mode: first-person hands holding a pistol, rifle, shotgun or sniper rifle, like Counter-Strike.
+- `web/src/world/ambience.ts`: The sounds of the countryside, all made in code (nothing to download):
+- `web/src/world/bakedLight.ts`: Baked light and wear on our own building models (tools/bake/: the light worked out in Blender's Cycles from the sky photo and the sun, with the whole...
+- `web/src/world/bells.ts`: The bells of the church of Smetlede: at every full hour the hour bell strikes the hour (one to twelve strokes), at the half hour a higher bell strikes once.
+- `web/src/world/birds.ts`: Birds round the main house and the bungalow: sparrows in the hedges, blackbirds and a robin on the lawns, wood pigeons on the roof edges and ridges,...
+- `web/src/world/birdsong.ts`: Birdsong round the main house and the bungalow, made in code (no sound files): a blackbird's fluting phrases, a robin's thin warble, sparrows chirping, the...
+- `web/src/world/butterflies.ts`: Butterflies over the borders of the main house and round the bungalow's veranda: small whites, red admirals, peacocks and a brimstone, each wandering its...
+- `web/src/world/car.test.mjs`: Run the actual animation and movement code without the browser-only sound/texture imports.
+- `web/src/world/car.ts`: The cars you can drive (shared/car.json): the black Tesla Model Y on our driveway, the blue Model 3 at the bungalow, and a white Model Y and a red Model 3...
+- `web/src/world/cats.ts`: Cats wandering around the garden, the front lawn and the side path (the animated "Cat" by Quaternius, CC0).
+- `web/src/world/clowns.ts`: Characters to shoot at, our own models: clowns (tools/clown.py) strolling round a spot in the gardens, and giant strongmen (tools/strongman.py) on the...
+- `web/src/world/collision.ts`: The solid world for walking and shots: prisms, the relief and what each point stands on.
+- `web/src/world/countryside.ts`: The life of the countryside round the house, loaded once the start screen is up (its code and data are a chunk of their own, the cows and sheep a 77 KB...
+- `web/src/world/decals.ts`: Bullet holes and scorch marks: small squares laid on a surface, cut from one sheet with a look per surface (chipped plaster, splintered wood, a dented ring...
+- `web/src/world/doors.ts`: Doors that open and close near the player, their leaves and the glass in them.
+- `web/src/world/dropView.ts`: Your own drop seen from behind (shared/parachute.mjs, docs/parachute/README.md): while you jump the camera leaves your eyes and films your figure from...
+- `web/src/world/effects.ts`: Impact bursts that depend on what was hit: dust and chips from plaster and brick, sparks from metal, splinters from wood, chips from tiles, earth from grass.
+- `web/src/world/environment.ts`: Sky and sunlight from a real photographed sky (Poly Haven HDRI, CC0).
+- `web/src/world/fieldBirds.ts`: Birds over the countryside, all made in code and moved by their vertex shader on one clock:
+- `web/src/world/fields.ts`: Rows in the fields, as they are at the end of October here, by the crop the farmers declared on each this year (tools/crops.py, the Flemish agricultural...
+- `web/src/world/furnishing.ts`: Furniture spawned with /name (src/spawn.ts): simple shapes at real sizes (a bed is 160 x 200 cm), coloured per part.
+- `web/src/world/glass.ts`: Breakable windows: a shot shatters the pane into falling shards, plays a glass sound and opens the gap (no more collision).
+- `web/src/world/grenades.ts`: Hand grenades (G, or R1 on the controller).
+- `web/src/world/groundShade.ts`: Light on the ground of the whole neighbourhood, worked out once when the sky has loaded and kept in one texture: the sun's shadow of every house, hedge and...
+- `web/src/world/herds.ts`: Cows and sheep in the meadows round the house (our own models, tools/cattle.py; where they graze: tools/countryside.py).
+- `web/src/world/homeLife.ts`: Life round the main house and the bungalow: the things in their gardens (world/yard.ts), the robot mower on the back lawn (world/mower.ts, on the shared...
+- `web/src/world/homeLocks.ts`: The page's side of the three homes that open only with a code (shared/homes.mjs, server/homes.mjs): the main house, the bungalow and the end house at Molenhoek.
+- `web/src/world/homeStreet.ts`: The houses round the two portals at home, our own Blender models (tools/homestreet/houses.py, web/public/models/homestreet.glb): the corner house across the...
+- `web/src/world/horses.ts`: Three horses in the meadow across the road (our own model, tools/horse.py): a bay, a chestnut and a grey.
+- `web/src/world/houseData.ts`: A closed outline on the floor plan: [x, z] points in metres.
+- `web/src/world/houseMeshes.ts`: Real-world width of each texture tile in metres (from Poly Haven, or our own brick).
+- `web/src/world/indoorLight.ts`: The soft fill light, outside and in.
+- `web/src/world/insides.ts`: A home's inside, as the game server hands it out (server/homes.mjs: the answer to the right code, or GET /api/home/:id/inside for a session that has the...
+- `web/src/world/leaves.ts`: Leaves for the tree crowns and the leafy lumps on the hedges, so they read as foliage instead of smooth green balls.
+- `web/src/world/mower.ts`: The robot mower on the main house's back lawn (tools/garden_life.py).
+- `web/src/world/network-state.test.mjs`: Exercise the actual state-update methods without loading graphics assets in Node.
+- `web/src/world/normals.ts`: A geometry's vertex normals, none of them of zero length.
+- `web/src/world/paint.ts`: A model that is turned by its joints (the clowns, the horses): one mesh per joint, its materials' colours painted on the vertices, so it costs one draw call...
+- `web/src/world/parachutePilot.ts`: The game's player figure (net/swat.ts) posed on the parachute's pose guides after the parachute's clip has played: other players under a parachute...
+- `web/src/world/parachutes.ts`: Parachutes being flown (shared/parachute.mjs, docs/parachute/README.md): yours, on your own figure while the camera films you from behind...
+- `web/src/world/particles.ts`: Soft particles for smoke, dust, fire, sparks and debris: camera-facing squares cut from one sprite sheet (sprites.ts).
+- `web/src/world/pickups.ts`: Weapons lying in the house (Action mode): a slowly turning gun above a glowing ring.
+- `web/src/world/portals.ts`: The portals round the map (shared/portals.mjs): a dark metal ring standing on a glowing pad, a swirl in its colour inside, sparks rising through it and its...
+- `web/src/world/props.ts`: Fixed things in the house made in Blender (the coffee machine in its niche, the toilets): loaded with their own materials and put where the house data says.
+- `web/src/world/rewards.ts`: The Zombies game's rewards on screen (shared/loot.mjs keeps them: the server together, the page alone): each lies where its zombie fell as a glowing ring on...
+- `web/src/world/roadDetail.ts`: The streets in detail (tools/road_detail.py measures them, from the GRB and a Street View tour): in place of the village data's plain road surface, each...
+- `web/src/world/roadLife.ts`: Life along the roads: the traffic and the parked cars (traffic.ts), the plates, signs, letterboxes and bikes along the streets (roadside.ts), and the church...
+- `web/src/world/roadside.ts`: Things along the streets of the road to Smetlede and the village's outer streets (tools/roads.py, web/src/data/roads.json): street name plates on posts at...
+- `web/src/world/screens.ts`: What the screens in the house show, drawn in code (no images, no logos): an indoor ride on the bike's screen in the style of Zwift (road, rider, power and...
+- `web/src/world/shotRaycast.test.mjs`: Tests for shotRaycast, e.g. "indexed and non-indexed static map searches preserve every hit and surface detail".
+- `web/src/world/shotRaycast.ts`: A spatial index of the static map triangles, so a shot only tests the triangles near its line.
+- `web/src/world/sky.ts`: The photographed sky as the background, drawn by a shader of our own instead of the scene's background, for two reasons.
+- `web/src/world/smoke.ts`: Wood smoke from chimneys: at home the house across the street from the main house and the bungalow (world/homeLife.ts), in the village two chimneys by the...
+- `web/src/world/splats.ts`: Paintball's paint (paintball.ts): the paintballs themselves, flying from the gun in a low arc, and what they leave.
+- `web/src/world/sprites.ts`: Textures for effects, drawn in code once at start-up (no downloads): soft particles for smoke, fire, sparks and debris; muzzle flashes; bullet holes per...
+- `web/src/world/streetModel.ts`: Streets of houses as our own Blender models (tools/molenhoek.py), in place of the village's blocks there, which stay for walking into: Molenhoek, its...
+- `web/src/world/surfaceFinish.ts`: Keep small surface relief from reading as deep grooves across an entire street.
+- `web/src/world/surroundings.ts`: Around the plot, from Flemish open data (GRB footprints, DHM laser heights; see tools/neighbours.py): the pitched roofs and gables of neighbouring houses...
+- `web/src/world/terrain.ts`: The relief of the surroundings (tools/terrain.py, from the laser scan): heights relative to the model's flat ground, flat round the plot and the bungalow.
+- `web/src/world/textureFiles.ts`: The surface textures in web/public/textures, fetched in the form that costs the graphics chip least.
+- `web/src/world/tiles.ts`: The surroundings in tiles of TILE metres, centred on the plot's middle (tools/build_house.py cuts the ground covers, hedges and fences along the same...
+- `web/src/world/townCentre.ts`: The houses round Smetlede's church square and along the street to the school: our own Blender models (tools/town/town.py, from tools/town/houses.json), in...
+- `web/src/world/traffic.ts`: The traffic on the village's roads and the cars parked on the drives (tools/roads.py writes the routes and the spots to web/src/data/roads.json; the cars...
+- `web/src/world/treeSpacing.test.mjs`: Tests for treeSpacing, e.g. "two crowns never overlap: the shorter tree shrinks or is dropped".
+- `web/src/world/treeSpacing.ts`: Keeps garden trees from growing into each other or into hedges and walls.
+- `web/src/world/vegetation.test.mjs`: Tests for vegetation, e.g. "shared canopies stay closed, finite and within the near and far triangle budgets".
+- `web/src/world/vegetation.ts`: One connected canopy, with broad branch lobes instead of separate balls of foliage.
+- `web/src/world/walkIn.ts`: A street model's house you can walk into: the end house of the new terrace at Molenhoek.
+- `web/src/world/water.ts`: The ponds' and ditches' water: a dark green mirror of the sky, now ruffled by the wind.
+- `web/src/world/wind.ts`: A gentle wind through the tree crowns and the leafy lumps on the hedges, worked out in their vertex shaders: the crown leans a few centimetres with the wind...
+- `web/src/world/windows.ts`: The glass of the village's own windows (the open-data houses; world/surroundings.ts builds the frames): double glazing that mirrors the sky, with what hangs...
+- `web/src/world/yard.ts`: The everyday things in the gardens of the main house and the bungalow (tools/garden_life.py): a letterbox at each entrance, a bike against the side wall,...
+- `web/src/world/zombies.ts`: The Zombies game's zombies on screen (shared/zombies.mjs runs them: the server together, the page alone).
+
+## web/server
+
+- `web/server.mjs`: Production web server for Railway: serves the built app (dist/), the login and user-management API, and the multiplayer WebSocket (/ws).
+- `web/server/auth-security.test.mjs`: Tests for auth-security, e.g. "guest joining requires an admin-saved PIN and the setting survives restart".
+- `web/server/auth.mjs`: Logins and sessions.
+- `web/server/constant-time-text.mjs`: Compare UTF-8 text without hashing passwords or returning early for different lengths.
+- `web/server/constant-time-text.test.mjs`: Tests for constant-time-text, e.g. "exact text comparison preserves ASCII and Unicode password behaviour".
+- `web/server/door-ids.test.mjs`: Tests for door-ids, e.g. "every door id of the shell is one the server takes in a door message".
+- `web/server/feedback.mjs`: Feedback from players (Yoshi, 1 Nov 2026): after two minutes of play the game asks once for 1 to 5 stars and a comment (src/ui/feedback.ts).
+- `web/server/game.mjs`: The shared house: the logged-in players over WebSocket (16 at once unless the admin allows fewer).
+- `web/server/gamenight.mjs`: The game night page (web/public/inschrijven/, Yoshi, 2 Nov 2026): signing up for the game night with a name, a first name, an email address, a street (the...
+- `web/server/homeGate.mjs`: The game server's side of the three homes that open only with a code (shared/homes.mjs, server/homes.mjs).
+- `web/server/homes-game.test.mjs`: The game server's side of the three code-locked homes (server/homeGate.mjs): doors, panes and standing inside.
+- `web/server/homes.mjs`: The three homes that open only with a code (Yoshi, 6 Nov 2026; shared/homes.mjs): the main house, the bungalow and the end house at Molenhoek.
+- `web/server/homes.test.mjs`: Tests for homes, e.g. "codes: ten characters of the alphabet, typed in any case with dashes".
+- `web/server/insides.mjs`: The insides of the three locked homes, from the private data (server/privateData.mjs), for the game server and the unlock call.
+- `web/server/interest.mjs`: The interest page (web/public/interested/): who would like to play together in person, when it would suit them and with how many, and whether they want...
+- `web/server/modes.mjs`: Games the admin starts from the menu: hide and seek, tag, a treasure hunt, two teams (the house against the bungalow) and Zombies (everyone one team against...
+- `web/server/parachute.test.mjs`: Tests for parachute, e.g. "the drop and canopy flags travel in a tick without touching the teleport counter".
+- `web/server/privateCrypto.mjs`: Sealed files for the private data (the insides of the three locked homes).
+- `web/server/privateCrypto.test.mjs`: Tests for privateCrypto, e.g. "a sealed file opens with the matching key and name".
+- `web/server/privateData.mjs`: The private data in memory (the insides of the three locked homes, see privateCrypto.mjs).
+- `web/server/privateData.test.mjs`: Tests for privateData, e.g. "opens sealed files, skips the ones that fail, lets a plain copy win".
+- `web/server/stats.mjs`: How popular the game is, for the admin page (web/public/admin/), counted without cookies and without keeping anything about a person.
+- `web/server/store.mjs`: Sessions, furniture and the spawned Teslas, fighting stats, the login log, the interest page's sign-ups (server/interest.mjs), the daily totals of how much...
+- `web/server/zombie-endless.test.mjs`: Tests for zombie-endless, e.g. "40 waves progress without a round limit, one survivor keeps playing, and both down ends it".
+- `web/server/zombie-landing.test.mjs`: Tests for zombie-landing, e.g. "a wave waits while anyone is still coming down by parachute, and comes LANDED MS after the last landing".
+- `web/server/zombie-wave.test.mjs`: Tests for zombie-wave, e.g. "switching up, down or to the same wave immediately replaces the horde with the selected difficulty".
+- `web/server/zombies.mjs`: The Zombies party game on the server (server/modes.mjs starts and stops it; shared/zombies.mjs runs the horde).
+
+## tools
+
+- `tools/aeron.py`: Build the office chair (after the classic Herman Miller Aeron, size B, graphite) for the game in Blender.
+- `tools/bake/bake_buildings.py`: Bake the light of the building models in Blender (Cycles, on the graphics card when there is one).
+- `tools/bake/encode_buildings.py`: Turn the baked passes (tools/bake/bake_buildings.py) into the game's light and wear textures.
+- `tools/bake/export_scene.js`: The game's world for baking the light of the building models (tools/bake/bake_buildings.py).
+- `tools/bake/lightmap_uv.py`: Give a building model a second UV map (TEXCOORD_1) for baked light, in place.
+- `tools/basisu.mjs`: Runs the Basis Universal command-line encoder (basisu, built for WASI: tools/.bin/basisu/basisu_st.wasm) in Node's own WebAssembly runtime, so no native...
+- `tools/bounds.py`: The edge of the game: where you can walk, ride, drive and fly (web/shared/bounds.json).
+- `tools/building_ground.py`: Place level house floors at their entrances and carry walls into sloping ground.
+- `tools/bungalow_site.py`: Where the bungalow stands and where its drive runs, in the game's coordinates (metres): its plot on the open-data outline and the parking place with its...
+- `tools/cattle.py`: Build a low-poly cow and a sheep for the meadows round the house in Blender, to be drawn many times over (web/src/world/herds.ts).
+- `tools/church.py`: Build the Sint-Pharaïldiskerk of Smetlede (Lede, East Flanders) in Blender, for the walkthrough.
+- `tools/church_access.py`: The church's tower stair and roof walk.
+- `tools/clown.py`: Build the game's clown in Blender: an original, friendly toy-like character in separate parts.
+- `tools/coffee_machine.py`: Build a bean-to-cup coffee machine (like a Jura E8 in Piano Black) in Blender.
+- `tools/countryside.py`: The life of the countryside round the house: where cows and sheep graze, where crows feed on the fields, where ducks swim and where round bales stand by the...
+- `tools/crops.py`: What grows on the fields: the farmers' declared crops of this year, from Flemish open data.
+- `tools/dev/bench.mjs`: Frame time of the game, headless (tools/dev/cdp.mjs): a warm-up run (shader compiles, texture uploads), then a few measured runs of briel.bench(), per...
+- `tools/dev/car.mjs`: Check the real car models and speedometer in a fresh browser, on a running dev server.
+- `tools/dev/cdp.mjs`: A small headless Chromium driver over the DevTools protocol, for checks on this PC (no Playwright library: only the Chromium that Playwright installed under...
+- `tools/dev/codemap.mjs`: Writes docs/CODEMAP.md: one line per module in web/src, web/server (and web/server.mjs) and tools, taken from the first sentence of each file's opening...
+- `tools/dev/homes_check.mjs`: The homes' insides in the running game, headless (tools/dev/cdp.mjs): alone, a home shows its shell only, the right code brings its inside, the admin has...
+- `tools/dev/homes_ws_check.mjs`: Two players against a throwaway game server: one has no right to the main house, one has typed its code (and the admin is the third).
+- `tools/dev/shot.mjs`: A screenshot of the game from a given spot, headless (tools/dev/cdp.mjs).
+- `tools/dormer_house.py`: Build the exterior with Blender: blender -b -P tools/dormer_house.py -- output.glb [editable.blend].
+- `tools/facades.py`: Facades and gardens of the neighbouring houses (the data has only their outlines and heights).
+- `tools/fanlight.py`: Build the old bungalow's front door fanlight in Blender: a sunburst fanlight in a stone arch.
+- `tools/garden.py`: The garden (data/garden.json sets): paving and paths, stepping slabs in the lawn, planted borders, and the wadi, a shallow grassy basin in the front garden...
+- `tools/garden_life.py`: Build the everyday things round the main house and the bungalow, in Blender.
+- `tools/geodata.py`: Download the open data of the surroundings into source/geo/ (not in git).
+- `tools/homestreet/houses.py`: The houses round the two portals at home, our own Blender models, for the walkthrough.
+- `tools/homestreet/textures.py`: Textures for the houses round the two portals at home (tools/homestreet/houses.py), all generated here: no downloads, nothing to credit.
+- `tools/horse.py`: Build a saddled riding horse for the meadow in Blender: a generic warmblood type, standing square.
+- `tools/icon.py`: Draw the app icon (home screen on phones and tablets): the house as a light block with its windows on a dark ground, the accent line under it.
+- `tools/interior.py`: Build the game's furniture and decor pieces in Blender.
+- `tools/kapellenhoek_survey.py`: The street Kapellenhoek from the church square to past its junction with Briel, and the first stretch of Kapelleweg: the survey, and the plan...
+- `tools/kouter_house.py`: Build the southern house and its front garden from the public model outline and street-side references.
+- `tools/ktx2.py`: GPU-compressed copies (KTX2, Basis Universal) of every surface texture in web/public/textures/.
+- `tools/model_3.py`: Build the Tesla Model 3 (Highland facelift, 2024+, Deep Blue Metallic) for the game in Blender, from its real sizes.
+- `tools/model_y.py`: Build the Tesla Model Y (2025, black) for the game in Blender, from its real sizes.
+- `tools/molenhoek.py`: Build the street Molenhoek round its portal in Blender: its houses and the rebuilt street.
+- `tools/molenhoek_end_survey.py`: Molenhoek past the junction where the map used to end, along the branch to its end at Oordegemkouter: the survey, and the plans tools/molenhoek.py builds...
+- `tools/molenhoek_survey.py`: The street Molenhoek round its portal: the survey, and the plan tools/molenhoek.py builds on.
+- `tools/neighbours.py`: Neighbouring houses, the road and trees around the plot, from Flemish open data.
+- `tools/parachute/parachute.py`: Build the steerable parachute for arrivals by air: canopy, lines, risers, toggles, harness and pack, rigged and animated, as one GLB for three.js, with...
+- `tools/parachute/renders.py`: Review renders for tools/parachute/parachute.py, which imports this file (it is not run on its own).
+- `tools/places.py`: The streets you can go to from the chat (/location Kapellenhoek) and the menu's list: one spot on each.
+- `tools/private_data.mjs`: Seal the private data for the public repository.
+- `tools/road_detail.py`: The streets' surfaces in detail: carriageways in concrete slabs or asphalt, the gutters, kerbs and pavements beside them, the verges where there are none,...
+- `tools/roads.py`: Life along the roads: the routes of the traffic, the cars parked on drives and the things by the streets, from the GRB's road centre lines (Wegsegment, with...
+- `tools/roofs.py`: Roof shapes of the neighbouring houses from the laser scan (tools/neighbours.py).
+- `tools/school.py`: Build the primary school of Smetlede and the fittings of the church square in Blender, for the walkthrough.
+- `tools/soundbar.py`: Build a soundbar (like a white Sonos Arc, wall-mounted) in Blender.
+- `tools/sparrenhof.py`: Build the café Sparrenhof in Blender, with its forecourt and the terrace behind it.
+- `tools/still/encode_still.py`: A rendered still as WebP for the web: a large one for wide screens and a small one for phones and small windows (the page picks by width).
+- `tools/still/export_scene.js`: A view's scene for Blender (tools/still/render_still.py).
+- `tools/still/render_still.py`: Render the start screen's still in Blender (Cycles): the game's own scene, lit by the sky photo.
+- `tools/street.py`: The street in more detail: what the aerial photo and the GRB show beyond the buildings.
+- `tools/streets.py`: Street names for the big map (web/src/ui/bigmap.ts): where to write each street's name.
+- `tools/strongman.py`: Build the game's strongman in Blender: a friend of ours as an old-time circus strongman, in separate parts.
+- `tools/terrain.py`: The relief of the surroundings, from the laser scan's terrain (DHM Vlaanderen II, DTM 1 m).
+- `tools/test_building_ground.py`: Tests for building_ground, e.g. "level floor clears both entrances on a slope".
+- `tools/test_house_location.py`: Tests for house_location, e.g. "detailed house occupies the marked plot only".
+- `tools/test_map_extension.py`: Checks for joining the geographic strips.
+- `tools/textures.py`: Download the CC0 textures and sky, generate the facade brick, and write web-sized versions for the walkthrough.
+- `tools/toilet.py`: Build a toilet in Blender: a rimless wall-hung bowl and the flush plate above it.
+- `tools/town/textures.py`: The two textures of the town centre's houses (tools/town/town.py): brick and roof tiles, CC0 from Poly Haven.
+- `tools/town/town.py`: Build the houses round Smetlede's church square and along the street to the school, in Blender.
+- `tools/traffic_cars.py`: The village's everyday cars in Blender: a compact hatchback, an estate and a panel van, simple and low on triangles, for the traffic on the roads and the...
+- `tools/zombie_poster.py`: Poster renders of the zombies (docs/poster): built by tools/zombies.py (exported to a throwaway file, no previews), then each figure in a characteristic...
+- `tools/zombies.py`: Build the Zombies wave mode's figures in Blender: four regular zombies and a big one, rigged and animated.

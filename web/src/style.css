@@ -1,0 +1,1390 @@
+/* Brieltje's look (DECISIONS.md, 1 Nov 2026): the village at dusk with its lights coming on. Slate
+   blue panels like the roofs after sunset, warm off-white text, and lamplight amber for what to press
+   and what is chosen, as in the wordmark's two lit windows. One typeface, Alegreya Sans (SIL OFL,
+   web/public/fonts/, Latin only), in two weights: 500 for text, 800 for headings and buttons. */
+@font-face {
+  font-family: 'Alegreya Sans';
+  font-style: normal;
+  font-weight: 500;
+  font-display: swap;
+  src: url('/fonts/alegreya-sans-500.woff2') format('woff2');
+  unicode-range: U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC, U+0304, U+0308, U+0329, U+2000-206F, U+20AC, U+2122, U+2191, U+2193, U+2212, U+2215, U+FEFF, U+FFFD;
+}
+@font-face {
+  font-family: 'Alegreya Sans';
+  font-style: normal;
+  font-weight: 800;
+  font-display: swap;
+  src: url('/fonts/alegreya-sans-800.woff2') format('woff2');
+  unicode-range: U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC, U+0304, U+0308, U+0329, U+2000-206F, U+20AC, U+2122, U+2191, U+2193, U+2212, U+2215, U+FEFF, U+FFFD;
+}
+
+:root {
+  --ink: #f5efe4;          /* text */
+  --ink-soft: #bcc5ce;     /* second lines, labels (9:1 on dusk) */
+  --ink-faint: #95a1ad;    /* small print (5.7:1 on dusk) */
+  --dusk: #16202a;         /* panels */
+  --dusk-deep: #101820;    /* the menu's rail, the page behind */
+  --dusk-raised: #1f2b37;  /* fields, tiles, buttons */
+  --dusk-high: #2a3846;    /* their hover, empty tracks */
+  --line: rgba(220, 230, 240, 0.11);
+  --line-strong: rgba(220, 230, 240, 0.22);
+  --lamp: #f2b544;         /* lamplight: the button to press, what is chosen */
+  --lamp-bright: #f7c867;
+  --lamp-soft: rgba(242, 181, 68, 0.13);
+  --lamp-line: rgba(242, 181, 68, 0.6);
+  --bad: #ff9c8a;
+  --accent: var(--lamp);   /* the HUD's name for it */
+  --panel: rgba(18, 27, 36, 0.86); /* the HUD's boxes over the 3D view (no blur: the GPU is busy enough) */
+  --shadow: 0 1px 2px rgba(0, 0, 0, 0.85), 0 0 10px rgba(0, 0, 0, 0.45);
+  --font: 'Alegreya Sans', 'Segoe UI', system-ui, -apple-system, sans-serif;
+  --r-panel: 20px;
+  --r-tile: 12px;
+  --r-field: 10px;
+}
+
+* { box-sizing: border-box; }
+
+html, body {
+  margin: 0;
+  height: 100%;
+  overflow: hidden;
+  background: var(--dusk-deep);
+  color: var(--ink);
+  font-family: var(--font);
+  font-weight: 500;
+  -webkit-font-smoothing: antialiased;
+  -webkit-text-size-adjust: 100%;
+  text-size-adjust: 100%;
+}
+button, input, select, textarea { font-family: inherit; }
+.hidden { display: none !important; }
+/* For screen readers only. */
+.sr-only { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
+
+/* The wordmark (the <symbol id="wordmark"> in index.html): the letters in currentColor, the windows in lamplight. */
+.wordmark { display: block; width: auto; aspect-ratio: 2993 / 898; fill: currentColor; --wm-window: var(--lamp); }
+
+#view { display: block; width: 100vw; height: 100vh; touch-action: none; }
+
+#hud { position: fixed; inset: 0; pointer-events: none; text-shadow: var(--shadow); }
+/* The top-middle messages' box: no box of its own on a desktop, a stack with touch controls. */
+#hud-top { display: contents; }
+
+/* The wordmark top left while playing, with "Work in progress" beside it. A dark outline round the
+   letters (drawn under them) keeps it readable on a bright sky; nothing in it moves. */
+#brand { position: absolute; top: 16px; left: 24px; display: flex; align-items: center; gap: 10px; }
+#brand .wordmark { height: 28px; color: var(--ink); stroke: rgba(8, 12, 16, 0.6); stroke-width: 64px; stroke-linejoin: round; paint-order: stroke; }
+#brand span { font-size: 13px; font-weight: 800; color: var(--ink); opacity: 0.85; }
+/* The menu's key, always in view while playing. */
+#menu-hint { position: absolute; top: 104px; left: 24px; font-size: 14px; opacity: 0.9; }
+#menu-hint kbd {
+  display: inline-block; min-width: 34px; margin-right: 6px; padding: 2px 8px; text-align: center;
+  font-family: inherit; font-size: 13px; font-weight: 800; color: var(--dusk); background: var(--lamp); border-radius: 6px;
+  box-shadow: 0 2px 0 rgba(0, 0, 0, 0.5); text-shadow: none;
+}
+
+#who {
+  position: absolute; top: 56px; left: 24px;
+  font-size: 15px; font-weight: 600; color: var(--accent); letter-spacing: 0.06em;
+}
+
+#place {
+  position: absolute; top: 78px; left: 24px;
+  font-size: 15px; letter-spacing: 0.12em; text-transform: uppercase; opacity: 0.85;
+}
+
+#fps {
+  position: absolute; top: 18px; right: 220px;
+  font: 600 14px/1.4 Consolas, monospace; display: none;
+}
+#fps.on { display: block; }
+
+#pad { position: absolute; bottom: 18px; left: 24px; font-size: 13px; opacity: 0.8; }
+
+#toast {
+  position: absolute; bottom: 64px; right: 48px;
+  font-size: 44px; font-weight: 700; letter-spacing: 0.03em;
+  color: var(--ink); opacity: 0; transition: opacity 0.6s ease;
+}
+#toast.show { opacity: 1; }
+#toast small {
+  display: block; text-align: right; font-size: 16px; font-style: normal;
+  letter-spacing: 0.25em; text-transform: uppercase; color: var(--accent);
+}
+
+#crosshair {
+  position: absolute; left: 50%; top: 50%; width: 6px; height: 6px; margin: -3px 0 0 -3px;
+  border-radius: 50%; background: rgba(255, 255, 255, 0.85); box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.5);
+}
+#crosshair.gun { width: 18px; height: 18px; margin: -9px 0 0 -9px; background: none; box-shadow: none;
+  background-image: linear-gradient(#fff, #fff), linear-gradient(#fff, #fff);
+  background-size: 2px 18px, 18px 2px; background-position: center; background-repeat: no-repeat; opacity: 0.85; }
+#crosshair.hidden { display: none; }
+/* Zombies: the ring that fills while you help a teammate up. */
+#ring { position: absolute; left: 50%; top: 50%; width: 64px; height: 64px; margin: -32px 0 0 -32px; display: none; transform: rotate(-90deg); }
+#ring.show { display: block; }
+#ring circle { fill: none; stroke-width: 4; }
+#ring .track { stroke: rgba(0, 0, 0, 0.35); }
+#ring .arc { stroke: var(--accent); stroke-linecap: round; transition: stroke-dashoffset 0.1s linear; }
+
+#prompt {
+  position: absolute; left: 50%; top: calc(50% + 40px); transform: translateX(-50%);
+  padding: 6px 14px; font-size: 15px; background: var(--panel); border-left: 3px solid var(--accent);
+  display: none; white-space: nowrap;
+}
+#prompt.show { display: block; }
+/* Locked alone (the house and the bungalow): two lines, a red edge. */
+#prompt.warn { white-space: pre-line; text-align: center; max-width: calc(100vw - 32px); border-left-color: #ff6b6b; }
+
+#ammo {
+  position: absolute; right: 48px; bottom: 140px; font-size: 32px; font-weight: 700;
+}
+
+#nades { position: absolute; right: 48px; bottom: 184px; font-size: 15px; font-weight: 700; letter-spacing: 0.08em; opacity: 0.85; }
+
+/* Who made it and the source, bottom right while playing: small and quiet. */
+#credit { position: absolute; right: 16px; bottom: 10px; display: flex; align-items: center; font-size: 13px; opacity: 0.7; }
+
+#sound-btn {
+  position: fixed; right: 16px; bottom: 28px; z-index: 20; cursor: pointer;
+  padding: 6px 12px; font-family: inherit; font-size: 13px; font-weight: 600; letter-spacing: 0.08em;
+  color: var(--ink); background: var(--panel); border: 1px solid rgba(255, 255, 255, 0.2); border-radius: 2px;
+}
+#sound-btn:hover, #sound-btn:focus-visible { border-color: var(--accent); outline: none; }
+#sound-btn.off { opacity: 0.6; }
+#full-btn {
+  position: fixed; right: 16px; top: 16px; z-index: 20; cursor: pointer;
+  padding: 6px 12px; font-family: inherit; font-size: 13px; font-weight: 600; letter-spacing: 0.08em;
+  color: var(--ink); background: var(--panel); border: 1px solid rgba(255, 255, 255, 0.2); border-radius: 2px;
+}
+#full-btn.hidden, #full-hint.hidden { display: none; }
+#full-hint {
+  position: fixed; right: 16px; top: 56px; z-index: 21; max-width: min(360px, 80vw); padding: 12px 14px;
+  font-size: 14px; line-height: 1.4; color: var(--ink); background: var(--panel); border-left: 3px solid var(--accent);
+}
+
+#net-status { position: absolute; top: 18px; left: 50%; transform: translateX(-50%); font-size: 14px; color: var(--accent); }
+#chat-log {
+  position: absolute; left: 24px; bottom: 44px; width: min(460px, calc(100vw - 48px));
+  display: flex; flex-direction: column; gap: 2px; font-size: 15px;
+}
+#chat-log .line { background: rgba(12, 14, 18, 0.55); padding: 3px 8px; transition: opacity 1s; }
+#chat-log .line.system { color: var(--accent); }
+#chat-log .line.old { opacity: 0; }
+#chat-log.active .line.old { opacity: 1; }
+#chat-input {
+  position: absolute; left: 24px; bottom: 12px; width: min(460px, calc(100vw - 48px)); display: none;
+  pointer-events: auto; padding: 6px 10px; font-family: inherit; font-size: 15px; color: var(--ink);
+  background: var(--panel); border: 1px solid var(--accent); border-radius: 2px;
+}
+#chat-input.show { display: block; }
+
+#online { position: absolute; top: 208px; right: 24px; font-size: 13px; text-align: right; opacity: 0.9; }
+
+/* Multiplayer fighting */
+#damage {
+  position: absolute; inset: 0; opacity: 0;
+  background: radial-gradient(ellipse at center, transparent 40%, rgba(160, 0, 0, 0.6));
+}
+#hitmarker {
+  position: absolute; left: 50%; top: 50%; width: 28px; height: 28px; margin: -14px 0 0 -14px; opacity: 0;
+  background:
+    linear-gradient(45deg, transparent 46%, #fff 46%, #fff 54%, transparent 54%),
+    linear-gradient(-45deg, transparent 46%, #fff 46%, #fff 54%, transparent 54%);
+  -webkit-mask: radial-gradient(circle, transparent 7px, #000 8px);
+  mask: radial-gradient(circle, transparent 7px, #000 8px);
+}
+#hitmarker.kill {
+  background:
+    linear-gradient(45deg, transparent 44%, #ff3b2f 44%, #ff3b2f 56%, transparent 56%),
+    linear-gradient(-45deg, transparent 44%, #ff3b2f 44%, #ff3b2f 56%, transparent 56%);
+}
+#health {
+  position: absolute; left: 50%; bottom: 22px; transform: translateX(-50%);
+  display: flex; align-items: center; gap: 10px; font-size: 34px; font-weight: 700;
+}
+.hp-icon { color: var(--accent); font-style: normal; }
+.hp-bar { width: 160px; height: 8px; background: rgba(255, 255, 255, 0.15); box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.5); }
+#hp-fill { height: 100%; width: 100%; background: var(--accent); transition: width 0.15s; }
+#health.low { color: #ff8a7a; }
+#health.low #hp-fill { background: #ff3b2f; }
+#killfeed {
+  position: absolute; top: 300px; right: 24px;
+  display: flex; flex-direction: column; align-items: flex-end; gap: 4px; font-size: 15px; font-weight: 600;
+}
+#killfeed .kf { background: rgba(12, 14, 18, 0.6); padding: 3px 10px; transition: opacity 0.8s; border: 1px solid transparent; }
+#killfeed .kf.me { border-color: rgba(255, 59, 47, 0.8); }
+#killfeed .kf.old { opacity: 0; }
+#killfeed .arrow { opacity: 0.7; }
+#killfeed .hs { margin-left: 8px; font-size: 11px; letter-spacing: 0.12em; color: var(--accent); }
+#death { position: absolute; left: 50%; top: 36%; transform: translate(-50%, -50%); text-align: center; }
+#death b { display: block; font-size: 44px; letter-spacing: 0.03em; }
+#death span { font-size: 18px; color: var(--accent); letter-spacing: 0.08em; }
+#banner { position: absolute; left: 50%; top: 18%; transform: translateX(-50%); text-align: center; white-space: nowrap; }
+#banner b { display: block; font-size: 42px; }
+#banner small { display: block; font-size: 15px; letter-spacing: 0.15em; text-transform: uppercase; color: var(--accent); }
+#scoreboard {
+  position: absolute; left: 50%; top: 52%; transform: translate(-50%, -50%);
+  width: min(560px, calc(100vw - 32px)); padding: 18px 24px;
+  background: var(--panel); border-left: 4px solid var(--accent); text-shadow: none;
+}
+#scoreboard h2 { margin: 0; font-size: 28px; letter-spacing: 0.06em; }
+#score-goal { margin: 2px 0 12px; font-size: 12px; letter-spacing: 0.12em; text-transform: uppercase; color: var(--accent); }
+#score-table { width: 100%; border-collapse: collapse; font-size: 17px; }
+#score-table th { text-align: left; font-size: 12px; letter-spacing: 0.12em; text-transform: uppercase; opacity: 0.7; padding: 4px 8px; }
+#score-table th:not(:first-child), #score-table td.num { text-align: right; }
+#score-table td { padding: 6px 8px; border-top: 1px solid rgba(255, 255, 255, 0.08); font-weight: 600; }
+#score-table tr.me td { background: rgba(242, 179, 61, 0.12); }
+#score-table tr.dead td.name span:first-child { opacity: 0.5; }
+#score-table .exploring { margin-left: 8px; font-size: 12px; font-weight: 400; opacity: 0.6; }
+
+/* Weapons */
+#slots { position: absolute; right: 48px; bottom: 210px; display: flex; flex-direction: column; align-items: flex-end; gap: 2px; font-size: 14px; }
+#slots .slot { opacity: 0.55; padding: 1px 8px; }
+#slots .slot.current { opacity: 1; color: var(--accent); font-weight: 700; border-right: 3px solid var(--accent); }
+#scope {
+  position: absolute; inset: 0; display: none;
+  background:
+    linear-gradient(#000, #000) center / 2px 100% no-repeat,
+    linear-gradient(#000, #000) center / 100% 2px no-repeat,
+    radial-gradient(circle at center, transparent 0, transparent 38vh, rgba(0, 0, 0, 0.6) 38.3vh, #000 39vh);
+}
+#scope.show { display: block; }
+#hitdir {
+  position: absolute; left: 50%; top: 50%; width: 220px; height: 220px; opacity: 0; pointer-events: none;
+  border-radius: 50%; border: 6px solid transparent; border-top-color: rgba(255, 40, 30, 0.85);
+  transform: translate(-50%, -50%);
+}
+
+/* Paintball (src/paintball.ts): the same HUD in paint, nothing red. --paint is the colour of the
+   last hit (src/ui/combat.ts): splats of it at the edges of the screen, a paint drop for health. */
+body.paintball { --paint: #ff4fa3; }
+body.paintball #damage {
+  background:
+    radial-gradient(circle at 5% 16%, var(--paint) 0 7%, transparent 7.4%),
+    radial-gradient(circle at 13% 29%, var(--paint) 0 1.8%, transparent 2.1%),
+    radial-gradient(circle at 95% 82%, var(--paint) 0 8%, transparent 8.4%),
+    radial-gradient(circle at 84% 93%, var(--paint) 0 2.2%, transparent 2.6%),
+    radial-gradient(circle at 92% 9%, var(--paint) 0 4%, transparent 4.4%),
+    radial-gradient(circle at 3% 90%, var(--paint) 0 5%, transparent 5.4%),
+    radial-gradient(ellipse at center, transparent 50%, color-mix(in srgb, var(--paint) 50%, transparent));
+}
+body.paintball #hitdir { border-top-color: var(--paint); }
+body.paintball #hitmarker.kill {
+  background:
+    linear-gradient(45deg, transparent 44%, var(--paint) 44%, var(--paint) 56%, transparent 56%),
+    linear-gradient(-45deg, transparent 44%, var(--paint) 44%, var(--paint) 56%, transparent 56%);
+}
+body.paintball .hp-icon {
+  width: 0.5em; height: 0.5em; margin: 0 0.05em; overflow: hidden; color: transparent; line-height: 0;
+  background: var(--paint); border-radius: 0 50% 50% 50%; transform: rotate(45deg);
+}
+body.paintball #hp-fill, body.paintball #health.low #hp-fill { background: linear-gradient(90deg, #ff7a1a, #ffd23f, #8fd61f, #2f8cff, #9d5cff, #ff4fa3); }
+body.paintball #health.low { color: inherit; }
+body.paintball #killfeed .kf.me { border-color: var(--paint); }
+
+#minimap { position: absolute; top: 18px; right: 24px; width: 180px; height: 180px; }
+#minimap.hidden { display: none; }
+
+/* A Tesla only the admin may place (multiplayer): greyed out, with the reason under it. */
+
+#capture-hint {
+  position: absolute; left: 50%; top: calc(50% + 40px); transform: translateX(-50%);
+  padding: 6px 14px; font-size: 15px; background: var(--panel); border-left: 3px solid var(--accent);
+  display: none; white-space: nowrap;
+}
+#capture-hint.show { display: block; }
+/* Both at once: the hint goes under the prompt, and beside the portal's list instead of under it. */
+#prompt.show + #capture-hint { top: calc(50% + 80px); }
+/* In a drop, filmed from behind (src/world/dropView.ts): the hints low on the screen, clear of your figure in the middle. */
+body.drop #prompt { top: auto; bottom: 96px; }
+body.drop #capture-hint, body.drop #prompt.show + #capture-hint { top: auto; bottom: 56px; }
+body:has(#travel:not(.hidden)) #capture-hint { left: auto; right: calc(50% - 60px); transform: none; }
+/* A short window (a laptop's browser): the kill feed stands left of who is online, clear of the weapons. */
+@media (max-height: 720px) {
+  #killfeed { top: 208px; right: 200px; }
+}
+
+/* Touch controls (phones and tablets): a stick under the left thumb, buttons on the right. */
+#touch {
+  position: fixed; inset: 0; touch-action: none; user-select: none; -webkit-user-select: none; -webkit-touch-callout: none;
+}
+#touch.hidden { display: none; }
+#touch .stick {
+  position: absolute; left: 52px; bottom: 40px; width: 116px; height: 116px;
+  border-radius: 50%; border: 2px solid rgba(255, 255, 255, 0.25); background: rgba(12, 14, 18, 0.25); pointer-events: none; opacity: 0.55;
+}
+#touch .stick.active { bottom: auto; margin: -58px 0 0 -58px; opacity: 1; }
+#touch .knob {
+  position: absolute; left: 50%; top: 50%; width: 52px; height: 52px; margin: -26px 0 0 -26px; border-radius: 50%;
+  background: rgba(244, 239, 230, 0.55); box-shadow: 0 0 0 2px rgba(0, 0, 0, 0.3);
+}
+#touch .tbtn {
+  position: absolute; display: flex; align-items: center; justify-content: center; width: 56px; height: 56px; border-radius: 50%;
+  font-size: 12px; font-weight: 700; letter-spacing: 0.06em; text-transform: uppercase; color: var(--ink);
+  background: rgba(12, 14, 18, 0.45); border: 2px solid rgba(255, 255, 255, 0.28); text-shadow: var(--shadow);
+}
+#touch .tbtn.hidden { display: none; }
+#touch .tbtn.down, #touch .tbtn.on { border-color: var(--accent); background: rgba(242, 179, 61, 0.3); }
+/* Which buttons show follows what you do (touch.ts sets body[data-touch]). Fighting on foot: Fire
+   in the corner under the right thumb, the rest in an arc round it. The furniture planner uses
+   the same places with its own buttons (Place, Move, Next, Turn, Remove, and Use for doors);
+   its Done stands in the row top left. */
+#touch .t-fire { right: 26px; bottom: 30px; width: 84px; height: 84px; font-size: 14px; border-color: rgba(255, 120, 100, 0.6); }
+#touch .t-aim { right: 40px; bottom: 128px; }
+#touch .t-jump { right: 126px; bottom: 26px; width: 62px; height: 62px; }
+#touch .t-use { right: 126px; bottom: 104px; width: 62px; height: 62px; }
+#touch .t-reload, #touch .t-nade, #touch .t-weapon, #touch .t-down {
+  width: 46px; height: 46px; font-size: 10px; letter-spacing: 0.02em;
+}
+#touch .t-reload { right: 204px; bottom: 30px; }
+#touch .t-nade { right: 204px; bottom: 88px; }
+#touch .t-weapon { right: 204px; bottom: 146px; font-size: 18px; }
+#touch .t-down { right: 266px; bottom: 30px; }
+#touch .t-run { left: 12px; bottom: 176px; width: 50px; height: 50px; }
+#touch .t-menu { left: 12px; width: 44px; height: 44px; border-radius: 8px; font-size: 20px; }
+/* Done leaves the planner: in the row top left, like the menu. */
+/* Walking (Explore, or on a horse) and in a car: fewer buttons, so Jump (the handbrake in a car)
+   takes the corner, Use stands above it and Down beside it. */
+body.touch[data-touch=walk] #touch .t-jump, body.touch[data-touch=car] #touch .t-jump { right: 26px; bottom: 26px; width: 76px; height: 76px; font-size: 13px; }
+body.touch[data-touch=walk] #touch .t-use, body.touch[data-touch=car] #touch .t-use { right: 33px; bottom: 118px; }
+body.touch[data-touch=walk] #touch .t-down { right: 120px; bottom: 30px; width: 52px; height: 52px; }
+/* In a drop's free fall: Open (the canopy) in the corner, Dive beside it; under the canopy the stick alone. */
+body.touch[data-touch=fall] #touch .t-jump { right: 26px; bottom: 26px; width: 76px; height: 76px; font-size: 13px; border-color: var(--accent); }
+body.touch[data-touch=fall] #touch .t-down { right: 120px; bottom: 30px; width: 52px; height: 52px; }
+/* Clear of the notch on phones held sideways (the page runs under it: viewport-fit=cover), and of
+   the status bar on a tablet started from the home screen. */
+#hud { left: env(safe-area-inset-left, 0px); right: env(safe-area-inset-right, 0px); top: env(safe-area-inset-top, 0px); }
+#touch .tbtn { translate: calc(-1 * env(safe-area-inset-right, 0px)) 0; }
+#touch .t-run, #touch .t-menu, #touch .stick:not(.active) { translate: env(safe-area-inset-left, 0px) 0; }
+#touch .t-menu { top: calc(8px + env(safe-area-inset-top, 0px)); }
+
+/* The HUD round the touch controls, on phones and tablets alike: the menu, sound and full screen
+   buttons in a row top left with where you are under them, the chat above the stick, the map
+   with the ammo top right, messages in the middle of the top, and the prompt and the health
+   between the thumbs. The brand, your own name (it is in the menu and the online list) and the
+   desktop's lines (keys, controller, credit, weapon list) go. */
+body.touch #brand, body.touch #who, body.touch #menu-hint, body.touch #pad, body.touch #credit, body.touch #fps,
+body.touch #slots, body.touch #nades, body.touch #capture-hint { display: none; }
+body.touch #place, body.touch #online {
+  left: 12px; right: auto; max-width: 220px; overflow: hidden; white-space: nowrap; text-overflow: ellipsis;
+  font-size: 12px; text-align: left;
+}
+body.touch #place { top: 60px; letter-spacing: 0.1em; }
+/* Who is online: the names on one line ("4 of 4 online" goes; the scoreboard has the rest). */
+body.touch #online { top: 78px; }
+body.touch #online > div { display: inline; }
+body.touch #online > div:first-child { display: none; }
+body.touch #online > div:nth-child(n+3)::before { content: ' · '; color: var(--ink); opacity: 0.6; }
+body.touch #minimap { top: 8px; right: 12px; width: 110px; height: 110px; }
+body.touch #ammo { top: 124px; bottom: auto; right: 12px; font-size: 22px; }
+/* The chat: just above the stick, beside Run; the newest lines stay, older ones are cut off at the top. */
+body.touch #chat-log {
+  left: 72px; bottom: 196px; width: min(240px, 30vw); max-height: min(100px, calc(100% - 300px));
+  overflow: hidden; justify-content: flex-end; font-size: 13px;
+  -webkit-mask-image: linear-gradient(transparent, #000 12px); mask-image: linear-gradient(transparent, #000 12px);
+}
+body.touch #chat-log .line { padding: 2px 7px; }
+/* The middle of the top, between the place line and the map: the party game's bar, the planner's,
+   and under them the messages (connection, round, death, kills, the place's name) stacked. */
+body.touch #modebar, body.touch #hud-top { left: 240px; right: 130px; transform: none; }
+body.touch #modebar { top: 8px; width: -webkit-fit-content; width: fit-content; max-width: none; margin: 0 auto; }
+body.touch #modebar { padding: 6px 12px; font-size: 12px; }
+body.touch #hud-top { position: absolute; top: 8px; display: flex; flex-direction: column; align-items: center; gap: 6px; text-align: center; }
+body.touch #modebar.show ~ #hud-top { top: 58px; }
+body.touch #hud-top > * { position: static; transform: none; }
+body.touch #hud-top > :empty { display: none; }
+body.touch #net-status { font-size: 13px; }
+body.touch #banner { white-space: normal; }
+body.touch #banner b { font-size: 22px; }
+body.touch #banner small { font-size: 12px; }
+body.touch #death b { font-size: 26px; }
+body.touch #death span { font-size: 14px; }
+body.touch #killfeed { align-items: center; font-size: 12px; }
+body.touch #killfeed .kf { padding: 2px 8px; }
+body.touch #killfeed .kf:nth-last-child(n+3) { display: none; } /* the newest two */
+body.touch #toast { font-size: 26px; }
+body.touch #toast small { text-align: center; font-size: 11px; }
+/* The scoreboard (at the end of a round): small, under the round's banner, the other messages
+   make way; the best three and you. */
+body.touch #scoreboard { width: 100%; max-width: 400px; padding: 4px 10px; text-align: left; }
+body.touch #scoreboard h2, body.touch #score-goal { display: none; }
+body.touch #score-table { font-size: 13px; }
+body.touch #score-table th { padding: 1px 6px; font-size: 10px; }
+body.touch #score-table td { padding: 2px 6px; }
+body.touch #score-table tr:nth-child(n+5):not(.me) { display: none; }
+body.touch:has(#scoreboard:not(.hidden)) #hud-top > :is(#death, #killfeed, #toast) { display: none; }
+@media (max-height: 350px) {
+  body.touch #score-table tr:first-child { display: none; }
+}
+/* Between the thumbs: the prompt under the crosshair and the health at the bottom, each clear of
+   the stick on the left and of the buttons of this state on the right (walking and in a car the
+   prompt is centred under the crosshair). */
+body.touch #prompt, body.touch #health { left: 210px; right: 320px; width: -webkit-fit-content; width: fit-content; margin: 0 auto; transform: none; }
+body.touch #prompt { right: 258px; }
+body.touch[data-touch=walk] #prompt, body.touch[data-touch=car] #prompt, body.touch[data-touch=fall] #prompt, body.touch[data-touch=canopy] #prompt { right: 210px; }
+body.touch[data-touch=walk] #health { right: 180px; }
+body.touch[data-touch=car] #health { right: 110px; }
+body.touch #prompt { top: calc(50% + 26px); white-space: normal; text-align: center; font-size: 14px; }
+body.touch.drop #prompt { top: auto; bottom: calc(64px + env(safe-area-inset-bottom, 0px)); }
+body.touch #health { bottom: calc(14px + env(safe-area-inset-bottom, 0px)); gap: 8px; font-size: 22px; }
+body.touch .hp-bar { width: 72px; }
+/* Sound and full screen while playing: icons in the row beside ☰. */
+body.touch #sound-btn, body.touch #full-btn {
+  top: calc(8px + env(safe-area-inset-top, 0px)); bottom: auto; right: auto; width: 44px; height: 44px; padding: 0;
+  font-size: 0; letter-spacing: 0; border-radius: 8px; background: rgba(12, 14, 18, 0.45); border: 2px solid rgba(255, 255, 255, 0.28);
+}
+body.touch #sound-btn { left: calc(62px + env(safe-area-inset-left, 0px)); }
+body.touch #full-btn { left: calc(112px + env(safe-area-inset-left, 0px)); }
+body.touch #sound-btn .ico, body.touch #full-btn .ico { font-size: 18px; }
+body.touch #sound-btn .lbl, body.touch #full-btn .lbl { display: none; }
+/* Its explanation (Add to Home Screen on an iPhone) opens beside the row, clear of the buttons; the next tap closes it. */
+body.touch #full-hint { top: calc(8px + env(safe-area-inset-top, 0px)); left: calc(164px + env(safe-area-inset-left, 0px)); right: auto; max-width: min(340px, 50vw); font-size: 13px; }
+/* A tablet: a little more room for the map and the chat. */
+@media (min-height: 600px) {
+  body.touch #minimap { width: 140px; height: 140px; }
+  body.touch #ammo { top: 156px; font-size: 24px; }
+  body.touch #place, body.touch #online { font-size: 13px; max-width: 260px; }
+  body.touch #online { top: 80px; }
+body.touch #modebar, body.touch #hud-top { left: 280px; right: 160px; }
+  body.touch #chat-log { width: min(300px, 30vw); max-height: min(140px, calc(100% - 310px)); font-size: 14px; }
+}
+/* With the start screen open on a touch screen: those two buttons stand in a strip of their own on
+   the right, beside the panel. The in-game menu has them in its header instead (below). */
+@media (pointer: coarse) {
+  #overlay:has(> #start-panel:not(.hidden)) { padding-right: calc(60px + env(safe-area-inset-right, 0px)); }
+  body:has(#overlay:not(.hidden)) #sound-btn, body:has(#overlay:not(.hidden)) #full-btn {
+    top: calc(8px + env(safe-area-inset-top, 0px)); bottom: auto; left: auto; right: calc(8px + env(safe-area-inset-right, 0px));
+    width: 44px; height: 44px; padding: 0; font-size: 0; letter-spacing: 0; border-radius: 8px;
+  }
+  body:has(#overlay:not(.hidden)) #full-btn { top: calc(60px + env(safe-area-inset-top, 0px)); }
+  body:has(#overlay:not(.hidden)) #sound-btn .ico, body:has(#overlay:not(.hidden)) #full-btn .ico { font-size: 18px; }
+  body:has(#overlay:not(.hidden)) #sound-btn .lbl, body:has(#overlay:not(.hidden)) #full-btn .lbl { display: none; }
+  body:has(#overlay:not(.hidden)) #full-hint { top: calc(8px + env(safe-area-inset-top, 0px)); left: auto; right: calc(60px + env(safe-area-inset-right, 0px)); }
+}
+#rotate-hint {
+  position: fixed; inset: 0; z-index: 30; display: none; align-items: center; justify-content: center; padding: 24px; text-align: center;
+  font-size: 22px; font-weight: 700; background: rgba(16, 24, 32, 0.95); color: var(--ink);
+}
+@media (orientation: portrait) {
+  body.touch #rotate-hint { display: flex; }
+}
+
+/* Party games: the bar at the top with the clock and your role, the seeker's closed eyes. */
+#modebar {
+  position: absolute; left: 50%; top: 18px; transform: translateX(-50%); display: none; max-width: calc(100vw - 480px);
+  padding: 8px 16px; font-size: 16px; font-weight: 700; letter-spacing: 0.03em; text-align: center;
+  background: var(--panel); border-bottom: 3px solid var(--accent);
+}
+#modebar.show { display: block; }
+/* The connection is down: the game may be over on the server, so the bar greys and its clock stops. */
+#modebar.stale { opacity: 0.5; }
+/* Above the chat's lines in the HUD; the touch buttons (outside the HUD) stay usable. */
+#blindfold {
+  position: fixed; inset: 0; z-index: 1; display: none; align-items: center; justify-content: center; padding: 24px; text-align: center;
+  font-size: 28px; font-weight: 700; color: var(--ink); background: #050608;
+}
+#blindfold.show { display: flex; }
+/* Zombies: the explorer's card under the game's bar (one tap on a mode joins in), and the end screen. */
+#zexplore {
+  position: fixed; left: 50%; top: 66px; transform: translateX(-50%); display: none; width: min(440px, calc(100vw - 32px));
+  padding: 10px 14px; text-align: center; color: var(--ink); background: var(--panel); border-left: 3px solid var(--accent);
+}
+#zexplore.show { display: block; }
+#zexplore p { margin: 0 0 8px; font-size: 15px; font-weight: 600; }
+#zexplore .seg { margin: 0; justify-content: center; }
+#zexplore .seg-btn { flex: 1; padding: 8px 10px; }
+#zexplore .seg-btn span { font-size: 12px; }
+body.touch #zexplore .seg-btn span { display: none; }
+body.touch #zexplore { top: 52px; width: min(380px, calc(100vw - 400px)); padding: 6px 10px; }
+body.touch #zexplore p { font-size: 13px; margin-bottom: 6px; }
+#zend {
+  position: absolute; left: 50%; top: 50%; transform: translate(-50%, -50%); z-index: 2;
+  width: min(480px, calc(100vw - 32px)); max-height: calc(100vh - 140px); overflow: auto; padding: 18px 24px;
+  background: var(--panel); border-left: 4px solid var(--accent); text-shadow: none; text-align: center;
+}
+#zend.hidden { display: none; }
+body.zend-on #death { display: none; }
+#zend h2 { margin: 0; font-size: 34px; letter-spacing: 0.03em; }
+#zend-sub { margin: 4px 0 14px; font-size: 13px; letter-spacing: 0.12em; text-transform: uppercase; color: var(--accent); }
+#zend-table { width: 100%; border-collapse: collapse; font-size: 17px; text-align: left; }
+#zend-table th { font-size: 12px; letter-spacing: 0.12em; text-transform: uppercase; opacity: 0.7; padding: 4px 8px; }
+#zend-table th:last-child, #zend-table td.num { text-align: right; }
+#zend-table td { padding: 6px 8px; border-top: 1px solid rgba(255, 255, 255, 0.08); font-weight: 600; }
+#zend-table tr.me td { background: rgba(242, 179, 61, 0.12); }
+#zend-best { margin: 14px 0 0; font-size: 15px; font-weight: 700; color: var(--accent); }
+/* With touch controls: in the free band between the stick (left) and the buttons (right). */
+body.touch #zend { left: calc(50% - 42px); width: min(380px, calc(100vw - 460px)); min-width: 280px; padding: 12px 16px; max-height: calc(100vh - 90px); }
+body.touch #zend h2 { font-size: 24px; }
+/* On a phone the text keeps clear of the buttons on both sides. */
+body.touch #blindfold { padding: 24px 150px; font-size: 20px; line-height: 1.35; }
+.context-lost {
+  position: fixed; inset: 0; z-index: 100; display: flex; align-items: center; justify-content: center; padding: 24px; text-align: center;
+  font-size: 18px; line-height: 1.5; background: rgba(12, 14, 18, 0.94); color: var(--ink);
+}
+
+/* The portals: the list of places while you stand on a pad, and the flash of a trip. */
+#travel {
+  position: fixed; z-index: 15; left: calc(50% + 70px); top: 50%; transform: translateY(-50%); width: 300px;
+  padding: 12px 12px 10px; background: var(--panel); border-left: 4px solid var(--accent); color: var(--ink); text-shadow: var(--shadow);
+}
+#travel.hidden { display: none; }
+#travel .tv-head { display: flex; align-items: baseline; gap: 10px; margin: 0 4px 8px; }
+#travel .tv-head small { font-size: 12px; letter-spacing: 0.25em; text-transform: uppercase; color: var(--accent); }
+#travel .tv-head b { font-size: 22px; }
+/* The menu's list of places (#places, src/ui/places.ts) is drawn with the same rows. */
+:is(#travel, #places) .tv-row {
+  display: grid; grid-template-columns: 26px 14px 1fr auto; align-items: center; gap: 8px; width: 100%;
+  margin: 2px 0; padding: 7px 8px; border: 0; border-radius: 3px; background: transparent; color: var(--ink);
+  font: inherit; font-size: 17px; text-align: left; text-shadow: var(--shadow); cursor: pointer;
+}
+#travel .tv-row kbd {
+  display: inline-block; min-width: 22px; padding: 1px 0; text-align: center; font: 700 13px/1.3 Consolas, monospace;
+  border: 1px solid rgba(255, 255, 255, 0.35); border-radius: 3px;
+}
+:is(#travel, #places) .tv-row i { width: 12px; height: 12px; border-radius: 50%; background: var(--dot); box-shadow: 0 0 8px var(--dot); }
+:is(#travel, #places) .tv-row small { font-size: 13px; opacity: 0.75; }
+#travel .tv-row em {
+  grid-column: 3 / 5; font-style: normal; font-size: 11px; letter-spacing: 0.2em; text-transform: uppercase; color: var(--accent);
+}
+#travel .tv-row em:empty { display: none; }
+:is(#travel, #places) .tv-row.chosen { background: rgba(255, 255, 255, 0.12); box-shadow: inset 3px 0 0 var(--dot); }
+#travel .tv-row.here, #places .tv-row:disabled { opacity: 0.4; cursor: default; }
+#travel .tv-row:not(.here):hover, #places .tv-row:not(:disabled):hover { background: rgba(255, 255, 255, 0.08); }
+#tv-hint { margin: 8px 4px 0; font-size: 12px; opacity: 0.75; line-height: 1.4; }
+/* In the menu: across the Play tab under the other two columns, the rows in columns of their own, no number keys. */
+.page-grid .places-col { grid-column: 1 / -1; }
+.place-list { display: grid; grid-template-columns: repeat(auto-fill, minmax(210px, 1fr)); gap: 0 12px; }
+#places .tv-row { grid-template-columns: 14px 1fr auto; margin: 0; }
+body.touch #places .tv-row { min-height: 44px; }
+/* On a phone: the places two by two at the top, beside the minimap, and no numbers. */
+/* It stands in the middle of the top like the other messages (which make way while it is open). */
+body.touch #travel {
+  top: calc(8px + env(safe-area-inset-top, 0px)); left: calc(240px + env(safe-area-inset-left, 0px)); right: calc(130px + env(safe-area-inset-right, 0px));
+  width: auto; max-width: 340px; margin: 0 auto; transform: none; padding: 6px 8px;
+}
+body.touch:has(#modebar.show) #travel { top: calc(58px + env(safe-area-inset-top, 0px)); }
+body.touch:has(#travel:not(.hidden)) #hud-top { visibility: hidden; }
+body.touch #travel .tv-head { margin-bottom: 4px; }
+body.touch #travel .tv-head b { font-size: 17px; }
+body.touch #tv-list { display: grid; grid-template-columns: 1fr 1fr; gap: 4px; }
+body.touch #travel .tv-row {
+  grid-template-columns: 12px 1fr; gap: 1px 7px; min-height: 44px; margin: 0; padding: 5px 8px; font-size: 15px; background: rgba(255, 255, 255, 0.07);
+}
+body.touch #travel .tv-row kbd, body.touch #travel .tv-row.here { display: none; }
+body.touch #travel .tv-row small, body.touch #travel .tv-row em { grid-column: 2; font-size: 11px; }
+body.touch #tv-hint { margin-top: 4px; font-size: 11px; }
+@media (min-height: 600px) {
+  body.touch #travel { left: calc(280px + env(safe-area-inset-left, 0px)); right: calc(160px + env(safe-area-inset-right, 0px)); }
+}
+#warp {
+  position: fixed; inset: 0; z-index: 40; pointer-events: none; opacity: 0; transition: opacity 0.5s ease-out;
+  background: radial-gradient(circle at 50% 50%, rgba(255, 255, 255, 0.95) 0%, var(--warp, #8fd8ff) 45%, rgba(8, 12, 24, 0.97) 100%);
+}
+#warp.on { opacity: 1; transition: opacity 0.16s ease-in; }
+
+/* The button over the minimap: the menu's Map tab (M). */
+#map-btn {
+  position: fixed; top: 18px; right: 24px; z-index: 20; width: 180px; height: 180px; padding: 0; border: 0; border-radius: 50%;
+  background: transparent; cursor: pointer; color: var(--ink);
+}
+#map-btn .ico {
+  position: absolute; left: 14px; bottom: 14px; width: 24px; height: 24px; display: flex; align-items: center; justify-content: center;
+  font-size: 13px; border-radius: 50%; background: rgba(12, 14, 18, 0.8); border: 1px solid rgba(255, 255, 255, 0.35);
+}
+#map-btn:hover .ico, #map-btn:focus-visible .ico { border-color: var(--accent); }
+#map-btn:focus-visible { outline: none; }
+#map-btn.hidden, body.on-start #map-btn, body:has(#overlay:not(.hidden)) #map-btn { display: none; }
+body.touch #map-btn { top: calc(8px + env(safe-area-inset-top, 0px)); right: calc(12px + env(safe-area-inset-right, 0px)); width: 110px; height: 110px; }
+body.touch #map-btn .ico { left: 6px; bottom: 6px; width: 26px; height: 26px; }
+@media (min-height: 600px) { body.touch #map-btn { width: 140px; height: 140px; } }
+
+/* The map: the menu's first tab (src/ui/bigmap.ts in #map-mount), north up, filling the page. */
+#bigmap { position: absolute; inset: 0; overflow: hidden; background: #c3c9b6; touch-action: none; user-select: none; -webkit-user-select: none; color: #1d2025; }
+#bigmap.hidden { display: none; }
+#bigmap canvas { position: absolute; inset: 0; width: 100%; height: 100%; }
+#bigmap .bm-base { pointer-events: none; }
+#bigmap .bm-top { cursor: grab; }
+#bigmap .bm-top:active { cursor: grabbing; }
+#bigmap .bm-legend {
+  position: absolute; top: 10px; left: 12px; display: flex; flex-wrap: wrap; gap: 4px 14px; padding: 5px 10px;
+  font-size: 12px; font-weight: 600; background: rgba(255, 255, 255, 0.72); border-radius: 4px; pointer-events: none;
+}
+#bigmap .bm-legend span { display: flex; align-items: center; gap: 5px; }
+#bigmap .bm-legend i { display: inline-block; width: 12px; height: 12px; }
+#bigmap .lg-you { clip-path: polygon(50% 0, 100% 100%, 50% 75%, 0 100%); background: #11151b; }
+#bigmap .lg-portal { border-radius: 50%; border: 3px solid #b388ff; background: #11151b; box-sizing: border-box; }
+#bigmap .lg-player { border-radius: 50%; background: #4fa3e0; border: 2px solid #fff; box-sizing: border-box; }
+#bigmap .lg-pin { border-radius: 50% 50% 50% 0; transform: rotate(-45deg); background: #f2b33d; border: 1.5px solid #11151b; box-sizing: border-box; }
+#bigmap .bm-legend i.lg-edge { width: 16px; height: 2px; background: repeating-linear-gradient(90deg, rgba(70, 58, 44, 0.8) 0 4px, transparent 4px 7px); }
+#bigmap button {
+  font: inherit; color: var(--ink); background: rgba(12, 14, 18, 0.85); border: 1px solid rgba(255, 255, 255, 0.25); border-radius: 6px; cursor: pointer;
+}
+#bigmap button:hover { border-color: var(--accent); }
+/* Zoom in, zoom out, where you are, the whole map. */
+#bigmap .bm-tools { position: absolute; right: 12px; bottom: 12px; display: flex; flex-direction: column; gap: 6px; }
+#bigmap .bm-tools button { width: 42px; height: 42px; font-size: 20px; font-weight: 700; }
+#bigmap .bm-help {
+  position: absolute; left: 50%; bottom: 10px; transform: translateX(-50%); width: max-content; max-width: calc(100% - 150px);
+  padding: 5px 12px; font-size: 13px; text-align: center; background: rgba(255, 255, 255, 0.8); border-radius: 4px; pointer-events: none;
+}
+/* A place or the waypoint: clear of the north arrow in the corner. */
+#bigmap .bm-card {
+  position: absolute; top: 10px; right: 54px; width: min(290px, calc(100% - 120px));
+  padding: 14px 16px 12px; color: var(--ink); background: var(--panel); border-left: 4px solid var(--accent); text-shadow: var(--shadow);
+}
+#bigmap .bm-card.hidden { display: none; }
+#bigmap .bm-card b { display: block; font-size: 20px; padding-right: 30px; }
+#bigmap .bm-card small { display: block; margin-top: 2px; font-size: 13px; opacity: 0.8; }
+#bigmap .bm-card p { margin: 0; font-size: 13px; line-height: 1.35; opacity: 0.85; flex-basis: 100%; }
+#bigmap .bm-row { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 10px; }
+#bigmap .bm-row button { padding: 8px 12px; min-height: 40px; font-size: 14px; font-weight: 700; }
+#bigmap .bm-row button.main { background: var(--accent); color: #11151b; border-color: var(--accent); text-shadow: none; }
+#bigmap .bm-x { position: absolute; top: 8px; right: 8px; width: 32px; height: 32px; font-size: 14px; }
+@media (max-height: 520px) {
+  #bigmap .bm-legend { top: 6px; left: 8px; padding: 3px 8px; gap: 2px 10px; font-size: 11px; }
+  #bigmap .bm-tools { right: 8px; bottom: 8px; gap: 5px; }
+  #bigmap .bm-tools button { width: 40px; height: 40px; }
+  #bigmap .bm-help { bottom: 6px; max-width: calc(100% - 130px); padding: 3px 10px; font-size: 11px; }
+  #bigmap .bm-card { top: 40px; padding: 10px 12px; }
+  #bigmap .bm-card b { font-size: 17px; }
+}
+
+/* ---- The overlay: the start screen and the in-game menu ------------------------------------------
+   Solid panels without blur: the start screen stands on the slideshow, the menu on the live 3D view
+   (the world isn't drawn behind its Map tab; behind the other tabs the panel hides it). */
+#overlay {
+  position: fixed; inset: 0; display: flex; align-items: center; justify-content: center;
+  padding: max(16px, env(safe-area-inset-top, 0px)) max(16px, env(safe-area-inset-right, 0px)) max(16px, env(safe-area-inset-bottom, 0px)) max(16px, env(safe-area-inset-left, 0px));
+  background: rgba(9, 14, 19, 0.62);
+}
+#overlay.hidden, .panel.hidden { display: none; }
+body.on-start #overlay { background: linear-gradient(180deg, rgba(9, 14, 19, 0.2), rgba(9, 14, 19, 0.55)); }
+.panel {
+  width: 100%; max-height: 100%; overflow-y: auto; overscroll-behavior: contain;
+  color: var(--ink); background: var(--dusk); border-radius: var(--r-panel);
+  box-shadow: 0 30px 80px rgba(3, 7, 11, 0.5), inset 0 1px 0 rgba(255, 255, 255, 0.05);
+  scrollbar-width: thin; scrollbar-color: var(--dusk-high) transparent;
+}
+/* The keyboard's place is always seen: a lamplight ring on whatever has the focus. */
+#overlay :focus-visible { outline: 2px solid var(--lamp); outline-offset: 2px; }
+
+/* ---- Start screen: the wordmark and a welcome, your name, alone or together, the mode and where to
+   start, then a start button per way of playing (the first is the one to press). On a wide screen
+   the panel stands on the left and the slideshow of the village shows beside it. */
+#start-panel { position: relative; max-width: 580px; padding: 26px 32px 20px; background: rgba(22, 32, 42, 0.95); }
+.start-head { display: flex; align-items: flex-start; justify-content: space-between; gap: 16px; }
+.start-brand { margin: 0; line-height: 0; }
+.start-brand .wordmark { height: 54px; }
+/* English or Nederlands: a small pill top right. */
+.lang-pick { display: flex; flex: none; gap: 2px; padding: 3px; background: var(--dusk-deep); border-radius: 999px; }
+.lang-pick .textbtn { padding: 6px 12px; border-radius: 999px; font-size: 14px; font-weight: 800; color: var(--ink-soft); }
+.lang-pick .textbtn:hover { color: var(--ink); }
+.lang-pick .textbtn.selected { color: var(--ink); background: var(--dusk-high); }
+.intro { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 12px; margin: 12px 0 22px; font-size: 20px; line-height: 1.3; }
+.wip { padding: 3px 10px; font-size: 13px; font-weight: 800; line-height: 1.3; color: var(--lamp); background: var(--lamp-soft); border-radius: 999px; }
+.mobile-note { margin: -8px 0 18px; padding: 10px 14px; font-size: 14.5px; line-height: 1.4; color: var(--ink-soft); background: var(--dusk-raised); border-radius: var(--r-field); }
+/* Together picked: the PIN takes the touch screen note's place (it has been read by then). */
+#start-panel:has(#mp-pin-row:not(.hidden), #mp-login:not(.hidden)) .mobile-note { display: none; }
+
+/* Labels: sentence case, in the heavy weight. */
+.field, .label { display: block; margin: 0 0 8px; font-size: 15px; font-weight: 800; line-height: 1.3; color: var(--ink); }
+#who-box { margin: 0 0 20px; }
+#who-box .field { display: flex; justify-content: space-between; }
+#nick {
+  display: block; width: 100%; margin: 0 0 12px; padding: 11px 14px; font-size: 18px; font-weight: 500; color: var(--ink);
+  background: var(--dusk-raised); border: 1px solid var(--line-strong); border-radius: var(--r-field);
+}
+#nick::placeholder, .mp-row input::placeholder, #fb-comment::placeholder { color: var(--ink-faint); opacity: 1; }
+#overlay #nick:focus, #overlay .mp-row input:focus, #overlay .admin-row input:focus { outline: 2px solid var(--lamp); outline-offset: 1px; border-color: transparent; }
+#overlay input[aria-invalid="true"] { border-color: var(--bad); }
+#overlay input[aria-invalid="true"]:focus { outline-color: var(--bad); }
+
+/* Choices side by side (alone or together, the mode, the language, the keyboard, the team): tiles,
+   the chosen one lit. */
+.seg { display: flex; gap: 6px; margin: 0 0 20px; }
+.seg-btn {
+  flex: 1 1 0; min-width: 0; padding: 10px 14px; cursor: pointer; text-align: left; color: var(--ink);
+  background: var(--dusk-raised); border: 1px solid transparent; border-radius: var(--r-tile);
+  transition: background-color 0.15s, border-color 0.15s;
+}
+.seg-btn b { display: block; font-size: 16.5px; font-weight: 800; line-height: 1.25; }
+.seg-btn span { display: block; margin-top: 2px; font-size: 13.5px; line-height: 1.3; color: var(--ink-soft); }
+.seg-btn:hover { background: var(--dusk-high); }
+.seg-btn.selected { background: var(--lamp-soft); border-color: var(--lamp-line); }
+.seg-btn.selected b { color: var(--lamp); }
+.seg-btn:disabled { cursor: not-allowed; opacity: 0.45; background: var(--dusk-raised); }
+#mp-choice { margin: 0; }
+
+/* Together picked: the PIN, a line on where it comes from and the age tick, in a box under the
+   Alone / Together tiles. Gone when nothing in it shows. */
+.together { margin: 8px 0 0; padding: 12px 14px; background: var(--dusk-raised); border-radius: var(--r-tile); }
+.together:not(:has(> :not(.hidden))) { display: none !important; }
+/* A grid, so Join stays beside the PIN however narrow the box (a flex row wrapped it under). */
+#mp-together #mp-pin-row { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 6px 8px; margin: 0; }
+#mp-together #mp-pin, #mp-together #mp-join-btn { min-height: 42px; }
+#mp-together #mp-join-btn { padding: 0 22px; }
+.pin-hint { grid-column: 1 / -1; margin: 0; font-size: 13.5px; color: var(--ink-soft); }
+#mp-together .age-check { margin: 10px 0 0; }
+#mp-login { margin: 8px 0 0; }
+#mp-pin, #mp-pin2 { letter-spacing: 0.3em; }
+#mp-pin2 { flex: 0 1 120px; }
+/* The dots of a typed PIN spaced out; the word in the empty field written normally. */
+#mp-pin:placeholder-shown, #mp-pin2:placeholder-shown { letter-spacing: normal; }
+.mp-row { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; }
+.mp-row input, .admin-row input {
+  flex: 1 1 120px; min-width: 0; padding: 9px 12px; font-size: 16px; font-weight: 500; color: var(--ink);
+  background: rgba(6, 10, 14, 0.35); border: 1px solid var(--line-strong); border-radius: var(--r-field);
+}
+.mp-msg { margin: 6px 0 0; font-size: 14px; line-height: 1.4; color: var(--ink-soft); }
+.mp-msg:empty { display: none; }
+.mp-msg.bad, .admin-msg.bad { color: var(--bad); }
+#start-panel > .mp-msg { margin: -8px 0 16px; }
+/* Joined: who you play as, and the way back to playing alone. */
+.session {
+  display: flex; align-items: center; justify-content: space-between; gap: 12px; margin: 0 0 20px; padding: 10px 10px 10px 16px;
+  font-size: 16px; background: var(--lamp-soft); border-radius: var(--r-tile);
+}
+.session.hidden { display: none; }
+
+/* Small buttons (Join, Log in, Show, Save, Kick ...). */
+.mini {
+  padding: 8px 14px; cursor: pointer; font-size: 14.5px; font-weight: 800; color: var(--ink);
+  background: var(--dusk-high); border: 0; border-radius: var(--r-field); transition: background-color 0.15s;
+}
+.mini:hover { background: #354657; }
+.mini.go { color: var(--dusk); background: var(--lamp); }
+.mini.go:hover { background: var(--lamp-bright); }
+.mini.danger:hover { color: var(--bad); }
+
+/* Tick boxes: a rounded square, lamplight with a tick when on. */
+.check { display: flex; align-items: center; gap: 10px; margin: 8px 0; font-size: 15.5px; line-height: 1.35; cursor: pointer; }
+.check input {
+  -webkit-appearance: none; appearance: none; flex: none; width: 20px; height: 20px; margin: 0; cursor: pointer;
+  border: 2px solid var(--ink-faint); border-radius: 6px; background: transparent center / 14px no-repeat;
+  transition: background-color 0.15s, border-color 0.15s, background-position 0.15s;
+}
+.check input:checked {
+  background-color: var(--lamp); border-color: var(--lamp);
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'%3E%3Cpath d='M3.2 8.4l3 3L12.8 4.8' fill='none' stroke='%2316202a' stroke-width='2.4' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E");
+}
+/* Settings that switch at once (the settings and the admin's house rules): a row each, the label on
+   the left, a switch on the right. Agreeing to something (the age) stays a tick box. */
+.settings .check, #set-admin .check { justify-content: space-between; gap: 12px; margin: 0; padding: 11px 0; border-bottom: 1px solid var(--line); }
+.settings .check > span, #set-admin .check > span { flex: 1; }
+.settings .check kbd, #set-admin .check kbd { order: 1; }
+.settings .check input, #set-admin .check input {
+  order: 2; width: 42px; height: 24px; border: 0; border-radius: 999px; background-color: var(--dusk-high);
+  background-image: radial-gradient(circle, var(--ink) 0 8px, transparent 8.5px); background-size: 24px 24px; background-position: 0 0;
+}
+.settings .check input:checked, #set-admin .check input:checked {
+  background-color: var(--lamp); background-image: radial-gradient(circle, var(--dusk) 0 8px, transparent 8.5px); background-position: 18px 0;
+}
+
+/* Sliders: a track filled in lamplight up to the knob (--fill, set by src/ui/menu.ts). */
+input[type=range] { -webkit-appearance: none; appearance: none; display: block; width: 100%; height: 26px; margin: 0; background: transparent; cursor: pointer; }
+input[type=range]::-webkit-slider-runnable-track { height: 6px; border-radius: 999px; background: linear-gradient(90deg, var(--lamp) var(--fill, 0%), var(--dusk-high) var(--fill, 0%)); }
+input[type=range]::-moz-range-track { height: 6px; border-radius: 999px; background: var(--dusk-high); }
+input[type=range]::-moz-range-progress { height: 6px; border-radius: 999px; background: var(--lamp); }
+input[type=range]::-webkit-slider-thumb { -webkit-appearance: none; width: 20px; height: 20px; margin-top: -7px; border: 0; border-radius: 50%; background: var(--ink); box-shadow: 0 1px 4px rgba(0, 0, 0, 0.45); }
+input[type=range]::-moz-range-thumb { width: 20px; height: 20px; border: 0; border-radius: 50%; background: var(--ink); box-shadow: 0 1px 4px rgba(0, 0, 0, 0.45); }
+#overlay input[type=range]:focus-visible { outline: none; }
+input[type=range]:focus-visible::-webkit-slider-thumb { box-shadow: 0 0 0 3px var(--dusk), 0 0 0 5px var(--lamp); }
+input[type=range]:focus-visible::-moz-range-thumb { box-shadow: 0 0 0 3px var(--dusk), 0 0 0 5px var(--lamp); }
+.setting { margin: 0 0 16px; }
+.setting .field { display: flex; justify-content: space-between; gap: 12px; margin-bottom: 4px; font-size: 15.5px; font-weight: 500; }
+.walk-value, .set-value { font-weight: 800; color: var(--lamp); }
+
+/* "Play with" and "Start at" on one line. */
+.label-row { display: flex; align-items: center; justify-content: space-between; gap: 6px 12px; margin: 0 0 8px; }
+.label-row .label { margin: 0; }
+.spawn-pick { display: inline-flex; align-items: center; gap: 8px; font-size: 14.5px; color: var(--ink-soft); }
+.spawn-pick select {
+  -webkit-appearance: none; appearance: none; padding: 6px 32px 6px 12px; cursor: pointer; font-size: 15px; font-weight: 800; color: var(--ink);
+  background: var(--dusk-raised) url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 12 8'%3E%3Cpath d='M1.5 1.5 6 6l4.5-4.5' fill='none' stroke='%23bcc5ce' stroke-width='1.8' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E") right 11px center / 11px no-repeat;
+  border: 1px solid var(--line-strong); border-radius: var(--r-field);
+}
+.spawn-pick select option { color: var(--ink); background: var(--dusk); }
+/* Where Zombies is played (the Play tab alone, the admin's games together). */
+.zombies-where { display: flex; justify-content: space-between; margin: 0 0 8px; }
+
+/* The start buttons. The one to press: the first way to play (keyboard and mouse; touch on a phone or
+   tablet), or the controller once one is connected. The others are quieter. */
+.start-choices { display: grid; grid-template-columns: repeat(auto-fit, minmax(170px, 1fr)); gap: 10px; margin: 0 0 18px; }
+.choice {
+  position: relative; display: block; min-width: 0; padding: 14px 46px 14px 16px; cursor: pointer; text-align: left; color: var(--ink);
+  background: var(--dusk-raised); border: 1px solid var(--line-strong); border-radius: var(--r-tile);
+  transition: background-color 0.15s, border-color 0.15s;
+}
+.choice b { display: block; font-size: 18px; font-weight: 800; line-height: 1.25; }
+.choice > span { display: block; margin-top: 3px; font-size: 13.5px; line-height: 1.3; color: var(--ink-soft); }
+.choice:hover { background: var(--dusk-high); }
+/* A play mark at the end of each. */
+.start-choices .choice::after {
+  content: ''; position: absolute; right: 18px; top: 50%; width: 11px; height: 13px; margin-top: -6.5px;
+  background: currentColor; clip-path: polygon(0 0, 100% 50%, 0 100%);
+}
+.start-choices > .choice:is(#choose-kbm, #choose-touch):not(:disabled), .start-choices > #choose-pad.selected:not(:disabled) { color: var(--dusk); background: var(--lamp); border-color: var(--lamp); }
+.start-choices > .choice:is(#choose-kbm, #choose-touch):not(:disabled) > span, .start-choices > #choose-pad.selected:not(:disabled) > span { color: rgba(22, 32, 42, 0.8); }
+.start-choices > .choice:is(#choose-kbm, #choose-touch):not(:disabled):hover, .start-choices > #choose-pad.selected:not(:disabled):hover { background: var(--lamp-bright); }
+.start-choices:has(> #choose-pad.selected) > .choice:is(#choose-kbm, #choose-touch):not(#choose-pad):not(.loading) { color: var(--ink); background: var(--dusk-raised); border-color: var(--line-strong); }
+.start-choices:has(> #choose-pad.selected) > .choice:is(#choose-kbm, #choose-touch):not(#choose-pad):not(.loading):hover { background: var(--dusk-high); }
+.start-choices:has(> #choose-pad.selected) > .choice:is(#choose-kbm, #choose-touch):not(#choose-pad):not(.loading) > span { color: var(--ink-soft); }
+/* The first start (src/ui/menu.ts): the chosen button lights up from the left as the world loads,
+   with the percentage in place of its mark and what is loading on its second line (only the
+   percentage where the second lines are hidden); the other start buttons wait. */
+#start-panel .start-choices .choice.play.loading { display: grid; isolation: isolate; overflow: hidden; cursor: progress; color: var(--dusk); background: #c38d2c; border-color: #c38d2c; }
+#start-panel .start-choices .choice.play.loading > span { color: rgba(22, 32, 42, 0.85); }
+.start-choices .choice.play.loading::before {
+  content: ''; position: absolute; inset: 0; z-index: -1; background: var(--lamp-bright);
+  transform-origin: left; transform: scaleX(var(--load, 0)); transition: transform 0.25s ease;
+}
+.start-choices .choice.play.loading::after { content: attr(data-pct); right: 14px; width: auto; height: auto; margin: 0; transform: translateY(-50%); clip-path: none; background: none; font-size: 13px; font-weight: 800; }
+/* What is loading goes over the button's own second line, which stays (unseen) so the button keeps its height. */
+.start-choices .choice.loading > span { grid-area: 2 / 1; }
+.start-choices .choice.loading > span:not(.load-line) { visibility: hidden; }
+.start-choices .choice .load-line { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+#start-panel .start-choices .choice.play:disabled { opacity: 0.45; pointer-events: none; color: var(--ink); background: var(--dusk-raised); border-color: var(--line-strong); }
+#start-panel .start-choices .choice.play:disabled > span { color: var(--ink-soft); }
+.start-choices .choice.play.failed::before, .start-choices .choice.play.failed::after { content: none; }
+.start-choices .choice.failed .load-line { display: block; white-space: normal; }
+@media (prefers-reduced-motion: reduce) { .start-choices .choice.play.loading::before { transition: none; } }
+
+/* The sign-up page (brieltje.be/interested): quieter than the start buttons above it. */
+.invite {
+  display: flex; align-items: center; justify-content: space-between; gap: 6px 16px; margin: 0 0 16px; padding: 12px 16px;
+  color: var(--ink); text-decoration: none; border: 1px solid var(--line-strong); border-radius: var(--r-tile); transition: background-color 0.15s;
+}
+.invite:hover { background: var(--dusk-raised); }
+.invite-text { min-width: 0; font-size: 15px; line-height: 1.35; }
+.invite-text b { font-weight: 800; }
+.invite-house { display: block; font-size: 14px; color: var(--ink-soft); }
+.invite-go { flex: none; font-weight: 800; color: var(--lamp); }
+
+/* The bottom row: the graphics, the admin's login, who made it, the source, the credits. */
+.start-foot { display: flex; align-items: center; gap: 6px 18px; flex-wrap: wrap; font-size: 14px; color: var(--ink-soft); }
+.textbtn { padding: 0; cursor: pointer; font-size: 14px; font-weight: 500; color: var(--ink-soft); background: none; border: none; }
+.textbtn:hover { color: var(--ink); }
+.start-foot .gfx { display: inline; width: auto; margin: 0; padding: 0; border: none; background: none; }
+.start-foot .gfx .gfx-value { margin-left: 4px; font-weight: 800; color: var(--ink); }
+.start-foot .gfx .gfx-detail { display: none; }
+.made { display: inline-flex; align-items: center; flex-wrap: wrap; gap: 4px 14px; margin: 0 0 0 auto; font-size: 13.5px; color: var(--ink-faint); }
+.made a.gh, .made a.credits-link { margin: 0; color: var(--ink-soft); text-decoration: none; }
+.made a.gh:hover, .made a.credits-link:hover { color: var(--ink); }
+
+/* While the start screen is up: no game HUD behind it, the slideshow of the village (public/slides/)
+   in front of the game's canvas and behind the menu. On a wide screen its buttons sit bottom right,
+   beside the Sound button; on a narrower one the pictures change by themselves without buttons. */
+body.on-start #hud { display: none; }
+#start-still { display: none; z-index: auto; }
+body.on-start #start-still { display: block; }
+#slides-controls { position: fixed; z-index: 20; right: 136px; bottom: 23px; }
+#slides-controls .slides-bar { font-family: var(--font); font-weight: 800; background: rgba(16, 24, 32, 0.82); border-color: var(--line-strong); }
+#slides-controls .slides-dot[aria-current="true"]::after { background: var(--lamp); }
+body:not(.on-start) #slides-controls { display: none; }
+@media (max-width: 1099px), (max-height: 520px) { #slides-controls { display: none; } }
+/* Not quite so wide: without the caption, so the bar stays clear of the menu. */
+@media (max-width: 1219px) { #slides-controls .slides-caption { display: none; } }
+@media (min-width: 1100px) {
+  body.on-start #overlay {
+    justify-content: flex-start; padding-left: max(6vw, env(safe-area-inset-left, 0px));
+    background: linear-gradient(90deg, rgba(9, 14, 19, 0.6), rgba(9, 14, 19, 0.22) 48%, rgba(9, 14, 19, 0) 72%);
+  }
+}
+/* A big screen: a little larger all round. */
+@media (min-width: 1700px) and (min-height: 960px) {
+  #start-panel { max-width: 620px; padding: 32px 38px 24px; }
+  .start-brand .wordmark { height: 62px; }
+}
+
+/* A laptop's or tablet's screen (up to 900 px high): a little tighter, so the PIN box of Together fits
+   without scrolling too (the sign-up link's second line makes way for it). */
+@media (min-height: 521px) and (max-height: 900px) {
+  #start-panel { padding: 20px 28px 16px; }
+  .start-brand .wordmark { height: 48px; }
+  #start-panel .intro { margin: 8px 0 16px; font-size: 19px; }
+  #start-panel .mobile-note { margin: -4px 0 14px; padding: 8px 12px; }
+  #start-panel .field, #start-panel .label { margin-bottom: 6px; }
+  #start-panel #who-box { margin-bottom: 14px; }
+  #start-panel #nick { margin-bottom: 10px; padding: 9px 14px; }
+  #start-panel .seg { margin-bottom: 14px; }
+  #start-panel .seg-btn { padding: 8px 12px; }
+  #start-panel .start-choices { margin-bottom: 14px; }
+  #start-panel .choice { padding-top: 12px; padding-bottom: 12px; }
+  #start-panel .invite { margin-bottom: 12px; padding: 9px 14px; }
+  #start-panel .legal { margin-top: 8px; }
+  #start-panel:has(#mp-pin-row:not(.hidden), #mp-login:not(.hidden)) .invite-house { display: none; }
+}
+/* A phone held sideways: everything up to the start buttons fits without scrolling. */
+@media (max-height: 520px) {
+  #start-panel { padding: 14px 20px 12px; }
+  .start-brand .wordmark { height: 32px; }
+  .intro { display: none; }
+  .start-head { margin-bottom: 10px; }
+  .lang-pick .textbtn { padding: 4px 10px; font-size: 13px; }
+  .mobile-note { margin: 0 0 8px; padding: 6px 10px; font-size: 13px; }
+  #nick { padding: 7px 12px; font-size: 16px; }
+  .field, .label { margin-bottom: 4px; font-size: 13.5px; }
+  .seg { margin-bottom: 8px; }
+  .seg-btn { padding: 7px 12px; }
+  .seg-btn b { font-size: 15.5px; }
+  .seg-btn span, .start-choices .choice > span { display: none; }
+  .label-row { margin-bottom: 6px; }
+  .spawn-pick select { padding-top: 4px; padding-bottom: 4px; }
+  .start-choices { margin-bottom: 8px; }
+  .start-choices .choice { padding: 10px 40px 10px 14px; }
+  .start-choices .choice b { font-size: 16.5px; }
+  .invite { margin-bottom: 8px; padding: 7px 12px; }
+  .invite-text { font-size: 14px; }
+  .invite-house { display: none; }
+  .legal { margin-top: 6px; }
+  /* Your name beside Alone / Together, and the PIN beside the age tick: two rows fewer, so the start
+     buttons and the links under them fit (the name's label stays for screen readers; the field says Name). */
+  #who-box { display: grid; grid-template-columns: 1fr 1fr; align-items: center; gap: 0 10px; margin-bottom: 8px; }
+  #who-box .field { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
+  #who-box #nick, #who-box #mp-choice { margin: 0; }
+  /* The Together box across both columns: the PIN beside the age tick, without the line about the PIN. */
+  .together { grid-column: 1 / -1; display: grid; grid-template-columns: 1fr 1fr; align-items: center; gap: 0 12px; margin: 8px 0 0; padding: 8px 10px; }
+  #mp-login { grid-column: 1 / -1; }
+  #mp-together #mp-pin-row, #mp-together .age-check { margin: 0; }
+  #mp-together #mp-pin, #mp-together #mp-join-btn { min-height: 38px; }
+  .pin-hint { display: none; }
+  #start-panel > .mp-msg { margin: 0 0 8px; }
+  .session { margin-bottom: 8px; padding: 6px 6px 6px 12px; }
+}
+/* A small phone held sideways: tighter still, so the start buttons show without scrolling. */
+@media (max-height: 440px) {
+  #overlay { padding-top: max(8px, env(safe-area-inset-top, 0px)); padding-bottom: max(8px, env(safe-area-inset-bottom, 0px)); }
+  #start-panel { padding-top: 10px; padding-bottom: 10px; border-radius: 16px; }
+  .start-head { margin-bottom: 6px; }
+  .start-brand .wordmark { height: 28px; }
+  .mobile-note { margin-bottom: 6px; padding: 4px 8px; font-size: 12.5px; line-height: 1.35; }
+  .field, .label { margin-bottom: 3px; }
+  .seg { margin-bottom: 6px; }
+  #who-box { margin-bottom: 6px; }
+  .start-choices, .invite { margin-bottom: 6px; }
+  .invite { padding-top: 6px; padding-bottom: 6px; }
+}
+/* A phone's browser with its bars showing (Safari held sideways): the note and the word "Game mode" go,
+   and the sign-up link while you type the PIN, so the start buttons stay in view. */
+@media (max-height: 360px) {
+  .mobile-note, #start-panel > .label { display: none; }
+  #start-panel:has(#mp-pin-row:not(.hidden), #mp-login:not(.hidden)) .invite { display: none; }
+}
+/* A phone held upright: a narrower panel, so the three modes and "Start at" fit across it. */
+@media (max-width: 520px) and (orientation: portrait) {
+  #start-panel { padding: 20px 18px 16px; }
+  .start-head { flex-wrap: wrap-reverse; }
+  .start-brand .wordmark { height: 44px; }
+  .intro { font-size: 18px; margin-bottom: 18px; }
+  .seg-btn { padding: 9px 10px; }
+  .seg-btn span { font-size: 13px; }
+  .label-row { flex-wrap: wrap; }
+  .spawn-pick { white-space: nowrap; }
+  .start-choices { grid-template-columns: 1fr; }
+  .made { margin-left: 0; }
+}
+
+/* ---- Shared bits of the menu pages ---- */
+.tools { display: grid; gap: 8px; }
+.tool {
+  display: block; width: 100%; padding: 12px 16px; cursor: pointer; text-align: left; color: var(--ink);
+  background: var(--dusk-raised); border: 1px solid transparent; border-radius: var(--r-tile); transition: background-color 0.15s;
+}
+.tool:hover { background: var(--dusk-high); }
+.tool b { display: block; font-size: 16px; font-weight: 800; line-height: 1.3; }
+.tool span { display: block; margin-top: 2px; font-size: 13.5px; line-height: 1.35; color: var(--ink-soft); }
+.tool b span { display: inline; margin: 0; font-size: inherit; color: inherit; }
+/* A tool the admin hasn't allowed (the furniture planner): visible, but greyed out. */
+button.tool:disabled { opacity: 0.45; cursor: not-allowed; }
+.page .gfx.tool { margin: 0 0 6px; }
+.page .gfx.tool .gfx-label { display: inline; margin: 0; font-size: inherit; color: inherit; } /* the word "Graphics", not a line under it */
+.page .gfx.tool .gfx-value { margin-left: 6px; color: var(--lamp); }
+.page .gfx.tool .gfx-detail { display: block; margin-top: 2px; }
+.note { margin: 0 0 12px; font-size: 15px; line-height: 1.5; color: var(--ink-soft); }
+.panel table { border-collapse: collapse; width: 100%; font-size: 15px; }
+.panel th { text-align: left; font-weight: 800; color: var(--ink-soft); padding: 6px 12px 6px 0; }
+.panel td { padding: 6px 12px 6px 0; border-top: 1px solid var(--line); }
+
+/* ---- The in-game menu (src/ui/menu.ts): a header (the wordmark, who you are, full screen, the sound
+   and Resume), a rail of tabs on the left with the chosen page beside it, and a row of links under
+   the page. Big enough for a useful map: about 1100 x 700 at 1280 x 800, and most of a 1920 x 1080
+   screen. */
+#pause-panel {
+  display: flex; flex-direction: column; padding: 0; max-width: none; max-height: none;
+  width: min(1680px, calc(100% - 148px)); height: min(1000px, calc(100% - 68px));
+  overflow: clip; /* not a scroll box either: the footer links' larger tap areas (below) must not let it shift */
+}
+@media (max-width: 1100px) { #pause-panel { width: 100%; } }
+#pause-panel .rail .tab:focus-visible, #pause-panel .seg-btn:focus-visible, #pause-panel .tool:focus-visible { outline-offset: -2px; }
+.pause-top {
+  display: flex; align-items: center; justify-content: space-between; gap: 8px 20px; flex-wrap: wrap;
+  padding: 14px 16px 14px 24px; border-bottom: 1px solid var(--line);
+}
+.pause-title { min-width: 0; }
+#pause-panel h1 { display: flex; align-items: center; gap: 14px; margin: 0; font-size: 17px; font-weight: 800; line-height: 1.2; }
+#pause-panel h1 .wordmark { flex: none; height: 30px; }
+.pause-label { padding-left: 14px; border-left: 1px solid var(--line-strong); color: var(--ink-soft); }
+.pause-top .sub { margin: 6px 0 0; font-size: 14px; color: var(--ink-soft); }
+.pause-actions { display: flex; align-items: center; gap: 8px; margin-left: auto; }
+.icon-btn {
+  display: inline-flex; align-items: center; justify-content: center; width: 44px; height: 44px; padding: 0; cursor: pointer;
+  color: var(--ink); background: var(--dusk-raised); border: 0; border-radius: var(--r-tile); transition: background-color 0.15s;
+}
+.icon-btn:hover { background: var(--dusk-high); }
+.icon-btn svg, .rail svg { width: 22px; height: 22px; flex: none; fill: none; stroke: currentColor; stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round; }
+/* The sound: a speaker with waves, or crossed out. */
+.icon-btn .ico-off, .icon-btn.off .ico-on { display: none; }
+.icon-btn.off .ico-off { display: block; }
+.icon-btn.off { color: var(--ink-faint); }
+.resume {
+  display: inline-flex; align-items: center; gap: 10px; height: 44px; padding: 0 10px 0 16px; cursor: pointer;
+  color: var(--dusk); background: var(--lamp); border: 0; border-radius: var(--r-tile); transition: background-color 0.15s;
+}
+.resume:hover { background: var(--lamp-bright); }
+.resume svg { width: 14px; height: 14px; flex: none; fill: currentColor; }
+.resume b { font-size: 17px; font-weight: 800; }
+.resume kbd { padding: 2px 8px; font-family: inherit; font-size: 12.5px; font-weight: 800; color: var(--ink); background: rgba(22, 32, 42, 0.85); border-radius: 6px; }
+#pause-panel kbd:empty { display: none; }
+.pause-body { flex: 1; min-height: 0; display: grid; grid-template-columns: auto minmax(0, 1fr); }
+.rail { display: flex; flex-direction: column; gap: 4px; width: 200px; padding: 14px 12px; overflow-y: auto; background: var(--dusk-deep); }
+.rail .tab {
+  display: flex; align-items: center; gap: 12px; width: 100%; min-height: 46px; padding: 8px 14px; cursor: pointer; text-align: left;
+  font-size: 16.5px; font-weight: 800; color: var(--ink-soft); background: none; border: 0; border-radius: var(--r-tile);
+  transition: background-color 0.15s, color 0.15s;
+}
+.rail .tab:hover { color: var(--ink); background: rgba(255, 255, 255, 0.04); }
+.rail .tab.selected { color: var(--ink); background: var(--dusk-raised); }
+.rail .tab.selected svg { color: var(--lamp); }
+.pages { display: flex; flex-direction: column; min-width: 0; min-height: 0; }
+.pages > .page { flex: 1; min-height: 0; overflow-y: auto; padding: 24px 32px 28px; scrollbar-width: thin; scrollbar-color: var(--dusk-high) transparent; }
+.pages > .map-page { display: flex; padding: 0; overflow: hidden; }
+#map-mount { position: relative; flex: 1; min-width: 0; }
+.page-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 8px 48px; align-items: start; max-width: 1240px; }
+.page-grid .col { min-width: 0; }
+.control-actions { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 220px), 1fr)); gap: 10px; max-width: 680px; margin-bottom: 22px; }
+.control-actions .tool { border-color: var(--line-strong); }
+.control-actions .tool:enabled:hover { border-color: var(--lamp); }
+.control-actions .tool:disabled { opacity: 1; color: var(--ink-soft); background: transparent; border-style: dashed; }
+.col h2 { margin: 30px 0 10px; font-size: 20px; font-weight: 800; line-height: 1.25; color: var(--ink); }
+.col h2:first-child { margin-top: 0; }
+.col .label { margin: 18px 0 8px; font-size: 14.5px; color: var(--ink-soft); }
+.col h2 + .label { margin-top: 4px; }
+.settings .setting, #set-admin .setting { margin: 0; padding: 10px 0 8px; border-bottom: 1px solid var(--line); }
+#set-admin .setting .mp-row { margin-top: 4px; }
+#set-reset { margin-top: 16px; }
+/* Play: the mode first, big. */
+.mode-big .seg-btn { padding: 14px 18px; }
+.mode-big .seg-btn b { font-size: 21px; }
+.mode-big .seg-btn span { font-size: 14px; }
+.lang-seg .seg-btn b, .kbd-seg .seg-btn b { font-size: 16px; }
+/* A key beside a menu item (the planner, the minimap ...), for keyboard players. */
+#pause-panel kbd[data-key] {
+  margin-left: 8px; padding: 1px 7px; font-family: inherit; font-size: 12px; font-weight: 800; line-height: 1.4; color: var(--ink-soft);
+  border: 1px solid var(--line-strong); border-bottom-width: 2px; border-radius: 6px; vertical-align: 1px;
+}
+/* Together: who is online, each with a dot in their colour. */
+.players { display: grid; margin: 0 0 10px; padding: 0; list-style: none; }
+.players li { display: flex; align-items: center; gap: 10px; padding: 8px 0; font-size: 16px; font-weight: 800; border-bottom: 1px solid var(--line); overflow-wrap: anywhere; }
+.players i { flex: none; width: 12px; height: 12px; border-radius: 50%; box-shadow: 0 0 0 2px rgba(0, 0, 0, 0.25); }
+#mp-join-here { margin: 8px 0 10px; max-width: 460px; }
+#mp-join-here .mp-row { margin-bottom: 4px; }
+#team-pick { margin-top: 18px; }
+#mp-leave { margin-top: 10px; }
+#leaderboard table { margin-top: 10px; font-size: 14px; }
+#leaderboard td:not(:first-child), #leaderboard th:not(:first-child) { text-align: right; }
+.lb-note { margin: 8px 0 0; font-size: 13px; color: var(--ink-faint); }
+/* Settings: the test under Advanced, folded away. */
+.advanced { margin: 12px 0 6px; }
+.advanced summary { cursor: pointer; width: fit-content; padding: 6px 0; font-size: 15px; font-weight: 800; color: var(--ink-soft); }
+.advanced summary:hover { color: var(--ink); }
+.advanced .check { border-bottom: 0; }
+/* Controls: a list per group, two columns where there is room. */
+#controls { columns: 2 340px; column-gap: 48px; max-width: 1180px; }
+.ctl-group { break-inside: avoid; margin: 0 0 26px; }
+.ctl-group h3 { margin: 0 0 6px; font-size: 18px; font-weight: 800; color: var(--ink); }
+.ctl-group table { font-size: 15px; table-layout: fixed; }
+.ctl-group td { padding: 7px 12px 7px 0; vertical-align: top; color: var(--ink-soft); }
+.ctl-group td:first-child { width: 48%; }
+.ctl-group td:last-child { padding-right: 0; font-weight: 800; color: var(--ink); }
+/* The admin's tab. */
+#admin .admin-block:first-child { margin-top: 0; }
+.admin-block { margin: 8px 0; }
+.admin-row { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; padding: 6px 0; border-bottom: 1px solid var(--line); }
+.admin-row span { flex: 1 1 auto; font-weight: 800; }
+.admin-log { max-height: 200px; overflow: auto; margin-top: 10px; padding: 8px 10px; font: 12px/1.5 Consolas, monospace; color: var(--ink-soft); background: var(--dusk-deep); border-radius: var(--r-field); }
+.admin-msg { font-size: 14px; }
+/* The links under the page. */
+.pause-foot {
+  flex: none; display: flex; flex-wrap: wrap; align-items: center; gap: 4px 20px; padding: 10px 32px;
+  font-size: 13.5px; color: var(--ink-faint); border-top: 1px solid var(--line);
+}
+.pause-foot .legal-links { margin: 0; }
+.pause-foot a.gh { margin: 0; color: var(--ink-soft); }
+.pause-foot .meetup { margin-left: auto; font-weight: 800; color: var(--lamp); text-decoration: none; }
+.pause-foot .meetup:hover { text-decoration: underline; text-underline-offset: 3px; }
+/* "Made by" only where the HUD's credit line is hidden (touch controls). */
+#pause-panel .made-by { display: none; }
+body.touch #pause-panel .made-by { display: inline; }
+/* Narrow (a window or phone held upright, with a keyboard or controller): the rail shows icons only. */
+@media (max-width: 640px) {
+  .rail { width: 62px; padding: 10px 8px; }
+  .rail .tab { justify-content: center; padding: 0; }
+  .rail .tab .lbl { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
+  .pages > .page { padding: 18px 16px 20px; }
+  .page-grid { grid-template-columns: minmax(0, 1fr); }
+  #controls { columns: 1; }
+  .pause-top { padding: 10px 10px 10px 16px; }
+  .pause-label { display: none; }
+  .pause-foot { padding: 8px 16px; }
+  .pause-foot .meetup { margin-left: 0; }
+}
+/* A short screen (a phone held sideways): the menu fills it, the rail shows icons only (their names
+   stay for screen readers), the header is one row and the page gets the rest of the height. */
+@media (max-height: 520px) {
+  #overlay:has(> #pause-panel:not(.hidden)) {
+    padding: max(6px, env(safe-area-inset-top, 0px)) max(8px, env(safe-area-inset-right, 0px)) max(6px, env(safe-area-inset-bottom, 0px)) max(8px, env(safe-area-inset-left, 0px));
+  }
+  #pause-panel { width: 100%; height: 100%; border-radius: 16px; }
+  .pause-top { flex-wrap: nowrap; padding: 5px 8px 5px 14px; }
+  .pause-title { display: flex; align-items: center; gap: 12px; }
+  #pause-panel h1 .wordmark { height: 22px; }
+  .pause-label { display: none; }
+  .pause-top .sub { margin: 0; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; font-size: 13px; }
+  .pause-actions { gap: 6px; }
+  .icon-btn, .resume { height: 40px; }
+  .icon-btn { width: 42px; }
+  .resume b { font-size: 15.5px; }
+  .rail { width: 60px; padding: 6px; gap: 4px; }
+  .rail .tab { justify-content: center; min-height: 44px; padding: 0; }
+  .rail .tab .lbl { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
+  .pages > .page { padding: 12px 16px 16px; }
+  .page-grid { gap: 0 24px; }
+  .col h2 { margin-top: 18px; font-size: 18px; }
+  .mode-big .seg-btn { padding: 10px 14px; }
+  .mode-big .seg-btn b { font-size: 18px; }
+  #controls { columns: 1; }
+  .pause-foot { padding: 4px 16px; font-size: 12.5px; }
+  .pause-body:has(#page-map:not(.hidden)) .pause-foot { display: none; }
+}
+
+/* ---- Links and buttons outside the panels ---- */
+/* The link to the source on GitHub, beside "Made by" (start screen, menu, bottom right while playing). It opens a new
+   tab without access to this one (rel="noopener noreferrer": no reverse tabnabbing). */
+a.gh { display: inline-flex; align-items: center; gap: 5px; margin-left: 10px; color: inherit; text-decoration: none; pointer-events: auto; }
+a.gh svg { flex: none; }
+a.gh:hover { color: var(--ink); }
+/* The terms, privacy policy and credits (web/public/legal/): a line under the start screen, links in the menu. */
+.legal { margin: 12px 0 0; font-size: 13px; line-height: 1.45; color: var(--ink-faint); }
+.legal a, .legal-links a { color: inherit; text-decoration: underline; text-decoration-color: rgba(149, 161, 173, 0.5); text-underline-offset: 2px; }
+.legal a:hover, .legal-links a:hover { color: var(--ink); }
+.start-legal { display: none; }
+/* A short screen (a phone held sideways): the links go into the start screen's bottom row instead of a line of their own. */
+@media (max-height: 430px) {
+  .legal { display: none; }
+  .start-legal { display: inline; }
+  .start-foot .made-by { display: none; }
+}
+/* The start screen's Sound button (bottom right; top right on a touch screen). */
+#sound-btn, #full-btn {
+  padding: 8px 14px; font-size: 14px; font-weight: 800; letter-spacing: 0; color: var(--ink);
+  background: var(--dusk); border: 1px solid var(--line-strong); border-radius: var(--r-field);
+}
+#sound-btn:hover, #full-btn:hover { background: var(--dusk-raised); }
+#sound-btn:focus-visible, #full-btn:focus-visible { outline: 2px solid var(--lamp); outline-offset: 2px; }
+#full-hint { border-left: 0; border-radius: var(--r-tile); background: var(--dusk); }
+
+/* The Sound button only on the start screen; in the in-game menu its header has the sound and full
+   screen, and while playing Shift+M (Yoshi). The iPhone's full-screen advice opens under the header. */
+#sound-btn { display: none; }
+body:has(#overlay:not(.hidden)) #sound-btn { display: block; }
+body:has(#overlay:not(.hidden) > #pause-panel:not(.hidden)) :is(#sound-btn, #full-btn) { display: none; }
+body:has(#overlay:not(.hidden) > #pause-panel:not(.hidden)) #full-hint {
+  top: calc(64px + env(safe-area-inset-top, 0px)); right: calc(16px + env(safe-area-inset-right, 0px)); left: auto;
+}
+/* Playing on a touch screen: without the Sound button, Full screen moves up next to ☰. */
+body.touch:not(:has(#overlay:not(.hidden))) #full-btn { left: calc(62px + env(safe-area-inset-left, 0px)); }
+body.touch:not(:has(#overlay:not(.hidden))) #full-hint { left: calc(114px + env(safe-area-inset-left, 0px)); }
+/* The Dutch words on the small round buttons (Herlaad, Granaat, Gebruik while planning) are longer: a size smaller. */
+html:lang(nl) #touch .t-reload, html:lang(nl) #touch .t-nade { font-size: 9px; letter-spacing: 0; }
+
+/* Touch screens: buttons, fields and tick boxes about a fingertip high (40 to 44 px). The small text
+   links keep their look but get an invisible margin to tap (::after), clear of their neighbours. */
+@media (pointer: coarse) {
+  #start-panel .seg-btn, #start-panel .mp-row input, #start-panel .mini, #start-panel #nick, .spawn-pick select { min-height: 40px; }
+  .start-choices .choice.play { min-height: 44px; }
+  .lang-pick .textbtn { min-height: 36px; }
+  #pause-panel .seg-btn, #pause-panel .mini, #pause-panel .mp-row input, #pause-panel .tool { min-height: 44px; }
+  #overlay .check { min-height: 40px; }
+  #overlay .check input { width: 22px; height: 22px; }
+  #overlay .settings .check input, #overlay #set-admin .check input { width: 44px; height: 26px; background-size: 26px 26px; }
+  #overlay .settings .check input:checked, #overlay #set-admin .check input:checked { background-position: 18px 0; }
+  input[type=range] { height: 34px; }
+  input[type=range]::-webkit-slider-thumb { width: 24px; height: 24px; margin-top: -9px; }
+  input[type=range]::-moz-range-thumb { width: 24px; height: 24px; }
+  .advanced summary { padding: 12px 0; }
+  .start-foot .textbtn, .start-foot a, .legal a, .pause-foot a, .invite-go { position: relative; }
+  /* (Less below than above: within the panel's own padding, so the tap areas never make it scroll.) */
+  .start-foot .textbtn::after, .start-foot a::after { content: ''; position: absolute; inset: -11px -4px -9px; }
+  .legal a::after, .pause-foot a::after { content: ''; position: absolute; inset: -8px -4px; }
+  /* The slideshow's buttons beside the start screen (a tablet held sideways), in the corner: the
+     Sound button is top right on a touch screen. */
+  #slides-controls { right: calc(16px + env(safe-area-inset-right, 0px)); }
+  #slides-controls .slides-btn { width: 44px; height: 44px; line-height: 44px; }
+  #slides-controls .slides-dot { width: 30px; height: 44px; }
+  #slides-controls .slides-dot::after { inset: 17px 10px; }
+  #slides-controls .slides-dot[aria-current="true"]::after { inset: 16px 9px; }
+}
+
+/* The map in the menu (src/ui/bigmap.ts): its buttons and the card of a place in the brand's shapes. */
+#bigmap button { border-radius: var(--r-field); background: rgba(22, 32, 42, 0.9); border-color: var(--line-strong); }
+#bigmap button:hover { background: var(--dusk-raised); border-color: var(--line-strong); }
+#bigmap .bm-legend, #bigmap .bm-help { border-radius: 999px; }
+#bigmap .bm-card { border-left: 0; border-radius: 16px; background: rgba(22, 32, 42, 0.95); text-shadow: none; box-shadow: 0 12px 30px rgba(0, 0, 0, 0.35); }
+#bigmap .bm-card b { font-weight: 800; }
+#bigmap .bm-row button.main { background: var(--lamp); color: var(--dusk); border-color: var(--lamp); }
+#bigmap .bm-row button.main:hover { background: var(--lamp-bright); }
+
+/* An icon button with its word beside it (Feedback, in the menu's header); on short screens the icon alone. */
+.icon-btn.labelled { width: auto; gap: 8px; padding: 0 15px 0 12px; font-size: 15.5px; font-weight: 800; }
+@media (max-width: 640px), (max-height: 520px) {
+  .icon-btn.labelled { width: 42px; padding: 0; }
+  .icon-btn.labelled span { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
+}
+
+/* The private home's code card (src/ui/homeCode.ts). */
+#home-code {
+  position: fixed; z-index: 40; left: 50%; top: 50%; transform: translate(-50%, -50%);
+  width: min(360px, calc(100vw - 32px)); padding: 26px 24px 20px; color: var(--ink); text-align: center;
+  background: var(--dusk); border-radius: var(--r-panel); box-shadow: 0 24px 60px rgba(0, 0, 0, 0.5), inset 0 1px 0 rgba(255, 255, 255, 0.05);
+}
+#home-code.hidden { display: none; }
+#home-code h2 { margin: 0 0 6px; font-size: 24px; font-weight: 800; line-height: 1.2; }
+#home-code .hc-sub { margin: 0 0 14px; font-size: 15px; line-height: 1.4; color: var(--ink-soft); }
+#home-code input {
+  box-sizing: border-box; width: 100%; padding: 10px 12px; text-align: center; font: 700 22px/1.2 var(--font); letter-spacing: 0.12em; text-transform: uppercase;
+  color: var(--ink); background: var(--dusk-raised); border: 1px solid transparent; border-radius: 10px;
+}
+#home-code input:focus { outline: 2px solid var(--lamp); outline-offset: 1px; }
+#home-code .hc-status { min-height: 1.3em; margin: 8px 0 6px; font-size: 14.5px; color: var(--ink-soft); }
+#home-code .hc-actions { display: flex; gap: 10px; justify-content: center; }
+#home-code .hc-actions button { padding: 10px 18px; border: 0; border-radius: 10px; font: 700 15px/1 var(--font); color: var(--ink); background: var(--dusk-raised); cursor: pointer; }
+#home-code .hc-actions button:hover:not(:disabled) { background: var(--dusk-high); }
+#home-code .hc-actions .hc-go { color: var(--dusk); background: var(--lamp); }
+#home-code .hc-actions button:disabled { opacity: 0.6; cursor: default; }
+/* The keypad for a controller: the code's 32 characters in 8 columns, then Delete and Enter. */
+#home-code .hc-pad { display: grid; grid-template-columns: repeat(8, 1fr); gap: 5px; margin: 12px 0 4px; }
+#home-code .hc-pad.hidden, #home-code .hc-hint.hidden { display: none; }
+#home-code .hc-key { padding: 7px 0; border: 0; border-radius: 8px; font: 700 16px/1 var(--font); color: var(--ink); background: var(--dusk-raised); cursor: pointer; }
+#home-code .hc-wide { grid-column: span 4; }
+#home-code .hc-key.hc-go { color: var(--dusk); background: var(--lamp); }
+#home-code .hc-key.hc-on { outline: 3px solid var(--lamp); outline-offset: 1px; background: var(--dusk-high); }
+#home-code .hc-key.hc-go.hc-on { background: var(--lamp); outline-color: var(--ink); }
+#home-code .hc-hint { margin: 6px 0 0; font-size: 13px; color: var(--ink-soft); }
+
+/* The feedback card (src/ui/feedback.ts): after two minutes of play, or from the menu's Feedback
+   button. Over the live 3D view, so solid and without blur. */
+#feedback {
+  position: fixed; z-index: 40; left: 50%; top: 50%; transform: translate(-50%, -50%);
+  width: min(400px, calc(100vw - 32px)); max-height: calc(100vh - 32px); overflow-y: auto;
+  padding: 28px 26px 18px; color: var(--ink); text-align: center;
+  background: var(--dusk); border-radius: var(--r-panel); box-shadow: 0 24px 60px rgba(0, 0, 0, 0.5), inset 0 1px 0 rgba(255, 255, 255, 0.05);
+}
+#feedback.hidden { display: none; }
+#feedback h2 { margin: 0 0 6px; padding: 0 28px; font-size: 26px; font-weight: 800; line-height: 1.2; }
+#feedback .fb-sub { margin: 0 0 16px; font-size: 15.5px; line-height: 1.4; color: var(--ink-soft); }
+#fb-close {
+  position: absolute; top: 10px; right: 10px; width: 36px; height: 36px; padding: 0; border: 0; border-radius: 50%;
+  background: transparent; color: var(--ink-soft); font: 400 26px/1 var(--font); cursor: pointer;
+}
+#fb-close:hover { color: var(--ink); background: var(--dusk-raised); }
+#feedback :focus-visible { outline: 2px solid var(--lamp); outline-offset: 2px; }
+/* Five stars, lit in lamplight up to the one picked. */
+#feedback .fb-stars { display: flex; justify-content: center; gap: 4px; margin: 0 0 16px; }
+#feedback .fb-star {
+  width: 48px; height: 48px; padding: 4px; border: 0; border-radius: var(--r-field); background: transparent; cursor: pointer;
+  color: #637384; transition: color 0.12s, transform 0.12s; /* an empty star: 3:1 on the card */
+}
+#feedback .fb-star svg { display: block; width: 100%; height: 100%; fill: currentColor; }
+#feedback .fb-star.on { color: var(--lamp); }
+#feedback .fb-star:hover { transform: scale(1.08); }
+@media (prefers-reduced-motion: reduce) { #feedback .fb-star { transition: none; } #feedback .fb-star:hover { transform: none; } }
+#fb-comment {
+  display: block; width: 100%; min-height: 72px; padding: 10px 12px; resize: vertical;
+  font-size: 16px; font-weight: 500; line-height: 1.4; color: var(--ink);
+  background: var(--dusk-raised); border: 1px solid var(--line-strong); border-radius: var(--r-field);
+}
+#feedback #fb-comment:focus { outline: 2px solid var(--lamp); outline-offset: 1px; border-color: transparent; }
+#feedback .fb-status { min-height: 1.3em; margin: 8px 0 6px; font-size: 14.5px; color: var(--ink-soft); }
+#feedback.sent .fb-status { margin: 4px 0 8px; font-size: 20px; font-weight: 800; color: var(--lamp); }
+#feedback.sent .fb-stars, #feedback.sent #fb-comment, #feedback.sent .fb-actions, #feedback.sent .fb-sub { display: none; }
+/* Send is the one to press; No thanks stays quiet beside it. */
+#feedback .fb-actions { display: flex; gap: 10px; justify-content: center; }
+#feedback .fb-actions button {
+  flex: 1; max-width: 160px; min-height: 44px; padding: 10px 14px; font-size: 16px; font-weight: 800; color: var(--ink); cursor: pointer;
+  background: var(--dusk-raised); border: 0; border-radius: var(--r-tile); transition: background-color 0.15s;
+}
+#feedback .fb-actions button:hover:not(:disabled) { background: var(--dusk-high); }
+#feedback #fb-send { color: var(--dusk); background: var(--lamp); }
+#feedback #fb-send:hover:not(:disabled) { background: var(--lamp-bright); }
+#feedback #fb-send:disabled { cursor: not-allowed; color: var(--ink-faint); background: var(--dusk-raised); }
+#feedback .fb-note { margin: 14px 0 0; font-size: 13px; }
+#feedback .fb-note a { color: var(--ink-faint); text-underline-offset: 2px; }
+#feedback .fb-note a:hover { color: var(--ink); }
+@media (max-height: 460px) {
+  #feedback { padding: 16px 20px 10px; }
+  #feedback h2 { font-size: 21px; }
+  #feedback .fb-sub { margin-bottom: 8px; font-size: 14.5px; }
+  #feedback .fb-stars { margin-bottom: 8px; }
+  #feedback .fb-star { width: 42px; height: 42px; }
+  #fb-comment { min-height: 48px; }
+  #feedback .fb-note { margin-top: 8px; }
+}
+
+/* Together the walking speed is the real pace: the slider is off, with a line saying why. */
+.speed-locked { margin: 6px 0 0; font-size: 13px; color: var(--muted, rgba(245, 239, 228, 0.7)); }
+input.speed:disabled { opacity: 0.5; cursor: not-allowed; }
+
+/* The most important controls when you start playing (src/ui/controlsCard.ts): to the left, clear of
+   the crosshair; you can walk while it shows. */
+#controls-card {
+  position: fixed; z-index: 39; left: max(16px, env(safe-area-inset-left, 0px)); top: 50%; transform: translateY(-50%);
+  width: min(350px, calc(100vw - 32px)); max-height: calc(100vh - 32px); overflow-y: auto;
+  padding: 18px 20px 14px; color: var(--ink);
+  background: var(--dusk); border-radius: var(--r-panel); box-shadow: 0 18px 48px rgba(0, 0, 0, 0.45), inset 0 1px 0 rgba(255, 255, 255, 0.05);
+}
+#controls-card.hidden { display: none; }
+.placement-guide { position: fixed; left: 50%; bottom: 24%; transform: translateX(-50%); z-index: 36; max-width: calc(100vw - 32px); padding: 9px 14px; border-radius: 9px; background: #14201feb; color: #9beac0; pointer-events: none; text-align: center; }
+.placement-guide[data-valid=false] { color: #ffc0b6; background: #321e23eb; }
+.tactical-markers { position: fixed; inset: 0; z-index: 14; pointer-events: none; }
+.tactical-markers span { position: absolute; transform: translate(-50%, -50%); color: #d0f4ff; background: #12222dda; border-radius: 6px; padding: 4px 7px; font-size: 13px; max-width: 180px; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
+.team-ping { position: fixed; top: 210px; right: 24px; z-index: 35; padding: 10px 14px; min-height: 44px; border: 1px solid #7fbacb; border-radius: 9px; background: #182c39e8; color: #e7f8ff; font: inherit; cursor: pointer; }
+.team-ping:focus-visible { outline: 2px solid var(--lamp); outline-offset: 2px; }
+body:not(.touch) .team-ping { display: none; }
+.team-ping[hidden], .placement-guide[hidden], .tactical-markers[hidden] { display: none; }
+#health.taking-hit { outline: 2px solid #ffad91; outline-offset: 5px; border-radius: 5px; }
+#modebar.prepare { border: 1px solid #83cdb3; background: #132d28ed; }
+#modebar.imminent { border-color: var(--lamp); color: #ffe0a0; }
+body.touch .team-ping { right: 145px; top: 58px; font-size: 14px; }
+.wave-number { max-width: 9ch; }
+#controls-card h2 { margin: 0 0 10px; font-size: 21px; font-weight: 800; line-height: 1.2; }
+#cc-rows { display: grid; grid-template-columns: auto 1fr; gap: 6px 14px; margin: 0 0 14px; font-size: 15px; line-height: 1.3; }
+#cc-rows dt { color: var(--ink-soft); }
+#cc-rows dd { margin: 0; font-weight: 700; }
+#cc-close {
+  display: flex; align-items: baseline; justify-content: center; gap: 10px; width: 100%; padding: 10px 14px;
+  font: inherit; color: #1a1408; background: var(--lamp); border: 0; border-radius: var(--r-tile); cursor: pointer;
+}
+#cc-close:hover, #cc-close:focus-visible { background: var(--lamp-bright); outline: none; }
+#cc-close b { font-size: 16px; font-weight: 800; }
+#cc-close small { font-size: 13px; opacity: 0.8; }
+#controls-card .cc-more { margin: 10px 0 0; font-size: 12.5px; color: var(--ink-faint); text-align: center; }
+body.touch #controls-card { top: calc(8px + env(safe-area-inset-top, 0px)); transform: none; left: 50%; translate: -50% 0; max-height: calc(100vh - 16px); }
+@media (max-height: 460px) {
+  #controls-card { padding: 12px 16px 10px; }
+  #controls-card h2 { font-size: 18px; margin-bottom: 6px; }
+  #cc-rows { gap: 3px 12px; font-size: 13.5px; margin-bottom: 8px; }
+  #controls-card .cc-more { display: none; }
+}
+

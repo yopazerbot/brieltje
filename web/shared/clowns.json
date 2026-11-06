@@ -1,0 +1,22 @@
+{
+  "_note": "Characters to shoot at, our own models (tools/clown.py, tools/strongman.py): what each kind is like (a strongman also fights back: shared/brutes.mjs; distances in metres, times in seconds), where they stand at the start (x, floor y, z, kind), how many the admin may have in all, and when a shot one is back. Shared by the browser and the server.",
+  "respawnSeconds": 20,
+  "max": 24,
+  "pause": 3,
+  "kinds": {
+    "clown": { "name": "a clown", "model": "/models/clown.glb", "scale": 1, "speed": 0.7, "radius": 1.6, "close": 6, "height": 1.26, "width": 0.3 },
+    "strongman": { "name": "a strongman", "model": "/models/strongman.glb", "scale": 2.5, "speed": 1.3, "radius": 7, "close": 18, "height": 1.98, "width": 0.4,
+      "fight": { "hp": 400, "sight": 30, "leash": 24, "roam": 1.3, "roamRadius": 9, "chase": 2.8, "hand": 4.4, "throwMin": 9, "throwMax": 30, "throwEvery": 4, "windup": 0.8, "rockSpeed": 17, "rockRadius": 2.6, "rockDamage": 35, "stompRange": 5.5, "stompEvery": 2.2, "stompWindup": 0.55, "stompRadius": 5, "stompDamage": 35 } }
+  },
+  "spots": [
+    [5.5, -0.1, -10.5, "clown"],
+    [1.0, -0.1, -18.0, "clown"],
+    [75.97, -0.1, 198.86, "clown"],
+    [-6.0, -0.1, 80.0, "clown"],
+    [-10.0, -0.1, 100.0, "strongman"],
+    [50.0, -0.1, -130.0, "strongman"],
+    [-120.0, -0.1, -50.0, "strongman"],
+    [140.0, -0.1, 20.0, "strongman"],
+    [-120.0, -0.1, 60.0, "strongman"]
+  ]
+}

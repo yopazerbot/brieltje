@@ -1,0 +1,29 @@
+/* The car's one instrument: warm digits over slate, with a small line showing how much speed is left. */
+#speedometer {
+  position: absolute;
+  right: 28px;
+  bottom: calc(40px + env(safe-area-inset-bottom, 0px));
+  min-width: 138px;
+  padding: 15px 18px 13px;
+  border: 1px solid rgba(245, 239, 228, 0.18);
+  border-radius: 18px;
+  background: rgba(22, 32, 42, 0.88);
+  color: var(--ink);
+  box-shadow: 0 5px 20px rgba(0, 0, 0, 0.2);
+  text-shadow: none;
+  text-align: right;
+  pointer-events: none;
+}
+#speedometer[hidden] { display: none; }
+.speed-value { font-size: 58px; font-weight: 800; line-height: 0.9; font-variant-numeric: tabular-nums; }
+.speed-unit { margin-left: 7px; font-size: 13px; color: var(--ink-soft); }
+.speed-track { height: 3px; margin-top: 12px; overflow: hidden; border-radius: 3px; background: rgba(245, 239, 228, 0.14); }
+.speed-track i { display: block; height: 100%; background: var(--lamp); transform-origin: left; transition: transform 0.15s linear; }
+body:not(.touch):has(#speedometer:not([hidden])) #toast { bottom: 155px; }
+/* In a car the rightmost touch buttons disappear; the instrument fits just below the map. */
+body.touch #speedometer { top: 130px; bottom: auto; right: 12px; min-width: 110px; padding: 10px 12px; border-radius: 13px; }
+body.touch .speed-value { font-size: 42px; }
+body.touch .speed-unit { font-size: 11px; margin-left: 5px; }
+body.touch .speed-track { margin-top: 9px; height: 2px; }
+@media (max-height: 380px) { body.touch #speedometer { right: 104px; } }
+@media (min-height: 600px) { body.touch #speedometer { top: 160px; } }

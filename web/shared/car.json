@@ -1,0 +1,74 @@
+{
+  "_note": "Cars you can drive, each built in Blender from its published sizes (tools/model_y.py, tools/model_3.py): where it is parked (nose along -z turned by yaw), its size in metres, top speeds in m/s, its paint and how metallic it is. village: parked in the village (the bays by the church), in the game once the village has loaded. reach: how close to a car you get in.",
+  "reach": 1.5,
+  "cars": {
+    "tesla": {
+      "name": "the Tesla",
+      "model": "/models/model-y.glb",
+      "paint": "#0b0c0e",
+      "metal": 0.45,
+      "village": false,
+      "park": { "x": 2.17, "y": -0.05, "z": 14.5, "yaw": 0 },
+      "length": 4.79,
+      "width": 1.92,
+      "height": 1.62,
+      "maxSpeed": 55.6,
+      "reverseSpeed": 6
+    },
+    "model3": {
+      "name": "the Model 3",
+      "model": "/models/model-3.glb",
+      "paint": "#1f3c78",
+      "metal": 0.45,
+      "village": false,
+      "park": { "x": 78.512, "y": -0.08, "z": 181.579, "yaw": 2.4471 },
+      "length": 4.72,
+      "width": 1.85,
+      "height": 1.44,
+      "maxSpeed": 55.6,
+      "reverseSpeed": 6
+    },
+    "churchY": {
+      "name": "the white Model Y",
+      "model": "/models/model-y.glb",
+      "paint": "#e9eae7",
+      "metal": 0.1,
+      "village": true,
+      "park": { "x": 533.415, "y": 5.629, "z": -747.111, "yaw": 2.525 },
+      "length": 4.79,
+      "width": 1.92,
+      "height": 1.62,
+      "maxSpeed": 55.6,
+      "reverseSpeed": 6
+    },
+    "church3": {
+      "name": "the red Model 3",
+      "model": "/models/model-3.glb",
+      "paint": "#9a1419",
+      "metal": 0.45,
+      "village": true,
+      "park": { "x": 529.499, "y": 5.561, "z": -749.887, "yaw": 2.525 },
+      "length": 4.72,
+      "width": 1.85,
+      "height": 1.44,
+      "maxSpeed": 55.6,
+      "reverseSpeed": 6
+    }
+  },
+  "placed": {
+    "_note": "Teslas spawned with /tesla in the chat: alone by anyone, together by the admin, and by the others when the admin allows spawning. At most max at once (each car is about 30 draw calls). Each kind drives like the car named in base (its model, size and speeds) in a paint of its own. name: as in the prompt, with its article; label: in the planner's list.",
+    "max": 12,
+    "kinds": {
+      "modelY-white": { "base": "tesla", "label": "Tesla Model Y (white)", "name": "the white Model Y", "paint": "#e9eae7", "metal": 0.1 },
+      "modelY-black": { "base": "tesla", "label": "Tesla Model Y (black)", "name": "the black Model Y", "paint": "#0b0c0e", "metal": 0.45 },
+      "modelY-grey": { "base": "tesla", "label": "Tesla Model Y (grey)", "name": "the grey Model Y", "paint": "#3e4146", "metal": 0.5 },
+      "modelY-blue": { "base": "tesla", "label": "Tesla Model Y (blue)", "name": "the blue Model Y", "paint": "#1f3c78", "metal": 0.45 },
+      "modelY-red": { "base": "tesla", "label": "Tesla Model Y (red)", "name": "the red Model Y", "paint": "#9a1419", "metal": 0.45 },
+      "model3-white": { "base": "model3", "label": "Tesla Model 3 (white)", "name": "the white Model 3", "paint": "#e9eae7", "metal": 0.1 },
+      "model3-black": { "base": "model3", "label": "Tesla Model 3 (black)", "name": "the black Model 3", "paint": "#0b0c0e", "metal": 0.45 },
+      "model3-grey": { "base": "model3", "label": "Tesla Model 3 (grey)", "name": "the grey Model 3", "paint": "#3e4146", "metal": 0.5 },
+      "model3-blue": { "base": "model3", "label": "Tesla Model 3 (blue)", "name": "the blue Model 3", "paint": "#1f3c78", "metal": 0.45 },
+      "model3-red": { "base": "model3", "label": "Tesla Model 3 (red)", "name": "the red Model 3", "paint": "#9a1419", "metal": 0.45 }
+    }
+  }
+}

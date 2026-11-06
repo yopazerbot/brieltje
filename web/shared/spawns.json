@@ -1,0 +1,8 @@
+[
+  {"name": "Street", "x": 4.5, "z": 19.0, "y": -0.1, "team": "house", "outside": true},
+  {"name": "Garden", "x": 4.5, "z": -6.0, "y": -0.1, "team": "house", "outside": true},
+  {"name": "Side path", "x": 10.5, "z": 6.0, "y": -0.1, "team": "house", "outside": true},
+  {"name": "Oprit 1 (bungalow)", "x": 80.0, "z": 177.0, "y": -0.1, "team": "bungalow", "outside": true},
+  {"name": "Oprit 2 (bungalow)", "x": 84.0, "z": 176.0, "y": -0.1, "team": "bungalow", "outside": true},
+  {"name": "Oprit 3 (bungalow)", "x": 88.0, "z": 177.0, "y": -0.1, "team": "bungalow", "outside": true}
+]

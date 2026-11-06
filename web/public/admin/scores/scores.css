@@ -1,0 +1,75 @@
+/* The scoreboard for a big screen at the meetup: dark, large, readable from the back of the room.
+   Sizes follow the window (vmin), so it fills a projector, a TV or a laptop alike. */
+:root { --ink: #f4efe6; --muted: rgba(244, 239, 230, 0.6); --accent: #f2b33d; --bg: #0b0d10; --panel: #14171c; --line: rgba(255, 255, 255, 0.1); --good: #69f0ae; --house: #f2b33d; --bungalow: #82b1ff; }
+* { box-sizing: border-box; }
+html, body { margin: 0; height: 100%; }
+body { display: grid; grid-template-rows: auto 1fr auto; background: radial-gradient(ellipse at 50% 0%, #1a1f27, var(--bg) 70%); color: var(--ink); font: 2.2vmin/1.3 "Bahnschrift", "Segoe UI", "Arial Narrow", sans-serif; overflow: hidden; }
+body.idle { cursor: none; }
+header { display: grid; grid-template-columns: 1fr auto 1fr; align-items: center; gap: 2vmin; padding: 3vmin 4vmin 2vmin; }
+.brand { font-size: 5vmin; font-weight: 700; font-style: italic; letter-spacing: 0.08em; }
+.mode { text-align: center; }
+.mode-title { font-size: 5.2vmin; font-weight: 700; font-style: italic; color: var(--accent); }
+.mode-sub { font-size: 2.6vmin; color: var(--muted); margin-top: 0.4vmin; }
+.right { text-align: right; }
+.clock { font-size: 4vmin; font-variant-numeric: tabular-nums; }
+.live { font-size: 1.8vmin; color: var(--muted); letter-spacing: 0.12em; text-transform: uppercase; }
+.live i { display: inline-block; width: 1.2vmin; height: 1.2vmin; border-radius: 50%; background: #666; vertical-align: middle; margin-right: 0.4vmin; }
+.live.on i { background: var(--good); box-shadow: 0 0 1.2vmin var(--good); animation: beat 2s infinite; }
+@keyframes beat { 50% { opacity: 0.45; } }
+main { padding: 1vmin 6vmin; min-height: 0; display: flex; flex-direction: column; justify-content: center; }
+
+/* The ranking: one big row per player. */
+.rows { display: flex; flex-direction: column; gap: 1.2vmin; }
+.row { display: grid; grid-template-columns: 6vmin 2.6vmin 1fr repeat(3, 13vmin); align-items: center; gap: 2vmin; padding: 1.6vmin 2.4vmin; background: var(--panel); border-radius: 1.2vmin; border: 1px solid var(--line); transition: transform 0.4s ease; }
+.row.head { background: none; border: none; padding-top: 0; padding-bottom: 0; color: var(--muted); font-size: 1.8vmin; letter-spacing: 0.14em; text-transform: uppercase; }
+.row .rank { font-size: 4.4vmin; font-weight: 700; color: var(--muted); text-align: center; }
+.row.first .rank { color: var(--accent); }
+.row .dot { width: 2.6vmin; height: 2.6vmin; border-radius: 50%; }
+.row .name { font-size: 4.2vmin; font-weight: 700; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.row .name small { font-size: 2vmin; font-weight: 400; color: var(--muted); margin-left: 1.2vmin; }
+.row .num { font-size: 4.4vmin; font-weight: 700; text-align: right; font-variant-numeric: tabular-nums; }
+.row .num.dim { color: var(--muted); font-weight: 400; }
+.row .bar { grid-column: 3 / -1; height: 0.8vmin; background: var(--line); border-radius: 0.4vmin; overflow: hidden; margin-top: -0.4vmin; }
+.row .bar i { display: block; height: 100%; background: var(--accent); border-radius: 0.4vmin; transition: width 0.6s ease; }
+.row.it { border-color: var(--accent); box-shadow: 0 0 3vmin rgba(242, 179, 61, 0.25); }
+.row.out { opacity: 0.55; }
+
+/* House against bungalow. */
+.teams { display: grid; grid-template-columns: 1fr auto 1fr; gap: 4vmin; align-items: start; }
+.team h2 { margin: 0 0 1.4vmin; font-size: 4vmin; font-style: italic; }
+.team.house h2 { color: var(--house); }
+.team.bungalow h2 { color: var(--bungalow); text-align: right; }
+.team .score { font-size: 16vmin; font-weight: 700; line-height: 1; font-variant-numeric: tabular-nums; }
+.team.bungalow .score { text-align: right; }
+.team ul { list-style: none; margin: 2vmin 0 0; padding: 0; font-size: 3vmin; }
+.team li { display: flex; justify-content: space-between; gap: 2vmin; padding: 0.8vmin 0; border-bottom: 1px solid var(--line); }
+.team li b { font-variant-numeric: tabular-nums; }
+.versus { font-size: 5vmin; color: var(--muted); padding-top: 9vmin; }
+.goalbar { grid-column: 1 / -1; display: grid; grid-template-columns: 1fr 1fr; gap: 1vmin; height: 1.4vmin; }
+.goalbar i { display: block; height: 100%; border-radius: 0.7vmin; background: var(--line); position: relative; overflow: hidden; }
+.goalbar i b { position: absolute; top: 0; bottom: 0; border-radius: 0.7vmin; transition: width 0.6s ease; }
+.goalbar i:first-child b { right: 0; background: var(--house); }
+.goalbar i:last-child b { left: 0; background: var(--bungalow); }
+
+.empty { text-align: center; }
+.empty .big { font-size: 6vmin; font-weight: 700; font-style: italic; }
+.empty p { font-size: 3vmin; color: var(--muted); }
+.note { text-align: center; color: var(--muted); font-size: 2.4vmin; margin-top: 2.4vmin; }
+
+.banner { position: fixed; left: 50%; top: 50%; transform: translate(-50%, -50%); padding: 4vmin 7vmin; background: rgba(11, 13, 16, 0.94); border: 0.4vmin solid var(--accent); border-radius: 2vmin; text-align: center; box-shadow: 0 2vmin 8vmin rgba(0, 0, 0, 0.6); animation: pop 0.5s ease; }
+.banner .big { font-size: 8vmin; font-weight: 700; font-style: italic; color: var(--accent); }
+.banner p { margin: 1vmin 0 0; font-size: 3vmin; color: var(--muted); }
+@keyframes pop { from { transform: translate(-50%, -50%) scale(0.8); opacity: 0; } }
+
+footer { display: grid; grid-template-columns: 1fr auto 1fr; align-items: center; gap: 2vmin; padding: 2vmin 4vmin 3vmin; color: var(--muted); }
+.join { font-size: 3vmin; }
+.join b { color: var(--ink); }
+.count { font-size: 2.4vmin; text-align: center; }
+.tools { text-align: right; opacity: 0.35; transition: opacity 0.3s; }
+.tools:hover, .tools:focus-within { opacity: 1; }
+.tools button { padding: 0.6vmin 1.2vmin; margin-left: 0.6vmin; font: inherit; font-size: 1.6vmin; color: var(--ink); background: none; border: 1px solid var(--line); border-radius: 0.6vmin; cursor: pointer; }
+.tools button[aria-pressed="true"] { border-color: var(--accent); color: var(--accent); }
+.gate { position: fixed; inset: 0; display: grid; place-content: center; text-align: center; background: var(--bg); font-size: 3vmin; }
+.gate a { color: var(--accent); }
+[hidden] { display: none !important; }
+.row.head .num { font-size: 1.8vmin; font-weight: 600; color: var(--muted); }

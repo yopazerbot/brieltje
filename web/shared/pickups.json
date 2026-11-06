@@ -1,0 +1,11 @@
+[
+  { "w": "rifle", "where": "Carport", "x": 2.2, "z": 11.4, "y": -0.1 },
+  { "w": "rifle", "where": "Garden terrace", "x": 6.5, "z": -4.0, "y": -0.1 },
+  { "w": "sniper", "where": "Dakterras", "x": 7.6, "z": -2.2, "y": 3.05 },
+  { "w": "shotgun", "where": "Bungalow", "x": 96, "z": 175, "y": -0.10 },
+  { "w": "rifle", "where": "Church square", "x": 535, "z": -771, "y": 4.69 },
+  { "w": "pistol", "where": "Schildekensstraat", "x": 185, "z": -1003, "y": -1.83 },
+  { "w": "sniper", "where": "Molenhoek", "x": 755, "z": -714, "y": 7.19 },
+  { "w": "shotgun", "where": "Middle of Molenhoek", "x": 1060, "z": -568, "y": 11.91 },
+  { "w": "rifle", "where": "End of Molenhoek", "x": 1507, "z": -365, "y": 9.19 }
+]

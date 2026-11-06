@@ -1,0 +1,225 @@
+/* The admin page: tabs, the numbers and charts, the login log, who is online. On top of interested.css. */
+/* Logged out: a small login card in the middle of the screen. */
+.admin.signed-out main { width: min(440px, 100%); padding-top: max(28px, 14vh); }
+.admin.signed-out h1 { margin-top: 10px; }
+#login-form .btn { width: 100%; }
+#login-form .actions { margin-top: 18px; }
+
+/* The header: the brand, the live dot, the scoreboard and logging out. Too narrow for one row: the tools wrap below. */
+.admin header { flex-wrap: wrap; row-gap: 8px; }
+.head-tools { display: flex; align-items: center; gap: 8px; flex-wrap: nowrap; justify-content: flex-end; margin-left: auto; }
+#logout, #scores-link { padding: 8px 14px; font-size: 15px; white-space: nowrap; }
+#scores-link .short { display: none; }
+.signed-out .head-tools .live, .signed-out #scores-link { display: none; }
+.live { font-size: 12px; font-weight: 700; letter-spacing: 0.1em; text-transform: uppercase; color: var(--muted); margin-right: 4px; white-space: nowrap; }
+.live i { display: inline-block; width: 8px; height: 8px; border-radius: 50%; background: #666; margin-right: 3px; }
+.live.on i { background: var(--good); box-shadow: 0 0 8px var(--good); animation: beat 2s infinite; }
+@keyframes beat { 50% { opacity: 0.4; } }
+
+/* The sticky bar: the tabs (scrolling sideways when they don't fit, with a fade on the side that has more) and the period. */
+.topbar { position: sticky; top: 0; z-index: 6; display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 0 16px;
+  margin: 6px -26px 16px; padding: 0 26px; background: #121519; border-bottom: 1px solid var(--line); }
+.topbar.stuck { box-shadow: 0 10px 24px rgba(0, 0, 0, 0.45); }
+.tabs { position: relative; display: flex; gap: 4px; flex: 1 1 auto; min-width: 0; overflow-x: auto; scrollbar-width: none; overscroll-behavior-x: contain; }
+.tabs::-webkit-scrollbar { display: none; }
+.tabs.fade-r { -webkit-mask-image: linear-gradient(to right, #000 calc(100% - 44px), transparent); mask-image: linear-gradient(to right, #000 calc(100% - 44px), transparent); }
+.tabs.fade-l { -webkit-mask-image: linear-gradient(to left, #000 calc(100% - 44px), transparent); mask-image: linear-gradient(to left, #000 calc(100% - 44px), transparent); }
+.tabs.fade-l.fade-r { -webkit-mask-image: linear-gradient(to right, transparent, #000 44px, #000 calc(100% - 44px), transparent); mask-image: linear-gradient(to right, transparent, #000 44px, #000 calc(100% - 44px), transparent); }
+.tabs button { flex: none; padding: 12px 14px 11px; border: 0; background: none; color: var(--muted); font: inherit; font-weight: 700; cursor: pointer; border-bottom: 3px solid transparent; white-space: nowrap; }
+.tabs button[aria-selected="true"] { color: var(--ink); border-bottom-color: var(--accent); }
+.tabs button:focus-visible { outline: 2px solid var(--accent); outline-offset: -2px; }
+.tabs .count { display: inline-block; min-width: 20px; margin-left: 4px; padding: 0 6px; border-radius: 999px; background: var(--good); color: #0d0f12; font-size: 12px; line-height: 20px; text-align: center; }
+
+/* Segmented buttons: the period, the hour chart's measure. */
+.seg { display: inline-flex; gap: 2px; padding: 3px; background: var(--field); border-radius: 8px; }
+.seg button { padding: 7px 12px; border: 0; border-radius: 6px; background: none; color: var(--muted); font: inherit; font-size: 15px; font-weight: 700; cursor: pointer; white-space: nowrap; }
+.seg button[aria-pressed="true"] { background: var(--accent); color: #11151b; }
+.seg button:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
+.seg.small button { padding: 5px 9px; font-size: 13px; }
+.tabs button, .seg button, .chart .hit { -webkit-tap-highlight-color: transparent; }
+.topbar .period { margin: 6px 0 6px auto; }
+/* Under the tabs once they don't share a row (about 905 px with this font): the period across the whole width. */
+@media (max-width: 905px) {
+  .topbar .period { flex: 1 1 100%; }
+  .topbar .period button { flex: 1 1 0; padding: 7px 6px; }
+}
+
+/* Overview: who is playing now, the period's title and how it compares, how we count. */
+.now { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 14px; margin: 0 0 14px; padding: 10px 14px; background: var(--field); border-radius: 8px; }
+.now-n { font-weight: 700; }
+.now-n i { display: inline-block; width: 9px; height: 9px; margin-right: 8px; border-radius: 50%; background: #666; vertical-align: 1px; }
+.now.on .now-n i { background: var(--good); box-shadow: 0 0 8px var(--good); }
+.now-n b { font-size: 20px; color: var(--accent); margin-right: 4px; }
+.now-links { display: flex; gap: 14px; margin-left: auto; font-size: 14px; }
+.period-head { display: flex; flex-wrap: wrap; align-items: flex-start; justify-content: space-between; gap: 6px 16px; }
+.period-head h2 { margin: 0 0 2px; }
+.period-head p { margin: 0; }
+.how { flex: 0 1 380px; min-width: 0; font-size: 14px; }
+.how summary { cursor: pointer; color: var(--accent); font-weight: 700; list-style: none; text-align: right; padding: 4px 0; }
+.how summary::-webkit-details-marker { display: none; }
+.how summary::before { content: "i"; display: inline-block; width: 18px; height: 18px; margin-right: 6px; border: 1.5px solid currentColor; border-radius: 50%; font-size: 12px; line-height: 15px; text-align: center; font-style: italic; }
+.how[open] { flex-basis: 100%; }
+.how[open] summary { text-align: left; }
+.how ul { margin: 6px 0 4px; padding: 12px 14px 12px 30px; background: var(--field); border-radius: 8px; color: var(--muted); }
+.how li { margin: 3px 0; }
+.how li b { color: var(--ink); }
+
+/* The headline numbers: four in a row (the last two wide), two on a phone. */
+.admin .kpis { grid-template-columns: repeat(4, minmax(0, 1fr)); margin: 14px 0 18px; }
+.kpis .stat { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+.kpis .stat.wide { grid-column: span 2; }
+.kpis .stat.lead { box-shadow: inset 0 0 0 1px rgba(242, 179, 61, 0.45); }
+.kpis .top { display: flex; flex-wrap: wrap; align-items: baseline; gap: 2px 8px; }
+.kpis .stat b { font-size: 26px; line-height: 1.15; }
+.kpis .stat.lead b { font-size: 32px; }
+.kpis .label { font-size: 14px; color: var(--ink); }
+.kpis .kpi-note { font-size: 12px; color: var(--muted); line-height: 1.35; }
+.delta { font-size: 13px; font-weight: 700; white-space: nowrap; color: var(--muted); }
+.delta.up { color: var(--good); }
+.delta.down { color: var(--bad); }
+
+/* Charts: bars from one baseline, a tooltip per bar, the numbers as a table below. */
+h2.sub { margin: 22px 0 8px; font-size: 20px; }
+.charts { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; margin: 0 0 6px; }
+.chart { background: var(--field); border-radius: 8px; padding: 12px 14px 8px; min-width: 0; }
+.chart h3 { margin: 0 0 2px; font-size: 15px; }
+.chart .total { font-size: 13px; color: var(--muted); margin-bottom: 6px; }
+.chart .total span { display: block; }
+.chart-head { display: flex; flex-wrap: wrap; align-items: flex-start; justify-content: space-between; gap: 8px 12px; }
+.chart svg { display: block; width: 100%; height: auto; overflow: visible; touch-action: manipulation; }
+.chart .grid { stroke: rgba(255, 255, 255, 0.1); stroke-width: 1; }
+.chart .axis { fill: var(--muted); font-size: 11px; font-family: inherit; }
+.chart .bar { fill: #c08623; pointer-events: none; }
+.chart .bar.back { fill: #5b8fd6; }
+.chart .bar.off { opacity: 0.35; }
+.chart .bar.front { stroke: #1d2025; stroke-width: 2; paint-order: stroke; }
+.chart .hit { fill: transparent; cursor: default; outline: none; }
+.chart .hit:hover, .chart .hit:focus-visible, .chart .hit.picked { fill: rgba(255, 255, 255, 0.07); }
+.chart .legend { display: flex; flex-wrap: wrap; gap: 4px 14px; margin: 0 0 6px; font-size: 13px; color: var(--muted); }
+.chart .legend i { display: inline-block; width: 10px; height: 10px; margin-right: 6px; border-radius: 2px; background: #c08623; }
+.chart .legend i.back { background: #5b8fd6; }
+.chart .empty-chart { margin: 18px 0 14px; color: var(--muted); font-size: 14px; }
+.chart .empty-chart span { display: block; }
+.chart details { margin-top: 4px; font-size: 13px; color: var(--muted); }
+.chart details table { width: 100%; border-collapse: collapse; margin-top: 6px; }
+.chart details td, .chart details th { padding: 2px 4px; border-bottom: 1px solid rgba(255, 255, 255, 0.06); text-align: right; font-weight: 400; }
+.chart details td:first-child, .chart details th:first-child { text-align: left; }
+.chart details td { color: var(--ink); }
+.chart details td:first-child { color: var(--muted); }
+.chart.hours { margin: 0 0 6px; }
+.splits { display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: 12px; margin-bottom: 12px; }
+.split { background: var(--field); border-radius: 8px; padding: 12px 14px; }
+.split h3 { margin: 0 0 8px; font-size: 14px; color: var(--muted); font-weight: 600; }
+.split .row { display: grid; grid-template-columns: 1fr auto; gap: 2px 10px; align-items: center; margin: 6px 0; font-size: 14px; }
+.split .track { grid-column: 1 / -1; height: 8px; background: rgba(255, 255, 255, 0.06); border-radius: 4px; overflow: hidden; }
+.split .fill { height: 100%; background: #c08623; border-radius: 0 4px 4px 0; }
+.tip { position: fixed; z-index: 20; pointer-events: none; width: max-content; max-width: min(230px, calc(100vw - 16px)); padding: 7px 10px; background: #0d0f12; border: 1px solid var(--line); border-radius: 6px; font-size: 13px; color: var(--muted); box-shadow: 0 8px 20px rgba(0, 0, 0, 0.4); }
+.tip b { display: block; font-size: 14px; color: var(--ink); margin-bottom: 2px; }
+.tip span { display: block; }
+.tip span.on { color: var(--ink); }
+
+/* The tables, who is online. */
+.tablewrap { overflow-x: auto; }
+table.log { width: 100%; border-collapse: collapse; font-size: 14px; }
+table.log th { text-align: left; color: var(--muted); font-weight: 600; padding: 8px; border-bottom: 1px solid var(--line); white-space: nowrap; }
+table.log td { padding: 7px 8px; border-bottom: 1px solid rgba(255, 255, 255, 0.06); vertical-align: top; }
+table.log td:first-child { white-space: nowrap; color: var(--muted); }
+table.log tr.ev-bad td:nth-child(2) { color: var(--bad); }
+table.log tr.ev-good td:nth-child(2) { color: var(--good); }
+ul.online { list-style: none; padding: 0; margin: 0; }
+ul.online li { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 10px; padding: 10px 12px; margin-top: 6px; background: var(--field); border-radius: 6px; }
+ul.online i { width: 12px; height: 12px; border-radius: 50%; }
+ul.online li.alone i { background: transparent; border: 2px solid var(--muted); }
+.meta.warn { color: var(--bad); font-weight: 700; }
+.entry p { white-space: pre-wrap; }
+
+@media (max-width: 760px) {
+  .admin .kpis { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .kpis .stat.wide { grid-column: span 1; }
+  .charts { grid-template-columns: minmax(0, 1fr); }
+}
+/* On a phone: a narrower frame, smaller numbers, the login log as a list instead of a wide table. */
+@media (max-width: 640px) {
+  .admin main { padding: 14px 10px 36px; }
+  .admin .card { padding: 16px 14px 16px; }
+  .topbar { margin: 4px -14px 14px; padding: 0 14px; }
+  .admin .brand { font-size: 26px; }
+  .head-tools { gap: 6px; }
+  .live { font-size: 0; margin-right: 0; letter-spacing: 0; }
+  .live i { width: 10px; height: 10px; margin: 0; }
+  #logout, #scores-link { padding: 7px 11px; font-size: 14px; }
+  #scores-link .long { display: none; }
+  #scores-link .short { display: inline; }
+  .tabs button { padding: 12px 10px 11px; font-size: 15px; }
+  .admin .stats { gap: 8px; }
+  .admin .stat { padding: 10px 12px; }
+  .admin .stat b { font-size: 22px; }
+  .kpis .stat.lead b { font-size: 26px; }
+  .admin .stat span { font-size: 12px; line-height: 1.3; }
+  .kpis .label { font-size: 13px; }
+  .now-links { margin-left: 0; }
+  .how { flex-basis: 100%; }
+  .how summary { text-align: left; }
+  .chart { padding: 10px 10px 8px; }
+  .seg.small { width: 100%; }
+  .seg.small button { flex: 1 1 0; padding: 6px 4px; }
+  #login-kpis { grid-template-columns: repeat(3, 1fr); }
+  .toolbar input, .toolbar select { flex: 1 1 100%; min-width: 0; }
+  .toolbar #copy-emails { flex: 1 1 100%; }
+  table.log thead { display: none; }
+  table.log, table.log tbody { display: block; }
+  table.log tr { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 2px 10px; padding: 10px 2px; border-bottom: 1px solid rgba(255, 255, 255, 0.08); }
+  table.log td { padding: 0; border: 0; min-width: 0; overflow-wrap: anywhere; }
+  table.log td:nth-child(1) { grid-column: 2; grid-row: 1; font-size: 12px; text-align: right; }
+  table.log td:nth-child(2) { grid-column: 1; grid-row: 1; font-weight: 700; }
+  table.log td:nth-child(3), table.log td:nth-child(4), table.log td:nth-child(5) { grid-column: 1 / -1; font-size: 13px; color: var(--muted); }
+  table.log td:nth-child(3):empty, table.log td:nth-child(4):empty, table.log td:nth-child(5):empty { display: none; }
+  .tablewrap { overflow: visible; }
+}
+
+/* Feedback: the stars in the accent colour, a bar per rating, comments kept as typed. */
+.fb-spread { display: grid; gap: 4px; max-width: 420px; margin: 4px 0 16px; font-size: 13px; color: var(--muted); }
+.fb-spread div { display: grid; grid-template-columns: 52px 1fr 36px; align-items: center; gap: 8px; }
+.fb-spread i { display: block; height: 10px; border-radius: 3px; background: var(--accent); min-width: 2px; }
+.fb-spread span:last-child { text-align: right; }
+table.fb td.stars { color: var(--accent); white-space: nowrap; letter-spacing: 1px; }
+table.fb td.comment { white-space: pre-wrap; overflow-wrap: anywhere; min-width: 220px; }
+table.fb td .tag { display: block; font-size: 12px; color: var(--muted); }
+table.fb td:last-child { white-space: nowrap; }
+
+/* The game night: its details as a small form, the registrations as a table like the feedback's. */
+.gn-night { max-width: 640px; }
+.gn-night h2.sub { margin-top: 6px; }
+.gn-when { display: grid; grid-template-columns: minmax(0, 1.4fr) minmax(0, 1fr) minmax(0, 1fr); gap: 0 12px; }
+.gn-when > div { min-width: 0; }
+/*
+ * The date and the times look like the text fields. Safari on an iPhone draws its own: wider than the
+ * phone when empty, with no height, the value centred (Yoshi's screenshot, 2 Nov 2026). Without its
+ * own look, with no minimum width, a fixed height and the value on the left, they fit.
+ */
+.admin input[type="date"], .admin input[type="time"] {
+  -webkit-appearance: none; appearance: none; display: block; width: 100%; min-width: 0; max-width: 100%; height: 52px; margin: 0;
+  padding: 12px 14px; font: inherit; line-height: 1.5; text-align: left; color: var(--ink); background: var(--field); border: 1px solid var(--line); border-radius: 6px; outline: none; color-scheme: dark;
+}
+.admin input[type="date"]::-webkit-date-and-time-value, .admin input[type="time"]::-webkit-date-and-time-value { margin: 0; text-align: left; }
+.gn-night .actions { margin-top: 12px; }
+.gn-open { margin-top: 14px; }
+#gn-state { vertical-align: middle; margin-left: 6px; background: rgba(105, 240, 174, 0.15); color: var(--good); }
+#gn-state.closed { background: rgba(255, 138, 128, 0.15); color: var(--bad); }
+table.gn td.num, table.gn th:nth-child(4), table.gn th:nth-child(5) { text-align: right; }
+table.gn td.num { font-weight: 700; color: var(--accent); }
+table.gn td.comment { white-space: pre-wrap; overflow-wrap: anywhere; min-width: 220px; }
+table.gn td .street { display: block; font-size: 14px; color: var(--ink); font-weight: 500; }
+table.gn td .tag { display: block; padding: 0; border: 0; background: none; font-size: 12px; color: var(--muted); }
+table.gn td:last-child { white-space: nowrap; }
+@media (max-width: 640px) {
+  .gn-when { grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); }
+  .gn-when > div:first-child { grid-column: 1 / -1; }
+  .toolbar #gn-copy, .toolbar #gn-clear { flex: 1 1 0; }
+  /* A registration as a card: the name and the time, the address, the two counts side by side with their names, the ideas. */
+  table.gn td:nth-child(4) { grid-column: 1; font-size: 14px; text-align: left; }
+  table.gn td:nth-child(5) { grid-column: 2; font-size: 14px; }
+  table.gn td.num::before { content: attr(data-label) " "; color: var(--muted); font-weight: 500; }
+  table.gn td.comment { grid-column: 1 / -1; min-width: 0; color: var(--ink); font-size: 14px; }
+  table.gn td:last-child { grid-column: 1 / -1; margin-top: 4px; }
+}

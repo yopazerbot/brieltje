@@ -1,0 +1,354 @@
+import * as THREE from 'three';
+import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
+import type { VillageData } from './houseData';
+import { tintedMaterial } from './houseMeshes';
+import { terrain } from './terrain';
+
+/**
+ * Streets of houses as our own Blender models (tools/molenhoek.py), in place of the village's blocks there, which
+ * stay for walking into: Molenhoek, its forty-seven houses from the church square to the junction where the map
+ * ends and the street as it was rebuilt in 2026 (asphalt, red cycle lanes, kerbs, pavements); Kapellenhoek, its
+ * houses from the church square to past its junction with Briel and the first stretch of Kapelleweg, on the
+ * village's own street.
+ *
+ * Their textured meshes name a shared game texture; the vertex colours tint it, so every brick colour is one
+ * draw call and no graphics memory but the asphalt's. The small things (frames, gutters, railings, sills, signs)
+ * come in three parts along the street, each drawn only within DETAIL metres of its own middle.
+ */
+const DETAIL = 200;
+
+interface Extras {
+  origin: [number, number];
+  landmark: string;
+  /** Each modelled house's GRB outline: the village's blocks inside it give way */
+  outlines: [number, number][][];
+  /**
+   * The new solid things (garden walls, hedges, posts, the cabinet) in world heights, and a rebuilt street's
+   * surfaces for walking and driving on (`lift`: heights above the relief), with what a shot sounds like on them
+   */
+  solids: { p: [number, number][]; y0: number; y1: number; m?: string; lift?: boolean }[];
+  /** A rebuilt stretch whose concrete poles became steel lamp posts: its centre line and reach (empty: none) */
+  poles: { line: [number, number][]; reach: number };
+  /** A rebuilt street's outline: the pavings of the old one inside it give way (empty: the village's street stays) */
+  street: [number, number][];
+  /** From which x the rebuilt street is new asphalt over the old road (whose blocks there give way too), if any */
+  newStreetFrom?: number;
+  /** The village's trees that give way to the model's conifers (or to a house's own garden): x, z and radius */
+  clearTrees: [number, number, number][];
+  /** A house's own garden: its plot, where the village's ground covers, hedges and fences give way */
+  clear?: [number, number][][];
+  /** Buildings gone since the village data was made, where a house stands now: their blocks, roofs and windows go */
+  gone?: [number, number][][];
+  /**
+   * The village's ground covers round such a house (old pavings, a lane's dirt tracks), each by its material, first
+   * corner and corner count: replaced by the pieces of it that lie outside the house's plot (outline and holes each)
+   */
+  cuts?: { at: [number, number]; m: string; n: number; p?: [number, number][][][] }[];
+  /** Where they were cut: the village's fence posts there go too */
+  cleared?: [number, number][][];
+}
+
+/** `name`: the model, /models/<name>.glb, and the landmark the village's blocks it replaces are tagged with. */
+export async function loadStreetModel(renderer: THREE.WebGLRenderer, ground: number, name: string): Promise<THREE.Object3D> {
+  // Development only: ?no<name> leaves the village's blocks, for comparing the cost.
+  if (import.meta.env.DEV && new URLSearchParams(location.search).has(`no${name}`)) throw new Error('off');
+  const scene = (await new GLTFLoader().loadAsync(`/models/${name}.glb`)).scene;
+  const root = scene.children.find((o) => o.userData.origin) ?? scene;
+  const small: THREE.Mesh[] = [];
+  scene.traverse((o) => {
+    const mesh = o as THREE.Mesh;
+    if (!mesh.isMesh) return;
+    const old = mesh.material as THREE.MeshStandardMaterial;
+    const u = old.userData as { texture?: string; normalScale?: number; lod?: number; order?: number; flat?: number };
+    if (u.texture) {
+      const m = tintedMaterial(u.texture, '#ffffff', renderer);
+      m.vertexColors = true;
+      if (u.normalScale !== undefined) m.normalScale.setScalar(u.normalScale);
+      if (u.flat) {
+        // Flat and matte (a garden's boards, logs, tiles and ivy, close by): the texture's colour alone, two lookups less a pixel.
+        m.normalMap = null;
+        m.roughnessMap = null;
+        m.roughness = 0.92;
+      }
+      mesh.material = m;
+      old.dispose();
+    }
+    // A house's own garden: before the walls it mostly stands in front of, and no shadow lookups (the sun's shadow
+    // only covers the main house).
+    mesh.receiveShadow = !u.order;
+    if (u.order) mesh.renderOrder = u.order;
+    if (u.lod) small.push(mesh);
+  });
+  // Each part of the small things is measured from its own middle (the mesh's packed positions are scaled and
+  // moved by its node, so the middle is taken through that).
+  for (const mesh of small) {
+    mesh.geometry.computeBoundingSphere();
+    mesh.updateMatrix();
+    const middle = mesh.geometry.boundingSphere!.center.clone().applyMatrix4(mesh.matrix);
+    const lod = new THREE.LOD();
+    lod.position.copy(middle);
+    mesh.position.sub(middle);
+    mesh.parent!.add(lod);
+    lod.addLevel(mesh, 0);
+    lod.addLevel(new THREE.Object3D(), DETAIL);
+  }
+  const [x, z] = (root.userData as Extras).origin;
+  scene.position.set(x, ground + terrain.height(x, z), z);
+  scene.userData = { ...root.userData, landmark: name };
+  return scene;
+}
+
+/**
+ * A model's open ground (its root's `clear`: rings on the plan, such as the café Sparrenhof's forecourt and terrace):
+ * the village's trees standing in it, or with their trunk within 1.5 m of it, give way. In place, as fitStreetModel.
+ */
+export function clearOpenGround(data: VillageData, rings: [number, number][][] | undefined): void {
+  if (!rings?.length) return;
+  data.trees = data.trees.filter((t) => !rings.some((ring) => near(ring, t.x, t.z, 1.5)));
+}
+
+/** An outline's box on the plan: min x, min z, max x, max z. */
+type Box = [number, number, number, number];
+function boxOf(ring: [number, number][]): Box {
+  const b: Box = [Infinity, Infinity, -Infinity, -Infinity];
+  for (const [x, z] of ring) {
+    b[0] = Math.min(b[0], x);
+    b[1] = Math.min(b[1], z);
+    b[2] = Math.max(b[2], x);
+    b[3] = Math.max(b[3], z);
+  }
+  return b;
+}
+
+/** Whether (x, z) lies inside the outline or within `slack` metres of it. */
+function near(ring: [number, number][], x: number, z: number, slack: number): boolean {
+  let hit = false;
+  let best = Infinity;
+  for (let i = 0, j = ring.length - 1; i < ring.length; j = i++) {
+    const [xi, zi] = ring[i];
+    const [xj, zj] = ring[j];
+    if (zi > z !== zj > z && x < ((xj - xi) * (z - zi)) / (zj - zi) + xi) hit = !hit;
+    const dx = xj - xi;
+    const dz = zj - zi;
+    const t = Math.max(0, Math.min(1, ((x - xi) * dx + (z - zi) * dz) / (dx * dx + dz * dz || 1)));
+    best = Math.min(best, Math.hypot(xi + dx * t - x, zi + dz * t - z));
+  }
+  return hit || best <= slack;
+}
+
+/**
+ * near() for a long outline asked about many points (a rebuilt street's, hundreds of corners): its edges sorted into
+ * 4 m squares. A point is measured against the edges in the squares round it, and counted in or out over the edges
+ * in its row on the shorter side; the same sums on the same edges, so the same answers, without going round it all.
+ */
+function nearTo(ring: [number, number][]): (x: number, z: number, slack: number) => boolean {
+  const C = 4;
+  const cell = (cx: number, cz: number) => (cx + 10000) * 20000 + cz + 10000;
+  const cells = new Map<number, number[]>();
+  const n = ring.length;
+  let [minX, maxX] = [Infinity, -Infinity];
+  for (let i = 0, j = n - 1; i < n; j = i++) {
+    const [xi, zi] = ring[i];
+    const [xj, zj] = ring[j];
+    minX = Math.min(minX, xi);
+    maxX = Math.max(maxX, xi);
+    for (let cx = Math.floor(Math.min(xi, xj) / C); cx <= Math.floor(Math.max(xi, xj) / C); cx++) {
+      for (let cz = Math.floor(Math.min(zi, zj) / C); cz <= Math.floor(Math.max(zi, zj) / C); cz++) {
+        const k = cell(cx, cz);
+        const list = cells.get(k);
+        if (list) list.push(i);
+        else cells.set(k, [i]);
+      }
+    }
+  }
+  const seen = new Int32Array(n);
+  let query = 0;
+  /** Each edge (by its first corner i) in the squares from (cx0, cz0) to (cx1, cz1), once. */
+  const edges = (cx0: number, cx1: number, cz0: number, cz1: number, f: (i: number) => void) => {
+    query++;
+    for (let cx = cx0; cx <= cx1; cx++) {
+      for (let cz = cz0; cz <= cz1; cz++) {
+        for (const i of cells.get(cell(cx, cz)) ?? []) {
+          if (seen[i] === query) continue;
+          seen[i] = query;
+          f(i);
+        }
+      }
+    }
+  };
+  return (x, z, slack) => {
+    let best = Infinity;
+    edges(Math.floor((x - slack) / C), Math.floor((x + slack) / C), Math.floor((z - slack) / C), Math.floor((z + slack) / C), (i) => {
+      const [xi, zi] = ring[i];
+      const [xj, zj] = ring[(i + n - 1) % n];
+      const dx = xj - xi;
+      const dz = zj - zi;
+      const t = Math.max(0, Math.min(1, ((x - xi) * dx + (z - zi) * dz) / (dx * dx + dz * dz || 1)));
+      best = Math.min(best, Math.hypot(xi + dx * t - x, zi + dz * t - z));
+    });
+    if (best <= slack) return true;
+    // In or out: the edges crossed going east (or west, the shorter way) from the point; the same count either way.
+    const east = maxX - x < x - minX;
+    const cx = Math.floor(x / C);
+    const cz = Math.floor(z / C);
+    let hit = false;
+    edges(east ? cx : Math.floor(minX / C), east ? Math.floor(maxX / C) : cx, cz, cz, (i) => {
+      const [xi, zi] = ring[i];
+      const [xj, zj] = ring[(i + n - 1) % n];
+      if (zi > z !== zj > z && x < ((xj - xi) * (z - zi)) / (zj - zi) + xi === east) hit = !hit;
+    });
+    return hit;
+  };
+}
+
+/**
+ * Fits the village data to a street model, before its tiles are built: the blocks, roofs and windows of the
+ * modelled houses are tagged as the landmark's (so they aren't drawn, but stay for walking into), the new solid
+ * things join the blocks for walking into, and, where the street was rebuilt, the concrete poles along it become
+ * steel lamp posts without cables. `first`: the number of the village's first pole in the game's list (cables
+ * name poles by that number).
+ */
+export function fitStreetModel(data: VillageData, model: THREE.Object3D, first: number): void {
+  const x = model.userData as Extras;
+  const name = x.landmark;
+  const outlines = x.outlines;
+  const middle = (ring: [number, number][]) => [ring.reduce((s, q) => s + q[0], 0) / ring.length, ring.reduce((s, q) => s + q[1], 0) / ring.length];
+  // Each outline's box first: nearly every block in the village lies far from them all, and the box says so at once
+  // (testing every corner against every outline took a second, and froze the game just after it began).
+  const boxes = outlines.map(boxOf);
+  /** Whether (px, pz) lies in one of the outlines or within `slack` of it, their boxes asked first. */
+  const inAny = (rings: [number, number][][], bs: Box[], px: number, pz: number, slack: number) =>
+    rings.some((o, k) => px > bs[k][0] - slack && px < bs[k][2] + slack && pz > bs[k][1] - slack && pz < bs[k][3] + slack && near(o, px, pz, slack));
+  // Buildings gone since the village data was made: neither drawn nor walked into (the house there now brings its own
+  // block), their windows with them.
+  const gone = x.gone ?? [];
+  if (gone.length > 0) {
+    const goneBoxes = gone.map(boxOf);
+    const inGone = (ring: [number, number][]) => {
+      const [mx, mz] = middle(ring);
+      return inAny(gone, goneBoxes, mx, mz, 0.3);
+    };
+    data.prisms = (data.prisms ?? []).filter((p) => p.lm !== undefined || p.d !== undefined || !inGone(p.p[0]));
+    data.roofs = data.roofs.filter((r) => r.lm !== undefined || !inGone(r.p));
+    data.openings = (data.openings ?? []).filter((o) => !inAny(gone, goneBoxes, (o.a[0] + o.b[0]) / 2, (o.a[1] + o.b[1]) / 2, 1.0));
+  }
+  // The village's ground covers round such a house: each replaced by what of it lies outside the plot.
+  for (const c of x.cuts ?? []) {
+    const list = data.prisms ?? [];
+    const i = list.findIndex(
+      (p) => !p.lm && p.d !== undefined && p.m === c.m && p.p[0].length === c.n && Math.abs(p.p[0][0][0] - c.at[0]) < 1e-3 && Math.abs(p.p[0][0][1] - c.at[1]) < 1e-3,
+    );
+    if (i >= 0) list.splice(i, 1, ...(c.p ?? []).map((rings) => ({ ...list[i], p: rings })));
+  }
+  const cleared = x.cleared ?? [];
+  if (cleared.length > 0 && data.posts) {
+    const clearedBoxes = cleared.map(boxOf);
+    data.posts = data.posts.filter(([px, pz]) => !inAny(cleared, clearedBoxes, px, pz, 0));
+  }
+  const mine = (ring: [number, number][]) => {
+    const [mx, mz] = middle(ring);
+    const [x0, z0, x1, z1] = boxOf(ring);
+    return outlines.some((o, k) => {
+      const b = boxes[k];
+      if (ring.length && (x1 < b[0] - 0.5 || x0 > b[2] + 0.5 || z1 < b[1] - 0.5 || z0 > b[3] + 0.5)) return false; // neither test below can hold
+      return near(o, mx, mz, 0.5) || ring.filter(([px, pz]) => near(o, px, pz, 0.35)).length >= ring.length * 0.8;
+    });
+  };
+  const street = x.street;
+  // Only what lies by a rebuilt street needs the closer looks below.
+  const sx0 = Math.min(...street.map((q) => q[0])) - 5;
+  const sx1 = Math.max(...street.map((q) => q[0])) + 5;
+  const sz0 = Math.min(...street.map((q) => q[1])) - 5;
+  const sz1 = Math.max(...street.map((q) => q[1])) + 5;
+  const byStreet = (ring: [number, number][]) => street.length > 0 && ring.some(([px, pz]) => px > sx0 && px < sx1 && pz > sz0 && pz < sz1);
+  const nearStreet = nearTo(street);
+  const onStreet = (ring: [number, number][]) => ring.filter(([px, pz]) => nearStreet(px, pz, 0.2)).length >= ring.length * 0.6;
+  for (const p of data.prisms ?? []) {
+    if (p.lm) continue;
+    if (p.d === undefined && mine(p.p[0])) p.lm = name;
+    else if (p.d && !/hedge|fence/.test(p.m) && byStreet(p.p[0])) {
+      if (p.m !== 'road' && onStreet(p.p[0])) p.lm = name; // pavings the new street covers
+      // The old road where the new asphalt lies over it: drawn by the model, so it can't rise through in a dip.
+      else if (p.m === 'road' && x.newStreetFrom !== undefined && p.p[0].every(([px]) => px > x.newStreetFrom!) && onStreet(p.p[0])) p.lm = name;
+      // The old road and the pavings beside the new street: cut finer, so they follow the relief's own squares and
+      // stay under the new surfaces (cut every 8 m, they rose through them in places).
+      else if (p.p[0].some(([px, pz]) => nearStreet(px, pz, 4))) p.d = Math.min(p.d, 4);
+    }
+  }
+  for (const r of data.roofs) {
+    if (!r.lm && mine(r.p)) r.lm = name;
+  }
+  // A house's own garden (tools/molenhoek.py builds it): the village's ground covers, hedges and fences in its plot
+  // (on its edge too) give way. world/walkIn.ts keeps them out of the blocks for walking on: the garden lies lower.
+  for (const ring of x.clear ?? []) {
+    const [x0, z0, x1, z1] = boxOf(ring);
+    for (const p of data.prisms ?? []) {
+      if (p.lm || p.d === undefined) continue;
+      const [mx, mz] = middle(p.p[0]);
+      if (mx < x0 - 0.3 || mx > x1 + 0.3 || mz < z0 - 0.3 || mz > z1 + 0.3) continue;
+      if (near(ring, mx, mz, 0.3)) p.lm = name;
+    }
+  }
+  // The broad trees the laser scan saw round the portal give way to the model's conifers.
+  data.trees = data.trees.filter((t) => !x.clearTrees.some(([cx, cz, r]) => Math.hypot(t.x - cx, t.z - cz) <= r));
+  data.landmarks = [...(data.landmarks ?? []), ...outlines.map((p) => ({ name, p, base: 0, ground: 0 }))];
+  for (const s of x.solids) data.prisms?.push({ m: s.m ?? 'concrete', y0: s.y0, y1: s.y1, p: [s.p], lm: name, ...(s.lift ? { d: 4, n: 'street' } : {}) });
+
+  const { line, reach } = x.poles;
+  if (line.length < 2) return;
+  const onStretch = (px: number, pz: number) => {
+    for (let i = 1; i < line.length; i++) {
+      const [ax, az] = line[i - 1];
+      const [bx, bz] = line[i];
+      const dx = bx - ax;
+      const dz = bz - az;
+      const t = Math.max(0, Math.min(1, ((px - ax) * dx + (pz - az) * dz) / (dx * dx + dz * dz)));
+      if (Math.hypot(ax + dx * t - px, az + dz * t - pz) <= reach) return true;
+    }
+    return false;
+  };
+  // The pavements' back edges (the street's outline is the one edge west to east, then the other back).
+  const half = street.length / 2;
+  const edges = [street.slice(0, half), street.slice(half)];
+  /** The nearest point on either back edge to (px, pz). */
+  const backEdge = (px: number, pz: number): [number, number] => {
+    let best: [number, number] = [px, pz];
+    let bestD = Infinity;
+    for (const e of edges) {
+      for (let i = 1; i < e.length; i++) {
+        const [ax, az] = e[i - 1];
+        const [bx, bz] = e[i];
+        const dx = bx - ax;
+        const dz = bz - az;
+        const t = Math.max(0, Math.min(1, ((px - ax) * dx + (pz - az) * dz) / (dx * dx + dz * dz || 1)));
+        const d = Math.hypot(ax + dx * t - px, az + dz * t - pz);
+        if (d < bestD) {
+          bestD = d;
+          best = [ax + dx * t, az + dz * t];
+        }
+      }
+    }
+    return best;
+  };
+  const posts = new Set<number>();
+  (data.poles ?? []).forEach((p, i) => {
+    if (!p.k && onStretch(p.x, p.z)) {
+      p.k = 'post';
+      posts.add(first + i);
+      const pole = (data.prisms ?? []).find((q) => q.m === 'pole' && !q.lm && Math.hypot(q.p[0][0][0] - p.x, q.p[0][0][1] - p.z) < 0.6);
+      if (pole) pole.lm = name; // the concrete pole itself: no longer drawn, still there for walking into
+      // A post that would stand on the new street's lanes or pavement stands just behind the pavement instead,
+      // as the new posts do: off the walking line. Its block for walking into goes with it.
+      if (near(street, p.x, p.z, 0) && street.length >= 4) {
+        const [ex, ez] = backEdge(p.x, p.z);
+        const len = Math.hypot(ex - p.x, ez - p.z) || 1;
+        const nx = ex + ((ex - p.x) / len) * 0.25;
+        const nz = ez + ((ez - p.z) / len) * 0.25;
+        if (pole) pole.p = pole.p.map((ring) => ring.map(([qx, qz]) => [qx + nx - p.x, qz + nz - p.z] as [number, number]));
+        p.x = nx;
+        p.z = nz;
+      }
+    }
+  });
+  data.wires = (data.wires ?? []).filter(([a, b]) => !posts.has(a) && !posts.has(b));
+}
