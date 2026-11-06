@@ -16,6 +16,9 @@
       sure: 'Zeker? Klik nog eens om in te trekken', name_: 'Naam', email_: 'E-mail', address_: 'Straat', when_: 'Wanneer', party_: 'Met hoeveel', comments_: 'Opmerkingen', house_: 'Huis in het spel', plans_: 'Plannen',
       when: { weekday: "weekdag 's avonds", saturday: 'zaterdag', sunday: 'zondag' }, yes: 'ja', no: 'nee',
       updates_: 'E-mail als het gepland is', updatesOn: 'Ja, we mailen je de datum en de plaats', updatesOff: 'Nee', updatesStop: 'Stop de e-mail', updatesStart: 'Mail me toch',
+      inside_: 'Binnenkant', insidePrivate: 'Privé: vergrendeld met een code die enkel jij krijgt', insidePublic: 'Openbaar: iedereen in het spel mag binnen',
+      insideToPublic: 'Maak de binnenkant openbaar', insideToPrivate: 'Maak de binnenkant privé', insideConfirm: 'Ik snap dat de binnenkant van mijn huis voor iedereen zichtbaar wordt.', insideApply: 'Bevestig: openbaar maken', insideNeed: 'Vink eerst aan dat je snapt dat de binnenkant dan voor iedereen zichtbaar wordt.',
+      insideNote: 'Openbaar betekent: iedereen kan de binnenkant zien, in het spel en in de openbare broncode. Kopieën die anderen al van de openbare code maakten, kunnen we niet terughalen.',
       houseYes: 'Ja, met de plannen hieronder', houseNo: 'Nee', people: (n) => (n === 1 ? '1 persoon' : `${n} personen`), noPlans: 'Er kwamen geen plannen aan.', sent: 'Gestuurd op',
     },
     en: {
@@ -26,6 +29,9 @@
       sure: 'Sure? Click again to withdraw', name_: 'Name', email_: 'Email', address_: 'Street', when_: 'When', party_: 'How many', comments_: 'Comments', house_: 'House in the game', plans_: 'Plans',
       when: { weekday: 'weekday evening', saturday: 'Saturday', sunday: 'Sunday' }, yes: 'yes', no: 'no',
       updates_: 'Email when planned', updatesOn: 'Yes, we email you the date and the place', updatesOff: 'No', updatesStop: 'Stop the email', updatesStart: 'Email me after all',
+      inside_: 'Inside', insidePrivate: 'Private: locked with a code that only you get', insidePublic: 'Public: everyone in the game may walk in',
+      insideToPublic: 'Make the inside public', insideToPrivate: 'Make the inside private', insideConfirm: 'I understand that the inside of my home will be visible to everyone.', insideApply: 'Confirm: make it public', insideNeed: 'First tick that you understand the inside will then be visible to everyone.',
+      insideNote: "Public means anyone can see the inside, in the game and in the public source code. Copies others already made of the public code can't be recalled.",
       houseYes: 'Yes, with the plans below', houseNo: 'No', people: (n) => (n === 1 ? '1 person' : `${n} people`), noPlans: 'No plans arrived.', sent: 'Sent on',
     },
   };
@@ -118,6 +124,50 @@
     row(t('updates_'), el('span', '', e.updates ? t('updatesOn') : t('updatesOff')), ' ', toggle);
     row(t('house_'), e.house ? t('houseYes') : t('houseNo'));
     if (e.house) {
+      // The inside of the home: private (locked with a code) or public. Public needs the same
+      // explicit confirmation as at sign-up; back to private is one click.
+      const isPublic = e.inside === 'public';
+      const box = el('div');
+      box.append(el('div', '', isPublic ? t('insidePublic') : t('insidePrivate')));
+      const change = async (inside, confirm) => {
+        const r = await fetch(`/api/interest/${ownId}`, { method: 'PATCH', headers: { ...ownHeaders, 'Content-Type': 'application/json' }, body: JSON.stringify(inside === 'public' ? { inside, confirm } : { inside }) }).catch(() => null);
+        if (r?.ok) {
+          e.inside = inside;
+          error('own-err');
+          drawOwn(e);
+        } else {
+          error('own-err', t('failed'));
+        }
+      };
+      if (isPublic) {
+        const back = el('button', 'linkbtn', t('insideToPrivate'));
+        back.type = 'button';
+        back.addEventListener('click', () => { back.disabled = true; void change('private'); });
+        box.append(back);
+      } else {
+        const open = el('button', 'linkbtn', t('insideToPublic'));
+        open.type = 'button';
+        open.addEventListener('click', () => {
+          open.hidden = true;
+          const note = el('div', 'note');
+          note.append(t('insideNote'));
+          const tick = el('input');
+          tick.type = 'checkbox';
+          const lab = el('label', 'consent');
+          lab.append(tick, el('span', '', t('insideConfirm')));
+          const go = el('button', 'btn danger', t('insideApply'));
+          go.type = 'button';
+          go.addEventListener('click', () => {
+            if (!tick.checked) return error('own-err', t('insideNeed'));
+            go.disabled = true;
+            void change('public', true);
+          });
+          note.append(lab, go);
+          box.append(note);
+        });
+        box.append(open);
+      }
+      row(t('inside_'), box);
       const files = el('ul', 'files own-files');
       for (const f of e.files) {
         const li = el('li');
@@ -275,6 +325,9 @@
     show($('house'), on);
     if (!on) { error('consent-err'); error('file-err'); }
   };
+  // The inside of the home: private is pre-selected; public shows what it means and needs its own tick.
+  const insidePublic = () => $('inside-public').checked;
+  for (const id of ['inside-private', 'inside-public']) $(id).addEventListener('change', () => { show($('inside-public-note'), insidePublic()); error('consent-err'); });
   $('house-yes').addEventListener('click', () => setHouse(true));
   $('house-no').addEventListener('click', () => setHouse(false));
 
@@ -344,6 +397,7 @@
       error('consent-err', all ? '' : t('consent'));
       error('file-err', files.length ? '' : t('noFiles'));
       if (!all || !files.length) return;
+      if (insidePublic() && !$('c-inside').checked) return error('consent-err', t('insideNeed'));
     }
     const send = $('send');
     send.disabled = true;
@@ -359,7 +413,9 @@
         updates: $('updates').checked,
         age: $('age').checked,
         house,
-        consent: house ? { own: $('c-own').checked, model: $('c-model').checked, private: $('c-private').checked, ai: $('c-ai').checked } : null,
+        // Private unless the public choice is made and ticked; the server checks this again.
+        inside: house && insidePublic() ? 'public' : 'private',
+        consent: house ? { own: $('c-own').checked, model: $('c-model').checked, private: $('c-private').checked, ai: $('c-ai').checked, inside: insidePublic() && $('c-inside').checked } : null,
         lang,
         website: $('website').value,
       };
