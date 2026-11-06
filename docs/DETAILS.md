@@ -318,6 +318,23 @@ The insides of the three locked homes live in the public repository as sealed fi
 - `node tools/private_data.mjs status` shows what is sealed and whether the live key matches.
 - On the server, `privateData.get(name)` returns a file's Buffer or null.
 
+### Locking a new home
+
+Every home that is in the game is private by default. For a new one:
+
+1. Register it in `web/shared/homes.mjs` (`BANDS`: one ring for each floor and height range; its doors are found by their id prefix, and the inside's doors are registered from its pack). The registry is code, not admin data. `web/shared/homes.test.mjs` checks the ids.
+2. Build its outside as a public shell and its inside as a private pack with the tools in the private repository (`private-src/`). The inside is written to `web/.private/`.
+3. Seal it: `node tools/private_data.mjs seal`. Commit `web/private/<name>.enc` and `manifest.json`. Never commit the plain file. `web/shared/publicClean.test.mjs` fails on an inside in a public file.
+4. After the deploy, open the admin's Homes tab and make a code for the home. It is shown once. Give it to the owner. The server keeps a scrypt hash only. Revoke it or make a new one there at any time.
+
+### A sign-up's inside choice
+
+A sign-up on the interest page that wants a house in the game carries `inside: 'private' | 'public'`. Missing means private. The admin's Interest tab shows it on each card ("Inside: private (locked with a code)" or "Inside: public (their choice)") and counts the public ones at the top.
+
+- Private (the default): do step 3 and 4 above. The owner gets the code.
+- Public: only when the owner ticked the separate confirmation. Then the inside may go into the public data. If the owner switches back to private through their own link (the card then shows private), seal the inside, take it out of the public files and make a code. Old commits keep the public copy.
+- The owner changes the choice with `PATCH /api/interest/:id` (`{ inside: 'private' }` or `{ inside: 'public', confirm: true }`) and their own token. The privacy page says the same in English and Dutch ("Your home in the game").
+
 ## Folder Layout
 
 `web/public/menu-theme.css` holds the panel, focus and selection styles shared by the game menus, admin and event pages.

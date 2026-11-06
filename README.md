@@ -70,6 +70,18 @@ The newest game in Brieltje (November 2026). Zombies come in waves, from every s
 | **Together** | Up to 16 players who join with a PIN set by the admin. Chat, party games (hide and seek, tag, a treasure hunt, Zombies), and house against bungalow. A leaderboard, and a scoreboard to project at a meetup. |
 | **Anywhere** | Graphics presets with auto-detection, keyboard and mouse, controller, or touch. In English or Dutch (Nederlands), chosen on the start screen or in the settings. Key hints follow an AZERTY or QWERTY keyboard. |
 
+## Private homes
+
+Three homes in the game are locked on the inside: our house, the bungalow and the end house at Molenhoek. You can walk round all of them. To go in, you type the home's access code at the door.
+
+- **The outside is public.** It is in this repository and in the game for everyone.
+- **The inside is not.** The game files hold only the outside. The inside is stored encrypted (X25519 and AES-256-GCM) in `web/private/*.enc`. Only the production server holds the key, as a Railway variable. This repository can't open those files.
+- **A code belongs to one home.** The admin makes it on the Homes tab and sees it once. The server keeps only a scrypt hash of it, plus counters of right and wrong tries, without names or IP addresses. A right code lets your session in for 8 hours. The admin can revoke a code or make a new one at any time.
+- **The server decides.** It sends a home's inside, its furniture, its door states and its broken panes only to players who typed the right code (and to the admin).
+- **New homes are private by default.** A neighbour who wants their home in the game gets the same lock. The inside is public only if the owner explicitly chooses that on the interest page. The owner can change the choice at any time through their own link.
+
+More in the [privacy policy](web/public/legal/privacy.html) and under "Private data" in [docs/DETAILS.md](docs/DETAILS.md).
+
 ## Screenshots
 
 | | |
