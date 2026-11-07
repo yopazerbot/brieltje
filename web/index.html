@@ -139,6 +139,7 @@
           <button id="acct-go" class="mini go" type="submit" data-show="login signup password delete"></button>
           <button class="mini" type="button" data-show="account" data-go="password" data-i18n="acct.changePass">Change password</button>
           <button class="mini danger" type="button" data-show="account" data-go="delete" data-i18n="acct.delete">Delete account</button>
+          <button class="mini" type="button" data-show="account" id="acct-out-all" data-i18n="acct.outAll">Log out on every device</button>
           <button class="mini" type="button" data-show="password delete" data-go="account" data-i18n="acct.back">Back</button>
         </div>
         <p class="note" data-show="login" data-i18n="acct.forgot">Forgot your password? Ask the admin for a new one.</p>
@@ -148,6 +149,7 @@
           <p class="acct-sub" data-i18n="acct.phoneHow">Scan this code with your phone's camera. Your phone logs in to your account and says yes. Nothing to type here.</p>
           <div class="acct-qr"><svg id="acct-qr" role="img" aria-label="QR code"><path /></svg></div>
           <p class="acct-pair"><span id="acct-pair-url"></span> <b id="acct-pair-code"></b></p>
+          <p class="acct-pair acct-check"><span data-i18n="acct.phoneCheck">Your phone asks for this number:</span> <b id="acct-pair-check"></b></p>
           <p class="note" id="acct-pair-state" aria-live="polite"></p>
           <button class="mini" type="button" id="acct-pair-new" data-i18n="acct.phoneNew">New code</button>
           <button class="mini" type="button" data-go="login" data-i18n="acct.back">Back</button>
@@ -200,7 +202,7 @@
           <div id="mp-login" class="mp-row hidden">
             <input id="mp-pass" type="password" maxlength="200" autocomplete="current-password" placeholder="Admin password" data-i18n-placeholder="start.passPh" />
             <!-- Two-step login (server/adminMfa.mjs): asked for once the password was right. -->
-            <input id="mp-code" class="hidden" type="text" inputmode="numeric" maxlength="11" autocomplete="one-time-code" spellcheck="false" placeholder="Code" data-i18n-placeholder="start.codePh" />
+            <input id="mp-code" class="hidden" type="text" autocapitalize="off" maxlength="11" autocomplete="one-time-code" spellcheck="false" placeholder="Code" data-i18n-placeholder="start.codePh" />
             <button id="mp-login-btn" class="mini go" type="button" data-i18n="start.login">Log in</button>
           </div>
         </div>

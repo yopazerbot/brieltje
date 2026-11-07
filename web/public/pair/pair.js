@@ -12,6 +12,8 @@
     tooManyName: { nl: 'Te veel verkeerde wachtwoorden voor deze naam. Probeer het over 15 minuten opnieuw.', en: 'Too many wrong passwords for this name. Try again in 15 minutes.' },
     pairCode: { nl: 'Die code is niet (meer) geldig. Maak een nieuwe op het andere scherm.', en: "That code isn't valid (any more). Make a new one on the other screen." },
     pairAccount: { nl: 'Log eerst in met je account.', en: 'Log in with your account first.' },
+    pairCheck: { nl: 'Dat getal is niet het getal op het andere scherm. Maak daar een nieuwe code.', en: "That number isn't the one on the other screen. Make a new code there." },
+    checkFirst: { nl: 'Typ eerst het getal van het andere scherm.', en: 'Type the number from the other screen first.' },
     accountOff: { nl: 'De beheerder heeft dit account uitgezet.', en: 'The admin has turned this account off.' },
     removed: { nl: 'Je bent verwijderd door de beheerder. Probeer het later opnieuw.', en: 'You were removed by the admin. Try again later.' },
     busy: { nl: 'De server is druk bezig. Probeer het zo meteen opnieuw.', en: 'The server is busy. Try again in a moment.' },
@@ -71,6 +73,7 @@
     $('who').textContent = me.username;
     $('shown-code').textContent = shown(code);
     show('s-ask');
+    $('check').focus();
   }
 
   $('code-form').addEventListener('submit', (e) => {
@@ -89,12 +92,19 @@
     void next();
   });
   $('yes').addEventListener('click', async () => {
+    const check = $('check').value.replace(/\D/g, '');
+    if (check.length !== 2) {
+      err('checkFirst');
+      $('check').focus();
+      return;
+    }
     $('yes').disabled = true;
-    const { ok, d } = await post('/api/pair/approve', { code });
+    const { ok, d } = await post('/api/pair/approve', { code, check });
+    $('check').value = '';
     $('yes').disabled = false;
     if (!ok) {
       err(d.code || 'other');
-      if (d.code === 'pairCode') {
+      if (d.code === 'pairCode' || d.code === 'pairCheck') {
         code = '';
         $('code').value = '';
         show('s-code');
@@ -120,7 +130,11 @@
   });
 
   // The code from the link, out of the address bar (and the history) at once.
-  code = clean(decodeURIComponent(location.hash.slice(1)));
+  try {
+    code = clean(decodeURIComponent(location.hash.slice(1)));
+  } catch {
+    code = clean(location.hash.slice(1)); // a stray % in a typed link
+  }
   if (location.hash) history.replaceState(null, '', location.pathname + location.search);
   fetch('/api/me', { credentials: 'same-origin' })
     .then((r) => (r.ok ? r.json() : null))

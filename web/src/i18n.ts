@@ -338,6 +338,9 @@ const en = {
   'acct.phoneWait': 'Waiting for your phone…',
   'acct.phoneGone': 'The code has expired. Make a new one.',
   'acct.phoneNew': 'New code',
+  'acct.phoneCheck': 'Your phone asks for this number:',
+  'acct.outAll': 'Log out on every device',
+  'acct.outAllDone': 'Logged out on every device.',
   'err.email': 'Type your email address.',
   'err.passFirst': 'Type your password.',
 
@@ -1312,6 +1315,9 @@ const nl = {
   'acct.phoneWait': 'Wachten op je gsm…',
   'acct.phoneGone': 'De code is verlopen. Maak een nieuwe.',
   'acct.phoneNew': 'Nieuwe code',
+  'acct.phoneCheck': 'Je gsm vraagt dit getal:',
+  'acct.outAll': 'Uitloggen op alle toestellen',
+  'acct.outAllDone': 'Uitgelogd op alle toestellen.',
   'err.email': 'Typ je e-mailadres.',
   'err.passFirst': 'Typ je wachtwoord.',
 

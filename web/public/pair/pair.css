@@ -1,5 +1,6 @@
 /* The pair page (brieltje.be/pair): the interested page's look (interested.css), and these. */
 .small { font-size: 14px; }
+#check { width: 4.2em; font-size: 28px; letter-spacing: 0.15em; text-align: center; }
 #code { font-size: 26px; letter-spacing: 0.12em; text-transform: uppercase; text-align: center; }
 .pair-q { font-size: 21px; line-height: 1.4; margin: 6px 0 10px; }
 .pair-code b { font-size: 22px; letter-spacing: 0.1em; }

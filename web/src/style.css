@@ -793,6 +793,7 @@ body.on-start #overlay { background: linear-gradient(180deg, rgba(9, 14, 19, 0.2
 #acct-form .acct-qr path { fill: #000; }
 #acct-form .acct-pair { margin: 0 0 8px; text-align: center; font-size: 15px; color: var(--ink-soft); }
 #acct-form .acct-pair b { display: block; margin-top: 4px; font-size: 26px; letter-spacing: 0.12em; color: var(--ink); }
+#acct-form .acct-check b { font-size: 34px; color: var(--lamp); }
 #acct-form .acct-phone .mini { margin: 4px 6px 0 0; }
 
 /* Zombies rooms in the menu's Together tab (src/ui/rooms.ts): the list, opening one, the room you're in. */

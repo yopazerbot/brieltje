@@ -12,8 +12,10 @@
 //   per address and per session (WRONG). Only a logged-in account can try one at all.
 // - Someone who sees the code (over a shoulder, a photo of the TV): the code alone gives nothing; only the
 //   console's secret collects the session, and it never leaves that console.
-// - Phishing with a code (sending someone a code of your own console): the phone's page says what it does
-//   and to say yes only if that screen is in front of you, with the name it logs in as.
+// - Phishing with a code (sending someone a link with your own console's code): the console also shows a
+//   2-digit check number that is in no link or QR code, and the phone must type it before its yes counts
+//   (number matching). One wrong number ends that pairing. The phone's page also says what it does, with the
+//   name it logs in as, and to say yes only if that screen is in front of you.
 // - A flood of pairings: STARTS per address, at most LIVE at once, each gone after 5 minutes.
 // - Revocation: the account's revocation count is noted when the phone says yes; a new password, the admin
 //   turning it off or a kick in between, and the console gets nothing (server/accounts.mjs session).
@@ -65,12 +67,12 @@ export class Pairing {
     do code = [...randomBytes(8)].map((x) => ABC[x % ABC.length]).join('');
     while (this.byCode.has(code));
     const token = randomBytes(32).toString('base64url');
-    const p = { code, until: now + TTL_MS, name: null, epoch: 0 };
+    const p = { code, check: String(10 + (randomBytes(1)[0] % 90)), until: now + TTL_MS, name: null, epoch: 0 };
     this.byKey.set(keyOf(token), p);
     this.byCode.set(code, p);
     const shown = `${code.slice(0, 4)}-${code.slice(4)}`;
     const url = `${origin}/pair/#${shown}`;
-    return { token, code: shown, url, qr: svgPath(url), ms: TTL_MS };
+    return { token, code: shown, check: p.check, url, qr: svgPath(url), ms: TTL_MS };
   }
 
   /** A code from the phone: checked, wrong ones counted. The pairing, or a refusal. */
@@ -91,10 +93,17 @@ export class Pairing {
   }
 
   /** The phone, logged in to an account, says yes: the console may collect a session for it. */
-  approve(req, session, code) {
+  approve(req, session, code, check) {
     if (session?.role !== 'player') return { error: 'Log in with your account first.', code: 'pairAccount', status: 403 };
     const r = this.find(req, session, code);
     if (r.error) return r;
+    // The number only the console shows: a wrong one ends this pairing (a link alone never logs a screen in).
+    if (String(check ?? '').trim() !== r.p.check) {
+      this.byCode.delete(r.p.code);
+      r.p.until = 0;
+      this.auth.log('pair_check_wrong', req, { username: session.username });
+      return { error: "That number isn't the one on the other screen. Make a new code there.", code: 'pairCheck', status: 403 };
+    }
     r.p.name = session.username;
     r.p.epoch = this.auth.epoch.get(session.username) || 0;
     this.auth.log('pair_approved', req, { username: session.username });

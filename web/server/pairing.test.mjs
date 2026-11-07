@@ -47,7 +47,8 @@ test('a console pairs: the code on screen, the phone says yes, the console colle
   assert.ok(s.qr.d && s.token.length >= 40);
   assert.equal((await pairing.poll(req('198.51.100.1'), s.token)).state, 'waiting');
   assert.equal(pairing.approve(req(), { ...phone, role: 'guest' }, s.code).code, 'pairAccount', 'a guest has nothing to lend');
-  const yes = pairing.approve(req(), phone, s.code.toLowerCase().replace('-', ' '));
+  assert.match(s.check, /^[1-9]\d$/);
+  const yes = pairing.approve(req(), phone, s.code.toLowerCase().replace('-', ' '), s.check);
   assert.equal(yes.username, 'ilse');
   const done = await pairing.poll(req('198.51.100.1'), s.token);
   assert.equal(done.state, 'done');
@@ -56,13 +57,13 @@ test('a console pairs: the code on screen, the phone says yes, the console colle
   assert.equal(consoleSession.role, 'player');
   assert.notEqual(consoleSession.key, phone.key, 'a session of its own');
   assert.equal((await pairing.poll(req('198.51.100.1'), s.token)).state, 'gone', 'once');
-  assert.equal(pairing.approve(req(), phone, s.code).code, 'pairCode', 'the code is used up');
+  assert.equal(pairing.approve(req(), phone, s.code, s.check).code, 'pairCode', 'the code is used up');
 });
 
 test("the code alone collects nothing; a wrong or made-up secret gets nothing", async () => {
   const { pairing, phone } = await ready();
   const s = pairing.start(req(), 'https://brieltje.be');
-  pairing.approve(req(), phone, s.code);
+  pairing.approve(req(), phone, s.code, s.check);
   assert.equal((await pairing.poll(req(), s.code)).state, 'gone');
   assert.equal((await pairing.poll(req(), 'A'.repeat(43))).state, 'gone');
   assert.equal((await pairing.poll(req(), null)).state, 'gone');
@@ -72,9 +73,19 @@ test("the code alone collects nothing; a wrong or made-up secret gets nothing", 
 test('revoked between yes and the poll (a new password, turned off, kicked): the console gets nothing', async () => {
   const { auth, pairing, phone } = await ready();
   const s = pairing.start(req(), 'https://brieltje.be');
-  pairing.approve(req(), phone, s.code);
+  pairing.approve(req(), phone, s.code, s.check);
   auth.revoke('ilse');
   assert.equal((await pairing.poll(req(), s.token)).state, 'gone');
+});
+
+test('a link alone logs in nothing: without the number only the console shows, the pairing ends', async () => {
+  const { pairing, phone } = await ready();
+  const s = pairing.start(req(), 'https://brieltje.be');
+  const wrong = String(((Number(s.check) - 10 + 1) % 90) + 10);
+  assert.equal(pairing.approve(req(), phone, s.code, wrong).code, 'pairCheck');
+  assert.equal(pairing.approve(req(), phone, s.code, s.check).code, 'pairCode', 'one wrong number ends it');
+  assert.equal((await pairing.poll(req(), s.token)).state, 'gone');
+  assert.equal(pairing.approve(req(), phone, pairing.start(req(), 'https://brieltje.be').code, '').code, 'pairCheck');
 });
 
 test('codes expire, and wrong codes are limited per address and per session', async () => {

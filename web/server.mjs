@@ -284,6 +284,14 @@ async function api(req, res, url) {
     const mine = await accounts.mine(s);
     return mine ? json(res, 200, mine) : json(res, 404, { error: 'No account', code: 'noAccount' });
   }
+  // Every session of this account ends, this one too: a screen logged in by mistake, a lost phone.
+  if (path === '/api/account/logout-all' && method === 'POST') {
+    await body(req);
+    if (s.role !== 'player') return json(res, 403, { error: 'No account', code: 'noAccount' });
+    await auth.endSessionsOf(s.username);
+    auth.log('account_logout_all', req, { username: s.username });
+    return json(res, 200, { ok: true }, { 'Set-Cookie': auth.cookie('', 0, seat) });
+  }
   if ((path === '/api/account/password' || path === '/api/account/delete') && method === 'POST') {
     const b = await body(req);
     if (s.role !== 'player') return json(res, 403, { error: 'No account', code: 'noAccount' });
@@ -295,7 +303,7 @@ async function api(req, res, url) {
   }
   if (path === '/api/pair/approve' && method === 'POST') {
     const b = await body(req);
-    const r = pairing.approve(req, s, typeof b.code === 'string' ? b.code : '');
+    const r = pairing.approve(req, s, typeof b.code === 'string' ? b.code : '', typeof b.check === 'string' ? b.check.slice(0, 4) : '');
     return r.error ? refuse(res, r) : json(res, 200, r);
   }
   // Zombies rooms (server/rooms.mjs): the list for anyone playing together; opening one for accounts and the admin.

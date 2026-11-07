@@ -212,7 +212,9 @@ export const api = {
   changePassword: (old: string, password: string) => call<{ ok: boolean }>('POST', '/api/account/password', { old, password }),
   deleteAccount: (password: string) => call<{ ok: boolean }>('POST', '/api/account/delete', { password }),
   /** Logging in with the phone (server/pairing.mjs): a pairing for this screen, and asking how it goes. */
-  pairStart: () => call<{ token: string; code: string; url: string; qr: { size: number; d: string }; ms: number }>('POST', '/api/pair/start', {}),
+  pairStart: () => call<{ token: string; code: string; check: string; url: string; qr: { size: number; d: string }; ms: number }>('POST', '/api/pair/start', {}),
+  /** Every session of this account ends, this one too (Your account: "Log out on every device"). */
+  logoutAll: () => call<{ ok: boolean }>('POST', '/api/account/logout-all', {}),
   pairPoll: (token: string) => call<{ state: 'waiting' | 'gone' | 'done'; username?: string; role?: 'player' }>('POST', '/api/pair/poll', { token }),
   /** Zombies rooms (server/rooms.mjs): the list, and opening one (an account or the admin). */
   rooms: () => call<{ rooms: RoomEntry[]; max: number }>('GET', '/api/rooms'),

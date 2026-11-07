@@ -65,6 +65,16 @@ export class AccountCard {
     this.dlg.querySelectorAll<HTMLButtonElement>('[data-go]').forEach((b) => b.addEventListener('click', () => this.show(b.dataset.go as View)));
     document.getElementById('acct-close')!.addEventListener('click', () => this.close());
     document.getElementById('acct-pair-new')!.addEventListener('click', () => void this.startPair());
+    // Every session of this account ends, here too: a screen logged in by mistake is out within a second.
+    document.getElementById('acct-out-all')!.addEventListener('click', async () => {
+      try {
+        await api.logoutAll();
+        this.close();
+        this.hooks.ended(() => t('acct.outAllDone'));
+      } catch (e) {
+        this.say(errorText(e));
+      }
+    });
     this.dlg.addEventListener('close', () => this.stopPair());
     this.form.addEventListener('submit', (e) => {
       e.preventDefault();
@@ -110,6 +120,7 @@ export class AccountCard {
       const where = p.url.replace(/^https?:\/\//, '').replace(/#.*$/, '');
       document.getElementById('acct-pair-url')!.textContent = t('acct.phoneOr', { url: where });
       document.getElementById('acct-pair-code')!.textContent = p.code;
+      document.getElementById('acct-pair-check')!.textContent = p.check; // shown here only, never in the link
       this.pair = { token: p.token, until: Date.now() + p.ms, timer: window.setInterval(() => void this.pollPair(), PAIR_POLL_MS) };
       this.pairNote = () => t('acct.phoneWait');
     } catch (e) {
@@ -124,15 +135,19 @@ export class AccountCard {
     this.polling = true;
     try {
       const r = await api.pairPoll(pair.token);
-      if (this.pair !== pair) return;
+      // Done: the cookie is set, so this screen is logged in, even when the card closed meanwhile.
       if (r.state === 'done' && r.username) {
         this.stopPair();
         const finish = this.hooks.begin(false);
         if (finish({ username: r.username, role: 'player' })) this.close();
-      } else if (r.state === 'gone' || Date.now() > pair.until) {
+        return;
+      }
+      if (this.pair !== pair) return;
+      if (r.state === 'gone' || Date.now() > pair.until) {
         this.stopPair();
         document.getElementById('acct-qr')!.parentElement!.hidden = true; // an old code is no use
         document.getElementById('acct-pair-code')!.textContent = '';
+        document.getElementById('acct-pair-check')!.textContent = '';
         this.pairNote = () => t('acct.phoneGone');
         this.draw();
       }
