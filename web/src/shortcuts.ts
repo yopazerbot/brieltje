@@ -6,11 +6,13 @@
  *
  * A key read by its place on the keyboard (e.code: walking, E, Q ...) is named as the player's
  * keyboard prints it (src/keys.ts: Z Q S D on AZERTY). M and Shift+M are read by their letter, so
- * they stay M. Where the keys are read: src/controls/input.ts (playing), src/main.ts (M, P, N),
+ * they stay M. A controller's buttons are named as that kind of controller prints them
+ * (src/controls/padFamily.ts: ✕ on PlayStation, A on Xbox, B on Nintendo). Where the keys are read: src/controls/input.ts (playing), src/main.ts (M, P, N),
  * src/start.ts (Shift+M), src/ui/chat.ts (T, Enter) and src/ui/menu.ts (the arrow keys on the tab
  * rail); each asks keys.ts typing() first, so nothing acts while you type in a field.
  */
 import { PORTALS } from '../shared/portals.mjs';
+import { btn, hasTouchpad, type PadButton } from './controls/padFamily';
 import { t, type PlainKey } from './i18n';
 import { keyName, moveKeys } from './keys';
 
@@ -26,50 +28,55 @@ const place = (code: string): Label => () => keyName(code);
 const named = (name: string): Label => () => name;
 /** A text in the player's language. */
 const say = (key: PlainKey): Label => () => t(key);
+/** A controller's button by its place, named as the connected kind of controller prints it. */
+const pad = (b: PadButton): Label => () => btn(b);
+/** Two buttons, "R2 / L2". */
+const pads = (a: PadButton, b: PadButton): Label => () => `${btn(a)} / ${btn(b)}`;
 
 const TABLE = {
   move: { kbm: () => moveKeys(), pad: say('key.leftStick'), touch: say('tctl.move') },
   look: { kbm: say('key.mouse'), pad: say('key.rightStick'), touch: say('tctl.look') },
   /** Sprint on foot, gallop on a horse. */
-  sprint: { kbm: named('Shift'), pad: named('L3'), touch: say('touch.run') },
+  sprint: { kbm: named('Shift'), pad: pad('l3'), touch: say('touch.run') },
   /** Jump, fly up (held), the handbrake in a car. */
-  jump: { kbm: say('key.space'), pad: named('✕'), touch: say('touch.jump') },
+  jump: { kbm: say('key.space'), pad: pad('south'), touch: say('touch.jump') },
   /** Crouch (held) in Action mode, fly down. */
-  down: { kbm: say('key.ctrlC'), pad: named('○'), touch: say('touch.down') },
-  shoot: { kbm: say('key.leftClick'), pad: named('R2'), touch: say('touch.fire') },
-  aim: { kbm: say('key.rightClick'), pad: named('L2'), touch: say('touch.aim') },
-  reload: { kbm: place('KeyR'), pad: named('□'), touch: say('touch.reload') },
-  weapons: { kbm: () => t('key.weaponKeys', { q: keyName('KeyQ') }), pad: say('key.weaponPad'), touch: named('⇄') },
-  grenade: { kbm: place('KeyG'), pad: named('R1'), touch: say('touch.nade') },
+  down: { kbm: say('key.ctrlC'), pad: pad('east'), touch: say('touch.down') },
+  shoot: { kbm: say('key.leftClick'), pad: pad('r2'), touch: say('touch.fire') },
+  aim: { kbm: say('key.rightClick'), pad: pad('l2'), touch: say('touch.aim') },
+  reload: { kbm: place('KeyR'), pad: pad('west'), touch: say('touch.reload') },
+  weapons: { kbm: () => t('key.weaponKeys', { q: keyName('KeyQ') }), pad: () => t('key.weaponPad', { l1: btn('l1') }), touch: named('⇄') },
+  grenade: { kbm: place('KeyG'), pad: pad('r1'), touch: say('touch.nade') },
   /** Doors, cars, horses, a portal's choice; tagging in a party game. */
-  use: { kbm: place('KeyE'), pad: named('△'), touch: say('touch.use') },
+  use: { kbm: place('KeyE'), pad: pad('north'), touch: say('touch.use') },
   /** Doors in Explore mode also open with a click (R2), which shoots in Action mode. */
-  click: { kbm: say('key.click'), pad: named('R2'), touch: say('touch.use') },
+  click: { kbm: say('key.click'), pad: pad('r2'), touch: say('touch.use') },
   /** Faster and slower (a car, a horse). */
-  drive: { kbm: () => `${keyName('KeyW')} / ${keyName('KeyS')}`, pad: named('R2 / L2'), touch: say('tctl.thumbUpDown') },
+  drive: { kbm: () => `${keyName('KeyW')} / ${keyName('KeyS')}`, pad: pads('r2', 'l2'), touch: say('tctl.thumbUpDown') },
   steer: { kbm: () => `${keyName('KeyA')} / ${keyName('KeyD')}`, pad: say('key.leftStick'), touch: say('tctl.thumbLeftRight') },
-  handbrake: { kbm: say('key.space'), pad: named('✕'), touch: say('touch.brake') },
+  handbrake: { kbm: say('key.space'), pad: pad('south'), touch: say('touch.brake') },
   /** A bike's bell (the jump key, as the car's handbrake). */
-  bell: { kbm: say('key.space'), pad: named('✕'), touch: say('touch.bell') },
+  bell: { kbm: say('key.space'), pad: pad('south'), touch: say('touch.bell') },
   /** A place in a portal's list (digits pick only places while it shows: src/ui/travel.ts). */
   portal: {
     kbm: (): string => t('travel.pickKbm', { n: PORTALS.length, use: key('use', 'kbm') }),
     pad: (): string => t('travel.pickPad', { use: key('use', 'pad') }),
     touch: say('travel.pickTouch'),
   },
-  /** The menu on its Map tab, and back to the game from there. */
-  map: { kbm: named('M'), pad: say('key.bigMapPad'), touch: say('tctl.bigMapHow') },
+  /** The menu on its Map tab, and back to the game from there: the touchpad, or View or − without one. */
+  map: { kbm: named('M'), pad: () => (hasTouchpad() ? t('key.bigMapPad') : t('key.tapPad', { key: btn('select') })), touch: say('tctl.bigMapHow') },
   /** The menu, open and close. */
-  menu: { kbm: named('Esc'), pad: named('Options'), touch: named('☰') },
+  menu: { kbm: named('Esc'), pad: pad('start'), touch: named('☰') },
   /** The menu's tabs (the arrow keys while the tab rail has the keyboard). */
-  tabs: { kbm: named('↑ / ↓'), pad: named('L1 / R1') },
-  fps: { kbm: place('KeyF'), pad: named('Create') },
+  tabs: { kbm: named('↑ / ↓'), pad: pads('l1', 'r1') },
+  /** Create on a PlayStation controller; the others use its place for the map, so only Settings. */
+  fps: { kbm: place('KeyF'), pad: () => (hasTouchpad() ? btn('select') : '') },
   minimap: { kbm: place('KeyN') },
   speed: { kbm: say('key.menuSettings'), pad: say('key.speedPad') },
-  graphics: { kbm: say('key.menuSettings'), pad: say('key.squareInMenu') },
+  graphics: { kbm: say('key.menuSettings'), pad: () => t('key.squareInMenu', { key: btn('west') }) },
   chat: { kbm: () => t('key.or', { a: keyName('KeyT'), b: 'Enter' }) },
   ping: { kbm: place('KeyV') },
-  scores: { kbm: () => t('key.hold', { key: 'Tab' }), pad: say('key.holdTouchpad') },
+  scores: { kbm: () => t('key.hold', { key: 'Tab' }), pad: () => (hasTouchpad() ? t('key.holdTouchpad') : t('key.hold', { key: btn('select') })) },
   sound: { kbm: named('Shift+M') },
 } satisfies Record<string, Entry>;
 
@@ -160,7 +167,7 @@ function padOrKeyGroups(control: 'kbm' | 'pad', action: boolean): Group[] {
         [t('ctl.bigMap'), kbm ? t('key.bigMapKbm', { key: k('map') }) : k('map')],
         [t('ctl.walkSpeed'), k('speed')],
         [t('ctl.graphics'), k('graphics')],
-        [t('ctl.fps'), t('key.orSetting', { key: k('fps') })],
+        [t('ctl.fps'), k('fps') ? t('key.orSetting', { key: k('fps') }) : t('key.menuSettings')],
         [t('ctl.minimap'), kbm ? t('key.orSetting', { key: k('minimap') }) : t('key.menuSettings')],
         [t('ctl.chat'), kbm ? k('chat') : t('key.keyboardOnly')],
         ...(kbm ? [[t('tactics.ping'), k('ping')]] as [string, string][] : []),

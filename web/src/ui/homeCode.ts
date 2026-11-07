@@ -1,4 +1,5 @@
 import type { Home } from '../../shared/homes.mjs';
+import { btn, onPadLabels } from '../controls/padFamily';
 import { onLang, t } from '../i18n';
 
 /** The characters of a code (server/homes.mjs ALPHABET: no I, O, 0 or 1) */
@@ -79,6 +80,7 @@ export class HomeCodeCard {
     document.body.append(r);
     this.words();
     onLang(() => this.words());
+    onPadLabels(() => this.words()); // the buttons' names follow the controller
     this.cancel.addEventListener('click', () => this.close(true));
     this.go.addEventListener('click', () => void this.submit());
     this.input.addEventListener('keydown', (e) => {
@@ -95,7 +97,7 @@ export class HomeCodeCard {
     this.input.setAttribute('aria-label', t('home.code'));
     this.cancel.textContent = t('home.cancel');
     this.go.textContent = t('home.enter');
-    this.hint.textContent = t('home.padHint');
+    this.hint.textContent = t('home.padHint', { type: btn('south'), del: btn('east') });
     ALPHABET.split('').forEach((c, i) => (this.keys[i].textContent = c));
     this.keys[DELETE].textContent = t('home.delete');
     this.keys[ENTER].textContent = t('home.enter');

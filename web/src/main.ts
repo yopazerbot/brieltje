@@ -6,6 +6,7 @@ import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 import { SMAAPass } from 'three/addons/postprocessing/SMAAPass.js';
 import { gradedOutput } from './grade';
 import { NO_INPUT } from './controls/input';
+import { onPadLabels } from './controls/padFamily';
 import { FAR_PHONE, gpuName, guessFromName, loadMode, ORDER, pickQuality, PRESETS, saveMode, timeFrames, type Mode, type Preset, type Quality } from './graphics';
 import { HEIGHT as BODY_HEIGHT, Player, STEP_UP } from './player';
 import { Hud } from './ui/hud';
@@ -2647,6 +2648,10 @@ menu.onPlay = (mode) => {
   if (mode === 'kbm') lockMouse();
   else document.exitPointerLock?.();
 };
+// Another controller (or the button names in Settings): the menu's button in the HUD by its name.
+onPadLabels(() => {
+  if (menu.mode) menuHint.textContent = key('menu', menu.mode);
+});
 /** Capture the mouse. After closing the menu with Esc the browser wants a click first (Esc
  * doesn't count as one), so then the "Click to look around" hint shows until you click. */
 function lockMouse(): void {

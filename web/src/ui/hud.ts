@@ -1,3 +1,4 @@
+import { familyName, oddLayout } from '../controls/padFamily';
 import { lang, t } from '../i18n';
 import { paintball, weaponName } from '../paintball';
 import type { WeaponId } from '../weapon';
@@ -78,10 +79,12 @@ export class Hud {
   /**
    * The controller's line bottom left: its name for a few seconds once it connects (as the other
    * hints, Yoshi), and "no controller found" for as long as you play with one that isn't there.
+   * The name comes with its kind (src/controls/padFamily.ts): "Xbox-style controller: Xbox 360
+   * Controller"; the full name the browser gives is in the ?diag panel.
    */
   setPad(name: string | null, wanted: boolean): void {
     let text = '';
-    if (name) text = t('hud.pad', { name: name.replace(/\s*\(.*\)\s*$/, '') });
+    if (name) text = t(oddLayout() ? 'hud.padOdd' : 'hud.pad', { family: familyName(), name: name.replace(/\s*\(.*\)\s*$/, '') });
     else if (wanted) text = t('hud.noPad');
     if (text !== this.padText) {
       this.padText = text;

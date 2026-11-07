@@ -185,7 +185,7 @@
           </button>
           <button id="choose-pad" class="choice play" type="button">
             <b data-i18n="choose.pad">Controller</b>
-            <span id="pad-state">DualSense: press any button to connect</span>
+            <span id="pad-state">Controller: press any button to connect</span>
           </button>
           <button id="choose-touch" class="choice play hidden" type="button">
             <b data-i18n="choose.touch">Touch screen</b>
@@ -393,6 +393,14 @@
                       <p class="label" data-i18n="choose.pad">Controller</p>
                       <p class="note set-why" data-i18n="set.padNote">Connect a controller and press any button to change these.</p>
                       <div class="setting"><label class="field" for="set-stick"><span data-i18n="set.stick">Controller look speed</span> <span class="set-value" data-for="set-stick"></span></label><input class="slider" id="set-stick" type="range" min="0.4" max="2.5" step="0.05" /></div>
+                      <!-- The names of the buttons in the hints (src/controls/padFamily.ts); each choice shows its face buttons. -->
+                      <p class="label" id="padlbl-label" data-i18n="set.padLabels">Button names</p>
+                      <div class="seg pad-seg" role="group" aria-labelledby="padlbl-label">
+                        <button class="seg-btn" type="button" data-padlbl="auto"><b data-i18n="kbd.auto">Automatic</b><span></span></button>
+                        <button class="seg-btn" type="button" data-padlbl="ps"><b>PlayStation</b><span></span></button>
+                        <button class="seg-btn" type="button" data-padlbl="xbox"><b>Xbox</b><span></span></button>
+                        <button class="seg-btn" type="button" data-padlbl="nintendo"><b>Nintendo</b><span></span></button>
+                      </div>
                     </div>
                     <!-- The controller's rumble, and the short tick of the touch buttons where the phone can vibrate. -->
                     <div class="set-sub" data-needs="pad touch">

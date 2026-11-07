@@ -1,3 +1,4 @@
+import { onPadLabels } from '../controls/padFamily';
 import { onLang, t } from '../i18n';
 import { essentials, type Control } from '../shortcuts';
 
@@ -23,9 +24,11 @@ export class ControlsCard {
 
   constructor() {
     this.root.querySelector('#cc-close')!.addEventListener('click', () => this.close());
-    onLang(() => {
+    const refill = () => {
       if (this.open && this.shown) this.fill(this.shown.control, this.shown.action);
-    });
+    };
+    onLang(refill);
+    onPadLabels(refill); // another controller: its buttons' names
   }
 
   show(control: Control, action: boolean, fromMenu = false): void {

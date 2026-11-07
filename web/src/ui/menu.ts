@@ -7,6 +7,7 @@
  * left it on, are remembered in this browser.
  */
 
+import { btn, faceButtons, familyName, onPadLabels, padLabels, setPadLabels, type PadLabels } from '../controls/padFamily';
 import { ORDER, type Mode, type Quality } from '../graphics';
 import { num, onLang, t } from '../i18n';
 import { layout, moveKeys, onKeys, setLayout, type Layout } from '../keys';
@@ -155,6 +156,14 @@ export class Menu {
       this.showKeyboard();
     });
     this.showKeyboard();
+    // The controller's button names (Settings, and a new controller): the controls and the start screen's line.
+    document.querySelectorAll<HTMLButtonElement>('[data-padlbl]').forEach((b) => b.addEventListener('click', () => setPadLabels(b.dataset.padlbl as PadLabels)));
+    onPadLabels(() => {
+      this.fillControls();
+      this.showPadLabels();
+      this.padText = '';
+    });
+    this.showPadLabels();
     // The sliders' fill follows dragging at once, and a click (Back to defaults) a moment later.
     this.overlay.addEventListener('input', (e) => {
       if (e.target instanceof HTMLInputElement && e.target.type === 'range') fillRange(e.target);
@@ -172,6 +181,16 @@ export class Menu {
       b.querySelector('span')!.textContent = kind === 'auto' ? moveKeys() : kind === 'azerty' ? 'Z Q S D' : 'W A S D';
     });
     $('kbm-sub').textContent = t('choose.kbmSub', { wasd: moveKeys() });
+  }
+
+  /** The button-name choice in Settings, each with its four face buttons (Automatic: the controller's). */
+  private showPadLabels(): void {
+    const choice = padLabels();
+    document.querySelectorAll<HTMLButtonElement>('[data-padlbl]').forEach((b) => {
+      const kind = b.dataset.padlbl as PadLabels;
+      b.classList.toggle('selected', kind === choice);
+      b.querySelector('span')!.textContent = faceButtons(kind === 'auto' ? undefined : kind);
+    });
   }
 
   /** Your name as it shows: "Guest" in the current language when you typed none. */
@@ -485,7 +504,7 @@ export class Menu {
     this.padText = key;
     this.padConnected = !!name;
     this.updateSwitch();
-    $('pad-state').textContent = name ? t('pad.connected', { name: name.replace(/\s*\(.*\)\s*$/, '') }) : t('pad.connect');
+    $('pad-state').textContent = name ? t('pad.connected', { key: btn('south'), name: familyName() }) : t('pad.connect');
     $('choose-pad').classList.toggle('selected', !!name);
   }
 }

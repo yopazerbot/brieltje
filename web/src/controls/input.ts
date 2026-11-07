@@ -1,15 +1,18 @@
 /**
- * Combines the DualSense (browser Gamepad API), keyboard/mouse and the touch
+ * Combines the controller (browser Gamepad API), keyboard/mouse and the touch
  * controls into one set of values per frame. Sticks: x to the right, y up
- * (forward) positive.
+ * (forward) positive. Which controller it is and what its buttons are called:
+ * src/controls/padFamily.ts.
  */
 import { typing } from '../keys';
+import { hasTouchpad, notePad } from './padFamily';
 import type { TouchControls } from './touch';
 
 const DEAD_ZONE = 0.15;
 
-// Button numbers in the browser's "standard" layout, which Chrome and Edge use
-// for the DualSense over USB and Bluetooth.
+// Button numbers in the browser's "standard" layout, by their place: Chrome and Edge use it for the
+// DualSense, Xbox pads (XInput) and Nintendo's Pro Controller alike. Named here as on the DualSense
+// (cross is the lowest face button: A on Xbox, B on Nintendo); create is View or − on the others.
 const BTN = { cross: 0, circle: 1, square: 2, triangle: 3, l1: 4, r1: 5, l2: 6, r2: 7, create: 8, options: 9, l3: 10, up: 12, down: 13, left: 14, right: 15, touchpad: 17 };
 
 export interface FrameInput {
@@ -50,9 +53,9 @@ export interface FrameInput {
   speedStep: number;
   /** L1 (-1) or R1 (+1) in the menu: the previous or next tab */
   tabStep: number;
-  /** Tab or the touchpad held: show the scoreboard */
+  /** Tab, or the touchpad (View or − without one) held: show the scoreboard */
   scoreHeld: boolean;
-  /** A short press on the controller's touchpad: the big map (M on the keyboard is handled in main.ts) */
+  /** A short press on the controller's touchpad, or View or − without one: the big map (M on the keyboard is handled in main.ts) */
   mapPressed: boolean;
   /** Left mouse button or R2 held (automatic fire) */
   fireHeld: boolean;
@@ -102,7 +105,7 @@ export class Input {
   private mouseY = 0;
   private prevButtons: boolean[] = [];
   private padSprint = false;
-  private touchpadAt = 0; // when the touchpad went down: a short press is the map, holding it the scores
+  private touchpadAt = 0; // when the map button went down: a short press is the map, holding it the scores
   private keyMenu = false;
   private keyFps = false;
   private keyJump = false;
@@ -212,6 +215,7 @@ export class Input {
     // Controller
     const p = this.pad();
     this.padName = p ? p.id : null;
+    notePad(p);
     if (p) {
       const pressed = p.buttons.map((b) => b.pressed);
       const edge = (i: number) => pressed[i] && !this.prevButtons[i];
@@ -229,7 +233,11 @@ export class Input {
       if (lx === 0 && ly === 0) this.padSprint = false;
       out.sprint ||= this.padSprint;
       if (edge(BTN.options)) out.menuPressed = true;
-      if (edge(BTN.create)) out.fpsPressed = true;
+      // The touchpad (PlayStation) is the map and the scores, Create the FPS counter. Without a
+      // touchpad, View or − (Create's place) is the map and the scores; the FPS counter is in Settings.
+      const touchpad = hasTouchpad();
+      const mapBtn = touchpad ? BTN.touchpad : BTN.create;
+      if (touchpad && edge(BTN.create)) out.fpsPressed = true;
       if (edge(BTN.cross)) {
         out.confirmPressed = true;
         out.jumpPressed = true;
@@ -248,9 +256,9 @@ export class Input {
       }
       out.reloadHeld ||= !!pressed[BTN.square];
       const now = performance.now();
-      if (edge(BTN.touchpad)) this.touchpadAt = now;
-      out.scoreHeld ||= !!pressed[BTN.touchpad] && now - this.touchpadAt > 250;
-      if (!pressed[BTN.touchpad] && this.prevButtons[BTN.touchpad] && now - this.touchpadAt <= 250) out.mapPressed = true;
+      if (edge(mapBtn)) this.touchpadAt = now;
+      out.scoreHeld ||= !!pressed[mapBtn] && now - this.touchpadAt > 250;
+      if (!pressed[mapBtn] && this.prevButtons[mapBtn] && now - this.touchpadAt <= 250) out.mapPressed = true;
       out.fireHeld ||= !!pressed[BTN.r2];
       if (edge(BTN.circle)) out.deletePressed = true;
       if (edge(BTN.up)) out.weaponCycle = 1;

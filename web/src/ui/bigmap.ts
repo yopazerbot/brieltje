@@ -241,7 +241,7 @@ export class BigMap {
   private showHelp(): void {
     const c = this.control;
     this.help.textContent = c === 'touch' ? t('map.helpTouch')
-      : c === 'pad' ? t('map.helpPad', { tabs: key('tabs', c), menu: key('menu', c) })
+      : c === 'pad' ? t('map.helpPad', { zoom: key('drive', c), set: key('jump', c), back: key('down', c), tabs: key('tabs', c), menu: key('menu', c) })
       : t('map.helpKbm', { move: moveKeys(), map: key('map', c), menu: key('menu', c) });
   }
 
