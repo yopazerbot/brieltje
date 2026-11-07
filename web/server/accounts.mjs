@@ -19,7 +19,7 @@
 // - The admin (brieltje.be/admin) lists the accounts, sets a new password (shown to the admin once),
 //   turns one off or on, and deletes one.
 
-import { randomBytes } from 'node:crypto';
+import { createHash, randomBytes } from 'node:crypto';
 import { ADMIN_NAME, Attempts, bucketOf, clientIp, hashPassword, NAME_RE, verifyHash } from './auth.mjs';
 
 export const ACCOUNT_MS = 30 * 24 * 3600_000;
@@ -37,8 +37,12 @@ const PASS_MAX = 200;
 const EMAIL_MAX = 254;
 // Something@something.something: no spaces, quotes or angle brackets. Not checked any further (no mail is sent).
 const EMAIL_RE = /^[^\s@<>"'`]{1,64}@[^\s@<>"'`]+\.[^\s@<>"'`.]{2,}$/;
-/** What a player's device cookie is signed for. */
-const deviceFor = (name) => `#acct:${name}`;
+/**
+ * What a player's device cookie is signed for: the account as it is now, so the cookie stops counting once
+ * its password changes (a new one, the admin's reset) or the name is a new account (deleted, signed up again).
+ * The password's part is a hash of its stored hash: the cookie never carries anything of the password.
+ */
+const deviceFor = (row) => `#acct:${row.username}:${new Date(row.created).getTime()}:${createHash('sha256').update(String(row.pass)).digest('base64url').slice(0, 16)}`;
 
 // The most common passwords (from the public lists of leaked ones, English and Dutch), refused outright.
 const COMMON = new Set(`
@@ -132,12 +136,15 @@ export class Accounts {
     return null;
   }
 
-  /** A new session for a player, and at most SESSIONS_PER_ACCOUNT of theirs (the oldest go). */
-  async session(req, name) {
+  /**
+   * A new session for a player, and at most SESSIONS_PER_ACCOUNT of theirs (the oldest go). `epoch`: the
+   * account's revocation count when the login or sign-up began (server/auth.mjs revoke).
+   */
+  async session(req, name, epoch) {
     const ip = bucketOf(clientIp(req));
-    const epoch = this.auth.epoch.get(name) || 0;
+    if ((this.auth.epoch.get(name) || 0) !== epoch) return null;
     const { token, key } = await this.auth.startSession(name, 'player', ACCOUNT_MS, { ip });
-    // Turned off, deleted or kicked while the session was saved: it doesn't count.
+    // Turned off, deleted, given a new password or kicked since the login began: it doesn't count.
     if ((this.auth.epoch.get(name) || 0) !== epoch || (this.auth.blocked.get(name) || 0) > Date.now()) {
       this.auth.sessions.delete(key);
       await this.store.deleteSession(key);
@@ -162,6 +169,7 @@ export class Accounts {
     const weak = this.passwordProblem(password, name);
     if (weak) return weak;
     const now = Date.now();
+    const epoch = this.auth.epoch.get(name) || 0; // a kick from here on ends this sign-up's session
     const ip = bucketOf(clientIp(req));
     if (this.signups.count(ip, now) >= SIGNUPS_ADDRESS || this.signups.count('all', now) >= SIGNUPS_ALL) {
       return { error: 'Too many new accounts lately. Try again in an hour.', code: 'signupsTooMany', status: 429 };
@@ -182,10 +190,11 @@ export class Accounts {
       if (!hashed) return { error: 'The server is busy. Try again in a moment.', code: 'busy', status: 503 };
       if (!(await this.store.createAccount({ username: name, email, pass: hashed.value }))) return taken; // two sign-ups at once: the store decides
       this.auth.log('account_created', req, { username: name });
-      const token = await this.session(req, name);
+      const row = await this.store.getAccount(name);
+      const token = row && (await this.session(req, name, epoch));
       if (!token) return { error: 'You were removed by the admin. Try again later.', code: 'removed', status: 403 };
       this.seen(name, true);
-      return { token, username: name, role: 'player', device: this.auth.newDevice(deviceFor(name)) };
+      return { token, username: name, role: 'player', device: this.auth.newDevice(deviceFor(row)) };
     } finally {
       this.auth.claiming.delete(name);
     }
@@ -199,8 +208,12 @@ export class Accounts {
     if (!NAME_RE.test(name) || !password || password.length > PASS_MAX) return wrong;
     const ip = bucketOf(clientIp(req));
     const now = Date.now();
+    // Noted before anything is read: turned off, given a new password, deleted or kicked while this login
+    // is checked, it gets no session (session).
+    const epoch = this.auth.epoch.get(name) || 0;
     if (this.byAddress.count(ip, now) >= LOGIN_FAILS_ADDRESS) return { error: 'Too many attempts. Try again in 15 minutes.', code: 'tooMany', status: 429 };
-    const own = this.auth.knownDevice(req, deviceFor(name), this.auth.names.acct);
+    const row = await this.store.getAccount(name);
+    const own = !!row && this.auth.knownDevice(req, deviceFor(row), this.auth.names.acct);
     if (!own && this.byAccount.count(name, now) >= LOGIN_FAILS_ACCOUNT) {
       return { error: 'Too many wrong passwords for this name. Try again in 15 minutes.', code: 'tooManyName', status: 429 };
     }
@@ -211,7 +224,6 @@ export class Accounts {
       this.byAddress.undo(ip, now);
       if (!own) this.byAccount.undo(name, now);
     };
-    const row = await this.store.getAccount(name);
     const checked = await this.hashing(() => verifyHash(password, row?.pass ?? this.dummy));
     if (!checked) {
       undo();
@@ -224,11 +236,11 @@ export class Accounts {
     undo();
     if (row.disabled) return { error: 'The admin has turned this account off.', code: 'accountOff', status: 403 };
     if ((this.auth.blocked.get(name) || 0) > now) return { error: 'You were removed by the admin. Try again later.', code: 'removed', status: 403 };
-    const token = await this.session(req, name);
+    const token = await this.session(req, name, epoch);
     if (!token) return { error: 'You were removed by the admin. Try again later.', code: 'removed', status: 403 };
     this.auth.log('account_login', req, { username: name });
     this.seen(name, true);
-    return { token, username: name, role: 'player', device: this.auth.newDevice(deviceFor(name)) };
+    return { token, username: name, role: 'player', device: this.auth.newDevice(deviceFor(row)) };
   }
 
   /** The player's own account: name, email, when it was made. */
@@ -268,10 +280,11 @@ export class Accounts {
     if (refused) return refused;
     const hashed = await this.hashing(() => hashPassword(password));
     if (!hashed) return { error: 'The server is busy. Try again in a moment.', code: 'busy', status: 503 };
+    this.auth.revoke(name); // first: a login checked against the old password gets no session
     await this.store.updateAccount(name, { pass: hashed.value });
     await this.auth.endSessionsOf(name);
     this.auth.log('account_password', req, { username: name });
-    const token = await this.session(req, name);
+    const token = await this.session(req, name, this.auth.epoch.get(name) || 0);
     return token ? { ok: true, token } : { error: 'Not logged in', code: 'notLoggedIn', status: 401 };
   }
 
@@ -279,6 +292,7 @@ export class Accounts {
   async deleteMine(req, session, b) {
     const refused = await this.confirm(req, session, b?.password);
     if (refused) return refused;
+    this.auth.revoke(session.username);
     await this.store.deleteAccount(session.username);
     await this.auth.endSessionsOf(session.username);
     this.auth.log('account_deleted', req, { username: session.username, detail: 'by the player' });
@@ -315,18 +329,21 @@ export class Accounts {
       const password = [...randomBytes(12)].map((x) => abc[x % abc.length]).join('');
       const hashed = await this.hashing(() => hashPassword(password));
       if (!hashed) return { error: 'The server is busy. Try again in a moment.', code: 'busy', status: 503 };
+      this.auth.revoke(name); // first: a login checked against the old password gets no session
       await this.store.updateAccount(name, { pass: hashed.value });
       await this.auth.endSessionsOf(name);
       this.auth.log('account_reset', req, { username: by, detail: name });
       return { ok: true, password };
     }
     if (op === 'off' || op === 'on') {
+      if (op === 'off') this.auth.revoke(name); // first: a login being checked now gets no session
       await this.store.updateAccount(name, { disabled: op === 'off' });
       if (op === 'off') await this.auth.endSessionsOf(name);
       this.auth.log(op === 'off' ? 'account_off' : 'account_on', req, { username: by, detail: name });
       return { ok: true };
     }
     if (op === 'delete') {
+      this.auth.revoke(name);
       await this.store.deleteAccount(name);
       await this.auth.endSessionsOf(name);
       this.auth.log('account_deleted', req, { username: by, detail: `${name}, by the admin` });

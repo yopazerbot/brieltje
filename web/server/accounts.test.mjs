@@ -146,6 +146,44 @@ test('a new password ends every other session; deleting needs the password and e
   assert.equal(auth.session(req('192.0.2.30', `${auth.names.session}=${changed.token}`)), null);
 });
 
+test("a browser's own-account cookie stops counting after a new password, or for a new account under the name", async () => {
+  const { auth, accounts } = await ready();
+  const made = await accounts.register(req(), { ...good, username: 'quinn' });
+  const own = `${auth.names.acct}=${made.device}`;
+  const lock = async () => {
+    for (let i = 0; i < 10; i++) await accounts.login(req(`198.51.100.${i}`), { username: 'quinn', password: `wrong ${i} guess` });
+  };
+  await lock();
+  assert.equal((await accounts.login(req('198.51.100.50', own), { username: 'quinn', password: good.password })).role, 'player', 'her browser still gets in');
+  const session = [...auth.sessions].find(([, s]) => s.username === 'quinn');
+  await accounts.changePassword(req(), { key: session[0], ...session[1] }, { old: good.password, password: 'a brand new phrase' });
+  await lock();
+  assert.equal((await accounts.login(req('198.51.100.51', own), { username: 'quinn', password: 'a brand new phrase' })).code, 'tooManyName', 'the old cookie no longer skips the count');
+  // Deleted and signed up again by someone else: the old cookie is nobody's.
+  auth.liftLockouts('admin');
+  await accounts.admin(req(), 'admin', 'delete', 'quinn');
+  await accounts.register(req('192.0.2.31'), { ...good, username: 'quinn', password: 'someone else entirely' });
+  await lock();
+  assert.equal((await accounts.login(req('198.51.100.52', own), { username: 'quinn', password: 'someone else entirely' })).code, 'tooManyName');
+});
+
+test('turned off while a login is being checked: that login gets no session', async () => {
+  const { auth, store, accounts } = await ready();
+  await accounts.register(req(), { ...good, username: 'roos' });
+  auth.sessions.clear();
+  // The admin's "off" lands while the password check runs.
+  const getAccount = store.getAccount.bind(store);
+  store.getAccount = async (name) => {
+    const row = await getAccount(name);
+    store.getAccount = getAccount;
+    await accounts.admin(req(), 'admin', 'off', 'roos');
+    return row && { ...row, disabled: false }; // what the login read before the change
+  };
+  const r = await accounts.login(req(), { username: 'roos', password: good.password });
+  assert.equal(r.code, 'removed');
+  assert.equal([...auth.sessions.values()].filter((s) => s.username === 'roos').length, 0);
+});
+
 test('at most ten sessions per account: the oldest go', async () => {
   const { auth, accounts } = await ready();
   await accounts.register(req(), { ...good, username: 'pia' });
