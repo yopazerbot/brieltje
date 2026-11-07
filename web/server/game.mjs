@@ -15,6 +15,11 @@
 // passenger, who moves with it) may move at the car's speed. A car stays where they leave it
 // and is back in its parking spot when the server restarts.
 //
+// The bikes (shared/bike.json: one against the main house, one at the bungalow, racks by the
+// portals): one player rides each at a time, and their position updates are the bike's, so they
+// may move at a bike's speed while (and only while) they ride one. Like a car, a bike keeps its
+// rider out of the fighting. Each bike stays where it is left until the server restarts.
+//
 // More Teslas are spawned with /tesla (at most PLACED.max, see placeCar): each is a car like
 // the others, kept in the database where it was put, gone with the furniture's clear or reset.
 //
@@ -36,7 +41,7 @@ import { defaultLayout, housePacks } from './insides.mjs';
 import { HomeGate } from './homeGate.mjs';
 import { noShoot } from '../shared/zones.mjs';
 import { boxesOverlap, boxPoints, clearOfPortals, makeIndoors, makeSolids } from '../shared/parking.mjs';
-import { bruteEntry, carFields, horseFields, playerFields, PROTO, TICK_MS } from '../shared/wire.mjs';
+import { bikeFields, bruteEntry, carFields, horseFields, playerFields, PROTO, TICK_MS } from '../shared/wire.mjs';
 import { houseAreas, makeNav, MAX_ADMIN_WAVE } from '../shared/zombies.mjs';
 import { cycleTime, DEFAULT_CHOICE, isChoice, MoodCycle, newCycle, skipCycle, SPEEDS, withSpeed } from '../shared/moods.mjs';
 import { arenaEdge, arenaHome, arenaPrisms, ARENAS, portalOf } from '../shared/arenas.mjs';
@@ -158,6 +163,8 @@ const PLACED = CARS.placed;
 /** A car's size and speeds: its own, or for a placed one its kind's base car's. */
 const carSpec = (car) => CARS.cars[car.id] ?? CARS.cars[PLACED.kinds[car.kind]?.base];
 const TESLA_MS = 400; // ms: at most one place, move or removal this often per player
+const BIKES = shared('bike.json'); // the bikes: where each stands, its size and top speed (src/world/bike.ts)
+const BELL_MS = 400; // ms: a rider's bell rings for the others at most this often
 /**
  * Where a placed car can't stand: the blocks of the house, its surroundings, the street models'
  * walls and fences, and the village (the same as the page's collision), and the floors of the house
@@ -250,6 +257,7 @@ const DROP_SPEED = DROP.across * 1.3;
 const DROP_RISE = { max: 0.6, rate: 0.5 };
 const CAR_SPEED = Math.max(...Object.values(CARS.cars).map((c) => c.maxSpeed)) * 1.2; // m/s in a car, with room for network jitter
 const HORSE_SPEED = HORSES.gallop * 1.3; // m/s on horseback
+const BIKE_SPEED = BIKES.maxSpeed * 1.3; // m/s on a bike: its top speed (downhill), with room for network jitter
 const TRAVEL_MS = 1500; // at most one trip through the portals this often
 const TRAVEL_SLACK = 3; // m: the server's idea of where you are may lag a little behind yours
 
@@ -321,6 +329,9 @@ export class Game {
     this.owners = new Map();
     this.cars = Object.fromEntries(Object.entries(CARS.cars).map(([id, c]) => [id, { id, ...c.park, s: 0, driver: null, passenger: null }]));
     this.placing = 0; // placed Teslas on their way into the database (they count towards the most)
+    // Bikes: back at their racks at each start; one rider each.
+    this.bikes = Object.fromEntries(Object.entries(BIKES.bikes).map(([id, k]) => [id, { id, ...k.park, rider: null }]));
+    this.bikeAt = {}; // bike id -> when its pose was taken (the server's clock, ms)
     // Horses: on their walks until someone rides one; left where they are got off (until a restart).
     this.horses = HORSES.herd.map((_, i) => ({ i, x: 0, z: 0, yaw: 0, speed: 0, rider: null, parked: false }));
     this.modes = new Modes(this); // hide and seek, tag, treasure hunt, the teams, Zombies (the admin starts them)
@@ -328,7 +339,7 @@ export class Game {
     // The ticks (see snapshot): their count, and what each car, horse and strongman looked like in the
     // last one, kept here so the objects sent in 'car' and 'horse' messages stay as they are.
     this.tickNo = 0;
-    this.sent = new Map(); // 'c' + car id, 'h' + horse, 'b' + strongman id -> its fields in the last tick
+    this.sent = new Map(); // 'c' + car id, 'h' + horse, 'k' + bike id, 'b' + strongman id -> its fields in the last tick
     this.carAt = {}; // car id -> when its pose was taken (the server's clock, ms)
     this.horseAt = this.horses.map(() => 0);
     this.football = new Football((x, z) => HOUSE.ground + TERRAIN.height(x, z)); // the footballs (server/football.mjs)
@@ -385,6 +396,7 @@ export class Game {
     if (old) old.ws.close(4000, 'Logged in somewhere else');
     this.releaseCar(name); // the replaced connection was driving
     this.releaseHorse(name);
+    this.releaseBike(name);
     const used = new Set([...this.players.values()].map((p) => p.color));
     const color = COLORS.find((c) => !used.has(c)) || COLORS[0];
     const now = Date.now();
@@ -421,7 +433,7 @@ export class Game {
       t: 'welcome', proto: PROTO, you: name, role: session.role, color, doors: this.doorsFor(player), doorDir: this.doorDirFor(player), broken: this.brokenFor(player), homes: HOMES.filter((h) => player.role !== 'admin' && this.homes?.granted(player.key, h.id)).map((h) => h.id), players: this.roster(),
       time: now, cats: this.catsDown.map((until) => Math.max(0, until - now)), clowns: this.clownList(now), furniture: this.furnitureFor(player), rules: this.rules,
       scores: this.scoreList(), limit: KILL_LIMIT, items: this.items.map((it) => now >= it.until), round: this.roundOver ? { winner: this.roundOver.winner, ms: this.roundOver.until - now } : null,
-      cars: Object.values(this.cars), horses: this.horses, mode: this.modes.view(now), mood: this.mood, moodCycle: this.moodView(now),
+      cars: Object.values(this.cars), horses: this.horses, bikes: Object.values(this.bikes), mode: this.modes.view(now), mood: this.mood, moodCycle: this.moodView(now),
     });
     this.broadcast({ t: 'join', name, color }, name);
     this.modes.join(name);
@@ -434,6 +446,7 @@ export class Game {
         this.players.delete(name);
         this.releaseCar(name);
         this.releaseHorse(name);
+        this.releaseBike(name);
         this.modes.leave(name, player);
         this.broadcast({ t: 'leave', name });
         this.broadcast({ t: 'scores', list: this.scoreList() });
@@ -511,6 +524,7 @@ export class Game {
     target.respawnAt = zombies ? Infinity : now + RESPAWN_MS;
     this.releaseCar(targetName);
     this.releaseHorse(targetName);
+    this.releaseBike(targetName);
     target.score.deaths++;
     target.weapons = loadout(target.role); // dropped what they picked up
     this.broadcast({ t: 'kill', killer: by, victim: targetName, head: false, w: by === 'a strongman' ? 'strongman' : 'zombie' });
@@ -634,11 +648,12 @@ export class Game {
       const driving = car?.driver === name;
       const inCar = !!car;
       const horse = this.horseOf(name);
+      const bike = car || horse ? null : this.bikeOf(name);
       const next = {
         ...where(m),
         // No flying in the Zombies game: hovering over the zombies would be out of their reach for good.
-        yaw: num(m.yaw, -100, 100), pitch: num(m.pitch, -2, 2), armed: !!m.armed, flying: !!m.flying && this.rules.flying && !inCar && !this.modes.zombies,
-        w: player.weapons.has(m.w) ? m.w : 'pistol', c: !!m.c && !inCar, d: inCar, s: driving ? num(m.s, -1, 1) : 0,
+        yaw: num(m.yaw, -100, 100), pitch: num(m.pitch, -2, 2), armed: !!m.armed, flying: !!m.flying && this.rules.flying && !inCar && !bike && !this.modes.zombies,
+        w: player.weapons.has(m.w) ? m.w : 'pistol', c: !!m.c && !inCar && !bike, d: inCar, s: driving ? num(m.s, -1, 1) : 0, bk: !!bike,
         // In a drop, and its canopy out: only while the server has them dropping (a page can't claim one, see drop).
         chute: !!m.pc && this.dropping(player, now),
         open: !!m.pc && !!m.po && this.dropping(player, now),
@@ -654,7 +669,8 @@ export class Game {
       // server started (and only then) across goes up to the skydive's speed, down as fast as a fall, and
       // up next to nothing (stepping onto a roof's edge): nobody climbs in a drop.
       const drop = this.dropping(player, now);
-      const speed = inCar ? CAR_SPEED : horse ? HORSE_SPEED : player.role === 'admin' ? ADMIN_SPEED : drop ? DROP_SPEED : RUN_SPEED;
+      // On a bike only while the server has them riding one, never on a page's say (a forged ride state is no speed-hack).
+      const speed = inCar ? CAR_SPEED : horse ? HORSE_SPEED : bike ? BIKE_SPEED : player.role === 'admin' ? ADMIN_SPEED : drop ? DROP_SPEED : RUN_SPEED;
       const vspeed = inCar || horse || player.role === 'admin' ? speed : MAX_SPEED;
       const secs = (now - player.movedAt) / 1000;
       const budget = Math.min(speed * 0.5 + 0.5, player.budget + speed * secs);
@@ -700,6 +716,10 @@ export class Game {
       if (horse) {
         Object.assign(horse, { x: next.x, z: next.z, yaw: num(m.hy, -100, 100), speed: num(m.hs, -2, HORSES.gallop), jump: num(m.hj, 0, HORSES.jump.height) });
         this.horseAt[horse.i] = player.stamp;
+      }
+      if (bike) {
+        Object.assign(bike, { x: next.x, y: next.y, z: next.z, yaw: next.yaw });
+        this.bikeAt[bike.id] = player.stamp;
       }
       if (player.state.armed !== wasArmed) this.broadcast({ t: 'scores', list: this.scoreList() });
     } else if (m.t === 'rally') {
@@ -866,6 +886,21 @@ export class Game {
       if (m.op === 'on' && this.modes.zombies) return this.send(player.ws, { t: 'system', text: 'No riding during Zombies.', code: 'zNoHorse' });
       if (m.op === 'on' && Number.isInteger(m.i) && this.horses[m.i]) this.mountHorse(name, player, this.horses[m.i], now);
       else if (m.op === 'off') this.releaseHorse(name);
+    } else if (m.t === 'bike') {
+      // On or off a bike: at most three times a second (shared with the cars and horses); on only with a known
+      // id, and the server checks the rest (mountBike). Not during Zombies, as the cars and horses.
+      if (now < (player.nextCar || 0)) return;
+      player.nextCar = now + 300;
+      if (m.op === 'on' && this.modes.zombies) return this.send(player.ws, { t: 'system', text: 'No cycling during Zombies.', code: 'zNoBike' });
+      if (m.op === 'on' && typeof m.id === 'string' && Object.hasOwn(this.bikes, m.id)) this.mountBike(name, player, this.bikes[m.id], now);
+      else if (m.op === 'off') this.releaseBike(name);
+    } else if (m.t === 'bell') {
+      // A bike's bell: only from its rider, at most every BELL_MS. The others ring it where the server has
+      // that bike (the message carries no place of its own), so nobody rings it from somewhere else.
+      const bike = this.bikeOf(name);
+      if (!bike || now < (player.nextBell || 0)) return;
+      player.nextBell = now + BELL_MS;
+      this.broadcast({ t: 'bell', id: bike.id }, name);
     } else if (m.t === 'rocket') {
       this.rocket(name, player, m, now);
     } else if (m.t === 'nade') {
@@ -939,7 +974,7 @@ export class Game {
     p.spawned = true;
     // Refused: the page goes back to where the server has the player, so both agree.
     const no = () => this.send(p.ws, { t: 'spawn', ok: false, x: st.x, z: st.z });
-    if (now - p.joinTime > 90_000 || !p.alive || this.carOf(name) || this.horseOf(name) || (!this.rules.portals && p.role !== 'admin')) return no();
+    if (now - p.joinTime > 90_000 || !p.alive || this.carOf(name) || this.horseOf(name) || this.bikeOf(name) || (!this.rules.portals && p.role !== 'admin')) return no();
     if (Math.hypot(st.x - p.joinedAt.x, st.z - p.joinedAt.z) > 30) return no();
     const [x, z, yaw] = to.out;
     if (!this.fence().inside(x, z)) return no(); // a game in the house: only a start near it
@@ -978,7 +1013,7 @@ export class Game {
     if (!st) return;
     const no = (code, args = {}) => this.send(p.ws, { t: 'chute', ok: false, code, args });
     if (!this.rules.parachute) return no('chuteOff');
-    if (!p.alive || this.carOf(name) || this.horseOf(name) || this.dropping(p, now) || this.modes.active) return no('chuteNotNow');
+    if (!p.alive || this.carOf(name) || this.horseOf(name) || this.bikeOf(name) || this.dropping(p, now) || this.modes.active) return no('chuteNotNow');
     if (now - (p.hurtAt ?? -Infinity) < HURT_CALM_MS) return no('chuteFight');
     if (now < (p.nextChute ?? 0)) return no('chuteWait', { s: Math.ceil((p.nextChute - now) / 1000) });
     if (INDOORS(st.x, st.z)) return no('chuteIndoors'); // go outside first
@@ -1000,7 +1035,7 @@ export class Game {
     if (p.spawned || !st) return;
     p.spawned = true;
     const { x, z, yaw } = HOME_DROP;
-    if (!this.rules.parachute || now - p.joinTime > 90_000 || !p.alive || this.carOf(name) || this.horseOf(name)) return;
+    if (!this.rules.parachute || now - p.joinTime > 90_000 || !p.alive || this.carOf(name) || this.horseOf(name) || this.bikeOf(name)) return;
     if (Math.hypot(st.x - x, st.z - z) > 30 || !this.fence().inside(x, z)) return;
     const from = this.dropFrom(x, z, yaw); // behind the start, along the lane: without steering it lands there
     Object.assign(st, { x: from.x, y: HOUSE.ground + TERRAIN.height(x, z) + DROP.height, z: from.z });
@@ -1023,6 +1058,7 @@ export class Game {
     const car = this.carOf(name);
     if (car && car.driver !== name) return no('Only the driver can take the car through.', 'travelDriverOnly');
     if (this.horseOf(name)) return no('Get off the horse first.', 'travelHorse');
+    if (this.bikeOf(name)) return no('Get off the bike first.', 'travelBike');
     if (!chat) {
       const on = portalNear(st.x, st.z, (car ? CAR_REACH : REACH) + TRAVEL_SLACK);
       if (!on || on === to) return no();
@@ -1070,7 +1106,7 @@ export class Game {
    */
   unstuck(name, p, now) {
     const st = p.state;
-    if (!st || !p.alive || st.flying || this.dropping(p, now) || this.carOf(name) || this.horseOf(name)) return;
+    if (!st || !p.alive || st.flying || this.dropping(p, now) || this.carOf(name) || this.horseOf(name) || this.bikeOf(name)) return;
     if (!inEndGarden(st.x, st.z, st.y) || this.gate.may(p, 'molenhoek_end')) return;
     this.putOut(p, st, 'molenhoek_end', now);
     this.send(p.ws, { t: 'unstuck', x: st.x, z: st.z });
@@ -1079,7 +1115,7 @@ export class Game {
   /** Get in, when the player stands next to it, is alive and in no car yet: at the wheel if nobody drives, else in the passenger seat if it's free. */
   enterCar(name, p, car) {
     const st = p.state;
-    if (this.carOf(name) || !p.alive || !st) return this.send(p.ws, { t: 'car', car });
+    if (this.carOf(name) || this.bikeOf(name) || !p.alive || !st) return this.send(p.ws, { t: 'car', car });
     // Close to its outline: the middle of the car plus its half diagonal and the reach.
     const spec = carSpec(car);
     const near = Math.hypot(spec.length, spec.width) / 2 + CARS.reach + 0.5;
@@ -1104,7 +1140,7 @@ export class Game {
   /** Get on a horse nobody rides, when the player stands next to it, is alive and in no car. */
   mountHorse(name, p, horse, now) {
     const st = p.state;
-    if (horse.rider || this.carOf(name) || this.horseOf(name) || !p.alive || !st) return this.send(p.ws, { t: 'horse', horse });
+    if (horse.rider || this.carOf(name) || this.horseOf(name) || this.bikeOf(name) || !p.alive || !st) return this.send(p.ws, { t: 'horse', horse });
     const at = horse.parked ? horse : horseOnLoop(horse.i, now / 1000);
     if (Math.hypot(st.x - at.x, st.z - at.z) > HORSES.reach + 1) return this.send(p.ws, { t: 'horse', horse });
     Object.assign(horse, { x: at.x, z: at.z, yaw: horse.parked ? horse.yaw : at.heading, speed: 0, rider: name, parked: false });
@@ -1121,6 +1157,34 @@ export class Game {
 
   horseOf(name) {
     return this.horses.find((h) => h.rider === name) ?? null;
+  }
+
+  /**
+   * Get on a bike nobody rides (taking a ridden bike is refused), when the player is alive, on foot
+   * (in no car, on no horse or bike, not flying or in a drop) and stands next to it: within its half
+   * diagonal plus the reach, and at its height. A refusal tells the page the bike as it is.
+   */
+  mountBike(name, p, bike, now) {
+    const st = p.state;
+    if (bike.rider || this.carOf(name) || this.horseOf(name) || this.bikeOf(name) || !p.alive || !st || st.flying || this.dropping(p, now)) return this.send(p.ws, { t: 'bike', bike });
+    const near = Math.hypot(BIKES.length, BIKES.width) / 2 + BIKES.reach + 0.5;
+    if (Math.hypot(st.x - bike.x, st.z - bike.z) > near || Math.abs(st.y - bike.y) > 1.5) return this.send(p.ws, { t: 'bike', bike });
+    bike.rider = name;
+    this.broadcast({ t: 'bike', bike });
+  }
+
+  /** The rider got off, left, died or respawned: the bike stays where it is, on its stand. */
+  releaseBike(name) {
+    const bike = this.bikeOf(name);
+    if (!bike) return;
+    bike.rider = null;
+    this.broadcast({ t: 'bike', bike });
+  }
+
+  /** The bike a player rides, if any. */
+  bikeOf(name) {
+    for (const k of Object.values(this.bikes ?? {})) if (k.rider === name) return k;
+    return null;
   }
 
   /**
@@ -1169,6 +1233,7 @@ export class Game {
       if (fence.inside(s.x, s.z)) continue;
       this.releaseCar(name);
       this.releaseHorse(name);
+      this.releaseBike(name);
       this.fenceIn(s, null, this.dropping(p, Date.now()) ? p.drop.top : -Infinity);
       this.moved(p);
     }
@@ -1179,9 +1244,9 @@ export class Game {
     return Object.values(this.cars).find((c) => c.driver === name || c.passenger === name) ?? null;
   }
 
-  /** In a car: out of reach of shots, and no firing from it. */
+  /** In a car or on a bike: out of reach of shots, and no firing from it. */
   inCar(name) {
-    return !!this.carOf(name);
+    return !!this.carOf(name) || !!this.bikeOf(name);
   }
 
   /** On their own feet: not driving, riding along or on a horse (who may kick a football). */
@@ -1780,6 +1845,7 @@ export class Game {
     target.respawnAt = now + RESPAWN_MS;
     this.releaseCar(targetName);
     this.releaseHorse(targetName);
+    this.releaseBike(targetName);
     target.score.deaths++;
     shooter.score.kills++;
     shooter.score.points += POINTS.kill + (head ? POINTS.headshot : 0);
@@ -1804,6 +1870,7 @@ export class Game {
   respawn(name, p, now, at = null, drop = false, fence = this.fence()) {
     this.releaseCar(name);
     this.releaseHorse(name);
+    this.releaseBike(name);
     p.hp = HEALTH;
     p.alive = true;
     p.weapons = loadout(p.role);
@@ -1998,7 +2065,7 @@ export class Game {
       p.sentKey = fields;
     }
     // Cars, horses and strongmen: when their driver or rider sent something new, when they changed, in their turn.
-    const things = { c: [], h: [], b: [], z: [] };
+    const things = { c: [], h: [], k: [], b: [], z: [] };
     const sent = new Map();
     const add = (list, key, slot, fields, json, fresh) => {
       things[list].push({ json, due: fresh || fields !== this.sent.get(key) || slot % KEYFRAME === turn });
@@ -2012,6 +2079,10 @@ export class Game {
       const f = JSON.stringify(horseFields(h));
       add('h', `h${h.i}`, h.i + 5, f, entry(h.i, this.horseAt[h.i], f), !!this.players.get(h.rider)?.fresh);
     }
+    Object.values(this.bikes).forEach((k, i) => {
+      const f = JSON.stringify(bikeFields(k));
+      add('k', `k${k.id}`, i + 9, f, entry(k.id, this.bikeAt[k.id] ?? 0, f), !!this.players.get(k.rider)?.fresh);
+    });
     // The strongmen every other tick (ten a second is plenty for their walk), keeping what was sent until then.
     const brutes = turn % 2 === 0;
     for (const c of this.clowns.values()) {
@@ -2041,7 +2112,7 @@ export class Game {
     const join = (list, all) => list.filter((e) => all || e.due).map((e) => e.json).join(',');
     const part = (k, text) => (text ? `,"${k}":[${text}]` : '');
     // The strongmen's list goes with every other tick even when empty: one left out of it stood still. The zombies' too, while the game runs.
-    const rest = (all) => part('c', join(things.c, all)) + part('h', join(things.h, all)) + (brutes || all ? `,"b":[${join(things.b, all)}]` : '')
+    const rest = (all) => part('c', join(things.c, all)) + part('h', join(things.h, all)) + part('k', join(things.k, all)) + (brutes || all ? `,"b":[${join(things.b, all)}]` : '')
       + (zombies && (brutes || all) ? `,"z":[${join(things.z, all)}]` : '');
     const changed = rest(false);
     let everything = null;

@@ -1,0 +1,24 @@
+{
+  "_note": "Bikes you can ride (src/world/bike.ts; our own city bike, tools/bike.py): where each stands on its stand (its front along -z turned by yaw, y the ground there) and its paint. village: in the village, in the game once the village has loaded. reach: how close to a bike you get on (m from its outline). length, width, height: the box it fills (m). pedalSpeed: pedalling adds nothing past it (25 km/h); maxSpeed: the most it goes at all, down the steepest slope (m/s; the server allows this, and only to its rider).",
+  "reach": 1.0,
+  "length": 1.85,
+  "width": 0.62,
+  "height": 1.2,
+  "pedalSpeed": 6.94,
+  "maxSpeed": 10,
+  "bikes": {
+    "house": { "paint": "#24452f", "village": false, "park": { "x": -0.5, "y": -0.05, "z": 6.2, "yaw": 0 } },
+    "bungalow": { "paint": "#1d2f55", "village": false, "park": { "x": 88.5, "y": -0.075, "z": 182, "yaw": 2.447 } },
+    "church1": { "paint": "#0f1012", "village": true, "park": { "x": 532.92, "y": 4.736, "z": -771.44, "yaw": 1.571 } },
+    "church2": { "paint": "#d9d2bd", "village": true, "park": { "x": 532.92, "y": 4.736, "z": -770.69, "yaw": 1.571 } },
+    "church3": { "paint": "#6b1820", "village": true, "park": { "x": 532.92, "y": 4.736, "z": -769.94, "yaw": 1.571 } },
+    "school1": { "paint": "#2d6b8f", "village": true, "park": { "x": 459.5, "y": 4.438, "z": -808.5, "yaw": 1.571 } },
+    "school2": { "paint": "#24452f", "village": true, "park": { "x": 459.5, "y": 4.44, "z": -807.75, "yaw": 1.571 } },
+    "molenhoek1": { "paint": "#5a5d61", "village": true, "park": { "x": 755.38, "y": 7.389, "z": -713.25, "yaw": 0 } },
+    "molenhoek2": { "paint": "#6b1820", "village": true, "park": { "x": 756.13, "y": 7.389, "z": -713.25, "yaw": 0 } },
+    "molenhoekMid": { "paint": "#d9d2bd", "village": true, "park": { "x": 1064.05, "y": 11.915, "z": -562.54, "yaw": 0 } },
+    "molenhoekEnd": { "paint": "#1d2f55", "village": true, "park": { "x": 1501.57, "y": 9.28, "z": -364, "yaw": 0.785 } },
+    "sparrenhof1": { "paint": "#0f1012", "village": true, "park": { "x": 644.82, "y": -6.972, "z": 941.61, "yaw": 0 } },
+    "sparrenhof2": { "paint": "#2d6b8f", "village": true, "park": { "x": 645.57, "y": -6.972, "z": 941.61, "yaw": 0 } }
+  }
+}

@@ -2,7 +2,7 @@
 
 export const PROTO: number;
 export const TICK_MS: number;
-export const FLAG: { armed: number; flying: number; crouch: number; car: number; alive: number; safe: number; chute: number; open: number };
+export const FLAG: { armed: number; flying: number; crouch: number; car: number; alive: number; safe: number; chute: number; open: number; bike: number };
 
 /** One entry of a tick's list, as it travels. */
 export type Entry = unknown[];
@@ -14,6 +14,7 @@ export interface Tick {
   p?: Entry[];
   c?: Entry[];
   h?: Entry[];
+  k?: Entry[];
   b?: Entry[];
   z?: Entry[];
 }
@@ -38,6 +39,8 @@ export interface PlayerSample {
   chute: boolean;
   /** Its canopy is out (before it: the free fall) */
   open: boolean;
+  /** On a bike (src/world/bike.ts) */
+  bike: boolean;
 }
 
 export interface CarSample {
@@ -62,6 +65,16 @@ export interface HorseSample {
   jump: number;
   rider: string | null;
   parked: boolean;
+}
+
+export interface BikeSample {
+  id: string;
+  age: number;
+  x: number;
+  y: number;
+  z: number;
+  yaw: number;
+  rider: string | null;
 }
 
 export interface BruteSample {
@@ -95,4 +108,5 @@ export function readZombie(e: Entry): ZombieSample;
 export function readPlayer(e: Entry): PlayerSample;
 export function readCar(e: Entry): CarSample;
 export function readHorse(e: Entry): HorseSample;
+export function readBike(e: Entry): BikeSample;
 export function readBrute(e: Entry): BruteSample;
