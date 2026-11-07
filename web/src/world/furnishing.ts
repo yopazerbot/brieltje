@@ -5,6 +5,7 @@ import { RoundedBoxGeometry } from 'three/addons/geometries/RoundedBoxGeometry.j
 import CATALOGUE from '../../shared/furniture.json';
 import type { World } from './collision';
 import type { FixtureSpec } from './houseData';
+import { mood } from './mood';
 import { drawCode, drawDesktop, drawLlama, drawPainting, drawPrint, drawRide, washTexture } from './screens';
 
 /**
@@ -1247,8 +1248,16 @@ export class Furnishing {
     this.rebuild();
   }
 
-  /** The ride on the bike's screen moves on (15 frames a second, only when someone is near it). */
+  /**
+   * The ride on the bike's screen moves on (15 frames a second, only when someone is near it). By night the
+   * screens are dimmed by the eyes' adaptation (the exposure doubles at night, world/weather.ts): they kept
+   * their day look instead of turning a third brighter and washed out. The lamps glow on as they are.
+   */
   update(dt: number, eye: THREE.Vector3): void {
+    if (shows) {
+      const screen = 1 / (1 + mood.night);
+      for (const k of ['ride', 'desktop', 'code'] as const) (shows[k] as THREE.MeshBasicMaterial).color.setScalar(screen);
+    }
     this.rideClock += dt;
     if (!rideCanvas || !rideTexture || !this.rides.some((m) => m.position.distanceToSquared(eye) < 144)) return;
     this.rideFrame += dt;
