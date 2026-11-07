@@ -28,7 +28,7 @@ function vehicle(spec = specs.cars.tesla, groundAt = () => ({ y: 0, name: 'stree
     spec, x: 0, y: 0, z: 0, yaw: 0, steer: 0, vx: 0, vz: 0, speed: 0, lastSpeed: 0,
     halfL: spec.length / 2, halfW: spec.width / 2, key: 'test-car', ready: true, trees: [],
     group: new THREE.Group(), body: new THREE.Group(), chassis: new THREE.Group(), front: [], wheels: [], spin: 0,
-    blurMat: new THREE.MeshStandardMaterial(), taillight: new THREE.MeshStandardMaterial(),
+    blurMat: new THREE.MeshStandardMaterial(), taillight: new THREE.MeshStandardMaterial(), lamps: { update() {} },
     world: { boxFree: () => true, boxInBounds: () => true, groundAt, setMoving() {} },
     motion: new CarBody(), along: 0, side: 0, yawRate: 0, lastX: 0, lastZ: 0, lastYaw: 0, fresh: true, handbraking: false,
     axle: { at: [[-0.82, -1.45], [0.82, -1.45], [-0.82, 1.42], [0.82, 1.42]], base: 2.87, track: 1.64, hub: [0, 0, 0, 0] },

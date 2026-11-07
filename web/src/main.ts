@@ -69,6 +69,7 @@ import { GRENADE, Grenades } from './world/grenades';
 import { Pickups } from './world/pickups';
 import { Cats } from './world/cats';
 import { Car, placedSpec, PLACED_MAX, type CarState } from './world/car';
+import { carLights } from './world/carLights';
 import { skidMarks } from './world/skidMarks';
 import { boxesOverlap, boxPoints, clearOfPortals, indoorName, makeIndoors } from '../shared/parking.mjs';
 import CARS from '../shared/car.json';
@@ -640,6 +641,7 @@ const trunks = (house.surroundings?.trees ?? []).map((t) => ({ x: t.x, z: t.z, r
 const cars = Object.entries(CARS.cars).map(([id, spec]) => new Car(world, trunks, id, spec));
 for (const c of cars) scene.add(c.group);
 scene.add(skidMarks.mesh); // the tyre marks every car leaves when it slides (world/skidMarks.ts)
+scene.add(carLights.group); // the cars' headlights and tail lights at night (world/carLights.ts)
 let car = cars[0];
 const carById = (id: string) => cars.find((c) => c.id === id);
 let driving = false;

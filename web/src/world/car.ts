@@ -5,6 +5,7 @@ import CARS from '../../shared/car.json';
 import type { CarSample } from '../../shared/wire.mjs';
 import { netClock, Track } from '../net/track';
 import { CarBody, groundPlane, PITCH_MAX, ROLL_MAX, skid } from './carBody';
+import { CarLamps } from './carLights';
 import { CarSound } from './carSound';
 import type { Point, World } from './collision';
 import { skidMarks } from './skidMarks';
@@ -304,6 +305,8 @@ export class Car {
   private halfW: number;
   private key: string; // its moving block in the collision world
   private taillight = taillight();
+  /** Its headlights and tail lights at night (world/carLights.ts) */
+  private lamps: CarLamps;
   private blurMat = blurMaterial();
   private paint: THREE.MeshStandardMaterial;
   private gone = false;
@@ -320,12 +323,14 @@ export class Car {
     this.group.add(this.body, this.chassis, contactShadow(spec));
     this.group.rotation.order = 'YXZ'; // its heading, then the ground's slope under it
     this.body.position.y = ROLL_H;
+    this.lamps = new CarLamps((MATERIALS.LightBar as THREE.MeshStandardMaterial).clone(), spec.length, spec.width, ROLL_H);
     const paint = (this.paint = new THREE.MeshStandardMaterial({ color: spec.paint, roughness: 0.2, metalness: spec.metal }));
     void modelCopy(spec.model).then((scene) => {
       if (this.gone) return;
-      const { front, wheels } = prepare(scene, { Paint: paint, TailLight: this.taillight }, this.blurMat);
+      const { front, wheels } = prepare(scene, { Paint: paint, TailLight: this.taillight, LightBar: this.lamps.bar }, this.blurMat);
       // The wheels move to the chassis, where they were on the model; their spots give the axles.
       scene.updateMatrixWorld(true);
+      this.lamps.find(scene, -ROLL_H); // the scene sits ROLL_H under the body's origin (below)
       for (const w of wheels) {
         this.chassis.add(w.pivot);
         w.pivot.matrixWorld.decompose(w.pivot.position, w.pivot.quaternion, w.pivot.scale);
@@ -591,7 +596,8 @@ export class Car {
     this.body.position.y = ROLL_H + this.motion.heave;
     this.body.rotation.set(this.motion.pitch, 0, this.motion.roll);
     this.lastSpeed = this.speed;
-    this.taillight.emissiveIntensity = this.braking ? 2.5 : 0.5;
+    // Its lights: the brake lights as by day, and at night while someone drives it the headlights and tail lights.
+    this.lamps.update(dt, this.group.visible, local || this.driver !== null, this.braking, this.taillight, this.body, this.group);
     this.world.setMoving(this.key, this.footprint(), this.y, this.y + this.spec.height);
   }
 
@@ -741,6 +747,7 @@ export class Car {
       mat.dispose();
     });
     for (const m of [this.paint, this.taillight, this.blurMat]) m.dispose();
+    this.lamps.dispose();
     this.noise.dispose();
   }
 

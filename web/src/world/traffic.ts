@@ -2,6 +2,7 @@ import * as THREE from 'three';
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
 import { sound } from '../sound';
+import { boxSpots, carLights, pointsOf, spotsFrom, type LampSpots } from './carLights';
 import type { World } from './collision';
 
 /**
@@ -60,6 +61,10 @@ interface Model {
   paint: THREE.BufferGeometry;
   rest: THREE.BufferGeometry;
   tail: THREE.BufferGeometry;
+  /** The headlights (they glow at night) */
+  lamp: THREE.BufferGeometry;
+  /** Where its headlights and tail lights are (world/carLights.ts) */
+  spots: LampSpots;
   /** Seen from afar: a third of the triangles, the tail lights in the rest, no wheels */
   far: { paint: THREE.BufferGeometry; rest: THREE.BufferGeometry };
   axles: [number, number];
@@ -97,8 +102,12 @@ interface Mover {
   wheels: THREE.Object3D[];
   front: THREE.Object3D[];
   tail: THREE.MeshStandardMaterial;
-  /** Its paint, rest and tail light meshes */
+  /** Its paint, rest, tail light and headlight meshes */
   parts: THREE.Mesh[];
+  /** It brakes or stands waiting (its brake lights are on) */
+  brake: boolean;
+  /** Its slot for its lights at night (world/carLights.ts) */
+  slot: number;
   /** Drawn with the simple model (far from the eye) */
   far: boolean;
   leg: number;
@@ -257,6 +266,8 @@ export class Traffic {
   private models = new Map<Kind, Model>();
   private wheelGeo = new THREE.BufferGeometry();
   private rest = new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.6, metalness: 0.1 });
+  /** The moving cars' headlights: as the rest by day, glowing at night */
+  private lampMat = new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.6, metalness: 0.1, emissive: '#ffdcaa', emissiveIntensity: 0 });
   private shadow = shadowMaterial();
   private plane = new THREE.PlaneGeometry(1, 1).rotateX(-Math.PI / 2);
   private movers: Mover[] = [];
@@ -314,8 +325,10 @@ export class Traffic {
       const u = node.userData as { axles: number[]; track: number; wheel: number; length: number; width: number; height: number };
       this.models.set(kind, {
         paint: pick('Paint', 'Glass'),
-        rest: pick('Trim', 'Lamp', 'Plate'),
+        rest: pick('Trim', 'Plate'),
         tail: pick('Tail'),
+        lamp: pick('Lamp'),
+        spots: spotsFrom(pointsOf(pick('Lamp')), pointsOf(pick('Tail')), boxSpots(u.length, u.width)),
         far: { paint: far.pick('Paint', 'Glass'), rest: far.pick('Trim', 'Lamp', 'Plate', 'Tail') },
         axles: [-u.axles[0], -u.axles[1]], // the nose is at +y in Blender, -z here
         track: u.track,
@@ -342,7 +355,7 @@ export class Traffic {
         body.rotation.order = 'YXZ';
         const own = new THREE.MeshStandardMaterial({ vertexColors: true, color: paint, roughness: 0.35, metalness: 0.3 });
         const tail = new THREE.MeshStandardMaterial({ color: '#7a1010', roughness: 0.3, emissive: '#ff2020', emissiveIntensity: 0.15 });
-        const meshes = [new THREE.Mesh(model.paint, own), new THREE.Mesh(model.rest, this.rest), new THREE.Mesh(model.tail, tail)];
+        const meshes = [new THREE.Mesh(model.paint, own), new THREE.Mesh(model.rest, this.rest), new THREE.Mesh(model.tail, tail), new THREE.Mesh(model.lamp, this.lampMat)];
         for (const m of meshes) {
           m.castShadow = true;
           m.receiveShadow = true;
@@ -350,6 +363,7 @@ export class Traffic {
           m.userData.vehicle = true; // their holes go with it (see Decals)
           body.add(m);
         }
+        meshes[3].castShadow = false; // too small for a shadow of its own, and a draw call less there
         const wheels: THREE.Object3D[] = [];
         const front: THREE.Object3D[] = [];
         for (const [k, az] of model.axles.entries()) {
@@ -376,7 +390,7 @@ export class Traffic {
         this.group.add(group);
         this.movers.push({
           route, phase, model, group, body, wheels, front, tail, parts: meshes, far: false, leg: -1, s: 0, v: 0, spin: 0, hidden: true, gap: Infinity, blocker: null, id: this.movers.length, waited: 0, honkAt: 3,
-          key: `traffic-${this.movers.length}`, solid: false, x: 0, z: 0, yaw: 0, audio: null,
+          key: `traffic-${this.movers.length}`, solid: false, x: 0, z: 0, yaw: 0, audio: null, brake: false, slot: carLights.reserve(),
         });
       }
     }
@@ -414,7 +428,7 @@ export class Traffic {
       return [model, model.far].map((g) => {
         const paint = new THREE.InstancedMesh(g.paint, paintMat, count(k));
         paint.instanceColor = new THREE.InstancedBufferAttribute(new Float32Array(count(k) * 3), 3);
-        const rest = new THREE.InstancedMesh(g === model ? merge([model.rest.clone(), model.tail.clone()]) : g.rest, this.rest, count(k));
+        const rest = new THREE.InstancedMesh(g === model ? merge([model.rest.clone(), model.tail.clone(), model.lamp.clone()]) : g.rest, this.rest, count(k));
         for (const mesh of [paint, rest]) {
           mesh.count = 0;
           mesh.receiveShadow = true;
@@ -525,6 +539,7 @@ export class Traffic {
     // In steps of at most 0.1 s, so a long frame (a hitch) doesn't carry a car past what it stops for.
     const n = Math.ceil(step / 0.1) || 1;
     for (let k = 0; k < n; k++) for (const c of this.movers) this.step(c, step / n, eye, circles, far);
+    this.lights();
   }
 
   private step(c: Mover, dt: number, eye: THREE.Vector3, circles: (Obstacle & { own?: Mover })[], far: number): void {
@@ -620,6 +635,7 @@ export class Traffic {
         c.parts[0].geometry = far ? c.model.far.paint : c.model.paint;
         c.parts[1].geometry = far ? c.model.far.rest : c.model.rest;
         c.parts[2].visible = !far;
+        c.parts[3].visible = !far; // the simple model has its headlights in the rest
         for (const w of c.wheels) w.visible = !far;
       }
       c.group.position.set(x, y, z);
@@ -630,7 +646,8 @@ export class Traffic {
       const steer = Math.max(-0.5, Math.min(0.5, (turn / Math.max(0.05, c.v * dt)) * wb));
       for (const w of c.wheels) w.rotation.x = c.spin;
       for (const w of c.front) w.rotation.y = c.v > 0.2 ? steer : w.rotation.y;
-      c.tail.emissiveIntensity = accel < -0.8 || (c.v < 0.3 && gap < 12) ? 1.6 : 0.15;
+      c.brake = accel < -0.8 || (c.v < 0.3 && gap < 12);
+      c.tail.emissiveIntensity = c.brake ? 1.6 + 0.4 * carLights.night : 0.15 + 0.9 * carLights.night; // brighter at night
     }
     // A block for walking and driving into, near the eye.
     const solid = dist < NEAR_SOLID;
@@ -641,6 +658,20 @@ export class Traffic {
     } else if (c.solid) this.world.setMoving(c.key, null);
     c.solid = solid;
     this.hum(c, dist, y);
+  }
+
+  /** At night the moving cars drive with their lights on: the headlights glow, with their glows and pools (world/carLights.ts). */
+  private lights(): void {
+    const night = carLights.night;
+    this.lampMat.emissiveIntensity = 2.5 * night;
+    for (const c of this.movers) {
+      if (night < 0.01 || !c.group.visible) {
+        carLights.hide(c.slot);
+        continue;
+      }
+      c.body.updateWorldMatrix(true, false);
+      carLights.show(c.slot, c.body.matrixWorld, c.body.matrixWorld, c.model.spots, night, night * (c.brake ? 1 : 0.4));
+    }
   }
 
   private hide(c: Mover): void {
