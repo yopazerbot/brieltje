@@ -3,6 +3,8 @@ import { mergeVertices } from 'three/addons/utils/BufferGeometryUtils.js';
 import { terrain } from './terrain';
 import { wind } from './wind';
 import { leafLight, leafy } from './leaves';
+import { bushCards } from './cardTrees';
+import { CUT, leafAtlas } from './leafCards';
 
 /**
  * The woods' undergrowth round where you are: ferns (most of them turned bracken-brown at the start of
@@ -168,6 +170,8 @@ export class Undergrowth {
   /** Per square of CELL: x, y, z, kind, size, turn, colour, rank for every plant in it */
   private plants = new Map<string, Float32Array>();
   private meshes: THREE.InstancedMesh[] = [];
+  /** The brambles' and shrubs' two looks: smooth leafy lumps (Low, phones) or leaf cards (Medium and up) */
+  private looks: { lumps: THREE.BufferGeometry[]; cards: THREE.BufferGeometry[]; lump: THREE.Material; card: THREE.MeshStandardMaterial };
   private reach = 55;
   private share = 1;
   private last = new THREE.Vector3(Infinity, 0, 0);
@@ -181,6 +185,9 @@ export class Undergrowth {
     leafy(lump, 0.8, 0.55, 0.3);
     const wood = this.material('wood', shade);
     const materials = [fern, lump, lump, wood];
+    // Medium and up, brambles and shrubs of leaf cards instead (world/cardTrees.ts bushCards), with the same light.
+    const card = this.material('cards', shade);
+    this.looks = { lumps: [geometries[Kind.Bramble], geometries[Kind.Shrub]], cards: [bushCards(0.75, 26, 31), bushCards(1.2, 40, 47)], lump, card };
     for (let k = 0; k < KINDS; k++) {
       const mesh = new THREE.InstancedMesh(geometries[k], materials[k], CAPACITY[k]);
       mesh.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
@@ -199,9 +206,10 @@ export class Undergrowth {
    * The plants' material: the ground's shade at the foot, growing in with the reach, ferns swaying; lit as
    * leaves are (the lumps get that from leafy(), with their leaves).
    */
-  private material(kind: 'fern' | 'lump' | 'wood', shade?: GroundShadeUniforms): THREE.MeshStandardMaterial {
+  private material(kind: 'fern' | 'lump' | 'wood' | 'cards', shade?: GroundShadeUniforms): THREE.MeshStandardMaterial {
     const fern = kind === 'fern';
-    const m = new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 1, side: fern ? THREE.DoubleSide : THREE.FrontSide });
+    const cards = kind === 'cards';
+    const m = new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 1, side: fern || cards ? THREE.DoubleSide : THREE.FrontSide, alphaTest: cards ? CUT : 0 });
     m.onBeforeCompile = (shader) => {
       shader.uniforms.ugReach = this.reachUniform;
       shader.uniforms.windTime = wind.time;
@@ -240,7 +248,9 @@ export class Undergrowth {
           }`
             : ''}`,
         );
-      shader.fragmentShader = (kind === 'lump' ? shader.fragmentShader : leafLight(shader.fragmentShader, fern ? 0.5 : 0))
+      shader.fragmentShader = (kind === 'lump' ? shader.fragmentShader : leafLight(shader.fragmentShader, fern ? 0.5 : cards ? 0.35 : 0))
+        // Leaf cards: both sides of a card lit alike, by the bush's shape (world/leafCards.ts).
+        .replace('#include <normal_fragment_begin>', cards ? '#include <normal_fragment_begin>\n#ifdef DOUBLE_SIDED\nnormal *= faceDirection;\n#endif' : '#include <normal_fragment_begin>')
         .replace('#include <common>', '#include <common>\nvarying vec2 vUgLight;')
         .replace(
           '#include <lights_fragment_end>',
@@ -293,6 +303,16 @@ export class Undergrowth {
     this.share = low ? 0.5 : quality === 'medium' ? 0.75 : 1;
     this.reachUniform.value = this.reach;
     this.last.set(Infinity, 0, 0);
+    // The brambles and shrubs: leaf cards on Medium and up (their spray picture painted when first needed).
+    const { lumps, cards, lump, card } = this.looks;
+    if (!low && !card.map) {
+      card.map = leafAtlas();
+      card.needsUpdate = true;
+    }
+    [Kind.Bramble, Kind.Shrub].forEach((k, i) => {
+      this.meshes[k].geometry = low ? lumps[i] : cards[i];
+      this.meshes[k].material = low ? lump : card;
+    });
   }
 
   /** The plants of one square, worked out once. */

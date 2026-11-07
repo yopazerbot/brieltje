@@ -474,6 +474,33 @@ export function columnConifer(seed = 77): THREE.BufferGeometry {
   return leaves.geometry();
 }
 
+/**
+ * A bush of the woods' undergrowth (bramble, holly, hazel, young beech) as leaf cards: 1 across, `height` high from
+ * the ground, sprays standing out of a low dome, darker inside and underneath. Grey: each copy takes its colour.
+ */
+export function bushCards(height: number, n: number, seed: number): THREE.BufferGeometry {
+  const rand = random(seed);
+  const shape: Shape = {
+    normal: (p) => v3(p.x, (p.y - height * 0.35) / (height * height * 4), p.z).normalize().lerp(UP, 0.3).normalize(),
+    depth: (p) => Math.hypot(p.x / 0.5, (p.y - height * 0.45) / (height * 0.55), p.z / 0.5),
+  };
+  const shade = (p: V, depth: number) => (0.35 + 0.65 * THREE.MathUtils.smoothstep(depth, 0.1, 1.0)) * (0.7 + 0.3 * THREE.MathUtils.smoothstep(p.y / height, 0, 0.8));
+  const leaves = new Parts();
+  const rect = sprayRect(Spray.Broad);
+  const white = new THREE.Color(1, 1, 1);
+  for (let i = 0; i < n; i++) {
+    // A foot inside the dome, the spray reaching out of it and up.
+    const d = anyway(rand);
+    d.y = Math.abs(d.y) * 0.9 + 0.1;
+    d.normalize();
+    const base = v3(d.x * 0.28 * rand(), height * (0.05 + 0.5 * d.y * rand()), d.z * 0.28 * rand());
+    const along = v3(d.x, d.y * 1.2 + 0.3, d.z).add(anyway(rand).multiplyScalar(0.3)).normalize();
+    const s = (0.35 + 0.25 * rand()) * Math.min(1, 0.5 + height);
+    card(leaves, base, along, crossing(along, rand), s, s * 0.9, rect, white.clone().multiplyScalar(0.85 + rand() * 0.3), shape, shade);
+  }
+  return leaves.geometry();
+}
+
 /** How many shapes each kind has (the broad-leaved trees two, so neighbours differ). */
 export const VARIANTS = [2, 1, 1, 1, 1];
 
