@@ -616,7 +616,7 @@ function prepareZombies(): void {
   });
 }
 prepareZombies();
-// Villagers walking and cycling round the village, only in Explore (world/villagers.ts); loaded the first time Explore needs them.
+// Villagers walking and cycling round the village, in every mode but Zombies (world/villagers.ts); loaded the first time they are needed.
 const villagers = new Villagers(world, () => quality === 'low' || phone, (root) => precompile(root));
 const villagerLook = new THREE.Vector3();
 scene.add(villagers.group);
@@ -2832,11 +2832,12 @@ renderer.setAnimationLoop((now: number) => {
   portals.group.visible = !menu.onStartScreen;
   if (menu.onStartScreen) weapon.hidden = true; // nor the pistol in your hand: from the start view its barrel is a ring mid-screen
   games.setExploring(!weapon.enabled); // the teams game's and Zombies' hints follow a change of mode
-  // The villagers only in Explore, and not while a game with weapons runs: never something to shoot at.
-  const exploring = !menu.onStartScreen && !weapon.enabled && !games.zombies && games.view.kind !== 'teams';
-  villagers.setActive(exploring);
-  sinterklaas.setActive(exploring && seasonNow().sinterklaas); // the same test: never something to shoot at
-  sintMaarten.setActive(exploring && seasonNow().sintMaarten, seasonNow().sintMaartenEve);
+  // The villagers in every mode, Action and Paintball too (Yoshi, 7 Nov 2026), but never during Zombies, its end
+  // screen included. Shots pass through them: they are never a target (world/villagers.ts).
+  const villagersOut = !menu.onStartScreen && games.view.kind !== 'zombies';
+  villagers.setActive(villagersOut);
+  sinterklaas.setActive(villagersOut && seasonNow().sinterklaas); // the same rule
+  sintMaarten.setActive(villagersOut && seasonNow().sintMaarten, seasonNow().sintMaartenEve);
   christmas.setSolid(games.zombies ? 'off' : weapon.enabled ? 'walk' : 'full'); // the tree, as the server knows the world
   // The Zombies game: the clowns and strongmen stand aside, nobody flies, and whoever is down waits for the wave.
   clowns.paused = games.standAside;

@@ -6,8 +6,8 @@ import type { Obstacle } from './traffic';
 import { closest, Line, Paths, type At, type PathData } from './villagerPaths';
 
 /**
- * Villagers: people walking and cycling round the village, only in Explore (Yoshi: in Action, Paintball and
- * Zombies they are gone, so they can never be targets). Our own models (tools/villagers.py,
+ * Villagers: people walking and cycling round the village, in every mode (Yoshi, 7 Nov 2026: Action and
+ * Paintball too), but gone during Zombies. They are never targets: shots pass through them. Our own models (tools/villagers.py,
  * web/public/models/villagers.glb): a man, a woman, an older person with a stick, a teen, a child, a cyclist
  * on a city bike and a dog, invented and generic, each villager in colours of its own (clothes, skin, hair,
  * a bag, a cap, glasses, a scarf, an umbrella in the rain).
@@ -22,14 +22,14 @@ import { closest, Line, Paths, type At, type PathData } from './villagerPaths';
  *
  * Purely local and for show: nothing of them goes over the network, they are no target for anything (no hit
  * boxes, their meshes take no rays), cars and the player pass through them (they step out of the way of a car
- * coming at them), and walls keep them out (world/collision.ts). They fade away when the player leaves
- * Explore or a game with weapons starts, and come back in Explore.
+ * coming at them), and walls keep them out (world/collision.ts). They fade away when
+ * a Zombies game starts, and come back when it is over.
  *
  * Cheap to draw, as world/zombies.ts does it: every clip of every kind is sampled into one picture of bone
  * matrices (half floats), and each kind is one instanced mesh skinned in its vertex shader, so seven kinds are
  * seven draws however many walk about, and a round patch on the ground under each is one more. Their colours
  * come from a small picture too (16 colours a villager). Only within reach of the player (fewer and nearer
- * on Low and on phones), and the model and the paths load the first time Explore needs them.
+ * on Low and on phones), and the model and the paths load the first time they are needed.
  */
 
 const URL_GLB = '/models/villagers.glb';
@@ -277,7 +277,7 @@ export class Villagers {
   private nextId = 1;
   private clock = 0;
   private want = false;
-  /** 0 hidden .. 1 shown: all of them together, as Explore comes and goes */
+  /** 0 hidden .. 1 shown: all of them together, as a Zombies game comes and goes */
   private shown = 0;
   private filled = false;
   private popAt = 0;
@@ -310,7 +310,7 @@ export class Villagers {
     this.group.add(this.leashes);
   }
 
-  /** Explore (true) or not: they fade in or out. The first `true` loads the model and the paths. */
+  /** Out (true) or not: they fade in or out. The first `true` loads the model and the paths. */
   setActive(on: boolean): void {
     this.want = on;
     if (on && !this.ready) this.ready = this.load();
