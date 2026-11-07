@@ -42,6 +42,9 @@ Output: one GLB, one mesh per material:
 - school_glass: dark glass; school_clear: the bike shelters' and the corridor roof's translucent sheets;
 - school_fittings: frames, gutters, doors, fences, play equipment, solar panels, paint on the ground,
   coloured per vertex.
+Also web/shared/playground.json: the play tower's sizes, for climbing it and sliding down in the game and for the
+football. To write only that (the GLB has a light layout and a bake that a new export would lose), give a scratch
+path for the GLB and throw it away.
 """
 import json
 import math
@@ -680,28 +683,54 @@ for v0, cells in ((14.0, 1), (14.62, 1), (15.24, 2), (15.86, 1), (16.48, 2), (17
 tv, tw = 28.4, -8.06                          # (471.5, -825.9): the scan's 3.4 m
 pv = lambda dv, dw: Q(tv + dv, tw + dw)
 gy = terrain(*pv(0, 0)) + 0.03
+# Its sizes, once: the model is built from them, and web/shared/playground.json carries them to the game (climbing
+# the ladder, standing on the platform, going down the slide: web/src/world/playground.ts) and to the football
+# (web/shared/ball.mjs). dv along the long block, dw across it (the ladder at -dw, the slide at +dw); heights over gy.
+TOWER = {
+    "posts": {"at": 0.75, "size": 0.1, "foot": -0.3, "top": 2.62},
+    "platform": {"half": 0.8, "y0": 1.25, "y1": 1.33},
+    "boards": {"from": 0.76, "to": 0.8, "y1": 2.05},  # on the two dv sides; the ladder and the slide in the others
+    "roof": {"half": 0.95, "eaves": 2.62, "ridge": 3.38},
+    "ladder": {"half": 0.3, "foot": -1.5, "top": -0.8, "rise": 1.3, "rungs": 4, "rail": 0.06, "rung": 0.05},
+    # The slide's middle line (dw, height) from the platform's edge down to its foot and along the run-out; its
+    # sheet `thick`, its sides at ±`sides` rising from `side_top` to `side_bottom` over the line, `side_h` high.
+    "slide": {"half": 0.26, "top": [0.8, 1.3], "bottom": [3.6, 0.25], "end": [4.1, 0.2], "thick": 0.05,
+              "sides": 0.27, "side_top": 1.45, "side_bottom": 0.4, "side_w": 0.04, "side_h": 0.22},
+}
+T_post, T_plat, T_board, T_roof, T_lad, T_sl = (TOWER[k] for k in ("posts", "platform", "boards", "roof", "ladder", "slide"))
 wood, wood_dark = "#8d6c4a", "#6b5038"
-for dv in (-0.75, 0.75):
-    for dw in (-0.75, 0.75):
-        beam("school_fittings", pv(dv, dw) + (gy - 0.3,), pv(dv, dw) + (gy + 2.62,), 0.1, 0.1, wood_dark)
-solid("school_fittings", [pv(dv, dw) + (gy + y,) for dv in (-0.8, 0.8) for dw in (-0.8, 0.8) for y in (1.25, 1.33)], wood)
-for dv0, dv1, dw0, dw1 in ((-0.8, -0.76, -0.8, 0.8), (0.76, 0.8, -0.8, 0.8)):  # boards on two sides: the ladder and the slide in the others
-    solid("school_fittings", [pv(dv, dw) + (gy + y,) for dv in (dv0, dv1) for dw in (dw0, dw1) for y in (1.33, 2.05)], wood)
-for dw in (-0.95, 0.95):  # the roof: two boards in red
-    solid("school_fittings", [pv(dv, w) + (gy + y,) for dv in (-0.95, 0.95) for w, y in ((dw, 2.62), (0.0, 3.38)) for y in (y, y + 0.05)], "#b4473a")
-solid("school_fittings", [pv(dv, dw) + (gy + y,) for dv in (-0.95, 0.95) for dw in (-0.03, 0.03) for y in (3.36, 3.44)], wood_dark)
+for dv in (-T_post["at"], T_post["at"]):
+    for dw in (-T_post["at"], T_post["at"]):
+        beam("school_fittings", pv(dv, dw) + (gy + T_post["foot"],), pv(dv, dw) + (gy + T_post["top"],), T_post["size"], T_post["size"], wood_dark)
+ph = T_plat["half"]
+solid("school_fittings", [pv(dv, dw) + (gy + y,) for dv in (-ph, ph) for dw in (-ph, ph) for y in (T_plat["y0"], T_plat["y1"])], wood)
+for dv0, dv1, dw0, dw1 in ((-T_board["to"], -T_board["from"], -ph, ph), (T_board["from"], T_board["to"], -ph, ph)):  # boards on two sides: the ladder and the slide in the others
+    solid("school_fittings", [pv(dv, dw) + (gy + y,) for dv in (dv0, dv1) for dw in (dw0, dw1) for y in (T_plat["y1"], T_board["y1"])], wood)
+rh = T_roof["half"]
+for dw in (-rh, rh):  # the roof: two boards in red
+    solid("school_fittings", [pv(dv, w) + (gy + y,) for dv in (-rh, rh) for w, y in ((dw, T_roof["eaves"]), (0.0, T_roof["ridge"])) for y in (y, y + 0.05)], "#b4473a")
+solid("school_fittings", [pv(dv, dw) + (gy + y,) for dv in (-rh, rh) for dw in (-0.03, 0.03) for y in (3.36, 3.44)], wood_dark)
 # The slide, down towards the long block.
-s0, s1 = pv(0.0, 0.8), pv(0.0, 3.6)
-beam("school_fittings", s0 + (gy + 1.3,), s1 + (gy + 0.25,), 0.52, 0.05, "#2f6db5")
-for side in (-0.27, 0.27):
-    beam("school_fittings", pv(side, 0.8) + (gy + 1.45,), pv(side, 3.6) + (gy + 0.4,), 0.04, 0.22, "#2f6db5")
-beam("school_fittings", pv(0.0, 3.6) + (gy + 0.25,), pv(0.0, 4.1) + (gy + 0.2,), 0.52, 0.05, "#2f6db5")
-for side in (-0.3, 0.3):  # the ladder on the other side: its foot out on the playground, its top at the platform
-    beam("school_fittings", pv(side, -1.5) + (gy,), pv(side, -0.8) + (gy + 1.3,), 0.06, 0.06, wood_dark)
-for k in range(1, 5):
-    t = k / 5
-    a, b = lerp(pv(-0.3, -1.5), pv(-0.3, -0.8), t), lerp(pv(0.3, -1.5), pv(0.3, -0.8), t)
-    beam("school_fittings", a + (gy + 1.3 * t,), b + (gy + 1.3 * t,), 0.05, 0.05, wood)
+(sw0, sy0), (sw1, sy1), (sw2, sy2) = T_sl["top"], T_sl["bottom"], T_sl["end"]
+s0, s1 = pv(0.0, sw0), pv(0.0, sw1)
+beam("school_fittings", s0 + (gy + sy0,), s1 + (gy + sy1,), T_sl["half"] * 2, T_sl["thick"], "#2f6db5")
+for side in (-T_sl["sides"], T_sl["sides"]):
+    beam("school_fittings", pv(side, sw0) + (gy + T_sl["side_top"],), pv(side, sw1) + (gy + T_sl["side_bottom"],), T_sl["side_w"], T_sl["side_h"], "#2f6db5")
+beam("school_fittings", pv(0.0, sw1) + (gy + sy1,), pv(0.0, sw2) + (gy + sy2,), T_sl["half"] * 2, T_sl["thick"], "#2f6db5")
+lh, lf, lt, lr = T_lad["half"], T_lad["foot"], T_lad["top"], T_lad["rise"]
+for side in (-lh, lh):  # the ladder on the other side: its foot out on the playground, its top at the platform
+    beam("school_fittings", pv(side, lf) + (gy,), pv(side, lt) + (gy + lr,), T_lad["rail"], T_lad["rail"], wood_dark)
+for k in range(1, T_lad["rungs"] + 1):
+    t = k / (T_lad["rungs"] + 1)
+    a, b = lerp(pv(-lh, lf), pv(-lh, lt), t), lerp(pv(lh, lf), pv(lh, lt), t)
+    beam("school_fittings", a + (gy + lr * t,), b + (gy + lr * t,), T_lad["rung"], T_lad["rung"], wood)
+# The tower for the game, in its own frame: its foot's middle (x, z) and height, and the dv and dw directions.
+PLAYGROUND = {
+    "about": "The play tower on the school's playground, written by tools/school.py with the model: its foot's middle"
+             " (at, y: metres above the plot's ground, as shared/terrain.mjs), the directions of dv (v) and dw (w, from"
+             " the ladder to the slide), and its parts in metres along them and over y.",
+    "tower": {"at": [round(c, 4) for c in pv(0, 0)], "y": round(gy, 4), "v": [round(c, 6) for c in V2], "w": [round(c, 6) for c in W2], **TOWER},
+}
 # A row of balance posts and a beam, where the photo shows low dark timber things in rows.
 for k, h in enumerate((0.3, 0.45, 0.6, 0.75, 0.6, 0.45, 0.3)):
     x, z = Q(24.5 + k * 0.55, -11.0)
@@ -1025,6 +1054,11 @@ root.select_set(True)
 for o in objs:
     o.select_set(True)
 os.makedirs(os.path.dirname(os.path.abspath(OUT)), exist_ok=True)
+PLAY_OUT = os.path.join(ROOT, "web", "shared", "playground.json")
+with open(PLAY_OUT, "w", encoding="utf-8", newline="\n") as f:
+    json.dump(PLAYGROUND, f, indent=1)
+    f.write("\n")
+print("written", PLAY_OUT)
 bpy.ops.export_scene.gltf(filepath=OUT, export_format="GLB", use_selection=True, export_apply=True, export_yup=True,
                           export_texcoords=True, export_normals=True, export_extras=True, export_vertex_color="MATERIAL",
                           export_cameras=False, export_lights=False)

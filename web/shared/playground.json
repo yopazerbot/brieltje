@@ -1,0 +1,69 @@
+{
+ "about": "The play tower on the school's playground, written by tools/school.py with the model: its foot's middle (at, y: metres above the plot's ground, as shared/terrain.mjs), the directions of dv (v) and dw (w, from the ladder to the slide), and its parts in metres along them and over y.",
+ "tower": {
+  "at": [
+   471.4657,
+   -825.9382
+  ],
+  "y": 4.4969,
+  "v": [
+   0.14238,
+   -0.989812
+  ],
+  "w": [
+   0.989812,
+   0.14238
+  ],
+  "posts": {
+   "at": 0.75,
+   "size": 0.1,
+   "foot": -0.3,
+   "top": 2.62
+  },
+  "platform": {
+   "half": 0.8,
+   "y0": 1.25,
+   "y1": 1.33
+  },
+  "boards": {
+   "from": 0.76,
+   "to": 0.8,
+   "y1": 2.05
+  },
+  "roof": {
+   "half": 0.95,
+   "eaves": 2.62,
+   "ridge": 3.38
+  },
+  "ladder": {
+   "half": 0.3,
+   "foot": -1.5,
+   "top": -0.8,
+   "rise": 1.3,
+   "rungs": 4,
+   "rail": 0.06,
+   "rung": 0.05
+  },
+  "slide": {
+   "half": 0.26,
+   "top": [
+    0.8,
+    1.3
+   ],
+   "bottom": [
+    3.6,
+    0.25
+   ],
+   "end": [
+    4.1,
+    0.2
+   ],
+   "thick": 0.05,
+   "sides": 0.27,
+   "side_top": 1.45,
+   "side_bottom": 0.4,
+   "side_w": 0.04,
+   "side_h": 0.22
+  }
+ }
+}
