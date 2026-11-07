@@ -1,8 +1,14 @@
 {
-  "_": "The slideshow's views (web/public/start/), in game metres: the camera, what it looks at, the vertical field of view. The house is the start screen's own camera (export_scene.js).",
+  "_": "The slideshow's views (web/public/start/), in game metres: the camera, what it looks at, the vertical field of view. The house is the start screen's own camera (export_scene.js). `mood`: the game's weather for the export (export_view.mjs); `drop`: the player's own parachute, placed at `figure` facing `heading`; `render`: extras for render_still.py (its mood, floodlights).",
   "town": { "position": [540, 40, -655], "target": [480, 8, -765], "fov": 55 },
   "house": null,
   "bungalow": { "position": [102, 4.5, 176.5], "target": [86.3, 2.2, 192.6], "fov": 60 },
   "school": { "position": [480, 6.1, -842], "target": [458, 7.2, -803], "fov": 62 },
-  "sparrenhof": { "position": [635, -4.6, 950], "target": [662, -4.2, 956], "fov": 44 }
+  "sparrenhof": { "position": [635, -4.6, 950], "target": [662, -4.2, 956], "fov": 44 },
+  "town-night": { "position": [585, 27, -708], "target": [522, 12, -722], "fov": 55, "mood": "night",
+    "render": { "lights": [{ "at": [553, 5.6, -743], "aim": [538, 15, -735], "power": 2500, "spread": 34 }, { "at": [553, 5.6, -727], "aim": [538, 15, -735], "power": 2500, "spread": 34 }] } },
+  "parachute": { "position": [625, 65.5, -741.5], "target": [536, 32.7, -728], "fov": 62, "mood": "night",
+    "drop": { "at": [615, -745], "figure": [615, 58, -745], "heading": 1.75, "hold": 4 },
+    "render": { "mood": "dusk" } },
+  "street-rain": { "position": [751.5, 8.55, -725.2], "target": [700, 7.9, -727.5], "fov": 58, "mood": "rain" }
 }

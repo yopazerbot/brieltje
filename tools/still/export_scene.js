@@ -1,8 +1,9 @@
 // A view's scene for Blender (tools/still/render_still.py). Run it in the page on the dev server
-// (developer console, or a CDP Runtime.evaluate with awaitPromise): it downloads start_scene.glb
-// (everything visible, the camera) and start_info.json (sun, the sky's turn). The camera is the start
-// screen's, or `window.stillView` ({ position, target, fov }: the slideshow's views in views.json, with
-// the player moved near the view first so the area round it is loaded). The game's texture files are
+// (developer console, or a CDP Runtime.evaluate with awaitPromise; tools/still/export_view.mjs does it all
+// for a view): it downloads start_scene.glb (everything visible, the camera) and start_info.json (sun, the
+// sky's turn, the weather, the street lamps). The camera is the start screen's, or `window.stillView`
+// ({ position, target, fov, render }: the slideshow's views in views.json, with the player moved near the
+// view first so the area round it is loaded). The game's texture files are
 // noted per material (glTF extras) instead of embedded. The portals, anything drawn by a shader of
 // its own (smoke, butterflies, soft ground patches) instanced birds and flies, and surfaces drawn from behind only stay out: glTF can't carry them, and Cycles
 // shades the ground itself.
@@ -20,6 +21,31 @@
   const unseen = [];
   const seen = new Set();
   const objects = [];
+  // The village's window glass (world/windows.ts) carries each room's number and covering in attributes of its
+  // own, which glTF can't name: they go out as a second UV map (u the room's number, v its covering), so a night
+  // render lights the same rooms the game lights (number below one half: on). Taken off again after.
+  const roomUv = [];
+  scene.traverse((o) => {
+    const g = o.isMesh && o.material?.name === 'village_glass' ? o.geometry : null;
+    if (!g?.attributes.room || !g.attributes.look || g.attributes.uv1) return;
+    const uv = new Float32Array(g.attributes.room.count * 2);
+    for (let i = 0; i < g.attributes.room.count; i++) uv.set([g.attributes.room.getW(i), g.attributes.look.getX(i)], i * 2);
+    g.setAttribute('uv1', new g.attributes.room.constructor(uv, 2));
+    roomUv.push(g);
+  });
+  // Attributes of the game's own shaders (facade looks, gloss, rows, the rooms' numbers) go out as glTF custom
+  // attributes, and Blender's importer stops at the normalized byte ones: left out, put back after.
+  const STANDARD = new Set(['position', 'normal', 'tangent', 'uv', 'uv1', 'uv2', 'uv3', 'color', 'skinIndex', 'skinWeight']);
+  const custom = [];
+  scene.traverse((o) => {
+    const g = o.isMesh ? o.geometry : null;
+    if (!g?.attributes) return;
+    for (const name of Object.keys(g.attributes)) {
+      if (STANDARD.has(name)) continue;
+      custom.push([g, name, g.attributes[name]]);
+      g.deleteAttribute(name);
+    }
+  });
   scene.traverse((o) => {
     if (!(o.isMesh || o.isInstancedMesh) || !o.visible) return;
     for (let p = o; p; p = p.parent) if (!p.visible) return;
@@ -74,7 +100,24 @@
   cam.updateMatrixWorld();
   objects.push(cam);
   const info = { sun: t.sun.userData.direction.toArray(), backgroundTurn: scene.backgroundRotation.y, environmentIntensity: scene.environmentIntensity, exposure: t.renderer.toneMappingExposure, camera: { position: cam.position.toArray(), quaternion: cam.quaternion.toArray(), fov } };
+  // The weather shown (world/weather.ts: sunny, overcast, rain, night), and the street lamps' heads (world/streetLights.ts,
+  // drawn by a shader of their own, so not in the scene file): a night render lights them as real lamps.
+  info.mood = t.weather?.state().chosen ?? 'sunny';
+  if (view?.render) info.render = view.render; // the view's own extras for render_still.py (views.json)
+  const glows = t.weather?.lamps?.glows;
+  if (glows) {
+    const m = new cam.matrix.constructor();
+    const p = cam.position.clone();
+    info.lamps = [];
+    for (let i = 0; i < glows.count; i++) {
+      glows.getMatrixAt(i, m);
+      p.setFromMatrixPosition(m);
+      info.lamps.push([+p.x.toFixed(2), +(p.y + 0.14).toFixed(2), +p.z.toFixed(2)]);
+    }
+  }
   const glb = await new GLTFExporter().parseAsync(objects, { binary: true, onlyVisible: true, maxTextureSize: 2048 });
+  for (const g of roomUv) g.deleteAttribute('uv1');
+  for (const [g, name, a] of custom) g.setAttribute(name, a);
   for (const [m, k, tx] of stripped) { m[k] = tx; m.needsUpdate = true; }
   for (const o of unseen) o.visible = true;
   briel.portals.group.visible = true;
