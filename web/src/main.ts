@@ -57,6 +57,7 @@ import { sound } from './sound';
 import { footstep, surfaceOf } from './footsteps';
 import { PlayTower, TOWER } from './world/playground';
 import { creak, SlideSound } from './world/playgroundSound';
+import { towerPrompt } from './world/playgroundHint';
 import { SettingsPanel, type Settings } from './settings';
 import { SPECS, Weapon, type WeaponId } from './weapon';
 import { paintball, setPaintball, weaponName as shownWeapon } from './paintball';
@@ -3157,6 +3158,7 @@ renderer.setAnimationLoop((now: number) => {
     }
     else if (nearBike && !target) prompt = bikeTaken ? t('prompt.bikeTaken', { name: nearBike.rider ?? '' }) : t('prompt.bike', { use });
     else if (nearSint) prompt = t('prompt.sint', { use });
+    else if (player.towerHint && !inCar && !onHorse) prompt = towerPrompt(player.towerHint, mode); // the play tower's ladder
     if (ball && !tagWho && !driving && !riding) prompt = t('prompt.kick', { key: key(action && !noShoot(player.x, player.z) ? 'use' : 'click', mode), run: key('sprint', mode) });
     if (downed) prompt = helping?.start ? t('prompt.reviving', { name: downed }) : t('prompt.revive', { use, name: downed });
     hud.setRing(helping ? (helping.start ? (now - helping.start) / helping.ms : 0) : null);
