@@ -64,6 +64,7 @@ import { boxesOverlap, boxPoints, clearOfPortals, makeIndoors } from '../shared/
 import CARS from '../shared/car.json';
 import BIKES_DATA from '../shared/bike.json';
 import { buildHedges, buildTile, dipMesh, waterMesh } from './world/surroundings';
+import { wetGround } from './world/water';
 import { buildHorizon } from './world/horizon';
 import { wearLonePatches, weatherYards } from './world/yards';
 import { Undergrowth } from './world/undergrowth';
@@ -961,7 +962,11 @@ addDiag(() => {
 });
 const avatars = new Avatars();
 scene.add(avatars.group);
-avatars.onStep = (_name, at, speed) => footstep(surfaceOf(world.groundAt(at.x, at.z, at.y + 0.3, 0.6).mat), Math.min(1, 0.35 + speed / 5), at);
+avatars.onStep = (_name, at, speed) => {
+  const ground = world.groundAt(at.x, at.z, at.y + 0.3, 0.6);
+  wetGround(at.x, at.z, ground); // in a pond or ditch: a splash (world/water.ts)
+  footstep(surfaceOf(ground.mat), Math.min(1, 0.35 + speed / 5), at);
+};
 avatars.groundAt = (x, z, y) => world.groundAt(x, z, y + 0.3, 0.6).y;
 // Arriving by parachute (shared/parachute.mjs): everyone's on their figures (world/parachutes.ts), yours filmed
 // from behind while you jump (world/dropView.ts).
