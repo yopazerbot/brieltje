@@ -38,6 +38,7 @@ import { noShoot } from '../shared/zones.mjs';
 import { boxesOverlap, boxPoints, clearOfPortals, makeIndoors, makeSolids } from '../shared/parking.mjs';
 import { bruteEntry, carFields, horseFields, playerFields, PROTO, TICK_MS } from '../shared/wire.mjs';
 import { houseAreas, makeNav, MAX_ADMIN_WAVE } from '../shared/zombies.mjs';
+import { DEFAULT_MOOD, isMood } from '../shared/moods.mjs';
 import { arenaEdge, arenaHome, arenaPrisms, ARENAS, portalOf } from '../shared/arenas.mjs';
 import { churchPrisms, makeChurch } from '../shared/church.mjs';
 import { DROP, dropFrom, HOME_DROP } from '../shared/parachute.mjs';
@@ -293,6 +294,7 @@ export class Game {
     this.doors = Object.create(null); // door id -> open (no prototype: ids like toString are only ids)
     this.doorDir = Object.create(null); // door id -> 1 or -1: the way a double-action door swings
     this.rules = { ...RULES };
+    this.mood = DEFAULT_MOOD; // the weather and time of day for everyone (shared/moods.mjs), set by the admin
     this.broken = new Set(); // window pane numbers that are broken
     this.scores = new Map(); // username -> { kills, deaths, points }, kept over reconnects until the next round
     this.roundOver = null; // { winner, until } during the break after a round
@@ -414,7 +416,7 @@ export class Game {
       t: 'welcome', proto: PROTO, you: name, role: session.role, color, doors: this.doorsFor(player), doorDir: this.doorDirFor(player), broken: this.brokenFor(player), homes: HOMES.filter((h) => player.role !== 'admin' && this.homes?.granted(player.key, h.id)).map((h) => h.id), players: this.roster(),
       time: now, cats: this.catsDown.map((until) => Math.max(0, until - now)), clowns: this.clownList(now), furniture: this.furnitureFor(player), rules: this.rules,
       scores: this.scoreList(), limit: KILL_LIMIT, items: this.items.map((it) => now >= it.until), round: this.roundOver ? { winner: this.roundOver.winner, ms: this.roundOver.until - now } : null,
-      cars: Object.values(this.cars), horses: this.horses, mode: this.modes.view(now),
+      cars: Object.values(this.cars), horses: this.horses, mode: this.modes.view(now), mood: this.mood,
     });
     this.broadcast({ t: 'join', name, color }, name);
     this.modes.join(name);
@@ -893,6 +895,8 @@ export class Game {
       this.travel(name, player, m.to, m.via === 'chat', now);
     } else if (m.t === 'rules' && player.role === 'admin') {
       this.setRules(m, name).catch((e) => console.error('rules failed', String(e)));
+    } else if (m.t === 'mood' && player.role === 'admin') {
+      this.setMood(name, player, m.mood, now);
     } else if (m.t === 'kick' && player.role === 'admin' && typeof m.name === 'string' && m.name !== name) {
       this.kick(m.name, name).catch((e) => console.error('kick failed', String(e)));
     }
@@ -1263,6 +1267,19 @@ export class Game {
     // With the rules that changed and their new values (checked by ruleOk), for the page to word in its language.
     const args = { name: by, ...Object.fromEntries(changed.map((k) => [k, this.rules[k]])) };
     this.broadcast({ t: 'system', text: `${by} turned ${text}`, code: 'rules', args });
+  }
+
+  /**
+   * The admin picked the weather and time of day for everyone (shared/moods.mjs). Only the admin comes here (handle);
+   * only a name from the fixed list is taken, at most one change a second per admin, and the same mood again
+   * changes nothing and tells nobody. Kept in memory: a restarted server starts sunny again.
+   */
+  setMood(by, player, mood, now) {
+    if (!isMood(mood) || now < (player.nextMood || 0)) return;
+    player.nextMood = now + 1000;
+    if (mood === this.mood) return;
+    this.mood = mood;
+    this.broadcast({ t: 'mood', mood, by }); // nothing logged or stored: not in the login log, gone on a restart
   }
 
   /** Remember whether the furniture differs from the starting layout (see loadFurniture). */
