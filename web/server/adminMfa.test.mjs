@@ -68,6 +68,9 @@ test('setting up: a wrong code keeps it off; the right one turns it on, gives 8 
   assert.match(r.recovery[0], /^[a-z2-9]{5}-[a-z2-9]{5}$/);
   assert.equal(auth.mfa.on, true);
   assert.deepEqual([...auth.sessions.keys()], [key], 'only the session that set it up is left');
+  // On: a session alone can't put another phone in its place.
+  assert.equal(auth.mfa.start(key, 'yoshi').code, 'mfaOn');
+  assert.equal((await auth.mfa.confirm(key, totp(secret, Math.floor(Date.now() / 30000)))).code, 'mfaOn');
 });
 
 test('logging in: the password, then a code; a code works once; wrong ones count; a recovery code works once', async () => {

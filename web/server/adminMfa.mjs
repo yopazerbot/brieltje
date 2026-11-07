@@ -152,6 +152,8 @@ export class AdminMfa {
   /** Setting up, step 1: a new secret for this admin session, as a QR code, a link and the key to type. */
   start(sessionKey, name) {
     if (!this.key) return { error: 'No admin password is set.', code: 'adminOnly', status: 403 };
+    // On already: a new phone only after turning it off, which needs a code. A session alone never swaps the secret.
+    if (this.on) return { error: 'Two-step login is on. Turn it off first, with a code.', code: 'mfaOn', status: 409 };
     const secret = randomBytes(20);
     this.pending.set(sessionKey, { secret, until: Date.now() + PENDING_MS });
     for (const [k, p] of this.pending) if (p.until < Date.now()) this.pending.delete(k);
@@ -163,6 +165,7 @@ export class AdminMfa {
 
   /** Setting up, step 2: the first code from the app. On from now on; every other admin session ends. */
   async confirm(sessionKey, code) {
+    if (this.on) return { error: 'Two-step login is on. Turn it off first, with a code.', code: 'mfaOn', status: 409 };
     const p = this.pending.get(sessionKey);
     if (!p || p.until < Date.now()) return { error: 'Start again: the setup took too long.', code: 'mfaExpired', status: 400 };
     const step = stepOf(p.secret, code);
