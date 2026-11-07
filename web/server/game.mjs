@@ -223,7 +223,7 @@ const LAYOUT_RESTORE = String(defaultLayout?.restore ?? 0);
  * House rules the admin sets in the settings, with their defaults. `paintball` (child-friendly for
  * everyone) only changes what the pages show: Action as Paintball, with the same hits and scores.
  */
-const RULES = { flying: true, spawn: false, names: true, maxPlayers: MAX_PLAYERS, pin: true, portals: true, travel: true, paintball: false, parachute: true };
+const RULES = { flying: true, spawn: false, names: true, maxPlayers: MAX_PLAYERS, guests: true, portals: true, travel: true, paintball: false, parachute: true };
 /**
  * Spawning with /name (Yoshi, 2 Nov 2026: everyone may, unless the admin has it off, as it is at first):
  * how far from where the server has you a thing may appear (m), and how many each player may have out
@@ -284,6 +284,13 @@ const num = (v, lo, hi) => (typeof v === 'number' && Number.isFinite(v) ? Math.m
 /** The home whose inside a furniture piece stands in, or null (shared/homes.mjs homeAt). */
 const pieceHome = (f) => (f ? homeAt(f.x, f.z, f.y) : null);
 
+/**
+ * What a room refuses (server/rooms.mjs): changes to the open world's furniture, Teslas, characters,
+ * rules and weather, a new round, and anything that takes a player away from the room's place (start
+ * places, the parachute, trips). The admin's other powers work in a room as anywhere.
+ */
+const ROOM_REFUSED = new Set(['furn', 'tesla', 'clown', 'rules', 'mood', 'moodskip', 'moodspeed', 'newround', 'spawn', 'chute', 'travel', 'team', 'tag', 'coin']);
+
 /** The ids a `door` message may carry: the house data's and the end house's door ids (letters, digits, dots and dashes), at most 40 characters. */
 export const DOOR_ID = /^[A-Za-z0-9.-]{1,40}$/;
 
@@ -293,9 +300,17 @@ export class Game {
     return (this._gate ??= new HomeGate({ homes: () => this.homes, paneHome: PANE_HOME }));
   }
 
-  constructor(auth, allowedHosts) {
+  /**
+   * `room`: a Zombies room (server/rooms.mjs, Yoshi, 7 Nov 2026): { id, owner, arena, edge }. A room is a
+   * game of its own, with its own players, doors, panes and zombies; it and the open world never see
+   * each other. Null for the open world.
+   */
+  constructor(auth, allowedHosts, room = null) {
     this.auth = auth;
     this.allowedHosts = allowedHosts;
+    this.room = room;
+    this.hub = null; // server/rooms.mjs: the open world and every room (kicks, a name in one place at a time)
+    this.roles = new Map(); // username -> the role they played here with (a Zombies run counts for accounts only)
     this.homes = null; // the code-locked homes (server/homes.mjs), set by server.mjs: who has a code's grant
     // No compression: chat (typed by players) shares the connection with game state.
     this.wss = new WebSocketServer({ noServer: true, maxPayload: 4096, perMessageDeflate: false });
@@ -344,19 +359,53 @@ export class Game {
     this.carAt = {}; // car id -> when its pose was taken (the server's clock, ms)
     this.horseAt = this.horses.map(() => 0);
     this.football = new Football((x, z) => HOUSE.ground + TERRAIN.height(x, z)); // the footballs (server/football.mjs)
-    setInterval(() => this.tick(), TICK_MS).unref();
-    setInterval(() => this.moodSeason(Date.now()), 60_000).unref(); // winter begins or ends: snow on Auto or not
-    // Sessions can end while connected (logout, password reset, user deleted,
-    // kicked, expired): close those connections within a second.
-    setInterval(() => {
-      for (const [name, p] of this.players) {
-        if (!this.auth.sessions.has(p.key)) p.ws.close(4002, 'Session ended');
-      }
-    }, 1000).unref();
+    this.timers = [
+      setInterval(() => this.tick(), TICK_MS).unref(),
+      setInterval(() => this.moodSeason(Date.now()), 60_000).unref(), // winter begins or ends: snow on Auto or not
+      // Sessions can end while connected (logout, password reset, account deleted or turned off,
+      // kicked, expired): close those connections within a second.
+      setInterval(() => {
+        for (const [name, p] of this.players) {
+          if (!this.auth.sessions.has(p.key)) p.ws.close(4002, 'Session ended');
+        }
+      }, 1000).unref(),
+    ];
   }
 
-  /** HTTP upgrade to WebSocket: only same-site pages with a valid session. */
-  upgrade(req, socket, head) {
+  /** A room is closed (server/rooms.mjs): its clocks stop, its zombies go, anyone still in it is told. */
+  close() {
+    for (const t of this.timers) clearInterval(t);
+    if (this.modes.state.kind === 'zombies') this.modes.state.z.stop();
+    for (const p of this.players.values()) p.ws.close(4004, 'The room was closed');
+    this.wss.close();
+  }
+
+  /**
+   * A new room starts as the open world is now (server/rooms.mjs): the furniture, the placed Teslas, the
+   * rules and the weather, copied, so a room's game changes none of it. The best waves are shared.
+   */
+  copyWorldFrom(main) {
+    for (const [id, f] of main.furniture) this.furniture.set(id, f);
+    this.furnitureEdited = main.furnitureEdited;
+    for (const [id, c] of Object.entries(main.cars)) if (c.kind) this.cars[id] = { ...c, driver: null, passenger: null };
+    this.rules = { ...main.rules, maxPlayers: this.room.max };
+    this.mood = main.mood;
+    this.moodCycle = main.moodCycle;
+    this.moodRun = main.moodRun;
+    this.zombieBests = main.zombieBests;
+    this.homes = main.homes;
+  }
+
+  /** What a page in a room is told about it: its id, who opened it, its place. Null in the open world. */
+  roomView() {
+    return this.room ? { id: this.room.id, owner: this.room.owner, place: this.room.arena.id } : null;
+  }
+
+  /**
+   * HTTP upgrade to WebSocket: only same-site pages with a valid session. `gone`: the page asked for a
+   * room that isn't there (any more): told so in a message and a close of its own (server/rooms.mjs).
+   */
+  upgrade(req, socket, head, gone = false) {
     const origin = String(req.headers.origin || '');
     let host = '';
     try {
@@ -368,6 +417,12 @@ export class Game {
     if (!host || host !== req.headers.host || !session) {
       socket.write('HTTP/1.1 403 Forbidden\r\n\r\n');
       return socket.destroy();
+    }
+    if (gone) {
+      return this.wss.handleUpgrade(req, socket, head, (ws) => {
+        this.send(ws, { t: 'roomgone' });
+        ws.close(4004, 'No such room');
+      });
     }
     const already = this.players.has(session.username);
     // The page asks for the ticks it reads (/ws?v=2, shared/wire.mjs); without, it is from before them.
@@ -389,6 +444,7 @@ export class Game {
    * MAX_PLAYERS), since raising the limit or kicking someone is only done from inside the game.
    */
   full(role = 'guest') {
+    if (this.room) return this.players.size >= this.room.max; // a room holds its few, the admin included
     return this.players.size >= (role === 'admin' ? MAX_PLAYERS : this.rules.maxPlayers);
   }
 
@@ -429,16 +485,21 @@ export class Game {
     player.movedAt = now;
     player.budget = player.vbudget = 0.5;
     this.players.set(name, player);
-    this.auth.log('mp_join', req, { username: name });
+    this.roles.set(name, session.role);
+    this.hub?.joined(name, this, session); // one place at a time: a connection in the open world or another room ends
+    this.auth.log('mp_join', req, { username: name, ...(this.room ? { detail: `room ${this.room.id}` } : {}) });
 
     this.send(ws, {
       t: 'welcome', proto: PROTO, you: name, role: session.role, color, doors: this.doorsFor(player), doorDir: this.doorDirFor(player), broken: this.brokenFor(player), homes: HOMES.filter((h) => player.role !== 'admin' && this.homes?.granted(player.key, h.id)).map((h) => h.id), players: this.roster(),
       time: now, cats: this.catsDown.map((until) => Math.max(0, until - now)), clowns: this.clownList(now), furniture: this.furnitureFor(player), rules: this.rules,
       scores: this.scoreList(), limit: KILL_LIMIT, items: this.items.map((it) => now >= it.until), round: this.roundOver ? { winner: this.roundOver.winner, ms: this.roundOver.until - now } : null,
       cars: Object.values(this.cars), horses: this.horses, bikes: Object.values(this.bikes), mode: this.modes.view(now), mood: this.mood, moodCycle: this.moodView(now),
+      room: this.roomView(),
     });
     this.broadcast({ t: 'join', name, color }, name);
     this.modes.join(name);
+    // In a room without a game on: at the place's start, on the ground (a game on puts them in itself: zombies.mjs join).
+    if (this.room && !this.modes.zombies) this.gather([name], this.room.arena);
     this.broadcast({ t: 'scores', list: this.scoreList() }, name);
 
     ws.on('message', (raw) => this.receive(name, player, raw));
@@ -642,6 +703,8 @@ export class Game {
     if (!m || typeof m !== 'object') return;
     if (m.t === 'state' ? ++player.states > 30 : ++player.others > 40) return;
     if (this.modes.noShooting && ['hit', 'rocket', 'nade', 'boom', 'shot'].includes(m.t)) return; // no fighting during a party game
+    // A room changes nothing of the open world and holds its players at its place (server/rooms.mjs).
+    if (this.room && ROOM_REFUSED.has(m.t)) return;
 
     if (m.t === 'state') {
       const prev = player.state;
@@ -912,7 +975,15 @@ export class Game {
     } else if (m.t === 'hit' && typeof m.target === 'string' && Object.hasOwn(WEAPONS, m.w)) {
       const count = (v) => (Number.isInteger(v) && v >= 0 ? v : 0);
       this.hit(name, player, m.target, m.w, count(m.body), count(m.head), now);
-    } else if (m.t === 'mode' && player.role === 'admin' && typeof m.kind === 'string') {
+    } else if (m.t === 'mode' && this.room && (m.kind === 'zombies' || m.kind === 'free')) {
+      // In a room only Zombies, at the room's place. Anyone in it may start a game when none is on; stopping
+      // one that runs is for players with an account and the admin (a guest can't end it for everyone).
+      if (now < (player.nextMode || 0)) return;
+      player.nextMode = now + 1000;
+      const running = !!this.modes.zombies;
+      if (m.kind === 'zombies' ? running : !running || player.role === 'guest') return;
+      this.modes.start(m.kind, name, this.room.arena.id);
+    } else if (m.t === 'mode' && !this.room && player.role === 'admin' && typeof m.kind === 'string') {
       // `place`: where Zombies is played (shared/arenas.mjs; an unknown one plays at home).
       this.modes.start(m.kind, name, typeof m.place === 'string' ? m.place.slice(0, 30) : 'house');
     } else if (m.t === 'zwave' && player.role === 'admin') {
@@ -948,7 +1019,7 @@ export class Game {
     } else if (m.t === 'moodspeed' && player.role === 'admin') {
       this.moodSpeed(name, player, m.speed, now);
     } else if (m.t === 'kick' && player.role === 'admin' && typeof m.name === 'string' && m.name !== name) {
-      this.kick(m.name, name).catch((e) => console.error('kick failed', String(e)));
+      (this.hub ? this.hub.kick(m.name, name) : this.kick(m.name, name)).catch((e) => console.error('kick failed', String(e)));
     }
   }
 
@@ -1195,6 +1266,7 @@ export class Game {
    * houses and nobody travels. All four games are played round them (the teams start at their house).
    */
   fenced() {
+    if (this.room) return true; // a room always keeps its players at its place, between games too
     return this.modes.active && this.modes.state.phase !== 'done';
   }
 
@@ -1203,6 +1275,7 @@ export class Game {
    * round the place Zombies is played at (shared/arenas.mjs), else round the built-up area.
    */
   fence() {
+    if (this.room) return this.modes.zombies?.edge ?? this.room.edge;
     return this.fenced() ? (this.modes.zombies?.edge ?? BOUNDS.party) : BOUNDS.map;
   }
 
@@ -1346,7 +1419,7 @@ export class Game {
     if (!changed.length) return;
     for (const k of changed) this.rules[k] = m[k];
     await this.auth.store.setMeta('rules', JSON.stringify(this.rules));
-    const label = { flying: 'flying', spawn: 'spawning things with /name', names: 'names above players', pin: 'joining with the PIN', portals: 'the portals', travel: 'travelling from the chat', paintball: 'child-friendly for everyone', parachute: 'arriving by parachute' };
+    const label = { flying: 'flying', spawn: 'spawning things with /name', names: 'names above players', guests: 'guests joining', portals: 'the portals', travel: 'travelling from the chat', paintball: 'child-friendly for everyone', parachute: 'arriving by parachute' };
     const text = changed.map((k) => (k === 'maxPlayers' ? `the limit to ${this.rules[k]} players` : `${label[k]} ${this.rules[k] ? 'on' : 'off'}`)).join(', ');
     this.auth.log('rules', null, { username: by, detail: text });
     this.broadcast({ t: 'rules', rules: this.rules });
@@ -2189,9 +2262,23 @@ export class Game {
     return typeof r === 'number' ? Math.round(r) : null;
   }
 
-  /** Add to someone's totals for the leaderboard (kept in the database). */
+  /** Add to someone's totals for the leaderboard (kept in the database): accounts only (Yoshi, 7 Nov 2026). */
   stats(name, add) {
+    if (this.roles.get(name) !== 'player') return;
     this.auth.store.addStats(name, add).catch((e) => console.error('stats failed', String(e)));
+  }
+
+  /**
+   * A Zombies game at `place` is over (server/zombies.mjs over, never a chosen wave): for each account in
+   * it, the wave reached and the zombies they beat, kept when it beats their best there (the board).
+   */
+  zombieRun(place, names, wave, beaten) {
+    for (const name of names) {
+      if (this.roles.get(name) !== 'player') continue;
+      this.auth.store.saveZombieRun(name, place, wave, beaten[name] ?? 0, names.length)
+        .then((better) => better && this.hub?.scored())
+        .catch((e) => console.error('zombie run failed', String(e)));
+    }
   }
 
   send(ws, msg) {

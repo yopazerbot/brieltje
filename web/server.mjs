@@ -1,13 +1,13 @@
-// Production web server for Railway: serves the built app (dist/), the login
-// and user-management API, and the multiplayer WebSocket (/ws).
-// The walkthrough itself is public (solo play needs no login); multiplayer
-// needs an account. Search engines are asked not to index anything.
+// Production web server for Railway: serves the built app (dist/), the login, accounts
+// and user-management API, and the multiplayer WebSocket (/ws, the open world and the Zombies rooms).
+// Solo play needs no login; playing together needs a name (a guest) or an account
+// (server/accounts.mjs). Search engines are asked not to index anything.
 //
 // Variables (Railway):
 //   ADMIN_PASSWORD     admin password (username "admin", or ADMIN_USERNAME)
 //   PRIVATE_DATA_KEY   32 random bytes, base64 (44 characters) or hex (64): opens the sealed private data
 //                      (server/privateData.mjs). Without it nothing opens.
-//   DATABASE_URL       Postgres for users and the login log (local: JSON file)
+//   DATABASE_URL       Postgres for accounts, sessions and the login log (local: JSON file)
 //   TRUST_CLOUDFLARE   1 when the domain runs through Cloudflare: then only requests
 //                      that came through Cloudflare are answered (see viaCloudflare)
 //   STATS_SECRET       at least 32 random bytes, base64url: locks the day's visitor seed in the
@@ -23,6 +23,9 @@ import { openStore } from './server/store.mjs';
 // First among the game's modules: the private data (server/privateData.mjs) is open before they load.
 import { privateData } from './server/privateData.mjs';
 import { Auth, beTime, bucketOf, CLOUDFLARE_ONLY, clientIp, seatOf, viaCloudflare } from './server/auth.mjs';
+import { ACCOUNT_MS, Accounts } from './server/accounts.mjs';
+import { Rooms } from './server/rooms.mjs';
+import { ARENAS } from './shared/arenas.mjs';
 import { Feedback } from './server/feedback.mjs';
 import { Game } from './server/game.mjs';
 import { Homes } from './server/homes.mjs';
@@ -93,16 +96,33 @@ await auth.loadSessions();
 const game = new Game(auth);
 await game.loadFurniture();
 await game.loadRules();
+// The open world and the Zombies rooms (server/rooms.mjs); the players' accounts (server/accounts.mjs).
+const rooms = new Rooms(game, (room) => new Game(auth, undefined, room));
+const accounts = new Accounts(auth, (name) => rooms.online(name));
+await accounts.init();
+rooms.onJoined = (name, session) => session?.role === 'player' && accounts.seen(name);
+// The board of best Zombies runs (accounts only): public, kept a little while per place.
+const boards = new Map(); // place ('' for all) -> { at, rows }
+rooms.onScore = () => boards.clear();
+async function board(place) {
+  const cached = boards.get(place);
+  if (cached && Date.now() - cached.at < 15_000) return cached.rows;
+  const rows = (await store.zombieBoard(place || null, 20)).map((r) => ({
+    username: r.username, place: r.place, wave: r.wave, kills: r.kills, team: r.team, at: new Date(r.at).toISOString().slice(0, 10),
+  }));
+  boards.set(place, { at: Date.now(), rows });
+  return rows;
+}
 
 const interest = new Interest(store, { json: (...a) => json(...a), clientKey: (req) => bucketOf(clientIp(req)) });
 // STATS_SECRET locks the day's visitor seed in the store (server/stats.mjs): a Railway variable of its own, never in the database.
-const stats = new Stats(store, { json: (...a) => json(...a), clientKey: (req) => bucketOf(clientIp(req)), game, readJson: (req) => body(req), isAdmin: (req) => auth.session(req)?.role === 'admin', log: (event, req, extra) => auth.log(event, req, extra), secret: process.env.STATS_SECRET });
+const stats = new Stats(store, { json: (...a) => json(...a), clientKey: (req) => bucketOf(clientIp(req)), game: rooms, readJson: (req) => body(req), isAdmin: (req) => auth.session(req)?.role === 'admin', log: (event, req, extra) => auth.log(event, req, extra), secret: process.env.STATS_SECRET });
 const feedback = new Feedback(store, { json: (...a) => json(...a), readJson: (req) => body(req), clientKey: (req) => bucketOf(clientIp(req)), clientIp, session: (req) => auth.session(req), time: beTime });
 const gamenight = new GameNight(store, { json: (...a) => json(...a), readJson: (req) => body(req), clientKey: (req) => bucketOf(clientIp(req)) });
 // The three homes with an access code (server/homes.mjs): who typed a home's code, and the admin's list of them.
 const homes = new Homes(store, { list: HOMES, json: (...a) => json(...a), readJson: (req) => body(req), clientKey: (req) => bucketOf(clientIp(req)), pack: packFor });
 game.homes = homes;
-homes.onGrant = (key, id) => game.homeGranted(key, id); // the state of the inside to the page that just got the right
+homes.onGrant = (key, id) => rooms.homeGranted(key, id); // the state of the inside to the page that just got the right, wherever it plays
 // The admin page's live view hears of new log lines, changed sign-ups, feedback and the game night.
 auth.onLog = (entry) => stats.logged(entry);
 interest.onChange = () => stats.signupsChanged();
@@ -205,16 +225,31 @@ async function api(req, res, url) {
     const b = await body(req);
     // Playing together (with its chat) is for 13 and over: the page asks, and only sends this once ticked.
     if (b.age !== true) return refuse(res, { error: 'Confirm that you are 13 or older to play together.', code: 'age', status: 400 });
-    const r = await auth.join(req, b.name, b.pin, (name) => game.players.has(name), game.rules.pin, () => game.full());
-    // A new guest cookie goes with the answer, a refusal too: wrong PINs are counted per browser by it.
+    const r = await auth.join(req, b.name, (name) => rooms.online(name), game.rules.guests, () => game.full());
+    // A new guest cookie goes with the answer, a refusal too: a kick keeps that browser out by it.
     const guest = r.guest ? [auth.guestCookie(r.guest)] : [];
     if (r.error) return json(res, r.status, { error: r.error, code: r.code, args: r.args }, guest.length ? { 'Set-Cookie': guest } : {});
     // A seat's join sets that seat's session cookie, never the normal one (server/auth.mjs seatOf).
     return json(res, 200, { username: r.username, role: r.role }, { 'Set-Cookie': [auth.cookie(r.token, undefined, seat), ...guest] });
   }
+  // Player accounts (server/accounts.mjs): signing up and logging in. The session cookie as for any login,
+  // for 30 days, and the account's device cookie (its own browser isn't locked out by others' guesses).
+  if ((path === '/api/account/register' || path === '/api/account/login') && method === 'POST') {
+    const b = await body(req);
+    const r = path.endsWith('register') ? await accounts.register(req, b) : await accounts.login(req, b);
+    if (r.error) return refuse(res, r);
+    return json(res, 200, { username: r.username, role: r.role }, { 'Set-Cookie': [auth.cookie(r.token, ACCOUNT_MS / 1000, seat), auth.accountDeviceCookie(r.device)] });
+  }
+  // The board of best Zombies runs (accounts only): public, like the names in the game. `place`: one of
+  // the places, or none for each account's best anywhere.
+  if (path === '/api/scores' && method === 'GET') {
+    const place = url.searchParams.get('place') ?? '';
+    if (place && !ARENAS.some((a) => a.id === place)) return json(res, 400, { error: 'No such place', code: 'roomPlace' });
+    return json(res, 200, { rows: await board(place) });
+  }
   const s = auth.session(req);
   if (path === '/api/me' && method === 'GET') {
-    return s ? json(res, 200, { username: s.username, role: s.role, online: game.roster().length, max: game.rules.maxPlayers }) : json(res, 401, { error: 'Not logged in', code: 'notLoggedIn' });
+    return s ? json(res, 200, { username: s.username, role: s.role, online: rooms.count(), max: game.rules.maxPlayers }) : json(res, 401, { error: 'Not logged in', code: 'notLoggedIn' });
   }
   if (path === '/api/logout' && method === 'POST') {
     await body(req);
@@ -223,27 +258,49 @@ async function api(req, res, url) {
   }
   if (!s) return json(res, 401, { error: 'Not logged in', code: 'notLoggedIn' });
   if (path === '/api/leaderboard' && method === 'GET') return json(res, 200, { rows: await store.leaderboard() });
+  // A player's own account: what is kept, a new password, deleting it (each asks for the current password).
+  if (path === '/api/account' && method === 'GET') {
+    const mine = await accounts.mine(s);
+    return mine ? json(res, 200, mine) : json(res, 404, { error: 'No account', code: 'noAccount' });
+  }
+  if ((path === '/api/account/password' || path === '/api/account/delete') && method === 'POST') {
+    const b = await body(req);
+    if (s.role !== 'player') return json(res, 403, { error: 'No account', code: 'noAccount' });
+    const r = path.endsWith('password') ? await accounts.changePassword(req, s, b) : await accounts.deleteMine(req, s, b);
+    if (r.error) return refuse(res, r);
+    // A new password: this browser stays logged in with a fresh session; every other one ended.
+    if (r.token) return json(res, 200, { ok: true }, { 'Set-Cookie': auth.cookie(r.token, ACCOUNT_MS / 1000, seat) });
+    return json(res, 200, { ok: true }, { 'Set-Cookie': auth.cookie('', 0, seat) });
+  }
+  // Zombies rooms (server/rooms.mjs): the list for anyone playing together; opening one for accounts and the admin.
+  if (path === '/api/rooms' && method === 'GET') return json(res, 200, rooms.list());
+  if (path === '/api/rooms' && method === 'POST') {
+    const b = await body(req);
+    const r = rooms.create(s, typeof b.place === 'string' ? b.place : '');
+    if (r.error) return refuse(res, r);
+    return json(res, 200, r);
+  }
   if (s.role !== 'admin') return json(res, 403, { error: 'Admin only', code: 'adminOnly' });
 
-  // Admin: who is online, kicking, the login log.
-  if (path === '/api/players' && method === 'GET') return json(res, 200, { players: game.roster(), max: game.rules.maxPlayers });
+  // Admin: who is online (in the open world and the rooms), kicking, the login log.
+  if (path === '/api/players' && method === 'GET') return json(res, 200, { players: rooms.roster(), max: game.rules.maxPlayers });
   if (path === '/api/kick' && method === 'POST') {
     const b = await body(req);
     if (typeof b.name !== 'string' || b.name === s.username) return json(res, 400, { error: 'Pick another player', code: 'pickAnother' });
-    await game.kick(b.name, s.username);
+    await rooms.kick(b.name, s.username);
     return json(res, 200, { ok: true });
   }
   if (path === '/api/audit' && method === 'GET') return json(res, 200, { log: await store.recentLog(60) });
-  // Lift every lockout on joining (wrong PINs, kicks): the in-game admin tab's button.
+  // Lift every lockout on joining (kicks, guest joins, wrong account passwords): the in-game admin tab's button.
   if (path === '/api/lockouts' && method === 'POST') {
     await body(req);
     return json(res, 200, { lifted: auth.liftLockouts(s.username) });
   }
-  // The multiplayer PIN: the admin sees and changes it (never sent to anyone else).
-  if (path === '/api/pin' && method === 'GET') return json(res, 200, { pin: auth.pin });
-  if (path === '/api/pin' && method === 'POST') {
+  // The players' accounts (brieltje.be/admin): the list, and a new password, off, on or delete.
+  if (path === '/api/admin/accounts' && method === 'GET') return json(res, 200, { accounts: await accounts.list() });
+  if (path === '/api/admin/accounts' && method === 'POST') {
     const b = await body(req);
-    const r = await auth.setPin(req, s.username, b.pin);
+    const r = await accounts.admin(req, s.username, b.op, b.name);
     if (r.error) return refuse(res, r);
     return json(res, 200, r);
   }
@@ -387,7 +444,7 @@ server.on('upgrade', (req, socket, head) => {
   if (CLOUDFLARE_ONLY && !viaCloudflare(req)) {
     socket.write('HTTP/1.1 403 Forbidden\r\n\r\n');
     socket.destroy();
-  } else if (new URL(req.url, 'http://local').pathname === '/ws') game.upgrade(req, socket, head);
+  } else if (new URL(req.url, 'http://local').pathname === '/ws') rooms.upgrade(req, socket, head); // the open world, or a room
   else socket.destroy();
 });
 

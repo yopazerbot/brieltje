@@ -334,6 +334,8 @@ export class ZombieGame {
       this.record = true;
       this.game.saveZombieBest(this.arena.id, this.best);
     }
+    // The board of best runs: accounts only, never a chosen wave (game.zombieRun).
+    if (!this.custom) this.game.zombieRun?.(this.arena.id, names, wave, this.horde.beaten);
     this.modes.finish(`The zombies caught everyone at wave ${wave}.${this.record ? " That's a new best ever!" : ''}`, this.record ? 'zOverBest' : 'zOver', { n: wave, best: this.best?.wave ?? 0 });
   }
 

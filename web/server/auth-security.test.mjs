@@ -23,29 +23,61 @@ function memoryStore() {
     async saveSession(key, username, role, expires) { this.sessions.push({ key, username, role, expires }); },
     async deleteSession(key) { this.sessions = this.sessions.filter((s) => s.key !== key); },
     async deleteSessionsOf(username) { this.sessions = this.sessions.filter((s) => s.username !== username); },
+    accounts: new Map(),
+    async getAccount(name) { return this.accounts.get(name) ?? null; },
   };
 }
 const request = { headers: {}, socket: { remoteAddress: '127.0.0.1' } };
 
-test('guest joining requires an admin-saved PIN and the setting survives restart', async () => {
+test('guests join with a name only; reserved and account names stay out; the old PIN is wiped', async () => {
   const store = memoryStore();
+  store.meta.set('pin', '123456'); // from before (Yoshi, 7 Nov 2026: no PIN)
+  store.accounts.set('anna', { username: 'anna', pass: 'x', disabled: false });
   const auth = new Auth(store, false);
   auth.log = () => {};
   await auth.loadSessions();
-  assert.equal(auth.pin, '');
-  assert.equal((await auth.join(request, 'guest-one', '123456', () => false)).code, 'pinOff');
-  assert.equal((await auth.setPin(request, 'admin', 'bad')).code, 'pinFormat');
-  assert.equal(auth.pin, '');
-  assert.equal((await auth.setPin(request, 'admin', '123456')).ok, true);
-  assert.equal((await auth.join(request, 'guest-one', '123456', () => false)).role, 'guest');
+  assert.equal(store.meta.get('pin'), '');
+  assert.equal((await auth.join(request, 'guest-one', () => false)).role, 'guest');
+  assert.equal((await auth.join(request, 'guest-one', () => false)).code, 'nameToday'); // a name stays with whoever joined with it
+  assert.equal((await auth.join(request, 'Anna', () => false)).code, 'nameAccount');
+  assert.equal((await auth.join(request, 'admin', () => false)).code, 'nameTaken');
+  assert.equal((await auth.join(request, 'x', () => false)).code, 'nameFormat');
+  assert.equal((await auth.join(request, 'guest-two', () => true)).code, 'nameOnline');
+  assert.equal((await auth.join(request, 'guest-two', () => false, false)).code, 'guestsOff');
+  // A name being made into an account right now can't be taken.
+  auth.claiming.add('guest-three');
+  assert.equal((await auth.join(request, 'guest-three', () => false)).code, 'nameToday');
+  // After a restart: the guest's session is back; one whose name became an account's is not.
+  store.sessions.push({ key: 'k-old', username: 'anna', role: 'guest', expires: Date.now() + 60_000 });
   const restored = new Auth(store, false);
   restored.log = () => {};
   await restored.loadSessions();
-  assert.equal(restored.pin, '123456');
-  assert.equal((await restored.join(request, 'guest-two', '123456', () => false)).role, 'guest');
-  assert.equal((await restored.setPin(request, 'admin', '654321')).loggedOut, 2);
-  assert.equal((await restored.join(request, 'guest-three', '123456', () => false)).code, 'wrongPin');
-  assert.equal((await restored.join(request, 'guest-three', '654321', () => false)).role, 'guest');
+  assert.deepEqual([...restored.sessions.values()].map((x) => x.username), ['guest-one']);
+});
+
+test('player sessions come back after a restart only while their account is there and on', async () => {
+  const store = memoryStore();
+  store.accounts.set('bram', { username: 'bram', pass: 'x', disabled: false });
+  store.accounts.set('cato', { username: 'cato', pass: 'x', disabled: true });
+  const later = Date.now() + 60_000;
+  store.sessions.push({ key: 'k1', username: 'bram', role: 'player', expires: later }, { key: 'k2', username: 'cato', role: 'player', expires: later },
+    { key: 'k3', username: 'dirk', role: 'player', expires: later }, { key: 'k4', username: 'admin', role: 'player', expires: later });
+  const auth = new Auth(store, false);
+  auth.log = () => {};
+  await auth.loadSessions();
+  assert.deepEqual([...auth.sessions.values()].map((x) => x.username), ['bram']);
+  assert.deepEqual(store.sessions.map((x) => x.key), ['k1']);
+});
+
+test("the admin password never logs in under a player's account name", async () => {
+  const store = memoryStore();
+  store.accounts.set('emma', { username: 'emma', pass: 'x', disabled: false });
+  const auth = new Auth(store, false);
+  auth.log = () => {};
+  await auth.loadSessions();
+  assert.equal((await auth.login(request, 'emma', secret)).code, 'nameAccount');
+  assert.equal((await auth.login(request, 'emma', 'wrong')).code, 'wrongPassword'); // without the password it says nothing about the name
+  assert.equal((await auth.login(request, 'not-emma', secret)).role, 'admin');
 });
 
 test('admin login, device cookies and existing scrypt session fingerprints remain compatible', async () => {

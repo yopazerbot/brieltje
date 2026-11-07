@@ -15,6 +15,8 @@ function memoryStore() {
     async saveSession(key, username, role, expires, device) { this.sessions.push({ key, username, role, expires, ...(device ? { device } : {}) }); },
     async deleteSession(key) { this.sessions = this.sessions.filter((s) => s.key !== key); },
     async deleteSessionsOf(username) { this.sessions = this.sessions.filter((s) => s.username !== username); },
+    accounts: new Map(),
+    async getAccount(name) { return this.accounts.get(name) ?? null; },
   };
 }
 
@@ -27,7 +29,6 @@ async function ready(secure = false) {
   const auth = new Auth(memoryStore(), secure);
   auth.log = () => {};
   await auth.loadSessions();
-  await auth.setPin(req(), 'admin', '246813');
   return auth;
 }
 
@@ -37,7 +38,7 @@ async function joinSeats(auth, names) {
   const out = [];
   for (const [i, name] of names.entries()) {
     const seat = i + 1;
-    const r = await auth.join(req({ cookie: jar, 'x-briel-seat': String(seat) }, '/api/join'), name, '246813', () => false);
+    const r = await auth.join(req({ cookie: jar, 'x-briel-seat': String(seat) }, '/api/join'), name, () => false);
     assert.equal(r.role, 'guest', `seat ${seat} joins`);
     if (r.guest) jar = `${auth.names.guest}=${r.guest}`;
     const line = auth.cookie(r.token, undefined, seat);
@@ -84,11 +85,10 @@ test('four seats from one address get four distinct sessions, each read only by 
   }
   // No seat named: the normal session cookie only, which this browser doesn't have.
   assert.equal(auth.session(req({ cookie: all })), null);
-  // Every join was counted as a join, not as a wrong PIN: no lockout on the shared browser or address.
-  assert.equal(auth.pinByDevice.map.size, 0);
-  assert.equal(auth.pinByAddress.map.size, 0);
+  // Four joins from the one address: counted as four, far under the limit for a meetup's Wi-Fi.
+  assert.equal(auth.guestJoins.count('192.0.2.10', Date.now()), 4);
   // The four names stay their owners' for the day, as any join's.
-  assert.equal((await auth.join(req({ cookie: jar }), 'seat-anna', '246813', () => false)).code, 'nameToday');
+  assert.equal((await auth.join(req({ cookie: jar }), 'seat-anna', () => false)).code, 'nameToday');
 });
 
 test("a seat can't use another seat's session by naming it without holding its cookie", async () => {
@@ -102,7 +102,7 @@ test("a seat can't use another seat's session by naming it without holding its c
   // A seat's cookie is never read as the normal session, nor the normal session as a seat.
   assert.equal(auth.session(req({ cookie: `${auth.names.session}=${seats[0].token}`, 'x-briel-seat': '1' })), null);
   assert.equal(auth.session(req({ cookie: one })), null);
-  const normal = await auth.join(req({ cookie: jar }), 'plain-player', '246813', () => false);
+  const normal = await auth.join(req({ cookie: jar }), 'plain-player', () => false);
   const both = `${one}; ${auth.names.session}=${normal.token}`;
   assert.equal(auth.session(req({ cookie: both }))?.username, 'plain-player');
   assert.equal(auth.session(req({ cookie: both, 'x-briel-seat': '1' }))?.username, 'seat-anna');
@@ -114,22 +114,20 @@ test("a seat can't use another seat's session by naming it without holding its c
   assert.equal(auth.session(req({ cookie: `${auth.names.seats[0]}=${'A'.repeat(43)}`, 'x-briel-seat': '1' })), null);
 });
 
-test('a wrong PIN from a seat still counts, per browser and per address', async () => {
+test('guest joins count per address, seats too, and the admin lifts the count', async () => {
   const auth = await ready();
-  const { jar } = await joinSeats(auth, ['seat-anna']);
-  // The browser is known now (it joined with this PIN): it skips the address counts, as any known browser does.
-  const fresh = req({ 'x-briel-seat': '2' }, '/api/join', '192.0.2.77');
-  let guest = '';
-  for (let i = 0; i < 5; i++) {
-    const r = await auth.join(guest ? req({ cookie: guest, 'x-briel-seat': '2' }, '/api/join', '192.0.2.77') : fresh, 'seat-bram', '000000', () => false);
-    assert.equal(r.code, 'wrongPin');
-    if (r.guest) guest = `${auth.names.guest}=${r.guest}`;
+  const ip = '192.0.2.77';
+  let jar = '';
+  for (let i = 0; i < 40; i++) {
+    const r = await auth.join(req({ cookie: jar, 'x-briel-seat': String((i % 4) + 1) }, '/api/join', ip), `seat-p${i}`, () => false);
+    assert.equal(r.role, 'guest', `join ${i}`);
+    if (r.guest) jar = `${auth.names.guest}=${r.guest}`;
   }
-  assert.equal((await auth.join(req({ cookie: guest, 'x-briel-seat': '2' }, '/api/join', '192.0.2.77'), 'seat-bram', '246813', () => false)).code, 'pinDevice');
-  assert.equal(auth.pinByAddress.count('192.0.2.77', Date.now()), 5);
-  // The known browser's wrong PIN counts against it too.
-  assert.equal((await auth.join(req({ cookie: jar, 'x-briel-seat': '3' }, '/api/join'), 'seat-cato', '111111', () => false)).code, 'wrongPin');
-  assert.equal(auth.pinByDevice.map.size, 2);
+  assert.equal((await auth.join(req({ cookie: jar }, '/api/join', ip), 'seat-late', () => false)).code, 'joinsTooMany');
+  // Another address is not held back.
+  assert.equal((await auth.join(req({}, '/api/join', '192.0.2.78'), 'seat-other', () => false)).role, 'guest');
+  auth.liftLockouts('admin');
+  assert.equal((await auth.join(req({ cookie: jar }, '/api/join', ip), 'seat-late', () => false)).role, 'guest');
 });
 
 test('seat cookies: __Host- prefixed, HttpOnly, Secure, SameSite=Strict, Path=/, 12 hours; only seats 1 to 4', async () => {
@@ -147,7 +145,7 @@ test('seat cookies: __Host- prefixed, HttpOnly, Secure, SameSite=Strict, Path=/,
   assert.deepEqual(auth.names.seats, ['__Host-briel_seat1', '__Host-briel_seat2', '__Host-briel_seat3', '__Host-briel_seat4']);
 });
 
-test('a kick of one seat ends that seat only; the PIN change ends them all', async () => {
+test('a kick of one seat ends that seat only, and keeps that browser from joining under a new name', async () => {
   const auth = await ready();
   const { jar, seats } = await joinSeats(auth, ['seat-anna', 'seat-bram', 'seat-cato']);
   const all = cookieHeader(auth, jar, seats);
@@ -155,7 +153,6 @@ test('a kick of one seat ends that seat only; the PIN change ends them all', asy
   assert.equal(auth.session(req({ cookie: all, 'x-briel-seat': '2' })), null);
   assert.equal(auth.session(req({ cookie: all, 'x-briel-seat': '1' }))?.username, 'seat-anna');
   // The kicked seat's browser is the whole PC: it can't join a new name for the kick's minutes.
-  assert.equal((await auth.join(req({ cookie: jar, 'x-briel-seat': '2' }), 'seat-bert', '246813', () => false)).code, 'removed');
-  await auth.setPin(req(), 'admin', '135792');
-  for (const n of [1, 3]) assert.equal(auth.session(req({ cookie: all, 'x-briel-seat': String(n) })), null);
+  assert.equal((await auth.join(req({ cookie: jar, 'x-briel-seat': '2' }), 'seat-bert', () => false)).code, 'removed');
+  for (const n of [1, 3]) assert.ok(auth.session(req({ cookie: all, 'x-briel-seat': String(n) })), `seat ${n} plays on`);
 });
