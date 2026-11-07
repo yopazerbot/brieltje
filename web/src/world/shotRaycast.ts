@@ -40,7 +40,10 @@ export function prepareShotMesh(mesh: THREE.Mesh): boolean {
     for (const [name, attribute] of Object.entries(geometry.attributes)) part.setAttribute(name, attribute);
     part.setIndex(ids.flatMap((face) => [vertex(face * 3), vertex(face * 3 + 1), vertex(face * 3 + 2)]));
     part.boundingBox = box;
-    part.computeBoundingSphere();
+    // From the box, never computeBoundingSphere(): the part shares the whole mesh's vertices, and that walks
+    // every one of them for each part (about 30 s of a load for the village's big meshes). The box's sphere
+    // holds all the part's triangles, which is all the raycast's early test needs.
+    part.boundingSphere = box.getBoundingSphere(new THREE.Sphere());
     return { box, mesh: new THREE.Mesh(part, mesh.material), faces: ids };
   };
   const tree = build(faces);
