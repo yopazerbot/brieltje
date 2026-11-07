@@ -30,6 +30,11 @@ The whole project was made with AI. Yoshi Parlevliet, a cybersecurity consultant
 - **New guns and hands.** All five guns and the gloved hands are our own models now. The pistol's slide kicks back, the shotgun is pumped, the sniper's bolt is worked, and every reload is done by hand.
 - **Sound with room.** Houses and the church tower echo, and the outdoors sounds muffled when you're inside. The bells ring loud in the tower.
 - **A calmer menu.** The settings are grouped (display, sound, weather, on screen, moving and looking, language and keyboard), and only what applies to the way you play is shown. A small Beta mark replaces "Work in progress".
+- **Bikes.** Thirteen city bikes stand by the main house, at the bungalow and in racks at the portals. Get on with Use, pedal up to 25 km/h (slower uphill, faster downhill), lean into the corners and ring the bell.
+- **Football.** A ball and two small goals on the school's playground, and a ball on the back lawn. Walk into it to dribble, press Use to kick. Together, the server keeps the ball, so everyone sees the same game.
+- **Villagers.** In Explore, invented villagers walk the pavements, cycle the red lanes, walk their dogs, chat and wave. In Action, Paintball and Zombies they are gone.
+- **Water.** Wade through ditches, swim in the ponds, splash, and watch the rain ring the water.
+- **New start pictures.** Smetlede at night, Molenhoek in the rain, and a parachute over the church square at dusk.
 
 ## Recent updates — 6 November 2026
 
