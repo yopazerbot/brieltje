@@ -380,39 +380,29 @@ void Promise.all([environmentReady, homeStreet.ready]).then(() => {
 // way real light does (computed at half resolution, which is hard to tell
 // apart and far cheaper); SMAA smooths jagged edges; the output pass applies
 // tone mapping and the colour grade (src/grade.ts).
-const target = new THREE.WebGLRenderTarget(window.innerWidth, window.innerHeight, { type: THREE.HalfFloatType });
+// The scene's depth goes into a texture (each of the composer's two targets its own), for the ambient occlusion.
+const depthTarget = () => new THREE.DepthTexture(window.innerWidth, window.innerHeight);
+const target = new THREE.WebGLRenderTarget(window.innerWidth, window.innerHeight, { type: THREE.HalfFloatType, depthTexture: depthTarget() });
 const composer = new EffectComposer(renderer, target);
+composer.renderTarget2.depthTexture = depthTarget();
 composer.addPass(new RenderPass(scene, camera));
 const ao = new GTAOPass(scene, camera, window.innerWidth, window.innerHeight);
 ao.updateGtaoMaterial({ radius: 0.6, distanceExponent: 1.5, thickness: 1.5, scale: 1.2, samples: 12 });
 ao.blendIntensity = 0.9;
-// The ambient occlusion draws every mesh with one plain material: an alpha-tested wire fence, glass or
-// a see-through effect would come out as a solid panel and darken what's round it (a black box by the
-// house on High). Those stay out of its pass, as its own points and lines do.
+// The ambient occlusion reads the depth the scene was just drawn with, and works the surfaces' normals out from it.
+// It used to draw the whole scene a second time for its own depth and normals (about 400 draw calls and 1.4 million
+// triangles on High, about a quarter of the frame on a weak graphics chip). This depth is also the true one: a wire
+// fence's gaps, glass, sprites and the zombies' posed bodies come out as they are drawn, where that second drawing,
+// with one plain material for everything, had to leave them out.
+ao.setGBuffer(target.depthTexture!);
 {
-  const pass = ao as unknown as { _overrideVisibility: () => void; _visibilityCache: THREE.Object3D[] };
-  const own = pass._overrideVisibility.bind(ao);
-  const seeThrough = (m: THREE.Material) => m.alphaTest > 0 || m.transparent || !m.depthWrite || !m.colorWrite || !m.visible || !!(m as THREE.MeshStandardMaterial).alphaMap;
-  pass._overrideVisibility = () => {
-    own();
-    scene.traverse((o) => {
-      const mesh = o as THREE.Mesh;
-      if (!o.visible) return;
-      // A sprite (a portal's name, a player's name tag) turns to face the eye in its own shader, which the pass's
-      // material lacks too: drawn as a flat card standing in the world, it darkened the sky round it (a dark wedge
-      // by the portals' names on High and Ultra, moving as you walked).
-      if ((o as THREE.Sprite).isSprite) {
-        o.visible = false;
-        pass._visibilityCache.push(o);
-        return;
-      }
-      if (!mesh.isMesh) return;
-      // The zombies (world/zombies.ts) are posed in their own shader, which the pass's material lacks: out too.
-      if (o.userData.noAO || ([] as THREE.Material[]).concat(mesh.material).some(seeThrough)) {
-        o.visible = false;
-        pass._visibilityCache.push(o);
-      }
-    });
+  const own = ao.render.bind(ao);
+  ao.render = (r, write, read, dt, mask) => {
+    // The scene is drawn into the composer's read buffer, which alternates between its two targets.
+    const depth = read.depthTexture;
+    ao.gtaoMaterial.uniforms.tDepth.value = depth;
+    ao.pdMaterial.uniforms.tDepth.value = depth;
+    own(r, write, read, dt, mask);
   };
 }
 composer.addPass(ao);
