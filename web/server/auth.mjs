@@ -27,6 +27,13 @@
 // - The admin sets the PIN in the settings (kept in the store; no default PIN).
 //   Joining stays closed until then. A new PIN logs out everyone who joined with the old one,
 //   their browsers stop counting as known, and the counts of wrong PINs start again.
+// - Split screen (/splitscreen, Yoshi, 7 Nov 2026): up to four players in one browser, each in a
+//   frame of the game. They share one cookie jar, so each seat gets a session cookie of its own
+//   (`__Host-briel_seat1` to 4), and the page says which seat it speaks for: the X-Briel-Seat
+//   header on HTTP, the WebSocket's subprotocol `briel-seat-N` (see seatOf). A request that names a
+//   seat is answered from that seat's cookie only, never the normal session's, and a request
+//   without one from the normal session's only. Everything else (the PIN, its counts, the names,
+//   kicks, the cap on players) is the same as for any join; the four seats are one browser to it.
 
 import { randomBytes, scrypt, timingSafeEqual, createHash, createHmac } from 'node:crypto';
 import { promisify } from 'node:util';
@@ -192,6 +199,28 @@ export async function verifyHash(password, stored) {
 /** What the server keeps for a session token. */
 const keyOf = (token) => createHash('sha256').update(token).digest('base64url');
 
+/** Split screen: the most players in one browser (/splitscreen), each with a session cookie of its own. */
+export const SEATS = 4;
+
+/**
+ * Which split-screen seat a request speaks for: 0 for none (the normal game), 1 to SEATS for a seat,
+ * -1 for a claim that isn't one of those, which gets no session at all. HTTP calls name it in the
+ * X-Briel-Seat header; the WebSocket in its subprotocol (`briel-seat-N`), the only header a page can
+ * give a WebSocket. Never from the URL: it would be in logs and history, and a link could pick it.
+ * Both are only a choice between the cookies this browser already holds, never a credential: the
+ * session itself is still the HttpOnly cookie's random token. A page on another site can send
+ * neither with our cookies (a custom header needs CORS, which this server never grants; the
+ * WebSocket checks Origin, and the cookies are SameSite=Strict).
+ */
+export function seatOf(req) {
+  const header = req.headers['x-briel-seat'];
+  const proto = req.headers['sec-websocket-protocol'];
+  if (header === undefined && proto === undefined) return 0;
+  if (header !== undefined && proto !== undefined) return -1;
+  const m = header !== undefined ? /^([1-4])$/.exec(String(header)) : /^briel-seat-([1-4])$/.exec(String(proto));
+  return m && Number(m[1]) <= SEATS ? Number(m[1]) : -1;
+}
+
 export class Auth {
   /** `secure`: HTTPS only (Railway). The cookies then carry the __Host- prefix: only this host can set them. */
   constructor(store, secure) {
@@ -200,6 +229,8 @@ export class Auth {
     this.names = secure
       ? { session: '__Host-briel_session', device: '__Host-briel_device', guest: '__Host-briel_guest' }
       : { session: 'briel_session', device: 'briel_device', guest: 'briel_guest' };
+    // Split screen: seat N's session cookie (see seatOf). The same prefix and flags as the session's.
+    this.names.seats = Array.from({ length: SEATS }, (_, i) => `${secure ? '__Host-' : ''}briel_seat${i + 1}`);
     this.sessions = new Map(); // hash of the token -> { username, role, expires, ip, device }
     this.failures = new Attempts(FAIL_WINDOW_MS); // wrong admin passwords per address (bucketOf)
     this.adminFails = new Attempts(3600_000); // tries at the admin password, all addresses together (one key)
@@ -390,9 +421,21 @@ export class Auth {
     this.onLog?.(entry); // the admin page's live view (server/stats.mjs)
   }
 
-  /** Session for a request (cookie), or null. */
+  /**
+   * The session cookie a request is answered from: the normal one, or the seat's it names (seatOf);
+   * null for a malformed seat.
+   */
+  sessionName(req) {
+    const seat = seatOf(req);
+    if (seat < 0) return null;
+    return seat ? this.names.seats[seat - 1] : this.names.session;
+  }
+
+  /** Session for a request (cookie), or null. A seat's request reads only that seat's cookie (see seatOf). */
   session(req) {
-    const m = String(req.headers.cookie || '').match(new RegExp(`(?:^|;\\s*)${this.names.session}=([A-Za-z0-9_-]{20,})`));
+    const name = this.sessionName(req);
+    if (!name) return null;
+    const m = String(req.headers.cookie || '').match(new RegExp(`(?:^|;\\s*)${name}=([A-Za-z0-9_-]{20,})`));
     const key = m && keyOf(m[1]);
     const s = key && this.sessions.get(key);
     if (!s || s.expires < Date.now()) return null;
@@ -566,8 +609,11 @@ export class Auth {
     return `${name}=${value}; Path=/; HttpOnly; SameSite=Strict; Max-Age=${maxAgeS}${this.secure ? '; Secure' : ''}`;
   }
 
-  cookie(token, maxAgeS = SESSION_MS / 1000) {
-    return this.setCookie(this.names.session, token, maxAgeS);
+  /** The session cookie: the normal one, or seat `seat`'s (1 to SEATS, see seatOf). */
+  cookie(token, maxAgeS = SESSION_MS / 1000, seat = 0) {
+    const name = seat ? this.names.seats[seat - 1] : this.names.session;
+    if (!name) throw new Error('no such seat');
+    return this.setCookie(name, token, maxAgeS);
   }
 
   deviceCookie(value) {

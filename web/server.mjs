@@ -22,7 +22,7 @@ import { extname, join, resolve, sep } from 'node:path';
 import { openStore } from './server/store.mjs';
 // First among the game's modules: the private data (server/privateData.mjs) is open before they load.
 import { privateData } from './server/privateData.mjs';
-import { Auth, beTime, bucketOf, CLOUDFLARE_ONLY, clientIp, viaCloudflare } from './server/auth.mjs';
+import { Auth, beTime, bucketOf, CLOUDFLARE_ONLY, clientIp, seatOf, viaCloudflare } from './server/auth.mjs';
 import { Feedback } from './server/feedback.mjs';
 import { Game } from './server/game.mjs';
 import { Homes } from './server/homes.mjs';
@@ -149,6 +149,10 @@ const refuse = (res, r) => json(res, r.status, { error: r.error, code: r.code, a
 async function api(req, res, url) {
   const path = url.pathname;
   const method = req.method;
+  // Split screen (/splitscreen): the seat a call speaks for, from its X-Briel-Seat header (server/auth.mjs
+  // seatOf). One that isn't 1 to 4 is refused outright rather than read as no seat.
+  const seat = seatOf(req);
+  if (seat < 0) return json(res, 400, { error: 'Bad seat' });
   // The public key that private files are sealed with (server/privateCrypto.mjs). Public by design: it only
   // lets anyone seal, never open, and the private key is a random secret, so it is no password oracle.
   // Without PRIVATE_DATA_KEY there is no key and nothing to answer.
@@ -182,7 +186,7 @@ async function api(req, res, url) {
     const b = await body(req);
     const r = await auth.login(req, b.username, b.password);
     if (r.error) return refuse(res, r);
-    return json(res, 200, { username: r.username, role: r.role }, { 'Set-Cookie': [auth.cookie(r.token), auth.deviceCookie(r.device)] });
+    return json(res, 200, { username: r.username, role: r.role }, { 'Set-Cookie': [auth.cookie(r.token, undefined, seat), auth.deviceCookie(r.device)] });
   }
   if (path === '/api/join' && method === 'POST') {
     const b = await body(req);
@@ -192,7 +196,8 @@ async function api(req, res, url) {
     // A new guest cookie goes with the answer, a refusal too: wrong PINs are counted per browser by it.
     const guest = r.guest ? [auth.guestCookie(r.guest)] : [];
     if (r.error) return json(res, r.status, { error: r.error, code: r.code, args: r.args }, guest.length ? { 'Set-Cookie': guest } : {});
-    return json(res, 200, { username: r.username, role: r.role }, { 'Set-Cookie': [auth.cookie(r.token), ...guest] });
+    // A seat's join sets that seat's session cookie, never the normal one (server/auth.mjs seatOf).
+    return json(res, 200, { username: r.username, role: r.role }, { 'Set-Cookie': [auth.cookie(r.token, undefined, seat), ...guest] });
   }
   const s = auth.session(req);
   if (path === '/api/me' && method === 'GET') {
@@ -201,7 +206,7 @@ async function api(req, res, url) {
   if (path === '/api/logout' && method === 'POST') {
     await body(req);
     if (s) await auth.logout(s.key);
-    return json(res, 200, { ok: true }, { 'Set-Cookie': auth.cookie('', 0) });
+    return json(res, 200, { ok: true }, { 'Set-Cookie': auth.cookie('', 0, seat) });
   }
   if (!s) return json(res, 401, { error: 'Not logged in', code: 'notLoggedIn' });
   if (path === '/api/leaderboard' && method === 'GET') return json(res, 200, { rows: await store.leaderboard() });
