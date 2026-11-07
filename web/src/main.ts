@@ -304,10 +304,10 @@ addDips(house.dips ?? []);
 const home = new THREE.Group();
 scene.add(home);
 // The blocks an inside stands in for (the solid slabs) are meshes of their own, hidden when the inside comes (world/insides.ts).
-const built = buildHouseMeshes(house.prisms.filter((p) => p.k === undefined), renderer);
+const built = buildHouseMeshes(house.prisms.filter((p) => p.k === undefined), renderer, true);
 home.add(built.group);
 const keyedMeshes = new Map<string, THREE.Object3D>(house.prisms.filter((p) => p.k !== undefined).map((p) => {
-  const mesh = buildHouseMeshes([p], renderer).group;
+  const mesh = buildHouseMeshes([p], renderer, true).group;
   home.add(mesh);
   return [p.k!, mesh];
 }));

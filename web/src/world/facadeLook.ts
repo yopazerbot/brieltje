@@ -180,6 +180,7 @@ export function renderable<T extends THREE.Material>(m: T): T {
         #endif`,
       )
       .replace('#include <normal_fragment_maps>', THREE.ShaderChunk.normal_fragment_maps.replace('mapN.xy *= normalScale;', 'mapN.xy *= normalScale * (1.0 - 0.85 * vFacade);'));
+    snowOn(shader); // snow on the flat tops of the blocks and garden walls (world/snowCover.ts); the walls face sideways
   };
   m.customProgramCacheKey = () => `${key()}|render`;
   m.needsUpdate = true;

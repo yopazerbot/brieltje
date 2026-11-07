@@ -7,6 +7,7 @@ import { rustle } from './wind';
 import sizes from '../../public/textures/sizes.json';
 import { textureNormalScale } from './surfaceFinish';
 import { loadTexture } from './textureFiles';
+import { snowy } from './snowCover';
 
 /** Real-world width of each texture tile in metres (from Poly Haven, or our own brick). */
 const TILE: Record<string, number> = sizes;
@@ -169,6 +170,18 @@ export function surfaceMaterial(name: string, renderer: THREE.WebGLRenderer): TH
     m = makeMaterial(name, renderer);
     materials.set(name, m);
   }
+  return m;
+}
+
+/**
+ * The flat roofs: their name's material, but taking the snow (world/snowCover.ts). Their own material, not the shared
+ * one: an inside (world/insides.ts) builds its blocks with the shared materials, and its floors must stay clean.
+ */
+const FLAT_ROOFS = new Set(['roof', 'old_roof_flat']);
+const roofs = new Map<string, THREE.Material>();
+function roofMaterial(name: string, renderer: THREE.WebGLRenderer): THREE.Material {
+  let m = roofs.get(name);
+  if (!m) roofs.set(name, (m = snowy(makeMaterial(name, renderer))));
   return m;
 }
 
@@ -399,9 +412,10 @@ export function prismGeometry(p: Prism): THREE.BufferGeometry {
 /**
  * Build one merged mesh per material: a handful of draw calls for the whole
  * house. Window panes stay separate meshes so they can break one by one;
- * each remembers its block number in `userData.glassIndex`.
+ * each remembers its block number in `userData.glassIndex`. `shell`: the outside of a home (src/data/house_shell.json),
+ * whose flat roofs take the snow; never an inside.
  */
-export function buildHouseMeshes(prisms: Prism[], renderer: THREE.WebGLRenderer): { group: THREE.Group; panes: Map<number, THREE.Mesh> } {
+export function buildHouseMeshes(prisms: Prism[], renderer: THREE.WebGLRenderer, shell = false): { group: THREE.Group; panes: Map<number, THREE.Mesh> } {
   const byMat = new Map<string, THREE.BufferGeometry[]>();
   const group = new THREE.Group();
   const panes = new Map<number, THREE.Mesh>();
@@ -423,7 +437,7 @@ export function buildHouseMeshes(prisms: Prism[], renderer: THREE.WebGLRenderer)
   for (const [m, geos] of byMat) {
     const merged = mergeGeometries(geos);
     geos.forEach((g) => g.dispose());
-    const mesh = new THREE.Mesh(merged, surfaceMaterial(m, renderer));
+    const mesh = new THREE.Mesh(merged, shell && FLAT_ROOFS.has(m) ? roofMaterial(m, renderer) : surfaceMaterial(m, renderer));
     mesh.userData.material = m;
     mesh.name = m;
     mesh.castShadow = true;
@@ -466,7 +480,8 @@ export function blockMaterial(name: string, renderer: THREE.WebGLRenderer): { ma
   const family = FAMILY_OF.get(name);
   if (!family) {
     let own = outside.get(name);
-    if (!own) outside.set(name, (own = makeMaterial(name, renderer)));
+    // The village's flat roofs (nb_roof) take the snow: these materials are only ever outside (an inside has its own).
+    if (!own) outside.set(name, (own = name === 'nb_roof' ? snowy(makeMaterial(name, renderer)) : makeMaterial(name, renderer)));
     return { material: own, tint: new THREE.Color(1, 1, 1), tag: name };
   }
   let mat = families.get(family);
