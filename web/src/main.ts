@@ -213,7 +213,8 @@ function loaded(): void {
   };
   if (at?.village) {
     loading(0.92, () => t('travel.village'));
-    void loadVillage().then(begin, begin);
+    // Its shaders were compiled for the preset before the test: once more for the one picked (nothing new if the same).
+    void loadVillage().then(() => precompile(scene)).then(begin, begin);
   } else begin();
   setTimeout(() => void loadVillage(), 500); // playing: now the village
   setTimeout(() => life.load(precompile), 900); // and the gardens' things, birds and the mower
@@ -3803,8 +3804,13 @@ async function autoDetect(): Promise<void> {
  * draws the rest (the shadow's and the passes' own shaders), so play begins with nothing left to compile.
  */
 const firstCompile = environmentReady.then(() => precompile(scene));
+/**
+ * A start in the village: the village loads from the click, alongside the sky, the textures and the shaders (it took
+ * 2 s after them), and is in before the graphics test, so the test never meets it half built.
+ */
+const earlyVillage = startPlace()?.village ? loadVillage().catch(() => undefined) : null;
 async function compileWorld(): Promise<void> {
-  await Promise.all([environmentReady, texturesReady, homeBakeReady, firstCompile]);
+  await Promise.all([environmentReady, texturesReady, homeBakeReady, firstCompile, earlyVillage]);
   // With a figure like yours under the parachute at the first drop (skinned: shaders of its own), kept out of the
   // scene and never disposed, so its shaders stay compiled for yours and the others'.
   const figure = new THREE.Group();
