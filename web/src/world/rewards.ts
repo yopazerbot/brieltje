@@ -339,6 +339,7 @@ export class Rewards {
     for (const [id, t] of this.turrets) {
       if (ids.has(id) && t.paint === paintball.on) continue;
       t.m.g.removeFromParent();
+      (t.m.eye.material as THREE.Material).dispose(); // its own (the eye's colour is each turret's); the rest is shared
       this.turrets.delete(id);
       if (!quiet && !ids.has(id)) this.onSpent(t.m.g.position.clone().setY(t.m.g.position.y + (TURRET_Y + 0.1) * TURRET_SIZE));
     }

@@ -471,6 +471,11 @@ export class Avatars {
     for (const m of a.marks) m.removeFromParent(); // their ring shape is shared: not disposed below
     a.root.removeFromParent();
     a.body.dispose?.();
+    // The name tag's own canvas texture and material (nameTag makes one per player): freed with it, or every
+    // leave, team colour and reconnect left one more on the graphics chip.
+    const tagMat = a.tag.material as THREE.SpriteMaterial;
+    tagMat.map?.dispose();
+    tagMat.dispose();
     // Block figures own their geometry; SWAT clones share the model's.
     if (!a.body.shared) {
       a.root.traverse((o) => {
