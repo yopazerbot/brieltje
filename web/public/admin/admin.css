@@ -253,3 +253,12 @@ table.gn td:last-child { white-space: nowrap; }
 .mfa-codes ol { columns: 2; max-width: 360px; padding-left: 24px; font-family: ui-monospace, Consolas, monospace; font-size: 17px; line-height: 1.8; }
 #room-list li span:first-child { font-weight: 700; }
 #room-list li .btn { margin-left: auto; }
+
+/* Every table (admin.js sortable): headings that sort, kept in view while the rows scroll, and the count. */
+.tablewrap thead th { position: sticky; top: 0; z-index: 1; background: #171b21; }
+th .sort { padding: 0; border: 0; background: none; color: inherit; font: inherit; font-weight: 700; cursor: pointer; white-space: nowrap; }
+th .sort::after { content: ' \2195'; opacity: 0.35; font-weight: 400; }
+th[aria-sort="ascending"] .sort::after { content: ' \2191'; opacity: 1; color: var(--accent); }
+th[aria-sort="descending"] .sort::after { content: ' \2193'; opacity: 1; color: var(--accent); }
+th .sort:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+.table-count { margin: 6px 0 0; }

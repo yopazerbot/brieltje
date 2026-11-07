@@ -201,6 +201,12 @@
       <section data-panel="accounts" id="panel-accounts" role="tabpanel" aria-labelledby="tab-accounts" hidden>
         <div class="toolbar">
           <input type="text" id="acct-search" placeholder="Search name or email" />
+          <select id="acct-state" aria-label="Which accounts">
+            <option value="">All accounts</option>
+            <option value="on">On</option>
+            <option value="off">Turned off</option>
+            <option value="online">Playing now</option>
+          </select>
           <span class="muted small" id="acct-count"></span>
         </div>
         <div class="tablewrap"><table class="log fb"><thead><tr><th>Name</th><th>Email</th><th>Made</th><th>Last seen</th><th>State</th><th></th></tr></thead><tbody id="acct-rows"></tbody></table></div>

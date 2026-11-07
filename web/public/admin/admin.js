@@ -75,6 +75,12 @@
     if (text !== undefined) e.textContent = text;
     return e;
   };
+  /** A cell that shows `text` and sorts by `value` (a date as the server sent it, a number). */
+  const sortTd = (text, value, cls) => {
+    const td = el('td', cls, text);
+    td.dataset.sort = String(value ?? '');
+    return td;
+  };
   const svg = (tag, attrs = {}) => {
     const e = document.createElementNS('http://www.w3.org/2000/svg', tag);
     for (const [k, v] of Object.entries(attrs)) e.setAttribute(k, String(v));
@@ -852,6 +858,7 @@
     $('gn-state').classList.toggle('closed', !open);
     $('gn-empty').hidden = all.length > 0;
     $('gn-clear').hidden = !all.length;
+    $('gn-rows').dataset.total = String(all.length);
     $('gn-rows').replaceChildren(...gnShown().map((e) => {
       const tr = el('tr');
       const mail = el('a', '', e.email);
@@ -886,7 +893,7 @@
         td.dataset.label = label;
         return td;
       };
-      tr.append(el('td', '', new Date(e.at).toLocaleString('nl-BE', { dateStyle: 'short', timeStyle: 'short' })), name, email,
+      tr.append(sortTd(new Date(e.at).toLocaleString('nl-BE', { dateStyle: 'short', timeStyle: 'short' }), e.at), name, email,
         num(e.players, 'Players'), num(e.watchers, 'Spectators'), el('td', 'comment', e.wishes || ''), actions);
       return tr;
     }));
@@ -934,7 +941,10 @@
   }
   function drawAccounts() {
     const q = $('acct-search').value.trim().toLowerCase();
-    const list = accounts.filter((a) => !q || a.username.includes(q) || String(a.email).toLowerCase().includes(q));
+    const st = $('acct-state').value;
+    const list = accounts.filter((a) => (!q || a.username.includes(q) || String(a.email).toLowerCase().includes(q))
+      && (!st || (st === 'on' ? !a.disabled : st === 'off' ? a.disabled : a.online)));
+    $('acct-rows').dataset.total = String(accounts.length);
     $('acct-empty').hidden = accounts.length > 0;
     $('acct-count').textContent = count(accounts.length, 'account');
     $('acct-rows').replaceChildren(...list.map((a) => {
@@ -991,6 +1001,55 @@
     }));
   }
   $('acct-search').addEventListener('input', drawAccounts);
+  $('acct-state').addEventListener('change', drawAccounts);
+
+  // ---- every table: click a heading to sort by that column (again: the other way round), and how many rows
+  // show of how many there are. The order holds when a table is drawn again (a search, new data).
+  const sortValue = (td) => (td ? (td.dataset.sort ?? td.textContent ?? '').trim() : '');
+  const compare = (a, b) => {
+    if (a === b) return 0;
+    if (!a || a === '–') return 1; // empty last, whichever way
+    if (!b || b === '–') return -1;
+    const na = Number(a);
+    const nb = Number(b);
+    if (!Number.isNaN(na) && !Number.isNaN(nb)) return na - nb;
+    return a.localeCompare(b, 'en', { numeric: true, sensitivity: 'base' });
+  };
+  function sortable(table) {
+    const body = table.tBodies[0];
+    const heads = [...table.tHead.rows[0].cells];
+    let by = -1;
+    let dir = 1;
+    const count = el('p', 'muted small table-count');
+    count.setAttribute('aria-live', 'polite');
+    table.closest('.tablewrap').after(count);
+    const apply = () => {
+      if (by >= 0) {
+        const rows = [...body.rows].sort((a, b) => dir * compare(sortValue(a.cells[by]), sortValue(b.cells[by])));
+        body.append(...rows);
+      }
+      watch.takeRecords(); // our own moves are no redraw
+      const n = body.rows.length;
+      const total = Number(body.dataset.total);
+      count.textContent = !n ? '' : Number.isFinite(total) && total > n ? `${fmt(n)} of ${fmt(total)} shown` : count1(n);
+    };
+    const count1 = (n) => `${fmt(n)} shown`;
+    const watch = new MutationObserver(apply);
+    watch.observe(body, { childList: true });
+    heads.forEach((th, i) => {
+      if (!th.textContent.trim()) return; // the actions' column
+      const b = el('button', 'sort', th.textContent.trim());
+      b.type = 'button';
+      th.replaceChildren(b);
+      b.addEventListener('click', () => {
+        dir = by === i ? -dir : 1;
+        by = i;
+        heads.forEach((h, k) => (k === by ? h.setAttribute('aria-sort', dir > 0 ? 'ascending' : 'descending') : h.removeAttribute('aria-sort')));
+        apply();
+      });
+    });
+  }
+  document.querySelectorAll('.tablewrap table').forEach(sortable);
 
   // ---- the admin's two-step login (GET and POST /api/admin/mfa)
   const mfaErr = (text) => {
@@ -1209,6 +1268,7 @@
     const shown = feedback.filter((x) => (!f || (f === 'comment' ? !!x.comment : x.stars === Number(f)))
       && (!q || [x.name, x.ip, x.comment].some((v) => String(v || '').toLowerCase().includes(q))));
     $('fb-empty').hidden = feedback.length > 0;
+    $('fb-rows').dataset.total = String(feedback.length);
     $('fb-rows').replaceChildren(...shown.slice(0, 500).map((x) => {
       const tr = el('tr');
       const name = el('td', '', x.name || 'No name');
@@ -1232,7 +1292,7 @@
       const actions = el('td');
       actions.append(del);
       const mode = { explore: 'Explore', action: 'Action', paintball: 'Paintball' }[x.mode] ?? '';
-      tr.append(el('td', '', x.time), el('td', 'stars', starText(x.stars)), el('td', 'comment', x.comment || ''), name,
+      tr.append(el('td', '', x.time), sortTd(starText(x.stars), x.stars ?? '', 'stars'), el('td', 'comment', x.comment || ''), name,
         el('td', '', x.ip || ''), el('td', '', [mode, x.lang?.toUpperCase()].filter(Boolean).join(' \u00b7 ')), actions);
       return tr;
     }));
@@ -1263,6 +1323,7 @@
     const f = $('log-filter').value;
     const q = $('log-search').value.trim().toLowerCase();
     const shown = log.filter((e) => (!f || kind(e) === f) && (!q || [e.username, e.ip, e.detail].some((v) => String(v || '').toLowerCase().includes(q))));
+    $('log').dataset.total = String(log.length);
     $('log').replaceChildren(...shown.slice(0, 500).map((e) => {
       const [label, tone] = EVENTS[e.event] ?? [e.event, ''];
       const tr = el('tr', tone && `ev-${tone}`); // not .bad: the form's .bad (red border) would apply
