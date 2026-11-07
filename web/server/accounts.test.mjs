@@ -184,6 +184,23 @@ test('turned off while a login is being checked: that login gets no session', as
   assert.equal([...auth.sessions.values()].filter((s) => s.username === 'roos').length, 0);
 });
 
+test('turned off while the player changes their password: no new password, no session', async () => {
+  const { auth, store, accounts } = await ready();
+  const made = await accounts.register(req(), { ...good, username: 'sem' });
+  const session = auth.session(req('192.0.2.30', `${auth.names.session}=${made.token}`));
+  const oldPass = (await store.getAccount('sem')).pass;
+  const hashing = accounts.hashing.bind(accounts);
+  let turns = 0;
+  accounts.hashing = async (fn) => {
+    if (++turns === 2) await accounts.admin(req(), 'admin', 'off', 'sem'); // after the old password checked out, before the new one is kept
+    return hashing(fn);
+  };
+  const r = await accounts.changePassword(req(), session, { old: good.password, password: 'another long one' });
+  assert.equal(r.code, 'notLoggedIn');
+  assert.equal((await store.getAccount('sem')).pass, oldPass);
+  assert.equal([...auth.sessions.values()].filter((s) => s.username === 'sem').length, 0);
+});
+
 test('at most ten sessions per account: the oldest go', async () => {
   const { auth, accounts } = await ready();
   await accounts.register(req(), { ...good, username: 'pia' });

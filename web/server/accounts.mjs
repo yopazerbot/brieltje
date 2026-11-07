@@ -143,6 +143,9 @@ export class Accounts {
   async session(req, name, epoch) {
     const ip = bucketOf(clientIp(req));
     if ((this.auth.epoch.get(name) || 0) !== epoch) return null;
+    // As it is now: gone or turned off by now, no session (the revocation count covers the admin's own steps; this, anything else).
+    const row = await this.store.getAccount(name);
+    if (!row || row.disabled || (this.auth.epoch.get(name) || 0) !== epoch) return null;
     const { token, key } = await this.auth.startSession(name, 'player', ACCOUNT_MS, { ip });
     // Turned off, deleted, given a new password or kicked since the login began: it doesn't count.
     if ((this.auth.epoch.get(name) || 0) !== epoch || (this.auth.blocked.get(name) || 0) > Date.now()) {
@@ -276,16 +279,20 @@ export class Accounts {
     const password = typeof b?.password === 'string' ? b.password : '';
     const weak = this.passwordProblem(password, name);
     if (weak) return weak;
+    const ended = { error: 'Not logged in', code: 'notLoggedIn', status: 401 };
+    const before = this.auth.epoch.get(name) || 0; // turned off, reset or kicked meanwhile: no new password, no session
     const refused = await this.confirm(req, session, b?.old);
     if (refused) return refused;
     const hashed = await this.hashing(() => hashPassword(password));
     if (!hashed) return { error: 'The server is busy. Try again in a moment.', code: 'busy', status: 503 };
-    this.auth.revoke(name); // first: a login checked against the old password gets no session
+    if ((this.auth.epoch.get(name) || 0) !== before) return ended;
+    this.auth.revoke(name); // first: every session ends, and a login checked against the old password gets none
+    const mine = this.auth.epoch.get(name);
     await this.store.updateAccount(name, { pass: hashed.value });
-    await this.auth.endSessionsOf(name);
+    await this.store.deleteSessionsOf(name);
     this.auth.log('account_password', req, { username: name });
-    const token = await this.session(req, name, this.auth.epoch.get(name) || 0);
-    return token ? { ok: true, token } : { error: 'Not logged in', code: 'notLoggedIn', status: 401 };
+    const token = await this.session(req, name, mine); // none when anything else revoked meanwhile
+    return token ? { ok: true, token } : ended;
   }
 
   /** The player deletes their own account (`b.password`): their email, password, scores and sessions go. */
