@@ -1,7 +1,7 @@
 import * as THREE from 'three';
 import type { Prism } from './houseData';
 import { Spray, sprayRect } from './cardTrees';
-import { leafCardMaterial } from './leafCards';
+import { cardsBuilt, leafCardMaterial } from './leafCards';
 import { terrain } from './terrain';
 
 /**
@@ -156,7 +156,7 @@ export function hedgeCardPlaces(prisms: Prism[]): { side: THREE.Matrix4[]; top: 
 /** The sprigs over these hedge blocks as instanced pieces for the tiles (drawn in the tiles round the eye). */
 export function hedgeCardPieces(prisms: Prism[]): { material: THREE.Material; geometry: THREE.BufferGeometry; at: THREE.Matrix4[] }[] {
   const hedges = prisms.filter((p) => p.m === 'hedge' || p.m === 'nb_hedge');
-  if (!hedges.length) return [];
+  if (!hedges.length || !cardsBuilt()) return []; // never shown on a phone: not built there
   const { side, top } = hedgeCardPlaces(hedges);
   const shape = patches();
   return [

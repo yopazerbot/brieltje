@@ -16,7 +16,7 @@ import { spaceTrees } from './treeSpacing';
 import { bakeStandIns } from './groundShade';
 import { cardCrown, cardTrunk, crownFit, FORK, HEIGHT, Kind, KINDS, spotHash, TRUNK_OF, TRUNKS, treeKind, VARIANTS } from './cardTrees';
 import { hedgeCardMesh, hedgeCardPieces } from './hedgeCards';
-import { barkMaterial, enlist, leafCardMaterial, plainForBake, switchTrees } from './leafCards';
+import { barkMaterial, cardsBuilt, enlist, leafCardMaterial, plainForBake, switchTrees } from './leafCards';
 
 /**
  * Around the plot, from Flemish open data (GRB footprints, DHM laser heights;
@@ -548,7 +548,7 @@ export function buildTile(data: TileData, poles: Pole[], renderer: THREE.WebGLRe
   if (data.posts?.length) out.push(buildPosts(data.posts, ground));
   if (data.trees.length) out.push(...buildTrees(data.trees, detail, data.prisms ?? []));
   // Medium and up: sprigs of leaves out of the hedges' sides and tops, in the tiles round the eye (world/hedgeCards.ts).
-  for (const h of hedgeCardPieces(data.prisms ?? [])) out.push({ ...h, tag: 'hedge', shadow: false, order: TREE_ORDER, lod: 'near' });
+  if (cardsBuilt()) for (const h of hedgeCardPieces(data.prisms ?? [])) out.push({ ...h, tag: 'hedge', shadow: false, order: TREE_ORDER, lod: 'near' });
   return out;
 }
 
@@ -621,7 +621,7 @@ function buildTrees(allTrees: Surroundings['trees'], detail: (x: number, z: numb
     at.length ? [{ material: leafMat, geometry: k < 3 ? shapes.full[k] : shapes.simple[k - 3], tag: 'hedge', shadow: k < 3, at, order: TREE_ORDER }] : [],
   );
   out.push({ material: barkMat, geometry: shapes.trunk, tag: 'hedge', shadow: false, at: trunks, order: TREE_ORDER });
-  out.push(...buildCardTrees(trees, share, prisms));
+  if (cardsBuilt()) out.push(...buildCardTrees(trees, share, prisms)); // never on a phone
   return out;
 }
 

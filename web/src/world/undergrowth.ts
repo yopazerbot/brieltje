@@ -4,7 +4,7 @@ import { terrain } from './terrain';
 import { wind } from './wind';
 import { leafLight, leafy } from './leaves';
 import { bushCards } from './cardTrees';
-import { CUT, leafAtlas } from './leafCards';
+import { CUT, leafAtlas, watchCards } from './leafCards';
 
 /**
  * The woods' undergrowth round where you are: ferns (most of them turned bracken-brown at the start of
@@ -200,6 +200,17 @@ export class Undergrowth {
       this.meshes.push(mesh);
       this.group.add(mesh);
     }
+    // The brambles and shrubs: leaf cards while the trees are (world/leafCards.ts: Medium and up, once painted).
+    watchCards((full) => {
+      if (full && !card.map) {
+        card.map = leafAtlas();
+        card.needsUpdate = true;
+      }
+      [Kind.Bramble, Kind.Shrub].forEach((k, i) => {
+        this.meshes[k].geometry = full ? this.looks.cards[i] : this.looks.lumps[i];
+        this.meshes[k].material = full ? card : lump;
+      });
+    });
   }
 
   /**
@@ -303,16 +314,7 @@ export class Undergrowth {
     this.share = low ? 0.5 : quality === 'medium' ? 0.75 : 1;
     this.reachUniform.value = this.reach;
     this.last.set(Infinity, 0, 0);
-    // The brambles and shrubs: leaf cards on Medium and up (their spray picture painted when first needed).
-    const { lumps, cards, lump, card } = this.looks;
-    if (!low && !card.map) {
-      card.map = leafAtlas();
-      card.needsUpdate = true;
-    }
-    [Kind.Bramble, Kind.Shrub].forEach((k, i) => {
-      this.meshes[k].geometry = low ? lumps[i] : cards[i];
-      this.meshes[k].material = low ? lump : card;
-    });
+    // The brambles and shrubs follow the trees: leaf cards or lumps (the constructor's watchCards).
   }
 
   /** The plants of one square, worked out once. */

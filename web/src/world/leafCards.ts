@@ -24,6 +24,8 @@ const TILE = ATLAS / 2;
 const SIZE = ATLAS;
 
 type Rand = () => number;
+/** Painting a step at a time (paintSoon): each `yield` a place to stop for the frame. */
+type Steps = Generator<void, void>;
 const random = (seed: number): Rand => {
   let s = seed;
   return () => ((s = (s * 16807) % 2147483647) / 2147483647);
@@ -164,7 +166,7 @@ function drawPath(c: Canvas, p: [number, number, number][], w0: number, w1: numb
  * leaves alternating along them, broader round the middle of the card than at its foot. Half of them oak
  * leaves, half ovals: up close they read as a mixed wood, further off just as leaves.
  */
-function paintBroad(c: Canvas, rand: Rand): void {
+function* paintBroad(c: Canvas, rand: Rand): Steps {
   const main = path(TILE / 2 + (rand() - 0.5) * 20, 4, Math.PI / 2 + (rand() - 0.5) * 0.2, TILE * 0.8, (rand() - 0.5) * 0.06);
   const twigs: [number, number, number][][] = [main];
   for (let i = 0; i < 9; i++) {
@@ -184,11 +186,12 @@ function paintBroad(c: Canvas, rand: Rand): void {
     }
     const [x, y, a] = along(t, 1);
     c.leaf(x, y, a + (rand() - 0.5) * 0.3, 66, 38, ovate, 0.75 + rand() * 0.25, 0);
+    yield;
   }
 }
 
 /** A birch's twigs: thin and hanging (the card hangs from its branch), with many small, toothed leaves, open between. */
-function paintBirch(c: Canvas, rand: Rand): void {
+function* paintBirch(c: Canvas, rand: Rand): Steps {
   for (let k = 0; k < 7; k++) {
     const t = path(TILE / 2 + (k - 3) * 30 + (rand() - 0.5) * 20, 4, Math.PI / 2 + (k - 3) * 0.13 + (rand() - 0.5) * 0.15, TILE * (0.78 + rand() * 0.18), (rand() - 0.5) * 0.08, 10);
     drawPath(c, t, 3, 1.2);
@@ -198,11 +201,12 @@ function paintBirch(c: Canvas, rand: Rand): void {
       const len = 44 + rand() * 22;
       c.leaf(x, y, a + side * (0.7 + rand() * 0.5), len, len * 0.68, birch, 0.6 + rand() * 0.4, 0.05 + (rand() - 0.5) * 0.1);
     }
+    yield;
   }
 }
 
 /** A poplar's upright twig: short side shoots close to it, dense with small diamond leaves on long stalks. */
-function paintPoplar(c: Canvas, rand: Rand): void {
+function* paintPoplar(c: Canvas, rand: Rand): Steps {
   const main = path(TILE / 2, 4, Math.PI / 2, TILE * 0.9, (rand() - 0.5) * 0.03);
   drawPath(c, main, 6, 2);
   for (let i = 0; i < 10; i++) {
@@ -215,6 +219,7 @@ function paintPoplar(c: Canvas, rand: Rand): void {
       const len = 48 + rand() * 20;
       c.leaf(lx, ly, la + (j % 2 ? 1 : -1) * (0.5 + rand() * 0.6), len, len * 0.8, deltoid, 0.6 + rand() * 0.4, (rand() - 0.5) * 0.1);
     }
+    yield;
   }
 }
 
@@ -222,7 +227,7 @@ function paintPoplar(c: Canvas, rand: Rand): void {
  * A spruce's frond seen from above, as it lies out from the trunk: a twig from the bottom middle with side
  * shoots in a flat fan, each shoot thick with short needles all round, lighter where they face up.
  */
-function paintSpruce(c: Canvas, rand: Rand): void {
+function* paintSpruce(c: Canvas, rand: Rand): Steps {
   const main = path(TILE / 2, 2, Math.PI / 2, TILE * 0.95, (rand() - 0.5) * 0.04, 12);
   const shoots: [number, number, number][][] = [main];
   for (let i = 0; i < 16; i++) {
@@ -251,17 +256,19 @@ function paintSpruce(c: Canvas, rand: Rand): void {
         c.needle(x, y, a + side * (0.55 + rand() * 0.5), len, side > 0 ? 0.7 + rand() * 0.3 : 0.5 + rand() * 0.25);
       }
     }
+    yield;
   }
 }
 
 /** Make the pixels of a spray: paint it, then lift its leaves to an average light of `mean`. */
-function paint(kind: Spray, seed: number, mean: number): Canvas {
+function* paint(kind: Spray, seed: number, mean: number): Generator<void, Canvas> {
   const c = new Canvas();
   const rand = random(seed);
-  if (kind === Spray.Broad) paintBroad(c, rand);
-  else if (kind === Spray.Birch) paintBirch(c, rand);
-  else if (kind === Spray.Poplar) paintPoplar(c, rand);
-  else paintSpruce(c, rand);
+  if (kind === Spray.Broad) yield* paintBroad(c, rand);
+  else if (kind === Spray.Birch) yield* paintBirch(c, rand);
+  else if (kind === Spray.Poplar) yield* paintPoplar(c, rand);
+  else yield* paintSpruce(c, rand);
+  yield;
   let sum = 0;
   let n = 0;
   for (let k = 0; k < TILE * TILE; k++) {
@@ -271,6 +278,7 @@ function paint(kind: Spray, seed: number, mean: number): Canvas {
     }
   }
   const lift = n ? mean / (sum / n) : 1;
+  yield;
   for (let k = 0; k < TILE * TILE; k++) {
     const a = c.a[k];
     // The colour under the leaf (unpremultiplied); round the outline the spray's own average, so the
@@ -290,7 +298,7 @@ function paint(kind: Spray, seed: number, mean: number): Canvas {
  * The atlas with its smaller copies, each spray on its own so they don't run into each other, and each
  * copy's coverage kept: its alpha scaled until as much of the spray passes the cut as in the full picture.
  */
-function build(sprays: Canvas[], cut: number): { image: Uint8Array; mipmaps: { data: Uint8Array; width: number; height: number }[] } {
+function* build(sprays: Canvas[], cut: number): Generator<void, { image: Uint8Array; mipmaps: { data: Uint8Array; width: number; height: number }[] }> {
   let level = sprays.map((c) => ({ size: TILE, r: c.r, g: c.g, b: c.b, a: c.a }));
   const target = sprays.map((c) => {
     let n = 0;
@@ -301,7 +309,8 @@ function build(sprays: Canvas[], cut: number): { image: Uint8Array; mipmaps: { d
   for (let size = SIZE; size >= 1; size >>= 1) {
     const data = new Uint8Array(size * size * 4);
     const half = Math.max(1, size >> 1);
-    level.forEach((l, k) => {
+    for (let k = 0; k < level.length; k++) {
+      const l = level[k];
       const ox = (k % 2) * half;
       const oy = Math.floor(k / 2) * half;
       const s = l.size;
@@ -329,10 +338,12 @@ function build(sprays: Canvas[], cut: number): { image: Uint8Array; mipmaps: { d
           data[o + 3] = Math.round(clamp01(l.a[p] * scale) * 255);
         }
       }
-    });
+      yield;
+    }
     mipmaps.push({ data, width: size, height: size });
     // The next copy: each 2 x 2 block averaged, the colour weighted by coverage.
-    level = level.map((l) => {
+    const next: typeof level = [];
+    for (const l of level) {
       const s = Math.max(1, l.size >> 1);
       const r = new Float32Array(s * s);
       const g = new Float32Array(s * s);
@@ -361,8 +372,10 @@ function build(sprays: Canvas[], cut: number): { image: Uint8Array; mipmaps: { d
           a[q] = wa / 4;
         }
       }
-      return { size: s, r, g, b, a };
-    });
+      next.push({ size: s, r, g, b, a });
+      if (s >= 64) yield;
+    }
+    level = next;
   }
   return { image: mipmaps[0].data, mipmaps };
 }
@@ -371,51 +384,71 @@ function build(sprays: Canvas[], cut: number): { image: Uint8Array; mipmaps: { d
 export const CUT = 0.5;
 let atlas: THREE.DataTexture | null = null;
 
-/** The leaf atlas, painted on first use (about a tenth of a second). */
+/** The leaf atlas's pixels, painted a step at a time (paintSoon). */
+function* leafSteps(): Generator<void, THREE.DataTexture> {
+  const sprays = [yield* paint(Spray.Broad, 4242, 0.78), yield* paint(Spray.Birch, 777, 0.82), yield* paint(Spray.Poplar, 9001, 0.8), yield* paint(Spray.Spruce, 31337, 0.74)];
+  const { image, mipmaps } = yield* build(sprays, CUT);
+  const t = new THREE.DataTexture(image, SIZE, SIZE, THREE.RGBAFormat, THREE.UnsignedByteType);
+  t.mipmaps = mipmaps;
+  t.generateMipmaps = false;
+  t.magFilter = THREE.LinearFilter;
+  t.minFilter = THREE.LinearMipmapLinearFilter;
+  t.anisotropy = 4;
+  t.colorSpace = THREE.NoColorSpace; // a grey to multiply the crown's colour with
+  t.needsUpdate = true;
+  return t;
+}
+
+/** Run painting steps to the end at once. */
+function drainNow<T>(steps: Generator<void, T>): T {
+  for (;;) {
+    const r = steps.next();
+    if (r.done) return r.value;
+  }
+}
+
+/** The leaf atlas: painted already (paintSoon), or now at once (about a tenth of a second). */
 export function leafAtlas(): THREE.DataTexture {
-  if (atlas) return atlas;
-  const sprays = [paint(Spray.Broad, 4242, 0.78), paint(Spray.Birch, 777, 0.82), paint(Spray.Poplar, 9001, 0.8), paint(Spray.Spruce, 31337, 0.74)];
-  const { image, mipmaps } = build(sprays, CUT);
-  atlas = new THREE.DataTexture(image, SIZE, SIZE, THREE.RGBAFormat, THREE.UnsignedByteType);
-  atlas.mipmaps = mipmaps;
-  atlas.generateMipmaps = false;
-  atlas.magFilter = THREE.LinearFilter;
-  atlas.minFilter = THREE.LinearMipmapLinearFilter;
-  atlas.anisotropy = 4;
-  atlas.colorSpace = THREE.NoColorSpace; // a grey to multiply the crown's colour with
-  atlas.needsUpdate = true;
+  atlas ??= drainNow(leafSteps());
   return atlas;
+}
+
+/** Value noise's corner values, repeating every `px` by `py` cells. */
+function hash(i: number, j: number, px: number, py: number, seed: number): number {
+  const ii = ((i % px) + px) % px;
+  const jj = ((j % py) + py) % py;
+  const v = Math.sin(ii * 127.1 + jj * 311.7 + seed * 74.7) * 43758.5453;
+  return v - Math.floor(v);
 }
 
 /** Value noise that repeats every `period` cells (for bark that tiles). */
 function noise(x: number, y: number, px: number, py: number, seed: number): number {
-  const h = (i: number, j: number) => {
-    const ii = ((i % px) + px) % px;
-    const jj = ((j % py) + py) % py;
-    const v = Math.sin(ii * 127.1 + jj * 311.7 + seed * 74.7) * 43758.5453;
-    return v - Math.floor(v);
-  };
   const i = Math.floor(x);
   const j = Math.floor(y);
   const fx = x - i;
   const fy = y - j;
   const sx = fx * fx * (3 - 2 * fx);
   const sy = fy * fy * (3 - 2 * fy);
-  return (h(i, j) * (1 - sx) + h(i + 1, j) * sx) * (1 - sy) + (h(i, j + 1) * (1 - sx) + h(i + 1, j + 1) * sx) * sy;
+  return (hash(i, j, px, py, seed) * (1 - sx) + hash(i + 1, j, px, py, seed) * sx) * (1 - sy) + (hash(i, j + 1, px, py, seed) * (1 - sx) + hash(i + 1, j + 1, px, py, seed) * sx) * sy;
 }
 
 const BARK_W = 256;
 const BARK_H = 512;
 let bark: THREE.DataTexture | null = null;
 
+/** The pixels from x0 to x1 (whole numbers, any range up to a width), wrapped round into 0 to `w`. */
+function* wrapped(x0: number, x1: number, w: number): Generator<number> {
+  for (let x = x0; x <= x1 && x < x0 + w; x++) yield ((x % w) + w) % w;
+}
+
 /**
  * The bark atlas, 512 x 512: on the left furrowed bark (deep cracks running up the trunk between long plates,
  * in a brownish grey; the trunks' colours per corner make it oak, lime, poplar or spruce), on the right a birch's
  * (white, with dark marks across the trunk and black patches). Both repeat up and round the trunk. Colour, with
- * how high each point stands (the cracks deep) in the alpha, for the material's relief.
+ * how high each point stands (the cracks deep) in the alpha, for the material's relief. Each mark and patch is laid
+ * on over its own small box of pixels, round the trunk and up it as the bark repeats.
  */
-export function barkAtlas(): THREE.DataTexture {
-  if (bark) return bark;
+function* barkSteps(): Generator<void, THREE.DataTexture> {
   const W = BARK_W * 2;
   const data = new Uint8Array(W * BARK_H * 4);
   const rand = random(2024);
@@ -423,6 +456,9 @@ export function barkAtlas(): THREE.DataTexture {
   for (let i = 0; i < 70; i++) marks.push([rand() * BARK_W, rand() * BARK_H, 10 + rand() * 40, 1.5 + rand() * 3]);
   const patches: [number, number, number][] = [];
   for (let i = 0; i < 9; i++) patches.push([rand() * BARK_W, rand() * BARK_H, 12 + rand() * 22]);
+  // The birch's white and relief, before its marks and patches.
+  const white = new Float64Array(BARK_W * BARK_H);
+  const relief = new Float64Array(BARK_W * BARK_H).fill(0.8);
   for (let y = 0; y < BARK_H; y++) {
     for (let x = 0; x < BARK_W; x++) {
       // Furrowed: plates between cracks that wander a little as they run up.
@@ -434,88 +470,233 @@ export function barkAtlas(): THREE.DataTexture {
       const breaks = 1 - 0.45 * THREE.MathUtils.smoothstep(noise(x / 8, y / 5, BARK_W / 8, BARK_H / 5, 4), 0.7, 0.8);
       const height = clamp01(plate * breaks * (0.8 + 0.2 * grain));
       const lit = 0.22 + 0.5 * height + 0.08 * (blotch - 0.5);
-      let o = (y * W + x) * 4;
+      const o = (y * W + x) * 4;
       data[o] = Math.round(clamp01(lit * 1.02) * 255);
       data[o + 1] = Math.round(clamp01(lit * 0.95) * 255);
       data[o + 2] = Math.round(clamp01(lit * 0.86) * 255);
       data[o + 3] = Math.round(height * 255);
-      // Birch: white with a faint sheen across, dark lenticels across the trunk, the odd black patch.
-      let white = 0.86 + 0.08 * noise(x / 30, y / 6, BARK_W / 30, BARK_H / 6, 5) - 0.05 * noise(x / 4, y / 2, BARK_W / 4, BARK_H / 2, 6);
-      let relief = 0.8;
-      for (const [mx, my, len, thick] of marks) {
+      // Birch: white with a faint sheen across.
+      white[y * BARK_W + x] = 0.86 + 0.08 * noise(x / 30, y / 6, BARK_W / 30, BARK_H / 6, 5) - 0.05 * noise(x / 4, y / 2, BARK_W / 4, BARK_H / 2, 6);
+    }
+    if ((y & 15) === 15) yield;
+  }
+  // Dark lenticels across the trunk.
+  for (const [mx, my, len, thick] of marks) {
+    for (const y of wrapped(Math.floor(my - thick), Math.ceil(my + thick), BARK_H)) {
+      let dy = Math.abs(y - my);
+      dy = Math.min(dy, BARK_H - dy);
+      if (dy >= thick) continue;
+      for (const x of wrapped(Math.floor(mx - len / 2), Math.ceil(mx + len / 2), BARK_W)) {
         let dx = Math.abs(x - mx);
         dx = Math.min(dx, BARK_W - dx);
-        let dy = Math.abs(y - my);
-        dy = Math.min(dy, BARK_H - dy);
-        if (dx < len / 2 && dy < thick) {
-          const k = (1 - dy / thick) * (1 - Math.pow((2 * dx) / len, 4));
-          white = white * (1 - 0.8 * k);
-          relief = Math.min(relief, 0.8 - 0.6 * k);
-        }
+        if (dx >= len / 2) continue;
+        const k = (1 - dy / thick) * (1 - Math.pow((2 * dx) / len, 4));
+        const p = y * BARK_W + x;
+        white[p] = white[p] * (1 - 0.8 * k);
+        relief[p] = Math.min(relief[p], 0.8 - 0.6 * k);
       }
-      const ragged = 0.35 * (noise(x / 5, y / 5, BARK_W / 5, BARK_H / 5, 7) - 0.5);
-      for (const [px, py, r] of patches) {
-        let dx = Math.abs(x - px);
-        dx = Math.min(dx, BARK_W - dx);
-        let dy = Math.abs(y - py);
-        dy = Math.min(dy, BARK_H - dy);
-        const d = Math.hypot(dx * 1.2, dy * 0.8) / r + ragged;
-        if (d < 1) {
-          white *= 0.12 + 0.88 * clamp01((d - 0.75) / 0.25);
-          relief = Math.min(relief, 0.3 + 0.5 * d);
-        }
-      }
-      o = (y * W + x + BARK_W) * 4;
-      data[o] = Math.round(clamp01(white) * 255);
-      data[o + 1] = Math.round(clamp01(white * 0.985) * 255);
-      data[o + 2] = Math.round(clamp01(white * 0.95) * 255);
-      data[o + 3] = Math.round(relief * 255);
     }
   }
-  bark = new THREE.DataTexture(data, W, BARK_H, THREE.RGBAFormat, THREE.UnsignedByteType);
-  bark.wrapS = THREE.ClampToEdgeWrapping;
-  bark.wrapT = THREE.RepeatWrapping;
-  bark.magFilter = THREE.LinearFilter;
-  bark.minFilter = THREE.LinearMipmapLinearFilter;
-  bark.generateMipmaps = true;
-  bark.anisotropy = 4;
-  bark.colorSpace = THREE.SRGBColorSpace;
-  bark.needsUpdate = true;
+  yield;
+  // The odd black patch, its edge ragged (the raggedness reaches 0.175 of its radius either way).
+  for (const [px, py, r] of patches) {
+    const rx = (1.175 * r) / 1.2;
+    const ry = (1.175 * r) / 0.8;
+    for (const y of wrapped(Math.floor(py - ry), Math.ceil(py + ry), BARK_H)) {
+      let dy = Math.abs(y - py);
+      dy = Math.min(dy, BARK_H - dy);
+      for (const x of wrapped(Math.floor(px - rx), Math.ceil(px + rx), BARK_W)) {
+        let dx = Math.abs(x - px);
+        dx = Math.min(dx, BARK_W - dx);
+        const ragged = 0.35 * (noise(x / 5, y / 5, BARK_W / 5, BARK_H / 5, 7) - 0.5);
+        const d = Math.hypot(dx * 1.2, dy * 0.8) / r + ragged;
+        if (d < 1) {
+          const p = y * BARK_W + x;
+          white[p] *= 0.12 + 0.88 * clamp01((d - 0.75) / 0.25);
+          relief[p] = Math.min(relief[p], 0.3 + 0.5 * d);
+        }
+      }
+    }
+  }
+  yield;
+  for (let y = 0; y < BARK_H; y++) {
+    for (let x = 0; x < BARK_W; x++) {
+      const p = y * BARK_W + x;
+      const o = (y * W + x + BARK_W) * 4;
+      data[o] = Math.round(clamp01(white[p]) * 255);
+      data[o + 1] = Math.round(clamp01(white[p] * 0.985) * 255);
+      data[o + 2] = Math.round(clamp01(white[p] * 0.95) * 255);
+      data[o + 3] = Math.round(relief[p] * 255);
+    }
+  }
+  const t = new THREE.DataTexture(data, W, BARK_H, THREE.RGBAFormat, THREE.UnsignedByteType);
+  t.wrapS = THREE.ClampToEdgeWrapping;
+  t.wrapT = THREE.RepeatWrapping;
+  t.magFilter = THREE.LinearFilter;
+  t.minFilter = THREE.LinearMipmapLinearFilter;
+  t.generateMipmaps = true;
+  t.anisotropy = 4;
+  t.colorSpace = THREE.SRGBColorSpace;
+  t.needsUpdate = true;
+  return t;
+}
+
+/** The bark atlas: painted already (paintSoon), or now at once. */
+export function barkAtlas(): THREE.DataTexture {
+  bark ??= drainNow(barkSteps());
   return bark;
+}
+
+/** Wait for a moment the page is idle (or a frame, where the browser can't say). */
+const idle = (): Promise<IdleDeadline | null> =>
+  new Promise((resolve) => {
+    if (typeof requestIdleCallback === 'function') requestIdleCallback((d) => resolve(d), { timeout: 250 });
+    else setTimeout(() => resolve(null), 16);
+  });
+
+/** Paint a little at a time while the page is idle, a few milliseconds a slice, so play never stalls for it. */
+async function sliced<T>(steps: Generator<void, T>): Promise<T> {
+  for (;;) {
+    const d = await idle();
+    const end = performance.now() + Math.min(8, Math.max(3, d ? d.timeRemaining() : 4));
+    while (performance.now() < end) {
+      const r = steps.next();
+      if (r.done) return r.value;
+    }
+  }
 }
 
 /**
  * Which trees are drawn: the leaf-card ones (Medium and up) or the plain ones (Low and phones: the smooth crowns,
- * the street models' cone conifers). Both kinds are built; their materials are shown or hidden as a whole.
+ * the street models' cone conifers). Both kinds are built (not on a phone, which never shows the cards); their
+ * materials are shown or hidden as a whole.
+ *
+ * Play begins with the plain trees whatever the preset: the atlases the cards need are painted after that, in idle
+ * slices (paintSoon), only once a preset calls for the cards, and the cards come in once their pictures and
+ * shaders are ready. Low and phones never paint them.
  */
-const trees = { full: true, cards: new Set<THREE.MeshStandardMaterial>(), plain: new Set<THREE.Material>(), swaps: new Set<(full: boolean) => void>() };
+const trees = {
+  /** The preset asks for the cards */
+  want: false,
+  /** The cards are drawn */
+  full: false,
+  /** A phone: the cards are never built nor painted */
+  never: false,
+  /** Play has begun: the atlases may be painted (when wanted) */
+  may: false,
+  /** Painted, and their maps on the cards' materials */
+  ready: false,
+  painting: null as Promise<void> | null,
+  /** Uploads the atlases and compiles the cards' shaders before they show (main.ts) */
+  prepare: null as ((textures: THREE.Texture[]) => Promise<unknown>) | null,
+  cards: new Set<THREE.MeshStandardMaterial>(),
+  plain: new Set<THREE.Material>(),
+  swaps: new Set<(full: boolean) => void>(),
+  /** Told whenever the cards come or go (watchCards), not for the ground's bake */
+  watch: new Set<(full: boolean) => void>(),
+};
 
-/** Show the leaf-card trees (`full`) or the plain ones; the atlases are painted the first time the cards show. */
-export function switchTrees(full: boolean): void {
+/** Draw the cards (`full`) or the plain trees. */
+function show(full: boolean): void {
   trees.full = full;
-  for (const m of trees.cards) {
-    m.visible = full;
-    if (full && !m.map) {
-      m.map = m.userData.bark ? barkAtlas() : leafAtlas();
-      m.needsUpdate = true;
-    }
-  }
+  for (const m of trees.cards) m.visible = full;
   for (const m of trees.plain) m.visible = !full;
   for (const f of trees.swaps) f(full);
+  for (const f of trees.watch) f(full);
 }
+
+/** The atlases painted in idle slices, then on the cards' materials, then the cards shown if still wanted. */
+function paintSoon(): void {
+  if (trees.painting || trees.ready || !trees.may || !trees.want) return;
+  trees.painting = (async () => {
+    atlas ??= await sliced(leafSteps());
+    bark ??= await sliced(barkSteps());
+    for (const m of trees.cards) {
+      m.map = m.userData.bark ? bark : atlas;
+      m.needsUpdate = true;
+    }
+    trees.ready = true;
+    await trees.prepare?.([atlas, bark]).catch(() => undefined);
+    trees.painting = null;
+    show(trees.want);
+  })();
+}
+
+/** Ask for the leaf-card trees (`full`: Medium and up, not a phone) or the plain ones. The plain ones show until the cards are ready. */
+export function switchTrees(full: boolean): void {
+  trees.want = full && !trees.never;
+  if (trees.want && !trees.ready) {
+    paintSoon();
+    show(false);
+  } else if (!trees.painting) show(trees.want);
+}
+
+/**
+ * Play has begun: from now on the atlases are painted when a preset asks for the cards. `prepare` uploads them and
+ * compiles the cards' shaders (in the background where the browser can) before the cards show.
+ */
+export function treesMayPaint(prepare: (textures: THREE.Texture[]) => Promise<unknown>): void {
+  trees.may = true;
+  trees.prepare = prepare;
+  paintSoon();
+}
+
+/** On a phone (main.ts): the cards never show, so they are never built (world/surroundings.ts, hedgeCards.ts, streetConifers.ts). */
+export function neverCards(): void {
+  trees.never = true;
+  switchTrees(false);
+}
+
+/** Whether the cards can ever show here (not a phone): if not, nothing of them is built. */
+export const cardsBuilt = () => !trees.never;
 
 /** Whether the leaf-card trees are drawn. */
 export const cardsShown = () => trees.full;
+
+/**
+ * For the shaders compiled ahead (main.ts precompile): the meshes of cards whose pictures aren't painted yet are left
+ * out (their materials would compile without them, and again once painted). Gives back what puts them back.
+ */
+export function unpaintedOut(root: THREE.Object3D): () => void {
+  if (trees.ready) return () => {};
+  const out: [THREE.Mesh, THREE.Material][] = [];
+  root.traverse((o) => {
+    const mesh = o as THREE.Mesh;
+    if (mesh.isMesh && trees.cards.has(mesh.material as THREE.MeshStandardMaterial)) out.push([mesh, mesh.material as THREE.Material]);
+  });
+  for (const [mesh] of out) (mesh as { material: THREE.Material | null }).material = null;
+  return () => {
+    for (const [mesh, m] of out) mesh.material = m;
+  };
+}
 
 /**
  * Materials of leaf-card trees (`cards`) and of what stands in for them on Low and phones (`plain`), shown as the
  * setting is now; `swap` for what a material alone can't switch (called with whether the cards show).
  */
 export function enlist(cards: THREE.MeshStandardMaterial[], plain: THREE.Material[], swap?: (full: boolean) => void): void {
-  for (const m of cards) trees.cards.add(m);
-  for (const m of plain) trees.plain.add(m);
-  if (swap) trees.swaps.add(swap);
-  switchTrees(trees.full);
+  for (const m of cards) {
+    trees.cards.add(m);
+    m.visible = trees.full;
+    if (trees.ready && !m.map) {
+      m.map = m.userData.bark ? barkAtlas() : leafAtlas();
+      m.needsUpdate = true;
+    }
+  }
+  for (const m of plain) {
+    trees.plain.add(m);
+    m.visible = !trees.full;
+  }
+  if (swap) {
+    trees.swaps.add(swap);
+    swap(trees.full);
+  }
+}
+
+/** Hear whether the cards are drawn, now and whenever that changes (world/undergrowth.ts: its brambles and shrubs follow). */
+export function watchCards(f: (full: boolean) => void): void {
+  trees.watch.add(f);
+  f(trees.full);
 }
 
 /** For the ground's bake (world/groundShade.ts bakeStandIns): the plain trees throw its shadows, cut-out cards can't. */
@@ -530,8 +711,8 @@ export function plainForBake(on: boolean): void {
  * lit alike (each card's light follows the crown's shape round it, not the card's own face: a crown reads as one
  * soft mass of leaves, lit on the sun's side, with the sun shining through where you look against it), and the
  * crowns sway and turn as the old ones did (world/wind.ts). Its shadow is cut out the same way: three.js's own
- * shadow material takes the map and the cut from it. The map (leafAtlas) is put on when the cards are first shown:
- * on Low and phones it is never painted.
+ * shadow material takes the map and the cut from it. The map (leafAtlas) is put on once it is painted, after play
+ * has begun and only when a preset asks for the cards (paintSoon): on Low and phones it is never painted.
  */
 export function leafCardMaterial(lean: number, flutter: number, turning: boolean, through: number): THREE.MeshStandardMaterial {
   const material = new THREE.MeshStandardMaterial({ alphaTest: CUT, side: THREE.DoubleSide, vertexColors: true, roughness: 0.9 });
@@ -555,7 +736,7 @@ export function leafCardMaterial(lean: number, flutter: number, turning: boolean
  * The bark of the trunks and branches on Medium and up: the bark atlas, its relief from the atlas's alpha, the
  * colour per corner (each kind of tree its own bark). Up the trunk the bark repeats every two trunk-widths
  * whatever the tree's height (the instance's own stretch, in the vertex shader), so a tall trunk's bark isn't drawn out.
- * Its map (barkAtlas) too is put on when first shown.
+ * Its map (barkAtlas) too is put on once painted (paintSoon).
  */
 export function barkMaterial(): THREE.MeshStandardMaterial {
   const material = new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.95 });

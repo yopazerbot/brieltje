@@ -1,6 +1,6 @@
 import * as THREE from 'three';
 import { COLUMN_HEIGHT, columnConifer } from './cardTrees';
-import { enlist, leafCardMaterial } from './leafCards';
+import { cardsBuilt, enlist, leafCardMaterial } from './leafCards';
 import { terrain } from './terrain';
 
 /**
@@ -35,6 +35,7 @@ let shape: THREE.BufferGeometry | null = null;
  * where its origin will stand on the map, x and z, for the ground under each cone).
  */
 export function cardConifers(scene: THREE.Object3D, at: [number, number]): void {
+  if (!cardsBuilt()) return; // a phone keeps the cones
   scene.updateMatrixWorld(true);
   let foliage: THREE.Mesh | null = null;
   scene.traverse((o) => {

@@ -76,6 +76,7 @@ import { boxesOverlap, boxPoints, clearOfPortals, indoorName, makeIndoors } from
 import CARS from '../shared/car.json';
 import BIKES_DATA from '../shared/bike.json';
 import { buildHedges, buildTile, dipMesh, onTreesLeftOut, setTreeDetail, treeKey, treesLeftOut, waterMesh } from './world/surroundings';
+import { neverCards, treesMayPaint, unpaintedOut } from './world/leafCards';
 import { setWaterDetail, waterLevel, wetGround } from './world/water';
 import { buildHorizon } from './world/horizon';
 import { wearLonePatches, weatherYards } from './world/yards';
@@ -254,6 +255,7 @@ const texturesReady = new Promise<void>((resolve) => {
 // pieces of 400 m (what is behind the camera is left out), the dips cut out of it, and a skirt
 // beyond the grid out to 3 km.
 const phone = matchMedia('(pointer: coarse)').matches;
+if (phone) neverCards(); // a phone never shows the leaf-card trees: none are built (world/leafCards.ts)
 const grassMat = grassMaterial(renderer);
 // A little behind in depth: a field or yard a few millimetres above it would flicker with it far off.
 grassMat.polygonOffset = true;
@@ -3469,6 +3471,11 @@ let endHouse: WalkIn | null = null;
 /** Resolved once play has begun (loaded). */
 let playBegun = () => {};
 const playing = new Promise<void>((r) => (playBegun = r));
+// The leaf cards' pictures are painted once play has begun, when the preset asks for them (world/leafCards.ts).
+void playing.then(() => treesMayPaint((textures) => {
+  for (const t of textures) renderer.initTexture(t);
+  return precompile(scene);
+}));
 /**
  * The baked light of the streets away from where you start (Molenhoek's and Kapellenhoek's pages, about 4 MB): fetched
  * once play has begun, not before. They keep real-time light until it is in; a trip into the village waits for it.
@@ -3495,7 +3502,9 @@ function loadVillage(): Promise<void> {
 function precompile(root: THREE.Object3D): Promise<unknown> {
   const was = renderer.getRenderTarget();
   renderer.setRenderTarget(composer.readBuffer);
+  const back = unpaintedOut(root); // not the leaf cards before their pictures are painted
   const done = renderer.compileAsync(root, camera, scene);
+  back();
   renderer.setRenderTarget(was);
   return done.catch(() => undefined);
 }
