@@ -1,6 +1,7 @@
 import * as THREE from 'three';
 import { t } from '../i18n';
 import { paintball } from '../paintball';
+import { compactHud } from './compact';
 
 export const LOOT_LABELS = { ammo: 'loot.ammo', scope: 'loot.scope', claymore: 'loot.claymore', stakes: 'loot.stakes', turret: 'loot.turret' } as const;
 
@@ -74,16 +75,40 @@ export class Tactics {
     this.markerAt = performance.now();
     this.markers.replaceChildren();
     if (!visible) return;
+    // Markers that would cover each other step down below the one already there (the nearest first
+    // keeps its place). Sizes are guessed from the text: measuring would cost a layout per marker.
+    const small = compactHud();
+    const lineH = small ? 20 : 24;
+    const placed: { x: number; y: number; w: number }[] = [];
+    const list: { text: string; x: number; y: number; d: number }[] = [];
     for (const p of [...friends, ...[...this.calls].map(([name, at]) => ({ name: t('tactics.call', { name }), ...at }))].slice(0, 20)) {
       const point = new THREE.Vector3(p.x, p.y + 2.1, p.z);
       const distance = point.distanceTo(camera.position);
       if (distance < 2) continue;
       point.project(camera);
       const behind = point.z > 1;
+      list.push({
+        text: `${behind ? '↶ ' : '◆ '}${p.name} · ${Math.round(distance)} m`,
+        x: Math.max(12, Math.min(88, (behind ? -point.x : point.x) * 50 + 50)),
+        y: behind ? 80 : Math.max(16, Math.min(80, -point.y * 50 + 50)),
+        d: distance,
+      });
+    }
+    list.sort((a, b) => a.d - b.d);
+    for (const m of list) {
+      const x = (m.x / 100) * innerWidth;
+      let y = (m.y / 100) * innerHeight;
+      const w = Math.min(small ? 130 : 180, m.text.length * (small ? 6 : 7) + 14);
+      for (let i = 0; i < 20; i++) {
+        const hit = placed.find((o) => Math.abs(o.x - x) < (o.w + w) / 2 && Math.abs(o.y - y) < lineH);
+        if (!hit) break;
+        y = hit.y + lineH;
+      }
+      placed.push({ x, y, w });
       const el = document.createElement('span');
-      el.textContent = `${behind ? '↶ ' : '◆ '}${p.name} · ${Math.round(distance)} m`;
-      el.style.left = `${Math.max(12, Math.min(88, (behind ? -point.x : point.x) * 50 + 50))}%`;
-      el.style.top = `${behind ? 80 : Math.max(16, Math.min(80, -point.y * 50 + 50))}%`;
+      el.textContent = m.text;
+      el.style.left = `${m.x}%`;
+      el.style.top = `${(y / innerHeight) * 100}%`;
       this.markers.append(el);
     }
   }
