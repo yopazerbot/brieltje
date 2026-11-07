@@ -321,6 +321,11 @@ export interface Seat {
   y: number;
   z: number;
   yaw: number;
+  /** On a bike (world/bike.ts): where the figure's root goes, its lean (about its own forward) and nose-up pitch, and where its feet and hands go */
+  root?: { x: number; y: number; z: number };
+  roll?: number;
+  pitch?: number;
+  bike?: { pedals: [THREE.Vector3, THREE.Vector3]; grips: [THREE.Vector3, THREE.Vector3] };
 }
 
 interface Avatar {
@@ -531,7 +536,7 @@ export class Avatars {
   canBeHit(name: string): boolean {
     const a = this.avatars.get(name);
     const s = a?.latest;
-    return !!s && s.armed && s.alive && !a.killed && !s.safe && !s.d;
+    return !!s && s.armed && s.alive && !a.killed && !s.safe && !s.d && !s.bike;
   }
 
   /** Players on foot, for the car to stop against. */
@@ -574,12 +579,15 @@ export class Avatars {
       const ground = this.groundAt && !t.d && far < 80 ? this.groundAt(x, z, y) : y;
       // On a horse: in its saddle as it is drawn (it bounces and rocks), facing its way.
       const seat = alive && !t.d && this.seatOf ? this.seatOf(name) : null;
-      if (seat) a.root.position.set(seat.x, seat.y - SEAT_HIP, seat.z);
+      if (seat?.root) a.root.position.set(seat.root.x, seat.root.y, seat.root.z); // on a bike: leaning with it
+      else if (seat) a.root.position.set(seat.x, seat.y - SEAT_HIP, seat.z);
       else a.root.position.set(x + a.push.x, y, z + a.push.y);
-      a.root.rotation.y = yaw;
+      // On a bike the figure faces the bike's way and leans with it, hands on the bars (no gun).
+      const cycling = seat?.bike ?? null;
+      a.root.rotation.set(cycling ? seat!.pitch ?? 0 : 0, cycling ? seat!.yaw + Math.PI : yaw, cycling ? seat!.roll ?? 0 : 0, 'YXZ');
       a.body.animate(dt, {
-        speed: a.speed, forward: a.forward, side: a.side, armed: t.armed, alive, crouch: t.c && !seat, flying: t.flying,
-        pitch, weapon: t.w as WeaponId, yaw, air: Math.max(0, y - ground), vy: a.vy, seat: seat ? seat.yaw + Math.PI : null, far,
+        speed: a.speed, forward: a.forward, side: a.side, armed: t.armed && !cycling, alive, crouch: t.c && !seat, flying: t.flying,
+        pitch, weapon: t.w as WeaponId, yaw: cycling ? seat!.yaw + Math.PI : yaw, air: Math.max(0, y - ground), vy: a.vy, seat: seat ? seat.yaw + Math.PI : null, far, bike: cycling,
       });
       this.onFigure(name, a.root, a.body, a.color, !!t.chute && alive && !t.d, !!t.open, ground === y && far >= 80 ? 99 : Math.max(0, y - ground), dt); // far off the ground isn't looked up: not flaring
 

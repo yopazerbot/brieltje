@@ -49,6 +49,8 @@ const TABLE = {
   drive: { kbm: () => `${keyName('KeyW')} / ${keyName('KeyS')}`, pad: named('R2 / L2'), touch: say('tctl.thumbUpDown') },
   steer: { kbm: () => `${keyName('KeyA')} / ${keyName('KeyD')}`, pad: say('key.leftStick'), touch: say('tctl.thumbLeftRight') },
   handbrake: { kbm: say('key.space'), pad: named('✕'), touch: say('touch.brake') },
+  /** A bike's bell (the jump key, as the car's handbrake). */
+  bell: { kbm: say('key.space'), pad: named('✕'), touch: say('touch.bell') },
   /** A place in a portal's list (digits pick only places while it shows: src/ui/travel.ts). */
   portal: {
     kbm: (): string => t('travel.pickKbm', { n: PORTALS.length, use: key('use', 'kbm') }),
@@ -149,6 +151,7 @@ function padOrKeyGroups(control: 'kbm' | 'pad', action: boolean): Group[] {
         [t('ctl.gallop'), kbm ? hold('sprint') : k('sprint')], [t('ctl.jump'), k('jump')],
       ],
     },
+    { title: t('ctl.bikes'), rows: [[t('ctl.getOn'), k('use')], [t('ctl.pedal'), k('drive')], [t('ctl.steer'), k('steer')], [t('ctl.bell'), k('bell')]] },
     {
       title: t('ctl.other'),
       rows: [
@@ -194,6 +197,7 @@ function touchGroups(action: boolean): Group[] {
       title: t('ctl.horses'),
       rows: [[t('ctl.getOn'), k('use')], [t('ctl.faster'), k('drive')], [t('ctl.steer'), k('steer')], [t('ctl.gallop'), k('sprint')], [t('ctl.jump'), k('jump')]],
     },
+    { title: t('ctl.bikes'), rows: [[t('ctl.getOn'), k('use')], [t('ctl.pedal'), k('drive')], [t('ctl.steer'), k('steer')], [t('ctl.bell'), k('bell')]] },
     {
       title: t('ctl.portals'),
       rows: [[t('tctl.goElsewhere'), t('tctl.goElsewhereHow')], [t('ctl.withCar'), t('tctl.withCarHow')], [t('ctl.fromMenu'), t('tctl.fromMenuHow')]],

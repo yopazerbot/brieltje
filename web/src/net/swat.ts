@@ -56,6 +56,8 @@ export interface Pose {
   seat: number | null;
   /** Metres from the camera: far figures are updated less often and hold no gun in view */
   far: number;
+  /** On a bike (world/bike.ts, with `seat`): where the feet go (the pedals) and the hands (the grips), left then right, in the world */
+  bike?: { pedals: [THREE.Vector3, THREE.Vector3]; grips: [THREE.Vector3, THREE.Vector3] } | null;
 }
 
 export interface Body {
@@ -722,7 +724,8 @@ export function buildSwat(name: string, color: string, outfit: Outfit, hitMateri
           hips.updateMatrixWorld(true);
         }
         // Leaning: forward crouching, into the flight when flying.
-        const lean = CROUCH_LEAN * crouchW * live + flyW * 0.35 * Math.max(0, Math.min(1, p.forward / 3));
+        const cycling = riding && p.bike ? p.bike : null;
+        const lean = CROUCH_LEAN * crouchW * live + flyW * 0.35 * Math.max(0, Math.min(1, p.forward / 3)) + (cycling ? 0.3 : 0); // on a bike, over the bars
         rotateWorld(spine[0], right, -lean);
         // Feet: where the clip put them; in the air drawn up (less as they drop fast), flying
         // hanging back, on a horse in the stirrups.
@@ -730,12 +733,15 @@ export function buildSwat(name: string, color: string, outfit: Outfit, hitMateri
         const trail = flyW * 0.2;
         for (const l of legs) {
           l.target.copy(l.planted);
-          if (ride) {
+          if (cycling) {
+            l.target.copy(cycling.pedals[l.sign < 0 ? 0 : 1]); // on the pedals, going round with them
+          } else if (ride) {
             l.target.copy(worldPos(hips, v)).addScaledVector(UP, -0.6).addScaledVector(right, l.sign * 0.27).addScaledVector(fwd, 0.1);
           } else {
             l.target.addScaledVector(UP, tuck).addScaledVector(fwd, airW * 0.05 - trail);
           }
-          worldPos(hips, pole).addScaledVector(fwd, 0.8).addScaledVector(right, l.sign * (0.12 + ride * 0.3)).addScaledVector(UP, -0.3);
+          // The knees forward and out (in the stirrups wide; on a bike forward and up, over the pedals).
+          worldPos(hips, pole).addScaledVector(fwd, 0.8).addScaledVector(right, l.sign * (0.12 + ride * (cycling ? 0.04 : 0.3))).addScaledVector(UP, cycling ? 0.4 : -0.3);
           reach(l.upper, l.lower, l.ankle, l.target, pole);
           // The foot (hung from the root) follows its ankle when the ankle moved.
           v.copy(l.target).sub(l.planted);
@@ -778,6 +784,13 @@ export function buildSwat(name: string, color: string, outfit: Outfit, hitMateri
       }
       flashTime -= dt;
       for (const g of guns.values()) (g.userData.flash as THREE.Object3D).visible = g === shownGun && flashTime > 0;
+      if (p.bike && riding && !shownGun) {
+        // On a bike: both hands on the grips, the elbows bent down and a little out.
+        for (const [arm, grip, s] of [[arms.l, p.bike.grips[0], -1], [arms.r, p.bike.grips[1], 1]] as const) {
+          worldPos(arm.upper, pole).addScaledVector(UP, -0.45).addScaledVector(right, s * 0.3).addScaledVector(fwd, -0.15);
+          reach(arm.upper, arm.lower, arm.wrist, grip, pole);
+        }
+      }
       if (!shownGun) return;
       // Far off the gun itself isn't drawn (a few pixels), its muzzle flash still is; its shadow only close by.
       for (const m of shownGun.userData.meshes as THREE.Mesh[]) {

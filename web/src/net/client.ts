@@ -49,6 +49,7 @@ import type { ModeView } from '../ui/games';
 import type { ClownSpec } from '../world/clowns';
 import type { Spot } from '../../shared/brutes.mjs';
 import type { HorseState } from '../world/horses';
+import type { BikeState } from '../world/bike';
 
 /**
  * A message's text for the page's language: `code` and `args` (src/i18n.ts serverText) next to the
@@ -61,7 +62,7 @@ export type ServerMsg =
       /** `proto`: the server's protocol (shared/wire.mjs); a different one means this page is out of date (or the server is) */
       t: 'welcome'; proto?: number; you: string; role: string; color: string; doors: Record<string, boolean>; doorDir?: Record<string, number>; broken: number[]; homes?: string[];
       players: { name: string; color: string; role: string }[]; scores: Score[]; limit: number; round: { winner: string; ms: number } | null; items: boolean[];
-      time: number; cats: number[]; clowns?: ClownSpec[]; furniture: Piece[]; rules?: Rules; cars?: CarState[]; horses?: HorseState[]; mode?: ModeView;
+      time: number; cats: number[]; clowns?: ClownSpec[]; furniture: Piece[]; rules?: Rules; cars?: CarState[]; horses?: HorseState[]; bikes?: BikeState[]; mode?: ModeView;
       /**
        * The weather and time of day for everyone (shared/moods.mjs), and the cycle Auto follows with the server's time;
        * missing from an older server. Checked where they are used (world/weather.ts).
@@ -136,6 +137,10 @@ export type ServerMsg =
   | { t: 'ball'; b: string; st: number; p: number[]; s: number; n: number; sc: number[]; k?: [string, number][]; r?: 1 }
   /** A goal: in goal `g` of ball `b`'s pitch, by who touched it last, and the score */
   | { t: 'ballgoal'; b: string; g: number; by: string; sc: number[] }
+  /** Someone got on or off a bike (src/world/bike.ts), or the server's answer to yours */
+  | { t: 'bike'; bike: BikeState }
+  /** A rider rang the bell of bike `id` (rung where that bike is drawn) */
+  | { t: 'bell'; id: string }
   | { t: 'chat'; from: string; color: string; text: string }
   | { t: 'door'; id: string; open: boolean; dir?: number; by: string }
   | { t: 'shot'; name: string; x: number; y: number; z: number; w: string }

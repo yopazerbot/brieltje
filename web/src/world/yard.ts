@@ -6,7 +6,7 @@ import { DOCK } from './mower';
 
 /**
  * The everyday things in the gardens of the main house and the bungalow (tools/garden_life.py):
- * a letterbox at each entrance, a bike against the side wall, garden tools, planters on
+ * a letterbox at each entrance, garden tools (the bike against the side wall is world/bike.ts), planters on
  * the terrace, the robot mower's station (world/mower.ts); at the bungalow a teak table with chairs
  * under a parasol, two loungers and a kettle barbecue. Each garden is one mesh painted per vertex
  * (one draw call). No washing line at the main house (Yoshi). The bulky things block the way. At the bungalow, which the sun's real-time shadow doesn't reach, a soft
@@ -61,8 +61,7 @@ const garden = (out: number, along: number): [number, number] => [88.7 + OUT[0] 
 const HOUSE: Place[] = [
   // The letterbox where the front path meets the street. No wheelie bins (Yoshi).
   { model: 'Letterbox', x: 11.05, z: 16.8, yaw: 0, solid: [0.12, 0.12, 1.35] },
-  // The bike on its stand in the side passage, against the left wall.
-  { model: 'Bike', x: -0.5, z: 6.2, yaw: Math.PI, solid: [0.55, 1.8, 1.05] },
+  // (The bike on its stand in the side passage is one you can ride now: world/bike.ts, shared/bike.json.)
   // Tools on the strip beside the path to the back, the rake against the hedge.
   { model: 'Wheelbarrow', x: -1.6, z: -8.7, yaw: 0.35, solid: [0.7, 1.5, 0.62] },
   { model: 'Rake', x: -2.1, z: -7.5, yaw: Math.PI / 2, tilt: -0.26 },

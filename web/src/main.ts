@@ -22,6 +22,7 @@ import { Loot, LOOT } from '../shared/loot.mjs';
 import { Rewards } from './world/rewards';
 import WEAPON_SPECS from '../shared/weapons.json';
 import { Horses } from './world/horses';
+import { Bikes } from './world/bike';
 import { AdminPanel } from './ui/admin';
 import { Chat } from './ui/chat';
 import { Combat } from './ui/combat';
@@ -45,7 +46,7 @@ import { Parachutes } from './world/parachutes';
 import { DropView } from './world/dropView';
 import { DROP, dropFrom, dropStart, HOME_DROP } from '../shared/parachute.mjs';
 import { netClock } from './net/track';
-import { PROTO, readBrute, readCar, readHorse, readPlayer, readZombie, type Tick } from '../shared/wire.mjs';
+import { PROTO, readBike, readBrute, readCar, readHorse, readPlayer, readZombie, type Tick } from '../shared/wire.mjs';
 import { sound } from './sound';
 import { footstep, surfaceOf } from './footsteps';
 import { SettingsPanel, type Settings } from './settings';
@@ -60,6 +61,7 @@ import { Car, placedSpec, PLACED_MAX, type CarState } from './world/car';
 import { skidMarks } from './world/skidMarks';
 import { boxesOverlap, boxPoints, clearOfPortals, makeIndoors } from '../shared/parking.mjs';
 import CARS from '../shared/car.json';
+import BIKES_DATA from '../shared/bike.json';
 import { buildHedges, buildTile, dipMesh, waterMesh } from './world/surroundings';
 import { buildHorizon } from './world/horizon';
 import { wearLonePatches, weatherYards } from './world/yards';
@@ -593,6 +595,10 @@ const carById = (id: string) => cars.find((c) => c.id === id);
 let driving = false;
 let riding = false; // in the passenger seat (multiplayer): the car moves you, the camera follows it
 let wantCar = false; // asked the server to get in, waiting for its answer
+// The bikes (world/bike.ts): against the main house, at the bungalow, in racks by the village's portals.
+const bikes = new Bikes(world, trunks, () => avatars.figure(me?.username ?? '', myColour()));
+scene.add(bikes.group);
+let bikeWanted: string | null = null; // asked the server for this bike
 const minimap = new Minimap([...house.prisms, ...(house.surroundings?.prisms ?? [])], house.levels, house.rooms);
 /** The ground out of doors at (x, z): the relief, and paving or a kerb on it. */
 const groundY = (x: number, z: number) => world.groundAt(x, z, house.ground + terrain.height(x, z) + 0.6, 0).y;
@@ -968,7 +974,7 @@ avatars.onFigure = (name, root, body, colour, chute, open, air, dt) => parachute
  * straight over the place instead (shared/parachute.mjs dropFrom), and the edge keeps the drop inside.
  */
 function beginDrop(at?: { x: number; z: number; yaw: number; feet?: number; sx?: number; sz?: number }, from?: { sx?: number; sz?: number }, edge = world.bounds): void {
-  if (driving || riding || horses.mounted >= 0) return;
+  if (driving || riding || horses.mounted >= 0 || bikes.mounted) return;
   parachutes.load(); // in case it isn't in yet
   const [x, z, yaw] = at ? [at.x, at.z, at.yaw] : [player.x, player.z, player.yaw];
   const told = from ?? at;
@@ -993,7 +999,7 @@ function dropPrompt(mode: 'kbm' | 'pad' | 'touch'): string {
   const [dive, open] = mode === 'touch' ? [t('touch.dive'), t('touch.open')] : [key('down', mode), key('jump', mode)];
   return t('prompt.fall', { move, dive, open });
 }
-avatars.seatOf = (name) => horses.seat(name); // a rider sits in the saddle as their horse is drawn
+avatars.seatOf = (name) => horses.seat(name) ?? bikes.seat(name); // a rider sits in the saddle as their horse (or bike) is drawn
 const chat = new Chat();
 chat.paused = () => menu.open; // T and Enter belong to the menu while it is open
 const combat = new Combat();
@@ -1196,6 +1202,7 @@ function followAccount(account: Me | null): void {
     online.clear();
     for (const c of cars) c.driver = c.passenger = null; // alone, the cars are yours
     horses.reset(); // and the horses back on their walks
+    bikes.reset(); // and the bikes nobody else rides now
     combat.me = '';
     combat.reset([], 10, null);
     loadLocalFurniture();
@@ -1530,6 +1537,7 @@ async function startSolo(id: string): Promise<void> {
   prepareZombies();
   getOut(false);
   getOffHorse(false);
+  getOffBike(false);
   const boxes = cars.filter((c) => c.ready && edge.inside(c.x, c.z)).map((c) => ({ x: c.x, z: c.z, yaw: c.yaw, halfL: c.spec.length / 2, halfW: c.spec.width / 2 }));
   const nav = arena.center
     ? makeNav({ prisms, height: (x, z) => terrain.height(x, z), base: house.ground, edge, boxes, areas: arena.id === 'church' ? [churchAccess.area] : [], doors: [], shut: true, panes: 0 })
@@ -1822,6 +1830,21 @@ function getOffHorse(tell = true): void {
   player.update(0, NO_INPUT, camera);
   if (tell) net.send({ t: 'horse', op: 'off' });
 }
+/** Get on bike `id`: alone right away; in multiplayer once the server says it's yours. Not during the Zombies game (the server refuses too). */
+function getOnBike(id: string): void {
+  if (games.zombies) return chat.system(() => t('srv.zNoBike'));
+  if (!net.connected) return bikes.mount(id, me?.username ?? 'you');
+  net.send({ t: 'bike', op: 'on', id });
+  bikeWanted = id;
+}
+/** Off the bike, on its left, facing its way. `tell`: let the server know. */
+function getOffBike(tell = true): void {
+  const at = bikes.dismount();
+  if (!at) return;
+  player.place(at.x, at.z, world.groundAt(at.x, at.z, at.y + 0.3, 0.5).y, at.yaw, 0);
+  player.update(0, NO_INPUT, camera);
+  if (tell) net.send({ t: 'bike', op: 'off' });
+}
 
 /**
  * Back in the game at spawn point `i` (chosen by the server, away from the others), or at `x, z` near
@@ -1831,6 +1854,7 @@ function getOffHorse(tell = true): void {
 function respawnAt(i: number, at?: { x?: number; z?: number; y?: number; fx?: number; fz?: number }): void {
   getOut(false);
   getOffHorse(false);
+  getOffBike(false);
   const s = spawns[i];
   if (s) {
     const [x, z] = typeof at?.x === 'number' && typeof at?.z === 'number' ? [at.x, at.z] : [s.x, s.z];
@@ -1870,6 +1894,7 @@ async function travel(to: Destination, via: 'portal' | 'chat'): Promise<void> {
   if (via === 'chat') {
     if (riding) getOut(); // the driver keeps the car
     if (horses.mounted >= 0) getOffHorse();
+    if (bikes.mounted) getOffBike();
   }
   const from = portalNear(driving ? car.x : player.x, driving ? car.z : player.z, via === 'chat' ? 60 : CAR_REACH);
   if (from === to) return;
@@ -1959,7 +1984,7 @@ const CHUTE_WORDS = new Set(['parachute', 'chute', 'para']);
  */
 function chuteCommand(): void {
   if (rules.parachute === false) return chat.system(() => t('srv.chuteOff'));
-  if (!combat.alive || driving || riding || horses.mounted >= 0 || trip || player.chute !== null || solo) return chat.system(() => t('srv.chuteNotNow'));
+  if (!combat.alive || driving || riding || horses.mounted >= 0 || bikes.mounted || trip || player.chute !== null || solo) return chat.system(() => t('srv.chuteNotNow'));
   const ground = player.ground.name;
   if (ground && (roomNames.has(ground) || /floor|stairs/i.test(ground))) return chat.system(() => t('srv.chuteIndoors'));
   if (net.connected) net.send({ t: 'chute' });
@@ -1984,7 +2009,7 @@ const wrapAngle = (a: number) => Math.atan2(Math.sin(a), Math.cos(a));
  */
 function spawnThing(thing: Thing): void {
   if (!maySpawn()) return chat.system(() => t('srv.spawnOff'));
-  if (!combat.alive || driving || riding || trip) return chat.system(() => t('spawn.notNow'));
+  if (!combat.alive || driving || riding || bikes.mounted || trip) return chat.system(() => t('spawn.notNow'));
   const fx = -Math.sin(player.yaw), fz = -Math.cos(player.yaw);
   const eye = { x: player.x, y: player.feet + 1.2, z: player.z };
   // A spot `d` m ahead on the floor near your level, with no wall between it and you; or null.
@@ -2151,11 +2176,14 @@ net.onMessage = (m: ServerMsg) => {
       weather.setServer(m.mood, m.moodCycle?.cycle, m.moodCycle?.time); // the admin's weather for everyone (Auto from an older server)
       getOut(false); // alone you may have been driving: the shared cars are where the server has them
       getOffHorse(false); // or riding
+      getOffBike(false); // or cycling
       wantCar = false;
       horseWanted = -1;
+      bikeWanted = null;
       setPlaced((m.cars ?? []).filter((s) => s.kind)); // the Teslas spawned together, instead of those spawned alone
       for (const s of m.cars ?? []) carById(s.id)?.setPose(s, true);
       horses.setAll(m.horses ?? [], m.you);
+      bikes.setAll(m.bikes ?? [], m.you, true);
       {
         const [n, max] = [m.players.length, rules.maxPlayers ?? 16];
         chat.system(() => t('chat.joinedAs', { name: m.you, n, max }));
@@ -2226,6 +2254,20 @@ net.onMessage = (m: ServerMsg) => {
       horses.setAll([h], me?.username ?? '');
       break;
     }
+    case 'bike': {
+      const k = m.bike;
+      const mine = !!me && k.rider === me.username;
+      if (mine && bikes.mounted !== k.id) {
+        if (bikeWanted === k.id) bikes.mount(k.id, me!.username);
+        else net.send({ t: 'bike', op: 'off' }); // not asked for (an old connection's): give it back
+      } else if (!mine && bikes.mounted === k.id) getOffBike(false); // taken back: you died or respawned
+      if (bikeWanted === k.id) bikeWanted = null;
+      bikes.setAll([k], me?.username ?? '');
+      break;
+    }
+    case 'bell':
+      bikes.ring(m.id);
+      break;
     case 'car': {
       const c = carById(m.car.id);
       if (!c) break;
@@ -2475,6 +2517,7 @@ function onTick(m: Tick): void {
     if (c && !(driving && c === car)) c.sample(m.st - s.age, s);
   }
   horses.receive((m.h ?? []).map(readHorse), m.st, self);
+  bikes.receive((m.k ?? []).map(readBike), m.st, self);
   if (m.b) clowns.receive(m.b.map(readBrute), m.st); // every other tick
   if (m.z) zombies.receive(m.z.map(readZombie), m.st); // the same, during the Zombies game
 }
@@ -2678,6 +2721,8 @@ let horseHint = 0; // seconds the riding keys still show after getting on a hors
 let wasOnHorse = false;
 let carHint = 0; // the same for the car's speed and keys after getting in
 let wasInCar = false;
+let bikeHint = 0; // the same on a bike
+let wasOnBike = false;
 let wasCalm = false;
 let wasFlying = false;
 let inside = false; // in the house's rooms or on its stairs: the minimap names the floor only then
@@ -2730,6 +2775,7 @@ renderer.setAnimationLoop((now: number) => {
     if (!fence.inside(player.x, player.z)) {
       getOut();
       getOffHorse();
+      getOffBike();
     }
   }
   menu.setPadState(input.padName);
@@ -2818,6 +2864,22 @@ renderer.setAnimationLoop((now: number) => {
       const r = horses.ridden!;
       player.place(r.x, r.z, r.y, camera.rotation.y, camera.rotation.x);
       player.ground = world.groundAt(r.x, r.z, r.y + 0.1, 0.3);
+    } else if (bikes.mounted) {
+      // On a bike: W/S (or R2/L2, or the stick) pedal and brake, A/D steer, the jump key rings the bell; the camera close behind.
+      const [turn, tilt] = player.look(dt, frame);
+      const hit = bikes.ride(dt, { throttle: Math.max(frame.throttle, frame.moveY), brake: Math.max(frame.brake, -frame.moveY), steer: frame.moveX }, avatars.obstacles());
+      if (hit > 2) {
+        rumble(Math.min(1, hit / 8), 0.4, 100);
+        shake = Math.max(shake, Math.min(0.3, hit / 25));
+      }
+      if (frame.jumpPressed) {
+        bikes.bell();
+        net.send({ t: 'bell' });
+      }
+      bikes.chase(camera, dt, turn, tilt);
+      const k = bikes.ridden!;
+      player.place(k.x, k.z, k.y, player.yaw, player.pitch);
+      player.ground = world.groundAt(k.x, k.z, k.y + 0.1, 0.3);
     } else {
       // Dead: only looking around. The seeker in hide and seek: eyes shut, not even that.
       const still = games.blindfolded ? NO_INPUT : { ...NO_INPUT, mouseX: frame.mouseX, mouseY: frame.mouseY, lookX: frame.lookX, lookY: frame.lookY };
@@ -2833,14 +2895,15 @@ renderer.setAnimationLoop((now: number) => {
       shake *= Math.exp(-dt * 4);
     }
     combat.showBoard(frame.scoreHeld && !!me);
-    const inCar = driving || riding;
+    const onBike = bikes.mounted !== null;
+    const inCar = driving || riding || onBike; // on a bike as in a car: no weapons, no doors
     const onHorse = horses.mounted >= 0; // you may shoot from the saddle
     weapon.hidden = dead || inCar || games.peaceful || player.chute !== null || dropView.outside; // in a drop, and until the camera is back in your eyes
 
     // The portals: on a pad (or stopped on one in the car) the list of places opens, and takes the
     // number keys, the wheel or D-pad and E. Not on horseback, nor from the passenger seat.
     const mode = menu.mode ?? 'kbm';
-    let pad = !rules.portals || trip || dead || riding || onHorse || games.fenced ? null
+    let pad = !rules.portals || trip || dead || riding || onHorse || onBike || games.fenced ? null
       : driving ? (Math.abs(car.speed) < CAR_SLOW ? portalNear(car.x, car.z, CAR_REACH) : null)
       : portalNear(player.x, player.z);
     if (pad && !driving && Math.abs(player.feet - portals.groundOf(pad)) > 1.5) pad = null; // flying over it
@@ -2902,12 +2965,17 @@ renderer.setAnimationLoop((now: number) => {
     const nearCar = !inCar && !onHorse && !dead && !games.zombies && car.distanceTo(player.x, player.z) < CARS.reach && Math.abs(player.feet - car.y) < 1;
     // The horses: E next to one gets you on it, and off again.
     const nearHorse = !inCar && !onHorse && !dead && !nearCar && !games.zombies && horseWanted < 0 ? horses.nearest(player.x, player.z) : -1;
+    // The bikes: E next to one gets you on it, and off again.
+    const nearBike = !inCar && !onHorse && !dead && !nearCar && nearHorse < 0 && !games.zombies && bikeWanted === null ? bikes.nearest(player.x, player.z, player.feet) : null;
+    const bikeTaken = !!nearBike?.rider && nearBike.rider !== me?.username;
     const carTaken = !!car.driver && car.driver !== me?.username;
     const seatFree = carTaken && !car.passenger;
     if ((driving || riding) && frame.usePressed) getOut();
     else if (onHorse && frame.usePressed) getOffHorse();
+    else if (onBike && frame.usePressed) getOffBike();
     else if (nearCar && !target && (!carTaken || seatFree) && !wantCar && frame.usePressed) getIn();
     else if (nearHorse >= 0 && !target && frame.usePressed) mountHorse(nearHorse);
+    else if (nearBike && !bikeTaken && !target && frame.usePressed) getOnBike(nearBike.id);
     if (action && !dead && !inCar) {
       if (frame.weaponSlot) weapon.selectSlot(frame.weaponSlot);
       if (frame.weaponCycle) weapon.cycle(frame.weaponCycle === 2 ? 0 : frame.weaponCycle);
@@ -2987,7 +3055,7 @@ renderer.setAnimationLoop((now: number) => {
       }
     }
     // In a car the view widens a little at speed (world/car.ts: fovScale), from the player's own field of view.
-    weapon.baseFov = settings.value.fov * (inCar ? car.fovScale : 1);
+    weapon.baseFov = settings.value.fov * (driving || riding ? car.fovScale : 1);
     if (!weapon.enabled && Math.abs(camera.fov - weapon.baseFov) > 0.01) {
       camera.fov = weapon.baseFov;
       camera.updateProjectionMatrix();
@@ -3000,7 +3068,7 @@ renderer.setAnimationLoop((now: number) => {
     // The keys in the prompts come from the one table (src/shortcuts.ts). In Explore a click opens doors too.
     const doorKey = key(action ? 'use' : 'click', mode);
     const use = key('use', mode);
-    touch.setState(action, inCar, player.chute === null ? null : player.canopy === null ? 'fall' : 'canopy');
+    touch.setState(action, inCar, player.chute === null ? null : player.canopy === null ? 'fall' : 'canopy', onBike);
     const speed = (v: number) => Math.round(Math.abs(v) * 3.6);
     const carLabel = carName(car.kind ?? car.id, car.spec.name);
     let prompt = target ? t(target.home ? 'home.door' : target.locked ? 'prompt.locked' : target.open ? 'prompt.close' : 'prompt.open', { key: doorKey, door: doorName(target.name) }) : '';
@@ -3018,11 +3086,16 @@ renderer.setAnimationLoop((now: number) => {
       if (horseHint > 0) prompt = t('prompt.horse', { speed: speed(horses.ridden!.speed), gallop: key('sprint', mode), breath: Math.round(horses.stamina * 100), jump: key('jump', mode), use });
     }
     else if (nearHorse >= 0 && !target) prompt = t('prompt.mount', { use });
+    else if (onBike) {
+      // The bike's speed and keys for the first few seconds on it only, as in the car.
+      if (bikeHint > 0) prompt = t('prompt.cycling', { speed: speed(bikes.ridden?.speed ?? 0), bell: key('bell', mode), use });
+    }
+    else if (nearBike && !target) prompt = bikeTaken ? t('prompt.bikeTaken', { name: nearBike.rider ?? '' }) : t('prompt.bike', { use });
     if (ball && !tagWho && !driving && !riding) prompt = t('prompt.kick', { key: key(action && !noShoot(player.x, player.z) ? 'use' : 'click', mode), run: key('sprint', mode) });
     if (downed) prompt = helping?.start ? t('prompt.reviving', { name: downed }) : t('prompt.revive', { use, name: downed });
     hud.setRing(helping ? (helping.start ? (now - helping.start) / helping.ms : 0) : null);
     if (pad) prompt = ''; // the list says it all
-    else if (!inCar && portalNear(player.x, player.z) && (onHorse || !rules.portals || games.fenced)) prompt = t(onHorse ? 'prompt.horsePortal' : games.fenced ? 'prompt.portalGame' : 'prompt.portalsOff');
+    else if ((!inCar || onBike) && portalNear(player.x, player.z) && (onHorse || onBike || !rules.portals || games.fenced)) prompt = t(onHorse ? 'prompt.horsePortal' : onBike ? 'prompt.bikePortal' : games.fenced ? 'prompt.portalGame' : 'prompt.portalsOff');
     hud.setPrompt(prompt);
     const armed = action && !dead && !inCar;
     hud.setWeapon(armed, dead || inCar ? '' : weapon.status);
@@ -3041,6 +3114,9 @@ renderer.setAnimationLoop((now: number) => {
     if (onHorseNow && !wasOnHorse) horseHint = 5;
     wasOnHorse = onHorseNow;
     horseHint = onHorseNow ? horseHint - dt : 0;
+    if (onBike && !wasOnBike) bikeHint = 5;
+    wasOnBike = onBike;
+    bikeHint = onBike ? bikeHint - dt : 0;
     const inCarNow = driving || riding;
     if (inCarNow && !wasInCar) carHint = 5;
     wasInCar = inCarNow;
@@ -3049,7 +3125,7 @@ renderer.setAnimationLoop((now: number) => {
     flyHint = player.flying ? flyHint - dt : 0;
     if (flyHint > 0) hud.setPrompt(t('prompt.fly', { up: key('jump', mode), down: key('down', mode) }));
     // Against the edge of the game or its ceiling: a short line saying so (and why, during a game in the house).
-    if (driving ? car.atEdge : onHorse ? horses.atEdge : !riding && player.atEdge) edgeHint = 2.5;
+    if (driving ? car.atEdge : onHorse ? horses.atEdge : onBike ? bikes.atEdge : !riding && player.atEdge) edgeHint = 2.5;
     edgeHint -= dt;
     // Zombies away from home: the edge is round its place, not the house.
     const away = games.view.kind === 'zombies' && arenaOf(games.view.zombies?.place).id !== 'house';
@@ -3071,12 +3147,15 @@ renderer.setAnimationLoop((now: number) => {
     // carries this page's time for it (`ct`), so the others draw it at an even pace (shared/wire.mjs).
     if (net.connected && !trip?.answer) {
       const r = horses.ridden;
+      const k = bikes.ridden;
       const cm = (v: number) => Math.round(v * 100) / 100;
       const mrad = (v: number) => Math.round(v * 1000) / 1000;
       const where = driving || riding
         ? { x: cm(car.x), y: cm(car.y), z: cm(car.z), yaw: mrad(car.yaw), pitch: 0, flying: false, c: false, d: true, s: cm(car.steer) }
         : r
           ? { x: cm(r.x), y: cm(r.y + r.jump + 1.64), z: cm(r.z), yaw: mrad(player.yaw), pitch: mrad(player.pitch), flying: false, c: true, hy: mrad(r.yaw), hs: cm(r.speed), hj: cm(r.jump) } // seated in the saddle
+          : k
+            ? { x: cm(k.x), y: cm(k.y), z: cm(k.z), yaw: mrad(k.yaw), pitch: mrad(player.pitch), flying: false, c: false } // on the bike: its place and its way
           : { x: cm(player.x), y: cm(player.feet), z: cm(player.z), yaw: mrad(player.yaw), pitch: mrad(player.pitch), flying: player.flying, c: player.crouching, ...(player.chute !== null ? { pc: 1, ...(player.canopy !== null ? { po: 1 } : {}) } : {}) };
       const state = { t: 'state', ...where, armed: weapon.enabled, w: weapon.current };
       const key = JSON.stringify(state);
@@ -3106,7 +3185,8 @@ renderer.setAnimationLoop((now: number) => {
   }
   netClock.frame(now); // the time the others are drawn at (net/track.ts)
   for (const c of cars) c.update(dt, driving && c === car, camera.position);
-  speedometer.update((driving || riding) && !menu.open && combat.alive ? car.speed : null, car.spec.maxSpeed);
+  const cycling = driving || riding ? null : bikes.ridden;
+  speedometer.update(!menu.open && combat.alive ? (driving || riding ? car.speed : cycling?.speed ?? null) : null, cycling ? BIKES_DATA.maxSpeed : car.spec.maxSpeed);
   combat.tick(dt);
   sound.listen(camera);
   roomSound.update(dt, inside, player.ground.name, camera.position);
@@ -3163,11 +3243,12 @@ renderer.setAnimationLoop((now: number) => {
   if (!net.connected) soloTick(dt);
   zombies.update(dt, camera.position);
   horses.update(dt, camera.position);
+  bikes.update(dt, camera.position);
   // The footballs: walked into on foot (alone here; together the server does it too, and leads).
-  const onFoot = combat.alive && !driving && !riding && horses.mounted < 0 && !player.flying && player.chute === null;
+  const onFoot = combat.alive && !driving && !riding && !bikes.mounted && horses.mounted < 0 && !player.flying && player.chute === null;
   football.update(dt, camera.position, onFoot ? { x: player.x, z: player.z, feet: player.feet, name: me?.username ?? '' } : null, net.connected);
-  // The others, after the horses: a rider sits in the saddle where it is drawn this frame.
-  avatars.tick(dt, camera.position, driving || riding || horses.mounted >= 0 ? null : { x: player.x, z: player.z });
+  // The others, after the horses and bikes: a rider sits in the saddle where it is drawn this frame.
+  avatars.tick(dt, camera.position, driving || riding || horses.mounted >= 0 || bikes.mounted ? null : { x: player.x, z: player.z });
   myChute.position.set(player.x, player.feet, player.z);
   myChute.rotation.y = player.yaw;
   parachutes.far = quality === 'low' ? 15 : 35;
@@ -3415,6 +3496,7 @@ async function buildVillage(): Promise<void> {
   await prepareShotRaycasts(scene);
   village = 'ready';
   for (const c of cars) c.ready = true; // the cars parked in the village (shared/car.json) with it
+  bikes.villageReady(); // and the bikes in its racks (shared/bike.json)
   void roadLife.load(renderer, scene, camera, precompile);
 }
 
@@ -3651,6 +3733,9 @@ if (import.meta.env.DEV) {
       kit: () => kit,
       mountHorse,
       getOffHorse,
+      bikes,
+      getOnBike,
+      getOffBike,
       driving: () => driving,
       furnishing,
       feedback,
