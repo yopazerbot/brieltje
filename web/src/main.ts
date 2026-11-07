@@ -64,7 +64,7 @@ import { boxesOverlap, boxPoints, clearOfPortals, makeIndoors } from '../shared/
 import CARS from '../shared/car.json';
 import BIKES_DATA from '../shared/bike.json';
 import { buildHedges, buildTile, dipMesh, waterMesh } from './world/surroundings';
-import { waterLevel, wetGround } from './world/water';
+import { setWaterDetail, waterLevel, wetGround } from './world/water';
 import { buildHorizon } from './world/horizon';
 import { wearLonePatches, weatherYards } from './world/yards';
 import { Undergrowth } from './world/undergrowth';
@@ -449,6 +449,7 @@ function applyQuality(q: Quality): void {
   setBakeDetail(q !== 'low'); // the baked wear's fine pattern (world/bakedLight.ts)
   weather.setQuality(q, phone); // how many streaks of rain
   setWindowDetail(q !== 'low' && !phone); // rooms behind the village's windows (world/windows.ts)
+  setWaterDetail(q !== 'low' && !phone); // rain rings on the ponds (world/water.ts)
   tiles.drawDistance = phone ? Math.min(FAR_PHONE, preset.far) : preset.far;
   undergrowth.setQuality(q, phone);
   dynScale = 1;

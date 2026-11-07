@@ -1,6 +1,7 @@
 import * as THREE from 'three';
 import type { Ground } from './collision';
 import type { DipSpec } from './houseData';
+import { mood } from './mood';
 
 /**
  * The ponds' and ditches' water: a dark green mirror of the sky, now ruffled by the wind. Five
@@ -9,6 +10,9 @@ import type { DipSpec } from './houseData';
  * shimmer; nothing is moved. Gusts drift across it as calmer and rougher patches. Each train fades
  * out where its waves get too small on screen to draw (no glitter in the distance), and the water
  * turns a little less glossy there instead. One material for every pond, its clock set as it is drawn.
+ *
+ * In the rain, on Medium and up, drops dot the water near you with small rings (the same shader: one
+ * drop at a time in each half-metre cell, two layers of cells), nothing on Low or on a phone.
  *
  * Also where the water is, for walking into it (player.ts): every pond and ditch keeps its outline at the
  * water line and its level. A ditch is as deep as it is drawn (about half a metre at most); a pond shelves
@@ -36,6 +40,9 @@ const waves = WAVES.map(([length, angle, slope]) => {
 
 let material: THREE.MeshStandardMaterial | null = null;
 const time = { value: 0 };
+/** How hard it rains on the water now (0 to 1), 0 on Low */
+const rain = { value: 0 };
+let detail = true;
 
 /** The water's material, shared by every pond. */
 export function waterMaterial(): THREE.MeshStandardMaterial {
@@ -44,6 +51,7 @@ export function waterMaterial(): THREE.MeshStandardMaterial {
   m.name = 'water';
   m.onBeforeCompile = (shader) => {
     shader.uniforms.waterTime = time;
+    shader.uniforms.waterRain = rain;
     shader.vertexShader = shader.vertexShader
       .replace('#include <common>', '#include <common>\nvarying vec2 vWater;')
       .replace('#include <worldpos_vertex>', '#include <worldpos_vertex>\nvWater = (modelMatrix * vec4(transformed, 1.0)).xz;');
@@ -52,12 +60,30 @@ export function waterMaterial(): THREE.MeshStandardMaterial {
         '#include <common>',
         `#include <common>
         uniform float waterTime;
+        uniform float waterRain;
         varying vec2 vWater;
         // One train of waves: adds its slope at p to grad, and how much of it is drawn to fade.
         void ripple(vec2 p, vec2 k, float w, float a, float phase, float px, inout vec2 grad, inout float fade) {
           float keep = clamp(1.0 - px * length(k) * 0.35, 0.0, 1.0); // gone at two pixels a wave
           grad += k * a * cos(dot(k, p) - w * waterTime + phase) * keep;
           fade += keep;
+        }
+        vec2 rainHash(vec2 c) {
+          return fract(sin(vec2(dot(c, vec2(127.1, 311.7)), dot(c, vec2(269.5, 183.3)))) * 43758.5453);
+        }
+        // Rain drops on the water: in each half-metre cell one drop at a time, its ring spreading to 15 cm and
+        // dying away; a new drop somewhere else in the cell each time. Fewer cells have one in light rain.
+        void rainRings(vec2 p, float layer, float keep, inout vec2 grad) {
+          vec2 q = p * 2.0 + layer * vec2(0.37, 0.61);
+          vec2 cell = floor(q);
+          float cycle = waterTime * 0.8 + rainHash(cell + layer * 7.3).x * 9.0;
+          float t = fract(cycle);
+          vec2 h = rainHash(cell + floor(cycle) * vec2(1.7, 3.1));
+          vec2 d = q - (cell + 0.3 + 0.4 * h);
+          float r = length(d);
+          float x = r - t * 0.3;
+          float wave = sin(x * 70.0) * exp(-x * x * 900.0) * (1.0 - t) * (1.0 - t);
+          grad += d / max(r, 1e-3) * wave * 1.1 * keep * step(h.y, waterRain * 0.85 + 0.1);
         }`,
       )
       .replace(
@@ -72,8 +98,16 @@ export function waterMaterial(): THREE.MeshStandardMaterial {
           // Gusts: rougher and calmer patches drifting downwind.
           float gust = 0.55 + 0.45 * sin(dot(p, vec2(${(WIND.x * 0.21).toFixed(3)}, ${(WIND.y * 0.21).toFixed(3)})) - waterTime * 0.5) * sin(p.x * 0.13 - p.y * 0.17 + waterTime * 0.11);
           grad *= gust;
+          if (waterRain > 0.0) {
+            // Gone where a ring would be under about two pixels across (some 15 m off at full screen).
+            float keep = clamp(1.0 - (px - 0.008) * 55.0, 0.0, 1.0) * min(1.0, waterRain * 3.0);
+            if (keep > 0.0) {
+              rainRings(p, 0.0, keep, grad);
+              rainRings(p, 1.0, keep, grad);
+            }
+          }
           normal = normalize((viewMatrix * vec4(-grad.x, 1.0, -grad.y, 0.0)).xyz);
-          roughnessFactor = mix(0.11, roughnessFactor, fade / ${WAVES.length.toFixed(1)});
+          roughnessFactor = mix(0.11, roughnessFactor, fade / ${WAVES.length.toFixed(1)}) + 0.06 * waterRain;
         }`,
       );
   };
@@ -84,6 +118,17 @@ export function waterMaterial(): THREE.MeshStandardMaterial {
 /** Keeps the waves moving: call as the water is drawn (a mesh's onBeforeRender). */
 export function waterClock(): void {
   time.value = performance.now() / 1000;
+  rain.value = detail ? raining() : 0;
+}
+
+/** How hard it rains now: the rain mood's share of what is shown (world/mood.ts). */
+function raining(): number {
+  return (mood.current === 'rain' ? 1 - mood.blend : 0) + (mood.next === 'rain' && mood.next !== mood.current ? mood.blend : 0);
+}
+
+/** Rain rings on the water: on for Medium and up, off on Low and on phones (main.ts applyQuality). */
+export function setWaterDetail(on: boolean): void {
+  detail = on;
 }
 
 // ---- Where the water is, and how deep ----
