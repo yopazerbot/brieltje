@@ -1,11 +1,14 @@
 import * as THREE from 'three';
+import { daylight } from './daylight';
+import { mood } from './mood';
 
 /**
  * Butterflies over the borders of the main house and round the bungalow's veranda: small whites,
  * red admirals, peacocks and a brimstone, each wandering its own loops over a bed and beating
  * its wings. Everything happens in the vertex shader from one clock (the CPU does nothing per
  * butterfly), one draw call for all of them; no textures, the wings' markings are drawn by the
- * fragment shader. Medium and up only.
+ * fragment shader. Medium and up only. They take no light, so they are shaded by the day's (world/daylight.ts),
+ * and they rest at night and in the rain (world/mood.ts): drawn as nothing.
  */
 
 /** Over a bed: its middle on the plan, how far it roams (m) and its kind. */
@@ -35,6 +38,7 @@ const vertexShader = /* glsl */ `
   attribute vec3 aCol;
   attribute vec3 aCol2;
   uniform float uTime;
+  uniform float uAwake; // 0 at rest: every butterfly shrinks to a point, no pixels
   varying vec2 vUv;
   varying vec3 vCol;
   varying vec3 vCol2;
@@ -57,7 +61,7 @@ const vertexShader = /* glsl */ `
     float beat = sin(uTime * (8.0 + fract(aParam.x * 7.3) * 4.0) * 6.2832 + aParam.x * 10.0);
     float rest = smoothstep(0.6, 0.9, sin(uTime * 0.9 + aParam.x * 5.0));
     float a = mix(0.25 + 1.05 * beat, 1.35, rest);
-    vec3 p = position;
+    vec3 p = position * uAwake;
     if (aWing != 0.0) {
       float span = abs(p.x);
       p = vec3(aWing * span * cos(a), span * sin(a), p.z);
@@ -77,6 +81,7 @@ const fragmentShader = /* glsl */ `
   varying vec3 vCol;
   varying vec3 vCol2;
   varying float vShade;
+  uniform float uLight;
   void main() {
     if (vUv.x < 0.0) {
       gl_FragColor = vec4(vec3(0.03), 1.0); // the body
@@ -88,7 +93,7 @@ const fragmentShader = /* glsl */ `
     if (edge > 1.0) discard;
     vec3 col = mix(vCol, vCol2, smoothstep(0.42, 0.5, vUv.x) * (1.0 - smoothstep(0.66, 0.74, vUv.x)) * step(vUv.y, 0.7));
     col = mix(col, vec3(0.04), smoothstep(0.82, 0.97, edge) * 0.8);
-    gl_FragColor = vec4(col * vShade * 1.25, 1.0);
+    gl_FragColor = vec4(col * vShade * 1.25 * uLight, 1.0);
   }`;
 
 /** Two wings (span along x, chord along z, 3.2 cm out) and a thin body, as one small shape. */
@@ -124,6 +129,8 @@ function shape(): THREE.InstancedBufferGeometry {
 export class Butterflies {
   readonly mesh: THREE.Mesh;
   private time = { value: 0 };
+  private awake = { value: 1 };
+  private light = { value: 1 };
 
   constructor(groundY: (x: number, z: number) => number) {
     const g = shape();
@@ -143,12 +150,15 @@ export class Butterflies {
     g.setAttribute('aCol', new THREE.InstancedBufferAttribute(new Float32Array(col), 3));
     g.setAttribute('aCol2', new THREE.InstancedBufferAttribute(new Float32Array(col2), 3));
     g.instanceCount = ROUNDS.length;
-    this.mesh = new THREE.Mesh(g, new THREE.ShaderMaterial({ uniforms: { uTime: this.time }, vertexShader, fragmentShader }));
+    this.mesh = new THREE.Mesh(g, new THREE.ShaderMaterial({ uniforms: { uTime: this.time, uAwake: this.awake, uLight: this.light }, vertexShader, fragmentShader }));
     this.mesh.frustumCulled = false; // placed by the shader
     this.mesh.userData.ignoreRay = true;
   }
 
   update(dt: number): void {
     this.time.value += dt;
+    this.light.value = daylight();
+    // Off to rest as dusk falls or the rain sets in, out again after.
+    this.awake.value = Math.max(0, Math.min(1, (0.5 - mood.night) * 5, (0.5 - mood.wet) * 5));
   }
 }

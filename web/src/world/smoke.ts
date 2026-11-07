@@ -1,4 +1,6 @@
 import * as THREE from 'three';
+import { daylight } from './daylight';
+import { mood } from './mood';
 
 /**
  * Wood smoke from chimneys: at home the house across the street from the main house and the
@@ -6,8 +8,13 @@ import * as THREE from 'three';
  * puff is a small soft disc turned to the camera that rises, grows, drifts off with the wind (from
  * the south-west) and fades; all of it in the vertex shader from one clock, one draw call for each
  * set of chimneys, no texture (the fragment shader draws the soft, lumpy edge). Puffs are
- * see-through and cost pixels, so Medium and up only.
+ * see-through and cost pixels, so Medium and up only. The puffs light nothing and take no light, so their colour
+ * follows the weather (world/mood.ts): pale grey in the sun, greyer under a grey sky, dark and a little blue at night.
  */
+
+const DAY = new THREE.Color(0.6, 0.62, 0.66);
+const GREY = new THREE.Color(0.52, 0.53, 0.55);
+const NIGHT = new THREE.Color(0.55, 0.6, 0.75); // times the night's light: moonlit
 
 const PUFFS = 14; // per chimney
 const LIFE = 9; // s from the chimney to gone
@@ -75,7 +82,7 @@ export class Smoke {
     this.mesh = new THREE.Mesh(
       g,
       new THREE.ShaderMaterial({
-        uniforms: { uTime: this.time, uOpacity: { value: opacity }, uWind: { value: new THREE.Vector3(-0.95, 0.0, 0.3) }, uColor: { value: new THREE.Color(0.6, 0.62, 0.66) } },
+        uniforms: { uTime: this.time, uOpacity: { value: opacity }, uWind: { value: new THREE.Vector3(-0.95, 0.0, 0.3) }, uColor: { value: DAY.clone() } },
         vertexShader,
         fragmentShader,
         transparent: true,
@@ -89,6 +96,8 @@ export class Smoke {
 
   update(dt: number): void {
     this.time.value += dt;
+    const c = (this.mesh.material as THREE.ShaderMaterial).uniforms.uColor.value as THREE.Color;
+    c.copy(DAY).lerp(GREY, mood.overcast).lerp(NIGHT, mood.night).multiplyScalar(daylight());
   }
 
   /** Drawn and worked out only within `reach` metres of its chimneys, and when `fine` (Medium and up, not a phone). */

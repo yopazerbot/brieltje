@@ -1,4 +1,5 @@
 import * as THREE from 'three';
+import { daylight } from './daylight';
 import { particleSheet } from './sprites';
 
 /**
@@ -7,7 +8,8 @@ import { particleSheet } from './sprites';
  * of blending are a single instanced draw call, kept in fixed pools, so an
  * explosion costs no new objects and no extra draw calls. Sparks can be
  * stretched along their flight on screen. Each particle grows, changes colour
- * and fades over its life.
+ * and fades over its life. Smoke, dust and debris take the day's light
+ * (dark at night, world/daylight.ts); fire, sparks and glows shine as they are.
  */
 
 export interface Spawn {
@@ -71,15 +73,18 @@ void main() {
 
 const FRAG = /* glsl */ `
 uniform sampler2D map;
+uniform float light;
 varying vec2 vUv;
 varying vec4 vColor;
 void main() {
   vec4 t = texture2D(map, vUv);
-  gl_FragColor = vec4(vColor.rgb * t.rgb, vColor.a * t.a);
+  gl_FragColor = vec4(vColor.rgb * t.rgb * light, vColor.a * t.a);
 }`;
 
 class Pool {
   readonly mesh: THREE.Mesh;
+  /** How much of the day's light it shows (1 for the pool that adds light) */
+  readonly light = { value: 1 };
   count = 0;
   private pos: Float32Array;
   private vel: Float32Array;
@@ -122,7 +127,7 @@ class Pool {
     this.geo.setAttribute('iCell', (this.iCell = attr(1)));
     this.geo.instanceCount = 0;
     const material = new THREE.ShaderMaterial({
-      uniforms: { map: { value: map } },
+      uniforms: { map: { value: map }, light: this.light },
       vertexShader: VERT,
       fragmentShader: FRAG,
       transparent: true,
@@ -223,6 +228,7 @@ export class Particles {
   }
 
   update(dt: number): void {
+    this.normal.light.value = daylight();
     this.normal.update(dt);
     this.additive.update(dt);
   }
