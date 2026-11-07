@@ -2,6 +2,7 @@
 
 Run (Blender 5, no window):
   blender -b -P tools/sinterklaas.py -- <out.glb> [preview_dir]
+  blender -b -P tools/sinterklaas.py -- <out.glb> [preview_dir] --maarten     (Sint-Maarten, see below)
 
 Our own model of the traditional figure, friendly and simple, for families: an old bishop with a long white beard, in
 a red cope with gold borders over a white alb, white gloves, dark red boots, a tall red mitre with gold trim and a gold
@@ -19,6 +20,13 @@ Output: one GLB with three nodes for procedural animation, each mesh round its p
 L/R are his own sides: his left is +x. He faces +z in the GLB (Blender -Y); metres. About 9,000 triangles.
 With preview_dir it also renders him on the horse from the front three-quarter, the side and the back, his face,
 waving, and from 15 m with the game's field of view.
+
+--maarten builds Sint-Maarten instead (web/public/models/sintmaarten.glb, world/sintmaarten.ts), the children's
+gift-bringer round Aalst in November: also a bishop on horseback, as he is shown there, but told apart from Sinterklaas
+at a glance. He wears white and gold (a cream cope with gold borders, a white mitre with a gold band up its front
+instead of the cross, a gold stole), and over his left shoulder and down his back the short red soldier's cloak cut
+off on a slant: the half he kept when he shared it with a beggar at Amiens. His beard is grey and short. The game
+paints his horse a dapple grey with a green saddle cloth. Same joints, pivots and seat as Sinterklaas.
 """
 import math
 import os
@@ -29,6 +37,8 @@ import bpy
 from mathutils import Matrix, Vector
 
 argv = sys.argv[sys.argv.index("--") + 1:]
+MAARTEN = "--maarten" in argv
+argv = [a for a in argv if a != "--maarten"]
 OUT = argv[0]
 PREVIEW = argv[1] if len(argv) > 1 else ""
 HERE = os.path.dirname(os.path.abspath(__file__))
@@ -153,6 +163,10 @@ M = {name: material(name, hex_, rough, metal) for name, hex_, rough, metal in (
     ("Boot", "#5c1a14", 0.5, 0.0),
     ("Eye", "#2a211c", 0.3, 0.0),
 )}
+if MAARTEN:  # white and gold, a grey beard, brown boots; his red half cloak (Mantle) over it
+    for name, hex_, rough, metal in (("Robe", "#ece5d2", 0.7, 0.0), ("Lining", "#c9b98f", 0.8, 0.0), ("Beard", "#cfccc5", 0.95, 0.0),
+                                     ("Boot", "#4a2f1e", 0.5, 0.0), ("Mantle", "#a8191f", 0.85, 0.0), ("MantleLining", "#6e1015", 0.9, 0.0)):
+        M[name] = material(name + "M", hex_, rough, metal)
 
 body_parts = []
 head_parts = []
@@ -184,7 +198,7 @@ body_parts.append(rings_mesh("Torso", rings, M["Alb"], cap_bottom=(0, 0.02, -0.0
 for s in (1, -1):
     path = [Vector((s * 0.055, 0.02 - SY * 0.205, z)) for z in (0.5, 0.35, 0.2, 0.06)]
     path = [p + Vector((s * (0.5 - p.z) * 0.03, -0.012, 0)) for p in path]
-    body_parts.append(tube("Stole", path, 0.03, M["Robe"], 6))
+    body_parts.append(tube("Stole", path, 0.03, M["Gold" if MAARTEN else "Robe"], 6))
 
 # ======== The cope: a red cloak round the shoulders, open at the front, falling over the horse's back behind;
 # gold borders down both edges of the opening, a gold clasp at the chest; a darker red lining inside.
@@ -216,6 +230,60 @@ body_parts.append(ellipsoid("Clasp", (0.0, 0.02 - SY * 0.2 - 0.03, 0.54), (0.045
 collar = [Vector(p) + Vector((0, 0, 0.005)) for p in cope_ring(0.115, 0.64, 0.0)]
 body_parts.append(tube("Collar", collar, 0.022, M["Gold"], 8))
 
+if MAARTEN:
+    # Sint-Maarten's half cloak: a short red soldier's cloak over the cope, from the front of his left shoulder round
+    # his back to behind the right one, its lower edge cut off on a slant (long at his left front, short at the back
+    # right, where the sword went through). Just outside the cope; a darker lining inside.
+    def cope_r(z):
+        """The cope's radius at a height (its profile, COPE), for the cloak to lie on."""
+        pts = sorted((h, r) for r, h, _ in COPE)
+        if z <= pts[0][0]:
+            return pts[0][1]
+        for (h0, r0), (h1, r1) in zip(pts, pts[1:]):
+            if z <= h1:
+                return r0 + (r1 - r0) * (z - h0) / (h1 - h0)
+        return pts[-1][1]
+
+    A0, A1 = 0.3, math.pi + 0.85  # from the front of his left shoulder (0 is the front, +x his left) round the back
+    UA, VR = 30, 9
+    TOP = 0.6
+
+    def mantle_rings(out):
+        rows = []
+        for j in range(VR):
+            f = j / (VR - 1)
+            row = []
+            for k in range(UA + 1):
+                u = k / UA
+                a = A0 + (A1 - A0) * u
+                bottom = 0.12 + 0.26 * u  # the slanted cut: lower at the front left, higher at the back right
+                z = TOP - (TOP - bottom) * f
+                r = cope_r(z) + out + 0.012 * f
+                row.append((r * math.sin(a), 0.02 - SY * 1.05 * r * math.cos(a), z))
+            rows.append(row)
+        return rows
+
+    def sheet(name, rows, mat, out):
+        """Quads between the rows, each turned to face away from his middle (out) or towards it."""
+        bm = bmesh.new()
+        vs = [[bm.verts.new(p) for p in row] for row in rows]
+        for a, b in zip(vs, vs[1:]):
+            for k in range(len(a) - 1):
+                quad = [a[k], a[k + 1], b[k + 1], b[k]]
+                f = bm.faces.new(quad)
+                f.normal_update()
+                c = f.calc_center_median()
+                if (f.normal.x * c.x + f.normal.y * (c.y - 0.02) > 0) != out:
+                    f.normal_flip()
+        return from_bmesh(name, bm, mat)
+
+    body_parts.append(sheet("Mantle", mantle_rings(0.022), M["Mantle"], True))
+    body_parts.append(sheet("MantleLining", mantle_rings(0.014), M["MantleLining"], False))
+    # The cut edge, and a round gold brooch holding the cloak on the left shoulder.
+    edge = [Vector(r) for r in mantle_rings(0.018)[-1]]
+    body_parts.append(tube("MantleHem", edge, 0.008, M["MantleLining"], 6))
+    body_parts.append(ellipsoid("Brooch", (0.19, 0.02 - SY * 0.15 - 0.02, 0.57), (0.028, 0.016, 0.028), M["Gold"], 12, 6))
+
 
 # ======== The arms: the alb's sleeve, wider at the wrist, a white glove. path: shoulder, elbow, wrist.
 def arm(path, name, grip_dir):
@@ -238,7 +306,7 @@ rw = SHOULDER_R + Vector((0.0, -0.21, -0.24))
 arm_parts += arm([SHOULDER_R, SHOULDER_R + Vector((0.0, 0.0, -0.24)), rw], "ArmR", (1, 0, 0))
 # The cope's shoulder over the top of the right arm, so it turns with it.
 arm_parts.append(ellipsoid("Shoulder", SHOULDER_R + Vector((-0.012, 0.0, -0.008)), (0.078, 0.085, 0.07), M["Robe"], 14, 7))
-body_parts.append(ellipsoid("Shoulder", SHOULDER_L + Vector((0.012, 0.0, -0.008)), (0.078, 0.085, 0.07), M["Robe"], 14, 7))
+body_parts.append(ellipsoid("Shoulder", SHOULDER_L + Vector((0.012, 0.0, -0.008)), (0.078, 0.085, 0.07), M["Mantle" if MAARTEN else "Robe"], 14, 7))
 
 # ======== The crozier: a gold staff with a knop and a crook curling forward at the top.
 sx, sy_ = STAFF
@@ -267,10 +335,14 @@ for s in (1, -1):
     head_parts.append(ellipsoid("Ear", HEAD_C + Vector((s * 0.092, 0.005, 0.0)), (0.014, 0.03, 0.04), M["Skin"], 8, 5))
 # The beard: round the jaw from ear to ear, full and long, down onto the chest in a soft point.
 head_parts.append(ellipsoid("BeardJaw", HEAD_C + Vector((0, -0.03, -0.06)), (0.108, 0.09, 0.09), M["Beard"], 18, 10))
-head_parts.append(ellipsoid("BeardLong", HEAD_C + Vector((0, -0.065, -0.17)), (0.098, 0.065, 0.15), M["Beard"], 18, 10,
-                            Matrix.Rotation(math.radians(-14), 3, "X")))
-head_parts.append(ellipsoid("BeardTip", HEAD_C + Vector((0, -0.09, -0.29)), (0.05, 0.04, 0.07), M["Beard"], 12, 6,
-                            Matrix.Rotation(math.radians(-20), 3, "X")))
+if MAARTEN:  # a short, round grey beard
+    head_parts.append(ellipsoid("BeardShort", HEAD_C + Vector((0, -0.055, -0.1)), (0.095, 0.07, 0.075), M["Beard"], 18, 10,
+                                Matrix.Rotation(math.radians(-10), 3, "X")))
+else:
+    head_parts.append(ellipsoid("BeardLong", HEAD_C + Vector((0, -0.065, -0.17)), (0.098, 0.065, 0.15), M["Beard"], 18, 10,
+                                Matrix.Rotation(math.radians(-14), 3, "X")))
+    head_parts.append(ellipsoid("BeardTip", HEAD_C + Vector((0, -0.09, -0.29)), (0.05, 0.04, 0.07), M["Beard"], 12, 6,
+                                Matrix.Rotation(math.radians(-20), 3, "X")))
 head_parts.append(ellipsoid("Hair", HEAD_C + Vector((0, 0.03, -0.01)), (0.104, 0.098, 0.11), M["Beard"], 18, 10))
 
 # The mitre: a tall red cap whose front and back rise to a point; a gold band round its foot, gold down its sides,
@@ -313,8 +385,13 @@ w, d = mitre_size(fc)
 slope = math.atan2(0.112 * 0.8, MZ1 - MZ0)
 at = Vector((0, 0.005 - d - 0.006, MZ0 + (MZ1 - MZ0) * fc))
 tilt = Matrix.Rotation(-slope, 3, "X")
-head_parts.append(box("CrossV", at, (0.024, 0.012, 0.15), M["Gold"], tilt))
-head_parts.append(box("CrossH", at + tilt @ Vector((0, 0, 0.025)), (0.1, 0.012, 0.024), M["Gold"], tilt))
+if MAARTEN:  # no cross: a gold band up the middle of the front, from the foot band to near the point
+    fb = 0.36
+    w, d = mitre_size(fb)
+    head_parts.append(box("MitreBand", Vector((0, 0.005 - d - 0.004, MZ0 + (MZ1 - MZ0) * fb)), (0.034, 0.01, 0.31), M["Gold"], tilt))
+else:
+    head_parts.append(box("CrossV", at, (0.024, 0.012, 0.15), M["Gold"], tilt))
+    head_parts.append(box("CrossH", at + tilt @ Vector((0, 0, 0.025)), (0.1, 0.012, 0.024), M["Gold"], tilt))
 
 # ======== Assemble: each part's mesh round its pivot, the head and the right arm parented to the body.
 body = join(body_parts, "Body")
@@ -333,7 +410,7 @@ for name, o in nodes.items():
     o.data.calc_loop_triangles()
     tris += len(o.data.loop_triangles)
     print(f"{name}: {len(o.data.loop_triangles)} triangles")
-print(f"sinterklaas: {tris} triangles")
+print(f"{'sintmaarten' if MAARTEN else 'sinterklaas'}: {tris} triangles")
 
 bpy.ops.object.select_all(action="DESELECT")
 for o in nodes.values():
@@ -353,6 +430,8 @@ if PREVIEW:
     scene.world = world
     bpy.ops.import_scene.gltf(filepath=HORSE)
     white = {"Coat": "#ece8e1", "Dark": "#cfcac2", "Marking": "#ece8e1", "Pad": "#a3161b", "Leather": "#3b2417"}
+    if MAARTEN:  # as world/sintmaarten.ts paints it: a dapple grey, a green saddle cloth
+        white = {"Coat": "#a9a8a2", "Dark": "#5b5955", "Marking": "#e4e1da", "Pad": "#1f5a3b", "Leather": "#3b2417"}
     for m in bpy.data.materials:
         if m.name in white and m.node_tree:
             c = [int(white[m.name][i:i + 2], 16) / 255 for i in (1, 3, 5)]
