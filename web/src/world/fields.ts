@@ -1,5 +1,6 @@
 import * as THREE from 'three';
 import type { Prism } from './houseData';
+import { groundNoise } from './groundNoise';
 
 /**
  * Rows in the fields, as they are at the end of October here, by the crop the farmers declared on
@@ -30,6 +31,8 @@ const BEET = 5;
 const LEEK = 6;
 const TAGETES = 7;
 const COVER = 8;
+/** The woods' floor: no rows, fallen leaves. */
+const FOREST = 9;
 
 /**
  * Each declared crop's kind of row, and where it has them its own number (a nursery's row spacing,
@@ -84,7 +87,7 @@ export function fieldRows(g: THREE.BufferGeometry, p: Prism): void {
   let hue = Math.abs(Math.sin(h * 37.3) * 1000) % 1;
   let kind = NONE;
   const crop = p.c ? CROPS[p.c] : undefined;
-  if (p.m === 'forest') kind = NONE;
+  if (p.m === 'forest') kind = FOREST;
   else if (crop) {
     kind = crop[0];
     own = crop[1] ?? own;
@@ -108,15 +111,17 @@ export const rowDetail = { value: 1 };
 export function patchFields(material: THREE.MeshStandardMaterial): void {
   if (material.userData.rows) return;
   material.userData.rows = true;
+  const noise = { value: groundNoise() }; // the woods' floor (world/groundNoise.ts)
   const before = material.onBeforeCompile;
   material.onBeforeCompile = (shader, renderer) => {
     before.call(material, shader, renderer);
     shader.uniforms.rowDetail = rowDetail;
+    shader.uniforms.fieldNoise = noise;
     shader.vertexShader = shader.vertexShader
       .replace('#include <common>', '#include <common>\nattribute vec4 row;\nvarying vec4 vRow;\nvarying vec2 vFieldXZ;')
       .replace('#include <begin_vertex>', '#include <begin_vertex>\nvRow = row;\nvFieldXZ = (modelMatrix * vec4(transformed, 1.0)).xz;');
     shader.fragmentShader = shader.fragmentShader
-      .replace('#include <common>', '#include <common>\nuniform float rowDetail;\nvarying vec4 vRow;\nvarying vec2 vFieldXZ;')
+      .replace('#include <common>', '#include <common>\nuniform float rowDetail;\nuniform sampler2D fieldNoise;\nvarying vec4 vRow;\nvarying vec2 vFieldXZ;')
       .replace(
         '#include <color_fragment>',
         `#include <color_fragment>
@@ -129,7 +134,24 @@ export function patchFields(material: THREE.MeshStandardMaterial): void {
         // The texture without the field's tint, to colour soil and plants from.
         vec3 texel = diffuseColor.rgb / max(vColor.rgb, vec3(0.05));
         float texelLum = dot(texel, vec3(0.3, 0.55, 0.15));
-        if (fieldKind > 0.5 && rowDetail > 0.0) {
+        if (fieldKind > 8.5) {
+          // The woods' floor at the start of November: fallen leaves, rust, ochre and brown, in drifts of a few
+          // metres, darker where they lie damp and old, with patches of moss and ivy; near by, single leaves.
+          float fA = texture2D(fieldNoise, vFieldXZ / 7.0).r;
+          float fB = texture2D(fieldNoise, vFieldXZ / 1.9 + 0.31).r;
+          float fC = texture2D(fieldNoise, vFieldXZ / 26.0 + 0.57).r;
+          vec3 litter = mix(vec3(0.15, 0.075, 0.03), vec3(0.22, 0.14, 0.045), fB);
+          litter = mix(litter, vec3(0.075, 0.05, 0.03), smoothstep(0.6, 0.9, fA) * 0.7);
+          float mossy = smoothstep(0.6, 0.85, fC * 0.6 + fA * 0.4);
+          vec3 c = mix(litter, vec3(0.045, 0.075, 0.02) * (0.8 + 0.4 * fB), mossy * 0.85);
+          // Near by, leaf-sized blotches, lighter and darker (the noise tile again, a third of a metre across).
+          vec2 leafAt = vFieldXZ / 0.33;
+          float leafNear = clamp((0.6 - max(fwidth(leafAt.x), fwidth(leafAt.y))) * 3.0, 0.0, 1.0) * rowDetail;
+          float leafPick = texture2D(fieldNoise, leafAt + 0.13).r;
+          c *= mix(1.0, 0.65 + 0.7 * leafPick, leafNear * (1.0 - mossy * 0.6));
+          diffuseColor.rgb = c * (0.8 + 0.4 * clamp(texelLum / 0.13, 0.0, 1.5));
+          fieldPlant = 1.0;
+        } else if (fieldKind > 0.5 && rowDetail > 0.0) {
           vec2 dir = normalize(vRow.xy + vec2(1e-4, 0.0));
           vec2 perp = vec2(-dir.y, dir.x);
           float across = dot(vFieldXZ, perp);
