@@ -19,10 +19,14 @@
 //   these rates.
 // - a flood slowing the site: every try is a scrypt (16 MB, tens of ms) on Node's four worker threads. At most
 //   UNLOCK_TURNS run at once and UNLOCK_QUEUE wait (server/auth.mjs Turns, as the account passwords have their own);
-//   more hear "busy" (503). In all, at most UNLOCK_ALL tries an hour reach a hash, from everyone together. That cap can
-//   keep an owner out for the rest of that hour during a flood from many addresses (Yoshi chose it, 7 Nov 2026); the
-//   admin is never kept out. Wrong tries are counted in memory and written to the store at most once in FLUSH_MS, so
-//   a flood is no stream of writes either.
+//   more hear "busy" (503). Each home has a budget of UNLOCK_PER_HOME checks an hour from everyone together (made-up
+//   ids share one budget of their own, so they never use up a real home's). Past it nobody is refused for it: the tries
+//   go one at a time through a slow lane (SLOW_QUEUE waiting, each after CAP_WAIT_MS), so a flood from many addresses
+//   costs about one hash a second and an owner still gets through. A session that holds the home's grant skips the
+//   slow lane; the admin needs no code at all. Wrong tries are counted in memory and written to the store at most once
+//   in FLUSH_MS, so a flood is no stream of writes either.
+// - a code changed while a try waits: after the check the record is read again, and the try opens the home only if it
+//   is still live with the very hash that was checked (a new code, a revoked one or a home switched off meanwhile: no).
 // - telling homes apart: unknown, switched off, expired or without a code: the same 403 and the same work (a scrypt
 //   against a dummy hash), so neither the answer nor the time says which ids exist.
 // - cross-site posts: same-origin JSON bodies only (server.mjs).
@@ -38,7 +42,9 @@ const CODE_LENGTH = 10;
 const META = 'homes';
 const UNLOCK_TURNS = 2; // code checks at once
 const UNLOCK_QUEUE = 8; // and waiting
-const UNLOCK_ALL = 300; // code checks in an hour, everyone together
+const UNLOCK_PER_HOME = 300; // code checks of one home in an hour, everyone together, before the slow lane
+const SLOW_QUEUE = 4; // tries waiting in the slow lane (one runs)
+const CAP_WAIT_MS = 1000; // the pause before each check in the slow lane
 const FLUSH_MS = 60_000; // wrong tries reach the store at most this often
 const BUSY = { error: 'The server is busy. Try again in a moment.', code: 'busy' };
 const SLOW = { error: 'Too many tries, wait a while', code: 'home_slow' };
@@ -46,6 +52,9 @@ const GRANT_MS = 8 * 3600_000; // how long a typed code lets a player in without
 /** The pack is private data: no cache keeps it. (BREACH needs a secret reflected next to attacker text; nothing of the request is in the answer.) */
 const NO_CACHE = { 'Cache-Control': 'no-store, private, no-transform' };
 const BLANK = { enabled: false, hash: null, setAt: null, expiresAt: null, unlocks: 0, fails: 0, lastUnlockAt: null, lastFailAt: null };
+
+/** Does this home's record open with a code now: switched on, with a code, not past its end? */
+const isLive = (h) => !!(h?.enabled && h.hash && (!h.expiresAt || Date.now() <= Date.parse(`${h.expiresAt}T23:59:59Z`)));
 
 /** A code as typed: capitals and digits only (dashes and spaces are ignored), at most 16. */
 export const normalizeCode = (v) => (typeof v === 'string' ? v : '').toUpperCase().replace(/[^A-Z0-9]/g, '').slice(0, 16);
@@ -60,13 +69,14 @@ export const showCode = (c) => `${c.slice(0, 5)}-${c.slice(5)}`;
 
 export class Homes {
   /** `list`: the registry (shared/homes.mjs); `json`; `readJson`; `clientKey`. */
-  constructor(store, { list, json, readJson, clientKey, pack = () => null, flushMs = FLUSH_MS }) {
-    Object.assign(this, { store, list, json, readJson, clientKey, pack, flushMs });
+  constructor(store, { list, json, readJson, clientKey, pack = () => null, flushMs = FLUSH_MS, capWaitMs = CAP_WAIT_MS }) {
+    Object.assign(this, { store, list, json, readJson, clientKey, pack, flushMs, capWaitMs });
     this.onGrant = null; // (key, id) => void: the game server tells that page the state of the inside (Game.homeGranted)
     this.perSender = new Window(10 * 60_000); // attempts at one home from one sender
     this.perSenderAll = new Window(3600_000); // all homes from one sender
-    this.checks = new Attempts(3600_000); // code checks that reached a hash, everyone together ('all')
+    this.checks = new Attempts(3600_000); // code checks that reached a hash, per home id ('-' for made-up ids), everyone together
     this.turns = new Turns(UNLOCK_TURNS, UNLOCK_QUEUE);
+    this.slowLanes = new Map(); // budget ('-' or a home id) -> Turns(1, SLOW_QUEUE): past that budget (at most four)
     this.fails = new Map(); // home id -> { n, at }: wrong tries not in the store yet (see flush)
     this.flushTimer = null;
     this.flushedAt = 0;
@@ -109,6 +119,14 @@ export class Homes {
     if (this.flushTimer) return;
     this.flushTimer = setTimeout(() => void this.flush().catch((e) => console.error('home counters not written', String(e))), Math.max(0, this.flushedAt + this.flushMs - Date.now()));
     this.flushTimer.unref?.();
+  }
+
+  /** A budget is used up: said in the log at most once an hour for each (the home's id or '-', no address). */
+  capped(budget, now) {
+    this.cappedAt ??= new Map();
+    if (now - (this.cappedAt.get(budget) ?? 0) <= 3600_000) return;
+    this.cappedAt.set(budget, now);
+    console.log(JSON.stringify({ event: 'home_unlock_capped', id: budget, max: UNLOCK_PER_HOME }));
   }
 
   /** The wrong tries counted since the last write, into the store. */
@@ -205,29 +223,36 @@ export class Homes {
     if (!this.perSenderAll.hit(sender, 30) || !this.perSender.hit(`${sender}|${id}`, 8)) return this.json(res, 429, SLOW);
     const home = findHome(id, this.list);
     const rec = home ? (await this.load())[home.id] : null;
-    const live = !!(rec?.enabled && rec.hash && (!rec.expiresAt || Date.now() <= Date.parse(`${rec.expiresAt}T23:59:59Z`)));
+    const hash = isLive(rec) ? rec.hash : null; // the hash this try is checked against
     const look = !!(admin && home && b.code === undefined); // the admin needs no code
     let ok = look;
     if (!look) {
-      // Everyone together: at most UNLOCK_ALL checks an hour, then a few at a time (a refusal for "busy" is not counted).
+      const budget = home ? home.id : '-'; // made-up ids never use up a real home's budget
       const now = Date.now();
-      if (this.checks.count('all', now) >= UNLOCK_ALL) {
-        if (now - (this.cappedAt ?? 0) > 3600_000) {
-          this.cappedAt = now;
-          console.log(JSON.stringify({ event: 'home_unlock_capped', max: UNLOCK_ALL })); // at most once an hour, no address
-        }
-        return this.json(res, 429, SLOW);
-      }
-      this.checks.add('all', now);
-      const checked = await this.turns.run(async () => {
+      const over = this.checks.count(budget, now) >= UNLOCK_PER_HOME && !(home && this.granted(user, home.id));
+      const check = async () => {
         this.dummy ??= await hashPassword('no such home');
-        return verifyHash(normalizeCode(b.code), live ? rec.hash : this.dummy);
-      });
-      if (!checked) {
-        this.checks.undo('all', now);
-        return this.json(res, 503, BUSY);
+        return verifyHash(normalizeCode(b.code), hash ?? this.dummy);
+      };
+      let checked;
+      if (over) {
+        // Past the budget nobody is refused for it: one at a time, each after a pause (about one hash a second).
+        this.capped(budget, now);
+        if (!this.slowLanes.has(budget)) this.slowLanes.set(budget, new Turns(1, SLOW_QUEUE));
+        const slow = await this.slowLanes.get(budget).run(async () => {
+          await new Promise((r) => setTimeout(r, this.capWaitMs));
+          return this.turns.run(check);
+        });
+        checked = slow?.value ?? null;
+      } else {
+        this.checks.add(budget, now);
+        checked = await this.turns.run(check);
+        if (!checked) this.checks.undo(budget, now); // a refusal for "busy" is not counted
       }
-      ok = live && checked.value;
+      if (!checked) return this.json(res, 503, BUSY);
+      // The record again: the admin may have made a new code, revoked it or switched the home off while this try waited.
+      const cur = home ? this.state?.[home.id] : null;
+      ok = !!hash && checked.value && isLive(cur) && cur.hash === hash;
     }
     if (!ok) {
       if (home) this.noteFail(home.id);

@@ -192,20 +192,65 @@ test('a flood of tries from many senders: two checks at once, a few wait, the re
   assert.equal(statuses.filter((s) => s === 503).length, 10, 'the rest are refused at once');
   assert.equal(answers.find((a) => a.res.status === 503).res.data.code, 'busy');
   assert.equal(homes.turns.active, 0);
-  assert.equal(homes.checks.count('all', Date.now()), 10, 'a "busy" refusal is not counted against everyone');
+  assert.equal(homes.checks.count(H1, Date.now()), 10, 'a "busy" refusal is not counted against the home\'s budget');
   await homes.flush();
 });
 
-test('at most 300 checks an hour from everyone together; the admin still gets in without a code', async () => {
+test('each home has a budget of its own: tries at made-up ids never use up a real home\'s', async () => {
   const { call, homes } = setup();
   const code = (await call('POST', `/api/admin/homes/${H1}/code`, {}, { admin: true })).res.data.code;
   const now = Date.now();
-  for (let i = 0; i < 300; i++) homes.checks.add('all', now); // 300 tries by a crowd, each from an address of its own
-  const capped = (await call('POST', '/api/home/unlock', { id: H1, code }, { who: 'late' })).res;
-  assert.deepEqual([capped.status, capped.data.code], [429, 'home_slow'], 'refused before any hashing, even the right code');
-  assert.equal((await call('POST', '/api/home/unlock', { id: H1 }, { admin: true, who: 'root' })).res.status, 200);
-  homes.checks.map.clear(); // an hour later
-  assert.equal((await call('POST', '/api/home/unlock', { id: H1, code }, { who: 'late' })).res.status, 200);
+  for (let i = 0; i < 300; i++) homes.checks.add('-', now); // 300 tries at made-up ids by a crowd
+  for (let i = 0; i < 300; i++) homes.checks.add(H2, now); // and 300 at another home
+  assert.equal((await call('POST', '/api/home/unlock', { id: H1, code }, { who: 'owner' })).res.status, 200);
+  assert.equal(homes.slowLanes.has(H1), false, 'at once: no slow lane for a home whose budget is not used up');
+  assert.equal(homes.checks.count(H1, Date.now()), 1);
+});
+
+test('past a home\'s budget nobody is refused for it: one at a time through a slow lane, and the owner gets in', async () => {
+  const { call, homes } = setup();
+  homes.capWaitMs = 30;
+  const code = (await call('POST', `/api/admin/homes/${H1}/code`, {}, { admin: true })).res.data.code;
+  const now = Date.now();
+  for (let i = 0; i < 300; i++) homes.checks.add(H1, now); // the budget used up by a crowd
+  const flood = Array.from({ length: 10 }, (_, i) => call('POST', '/api/home/unlock', { id: H1, code: 'BBBBB-BBBBB' }, { who: `crowd${i}` }));
+  const statuses = (await Promise.all(flood)).map((a) => a.res.status);
+  assert.equal(statuses.filter((s) => s === 403).length, 5, 'one running and four waiting in the slow lane are checked');
+  assert.equal(statuses.filter((s) => s === 503).length, 5, 'the rest hear "busy", not "too many" for an hour');
+  const lane = homes.slowLanes.get(H1);
+  let laned = 0;
+  const run = lane.run.bind(lane);
+  lane.run = (fn) => (laned++, run(fn));
+  const t = Date.now();
+  assert.equal((await call('POST', '/api/home/unlock', { id: H1, code }, { who: 'owner', user: 'p1' })).res.status, 200, 'the owner still gets in');
+  assert.ok(Date.now() - t >= 25 && laned === 1, 'through the slow lane, after its pause');
+  assert.equal((await call('POST', '/api/home/unlock', { id: H1, code }, { who: 'owner2', user: 'p1' })).res.status, 200);
+  assert.equal(laned, 1, 'a session that holds the grant skips the slow lane');
+  assert.equal((await call('POST', '/api/home/unlock', { id: H1 }, { admin: true, who: 'root' })).res.status, 200, 'the admin needs no code');
+  await homes.flush();
+});
+
+test('a code changed, revoked or switched off while a try waits for its check: that try opens nothing', async () => {
+  for (const change of ['new code', 'revoked', 'switched off']) {
+    const { call, homes } = setup();
+    const code = (await call('POST', `/api/admin/homes/${H1}/code`, {}, { admin: true })).res.data.code;
+    const run = homes.turns.run.bind(homes.turns);
+    let once = true;
+    homes.turns.run = async (fn) => {
+      const r = await run(fn);
+      if (once) {
+        once = false; // the admin acts after the hash was checked, before the answer
+        if (change === 'new code') await call('POST', `/api/admin/homes/${H1}/code`, {}, { admin: true });
+        if (change === 'revoked') await call('DELETE', `/api/admin/homes/${H1}/code`, undefined, { admin: true });
+        if (change === 'switched off') await call('POST', `/api/admin/homes/${H1}`, { enabled: false }, { admin: true });
+      }
+      return r;
+    };
+    const res = (await call('POST', '/api/home/unlock', { id: H1, code }, { user: 'p1', who: 'w' })).res;
+    assert.deepEqual([res.status, res.data.code, res.data.inside], [403, 'home_denied', undefined], change);
+    assert.equal(homes.granted('p1', H1), false, `${change}: no grant`);
+    await homes.flush();
+  }
 });
 
 test('wrong tries are counted in memory and written to the store at most once a minute', async () => {
