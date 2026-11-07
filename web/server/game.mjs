@@ -43,7 +43,7 @@ import { noShoot } from '../shared/zones.mjs';
 import { boxesOverlap, boxPoints, clearOfPortals, makeIndoors, makeSolids } from '../shared/parking.mjs';
 import { bikeFields, bruteEntry, carFields, horseFields, playerFields, PROTO, TICK_MS } from '../shared/wire.mjs';
 import { houseAreas, makeNav, MAX_ADMIN_WAVE } from '../shared/zombies.mjs';
-import { cycleTime, DEFAULT_CHOICE, isChoice, MoodCycle, newCycle, skipCycle, SPEEDS, withSpeed } from '../shared/moods.mjs';
+import { cycleTime, DEFAULT_CHOICE, isChoice, newCycle, runOf, seasonCycle, skipCycle, SPEEDS, winterAt, withSpeed } from '../shared/moods.mjs';
 import { arenaEdge, arenaHome, arenaPrisms, ARENAS, portalOf } from '../shared/arenas.mjs';
 import { churchPrisms, makeChurch } from '../shared/church.mjs';
 import { DROP, dropFrom, HOME_DROP } from '../shared/parachute.mjs';
@@ -304,9 +304,10 @@ export class Game {
     this.doorDir = Object.create(null); // door id -> 1 or -1: the way a double-action door swings
     this.rules = { ...RULES };
     this.mood = DEFAULT_CHOICE; // the weather and time of day for everyone (shared/moods.mjs), set by the admin
-    // Its cycle when it is 'auto': every page works out the same weather from this and the server's clock (MoodCycle).
-    this.moodCycle = newCycle(randomInt(0, 2 ** 32), Date.now());
-    this.moodRun = new MoodCycle(this.moodCycle.seed, 0);
+    // Its cycle when it is 'auto': every page works out the same weather from this and the server's clock (MoodCycle),
+    // with snow in it only in winter by the server's Belgian date (moodSeason).
+    this.moodCycle = newCycle(randomInt(0, 2 ** 32), Date.now(), winterAt(Date.now()));
+    this.moodRun = runOf(this.moodCycle);
     this.broken = new Set(); // window pane numbers that are broken
     this.scores = new Map(); // username -> { kills, deaths, points }, kept over reconnects until the next round
     this.roundOver = null; // { winner, until } during the break after a round
@@ -344,6 +345,7 @@ export class Game {
     this.horseAt = this.horses.map(() => 0);
     this.football = new Football((x, z) => HOUSE.ground + TERRAIN.height(x, z)); // the footballs (server/football.mjs)
     setInterval(() => this.tick(), TICK_MS).unref();
+    setInterval(() => this.moodSeason(Date.now()), 60_000).unref(); // winter begins or ends: snow on Auto or not
     // Sessions can end while connected (logout, password reset, user deleted,
     // kicked, expired): close those connections within a second.
     setInterval(() => {
@@ -1388,6 +1390,19 @@ export class Game {
     if (speed === this.moodCycle.speed) return;
     this.moodCycle = withSpeed(this.moodCycle, now, speed);
     this.broadcast({ t: 'mood', mood: this.mood, by, op: 'speed', ...this.moodView(now) });
+  }
+
+  /**
+   * Winter began or ended (December to February by the server's Belgian date): a new cycle, with snow on Auto or
+   * without, starting in the mood shown so nothing jumps; while a change is under way or the ground is wet or white
+   * it waits for the next minute. Told to everyone as the server's own change (no name).
+   */
+  moodSeason(now) {
+    const next = seasonCycle(this.moodCycle, this.moodRun, now, winterAt(now), randomInt(0, 2 ** 32));
+    if (!next) return;
+    this.moodCycle = next;
+    this.moodRun = runOf(next);
+    this.broadcast({ t: 'mood', mood: this.mood, op: 'season', ...this.moodView(now) });
   }
 
   /** The last admin left: the cycle back to its own pace (a fast cycle nobody can slow down again would stay). */

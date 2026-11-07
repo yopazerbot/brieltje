@@ -1,7 +1,9 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import { Game } from './game.mjs';
-import { BLEND_MS, CHOICES, cycleTime, DEFAULT_CHOICE, MoodCycle, MOODS, SPEEDS } from '../shared/moods.mjs';
+import {
+  BLEND_MS, canFollow, CHOICES, cycleTime, DEFAULT_CHOICE, isCycle, MoodCycle, MOODS, newCycle, runOf, SNOW_BUILD_MS, SPEEDS, winterAt,
+} from '../shared/moods.mjs';
 
 // The weather and time of day for everyone (shared/moods.mjs): only the admin sets it, only from the fixed list,
 // at most once a second, and everyone who joins later is told it, with the cycle that 'auto' follows.
@@ -29,6 +31,9 @@ test('the choice starts as auto, with a cycle of its own', () => {
   assert.ok(Math.abs(game.moodCycle.at - Date.now()) < 5000);
   assert.equal(game.moodCycle.tau, 0);
   assert.equal(game.moodCycle.speed, 1);
+  assert.equal(game.moodCycle.winter, winterAt(Date.now()), "snow on Auto by the server's date");
+  assert.equal(game.moodCycle.first, 'sunny');
+  assert.ok(isCycle(game.moodCycle));
 });
 
 test('a player who is not the admin cannot set the mood (forged admin message)', () => {
@@ -62,12 +67,20 @@ test('the admin sets a mood or auto from the list; everyone is told, with who se
   send('root', admin, { t: 'mood', mood: 'auto' });
   assert.equal(game.mood, 'auto');
   assert.equal(told.length, 2);
+  // Dusk and snow too, snow whatever the date (by hand it is always there).
+  for (const mood of ['dusk', 'snow']) {
+    admin.nextMood = 0;
+    send('root', admin, { t: 'mood', mood });
+    assert.equal(game.mood, mood);
+    assert.equal(told.at(-1).mood, mood);
+  }
+  assert.equal(told.length, 4);
 });
 
 test('anything not on the list is refused and changes nothing', () => {
   const { game, told, player, send } = setup();
   const admin = player('root', 'admin');
-  const bad = ['', 'Sunny', 'RAIN', 'Auto', 'snow', 'dusk', 'night ', 'toString', '__proto__', 'constructor', null, 1, true, {}, [], ['rain'], { toString: 'rain' }, 'x'.repeat(5000)];
+  const bad = ['', 'Sunny', 'RAIN', 'Auto', 'Snow', 'DUSK', 'dusk ', ' snow', 'winter', 'fog', 'night ', 'toString', '__proto__', 'constructor', null, 1, true, {}, [], ['rain'], { toString: 'rain' }, 'x'.repeat(5000)];
   for (const mood of bad) {
     admin.nextMood = 0;
     admin.msgs = admin.others = 0;
@@ -184,35 +197,130 @@ test('the pace: only 1, 10 or 60, only on Auto, back to 1 on a fixed mood and wh
   assert.equal(game.moodCycle.speed, 1, 'the last admin left');
 });
 
-test('the cycle: slow, the same from the same seed, never the same mood twice, never sunny straight to night', () => {
-  const seen = { sunny: 0, overcast: 0, rain: 0, night: 0 };
-  for (let seed = 1; seed < 40; seed++) {
-    const a = new MoodCycle(seed, 1000);
-    const b = new MoodCycle(seed, 1000);
-    let last = a.at(1000);
-    assert.equal(last.mood, 'sunny', 'it starts sunny');
-    let from = 1000;
-    for (let t = 1000; t < 1000 + 3 * 24 * 3600_000; t += 30_000) {
-      const s = a.at(t);
-      assert.deepEqual(s, b.at(t), 'the same seed gives the same weather');
-      assert.ok(s.blend >= 0 && s.blend <= 1 && s.wet >= 0 && s.wet <= 1);
-      assert.notEqual(s.mood, s.next);
-      assert.ok(!(s.mood === 'sunny' && s.next === 'night') && !(s.mood === 'night' && s.next === 'sunny'));
-      if (s.blend > 0) assert.ok(s.until - t <= BLEND_MS, 'the blend is the last part of a mood');
-      if (s.mood !== last.mood) {
-        const minutes = (t - from) / 60_000;
-        const [lo, hi] = last.mood === 'night' ? [10, 20] : [20, 40];
-        assert.ok(minutes >= lo - 1 && minutes <= hi + 1, `${last.mood} held ${minutes} minutes`);
-        seen[s.mood]++;
-        from = t;
-      }
-      last = s;
+/** The minutes each mood holds (shared/moods.mjs MINUTES). */
+const HOLDS = { sunny: [20, 40], overcast: [20, 40], rain: [20, 40], dusk: [10, 16], night: [10, 20], snow: [15, 30] };
+
+/** Walk a cycle for `days` in steps of `step` ms: check the rules on the way, count the moods that came. */
+function walk(seed, winter, days = 3, step = 30_000) {
+  const a = new MoodCycle(seed, 1000, { winter });
+  const b = new MoodCycle(seed, 1000, { winter });
+  const seen = Object.fromEntries(MOODS.map((m) => [m, 0]));
+  let last = a.at(1000);
+  assert.equal(last.mood, 'sunny', 'it starts sunny');
+  let from = 1000;
+  for (let t = 1000; t < 1000 + days * 24 * 3600_000; t += step) {
+    const s = a.at(t);
+    assert.deepEqual(s, b.at(t), 'the same seed gives the same weather');
+    assert.ok(s.blend >= 0 && s.blend <= 1 && s.wet >= 0 && s.wet <= 1 && s.snow >= 0 && s.snow <= 1 && s.progress >= 0 && s.progress <= 1);
+    assert.notEqual(s.mood, s.next);
+    assert.ok(canFollow(s.mood, winter).includes(s.next), `${s.mood} to ${s.next}`);
+    if (!winter) assert.ok(s.mood !== 'snow' && s.next !== 'snow' && s.snow === 0, 'no snow out of winter');
+    if (s.blend > 0) assert.ok(s.until - t <= BLEND_MS, 'the blend is the last part of a mood');
+    // The snow lying changes slowly: never more than a step's worth of building up.
+    assert.ok(Math.abs(s.snow - last.snow) <= (step / SNOW_BUILD_MS) * 1.01 + 1e-9, `snow ${last.snow} to ${s.snow}`);
+    if (s.mood !== last.mood) {
+      const minutes = (t - from) / 60_000;
+      const [lo, hi] = HOLDS[last.mood];
+      assert.ok(minutes >= lo - 1 && minutes <= hi + 1, `${last.mood} held ${minutes} minutes`);
+      assert.equal(s.mood, last.next);
+      seen[s.mood]++;
+      from = t;
     }
+    last = s;
   }
-  assert.ok(seen.sunny > seen.overcast && seen.overcast > seen.rain && seen.rain > seen.night, JSON.stringify(seen));
+  return seen;
+}
+
+test('the cycle: slow, the same from the same seed, never the same mood twice, dusk always before the night', () => {
+  // The rules themselves: never noon straight to night, the night only after dusk and dusk only into the night,
+  // the morning after the night never sunny or dusk, snow never straight out of the sun and only in winter.
+  for (const winter of [false, true]) {
+    for (const m of MOODS) {
+      const next = canFollow(m, winter);
+      assert.ok(next.length > 0 && !next.includes(m));
+      if (m !== 'dusk') assert.ok(!next.includes('night'), `${m} straight to night`);
+    }
+    assert.deepEqual(canFollow('dusk', winter), ['night']);
+    assert.ok(!canFollow('night', winter).includes('sunny') && !canFollow('night', winter).includes('dusk'));
+    assert.ok(!canFollow('sunny', winter).includes('snow'));
+    assert.equal(MOODS.some((m) => canFollow(m, winter).includes('snow')), winter);
+  }
+  const seen = Object.fromEntries(MOODS.map((m) => [m, 0]));
+  for (let seed = 1; seed < 40; seed++) for (const [m, n] of Object.entries(walk(seed, false))) seen[m] += n;
+  assert.ok(seen.sunny > seen.overcast && seen.overcast > seen.rain && seen.rain > seen.dusk, JSON.stringify(seen));
+  assert.ok(Math.abs(seen.dusk - seen.night) <= 39, `every night after a dusk: ${JSON.stringify(seen)}`);
+  assert.equal(seen.snow, 0);
   // Read back: it starts again and agrees.
   const c = new MoodCycle(7, 0);
   const later = c.at(10 * 3600_000);
   assert.deepEqual(c.at(5 * 3600_000), new MoodCycle(7, 0).at(5 * 3600_000));
   assert.deepEqual(c.at(10 * 3600_000), later);
+});
+
+test('snow on Auto: only in winter, and seldom; it builds up slowly while it falls and melts slowly after', () => {
+  const seen = Object.fromEntries(MOODS.map((m) => [m, 0]));
+  for (let seed = 1; seed < 40; seed++) for (const [m, n] of Object.entries(walk(seed, true))) seen[m] += n;
+  assert.ok(seen.snow > 0, 'it snows now and then in winter');
+  assert.ok(seen.snow < seen.rain && seen.snow < seen.dusk, `not too often: ${JSON.stringify(seen)}`);
+  // Find a snowfall and follow the snow lying through it.
+  let found = false;
+  for (let seed = 1; seed < 200 && !found; seed++) {
+    const c = new MoodCycle(seed, 0, { winter: true });
+    for (let t = 0; t < 3 * 24 * 3600_000; t += 60_000) {
+      const s = c.at(t);
+      if (s.mood !== 'snow' || s.progress > 0.01) continue;
+      found = true;
+      const start = s.snow;
+      assert.ok(start > 0 && start < 0.6, `it began with the blend, a little: ${start}`);
+      const mid = c.at(s.until - BLEND_MS);
+      assert.ok(mid.snow > 0.95, `white before it stops: ${mid.snow}`);
+      const after = c.at(s.until + 5 * 60_000);
+      assert.ok(after.mood !== 'snow' && after.snow > 0.4 && after.snow < mid.snow, `melting slowly: ${after.snow}`);
+      const gone = c.at(s.until + 60 * 60_000);
+      assert.ok(gone.snow < 0.01 || gone.mood === 'snow' || gone.next === 'snow', `gone an hour later: ${gone.snow}`);
+      break;
+    }
+  }
+  assert.ok(found);
+});
+
+test('winter by the Belgian date: December to February, from midnight in Brussels', () => {
+  assert.equal(winterAt(Date.UTC(2026, 10, 30, 22, 59)), false, '30 November, 23:59 in Brussels');
+  assert.equal(winterAt(Date.UTC(2026, 10, 30, 23, 1)), true, '1 December, 00:01 in Brussels');
+  assert.equal(winterAt(Date.UTC(2027, 0, 15, 12)), true);
+  assert.equal(winterAt(Date.UTC(2027, 1, 28, 22, 59)), true, '28 February, 23:59 in Brussels');
+  assert.equal(winterAt(Date.UTC(2027, 1, 28, 23, 1)), false, '1 March, 00:01 in Brussels');
+  assert.equal(winterAt(Date.UTC(2026, 6, 1)), false);
+});
+
+test("the server's cycle follows its date: the season turns into a new cycle from the mood shown, told to everyone", () => {
+  const { game, told } = setup();
+  const november = Date.UTC(2026, 10, 7, 12);
+  const december = Date.UTC(2026, 11, 2, 12);
+  game.moodCycle = newCycle(12345, november - 60_000, false);
+  game.moodRun = runOf(game.moodCycle);
+  // Still November: nothing changes.
+  game.moodSeason(november);
+  assert.equal(told.length, 0);
+  // December: snow may come now. A new cycle, going on in the mood shown.
+  game.moodCycle = { ...game.moodCycle, at: december - 60_000 };
+  const shown = game.moodRun.at(cycleTime(game.moodCycle, december));
+  assert.equal(shown.blend, 0);
+  game.moodSeason(december);
+  assert.equal(told.length, 1);
+  assert.equal(told[0].op, 'season');
+  assert.equal(told[0].by, undefined, 'the server, not a player');
+  assert.equal(game.moodCycle.winter, true);
+  assert.equal(game.moodCycle.first, shown.mood, 'it goes on in the mood shown');
+  assert.equal(told[0].cycleNow.mood, shown.mood);
+  assert.ok(isCycle(told[0].cycle));
+  // Again: the season is the same now.
+  game.moodSeason(december + 60_000);
+  assert.equal(told.length, 1);
+  // While a change is under way it waits.
+  const s = runOf(game.moodCycle).at(0);
+  game.moodCycle = { ...game.moodCycle, winter: false, tau: s.until - BLEND_MS / 2, at: december };
+  game.moodRun = runOf(game.moodCycle);
+  game.moodSeason(december);
+  assert.equal(told.length, 1, 'not in the middle of a blend');
 });

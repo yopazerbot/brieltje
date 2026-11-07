@@ -1,4 +1,5 @@
 import * as THREE from 'three';
+import { snowOn } from './snowCover';
 import { halfSize, loadFile } from './textureFiles';
 
 /**
@@ -206,6 +207,10 @@ function baked(original: THREE.MeshStandardMaterial, light: THREE.Texture, wear:
     shader.uniforms.bakeWear = { value: wear };
     shader.uniforms.bakeNoise = { value: noiseTexture() };
     shader.uniforms.bakeMood = bakeMood;
+    // Snow on what faces up and is open to the sky (world/snowCover.ts): the bake's sky light against the open sky's,
+    // so none under eaves, in porches or in the rooms. Low thresholds: the sky's light holds the photo's sun too, and
+    // an open roof in a neighbour's noon shadow gets far less of it.
+    snowOn(shader, 'smoothstep(0.06, 0.2, dot(bakeTexel.rgb * bakeTexel.rgb * lightMapIntensity, vec3(0.2126, 0.7152, 0.0722)) / (bakeMood.z / 0.7))');
   };
   m.customProgramCacheKey = () => `${programKey}|baked`;
   if (fine) m.defines = { ...m.defines, BAKE_FINE: '' };

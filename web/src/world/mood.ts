@@ -8,18 +8,25 @@ import { DEFAULT_MOOD, type Mood } from '../../shared/moods.mjs';
  * - `current`: the mood that shows most now (shared/moods.mjs); `next`: the one it is turning into (the same when
  *   none), `blend` 0 to 1 how far.
  * - `night`, `wet`, `overcast`: 0 to 1, blended smoothly through every change (a change takes about two and a half
- *   minutes on Auto, a few seconds when a mood is picked). Read them each frame for a smooth fade.
+ *   minutes on Auto, a few seconds when a mood is picked). Read them each frame for a smooth fade. `night` also
+ *   ramps up through dusk (the lamps and windows come on as it darkens).
+ * - `snowing`: 0 to 1, how hard it snows (blended like the others); `snow`: 0 to 1, the snow lying, which builds up
+ *   slowly while it snows and melts slowly after.
  * - `auto`: the weather changes by itself; `byAdmin`: the admin chose for everyone.
  *
  * onMoodChange tells when `current`, `auto` or `byAdmin` change. Only world/weather.ts changes this.
  */
-export const mood: { current: Mood; next: Mood; blend: number; night: number; wet: number; overcast: number; auto: boolean; byAdmin: boolean } = {
+export const mood: {
+  current: Mood; next: Mood; blend: number; night: number; wet: number; overcast: number; snowing: number; snow: number; auto: boolean; byAdmin: boolean;
+} = {
   current: DEFAULT_MOOD,
   next: DEFAULT_MOOD,
   blend: 0,
   night: 0,
   wet: 0,
   overcast: 0,
+  snowing: 0,
+  snow: 0,
   auto: true,
   byAdmin: false,
 };

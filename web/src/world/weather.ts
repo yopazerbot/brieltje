@@ -1,6 +1,7 @@
 import * as THREE from 'three';
 import {
-  type Choice, type Cycle, cycleTime, DEFAULT_CHOICE, DEFAULT_MOOD, DRY_MS, isChoice, isCycle, type Mood, MoodCycle, MOODS, newCycle, skipCycle,
+  type Choice, type Cycle, cycleTime, DEFAULT_CHOICE, DEFAULT_MOOD, DRY_MS, isChoice, isCycle, type Mood, MoodCycle, MOODS, newCycle, runOf, sameRun,
+  skipCycle, winterAt,
 } from '../../shared/moods.mjs';
 import { bakeMood } from './bakedLight';
 import { environment, loadSky, type SkyLook } from './environment';
@@ -8,6 +9,8 @@ import { groundWet } from './groundShade';
 import type { IndoorLight } from './indoorLight';
 import { moodShown } from './mood';
 import { Rain } from './rain';
+import { Snow } from './snow';
+import { snowCover } from './snowCover';
 import { StreetLights } from './streetLights';
 
 /**
@@ -32,13 +35,21 @@ import { StreetLights } from './streetLights';
  * The rain (world/rain.ts) falls round the eye and makes the ground wet (groundWet: darker, the paving and roads
  * shiny), drying slowly after; at night the street lamps glow (world/streetLights.ts). Others read the mood shown
  * from world/mood.ts (lit windows, birdsong), which has no graphics in it.
+ *
+ * Dusk: golden hour into blue hour (on Auto it darkens through its time, then turns into the night). The sun goes
+ * low and warm, from the same compass side as the noon sun the bakes were made with, so the baked shadows still
+ * agree in direction; near the main house, where the real-time shadow map draws, its shadows grow long. The dusk sky
+ * photo's sun is turned to that side too. The lamps and the lit windows come on as it darkens (`night` ramps).
+ * Snow: flakes drifting round the eye (world/snow.ts), and snow lying (world/snowCover.ts: the ground, roofs, hedges
+ * and crowns turn white where they face up), building up slowly while it falls and melting slowly after. On Auto
+ * snow only comes in winter (shared/moods.mjs).
  */
 
 export { MOODS, type Mood };
 export { mood, onMoodChange, type MoodState } from './mood';
 
 /** Which photo a mood's sky is. */
-type SkyName = 'sunny' | 'overcast' | 'night';
+type SkyName = 'sunny' | 'overcast' | 'dusk' | 'night';
 
 /**
  * The photos fetched when first needed (web/public/env/, credited in docs/CREDITS.md): 1024 pixels across, about a
@@ -46,8 +57,12 @@ type SkyName = 'sunny' | 'overcast' | 'night';
  */
 const SKIES: Record<Exclude<SkyName, 'sunny'>, { url: string; gain: number }> = {
   overcast: { url: '/env/overcast_1k.hdr', gain: 1 },
+  dusk: { url: '/env/dusk_1k.hdr', gain: 1 },
   night: { url: '/env/night_1k.hdr', gain: 0.1 },
 };
+
+/** Radians: how high the sun stands at dusk (low, for long shadows; not lower, or the shadow map smears). */
+const DUSK_SUN = (15 * Math.PI) / 180;
 
 /** The numbers of a mood, all blended between two (`sky` aside). */
 interface Look {
@@ -72,11 +87,14 @@ interface Look {
   horizonFade: number;
   /** How much of the bake's contrast stays (1 all; world/bakedLight.ts) */
   contrast: number;
-  /** 0 to 1: wet ground, rain falling, night (street lamps on, birds asleep), overcast */
+  /** 0 to 1: wet ground, rain falling, night (street lamps on, birds asleep), overcast, snow falling */
   wet: number;
   rain: number;
   night: number;
   overcast: number;
+  snow: number;
+  /** 0 to 1: from the noon sun's height down to dusk's (DUSK_SUN), on the same compass side */
+  sunLow: number;
 }
 
 const look = (sky: SkyName, n: Omit<Look, 'sky' | 'sunColor' | 'hemiSky' | 'hemiGround' | 'fogTint'>, c: [string, string, string, string]): Look => ({
@@ -88,14 +106,29 @@ const look = (sky: SkyName, n: Omit<Look, 'sky' | 'sunColor' | 'hemiSky' | 'hemi
   fogTint: new THREE.Color(c[3]),
 });
 
-/** The moods' numbers. A new mood (dusk, snow) is a line here, its name in shared/moods.mjs and src/i18n.ts. */
+/** The moods' numbers. A new mood is a line here, its name in shared/moods.mjs and src/i18n.ts. */
 const LOOKS: Record<Mood, Look> = {
-  sunny: look('sunny', { skyGain: 1, sun: 3.2, hemi: 1, inside: 1, exposure: 1, fog: 0.0019, horizonFade: 0, contrast: 1, wet: 0, rain: 0, night: 0, overcast: 0 }, ['#fff1de', '#dfe9f5', '#b9a487', '#ffffff']),
-  overcast: look('overcast', { skyGain: 1, sun: 0, hemi: 1, inside: 0.85, exposure: 1.15, fog: 0.0032, horizonFade: 0.55, contrast: 0.6, wet: 0, rain: 0, night: 0, overcast: 1 }, ['#ffffff', '#d6dce4', '#8c897f', '#ffffff']),
-  rain: look('overcast', { skyGain: 0.62, sun: 0, hemi: 0.8, inside: 0.8, exposure: 1.4, fog: 0.007, horizonFade: 0.9, contrast: 0.55, wet: 1, rain: 1, night: 0, overcast: 1 }, ['#ffffff', '#b9c0ca', '#6f6c66', '#e4e9ee']),
-  night: look('night', { skyGain: 1, sun: 0.42, hemi: 0.45, inside: 0.7, exposure: 2.0, fog: 0.003, horizonFade: 0.85, contrast: 0.8, wet: 0, rain: 0, night: 1, overcast: 0 }, ['#a9bdff', '#33415e', '#1d1c22', '#ffffff']),
+  sunny: look('sunny', { skyGain: 1, sun: 3.2, hemi: 1, inside: 1, exposure: 1, fog: 0.0019, horizonFade: 0, contrast: 1, wet: 0, rain: 0, night: 0, overcast: 0, snow: 0, sunLow: 0 }, ['#fff1de', '#dfe9f5', '#b9a487', '#ffffff']),
+  overcast: look('overcast', { skyGain: 1, sun: 0, hemi: 1, inside: 0.85, exposure: 1.15, fog: 0.0032, horizonFade: 0.55, contrast: 0.6, wet: 0, rain: 0, night: 0, overcast: 1, snow: 0, sunLow: 0 }, ['#ffffff', '#d6dce4', '#8c897f', '#ffffff']),
+  rain: look('overcast', { skyGain: 0.62, sun: 0, hemi: 0.8, inside: 0.8, exposure: 1.4, fog: 0.007, horizonFade: 0.9, contrast: 0.55, wet: 1, rain: 1, night: 0, overcast: 1, snow: 0, sunLow: 0 }, ['#ffffff', '#b9c0ca', '#6f6c66', '#e4e9ee']),
+  // Dusk is worked out each frame between its golden start and its blue end (DUSK below).
+  dusk: look('dusk', { skyGain: 1, sun: 0, hemi: 1, inside: 1, exposure: 1, fog: 0, horizonFade: 0, contrast: 1, wet: 0, rain: 0, night: 0, overcast: 0, snow: 0, sunLow: 1 }, ['#fff', '#fff', '#fff', '#fff']),
+  night: look('night', { skyGain: 1, sun: 0.42, hemi: 0.45, inside: 0.7, exposure: 2.0, fog: 0.003, horizonFade: 0.85, contrast: 0.8, wet: 0, rain: 0, night: 1, overcast: 0, snow: 0, sunLow: 0 }, ['#a9bdff', '#33415e', '#1d1c22', '#ffffff']),
+  snow: look('overcast', { skyGain: 0.82, sun: 0, hemi: 1, inside: 0.85, exposure: 1.05, fog: 0.0065, horizonFade: 0.9, contrast: 0.55, wet: 0, rain: 0, night: 0, overcast: 1, snow: 1, sunLow: 0 }, ['#ffffff', '#dde3ec', '#9a9ca2', '#eef2f8']),
 };
-const NUMBERS = ['skyGain', 'sun', 'hemi', 'inside', 'exposure', 'fog', 'horizonFade', 'contrast', 'wet', 'rain', 'night', 'overcast'] as const;
+
+/**
+ * Dusk, golden hour (0) into blue hour (1): the sun low and warm, then reddening and fading, the sky darker and bluer,
+ * the lamps and windows coming on. On Auto it darkens through its time (the cycle's `progress`) and then blends into
+ * the night; picked by hand it holds a little way in.
+ */
+const DUSK = [
+  look('dusk', { skyGain: 0.9, sun: 2.0, hemi: 0.6, inside: 0.9, exposure: 0.95, fog: 0.0022, horizonFade: 0.55, contrast: 0.95, wet: 0, rain: 0, night: 0.1, overcast: 0, snow: 0, sunLow: 1 }, ['#ffa45e', '#a9b5da', '#7d634f', '#f2c4a2']),
+  look('dusk', { skyGain: 0.42, sun: 0.55, hemi: 0.6, inside: 0.75, exposure: 2.0, fog: 0.0032, horizonFade: 0.8, contrast: 0.8, wet: 0, rain: 0, night: 0.6, overcast: 0, snow: 0, sunLow: 1 }, ['#ff8a5c', '#6c7cae', '#3b3640', '#d9ddff']),
+] as const;
+/** How far into dusk a dusk picked by hand holds. */
+const DUSK_HELD = 0.25;
+const NUMBERS = ['skyGain', 'sun', 'hemi', 'inside', 'exposure', 'fog', 'horizonFade', 'contrast', 'wet', 'rain', 'night', 'overcast', 'snow', 'sunLow'] as const;
 const COLOURS = ['sunColor', 'hemiSky', 'hemiGround', 'fogTint'] as const;
 
 /** `out` = a blended k of the way from a to b. */
@@ -110,6 +143,13 @@ const HORIZON_MEAN = new THREE.Color(0.2, 0.25, 0.21);
 
 /** Streaks of rain per graphics preset; phones take Low's. */
 const RAIN_COUNT: Record<string, number> = { low: 2500, medium: 5000, high: 7000, ultra: 9000 };
+/** Snowflakes per graphics preset; phones take Low's. */
+const SNOW_COUNT: Record<string, number> = { low: 1500, medium: 3000, high: 4500, ultra: 6000 };
+/** Milliseconds (a time constant) for snow picked by hand to build up, and for any snow to melt once it stops falling. */
+const SNOW_BUILD = 50_000;
+const SNOW_MELT = 300_000;
+/** The light bounced off snow lying (the hemisphere light's lower half). */
+const SNOW_GROUND = new THREE.Color('#c4c8d0');
 
 /** Milliseconds a mood picked by hand (or the admin's for everyone, or joining) takes to blend in. */
 const PICK_MS = 8000;
@@ -123,11 +163,12 @@ interface Pair {
 
 export class Weather {
   readonly rain = new Rain();
+  readonly snowfall = new Snow();
   readonly lamps: StreetLights;
-  /** The player's own choice (the settings) and its cycle, the server's (together, the admin's) and its */
+  /** The player's own choice (the settings) and its cycle (snow in it only in winter, by this page's date), the server's (together, the admin's) and its */
   private solo: Choice = DEFAULT_CHOICE;
-  private soloCycle: Cycle = newCycle(Math.floor(Math.random() * 2 ** 32), Date.now());
-  private soloRun = new MoodCycle(this.soloCycle.seed, 0);
+  private soloCycle: Cycle = newCycle(Math.floor(Math.random() * 2 ** 32), Date.now(), winterAt(Date.now()));
+  private soloRun = runOf(this.soloCycle);
   private server: Choice | null = null;
   private serverCycle: Cycle | null = null;
   private serverRun: MoodCycle | null = null;
@@ -141,6 +182,13 @@ export class Weather {
   private shown: Pair = { a: DEFAULT_MOOD, b: DEFAULT_MOOD, k: 0 };
   private fade: { from: Pair; t0: number | null } | null = null;
   private wet = 0;
+  /** The snow lying, 0 to 1, and the dev build's fast-forward still to be taken by it (ms) */
+  private lying = 0;
+  private skipLying = 0;
+  /** Where the sun stands: the noon sun's direction (from the sky photo, as the bakes have it) and dusk's, low, on the same side */
+  private noonDir = new THREE.Vector3();
+  private duskDir = new THREE.Vector3();
+  private sunDir = new THREE.Vector3();
   private now: Look = blendLook(look('sunny', { ...LOOKS.sunny }, ['#fff', '#fff', '#fff', '#fff']), LOOKS.sunny, LOOKS.sunny, 0);
   private tmp: Look = blendLook(look('sunny', { ...LOOKS.sunny }, ['#fff', '#fff', '#fff', '#fff']), LOOKS.sunny, LOOKS.sunny, 0);
   private haze = new THREE.Color();
@@ -161,10 +209,16 @@ export class Weather {
     ground: number,
   ) {
     this.lamps = new StreetLights(poles, ground);
-    scene.add(this.rain.mesh, this.lamps.group);
+    scene.add(this.rain.mesh, this.snowfall.mesh, this.lamps.group);
     // The sunny sky is the one loaded at the start.
     this.skies.set('sunny', ready.then(() => environment.sunny!));
-    void ready.then(() => this.loaded.set('sunny', environment.sunny!));
+    void ready.then(() => {
+      this.loaded.set('sunny', environment.sunny!);
+      const d = environment.sunDir!;
+      this.noonDir.copy(d).normalize();
+      const across = Math.hypot(d.x, d.z) || 1;
+      this.duskDir.set((d.x / across) * Math.cos(DUSK_SUN), Math.sin(DUSK_SUN), (d.z / across) * Math.cos(DUSK_SUN));
+    });
   }
 
   /** The eyes' brightness for the mood shown, as a factor (main.ts multiplies its eye adaptation by it). */
@@ -208,7 +262,7 @@ export class Weather {
   setServer(c: unknown, cycle?: unknown, time?: unknown): void {
     const next = c === null ? null : isChoice(c) ? c : DEFAULT_CHOICE;
     if (isCycle(cycle) && typeof time === 'number' && Number.isFinite(time)) {
-      if (cycle.seed !== this.serverCycle?.seed) this.serverRun = new MoodCycle(cycle.seed, 0);
+      if (!sameRun(cycle, this.serverCycle)) this.serverRun = runOf(cycle);
       this.serverCycle = { ...cycle };
       this.serverOffset = time - Date.now();
     }
@@ -236,6 +290,7 @@ export class Weather {
   /** Dev build: move the cycle's clock on by `seconds` (only this page; window.briel.weatherAhead). */
   forward(seconds: number): void {
     this.ahead += seconds * 1000;
+    this.skipLying += seconds * 1000; // snow picked by hand builds up (or melts) as far on
   }
 
   /** Dev build: where the cycle is (window.briel.weatherState). */
@@ -243,12 +298,17 @@ export class Weather {
     const run = this.cycleNow();
     const together = this.server !== null && this.serverCycle;
     const tau = together ? cycleTime(this.serverCycle!, Date.now() + this.ahead + this.serverOffset) : cycleTime(this.soloCycle, Date.now() + this.ahead);
-    return { chosen: this.chosen, shown: this.shown, fade: this.fade, wet: this.wet, cycle: run, tau, speed: this.server === null ? this.soloCycle.speed : this.serverSpeed };
+    const winter = together ? !!this.serverCycle!.winter : !!this.soloCycle.winter;
+    return {
+      chosen: this.chosen, shown: this.shown, fade: this.fade, wet: this.wet, snow: this.lying, cycle: run, tau, winter,
+      speed: this.server === null ? this.soloCycle.speed : this.serverSpeed,
+    };
   }
 
-  /** The graphics preset: how many streaks of rain. */
+  /** The graphics preset: how many streaks of rain and flakes of snow. */
   setQuality(quality: string, phone: boolean): void {
     this.rain.setCount(RAIN_COUNT[phone ? 'low' : quality] ?? RAIN_COUNT.medium);
+    this.snowfall.setCount(SNOW_COUNT[phone ? 'low' : quality] ?? SNOW_COUNT.medium);
   }
 
   /** The cycle at this moment: alone the page's, together the server's on the server's clock. */
@@ -304,6 +364,9 @@ export class Weather {
     if (!this.sky(LOOKS[pair.b].sky)) pair = { a: pair.a, b: pair.a, k: 0 };
     if (!this.sky(LOOKS[pair.a].sky)) pair = { a: this.shown.a, b: this.shown.a, k: 0 };
     this.shown = pair;
+    // Dusk darkens through its time on Auto (blending in, it starts golden); picked by hand it holds.
+    const depth = c && !this.fade ? (c.mood === 'dusk' ? c.progress : 0) : DUSK_HELD;
+    blendLook(LOOKS.dusk, DUSK[0], DUSK[1], depth * depth * (3 - 2 * depth));
     this.apply(pair);
 
     // Wet: on Auto as the cycle has it (the same on every page); else towards the mood's, quickly up, slowly dry.
@@ -313,8 +376,24 @@ export class Weather {
     bakeMood.value.w = this.wet;
     groundWet.value = this.wet;
 
+    // Snow lying: on Auto as the cycle has it (turning to Auto, towards it within the pick's blend); else building
+    // up slowly while it falls, melting slowly after.
+    const falling = this.now.snow;
+    const ms = dt * 1000 + this.skipLying;
+    if (c && !this.fade) this.lying = c.snow;
+    else if (c) this.lying += (c.snow - this.lying) * (1 - Math.exp(-ms / (PICK_MS / 3)));
+    else {
+      const up = falling > this.lying;
+      this.lying += (falling - this.lying) * (1 - Math.exp(-ms / (up ? SNOW_BUILD : SNOW_MELT)));
+      if (this.lying < 0.002 && !falling) this.lying = 0;
+    }
+    this.skipLying = 0;
+    snowCover.value = this.lying;
+
     this.rain.set(this.now.rain);
     this.rain.update(dt, eye, indoors, this.now.skyGain * 1.1);
+    this.snowfall.set(falling);
+    this.snowfall.update(dt, eye, indoors, this.now.skyGain * 1.4, this.renderer);
     this.lamps.set(this.now.night);
     this.lamps.update();
     // Its shadow map is not drawn under clouds, but one must exist: a new graphics preset throws the old one away
@@ -322,7 +401,7 @@ export class Weather {
     if (!this.sun.shadow.autoUpdate && !this.sun.shadow.map) this.sun.shadow.needsUpdate = this.renderer.shadowMap.needsUpdate = true;
     moodShown({
       current: this.shownMood, next: pair.b, blend: pair.k, night: this.now.night, wet: this.wet, overcast: this.now.overcast,
-      auto, byAdmin: this.server !== null,
+      snowing: falling, snow: this.lying, auto, byAdmin: this.server !== null,
     });
   }
 
@@ -363,6 +442,13 @@ export class Weather {
     // The sun, or the moon from the same side; off under clouds (and its shadow map not drawn: nothing to cast).
     this.sun.intensity = l.sun;
     this.sun.color.copy(l.sunColor);
+    // At dusk low on the noon sun's side (DUSK_SUN): its shadows near the house grow long, the baked ones agree in direction.
+    if (this.noonDir.lengthSq() > 0) {
+      this.sunDir.copy(this.noonDir).lerp(this.duskDir, l.sunLow).normalize();
+      this.sun.position.copy(this.sun.target.position).addScaledVector(this.sunDir, 60);
+    }
+    // Snow lying throws light back up: the hemisphere's lower half paler.
+    if (this.lying > 0) l.hemiGround.lerp(SNOW_GROUND, this.lying * 0.7);
     const on = l.sun > 0.001;
     if (on !== this.shadowOn) {
       this.shadowOn = on;

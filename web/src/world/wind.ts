@@ -1,4 +1,5 @@
 import * as THREE from 'three';
+import { snowOn } from './snowCover';
 
 /**
  * A gentle wind through the tree crowns and the leafy lumps on the hedges, worked out in their
@@ -80,6 +81,7 @@ export function sway(material: THREE.MeshStandardMaterial, lean: number, flutter
         #endif`,
       );
     }
+    snowOn(shader); // snow on the crowns and the hedges' tops (world/snowCover.ts)
   };
   const key = material.customProgramCacheKey.bind(material);
   material.customProgramCacheKey = () => `${key()}|sway${lean}${turning ? '|autumn' : ''}`;
@@ -116,6 +118,7 @@ export function rustle(material: THREE.MeshStandardMaterial): void {
       )
       .replace('#include <roughnessmap_fragment>', offset('roughnessmap_fragment', 'vRoughnessMapUv'))
       .replace('#include <normal_fragment_maps>', offset('normal_fragment_maps', 'vNormalMapUv'));
+    snowOn(shader); // snow on the hedges' tops (world/snowCover.ts)
   };
   const key = material.customProgramCacheKey.bind(material);
   material.customProgramCacheKey = () => `${key()}|rustle`;

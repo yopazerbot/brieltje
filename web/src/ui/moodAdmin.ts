@@ -1,7 +1,9 @@
 import { type Choice, isChoice, SPEEDS } from '../../shared/moods.mjs';
 import { t, type PlainKey } from '../i18n';
 
-const LABEL: Record<Choice, PlainKey> = { auto: 'mood.auto', sunny: 'mood.sunny', overcast: 'mood.overcast', rain: 'mood.rain', night: 'mood.night' };
+const LABEL: Record<Choice, PlainKey> = {
+  auto: 'mood.auto', sunny: 'mood.sunny', overcast: 'mood.overcast', rain: 'mood.rain', dusk: 'mood.dusk', night: 'mood.night', snow: 'mood.snow',
+};
 
 /** A choice's name in the page's language. */
 export function moodLabel(m: Choice): string {

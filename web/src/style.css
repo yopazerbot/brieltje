@@ -1145,6 +1145,7 @@ body.touch .not-touch, body.touch [data-hide-on~="touch"] { display: none; }
 /* The weather (src/settings.ts, src/ui/moodAdmin.ts): five short words, three to a row. */
 .mood-seg { flex-wrap: wrap; }
 .mood-seg .seg-btn { flex: 1 1 30%; padding: 9px 10px; }
+.mood-seg .seg-btn[data-mood="auto"] { flex-basis: 100%; } /* Auto on a row of its own, the six moods in two rows of three */
 .mood-seg .seg-btn b { font-size: 15.5px; }
 /* A key beside a menu item (the planner, the minimap ...), for keyboard players. */
 #pause-panel kbd[data-key] {

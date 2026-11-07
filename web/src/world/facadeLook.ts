@@ -1,5 +1,6 @@
 import * as THREE from 'three';
 import type { Prism } from './houseData';
+import { snowOn } from './snowCover';
 
 /**
  * Each open-data house its own look (world/surroundings.ts builds them): the shade of its brick within
@@ -199,6 +200,7 @@ export function glazeable<T extends THREE.Material>(m: T): T {
     shader.fragmentShader = shader.fragmentShader
       .replace('#include <common>', '#include <common>\nvarying float vGloss;')
       .replace('#include <roughnessmap_fragment>', '#include <roughnessmap_fragment>\nroughnessFactor *= 1.0 - 0.6 * vGloss;');
+    snowOn(shader); // snow on the roofs (world/snowCover.ts)
   };
   m.customProgramCacheKey = () => `${key()}|glaze`;
   m.needsUpdate = true;

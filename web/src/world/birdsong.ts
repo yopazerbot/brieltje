@@ -164,7 +164,7 @@ export class Birdsong {
     if (this.wait > 0) return;
     const indoors = (eye.x > 0 && eye.x < 9.02 && eye.z > -3 && eye.z < 12.02 && eye.y < 9.5) || (inside(eye.x, eye.z, BUNGALOW) && eye.y < 6.5);
     this.wait = (indoors ? 4 : 1.6) + Math.random() * (indoors ? 8 : 3.5);
-    if (!awake || mood.night > 0.5 || mood.wet > 0.5) return; // asleep at night, quiet in the rain (world/weather.ts)
+    if (!awake || mood.night > 0.5 || mood.wet > 0.5 || mood.snowing > 0.3) return; // asleep at night, quiet in the rain and the snow (world/weather.ts)
     const ctx = sound.context();
     if (!ctx || ctx.state !== 'running') return;
     let at: THREE.Vector3 | null = null;

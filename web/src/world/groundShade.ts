@@ -3,6 +3,7 @@ import { FullScreenQuad } from 'three/addons/postprocessing/Pass.js';
 import { terrain, terrainTexture } from './terrain';
 import { blockMaterial } from './houseMeshes';
 import type { GrassData } from './houseData';
+import { snowOn } from './snowCover';
 
 /**
  * Light on the ground of the whole neighbourhood, worked out once when the sky
@@ -378,6 +379,8 @@ export class GroundShade {
           reflectedLight.indirectDiffuse *= gs.g;
           reflectedLight.indirectSpecular *= gs.g * ${sheen.toFixed(2)};`,
         );
+      // Snow (world/snowCover.ts): less where the sky is hidden (along walls, under trees), roads a little greyer.
+      snowOn(shader, '0.4 + 0.6 * smoothstep(0.3, 0.7, gs.g)', grass ? 1 : 0.85);
     };
     if (grass) material.customProgramCacheKey = () => 'groundShade|grass';
     material.needsUpdate = true;
