@@ -459,6 +459,7 @@ export class Auth {
     // Two-step login (server/adminMfa.mjs), last, so a refused name never uses up a code. The right password
     // without a code isn't counted (every wrong password was, and the right one is no secret to whoever typed
     // it); a wrong code stays counted like a wrong password.
+    const mfaGen = this.mfa.gen; // turned on while this login runs: it gets no session (below)
     if (this.mfa.on) {
       if (!code) {
         this.failures.undo(ip, now);
@@ -484,6 +485,10 @@ export class Auth {
     if ((await this.store.getAccount(name)) || this.claiming.has(name)) { // claiming last: no await between it and the session below
       await this.store.deleteSession(key);
       return { error: `${name} is a player's account. Pick another name.`, code: 'nameAccount', args: { name }, status: 409 };
+    }
+    if (this.mfa.gen !== mfaGen) {
+      await this.store.deleteSession(key);
+      return { error: 'Two-step login was just turned on. Log in again with a code.', code: 'mfaNeeded', status: 401 };
     }
     this.sessions.set(key, { username: name, role: 'admin', expires: now + SESSION_MS });
     this.log('login_ok', req, { username: name, detail: 'admin' });
@@ -562,8 +567,8 @@ export class Auth {
   /** A two-step code typed by the logged-in admin (server/adminMfa.mjs): over the limit for wrong ones from here? */
   codeLimited(req, sessionKey) {
     const now = Date.now();
-    return this.failures.count(bucketOf(clientIp(req)), now) >= MAX_FAILS || this.adminFails.count(ADMIN_KEY, now) >= ADMIN_FAILS
-      || this.codeFails.count(sessionKey, now) >= SESSION_CODE_FAILS;
+    // Not the shared cap on admin passwords: strangers' wrong passwords would then stop the admin managing it.
+    return this.failures.count(bucketOf(clientIp(req)), now) >= MAX_FAILS || this.codeFails.count(sessionKey, now) >= SESSION_CODE_FAILS;
   }
 
   /** A wrong two-step code: counted like a wrong admin password, per address and in all. */

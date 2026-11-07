@@ -81,6 +81,7 @@ export class AdminMfa {
     this.key = null; // made from the password at start (load), with its salt
     this.state = null; // { secret: Buffer, step, recovery: [hash] } when on
     this.pending = new Map(); // session key -> { secret, until }: being set up
+    this.gen = 0; // raised when it is turned on: an admin login that began before gets no session (server/auth.mjs)
   }
 
   /** Start-up: on or off, from the store. `passwordChanged`: ADMIN_PASSWORD is new, so two-step login goes off. */
@@ -195,6 +196,7 @@ export class AdminMfa {
     this.pending.delete(sessionKey);
     const { codes, hashes } = this.recoveryCodes();
     this.state = { secret: p.secret, step, recovery: hashes };
+    this.gen++; // before any await: a login past its check, still saving its session, is refused
     await this.save();
     const me = this.auth.sessions.get(sessionKey)?.username;
     for (const [k, s] of [...this.auth.sessions]) {

@@ -135,6 +135,20 @@ test('without ADMIN_PASSWORD at start, two-step login is kept for when it is bac
   assert.equal(back.on, true);
 });
 
+test('an admin login that passed while it was off, still saving its session when it is turned on, gets none', async () => {
+  const { auth, store, key, secret } = await setUp();
+  const save = store.saveSession.bind(store);
+  let turnOn = null;
+  store.saveSession = async (...a) => {
+    turnOn = auth.mfa.confirm(key, totp(secret, Math.floor(Date.now() / 30000)));
+    await turnOn;
+    return save(...a);
+  };
+  const r = await auth.login(req('192.0.2.60'), 'other-admin', secretPass);
+  assert.equal(r.code, 'mfaNeeded');
+  assert.equal([...auth.sessions.values()].some((s) => s.username === 'other-admin'), false);
+});
+
 test('off and new recovery codes each need a code', async () => {
   const { auth, key, secret } = await setUp();
   await auth.mfa.confirm(key, totp(secret, Math.floor(Date.now() / 30000) - 1));
