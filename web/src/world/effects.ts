@@ -3,6 +3,7 @@ import { anyPaint, GUN_PAINT, onPaintball, paintball } from '../paintball';
 import { sound } from '../sound';
 import { Decals } from './decals';
 import { Particles, type Spawn } from './particles';
+import { Splashes } from './splashes';
 import { splatSound, Splats, type Paint } from './splats';
 import { flashSheet, HOLE, PARTICLE } from './sprites';
 
@@ -132,6 +133,8 @@ export function muzzleFlash(size: number): THREE.Group & { fire(): void } {
 export class Effects {
   readonly particles = new Particles();
   readonly splats: Splats;
+  /** Drops and rings on the ponds and ditches (world/splashes.ts) */
+  readonly splashes: Splashes;
   private group = new THREE.Group();
   private rockets: Rocket[] = [];
   private rocketBody = new THREE.CylinderGeometry(0.045, 0.045, 0.55, 8).rotateX(Math.PI / 2);
@@ -158,6 +161,7 @@ export class Effects {
   ) {
     scene.add(this.group, this.particles.group);
     this.splats = new Splats(scene);
+    this.splashes = new Splashes(scene, this.particles);
     // Rays from a paint blast also meet sprites (name tags, health bars), which three.js only tests with a camera; they are no wall anyway.
     this.ray.camera = new THREE.PerspectiveCamera();
     // Casings: one instanced cylinder (brass, or red for shotgun shells), lying along x.
@@ -524,6 +528,7 @@ export class Effects {
   }
 
   update(dt: number): void {
+    this.splashes.update(dt);
     for (let i = this.rockets.length - 1; i >= 0; i--) {
       const r = this.rockets[i];
       r.travelled = Math.min(r.length, r.travelled + r.speed * dt);

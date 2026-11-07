@@ -64,7 +64,7 @@ import { boxesOverlap, boxPoints, clearOfPortals, makeIndoors } from '../shared/
 import CARS from '../shared/car.json';
 import BIKES_DATA from '../shared/bike.json';
 import { buildHedges, buildTile, dipMesh, waterMesh } from './world/surroundings';
-import { wetGround } from './world/water';
+import { waterLevel, wetGround } from './world/water';
 import { buildHorizon } from './world/horizon';
 import { wearLonePatches, weatherYards } from './world/yards';
 import { Undergrowth } from './world/undergrowth';
@@ -922,9 +922,14 @@ settings.onSkip = () => weather.skip(); // "Next weather" alone
 const rumble = (strong: number, weak: number, ms: number) => settings.value.vibration && input.rumble(strong, weak, ms);
 
 // Footsteps: yours from the middle, the others' from where they walk; louder when running.
-player.onStep = (speed) => footstep(surfaceOf(player.ground.mat), Math.min(1, 0.25 + speed / 7));
+player.onStep = (speed) => {
+  footstep(surfaceOf(player.ground.mat), Math.min(1, 0.25 + speed / 7));
+  if (player.water) effects.splashes.step(player.x, player.z, player.water, speed, player.velocity.x, player.velocity.z); // world/splashes.ts
+};
 player.onLand = (speed) => {
   footstep(surfaceOf(player.ground.mat), Math.min(1, speed / 6));
+  const level = waterLevel(player.x, player.z); // a jump into the water (the ground under you is its floor)
+  if (level !== null && (player.ground.mat === 'water' || player.ground.mat === 'swim')) effects.splashes.plunge(player.x, player.z, level, speed);
   weapon.land(speed);
 };
 menu.onSpeed = (v) => (player.walkSpeed = me ? REAL_WALK : v);
@@ -964,8 +969,9 @@ const avatars = new Avatars();
 scene.add(avatars.group);
 avatars.onStep = (_name, at, speed) => {
   const ground = world.groundAt(at.x, at.z, at.y + 0.3, 0.6);
-  wetGround(at.x, at.z, ground); // in a pond or ditch: a splash (world/water.ts)
+  const wet = wetGround(at.x, at.z, ground); // in a pond or ditch: a splash (world/water.ts)
   footstep(surfaceOf(ground.mat), Math.min(1, 0.35 + speed / 5), at);
+  if (wet) effects.splashes.step(at.x, at.z, wet, speed);
 };
 avatars.groundAt = (x, z, y) => world.groundAt(x, z, y + 0.3, 0.6).y;
 // Arriving by parachute (shared/parachute.mjs): everyone's on their figures (world/parachutes.ts), yours filmed
@@ -3208,6 +3214,9 @@ renderer.setAnimationLoop((now: number) => {
   glass.update(dt);
   furnishing.update(dt, camera.position);
   effects.particles.budget = quality === 'low' ? 0.5 : 1; // big smoke puffs are many pixels each
+  // Splashes: rings round you afloat, spray from the wheels of a car through a ford (world/splashes.ts).
+  effects.splashes.swim(player.x, player.z, player.water, dt);
+  for (const c of cars) if (Math.hypot(c.x - camera.position.x, c.z - camera.position.z) < 80) effects.splashes.wheels(c.id, c.x, c.z, c.y, c.yaw, c.spec.length / 2, c.spec.width / 2, dt);
   effects.update(dt);
   grenades.update(dt);
   pickups.update(dt, !net.connected);
