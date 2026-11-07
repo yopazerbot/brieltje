@@ -7,6 +7,7 @@ import { fixtureGroup } from './furnishing';
 import type { Glass } from './glass';
 import type { DipSpec, DoorSpec, FixtureSpec, Prism, Ring } from './houseData';
 import { prismGeometry, surfaceMaterial } from './houseMeshes';
+import { clearGlass } from './glassLook';
 import type { GroundCuts } from './terrain';
 import { END_DOOR_GLASS } from '../../shared/homes.mjs';
 
@@ -405,7 +406,7 @@ export async function loadWalkIn(renderer: THREE.WebGLRenderer, model: THREE.Obj
     return g;
   };
   paneGeos.forEach((g, i) => tinted(g, !!data.panes[i].matte));
-  const glassMat = surfaceMaterial('glass', renderer).clone() as THREE.MeshPhysicalMaterial;
+  const glassMat = clearGlass(surfaceMaterial('glass', renderer).clone() as THREE.MeshPhysicalMaterial); // a clone loses the look's shader: again (world/glassLook.ts)
   glassMat.vertexColors = true;
   glassMat.opacity = 1;
   glassMat.forceSinglePass = true; // a thin closed pane needs no second pass (see onePass)

@@ -4,6 +4,7 @@ import type { Prism, Surroundings } from './houseData';
 import { tintedMaterial } from './houseMeshes';
 import { snowOnModel } from './snowCover';
 import { wetOnModel } from './wetGround';
+import { glassOnModel } from './glassLook';
 import { loadTexture } from './textureFiles';
 import { terrain } from './terrain';
 import type { Tiles } from './tiles';
@@ -157,7 +158,7 @@ export class HomeStreet {
       hs_pave: () => shared('pavers', 0.8),
       hs_slab: () => shared('terrace', 0.8),
       // Opaque, dark and glossy, as the open-data houses' windows: from outside, glass mostly mirrors the sky.
-      hs_glass: () => new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.05, metalness: 0.1, envMapIntensity: 1.6 }),
+      hs_glass: () => new THREE.MeshStandardMaterial({ name: 'hs_glass', vertexColors: true, roughness: 0.05, metalness: 0.1, envMapIntensity: 1.6 }),
       hs_trim: () => new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.55, metalness: 0.12 }),
     };
     const mats = new Map<string, THREE.Material>();
@@ -193,6 +194,7 @@ export class HomeStreet {
           });
           snowOnModel(root); // the terraces take the snow (the rest has its bake's)
           wetOnModel(root); // and the rain
+          glassOnModel(root); // their windows mirror the street (world/glassLook.ts)
           this.group.add(root);
           tiles.track(root); // each cluster hidden beyond the draw distance on its own
         }

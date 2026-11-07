@@ -1,4 +1,5 @@
 import * as THREE from 'three';
+import { probeOn } from './glassLook';
 
 /**
  * The glass of the village's own windows (the open-data houses; world/surroundings.ts builds the
@@ -361,6 +362,7 @@ export function paneMaterial(): THREE.MeshStandardMaterial {
       )
       // The sun's glint on glass seen at a slant can pass what half floats hold (65504): an iPhone stores infinity.
       .replace('#include <dithering_fragment>', 'gl_FragColor.rgb = min(gl_FragColor.rgb, vec3(60000.0));\n#include <dithering_fragment>');
+    probeOn(shader); // the street round the eye in the glass, and the rain's drops (world/glassLook.ts)
   };
   return m;
 }

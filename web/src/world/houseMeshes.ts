@@ -8,6 +8,7 @@ import sizes from '../../public/textures/sizes.json';
 import { textureNormalScale } from './surfaceFinish';
 import { loadTexture, textureReady } from './textureFiles';
 import { snowy } from './snowCover';
+import { clearGlass } from './glassLook';
 
 /** Real-world width of each texture tile in metres (from Poly Haven, or our own brick). */
 const TILE: Record<string, number> = sizes;
@@ -226,7 +227,8 @@ export function tintedMaterial(tex: string, tint: string, renderer: THREE.WebGLR
 function makeMaterial(name: string, renderer: THREE.WebGLRenderer): THREE.Material {
   if (name === 'fence') return fenceMaterial();
   if (name === 'glass') {
-    return new THREE.MeshPhysicalMaterial({
+    // It mirrors the street and lets through what it does not reflect (world/glassLook.ts).
+    return clearGlass(new THREE.MeshPhysicalMaterial({
       color: '#dfeff5',
       roughness: 0.03,
       metalness: 0,
@@ -235,7 +237,7 @@ function makeMaterial(name: string, renderer: THREE.WebGLRenderer): THREE.Materi
       envMapIntensity: 1.4,
       depthWrite: false,
       side: THREE.DoubleSide,
-    });
+    }));
   }
   const spec = SPECS[name] ?? SPECS.plaster;
   const mat = new THREE.MeshStandardMaterial({

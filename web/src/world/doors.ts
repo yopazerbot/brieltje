@@ -2,6 +2,7 @@ import * as THREE from 'three';
 import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
 import type { World } from './collision';
 import type { DoorPanel, DoorSpec } from './houseData';
+import { clearGlass } from './glassLook';
 
 const SPEED = 1.3;  // open/close per second (full travel)
 const REACH = 2.6;  // m, how far away you can open a door
@@ -37,9 +38,9 @@ interface Door {
 }
 
 const frameMat = new THREE.MeshStandardMaterial({ color: '#4d4a46', roughness: 0.45, metalness: 0.6 }); // grey/brown aluminium
-const glassMat = new THREE.MeshPhysicalMaterial({
+const glassMat = clearGlass(new THREE.MeshPhysicalMaterial({
   color: '#dfeff5', roughness: 0.03, transparent: true, opacity: 0.2, envMapIntensity: 1.4, depthWrite: false, side: THREE.DoubleSide,
-});
+})); // it mirrors the street (world/glassLook.ts)
 const leafMat = new THREE.MeshStandardMaterial({ color: '#f1efea', roughness: 0.55 });
 // Outside doors: aluminium in RAL 8017 brown outside and RAL 9010 white inside.
 const outMat = new THREE.MeshStandardMaterial({ color: '#45322e', roughness: 0.5, metalness: 0.3 });

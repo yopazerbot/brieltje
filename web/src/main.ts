@@ -120,6 +120,7 @@ import { clearOpenGround, fitStreetModel, loadStreetModel } from './world/street
 import { bakeLight, setBakeDetail } from './world/bakedLight';
 import { setWindowDetail, setWindowNight } from './world/windows';
 import { wet, WetMirror, wetOnModel } from './world/wetGround';
+import { glass as glassLook, GlassProbe, glassOnModel } from './world/glassLook';
 import { mood } from './world/mood';
 import { loadWalkIn, type WalkIn } from './world/walkIn';
 import { Insides, type InsidePack } from './world/insides';
@@ -390,6 +391,9 @@ const target = new THREE.WebGLRenderTarget(window.innerWidth, window.innerHeight
 const composer = new EffectComposer(renderer, target);
 composer.renderTarget2.depthTexture = depthTarget();
 // Wet ground mirrors the street (world/wetGround.ts): its picture is drawn first, while it is wet, on Medium and up.
+// Glass mirrors the street round the eye (world/glassLook.ts): one of its six views drawn a frame, Medium and up.
+const glassProbe = new GlassProbe(scene, camera, [camera, weather.rain.mesh, weather.snowfall.mesh]);
+composer.addPass(glassProbe);
 const wetMirror = new WetMirror(scene, camera, [camera, weather.rain.mesh, weather.snowfall.mesh], house.ground);
 composer.addPass(wetMirror);
 composer.addPass(new RenderPass(scene, camera));
@@ -487,6 +491,8 @@ function applyQuality(q: Quality): void {
   setWaterDetail(q !== 'low' && !phone); // rain rings on the ponds (world/water.ts)
   wetMirror.fine = q !== 'low' && !phone; // wet streets mirror the scene, puddles ring (world/wetGround.ts)
   wet.fine.value = wetMirror.fine ? 1 : 0;
+  glassProbe.fine = wetMirror.fine; // glass mirrors the street, rooms behind the models' windows (world/glassLook.ts)
+  glassLook.fine.value = wet.fine.value;
   setTreeDetail(q !== 'low' && !phone); // the near trees' crowns and the trunks (world/surroundings.ts)
   tiles.drawDistance = phone ? Math.min(FAR_PHONE, preset.far) : preset.far;
   undergrowth.setQuality(q, phone);
@@ -3493,6 +3499,7 @@ async function buildVillage(): Promise<void> {
   }
   for (const m of models) snowOnModel(m); // their unbaked outdoor parts take the snow (world/snowCover.ts)
   for (const m of models) wetOnModel(m); // and their streets and yards the rain (world/wetGround.ts)
+  for (const m of models) glassOnModel(m); // their windows mirror the street over a room (world/glassLook.ts)
   // The models' baked light and wear (world/bakedLight.ts), fetched while the village's tiles are built.
   const start = startPlace()?.id ?? '';
   const later = (m: THREE.Object3D) => {
