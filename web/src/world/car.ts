@@ -72,6 +72,21 @@ export interface DriveInput {
   handbrake: boolean;
 }
 
+/**
+ * A car hit something hard (world/crash.ts shows and sounds it): where on the plan and at what height, the
+ * way out of what it hit, how fast it went into it (m/s), and what it was: the block's material, `tree`, or
+ * a moving part's key (another car: car-<id>).
+ */
+export interface CrashHit {
+  x: number;
+  y: number;
+  z: number;
+  nx: number;
+  nz: number;
+  speed: number;
+  what: string;
+}
+
 /** Something round the car can't drive through: a player, a tree trunk. */
 export interface Obstacle {
   x: number;
@@ -235,6 +250,8 @@ function contactShadow(spec: CarSpec): THREE.Mesh {
 const angle = (a: number) => Math.atan2(Math.sin(a), Math.cos(a));
 
 export class Car {
+  /** A car hit something (yours as you drive it, the others' from how they stop): main.ts shows it (world/crash.ts). */
+  static onCrash: (hit: CrashHit) => void = () => {};
   readonly group = new THREE.Group();
   x: number;
   y: number;
@@ -284,6 +301,10 @@ export class Car {
   private ride = { pitch: 0, roll: 0, lift: 0, twist: 0 };
   private plane = { pitch: 0, roll: 0, lift: 0, twist: 0 };
   private still = 0; // frames it hasn't moved
+  /** rad/s: the turn an off-centre knock gives it, dying away */
+  private spinKick = 0;
+  /** The hardest hit this frame at the wheel, for onCrash */
+  private hit: CrashHit | null = null;
   private knock = 0; // s until the next thump over a kerb
   /** Where each tyre's skid mark got to, or null while it grips. */
   private trail: ({ x: number; y: number; z: number } | null)[] = [null, null, null, null];
@@ -435,7 +456,13 @@ export class Car {
     const steps = Math.max(1, Math.ceil(dt * 120));
     let impact = 0;
     this.atEdge = false;
+    this.hit = null;
     for (let i = 0; i < steps; i++) impact = Math.max(impact, this.step(dt / steps, input, near));
+    const hit = this.hit as CrashHit | null; // step() keeps the hardest
+    if (hit && hit.speed > 2.5) {
+      Car.onCrash(hit);
+      this.camBack -= Math.min(0.8, hit.speed * 0.06); // the camera lurches on with the car's weight, and eases back
+    }
     this.braking = (input.brake > 0.05 && this.speed > 0.3) || (input.throttle > 0.05 && this.speed < -0.3) || (input.handbrake && Math.abs(this.speed) > 0.3);
     this.pushing = input.throttle || input.brake;
     this.handbraking = input.handbrake;
@@ -477,7 +504,8 @@ export class Car {
     // the village streets, not twitchy flat out. The wheel turns in over about 0.15 s.
     const lock = STEER / (1 + (Math.abs(v) / 9) ** 1.6);
     this.steer += (-input.steer * lock - this.steer) * (1 - Math.exp(-dt * 12));
-    const yaw = angle(this.yaw + (v / WHEELBASE) * Math.tan(this.steer) * dt);
+    const yaw = angle(this.yaw + (v / WHEELBASE) * Math.tan(this.steer) * dt + this.spinKick * dt);
+    this.spinKick *= Math.exp(-dt * 3);
     fx = -Math.sin(yaw);
     fz = -Math.cos(yaw);
     let vx = fx * v - fz * side;
@@ -494,26 +522,72 @@ export class Car {
     const can = (x: number, z: number, yaw: number, inBounds = fenced(x, z, yaw)) => inBounds && (stuck || this.free(x, z, yaw, others));
     const ahead = fenced(x, z, yaw);
     if (!ahead) this.atEdge = true;
+    // Into something: a small bounce back off it (more the harder it hit), not a dead stop.
+    // (Crash tests: a tenth to a seventh of the speed comes back; the rest goes into the crumple.)
+    const back = (speed: number) => (speed > 2 ? 0.1 + Math.min(0.06, speed * 0.004) : 0);
+    // Where it touched and what it is: looked for the way it was going (a wall at an angle is still ahead).
+    const going = Math.hypot(vx, vz) || 1;
+    const [tx, tz] = [vx / going, vz / going];
     if (can(x, z, yaw, ahead)) {
       Object.assign(this, { x, z, yaw });
     } else if (can(x, this.z, this.yaw)) {
       impact = Math.abs(vz); // slides along a wall
+      this.contact(tx, tz, impact, others);
       this.x = x;
-      vz = 0;
+      vz *= -back(impact);
     } else if (can(this.x, z, this.yaw)) {
       impact = Math.abs(vx);
+      this.contact(tx, tz, impact, others);
       this.z = z;
-      vx = 0;
+      vx *= -back(impact);
     } else {
       impact = Math.hypot(vx, vz);
-      vx *= -0.15;
-      vz *= -0.15;
+      if (impact > 1e-3) this.contact(tx, tz, impact, others);
+      const e = Math.max(0.15, back(impact));
+      vx *= -e;
+      vz *= -e;
+    }
+    // Struck off its middle (one corner against a post, a tree): it turns away from that side. Which
+    // side is clear, a little further on with the car moved a little to its left or its right.
+    if (impact > 2 && !stuck) {
+      const [ox, oz] = [x - this.x, z - this.z];
+      const [rx, rz] = [-fz, fx]; // to its right
+      const left = this.free(this.x + ox - rx * 0.4, this.z + oz - rz * 0.4, this.yaw, others);
+      const right = this.free(this.x + ox + rx * 0.4, this.z + oz + rz * 0.4, this.yaw, others);
+      if (left !== right) this.spinKick += (right ? -1 : 1) * Math.sign(v || 1) * Math.min(1.1, impact * 0.07);
     }
     this.vx = vx;
     this.vz = vz;
     [fx, fz] = this.forward;
     this.speed = vx * fx + vz * fz;
     return impact;
+  }
+
+  /**
+   * What it ran into going along (dx, dz) at `speed` m/s: where it touched (the edge of its box that way)
+   * and what is there (a tree among `others`, else the block or moving part), kept when it is the hardest
+   * this frame. A person in the way is no crash.
+   */
+  private contact(dx: number, dz: number, speed: number, others: Obstacle[]): void {
+    if (speed <= (this.hit?.speed ?? 0)) return;
+    const [fx, fz] = this.forward;
+    const du = dx * fx + dz * fz;
+    const dw = -dx * fz + dz * fx;
+    const t = Math.min(Math.abs(du) > 1e-3 ? this.halfL / Math.abs(du) : Infinity, Math.abs(dw) > 1e-3 ? this.halfW / Math.abs(dw) : Infinity);
+    const x = this.x + dx * t;
+    const z = this.z + dz * t;
+    const near = others.find((o) => Math.hypot(o.x - x, o.z - z) < o.r + 0.5);
+    let what = '';
+    if (near) {
+      if (!this.trees.includes(near)) return;
+      what = 'tree';
+    } else {
+      const lo = this.y + CLEAR;
+      const hi = this.y + this.spec.height;
+      const at = this.world.touching(x + dx * 0.25, z + dz * 0.25, lo, hi, 0.35, this.key) ?? this.world.touching(x + dx * 0.4, z + dz * 0.4, lo, hi, 0.9, this.key);
+      what = at?.key ?? at?.mat ?? at?.name ?? '';
+    }
+    this.hit = { x, y: this.y + 0.55, z, nx: -dx, nz: -dz, speed, what };
   }
 
   /**
@@ -638,6 +712,14 @@ export class Car {
     if (!local && along < -18 && this.knock <= 0) {
       this.noise.thump(this.x, this.y, this.z, Math.min(10, -along / 4));
       this.knock = 0.4;
+      // Its front (or back, reversing) went into something: what is there.
+      const [fx, fz] = this.forward;
+      const way = Math.sign(this.lastSpeed) || 1;
+      const x = this.x + fx * way * this.halfL;
+      const z = this.z + fz * way * this.halfL;
+      const at = this.world.touching(x + fx * way * 0.3, z + fz * way * 0.3, this.y + CLEAR, this.y + this.spec.height, 0.4, this.key);
+      const tree = this.trees.some((o) => Math.hypot(o.x - x, o.z - z) < o.r + 0.6);
+      Car.onCrash({ x, y: this.y + 0.55, z, nx: -fx * way, nz: -fz * way, speed: Math.min(20, -along / 6), what: tree ? 'tree' : at?.key ?? at?.mat ?? at?.name ?? '' });
     }
     const slip = skid(this.speed, this.side, this.along, across, local && this.handbraking);
     this.marks(slip, jump);

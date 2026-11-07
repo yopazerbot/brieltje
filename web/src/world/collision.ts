@@ -345,9 +345,9 @@ export class World {
 
   /**
    * What stands at a spot on the plan between two heights, within `r` of (x, z): its material and name,
-   * or the key of a moving part (a car: car-<id>). Null for nothing. For how a crash looks and sounds.
+   * or the key of a moving part (a car: car-<id>; not `skip`, the car asking). Null for nothing. For how a crash looks and sounds.
    */
-  touching(x: number, z: number, y0: number, y1: number, r: number): { mat?: string; name?: string; key?: string } | null {
+  touching(x: number, z: number, y0: number, y1: number, r: number, skip?: string): { mat?: string; name?: string; key?: string } | null {
     const test = (s: Solid) => {
       if (s.off || x + r < s.minX || x - r > s.maxX || z + r < s.minZ || z - r > s.maxZ) return false;
       if (this.hi(s, x, z) <= y0 || this.lo(s, x, z) >= y1) return false;
@@ -355,7 +355,7 @@ export class World {
       const [cx, cz] = closestOnRings(x, z, s.rings);
       return Math.hypot(x - cx, z - cz) < r;
     };
-    for (const [key, s] of this.moving) if (test(s)) return { key };
+    for (const [key, s] of this.moving) if (key !== skip && test(s)) return { key };
     for (const i of this.near(x - r, z - r, x + r, z + r)) {
       const s = this.solids[i];
       if (test(s)) return { mat: s.mat, name: s.name };

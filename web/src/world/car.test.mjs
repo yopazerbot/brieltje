@@ -29,12 +29,12 @@ function vehicle(spec = specs.cars.tesla, groundAt = () => ({ y: 0, name: 'stree
     halfL: spec.length / 2, halfW: spec.width / 2, key: 'test-car', ready: true, trees: [],
     group: new THREE.Group(), body: new THREE.Group(), chassis: new THREE.Group(), front: [], wheels: [], spin: 0,
     blurMat: new THREE.MeshStandardMaterial(), taillight: new THREE.MeshStandardMaterial(), lamps: { update() {} },
-    world: { boxFree: () => true, boxInBounds: () => true, groundAt, setMoving() {} },
+    world: { boxFree: () => true, boxInBounds: () => true, groundAt, setMoving() {}, touching: () => null },
     motion: new CarBody(), along: 0, side: 0, yawRate: 0, lastX: 0, lastZ: 0, lastYaw: 0, fresh: true, handbraking: false,
     axle: { at: [[-0.82, -1.45], [0.82, -1.45], [-0.82, 1.42], [0.82, 1.42]], base: 2.87, track: 1.64, hub: [0, 0, 0, 0] },
     under: [0, 0, 0, 0], rise: [0, 0, 0, 0], rough: [false, false, false, false],
     ride: { pitch: 0, roll: 0, lift: 0, twist: 0 }, plane: { pitch: 0, roll: 0, lift: 0, twist: 0 }, still: 0, knock: 0,
-    trail: [null, null, null, null], thumps: [],
+    trail: [null, null, null, null], thumps: [], spinKick: 0, hit: null,
     camBack: 0, camSide: 0, fovScale: 1, camHeading: 0, camYaw: 0, camPitch: 0.22, lookIdle: 0,
     noise: { update() {}, thump(...a) { this.owner.thumps.push(a); }, dispose() {} },
   });
@@ -113,6 +113,37 @@ test('a fast car cannot tunnel through a thin wall', () => {
     car.drive(1 / 30, throttle, []);
     assert.ok(car.z > -50, 'the car must stay on this side of the wall');
   }
+});
+
+test('a car into a wall bounces back a little, says where it hit, and an off-centre post turns it', () => {
+  const crashes = [];
+  Car.onCrash = (hit) => crashes.push(hit);
+  const car = vehicle();
+  Object.assign(car, { speed: 12, vz: -12, z: -10 });
+  car.world.boxFree = (x, z, yaw, halfL) => z - halfL > -20; // a wall across at z = -20
+  car.world.touching = () => ({ mat: 'brick' });
+  for (let i = 0; i < 60 && !crashes.length; i++) car.drive(1 / 60, { throttle: 0, brake: 0, steer: 0, handbrake: false }, []);
+  assert.equal(crashes.length, 1, 'one crash');
+  const [hit] = crashes;
+  assert.ok(hit.speed > 10 && hit.speed < 13, `at about its speed (${hit.speed})`);
+  assert.equal(hit.what, 'brick');
+  assert.ok(Math.abs(hit.z + 20) < 0.5 && Math.abs(hit.x) < 0.1, `at its front, against the wall (${hit.x}, ${hit.z})`);
+  assert.ok(hit.nz > 0.99, 'the way out is back');
+  assert.ok(car.speed < 0 && car.speed > -4, `rolled back a little, not stopped dead (${car.speed})`);
+  assert.ok(car.z - car.halfL > -20, 'not into the wall');
+
+  // A post in front of its left corner: it turns away (to the right) as it bounces.
+  const post = vehicle();
+  Object.assign(post, { speed: 10, vz: -10, z: -10 });
+  post.world.boxFree = (x, z, yaw, halfL, halfW) => {
+    const fx = -Math.sin(yaw), fz = -Math.cos(yaw);
+    const u = (-0.7 - x) * fx + (-20 - z) * fz;
+    const w = -(-0.7 - x) * fz + (-20 - z) * fx;
+    return Math.abs(u) > halfL + 0.1 || Math.abs(w) > halfW + 0.1;
+  };
+  for (let i = 0; i < 90; i++) post.drive(1 / 60, { throttle: 0, brake: 0, steer: 0, handbrake: false }, []);
+  assert.ok(post.yaw < -0.02, `turned to the right, away from the post (${post.yaw})`);
+  Car.onCrash = () => {};
 });
 
 test('tree checks include the full distance of a long fast frame', () => {

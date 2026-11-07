@@ -117,6 +117,7 @@ import { HomeStreet, withoutModelled } from './world/homeStreet';
 import { buildRoadDetail, roadPaint, withRoadDetail } from './world/roadDetail';
 import { RoadLife } from './world/roadLife';
 import { looseProps, type Mover } from './world/looseProps';
+import { Crash } from './world/crash';
 import { clearOpenGround, fitStreetModel, loadStreetModel } from './world/streetModel';
 import { bakeLight, setBakeDetail } from './world/bakedLight';
 import { setWindowDetail, setWindowNight } from './world/windows';
@@ -590,6 +591,8 @@ glass.locked = (i) => {
 };
 const effects = new Effects(scene, new Decals(scene), (x, z, y) => world.groundAt(x, z, y, 0).y);
 looseProps.attach(scene, world, effects.particles); // the street's bins, bikes, letterboxes and posts that cars knock over (world/looseProps.ts)
+const crash = new Crash(effects.particles);
+Car.onCrash = (hit) => crash.hit(hit); // sparks, dust or leaves, and a crunch, by what a car hit (world/crash.ts)
 const grenades = new Grenades(world);
 scene.add(grenades.group);
 const pickups = new Pickups((x, z, y) => world.groundAt(x, z, y + 0.3, 0).y);
