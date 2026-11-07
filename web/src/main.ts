@@ -56,6 +56,7 @@ import { PROTO, readBike, readBrute, readCar, readHorse, readPlayer, readZombie,
 import { sound } from './sound';
 import { footstep, surfaceOf } from './footsteps';
 import { PlayTower, TOWER } from './world/playground';
+import { creak, SlideSound } from './world/playgroundSound';
 import { SettingsPanel, type Settings } from './settings';
 import { SPECS, Weapon, type WeaponId } from './weapon';
 import { paintball, setPaintball, weaponName as shownWeapon } from './paintball';
@@ -527,6 +528,7 @@ world.addPrisms(homeStreet.blocks);
 world.addPrisms(ringRoads.blocks); // the pavements, a few centimetres up
 const playTower = new PlayTower(TOWER, house.ground); // the school's play tower: its platform, ladder and slide (world/playground.ts)
 world.addPrisms(playTower.prisms());
+const slideSound = new SlideSound();
 world.setDips(house.dips ?? []);
 // The edge of the game (shared/bounds.json): round the built-up area, or round the two houses while a game in the house runs.
 const edges = loadBounds(BOUNDS);
@@ -534,6 +536,7 @@ world.bounds = edges.map;
 world.ceiling = edges.ceiling;
 const player = new Player(world, house.spawn);
 player.tower = playTower;
+player.onRung = creak;
 // Phones and tablets: touch controls (offered on any touch screen: src/start.ts).
 const touch = new TouchControls();
 document.getElementById('rotate-hint')!.before(touch.root);
@@ -3323,6 +3326,7 @@ renderer.setAnimationLoop((now: number) => {
   football.update(dt, camera.position, onFoot ? { x: player.x, z: player.z, feet: player.feet, name: me?.username ?? '' } : null, net.connected);
   // The others, after the horses and bikes: a rider sits in the saddle where it is drawn this frame.
   avatars.tick(dt, camera.position, driving || riding || horses.mounted >= 0 || bikes.mounted ? null : { x: player.x, z: player.z });
+  slideSound.update(player.slideSpeed); // the whoosh down the play tower's slide
   myChute.position.set(player.x, player.feet, player.z);
   myChute.rotation.y = player.yaw;
   parachutes.far = quality === 'low' ? 15 : 35;
