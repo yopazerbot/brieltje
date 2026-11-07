@@ -10,7 +10,7 @@ import { flashSheet, HOLE, PARTICLE } from './sprites';
 /**
  * Impact bursts that depend on what was hit: dust and chips from plaster and
  * brick, sparks from metal, splinters from wood, chips from tiles, earth from
- * grass. Also the rocket's smoke trail and its explosion (a flash, a fireball,
+ * grass, a spout from water. Also the rocket's smoke trail and its explosion (a flash, a fireball,
  * rolling smoke, debris, embers, a ring of dust and a scorch mark), muzzle
  * flashes, shell casings and the puff where a player is hit. All particles
  * come from the shared pools in particles.ts. (Bullet tracers were removed at
@@ -203,6 +203,7 @@ export class Effects {
 
   /** A bullet hit a surface: a hole with the surface's look, and a burst of what it is made of. */
   impact(point: THREE.Vector3, normal: THREE.Vector3, material: string, on?: THREE.Object3D): void {
+    if (material === 'water') return this.splashes.shot(point); // a pond or ditch: a spout and a ring, no hole
     if (material !== 'cat') this.decals.add(point, normal, Decals.look(material), Decals.look(material) === HOLE.earth ? 0.1 : 0.08, on);
     const kind = KIND[material] ?? 'dust';
     const dust = color(DUST[material] ?? '#ddd6ca');
@@ -262,7 +263,7 @@ export class Effects {
 
   /** One of your shots hit a surface: a hole and a burst (impact), or in paintball a splat where the paintball lands. */
   shot(point: THREE.Vector3, normal: THREE.Vector3, material: string, on?: THREE.Object3D): void {
-    if (!paintball.on) return this.impact(point, normal, material, on);
+    if (!paintball.on || material === 'water') return this.impact(point, normal, material, on); // paint sinks
     this.splats.landing(point, (paint, dir) => {
       this.splats.add(point, normal, paint.color, paint.size, on, dir);
       this.splash(point, normal, paint.color, paint.size);

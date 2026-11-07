@@ -743,7 +743,7 @@ export function waterMesh(d: DipSpec, ground: number): THREE.Mesh | null {
   const mesh = new THREE.Mesh(g, waterMaterial()); // rippling in the wind (world/water.ts)
   mesh.onBeforeRender = waterClock;
   mesh.receiveShadow = true;
-  mesh.userData.material = 'glass';
+  mesh.userData.material = 'water'; // a shot splashes (world/effects.ts)
   mesh.name = `${d.name} water`;
   return mesh;
 }
