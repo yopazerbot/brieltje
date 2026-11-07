@@ -5,6 +5,7 @@ import { RenderPass } from 'three/addons/postprocessing/RenderPass.js';
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 import { SMAAPass } from 'three/addons/postprocessing/SMAAPass.js';
 import { gradedOutput } from './grade';
+import { BloomPass } from './bloom';
 import { NO_INPUT } from './controls/input';
 import { onPadLabels } from './controls/padFamily';
 import { FAR_PHONE, gpuName, guessFromName, loadMode, ORDER, pickQuality, PRESETS, saveMode, timeFrames, type Mode, type Preset, type Quality } from './graphics';
@@ -402,7 +403,9 @@ ao.blendIntensity = 0.9;
   };
 }
 composer.addPass(ao);
-composer.addPass(gradedOutput());
+const bloom = new BloomPass(); // the glow round bright light, Medium and up (src/bloom.ts)
+composer.addPass(bloom);
+composer.addPass(gradedOutput(bloom.output));
 const smaa = new SMAAPass();
 composer.addPass(smaa);
 
@@ -466,6 +469,7 @@ function applyQuality(q: Quality): void {
   }
   sunShadow.setup(preset.shadowReach, preset.shadowMap);
   placeShadow();
+  bloom.setDivisor(preset.bloom);
   setAnisotropy(preset.anisotropy);
   setBakeDetail(q !== 'low'); // the baked wear's fine pattern (world/bakedLight.ts)
   weather.setQuality(q, phone); // how many streaks of rain
@@ -3833,7 +3837,7 @@ if (import.meta.env.DEV) {
         for (let i = 0; i < Math.max(1, Math.round(seconds * 60)); i++) player.update(1 / 60, { ...idle, ...partial }, camera);
         return { x: +player.x.toFixed(3), z: +player.z.toFixed(3), feet: +player.feet.toFixed(3), flying: player.flying };
       },
-      three: { renderer, scene, sun, ao, composer, environmentReady, applyQuality, autoDetect, quality: () => quality, groundShade, weather, sunShadow, presets: PRESETS },
+      three: { renderer, scene, sun, ao, composer, environmentReady, applyQuality, autoDetect, quality: () => quality, groundShade, weather, sunShadow, bloom, presets: PRESETS },
       /** The weather's cycle moved on by this many seconds, on this page only (world/weather.ts forward), and where it is. */
       weatherAhead: (seconds: number) => weather.forward(seconds),
       weatherState: () => weather.state(),

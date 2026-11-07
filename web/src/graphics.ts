@@ -32,6 +32,11 @@ export interface Preset {
    * reaches further ahead than behind, so the players, cars and bikes throw a shadow everywhere.
    */
   shadowReach: number;
+  /**
+   * The glow round bright light (lamps and lit windows at night, the sun's glints, muzzle flashes, portals):
+   * worked out at a half (2) or a quarter (4) of the resolution, 0 for none (src/bloom.ts).
+   */
+  bloom: 0 | 2 | 4;
   /** Edge smoothing */
   smaa: boolean;
   /** Sharpness of textures seen at an angle */
@@ -45,10 +50,10 @@ export interface Preset {
 }
 
 export const PRESETS: Record<Quality, Preset> = {
-  low: { label: 'Low', scale: 0.55, ao: 'off', shadowMap: 1024, shadowSoft: 1, shadowReach: 0, smaa: false, anisotropy: 1, far: 550 },
-  medium: { label: 'Medium', scale: 0.8, ao: 'off', shadowMap: 2048, shadowSoft: 1.5, shadowReach: 22, smaa: true, anisotropy: 2, far: 725 },
-  high: { label: 'High', scale: 1, ao: 'half', shadowMap: 2048, shadowSoft: 2.5, shadowReach: 26, smaa: true, anisotropy: 4, far: 725 },
-  ultra: { label: 'Ultra', scale: 1, ao: 'full', shadowMap: 4096, shadowSoft: 5, shadowReach: 36, smaa: true, anisotropy: 8, far: 725 },
+  low: { label: 'Low', scale: 0.55, ao: 'off', shadowMap: 1024, shadowSoft: 1, shadowReach: 0, bloom: 0, smaa: false, anisotropy: 1, far: 550 },
+  medium: { label: 'Medium', scale: 0.8, ao: 'off', shadowMap: 2048, shadowSoft: 1.5, shadowReach: 22, bloom: 4, smaa: true, anisotropy: 2, far: 725 },
+  high: { label: 'High', scale: 1, ao: 'half', shadowMap: 2048, shadowSoft: 2.5, shadowReach: 26, bloom: 4, smaa: true, anisotropy: 4, far: 725 },
+  ultra: { label: 'Ultra', scale: 1, ao: 'full', shadowMap: 4096, shadowSoft: 5, shadowReach: 36, bloom: 2, smaa: true, anisotropy: 8, far: 725 },
 };
 /** A phone or tablet's draw distance, whatever the preset. */
 export const FAR_PHONE = 450;

@@ -1,3 +1,4 @@
+import type * as THREE from 'three';
 import { OutputPass } from 'three/addons/postprocessing/OutputPass.js';
 
 /**
@@ -23,6 +24,7 @@ const VIGNETTE = 0.15;
  * showed it white), then the rest is capped (a white so bright it stays white).
  */
 const SAFE = /* glsl */ `
+		if (bloomStrength > 0.0) gl_FragColor.rgb += texture2D(tBloom, vUv).rgb * bloomStrength; // the glow (src/bloom.ts)
 		vec3 nanTest = gl_FragColor.rgb; // GLSL ES 1.00 (the pass's own) has no isnan(): only NaN differs from itself
 		if (nanTest.r != nanTest.r || nanTest.g != nanTest.g || nanTest.b != nanTest.b) gl_FragColor.rgb = vec3(0.0);
 		gl_FragColor.rgb = min(gl_FragColor.rgb, vec3(60000.0));
@@ -45,12 +47,20 @@ const GRADE = /* glsl */ `
 
 		// color space`;
 
-/** The output pass with the grade; the plain one if this version of three.js shapes its shader differently. */
-export function gradedOutput(): OutputPass {
+/**
+ * The output pass with the grade; the plain one if this version of three.js shapes its shader differently.
+ * `bloom`: the glow round bright light (src/bloom.ts), added before the tone mapping and the checks above.
+ */
+export function gradedOutput(bloom?: { tBloom: { value: THREE.Texture | null }; bloomStrength: { value: number } }): OutputPass {
   const pass = new OutputPass();
   const stock = pass.material.fragmentShader;
   if (stock.includes('// color space')) pass.material.fragmentShader = stock.replace('// color space', GRADE);
-  if (stock.includes('// tone mapping')) pass.material.fragmentShader = pass.material.fragmentShader.replace('// tone mapping', SAFE);
+  if (stock.includes('// tone mapping') && stock.includes('uniform sampler2D tDiffuse;')) {
+    Object.assign(pass.material.uniforms, bloom ?? { tBloom: { value: null }, bloomStrength: { value: 0 } });
+    pass.material.fragmentShader = pass.material.fragmentShader
+      .replace('// tone mapping', SAFE)
+      .replace('uniform sampler2D tDiffuse;', 'uniform sampler2D tDiffuse;\n\t\tuniform sampler2D tBloom;\n\t\tuniform float bloomStrength;');
+  }
   pass.material.userData.stock = stock; // for the before-and-after checks in the dev build
   return pass;
 }
