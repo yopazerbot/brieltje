@@ -104,6 +104,14 @@ const CHURCH = makeChurch(CHURCH_DATA, HOUSE.ground + TERRAIN.height(...CHURCH_D
 const CAFE_DATA = shared('sparrenhof.json');
 /** The café Sparrenhof's blocks with its stairs to the roofs, in place of its plain block (shared/sparrenhof.mjs) */
 const CAFE = makeCafe(CAFE_DATA, HOUSE.ground + TERRAIN.height(...CAFE_DATA.origin));
+/** A Zombies place's village ground (its blocks, hedges, trunks and areas): the same every game, made once per place. */
+const villageGrounds = new Map();
+const villageGroundOf = (arena, edge) => {
+  if (!villageGrounds.has(arena.id)) villageGrounds.set(arena.id, villageGround(arena, edge, VILLAGE, CHURCH, CAFE));
+  return villageGrounds.get(arena.id);
+};
+/** The least time between two starts or stops of a game in one room (any player in it). */
+const ROOM_MODE_MS = 5000;
 /**
  * A spot on every named street (tools/places.py): where /location kapellenhoek takes you, on foot
  * (`out`) or with the car (`car`). Only these: a trip never ends where the page says. A spot
@@ -322,6 +330,7 @@ export class Game {
     this.auth = auth;
     this.allowedHosts = allowedHosts;
     this.room = room;
+    this.nextRoomMode = 0; // a room's game starts or stops at most once in ROOM_MODE_MS
     this.hub = null; // server/rooms.mjs: the open world and every room (kicks, a name in one place at a time)
     this.roles = new Map(); // username -> the role they played here with (a Zombies run counts for accounts only)
     this.homes = null; // the code-locked homes (server/homes.mjs), set by server.mjs: who has a code's grant
@@ -635,7 +644,8 @@ export class Game {
       return { x: c.x, z: c.z, yaw: c.yaw, halfL: s.length / 2, halfW: s.width / 2 };
     });
     const height = (x, z) => TERRAIN.height(x, z);
-    const village = arena.center ? villageGround(arena, edge, VILLAGE, CHURCH, CAFE) : null;
+    // The village's part never changes per place: made once (a start no longer walks all the blocks again).
+    const village = arena.center ? villageGroundOf(arena, edge) : null;
     const nav = village
       ? makeNav({ prisms: village.prisms, height, base: HOUSE.ground, edge, boxes, areas: village.areas, doors: [], shut: true, panes: 0 })
       : makeNav({ prisms: ZOMBIE_PRISMS, height, base: HOUSE.ground, edge, boxes, areas: HOUSE_AREAS, doors: HOUSE.doors, shut: false, panes: HOUSE.prisms.length });
@@ -991,10 +1001,13 @@ export class Game {
     } else if (m.t === 'mode' && this.room && (m.kind === 'zombies' || m.kind === 'free')) {
       // In a room only Zombies, at the room's place. Anyone in it may start a game when none is on; stopping
       // one that runs is for players with an account and the admin (a guest can't end it for everyone).
-      if (now < (player.nextMode || 0)) return;
+      // Once a second per player, and once in ROOM_MODE_MS per room: several players starting and stopping in turn
+      // can't make the server build the zombies' map over and over (denial of service).
+      if (now < (player.nextMode || 0) || now < this.nextRoomMode) return;
       player.nextMode = now + 1000;
       const running = !!this.modes.zombies;
       if (m.kind === 'zombies' ? running : !running || player.role === 'guest') return;
+      this.nextRoomMode = now + ROOM_MODE_MS;
       this.modes.start(m.kind, name, this.room.arena.id);
     } else if (m.t === 'mode' && !this.room && player.role === 'admin' && typeof m.kind === 'string') {
       // `place`: where Zombies is played (shared/arenas.mjs; an unknown one plays at home).

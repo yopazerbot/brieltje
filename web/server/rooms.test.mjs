@@ -100,6 +100,9 @@ test('in a room anyone starts Zombies at its place; only accounts and the admin 
     g.handle('gast', guest, JSON.stringify({ t: 'mode', kind: 'free' }));
     assert.equal(calls.length, 1, "a guest can't stop it");
     g.handle('anna', player('player'), JSON.stringify({ t: 'mode', kind: 'free' }));
+    assert.equal(calls.length, 1, 'not within ROOM_MODE_MS of the start, whoever asks (players taking turns)');
+    g.nextRoomMode = 0;
+    g.handle('anna', player('player'), JSON.stringify({ t: 'mode', kind: 'free' }));
     assert.deepEqual(calls.at(-1), ['free', 'anna', 'molenhoek']);
   } finally {
     stop();
