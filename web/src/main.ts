@@ -94,7 +94,8 @@ import { buildRoadDetail, roadPaint, withRoadDetail } from './world/roadDetail';
 import { RoadLife } from './world/roadLife';
 import { clearOpenGround, fitStreetModel, loadStreetModel } from './world/streetModel';
 import { bakeLight, setBakeDetail } from './world/bakedLight';
-import { setWindowDetail } from './world/windows';
+import { setWindowDetail, setWindowNight } from './world/windows';
+import { mood } from './world/mood';
 import { loadWalkIn, type WalkIn } from './world/walkIn';
 import { Insides, type InsidePack } from './world/insides';
 import { CAR_REACH, CAR_SLOW, findPortal, PORTALS, portalNear, REACH, type Portal } from '../shared/portals.mjs';
@@ -3057,6 +3058,7 @@ renderer.setAnimationLoop((now: number) => {
   combat.tick(dt);
   sound.listen(camera);
   weather.update(dt, camera.position, inside); // the rain round the eye (none indoors), the street lamps
+  setWindowNight(mood.night); // lights in about half of the village's rooms at night (world/windows.ts)
   player.lookScale = camera.fov / settings.value.fov; // slower turning while zoomed in
   glass.update(dt);
   furnishing.update(dt, camera.position);
