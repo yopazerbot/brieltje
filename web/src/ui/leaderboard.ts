@@ -2,10 +2,11 @@
 import { api, errorText, type ZombieRun } from '../net/client';
 import { num, onLang, t, type PlainKey } from '../i18n';
 import { paintball } from '../paintball';
+import { ARENAS } from '../../shared/arenas.mjs';
 
 /** The places a Zombies game is played at (shared/arenas.mjs), for the board's filter. */
-const PLACES = ['house', 'bungalow', 'church', 'molenhoek', 'molenhoek_mid', 'molenhoek_end', 'sparrenhof'] as const;
-const placeName = (id: string) => ((PLACES as readonly string[]).includes(id) ? t(`portal.${id}` as PlainKey) : id);
+const PLACES = ARENAS.map((a) => a.id);
+const placeName = (id: string) => (PLACES.includes(id) ? t(`portal.${id}` as PlainKey) : id);
 
 /**
  * The scores in the pause menu (Yoshi, 7 Nov 2026: accounts only on the board). The best Zombies runs, for

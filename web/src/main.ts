@@ -2188,6 +2188,8 @@ let teamsMenu = false;
 function followGame(view: ModeView): void {
   const before = games.view;
   games.set(view);
+  // Together too, the hint where they come out of a wood (the Sparrenhof), once as the game starts.
+  if (view.kind === 'zombies' && before.kind !== 'zombies' && arenaOf(view.zombies?.place).woods) chat.system(() => t('z.woods'));
   rooms.setPlaying(view.kind === 'zombies' && view.phase !== 'done');
   zombieWaveControl.update(view, net.connected && me?.role === 'admin');
   for (const name of online.keys()) avatars.setRole(name, games.roleOf(name));

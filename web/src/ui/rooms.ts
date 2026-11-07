@@ -9,6 +9,7 @@
  */
 import { t, onLang, type PlainKey } from '../i18n';
 import { api, errorText, type Me, type Net, type RoomEntry } from '../net/client';
+import { ARENAS } from '../../shared/arenas.mjs';
 
 const $ = (id: string) => document.getElementById(id)!;
 
@@ -156,4 +157,4 @@ function placeName(id: string): string {
   const key = `portal.${id}`;
   return KNOWN.has(id) ? t(key as PlainKey) : id;
 }
-const KNOWN = new Set(['house', 'bungalow', 'church', 'molenhoek', 'molenhoek_mid', 'molenhoek_end', 'sparrenhof']);
+const KNOWN = new Set(ARENAS.map((a) => a.id)); // every Zombies place (shared/arenas.mjs), so a new one is never missed
