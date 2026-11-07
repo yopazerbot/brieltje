@@ -1,10 +1,12 @@
 import * as THREE from 'three';
+import { familyName, familyOf } from '../controls/padFamily';
 
 /**
  * A diagnostics panel for phones, which have no developer console: open the site with ?diag and
  * it lists the graphics chip, the preset, what the graphics memory holds, WebGL errors, a lost
  * context, files that failed to load and script errors, refreshed every second; in multiplayer also
- * the connection (main.ts adds it with addDiag). With ?diag&plain the materials also drop their
+ * the connection (main.ts adds it with addDiag), and each controller with the full name the browser
+ * gives it, its layout and the kind the game takes it for. With ?diag&plain the materials also drop their
  * textures (flat colours), to tell a texture fault from a lighting one.
  */
 const extra: (() => string)[] = [];
@@ -79,8 +81,19 @@ export function startDiag(renderer: THREE.WebGLRenderer, scene: THREE.Scene, qua
       `in memory: ${r.memory.geometries} geometries, ${r.memory.textures} textures · ${r.programs?.length ?? 0} shaders`,
       `textures on materials: ${seen.size}, ${empty} without a picture${plainDone ? ' · PLAIN (textures off)' : ''}`,
       `webgl errors: ${errors.size ? [...errors].map(([e, n]) => `0x${e.toString(16)}×${n}`).join(' ') : 'none'}`,
+      ...pads(),
       ...extra.map((f) => f()).filter(Boolean),
       ...notes,
     ].join('\n');
   }, 1000);
+}
+
+/** Every controller the browser sees: its full name, its layout, its buttons and the kind the game takes it for. */
+function pads(): string[] {
+  const list = navigator.getGamepads ? [...navigator.getGamepads()] : [];
+  const lines = list.flatMap((p) => (p && p.connected ? [
+    `pad ${p.index}: ${p.id.slice(0, 120)}`,
+    `  mapping ${p.mapping || 'none'} · ${p.buttons.length} buttons · ${p.axes.length} axes · rumble ${p.vibrationActuator ? 'yes' : 'NO'} · ${familyName(familyOf(p.id))}`,
+  ] : []));
+  return lines.length ? lines : ['pad: none (press a button on it)'];
 }
