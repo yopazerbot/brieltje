@@ -681,6 +681,8 @@ body.on-start #overlay { background: linear-gradient(180deg, rgba(9, 14, 19, 0.2
 }
 /* The keyboard's place is always seen: a lamplight ring on whatever has the focus. */
 #overlay :focus-visible { outline: 2px solid var(--lamp); outline-offset: 2px; }
+/* The controller's place in the menu (src/ui/padNav.ts): the same lamplight ring, a little stronger. */
+#overlay .pad-focus { outline: 3px solid var(--lamp) !important; outline-offset: 2px; }
 /* One moment of motion: the start screen rises into place once it is ready; the menu fades in quickly
    each time it opens (it opens often, so it never makes you wait). Nothing moves with reduced motion. */
 @media (prefers-reduced-motion: no-preference) {

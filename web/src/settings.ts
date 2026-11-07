@@ -6,7 +6,7 @@
  * holds, and the buttons show it, greyed (lockMood).
  */
 
-import { num, onLang } from './i18n';
+import { num, onLang, t } from './i18n';
 import { type Choice, DEFAULT_CHOICE, isChoice } from '../shared/moods.mjs';
 
 export interface Settings {
@@ -51,6 +51,12 @@ export class SettingsPanel {
   /** "Next weather" pressed (alone, on Auto) */
   onSkip: () => void = () => {};
   private moodButtons = [...document.querySelectorAll<HTMLButtonElement>('#mood-solo [data-mood]')];
+  /**
+   * Playing together as the admin: the settings' picker sets the weather for everyone (src/main.ts sends it; the
+   * server checks the sender). Null for everyone else, who see the admin's pick greyed.
+   */
+  onAdminMood: ((mood: Choice) => void) | null = null;
+  onAdminSkip: (() => void) | null = null;
   /** The admin's mood while playing together (lockMood) */
   private locked: Choice | null = null;
 
@@ -83,7 +89,8 @@ export class SettingsPanel {
     }
     for (const b of this.moodButtons) {
       b.addEventListener('click', () => {
-        if (this.locked || !isChoice(b.dataset.mood)) return;
+        if (!isChoice(b.dataset.mood)) return;
+        if (this.locked) return this.onAdminMood?.(b.dataset.mood); // the admin, together: for everyone
         this.value.mood = b.dataset.mood;
         this.showMood();
         this.changed();
@@ -91,9 +98,12 @@ export class SettingsPanel {
     }
     // "Next weather" alone, on Auto: the mood shown ends now (world/weather.ts skip).
     document.getElementById('mood-next')?.addEventListener('click', () => {
-      if (!this.locked && this.value.mood === 'auto') this.onSkip();
+      if (this.locked) {
+        if (this.locked === 'auto') this.onAdminSkip?.();
+      } else if (this.value.mood === 'auto') this.onSkip();
     });
     this.showMood();
+    onLang(() => this.showMood()); // the note under the weather, in the new language
     $('set-reset').addEventListener('click', () => {
       Object.assign(this.value, DEFAULTS);
       this.showMood();
@@ -115,16 +125,28 @@ export class SettingsPanel {
     this.showMood();
   }
 
+  /** Playing together as the admin (both set) or not (both null): see onAdminMood. */
+  setAdminMood(pick: ((mood: Choice) => void) | null, skip: (() => void) | null): void {
+    this.onAdminMood = pick;
+    this.onAdminSkip = skip;
+    this.showMood();
+  }
+
   private showMood(): void {
     const shown = this.locked ?? this.value.mood;
     for (const b of this.moodButtons) {
       b.classList.toggle('selected', b.dataset.mood === shown);
       b.setAttribute('aria-pressed', String(b.dataset.mood === shown));
-      b.disabled = !!this.locked;
+      b.disabled = !!this.locked && !this.onAdminMood;
     }
-    document.getElementById('mood-note')?.classList.toggle('hidden', !this.locked);
+    const note = document.getElementById('mood-note');
+    if (note) {
+      note.classList.toggle('hidden', !this.locked);
+      note.textContent = t(this.onAdminMood ? 'mood.forAll' : 'mood.byAdmin');
+    }
     const next = document.getElementById('mood-next') as HTMLButtonElement | null;
-    if (next) next.classList.toggle('hidden', !!this.locked || this.value.mood !== 'auto');
+    const mood = this.locked ?? this.value.mood;
+    if (next) next.classList.toggle('hidden', mood !== 'auto' || (!!this.locked && !this.onAdminSkip));
   }
 
   /** A setting's shortcut (N for the minimap, F for the FPS counter): on or off, as its tick box. */

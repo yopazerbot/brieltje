@@ -48,6 +48,7 @@ const HOUSE_SPAWNS = spawns.flatMap((s, i) => (s.team === 'house' ? [i] : []));
 const OUTSIDE_SPAWNS = HOUSE_SPAWNS.filter((i) => spawns[i].outside);
 import { api, errorText, Net, type Me, type Rules, type ServerMsg } from './net/client';
 import { Rooms } from './ui/rooms';
+import { PadNav } from './ui/padNav';
 import { Avatars } from './net/avatars';
 import type { Body } from './net/swat';
 import { Parachutes } from './world/parachutes';
@@ -959,7 +960,13 @@ applySettings(settings.value);
 const moodAdmin = new MoodAdmin((msg) => {
   if (net.connected && me?.role === 'admin') net.send(msg);
 });
-const followMood = () => moodAdmin.update(net.connected && me?.role === 'admin', weather.serverMood, weather.serverSpeed);
+const followMood = () => {
+  const admin = net.connected && me?.role === 'admin';
+  moodAdmin.update(admin, weather.serverMood, weather.serverSpeed);
+  // The admin, together: the settings' own weather picker sets it for everyone too (Yoshi: "ik ben admin maar kan
+  // het weer niet aanpassen"), through the same message and the same checks on the server.
+  settings.setAdminMood(admin ? (mood) => net.send({ t: 'mood', mood }) : null, admin ? () => net.send({ t: 'moodskip' }) : null);
+};
 weather.onServer = (m) => {
   settings.lockMood(m);
   followMood();
@@ -1066,6 +1073,8 @@ const chat = new Chat();
 chat.paused = () => menu.open; // T and Enter belong to the menu while it is open
 const combat = new Combat();
 const leaderboard = new Leaderboard();
+// The controller in the pause menu: the D-pad moves between the open page's controls, ✕ presses (src/ui/padNav.ts).
+const padNav = new PadNav(() => document.querySelector<HTMLElement>('#pause-panel [data-page]:not(.hidden)'));
 // Zombies rooms in the Together tab (src/ui/rooms.ts, server/rooms.mjs): the list asked for while that tab shows.
 const rooms = new Rooms(net, {
   me: () => me,
@@ -2860,16 +2869,24 @@ renderer.setAnimationLoop((now: number) => {
       bigMap.steer(dt, frame, menu.mode === 'pad');
       if (frame.confirmPressed) bigMap.pickCentre();
     }
-    if (back || (frame.confirmPressed && !bigMap.open)) {
+    // In the pause menu (not the map) the D-pad moves between the page's controls and ✕ presses the one with
+    // the focus; ✕ with nothing focused resumes, as before. Left and right change a slider or a list in place.
+    const nav = pause && !bigMap.open;
+    if (back) {
+      padNav.reset();
+      menu.resume(menu.mode ?? 'pad');
+    } else if (frame.confirmPressed && !bigMap.open && !(nav && padNav.press())) {
+      padNav.reset();
       menu.resume(menu.onStartScreen ? 'pad' : (menu.mode ?? 'pad'));
     } else if (pause && frame.tabStep) {
+      padNav.reset();
       menu.stepTab(frame.tabStep);
-    } else if (pause && menu.tab === 'play' && menu.mode === 'pad' && placesList.handle(frame)) {
-      // The Play tab's list of places took the D-pad's up and down, or Triangle.
+    } else if (nav && (frame.navX || frame.navY)) {
+      if (!(frame.navX && padNav.adjust(frame.navX))) padNav.step(frame.navX, frame.navY);
     } else if (frame.squarePressed) {
       menu.cycleGraphics(); // the square button on the controller changes the graphics setting
-    } else if (frame.speedStep) {
-      menu.setSpeed(menu.walkSpeed + frame.speedStep * 0.2);
+    } else if (!pause && frame.speedStep) {
+      menu.setSpeed(menu.walkSpeed + frame.speedStep * 0.2); // the start screen: left and right, the walking speed
     }
     // A drop goes on behind the menu, hands off (the server holds it to the clock and to coming down).
     if (pause && player.chute !== null) {
@@ -3780,6 +3797,7 @@ if (import.meta.env.DEV) {
   const idle = NO_INPUT;
   Object.assign(window, {
     briel: {
+      padNav, // the controller's menu navigation (src/ui/padNav.ts), for checks without a controller
       player,
       beginDrop,
       parachutes,

@@ -54,6 +54,9 @@ export interface FrameInput {
   speedStep: number;
   /** L1 (-1) or R1 (+1) in the menu: the previous or next tab */
   tabStep: number;
+  /** A step in the menu (src/ui/padNav.ts): the D-pad, or the left stick pushed one way and repeating while held; -1, 0 or 1 */
+  navX: number;
+  navY: number;
   /** Tab, or the touchpad (View or − without one) held: show the scoreboard */
   scoreHeld: boolean;
   /** A short press on the controller's touchpad, or View or − without one: the big map (M on the keyboard is handled in main.ts) */
@@ -80,7 +83,7 @@ export interface FrameInput {
 export const NO_INPUT: FrameInput = {
   moveX: 0, moveY: 0, lookX: 0, lookY: 0, mouseX: 0, mouseY: 0, sprint: false,
   jumpPressed: false, jumpHeld: false, downHeld: false, clickPressed: false, usePressed: false, useHeld: false, aimHeld: false, reloadPressed: false, reloadHeld: false,
-  menuPressed: false, fpsPressed: false, confirmPressed: false, squarePressed: false, speedStep: 0, tabStep: 0, scoreHeld: false, mapPressed: false, fireHeld: false, weaponSlot: 0, weaponCycle: 0, throwPressed: false, throwHeld: false, deletePressed: false, anyPadButton: false,
+  menuPressed: false, fpsPressed: false, confirmPressed: false, squarePressed: false, speedStep: 0, tabStep: 0, navX: 0, navY: 0, scoreHeld: false, mapPressed: false, fireHeld: false, weaponSlot: 0, weaponCycle: 0, throwPressed: false, throwHeld: false, deletePressed: false, anyPadButton: false,
   throttle: 0, brake: 0,
 };
 
@@ -113,6 +116,8 @@ export class Input {
   private prevButtons: boolean[] = [];
   private padSprint = false;
   private touchpadAt = 0; // when the map button went down: a short press is the map, holding it the scores
+  private navKey = ''; // the left stick's push in the menu ('x,y'), and when it next repeats (navX, navY)
+  private navAt = 0;
   private keyMenu = false;
   private keyFps = false;
   private keyJump = false;
@@ -283,6 +288,18 @@ export class Input {
       if (edge(BTN.r1)) out.tabStep += 1;
       if (edge(BTN.left)) out.speedStep -= 1;
       if (edge(BTN.right)) out.speedStep += 1;
+      // A step in the menu: the D-pad, or the left stick pushed one way (one axis at a time), first after a
+      // moment and then every 150 ms while it is held.
+      out.navX = edge(BTN.left) ? -1 : edge(BTN.right) ? 1 : 0;
+      out.navY = edge(BTN.up) ? -1 : edge(BTN.down) ? 1 : 0;
+      const push = Math.abs(ly) > 0.6 ? [0, Math.sign(ly)] : Math.abs(lx) > 0.6 ? [Math.sign(lx), 0] : null;
+      const t = performance.now();
+      if (!push) this.navKey = '';
+      else if (push.join() !== this.navKey || t >= this.navAt) {
+        this.navAt = t + (push.join() !== this.navKey ? 400 : 150);
+        this.navKey = push.join();
+        if (!out.navX && !out.navY) [out.navX, out.navY] = push;
+      }
       this.prevButtons = pressed;
     }
 
