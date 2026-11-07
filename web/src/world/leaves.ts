@@ -102,13 +102,54 @@ export function leafTexture(): THREE.DataTexture {
 }
 
 /**
+ * Light a standard material's fragment shader as leaves take it: as plain diffuse surfaces (leaves this
+ * rough hardly gloss, a few percent), the sun, the sky and the surroundings' light all in full, without
+ * the gloss's sums and look-ups. `through`: how much of the sun shines through a leaf lit from behind
+ * (thin leaves glow yellow-green against the light; 0 for none).
+ */
+export function leafLight(fragmentShader: string, through = 0): string {
+  return fragmentShader
+    .replace(
+      '#include <lights_physical_pars_fragment>',
+      `#include <lights_physical_pars_fragment>
+      void RE_Direct_Leaf(const in IncidentLight directLight, const in vec3 geometryPosition, const in vec3 geometryNormal, const in vec3 geometryViewDir, const in vec3 geometryClearcoatNormal, const in PhysicalMaterial material, inout ReflectedLight reflectedLight) {
+        float leafSun = dot(geometryNormal, directLight.direction);
+        ${through > 0
+          ? `// Lit from behind, the light through the leaves: yellower, strongest looking towards the sun.
+        float leafBack = max(0.0, -leafSun) * (0.35 + 0.65 * max(0.0, dot(-geometryViewDir, directLight.direction)));
+        reflectedLight.directDiffuse += leafBack * ${through.toFixed(3)} * directLight.color * BRDF_Lambert(material.diffuseContribution) * vec3(1.25, 1.3, 0.55);`
+          : ''}
+        reflectedLight.directDiffuse += saturate(leafSun) * directLight.color * BRDF_Lambert(material.diffuseContribution);
+      }
+      void RE_IndirectSpecular_Leaf(const in vec3 radiance, const in vec3 irradiance, const in vec3 clearcoatRadiance, const in vec3 geometryPosition, const in vec3 geometryNormal, const in vec3 geometryViewDir, const in vec3 geometryClearcoatNormal, const in PhysicalMaterial material, inout ReflectedLight reflectedLight) {
+        reflectedLight.indirectDiffuse += material.diffuseContribution * irradiance * RECIPROCAL_PI;
+      }
+      #undef RE_Direct
+      #define RE_Direct RE_Direct_Leaf
+      #undef RE_IndirectSpecular
+      #define RE_IndirectSpecular RE_IndirectSpecular_Leaf`,
+    )
+    .replace(
+      '#include <lights_fragment_maps>',
+      `#if defined(USE_ENVMAP) && defined(ENVMAP_TYPE_CUBE_UV)
+      iblIrradiance += getIBLIrradiance(geometryNormal);
+      #endif`,
+    );
+}
+
+/**
  * Give an instanced material the leaves: its colour times the leaf tile's grey, and a ragged outline.
  * The tile is laid on from three sides in the shape's own space (stretched with the copy, so it sways
  * with it), blended by which way the surface faces: no seams and no pinching anywhere on a ball, for
  * two more reads of the small tile. `metres`: how far one tile reaches; `ragged`: how much of the
- * outline is cut away.
+ * outline is cut away; `through`: the sun through the leaves from behind (leafLight).
+ *
+ * On the tree crowns (tiles of 2 m and more) the gaps
+ * between the clumps on the underside also open a little, so a crown seen from under it shows specks of
+ * sky through its leaves instead of a dark, smooth ceiling.
  */
-export function leafy(material: THREE.MeshStandardMaterial, metres: number, ragged = 0.7): void {
+export function leafy(material: THREE.MeshStandardMaterial, metres: number, ragged = 0.7, through = 0.45): void {
+  const holes = metres >= 2;
   const map = { value: leafTexture() };
   const before = material.onBeforeCompile;
   material.onBeforeCompile = (shader, renderer) => {
@@ -123,30 +164,8 @@ export function leafy(material: THREE.MeshStandardMaterial, metres: number, ragg
       #endif
       vLeafFacing = normal;`,
     );
-    shader.fragmentShader = shader.fragmentShader
+    shader.fragmentShader = leafLight(shader.fragmentShader, through)
       .replace('#include <common>', '#include <common>\nuniform sampler2D leafMap;\nvarying vec3 vLeafAt;\nvarying vec3 vLeafFacing;')
-      // Leaves this rough hardly gloss (a few percent), so they take the light as plain diffuse surfaces: the
-      // sun, the sky and the surroundings' light all in full, without the gloss's sums and look-ups.
-      .replace(
-        '#include <lights_physical_pars_fragment>',
-        `#include <lights_physical_pars_fragment>
-        void RE_Direct_Leaf(const in IncidentLight directLight, const in vec3 geometryPosition, const in vec3 geometryNormal, const in vec3 geometryViewDir, const in vec3 geometryClearcoatNormal, const in PhysicalMaterial material, inout ReflectedLight reflectedLight) {
-          reflectedLight.directDiffuse += saturate(dot(geometryNormal, directLight.direction)) * directLight.color * BRDF_Lambert(material.diffuseContribution);
-        }
-        void RE_IndirectSpecular_Leaf(const in vec3 radiance, const in vec3 irradiance, const in vec3 clearcoatRadiance, const in vec3 geometryPosition, const in vec3 geometryNormal, const in vec3 geometryViewDir, const in vec3 geometryClearcoatNormal, const in PhysicalMaterial material, inout ReflectedLight reflectedLight) {
-          reflectedLight.indirectDiffuse += material.diffuseContribution * irradiance * RECIPROCAL_PI;
-        }
-        #undef RE_Direct
-        #define RE_Direct RE_Direct_Leaf
-        #undef RE_IndirectSpecular
-        #define RE_IndirectSpecular RE_IndirectSpecular_Leaf`,
-      )
-      .replace(
-        '#include <lights_fragment_maps>',
-        `#if defined(USE_ENVMAP) && defined(ENVMAP_TYPE_CUBE_UV)
-        iblIrradiance += getIBLIrradiance(geometryNormal);
-        #endif`,
-      )
       .replace(
         '#include <map_fragment>',
         `vec3 leafSide = vLeafFacing * vLeafFacing;
@@ -155,11 +174,17 @@ export function leafy(material: THREE.MeshStandardMaterial, metres: number, ragg
         vec4 leafTexel = texture2D(leafMap, vLeafAt.zy) * leafSide.x + texture2D(leafMap, vLeafAt.xz) * leafSide.y + texture2D(leafMap, vLeafAt.xy) * leafSide.z;
         // Towards the outline (the surface turning away from the eye) only the clumps' middles stay.
         float leafEdge = 1.0 - abs(dot(normalize(vNormal), normalize(vViewPosition)));
-        if (leafTexel.a < smoothstep(0.45, 0.95, leafEdge) * ${ragged.toFixed(3)}) discard;
+        float leafCut = smoothstep(0.42, 0.95, leafEdge) * ${ragged.toFixed(3)};
+        ${holes
+          ? `// Underneath (seen only from below): the gaps between the clumps let the sky through here and there.
+        float leafThin = smoothstep(0.55, 0.85, (0.5 + 0.5 * sin(vLeafAt.x * 2.3 + vLeafAt.y * 0.7) * sin(vLeafAt.z * 1.9 - vLeafAt.y * 0.9)));
+        leafCut = max(leafCut, 0.035 * leafThin * smoothstep(-0.45, -0.85, vLeafFacing.y));`
+          : ''}
+        if (leafTexel.a < leafCut) discard;
         diffuseColor.rgb *= leafTexel.r * ${(1 / mean).toFixed(3)};`,
       );
   };
   const key = material.customProgramCacheKey.bind(material);
-  material.customProgramCacheKey = () => `${key()}|leafy${metres}|${ragged}`;
+  material.customProgramCacheKey = () => `${key()}|leafy${metres}|${ragged}|${through}`;
   material.needsUpdate = true;
 }
