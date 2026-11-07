@@ -489,7 +489,7 @@ export class LooseProps {
       }
       return;
     }
-    if (spec.mode !== 'rigid' || rel < 0.12) return;
+    if (rel < 0.12) return; // a rigid thing, or a post snapped off and tumbling
     if (!this.wake(p)) return;
     const b = p.body!;
     const k = m.vehicle ? 1 : spec.push;
@@ -639,12 +639,12 @@ export class LooseProps {
         kind.live.computeBoundingSphere(); // for shots
         kind.liveDirty = false;
       }
+      if (kind.face && (kind.stillDirty || kind.slots.some(Boolean))) kind.face.computeBoundingSphere(); // for shots
       if (kind.stillDirty) {
         kind.still.instanceMatrix.needsUpdate = true;
         kind.still.computeBoundingSphere();
         kind.stillDirty = false;
       }
-      if (kind.face) kind.face.computeBoundingSphere();
     }
   }
 
