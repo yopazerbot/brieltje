@@ -156,7 +156,7 @@ export function paneLook(x: number, z: number, nx: number, nz: number, upper: bo
     mirror: hash(id, 17) < 0.5,
     room: 0.6 + 0.8 * hash(id, 19),
     sill: tall ? 0.02 : 0.9,
-    // At night about half the rooms have their light on: a few more downstairs (the living room) than upstairs.
+    // At night about half the rooms have their light on: a few more downstairs than upstairs.
     seed: upper ? 0.12 + 0.88 * hash(id, 37) : 0.92 * hash(id, 37),
   };
 }
