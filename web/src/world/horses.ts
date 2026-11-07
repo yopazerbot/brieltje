@@ -1,10 +1,10 @@
 import * as THREE from 'three';
-import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 import HORSES from '../../shared/horses.json';
 import type { HorseSample } from '../../shared/wire.mjs';
 import { netClock, Track } from '../net/track';
 import { sound } from '../sound';
 import type { World } from './collision';
+import { horseModel } from './horseModel';
 import { paintJoints } from './paint';
 
 /**
@@ -180,9 +180,9 @@ export class Horses {
 
   constructor(private world: World) {
     for (const h of this.horses) this.group.add(h.group);
-    void new GLTFLoader().loadAsync('/models/horse.glb').then((gltf) => {
+    void horseModel().then((scene) => {
       this.horses.forEach((h, i) => {
-        const model = gltf.scene.clone(true);
+        const model = scene.clone(true);
         const coat = HORSES.herd[i].coat;
         // Its own coat (the grey without white markings: they are painted in its coat). One draw call a joint.
         paintJoints(model, JOINTS, { Coat: coat, ...(i === 2 ? { Marking: coat } : {}) });

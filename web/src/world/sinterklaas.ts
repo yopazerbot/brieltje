@@ -3,6 +3,7 @@ import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 import { t, type PlainKey } from '../i18n';
 import { sound } from '../sound';
 import type { World } from './collision';
+import { horseModel } from './horseModel';
 import { paintJoints } from './paint';
 
 /**
@@ -146,8 +147,8 @@ export class Sinterklaas {
   private load(): void {
     this.loaded = 'loading';
     const loader = new GLTFLoader();
-    void Promise.all([loader.loadAsync('/models/horse.glb'), loader.loadAsync(this.spec.model)]).then(([h, s]) => {
-      const horse = h.scene;
+    // His horse: a copy of the herd's model, fetched once for both (world/horseModel.ts).
+    void Promise.all([horseModel(), loader.loadAsync(this.spec.model)]).then(([horse, s]) => {
       paintJoints(horse, HORSE_JOINTS, this.spec.horse); // one draw call a joint
       const saint = s.scene;
       paintJoints(saint, SAINT_JOINTS);

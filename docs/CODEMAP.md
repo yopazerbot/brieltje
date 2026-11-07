@@ -95,6 +95,7 @@ file's opening comment; run it again after adding, moving or removing a module.
 - `web/src/world/homeLocks.ts`: The page's side of the three homes that open only with a code (shared/homes.mjs, server/homes.mjs): the main house, the bungalow and the end house at Molenhoek.
 - `web/src/world/homeStreet.ts`: The houses round the two portals at home, our own Blender models (tools/homestreet/houses.py, web/public/models/homestreet.glb): the corner house across the...
 - `web/src/world/horizon.ts`: The horizon beyond the data, as flat Flanders shows it: low tree lines one behind the other, a hedgerow, a row of poplars now and then and the odd farm roof...
+- `web/src/world/horseModel.ts`: The horse's model (horse.glb), fetched once for the herd (world/horses.ts) and Sinterklaas's grey (world/sinterklaas.ts).
 - `web/src/world/horses.ts`: Three horses in the meadow across the road (our own model, tools/horse.py): a bay, a chestnut and a grey.
 - `web/src/world/houseData.ts`: A closed outline on the floor plan: [x, z] points in metres.
 - `web/src/world/houseMeshes.ts`: Real-world width of each texture tile in metres (from Poly Haven, or our own brick).
