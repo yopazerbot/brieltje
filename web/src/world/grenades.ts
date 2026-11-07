@@ -2,6 +2,7 @@ import * as THREE from 'three';
 import { anyPaint, paintball } from '../paintball';
 import { sound } from '../sound';
 import type { World } from './collision';
+import { waterLevel } from './water';
 import SPEC from '../../shared/grenade.json';
 
 /**
@@ -75,6 +76,8 @@ interface Live {
   /** Whose it is; null for yours */
   by: string | null;
   still: boolean;
+  /** In a pond or a ditch: it sinks slowly */
+  wet: boolean;
 }
 
 export class Grenades {
@@ -83,6 +86,8 @@ export class Grenades {
   onExplode: (at: THREE.Vector3) => void = () => {};
   /** One of yours hit window pane `index` fast at `at`, coming from `from`: true when it broke (the grenade flies on). */
   onPane: (index: number, at: THREE.Vector3, from: THREE.Vector3) => boolean = () => false;
+  /** One (anyone's) went into the water at `at` at `speed` m/s: a plop (world/splashes.ts). */
+  onWater: (at: THREE.Vector3, speed: number) => void = () => {};
   private live: Live[] = [];
   /** When each of your grenades is back, on this clock (seconds); in your pocket once passed */
   private back: number[] = Array(GRENADE.carry).fill(0);
@@ -154,7 +159,7 @@ export class Grenades {
     mesh.position.copy(from);
     this.group.add(mesh);
     const spin = new THREE.Vector3(-8 - Math.random() * 4, (Math.random() - 0.5) * 4, (Math.random() - 0.5) * 3);
-    this.live.push({ mesh, pos: from.clone(), vel: vel.clone(), spin, age: 0, by, still: false });
+    this.live.push({ mesh, pos: from.clone(), vel: vel.clone(), spin, age: 0, by, still: false, wet: false });
   }
 
   private remove(i: number): void {
@@ -167,7 +172,18 @@ export class Grenades {
     const steps = Math.min(30, Math.max(1, Math.ceil((g.vel.length() * dt) / 0.04)));
     const h = dt / steps;
     let floor = false;
+    const level = waterLevel(g.pos.x, g.pos.z);
     for (let s = 0; s < steps; s++) {
+      if (level !== null && !g.wet && g.pos.y < level) {
+        // Into the water: a plop, and from now on the water holds it back and it sinks slowly.
+        g.wet = true;
+        this.onWater(new THREE.Vector3(g.pos.x, level, g.pos.z), g.vel.length());
+      }
+      if (g.wet) {
+        g.vel.multiplyScalar(Math.exp(-h * 3.5));
+        g.vel.y += 9.81 * 0.6 * h; // what the water bears of its weight
+        g.spin.multiplyScalar(Math.exp(-h * 3));
+      }
       g.vel.y -= 9.81 * h;
       this.next.copy(g.pos).addScaledVector(g.vel, h);
       const hit = this.world.collide(g.pos, this.next, R);

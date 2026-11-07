@@ -1830,6 +1830,7 @@ function throwGrenade(): void {
   weapon.throwing();
   net.send({ t: 'nade', x: from.x, y: from.y, z: from.z, vx: vel.x, vy: vel.y, vz: vel.z });
 }
+grenades.onWater = (at, speed) => effects.splashes.plop(at.x, at.y, at.z, speed); // into a pond or a ditch (world/splashes.ts)
 grenades.onPane = (i, at, from) => {
   if (!built.panes.has(i) || !glass.break(i, at, from)) return false;
   net.send({ t: 'glass', i });

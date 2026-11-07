@@ -6,6 +6,7 @@ import { Particles, type Spawn } from './particles';
 import { Splashes } from './splashes';
 import { splatSound, Splats, type Paint } from './splats';
 import { flashSheet, HOLE, PARTICLE } from './sprites';
+import { waterLevel } from './water';
 
 /**
  * Impact bursts that depend on what was hit: dust and chips from plaster and
@@ -439,6 +440,20 @@ export class Effects {
     const up = new THREE.Vector3(0, 1, 0);
     const n = (k: number) => Math.max(1, Math.round(k * b));
     const k = scale; // a grenade's blast is smaller than a rocket's
+    // In a pond or a ditch (a grenade rolled in): water thrown up, no fire, dust or scorch; a dull flash only when shallow.
+    const level = waterLevel(point.x, point.z);
+    if (level !== null && point.y < level + 0.6) {
+      const depth = Math.max(0, level - point.y);
+      this.splashes.blast(point.x, level, point.z, scale, depth);
+      if (depth < 0.4) {
+        this.throw(new THREE.Vector3(point.x, level + 0.2, point.z), up, 1, 0, 0, (s) => {
+          Object.assign(s, { life: 0.1, size0: 3 * k, size1: 4 * k, alpha: 0.6, cell: PARTICLE.glow });
+          s.c0.setRGB(2.4, 2, 1.5);
+          s.c1.setRGB(1.2, 0.8, 0.4);
+        }, true);
+      }
+      return;
+    }
     // Flash: a big short glow.
     this.throw(point, up, 1, 0, 0, (s) => {
       Object.assign(s, { life: 0.14, size0: 7 * k, size1: 9 * k, alpha: 1, cell: PARTICLE.glow });

@@ -171,6 +171,44 @@ export class Splashes {
     if (k > 0.5) this.ring(x, y, z, 2.6 + k, 2.4, 0.3);
   }
 
+  /**
+   * A blast in the water at (x, z), the surface at `y` (a grenade in a pond or a ditch, world/effects.ts): a white
+   * column thrown high, spray all round, a mist hanging over it and wide rings. `depth`: how far under the surface it
+   * went off (deeper throws less up); `scale` as the blast's (a grenade's 0.7, a rocket's 1).
+   */
+  blast(x: number, y: number, z: number, scale: number, depth: number): void {
+    const k = scale * Math.max(0.75, 1 - depth / 6);
+    // The plume: white spray shooting up several metres and falling back as it spreads.
+    for (let i = 0, n = Math.max(4, Math.round(26 * k * this.particles.budget)); i < n; i++) {
+      const s = this.s;
+      const a = Math.random() * Math.PI * 2;
+      const o = Math.random() * 1.6 * k;
+      Object.assign(s, {
+        x: x + Math.cos(a) * 0.3, y: y + 0.1, z: z + Math.sin(a) * 0.3,
+        vx: Math.cos(a) * o, vy: (7 + Math.random() * 7) * k, vz: Math.sin(a) * o,
+        life: 1.3 + Math.random() * 0.7, size0: 0.6 * k, size1: (2.6 + Math.random() * 1.4) * k, alpha: 0.55, cell: PARTICLE.puff,
+        drag: 1.1, gravity: 7, spin: (Math.random() - 0.5) * 1.5, stretch: 0,
+      });
+      s.c0.copy(MIST);
+      s.c1.copy(MIST);
+      this.particles.spawn(s);
+    }
+    this.drops(x, y, z, 90 * k, 14 * k, 1.4 * k, 0, 0, 0.16);
+    this.drops(x, y, z, 60 * k, 6 * k, 5 * k, 0, 0, 0.1);
+    this.drops(x, y, z, 30 * k, 2.5 * k, 2.5 * k, 0, 0, 0.06);
+    this.mist(x, y, z, 16 * k, 3.6 * k);
+    this.ring(x, y, z, 3.5 * k, 2.2, 0.55);
+    this.ring(x, y, z, 6.5 * k, 3.2, 0.45);
+    this.ring(x, y, z, 10 * k, 4.2, 0.3);
+  }
+
+  /** Something small into the water at `speed` m/s (a grenade): a plop, a few drops and a ring. */
+  plop(x: number, y: number, z: number, speed: number): void {
+    const k = Math.min(1, speed / 12);
+    this.drops(x, y, z, 6 + 14 * k, 1.5 + 2.5 * k, 0.3 + 0.5 * k, 0, 0, 0.04);
+    this.ring(x, y, z, 0.6 + 0.6 * k, 1.3, 0.5);
+  }
+
   /** A shot into the water at `point`: a little spout and a ring (world/effects.ts). */
   shot(point: THREE.Vector3): void {
     this.drops(point.x, point.y, point.z, 10, 3.2, 0.35, 0, 0, 0.04);
