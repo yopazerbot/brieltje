@@ -1,16 +1,18 @@
 # Progress
 
-Last update: 2026-11-06
+Last update: 2026-11-07
 
 <!-- The handover: rewrite these four at the end of every session (AGENTS.md, "Working efficiently"). Keep each short. -->
 
-**Live:** brieltje.be follows `main`. New on 6 Nov: Teslas' four wheels roll correctly, both models reach about 200 km/h with gradual acceleration, and a compact km/h display shows for drivers and passengers (below the map on touch screens). The southern map extension adds 80 buildings and a detailed pale-brick house exterior and garden; use `/location Oordegemkouter`. The skydive, Sparrenhof, church square, baked lighting, KTX2 textures and start-screen stills from 5 Nov remain.
+**Live:** brieltje.be follows `main`. New on 7 Nov (batch 1 of the "next level" plan): weather moods (Auto by default: sunny, overcast, rain, night, slowly cycling; the admin picks, skips or speeds it up together, players pick alone in Settings), the open-data houses' own brick, roofs and frames with rooms behind the windows (lit at night), weathered yards, a low hazy horizon, leafier crowns and undergrowth in the woods.
 
-**In progress:** nothing half done. The worktree `.claude/worktrees/agent-aeb5e2df2c154e7e2` is still locked by its old process; its work is on `main`: remove it once unlocked.
+**In progress:** batch 2 (feel): car body motion, skid marks and sound; zombie ragdolls; new first-person weapons and hands; echo indoors and the night leftovers (white chimney smoke, unlit parachute). Then batch 3 (bikes, villagers in Explore only, a football, splashes) and batch 4 (cascaded shadows, bloom, a dusk mood with its own bake, December: snow, lights, a tree and Sinterklaas with his horse).
 
-**Next command:** `node web/src/world/car.test.mjs`; with a dev server on 5295, `node tools/dev/car.mjs --url http://localhost:5295/ --port 9441 --swiftshader` (`--phone` for touch). For the southern house, visit `/location Oordegemkouter`; regeneration is in `docs/kouter-extension.md`. Re-bakes and stills: `docs/DETAILS.md`.
+**Next command:** with a dev server on your port, `node tools/dev/shot.mjs out.png --url http://localhost:<port>/ --travel church --mood night --village` to see a mood.
 
 **Open questions:**
+- The weather: Dutch "Wisselend" for Auto; rain shares the overcast sky; the admin's choice is not kept over a server restart (back to Auto); three skies stay in graphics memory once used. The houses: about 13 % red/terracotta roofs, the share of rendered houses, how much of a room shows by day, about half the windows lit at night. All one number each.
+- The weather's rain sound was never heard (headless browsers play no sound), and the admin's weather picker was only tested through the server test and a forced layout.
 - Tesla changes passed Low desktop/touch emulation using SwiftShader and WebP with bakes disabled. No physical-device performance or controller check was made.
 - The southern house is an exterior; unseen side/rear details are interpretations. A walkable interior needs references. Its browser checks used Low, SwiftShader, WebP and disabled light bakes; no physical-device performance measurement was made.
 - Tree crowns seen from below render as dark smooth shapes in Cycles (the Sparrenhof and bungalow stills); a leaf-card or alpha-leaf look in the renders would fix it.

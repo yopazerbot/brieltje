@@ -20,6 +20,12 @@ In team games, press V to mark your position for teammates for eight seconds; th
 
 The whole project was made with AI. Yoshi Parlevliet, a cybersecurity consultant rather than a game developer, directed development and used both [OpenAI Codex](https://openai.com/codex/) and [Claude Code](https://claude.com/claude-code) to build the game, the data tools and the Blender scripts. Every choice and the reason for it is in [DECISIONS.md](DECISIONS.md).
 
+## Recent updates — 7 November 2026
+
+- **Weather and time of day.** The sky now changes by itself, slowly: sunny, overcast, rain and night, each for 20 to 40 minutes (night 10 to 20), blending over a few minutes. Rain falls round you but not indoors, and the roads turn dark and shiny. At night the street lamps glow and about half the village's windows light up. Alone you can fix a mood in Settings (Weather); together the admin picks it for everyone, skips to the next weather or speeds the cycle up.
+- **Houses with their own look.** Every house from the open data has its own shade of brick or render, its own roof tiles and frames, and a room behind each window: walls, a floor, furniture and curtains.
+- **The ground, the horizon and the trees.** Yards and gravel round the houses are weathered paving instead of flat pale patches. The horizon is a low, hazy band of tree lines. Tree crowns have leaf clusters and lighter undersides, and the wood by the Sparrenhof has fallen leaves, ferns, brambles and shrubs.
+
 ## Recent updates — 6 November 2026
 
 - **Faster Teslas, with a speedometer.** Both models now reach about 200 km/h with gradual acceleration. All four wheels roll correctly, including the mirrored left side. A compact km/h readout appears while driving or riding along; on touch screens it sits below the map.

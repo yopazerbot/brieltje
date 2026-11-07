@@ -291,6 +291,14 @@ Run `tools/.venv/Scripts/python.exe -m unittest discover -s tools -p 'test_*.py'
 node --test server/*.test.mjs shared/*.test.mjs src/world/network-state.test.mjs src/world/vegetation.test.mjs
 ```
 
+## Weather moods
+
+The moods live in `web/shared/moods.mjs` (the list and the cycle, shared with the server), `web/src/world/weather.ts` (the look per mood and the blends), `rain.ts`, `streetLights.ts` and `mood.ts` (the state other modules read: `mood.night`, `mood.wet`, `mood.overcast`, 0 to 1, updated every frame). The overcast and night skies are fetched only when needed (`web/public/env/`). The server keeps the admin's choice and the cycle's seed and clock in memory (`mood`, `moodskip` and `moodspeed` messages, admin only, fixed values, rate limited; `node --test server/mood.test.mjs`). In the dev build, `briel.weatherAhead(seconds)` moves the cycle on and `briel.weatherState()` shows it. `tools/dev/shot.mjs --mood night` takes a picture in a mood.
+
+The open-data houses' variety (`web/src/world/facadeLook.ts`) is a stable hash of each house's position. The rooms behind their windows are drawn in the glass shader (`windows.ts`): `setWindowDetail` follows the graphics preset (Low and phones get a flat back wall), `setWindowNight` follows `mood.night`.
+
+The horizon is `web/src/world/horizon.ts`, the yards' weathering `yards.ts`, the woods' undergrowth `undergrowth.ts` (only near the eye).
+
 ## Vegetation and recent geometry repairs
 
 Brieltje's public contact address is `yoshi@brieltje.be`, including both game translations and public-page mail links. The privacy regulator's complaint address is a separate third-party contact.
