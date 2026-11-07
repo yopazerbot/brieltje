@@ -42,6 +42,7 @@ const fragmentShader = /* glsl */ `
   uniform float turn;
   uniform float drift;
   uniform vec3 sunDir;
+  uniform float gain;
   varying vec3 vDir;
   void main() {
     vec3 d = normalize(vDir);
@@ -50,7 +51,7 @@ const fragmentShader = /* glsl */ `
     float a = turn + drift * (1.0 - still) * smoothstep(0.0, 0.7, d.y);
     // As three.js reads an equirectangular photo turned by the background rotation (equirectUv).
     vec2 uv = vec2((atan(d.z, d.x) + a) * RECIPROCAL_PI2 + 0.5, asin(clamp(d.y, -1.0, 1.0)) * RECIPROCAL_PI + 0.5);
-    gl_FragColor = vec4(texture2D(sky, uv).rgb, 1.0);
+    gl_FragColor = vec4(texture2D(sky, uv).rgb * gain, 1.0);
     #include <tonemapping_fragment>
     #include <colorspace_fragment>
   }`;
@@ -58,6 +59,7 @@ const fragmentShader = /* glsl */ `
 export class Sky {
   readonly mesh: THREE.Mesh;
   private drift = { value: 0 };
+  private uniforms: { sky: { value: THREE.Texture }; turn: { value: number }; sunDir: { value: THREE.Vector3 }; gain: { value: number } };
 
   /**
    * `photo`: the equirectangular sky; `turn`: how far it is turned round the vertical (the scene's
@@ -66,8 +68,9 @@ export class Sky {
   constructor(photo: THREE.Texture, turn: number, sunDir: THREE.Vector3) {
     // Turned, the photo's left and right edges meet somewhere in view: they must join (set before its first use).
     photo.wrapS = THREE.RepeatWrapping;
+    this.uniforms = { sky: { value: photo }, turn: { value: turn }, sunDir: { value: sunDir.clone().normalize() }, gain: { value: 1 } };
     const material = new THREE.ShaderMaterial({
-      uniforms: { sky: { value: photo }, turn: { value: turn }, drift: this.drift, sunDir: { value: sunDir.clone().normalize() } },
+      uniforms: { ...this.uniforms, drift: this.drift },
       vertexShader,
       fragmentShader,
       depthWrite: false,
@@ -83,5 +86,14 @@ export class Sky {
     this.mesh.onBeforeRender = () => {
       this.drift.value = DRIFT * Math.sin((performance.now() / 1000 / PERIOD) * Math.PI * 2);
     };
+  }
+
+  /** Another sky in its place (the weather, world/weather.ts), as the constructor takes it, gain times as bright: only its uniforms change. */
+  show(photo: THREE.Texture, turn: number, sunDir: THREE.Vector3, gain = 1): void {
+    photo.wrapS = THREE.RepeatWrapping;
+    this.uniforms.gain.value = gain;
+    this.uniforms.sky.value = photo;
+    this.uniforms.turn.value = turn;
+    this.uniforms.sunDir.value.copy(sunDir).normalize();
   }
 }

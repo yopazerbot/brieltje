@@ -37,6 +37,9 @@ import type { GrassData } from './houseData';
  * fields between the areas and the rest of the map seen from the air have it too.
  */
 
+/** How wet the ground is, 0 to 1 (world/weather.ts sets it in the rain): one uniform shared by every ground material. */
+export const groundWet = { value: 0 };
+
 const HALF = 240; // metres from the centre to the edge of the shaded area
 const SIZE = 2048; // texels across the ground texture (about 23 cm each)
 
@@ -331,6 +334,7 @@ export class GroundShade {
     material.onBeforeCompile = (shader) => {
       Object.assign(shader.uniforms, this.uniforms);
       shader.uniforms.grassDetail = grassDetail;
+      shader.uniforms.groundWet = groundWet;
       shader.vertexShader = shader.vertexShader
         .replace('#include <common>', '#include <common>\nuniform vec3 groundArea;\nuniform vec3 groundAreaAll;\nvarying vec2 vGroundUv;\nvarying vec2 vGroundUvAll;')
         .replace(
@@ -341,7 +345,7 @@ export class GroundShade {
           vGroundUvAll = (gsXZ - groundAreaAll.xy) / groundAreaAll.z * 0.5 + 0.5;`,
         );
       shader.fragmentShader = shader.fragmentShader
-        .replace('#include <common>', '#include <common>\nuniform sampler2D groundShade;\nuniform sampler2D groundShadeAll;\nuniform float grassDetail;\nvarying vec2 vGroundUv;\nvarying vec2 vGroundUvAll;')
+        .replace('#include <common>', '#include <common>\nuniform sampler2D groundShade;\nuniform sampler2D groundShadeAll;\nuniform float grassDetail;\nuniform float groundWet;\nvarying vec2 vGroundUv;\nvarying vec2 vGroundUvAll;')
         .replace(
           '#include <map_fragment>',
           `#include <map_fragment>
@@ -355,7 +359,16 @@ export class GroundShade {
           }
           if (gsFine > 0.0) gs = mix(gs, texture2D(groundShade, vGroundUv), gsFine);
           diffuseColor.rgb *= mix(0.86, 1.1, gs.b);
-          ${grass ? GRASS : ''}`,
+          ${grass ? GRASS : ''}
+          // Wet in the rain (world/weather.ts): darker, and paving and roads shine, most in the hollows (the slow
+          // variation's light patches stand for them: no texture read more).
+          float gsPuddle = groundWet * smoothstep(0.56, 0.72, gs.b);
+          diffuseColor.rgb *= 1.0 - groundWet * ${grass ? '0.18' : '0.4'};`,
+        )
+        .replace(
+          '#include <roughnessmap_fragment>',
+          `#include <roughnessmap_fragment>
+          roughnessFactor = mix(roughnessFactor, mix(0.34, 0.07, gsPuddle), groundWet * ${grass ? '0.25' : '0.85'});`,
         )
         .replace(
           '#include <lights_fragment_end>',

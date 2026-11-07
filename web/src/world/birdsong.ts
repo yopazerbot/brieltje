@@ -2,13 +2,15 @@ import * as THREE from 'three';
 import { sound } from '../sound';
 import type { BirdKind } from './birds';
 import { house } from './houseData';
+import { mood } from './mood';
 
 /**
  * Birdsong round the main house and the bungalow, made in code (no sound files): a blackbird's
  * fluting phrases, a robin's thin warble, sparrows chirping, the wood pigeon's five-note coo,
  * starlings' chatter, a magpie's rattle, and from the trees and hedges a great tit and a
  * chiffchaff. A song every few seconds from somewhere near you: from a bird you can see sitting,
- * or one hidden in a tree or hedge. Softer and rarer when you are indoors. No graphics at all.
+ * or one hidden in a tree or hedge. Softer and rarer when you are indoors. None at night or in the
+ * rain (world/weather.ts). No graphics at all.
  */
 
 type Song = (ctx: AudioContext, out: AudioNode, t: number) => void;
@@ -162,7 +164,7 @@ export class Birdsong {
     if (this.wait > 0) return;
     const indoors = (eye.x > 0 && eye.x < 9.02 && eye.z > -3 && eye.z < 12.02 && eye.y < 9.5) || (inside(eye.x, eye.z, BUNGALOW) && eye.y < 6.5);
     this.wait = (indoors ? 4 : 1.6) + Math.random() * (indoors ? 8 : 3.5);
-    if (!awake) return;
+    if (!awake || mood.night > 0.5 || mood.wet > 0.5) return; // asleep at night, quiet in the rain (world/weather.ts)
     const ctx = sound.context();
     if (!ctx || ctx.state !== 'running') return;
     let at: THREE.Vector3 | null = null;

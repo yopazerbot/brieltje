@@ -62,7 +62,11 @@ export type ServerMsg =
       t: 'welcome'; proto?: number; you: string; role: string; color: string; doors: Record<string, boolean>; doorDir?: Record<string, number>; broken: number[]; homes?: string[];
       players: { name: string; color: string; role: string }[]; scores: Score[]; limit: number; round: { winner: string; ms: number } | null; items: boolean[];
       time: number; cats: number[]; clowns?: ClownSpec[]; furniture: Piece[]; rules?: Rules; cars?: CarState[]; horses?: HorseState[]; mode?: ModeView;
+      /** The weather and time of day for everyone (shared/moods.mjs); missing from an older server. Checked where it is used (world/weather.ts). */
+      mood?: unknown;
     }
+  /** The admin set the weather and time of day for everyone (`by`: who; a name for textContent only) */
+  | { t: 'mood'; mood: unknown; by?: string }
   | { t: 'car'; car: CarState }
   /** The spawned Teslas, after one was spawned, moved or taken away (each with its kind) */
   | { t: 'teslas'; list: CarState[] }

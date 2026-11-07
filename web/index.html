@@ -349,6 +349,15 @@
                   <!-- Settings with a key as their shortcut (src/shortcuts.ts): the key shows beside them for keyboard players. -->
                   <label class="check"><input type="checkbox" id="set-minimap" /> <span data-i18n="set.minimap">Minimap</span> <kbd data-key="minimap"></kbd></label>
                   <label class="check"><input type="checkbox" id="set-fps" /> <span data-i18n="set.fps">FPS counter</span> <kbd data-key="fps"></kbd></label>
+                  <!-- The weather and time of day when playing alone (src/settings.ts, src/world/weather.ts); together the admin's holds, greyed here. -->
+                  <p class="label" data-i18n="mood.label">Weather</p>
+                  <div class="seg mood-seg" id="mood-solo" role="group" aria-label="Weather" data-i18n-aria="mood.label">
+                    <button class="seg-btn" type="button" data-mood="sunny"><b data-i18n="mood.sunny">Sunny</b></button>
+                    <button class="seg-btn" type="button" data-mood="overcast"><b data-i18n="mood.overcast">Overcast</b></button>
+                    <button class="seg-btn" type="button" data-mood="rain"><b data-i18n="mood.rain">Rain</b></button>
+                    <button class="seg-btn" type="button" data-mood="night"><b data-i18n="mood.night">Night</b></button>
+                  </div>
+                  <p class="note hidden" id="mood-note" data-i18n="mood.byAdmin">Playing together, the admin picks the weather for everyone.</p>
                   <!-- Tests stay out of the way, folded away under Advanced. -->
                   <details class="advanced">
                     <summary data-i18n="set.advanced">Advanced</summary>
@@ -402,6 +411,14 @@
                   <label class="check"><input type="checkbox" id="set-paintball" /> <span data-i18n="adm.paintball">Child-friendly for everyone: Action plays as Paintball</span></label>
                   <label class="check"><input type="checkbox" id="set-parachute" checked /> <span data-i18n="adm.parachute">Players arrive by parachute (respawns, the start, Zombies)</span></label>
                   <div class="setting"><label class="field" for="set-max"><span data-i18n="adm.max">Players at once</span> <span class="set-value" id="set-max-value">16</span></label><input class="slider" id="set-max" type="range" min="2" max="16" step="1" value="16" /></div>
+                  <!-- The weather and time of day for everyone (src/ui/moodAdmin.ts; the server checks it, server/game.mjs setMood). -->
+                  <h2 data-i18n="mood.adminTitle">Weather for everyone</h2>
+                  <div class="seg mood-seg" id="mood-admin" role="group" aria-label="Weather for everyone" data-i18n-aria="mood.adminTitle">
+                    <button class="seg-btn" type="button" data-mood="sunny"><b data-i18n="mood.sunny">Sunny</b></button>
+                    <button class="seg-btn" type="button" data-mood="overcast"><b data-i18n="mood.overcast">Overcast</b></button>
+                    <button class="seg-btn" type="button" data-mood="rain"><b data-i18n="mood.rain">Rain</b></button>
+                    <button class="seg-btn" type="button" data-mood="night"><b data-i18n="mood.night">Night</b></button>
+                  </div>
                   <h2 data-i18n="adm.joining">Joining</h2>
                   <label class="check"><input type="checkbox" id="set-pin" checked /> <span data-i18n="adm.pin">New players can join with the PIN</span></label>
                   <div class="setting">

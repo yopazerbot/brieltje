@@ -75,6 +75,8 @@ import { blockMaterial, buildHouseMeshes, grassMaterial, groundFamilies, setAnis
 import { patchFields } from './world/fields';
 import { addDiag, startDiag } from './ui/diag';
 import { IndoorLight } from './world/indoorLight';
+import { Weather } from './world/weather';
+import { MoodAdmin, moodLabel } from './ui/moodAdmin';
 import { Portals } from './world/portals';
 import { TravelPanel } from './ui/travel';
 import { PlacesList } from './ui/places';
@@ -291,6 +293,8 @@ home.add(hedgeLumps);
 // the village's once play has begun (loadVillage). The horizon moves with the eye.
 const tiles = new Tiles();
 const poles = [...(house.surroundings?.poles ?? [])];
+// The weather and time of day (world/weather.ts): alone the settings' pick, together the admin's; lamps on these poles at night.
+const weather = new Weather(renderer, scene, sun, indoorLight, environmentReady, poles, house.ground);
 const detailAt: [number, number][] = [[4.45, -3]]; // trees get their full crowns within 160 m of these (and the village's landmarks)
 const detail = (x: number, z: number) => detailAt.some(([cx, cz]) => Math.hypot(x - cx, z - cz) < 160);
 // The houses round the two portals at home are our own models (world/homeStreet.ts): their open-data blocks aren't drawn.
@@ -315,6 +319,7 @@ const homeBakeReady: Promise<void> = homeStreet.ready
   .then(() => precompile(homeStreet.group))
   .then(() => undefined, () => undefined);
 const horizon = buildHorizon(center, house.ground);
+weather.horizon = horizon as THREE.Mesh; // fades into the weather's haze
 scene.add(tiles.group, horizon);
 // Shadows and soft corners on the ground of the whole neighbourhood, worked out once the sun's
 // direction is known (the real-time sun shadow only covers the house).
@@ -423,6 +428,7 @@ function applyQuality(q: Quality): void {
   }
   setAnisotropy(preset.anisotropy);
   setBakeDetail(q !== 'low'); // the baked wear's fine pattern (world/bakedLight.ts)
+  weather.setQuality(q, phone); // how many streaks of rain
   tiles.drawDistance = phone ? Math.min(FAR_PHONE, preset.far) : preset.far;
   dynScale = 1;
   resize();
@@ -859,9 +865,19 @@ function applySettings(s: Settings): void {
   document.getElementById('minimap')!.classList.toggle('hidden', !s.minimap);
   mapBtn.classList.toggle('hidden', !s.minimap);
   hud.showFps(s.fps);
+  weather.setSolo(s.mood); // alone; together the admin's holds
 }
 settings.onChange = applySettings;
 applySettings(settings.value);
+// The admin's weather for everyone (ui/moodAdmin.ts; the server checks the sender and the value). The settings' picker shows it, greyed.
+const moodAdmin = new MoodAdmin((mood) => {
+  if (net.connected && me?.role === 'admin') net.send({ t: 'mood', mood });
+});
+const followMood = () => moodAdmin.update(net.connected && me?.role === 'admin', weather.serverMood);
+weather.onServer = (m) => {
+  settings.lockMood(m);
+  followMood();
+};
 const rumble = (strong: number, weak: number, ms: number) => settings.value.vibration && input.rumble(strong, weak, ms);
 
 // Footsteps: yours from the middle, the others' from where they walk; louder when running.
@@ -1120,6 +1136,7 @@ function followAccount(account: Me | null): void {
   player.walkSpeed = account ? REAL_WALK : menu.walkSpeed;
   menu.lockSpeed(account ? REAL_WALK : null);
   if (!account) glass.repair(); // leaving the others: whole panes again
+  if (!account) weather.setServer(null); // alone: the settings' own weather again
   wasTogether = !!account;
   $('mp-join-here').classList.toggle('hidden', !!account);
   $('mp-leave').classList.toggle('hidden', !account);
@@ -2013,6 +2030,7 @@ net.onStatus = (text) => {
   netStatus.textContent = text();
   games.setOffline(!net.connected && !!me); // the game's bar greys and stops while the connection is down
   zombieWaveControl.update(games.view, net.connected && me?.role === 'admin');
+  followMood();
 };
 /** The menu opens at the team picker the first time after the teams game starts (see openMenu). */
 let teamsMenu = false;
@@ -2098,6 +2116,7 @@ net.onMessage = (m: ServerMsg) => {
       games.me = m.you;
       followGame(m.mode ?? { kind: 'free' });
       applyRules(m.rules ?? ANYTHING_GOES);
+      weather.setServer(m.mood); // the admin's weather for everyone (sunny from an older server)
       getOut(false); // alone you may have been driving: the shared cars are where the server has them
       getOffHorse(false); // or riding
       wantCar = false;
@@ -2114,6 +2133,12 @@ net.onMessage = (m: ServerMsg) => {
     case 'rules':
       applyRules(m.rules);
       break;
+    case 'mood': {
+      weather.setServer(m.mood);
+      const shown = weather.serverMood;
+      if (shown && typeof m.by === 'string') chat.system(() => t('mood.set', { name: m.by!, mood: moodLabel(shown) }));
+      break;
+    }
     case 'mode':
       followGame(m.mode);
       applyRules(rules); // names over heads off during hide and seek, back on after
@@ -3017,7 +3042,7 @@ renderer.setAnimationLoop((now: number) => {
     const area = PORTALS.reduce((a, b) => (Math.hypot(b.x - at.x, b.z - at.z) < Math.hypot(a.x - at.x, a.z - at.z) ? b : a)).sub;
     hud.setPlace(indoors ? placeName(levelName(player.feet)) : t('place.outside'), street ?? (surface && surface !== 'street' ? placeName(surface) : undefined), area);
     // Real-time lighting brightens rooms itself, so the eyes need to adapt only a little.
-    const wanted = indoors ? 1.05 : 0.9; // white walls since 30 Oct: less brightening
+    const wanted = (indoors ? 1.05 : 0.9) * weather.exposure; // white walls since 30 Oct: less brightening; the weather's eyes (world/weather.ts)
     exposure += (wanted - exposure) * (1 - Math.exp(-dt * 1.5));
     renderer.toneMappingExposure = exposure;
     indoorLight.update(dt, indoors, 1);
@@ -3027,6 +3052,7 @@ renderer.setAnimationLoop((now: number) => {
   speedometer.update((driving || riding) && !menu.open && combat.alive ? car.speed : null, car.spec.maxSpeed);
   combat.tick(dt);
   sound.listen(camera);
+  weather.update(dt, camera.position, inside); // the rain round the eye (none indoors), the street lamps
   player.lookScale = camera.fov / settings.value.fov; // slower turning while zoomed in
   glass.update(dt);
   furnishing.update(dt, camera.position);
@@ -3582,7 +3608,7 @@ if (import.meta.env.DEV) {
         for (let i = 0; i < Math.max(1, Math.round(seconds * 60)); i++) player.update(1 / 60, { ...idle, ...partial }, camera);
         return { x: +player.x.toFixed(3), z: +player.z.toFixed(3), feet: +player.feet.toFixed(3), flying: player.flying };
       },
-      three: { renderer, scene, sun, ao, composer, environmentReady, applyQuality, autoDetect, quality: () => quality, groundShade },
+      three: { renderer, scene, sun, ao, composer, environmentReady, applyQuality, autoDetect, quality: () => quality, groundShade, weather },
       tiles,
       home,
       homeStreet,

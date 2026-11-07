@@ -91,9 +91,20 @@ vBakeNormal = normalize( mat3( modelMatrix ) * objectNormal );
 const FRAGMENT_PARS = /* glsl */ `
 uniform sampler2D bakeWear;
 uniform sampler2D bakeNoise;
+uniform vec4 bakeMood; // x: scale of the sky's light, y: contrast kept (1 all), z: its pivot, w: wet
 varying vec3 vBakeWorld;
 varying vec3 vBakeNormal;
 `;
+
+/**
+ * The weather (world/weather.ts), shared by every baked material: the bake holds the sunny day's light, worked out
+ * under that sky with its sun in it. Under another sky its light is scaled to that sky's (x), and its contrast is
+ * pressed together round a pivot (y below 1: the side towards the sun and the sun's bounce stand out less under
+ * clouds; the corners and eaves keep their share), and the walls darken a little where they are wet (w), most where
+ * the rain runs down (the wear page's B). Its sun shadow (the page's A) dims only the real-time sun, which the weather
+ * turns off under clouds and makes the moon at night, from the same side. Uniforms only: nothing compiles again.
+ */
+export const bakeMood = { value: new THREE.Vector4(1, 1, 3, 0) };
 /** After the surface's colour is known: the light page's texel (used below) and the wear on the colour. */
 const WEAR = /* glsl */ `
 vec4 bakeTexel = texture2D( lightMap, vLightMapUv );
@@ -110,6 +121,7 @@ vec4 bakeTexel = texture2D( lightMap, vLightMapUv );
   #endif
   float grime = clamp( wear.r * ( 0.55 + 0.9 * patchy ) + wear.b * smoothstep( 0.5, 0.8, runs ) * 0.6, 0.0, 1.0 );
   diffuseColor.rgb *= mix( vec3( 1.0 ), vec3( 0.6, 0.56, 0.5 ), grime * 0.8 );
+  diffuseColor.rgb *= 1.0 - bakeMood.w * ( 0.12 + 0.3 * wear.b ); // wet: darker, most where the rain runs
 }
 `;
 /** The sky's light from the page (stored as its square root), the hemisphere's fill as far as the sky is open. */
@@ -118,6 +130,10 @@ float bakeOpen = 1.0;
 #if defined( RE_IndirectDiffuse )
   vec3 bakeIrradiance = bakeTexel.rgb * bakeTexel.rgb * lightMapIntensity;
   float bakeLum = dot( bakeIrradiance, vec3( 0.2126, 0.7152, 0.0722 ) );
+  // The weather's sky (bakeMood above): its contrast round the pivot, then its strength.
+  float bakeSunny = max( bakeLum, 1e-5 );
+  bakeLum = bakeMood.z * pow( bakeSunny / bakeMood.z, bakeMood.y ) * bakeMood.x;
+  bakeIrradiance *= bakeLum / bakeSunny;
   #if defined( USE_ENVMAP ) && defined( ENVMAP_TYPE_CUBE_UV )
     vec3 bakeSky = getIBLIrradiance( geometryNormal );
     float skyLum = max( dot( bakeSky, vec3( 0.2126, 0.7152, 0.0722 ) ), 1e-4 );
@@ -189,6 +205,7 @@ function baked(original: THREE.MeshStandardMaterial, light: THREE.Texture, wear:
     if (!patchLights(shader)) return;
     shader.uniforms.bakeWear = { value: wear };
     shader.uniforms.bakeNoise = { value: noiseTexture() };
+    shader.uniforms.bakeMood = bakeMood;
   };
   m.customProgramCacheKey = () => `${programKey}|baked`;
   if (fine) m.defines = { ...m.defines, BAKE_FINE: '' };

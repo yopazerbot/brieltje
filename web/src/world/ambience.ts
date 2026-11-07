@@ -1,6 +1,7 @@
 import * as THREE from 'three';
 import { sound } from '../sound';
 import { awake, caws } from './fieldBirds';
+import { mood } from './mood';
 import { wind } from './wind';
 
 /**
@@ -13,7 +14,8 @@ import { wind } from './wind';
  * - a cock pheasant's harsh double call from a field, and the whirr of its wings, once in a while.
  *
  * They start after your first click or key (browsers keep sound off until then) and stop in the
- * village, where other sounds take over.
+ * village, where other sounds take over. At night (world/mood.ts) the countryside is quieter: a
+ * softer wind, and the rooks and the pheasant asleep; in the rain they keep quiet too.
  */
 
 const HOUSE = new THREE.Vector2(4.45, -3);
@@ -123,11 +125,11 @@ export class Ambience {
     const gust = wind.gust(eye.x, eye.z);
     // Louder in the open and higher up; in the lee of the houses round the plot a little less.
     const open = Math.min(1, 0.55 + fromHouse / 300 + Math.max(0, eye.y - 2) / 40);
-    const level = out ? 0 : (inside ? 0.25 : 1) * open * (0.25 + 0.75 * gust) * 0.11;
+    const level = out ? 0 : (inside ? 0.25 : 1) * open * (0.25 + 0.75 * gust) * 0.11 * (1 - 0.45 * mood.night);
     const t = ctx.currentTime;
     this.gain.gain.setTargetAtTime(level, t, 0.6);
     this.filter.frequency.setTargetAtTime((inside ? 250 : 380) + gust * 600, t, 0.6);
-    if (out || inside) return;
+    if (out || inside || mood.night > 0.5 || mood.wet > 0.5) return;
     // Rooks from the woods and the fields round about.
     this.rooksIn -= dt;
     if (this.rooksIn <= 0) {
