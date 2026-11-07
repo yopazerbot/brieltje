@@ -116,6 +116,7 @@ import { ZombieWaveControl } from './ui/zombieWave';
 import { HomeStreet, withoutModelled } from './world/homeStreet';
 import { buildRoadDetail, roadPaint, withRoadDetail } from './world/roadDetail';
 import { RoadLife } from './world/roadLife';
+import { looseProps, type Mover } from './world/looseProps';
 import { clearOpenGround, fitStreetModel, loadStreetModel } from './world/streetModel';
 import { bakeLight, setBakeDetail } from './world/bakedLight';
 import { setWindowDetail, setWindowNight } from './world/windows';
@@ -588,6 +589,7 @@ glass.locked = (i) => {
   return home ? !homeLocks.isOpen(home) : !me;
 };
 const effects = new Effects(scene, new Decals(scene), (x, z, y) => world.groundAt(x, z, y, 0).y);
+looseProps.attach(scene, world, effects.particles); // the street's bins, bikes, letterboxes and posts that cars knock over (world/looseProps.ts)
 const grenades = new Grenades(world);
 scene.add(grenades.group);
 const pickups = new Pickups((x, z, y) => world.groundAt(x, z, y + 0.3, 0).y);
@@ -663,6 +665,16 @@ let wantCar = false; // asked the server to get in, waiting for its answer
 const bikes = new Bikes(world, trunks, () => avatars.figure(me?.username ?? '', myColour()));
 scene.add(bikes.group);
 let bikeWanted: string | null = null; // asked the server for this bike
+// What knocks the street's loose things about: the cars and bikes being ridden (yours and the others', as drawn), and you on foot.
+looseProps.movers = () => {
+  const list: Mover[] = cars.filter((c) => c.ready && ((driving && c === car) || !!c.driver))
+    .map((c) => ({ key: c.id, x: c.x, z: c.z, y: c.y, height: 1.5, yaw: c.yaw, halfL: c.spec.length / 2, halfW: c.spec.width / 2, r: 0, vehicle: true, bump: (s: number) => c.bump(s) }));
+  for (const k of bikes.riders()) list.push({ key: `bike-${k.id}`, x: k.x, z: k.z, y: k.y, height: 1.6, yaw: k.yaw, halfL: 0.85, halfW: 0.2, r: 0, vehicle: true });
+  if (!driving && !riding && !bikes.mounted && horses.mounted < 0 && !player.flying && player.chute === null) {
+    list.push({ key: 'me', x: player.x, z: player.z, y: player.feet, height: 1.8, yaw: 0, halfL: 0, halfW: 0, r: 0.3, vehicle: false });
+  }
+  return list;
+};
 const minimap = new Minimap([...house.prisms, ...(house.surroundings?.prisms ?? [])], house.levels, house.rooms);
 /** The ground out of doors at (x, z): the relief, and paving or a kerb on it. */
 const groundY = (x: number, z: number) => world.groundAt(x, z, house.ground + terrain.height(x, z) + 0.6, 0).y;
@@ -938,7 +950,10 @@ let mapTimer = 0;
 window.addEventListener('keydown', (e) => {
   if (e.code === 'KeyN' && !e.repeat && !typing(e)) settings.toggle('minimap'); // the setting's shortcut (Settings: Minimap)
 });
-weapon.onImpact = (point, normal, material, on) => effects.shot(point, normal, material, on);
+weapon.onImpact = (point, normal, material, on) => {
+  effects.shot(point, normal, material, on);
+  looseProps.shot(point, normal, on); // a post rings, a bin rocks
+};
 weapon.onPaintball = (from, to, paint) => effects.paintShot(from, to, paint);
 weapon.onEject = (w) => effects.casing(camera, w, weapon.aimAmount);
 
@@ -1784,6 +1799,7 @@ function explode(at: THREE.Vector3, mine: boolean, w: 'bazooka' | 'grenade' = 'b
   }
   life.scare(at, 45);
   zombies.blast(at, radius, w); // the fallen near it thrown a little outward (only how they fall: the server decides who)
+  looseProps.blast(at, radius); // bins and bikes thrown, posts bent (on this page only)
   if (!mine) return;
   for (const i of glass.near(at, radius * 0.7)) if (glass.break(i, at, at)) net.send({ t: 'glass', i });
   for (const i of cats.near(at, radius)) catHit(i, at, w);
@@ -3370,6 +3386,8 @@ renderer.setAnimationLoop((now: number) => {
   portals.update(dt, camera, renderer.domElement.height);
   // The traffic stops for people and for cars someone drives, never for a parked car (Yoshi: a Tesla on the drive held it up).
   roadLife.update(dt, camera.position, [...avatars.obstacles(), { x: player.x, z: player.z, r: 0.35 }, ...villagers.obstacles()], cars.filter((c) => (driving && c === car) || !!c.driver));
+  looseProps.low = phone || quality === 'low';
+  looseProps.update(dt, camera);
   mapTimer += dt;
   if (mapTimer > 0.05) {
     mapTimer = 0;
@@ -3942,6 +3960,7 @@ if (import.meta.env.DEV) {
       countryside: () => countryside,
       portals,
       roadLife,
+      props: looseProps,
       travel: (word: string, via: 'portal' | 'chat' = 'chat') => travel(findPortal(word) ?? destination(word)!, via),
       /** Every portal and street spot (src/places.ts), and a chat command as if typed: command('/location kerk'). */
       places: DESTINATIONS,

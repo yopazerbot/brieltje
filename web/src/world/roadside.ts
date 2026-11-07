@@ -1,19 +1,24 @@
 import * as THREE from 'three';
 import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
+import { facesMaterial, looseProps, type Face, type Place } from './looseProps';
+import type { V3 } from './rigid';
 import { tileKey, type Piece, type Tiles } from './tiles';
 
 /**
  * Things along the streets of the road to Smetlede and the village's outer streets
  * (tools/roads.py, web/src/data/roads.json): street name plates on posts at the corners, the
  * village's name where the built-up area starts, zone 30 signs where the traffic slows for the
- * centre, a bus stop with its shelter, letterboxes at the front of the houses, and a bike against a
- * front wall here and there.
+ * centre, a bus stop with its shelter, letterboxes at the front of the houses, a wheelie bin beside
+ * some of them, and a bike against a front wall here and there.
  *
  * All made here from a few boxes and cylinders (nothing to download) in vertex colours; the
- * plates' and signs' faces come from one picture drawn on a canvas (1024 x 512). They join the
- * surroundings' tiles (world/tiles.ts) as a set of their own: each kind one instanced mesh, the
- * faces one mesh, drawn within the small details' distance (400 m).
+ * plates' and signs' faces come from one picture drawn on a canvas (1024 x 512). The bus shelter
+ * joins the surroundings' tiles (world/tiles.ts); the rest are loose (world/looseProps.ts): a car
+ * bends the posts and knocks the bins and bikes over.
  */
+
+/** One letterbox in this many gets a wheelie bin beside it (0: none). */
+const BIN_EVERY = 4;
 
 interface RoadsideData {
   plates: [number, number, number, string][];
@@ -56,7 +61,29 @@ function letterbox(): THREE.BufferGeometry {
   ]);
 }
 
-/** A town bike along x, leaning a little towards -z (the wall behind it). */
+/**
+ * A wheelie bin, 0.6 x 1.0 x 0.74 m, its front (+z) to the street, its handle and wheels at the back: the
+ * body and lid painted light, so each bin's own colour (instance colour) shows on them.
+ */
+function wheelieBin(): THREE.BufferGeometry {
+  const wheel = (x: number) => paint(new THREE.CylinderGeometry(0.1, 0.1, 0.05, 10).rotateZ(Math.PI / 2).translate(x, 0.1, -0.29), '#1b1b1b');
+  return mergeGeometries([
+    block(0.56, 0.9, 0.64, 0, 0.06, 0.02, '#d9d9d9'),
+    block(0.6, 0.05, 0.72, 0, 0.96, 0.02, '#cdcdcd'), // the lid
+    block(0.5, 0.04, 0.05, 0, 0.9, -0.34, '#c4c4c4'), // the handle
+    block(0.5, 0.035, 0.035, 0, 0.08, -0.29, '#202020'), // the axle
+    wheel(-0.27),
+    wheel(0.27),
+  ]);
+}
+
+/** Where a parked bike touches the ground lying down, or walls as it falls: wheels, pedals, saddle, bars (its own frame). */
+const BIKE_POINTS: V3[] = [
+  [-0.52, 0, 0], [0.52, 0, 0], [-0.86, 0.35, 0], [0.86, 0.35, 0], [-0.52, 0.68, 0], [0.52, 0.68, 0],
+  [0.3, 1.0, 0.26], [0.3, 1.0, -0.26], [-0.22, 0.87, 0.06], [-0.22, 0.87, -0.06], [-0.12, 0.24, 0.14], [-0.12, 0.24, -0.14],
+];
+
+/** A town bike along x, upright (world/looseProps.ts leans it against the wall). */
 function bike(): THREE.BufferGeometry {
   const parts: THREE.BufferGeometry[] = [];
   const wheel = (x: number) => parts.push(paint(new THREE.TorusGeometry(0.33, 0.022, 3, 12).translate(x, 0.35, 0), '#161616'));
@@ -77,9 +104,7 @@ function bike(): THREE.BufferGeometry {
   parts.push(block(0.24, 0.05, 0.12, -0.22, 0.84, 0, '#1b1b1b')); // saddle
   parts.push(block(0.5, 0.02, 0.2, -0.36, 0.7, 0, '#262626')); // carrier
   parts.push(paint(new THREE.CylinderGeometry(0.33, 0.33, 0.1, 8, 1, true, Math.PI * 0.55, Math.PI * 0.9).rotateX(Math.PI / 2).translate(-0.52, 0.35, 0), '#2a2b2d')); // mudguard
-  const g = mergeGeometries(parts);
-  g.rotateX(-0.18); // leaning against the wall
-  return g;
+  return mergeGeometries(parts);
 }
 
 /** A plain post: galvanised steel, 1 m (scaled to its height). */
@@ -197,66 +222,83 @@ function drawFaces(names: string[]): { texture: THREE.CanvasTexture; plate: Map<
   return { texture, plate, cells };
 }
 
-/** A flat face w x h, its bottom middle at the origin, facing +z, showing `cell` (or facing -z: `back`). */
-function face(w: number, h: number, cell: Cell, back = false): THREE.BufferGeometry {
-  const g = new THREE.PlaneGeometry(w, h);
-  if (back) g.rotateY(Math.PI); // seen from behind its left is still the picture's left
-  g.translate(0, h / 2, back ? -0.006 : 0.006);
-  const uv = g.attributes.uv;
-  const [x, y, cw, ch] = cell;
-  for (let i = 0; i < uv.count; i++) uv.setXY(i, (x + uv.getX(i) * cw) / SIZE[0], 1 - (y + (1 - uv.getY(i)) * ch) / SIZE[1]);
-  return g;
+/** A face w x h with its bottom `y` up the post and `z` in front of it, showing `cell` (or facing -z: `back`; seen from behind its left is still the picture's left). */
+function face(w: number, h: number, y: number, z: number, cell: Cell, back = false): Face {
+  const [cx, cy, cw, ch] = cell;
+  return { w, h, y, z, back, rect: [cx / SIZE[0], 1 - (cy + ch) / SIZE[1], cw / SIZE[0], ch / SIZE[1]] };
 }
 
-/** Everything along the streets, as pieces of the tiles they stand in. `groundAt` is the ground (or paving) at a spot. */
+/** A steel post: wobbles at about 2 Hz, stays bent past a tenth of a radian, snaps off at its foot under a car faster than 9 m/s. */
+const POST = { hz: 2.1, damping: 0.1, yield: 0.1, maxBend: 1.35 };
+
+/**
+ * Everything along the streets: the bus shelter as pieces of the tiles it stands in, the rest as loose
+ * things (world/looseProps.ts). `groundAt` is the ground (or paving) at a spot.
+ */
 export function buildRoadside(data: RoadsideData, tiles: Tiles, groundAt: (x: number, z: number) => number): THREE.Texture {
   const names = [...new Set(data.plates.map((p) => p[3]))];
   const { texture, plate, cells } = drawFaces(names);
   const kit = new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.6, metalness: 0.15 });
-  const faces = new THREE.MeshStandardMaterial({ map: texture, roughness: 0.45, metalness: 0.1 });
+  const faces = facesMaterial(new THREE.MeshStandardMaterial({ map: texture, roughness: 0.45, metalness: 0.1 }));
+  const bins = new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.55 });
   const glassMat = new THREE.MeshStandardMaterial({ color: '#cfdde6', roughness: 0.05, metalness: 0.1, transparent: true, opacity: 0.22, depthWrite: false });
-  const geo = { box: letterbox(), bike: bike(), post: post() };
   const [shelterFrame, shelterGlass] = shelter();
-  const byTile = new Map<string, { at: Record<string, THREE.Matrix4[]>; faces: THREE.BufferGeometry[]; solid: THREE.BufferGeometry[]; glass: THREE.BufferGeometry[] }>();
+  const byTile = new Map<string, { solid: THREE.BufferGeometry[]; glass: THREE.BufferGeometry[] }>();
   const tile = (x: number, z: number) => {
     const key = tileKey(x, z);
     let t = byTile.get(key);
-    if (!t) byTile.set(key, (t = { at: { box: [], bike: [], post: [] }, faces: [], solid: [], glass: [] }));
+    if (!t) byTile.set(key, (t = { solid: [], glass: [] }));
     return t;
   };
   const up = new THREE.Vector3(0, 1, 0);
-  const place = (x: number, z: number, yaw: number, sy = 1, y = groundAt(x, z)) =>
-    new THREE.Matrix4().compose(new THREE.Vector3(x, y, z), new THREE.Quaternion().setFromAxisAngle(up, yaw), new THREE.Vector3(1, sy, 1));
-  for (const [x, z, yaw] of data.boxes) tile(x, z).at.box.push(place(x, z, yaw));
-  for (const [x, z, yaw] of data.bikes) tile(x, z).at.bike.push(place(x, z, yaw));
+  const at = (x: number, z: number, yaw: number, extra: Partial<Place> = {}): Place => ({ x, y: groundAt(x, z), z, yaw, ...extra });
+
+  // Letterboxes, and beside one in BIN_EVERY a wheelie bin (grey or green), on whichever side is clear.
+  const boxes = data.boxes.map(([x, z, yaw]) => at(x, z, yaw));
+  const binAt: Place[] = [];
+  data.boxes.forEach(([x, z, yaw], i) => {
+    if (!BIN_EVERY || i % BIN_EVERY !== 1) return;
+    const c = Math.cos(yaw);
+    const s = Math.sin(yaw);
+    for (const side of [1, -1]) {
+      const bx = x + c * 0.8 * side - s * 0.15;
+      const bz = z - s * 0.8 * side - c * 0.15;
+      const y = groundAt(bx, bz);
+      const turn = yaw + (((i * 7919) % 13) / 13 - 0.5) * 0.3;
+      if (!looseProps.free(bx, bz, turn, 0.66, 0.8, y + 0.15, y + 1.0)) continue;
+      binAt.push({ x: bx, y, z: bz, yaw: turn, color: (i >> 2) % 2 ? '#4f7740' : '#5b6065' });
+      break;
+    }
+  });
+  const posts: Place[] = [];
   // Name plates: 0.8 x 0.17 m on top of a post, along the street they name, readable from both sides.
   for (const [x, z, a, name] of data.plates) {
-    const t = tile(x, z);
-    const m = place(x, z, -a);
-    t.at.post.push(place(x, z, -a, 2.33));
     const cell = plate.get(name)!;
-    for (const back of [false, true]) t.faces.push(face(0.8, 0.17, cell, back).translate(0, 2.32, 0).applyMatrix4(m));
+    posts.push(at(x, z, -a, { sy: 2.33, faces: [face(0.8, 0.17, 2.32, 0, cell), face(0.8, 0.17, 2.32, 0, cell, true)] }));
   }
   for (const [x, z, yaw, kind] of data.signs) {
-    const t = tile(x, z);
-    const m = place(x, z, yaw);
     if (kind === 'shelter') {
+      const t = tile(x, z);
+      const m = new THREE.Matrix4().compose(new THREE.Vector3(x, groundAt(x, z), z), new THREE.Quaternion().setFromAxisAngle(up, yaw), new THREE.Vector3(1, 1, 1));
       t.solid.push(shelterFrame.clone().applyMatrix4(m));
       t.glass.push(shelterGlass.clone().applyMatrix4(m));
       continue;
     }
     const [w, h, top] = kind === 'smetlede' ? [1.0, 0.4, 2.3] : kind === 'zone30' ? [0.5, 0.73, 2.4] : [0.45, 0.45, 2.7];
-    t.at.post.push(place(x, z, yaw, top));
-    t.faces.push(face(w, h, cells[kind]).translate(0, top - h - 0.02, 0.04).applyMatrix4(m));
-    t.faces.push(face(w, h, cells.back, true).translate(0, top - h - 0.02, 0.04).applyMatrix4(m));
+    posts.push(at(x, z, yaw, { sy: top, faces: [face(w, h, top - h - 0.02, 0.04, cells[kind]), face(w, h, top - h - 0.02, 0.04, cells.back, true)] }));
   }
+
+  looseProps.add('letterbox', { geometry: letterbox(), material: kit, tag: 'steel', mode: 'pole', sound: 'metal', mass: 9, push: 0.5, pole: POST, snap: 9, reach: 0.18 }, boxes);
+  looseProps.add('post', { geometry: post(), material: kit, tag: 'steel', mode: 'pole', sound: 'metal', mass: 8, push: 0.4, pole: { ...POST, hz: 1.6 }, snap: 10, reach: 0.06, faces }, posts);
+  looseProps.add('bike', {
+    geometry: bike(), material: kit, tag: 'steel', mode: 'rigid', sound: 'metal', mass: 18, push: 0.45, bounce: 0.12, friction: 0.7,
+    points: BIKE_POINTS, edges: [[0.3, 1.0, 0], [-0.22, 0.87, 0], [0.86, 0.35, 0], [-0.86, 0.35, 0]], box: [[-0.87, 0, -0.15], [0.87, 1.02, 0.15]], reach: 0.3,
+  }, data.bikes.map(([x, z, yaw]) => at(x, z, yaw, { lean: -0.18 }))); // leaning against the wall behind it
+  looseProps.add('bin', { geometry: wheelieBin(), material: bins, tag: 'plastic', mode: 'rigid', sound: 'plastic', mass: 13, push: 1, bounce: 0.3, friction: 0.55, tinted: true }, binAt);
+
   const made: { key: string; pieces: Piece[] }[] = [];
   for (const [key, t] of byTile) {
     const pieces: Piece[] = [];
-    for (const [kind, at] of Object.entries(t.at)) {
-      if (at.length) pieces.push({ material: kit, geometry: geo[kind as keyof typeof geo], tag: 'steel', shadow: false, at, small: true });
-    }
-    if (t.faces.length) pieces.push({ material: faces, geometry: mergeGeometries(t.faces), tag: 'steel', shadow: false, small: true });
     if (t.solid.length) pieces.push({ material: kit, geometry: mergeGeometries(t.solid), tag: 'steel', shadow: false, small: true });
     if (t.glass.length) pieces.push({ material: glassMat, geometry: mergeGeometries(t.glass), tag: 'glass', shadow: false, small: true, order: 3 });
     made.push({ key, pieces });

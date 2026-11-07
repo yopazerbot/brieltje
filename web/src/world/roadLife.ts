@@ -2,14 +2,15 @@ import * as THREE from 'three';
 import { Bells } from './bells';
 import type { World } from './collision';
 import { house } from './houseData';
+import { looseProps } from './looseProps';
 import { buildRoadside } from './roadside';
 import { terrain } from './terrain';
 import type { Tiles } from './tiles';
 import { Traffic, type Obstacle, type OtherCar } from './traffic';
 
 /**
- * Life along the roads: the traffic and the parked cars (traffic.ts), the plates, signs, letterboxes
- * and bikes along the streets (roadside.ts), and the church bells (bells.ts). Their data
+ * Life along the roads: the traffic and the parked cars (traffic.ts), the plates, signs, letterboxes,
+ * bins and bikes along the streets (roadside.ts, loose: looseProps.ts), and the church bells (bells.ts). Their data
  * (web/src/data/roads.json, 73 KB, from tools/roads.py) and the cars' models come once the village
  * is in; the bells ring from the start.
  *
@@ -50,13 +51,15 @@ export class RoadLife {
       const home = this.group.parent;
       const aside = new THREE.Group();
       aside.add(this.group);
-      const before = new Set(this.tiles.group.children);
+      const before = new Set([...this.tiles.group.children, ...looseProps.group.children]);
       buildRoadside(data, this.tiles, this.groundAt);
       const fresh = this.tiles.group.children.filter((o) => !before.has(o));
-      aside.add(...fresh);
+      const loose = looseProps.group.children.filter((o) => !before.has(o));
+      aside.add(...fresh, ...loose);
       await this.traffic.load(data);
       await prepare(aside).catch(() => undefined);
       this.tiles.group.add(...fresh);
+      if (loose.length) looseProps.group.add(...loose);
       home?.add(this.group);
     })());
   }

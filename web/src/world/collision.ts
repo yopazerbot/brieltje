@@ -310,7 +310,7 @@ export class World {
    * A top counts when the ball came from above, an underside from below, otherwise the
    * side of the outline nearest to where it came from.
    */
-  collide(a: Point, b: Point, r: number): { index: number; nx: number; ny: number; nz: number } | null {
+  collide(a: Point, b: Point, r: number, fixedOnly = false): { index: number; nx: number; ny: number; nz: number } | null {
     if (b.y - r < this.baseAt(b.x, b.z)) return { index: -1, nx: 0, ny: 1, nz: 0 };
     const test = (s: Solid, index: number) => {
       if (s.off || b.x + r < s.minX || b.x - r > s.maxX || b.z + r < s.minZ || b.z - r > s.maxZ) return null;
@@ -335,9 +335,30 @@ export class World {
       const hit = test(this.solids[i], i);
       if (hit) return hit;
     }
+    if (fixedOnly) return null; // the street's loose things (world/looseProps.ts): not trapped in the car that hit them
     for (const s of this.moving.values()) {
       const hit = test(s, -2);
       if (hit) return hit;
+    }
+    return null;
+  }
+
+  /**
+   * What stands at a spot on the plan between two heights, within `r` of (x, z): its material and name,
+   * or the key of a moving part (a car: car-<id>). Null for nothing. For how a crash looks and sounds.
+   */
+  touching(x: number, z: number, y0: number, y1: number, r: number): { mat?: string; name?: string; key?: string } | null {
+    const test = (s: Solid) => {
+      if (s.off || x + r < s.minX || x - r > s.maxX || z + r < s.minZ || z - r > s.maxZ) return false;
+      if (this.hi(s, x, z) <= y0 || this.lo(s, x, z) >= y1) return false;
+      if (inside(x, z, s.rings)) return true;
+      const [cx, cz] = closestOnRings(x, z, s.rings);
+      return Math.hypot(x - cx, z - cz) < r;
+    };
+    for (const [key, s] of this.moving) if (test(s)) return { key };
+    for (const i of this.near(x - r, z - r, x + r, z + r)) {
+      const s = this.solids[i];
+      if (test(s)) return { mat: s.mat, name: s.name };
     }
     return null;
   }

@@ -2,6 +2,7 @@ import * as THREE from 'three';
 import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
 import type { World } from './collision';
 import type { Prism } from './houseData';
+import { looseProps, type Place as Loose } from './looseProps';
 import { DOCK } from './mower';
 import { snowy } from './snowCover';
 
@@ -10,7 +11,8 @@ import { snowy } from './snowCover';
  * a letterbox at each entrance, garden tools (the bike against the side wall is world/bike.ts), planters on
  * the terrace, the robot mower's station (world/mower.ts); at the bungalow a teak table with chairs
  * under a parasol, two loungers and a kettle barbecue. Each garden is one mesh painted per vertex
- * (one draw call). No washing line at the main house (Yoshi). The bulky things block the way. At the bungalow, which the sun's real-time shadow doesn't reach, a soft
+ * (one draw call), but for the loose things (world/looseProps.ts): the letterboxes, which a car
+ * bends, and the bungalow's chairs, which you push about. No washing line at the main house (Yoshi). The bulky things block the way. At the bungalow, which the sun's real-time shadow doesn't reach, a soft
  * dark patch lies under each thing.
  */
 
@@ -49,6 +51,8 @@ interface Place {
   solid?: [number, number, number];
   /** Radius of the dark patch under it (the bungalow) */
   blob?: number;
+  /** Loose (world/looseProps.ts): it moves, and blocks nobody */
+  loose?: 'chair' | 'letterbox';
 }
 
 // The front of a facade, along it and out of it, for the bungalow (turned 39.8 degrees off the grid).
@@ -61,7 +65,7 @@ const garden = (out: number, along: number): [number, number] => [88.7 + OUT[0] 
 
 const HOUSE: Place[] = [
   // The letterbox where the front path meets the street. No wheelie bins (Yoshi).
-  { model: 'Letterbox', x: 11.05, z: 16.8, yaw: 0, solid: [0.12, 0.12, 1.35] },
+  { model: 'Letterbox', x: 11.05, z: 16.8, yaw: 0, loose: 'letterbox' },
   // (The bike on its stand in the side passage is one you can ride now: world/bike.ts, shared/bike.json.)
   // Tools on the strip beside the path to the back, the rake against the hedge.
   { model: 'Wheelbarrow', x: -1.6, z: -8.7, yaw: 0.35, solid: [0.7, 1.5, 0.62] },
@@ -82,7 +86,7 @@ const BUNGALOW: Place[] = [
   ...([-1, 1] as const).flatMap((side) =>
     ([-0.42, 0.42] as const).map((a): Place => {
       const [x, z] = garden(3.6 + side * 0.8, a);
-      return { model: 'Chair', x, z, yaw: side > 0 ? FACING_HOUSE : FACING_GARDEN, solid: [0.5, 0.5, 0.45], blob: 0.4 };
+      return { model: 'Chair', x, z, yaw: side > 0 ? FACING_HOUSE : FACING_GARDEN, loose: 'chair' };
     }),
   ),
   { model: 'Parasol', x: tx, z: tz, yaw: 0.3, blob: 1.6 },
@@ -96,7 +100,7 @@ const BUNGALOW: Place[] = [
   { model: 'BoxPot', ...xz(garden(0.55, -1.0)), yaw: 0, solid: [0.48, 0.48, 0.4], blob: 0.3 },
   { model: 'BoxPot', ...xz(garden(0.55, 1.0)), yaw: 0, solid: [0.48, 0.48, 0.4], blob: 0.3 },
   // The letterbox where the drive meets the road.
-  { model: 'Letterbox', x: 84.43, z: 170.25, yaw: Math.atan2(0.64, -0.77), solid: [0.12, 0.12, 1.35], blob: 0.2 },
+  { model: 'Letterbox', x: 84.43, z: 170.25, yaw: Math.atan2(0.64, -0.77), loose: 'letterbox' },
 ];
 
 function xz([x, z]: [number, number]): { x: number; z: number } {
@@ -117,11 +121,18 @@ export class Yard {
     };
     const solids: Prism[] = [];
     const blobs: THREE.BufferGeometry[] = [];
+    const loose = new Map<string, { shape: THREE.BufferGeometry; at: Loose[] }>();
     const build = (places: Place[]) => {
       const parts: THREE.BufferGeometry[] = [];
       for (const p of places) {
         if (!models.has(p.model)) continue;
         const y = groundY(p.x, p.z);
+        if (p.loose) {
+          const set = loose.get(p.loose) ?? { shape: shape(p), at: [] };
+          set.at.push({ x: p.x, y, z: p.z, yaw: p.yaw });
+          loose.set(p.loose, set);
+          continue;
+        }
         const m = new THREE.Matrix4().makeRotationY(p.yaw).multiply(new THREE.Matrix4().makeRotationX(p.tilt ?? 0)).setPosition(p.x, y, p.z);
         parts.push(shape(p).clone().applyMatrix4(m));
         if (p.solid) {
@@ -146,6 +157,15 @@ export class Yard {
       this.group.add(m);
     }
     world.addPrisms(solids);
+    const chairs = loose.get('chair');
+    if (chairs) looseProps.add('chair', { geometry: chairs.shape, material, tag: 'oak', mode: 'rigid', sound: 'wood', mass: 7, push: 1, bounce: 0.15, friction: 0.6 }, chairs.at);
+    const boxes = loose.get('letterbox');
+    if (boxes) {
+      looseProps.add('yard-letterbox', {
+        geometry: boxes.shape, material, tag: 'steel', mode: 'pole', sound: 'metal', mass: 9, push: 0.5,
+        pole: { hz: 2.1, damping: 0.1, yield: 0.1, maxBend: 1.35 }, snap: 9, reach: 0.15,
+      }, boxes.at);
+    }
 
     // Soft dark patches under the bungalow's things: one mesh, a round falloff drawn by its shader.
     if (blobs.length) {

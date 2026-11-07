@@ -296,6 +296,11 @@ export class Bikes {
     return k ? { x: k.x, y: k.y, z: k.z, yaw: k.yaw, speed: k.speed, id: k.id } : null;
   }
 
+  /** Every bike being ridden that is drawn, yours and the others': for their splashes and what they knock over. */
+  riders(): { x: number; y: number; z: number; yaw: number; id: string }[] {
+    return this.bikes.filter((k) => k.ready && (k.id === this.mounted || (k.rider !== null && k.shown))).map((k) => ({ x: k.x, y: k.y, z: k.z, yaw: k.yaw, id: k.id }));
+  }
+
   /** The bike within reach of where you stand (its outline within reach, at your height), with who rides it; null for none. */
   nearest(x: number, z: number, feet: number): { id: string; rider: string | null } | null {
     let best: Bike | null = null;
