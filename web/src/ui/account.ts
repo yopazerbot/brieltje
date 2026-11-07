@@ -11,11 +11,13 @@
 import { t, onLang, type PlainKey } from '../i18n';
 import { api, errorText, type Me } from '../net/client';
 
-type View = 'login' | 'signup' | 'account' | 'password' | 'delete';
+type View = 'login' | 'signup' | 'account' | 'password' | 'delete' | 'phone';
 
 const TITLES: Record<View, PlainKey> = {
   login: 'acct.titleLogin', signup: 'acct.titleSignup', account: 'acct.titleAccount', password: 'acct.titlePassword', delete: 'acct.titleDelete',
+  phone: 'acct.titlePhone',
 };
+const PAIR_POLL_MS = 2000;
 const GO: Partial<Record<View, PlainKey>> = { login: 'acct.goLogin', signup: 'acct.goSignup', password: 'acct.goPassword', delete: 'acct.goDelete' };
 
 export interface AccountHooks {
@@ -49,12 +51,21 @@ export class AccountCard {
   private bad = false;
   private busy = false;
   private mine: { username: string; email: string; created: string } | null = null;
+  /**
+   * Logging in with the phone (server/pairing.mjs): this screen's pairing while it waits. Its secret (`token`)
+   * stays in this page's memory only and goes to the server only to ask how it goes.
+   */
+  private pair: { token: string; until: number; timer: number } | null = null;
+  private polling = false;
+  private pairNote: (() => string) | null = null;
 
   constructor(private hooks: AccountHooks) {
     document.querySelectorAll<HTMLButtonElement>('[data-acct]').forEach((b) => b.addEventListener('click', () => this.open(b.dataset.acct as View)));
     this.dlg.querySelectorAll<HTMLButtonElement>('[data-view]').forEach((b) => b.addEventListener('click', () => this.show(b.dataset.view as View)));
     this.dlg.querySelectorAll<HTMLButtonElement>('[data-go]').forEach((b) => b.addEventListener('click', () => this.show(b.dataset.go as View)));
     document.getElementById('acct-close')!.addEventListener('click', () => this.close());
+    document.getElementById('acct-pair-new')!.addEventListener('click', () => void this.startPair());
+    this.dlg.addEventListener('close', () => this.stopPair());
     this.form.addEventListener('submit', (e) => {
       e.preventDefault();
       void this.submit();
@@ -70,7 +81,7 @@ export class AccountCard {
   /** Open at `view`: logging in or signing up when not logged in to an account, your account when you are. */
   open(view: View): void {
     const me = this.hooks.me();
-    if (me?.role === 'player') view = view === 'login' || view === 'signup' ? 'account' : view;
+    if (me?.role === 'player') view = view === 'login' || view === 'signup' || view === 'phone' ? 'account' : view;
     else if (view === 'account' || view === 'password' || view === 'delete') view = 'login';
     if (!this.name.value) this.name.value = this.hooks.typedName();
     this.show(view);
@@ -80,7 +91,61 @@ export class AccountCard {
 
   close(): void {
     this.pass.value = this.old.value = ''; // never left lying in the page
+    this.stopPair();
     if (this.dlg.open) this.dlg.close();
+  }
+
+  /** A new pairing for this screen: its QR code and short code, then asking every two seconds how it goes. */
+  private async startPair(): Promise<void> {
+    this.stopPair();
+    this.pairNote = () => t('acct.busy');
+    this.draw();
+    try {
+      const p = await api.pairStart();
+      if (this.view !== 'phone') return;
+      const svg = document.getElementById('acct-qr')!;
+      svg.setAttribute('viewBox', `0 0 ${p.qr.size} ${p.qr.size}`);
+      svg.querySelector('path')!.setAttribute('d', p.qr.d);
+      svg.parentElement!.hidden = false;
+      const where = p.url.replace(/^https?:\/\//, '').replace(/#.*$/, '');
+      document.getElementById('acct-pair-url')!.textContent = t('acct.phoneOr', { url: where });
+      document.getElementById('acct-pair-code')!.textContent = p.code;
+      this.pair = { token: p.token, until: Date.now() + p.ms, timer: window.setInterval(() => void this.pollPair(), PAIR_POLL_MS) };
+      this.pairNote = () => t('acct.phoneWait');
+    } catch (e) {
+      this.pairNote = errorText(e);
+    }
+    this.draw();
+  }
+
+  private async pollPair(): Promise<void> {
+    const pair = this.pair;
+    if (!pair || this.polling) return;
+    this.polling = true;
+    try {
+      const r = await api.pairPoll(pair.token);
+      if (this.pair !== pair) return;
+      if (r.state === 'done' && r.username) {
+        this.stopPair();
+        const finish = this.hooks.begin(false);
+        if (finish({ username: r.username, role: 'player' })) this.close();
+      } else if (r.state === 'gone' || Date.now() > pair.until) {
+        this.stopPair();
+        document.getElementById('acct-qr')!.parentElement!.hidden = true; // an old code is no use
+        document.getElementById('acct-pair-code')!.textContent = '';
+        this.pairNote = () => t('acct.phoneGone');
+        this.draw();
+      }
+    } catch {
+      // out of reach for a moment: asked again in two seconds
+    } finally {
+      this.polling = false;
+    }
+  }
+
+  private stopPair(): void {
+    if (this.pair) clearInterval(this.pair.timer);
+    this.pair = null;
   }
 
   private show(view: View): void {
@@ -89,6 +154,8 @@ export class AccountCard {
     this.bad = false;
     this.pass.value = this.old.value = '';
     if (view === 'account') void this.loadMine();
+    if (view === 'phone') void this.startPair();
+    else this.stopPair();
     this.draw();
     this.firstField()?.focus();
   }
@@ -124,6 +191,7 @@ export class AccountCard {
     document.getElementById('acct-me')!.textContent = t('acct.me', { name: this.mine?.username ?? me?.username ?? '' });
     document.getElementById('acct-email')!.textContent = this.mine ? t('acct.emailIs', { email: this.mine.email }) : '';
     document.getElementById('acct-since')!.textContent = this.mine ? t('acct.since', { date: this.mine.created }) : '';
+    document.getElementById('acct-pair-state')!.textContent = this.pairNote?.() ?? '';
     this.msg.textContent = this.note?.() ?? '';
     this.msg.classList.toggle('bad', this.bad);
   }

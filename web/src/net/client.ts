@@ -211,6 +211,9 @@ export const api = {
   account: () => call<{ username: string; email: string; created: string }>('GET', '/api/account'),
   changePassword: (old: string, password: string) => call<{ ok: boolean }>('POST', '/api/account/password', { old, password }),
   deleteAccount: (password: string) => call<{ ok: boolean }>('POST', '/api/account/delete', { password }),
+  /** Logging in with the phone (server/pairing.mjs): a pairing for this screen, and asking how it goes. */
+  pairStart: () => call<{ token: string; code: string; url: string; qr: { size: number; d: string }; ms: number }>('POST', '/api/pair/start', {}),
+  pairPoll: (token: string) => call<{ state: 'waiting' | 'gone' | 'done'; username?: string; role?: 'player' }>('POST', '/api/pair/poll', { token }),
   /** Zombies rooms (server/rooms.mjs): the list, and opening one (an account or the admin). */
   rooms: () => call<{ rooms: RoomEntry[]; max: number }>('GET', '/api/rooms'),
   openRoom: (place: string) => call<{ room: RoomEntry }>('POST', '/api/rooms', { place }),

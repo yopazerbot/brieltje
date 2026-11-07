@@ -142,6 +142,16 @@
           <button class="mini" type="button" data-show="password delete" data-go="account" data-i18n="acct.back">Back</button>
         </div>
         <p class="note" data-show="login" data-i18n="acct.forgot">Forgot your password? Ask the admin for a new one.</p>
+        <button class="mini acct-phone-btn" type="button" data-show="login signup" data-go="phone" data-i18n="acct.phone">Log in with your phone</button>
+        <!-- Logging in with the phone (server/pairing.mjs): a QR code and a short code, then waiting for the phone's yes. -->
+        <div class="acct-phone" data-show="phone">
+          <p class="acct-sub" data-i18n="acct.phoneHow">Scan this code with your phone's camera. Your phone logs in to your account and says yes. Nothing to type here.</p>
+          <div class="acct-qr"><svg id="acct-qr" role="img" aria-label="QR code"><path /></svg></div>
+          <p class="acct-pair"><span id="acct-pair-url"></span> <b id="acct-pair-code"></b></p>
+          <p class="note" id="acct-pair-state" aria-live="polite"></p>
+          <button class="mini" type="button" id="acct-pair-new" data-i18n="acct.phoneNew">New code</button>
+          <button class="mini" type="button" data-go="login" data-i18n="acct.back">Back</button>
+        </div>
         <p class="note acct-legal" data-show="signup"><a href="/legal/privacy.html" target="_blank" rel="noopener noreferrer" data-i18n="legal.privacyShort">Privacy</a> · <a href="/legal/terms.html" target="_blank" rel="noopener noreferrer" data-i18n="legal.termsShort">Terms</a></p>
       </form>
     </dialog>
@@ -183,6 +193,7 @@
             <div id="mp-guest-row" class="hidden">
               <p class="pin-hint" data-i18n="start.guestHint">You play as a guest under the name above.</p>
               <p class="acct-links"><button type="button" class="textbtn" data-acct="login" data-i18n="acct.login">Log in</button> · <button type="button" class="textbtn" data-acct="signup" data-i18n="acct.signup">Make an account</button> <span data-i18n="acct.whyShort">to keep your name and your scores, and to open Zombies rooms.</span></p>
+              <p class="acct-links"><button type="button" class="textbtn" data-acct="phone" data-i18n="acct.phoneShort">On a console? Log in with your phone.</button></p>
             </div>
             <label id="mp-age-row" class="check age-check hidden"><input type="checkbox" id="mp-age" data-age13 /> <span data-i18n="start.age13">I'm 13 or older</span></label>
           </div>

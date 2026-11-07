@@ -25,6 +25,7 @@ import { privateData } from './server/privateData.mjs';
 import { Auth, beTime, bucketOf, CLOUDFLARE_ONLY, clientIp, seatOf, viaCloudflare } from './server/auth.mjs';
 import { ACCOUNT_MS, Accounts } from './server/accounts.mjs';
 import { Rooms } from './server/rooms.mjs';
+import { Pairing } from './server/pairing.mjs';
 import { ARENAS } from './shared/arenas.mjs';
 import { Feedback } from './server/feedback.mjs';
 import { Game } from './server/game.mjs';
@@ -101,6 +102,13 @@ const rooms = new Rooms(game, (room) => new Game(auth, undefined, room));
 const accounts = new Accounts(auth, (name) => rooms.online(name));
 await accounts.init();
 rooms.onJoined = (name, session) => session?.role === 'player' && accounts.seen(name);
+// Logging in on a console with the phone (server/pairing.mjs).
+const pairing = new Pairing(auth, accounts);
+/** This site's own address, for the link in a pairing's QR code: the host the console asked (it only affects that console's own code). */
+const originOf = (req) => {
+  const host = String(req.headers.host || '');
+  return /^[a-z0-9.-]+(:\d{1,5})?$/i.test(host) ? `${SECURE ? 'https' : 'http'}://${host.toLowerCase()}` : 'https://brieltje.be';
+};
 // The board of best Zombies runs (accounts only): public, kept a little while per place.
 const boards = new Map(); // place ('' for all) -> { at, rows }
 rooms.onScore = () => boards.clear();
@@ -240,6 +248,19 @@ async function api(req, res, url) {
     if (r.error) return refuse(res, r);
     return json(res, 200, { username: r.username, role: r.role }, { 'Set-Cookie': [auth.cookie(r.token, ACCOUNT_MS / 1000, seat), auth.accountDeviceCookie(r.device)] });
   }
+  // Logging in on a console with the phone (server/pairing.mjs): the console starts a pairing and asks how it
+  // goes with its secret; the phone, logged in to its account, says yes (below, with a session).
+  if (path === '/api/pair/start' && method === 'POST') {
+    await body(req);
+    const r = pairing.start(req, originOf(req));
+    return r.error ? refuse(res, r) : json(res, 200, r);
+  }
+  if (path === '/api/pair/poll' && method === 'POST') {
+    const b = await body(req);
+    const r = await pairing.poll(req, b.token);
+    if (r.state !== 'done') return json(res, 200, { state: r.state });
+    return json(res, 200, { state: 'done', username: r.username, role: 'player' }, { 'Set-Cookie': auth.cookie(r.token, ACCOUNT_MS / 1000, seat) });
+  }
   // The board of best Zombies runs (accounts only): public, like the names in the game. `place`: one of
   // the places, or none for each account's best anywhere.
   if (path === '/api/scores' && method === 'GET') {
@@ -271,6 +292,11 @@ async function api(req, res, url) {
     // A new password: this browser stays logged in with a fresh session; every other one ended.
     if (r.token) return json(res, 200, { ok: true }, { 'Set-Cookie': [auth.cookie(r.token, ACCOUNT_MS / 1000, seat), ...(r.device ? [auth.accountDeviceCookie(r.device)] : [])] });
     return json(res, 200, { ok: true }, { 'Set-Cookie': auth.cookie('', 0, seat) });
+  }
+  if (path === '/api/pair/approve' && method === 'POST') {
+    const b = await body(req);
+    const r = pairing.approve(req, s, typeof b.code === 'string' ? b.code : '');
+    return r.error ? refuse(res, r) : json(res, 200, r);
   }
   // Zombies rooms (server/rooms.mjs): the list for anyone playing together; opening one for accounts and the admin.
   if (path === '/api/rooms' && method === 'GET') return json(res, 200, rooms.list());

@@ -1,0 +1,74 @@
+<!doctype html>
+<html lang="nl">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+  <meta name="robots" content="noindex" />
+  <title>Inloggen op een ander scherm · Brieltje</title>
+  <link rel="icon" href="/favicon.svg" type="image/svg+xml" />
+  <link rel="icon" href="/icon-192.png" type="image/png" sizes="192x192" />
+  <link rel="stylesheet" href="/interested/interested.css" />
+  <link rel="stylesheet" href="/pair/pair.css" />
+  <link rel="stylesheet" href="/menu-theme.css" />
+</head>
+<body>
+<!-- Logging in on a console with the phone (server/pairing.mjs): the phone, logged in to its account, says yes. -->
+<main>
+  <div class="card">
+    <header>
+      <a class="brand" href="/"><img src="/brand/wordmark.svg" alt="Brieltje" width="120" height="36" /></a>
+      <div class="langs"><button type="button" data-set="nl">Nederlands</button><button type="button" data-set="en">English</button></div>
+    </header>
+    <h1><span data-lang="nl">Inloggen op een ander scherm</span><span data-lang="en">Log in on another screen</span></h1>
+
+    <!-- Step 1: the code (from the QR code, or typed) -->
+    <section id="s-code" hidden>
+      <p data-lang="nl">Typ de code die het andere scherm toont.</p>
+      <p data-lang="en">Type the code the other screen shows.</p>
+      <form id="code-form" autocomplete="off">
+        <input type="text" id="code" maxlength="9" autocapitalize="characters" spellcheck="false" placeholder="ABCD-EFGH" aria-label="Code" />
+        <div class="actions"><button class="btn" type="submit"><span data-lang="nl">Verder</span><span data-lang="en">Next</span></button></div>
+      </form>
+    </section>
+
+    <!-- Step 2: logged in to an account here? -->
+    <section id="s-login" hidden>
+      <p data-lang="nl">Log hier in met je account. Daarna log je het andere scherm in met één tik.</p>
+      <p data-lang="en">Log in with your account here. Then one tap logs in the other screen.</p>
+      <form id="login-form">
+        <label class="field" for="user"><span data-lang="nl">Naam</span><span data-lang="en">Name</span></label>
+        <input type="text" id="user" autocomplete="username" maxlength="20" spellcheck="false" autocapitalize="off" />
+        <label class="field" for="pass"><span data-lang="nl">Wachtwoord</span><span data-lang="en">Password</span></label>
+        <input type="password" id="pass" autocomplete="current-password" maxlength="200" />
+        <div class="actions"><button class="btn" type="submit"><span data-lang="nl">Inloggen</span><span data-lang="en">Log in</span></button></div>
+      </form>
+      <p class="muted small"><span data-lang="nl">Nog geen account? Maak er een in het spel op</span><span data-lang="en">No account yet? Make one in the game at</span> <a href="/">brieltje.be</a>.</p>
+    </section>
+
+    <!-- Step 3: yes or no -->
+    <section id="s-ask" hidden>
+      <p class="pair-q"><span data-lang="nl">Het andere scherm inloggen als</span><span data-lang="en">Log in the other screen as</span> <b id="who"></b>?</p>
+      <p class="pair-code"><span data-lang="nl">Code</span><span data-lang="en">Code</span> <b id="shown-code"></b></p>
+      <p class="pair-warn"><span data-lang="nl">Zeg enkel ja als dat scherm voor je staat en dezelfde code toont. Wie inlogt, speelt onder jouw naam.</span><span data-lang="en">Only say yes if that screen is in front of you and shows the same code. Whoever is logged in plays under your name.</span></p>
+      <div class="actions">
+        <button class="btn" type="button" id="yes"><span data-lang="nl">Ja, log daar in</span><span data-lang="en">Yes, log in there</span></button>
+        <button class="btn ghost" type="button" id="no"><span data-lang="nl">Nee</span><span data-lang="en">No</span></button>
+      </div>
+      <p class="muted small"><button type="button" class="linkish" id="other"><span data-lang="nl">Niet jij? Log in met een ander account.</span><span data-lang="en">Not you? Log in with another account.</span></button></p>
+    </section>
+
+    <!-- Done -->
+    <section id="s-done" hidden>
+      <p class="pair-ok"><span data-lang="nl">Klaar! Het andere scherm logt in als</span><span data-lang="en">Done! The other screen is logging in as</span> <b id="done-who"></b>.</p>
+      <p class="muted"><span data-lang="nl">Je kunt deze pagina sluiten.</span><span data-lang="en">You can close this page.</span></p>
+    </section>
+    <section id="s-no" hidden>
+      <p><span data-lang="nl">Oké, er is niets gebeurd. Het andere scherm blijft uitgelogd.</span><span data-lang="en">OK, nothing happened. The other screen stays logged out.</span></p>
+    </section>
+
+    <p class="error" id="err" role="alert" hidden></p>
+  </div>
+</main>
+<script src="/pair/pair.js"></script>
+</body>
+</html>

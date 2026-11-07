@@ -786,6 +786,14 @@ body.on-start #overlay { background: linear-gradient(180deg, rgba(9, 14, 19, 0.2
   background: transparent; color: var(--ink-soft); font: 400 26px/1 var(--font); cursor: pointer;
 }
 #acct-close:hover { color: var(--ink); background: var(--dusk-raised); }
+/* Logging in with the phone: the QR code dark on white (cameras need the contrast), the address and code to type. */
+#acct-form .acct-phone-btn { margin: 0 0 12px; }
+#acct-form .acct-qr { width: min(220px, 60vw, 42dvh); margin: 4px auto 10px; background: #fff; border-radius: 10px; }
+#acct-form .acct-qr svg { display: block; width: 100%; height: auto; }
+#acct-form .acct-qr path { fill: #000; }
+#acct-form .acct-pair { margin: 0 0 8px; text-align: center; font-size: 15px; color: var(--ink-soft); }
+#acct-form .acct-pair b { display: block; margin-top: 4px; font-size: 26px; letter-spacing: 0.12em; color: var(--ink); }
+#acct-form .acct-phone .mini { margin: 4px 6px 0 0; }
 
 /* Zombies rooms in the menu's Together tab (src/ui/rooms.ts): the list, opening one, the room you're in. */
 .rooms { margin: 18px 0 0; }
