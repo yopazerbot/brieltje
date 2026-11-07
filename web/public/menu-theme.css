@@ -46,3 +46,12 @@
 @media (prefers-reduced-motion: reduce) {
   .admin .live.on i { animation: none; }
 }
+
+/* Scrollbars in the theme, not the browser's own (Yoshi, 7 Nov 2026): a slim, rounded slate bar on no track,
+   lamplight when pointed at. The standard properties (Chrome, Edge, Firefox) and the older -webkit- ones
+   (Safari, which reads only these); where both are known the standard ones win. */
+* { scrollbar-width: thin; scrollbar-color: #4b5d6e transparent; }
+::-webkit-scrollbar { width: 10px; height: 10px; }
+::-webkit-scrollbar-track, ::-webkit-scrollbar-corner { background: transparent; }
+::-webkit-scrollbar-thumb { background: #4b5d6e; background-clip: padding-box; border: 2px solid transparent; border-radius: 999px; }
+::-webkit-scrollbar-thumb:hover { background-color: var(--menu-accent); }
