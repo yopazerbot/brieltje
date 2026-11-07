@@ -73,6 +73,7 @@ import { buildHorizon } from './world/horizon';
 import { wearLonePatches, weatherYards } from './world/yards';
 import { Undergrowth } from './world/undergrowth';
 import { GroundShade } from './world/groundShade';
+import { SunShadow } from './world/sunShadow';
 import { groundPiece, groundPieceCoarse, groundPieces, groundSkirt, pieceOf, PIECE, terrain, type GroundCuts } from './world/terrain';
 import { splitTiles, Tiles } from './world/tiles';
 import { Furnishing, buildFixtures, footprint, type Piece } from './world/furnishing';
@@ -161,6 +162,8 @@ sc.far = 140;
 sun.shadow.bias = -0.0003;
 sun.shadow.normalBias = 0.025;
 scene.add(sun, sun.target);
+// Where its shadow map lies: on the house (Low), or following the eye (Medium and up; world/sunShadow.ts).
+const sunShadow = new SunShadow(sun, center);
 // The photographed sky is empty below the horizon, so add the light that
 // bounces off the ground and floors (it is what lights ceilings).
 const hemi = new THREE.HemisphereLight('#dfe9f5', '#b9a487', 0.9);
@@ -340,7 +343,7 @@ weather.horizon = horizon as THREE.Mesh; // fades into the weather's haze
 scene.add(tiles.group, horizon);
 // Shadows and soft corners on the ground of the whole neighbourhood, worked out once the sun's
 // direction is known (the real-time sun shadow only covers the house).
-const groundShade = new GroundShade(center);
+const groundShade = new GroundShade(center, sunShadow.uniforms);
 groundShade.apply(grassMat, 0.35, true);
 groundShade.addGrass(house.surroundings?.grass); // the gardens' stripes and the meadows
 // The garden's own paths, drive and planted borders too (not the terraces: one is on the roof).
@@ -434,6 +437,18 @@ function rescale(): void {
   ao.setSize((window.innerWidth * scale) / aoDiv, (window.innerHeight * scale) / aoDiv);
 }
 
+/**
+ * Before drawing: the sun's shadow map round the eye, or on the house (world/sunShadow.ts), and the tiles round
+ * it drawn into it. The house's map isn't worked out far from the house (the village). Drawn once a frame: left
+ * to three (autoUpdate), every draw of the scene in a frame drew it again, the ambient occlusion's too (High, Ultra).
+ */
+function placeShadow(): void {
+  sunShadow.update(camera);
+  tiles.shadowAt(sunShadow.middle.x, sunShadow.middle.z, sunShadow.follows);
+  renderer.shadowMap.autoUpdate = false;
+  if (sunShadow.follows || camera.position.distanceTo(center) < 250) renderer.shadowMap.needsUpdate = true;
+}
+
 function applyQuality(q: Quality): void {
   quality = q;
   preset = PRESETS[q];
@@ -449,6 +464,8 @@ function applyQuality(q: Quality): void {
     // shadow drew nothing (Auto dropping a preset in the village emptied the screen).
     renderer.shadowMap.needsUpdate = true;
   }
+  sunShadow.setup(preset.shadowReach, preset.shadowMap);
+  placeShadow();
   setAnisotropy(preset.anisotropy);
   setBakeDetail(q !== 'low'); // the baked wear's fine pattern (world/bakedLight.ts)
   weather.setQuality(q, phone); // how many streaks of rain
@@ -3343,8 +3360,7 @@ renderer.setAnimationLoop((now: number) => {
   groundDetail(camera.position);
   homeStreet.update(dt, camera.position);
   groundShade.follow(camera.position);
-  // The sun's real-time shadow only covers the house: far from it (the village) it isn't worked out.
-  renderer.shadowMap.autoUpdate = camera.position.distanceTo(center) < 250;
+  placeShadow();
   if (!menu.open) adaptQuality(dt, now); // before drawing (see there)
   if (bigMap.open) {
     const marks: Mark[] = [
@@ -3737,7 +3753,10 @@ async function autoDetect(): Promise<void> {
     for (const v of views) {
       player.place(...v);
       player.update(0, still, camera);
-      total += timeFrames(() => composer.render(1 / 60), gl, 5);
+      total += timeFrames(() => {
+        placeShadow(); // the sun's shadow drawn in each test frame, as in play
+        composer.render(1 / 60);
+      }, gl, 5);
     }
     return total / views.length;
   });
@@ -3814,7 +3833,7 @@ if (import.meta.env.DEV) {
         for (let i = 0; i < Math.max(1, Math.round(seconds * 60)); i++) player.update(1 / 60, { ...idle, ...partial }, camera);
         return { x: +player.x.toFixed(3), z: +player.z.toFixed(3), feet: +player.feet.toFixed(3), flying: player.flying };
       },
-      three: { renderer, scene, sun, ao, composer, environmentReady, applyQuality, autoDetect, quality: () => quality, groundShade, weather },
+      three: { renderer, scene, sun, ao, composer, environmentReady, applyQuality, autoDetect, quality: () => quality, groundShade, weather, sunShadow, presets: PRESETS },
       /** The weather's cycle moved on by this many seconds, on this page only (world/weather.ts forward), and where it is. */
       weatherAhead: (seconds: number) => weather.forward(seconds),
       weatherState: () => weather.state(),
@@ -3855,6 +3874,7 @@ if (import.meta.env.DEV) {
         const px = new Uint8Array(4);
         const t0 = performance.now();
         for (let i = 0; i < n; i++) {
+          placeShadow();
           composer.render(1 / 60);
           gl.readPixels(0, 0, 1, 1, gl.RGBA, gl.UNSIGNED_BYTE, px); // wait for the GPU to finish
         }

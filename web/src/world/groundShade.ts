@@ -17,8 +17,12 @@ import { snowOn } from './snowCover';
  * the surfaces the grass reacts to into a cover image, combines them into the
  * ground texture in one pass, and throws the rest away. The grass and the road
  * then read that texture once per pixel: sunlight is dimmed by the shadow, sky
- * light by the darkening. Near the house, where the real-time shadow works, it
- * lets the real-time shadow decide.
+ * light by the darkening. Where the real-time shadow map reaches (world/sunShadow.ts:
+ * round the house on Low, round the eye on Medium and up) the ground lets that map
+ * decide the sun's shadow: a second image holds the contact band's share of the
+ * sun's dimming alone, so the ground there takes the band from it, the shadow from
+ * the map and only the core of the bake's own shadow (for what isn't in the map),
+ * and the bake's soft shadow lies no halo round the map's sharp one.
  *
  * Where walls, hedges, fences and sheds meet the ground a darker band lies round
  * their foot (contact shadow), wider the taller they are, so they stand on the
@@ -45,13 +49,15 @@ const HALF = 240; // metres from the centre to the edge of the shaded area
 const SIZE = 2048; // texels across the ground texture (about 23 cm each)
 
 const COMBINE = /* glsl */ `
+layout(location = 0) out highp vec4 gShade; // sun, sky, slow variation, the grass's kind
+layout(location = 1) out highp vec4 gContact; // the contact band's dimming of the sun alone (r)
+#define gl_FragColor gShade
 uniform sampler2D sunDepth;
 uniform sampler2D topDepth;
 uniform sampler2D solidDepth; // from above too, only what stands on the ground (no crowns, trunks or posts)
 uniform sampler2D cover; // r fields, g tracks and paths, b water, a gardens' stripes (0.5 to 1) and meadows (0.2, 0.35)
 uniform mat4 sunMatrix;
 uniform mat4 topMatrix;
-uniform mat4 liveMatrix;
 uniform vec3 area; // centre x, centre z, half size
 uniform float ground;
 uniform float sunBias;
@@ -95,7 +101,6 @@ float solidAt(vec2 xz) {
 void main() {
   vec2 xz = area.xy + (vUv * 2.0 - 1.0) * area.z;
   float base = ground + terrainAt(xz); // the ground here, on the relief
-  vec3 p = vec3(xz.x, base + 0.06, xz.y);
 
   // Sun: is anything between this spot and the sun? 25 taps for a soft edge (baked once, so they cost only
   // the bake), a little wider than the nine there were and a smooth fade instead of their steps. Each is a spot
@@ -110,11 +115,6 @@ void main() {
       lit += d - sunBias <= texture2D(sunDepth, uv).r ? 1.0 : 0.0;
     }
   lit /= 25.0;
-  // Where the real-time shadow reaches, leave it to that one (it also sees people and furniture).
-  float ld;
-  vec2 live = abs(project(liveMatrix, p, ld) * 2.0 - 1.0);
-  float edge = smoothstep(0.85, 0.98, max(live.x, live.y));
-  lit = mix(1.0, lit, edge);
 
   // Sky light: how much of the surroundings stands up around this spot (walls, hedges, crowns).
   float occ = 0.0;
@@ -180,6 +180,7 @@ void main() {
   // Slow variation in colour, in patches of several metres.
   float macro = noise(xz / 23.0) * 0.6 + noise(xz / 7.0) * 0.4;
   gl_FragColor = vec4(lit * (1.0 - 0.5 * contact), ao * (1.0 - 0.8 * contact), macro, grass);
+  gContact = vec4(1.0 - 0.5 * contact, 0.0, 0.0, 1.0);
 }`;
 
 /** Draws a surface into the cover image in one of its channels, added to what is there. */
@@ -247,6 +248,9 @@ export class GroundShade {
     groundArea: { value: new THREE.Vector3() },
     groundShadeAll: { value: neutral as THREE.Texture },
     groundAreaAll: { value: new THREE.Vector3(1e7, 1e7, 1) },
+    /** The contact band's share of the sun's dimming, for where the real-time shadow map takes over (r; 1: none) */
+    groundContact: { value: neutral as THREE.Texture },
+    groundContactAll: { value: neutral as THREE.Texture },
   };
   /** The grass's detail, to turn down or off (see grassDetail) */
   readonly grassDetail = grassDetail;
@@ -267,7 +271,11 @@ export class GroundShade {
   /** The gardens and meadows known so far, as one flat mesh for the cover image */
   private grass = { pos: [] as number[], attr: [] as number[] };
 
-  constructor(private center: THREE.Vector3) {
+  /** `live`: where the real-time shadow map lies now (world/sunShadow.ts uniforms), for the handover to it. */
+  constructor(
+    private center: THREE.Vector3,
+    private live: { liveMatrix: { value: THREE.Matrix4 }; liveOn: { value: number } } = { liveMatrix: { value: new THREE.Matrix4() }, liveOn: { value: 0 } },
+  ) {
     this.uniforms.groundArea.value.set(center.x, center.z, HALF);
   }
 
@@ -300,6 +308,8 @@ export class GroundShade {
     const t = a ? a.target : this.target;
     this.uniforms.groundShade.value = this.on && t ? t.texture : neutral;
     this.uniforms.groundShadeAll.value = this.on && this.all ? this.all.texture : neutral;
+    this.uniforms.groundContact.value = this.on && t ? t.textures[1] : neutral;
+    this.uniforms.groundContactAll.value = this.on && this.all ? this.all.textures[1] : neutral;
     if (a) this.uniforms.groundArea.value.copy(a.area);
     else this.uniforms.groundArea.value.set(this.center.x, this.center.z, HALF);
   }
@@ -333,20 +343,25 @@ export class GroundShade {
    */
   apply(material: THREE.MeshStandardMaterial, sheen = 1, grass = false): void {
     material.onBeforeCompile = (shader) => {
-      Object.assign(shader.uniforms, this.uniforms);
+      Object.assign(shader.uniforms, this.uniforms, this.live);
       shader.uniforms.grassDetail = grassDetail;
       shader.uniforms.groundWet = groundWet;
       shader.vertexShader = shader.vertexShader
-        .replace('#include <common>', '#include <common>\nuniform vec3 groundArea;\nuniform vec3 groundAreaAll;\nvarying vec2 vGroundUv;\nvarying vec2 vGroundUvAll;')
+        .replace('#include <common>', '#include <common>\nuniform vec3 groundArea;\nuniform vec3 groundAreaAll;\nuniform mat4 liveMatrix;\nvarying vec2 vGroundUv;\nvarying vec2 vGroundUvAll;\nvarying vec3 vGroundLive;')
         .replace(
           '#include <begin_vertex>',
           `#include <begin_vertex>
-          vec2 gsXZ = (modelMatrix * vec4(transformed, 1.0)).xz;
+          vec3 gsWorld = (modelMatrix * vec4(transformed, 1.0)).xyz;
+          vec2 gsXZ = gsWorld.xz;
           vGroundUv = (gsXZ - groundArea.xy) / groundArea.z * 0.5 + 0.5;
-          vGroundUvAll = (gsXZ - groundAreaAll.xy) / groundAreaAll.z * 0.5 + 0.5;`,
+          vGroundUvAll = (gsXZ - groundAreaAll.xy) / groundAreaAll.z * 0.5 + 0.5;
+          vGroundLive = (liveMatrix * vec4(gsWorld, 1.0)).xyz; // in the real-time shadow map: -1 to 1 inside`,
         );
       shader.fragmentShader = shader.fragmentShader
-        .replace('#include <common>', '#include <common>\nuniform sampler2D groundShade;\nuniform sampler2D groundShadeAll;\nuniform float grassDetail;\nuniform float groundWet;\nvarying vec2 vGroundUv;\nvarying vec2 vGroundUvAll;')
+        .replace(
+          '#include <common>',
+          '#include <common>\nuniform sampler2D groundShade;\nuniform sampler2D groundShadeAll;\nuniform sampler2D groundContact;\nuniform sampler2D groundContactAll;\nuniform float liveOn;\nuniform float grassDetail;\nuniform float groundWet;\nvarying vec2 vGroundUv;\nvarying vec2 vGroundUvAll;\nvarying vec3 vGroundLive;',
+        )
         .replace(
           '#include <map_fragment>',
           `#include <map_fragment>
@@ -374,8 +389,25 @@ export class GroundShade {
         .replace(
           '#include <lights_fragment_end>',
           `#include <lights_fragment_end>
-          reflectedLight.directDiffuse *= gs.r;
-          reflectedLight.directSpecular *= gs.r;
+          // The sun: where the real-time shadow map reaches, its shadow (already in the light), the contact band
+          // from the second image, and of the bake's own shadow only its core: the trunks, the woods' simple
+          // crowns and the like aren't in the map, and the core of their shadow stays, while the bake's soft
+          // edge round what the map has (its halo) goes. Handing back to the bake over the map's outer edge.
+          float gsSun = gs.r;
+          if (liveOn > 0.5) {
+            vec3 gsLive = abs(vGroundLive);
+            float gsMap = 1.0 - smoothstep(0.82, 0.96, max(max(gsLive.x, gsLive.y), gsLive.z));
+            if (gsMap > 0.0) {
+              float gsBand = 1.0;
+              vec2 gsAllEdge = abs(vGroundUvAll - 0.5);
+              if (gsFine < 1.0 && max(gsAllEdge.x, gsAllEdge.y) < 0.5) gsBand = texture2D(groundContactAll, vGroundUvAll).r;
+              if (gsFine > 0.0) gsBand = mix(gsBand, texture2D(groundContact, vGroundUv).r, gsFine);
+              float gsLit = clamp(gs.r / max(gsBand, 0.5), 0.0, 1.0); // the bake's shadow without the band
+              gsSun = mix(gs.r, gsBand * smoothstep(0.0, 0.4, gsLit), gsMap);
+            }
+          }
+          reflectedLight.directDiffuse *= gsSun;
+          reflectedLight.directSpecular *= gsSun;
           reflectedLight.indirectDiffuse *= gs.g;
           reflectedLight.indirectSpecular *= gs.g * ${sheen.toFixed(2)};`,
         );
@@ -538,14 +570,11 @@ export class GroundShade {
     scene.fog = fog;
     for (const [o, v] of keep) o.visible = v;
 
-    // The real-time shadow's reach, to hand over to it near the house.
-    sun.updateMatrixWorld();
-    sun.target.updateMatrixWorld();
-    sun.shadow.updateMatrices(sun);
-    const live = new THREE.Matrix4().multiplyMatrices(sun.shadow.camera.projectionMatrix, sun.shadow.camera.matrixWorldInverse);
     const vp = (c: THREE.Camera) => new THREE.Matrix4().multiplyMatrices(c.projectionMatrix, c.matrixWorldInverse);
 
-    const out = new THREE.WebGLRenderTarget(size, size, { generateMipmaps: true, minFilter: THREE.LinearMipmapLinearFilter, magFilter: THREE.LinearFilter });
+    // Two images in one pass: the shading, and the contact band's dimming of the sun alone (one channel).
+    const out = new THREE.WebGLRenderTarget(size, size, { count: 2, generateMipmaps: true, minFilter: THREE.LinearMipmapLinearFilter, magFilter: THREE.LinearFilter });
+    out.textures[1].format = THREE.RedFormat;
     const relief = terrainTexture();
     const uniforms = {
       sunDepth: { value: sunTarget.depthTexture },
@@ -554,7 +583,6 @@ export class GroundShade {
       cover: { value: cover.texture },
       sunMatrix: { value: vp(sunCam) },
       topMatrix: { value: vp(topCam) },
-      liveMatrix: { value: live },
       area: { value: new THREE.Vector3(center.x, center.z, half) },
       ground: { value: ground },
       sunBias: { value: Math.max(0.35, (2.5 * r) / depth) / (sunCam.far - sunCam.near) }, // more where a texel is wide (the whole map's)
@@ -569,6 +597,7 @@ export class GroundShade {
         uniforms,
         vertexShader: 'varying vec2 vUv; void main() { vUv = uv; gl_Position = vec4(position.xy, 0.0, 1.0); }',
         fragmentShader: COMBINE,
+        glslVersion: THREE.GLSL3,
       }),
     );
     Object.assign((this.combine.material as THREE.ShaderMaterial).uniforms, uniforms);
@@ -577,7 +606,7 @@ export class GroundShade {
     renderer.setRenderTarget(before);
     for (const t of [sunTarget, topTarget, solidTarget, cover]) t.dispose();
     relief.dispose();
-    out.texture.anisotropy = 4;
+    out.textures[0].anisotropy = out.textures[1].anisotropy = 4;
     return out;
   }
 }

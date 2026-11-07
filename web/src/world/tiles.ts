@@ -19,8 +19,8 @@ import type { Surroundings } from './houseData';
  * gutters, cables, lamps, fence posts, solar panels) stop at DETAIL metres: a few pixels in the
  * haze there, and the most triangles for what they show.
  *
- * The sun's real-time shadow only covers the house, so in the shadow pass the ring's meshes draw
- * only the tiles round the house.
+ * The sun's real-time shadow map covers a few dozen metres (world/sunShadow.ts), so in the shadow pass
+ * each set's meshes draw only the tiles round the map's middle (shadowAt).
  */
 
 export const TILE = 200;
@@ -31,7 +31,7 @@ const UX = (521.5 - CX) / Math.hypot(521.5 - CX, -744.2 - CZ);
 const UZ = (-744.2 - CZ) / Math.hypot(521.5 - CX, -744.2 - CZ);
 /** A tile's half length along the line. */
 const HALF = (TILE / 2) * (Math.abs(UX) + Math.abs(UZ));
-/** Metres along the line from the house: the tiles round the house that the sun's shadow can reach. */
+/** Metres along the line from the shadow map's middle: the tiles round it that the sun's shadow can reach. */
 const SHADOW = 160;
 /** Metres: the draw distance of small details. */
 const DETAIL = 400;
@@ -127,6 +127,10 @@ interface TileSet {
   detailReach: number;
   /** Metres: how far this set's tiles are drawn at most (the draw distance if that is nearer) */
   reach: number;
+  /** Throws the sun's shadow also while the map stays on the house (addSet's `near`) */
+  near: boolean;
+  /** The tiles round the shadow map's middle, drawn into the map (shadowAt) */
+  cast: [number, number];
 }
 
 export class Tiles {
@@ -138,11 +142,13 @@ export class Tiles {
   private tracked: { object: THREE.Object3D; box: THREE.Box3; reach: number }[] = [];
   private wait = 0;
   private last = new THREE.Vector3(Infinity, Infinity, Infinity);
+  /** Where the shadow map's middle lies along the line, and whether the map follows the eye (shadowAt) */
+  private shadow = { axis: 0, follows: false };
 
   /**
    * A set of tiles (the ring, or the village): each material's pieces merged in tile order into
    * one mesh, each repeated shape into one instanced mesh. `near`: its meshes throw the sun's
-   * shadow round the house. `detailReach`: how far its small details are drawn (DETAIL unless given); `reach`: how far its
+   * shadow also while the map stays on the house (Low); the others only where the map follows the eye. `detailReach`: how far its small details are drawn (DETAIL unless given); `reach`: how far its
    * tiles are drawn at most (the draw distance unless given).
    */
   addSet(tiles: { key: string; pieces: Piece[] }[], near: boolean, detailReach = DETAIL, reach = Infinity): void {
@@ -169,9 +175,10 @@ export class Tiles {
       const [i, j] = t.key.split(',').map(Number);
       return new THREE.Box3(new THREE.Vector3(CX + (i - 0.5) * TILE - 30, -30, CZ + (j - 0.5) * TILE - 30), new THREE.Vector3(CX + (i + 0.5) * TILE + 30, 80, CZ + (j + 0.5) * TILE + 30));
     });
-    const set: TileSet = { at: order.map((t) => t.at), boxes, runs: [], shown: [0, n - 1], detail: [0, n - 1], detailReach, reach };
+    const set: TileSet = { at: order.map((t) => t.at), boxes, runs: [], shown: [0, n - 1], detail: [0, n - 1], detailReach, reach, near, cast: [0, -1] };
+    this.castRange(set);
     const style = (mesh: THREE.Mesh, p: Piece) => {
-      mesh.castShadow = p.shadow && near;
+      mesh.castShadow = p.shadow;
       mesh.receiveShadow = true;
       mesh.renderOrder = p.order ?? 0;
       mesh.userData.material = p.tag;
@@ -191,15 +198,11 @@ export class Tiles {
       const run: Run = { mesh, offsets, small: piece.small };
       set.runs.push(run);
       if (mesh.castShadow) {
-        // In the shadow pass only the tiles round the house (and of those, the shown ones).
-        let s0 = 0;
-        while (s0 < n && set.at[s0] < -SHADOW - HALF) s0++;
-        let s1 = n - 1;
-        while (s1 >= 0 && set.at[s1] > SHADOW + HALF) s1--;
+        // In the shadow pass only the tiles round the map's middle (and of those, the shown ones).
         mesh.onBeforeShadow = () => {
           const shown = run.small ? set.detail : set.shown;
-          const a = Math.max(s0, shown[0]);
-          const b = Math.min(s1, shown[1]);
+          const a = Math.max(set.cast[0], shown[0]);
+          const b = Math.min(set.cast[1], shown[1]);
           geometry.setDrawRange(offsets[a], b >= a ? offsets[b + 1] - offsets[a] : 0);
         };
         mesh.onAfterShadow = () => this.range(set, run);
@@ -214,10 +217,48 @@ export class Tiles {
       for (const ms of per) offsets.push(offsets[offsets.length - 1] + ms.length);
       style(mesh, piece);
       set.runs.push({ mesh, offsets, source, small: piece.small });
+      if (mesh.castShadow) {
+        // The shown instances are one block of the matrices: drawn whole into the map, or not at all when
+        // none of their tiles is round the map's middle (the village's trees while you are at the house).
+        let count = 0;
+        mesh.onBeforeShadow = () => {
+          const shown = piece.small ? set.detail : set.shown;
+          count = mesh.count;
+          if (Math.max(set.cast[0], shown[0]) > Math.min(set.cast[1], shown[1])) mesh.count = 0;
+        };
+        mesh.onAfterShadow = () => {
+          mesh.count = count;
+        };
+      }
     }
     this.sets.push(set);
     for (const run of set.runs) this.range(set, run);
     this.wait = 0;
+  }
+
+  /**
+   * The shadow map's middle (world/sunShadow.ts), each frame: each set draws the tiles round it into the map.
+   * `follows`: the map follows the eye (Medium and up); else it stays on the house and only the `near` sets throw.
+   */
+  shadowAt(x: number, z: number, follows: boolean): void {
+    const axis = axial(x, z);
+    if (Math.abs(axis - this.shadow.axis) < 1 && follows === this.shadow.follows) return;
+    this.shadow.axis = axis;
+    this.shadow.follows = follows;
+    for (const set of this.sets) this.castRange(set);
+  }
+
+  private castRange(set: TileSet): void {
+    if (!set.near && !this.shadow.follows) {
+      set.cast = [0, -1];
+      return;
+    }
+    const n = set.at.length;
+    let a = 0;
+    while (a < n && set.at[a] < this.shadow.axis - SHADOW - HALF) a++;
+    let b = n - 1;
+    while (b >= 0 && set.at[b] > this.shadow.axis + SHADOW + HALF) b--;
+    set.cast = [a, b];
   }
 
   /** Show a run's part for the set's shown tiles. */

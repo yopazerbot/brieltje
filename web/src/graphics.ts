@@ -26,6 +26,12 @@ export interface Preset {
    * metres from what casts it; 1 is three's own hard edge.
    */
   shadowSoft: number;
+  /**
+   * Metres from the middle of the sun's shadow map to its side (world/sunShadow.ts). 0: the map stays on the
+   * main house (17 m round it) and is only drawn near it, as it always was. Otherwise it follows the eye and
+   * reaches further ahead than behind, so the players, cars and bikes throw a shadow everywhere.
+   */
+  shadowReach: number;
   /** Edge smoothing */
   smaa: boolean;
   /** Sharpness of textures seen at an angle */
@@ -39,10 +45,10 @@ export interface Preset {
 }
 
 export const PRESETS: Record<Quality, Preset> = {
-  low: { label: 'Low', scale: 0.55, ao: 'off', shadowMap: 1024, shadowSoft: 1, smaa: false, anisotropy: 1, far: 550 },
-  medium: { label: 'Medium', scale: 0.8, ao: 'off', shadowMap: 2048, shadowSoft: 1.5, smaa: true, anisotropy: 2, far: 725 },
-  high: { label: 'High', scale: 1, ao: 'half', shadowMap: 2048, shadowSoft: 2.5, smaa: true, anisotropy: 4, far: 725 },
-  ultra: { label: 'Ultra', scale: 1, ao: 'full', shadowMap: 4096, shadowSoft: 5, smaa: true, anisotropy: 8, far: 725 },
+  low: { label: 'Low', scale: 0.55, ao: 'off', shadowMap: 1024, shadowSoft: 1, shadowReach: 0, smaa: false, anisotropy: 1, far: 550 },
+  medium: { label: 'Medium', scale: 0.8, ao: 'off', shadowMap: 2048, shadowSoft: 1.5, shadowReach: 22, smaa: true, anisotropy: 2, far: 725 },
+  high: { label: 'High', scale: 1, ao: 'half', shadowMap: 2048, shadowSoft: 2.5, shadowReach: 26, smaa: true, anisotropy: 4, far: 725 },
+  ultra: { label: 'Ultra', scale: 1, ao: 'full', shadowMap: 4096, shadowSoft: 5, shadowReach: 36, smaa: true, anisotropy: 8, far: 725 },
 };
 /** A phone or tablet's draw distance, whatever the preset. */
 export const FAR_PHONE = 450;
