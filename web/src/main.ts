@@ -55,6 +55,7 @@ import { netClock } from './net/track';
 import { PROTO, readBike, readBrute, readCar, readHorse, readPlayer, readZombie, type Tick } from '../shared/wire.mjs';
 import { sound } from './sound';
 import { footstep, surfaceOf } from './footsteps';
+import { PlayTower, TOWER } from './world/playground';
 import { SettingsPanel, type Settings } from './settings';
 import { SPECS, Weapon, type WeaponId } from './weapon';
 import { paintball, setPaintball, weaponName as shownWeapon } from './paintball';
@@ -524,12 +525,15 @@ const world = new World(house.prisms, house.ground);
 world.addPrisms(house.surroundings?.prisms ?? []);
 world.addPrisms(homeStreet.blocks);
 world.addPrisms(ringRoads.blocks); // the pavements, a few centimetres up
+const playTower = new PlayTower(TOWER, house.ground); // the school's play tower: its platform, ladder and slide (world/playground.ts)
+world.addPrisms(playTower.prisms());
 world.setDips(house.dips ?? []);
 // The edge of the game (shared/bounds.json): round the built-up area, or round the two houses while a game in the house runs.
 const edges = loadBounds(BOUNDS);
 world.bounds = edges.map;
 world.ceiling = edges.ceiling;
 const player = new Player(world, house.spawn);
+player.tower = playTower;
 // Phones and tablets: touch controls (offered on any touch screen: src/start.ts).
 const touch = new TouchControls();
 document.getElementById('rotate-hint')!.before(touch.root);

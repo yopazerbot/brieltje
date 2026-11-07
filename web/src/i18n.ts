@@ -1834,7 +1834,7 @@ const PLACES_NL: Record<string, string> = {
   'outside stair to roof terrace': 'buitentrap naar het dakterras', 'covered terrace': 'overdekt terras', 'garden shed': 'tuinhuis',
   'back terrace (uncovered)': 'terras achteraan (niet overdekt)', 'path along the outbuilding': 'pad langs het bijgebouw',
   'side path (right)': 'zijpad (rechts)', driveway: 'oprit', Driveway: 'Oprit', 'front path': 'tuinpad vooraan', 'stepping slab': 'stapsteen',
-  planting: 'beplanting', Garden: 'Tuin', street: 'straat',
+  planting: 'beplanting', Garden: 'Tuin', street: 'straat', 'play tower': 'speeltoren',
 };
 /**
  * The names of a home's inside rooms, floors and doors in Dutch come with its inside (the pack, world/insides.ts), not with

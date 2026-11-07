@@ -3,6 +3,7 @@ import type { FrameInput } from './controls/input';
 import type { Ground, World } from './world/collision';
 import { DROP, dropStep } from '../shared/parachute.mjs';
 import { FLOAT, wetGround, type Wet } from './world/water';
+import type { PlayTower, Ride } from './world/playground';
 
 const EYE = 1.65;          // m, eye height above the floor
 export const HEIGHT = 1.8;        // m, body height for head clearance
@@ -18,6 +19,8 @@ const YAW_SPEED = 2.6;     // rad/s at full right stick
 const PITCH_SPEED = 1.8;   // rad/s at full right stick
 const MOUSE_SENS = 0.0022; // rad per pixel
 const SWIM = 0.6;          // swimming speed = walking speed x this (x 1.4 with sprint)
+const EYE_SIT = 0.85;      // m, eye height over the seat, sitting on the slide
+const GLIDE = 0.6;         // s after the slide's end in which the speed you stand up with dies away slowly
 
 export class Player {
   x: number;
@@ -67,6 +70,20 @@ export class Player {
   /** Landed from a drop */
   onChuteLand: () => void = () => {};
   /**
+   * The school's play tower (world/playground.ts), set by main.ts: its ladder and its slide are rides along a line
+   * (`ride`), the platform is a block like any other. `towerHint`: at the ladder's foot facing it, or on the ladder.
+   * `onRung`: your feet passed a rung (a creak).
+   */
+  tower: PlayTower | null = null;
+  ride: Ride | null = null;
+  towerHint: 'climb' | 'ladder' | null = null;
+  onRung: () => void = () => {};
+  private glide = 0;
+  private rideLook = false;
+  private rideAgain = 0;
+  private stooped = false;
+  private ease = { x: 0, z: 0, y: 0 };
+  /**
    * The drop's look (shared/parachute.mjs): the view (filmed from behind you, src/world/dropView.ts) looks down
    * in the free fall and ahead under the canopy, eased, until you look round yourself. The knees give on
    * touchdown (`dip`). Only the camera: where you aim and what the others see don't change.
@@ -101,7 +118,12 @@ export class Player {
 
   /** Put the player somewhere directly, camera included (used by the dev test hook). */
   place(x: number, z: number, feet: number, yaw: number, pitch: number): void {
-    Object.assign(this, { x, z, feet, yaw, pitch, vx: 0, vz: 0, vy: 0, eyeY: feet + EYE, flying: false, chute: null, canopy: null, dip: -1, water: null, wetHere: null });
+    Object.assign(this, { x, z, feet, yaw, pitch, vx: 0, vz: 0, vy: 0, eyeY: feet + EYE, flying: false, chute: null, canopy: null, dip: -1, water: null, wetHere: null, ride: null, towerHint: null, glide: 0 });
+  }
+
+  /** Going down the play tower's slide: how fast (m/s along it); 0 off it. */
+  get slideSpeed(): number {
+    return this.ride?.kind === 'slide' ? this.ride.speed : 0;
   }
 
   /** Start a drop from where you are (place yourself up high first): the free fall, then the canopy. */
@@ -134,11 +156,13 @@ export class Player {
     if (turn !== 0 || tilt !== 0) this.autoLook = false; // looking round yourself: the drop's camera lets go
     this.yaw -= turn;
     this.pitch = Math.max(-1.45, Math.min(1.45, this.pitch + tilt));
+    if (this.playTower(dt, input, camera, turn !== 0 || tilt !== 0)) return; // on the ladder or the slide: this frame is theirs
 
     // Walking, relative to where you look. Crouching: slow, no sprint.
     // In water: slower the deeper it is, running hardly helps from knee deep, swimming is slow.
     const w = this.water;
-    this.crouching = !this.flying && input.downHeld && !w?.swimming;
+    this.stooped = !this.flying && !!this.tower?.underRoof(this.x, this.z, this.feet); // under the play tower's little roof
+    this.crouching = !this.flying && (input.downHeld || this.stooped) && !w?.swimming;
     this.crouchT += ((this.crouching ? 1 : 0) - this.crouchT) * (1 - Math.exp(-dt * 12));
     const sprint = !w ? SPRINT_FACTOR : w.swimming ? 1.4 : 1 + (SPRINT_FACTOR - 1) * Math.max(0, 1 - w.depth / 0.6);
     const wade = !w ? 1 : w.swimming ? SWIM : 1 / (1 + 1.1 * w.depth);
@@ -160,7 +184,8 @@ export class Player {
       const cos = Math.cos(this.yaw);
       const tx = (-sin * input.moveY + cos * input.moveX) * speed;
       const tz = (-cos * input.moveY - sin * input.moveX) * speed;
-      const blend = 1 - Math.exp(-12 * dt);
+      const blend = 1 - Math.exp(-(this.glide > 0 ? 3 : 12) * dt); // just off the slide: its speed dies away slowly
+      this.glide = Math.max(0, this.glide - dt);
       this.vx += (tx - this.vx) * blend;
       this.vz += (tz - this.vz) * blend;
     }
@@ -222,6 +247,97 @@ export class Player {
   }
 
   /**
+   * The play tower's ladder and slide (world/playground.ts): onto one from where you are, along it, and off at its end
+   * or with a jump (off the ladder you drop; off the slide you hop to the side the stick says, with its speed). True
+   * while on one: the frame is theirs, no walking or falling. On the slide you sit (the crouch the others see), the
+   * view low, swaying a little and looking down the slide until you look round yourself.
+   */
+  private playTower(dt: number, input: FrameInput, camera: THREE.PerspectiveCamera, looked: boolean): boolean {
+    const tw = this.tower;
+    this.towerHint = null;
+    if (!tw || this.chute !== null || this.flying || this.water || this.down > 0) {
+      this.ride = null;
+      return false;
+    }
+    if (!this.ride) {
+      if (this.clock < this.rideAgain) return false; // just let go: not straight back on
+      this.ride = tw.grab(this.x, this.z, this.feet, this.yaw, input.moveY, this.vx, this.vz) ?? tw.enter(this.x, this.z, this.feet, this.vx, this.vz);
+      if (!this.ride) {
+        if (tw.atFoot(this.x, this.z, this.feet, this.yaw)) this.towerHint = 'climb';
+        return false;
+      }
+      // From where you were onto the ride's line over a few frames, so the view doesn't jump.
+      const from = this.ride.kind === 'ladder' ? tw.climbPose(this.ride.s) : tw.slidePose(this.ride);
+      this.ease = { x: this.x - from.x, z: this.z - from.z, y: this.feet - from.feet };
+      this.rideLook = this.ride.kind === 'slide';
+      this.vy = 0;
+    }
+    const r = this.ride;
+    const { v, w } = tw.t;
+    let pose: { x: number; z: number; feet: number };
+    let roll = 0;
+    if (input.jumpPressed) {
+      // Let go: off the ladder you drop, a little away from it; off the slide a hop with its speed, to the side you steer.
+      if (r.kind === 'ladder') [this.vx, this.vz, this.vy] = [-w[0], -w[1], 0];
+      else {
+        const s = r.speed * Math.cos(tw.slidePose(r).slope);
+        [this.vx, this.vz, this.vy] = [w[0] * s + v[0] * input.moveX * 1.5, w[1] * s + v[1] * input.moveX * 1.5, Math.sqrt(2 * GRAVITY * JUMP_HEIGHT)];
+        this.glide = GLIDE;
+      }
+      this.ride = null;
+      this.crouching = false;
+      this.rideAgain = this.clock + 0.6;
+      return false;
+    }
+    if (r.kind === 'ladder') {
+      const step = tw.climb(r, dt, input.moveY, tw.facing(this.yaw));
+      for (let k = 0; k < step.rungs; k++) this.onRung();
+      pose = tw.climbPose(r.s);
+      this.vx = this.vz = 0;
+      if (step.end) this.ride = null; // on the platform, or back on the ground
+    } else {
+      const done = tw.slide(r, dt);
+      const p = tw.slidePose(r);
+      pose = p;
+      const s = r.speed * Math.cos(p.slope);
+      [this.vx, this.vz] = [w[0] * s, w[1] * s];
+      roll = p.sway * 0.9;
+      if (looked) this.rideLook = false;
+      if (this.rideLook) {
+        // Looking down the slide, eased: the way it goes and a little below its slope.
+        let turn = tw.yaw - this.yaw;
+        turn = Math.atan2(Math.sin(turn), Math.cos(turn));
+        const k = 1 - Math.exp(-dt * 3);
+        this.yaw += turn * k;
+        this.pitch += (-(p.slope * 0.7 + 0.12) - this.pitch) * k;
+      }
+      if (done) {
+        [this.vx, this.vz] = tw.carry(r); // standing up with a little speed
+        this.glide = GLIDE;
+        this.ride = null;
+      }
+    }
+    const fade = Math.exp(-dt * 8);
+    this.ease = { x: this.ease.x * fade, z: this.ease.z * fade, y: this.ease.y * fade };
+    const end = !this.ride;
+    this.x = pose.x + (end ? 0 : this.ease.x);
+    this.z = pose.z + (end ? 0 : this.ease.z);
+    this.feet = pose.feet + (end ? 0 : this.ease.y);
+    this.ground = end ? this.world.groundAt(this.x, this.z, this.feet, STEP_UP) : { y: this.feet, name: tw.name, mat: 'oak' };
+    this.towerHint = this.ride?.kind === 'ladder' ? 'ladder' : null;
+    this.air = 0;
+    this.atEdge = false;
+    const sitting = this.ride?.kind === 'slide';
+    this.stooped = !sitting && tw.underRoof(this.x, this.z, this.feet); // the ladder's top step, under the roof
+    this.crouching = sitting || this.stooped;
+    this.crouchT += ((this.crouching ? 1 : 0) - this.crouchT) * (1 - Math.exp(-dt * 12));
+    this.eyeY += (this.feet + (sitting ? EYE_SIT : EYE - this.crouchT * 0.5) - this.eyeY) * (1 - Math.exp(-dt * 10));
+    camera.position.set(this.x, this.eyeY - this.down * 1.3, this.z);
+    camera.rotation.set(this.pitch, this.yaw, roll, 'YXZ');
+    return true;
+  }
+
+  /**
    * In a drop: falling, then sinking under the canopy, slower in the flare near the ground (dropStep set the
    * speed); on your feet when you touch the ground, roofs included (or when a drop takes far too long). Never
    * up: no ceiling to keep to (the drop starts over the flying ceiling, and the server allows that only now).
@@ -246,7 +362,7 @@ export class Player {
     if (input.jumpPressed) {
       if (this.flying && this.clock - this.lastJumpPress < DOUBLE_TAP) {
         this.flying = false; // double tap: stop flying and drop
-      } else if (grounded && !this.water?.swimming) {
+      } else if (grounded && !this.water?.swimming && !this.stooped) { // no jumping into the play tower's roof
         // Wading: the water holds you back, lower the deeper it is. Afloat there is nothing to jump off.
         this.vy = Math.sqrt(2 * GRAVITY * JUMP_HEIGHT * (this.water ? Math.max(0.3, 1 - this.water.depth / FLOAT) : 1));
       }
