@@ -11,6 +11,7 @@ import { ORDER, type Mode, type Quality } from '../graphics';
 import { num, onLang, t } from '../i18n';
 import { layout, moveKeys, onKeys, setLayout, type Layout } from '../keys';
 import { controlGroups, key, type Action, type Control } from '../shortcuts';
+import { resetDefaults, showApplicable } from './settingsPage';
 
 export type ControlMode = Control;
 /** Walking around, Action with paint guns (src/paintball.ts), or Action. */
@@ -108,6 +109,11 @@ export class Menu {
       this.begin((first?.id.replace('choose-', '') ?? 'kbm') as ControlMode);
     });
     document.querySelectorAll('.gfx').forEach((b) => b.addEventListener('click', () => this.cycleGraphics()));
+    // Settings: the graphics as five choices (the same setting the start screen's pill and □ cycle through).
+    document.querySelectorAll<HTMLButtonElement>('[data-gfx]').forEach((b) =>
+      b.addEventListener('click', () => b.dataset.gfx !== this.graphicsMode && this.onGraphics(b.dataset.gfx as Mode)),
+    );
+    $('set-reset').addEventListener('click', resetDefaults); // the walking speed; src/settings.ts puts back the rest
     document.querySelectorAll<HTMLButtonElement>('[data-play]').forEach((b) =>
       b.addEventListener('click', () => this.setPlay(b.dataset.play as PlayMode)),
     );
@@ -309,6 +315,10 @@ export class Menu {
     if (mode !== 'auto') detail += t('gfx.fixed');
     document.querySelectorAll('.gfx-value').forEach((e) => (e.textContent = value));
     document.querySelectorAll('.gfx-detail').forEach((e) => (e.textContent = detail));
+    document.querySelectorAll<HTMLButtonElement>('[data-gfx]').forEach((b) => {
+      b.classList.toggle('selected', b.dataset.gfx === mode);
+      b.setAttribute('aria-pressed', String(b.dataset.gfx === mode));
+    });
   }
 
   /** Logged in for multiplayer: your username is your name in the game. */
@@ -448,6 +458,7 @@ export class Menu {
     const unavailable = this.mode !== 'pad' && !this.padConnected;
     ($('switch') as HTMLButtonElement).disabled = unavailable;
     $('switch-hint').textContent = t(unavailable ? 'play.connectPad' : 'play.switchSub');
+    showApplicable(this.mode ?? 'kbm', this.padConnected); // the controller's settings, greyed without one
   }
 
   /** The pause menu, on the tab it was left on, or on `tab` (the map, for M) without remembering that. */

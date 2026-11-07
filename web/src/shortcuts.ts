@@ -63,7 +63,7 @@ const TABLE = {
   tabs: { kbm: named('↑ / ↓'), pad: named('L1 / R1') },
   fps: { kbm: place('KeyF'), pad: named('Create') },
   minimap: { kbm: place('KeyN') },
-  speed: { kbm: say('key.menuPlay'), pad: say('key.speedPad') },
+  speed: { kbm: say('key.menuSettings'), pad: say('key.speedPad') },
   graphics: { kbm: say('key.menuSettings'), pad: say('key.squareInMenu') },
   chat: { kbm: () => t('key.or', { a: keyName('KeyT'), b: 'Enter' }) },
   ping: { kbm: place('KeyV') },

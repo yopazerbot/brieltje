@@ -246,11 +246,6 @@
                     <button class="seg-btn" type="button" data-play="paintball"><b data-i18n="mode.paintball">Paintball</b><span data-i18n="mode.paintballSub2">Paint guns · for everyone</span></button>
                     <button class="seg-btn" type="button" data-play="action"><b data-i18n="mode.action">Action</b><span data-i18n="mode.actionSub2">Hands and pistol</span></button>
                   </div>
-                  <div class="setting">
-                    <label class="field" for="speed-pause"><span data-i18n="play.speed">Walking speed</span> <span class="walk-value"></span></label>
-                    <input class="speed" id="speed-pause" type="range" min="0.8" max="4" step="0.1" />
-                    <p class="speed-locked hidden" data-i18n="play.speedLocked">Together everyone walks and runs at a real pace.</p>
-                  </div>
                 </div>
                 <div class="col">
                   <h2 data-i18n="play.house">House</h2>
@@ -338,55 +333,95 @@
             </section>
 
             <section class="page hidden" role="tabpanel" id="page-settings" aria-labelledby="tab-settings" data-page="settings">
-              <div class="page-grid">
-                <!-- What you see and hear on the left, with the field of view and the lighting test (a graphics
-                     choice) beside the graphics. On the right the language first (easy to find on a phone,
-                     where the page scrolls), then the mouse and the controller. -->
+              <!-- The settings in groups by what they change. Rows that need something you don't use show
+                   greyed with a line saying why (data-needs, src/ui/settingsPage.ts), or not at all
+                   (data-hide-on, .only-touch and .not-touch in style.css). A new setting goes into its group here as a row
+                   (.setting with a slider, or .check with a switch), with its stored key in src/settings.ts. -->
+              <div class="page-grid set-grid">
                 <div class="col settings">
-                  <h2 data-i18n="set.picture">Picture and sound</h2>
-                  <button class="gfx tool" type="button"><b><span class="gfx-label" data-i18n="gfx.label">Graphics</span> <span class="gfx-value"></span></b><span class="gfx-detail"></span></button>
-                  <div class="setting"><label class="field" for="set-fov"><span data-i18n="set.fov">Field of view</span> <span class="set-value" data-for="set-fov"></span></label><input class="slider" id="set-fov" type="range" min="60" max="100" step="1" /></div>
-                  <div class="setting"><label class="field" for="set-volume"><span data-i18n="set.volume">Volume</span> <span class="set-value" data-for="set-volume"></span></label><input class="slider" id="set-volume" type="range" min="0" max="1" step="0.05" /></div>
-                  <!-- Settings with a key as their shortcut (src/shortcuts.ts): the key shows beside them for keyboard players. -->
-                  <label class="check"><input type="checkbox" id="set-minimap" /> <span data-i18n="set.minimap">Minimap</span> <kbd data-key="minimap"></kbd></label>
-                  <label class="check"><input type="checkbox" id="set-fps" /> <span data-i18n="set.fps">FPS counter</span> <kbd data-key="fps"></kbd></label>
+                  <section class="set-group" aria-labelledby="sg-display">
+                    <h2 id="sg-display" data-i18n="set.display">Display</h2>
+                    <!-- The graphics preset (src/graphics.ts; the start screen's pill and □ on the controller cycle it). -->
+                    <p class="label" id="gfx-label" data-i18n="gfx.label">Graphics</p>
+                    <div class="seg gfx-seg" role="group" aria-labelledby="gfx-label">
+                      <button class="seg-btn" type="button" data-gfx="auto"><b data-i18n="gfx.autoPlain">Auto</b></button>
+                      <button class="seg-btn" type="button" data-gfx="low"><b data-i18n="gfx.low">Low</b></button>
+                      <button class="seg-btn" type="button" data-gfx="medium"><b data-i18n="gfx.medium">Medium</b></button>
+                      <button class="seg-btn" type="button" data-gfx="high"><b data-i18n="gfx.high">High</b></button>
+                      <button class="seg-btn" type="button" data-gfx="ultra"><b data-i18n="gfx.ultra">Ultra</b></button>
+                    </div>
+                    <p class="note gfx-now"><span class="gfx-value"></span> <span class="gfx-detail"></span></p>
+                    <div class="setting"><label class="field" for="set-fov"><span data-i18n="set.fov">Field of view</span> <span class="set-value" data-for="set-fov"></span></label><input class="slider" id="set-fov" type="range" min="60" max="100" step="1" /></div>
+                  </section>
+                  <section class="set-group" aria-labelledby="sg-sound">
+                    <h2 id="sg-sound" data-i18n="set.soundGroup">Sound</h2>
+                    <!-- The same as the speaker in the header and Shift+M (src/start.ts). -->
+                    <label class="check"><input type="checkbox" id="set-sound" /> <span data-i18n="set.sound">Sound on</span> <kbd data-key="sound"></kbd></label>
+                    <div class="setting"><label class="field" for="set-volume"><span data-i18n="set.volume">Volume</span> <span class="set-value" data-for="set-volume"></span></label><input class="slider" id="set-volume" type="range" min="0" max="1" step="0.05" /></div>
+                  </section>
                   <!-- The weather and time of day when playing alone (src/settings.ts, src/world/weather.ts); together the admin's holds, greyed here. -->
-                  <p class="label" data-i18n="mood.label">Weather</p>
-                  <div class="seg mood-seg" id="mood-solo" role="group" aria-label="Weather" data-i18n-aria="mood.label">
-                    <button class="seg-btn" type="button" data-mood="auto"><b data-i18n="mood.auto">Auto</b></button>
-                    <button class="seg-btn" type="button" data-mood="sunny"><b data-i18n="mood.sunny">Sunny</b></button>
-                    <button class="seg-btn" type="button" data-mood="overcast"><b data-i18n="mood.overcast">Overcast</b></button>
-                    <button class="seg-btn" type="button" data-mood="rain"><b data-i18n="mood.rain">Rain</b></button>
-                    <button class="seg-btn" type="button" data-mood="night"><b data-i18n="mood.night">Night</b></button>
-                  </div>
-                  <p class="note hidden" id="mood-note" data-i18n="mood.byAdmin">Playing together, the admin picks the weather for everyone.</p>
-                  <button id="mood-next" class="mini" type="button" data-i18n="mood.next">Next weather</button>
-                  <!-- Tests stay out of the way, folded away under Advanced. -->
-                  <details class="advanced">
-                    <summary data-i18n="set.advanced">Advanced</summary>
-                  </details>
+                  <section class="set-group" aria-labelledby="sg-weather">
+                    <h2 id="sg-weather" data-i18n="mood.label">Weather</h2>
+                    <div class="seg mood-seg" id="mood-solo" role="group" aria-labelledby="sg-weather">
+                      <button class="seg-btn" type="button" data-mood="auto"><b data-i18n="mood.auto">Auto</b></button>
+                      <button class="seg-btn" type="button" data-mood="sunny"><b data-i18n="mood.sunny">Sunny</b></button>
+                      <button class="seg-btn" type="button" data-mood="overcast"><b data-i18n="mood.overcast">Overcast</b></button>
+                      <button class="seg-btn" type="button" data-mood="rain"><b data-i18n="mood.rain">Rain</b></button>
+                      <button class="seg-btn" type="button" data-mood="night"><b data-i18n="mood.night">Night</b></button>
+                    </div>
+                    <p class="note hidden" id="mood-note" data-i18n="mood.byAdmin">Playing together, the admin picks the weather for everyone.</p>
+                    <button id="mood-next" class="mini" type="button" data-i18n="mood.next">Next weather</button>
+                  </section>
                 </div>
                 <div class="col settings">
-                  <h2 data-i18n="set.langKbd">Language and keyboard</h2>
-                  <p class="label" data-i18n="lang.label">Language</p>
-                  <div class="seg lang-seg" role="group" aria-label="Language" data-i18n-aria="lang.label">
-                    <button class="seg-btn" type="button" data-lang="en" lang="en"><b>English</b></button>
-                    <button class="seg-btn" type="button" data-lang="nl" lang="nl"><b>Nederlands</b></button>
+                  <section class="set-group" aria-labelledby="sg-move">
+                    <h2 id="sg-move" data-i18n="set.moveLook">Moving and looking</h2>
+                    <!-- Alone only: together everyone walks at the real pace (src/ui/menu.ts lockSpeed). -->
+                    <div class="setting">
+                      <label class="field" for="speed-pause"><span data-i18n="play.speed">Walking speed</span> <span class="walk-value"></span></label>
+                      <input class="speed" id="speed-pause" type="range" min="0.8" max="4" step="0.1" data-default="1.4" />
+                      <p class="speed-locked hidden" data-i18n="play.speedLocked">Together everyone walks and runs at a real pace.</p>
+                    </div>
+                    <!-- The mouse's speed also turns the view when you drag on a touch screen. -->
+                    <div class="setting"><label class="field" for="set-mouse"><span class="not-touch" data-i18n="set.mouse">Mouse sensitivity</span><span class="only-touch" data-i18n="set.touchLook">Look speed</span> <span class="set-value" data-for="set-mouse"></span></label><input class="slider" id="set-mouse" type="range" min="0.2" max="3" step="0.05" /></div>
+                    <label class="check"><input type="checkbox" id="set-invert" /> <span data-i18n="set.invert">Invert look up / down</span></label>
+                    <div class="set-sub" data-needs="pad">
+                      <p class="label" data-i18n="choose.pad">Controller</p>
+                      <p class="note set-why" data-i18n="set.padNote">Connect a controller and press any button to change these.</p>
+                      <div class="setting"><label class="field" for="set-stick"><span data-i18n="set.stick">Controller look speed</span> <span class="set-value" data-for="set-stick"></span></label><input class="slider" id="set-stick" type="range" min="0.4" max="2.5" step="0.05" /></div>
+                    </div>
+                    <!-- The controller's rumble, and the short tick of the touch buttons where the phone can vibrate. -->
+                    <div class="set-sub" data-needs="pad touch">
+                      <label class="check"><input type="checkbox" id="set-vibration" /> <span class="not-touch" data-i18n="set.vibration">Controller vibration</span><span class="only-touch" data-i18n="set.vibrationTouch">Vibrate when you tap a button</span></label>
+                    </div>
+                  </section>
+                  <section class="set-group" aria-labelledby="sg-screen">
+                    <h2 id="sg-screen" data-i18n="set.onScreen">On screen</h2>
+                    <!-- Settings with a key as their shortcut (src/shortcuts.ts): the key shows beside them for keyboard players. -->
+                    <label class="check"><input type="checkbox" id="set-minimap" /> <span data-i18n="set.minimap">Minimap</span> <kbd data-key="minimap"></kbd></label>
+                    <label class="check"><input type="checkbox" id="set-fps" /> <span data-i18n="set.fps">FPS counter</span> <kbd data-key="fps"></kbd></label>
+                  </section>
+                  <section class="set-group" aria-labelledby="sg-lang">
+                    <h2 id="sg-lang" data-i18n="set.langKbd">Language and keyboard</h2>
+                    <div class="seg lang-seg" role="group" aria-label="Language" data-i18n-aria="lang.label">
+                      <button class="seg-btn" type="button" data-lang="en" lang="en"><b>English</b></button>
+                      <button class="seg-btn" type="button" data-lang="nl" lang="nl"><b>Nederlands</b></button>
+                    </div>
+                    <!-- The keyboard's layout, for the key names in the hints (src/keys.ts); each choice shows its walking keys. Not with touch. -->
+                    <div data-hide-on="touch">
+                      <p class="label" id="kbd-label" data-i18n="kbd.label">Keyboard</p>
+                      <div class="seg kbd-seg" role="group" aria-labelledby="kbd-label">
+                        <button class="seg-btn" type="button" data-kbd="auto"><b data-i18n="kbd.auto">Automatic</b><span></span></button>
+                        <button class="seg-btn" type="button" data-kbd="azerty"><b>AZERTY</b><span></span></button>
+                        <button class="seg-btn" type="button" data-kbd="qwerty"><b>QWERTY</b><span></span></button>
+                      </div>
+                    </div>
+                  </section>
+                  <!-- Puts back every setting on this page but the language, the keyboard and the graphics (src/settings.ts, src/ui/settingsPage.ts). -->
+                  <div class="set-reset">
+                    <button id="set-reset" class="mini" type="button" data-i18n="set.reset">Back to defaults</button>
+                    <p class="note" data-i18n="set.resetNote">Your language, keyboard and graphics stay as they are.</p>
                   </div>
-                  <!-- The keyboard's layout, for the key names in the hints (src/keys.ts); each choice shows its walking keys. -->
-                  <p class="label" data-i18n="kbd.label">Keyboard</p>
-                  <div class="seg kbd-seg" role="group" aria-label="Keyboard" data-i18n-aria="kbd.label">
-                    <button class="seg-btn" type="button" data-kbd="auto"><b data-i18n="kbd.auto">Automatic</b><span></span></button>
-                    <button class="seg-btn" type="button" data-kbd="azerty"><b>AZERTY</b><span></span></button>
-                    <button class="seg-btn" type="button" data-kbd="qwerty"><b>QWERTY</b><span></span></button>
-                  </div>
-                  <h2 data-i18n="set.mousePad">Mouse and controller</h2>
-                  <div class="setting"><label class="field" for="set-mouse"><span data-i18n="set.mouse">Mouse sensitivity</span> <span class="set-value" data-for="set-mouse"></span></label><input class="slider" id="set-mouse" type="range" min="0.2" max="3" step="0.05" /></div>
-                  <div class="setting"><label class="field" for="set-stick"><span data-i18n="set.stick">Controller look speed</span> <span class="set-value" data-for="set-stick"></span></label><input class="slider" id="set-stick" type="range" min="0.4" max="2.5" step="0.05" /></div>
-                  <label class="check"><input type="checkbox" id="set-invert" /> <span data-i18n="set.invert">Invert look up / down</span></label>
-                  <label class="check"><input type="checkbox" id="set-vibration" /> <span data-i18n="set.vibration">Controller vibration</span></label>
-                  <!-- Puts back everything on this page but the language and the keyboard (src/settings.ts). -->
-                  <button id="set-reset" class="mini" type="button" data-i18n="set.reset">Back to defaults</button>
                 </div>
               </div>
             </section>

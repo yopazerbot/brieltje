@@ -38,10 +38,12 @@ if (matchMedia('(pointer: coarse)').matches) {
 }
 
 // Sound on/off: the start screen's button (bottom right, top right on a touch screen), the icon in
-// the in-game menu's header, or Shift+M.
+// the in-game menu's header, the switch in its Settings, or Shift+M.
 const soundBtn = $('sound-btn');
 const menuSound = $('menu-sound');
+const setSound = $('set-sound') as HTMLInputElement; // the switch in the menu's Settings, under Sound
 function showSound(): void {
+  setSound.checked = sound.enabled;
   // Icon and word apart: a phone shows only the icon (style.css).
   soundBtn.children[0].textContent = sound.enabled ? '🔊' : '🔇';
   soundBtn.children[1].textContent = t(sound.enabled ? 'btn.sound' : 'btn.noSound');
@@ -58,6 +60,7 @@ soundBtn.addEventListener('click', () => {
   soundBtn.blur();
 });
 menuSound.addEventListener('click', toggleSound);
+setSound.addEventListener('change', () => setSound.checked !== sound.enabled && toggleSound());
 window.addEventListener('keydown', (e) => {
   // By the letter on the key, not its place (AZERTY); M alone opens the map (main.ts).
   if (e.key.toLowerCase() === 'm' && e.shiftKey && !e.repeat && !typing(e)) toggleSound();

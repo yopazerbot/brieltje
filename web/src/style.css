@@ -1033,10 +1033,6 @@ body:not(.on-start) #slides-controls { display: none; }
 .tool b span { display: inline; margin: 0; font-size: inherit; color: inherit; }
 /* A tool the admin hasn't allowed (the furniture planner): visible, but greyed out. */
 button.tool:disabled { opacity: 0.45; cursor: not-allowed; }
-.page .gfx.tool { margin: 0 0 6px; }
-.page .gfx.tool .gfx-label { display: inline; margin: 0; font-size: inherit; color: inherit; } /* the word "Graphics", not a line under it */
-.page .gfx.tool .gfx-value { margin-left: 6px; color: var(--lamp); }
-.page .gfx.tool .gfx-detail { display: block; margin-top: 2px; }
 .note { margin: 0 0 12px; font-size: 15px; line-height: 1.5; color: var(--ink-soft); }
 .panel table { border-collapse: collapse; width: 100%; font-size: 15px; }
 .panel th { text-align: left; font-weight: 800; color: var(--ink-soft); padding: 6px 12px 6px 0; }
@@ -1108,7 +1104,34 @@ button.tool:disabled { opacity: 0.45; cursor: not-allowed; }
 .col h2 + .label { margin-top: 4px; }
 .settings .setting, #set-admin .setting { margin: 0; padding: 10px 0 8px; border-bottom: 1px solid var(--line); }
 #set-admin .setting .mp-row { margin-top: 4px; }
-#set-reset { margin-top: 16px; }
+/* Settings (index.html #page-settings, src/ui/settingsPage.ts): groups with room between them, each a
+   heading and its rows. */
+.set-group + .set-group { margin-top: 34px; }
+.set-group > .seg:last-child, .set-group > .note:last-child { margin-bottom: 0; }
+.set-group .setting:last-child, .set-group > .check:last-child { border-bottom: 0; }
+/* The graphics: five choices, then what Auto picked and the graphics chip, small. */
+.gfx-seg { flex-wrap: wrap; margin-bottom: 8px; }
+.gfx-seg .seg-btn { flex: 1 1 auto; padding: 9px 12px; }
+.gfx-seg .seg-btn b { font-size: 15.5px; }
+.gfx-now { margin: 0 0 6px; font-size: 13.5px; line-height: 1.4; }
+.gfx-now .gfx-value { font-weight: 800; color: var(--ink); }
+.gfx-now .gfx-value:empty, .gfx-now .gfx-detail:empty { display: none; }
+#mood-next { margin-top: -8px; }
+/* A part of a group for one way of playing (the controller): greyed, with a line saying why, while it doesn't apply. */
+.set-sub .label { margin-top: 18px; }
+.set-sub .set-why { margin: -2px 0 4px; font-size: 14px; }
+.set-sub:not(.na) .set-why { display: none; }
+.set-sub.na > :not(.label, .set-why) { opacity: 0.45; }
+.set-sub.na input { cursor: not-allowed; }
+/* Words and rows by the way you play (body.touch: touch controls). */
+.only-touch { display: none; }
+body.touch .only-touch { display: inline; }
+body.touch .not-touch, body.touch [data-hide-on~="touch"] { display: none; }
+/* Back to defaults at the end, with what it leaves alone. */
+.set-reset { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 14px; margin-top: 30px; padding-top: 18px; border-top: 1px solid var(--line); }
+.set-reset .note { flex: 1 1 200px; margin: 0; font-size: 14px; }
+/* Play: the party game under the house's tools, with the same room as between other headings. */
+#zombies-solo { margin-top: 30px; }
 /* Play: the mode first, big. */
 .mode-big .seg-btn { padding: 14px 18px; }
 .mode-big .seg-btn b { font-size: 21px; }
@@ -1134,11 +1157,6 @@ button.tool:disabled { opacity: 0.45; cursor: not-allowed; }
 #leaderboard table { margin-top: 10px; font-size: 14px; }
 #leaderboard td:not(:first-child), #leaderboard th:not(:first-child) { text-align: right; }
 .lb-note { margin: 8px 0 0; font-size: 13px; color: var(--ink-faint); }
-/* Settings: the test under Advanced, folded away. */
-.advanced { margin: 12px 0 6px; }
-.advanced summary { cursor: pointer; width: fit-content; padding: 6px 0; font-size: 15px; font-weight: 800; color: var(--ink-soft); }
-.advanced summary:hover { color: var(--ink); }
-.advanced .check { border-bottom: 0; }
 /* Controls: a list per group, two columns where there is room. */
 #controls { columns: 2 340px; column-gap: 48px; max-width: 1180px; }
 .ctl-group { break-inside: avoid; margin: 0 0 26px; }
@@ -1263,7 +1281,6 @@ html:lang(nl) #touch .t-reload, html:lang(nl) #touch .t-nade { font-size: 9px; l
   input[type=range] { height: 34px; }
   input[type=range]::-webkit-slider-thumb { width: 24px; height: 24px; margin-top: -9px; }
   input[type=range]::-moz-range-thumb { width: 24px; height: 24px; }
-  .advanced summary { padding: 12px 0; }
   .start-foot .textbtn, .start-foot a, .legal a, .pause-foot a, .invite-go { position: relative; }
   /* (Less below than above: within the panel's own padding, so the tap areas never make it scroll.) */
   .start-foot .textbtn::after, .start-foot a::after { content: ''; position: absolute; inset: -11px -4px -9px; }
