@@ -1,0 +1,677 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <meta name="robots" content="noindex" />
+  <title data-en="Legitimate interest assessments · Brieltje" data-nl="Afwegingen gerechtvaardigd belang · Brieltje">Legitimate interest assessments · Brieltje</title>
+  <link rel="stylesheet" href="/legal/legal.css" />
+  <link rel="stylesheet" href="/slides/slides.css" />
+</head>
+<body>
+<div class="slides hero" data-slides></div>
+<main>
+  <header>
+    <a class="brand" href="/">Brieltje</a>
+    <nav>
+      <a href="/legal/terms.html" data-en="Terms" data-nl="Voorwaarden">Terms</a>
+      <a href="/legal/privacy.html" data-en="Privacy" data-nl="Privacy">Privacy</a>
+      <a href="/legal/credits.html" data-en="Credits" data-nl="Credits">Credits</a>
+    </nav>
+  </header>
+  <div class="langs"><button type="button" data-set="en">English</button> <button type="button" data-set="nl">Nederlands</button></div>
+
+  <section data-lang="en">
+    <h1>Legitimate interest assessments</h1>
+    <p class="updated">Version 1.0 · 7 November 2026</p>
+
+    <div class="box">
+      <b>In short</b>
+      <ul>
+        <li>For ten things we do with personal data, the legal basis is our legitimate interest (art. 6(1)(f) GDPR). Our <a href="/legal/privacy.html">privacy policy</a> lists them.</li>
+        <li>For each, this page shows how we weighed our interest against yours, in the three steps the Belgian Data Protection Authority uses.</li>
+        <li>Each one passed. The closest call is the login log, because children can be in it. Its safeguards are listed there.</li>
+        <li>You can object to any of them at any time. Email <a href="mailto:yoshi@brieltje.be">yoshi@brieltje.be</a> (art. 21 GDPR).</li>
+      </ul>
+    </div>
+
+    <nav class="toc" aria-label="Contents">
+      <ol>
+        <li><a href="#en-how">How we assessed</a></li>
+        <li><a href="#en-site">Delivering and protecting the site</a></li>
+        <li><a href="#en-count">Counting visits</a></li>
+        <li><a href="#en-log">The login log</a></li>
+        <li><a href="#en-limits">Short counters per IP address</a></li>
+        <li><a href="#en-homes">The locked homes</a></li>
+        <li><a href="#en-feedback">Feedback</a></li>
+        <li><a href="#en-interest">The interest page</a></li>
+        <li><a href="#en-gamenight">The game night</a></li>
+        <li><a href="#en-mail">The email about the meetup</a></li>
+        <li><a href="#en-email">Emails with us</a></li>
+        <li><a href="#en-object">Objecting, and versions</a></li>
+      </ol>
+    </nav>
+
+    <h2 id="en-how">1. How we assessed</h2>
+    <p>The controller is Yoshi Parlevliet CommV, which runs brieltje.be (see the <a href="/legal/privacy.html">privacy policy</a>, section 1). We may rely on legitimate interest only when three conditions are all met. The Belgian Data Protection Authority calls them the purpose test, the necessity test and the balancing test:</p>
+    <ol>
+      <li><b>Purpose:</b> the interest is lawful, clearly put and real now, not hypothetical.</li>
+      <li><b>Necessity:</b> we can't reach it just as well with less data, or with none.</li>
+      <li><b>Balancing:</b> your interests, rights and freedoms don't outweigh ours. We look at what data it is, what you can reasonably expect, what could go wrong for you, and the safeguards. Where children may be involved, their interests count first.</li>
+    </ol>
+    <p>We separate the safeguards the GDPR requires of us anyway (security, telling you, keeping data short) from the extra measures we take on top. Only the extra measures can tip the balance.</p>
+    <p>We follow the Authority's guidance on legitimate interest and the EDPB's Guidelines 1/2024 on art. 6(1)(f) GDPR (version 1.0, the latest published). We also follow the case law of the Court of Justice of the EU (Rīgas satiksme, C-13/16; Meta v Bundeskartellamt, C-252/21). The Authority's Litigation Chamber expects a controller to be able to show that it did this weighing (for example decisions 150/2025 and 01/2026). That is why we write it down, and why we publish it.</p>
+    <p>Some extra measures apply to all ten:</p>
+    <ul>
+      <li>No ads, no tracking cookies and no outside analytics on the site.</li>
+      <li>Nothing is sold, and nothing is used to build a profile of you.</li>
+      <li>Only the admin sees what is stored, behind a login.</li>
+    </ul>
+
+    <h2 id="en-site">2. Delivering and protecting the site</h2>
+    <table>
+      <tbody>
+        <tr><th>Data</th><td>Your IP address, your browser's name, the pages and files you load, and when. Cloudflare also looks up the country of your IP address.</td></tr>
+        <tr><th>Whose</th><td>Everyone who opens the site, including children</td></tr>
+        <tr><th>Who receives it</th><td>Cloudflare, which delivers and protects the site, and Railway, which hosts it. Both work for us under a data processing agreement.</td></tr>
+        <tr><th>How long</th><td>Railway keeps the server's logs for up to 30 days. Cloudflare keeps its technical logs for the time its processing agreement with us sets.</td></tr>
+      </tbody>
+    </table>
+    <h3>Purpose</h3>
+    <p>We want to show you the site, keep it available, and stop and trace attacks: floods of requests, scans for weak spots and attempts to break in. A public site gets this kind of traffic every day, so the interest is real now. EU law recognises it: recital 49 GDPR names network and information security as a legitimate interest. We also let in only visitors from Belgium. The game is about a Belgian village and made for the people around it, and the rule shuts out most automated attacks.</p>
+    <h3>Necessity</h3>
+    <p>Without your IP address, no page can reach your browser. Without logs, we can't see an attack or find out afterwards what happened. Logs without addresses wouldn't let us block the address an attack comes from. The logs hold no passwords, codes or form contents. Secret links travel in headers that aren't logged.</p>
+    <h3>Balancing</h3>
+    <ul>
+      <li><b>The data</b> is technical and not sensitive. An IP address points to a connection, not by itself to a person.</li>
+      <li><b>You can expect it.</b> Every website needs your address to answer you, and keeps short logs to stay safe.</li>
+      <li><b>The impact</b> is low. The data isn't combined with anything, isn't used for anything else and isn't shared, except with the police when we report a crime, or when the law obliges us.</li>
+      <li><b>Children:</b> the interest is theirs too. A safe site protects them, and their data is treated no differently.</li>
+      <li><b>Extra measures:</b> none of the site's data goes to advertisers or analytics companies, and the logs are short-lived.</li>
+    </ul>
+    <p><b>Outcome:</b> our interest is not outweighed. Legitimate interest applies.</p>
+
+    <h2 id="en-count">3. Counting visits</h2>
+    <table>
+      <tbody>
+        <tr><th>Data</th><td>A code made from your IP address and your browser's name, mixed with a random value that changes every day. While you play, the game sends what you chose (mode, controls, alone or together, language) and a random number made fresh at each visit.</td></tr>
+        <tr><th>Whose</th><td>Visitors of the game and the interest page, including children. You are not counted at all if your browser sends Global Privacy Control or Do Not Track.</td></tr>
+        <tr><th>Who receives it</th><td>Nobody. It stays on our server at Railway.</td></tr>
+        <tr><th>How long</th><td>The day's codes and random value: that day only, then deleted. The random number: in memory, until a minute after you stop. What we keep are totals per day and per hour, which say nothing about anyone.</td></tr>
+      </tbody>
+    </table>
+    <h3>Purpose</h3>
+    <p>We want to know how much the game is used and which options people choose. That decides whether we keep paying for the hosting, whether a meetup makes sense, and what to improve next. For example, if many people play on a phone, the touch controls get more work. This is a normal, lawful interest of anyone who runs a site.</p>
+    <h3>Necessity</h3>
+    <p>To count each visitor once a day, the server has to recognise a second visit on the same day. We weighed four ways:</p>
+    <ul>
+      <li>Counting raw page loads: not enough, because one person reloading counts as many.</li>
+      <li>A cookie: more intrusive, it would follow you across days, and it would need your consent.</li>
+      <li>An outside analytics service: your data would go to a third party.</li>
+      <li>A code that holds for one day only: this is what we use, because it does the job with the least data.</li>
+    </ul>
+    <p>The code can't be turned back into an address without a key the database doesn't hold.</p>
+    <h3>Balancing</h3>
+    <ul>
+      <li><b>The data</b> is pseudonymous for one day, then gone. There is no profile and no link between days.</li>
+      <li><b>You can expect</b> a site to know how many visitors it has.</li>
+      <li><b>The impact</b> is very low: the totals can't affect anyone.</li>
+      <li><b>Children:</b> no profiling and no marketing, so nothing works against them.</li>
+      <li><b>Extra measures:</b> we honour Global Privacy Control and Do Not Track, which no law obliges us to. No cookies or browser storage are used for it, and the day's codes are deleted every night.</li>
+    </ul>
+    <p><b>Outcome:</b> our interest is not outweighed. Legitimate interest applies.</p>
+
+    <h2 id="en-log">4. The login log</h2>
+    <table>
+      <tbody>
+        <tr><th>Data</th><td>The time, the IP address, the name you play under (alone: the name you typed) and what happened: started alone, joined, wrong PIN, removed</td></tr>
+        <tr><th>Whose</th><td>Players. Playing together is for people of 13 and over. Playing alone has no age check, so children can be in it.</td></tr>
+        <tr><th>Who receives it</th><td>Nobody, unless we report a crime to the police or the law obliges us to hand it over. It stays on our server at Railway. Each entry also goes to the server's own log there, which Railway keeps for up to 30 days.</td></tr>
+        <tr><th>How long</th><td>90 days, and at most 20,000 entries</td></tr>
+      </tbody>
+    </table>
+    <h3>Purpose</h3>
+    <p>We have these interests:</p>
+    <ol>
+      <li><b>Security and anti-cheat:</b> spotting someone guessing the PIN, attacking the server or tampering with the game, and keeping them out.</li>
+      <li><b>Moderation:</b> dealing with offensive names, harassment and players who were removed and come back.</li>
+      <li><b>Stopping illegal activity:</b> noticing it, and being able to report it to the police or a court with what they need to act.</li>
+      <li><b>Knowing who plays:</b> the game is a small project for friends, family and the neighbourhood. The names per day tell us whether it reaches them. Only the names are used for this, never the addresses.</li>
+    </ol>
+    <p>These interests are real now. The game is open to anyone in Belgium, has a chat and shared games, and the server answers whoever reaches it, also when playing alone. Reporting possible crimes to the authorities is a legitimate interest the EDPB recognises.</p>
+    <h3>Necessity</h3>
+    <p>A name alone isn't enough: anyone can type any name, and someone who was removed comes back under another one. The IP address is the only link between a name and a connection. It lets us connect an attack, cheating or abuse to the same sender, also when that sender first started alone and then joined others, or the other way round. And it is what the police need when we report something.</p>
+    <p>We considered logging starts alone without the address. We decided against it: that is the way back in for someone who was removed, and the moment a cheater tries out tampering before joining others. A start alone still talks to the server.</p>
+    <p>We keep only what identifies the connection and the event. There is nothing about what you did in the game, no chat and no location.</p>
+    <h3>Balancing</h3>
+    <ul>
+      <li><b>The data:</b> a name, which may be a nickname but may also be a real first name, and an IP address. It's not sensitive. The address points to a connection; only the internet provider, on a legal order, can tie it to a subscriber.</li>
+      <li><b>You can expect</b> an online game with a chat and shared games to keep a short log of who connected, for safety. Playing alone, you might not expect it, so the privacy policy says it in its summary at the top.</li>
+      <li><b>The impact:</b> the log is read only when there is a reason, such as an attack, a complaint, abuse or a report. It is never combined with anything else or used to follow people.</li>
+      <li><b>Children:</b> this is the closest call, because children can play alone without an age check. The interests largely coincide with theirs: a game without cheaters, harassment and illegal activity protects them most of all. The extra measures below limit what is kept about them.</li>
+      <li><b>Extra measures:</b>
+        <ul>
+          <li>Nothing is logged for starts alone if your browser sends Global Privacy Control or Do Not Track.</li>
+          <li>You may play under any nickname, and the game never asks for a real name.</li>
+          <li>A parent or guardian can ask us to delete a child's entries (see the privacy policy, section 10).</li>
+          <li>The log can't grow past 20,000 entries, so a flood can't make us keep more.</li>
+          <li>It is used only for the purposes above, and handed over only when we report a crime or the law obliges us.</li>
+        </ul>
+      </li>
+    </ul>
+    <p><b>Outcome:</b> with these safeguards our interests are not outweighed, also where children play. Legitimate interest applies.</p>
+
+    <h2 id="en-limits">5. Short counters per IP address</h2>
+    <table>
+      <tbody>
+        <tr><th>Data</th><td>Your IP address and how many sign-ups, uploads, logins, code attempts or messages came from it in a short time</td></tr>
+        <tr><th>Whose</th><td>Everyone who uses those parts of the site</td></tr>
+        <tr><th>Who receives it</th><td>Nobody. It is kept in the server's memory only.</td></tr>
+        <tr><th>How long</th><td>From one minute to one day, then gone. A restart clears them.</td></tr>
+      </tbody>
+    </table>
+    <h3>Purpose</h3>
+    <p>We want to stop floods and guessing: thousands of fake sign-ups, someone trying PINs or door codes, spam in the chat. The interest is real for any form on the internet.</p>
+    <h3>Necessity</h3>
+    <p>Before you log in, the address is the only thing that tells one sender from another. We considered a puzzle test (a CAPTCHA). Those mostly come from outside companies that would see your visit, and many are hard for children and for people with a disability.</p>
+    <h3>Balancing</h3>
+    <ul>
+      <li><b>The data:</b> an address and a number, in memory only, never written to disk.</li>
+      <li><b>You can expect</b> a site to slow down someone who sends a hundred forms a minute.</li>
+      <li><b>The impact</b> is nearly none: at worst you wait a moment before you can try again.</li>
+      <li><b>Children:</b> the interest coincides with theirs.</li>
+      <li><b>Extra measures:</b> the counters never reach the database and vanish within a day at most.</li>
+    </ul>
+    <p><b>Outcome:</b> our interest is not outweighed. Legitimate interest applies.</p>
+
+    <h2 id="en-homes">6. The locked homes</h2>
+    <table>
+      <tbody>
+        <tr><th>Data</th><td>For each of the three locked homes (the main house, the bungalow and the end house at Molenhoek): a hash of its code, how many times a code was right or wrong, and when. The code you type is checked and not kept. After a right code, your session may enter that home for 8 hours, in memory only.</td></tr>
+        <tr><th>Whose</th><td>The people who live in these homes, and players who try a code</td></tr>
+        <tr><th>Who receives it</th><td>Nobody. It stays on our server at Railway.</td></tr>
+        <tr><th>How long</th><td>The hash and the counters: until the admin changes or removes them. The access in memory: 8 hours, or until the server restarts.</td></tr>
+      </tbody>
+    </table>
+    <h3>Purpose</h3>
+    <p>The insides of these homes belong to people who agreed to be in the game on the condition that only those with the code get in. We want to keep that promise, and to see when someone keeps guessing. This protects the residents, a third party's interest that the GDPR recognises.</p>
+    <h3>Necessity</h3>
+    <p>A lock needs the right code to be compared with something, and a hash is the least that will do. The counters tell us whether a code is being guessed and must be changed. No name or address is kept with them.</p>
+    <h3>Balancing</h3>
+    <ul>
+      <li><b>The data</b> barely concerns the player: there are counts per home, not per person.</li>
+      <li><b>You can expect</b> a lock to be checked.</li>
+      <li><b>The impact</b> on players is none.</li>
+      <li><b>The residents</b> are better protected.</li>
+      <li><b>Extra measures:</b> the insides are stored encrypted, and are sent only to a session that typed the right code.</li>
+    </ul>
+    <p><b>Outcome:</b> our interest, and the residents', is not outweighed. Legitimate interest applies.</p>
+
+    <h2 id="en-feedback">7. Feedback</h2>
+    <table>
+      <tbody>
+        <tr><th>Data</th><td>The stars, your comment, the name you play under (alone: the name you typed), your IP address, the time, the game mode and the language</td></tr>
+        <tr><th>Whose</th><td>Players who choose to send it, which can include children</td></tr>
+        <tr><th>Who receives it</th><td>Nobody. It stays on our server at Railway.</td></tr>
+        <tr><th>How long</th><td>The IP address: 90 days. The rest: until you ask us to remove it, or we no longer need it.</td></tr>
+      </tbody>
+    </table>
+    <h3>Purpose</h3>
+    <p>We want to know whether people enjoy the game and what to improve. The game asks once, after two minutes of play.</p>
+    <h3>Necessity</h3>
+    <ul>
+      <li><b>The stars and the comment</b> are the point.</li>
+      <li><b>The mode and the language</b> tell us what the comment is about.</li>
+      <li><b>The name</b> lets us find your feedback if you ask us to remove it.</li>
+      <li><b>The IP address</b> lets us remove a flood of fake feedback from one sender, and deal with abusive comments. It is kept as long as the login log, so the two can be matched when one sender abuses both.</li>
+    </ul>
+    <h3>Balancing</h3>
+    <ul>
+      <li><b>The data:</b> what you choose to write. A comment can contain anything, so we read it only to improve the game.</li>
+      <li><b>You can expect</b> feedback you send to be kept and read.</li>
+      <li><b>The impact</b> is low.</li>
+      <li><b>Children:</b> the card asks for no personal details, and every field is optional.</li>
+      <li><b>Extra measures:</b> the card can be closed without sending anything, and it asks only once per browser.</li>
+    </ul>
+    <p><b>Outcome:</b> our interest is not outweighed. Legitimate interest applies.</p>
+
+    <h2 id="en-interest">8. The interest page</h2>
+    <table>
+      <tbody>
+        <tr><th>Data</th><td>Your name and email address (required); your street, if you give it, and a house number if you add one; when it would suit you, how many of you would come, and your comments. Plans of a house are a separate matter, based on your consent: see the privacy policy.</td></tr>
+        <tr><th>Whose</th><td>People who sign up: 13 and over, or someone younger signed up by a parent or guardian</td></tr>
+        <tr><th>Who receives it</th><td>Nobody. It stays on our server at Railway.</td></tr>
+        <tr><th>How long</th><td>Until you withdraw. If we stop organising meetups, we delete all sign-ups.</td></tr>
+      </tbody>
+    </table>
+    <h3>Purpose</h3>
+    <p>We want to organise a meetup to play together for the people who asked for one, and reach them about it. You start this yourself, by signing up.</p>
+    <h3>Necessity</h3>
+    <ul>
+      <li><b>A name and an email address</b> are the least we need to reach you.</li>
+      <li><b>When it suits you and how many of you would come</b> decide the date and the room.</li>
+      <li><b>The street</b> is optional. It shows whether people come from the neighbourhood. A house number is up to you: we don't need it.</li>
+    </ul>
+    <p>The street suggestions come from the Flemish address register through our own server, so what you type doesn't reach a third party.</p>
+    <h3>Balancing</h3>
+    <ul>
+      <li><b>You can expect</b> exactly this use, since it is what you signed up for.</li>
+      <li><b>The impact</b> is low: we don't publish or share it, and only the admin sees it.</li>
+      <li><b>Children</b> under 13 are signed up by a parent or guardian.</li>
+      <li><b>Extra measures:</b> a private link lets you see, change or withdraw your sign-up in one click, without asking us. The link's secret is stored only as a hash.</li>
+    </ul>
+    <p>We considered consent as the legal basis. We chose legitimate interest because we only use the sign-up for what you asked, and you can withdraw it at any time anyway.</p>
+    <p><b>Outcome:</b> our interest, which is also yours, is not outweighed. Legitimate interest applies.</p>
+
+    <h2 id="en-gamenight">9. The game night</h2>
+    <table>
+      <tbody>
+        <tr><th>Data</th><td>Your name, first name, email address and street (a house number is up to you); how many come to play and how many to watch; your ideas or wishes</td></tr>
+        <tr><th>Whose</th><td>People who register: 13 and over, or someone younger registered by a parent or guardian. Anyone under 16 comes with a parent or guardian.</td></tr>
+        <tr><th>Who receives it</th><td>Nobody. It stays on our server at Railway.</td></tr>
+        <tr><th>How long</th><td>Until you cancel, and at most a month after the game night</td></tr>
+      </tbody>
+    </table>
+    <h3>Purpose</h3>
+    <p>We want to organise the game night: know how many laptops and PCs are needed and how many people to expect, and email the place, the date and the time.</p>
+    <h3>Necessity</h3>
+    <ul>
+      <li><b>The name and the email address</b> let us confirm and reach you.</li>
+      <li><b>The counts</b> decide the equipment.</li>
+      <li><b>The street</b> lets us give priority to Smetlede when there are more registrations than room. The night is first of all for the village. A house number is up to you: we don't need it.</li>
+    </ul>
+    <h3>Balancing</h3>
+    <ul>
+      <li><b>You can expect</b> exactly this use.</li>
+      <li><b>The impact</b> is low.</li>
+      <li><b>Children</b> are registered by a parent or guardian and accompanied by one.</li>
+      <li><b>Extra measures:</b> a private link lets you see or cancel your registration in one click. Every registration is deleted within a month of the night.</li>
+    </ul>
+    <p><b>Outcome:</b> our interest, which is also yours, is not outweighed. Legitimate interest applies.</p>
+
+    <h2 id="en-mail">10. The email about the meetup</h2>
+    <table>
+      <tbody>
+        <tr><th>Data</th><td>Your email address and name, from your sign-up</td></tr>
+        <tr><th>Whose</th><td>People who signed up on the interest page and left the box ticked</td></tr>
+        <tr><th>How long</th><td>Until you turn it off through your own link, or withdraw</td></tr>
+      </tbody>
+    </table>
+    <h3>Purpose</h3>
+    <p>We want to tell you the date and the place of the meetup you asked about. It is a message about something you requested, not advertising.</p>
+    <h3>Necessity</h3>
+    <p>Without an email you wouldn't hear when the meetup you asked for happens. We send it once it is planned, and nothing else.</p>
+    <h3>Balancing</h3>
+    <ul>
+      <li><b>You can expect it:</b> the sign-up form says so, next to the box.</li>
+      <li><b>The impact</b> is one email.</li>
+      <li><b>Extra measures:</b>
+        <ul>
+          <li>You can untick the box when you sign up, or turn it off later through your own link.</li>
+          <li>We never send it in a way that shows your address to the other people who signed up.</li>
+          <li>We never use it for anything else.</li>
+        </ul>
+      </li>
+    </ul>
+    <p><b>Outcome:</b> our interest, which is also yours, is not outweighed. Legitimate interest applies.</p>
+
+    <h2 id="en-email">11. Emails with us</h2>
+    <table>
+      <tbody>
+        <tr><th>Data</th><td>Your email address, your name and what you write</td></tr>
+        <tr><th>Whose</th><td>Anyone who emails us</td></tr>
+        <tr><th>How long</th><td>As long as your question needs</td></tr>
+      </tbody>
+    </table>
+    <h3>Purpose</h3>
+    <p>We want to answer you, and handle requests such as access or erasure.</p>
+    <h3>Necessity</h3>
+    <p>We can't reply without your message and your address.</p>
+    <h3>Balancing</h3>
+    <ul>
+      <li><b>You expect</b> an answer.</li>
+      <li><b>The impact</b> is none beyond that.</li>
+    </ul>
+    <p><b>Outcome:</b> our interest, which is also yours, is not outweighed. Legitimate interest applies.</p>
+
+    <h2 id="en-object">12. Objecting, and versions</h2>
+    <p>You can object to any of these ten at any time, on grounds relating to your particular situation, by emailing <a href="mailto:yoshi@brieltje.be">yoshi@brieltje.be</a> (art. 21 GDPR). We then stop, unless we have compelling legitimate grounds that override your interests, rights and freedoms, or need the data for legal claims. If we keep using it, we tell you why. You can also complain to the Belgian Data Protection Authority (see the <a href="/legal/privacy.html">privacy policy</a>, section 9).</p>
+    <p>When what we do with personal data changes, this page changes with it. The versions are listed below with their dates.</p>
+    <table>
+      <thead><tr><th>Version</th><th>Date</th><th>What changed</th></tr></thead>
+      <tbody>
+        <tr><td data-label="Version">1.0</td><td data-label="Date">7 November 2026</td><td data-label="What changed">First version</td></tr>
+      </tbody>
+    </table>
+  </section>
+
+  <section data-lang="nl">
+    <h1>Afwegingen gerechtvaardigd belang</h1>
+    <p class="updated">Versie 1.0 · 7 november 2026</p>
+
+    <div class="box">
+      <b>Kort</b>
+      <ul>
+        <li>Voor tien dingen die we met persoonsgegevens doen, is de rechtsgrond ons gerechtvaardigd belang (art. 6, lid 1, f AVG). Ons <a href="/legal/privacy.html">privacybeleid</a> somt ze op.</li>
+        <li>Voor elk ervan toont deze pagina hoe we ons belang afwogen tegen het jouwe, in de drie stappen die de Gegevensbeschermingsautoriteit gebruikt.</li>
+        <li>Elk ervan doorstond de afweging. Het nipst is het aanmeldlogboek, omdat er kinderen in kunnen staan. De waarborgen staan daar opgesomd.</li>
+        <li>Je kunt op elk moment bezwaar maken tegen elk ervan. Mail naar <a href="mailto:yoshi@brieltje.be">yoshi@brieltje.be</a> (art. 21 AVG).</li>
+      </ul>
+    </div>
+
+    <nav class="toc" aria-label="Inhoud">
+      <ol>
+        <li><a href="#nl-how">Hoe we afwogen</a></li>
+        <li><a href="#nl-site">De site leveren en beschermen</a></li>
+        <li><a href="#nl-count">Bezoeken tellen</a></li>
+        <li><a href="#nl-log">Het aanmeldlogboek</a></li>
+        <li><a href="#nl-limits">Korte tellers per IP-adres</a></li>
+        <li><a href="#nl-homes">De afgesloten woningen</a></li>
+        <li><a href="#nl-feedback">Je mening</a></li>
+        <li><a href="#nl-interest">De interessepagina</a></li>
+        <li><a href="#nl-gamenight">De game night</a></li>
+        <li><a href="#nl-mail">De e-mail over de ontmoeting</a></li>
+        <li><a href="#nl-email">E-mails met ons</a></li>
+        <li><a href="#nl-object">Bezwaar, en versies</a></li>
+      </ol>
+    </nav>
+
+    <h2 id="nl-how">1. Hoe we afwogen</h2>
+    <p>De verwerkingsverantwoordelijke is Yoshi Parlevliet CommV, die brieltje.be uitbaat (zie het <a href="/legal/privacy.html">privacybeleid</a>, punt 1). We mogen enkel op gerechtvaardigd belang steunen als aan drie voorwaarden samen voldaan is. De Gegevensbeschermingsautoriteit noemt ze de doeltoets, de noodzakelijkheidstoets en de afwegingstoets:</p>
+    <ol>
+      <li><b>Doel:</b> het belang is wettig, duidelijk omschreven en nu echt, niet hypothetisch.</li>
+      <li><b>Noodzaak:</b> we kunnen het niet even goed bereiken met minder gegevens, of zonder.</li>
+      <li><b>Afweging:</b> jouw belangen, rechten en vrijheden wegen niet zwaarder dan de onze. We kijken naar welke gegevens het zijn, wat je redelijkerwijs kunt verwachten, wat er voor jou mis kan gaan, en de waarborgen. Waar kinderen betrokken kunnen zijn, tellen hun belangen eerst.</li>
+    </ol>
+    <p>We houden de waarborgen die de AVG ons sowieso oplegt (beveiliging, je informeren, gegevens kort bewaren) apart van de extra maatregelen die we daarbovenop nemen. Enkel die extra maatregelen kunnen de afweging doen kantelen.</p>
+    <p>We volgen de richtlijnen van de Autoriteit over gerechtvaardigd belang en de richtsnoeren 1/2024 van het EDPB over art. 6, lid 1, f AVG (versie 1.0, de laatst gepubliceerde). We volgen ook de rechtspraak van het Hof van Justitie van de EU (Rīgas satiksme, C-13/16; Meta t. Bundeskartellamt, C-252/21). De Geschillenkamer van de Autoriteit verwacht dat een verantwoordelijke kan aantonen dat hij die afweging maakte (bijvoorbeeld de beslissingen 150/2025 en 01/2026). Daarom schrijven we ze op, en daarom publiceren we ze.</p>
+    <p>Enkele extra maatregelen gelden voor alle tien:</p>
+    <ul>
+      <li>Geen advertenties, geen trackingcookies en geen statistieken van derden op de site.</li>
+      <li>Niets wordt verkocht, en niets wordt gebruikt om een profiel van je te maken.</li>
+      <li>Enkel de beheerder ziet wat bewaard wordt, achter een login.</li>
+    </ul>
+
+    <h2 id="nl-site">2. De site leveren en beschermen</h2>
+    <table>
+      <tbody>
+        <tr><th>Gegevens</th><td>Je IP-adres, de naam van je browser, de pagina's en bestanden die je laadt, en wanneer. Cloudflare zoekt ook het land van je IP-adres op.</td></tr>
+        <tr><th>Van wie</th><td>Iedereen die de site opent, ook kinderen</td></tr>
+        <tr><th>Wie ze krijgt</th><td>Cloudflare, dat de site levert en beschermt, en Railway, dat ze host. Beide werken in onze opdracht onder een verwerkersovereenkomst.</td></tr>
+        <tr><th>Hoelang</th><td>Railway bewaart de logboeken van de server tot 30 dagen. Cloudflare bewaart zijn technische logboeken zolang zijn verwerkersovereenkomst met ons bepaalt.</td></tr>
+      </tbody>
+    </table>
+    <h3>Doel</h3>
+    <p>We willen je de site tonen, ze beschikbaar houden, en aanvallen stoppen en opsporen: een stortvloed aan verzoeken, zoektochten naar zwakke plekken en pogingen om in te breken. Een openbare site krijgt zulk verkeer elke dag, dus het belang is nu echt. Het EU-recht erkent het: overweging 49 van de AVG noemt netwerk- en informatiebeveiliging een gerechtvaardigd belang. We laten ook enkel bezoekers uit België binnen. Het spel gaat over een Belgisch dorp en is gemaakt voor de mensen eromheen, en die regel houdt de meeste geautomatiseerde aanvallen buiten.</p>
+    <h3>Noodzaak</h3>
+    <p>Zonder je IP-adres bereikt geen enkele pagina je browser. Zonder logboeken zien we een aanval niet en kunnen we achteraf niet nagaan wat er gebeurde. Logboeken zonder adressen zouden ons niet toelaten het adres te blokkeren waarvan een aanval komt. De logboeken bevatten geen wachtwoorden, codes of inhoud van formulieren. Geheime links reizen in headers die niet gelogd worden.</p>
+    <h3>Afweging</h3>
+    <ul>
+      <li><b>De gegevens</b> zijn technisch en niet gevoelig. Een IP-adres wijst naar een verbinding, niet op zich naar een persoon.</li>
+      <li><b>Je kunt het verwachten.</b> Elke website heeft je adres nodig om je te antwoorden, en houdt korte logboeken bij om veilig te blijven.</li>
+      <li><b>De impact</b> is klein. De gegevens worden met niets gecombineerd, voor niets anders gebruikt en met niemand gedeeld, behalve met de politie als we een misdrijf melden, of als de wet ons verplicht.</li>
+      <li><b>Kinderen:</b> het belang is ook het hunne. Een veilige site beschermt hen, en hun gegevens worden niet anders behandeld.</li>
+      <li><b>Extra maatregelen:</b> geen enkel gegeven van de site gaat naar adverteerders of analysebedrijven, en de logboeken zijn kortlevend.</li>
+    </ul>
+    <p><b>Uitkomst:</b> ons belang wordt niet overtroffen. Gerechtvaardigd belang geldt.</p>
+
+    <h2 id="nl-count">3. Bezoeken tellen</h2>
+    <table>
+      <tbody>
+        <tr><th>Gegevens</th><td>Een code gemaakt uit je IP-adres en de naam van je browser, gemengd met een willekeurige waarde die elke dag verandert. Terwijl je speelt, stuurt het spel wat je koos (modus, besturing, alleen of samen, taal) en een willekeurig getal dat bij elk bezoek nieuw gemaakt wordt.</td></tr>
+        <tr><th>Van wie</th><td>Bezoekers van het spel en de interessepagina, ook kinderen. Je wordt helemaal niet geteld als je browser Global Privacy Control of Do Not Track stuurt.</td></tr>
+        <tr><th>Wie ze krijgt</th><td>Niemand. Ze blijven op onze server bij Railway.</td></tr>
+        <tr><th>Hoelang</th><td>De codes en de willekeurige waarde van de dag: enkel die dag, daarna gewist. Het willekeurige getal: in het geheugen, tot een minuut nadat je stopt. Wat we bewaren zijn totalen per dag en per uur, die niets zeggen over wie dan ook.</td></tr>
+      </tbody>
+    </table>
+    <h3>Doel</h3>
+    <p>We willen weten hoeveel het spel gebruikt wordt en welke opties mensen kiezen. Dat bepaalt of we voor de hosting blijven betalen, of een ontmoeting zin heeft, en wat we nu verbeteren. Spelen bijvoorbeeld veel mensen op een telefoon, dan krijgt de aanraakbesturing meer aandacht. Dat is een gewoon, wettig belang van iedereen die een site uitbaat.</p>
+    <h3>Noodzaak</h3>
+    <p>Om elke bezoeker één keer per dag te tellen, moet de server een tweede bezoek op dezelfde dag herkennen. We wogen vier manieren af:</p>
+    <ul>
+      <li>Ruwe paginaladingen tellen: niet genoeg, want één persoon die herlaadt, telt dan als velen.</li>
+      <li>Een cookie: ingrijpender, het zou je over de dagen heen volgen, en het zou je toestemming vragen.</li>
+      <li>Een analysedienst van buiten: je gegevens zouden naar een derde gaan.</li>
+      <li>Een code die maar één dag geldt: die gebruiken we, omdat ze het werk doet met de minste gegevens.</li>
+    </ul>
+    <p>De code kan niet teruggerekend worden naar een adres zonder een sleutel die de databank niet heeft.</p>
+    <h3>Afweging</h3>
+    <ul>
+      <li><b>De gegevens</b> zijn één dag gepseudonimiseerd, daarna weg. Er is geen profiel en geen verband tussen dagen.</li>
+      <li><b>Je kunt verwachten</b> dat een site weet hoeveel bezoekers ze heeft.</li>
+      <li><b>De impact</b> is heel klein: de totalen kunnen niemand raken.</li>
+      <li><b>Kinderen:</b> geen profilering en geen marketing, dus niets werkt tegen hen.</li>
+      <li><b>Extra maatregelen:</b> we respecteren Global Privacy Control en Do Not Track, waartoe geen wet ons verplicht. Er worden geen cookies of browseropslag voor gebruikt, en de codes van de dag worden elke nacht gewist.</li>
+    </ul>
+    <p><b>Uitkomst:</b> ons belang wordt niet overtroffen. Gerechtvaardigd belang geldt.</p>
+
+    <h2 id="nl-log">4. Het aanmeldlogboek</h2>
+    <table>
+      <tbody>
+        <tr><th>Gegevens</th><td>De tijd, het IP-adres, de naam waaronder je speelt (alleen: de naam die je typte) en wat er gebeurde: alleen begonnen, meegedaan, foute pincode, verwijderd</td></tr>
+        <tr><th>Van wie</th><td>Spelers. Samen spelen is voor wie 13 jaar of ouder is. Alleen spelen heeft geen leeftijdscontrole, dus er kunnen kinderen in staan.</td></tr>
+        <tr><th>Wie ze krijgt</th><td>Niemand, tenzij we een misdrijf melden bij de politie of de wet ons verplicht het te geven. Ze blijven op onze server bij Railway. Elke regel gaat daar ook naar het eigen logboek van de server, dat Railway tot 30 dagen bewaart.</td></tr>
+        <tr><th>Hoelang</th><td>90 dagen, en hoogstens 20.000 regels</td></tr>
+      </tbody>
+    </table>
+    <h3>Doel</h3>
+    <p>We hebben deze belangen:</p>
+    <ol>
+      <li><b>Beveiliging en valsspelen tegengaan:</b> zien wanneer iemand de pincode probeert te raden, de server aanvalt of met het spel knoeit, en die persoon buiten houden.</li>
+      <li><b>Moderatie:</b> optreden tegen beledigende namen, pesten en spelers die verwijderd werden en terugkomen.</li>
+      <li><b>Illegale activiteiten stoppen:</b> ze opmerken, en ze kunnen melden bij de politie of een rechtbank met wat die nodig hebben om op te treden.</li>
+      <li><b>Weten wie speelt:</b> het spel is een klein project voor vrienden, familie en de buurt. De namen per dag vertellen ons of het hen bereikt. Daarvoor gebruiken we enkel de namen, nooit de adressen.</li>
+    </ol>
+    <p>Die belangen zijn nu echt. Het spel staat open voor iedereen in België, heeft een chat en gedeelde spellen, en de server antwoordt aan wie hem bereikt, ook bij alleen spelen. Mogelijke misdrijven melden bij de overheid is een gerechtvaardigd belang dat het EDPB erkent.</p>
+    <h3>Noodzaak</h3>
+    <p>Een naam alleen volstaat niet: iedereen kan eender welke naam typen, en wie verwijderd werd, komt terug onder een andere. Het IP-adres is de enige band tussen een naam en een verbinding. Het laat ons een aanval, valsspelen of misbruik koppelen aan dezelfde afzender, ook als die eerst alleen begon en daarna met anderen meedeed, of omgekeerd. En het is wat de politie nodig heeft als we iets melden.</p>
+    <p>We overwogen om alleen beginnen zonder het adres te loggen. We beslisten het niet te doen: dat is de weg terug naar binnen voor wie verwijderd werd, en het moment waarop iemand die vals speelt zijn geknoei uitprobeert voor hij met anderen meedoet. Ook alleen beginnen praat met de server.</p>
+    <p>We bewaren enkel wat de verbinding en de gebeurtenis aanduidt. Er staat niets in over wat je in het spel deed, geen chat en geen locatie.</p>
+    <h3>Afweging</h3>
+    <ul>
+      <li><b>De gegevens:</b> een naam, die een bijnaam kan zijn maar ook een echte voornaam, en een IP-adres. Ze zijn niet gevoelig. Het adres wijst naar een verbinding; enkel de internetprovider kan het, op een wettelijk bevel, aan een abonnee koppelen.</li>
+      <li><b>Je kunt verwachten</b> dat een onlinespel met een chat en gedeelde spellen een kort logboek bijhoudt van wie verbinding maakte, voor de veiligheid. Bij alleen spelen verwacht je het misschien niet, daarom zegt het privacybeleid het bovenaan in zijn samenvatting.</li>
+      <li><b>De impact:</b> het logboek wordt enkel gelezen als er een reden is, zoals een aanval, een klacht, misbruik of een melding. Het wordt nooit met iets anders gecombineerd of gebruikt om mensen te volgen.</li>
+      <li><b>Kinderen:</b> dit is het nipste punt, omdat kinderen alleen kunnen spelen zonder leeftijdscontrole. De belangen vallen grotendeels samen met de hunne: een spel zonder valsspelers, pesterijen en illegale activiteiten beschermt vooral hen. De extra maatregelen hieronder beperken wat er over hen bewaard wordt.</li>
+      <li><b>Extra maatregelen:</b>
+        <ul>
+          <li>Er wordt niets gelogd bij alleen beginnen als je browser Global Privacy Control of Do Not Track stuurt.</li>
+          <li>Je mag onder eender welke bijnaam spelen, en het spel vraagt nooit een echte naam.</li>
+          <li>Een ouder of voogd kan ons vragen de regels van een kind te wissen (zie het privacybeleid, punt 10).</li>
+          <li>Het logboek kan niet groter worden dan 20.000 regels, dus een stortvloed kan ons niet meer doen bewaren.</li>
+          <li>Het wordt enkel gebruikt voor de doelen hierboven, en enkel gegeven als we een misdrijf melden of de wet ons verplicht.</li>
+        </ul>
+      </li>
+    </ul>
+    <p><b>Uitkomst:</b> met deze waarborgen worden onze belangen niet overtroffen, ook waar kinderen spelen. Gerechtvaardigd belang geldt.</p>
+
+    <h2 id="nl-limits">5. Korte tellers per IP-adres</h2>
+    <table>
+      <tbody>
+        <tr><th>Gegevens</th><td>Je IP-adres en hoeveel inschrijvingen, uploads, aanmeldingen, codepogingen of berichten er op korte tijd van kwamen</td></tr>
+        <tr><th>Van wie</th><td>Iedereen die die delen van de site gebruikt</td></tr>
+        <tr><th>Wie ze krijgt</th><td>Niemand. Ze staan enkel in het geheugen van de server.</td></tr>
+        <tr><th>Hoelang</th><td>Van één minuut tot één dag, daarna weg. Een herstart wist ze.</td></tr>
+      </tbody>
+    </table>
+    <h3>Doel</h3>
+    <p>We willen een stortvloed en raden stoppen: duizenden valse inschrijvingen, iemand die pincodes of deurcodes probeert, spam in de chat. Het belang is echt voor elk formulier op het internet.</p>
+    <h3>Noodzaak</h3>
+    <p>Voor je aanmeldt, is het adres het enige dat de ene afzender van de andere onderscheidt. We overwogen een puzzeltest (een CAPTCHA). Die komen meestal van bedrijven buiten ons die je bezoek zouden zien, en veel ervan zijn moeilijk voor kinderen en voor mensen met een beperking.</p>
+    <h3>Afweging</h3>
+    <ul>
+      <li><b>De gegevens:</b> een adres en een getal, enkel in het geheugen, nooit op schijf.</li>
+      <li><b>Je kunt verwachten</b> dat een site iemand afremt die honderd formulieren per minuut stuurt.</li>
+      <li><b>De impact</b> is bijna nul: in het slechtste geval wacht je even voor je opnieuw kunt proberen.</li>
+      <li><b>Kinderen:</b> het belang valt samen met het hunne.</li>
+      <li><b>Extra maatregelen:</b> de tellers komen nooit in de databank en verdwijnen binnen hoogstens een dag.</li>
+    </ul>
+    <p><b>Uitkomst:</b> ons belang wordt niet overtroffen. Gerechtvaardigd belang geldt.</p>
+
+    <h2 id="nl-homes">6. De afgesloten woningen</h2>
+    <table>
+      <tbody>
+        <tr><th>Gegevens</th><td>Voor elk van de drie afgesloten woningen (het hoofdhuis, de bungalow en het eindhuis in Molenhoek): een hash van de code, hoeveel keer een code juist of fout was, en wanneer. De code die je typt, wordt gecontroleerd en niet bewaard. Na een juiste code mag je sessie die woning 8 uur binnen, enkel in het geheugen.</td></tr>
+        <tr><th>Van wie</th><td>De mensen die in deze woningen wonen, en spelers die een code proberen</td></tr>
+        <tr><th>Wie ze krijgt</th><td>Niemand. Ze blijven op onze server bij Railway.</td></tr>
+        <tr><th>Hoelang</th><td>De hash en de tellers: tot de beheerder ze wijzigt of verwijdert. De toegang in het geheugen: 8 uur, of tot de server herstart.</td></tr>
+      </tbody>
+    </table>
+    <h3>Doel</h3>
+    <p>De binnenkant van deze woningen hoort bij mensen die akkoord gingen om in het spel te staan op voorwaarde dat enkel wie de code heeft binnen kan. We willen die belofte houden, en zien wanneer iemand blijft raden. Dat beschermt de bewoners, het belang van een derde dat de AVG erkent.</p>
+    <h3>Noodzaak</h3>
+    <p>Een slot heeft iets nodig om de juiste code mee te vergelijken, en een hash is het minste dat volstaat. De tellers vertellen ons of een code geraden wordt en veranderd moet worden. Er wordt geen naam of adres bij bewaard.</p>
+    <h3>Afweging</h3>
+    <ul>
+      <li><b>De gegevens</b> gaan nauwelijks over de speler: het zijn tellingen per woning, niet per persoon.</li>
+      <li><b>Je kunt verwachten</b> dat een slot gecontroleerd wordt.</li>
+      <li><b>De impact</b> op spelers is nul.</li>
+      <li><b>De bewoners</b> zijn beter beschermd.</li>
+      <li><b>Extra maatregelen:</b> de binnenkant wordt versleuteld bewaard, en enkel gestuurd naar een sessie die de juiste code typte.</li>
+    </ul>
+    <p><b>Uitkomst:</b> ons belang, en dat van de bewoners, wordt niet overtroffen. Gerechtvaardigd belang geldt.</p>
+
+    <h2 id="nl-feedback">7. Je mening</h2>
+    <table>
+      <tbody>
+        <tr><th>Gegevens</th><td>De sterren, je opmerking, de naam waaronder je speelt (alleen: de naam die je typte), je IP-adres, de tijd, de spelmodus en de taal</td></tr>
+        <tr><th>Van wie</th><td>Spelers die ervoor kiezen ze te sturen, ook kinderen</td></tr>
+        <tr><th>Wie ze krijgt</th><td>Niemand. Ze blijven op onze server bij Railway.</td></tr>
+        <tr><th>Hoelang</th><td>Het IP-adres: 90 dagen. De rest: tot je ons vraagt ze te verwijderen, of we ze niet meer nodig hebben.</td></tr>
+      </tbody>
+    </table>
+    <h3>Doel</h3>
+    <p>We willen weten of mensen het spel leuk vinden en wat we kunnen verbeteren. Het spel vraagt het één keer, na twee minuten spelen.</p>
+    <h3>Noodzaak</h3>
+    <ul>
+      <li><b>De sterren en de opmerking</b> zijn waar het om gaat.</li>
+      <li><b>De modus en de taal</b> vertellen ons waar de opmerking over gaat.</li>
+      <li><b>De naam</b> laat ons je mening terugvinden als je vraagt om ze te verwijderen.</li>
+      <li><b>Het IP-adres</b> laat ons een stortvloed aan valse meningen van één afzender verwijderen, en optreden tegen beledigende opmerkingen. Het wordt even lang bewaard als het aanmeldlogboek, zodat we beide kunnen koppelen als één afzender ze allebei misbruikt.</li>
+    </ul>
+    <h3>Afweging</h3>
+    <ul>
+      <li><b>De gegevens:</b> wat je zelf kiest te schrijven. Een opmerking kan van alles bevatten, dus we lezen ze enkel om het spel te verbeteren.</li>
+      <li><b>Je kunt verwachten</b> dat een mening die je stuurt, bewaard en gelezen wordt.</li>
+      <li><b>De impact</b> is klein.</li>
+      <li><b>Kinderen:</b> de kaart vraagt geen persoonlijke gegevens, en elk veld is optioneel.</li>
+      <li><b>Extra maatregelen:</b> de kaart kan gesloten worden zonder iets te sturen, en ze vraagt het maar één keer per browser.</li>
+    </ul>
+    <p><b>Uitkomst:</b> ons belang wordt niet overtroffen. Gerechtvaardigd belang geldt.</p>
+
+    <h2 id="nl-interest">8. De interessepagina</h2>
+    <table>
+      <tbody>
+        <tr><th>Gegevens</th><td>Je naam en e-mailadres (verplicht); je straat, als je die geeft, en een huisnummer als je dat toevoegt; wanneer het je past, met hoeveel je zou komen, en je opmerkingen. Plannen van een huis zijn een aparte zaak, op basis van je toestemming: zie het privacybeleid.</td></tr>
+        <tr><th>Van wie</th><td>Wie zich inschrijft: 13 jaar of ouder, of iemand die jonger is en door een ouder of voogd ingeschreven wordt</td></tr>
+        <tr><th>Wie ze krijgt</th><td>Niemand. Ze blijven op onze server bij Railway.</td></tr>
+        <tr><th>Hoelang</th><td>Tot je je inschrijving intrekt. Stoppen we met ontmoetingen te organiseren, dan wissen we alle inschrijvingen.</td></tr>
+      </tbody>
+    </table>
+    <h3>Doel</h3>
+    <p>We willen een ontmoeting organiseren om samen te spelen voor wie erom vroeg, en die mensen erover bereiken. Je begint dit zelf, door je in te schrijven.</p>
+    <h3>Noodzaak</h3>
+    <ul>
+      <li><b>Een naam en een e-mailadres</b> zijn het minste dat we nodig hebben om je te bereiken.</li>
+      <li><b>Wanneer het je past en met hoeveel je zou komen</b> bepalen de datum en de zaal.</li>
+      <li><b>De straat</b> is optioneel. Ze toont of mensen uit de buurt komen. Een huisnummer mag, maar we hebben het niet nodig.</li>
+    </ul>
+    <p>De voorstellen voor straten komen uit het Vlaamse adressenregister via onze eigen server, zodat wat je typt geen derde bereikt.</p>
+    <h3>Afweging</h3>
+    <ul>
+      <li><b>Je kunt</b> precies dit gebruik <b>verwachten</b>, want daarvoor schreef je je in.</li>
+      <li><b>De impact</b> is klein: we publiceren of delen het niet, en enkel de beheerder ziet het.</li>
+      <li><b>Kinderen</b> jonger dan 13 worden ingeschreven door een ouder of voogd.</li>
+      <li><b>Extra maatregelen:</b> met een privélink bekijk, wijzig of trek je je inschrijving in met één klik, zonder het ons te vragen. Het geheim van die link wordt enkel als hash bewaard.</li>
+    </ul>
+    <p>We overwogen toestemming als rechtsgrond. We kozen gerechtvaardigd belang omdat we de inschrijving enkel gebruiken waarvoor je ze gaf, en je ze toch op elk moment kunt intrekken.</p>
+    <p><b>Uitkomst:</b> ons belang, dat ook het jouwe is, wordt niet overtroffen. Gerechtvaardigd belang geldt.</p>
+
+    <h2 id="nl-gamenight">9. De game night</h2>
+    <table>
+      <tbody>
+        <tr><th>Gegevens</th><td>Je naam, voornaam, e-mailadres en straat (een huisnummer mag); met hoeveel je komt spelen en met hoeveel kijken; je ideeën of wensen</td></tr>
+        <tr><th>Van wie</th><td>Wie zich inschrijft: 13 jaar of ouder, of iemand die jonger is en door een ouder of voogd ingeschreven wordt. Wie jonger is dan 16, komt met een ouder of voogd.</td></tr>
+        <tr><th>Wie ze krijgt</th><td>Niemand. Ze blijven op onze server bij Railway.</td></tr>
+        <tr><th>Hoelang</th><td>Tot je annuleert, en hoogstens een maand na de game night</td></tr>
+      </tbody>
+    </table>
+    <h3>Doel</h3>
+    <p>We willen de game night organiseren: weten hoeveel laptops en pc's er nodig zijn en hoeveel mensen we mogen verwachten, en de plaats, de datum en het uur mailen.</p>
+    <h3>Noodzaak</h3>
+    <ul>
+      <li><b>De naam en het e-mailadres</b> laten ons je bevestigen en bereiken.</li>
+      <li><b>De aantallen</b> bepalen het materiaal.</li>
+      <li><b>De straat</b> laat ons Smetlede voorrang geven als er meer inschrijvingen zijn dan plaats. De avond is in de eerste plaats voor het dorp. Een huisnummer mag, maar we hebben het niet nodig.</li>
+    </ul>
+    <h3>Afweging</h3>
+    <ul>
+      <li><b>Je kunt</b> precies dit gebruik <b>verwachten</b>.</li>
+      <li><b>De impact</b> is klein.</li>
+      <li><b>Kinderen</b> worden ingeschreven door een ouder of voogd en door een ouder of voogd begeleid.</li>
+      <li><b>Extra maatregelen:</b> met een privélink bekijk of annuleer je je inschrijving met één klik. Elke inschrijving wordt binnen een maand na de avond gewist.</li>
+    </ul>
+    <p><b>Uitkomst:</b> ons belang, dat ook het jouwe is, wordt niet overtroffen. Gerechtvaardigd belang geldt.</p>
+
+    <h2 id="nl-mail">10. De e-mail over de ontmoeting</h2>
+    <table>
+      <tbody>
+        <tr><th>Gegevens</th><td>Je e-mailadres en naam, uit je inschrijving</td></tr>
+        <tr><th>Van wie</th><td>Wie zich op de interessepagina inschreef en het vakje aangevinkt liet</td></tr>
+        <tr><th>Hoelang</th><td>Tot je het uitzet via je eigen link, of je inschrijving intrekt</td></tr>
+      </tbody>
+    </table>
+    <h3>Doel</h3>
+    <p>We willen je de datum en de plaats laten weten van de ontmoeting waarnaar je vroeg. Het is een bericht over iets wat je zelf vroeg, geen reclame.</p>
+    <h3>Noodzaak</h3>
+    <p>Zonder e-mail hoor je niet wanneer de ontmoeting plaatsvindt waarnaar je vroeg. We sturen hem zodra ze gepland is, en verder niets.</p>
+    <h3>Afweging</h3>
+    <ul>
+      <li><b>Je kunt het verwachten:</b> het formulier zegt het, naast het vakje.</li>
+      <li><b>De impact</b> is één e-mail.</li>
+      <li><b>Extra maatregelen:</b>
+        <ul>
+          <li>Je kunt het vakje uitvinken bij je inschrijving, of het later uitzetten via je eigen link.</li>
+          <li>We sturen de e-mail nooit op een manier die je adres toont aan de anderen die zich inschreven.</li>
+          <li>We gebruiken het adres nooit voor iets anders.</li>
+        </ul>
+      </li>
+    </ul>
+    <p><b>Uitkomst:</b> ons belang, dat ook het jouwe is, wordt niet overtroffen. Gerechtvaardigd belang geldt.</p>
+
+    <h2 id="nl-email">11. E-mails met ons</h2>
+    <table>
+      <tbody>
+        <tr><th>Gegevens</th><td>Je e-mailadres, je naam en wat je schrijft</td></tr>
+        <tr><th>Van wie</th><td>Iedereen die ons mailt</td></tr>
+        <tr><th>Hoelang</th><td>Zolang je vraag dat nodig heeft</td></tr>
+      </tbody>
+    </table>
+    <h3>Doel</h3>
+    <p>We willen je antwoorden, en verzoeken behandelen zoals inzage of wissing.</p>
+    <h3>Noodzaak</h3>
+    <p>Zonder je bericht en je adres kunnen we niet antwoorden.</p>
+    <h3>Afweging</h3>
+    <ul>
+      <li><b>Je verwacht</b> een antwoord.</li>
+      <li><b>De impact</b> is verder nul.</li>
+    </ul>
+    <p><b>Uitkomst:</b> ons belang, dat ook het jouwe is, wordt niet overtroffen. Gerechtvaardigd belang geldt.</p>
+
+    <h2 id="nl-object">12. Bezwaar, en versies</h2>
+    <p>Je kunt op elk moment bezwaar maken tegen elk van deze tien, om redenen die met je specifieke situatie te maken hebben, door te mailen naar <a href="mailto:yoshi@brieltje.be">yoshi@brieltje.be</a> (art. 21 AVG). Dan stoppen we, tenzij we dwingende gerechtvaardigde gronden hebben die zwaarder wegen dan jouw belangen, rechten en vrijheden, of de gegevens nodig hebben voor een rechtsvordering. Gebruiken we ze verder, dan zeggen we je waarom. Je kunt ook klacht indienen bij de Gegevensbeschermingsautoriteit (zie het <a href="/legal/privacy.html">privacybeleid</a>, punt 9).</p>
+    <p>Verandert wat we met persoonsgegevens doen, dan verandert deze pagina mee. De versies staan hieronder met hun datum.</p>
+    <table>
+      <thead><tr><th>Versie</th><th>Datum</th><th>Wat veranderde</th></tr></thead>
+      <tbody>
+        <tr><td data-label="Versie">1.0</td><td data-label="Datum">7 november 2026</td><td data-label="Wat veranderde">Eerste versie</td></tr>
+      </tbody>
+    </table>
+  </section>
+
+  <footer>Brieltje · Yoshi Parlevliet CommV · <span data-en="Enterprise number" data-nl="Ondernemingsnummer">Enterprise number</span> 1002.569.036 · <span data-company-address>Lede</span><br /><a href="mailto:yoshi@brieltje.be">yoshi@brieltje.be</a></footer>
+</main>
+<script src="/legal/legal.js"></script>
+<script src="/slides/slides.js" defer></script>
+</body>
+</html>
