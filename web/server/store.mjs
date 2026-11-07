@@ -154,28 +154,6 @@ class FileStore {
     this.data.furniture = [];
     await this.save();
   }
-  async listFurniture() {
-    return this.data.furniture;
-  }
-  async addFurniture(f) {
-    const id = (this.data.meta.furnId = (this.data.meta.furnId || 0) + 1);
-    this.data.furniture.push({ id, ...f });
-    await this.save();
-    return id;
-  }
-  async updateFurniture(id, f) {
-    const row = this.data.furniture.find((r) => r.id === id);
-    if (row) Object.assign(row, f);
-    await this.save();
-  }
-  async deleteFurniture(id) {
-    this.data.furniture = this.data.furniture.filter((r) => r.id !== id);
-    await this.save();
-  }
-  async clearFurniture() {
-    this.data.furniture = [];
-    await this.save();
-  }
   // Teslas spawned with /tesla (server/game.mjs): where each was put, kept like furniture.
   async listCars() {
     return this.data.cars;
@@ -402,13 +380,6 @@ class PgStore {
         by_user text,
         at timestamptz not null default now()
       );
-      create table if not exists furniture (
-        id serial primary key,
-        item text not null,
-        x real not null, y real not null, z real not null, yaw real not null,
-        by_user text,
-        at timestamptz not null default now()
-      );
       create table if not exists placed_cars (
         id serial primary key,
         kind text not null,
@@ -491,23 +462,6 @@ class PgStore {
   }
   async deleteSessionsOf(username) {
     await this.pool.query('delete from sessions where username = $1', [username]);
-  }
-  async listFurniture() {
-    const r = await this.pool.query('select id, item, x, y, z, yaw, by_user as by from furniture order by id');
-    return r.rows;
-  }
-  async addFurniture(f) {
-    const r = await this.pool.query('insert into furniture (item, x, y, z, yaw, by_user) values ($1, $2, $3, $4, $5, $6) returning id', [f.item, f.x, f.y, f.z, f.yaw, f.by]);
-    return r.rows[0].id;
-  }
-  async updateFurniture(id, f) {
-    await this.pool.query('update furniture set item = $2, x = $3, y = $4, z = $5, yaw = $6, by_user = $7, at = now() where id = $1', [id, f.item, f.x, f.y, f.z, f.yaw, f.by]);
-  }
-  async deleteFurniture(id) {
-    await this.pool.query('delete from furniture where id = $1', [id]);
-  }
-  async clearFurniture() {
-    await this.pool.query('delete from furniture');
   }
   async listFurniture() {
     const r = await this.pool.query('select id, item, x, y, z, yaw, by_user as by from furniture order by id');
