@@ -16,4 +16,5 @@ export function makeSolids(
   prisms: { y0: number; y1: number; d?: unknown; p: number[][][] }[],
   height: (x: number, z: number) => number,
 ): { boxFree(cx: number, cz: number, yaw: number, halfL: number, halfW: number, y0: number, y1: number): boolean };
-export function makeIndoors(prisms: { n?: string; p: number[][][] }[], rooms: string[]): (x: number, z: number) => boolean;
+export function indoorName(name: string | undefined, rooms: ReadonlySet<string>): boolean;
+export function makeIndoors(prisms: { n?: string; p: number[][][]; y1?: number }[], rooms: string[]): (x: number, z: number, y?: number) => boolean;

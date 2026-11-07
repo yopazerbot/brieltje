@@ -98,10 +98,10 @@ export class Acoustics {
    * `church`: the church's place (shared/church.json: origin and yaw) and its ground height; `indoorsAt`: whether a
    * spot on the map is in a house (main.ts, it changes as insides come in).
    */
-  constructor(private church: { origin: number[]; yaw: number; ground: number }, private indoorsAt: (x: number, z: number) => boolean) {
+  constructor(private church: { origin: number[]; yaw: number; ground: number }, private indoorsAt: (x: number, z: number, y?: number) => boolean) {
     this.cos = Math.cos(church.yaw);
     this.sin = Math.sin(church.yaw);
-    sound.setIndoorSpot((x, y, z) => this.indoorsAt(x, z) || this.inTower(x, y, z) !== null);
+    sound.setIndoorSpot((x, y, z) => this.indoorsAt(x, z, y) || this.inTower(x, y, z) !== null); // on the roof terrace or the outside stair: outdoors
   }
 
   /** In the church's tower (its doorway and the stair's shaft): 'church' at its foot, 'tower' up the stair; else null. */

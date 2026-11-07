@@ -60,7 +60,7 @@ import { Pickups } from './world/pickups';
 import { Cats } from './world/cats';
 import { Car, placedSpec, PLACED_MAX, type CarState } from './world/car';
 import { skidMarks } from './world/skidMarks';
-import { boxesOverlap, boxPoints, clearOfPortals, makeIndoors } from '../shared/parking.mjs';
+import { boxesOverlap, boxPoints, clearOfPortals, indoorName, makeIndoors } from '../shared/parking.mjs';
 import CARS from '../shared/car.json';
 import BIKES_DATA from '../shared/bike.json';
 import { buildHedges, buildTile, dipMesh, waterMesh } from './world/surroundings';
@@ -734,7 +734,7 @@ function removeClown(id: number): void {
 // any, a player's their own when the admin allows spawning). Alone anyone's, kept in this browser.
 let indoorsAt = makeIndoors([...house.prisms, ...(house.surroundings?.prisms ?? [])], []);
 // The echo of where you are and the walls between you and the sounds of out of doors (world/acoustics.ts).
-const roomSound = (acoustics.now = new Acoustics({ ...CHURCH_DATA, ground: churchAccess.point([0, 0, 0]).y }, (x, z) => indoorsAt(x, z)));
+const roomSound = (acoustics.now = new Acoustics({ ...CHURCH_DATA, ground: churchAccess.point([0, 0, 0]).y }, (x, z, y) => indoorsAt(x, z, y)));
 const placedCars = () => cars.filter((c) => c.kind);
 /** A placed Tesla taken away: if you sit in it, you get out first. */
 function removePlaced(c: Car): void {
@@ -2003,7 +2003,7 @@ function chuteCommand(): void {
   if (rules.parachute === false) return chat.system(() => t('srv.chuteOff'));
   if (!combat.alive || driving || riding || horses.mounted >= 0 || bikes.mounted || trip || player.chute !== null || solo) return chat.system(() => t('srv.chuteNotNow'));
   const ground = player.ground.name;
-  if (ground && (roomNames.has(ground) || /floor|stairs/i.test(ground))) return chat.system(() => t('srv.chuteIndoors'));
+  if (indoorName(ground, roomNames)) return chat.system(() => t('srv.chuteIndoors'));
   if (net.connected) net.send({ t: 'chute' });
   else beginDrop({ x: player.x, z: player.z, yaw: player.yaw, feet: player.feet });
 }
@@ -3188,7 +3188,7 @@ renderer.setAnimationLoop((now: number) => {
 
     const surface = player.ground.name;
     // Not in a drop: the floor you jumped from keeps its name until you land (it lit the parachute as a room).
-    const indoors = !!surface && player.chute === null && (roomNames.has(surface) || /floor|stairs/i.test(surface));
+    const indoors = player.chute === null && indoorName(surface, roomNames); // shared/parking.mjs: rooms, floors, stairs; never roofs, terraces, the outside stair
     inside = indoors;
     // Outside, on the village's ground: the street you are in (its real name), not just "street".
     const at = driving || riding ? car : player;
@@ -3530,7 +3530,7 @@ async function buildVillage(): Promise<void> {
 let countryJob: Promise<void> | null = null;
 function startCountryside(): Promise<void> {
   return (countryJob ??= import('./world/countryside').then(async ({ Countryside }) => {
-    const indoors = () => !!player.ground.name && (roomNames.has(player.ground.name) || /floor|stairs/i.test(player.ground.name));
+    const indoors = () => indoorName(player.ground.name, roomNames);
     countryside = new Countryside({ scene, renderer, world, now: () => performance.now() / 1000 + clockOffset, quality: () => quality, phone, far: () => tiles.drawDistance, indoors });
     // Its herds, birds, ducks and bales: out of the scene until their shaders are in.
     scene.remove(countryside.group);

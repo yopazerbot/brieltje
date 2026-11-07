@@ -145,18 +145,35 @@ export function makeSolids(prisms, height) {
 }
 
 /**
- * Whether a point is indoors: over a floor of the house or the bungalow. Those are the house data's
- * blocks (`prisms`) named after a room (`rooms`), a floor or the stairs, and the bungalow's, which
- * are named "... (old house)" (its drive apart). The main house's ground floor covers the whole house.
+ * Names that say a block is out of doors even where it lies over a house: its roofs ("1st floor roof", named after
+ * the floor under them), the roof terrace ("Dakterras", "Terras"), the outside stair, the bungalow's drive.
+ */
+const OUTSIDE = /roof|terrace|terras|outside|buiten|^driveway/i;
+
+/**
+ * Whether standing on a block named `name` is indoors: a room (`rooms`), a floor or the stairs, or one of the
+ * bungalow's, which are named "... (old house)"; never one whose name says it is out of doors (OUTSIDE). The one
+ * test for the HUD, the echo, the rain and the parachute (src/main.ts), and for makeIndoors.
+ */
+export function indoorName(name, rooms) {
+  return typeof name === 'string' && !OUTSIDE.test(name) && (rooms.has(name) || /floor|stairs/i.test(name) || /\(old house\)$/.test(name));
+}
+
+/**
+ * Whether a point is indoors: over a floor of the house or the bungalow (indoorName). The main house's ground
+ * floor covers the whole house. With a height `y` (a sound's spot), up to 2.5 m over the roof terrace, a roof or the
+ * top of the outside stair, over that floor, is out of doors.
  */
 export function makeIndoors(prisms, rooms) {
   const names = new Set(rooms);
-  const indoor = (n) => typeof n === 'string' && (names.has(n) || /floor|stairs/i.test(n) || (/\(old house\)$/.test(n) && !/^driveway/i.test(n)));
-  const floors = prisms.filter((p) => indoor(p.n)).map((p) => {
-    const ring = p.p[0];
-    const xs = ring.map((v) => v[0]);
-    const zs = ring.map((v) => v[1]);
-    return { ring, minX: Math.min(...xs), maxX: Math.max(...xs), minZ: Math.min(...zs), maxZ: Math.max(...zs) };
-  });
-  return (x, z) => floors.some((f) => x >= f.minX && x <= f.maxX && z >= f.minZ && z <= f.maxZ && inside(x, z, f.ring));
+  const ring = (p) => {
+    const r = p.p[0];
+    const xs = r.map((v) => v[0]);
+    const zs = r.map((v) => v[1]);
+    return { ring: r, y: p.y1 ?? Infinity, minX: Math.min(...xs), maxX: Math.max(...xs), minZ: Math.min(...zs), maxZ: Math.max(...zs) };
+  };
+  const floors = prisms.filter((p) => indoorName(p.n, names)).map(ring);
+  const outs = prisms.filter((p) => typeof p.n === 'string' && OUTSIDE.test(p.n)).map(ring);
+  const over = (f, x, z) => x >= f.minX && x <= f.maxX && z >= f.minZ && z <= f.maxZ && inside(x, z, f.ring);
+  return (x, z, y) => floors.some((f) => over(f, x, z)) && !(y !== undefined && outs.some((o) => y > o.y - 0.3 && y < o.y + 2.5 && over(o, x, z)));
 }
