@@ -76,7 +76,7 @@ import { patchFields } from './world/fields';
 import { addDiag, startDiag } from './ui/diag';
 import { IndoorLight } from './world/indoorLight';
 import { Weather } from './world/weather';
-import { MoodAdmin, moodLabel } from './ui/moodAdmin';
+import { MoodAdmin, moodNotice } from './ui/moodAdmin';
 import { Portals } from './world/portals';
 import { TravelPanel } from './ui/travel';
 import { PlacesList } from './ui/places';
@@ -870,14 +870,15 @@ function applySettings(s: Settings): void {
 settings.onChange = applySettings;
 applySettings(settings.value);
 // The admin's weather for everyone (ui/moodAdmin.ts; the server checks the sender and the value). The settings' picker shows it, greyed.
-const moodAdmin = new MoodAdmin((mood) => {
-  if (net.connected && me?.role === 'admin') net.send({ t: 'mood', mood });
+const moodAdmin = new MoodAdmin((msg) => {
+  if (net.connected && me?.role === 'admin') net.send(msg);
 });
-const followMood = () => moodAdmin.update(net.connected && me?.role === 'admin', weather.serverMood);
+const followMood = () => moodAdmin.update(net.connected && me?.role === 'admin', weather.serverMood, weather.serverSpeed);
 weather.onServer = (m) => {
   settings.lockMood(m);
   followMood();
 };
+settings.onSkip = () => weather.skip(); // "Next weather" alone
 const rumble = (strong: number, weak: number, ms: number) => settings.value.vibration && input.rumble(strong, weak, ms);
 
 // Footsteps: yours from the middle, the others' from where they walk; louder when running.
@@ -2116,7 +2117,7 @@ net.onMessage = (m: ServerMsg) => {
       games.me = m.you;
       followGame(m.mode ?? { kind: 'free' });
       applyRules(m.rules ?? ANYTHING_GOES);
-      weather.setServer(m.mood); // the admin's weather for everyone (sunny from an older server)
+      weather.setServer(m.mood, m.moodCycle?.cycle, m.moodCycle?.time); // the admin's weather for everyone (Auto from an older server)
       getOut(false); // alone you may have been driving: the shared cars are where the server has them
       getOffHorse(false); // or riding
       wantCar = false;
@@ -2134,9 +2135,10 @@ net.onMessage = (m: ServerMsg) => {
       applyRules(m.rules);
       break;
     case 'mood': {
-      weather.setServer(m.mood);
-      const shown = weather.serverMood;
-      if (shown && typeof m.by === 'string') chat.system(() => t('mood.set', { name: m.by!, mood: moodLabel(shown) }));
+      weather.setServer(m.mood, m.cycle, m.time);
+      followMood(); // the pace may have changed
+      const notice = moodNotice(m, weather.serverMood, weather.serverSpeed);
+      if (notice) chat.system(notice);
       break;
     }
     case 'mode':
@@ -3609,6 +3611,9 @@ if (import.meta.env.DEV) {
         return { x: +player.x.toFixed(3), z: +player.z.toFixed(3), feet: +player.feet.toFixed(3), flying: player.flying };
       },
       three: { renderer, scene, sun, ao, composer, environmentReady, applyQuality, autoDetect, quality: () => quality, groundShade, weather },
+      /** The weather's cycle moved on by this many seconds, on this page only (world/weather.ts forward), and where it is. */
+      weatherAhead: (seconds: number) => weather.forward(seconds),
+      weatherState: () => weather.state(),
       tiles,
       home,
       homeStreet,

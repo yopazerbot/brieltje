@@ -38,7 +38,7 @@ import { noShoot } from '../shared/zones.mjs';
 import { boxesOverlap, boxPoints, clearOfPortals, makeIndoors, makeSolids } from '../shared/parking.mjs';
 import { bruteEntry, carFields, horseFields, playerFields, PROTO, TICK_MS } from '../shared/wire.mjs';
 import { houseAreas, makeNav, MAX_ADMIN_WAVE } from '../shared/zombies.mjs';
-import { DEFAULT_MOOD, isMood } from '../shared/moods.mjs';
+import { cycleTime, DEFAULT_CHOICE, isChoice, MoodCycle, newCycle, skipCycle, SPEEDS, withSpeed } from '../shared/moods.mjs';
 import { arenaEdge, arenaHome, arenaPrisms, ARENAS, portalOf } from '../shared/arenas.mjs';
 import { churchPrisms, makeChurch } from '../shared/church.mjs';
 import { DROP, dropFrom, HOME_DROP } from '../shared/parachute.mjs';
@@ -294,7 +294,10 @@ export class Game {
     this.doors = Object.create(null); // door id -> open (no prototype: ids like toString are only ids)
     this.doorDir = Object.create(null); // door id -> 1 or -1: the way a double-action door swings
     this.rules = { ...RULES };
-    this.mood = DEFAULT_MOOD; // the weather and time of day for everyone (shared/moods.mjs), set by the admin
+    this.mood = DEFAULT_CHOICE; // the weather and time of day for everyone (shared/moods.mjs), set by the admin
+    // Its cycle when it is 'auto': every page works out the same weather from this and the server's clock (MoodCycle).
+    this.moodCycle = newCycle(randomInt(0, 2 ** 32), Date.now());
+    this.moodRun = new MoodCycle(this.moodCycle.seed, 0);
     this.broken = new Set(); // window pane numbers that are broken
     this.scores = new Map(); // username -> { kills, deaths, points }, kept over reconnects until the next round
     this.roundOver = null; // { winner, until } during the break after a round
@@ -416,7 +419,7 @@ export class Game {
       t: 'welcome', proto: PROTO, you: name, role: session.role, color, doors: this.doorsFor(player), doorDir: this.doorDirFor(player), broken: this.brokenFor(player), homes: HOMES.filter((h) => player.role !== 'admin' && this.homes?.granted(player.key, h.id)).map((h) => h.id), players: this.roster(),
       time: now, cats: this.catsDown.map((until) => Math.max(0, until - now)), clowns: this.clownList(now), furniture: this.furnitureFor(player), rules: this.rules,
       scores: this.scoreList(), limit: KILL_LIMIT, items: this.items.map((it) => now >= it.until), round: this.roundOver ? { winner: this.roundOver.winner, ms: this.roundOver.until - now } : null,
-      cars: Object.values(this.cars), horses: this.horses, mode: this.modes.view(now), mood: this.mood,
+      cars: Object.values(this.cars), horses: this.horses, mode: this.modes.view(now), mood: this.mood, moodCycle: this.moodView(now),
     });
     this.broadcast({ t: 'join', name, color }, name);
     this.modes.join(name);
@@ -432,6 +435,7 @@ export class Game {
         this.modes.leave(name, player);
         this.broadcast({ t: 'leave', name });
         this.broadcast({ t: 'scores', list: this.scoreList() });
+        if (player.role === 'admin') this.moodAdminLeft(Date.now());
       }
     });
   }
@@ -897,6 +901,10 @@ export class Game {
       this.setRules(m, name).catch((e) => console.error('rules failed', String(e)));
     } else if (m.t === 'mood' && player.role === 'admin') {
       this.setMood(name, player, m.mood, now);
+    } else if (m.t === 'moodskip' && player.role === 'admin') {
+      this.skipMood(name, player, now);
+    } else if (m.t === 'moodspeed' && player.role === 'admin') {
+      this.moodSpeed(name, player, m.speed, now);
     } else if (m.t === 'kick' && player.role === 'admin' && typeof m.name === 'string' && m.name !== name) {
       this.kick(m.name, name).catch((e) => console.error('kick failed', String(e)));
     }
@@ -1270,16 +1278,57 @@ export class Game {
   }
 
   /**
-   * The admin picked the weather and time of day for everyone (shared/moods.mjs). Only the admin comes here (handle);
-   * only a name from the fixed list is taken, at most one change a second per admin, and the same mood again
-   * changes nothing and tells nobody. Kept in memory: a restarted server starts sunny again.
+   * The admin picked the weather and time of day for everyone (shared/moods.mjs): a mood, or 'auto'. Only the admin
+   * comes here (handle); only a name from the fixed list is taken, at most one change a second per admin, and the
+   * same choice again changes nothing and tells nobody. Kept in memory: a restarted server starts on 'auto' again,
+   * with a new cycle. The cycle itself goes on whatever is chosen, so 'auto' again picks it up where it is.
    */
   setMood(by, player, mood, now) {
-    if (!isMood(mood) || now < (player.nextMood || 0)) return;
+    if (!isChoice(mood) || now < (player.nextMood || 0)) return;
     player.nextMood = now + 1000;
     if (mood === this.mood) return;
     this.mood = mood;
-    this.broadcast({ t: 'mood', mood, by }); // nothing logged or stored: not in the login log, gone on a restart
+    if (mood !== 'auto') this.moodCycle = withSpeed(this.moodCycle, now, 1); // a fixed mood: the cycle back to its own pace
+    this.broadcast({ t: 'mood', mood, by, op: 'set', ...this.moodView(now) }); // nothing logged or stored
+  }
+
+  /**
+   * The admin's "Next weather" (Yoshi: "Fast forward should also be possible for the admin in production"): on Auto,
+   * the mood shown ends now and the usual blend into the next begins. Only the admin (handle), only on Auto, not while
+   * a change is under way, at most one every five seconds per admin.
+   */
+  skipMood(by, player, now) {
+    if (this.mood !== 'auto' || now < (player.nextMoodSkip || 0)) return;
+    player.nextMoodSkip = now + 5000;
+    const next = skipCycle(this.moodCycle, this.moodRun, now);
+    if (!next) return;
+    this.moodCycle = next;
+    this.broadcast({ t: 'mood', mood: this.mood, by, op: 'skip', ...this.moodView(now) });
+  }
+
+  /** The admin's pace for the cycle on Auto: only one of SPEEDS, at most one change a second per admin. */
+  moodSpeed(by, player, speed, now) {
+    if (this.mood !== 'auto' || !SPEEDS.includes(speed) || now < (player.nextMood || 0)) return;
+    player.nextMood = now + 1000;
+    if (speed === this.moodCycle.speed) return;
+    this.moodCycle = withSpeed(this.moodCycle, now, speed);
+    this.broadcast({ t: 'mood', mood: this.mood, by, op: 'speed', ...this.moodView(now) });
+  }
+
+  /** The last admin left: the cycle back to its own pace (a fast cycle nobody can slow down again would stay). */
+  moodAdminLeft(now) {
+    if (this.moodCycle.speed === 1 || [...this.players.values()].some((p) => p.role === 'admin')) return;
+    this.moodCycle = withSpeed(this.moodCycle, now, 1);
+    this.broadcast({ t: 'mood', mood: this.mood, op: 'speed', ...this.moodView(now) });
+  }
+
+  /**
+   * The weather's cycle for the pages: its timing (seed, its own clock and pace), the server's time, and where it is
+   * now (the mood, the next, how far the blend is). The pages work it out from the first two, on the server's clock;
+   * `cycleNow` says the same for whoever reads the messages.
+   */
+  moodView(now) {
+    return { cycle: this.moodCycle, time: now, cycleNow: this.moodRun.at(cycleTime(this.moodCycle, now)) };
   }
 
   /** Remember whether the furniture differs from the starting layout (see loadFurniture). */

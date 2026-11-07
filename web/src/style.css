@@ -1079,9 +1079,9 @@ button.tool:disabled { opacity: 0.45; cursor: not-allowed; }
 .mode-big .seg-btn b { font-size: 21px; }
 .mode-big .seg-btn span { font-size: 14px; }
 .lang-seg .seg-btn b, .kbd-seg .seg-btn b { font-size: 16px; }
-/* The weather (src/settings.ts, src/ui/moodAdmin.ts): four short words, two rows where the column is narrow. */
+/* The weather (src/settings.ts, src/ui/moodAdmin.ts): five short words, three to a row. */
 .mood-seg { flex-wrap: wrap; }
-.mood-seg .seg-btn { flex: 1 1 84px; padding: 9px 10px; }
+.mood-seg .seg-btn { flex: 1 1 30%; padding: 9px 10px; }
 .mood-seg .seg-btn b { font-size: 15.5px; }
 /* A key beside a menu item (the planner, the minimap ...), for keyboard players. */
 #pause-panel kbd[data-key] {

@@ -43,23 +43,42 @@ const fragmentShader = /* glsl */ `
   uniform float drift;
   uniform vec3 sunDir;
   uniform float gain;
+  // The weather's next sky while the two blend (world/weather.ts): a second photo, its turn, sun and gain, and how far.
+  uniform sampler2D sky2;
+  uniform float turn2;
+  uniform vec3 sunDir2;
+  uniform float gain2;
+  uniform float mix2;
   varying vec3 vDir;
-  void main() {
-    vec3 d = normalize(vDir);
+  vec3 photo(sampler2D map, vec3 d, float around, vec3 sun) {
     // The drift: none at the sun or the horizon, the full amount from 24 degrees off the sun and halfway up.
-    float still = smoothstep(cos(0.42), cos(0.14), dot(d, sunDir));
-    float a = turn + drift * (1.0 - still) * smoothstep(0.0, 0.7, d.y);
+    float still = smoothstep(cos(0.42), cos(0.14), dot(d, sun));
+    float a = around + drift * (1.0 - still) * smoothstep(0.0, 0.7, d.y);
     // As three.js reads an equirectangular photo turned by the background rotation (equirectUv).
     vec2 uv = vec2((atan(d.z, d.x) + a) * RECIPROCAL_PI2 + 0.5, asin(clamp(d.y, -1.0, 1.0)) * RECIPROCAL_PI + 0.5);
-    gl_FragColor = vec4(texture2D(sky, uv).rgb * gain, 1.0);
+    return texture2D(map, uv).rgb;
+  }
+  void main() {
+    vec3 d = normalize(vDir);
+    vec3 c = photo(sky, d, turn, sunDir) * gain;
+    if (mix2 > 0.0) c = mix(c, photo(sky2, d, turn2, sunDir2) * gain2, mix2); // only while two skies blend
+    gl_FragColor = vec4(c, 1.0);
     #include <tonemapping_fragment>
     #include <colorspace_fragment>
   }`;
 
+interface SkyLayer {
+  photo: THREE.Texture;
+  turn: number;
+  sunDir: THREE.Vector3;
+  gain: number;
+}
+
 export class Sky {
   readonly mesh: THREE.Mesh;
   private drift = { value: 0 };
-  private uniforms: { sky: { value: THREE.Texture }; turn: { value: number }; sunDir: { value: THREE.Vector3 }; gain: { value: number } };
+  private uniforms: Record<'sky' | 'sky2', { value: THREE.Texture }> & Record<'turn' | 'gain' | 'turn2' | 'gain2' | 'mix2', { value: number }> &
+    Record<'sunDir' | 'sunDir2', { value: THREE.Vector3 }>;
 
   /**
    * `photo`: the equirectangular sky; `turn`: how far it is turned round the vertical (the scene's
@@ -68,7 +87,10 @@ export class Sky {
   constructor(photo: THREE.Texture, turn: number, sunDir: THREE.Vector3) {
     // Turned, the photo's left and right edges meet somewhere in view: they must join (set before its first use).
     photo.wrapS = THREE.RepeatWrapping;
-    this.uniforms = { sky: { value: photo }, turn: { value: turn }, sunDir: { value: sunDir.clone().normalize() }, gain: { value: 1 } };
+    this.uniforms = {
+      sky: { value: photo }, turn: { value: turn }, sunDir: { value: sunDir.clone().normalize() }, gain: { value: 1 },
+      sky2: { value: photo }, turn2: { value: turn }, sunDir2: { value: sunDir.clone().normalize() }, gain2: { value: 1 }, mix2: { value: 0 },
+    };
     const material = new THREE.ShaderMaterial({
       uniforms: { ...this.uniforms, drift: this.drift },
       vertexShader,
@@ -88,12 +110,21 @@ export class Sky {
     };
   }
 
-  /** Another sky in its place (the weather, world/weather.ts), as the constructor takes it, gain times as bright: only its uniforms change. */
-  show(photo: THREE.Texture, turn: number, sunDir: THREE.Vector3, gain = 1): void {
-    photo.wrapS = THREE.RepeatWrapping;
-    this.uniforms.gain.value = gain;
-    this.uniforms.sky.value = photo;
-    this.uniforms.turn.value = turn;
-    this.uniforms.sunDir.value.copy(sunDir).normalize();
+  /**
+   * The weather's skies (world/weather.ts): `a`, and `b` blended over it by `k` (0: only `a`, which then costs one
+   * texture read a pixel as before; the second is read only while they blend). Only uniforms change.
+   */
+  show(a: SkyLayer, b: SkyLayer, k: number): void {
+    const u = this.uniforms;
+    u.sky.value = a.photo;
+    u.turn.value = a.turn;
+    u.sunDir.value.copy(a.sunDir);
+    u.gain.value = a.gain;
+    u.sky2.value = b.photo;
+    u.turn2.value = b.turn;
+    u.sunDir2.value.copy(b.sunDir);
+    u.gain2.value = b.gain;
+    u.mix2.value = a.photo === b.photo && a.turn === b.turn ? 0 : k;
+    if (u.mix2.value === 0 && k > 0) u.gain.value = a.gain + (b.gain - a.gain) * k; // one photo: only its brightness blends
   }
 }

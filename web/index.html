@@ -352,12 +352,14 @@
                   <!-- The weather and time of day when playing alone (src/settings.ts, src/world/weather.ts); together the admin's holds, greyed here. -->
                   <p class="label" data-i18n="mood.label">Weather</p>
                   <div class="seg mood-seg" id="mood-solo" role="group" aria-label="Weather" data-i18n-aria="mood.label">
+                    <button class="seg-btn" type="button" data-mood="auto"><b data-i18n="mood.auto">Auto</b></button>
                     <button class="seg-btn" type="button" data-mood="sunny"><b data-i18n="mood.sunny">Sunny</b></button>
                     <button class="seg-btn" type="button" data-mood="overcast"><b data-i18n="mood.overcast">Overcast</b></button>
                     <button class="seg-btn" type="button" data-mood="rain"><b data-i18n="mood.rain">Rain</b></button>
                     <button class="seg-btn" type="button" data-mood="night"><b data-i18n="mood.night">Night</b></button>
                   </div>
                   <p class="note hidden" id="mood-note" data-i18n="mood.byAdmin">Playing together, the admin picks the weather for everyone.</p>
+                  <button id="mood-next" class="mini" type="button" data-i18n="mood.next">Next weather</button>
                   <!-- Tests stay out of the way, folded away under Advanced. -->
                   <details class="advanced">
                     <summary data-i18n="set.advanced">Advanced</summary>
@@ -414,10 +416,21 @@
                   <!-- The weather and time of day for everyone (src/ui/moodAdmin.ts; the server checks it, server/game.mjs setMood). -->
                   <h2 data-i18n="mood.adminTitle">Weather for everyone</h2>
                   <div class="seg mood-seg" id="mood-admin" role="group" aria-label="Weather for everyone" data-i18n-aria="mood.adminTitle">
+                    <button class="seg-btn" type="button" data-mood="auto"><b data-i18n="mood.auto">Auto</b></button>
                     <button class="seg-btn" type="button" data-mood="sunny"><b data-i18n="mood.sunny">Sunny</b></button>
                     <button class="seg-btn" type="button" data-mood="overcast"><b data-i18n="mood.overcast">Overcast</b></button>
                     <button class="seg-btn" type="button" data-mood="rain"><b data-i18n="mood.rain">Rain</b></button>
                     <button class="seg-btn" type="button" data-mood="night"><b data-i18n="mood.night">Night</b></button>
+                  </div>
+                  <!-- On Auto: the mood shown ends now, and the cycle's pace (back to 1x on a fixed mood or when the admin leaves). -->
+                  <div id="mood-admin-auto" class="setting">
+                    <div class="mp-row"><button id="mood-admin-next" class="mini" type="button" data-i18n="mood.next">Next weather</button></div>
+                    <p class="label" data-i18n="mood.speed">How fast the weather changes</p>
+                    <div class="seg mood-seg" id="mood-speed" role="group" aria-label="How fast the weather changes" data-i18n-aria="mood.speed">
+                      <button class="seg-btn" type="button" data-speed="1"><b data-i18n="mood.speed1">Normal</b></button>
+                      <button class="seg-btn" type="button" data-speed="10"><b>10×</b></button>
+                      <button class="seg-btn" type="button" data-speed="60"><b>60×</b></button>
+                    </div>
                   </div>
                   <h2 data-i18n="adm.joining">Joining</h2>
                   <label class="check"><input type="checkbox" id="set-pin" checked /> <span data-i18n="adm.pin">New players can join with the PIN</span></label>

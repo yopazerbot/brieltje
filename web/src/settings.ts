@@ -7,7 +7,7 @@
  */
 
 import { num, onLang } from './i18n';
-import { DEFAULT_MOOD, isMood, type Mood } from '../shared/moods.mjs';
+import { type Choice, DEFAULT_CHOICE, isChoice } from '../shared/moods.mjs';
 
 export interface Settings {
   /** Mouse sensitivity multiplier */
@@ -25,18 +25,18 @@ export interface Settings {
   minimap: boolean;
   /** The FPS counter (F, or Create on the controller) */
   fps: boolean;
-  /** The weather and time of day when playing alone (shared/moods.mjs) */
-  mood: Mood;
+  /** The weather and time of day when playing alone (shared/moods.mjs): a mood, or 'auto' */
+  mood: Choice;
 }
 
 const KEY = 'briel.settings';
-const DEFAULTS: Settings = { mouse: 1, stick: 1, fov: 72, volume: 0.8, invert: false, vibration: true, minimap: true, fps: false, mood: DEFAULT_MOOD };
+const DEFAULTS: Settings = { mouse: 1, stick: 1, fov: 72, volume: 0.8, invert: false, vibration: true, minimap: true, fps: false, mood: DEFAULT_CHOICE };
 const BOXES = [['set-invert', 'invert'], ['set-vibration', 'vibration'], ['set-minimap', 'minimap'], ['set-fps', 'fps']] as const;
 
 function load(): Settings {
   try {
     const s = { ...DEFAULTS, ...JSON.parse(localStorage.getItem(KEY) || '{}') } as Settings;
-    if (!isMood(s.mood)) s.mood = DEFAULT_MOOD; // stored by a later version with a mood this one lacks
+    if (!isChoice(s.mood)) s.mood = DEFAULT_CHOICE; // stored by a later version with a mood this one lacks
     return s;
   } catch {
     return { ...DEFAULTS };
@@ -48,9 +48,11 @@ const $ = (id: string) => document.getElementById(id) as HTMLInputElement;
 export class SettingsPanel {
   readonly value: Settings = load();
   onChange: (s: Settings) => void = () => {};
+  /** "Next weather" pressed (alone, on Auto) */
+  onSkip: () => void = () => {};
   private moodButtons = [...document.querySelectorAll<HTMLButtonElement>('#mood-solo [data-mood]')];
   /** The admin's mood while playing together (lockMood) */
-  private locked: Mood | null = null;
+  private locked: Choice | null = null;
 
   constructor() {
     const sliders: [string, keyof Settings, (v: number) => string][] = [
@@ -81,12 +83,16 @@ export class SettingsPanel {
     }
     for (const b of this.moodButtons) {
       b.addEventListener('click', () => {
-        if (this.locked || !isMood(b.dataset.mood)) return;
+        if (this.locked || !isChoice(b.dataset.mood)) return;
         this.value.mood = b.dataset.mood;
         this.showMood();
         this.changed();
       });
     }
+    // "Next weather" alone, on Auto: the mood shown ends now (world/weather.ts skip).
+    document.getElementById('mood-next')?.addEventListener('click', () => {
+      if (!this.locked && this.value.mood === 'auto') this.onSkip();
+    });
     this.showMood();
     $('set-reset').addEventListener('click', () => {
       Object.assign(this.value, DEFAULTS);
@@ -104,7 +110,7 @@ export class SettingsPanel {
    * Together: the admin's mood for everyone, shown on the buttons, which are greyed (the own pick stays stored for
    * playing alone). Null: alone again, the own pick.
    */
-  lockMood(admin: Mood | null): void {
+  lockMood(admin: Choice | null): void {
     this.locked = admin;
     this.showMood();
   }
@@ -117,6 +123,8 @@ export class SettingsPanel {
       b.disabled = !!this.locked;
     }
     document.getElementById('mood-note')?.classList.toggle('hidden', !this.locked);
+    const next = document.getElementById('mood-next') as HTMLButtonElement | null;
+    if (next) next.classList.toggle('hidden', !!this.locked || this.value.mood !== 'auto');
   }
 
   /** A setting's shortcut (N for the minimap, F for the FPS counter): on or off, as its tick box. */
