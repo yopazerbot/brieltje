@@ -36,21 +36,37 @@ float snowNoise( vec2 p ) {
 }
 `;
 
-const snow = (open: string, amount: number, steep: boolean) => /* glsl */ `
+// Foliage: clumps of a hand's width or two on the branches, up the height too; between them it stays green.
+const STEEP_PATCH = `float snowPatch = snowNoise( snowAt.xz * 3.1 + snowAt.y * 2.3 ) * 0.6 + snowNoise( snowAt.xz * 7.3 - snowAt.y * 4.1 ) * 0.4;
+    float snowNeed = snowPatch * 0.9 + 0.85 - 0.45 * snowN.y;`;
+// Patches of a metre or two and of a hand's width: the first snow lies in them, the last melts there.
+const FLAT_PATCH = `float snowPatch = snowNoise( snowAt.xz * 0.7 + snowAt.y * 0.3 ) * 0.65 + snowNoise( snowAt.xz * 4.3 ) * 0.35;
+    float snowNeed = snowPatch * 0.75 + ( 1.0 - snowN.y ) * 0.35;`;
+
+/**
+ * `amount`: a number, or a GLSL expression; `steep`: true or false, or a GLSL expression that is 1.0 for foliage (one
+ * program then serves both kinds, and chooses by a branch on a uniform, the same for every pixel).
+ */
+const snow = (open: string, amount: number | string, steep: boolean | string) => /* glsl */ `
 if ( snowCover > 0.0 ) {
   // The surface's own normal and place in the world (the view's inverse turn: its transpose).
   vec3 snowN = normalize( ( vec4( nonPerturbedNormal, 0.0 ) * viewMatrix ).xyz );
-  float snowUp = ${steep ? 'smoothstep( -0.3, 0.25, snowN.y )' : 'smoothstep( 0.25, 0.7, snowN.y )'};
+  ${typeof steep === 'string'
+    ? `bool snowSteep = ${steep} > 0.5;
+  float snowUp = snowSteep ? smoothstep( -0.3, 0.25, snowN.y ) : smoothstep( 0.25, 0.7, snowN.y );`
+    : `float snowUp = ${steep ? 'smoothstep( -0.3, 0.25, snowN.y )' : 'smoothstep( 0.25, 0.7, snowN.y )'};`}
   if ( snowUp > 0.0 ) { // walls and undersides: nothing more to work out
     vec3 snowAt = cameraPosition + ( vec4( - vViewPosition, 0.0 ) * viewMatrix ).xyz;
-    ${steep
-      // Foliage: clumps of a hand's width or two on the branches, up the height too; between them it stays green.
-      ? `float snowPatch = snowNoise( snowAt.xz * 3.1 + snowAt.y * 2.3 ) * 0.6 + snowNoise( snowAt.xz * 7.3 - snowAt.y * 4.1 ) * 0.4;
-    float snowNeed = snowPatch * 0.9 + 0.85 - 0.45 * snowN.y;`
-      // Patches of a metre or two and of a hand's width: the first snow lies in them, the last melts there.
-      : `float snowPatch = snowNoise( snowAt.xz * 0.7 + snowAt.y * 0.3 ) * 0.65 + snowNoise( snowAt.xz * 4.3 ) * 0.35;
-    float snowNeed = snowPatch * 0.75 + ( 1.0 - snowN.y ) * 0.35;`}
-    float snowK = snowUp * smoothstep( snowNeed, snowNeed + 0.18, snowCover * 1.25 ) * clamp( ${open}, 0.0, 1.0 ) * ${amount.toFixed(2)};
+    ${typeof steep === 'string'
+      ? `float snowPatch;
+    float snowNeed;
+    if ( snowSteep ) {
+      ${STEEP_PATCH.replace(/float /g, '')}
+    } else {
+      ${FLAT_PATCH.replace(/float /g, '')}
+    }`
+      : steep ? STEEP_PATCH : FLAT_PATCH}
+    float snowK = snowUp * smoothstep( snowNeed, snowNeed + 0.18, snowCover * 1.25 ) * clamp( ${open}, 0.0, 1.0 ) * ${typeof amount === 'string' ? amount : amount.toFixed(2)};
     diffuseColor.rgb = mix( diffuseColor.rgb, vec3( 0.76, 0.79, 0.84 ) * ( 0.93 + 0.07 * snowPatch ), snowK );
     normal = normalize( mix( normal, nonPerturbedNormal, snowK ) );
     #ifdef STANDARD
@@ -67,7 +83,7 @@ interface Shader {
 }
 
 /** Let this material's surfaces take the snow (in its onBeforeCompile; once is enough, again does nothing). */
-export function snowOn(shader: Shader, open = '1.0', amount = 1, steep = false): void {
+export function snowOn(shader: Shader, open = '1.0', amount: number | string = 1, steep: boolean | string = false): void {
   const f = shader.fragmentShader;
   if (shader.uniforms.snowCover || !f.includes('#include <emissivemap_fragment>') || !f.includes('#include <normal_fragment_begin>')) return;
   shader.uniforms.snowCover = snowCover;
@@ -86,7 +102,8 @@ const patched = new WeakSet<THREE.Material>();
 
 /**
  * Let a whole material take the snow, open to the sky everywhere: only for surfaces that are all outdoors (a roof's
- * top, a street). Once per material; its program is told apart from the same material without snow.
+ * top, a street). Once per material; its program is told apart from the same material without snow. How white it
+ * gets and whether it is foliage are uniforms of its own, so materials that differ only in those share one program.
  */
 export function snowy<T extends THREE.Material>(m: T, look: SnowLook = {}): T {
   if (patched.has(m)) return m;
@@ -96,9 +113,12 @@ export function snowy<T extends THREE.Material>(m: T, look: SnowLook = {}): T {
   const key = m.customProgramCacheKey.bind(m);
   m.onBeforeCompile = (shader, renderer) => {
     before.call(m, shader, renderer);
-    snowOn(shader, '1.0', amount, steep);
+    shader.uniforms.snowAmount = { value: amount };
+    shader.uniforms.snowSteep = { value: steep ? 1 : 0 };
+    shader.fragmentShader = shader.fragmentShader.replace('#include <common>', '#include <common>\nuniform float snowAmount;\nuniform float snowSteep;');
+    snowOn(shader, '1.0', 'snowAmount', 'snowSteep');
   };
-  m.customProgramCacheKey = () => `${key()}|snow${amount}${steep ? 's' : ''}`;
+  m.customProgramCacheKey = () => `${key()}|snow`;
   m.needsUpdate = true;
   return m;
 }
