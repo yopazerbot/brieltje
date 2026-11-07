@@ -5,6 +5,7 @@ import type { ZombieAct, ZombieSample } from '../../shared/wire.mjs';
 import { netClock, Track } from '../net/track';
 import { sound } from '../sound';
 import { paintball } from '../paintball';
+import { daylight } from './daylight';
 import { HEAD_UP, PART_BONES, PARTS, Ragdoll, segmentOf, SEGS, type RagdollWorld } from './ragdoll';
 
 /**
@@ -181,6 +182,8 @@ interface Z extends ZombieState {
 }
 
 const hitMaterial = new THREE.MeshBasicMaterial({ visible: false });
+/** How much of the day's light a hit's pale flash shows (world/daylight.ts): it lit them up white by night. */
+const flashLight = { value: 1 };
 const bodyBox = new THREE.BoxGeometry(0.55, 1.2, 0.45).translate(0, 0.6, 0);
 const headBox = new THREE.SphereGeometry(0.17, 8, 6);
 
@@ -217,6 +220,7 @@ function skinnedStandard(base: THREE.Material, bones: THREE.Texture, paint: THRE
   m.onBeforeCompile = (shader) => {
     shader.uniforms.uBones = { value: bones };
     shader.uniforms.uPaint = { value: paint };
+    shader.uniforms.uFlashLight = flashLight;
     shader.vertexShader = shader.vertexShader
       .replace('#include <common>', `#include <common>\n${SKIN_PARS}`)
       .replace('#include <beginnormal_vertex>', `#include <beginnormal_vertex>\n${SKIN_MATRIX}\nobjectNormal = normalize(mat3(zSkin) * objectNormal);\nvRest = position;\nvLook = aLook;`)
@@ -224,6 +228,7 @@ function skinnedStandard(base: THREE.Material, bones: THREE.Texture, paint: THRE
     shader.fragmentShader = shader.fragmentShader
       .replace('#include <common>', `#include <common>
 uniform highp sampler2D uPaint;
+uniform float uFlashLight;
 varying vec3 vRest;
 varying vec4 vLook;`)
       .replace('#include <clipping_planes_fragment>', `#include <clipping_planes_fragment>
@@ -242,7 +247,7 @@ for (int i = 0; i < ${SPOTS}; i++) {
   float wob = 0.18 * sin(d.x * 61.0 + d.y * 47.0) * sin(d.z * 53.0 - d.y * 37.0);
   if (length(d) < s.w * (1.0 + wob)) diffuseColor.rgb = c.rgb;
 }`)
-      .replace('#include <emissivemap_fragment>', '#include <emissivemap_fragment>\ntotalEmissiveRadiance += vec3(0.55, 0.5, 0.4) * vLook.x;');
+      .replace('#include <emissivemap_fragment>', '#include <emissivemap_fragment>\ntotalEmissiveRadiance += vec3(0.55, 0.5, 0.4) * vLook.x * uFlashLight;');
   };
   m.customProgramCacheKey = () => 'zombie-skin';
   return m;
@@ -1158,6 +1163,7 @@ export class Zombies {
    * (near ones with the full model, far ones with the simpler one). `eye`: the camera.
    */
   update(dt: number, eye: THREE.Vector3): void {
+    flashLight.value = daylight();
     this.clock += dt;
     this.lite = this.cheap() ? 1 : 0;
     this.groanClock += dt;
