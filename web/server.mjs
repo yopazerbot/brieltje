@@ -333,10 +333,10 @@ async function api(req, res, url) {
       return r.error ? refuse(res, r) : json(res, 200, r);
     }
     if (!['confirm', 'off', 'codes'].includes(b.op)) return json(res, 400, { error: 'Unknown action', code: 'badOp' });
-    if (auth.codeLimited(req)) return refuse(res, { error: 'Too many attempts. Try again in 15 minutes.', code: 'tooMany', status: 429 });
+    if (auth.codeLimited(req, s.key)) return refuse(res, { error: 'Too many attempts. Try again in 15 minutes.', code: 'tooMany', status: 429 });
     const code = typeof b.code === 'string' ? b.code.slice(0, 20) : '';
     const r = b.op === 'confirm' ? await auth.mfa.confirm(s.key, code) : await auth.mfa.change(b.op, code, s.username);
-    if (r.code === 'wrongCode') auth.codeWrong(req, s.username);
+    if (r.code === 'wrongCode') auth.codeWrong(req, s.username, s.key);
     return r.error ? refuse(res, r) : json(res, 200, r);
   }
   // The admin closes a Zombies room (server/rooms.mjs): its players go back to the open world.

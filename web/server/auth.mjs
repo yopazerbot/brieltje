@@ -49,6 +49,7 @@ const SESSION_MS = 12 * 3600_000;
 const MAX_FAILS = 10; // wrong admin passwords per address
 const FAIL_WINDOW_MS = 15 * 60_000;
 const ADMIN_FAILS = 20; // tries at the admin password in an hour, from browsers that never logged in as admin
+const SESSION_CODE_FAILS = 5; // wrong two-step codes per admin session in FAIL_WINDOW_MS (off, new recovery codes)
 const DEVICE_MS = 90 * 24 * 3600_000;
 export const NAME_RE = /^[a-z0-9_-]{2,20}$/;
 const ADMIN_KEY = '#admin'; // what the admin's device cookie is signed for, whatever the name
@@ -222,6 +223,7 @@ export class Auth {
     this.claiming = new Set();
     this.onLift = null; // server/accounts.mjs: its own lockouts lifted with these
     this.mfa = new AdminMfa(this, ADMIN_PASSWORD); // the admin's two-step login (server/adminMfa.mjs)
+    this.codeFails = new Attempts(FAIL_WINDOW_MS); // wrong two-step codes per admin session (codeLimited)
     setInterval(() => this.cleanup(), 60_000).unref();
     setInterval(() => this.pruneLog(), 3600_000).unref();
   }
@@ -443,17 +445,6 @@ export class Auth {
       if (this.adminFails.count(ADMIN_KEY, now) === ADMIN_FAILS) this.log('login_admin_limited', req, { username: ADMIN_KEY });
       return { error: 'Wrong password.', code: 'wrongPassword', status: 401 };
     }
-    // Two-step login (server/adminMfa.mjs): the attempt stays counted until a right code comes, so "a code is
-    // needed" never lets anyone try passwords for free, and wrong codes count like wrong passwords.
-    if (this.mfa.on) {
-      if (!code) return { error: 'Type the 6-digit code from your authenticator app.', code: 'mfaNeeded', status: 401 };
-      if (!(await this.mfa.check(code))) {
-        this.log('login_mfa_failed', req, { username: name });
-        return { error: 'That code is not right. Type the 6 digits the app shows now.', code: 'wrongCode', status: 401 };
-      }
-    }
-    this.failures.undo(ip, now);
-    this.adminFails.undo(ADMIN_KEY, now);
     const until = this.blocked.get(name);
     if (until && until > now) {
       this.log('login_blocked_kicked', req, { username: name });
@@ -465,6 +456,22 @@ export class Auth {
     // A player's account name stays theirs: the admin password never logs in under it. Asked only after the
     // right admin password, so it tells a guesser nothing.
     if (await this.store.getAccount(name)) return { error: `${name} is a player's account. Pick another name.`, code: 'nameAccount', args: { name }, status: 409 };
+    // Two-step login (server/adminMfa.mjs), last, so a refused name never uses up a code. The right password
+    // without a code isn't counted (every wrong password was, and the right one is no secret to whoever typed
+    // it); a wrong code stays counted like a wrong password.
+    if (this.mfa.on) {
+      if (!code) {
+        this.failures.undo(ip, now);
+        this.adminFails.undo(ADMIN_KEY, now);
+        return { error: 'Type the 6-digit code from your authenticator app.', code: 'mfaNeeded', status: 401 };
+      }
+      if (!(await this.mfa.check(code))) {
+        this.log('login_mfa_failed', req, { username: name });
+        return { error: 'That code is not right. Type the 6 digits the app shows now.', code: 'wrongCode', status: 401 };
+      }
+    }
+    this.failures.undo(ip, now);
+    this.adminFails.undo(ADMIN_KEY, now);
     const epoch = this.epoch.get(name) || 0; // kicked while the session is saved: it doesn't count
     const token = randomBytes(32).toString('base64url');
     const key = keyOf(token);
@@ -553,13 +560,16 @@ export class Auth {
   }
 
   /** A two-step code typed by the logged-in admin (server/adminMfa.mjs): over the limit for wrong ones from here? */
-  codeLimited(req) {
-    return this.failures.count(bucketOf(clientIp(req)), Date.now()) >= MAX_FAILS;
+  codeLimited(req, sessionKey) {
+    const now = Date.now();
+    return this.failures.count(bucketOf(clientIp(req)), now) >= MAX_FAILS || this.adminFails.count(ADMIN_KEY, now) >= ADMIN_FAILS
+      || this.codeFails.count(sessionKey, now) >= SESSION_CODE_FAILS;
   }
 
   /** A wrong two-step code: counted like a wrong admin password, per address and in all. */
-  codeWrong(req, by) {
+  codeWrong(req, by, sessionKey) {
     const now = Date.now();
+    this.codeFails.add(sessionKey, now);
     this.failures.add(bucketOf(clientIp(req)), now);
     this.adminFails.add(ADMIN_KEY, now);
     this.log('mfa_code_failed', req, { username: by });

@@ -78,7 +78,7 @@ test('logging in: the password, then a code; a code works once; wrong ones count
   const r = await auth.mfa.confirm(key, totp(secret, Math.floor(Date.now() / 30000) - 1));
   const asked = await auth.login(req('192.0.2.7'), 'yoshi', secretPass);
   assert.equal(asked.code, 'mfaNeeded');
-  assert.equal(auth.failures.count('192.0.2.7', Date.now()), 1, 'still counted until a right code');
+  assert.equal(auth.failures.count('192.0.2.7', Date.now()), 0, 'the right password is not counted; wrong ones and wrong codes are');
   assert.equal((await auth.login(req('192.0.2.7'), 'yoshi', 'wrong', '123456')).code, 'wrongPassword', 'the password first');
   assert.equal((await auth.login(req('192.0.2.7'), 'yoshi', secretPass, '000000')).code, 'wrongCode');
   const now = totp(secret, Math.floor(Date.now() / 30000));
@@ -110,6 +110,29 @@ test('after a restart it is still on; a new ADMIN_PASSWORD turns it off', async 
   await reset.mfa.load(true);
   assert.equal(reset.mfa.on, false);
   assert.equal(store.meta.get('admin_mfa'), '');
+});
+
+test("the logged-in admin's wrong codes: five per session, then that session waits", async () => {
+  const { auth, key, secret } = await setUp();
+  await auth.mfa.confirm(key, totp(secret, Math.floor(Date.now() / 30000)));
+  for (let i = 0; i < 5; i++) {
+    assert.equal(auth.codeLimited(req(`192.0.2.${50 + i}`), key), false);
+    auth.codeWrong(req(`192.0.2.${50 + i}`), 'yoshi', key);
+  }
+  assert.equal(auth.codeLimited(req('192.0.2.99'), key), true, 'a new address does not help');
+  assert.equal(auth.codeLimited(req('192.0.2.99'), 'another-session'), false);
+});
+
+test('without ADMIN_PASSWORD at start, two-step login is kept for when it is back', async () => {
+  const { auth, store, key, secret } = await setUp();
+  await auth.mfa.confirm(key, totp(secret, Math.floor(Date.now() / 30000)));
+  const { AdminMfa } = await import('./adminMfa.mjs');
+  const none = new AdminMfa({ store, log: () => {} }, '');
+  await none.load(false);
+  assert.notEqual(store.meta.get('admin_mfa'), '');
+  const back = new AdminMfa({ store, log: () => {} }, secretPass);
+  await back.load(false);
+  assert.equal(back.on, true);
 });
 
 test('off and new recovery codes each need a code', async () => {

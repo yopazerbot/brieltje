@@ -5,20 +5,22 @@
 // - Turning it on (brieltje.be/admin, Security): the server makes a random 160-bit secret and shows it as a
 //   QR code (server/qr.mjs), a link that opens the app on the same phone, and the key to type. It counts
 //   only once a code from the app is typed back. Then 8 recovery codes are shown, once.
-// - The secret is kept encrypted (AES-256-GCM) with a key made from ADMIN_PASSWORD, which lives in Railway's
-//   variables, never in the database: the database alone gives nothing to make codes with.
+// - The secret is kept encrypted (AES-256-GCM) with a key made from ADMIN_PASSWORD by scrypt (16 MB, a random
+//   salt kept with it), and ADMIN_PASSWORD lives in Railway's variables, never in the database: the database
+//   alone gives nothing to make codes with, and guessing the password from it is as slow as from its hash.
 // - A code is taken in its own 30 seconds and one step either side (a phone's clock may be a little off),
 //   and never twice: a step once used is refused, so a code someone saw can't be replayed.
 // - Wrong codes count like wrong admin passwords (server/auth.mjs): per address and in all.
-// - A recovery code (10 characters) works once instead of a code. Kept only as SHA-256 hashes: they are random
-//   enough that a hash can't be guessed back.
+// - A recovery code (10 characters, about 50 bits) works once instead of a code. Kept only as an HMAC with the
+//   key above: without ADMIN_PASSWORD the stored ones can't even be tried.
 // - Lost the phone and the recovery codes: change ADMIN_PASSWORD in Railway. At the next start the server
 //   sees the new password (its fingerprint, server/auth.mjs) and turns two-step login off, and says so in the
 //   log. Whoever can change Railway's variables owns the server anyway.
 // - Turning it on ends every other admin session (they never typed a code). Turning it off, or new recovery
 //   codes, needs a code.
 
-import { createCipheriv, createDecipheriv, createHash, createHmac, hkdfSync, randomBytes, timingSafeEqual } from 'node:crypto';
+import { createCipheriv, createDecipheriv, createHmac, randomBytes, scrypt, timingSafeEqual } from 'node:crypto';
+import { promisify } from 'node:util';
 import { svgPath } from './qr.mjs';
 
 const STEP_S = 30;
@@ -67,7 +69,7 @@ export function stepOf(secret, code, now = Date.now()) {
   return found;
 }
 
-const sha = (s) => createHash('sha256').update(s).digest('base64url');
+const scryptAsync = promisify(scrypt);
 const normal = (code) => String(code ?? '').toLowerCase().replace(/[^a-z0-9]/g, '');
 
 export class AdminMfa {
@@ -75,16 +77,24 @@ export class AdminMfa {
   constructor(auth, password) {
     this.auth = auth;
     this.store = auth.store;
-    this.key = password ? Buffer.from(hkdfSync('sha256', password, 'brieltje admin mfa', 'totp secret', 32)) : null;
+    this.password = password || '';
+    this.key = null; // made from the password at start (load), with its salt
     this.state = null; // { secret: Buffer, step, recovery: [hash] } when on
     this.pending = new Map(); // session key -> { secret, until }: being set up
   }
 
   /** Start-up: on or off, from the store. `passwordChanged`: ADMIN_PASSWORD is new, so two-step login goes off. */
   async load(passwordChanged) {
+    if (this.password) {
+      let salt = await this.store.getMeta('admin_mfa_salt');
+      if (!salt) await this.store.setMeta('admin_mfa_salt', (salt = randomBytes(16).toString('base64')));
+      this.key = Buffer.from(await scryptAsync(this.password, Buffer.from(salt, 'base64'), 32, { N: 16384, r: 8, p: 1 }));
+    }
     const raw = await this.store.getMeta('admin_mfa');
     if (!raw) return;
-    if (passwordChanged || !this.key) {
+    // No ADMIN_PASSWORD at all: there is no admin to log in, and it stays as it is for when the password is back.
+    if (!this.password) return;
+    if (passwordChanged) {
       await this.store.setMeta('admin_mfa', '');
       this.auth.log('mfa_reset', null, { detail: 'ADMIN_PASSWORD changed: two-step login is off' });
       return;
@@ -130,7 +140,7 @@ export class AdminMfa {
       await this.save();
       return true;
     }
-    const h = sha(normal(code));
+    const h = this.mac(normal(code));
     const i = normal(code).length === 10 ? s.recovery.indexOf(h) : -1;
     if (i < 0) return false;
     s.recovery.splice(i, 1);
@@ -139,9 +149,21 @@ export class AdminMfa {
     return true;
   }
 
+  /** A recovery code as kept: an HMAC with the key (normalised: lower case, no dash). */
+  mac(code) {
+    return createHmac('sha256', this.key).update(code).digest('base64url');
+  }
+
   recoveryCodes() {
-    const codes = Array.from({ length: RECOVERY }, () => [...randomBytes(10)].map((x) => ABC[x % ABC.length]).join(''));
-    return { codes: codes.map((c) => `${c.slice(0, 5)}-${c.slice(5)}`), hashes: codes.map(sha) };
+    // Evenly from the alphabet: bytes past the last whole round of it are drawn again.
+    const pick = () => {
+      for (;;) {
+        const x = randomBytes(1)[0];
+        if (x < 256 - (256 % ABC.length)) return ABC[x % ABC.length];
+      }
+    };
+    const codes = Array.from({ length: RECOVERY }, () => Array.from({ length: 10 }, pick).join(''));
+    return { codes: codes.map((c) => `${c.slice(0, 5)}-${c.slice(5)}`), hashes: codes.map((c) => this.mac(c)) };
   }
 
   /** What the admin page shows. */
@@ -174,8 +196,10 @@ export class AdminMfa {
     const { codes, hashes } = this.recoveryCodes();
     this.state = { secret: p.secret, step, recovery: hashes };
     await this.save();
+    const me = this.auth.sessions.get(sessionKey)?.username;
     for (const [k, s] of [...this.auth.sessions]) {
       if (s.role === 'admin' && k !== sessionKey) {
+        if (s.username !== me) this.auth.revoke(s.username); // a login under that name still in progress gets nothing either
         this.auth.sessions.delete(k);
         await this.store.deleteSession(k);
       }
