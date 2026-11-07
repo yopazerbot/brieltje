@@ -32,7 +32,8 @@ const en = {
   'tactics.prepare': 'Reload and prepare · {n} rewards on the map',
   // ---- The page, the HUD's fixed parts
   'page.title': 'Brieltje: Smetlede and Briel in 3D',
-  'brand.wip': 'Work in progress',
+  // The small mark beside the wordmark, on the start screen and while playing
+  'brand.beta': 'Beta',
   'hud.menu': 'Menu',
   'hud.captureHint': 'Click to look around',
   'score.title': 'Scoreboard',
@@ -72,7 +73,6 @@ const en = {
   'kbd.auto': 'Automatic',
 
   // ---- Start screen
-  'start.sub': 'Work in progress',
   // The start screen's welcome, under the wordmark
   'start.intro': 'Welcome to Smetlede and Briel.',
   // The sign-up link under the start buttons (brieltje.be/interested): three short lines
@@ -823,7 +823,8 @@ const nl = {
   'tactics.prepare': 'Herlaad en bereid je voor · {n} beloningen op de kaart',
   // ---- The page, the HUD's fixed parts
   'page.title': 'Brieltje: Smetlede en Briel in 3D',
-  'brand.wip': 'In aanbouw',
+  // Bèta: the Dutch spelling of the Greek letter and of a bètaversie (Groene Boekje, VRT Taal)
+  'brand.beta': 'Bèta',
   'hud.menu': 'Menu',
   'hud.captureHint': 'Klik om rond te kijken',
   'score.title': 'Scorebord',
@@ -860,7 +861,6 @@ const nl = {
   'kbd.auto': 'Automatisch',
 
   // ---- Start screen
-  'start.sub': 'In aanbouw',
   'start.intro': 'Welkom in Smetlede en Briel.',
   'start.invite': 'Samen spelen in het echt?',
   'start.inviteHouse': 'Ook je eigen huis kan in het spel.',

@@ -39,7 +39,8 @@
     <div id="slides-controls" data-slides-controls></div>
     <div id="hud">
       <div id="damage"></div>
-      <div id="brand"><svg class="wordmark" viewBox="0 0 2993 898" role="img" aria-label="Brieltje"><use href="#wordmark"/></svg><span data-i18n="brand.wip">Work in progress</span></div>
+      <!-- The Beta mark beside the wordmark (style.css .beta); with touch controls the mark alone, beside the top row of buttons. -->
+      <div id="brand"><svg class="wordmark" viewBox="0 0 2993 898" role="img" aria-label="Brieltje"><use href="#wordmark"/></svg><span class="beta" data-i18n="brand.beta">Beta</span></div>
       <div id="who"></div>
       <div id="place"></div>
       <div id="menu-hint"><kbd>Esc</kbd> <span data-i18n="hud.menu">Menu</span></div>
@@ -126,11 +127,11 @@
            where to start, and the start buttons; the first is the one to press (style.css). -->
       <div class="panel" id="start-panel">
         <header class="start-head">
-          <h1 class="start-brand"><svg class="wordmark" viewBox="0 0 2993 898" role="img" aria-label="Brieltje"><use href="#wordmark"/></svg></h1>
+          <div class="brand-line"><h1 class="start-brand"><svg class="wordmark" viewBox="0 0 2993 898" role="img" aria-label="Brieltje"><use href="#wordmark"/></svg></h1><span class="beta" data-i18n="brand.beta">Beta</span></div>
           <!-- English or Dutch, each in its own language; remembered in this browser (src/i18n.ts). -->
           <div class="lang-pick" role="group" aria-label="Language" data-i18n-aria="lang.label"><button type="button" class="textbtn" data-lang="en" lang="en">English</button><button type="button" class="textbtn" data-lang="nl" lang="nl">Nederlands</button></div>
         </header>
-        <p class="intro"><span data-i18n="start.intro">Welcome to Smetlede and Briel.</span> <span class="wip" data-i18n="start.sub">Work in progress</span></p>
+        <p class="intro"><span data-i18n="start.intro">Welcome to Smetlede and Briel.</span></p>
         <p id="mobile-note" class="mobile-note hidden" data-i18n="start.mobileNote">Best on a laptop or desktop. Hold your device sideways to play by touch.</p>
         <div id="who-box">
           <label class="field" for="nick" data-i18n="start.name">Your name</label>

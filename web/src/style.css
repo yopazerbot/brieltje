@@ -71,11 +71,18 @@ button, input, select, textarea { font-family: inherit; }
 /* The top-middle messages' box: no box of its own on a desktop, a stack with touch controls. */
 #hud-top { display: contents; }
 
-/* The wordmark top left while playing, with "Work in progress" beside it. A dark outline round the
+/* The wordmark top left while playing, with the Beta mark beside it. A dark outline round the
    letters (drawn under them) keeps it readable on a bright sky; nothing in it moves. */
 #brand { position: absolute; top: 16px; left: 24px; display: flex; align-items: center; gap: 10px; }
 #brand .wordmark { height: 28px; color: var(--ink); stroke: rgba(8, 12, 16, 0.6); stroke-width: 64px; stroke-linejoin: round; paint-order: stroke; }
-#brand span { font-size: 13px; font-weight: 800; color: var(--ink); opacity: 0.85; }
+/* Beta: a small quiet tag, the same on the start screen and in the HUD. Never in the way: it takes no
+   clicks or taps, and it is not lamplight (that is for what to press). */
+.beta {
+  flex: none; padding: 1px 7px 2px; font-size: 12px; font-weight: 800; line-height: 1.3; letter-spacing: 0.02em; white-space: nowrap;
+  color: var(--ink-soft); border: 1px solid var(--line-strong); border-radius: 6px; pointer-events: none; user-select: none; -webkit-user-select: none;
+}
+/* Over the 3D view: a faint dark fill instead of the HUD's text shadow, so it reads on a bright sky without standing out. */
+#brand .beta { color: rgba(245, 239, 228, 0.82); background: rgba(12, 18, 24, 0.38); border-color: rgba(245, 239, 228, 0.3); text-shadow: none; }
 /* The menu's key, always in view while playing. */
 #menu-hint { position: absolute; top: 104px; left: 24px; font-size: 14px; opacity: 0.9; }
 #menu-hint kbd {
@@ -363,9 +370,9 @@ body.touch[data-touch=fall] #touch .t-down { right: 120px; bottom: 30px; width: 
 /* The HUD round the touch controls, on phones and tablets alike: the menu, sound and full screen
    buttons in a row top left with where you are under them, the chat above the stick, the map
    with the ammo top right, messages in the middle of the top, and the prompt and the health
-   between the thumbs. The brand, your own name (it is in the menu and the online list) and the
+   between the thumbs. The wordmark (its Beta mark stays, beside the row), your own name (it is in the menu and the online list) and the
    desktop's lines (keys, controller, credit, weapon list) go. */
-body.touch #brand, body.touch #who, body.touch #menu-hint, body.touch #pad, body.touch #credit, body.touch #fps,
+body.touch #brand .wordmark, body.touch #who, body.touch #menu-hint, body.touch #pad, body.touch #credit, body.touch #fps,
 body.touch #slots, body.touch #nades, body.touch #capture-hint { display: none; }
 body.touch #place, body.touch #online {
   left: 12px; right: auto; max-width: 220px; overflow: hidden; white-space: nowrap; text-overflow: ellipsis;
@@ -439,6 +446,10 @@ body.touch #sound-btn { left: calc(62px + env(safe-area-inset-left, 0px)); }
 body.touch #full-btn { left: calc(112px + env(safe-area-inset-left, 0px)); }
 body.touch #sound-btn .ico, body.touch #full-btn .ico { font-size: 18px; }
 body.touch #sound-btn .lbl, body.touch #full-btn .lbl { display: none; }
+/* The Beta mark alone at the end of that row (after Full screen, or after ☰ where there is none),
+   clear of the place line under it and of the messages in the middle of the top (from 240 px). */
+body.touch #brand { top: 21px; left: 116px; }
+body.touch:has(#full-btn.hidden) #brand { left: 66px; }
 /* Its explanation (Add to Home Screen on an iPhone) opens beside the row, clear of the buttons; the next tap closes it. */
 body.touch #full-hint { top: calc(8px + env(safe-area-inset-top, 0px)); left: calc(164px + env(safe-area-inset-left, 0px)); right: auto; max-width: min(340px, 50vw); font-size: 13px; }
 /* A tablet: a little more room for the map and the chat. */
@@ -683,7 +694,9 @@ body.on-start #overlay { background: linear-gradient(180deg, rgba(9, 14, 19, 0.2
 .lang-pick .textbtn:hover { color: var(--ink); }
 .lang-pick .textbtn.selected { color: var(--ink); background: var(--dusk-high); }
 .intro { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 12px; margin: 12px 0 22px; font-size: 20px; line-height: 1.3; }
-.wip { padding: 3px 10px; font-size: 13px; font-weight: 800; line-height: 1.3; color: var(--lamp); background: var(--lamp-soft); border-radius: 999px; }
+/* The Beta mark hangs beside the wordmark, level with the top of its letters (the j's tail goes below). */
+.brand-line { display: flex; align-items: flex-start; gap: 12px; min-width: 0; }
+.brand-line .beta { margin-top: 0.55em; }
 .mobile-note { margin: -8px 0 18px; padding: 10px 14px; font-size: 14.5px; line-height: 1.4; color: var(--ink-soft); background: var(--dusk-raised); border-radius: var(--r-field); }
 /* Together picked: the PIN takes the touch screen note's place (it has been read by then). */
 #start-panel:has(#mp-pin-row:not(.hidden), #mp-login:not(.hidden)) .mobile-note { display: none; }
