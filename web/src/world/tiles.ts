@@ -281,7 +281,7 @@ export class Tiles {
     if (count) im.computeBoundingSphere();
   }
 
-  /** Something else that is hidden beyond the draw distance (the house, the bungalow), where it stands; or beyond each, if nearer. */
+  /** Something else that is hidden beyond the draw distance (the house, the bungalow), where it stands; or beyond `reach`, if nearer. */
   track(object: THREE.Object3D, box = new THREE.Box3().setFromObject(object), reach = Infinity): void {
     this.tracked.push({ object, box, reach });
     this.wait = 0;
