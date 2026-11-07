@@ -61,6 +61,7 @@ import { boxesOverlap, boxPoints, clearOfPortals, makeIndoors } from '../shared/
 import CARS from '../shared/car.json';
 import { buildHedges, buildTile, dipMesh, waterMesh } from './world/surroundings';
 import { buildHorizon } from './world/horizon';
+import { wearLonePatches, weatherYards } from './world/yards';
 import { GroundShade } from './world/groundShade';
 import { groundPiece, groundPieceCoarse, groundPieces, groundSkirt, pieceOf, PIECE, terrain, type GroundCuts } from './world/terrain';
 import { splitTiles, Tiles } from './world/tiles';
@@ -301,6 +302,7 @@ const weather = new Weather(renderer, scene, sun, indoorLight, environmentReady,
 const detailAt: [number, number][] = [[4.45, -3]]; // trees get their full crowns within 160 m of these (and the village's landmarks)
 const detail = (x: number, z: number) => detailAt.some(([cx, cz]) => Math.hypot(x - cx, z - cz) < 160);
 // The houses round the two portals at home are our own models (world/homeStreet.ts): their open-data blocks aren't drawn.
+if (house.surroundings) wearLonePatches(house.surroundings); // light patches away from the buildings: worn ground (world/yards.ts)
 const ringData = withoutModelled(house.surroundings ?? { roofs: [], trees: [] });
 const ringTiles = (s: typeof ringData.kept) => [...splitTiles(withRoadDetail(s))].map(([key, t]) => ({ key, pieces: buildTile(t, poles, renderer, house.ground, detail) }));
 tiles.addSet(ringTiles(ringData.kept), true);
@@ -331,6 +333,8 @@ groundShade.apply(grassMat, 0.35, true);
 groundShade.addGrass(house.surroundings?.grass); // the gardens' stripes and the meadows
 // The garden's own paths, drive and planted borders too (not the terraces: one is on the roof).
 for (const m of [...groundFamilies(renderer), roadPaint, surfaceMaterial('paving', renderer), surfaceMaterial('bed', renderer)]) groundShade.apply(m as THREE.MeshStandardMaterial);
+// The yards and gravel round the houses weathered, after the shading (world/yards.ts).
+weatherYards(['pave_light', 'gravel'].map((n) => blockMaterial(n, renderer).material as THREE.MeshStandardMaterial));
 // The fields' rows (world/fields.ts) from the start: their large shader is compiled while loading. Added when the
 // countryside came, the fields waited for it, and the game stopped for up to two seconds just after it began.
 patchFields(blockMaterial('field_soil', renderer).material as THREE.MeshStandardMaterial);
@@ -3209,6 +3213,7 @@ async function buildVillage(): Promise<void> {
   // A frame between the big steps: built all at once, it stopped the game for a second just after it began.
   const between = () => new Promise((r) => setTimeout(r, 0));
   const data = (await import('./data/village.json')).default as unknown as VillageData;
+  wearLonePatches(data); // light patches away from the buildings: worn ground (world/yards.ts)
   const first = poles.length;
   poles.push(...(data.poles ?? []));
   const landmarks = (data.landmarks ?? []).map((l) => {
