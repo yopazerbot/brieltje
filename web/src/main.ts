@@ -17,6 +17,7 @@ import { CLOWN_DEFAULTS, Clowns, KINDS, type Kind } from './world/clowns';
 import { bruteDamage, hurtBy } from '../shared/brutes.mjs';
 import { prepareShotRaycasts } from './world/shotRaycast';
 import { Zombies } from './world/zombies';
+import { Villagers } from './world/villagers';
 import { BIG as BIG_ZOMBIE, bigOf, Horde, houseAreas, makeNav } from '../shared/zombies.mjs';
 import { Loot, LOOT } from '../shared/loot.mjs';
 import { Rewards } from './world/rewards';
@@ -576,6 +577,10 @@ function prepareZombies(): void {
   });
 }
 prepareZombies();
+// Villagers walking and cycling round the village, only in Explore (world/villagers.ts); loaded the first time Explore needs them.
+const villagers = new Villagers(world, () => quality === 'low' || phone, (root) => precompile(root));
+const villagerLook = new THREE.Vector3();
+scene.add(villagers.group);
 // Three horses grazing in the meadow across the road.
 const horses = new Horses(world);
 scene.add(horses.group);
@@ -2789,6 +2794,8 @@ renderer.setAnimationLoop((now: number) => {
   portals.group.visible = !menu.onStartScreen;
   if (menu.onStartScreen) weapon.hidden = true; // nor the pistol in your hand: from the start view its barrel is a ring mid-screen
   games.setExploring(!weapon.enabled); // the teams game's and Zombies' hints follow a change of mode
+  // The villagers only in Explore, and not while a game with weapons runs: never something to shoot at.
+  villagers.setActive(!menu.onStartScreen && !weapon.enabled && !games.zombies && games.view.kind !== 'teams');
   // The Zombies game: the clowns and strongmen stand aside, nobody flies, and whoever is down waits for the wave.
   clowns.paused = games.standAside;
   player.canFly = rules.flying && !games.zombies;
@@ -3242,6 +3249,10 @@ renderer.setAnimationLoop((now: number) => {
   // The Zombies game: alone its horde steps here; together the server's ticks move them. Then they're drawn.
   if (!net.connected) soloTick(dt);
   zombies.update(dt, camera.position);
+  villagers.update(dt, camera.position, camera.getWorldDirection(villagerLook), driving || riding || horses.mounted >= 0 ? null : { x: player.x, z: player.z, feet: player.feet }, [
+    ...roadLife.traffic.cars,
+    ...cars.filter((c) => (driving && c === car) || !!c.driver).map((c) => ({ x: c.x, z: c.z, yaw: c.yaw, length: c.spec.length, width: c.spec.width })),
+  ]);
   horses.update(dt, camera.position);
   bikes.update(dt, camera.position);
   // The footballs: walked into on foot (alone here; together the server does it too, and leads).
@@ -3265,7 +3276,7 @@ renderer.setAnimationLoop((now: number) => {
   countryside?.update(dt, camera);
   portals.update(dt, camera, renderer.domElement.height);
   // The traffic stops for people and for cars someone drives, never for a parked car (Yoshi: a Tesla on the drive held it up).
-  roadLife.update(dt, camera.position, [...avatars.obstacles(), { x: player.x, z: player.z, r: 0.35 }], cars.filter((c) => (driving && c === car) || !!c.driver));
+  roadLife.update(dt, camera.position, [...avatars.obstacles(), { x: player.x, z: player.z, r: 0.35 }, ...villagers.obstacles()], cars.filter((c) => (driving && c === car) || !!c.driver));
   mapTimer += dt;
   if (mapTimer > 0.05) {
     mapTimer = 0;
@@ -3727,6 +3738,7 @@ if (import.meta.env.DEV) {
       horses,
       clowns,
       zombies,
+      villagers,
       zombiesSolo: { start: startSolo, stop: stopSolo, state: () => solo },
       /** Zombies' rewards: those lying and the claymores down, and what you have. */
       rewards,
