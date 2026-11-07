@@ -1,7 +1,7 @@
 /**
  * The page's entry: the start screen, which works before the world exists. The page brings only
  * this, the texts and the start picture, and asks the server who you are (/api/me). That covers
- * the language, your name, alone or together (joining as a guest, an account, the admin's login), the mode,
+ * the language, your name, alone or together (joining as a guest, or logging in), the mode,
  * the graphics setting, the controller, and the Sound and Full screen buttons (the start screen's,
  * and the in-game menu's own in its header).
  *
@@ -16,7 +16,7 @@ import { Input } from './controls/input';
 import { loadMode, saveMode } from './graphics';
 import { applyStatic, onLang, setLang, t, type Lang } from './i18n';
 import { typing } from './keys';
-import { api, ApiError, errorText, type Me } from './net/client';
+import { api, errorText, type Me } from './net/client';
 import { sound } from './sound';
 import { Menu } from './ui/menu';
 import { AccountCard } from './ui/account';
@@ -130,7 +130,7 @@ menu.onGraphics = (next) => {
   menu.setGraphics(next, null, '');
 };
 
-// ---- Alone or together: joining as a guest, an account (src/ui/account.ts), or the admin's login (the Admin link). It is all
+// ---- Alone or together: joining as a guest, or logging in (src/ui/account.ts: players and the admin alike). It is all
 // HTTP, so it works on the start screen. The world (main.ts) follows every change once it is there,
 // and only then connects to the others.
 export let me: Me | null = null;
@@ -211,35 +211,6 @@ function logoutForSure(): void {
   api.logout().then(logoutDone).catch(() => {});
 }
 
-/** The admin logs in under the name typed above, with the admin password. */
-async function login(): Promise<void> {
-  const user = ($('nick') as HTMLInputElement).value.trim();
-  const pass = $('mp-pass') as HTMLInputElement;
-  if (!user) return setAccount(null, () => t('err.nameFirst'));
-  if (!pass.value) return setAccount(null, () => t('err.password'));
-  const code = $('mp-code') as HTMLInputElement;
-  const gen = accountGen;
-  try {
-    const account = await api.login(user, pass.value, code.classList.contains('hidden') ? undefined : code.value.trim());
-    pass.value = code.value = '';
-    code.classList.add('hidden');
-    if (gen !== accountGen) return logoutForSure();
-    logoutDone();
-    setAccount(account);
-  } catch (e) {
-    // Two-step login on: the password was right, now the code (the password stays in its field until then).
-    const asked = e instanceof ApiError && (e.code === 'mfaNeeded' || e.code === 'wrongCode');
-    code.value = '';
-    if (asked) {
-      code.classList.remove('hidden');
-      code.focus();
-    } else {
-      pass.value = '';
-      code.classList.add('hidden');
-    }
-    setAccount(null, errorText(e));
-  }
-}
 /** A join on its way to the server: a second click (Join twice, or Join then a start button) waits for it instead of sending another. */
 let joining: Promise<boolean> | null = null;
 /**
@@ -305,7 +276,6 @@ document.querySelectorAll<HTMLButtonElement>('[data-mp]').forEach((b) =>
       accountMsg = null; // an old complaint doesn't greet you
       showAccountText();
     }
-    if (multi) $('mp-login').classList.add('hidden');
   }),
 );
 // Typing in a field that was complained about: the outline and the complaint go.
@@ -323,10 +293,6 @@ const joinHere = () => void join(($('mp-nick2') as HTMLInputElement).value.trim(
 $('mp-join2').addEventListener('click', joinHere);
 $('mp-nick2').addEventListener('keydown', (e) => {
   if ((e as KeyboardEvent).key === 'Enter') joinHere();
-});
-$('mp-account').addEventListener('click', () => {
-  const open = $('mp-login').classList.toggle('hidden') === false;
-  if (open) ($('mp-pass') as HTMLInputElement).focus();
 });
 // Accounts (src/ui/account.ts): logging in and signing up answer like a join, so leaving meanwhile still wins.
 new AccountCard({
@@ -349,13 +315,6 @@ new AccountCard({
     accountGen++;
     setAccount(null, message);
   },
-});
-$('mp-login-btn').addEventListener('click', () => void login());
-$('mp-pass').addEventListener('keydown', (e) => {
-  if ((e as KeyboardEvent).key === 'Enter') void login();
-});
-$('mp-code').addEventListener('keydown', (e) => {
-  if ((e as KeyboardEvent).key === 'Enter') void login();
 });
 // Leaving plays alone at once, without waiting for the server: with it out of reach the answer can
 // take seconds. The logout itself is made sure of (see logoutForSure).

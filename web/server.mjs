@@ -22,7 +22,7 @@ import { extname, join, resolve, sep } from 'node:path';
 import { openStore } from './server/store.mjs';
 // First among the game's modules: the private data (server/privateData.mjs) is open before they load.
 import { privateData } from './server/privateData.mjs';
-import { Auth, beTime, bucketOf, CLOUDFLARE_ONLY, clientIp, seatOf, viaCloudflare } from './server/auth.mjs';
+import { Auth, beTime, bucketOf, CLOUDFLARE_ONLY, clientIp, NAME_RE, seatOf, viaCloudflare } from './server/auth.mjs';
 import { ACCOUNT_MS, Accounts } from './server/accounts.mjs';
 import { Rooms } from './server/rooms.mjs';
 import { Pairing } from './server/pairing.mjs';
@@ -124,7 +124,7 @@ async function board(place) {
 
 const interest = new Interest(store, { json: (...a) => json(...a), clientKey: (req) => bucketOf(clientIp(req)) });
 // STATS_SECRET locks the day's visitor seed in the store (server/stats.mjs): a Railway variable of its own, never in the database.
-const stats = new Stats(store, { json: (...a) => json(...a), clientKey: (req) => bucketOf(clientIp(req)), game: rooms, readJson: (req) => body(req), isAdmin: (req) => auth.session(req)?.role === 'admin', log: (event, req, extra) => auth.log(event, req, extra), secret: process.env.STATS_SECRET });
+const stats = new Stats(store, { json: (...a) => json(...a), clientKey: (req) => bucketOf(clientIp(req)), game: rooms, readJson: (req) => body(req), isAdmin: (req) => auth.panelAdmin(req), log: (event, req, extra) => auth.log(event, req, extra), secret: process.env.STATS_SECRET });
 const feedback = new Feedback(store, { json: (...a) => json(...a), readJson: (req) => body(req), clientKey: (req) => bucketOf(clientIp(req)), clientIp, session: (req) => auth.session(req), time: beTime });
 const gamenight = new GameNight(store, { json: (...a) => json(...a), readJson: (req) => body(req), clientKey: (req) => bucketOf(clientIp(req)) });
 // The three homes with an access code (server/homes.mjs): who typed a home's code, and the admin's list of them.
@@ -204,24 +204,24 @@ async function api(req, res, url) {
   }
   // The admin's view of the private data: names and counts, never contents.
   if (path === '/api/admin/private' && method === 'GET') {
-    if (auth.session(req)?.role !== 'admin') return json(res, 403, { error: 'Admin only' });
+    if (!auth.panelAdmin(req)) return json(res, 403, { error: 'Admin only' });
     return json(res, 200, privateData.status());
   }
   // The interest page: its public calls, and the admin's list of sign-ups (server/interest.mjs).
   if ((path.startsWith('/api/interest') || path === '/api/address' || path.startsWith('/api/admin/interest'))
-    && await interest.handle(req, res, url, auth.session(req)?.role === 'admin')) return;
+    && await interest.handle(req, res, url, auth.panelAdmin(req))) return;
   // Players' stars and comments (server/feedback.mjs), and the admin's list of them.
   if ((path === '/api/feedback' || path.startsWith('/api/admin/feedback'))
-    && await feedback.handle(req, res, url, auth.session(req)?.role === 'admin')) return;
+    && await feedback.handle(req, res, url, auth.panelAdmin(req))) return;
   // The private homes: the code at a door, and the admin's list of them (server/homes.mjs).
   if ((path === '/api/home/unlock' || /^\/api\/home\/[a-z][a-z0-9_]{1,20}\/inside$/.test(path) || path.startsWith('/api/admin/homes'))
-    && await homes.handle(req, res, url, auth.session(req)?.role === 'admin', auth.session(req)?.key)) return;
+    && await homes.handle(req, res, url, path.startsWith('/api/admin/') ? auth.panelAdmin(req) : auth.session(req)?.role === 'admin', auth.session(req)?.key)) return; // the game's doors for any admin session, the list for the panel's
   // The game night page: its details, sign-ups and own links (server/gamenight.mjs), and the admin's list.
   if ((path === '/api/gamenight' || path.startsWith('/api/gamenight/') || path.startsWith('/api/admin/gamenight'))
-    && await gamenight.handle(req, res, url, auth.session(req)?.role === 'admin')) return;
+    && await gamenight.handle(req, res, url, auth.panelAdmin(req))) return;
   // How much the game is played (server/stats.mjs): the page's beacon, and the admin's numbers and log.
   if ((path === '/api/stats/beacon' || path === '/api/admin/stats' || path === '/api/admin/audit' || path === '/api/admin/live')
-    && await stats.handle(req, res, url, auth.session(req)?.role === 'admin')) return;
+    && await stats.handle(req, res, url, auth.panelAdmin(req))) return;
 
   if (path === '/api/login' && method === 'POST') {
     const b = await body(req);
@@ -244,6 +244,17 @@ async function api(req, res, url) {
   // for 30 days, and the account's device cookie (its own browser isn't locked out by others' guesses).
   if ((path === '/api/account/register' || path === '/api/account/login') && method === 'POST') {
     const b = await body(req);
+    // One login for everyone (Yoshi, 7 Nov 2026: "just let the admin login with admin credentials like anyone
+    // else"): a name that is no player's account is the admin's login, with the admin password and, when it is
+    // on, the two-step code; its limits are the admin's own (server/auth.mjs login). A wrong password answers
+    // as any wrong login does.
+    const name = String(b.username ?? '').trim().toLowerCase();
+    if (path.endsWith('login') && NAME_RE.test(name) && !(await store.getAccount(name))) {
+      const r = await auth.login(req, name, b.password, '', false); // the game: no two-step code (the panel asks it)
+      if (r.code === 'wrongPassword') return refuse(res, { error: 'Wrong name or password.', code: 'wrongLogin', status: 401 });
+      if (r.error) return refuse(res, r);
+      return json(res, 200, { username: r.username, role: r.role }, { 'Set-Cookie': [auth.cookie(r.token, undefined, seat), auth.deviceCookie(r.device)] });
+    }
     const r = path.endsWith('register') ? await accounts.register(req, b) : await accounts.login(req, b);
     if (r.error) return refuse(res, r);
     return json(res, 200, { username: r.username, role: r.role }, { 'Set-Cookie': [auth.cookie(r.token, ACCOUNT_MS / 1000, seat), auth.accountDeviceCookie(r.device)] });
@@ -331,6 +342,8 @@ async function api(req, res, url) {
     return json(res, 200, { lifted: auth.liftLockouts(s.username) });
   }
   // The players' accounts (brieltje.be/admin): the list, and a new password, off, on or delete.
+  // From here on brieltje.be/admin only: the game's admin login doesn't open it while two-step login is on.
+  if (!auth.panelAdmin(req)) return json(res, 403, { error: 'Log in on brieltje.be/admin', code: 'panelOnly' });
   // The admin's two-step login (server/adminMfa.mjs): on or off; setting up (a secret as a QR code, then a code
   // to confirm); off or new recovery codes, each with a code. Wrong codes count like wrong admin passwords.
   if (path === '/api/admin/mfa' && method === 'GET') return json(res, 200, auth.mfa.view());

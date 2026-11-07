@@ -270,7 +270,8 @@ export class Auth {
       if (s.role === 'admin') valid = adminOk;
       else if (s.role === 'guest') valid = !RESERVED.has(s.username) && !(await account(s.username));
       else if (s.role === 'player') valid = !RESERVED.has(s.username) && !!(await account(s.username)) && !(await account(s.username)).disabled;
-      if (valid) this.sessions.set(s.key, { username: s.username, role: s.role, expires: s.expires, ...(s.device ? { device: s.device } : {}) });
+      if (valid && s.role === 'admin') this.sessions.set(s.key, { username: s.username, role: 'admin', expires: s.expires, panel: s.device === 'panel' });
+      else if (valid) this.sessions.set(s.key, { username: s.username, role: s.role, expires: s.expires, ...(s.device ? { device: s.device } : {}) });
       else await this.store.deleteSession(s.key);
     }
   }
@@ -436,7 +437,11 @@ export class Auth {
    * one (so the answer gives nothing away), except from the admin's own browser. Players' wrong
    * passwords count apart (server/accounts.mjs): typos on the same Wi-Fi never lock the admin out.
    */
-  async login(req, username, password, code) {
+  /**
+   * `panel`: a login to brieltje.be/admin (true) or to the game (false). Two-step login is asked for the panel
+   * only (Yoshi, 7 Nov 2026); a game login gets a session the panel refuses while it is on (panelAdmin).
+   */
+  async login(req, username, password, code, panel = true) {
     const ip = bucketOf(clientIp(req));
     const now = Date.now();
     if (this.failures.count(ip, now) >= MAX_FAILS) return { error: 'Too many attempts. Try again in 15 minutes.', code: 'tooMany', status: 429 };
@@ -466,7 +471,7 @@ export class Auth {
     // without a code isn't counted (every wrong password was, and the right one is no secret to whoever typed
     // it); a wrong code stays counted like a wrong password.
     const mfaGen = this.mfa.gen; // turned on while this login runs: it gets no session (below)
-    if (this.mfa.on) {
+    if (this.mfa.on && panel) {
       if (!code) {
         this.failures.undo(ip, now);
         this.adminFails.undo(ADMIN_KEY, now);
@@ -482,7 +487,8 @@ export class Auth {
     const epoch = this.epoch.get(name) || 0; // kicked while the session is saved: it doesn't count
     const token = randomBytes(32).toString('base64url');
     const key = keyOf(token);
-    await this.store.saveSession(key, name, 'admin', now + SESSION_MS);
+    // A panel session is marked (kept in the store's device column, which admin sessions don't use otherwise).
+    await this.store.saveSession(key, name, 'admin', now + SESSION_MS, panel ? 'panel' : null);
     if ((this.epoch.get(name) || 0) !== epoch || (this.blocked.get(name) || 0) > Date.now()) {
       await this.store.deleteSession(key);
       return { error: 'You were removed by the admin. Try again later.', code: 'removed', status: 403 };
@@ -492,11 +498,11 @@ export class Auth {
       await this.store.deleteSession(key);
       return { error: `${name} is a player's account. Pick another name.`, code: 'nameAccount', args: { name }, status: 409 };
     }
-    if (this.mfa.gen !== mfaGen) {
+    if (panel && this.mfa.gen !== mfaGen) {
       await this.store.deleteSession(key);
       return { error: 'Two-step login was just turned on. Log in again with a code.', code: 'mfaNeeded', status: 401 };
     }
-    this.sessions.set(key, { username: name, role: 'admin', expires: now + SESSION_MS });
+    this.sessions.set(key, { username: name, role: 'admin', expires: now + SESSION_MS, panel });
     this.log('login_ok', req, { username: name, detail: 'admin' });
     return { token, username: name, role: 'admin', device: this.newDevice(ADMIN_KEY) };
   }
@@ -568,6 +574,15 @@ export class Auth {
 
   deviceCookie(value) {
     return this.setCookie(this.names.device, value, DEVICE_MS / 1000);
+  }
+
+  /**
+   * The admin on brieltje.be/admin: a session from the panel's own login (which asked for the two-step code),
+   * or any admin session while two-step login is off. The game's admin login works in the game only then.
+   */
+  panelAdmin(req) {
+    const s = this.session(req);
+    return s?.role === 'admin' && (s.panel === true || !this.mfa.on);
   }
 
   /** A two-step code typed by the logged-in admin (server/adminMfa.mjs): over the limit for wrong ones from here? */

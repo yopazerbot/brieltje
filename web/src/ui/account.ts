@@ -249,8 +249,9 @@ export class AccountCard {
         this.hooks.ended(() => t('acct.deleted'));
       }
     } catch (e) {
+      const c = String((e as { code?: unknown }).code ?? '');
       const field = v === 'delete' || v === 'password' ? this.old : this.pass;
-      this.say(errorText(e), true, /password|login/i.test(String((e as { code?: unknown }).code ?? '')) ? field : undefined);
+      this.say(errorText(e), true, /password|login/i.test(c) ? field : undefined);
     } finally {
       this.busy = false;
       this.pass.value = this.old.value = '';

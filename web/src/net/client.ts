@@ -201,12 +201,11 @@ async function call<T>(method: string, path: string, body?: unknown): Promise<T>
 
 export const api = {
   me: () => call<Me & { online: number; max: number }>('GET', '/api/me'),
-  /** The admin's login; `code`: the two-step code, once the server asked for it (server/adminMfa.mjs). */
-  login: (username: string, password: string, code?: string) => call<Me>('POST', '/api/login', code ? { username, password, code } : { username, password }),
   /** `age`: "I'm 13 or older" ticked (src/start.ts); sent only then. */
   join: (name: string, age = false) => call<Me>('POST', '/api/join', age ? { name, age: true } : { name }),
   /** Accounts (server/accounts.mjs, src/ui/account.ts). */
   register: (username: string, email: string, password: string) => call<Me>('POST', '/api/account/register', { username, email, password, age: true }),
+  /** Players and the admin alike (the admin with the admin password; the game never asks the two-step code). */
   accountLogin: (username: string, password: string) => call<Me>('POST', '/api/account/login', { username, password }),
   account: () => call<{ username: string; email: string; created: string }>('GET', '/api/account'),
   changePassword: (old: string, password: string) => call<{ ok: boolean }>('POST', '/api/account/password', { old, password }),
