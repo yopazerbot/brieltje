@@ -201,7 +201,8 @@ async function call<T>(method: string, path: string, body?: unknown): Promise<T>
 
 export const api = {
   me: () => call<Me & { online: number; max: number }>('GET', '/api/me'),
-  login: (username: string, password: string) => call<Me>('POST', '/api/login', { username, password }),
+  /** The admin's login; `code`: the two-step code, once the server asked for it (server/adminMfa.mjs). */
+  login: (username: string, password: string, code?: string) => call<Me>('POST', '/api/login', code ? { username, password, code } : { username, password }),
   /** `age`: "I'm 13 or older" ticked (src/start.ts); sent only then. */
   join: (name: string, age = false) => call<Me>('POST', '/api/join', age ? { name, age: true } : { name }),
   /** Accounts (server/accounts.mjs, src/ui/account.ts). */

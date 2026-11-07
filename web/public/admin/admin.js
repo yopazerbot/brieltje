@@ -24,13 +24,16 @@
     account_password: ['Account password changed', '', ''], account_deleted: ['Account deleted', '', 'admin'], account_reset: ['Account given a new password', '', 'admin'],
     account_off: ['Account turned off', '', 'admin'], account_on: ['Account turned on', '', 'admin'], accounts_pruned: ['Unused accounts deleted', '', 'admin'],
     room_opened: ['Zombies room opened', '', ''], room_closed: ['Zombies room closed', '', ''],
+    login_mfa_failed: ['Wrong two-step code at login', 'bad', 'failed'], mfa_code_failed: ['Wrong two-step code', 'bad', 'failed'],
+    mfa_on: ['Two-step login turned on', '', 'admin'], mfa_off: ['Two-step login turned off', '', 'admin'], mfa_codes: ['New recovery codes', '', 'admin'],
+    mfa_recovery_used: ['Recovery code used', '', 'admin'], mfa_reset: ['Two-step login off (new admin password)', 'bad', 'admin'],
     login_failed: ['Wrong password', 'bad', 'failed'], pin_failed: ['Wrong PIN', 'bad', 'failed'], pin_limited: ['PIN guessing paused for everyone', 'bad', 'failed'],
     pin_limited_address: ['PIN guessing paused for everyone at an address', 'bad', 'failed'], pin_limited_device: ['PIN guessing paused for one browser', 'bad', 'failed'],
     join_refused_kick: ['New browser refused after a kick', 'bad', 'failed'],
     login_admin_limited: ['Admin login paused', 'bad', 'failed'], login_blocked_kicked: ['Removed player tried again', 'bad', 'failed'], lockouts_lifted: ['Lockouts lifted', '', 'admin'],
     solo_start: ['Started alone (name as typed)', '', 'solo'], kick: ['Player removed', '', 'admin'], pin_changed: ['PIN changed', '', 'admin'], rules: ['House rules changed', '', 'admin'], round_won: ['Round won', '', ''],
   };
-  const TABS = ['overview', 'signups', 'gamenight', 'feedback', 'homes', 'accounts', 'logins', 'online'];
+  const TABS = ['overview', 'signups', 'gamenight', 'feedback', 'homes', 'accounts', 'security', 'logins', 'online'];
   const PERIODS = { today: 'Today', yesterday: 'Yesterday', d7: 'Last 7 days', d30: 'Last 30 days' };
   // The hour chart's measures: the button, and a number of them in a tooltip.
   const METRICS = {
@@ -223,6 +226,8 @@
     if (name === 'feedback') loadFeedback();
     if (name === 'homes') loadHomes();
     if (name === 'accounts') loadAccounts();
+    if (name === 'security') loadMfa();
+    if (name === 'online') loadRooms();
   }
   for (const b of tabButtons) b.addEventListener('click', () => openTab(b.dataset.tab, 'push'));
   nav.addEventListener('keydown', (e) => {
@@ -987,6 +992,103 @@
   }
   $('acct-search').addEventListener('input', drawAccounts);
 
+  // ---- the admin's two-step login (GET and POST /api/admin/mfa)
+  const mfaErr = (text) => {
+    $('mfa-err').textContent = text || '';
+    $('mfa-err').hidden = !text;
+  };
+  const mfaShow = (part) => {
+    for (const id of ['mfa-off', 'mfa-setup', 'mfa-codes', 'mfa-on']) $(id).hidden = id !== part;
+  };
+  async function loadMfa() {
+    const r = await fetch('/api/admin/mfa').catch(() => null);
+    if (!r || !r.ok) return;
+    const v = await r.json();
+    if (!$('mfa-codes').hidden) return; // the recovery codes stay until "I have kept them"
+    $('mfa-state').textContent = v.on ? `On. ${count(v.recoveryLeft, 'recovery code')} left.` : 'Off.';
+    $('mfa-state').classList.toggle('on', v.on);
+    mfaShow(v.on ? 'mfa-on' : 'mfa-off');
+    mfaErr('');
+  }
+  const mfaPost = async (data) => {
+    const r = await post('/api/admin/mfa', data).catch(() => null);
+    const d = r ? await r.json().catch(() => ({})) : {};
+    if (!r || !r.ok) {
+      mfaErr(d.error || 'That didn\'t work. Try again.');
+      return null;
+    }
+    mfaErr('');
+    return d;
+  };
+  function showCodes(codes) {
+    $('mfa-code-list').replaceChildren(...codes.map((c) => el('li', '', c)));
+    $('mfa-copied').textContent = '';
+    mfaShow('mfa-codes');
+  }
+  $('mfa-start').addEventListener('click', async () => {
+    const d = await mfaPost({ op: 'start' });
+    if (!d) return;
+    const svg = $('mfa-qr');
+    svg.setAttribute('viewBox', `0 0 ${d.qr.size} ${d.qr.size}`);
+    svg.querySelector('path').setAttribute('d', d.qr.d);
+    $('mfa-link').href = d.uri;
+    $('mfa-key').textContent = d.key;
+    $('mfa-confirm-code').value = '';
+    mfaShow('mfa-setup');
+    $('mfa-confirm-code').focus();
+  });
+  $('mfa-cancel').addEventListener('click', loadMfa);
+  $('mfa-confirm-form').addEventListener('submit', async (e) => {
+    e.preventDefault();
+    const d = await mfaPost({ op: 'confirm', code: $('mfa-confirm-code').value });
+    $('mfa-confirm-code').value = '';
+    if (d) showCodes(d.recovery);
+  });
+  $('mfa-copy').addEventListener('click', async () => {
+    const text = [...$('mfa-code-list').children].map((li) => li.textContent).join('\n');
+    await navigator.clipboard?.writeText(`Brieltje admin recovery codes\n${text}\n`).then(() => ($('mfa-copied').textContent = 'Copied.'), () => ($('mfa-copied').textContent = 'Select and copy them by hand.'));
+  });
+  $('mfa-done').addEventListener('click', () => {
+    $('mfa-code-list').replaceChildren(); // gone from the page
+    $('mfa-codes').hidden = true;
+    loadMfa();
+  });
+  const mfaChange = async (op) => {
+    const code = $('mfa-change-code').value;
+    if (!code.trim()) {
+      mfaErr('Type a code from the app first.');
+      $('mfa-change-code').focus();
+      return;
+    }
+    const d = await mfaPost({ op, code });
+    $('mfa-change-code').value = '';
+    if (!d) return;
+    if (op === 'codes') showCodes(d.recovery);
+    else loadMfa();
+  };
+  $('mfa-change-form').addEventListener('submit', (e) => e.preventDefault());
+  $('mfa-new-codes').addEventListener('click', () => mfaChange('codes'));
+  $('mfa-turn-off').addEventListener('click', () => mfaChange('off'));
+
+  // ---- the Zombies rooms (GET /api/rooms, POST /api/admin/rooms): the admin closes one
+  async function loadRooms() {
+    const r = await fetch('/api/rooms').catch(() => null);
+    if (!r || !r.ok) return;
+    const { rooms } = await r.json();
+    $('room-empty').hidden = rooms.length > 0;
+    $('room-list').replaceChildren(...rooms.map((room) => {
+      const li = el('li');
+      const close = el('button', 'btn ghost danger', 'Close');
+      close.type = 'button';
+      close.addEventListener('click', async () => {
+        const c = await post('/api/admin/rooms', { id: room.id }).catch(() => null);
+        if (c?.ok) loadRooms();
+      });
+      li.append(el('span', '', `${room.owner} · ${room.place}`), el('span', 'muted small', `${room.players} of ${room.max} · ${room.playing ? `wave ${room.wave}` : 'waiting'}`), close);
+      return li;
+    }));
+  }
+
   // ---- the three code-locked homes (server/homes.mjs): a code for each, shown once
   const HOME_NAMES = { house: 'Main house (Briel)', bungalow: 'Bungalow', molenhoek_end: 'End house (Molenhoek)' };
   async function loadHomes() {
@@ -1175,14 +1277,30 @@
   $('login-form').addEventListener('submit', async (ev) => {
     ev.preventDefault();
     $('login-err').hidden = true;
-    const r = await post('/api/login', { username: $('user').value.trim(), password: $('pass').value }).catch(() => null);
-    $('pass').value = '';
+    // With two-step login on, the right password asks for the code: the password stays in its field until then.
+    const code = $('code-box').hidden ? undefined : $('code').value.trim();
+    const r = await post('/api/login', { username: $('user').value.trim(), password: $('pass').value, ...(code ? { code } : {}) }).catch(() => null);
     if (r?.ok) {
+      $('pass').value = $('code').value = '';
+      $('code-box').hidden = true;
       const me = await r.json();
       if (me.role === 'admin') return start();
       $('login-err').textContent = 'This account is not the admin.';
     } else {
-      $('login-err').textContent = (r && (await r.json().catch(() => ({}))).error) || 'Logging in failed.';
+      const d = r ? await r.json().catch(() => ({})) : {};
+      $('code').value = '';
+      if (d.code === 'mfaNeeded' || d.code === 'wrongCode') {
+        $('code-box').hidden = false;
+        $('code').focus();
+        if (d.code === 'mfaNeeded') {
+          $('login-err').hidden = true;
+          return;
+        }
+      } else {
+        $('pass').value = '';
+        $('code-box').hidden = true;
+      }
+      $('login-err').textContent = d.error || 'Logging in failed.';
     }
     $('login-err').hidden = false;
   });

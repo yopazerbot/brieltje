@@ -217,7 +217,7 @@ async function api(req, res, url) {
 
   if (path === '/api/login' && method === 'POST') {
     const b = await body(req);
-    const r = await auth.login(req, b.username, b.password);
+    const r = await auth.login(req, b.username, b.password, typeof b.code === 'string' ? b.code.slice(0, 20) : '');
     if (r.error) return refuse(res, r);
     return json(res, 200, { username: r.username, role: r.role }, { 'Set-Cookie': [auth.cookie(r.token, undefined, seat), auth.deviceCookie(r.device)] });
   }
@@ -297,6 +297,27 @@ async function api(req, res, url) {
     return json(res, 200, { lifted: auth.liftLockouts(s.username) });
   }
   // The players' accounts (brieltje.be/admin): the list, and a new password, off, on or delete.
+  // The admin's two-step login (server/adminMfa.mjs): on or off; setting up (a secret as a QR code, then a code
+  // to confirm); off or new recovery codes, each with a code. Wrong codes count like wrong admin passwords.
+  if (path === '/api/admin/mfa' && method === 'GET') return json(res, 200, auth.mfa.view());
+  if (path === '/api/admin/mfa' && method === 'POST') {
+    const b = await body(req);
+    if (b.op === 'start') {
+      const r = auth.mfa.start(s.key, s.username);
+      return r.error ? refuse(res, r) : json(res, 200, r);
+    }
+    if (!['confirm', 'off', 'codes'].includes(b.op)) return json(res, 400, { error: 'Unknown action', code: 'badOp' });
+    if (auth.codeLimited(req)) return refuse(res, { error: 'Too many attempts. Try again in 15 minutes.', code: 'tooMany', status: 429 });
+    const code = typeof b.code === 'string' ? b.code.slice(0, 20) : '';
+    const r = b.op === 'confirm' ? await auth.mfa.confirm(s.key, code) : await auth.mfa.change(b.op, code, s.username);
+    if (r.code === 'wrongCode') auth.codeWrong(req, s.username);
+    return r.error ? refuse(res, r) : json(res, 200, r);
+  }
+  // The admin closes a Zombies room (server/rooms.mjs): its players go back to the open world.
+  if (path === '/api/admin/rooms' && method === 'POST') {
+    const b = await body(req);
+    return rooms.close(b.id, s.username) ? json(res, 200, { ok: true }) : json(res, 404, { error: 'No such room', code: 'notFound' });
+  }
   if (path === '/api/admin/accounts' && method === 'GET') return json(res, 200, { accounts: await accounts.list() });
   if (path === '/api/admin/accounts' && method === 'POST') {
     const b = await body(req);

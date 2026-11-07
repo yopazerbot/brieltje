@@ -16,7 +16,7 @@ import { Input } from './controls/input';
 import { loadMode, saveMode } from './graphics';
 import { applyStatic, onLang, setLang, t, type Lang } from './i18n';
 import { typing } from './keys';
-import { api, errorText, type Me } from './net/client';
+import { api, ApiError, errorText, type Me } from './net/client';
 import { sound } from './sound';
 import { Menu } from './ui/menu';
 import { AccountCard } from './ui/account';
@@ -217,14 +217,26 @@ async function login(): Promise<void> {
   const pass = $('mp-pass') as HTMLInputElement;
   if (!user) return setAccount(null, () => t('err.nameFirst'));
   if (!pass.value) return setAccount(null, () => t('err.password'));
+  const code = $('mp-code') as HTMLInputElement;
   const gen = accountGen;
   try {
-    const account = await api.login(user, pass.value);
-    pass.value = '';
+    const account = await api.login(user, pass.value, code.classList.contains('hidden') ? undefined : code.value.trim());
+    pass.value = code.value = '';
+    code.classList.add('hidden');
     if (gen !== accountGen) return logoutForSure();
     logoutDone();
     setAccount(account);
   } catch (e) {
+    // Two-step login on: the password was right, now the code (the password stays in its field until then).
+    const asked = e instanceof ApiError && (e.code === 'mfaNeeded' || e.code === 'wrongCode');
+    code.value = '';
+    if (asked) {
+      code.classList.remove('hidden');
+      code.focus();
+    } else {
+      pass.value = '';
+      code.classList.add('hidden');
+    }
     setAccount(null, errorText(e));
   }
 }
@@ -340,6 +352,9 @@ new AccountCard({
 });
 $('mp-login-btn').addEventListener('click', () => void login());
 $('mp-pass').addEventListener('keydown', (e) => {
+  if ((e as KeyboardEvent).key === 'Enter') void login();
+});
+$('mp-code').addEventListener('keydown', (e) => {
   if ((e as KeyboardEvent).key === 'Enter') void login();
 });
 // Leaving plays alone at once, without waiting for the server: with it out of reach the answer can

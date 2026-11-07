@@ -238,3 +238,18 @@ table.gn td:last-child { white-space: nowrap; }
   table.log.hm td.acts .btn { flex: 1 1 auto; min-width: 0; padding: 8px 12px; font-size: 14px; }
   table.log.hm td.acts .tag { flex-basis: 100%; }
 }
+
+/* Two-step login (Security tab): the steps, the QR code dark on white (scanners need the contrast), the codes. */
+.mfa-state { font-weight: 700; }
+.mfa-state.on { color: var(--good); }
+.mfa-steps { margin: 12px 0; padding-left: 22px; }
+.mfa-steps li { margin: 0 0 18px; line-height: 1.5; }
+.mfa-qr { width: min(240px, 70vw); margin: 10px 0; padding: 0; background: #fff; border-radius: 8px; }
+.mfa-qr svg { display: block; width: 100%; height: auto; }
+.mfa-qr path { fill: #000; }
+.mfa-row { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; margin-top: 8px; }
+.mfa-row input { width: 9em; padding: 9px 12px; font: inherit; font-size: 20px; letter-spacing: 0.15em; color: var(--ink); background: var(--field); border: 1px solid var(--line); border-radius: 6px; }
+#mfa-key { word-break: break-all; font-size: 14px; }
+.mfa-codes ol { columns: 2; max-width: 360px; padding-left: 24px; font-family: ui-monospace, Consolas, monospace; font-size: 17px; line-height: 1.8; }
+#room-list li span:first-child { font-weight: 700; }
+#room-list li .btn { margin-left: auto; }

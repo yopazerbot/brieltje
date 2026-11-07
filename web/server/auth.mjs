@@ -34,6 +34,7 @@ import { randomBytes, scrypt, timingSafeEqual, createHash, createHmac } from 'no
 import { promisify } from 'node:util';
 import { BlockList, isIP, isIPv6 } from 'node:net';
 import { sameText } from './constant-time-text.mjs';
+import { AdminMfa } from './adminMfa.mjs';
 
 const scryptAsync = promisify(scrypt);
 const ADMIN = (process.env.ADMIN_USERNAME || 'admin').toLowerCase();
@@ -220,6 +221,7 @@ export class Auth {
     // Names being made into an account right now (server/accounts.mjs register): a guest can't take one meanwhile.
     this.claiming = new Set();
     this.onLift = null; // server/accounts.mjs: its own lockouts lifted with these
+    this.mfa = new AdminMfa(this, ADMIN_PASSWORD); // the admin's two-step login (server/adminMfa.mjs)
     setInterval(() => this.cleanup(), 60_000).unref();
     setInterval(() => this.pruneLog(), 3600_000).unref();
   }
@@ -241,11 +243,14 @@ export class Auth {
     if (!this.deviceKey) await this.store.setMeta('device_key', (this.deviceKey = randomBytes(32).toString('base64url')));
     this.pruneLog();
     let adminOk = false;
+    let changed = false; // ADMIN_PASSWORD is not the one of the last start: two-step login goes off (server/adminMfa.mjs)
     if (ADMIN_PASSWORD) {
       const fp = await this.store.getMeta('admin_fp');
       adminOk = !!fp && (await verifyHash(ADMIN_PASSWORD, fp));
+      changed = !!fp && !adminOk;
       if (!adminOk) await this.store.setMeta('admin_fp', await hashPassword(ADMIN_PASSWORD));
     }
+    await this.mfa.load(changed);
     if (await this.store.getMeta('pin')) await this.store.setMeta('pin', ''); // the old shared PIN (Yoshi, 7 Nov 2026: gone)
     const accounts = new Map(); // name -> its account, or null: looked up once per name
     const account = async (name) => {
@@ -423,7 +428,7 @@ export class Auth {
    * one (so the answer gives nothing away), except from the admin's own browser. Players' wrong
    * passwords count apart (server/accounts.mjs): typos on the same Wi-Fi never lock the admin out.
    */
-  async login(req, username, password) {
+  async login(req, username, password, code) {
     const ip = bucketOf(clientIp(req));
     const now = Date.now();
     if (this.failures.count(ip, now) >= MAX_FAILS) return { error: 'Too many attempts. Try again in 15 minutes.', code: 'tooMany', status: 429 };
@@ -437,6 +442,15 @@ export class Auth {
       this.log('login_failed', req, { username: name });
       if (this.adminFails.count(ADMIN_KEY, now) === ADMIN_FAILS) this.log('login_admin_limited', req, { username: ADMIN_KEY });
       return { error: 'Wrong password.', code: 'wrongPassword', status: 401 };
+    }
+    // Two-step login (server/adminMfa.mjs): the attempt stays counted until a right code comes, so "a code is
+    // needed" never lets anyone try passwords for free, and wrong codes count like wrong passwords.
+    if (this.mfa.on) {
+      if (!code) return { error: 'Type the 6-digit code from your authenticator app.', code: 'mfaNeeded', status: 401 };
+      if (!(await this.mfa.check(code))) {
+        this.log('login_mfa_failed', req, { username: name });
+        return { error: 'That code is not right. Type the 6 digits the app shows now.', code: 'wrongCode', status: 401 };
+      }
     }
     this.failures.undo(ip, now);
     this.adminFails.undo(ADMIN_KEY, now);
@@ -536,6 +550,19 @@ export class Auth {
 
   deviceCookie(value) {
     return this.setCookie(this.names.device, value, DEVICE_MS / 1000);
+  }
+
+  /** A two-step code typed by the logged-in admin (server/adminMfa.mjs): over the limit for wrong ones from here? */
+  codeLimited(req) {
+    return this.failures.count(bucketOf(clientIp(req)), Date.now()) >= MAX_FAILS;
+  }
+
+  /** A wrong two-step code: counted like a wrong admin password, per address and in all. */
+  codeWrong(req, by) {
+    const now = Date.now();
+    this.failures.add(bucketOf(clientIp(req)), now);
+    this.adminFails.add(ADMIN_KEY, now);
+    this.log('mfa_code_failed', req, { username: by });
   }
 
   /** A player's device cookie (server/accounts.mjs). */

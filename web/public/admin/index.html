@@ -32,6 +32,12 @@
         <input type="text" id="user" autocomplete="username" value="admin" required />
         <label class="field" for="pass">Password</label>
         <input type="password" id="pass" autocomplete="current-password" required />
+        <!-- Two-step login (server/adminMfa.mjs): asked for once the password was right. -->
+        <div id="code-box" hidden>
+          <label class="field" for="code">Code from your authenticator app</label>
+          <input type="text" id="code" inputmode="numeric" autocomplete="one-time-code" maxlength="11" spellcheck="false" />
+          <p class="muted small">The 6 digits the app shows now. Lost your phone? Type one of your recovery codes instead.</p>
+        </div>
         <p class="error" id="login-err" role="alert" hidden></p>
         <div class="actions"><button class="btn" type="submit">Log in</button></div>
       </form>
@@ -48,6 +54,7 @@
           <button type="button" role="tab" id="tab-homes" aria-controls="panel-homes" data-tab="homes" aria-selected="false" tabindex="-1">Homes</button>
           <button type="button" role="tab" id="tab-accounts" aria-controls="panel-accounts" data-tab="accounts" aria-selected="false" tabindex="-1">Accounts</button>
           <button type="button" role="tab" id="tab-logins" aria-controls="panel-logins" data-tab="logins" aria-selected="false" tabindex="-1">Logins</button>
+          <button type="button" role="tab" id="tab-security" aria-controls="panel-security" data-tab="security" aria-selected="false" tabindex="-1">Security</button>
           <button type="button" role="tab" id="tab-online" aria-controls="panel-online" data-tab="online" aria-selected="false" tabindex="-1">Online now <span class="count" id="online-badge" hidden></span></button>
         </nav>
         <div class="seg period" id="period" role="group" aria-label="Period">
@@ -201,6 +208,47 @@
         <p class="muted small" id="acct-msg" aria-live="polite"></p>
         <p class="muted small">Players make their own account with a name, an email address and a password. The email isn't checked or used yet. Only a hash of the password is kept: a forgotten one gets a new password here, shown once. Turning an account off or deleting it logs the player out at once. Deleting removes the email and the scores too. An account nobody logged in to for two years is deleted by itself.</p>
       </section>
+      <!-- The admin's two-step login (server/adminMfa.mjs). -->
+      <section data-panel="security" id="panel-security" role="tabpanel" aria-labelledby="tab-security" hidden>
+        <h2 class="sub">Two-step login</h2>
+        <p class="mfa-state" id="mfa-state"></p>
+        <div id="mfa-off" hidden>
+          <p class="muted">With two-step login on, logging in as admin also asks for a 6-digit code from an app on your phone: Google Authenticator, Microsoft Authenticator, 1Password, Bitwarden or any other. Someone who learns the admin password still can't get in.</p>
+          <div class="actions"><button class="btn" type="button" id="mfa-start">Turn on two-step login</button></div>
+        </div>
+        <div id="mfa-setup" class="mfa-setup" hidden>
+          <ol class="mfa-steps">
+            <li>
+              <b>Add Brieltje to your authenticator app.</b> Scan this code with the app.
+              <div class="mfa-qr"><svg id="mfa-qr" role="img" aria-label="QR code for your authenticator app"><path /></svg></div>
+              <p class="muted small">On this phone? <a id="mfa-link" href="#">Open it in the app</a>. Or type this key in the app: <code id="mfa-key"></code></p>
+            </li>
+            <li>
+              <b>Type the 6 digits the app shows now.</b>
+              <form class="mfa-row" id="mfa-confirm-form" autocomplete="off">
+                <input type="text" id="mfa-confirm-code" inputmode="numeric" autocomplete="one-time-code" maxlength="7" spellcheck="false" placeholder="123456" />
+                <button class="btn" type="submit">Turn on</button>
+              </form>
+            </li>
+          </ol>
+          <button class="btn ghost" type="button" id="mfa-cancel">Cancel</button>
+        </div>
+        <div id="mfa-codes" class="mfa-codes" hidden>
+          <p><b>Your recovery codes.</b> Keep them somewhere safe, away from your phone, for example in your password manager. Each one works once instead of a code. They are shown only now.</p>
+          <ol id="mfa-code-list"></ol>
+          <div class="actions"><button class="btn" type="button" id="mfa-copy">Copy them</button><button class="btn ghost" type="button" id="mfa-done">I have kept them</button><span class="muted small" id="mfa-copied" aria-live="polite"></span></div>
+        </div>
+        <div id="mfa-on" hidden>
+          <p class="muted">To make new recovery codes or turn two-step login off, type a code from the app (or a recovery code).</p>
+          <form class="mfa-row" id="mfa-change-form" autocomplete="off">
+            <input type="text" id="mfa-change-code" inputmode="numeric" autocomplete="one-time-code" maxlength="11" spellcheck="false" placeholder="Code" aria-label="Code from your authenticator app" />
+            <button class="btn ghost" type="button" id="mfa-new-codes">New recovery codes</button>
+            <button class="btn ghost danger" type="button" id="mfa-turn-off">Turn off</button>
+          </form>
+          <p class="muted small">Lost your phone and your recovery codes? Change ADMIN_PASSWORD in Railway. At its next start the server turns two-step login off, and you log in with the new password.</p>
+        </div>
+        <p class="error" id="mfa-err" role="alert" hidden></p>
+      </section>
       <section data-panel="logins" id="panel-logins" role="tabpanel" aria-labelledby="tab-logins" hidden>
         <div class="stats" id="login-kpis"></div>
         <div class="toolbar">
@@ -218,6 +266,9 @@
       </section>
 
       <section data-panel="online" id="panel-online" role="tabpanel" aria-labelledby="tab-online" hidden>
+        <h2 class="sub">Zombies rooms</h2>
+        <ul class="online" id="room-list"></ul>
+        <p class="muted small" id="room-empty">No rooms open.</p>
         <h2 class="sub">Online now</h2>
         <p class="muted" id="online-count"></p>
         <ul class="online" id="online-list"></ul>

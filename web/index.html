@@ -188,6 +188,8 @@
           </div>
           <div id="mp-login" class="mp-row hidden">
             <input id="mp-pass" type="password" maxlength="200" autocomplete="current-password" placeholder="Admin password" data-i18n-placeholder="start.passPh" />
+            <!-- Two-step login (server/adminMfa.mjs): asked for once the password was right. -->
+            <input id="mp-code" class="hidden" type="text" inputmode="numeric" maxlength="11" autocomplete="one-time-code" spellcheck="false" placeholder="Code" data-i18n-placeholder="start.codePh" />
             <button id="mp-login-btn" class="mini go" type="button" data-i18n="start.login">Log in</button>
           </div>
         </div>
