@@ -209,7 +209,10 @@ function loaded(): void {
       else spawnPending = 'home';
     }
     loading(1);
-    setTimeout(() => menu.ready(), 150); // the bar full for a moment, then play
+    setTimeout(() => {
+      menu.ready(); // the bar full for a moment, then play
+      playBegun();
+    }, 150);
   };
   if (at?.village) {
     loading(0.92, () => t('travel.village'));
@@ -1955,6 +1958,8 @@ async function travel(to: Destination, via: 'portal' | 'chat'): Promise<void> {
       hud.announce('Smetlede', t('travel.village'));
       await loadVillage();
     }
+    // Molenhoek's and Kapellenhoek's baked light, if it is still coming (buildVillage); never more than a few seconds.
+    if (to.village) await Promise.race([streetBakes, new Promise((r) => setTimeout(r, 6000))]);
     let ok = true;
     if (net.connected) {
       ok = await new Promise<boolean>((resolve) => {
@@ -3412,6 +3417,14 @@ let village: 'waiting' | 'loading' | 'ready' = 'waiting';
 let villageJob: Promise<void> | null = null;
 /** The end house of the new terrace at Molenhoek, to walk into (world/walkIn.ts), once its street model is in. */
 let endHouse: WalkIn | null = null;
+/** Resolved once play has begun (loaded). */
+let playBegun = () => {};
+const playing = new Promise<void>((r) => (playBegun = r));
+/**
+ * The baked light of the streets away from where you start (Molenhoek's and Kapellenhoek's pages, about 4 MB): fetched
+ * once play has begun, not before. They keep real-time light until it is in; a trip into the village waits for it.
+ */
+let streetBakes: Promise<unknown> = Promise.resolve();
 /** Wood smoke from two chimneys by the church square (world/smoke.ts), once the town's model is in. */
 let villageSmoke: Smoke | null = null;
 /** The village, once: later calls wait for the same load (a trip through a portal to it). */
@@ -3475,7 +3488,13 @@ async function buildVillage(): Promise<void> {
   }
   for (const m of models) snowOnModel(m); // their unbaked outdoor parts take the snow (world/snowCover.ts)
   // The models' baked light and wear (world/bakedLight.ts), fetched while the village's tiles are built.
-  const bakes = Promise.all(models.map((m) => bakeLight(m, renderer)));
+  const start = startPlace()?.id ?? '';
+  const later = (m: THREE.Object3D) => {
+    const name = String(m.userData.landmark);
+    return name === 'kapellenhoek' || (name.startsWith('molenhoek') && !start.startsWith('molenhoek'));
+  };
+  const bakes = Promise.all(models.filter((m) => !later(m)).map((m) => bakeLight(m, renderer)));
+  streetBakes = playing.then(() => Promise.all(models.filter(later).map((m) => bakeLight(m, renderer))));
   for (const m of models) clearOpenGround(data, m.userData.clear as [number, number][][] | undefined); // their forecourts free of trees
   const drawn = withRoadDetail(withoutLandmarks(data, models.map((m) => m.userData.landmark as string), models.flatMap((m) => (m.userData.replaces as Ring[] | undefined) ?? [])));
   await between();
