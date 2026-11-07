@@ -4,6 +4,7 @@ import { terrain, terrainTexture } from './terrain';
 import { blockMaterial } from './houseMeshes';
 import type { GrassData } from './houseData';
 import { snowOn } from './snowCover';
+import { wetOn } from './wetGround';
 
 /**
  * Light on the ground of the whole neighbourhood, worked out once when the sky
@@ -41,9 +42,6 @@ import { snowOn } from './snowCover';
  * village came. Beyond it they read a coarse one of the whole map (bakeAll), so the
  * fields between the areas and the rest of the map seen from the air have it too.
  */
-
-/** How wet the ground is, 0 to 1 (world/weather.ts sets it in the rain): one uniform shared by every ground material. */
-export const groundWet = { value: 0 };
 
 /**
  * Called with true before a bake and false after it: what casts the bake's shadows in place of something cut out
@@ -351,7 +349,6 @@ export class GroundShade {
     material.onBeforeCompile = (shader) => {
       Object.assign(shader.uniforms, this.uniforms, this.live);
       shader.uniforms.grassDetail = grassDetail;
-      shader.uniforms.groundWet = groundWet;
       shader.vertexShader = shader.vertexShader
         .replace('#include <common>', '#include <common>\nuniform vec3 groundArea;\nuniform vec3 groundAreaAll;\nuniform mat4 liveMatrix;\nvarying vec2 vGroundUv;\nvarying vec2 vGroundUvAll;\nvarying vec3 vGroundLive;')
         .replace(
@@ -366,7 +363,7 @@ export class GroundShade {
       shader.fragmentShader = shader.fragmentShader
         .replace(
           '#include <common>',
-          '#include <common>\nuniform sampler2D groundShade;\nuniform sampler2D groundShadeAll;\nuniform sampler2D groundContact;\nuniform sampler2D groundContactAll;\nuniform float liveOn;\nuniform float grassDetail;\nuniform float groundWet;\nvarying vec2 vGroundUv;\nvarying vec2 vGroundUvAll;\nvarying vec3 vGroundLive;',
+          '#include <common>\nuniform sampler2D groundShade;\nuniform sampler2D groundShadeAll;\nuniform sampler2D groundContact;\nuniform sampler2D groundContactAll;\nuniform float liveOn;\nuniform float grassDetail;\nvarying vec2 vGroundUv;\nvarying vec2 vGroundUvAll;\nvarying vec3 vGroundLive;',
         )
         .replace(
           '#include <map_fragment>',
@@ -381,16 +378,7 @@ export class GroundShade {
           }
           if (gsFine > 0.0) gs = mix(gs, texture2D(groundShade, vGroundUv), gsFine);
           diffuseColor.rgb *= mix(0.86, 1.1, gs.b);
-          ${grass ? GRASS : ''}
-          // Wet in the rain (world/weather.ts): darker, and paving and roads shine, most in the hollows (the slow
-          // variation's light patches stand for them: no texture read more).
-          float gsPuddle = groundWet * smoothstep(0.56, 0.72, gs.b);
-          diffuseColor.rgb *= 1.0 - groundWet * ${grass ? '0.18' : '0.4'};`,
-        )
-        .replace(
-          '#include <roughnessmap_fragment>',
-          `#include <roughnessmap_fragment>
-          roughnessFactor = mix(roughnessFactor, mix(0.34, 0.07, gsPuddle), groundWet * ${grass ? '0.25' : '0.85'});`,
+          ${grass ? GRASS : ''}`,
         )
         .replace(
           '#include <lights_fragment_end>',
@@ -415,10 +403,14 @@ export class GroundShade {
           reflectedLight.directDiffuse *= gsSun;
           reflectedLight.directSpecular *= gsSun;
           reflectedLight.indirectDiffuse *= gs.g;
-          reflectedLight.indirectSpecular *= gs.g * ${sheen.toFixed(2)};`,
+          // What the sky's light hides; not what a wet street mirrors (world/wetGround.ts: the mirror has it already).
+          reflectedLight.indirectSpecular *= mix(gs.g * ${sheen.toFixed(2)}, 1.0, wetMirrorW);`,
         );
       // Snow (world/snowCover.ts): less where the sky is hidden (along walls, under trees), roads a little greyer.
       snowOn(shader, '0.4 + 0.6 * smoothstep(0.3, 0.7, gs.g)', grass ? 1 : 0.85);
+      // Wet in the rain (world/wetGround.ts), most in the hollows (the slow variation's light patches stand for them).
+      // Lawns darken a little, shine a little and hold only the odd puddle.
+      wetOn(shader, grass ? { hollow: '(gs.b - 0.5) * 0.3', dark: 0.82, pools: 0.35, gloss: 0.3 } : { hollow: '(gs.b - 0.5) * 0.3' });
     };
     if (grass) material.customProgramCacheKey = () => 'groundShade|grass';
     material.needsUpdate = true;

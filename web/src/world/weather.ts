@@ -5,13 +5,13 @@ import {
 } from '../../shared/moods.mjs';
 import { bakeMood } from './bakedLight';
 import { environment, loadSky, type SkyLook } from './environment';
-import { groundWet } from './groundShade';
 import type { IndoorLight } from './indoorLight';
 import { moodShown } from './mood';
 import { Rain } from './rain';
 import { Snow } from './snow';
 import { snowCover } from './snowCover';
 import { StreetLights } from './streetLights';
+import { wet as wetGround, wetState } from './wetGround';
 
 /**
  * The weather and the time of day: sunny (as it always was), overcast, rain and night (shared/moods.mjs), or Auto,
@@ -32,8 +32,8 @@ import { StreetLights } from './streetLights';
  * at night it is the moon, from the same side, so the baked shadows (world/bakedLight.ts, world/groundShade.ts)
  * still agree. The baked sky light follows the sky's (bakeMood).
  *
- * The rain (world/rain.ts) falls round the eye and makes the ground wet (groundWet: darker, the paving and roads
- * shiny), drying slowly after; at night the street lamps glow (world/streetLights.ts). Others read the mood shown
+ * The rain (world/rain.ts) falls round the eye and makes the ground wet (world/wetGround.ts: darker, glossy, puddles
+ * with rain rings that mirror the street), drying slowly after; at night the street lamps glow (world/streetLights.ts). Others read the mood shown
  * from world/mood.ts (lit windows, birdsong), which has no graphics in it.
  *
  * Dusk: golden hour into blue hour (on Auto it darkens through its time, then turns into the night). The sun goes
@@ -374,7 +374,9 @@ export class Weather {
     if (c && !this.fade) this.wet = c.wet;
     else this.wet += (want - this.wet) * (1 - Math.exp(-(dt * 1000) / (want > this.wet ? 3000 : DRY_MS)));
     bakeMood.value.w = this.wet;
-    groundWet.value = this.wet;
+    wetGround.amount.value = this.wet;
+    wetGround.rain.value = this.now.rain;
+    wetState.indoors = indoors;
 
     // Snow lying: on Auto as the cycle has it (turning to Auto, towards it within the pick's blend); else building
     // up slowly while it falls, melting slowly after.
