@@ -107,6 +107,8 @@ interface Kind {
   faceLocal: THREE.Matrix4[];
   stillDirty: boolean;
   liveDirty: boolean;
+  /** The faces moved: their bounds (for shots) are worked out again */
+  faceDirty: boolean;
 }
 
 interface Prop {
@@ -127,6 +129,8 @@ interface Prop {
   heard: number;
   /** Its faces in the kind's face mesh */
   faces: number[];
+  /** Drawn as it lies at rest among the moving ones: not drawn again until it moves */
+  rested: boolean;
 }
 
 const ZERO = new THREE.Matrix4().makeScale(0, 0, 0);
@@ -153,6 +157,8 @@ export class LooseProps {
   /** Pairs touching last frame: a person's push on a post is felt once, as it starts */
   private touched = new Set<string>();
   private touchedNow = new Set<string>();
+  /** The movers seen this frame (kept, cleared each frame) */
+  private seen = new Set<string>();
   private frustum = new THREE.Frustum();
   private m = new THREE.Matrix4();
   private m2 = new THREE.Matrix4();
@@ -210,7 +216,10 @@ export class LooseProps {
       m.userData.material = spec.tag;
       m.receiveShadow = true;
       m.castShadow = live;
-      if (live) m.frustumCulled = false; // a few, anywhere: their bounds change every frame
+      if (live) {
+        m.frustumCulled = false; // a few, anywhere: their bounds change every frame
+        m.visible = false; // none moves yet (update: as many drawn as the highest slot taken)
+      }
       for (let i = 0; i < count; i++) m.setMatrixAt(i, ZERO);
       if (spec.tinted) for (let i = 0; i < count; i++) m.setColorAt(i, new THREE.Color(places[Math.min(i, n - 1)].color ?? '#ffffff'));
       this.group.add(m);
@@ -222,8 +231,9 @@ export class LooseProps {
       edges: spec.edges ?? [],
       reach: spec.reach ?? Math.max(half[0], half[2]),
       props: [], still: mesh(n, false), live: mesh(LIVE, true), slots: Array(LIVE).fill(null),
-      face: null, faceLocal: [], stillDirty: true, liveDirty: true,
+      face: null, faceLocal: [], stillDirty: true, liveDirty: true, faceDirty: true,
     };
+    kind.live.count = 0;
     const faces = places.reduce((s, p) => s + (p.faces?.length ?? 0), 0);
     if (spec.faces && faces) {
       // One plane per face, each showing its part of the picture (uvRect: u, v, width, height).
@@ -251,7 +261,7 @@ export class LooseProps {
     places.forEach((place, i) => {
       const lean = place.lean ? [Math.sin(place.lean / 2), 0, 0, Math.cos(place.lean / 2)] as Q : null;
       const homeQ = lean ? compose(UP_Q(place.yaw), lean) : UP_Q(place.yaw);
-      const prop: Prop = { kind, i, place, sy: place.sy ?? 1, homeQ, pole: null, body: null, slot: -1, away: false, idle: 0, heard: 0, faces: [] };
+      const prop: Prop = { kind, i, place, sy: place.sy ?? 1, homeQ, pole: null, body: null, slot: -1, away: false, idle: 0, heard: 0, faces: [], rested: false };
       for (let f = 0; f < (place.faces?.length ?? 0); f++) prop.faces.push(k++);
       kind.props.push(prop);
       const key = cellKey(place.x, place.z);
@@ -286,6 +296,7 @@ export class LooseProps {
     if (!face) return;
     for (const k of p.faces) face.setMatrixAt(k, this.m2.copy(f).multiply(p.kind.faceLocal[k]));
     face.instanceMatrix.needsUpdate = true;
+    p.kind.faceDirty = true;
   }
 
   /** Where it is now on the plan, its bottom and its top. */
@@ -332,6 +343,7 @@ export class LooseProps {
     p.body?.wake();
     p.away = true;
     p.idle = 0;
+    p.rested = false;
     this.away.add(p);
     kind.liveDirty = true;
     return true;
@@ -379,6 +391,7 @@ export class LooseProps {
     p.pole?.reset();
     p.away = false;
     p.idle = 0;
+    p.rested = false;
     this.away.delete(p);
     if (p.slot >= 0) {
       kind.live.setMatrixAt(p.slot, ZERO);
@@ -568,7 +581,8 @@ export class LooseProps {
     const d = Math.min(dt, 0.05);
     this.time += dt;
     // The movers' speeds from where they were last frame (a jump: a portal, a respawn, isn't a speed).
-    const seen = new Set<string>();
+    const seen = this.seen;
+    seen.clear();
     for (const m of this.movers()) {
       seen.add(m.key);
       const last = this.last.get(m.key);
@@ -611,7 +625,11 @@ export class LooseProps {
             continue;
           }
         }
+        // At rest and drawn so: nothing to send to the graphics chip again.
+        const resting = (b?.asleep ?? true) && (p.pole?.asleep ?? true);
+        if (resting && p.rested) continue;
         this.draw(p, kind.live, p.slot);
+        p.rested = resting;
         kind.liveDirty = true;
       }
     }
@@ -639,13 +657,24 @@ export class LooseProps {
         const p = kind.slots[i];
         if (p) this.home(p);
       }
+      // As many drawn as the highest slot taken, none (hidden) when nothing moves: the empty ones cost nothing then.
+      let top = 0;
+      for (let i = 0; i < LIVE; i++) if (kind.slots[i]) top = i + 1;
+      if (kind.live.count !== top) {
+        kind.live.count = top;
+        kind.live.visible = top > 0;
+        kind.liveDirty = true;
+      }
       if (kind.liveDirty) {
         kind.live.instanceMatrix.needsUpdate = true;
         if (kind.live.instanceColor) kind.live.instanceColor.needsUpdate = true;
         kind.live.computeBoundingSphere(); // for shots
         kind.liveDirty = false;
       }
-      if (kind.face && (kind.stillDirty || kind.slots.some(Boolean))) kind.face.computeBoundingSphere(); // for shots
+      if (kind.face && kind.faceDirty) {
+        kind.face.computeBoundingSphere(); // for shots
+        kind.faceDirty = false;
+      }
       if (kind.stillDirty) {
         kind.still.instanceMatrix.needsUpdate = true;
         kind.still.computeBoundingSphere();

@@ -78,23 +78,43 @@ export class TyreSpray {
       const wx = x + fx * along - fz * side * halfW * 0.85 - vx * lag;
       const wz = z + fz * along + fx * side * halfW * 0.85 - vz * lag;
       const out = side * (0.3 + Math.random() * 0.7);
+      // Written into the one spawn record (a new object per particle was garbage every frame).
       if (Math.random() < 0.75) {
         // The mist: carried along a little, rising off the road and spreading behind.
-        Object.assign(s, {
-          x: wx - fx * 0.3, y: y + 0.15 + Math.random() * 0.15, z: wz - fz * 0.3,
-          vx: vx * 0.3 - fx * speed * 0.12 - fz * out, vy: 0.4 + Math.random() * 0.9, vz: vz * 0.3 - fz * speed * 0.12 + fx * out,
-          life: 0.4 + Math.random() * 0.5, size0: bike ? 0.1 : 0.16, size1: (bike ? 0.4 : 0.65) + speed * 0.02, alpha: (0.06 + 0.08 * fast) * wet,
-          cell: PARTICLE.puff, drag: 2.4, gravity: 0.3, spin: (Math.random() - 0.5) * 2, stretch: 0,
-        });
+        s.x = wx - fx * 0.3;
+        s.y = y + 0.15 + Math.random() * 0.15;
+        s.z = wz - fz * 0.3;
+        s.vx = vx * 0.3 - fx * speed * 0.12 - fz * out;
+        s.vy = 0.4 + Math.random() * 0.9;
+        s.vz = vz * 0.3 - fz * speed * 0.12 + fx * out;
+        s.life = 0.4 + Math.random() * 0.5;
+        s.size0 = bike ? 0.1 : 0.16;
+        s.size1 = (bike ? 0.4 : 0.65) + speed * 0.02;
+        s.alpha = (0.06 + 0.08 * fast) * wet;
+        s.cell = PARTICLE.puff;
+        s.drag = 2.4;
+        s.gravity = 0.3;
+        s.spin = (Math.random() - 0.5) * 2;
+        s.stretch = 0;
         s.c0.copy(MIST);
         s.c1.copy(MIST);
       } else {
         // Drops off the tread, up and back, falling.
-        Object.assign(s, {
-          x: wx - fx * 0.25, y: y + 0.25, z: wz - fz * 0.25,
-          vx: vx * 0.6 - fx * (1 + Math.random() * 2) - fz * out, vy: 1.2 + Math.random() * 2.2, vz: vz * 0.6 - fz * (1 + Math.random() * 2) + fx * out,
-          life: 0.3 + Math.random() * 0.25, size0: 0.025, size1: 0.015, alpha: 0.5 * wet, cell: PARTICLE.glow, drag: 0.8, gravity: 9.8, spin: 0, stretch: 0.04,
-        });
+        s.x = wx - fx * 0.25;
+        s.y = y + 0.25;
+        s.z = wz - fz * 0.25;
+        s.vx = vx * 0.6 - fx * (1 + Math.random() * 2) - fz * out;
+        s.vy = 1.2 + Math.random() * 2.2;
+        s.vz = vz * 0.6 - fz * (1 + Math.random() * 2) + fx * out;
+        s.life = 0.3 + Math.random() * 0.25;
+        s.size0 = 0.025;
+        s.size1 = 0.015;
+        s.alpha = 0.5 * wet;
+        s.cell = PARTICLE.glow;
+        s.drag = 0.8;
+        s.gravity = 9.8;
+        s.spin = 0;
+        s.stretch = 0.04;
         s.c0.copy(DROP);
         s.c1.copy(DROP);
       }

@@ -683,14 +683,49 @@ const bikes = new Bikes(world, trunks, () => avatars.figure(me?.username ?? '', 
 scene.add(bikes.group);
 let bikeWanted: string | null = null; // asked the server for this bike
 // What knocks the street's loose things about: the cars and bikes being ridden (yours and the others', as drawn), and you on foot.
+// One list and one record per mover, kept from frame to frame (no new objects every frame).
+const moverList: Mover[] = [];
+const moverOf = new Map<string, Mover>();
+const mover = (key: string, vehicle: boolean, bump?: (s: number) => void): Mover => {
+  let m = moverOf.get(key);
+  if (!m) moverOf.set(key, (m = { key, x: 0, z: 0, y: 0, height: 0, yaw: 0, halfL: 0, halfW: 0, r: 0, vehicle, bump }));
+  return m;
+};
 looseProps.movers = () => {
-  const list: Mover[] = cars.filter((c) => c.ready && ((driving && c === car) || !!c.driver))
-    .map((c) => ({ key: c.id, x: c.x, z: c.z, y: c.y, height: 1.5, yaw: c.yaw, halfL: c.spec.length / 2, halfW: c.spec.width / 2, r: 0, vehicle: true, bump: (s: number) => c.bump(s) }));
-  for (const k of bikes.riders()) list.push({ key: `bike-${k.id}`, x: k.x, z: k.z, y: k.y, height: 1.6, yaw: k.yaw, halfL: 0.85, halfW: 0.2, r: 0, vehicle: true });
-  if (!driving && !riding && !bikes.mounted && horses.mounted < 0 && !player.flying && player.chute === null) {
-    list.push({ key: 'me', x: player.x, z: player.z, y: player.feet, height: 1.8, yaw: 0, halfL: 0, halfW: 0, r: 0.3, vehicle: false });
+  moverList.length = 0;
+  for (const c of cars) {
+    if (!c.ready || !((driving && c === car) || !!c.driver)) continue;
+    const m = moverOf.get(c.id) ?? mover(c.id, true, (s) => c.bump(s));
+    m.x = c.x;
+    m.z = c.z;
+    m.y = c.y;
+    m.height = 1.5;
+    m.yaw = c.yaw;
+    m.halfL = c.spec.length / 2;
+    m.halfW = c.spec.width / 2;
+    moverList.push(m);
   }
-  return list;
+  for (const k of bikes.riders()) {
+    const m = mover(`bike-${k.id}`, true);
+    m.x = k.x;
+    m.z = k.z;
+    m.y = k.y;
+    m.height = 1.6;
+    m.yaw = k.yaw;
+    m.halfL = 0.85;
+    m.halfW = 0.2;
+    moverList.push(m);
+  }
+  if (!driving && !riding && !bikes.mounted && horses.mounted < 0 && !player.flying && player.chute === null) {
+    const m = mover('me', false);
+    m.x = player.x;
+    m.z = player.z;
+    m.y = player.feet;
+    m.height = 1.8;
+    m.r = 0.3;
+    moverList.push(m);
+  }
+  return moverList;
 };
 const minimap = new Minimap([...house.prisms, ...(house.surroundings?.prisms ?? [])], house.levels, house.rooms);
 /** The ground out of doors at (x, z): the relief, and paving or a kerb on it. */
