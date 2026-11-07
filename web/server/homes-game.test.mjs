@@ -41,7 +41,7 @@ test('doors of the three homes: only with the right, and nothing is told to the 
     p.nextDoor = 0;
     send(name, p, { t: 'door', id, open: true, dir: 1 });
   };
-  const ids = ['house-out-0', 'bungalow-out-0', 'mh-end-front'];
+  const ids = ['house-out-1', 'bungalow-out-1', 'mh-end-front'];
   for (const id of ids) {
     assert.ok(homeOfDoor(id), id);
     door(a, 'a', id);
@@ -49,17 +49,17 @@ test('doors of the three homes: only with the right, and nothing is told to the 
   assert.equal(told.length + admin.got.length + b.got.length, 0, 'ignored and not sent');
   assert.deepEqual(Object.keys(game.doors), [], 'not even remembered');
   grants.add('k-a|house');
-  door(a, 'a', 'house-out-0');
-  door(a, 'a', 'bungalow-out-0');
-  assert.deepEqual(admin.got.map((m) => m.id), ['house-out-0'], 'the grant is for that one home; the admin hears it');
+  door(a, 'a', 'house-out-1');
+  door(a, 'a', 'bungalow-out-1');
+  assert.deepEqual(admin.got.map((m) => m.id), ['house-out-1'], 'the grant is for that one home; the admin hears it');
   assert.equal(b.got.length, 0, 'another session has no grant: it is not told');
-  door(admin, 'root', 'bungalow-out-0');
+  door(admin, 'root', 'bungalow-out-1');
   assert.deepEqual(a.got.map((m) => m.id), [], 'and the grant of the house does not bring the bungalow\'s door states');
   door(b, 'b', 'some-other-door');
-  assert.deepEqual(told.map((m) => m.id), ['some-other-door'], 'a door of no home goes to everyone (broadcast), as before');
-  assert.deepEqual(Object.keys(game.doorsFor(b)), ['some-other-door'], 'the welcome of a page without the right lists no home door');
-  assert.deepEqual(Object.keys(game.doorsFor(a)).sort(), ['house-out-0', 'some-other-door']);
-  assert.equal(Object.keys(game.doorsFor(admin)).length, 3);
+  assert.deepEqual(told, [], 'a made-up door is no door: ignored, sent to nobody');
+  assert.deepEqual(Object.keys(game.doorsFor(b)), [], 'the welcome of a page without the right lists no home door');
+  assert.deepEqual(Object.keys(game.doorsFor(a)).sort(), ['house-out-1']);
+  assert.equal(Object.keys(game.doorsFor(admin)).length, 2);
 });
 
 test('the inside of a home is never sent to a session without its right: doors, panes, furniture', { skip: SKIP }, () => {
@@ -264,18 +264,18 @@ test('the end house\'s garden: the server puts a player without the code outside
   assert.ok(game);
 });
 
-test('door ids like toString and hasOwnProperty are only ids: no prototype to hit, and the welcome still serialises', () => {
+test('door ids like toString and hasOwnProperty are no doors: no prototype to hit, and the welcome still serialises', () => {
   const { game, told, player, send } = setup();
   const a = player('a', 0, 30, 'admin');
   for (const id of ['toString', 'hasOwnProperty', 'constructor', 'valueOf', 'house-out-3']) {
     a.nextDoor = 0;
     send('a', a, { t: 'door', id, open: true, dir: 1 });
   }
-  assert.deepEqual(told.map((m) => m.id), ['toString', 'hasOwnProperty', 'constructor', 'valueOf'], 'the admin\'s house door goes to nobody else (there is nobody else)');
+  assert.deepEqual(told, [], 'no such doors, and the admin\'s house door goes to nobody else (there is nobody else)');
   assert.equal(Object.getPrototypeOf(game.doors), null);
   assert.equal(Object.getPrototypeOf(game.doorDir), null);
-  assert.deepEqual(JSON.parse(JSON.stringify(game.doors)), { toString: true, hasOwnProperty: true, constructor: true, valueOf: true, 'house-out-3': true });
-  assert.equal(Object.keys(game.doors).length, 5);
+  assert.deepEqual(JSON.parse(JSON.stringify(game.doors)), { 'house-out-3': true });
+  assert.equal(Object.keys(game.doors).length, 1);
   // A fresh game has none of them before they are sent.
   const fresh = setup().game;
   assert.equal('toString' in fresh.doors, false);
@@ -284,5 +284,6 @@ test('door ids like toString and hasOwnProperty are only ids: no prototype to hi
     a.nextDoor = 0;
     send('a', a, { t: 'door', id, open: true });
   }
-  assert.equal(told.length, 4, '__proto__ is not an id');
+  assert.equal(told.length, 0, '__proto__ is not an id');
+  assert.equal(Object.keys(game.doors).length, 1);
 });

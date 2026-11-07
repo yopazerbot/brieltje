@@ -37,7 +37,7 @@ import { loadBounds } from '../shared/bounds.mjs';
 import { CAR_REACH, PORTALS, portalNear, REACH } from '../shared/portals.mjs';
 import { HOMES, homeAt, homeOfDoor, inEndGarden, makePaneHomes, PANE_LIMIT, registerDoors } from '../shared/homes.mjs';
 import { mergeHouse } from '../shared/insideData.mjs';
-import { defaultLayout, housePacks } from './insides.mjs';
+import { defaultLayout, housePacks, packFor } from './insides.mjs';
 import { HomeGate } from './homeGate.mjs';
 import { noShoot } from '../shared/zones.mjs';
 import { boxesOverlap, boxPoints, clearOfPortals, makeIndoors, makeSolids } from '../shared/parking.mjs';
@@ -188,6 +188,14 @@ const HOUSE_AREAS = houseAreas(HOUSE.prisms);
 const bestKey = (id) => (id === 'house' ? 'zombies_best' : 'zombies_best_' + id);
 /** The house data's doors: whether each stands open before anyone touched it (the page's default too). */
 const DOOR_OPEN = Object.assign(Object.create(null), Object.fromEntries(HOUSE.doors.map((d) => [d.id, !!d.open])));
+/**
+ * Every door a page can swing: the house data's (the shell's and the insides' of the main house and the bungalow), the end
+ * house's shell and its inside when the private data holds it. The village has no doors. A `door` message for any other id
+ * is ignored, so nobody can fill the door table with made-up ids (it is never larger than this list).
+ */
+const KNOWN_DOORS = new Set([...HOUSE.doors, ...houseData('molenhoek_end_shell.json').doors, ...(packFor('molenhoek_end')?.doors ?? [])].map((d) => d.id));
+/** Is `id` one of the doors of the game? */
+export const knownDoor = (id) => KNOWN_DOORS.has(id);
 // Which of the three code-locked homes a pane belongs to (shared/homes.mjs, server/homeGate.mjs).
 const PANE_HOME = makePaneHomes({ prisms: HOUSE.prisms, doors: HOUSE.doors });
 /**
@@ -816,13 +824,12 @@ export class Game {
       if (now < (player.nextUnstuck || 0)) return;
       player.nextUnstuck = now + 1000;
       this.unstuck(name, player, now);
-    } else if (m.t === 'door' && typeof m.id === 'string' && DOOR_ID.test(m.id)) {
+    } else if (m.t === 'door' && typeof m.id === 'string' && DOOR_ID.test(m.id) && KNOWN_DOORS.has(m.id)) {
       // Every page swings the door and plays its sound: at most five a second per player (a message
       // flood would slam doors on every page). Pressing E as fast as one can stays under it.
       if (now < (player.nextDoor || 0)) return;
       player.nextDoor = now + 200;
       if (!this.gate.door(player, m.id)) return; // one of the three code-locked homes' doors, and no right to it
-      if (!(m.id in this.doors) && Object.keys(this.doors).length >= 100) return;
       this.doors[m.id] = !!m.open;
       if (m.dir === 1 || m.dir === -1) this.doorDir[m.id] = m.dir;
       this.broadcastHome({ t: 'door', id: m.id, open: !!m.open, dir: this.doorDir[m.id] ?? 1, by: name }, homeOfDoor(m.id), name); // an inside door's state goes only to those with the right
