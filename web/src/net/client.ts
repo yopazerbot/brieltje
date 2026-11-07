@@ -256,6 +256,8 @@ export class Net {
   private retry = 1000;
   /** How many may play, from the server's last 'full' message */
   private fullAt = 0;
+  /** A reconnect waiting after a dropped connection (connect and disconnect cancel it) */
+  private retryTimer = 0;
   /** The Zombies room to connect to (server/rooms.mjs), or null for the open world */
   room: string | null = null;
   /** The room asked for is gone, or full: the page goes back to the open world (src/ui/rooms.ts). */
@@ -267,6 +269,9 @@ export class Net {
 
   connect(): void {
     this.stopped = false;
+    // A retry still waiting is replaced by this connection: never two sockets at once (the server would close
+    // the first, and the second's welcome would reset the player).
+    clearTimeout(this.retryTimer);
     // The room's id is no secret (anyone playing together sees the list) and grants nothing on its own: the session is the cookie.
     const url = `${location.protocol === 'https:' ? 'wss' : 'ws'}://${location.host}/ws?v=${PROTO}${this.room ? `&room=${encodeURIComponent(this.room)}` : ''}`;
     this.rtt = null;
@@ -338,13 +343,14 @@ export class Net {
       // Full (4003): said, and tried again a little later like a dropped connection, until there is room.
       const max = this.fullAt;
       this.onStatus(() => (e.code === 4003 ? t('net.full', { n: max }) : t('net.lost')));
-      setTimeout(() => !this.stopped && this.connect(), this.retry);
+      this.retryTimer = window.setTimeout(() => !this.stopped && this.connect(), this.retry);
       this.retry = Math.min(15000, this.retry * 2);
     };
   }
 
   disconnect(): void {
     this.stopped = true;
+    clearTimeout(this.retryTimer);
     this.ws?.close();
     this.ws = null;
   }
