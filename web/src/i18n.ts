@@ -115,7 +115,7 @@ const en = {
   'choose.touch': 'Touch screen',
   'choose.touchSub': 'A stick under your left thumb, buttons on the right',
   'pad.connect': 'DualSense: press any button to connect',
-  'pad.connected': 'Connected: {name}',
+  'pad.connected': 'Press ✕ to start · {name}',
   'guest': 'Guest',
 
   // ---- Graphics
@@ -901,7 +901,7 @@ const nl = {
   'choose.touch': 'Aanraakscherm',
   'choose.touchSub': 'Een stick onder je linkerduim, knoppen rechts',
   'pad.connect': 'DualSense: druk op een knop om te verbinden',
-  'pad.connected': 'Verbonden: {name}',
+  'pad.connected': 'Druk op ✕ om te starten · {name}',
   'guest': 'Gast',
 
   // ---- Graphics

@@ -680,6 +680,14 @@ body.on-start #overlay { background: linear-gradient(180deg, rgba(9, 14, 19, 0.2
 }
 /* The keyboard's place is always seen: a lamplight ring on whatever has the focus. */
 #overlay :focus-visible { outline: 2px solid var(--lamp); outline-offset: 2px; }
+/* One moment of motion: the start screen rises into place once it is ready; the menu fades in quickly
+   each time it opens (it opens often, so it never makes you wait). Nothing moves with reduced motion. */
+@media (prefers-reduced-motion: no-preference) {
+  #overlay:not(.hidden) > #start-panel:not(.hidden) { animation: panel-rise 0.5s cubic-bezier(0.2, 0.7, 0.2, 1) both; }
+  #overlay:not(.hidden) > #pause-panel:not(.hidden) { animation: panel-open 0.14s ease-out both; }
+}
+@keyframes panel-rise { from { opacity: 0; transform: translateY(14px); } }
+@keyframes panel-open { from { opacity: 0; } } /* no transform: the map measures its box as it opens */
 
 /* ---- Start screen: the wordmark and a welcome, your name, alone or together, the mode and where to
    start, then a start button per way of playing (the first is the one to press). On a wide screen
@@ -867,9 +875,9 @@ input[type=range]:focus-visible::-moz-range-thumb { box-shadow: 0 0 0 3px var(--
 /* The sign-up page (brieltje.be/interested): quieter than the start buttons above it. */
 .invite {
   display: flex; align-items: center; justify-content: space-between; gap: 6px 16px; margin: 0 0 16px; padding: 12px 16px;
-  color: var(--ink); text-decoration: none; border: 1px solid var(--line-strong); border-radius: var(--r-tile); transition: background-color 0.15s;
+  color: var(--ink); text-decoration: none; border: 1px solid var(--line); border-radius: var(--r-tile); transition: background-color 0.15s, border-color 0.15s;
 }
-.invite:hover { background: var(--dusk-raised); }
+.invite:hover { background: var(--dusk-raised); border-color: var(--line-strong); }
 .invite-text { min-width: 0; font-size: 15px; line-height: 1.35; }
 .invite-text b { font-weight: 800; }
 .invite-house { display: block; font-size: 14px; color: var(--ink-soft); }
@@ -879,8 +887,15 @@ input[type=range]:focus-visible::-moz-range-thumb { box-shadow: 0 0 0 3px var(--
 .start-foot { display: flex; align-items: center; gap: 6px 18px; flex-wrap: wrap; font-size: 14px; color: var(--ink-soft); }
 .textbtn { padding: 0; cursor: pointer; font-size: 14px; font-weight: 500; color: var(--ink-soft); background: none; border: none; }
 .textbtn:hover { color: var(--ink); }
-.start-foot .gfx { display: inline; width: auto; margin: 0; padding: 0; border: none; background: none; }
-.start-foot .gfx .gfx-value { margin-left: 4px; font-weight: 800; color: var(--ink); }
+/* The graphics: a small pill, so it reads as something to press (each press the next setting). */
+.start-foot .gfx {
+  display: inline-flex; align-items: center; gap: 6px; width: auto; margin: 0; padding: 5px 12px 5px 9px; cursor: pointer;
+  font-size: 14px; font-weight: 500; color: var(--ink-soft); background: rgba(6, 10, 14, 0.25); border: 1px solid var(--line-strong); border-radius: 999px;
+  transition: border-color 0.15s, color 0.15s;
+}
+.start-foot .gfx:hover { color: var(--ink); border-color: var(--lamp-line); }
+.start-foot .gfx svg { width: 16px; height: 16px; fill: none; stroke: currentColor; stroke-width: 1.9; stroke-linecap: round; }
+.start-foot .gfx .gfx-value { font-weight: 800; color: var(--ink); }
 .start-foot .gfx .gfx-detail { display: none; }
 .made { display: inline-flex; align-items: center; flex-wrap: wrap; gap: 4px 14px; margin: 0 0 0 auto; font-size: 13.5px; color: var(--ink-faint); }
 .made a.gh, .made a.credits-link { margin: 0; color: var(--ink-soft); text-decoration: none; }
@@ -928,6 +943,10 @@ body:not(.on-start) #slides-controls { display: none; }
   #start-panel .invite { margin-bottom: 12px; padding: 9px 14px; }
   #start-panel .legal { margin-top: 8px; }
   #start-panel:has(#mp-pin-row:not(.hidden), #mp-login:not(.hidden)) .invite-house { display: none; }
+  /* The welcome has been read by the time you type the PIN: it makes way, so the start buttons stay in view. */
+  #start-panel:has(#mp-pin-row:not(.hidden), #mp-login:not(.hidden)) .intro { display: none; }
+  #start-panel:has(#mp-pin-row:not(.hidden), #mp-login:not(.hidden)) .start-head { margin-bottom: 12px; }
+  #start-panel .together { padding: 10px 12px; }
 }
 /* A phone held sideways: everything up to the start buttons fits without scrolling. */
 @media (max-height: 520px) {
@@ -952,6 +971,9 @@ body:not(.on-start) #slides-controls { display: none; }
   .invite-text { font-size: 14px; }
   .invite-house { display: none; }
   .legal { margin-top: 6px; }
+  .start-foot .gfx { padding-top: 2px; padding-bottom: 2px; }
+  /* Typing the PIN: the sign-up link makes way, so the links under the start buttons fit too. */
+  #start-panel:has(#mp-pin-row:not(.hidden), #mp-login:not(.hidden)) .invite { display: none; }
   /* Your name beside Alone / Together, and the PIN beside the age tick: two rows fewer, so the start
      buttons and the links under them fit (the name's label stays for screen readers; the field says Name). */
   #who-box { display: grid; grid-template-columns: 1fr 1fr; align-items: center; gap: 0 10px; margin-bottom: 8px; }
@@ -1194,6 +1216,7 @@ a.gh svg { flex: none; }
 a.gh:hover { color: var(--ink); }
 /* The terms, privacy policy and credits (web/public/legal/): a line under the start screen, links in the menu. */
 .legal { margin: 12px 0 0; font-size: 13px; line-height: 1.45; color: var(--ink-faint); }
+.legal .made-by { float: right; margin-left: 12px; } /* who made it, at the end of the line where it fits */
 .legal a, .legal-links a { color: inherit; text-decoration: underline; text-decoration-color: rgba(149, 161, 173, 0.5); text-underline-offset: 2px; }
 .legal a:hover, .legal-links a:hover { color: var(--ink); }
 .start-legal { display: none; }
