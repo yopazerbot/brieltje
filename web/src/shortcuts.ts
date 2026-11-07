@@ -163,6 +163,8 @@ function padOrKeyGroups(control: 'kbm' | 'pad', action: boolean): Group[] {
         ...(kbm ? [[t('tactics.ping'), k('ping')]] as [string, string][] : []),
         [t('ctl.scoreboard'), k('scores')],
         [t('ctl.sound'), kbm ? t('key.soundKbm', { key: k('sound') }) : t('key.soundPad')],
+        // A football (world/football.ts): Use next to it; in Explore a click too, as for doors.
+        [t('ctl.kick'), t('ctl.kickHow', { use: action ? k('use') : t('key.or', { a: k('click'), b: k('use') }), run: k('sprint') })],
       ],
     },
   );
@@ -198,7 +200,10 @@ function touchGroups(action: boolean): Group[] {
     },
     {
       title: t('ctl.other'),
-      rows: [[t('ctl.menu'), k('menu')], [t('tctl.bigMap'), k('map')], [t('tctl.soundFull'), t('tctl.soundFullHow')], [t('tctl.best'), t('tctl.bestHow')]],
+      rows: [
+        [t('ctl.menu'), k('menu')], [t('tctl.bigMap'), k('map')], [t('ctl.kick'), t('ctl.kickHow', { use: k('use'), run: k('sprint') })],
+        [t('tctl.soundFull'), t('tctl.soundFullHow')], [t('tctl.best'), t('tctl.bestHow')],
+      ],
     },
   );
   return groups;

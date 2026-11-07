@@ -129,6 +129,13 @@ export type ServerMsg =
   | { t: 'colors'; list: { name: string; color: string; role: string }[] }
   | { t: 'leave'; name: string }
   | { t: 'horse'; horse: HorseState }
+  /**
+   * A football (server/football.mjs): `p` where it is and how fast [x, y, z, vx, vy, vz], at the server's time `st`;
+   * asleep `s`, in the net `n`, the score `sc`, the kicks since the last state `k` ([who, their count]), back in the middle `r`
+   */
+  | { t: 'ball'; b: string; st: number; p: number[]; s: number; n: number; sc: number[]; k?: [string, number][]; r?: 1 }
+  /** A goal: in goal `g` of ball `b`'s pitch, by who touched it last, and the score */
+  | { t: 'ballgoal'; b: string; g: number; by: string; sc: number[] }
   | { t: 'chat'; from: string; color: string; text: string }
   | { t: 'door'; id: string; open: boolean; dir?: number; by: string }
   | { t: 'shot'; name: string; x: number; y: number; z: number; w: string }

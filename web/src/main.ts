@@ -91,6 +91,7 @@ import { key } from './shortcuts';
 import { typing } from './keys';
 import { route, streetAt } from './ui/route';
 import { HomeLife } from './world/homeLife';
+import { Football } from './world/football';
 import { Smoke } from './world/smoke';
 import { LOOT_LABELS, Tactics } from './ui/tactics';
 import { ZombieWaveControl } from './ui/zombieWave';
@@ -600,6 +601,14 @@ scene.add(portals.group);
 // Life round the house and the bungalow: things in the gardens, birds, a robot mower (world/homeLife.ts).
 const life = new HomeLife(world, groundY, () => !phone && quality !== 'low');
 scene.add(life.group);
+// The footballs on the school's playground and the back lawn (world/football.ts); a goal says so near it.
+const football = new Football(scene, (x, z) => house.ground + terrain.height(x, z));
+football.onGoal = (g) => {
+  const pitch = football.views.find((v) => v.id === g.pitch)!.pitch;
+  if (Math.hypot(player.x - pitch.home.x, player.z - pitch.home.z) > 80) return;
+  const score = t('ball.score', { a: g.score[0] ?? 0, b: g.score[1] ?? 0 });
+  hud.announce(t('ball.goal'), g.by ? t('ball.goalBy', { name: g.by, score }) : score);
+};
 const roadLife = new RoadLife(world, tiles, groundY); // the traffic, parked cars, street signs and the church bells
 scene.add(roadLife.group);
 const travelPanel = new TravelPanel();
@@ -2109,6 +2118,7 @@ net.onMessage = (m: ServerMsg) => {
       }
       avatars.clear();
       zombies.clear(); // the server's, as its first tick has them
+      football.reset(); // the server's balls from its first states
       online.clear();
       for (const p of m.players) {
         online.set(p.name, p.color);
@@ -2197,6 +2207,12 @@ net.onMessage = (m: ServerMsg) => {
       break;
     case 's':
       onTick(m);
+      break;
+    case 'ball': // a football as the server has it (world/football.ts)
+      football.fromServer(m, me?.username ?? null);
+      break;
+    case 'ballgoal':
+      football.goalFromServer(m);
       break;
     case 'horse': {
       const h = m.horse;
@@ -2858,6 +2874,13 @@ renderer.setAnimationLoop((now: number) => {
       helping = null;
     }
     const target = inCar || onHorse || tagWho || downed ? null : doors.lookedAt(camera);
+    // A football within reach (world/football.ts): Use kicks it where you look, harder on the run; a click too where it
+    // doesn't shoot (Explore, the school grounds). Before the cars and horses; a door you look at goes first.
+    const ball = inCar || onHorse || tagWho || downed || target || dead || player.flying || player.chute !== null ? null : football.near(player.x, player.feet, player.z);
+    if (ball && (frame.usePressed || ((!action || !!noShoot(player.x, player.z)) && frame.clickPressed))) {
+      football.kick(ball, player.yaw, player.pitch, me?.username ?? '', net.connected ? (msg) => net.send(msg) : null);
+      frame.usePressed = frame.clickPressed = false;
+    }
     if (target && (frame.usePressed || (!action && frame.clickPressed))) {
       if (target.home) {
         // A locked home (src/world/homeLocks.ts): the door asks for its code.
@@ -2995,6 +3018,7 @@ renderer.setAnimationLoop((now: number) => {
       if (horseHint > 0) prompt = t('prompt.horse', { speed: speed(horses.ridden!.speed), gallop: key('sprint', mode), breath: Math.round(horses.stamina * 100), jump: key('jump', mode), use });
     }
     else if (nearHorse >= 0 && !target) prompt = t('prompt.mount', { use });
+    if (ball && !tagWho && !driving && !riding) prompt = t('prompt.kick', { key: key(action && !noShoot(player.x, player.z) ? 'use' : 'click', mode), run: key('sprint', mode) });
     if (downed) prompt = helping?.start ? t('prompt.reviving', { name: downed }) : t('prompt.revive', { use, name: downed });
     hud.setRing(helping ? (helping.start ? (now - helping.start) / helping.ms : 0) : null);
     if (pad) prompt = ''; // the list says it all
@@ -3139,6 +3163,9 @@ renderer.setAnimationLoop((now: number) => {
   if (!net.connected) soloTick(dt);
   zombies.update(dt, camera.position);
   horses.update(dt, camera.position);
+  // The footballs: walked into on foot (alone here; together the server does it too, and leads).
+  const onFoot = combat.alive && !driving && !riding && horses.mounted < 0 && !player.flying && player.chute === null;
+  football.update(dt, camera.position, onFoot ? { x: player.x, z: player.z, feet: player.feet, name: me?.username ?? '' } : null, net.connected);
   // The others, after the horses: a rider sits in the saddle where it is drawn this frame.
   avatars.tick(dt, camera.position, driving || riding || horses.mounted >= 0 ? null : { x: player.x, z: player.z });
   myChute.position.set(player.x, player.feet, player.z);
@@ -3630,6 +3657,7 @@ if (import.meta.env.DEV) {
       /** Seconds played towards the feedback card, and what holds it back. */
       askState: () => ({ askClock, menuOpen: menu.open, trip: !!trip, typing: chat.typing, driving, riding, alive: combat.alive }),
       avatars,
+      football,
       /** The drawing clock for the others (net/track.ts) and the connection, for the network checks. */
       net: () => ({ delay: netClock.delay, late: netClock.late, age: netClock.age, rate: netClock.rate, rtt: net.rtt, ...net.counts }),
       combat,
