@@ -6,7 +6,7 @@ import { terrain } from './terrain';
 import { rustle } from './wind';
 import sizes from '../../public/textures/sizes.json';
 import { textureNormalScale } from './surfaceFinish';
-import { loadTexture } from './textureFiles';
+import { loadTexture, textureReady } from './textureFiles';
 import { snowy } from './snowCover';
 
 /** Real-world width of each texture tile in metres (from Poly Haven, or our own brick). */
@@ -128,6 +128,34 @@ function texture(name: string, kind: 'color' | 'normal' | 'rough', renderer: THR
       t.rotation = Math.PI / 2;
     }
     cache.set(key, t);
+  }
+  return t;
+}
+
+/**
+ * A texture of this cache at another tile size (`tile` metres; the town's houses, world/townCentre.ts): the same
+ * picture, fetched and kept on the graphics chip once. The copy shares the picture (three keeps one texture on the
+ * chip per picture and settings) and takes the rest (format, mip levels) once the picture is in. It stays in the
+ * cache, so its sharpness follows the preset with the others.
+ */
+export function sharedTexture(name: string, kind: 'color' | 'normal' | 'rough', renderer: THREE.WebGLRenderer, tile: number): THREE.Texture {
+  const base = texture(name, kind, renderer);
+  if (tile === (TILE[name] ?? 2)) return base;
+  const key = `${name}_${kind}_${tile} m`;
+  let t = cache.get(key);
+  if (!t) {
+    const copy = base.clone();
+    copy.repeat.setScalar(1 / tile);
+    void textureReady(base).then((ok) => {
+      if (!ok) return;
+      copy.copy(base);
+      // KTX2: set on the texture itself as its picture came (world/textureFiles.ts adopt), which copy() leaves out.
+      (copy as { isCompressedTexture?: boolean }).isCompressedTexture = (base as { isCompressedTexture?: boolean }).isCompressedTexture;
+      copy.repeat.setScalar(1 / tile);
+      copy.needsUpdate = true;
+    });
+    cache.set(key, copy);
+    t = copy;
   }
   return t;
 }

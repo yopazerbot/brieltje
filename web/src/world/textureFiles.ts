@@ -148,10 +148,16 @@ function adopt(t: THREE.Texture, c: THREE.CompressedTexture): void {
  * THREE.DefaultLoadingManager until its picture is in, so the game's "textures ready" waits for transcoding.
  */
 export function loadTexture(name: string, color: boolean, renderer: THREE.WebGLRenderer): THREE.Texture {
-  const { texture } = loadFile(`${KTX2}/${name}.ktx2`, `${WEBP}/${name}.webp`, color, renderer, { flipY: true, counted: true });
+  const { texture, ready } = loadFile(`${KTX2}/${name}.ktx2`, `${WEBP}/${name}.webp`, color, renderer, { flipY: true, counted: true });
   // The full-size WebP file, whichever form is fetched: tools/still/export_scene.js hands it to Blender.
   texture.userData.src = `/textures/${name}.webp`;
+  pictures.set(texture, ready);
   return texture;
+}
+const pictures = new WeakMap<THREE.Texture, Promise<boolean>>();
+/** When a texture from loadTexture has its picture (true), or both its files failed (false). */
+export function textureReady(texture: THREE.Texture): Promise<boolean> {
+  return pictures.get(texture) ?? Promise.resolve(true);
 }
 
 /** Whether this is a phone or tablet, which gets the half-size files (here and in world/bakedLight.ts). */

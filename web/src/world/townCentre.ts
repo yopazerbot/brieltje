@@ -1,7 +1,7 @@
 import * as THREE from 'three';
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 import type { Prism, Ring } from './houseData';
-import { loadTexture } from './textureFiles';
+import { sharedTexture } from './houseMeshes';
 
 /**
  * The houses round Smetlede's church square and along the street to the school: our own Blender models
@@ -31,18 +31,9 @@ const TILE: Record<string, number> = { town_brick: 1.4, town_roof: 3.6, plaster:
 /** The model stores its vertex colours divided by this (painted brick is lighter than the brick texture's mean). */
 const COLOR_SCALE = 1.6;
 
-const textures = new Map<string, THREE.Texture>();
+/** The game's textures (world/houseMeshes.ts), fetched once for the town and the rest: at the town's tile size. */
 function texture(name: string, kind: 'color' | 'normal' | 'rough', renderer: THREE.WebGLRenderer): THREE.Texture {
-  const key = `${name}_${kind}`;
-  let t = textures.get(key);
-  if (!t) {
-    t = loadTexture(key, kind === 'color', renderer); // KTX2 or WebP, as everywhere (world/textureFiles.ts)
-    t.wrapS = t.wrapT = THREE.RepeatWrapping;
-    t.anisotropy = Math.min(4, renderer.capabilities.getMaxAnisotropy());
-    t.repeat.setScalar(1 / (TILE[name] ?? 2));
-    textures.set(key, t);
-  }
-  return t;
+  return sharedTexture(name, kind, renderer, TILE[name] ?? 2);
 }
 
 function material(name: string, extras: { texture?: string; normalScale?: number; roughness?: number }, renderer: THREE.WebGLRenderer): THREE.Material {
