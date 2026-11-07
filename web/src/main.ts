@@ -3587,8 +3587,8 @@ async function buildVillage(): Promise<void> {
   for (const m of models) m.visible = true;
   // And the whole map, coarse, for the ground beyond those areas.
   groundShade.bakeAll(renderer, scene, sun, [built.group, hedgeLumps, tiles.group], house.ground, phone ? 1024 : 2048);
-  await prepareShotRaycasts(scene);
   village = 'ready';
+  void prepareShotRaycasts(scene); // the shot index in idle slices, once play has begun (until then three's raycast)
   christmas.villageReady();
   for (const c of cars) c.ready = true; // the cars parked in the village (shared/car.json) with it
   bikes.villageReady(); // and the bikes in its racks (shared/bike.json)
