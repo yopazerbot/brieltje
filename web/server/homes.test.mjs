@@ -182,3 +182,46 @@ test('a new grant tells the game server (onGrant), so the state of the inside fo
   await call('POST', '/api/home/unlock', { id: H1, code }, { user: 'p1', who: 'w2' });
   assert.deepEqual(told, [['p1', H1]]);
 });
+
+test('a flood of tries from many senders: two checks at once, a few wait, the rest hear "busy" (503)', async () => {
+  const { call, homes } = setup();
+  await call('POST', `/api/admin/homes/${H1}/code`, {}, { admin: true });
+  const answers = await Promise.all(Array.from({ length: 20 }, (_, i) => call('POST', '/api/home/unlock', { id: H1, code: 'BBBBB-BBBBB' }, { who: `flood${i}` })));
+  const statuses = answers.map((a) => a.res.status);
+  assert.equal(statuses.filter((s) => s === 403).length, 10, 'two running and eight waiting are checked');
+  assert.equal(statuses.filter((s) => s === 503).length, 10, 'the rest are refused at once');
+  assert.equal(answers.find((a) => a.res.status === 503).res.data.code, 'busy');
+  assert.equal(homes.turns.active, 0);
+  assert.equal(homes.checks.count('all', Date.now()), 10, 'a "busy" refusal is not counted against everyone');
+  await homes.flush();
+});
+
+test('at most 300 checks an hour from everyone together; the admin still gets in without a code', async () => {
+  const { call, homes } = setup();
+  const code = (await call('POST', `/api/admin/homes/${H1}/code`, {}, { admin: true })).res.data.code;
+  const now = Date.now();
+  for (let i = 0; i < 300; i++) homes.checks.add('all', now); // 300 tries by a crowd, each from an address of its own
+  const capped = (await call('POST', '/api/home/unlock', { id: H1, code }, { who: 'late' })).res;
+  assert.deepEqual([capped.status, capped.data.code], [429, 'home_slow'], 'refused before any hashing, even the right code');
+  assert.equal((await call('POST', '/api/home/unlock', { id: H1 }, { admin: true, who: 'root' })).res.status, 200);
+  homes.checks.map.clear(); // an hour later
+  assert.equal((await call('POST', '/api/home/unlock', { id: H1, code }, { who: 'late' })).res.status, 200);
+});
+
+test('wrong tries are counted in memory and written to the store at most once a minute', async () => {
+  const { call, homes } = setup();
+  await call('POST', `/api/admin/homes/${H1}/code`, {}, { admin: true });
+  let writes = 0;
+  const setMeta = homes.store.setMeta;
+  homes.store.setMeta = (...a) => (writes++, setMeta(...a));
+  for (let i = 0; i < 12; i++) await call('POST', '/api/home/unlock', { id: H1, code: 'BBBBB-BBBBB' }, { who: `w${i}` });
+  await new Promise((r) => setTimeout(r, 20));
+  assert.ok(writes <= 1, `one write for twelve wrong tries, not twelve (${writes})`);
+  const row = () => call('GET', '/api/admin/homes', undefined, { admin: true }).then((r) => r.res.data.rows.find((x) => x.id === H1));
+  assert.equal((await row()).fails, 12, 'the admin sees every wrong try at once');
+  assert.ok(homes.flushTimer, 'the rest wait for the next write');
+  await homes.flush();
+  assert.equal(homes.fails.size, 0);
+  assert.equal((await row()).fails, 12, 'and none counted twice');
+  assert.equal(JSON.parse(await homes.store.getMeta('homes'))[H1].fails, 12, 'all in the store');
+});

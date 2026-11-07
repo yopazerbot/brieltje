@@ -132,6 +132,44 @@ export function bucketOf(ip) {
 }
 
 /**
+ * Turns at a scrypt hash (16 MB and tens of milliseconds each, on Node's four worker threads, which also
+ * read the files): at most `at` run at once and `queue` wait; more are refused at once (run gives null,
+ * the caller answers "busy"), so a flood can't stall the site.
+ */
+export class Turns {
+  constructor(at, queue) {
+    this.at = at;
+    this.queue = queue;
+    this.active = 0; // hashes running
+    this.waiting = []; // and waiting for one of those
+  }
+  /** A turn: true once it is ours, false when too many wait. Give it back with release(). */
+  async acquire() {
+    if (this.active < this.at) {
+      this.active++;
+      return true;
+    }
+    if (this.waiting.length >= this.queue) return false;
+    await new Promise((resolve) => this.waiting.push(resolve));
+    return true; // handed over by release, still counted in `active`
+  }
+  release() {
+    const next = this.waiting.shift();
+    if (next) next();
+    else this.active--;
+  }
+  /** `fn` with a turn: { value }, or null when too many wait. */
+  async run(fn) {
+    if (!(await this.acquire())) return null;
+    try {
+      return { value: await fn() };
+    } finally {
+      this.release();
+    }
+  }
+}
+
+/**
  * Login attempts per key (an address or an account) within a time window. Counted before
  * the password check, so a burst can't slip past, and taken back when it doesn't count
  * (right password, or busy). Only attempts that reach a check stay, so the two-at-a-time

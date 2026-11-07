@@ -20,7 +20,7 @@
 //   turns one off or on, and deletes one.
 
 import { createHash, randomBytes } from 'node:crypto';
-import { RESERVED, Attempts, bucketOf, clientIp, hashPassword, NAME_RE, verifyHash } from './auth.mjs';
+import { RESERVED, Attempts, bucketOf, clientIp, hashPassword, NAME_RE, Turns, verifyHash } from './auth.mjs';
 
 export const ACCOUNT_MS = 30 * 24 * 3600_000;
 const SESSIONS_PER_ACCOUNT = 10;
@@ -67,8 +67,7 @@ export class Accounts {
     this.byAddress = new Attempts(WINDOW_MS); // wrong passwords per address
     this.byAccount = new Attempts(WINDOW_MS); // wrong passwords per account name
     this.signups = new Attempts(3600_000); // sign-ups per address, and 'all'
-    this.active = 0; // password checks running
-    this.waiting = []; // and waiting for one of those
+    this.turns = new Turns(HASHING, QUEUE); // password checks running, and waiting for one of those
     this.seenToday = new Map(); // name -> the day their last use was noted (see seen)
     auth.onLift = () => {
       const n = this.byAddress.map.size + this.byAccount.map.size;
@@ -100,29 +99,13 @@ export class Accounts {
     if (gone.length) this.auth.log('accounts_pruned', null, { detail: `${gone.length} unused for ${KEEP_DAYS} days` });
   }
 
-  /** A turn at checking a password (scrypt): true once it is ours, false when too many wait. Give it back with release(). */
-  async acquire() {
-    if (this.active < HASHING) {
-      this.active++;
-      return true;
-    }
-    if (this.waiting.length >= QUEUE) return false;
-    await new Promise((resolve) => this.waiting.push(resolve));
-    return true; // handed over by release, still counted in `active`
+  /** Password checks running now. */
+  get active() {
+    return this.turns.active;
   }
-  release() {
-    const next = this.waiting.shift();
-    if (next) next();
-    else this.active--;
-  }
-  /** `fn` with a turn at hashing, or null when the server is too busy. */
-  async hashing(fn) {
-    if (!(await this.acquire())) return null;
-    try {
-      return { value: await fn() };
-    } finally {
-      this.release();
-    }
+  /** `fn` with a turn at hashing (server/auth.mjs Turns), or null when the server is too busy. */
+  hashing(fn) {
+    return this.turns.run(fn);
   }
 
   /** What is wrong with a new password for `name`, or null. */
