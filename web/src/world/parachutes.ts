@@ -3,6 +3,7 @@ import { GLTFLoader, type GLTF } from 'three/addons/loaders/GLTFLoader.js';
 import * as SkeletonUtils from 'three/addons/utils/SkeletonUtils.js';
 import type { Body } from '../net/swat';
 import { DROP } from '../../shared/parachute.mjs';
+import { daylight } from './daylight';
 import { PilotPose, type FallPose } from './parachutePilot';
 
 /**
@@ -17,7 +18,8 @@ import { PilotPose, type FallPose } from './parachutePilot';
  * arms out in the free fall, leaning into how they fly (head lower tracking forward, head first in a dive,
  * banked sliding sideways), swung upright as the canopy opens, swinging a little under it (a pendulum round
  * the canopy, out of the turns and with the opening's surge), and handed back to its own animation gently
- * after landing. Only drawn: their hit boxes, and where the server has them, don't change.
+ * after landing. Only drawn: their hit boxes, and where the server has them, don't change. The cloth's own soft
+ * glow (it keeps the canopy bright against the sky by day) dims with the daylight, so it is dark at night.
  */
 
 type Clip = 'Deploy' | 'Glide_Idle' | 'Glide_Left' | 'Glide_Right' | 'Flare' | 'Land_Collapse';
@@ -141,6 +143,8 @@ export class Parachutes {
   private loading = false;
   private flights = new Map<string, Flight>();
   private accents = new Map<string, THREE.Material>();
+  /** The materials that glow a little by day (the canopy's cloth and every accent) */
+  private glowing = new Set<THREE.MeshStandardMaterial>();
 
   /**
    * Each frame, for each player who may be in a drop. `holder`: the group they are drawn in (at their feet,
@@ -245,6 +249,10 @@ export class Parachutes {
   sweep(): void {
     const now = performance.now();
     for (const [key, f] of this.flights) if (f.done || now - f.seen >= 1000) this.remove(key, f);
+    if (this.flights.size) {
+      const light = daylight();
+      for (const m of this.glowing) m.emissiveIntensity = light;
+    }
   }
 
   private remove(key: string, f: Flight): void {
@@ -314,6 +322,8 @@ export class Parachutes {
       if (!mesh.isSkinnedMesh) return;
       const mat = mesh.material as THREE.MeshStandardMaterial;
       if (mat.name === 'Parachute_Accent') mesh.material = this.accent(mat, colour);
+      const used = mesh.material as THREE.MeshStandardMaterial;
+      if (used.emissive && used.emissive.getHex() !== 0) this.glowing.add(used);
       mesh.boundingSphere = SPHERE.clone();
       mesh.boundingBox = REACH.clone();
       const lod = /LOD1/.test(mesh.name) || /LOD1/.test(mesh.parent?.name ?? '') ? 1 : 0;
