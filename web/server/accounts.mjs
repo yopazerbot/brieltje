@@ -287,8 +287,12 @@ export class Accounts {
     if (!hashed) return { error: 'The server is busy. Try again in a moment.', code: 'busy', status: 503 };
     if ((this.auth.epoch.get(name) || 0) !== before) return ended;
     this.auth.revoke(name); // first: every session ends, and a login checked against the old password gets none
-    const mine = this.auth.epoch.get(name);
+    const first = this.auth.epoch.get(name);
     await this.store.updateAccount(name, { pass: hashed.value });
+    // Again once the new password is kept: a login that read the old one while it was being written gets none either.
+    this.auth.revoke(name);
+    const mine = this.auth.epoch.get(name);
+    if (mine !== first + 1) return ended; // someone else revoked meanwhile (turned off, reset, kicked): log in again
     await this.store.deleteSessionsOf(name);
     this.auth.log('account_password', req, { username: name });
     const token = await this.session(req, name, mine); // none when anything else revoked meanwhile

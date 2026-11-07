@@ -201,6 +201,27 @@ test('turned off while the player changes their password: no new password, no se
   assert.equal([...auth.sessions.values()].filter((s) => s.username === 'sem').length, 0);
 });
 
+test('a login that read the old password while the new one was being kept gets no session', async () => {
+  const { auth, store, accounts } = await ready();
+  const made = await accounts.register(req(), { ...good, username: 'tess' });
+  const session = auth.session(req('192.0.2.30', `${auth.names.session}=${made.token}`));
+  const update = store.updateAccount.bind(store);
+  let racing = null;
+  store.updateAccount = async (name, patch) => {
+    if ('pass' in patch && !racing) racing = accounts.login(req('192.0.2.88'), { username: 'tess', password: good.password }); // starts with the old password
+    await new Promise((r) => setTimeout(r, 120)); // the write takes a while: the racing login reads the old hash meanwhile
+    return update(name, patch);
+  };
+  const changed = await accounts.changePassword(req(), session, { old: good.password, password: 'another long one' });
+  assert.ok(changed.token);
+  const raced = await racing;
+  // Its answer may carry a token, but nothing logs in with it, now or after a restart (it isn't stored).
+  if (raced.token) assert.equal(auth.session(req('192.0.2.88', `${auth.names.session}=${raced.token}`)), null, 'no session from the old password');
+  assert.equal([...auth.sessions.values()].filter((s) => s.username === 'tess').length, 1);
+  assert.equal(store.sessions.filter((s) => s.username === 'tess').length, 1);
+  assert.ok(auth.session(req('192.0.2.30', `${auth.names.session}=${changed.token}`)));
+});
+
 test('at most ten sessions per account: the oldest go', async () => {
   const { auth, accounts } = await ready();
   await accounts.register(req(), { ...good, username: 'pia' });
