@@ -35,6 +35,12 @@ The whole project was made with AI. Yoshi Parlevliet, a cybersecurity consultant
 - **Villagers.** In Explore, invented villagers walk the pavements, cycle the red lanes, walk their dogs, chat and wave. In Action, Paintball and Zombies they are gone.
 - **Water.** Wade through ditches, swim in the ponds, splash, and watch the rain ring the water.
 - **New start pictures.** Smetlede at night, Molenhoek in the rain, and a parachute over the church square at dusk.
+- **Dusk and snow.** Two more weather moods: a low golden sun turning into blue hour, and snow that whitens roofs and fields (on Auto only in winter, and rarely).
+- **Shadows and glow.** On Medium and up, people, cars and bikes cast shadows wherever you are, and lamps, lit windows and portals glow softly at night.
+- **The school's slide.** Climb the play tower's ladder, stand on the platform and slide down.
+- **Sint-Maarten and Sinterklaas.** In Explore, Sint-Maarten rides on the church square from 4 to 11 November, with lanterns and carrots on his evenings; Sinterklaas follows from mid-November to 6 December. From Advent to Epiphany the square has a Christmas tree and lights hang along the eaves.
+- **Other controllers.** Xbox-style and Nintendo-style controllers get their own button names, and the map and scores sit on the View button. The 8BitDo Ultimate 2C works over its 2.4G dongle.
+- **Split screen.** brieltje.be/splitscreen puts two to four players with their own controllers on one PC, each joining the game together.
 
 ## Recent updates — 6 November 2026
 
