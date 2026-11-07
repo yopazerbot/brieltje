@@ -31,6 +31,7 @@ const LAND_RATE = 0.8; // Land_Collapse a little slower than made: the canopy se
 const LAND = 2.4 / LAND_RATE; // s, Land_Collapse at that rate
 const GLOW = 0.28; // the accent's emissive: the player's colour times this (as the canopy's own)
 const CLOTH_NIGHT = 0.75; // by night the canopy's cloth reflects this much less of the light (see sweep)
+const GEAR_NIGHT = 0.85; // and the lines, risers and harness this much less: pale thin lines read as glowing threads on the night sky
 /** Everything the clips reach (docs/parachute/manifest.json): a skinned mesh is culled by it, not by its rest pose. */
 const REACH = new THREE.Box3(new THREE.Vector3(-3.8, 0, -4.1), new THREE.Vector3(3.8, 5.9, 2.4));
 const SPHERE = REACH.getBoundingSphere(new THREE.Sphere());
@@ -147,6 +148,8 @@ export class Parachutes {
   private accents = new Map<string, THREE.Material>();
   /** The materials that glow a little by day (the canopy's cloth and every accent) */
   private glowing = new Set<THREE.MeshStandardMaterial>();
+  /** The materials that don't glow (the gear: lines, risers, harness, pack), darkened by night */
+  private gear = new Set<THREE.MeshStandardMaterial>();
 
   /**
    * Each frame, for each player who may be in a drop. `holder`: the group they are drawn in (at their feet,
@@ -261,6 +264,8 @@ export class Parachutes {
         m.emissiveIntensity = light;
         m.color.copy((m.userData.day ??= m.color.clone()) as THREE.Color).multiplyScalar(cloth);
       }
+      const gear = 1 - GEAR_NIGHT * mood.night;
+      for (const m of this.gear) m.color.copy((m.userData.day ??= m.color.clone()) as THREE.Color).multiplyScalar(gear);
     }
   }
 
@@ -333,6 +338,7 @@ export class Parachutes {
       if (mat.name === 'Parachute_Accent') mesh.material = this.accent(mat, colour);
       const used = mesh.material as THREE.MeshStandardMaterial;
       if (used.emissive && used.emissive.getHex() !== 0) this.glowing.add(used);
+      else if (used.color) this.gear.add(used);
       mesh.boundingSphere = SPHERE.clone();
       mesh.boundingBox = REACH.clone();
       const lod = /LOD1/.test(mesh.name) || /LOD1/.test(mesh.parent?.name ?? '') ? 1 : 0;
