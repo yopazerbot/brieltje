@@ -42,6 +42,7 @@ import { cycleTime, DEFAULT_CHOICE, isChoice, MoodCycle, newCycle, skipCycle, SP
 import { arenaEdge, arenaHome, arenaPrisms, ARENAS, portalOf } from '../shared/arenas.mjs';
 import { churchPrisms, makeChurch } from '../shared/church.mjs';
 import { DROP, dropFrom, HOME_DROP } from '../shared/parachute.mjs';
+import { Football } from './football.mjs';
 
 /** /parachute (manualDrop): once every CHUTE_MS, and not within HURT_CALM_MS of being hit. */
 const CHUTE_MS = 60_000;
@@ -330,6 +331,7 @@ export class Game {
     this.sent = new Map(); // 'c' + car id, 'h' + horse, 'b' + strongman id -> its fields in the last tick
     this.carAt = {}; // car id -> when its pose was taken (the server's clock, ms)
     this.horseAt = this.horses.map(() => 0);
+    this.football = new Football((x, z) => HOUSE.ground + TERRAIN.height(x, z)); // the footballs (server/football.mjs)
     setInterval(() => this.tick(), TICK_MS).unref();
     // Sessions can end while connected (logout, password reset, user deleted,
     // kicked, expired): close those connections within a second.
@@ -710,6 +712,9 @@ export class Game {
         if (!this.modes.friends(name, who)) continue;
         this.send(other.ws, { t: 'rally', name, x: state.x, y: state.y, z: state.z });
       }
+    } else if (m.t === 'kickball') {
+      // A football kicked (server/football.mjs checks reach, pace, rate and the kick itself).
+      this.football.kick(name, player, m, now, this.onFoot(name));
     } else if (m.t === 'pong') {
       // The answer to the server's ping (see pings): only to the one asked, once.
       if (!player.pingN || m.n !== player.pingN) return;
@@ -1177,6 +1182,11 @@ export class Game {
   /** In a car: out of reach of shots, and no firing from it. */
   inCar(name) {
     return !!this.carOf(name);
+  }
+
+  /** On their own feet: not driving, riding along or on a horse (who may kick a football). */
+  onFoot(name) {
+    return !this.carOf(name) && !this.horseOf(name);
   }
 
   async kick(target, by) {
@@ -1937,6 +1947,7 @@ export class Game {
     if (!this.players.size) return;
     this.fenceAll();
     this.stepBrutes(now);
+    this.football.tick(this.players, now, (n) => this.onFoot(n), (p, msg) => this.send(p.ws, msg));
     this.snapshot(now);
     this.pings();
   }
