@@ -3391,7 +3391,9 @@ renderer.setAnimationLoop((now: number) => {
       ...games.coinSpots().map((c) => ({ x: c.x, z: c.z, color: '#f2c14e', kind: 'coin' as const })),
     ];
     bigMap.tick(mapYou(), marks);
-  } else composer.render(dt); // the menu's Map tab covers most of the screen: the world isn't drawn behind it
+  } else if (!menu.onStartScreen) composer.render(dt); // the menu's Map tab covers most of the screen: the world isn't drawn behind it
+  // Nor behind the start screen: its slideshow covers the canvas, and drawing there compiled the shaders one by one
+  // on the page's thread while the world loaded (5.8 s of it). They compile in the background instead (compileWorld).
   hud.tick(dt, renderer.info.render.calls, preset.scale * dynScale, t(`gfx.${quality}`), net.connected ? net.rtt : null);
 });
 
@@ -3764,9 +3766,7 @@ function startCamera(): void {
  */
 async function autoDetect(): Promise<void> {
   menu.setGraphics('auto', null, gpu);
-  await environmentReady;
-  await texturesReady;
-  await homeBakeReady;
+  await compileWorld();
   const keep = { x: player.x, z: player.z, feet: player.feet, yaw: player.yaw, pitch: player.pitch };
   const still = NO_INPUT;
   const views: [number, number, number, number, number][] = [
@@ -3796,8 +3796,30 @@ async function autoDetect(): Promise<void> {
   composer.render(0); // the front of the house, then play
   loaded();
 }
+/**
+ * The world's shaders, compiled before it is shown, in the background where the browser can (KHR_parallel_shader_compile):
+ * once the sky is in (it is part of every lit shader) while the textures still come, and again once they and the houses'
+ * baked light are in, for what came or changed since. The graphics test, or one frame behind the start screen, then
+ * draws the rest (the shadow's and the passes' own shaders), so play begins with nothing left to compile.
+ */
+const firstCompile = environmentReady.then(() => precompile(scene));
+async function compileWorld(): Promise<void> {
+  await Promise.all([environmentReady, texturesReady, homeBakeReady, firstCompile]);
+  // With a figure like yours under the parachute at the first drop (skinned: shaders of its own), kept out of the
+  // scene and never disposed, so its shaders stay compiled for yours and the others'.
+  const figure = new THREE.Group();
+  figure.add(avatars.figure('', myColour()).root);
+  await Promise.all([precompile(scene), precompile(figure)]);
+}
 if (mode === 'auto') void autoDetect().catch(loaded);
-else void Promise.all([environmentReady, texturesReady, homeBakeReady]).then(loaded, loaded);
+else {
+  void compileWorld()
+    .then(() => {
+      placeShadow();
+      composer.render(0);
+    })
+    .then(loaded, loaded);
+}
 
 // Development only: lets automated checks move the player without a controller.
 if (import.meta.env.DEV) {
