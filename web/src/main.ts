@@ -126,6 +126,7 @@ import BOUNDS from '../shared/bounds.json';
 import CHURCH_DATA from '../shared/church.json';
 import { churchPrisms, makeChurch } from '../shared/church.mjs';
 import { carName, doorName, lang, onLang, placeName, plural, portalName, serverText, setLang, t, whoName } from './i18n';
+import { seat, tellHost } from './seat';
 
 // The world. This module is fetched and run on the first start (src/start.ts, the page's entry,
 // with the start screen): before that the page has loaded no texture, model, sky or sound.
@@ -2678,6 +2679,7 @@ menu.onPlay = (mode) => {
     beacon('start');
     // The most important controls for the way you play, once, when you start (ui/controlsCard.ts).
     controlsCard.show(mode, weapon.enabled);
+    tellHost('playing'); // the split screen starts the next seat (src/seat.ts)
   }
   menuHint.textContent = key('menu', mode);
   touch.show(mode === 'touch');
@@ -2899,7 +2901,7 @@ renderer.setAnimationLoop((now: number) => {
     }
     // The feedback card at a quiet moment after two minutes: not while down, driving, riding along,
     // furnishing, typing in the chat or travelling.
-    if (feedback.due && !feedback.open && document.visibilityState === 'visible' && (askClock += dt) >= ASK_AFTER
+    if (!seat && feedback.due && !feedback.open && document.visibilityState === 'visible' && (askClock += dt) >= ASK_AFTER
       && combat.alive && !driving && !riding && !chat.typing && !trip) feedback.show();
     // Dead: the view sinks to the floor; you can look around but not move or shoot.
     const dead = !combat.alive;
@@ -3778,7 +3780,7 @@ async function autoDetect(): Promise<void> {
       }, gl, 5);
     }
     return total / views.length;
-  });
+  }, seat?.views ?? 1); // the split screen's views share the chip (src/seat.ts)
   player.place(keep.x, keep.z, keep.feet, keep.yaw, keep.pitch);
   player.update(0, still, camera);
   if (mode === 'auto') applyQuality(result.quality);

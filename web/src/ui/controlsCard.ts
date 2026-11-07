@@ -1,9 +1,10 @@
 import { onPadLabels } from '../controls/padFamily';
 import { onLang, t } from '../i18n';
+import { seat } from '../seat';
 import { essentials, type Control } from '../shortcuts';
 
-/** Seconds the card stays before it closes by itself. */
-const SHOW_FOR = 5;
+/** Seconds the card stays before it closes by itself: shorter in a seat of the split screen, where the view is small. */
+const SHOW_FOR = seat ? 3 : 5;
 
 /**
  * The most important controls, shown when you start playing (Yoshi, 1 Nov 2026): a small card with
@@ -63,8 +64,14 @@ export class ControlsCard {
 
   /** The rows: what it does, and the key or button for it. Text only (textContent). */
   private fill(control: Control, action: boolean): void {
+    let rows = essentials(control, action);
+    // A seat of the split screen (src/seat.ts), on starting: only walking, jumping, shooting and the menu.
+    if (seat && !this.fromMenu) {
+      const keep = new Set([t('ctl.move'), t('cc.jumpFly'), t('cc.shoot'), t('ctl.menu')]);
+      rows = rows.filter(([what]) => keep.has(what));
+    }
     this.rows.replaceChildren(
-      ...essentials(control, action).flatMap(([what, keys]) => {
+      ...rows.flatMap(([what, keys]) => {
         const dt = document.createElement('dt');
         dt.textContent = what;
         const dd = document.createElement('dd');

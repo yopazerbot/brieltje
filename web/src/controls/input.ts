@@ -5,6 +5,7 @@
  * src/controls/padFamily.ts.
  */
 import { typing } from '../keys';
+import { gamepads, seat } from '../seat';
 import { hasTouchpad, notePad } from './padFamily';
 import type { TouchControls } from './touch';
 
@@ -100,6 +101,12 @@ export class Input {
   touch: TouchControls | null = null;
   /** A menu is open (src/start.ts): Tab, Space and the arrow keys then work the page as usual. */
   menuOpen: () => boolean = () => false;
+  /**
+   * Split screen (src/seat.ts): a seat plays with its own controller only, by its index, and with the
+   * keyboard and mouse only when it was given them (seat 1, instead of a controller).
+   */
+  private padIndex: number | null = seat ? seat.pad : null;
+  private keyboard = !seat || seat.pad < 0;
   private keys = new Set<string>();
   private mouseX = 0;
   private mouseY = 0;
@@ -121,10 +128,12 @@ export class Input {
 
   constructor(private canvas: HTMLCanvasElement) {
     window.addEventListener('keyup', (e) => {
+      if (!this.keyboard) return;
       // Alt on its own opens the browser's menu bar when it's let go.
       if (!this.menuOpen() && !typing(e) && (e.code === 'AltLeft' || e.code === 'AltRight')) e.preventDefault();
     });
     window.addEventListener('keydown', (e) => {
+      if (!this.keyboard) return;
       if (e.code === 'Escape' && !e.repeat) this.keyMenu = true; // also from a field in the menu (the chat keeps its own Esc)
       if (typing(e)) return; // typing a name is not walking
       if (e.code === 'KeyF' && !e.repeat) this.keyFps = true;
@@ -146,13 +155,13 @@ export class Input {
     window.addEventListener('keyup', (e) => this.keys.delete(e.code));
     window.addEventListener('blur', () => this.keys.clear());
     document.addEventListener('mousemove', (e) => {
-      if (document.pointerLockElement !== this.canvas) return;
+      if (!this.keyboard || document.pointerLockElement !== this.canvas) return;
       this.mouseX += e.movementX;
       this.mouseY += e.movementY;
     });
     // Clicks count only while playing with the mouse captured.
     document.addEventListener('mousedown', (e) => {
-      if (document.pointerLockElement !== this.canvas) return;
+      if (!this.keyboard || document.pointerLockElement !== this.canvas) return;
       if (e.button === 0) this.click = this.leftHeld = true;
       if (e.button === 2) this.rightHeld = true;
     });
@@ -175,7 +184,12 @@ export class Input {
   }
 
   private pad(): Gamepad | null {
-    const pads = navigator.getGamepads ? navigator.getGamepads() : [];
+    const pads = gamepads();
+    if (this.padIndex !== null) {
+      // A seat: its own controller, whatever kind it is; none when it plays with the keyboard (-1).
+      const own = this.padIndex >= 0 ? pads[this.padIndex] : null;
+      return own?.connected ? own : null;
+    }
     let found: Gamepad | null = null;
     for (const p of pads) {
       if (!p || !p.connected) continue;

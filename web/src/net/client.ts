@@ -2,6 +2,7 @@ import type { CarState } from '../world/car';
 import type { Piece } from '../world/furnishing';
 import { serverText, t } from '../i18n';
 import { PROTO, type Tick } from '../../shared/wire.mjs';
+import { seatHeaders, seatProtocols } from '../seat';
 
 /**
  * Talking to the server: login and admin calls (HTTP), and the shared house
@@ -165,7 +166,8 @@ async function call<T>(method: string, path: string, body?: unknown): Promise<T>
   const res = await fetch(path, {
     method,
     credentials: 'same-origin',
-    headers: body !== undefined ? { 'Content-Type': 'application/json' } : undefined,
+    // In the split screen, the seat this call speaks for (src/seat.ts): the server answers from that seat's session.
+    headers: { ...seatHeaders, ...(body !== undefined ? { 'Content-Type': 'application/json' } : {}) },
     body: body !== undefined ? JSON.stringify(body) : undefined,
   });
   const data = (await res.json().catch(() => ({}))) as { error?: unknown; code?: unknown; args?: unknown };
@@ -225,7 +227,8 @@ export class Net {
     this.stopped = false;
     const url = `${location.protocol === 'https:' ? 'wss' : 'ws'}://${location.host}/ws?v=${PROTO}`;
     this.rtt = null;
-    const ws = new WebSocket(url);
+    // In the split screen, the seat in the subprotocol (src/seat.ts), never in the URL.
+    const ws = new WebSocket(url, seatProtocols);
     this.ws = ws;
     this.onStatus(() => t('net.connecting'));
     ws.onopen = () => {

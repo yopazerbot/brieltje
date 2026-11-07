@@ -1451,3 +1451,11 @@ body.touch #controls-card { top: calc(8px + env(safe-area-inset-top, 0px)); tran
   #controls-card .cc-more { display: none; }
 }
 
+/* A seat of the split screen (src/seat.ts) starts at once: while its world loads, the start panel
+   shows only the wordmark, who is playing and the chosen button's progress. */
+body.seat #start-panel > :not(.start-head, #mp-session, .start-choices) { display: none; }
+body.seat .start-choices .choice:not(.loading) { display: none; }
+/* In a quarter of the screen the HUD is crowded: no wordmark, no credit line, and the list of who is
+   online only on the scoreboard (it covered the ammo). The split screen's page names each view. */
+body.seat :is(#brand, #credit, #online) { display: none; }
+

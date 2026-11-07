@@ -1,5 +1,6 @@
 import { HOMES, homeOfDoor, makePaneHomes } from '../../shared/homes.mjs';
 import { t } from '../i18n';
+import { seatHeaders } from '../seat';
 
 /**
  * The page's side of the three homes that open only with a code (shared/homes.mjs, server/homes.mjs): the main house,
@@ -78,7 +79,7 @@ export class HomeLocks {
   async unlock(id: string, code: string): Promise<string> {
     let r: Response;
     try {
-      r = await fetch('/api/home/unlock', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ id, code }) });
+      r = await fetch('/api/home/unlock', { method: 'POST', headers: { ...seatHeaders, 'Content-Type': 'application/json' }, body: JSON.stringify({ id, code }) });
     } catch {
       return t('home.error');
     }

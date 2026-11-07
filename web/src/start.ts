@@ -10,6 +10,8 @@
  * by itself once it is ready. Nothing in main.ts or the modules it imports runs before that click,
  * so a model or texture loaded the moment its module is read can't slip in early either.
  */
+// First: in the split screen it puts the seat's own settings in place before any module reads one.
+import { seat, tellHost } from './seat';
 import { Input } from './controls/input';
 import { loadMode, saveMode } from './graphics';
 import { applyStatic, onLang, setLang, t, type Lang } from './i18n';
@@ -342,6 +344,24 @@ try {
 if (logoutPending) {
   setAccount(null);
   logoutForSure(); // left last time while the server was out of reach: finish that first
+} else if (seat) {
+  // A seat of the split screen (src/seat.ts): the page around it joined it already, so it starts
+  // straight away, as that player, without the start screen's form. Its controller, or seat 1's
+  // keyboard and mouse. Without its session (it ended, or was never made), the start screen as usual.
+  let joined = false;
+  onAccount((account) => {
+    if (account) joined = true;
+    else if (joined) tellHost('ended'); // left, removed, or the session ended: the split screen says so
+  });
+  api.me().then((account) => {
+    document.body.classList.add('seat');
+    setAccount(account);
+    tellHost('ready');
+    menu.begin(seat!.pad < 0 ? 'kbm' : 'pad');
+  }).catch(() => {
+    setAccount(null);
+    tellHost('alone');
+  });
 } else api.me().then(setAccount).catch(() => setAccount(null));
 // Together picked but not joined yet: a start button joins first (a PIN typed in and then straight
 // to Touch screen would otherwise start alone), and play starts only if that worked.

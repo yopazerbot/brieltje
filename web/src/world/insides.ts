@@ -1,6 +1,7 @@
 import * as THREE from 'three';
 import { registerDoors } from '../../shared/homes.mjs';
 import { addInsideNames } from '../i18n';
+import { seatHeaders } from '../seat';
 import type { BigMap } from '../ui/bigmap';
 import type { Minimap } from '../ui/minimap';
 import type { World } from './collision';
@@ -103,7 +104,7 @@ export class Insides {
       if (this.asked.has(id)) return;
       this.asked.add(id);
       try {
-        const r = await fetch(`/api/home/${id}/inside`, { credentials: 'same-origin' });
+        const r = await fetch(`/api/home/${id}/inside`, { credentials: 'same-origin', headers: seatHeaders });
         if (!r.ok) {
           this.asked.delete(id); // not yet (the right may still be on its way): the next welcome asks again
           return;

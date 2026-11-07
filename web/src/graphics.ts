@@ -98,20 +98,24 @@ export function timeFrames(render: () => void, gl: WebGL2RenderingContext | WebG
  * Pick the best preset by testing. Starts at the guess from the chip's name,
  * then moves up while there is room, or down while it is too slow.
  * `measure` applies a preset and returns milliseconds per frame.
+ * `views`: the split screen's views sharing the chip (src/seat.ts). Each gets its share of the time,
+ * and none goes above Medium: Low by default, Medium on a fast chip.
  */
-export async function pickQuality(guess: Quality, measure: (q: Quality) => number): Promise<{ quality: Quality; ms: number }> {
-  let i = ORDER.indexOf(guess);
+export async function pickQuality(guess: Quality, measure: (q: Quality) => number, views = 1): Promise<{ quality: Quality; ms: number }> {
+  const budget = BUDGET_MS / views;
+  const top = views > 1 ? ORDER.indexOf('medium') : ORDER.length - 1;
+  let i = Math.min(ORDER.indexOf(guess), top);
   let ms = measure(ORDER[i]);
-  if (ms <= BUDGET_MS) {
-    while (i < ORDER.length - 1) {
+  if (ms <= budget) {
+    while (i < top) {
       await new Promise((r) => setTimeout(r, 0)); // keep the page responsive between tests
       const next = measure(ORDER[i + 1]);
-      if (next > BUDGET_MS) break;
+      if (next > budget) break;
       i++;
       ms = next;
     }
   } else {
-    while (i > 0 && ms > BUDGET_MS) {
+    while (i > 0 && ms > budget) {
       await new Promise((r) => setTimeout(r, 0));
       i--;
       ms = measure(ORDER[i]);
