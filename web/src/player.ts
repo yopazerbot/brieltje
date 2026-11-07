@@ -12,6 +12,20 @@ export const STEP_UP = 0.5;       // m, highest edge you walk onto without jumpi
 const SPRINT_FACTOR = 2.5; // sprint speed = walking speed x this
 const GRAVITY = 9.81;      // m/s2
 const JUMP_HEIGHT = 0.5;   // m
+const STUMBLE = 0.7;       // s a hard landing shakes you
+
+/**
+ * How the knees take a landing at `speed` m/s: how far the eyes dip (m), over how long (s), and how hard
+ * a stumble (0 none, from about 3 m up, to 1).
+ */
+export function landingFeel(speed: number): { depth: number; time: number; stumble: number } {
+  const k = Math.max(0, speed - 2.5);
+  return {
+    depth: Math.min(0.34, 0.025 + k * 0.045),
+    time: 0.28 + Math.min(0.3, k * 0.04),
+    stumble: speed > 8 ? Math.min(1, 0.4 + (speed - 8) / 6) : 0,
+  };
+}
 const FLY_HOLD = 0.25;     // s holding jump before you start flying
 const FLY_SPEED = 3.0;     // m/s up or down while flying
 const DOUBLE_TAP = 0.3;    // s between two jump presses that ends flying
@@ -92,6 +106,13 @@ export class Player {
   /** Under the canopy: the steering, picked up and let go of gently (-1 left .. 1 right) */
   steer = 0;
   private dip = -1;
+  /** How far the eyes dip in the landing (m) and how long it takes (s): by how hard you came down */
+  private dipDepth = 0.3;
+  private dipTime = 0.45;
+  /** A hard landing: 0 to 1 how hard, the seconds since, and which way the view tips */
+  private stumble = 0;
+  private stumbleT = 0;
+  private stumbleSide = 1;
   private lastStep = 0;
   private vx = 0;
   private vz = 0;
@@ -118,7 +139,7 @@ export class Player {
 
   /** Put the player somewhere directly, camera included (used by the dev test hook). */
   place(x: number, z: number, feet: number, yaw: number, pitch: number): void {
-    Object.assign(this, { x, z, feet, yaw, pitch, vx: 0, vz: 0, vy: 0, eyeY: feet + EYE, flying: false, chute: null, canopy: null, dip: -1, water: null, wetHere: null, ride: null, towerHint: null, glide: 0 });
+    Object.assign(this, { x, z, feet, yaw, pitch, vx: 0, vz: 0, vy: 0, eyeY: feet + EYE, flying: false, chute: null, canopy: null, dip: -1, stumble: 0, water: null, wetHere: null, ride: null, towerHint: null, glide: 0 });
   }
 
   /** Going down the play tower's slide: how fast (m/s along it); 0 off it. */
@@ -166,7 +187,9 @@ export class Player {
     this.crouchT += ((this.crouching ? 1 : 0) - this.crouchT) * (1 - Math.exp(-dt * 12));
     const sprint = !w ? SPRINT_FACTOR : w.swimming ? 1.4 : 1 + (SPRINT_FACTOR - 1) * Math.max(0, 1 - w.depth / 0.6);
     const wade = !w ? 1 : w.swimming ? SWIM : 1 / (1 + 1.1 * w.depth);
-    const speed = (this.crouching ? this.walkSpeed * 0.45 : this.walkSpeed * (input.sprint ? sprint : 1)) * wade * this.turbo;
+    // Just after a hard landing: slowed for a moment while you find your feet.
+    const shaken = this.stumble > 0 && this.stumbleT < STUMBLE ? 1 - 0.6 * this.stumble * (1 - this.stumbleT / STUMBLE) : 1;
+    const speed = (this.crouching ? this.walkSpeed * 0.45 : this.walkSpeed * (input.sprint ? sprint : 1)) * wade * this.turbo * shaken;
     if (this.chute !== null) {
       // The skydive (shared/parachute.mjs): in the free fall the move keys track and slide and the dive key
       // dives; jump opens the canopy. Under it left and right turn (picked up and let go of gently), forward
@@ -235,15 +258,28 @@ export class Player {
       const look = this.canopy === null ? -0.6 : this.air < 12 ? -0.18 : -0.32;
       this.pitch += (look - this.pitch) * (1 - Math.exp(-dt * 1.5));
     }
-    // Touching down from a drop: the knees give a little and straighten again (0.45 s).
+    // Touching down: the knees give and straighten again, deeper and slower the harder you came down.
     let knees = 0;
     if (this.dip >= 0) {
-      this.dip += dt / 0.45;
-      knees = this.dip < 1 ? (swim ? 0.15 : 0.3) * Math.sin(Math.PI * this.dip) * (1 - this.dip * 0.4) : 0; // into deep water: a shallow dip, eyes above it
+      this.dip += dt / this.dipTime;
+      knees = this.dip < 1 ? (swim ? Math.min(0.15, this.dipDepth) : this.dipDepth) * Math.sin(Math.PI * this.dip) * (1 - this.dip * 0.4) : 0; // into deep water: a shallow dip, eyes above it
       if (this.dip >= 1) this.dip = -1;
     }
+    // A hard landing: the view pitches down and tips to one side, and comes back (only the view).
+    let nod = 0;
+    let tip = 0;
+    if (this.stumble > 0) {
+      this.stumbleT += dt;
+      const t = this.stumbleT / STUMBLE;
+      if (t >= 1) this.stumble = 0;
+      else {
+        const e = Math.sin(Math.PI * Math.min(1, t * 2.2)) * (1 - t) ** 0.5;
+        nod = -0.14 * this.stumble * e;
+        tip = 0.09 * this.stumble * this.stumbleSide * e;
+      }
+    }
     camera.position.set(this.x, this.eyeY - this.down * 1.3 - knees, this.z);
-    camera.rotation.set(this.pitch, this.yaw, this.down * 0.5, 'YXZ');
+    camera.rotation.set(this.pitch + nod, this.yaw, this.down * 0.5 + tip, 'YXZ');
   }
 
   /**
@@ -346,13 +382,28 @@ export class Player {
     const t = this.chute ?? 0;
     let next = this.feet + Math.min(0, this.vy) * dt;
     if (next <= this.ground.y || t > DROP.maxMs / 1000) {
-      if (next <= this.ground.y) this.dip = 0; // on your feet: the knees give
+      if (next <= this.ground.y) Object.assign(this, { dip: 0, dipDepth: 0.3, dipTime: 0.45 }); // on your feet: the knees give
       next = Math.max(next, this.ground.y);
       this.vy = 0;
       this.chute = this.canopy = null;
       this.onChuteLand();
     }
     this.feet = next;
+  }
+
+  /**
+   * Down on your feet at `speed` m/s: the knees take it, a few centimetres from a jump, a third of a metre
+   * from a roof; from a big drop you stumble (not into deep water, which takes it; not flying down).
+   */
+  private landed(speed: number): void {
+    if (this.flying) return;
+    const { depth, time, stumble } = landingFeel(speed);
+    Object.assign(this, { dip: 0, dipDepth: depth, dipTime: time });
+    if (this.wetHere?.swimming) {
+      if (speed < 4) this.dip = -1; // a plunge into deep water: the view dips and comes up
+      return;
+    }
+    if (stumble > 0) Object.assign(this, { stumble, stumbleT: 0, stumbleSide: Math.random() < 0.5 ? -1 : 1 });
   }
 
   /** Jumping, falling, and Minecraft-style flying (hold jump to rise, C or Circle to sink). */
@@ -400,8 +451,10 @@ export class Player {
     }
     if (next <= this.ground.y) {
       next = this.ground.y;
-      if (this.vy < -2.5) this.onLand(-this.vy);
-      if (this.vy < -4 && this.wetHere?.swimming) this.dip = 0; // a plunge into deep water: the view dips and comes up
+      if (this.vy < -2.5) {
+        this.onLand(-this.vy);
+        this.landed(-this.vy);
+      }
       this.vy = 0;
       if (this.flying && input.downHeld) this.flying = false; // landed
     }
