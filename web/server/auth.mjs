@@ -120,16 +120,34 @@ export function clientIp(req) {
  * connection usually gets a whole /64, so single IPv6 addresses cost nothing).
  */
 export function bucketOf(ip) {
-  if (!isIPv6(ip)) return ip;
-  const mapped = /^::ffff:(\d+\.\d+\.\d+\.\d+)$/i.exec(ip);
-  if (mapped) return mapped[1];
+  const all = ipv6Groups(ip);
+  if (!all) return ipv4Of(ip);
+  return `${all.slice(0, 4).map((g) => g.toString(16)).join(':')}::/64`;
+}
+
+/**
+ * Who counts as one sender of a form (game night, interest, feedback): an IPv4 address, or an IPv6 /56
+ * network. A home connection is often given a /56 (256 /64s), so per /64 one household could fill a
+ * form's daily cap for everyone; logins keep bucketOf.
+ */
+export function formBucketOf(ip) {
+  const all = ipv6Groups(ip);
+  if (!all) return ipv4Of(ip);
+  return `${all.slice(0, 3).map((g) => g.toString(16)).join(':')}:${(all[3] & 0xff00).toString(16)}::/56`;
+}
+
+/** An IPv6 address as its eight groups (numbers), or null for anything else (IPv4, or IPv4 mapped into IPv6). */
+function ipv6Groups(ip) {
+  if (!isIPv6(ip) || /^::ffff:(\d+\.\d+\.\d+\.\d+)$/i.test(ip)) return null;
   const groups = (s) => (s ? s.split(':').flatMap((g) => (g.includes('.') ? ['0', '0'] : [g])) : []);
   const [head, tail] = ip.split('%')[0].split('::');
   const h = groups(head);
   const t = groups(tail);
   const all = tail === undefined ? h : [...h, ...Array(8 - h.length - t.length).fill('0'), ...t];
-  return `${all.slice(0, 4).map((g) => parseInt(g, 16).toString(16)).join(':')}::/64`;
+  return all.map((g) => parseInt(g, 16));
 }
+/** An IPv4 address as it is, also when mapped into IPv6 (::ffff:192.0.2.1); anything else unchanged. */
+const ipv4Of = (ip) => /^::ffff:(\d+\.\d+\.\d+\.\d+)$/i.exec(ip)?.[1] ?? ip;
 
 /**
  * Turns at a scrypt hash (16 MB and tens of milliseconds each, on Node's four worker threads, which also

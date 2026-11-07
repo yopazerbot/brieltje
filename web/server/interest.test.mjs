@@ -144,3 +144,13 @@ test('the admin list shows the choice; a row from before the field counts as pri
   assert.equal(list.find((e) => e.id === 1).inside, 'public');
   assert.equal(list.find((e) => e.id === 99).inside, 'private');
 });
+
+test('the admin deletes a sign-up only from the site itself: no cross-site delete', async () => {
+  const { rows, call, signUp } = setup();
+  await signUp();
+  assert.equal((await call('DELETE', '/api/admin/interest/1', undefined, { admin: true, origin: 'https://evil.example' })).status, 403);
+  assert.equal((await call('DELETE', '/api/admin/interest/1', undefined, { admin: true, origin: '' })).status, 403, 'no Origin at all');
+  assert.equal(rows.length, 1, 'still there');
+  assert.equal((await call('DELETE', '/api/admin/interest/1', undefined, { admin: true })).status, 200);
+  assert.equal(rows.length, 0);
+});

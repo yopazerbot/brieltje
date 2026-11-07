@@ -72,6 +72,7 @@ export class Feedback {
     if (p === '/api/admin/feedback' && m === 'GET') return (await this.json(res, 200, { rows: await this.store.listFeedback(1000) }), true);
     const r = /^\/api\/admin\/feedback\/(\d{1,9})$/.exec(p);
     if (r && m === 'DELETE') {
+      await this.readJson(req); // the same-origin check (server.mjs body): no cross-site deletes, even with no body
       await this.store.deleteFeedback(+r[1]);
       this.onChange();
       return (await this.json(res, 200, { ok: true }), true);

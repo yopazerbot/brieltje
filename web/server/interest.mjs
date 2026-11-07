@@ -134,7 +134,7 @@ export class Interest {
   constructor(store, { json, clientKey }) {
     this.store = store;
     this.json = json;
-    this.clientKey = clientKey; // who counts as one sender (an IPv4 address or an IPv6 /64)
+    this.clientKey = clientKey; // who counts as one sender (an IPv4 address or an IPv6 /56, server/auth.mjs formBucketOf)
     this.signups = new Window(3600_000);
     this.daily = new Window(24 * 3600_000);
     this.uploads = new Window(3600_000);
@@ -197,7 +197,7 @@ export class Interest {
     if (p === '/api/admin/interest' && m === 'GET') return (await this.list(res), true);
     if ((r = /^\/api\/admin\/interest\/(\d{1,9})\/file\/(\d)$/.exec(p)) && m === 'GET') return (await this.file(res, +r[1], +r[2]), true);
     if ((r = /^\/api\/admin\/interest\/(\d{1,9})$/.exec(p)) && m === 'POST') return (await this.mark(req, res, +r[1]), true);
-    if ((r = /^\/api\/admin\/interest\/(\d{1,9})$/.exec(p)) && m === 'DELETE') return (await this.remove(res, +r[1]), true);
+    if ((r = /^\/api\/admin\/interest\/(\d{1,9})$/.exec(p)) && m === 'DELETE') return (sameOrigin(req), await this.remove(res, +r[1]), true); // no cross-site deletes, as the other admin calls
     return (await this.json(res, 404, { error: 'Not found' }), true);
   }
 

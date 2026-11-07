@@ -22,7 +22,7 @@ import { extname, join, resolve, sep } from 'node:path';
 import { openStore } from './server/store.mjs';
 // First among the game's modules: the private data (server/privateData.mjs) is open before they load.
 import { privateData } from './server/privateData.mjs';
-import { Auth, beTime, bucketOf, CLOUDFLARE_ONLY, clientIp, NAME_RE, seatOf, viaCloudflare } from './server/auth.mjs';
+import { Auth, beTime, bucketOf, CLOUDFLARE_ONLY, clientIp, formBucketOf, NAME_RE, seatOf, viaCloudflare } from './server/auth.mjs';
 import { ACCOUNT_MS, Accounts } from './server/accounts.mjs';
 import { Rooms } from './server/rooms.mjs';
 import { Pairing } from './server/pairing.mjs';
@@ -122,11 +122,13 @@ async function board(place) {
   return rows;
 }
 
-const interest = new Interest(store, { json: (...a) => json(...a), clientKey: (req) => bucketOf(clientIp(req)) });
+// The forms count a sender per IPv6 /56 (formBucketOf): one household can't fill their caps for everyone.
+const formKey = (req) => formBucketOf(clientIp(req));
+const interest = new Interest(store, { json: (...a) => json(...a), clientKey: formKey });
 // STATS_SECRET locks the day's visitor seed in the store (server/stats.mjs): a Railway variable of its own, never in the database.
 const stats = new Stats(store, { json: (...a) => json(...a), clientKey: (req) => bucketOf(clientIp(req)), game: rooms, readJson: (req) => body(req), isAdmin: (req) => auth.panelAdmin(req), log: (event, req, extra) => auth.log(event, req, extra), secret: process.env.STATS_SECRET });
-const feedback = new Feedback(store, { json: (...a) => json(...a), readJson: (req) => body(req), clientKey: (req) => bucketOf(clientIp(req)), clientIp, session: (req) => auth.session(req), time: beTime });
-const gamenight = new GameNight(store, { json: (...a) => json(...a), readJson: (req) => body(req), clientKey: (req) => bucketOf(clientIp(req)) });
+const feedback = new Feedback(store, { json: (...a) => json(...a), readJson: (req) => body(req), clientKey: formKey, clientIp, session: (req) => auth.session(req), time: beTime });
+const gamenight = new GameNight(store, { json: (...a) => json(...a), readJson: (req) => body(req), clientKey: formKey });
 // The three homes with an access code (server/homes.mjs): who typed a home's code, and the admin's list of them.
 const homes = new Homes(store, { list: HOMES, json: (...a) => json(...a), readJson: (req) => body(req), clientKey: (req) => bucketOf(clientIp(req)), pack: packFor });
 game.homes = homes;
