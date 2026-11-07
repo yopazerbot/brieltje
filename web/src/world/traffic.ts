@@ -678,7 +678,7 @@ export class Traffic {
       at.positionX.value = c.x;
       at.positionY.value = y + 0.5;
       at.positionZ.value = c.z;
-      at.connect(sound.out()!);
+      at.connect(sound.outside()!); // muffled through the walls indoors (sound.ts)
       const engine = ctx.createOscillator();
       engine.type = 'sawtooth';
       const filter = ctx.createBiquadFilter();

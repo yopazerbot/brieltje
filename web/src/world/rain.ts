@@ -141,7 +141,7 @@ export class Rain {
     if (!ctx || ctx.state !== 'running') return;
     if (!this.gain) {
       if (!this.amount) return;
-      const out = sound.out();
+      const out = sound.outside(); // muffled through the walls indoors (sound.ts)
       if (!out) return;
       const len = 4;
       const buffer = ctx.createBuffer(2, ctx.sampleRate * len, ctx.sampleRate);
