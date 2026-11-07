@@ -1,5 +1,6 @@
 import type { Level, Prism, Room } from '../world/houseData';
 import { dist, placeName } from '../i18n';
+import { compactHud } from './compact';
 
 /**
  * Minimap, top right: the plan of the floor you are on, cut at 1.2 m above
@@ -12,7 +13,9 @@ import { dist, placeName } from '../i18n';
  * "Ground floor" on the church square), and its words have a dark edge: the village's ground is light.
  */
 
-const SIZE = 180; // px on screen
+const FULL = 180; // px on screen
+/** In a small view (ui/compact.ts): smaller, at the same scale, so it shows less around you and its words stay as big. */
+const SMALL = 124;
 const SCALE = 7; // px per metre
 const PAD = 40; // m of plan around the house drawn into each level image
 const CUT = 1.2; // m above the floor
@@ -40,7 +43,7 @@ export class Minimap {
   private h = 0;
 
   constructor(private prisms: Prism[], private levels: Level[], private rooms: Room[]) {
-    this.canvas.width = this.canvas.height = SIZE * devicePixelRatio;
+    this.canvas.width = this.canvas.height = FULL * devicePixelRatio;
     const xs = prisms.flatMap((p) => p.p[0].map((v) => v[0])).filter((v) => Math.abs(v) < 60);
     const zs = prisms.flatMap((p) => p.p[0].map((v) => v[1])).filter((v) => Math.abs(v) < 60);
     this.minX = Math.min(...xs) - PAD;
@@ -136,6 +139,8 @@ export class Minimap {
   draw(x: number, z: number, feet: number, yaw: number, blips: Blip[], shapes: { ring: [number, number][]; y: number }[] = [], portals: { x: number; z: number; color: string }[] = [], waypoint: { x: number; z: number } | null = null, route: { line: [number, number][]; length: number } | null = null, indoors = true): void {
     const g = this.ctx;
     const s = devicePixelRatio;
+    const SIZE = compactHud() ? SMALL : FULL;
+    if (this.canvas.width !== Math.floor(SIZE * s)) this.canvas.width = this.canvas.height = Math.floor(SIZE * s);
     const lv = this.levelAt(feet);
     g.setTransform(s, 0, 0, s, 0, 0);
     g.clearRect(0, 0, SIZE, SIZE);

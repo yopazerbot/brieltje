@@ -1,5 +1,6 @@
 import { onLang, t } from '../i18n';
 import { typing } from '../keys';
+import { compactHud } from './compact';
 
 /**
  * Chat: messages bottom left, T (or Enter) to type, Enter to send, Esc to cancel. The game's own
@@ -96,7 +97,8 @@ export class Chat {
     line.append(text);
     this.log.append(line);
     while (this.log.children.length > 30) this.log.firstElementChild?.remove();
-    setTimeout(() => line.classList.add('old'), 15000);
+    // A small view (ui/compact.ts) shows fewer lines (style.css), and each for a shorter time.
+    setTimeout(() => line.classList.add('old'), compactHud() ? 8000 : 15000);
     return line;
   }
 }

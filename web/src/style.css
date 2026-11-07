@@ -1459,3 +1459,94 @@ body.seat .start-choices .choice:not(.loading) { display: none; }
    online only on the scoreboard (it covered the ammo). The split screen's page names each view. */
 body.seat :is(#brand, #credit, #online) { display: none; }
 
+/* ---- A small view (src/ui/compact.ts): a quarter or a half of the split screen, or a small window,
+   played with the keyboard and mouse or a controller (touch keeps its own layout above). Down the left
+   the name, where you are and the menu's key; the map top right, smaller; the game's
+   bar and the round's messages stacked in the middle of the top, between the two; the kill feed under
+   the map; the weapon in your hands, its ammo and the grenades bottom right; the health bottom middle;
+   the chat bottom left, its newest lines only. The wordmark, the credit line and the online list go
+   (the scoreboard has who is playing). */
+body.compact :is(#brand, #credit, #online) { display: none; }
+body.compact #who { top: 8px; left: 12px; max-width: 180px; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; font-size: 14px; }
+body.compact #place { top: 31px; left: 12px; max-width: 180px; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; font-size: 11px; letter-spacing: 0.1em; }
+body.compact #menu-hint { top: 50px; left: 12px; font-size: 12px; }
+body.compact #menu-hint kbd { min-width: 28px; margin-right: 4px; padding: 1px 6px; font-size: 11px; }
+body.compact #pad { top: 76px; bottom: auto; left: 12px; max-width: 180px; font-size: 12px; }
+body.compact #fps { top: 8px; right: 148px; font-size: 12px; }
+body.compact #minimap, body.compact #map-btn { top: 8px; right: 12px; width: 124px; height: 124px; }
+body.compact #map-btn .ico { left: 6px; bottom: 6px; width: 22px; height: 22px; font-size: 12px; }
+/* The middle of the top, never over the map: the game's bar (two lines at most), under it the
+   connection, the round, the scoreboard, the death screen and the place's name. */
+body.compact #modebar, body.compact #hud-top { left: 200px; right: 148px; transform: none; }
+body.compact #modebar { top: 8px; width: -webkit-fit-content; width: fit-content; max-width: none; margin: 0 auto; padding: 4px 10px; font-size: 12px; }
+body.compact #modebar.show { display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; line-clamp: 2; overflow: hidden; }
+body.compact #hud-top { position: absolute; top: 8px; display: flex; flex-direction: column; align-items: center; gap: 4px; text-align: center; }
+body.compact #modebar.show ~ #hud-top { top: 52px; }
+body.compact #hud-top > * { position: static; transform: none; }
+body.compact #hud-top > :empty { display: none; }
+body.compact #net-status { font-size: 12px; }
+body.compact #banner { white-space: normal; }
+body.compact #banner b { font-size: 22px; }
+body.compact #banner small { font-size: 11px; letter-spacing: 0.1em; }
+body.compact #death b { font-size: 24px; }
+body.compact #death span { font-size: 13px; }
+body.compact #toast { font-size: 22px; }
+body.compact #toast small { text-align: center; font-size: 10px; letter-spacing: 0.2em; }
+body.compact #scoreboard { width: 100%; max-width: 400px; padding: 4px 10px; text-align: left; }
+body.compact #scoreboard h2, body.compact #score-goal { display: none; }
+body.compact #score-table { font-size: 12px; }
+body.compact #score-table th { padding: 1px 6px; font-size: 10px; }
+body.compact #score-table td { padding: 2px 6px; }
+body.compact #score-table tr:nth-child(n+10):not(.me) { display: none; }
+body.compact:has(#scoreboard:not(.hidden)) #hud-top > :is(#death, #toast) { display: none; }
+/* The kill feed under the map, its newest three lines. */
+body.compact #killfeed { position: fixed; top: 142px; right: 12px; left: auto; max-width: min(260px, 40%); align-items: flex-end; gap: 2px; font-size: 12px; }
+body.compact #killfeed .kf { max-width: 100%; padding: 2px 8px; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
+body.compact #killfeed .kf:nth-last-child(n+4) { display: none; }
+body.compact #killfeed .hs { margin-left: 6px; font-size: 10px; }
+/* Bottom right: the ammo, the weapon in your hands over it (the others are a press away), the grenades. */
+body.compact #ammo { right: 16px; bottom: 8px; font-size: 22px; }
+body.compact #slots { right: 16px; bottom: 40px; font-size: 12px; }
+body.compact #slots .slot:not(.current) { display: none; }
+body.compact #nades { right: 16px; bottom: 60px; font-size: 12px; letter-spacing: 0.04em; }
+body.compact #health { bottom: 8px; gap: 6px; font-size: 20px; }
+body.compact .hp-bar { width: 90px; height: 6px; }
+/* The chat: four lines, each for a shorter time (src/ui/chat.ts); all of them while you type. */
+body.compact #chat-log {
+  left: 12px; bottom: 8px; width: min(280px, calc(50% - 110px)); max-height: 78px;
+  overflow: hidden; justify-content: flex-end; gap: 1px; font-size: 12px;
+  -webkit-mask-image: linear-gradient(transparent, #000 10px); mask-image: linear-gradient(transparent, #000 10px);
+}
+body.compact #chat-log .line { padding: 2px 6px; }
+body.compact #chat-log:not(.active) .line.old { display: none; }
+body.compact #chat-log.active { bottom: 40px; width: min(360px, calc(100% - 24px)); max-height: calc(100% - 150px); }
+body.compact #chat-input { left: 12px; bottom: 8px; width: min(360px, calc(100% - 24px)); padding: 4px 8px; font-size: 13px; }
+/* The hints under the crosshair: one line each, smaller (a refusal keeps its two). */
+body.compact :is(#prompt, #capture-hint) { top: calc(50% + 26px); max-width: calc(100% - 40px); padding: 3px 10px; font-size: 13px; overflow: hidden; text-overflow: ellipsis; }
+body.compact #prompt.show + #capture-hint { top: calc(50% + 54px); }
+body.compact.drop #prompt { top: auto; bottom: 96px; }
+body.compact.drop #capture-hint, body.compact.drop #prompt.show + #capture-hint { top: auto; bottom: 68px; }
+body.compact .placement-guide { padding: 5px 10px; font-size: 13px; }
+body.compact .tactical-markers span { max-width: 130px; padding: 2px 6px; font-size: 11px; }
+body.compact #blindfold { font-size: 18px; }
+/* The car's instrument, bottom right where the ammo is on foot. */
+body.compact #speedometer { right: 12px; bottom: 8px; min-width: 96px; padding: 8px 10px 7px; border-radius: 12px; }
+body.compact .speed-value { font-size: 34px; }
+body.compact .speed-unit { margin-left: 4px; font-size: 11px; }
+body.compact .speed-track { margin-top: 6px; height: 2px; }
+/* The portal's list beside the crosshair, and the Zombies cards, sized to the view. */
+body.compact #travel { left: calc(50% + 50px); width: min(280px, calc(50% - 62px)); max-height: calc(100% - 16px); overflow-y: auto; padding: 8px 8px 6px; }
+body.compact #travel .tv-head { margin-bottom: 4px; }
+body.compact #travel .tv-head b { font-size: 16px; }
+body.compact #travel .tv-row { margin: 1px 0; padding: 3px 6px; font-size: 14px; }
+body.compact #tv-hint { margin-top: 4px; font-size: 11px; }
+body.compact #zexplore { top: 52px; width: min(400px, calc(100% - 360px)); min-width: 260px; padding: 6px 10px; }
+body.compact #zexplore p { margin-bottom: 6px; font-size: 13px; }
+body.compact #zexplore .seg-btn { padding: 4px 8px; }
+body.compact #zend { width: min(420px, calc(100% - 32px)); max-height: calc(100% - 24px); padding: 10px 14px; }
+body.compact #zend h2 { font-size: 24px; }
+body.compact #zend-sub { margin-bottom: 8px; }
+body.compact #zend-table { font-size: 14px; }
+body.compact #zend-table td { padding: 3px 8px; }
+body.compact #zend-best { margin-top: 8px; font-size: 13px; }
+
