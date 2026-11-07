@@ -67,6 +67,8 @@ test('signing up: the checks, one name each, the email kept as typed in lower ca
   assert.equal((await accounts.register(req(), { ...good, password: 'wachtwoord' })).code, 'passCommon');
   assert.equal((await accounts.register(req(), { ...good, password: 'liesbeth1' })).code, 'passCommon');
   assert.equal((await accounts.register(req(), { ...good, username: 'admin' })).code, 'nameTaken');
+  assert.equal((await accounts.register(req(), { ...good, username: 'Yoshi' })).code, 'nameTaken', "the admin's own name");
+  assert.equal((await auth.join(req('192.0.2.98'), 'yoshi', () => false)).code, 'nameTaken');
   const r = await accounts.register(req(), good);
   assert.equal(r.role, 'player');
   assert.equal(r.username, 'liesbeth');

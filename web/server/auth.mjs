@@ -2,7 +2,8 @@
 //
 // - Admin: password from ADMIN_PASSWORD (Railway variable); without it there is no admin.
 //   The admin logs in under any free name (Yoshi, 30 Oct 2026) that is no player's account, with
-//   the admin password. ADMIN_USERNAME (default "admin") stays reserved: nobody else can take it.
+//   the admin password. ADMIN_USERNAME (default "admin") and "yoshi" stay reserved (RESERVED): nobody else
+//   can take them.
 // - Player accounts (Yoshi, 7 Nov 2026): a unique name, an email address and a password, made by
 //   the players themselves (server/accounts.mjs). Their sessions are role 'player'.
 // - Sessions: random token in an HttpOnly, SameSite=Strict cookie. The server
@@ -64,6 +65,11 @@ const JOINED_KEEP = 256; // browsers remembered per address for kicks (see noteJ
 const LOG_DAYS = 90; // the login log holds IP addresses: kept this long
 const LOG_ROWS = 20_000;
 export const ADMIN_NAME = ADMIN;
+/**
+ * Names only the admin password logs in under (Yoshi, 7 Nov 2026: "reserve yoshi"): no guest takes one and no
+ * account is made with one, so the admin always has them.
+ */
+export const RESERVED = new Set([ADMIN, 'yoshi']);
 
 export const beTime = () => new Date().toLocaleString('sv-SE', { timeZone: 'Europe/Brussels' });
 
@@ -262,8 +268,8 @@ export class Auth {
     for (const s of await this.store.loadSessions(Date.now())) {
       let valid = false;
       if (s.role === 'admin') valid = adminOk;
-      else if (s.role === 'guest') valid = s.username !== ADMIN && !(await account(s.username));
-      else if (s.role === 'player') valid = s.username !== ADMIN && !!(await account(s.username)) && !(await account(s.username)).disabled;
+      else if (s.role === 'guest') valid = !RESERVED.has(s.username) && !(await account(s.username));
+      else if (s.role === 'player') valid = !RESERVED.has(s.username) && !!(await account(s.username)) && !(await account(s.username)).disabled;
       if (valid) this.sessions.set(s.key, { username: s.username, role: s.role, expires: s.expires, ...(s.device ? { device: s.device } : {}) });
       else await this.store.deleteSession(s.key);
     }
@@ -528,7 +534,7 @@ export class Auth {
     }
     // Full: said here, before a session is made (the game's connection would only be refused).
     if (full()) return out({ error: 'The house is full right now. Ask the admin to allow more players.', code: 'full', status: 503 });
-    if (name === ADMIN) return out({ error: 'That name is taken. Pick another name.', code: 'nameTaken', status: 409 });
+    if (RESERVED.has(name)) return out({ error: 'That name is taken. Pick another name.', code: 'nameTaken', status: 409 });
     const until = this.blocked.get(name);
     if (until && until > now) return out(removed);
     // A player's account name is theirs alone (server/accounts.mjs).

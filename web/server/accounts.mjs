@@ -20,7 +20,7 @@
 //   turns one off or on, and deletes one.
 
 import { createHash, randomBytes } from 'node:crypto';
-import { ADMIN_NAME, Attempts, bucketOf, clientIp, hashPassword, NAME_RE, verifyHash } from './auth.mjs';
+import { RESERVED, Attempts, bucketOf, clientIp, hashPassword, NAME_RE, verifyHash } from './auth.mjs';
 
 export const ACCOUNT_MS = 30 * 24 * 3600_000;
 const SESSIONS_PER_ACCOUNT = 10;
@@ -178,7 +178,7 @@ export class Accounts {
       return { error: 'Too many new accounts lately. Try again in an hour.', code: 'signupsTooMany', status: 429 };
     }
     const taken = { error: 'That name is taken. Pick another name.', code: 'nameTaken', status: 409 };
-    if (name === ADMIN_NAME) return taken;
+    if (RESERVED.has(name)) return taken; // the admin's own names
     if ((this.auth.blocked.get(name) || 0) > now) return { error: 'You were removed by the admin. Try again later.', code: 'removed', status: 403 };
     // A guest playing or holding the name today keeps it (their session ends within 12 hours).
     if (this.online(name) || this.auth.nameHeld(name, now)) {
