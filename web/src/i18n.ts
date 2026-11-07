@@ -810,6 +810,7 @@ const en = {
   'net.ended': 'Your session ended. Log in again.',
   'net.full': 'The house is full ({n} players). Waiting for a free place…',
   'net.reload': 'The game has been updated. Reload the page to keep playing together.',
+  'err.villageLoad': "The village couldn't load. Try again, or reload the page.",
 
   // ---- Portals and travelling
   'portal.house': "Yoshi & Liesl's home",
@@ -1783,6 +1784,7 @@ const nl = {
   'net.ended': 'Je sessie is afgelopen. Meld je opnieuw aan.',
   'net.full': 'Het huis is vol ({n} spelers). Even wachten op een vrije plaats…',
   'net.reload': 'Het spel is bijgewerkt. Laad de pagina opnieuw om samen te blijven spelen.',
+  'err.villageLoad': 'Het dorp kon niet laden. Probeer opnieuw, of laad de pagina opnieuw.',
 
   // ---- Portals and travelling
   'portal.house': 'Woning Yoshi & Liesl',

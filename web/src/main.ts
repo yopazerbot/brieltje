@@ -1243,7 +1243,7 @@ function followAccount(account: Me | null): void {
   rooms.follow(account);
   $('game-admin').classList.toggle('hidden', account?.role !== 'admin');
   if (!account) {
-    games.set({ kind: 'free' });
+    followGame({ kind: 'free' }); // with its clean-up: the server's zombies, rewards and Zombies kit go too
     clowns.setAll(CLOWN_DEFAULTS); // alone: the starting clowns again
   }
   if (account) net.connect();
@@ -1741,7 +1741,7 @@ zombiesPlace.addEventListener('change', () => {
 $('zombies-btn').addEventListener('click', () => {
   if (solo) stopSolo();
   else {
-    void startSolo(zombiesPlace.value);
+    startSolo(zombiesPlace.value).catch(() => {}); // a village that won't load says so itself (loadVillage)
     menu.resume(menu.mode ?? 'kbm');
   }
 });
@@ -2169,7 +2169,7 @@ function followGame(view: ModeView): void {
     if (games.view.kind !== 'zombies' && (kit.claymores || kit.stakes || kit.turrets || kit.scope || kit.ammo.length)) applyKit(NO_KIT);
   }
 }
-// Ended for good (another tab took over, the session ended, a new PIN): back to playing alone, as after
+// Ended for good (another tab took over, the session ended, logged out elsewhere): back to playing alone, as after
 // a kick. Else the page stayed as it was: the others frozen in place, a game's bar counting down, and a
 // seeker's eyes shut with no way to move.
 net.onEnded = (why) => setAccount(null, why);
@@ -3413,7 +3413,14 @@ let endHouse: WalkIn | null = null;
 let villageSmoke: Smoke | null = null;
 /** The village, once: later calls wait for the same load (a trip through a portal to it). */
 function loadVillage(): Promise<void> {
-  return (villageJob ??= buildVillage());
+  // A load that failed (a deploy took the old files away, the network dropped) isn't kept: the next trip tries
+  // again, and the player is told instead of the trip failing in silence.
+  return (villageJob ??= buildVillage().catch((e: unknown) => {
+    villageJob = null;
+    village = 'waiting';
+    chat.system(() => t('err.villageLoad'));
+    throw e;
+  }));
 }
 /**
  * Compiles `root`'s shaders in the background (where the browser can), for the composer's target as the game draws
