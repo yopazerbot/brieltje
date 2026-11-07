@@ -19,6 +19,8 @@ import { bruteDamage, hurtBy } from '../shared/brutes.mjs';
 import { prepareShotRaycasts } from './world/shotRaycast';
 import { Zombies } from './world/zombies';
 import { Villagers } from './world/villagers';
+import { Christmas } from './world/christmas';
+import { fakeDay, seasonNow } from './world/season';
 import { BIG as BIG_ZOMBIE, bigOf, Horde, houseAreas, makeNav } from '../shared/zombies.mjs';
 import { Loot, LOOT } from '../shared/loot.mjs';
 import { Rewards } from './world/rewards';
@@ -584,6 +586,9 @@ prepareZombies();
 const villagers = new Villagers(world, () => quality === 'low' || phone, (root) => precompile(root));
 const villagerLook = new THREE.Vector3();
 scene.add(villagers.group);
+// December (world/season.ts): the Christmas lights and the tree.
+const christmas = new Christmas(world, (x, z) => house.ground + terrain.height(x, z), (root) => precompile(root));
+scene.add(christmas.group);
 // Three horses grazing in the meadow across the road.
 const horses = new Horses(world);
 scene.add(horses.group);
@@ -2812,7 +2817,9 @@ renderer.setAnimationLoop((now: number) => {
   if (menu.onStartScreen) weapon.hidden = true; // nor the pistol in your hand: from the start view its barrel is a ring mid-screen
   games.setExploring(!weapon.enabled); // the teams game's and Zombies' hints follow a change of mode
   // The villagers only in Explore, and not while a game with weapons runs: never something to shoot at.
-  villagers.setActive(!menu.onStartScreen && !weapon.enabled && !games.zombies && games.view.kind !== 'teams');
+  const exploring = !menu.onStartScreen && !weapon.enabled && !games.zombies && games.view.kind !== 'teams';
+  villagers.setActive(exploring);
+  christmas.setSolid(games.zombies ? 'off' : weapon.enabled ? 'walk' : 'full'); // the tree, as the server knows the world
   // The Zombies game: the clowns and strongmen stand aside, nobody flies, and whoever is down waits for the wave.
   clowns.paused = games.standAside;
   player.canFly = rules.flying && !games.zombies;
@@ -3277,6 +3284,7 @@ renderer.setAnimationLoop((now: number) => {
   ]);
   horses.update(dt, camera.position);
   bikes.update(dt, camera.position);
+  christmas.update(dt, seasonNow().christmas, camera, renderer.domElement.height);
   // The footballs: walked into on foot (alone here; together the server does it too, and leads).
   const onFoot = combat.alive && !driving && !riding && !bikes.mounted && horses.mounted < 0 && !player.flying && player.chute === null;
   football.update(dt, camera.position, onFoot ? { x: player.x, z: player.z, feet: player.feet, name: me?.username ?? '' } : null, net.connected);
@@ -3528,6 +3536,7 @@ async function buildVillage(): Promise<void> {
   groundShade.bakeAll(renderer, scene, sun, [built.group, hedgeLumps, tiles.group], house.ground, phone ? 1024 : 2048);
   await prepareShotRaycasts(scene);
   village = 'ready';
+  christmas.villageReady();
   for (const c of cars) c.ready = true; // the cars parked in the village (shared/car.json) with it
   bikes.villageReady(); // and the bikes in its racks (shared/bike.json)
   void roadLife.load(renderer, scene, camera, precompile);
@@ -3761,6 +3770,9 @@ if (import.meta.env.DEV) {
       clowns,
       zombies,
       villagers,
+      christmas,
+      /** December on this page only: briel.season.fake('2026-12-01') pretends that day, fake(null) is today again (world/season.ts). */
+      season: { fake: (day: string | null) => fakeDay(day), now: () => seasonNow() },
       zombiesSolo: { start: startSolo, stop: stopSolo, state: () => solo },
       /** Zombies' rewards: those lying and the claymores down, and what you have. */
       rewards,
