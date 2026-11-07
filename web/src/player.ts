@@ -2,6 +2,7 @@ import * as THREE from 'three';
 import type { FrameInput } from './controls/input';
 import type { Ground, World } from './world/collision';
 import { DROP, dropStep } from '../shared/parachute.mjs';
+import { FLOAT, wetGround, type Wet } from './world/water';
 
 const EYE = 1.65;          // m, eye height above the floor
 export const HEIGHT = 1.8;        // m, body height for head clearance
@@ -16,6 +17,7 @@ const DOUBLE_TAP = 0.3;    // s between two jump presses that ends flying
 const YAW_SPEED = 2.6;     // rad/s at full right stick
 const PITCH_SPEED = 1.8;   // rad/s at full right stick
 const MOUSE_SENS = 0.0022; // rad per pixel
+const SWIM = 0.6;          // swimming speed = walking speed x this (x 1.4 with sprint)
 
 export class Player {
   x: number;
@@ -44,6 +46,13 @@ export class Player {
   onStep: (speed: number) => void = () => {};
   onLand: (speed: number) => void = () => {};
   ground: Ground = { y: 0 };
+  /**
+   * In a pond or ditch (world/water.ts): its level, how deep it is where you are and whether you swim; null on
+   * dry land or over the water (flying, jumping). Wading slows you by the depth; out of your depth you float
+   * with your head above it and swim slowly, and walk out where the bank comes up under you.
+   */
+  water: Wet | null = null;
+  private wetHere: Wet | null = null;
   /** This frame you pushed against the edge of the game or flew into its ceiling (main.ts says so) */
   atEdge = false;
   /**
@@ -92,7 +101,7 @@ export class Player {
 
   /** Put the player somewhere directly, camera included (used by the dev test hook). */
   place(x: number, z: number, feet: number, yaw: number, pitch: number): void {
-    Object.assign(this, { x, z, feet, yaw, pitch, vx: 0, vz: 0, vy: 0, eyeY: feet + EYE, flying: false, chute: null, canopy: null, dip: -1 });
+    Object.assign(this, { x, z, feet, yaw, pitch, vx: 0, vz: 0, vy: 0, eyeY: feet + EYE, flying: false, chute: null, canopy: null, dip: -1, water: null, wetHere: null });
   }
 
   /** Start a drop from where you are (place yourself up high first): the free fall, then the canopy. */
@@ -127,9 +136,13 @@ export class Player {
     this.pitch = Math.max(-1.45, Math.min(1.45, this.pitch + tilt));
 
     // Walking, relative to where you look. Crouching: slow, no sprint.
-    this.crouching = !this.flying && input.downHeld;
+    // In water: slower the deeper it is, running hardly helps from knee deep, swimming is slow.
+    const w = this.water;
+    this.crouching = !this.flying && input.downHeld && !w?.swimming;
     this.crouchT += ((this.crouching ? 1 : 0) - this.crouchT) * (1 - Math.exp(-dt * 12));
-    const speed = (this.crouching ? this.walkSpeed * 0.45 : this.walkSpeed * (input.sprint ? SPRINT_FACTOR : 1)) * this.turbo;
+    const sprint = !w ? SPRINT_FACTOR : w.swimming ? 1.4 : 1 + (SPRINT_FACTOR - 1) * Math.max(0, 1 - w.depth / 0.6);
+    const wade = !w ? 1 : w.swimming ? SWIM : 1 / (1 + 1.1 * w.depth);
+    const speed = (this.crouching ? this.walkSpeed * 0.45 : this.walkSpeed * (input.sprint ? sprint : 1)) * wade * this.turbo;
     if (this.chute !== null) {
       // The skydive (shared/parachute.mjs): in the free fall the move keys track and slide and the dive key
       // dives; jump opens the canopy. Under it left and right turn (picked up and let go of gently), forward
@@ -164,6 +177,7 @@ export class Player {
       this.world.resolve(pos, this.feet, RADIUS, STEP_UP, HEIGHT);
       if (this.world.keepIn(pos, RADIUS)) this.atEdge = true;
       this.ground = this.world.groundAt(pos.x, pos.z, this.feet, STEP_UP);
+      this.wetHere = this.chute === null ? wetGround(pos.x, pos.z, this.ground) : null; // a pond's floor, or afloat
       if (this.ground.y > this.feet && this.vy <= 0) this.feet = this.ground.y; // step up
     }
     this.x = pos.x;
@@ -172,6 +186,8 @@ export class Player {
     if (this.chute !== null) this.descend(dt);
     else this.vertical(dt, input);
     this.air = Math.max(0, this.feet - this.ground.y);
+    this.water = this.wetHere && !this.flying && this.feet < this.wetHere.level ? this.wetHere : null;
+    const swim = this.water?.swimming ? 1 : 0;
 
     // Camera: smooth the height so stairs feel like steps, not jolts.
     const moving = Math.hypot(this.vx, this.vz);
@@ -183,7 +199,8 @@ export class Player {
       this.stepDist = 0;
       this.onStep(moving);
     }
-    const target = this.feet + EYE - this.crouchT * 0.5 + Math.sin(this.bob) * 0.025 * Math.min(1, moving / 1.4);
+    // Afloat: no stride in the view, a slow rise and fall on the water instead.
+    const target = this.feet + EYE - this.crouchT * 0.5 + Math.sin(this.bob) * 0.025 * Math.min(1, moving / 1.4) * (1 - swim) + Math.sin(this.clock * 1.9) * 0.03 * swim;
     const follow = !onFoot || target < this.eyeY - 0.4 ? 1 : 1 - Math.exp(-dt * 16);
     this.eyeY += (target - this.eyeY) * follow;
 
@@ -197,7 +214,7 @@ export class Player {
     let knees = 0;
     if (this.dip >= 0) {
       this.dip += dt / 0.45;
-      knees = this.dip < 1 ? 0.3 * Math.sin(Math.PI * this.dip) * (1 - this.dip * 0.4) : 0;
+      knees = this.dip < 1 ? (swim ? 0.15 : 0.3) * Math.sin(Math.PI * this.dip) * (1 - this.dip * 0.4) : 0; // into deep water: a shallow dip, eyes above it
       if (this.dip >= 1) this.dip = -1;
     }
     camera.position.set(this.x, this.eyeY - this.down * 1.3 - knees, this.z);
@@ -229,8 +246,9 @@ export class Player {
     if (input.jumpPressed) {
       if (this.flying && this.clock - this.lastJumpPress < DOUBLE_TAP) {
         this.flying = false; // double tap: stop flying and drop
-      } else if (grounded) {
-        this.vy = Math.sqrt(2 * GRAVITY * JUMP_HEIGHT);
+      } else if (grounded && !this.water?.swimming) {
+        // Wading: the water holds you back, lower the deeper it is. Afloat there is nothing to jump off.
+        this.vy = Math.sqrt(2 * GRAVITY * JUMP_HEIGHT * (this.water ? Math.max(0.3, 1 - this.water.depth / FLOAT) : 1));
       }
       this.lastJumpPress = this.clock;
     }
@@ -267,6 +285,7 @@ export class Player {
     if (next <= this.ground.y) {
       next = this.ground.y;
       if (this.vy < -2.5) this.onLand(-this.vy);
+      if (this.vy < -4 && this.wetHere?.swimming) this.dip = 0; // a plunge into deep water: the view dips and comes up
       this.vy = 0;
       if (this.flying && input.downHeld) this.flying = false; // landed
     }

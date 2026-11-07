@@ -1,4 +1,6 @@
 import * as THREE from 'three';
+import type { Ground } from './collision';
+import type { DipSpec } from './houseData';
 
 /**
  * The ponds' and ditches' water: a dark green mirror of the sky, now ruffled by the wind. Five
@@ -7,6 +9,11 @@ import * as THREE from 'three';
  * shimmer; nothing is moved. Gusts drift across it as calmer and rougher patches. Each train fades
  * out where its waves get too small on screen to draw (no glitter in the distance), and the water
  * turns a little less glossy there instead. One material for every pond, its clock set as it is drawn.
+ *
+ * Also where the water is, for walking into it (player.ts): every pond and ditch keeps its outline at the
+ * water line and its level. A ditch is as deep as it is drawn (about half a metre at most); a pond shelves
+ * on under its drawn bottom to 1.8 m in the middle, deep enough to swim in. The water is opaque, so the
+ * deeper middle needs no drawing.
  */
 
 // From the south-west, as the wind in the trees (world/wind.ts); in the model's x and z.
@@ -77,4 +84,95 @@ export function waterMaterial(): THREE.MeshStandardMaterial {
 /** Keeps the waves moving: call as the water is drawn (a mesh's onBeforeRender). */
 export function waterClock(): void {
   time.value = performance.now() / 1000;
+}
+
+// ---- Where the water is, and how deep ----
+
+/** In a pond: how deep the middle gets (m), and how much deeper per metre further in than its drawn bottom. */
+const POND_DEPTH = 1.8;
+const SHELVE = 0.45;
+/** Deeper than this you float (m): eyes 0.3 m over the water, the head above it. */
+export const FLOAT = 1.35;
+
+interface Body {
+  ring: [number, number][];
+  level: number;
+  /** The drawn depth at the flat bottom (m): the bank's 1:1 slope reaches it this far in from the water's edge */
+  drawn: number;
+  pond: boolean;
+  minX: number;
+  maxX: number;
+  minZ: number;
+  maxZ: number;
+}
+const bodies: Body[] = [];
+
+/** You (or someone) in the water: its level, how deep it is there, and whether that is out of your depth. */
+export interface Wet {
+  level: number;
+  depth: number;
+  swimming: boolean;
+}
+
+/** A pond's or ditch's outline at the water line (the rim moved in towards the bottom), and its level. */
+export function waterLine(d: DipSpec, ground: number): { ring: [number, number][]; level: number } | null {
+  if (!d.water) return null;
+  const t = d.water / d.depth;
+  const ring = d.rim.map(([x, z], i): [number, number] => [x + (d.bottom[i][0] - x) * t, z + (d.bottom[i][1] - z) * t]);
+  return { ring, level: ground + (d.low ?? 0) - d.water };
+}
+
+/** A pond or ditch to walk into (world/surroundings.ts waterMesh, as its water is made). */
+export function addWater(d: DipSpec, ring: [number, number][], level: number): void {
+  const xs = ring.map((v) => v[0]);
+  const zs = ring.map((v) => v[1]);
+  bodies.push({ ring, level, drawn: d.depth - (d.water ?? 0), pond: d.name === 'pond', minX: Math.min(...xs), maxX: Math.max(...xs), minZ: Math.min(...zs), maxZ: Math.max(...zs) });
+}
+
+function insideRing(x: number, z: number, r: [number, number][]): boolean {
+  let hit = false;
+  for (let i = 0, j = r.length - 1; i < r.length; j = i++) {
+    if (r[i][1] > z !== r[j][1] > z && x < ((r[j][0] - r[i][0]) * (z - r[i][1])) / (r[j][1] - r[i][1]) + r[i][0]) hit = !hit;
+  }
+  return hit;
+}
+
+/** How far (x, z) is from the ring's edge (m). */
+function edgeDistance(x: number, z: number, r: [number, number][]): number {
+  let best = Infinity;
+  for (let i = 0, j = r.length - 1; i < r.length; j = i++) {
+    const [ax, az] = r[j];
+    const dx = r[i][0] - ax;
+    const dz = r[i][1] - az;
+    const t = Math.max(0, Math.min(1, ((x - ax) * dx + (z - az) * dz) / (dx * dx + dz * dz || 1)));
+    best = Math.min(best, Math.hypot(x - ax - t * dx, z - az - t * dz));
+  }
+  return best;
+}
+
+function bodyAt(x: number, z: number): Body | null {
+  for (const b of bodies) if (x >= b.minX && x <= b.maxX && z >= b.minZ && z <= b.maxZ && insideRing(x, z, b.ring)) return b;
+  return null;
+}
+
+/** The water's surface at (x, z), or null on dry land. */
+export function waterLevel(x: number, z: number): number | null {
+  return bodyAt(x, z)?.level ?? null;
+}
+
+/**
+ * Standing at (x, z) on `ground` (world/collision.ts groundAt): in the water, or null when it is dry there (no
+ * water, or a bank or footbridge above it). In the water `ground` is changed to what you stand on: a pond's
+ * deeper floor, or where you float when it is out of your depth; its `mat` 'water' (wading) or 'swim'.
+ */
+export function wetGround(x: number, z: number, ground: Ground): Wet | null {
+  const b = bodyAt(x, z);
+  if (!b || ground.y > b.level - 0.02) return null;
+  let depth = b.level - ground.y;
+  // A pond shelves on past its drawn bottom (the bank slopes 1:1 down to it, so that far in from the edge).
+  if (b.pond && depth > b.drawn - 0.05) depth = Math.min(POND_DEPTH, Math.max(depth, b.drawn + (edgeDistance(x, z, b.ring) - b.drawn) * SHELVE));
+  const swimming = depth > FLOAT;
+  ground.y = b.level - Math.min(depth, FLOAT);
+  ground.mat = swimming ? 'swim' : 'water';
+  return { level: b.level, depth, swimming };
 }

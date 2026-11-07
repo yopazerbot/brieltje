@@ -9,7 +9,7 @@ import { fieldRows } from './fields';
 import { sway } from './wind';
 import { paneGeometry, paneLook, paneMaterial, COVER } from './windows';
 import { brickLook, byteAttribute, frameColour, glazeable, Houses, isBrick, renderable, roofLook } from './facadeLook';
-import { waterClock, waterMaterial } from './water';
+import { addWater, waterClock, waterLine, waterMaterial } from './water';
 import { leafy } from './leaves';
 import { treeCrown, treeTrunk } from './vegetation';
 import { spaceTrees } from './treeSpacing';
@@ -735,10 +735,11 @@ function buildSolar(list: NonNullable<Surroundings['solar']>): Piece[] {
 
 /** The water in a pond or ditch: a flat surface where the banks reach its level. */
 export function waterMesh(d: DipSpec, ground: number): THREE.Mesh | null {
-  if (!d.water) return null;
-  const t = d.water / d.depth;
-  const ring = d.rim.map(([x, z], i) => new THREE.Vector2(x + (d.bottom[i][0] - x) * t, -(z + (d.bottom[i][1] - z) * t)));
-  const g = new THREE.ShapeGeometry(new THREE.Shape(ring)).rotateX(-Math.PI / 2).translate(0, ground + (d.low ?? 0) - d.water, 0);
+  const line = waterLine(d, ground);
+  if (!line) return null;
+  addWater(d, line.ring, line.level); // to wade and swim in (world/water.ts)
+  const ring = line.ring.map(([x, z]) => new THREE.Vector2(x, -z));
+  const g = new THREE.ShapeGeometry(new THREE.Shape(ring)).rotateX(-Math.PI / 2).translate(0, line.level, 0);
   const mesh = new THREE.Mesh(g, waterMaterial()); // rippling in the wind (world/water.ts)
   mesh.onBeforeRender = waterClock;
   mesh.receiveShadow = true;
