@@ -1,6 +1,6 @@
 import * as THREE from 'three';
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
-import { t } from '../i18n';
+import { t, type PlainKey } from '../i18n';
 import { sound } from '../sound';
 import type { World } from './collision';
 import { paintJoints } from './paint';
@@ -16,10 +16,60 @@ import { paintJoints } from './paint';
  * Only in Explore, as the villagers (world/villagers.ts; main.ts decides with the same test): in Action, Paintball and
  * Zombies he is gone, so he is never something to shoot at. His meshes take no rays; the horse is in the way for
  * walking only. Local and for show: nothing goes over the network or is stored, the treats included.
+ *
+ * The same rider, with another spec, is Sint-Maarten in November (world/sintmaarten.ts): his own model, horse,
+ * spot on the square, words and treats.
  */
 
-/** The loop he rides: its middle and radius, in the open part of the square by the parking row. */
-export const LOOP = { x: 535, z: -762.5, r: 2.8 };
+/** What makes one saint on horseback: his model, his horse's colours, where he rides, what he says and gives. */
+export interface RiderSpec {
+  /** His name in the world's moving blocks (world/collision.ts setMoving) */
+  key: string;
+  /** His model (tools/sinterklaas.py) */
+  model: string;
+  /** The horse's colours, by its materials' names (tools/horse.py) */
+  horse: Record<string, string>;
+  /** The loop he rides: its middle and radius */
+  loop: { x: number; z: number; r: number };
+  /** What he says, the hello first; the others in turn */
+  lines: readonly PlainKey[];
+  /** What he says with the treat */
+  treat: PlainKey;
+  /** The Use hint next to him */
+  prompt: 'prompt.sint' | 'prompt.maarten';
+  /** The two kinds of treats: their shape, look, how many at most, half their thickness (how high they lie) */
+  treats: [TreatSpec, TreatSpec];
+  /** The speech bubble's border and text colours */
+  bubble: { border: string; text: string };
+}
+
+export interface TreatSpec {
+  geometry: () => THREE.BufferGeometry;
+  material: () => THREE.Material;
+  max: number;
+  lift: number;
+  /** Colours to vary the pieces by (per instance), if any */
+  colors?: string[];
+}
+
+/** Sinterklaas: from his arrival until 6 December, in the open part of the square by the parking row. */
+export const SINTERKLAAS: RiderSpec = {
+  key: 'sinterklaas',
+  model: '/models/sinterklaas.glb',
+  // A white horse with a light mane, a red saddle cloth and dark tack.
+  horse: { Coat: '#ece8e1', Dark: '#cdc8c0', Marking: '#ece8e1', Pad: '#a3161b', Leather: '#3b2417', Metal: '#c9a227' },
+  loop: { x: 535, z: -762.5, r: 2.8 },
+  lines: ['sint.hello', 'sint.shoe', 'sint.carrot', 'sint.spain', 'sint.song', 'sint.kind'],
+  treat: 'sint.treat',
+  prompt: 'prompt.sint',
+  treats: [
+    // chocolate coins and speculaas
+    { geometry: () => new THREE.CylinderGeometry(0.045, 0.045, 0.01, 14), material: () => new THREE.MeshStandardMaterial({ color: '#e0b23a', metalness: 0.75, roughness: 0.3 }), max: 30, lift: 0.004 },
+    { geometry: () => new THREE.BoxGeometry(0.09, 0.014, 0.06), material: () => new THREE.MeshStandardMaterial({ color: '#8a4d22', roughness: 0.8 }), max: 24, lift: 0.006 },
+  ],
+  bubble: { border: '#b0161d', text: '#3a1512' },
+};
+
 const HORSE_JOINTS = ['Body', 'Tack', 'Neck', 'Head', 'Reins', 'Ear_L', 'Ear_R', 'Tail', 'Leg_FL', 'Leg_FR', 'Leg_BL', 'Leg_BR', 'Shin_FL', 'Shin_FR', 'Shin_BL', 'Shin_BR'];
 const SAINT_JOINTS = ['Body', 'Head', 'Arm_R'];
 const LEGS = [['BL', 0, -1], ['FL', 0.25, 1], ['BR', 0.5, -1], ['FR', 0.75, 1]] as const; // leg, place in the stride, which way the lower leg folds
@@ -30,22 +80,23 @@ const STAND_S = 18; // s standing between rounds
 const STOP = 7; // m: a player this near and he stops and turns to them
 const TALK = 10; // m: his speech bubble shows within this
 const REACH = 3.2; // m: Use reaches him
-const LINES = ['sint.hello', 'sint.shoe', 'sint.carrot', 'sint.spain', 'sint.song', 'sint.kind'] as const;
-const KEY = 'sinterklaas';
-type Line = (typeof LINES)[number] | 'sint.treat';
 /** The waving arm: the upper arm out to the side, the forearm up (x to z, y to x, z to y; tools/sinterklaas.py). */
 const WAVE = new THREE.Quaternion().setFromRotationMatrix(new THREE.Matrix4().makeBasis(new THREE.Vector3(0, 0, 1), new THREE.Vector3(1, 0, 0), new THREE.Vector3(0, 1, 0)));
 const Z = new THREE.Vector3(0, 0, 1);
 
 interface Piece {
-  kind: 0 | 1; // a chocolate coin, a speculaas
+  kind: 0 | 1; // the first kind of treat or the second (for Sinterklaas a chocolate coin, a speculaas)
   p: THREE.Vector3;
   v: THREE.Vector3;
   spin: THREE.Vector3;
   rot: THREE.Euler;
   age: number;
   floor: number;
+  /** Which of its kind's colours (when the kind has some) */
+  seed: number;
 }
+
+const _color = new THREE.Color();
 
 export class Sinterklaas {
   readonly group = new THREE.Group();
@@ -67,21 +118,23 @@ export class Sinterklaas {
   private lineFor = 0;
   private bubble: HTMLDivElement | null = null;
   private bubbleText: HTMLSpanElement | null = null;
-  private said: Line = 'sint.hello';
+  private said: PlainKey;
   private treatWait = 0;
   private pieces: Piece[] = [];
-  private coins: THREE.InstancedMesh | null = null;
-  private biscuits: THREE.InstancedMesh | null = null;
+  private kinds: THREE.InstancedMesh[] = [];
   private placed = { x: NaN, z: NaN };
-  private x = LOOP.x;
-  private z = LOOP.z + LOOP.r;
+  private x: number;
+  private z: number;
   private yaw = 0;
   private ground = 0;
   private playerNear = false;
 
-  constructor(private world: World, private groundAt: (x: number, z: number) => number, private precompile: (root: THREE.Object3D) => unknown = () => {}) {
-    this.group.name = 'sinterklaas';
+  constructor(private world: World, private groundAt: (x: number, z: number) => number, private precompile: (root: THREE.Object3D) => unknown = () => {}, readonly spec: RiderSpec = SINTERKLAAS) {
+    this.group.name = spec.key;
     this.group.visible = false;
+    this.said = spec.lines[0];
+    this.x = spec.loop.x;
+    this.z = spec.loop.z + spec.loop.r;
   }
 
   /** In Explore during his days (main.ts): there, else gone (and out of the way). */
@@ -93,10 +146,9 @@ export class Sinterklaas {
   private load(): void {
     this.loaded = 'loading';
     const loader = new GLTFLoader();
-    void Promise.all([loader.loadAsync('/models/horse.glb'), loader.loadAsync('/models/sinterklaas.glb')]).then(([h, s]) => {
+    void Promise.all([loader.loadAsync('/models/horse.glb'), loader.loadAsync(this.spec.model)]).then(([h, s]) => {
       const horse = h.scene;
-      // A white horse with a light mane, a red saddle cloth and dark tack. One draw call a joint.
-      paintJoints(horse, HORSE_JOINTS, { Coat: '#ece8e1', Dark: '#cdc8c0', Marking: '#ece8e1', Pad: '#a3161b', Leather: '#3b2417', Metal: '#c9a227' });
+      paintJoints(horse, HORSE_JOINTS, this.spec.horse); // one draw call a joint
       const saint = s.scene;
       paintJoints(saint, SAINT_JOINTS);
       this.horse = Object.fromEntries(HORSE_JOINTS.map((n) => [n, horse.getObjectByName(n)]));
@@ -115,11 +167,12 @@ export class Sinterklaas {
   }
 
   private buildTreats(): void {
-    const gold = new THREE.MeshStandardMaterial({ color: '#e0b23a', metalness: 0.75, roughness: 0.3 });
-    const biscuit = new THREE.MeshStandardMaterial({ color: '#8a4d22', roughness: 0.8 });
-    this.coins = new THREE.InstancedMesh(new THREE.CylinderGeometry(0.045, 0.045, 0.01, 14), gold, 30);
-    this.biscuits = new THREE.InstancedMesh(new THREE.BoxGeometry(0.09, 0.014, 0.06), biscuit, 24);
-    for (const m of [this.coins, this.biscuits]) {
+    this.kinds = this.spec.treats.map((k) => {
+      const mesh = new THREE.InstancedMesh(k.geometry(), k.material(), k.max);
+      if (k.colors) for (let i = 0; i < k.max; i++) mesh.setColorAt(i, _color.set(k.colors[i % k.colors.length])); // from the start, so the shader is built with them
+      return mesh;
+    });
+    for (const m of this.kinds) {
       m.count = 0;
       m.frustumCulled = false;
       m.userData.ignoreRay = true;
@@ -133,12 +186,12 @@ export class Sinterklaas {
     return this.active && this.loaded === 'yes' && this.group.visible && Math.hypot(x - this.x, z - this.z) < REACH && Math.abs(feet - this.ground) < 1.5;
   }
 
-  /** Use next to him: a handful of chocolate coins and speculaas for you, and a word. Only here, nothing kept. */
+  /** Use next to him: a handful of treats for you (Sinterklaas: chocolate coins and speculaas), and a word. Only here, nothing kept. */
   treat(toX: number, toZ: number): void {
-    if (this.treatWait > 0 || !this.coins) return;
+    if (this.treatWait > 0 || !this.kinds.length) return;
     this.treatWait = 1.2;
     this.waveFor = Math.max(this.waveFor, 2.5);
-    this.say('sint.treat', 4);
+    this.say(this.spec.treat, 4);
     const hand = new THREE.Vector3();
     (this.saint.Arm_R ?? this.group).getWorldPosition(hand);
     hand.y += 0.1;
@@ -153,12 +206,14 @@ export class Sinterklaas {
       const side = (Math.random() - 0.5) * 1.6;
       const v = new THREE.Vector3(toward.x * reach * 1.3 - toward.z * side, up, toward.z * reach * 1.3 + toward.x * side);
       this.pieces.push({
-        kind, p: hand.clone(), v, age: 0, floor: floor + (kind ? 0.006 : 0.004),
+        kind, p: hand.clone(), v, age: 0, floor: floor + this.spec.treats[kind].lift,
         spin: new THREE.Vector3((Math.random() - 0.5) * 14, (Math.random() - 0.5) * 8, (Math.random() - 0.5) * 14),
         rot: new THREE.Euler(Math.random() * 3, Math.random() * 3, Math.random() * 3),
+        seed: i,
       });
     }
-    if (this.pieces.length > 54) this.pieces.splice(0, this.pieces.length - 54);
+    const most = this.spec.treats[0].max + this.spec.treats[1].max;
+    if (this.pieces.length > most) this.pieces.splice(0, this.pieces.length - most);
     this.chime(hand);
   }
 
@@ -183,7 +238,7 @@ export class Sinterklaas {
     });
   }
 
-  private say(key: Line, seconds: number): void {
+  private say(key: PlainKey, seconds: number): void {
     this.said = key;
     this.lineFor = seconds;
   }
@@ -210,9 +265,10 @@ export class Sinterklaas {
     const riding = this.clock % (RIDE_S + STAND_S) < RIDE_S && !this.playerNear;
     const want = riding ? WALK : 0;
     this.speed += Math.sign(want - this.speed) * Math.min(Math.abs(want - this.speed), dt * 0.6);
-    this.a += (this.speed * dt) / LOOP.r;
-    this.x = LOOP.x + LOOP.r * Math.sin(this.a);
-    this.z = LOOP.z + LOOP.r * Math.cos(this.a);
+    const loop = this.spec.loop;
+    this.a += (this.speed * dt) / loop.r;
+    this.x = loop.x + loop.r * Math.sin(this.a);
+    this.z = loop.z + loop.r * Math.cos(this.a);
     this.yaw = Math.atan2(Math.cos(this.a), -Math.sin(this.a)); // along the loop
     this.ground = this.groundAt(this.x, this.z);
     this.mount.position.set(this.x, this.ground, this.z);
@@ -223,8 +279,8 @@ export class Sinterklaas {
     // Near: he turns his head to you, waves when you come, now and then, and talks.
     if (this.playerNear && !this.wasNear) {
       this.waveFor = 3.5;
-      this.say('sint.hello', 6);
-      this.line = 1 + Math.floor(Math.random() * (LINES.length - 1));
+      this.say(this.spec.lines[0], 6);
+      this.line = 1 + Math.floor(Math.random() * (this.spec.lines.length - 1));
     }
     this.wasNear = this.playerNear;
     let look = 0;
@@ -236,8 +292,9 @@ export class Sinterklaas {
     if (this.saint.Head) this.saint.Head.rotation.y = this.headYaw;
     this.lineFor -= dt;
     if (dist < TALK && this.lineFor <= 0) {
-      this.say(LINES[this.line % LINES.length], 6);
-      this.line = this.line % (LINES.length - 1) + 1; // the hello once, then the others in turn
+      const lines = this.spec.lines;
+      this.say(lines[this.line % lines.length], 6);
+      this.line = this.line % (lines.length - 1) + 1; // the hello once, then the others in turn
       if (Math.random() < 0.4) this.waveFor = Math.max(this.waveFor, 2);
     }
     this.waveFor = Math.max(0, this.waveFor - dt);
@@ -281,12 +338,11 @@ export class Sinterklaas {
   }
 
   private updateTreats(dt: number): void {
-    if (!this.coins || !this.biscuits) return;
+    if (!this.kinds.length) return;
     const m = new THREE.Matrix4();
     const q = new THREE.Quaternion();
     const s = new THREE.Vector3();
-    let coins = 0;
-    let biscuits = 0;
+    const counts = [0, 0];
     this.pieces = this.pieces.filter((p) => (p.age += dt) < 6);
     for (const p of this.pieces) {
       if (p.p.y > p.floor || p.v.y > 0) {
@@ -305,19 +361,24 @@ export class Sinterklaas {
       const grow = Math.min(1, p.age * 6) * Math.min(1, (6 - p.age) / 0.6); // pops out, shrinks away at the end
       s.setScalar(Math.max(0.001, grow));
       m.compose(p.p, q.setFromEuler(p.rot), s);
-      if (p.kind === 0) this.coins.setMatrixAt(coins++, m);
-      else this.biscuits.setMatrixAt(biscuits++, m);
+      const spec = this.spec.treats[p.kind];
+      const i = counts[p.kind]++;
+      if (i >= spec.max) continue;
+      const mesh = this.kinds[p.kind];
+      mesh.setMatrixAt(i, m);
+      if (spec.colors) mesh.setColorAt(i, _color.set(spec.colors[(p.seed + i) % spec.colors.length]));
     }
-    this.coins.count = Math.min(coins, 30);
-    this.biscuits.count = Math.min(biscuits, 24);
-    this.coins.instanceMatrix.needsUpdate = true;
-    this.biscuits.instanceMatrix.needsUpdate = true;
+    this.kinds.forEach((mesh, k) => {
+      mesh.count = Math.min(counts[k], this.spec.treats[k].max);
+      mesh.instanceMatrix.needsUpdate = true;
+      if (mesh.instanceColor) mesh.instanceColor.needsUpdate = true;
+    });
   }
 
   /** The horse is in the way for walking (not for shots: there are none in Explore, and he is gone elsewhere). */
   private placeSolid(on: boolean): void {
     if (!on) {
-      if (!Number.isNaN(this.placed.x)) this.world.setMoving(KEY, null, 0, 0, true);
+      if (!Number.isNaN(this.placed.x)) this.world.setMoving(this.spec.key, null, 0, 0, true);
       this.placed.x = NaN;
       return;
     }
@@ -325,7 +386,7 @@ export class Sinterklaas {
     this.placed = { x: this.x, z: this.z };
     const f = { x: Math.sin(this.yaw), z: Math.cos(this.yaw) };
     const ring: [number, number][] = [[1.15, 0.35], [1.15, -0.35], [-1.05, -0.35], [-1.05, 0.35]].map(([a, b]) => [this.x + f.x * a + f.z * b, this.z + f.z * a - f.x * b]);
-    this.world.setMoving(KEY, ring, this.ground - 0.3, this.ground + 2.6, true);
+    this.world.setMoving(this.spec.key, ring, this.ground - 0.3, this.ground + 2.6, true);
   }
 
   /** The speech bubble at a spot on the screen (CSS pixels), or hidden. Its text is set with textContent only. */
@@ -339,14 +400,14 @@ export class Sinterklaas {
       b.className = 'sint-bubble';
       Object.assign(b.style, {
         position: 'fixed', zIndex: '6', pointerEvents: 'none', transform: 'translate(-50%, -100%)', maxWidth: 'min(260px, 62vw)',
-        padding: '8px 13px', borderRadius: '14px', background: 'rgba(255, 253, 248, 0.96)', color: '#3a1512', textAlign: 'center',
-        fontWeight: '600', fontSize: '15px', lineHeight: '1.3', boxShadow: '0 3px 12px rgba(0, 0, 0, 0.28)', border: '2px solid #b0161d',
+        padding: '8px 13px', borderRadius: '14px', background: 'rgba(255, 253, 248, 0.96)', color: this.spec.bubble.text, textAlign: 'center',
+        fontWeight: '600', fontSize: '15px', lineHeight: '1.3', boxShadow: '0 3px 12px rgba(0, 0, 0, 0.28)', border: `2px solid ${this.spec.bubble.border}`,
       });
       const text = document.createElement('span');
       const tail = document.createElement('div');
       Object.assign(tail.style, {
         position: 'absolute', left: '50%', bottom: '-8px', width: '12px', height: '12px', marginLeft: '-6px', background: 'rgba(255, 253, 248, 0.96)',
-        borderRight: '2px solid #b0161d', borderBottom: '2px solid #b0161d', transform: 'rotate(45deg)',
+        borderRight: `2px solid ${this.spec.bubble.border}`, borderBottom: `2px solid ${this.spec.bubble.border}`, transform: 'rotate(45deg)',
       });
       b.append(text, tail);
       document.body.appendChild(b);
