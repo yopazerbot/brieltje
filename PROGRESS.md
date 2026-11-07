@@ -6,11 +6,13 @@ Last update: 2026-11-07
 
 **Live:** brieltje.be follows `main`. New on 7 Nov (batch 1 of the "next level" plan): weather moods (Auto by default: sunny, overcast, rain, night, slowly cycling; the admin picks, skips or speeds it up together, players pick alone in Settings), the open-data houses' own brick, roofs and frames with rooms behind the windows (lit at night), weathered yards, a low hazy horizon, leafier crowns and undergrowth in the woods.
 
-**In progress:** batch 2 (feel): car body motion, skid marks and sound; zombie ragdolls; new first-person weapons and hands; echo indoors and the night leftovers (white chimney smoke, unlit parachute). Then batch 3 (bikes, villagers in Explore only, a football, splashes) and batch 4 (cascaded shadows, bloom, a dusk mood with its own bake, December: snow, lights, a tree and Sinterklaas with his horse).
+**In progress:** batch 2 is live too: cars on springs with skid marks and sound, zombie ragdolls, our own guns and gloved hands, echo indoors and the outdoors muffled, night fixes for smoke and butterflies, and the redesigned start screen and settings with a Beta mark. Next: batch 3 (bikes, villagers in Explore only, a football, splashes) and batch 4 (cascaded shadows, bloom, a dusk mood with its own bake, December: snow, lights, a tree and Sinterklaas with his horse). Waiting for Yoshi: the legitimate interest assessments (web/public/legal/legitimate-interest.html, uncommitted in the main checkout).
 
 **Next command:** with a dev server on your port, `node tools/dev/shot.mjs out.png --url http://localhost:<port>/ --travel church --mood night --village` to see a mood.
 
 **Open questions:**
+- The parachute still looks fairly bright at night after the fix. The bungalow's outside stair counts as indoors (room echo). Zombies' tint and furniture lamps still glow at night.
+- Batch 2 choices for Yoshi: skid marks from any keyboard stop above 40 km/h; the view 10 % wider at top speed; ragdoll push strengths and 3 s on the ground; Beta replaces "Work in progress"; "Bèta" in Dutch; walking speed moved to Settings; the menu can't be walked with the D-pad yet.
 - The weather: Dutch "Wisselend" for Auto; rain shares the overcast sky; the admin's choice is not kept over a server restart (back to Auto); three skies stay in graphics memory once used. The houses: about 13 % red/terracotta roofs, the share of rendered houses, how much of a room shows by day, about half the windows lit at night. All one number each.
 - The weather's rain sound was never heard (headless browsers play no sound), and the admin's weather picker was only tested through the server test and a forced layout.
 - Tesla changes passed Low desktop/touch emulation using SwiftShader and WebP with bakes disabled. No physical-device performance or controller check was made.

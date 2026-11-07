@@ -25,6 +25,11 @@ The whole project was made with AI. Yoshi Parlevliet, a cybersecurity consultant
 - **Weather and time of day.** The sky now changes by itself, slowly: sunny, overcast, rain and night, each for 20 to 40 minutes (night 10 to 20), blending over a few minutes. Rain falls round you but not indoors, and the roads turn dark and shiny. At night the street lamps glow and about half the village's windows light up. Alone you can fix a mood in Settings (Weather); together the admin picks it for everyone, skips to the next weather or speeds the cycle up.
 - **Houses with their own look.** Every house from the open data has its own shade of brick or render, its own roof tiles and frames, and a room behind each window: walls, a floor, furniture and curtains.
 - **The ground, the horizon and the trees.** Yards and gravel round the houses are weathered paving instead of flat pale patches. The horizon is a low, hazy band of tree lines. Tree crowns have leaf clusters and lighter undersides, and the wood by the Sparrenhof has fallen leaves, ferns, brambles and shrubs.
+- **Cars that feel heavy.** The body leans in corners, dips when braking and bumps over kerbs; the tyres leave skid marks and the motor whines with the speed.
+- **Zombies that fall.** A beaten zombie goes limp and falls the way the shot pushed it, against walls and down stairs. Nothing more: no blood.
+- **New guns and hands.** All five guns and the gloved hands are our own models now. The pistol's slide kicks back, the shotgun is pumped, the sniper's bolt is worked, and every reload is done by hand.
+- **Sound with room.** Houses and the church tower echo, and the outdoors sounds muffled when you're inside. The bells ring loud in the tower.
+- **A calmer menu.** The settings are grouped (display, sound, weather, on screen, moving and looking, language and keyboard), and only what applies to the way you play is shown. A small Beta mark replaces "Work in progress".
 
 ## Recent updates — 6 November 2026
 
