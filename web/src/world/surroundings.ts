@@ -15,6 +15,7 @@ import { treeCrown, treeTrunk } from './vegetation';
 import { spaceTrees } from './treeSpacing';
 import { bakeStandIns } from './groundShade';
 import { cardCrown, cardTrunk, crownFit, FORK, HEIGHT, Kind, KINDS, spotHash, TRUNK_OF, TRUNKS, treeKind, VARIANTS } from './cardTrees';
+import { hedgeCardMesh, hedgeCardPieces } from './hedgeCards';
 import { barkMaterial, enlist, leafCardMaterial, plainForBake, switchTrees } from './leafCards';
 
 /**
@@ -538,6 +539,8 @@ export function buildTile(data: TileData, poles: Pole[], renderer: THREE.WebGLRe
   if (data.solar?.length) out.push(...buildSolar(data.solar));
   if (data.posts?.length) out.push(buildPosts(data.posts, ground));
   if (data.trees.length) out.push(...buildTrees(data.trees, detail, data.prisms ?? []));
+  // Medium and up: sprigs of leaves out of the hedges' sides and tops, in the tiles round the eye (world/hedgeCards.ts).
+  for (const h of hedgeCardPieces(data.prisms ?? [])) out.push({ ...h, tag: 'hedge', shadow: false, order: TREE_ORDER, lod: 'near' });
   return out;
 }
 
@@ -982,5 +985,8 @@ export function buildHedges(prisms: Prism[]): THREE.Object3D {
   mesh.userData.material = 'hedge';
   mesh.userData.ignoreRay = false;
   mesh.computeBoundingSphere();
-  return mesh;
+  // Medium and up, sprigs of leaves out of their sides and tops too (world/hedgeCards.ts).
+  const group = new THREE.Group();
+  group.add(mesh, hedgeCardMesh(prisms.filter((p) => p.m === 'hedge')));
+  return group;
 }
