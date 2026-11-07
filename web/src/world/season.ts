@@ -1,7 +1,13 @@
 /**
- * The time of year as Belgium keeps it, for the December decorations (Yoshi): Sinterklaas on the church square
- * from his arrival until his feast day, the Christmas lights and the tree from Advent until Epiphany.
+ * The time of year as Belgium keeps it, for the November and December decorations (Yoshi): Sint-Maarten on the
+ * church square in the week up to his feast day, Sinterklaas from his arrival until his, the Christmas lights and the
+ * tree from Advent until Epiphany.
  *
+ * - Sint-Maarten (world/sintmaarten.ts), the children's gift-bringer round Aalst (Lede included), who comes in the
+ *   night of 10 to 11 November: from 4 November up to and with the 11th. His evenings (`sintMaartenEve`) are 4 up to
+ *   and with 10 November: lanterns after dark, a carrot and some hay for his horse by a few front doors. On the 11th
+ *   the horse has had them; on the 12th he is gone (Sinterklaas arrives on the 12th at the earliest, so they never
+ *   meet).
  * - Sinterklaas (world/sinterklaas.ts): from the first Saturday after 11 November (Sint-Maarten), the usual day of
  *   his arrival, up to and with 6 December; on the 7th he is gone.
  * - Christmas (world/christmas.ts): from the first Sunday of Advent (the fourth Sunday before Christmas, between
@@ -14,6 +20,8 @@
  */
 
 export interface Season {
+  sintMaarten: boolean;
+  sintMaartenEve: boolean;
   sinterklaas: boolean;
   christmas: boolean;
 }
@@ -29,6 +37,9 @@ export interface Day {
 function weekday(y: number, m: number, d: number): number {
   return new Date(Date.UTC(y, m - 1, d)).getUTCDay();
 }
+
+/** The days of November Sint-Maarten is on the square: a week before his feast up to and with it (11 November). */
+export const SINT_MAARTEN = { from: 4, feast: 11 };
 
 /** The day in November Sinterklaas arrives: the first Saturday after 11 November. */
 export function sinterklaasArrives(y: number): number {
@@ -46,6 +57,8 @@ export function firstAdvent(y: number): [number, number] {
 export function seasonOn({ y, m, d }: Day): Season {
   const [am, ad] = firstAdvent(y);
   return {
+    sintMaarten: m === 11 && d >= SINT_MAARTEN.from && d <= SINT_MAARTEN.feast,
+    sintMaartenEve: m === 11 && d >= SINT_MAARTEN.from && d < SINT_MAARTEN.feast,
     sinterklaas: (m === 11 && d >= sinterklaasArrives(y)) || (m === 12 && d <= 6),
     christmas: (m === 1 && d <= 6) || (m === 12 && (am === 11 || d >= ad)) || (m === 11 && am === 11 && d >= ad),
   };
