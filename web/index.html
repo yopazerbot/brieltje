@@ -35,8 +35,6 @@
     <canvas id="view"></canvas>
     <!-- Behind the start screen: a slideshow of renders (public/slides/, made with tools/still/), shown while the start menu is up. -->
     <div id="start-still" class="slides bg" data-slides></div>
-    <!-- Its buttons, outside it: the slideshow is drawn under the menu's layer, which would catch their clicks. -->
-    <div id="slides-controls" data-slides-controls></div>
     <div id="hud">
       <div id="damage"></div>
       <!-- The Beta mark beside the wordmark (style.css .beta); with touch controls the mark alone, beside the top row of buttons. -->
@@ -549,6 +547,9 @@
         </div>
       </div>
     </div>
+    <!-- The slideshow's buttons, outside it: the slideshow is drawn under the menu's layer, which would catch
+         their clicks. After the start screen, so the keyboard's Tab reaches the start screen first. -->
+    <div id="slides-controls" data-slides-controls></div>
     <script src="/lang-early.js"></script>
     <script src="/slides/slides.js" defer></script>
     <script type="module" src="/src/start.ts"></script>

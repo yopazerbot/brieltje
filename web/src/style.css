@@ -910,6 +910,7 @@ body.on-start #start-still { display: block; }
 #slides-controls { position: fixed; z-index: 20; right: 136px; bottom: 23px; }
 #slides-controls .slides-bar { font-family: var(--font); font-weight: 800; background: rgba(16, 24, 32, 0.82); border-color: var(--line-strong); }
 #slides-controls .slides-dot[aria-current="true"]::after { background: var(--lamp); }
+#slides-controls :focus-visible { outline: 2px solid var(--lamp); outline-offset: 1px; } /* the same ring as in the panel */
 body:not(.on-start) #slides-controls { display: none; }
 @media (max-width: 1099px), (max-height: 520px) { #slides-controls { display: none; } }
 /* Not quite so wide: without the caption, so the bar stays clear of the menu. */
