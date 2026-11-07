@@ -227,3 +227,16 @@ table.gn td:last-child { white-space: nowrap; }
 /* The multiplayer PIN (Online now): the field and its Show button on one line. */
 .pin-row { display: flex; gap: 8px; align-items: center; max-width: 360px; }
 .pin-row input { flex: 1; min-width: 0; letter-spacing: 0.12em; }
+
+/* The homes on a phone: a card per home, its name and state on top, the dates and counts as labelled
+   lines, the buttons side by side under them (the log's own layout puts its first column, a time, on the right). */
+@media (max-width: 640px) {
+  table.log.hm tr { grid-template-columns: minmax(0, 1fr) auto; gap: 4px 10px; padding: 12px 2px; }
+  table.log.hm td.home { grid-column: 1; grid-row: 1; font-size: 15px; font-weight: 700; color: var(--ink); text-align: left; white-space: normal; }
+  table.log.hm td.state { grid-column: 2; grid-row: 1; font-size: 13px; font-weight: 500; color: var(--muted); text-align: right; }
+  table.log.hm td[data-label] { grid-column: 1 / -1; grid-row: auto; font-size: 13px; color: var(--muted); }
+  table.log.hm td[data-label]::before { content: attr(data-label) ": "; color: var(--muted); font-weight: 600; }
+  table.log.hm td.acts { grid-column: 1 / -1; grid-row: auto; display: flex; flex-wrap: wrap; gap: 8px; margin-top: 6px; white-space: normal; }
+  table.log.hm td.acts .btn { flex: 1 1 auto; min-width: 0; padding: 8px 12px; font-size: 14px; }
+  table.log.hm td.acts .tag { flex-basis: 100%; }
+}

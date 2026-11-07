@@ -1037,9 +1037,16 @@
         });
         actions.append(del);
       }
-      tr.append(el('td', '', HOME_NAMES[h.id] ?? h.id), el('td', '', state), el('td', '', day(h.setAt)),
-        el('td', '', day(h.expiresAt)), el('td', '', `${fmt(h.unlocks)}${h.lastUnlockAt ? ` · ${day(h.lastUnlockAt)}` : ''}`),
-        el('td', '', `${fmt(h.fails)}${h.lastFailAt ? ` · ${day(h.lastFailAt)}` : ''}`), actions);
+      // A label per cell for the phone's layout (admin.css: table.hm), where the table's head is hidden.
+      const cell = (label, text) => {
+        const td = el('td', '', text);
+        td.dataset.label = label;
+        return td;
+      };
+      actions.className = 'acts';
+      tr.append(el('td', 'home', HOME_NAMES[h.id] ?? h.id), el('td', 'state', state), cell('Code set', day(h.setAt)),
+        cell('Expires', day(h.expiresAt)), cell('Opened', `${fmt(h.unlocks)}${h.lastUnlockAt ? ` · ${day(h.lastUnlockAt)}` : ''}`),
+        cell('Wrong tries', `${fmt(h.fails)}${h.lastFailAt ? ` · ${day(h.lastFailAt)}` : ''}`), actions);
       return tr;
     }));
   }
