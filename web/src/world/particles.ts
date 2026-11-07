@@ -1,6 +1,7 @@
 import * as THREE from 'three';
 import { daylight } from './daylight';
 import { particleSheet } from './sprites';
+import { reflectionSkips } from './reflections';
 
 /**
  * Soft particles for smoke, dust, fire, sparks and debris: camera-facing
@@ -220,6 +221,7 @@ export class Particles {
     this.normal = new Pool(1500, map, false);
     this.additive = new Pool(800, map, true);
     this.group.add(this.normal.mesh, this.additive.mesh);
+    reflectionSkips.objects.add(this.group); // not in the reflections (world/reflections.ts)
   }
 
   /** Add one particle: smoke, dust and debris blend normally; fire, sparks and glows add light. */

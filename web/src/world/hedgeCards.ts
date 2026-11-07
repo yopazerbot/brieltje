@@ -2,6 +2,7 @@ import * as THREE from 'three';
 import type { Prism } from './houseData';
 import { Spray, sprayRect } from './cardTrees';
 import { cardsBuilt, leafCardMaterial } from './leafCards';
+import { reflectionSkips } from './reflections';
 import { terrain } from './terrain';
 
 /**
@@ -18,6 +19,7 @@ const GREEN = new THREE.Color('#56602f');
 
 let shapes: { side: THREE.BufferGeometry; top: THREE.BufferGeometry } | null = null;
 const material = leafCardMaterial(0.04, 0.02, false, 0.35);
+reflectionSkips.materials.add(material); // the reflections leave the sprigs out (world/reflections.ts)
 
 const random = (seed: number) => {
   let s = seed;

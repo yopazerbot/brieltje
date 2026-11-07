@@ -5,6 +5,7 @@ import { wind } from './wind';
 import { leafLight, leafy } from './leaves';
 import { bushCards } from './cardTrees';
 import { CUT, leafAtlas, watchCards } from './leafCards';
+import { reflectionSkips } from './reflections';
 
 /**
  * The woods' undergrowth round where you are: ferns (most of them turned bracken-brown at the start of
@@ -200,6 +201,7 @@ export class Undergrowth {
       this.meshes.push(mesh);
       this.group.add(mesh);
     }
+    reflectionSkips.objects.add(this.group); // not in the reflections (world/reflections.ts)
     // The brambles and shrubs: leaf cards while the trees are (world/leafCards.ts: Medium and up, once painted).
     watchCards((full) => {
       if (full && !card.map) {

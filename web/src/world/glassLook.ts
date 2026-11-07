@@ -1,6 +1,7 @@
 import * as THREE from 'three';
 import { Pass } from 'three/addons/postprocessing/Pass.js';
 import { mood } from './mood';
+import { reflectionLayers, withoutDetail } from './reflections';
 import { wet, wetState } from './wetGround';
 
 /**
@@ -252,11 +253,19 @@ float glassBlind( float y, float storey, float h ) {
 `;
 
 const patched = new WeakSet<THREE.Material>();
+/** The materials whose glass reads the probe (GlassProbe draws it only with one of them near). */
+const probeUsers = new WeakSet<THREE.Material>();
+
+/** This material's glass reads the probe (world/windows.ts: the open-data houses' panes; roomGlass and clearGlass say so themselves). */
+export function usesProbe(m: THREE.Material): void {
+  probeUsers.add(m);
+}
 
 /** A model's glass with no inside behind it: double glazing over a room (see ROOM), mirroring the street. */
 export function roomGlass<T extends THREE.MeshStandardMaterial>(m: T): T {
   if (patched.has(m)) return m;
   patched.add(m);
+  probeUsers.add(m);
   const stained = !!m.map;
   m.roughness = 0.03;
   m.metalness = 0;
@@ -294,6 +303,7 @@ export function roomGlass<T extends THREE.MeshStandardMaterial>(m: T): T {
 export function clearGlass<T extends THREE.MeshStandardMaterial>(m: T): T {
   if (patched.has(m)) return m;
   patched.add(m);
+  probeUsers.add(m);
   const before = m.onBeforeCompile;
   const key = m.customProgramCacheKey(); // as it is now: its own onBeforeCompile's, before this one wraps it
   m.onBeforeCompile = (shader, renderer) => {
@@ -335,43 +345,98 @@ export function glassOnModel(root: THREE.Object3D): void {
 
 /** The probe's views, pixels a side. */
 const SIZE = 256;
+/** Metres: the probe is drawn only with glass that reads it this near the eye (a glass reads it within 18 m of where it was taken). */
+const NEAR = 20;
+/** Metres the eye moves before the probe is drawn again (when nothing else changed). */
+const MOVED = 1;
+/** Seconds after which it is drawn again all the same (the village coming in, the cars, the doors). */
+const STALE = 6;
+/** Metres of the world's grid that the glass near the eye is looked up in. */
+const CELL = 10;
 
 /**
  * The scene all round the eye for the glass to mirror, one of its six views drawn every second frame before the scene
- * (the composer's first pass), out to 500 m, on Medium and up and while the eye is outdoors (indoors the last one
- * stays). Two cubes: one is read while the other is drawn, and they swap once all six views are new, each set taken
- * from one spot. The eye's own things (the weapon in the hands), the rain and the snow round it are left out.
+ * (the composer's first pass), out to 500 m (beyond, the haze has the houses; the sky stays: nearer, the far ground and
+ * woods gave way to the bright sky in the glass, for hardly any time saved), on Medium and up and while
+ * the eye is outdoors (indoors the last one stays). Two cubes: one is read while the other is drawn, and they swap once
+ * all six views are new, each set taken from one spot. The eye's own things (the weapon in the hands), the rain and the
+ * snow round it, and the small or near things the reflections leave out (world/reflections.ts) are not in it.
+ *
+ * It is drawn only where it shows and while it changes: with glass that reads it within NEAR metres of the eye, and
+ * again once the eye has moved a metre, the light has changed (the mood's blend, the sun) or STALE seconds have gone.
+ * On Low it lets go of its cubes (`fine` false); in the split screen (`views` over 1) it is drawn a view every eighth
+ * frame. Each set's spot and light are checked at its first view.
  */
 export class GlassProbe extends Pass {
-  private cubes = [0, 1].map(() => new THREE.WebGLCubeRenderTarget(SIZE, { type: THREE.HalfFloatType, generateMipmaps: false, minFilter: THREE.LinearFilter }));
-  private cams = new THREE.CubeCamera(0.3, 500, this.cubes[0]); // beyond, the haze has the houses; the sky stays
+  private cubes: THREE.WebGLCubeRenderTarget[] = [];
+  private cams = new THREE.CubeCamera(0.3, 500, new THREE.WebGLCubeRenderTarget(1));
   private tick = 0;
   private face = 0;
   private back = 0;
   private at = new THREE.Vector3();
-  /** Medium and up, not a phone */
-  fine = true;
+  /** Where and in what light the last whole set was begun, and when (s); NaN for never */
+  private drawnAt = new THREE.Vector3(Number.NaN, 0, 0);
+  private drawnLight: number[] = [];
+  private drawnTime = -Infinity;
+  private light: number[] = [];
+  private sunDir = new THREE.Vector3();
+  private on = true;
+  /** The glass that reads the probe, found in the scene now and then, and where each lies on the world's grid */
+  private glassFound = -Infinity;
+  private glass: THREE.Mesh[] = [];
+  private cells = new WeakMap<THREE.Mesh, { shape: THREE.BufferGeometry; cells: Set<number> }>();
+  private v = new THREE.Vector3();
+  private renderer: THREE.WebGLRenderer | null = null;
+  private drawFace = () => this.renderer!.render(this.scene, this.cams.children[this.face] as THREE.Camera);
+  /** The sun, whose turn through the day changes what the glass mirrors (main.ts) */
+  sun: THREE.Object3D | null = null;
+  /** The split screen's views on this chip (src/seat.ts): with more than one, a view every eighth frame */
+  views = 1;
 
   constructor(private scene: THREE.Scene, private camera: THREE.Camera, private hide: THREE.Object3D[]) {
     super();
     this.needsSwap = false;
     this.clear = false;
+    this.cams.renderTarget.dispose(); // the cube camera's own: never drawn into, the probe's two cubes are
+    for (const c of this.cams.children) reflectionLayers(c.layers, c.layers);
+  }
+
+  /** Medium and up, not a phone. Off, the cubes are let go (their memory freed) and made again when it is back on. */
+  get fine(): boolean {
+    return this.on;
+  }
+
+  set fine(on: boolean) {
+    if (on === this.on) return;
+    this.on = on;
+    if (on) return;
+    for (const c of this.cubes) c.dispose();
+    this.cubes = [];
+    glass.probe.value = null;
+    glass.probeOn.value = 0;
+    this.face = 0;
+    this.drawnAt.x = Number.NaN;
   }
 
   render(renderer: THREE.WebGLRenderer): void {
     glass.night.value = mood.night;
-    if (!this.fine) {
+    if (!this.on) {
       glass.probeOn.value = 0;
       return;
     }
-    if (wetState.indoors || (this.tick++ & 1)) return; // a view every second frame
+    // A view every second frame (every eighth in the split screen).
+    if (wetState.indoors || this.tick++ % (this.views > 1 ? 8 : 2)) return;
+    if (this.face === 0) {
+      this.camera.getWorldPosition(this.at);
+      if (!this.due()) return;
+    }
+    if (!this.cubes.length) this.cubes = [0, 1].map(() => new THREE.WebGLCubeRenderTarget(SIZE, { type: THREE.HalfFloatType, generateMipmaps: false, minFilter: THREE.LinearFilter }));
     const cams = this.cams;
     if (cams.coordinateSystem !== renderer.coordinateSystem) {
       cams.coordinateSystem = renderer.coordinateSystem;
       cams.updateCoordinateSystem();
     }
     if (this.face === 0) {
-      this.camera.getWorldPosition(this.at);
       cams.position.copy(this.at);
       cams.updateMatrixWorld(true);
     }
@@ -382,12 +447,10 @@ export class GlassProbe extends Pass {
     renderer.shadowMap.needsUpdate = false;
     const mirror = wet.mirrorOn.value;
     wet.mirrorOn.value = 0; // the puddles' picture is the eye's, not this view's
-    const shown = this.hide.map((o) => o.visible);
-    for (const o of this.hide) o.visible = false;
     renderer.setRenderTarget(this.cubes[this.back], this.face);
     renderer.clear();
-    renderer.render(this.scene, cams.children[this.face] as THREE.Camera);
-    this.hide.forEach((o, i) => (o.visible = shown[i]));
+    this.renderer = renderer;
+    withoutDetail(this.hide, this.drawFace);
     renderer.setRenderTarget(was, wasFace, wasLevel);
     renderer.shadowMap.needsUpdate = shadows;
     wet.mirrorOn.value = mirror;
@@ -398,6 +461,75 @@ export class GlassProbe extends Pass {
       glass.probeOn.value = 1;
       this.back = 1 - this.back;
     }
+  }
+
+  /** At a set's first view: whether one is needed (glass near that reads it, and the eye moved, the light changed or it is old). */
+  private due(): boolean {
+    const now = performance.now() / 1000;
+    const light = this.light;
+    light.length = 0;
+    light.push(mood.night, mood.wet, mood.overcast, mood.snow, mood.blend);
+    if (this.sun) {
+      this.sunDir.copy(this.sun.position).normalize();
+      light.push(this.sunDir.x, this.sunDir.y, this.sunDir.z);
+    }
+    const same = glass.probeOn.value === 1 && this.drawnAt.distanceTo(this.at) < MOVED && now - this.drawnTime < STALE
+      && light.length === this.drawnLight.length && light.every((v, i) => Math.abs(v - this.drawnLight[i]) < 0.01);
+    if (same || !this.glassNear(now)) return false;
+    this.drawnAt.copy(this.at);
+    this.drawnLight.length = 0;
+    this.drawnLight.push(...light);
+    this.drawnTime = now;
+    return true;
+  }
+
+  /** Whether glass that reads the probe lies within NEAR metres of the eye (its corners on a grid of CELL metres). */
+  private glassNear(now: number): boolean {
+    if (now - this.glassFound > 2) {
+      // The scene's glass again every two seconds: tiles, models and the village come and go.
+      this.glassFound = now;
+      this.glass.length = 0;
+      this.scene.traverse((o) => {
+        const mesh = o as THREE.Mesh;
+        if (!mesh.isMesh) return;
+        const m = mesh.material;
+        if (Array.isArray(m) ? m.some((x) => probeUsers.has(x)) : probeUsers.has(m)) this.glass.push(mesh);
+      });
+    }
+    const ci = Math.floor(this.at.x / CELL);
+    const cj = Math.floor(this.at.z / CELL);
+    const reach = Math.ceil(NEAR / CELL);
+    for (const mesh of this.glass) {
+      if (!mesh.visible) continue;
+      const cells = this.cellsOf(mesh);
+      for (let i = ci - reach; i <= ci + reach; i++) {
+        for (let j = cj - reach; j <= cj + reach; j++) {
+          if (!cells.has(i * 65536 + j)) continue;
+          // The cell's nearest point within NEAR (in plan).
+          const dx = Math.max(i * CELL - this.at.x, 0, this.at.x - (i + 1) * CELL);
+          const dz = Math.max(j * CELL - this.at.z, 0, this.at.z - (j + 1) * CELL);
+          if (dx * dx + dz * dz < NEAR * NEAR) return true;
+        }
+      }
+    }
+    return false;
+  }
+
+  /** The cells of the grid that a glass mesh's corners lie in, worked out once per mesh and shape (the glass doesn't move). */
+  private cellsOf(mesh: THREE.Mesh): Set<number> {
+    const known = this.cells.get(mesh);
+    if (known?.shape === mesh.geometry) return known.cells;
+    const cells = new Set<number>();
+    mesh.updateWorldMatrix(true, false);
+    const pos = mesh.geometry.getAttribute('position');
+    if (pos) {
+      for (let k = 0; k < pos.count; k++) {
+        this.v.fromBufferAttribute(pos, k).applyMatrix4(mesh.matrixWorld);
+        cells.add(Math.floor(this.v.x / CELL) * 65536 + Math.floor(this.v.z / CELL));
+      }
+    }
+    this.cells.set(mesh, { shape: mesh.geometry, cells });
+    return cells;
   }
 
   dispose(): void {

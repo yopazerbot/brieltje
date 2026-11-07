@@ -4,6 +4,7 @@ import type { Particles, Spawn } from './particles';
 import { knock, type Knock } from './propSound';
 import { compose, leanQuat, Pole, RigidBody, rotate, type PoleSpec, type Q, type RigidSpec, type RigidWorld, type V3 } from './rigid';
 import { PARTICLE } from './sprites';
+import { reflectionSkips } from './reflections';
 
 /**
  * The loose things along the streets and in the gardens (Yoshi, 7 Nov 2026: "make the game feel even
@@ -183,6 +184,7 @@ export class LooseProps {
     this.world = world;
     this.particles = particles;
     scene.add(this.group);
+    reflectionSkips.objects.add(this.group); // not in the reflections (world/reflections.ts)
   }
 
   /** Whether a box w x d (its front turned by yaw) is clear of blocks between y0 and y1 at (x, z): for placing them. */

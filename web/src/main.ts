@@ -401,6 +401,9 @@ const glassProbe = new GlassProbe(scene, camera, [camera, weather.rain.mesh, wea
 composer.addPass(glassProbe);
 const wetMirror = new WetMirror(scene, camera, [camera, weather.rain.mesh, weather.snowfall.mesh], house.ground);
 composer.addPass(wetMirror);
+wetMirror.paused = () => menu.open && !menu.onStartScreen; // behind the pause menu the puddles keep their last picture
+glassProbe.sun = sun; // the light it was drawn in, to tell when to draw it again
+glassProbe.views = seat?.views ?? 1; // the split screen's views each draw their own: rarely there
 composer.addPass(new RenderPass(scene, camera));
 const ao = new GTAOPass(scene, camera, window.innerWidth, window.innerHeight);
 ao.updateGtaoMaterial({ radius: 0.6, distanceExponent: 1.5, thickness: 1.5, scale: 1.2, samples: 12 });
@@ -496,6 +499,7 @@ function applyQuality(q: Quality): void {
   setWaterDetail(q !== 'low' && !phone); // rain rings on the ponds (world/water.ts)
   wetMirror.fine = q !== 'low' && !phone; // wet streets mirror the scene, puddles ring (world/wetGround.ts)
   wet.fine.value = wetMirror.fine ? 1 : 0;
+  wetMirror.scale = q === 'medium' || seat ? 4 : 2; // the puddles' picture at a quarter on Medium and in the split screen, else half
   glassProbe.fine = wetMirror.fine; // glass mirrors the street, rooms behind the models' windows (world/glassLook.ts)
   glassLook.fine.value = wet.fine.value;
   setTreeDetail(q !== 'low' && !phone); // the near trees' crowns and the trunks (world/surroundings.ts)

@@ -1,6 +1,7 @@
 import * as THREE from 'three';
 import { Pass } from 'three/addons/postprocessing/Pass.js';
 import { groundNoise } from './groundNoise';
+import { reflectionLayers, withoutDetail } from './reflections';
 import { terrain } from './terrain';
 
 /**
@@ -15,7 +16,8 @@ import { terrain } from './terrain';
  *   ground's slow variation stands for. A threshold that falls as the ground gets wetter: the deepest hollows fill
  *   first, the shallow ones last, and they shrink back the same way as it dries. Only on flat ground.
  * - What they mirror: on Medium and up a second, smaller drawing of the scene mirrored in the ground's plane under the
- *   eye (WetMirror, a pass before the scene's own), at half the resolution: the sky, the houses, the trees, at night
+ *   eye (WetMirror, a pass before the scene's own), at half the resolution (a quarter on Medium and in the split
+ *   screen): the sky, the houses, the trees, at night
  *   the street lamps, the lit windows and the cars' lights, where they really are. Damp ground (not a puddle) reads
  *   the same picture blurred and smeared towards the eye, as wet asphalt shows a lamp as a long streak. Low and phones
  *   mirror the sky's photo only (the scene's environment light, as every glossy surface does), which costs nothing.
@@ -247,20 +249,32 @@ const UP = new THREE.Vector3(0, 1, 0);
 /** Seconds the rings' clock runs before it wraps (a whole number of every cell's cycles is not needed: a jump once in 17 minutes). */
 const WRAP = 1000;
 
+/** Radians: with the bottom of the view this far above the horizon, no ground is in view to mirror anything. */
+const LOOKING_UP = 0.03;
+
 /**
  * The mirrored scene for the puddles, drawn before the scene each frame (the composer's first pass) while the ground
  * is wet, the eye outdoors and the preset Medium or up. The ground's plane is the relief's height under the eye; the
  * picture is clipped to what lies above it (an oblique near plane, as three.js's Reflector does), at half the scene's
- * resolution, with its mip levels for the blur of damp ground. The eye's own things (the weapon in the hands), the
- * rain and the snow round it are left out of it.
+ * resolution (`scale` 2; 4, a quarter, on Medium and in the split screen), with its mip levels for the blur of damp
+ * ground. The eye's own things (the weapon in the hands), the rain and the snow round it, and the small or near things
+ * the reflections leave out (world/reflections.ts) are not in it.
+ *
+ * Not drawn while the whole view is above the horizon (no ground in it), and not again while the pause menu is open
+ * (`paused`: the view stands still, the last picture stays). On Low it lets go of its picture (`fine` false).
  */
 export class WetMirror extends Pass {
-  private target = new THREE.WebGLRenderTarget(1, 1, {
-    type: THREE.HalfFloatType,
-    minFilter: THREE.LinearMipmapLinearFilter,
-    magFilter: THREE.LinearFilter,
-    generateMipmaps: true,
-  });
+  private target: THREE.WebGLRenderTarget | null = null;
+  private width = 1;
+  private height = 1;
+  private divide = 2;
+  private on = true;
+  /** A picture was drawn and is shown now (the pause keeps it) */
+  private drawn = false;
+  private renderer: THREE.WebGLRenderer | null = null;
+  private drawView = () => this.renderer!.render(this.scene, this.eye);
+  /** The pause menu is open (main.ts): the picture isn't drawn again */
+  paused: () => boolean = () => false;
   private eye = new THREE.PerspectiveCamera();
   private dummy = new THREE.DataTexture(new Uint8Array(4), 1, 1);
   private plane = new THREE.Plane();
@@ -268,20 +282,51 @@ export class WetMirror extends Pass {
   private q = new THREE.Vector4();
   private v = new THREE.Vector3();
   private look = new THREE.Vector3();
-  /** Medium and up, not a phone */
-  fine = true;
 
   constructor(private scene: THREE.Scene, private camera: THREE.PerspectiveCamera, private hide: THREE.Object3D[], private ground: number) {
     super();
     this.needsSwap = false;
     this.clear = false;
     this.dummy.needsUpdate = true;
-    this.target.texture.name = 'wetMirror';
     wet.mirror.value = this.dummy;
   }
 
+  /** Medium and up, not a phone. Off, the picture is let go (its memory freed), and made again when it is back on. */
+  get fine(): boolean {
+    return this.on;
+  }
+
+  set fine(on: boolean) {
+    if (on === this.on) return;
+    this.on = on;
+    if (on) return;
+    this.off();
+    this.target?.dispose();
+    this.target = null;
+  }
+
+  /** The picture's size as a part of the scene's: 2 for half (High, Ultra), 4 for a quarter (Medium, the split screen). */
+  get scale(): number {
+    return this.divide;
+  }
+
+  set scale(divide: number) {
+    if (divide === this.divide) return;
+    this.divide = divide;
+    this.setSize(this.width, this.height);
+  }
+
   setSize(width: number, height: number): void {
-    this.target.setSize(Math.max(1, Math.round(width / 2)), Math.max(1, Math.round(height / 2)));
+    this.width = width;
+    this.height = height;
+    this.target?.setSize(Math.max(1, Math.round(width / this.divide)), Math.max(1, Math.round(height / this.divide)));
+  }
+
+  /** No picture: the puddles mirror the sky's photo. */
+  private off(): void {
+    wet.mirrorOn.value = 0;
+    wet.mirror.value = this.dummy;
+    this.drawn = false;
   }
 
   render(renderer: THREE.WebGLRenderer): void {
@@ -290,9 +335,15 @@ export class WetMirror extends Pass {
     cam.updateMatrixWorld();
     const eye = this.v.setFromMatrixPosition(cam.matrixWorld);
     const y0 = this.ground + terrain.height(eye.x, eye.z) + 0.02;
-    if (!this.fine || wet.amount.value < 0.03 || wetState.indoors || eye.y < y0 + 0.2) {
-      wet.mirrorOn.value = 0;
-      wet.mirror.value = this.dummy;
+    if (!this.on || wet.amount.value < 0.03 || wetState.indoors || eye.y < y0 + 0.2) {
+      this.off();
+      return;
+    }
+    if (this.drawn && this.paused()) return; // the view stands still behind the menu: the last picture stays
+    // Looking up, with the bottom of the view above the horizon: no ground in it, nothing to mirror.
+    this.look.set(0, 0, -1).transformDirection(cam.matrixWorld);
+    if (Math.asin(THREE.MathUtils.clamp(this.look.y, -1, 1)) - THREE.MathUtils.degToRad(cam.fov / 2) > LOOKING_UP) {
+      this.off();
       return;
     }
     // The eye mirrored in the plane y = y0, looking the mirrored way.
@@ -303,7 +354,7 @@ export class WetMirror extends Pass {
     m.up.set(0, 1, 0).transformDirection(cam.matrixWorld);
     m.up.y = -m.up.y;
     m.lookAt(this.look.add(m.position));
-    m.layers.mask = cam.layers.mask;
+    reflectionLayers(cam.layers, m.layers); // and the near trees' lighter crowns (world/reflections.ts)
     m.updateMatrixWorld();
     // The eye's view, but nothing further than MIRROR_FAR (the sky is drawn whatever the distance).
     m.fov = cam.fov;
@@ -325,26 +376,35 @@ export class WetMirror extends Pass {
     p[10] = this.clip.z + 1;
     p[14] = this.clip.w;
 
+    if (!this.target) {
+      this.target = new THREE.WebGLRenderTarget(1, 1, {
+        type: THREE.HalfFloatType,
+        minFilter: THREE.LinearMipmapLinearFilter,
+        magFilter: THREE.LinearFilter,
+        generateMipmaps: true,
+      });
+      this.target.texture.name = 'wetMirror';
+      this.setSize(this.width, this.height);
+    }
     const was = renderer.getRenderTarget();
     const shadows = renderer.shadowMap.needsUpdate;
     renderer.shadowMap.needsUpdate = false; // the scene's own drawing draws the sun's shadow map this frame, as before
     wet.mirrorOn.value = 0;
     wet.mirror.value = this.dummy; // never read from the picture being drawn
-    const shown = this.hide.map((o) => o.visible);
-    for (const o of this.hide) o.visible = false;
     renderer.setRenderTarget(this.target);
     renderer.state.buffers.depth.setMask(true);
     renderer.clear();
-    renderer.render(this.scene, m);
-    this.hide.forEach((o, i) => (o.visible = shown[i]));
+    this.renderer = renderer;
+    withoutDetail(this.hide, this.drawView);
     renderer.setRenderTarget(was);
     renderer.shadowMap.needsUpdate = shadows;
     wet.mirror.value = this.target.texture;
     wet.mirrorOn.value = 1;
+    this.drawn = true;
   }
 
   dispose(): void {
-    this.target.dispose();
+    this.target?.dispose();
     this.dummy.dispose();
   }
 }

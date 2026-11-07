@@ -1,5 +1,5 @@
 import * as THREE from 'three';
-import { probeOn } from './glassLook';
+import { probeOn, usesProbe } from './glassLook';
 
 /**
  * The glass of the village's own windows (the open-data houses; world/surroundings.ts builds the
@@ -231,6 +231,7 @@ export function setWindowDetail(on: boolean): void {
 export function paneMaterial(): THREE.MeshStandardMaterial {
   const m = new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.05, metalness: 0, envMapIntensity: 1.6 });
   m.name = 'village_glass';
+  usesProbe(m); // it reads the glass probe (world/glassLook.ts)
   if (rooms) m.defines = { ROOMS: '' };
   made.push(m);
   m.onBeforeCompile = (shader) => {

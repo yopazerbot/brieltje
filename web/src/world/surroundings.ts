@@ -17,6 +17,7 @@ import { bakeStandIns } from './groundShade';
 import { cardCrown, cardTrunk, crownFit, FORK, HEIGHT, Kind, KINDS, spotHash, TRUNK_OF, TRUNKS, treeKind, VARIANTS } from './cardTrees';
 import { hedgeCardMesh, hedgeCardPieces } from './hedgeCards';
 import { barkMaterial, cardsBuilt, enlist, leafCardMaterial, plainForBake, switchTrees } from './leafCards';
+import { reflectionSkips } from './reflections';
 
 /**
  * Around the plot, from Flemish open data (GRB footprints, DHM laser heights;
@@ -56,6 +57,12 @@ const cardLeafMat = leafCardMaterial(0.03, 0.012, true, 0.6);
 // Conifers keep their colour in autumn and let less light through.
 const cardNeedleMat = leafCardMaterial(0.02, 0.008, false, 0.25);
 const cardBarkMat = barkMaterial();
+// The same three for the near trees' full crowns and their branches (the same shaders): the reflections leave these out
+// and show those trees' lighter crowns instead (world/reflections.ts).
+const nearLeafMat = leafCardMaterial(0.03, 0.012, true, 0.6);
+const nearNeedleMat = leafCardMaterial(0.02, 0.008, false, 0.25);
+const branchMat = barkMaterial();
+for (const m of [nearLeafMat, nearNeedleMat, branchMat]) reflectionSkips.materials.add(m);
 enlist([], [leafMat, barkMat]);
 // The ground's baked shade (world/groundShade.ts) takes no cut-out shapes: the smooth crowns throw it for the cards.
 bakeStandIns.add(plainForBake);
@@ -695,10 +702,10 @@ function buildCardTrees(trees: Surroundings['trees'], share: Map<Surroundings['t
     const [kind, variant] = key.split('|').map(Number);
     const near = shapes.near[kind][variant];
     const leaves = kind === Kind.Spruce ? cardNeedleMat : cardLeafMat;
-    out.push({ material: leaves, geometry: near.cards, tag: 'hedge', shadow: false, at, order: TREE_ORDER, lod: 'near' });
+    out.push({ material: kind === Kind.Spruce ? nearNeedleMat : nearLeafMat, geometry: near.cards, tag: 'hedge', shadow: false, at, order: TREE_ORDER, lod: 'near' });
     // Their shadow from the lighter crown: a quarter of the cards to cut out in the shadow pass, the same shape.
     out.push({ material: leaves, geometry: shapes.far[kind][variant].cards, tag: 'hedge', shadow: true, at, order: TREE_ORDER, lod: 'near', shadowOnly: true });
-    if (near.branches) out.push({ material: cardBarkMat, geometry: near.branches, tag: 'hedge', shadow: false, at, order: TREE_ORDER, lod: 'near' });
+    if (near.branches) out.push({ material: branchMat, geometry: near.branches, tag: 'hedge', shadow: false, at, order: TREE_ORDER, lod: 'near' });
     out.push({ material: leaves, geometry: shapes.far[kind][variant].cards, tag: 'hedge', shadow: false, at, order: TREE_ORDER, lod: 'far' });
   }
   trunkAt.forEach((at, k) => at.length && out.push({ material: cardBarkMat, geometry: shapes.trunks[k], tag: 'hedge', shadow: false, at, order: TREE_ORDER }));
