@@ -74,7 +74,6 @@ label.field { display: block; margin: 16px 0 6px; font-weight: 800; }
 .trouble { margin: 10px 0 0; color: var(--muted); font-size: 17px; }
 .trouble summary { cursor: pointer; color: var(--ink); font-weight: 800; }
 .trouble ul { margin: 6px 0 0; padding-left: 22px; }
-.tip { margin: 12px 0 4px; padding: 8px 12px; font-size: 16px; color: var(--muted); background: var(--deep); border-left: 3px solid var(--accent); border-radius: 8px; }
 .error { color: var(--bad); font-size: 18px; }
 .nav { display: flex; gap: 12px; justify-content: space-between; margin-top: 18px; flex-wrap: wrap; }
 .btn {
@@ -116,3 +115,12 @@ label.field { display: block; margin: 16px 0 6px; font-weight: 800; }
   h2 { font-size: 30px; }
   .count b { font-size: 60px; }
 }
+
+/* The footer, as on the start screen: GitHub, credits and the legal pages, and who made it. */
+.foot { margin-top: 18px; padding-top: 12px; border-top: 1px solid rgba(255, 255, 255, 0.08); font-size: 14px; color: var(--muted); }
+.foot .links { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; }
+.foot p { margin: 4px 0; }
+.foot a { color: inherit; text-decoration: underline; text-underline-offset: 2px; }
+.foot a:hover, .foot a:focus-visible { color: var(--accent); }
+.foot .gh { display: inline-flex; align-items: center; gap: 5px; text-decoration: none; }
+.foot .gh svg { flex: none; }
