@@ -36,6 +36,8 @@ const URL_GLB = '/models/villagers.glb';
 const KINDS = ['man', 'woman', 'elder', 'teen', 'child', 'cyclist', 'dog'] as const;
 const MAN = 0, WOMAN = 1, ELDER = 2, TEEN = 3, CHILD = 4, BIKE = 5, DOG = 6;
 const MAX = [16, 16, 10, 10, 12, 12, 8];
+/** How tall each kind stands (m, tools/villagers.py), for what they hold (eachHand) */
+const TALL = [1.79, 1.67, 1.66, 1.71, 1.18, 1.75, 0.6];
 const PALETTE_ROWS = 128;
 const BLEND = 0.25; // s to change from one clip to the next
 const FADE = 0.9; // s to fade in or out
@@ -446,6 +448,19 @@ export class Villagers {
   /** Each villager now, for checks: kind, where, what it does, its clip. */
   states(): { kind: string; x: number; y: number; z: number; mode: Mode; clip: string; fade: number; flags: number }[] {
     return this.vs.map((v) => ({ kind: KINDS[v.kind], x: +v.x.toFixed(2), y: +v.y.toFixed(2), z: +v.z.toFixed(2), mode: v.mode, clip: v.clip, fade: +v.fade.toFixed(2), flags: v.flags }));
+  }
+
+  /**
+   * Each person on foot with the right hand free, for world/sintmaarten.ts's paper lanterns: not a dog, a cyclist or
+   * someone with a stick, not sitting, jogging, walking a dog or under an umbrella. Its number (the same while it is
+   * about), where its feet are, which way it faces, how tall it is (m), how far it has faded in (0 to 1), its speed.
+   */
+  eachHand(fn: (id: number, x: number, y: number, z: number, yaw: number, tall: number, fade: number, speed: number) => void): void {
+    if (this.shown <= 0) return;
+    for (const v of this.vs) {
+      if ((v.kind !== MAN && v.kind !== WOMAN && v.kind !== TEEN && v.kind !== CHILD) || v.mode === 'sit' || v.jog || v.lead || v.flags & UMB) continue;
+      fn(v.id, v.x, v.y, v.z, v.yaw, TALL[v.kind] * v.scale, Math.min(v.fade, this.shown), v.speed);
+    }
   }
 
   // ---------------------------------------------------------------- the population
