@@ -105,7 +105,7 @@ function blendLook(out: Look, a: Look, b: Look, k: number): Look {
   return out;
 }
 
-/** The painted tree line's mean colour (world/surroundings.ts buildHorizon), linear: what the fade divides by. */
+/** The painted tree line's mean colour (world/horizon.ts), linear: what the fade divides by. */
 const HORIZON_MEAN = new THREE.Color(0.2, 0.25, 0.21);
 
 /** Streaks of rain per graphics preset; phones take Low's. */
@@ -146,7 +146,7 @@ export class Weather {
   private haze = new THREE.Color();
   private hazeB = new THREE.Color();
   private shadowOn = true;
-  /** The painted tree line on the horizon (world/surroundings.ts buildHorizon), tinted towards the haze */
+  /** The painted tree line on the horizon (world/horizon.ts), tinted towards the haze */
   horizon: THREE.Mesh | null = null;
   /** Called when the server's choice changes (null: playing alone) */
   onServer: (m: Choice | null) => void = () => {};
