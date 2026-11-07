@@ -3,6 +3,7 @@ import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 import type { VillageData } from './houseData';
 import { tintedMaterial } from './houseMeshes';
 import { terrain } from './terrain';
+import { cardConifers } from './streetConifers';
 
 /**
  * Streets of houses as our own Blender models (tools/molenhoek.py), in place of the village's blocks there, which
@@ -93,6 +94,7 @@ export async function loadStreetModel(renderer: THREE.WebGLRenderer, ground: num
     lod.addLevel(new THREE.Object3D(), DETAIL);
   }
   const [x, z] = (root.userData as Extras).origin;
+  cardConifers(scene, [x, z]); // the gardens' cone conifers as leaf-card ones on Medium and up (world/streetConifers.ts)
   scene.position.set(x, ground + terrain.height(x, z), z);
   scene.userData = { ...root.userData, landmark: name };
   return scene;

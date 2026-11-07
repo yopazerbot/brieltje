@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { cardCrown, cardTrunk, crownFit, HEIGHT, Kind, KINDS, TRUNKS, treeKind, VARIANTS } from './cardTrees.ts';
+import { cardCrown, cardTrunk, columnConifer, COLUMN_HEIGHT, crownFit, HEIGHT, Kind, KINDS, TRUNKS, treeKind, VARIANTS } from './cardTrees.ts';
 
 const finite = (g, name) => [...g.getAttribute(name).array].every(Number.isFinite);
 
@@ -19,6 +19,15 @@ test('every kind of crown is finite, within its triangle budget, its cards insid
     assert.equal(branches === null, far, 'branches only on the near crowns');
     if (branches) assert.ok(finite(branches, 'position') && branches.index.count / 3 <= 900);
   }
+});
+
+test("a garden's columnar conifer stands from its foot to its tip, narrow and finite", () => {
+  const g = columnConifer();
+  assert.ok(g.index.count / 3 <= 1000);
+  for (const name of ['position', 'normal', 'uv', 'color']) assert.ok(finite(g, name));
+  const box = g.boundingBox;
+  assert.ok(box.min.y > -0.3 && box.max.y <= COLUMN_HEIGHT * 1.05 && box.max.y > COLUMN_HEIGHT * 0.9);
+  assert.ok(Math.max(-box.min.x, box.max.x, -box.min.z, box.max.z) <= 1.4);
 });
 
 test('trunks are small and finite', () => {

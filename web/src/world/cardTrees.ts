@@ -428,6 +428,52 @@ export function cardCrown(kind: Kind, variant: number, far: boolean): CardCrown 
   return spruceCrown(seed, far);
 }
 
+/** A columnar conifer's height in its own units (its radius 1): the copy's stretch is its radius across and height / COLUMN_HEIGHT up. */
+export const COLUMN_HEIGHT = 7;
+
+/**
+ * A columnar conifer (Leyland cypress, thuja) of the front gardens, from its foot (0) to its tip (COLUMN_HEIGHT): a
+ * narrow cone, broadest a fifth of the way up, thick with upright fronds all over, darker inside. No trunk: the
+ * models keep their own short one at the foot.
+ */
+export function columnConifer(seed = 77): THREE.BufferGeometry {
+  const rand = random(seed);
+  const h = COLUMN_HEIGHT;
+  // The street models' cones (tools/molenhoek.py conifer): their radius at each height, as a share of the widest.
+  const profile = [[0, 0.75], [0.06, 0.9], [0.18, 1.0], [0.45, 0.85], [0.72, 0.55], [0.92, 0.22], [1, 0.02]];
+  const radius = (y: number) => {
+    const t = THREE.MathUtils.clamp(y / h, 0, 1);
+    for (let i = 1; i < profile.length; i++) {
+      if (t <= profile[i][0]) {
+        const [t0, r0] = profile[i - 1];
+        const [t1, r1] = profile[i];
+        return r0 + ((r1 - r0) * (t - t0)) / (t1 - t0);
+      }
+    }
+    return 0.02;
+  };
+  const shape = column(h, (y) => radius(y));
+  const shade = (p: V, depth: number) => (0.3 + 0.7 * THREE.MathUtils.smoothstep(depth, 0.2, 1.0)) * (0.8 + 0.2 * THREE.MathUtils.smoothstep(p.y / h, 0, 0.7));
+  const leaves = new Parts();
+  const rect = sprayRect(Spray.Spruce);
+  const green = new THREE.Color('#3f5a32');
+  for (let y = 0.25; y < h - 0.2; y += 0.2) {
+    const r = radius(y);
+    const around = Math.max(3, Math.round(r * 8));
+    for (let k = 0; k < around; k++) {
+      const a = (k / around) * Math.PI * 2 + y * 2.39996 + rand() * 0.4;
+      const out = v3(Math.cos(a), 0, Math.sin(a));
+      const base = out.clone().multiplyScalar(r * (0.45 + rand() * 0.2)).setY(y - 0.2);
+      const along = UP.clone().multiplyScalar(0.8).addScaledVector(out, 0.5).add(anyway(rand).multiplyScalar(0.2)).normalize();
+      const s = Math.max(0.3, 0.75 * Math.min(1, r + 0.3)) * (0.85 + rand() * 0.3);
+      card(leaves, base, along, crossing(along, rand), s, s * 0.8, rect, green.clone().multiplyScalar(0.88 + rand() * 0.24), shape, shade);
+    }
+  }
+  // The tip.
+  for (const a of [0, Math.PI / 2]) card(leaves, v3(0, h * 0.86, 0), UP, v3(Math.cos(a), 0, Math.sin(a)), h * 0.15, 0.4, rect, green, shape, shade);
+  return leaves.geometry();
+}
+
 /** How many shapes each kind has (the broad-leaved trees two, so neighbours differ). */
 export const VARIANTS = [2, 1, 1, 1, 1];
 
