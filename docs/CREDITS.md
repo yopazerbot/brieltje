@@ -22,8 +22,8 @@ From [Poly Haven](https://polyhaven.com), released as CC0 (public domain). Thank
 | Brick of the houses round Smetlede's church square and of the school's long block (made lighter and greyer, then coloured per house) | `red_brick` |
 | Roof tiles of the houses round Smetlede's church square (made nearly grey, then coloured per roof) | `roof_tiles` |
 | Sky and daylight | `kloofendal_48d_partly_cloudy_puresky` |
-| Overcast and rainy sky (`web/public/env/overcast_1k.hdr`) | `kloofendal_overcast_puresky` (1k) |
-| Night sky and moonlight (`web/public/env/night_1k.hdr`) | `kloppenheim_02_puresky` (1k) |
+| Overcast and rainy sky (`web/public/env/overcast_1k.hdr`) | `kloofendal_overcast_puresky` (1k; the start pictures in the rain are rendered with its 8k version) |
+| Night sky and moonlight (`web/public/env/night_1k.hdr`) | `kloppenheim_02_puresky` (1k; the start pictures at night and at dusk are rendered with its 8k version) |
 
 | Used for | ambientCG asset | Licence |
 |---|---|---|
