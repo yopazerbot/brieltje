@@ -983,7 +983,8 @@ export class Game {
     p.nextTravel = now + TRAVEL_MS;
     const ground = TERRAIN.height(x, z);
     // Arriving by parachute (the admin's rule): over the start place, the page told so (it is there already, on the ground).
-    const drop = this.rules.parachute;
+    // Never during Zombies (Yoshi, 7 Nov 2026): a late join walks in.
+    const drop = this.rules.parachute && !this.modes.zombies;
     const from = drop ? this.dropFrom(x, z, yaw) : { x, z }; // behind the place: without steering it lands there
     Object.assign(p.state, { x: from.x, y: drop ? ground + DROP.height : ground, z: from.z });
     p.budget = p.vbudget = 0.5;
@@ -1037,7 +1038,7 @@ export class Game {
     if (p.spawned || !st) return;
     p.spawned = true;
     const { x, z, yaw } = HOME_DROP;
-    if (!this.rules.parachute || now - p.joinTime > 90_000 || !p.alive || this.carOf(name) || this.horseOf(name) || this.bikeOf(name)) return;
+    if (!this.rules.parachute || this.modes.zombies || now - p.joinTime > 90_000 || !p.alive || this.carOf(name) || this.horseOf(name) || this.bikeOf(name)) return;
     if (Math.hypot(st.x - x, st.z - z) > 30 || !this.fence().inside(x, z)) return;
     const from = this.dropFrom(x, z, yaw); // behind the start, along the lane: without steering it lands there
     Object.assign(st, { x: from.x, y: HOUSE.ground + TERRAIN.height(x, z) + DROP.height, z: from.z });
@@ -1930,9 +1931,9 @@ export class Game {
    * the strongmen need), clear of the cars and inside the game's edge (see fence), the places taken
    * in turn so the players share them out. As a respawn (out of cars, off horses, full health), not a
    * death. A nicer start than fenceAll alone, which only puts those outside the edge just inside it.
-   * `drop`: by parachute (the Zombies game: Yoshi, "Zombie starts/respawns also parachute!"), each drop
-   * starting over the place's edge with its whole way in inside it (respawn, dropFrom). The edge keeps it
-   * there however it is steered (fenceIn: the game's fence is that edge as long as the game runs).
+   * `drop`: by parachute, each drop starting over the place's edge with its whole way in inside it (respawn,
+   * dropFrom). The edge keeps it there however it is steered (fenceIn: the game's fence is that edge as long
+   * as the game runs). Zombies doesn't use it (Yoshi, 7 Nov 2026: no parachute drops in Zombies).
    */
   gather(names, arena = null, drop = false) {
     const now = Date.now();

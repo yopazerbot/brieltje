@@ -1557,17 +1557,13 @@ function edgeOf(id: string | undefined): Bounds {
   return e;
 }
 /**
- * Up at the start of Zombies place `a`: one of the house's outside places, or by its portal, facing it. By
- * parachute, as together (Yoshi: "Zombie starts/respawns also parachute!"), starting over the place's edge.
+ * Up at the start of Zombies place `a`: one of the house's outside places, or by its portal, facing it. On
+ * the ground, as together: no parachute in Zombies (Yoshi, 7 Nov 2026).
  */
 function respawnAtArena(a: Arena): void {
   const p = a.id === 'house' ? undefined : portalOf(a);
   if (!p) respawnAt(OUTSIDE_SPAWNS[Math.floor(Math.random() * OUTSIDE_SPAWNS.length)]);
   else respawnAt(OUTSIDE_SPAWNS[0], { x: p.out[0], z: p.out[1], y: house.ground + terrain.height(p.out[0], p.out[1]), fx: p.x, fz: p.z });
-  if (rules.parachute !== false) {
-    world.bounds = edgeOf(a.id); // the place's edge from the first step of the drop (the frame's fence follows)
-    beginDrop(undefined, undefined, world.bounds);
-  }
 }
 /**
  * Start the Zombies game alone (the Play tab's button) at place `id` (shared/arenas.mjs), out of any car

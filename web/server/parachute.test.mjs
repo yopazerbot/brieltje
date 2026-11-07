@@ -373,28 +373,22 @@ test('a respawn after a death drops onto open ground, told where it starts; neve
   assert.equal(p.drop.top, p.state.y + 0.5);
 });
 
-test('the Zombies game drops everyone in: its start, the return between waves and a late join, inside the place', () => {
+test('no parachute in Zombies (Yoshi, 7 Nov 2026): its start, the return between waves and a late join are on the ground', () => {
   const now = Date.now();
   for (const arena of [arenaOf('church'), arenaOf('molenhoek_end'), arenaOf('house')]) {
     const edge = arenaEdge(arena, BOUNDS);
     const { g, told } = startGame();
     for (const n of ['a', 'b', 'c']) g.players.set(n, { ...joined(now), alive: false });
-    g.gather(['a', 'b', 'c'], arena, true);
+    g.gather(['a', 'b', 'c'], arena);
     assert.equal(told.length, 3);
     for (const m of told) {
       const p = g.players.get(m.name);
-      assert.ok(m.t === 'respawn' && m.drop === 1 && g.dropping(p, now), `${arena.id}: ${m.name} drops`);
-      assert.deepEqual([m.sx, m.sz], [p.state.x, p.state.z]);
-      // Its whole way in, hands off, over the place's own ground: from the start to the spot, inside the edge.
-      const spot = { x: m.x ?? p.state.x, z: m.z ?? p.state.z };
-      for (let k = 0; k <= 20; k++) {
-        const x = m.sx + ((spot.x - m.sx) * k) / 20, z = m.sz + ((spot.z - m.sz) * k) / 20;
-        assert.ok(edge.inside(x, z), `${arena.id}: the way in leaves the edge at ${x}, ${z}`);
-      }
-      assert.ok(p.state.y > DROP.height - 30);
+      assert.ok(m.t === 'respawn' && !m.drop && !g.dropping(p, now), `${arena.id}: ${m.name} doesn't drop`);
+      assert.ok(edge.inside(p.state.x, p.state.z), `${arena.id}: ${m.name} starts inside the edge`);
+      assert.ok(p.state.y < 30, `${arena.id}: ${m.name} starts on the ground`);
     }
   }
-  // The game's own calls ask for a drop: the return between waves (and a late join, the same call).
+  // The game's own calls ask for no drop: the return between waves (and a late join, the same call).
   const asked = [];
   const zg = Object.create(ZombieGame.prototype);
   Object.assign(zg, {
@@ -402,7 +396,14 @@ test('the Zombies game drops everyone in: its start, the return between waves an
     game: { players: new Map([['a', { alive: false }]]), gather: (...args) => asked.push(args) },
   });
   zg.revive();
-  assert.deepEqual(asked, [[['a'], { id: 'house' }, true]]);
+  assert.deepEqual(asked, [[['a'], { id: 'house' }]]);
+  // A fresh arrival while Zombies runs walks in: no drop at the house's start nor at a start place.
+  for (const to of ['home', 'church']) {
+    const { g, sent } = startGame();
+    g.modes.zombies = {};
+    g.spawn('a', joined(now), to, now + 2000);
+    assert.ok(sent.every((m) => !m.drop), `${to}: no drop during Zombies`);
+  }
 });
 
 test('steered freely, a drop in a Zombies place stays inside its edge', () => {
