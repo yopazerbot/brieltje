@@ -48,6 +48,7 @@ import { arenaEdge, arenaHome, arenaPrisms, ARENAS, portalOf } from '../shared/a
 import { churchPrisms, makeChurch } from '../shared/church.mjs';
 import { DROP, dropFrom, HOME_DROP } from '../shared/parachute.mjs';
 import { Football } from './football.mjs';
+import { blastPoint } from './grenade.mjs';
 
 /** /parachute (manualDrop): once every CHUTE_MS, and not within HURT_CALM_MS of being hit. */
 const CHUTE_MS = 60_000;
@@ -1817,9 +1818,11 @@ export class Game {
     const s = p.state;
     let from = where(m);
     if (Math.hypot(from.x - s.x, from.y - s.y - 1.5, from.z - s.z) > 3) from = { x: s.x, y: s.y + 1.5, z: s.z };
-    p.thrown.push({ at: now, ...from });
-    if (p.thrown.length > GRENADE.carry) p.thrown.shift();
     const v = (k) => num(m[k], -40, 40);
+    // Where the blast may be (server/grenade.mjs): from where the server has the thrower, at the speed the throw carried.
+    const vh = typeof m.vx === 'number' && typeof m.vz === 'number' ? Math.hypot(v('vx'), v('vz')) : undefined;
+    p.thrown.push({ at: now, x: s.x, y: s.y + 1.5, z: s.z, vh });
+    if (p.thrown.length > GRENADE.carry) p.thrown.shift();
     this.broadcast({ t: 'nade', name, ...from, vx: v('vx'), vy: v('vy'), vz: v('vz') }, name);
   }
 
@@ -1831,8 +1834,7 @@ export class Game {
     const i = p.thrown.findIndex((g) => now - g.at > (GRENADE.fuse - 1) * 1000 && now - g.at < (GRENADE.fuse + 3) * 1000);
     if (i < 0) return;
     const g = p.thrown.splice(i, 1)[0];
-    const at = where(m);
-    if (Math.hypot(at.x - g.x, at.y - g.y, at.z - g.z) > 60) return;
+    const at = blastPoint(g, where(m), GRENADE); // never further than the throw could reach
     const cover = new Set(Array.isArray(m.cover) ? m.cover.filter((n) => typeof n === 'string').slice(0, MAX_PLAYERS) : []);
     this.blast(name, at, 'grenade', cover);
   }
