@@ -19,9 +19,9 @@ import { wet, wetState } from './wetGround';
  * - The open-data houses' windows (world/windows.ts) keep their curtains and rooms and take the street's reflection.
  *
  * What they mirror: on Medium and up, a picture of the scene all round the eye (a cube of six views, 256 pixels each,
- * GlassProbe), one view drawn each frame, so it is new every six frames; a glass reads it as if the street round it
- * were a box about 36 m across (box projection), so a window across the street shows the houses behind you where they
- * stand. Far from the eye, and on Low, the sky's photo (the scene's environment light) as before.
+ * GlassProbe), one view drawn every second frame, so it is new every twelve frames; a glass reads it as if the street
+ * round it were a box about 36 m across (box projection), so a window across the street shows the houses behind you
+ * where they stand. Far from the eye, and on Low, the sky's photo (the scene's environment light) as before.
  *
  * In the rain, and as long as it is wet after, drops bead on the glass and run down it in streaks, each bending what
  * the glass mirrors (Medium and up, near the eye, where a drop is bigger than a pixel).
@@ -337,14 +337,15 @@ export function glassOnModel(root: THREE.Object3D): void {
 const SIZE = 256;
 
 /**
- * The scene all round the eye for the glass to mirror, one of its six views drawn each frame before the scene (the
- * composer's first pass), on Medium and up and while the eye is outdoors (indoors the last one stays). Two cubes: one
- * is read while the other is drawn, and they swap once all six views are new, each set taken from one spot. The eye's
- * own things (the weapon in the hands), the rain and the snow round it are left out.
+ * The scene all round the eye for the glass to mirror, one of its six views drawn every second frame before the scene
+ * (the composer's first pass), out to 500 m, on Medium and up and while the eye is outdoors (indoors the last one
+ * stays). Two cubes: one is read while the other is drawn, and they swap once all six views are new, each set taken
+ * from one spot. The eye's own things (the weapon in the hands), the rain and the snow round it are left out.
  */
 export class GlassProbe extends Pass {
   private cubes = [0, 1].map(() => new THREE.WebGLCubeRenderTarget(SIZE, { type: THREE.HalfFloatType, generateMipmaps: false, minFilter: THREE.LinearFilter }));
-  private cams = new THREE.CubeCamera(0.3, 1500, this.cubes[0]);
+  private cams = new THREE.CubeCamera(0.3, 500, this.cubes[0]); // beyond, the haze has the houses; the sky stays
+  private tick = 0;
   private face = 0;
   private back = 0;
   private at = new THREE.Vector3();
@@ -363,7 +364,7 @@ export class GlassProbe extends Pass {
       glass.probeOn.value = 0;
       return;
     }
-    if (wetState.indoors) return;
+    if (wetState.indoors || (this.tick++ & 1)) return; // a view every second frame
     const cams = this.cams;
     if (cams.coordinateSystem !== renderer.coordinateSystem) {
       cams.coordinateSystem = renderer.coordinateSystem;
