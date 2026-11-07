@@ -75,7 +75,7 @@ import { skidMarks } from './world/skidMarks';
 import { boxesOverlap, boxPoints, clearOfPortals, indoorName, makeIndoors } from '../shared/parking.mjs';
 import CARS from '../shared/car.json';
 import BIKES_DATA from '../shared/bike.json';
-import { buildHedges, buildTile, dipMesh, setTreeDetail, waterMesh } from './world/surroundings';
+import { buildHedges, buildTile, dipMesh, onTreesLeftOut, setTreeDetail, treeKey, treesLeftOut, waterMesh } from './world/surroundings';
 import { setWaterDetail, waterLevel, wetGround } from './world/water';
 import { buildHorizon } from './world/horizon';
 import { wearLonePatches, weatherYards } from './world/yards';
@@ -657,6 +657,12 @@ horses.onDust = (at) => effects.impact(at, new THREE.Vector3(0, 1, 0), 'cat'); /
 // church, there once the village is); they stop against tree trunks too (the trees have no blocks).
 // `car` is the one you are in, or else the nearest.
 const trunks = (house.surroundings?.trees ?? []).map((t) => ({ x: t.x, z: t.z, r: 0.35 }));
+// Trees left out round the house and the church have no trunk to stop against (kept in place: cars and bikes share it).
+const pruneTrunks = () => {
+  for (let i = trunks.length - 1; i >= 0; i--) if (treesLeftOut.has(treeKey(trunks[i].x, trunks[i].z))) trunks.splice(i, 1);
+};
+onTreesLeftOut.add(pruneTrunks);
+pruneTrunks();
 const cars = Object.entries(CARS.cars).map(([id, spec]) => new Car(world, trunks, id, spec));
 for (const c of cars) scene.add(c.group);
 scene.add(skidMarks.mesh); // the tyre marks every car leaves when it slides (world/skidMarks.ts)
@@ -3614,6 +3620,7 @@ async function buildVillage(): Promise<void> {
     layGround(pi, pj);
   }
   for (const t of data.trees) trunks.push({ x: t.x, z: t.z, r: 0.35 });
+  pruneTrunks();
   portals.settle(); // the village's paving under its portals
   await between();
   bigMap.addVillage(data);

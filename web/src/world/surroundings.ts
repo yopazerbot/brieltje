@@ -449,6 +449,14 @@ function shapeFrom(into: THREE.BufferGeometry, from: THREE.BufferGeometry): THRE
  * (180 triangles instead of 980), and the trunks lose their forks (20 instead of 60). The hedges' leafy lumps stay:
  * leaving out every other one saved 20k triangles and dotted the hedges' sides.
  */
+/**
+ * The trees left out round the house and the church (world/treeSpacing.ts), as "x,z": the cars' and bikes' trunk list
+ * (main.ts) drops them, so nothing stops against a trunk that isn't there. `onTreesLeftOut` hears of new ones.
+ */
+export const treesLeftOut = new Set<string>();
+export const onTreesLeftOut = new Set<() => void>();
+export const treeKey = (x: number, z: number) => `${x},${z}`;
+
 export function setTreeDetail(full: boolean): void {
   fullTrees = full;
   // The trees of leaf cards in full, today's smooth crowns on Low and phones (both are built; one of them is drawn).
@@ -574,6 +582,9 @@ function buildTrees(allTrees: Surroundings['trees'], detail: (x: number, z: numb
       (t) => t.h - Math.min(t.h * 0.75, Math.max(wholeR(t) * 2.2, t.h * 0.6)) * 1.18,
     );
     near.forEach((t, i) => share.set(t, kept[i]));
+    const before = treesLeftOut.size;
+    near.forEach((t, i) => kept[i] === 0 && treesLeftOut.add(treeKey(t.x, t.z)));
+    if (treesLeftOut.size > before) for (const f of onTreesLeftOut) f();
   }
   const trees = allTrees.filter((t) => share.get(t) !== 0);
   const crowns: THREE.Matrix4[][] = [[], [], [], [], [], []];
