@@ -525,6 +525,8 @@ body.zend-on #death { display: none; }
 #zend-table td { padding: 6px 8px; border-top: 1px solid rgba(255, 255, 255, 0.08); font-weight: 600; }
 #zend-table tr.me td { background: rgba(242, 179, 61, 0.12); }
 #zend-best { margin: 14px 0 0; font-size: 15px; font-weight: 700; color: var(--accent); }
+#zend-keep { margin: 8px 0 0; font-size: 14px; color: var(--ink-soft); }
+#zend-keep.hidden { display: none; }
 /* With touch controls: in the free band between the stick (left) and the buttons (right). */
 body.touch #zend { left: calc(50% - 42px); width: min(380px, calc(100vw - 460px)); min-width: 280px; padding: 12px 16px; max-height: calc(100vh - 90px); }
 body.touch #zend h2 { font-size: 24px; }
@@ -738,21 +740,69 @@ body.on-start #overlay { background: linear-gradient(180deg, rgba(9, 14, 19, 0.2
 .seg-btn:disabled { cursor: not-allowed; opacity: 0.45; background: var(--dusk-raised); }
 #mp-choice { margin: 0; }
 
-/* Together picked: the PIN, a line on where it comes from and the age tick, in a box under the
-   Alone / Together tiles. Gone when nothing in it shows. */
+/* Together picked: a line on playing as a guest, the way to an account and the age tick, in a box under
+   the Alone / Together tiles. Gone when nothing in it shows. */
 .together { margin: 8px 0 0; padding: 12px 14px; background: var(--dusk-raised); border-radius: var(--r-tile); }
 .together:not(:has(> :not(.hidden))) { display: none !important; }
-/* A grid, so Join stays beside the PIN however narrow the box (a flex row wrapped it under). */
-#mp-together #mp-pin-row { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 6px 8px; margin: 0; }
-#mp-together #mp-pin, #mp-together #mp-join-btn { min-height: 42px; }
-#mp-together #mp-join-btn { padding: 0 22px; }
-.pin-hint { grid-column: 1 / -1; margin: 0; font-size: 13.5px; color: var(--ink-soft); }
+.pin-hint { margin: 0; font-size: 13.5px; color: var(--ink-soft); }
 #mp-together .age-check { margin: 10px 0 0; }
 #mp-login { margin: 8px 0 0; }
-#mp-pin, #mp-pin2 { letter-spacing: 0.3em; }
-#mp-pin2 { flex: 0 1 120px; }
-/* The dots of a typed PIN spaced out; the word in the empty field written normally. */
-#mp-pin:placeholder-shown, #mp-pin2:placeholder-shown { letter-spacing: normal; }
+/* "Log in · Make an account to keep your name ...": the two words as links in a line of text. */
+.acct-links { margin: 6px 0 0; font-size: 13.5px; line-height: 1.45; color: var(--ink-soft); }
+.acct-links .textbtn { padding: 0; font: inherit; font-weight: 800; color: var(--lamp); background: none; border: 0; cursor: pointer; text-decoration: underline; text-underline-offset: 2px; }
+.acct-links .textbtn:hover { color: var(--lamp-bright); }
+.session-btns { display: flex; gap: 6px; flex-wrap: wrap; justify-content: flex-end; }
+.acct-row { margin: 8px 0 0; }
+
+/* The account card (src/ui/account.ts): a native dialog over everything, the start screen's look. */
+#acct-dlg {
+  width: min(420px, calc(100vw - 32px)); max-height: calc(100dvh - 32px); padding: 0; overflow: visible;
+  color: var(--ink); background: var(--dusk); border: 0; border-radius: var(--r-panel);
+  box-shadow: 0 24px 60px rgba(0, 0, 0, 0.5), inset 0 1px 0 rgba(255, 255, 255, 0.05);
+}
+#acct-dlg::backdrop { background: rgba(9, 14, 19, 0.62); }
+#acct-form { position: relative; max-height: calc(100dvh - 32px); overflow-y: auto; padding: 24px 22px 18px; }
+#acct-form [hidden] { display: none !important; }
+#acct-form h2 { margin: 0 36px 14px 0; font-size: 24px; font-weight: 800; line-height: 1.2; }
+#acct-form .acct-tabs { margin: 0 0 14px; }
+#acct-form .acct-tabs .seg-btn { text-align: center; }
+#acct-form .acct-sub { margin: 0 0 14px; font-size: 14.5px; line-height: 1.4; color: var(--ink-soft); }
+#acct-form input:not([type=checkbox]) {
+  display: block; width: 100%; margin: 0 0 12px; padding: 10px 13px; font-size: 17px; font-weight: 500; color: var(--ink);
+  background: var(--dusk-raised); border: 1px solid var(--line-strong); border-radius: var(--r-field);
+}
+#acct-form input:focus { outline: 2px solid var(--lamp); outline-offset: 1px; border-color: transparent; }
+#acct-form input[aria-invalid="true"] { border-color: var(--bad); }
+#acct-form .note { margin: -6px 0 12px; font-size: 13.5px; line-height: 1.4; color: var(--ink-soft); }
+#acct-form .acct-mine p { margin: 0 0 6px; }
+#acct-form .acct-mine .note { margin: 0 0 6px; }
+#acct-form .acct-warn { margin: 0 0 12px; color: var(--ink); }
+#acct-form .acct-actions { display: flex; flex-wrap: wrap; gap: 8px; margin: 14px 0 12px; }
+#acct-form #acct-go { min-height: 42px; padding: 0 22px; }
+#acct-form .acct-legal a { color: var(--ink-soft); }
+#acct-form :focus-visible { outline: 2px solid var(--lamp); outline-offset: 2px; }
+#acct-close {
+  position: absolute; top: 12px; right: 12px; width: 36px; height: 36px; padding: 0; border: 0; border-radius: 50%;
+  background: transparent; color: var(--ink-soft); font: 400 26px/1 var(--font); cursor: pointer;
+}
+#acct-close:hover { color: var(--ink); background: var(--dusk-raised); }
+
+/* Zombies rooms in the menu's Together tab (src/ui/rooms.ts): the list, opening one, the room you're in. */
+.rooms { margin: 18px 0 0; }
+.rooms h2 { margin: 0 0 8px; }
+.room-list { list-style: none; margin: 8px 0 10px; padding: 0; }
+.room-list li {
+  display: flex; align-items: center; justify-content: space-between; gap: 10px; margin: 0 0 6px; padding: 8px 8px 8px 12px;
+  background: var(--dusk-raised); border-radius: var(--r-tile);
+}
+.room-list .room-what { min-width: 0; }
+.room-list .room-what b { display: block; font-size: 15px; }
+.room-list .room-what span { display: block; font-size: 13px; color: var(--ink-soft); }
+.room-list .room-none { display: block; padding: 0; background: none; font-size: 14px; color: var(--ink-soft); }
+.room-here { padding: 10px 12px; background: var(--lamp-soft); border-radius: var(--r-tile); }
+.room-here .note { margin: 0 0 8px; color: var(--ink); }
+#room-open { gap: 8px; }
+#room-open .spawn-pick { flex: 1 1 auto; }
 .mp-row { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; }
 .mp-row input, .admin-row input {
   flex: 1 1 120px; min-width: 0; padding: 9px 12px; font-size: 16px; font-weight: 500; color: var(--ink);
@@ -1163,6 +1213,8 @@ body.touch .not-touch, body.touch [data-hide-on~="touch"] { display: none; }
 #leaderboard table { margin-top: 10px; font-size: 14px; }
 #leaderboard td:not(:first-child), #leaderboard th:not(:first-child) { text-align: right; }
 .lb-note { margin: 8px 0 0; font-size: 13px; color: var(--ink-faint); }
+#leaderboard .lb-title { margin: 14px 0 6px; font-size: 15px; font-weight: 800; }
+#leaderboard select { padding: 6px 10px; font: inherit; font-size: 14px; color: var(--ink); background: var(--dusk-raised); border: 1px solid var(--line-strong); border-radius: var(--r-field); }
 /* Controls: a list per group, two columns where there is room. */
 #controls { columns: 2 340px; column-gap: 48px; max-width: 1180px; }
 .ctl-group { break-inside: avoid; margin: 0 0 26px; }

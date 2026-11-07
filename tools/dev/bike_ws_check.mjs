@@ -29,9 +29,8 @@ const BIKE = BIKES.maxSpeed * 1.3; // m/s on a bike
 const HOUSE = BIKES.bikes.house.park;
 
 const admin = cookieOf((await call('POST', '/api/login', { username: 'admin', password })).r);
-await call('POST', '/api/pin', { pin: '482915' }, admin);
 const guest = async (name) => {
-  const j = await call('POST', '/api/join', { name, pin: '482915', age: true });
+  const j = await call('POST', '/api/join', { name, age: true });
   const cookie = cookieOf(j.r);
   const log = [];
   const ws = new WebSocket(`ws://${host}/ws?v=2`, { headers: { Cookie: cookie, Origin: o.api } });

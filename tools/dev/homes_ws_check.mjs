@@ -24,7 +24,6 @@ const call = async (method, path, body, cookie = '') => {
 const cookieOf = (r) => r.headers.getSetCookie().map((c) => c.split(';')[0]).join('; ');
 
 const admin = cookieOf((await call('POST', '/api/login', { username: 'admin', password })).r);
-await call('POST', '/api/pin', { pin: '482915' }, admin);
 const code = (await call('POST', '/api/admin/homes/house/code', {}, admin)).data.code;
 const insidePack = await call('GET', '/api/home/house/inside', undefined, admin);
 ok('the admin gets the inside', insidePack.r.status === 200, `${insidePack.r.status}`);
@@ -37,7 +36,7 @@ const insideDoor = pack.doors[0].id;
 const insidePane = pack.prisms.find((p) => p.m === 'glass')?.glass ?? pack.doors.flatMap((d) => d.panels).find((p) => p.glassNo)?.glassNo;
 
 const guest = async (name) => {
-  const j = await call('POST', '/api/join', { name, pin: '482915', age: true });
+  const j = await call('POST', '/api/join', { name, age: true });
   const cookie = cookieOf(j.r);
   const log = [];
   const ws = new WebSocket(`ws://${host}/ws?v=4`, { headers: { Cookie: cookie, Origin: o.api } });

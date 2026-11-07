@@ -60,18 +60,11 @@
           <div class="nav"><button type="button" class="btn ghost" data-back data-i18n="split.backBtn"></button><button type="button" class="btn" data-next data-i18n="split.next"></button></div>
         </section>
 
-        <!-- 3: names and the PIN -->
+        <!-- 3: the names (each joins as a guest) -->
         <section id="step-3" class="step" hidden>
           <h2 data-i18n="split.namesQ"></h2>
           <p class="muted" data-i18n="split.namesHow"></p>
           <div class="seats" id="name-cards"></div>
-          <div class="pin-box">
-            <label class="field" for="pin" data-i18n="split.pinHow"></label>
-            <input id="pin" type="password" inputmode="numeric" maxlength="12" autocomplete="off" />
-            <div class="numpad" id="numpad"></div>
-            <p class="muted small" data-i18n="start.pinHint"></p>
-            <p class="error" id="pin-error" role="alert" hidden></p>
-          </div>
           <label class="check"><input type="checkbox" id="age" /> <span data-i18n="split.age"></span></label>
           <p class="error" id="names-error" role="alert" hidden></p>
           <div class="nav"><button type="button" class="btn ghost" data-back data-i18n="split.backBtn"></button><button type="button" class="btn" data-next data-i18n="split.next"></button></div>

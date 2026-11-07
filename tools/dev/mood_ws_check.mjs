@@ -7,11 +7,10 @@ import WebSocket from '../../web/node_modules/ws/wrapper.mjs';
 import { isCycle, winterAt } from '../../web/shared/moods.mjs';
 import { options } from './cdp.mjs';
 
-const o = options({ api: 'http://localhost:8420', pin: '' });
+const o = options({ api: 'http://localhost:8420' });
 const password = process.env.ADMIN_PASSWORD;
 if (!password) throw new Error('ADMIN_PASSWORD is not set');
 const host = new URL(o.api).host;
-const PIN = o.pin || String(100000 + Math.floor(Math.random() * 900000));
 let failed = 0;
 const ok = (name, pass, extra = '') => {
   console.log(`${pass ? 'ok  ' : 'FAIL'} ${name} ${extra}`);
@@ -25,7 +24,6 @@ const call = async (method, path, body, cookie = '') => {
 const cookieOf = (r) => r.headers.getSetCookie().map((c) => c.split(';')[0]).join('; ');
 
 const adminCookie = cookieOf((await call('POST', '/api/login', { username: 'admin', password })).r);
-await call('POST', '/api/pin', { pin: PIN }, adminCookie);
 const connect = async (name, cookie) => {
   const log = [];
   const ws = new WebSocket(`ws://${host}/ws?v=2`, { headers: { Cookie: cookie, Origin: o.api } });
@@ -34,7 +32,7 @@ const connect = async (name, cookie) => {
   await sleep(600);
   return { name, ws, log, send: (m) => ws.send(JSON.stringify(m)), moods: () => log.filter((m) => m.t === 'mood') };
 };
-const guest = async (name) => connect(name, cookieOf((await call('POST', '/api/join', { name, pin: PIN, age: true })).r));
+const guest = async (name) => connect(name, cookieOf((await call('POST', '/api/join', { name, age: true })).r));
 
 const admin = await connect('admin', adminCookie);
 const bob = await guest('Bob');

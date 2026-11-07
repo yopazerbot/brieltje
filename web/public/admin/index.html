@@ -46,6 +46,7 @@
           <button type="button" role="tab" id="tab-gamenight" aria-controls="panel-gamenight" data-tab="gamenight" aria-selected="false" tabindex="-1">Game night</button>
           <button type="button" role="tab" id="tab-feedback" aria-controls="panel-feedback" data-tab="feedback" aria-selected="false" tabindex="-1">Feedback</button>
           <button type="button" role="tab" id="tab-homes" aria-controls="panel-homes" data-tab="homes" aria-selected="false" tabindex="-1">Homes</button>
+          <button type="button" role="tab" id="tab-accounts" aria-controls="panel-accounts" data-tab="accounts" aria-selected="false" tabindex="-1">Accounts</button>
           <button type="button" role="tab" id="tab-logins" aria-controls="panel-logins" data-tab="logins" aria-selected="false" tabindex="-1">Logins</button>
           <button type="button" role="tab" id="tab-online" aria-controls="panel-online" data-tab="online" aria-selected="false" tabindex="-1">Online now <span class="count" id="online-badge" hidden></span></button>
         </nav>
@@ -189,6 +190,17 @@
         <p class="muted" id="homes-empty" hidden>No homes are registered yet (web/shared/homes.mjs).</p>
         <p class="muted small">These three homes are always locked, alone and together, in the Teams and Zombies games too. You always get in without a code. A code is shown once, when it is made. Only a hash of it is kept. A new code replaces the old one and ends the access of everyone who used it. Switching a code off or letting it expire does the same.</p>
       </section>
+      <!-- The players' accounts (server/accounts.mjs): a new password (shown once), off or on, delete. -->
+      <section data-panel="accounts" id="panel-accounts" role="tabpanel" aria-labelledby="tab-accounts" hidden>
+        <div class="toolbar">
+          <input type="text" id="acct-search" placeholder="Search name or email" />
+          <span class="muted small" id="acct-count"></span>
+        </div>
+        <div class="tablewrap"><table class="log fb"><thead><tr><th>Name</th><th>Email</th><th>Made</th><th>Last seen</th><th>State</th><th></th></tr></thead><tbody id="acct-rows"></tbody></table></div>
+        <p class="muted" id="acct-empty" hidden>No accounts yet.</p>
+        <p class="muted small" id="acct-msg" aria-live="polite"></p>
+        <p class="muted small">Players make their own account with a name, an email address and a password. The email isn't checked or used yet. Only a hash of the password is kept: a forgotten one gets a new password here, shown once. Turning an account off or deleting it logs the player out at once. Deleting removes the email and the scores too. An account nobody logged in to for two years is deleted by itself.</p>
+      </section>
       <section data-panel="logins" id="panel-logins" role="tabpanel" aria-labelledby="tab-logins" hidden>
         <div class="stats" id="login-kpis"></div>
         <div class="toolbar">
@@ -206,17 +218,6 @@
       </section>
 
       <section data-panel="online" id="panel-online" role="tabpanel" aria-labelledby="tab-online" hidden>
-        <!-- The multiplayer PIN (POST /api/pin, admin only, as the in-game admin tab sets it). -->
-        <form class="gn-night" id="pin-form" autocomplete="off">
-          <h2 class="sub">Multiplayer PIN <span class="muted small">what players type to play together</span></h2>
-          <label class="field" for="pin-new">PIN</label>
-          <div class="pin-row">
-            <input type="password" id="pin-new" inputmode="numeric" maxlength="12" autocomplete="new-password" spellcheck="false" placeholder="No PIN set: joining is closed" />
-            <button class="btn ghost" type="button" id="pin-show" aria-pressed="false">Show</button>
-          </div>
-          <p class="muted small">4 to 12 digits. A new PIN logs out everyone who joined with the old one.</p>
-          <div class="actions"><button class="btn" type="submit" id="pin-save">Save</button><span class="muted small" id="pin-saved" aria-live="polite"></span></div>
-        </form>
         <h2 class="sub">Online now</h2>
         <p class="muted" id="online-count"></p>
         <ul class="online" id="online-list"></ul>

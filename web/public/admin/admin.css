@@ -225,8 +225,6 @@ table.gn td:last-child { white-space: nowrap; }
 }
 
 /* The multiplayer PIN (Online now): the field and its Show button on one line. */
-.pin-row { display: flex; gap: 8px; align-items: center; max-width: 360px; }
-.pin-row input { flex: 1; min-width: 0; letter-spacing: 0.12em; }
 
 /* The homes on a phone: a card per home, its name and state on top, the dates and counts as labelled
    lines, the buttons side by side under them (the log's own layout puts its first column, a time, on the right). */

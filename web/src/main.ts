@@ -47,6 +47,7 @@ const HOUSE_SPAWNS = spawns.flatMap((s, i) => (s.team === 'house' ? [i] : []));
 /** Those out of doors: alone the house is shut, so you come back in the street or the garden. */
 const OUTSIDE_SPAWNS = HOUSE_SPAWNS.filter((i) => spawns[i].outside);
 import { api, errorText, Net, type Me, type Rules, type ServerMsg } from './net/client';
+import { Rooms } from './ui/rooms';
 import { Avatars } from './net/avatars';
 import type { Body } from './net/swat';
 import { Parachutes } from './world/parachutes';
@@ -126,7 +127,7 @@ import { arenaEdge, arenaHome, arenaOf, arenaPrisms, portalOf, type Arena } from
 import BOUNDS from '../shared/bounds.json';
 import CHURCH_DATA from '../shared/church.json';
 import { churchPrisms, makeChurch } from '../shared/church.mjs';
-import { carName, doorName, lang, onLang, placeName, plural, portalName, serverText, setLang, t, whoName } from './i18n';
+import { carName, doorName, lang, onLang, placeName, portalName, serverText, setLang, t, whoName } from './i18n';
 import { seat, tellHost } from './seat';
 
 // The world. This module is fetched and run on the first start (src/start.ts, the page's entry,
@@ -1063,6 +1064,12 @@ const chat = new Chat();
 chat.paused = () => menu.open; // T and Enter belong to the menu while it is open
 const combat = new Combat();
 const leaderboard = new Leaderboard();
+// Zombies rooms in the Together tab (src/ui/rooms.ts, server/rooms.mjs): the list asked for while that tab shows.
+const rooms = new Rooms(net, {
+  me: () => me,
+  watching: () => menu.open && !menu.onStartScreen && menu.tab === 'together',
+  say: (text) => chat.system(text),
+});
 const admin = new AdminPanel();
 const netStatus = document.getElementById('net-status')!;
 const onlineBox = document.getElementById('online')!;
@@ -1095,13 +1102,13 @@ function showOnline(): void {
 
 const $ = (id: string) => document.getElementById(id)!;
 /** House rules in multiplayer, set by the admin in the settings; alone everything is allowed. */
-const ANYTHING_GOES: Rules = { flying: true, spawn: true, names: true, maxPlayers: 16, pin: true, portals: true, travel: true, paintball: false, parachute: true };
+const ANYTHING_GOES: Rules = { flying: true, spawn: true, names: true, maxPlayers: 16, guests: true, portals: true, travel: true, paintball: false, parachute: true };
 let rules = ANYTHING_GOES;
 const flyBox = $('set-flying') as HTMLInputElement;
 const spawnBox = $('set-spawn') as HTMLInputElement;
 const namesBox = $('set-names') as HTMLInputElement;
 const maxSlider = $('set-max') as HTMLInputElement;
-const pinBox = $('set-pin') as HTMLInputElement;
+const guestsBox = $('set-guests') as HTMLInputElement;
 const portalsBox = $('set-portals') as HTMLInputElement;
 const travelBox = $('set-travel') as HTMLInputElement;
 const paintballBox = $('set-paintball') as HTMLInputElement;
@@ -1132,7 +1139,7 @@ function applyRules(next: Rules): void {
   flyBox.checked = next.flying;
   spawnBox.checked = next.spawn ?? false;
   namesBox.checked = next.names;
-  pinBox.checked = next.pin ?? true;
+  guestsBox.checked = next.guests ?? true;
   portalsBox.checked = next.portals ?? true;
   travelBox.checked = next.travel ?? true;
   paintballBox.checked = next.paintball ?? false;
@@ -1165,34 +1172,11 @@ function ruleSwitch(box: HTMLInputElement, rule: keyof Rules): void {
 ruleSwitch(flyBox, 'flying');
 ruleSwitch(spawnBox, 'spawn');
 ruleSwitch(namesBox, 'names');
-ruleSwitch(pinBox, 'pin');
+ruleSwitch(guestsBox, 'guests');
 ruleSwitch(portalsBox, 'portals');
 ruleSwitch(travelBox, 'travel');
 ruleSwitch(paintballBox, 'paintball');
 ruleSwitch(parachuteBox, 'parachute');
-// The admin's PIN field: filled when the admin logs in, saved on the server.
-const pinCode = $('set-pin-code') as HTMLInputElement;
-const pinMsg = $('set-pin-msg');
-$('set-pin-show').addEventListener('click', () => {
-  pinCode.type = pinCode.type === 'password' ? 'text' : 'password';
-  showPinButton();
-});
-const showPinButton = () => ($('set-pin-show').textContent = t(pinCode.type === 'password' ? 'adm.show' : 'adm.hide'));
-/** The note under the PIN: how to pick one, or what saving did (kept as a function, drawn again in another language). */
-let pinNote: (() => string) | null = null;
-const showPinNote = () => (pinMsg.textContent = pinNote ? pinNote() : t('adm.pinNote'));
-$('set-pin-save').addEventListener('click', async () => {
-  try {
-    const r = await api.setPin(pinCode.value.trim());
-    const n = r.loggedOut;
-    pinNote = () => `${t('pin.saved')}${n ? ` ${plural(n, 'pin.loggedOut.one', 'pin.loggedOut.other', { n })}` : ''}`;
-    pinMsg.classList.remove('bad');
-  } catch (e) {
-    pinNote = errorText(e);
-    pinMsg.classList.add('bad');
-  }
-  showPinNote();
-});
 maxSlider.addEventListener('input', () => ($('set-max-value').textContent = maxSlider.value));
 maxSlider.addEventListener('change', () => net.send({ t: 'rules', maxPlayers: Number(maxSlider.value) }));
 let wasTogether = false; // playing with the others until this account change
@@ -1234,7 +1218,7 @@ function followAccount(account: Me | null): void {
   wasTogether = !!account;
   $('mp-join-here').classList.toggle('hidden', !!account);
   $('mp-leave').classList.toggle('hidden', !account);
-  $('scores-col').classList.toggle('hidden', !account);
+  $('scores-col').classList.remove('hidden'); // the board of best Zombies runs, alone too
   chat.setEnabled(true); // alone too, for commands (/location kerk)
   chat.setAlone(!account);
   admin.show(account?.role === 'admin' ? account.username : null);
@@ -1242,13 +1226,10 @@ function followAccount(account: Me | null): void {
   $('clearfurn-btn').classList.toggle('hidden', account?.role !== 'admin');
   $('resetfurn-btn').classList.toggle('hidden', !!account && account.role !== 'admin');
   $('set-admin').classList.toggle('hidden', account?.role !== 'admin');
-  if (account?.role === 'admin') void api.pin().then((r) => (pinCode.value = r.pin)).catch(() => {});
-  else pinCode.value = '';
-  pinNote = null;
-  showPinNote();
   if (!account) applyRules(ANYTHING_GOES);
   weapon.setAdminWeapons(!account || account.role === 'admin');
-  leaderboard.show(!!account);
+  leaderboard.show(!!account); // the best Zombies runs for everyone to see; the fights' totals together only
+  rooms.follow(account);
   $('game-admin').classList.toggle('hidden', account?.role !== 'admin');
   if (!account) {
     games.set({ kind: 'free' });
@@ -1274,8 +1255,6 @@ function followAccount(account: Me | null): void {
 // Another language: the texts made here that aren't drawn every frame (the modules redraw their own).
 onLang(() => {
   showOnline();
-  showPinButton();
-  showPinNote();
   netStatus.textContent = netText();
   if (menu.open && !menu.onStartScreen && me?.role === 'admin') admin.show(me.username);
 });
@@ -2153,6 +2132,7 @@ let teamsMenu = false;
 function followGame(view: ModeView): void {
   const before = games.view;
   games.set(view);
+  rooms.setPlaying(view.kind === 'zombies' && view.phase !== 'done');
   zombieWaveControl.update(view, net.connected && me?.role === 'admin');
   for (const name of online.keys()) avatars.setRole(name, games.roleOf(name));
   const teams = games.view.kind === 'teams' && games.view.phase === 'playing';
@@ -2226,8 +2206,11 @@ net.onMessage = (m: ServerMsg) => {
       clowns.setAll(m.clowns ?? CLOWN_DEFAULTS);
       furnishing.setAll(m.furniture ?? []);
       games.me = m.you;
+      games.guest = m.role === 'guest';
+      rooms.setCurrent(m.room); // the open world, or a Zombies room (src/ui/rooms.ts)
       followGame(m.mode ?? { kind: 'free' });
       applyRules(m.rules ?? ANYTHING_GOES);
+      showOnline(); // again, with this place's limit (a room holds fewer than the open world)
       weather.setServer(m.mood, m.moodCycle?.cycle, m.moodCycle?.time); // the admin's weather for everyone (Auto from an older server)
       getOut(false); // alone you may have been driving: the shared cars are where the server has them
       getOffHorse(false); // or riding

@@ -1,7 +1,7 @@
 /**
  * The page's entry: the start screen, which works before the world exists. The page brings only
  * this, the texts and the start picture, and asks the server who you are (/api/me). That covers
- * the language, your name, alone or together (joining with the PIN, the admin's login), the mode,
+ * the language, your name, alone or together (joining as a guest, an account, the admin's login), the mode,
  * the graphics setting, the controller, and the Sound and Full screen buttons (the start screen's,
  * and the in-game menu's own in its header).
  *
@@ -19,6 +19,7 @@ import { typing } from './keys';
 import { api, errorText, type Me } from './net/client';
 import { sound } from './sound';
 import { Menu } from './ui/menu';
+import { AccountCard } from './ui/account';
 
 const $ = (id: string) => document.getElementById(id)!;
 
@@ -129,7 +130,7 @@ menu.onGraphics = (next) => {
   menu.setGraphics(next, null, '');
 };
 
-// ---- Alone or together: joining with the PIN, or the admin's login (the Admin link). It is all
+// ---- Alone or together: joining as a guest, an account (src/ui/account.ts), or the admin's login (the Admin link). It is all
 // HTTP, so it works on the start screen. The world (main.ts) follows every change once it is there,
 // and only then connects to the others.
 export let me: Me | null = null;
@@ -159,6 +160,9 @@ export function setAccount(account: Me | null, message: (() => string) | null = 
   menu.setAccount(account?.username ?? null);
   menu.setAdmin(account?.role === 'admin');
   $('mp-session').classList.toggle('hidden', !account);
+  // "Your account": a new password, deleting it (src/ui/account.ts), for players logged in to their own.
+  document.querySelectorAll('.acct-manage').forEach((b) => b.classList.toggle('hidden', account?.role !== 'player'));
+  document.querySelectorAll('.acct-row').forEach((b) => b.classList.toggle('hidden', account?.role !== 'player'));
   showAccountText();
   for (const fn of accountListeners) fn(account);
 }
@@ -227,11 +231,11 @@ async function login(): Promise<void> {
 /** A join on its way to the server: a second click (Join twice, or Join then a start button) waits for it instead of sending another. */
 let joining: Promise<boolean> | null = null;
 /**
- * Play together with the shared PIN: your name is your name in the game. From the start screen,
- * or from the menu's Together tab while playing alone (`name` then is the name you started with).
+ * Play together as a guest (Yoshi, 7 Nov 2026: no PIN): your name is your name in the game. From the start
+ * screen, or from the menu's Together tab while playing alone (`field`: the name's field there).
  * True once joined; false with the reason under the fields.
  */
-function join(name = ($('nick') as HTMLInputElement).value.trim(), pin = $('mp-pin') as HTMLInputElement): Promise<boolean> {
+function join(name = ($('nick') as HTMLInputElement).value.trim(), field: HTMLElement = $('nick')): Promise<boolean> {
   const refuse = (text: () => string, field?: HTMLElement) => {
     setAccount(null, text);
     field?.setAttribute('aria-invalid', 'true'); // outlined until typed in
@@ -239,15 +243,13 @@ function join(name = ($('nick') as HTMLInputElement).value.trim(), pin = $('mp-p
     return Promise.resolve(false);
   };
   if (joining) return joining;
-  if (!name || name === 'Guest') return refuse(() => t('err.nameFirst'), pin.id === 'mp-pin' ? $('nick') : $('mp-nick2'));
-  if (!pin.value) return refuse(() => t('err.pin'), pin);
+  if (!name || name === 'Guest') return refuse(() => t('err.nameFirst'), field);
   // Playing together, with its chat, is for 13 and over: ticked once, remembered on this device.
   if (!ageOk()) return refuse(() => t('err.age'));
   const gen = accountGen;
   joining = api
-    .join(name, pin.value, ageOk())
+    .join(name, ageOk())
     .then((account) => {
-      pin.value = '';
       if (gen !== accountGen) {
         logoutForSure();
         return false;
@@ -285,21 +287,17 @@ document.querySelectorAll<HTMLButtonElement>('[data-mp]').forEach((b) =>
   b.addEventListener('click', () => {
     const multi = b.dataset.mp === 'multi';
     document.querySelectorAll('[data-mp]').forEach((o) => o.classList.toggle('selected', o === b));
-    $('mp-pin-row').classList.toggle('hidden', !multi);
+    $('mp-guest-row').classList.toggle('hidden', !multi);
     $('mp-age-row').classList.toggle('hidden', !multi);
     if (!me) {
       accountMsg = null; // an old complaint doesn't greet you
       showAccountText();
     }
-    if (multi) {
-      $('mp-login').classList.add('hidden');
-      ($('mp-pin') as HTMLInputElement).focus();
-    }
+    if (multi) $('mp-login').classList.add('hidden');
   }),
 );
-$('mp-join-btn').addEventListener('click', () => void join());
 // Typing in a field that was complained about: the outline and the complaint go.
-for (const id of ['nick', 'mp-pin', 'mp-pin2', 'mp-nick2']) {
+for (const id of ['nick', 'mp-nick2']) {
   $(id).addEventListener('input', () => {
     if ($(id).getAttribute('aria-invalid') !== 'true') return;
     $(id).removeAttribute('aria-invalid');
@@ -309,20 +307,36 @@ for (const id of ['nick', 'mp-pin', 'mp-pin2', 'mp-nick2']) {
     }
   });
 }
-$('mp-pin').addEventListener('keydown', (e) => {
-  if ((e as KeyboardEvent).key === 'Enter') void join();
-});
-const joinHere = () => void join(($('mp-nick2') as HTMLInputElement).value.trim() || menu.nickname, $('mp-pin2') as HTMLInputElement);
+const joinHere = () => void join(($('mp-nick2') as HTMLInputElement).value.trim() || menu.nickname, $('mp-nick2'));
 $('mp-join2').addEventListener('click', joinHere);
-$('mp-pin2').addEventListener('keydown', (e) => {
+$('mp-nick2').addEventListener('keydown', (e) => {
   if ((e as KeyboardEvent).key === 'Enter') joinHere();
 });
 $('mp-account').addEventListener('click', () => {
   const open = $('mp-login').classList.toggle('hidden') === false;
-  if (open) {
-    $('mp-pin-row').classList.add('hidden');
-    ($('mp-pass') as HTMLInputElement).focus();
-  }
+  if (open) ($('mp-pass') as HTMLInputElement).focus();
+});
+// Accounts (src/ui/account.ts): logging in and signing up answer like a join, so leaving meanwhile still wins.
+new AccountCard({
+  me: () => me,
+  typedName: () => (me ? '' : ($('nick') as HTMLInputElement).value.trim() || ($('mp-nick2') as HTMLInputElement).value.trim()),
+  ageOk,
+  begin: (signup) => {
+    const gen = accountGen;
+    return (account) => {
+      if (gen !== accountGen) {
+        logoutForSure();
+        return false;
+      }
+      logoutDone();
+      setAccount(account, signup ? () => t('acct.welcome', { name: account.username }) : null);
+      return true;
+    };
+  },
+  ended: (message) => {
+    accountGen++;
+    setAccount(null, message);
+  },
 });
 $('mp-login-btn').addEventListener('click', () => void login());
 $('mp-pass').addEventListener('keydown', (e) => {
@@ -363,8 +377,8 @@ if (logoutPending) {
     tellHost('alone');
   });
 } else api.me().then(setAccount).catch(() => setAccount(null));
-// Together picked but not joined yet: a start button joins first (a PIN typed in and then straight
-// to Touch screen would otherwise start alone), and play starts only if that worked.
+// Together picked but not joined yet: a start button joins first, as a guest under the name typed (an
+// account logs in from its card), and play starts only if that worked.
 const togetherPicked = () => !!document.querySelector('[data-mp=multi].selected');
 /** A name is needed to play, alone too (Yoshi, 1 Nov 2026): the field outlined and focused, the message under it. */
 function nameMissing(): boolean {
@@ -378,7 +392,7 @@ function nameMissing(): boolean {
 }
 menu.beforeStart = () => {
   if (nameMissing()) return Promise.resolve(false);
-  return togetherPicked() && !me && !$('mp-pin-row').classList.contains('hidden') ? join() : true;
+  return togetherPicked() && !me ? join() : true;
 };
 // Another language: the texts made here that aren't drawn every frame (the modules redraw their own).
 onLang(() => {

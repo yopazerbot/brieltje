@@ -35,7 +35,7 @@ const KEEP_DAYS = 730; // an account unused this long is deleted
 const PASS_MIN = 8;
 const PASS_MAX = 200;
 const EMAIL_MAX = 254;
-// Something@something.something: no spaces, quotes or angle brackets. Not checked any further (no mail is sent).
+// Something@something.something: no spaces, and none of these: " ' ` < >. Not checked any further (no mail is sent).
 const EMAIL_RE = /^[^\s@<>"'`]{1,64}@[^\s@<>"'`]+\.[^\s@<>"'`.]{2,}$/;
 /**
  * What a player's device cookie is signed for: the account as it is now, so the cookie stops counting once

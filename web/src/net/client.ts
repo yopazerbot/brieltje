@@ -11,8 +11,29 @@ import { seatHeaders, seatProtocols } from '../seat';
 
 export interface Me {
   username: string;
-  /** guest: joined with the shared PIN, no account */
-  role: 'admin' | 'guest';
+  /** guest: joined with a name only; player: logged in to their own account (server/accounts.mjs) */
+  role: 'admin' | 'guest' | 'player';
+}
+
+/** A Zombies room in the list (server/rooms.mjs): who opened it, where, how many play, the game in it. */
+export interface RoomEntry {
+  id: string;
+  owner: string;
+  place: string;
+  players: number;
+  max: number;
+  wave: number;
+  playing: boolean;
+}
+
+/** A row of the board of best Zombies runs (accounts only): the wave reached, zombies beaten, team size, the day. */
+export interface ZombieRun {
+  username: string;
+  place: string;
+  wave: number;
+  kills: number;
+  team: number;
+  at: string;
 }
 
 export interface Score {
@@ -34,8 +55,8 @@ export interface Rules {
   names: boolean;
   /** How many may play at once (the admin chooses, 16 to start with) */
   maxPlayers: number;
-  /** New players can join with the shared PIN */
-  pin: boolean;
+  /** Guests (a name, no account) can join; missing from an older server */
+  guests?: boolean;
   /** The portals take players from place to place */
   portals: boolean;
   /** Players can travel from the chat (/church); the admin always can */
@@ -61,7 +82,8 @@ type Coded = { code?: unknown; args?: unknown };
 export type ServerMsg =
   | {
       /** `proto`: the server's protocol (shared/wire.mjs); a different one means this page is out of date (or the server is) */
-      t: 'welcome'; proto?: number; you: string; role: string; color: string; doors: Record<string, boolean>; doorDir?: Record<string, number>; broken: number[]; homes?: string[];
+      /** `room`: the Zombies room this connection is in (server/rooms.mjs), null or missing in the open world */
+      t: 'welcome'; proto?: number; you: string; role: string; color: string; room?: { id: string; owner: string; place: string } | null; doors: Record<string, boolean>; doorDir?: Record<string, number>; broken: number[]; homes?: string[];
       players: { name: string; color: string; role: string }[]; scores: Score[]; limit: number; round: { winner: string; ms: number } | null; items: boolean[];
       time: number; cats: number[]; clowns?: ClownSpec[]; furniture: Piece[]; rules?: Rules; cars?: CarState[]; horses?: HorseState[]; bikes?: BikeState[]; mode?: ModeView;
       /**
@@ -146,7 +168,9 @@ export type ServerMsg =
   | { t: 'door'; id: string; open: boolean; dir?: number; by: string }
   | { t: 'shot'; name: string; x: number; y: number; z: number; w: string }
   | ({ t: 'system'; text: string } & Coded)
-  | { t: 'kicked' };
+  | { t: 'kicked' }
+  /** The room asked for isn't there (any more): the connection closes, the page goes back to the open world */
+  | { t: 'roomgone' };
 
 /** An answer that wasn't ok: the server's English text, and its code and parameters when it sent them. */
 export class ApiError extends Error {
@@ -179,14 +203,23 @@ export const api = {
   me: () => call<Me & { online: number; max: number }>('GET', '/api/me'),
   login: (username: string, password: string) => call<Me>('POST', '/api/login', { username, password }),
   /** `age`: "I'm 13 or older" ticked (src/start.ts); sent only then. */
-  join: (name: string, pin: string, age = false) => call<Me>('POST', '/api/join', age ? { name, pin, age: true } : { name, pin }),
+  join: (name: string, age = false) => call<Me>('POST', '/api/join', age ? { name, age: true } : { name }),
+  /** Accounts (server/accounts.mjs, src/ui/account.ts). */
+  register: (username: string, email: string, password: string) => call<Me>('POST', '/api/account/register', { username, email, password, age: true }),
+  accountLogin: (username: string, password: string) => call<Me>('POST', '/api/account/login', { username, password }),
+  account: () => call<{ username: string; email: string; created: string }>('GET', '/api/account'),
+  changePassword: (old: string, password: string) => call<{ ok: boolean }>('POST', '/api/account/password', { old, password }),
+  deleteAccount: (password: string) => call<{ ok: boolean }>('POST', '/api/account/delete', { password }),
+  /** Zombies rooms (server/rooms.mjs): the list, and opening one (an account or the admin). */
+  rooms: () => call<{ rooms: RoomEntry[]; max: number }>('GET', '/api/rooms'),
+  openRoom: (place: string) => call<{ room: RoomEntry }>('POST', '/api/rooms', { place }),
+  /** The board of best Zombies runs: at one place, or each account's best anywhere (''). */
+  scores: (place = '') => call<{ rows: ZombieRun[] }>('GET', `/api/scores${place ? `?place=${encodeURIComponent(place)}` : ''}`),
   logout: () => call('POST', '/api/logout', {}),
   players: () => call<{ players: { name: string; color: string; role: string }[]; max: number }>('GET', '/api/players'),
   kick: (name: string) => call('POST', '/api/kick', { name }),
   leaderboard: () => call<{ rows: { username: string; kills: number; deaths: number; headshots: number; wins: number }[] }>('GET', '/api/leaderboard'),
-  pin: () => call<{ pin: string }>('GET', '/api/pin'),
-  setPin: (pin: string) => call<{ ok: boolean; loggedOut: number }>('POST', '/api/pin', { pin }),
-  /** The admin lifts every lockout on joining: wrong PINs and kicks (server/auth.mjs). */
+  /** The admin lifts every lockout on joining: kicks, many joins, wrong account passwords (server/auth.mjs). */
   unlock: () => call<{ lifted: number }>('POST', '/api/lockouts', {}),
   audit: () => call<{ log: { time: string; event: string; username?: string; ip?: string; detail?: string }[] }>('GET', '/api/audit'),
   /** Stars (1 to 5) and a comment, either may be left out (src/ui/feedback.ts, server/feedback.mjs). */
@@ -218,6 +251,10 @@ export class Net {
   private retry = 1000;
   /** How many may play, from the server's last 'full' message */
   private fullAt = 0;
+  /** The Zombies room to connect to (server/rooms.mjs), or null for the open world */
+  room: string | null = null;
+  /** The room asked for is gone: the page goes back to the open world (src/ui/rooms.ts). */
+  onRoomGone: () => void = () => {};
 
   get connected(): boolean {
     return this.ws?.readyState === WebSocket.OPEN;
@@ -225,7 +262,8 @@ export class Net {
 
   connect(): void {
     this.stopped = false;
-    const url = `${location.protocol === 'https:' ? 'wss' : 'ws'}://${location.host}/ws?v=${PROTO}`;
+    // The room's id is no secret (anyone playing together sees the list) and grants nothing on its own: the session is the cookie.
+    const url = `${location.protocol === 'https:' ? 'wss' : 'ws'}://${location.host}/ws?v=${PROTO}${this.room ? `&room=${encodeURIComponent(this.room)}` : ''}`;
     this.rtt = null;
     // In the split screen, the seat in the subprotocol (src/seat.ts), never in the URL.
     const ws = new WebSocket(url, seatProtocols);
@@ -256,6 +294,11 @@ export class Net {
         return;
       }
       if (m.t === 'kicked') this.stopped = true;
+      if (m.t === 'roomgone') {
+        this.room = null; // the close that follows reconnects to the open world (see onclose)
+        this.onRoomGone();
+        return;
+      }
       try {
         this.onMessage(m);
       } catch (err) {
@@ -271,6 +314,15 @@ export class Net {
         if (!this.stopped && why) this.onEnded(() => t(why));
         return;
       }
+      // The room is gone (4004): straight back to the open world.
+      if (e.code === 4004) {
+        if (this.room) {
+          this.room = null;
+          this.onRoomGone();
+        }
+        this.connect();
+        return;
+      }
       // Full (4003): said, and tried again a little later like a dropped connection, until there is room.
       const max = this.fullAt;
       this.onStatus(() => (e.code === 4003 ? t('net.full', { n: max }) : t('net.lost')));
@@ -283,6 +335,16 @@ export class Net {
     this.stopped = true;
     this.ws?.close();
     this.ws = null;
+  }
+
+  /** Over to a Zombies room (`id`) or back to the open world (null): this connection ends, a new one starts there. */
+  switchTo(id: string | null): void {
+    this.room = id;
+    const old = this.ws;
+    this.ws = null; // its close is then no reason to reconnect (onclose)
+    old?.close(1000, 'Moving');
+    this.retry = 1000;
+    this.connect();
   }
 
   send(msg: Record<string, unknown>): void {

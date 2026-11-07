@@ -61,6 +61,7 @@
         <p id="zend-sub"></p>
         <table id="zend-table"></table>
         <p id="zend-best"></p>
+        <p id="zend-keep" class="hidden"></p>
       </div>
       <!-- Messages for the middle of the top: on a desktop each keeps its own place (the box has
            display: contents); with touch controls they stack under each other, clear of the buttons. -->
@@ -105,6 +106,45 @@
         <button class="seg-btn" type="button" data-play="action"><b data-i18n="mode.action">Action</b><span data-i18n="mode.actionSub2">Hands and pistol</span></button>
       </div>
     </div>
+    <!-- Accounts (src/ui/account.ts, server/accounts.mjs): logging in, making one, and your own account (a new
+         password, deleting it). A native dialog: above the start screen and the menu alike. -->
+    <dialog id="acct-dlg" aria-labelledby="acct-title">
+      <form id="acct-form" novalidate>
+        <button type="button" id="acct-close" aria-label="Close" data-i18n-aria="acct.close">×</button>
+        <h2 id="acct-title"></h2>
+        <div class="seg acct-tabs" data-show="login signup">
+          <button class="seg-btn" type="button" data-view="login"><b data-i18n="acct.login">Log in</b></button>
+          <button class="seg-btn" type="button" data-view="signup"><b data-i18n="acct.signup">Make an account</b></button>
+        </div>
+        <p class="acct-sub" data-show="signup" data-i18n="acct.why">An account keeps your name for you, puts your Zombies runs on the board and lets you open a room.</p>
+        <div data-show="account" class="acct-mine">
+          <p><b id="acct-me"></b></p>
+          <p class="note" id="acct-email"></p>
+          <p class="note" id="acct-since"></p>
+        </div>
+        <label class="field" for="acct-name" data-show="login signup" data-i18n="acct.name">Name</label>
+        <input id="acct-name" data-show="login signup" maxlength="20" autocomplete="username" spellcheck="false" autocapitalize="off" />
+        <label class="field" for="acct-email-in" data-show="signup" data-i18n="acct.email">Email address</label>
+        <input id="acct-email-in" data-show="signup" type="email" maxlength="254" autocomplete="email" spellcheck="false" autocapitalize="off" />
+        <p class="note" data-show="signup" data-i18n="acct.emailNote">Only for your account. We don't send email yet, and other players never see it.</p>
+        <label class="field" for="acct-old" data-show="password delete" data-i18n="acct.curPass">Current password</label>
+        <input id="acct-old" data-show="password delete" type="password" maxlength="200" autocomplete="current-password" />
+        <label class="field" for="acct-pass" data-show="login signup password" id="acct-pass-label" data-i18n="acct.pass">Password</label>
+        <input id="acct-pass" data-show="login signup password" type="password" maxlength="200" autocomplete="current-password" />
+        <p class="note" data-show="signup password" data-i18n="acct.passNote">At least 8 characters. A few words in a row are easy to remember.</p>
+        <label class="check" data-show="signup"><input type="checkbox" data-age13 /> <span data-i18n="start.age13">I'm 13 or older</span></label>
+        <p class="note acct-warn" data-show="delete" data-i18n="acct.deleteWarn">This deletes your account, your email address and your scores for good. Type your password to confirm.</p>
+        <p id="acct-msg" class="mp-msg" role="alert"></p>
+        <div class="acct-actions">
+          <button id="acct-go" class="mini go" type="submit" data-show="login signup password delete"></button>
+          <button class="mini" type="button" data-show="account" data-go="password" data-i18n="acct.changePass">Change password</button>
+          <button class="mini danger" type="button" data-show="account" data-go="delete" data-i18n="acct.delete">Delete account</button>
+          <button class="mini" type="button" data-show="password delete" data-go="account" data-i18n="acct.back">Back</button>
+        </div>
+        <p class="note" data-show="login" data-i18n="acct.forgot">Forgot your password? Ask the admin for a new one.</p>
+        <p class="note acct-legal" data-show="signup"><a href="/legal/privacy.html" target="_blank" rel="noopener noreferrer" data-i18n="legal.privacyShort">Privacy</a> · <a href="/legal/terms.html" target="_blank" rel="noopener noreferrer" data-i18n="legal.termsShort">Terms</a></p>
+      </form>
+    </dialog>
     <!-- The feedback card after two minutes of play (src/ui/feedback.ts): above the touch controls. -->
     <div id="feedback" class="hidden" role="dialog" aria-modal="true" aria-labelledby="fb-title">
       <button type="button" id="fb-close" aria-label="Close" data-i18n-aria="fb.close">×</button>
@@ -136,14 +176,13 @@
           <input id="nick" maxlength="20" autocomplete="username" spellcheck="false" placeholder="Name" data-i18n-placeholder="start.namePh" />
           <div class="seg" id="mp-choice">
             <button class="seg-btn selected" type="button" data-mp="solo"><b data-i18n="start.alone">Alone</b><span data-i18n="start.aloneSub">Just you</span></button>
-            <button class="seg-btn" type="button" data-mp="multi"><b data-i18n="start.together">Together</b><span data-i18n="start.togetherSub">With the PIN</span></button>
+            <button class="seg-btn" type="button" data-mp="multi"><b data-i18n="start.together">Together</b><span data-i18n="start.togetherSub">With the others</span></button>
           </div>
-          <!-- Together picked: the PIN and the age tick in one box under the Together button. -->
+          <!-- Together picked: playing as a guest under the name above, or with an account (src/ui/account.ts), and the age tick. -->
           <div id="mp-together" class="together">
-            <div id="mp-pin-row" class="mp-row hidden">
-              <input id="mp-pin" type="password" inputmode="numeric" maxlength="12" autocomplete="off" placeholder="PIN" aria-describedby="mp-pin-hint" data-i18n-placeholder="start.pinPh" />
-              <button id="mp-join-btn" class="mini go" type="button" data-i18n="start.join">Join</button>
-              <p id="mp-pin-hint" class="pin-hint" data-i18n="start.pinHint">The organiser gives you the PIN.</p>
+            <div id="mp-guest-row" class="hidden">
+              <p class="pin-hint" data-i18n="start.guestHint">You play as a guest under the name above.</p>
+              <p class="acct-links"><button type="button" class="textbtn" data-acct="login" data-i18n="acct.login">Log in</button> · <button type="button" class="textbtn" data-acct="signup" data-i18n="acct.signup">Make an account</button> <span data-i18n="acct.whyShort">to keep your name and your scores, and to open Zombies rooms.</span></p>
             </div>
             <label id="mp-age-row" class="check age-check hidden"><input type="checkbox" id="mp-age" data-age13 /> <span data-i18n="start.age13">I'm 13 or older</span></label>
           </div>
@@ -154,7 +193,8 @@
         </div>
         <div id="mp-session" class="session hidden">
           <span><span data-i18n="start.playingAs">Playing together as</span> <b id="mp-name"></b></span>
-          <button id="mp-logout" class="mini" type="button" data-i18n="start.leave">Play alone</button>
+          <span class="session-btns"><button class="mini hidden acct-manage" type="button" data-acct="account" data-i18n="acct.manage">Your account</button>
+          <button id="mp-logout" class="mini" type="button" data-i18n="start.leave">Play alone</button></span>
         </div>
         <p id="mp-msg" class="mp-msg"></p>
         <p class="label" data-i18n="start.mode">Game mode</p>
@@ -287,17 +327,49 @@
                 <div class="col">
                   <h2 data-i18n="tog.title">Playing together</h2>
                   <p id="mp-note" class="note"></p>
-                  <!-- Alone: your name and the PIN. Together: who is online (src/main.ts), your team in the teams game. -->
+                  <!-- Alone: your name to join as a guest, or an account. Together: who is online (src/main.ts), your team in the teams game. -->
                   <div id="mp-join-here" class="hidden">
                     <div class="mp-row">
                       <input id="mp-nick2" maxlength="20" autocomplete="off" spellcheck="false" placeholder="Your name" aria-label="Your name" data-i18n-placeholder="start.name" data-i18n-aria="start.name" />
-                      <input id="mp-pin2" type="password" inputmode="numeric" maxlength="12" autocomplete="off" placeholder="PIN" aria-label="PIN" data-i18n-placeholder="start.pinPh" data-i18n-aria="start.pinPh" />
-                      <button id="mp-join2" class="mini go" type="button" data-i18n="start.join">Join</button>
+                      <button id="mp-join2" class="mini go" type="button" data-i18n="start.joinGuest">Join as a guest</button>
                     </div>
                     <!-- Joining asks once on this device (localStorage briel.age13, shared with the start screen: src/start.ts). -->
                     <label class="check"><input type="checkbox" id="mp-age2" data-age13 /> <span data-i18n="start.age13">I'm 13 or older</span></label>
+                    <p class="acct-links"><button type="button" class="textbtn" data-acct="login" data-i18n="acct.login">Log in</button> · <button type="button" class="textbtn" data-acct="signup" data-i18n="acct.signup">Make an account</button> <span data-i18n="acct.whyShort">to keep your name and your scores, and to open Zombies rooms.</span></p>
                   </div>
                   <p id="mp-msg2" class="mp-msg"></p>
+                  <div class="mp-row hidden acct-row"><button class="mini acct-manage hidden" type="button" data-acct="account" data-i18n="acct.manage">Your account</button></div>
+                  <!-- Zombies rooms (src/ui/rooms.ts, server/rooms.mjs): a game of their own, apart from the open world. -->
+                  <section id="rooms" class="rooms hidden" aria-labelledby="rooms-title">
+                    <h2 id="rooms-title" data-i18n="room.title">Zombies rooms</h2>
+                    <div id="room-here" class="room-here hidden">
+                      <p id="room-in" class="note"></p>
+                      <div class="mp-row">
+                        <button id="room-start" class="mini go hidden" type="button" data-i18n="room.start">Start Zombies</button>
+                        <button id="room-stop" class="mini hidden" type="button" data-i18n="room.stop">Stop the game</button>
+                        <button id="room-leave" class="mini" type="button" data-i18n="room.leave">Leave the room</button>
+                      </div>
+                    </div>
+                    <div id="room-out">
+                      <p class="note" data-i18n="room.note">Play Zombies with a few others, apart from the open world.</p>
+                      <ul id="room-list" class="room-list"></ul>
+                      <div id="room-open" class="mp-row hidden">
+                        <label class="spawn-pick" for="room-place"><span data-i18n="room.at">At</span>
+                          <select id="room-place">
+                            <option value="house" data-i18n="portal.house">Home</option>
+                            <option value="bungalow" data-i18n="portal.bungalow">Bungalow</option>
+                            <option value="church" data-i18n="portal.church">Church</option>
+                            <option value="molenhoek" data-i18n="portal.molenhoek">Molenhoek</option>
+                            <option value="molenhoek_mid" data-i18n="portal.molenhoek_mid">Middle of Molenhoek</option>
+                            <option value="molenhoek_end" data-i18n="portal.molenhoek_end">End of Molenhoek</option>
+                          </select>
+                        </label>
+                        <button id="room-open-btn" class="mini go" type="button" data-i18n="room.open">Open a room</button>
+                      </div>
+                      <p id="room-guest" class="note hidden" data-i18n="room.guest">Log in or make an account to open a room. As a guest you can join one.</p>
+                    </div>
+                    <p id="room-msg" class="mp-msg"></p>
+                  </section>
                   <div id="tog-online" class="hidden">
                     <p class="label" id="tog-count"></p>
                     <ul id="tog-players" class="players"></ul>
@@ -479,21 +551,12 @@
                     </div>
                   </div>
                   <h2 data-i18n="adm.joining">Joining</h2>
-                  <label class="check"><input type="checkbox" id="set-pin" checked /> <span data-i18n="adm.pin">New players can join with the PIN</span></label>
-                  <div class="setting">
-                    <label class="field" for="set-pin-code" data-i18n="adm.pinLabel">PIN</label>
-                    <div class="mp-row">
-                      <input id="set-pin-code" type="password" inputmode="numeric" maxlength="12" autocomplete="off" spellcheck="false" />
-                      <button id="set-pin-show" class="mini" type="button" data-i18n="adm.show">Show</button>
-                      <button id="set-pin-save" class="mini" type="button" data-i18n="adm.save">Save</button>
-                    </div>
-                    <p class="note" id="set-pin-msg" data-i18n="adm.pinNote">4 to 12 digits; longer is harder to guess. Saving logs out everyone who joined with the old PIN.</p>
-                    <p class="note" data-i18n="adm.pinMeetup">Use 6 digits or more for a meetup.</p>
-                  </div>
-                  <!-- Lockouts after wrong PINs or a kick (server/auth.mjs), lifted for everyone at once. -->
+                  <label class="check"><input type="checkbox" id="set-guests" checked /> <span data-i18n="adm.guests">Guests can join without an account</span></label>
+                  <p class="note" data-i18n="adm.accountsNote">The players' accounts are on brieltje.be/admin.</p>
+                  <!-- Lockouts after a kick, many joins or wrong passwords (server/auth.mjs, server/accounts.mjs), lifted for everyone at once. -->
                   <div class="setting">
                     <div class="mp-row"><button id="set-unlock" class="mini" type="button" data-i18n="adm.unlock">Lift lockouts</button></div>
-                    <p class="note" id="set-unlock-msg" data-i18n="adm.unlockNote">Lets back in everyone kept out by wrong PINs or a kick.</p>
+                    <p class="note" id="set-unlock-msg" data-i18n="adm.unlockNote">Lets back in everyone kept out by a kick, too many joins or wrong passwords.</p>
                   </div>
                 </div>
                 <div class="col">

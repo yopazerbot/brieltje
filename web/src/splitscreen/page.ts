@@ -9,13 +9,12 @@
  * 2. The controllers: the first controller that presses a button is player 1, the next player 2, and
  *    so on, whatever the browser's own order. Its card lights up in the player's colour with the
  *    controller's kind and name, and the controller rumbles. Player 1 may take the keyboard and mouse.
- * 3. The names (typed, or picked from suggestions: on a controller the top face button gives another)
- *    and the PIN once (typed, or on the number pad on screen).
+ * 3. The names (typed, or picked from suggestions: on a controller the top face button gives another).
+ *    Each player joins as a guest (Yoshi, 7 Nov 2026: no PIN).
  * 4. Start: this page joins every seat itself, one after the other, with the seat in the X-Briel-Seat
  *    header: the server gives each seat a session cookie of its own (server/auth.mjs seatOf). Each
- *    card shows how its join went; a refusal (a wrong PIN, a name taken, the game full) shows on its
- *    card and is put right in step 3 without starting over. The PIN stays in this page, never in a
- *    URL or a frame, and is forgotten once every seat has joined.
+ *    card shows how its join went; a refusal (a name taken, the game full) shows on its card and is
+ *    put right in step 3 without starting over.
  * Then the copies start one by one (each loads the whole world). A copy knows its seat from its frame
  * (src/seat.ts) and tells this page how it is doing by postMessage: only messages from our own
  * origin, and from one of our own frames, count. Every text goes in with textContent.
@@ -293,9 +292,9 @@ function next(): void {
   void start();
 }
 
-/** Step 3's checks: a valid name each, all different, the PIN, the age. The complaint where it belongs. */
+/** Step 3's checks: a valid name each, all different, the age. The complaint where it belongs. */
 function checkNames(): boolean {
-  for (const id of ['pin-error', 'names-error']) $(id).hidden = true;
+  $('names-error').hidden = true;
   let ok = true;
   const seen = new Set<string>();
   for (const s of playing()) {
@@ -309,10 +308,6 @@ function checkNames(): boolean {
     $('name-cards').querySelector<HTMLElement>('.error')?.closest('.seat')?.querySelector('input')?.focus();
     return false;
   }
-  if (!$<HTMLInputElement>('pin').value) {
-    pinError(t('err.pin'));
-    return false;
-  }
   if (!$<HTMLInputElement>('age').checked) {
     $('names-error').textContent = t('err.age');
     $('names-error').hidden = false;
@@ -321,27 +316,6 @@ function checkNames(): boolean {
   }
   return true;
 }
-function pinError(text: string): void {
-  $('pin-error').textContent = text;
-  $('pin-error').hidden = false;
-}
-
-// The number pad for the PIN: for a controller, or a touch screen.
-{
-  const pad = $('numpad');
-  for (const k of ['1', '2', '3', '4', '5', '6', '7', '8', '9', 'del', '0']) {
-    const b = el('button', k === 'del' ? 'key del' : 'key', k === 'del' ? '⌫' : k);
-    b.type = 'button';
-    if (k === 'del') b.setAttribute('aria-label', t('split.del'));
-    b.addEventListener('click', () => {
-      const pin = $<HTMLInputElement>('pin');
-      pin.value = k === 'del' ? pin.value.slice(0, -1) : (pin.value + k).slice(0, 12);
-      $('pin-error').hidden = true;
-    });
-    pad.append(b);
-  }
-}
-$('pin').addEventListener('input', () => ($('pin-error').hidden = true));
 
 // ---- Step 4: joining, one seat after the other
 let busy = false;
@@ -352,7 +326,6 @@ async function start(): Promise<void> {
   $<HTMLButtonElement>('start').disabled = true;
   $('fix').hidden = true;
   $('start-error').hidden = true;
-  const pin = $<HTMLInputElement>('pin');
   for (const s of playing()) if (s.state !== 'joined') s.state = 'wait';
   renderStart();
   try {
@@ -366,17 +339,12 @@ async function start(): Promise<void> {
         continue;
       }
       if (me.ok) await call(s.n, 'POST', '/api/logout', {});
-      const r = await call(s.n, 'POST', '/api/join', { name: s.name, pin: pin.value, age: true });
+      const r = await call(s.n, 'POST', '/api/join', { name: s.name, age: true });
       if (!r.ok) {
-        // One refusal stops the rest (a wrong PIN is counted by the server like any other): it shows on this
-        // card, and in step 3, where it is put right.
+        // One refusal stops the rest: it shows on this card, and in step 3, where it is put right.
         s.state = 'error';
         s.error = refusal(r);
         renderStart();
-        if (r.data.code === 'wrongPin' || r.data.code === 'pinChanged' || r.data.code === 'pinDevice') {
-          pinError(s.error);
-          s.error = '';
-        }
         $('fix').hidden = false;
         $('fix').focus();
         return;
@@ -384,7 +352,6 @@ async function start(): Promise<void> {
       s.state = 'joined';
       renderStart();
     }
-    pin.value = '';
     // Seats past the players' number leave, so no session of an earlier evening lingers.
     for (let n = count + 1; n <= SEATS; n++) if (joined.has(n)) await call(n, 'POST', '/api/logout', {});
     play();
@@ -608,7 +575,6 @@ $('stop').addEventListener('click', async () => {
 document.querySelectorAll<HTMLButtonElement>('[data-lang]').forEach((b) => b.addEventListener('click', () => setLang(b.dataset.lang as Lang)));
 onLang(() => {
   document.title = t('split.title');
-  $('numpad').querySelector('.del')?.setAttribute('aria-label', t('split.del'));
   showPadNav();
   if (joined.size) showAgain();
   render();

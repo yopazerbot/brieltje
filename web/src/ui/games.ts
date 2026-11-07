@@ -102,6 +102,8 @@ const clock = (ms: number) => {
 export class Games {
   view: ModeView = { kind: 'free' };
   me = '';
+  /** Playing as a guest: the end screen says an account keeps the score (only accounts are on the board). */
+  guest = false;
   readonly group = new THREE.Group();
   /** Send a message to the server */
   onSend: (msg: Record<string, unknown>) => void = () => {};
@@ -365,7 +367,7 @@ export class Games {
       this.zendKey = '';
       return;
     }
-    const key = JSON.stringify([z, lang(), paintball.on, this.me]);
+    const key = JSON.stringify([z, lang(), paintball.on, this.me, this.guest]);
     if (key === this.zendKey) return;
     this.zendKey = key;
     document.getElementById('zend-title')!.textContent = t('z.endTitle', { n: z.wave });
@@ -390,5 +392,8 @@ export class Games {
     document.getElementById('zend-table')!.replaceChildren(head, ...rows);
     const best = z.best;
     document.getElementById('zend-best')!.textContent = z.record ? t('z.record', { n: z.wave }) : best ? t('z.best', { n: best.wave, names: listOf(best.names.slice(0, 6)) }) : '';
+    const keep = document.getElementById('zend-keep')!;
+    keep.textContent = t('z.keepScore');
+    keep.classList.toggle('hidden', !this.guest || !!z.custom);
   }
 }

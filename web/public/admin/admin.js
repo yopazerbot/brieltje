@@ -18,14 +18,19 @@
   const WHEN = { weekday: 'Weekday evening', saturday: 'Saturday', sunday: 'Sunday' };
   const STATUS = ['new', 'contacted', 'modelled', 'declined'];
   const EVENTS = {
-    login_ok: ['Admin logged in', 'good', 'in'], join_ok: ['Joined with the PIN', 'good', 'in'], mp_join: ['Entered the game', '', 'in'],
+    login_ok: ['Admin logged in', 'good', 'in'], join_ok: ['Joined as a guest', 'good', 'in'], mp_join: ['Entered the game', '', 'in'],
+    account_created: ['Account made', 'good', 'in'], account_login: ['Logged in to an account', 'good', 'in'],
+    account_login_failed: ['Wrong account password', 'bad', 'failed'], account_password_wrong: ['Wrong current password', 'bad', 'failed'],
+    account_password: ['Account password changed', '', ''], account_deleted: ['Account deleted', '', 'admin'], account_reset: ['Account given a new password', '', 'admin'],
+    account_off: ['Account turned off', '', 'admin'], account_on: ['Account turned on', '', 'admin'], accounts_pruned: ['Unused accounts deleted', '', 'admin'],
+    room_opened: ['Zombies room opened', '', ''], room_closed: ['Zombies room closed', '', ''],
     login_failed: ['Wrong password', 'bad', 'failed'], pin_failed: ['Wrong PIN', 'bad', 'failed'], pin_limited: ['PIN guessing paused for everyone', 'bad', 'failed'],
     pin_limited_address: ['PIN guessing paused for everyone at an address', 'bad', 'failed'], pin_limited_device: ['PIN guessing paused for one browser', 'bad', 'failed'],
     join_refused_kick: ['New browser refused after a kick', 'bad', 'failed'],
     login_admin_limited: ['Admin login paused', 'bad', 'failed'], login_blocked_kicked: ['Removed player tried again', 'bad', 'failed'], lockouts_lifted: ['Lockouts lifted', '', 'admin'],
     solo_start: ['Started alone (name as typed)', '', 'solo'], kick: ['Player removed', '', 'admin'], pin_changed: ['PIN changed', '', 'admin'], rules: ['House rules changed', '', 'admin'], round_won: ['Round won', '', ''],
   };
-  const TABS = ['overview', 'signups', 'gamenight', 'feedback', 'homes', 'logins', 'online'];
+  const TABS = ['overview', 'signups', 'gamenight', 'feedback', 'homes', 'accounts', 'logins', 'online'];
   const PERIODS = { today: 'Today', yesterday: 'Yesterday', d7: 'Last 7 days', d30: 'Last 30 days' };
   // The hour chart's measures: the button, and a number of them in a tooltip.
   const METRICS = {
@@ -212,12 +217,12 @@
   function openTab(name, how) {
     selectTab(name, how);
     if (name === 'online' || name === 'overview') refreshStats();
-    if (name === 'online') loadPin();
     if (name === 'logins') loadLog();
     if (name === 'signups') loadSignups();
     if (name === 'gamenight') loadGamenight();
     if (name === 'feedback') loadFeedback();
     if (name === 'homes') loadHomes();
+    if (name === 'accounts') loadAccounts();
   }
   for (const b of tabButtons) b.addEventListener('click', () => openTab(b.dataset.tab, 'push'));
   nav.addEventListener('keydown', (e) => {
@@ -607,7 +612,9 @@
       const dot = el('i');
       dot.style.background = /^#[0-9a-f]{6}$/i.test(p.color) ? p.color : '#888';
       const ping = Number.isFinite(p.ping) ? ` · ping ${p.ping} ms` : '';
-      li.append(dot, el('span', '', p.name), el('span', 'muted small', `${p.role === 'admin' ? 'together · admin' : 'together'}${ping}`));
+      const who = p.role === 'admin' ? ' · admin' : p.role === 'player' ? ' · account' : ' · guest';
+      const where = p.room ? ` · room ${p.room}` : '';
+      li.append(dot, el('span', '', p.name), el('span', 'muted small', `together${who}${where}${ping}`));
       return li;
     });
     for (const v of alone) {
@@ -911,63 +918,74 @@
   $('gn-search').addEventListener('input', drawGamenight);
 
   // ---- the login log
-  // ---- the multiplayer PIN (GET and POST /api/pin, admin only): shown hidden, a new one asked twice
-  let pinNow = null; // the PIN as the server has it, null for none
-  let pinArmed = 0; // a timer while "Save" waits for the second click
-  const pinInput = $('pin-new');
-  const pinSaved = $('pin-saved');
-  async function loadPin() {
-    const r = await fetch('/api/pin').catch(() => null);
+  // ---- the players' accounts (GET and POST /api/admin/accounts): a new password shown once, off or on,
+  // delete (asked twice). Every name and email goes in as text.
+  let accounts = [];
+  async function loadAccounts() {
+    const r = await fetch('/api/admin/accounts').catch(() => null);
     if (!r || !r.ok) return;
-    const d = await r.json();
-    pinNow = typeof d.pin === 'string' && d.pin ? d.pin : null;
-    if (document.activeElement !== pinInput) pinInput.value = pinNow ?? '';
+    accounts = (await r.json()).accounts ?? [];
+    drawAccounts();
   }
-  $('pin-show').addEventListener('click', () => {
-    const show = pinInput.type === 'password';
-    pinInput.type = show ? 'text' : 'password';
-    $('pin-show').textContent = show ? 'Hide' : 'Show';
-    $('pin-show').setAttribute('aria-pressed', String(show));
-  });
-  pinInput.addEventListener('input', () => {
-    pinSaved.textContent = '';
-    clearTimeout(pinArmed);
-    pinArmed = 0;
-    $('pin-save').textContent = 'Save';
-  });
-  $('pin-form').addEventListener('submit', async (e) => {
-    e.preventDefault();
-    const next = pinInput.value.trim();
-    if (!/^[0-9]{4,12}$/.test(next)) {
-      pinSaved.textContent = 'The PIN: 4 to 12 digits.';
-      return;
-    }
-    if (next === pinNow) {
-      pinSaved.textContent = 'That is already the PIN.';
-      return;
-    }
-    if (!pinArmed) {
-      // Twice, because a new PIN logs out everyone who joined with the old one.
-      $('pin-save').textContent = 'Sure? Save again';
-      pinArmed = setTimeout(() => {
-        pinArmed = 0;
-        $('pin-save').textContent = 'Save';
-      }, 5000);
-      return;
-    }
-    clearTimeout(pinArmed);
-    pinArmed = 0;
-    $('pin-save').textContent = 'Save';
-    const r = await post('/api/pin', { pin: next }).catch(() => null);
-    if (!r || !r.ok) {
-      pinSaved.textContent = r && r.status === 400 ? 'The PIN: 4 to 12 digits.' : 'Not saved. Try again.';
-      return;
-    }
-    const d = await r.json().catch(() => ({}));
-    pinNow = next;
-    const n = Number(d.loggedOut) || 0;
-    pinSaved.textContent = n ? `Saved. ${count(n, 'player')} who joined with the old PIN ${n === 1 ? 'was' : 'were'} logged out.` : 'Saved.';
-  });
+  function drawAccounts() {
+    const q = $('acct-search').value.trim().toLowerCase();
+    const list = accounts.filter((a) => !q || a.username.includes(q) || String(a.email).toLowerCase().includes(q));
+    $('acct-empty').hidden = accounts.length > 0;
+    $('acct-count').textContent = count(accounts.length, 'account');
+    $('acct-rows').replaceChildren(...list.map((a) => {
+      const tr = el('tr');
+      const btn = (text, fn, cls = 'btn ghost') => {
+        const b = el('button', cls, text);
+        b.type = 'button';
+        b.addEventListener('click', () => fn(b));
+        return b;
+      };
+      const act = async (op) => {
+        const r = await post('/api/admin/accounts', { op, name: a.username }).catch(() => null);
+        if (!r || !r.ok) {
+          $('acct-msg').textContent = `${a.username}: not done. Try again.`;
+          return null;
+        }
+        return r.json();
+      };
+      const state = el('td', '', `${a.disabled ? 'Off' : 'On'}${a.online ? ' · playing now' : ''}`);
+      const actions = el('td');
+      const shown = el('span', 'tag');
+      shown.hidden = true;
+      let armed = 0;
+      actions.append(
+        btn('New password', async () => {
+          const d = await act('reset');
+          if (!d) return;
+          shown.textContent = d.password; // shown once, never kept
+          shown.hidden = false;
+          $('acct-msg').textContent = `${a.username} has a new password. Give it to them; it isn't shown again.`;
+        }),
+        btn(a.disabled ? 'Turn on' : 'Turn off', async () => {
+          if (await act(a.disabled ? 'on' : 'off')) loadAccounts();
+        }),
+        btn('Delete', async (b) => {
+          if (!armed) {
+            b.textContent = 'Sure? Delete';
+            armed = setTimeout(() => {
+              armed = 0;
+              b.textContent = 'Delete';
+            }, 5000);
+            return;
+          }
+          clearTimeout(armed);
+          if (await act('delete')) {
+            $('acct-msg').textContent = `${a.username} deleted.`;
+            loadAccounts();
+          }
+        }, 'btn ghost danger'),
+        shown,
+      );
+      tr.append(el('td', '', a.username), el('td', '', a.email), el('td', '', a.created), el('td', '', a.seen), state, actions);
+      return tr;
+    }));
+  }
+  $('acct-search').addEventListener('input', drawAccounts);
 
   // ---- the three code-locked homes (server/homes.mjs): a code for each, shown once
   const HOME_NAMES = { house: 'Main house (Briel)', bungalow: 'Bungalow', molenhoek_end: 'End house (Molenhoek)' };
