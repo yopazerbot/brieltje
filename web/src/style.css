@@ -1087,8 +1087,10 @@ button.tool:disabled { opacity: 0.45; cursor: not-allowed; }
   transition: background-color 0.15s, color 0.15s;
 }
 .rail .tab:hover { color: var(--ink); background: rgba(255, 255, 255, 0.04); }
-.rail .tab.selected { color: var(--ink); background: var(--dusk-raised); }
+.rail .tab.selected { position: relative; color: var(--ink); background: var(--dusk-raised); }
 .rail .tab.selected svg { color: var(--lamp); }
+/* The tab showing: a short lamplight bar at its left edge, seen from across the room with a controller too. */
+.rail .tab.selected::before { content: ''; position: absolute; left: 0; top: 50%; width: 4px; height: 22px; margin-top: -11px; background: var(--lamp); border-radius: 0 3px 3px 0; }
 .pages { display: flex; flex-direction: column; min-width: 0; min-height: 0; }
 .pages > .page { flex: 1; min-height: 0; overflow-y: auto; padding: 24px 32px 28px; scrollbar-width: thin; scrollbar-color: var(--dusk-high) transparent; }
 .pages > .map-page { display: flex; padding: 0; overflow: hidden; }

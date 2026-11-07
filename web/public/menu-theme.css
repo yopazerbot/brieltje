@@ -30,7 +30,7 @@
   outline: 2px solid var(--menu-accent);
   outline-offset: 2px;
 }
-#pause-panel .rail .tab.selected,
+/* (The game menu's rail marks its tab with a bar on the left instead: src/style.css.) */
 .admin .tabs button[aria-selected="true"] {
   background-color: var(--menu-surface);
   box-shadow: inset 0 -3px var(--menu-accent);

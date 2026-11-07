@@ -140,6 +140,8 @@ const en = {
   'menu.switchToKbm': 'Use keyboard and mouse',
   'menu.switchToPad': 'Use controller',
   'menu.who': '{name} · {control}',
+  // After menu.who with a controller: {keys} is "L1 / R1"
+  'menu.tabsPad': '{keys} change tabs',
   'tab.map': 'Map',
   'tab.play': 'Play',
   'tab.settings': 'Settings',
@@ -932,6 +934,7 @@ const nl = {
   'menu.switchToKbm': 'Gebruik toetsenbord en muis',
   'menu.switchToPad': 'Gebruik een controller',
   'menu.who': '{name} · {control}',
+  'menu.tabsPad': '{keys} wisselen van tabblad',
   'tab.map': 'Kaart',
   'tab.play': 'Spelen',
   'tab.settings': 'Instellingen',

@@ -438,7 +438,9 @@ export class Menu {
         return group;
       }),
     );
-    $('pause-who').textContent = t('menu.who', { name: this.shownName, control: t(({ pad: 'choose.pad', kbm: 'choose.kbm', touch: 'choose.touch' } as const)[control]) });
+    const who = t('menu.who', { name: this.shownName, control: t(({ pad: 'choose.pad', kbm: 'choose.kbm', touch: 'choose.touch' } as const)[control]) });
+    // With a controller: which buttons change the tab (the rail has no focus to follow then).
+    $('pause-who').textContent = control === 'pad' ? `${who} · ${t('menu.tabsPad', { keys: key('tabs', control) })}` : who;
     // The key that resumes, on the Resume button; with touch the button is the way (☰ is under the menu).
     $('resume-hint').textContent = control === 'touch' ? '' : key('menu', control);
     // The keys beside the menu's own items (the minimap, the FPS counter), for keyboard players.
