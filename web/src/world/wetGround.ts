@@ -237,6 +237,13 @@ export function wetOnModel(root: THREE.Object3D): void {
   });
 }
 
+/**
+ * Metres: what the puddles mirror ends here. A puddle seen from a walker's eye mirrors what stands near it; the far
+ * houses are small and in the haze, and are not drawn a second time for it.
+ */
+const MIRROR_FAR = 300;
+const UP = new THREE.Vector3(0, 1, 0);
+
 /** Seconds the rings' clock runs before it wraps (a whole number of every cell's cycles is not needed: a jump once in 17 minutes). */
 const WRAP = 1000;
 
@@ -296,15 +303,19 @@ export class WetMirror extends Pass {
     m.up.set(0, 1, 0).transformDirection(cam.matrixWorld);
     m.up.y = -m.up.y;
     m.lookAt(this.look.add(m.position));
-    m.far = cam.far;
     m.layers.mask = cam.layers.mask;
     m.updateMatrixWorld();
-    m.projectionMatrix.copy(cam.projectionMatrix);
-    m.projectionMatrixInverse.copy(cam.projectionMatrixInverse);
+    // The eye's view, but nothing further than MIRROR_FAR (the sky is drawn whatever the distance).
+    m.fov = cam.fov;
+    m.aspect = cam.aspect;
+    m.zoom = cam.zoom;
+    m.near = cam.near;
+    m.far = Math.min(cam.far, MIRROR_FAR);
+    m.updateProjectionMatrix();
     // From the world to the picture (before its near plane is tilted).
     wet.mirrorMatrix.value.set(0.5, 0, 0, 0.5, 0, 0.5, 0, 0.5, 0, 0, 0.5, 0.5, 0, 0, 0, 1).multiply(m.projectionMatrix).multiply(m.matrixWorldInverse);
     // The near plane laid on the ground's plane: nothing under it is drawn (Lengyel's oblique projection).
-    this.plane.set(new THREE.Vector3(0, 1, 0), -y0).applyMatrix4(m.matrixWorldInverse);
+    this.plane.set(UP, -y0).applyMatrix4(m.matrixWorldInverse);
     this.clip.set(this.plane.normal.x, this.plane.normal.y, this.plane.normal.z, this.plane.constant);
     const p = m.projectionMatrix.elements;
     this.q.set((Math.sign(this.clip.x) + p[8]) / p[0], (Math.sign(this.clip.y) + p[9]) / p[5], -1, (1 + p[10]) / p[14]);
