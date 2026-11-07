@@ -47,6 +47,7 @@ file's opening comment; run it again after adding, moving or removing a module.
 - `web/src/ui/menu.ts`: Start screen and in-game menu.
 - `web/src/ui/minimap.ts`: Minimap, top right: the plan of the floor you are on, cut at 1.2 m above that floor like a floor plan, over the big map's ground, turning with your view.
 - `web/src/ui/moodAdmin.ts`: The chat's line for a change from the server ('mood', op what changed, by who: a name, put in as text), in the page's language; null for none.
+- `web/src/ui/padNav.ts`: The controller in the pause menu (Yoshi, 7 Nov 2026: "de menu settings moeten allemaal bereikbaar zijn met een controller"): the D-pad or the left stick...
 - `web/src/ui/places.ts`: The menu's list of places (the Play tab), for those without a keyboard for /location: the portals, then the streets, each with how far it is, as the...
 - `web/src/ui/rooms.ts`: Zombies rooms in the menu's Together tab (Yoshi, 7 Nov 2026; server/rooms.mjs): the rooms open now with a Join button each, opening one (for players with an...
 - `web/src/ui/route.ts`: Directions along the roads, like a car's navigation: from where you are to the waypoint set on the big map, over the road register's centre lines...
@@ -179,10 +180,13 @@ file's opening comment; run it again after adding, moving or removing a module.
 - `web/server/constant-time-text.test.mjs`: Tests for constant-time-text, e.g. "exact text comparison preserves ASCII and Unicode password behaviour".
 - `web/server/door-ids.test.mjs`: Tests for door-ids, e.g. "every door id of the shell is one the server takes in a door message".
 - `web/server/feedback.mjs`: Feedback from players (Yoshi, 1 Nov 2026): after two minutes of play the game asks once for 1 to 5 stars and a comment (src/ui/feedback.ts).
+- `web/server/feedback.test.mjs`: The forms' senders (server/auth.mjs formBucketOf) and the admin's delete of a comment.
 - `web/server/football.mjs`: The footballs together (shared/ball.mjs): the server owns each ball.
 - `web/server/football.test.mjs`: The footballs together (server/football.mjs): the server owns each ball, a page only asks to kick it.
 - `web/server/game.mjs`: The shared house: the logged-in players over WebSocket (16 at once unless the admin allows fewer).
 - `web/server/gamenight.mjs`: The game night page (web/public/inschrijven/, Yoshi, 2 Nov 2026): signing up for the game night with a name, a first name, an email address, a street (the...
+- `web/server/grenade.mjs`: Where a thrown grenade may go off (server/game.mjs boom).
+- `web/server/grenade.test.mjs`: Tests for grenade, e.g. "a blast point within an honest throw stays where the browser says".
 - `web/server/homeGate.mjs`: The game server's side of the three homes that open only with a code (shared/homes.mjs, server/homes.mjs).
 - `web/server/homes-game.test.mjs`: The game server's side of the three code-locked homes (server/homeGate.mjs): doors, panes and standing inside.
 - `web/server/homes.mjs`: The three homes that open only with a code (Yoshi, 6 Nov 2026; shared/homes.mjs): the main house, the bungalow and the end house at Molenhoek.
@@ -195,6 +199,8 @@ file's opening comment; run it again after adding, moving or removing a module.
 - `web/server/pairing.mjs`: Logging in on a console with your phone (Yoshi, 7 Nov 2026: "sign in by scanning a QR code for console players so they don't have to type"), as a TV logs in...
 - `web/server/pairing.test.mjs`: Logging in on a console with the phone (server/pairing.mjs): only an account says yes, only the console's secret collects the session, once, never after a...
 - `web/server/parachute.test.mjs`: Tests for parachute, e.g. "the drop and canopy flags travel in a tick without touching the teleport counter".
+- `web/server/paths.mjs`: A request path as a file name (server.mjs serveFile).
+- `web/server/paths.test.mjs`: Tests for paths, e.g. "a request path with a broken %-escape is no file: null (the server answers 400, without a log line)".
 - `web/server/privateCrypto.mjs`: Sealed files for the private data (the insides of the three locked homes).
 - `web/server/privateCrypto.test.mjs`: Tests for privateCrypto, e.g. "a sealed file opens with the matching key and name".
 - `web/server/privateData.mjs`: The private data in memory (the insides of the three locked homes, see privateCrypto.mjs).
