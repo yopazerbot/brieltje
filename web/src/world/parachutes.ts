@@ -4,6 +4,7 @@ import * as SkeletonUtils from 'three/addons/utils/SkeletonUtils.js';
 import type { Body } from '../net/swat';
 import { DROP } from '../../shared/parachute.mjs';
 import { daylight } from './daylight';
+import { mood } from './mood';
 import { PilotPose, type FallPose } from './parachutePilot';
 
 /**
@@ -29,6 +30,7 @@ const GLIDES: Clip[] = ['Glide_Idle', 'Glide_Left', 'Glide_Right'];
 const LAND_RATE = 0.8; // Land_Collapse a little slower than made: the canopy settles softly
 const LAND = 2.4 / LAND_RATE; // s, Land_Collapse at that rate
 const GLOW = 0.28; // the accent's emissive: the player's colour times this (as the canopy's own)
+const CLOTH_NIGHT = 0.75; // by night the canopy's cloth reflects this much less of the light (see sweep)
 /** Everything the clips reach (docs/parachute/manifest.json): a skinned mesh is culled by it, not by its rest pose. */
 const REACH = new THREE.Box3(new THREE.Vector3(-3.8, 0, -4.1), new THREE.Vector3(3.8, 5.9, 2.4));
 const SPHERE = REACH.getBoundingSphere(new THREE.Sphere());
@@ -250,8 +252,15 @@ export class Parachutes {
     const now = performance.now();
     for (const [key, f] of this.flights) if (f.done || now - f.seen >= 1000) this.remove(key, f);
     if (this.flights.size) {
-      const light = daylight();
-      for (const m of this.glowing) m.emissiveIntensity = light;
+      // By night the glow goes altogether, and the cloth takes less of the moon: high in the open, facing it
+      // square on, the white panels were over ten times as bright as the moonlit house walls in the same frame
+      // (the houses' light is baked, the canopy's is the moon's full light). Now about twice as bright.
+      const light = daylight() * (1 - mood.night);
+      const cloth = 1 - CLOTH_NIGHT * mood.night;
+      for (const m of this.glowing) {
+        m.emissiveIntensity = light;
+        m.color.copy((m.userData.day ??= m.color.clone()) as THREE.Color).multiplyScalar(cloth);
+      }
     }
   }
 
