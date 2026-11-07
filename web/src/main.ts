@@ -23,6 +23,7 @@ import { Villagers } from './world/villagers';
 import { Christmas } from './world/christmas';
 import { fakeDay, seasonNow } from './world/season';
 import { Sinterklaas } from './world/sinterklaas';
+import { SintMaarten } from './world/sintmaarten';
 import { BIG as BIG_ZOMBIE, bigOf, Horde, houseAreas, makeNav } from '../shared/zombies.mjs';
 import { Loot, LOOT } from '../shared/loot.mjs';
 import { Rewards } from './world/rewards';
@@ -619,7 +620,9 @@ scene.add(villagers.group);
 // December (world/season.ts): the Christmas lights and the tree, and Sinterklaas on the church square (only in Explore).
 const christmas = new Christmas(world, (x, z) => house.ground + terrain.height(x, z), (root) => precompile(root));
 const sinterklaas = new Sinterklaas(world, (x, z) => house.ground + terrain.height(x, z), (root) => precompile(root));
-scene.add(christmas.group, sinterklaas.group);
+// November: Sint-Maarten on the square in the week up to the 11th, lanterns and carrots on his evenings (world/sintmaarten.ts).
+const sintMaarten = new SintMaarten(world, (x, z) => house.ground + terrain.height(x, z), (root) => precompile(root));
+scene.add(christmas.group, sinterklaas.group, sintMaarten.group);
 // Three horses grazing in the meadow across the road.
 const horses = new Horses(world);
 scene.add(horses.group);
@@ -2851,6 +2854,7 @@ renderer.setAnimationLoop((now: number) => {
   const exploring = !menu.onStartScreen && !weapon.enabled && !games.zombies && games.view.kind !== 'teams';
   villagers.setActive(exploring);
   sinterklaas.setActive(exploring && seasonNow().sinterklaas); // the same test: never something to shoot at
+  sintMaarten.setActive(exploring && seasonNow().sintMaarten, seasonNow().sintMaartenEve);
   christmas.setSolid(games.zombies ? 'off' : weapon.enabled ? 'walk' : 'full'); // the tree, as the server knows the world
   // The Zombies game: the clowns and strongmen stand aside, nobody flies, and whoever is down waits for the wave.
   clowns.paused = games.standAside;
@@ -3031,8 +3035,8 @@ renderer.setAnimationLoop((now: number) => {
     // The bikes: E next to one gets you on it, and off again.
     const nearBike = !inCar && !onHorse && !dead && !nearCar && nearHorse < 0 && !games.zombies && bikeWanted === null ? bikes.nearest(player.x, player.z, player.feet) : null;
     const bikeTaken = !!nearBike?.rider && nearBike.rider !== me?.username;
-    // Sinterklaas on the church square in his days (world/sinterklaas.ts): E next to him, and he hands out a treat.
-    const nearSint = !inCar && !onHorse && !dead && !nearCar && nearHorse < 0 && !nearBike && !target && sinterklaas.near(player.x, player.z, player.feet);
+    // Sinterklaas or Sint-Maarten on the church square in their days (world/sinterklaas.ts): E next to him, and he hands out a treat.
+    const nearSint = !inCar && !onHorse && !dead && !nearCar && nearHorse < 0 && !nearBike && !target ? [sinterklaas, sintMaarten.rider].find((s) => s.near(player.x, player.z, player.feet)) : undefined;
     const carTaken = !!car.driver && car.driver !== me?.username;
     const seatFree = carTaken && !car.passenger;
     if ((driving || riding) && frame.usePressed) getOut();
@@ -3041,7 +3045,7 @@ renderer.setAnimationLoop((now: number) => {
     else if (nearCar && !target && (!carTaken || seatFree) && !wantCar && frame.usePressed) getIn();
     else if (nearHorse >= 0 && !target && frame.usePressed) mountHorse(nearHorse);
     else if (nearBike && !bikeTaken && !target && frame.usePressed) getOnBike(nearBike.id);
-    else if (nearSint && frame.usePressed) sinterklaas.treat(player.x, player.z);
+    else if (nearSint && frame.usePressed) nearSint.treat(player.x, player.z);
     if (action && !dead && !inCar) {
       if (frame.weaponSlot) weapon.selectSlot(frame.weaponSlot);
       if (frame.weaponCycle) weapon.cycle(frame.weaponCycle === 2 ? 0 : frame.weaponCycle);
@@ -3157,7 +3161,7 @@ renderer.setAnimationLoop((now: number) => {
       if (bikeHint > 0) prompt = t('prompt.cycling', { speed: speed(bikes.ridden?.speed ?? 0), bell: key('bell', mode), use });
     }
     else if (nearBike && !target) prompt = bikeTaken ? t('prompt.bikeTaken', { name: nearBike.rider ?? '' }) : t('prompt.bike', { use });
-    else if (nearSint) prompt = t('prompt.sint', { use });
+    else if (nearSint) prompt = t(nearSint.spec.prompt, { use });
     else if (player.towerHint && !inCar && !onHorse) prompt = towerPrompt(player.towerHint, mode); // the play tower's ladder
     if (ball && !tagWho && !driving && !riding) prompt = t('prompt.kick', { key: key(action && !noShoot(player.x, player.z) ? 'use' : 'click', mode), run: key('sprint', mode) });
     if (downed) prompt = helping?.start ? t('prompt.reviving', { name: downed }) : t('prompt.revive', { use, name: downed });
@@ -3323,6 +3327,7 @@ renderer.setAnimationLoop((now: number) => {
   bikes.update(dt, camera.position);
   christmas.update(dt, seasonNow().christmas, camera, renderer.domElement.height);
   sinterklaas.update(dt, camera, driving || riding || horses.mounted >= 0 || bikes.mounted ? null : { x: player.x, z: player.z }, !menu.open, { w: window.innerWidth, h: window.innerHeight });
+  sintMaarten.update(dt, camera, driving || riding || horses.mounted >= 0 || bikes.mounted ? null : { x: player.x, z: player.z }, !menu.open, { w: window.innerWidth, h: window.innerHeight }, villagers);
   // The footballs: walked into on foot (alone here; together the server does it too, and leads).
   const onFoot = combat.alive && !driving && !riding && !bikes.mounted && horses.mounted < 0 && !player.flying && player.chute === null;
   football.update(dt, camera.position, onFoot ? { x: player.x, z: player.z, feet: player.feet, name: me?.username ?? '' } : null, net.connected);
@@ -3813,7 +3818,8 @@ if (import.meta.env.DEV) {
       villagers,
       christmas,
       sinterklaas,
-      /** December on this page only: briel.season.fake('2026-12-01') pretends that day, fake(null) is today again (world/season.ts). */
+      sintMaarten,
+      /** November and December on this page only: briel.season.fake('2026-12-01') pretends that day, fake(null) is today again (world/season.ts). */
       season: { fake: (day: string | null) => fakeDay(day), now: () => seasonNow() },
       zombiesSolo: { start: startSolo, stop: stopSolo, state: () => solo },
       /** Zombies' rewards: those lying and the claymores down, and what you have. */
