@@ -66,11 +66,12 @@ export function treeCrown(seed: number, simple = false): THREE.BufferGeometry {
 
 /**
  * A flared foot, a trunk that leans and bends a little (each tree is turned its own way, so they lean every
- * which way), two tapering forks into the crown and a lower bough below it, all in the same bark draw.
+ * which way), two tapering forks into the crown and a lower bough below it, all in the same bark draw: 60 triangles.
+ * `coarse` (Low and phones): the trunk alone, with five sides in two lengths, 20 triangles.
  */
-export function treeTrunk(): THREE.BufferGeometry {
+export function treeTrunk(coarse = false): THREE.BufferGeometry {
   // Open: the foot stands in the ground and the top in the crown.
-  const stem = new THREE.CylinderGeometry(0.035, 0.1, 1, 7, 3, true).translate(0, 0.5, 0);
+  const stem = new THREE.CylinderGeometry(0.035, 0.1, 1, coarse ? 5 : 7, coarse ? 2 : 3, true).translate(0, 0.5, 0);
   const pos = stem.getAttribute('position');
   for (let i = 0; i < pos.count; i++) {
     const y = pos.getY(i);
@@ -86,8 +87,10 @@ export function treeTrunk(): THREE.BufferGeometry {
     branch.translate(...a.clone().add(b).multiplyScalar(0.5).toArray());
     parts.push(branch);
   };
-  for (const sign of [-1, 1]) bough(new THREE.Vector3(0.05, 0.58 + sign * 0.05, 0), new THREE.Vector3(sign * 0.65, 1.12, sign * 0.22), 0.045, 0.012);
-  bough(new THREE.Vector3(0.03, 0.44, 0), new THREE.Vector3(-0.2, 0.74, 0.55), 0.03, 0.008);
+  if (!coarse) {
+    for (const sign of [-1, 1]) bough(new THREE.Vector3(0.05, 0.58 + sign * 0.05, 0), new THREE.Vector3(sign * 0.65, 1.12, sign * 0.22), 0.045, 0.012);
+    bough(new THREE.Vector3(0.03, 0.44, 0), new THREE.Vector3(-0.2, 0.74, 0.55), 0.03, 0.008);
+  }
   const geometry = mergeGeometries(parts);
   parts.forEach((part) => part.dispose());
   const vertices = geometry.getAttribute('position');

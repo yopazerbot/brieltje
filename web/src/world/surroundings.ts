@@ -404,8 +404,46 @@ const TREE_ORDER = 0.4;
 const COVER_ORDER = 0.5;
 const GROUND_COVERS = new Set(['road', 'field_soil', 'field_dark', 'field_crop', 'forest', 'pave_light', 'pave_warm', 'pave_grey', 'pave_walk', 'gravel', 'track']);
 
-/** Three connected crowns in full and simplified forms, and a forked trunk; made once. */
-let treeShapes: { full: THREE.BufferGeometry[]; simple: THREE.BufferGeometry[]; trunk: THREE.BufferGeometry } | null = null;
+/**
+ * Three connected crowns in full and simplified forms, and a forked trunk; made once. `full` and `trunk` are the shapes
+ * the near trees' crowns and all trunks are drawn with: they hold the corners of `rich` and `bark`, or on Low and
+ * phones those of `simple` and `stick` (setTreeDetail).
+ */
+let treeShapes: {
+  full: THREE.BufferGeometry[];
+  rich: THREE.BufferGeometry[];
+  simple: THREE.BufferGeometry[];
+  trunk: THREE.BufferGeometry;
+  bark: THREE.BufferGeometry;
+  stick: THREE.BufferGeometry;
+} | null = null;
+let fullTrees = true;
+
+/** Give a shape the corners (points, normals, colours, texture places and triangles) of another one. */
+function shapeFrom(into: THREE.BufferGeometry, from: THREE.BufferGeometry): THREE.BufferGeometry {
+  for (const name of Object.keys(into.attributes)) if (!from.getAttribute(name)) into.deleteAttribute(name);
+  for (const [name, attribute] of Object.entries(from.attributes)) into.setAttribute(name, attribute);
+  into.setIndex(from.getIndex());
+  from.boundingSphere ?? from.computeBoundingSphere();
+  into.boundingSphere = from.boundingSphere;
+  into.boundingBox = null;
+  return into;
+}
+
+/**
+ * The trees in full, or coarser on Low and on phones (Yoshi, 7 Nov 2026), where the triangles, not the pixels, set
+ * the frame time: the near trees' crowns (round the house and the church) take the simple shape the far ones have
+ * (180 triangles instead of 980), and the trunks lose their forks (20 instead of 60). The hedges' leafy lumps stay:
+ * leaving out every other one saved 20k triangles and dotted the hedges' sides.
+ */
+export function setTreeDetail(full: boolean): void {
+  fullTrees = full;
+  const s = treeShapes;
+  if (s) {
+    s.full.forEach((g, k) => shapeFrom(g, full ? s.rich[k] : s.simple[k]));
+    shapeFrom(s.trunk, full ? s.bark : s.stick);
+  }
+}
 
 type Pole = NonNullable<Surroundings['poles']>[number];
 
@@ -496,11 +534,14 @@ export function buildTile(data: TileData, poles: Pole[], renderer: THREE.WebGLRe
  * so they keep its colour and never look like separate floating balls.
  */
 function buildTrees(allTrees: Surroundings['trees'], detail: (x: number, z: number) => boolean, prisms: NonNullable<Surroundings['prisms']>): Piece[] {
-  treeShapes ??= {
-    full: [0, 1, 2].map((k) => treeCrown(1234 + k * 999)),
-    simple: [0, 1, 2].map((k) => treeCrown(1234 + k * 999, true)),
-    trunk: treeTrunk(),
-  };
+  if (!treeShapes) {
+    const rich = [0, 1, 2].map((k) => treeCrown(1234 + k * 999));
+    const simple = [0, 1, 2].map((k) => treeCrown(1234 + k * 999, true));
+    const bark = treeTrunk();
+    const stick = treeTrunk(true);
+    const full = rich.map((g, k) => shapeFrom(new THREE.BufferGeometry(), fullTrees ? g : simple[k]));
+    treeShapes = { full, rich, simple, trunk: shapeFrom(new THREE.BufferGeometry(), fullTrees ? bark : stick), bark, stick };
+  }
   const shapes = treeShapes;
   // Round the house and the church no crown grows into another crown, a hedge or a wall: it shrinks
   // to fit, or the tree is left out (world/treeSpacing.ts). The woods further out stay as they are.

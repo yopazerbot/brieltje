@@ -75,7 +75,7 @@ import { skidMarks } from './world/skidMarks';
 import { boxesOverlap, boxPoints, clearOfPortals, indoorName, makeIndoors } from '../shared/parking.mjs';
 import CARS from '../shared/car.json';
 import BIKES_DATA from '../shared/bike.json';
-import { buildHedges, buildTile, dipMesh, waterMesh } from './world/surroundings';
+import { buildHedges, buildTile, dipMesh, setTreeDetail, waterMesh } from './world/surroundings';
 import { setWaterDetail, waterLevel, wetGround } from './world/water';
 import { buildHorizon } from './world/horizon';
 import { wearLonePatches, weatherYards } from './world/yards';
@@ -488,6 +488,7 @@ function applyQuality(q: Quality): void {
   weather.setQuality(q, phone); // how many streaks of rain
   setWindowDetail(q !== 'low' && !phone); // rooms behind the village's windows (world/windows.ts)
   setWaterDetail(q !== 'low' && !phone); // rain rings on the ponds (world/water.ts)
+  setTreeDetail(q !== 'low' && !phone); // the near trees' crowns and the trunks (world/surroundings.ts)
   tiles.drawDistance = phone ? Math.min(FAR_PHONE, preset.far) : preset.far;
   undergrowth.setQuality(q, phone);
   dynScale = 1;
