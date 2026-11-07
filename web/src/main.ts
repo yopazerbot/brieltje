@@ -118,6 +118,7 @@ import { buildRoadDetail, roadPaint, withRoadDetail } from './world/roadDetail';
 import { RoadLife } from './world/roadLife';
 import { looseProps, type Mover } from './world/looseProps';
 import { Crash } from './world/crash';
+import { TyreSpray } from './world/tyreSpray';
 import { clearOpenGround, fitStreetModel, loadStreetModel } from './world/streetModel';
 import { bakeLight, setBakeDetail } from './world/bakedLight';
 import { setWindowDetail, setWindowNight } from './world/windows';
@@ -593,6 +594,7 @@ const effects = new Effects(scene, new Decals(scene), (x, z, y) => world.groundA
 looseProps.attach(scene, world, effects.particles); // the street's bins, bikes, letterboxes and posts that cars knock over (world/looseProps.ts)
 const crash = new Crash(effects.particles);
 Car.onCrash = (hit) => crash.hit(hit); // sparks, dust or leaves, and a crunch, by what a car hit (world/crash.ts)
+const tyreSpray = new TyreSpray(effects.particles, world); // behind the wheels on a wet road
 const grenades = new Grenades(world);
 scene.add(grenades.group);
 const pickups = new Pickups((x, z, y) => world.groundAt(x, z, y + 0.3, 0).y);
@@ -3309,8 +3311,15 @@ renderer.setAnimationLoop((now: number) => {
   effects.particles.budget = quality === 'low' ? 0.5 : 1; // big smoke puffs are many pixels each
   // Splashes: rings round you afloat, spray from the wheels of a car through a ford (world/splashes.ts).
   effects.splashes.swim(player.x, player.z, player.water, dt);
-  for (const c of cars) if (Math.hypot(c.x - camera.position.x, c.z - camera.position.z) < 80) effects.splashes.wheels(c.id, c.x, c.z, c.y, c.yaw, c.spec.length / 2, c.spec.width / 2, dt);
-  for (const k of bikes.riders()) effects.splashes.wheels(`bike-${k.id}`, k.x, k.z, k.y, k.yaw, 0.55, 0.12, dt); // yours and the others' bikes through a ditch
+  for (const c of cars) {
+    if (!c.ready || Math.hypot(c.x - camera.position.x, c.z - camera.position.z) >= 80) continue;
+    effects.splashes.wheels(c.id, c.x, c.z, c.y, c.yaw, c.spec.length / 2, c.spec.width / 2, dt);
+    tyreSpray.wheels(c.id, c.x, c.z, c.y, c.yaw, c.spec.length / 2, c.spec.width / 2, dt); // and spray in the rain (world/tyreSpray.ts)
+  }
+  for (const k of bikes.riders()) {
+    effects.splashes.wheels(`bike-${k.id}`, k.x, k.z, k.y, k.yaw, 0.55, 0.12, dt); // yours and the others' bikes through a ditch
+    tyreSpray.wheels(`bike-${k.id}`, k.x, k.z, k.y, k.yaw, 0.85, 0.1, dt, true);
+  }
   effects.update(dt);
   grenades.update(dt);
   pickups.update(dt, !net.connected);
