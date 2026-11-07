@@ -1456,12 +1456,21 @@ body.touch #controls-card { top: calc(8px + env(safe-area-inset-top, 0px)); tran
 body.seat #start-panel > :not(.start-head, #mp-session, .start-choices) { display: none; }
 body.seat .start-choices .choice:not(.loading) { display: none; }
 /* In a quarter of the screen the HUD is crowded: no wordmark, no credit line, and the list of who is
-   online only on the scoreboard (it covered the ammo). The split screen's page names each view. */
+   online only on the scoreboard (it covered the ammo). The view names itself (below). */
 body.seat :is(#brand, #credit, #online) { display: none; }
+/* The view's own tag, top left: "2 · robin" in the seat's colour (src/seat.ts sets --seat-c and
+   --seat-n), so each player sees at once which view is theirs. The split-screen page's tag goes once
+   the view plays. */
+body.seat #who {
+  padding: 1px 9px 2px; border-radius: 6px; font-weight: 800; letter-spacing: 0.02em;
+  color: #15110a; background: var(--seat-c, var(--accent)); text-shadow: none;
+}
+body.seat #who::before { content: var(--seat-n, "") " · "; }
+body.seat #who:empty { display: none; }
 
 /* ---- A small view (src/ui/compact.ts): a quarter or a half of the split screen, or a small window,
    played with the keyboard and mouse or a controller (touch keeps its own layout above). Down the left
-   the name, where you are and the menu's key; the map top right, smaller; the game's
+   the name (the seat's tag), where you are and the menu's key; the map top right, smaller; the game's
    bar and the round's messages stacked in the middle of the top, between the two; the kill feed under
    the map; the weapon in your hands, its ammo and the grenades bottom right; the health bottom middle;
    the chat bottom left, its newest lines only. The wordmark, the credit line and the online list go

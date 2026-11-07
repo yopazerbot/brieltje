@@ -22,6 +22,7 @@
  */
 import { btnOf, familyName, familyOf, type PadFamily } from '../controls/padFamily';
 import { applyStatic, listOf, onLang, serverText, setLang, t, type Lang } from '../i18n';
+import { SEAT_COLOURS } from '../seat';
 import './page.css';
 
 const $ = <T extends HTMLElement = HTMLElement>(id: string) => document.getElementById(id) as T;
@@ -29,8 +30,8 @@ const SEATS = 4;
 const NAME_RE = /^[a-z0-9_-]{2,20}$/; // the server's own rule (server/auth.mjs); it checks again
 /** How long a copy may take to start before the next one starts anyway. */
 const NEXT_AFTER_MS = 15_000;
-/** Each player's colour on the cards (the game gives its own colours once they play). */
-const COLOURS = ['#f2b544', '#4fc3f7', '#ef6f8a', '#81c784'];
+/** Each player's colour on the cards and on the tag in their view (the game gives its own colours to the figures). */
+const COLOURS = SEAT_COLOURS;
 
 interface Seat {
   n: number;
@@ -562,9 +563,12 @@ window.addEventListener('message', (e) => {
   if (i < 0 || m?.briel !== 'seat' || m.n !== players[i]?.n) return;
   if ((m.state === 'playing' || m.state === 'alone') && !frames[i + 1]) load(i + 1); // the next one starts
   const tag = $('grid').children[i]?.querySelector<HTMLElement>('.tag');
+  // Once it plays, the view shows its own tag top left (src/seat.ts), clear of its HUD: this one goes.
+  if (tag && m.state === 'playing') tag.hidden = true;
   if (tag && m.state === 'ended') {
     tag.textContent = t('split.ended', { name: players[i].name });
     tag.classList.add('bad');
+    tag.hidden = false;
   }
 });
 

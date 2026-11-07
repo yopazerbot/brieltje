@@ -54,6 +54,15 @@ function detect(): Seat | null {
 
 export const seat: Seat | null = detect();
 
+/** Each player's colour: on the split-screen page's cards, and on the seat's tag in its view (style.css body.seat #who). */
+export const SEAT_COLOURS = ['#f2b544', '#4fc3f7', '#ef6f8a', '#81c784'];
+
+// The tag top left in the view says whose it is, "2 · robin" in the seat's colour (the name is set as text by the menu).
+if (seat) {
+  document.documentElement.style.setProperty('--seat-c', SEAT_COLOURS[seat.n - 1]);
+  document.documentElement.style.setProperty('--seat-n', `"${seat.n}"`);
+}
+
 /** Headers for every call to our server: the seat it speaks for (none outside the split screen). */
 export const seatHeaders: Record<string, string> = seat ? { 'X-Briel-Seat': String(seat.n) } : {};
 

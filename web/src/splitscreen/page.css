@@ -109,6 +109,10 @@ label.field { display: block; margin: 16px 0 6px; font-weight: 800; }
   padding: 3px 12px; color: var(--ink); font: inherit; font-size: 13px; font-weight: 800; background: rgba(8, 10, 14, 0.75);
   border: 0; border-radius: 0 0 8px 8px; cursor: pointer;
 }
+/* Folded to a small tab between the views' corners (the map of the view on the left, the tag of the
+   one on the right), unfolded under the mouse or the keyboard's focus. */
+.tools:not(:hover, :focus-within) button { width: 0; padding: 0; overflow: hidden; }
+.tools:not(:hover, :focus-within)::before { content: ''; width: 22px; height: 12px; background: rgba(8, 10, 14, 0.75); border-radius: 0 0 8px 8px; }
 @media (max-width: 640px) {
   html, body { font-size: 18px; }
   .card { padding: 18px 16px; }
