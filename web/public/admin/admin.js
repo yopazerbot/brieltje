@@ -212,6 +212,7 @@
   function openTab(name, how) {
     selectTab(name, how);
     if (name === 'online' || name === 'overview') refreshStats();
+    if (name === 'online') loadPin();
     if (name === 'logins') loadLog();
     if (name === 'signups') loadSignups();
     if (name === 'gamenight') loadGamenight();
@@ -910,6 +911,64 @@
   $('gn-search').addEventListener('input', drawGamenight);
 
   // ---- the login log
+  // ---- the multiplayer PIN (GET and POST /api/pin, admin only): shown hidden, a new one asked twice
+  let pinNow = null; // the PIN as the server has it, null for none
+  let pinArmed = 0; // a timer while "Save" waits for the second click
+  const pinInput = $('pin-new');
+  const pinSaved = $('pin-saved');
+  async function loadPin() {
+    const r = await fetch('/api/pin').catch(() => null);
+    if (!r || !r.ok) return;
+    const d = await r.json();
+    pinNow = typeof d.pin === 'string' && d.pin ? d.pin : null;
+    if (document.activeElement !== pinInput) pinInput.value = pinNow ?? '';
+  }
+  $('pin-show').addEventListener('click', () => {
+    const show = pinInput.type === 'password';
+    pinInput.type = show ? 'text' : 'password';
+    $('pin-show').textContent = show ? 'Hide' : 'Show';
+    $('pin-show').setAttribute('aria-pressed', String(show));
+  });
+  pinInput.addEventListener('input', () => {
+    pinSaved.textContent = '';
+    clearTimeout(pinArmed);
+    pinArmed = 0;
+    $('pin-save').textContent = 'Save';
+  });
+  $('pin-form').addEventListener('submit', async (e) => {
+    e.preventDefault();
+    const next = pinInput.value.trim();
+    if (!/^[0-9]{4,12}$/.test(next)) {
+      pinSaved.textContent = 'The PIN: 4 to 12 digits.';
+      return;
+    }
+    if (next === pinNow) {
+      pinSaved.textContent = 'That is already the PIN.';
+      return;
+    }
+    if (!pinArmed) {
+      // Twice, because a new PIN logs out everyone who joined with the old one.
+      $('pin-save').textContent = 'Sure? Save again';
+      pinArmed = setTimeout(() => {
+        pinArmed = 0;
+        $('pin-save').textContent = 'Save';
+      }, 5000);
+      return;
+    }
+    clearTimeout(pinArmed);
+    pinArmed = 0;
+    $('pin-save').textContent = 'Save';
+    const r = await post('/api/pin', { pin: next }).catch(() => null);
+    if (!r || !r.ok) {
+      pinSaved.textContent = r && r.status === 400 ? 'The PIN: 4 to 12 digits.' : 'Not saved. Try again.';
+      return;
+    }
+    const d = await r.json().catch(() => ({}));
+    pinNow = next;
+    const n = Number(d.loggedOut) || 0;
+    pinSaved.textContent = n ? `Saved. ${count(n, 'player')} who joined with the old PIN ${n === 1 ? 'was' : 'were'} logged out.` : 'Saved.';
+  });
+
   // ---- the three code-locked homes (server/homes.mjs): a code for each, shown once
   const HOME_NAMES = { house: 'Main house (Briel)', bungalow: 'Bungalow', molenhoek_end: 'End house (Molenhoek)' };
   async function loadHomes() {

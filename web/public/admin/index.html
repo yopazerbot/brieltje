@@ -206,6 +206,18 @@
       </section>
 
       <section data-panel="online" id="panel-online" role="tabpanel" aria-labelledby="tab-online" hidden>
+        <!-- The multiplayer PIN (POST /api/pin, admin only, as the in-game admin tab sets it). -->
+        <form class="gn-night" id="pin-form" autocomplete="off">
+          <h2 class="sub">Multiplayer PIN <span class="muted small">what players type to play together</span></h2>
+          <label class="field" for="pin-new">PIN</label>
+          <div class="pin-row">
+            <input type="password" id="pin-new" inputmode="numeric" maxlength="12" autocomplete="new-password" spellcheck="false" placeholder="No PIN set: joining is closed" />
+            <button class="btn ghost" type="button" id="pin-show" aria-pressed="false">Show</button>
+          </div>
+          <p class="muted small">4 to 12 digits. A new PIN logs out everyone who joined with the old one.</p>
+          <div class="actions"><button class="btn" type="submit" id="pin-save">Save</button><span class="muted small" id="pin-saved" aria-live="polite"></span></div>
+        </form>
+        <h2 class="sub">Online now</h2>
         <p class="muted" id="online-count"></p>
         <ul class="online" id="online-list"></ul>
       </section>

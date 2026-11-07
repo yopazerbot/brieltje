@@ -223,3 +223,7 @@ table.gn td:last-child { white-space: nowrap; }
   table.gn td.comment { grid-column: 1 / -1; min-width: 0; color: var(--ink); font-size: 14px; }
   table.gn td:last-child { grid-column: 1 / -1; margin-top: 4px; }
 }
+
+/* The multiplayer PIN (Online now): the field and its Show button on one line. */
+.pin-row { display: flex; gap: 8px; align-items: center; max-width: 360px; }
+.pin-row input { flex: 1; min-width: 0; letter-spacing: 0.12em; }
