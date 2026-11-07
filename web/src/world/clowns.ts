@@ -278,7 +278,7 @@ export class Clowns {
     canvas.height = 16;
     const texture = new THREE.CanvasTexture(canvas);
     texture.colorSpace = THREE.SRGBColorSpace;
-    const sprite = new THREE.Sprite(new THREE.SpriteMaterial({ map: texture, depthTest: false, transparent: true }));
+    const sprite = new THREE.Sprite(new THREE.SpriteMaterial({ map: texture, depthTest: false, transparent: true, depthWrite: false }));
     sprite.scale.set(2.2, 0.28, 1);
     sprite.renderOrder = 10;
     sprite.userData.ignoreRay = true;

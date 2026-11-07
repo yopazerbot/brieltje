@@ -42,7 +42,7 @@ function roleLabel(role: Role): THREE.SpriteMaterial {
   g.textAlign = 'center';
   g.textBaseline = 'middle';
   g.fillText(word.toUpperCase(), 128, 33);
-  mat = new THREE.SpriteMaterial({ map: cropped(c, w + 2), transparent: true });
+  mat = new THREE.SpriteMaterial({ map: cropped(c, w + 2), transparent: true, depthWrite: false });
   mat.userData.width = (w + 2) / 256;
   labels.set(key, mat);
   return mat;
@@ -144,7 +144,7 @@ function nameTag(name: string, color: string): THREE.Sprite {
   g.textAlign = 'center';
   g.textBaseline = 'middle';
   g.fillText(name, 128, 32);
-  const s = new THREE.Sprite(new THREE.SpriteMaterial({ map: cropped(c, w + 2), depthTest: false, transparent: true }));
+  const s = new THREE.Sprite(new THREE.SpriteMaterial({ map: cropped(c, w + 2), depthTest: false, transparent: true, depthWrite: false }));
   s.userData.width = (w + 2) / 256; // the share of the picture the box takes: the sprite is only that wide
   s.scale.set(0.9 * s.userData.width, 0.225, 1);
   s.renderOrder = 10;
