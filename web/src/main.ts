@@ -557,7 +557,7 @@ clowns.setAll(CLOWN_DEFAULTS);
 scene.add(clowns.group);
 let localClown = 1000; // ids for clowns placed alone
 // The Zombies game's zombies (our own models, world/zombies.ts): the server's together, this page's alone.
-const zombies = new Zombies((x, z, y) => world.groundAt(x, z, y, 0).y);
+const zombies = new Zombies((x, z, y) => world.groundAt(x, z, y, 0).y, world, () => quality === 'low' || phone);
 scene.add(zombies.group, zombies.hits);
 // Their shaders compile in the background (see precompile) once the models and the sky's light are in, and again
 // as a Zombies game begins (a moment if nothing changed): hidden until a wave comes, they would compile on first
@@ -1427,6 +1427,7 @@ weapon.onZombieHit = (hits, paint) => {
   for (const h of hits) {
     effects.zombieHit(h.point);
     if (paint) zombies.paint(h.id, h.ray, paint.color, paint.size);
+    zombies.struck(h.id, h.point, h.ray.direction, w); // which way it falls, if this beats it
   }
   if (net.connected) {
     combat.hitMarker();
@@ -1447,7 +1448,7 @@ weapon.onZombieHit = (hits, paint) => {
 function zombieResult(id: number, res: 'down' | 'hurt' | null, w: string): void {
   if (!res) return;
   if (res !== 'down') return w === 'turret' ? undefined : combat.hitMarker(); // a turret's hits aren't yours to see
-  zombies.beaten(id);
+  zombies.beaten(id, { x: player.x, z: player.z, w });
   // Maybe a reward where it fell (the wave's last leaves one when none fell yet).
   const z = solo?.horde.zombies.get(id);
   if (solo && z) solo.loot.drop(z, performance.now(), solo.horde.left === 0, [SOLO_ME]);
@@ -1702,6 +1703,7 @@ function explode(at: THREE.Vector3, mine: boolean, w: 'bazooka' | 'grenade' = 'b
     rumble(near, near, 300);
   }
   life.scare(at, 45);
+  zombies.blast(at, radius, w); // the fallen near it thrown a little outward (only how they fall: the server decides who)
   if (!mine) return;
   for (const i of glass.near(at, radius * 0.7)) if (glass.break(i, at, at)) net.send({ t: 'glass', i });
   for (const i of cats.near(at, radius)) catHit(i, at, w);
@@ -2291,12 +2293,14 @@ net.onMessage = (m: ServerMsg) => {
       clowns.down(m.id, m.ms / 1000);
       combat.kill(m.by, whoName(clowns.name(m.id)), false, weaponName(m.w));
       break;
-    case 'zdown': // a zombie beaten (server/zombies.mjs): it falls, or vanishes in paint
-      zombies.beaten(m.id);
+    case 'zdown': { // a zombie beaten (server/zombies.mjs): it falls (away from whoever beat it), or vanishes in paint
+      const by = m.by === me?.username ? player : avatars.position(m.by);
+      zombies.beaten(m.id, by && { x: by.x, z: by.z, w: m.w });
       // In the kill feed: your own, and the big ones (sixteen players beat over a hundred in a wave: a flood otherwise).
       if (m.by === me?.username || zombies.isBig(m.id)) combat.zombie(m.by, zombieName(zombies.isBig(m.id)), weaponName(m.w));
       if (m.double) combat.double(m.by); // one sniper's bullet, two zombies: everyone's feed
       break;
+    }
     case 'revive': // helping a teammate up (you: `name`), or being helped up (`by`): it starts or stops
       if (m.name && helping?.name === m.name) {
         if (m.op === 'start') Object.assign(helping, { start: performance.now(), ms: m.ms ?? 3000 });

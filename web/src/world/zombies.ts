@@ -5,6 +5,7 @@ import type { ZombieAct, ZombieSample } from '../../shared/wire.mjs';
 import { netClock, Track } from '../net/track';
 import { sound } from '../sound';
 import { paintball } from '../paintball';
+import { HEAD_UP, PART_BONES, PARTS, Ragdoll, segmentOf, SEGS, type RagdollWorld } from './ragdoll';
 
 /**
  * The Zombies game's zombies on screen (shared/zombies.mjs runs them: the server together, the page
@@ -28,8 +29,13 @@ import { paintball } from '../paintball';
  * the hit's spot on the posed body is found on the processor (the same matrices), turned back to the
  * figure's rest pose, and up to eight spots a zombie are painted by its fragment shader.
  *
- * Down: they fall over and fade; in paintball they vanish in a puff of paint. They groan now and then
- * (made in code like the game's other sounds, quiet, from where they stand), swish when they swipe.
+ * Down: they go limp and fall as a ragdoll (world/ragdoll.ts), pushed a little the way the shot went
+ * (a shotgun or a sniper more, a blast outward), against the ground, walls and steps; then they lie
+ * still and fade. The fallen ones' bones are rows of their own at the bottom of the bone picture
+ * (RAG_SLOTS of them), written as they fall and uploaded alone. At most RAG_AWAKE fall at once (the
+ * oldest stops where it is); with no row free one plays its fall clip as before. In paintball they
+ * vanish in a puff of paint. They groan now and then (made in code like the game's other sounds,
+ * quiet, from where they stand), swish when they swipe.
  */
 
 const URL_GLB = '/models/zombies.glb';
@@ -46,6 +52,14 @@ const LURCH_FROM = 0.95; // m/s: faster than this a regular zombie lurches (abou
 const RUN_FROM = 1.6; // m/s: faster than this a runner sprints (its run's own pace is about 3.2)
 const FALL_FADE = 0.9; // s the fallen body takes to fade, from 2 s after the fall
 const PUFF_S = 0.22; // s a beaten zombie takes to vanish in paintball
+const RAG_SLOTS = 24; // fallen ones with a ragdoll pose of their own at once (rows of the bone picture, two each)
+const RAG_AWAKE = [8, 5]; // ragdolls falling at once (desktop, phone or Low); the oldest stops where it is
+const RAG_PASSES = [6, 3]; // the solver's passes a step (desktop, phone or Low)
+const RAG_LIE = 3; // s a ragdoll lies before it fades (it needs about 1.5 s to come down)
+const STRIKE_S = 1; // s a shot's push is kept for the fall it may cause (the server says so a little later)
+/** How hard a shot pushes the one it beats (m/s, near where it hit): a shotgun or a sniper more. */
+const PUSH: Record<string, number> = { pistol: 1.8, rifle: 2.2, shotgun: 3.6, sniper: 4.2, bazooka: 3, turret: 1.6 };
+const BIG_PUSH = 1.8; // the big one is heavier: pushed this much less
 
 type Clip = { row: number; frames: number; loop: boolean; duration: number; stride: number };
 interface Rig {
@@ -57,6 +71,35 @@ interface Rig {
   place: Float32Array;
   head: number;
   chest: number;
+  /** Per bone, the ragdoll's part that moves it; the bones its points start on (-1: the file lacks one, no ragdoll) */
+  seg: Uint8Array;
+  parts: number[];
+}
+
+/** A fallen one's ragdoll: its solver, its rows in the bone picture, where it stood and its pose then. */
+interface Rag {
+  body: Ragdoll;
+  slot: number;
+  /** Its figure's place as it fell (the instance keeps it), and that turned over */
+  inst: THREE.Matrix4;
+  inv: THREE.Matrix4;
+  /** Per model (near, far): each bone's skinning matrix as it fell (12 numbers a bone) */
+  skins: Float32Array[];
+  /** Whether its rows still need writing */
+  dirty: boolean;
+}
+
+/** The last shot of yours that hit one: which way, how hard, where, when (this.clock). */
+interface Strike {
+  x: number;
+  y: number;
+  z: number;
+  dx: number;
+  dy: number;
+  dz: number;
+  power: number;
+  at: number;
+  blast: boolean;
 }
 interface Kind {
   meshes: [THREE.InstancedMesh, THREE.InstancedMesh];
@@ -129,6 +172,12 @@ interface Z extends ZombieState {
   rowB: number;
   mix: number;
   lod: 0 | 1;
+  /** Drawn at least once (its rows are real) */
+  drawn: boolean;
+  /** Fallen: its ragdoll (null: the fall clip); the last shot that hit it; who beat it (where they were) */
+  rag: Rag | null;
+  strike: Strike | null;
+  killer: { x: number; z: number; w: string } | null;
 }
 
 const hitMaterial = new THREE.MeshBasicMaterial({ visible: false });
@@ -437,8 +486,22 @@ export class Zombies {
   readonly heard = { groanNear: 0, groanFar: 0, huff: 0, step: 0, skipped: 0 };
   /** A zombie fell (in paintball: vanished) here: for the puff */
   onVanish: (at: THREE.Vector3) => void = () => {};
+  /** The bone picture's numbers (half floats), a row's length in them, and the first ragdoll row */
+  private boneData = new Uint16Array(0);
+  private rowFloats = 0;
+  private ragRow = 0;
+  private boneUp = false;
+  private freeRags = Array.from({ length: RAG_SLOTS }, (_, i) => RAG_SLOTS - 1 - i);
+  /** Phone or Low: fewer ragdolls falling at once, fewer passes */
+  private lite = 0;
+  private frames = new Float32Array(SEGS * 16);
+  private segK = new Float32Array(SEGS * 16);
 
-  constructor(private floorAt: (x: number, z: number, y: number) => number) {
+  /**
+   * `world`: the blocks a fallen one lands on and against (world/collision.ts); `cheap`: whether to
+   * spare the processor (a phone, or Low): fewer ragdolls falling at once, fewer passes.
+   */
+  constructor(private floorAt: (x: number, z: number, y: number) => number, private world?: RagdollWorld, private cheap: () => boolean = () => false) {
     this.group.name = 'zombies';
     this.group.add(this.patches);
     this.hits.name = 'zombie-hits';
@@ -501,11 +564,14 @@ export class Zombies {
       const rig = (mesh: THREE.SkinnedMesh): Rig => {
         const bones = mesh.skeleton.bones;
         width = Math.max(width, bones.length * 3);
-        const r: Rig = { bones, clips: new Map(), skin: new Float32Array(0), place: new Float32Array(0), head: -1, chest: -1 };
+        const r: Rig = { bones, clips: new Map(), skin: new Float32Array(0), place: new Float32Array(0), head: -1, chest: -1, seg: new Uint8Array(bones.length), parts: [] };
         // By the bone's own name: the loader drops its dot and numbers repeated names ('Head_2', 'FootL_3').
         const named = (re: RegExp) => bones.findIndex((b) => re.test(b.name.replace(/_\d+$/, '')));
         r.head = named(/^head$/i);
         r.chest = named(/^chest$/i);
+        // The ragdoll's parts and points on this skeleton.
+        bones.forEach((b, i) => (r.seg[i] = segmentOf(b.name)));
+        r.parts = PART_BONES.map((n) => bones.findIndex((b) => b.name.replace(/_\d+$/, '').replace(/[._\s]/g, '').toLowerCase() === n));
         const skin: number[] = [];
         const place: number[] = [];
         for (const [clipName, clip] of clips) {
@@ -568,15 +634,21 @@ export class Zombies {
     });
     // One picture for all of them: a row per frame, three texels per bone (the matrix's three rows of
     // four numbers, in RGBA), as half floats. `width` is in texels: the most bones of any kind, times 3.
+    // Below the clips, two rows for each ragdoll (its near and far model), written as it falls.
     const rowFloats = width * 4;
-    const out = new Uint16Array(rowFloats * row);
+    const out = new Uint16Array(rowFloats * (row + RAG_SLOTS * 2));
     rows.forEach((line, y) => {
       for (let i = 0; i < line.length; i++) out[y * rowFloats + i] = THREE.DataUtils.toHalfFloat(line[i]);
     });
-    this.boneTex = new THREE.DataTexture(out, width, row, THREE.RGBAFormat, THREE.HalfFloatType);
+    this.boneData = out;
+    this.rowFloats = rowFloats;
+    this.ragRow = row;
+    this.boneTex = new THREE.DataTexture(out, width, row + RAG_SLOTS * 2, THREE.RGBAFormat, THREE.HalfFloatType);
     this.boneTex.minFilter = this.boneTex.magFilter = THREE.NearestFilter;
     this.boneTex.generateMipmaps = false;
     this.boneTex.needsUpdate = true;
+    // Once it is up, only a ragdoll's rows are sent again (before that, a range would send only those).
+    this.boneTex.onUpdate = () => (this.boneUp = true);
     for (const p of pending) {
       const meshes = p.meshes.map((src, lod) => {
         const geo = new THREE.BufferGeometry();
@@ -634,7 +706,7 @@ export class Zombies {
     return {
       ...s, track: null, seen: performance.now(), y: s.y ?? 0, floor: s.y ?? NaN, ground: 0, groundAt: [NaN, NaN], floorAt: NaN, lx: s.x, lz: s.z, speed: 0, clip: 'Idle', time: Math.random() * 2, from: '', fromTime: 0, blend: 1,
       actAt: this.clock, phase: Math.random(), flash: 0, fade: 0, downAt: s.act === 'down' ? this.clock - 5 : 0, puffed: false, slot: -1, spots: [], hits, head, body,
-      groanIn: 2 + Math.random() * 6, stepIn: Math.random(), rowA: 0, rowB: 0, mix: 0, lod: 0,
+      groanIn: 2 + Math.random() * 6, stepIn: Math.random(), rowA: 0, rowB: 0, mix: 0, lod: 0, drawn: false, rag: null, strike: null, killer: null,
     };
   }
 
@@ -655,6 +727,7 @@ export class Zombies {
     z.flash = 1;
     flump(_v.set(z.x, z.y, z.z));
     if (paintball.on) this.onVanish(_v.set(z.x, z.y + 1, z.z).clone());
+    else this.limp(z);
   }
 
   /** The zombies in a tick taken at the server's time `st` (multiplayer). One left out of it stood still. */
@@ -699,15 +772,48 @@ export class Zombies {
     for (const id of [...this.zs.keys()]) if (!horde.zombies.has(id)) this.remove(id);
   }
 
-  /** Zombie `id` was beaten (a 'zdown' from the server, or here alone): it falls, or vanishes in paint. */
-  beaten(id: number): void {
+  /**
+   * Zombie `id` was beaten (a 'zdown' from the server, or here alone): it falls, or vanishes in paint.
+   * `by`: where the one who beat it stood and with what (it falls away from them, unless a shot of
+   * yours just hit it: then the way that went).
+   */
+  beaten(id: number, by?: { x: number; z: number; w: string } | null): void {
     const z = this.zs.get(id);
     if (z && !z.downAt) {
+      z.killer = by ?? null;
       z.act = 'down';
       z.actAt = this.clock;
       this.fall(z);
     }
   }
+
+  /** A shot of yours hit `id` at `point`, going `dir`, with weapon `w`: kept for the fall it may cause. */
+  struck(id: number, point: THREE.Vector3, dir: THREE.Vector3, w: string): void {
+    const z = this.zs.get(id);
+    if (!z || z.downAt) return;
+    const l = Math.hypot(dir.x, dir.y, dir.z) || 1;
+    z.strike = { x: point.x, y: point.y, z: point.z, dx: dir.x / l, dy: dir.y / l, dz: dir.z / l, power: PUSH[w] ?? 1.8, at: this.clock, blast: false };
+  }
+
+  /**
+   * A blast at `at` (any player's grenade, rocket or claymore: everyone sees it): those it beats are
+   * thrown a little outward and up, and so are the ones that just fell near it.
+   */
+  blast(at: THREE.Vector3, radius: number, w: string): void {
+    const power = w === 'bazooka' ? 4.5 : 3.5;
+    for (const z of this.zs.values()) {
+      const dx = z.x - at.x, dz = z.z - at.z;
+      const d = Math.hypot(dx, dz);
+      if (d > radius * 1.2 || Math.abs(z.y + 1 - at.y) > radius) continue;
+      const k = power * (1 - Math.min(1, d / (radius * 1.2)) * 0.6);
+      const [ox, oz] = d > 0.05 ? [dx / d, dz / d] : [Math.sin(z.yaw), Math.cos(z.yaw)];
+      if (z.rag) {
+        // Just fell (the server's word came first): thrown now.
+        if (z.rag.body.age < 0.4) this.throwRag(z, ox * k, k * 0.55, oz * k, null);
+      } else if (!z.downAt) z.strike = { x: at.x, y: at.y, z: at.z, dx: ox, dy: 0.55, dz: oz, power: k, at: this.clock, blast: true };
+    }
+  }
+
 
   /** Gone for good (the server took them away, or the game ended). */
   gone(ids: number[]): void {
@@ -723,7 +829,130 @@ export class Zombies {
     if (!z) return;
     z.hits.removeFromParent();
     this.unpaint(z);
+    this.unrag(z);
     this.zs.delete(id);
+  }
+
+  private unrag(z: Z): void {
+    if (z.rag) this.freeRags.push(z.rag.slot);
+    z.rag = null;
+  }
+
+  /**
+   * Beaten: it goes limp where it stands, in the pose it was drawn in last (so there is no jump),
+   * with its clip's own movement and its walk, and pushed the way the shot went (or a blast, or away
+   * from whoever beat it). Without a free row, or a model the ragdoll can't hold, its fall clip plays.
+   */
+  private limp(z: Z): void {
+    const k = this.kinds[z.kind];
+    const rig = k?.rigs[0];
+    if (!k || !rig || !this.world || !z.drawn || rig.parts.some((b) => b < 0) || !this.freeRags.length) return;
+    const slot = this.freeRags.pop()!;
+    const inst = new THREE.Matrix4().compose(_v.set(z.x, z.y, z.z), _q.setFromAxisAngle(UP, z.yaw), _s.set(1, 1, 1));
+    // Each model's skinning as drawn (the two rows blended as the shader blends them); the far model's only if it has its own.
+    const skins: Float32Array[] = [];
+    k.rigs.forEach((r, lod) => {
+      if (lod === 1 && r === k.rigs[0]) return;
+      const [ra, rb, mix] = lod === 0 ? [z.rowA, z.rowB, z.mix] : this.pick(z, r);
+      const first = this.firstRow(r);
+      const n = r.bones.length;
+      const out = new Float32Array(n * 12);
+      const a = (ra - first) * n * 12, b = (rb - first) * n * 12;
+      for (let i = 0; i < n * 12; i++) out[i] = r.skin[a + i] * (1 - mix) + r.skin[b + i] * mix;
+      skins.push(out);
+    });
+    // The points on their bones, in the world, and how fast the clip moves them (one frame on).
+    const first = this.firstRow(rig);
+    const n = rig.bones.length;
+    const at = (row: number, b: number, out: THREE.Vector3, up: number) => {
+      const o = ((row - first) * n + b) * 16;
+      const p = rig.place;
+      return out.set(p[o + 12] + p[o + 4] * up, p[o + 13] + p[o + 5] * up, p[o + 14] + p[o + 6] * up);
+    };
+    const pts = new Float64Array(PARTS * 3);
+    const vel = new Float64Array(PARTS * 3);
+    const turn = new THREE.Quaternion().setFromAxisAngle(UP, z.yaw);
+    const fx = Math.sin(z.yaw), fz = Math.cos(z.yaw);
+    const walk = Math.min(z.speed, 3);
+    const pa = new THREE.Vector3(), pb = new THREE.Vector3(), pt = new THREE.Vector3();
+    rig.parts.forEach((b, i) => {
+      const up = i === 3 ? HEAD_UP * k.height : 0;
+      at(z.rowA, b, pa, up);
+      at(z.rowB, b, pb, up);
+      pt.copy(pa).lerp(pb, z.mix).applyMatrix4(inst);
+      pts.set([pt.x, pt.y, pt.z], i * 3);
+      const v = pb.sub(pa).multiplyScalar(z.rowA === z.rowB ? 0 : FPS).applyQuaternion(turn);
+      if (v.length() > 3) v.setLength(3);
+      vel.set([v.x + fx * walk, v.y, v.z + fz * walk], i * 3);
+    });
+    const body = new Ragdoll(pts, { fwd: [fx, fz], scale: k.height / 1.75, vel });
+    z.rag = { body, slot, inst, inv: inst.clone().invert(), skins, dirty: true };
+    // The push: a shot of yours just now, or a blast, else away from whoever beat it, else backwards.
+    const s = z.strike && this.clock - z.strike.at < STRIKE_S ? z.strike : null;
+    if (s && !s.blast) {
+      // Near where it hit, but not lower than the hips (a shot in the legs still topples the body).
+      const hips = z.y + k.height * 0.55;
+      this.throwRag(z, s.dx * s.power, Math.max(0, s.dy) * s.power + 0.3, s.dz * s.power, _w.set(s.x, Math.max(s.y, hips), s.z));
+    } else if (s) this.throwRag(z, s.dx * s.power, s.dy * s.power, s.dz * s.power, null);
+    else {
+      const from = z.killer;
+      let [dx, dz] = from ? [z.x - from.x, z.z - from.z] : [-fx, -fz];
+      const l = Math.hypot(dx, dz) || 1;
+      [dx, dz] = [dx / l, dz / l];
+      const power = from ? PUSH[from.w] ?? 1.8 : 1.4;
+      const side = (Math.random() - 0.5) * 0.6; // not all alike
+      this.throwRag(z, dx * power - dz * side, 0.3, dz * power + dx * side, _w.set(z.x, z.y + k.height * 0.7, z.z));
+    }
+    // The knees give: a little forward, so it doesn't stand balanced on stiff legs.
+    body.push(fx * 0.7, 0, fz * 0.7, _w.set(z.x, z.y + k.height * 0.28, z.z), (0.25 * k.height) / 1.75, 0);
+    // At most so many falling at once: the oldest stops where it is.
+    const awake = [...this.zs.values()].filter((o) => o.rag?.body.awake).sort((a, b) => a.downAt - b.downAt);
+    for (let i = 0; i < awake.length - RAG_AWAKE[this.lite]; i++) awake[i].rag!.body.awake = false;
+  }
+
+  /** A push on a ragdoll (m/s), the big one's less: near `at`, or on the whole body. */
+  private throwRag(z: Z, vx: number, vy: number, vz: number, at: THREE.Vector3 | null): void {
+    if (!z.rag) return;
+    const k = z.kind === BIG ? 1 / BIG_PUSH : 1;
+    const reach = (this.kinds[z.kind]?.height ?? 1.75) * 0.3;
+    z.rag.body.push(vx * k, vy * k, vz * k, at, reach);
+  }
+
+  /**
+   * A ragdoll's pose into its rows of the bone picture: each part's move since the fall (in the
+   * world) taken into the figure's own frame, on each bone's skinning as it fell.
+   */
+  private writeRag(z: Z): void {
+    const rag = z.rag;
+    const k = this.kinds[z.kind];
+    if (!rag || !k) return;
+    rag.body.frames(this.frames);
+    const seg = this.segK;
+    for (let s = 0; s < SEGS; s++) {
+      _m.fromArray(this.frames, s * 16);
+      _n.multiplyMatrices(rag.inv, _m).multiply(rag.inst);
+      _n.toArray(seg, s * 16);
+    }
+    const h = THREE.DataUtils.toHalfFloat;
+    rag.skins.forEach((skin, lod) => {
+      const r = k.rigs[lod];
+      const row = this.ragRow + rag.slot * 2 + lod;
+      const base = row * this.rowFloats;
+      for (let b = 0; b < r.bones.length; b++) {
+        const e = r.seg[b] * 16; // the part's matrix, column-major
+        const o = b * 12; // the bone's skinning as it fell: three rows of four
+        for (let i = 0; i < 3; i++) {
+          const k0 = seg[e + i], k1 = seg[e + 4 + i], k2 = seg[e + 8 + i], k3 = seg[e + 12 + i];
+          for (let j = 0; j < 4; j++) {
+            const v = k0 * skin[o + j] + k1 * skin[o + 4 + j] + k2 * skin[o + 8 + j] + (j === 3 ? k3 : 0);
+            this.boneData[base + b * 12 + i * 4 + j] = h(v);
+          }
+        }
+      }
+      if (this.boneUp) this.boneTex?.addUpdateRange(base, r.bones.length * 12);
+    });
+    if (this.boneTex) this.boneTex.needsUpdate = true;
+    rag.dirty = false;
   }
 
   private unpaint(z: Z): void {
@@ -754,8 +983,11 @@ export class Zombies {
   }
 
   /** Each one as drawn now (for the checks in the dev build). */
-  states(): { id: number; kind: number; x: number; y: number; z: number; act: ZombieAct; hp: number; clip: string; lod: number; down: boolean }[] {
-    return [...this.zs.values()].map((z) => ({ id: z.id, kind: z.kind, x: z.x, y: z.y, z: z.z, act: z.act, hp: z.hp, clip: z.clip, lod: z.lod, down: !!z.downAt }));
+  states(): { id: number; kind: number; x: number; y: number; z: number; act: ZombieAct; hp: number; clip: string; lod: number; down: boolean; rag: { awake: boolean; age: number; pelvis: number[]; lowest: number } | null }[] {
+    return [...this.zs.values()].map((z) => ({
+      id: z.id, kind: z.kind, x: z.x, y: z.y, z: z.z, act: z.act, hp: z.hp, clip: z.clip, lod: z.lod, down: !!z.downAt,
+      rag: z.rag ? { awake: z.rag.body.awake, age: z.rag.body.age, pelvis: Array.from(z.rag.body.p.slice(0, 3)), lowest: z.rag.body.lowest() } : null,
+    }));
   }
 
   /** Where a shot at zombie `id` lands: its chest as drawn now (a turret's aim), or null when it isn't up here. */
@@ -927,6 +1159,7 @@ export class Zombies {
    */
   update(dt: number, eye: THREE.Vector3): void {
     this.clock += dt;
+    this.lite = this.cheap() ? 1 : 0;
     this.groanClock += dt;
     if (this.groanClock > 1) {
       this.groanClock = 0;
@@ -981,30 +1214,38 @@ export class Zombies {
       else z.time += dt;
       z.blend = Math.min(1, z.blend + dt / BLEND);
       z.flash = Math.max(0, z.flash - dt * 5);
-      // Fading: a fallen one after two seconds; in paintball at once, in a puff.
+      // Fading: a fallen one after two seconds (a ragdoll after RAG_LIE); in paintball at once, in a puff.
       const since = z.downAt ? this.clock - z.downAt : -1;
-      z.fade = since < 0 ? 1 : paintball.on ? Math.max(0, 1 - since / PUFF_S) : Math.max(0, 1 - Math.max(0, since - 2) / FALL_FADE);
+      const lie = z.rag ? RAG_LIE : 2;
+      z.fade = since < 0 ? 1 : paintball.on ? Math.max(0, 1 - since / PUFF_S) : Math.max(0, 1 - Math.max(0, since - lie) / FALL_FADE);
       // Its sounds: groans (a runner's puffs) the more often the nearer, its feet close by.
       if (!z.downAt) this.voice(z, eye, dt);
       if (z.fade <= 0) {
         z.body.visible = z.head.visible = false;
+        this.unrag(z);
         continue;
       }
-      const far = Math.hypot(z.x - eye.x, z.y - eye.y, z.z - eye.z);
+      // A ragdoll falls on (on its rows of the bone picture); it is drawn where its pelvis is.
+      const rag = z.rag;
+      if (rag && this.world && (rag.body.awake || rag.dirty)) {
+        if (rag.body.awake) rag.body.step(dt, this.world, RAG_PASSES[this.lite], this.lite ? 2 : 4);
+        this.writeRag(z);
+        if (rag.body.awake) rag.dirty = true; // and once more when it has gone to sleep
+      }
+      const [cx, cy, cz] = rag ? [rag.body.p[0], rag.body.p[1], rag.body.p[2]] : [z.x, z.y, z.z];
+      const far = Math.hypot(cx - eye.x, cy - eye.y, cz - eye.z);
       z.lod = far > LOD_FAR ? 1 : 0;
-      // The two rows and their blend, for a model's rig: two frames of the clip, or (changing clips) the old clip's and the new one's.
-      const pick = (rig: Rig): [number, number, number] => {
-        const [a0, a1, af] = this.rows(rig, z.clip, z.time);
-        if (z.blend >= 1 || !z.from) return [a0, a1, af];
-        return [this.rows(rig, z.from, z.fromTime)[0], a0, z.blend];
-      };
-      [z.rowA, z.rowB, z.mix] = pick(k.rigs[0]);
-      const [dA, dB, dMix] = z.lod === 0 || k.rigs[1] === k.rigs[0] ? [z.rowA, z.rowB, z.mix] : pick(k.rigs[1]);
+      [z.rowA, z.rowB, z.mix] = this.pick(z, k.rigs[0]);
+      z.drawn = true;
+      let [dA, dB, dMix] = z.lod === 0 || k.rigs[1] === k.rigs[0] ? [z.rowA, z.rowB, z.mix] : this.pick(z, k.rigs[1]);
+      if (rag) dA = dB = this.ragRow + rag.slot * 2 + (z.lod === 1 && rag.skins.length > 1 ? 1 : 0);
+      if (rag) dMix = 0;
       // Into its kind's instanced mesh.
       const mesh = k.meshes[z.lod];
       const i = counts[z.kind][z.lod]++;
       if (i >= MAX) continue;
-      _m.compose(_v.set(z.x, z.y, z.z), _q.setFromAxisAngle(UP, z.yaw), _s.set(1, 1, 1));
+      if (rag) _m.copy(rag.inst);
+      else _m.compose(_v.set(z.x, z.y, z.z), _q.setFromAxisAngle(UP, z.yaw), _s.set(1, 1, 1));
       mesh.setMatrixAt(i, _m);
       const anim = mesh.geometry.attributes.aAnim as THREE.InstancedBufferAttribute;
       anim.setXYZW(i, dA, dB, dMix, 0);
@@ -1016,7 +1257,9 @@ export class Zombies {
       // Its patch on the ground, near enough to see; wider for the big one, fading with it.
       if (far < 60 && patches < MAX * 2) {
         const r = (z.kind === BIG ? 1.9 : 0.95) * (z.downAt ? 1.25 : 1) * Math.min(1, z.fade * 1.4);
-        _n.makeScale(r, 1, r).setPosition(z.x, z.y + 0.03, z.z);
+        // Under a ragdoll: where its body is, as low as its lowest part (on a step: the step).
+        if (rag) _n.makeScale(r, 1, r).setPosition(cx, Math.min(cy, rag.body.lowest()) + 0.03, cz);
+        else _n.makeScale(r, 1, r).setPosition(z.x, z.y + 0.03, z.z);
         this.patches.setMatrixAt(patches++, _n);
       }
     }
@@ -1033,6 +1276,13 @@ export class Zombies {
         mesh.computeBoundingSphere();
       });
     });
+  }
+
+  /** The two rows and their blend for a model's rig: two frames of the clip, or (changing clips) the old clip's and the new one's. */
+  private pick(z: Z, rig: Rig): [number, number, number] {
+    const [a0, a1, af] = this.rows(rig, z.clip, z.time);
+    if (z.blend >= 1 || !z.from) return [a0, a1, af];
+    return [this.rows(rig, z.from, z.fromTime)[0], a0, z.blend];
   }
 
   /** The head box on the head bone at this frame; the body box under the chest. */
