@@ -35,6 +35,7 @@ import { HOMES } from './shared/homes.mjs';
 import { GameNight } from './server/gamenight.mjs';
 import { Interest } from './server/interest.mjs';
 import { Stats } from './server/stats.mjs';
+import { decodePath } from './server/paths.mjs';
 
 const DIST = resolve(import.meta.dirname, 'dist');
 const PORT = Number(process.env.PORT) || 8080;
@@ -428,7 +429,9 @@ async function pageWithFingerprints(file, info) {
 }
 
 async function serveFile(req, res, url) {
-  let file = resolve(join(DIST, decodeURIComponent(url.pathname)));
+  const path = decodePath(url.pathname);
+  if (path === null) return send(res, 400, 'Bad request'); // a broken %-escape: no file has that name, and nothing to log
+  let file = resolve(join(DIST, path));
   if (file !== DIST && !file.startsWith(DIST + sep)) return send(res, 400, 'Bad request');
   let info = await stat(file).catch(() => null);
   if (info?.isDirectory()) {
