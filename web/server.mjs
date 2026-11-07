@@ -508,12 +508,19 @@ const server = createServer(async (req, res) => {
   }
 });
 
+// Never let a malformed upgrade throw out of here: an error in this event takes the whole process down (a
+// request for `//` or `//%` with Upgrade headers made `new URL` throw, and every player was dropped).
 server.on('upgrade', (req, socket, head) => {
-  if (CLOUDFLARE_ONLY && !viaCloudflare(req)) {
-    socket.write('HTTP/1.1 403 Forbidden\r\n\r\n');
+  try {
+    if (CLOUDFLARE_ONLY && !viaCloudflare(req)) {
+      socket.write('HTTP/1.1 403 Forbidden\r\n\r\n');
+      socket.destroy();
+    } else if (new URL(req.url, 'http://local').pathname === '/ws') rooms.upgrade(req, socket, head); // the open world, or a room
+    else socket.destroy();
+  } catch (err) {
+    console.error(JSON.stringify({ event: 'upgrade_error', ip: clientIp(req), message: String(err).slice(0, 200) }));
     socket.destroy();
-  } else if (new URL(req.url, 'http://local').pathname === '/ws') rooms.upgrade(req, socket, head); // the open world, or a room
-  else socket.destroy();
+  }
 });
 
 server.listen(PORT, () => {
