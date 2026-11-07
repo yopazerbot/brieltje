@@ -143,6 +143,21 @@ test('there is no limit across senders: a crowd cannot shut the owner out', asyn
   assert.equal((await call('POST', '/api/home/unlock', { id: H1, code }, { who: 'owner' })).res.status, 200);
 });
 
+test("past a home's budget, a player with an account waits in a lane a flood without one can't fill", async () => {
+  const { call, homes } = setup();
+  homes.capWaitMs = 30;
+  homes.account = (req) => req.who === 'player';
+  const code = (await call('POST', `/api/admin/homes/${H1}/code`, {}, { admin: true })).res.data.code;
+  const now = Date.now();
+  for (let i = 0; i < 300; i++) homes.checks.add(H1, now);
+  const flood = Array.from({ length: 12 }, (_, i) => call('POST', '/api/home/unlock', { id: H1, code: 'BBBBB-BBBBB' }, { who: `crowd${i}` }));
+  const owner = call('POST', '/api/home/unlock', { id: H1, code }, { who: 'player', user: 'p9' });
+  const statuses = (await Promise.all(flood)).map((a) => a.res.status);
+  assert.ok(statuses.filter((s) => s === 503).length > 0, 'the crowd overflows its own lane');
+  assert.equal((await owner).res.status, 200, 'the player with an account still gets in');
+  await homes.flush();
+});
+
 test('the admin routes only know the three homes', async () => {
   const { call } = setup();
   for (const id of ['molenhoek_end', 'bungalow', 'house']) assert.equal((await call('POST', `/api/admin/homes/${id}/code`, {}, { admin: true })).res.status, 200, id);
@@ -217,7 +232,7 @@ test('past a home\'s budget nobody is refused for it: one at a time through a sl
   const statuses = (await Promise.all(flood)).map((a) => a.res.status);
   assert.equal(statuses.filter((s) => s === 403).length, 5, 'one running and four waiting in the slow lane are checked');
   assert.equal(statuses.filter((s) => s === 503).length, 5, 'the rest hear "busy", not "too many" for an hour');
-  const lane = homes.slowLanes.get(H1);
+  const lane = homes.slowLanes.get(`${H1}|anyone`);
   let laned = 0;
   const run = lane.run.bind(lane);
   lane.run = (fn) => (laned++, run(fn));

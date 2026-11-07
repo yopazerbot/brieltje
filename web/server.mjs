@@ -131,7 +131,8 @@ const stats = new Stats(store, { json: (...a) => json(...a), clientKey: (req) =>
 const feedback = new Feedback(store, { json: (...a) => json(...a), readJson: (req) => body(req), clientKey: formKey, clientIp, session: (req) => auth.session(req), time: beTime });
 const gamenight = new GameNight(store, { json: (...a) => json(...a), readJson: (req) => body(req), clientKey: formKey });
 // The three homes with an access code (server/homes.mjs): who typed a home's code, and the admin's list of them.
-const homes = new Homes(store, { list: HOMES, json: (...a) => json(...a), readJson: (req) => body(req), clientKey: (req) => bucketOf(clientIp(req)), pack: packFor });
+// Senders counted per IPv6 /56 (as the forms), so one attacker's many addresses count as few; accounts wait apart.
+const homes = new Homes(store, { list: HOMES, json: (...a) => json(...a), readJson: (req) => body(req), clientKey: (req) => formBucketOf(clientIp(req)), account: (req) => ['player', 'admin'].includes(auth.session(req)?.role), pack: packFor });
 game.homes = homes;
 homes.onGrant = (key, id) => rooms.homeGranted(key, id); // the state of the inside to the page that just got the right, wherever it plays
 // The admin page's live view hears of new log lines, changed sign-ups, feedback and the game night.

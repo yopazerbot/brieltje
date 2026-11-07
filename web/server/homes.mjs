@@ -69,8 +69,12 @@ export const showCode = (c) => `${c.slice(0, 5)}-${c.slice(5)}`;
 
 export class Homes {
   /** `list`: the registry (shared/homes.mjs); `json`; `readJson`; `clientKey`. */
-  constructor(store, { list, json, readJson, clientKey, pack = () => null, flushMs = FLUSH_MS, capWaitMs = CAP_WAIT_MS }) {
-    Object.assign(this, { store, list, json, readJson, clientKey, pack, flushMs, capWaitMs });
+  /**
+   * `account(req)`: the request comes from a player's account or the admin: past a home's budget they wait in a lane of
+   * their own, which a flood without an account can't fill.
+   */
+  constructor(store, { list, json, readJson, clientKey, account = () => false, pack = () => null, flushMs = FLUSH_MS, capWaitMs = CAP_WAIT_MS }) {
+    Object.assign(this, { store, list, json, readJson, clientKey, account, pack, flushMs, capWaitMs });
     this.onGrant = null; // (key, id) => void: the game server tells that page the state of the inside (Game.homeGranted)
     this.perSender = new Window(10 * 60_000); // attempts at one home from one sender
     this.perSenderAll = new Window(3600_000); // all homes from one sender
@@ -238,8 +242,10 @@ export class Homes {
       if (over) {
         // Past the budget nobody is refused for it: one at a time, each after a pause (about one hash a second).
         this.capped(budget, now);
-        if (!this.slowLanes.has(budget)) this.slowLanes.set(budget, new Turns(1, SLOW_QUEUE));
-        const slow = await this.slowLanes.get(budget).run(async () => {
+        // Accounts (and the admin) wait apart from everyone else: a flood without an account never fills their lane.
+        const lane = `${budget}|${this.account(req) ? 'account' : 'anyone'}`;
+        if (!this.slowLanes.has(lane)) this.slowLanes.set(lane, new Turns(1, SLOW_QUEUE));
+        const slow = await this.slowLanes.get(lane).run(async () => {
           await new Promise((r) => setTimeout(r, this.capWaitMs));
           return this.turns.run(check);
         });
