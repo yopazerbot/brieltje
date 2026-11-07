@@ -3,6 +3,7 @@ import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
 import type { World } from './collision';
 import type { Prism } from './houseData';
 import { DOCK } from './mower';
+import { snowy } from './snowCover';
 
 /**
  * The everyday things in the gardens of the main house and the bungalow (tools/garden_life.py):
@@ -134,7 +135,8 @@ export class Yard {
       }
       return parts.length ? mergeGeometries(parts) : new THREE.BufferGeometry();
     };
-    const material = new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.75 });
+    // Snow on their tops in winter (world/snowCover.ts): the planters' grasses, the letterboxes, the table; all outdoors.
+    const material = snowy(new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.75 }));
     this.house = new THREE.Mesh(build(HOUSE), material);
     this.house.castShadow = this.house.receiveShadow = true;
     this.bungalow = new THREE.Mesh(build(BUNGALOW), material);

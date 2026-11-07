@@ -94,6 +94,7 @@ import { patchFields } from './world/fields';
 import { addDiag, startDiag } from './ui/diag';
 import { IndoorLight } from './world/indoorLight';
 import { Weather } from './world/weather';
+import { snowOnModel } from './world/snowCover';
 import { Acoustics, acoustics } from './world/acoustics';
 import { MoodAdmin, moodNotice } from './ui/moodAdmin';
 import { Portals } from './world/portals';
@@ -3463,6 +3464,7 @@ async function buildVillage(): Promise<void> {
     }
     await between();
   }
+  for (const m of models) snowOnModel(m); // their unbaked outdoor parts take the snow (world/snowCover.ts)
   // The models' baked light and wear (world/bakedLight.ts), fetched while the village's tiles are built.
   const bakes = Promise.all(models.map((m) => bakeLight(m, renderer)));
   for (const m of models) clearOpenGround(data, m.userData.clear as [number, number][][] | undefined); // their forecourts free of trees

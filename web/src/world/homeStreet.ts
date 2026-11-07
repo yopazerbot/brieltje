@@ -2,6 +2,7 @@ import * as THREE from 'three';
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 import type { Prism, Surroundings } from './houseData';
 import { tintedMaterial } from './houseMeshes';
+import { snowOnModel } from './snowCover';
 import { loadTexture } from './textureFiles';
 import { terrain } from './terrain';
 import type { Tiles } from './tiles';
@@ -189,6 +190,7 @@ export class HomeStreet {
             mesh.castShadow = name !== 'hs_trim' && name !== 'hs_glass';
             if (mesh.userData.detail || name === 'hs_trim') this.detail.push({ mesh, at });
           });
+          snowOnModel(root); // the terraces take the snow (the rest has its bake's)
           this.group.add(root);
           tiles.track(root); // each cluster hidden beyond the draw distance on its own
         }
