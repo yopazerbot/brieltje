@@ -1,6 +1,7 @@
 import * as THREE from 'three';
 import { KTX2Loader } from 'three/addons/loaders/KTX2Loader.js';
 import { addDiag } from '../ui/diag';
+import { seat } from '../seat';
 
 /**
  * The surface textures in web/public/textures, fetched in the form that costs the graphics chip least.
@@ -25,7 +26,9 @@ import { addDiag } from '../ui/diag';
  * flips it), because a compressed texture can't be flipped on upload as a WebP one is: both look the same.
  */
 
-const HALF = matchMedia('(pointer: coarse)').matches;
+// Also a seat of the split screen with three or four views (src/seat.ts): each is a quarter of the screen, and
+// four copies of the full-size textures would not fit a 4 GB graphics chip.
+const HALF = matchMedia('(pointer: coarse)').matches || (seat?.views ?? 1) >= 3;
 const WEBP = HALF ? '/textures/half' : '/textures';
 const KTX2 = HALF ? '/textures/ktx2/half' : '/textures/ktx2';
 const SKIP_KTX2 = new URLSearchParams(location.search).has('webp');
