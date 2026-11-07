@@ -86,6 +86,8 @@ export interface Spot {
   x: number;
   z: number;
   node: number;
+  /** Deep in a wood (shared/sparrenhof.mjs woodSpots): one may come out here in sight, far enough off */
+  wood?: boolean;
 }
 
 export interface Seed {

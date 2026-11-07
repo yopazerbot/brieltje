@@ -125,10 +125,12 @@ import { Insides, type InsidePack } from './world/insides';
 import { CAR_REACH, CAR_SLOW, findPortal, PORTALS, portalNear, REACH, type Portal } from '../shared/portals.mjs';
 import { noShoot } from '../shared/zones.mjs';
 import { loadBounds, type Bounds } from '../shared/bounds.mjs';
-import { arenaEdge, arenaHome, arenaOf, arenaPrisms, portalOf, type Arena } from '../shared/arenas.mjs';
+import { arenaEdge, arenaHome, arenaOf, arenaSpots, portalOf, villageGround, type Arena } from '../shared/arenas.mjs';
 import BOUNDS from '../shared/bounds.json';
 import CHURCH_DATA from '../shared/church.json';
 import { churchPrisms, makeChurch } from '../shared/church.mjs';
+import CAFE_DATA from '../shared/sparrenhof.json';
+import { cafePrisms, makeCafe } from '../shared/sparrenhof.mjs';
 import { carName, doorName, lang, onLang, placeName, portalName, serverText, setLang, t, whoName } from './i18n';
 import { seat, tellHost } from './seat';
 
@@ -524,6 +526,7 @@ function adaptQuality(dt: number, now: number): void {
 }
 
 const churchAccess = makeChurch(CHURCH_DATA, house.ground + terrain.height(...CHURCH_DATA.origin as [number, number]));
+const cafeAccess = makeCafe(CAFE_DATA, house.ground + terrain.height(...CAFE_DATA.origin as [number, number])); // the café's blocks and stairs to its roofs
 const world = new World(house.prisms, house.ground);
 world.addPrisms(house.surroundings?.prisms ?? []);
 world.addPrisms(homeStreet.blocks);
@@ -1562,13 +1565,16 @@ async function startSolo(id: string): Promise<void> {
   const arena = arenaOf(id);
   const edge = edgeOf(arena.id);
   let prisms: Prism[];
+  let ground: ReturnType<typeof villageGround> | null = null;
+  let data: VillageData | null = null;
   if (arena.center) {
     soloStarting = true;
     try {
       if (village !== 'ready') hud.announce('Smetlede', t('travel.village'));
       await loadVillage();
-      const data = (await import('./data/village.json')).default as unknown as VillageData;
-      prisms = arenaPrisms(churchPrisms(data.prisms ?? [], churchAccess), edge);
+      data = (await import('./data/village.json')).default as unknown as VillageData;
+      ground = villageGround(arena, edge, data, churchAccess, cafeAccess); // the café's stairs and the wood's trunks too
+      prisms = ground.prisms;
     } finally {
       soloStarting = false;
     }
@@ -1579,16 +1585,17 @@ async function startSolo(id: string): Promise<void> {
   getOffHorse(false);
   getOffBike(false);
   const boxes = cars.filter((c) => c.ready && edge.inside(c.x, c.z)).map((c) => ({ x: c.x, z: c.z, yaw: c.yaw, halfL: c.spec.length / 2, halfW: c.spec.width / 2 }));
-  const nav = arena.center
-    ? makeNav({ prisms, height: (x, z) => terrain.height(x, z), base: house.ground, edge, boxes, areas: arena.id === 'church' ? [churchAccess.area] : [], doors: [], shut: true, panes: 0 })
+  const nav = ground
+    ? makeNav({ prisms, height: (x, z) => terrain.height(x, z), base: house.ground, edge, boxes, areas: ground.areas, doors: [], shut: true, panes: 0 })
     : makeNav({ prisms, height: (x, z) => terrain.height(x, z), base: house.ground, edge, boxes, areas: houseAreas(insides.housePrisms(house.prisms)), doors: insides.houseDoors(house.doors), shut: true, panes: insides.housePrisms(house.prisms).length });
-  const horde = new Horde(nav, nav.spawnSpots(), { home: arenaHome(arena) });
+  const horde = new Horde(nav, data ? arenaSpots(arena, nav.spawnSpots(), data, cafeAccess) : nav.spawnSpots(), { home: arenaHome(arena) });
   horde.start(performance.now());
   solo = { horde, loot: new Loot(nav), arena, endAt: 0, best: soloBest(arena), record: false, key: '' };
   applyKit(NO_KIT);
   respawnAtArena(arena);
   combat.setActive(weapon.enabled); // your health on screen while they come
   chat.system(() => t('z.soloStart'));
+  if (arena.woods) chat.system(() => t('z.woods'));
   soloView(true);
   showSoloButton();
 }
@@ -3525,7 +3532,7 @@ async function buildVillage(): Promise<void> {
   }
   // The end house's own walls, floors and doors take the place of its plain block once its inside has come (until then
   // the plain block stands, and its doors, windows and lawn are the shell's).
-  const villageBlocks = churchPrisms(data.prisms ?? [], churchAccess).filter((p) => !endHouse?.replaces(p) || endHouse.standIn(p));
+  const villageBlocks = cafePrisms(churchPrisms(data.prisms ?? [], churchAccess), cafeAccess).filter((p) => !endHouse?.replaces(p) || endHouse.standIn(p));
   const firstBlock = world.addPrisms(villageBlocks);
   if (endHouse) {
     endHouse.holdStandIns(villageBlocks.flatMap((p, i) => (endHouse!.standIn(p) ? [firstBlock + i] : [])));

@@ -26,9 +26,12 @@ What these don't show is made up in the same style: the back of the building, th
 sheds in the wood. The signs are plain red or black panels: no logos, no brand names. No people, no cars.
 
 Frame: the GLB is in the game's own axes (x, y up, z), its origin on the ground in the middle of the main
-gable's foot (ORIGIN). Heights are above the ground there: the browser puts the origin on its relief, and the
-`blocks` (for walking into) are lifted the same way (`blocksOnGround`). `replaces` names the GRB outlines
-whose open-data blocks the model stands in for.
+gable's foot (ORIGIN). Heights are above the ground there: the browser puts the origin on its relief. `replaces`
+names the GRB outlines whose open-data blocks the model stands in for.
+
+The made-up outside stairs to the roofs (a shooting base in Zombies, Yoshi 7 Nov 2026) are drawn here too. The blocks
+for walking into, theirs and the café's, with the stairs' and roofs' spots, go to web/shared/sparrenhof.json, also
+measured from the origin's ground (shared/sparrenhof.mjs lifts them).
 
 Output: one GLB, one mesh per material:
 - caf_wall, caf_plinth, caf_roof, caf_hall_roof, caf_boards, caf_gravel, caf_setts, caf_slabs, caf_hedge: UVs
@@ -654,7 +657,9 @@ slab("caf_fittings", [G(AW, E0, E_HI), G(C1 + 0.2, E0, E_HI), G(C1 + 0.2, E1, E_
 for k in range(8):                                                                # the ribs of its light sheets
     u = AW + 0.4 + k * (C1 - AW) / 8
     ubeam("caf_fittings", (u, E0, E_HI + 0.02), (u, E1, E_LO + 0.02), 0.04, 0.04, "#c9cac6")
-block(rect(AW, C1, E0, E1), BOTTOM, E_HI)
+for k in range(4):                 # its roof falls to the back: four strips, each at its own height
+    da, db = E0 + (E1 - E0) * k / 4, E0 + (E1 - E0) * (k + 1) / 4
+    block(rect(AW, C1, da, db), BOTTOM, E_HI + (E_LO - E_HI) * (k + 0.5) / 4)
 
 # ---------------------------------------------------------------- F: the hall at the back (red-brown tiles)
 F_U0, F_U1, F0, F1 = -0.67, 15.15, 15.53, 26.95
@@ -735,7 +740,17 @@ for a, b in (((S_U0, S_D0 - 0.08, 1.95), (S_U0 + 0.85, S_D0 - 0.08, 2.48)), ((14
              ((14.66, S_D0, 1.95), (14.66, S_D0 + 0.85, 2.5))):
     ubeam("caf_fittings", a, b, 0.09, 0.09, "#efefeb")
 block(rect(S_U0, S_U1, S_D0, S_D1), -0.4, S_TOP, "cladding")
-block(rect(R_U0, R_U1, R_D0, R_D1), r_lo - 0.1, r_hi + 0.05, "steel")
+
+
+def carport_top(d):
+    """The top of the carport's ribs at d: what you stand on up there."""
+    return r_lo + (d - R_D0) / (R_D1 - R_D0) * (r_hi - r_lo) + 0.045
+
+
+CARPORT_STRIPS = 5                 # its roof rises to the back: in strips, each at its own height
+for k in range(CARPORT_STRIPS):
+    da, db = R_D0 + (R_D1 - R_D0) * k / CARPORT_STRIPS, R_D0 + (R_D1 - R_D0) * (k + 1) / CARPORT_STRIPS
+    block(rect(R_U0, R_U1, da, db), r_lo - 0.1, round(carport_top((da + db) / 2), 3), "steel")
 block(rect(14.54, 14.66, S_D0 - 0.11, S_D0 + 0.01), -0.4, r_lo, "steel")
 
 # ---------------------------------------------------------------- what stands on the forecourt
@@ -867,6 +882,189 @@ for s in (0.0, 2.35):
 sc.box("caf_fittings", 0.03, 2.32, 0.1, 1.78, -0.01, 0.01, "#e8eae7")
 block(rect(-5.6, BU - 0.05, 9.37, 9.53), -0.5, 1.9, "fence")
 
+# ---------------------------------------------------------------- the stairs to the roofs (a shooting base in Zombies)
+# Yoshi, 7 Nov 2026: "a few staircases at logical places allowing to go up the roof of sparrenhof as a shooting base".
+# Made up, not the real café's: three outside stairs of hot-dip galvanised steel, sized for a person (a rise of at most
+# 18.5 cm, a going of 25 cm, 1 m clear between the handrails), with landings, guard rails and toe boards:
+# - the side stair, in the yard behind the gate on the south-east side, square to the annex's wall, onto the annex's
+#   flat roof (the deck between the main block, the cross gable and the hall);
+# - the terrace stair, on the terrace's gravel beside the path along the veranda, up to a landing that bridges the
+#   path and a grating roof walk across the veranda's light roof, to the same deck;
+# - the forecourt stair, along the front of the carport, onto the carport's metal roof over the forecourt.
+# Their blocks go with the café's into web/shared/sparrenhof.json (for walking, shots and the zombies' grid).
+STEEL = "#959a9d"       # galvanised steel, weathered: stringers, posts, rails
+GRATE = "#6d7174"       # the gratings, darker for the gaps between their bars
+NOSING = "#c4c7c9"      # the treads' front edges, lighter
+RISE_MAX, GOING, CLEAR = 0.185, 0.25, 1.0
+HAND, KNEE = 0.9, 0.45  # a stair's handrail and knee rail over its nosings
+GUARD, MID = 1.1, 0.55  # a deck's or landing's guard rail and mid rail over its floor
+DECK = D_TOP + 0.08     # the annex's flat roof
+WALK = 2.9              # the roof walk over the veranda, its bridge and the terrace stair's landing
+stairs_out, roofs_out = [], []
+
+
+def fpt(F, t, s, a):
+    """The plan point (u, d) s along a flight's direction t from F and a to its left."""
+    return (F[0] + t[0] * s - t[1] * a, F[1] + t[1] * s + t[0] * a)
+
+
+def fring(F, t, s0, s1, a0, a1):
+    return [fpt(F, t, s0, a0), fpt(F, t, s1, a0), fpt(F, t, s1, a1), fpt(F, t, s0, a1)]
+
+
+def fbox(F, t, s0, s1, a0, a1, y0, y1, paint):
+    solid("caf_fittings", [G(*fpt(F, t, s, a), y) for s in (s0, s1) for a in (a0, a1) for y in (y0, y1)], paint)
+
+
+def post(u, d, y0, y1, w=0.06):
+    box("caf_fittings", u - w / 2, u + w / 2, d - w / 2, d + w / 2, y0, y1, STEEL)
+
+
+def rail_line(a, b, ya, yb, r=0.021):
+    """A round rail from (u, d) a at ya to b at yb."""
+    utube("caf_fittings", (*a, ya), (*b, yb), r, STEEL, seg=8)
+
+
+def guard(a, b, floor_a, floor_b=None, posts=True, end_posts=(True, True)):
+    """A guard rail along a deck's or landing's edge from (u, d) a to b (floor heights at either end): posts at most
+    1.5 m apart, a top rail, a mid rail and a toe board; its blocks a little over the floor up to the top rail."""
+    floor_b = floor_a if floor_b is None else floor_b
+    L = math.hypot(b[0] - a[0], b[1] - a[1])
+    n = max(1, math.ceil(L / 1.5))
+    at = lambda f: (a[0] + (b[0] - a[0]) * f, a[1] + (b[1] - a[1]) * f, floor_a + (floor_b - floor_a) * f)
+    if posts:
+        for k in range(n + 1):
+            if (k == 0 and not end_posts[0]) or (k == n and not end_posts[1]):
+                continue
+            u, d, y = at(k / n)
+            post(u, d, y - 0.05, y + GUARD + 0.02, 0.05)
+    rail_line(a, b, floor_a + GUARD, floor_b + GUARD, 0.024)
+    rail_line(a, b, floor_a + MID, floor_b + MID, 0.016)
+    ubeam("caf_fittings", (*a, floor_a + 0.06), (*b, floor_b + 0.06), 0.02, 0.12, STEEL)    # the toe board
+    # Blocks in pieces of at most a metre, each from just over its lower floor: nothing slips under it.
+    m = max(1, math.ceil(L / 1.0))
+    tu, td = (b[0] - a[0]) / L, (b[1] - a[1]) / L
+    for k in range(m):
+        u0, d0, y0 = at(k / m)
+        u1, d1, y1 = at((k + 1) / m)
+        nu, nd = -td * 0.06, tu * 0.06      # 12 cm: more than the 10 cm a zombie's swipe is checked in
+        block([(u0 + nu, d0 + nd), (u1 + nu, d1 + nd), (u1 - nu, d1 - nd), (u0 - nu, d0 - nd)],
+              min(y0, y1) + 0.05, max(y0, y1) + GUARD, "steel")
+
+
+def platform(u0, u1, d0, d1, top, legs=()):
+    """A landing of grating on edge beams, `top` its floor, on legs at (u, d) down to the ground."""
+    box("caf_fittings", u0, u1, d0, d1, top - 0.04, top, GRATE)
+    for (a, b) in (((u0, d0), (u1, d0)), ((u1, d0), (u1, d1)), ((u1, d1), (u0, d1)), ((u0, d1), (u0, d0))):
+        ubeam("caf_fittings", (*a, top - 0.1), (*b, top - 0.1), 0.06, 0.14, STEEL)
+    for u, d in legs:
+        post(u, d, ground(u, d) - 0.2, top - 0.04, 0.08)
+        box("caf_fittings", u - 0.2, u + 0.2, d - 0.2, d + 0.2, ground(u, d) - 0.1, ground(u, d) + 0.06, "#8e8c87")  # its footing
+        block(rect(u - 0.05, u + 0.05, d - 0.05, d + 0.05), -0.3, top - 0.05, "steel")
+    block(rect(u0, u1, d0, d1), top - 0.1, top, "steel")
+
+
+def flight(name, top_at, t, top, width=CLEAR):
+    """A straight stair climbing along t (a unit (u, d) direction) to its top riser on the centreline at `top_at`, whose
+    tread level there is `top` (its landing's floor). Its foot stands on the ground. Returns its foot (u, d, y)."""
+    # The ground at the foot decides the count of risers, the count the length: two rounds settle it.
+    run = 3.5
+    for _ in range(3):
+        F = (top_at[0] - t[0] * run, top_at[1] - t[1] * run)
+        foot = ground(*F) + 0.03
+        n = math.ceil((top - foot) / RISE_MAX)
+        run = (n - 1) * GOING
+    F = (top_at[0] - t[0] * run, top_at[1] - t[1] * run)
+    rise = (top - foot) / n
+    w = width / 2
+    nose = lambda s: foot + rise + s * rise / GOING          # the line of the nosings
+    for k in range(1, n):
+        y = foot + k * rise
+        s0, s1 = (k - 1) * GOING, k * GOING
+        fbox(F, t, s0 + 0.035, s1 + 0.01, -w, w, y - 0.035, y, GRATE)
+        fbox(F, t, s0, s0 + 0.035, -w, w, y - 0.045, y + 0.002, NOSING)
+        for a in (-w + 0.15, w - 0.15):                                   # the bars under the grating, for its look
+            fbox(F, t, s0 + 0.04, s1 - 0.01, a - 0.004, a + 0.004, y - 0.06, y - 0.035, STEEL)
+        block(fring(F, t, s0, s1, -w, w), y - 0.06, y, "steel")
+        for side in (-1, 1):                                              # the rails' blocks, a tread at a time
+            block(fring(F, t, s0, s1, side * w, side * (w + 0.12)), y + 0.05, y + HAND + 0.1, "steel")
+    for side in (-1, 1):
+        a = side * (w + 0.02)
+        # The stringer: a channel along the flight from the ground to the landing.
+        sa, sb = -0.18, run
+        p0, p1 = fpt(F, t, sa, a), fpt(F, t, sb, a)
+        ubeam("caf_fittings", (*p0, nose(sa) - 0.13), (*p1, nose(sb) - 0.13), 0.03, 0.24, STEEL)
+        fbox(F, t, -0.32, 0.02, a - 0.1, a + 0.1, foot - 0.08, foot + 0.02, "#8e8c87")   # the footing under it
+        # Posts every third tread, the handrail and the knee rail along the nosings, the handrail on 30 cm past the foot.
+        r = side * (w + 0.05)
+        for s in [0.0] + [k * GOING for k in range(3, n - 1, 3)] + [run]:
+            post(*fpt(F, t, s, r), nose(s) - 0.15, nose(s) + HAND, 0.045)
+        rail_line(fpt(F, t, 0, r), fpt(F, t, run, r), nose(0) + HAND, nose(run) + HAND, 0.022)
+        rail_line(fpt(F, t, -0.3, r), fpt(F, t, 0, r), nose(0) + HAND, nose(0) + HAND, 0.022)
+        rail_line(fpt(F, t, 0, r), fpt(F, t, run, r), nose(0) + KNEE, nose(run) + KNEE, 0.016)
+    foot_at = fpt(F, t, -0.7, 0)
+    stairs_out.append({"id": name, "foot": [*[round(c, 3) for c in P(*foot_at)], round(ground(*foot_at), 3)],
+                       "top": [*[round(c, 3) for c in P(*fpt(F, t, run + 0.5, 0))], round(top, 3)],
+                       "risers": n, "rise": round(rise, 3), "going": GOING})
+    print(f"stair {name}: {n} risers of {rise * 100:.1f} cm, {n - 1} treads of {GOING * 100:.0f} cm, foot {[round(c, 2) for c in P(*F)]}")
+    return F
+
+
+# The annex's flat roof: a guard rail round its free edges (the main block's and the cross gable's walls close its front).
+SIDE0, SIDE1 = 12.35, 13.55            # the side stair's landing along the annex's wall
+WALK0, WALK1 = 9.9, 11.1               # the roof walk across the veranda
+guard((BU + 0.02, B1 + 0.05), (BU + 0.02, SIDE0), DECK, end_posts=(True, False))
+guard((BU + 0.02, SIDE1), (BU + 0.02, 15.0), DECK, end_posts=(False, True))
+guard((BU + 0.02, 15.0), (AW - 0.05, 15.0), DECK, end_posts=(False, True))
+guard((AW - 0.05, 15.0), (AW - 0.05, WALK1), DECK, end_posts=(False, True))
+guard((AW - 0.05, WALK0), (AW - 0.05, B1 + 0.05), DECK)
+for u, d in ((0.6, 10.6), (4.6, 13.2)):                                   # roof vents, for the look
+    utube("caf_fittings", (u, d, DECK - 0.02), (u, d, DECK + 0.45), 0.09, "#c4c7c9", seg=10)
+    utube("caf_fittings", (u, d, DECK + 0.45), (u, d, DECK + 0.55), 0.14, "#b3b6b8", seg=10)
+    block(rect(u - 0.12, u + 0.12, d - 0.12, d + 0.12), DECK - 0.1, DECK + 0.55, "steel")
+roofs_out.append({"id": "deck", "at": [*[round(c, 3) for c in P(2.6, 12.0)], round(DECK, 3)]})
+
+# 1. The side stair: its landing against the annex's wall, the flight square to it into the yard.
+SL0 = BU - 1.15
+platform(SL0, BU - 0.02, SIDE0, SIDE1, DECK + 0.03, legs=[(SL0 + 0.05, SIDE0 + 0.05), (SL0 + 0.05, SIDE1 - 0.05)])
+guard((SL0, SIDE0), (BU - 0.02, SIDE0), DECK + 0.03)
+guard((SL0, SIDE1), (BU - 0.02, SIDE1), DECK + 0.03)
+flight("side", (SL0, (SIDE0 + SIDE1) / 2), (1.0, 0.0), DECK + 0.03)
+
+# 2. The terrace stair: the roof walk across the veranda's light roof, on beams over its ribs, a landing bridging the
+# path along the veranda (on two legs on the gravel past the path's kerb), the flight down along the path to the hall.
+WU1 = 16.65                            # the landing's far end
+TL0 = WU1 - 1.1                        # where the flight leaves it
+box("caf_fittings", AW, C1 + 0.2, WALK0, WALK1, WALK - 0.04, WALK, GRATE)
+for d in (WALK0 + 0.1, WALK1 - 0.1):
+    ubeam("caf_fittings", (AW, d, WALK - 0.12), (C1 + 0.2, d, WALK - 0.12), 0.08, 0.1, STEEL)
+    for u in (AW + 0.6, AW + 2.6, AW + 4.6, C1 - 0.4):                   # its feet on the veranda's ribs
+        ubeam("caf_fittings", (u, d, E_HI + (E_LO - E_HI) * (d - E0) / (E1 - E0)), (u, d, WALK - 0.12), 0.06, 0.06, STEEL)
+block(rect(AW, C1 + 0.2, WALK0, WALK1), WALK - 0.1, WALK, "steel")
+platform(C1 + 0.2, WU1, WALK0, WALK1, WALK, legs=[(TL0 + 0.05, WALK0 + 0.05), (WU1 - 0.05, WALK0 + 0.05), (TL0 - 0.05, WALK1 - 0.05), (WU1 - 0.05, WALK1 - 0.05)])
+ubeam("caf_fittings", (C1 + 0.02, WALK0 + 0.6, WALK - 0.1), (C1 + 0.2, WALK0 + 0.6, WALK - 0.1), 0.3, 0.14, STEEL)   # its bracket on the wall
+guard((AW, WALK0), (WU1, WALK0), WALK)
+guard((WU1, WALK0), (WU1, WALK1), WALK, end_posts=(False, True))
+guard((AW, WALK1), (TL0 - 0.02, WALK1), WALK)
+flight("terrace", ((TL0 + WU1) / 2, WALK1), (0.0, -1.0), WALK)
+roofs_out.append({"id": "walk", "at": [*[round(c, 3) for c in P(10.2, (WALK0 + WALK1) / 2)], WALK]})
+
+# 3. The forecourt stair, along the carport's front: its landing at the roof's front edge, the roof railed round.
+FL0, FL1 = 13.6, 14.85                 # the landing along the front
+FD0, FD1 = -3.95, R_D0                 # and across, up to the roof's edge
+c_top = round(carport_top(R_D0 + (R_D1 - R_D0) / CARPORT_STRIPS / 2), 3)
+platform(FL0, FL1, FD0, FD1, c_top, legs=[(FL0 + 0.05, FD0 + 0.05), (FL1 - 0.05, FD0 + 0.05)])
+guard((FL0, FD0), (FL1, FD0), c_top)
+guard((FL1, FD0), (FL1, FD1), c_top, end_posts=(False, True))
+flight("forecourt", (FL0, FD0 + 0.55), (1.0, 0.0), c_top)
+cu0, cu1, cd0, cd1 = R_U0 + 0.06, R_U1 - 0.06, R_D0 + 0.06, R_D1 - 0.06
+guard((cu0, cd0), (FL0, cd0), carport_top(cd0))
+guard((cu0, cd0), (cu0, cd1), carport_top(cd0), carport_top(cd1), end_posts=(False, True))
+guard((cu1, FD1 + 0.06), (cu1, cd1), carport_top(cd0), carport_top(cd1))
+guard((cu0, cd1), (cu1, cd1), carport_top(cd1), end_posts=(False, False))
+roofs_out.append({"id": "carport", "at": [*[round(c, 3) for c in P((R_U0 + R_U1) / 2, -0.4)], round(carport_top(-0.4), 3)]})
+
+
 # ---------------------------------------------------------------- UVs, objects, export
 def metre_uvs(bm, scale):
     uv = bm.loops.layers.uv.new("UVMap")
@@ -887,12 +1085,29 @@ bpy.context.scene.collection.objects.link(root)
 root["origin"] = [ORIGIN[0], ORIGIN[1]]
 root["landmark"] = "sparrenhof"
 root["replaces"] = [[list(p) for p in OUTLINE], [list(p) for p in CANOPY]]
-root["blocks"] = blocks
-root["blocksOnGround"] = True
 # Open ground with no tree in it (the game drops the village's trees there): the building, the forecourt with its setts
-# and gravel, and the terrace, as in the photos of 5 November (the wood starts behind and beside them).
-OPEN = [[(-12.5, -12.0), (-4.0, -15.5), (15.12, -22.5), (27.0, -5.0), (28.0, 16.5), (16.0, 17.0), (BU + 1.0, 10.5), (-6.5, 10.5)]]
+# and gravel, and the terrace, as in the photos of 5 November (the wood starts behind and beside them); the yard
+# behind the gate too, where the side stair stands.
+OPEN = [[(-12.5, -12.0), (-4.0, -15.5), (15.12, -22.5), (27.0, -5.0), (28.0, 16.5), (16.0, 17.0), (0.0, 16.0), (-8.0, 16.0),
+         (-8.0, 10.5), (-6.5, 10.5)]]
 root["clear"] = [[[round(c, 2) for c in P(u, d)] for u, d in ring] for ring in OPEN] + [[list(p) for p in OUTLINE]]
+# The blocks for walking into (heights above the origin's ground) go to web/shared/sparrenhof.json, read by the page
+# and the server alike (shared/sparrenhof.mjs): walking, shots, and the zombies' grid with its finer `area` round the
+# café and its stairs, where they follow the players up to the roofs.
+corners = [P(u, d) for u in (-7.0, 17.6) for d in (-4.8, 16.4)]
+CAFE = {
+    "_source": "tools/sparrenhof.py: the café's blocks for walking into, with its made-up stairs to the roofs",
+    "origin": [ORIGIN[0], ORIGIN[1]],
+    "outlines": [[list(p) for p in OUTLINE], [list(p) for p in CANOPY]],     # the open data's blocks in them make way
+    "clear": [[[round(c, 2) for c in P(u, d)] for u, d in ring] for ring in OPEN] + [[list(p) for p in OUTLINE]],
+    "area": [round(min(c[0] for c in corners), 2), round(min(c[1] for c in corners), 2),
+             round(max(c[0] for c in corners), 2), round(max(c[1] for c in corners), 2)],
+    "stairs": stairs_out,
+    "roofs": roofs_out,
+    "blocks": blocks,
+}
+with open(os.path.join(ROOT, "web", "shared", "sparrenhof.json"), "w", encoding="utf-8", newline="\n") as f:
+    f.write(json.dumps(CAFE, separators=(",", ":")) + "\n")
 tris = 0
 objs = []
 for name, bm in BM.items():
@@ -1004,4 +1219,6 @@ if PREVIEW:
     shoot("left", (-7.5, -19.0, 1.5), (5.0, 2.0, 2.8))          # photos 1, 3, 5 and 7: from the street, to the left
     shoot("terrace", (27.0, -6.0, 1.7), (12.0, 10.0, 2.0))      # the terrace side the photos don't show
     shoot("back", (-14.0, 40.0, 4.0), (6.0, 15.0, 2.0))         # the back, from the wood
+    shoot("side", (-14.0, 6.0, 1.7), (-2.0, 13.0, 2.2))         # the side stair in the yard behind the gate
+    shoot("stairs", (24.0, 22.0, 5.0), (12.0, 8.0, 2.4))        # the terrace stair and the roof walk
     shoot("aerial", (-25.0, -45.0, 30.0), (6.0, 8.0, 0.0), f_px=700, w=900, h=700)

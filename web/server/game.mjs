@@ -44,8 +44,9 @@ import { boxesOverlap, boxPoints, clearOfPortals, makeIndoors, makeSolids } from
 import { bikeFields, bruteEntry, carFields, horseFields, playerFields, PROTO, TICK_MS } from '../shared/wire.mjs';
 import { houseAreas, makeNav, MAX_ADMIN_WAVE } from '../shared/zombies.mjs';
 import { cycleTime, DEFAULT_CHOICE, isChoice, newCycle, runOf, seasonCycle, skipCycle, SPEEDS, winterAt, withSpeed } from '../shared/moods.mjs';
-import { arenaEdge, arenaHome, arenaPrisms, ARENAS, portalOf } from '../shared/arenas.mjs';
+import { arenaEdge, arenaHome, arenaSpots, ARENAS, portalOf, villageGround } from '../shared/arenas.mjs';
 import { churchPrisms, makeChurch } from '../shared/church.mjs';
+import { cafePrisms, makeCafe } from '../shared/sparrenhof.mjs';
 import { DROP, dropFrom, HOME_DROP } from '../shared/parachute.mjs';
 import { Football } from './football.mjs';
 import { blastPoint } from './grenade.mjs';
@@ -100,6 +101,9 @@ for (const p of PACKS) registerDoors(p.id, p.doors.map((d) => d.id));
 const VILLAGE = houseData('village.json');
 const CHURCH_DATA = shared('church.json');
 const CHURCH = makeChurch(CHURCH_DATA, HOUSE.ground + TERRAIN.height(...CHURCH_DATA.origin));
+const CAFE_DATA = shared('sparrenhof.json');
+/** The café Sparrenhof's blocks with its stairs to the roofs, in place of its plain block (shared/sparrenhof.mjs) */
+const CAFE = makeCafe(CAFE_DATA, HOUSE.ground + TERRAIN.height(...CAFE_DATA.origin));
 /**
  * A spot on every named street (tools/places.py): where /location kapellenhoek takes you, on foot
  * (`out`) or with the car (`car`). Only these: a trip never ends where the page says. A spot
@@ -172,7 +176,7 @@ const BELL_MS = 400; // ms: a rider's bell rings for the others at most this oft
  * and the bungalow (indoors).
  */
 const SOLIDS = makeSolids([
-  ...HOUSE.prisms, ...(HOUSE.surroundings?.prisms ?? []), ...churchPrisms(VILLAGE.prisms ?? [], CHURCH),
+  ...HOUSE.prisms, ...(HOUSE.surroundings?.prisms ?? []), ...cafePrisms(churchPrisms(VILLAGE.prisms ?? [], CHURCH), CAFE),
   ...Object.values(houseData('homestreet.json').clusters).flatMap((c) => c.blocks ?? []),
 ], (x, z) => TERRAIN.height(x, z));
 const INDOORS = makeIndoors([...HOUSE.prisms, ...(HOUSE.surroundings?.prisms ?? [])], HOUSE.rooms.map((r) => r.name));
@@ -631,12 +635,13 @@ export class Game {
       return { x: c.x, z: c.z, yaw: c.yaw, halfL: s.length / 2, halfW: s.width / 2 };
     });
     const height = (x, z) => TERRAIN.height(x, z);
-    const nav = arena.center
-      ? makeNav({ prisms: arenaPrisms(churchPrisms(VILLAGE.prisms ?? [], CHURCH), edge), height, base: HOUSE.ground, edge, boxes, areas: arena.id === 'church' ? [CHURCH.area] : [], doors: [], shut: true, panes: 0 })
+    const village = arena.center ? villageGround(arena, edge, VILLAGE, CHURCH, CAFE) : null;
+    const nav = village
+      ? makeNav({ prisms: village.prisms, height, base: HOUSE.ground, edge, boxes, areas: village.areas, doors: [], shut: true, panes: 0 })
       : makeNav({ prisms: ZOMBIE_PRISMS, height, base: HOUSE.ground, edge, boxes, areas: HOUSE_AREAS, doors: HOUSE.doors, shut: false, panes: HOUSE.prisms.length });
     if (!arena.center) nav.setPanes(this.broken);
     return {
-      nav, edge, spots: nav.spawnSpots(), home: arenaHome(arena), doors: arena.center ? [] : HOUSE.doors,
+      nav, edge, spots: arenaSpots(arena, nav.spawnSpots(), VILLAGE, CAFE), home: arenaHome(arena), doors: arena.center ? [] : HOUSE.doors,
       doorOpen: (id) => this.doors[id] ?? DOOR_OPEN[id] ?? true,
     };
   }

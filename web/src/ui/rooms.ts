@@ -156,4 +156,4 @@ function placeName(id: string): string {
   const key = `portal.${id}`;
   return KNOWN.has(id) ? t(key as PlainKey) : id;
 }
-const KNOWN = new Set(['house', 'bungalow', 'church', 'molenhoek', 'molenhoek_mid', 'molenhoek_end']);
+const KNOWN = new Set(['house', 'bungalow', 'church', 'molenhoek', 'molenhoek_mid', 'molenhoek_end', 'sparrenhof']);

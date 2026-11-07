@@ -4,7 +4,7 @@ import { num, onLang, t, type PlainKey } from '../i18n';
 import { paintball } from '../paintball';
 
 /** The places a Zombies game is played at (shared/arenas.mjs), for the board's filter. */
-const PLACES = ['house', 'bungalow', 'church', 'molenhoek', 'molenhoek_mid', 'molenhoek_end'] as const;
+const PLACES = ['house', 'bungalow', 'church', 'molenhoek', 'molenhoek_mid', 'molenhoek_end', 'sparrenhof'] as const;
 const placeName = (id: string) => ((PLACES as readonly string[]).includes(id) ? t(`portal.${id}` as PlainKey) : id);
 
 /**

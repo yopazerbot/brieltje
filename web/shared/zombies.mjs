@@ -81,6 +81,14 @@ export const ZOMBIE = {
   shoveMs: 1500,
   /** ms a zombie stands at a closed door, shoving it */
   shoveFor: 600,
+  /**
+   * On a stair a zombie goes at this share of its pace, up or down (Yoshi, 7 Nov 2026: the café's stairs are a
+   * chokepoint, not a safe spot): it climbs clumsily. A riser is where its feet rise or fall at once by 10 cm or more,
+   * or more than `steep` m a m; it stays slow `climbMs` after each (to the next riser).
+   */
+  climb: 0.55,
+  steep: 0.35,
+  climbMs: 700,
 };
 
 /** In the grids' unit (UNIT m): a step straight, one diagonal, and one more next to a wall. */
@@ -1410,10 +1418,11 @@ export class Horde {
       weight[i] = 0;
       // As things are now (the players moved since the last field): far enough from all, seen by none
       // (only after 10 s with nowhere else, past spawnMax: a wave never stalls for good).
+      // Deep in a wood (s.wood) and spawnBest off, one may come out in sight: from between the trees.
       const fair = (x, z) => {
         for (const p of targets) {
           const d = Math.hypot(p.x - x, p.z - z);
-          if (d < lo || (d < max + 10 && nav.clear(x, z, p.x, p.z, true) && !(this.starved >= 20 && d > max))) return false;
+          if (d < lo || (d < max + 10 && !(s.wood && d >= best) && nav.clear(x, z, p.x, p.z, true) && !(this.starved >= 20 && d > max))) return false;
         }
         return true;
       };
@@ -1573,7 +1582,7 @@ export class Horde {
     // row of stakes too, and a moment after (shared/loot.mjs sets `slow` and `slowUntil`).
     const facing = Math.max(0, Math.cos(wrap(want - z.yaw)));
     const wading = now < (z.slowUntil ?? 0) ? z.slow ?? 1 : 1;
-    const speed = stop ? 0 : z.top * (0.3 + 0.7 * facing) * wading;
+    const speed = stop ? 0 : z.top * (0.3 + 0.7 * facing) * wading * (now < (z.climbUntil ?? 0) ? ZOMBIE.climb : 1);
     const vx = Math.sin(z.yaw) * speed + push.x;
     const vz = Math.cos(z.yaw) * speed + push.z;
     const bx = z.x;
@@ -1589,8 +1598,12 @@ export class Horde {
       else if ((k = nav.step(z.node, z.x, nz)) >= 0) [z.z, z.node] = [nz, k];
       else break;
     }
+    const by = z.y;
     if (z.node >= 0) z.y = nav.y(z.node, z.x, z.z);
-    z.speed = Math.hypot(z.x - bx, z.z - bz) / Math.max(dt, 1e-3);
+    const moved = Math.hypot(z.x - bx, z.z - bz);
+    // A step up or down a stair's riser (a step of its own floors, none on the open ground's slopes): slower a moment.
+    if (moved > 0.005 && Math.abs(z.y - by) > Math.max(0.1, ZOMBIE.steep * moved)) z.climbUntil = now + ZOMBIE.climbMs;
+    z.speed = moved / Math.max(dt, 1e-3);
   }
 
   /** A swipe or a pound lands on player `p` (unless they were hit a moment ago, or are just back). */
