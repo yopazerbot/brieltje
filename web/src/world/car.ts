@@ -4,8 +4,10 @@ import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
 import CARS from '../../shared/car.json';
 import type { CarSample } from '../../shared/wire.mjs';
 import { netClock, Track } from '../net/track';
-import { sound } from '../sound';
+import { CarBody, groundPlane, PITCH_MAX, ROLL_MAX, skid } from './carBody';
+import { CarSound } from './carSound';
 import type { Point, World } from './collision';
+import { skidMarks } from './skidMarks';
 
 /**
  * The cars you can drive (shared/car.json): the black Tesla Model Y on our driveway, the blue
@@ -87,6 +89,12 @@ const STEER = 0.62;     // rad, the front wheels at full lock (less at speed, se
 const CLEAR = 0.3;      // m: lower things (kerbs, paving, a step) don't stop the car
 const SPIN_STEP = 0.3;  // rad: the most a wheel turns per frame on screen (faster, the spokes seem to stand or run back)
 const DRAW = 250;       // m from the eye: further off a car isn't drawn (about 30 draw calls each; the village's parked cars go at 200 m)
+const ROLL_H = 0.45;    // m: the height the body pitches and rolls about, between the axles and the sills
+const TILT = 0.2;       // rad: the most the ground under the wheels tilts the car
+/** Ground the tyres don't squeal on or mark: grass, earth, gravel (the block's material name, or none for the bare ground). */
+const ROUGH = /grass|lawn|meadow|field|earth|soil|mud|gravel|sand|hedge|leaves|moss|forest|wood_floor/i;
+/** The player's system asks for less motion: no camera sway or roll, no wider view at speed. */
+const CALM = typeof matchMedia === 'function' && matchMedia('(prefers-reduced-motion: reduce)').matches;
 
 /** A model's scene, fetched and parsed once however many cars use it; each car gets its own copy (sharing the geometry). */
 const models = new Map<string, Promise<THREE.Group>>();
@@ -223,15 +231,6 @@ function contactShadow(spec: CarSpec): THREE.Mesh {
   return m;
 }
 
-let noise: AudioBuffer | null = null;
-function noiseBuffer(c: AudioContext): AudioBuffer {
-  if (noise?.sampleRate === c.sampleRate) return noise;
-  noise = c.createBuffer(1, c.sampleRate, c.sampleRate);
-  const d = noise.getChannelData(0);
-  for (let i = 0; i < d.length; i++) d[i] = Math.random() * 2 - 1;
-  return noise;
-}
-
 const angle = (a: number) => Math.atan2(Math.sin(a), Math.cos(a));
 
 export class Car {
@@ -259,11 +258,35 @@ export class Car {
   private braking = false;
   private pushing = 0;
   private body = new THREE.Group();
+  /** The wheels, out of the body: they stay on the ground while the body leans over them. */
+  private chassis = new THREE.Group();
   private front: THREE.Object3D[] = [];
   private wheels: { pivot: THREE.Object3D; flip: number }[] = [];
-  private roll = 0;
-  private pitch = 0;
   private lastSpeed = 0;
+  // How it moves, from its own motion (world/carBody.ts): the body on its springs, and what makes it lean.
+  private motion = new CarBody();
+  private along = 0; // m/s2 along the car, smoothed
+  private side = 0; // m/s sideways (> 0 to the right), smoothed
+  private yawRate = 0; // rad/s, smoothed
+  private lastX = 0;
+  private lastZ = 0;
+  private lastYaw = 0;
+  private fresh = true; // just put somewhere: no motion to read from the last frame
+  private handbraking = false;
+  // The ground under the wheels: each wheel's spot (on the car: x right, z back; front left, front right,
+  // rear left, rear right), the axles' spacing, each wheel's ground height last frame, and the plane they
+  // make, smoothed (the twist is what the wheels' own springs take).
+  private axle = { at: [[-0.82, -1.45], [0.82, -1.45], [-0.82, 1.42], [0.82, 1.42]], base: 2.87, track: 1.64, hub: [0, 0, 0, 0] };
+  private under = [0, 0, 0, 0];
+  private rise = [0, 0, 0, 0];
+  private rough = [false, false, false, false];
+  private ride = { pitch: 0, roll: 0, lift: 0, twist: 0 };
+  private plane = { pitch: 0, roll: 0, lift: 0, twist: 0 };
+  private still = 0; // frames it hasn't moved
+  private knock = 0; // s until the next thump over a kerb
+  /** Where each tyre's skid mark got to, or null while it grips. */
+  private trail: ({ x: number; y: number; z: number } | null)[] = [null, null, null, null];
+  private noise = new CarSound();
   private spin = 0;
   // Someone else drives it (or it stands where it was left): its states from the server, drawn a little behind.
   private track = new Track<null>([false, false, false, true, false], 10); // x, y, z, yaw, steer
@@ -273,7 +296,10 @@ export class Car {
   private camYaw = 0;
   private camPitch = 0.22;
   private lookIdle = 0;
-  private audio: { at: PannerNode; whine: OscillatorNode; tyres: AudioBufferSourceNode; hum: GainNode; filter: BiquadFilterNode; road: GainNode } | null = null;
+  private camBack = 0;
+  private camSide = 0;
+  /** The view a little wider at speed (main.ts multiplies the player's field of view by it). */
+  fovScale = 1;
   private halfL: number;
   private halfW: number;
   private key: string; // its moving block in the collision world
@@ -291,11 +317,29 @@ export class Car {
     this.key = `car-${id}`;
     this.ready = !spec.village;
     this.group.userData.car = id; // /remove finds a spawned one by it
-    this.group.add(this.body, contactShadow(spec));
+    this.group.add(this.body, this.chassis, contactShadow(spec));
+    this.group.rotation.order = 'YXZ'; // its heading, then the ground's slope under it
+    this.body.position.y = ROLL_H;
     const paint = (this.paint = new THREE.MeshStandardMaterial({ color: spec.paint, roughness: 0.2, metalness: spec.metal }));
     void modelCopy(spec.model).then((scene) => {
       if (this.gone) return;
       const { front, wheels } = prepare(scene, { Paint: paint, TailLight: this.taillight }, this.blurMat);
+      // The wheels move to the chassis, where they were on the model; their spots give the axles.
+      scene.updateMatrixWorld(true);
+      for (const w of wheels) {
+        this.chassis.add(w.pivot);
+        w.pivot.matrixWorld.decompose(w.pivot.position, w.pivot.quaternion, w.pivot.scale);
+        w.pivot.userData.baseYaw = w.pivot.rotation.y;
+      }
+      const corners = ['Wheel_FL', 'Wheel_FR', 'Wheel_RL', 'Wheel_RR'];
+      const spot = (name: string) => wheels.find((w) => w.pivot.name === name)?.pivot.position;
+      const at = corners.map(spot);
+      for (const w of wheels) if (at.every((p) => p)) w.pivot.userData.corner = corners.indexOf(w.pivot.name);
+      if (at.every((p) => p)) {
+        const [fl, fr, rl] = at as THREE.Vector3[];
+        this.axle = { at: at.map((p) => [p!.x, p!.z]), base: Math.abs(rl.z - fl.z), track: Math.abs(fr.x - fl.x), hub: at.map((p) => p!.y) };
+      }
+      scene.position.y = -ROLL_H;
       this.body.add(scene);
       this.front = front;
       this.wheels = wheels;
@@ -346,13 +390,15 @@ export class Car {
   leave(): void {
     this.vx = this.vz = this.speed = 0;
     this.braking = false;
+    this.handbraking = false;
     this.pushing = 0;
     this.track.clear(); // the server's next states start from here
   }
 
   /** Through a portal: standing still at (x, y, z) facing `yaw`, the camera behind it. */
   place(x: number, y: number, z: number, yaw: number): void {
-    Object.assign(this, { x, y, z, yaw, steer: 0, speed: 0, vx: 0, vz: 0, lastSpeed: 0, braking: false, camHeading: yaw, camYaw: 0 });
+    Object.assign(this, { x, y, z, yaw, steer: 0, speed: 0, vx: 0, vz: 0, lastSpeed: 0, braking: false, camHeading: yaw, camYaw: 0, fresh: true });
+    this.motion.reset();
     this.track.clear();
   }
 
@@ -364,7 +410,8 @@ export class Car {
     this.driver = s.driver;
     this.passenger = s.passenger ?? null;
     if (snap || Math.hypot(s.x - this.x, s.z - this.z) > 10) {
-      Object.assign(this, { x: s.x, y: s.y, z: s.z, yaw: s.yaw, steer: s.s, speed: 0 });
+      Object.assign(this, { x: s.x, y: s.y, z: s.z, yaw: s.yaw, steer: s.s, speed: 0, fresh: true });
+      this.motion.reset();
       this.track.clear();
     }
   }
@@ -386,6 +433,7 @@ export class Car {
     for (let i = 0; i < steps; i++) impact = Math.max(impact, this.step(dt / steps, input, near));
     this.braking = (input.brake > 0.05 && this.speed > 0.3) || (input.throttle > 0.05 && this.speed < -0.3) || (input.handbrake && Math.abs(this.speed) > 0.3);
     this.pushing = input.throttle || input.brake;
+    this.handbraking = input.handbrake;
     const g = this.world.groundAt(this.x, this.z, this.y, CLEAR).y;
     this.y += (g - this.y) * (1 - Math.exp(-dt * 12));
     return impact;
@@ -465,7 +513,10 @@ export class Car {
 
   /**
    * The camera behind the car. `turnX` and `turnY` (radians) look around it; when you
-   * stop looking it swings back behind the car as you drive.
+   * stop looking it swings back behind the car as you drive. It lags the body a little: it
+   * drops back as the car speeds up and closes in as it brakes, swings out of a turn, rides
+   * the bumps and leans a touch with the body; the view widens a little at speed (fovScale).
+   * With reduced motion asked for (the system's setting) it doesn't sway, lean or widen.
    */
   chase(camera: THREE.PerspectiveCamera, dt: number, turnX: number, turnY: number): void {
     this.camYaw = angle(this.camYaw - turnX);
@@ -478,17 +529,25 @@ export class Car {
     }
     this.camHeading += angle(this.yaw - this.camHeading) * (1 - Math.exp(-dt * 5));
     const h = this.camHeading + this.camYaw;
-    const dist = 6.5;
-    const target: Point = { x: this.x, y: this.y + 1.4, z: this.z };
+    const d = Math.min(Math.max(dt, 0), 0.1);
+    const lag = 1 - Math.exp(-d * 3);
+    const v = Math.abs(this.speed);
+    this.camBack += (0.5 * (this.motion.pitch / PITCH_MAX) + 0.6 * Math.min(1, v / this.spec.maxSpeed) - this.camBack) * lag;
+    this.camSide += ((CALM ? 0 : -0.3 * (this.motion.roll / ROLL_MAX)) - this.camSide) * lag;
+    const wide = CALM ? 0 : Math.min(1, Math.max(0, (v - 12) / 40));
+    this.fovScale += (1 + 0.1 * wide * wide * (3 - 2 * wide) - this.fovScale) * (1 - Math.exp(-d * 1.5));
+    const dist = 6.5 + this.camBack;
+    const target: Point = { x: this.x, y: this.y + this.ride.lift + 1.4 + (CALM ? 0 : 0.5 * this.motion.heave), z: this.z };
     const want: Point = {
-      x: target.x + Math.sin(h) * Math.cos(this.camPitch) * dist,
+      x: target.x + Math.sin(h) * Math.cos(this.camPitch) * dist + Math.cos(h) * this.camSide,
       y: target.y + Math.sin(this.camPitch) * dist,
-      z: target.z + Math.cos(h) * Math.cos(this.camPitch) * dist,
+      z: target.z + Math.cos(h) * Math.cos(this.camPitch) * dist - Math.sin(h) * this.camSide,
     };
     // Something between the car and the camera (a wall, a hedge): come closer.
     const k = Math.max(0.15, this.world.clearance(target, want, this.key) - 0.3 / dist);
     camera.position.set(target.x + (want.x - target.x) * k, target.y + (want.y - target.y) * k, target.z + (want.z - target.z) * k);
     camera.lookAt(target.x, target.y, target.z);
+    if (!CALM) camera.rotateZ(0.25 * this.motion.roll);
   }
 
   /**
@@ -509,27 +568,160 @@ export class Car {
       this.braking = this.speed - this.lastSpeed < -3 * dt && Math.abs(this.speed) > 0.5;
       Object.assign(this, { x, y, z, yaw, steer });
     }
-    this.group.position.set(this.x, this.y, this.z);
-    this.group.rotation.y = this.yaw;
+    if (this.group.visible) this.feel(dt, local);
+    else {
+      this.fresh = true; // back in sight, it starts afresh
+      this.noise.update({ x: this.x, y: this.y, z: this.z, speed: 0, load: 0, regen: 0, skid: 0, rough: false }); // and out of it, quiet
+    }
+    this.group.position.set(this.x, this.y + this.ride.lift, this.z);
+    this.group.rotation.set(this.ride.pitch, this.yaw, this.ride.roll, 'YXZ');
     const turnRate = Math.abs(this.speed) / WHEEL_R; // rad/s
     this.spin -= Math.sign(this.speed) * Math.min(turnRate * dt, SPIN_STEP);
     for (const w of this.wheels) w.pivot.rotation.x = this.spin * w.flip;
     this.blurMat.opacity = Math.min(0.92, Math.max(0, (turnRate - 12) / 25));
     this.blurMat.visible = this.blurMat.opacity > 0.02;
     for (const w of this.front) w.rotation.y = w.userData.baseYaw + this.steer;
-    // The body leans back when it speeds up, forward when it brakes, and out of a turn.
-    if (dt > 0) {
-      const accel = (this.speed - this.lastSpeed) / dt;
-      const turn = (this.speed * this.speed * Math.tan(this.steer)) / WHEELBASE;
-      const k = 1 - Math.exp(-dt * 6);
-      this.pitch += (Math.max(-0.04, Math.min(0.04, accel * 0.005)) - this.pitch) * k;
-      this.roll += (Math.max(-0.05, Math.min(0.05, -turn * 0.004)) - this.roll) * k;
-      this.body.rotation.set(this.pitch, 0, this.roll);
+    // Each wheel's spring takes the twist of the ground the car can't follow (front left and rear right one way).
+    const twist = Math.max(-0.06, Math.min(0.06, this.ride.twist));
+    for (const w of this.wheels) {
+      const i: number | undefined = w.pivot.userData.corner;
+      if (i !== undefined) w.pivot.position.y = this.axle.hub[i] + (i === 0 || i === 3 ? twist : -twist);
     }
+    // The body on its springs: back when it speeds up, forward when it brakes, out of a turn, knocked by kerbs.
+    this.body.position.y = ROLL_H + this.motion.heave;
+    this.body.rotation.set(this.motion.pitch, 0, this.motion.roll);
     this.lastSpeed = this.speed;
     this.taillight.emissiveIntensity = this.braking ? 2.5 : 0.5;
     this.world.setMoving(this.key, this.footprint(), this.y, this.y + this.spec.height);
-    this.hum(local);
+  }
+
+  /**
+   * What the car's own motion does to it this frame (it is drawn): how it speeds up, slows down and
+   * turns, from which the body leans (world/carBody.ts); the ground under its wheels; its skid marks
+   * and its sound. The same for the car you drive and for those others drive (from their smoothed
+   * track), so nothing of it goes over the network.
+   */
+  private feel(dt: number, local: boolean): void {
+    if (!(dt > 0)) return;
+    const d = Math.min(dt, 0.1);
+    const dx = this.x - this.lastX;
+    const dz = this.z - this.lastZ;
+    const turned = angle(this.yaw - this.lastYaw);
+    // Put somewhere new (a portal, joining, back in sight): nothing to read from the last frame.
+    const jump = this.fresh || Math.hypot(dx, dz) > 3 + this.spec.maxSpeed * dt * 1.5;
+    this.fresh = false;
+    let along = 0;
+    if (jump) {
+      this.along = this.side = this.yawRate = 0;
+      this.motion.reset();
+    } else {
+      const [fx, fz] = this.forward;
+      const side = local ? -this.vx * fz + this.vz * fx : (-dx * fz + dz * fx) / dt;
+      this.side += (side - this.side) * (1 - Math.exp(-d * 10));
+      this.yawRate += (turned / dt - this.yawRate) * (1 - Math.exp(-d * 12));
+      along = Math.max(-40, Math.min(40, (this.speed - this.lastSpeed) / dt));
+      this.along += (along - this.along) * (1 - Math.exp(-d * 12));
+    }
+    const across = -this.speed * this.yawRate; // to the right: turning right turns the heading down
+    this.motion.step(dt, this.along, across);
+    this.knock = Math.max(0, this.knock - dt);
+    this.still = Math.hypot(dx, dz) < 1e-3 && Math.abs(turned) < 1e-4 ? this.still + 1 : 0;
+    if (jump || this.still < 30) this.ground(dt, jump);
+    else this.settle(dt); // standing still: it keeps the plane it found
+    // Someone else's car stopping dead (it hit something): a thump from it.
+    if (!local && along < -18 && this.knock <= 0) {
+      this.noise.thump(this.x, this.y, this.z, Math.min(10, -along / 4));
+      this.knock = 0.4;
+    }
+    const slip = skid(this.speed, this.side, this.along, across, local && this.handbraking);
+    this.marks(slip, jump);
+    let paved = 0;
+    let rough = 0;
+    for (let i = 0; i < 4; i++) {
+      const s = i < 2 ? slip.front : slip.rear;
+      if (this.rough[i]) rough = Math.max(rough, s);
+      else paved = Math.max(paved, s);
+    }
+    this.noise.update({
+      x: this.x, y: this.y, z: this.z, speed: Math.abs(this.speed),
+      load: local ? Math.min(1, this.pushing) : Math.min(1, Math.max(0, this.along / 5)),
+      regen: Math.min(1, Math.max(0, (-this.along * Math.sign(this.speed)) / 6)),
+      skid: Math.max(paved, rough), rough: rough > paved || this.rough.filter(Boolean).length > 2,
+    });
+    this.lastX = this.x;
+    this.lastZ = this.z;
+    this.lastYaw = this.yaw;
+  }
+
+  /** The ground under the four wheels: the plane the car tilts to, and a knock where one wheel's ground jumps. */
+  private ground(dt: number, jump: boolean): void {
+    const c = Math.cos(this.yaw);
+    const s = Math.sin(this.yaw);
+    const step = [0, 0, 0, 0];
+    for (let i = 0; i < 4; i++) {
+      const [lx, lz] = this.axle.at[i];
+      const g = this.world.groundAt(this.x + lx * c + lz * s, this.z - lx * s + lz * c, this.y, CLEAR);
+      step[i] = g.y - this.under[i];
+      this.under[i] = g.y;
+      this.rise[i] = Math.max(-0.35, Math.min(0.35, g.y - this.y));
+      this.rough[i] = !g.mat || ROUGH.test(g.mat);
+    }
+    const p = groundPlane(this.rise, this.axle.base, this.axle.track);
+    this.plane = { pitch: Math.max(-TILT, Math.min(TILT, p.pitch)), roll: Math.max(-TILT, Math.min(TILT, p.roll)), lift: p.lift, twist: p.twist };
+    this.settle(dt, jump);
+    // One wheel's ground jumps against the others' (a kerb, the edge of the paving), not a slope under all four.
+    if (jump || Math.abs(this.speed) < 1) return;
+    const mean = (step[0] + step[1] + step[2] + step[3]) / 4;
+    let hard = 0;
+    for (let i = 0; i < 4; i++) {
+      const e = step[i] - mean;
+      if (Math.abs(e) < 0.02 || Math.abs(e) > 0.4) continue;
+      this.motion.kick((3 * e * (i < 2 ? 1 : -1)) / (this.axle.base / 2), (3 * e * (i % 2 ? 1 : -1)) / (this.axle.track / 2), 3 * e);
+      hard = Math.max(hard, Math.abs(e));
+    }
+    if (hard > 0.04 && this.knock <= 0) {
+      this.noise.thump(this.x, this.y, this.z, 20 * hard * Math.min(1, Math.abs(this.speed) / 8));
+      this.knock = 0.25;
+    }
+  }
+
+  /** The car's tilt and height follow the ground's plane quickly (the tyres give a little); `now`: at once. */
+  private settle(dt: number, now = false): void {
+    const k = now ? 1 : 1 - Math.exp(-Math.min(dt, 0.1) * 18);
+    const r = this.ride;
+    const p = this.plane;
+    r.pitch += (p.pitch - r.pitch) * k;
+    r.roll += (p.roll - r.roll) * k;
+    r.lift += (p.lift - r.lift) * k;
+    r.twist += (p.twist - r.twist) * k;
+  }
+
+  /** Each sliding tyre on paving lays a strip of mark from where it was to where it is (world/skidMarks.ts). */
+  private marks(slip: { front: number; rear: number }, jump: boolean): void {
+    const c = Math.cos(this.yaw);
+    const s = Math.sin(this.yaw);
+    for (let i = 0; i < 4; i++) {
+      const strength = i < 2 ? slip.front : slip.rear;
+      if (jump || strength < 0.12 || this.rough[i]) {
+        this.trail[i] = null;
+        continue;
+      }
+      const [lx, lz] = this.axle.at[i];
+      const x = this.x + lx * c + lz * s;
+      const z = this.z - lx * s + lz * c;
+      const y = this.under[i];
+      const t = this.trail[i];
+      if (!t) {
+        this.trail[i] = { x, y, z };
+        continue;
+      }
+      const len = Math.hypot(x - t.x, z - t.z);
+      if (len < 0.3) continue;
+      if (len < 4) skidMarks.lay(t.x, t.y, t.z, x, y, z, strength);
+      t.x = x;
+      t.y = y;
+      t.z = z;
+    }
   }
 
   /**
@@ -549,67 +741,13 @@ export class Car {
       mat.dispose();
     });
     for (const m of [this.paint, this.taillight, this.blurMat]) m.dispose();
-    if (this.audio) {
-      this.audio.whine.stop();
-      this.audio.tyres.stop();
-      this.audio.at.disconnect();
-      this.audio = null;
-    }
+    this.noise.dispose();
   }
 
-  /** It hit something: a thud from where it is. */
+  /** It hit something (`strength` in m/s): a thump from where it is, and the body jolts. */
   bump(strength: number): void {
-    const c = sound.context();
-    const at = sound.at(this.x, this.y + 0.5, this.z, 3);
-    if (!c || !at) return;
-    const src = c.createBufferSource();
-    src.buffer = noiseBuffer(c);
-    const filter = c.createBiquadFilter();
-    filter.type = 'lowpass';
-    filter.frequency.value = 180 + strength * 30;
-    const gain = c.createGain();
-    const t = c.currentTime;
-    gain.gain.setValueAtTime(Math.min(1, strength / 8), t);
-    gain.gain.exponentialRampToValueAtTime(0.001, t + 0.35);
-    src.connect(filter).connect(gain).connect(at);
-    src.start(t);
-    src.stop(t + 0.4);
-  }
-
-  /** An electric car is quiet: a soft whine that rises with speed (louder on the pedal), and tyre noise. */
-  private hum(local: boolean): void {
-    const speed = Math.abs(this.speed);
-    if (!this.audio && speed < 0.5) return; // not before it first moves (after you have pressed something)
-    const c = sound.context();
-    if (!c) return;
-    if (!this.audio) {
-      const at = sound.at(this.x, this.y + 0.5, this.z, 4) as PannerNode;
-      const whine = c.createOscillator();
-      whine.type = 'triangle';
-      const hum = c.createGain();
-      hum.gain.value = 0;
-      whine.connect(hum).connect(at);
-      const tyres = c.createBufferSource();
-      tyres.buffer = noiseBuffer(c);
-      tyres.loop = true;
-      const filter = c.createBiquadFilter();
-      filter.type = 'lowpass';
-      const road = c.createGain();
-      road.gain.value = 0;
-      tyres.connect(filter).connect(road).connect(at);
-      whine.start();
-      tyres.start();
-      this.audio = { at, whine, tyres, hum, filter, road };
-    }
-    const a = this.audio;
-    const t = c.currentTime;
-    a.at.positionX.setTargetAtTime(this.x, t, 0.03);
-    a.at.positionY.setTargetAtTime(this.y + 0.5, t, 0.03);
-    a.at.positionZ.setTargetAtTime(this.z, t, 0.03);
-    a.whine.frequency.setTargetAtTime(90 + speed * 32, t, 0.05);
-    const pedal = local ? 0.4 + 0.6 * this.pushing : 0.7;
-    a.hum.gain.setTargetAtTime(Math.min(0.035, speed * 0.004) * pedal, t, 0.1);
-    a.filter.frequency.setTargetAtTime(250 + speed * 110, t, 0.1);
-    a.road.gain.setTargetAtTime(Math.min(0.15, speed * 0.008), t, 0.1);
+    this.noise.thump(this.x, this.y, this.z, strength);
+    const k = Math.min(1, strength / 10);
+    this.motion.kick(0, 0.3 * k * (Math.random() - 0.5), 0.25 * k);
   }
 }

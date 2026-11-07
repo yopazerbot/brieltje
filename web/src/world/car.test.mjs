@@ -4,6 +4,7 @@ import { readFileSync } from 'node:fs';
 import { stripTypeScriptTypes } from 'node:module';
 import * as THREE from 'three';
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
+import { CarBody, groundPlane, PITCH_MAX, ROLL_MAX, skid } from './carBody.ts';
 
 // Run the actual animation and movement code without the browser-only sound/texture imports.
 const source = readFileSync(new URL('./car.ts', import.meta.url), 'utf8');
@@ -13,21 +14,41 @@ const definition = (name) => {
   assert.ok(start >= 0);
   return stripTypeScriptTypes(source.slice(start, source.indexOf('\n}', start) + 2));
 };
-const constants = ['WHEELBASE', 'WHEEL_R', 'ACCEL', 'BRAKE', 'REVERSE', 'HANDBRAKE', 'GRIP', 'STEER', 'CLEAR', 'SPIN_STEP', 'DRAW', 'angle']
+const constants = ['WHEELBASE', 'WHEEL_R', 'ACCEL', 'BRAKE', 'REVERSE', 'HANDBRAKE', 'GRIP', 'STEER', 'CLEAR', 'SPIN_STEP', 'DRAW', 'ROLL_H', 'TILT', 'ROUGH', 'CALM', 'angle']
   .map(name => source.match(new RegExp(`^const ${name} = .*?;`, 'm'))?.[0]).join('\n');
 const classCode = source.slice(source.indexOf('export class Car')).replace('export class Car', 'class Car');
-const Car = new Function('THREE', 'netClock', stripTypeScriptTypes(`${constants}\n${classCode}`, { mode: 'transform' }) + '\nreturn Car;')(THREE, { time: 0 });
+// The marks and sounds a car makes, counted instead of drawn and played.
+const laid = [];
+const skidMarks = { lay: (...a) => laid.push(a) };
+const Car = new Function('THREE', 'netClock', 'CarBody', 'groundPlane', 'skid', 'PITCH_MAX', 'ROLL_MAX', 'skidMarks',
+  stripTypeScriptTypes(`${constants}\n${classCode}`, { mode: 'transform' }) + '\nreturn Car;')(THREE, { time: 0 }, CarBody, groundPlane, skid, PITCH_MAX, ROLL_MAX, skidMarks);
 
-function vehicle(spec = specs.cars.tesla) {
+function vehicle(spec = specs.cars.tesla, groundAt = () => ({ y: 0, name: 'street', mat: 'asphalt' })) {
   return Object.assign(Object.create(Car.prototype), {
     spec, x: 0, y: 0, z: 0, yaw: 0, steer: 0, vx: 0, vz: 0, speed: 0, lastSpeed: 0,
     halfL: spec.length / 2, halfW: spec.width / 2, key: 'test-car', ready: true, trees: [],
-    group: new THREE.Group(), body: new THREE.Group(), front: [], wheels: [], spin: 0, roll: 0, pitch: 0,
+    group: new THREE.Group(), body: new THREE.Group(), chassis: new THREE.Group(), front: [], wheels: [], spin: 0,
     blurMat: new THREE.MeshStandardMaterial(), taillight: new THREE.MeshStandardMaterial(),
-    world: { boxFree: () => true, boxInBounds: () => true, groundAt: () => ({ y: 0, name: 'street' }), setMoving() {} },
-    hum() {},
+    world: { boxFree: () => true, boxInBounds: () => true, groundAt, setMoving() {} },
+    motion: new CarBody(), along: 0, side: 0, yawRate: 0, lastX: 0, lastZ: 0, lastYaw: 0, fresh: true, handbraking: false,
+    axle: { at: [[-0.82, -1.45], [0.82, -1.45], [-0.82, 1.42], [0.82, 1.42]], base: 2.87, track: 1.64, hub: [0, 0, 0, 0] },
+    under: [0, 0, 0, 0], rise: [0, 0, 0, 0], rough: [false, false, false, false],
+    ride: { pitch: 0, roll: 0, lift: 0, twist: 0 }, plane: { pitch: 0, roll: 0, lift: 0, twist: 0 }, still: 0, knock: 0,
+    trail: [null, null, null, null], thumps: [],
+    camBack: 0, camSide: 0, fovScale: 1, camHeading: 0, camYaw: 0, camPitch: 0.22, lookIdle: 0,
+    noise: { update() {}, thump(...a) { this.owner.thumps.push(a); }, dispose() {} },
   });
 }
+/** A car at the wheel for `seconds` of 60 fps frames: driven, then drawn, as main.ts does. */
+function run(car, seconds, input, dt = 1 / 60) {
+  car.noise.owner = car;
+  for (let i = 0; i < Math.round(seconds / dt); i++) {
+    car.drive(dt, input, []);
+    car.update(dt, true);
+  }
+}
+const finite = (car) => [car.motion.pitch, car.motion.roll, car.motion.heave, car.ride.pitch, car.ride.roll, car.ride.lift, car.x, car.z, car.yaw]
+  .every(Number.isFinite);
 const throttle = { throttle: 1, brake: 0, steer: 0, handbrake: false };
 const brake = { ...throttle, throttle: 0, brake: 1 };
 
@@ -106,4 +127,101 @@ test('passengers and remote viewers can see the full speed above the old 144 km/
   Object.assign(car, { speed: 55.6, lastSpeed: 55.6, pose: [], track: { at: (time, pose) => { pose.push(0, 0, -55.6, 0, 0); return true; } } });
   car.update(1, false);
   assert.ok(car.speed * 3.6 > 199);
+});
+
+test('the body spring dips under braking, then settles with one small overshoot', () => {
+  const body = new CarBody();
+  for (let i = 0; i < 120; i++) body.step(1 / 60, -9, 0);
+  assert.ok(body.pitch < -0.03 && body.pitch > -PITCH_MAX, `nose down under braking (${body.pitch})`);
+  let most = 0;
+  for (let i = 0; i < 180; i++) {
+    body.step(1 / 60, 0, 0);
+    most = Math.max(most, body.pitch);
+  }
+  assert.ok(most > 0.002 && most < 0.5 * PITCH_MAX, `it rocks back past level a little (${most})`);
+  assert.ok(Math.abs(body.pitch) < 1e-3 && Math.abs(body.roll) < 1e-3, 'level again after three seconds');
+  for (let i = 0; i < 120; i++) body.step(1 / 60, 0, 12);
+  assert.ok(body.roll > 0.04 && body.roll <= ROLL_MAX, 'a right turn lifts the right side');
+});
+
+test('the body spring stays finite and in range at any frame time and input', () => {
+  const body = new CarBody();
+  for (const dt of [1 / 60, 0.5, 5, 1e-6, 0, -1, NaN, 1 / 240, 1 / 15]) {
+    for (const [a, b] of [[40, -40], [-1e9, 1e9], [NaN, 3], [Infinity, -Infinity], [0, 0]]) {
+      body.step(dt, a, b);
+      body.kick(NaN, 1e9, -1e9);
+      assert.ok([body.pitch, body.roll, body.heave].every(Number.isFinite), `dt ${dt}, inputs ${a} ${b}`);
+      assert.ok(Math.abs(body.pitch) <= 2 * PITCH_MAX && Math.abs(body.roll) <= 2 * ROLL_MAX && Math.abs(body.heave) <= 0.08);
+    }
+  }
+});
+
+test('flat out at 200 km/h with full lock, handbrake and frame spikes, the car stays finite and its body in range', () => {
+  const car = vehicle();
+  run(car, 60, throttle);
+  assert.ok(car.speed * 3.6 > 199);
+  for (const [dt, input] of [[1 / 60, { ...throttle, steer: 1 }], [0.25, { ...throttle, steer: -1, handbrake: true }], [1 / 144, brake], [0.1, { ...brake, steer: 1 }], [1, throttle]]) {
+    run(car, 2, input, dt);
+    assert.ok(finite(car), `finite with dt ${dt}`);
+    assert.ok(Math.abs(car.motion.pitch) <= PITCH_MAX * 1.2 && Math.abs(car.motion.roll) <= ROLL_MAX * 1.2, `in range with dt ${dt}`);
+  }
+  assert.ok([car.body.rotation.x, car.body.rotation.z, car.group.rotation.x, car.group.rotation.z].every(Number.isFinite));
+});
+
+test('the car tilts to the slope under its wheels and lifts its side on a kerb, with a knock as a wheel goes up', () => {
+  // Rising 10% towards the back (+z): the nose points down the slope.
+  const slope = vehicle(specs.cars.tesla, (x, z) => ({ y: 0.1 * z, mat: 'asphalt' }));
+  run(slope, 1, { throttle: 0, brake: 0, steer: 0, handbrake: false });
+  assert.ok(Math.abs(slope.ride.pitch + Math.atan(0.1)) < 0.005, `pitch ${slope.ride.pitch}`);
+  assert.ok(Math.abs(slope.ride.roll) < 1e-6);
+  // A 10 cm kerb under the right wheels from 5 m ahead on.
+  const kerb = vehicle(specs.cars.tesla, (x, z) => ({ y: x > 0.4 && z < -5 ? 0.1 : 0, mat: 'concrete' }));
+  run(kerb, 4, { ...throttle, throttle: 0.4 });
+  assert.ok(kerb.z < -12, 'it drove past the kerb');
+  assert.ok(Math.abs(kerb.ride.roll - Math.atan2(0.1, 1.64)) < 0.01, `right side up (${kerb.ride.roll})`);
+  assert.ok(kerb.thumps.length >= 1, 'a thump as a wheel goes up the kerb');
+});
+
+test('sliding hard leaves marks on paving, gentle driving and grass leave none', () => {
+  laid.length = 0;
+  const calm = vehicle();
+  run(calm, 4, { ...throttle, throttle: 0.5, steer: 0.1 });
+  assert.equal(laid.length, 0, 'no marks from gentle driving');
+  const slide = vehicle();
+  run(slide, 6, throttle);
+  run(slide, 1.5, { ...throttle, throttle: 0, steer: 1, handbrake: true });
+  assert.ok(laid.length > 10, `marks from a handbrake turn (${laid.length})`);
+  assert.ok(laid.every((a) => a.every(Number.isFinite) && a[6] > 0 && a[6] <= 1));
+  laid.length = 0;
+  const grass = vehicle(specs.cars.tesla, () => ({ y: 0, name: 'Garden' }));
+  run(grass, 6, throttle);
+  run(grass, 1.5, { ...throttle, throttle: 0, steer: 1, handbrake: true });
+  assert.equal(laid.length, 0, 'none on grass');
+  assert.deepEqual(skid(0.5, 5, -20, 30, true), { front: 0, rear: 0 }, 'nothing at a crawl');
+});
+
+test('a car someone else drives leans from its smoothed track: nose down when it brakes, no jolts between ticks', () => {
+  // The server's states twenty a second, drawn between them: braking from 20 m/s at 8 m/s2 along -z.
+  const at = (t) => (t < 1 ? -20 * t : t < 3.5 ? -20 - 20 * (t - 1) + 4 * (t - 1) ** 2 : -45);
+  let now = 0;
+  const car = vehicle();
+  Object.assign(car, { pose: [], track: { at: (time, pose) => {
+    const k = Math.floor(now * 20) / 20;
+    const z = at(k) + (at(k + 0.05) - at(k)) * (now - k) * 20;
+    pose.length = 0;
+    pose.push(0, 0, z, 0, 0);
+    return true;
+  } } });
+  let least = 0;
+  let jolt = 0;
+  let last = 0;
+  for (let i = 0; i < 4 * 60; i++) {
+    now = i / 60;
+    car.update(1 / 60, false);
+    least = Math.min(least, car.motion.pitch);
+    if (i > 2) jolt = Math.max(jolt, Math.abs(car.motion.pitch - last));
+    last = car.motion.pitch;
+  }
+  assert.ok(least < -0.025, `nose down while it brakes (${least})`);
+  assert.ok(jolt < 0.006, `smooth from frame to frame (${jolt})`);
 });

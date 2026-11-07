@@ -57,6 +57,7 @@ import { GRENADE, Grenades } from './world/grenades';
 import { Pickups } from './world/pickups';
 import { Cats } from './world/cats';
 import { Car, placedSpec, PLACED_MAX, type CarState } from './world/car';
+import { skidMarks } from './world/skidMarks';
 import { boxesOverlap, boxPoints, clearOfPortals, makeIndoors } from '../shared/parking.mjs';
 import CARS from '../shared/car.json';
 import { buildHedges, buildTile, dipMesh, waterMesh } from './world/surroundings';
@@ -584,6 +585,7 @@ horses.onDust = (at) => effects.impact(at, new THREE.Vector3(0, 1, 0), 'cat'); /
 const trunks = (house.surroundings?.trees ?? []).map((t) => ({ x: t.x, z: t.z, r: 0.35 }));
 const cars = Object.entries(CARS.cars).map(([id, spec]) => new Car(world, trunks, id, spec));
 for (const c of cars) scene.add(c.group);
+scene.add(skidMarks.mesh); // the tyre marks every car leaves when it slides (world/skidMarks.ts)
 let car = cars[0];
 const carById = (id: string) => cars.find((c) => c.id === id);
 let driving = false;
@@ -2954,6 +2956,12 @@ renderer.setAnimationLoop((now: number) => {
         }
       }
     }
+    // In a car the view widens a little at speed (world/car.ts: fovScale), from the player's own field of view.
+    weapon.baseFov = settings.value.fov * (inCar ? car.fovScale : 1);
+    if (!weapon.enabled && Math.abs(camera.fov - weapon.baseFov) > 0.01) {
+      camera.fov = weapon.baseFov;
+      camera.updateProjectionMatrix();
+    }
     weapon.update(dt, inCar ? 0 : Math.min(1, Math.hypot(frame.moveX, frame.moveY)), frame.aimHeld && !inCar, {
       yaw: player.yaw, pitch: player.pitch, side: dead ? 0 : frame.moveX, sprint: frame.sprint && !player.crouching,
       air: player.flying || player.feet > player.ground.y + 0.05,
@@ -3070,7 +3078,7 @@ renderer.setAnimationLoop((now: number) => {
   sound.listen(camera);
   weather.update(dt, camera.position, inside); // the rain round the eye (none indoors), the street lamps
   setWindowNight(mood.night); // lights in about half of the village's rooms at night (world/windows.ts)
-  player.lookScale = camera.fov / settings.value.fov; // slower turning while zoomed in
+  player.lookScale = camera.fov / weapon.baseFov; // slower turning while zoomed in (not faster for the car's wider view)
   glass.update(dt);
   furnishing.update(dt, camera.position);
   effects.particles.budget = quality === 'low' ? 0.5 : 1; // big smoke puffs are many pixels each
