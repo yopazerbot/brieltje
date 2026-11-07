@@ -3064,7 +3064,8 @@ renderer.setAnimationLoop((now: number) => {
     }
 
     const surface = player.ground.name;
-    const indoors = !!surface && (roomNames.has(surface) || /floor|stairs/i.test(surface));
+    // Not in a drop: the floor you jumped from keeps its name until you land (it lit the parachute as a room).
+    const indoors = !!surface && player.chute === null && (roomNames.has(surface) || /floor|stairs/i.test(surface));
     inside = indoors;
     // Outside, on the village's ground: the street you are in (its real name), not just "street".
     const at = driving || riding ? car : player;
