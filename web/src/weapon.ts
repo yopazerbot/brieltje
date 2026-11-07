@@ -8,6 +8,7 @@ import { GUN_PAINT, onPaintball, paintball } from './paintball';
 import WEAPONS from '../shared/weapons.json';
 import { LOOT } from '../shared/loot.mjs';
 import { t } from './i18n';
+import { drawn } from './world/rayShown';
 
 /**
  * "Action" mode: first-person hands holding a pistol, rifle, shotgun or
@@ -868,7 +869,7 @@ export class Weapon {
       this.camera.updateMatrixWorld();
       const from = this.models[this.current].muzzle.getWorldPosition(new THREE.Vector3());
       this.raycaster.setFromCamera(new THREE.Vector2(0, 0), this.camera);
-      const hit = this.raycaster.intersectObjects(this.scene.children, true).find((h) => h.object.visible && !h.object.userData.ignoreRay && h.distance <= spec.rocket!.range);
+      const hit = this.raycaster.intersectObjects(this.scene.children, true).find((h) => drawn(h.object) && !h.object.userData.ignoreRay && h.distance <= spec.rocket!.range);
       const to = hit ? hit.point.clone() : this.raycaster.ray.at(spec.rocket.range, new THREE.Vector3());
       if (this.ammo[this.current] === 0) this.reload();
       return { pitch: spec.kick, yaw: 0, rocket: { from, to } };
@@ -893,7 +894,7 @@ export class Weapon {
       const r = spread * Math.sqrt(Math.random());
       this.raycaster.setFromCamera(new THREE.Vector2(Math.cos(a) * r, Math.sin(a) * r), this.camera);
       const hits = this.raycaster.intersectObjects(this.scene.children, true);
-      const hit = hits.find((h) => h.object.visible && !h.object.userData.ignoreRay && h.face);
+      const hit = hits.find((h) => drawn(h.object) && !h.object.userData.ignoreRay && h.face);
       if (paint) this.onPaintball(paint.from, hit ? hit.point : this.raycaster.ray.at(120, new THREE.Vector3()), paint);
       if (!hit || !hit.face) continue;
       const player = hit.object.userData.player as string | undefined;
@@ -907,7 +908,7 @@ export class Weapon {
         // (a wall, a pane, a player) comes first. Its own other hit box doesn't count.
         for (let k = hits.indexOf(hit) + 1, left = (spec.pierce ?? 1) - 1; left > 0 && k < hits.length; k++) {
           const h = hits[k];
-          if (!h.object.visible || h.object.userData.ignoreRay || !h.face) continue;
+          if (!drawn(h.object) || h.object.userData.ignoreRay || !h.face) continue;
           const next = h.object.userData.zombie as number | undefined;
           if (next === zombie || (next !== undefined && zombies.has(next))) continue;
           if (next === undefined) break;

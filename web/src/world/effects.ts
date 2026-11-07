@@ -7,6 +7,7 @@ import { Splashes } from './splashes';
 import { splatSound, Splats, type Paint } from './splats';
 import { flashSheet, HOLE, PARTICLE } from './sprites';
 import { waterLevel } from './water';
+import { drawn } from './rayShown';
 
 /**
  * Impact bursts that depend on what was hit: dust and chips from plaster and
@@ -425,7 +426,7 @@ export class Effects {
       this.v.set(x, y, z);
       this.ray.set(point.clone().addScaledVector(this.v, -0.15), this.v);
       this.ray.far = reach + 0.15;
-      const hit = this.ray.intersectObjects(this.scene.children, true).find((h) => h.object.visible && h.face && !h.object.userData.ignoreRay && !h.object.userData.player && h.object.userData.clown === undefined && h.object.userData.cat === undefined && h.object.userData.glassIndex === undefined);
+      const hit = this.ray.intersectObjects(this.scene.children, true).find((h) => drawn(h.object) && h.face && !h.object.userData.ignoreRay && !h.object.userData.player && h.object.userData.clown === undefined && h.object.userData.cat === undefined && h.object.userData.glassIndex === undefined);
       if (!hit) return;
       const normal = hit.face!.normal.clone().transformDirection(hit.object.matrixWorld);
       this.splats.add(hit.point, normal, colors[(i + 1) % 4], 0.5 * k + (1 - hit.distance / this.ray.far) * reach, hit.object);
