@@ -80,6 +80,7 @@ import { patchFields } from './world/fields';
 import { addDiag, startDiag } from './ui/diag';
 import { IndoorLight } from './world/indoorLight';
 import { Weather } from './world/weather';
+import { Acoustics, acoustics } from './world/acoustics';
 import { MoodAdmin, moodNotice } from './ui/moodAdmin';
 import { Portals } from './world/portals';
 import { TravelPanel } from './ui/travel';
@@ -710,6 +711,8 @@ function removeClown(id: number): void {
 // `kind`. In multiplayer the server keeps them, checks every spot and decides who drives (the admin's
 // any, a player's their own when the admin allows spawning). Alone anyone's, kept in this browser.
 let indoorsAt = makeIndoors([...house.prisms, ...(house.surroundings?.prisms ?? [])], []);
+// The echo of where you are and the walls between you and the sounds of out of doors (world/acoustics.ts).
+const roomSound = (acoustics.now = new Acoustics({ ...CHURCH_DATA, ground: churchAccess.point([0, 0, 0]).y }, (x, z) => indoorsAt(x, z)));
 const placedCars = () => cars.filter((c) => c.kind);
 /** A placed Tesla taken away: if you sit in it, you get out first. */
 function removePlaced(c: Car): void {
@@ -3080,6 +3083,7 @@ renderer.setAnimationLoop((now: number) => {
   speedometer.update((driving || riding) && !menu.open && combat.alive ? car.speed : null, car.spec.maxSpeed);
   combat.tick(dt);
   sound.listen(camera);
+  roomSound.update(dt, inside, player.ground.name, camera.position);
   weather.update(dt, camera.position, inside); // the rain round the eye (none indoors), the street lamps
   setWindowNight(mood.night); // lights in about half of the village's rooms at night (world/windows.ts)
   player.lookScale = camera.fov / weapon.baseFov; // slower turning while zoomed in (not faster for the car's wider view)
@@ -3644,6 +3648,9 @@ if (import.meta.env.DEV) {
       /** The weather's cycle moved on by this many seconds, on this page only (world/weather.ts forward), and where it is. */
       weatherAhead: (seconds: number) => weather.forward(seconds),
       weatherState: () => weather.state(),
+      /** Where the ears are for the echo, the echo's send and the walls' cutoff now (world/acoustics.ts). */
+      acoustics: () => ({ room: roomSound.room, ...sound.echoState(), walls: sound.wallsCutoff(), ctx: sound.context()?.state ?? null }),
+      bells: roadLife.bells,
       tiles,
       home,
       homeStreet,

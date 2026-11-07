@@ -1,5 +1,6 @@
 import * as THREE from 'three';
 import { sound } from '../sound';
+import { acoustics } from './acoustics';
 import { audio } from './traffic';
 
 /**
@@ -7,7 +8,8 @@ import { audio } from './traffic';
  * twelve strokes), at the half hour a higher bell strikes once. Belgian time (Europe/Brussels) on
  * the server's shared clock, so everyone hears the same stroke; heard from the tower's belfry,
  * quieter and duller with distance (the air takes the highs first) and as late as sound travels
- * (343 m/s: about 2.5 s at our house).
+ * (343 m/s: about 2.5 s at our house). Heard from inside a house they come through its walls; in the
+ * church tower, right under them, they are louder and ring on longer (world/acoustics.ts).
  *
  * A stroke is made in code: a bell's partials (hum, prime, tierce, quint, nominal and the ones
  * above it, the hum and prime as slightly detuned pairs so they beat as a cast bell does), each
@@ -71,17 +73,24 @@ export class Bells {
     const air = c.createBiquadFilter();
     air.type = 'lowpass';
     air.frequency.value = Math.max(1100, Math.min(16000, 16000 * Math.exp(-d / 380)));
-    air.connect(at).connect(sound.out()!);
+    // In the tower, right under them, loud and long (the tower's own echo carries them on, world/acoustics.ts);
+    // from a house through its walls; out of doors as they are.
+    const room = acoustics.now?.room ?? 'outdoors';
+    const tower = room === 'church' || room === 'tower';
+    air.connect(at).connect((tower ? sound.out() : sound.outside())!);
     const start = c.currentTime + 0.05 + d / 343;
-    for (let k = 0; k < count; k++) this.stroke(c, air, start + k * SPACING, prime * (1 + (Math.random() - 0.5) * 0.002));
-    setTimeout(() => at.disconnect(), (start - c.currentTime + count * SPACING + 8) * 1000);
+    const ring = tower ? 1.5 : 1;
+    for (let k = 0; k < count; k++) this.stroke(c, air, start + k * SPACING, prime * (1 + (Math.random() - 0.5) * 0.002), tower ? 1.3 : 1, ring);
+    setTimeout(() => at.disconnect(), (start - c.currentTime + count * SPACING + 8 * ring) * 1000);
   }
 
-  private stroke(c: AudioContext, out: AudioNode, t: number, prime: number): void {
+  /** One stroke at `t`: `loud` times as loud as out of doors, its partials ringing `ring` times as long. */
+  private stroke(c: AudioContext, out: AudioNode, t: number, prime: number, loud = 1, ring = 1): void {
     const bus = c.createGain();
-    bus.gain.value = LOUD;
+    bus.gain.value = LOUD * loud;
     bus.connect(out);
-    for (const [ratio, amp, fade] of PARTIALS) {
+    for (const [ratio, amp, f] of PARTIALS) {
+      const fade = f * ring;
       // The two lowest partials as pairs a little apart: the slow beat of a real bell.
       for (const detune of ratio <= 1 ? [-0.35, 0.35] : [0]) {
         const o = c.createOscillator();
@@ -111,6 +120,6 @@ export class Bells {
     kg.gain.value = 0.35;
     knock.connect(band).connect(kg).connect(bus);
     knock.start(t);
-    setTimeout(() => bus.disconnect(), (t - c.currentTime + 25) * 1000);
+    setTimeout(() => bus.disconnect(), (t - c.currentTime + 25 * ring) * 1000);
   }
 }

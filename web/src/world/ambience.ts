@@ -85,7 +85,7 @@ export class Ambience {
   /** The wind: brown noise, through a filter that opens with the gusts. */
   private startWind(): void {
     const ctx = sound.context();
-    const out = sound.out();
+    const out = sound.outside(); // through the walls while you are inside (world/acoustics.ts)
     if (!ctx || !out) return;
     const len = 6;
     const buffer = ctx.createBuffer(1, ctx.sampleRate * len, ctx.sampleRate);
