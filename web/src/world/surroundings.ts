@@ -342,7 +342,7 @@ function buildOpenings(list: Opening[], ground: number): Piece[] {
     } else if (o.k === 'd') {
       const panel = new THREE.Color(o.c ?? '#6b4a32');
       solid.push(slab(out(0.05), d, n, w, h, 0.02, panel));
-      glass.push(paneGeometry(out(0.067).setY(y0 + h * 0.72), d, n, w * 0.3, h * 0.35, { ...paneLook(mid.x, mid.z, n.x, n.z, false, i), cell: COVER.none }, mid.x + mid.z * 1.7));
+      glass.push(paneGeometry(out(0.067).setY(y0 + h * 0.72), d, n, w * 0.3, h * 0.35, { ...paneLook(mid.x, mid.z, n.x, n.z, false, i), cell: COVER.none, sill: h * 0.545 }, mid.x + mid.z * 1.7));
       solid.push(slab(out(0.07).addScaledVector(d, w * 0.38).setY(y0 + 1.05), d, n, 0.03, 0.18, 0.03, new THREE.Color('#9a9a96')));
     } else {
       // Garage door: horizontal sections with a groove between them.

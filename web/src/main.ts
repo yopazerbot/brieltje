@@ -94,6 +94,7 @@ import { buildRoadDetail, roadPaint, withRoadDetail } from './world/roadDetail';
 import { RoadLife } from './world/roadLife';
 import { clearOpenGround, fitStreetModel, loadStreetModel } from './world/streetModel';
 import { bakeLight, setBakeDetail } from './world/bakedLight';
+import { setWindowDetail } from './world/windows';
 import { loadWalkIn, type WalkIn } from './world/walkIn';
 import { Insides, type InsidePack } from './world/insides';
 import { CAR_REACH, CAR_SLOW, findPortal, PORTALS, portalNear, REACH, type Portal } from '../shared/portals.mjs';
@@ -429,6 +430,7 @@ function applyQuality(q: Quality): void {
   setAnisotropy(preset.anisotropy);
   setBakeDetail(q !== 'low'); // the baked wear's fine pattern (world/bakedLight.ts)
   weather.setQuality(q, phone); // how many streaks of rain
+  setWindowDetail(q !== 'low' && !phone); // rooms behind the village's windows (world/windows.ts)
   tiles.drawDistance = phone ? Math.min(FAR_PHONE, preset.far) : preset.far;
   dynScale = 1;
   resize();
