@@ -232,8 +232,8 @@ export class RigidBody {
     const ql = Math.hypot(q[0], q[1], q[2], q[3]);
     for (let j = 0; j < 4; j++) q[j] /= ql;
 
-    // The ground under its middle, looked up again once it has moved a little.
-    if (Math.hypot(p[0] - this.groundAt[0], p[2] - this.groundAt[1]) > 0.3) {
+    // The ground under its middle, looked up again once it has moved a little (10 cm: off a kerb it drops).
+    if (Math.hypot(p[0] - this.groundAt[0], p[2] - this.groundAt[1]) > 0.1) {
       this.groundY = world.ground(p[0], p[2], p[1] + 0.6);
       this.groundAt = [p[0], p[2]];
     }
@@ -291,6 +291,14 @@ export class RigidBody {
     const slow = Math.hypot(v[0], v[1], v[2]) < 0.12 && Math.hypot(w[0], w[1], w[2]) < 0.3;
     this.still = touching >= 2 && slow ? this.still + h : 0;
     if (this.still > 0.35) {
+      // The ground right under it once more before it sleeps: never at rest floating over, or sunk into, a kerb.
+      const g = world.ground(p[0], p[2], p[1] + 0.6);
+      this.groundAt = [p[0], p[2]];
+      if (Math.abs(g - this.groundY) > 0.02) {
+        this.groundY = g;
+        this.still = 0;
+        return;
+      }
       this.asleep = true;
       v.fill(0);
       w.fill(0);

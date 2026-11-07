@@ -542,9 +542,13 @@ export class LooseProps {
   /** A shot hit `on` at `point` coming along `-normal`: a post rings and sways a little, a bin rocks. */
   shot(point: THREE.Vector3, normal: THREE.Vector3, on: THREE.Object3D): void {
     if (!on.name.startsWith('loose-')) return;
+    // Only a prop of the kind that was hit (a shot letterbox never rocks the bin beside it).
+    const kind = this.kinds.get(on.name.slice('loose-'.length).replace(/-faces$/, ''));
+    if (!kind) return;
     let best: Prop | null = null;
     let bd = 2;
     for (const p of this.near(point.x, point.z, 2, this.pending)) {
+      if (p.kind !== kind) continue;
       const [px, pz] = this.where(p);
       const d = Math.hypot(px - point.x, pz - point.z);
       if (d < bd) [best, bd] = [p, d];
