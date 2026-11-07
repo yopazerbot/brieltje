@@ -83,7 +83,7 @@ import { Undergrowth } from './world/undergrowth';
 import { GroundShade } from './world/groundShade';
 import { SunShadow } from './world/sunShadow';
 import { groundPiece, groundPieceCoarse, groundPieces, groundSkirt, pieceOf, PIECE, terrain, type GroundCuts } from './world/terrain';
-import { splitTiles, Tiles } from './world/tiles';
+import { SHADOW_LAYER, splitTiles, Tiles } from './world/tiles';
 import { Furnishing, buildFixtures, footprint, type Piece } from './world/furnishing';
 import { findThing, thingNames, type Thing } from './spawn';
 import { Doors } from './world/doors';
@@ -173,6 +173,7 @@ sc.near = 5;
 sc.far = 140;
 sun.shadow.bias = -0.0003;
 sun.shadow.normalBias = 0.025;
+sun.shadow.camera.layers.enable(SHADOW_LAYER); // the shadow-only stand-ins (world/tiles.ts): the near trees' lighter crowns
 scene.add(sun, sun.target);
 // Where its shadow map lies: on the house (Low), or following the eye (Medium and up; world/sunShadow.ts).
 const sunShadow = new SunShadow(sun, center);

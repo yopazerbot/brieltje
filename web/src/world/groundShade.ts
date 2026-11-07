@@ -45,6 +45,12 @@ import { snowOn } from './snowCover';
 /** How wet the ground is, 0 to 1 (world/weather.ts sets it in the rain): one uniform shared by every ground material. */
 export const groundWet = { value: 0 };
 
+/**
+ * Called with true before a bake and false after it: what casts the bake's shadows in place of something cut out
+ * (the leaf-card trees: their smooth crowns, world/surroundings.ts), shown for the bake only.
+ */
+export const bakeStandIns = new Set<(on: boolean) => void>();
+
 const HALF = 240; // metres from the centre to the edge of the shaded area
 const SIZE = 2048; // texels across the ground texture (about 23 cm each)
 
@@ -465,6 +471,7 @@ export class GroundShade {
       if (!keep.has(o)) keep.set(o, o.visible); // remember how it was before the first change
       o.visible = v;
     };
+    for (const f of bakeStandIns) f(true);
     for (const o of scene.children) hide(o, false);
     const shown: THREE.Mesh[] = [];
     for (const root of casters) {
@@ -518,6 +525,7 @@ export class GroundShade {
     renderer.render(scene, topCam);
     for (const o of repeated) o.visible = true;
     scene.overrideMaterial = null;
+    for (const f of bakeStandIns) f(false);
 
     // The cover image: the fields, the field tracks and paths, and the water, each in a channel of its own,
     // and the gardens and meadows in the fourth.

@@ -17,7 +17,9 @@ import type { Surroundings } from './houseData';
  * checked four times a second and after a jump, not per mesh per frame. The ring (loaded at the
  * start) and the village (loaded later) are two such sets. Small details (windows and doors,
  * gutters, cables, lamps, fence posts, solar panels) stop at DETAIL metres: a few pixels in the
- * haze there, and the most triangles for what they show.
+ * haze there, and the most triangles for what they show. Trees come in two versions (world/cardTrees.ts on
+ * Medium and up): the full ones in the tiles round the eye (within TREES metres), the lighter ones in the
+ * rest of the shown tiles.
  *
  * The sun's real-time shadow map covers a few dozen metres (world/sunShadow.ts), so in the shadow pass
  * each set's meshes draw only the tiles round the map's middle (shadowAt).
@@ -35,6 +37,11 @@ const HALF = (TILE / 2) * (Math.abs(UX) + Math.abs(UZ));
 const SHADOW = 160;
 /** Metres: the draw distance of small details. */
 const DETAIL = 400;
+/** Metres: the full trees' reach (Piece `lod`); in practice the tile you are in and those whose edge you are near. */
+const TREES = 60;
+
+/** The layer of what only the sun's shadow camera sees (Piece `shadowOnly`; main.ts lets that camera see it). */
+export const SHADOW_LAYER = 1;
 
 /** Where a point lies along the line from the house to the church (metres from the house). */
 export function axial(x: number, z: number): number {
@@ -103,6 +110,10 @@ export interface Piece {
   order?: number;
   /** A small detail: drawn within DETAIL metres */
   small?: boolean;
+  /** Drawn only into the sun's shadow map (a lighter stand-in's shadow for something drawn without one): on SHADOW_LAYER */
+  shadowOnly?: boolean;
+  /** Instanced only: 'near' drawn within TREES metres, 'far' in the rest of the shown tiles (two versions of the same trees) */
+  lod?: 'near' | 'far';
 }
 
 /** One mesh of a set and where each tile's part of it starts (vertices, indices or instances). */
@@ -112,6 +123,7 @@ interface Run {
   /** Instanced: every instance's matrix in tile order, to copy the shown run from */
   source?: Float32Array;
   small?: boolean;
+  lod?: 'near' | 'far';
 }
 
 interface TileSet {
@@ -123,6 +135,8 @@ interface TileSet {
   shown: [number, number];
   /** The tiles whose small details are shown */
   detail: [number, number];
+  /** The tiles whose trees are drawn in full (Piece `lod`) */
+  trees: [number, number];
   /** Metres: the small details' reach in this set */
   detailReach: number;
   /** Metres: how far this set's tiles are drawn at most (the draw distance if that is nearer) */
@@ -163,7 +177,7 @@ export class Tiles {
     const shapes = new Map<string, { piece: Piece; per: THREE.Matrix4[][] }>();
     order.forEach((tile, i) => {
       for (const p of tile.pieces) {
-        const key = `${p.material.uuid}|${p.shadow}|${p.small ?? false}|${p.at ? p.geometry.uuid : ''}`;
+        const key = `${p.material.uuid}|${p.shadow}|${p.small ?? false}|${p.lod ?? ''}|${p.shadowOnly ?? false}|${p.at ? p.geometry.uuid : ''}`;
         const into = p.at ? shapes : merged;
         let e = into.get(key);
         if (!e) into.set(key, (e = { piece: p, per: Array.from({ length: n }, () => []) }));
@@ -175,11 +189,12 @@ export class Tiles {
       const [i, j] = t.key.split(',').map(Number);
       return new THREE.Box3(new THREE.Vector3(CX + (i - 0.5) * TILE - 30, -30, CZ + (j - 0.5) * TILE - 30), new THREE.Vector3(CX + (i + 0.5) * TILE + 30, 80, CZ + (j + 0.5) * TILE + 30));
     });
-    const set: TileSet = { at: order.map((t) => t.at), boxes, runs: [], shown: [0, n - 1], detail: [0, n - 1], detailReach, reach, near, cast: [0, -1] };
+    const set: TileSet = { at: order.map((t) => t.at), boxes, runs: [], shown: [0, n - 1], detail: [0, n - 1], trees: [0, n - 1], detailReach, reach, near, cast: [0, -1] };
     this.castRange(set);
     const style = (mesh: THREE.Mesh, p: Piece) => {
       mesh.castShadow = p.shadow;
       mesh.receiveShadow = true;
+      if (p.shadowOnly) mesh.layers.set(SHADOW_LAYER);
       mesh.renderOrder = p.order ?? 0;
       mesh.userData.material = p.tag;
       mesh.userData.set = this.sets.length; // 0: the ring, 1: the village
@@ -216,13 +231,15 @@ export class Tiles {
       const offsets = [0];
       for (const ms of per) offsets.push(offsets[offsets.length - 1] + ms.length);
       style(mesh, piece);
-      set.runs.push({ mesh, offsets, source, small: piece.small });
+      const run: Run = { mesh, offsets, source, small: piece.small, lod: piece.lod };
+      set.runs.push(run);
       if (mesh.castShadow) {
         // The shown instances are one block of the matrices: drawn whole into the map, or not at all when
         // none of their tiles is round the map's middle (the village's trees while you are at the house).
+        // (A far version is two blocks: it throws no shadow.)
         let count = 0;
         mesh.onBeforeShadow = () => {
-          const shown = piece.small ? set.detail : set.shown;
+          const shown = this.tilesOf(set, run);
           count = mesh.count;
           if (Math.max(set.cast[0], shown[0]) > Math.min(set.cast[1], shown[1])) mesh.count = 0;
         };
@@ -261,19 +278,40 @@ export class Tiles {
     set.cast = [a, b];
   }
 
+  /** The tiles a run draws: its small details', its full trees', or all shown. */
+  private tilesOf(set: TileSet, run: Run): [number, number] {
+    return run.lod === 'near' ? set.trees : run.small ? set.detail : set.shown;
+  }
+
   /** Show a run's part for the set's shown tiles. */
   private range(set: TileSet, run: Run): void {
-    const [a, b] = run.small ? set.detail : set.shown;
+    const [a, b] = this.tilesOf(set, run);
     const start = b >= a ? run.offsets[a] : 0;
-    const count = b >= a ? run.offsets[b + 1] - start : 0;
+    let count = b >= a ? run.offsets[b + 1] - start : 0;
     const mesh = run.mesh;
-    mesh.visible = count > 0;
     if (!run.source) {
+      mesh.visible = count > 0;
       mesh.geometry.setDrawRange(start, count);
       return;
     }
     const im = mesh as THREE.InstancedMesh;
-    im.instanceMatrix.array.set(run.source.subarray(start * 16, (start + count) * 16));
+    if (run.lod === 'far') {
+      // The shown tiles less those with the full trees: up to two blocks of the matrices, one after the other.
+      const [s0, s1] = set.shown;
+      const [t0, t1] = set.trees;
+      const blocks: [number, number][] = t1 >= t0 ? [[s0, Math.min(s1, t0 - 1)], [Math.max(s0, t1 + 1), s1]] : [[s0, s1]];
+      count = 0;
+      for (const [p, q] of blocks) {
+        if (q < p) continue;
+        const from = run.offsets[p];
+        const n = run.offsets[q + 1] - from;
+        im.instanceMatrix.array.set(run.source.subarray(from * 16, (from + n) * 16), count * 16);
+        count += n;
+      }
+    } else {
+      im.instanceMatrix.array.set(run.source.subarray(start * 16, (start + count) * 16));
+    }
+    mesh.visible = count > 0;
     im.instanceMatrix.clearUpdateRanges();
     im.instanceMatrix.addUpdateRange(0, count * 16);
     im.instanceMatrix.needsUpdate = true;
@@ -304,10 +342,12 @@ export class Tiles {
     for (const set of this.sets) {
       const shown = within(set, Math.min(set.reach, this.drawDistance));
       const detail = within(set, Math.min(set.detailReach, set.reach, this.drawDistance));
+      const trees = within(set, Math.min(TREES, set.reach, this.drawDistance));
       const same = (p: [number, number], q: [number, number]) => p[0] === q[0] && p[1] === q[1];
-      if (same(shown, set.shown) && same(detail, set.detail)) continue;
+      if (same(shown, set.shown) && same(detail, set.detail) && same(trees, set.trees)) continue;
       set.shown = shown;
       set.detail = detail;
+      set.trees = trees;
       for (const run of set.runs) this.range(set, run);
     }
   }
@@ -317,6 +357,7 @@ export class Tiles {
     for (const set of this.sets) {
       set.shown = [0, set.at.length - 1];
       set.detail = [0, set.at.length - 1];
+      set.trees = [0, set.at.length - 1];
       for (const run of set.runs) this.range(set, run);
     }
     this.wait = 0;

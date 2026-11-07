@@ -13,6 +13,9 @@ import { addWater, waterClock, waterLine, waterMaterial } from './water';
 import { leafy } from './leaves';
 import { treeCrown, treeTrunk } from './vegetation';
 import { spaceTrees } from './treeSpacing';
+import { bakeStandIns } from './groundShade';
+import { cardCrown, cardTrunk, crownFit, FORK, HEIGHT, Kind, KINDS, spotHash, TRUNK_OF, TRUNKS, treeKind, VARIANTS } from './cardTrees';
+import { barkMaterial, enlist, leafCardMaterial, plainForBake, switchTrees } from './leafCards';
 
 /**
  * Around the plot, from Flemish open data (GRB footprints, DHM laser heights;
@@ -46,6 +49,15 @@ const gableFrame = new THREE.MeshStandardMaterial({ color: '#f3f1ec', roughness:
 const leafMat = new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.95 });
 sway(leafMat, 0.03, 0.012, true); // the crowns move in the wind and are turning (world/wind.ts)
 leafy(leafMat, 3); // and have leaves (world/leaves.ts), a tile of them 3 m across: clumps of about 40 cm
+// Medium and up: the trees by kind, of leaf cards round their branches (world/cardTrees.ts), barked trunks; the
+// smooth crowns above and their trunks are then not drawn (setTreeDetail).
+const cardLeafMat = leafCardMaterial(0.03, 0.012, true, 0.6);
+// Conifers keep their colour in autumn and let less light through.
+const cardNeedleMat = leafCardMaterial(0.02, 0.008, false, 0.25);
+const cardBarkMat = barkMaterial();
+enlist([], [leafMat, barkMat]);
+// The ground's baked shade (world/groundShade.ts) takes no cut-out shapes: the smooth crowns throw it for the cards.
+bakeStandIns.add(plainForBake);
 const gutterMat = new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.4, metalness: 0.55 });
 const frameMat = new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.55 });
 // Opaque and glossy: from outside, windows mostly mirror the sky over what hangs behind them (world/windows.ts).
@@ -438,6 +450,8 @@ function shapeFrom(into: THREE.BufferGeometry, from: THREE.BufferGeometry): THRE
  */
 export function setTreeDetail(full: boolean): void {
   fullTrees = full;
+  // The trees of leaf cards in full, today's smooth crowns on Low and phones (both are built; one of them is drawn).
+  switchTrees(full);
   const s = treeShapes;
   if (s) {
     s.full.forEach((g, k) => shapeFrom(g, full ? s.rich[k] : s.simple[k]));
@@ -593,6 +607,87 @@ function buildTrees(allTrees: Surroundings['trees'], detail: (x: number, z: numb
     at.length ? [{ material: leafMat, geometry: k < 3 ? shapes.full[k] : shapes.simple[k - 3], tag: 'hedge', shadow: k < 3, at, order: TREE_ORDER }] : [],
   );
   out.push({ material: barkMat, geometry: shapes.trunk, tag: 'hedge', shadow: false, at: trunks, order: TREE_ORDER });
+  out.push(...buildCardTrees(trees, share, prisms));
+  return out;
+}
+
+/** The leaf-card trees' shapes (world/cardTrees.ts), made once: per kind and shape, near and far, and the trunks. */
+let cardShapes: { near: ReturnType<typeof cardCrown>[][]; far: ReturnType<typeof cardCrown>[][]; trunks: THREE.BufferGeometry[] } | null = null;
+
+/**
+ * The same trees as leaf-card trees, for Medium and up (setTreeDetail shows these or the smooth ones): each its kind
+ * (world/cardTrees.ts treeKind: in a wood of the open data or not, its height, its place), its crown fitted to the
+ * tree and turned about the top of its trunk, so crown and trunk meet whichever way it leans. Each tree twice: in
+ * the tiles round the eye the full crown, with its branches, throwing the lighter crown's cut-out shadow (world/tiles.ts
+ * Piece `shadowOnly`); in the other tiles shown the lighter one, without a shadow (world/tiles.ts Piece `lod`).
+ */
+function buildCardTrees(trees: Surroundings['trees'], share: Map<Surroundings['trees'][number], number>, prisms: NonNullable<Surroundings['prisms']>): Piece[] {
+  cardShapes ??= {
+    near: Array.from({ length: KINDS }, (_, k) => Array.from({ length: VARIANTS[k] }, (_, v) => cardCrown(k as Kind, v, false))),
+    far: Array.from({ length: KINDS }, (_, k) => Array.from({ length: VARIANTS[k] }, (_, v) => cardCrown(k as Kind, v, true))),
+    trunks: Array.from({ length: TRUNKS }, (_, k) => cardTrunk(k)),
+  };
+  const shapes = cardShapes;
+  // The woods of the open data in this tile, with their boxes for a quick first test.
+  const woods = prisms.filter((p) => p.m === 'forest').map((p) => {
+    const ring = p.p[0] as [number, number][];
+    const xs = ring.map((q) => q[0]);
+    const zs = ring.map((q) => q[1]);
+    return { ring, box: [Math.min(...xs), Math.min(...zs), Math.max(...xs), Math.max(...zs)] };
+  });
+  const inWood = (x: number, z: number) => woods.some(({ ring, box }) => {
+    if (x < box[0] || z < box[1] || x > box[2] || z > box[3]) return false;
+    let odd = false;
+    for (let i = 0, j = ring.length - 1; i < ring.length; j = i++) {
+      const [xi, zi] = ring[i];
+      const [xj, zj] = ring[j];
+      if (zi > z !== zj > z && x < ((xj - xi) * (z - zi)) / (zj - zi) + xi) odd = !odd;
+    }
+    return odd;
+  });
+  const crownsAt = (list: Map<string, THREE.Matrix4[]>, key: string, m: THREE.Matrix4) => {
+    const at = list.get(key);
+    if (at) at.push(m);
+    else list.set(key, [m]);
+  };
+  const crowns = new Map<string, THREE.Matrix4[]>();
+  const trunkAt: THREE.Matrix4[][] = Array.from({ length: TRUNKS }, () => []);
+  const up = new THREE.Vector3(0, 1, 0);
+  const axis = new THREE.Vector3();
+  const turn = new THREE.Quaternion();
+  const lean = new THREE.Quaternion();
+  const middle = new THREE.Vector3();
+  for (const t of trees) {
+    const wood = inWood(t.x, t.z);
+    const kind = treeKind(t, wood);
+    const variant = Math.floor(spotHash(t.x, t.z, 5) * VARIANTS[kind]) % VARIANTS[kind];
+    const crownR = Math.min(7, Math.max(t.r, t.h * 0.26)) * (share.get(t) ?? 1);
+    const fit = crownFit(kind, t, crownR, wood);
+    const stretch = fit.half / HEIGHT[kind];
+    turn.setFromAxisAngle(up, (t.x * 7.3 + t.z * 3.1) % (Math.PI * 2));
+    // Upright kinds (spruce, poplar) lean less than the spreading ones.
+    const tilt = (spotHash(t.x, t.z, 3) - 0.5) * (kind === Kind.Spruce || kind === Kind.Poplar ? 0.05 : 0.14);
+    lean.setFromAxisAngle(axis.set(Math.cos(spotHash(t.x, t.z, 4) * 6.283), 0, Math.sin(spotHash(t.x, t.z, 4) * 6.283)), tilt).multiply(turn);
+    const fork = fit.middle + FORK[kind] * stretch;
+    // The crown turns about the top of the trunk.
+    middle.set(0, -FORK[kind] * stretch, 0).applyQuaternion(lean).add(new THREE.Vector3(t.x, t.y + fork, t.z));
+    const size = new THREE.Vector3(fit.radius * (0.9 + 0.2 * spotHash(t.x, t.z, 1)), stretch * (0.94 + 0.12 * spotHash(t.x, t.z, 6)), fit.radius * (0.9 + 0.2 * spotHash(t.x, t.z, 2)));
+    crownsAt(crowns, `${kind}|${variant}`, new THREE.Matrix4().compose(middle.clone(), lean.clone(), size));
+    const girth = Math.max(1, t.h / 6.5) * (kind === Kind.Birch ? 0.7 : kind === Kind.Broad || kind === Kind.Fruit ? 1 : 0.85);
+    trunkAt[TRUNK_OF[kind]].push(new THREE.Matrix4().compose(new THREE.Vector3(t.x, t.y, t.z), turn.clone(), new THREE.Vector3(girth, Math.max(0.5, fork + 0.05), girth)));
+  }
+  const out: Piece[] = [];
+  for (const [key, at] of crowns) {
+    const [kind, variant] = key.split('|').map(Number);
+    const near = shapes.near[kind][variant];
+    const leaves = kind === Kind.Spruce ? cardNeedleMat : cardLeafMat;
+    out.push({ material: leaves, geometry: near.cards, tag: 'hedge', shadow: false, at, order: TREE_ORDER, lod: 'near' });
+    // Their shadow from the lighter crown: a quarter of the cards to cut out in the shadow pass, the same shape.
+    out.push({ material: leaves, geometry: shapes.far[kind][variant].cards, tag: 'hedge', shadow: true, at, order: TREE_ORDER, lod: 'near', shadowOnly: true });
+    if (near.branches) out.push({ material: cardBarkMat, geometry: near.branches, tag: 'hedge', shadow: false, at, order: TREE_ORDER, lod: 'near' });
+    out.push({ material: leaves, geometry: shapes.far[kind][variant].cards, tag: 'hedge', shadow: false, at, order: TREE_ORDER, lod: 'far' });
+  }
+  trunkAt.forEach((at, k) => at.length && out.push({ material: cardBarkMat, geometry: shapes.trunks[k], tag: 'hedge', shadow: false, at, order: TREE_ORDER }));
   return out;
 }
 
