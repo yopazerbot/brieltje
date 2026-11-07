@@ -17,6 +17,8 @@
 // step), and kick it: a velocity where they look, harder when they run. A kick sets the ball's velocity
 // (it never adds to it), so no number of kicks can make it faster than KICK.hard.
 
+import PLAYGROUND from './playground.json' with { type: 'json' };
+
 export const BALL = {
   r: 0.105, // m: a size 4 ball (youth football), 66 cm round
   g: 9.81,
@@ -66,6 +68,12 @@ const L1 = Math.hypot(470.45 - A1[0], -788.73 - A1[1]);
 const U1 = [(470.45 - A1[0]) / L1, (-788.73 - A1[1]) / L1];
 const N1 = [U1[1], -U1[0]];
 const P1 = (u, n) => [A1[0] + U1[0] * u + N1[0] * n, A1[1] + U1[1] * u + N1[1] * n];
+// The play tower (shared/playground.json, written by tools/school.py with the model): dv along the long block,
+// dw across it from the ladder to the slide, from its foot's middle.
+const TOWER = PLAYGROUND.tower;
+const T = (dv, dw) => [TOWER.at[0] + TOWER.v[0] * dv + TOWER.w[0] * dw, TOWER.at[1] + TOWER.v[1] * dv + TOWER.w[1] * dw];
+const { posts: tPost, platform: tPlat, boards: tBoard, ladder: tLad, slide: tSlide } = TOWER;
+const tBoardAt = (tBoard.from + tBoard.to) / 2;
 
 /**
  * A small goal (3 x 1.6 m, 0.9 m deep, the net sloping from the crossbar to a bar on the ground behind), its
@@ -92,22 +100,22 @@ export const PITCHES = [
     // What stands on it (tools/school.py): the play tower's posts, ladder, platform, boards and slide; the
     // balance posts and the beam; the benches along the corridor.
     posts: [
-      ...[-0.75, 0.75].flatMap((dv) => [-0.75, 0.75].map((dw) => [...Q(28.4 + dv, -8.06 + dw), 0.07, 2.62])),
+      ...[-tPost.at, tPost.at].flatMap((dv) => [-tPost.at, tPost.at].map((dw) => [...T(dv, dw), tPost.size * 0.7, tPost.top])),
       ...[0.3, 0.45, 0.6, 0.75, 0.6, 0.45, 0.3].map((h, k) => [...Q(24.5 + k * 0.55, -11.0), 0.11, h]),
       [...Q(24.0, -12.6), 0.07, 0.32], [...Q(28.0, -12.6), 0.07, 0.32],
       ...[18.2, 21.0].flatMap((u) => [-0.75, 0.75].map((du) => [...P1(u + du, 13.65), 0.1, 0.42])),
     ],
     bars: [
       [...Q(24.0, -12.6), 0.38, ...Q(28.0, -12.6), 0.38, 0.065],
-      ...[-0.3, 0.3].map((s) => [...Q(28.4 + s, -8.06 - 1.5), 0, ...Q(28.4 + s, -8.06 - 0.8), 1.3, 0.04]),
+      ...[-tLad.half, tLad.half].map((s) => [...T(s, tLad.foot), 0, ...T(s, tLad.top), tLad.rise, 0.04]),
     ],
     panels: [
       // The tower's platform and its two side boards.
-      ...quad(Q(27.6, -8.86), Q(29.2, -8.86), Q(29.2, -7.26), Q(27.6, -7.26), 1.31, 1.31, 1.31, 1.31),
-      ...quad(Q(27.62, -8.86), Q(27.62, -7.26), Q(27.62, -7.26), Q(27.62, -8.86), 1.33, 1.33, 2.05, 2.05),
-      ...quad(Q(29.18, -8.86), Q(29.18, -7.26), Q(29.18, -7.26), Q(29.18, -8.86), 1.33, 1.33, 2.05, 2.05),
+      ...quad(T(-tPlat.half, -tPlat.half), T(tPlat.half, -tPlat.half), T(tPlat.half, tPlat.half), T(-tPlat.half, tPlat.half), ...Array(4).fill(tPlat.y1 - 0.02)),
+      ...[-tBoardAt, tBoardAt].flatMap((dv) => quad(T(dv, -tPlat.half), T(dv, tPlat.half), T(dv, tPlat.half), T(dv, -tPlat.half), tPlat.y1, tPlat.y1, tBoard.y1, tBoard.y1)),
       // The slide, down towards the long block.
-      ...quad(Q(28.14, -7.26), Q(28.66, -7.26), Q(28.66, -4.46), Q(28.14, -4.46), 1.3, 1.3, 0.25, 0.25),
+      ...quad(T(-tSlide.half, tSlide.top[0]), T(tSlide.half, tSlide.top[0]), T(tSlide.half, tSlide.bottom[0]), T(-tSlide.half, tSlide.bottom[0]),
+        tSlide.top[1], tSlide.top[1], tSlide.bottom[1], tSlide.bottom[1]),
       // The benches' seats.
       ...[18.2, 21.0].flatMap((u) => quad(P1(u - 0.9, 13.43), P1(u + 0.9, 13.43), P1(u + 0.9, 13.87), P1(u - 0.9, 13.87), 0.45, 0.45, 0.45, 0.45)),
     ],
