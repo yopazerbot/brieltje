@@ -8,6 +8,7 @@ import type { Piece, TileData } from './tiles';
 import { fieldRows } from './fields';
 import { sway } from './wind';
 import { paneGeometry, paneLook, paneMaterial, COVER } from './windows';
+import { brickLook, byteAttribute, frameColour, glazeable, Houses, isBrick, renderable, roofLook } from './facadeLook';
 import { waterClock, waterMaterial } from './water';
 import { leafy } from './leaves';
 import { treeCrown, treeTrunk } from './vegetation';
@@ -22,7 +23,8 @@ import { spaceTrees } from './treeSpacing';
  * calls for all of them).
  *
  * The neighbours' roofs carry tiles in their own colour, their gables the
- * brick of the walls below, and their walls windows, doors and garage doors
+ * brick of the walls below (each house its own shade, render, roof covering and
+ * frames: world/facadeLook.ts), and their walls windows, doors and garage doors
  * (made up in the style of the street by tools/facades.py): frames, doors
  * and sills are one draw call, the glass (mirroring the sky, with curtains,
  * nets and blinds behind it: world/windows.ts) another.
@@ -316,7 +318,7 @@ function slab(at: THREE.Vector3, d: THREE.Vector3, n: THREE.Vector3, w: number, 
  * windows and a stone sill under each window. `ground`: the flat ground's height, to tell
  * the ground floor's windows from those above.
  */
-function buildOpenings(list: Opening[], ground: number): Piece[] {
+function buildOpenings(list: Opening[], ground: number, houses: Houses): Piece[] {
   const solid: THREE.BufferGeometry[] = [];
   const glass: THREE.BufferGeometry[] = [];
   const sill = new THREE.Color('#d8d3c7');
@@ -332,7 +334,7 @@ function buildOpenings(list: Opening[], ground: number): Piece[] {
     const h = y1 - y0;
     const mid = a.clone().add(b).multiplyScalar(0.5).setY((y0 + y1) / 2);
     const out = (k: number) => mid.clone().addScaledVector(n, k);
-    const frame = new THREE.Color(o.f);
+    const frame = frameColour(o.f, houses.at(mid.x - n.x * 0.3, mid.z - n.z * 0.3)); // the house the wall belongs to
     solid.push(slab(out(0.02), d, n, w + 0.1, h + 0.1, 0.05, frame));
     if (o.k === 'w') {
       const upper = y0 - (ground + terrain.height(mid.x, mid.z)) > 2;
@@ -422,28 +424,42 @@ export function buildTile(data: TileData, poles: Pole[], renderer: THREE.WebGLRe
     else parts.set(mat, { geos: [g], tag, shadow, order, small });
   };
   const coloured = (m: THREE.Material) => (m as THREE.MeshStandardMaterial).vertexColors;
+  // Each house its own shade of brick, render or not, roof covering and frames (world/facadeLook.ts).
+  const houses = new Houses(data.prisms ?? []);
+  const walls = (m: string, key: number, g: THREE.BufferGeometry) => {
+    const look = brickLook(m, key);
+    return byteAttribute(paint(g, look.tint), 'facade', look.render);
+  };
   for (const p of data.prisms ?? []) {
     const { material: mat, tint, tag } = blockMaterial(p.m, renderer);
     const g = prismGeometry(p);
     fieldRows(g, p); // the fields' rows (world/fields.ts)
-    put(mat, coloured(mat) ? paint(g, tint) : g, tag, true, GROUND_COVERS.has(p.m) ? COVER_ORDER : undefined);
+    if (isBrick(p.m)) put(renderable(mat), walls(p.m, houses.keyOf(p), g), tag);
+    else put(mat, coloured(mat) ? paint(g, tint) : g, tag, true, GROUND_COVERS.has(p.m) ? COVER_ORDER : undefined);
   }
 
   // Roofs: the tiles in their colour per vertex, the gables in the brick of the walls below. A roof
   // over a room (the bungalow's) has a ceiling colour: then the outside (front faces) and the
   // underside (back faces) differ.
-  const tiles = material('tiles', () => Object.assign(tintedMaterial('roof_tiles', '#ffffff', renderer, THREE.DoubleSide), { vertexColors: true }));
+  const tiles = material('tiles', () => glazeable(Object.assign(tintedMaterial('roof_tiles', '#ffffff', renderer, THREE.DoubleSide), { vertexColors: true })));
   const gutterGeos: THREE.BufferGeometry[] = [];
   for (const r of data.roofs) {
     const g = roof(r);
     if (g.gutters) gutterGeos.push(g.gutters);
     const side = r.ceiling ? THREE.FrontSide : THREE.DoubleSide;
     const tint = r.tiles ?? '#4a3f3a';
+    // The house under the roof: the walls round the middle of its outline.
+    const [cx, cz] = r.p.reduce(([x, z], q) => [x + q[0] / r.p.length, z + q[1] / r.p.length], [0, 0]);
+    const key = houses.at(cx, cz, r.wall);
     if (r.ceiling) put(material(`tiles|${tint}|${side}`, () => tintedMaterial('roof_tiles', tint, renderer, side)), g.roof, 'nb_roof');
-    else put(tiles, paint(g.roof, new THREE.Color(tint)), 'nb_roof');
+    else {
+      const look = roofLook(tint, key);
+      put(tiles, byteAttribute(paint(g.roof, look.color), 'gloss', look.gloss), 'nb_roof');
+    }
     if (r.wall) {
       const { material: mat, tint: brick, tag } = blockMaterial(r.wall, renderer);
-      put(mat, coloured(mat) ? paint(g.gables, brick) : g.gables, tag);
+      if (isBrick(r.wall)) put(renderable(mat), walls(r.wall, key, g.gables), tag);
+      else put(mat, coloured(mat) ? paint(g.gables, brick) : g.gables, tag);
     } else {
       put(r.gable || r.ceiling ? material(`gable|${r.gable}|${side}`, () => new THREE.MeshStandardMaterial({ color: r.gable ?? '#b98068', roughness: 0.9, side })) : gableMat, g.gables, 'nb_roof');
     }
@@ -465,7 +481,7 @@ export function buildTile(data: TileData, poles: Pole[], renderer: THREE.WebGLRe
     out.push({ material: mat, geometry: geos.length > 1 ? mergeGeometries(geos) : geos[0], tag, shadow, order, small });
     if (geos.length > 1) geos.forEach((g) => g.dispose());
   }
-  if (data.openings?.length) out.push(...buildOpenings(data.openings, ground));
+  if (data.openings?.length) out.push(...buildOpenings(data.openings, ground, houses));
   if (data.poleIds.length || data.wires?.length) out.push(...buildLamps(poles, data.poleIds, data.wires ?? [], ground));
   if (data.solar?.length) out.push(...buildSolar(data.solar));
   if (data.posts?.length) out.push(buildPosts(data.posts, ground));
