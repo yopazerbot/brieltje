@@ -253,8 +253,8 @@ export class Net {
   private fullAt = 0;
   /** The Zombies room to connect to (server/rooms.mjs), or null for the open world */
   room: string | null = null;
-  /** The room asked for is gone: the page goes back to the open world (src/ui/rooms.ts). */
-  onRoomGone: () => void = () => {};
+  /** The room asked for is gone, or full: the page goes back to the open world (src/ui/rooms.ts). */
+  onRoomGone: (why: 'gone' | 'full') => void = () => {};
 
   get connected(): boolean {
     return this.ws?.readyState === WebSocket.OPEN;
@@ -296,7 +296,7 @@ export class Net {
       if (m.t === 'kicked') this.stopped = true;
       if (m.t === 'roomgone') {
         this.room = null; // the close that follows reconnects to the open world (see onclose)
-        this.onRoomGone();
+        this.onRoomGone('gone');
         return;
       }
       try {
@@ -318,8 +318,15 @@ export class Net {
       if (e.code === 4004) {
         if (this.room) {
           this.room = null;
-          this.onRoomGone();
+          this.onRoomGone('gone');
         }
+        this.connect();
+        return;
+      }
+      // A room full (4003): back to the open world at once, never waiting for a place there.
+      if (e.code === 4003 && this.room) {
+        this.room = null;
+        this.onRoomGone('full');
         this.connect();
         return;
       }

@@ -269,7 +269,7 @@ async function api(req, res, url) {
     const r = path.endsWith('password') ? await accounts.changePassword(req, s, b) : await accounts.deleteMine(req, s, b);
     if (r.error) return refuse(res, r);
     // A new password: this browser stays logged in with a fresh session; every other one ended.
-    if (r.token) return json(res, 200, { ok: true }, { 'Set-Cookie': auth.cookie(r.token, ACCOUNT_MS / 1000, seat) });
+    if (r.token) return json(res, 200, { ok: true }, { 'Set-Cookie': [auth.cookie(r.token, ACCOUNT_MS / 1000, seat), ...(r.device ? [auth.accountDeviceCookie(r.device)] : [])] });
     return json(res, 200, { ok: true }, { 'Set-Cookie': auth.cookie('', 0, seat) });
   }
   // Zombies rooms (server/rooms.mjs): the list for anyone playing together; opening one for accounts and the admin.

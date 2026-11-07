@@ -32,9 +32,9 @@ export class Rooms {
     $('room-leave').addEventListener('click', () => this.leave());
     $('room-start').addEventListener('click', () => this.net.send({ t: 'mode', kind: 'zombies' }));
     $('room-stop').addEventListener('click', () => this.net.send({ t: 'mode', kind: 'free' }));
-    net.onRoomGone = () => {
+    net.onRoomGone = (why) => {
       this.current = null;
-      this.hooks.say(() => t('room.gone'));
+      this.hooks.say(() => t(why === 'full' ? 'room.fullBack' : 'room.gone'));
       this.draw();
     };
     // While the Together tab shows: the list every few seconds (who joined, which wave).

@@ -296,7 +296,10 @@ export class Accounts {
     await this.store.deleteSessionsOf(name);
     this.auth.log('account_password', req, { username: name });
     const token = await this.session(req, name, mine); // none when anything else revoked meanwhile
-    return token ? { ok: true, token } : ended;
+    if (!token) return ended;
+    // A new device cookie too: the old one was signed for the old password (deviceFor) and stopped counting.
+    const row = await this.store.getAccount(name);
+    return { ok: true, token, ...(row ? { device: this.auth.newDevice(deviceFor(row)) } : {}) };
   }
 
   /** The player deletes their own account (`b.password`): their email, password, scores and sessions go. */

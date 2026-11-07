@@ -353,6 +353,7 @@ const en = {
   'room.joined': "You're in {name}'s room at {place}. Anyone in it can start Zombies in the menu's Together tab.",
   'room.left': 'Back in the open world.',
   'room.gone': 'The room was closed. You are back in the open world.',
+  'room.fullBack': 'That room is full. You are back in the open world.',
   'z.keepScore': 'Make an account to keep your score on the board.',
 
   // ---- The admin's tab
@@ -1314,6 +1315,7 @@ const nl = {
   'room.joined': 'Je zit in de kamer van {name} bij {place}. Iedereen erin kan Zombies starten in het tabblad Samen van het menu.',
   'room.left': 'Terug in de open wereld.',
   'room.gone': 'De kamer is gesloten. Je bent terug in de open wereld.',
+  'room.fullBack': 'Die kamer is vol. Je bent terug in de open wereld.',
   'z.keepScore': 'Maak een account om je score op het scorebord te bewaren.',
 
   // ---- The admin's tab

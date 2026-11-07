@@ -137,6 +137,7 @@ test('a new password ends every other session; deleting needs the password and e
   assert.equal((await accounts.changePassword(req(), session, { old: good.password, password: 'otto123' })).code, 'passShort');
   const changed = await accounts.changePassword(req(), session, { old: good.password, password: 'another long one' });
   assert.ok(changed.token);
+  assert.ok(changed.device, 'a new own-account cookie for the new password');
   for (const t of [first.token, second.token]) assert.equal(auth.session(req('192.0.2.30', `${auth.names.session}=${t}`)), null);
   const now = auth.session(req('192.0.2.30', `${auth.names.session}=${changed.token}`));
   assert.equal(now.username, 'otto');

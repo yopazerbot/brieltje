@@ -125,6 +125,25 @@ export class Rooms {
     return list;
   }
 
+  /** The admin changed the open world's rules: every room takes them (its own limit kept) and its players hear it. */
+  rulesChanged(rules, notice) {
+    for (const r of this.rooms.values()) {
+      r.game.rules = { ...rules, maxPlayers: ROOM_PLAYERS };
+      r.game.broadcast({ t: 'rules', rules: r.game.rules });
+      r.game.broadcast(notice);
+    }
+  }
+
+  /** The admin closes a room (brieltje.be/admin): its players go back to the open world. */
+  close(id, by) {
+    const r = typeof id === 'string' && ROOM_ID.test(id) ? this.rooms.get(id) : null;
+    if (!r) return false;
+    this.rooms.delete(id);
+    r.game.close();
+    this.main.auth.log('room_closed', null, { username: by, detail: `${r.arena.id} (${r.id}) of ${r.owner}, by the admin` });
+    return true;
+  }
+
   /** A player's time there and back, wherever they play (the admin's live view, server/stats.mjs). */
   pingOf(name) {
     return this.gameOf(name)?.pingOf(name) ?? null;

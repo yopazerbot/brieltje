@@ -1426,6 +1426,8 @@ export class Game {
     // With the rules that changed and their new values (checked by ruleOk), for the page to word in its language.
     const args = { name: by, ...Object.fromEntries(changed.map((k) => [k, this.rules[k]])) };
     this.broadcast({ t: 'system', text: `${by} turned ${text}`, code: 'rules', args });
+    // "For everyone" means the rooms too (server/rooms.mjs): each takes the new rules, keeping its own limit.
+    if (!this.room) this.hub?.rulesChanged(this.rules, { t: 'system', text: `${by} turned ${text}`, code: 'rules', args });
   }
 
   /**

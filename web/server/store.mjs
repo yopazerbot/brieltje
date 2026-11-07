@@ -41,6 +41,7 @@ class FileStore {
     if (this.data.accounts.some((r) => r.username === a.username)) return false;
     const now = new Date().toISOString();
     this.data.accounts.push({ username: a.username, email: a.email, pass: a.pass, created: now, seen: now, disabled: false });
+    delete this.data.stats[`u:${a.username}`]; // a new account starts at nothing
     await this.save();
     return true;
   }
@@ -208,7 +209,8 @@ class FileStore {
     await this.save();
   }
   async leaderboard() {
-    return Object.entries(this.data.stats).filter(([k]) => k.startsWith('u:')).map(([k, s]) => ({ username: k.slice(2), ...s }));
+    const names = new Set(this.data.accounts.map((r) => r.username));
+    return Object.entries(this.data.stats).filter(([k]) => k.startsWith('u:') && names.has(k.slice(2))).map(([k, s]) => ({ username: k.slice(2), ...s }));
   }
   async log(entry) {
     this.data.audit.unshift(entry);
@@ -557,13 +559,16 @@ class PgStore {
       [username, ...v]);
   }
   async leaderboard() {
-    const r = await this.pool.query('select username, kills, deaths, headshots, wins from stats');
+    // Accounts only (Yoshi, 7 Nov 2026): a row left by a hit in the instant an account went, or by the old
+    // server during a deploy, never shows.
+    const r = await this.pool.query('select s.username, s.kills, s.deaths, s.headshots, s.wins from stats s join accounts a on a.username = s.username');
     return r.rows;
   }
   // ---- Accounts (server/accounts.mjs)
   /** False when the name is taken (the primary key decides, so two sign-ups at once can't both get it). */
   async createAccount(a) {
     const r = await this.pool.query('insert into accounts (username, email, pass) values ($1, $2, $3) on conflict (username) do nothing', [a.username, a.email, a.pass]);
+    if (r.rowCount === 1) await this.pool.query('delete from stats where username = $1', [a.username]); // a new account starts at nothing
     return r.rowCount === 1;
   }
   async getAccount(username) {

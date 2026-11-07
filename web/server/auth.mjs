@@ -459,6 +459,11 @@ export class Auth {
       await this.store.deleteSession(key);
       return { error: 'You were removed by the admin. Try again later.', code: 'removed', status: 403 };
     }
+    // A sign-up for this name that began while the session was saved (server/accounts.mjs): the name is theirs.
+    if ((await this.store.getAccount(name)) || this.claiming.has(name)) { // claiming last: no await between it and the session below
+      await this.store.deleteSession(key);
+      return { error: `${name} is a player's account. Pick another name.`, code: 'nameAccount', args: { name }, status: 409 };
+    }
     this.sessions.set(key, { username: name, role: 'admin', expires: now + SESSION_MS });
     this.log('login_ok', req, { username: name, detail: 'admin' });
     return { token, username: name, role: 'admin', device: this.newDevice(ADMIN_KEY) };

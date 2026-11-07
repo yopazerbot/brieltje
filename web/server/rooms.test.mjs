@@ -106,6 +106,26 @@ test('in a room anyone starts Zombies at its place; only accounts and the admin 
   }
 });
 
+test("the admin's rules reach every room (its own limit kept), and the admin closes a room", async () => {
+  const { main, rooms, stop } = hub();
+  try {
+    const { id } = rooms.create({ username: 'anna', role: 'player' }, 'church').room;
+    const g = rooms.rooms.get(id).game;
+    const told = [];
+    g.broadcast = (m) => told.push(m);
+    main.auth.store.setMeta = async () => {};
+    await main.setRules({ paintball: true, maxPlayers: 12 }, 'admin');
+    assert.equal(g.rules.paintball, true, 'child-friendly for everyone, the room too');
+    assert.equal(g.rules.maxPlayers, ROOM_PLAYERS);
+    assert.ok(told.some((m) => m.t === 'rules') && told.some((m) => m.code === 'rules'));
+    assert.equal(rooms.close('nope', 'admin'), false);
+    assert.equal(rooms.close(id, 'admin'), true);
+    assert.equal(rooms.rooms.has(id), false);
+  } finally {
+    stop();
+  }
+});
+
 test('a Zombies run counts for accounts only; fighting totals too', () => {
   const { auth, main, stop } = hub();
   try {
