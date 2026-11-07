@@ -43,6 +43,9 @@ export class AccountCard {
   private email = document.getElementById('acct-email-in') as HTMLInputElement;
   private pass = document.getElementById('acct-pass') as HTMLInputElement;
   private old = document.getElementById('acct-old') as HTMLInputElement;
+  private pass2 = document.getElementById('acct-pass2') as HTMLInputElement;
+  /** The eyes: every password in the card shown as text (true) or hidden; hidden again whenever the view changes. */
+  private reveal = false;
   private msg = document.getElementById('acct-msg')!;
   private go = document.getElementById('acct-go') as HTMLButtonElement;
   private view: View = 'login';
@@ -84,7 +87,13 @@ export class AccountCard {
     for (const type of ['keydown', 'keyup'] as const) this.dlg.addEventListener(type, (e) => e.stopPropagation());
     // A click on the dimmed backdrop closes it, as the ✕ does.
     this.dlg.addEventListener('click', (e) => e.target === this.dlg && this.close());
-    for (const input of [this.name, this.email, this.pass, this.old]) input.addEventListener('input', () => input.removeAttribute('aria-invalid'));
+    for (const input of [this.name, this.email, this.pass, this.pass2, this.old]) input.addEventListener('input', () => input.removeAttribute('aria-invalid'));
+    // The eye in a password field shows or hides what is typed, in every password field of the card at once.
+    this.dlg.querySelectorAll<HTMLButtonElement>('[data-eye]').forEach((b) => b.addEventListener('click', () => {
+      this.reveal = !this.reveal;
+      this.draw();
+      (b.previousElementSibling as HTMLInputElement | null)?.focus();
+    }));
     onLang(() => this.draw());
   }
 
@@ -100,7 +109,8 @@ export class AccountCard {
   }
 
   close(): void {
-    this.pass.value = this.old.value = ''; // never left lying in the page
+    this.pass.value = this.pass2.value = this.old.value = ''; // never left lying in the page
+    this.reveal = false;
     this.stopPair();
     if (this.dlg.open) this.dlg.close();
   }
@@ -167,7 +177,8 @@ export class AccountCard {
     this.view = view;
     this.note = null;
     this.bad = false;
-    this.pass.value = this.old.value = '';
+    this.reveal = false;
+    this.pass.value = this.pass2.value = this.old.value = '';
     if (view === 'account') void this.loadMine();
     if (view === 'phone') void this.startPair();
     else this.stopPair();
@@ -202,6 +213,11 @@ export class AccountCard {
     // The password field: the one you have (logging in), or a new one (signing up, a new password).
     document.getElementById('acct-pass-label')!.textContent = t(v === 'password' ? 'acct.newPass' : 'acct.pass');
     this.pass.autocomplete = v === 'login' ? 'current-password' : 'new-password';
+    for (const input of [this.pass, this.pass2, this.old]) input.type = this.reveal ? 'text' : 'password';
+    this.dlg.querySelectorAll<HTMLButtonElement>('[data-eye]').forEach((b) => {
+      b.setAttribute('aria-pressed', String(this.reveal));
+      b.setAttribute('aria-label', t(this.reveal ? 'acct.hidePass' : 'acct.showPass'));
+    });
     const me = this.hooks.me();
     document.getElementById('acct-me')!.textContent = t('acct.me', { name: this.mine?.username ?? me?.username ?? '' });
     document.getElementById('acct-email')!.textContent = this.mine ? t('acct.emailIs', { email: this.mine.email }) : '';
@@ -230,6 +246,8 @@ export class AccountCard {
     if (v === 'signup' && !this.email.value.trim()) return this.say(() => t('err.email'), true, this.email);
     if ((v === 'password' || v === 'delete') && !this.old.value) return this.say(() => t('err.passFirst'), true, this.old);
     if (v !== 'delete' && !this.pass.value) return this.say(() => t('err.passFirst'), true, this.pass);
+    // A new password, typed twice: the same both times, or nothing is sent.
+    if ((v === 'signup' || v === 'password') && this.pass.value !== this.pass2.value) return this.say(() => t('err.passMatch'), true, this.pass2);
     if (v === 'signup' && !this.hooks.ageOk()) return this.say(() => t('err.age'));
     this.busy = true;
     this.say(null, false);
@@ -237,7 +255,7 @@ export class AccountCard {
       if (v === 'login' || v === 'signup') {
         const finish = this.hooks.begin(v === 'signup');
         const account = v === 'login' ? await api.accountLogin(name, this.pass.value) : await api.register(name, this.email.value.trim(), this.pass.value);
-        this.pass.value = '';
+        this.pass.value = this.pass2.value = '';
         if (finish(account)) this.close();
       } else if (v === 'password') {
         await api.changePassword(this.old.value, this.pass.value);
@@ -254,7 +272,7 @@ export class AccountCard {
       this.say(errorText(e), true, /password|login/i.test(c) ? field : undefined);
     } finally {
       this.busy = false;
-      this.pass.value = this.old.value = '';
+      this.pass.value = this.pass2.value = this.old.value = '';
       this.draw();
     }
   }
