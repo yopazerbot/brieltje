@@ -1,3 +1,4 @@
+// The scores in the pause menu (src/ui/leaderboard.ts): the best Zombies runs per account for everyone, and the fights' totals together.
 import { api, errorText, type ZombieRun } from '../net/client';
 import { num, onLang, t, type PlainKey } from '../i18n';
 import { paintball } from '../paintball';

@@ -89,7 +89,7 @@ The newest game in Brieltje (November 2026). Zombies come in waves, from every s
 | **Life** | Birds that fly off when you come near, a robot mower doing its rounds, cows and sheep in the meadows, trees in the wind, cars on the roads, and church bells striking the hours. |
 | **Getting around** | Walk, sprint, fly, drive a Tesla (with a passenger) or ride a horse. Eight portals jump between our house, the bungalow, the church, the school, three places along Molenhoek and the Sparrenhof. `/location` in the chat, or the menu's Play tab, takes you to any portal or to 36 streets. You arrive by skydive, and `/parachute` jumps again. The map (M, the menu's first tab) gives directions along the roads. |
 | **Ways to play** | Explore (just walking around), Paintball (paint guns, for everyone) or Action (a pistol, then a rifle, a shotgun, a sniper rifle and grenades, against each other, giant strongmen and clowns; no shooting on the school grounds). |
-| **Together** | Up to 16 players who join with a PIN set by the admin. Chat, party games (hide and seek, tag, a treasure hunt, Zombies), and house against bungalow. A leaderboard, and a scoreboard to project at a meetup. |
+| **Together** | Up to 16 players, as a guest with just a name or with an account of your own. Chat, party games (hide and seek, tag, a treasure hunt, Zombies), and house against bungalow. Zombies rooms: a player with an account opens one, anyone joins, and the open world plays on. A board of the best Zombies runs (accounts only), a leaderboard, and a scoreboard to project at a meetup. |
 | **Anywhere** | Graphics presets with auto-detection, keyboard and mouse, controller, or touch. In English or Dutch (Nederlands), chosen on the start screen or in the settings. Key hints follow an AZERTY or QWERTY keyboard. |
 
 ## Private homes
@@ -160,7 +160,7 @@ ADMIN_PASSWORD=choose-one npm start
 
 It listens on http://localhost:8080. Without `DATABASE_URL` (Postgres) it keeps its players in `web/.data/`.
 
-Open the game, use the **Admin** login with your admin password, then save a multiplayer PIN in the admin settings (4 to 12 digits). Give that PIN to your players. Until you save one, guest joining stays closed.
+Pick Together on the start screen: play as a guest with a name, or make an account. The **Admin** link logs you in with your admin password. The players' accounts are on http://localhost:8080/admin.
 
 ## How it's made
 

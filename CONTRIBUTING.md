@@ -31,10 +31,10 @@ Open http://localhost:5173. This is the game with solo play. It reloads when you
 Multiplayer and login go through the Node server on port 8080. The dev page passes `/api` and `/ws` on to it. Start it in a second terminal, also in `web/`:
 
 ```
-ADMIN_PASSWORD=pick-your-own MULTIPLAYER_PIN=1234 npm start
+ADMIN_PASSWORD=pick-your-own npm start
 ```
 
-In PowerShell, set each variable first with `$env:NAME='value'`. Pick a throwaway admin password that you use nowhere else. You only need it to test the admin tools. `MULTIPLAYER_PIN` sets the PIN your local game starts with. The server keeps its data in `web/.data/`. Git ignores that folder.
+In PowerShell, set each variable first with `$env:NAME='value'`. Pick a throwaway admin password that you use nowhere else. You only need it to test the admin tools. To play together locally, pick Together and join as a guest, or make a test account (delete it afterwards). The server keeps its data in `web/.data/`. Git ignores that folder.
 
 ## Before you open a pull request
 
