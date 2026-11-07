@@ -414,7 +414,7 @@ export class Car {
 
   /** You got out: it rolls to a stop where it is. */
   leave(): void {
-    this.vx = this.vz = this.speed = 0;
+    this.vx = this.vz = this.speed = this.spinKick = 0; // a crash's turn ends with the drive
     this.braking = false;
     this.handbraking = false;
     this.pushing = 0;
@@ -423,7 +423,7 @@ export class Car {
 
   /** Through a portal: standing still at (x, y, z) facing `yaw`, the camera behind it. */
   place(x: number, y: number, z: number, yaw: number): void {
-    Object.assign(this, { x, y, z, yaw, steer: 0, speed: 0, vx: 0, vz: 0, lastSpeed: 0, braking: false, camHeading: yaw, camYaw: 0, fresh: true });
+    Object.assign(this, { x, y, z, yaw, steer: 0, speed: 0, vx: 0, vz: 0, lastSpeed: 0, spinKick: 0, braking: false, camHeading: yaw, camYaw: 0, fresh: true });
     this.motion.reset();
     this.track.clear();
   }
@@ -436,7 +436,7 @@ export class Car {
     this.driver = s.driver;
     this.passenger = s.passenger ?? null;
     if (snap || Math.hypot(s.x - this.x, s.z - this.z) > 10) {
-      Object.assign(this, { x: s.x, y: s.y, z: s.z, yaw: s.yaw, steer: s.s, speed: 0, fresh: true });
+      Object.assign(this, { x: s.x, y: s.y, z: s.z, yaw: s.yaw, steer: s.s, speed: 0, spinKick: 0, fresh: true });
       this.motion.reset();
       this.track.clear();
     }
