@@ -62,6 +62,7 @@ import CARS from '../shared/car.json';
 import { buildHedges, buildTile, dipMesh, waterMesh } from './world/surroundings';
 import { buildHorizon } from './world/horizon';
 import { wearLonePatches, weatherYards } from './world/yards';
+import { Undergrowth } from './world/undergrowth';
 import { GroundShade } from './world/groundShade';
 import { groundPiece, groundPieceCoarse, groundPieces, groundSkirt, pieceOf, PIECE, terrain, type GroundCuts } from './world/terrain';
 import { splitTiles, Tiles } from './world/tiles';
@@ -335,6 +336,10 @@ groundShade.addGrass(house.surroundings?.grass); // the gardens' stripes and the
 for (const m of [...groundFamilies(renderer), roadPaint, surfaceMaterial('paving', renderer), surfaceMaterial('bed', renderer)]) groundShade.apply(m as THREE.MeshStandardMaterial);
 // The yards and gravel round the houses weathered, after the shading (world/yards.ts).
 weatherYards(['pave_light', 'gravel'].map((n) => blockMaterial(n, renderer).material as THREE.MeshStandardMaterial));
+// Ferns, brambles and shrubs on the woods' floor round the eye (world/undergrowth.ts), in the ground's shade.
+const undergrowth = new Undergrowth(groundShade.uniforms);
+undergrowth.addWoods(house.surroundings?.prisms, house.surroundings?.trees);
+scene.add(undergrowth.group);
 // The fields' rows (world/fields.ts) from the start: their large shader is compiled while loading. Added when the
 // countryside came, the fields waited for it, and the game stopped for up to two seconds just after it began.
 patchFields(blockMaterial('field_soil', renderer).material as THREE.MeshStandardMaterial);
@@ -438,6 +443,7 @@ function applyQuality(q: Quality): void {
   weather.setQuality(q, phone); // how many streaks of rain
   setWindowDetail(q !== 'low' && !phone); // rooms behind the village's windows (world/windows.ts)
   tiles.drawDistance = phone ? Math.min(FAR_PHONE, preset.far) : preset.far;
+  undergrowth.setQuality(q, phone);
   dynScale = 1;
   resize();
 }
@@ -3158,6 +3164,7 @@ renderer.setAnimationLoop((now: number) => {
   horizon.position.x = camera.position.x;
   horizon.position.z = camera.position.z;
   tiles.update(dt, camera.position);
+  undergrowth.update(camera.position);
   groundDetail(camera.position);
   homeStreet.update(dt, camera.position);
   groundShade.follow(camera.position);
@@ -3214,6 +3221,7 @@ async function buildVillage(): Promise<void> {
   const between = () => new Promise((r) => setTimeout(r, 0));
   const data = (await import('./data/village.json')).default as unknown as VillageData;
   wearLonePatches(data); // light patches away from the buildings: worn ground (world/yards.ts)
+  undergrowth.addWoods(data.prisms, data.trees);
   const first = poles.length;
   poles.push(...(data.poles ?? []));
   const landmarks = (data.landmarks ?? []).map((l) => {
