@@ -1,13 +1,17 @@
 import * as THREE from 'three';
 import type { WeaponId } from '../weapon';
 
-/** Wrist anchors in metres in the gun's frame: right, up, back along the barrel. */
+/**
+ * Wrist anchors in metres in the gun's frame: right, up, back along the barrel. The left wrist sits
+ * under where the first-person hand holds the gun (weapons.glb), at the size the figures hold it
+ * (swat.ts GUN_SCALE): the handguard, the pump, the fore-end, the bazooka's front grip.
+ */
 export const GRIPS: Record<WeaponId, { right: THREE.Vector3; left: THREE.Vector3 }> = {
   pistol: { right: new THREE.Vector3(0, 0.02, 0.05), left: new THREE.Vector3(-0.035, -0.015, 0.065) },
-  rifle: { right: new THREE.Vector3(0, 0.02, 0.05), left: new THREE.Vector3(0, 0.04, -0.22) },
-  shotgun: { right: new THREE.Vector3(0, 0.02, 0.05), left: new THREE.Vector3(0, 0.04, -0.26) },
-  sniper: { right: new THREE.Vector3(0, 0.02, 0.05), left: new THREE.Vector3(0, 0.04, -0.26) },
-  bazooka: { right: new THREE.Vector3(0, -0.06, 0.02), left: new THREE.Vector3(0, -0.08, -0.18) },
+  rifle: { right: new THREE.Vector3(0, 0.02, 0.05), left: new THREE.Vector3(0, -0.016, -0.24) },
+  shotgun: { right: new THREE.Vector3(0, 0.02, 0.05), left: new THREE.Vector3(0, -0.05, -0.33) },
+  sniper: { right: new THREE.Vector3(0, 0.02, 0.05), left: new THREE.Vector3(0, -0.028, -0.22) },
+  bazooka: { right: new THREE.Vector3(0, -0.06, 0.02), left: new THREE.Vector3(0, -0.07, -0.27) },
 };
 
 /** Sample the model's closed-hand shooting pose once, independent of walking animations. */

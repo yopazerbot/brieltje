@@ -42,10 +42,6 @@ Drawn in code at start-up, no image files: smoke, fire, sparks and debris sprite
 | Asset | Author | Licence | Source |
 |---|---|---|---|
 | SWAT (rigged, 24 animations), `web/public/models/swat.glb`, recoloured per player in the game | Quaternius | CC0 1.0 | https://poly.pizza/m/Btfn3G5Xv4 |
-| Pistol, `web/public/models/guns/pistol.glb` | Quaternius | CC0 1.0 | https://poly.pizza/m/52kQzphmeF |
-| Assault Rifle, `web/public/models/guns/rifle.glb` | Quaternius | CC0 1.0 | https://poly.pizza/m/Bgvuu4CUMV |
-| Shotgun, `web/public/models/guns/shotgun.glb` | Quaternius | CC0 1.0 | https://poly.pizza/m/DcNE0HVdW8 |
-| Sniper Rifle, `web/public/models/guns/sniper.glb` | Quaternius | CC0 1.0 | https://poly.pizza/m/ASOMZIErq3 |
 | Cat (animated), `web/public/models/cat.glb` | Quaternius | CC0 1.0 | https://poly.pizza/m/2f54vbV0In |
 
 ## Surroundings (open data)

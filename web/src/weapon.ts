@@ -1,5 +1,6 @@
 import * as THREE from 'three';
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
+import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
 import { sound } from './sound';
 import { muzzleFlash, type Spot } from './world/effects';
 import type { Paint } from './world/splats';
@@ -10,17 +11,21 @@ import { t } from './i18n';
 
 /**
  * "Action" mode: first-person hands holding a pistol, rifle, shotgun or
- * sniper rifle, like Counter-Strike. Everything is built from simple shapes
- * (no downloads). The pistol is always there; the others are picked up in
- * the house. Shots leave bullet holes and dust or sparks (effects.ts) and
- * throw out a casing; magazines drop out when reloading; the shotgun pumps
- * and the sniper rifle works its bolt. The gun moves like it has weight: it
- * lags behind when you turn, tilts when you step sideways, dips when you
- * land, is carried low while sprinting and springs back after each shot.
- * The guns themselves are CC0 models by Quaternius (poly.pizza); until they
- * have loaded (or if they can't), simple block guns stand in.
+ * sniper rifle, like Counter-Strike. The pistol is always there; the others
+ * are picked up in the house. Shots leave bullet holes and dust or sparks
+ * (effects.ts) and throw out a casing. The guns and the gloved hands are our
+ * own Blender models (tools/weapons.py, one file); until they have loaded (or
+ * if they can't), simple block guns stand in. Their parts move: the pistol's
+ * slide kicks back and locks open when it is empty, the shotgun's pump and
+ * the sniper rifle's bolt are worked by hand after each shot, a reload drops
+ * the magazine and the left hand brings a new one (the shotgun's hand loads
+ * shells one by one, the bazooka's a new rocket). The gun moves like it has
+ * weight: it lags behind when you turn, tilts when you step sideways, bobs
+ * with your steps, dips when you land, is carried low while sprinting and
+ * springs back after each shot; switching lowers one gun and raises the next.
  * The models sit within 20 cm of the camera, closer than any wall can get
- * (the player is 25 cm wide), so they never poke through walls.
+ * (the player is 25 cm wide), so they never poke through walls; they are
+ * drawn at the same size whatever the field of view (a setting).
  * In paintball (paintball.ts) the same guns are bright toy markers with a
  * paint hopper and an air tank, they pop instead of bang, and each pellet is
  * a paintball you see fly (effects.ts); the hits are the same.
@@ -51,23 +56,8 @@ interface Spec {
 export const SPECS = WEAPONS as Record<WeaponId, Spec>;
 export const WEAPON_IDS = Object.keys(SPECS) as WeaponId[];
 
-/** Real length of each gun in metres (the models are scaled to it). */
-const GUN_LENGTH: Record<WeaponId, number> = { pistol: 0.24, rifle: 0.95, shotgun: 1.0, sniper: 1.2, bazooka: 1.2 };
-/** From the highest point of each model down to its line of sight (the scope's middle). */
-const SIGHT_DROP: Record<WeaponId, number> = { pistol: 0, rifle: 0, shotgun: 0, sniper: 0.024, bazooka: 0 };
 /** Muzzle flash length per gun, in metres. */
 const FLASH: Record<WeaponId, number> = { pistol: 0.16, rifle: 0.26, shotgun: 0.34, sniper: 0.32, bazooka: 0.45 };
-/**
- * Finish per material of the gun models: metalness, roughness and how much lighter the
- * colour gets. The models come nearly black and half metallic, which reads as flat plastic;
- * real gun metal reflects the sky.
- */
-const FINISH: Record<string, [number, number, number]> = {
-  Metal: [0.85, 0.34, 2.2], LightMetal: [0.85, 0.3, 2.0], DarkMetal: [0.8, 0.4, 2.2], Grey: [0.6, 0.4, 1.8],
-  Main: [0.7, 0.4, 2.4], MainLight: [0.75, 0.35, 2.2], MainDark: [0.6, 0.45, 2.0],
-  Black: [0.15, 0.55, 1.4], Green: [0.05, 0.65, 1.2], Wood: [0, 0.55, 1.3], DarkWood: [0, 0.6, 1.3], Glass: [0.9, 0.05, 3],
-};
-const loadedGuns = new Map<WeaponId, THREE.Group>();
 
 /**
  * Paintball's toy look: each gun in bright colours instead of black metal. Each of the models'
@@ -76,9 +66,10 @@ const loadedGuns = new Map<WeaponId, THREE.Group>();
  * others' hands, lying in the house), so switching is one pass over a few materials.
  */
 type Role = 'body' | 'trim' | 'deep' | 'lens';
+/** The roles of the materials in weapons.glb (tools/weapons.py); the sights' white dots keep their colour. */
 const ROLE: Record<string, Role> = {
-  Main: 'body', LightMetal: 'body', Wood: 'body', DarkWood: 'body', Green: 'body',
-  Metal: 'trim', MainLight: 'trim', Grey: 'trim', Black: 'deep', DarkMetal: 'deep', MainDark: 'deep', Glass: 'lens',
+  Polymer: 'body', Wood: 'body', Olive: 'body', Warhead: 'body',
+  Steel: 'trim', Brass: 'trim', Dark: 'deep', Grip: 'deep', Glass: 'lens',
 };
 const TOY: Record<WeaponId, Record<Role, string>> = {
   pistol: { body: GUN_PAINT.pistol, trim: '#ffd23f', deep: '#2f6fe0', lens: '#8fe9ff' },
@@ -87,6 +78,8 @@ const TOY: Record<WeaponId, Record<Role, string>> = {
   sniper: { body: GUN_PAINT.sniper, trim: '#f4f4ee', deep: '#ffd23f', lens: '#8fe9ff' },
   bazooka: { body: GUN_PAINT.bazooka, trim: '#ffd23f', deep: '#9d5cff', lens: '#8fe9ff' },
 };
+/** Each paint hopper's colour: one that stands out on its gun (a lighter one turns skin-coloured in the sun). */
+const HOPPER: Record<WeaponId, string> = { pistol: '#2f8cff', rifle: '#9d5cff', shotgun: '#ff7a1a', sniper: '#ffd23f', bazooka: '#ffd23f' };
 /** The materials that change, with their toy colour and their own look (colour, metalness, roughness). */
 const toyParts: { m: THREE.MeshStandardMaterial; color: string; rough: number; real: [THREE.Color, number, number] }[] = [];
 /** The hoppers' and tanks' materials: shown in paintball only. */
@@ -117,127 +110,112 @@ onPaintball((on) => {
 });
 
 /**
- * Each gun's paint hopper and air tank: the hopper's radius, how far forward of the grip it sits
- * (m) and whether it feeds from the left side, its top just under the line of sight, instead of
- * from the top (on top it would hide what you aim at; the cannon is aimed past its left side). No
- * hopper on the pistol or on the sniper (its scope is there). Then the tank's radius and its
- * stretch under the barrel, as shares of the way from the grip to the muzzle. All within the
- * gun's length, by which the figures hold it.
+ * A loaded weapon (tools/weapons.py): the gun with its moving parts, its paint kit, the muzzle and a
+ * point on its line of sight, all in the gun's frame (barrel along -z, the right hand's grip at the
+ * origin, metres); the two gloved hands with their sleeves that hold it in first person; and `lite`,
+ * the same gun merged into one mesh per material, for the others' hands and the house's floors.
  */
-const KIT: Record<WeaponId, { hopper: number; at: number; side: boolean; tank: number; from: number; to: number }> = {
-  pistol: { hopper: 0, at: 0, side: false, tank: 0.011, from: 0.5, to: 0.85 },
-  rifle: { hopper: 0.042, at: -0.16, side: true, tank: 0.017, from: 0.42, to: 0.68 },
-  shotgun: { hopper: 0.042, at: -0.14, side: true, tank: 0.017, from: 0.5, to: 0.72 },
-  sniper: { hopper: 0, at: 0, side: false, tank: 0.016, from: 0.36, to: 0.6 },
-  bazooka: { hopper: 0.06, at: -0.42, side: false, tank: 0, from: 0, to: 0 },
-};
-/** Each hopper's colour: one that stands out on its gun (a lighter one turns skin-coloured in the sun). */
-const HOPPER: Record<WeaponId, string> = { pistol: '#2f8cff', rifle: '#9d5cff', shotgun: '#ff7a1a', sniper: '#ffd23f', bazooka: '#ffd23f' };
-const kitShapes = { ball: new THREE.SphereGeometry(1, 16, 12), can: new THREE.CylinderGeometry(1, 1, 1, 14) };
-const kitSets = new Map<WeaponId, { hopper: THREE.Material; trim: THREE.Material; tank: THREE.Material }>();
+interface LoadedGun {
+  gun: THREE.Object3D;
+  hands: THREE.Object3D;
+  lite: THREE.Group;
+  sight: THREE.Vector3;
+}
+const loadedGuns = new Map<WeaponId, LoadedGun>();
+/** The sleeves' material (all hands share it): the colour of your suit. */
+const sleeves: THREE.MeshStandardMaterial[] = [];
 
-/** Put the hopper on top of `gun` and the tank under its barrel (shown in paintball only), finding its surfaces with rays. */
-function addKit(gun: THREE.Object3D, w: WeaponId): void {
-  const k = KIT[w];
-  let set = kitSets.get(w);
-  if (!set) {
-    // A glossy hopper, its lid and neck in the gun's trim, an aluminium tank.
-    const make = (p: THREE.MeshStandardMaterialParameters) => {
-      const m = new THREE.MeshStandardMaterial({ ...p, visible: paintball.on });
-      kitMats.push(m);
-      return m;
-    };
-    set = {
-      hopper: make({ color: HOPPER[w], roughness: 0.15 }),
-      trim: make({ color: TOY[w].trim, roughness: 0.4 }),
-      tank: make({ color: '#dfe3e8', metalness: 0.5, roughness: 0.3 }),
-    };
-    kitSets.set(w, set);
-  }
+/** For the others' hands, the small accents take the colour of a material nearby: 3 or 4 draws per gun, as before. */
+const FOLD: Record<string, string> = { Dot: 'Steel', Brass: 'Steel', Glass: 'Dark', Grip: 'Dark', Warhead: 'Olive' };
+
+/** The gun merged into one mesh per material (not the parts' moving): a few draws per player who holds it. */
+function liteGun(gun: THREE.Object3D, muzzle: THREE.Vector3): THREE.Group {
   gun.updateMatrixWorld(true);
-  const box = new THREE.Box3().setFromObject(gun);
-  const x = (box.min.x + box.max.x) / 2;
-  const ray = new THREE.Raycaster();
-  /** Where a ray from `from` (outside the gun) along `dir` meets the gun itself. */
-  const meet = (from: THREE.Vector3, dir: THREE.Vector3) => {
-    ray.set(from, dir);
-    return ray.intersectObject(gun, true).find((h) => !h.object.userData.kit)?.point;
-  };
-  const surface = (z: number, down: boolean) => meet(new THREE.Vector3(x, down ? box.max.y + 1 : box.min.y - 1, z), new THREE.Vector3(0, down ? -1 : 1, 0))?.y;
-  const part = (geo: THREE.BufferGeometry, mat: THREE.Material, px: number, py: number, pz: number, sx: number, sy: number, sz: number, along = false) => {
-    const m = new THREE.Mesh(geo, mat);
-    m.position.set(px, py, pz);
-    m.scale.set(sx, sy, sz);
-    if (along) m.rotation.x = Math.PI / 2;
-    m.userData.kit = true;
-    m.userData.ignoreRay = true;
-    m.castShadow = true;
-    return m;
-  };
-  const top = k.hopper ? surface(k.at, true) : undefined;
-  if (top !== undefined && k.side) {
-    // A side feed: the hopper beside the gun's left flank, its lid just under the top, joined by a short neck.
-    const r = k.hopper;
-    const y = top - r * 1.15;
-    const flank = meet(new THREE.Vector3(box.min.x - 1, y, k.at), new THREE.Vector3(1, 0, 0))?.x ?? box.min.x;
-    const cx = flank - r * 1.2;
-    const neck = part(kitShapes.can, set.trim, flank - r * 0.25, y, k.at, r * 0.3, r * 0.5, r * 0.3);
-    neck.rotation.z = Math.PI / 2;
-    gun.add(neck, part(kitShapes.ball, set.hopper, cx, y, k.at, r, r * 0.85, r * 1.25), part(kitShapes.can, set.trim, cx, y + r * 0.85, k.at, r * 0.55, r * 0.22, r * 0.55));
-  } else if (top !== undefined) {
-    const r = k.hopper;
-    gun.add(
-      part(kitShapes.can, set.trim, x, top + r * 0.3, k.at, r * 0.32, r * 0.6, r * 0.32), // the neck
-      part(kitShapes.ball, set.hopper, x, top + r * 1.25, k.at, r, r * 0.85, r * 1.25),
-      part(kitShapes.can, set.trim, x, top + r * 2, k.at, r * 0.55, r * 0.22, r * 0.55), // the lid
-    );
+  const inv = gun.matrixWorld.clone().invert();
+  const byMat = new Map<THREE.Material, THREE.BufferGeometry[]>();
+  const named = new Map<string, THREE.Material>();
+  gun.traverse((o) => {
+    if (o instanceof THREE.Mesh) named.set((o.material as THREE.Material).name, o.material as THREE.Material);
+  });
+  gun.traverse((o) => {
+    if (!(o instanceof THREE.Mesh)) return;
+    const g = new THREE.BufferGeometry();
+    for (const name of ['position', 'normal']) {
+      const a = o.geometry.getAttribute(name); // 16- and 8-bit in the file: floats here, as merging wants one kind
+      const f = new Float32Array(a.count * 3);
+      for (let i = 0; i < a.count; i++) f.set([a.getX(i), a.getY(i), a.getZ(i)], i * 3);
+      g.setAttribute(name, new THREE.BufferAttribute(f, 3));
+    }
+    g.setIndex(o.geometry.index!.clone());
+    g.applyMatrix4(o.matrixWorld.clone().premultiply(inv));
+    const own = o.material as THREE.Material;
+    const mat = (o.userData.kit ? undefined : named.get(FOLD[own.name])) ?? own;
+    const list = byMat.get(mat) ?? [];
+    list.push(g);
+    byMat.set(mat, list);
+  });
+  const lite = new THREE.Group();
+  for (const [mat, list] of byMat) {
+    const mesh = new THREE.Mesh(mergeGeometries(list), mat);
+    mesh.userData.ignoreRay = true;
+    mesh.userData.kit = kitMats.includes(mat);
+    mesh.castShadow = true;
+    lite.add(mesh);
+    for (const g of list) g.dispose();
   }
-  const len = -box.min.z;
-  const mid = -len * (k.from + k.to) / 2;
-  const under = k.tank ? surface(mid, false) : undefined;
-  if (under !== undefined) gun.add(part(kitShapes.can, set.tank, x, under - k.tank * 1.05, mid, k.tank, len * (k.to - k.from), k.tank, true));
+  const tip = new THREE.Object3D();
+  tip.name = 'muzzle';
+  tip.position.copy(muzzle);
+  lite.add(tip);
+  return lite;
 }
 
-/**
- * The gun models, turned so the barrel points along -z with the grip at the
- * origin (the models have the barrel along +x, up +y, origin at the grip).
- */
-export const gunsReady: Promise<boolean> = Promise.all(
-  (['pistol', 'rifle', 'shotgun', 'sniper'] as WeaponId[]).map(async (w) => {
-    const gltf = await new GLTFLoader().loadAsync(`/models/guns/${w}.glb`);
-    const box = new THREE.Box3().setFromObject(gltf.scene);
-    const s = GUN_LENGTH[w] / (box.max.x - box.min.x);
-    gltf.scene.scale.setScalar(s);
-    gltf.scene.rotation.y = Math.PI / 2;
-    const holder = new THREE.Group();
-    holder.add(gltf.scene);
-    const muzzle = new THREE.Object3D();
-    muzzle.name = 'muzzle';
-    muzzle.position.set(0, ((box.min.y + box.max.y) / 2) * s, -box.max.x * s);
-    holder.add(muzzle);
-    holder.traverse((o) => {
-      o.userData.ignoreRay = true;
-      o.castShadow = true;
-      if (!(o instanceof THREE.Mesh)) return;
-      for (const m of Array.isArray(o.material) ? o.material : [o.material]) {
-        const f = FINISH[m.name];
-        if (!f || !(m instanceof THREE.MeshStandardMaterial) || m.userData.finished) continue;
-        m.metalness = f[0];
-        m.roughness = f[1];
-        m.color.multiplyScalar(f[2]);
-        m.userData.finished = true;
-        toy(m, w, ROLE[m.name] ?? 'trim');
-      }
-    });
-    addKit(holder, w);
-    loadedGuns.set(w, holder);
-  }),
-).then(
-  () => true,
+/** The weapons' model: one file, a node per weapon (tools/weapons.py). */
+export const gunsReady: Promise<boolean> = new GLTFLoader().loadAsync('/models/weapons.glb').then(
+  (gltf) => {
+    gltf.scene.updateMatrixWorld(true);
+    for (const w of WEAPON_IDS) {
+      const gun = gltf.scene.getObjectByName(w)!;
+      const hands = gun.getObjectByName(`${w}_hands`)!;
+      hands.removeFromParent();
+      gun.removeFromParent();
+      gun.getObjectByName(`${w}_kit`)?.traverse((o) => (o.userData.kit = true));
+      // Its own copy of each material, so each gun takes its own colours in paintball.
+      const own = new Map<THREE.Material, THREE.MeshStandardMaterial>();
+      gun.traverse((o) => {
+        o.userData.ignoreRay = true;
+        if (!(o instanceof THREE.Mesh)) return;
+        const from = o.material as THREE.MeshStandardMaterial;
+        let m = own.get(from);
+        if (!m) {
+          m = from.clone();
+          own.set(from, m);
+          if (o.userData.kit) {
+            if (m.name === 'Hopper') m.color.set(HOPPER[w]);
+            if (m.name === 'KitTrim') m.color.set(TOY[w].trim);
+            m.visible = paintball.on;
+            kitMats.push(m);
+          } else if (ROLE[m.name]) toy(m, w, ROLE[m.name]);
+        }
+        o.material = m;
+      });
+      hands.traverse((o) => {
+        o.userData.ignoreRay = true;
+        o.userData.hand = true;
+        const m = (o as THREE.Mesh).material as THREE.MeshStandardMaterial | undefined;
+        if (m?.name === 'Sleeve' && !sleeves.includes(m)) sleeves.push(m);
+      });
+      const muzzle = gun.getObjectByName(`${w}_muzzle`)!;
+      muzzle.name = 'muzzle';
+      const sight = gun.getObjectByName(`${w}_sight`)!.position.clone();
+      loadedGuns.set(w, { gun, hands, sight, lite: liteGun(gun, muzzle.position) });
+    }
+    return true;
+  },
   () => false,
 );
 
-const skin = new THREE.MeshStandardMaterial({ color: '#c99a7b', roughness: 0.7 });
+const skin =new THREE.MeshStandardMaterial({ color: '#c99a7b', roughness: 0.7 });
 const sleeve = new THREE.MeshStandardMaterial({ color: '#2d3436', roughness: 0.9 });
 const glove = new THREE.MeshStandardMaterial({ color: '#1e1f22', roughness: 0.8 });
 const metal = new THREE.MeshStandardMaterial({ color: '#2b2d31', roughness: 0.35, metalness: 0.75 });
@@ -290,6 +268,12 @@ interface ViewModel {
   mag?: THREE.Object3D;
   pump?: THREE.Object3D;
   bolt?: THREE.Object3D;
+  /** The loaded models' other moving parts, and the hands (each moved from where it rests: userData.rest) */
+  slide?: THREE.Object3D;
+  rocket?: THREE.Object3D;
+  shell?: THREE.Object3D;
+  handR?: THREE.Object3D;
+  handL?: THREE.Object3D;
   hip: THREE.Vector3;
   ads: THREE.Vector3;
 }
@@ -362,7 +346,6 @@ function buildViewModel(id: WeaponId): ViewModel {
   }
   if (pump) pump.userData.rest = pump.position.clone();
   if (bolt) bolt.userData.rest = bolt.position.clone();
-  addKit(gun, id);
   muzzle.name = 'muzzle';
   gun.add(muzzle);
   const flash = muzzleFlash(FLASH[id]);
@@ -391,35 +374,54 @@ function buildViewModel(id: WeaponId): ViewModel {
 }
 
 /**
- * Aiming position for a loaded model: its own sights on the centre of the view. The
- * line of sight runs over the top of the front sight (or through the scope), centred
- * on the sights sideways. The view model is drawn at a quarter size (root scale).
+ * Where each loaded gun is held from the hip, in the camera's frame (the grip; the view model is
+ * drawn at a quarter size): right of and below the middle of the view, a little ahead. Aiming puts
+ * the gun's own line of sight (its `sight` point) on the middle instead.
  */
-function sightPose(model: THREE.Object3D, w: WeaponId, z: number): THREE.Vector3 {
-  model.updateMatrixWorld(true);
-  const points: THREE.Vector3[] = [];
-  model.traverse((o) => {
-    if (!(o instanceof THREE.Mesh) || o.userData.kit) return; // the gun's own sights, not paintball's hopper
-    const pos = o.geometry.attributes.position;
-    for (let i = 0; i < pos.count; i++) points.push(new THREE.Vector3().fromBufferAttribute(pos, i).applyMatrix4(o.matrixWorld));
-  });
-  const top = Math.max(...points.map((p) => p.y));
-  const ridge = points.filter((p) => p.y > top - 0.015).map((p) => p.x);
-  const x = (Math.min(...ridge) + Math.max(...ridge)) / 2;
-  const y = top - SIGHT_DROP[w] + (SIGHT_DROP[w] ? 0 : 0.002);
-  return new THREE.Vector3(-0.25 * x, -0.25 * y, z);
-}
+const HIP: Record<WeaponId, [number, number, number]> = {
+  pistol: [0.045, -0.05, -0.1],
+  rifle: [0.05, -0.052, -0.095],
+  shotgun: [0.05, -0.054, -0.095],
+  sniper: [0.05, -0.054, -0.095],
+  bazooka: [0.072, -0.052, -0.1],
+};
+
+/** How much further in and up the gun is held from the hip while playing with the touch controls. */
+const TOUCH_HIP = new THREE.Vector3(-0.02, 0.01, 0);
 
 /** Just the gun at real size, without hands (weapons lying in the house, other players' hands). */
 export function gunModel(id: WeaponId): THREE.Group {
   const loaded = loadedGuns.get(id);
-  if (loaded) return loaded.clone(true);
+  if (loaded) return loaded.lite.clone(true);
   const { gun } = buildViewModel(id);
   gun.removeFromParent();
   for (const c of [...gun.children]) if (c.userData.hand) c.removeFromParent();
   gun.traverse((o) => (o.castShadow = true));
   return gun;
 }
+
+/** 0 before a, 1 after b, a smooth step between. */
+function smooth(a: number, b: number, x: number): number {
+  const t = Math.min(1, Math.max(0, (x - a) / (b - a)));
+  return t * t * (3 - 2 * t);
+}
+
+/** Where a loaded hand holds when it rests (the middle of what its fingers wrap), in the gun's frame. */
+function holdPoint(hand: THREE.Object3D, out: THREE.Vector3): THREE.Vector3 {
+  return out.fromArray((hand.userData.grip as number[] | undefined) ?? [0, 0, 0]).add(hand.userData.rest as THREE.Vector3);
+}
+
+// The left hand's way in a reload, in the gun's frame (m): down and back out of sight to fetch a
+// magazine or a rocket; not as far for a shell, which it pushes up into the shotgun's loading port
+// (under the receiver); and where it holds a new rocket, from the rocket's back end.
+const AWAY = new THREE.Vector3(-0.06, -0.26, 0.12);
+const AWAY_LOW = new THREE.Vector3(-0.03, -0.12, 0.05);
+const PORT = new THREE.Vector3(0, -0.042, -0.16);
+const ROCKET_HOLD = new THREE.Vector3(0, -0.046, -0.06);
+const _left = new THREE.Vector3();
+const _out = new THREE.Vector3();
+const _a = new THREE.Vector3();
+const _b = new THREE.Vector3();
 
 /** Shot sound per weapon: noise burst and a low thump, made in code. */
 const VOICE: Record<WeaponId, { len: number; f0: number; f1: number; thump: number; gain: number }> = {
@@ -494,7 +496,7 @@ function scopeOn(gun: THREE.Group, w: WeaponId, skip: THREE.Object3D): THREE.Gro
   gun.updateWorldMatrix(true, true);
   const inv = gun.matrixWorld.clone().invert();
   const shown = (o: THREE.Object3D) => {
-    for (let p: THREE.Object3D | null = o; p && p !== gun; p = p.parent) if (!p.visible || p === skip || p.userData.hand) return false;
+    for (let p: THREE.Object3D | null = o; p && p !== gun; p = p.parent) if (!p.visible || p === skip || p.userData.hand || p.userData.kit) return false;
     return true;
   };
   const pts: THREE.Vector3[] = [];
@@ -586,6 +588,8 @@ export class Weapon {
   private raise = 1;
   private cycleTime = 0;
   private previous: WeaponId = 'pistol';
+  /** The gun in your hands on screen: the one you switched from until it has dropped away */
+  private shown: WeaponId = 'pistol';
   private hiddenFlag = false;
   private raycaster = new THREE.Raycaster();
   /** Weight: lag behind turning (x, y), sideways tilt, landing dip, sprint pose (0..1) */
@@ -600,6 +604,8 @@ export class Weapon {
   /** Recoil as springs: back (m), barrel up (rad), roll (rad); and their speeds */
   private recoil = [0, 0, 0];
   private recoilVel = [0, 0, 0];
+  /** Your suit's colour, for the sleeves */
+  private sleeve = '#4b4c3b';
 
   constructor(private camera: THREE.PerspectiveCamera, private scene: THREE.Scene) {
     this.models = Object.fromEntries(WEAPON_IDS.map((w) => [w, buildViewModel(w)])) as Record<WeaponId, ViewModel>;
@@ -611,27 +617,62 @@ export class Weapon {
   }
 
   /**
-   * Swap the block guns for the loaded models: the hands stay, the model's grip
-   * sits where the block grip was. The magazine, pump and bolt animations
-   * belonged to the block guns, so the reload is a tilt of the whole gun.
+   * Swap the block guns and arms for the loaded models: each gun with its moving parts and the
+   * gloved hands that hold it, its grip where the block grip was.
    */
   private useLoadedGuns(): void {
     for (const w of WEAPON_IDS) {
       const m = this.models[w];
-      for (const c of [...m.gun.children]) if (c instanceof THREE.Mesh && !c.userData.hand) c.visible = false;
-      m.mag = m.pump = m.bolt = undefined;
-      const model = gunModel(w);
-      model.traverse((o) => (o.castShadow = false));
-      m.ads = sightPose(model, w, m.ads.z);
-      m.gun.add(model);
+      const loaded = loadedGuns.get(w)!;
+      for (const c of [...m.gun.children, ...m.root.children]) if (c instanceof THREE.Mesh) c.visible = false;
+      const model = loaded.gun.clone(true);
+      const hands = loaded.hands.clone(true);
+      m.gun.add(model, hands);
+      for (const o of [model, hands]) o.traverse((c) => (c.castShadow = false));
+      const part = (name: string) => {
+        const o = model.getObjectByName(`${w}_${name}`) ?? hands.getObjectByName(`${w}_${name}`);
+        if (o) {
+          o.userData.rest = o.position.clone();
+          o.userData.restQ = o.quaternion.clone();
+        }
+        return o;
+      };
+      m.mag = part('mag');
+      m.pump = part('pump');
+      m.bolt = part('bolt');
+      m.slide = part('slide');
+      m.rocket = part('rocket');
+      m.handR = part('handR');
+      m.handL = part('handL');
+      m.shell = hands.getObjectByName('shotgun_shell');
+      if (m.mag) {
+        // How far the magazine reaches below its pivot (it comes out downwards).
+        let low = 0;
+        m.mag.traverse((o) => {
+          if (!(o instanceof THREE.Mesh)) return;
+          o.geometry.computeBoundingBox();
+          low = Math.min(low, o.geometry.boundingBox!.min.y + (o === m.mag ? 0 : o.position.y));
+        });
+        m.mag.userData.len = -low;
+      }
+      m.hip.fromArray(HIP[w]);
+      m.ads.set(-0.25 * loaded.sight.x, -0.25 * loaded.sight.y, w === 'pistol' ? -0.125 : m.ads.z); // the pistol held out at arm's length
       const tip = model.getObjectByName('muzzle')!;
       m.muzzle.position.copy(tip.position);
       m.flash.position.copy(tip.position);
     }
+    for (const s of sleeves) s.color.set(this.sleeve);
     // A scope already on: on the loaded guns now.
     for (const s of this.scopes.values()) s.removeFromParent();
     this.scopes.clear();
     if (this.scopeOn) this.setKit([...this.bigMags], true);
+  }
+
+  /** The sleeves in the colour of your suit, as the others see your figure (net/swat.ts). */
+  setSleeve(color: string): void {
+    if (color === this.sleeve) return;
+    this.sleeve = color;
+    for (const m of sleeves) m.color.set(color);
   }
 
   /** A gun's magazine: its own, or half as big again with the bigger ammo pack (Zombies). */
@@ -765,8 +806,12 @@ export class Weapon {
     this.current = w;
     this.reloading = 0;
     this.cooldown = Math.max(this.cooldown, 0.25);
-    this.raise = 0;
-    this.show();
+    // On screen the gun in your hands drops away first (update); out of sight the next is there at once.
+    if (!this.enabled || this.hiddenFlag) {
+      this.shown = w;
+      this.raise = 0;
+      this.show();
+    }
   }
 
   selectSlot(slot: number): void {
@@ -925,7 +970,6 @@ export class Weapon {
   update(dt: number, moving: number, aiming: boolean, look?: { yaw: number; pitch: number; side: number; sprint: boolean; air: boolean }): void {
     if (!this.enabled) return;
     const spec = this.spec;
-    const m = this.models[this.current];
     this.clock += dt;
     const cycleBefore = this.cycleTime;
     this.cycleTime = Math.max(0, this.cycleTime - dt);
@@ -935,8 +979,17 @@ export class Weapon {
     }
     for (const w of WEAPON_IDS) this.bloom[w] = Math.max(0, this.bloom[w] - dt * 0.06);
     this.flashTime = Math.max(0, this.flashTime - dt);
-    m.flash.visible = this.flashTime > 0;
-    this.raise = Math.min(1, this.raise + dt * 3.5);
+    // Switching: the gun in your hands drops away (a tenth of a second), then the next comes up.
+    if (this.shown !== this.current) {
+      this.raise -= dt * 10;
+      if (this.raise <= 0) {
+        this.raise = 0;
+        this.shown = this.current;
+        this.show();
+      }
+    } else this.raise = Math.min(1, this.raise + dt * 4.5);
+    const m = this.models[this.shown];
+    m.flash.visible = this.flashTime > 0 && this.shown === this.current;
     this.sway += dt * (1.5 + moving * 4);
     this.sinceShot += dt;
     this.aim += ((aiming && this.reloading <= 0 ? 1 : 0) - this.aim) * (1 - Math.exp(-dt * 14));
@@ -967,40 +1020,36 @@ export class Weapon {
     }
     const loose = 1 - this.aim * 0.8;
 
-    // Hip position lower right; aiming brings the sights to the centre of the view.
-    const pos = m.hip.clone().lerp(m.ads, this.aim);
+    // Hip position lower right; aiming brings the sights to the centre of the view. With the touch
+    // controls the gun is held further in and up, clear of the buttons in the lower right.
+    const pos = m.hip.clone();
+    if (document.body.classList.contains('touch')) pos.add(TOUCH_HIP);
+    pos.lerp(m.ads, this.aim);
+    // Walking: a figure of eight, the gun dropping a little on each step and swinging across with
+    // the stride, rolling with it; bigger running, much smaller aimed.
     const bob = (1 - this.aim * 0.8) * Math.min(1, moving) * (1 + this.sprint * 0.8);
+    const across = Math.sin(this.sway);
+    const step = Math.abs(Math.cos(this.sway));
     const breathe = Math.sin(this.clock * 1.6) * (1 - this.aim * 0.7);
     const raised = 1 - (1 - this.raise) * (1 - this.raise); // eased: quick at first, settling in
-    pos.x += Math.sin(this.sway) * 0.004 * bob + this.lag.x * 0.0022 * loose - this.sprint * 0.012;
-    pos.y += Math.abs(Math.cos(this.sway)) * 0.004 * bob - (1 - raised) * 0.08 - this.lag.y * 0.0018 * loose + breathe * 0.0012 + this.dip * 0.3 - this.sprint * 0.022;
+    pos.x += across * 0.0045 * bob + this.lag.x * 0.0022 * loose - this.sprint * 0.012;
+    pos.y += step * 0.0045 * bob - (1 - raised) * 0.08 - this.lag.y * 0.0018 * loose + breathe * 0.0012 + this.dip * 0.3 - this.sprint * 0.022;
     pos.z += this.recoil[0] * (spec.pellets > 1 || this.current === 'sniper' ? 1.4 : 1);
 
-    // Reload: tilt the gun, drop the magazine out, bring a new one in.
+    // Reload (p from 0 to 1): the gun comes in towards the middle, muzzle up a little, turned to show where it loads.
     const p = this.reloading > 0 ? 1 - this.reloading / spec.reload : 0;
-    const lowered = this.reloading > 0 ? Math.sin(p * Math.PI) : 0;
-    pos.y -= lowered * 0.04;
-    // Shotgun pump and sniper bolt after each shot. The loaded models have no separate
-    // pump or bolt, so the whole gun rocks back and rolls as it is worked.
-    const cyc = this.cycleTime > 0 ? Math.sin(Math.min(1, (spec.delay - this.cycleTime) / (spec.delay * 0.7)) * Math.PI) : 0;
-    const rack = (this.current === 'shotgun' || this.current === 'sniper') && !m.pump && !m.bolt ? cyc * (1 - this.aim * 0.5) : 0;
-    pos.z += rack * 0.012;
-    pos.y -= rack * 0.006;
+    const hold = this.reloading > 0 ? smooth(0, 0.14, p) * (1 - smooth(0.84, 1, p)) : 0;
+    const tube = this.current === 'bazooka';
+    pos.x -= hold * (tube ? 0.004 : 0.012);
+    pos.y += hold * (tube ? -0.02 : 0.01);
     m.root.position.copy(pos);
     m.root.rotation.set(
-      this.recoil[1] - lowered * 0.5 - (1 - raised) * 0.6 - this.lag.y * 0.012 * loose + breathe * 0.004 - this.sprint * 0.32 - rack * 0.05,
-      0.02 * (1 - this.aim) - this.lag.x * 0.016 * loose + this.sprint * 0.55,
-      this.recoil[2] * 2 - this.tilt * 0.06 + this.sprint * 0.22 + rack * 0.12,
+      this.recoil[1] + hold * (tube ? -0.15 : 0.2) - (1 - raised) * 0.6 - this.lag.y * 0.012 * loose + breathe * 0.004 - this.sprint * 0.32 + step * 0.012 * bob,
+      0.02 * (1 - this.aim) - this.lag.x * 0.016 * loose + this.sprint * 0.55 + hold * (tube ? 0 : 0.15),
+      this.recoil[2] * 2 - this.tilt * 0.06 + this.sprint * 0.22 - across * 0.025 * bob,
     );
-    m.gun.rotation.z = lowered * 0.6;
-    if (m.mag) {
-      const rest = m.mag.userData.rest as THREE.Vector3;
-      const out = p <= 0 ? 0 : p < 0.35 ? p / 0.35 : p < 0.55 ? 1 : p < 0.85 ? 1 - (p - 0.55) / 0.3 : 0;
-      m.mag.position.set(rest.x, rest.y - out * 0.3, rest.z);
-      m.mag.visible = !(p > 0.35 && p < 0.55);
-    }
-    if (m.pump) m.pump.position.z = (m.pump.userData.rest as THREE.Vector3).z + cyc * 0.09;
-    if (m.bolt) m.bolt.position.z = (m.bolt.userData.rest as THREE.Vector3).z + cyc * 0.07;
+    m.gun.rotation.z = hold * (tube ? -0.1 : 0.4);
+    this.animateParts(m, p);
     // Pump or bolt worked: its click, and the spent case comes out.
     if ((this.current === 'shotgun' || this.current === 'sniper') && cycleBefore > spec.delay * 0.6 && this.cycleTime <= spec.delay * 0.6) {
       this.sound('cycle');
@@ -1008,6 +1057,10 @@ export class Weapon {
     }
 
     m.root.visible = !this.scoped && !this.hiddenFlag;
+    // The same size on screen whatever the field of view: the view model is stretched across the view
+    // by as much as a wider view would shrink it (the picture is exactly the one at 72 degrees).
+    const wide = Math.tan((this.baseFov * Math.PI) / 360) / Math.tan((72 * Math.PI) / 360);
+    this.root.scale.set(wide, wide, 1);
     // A found scope zooms further: 0.3 on the rifle, 0.42 on the pistol (the sniper's 0.22).
     const zoom = this.hasScope(this.current) ? (this.current === 'rifle' ? 0.3 : 0.42) : spec.zoom;
     const fov = this.baseFov * (1 - (1 - zoom) * this.aim);
@@ -1017,13 +1070,105 @@ export class Weapon {
     }
   }
 
+  /**
+   * The moving parts and the hands (`p`: how far a reload is, 0 when there is none). Each starts
+   * from where it rests every frame, so nothing adds up. Only what is drawn: the gun on show.
+   */
+  private animateParts(m: ViewModel, p: number): void {
+    for (const o of [m.mag, m.pump, m.bolt, m.slide, m.rocket, m.handR, m.handL]) {
+      if (!o) continue;
+      o.position.copy(o.userData.rest as THREE.Vector3);
+      if (o.userData.restQ) o.quaternion.copy(o.userData.restQ as THREE.Quaternion);
+    }
+    if (m.shell) m.shell.visible = false;
+    if (this.shown !== this.current) return; // dropping away: as it was
+    const w = this.current;
+    const spec = this.spec;
+    const reloading = this.reloading > 0;
+    const empty = this.ammo[w] === 0;
+    const left = m.handL ? _left.set(0, 0, 0) : null; // how far the left hand moves from where it holds
+
+    // The pistol's slide: back with each shot and straight home; open while empty, closing as a reload ends.
+    if (m.slide) {
+      let back = this.sinceShot < 0.025 ? this.sinceShot / 0.025 : Math.max(0, 1 - (this.sinceShot - 0.025) / 0.06);
+      if (empty) back = reloading ? 1 - smooth(0.76, 0.8, p) : 1;
+      m.slide.position.z += back * 0.022;
+    }
+    // After each shot the left hand works the shotgun's pump (back and forward).
+    const cyc = this.cycleTime > 0 ? Math.sin(Math.min(1, (spec.delay - this.cycleTime) / (spec.delay * 0.7)) * Math.PI) : 0;
+    if (m.pump) {
+      m.pump.position.z += cyc * 0.09;
+      if (left && !reloading) left.z += cyc * 0.09;
+    }
+    // The sniper rifle's bolt: after a shot, and at the end of a reload. The right hand leaves the grip for its knob.
+    if (m.bolt) {
+      const phase = this.cycleTime > 0 ? (spec.delay - this.cycleTime) / (spec.delay * 0.75) : reloading && p > 0.7 ? (p - 0.7) / 0.25 : -1;
+      if (phase >= 0 && phase <= 1) {
+        const lift = smooth(0.12, 0.26, phase) * (1 - smooth(0.66, 0.8, phase));
+        const pull = smooth(0.28, 0.46, phase) * (1 - smooth(0.5, 0.66, phase));
+        m.bolt.rotation.z = lift * 1.1;
+        m.bolt.position.z += pull * 0.075;
+        const knob = m.bolt.userData.knob as number[] | undefined;
+        if (m.handR && knob) {
+          m.bolt.updateMatrix();
+          const at = _a.fromArray(knob).applyMatrix4(m.bolt.matrix);
+          const reach = smooth(0, 0.14, phase) * (1 - smooth(0.82, 1, phase));
+          m.handR.position.addScaledVector(at.sub(holdPoint(m.handR, _b)), reach);
+        }
+      }
+    }
+    // The bazooka's rocket: gone with the shot, back as the reload brings a new one.
+    if (m.rocket) m.rocket.visible = !empty || (reloading && p > 0.42);
+    if (!reloading) return;
+    const out = _out.fromArray((m.mag?.userData.out as number[] | undefined) ?? [0, -1, 0]);
+    if (m.mag) {
+      // The magazine slides out and falls; a new one comes up with the left hand and is pushed home.
+      let d = 0;
+      if (p >= 0.12 && p < 0.2) d = smooth(0.12, 0.2, p) * 0.05;
+      else if (p >= 0.2 && p < 0.34) d = 0.05 + 4.9 * ((p - 0.2) * spec.reload) ** 2;
+      else if (p >= 0.46 && p < 0.64) d = (1 - smooth(0.46, 0.64, p)) * 0.12;
+      m.mag.visible = !(p >= 0.34 && p < 0.46);
+      m.mag.position.addScaledVector(out, d);
+      if (left) {
+        // The hand's hold on the bottom of the new magazine.
+        const base = _a.copy(m.mag.position).addScaledVector(out, (m.mag.userData.len as number) ?? 0.08);
+        const toMag = base.sub(holdPoint(m.handL!, _b));
+        if (p < 0.3) left.copy(AWAY).multiplyScalar(smooth(0.1, 0.3, p));
+        else if (p < 0.46) left.copy(AWAY);
+        else if (p < 0.68) left.copy(AWAY).lerp(toMag, smooth(0.46, 0.6, p));
+        else left.copy(toMag).multiplyScalar(1 - smooth(0.68, 0.84, p));
+      }
+    } else if (w === 'shotgun' && left) {
+      // Four shells, one by one, pushed up into the loading port under the receiver.
+      const port = _a.copy(PORT).sub(holdPoint(m.handL!, _b));
+      const k = Math.min(3, Math.floor(Math.max(0, p - 0.1) / 0.18));
+      const q = (p - 0.1 - k * 0.18) / 0.18;
+      if (p < 0.1) left.copy(AWAY_LOW).multiplyScalar(smooth(0.02, 0.1, p));
+      else if (q < 0.35) left.copy(AWAY_LOW).lerp(port, smooth(0, 0.35, q));
+      else if (q < 0.55) left.copy(port).y += smooth(0.35, 0.55, q) * 0.025;
+      else if (k < 3) left.copy(port).setY(port.y + 0.025).lerp(AWAY_LOW, smooth(0.55, 1, q));
+      else left.copy(port).setY(port.y + 0.025).multiplyScalar(1 - smooth(0.55, 1, q));
+      if (m.shell) m.shell.visible = p >= 0.1 && q < 0.5;
+    } else if (m.rocket && left) {
+      // A new rocket: the hand brings it up in front of the tube and slides it in.
+      const slide = (1 - smooth(0.42, 0.62, p)) * 0.3;
+      m.rocket.position.z -= slide;
+      const at = _a.copy(m.rocket.position).add(ROCKET_HOLD).sub(holdPoint(m.handL!, _b));
+      if (p < 0.28) left.copy(AWAY).multiplyScalar(smooth(0.08, 0.28, p));
+      else if (p < 0.42) left.copy(AWAY);
+      else if (p < 0.62) left.copy(AWAY).lerp(at, smooth(0.42, 0.5, p));
+      else left.copy(at).multiplyScalar(1 - smooth(0.62, 0.8, p));
+    }
+    if (left && m.handL) m.handL.position.add(left);
+  }
+
   /** Another player's shot (or a turret's, at a lower `volume`): that weapon's sound, from where they stand. */
   remoteShot(at: THREE.Vector3, w: WeaponId = 'pistol', volume = 1): void {
     this.sound('shot', volume, at, w);
   }
 
   private show(): void {
-    for (const [w, m] of Object.entries(this.models)) m.root.visible = this.enabled && !this.hiddenFlag && w === this.current;
+    for (const [w, m] of Object.entries(this.models)) m.root.visible = this.enabled && !this.hiddenFlag && w === this.shown;
   }
 
   /** Short synthesized sounds: no audio files to download. */
@@ -1115,8 +1260,17 @@ export class Weapon {
       pin.start(t);
       pin.stop(t + 0.04);
     } else {
-      // Clicks: empty, the magazine going out and in, the pump or bolt.
-      const clicks = kind === 'empty' ? [[0, 900]] : kind === 'cycle' ? [[0, 420], [0.12, 620]] : [[0, 500], [this.spec.reload * 0.65, 700]];
+      // Clicks: empty, the pump or bolt, and in a reload what the hands do (animateParts): the magazine
+      // out and home (and the pistol's slide closing, the sniper's bolt), each shell, the rocket.
+      const r = this.spec.reload;
+      const reload: Record<WeaponId, number[][]> = {
+        pistol: [[0.13 * r, 500], [0.64 * r, 700], [0.78 * r, 900]],
+        rifle: [[0.13 * r, 500], [0.64 * r, 700]],
+        shotgun: [0.18, 0.36, 0.54, 0.72].map((s) => [s * r, 650]),
+        sniper: [[0.13 * r, 500], [0.64 * r, 700], [0.8 * r, 420], [0.9 * r, 620]],
+        bazooka: [[0.62 * r, 400]],
+      };
+      const clicks = kind === 'empty' ? [[0, 900]] : kind === 'cycle' ? [[0, 420], [0.12, 620]] : reload[this.current];
       for (const [at2, f] of clicks) {
         const click = ctx.createOscillator();
         click.type = 'square';

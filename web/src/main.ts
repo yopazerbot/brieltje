@@ -2969,6 +2969,7 @@ renderer.setAnimationLoop((now: number) => {
       camera.fov = weapon.baseFov;
       camera.updateProjectionMatrix();
     }
+    weapon.setSleeve(avatars.suit(me?.username ?? '', myColour())); // your sleeves as your figure's suit
     weapon.update(dt, inCar ? 0 : Math.min(1, Math.hypot(frame.moveX, frame.moveY)), frame.aimHeld && !inCar, {
       yaw: player.yaw, pitch: player.pitch, side: dead ? 0 : frame.moveX, sprint: frame.sprint && !player.crouching,
       air: player.flying || player.feet > player.ground.y + 0.05,

@@ -89,6 +89,11 @@ const SWAT_OUTFITS: SwatOutfit[] = [
   { main: '#3a3d42', dark: '#121212' },
 ];
 const GUN = '#1d1e21';
+/** Which outfit a player wears: by their colour, or (a colour of no outfit's) by their name. */
+const outfitOf = (name: string, color: string): number => {
+  const i = COLORS.indexOf(color);
+  return i >= 0 ? i : [...name].reduce((h, c) => h + c.charCodeAt(0), 0) % OUTFITS.length;
+};
 
 const material = new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.85 });
 const hitMaterial = new THREE.MeshBasicMaterial({ visible: false });
@@ -413,9 +418,13 @@ export class Avatars {
 
   /** A player's figure in their colour and outfit, as everyone draws it. */
   figure(name: string, color: string): Body {
-    const i = COLORS.indexOf(color);
-    const k = i >= 0 ? i : [...name].reduce((h, c) => h + c.charCodeAt(0), 0) % OUTFITS.length;
+    const k = outfitOf(name, color);
     return hasSwat() ? buildSwat(name, color, SWAT_OUTFITS[k], hitMaterial, headBox, bodyBox) : buildFigure(name, color, OUTFITS[k]);
+  }
+
+  /** The suit's colour of a player's figure: your sleeves in first person (weapon.ts). */
+  suit(name: string, color: string): string {
+    return SWAT_OUTFITS[outfitOf(name, color)].main;
   }
 
   add(name: string, color: string): void {
