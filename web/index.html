@@ -372,6 +372,12 @@
                     <p class="note hidden" id="mood-note" data-i18n="mood.byAdmin">Playing together, the admin picks the weather for everyone.</p>
                     <button id="mood-next" class="mini" type="button" data-i18n="mood.next">Next weather</button>
                   </section>
+                  <section class="set-group" aria-labelledby="sg-screen">
+                    <h2 id="sg-screen" data-i18n="set.onScreen">On screen</h2>
+                    <!-- Settings with a key as their shortcut (src/shortcuts.ts): the key shows beside them for keyboard players. -->
+                    <label class="check"><input type="checkbox" id="set-minimap" /> <span data-i18n="set.minimap">Minimap</span> <kbd data-key="minimap"></kbd></label>
+                    <label class="check"><input type="checkbox" id="set-fps" /> <span data-i18n="set.fps">FPS counter</span> <kbd data-key="fps"></kbd></label>
+                  </section>
                 </div>
                 <div class="col settings">
                   <section class="set-group" aria-labelledby="sg-move">
@@ -394,12 +400,6 @@
                     <div class="set-sub" data-needs="pad touch">
                       <label class="check"><input type="checkbox" id="set-vibration" /> <span class="not-touch" data-i18n="set.vibration">Controller vibration</span><span class="only-touch" data-i18n="set.vibrationTouch">Vibrate when you tap a button</span></label>
                     </div>
-                  </section>
-                  <section class="set-group" aria-labelledby="sg-screen">
-                    <h2 id="sg-screen" data-i18n="set.onScreen">On screen</h2>
-                    <!-- Settings with a key as their shortcut (src/shortcuts.ts): the key shows beside them for keyboard players. -->
-                    <label class="check"><input type="checkbox" id="set-minimap" /> <span data-i18n="set.minimap">Minimap</span> <kbd data-key="minimap"></kbd></label>
-                    <label class="check"><input type="checkbox" id="set-fps" /> <span data-i18n="set.fps">FPS counter</span> <kbd data-key="fps"></kbd></label>
                   </section>
                   <section class="set-group" aria-labelledby="sg-lang">
                     <h2 id="sg-lang" data-i18n="set.langKbd">Language and keyboard</h2>

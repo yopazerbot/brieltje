@@ -1116,6 +1116,7 @@ button.tool:disabled { opacity: 0.45; cursor: not-allowed; }
 .gfx-now { margin: 0 0 6px; font-size: 13.5px; line-height: 1.4; }
 .gfx-now .gfx-value { font-weight: 800; color: var(--ink); }
 .gfx-now .gfx-value:empty, .gfx-now .gfx-detail:empty { display: none; }
+.gfx-now .gfx-value:not(:empty) + .gfx-detail::before { content: '· '; }
 #mood-next { margin-top: -8px; }
 /* A part of a group for one way of playing (the controller): greyed, with a line saying why, while it doesn't apply. */
 .set-sub .label { margin-top: 18px; }
@@ -1123,6 +1124,7 @@ button.tool:disabled { opacity: 0.45; cursor: not-allowed; }
 .set-sub:not(.na) .set-why { display: none; }
 .set-sub.na > :not(.label, .set-why) { opacity: 0.45; }
 .set-sub.na input { cursor: not-allowed; }
+.set-sub.na .check input:checked { background-color: var(--ink-faint); } /* its stored value, without lamplight */
 /* Words and rows by the way you play (body.touch: touch controls). */
 .only-touch { display: none; }
 body.touch .only-touch { display: inline; }
