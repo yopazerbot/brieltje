@@ -1,0 +1,103 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="robots" content="noindex, nofollow" />
+    <title data-nl="Gesplitst scherm · Brieltje">Split screen · Brieltje</title>
+    <link rel="icon" href="/favicon.svg" type="image/svg+xml" />
+    <link rel="stylesheet" href="/menu-theme.css" />
+    <script src="/lang-early.js"></script>
+    <script type="module" src="/src/splitscreen/page.ts"></script>
+  </head>
+  <body>
+    <!-- Split screen: up to four players on one computer, each in a copy of the game (src/splitscreen/page.ts). Linked from nowhere.
+         Four steps: how many, the controllers, the names and the PIN, then joining. Every step works with a controller too. -->
+    <main id="setup" hidden>
+      <div class="card">
+        <header>
+          <img class="brand" src="/brand/wordmark.svg" alt="Brieltje" width="120" height="36" />
+          <div class="langs" role="group" aria-label="Language" data-i18n-aria="lang.label">
+            <button type="button" data-lang="en" lang="en">English</button><button type="button" data-lang="nl" lang="nl">Nederlands</button>
+          </div>
+        </header>
+        <h1 data-i18n="split.heading">Split screen</h1>
+        <ol class="steps" id="steps">
+          <li data-step="1"><b>1</b> <span data-i18n="split.step.count"></span></li>
+          <li data-step="2"><b>2</b> <span data-i18n="split.step.pads"></span></li>
+          <li data-step="3"><b>3</b> <span data-i18n="split.step.names"></span></li>
+          <li data-step="4"><b>4</b> <span data-i18n="split.step.start"></span></li>
+        </ol>
+
+        <!-- 1: how many -->
+        <section id="step-1" class="step">
+          <h2 data-i18n="split.countQ"></h2>
+          <p class="muted" data-i18n="split.intro"></p>
+          <div id="again" class="again" hidden>
+            <p id="again-text"></p>
+            <div class="row">
+              <button type="button" class="btn" id="go-on" data-i18n="split.goOn"></button>
+              <button type="button" class="btn ghost" id="fresh" data-i18n="split.fresh"></button>
+            </div>
+          </div>
+          <div class="counts">
+            <button type="button" class="count" data-count="2"><b>2</b><span></span></button>
+            <button type="button" class="count" data-count="3"><b>3</b><span></span></button>
+            <button type="button" class="count" data-count="4"><b>4</b><span></span></button>
+          </div>
+        </section>
+
+        <!-- 2: the controllers -->
+        <section id="step-2" class="step" hidden>
+          <h2 data-i18n="split.padsQ"></h2>
+          <p class="muted" data-i18n="split.padsHow"></p>
+          <div class="seats" id="pad-cards"></div>
+          <details class="trouble">
+            <summary data-i18n="split.trouble"></summary>
+            <ul><li data-i18n="split.trouble1"></li><li data-i18n="split.trouble2"></li><li data-i18n="split.trouble3"></li></ul>
+          </details>
+          <p class="tip" data-i18n="split.tip"></p>
+          <p class="error" id="pads-error" role="alert" hidden></p>
+          <div class="nav"><button type="button" class="btn ghost" data-back data-i18n="split.backBtn"></button><button type="button" class="btn" data-next data-i18n="split.next"></button></div>
+        </section>
+
+        <!-- 3: names and the PIN -->
+        <section id="step-3" class="step" hidden>
+          <h2 data-i18n="split.namesQ"></h2>
+          <p class="muted" data-i18n="split.namesHow"></p>
+          <div class="seats" id="name-cards"></div>
+          <div class="pin-box">
+            <label class="field" for="pin" data-i18n="split.pinHow"></label>
+            <input id="pin" type="password" inputmode="numeric" maxlength="12" autocomplete="off" />
+            <div class="numpad" id="numpad"></div>
+            <p class="muted small" data-i18n="start.pinHint"></p>
+            <p class="error" id="pin-error" role="alert" hidden></p>
+          </div>
+          <label class="check"><input type="checkbox" id="age" /> <span data-i18n="split.age"></span></label>
+          <p class="error" id="names-error" role="alert" hidden></p>
+          <div class="nav"><button type="button" class="btn ghost" data-back data-i18n="split.backBtn"></button><button type="button" class="btn" data-next data-i18n="split.next"></button></div>
+        </section>
+
+        <!-- 4: joining -->
+        <section id="step-4" class="step" hidden>
+          <h2 data-i18n="split.startQ"></h2>
+          <p class="muted" data-i18n="split.startHow"></p>
+          <div class="seats" id="start-cards"></div>
+          <p class="error" id="start-error" role="alert" hidden></p>
+          <div class="nav">
+            <button type="button" class="btn ghost" data-back data-i18n="split.backBtn"></button>
+            <button type="button" class="btn ghost" id="fix" data-i18n="split.fix" hidden></button>
+            <button type="button" class="btn" id="start" data-next data-i18n="split.start"></button>
+          </div>
+        </section>
+        <p class="muted small pad-nav" id="pad-nav"></p>
+      </div>
+    </main>
+
+    <div id="grid" class="grid" hidden></div>
+    <div id="tools" class="tools" hidden>
+      <button type="button" id="full" data-i18n="split.full">Full screen</button>
+      <button type="button" id="stop" data-i18n="split.stop">Stop</button>
+    </div>
+  </body>
+</html>

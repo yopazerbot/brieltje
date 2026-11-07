@@ -37,6 +37,8 @@ function brotli(): Plugin {
 
 export default defineConfig({
   plugins: [brotli()],
+  // The game, and the split screen (/splitscreen: up to four copies of it on one page, src/splitscreen/).
+  build: { rolldownOptions: { input: { index: resolve(import.meta.dirname, 'index.html'), splitscreen: resolve(import.meta.dirname, 'splitscreen/index.html') } } },
   server: {
     port: 5173,
     // Multiplayer and login go to the Node server (npm start) on port 8080.

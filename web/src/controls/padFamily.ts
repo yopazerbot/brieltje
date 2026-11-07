@@ -102,6 +102,11 @@ export function btn(b: PadButton): string {
   return NAMES[labelFamily()][b];
 }
 
+/** The name printed on the button at `b` on a controller of kind `family` (the split screen's cards, one controller each). */
+export function btnOf(family: PadFamily, b: PadButton): string {
+  return NAMES[family][b];
+}
+
 /** "PlayStation controller", "Xbox-style controller" or "Nintendo-style controller", in the player's language. */
 export function familyName(family: PadFamily = padFamily()): string {
   return t(family === 'ps' ? 'pad.ps' : family === 'nintendo' ? 'pad.nintendo' : 'pad.xbox');

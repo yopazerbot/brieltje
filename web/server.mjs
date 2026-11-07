@@ -74,6 +74,19 @@ const HEADERS = {
 
 const ROBOTS = 'User-agent: *\nDisallow: /\n';
 
+/**
+ * The game's own page may be framed by this site's pages only: the split screen (/splitscreen) shows
+ * up to four copies of it. Every other page stays unframeable. Clickjacking needs a page of another
+ * site around ours, and 'self' (with X-Frame-Options SAMEORIGIN for older browsers) keeps those out;
+ * no page on this origin holds anything a visitor uploaded (uploads are only ever sent as downloads).
+ */
+const GAME_PAGE = resolve(DIST, 'index.html');
+const FRAMEABLE = {
+  ...HEADERS,
+  'X-Frame-Options': 'SAMEORIGIN',
+  'Content-Security-Policy': HEADERS['Content-Security-Policy'].replace("frame-ancestors 'none'", "frame-ancestors 'self'"),
+};
+
 const store = await openStore();
 const auth = new Auth(store, SECURE);
 await auth.loadSessions();
@@ -305,7 +318,7 @@ async function serveFile(req, res, url) {
   const immutable = url.pathname.startsWith('/assets/');
   if (extname(file) === '.html') {
     const page = await pageWithFingerprints(file, info);
-    const headers = { ...HEADERS, 'Cache-Control': 'no-cache', ETag: page.tag };
+    const headers = { ...(file === GAME_PAGE ? FRAMEABLE : HEADERS), 'Cache-Control': 'no-cache', ETag: page.tag };
     if (String(req.headers['if-none-match'] || '').split(',').map((t) => t.trim().replace(/^W\//, '')).includes(page.tag)) {
       res.writeHead(304, headers);
       return res.end();

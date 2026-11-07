@@ -1,0 +1,118 @@
+/* The split screen (/splitscreen): four steps in the game's dark card, big enough to read from the
+   couch, then the copies of the game in a grid. */
+@font-face { font-family: 'Alegreya Sans'; font-style: normal; font-weight: 500; font-display: swap; src: url('/fonts/alegreya-sans-500.woff2') format('woff2'); }
+@font-face { font-family: 'Alegreya Sans'; font-style: normal; font-weight: 800; font-display: swap; src: url('/fonts/alegreya-sans-800.woff2') format('woff2'); }
+:root {
+  --ink: #f4efe6; --muted: rgba(244, 239, 230, 0.72); --field: rgba(255, 255, 255, 0.06); --line: rgba(255, 255, 255, 0.16);
+  --bad: #ff8a80; --good: #69f0ae; --deep: #111a22;
+}
+* { box-sizing: border-box; }
+[hidden] { display: none !important; }
+html, body { margin: 0; height: 100%; color: var(--ink); font: 500 20px/1.45 "Alegreya Sans", "Segoe UI", system-ui, sans-serif; background: #0d0f12; }
+
+main { width: min(1040px, 100%); margin: 0 auto; padding: 24px 16px 40px; }
+.card { border-radius: 22px; padding: 22px 28px 20px; }
+.card > header { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+.brand { display: block; height: 36px; width: auto; }
+.langs button { background: none; border: 0; color: var(--muted); font: inherit; font-size: 15px; cursor: pointer; }
+h1 { margin: 14px 0 6px; font-size: 22px; font-weight: 800; color: var(--muted); letter-spacing: .02em; }
+h2 { margin: 18px 0 4px; font-size: 38px; font-weight: 800; line-height: 1.1; }
+p { margin: 6px 0; }
+.muted { color: var(--muted); }
+.small { font-size: 16px; }
+
+/* The progress line: 1 · 2 · 3 · 4 */
+.steps { display: flex; gap: 6px; margin: 6px 0 0; padding: 0; list-style: none; flex-wrap: wrap; }
+.steps li { display: flex; align-items: center; gap: 8px; padding: 4px 14px 4px 5px; font-size: 17px; color: var(--muted); background: var(--deep); border-radius: 999px; }
+.steps b { display: grid; place-items: center; width: 28px; height: 28px; font-size: 16px; color: var(--ink); background: #2b3842; border-radius: 50%; }
+.steps li.current { color: var(--ink); box-shadow: inset 0 0 0 2px var(--accent); }
+.steps li.current b, .steps li.done b { color: #1b1406; background: var(--accent); }
+
+/* Step 1: three big choices */
+.counts { display: grid; grid-template-columns: repeat(3, 1fr); gap: 16px; margin: 22px 0 8px; }
+.count {
+  display: flex; flex-direction: column; align-items: center; gap: 2px; padding: 26px 10px 20px; color: var(--ink); font: inherit;
+  background: var(--deep); border: 2px solid var(--line); border-radius: 20px; cursor: pointer;
+}
+.count b { font-size: 84px; line-height: 1; font-weight: 800; }
+.count span { font-size: 20px; color: var(--muted); }
+.count.selected { border-color: var(--accent); }
+.count:hover { border-color: var(--accent); }
+
+/* A card per player, in the player's colour (--c) once it is theirs */
+.seats { display: grid; grid-template-columns: repeat(auto-fit, minmax(210px, 1fr)); gap: 14px; margin: 18px 0 10px; }
+.seat { display: flex; flex-direction: column; gap: 4px; min-height: 170px; padding: 14px 16px; background: var(--deep); border: 2px dashed var(--line); border-radius: 18px; }
+.seat.on { border: 2px solid var(--c); box-shadow: inset 0 6px 0 var(--c); }
+.seat .who { margin: 0; font-size: 24px; font-weight: 800; color: var(--c); }
+.seat .what { font-size: 21px; font-weight: 800; }
+.seat .waiting { color: var(--muted); font-weight: 500; animation: breathe 1.6s ease-in-out infinite; }
+@keyframes breathe { 50% { opacity: 0.45; } }
+@media (prefers-reduced-motion: reduce) { .seat .waiting { animation: none; } }
+.seat .btn { margin-top: auto; align-self: flex-start; }
+.seat .state { margin-top: auto; font-weight: 800; color: var(--muted); }
+.seat .state.joined { color: var(--good); }
+.seat .state.joining { color: var(--accent); }
+.seat .state.error, .seat .error { color: var(--bad); font-weight: 800; }
+
+input:not([type=checkbox]) {
+  min-height: 52px; padding: 8px 14px; color: var(--ink); font: inherit; font-size: 22px; background: var(--field);
+  border: 1px solid var(--line); border-radius: 12px; width: 100%;
+}
+.chips { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 6px; }
+.chip { min-height: 38px; padding: 4px 12px; color: var(--ink); font: inherit; font-size: 17px; background: #22303b; border: 0; border-radius: 999px; cursor: pointer; }
+.chip.more { color: var(--muted); background: none; box-shadow: inset 0 0 0 1px var(--line); }
+
+/* The PIN, with a number pad */
+.pin-box { max-width: 360px; }
+label.field { display: block; margin: 16px 0 6px; font-weight: 800; }
+.numpad { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; margin-top: 10px; }
+.key { min-height: 54px; color: var(--ink); font: inherit; font-size: 26px; font-weight: 800; background: #22303b; border: 0; border-radius: 12px; cursor: pointer; }
+.key.del { grid-column: 1; font-size: 22px; }
+.check { display: flex; gap: 12px; align-items: center; margin: 18px 0 4px; cursor: pointer; }
+.check input { width: 26px; height: 26px; accent-color: var(--accent); }
+
+.trouble { margin: 10px 0 0; color: var(--muted); font-size: 17px; }
+.trouble summary { cursor: pointer; color: var(--ink); font-weight: 800; }
+.trouble ul { margin: 6px 0 0; padding-left: 22px; }
+.tip { margin: 12px 0 4px; padding: 8px 12px; font-size: 16px; color: var(--muted); background: var(--deep); border-left: 3px solid var(--accent); border-radius: 8px; }
+.error { color: var(--bad); font-size: 18px; }
+.nav { display: flex; gap: 12px; justify-content: space-between; margin-top: 18px; flex-wrap: wrap; }
+.btn {
+  min-height: 54px; padding: 8px 28px; color: #1b1406; font: inherit; font-weight: 800;
+  background: var(--accent); border: 0; border-radius: 999px; cursor: pointer;
+}
+.btn.small { min-height: 40px; padding: 4px 16px; font-size: 16px; }
+.btn.ghost { color: var(--ink); background: none; box-shadow: inset 0 0 0 1px var(--line); }
+.btn:disabled { opacity: 0.6; cursor: progress; }
+.nav .btn[data-next] { margin-left: auto; }
+.again { margin: 14px 0 4px; padding: 12px 16px; background: var(--deep); border-radius: 14px; }
+.again .row { display: flex; gap: 10px; flex-wrap: wrap; }
+.pad-nav { margin-top: 14px; }
+
+/* With a controller (or the keyboard), what has the focus is plain to see from afar. */
+:is(button, input, summary):focus-visible,
+.pad-on :is(button, input, summary):focus { outline: 4px solid var(--accent); outline-offset: 3px; }
+
+/* The copies: 2 side by side, 3 or 4 in two rows of two. A thin dark line between them. */
+.grid { position: fixed; inset: 0; display: grid; gap: 2px; background: #000; grid-template-columns: 1fr 1fr; grid-template-rows: 1fr 1fr; }
+.grid[data-count="2"] { grid-template-rows: 1fr; }
+.cell { position: relative; min-width: 0; min-height: 0; background: #0d0f12; }
+.cell iframe { display: block; width: 100%; height: 100%; border: 0; }
+.tag {
+  position: absolute; left: 8px; bottom: 6px; padding: 1px 8px; font-size: 13px; font-weight: 800; color: var(--c, var(--ink));
+  background: rgba(8, 10, 14, 0.55); border-radius: 6px; pointer-events: none;
+}
+.tag.bad { color: var(--bad); }
+/* Full screen and Stop: small, at the top in the middle, where the views meet. */
+.tools { position: fixed; top: 0; left: 50%; transform: translateX(-50%); display: flex; gap: 2px; opacity: 0.55; transition: opacity 0.2s; }
+.tools:hover, .tools:focus-within { opacity: 1; }
+.tools button {
+  padding: 3px 12px; color: var(--ink); font: inherit; font-size: 13px; font-weight: 800; background: rgba(8, 10, 14, 0.75);
+  border: 0; border-radius: 0 0 8px 8px; cursor: pointer;
+}
+@media (max-width: 640px) {
+  html, body { font-size: 18px; }
+  .card { padding: 18px 16px; }
+  h2 { font-size: 30px; }
+  .count b { font-size: 60px; }
+}
