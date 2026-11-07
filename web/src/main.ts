@@ -3309,8 +3309,7 @@ renderer.setAnimationLoop((now: number) => {
   // Splashes: rings round you afloat, spray from the wheels of a car through a ford (world/splashes.ts).
   effects.splashes.swim(player.x, player.z, player.water, dt);
   for (const c of cars) if (Math.hypot(c.x - camera.position.x, c.z - camera.position.z) < 80) effects.splashes.wheels(c.id, c.x, c.z, c.y, c.yaw, c.spec.length / 2, c.spec.width / 2, dt);
-  const bike = bikes.ridden; // your own bike through a ditch (the others' bikes have no list to read yet)
-  if (bike) effects.splashes.wheels(`bike-${bike.id}`, bike.x, bike.z, bike.y, bike.yaw, 0.55, 0.12, dt);
+  for (const k of bikes.riders()) effects.splashes.wheels(`bike-${k.id}`, k.x, k.z, k.y, k.yaw, 0.55, 0.12, dt); // yours and the others' bikes through a ditch
   effects.update(dt);
   grenades.update(dt);
   pickups.update(dt, !net.connected);
