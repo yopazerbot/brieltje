@@ -43,6 +43,14 @@ const BLEND = 0.25; // s to change from one clip to the next
 const FADE = 0.9; // s to fade in or out
 /** How many villagers and how far: [desktop, phone or Low]. */
 const COUNT = [30, 13];
+/**
+ * Away from the busy places (the church square, the school, the Sparrenhof: the paths' hubs) only this share of COUNT
+ * walks about (Yoshi, 8 Nov 2026: "quite a lot at the church, but not in other streets like Briel"). Full within
+ * BUSY_NEAR metres of a hub's edge, down to QUIET by BUSY_FAR.
+ */
+const QUIET = 0.2;
+const BUSY_NEAR = 40;
+const BUSY_FAR = 160;
 const REACH = [105, 65];
 // Extras (the model's groups): an umbrella, a bag, a cap or helmet, a scarf, glasses, two choices of hair (or ears).
 const UMB = 1, BAG = 2, HAT = 4, SCARF = 8, SPECS = 16, HAIR_A = 32, HAIR_B = 64;
@@ -556,10 +564,18 @@ export class Villagers {
     return REACH[this.cheap() ? 1 : 0];
   }
 
-  /** How many there should be now: fewer at night, few in the rain. */
-  private target(): number {
+  /** How many there should be now: many round the busy places, few in the other streets; fewer at night, few in the rain. */
+  private target(eye: THREE.Vector3): number {
     const base = COUNT[this.cheap() ? 1 : 0];
-    return Math.round(base * (1 - 0.7 * mood.night) * (1 - 0.8 * Math.min(1, mood.wet / 0.6)));
+    return Math.max(1, Math.round(base * this.busy(eye) * (1 - 0.7 * mood.night) * (1 - 0.8 * Math.min(1, mood.wet / 0.6))));
+  }
+
+  /** 1 near a busy place (the paths' hubs), QUIET away from them. */
+  private busy(eye: THREE.Vector3): number {
+    let near = Infinity;
+    for (const [x, z, r] of this.paths?.hubs ?? []) near = Math.min(near, Math.hypot(x - eye.x, z - eye.z) - r);
+    const t = Math.min(1, Math.max(0, (near - BUSY_NEAR) / (BUSY_FAR - BUSY_NEAR)));
+    return 1 - (1 - QUIET) * t;
   }
 
   private get raining(): boolean {
@@ -577,7 +593,7 @@ export class Villagers {
       else if (this.raining && (v.mode === 'sit' || v.mode === 'stand' || v.mode === 'hub' || v.lead || v.jog) && !this.seen(v.x, v.z, eye, look, 45)) this.leave(v);
     }
     const alive = this.vs.filter((v) => !v.leaving && v.kind !== DOG && !v.leader).length;
-    const target = this.target();
+    const target = this.target(eye);
     if (alive > target + 2) {
       // Too many: the farthest one out of sight goes.
       const far = this.vs.filter((v) => !v.leaving && !v.leader && !this.seen(v.x, v.z, eye, look, 50)).sort((a, b) => Math.hypot(b.x - eye.x, b.z - eye.z) - Math.hypot(a.x - eye.x, a.z - eye.z))[0];
