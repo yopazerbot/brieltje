@@ -94,6 +94,10 @@ PROFILES = {"Kapellenhoek": "kh", "Kapelleweg": "kw", "Briel": "briel", "Kerkhof
             "Stefaan Glorieuxstraat": "concrete"}
 # Paved in the register (VERH 12: partly fixed, partly loose) but a track of sand and gravel on the walk.
 LOOSE_NAMES = {"Bredenweg"}
+# Loose in the register (VERH 2) but light concrete on the photo (Wegsegment OIDN): the lane from Schildekensstraat to
+# FC Smetlede's car park, whose rest the football ground lays itself in concrete (tools/football_site.py,
+# world/footballGround.ts); its mouth at the street goes with the street.
+FIRM = {1192998}
 # Grass, not pavers: a kerbed side whose pavement the orthophoto shows green (GREEN: green above the mean of red and
 # blue, on the photo's 0-255 scale; paving and bare earth stay below 0, mown grass is 5 to 20). The GRB's line of the
 # "zone zwakke weggebruiker" runs along a grass verge as well as along a pavement.
@@ -291,7 +295,7 @@ def centre_lines(road):
         if line.length < 3 or not line.intersects(road):
             continue
         name = props["LSTRNM"] if props["LSTRNM"] != "nvt" else f"nvt{len(by_name)}"
-        if props["VERH"] == 2 or props["LSTRNM"] in LOOSE_NAMES:  # a loose surface (the GRB's road surface has it all the same): kept apart
+        if (props["VERH"] == 2 and props["OIDN"] not in FIRM) or props["LSTRNM"] in LOOSE_NAMES:  # a loose surface (the GRB's road surface has it all the same): kept apart
             name += LOOSE
         by_name.setdefault(name, []).append(line)
     out = []

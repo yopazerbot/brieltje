@@ -747,6 +747,9 @@ def main():
     house = json.loads((ROOT / "web" / "src" / "data" / "house_shell.json").read_text(encoding="utf-8"))
     village = json.loads((ROOT / "web" / "src" / "data" / "village.json").read_text(encoding="utf-8"))
     road = unary_union([Polygon(p["p"][0], p["p"][1:]).buffer(0) for p in house["surroundings"]["prisms"] + village["prisms"] if p["m"] == "road"])
+    # FC Smetlede's car park and lane, which the football ground lays itself (tools/football_site.py): road as well.
+    fc = json.loads((ROOT / "web" / "shared" / "football.json").read_text(encoding="utf-8"))
+    road = unary_union([road] + [Polygon(r).buffer(0) for k in ("asphalt", "concrete") for r in fc["surfaces"][k]])
     buildings_list = [b for b in nb["buildings"]]
     for b in buildings_list:
         if isinstance(b["p"], str):

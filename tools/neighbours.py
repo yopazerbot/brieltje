@@ -416,6 +416,24 @@ def football(plot):
     return connected.difference(old)
 
 
+# The paved lane from Schildekensstraat, the car park and the walk along the pitch's end (one GRB road surface, WBN
+# OIDN; tools/football_site.py PAVED): the football ground lays them itself (world/footballGround.ts), so the village's
+# road surface stops where they begin, at the GRB's own edge between the two.
+FOOTBALL_PAVED = 116918
+
+
+def football_paved():
+    """The football ground's own paving (Lambert 72); empty without the strip `e2`."""
+    return unary_union([p for f in features("WBN") if f["properties"].get("OIDN") == FOOTBALL_PAVED for p in polygons(f["geometry"])])
+
+
+def football_window(plot):
+    """Where tools/football_site.py picks the laser's trees round the ground for its plan (a rectangle, Lambert 72):
+    the village's trees of the region leave it to that."""
+    ground = football(plot)
+    return Polygon() if ground.is_empty else box(*ground.intersection(Point(FOOTBALL).buffer(110)).bounds)
+
+
 def east(plot):
     """Roads, houses and alleys up to 400 m east, activated by `geodata.py --strip e`.
 
@@ -719,8 +737,10 @@ def main():
     tiers += [(None, "sparrenhof", None, SPARRENHOF_TREES, SPARRENHOF_GAP, 5.0)] if in_northwest else []
     tiers += [(None, "kouter", None, 180, 7.0, 5.0)] if in_south else []
     tiers += [(None, "football", None, 120, 7.0, 5.0)] if in_ground else []
+    # Round the football ground its plan has the trees (tools/football_site.py): the region's own stop at its window.
+    ground_trees = ground.difference(football_window(plot)) if in_ground else ground
     regions = {"band": (rest, in_band), "east": (eastern, in_east), "sparrenhof": (northwest, in_northwest),
-               "kouter": (southern, in_south), "football": (ground, in_ground)}
+               "kouter": (southern, in_south), "football": (ground_trees, prep(ground_trees) if in_ground else None)}
     for at, radius, cap, more, gap, low in tiers:
         cap = cap or len(trees) + more
         if radius is None or isinstance(radius, str):
@@ -759,7 +779,9 @@ def main():
     reach_east = area_before.buffer(20).difference(unary_union([reach_old, band().buffer(20)])) if in_east else None
     reach_northwest = northwest.buffer(20).difference(area_before.buffer(20)) if in_northwest else None
     reach_south = southern.buffer(20).difference(unary_union([area_before, northwest]).buffer(20)) if in_south else None
-    reach_ground = ground.buffer(20).difference(unary_union([area_before, northwest, southern]).buffer(20)) if in_ground else None
+    # Without the football ground's own lane and car park (it lays them itself, world/footballGround.ts).
+    reach_ground = (ground.buffer(20).difference(unary_union([area_before, northwest, southern]).buffer(20)).difference(football_paved())
+                    if in_ground else None)
     for poly in getattr(roads, "geoms", [roads]):
         pieces = [poly.intersection(reach) for reach in (reach_old, reach_band, reach_east, reach_northwest, reach_south, reach_ground)
                   if reach is not None]

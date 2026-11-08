@@ -23,6 +23,8 @@ Farm buildings, ponds and anything not listed are left to the photo (tools/stree
 
 Download once into source/geo/ (not in git), for the same area as tools/geodata.py (and its strip):
     tools/.venv/Scripts/python.exe tools/crops.py
+A strip fetched later on its own, leaving the files fetched before (and the fields made from them) as they are:
+    tools/.venv/Scripts/python.exe tools/crops.py --strip e2
 """
 import json
 import sys
@@ -107,7 +109,10 @@ def fetch(extent):
 
 
 def main():
-    for folder, extent in [(GEO, EXTENT)] + [(GEO / f"strip_{name}", e) for name, e in STRIPS.items()]:
+    areas = [(GEO, EXTENT)] + [(GEO / f"strip_{name}", e) for name, e in STRIPS.items()]
+    if len(sys.argv) > 2 and sys.argv[1] == "--strip":
+        areas = [(GEO / f"strip_{sys.argv[2]}", STRIPS[sys.argv[2]])]
+    for folder, extent in areas:
         if not folder.exists():
             continue
         data = fetch(extent)

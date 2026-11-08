@@ -33,7 +33,7 @@
    "name": "Blekte",
    "sub": "Oud-Smetlede",
    "x": 724.27,
-   "z": 474.84,
+   "z": 474.82,
    "yaw": 1.337,
    "car": [
     723.71,
@@ -72,13 +72,13 @@
   {
    "id": "street:brandersrede",
    "name": "Brandersrede",
-   "sub": "Briel",
-   "x": -559.63,
-   "z": -660.99,
+   "sub": "Smetlede",
+   "x": -559.0,
+   "z": -661.15,
    "yaw": -1.315,
    "car": [
-    -559.78,
-    -661.57,
+    -559.15,
+    -661.73,
     -1.315
    ],
    "village": true
@@ -87,8 +87,8 @@
    "id": "street:bredenweg",
    "name": "Bredenweg",
    "sub": "Smetlede",
-   "x": -39.45,
-   "z": -547.5,
+   "x": -39.46,
+   "z": -547.51,
    "yaw": -1.057,
    "car": [
     -40.11,
@@ -141,7 +141,7 @@
    "id": "street:kapellenhoek",
    "name": "Kapellenhoek",
    "sub": "Smetlede",
-   "x": 585.43,
+   "x": 585.42,
    "z": -317.04,
    "yaw": 2.863,
    "car": [
@@ -169,8 +169,8 @@
    "id": "street:kerkhofstraat",
    "name": "Kerkhofstraat",
    "sub": "Smetlede",
-   "x": 428.56,
-   "z": -661.53,
+   "x": 428.55,
+   "z": -661.54,
    "yaw": 2.164,
    "car": [
     429.7,
@@ -334,13 +334,13 @@
   {
    "id": "street:rampsande",
    "name": "Rampsande",
-   "sub": "Briel",
-   "x": -522.99,
-   "z": -776.44,
+   "sub": "Smetlede",
+   "x": -522.93,
+   "z": -776.46,
    "yaw": 1.818,
    "car": [
-    -522.61,
-    -774.93,
+    -522.55,
+    -774.94,
     1.818
    ],
    "village": true
@@ -349,8 +349,8 @@
    "id": "street:schildekensstraat",
    "name": "Schildekensstraat",
    "sub": "Smetlede",
-   "x": 249.87,
-   "z": -943.66,
+   "x": 249.85,
+   "z": -943.65,
    "yaw": -2.619,
    "car": [
     251.54,
@@ -405,7 +405,7 @@
    "id": "street:smetledestraat",
    "name": "Smetledestraat",
    "sub": "Briel",
-   "x": -747.27,
+   "x": -747.26,
    "z": -260.37,
    "yaw": -1.229,
    "car": [
