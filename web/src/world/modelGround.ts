@@ -125,8 +125,19 @@ function* claiming(models: THREE.Object3D[], ground: number): Generator<void, nu
     const pos = mesh.geometry.attributes.position;
     const index = mesh.geometry.index;
     const count = index ? index.count : pos.count;
+    // Each corner placed in the world once (the triangles share them), as doubles: the very numbers as placed per triangle.
+    const at = new Float64Array(pos.count * 3);
+    for (let i = 0; i < pos.count; i++) {
+      v[0].fromBufferAttribute(pos, i).applyMatrix4(mesh.matrixWorld);
+      at[3 * i] = v[0].x;
+      at[3 * i + 1] = v[0].y;
+      at[3 * i + 2] = v[0].z;
+    }
     for (let f = 0; f * 3 + 2 < count; f++) {
-      for (let k = 0; k < 3; k++) v[k].fromBufferAttribute(pos, index ? index.getX(f * 3 + k) : f * 3 + k).applyMatrix4(mesh.matrixWorld);
+      for (let k = 0; k < 3; k++) {
+        const i = index ? index.getX(f * 3 + k) : f * 3 + k;
+        v[k].set(at[3 * i], at[3 * i + 1], at[3 * i + 2]);
+      }
       // Facing up: its normal within about 37 degrees of straight up.
       const ux = v[1].x - v[0].x, uy = v[1].y - v[0].y, uz = v[1].z - v[0].z;
       const wx = v[2].x - v[0].x, wy = v[2].y - v[0].y, wz = v[2].z - v[0].z;
