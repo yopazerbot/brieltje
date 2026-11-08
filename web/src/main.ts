@@ -3672,6 +3672,7 @@ async function buildVillage(): Promise<void> {
   for (const t of data.trees) trunks.push({ x: t.x, z: t.z, r: 0.35 });
   pruneTrunks();
   portals.settle(); // the village's paving under its portals
+  pickups.settle(); // the weapons up on the village's roofs (the church's roof walk, the Sparrenhof)
   await between();
   bigMap.addVillage(data);
   await environmentReady;

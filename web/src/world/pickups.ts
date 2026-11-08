@@ -25,7 +25,7 @@ export class Pickups {
   private items: { model: THREE.Group; ready: boolean; back: number }[];
   private clock = 0;
 
-  constructor(floorAt: (x: number, z: number, y: number) => number) {
+  constructor(private readonly floorAt: (x: number, z: number, y: number) => number) {
     const ringMat = new THREE.MeshBasicMaterial({ color: '#f2b33d', transparent: true, opacity: 0.7, depthWrite: false });
     this.items = this.spots.map((s) => {
       const floor = floorAt(s.x, s.z, s.y);
@@ -42,6 +42,19 @@ export class Pickups {
     });
     void gunsReady.then((ok) => {
       if (ok) this.items.forEach((it, i) => it.model.clear().add(gunModel(this.spots[i].w)));
+    });
+  }
+
+  /**
+   * Find each spot's floor again: the village's buildings (the church's roof walk, the Sparrenhof's roofs) come in
+   * after the pickups are made, and until then a spot up on one of them found the ground below it.
+   */
+  settle(): void {
+    this.items.forEach((it, i) => {
+      const s = this.spots[i];
+      const floor = this.floorAt(s.x, s.z, s.y);
+      (it.model.userData.ring as THREE.Object3D).position.y = floor + 0.02;
+      it.model.position.y = floor + 0.75;
     });
   }
 

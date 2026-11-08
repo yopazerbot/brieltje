@@ -7,5 +7,7 @@
   { "w": "pistol", "where": "Schildekensstraat", "x": 185, "z": -1003, "y": -1.83 },
   { "w": "sniper", "where": "Molenhoek", "x": 755, "z": -714, "y": 7.19 },
   { "w": "shotgun", "where": "Middle of Molenhoek", "x": 1060, "z": -568, "y": 11.91 },
-  { "w": "rifle", "where": "End of Molenhoek", "x": 1507, "z": -365, "y": 9.19 }
+  { "w": "rifle", "where": "End of Molenhoek", "x": 1507, "z": -365, "y": 9.19 },
+  { "w": "sniper", "where": "Church roof walk", "x": 526.81, "z": -740.39, "y": 18.59 },
+  { "w": "sniper", "where": "Sparrenhof roof", "x": 667.0, "z": 951.1, "y": -3.98 }
 ]
