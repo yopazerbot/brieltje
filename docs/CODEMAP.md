@@ -145,6 +145,7 @@ file's opening comment; run it again after adding, moving or removing a module.
 - `web/src/world/season.ts`: The time of year as Belgium keeps it, for the November and December decorations (Yoshi): Sint-Maarten on the church square in the week up to his feast day,...
 - `web/src/world/shotRaycast.test.mjs`: Tests for shotRaycast, e.g. "indexed and non-indexed static map searches preserve every hit and surface detail".
 - `web/src/world/shotRaycast.ts`: A spatial index of the static map triangles, so a shot only tests the triangles near its line.
+- `web/src/world/signFaces.ts`: The faces of the signs along the streets (world/roadside.ts), drawn in code on one canvas: the street name plates, the traffic signs of the road agency's...
 - `web/src/world/sinterklaas.ts`: Sinterklaas on the church square (Yoshi), from his arrival in November until 6 December (world/season.ts): the saint (tools/sinterklaas.py) on his white...
 - `web/src/world/sintmaarten.ts`: Sint-Maarten in Smetlede (Yoshi), from 4 November up to and with his feast on the 11th (world/season.ts).
 - `web/src/world/skidMarks.ts`: Dark tyre marks on the road where a car slid hard (world/car.ts: the handbrake, a sharp turn at speed, a hard stop).
@@ -297,6 +298,7 @@ file's opening comment; run it again after adding, moving or removing a module.
 - `tools/roads.py`: Life along the roads: the routes of the traffic, the cars parked on drives and the things by the streets, from the GRB's road centre lines (Wegsegment, with...
 - `tools/roofs.py`: Roof shapes of the neighbouring houses from the laser scan (tools/neighbours.py).
 - `tools/school.py`: Build the primary school of Smetlede and the fittings of the church square in Blender, for the walkthrough.
+- `tools/signs_data.py`: Download the traffic signs and the bus stops of the area into source/geo/ (not in git).
 - `tools/sinterklaas.py`: Build Sinterklaas for the church square in December, in Blender: the saint on horseback, in separate parts.
 - `tools/soundbar.py`: Build a soundbar (like a white Sonos Arc, wall-mounted) in Blender.
 - `tools/sparrenhof.py`: Build the café Sparrenhof in Blender, with its forecourt and the terrace behind it.
