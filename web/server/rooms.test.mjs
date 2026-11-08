@@ -38,13 +38,29 @@ test('only an account or the admin opens a room; one each; at most four', () => 
     assert.equal(rooms.create({ username: 'anna', role: 'player' }, 'nowhere').code, 'roomPlace');
     const a = rooms.create({ username: 'anna', role: 'player' }, 'church').room;
     assert.match(a.id, /^[A-Za-z0-9_-]{12}$/);
-    assert.deepEqual({ ...a, id: '' }, { id: '', owner: 'anna', place: 'church', players: 0, max: ROOM_PLAYERS, wave: 0, playing: false });
+    assert.deepEqual({ ...a, id: '' }, { id: '', mine: true, place: 'church', players: 0, max: ROOM_PLAYERS, wave: 0, playing: false });
     assert.equal(rooms.create({ username: 'anna', role: 'player' }, 'house').room.id, a.id, 'asking again gives her room back');
     rooms.create({ username: 'bram', role: 'player' }, 'house');
     rooms.create({ username: 'cato', role: 'player' }, 'molenhoek');
     rooms.create({ username: 'admin', role: 'admin' }, 'bungalow');
     assert.equal(rooms.list().rooms.length, MAX_ROOMS);
     assert.equal(rooms.create({ username: 'dirk', role: 'player' }, 'church').code, 'roomsFull');
+  } finally {
+    stop();
+  }
+});
+
+test('the list names who opened a room only to the admin; everyone else sees the place, the players and whether it is theirs', () => {
+  const { rooms, stop } = hub();
+  try {
+    rooms.create({ username: 'anna', role: 'player' }, 'church');
+    rooms.create({ username: 'bram', role: 'player' }, 'house');
+    const names = (viewer) => rooms.list(viewer).rooms.map((r) => [r.place, r.owner ?? null, r.mine ?? false]);
+    assert.deepEqual(names({ username: 'gast', role: 'guest' }), [['church', null, false], ['house', null, false]], 'a guest: no names');
+    assert.deepEqual(names(null), [['church', null, false], ['house', null, false]], 'no session: no names');
+    assert.deepEqual(names({ username: 'anna', role: 'player' }), [['church', null, true], ['house', null, false]], 'anna: her own room, no names');
+    assert.deepEqual(names({ username: 'admin', role: 'admin' }), [['church', 'anna', false], ['house', 'bram', false]], 'the admin: who opened each');
+    assert.equal(JSON.stringify(rooms.list({ username: 'gast', role: 'guest' })).includes('anna'), false);
   } finally {
     stop();
   }

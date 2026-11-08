@@ -133,7 +133,9 @@ export class Rooms {
       const what = document.createElement('span');
       what.className = 'room-what';
       const title = document.createElement('b');
-      title.textContent = `${t('room.of', { name: r.owner })} · ${placeName(r.place)}`;
+      // The place, and whose room only when it is this player's own (the admin's list also names the others).
+      const whose = r.mine ? t('room.yours') : r.owner ? t('room.of', { name: r.owner }) : '';
+      title.textContent = whose ? `${whose} · ${placeName(r.place)}` : placeName(r.place);
       const sub = document.createElement('span');
       sub.textContent = `${t('room.players', { n: r.players, max: r.max })} · ${r.playing ? t('room.wave', { n: r.wave }) : t('room.waiting')}`;
       what.append(title, sub);

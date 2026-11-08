@@ -81,7 +81,7 @@ export class Rooms {
     const arena = ARENAS.find((a) => a.id === place);
     if (!arena) return { error: 'Pick a place for the room.', code: 'roomPlace', status: 400 };
     const mine = [...this.rooms.values()].find((r) => r.owner === session.username);
-    if (mine) return { room: this.entry(mine) };
+    if (mine) return { room: this.entry(mine, session) };
     if (this.rooms.size >= MAX_ROOMS) return { error: `All ${MAX_ROOMS} rooms are in use. Join one, or try again later.`, code: 'roomsFull', args: { n: MAX_ROOMS }, status: 503 };
     let id;
     do id = randomBytes(9).toString('base64url');
@@ -93,17 +93,24 @@ export class Rooms {
     const r = { id, owner: session.username, arena, game, created: Date.now(), emptySince: Date.now() };
     this.rooms.set(id, r);
     this.main.auth.log('room_opened', null, { username: session.username, detail: `${arena.id} (${id})` });
-    return { room: this.entry(r) };
+    return { room: this.entry(r, session) };
   }
 
-  /** A room as the list shows it: who opened it, where, how many play, and the game in it. */
-  entry(r) {
+  /**
+   * A room as the list shows it to `viewer` (a session): where, how many play, and the game in it. Who opened it only for
+   * the admin (the game's or the panel's); everyone else learns only whether it is their own (`mine`), so the list gives
+   * nobody the names of accounts playing elsewhere. Inside a room its players hear whose it is (server/game.mjs welcome).
+   */
+  entry(r, viewer = null) {
     const z = r.game.modes.zombies;
-    return { id: r.id, owner: r.owner, place: r.arena.id, players: r.game.players.size, max: ROOM_PLAYERS, wave: z ? z.horde.wave : 0, playing: !!z };
+    return {
+      id: r.id, ...(viewer?.role === 'admin' ? { owner: r.owner } : {}), ...(viewer && viewer.username === r.owner ? { mine: true } : {}),
+      place: r.arena.id, players: r.game.players.size, max: ROOM_PLAYERS, wave: z ? z.horde.wave : 0, playing: !!z,
+    };
   }
 
-  list() {
-    return { rooms: [...this.rooms.values()].sort((a, b) => a.created - b.created).map((r) => this.entry(r)), max: MAX_ROOMS };
+  list(viewer = null) {
+    return { rooms: [...this.rooms.values()].sort((a, b) => a.created - b.created).map((r) => this.entry(r, viewer)), max: MAX_ROOMS };
   }
 
   /** The WebSocket: `room` in the address picks a room; without it, the open world. */

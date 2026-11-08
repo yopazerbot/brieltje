@@ -24,7 +24,10 @@ export interface KeptRun {
 /** A Zombies room in the list (server/rooms.mjs): who opened it, where, how many play, the game in it. */
 export interface RoomEntry {
   id: string;
-  owner: string;
+  /** Who opened it: only in the admin's list (server/rooms.mjs entry). */
+  owner?: string;
+  /** This session opened it. */
+  mine?: boolean;
   place: string;
   players: number;
   max: number;

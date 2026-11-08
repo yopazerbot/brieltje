@@ -347,7 +347,7 @@ async function api(req, res, url) {
     return r.error ? refuse(res, r) : json(res, 200, r);
   }
   // Zombies rooms (server/rooms.mjs): the list for anyone playing together; opening one for accounts and the admin.
-  if (path === '/api/rooms' && method === 'GET') return json(res, 200, rooms.list());
+  if (path === '/api/rooms' && method === 'GET') return json(res, 200, rooms.list(s)); // who opened each: the admin only
   if (path === '/api/rooms' && method === 'POST') {
     const b = await body(req);
     const r = rooms.create(s, typeof b.place === 'string' ? b.place : '');
@@ -428,7 +428,7 @@ async function panelApi(req, res, path, method, seat) {
     return r.error ? refuse(res, r) : json(res, 200, r);
   }
   // The Zombies rooms with who opened each (server/rooms.mjs); the admin closes one: its players go back to the open world.
-  if (path === '/api/admin/rooms' && method === 'GET') return json(res, 200, rooms.list());
+  if (path === '/api/admin/rooms' && method === 'GET') return json(res, 200, rooms.list(s));
   if (path === '/api/admin/rooms' && method === 'POST') {
     const b = await body(req);
     return rooms.close(b.id, s.username) ? json(res, 200, { ok: true }) : json(res, 404, { error: 'No such room', code: 'notFound' });
