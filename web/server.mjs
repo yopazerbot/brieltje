@@ -231,7 +231,7 @@ async function api(req, res, url) {
     const b = await body(req);
     const r = await auth.login(req, b.username, b.password, typeof b.code === 'string' ? b.code.slice(0, 20) : '');
     if (r.error) return refuse(res, r);
-    return json(res, 200, { username: r.username, role: r.role }, { 'Set-Cookie': [auth.cookie(r.token, undefined, seat), auth.deviceCookie(r.device)] });
+    return json(res, 200, { username: r.username, role: r.role }, { 'Set-Cookie': [auth.cookie(r.token, r.ms / 1000, seat), auth.deviceCookie(r.device)] });
   }
   if (path === '/api/join' && method === 'POST') {
     const b = await body(req);

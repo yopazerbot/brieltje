@@ -47,6 +47,13 @@ const TRUST_PROXY = !!process.env.RAILWAY_ENVIRONMENT || process.env.TRUST_PROXY
 /** Only answer requests that came through Cloudflare (see viaCloudflare). */
 export const CLOUDFLARE_ONLY = TRUST_CLOUDFLARE && TRUST_PROXY;
 const SESSION_MS = 12 * 3600_000;
+/**
+ * The /admin panel's session (Yoshi, 8 Nov 2026: no session timeout for /admin): as long as a browser keeps a
+ * cookie (Chrome caps Max-Age at 400 days). It still ends on Log out, with a new admin password (ADMIN_PASSWORD
+ * changed: the admin's sessions are dropped at start), and for the other admin sessions when two-step login is
+ * turned on (server/adminMfa.mjs). The game's own admin login (`panel` false) keeps SESSION_MS.
+ */
+export const PANEL_MS = 400 * 24 * 3600_000;
 const MAX_FAILS = 10; // wrong admin passwords per address
 const FAIL_WINDOW_MS = 15 * 60_000;
 const ADMIN_FAILS = 20; // tries at the admin password in an hour, from browsers that never logged in as admin
@@ -544,7 +551,8 @@ export class Auth {
     const token = randomBytes(32).toString('base64url');
     const key = keyOf(token);
     // A panel session is marked (kept in the store's device column, which admin sessions don't use otherwise).
-    await this.store.saveSession(key, name, 'admin', now + SESSION_MS, panel ? 'panel' : null);
+    const ms = panel ? PANEL_MS : SESSION_MS;
+    await this.store.saveSession(key, name, 'admin', now + ms, panel ? 'panel' : null);
     if ((this.epoch.get(name) || 0) !== epoch || (this.blocked.get(name) || 0) > Date.now()) {
       await this.store.deleteSession(key);
       return { error: 'You were removed by the admin. Try again later.', code: 'removed', status: 403 };
@@ -558,9 +566,9 @@ export class Auth {
       await this.store.deleteSession(key);
       return { error: 'Two-step login was just turned on. Log in again with a code.', code: 'mfaNeeded', status: 401 };
     }
-    this.sessions.set(key, { username: name, role: 'admin', expires: now + SESSION_MS, panel });
+    this.sessions.set(key, { username: name, role: 'admin', expires: now + ms, panel });
     this.log('login_ok', req, { username: name, detail: 'admin' });
-    return { token, username: name, role: 'admin', device: this.newDevice(ADMIN_KEY) };
+    return { token, username: name, role: 'admin', device: this.newDevice(ADMIN_KEY), ms };
   }
 
   /**
