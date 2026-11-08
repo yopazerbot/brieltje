@@ -151,6 +151,13 @@ function sloped(r: RoofSpec, c: THREE.Vector2[], L: number, W: number, along: TH
     quad(wallPos, wall(0, W, r.y), wall(L, W, r.y), wall(L, W, r.ridge), wall(0, W, r.ridge), false);
     uvs(wallPos, wallUv, w0, along, 1);
   }
+  const c0 = wallPos.length;
+  closeUnder(r, wallPos, wall, quad, L, W);
+  for (let i = c0; i < wallPos.length; i += 3) {
+    const x = wallPos[i] - c[0].x;
+    const z = wallPos[i + 2] - c[0].y;
+    wallUv.push(x * along.x + z * along.y, x * across.x + z * across.y);
+  }
   const make = (pos: number[], uv: number[]) => {
     const g = new THREE.BufferGeometry().setAttribute('position', new THREE.Float32BufferAttribute(pos, 3));
     g.setAttribute('uv', new THREE.Float32BufferAttribute(uv, 2));
@@ -159,6 +166,21 @@ function sloped(r: RoofSpec, c: THREE.Vector2[], L: number, W: number, along: TH
   };
   // An empty wall set still needs the attributes the merged gables have.
   return { roof: make(roofPos, roofUv), gables: make(wallPos, wallUv), glass: null, frames: null, gableFrames: null, panels: null };
+}
+
+/**
+ * A ceiling under the roof at the eaves, facing down, in the gables' brick, over the roof's whole rectangle. The roof's
+ * rectangle is drawn round the house's outline, so where the walls below are set back from it (a recessed front, a
+ * notch in the outline, an L-shaped house) nothing closed the roof from below: from the street one looked up into it,
+ * at the dark underside of its tiles, and through it under the far eaves to the sky (on Kapellenhoek, a dark band
+ * with a light triangle in a house's gable end). A roof with a `ceiling` colour or `panels` keeps its underside as it
+ * is. Returns the number of corners added (two triangles, or none).
+ */
+function closeUnder(r: RoofSpec, out: number[], wall: (a: number, b: number, y: number) => THREE.Vector3,
+  quad: (out: number[], p: THREE.Vector3, q: THREE.Vector3, s: THREE.Vector3, t: THREE.Vector3, up?: boolean) => void, L: number, W: number): number {
+  if (r.ceiling || r.panels?.length) return 0;
+  quad(out, wall(0, 0, r.y), wall(L, 0, r.y), wall(L, W, r.y), wall(0, W, r.y), false);
+  return 6;
 }
 
 /**
@@ -294,6 +316,7 @@ function roof(r: RoofSpec): RoofParts {
     }
     flat.dispose();
   }
+  const shut = closeUnder(r, gablePos, wall, quad, L, W);
 
   // Panels: upright quads with a sloping top (sides of roof-window wells, walls up to the roof).
   const panelPos: number[] = [];
@@ -317,6 +340,14 @@ function roof(r: RoofSpec): RoofParts {
     const uv = new Float32Array(p.count * 2);
     for (let i = 0; i < p.count; i++) uv.set(uvOf(p.getX(i), p.getY(i), p.getZ(i)), i * 2);
     g.setAttribute('uv', new THREE.BufferAttribute(uv, 2));
+  }
+  // The ceiling's last corners: its texture laid flat (along, across), not up the wall.
+  const gp = gableGeo.attributes.position;
+  const guv = gableGeo.attributes.uv as THREE.BufferAttribute;
+  for (let i = gp.count - shut; i < gp.count; i++) {
+    const x = gp.getX(i) - c[0].x;
+    const z = gp.getZ(i) - c[0].y;
+    guv.setXY(i, x * along.x + z * along.y, x * across.x + z * across.y);
   }
   return { roof: roofGeo, gables: gableGeo, glass: geo(glassPos), frames: geo(framePos), gableFrames: geo(gableFramePos), panels: geo(panelPos), gutters: gutter };
 }
