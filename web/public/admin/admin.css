@@ -185,6 +185,9 @@ ul.online li.alone i { background: transparent; border: 2px solid var(--muted); 
 table.fb td.stars { color: var(--accent); white-space: nowrap; letter-spacing: 1px; }
 table.fb td.comment { white-space: pre-wrap; overflow-wrap: anywhere; min-width: 220px; }
 table.fb td .tag { display: block; font-size: 12px; color: var(--muted); }
+/* The homes' accounts with access: a name per line, each with a small Remove. */
+table.hm td.access .acc { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin: 2px 0; font-size: 13px; white-space: nowrap; }
+table.hm td.access .btn { padding: 2px 8px; font-size: 12px; }
 table.fb td:last-child { white-space: nowrap; }
 
 /* The game night: its details as a small form, the registrations as a table like the feedback's. */

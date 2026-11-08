@@ -192,10 +192,11 @@
       </section>
 
       <section data-panel="homes" id="panel-homes" role="tabpanel" aria-labelledby="tab-homes" hidden>
-        <div class="tablewrap"><table class="log fb hm"><thead><tr><th>Home</th><th>State</th><th>Code set</th><th>Expires</th><th>Opened</th><th>Wrong tries</th><th></th></tr></thead><tbody id="homes-rows"></tbody></table></div>
+        <div class="tablewrap"><table class="log fb hm"><thead><tr><th>Home</th><th>State</th><th>Code set</th><th>Expires</th><th>Opened</th><th>Wrong tries</th><th>With account</th><th></th></tr></thead><tbody id="homes-rows"></tbody></table></div>
         <p class="muted small" id="private-status"></p>
         <p class="muted" id="homes-empty" hidden>No homes are registered yet (web/shared/homes.mjs).</p>
         <p class="muted small">These three homes are always locked, alone and together, in the Teams and Zombies games too. You always get in without a code. A code is shown once, when it is made. Only a hash of it is kept. A new code replaces the old one and ends the access of everyone who used it. Switching a code off or letting it expire does the same.</p>
+        <p class="muted small">A player who types the code while logged in to an account keeps access, on every device, without typing it again. That lasts until you make a new code, revoke it or change its settings, remove the account's access here, or the account is deleted. A switched-off account gets in nowhere while it is off. Guests keep access for their session only.</p>
       </section>
       <!-- The players' accounts (server/accounts.mjs): a new password (shown once), off or on, delete. -->
       <section data-panel="accounts" id="panel-accounts" role="tabpanel" aria-labelledby="tab-accounts" hidden>

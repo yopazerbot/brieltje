@@ -1223,9 +1223,35 @@
         return td;
       };
       actions.className = 'acts';
+      // The accounts that keep access (server/homes.mjs, home_grants): names as text only, each with its own remove.
+      const kept = h.accounts ?? [];
+      const access = cell('With account', kept.length ? '' : '–');
+      access.classList.add('access');
+      for (const a of kept) {
+        const line = el('span', 'acc');
+        line.append(el('span', '', `${a.username} · ${day(a.at)} `), btn('Remove', async () => {
+          await post(`/api/admin/homes/${h.id}/access/${encodeURIComponent(a.username)}`, null, 'DELETE');
+          loadHomes();
+        }));
+        access.append(line);
+      }
+      if (kept.length > 1) {
+        let armed = false;
+        const all = btn('Remove all', async () => {
+          if (!armed) {
+            armed = true;
+            all.textContent = 'Sure?';
+            setTimeout(() => { armed = false; all.textContent = 'Remove all'; }, 4000);
+            return;
+          }
+          await post(`/api/admin/homes/${h.id}/access`, null, 'DELETE');
+          loadHomes();
+        });
+        access.append(all);
+      }
       tr.append(el('td', 'home', HOME_NAMES[h.id] ?? h.id), el('td', 'state', state), cell('Code set', day(h.setAt)),
         cell('Expires', day(h.expiresAt)), cell('Opened', `${fmt(h.unlocks)}${h.lastUnlockAt ? ` · ${day(h.lastUnlockAt)}` : ''}`),
-        cell('Wrong tries', `${fmt(h.fails)}${h.lastFailAt ? ` · ${day(h.lastFailAt)}` : ''}`), actions);
+        cell('Wrong tries', `${fmt(h.fails)}${h.lastFailAt ? ` · ${day(h.lastFailAt)}` : ''}`), access, actions);
       return tr;
     }));
   }
