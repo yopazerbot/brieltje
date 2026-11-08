@@ -13,7 +13,7 @@ import { FAR_PHONE, gpuName, guessFromName, loadMode, ORDER, pickQuality, PRESET
 import { HEIGHT as BODY_HEIGHT, Player, STEP_UP } from './player';
 import { Hud } from './ui/hud';
 import { Speedometer } from './ui/speedometer';
-import { fillScreen, input, me, menu, onAccount, setAccount, startIntent } from './start';
+import { fillScreen, input, me, menu, onAccount, onSession, sessionAdmin, setAccount, startIntent } from './start';
 import { TouchControls } from './controls/touch';
 import { Games, type ModeView } from './ui/games';
 import { CLOWN_DEFAULTS, Clowns, KINDS, type Kind } from './world/clowns';
@@ -119,6 +119,7 @@ import { Football } from './world/football';
 import { Smoke } from './world/smoke';
 import { LOOT_LABELS, Tactics } from './ui/tactics';
 import { ZombieWaveControl } from './ui/zombieWave';
+import { chooseSoloWave, soloRecord } from './ui/soloWave';
 import { HomeStreet, withoutModelled } from './world/homeStreet';
 import { buildRoadDetail, buildRoadDetailSoon, roadPaint, withRoadDetail } from './world/roadDetail';
 import { RoadLife } from './world/roadLife';
@@ -1242,7 +1243,8 @@ try {
   // storage blocked: off
 }
 function applyTurbo(): void {
-  player.turbo = me?.role === 'admin' && turboBox.checked ? 15 : 1;
+  // Together the admin; alone the admin's session too (its role from the server), as the speed is this page's own then.
+  player.turbo = (me?.role === 'admin' || (!me && sessionAdmin())) && turboBox.checked ? 15 : 1;
 }
 turboBox.addEventListener('change', () => {
   try {
@@ -1346,7 +1348,7 @@ function followAccount(account: Me | null): void {
   $('newround-btn').classList.toggle('hidden', account?.role !== 'admin');
   $('clearfurn-btn').classList.toggle('hidden', account?.role !== 'admin');
   $('resetfurn-btn').classList.toggle('hidden', !!account && account.role !== 'admin');
-  $('set-admin').classList.toggle('hidden', account?.role !== 'admin');
+  showAdminParts();
   if (!account) applyRules(ANYTHING_GOES);
   weapon.setAdminWeapons(!account || account.role === 'admin');
   leaderboard.show(!!account); // the best Zombies runs for everyone to see; the fights' totals together only
@@ -1393,7 +1395,21 @@ games.onWave = (n, count, bigs) => hud.announce(t('z.banner', { n }), t(bigs > 1
 const stopAsk = $('stop-confirm');
 const zombieWaveControl = new ZombieWaveControl((wave) => {
   if (net.connected && me?.role === 'admin') net.send({ t: 'zwave', wave });
+  else if (!me) soloWave(wave); // alone: the horde in this page (the admin's session only)
 });
+/** The wave picker works: together for the admin (the server decides), alone in Zombies for the admin's session. */
+const waveAllowed = () => (net.connected && me?.role === 'admin') || (!me && !!solo && sessionAdmin());
+/**
+ * The admin tab's parts: all of them together; for the admin's session playing alone, what works in this page
+ * (turbo, the solo Zombies' wave picker) and a line that the rest is for playing together (index.html .adm-together).
+ */
+function showAdminParts(): void {
+  const alone = !me && sessionAdmin();
+  $('set-admin').classList.toggle('hidden', me?.role !== 'admin' && !alone);
+  $('set-admin').classList.toggle('alone', alone);
+  applyTurbo();
+  zombieWaveControl.update(games.view, waveAllowed());
+}
 document.querySelectorAll<HTMLButtonElement>('[data-game]').forEach((b) =>
   b.addEventListener('click', () => {
     stopAsk.classList.toggle('hidden', b.dataset.game !== 'free' || !games.active);
@@ -1639,7 +1655,7 @@ const SOLO_ME = 'me';
 /** The best wave alone, per place (home's under its key from before the places), and the place picked last. */
 const soloBestKey = (a: Arena) => (a.id === 'house' ? 'briel.zombiesBest' : `briel.zombiesBest.${a.id}`);
 const SOLO_PLACE = 'briel.zombiesPlace';
-let solo: { horde: Horde; loot: Loot; arena: Arena; endAt: number; best: number; record: boolean; key: string } | null = null;
+let solo: { horde: Horde; loot: Loot; arena: Arena; endAt: number; best: number; record: boolean; custom: boolean; key: string } | null = null;
 let soloStarting = false;
 function soloBest(a: Arena): number {
   try {
@@ -1702,7 +1718,7 @@ async function startSolo(id: string): Promise<void> {
     : makeNav({ prisms, height: (x, z) => terrain.height(x, z), base: house.ground, edge, boxes, areas: houseAreas(insides.housePrisms(house.prisms)), doors: insides.houseDoors(house.doors), shut: true, panes: insides.housePrisms(house.prisms).length });
   const horde = new Horde(nav, data ? arenaSpots(arena, nav.spawnSpots(), data, cafeAccess) : nav.spawnSpots(), { home: arenaHome(arena) });
   horde.start(performance.now());
-  solo = { horde, loot: new Loot(nav), arena, endAt: 0, best: soloBest(arena), record: false, key: '' };
+  solo = { horde, loot: new Loot(nav), arena, endAt: 0, best: soloBest(arena), record: false, custom: false, key: '' };
   applyKit(NO_KIT);
   respawnAtArena(arena);
   combat.setActive(weapon.enabled); // your health on screen while they come
@@ -1721,6 +1737,7 @@ function stopSolo(): void {
   rewards.clear();
   applyKit(NO_KIT);
   games.set({ kind: 'free' });
+  zombieWaveControl.update(games.view, false);
   combat.setActive(!!me && weapon.enabled);
   if (wasDown && !me) respawnAtArena(arena);
   showSoloButton();
@@ -1734,7 +1751,7 @@ function soloView(force = false): void {
   const mine = h.beaten[SOLO_ME] ?? 0;
   const name = menu.nickname.trim() || youName(); // alone: the name typed on the start screen
   const fighter = weapon.enabled && !driving && !riding;
-  const key = [h.phase, h.wave, h.left, combat.alive, fighter, mine, lang(),
+  const key = [h.phase, h.wave, h.left, combat.alive, fighter, mine, lang(), solo.custom,
     [...solo.loot.items.keys()].join('-'), solo.loot.mines.size, solo.loot.rows.size, solo.loot.turrets.size].join();
   if (!force && key === solo.key) return;
   solo.key = key;
@@ -1745,9 +1762,24 @@ function soloView(force = false): void {
     zombies: {
       ...solo.loot.view(),
       wave: h.wave, left: h.left, big: h.bigWave, bigs: bigOf(h.wave), fighters: fighter ? 1 : 0, standing: fighter && combat.alive ? 1 : 0, beaten: { [name]: mine }, ms,
-      down: [], best: solo.best ? { wave: solo.best, names: [name], at: '' } : null, record: solo.record, place: solo.arena.id,
+      down: [], best: solo.best ? { wave: solo.best, names: [name], at: '' } : null, record: solo.record, custom: solo.custom, place: solo.arena.id,
     },
   });
+  zombieWaveControl.update(games.view, waveAllowed());
+}
+/** Alone, the admin's wave picker: the horde jumps to `wave` at once, and the run never counts for the best (src/ui/soloWave.ts). */
+function soloWave(wave: number): void {
+  if (!solo || me || !sessionAdmin()) return;
+  const events = chooseSoloWave(solo, wave, performance.now());
+  if (!events) return;
+  const name = menu.nickname.trim() || youName();
+  chat.system(() => t('srv.zWaveSelected', { name, n: wave }));
+  for (const e of events) {
+    if (e.type !== 'wave') continue; // the old zombies go with the next look at the horde (zombies.follow)
+    solo.loot.wave();
+    chat.system(() => t(e.bigs > 1 ? 'srv.zWaveBigs' : e.big ? 'srv.zWaveBig' : 'srv.zWave', { n: e.wave, count: e.count }));
+  }
+  soloView(true);
 }
 /** Alone, every frame: the horde's step and what came of it. */
 function soloTick(dt: number): void {
@@ -1775,7 +1807,7 @@ function soloTick(dt: number): void {
     else if (e.type === 'swipe') soloZombieHurt(e.damage, h.zombies.get(e.id)?.kind === BIG_ZOMBIE, h.zombies.get(e.id));
     else if (e.type === 'over') {
       solo.endAt = now + 15000;
-      solo.record = e.wave > solo.best;
+      solo.record = soloRecord(solo, e.wave); // never with a chosen wave
       if (solo.record) {
         solo.best = e.wave;
         try {
@@ -2248,7 +2280,7 @@ net.onStatus = (text) => {
   netText = text;
   netStatus.textContent = text();
   games.setOffline(!net.connected && !!me); // the game's bar greys and stops while the connection is down
-  zombieWaveControl.update(games.view, net.connected && me?.role === 'admin');
+  zombieWaveControl.update(games.view, waveAllowed());
   followMood();
 };
 /** The menu opens at the team picker the first time after the teams game starts (see openMenu). */
@@ -2695,6 +2727,7 @@ function onTick(m: Tick): void {
 // above, so the connection's first status and messages reach them. A Zombies room picked there: straight into it.
 if (startIntent.room) net.room = startIntent.room;
 onAccount(followAccount);
+onSession(showAdminParts); // the admin's session alone too: the admin tab's parts for playing alone
 
 /**
  * The map is the menu's first tab (ui/bigmap.ts in its page). M, a short press on the controller's

@@ -438,6 +438,7 @@ const en = {
   // ---- The admin's tab
   'adm.you': 'You',
   'adm.turbo': 'Move extremely fast (15 times, walking and flying)',
+  'adm.aloneNote': 'House rules, guests and party games are for playing together.',
   'adm.rules': 'House rules',
   'adm.flying': 'Flying allowed',
   'adm.spawn': 'Players can spawn things with /name',
@@ -1481,6 +1482,7 @@ const nl = {
   // ---- The admin's tab
   'adm.you': 'Jij',
   'adm.turbo': 'Extreem snel bewegen (15 keer zo snel, wandelen en vliegen)',
+  'adm.aloneNote': 'Huisregels, gasten en partyspellen stel je in als je samen speelt.',
   'adm.rules': 'Huisregels',
   'adm.flying': 'Vliegen toegestaan',
   'adm.spawn': 'Spelers mogen dingen spawnen met /naam',

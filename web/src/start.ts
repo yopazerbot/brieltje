@@ -169,6 +169,14 @@ export function onAccount(fn: (account: Me | null) => void): void {
   accountListeners.push(fn);
   fn(me);
 }
+const sessionListeners: (() => void)[] = [];
+/** Call `fn` now and on every change of the session (alone too): the admin tab's parts alone (src/main.ts). */
+export function onSession(fn: () => void): void {
+  sessionListeners.push(fn);
+  fn();
+}
+/** The session is the admin's, alone too. Its role comes from the server (/api/me, the login's answer), never from this device. */
+export const sessionAdmin = (): boolean => session?.role === 'admin';
 /** The texts that depend on the account: the message, the note in the Together tab, joining there under the session. */
 function showAccountText(): void {
   const message = accountMsg?.() ?? '';
@@ -191,13 +199,15 @@ function setSession(account: Me | null, message: (() => string) | null = null, f
   accountMsg = message;
   accountMsgCalm = false;
   menu.setAccount(account?.username ?? null);
-  menu.setAdmin(me?.role === 'admin');
+  // The admin's tab together, and alone too for the admin's session (its role from the server: /api/me or the login's answer).
+  menu.setAdmin(me?.role === 'admin' || account?.role === 'admin');
   // "Your account": a new password, deleting it (src/ui/account.ts), for players logged in to their own.
   document.querySelectorAll('.acct-manage').forEach((b) => b.classList.toggle('hidden', account?.role !== 'player'));
   document.querySelectorAll('.acct-row').forEach((b) => b.classList.toggle('hidden', account?.role !== 'player'));
   if (account?.role !== 'guest') keepRun.clear();
   showAccountText();
   flow?.sessionChanged(fromLogin);
+  for (const fn of sessionListeners) fn();
 }
 /** Play together as `account` (null: alone, and logged out): main.ts connects, or leaves the others. */
 export function setAccount(account: Me | null, message: (() => string) | null = null): void {

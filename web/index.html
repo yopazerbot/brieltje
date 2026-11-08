@@ -667,18 +667,20 @@
                 <div class="col">
                   <h2 data-i18n="adm.you">You</h2>
                   <label class="check"><input type="checkbox" id="set-turbo" /> <span data-i18n="adm.turbo">Move extremely fast (15 times, walking and flying)</span></label>
-                  <h2 data-i18n="adm.rules">House rules</h2>
-                  <label class="check"><input type="checkbox" id="set-flying" checked /> <span data-i18n="adm.flying">Flying allowed</span></label>
-                  <label class="check"><input type="checkbox" id="set-spawn" /> <span data-i18n="adm.spawn">Players can spawn things with /name</span></label>
-                  <label class="check"><input type="checkbox" id="set-names" checked /> <span data-i18n="adm.names">Names above players (they show through walls)</span></label>
-                  <label class="check"><input type="checkbox" id="set-portals" checked /> <span data-i18n="adm.portals">Portals take players from place to place</span></label>
-                  <label class="check"><input type="checkbox" id="set-travel" checked /> <span data-i18n="adm.travel">Players can travel from the chat (/church, /house …)</span></label>
-                  <label class="check"><input type="checkbox" id="set-paintball" /> <span data-i18n="adm.paintball">Child-friendly for everyone: Action plays as Paintball</span></label>
-                  <label class="check"><input type="checkbox" id="set-parachute" checked /> <span data-i18n="adm.parachute">Players arrive by parachute (respawns, the start, Zombies)</span></label>
-                  <div class="setting"><label class="field" for="set-max"><span data-i18n="adm.max">Players at once</span> <span class="set-value" id="set-max-value">16</span></label><input class="slider" id="set-max" type="range" min="2" max="16" step="1" value="16" /></div>
+                  <!-- Alone (an admin session playing alone): only what works in this page; the rest is for playing together (src/main.ts showAdminParts). -->
+                  <p class="note adm-alone" data-i18n="adm.aloneNote">House rules, guests and party games are for playing together.</p>
+                  <h2 class="adm-together" data-i18n="adm.rules">House rules</h2>
+                  <label class="check adm-together"><input type="checkbox" id="set-flying" checked /> <span data-i18n="adm.flying">Flying allowed</span></label>
+                  <label class="check adm-together"><input type="checkbox" id="set-spawn" /> <span data-i18n="adm.spawn">Players can spawn things with /name</span></label>
+                  <label class="check adm-together"><input type="checkbox" id="set-names" checked /> <span data-i18n="adm.names">Names above players (they show through walls)</span></label>
+                  <label class="check adm-together"><input type="checkbox" id="set-portals" checked /> <span data-i18n="adm.portals">Portals take players from place to place</span></label>
+                  <label class="check adm-together"><input type="checkbox" id="set-travel" checked /> <span data-i18n="adm.travel">Players can travel from the chat (/church, /house …)</span></label>
+                  <label class="check adm-together"><input type="checkbox" id="set-paintball" /> <span data-i18n="adm.paintball">Child-friendly for everyone: Action plays as Paintball</span></label>
+                  <label class="check adm-together"><input type="checkbox" id="set-parachute" checked /> <span data-i18n="adm.parachute">Players arrive by parachute (respawns, the start, Zombies)</span></label>
+                  <div class="setting adm-together"><label class="field" for="set-max"><span data-i18n="adm.max">Players at once</span> <span class="set-value" id="set-max-value">16</span></label><input class="slider" id="set-max" type="range" min="2" max="16" step="1" value="16" /></div>
                   <!-- The weather and time of day for everyone (src/ui/moodAdmin.ts; the server checks it, server/game.mjs setMood). -->
-                  <h2 data-i18n="mood.adminTitle">Weather for everyone</h2>
-                  <div class="seg mood-seg" id="mood-admin" role="group" aria-label="Weather for everyone" data-i18n-aria="mood.adminTitle">
+                  <h2 class="adm-together" data-i18n="mood.adminTitle">Weather for everyone</h2>
+                  <div class="seg mood-seg adm-together" id="mood-admin" role="group" aria-label="Weather for everyone" data-i18n-aria="mood.adminTitle">
                     <button class="seg-btn" type="button" data-mood="auto"><b data-i18n="mood.auto">Auto</b></button>
                     <button class="seg-btn" type="button" data-mood="sunny"><b data-i18n="mood.sunny">Sunny</b></button>
                     <button class="seg-btn" type="button" data-mood="overcast"><b data-i18n="mood.overcast">Overcast</b></button>
@@ -688,7 +690,7 @@
                     <button class="seg-btn" type="button" data-mood="snow"><b data-i18n="mood.snow">Snow</b></button>
                   </div>
                   <!-- On Auto: the mood shown ends now, and the cycle's pace (back to 1x on a fixed mood or when the admin leaves). -->
-                  <div id="mood-admin-auto" class="setting">
+                  <div id="mood-admin-auto" class="setting adm-together">
                     <div class="mp-row"><button id="mood-admin-next" class="mini" type="button" data-i18n="mood.next">Next weather</button></div>
                     <p class="label" data-i18n="mood.speed">How fast the weather changes</p>
                     <div class="seg mood-seg" id="mood-speed" role="group" aria-label="How fast the weather changes" data-i18n-aria="mood.speed">
@@ -697,19 +699,19 @@
                       <button class="seg-btn" type="button" data-speed="60"><b>60×</b></button>
                     </div>
                   </div>
-                  <h2 data-i18n="adm.joining">Joining</h2>
-                  <label class="check"><input type="checkbox" id="set-guests" checked /> <span data-i18n="adm.guests">Guests can join without an account</span></label>
-                  <p class="note" data-i18n="adm.accountsNote">The players' accounts are on brieltje.be/admin.</p>
+                  <h2 class="adm-together" data-i18n="adm.joining">Joining</h2>
+                  <label class="check adm-together"><input type="checkbox" id="set-guests" checked /> <span data-i18n="adm.guests">Guests can join without an account</span></label>
+                  <p class="note adm-together" data-i18n="adm.accountsNote">The players' accounts are on brieltje.be/admin.</p>
                   <!-- Lockouts after a kick, many joins or wrong passwords (server/auth.mjs, server/accounts.mjs), lifted for everyone at once. -->
-                  <div class="setting">
+                  <div class="setting adm-together">
                     <div class="mp-row"><button id="set-unlock" class="mini" type="button" data-i18n="adm.unlock">Lift lockouts</button></div>
                     <p class="note" id="set-unlock-msg" data-i18n="adm.unlockNote">Lets back in everyone kept out by a kick, too many joins or wrong passwords.</p>
                   </div>
                 </div>
                 <div class="col">
-                  <h2 data-i18n="adm.games">Party games</h2>
+                  <h2 class="adm-together" data-i18n="adm.games">Party games</h2>
                   <!-- Where Zombies is played for everyone (shared/arenas.mjs); the other games are at the house. -->
-                  <label class="spawn-pick zombies-where" for="zombies-place-admin"><span data-i18n="z.whereAdmin">Zombies at</span>
+                  <label class="spawn-pick zombies-where adm-together" for="zombies-place-admin"><span data-i18n="z.whereAdmin">Zombies at</span>
                     <select id="zombies-place-admin">
                       <option value="house" data-i18n="portal.house" selected>Yoshi &amp; Liesl's home</option>
                       <option value="bungalow" data-i18n="portal.bungalow">Bungalow</option>
@@ -720,7 +722,7 @@
                       <option value="sparrenhof" data-i18n="portal.sparrenhof">Sparrenhof</option>
                     </select>
                   </label>
-                  <div id="game-admin" class="tools">
+                  <div id="game-admin" class="tools adm-together">
                     <button class="tool" type="button" data-game="hide"><b data-i18n="game.hide">Hide and seek</b><span data-i18n="game.hideSub">One seeks, the others hide; found players seek too</span></button>
                     <button class="tool" type="button" data-game="tag"><b data-i18n="game.tag">Tag</b><span data-i18n="game.tagSub">Whoever is "it" tags someone else; least time as "it" wins</span></button>
                     <button class="tool" type="button" data-game="treasure"><b data-i18n="game.treasure">Treasure hunt</b><span data-i18n="game.treasureSub">15 coins in and around the house; most coins wins</span></button>
@@ -737,20 +739,20 @@
                     <p id="zombies-wave-note" class="note" data-i18n="z.waveNote">Replaces the zombies immediately and brings downed teammates back. Gear stays. Custom runs do not set best-wave records.</p>
                   </form>
                   <!-- Stopping is asked again here, in the page (src/main.ts). -->
-                  <div id="stop-confirm" class="setting hidden">
+                  <div id="stop-confirm" class="setting hidden adm-together">
                     <p class="note" data-i18n="game.stopAsk">Stop the game for everyone?</p>
                     <div class="mp-row">
                       <button id="stop-yes" class="mini go" type="button" data-i18n="game.stopYes">Stop</button>
                       <button id="stop-no" class="mini" type="button" data-i18n="game.stopNo">Keep playing</button>
                     </div>
                   </div>
-                  <h2 data-i18n="adm.startOver">Start over</h2>
-                  <div class="tools">
+                  <h2 class="adm-together" data-i18n="adm.startOver">Start over</h2>
+                  <div class="tools adm-together">
                     <button id="newround-btn" class="tool" type="button"><b data-i18n="adm.newRound">New round</b><span data-i18n="adm.newRoundSub">Fighting scores back to zero</span></button>
                     <button id="clearfurn-btn" class="tool" type="button"><b data-i18n="adm.clearFurn">Remove all furniture</b><span data-i18n="adm.clearFurnSub">For everyone</span></button>
                   </div>
                 </div>
-                <div class="col">
+                <div class="col adm-together">
                   <h2 data-i18n="adm.people">People</h2>
                   <div id="admin"></div>
                 </div>

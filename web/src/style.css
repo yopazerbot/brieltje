@@ -1121,6 +1121,8 @@ button.tool:disabled { opacity: 0.45; cursor: not-allowed; }
 .col h2 + .label { margin-top: 4px; }
 .settings .setting, #set-admin .setting { margin: 0; padding: 10px 0 8px; border-bottom: 1px solid var(--line); }
 #set-admin .setting .mp-row { margin-top: 4px; }
+/* An admin session playing alone: only the parts that work in this page (src/main.ts showAdminParts). */
+#set-admin.alone .adm-together, #set-admin:not(.alone) .adm-alone { display: none !important; }
 /* Settings (index.html #page-settings, src/ui/settingsPage.ts): groups with room between them, each a
    heading and its rows. */
 .set-group + .set-group { margin-top: 34px; }
