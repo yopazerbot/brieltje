@@ -6,6 +6,8 @@ html, body { margin: 0; background: #0d1430; color: var(--ink); font: 500 17px/1
 main { max-width: 820px; margin: 0 auto; padding: 32px 20px 64px; }
 /* Under the band of pictures at the top (public/slides/): the page starts a little higher up into it. */
 .slides.hero + main { margin-top: -56px; position: relative; }
+/* On a phone the pictures' buttons sit at their bottom edge: the logo starts below them. */
+@media (max-width: 560px) { .slides.hero + main { margin-top: -12px; } }
 header { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 12px; border-bottom: 3px solid var(--accent); padding-bottom: 12px; }
 header .brand { color: var(--ink); text-decoration: none; }
 nav a, .langs button { color: var(--muted); text-decoration: none; margin-left: 14px; font: inherit; background: none; border: 0; cursor: pointer; padding: 0; }
