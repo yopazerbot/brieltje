@@ -18,6 +18,14 @@ import { applyStatic, onLang, setLang, t, type Lang } from './i18n';
 import { typing } from './keys';
 import { api, errorText, type KeptRun, type Me } from './net/client';
 import { sound } from './sound';
+
+// Xbox's Edge browser turns the controller into a mouse pointer unless the page says it reads the controller itself
+// (Microsoft's gamepadInputEmulation); other browsers don't have the property and ignore it.
+try {
+  (navigator as Navigator & { gamepadInputEmulation?: string }).gamepadInputEmulation = 'gamepad';
+} catch {
+  // read-only or absent: nothing to do
+}
 import { Menu } from './ui/menu';
 import { AccountCard } from './ui/account';
 import { KeepRun } from './ui/keepRun';
