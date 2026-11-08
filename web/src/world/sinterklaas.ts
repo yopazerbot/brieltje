@@ -160,8 +160,11 @@ export class Sinterklaas {
       this.mount.add(horse);
       this.group.add(this.mount);
       this.buildTreats();
-      this.loaded = 'yes';
-      void this.precompile(this.group);
+      // Shown once his shaders are built (in the background): drawn at once, they stopped the game for about 150 ms
+      // a second into play on his days.
+      void Promise.resolve(this.precompile(this.group))
+        .catch(() => undefined)
+        .then(() => (this.loaded = 'yes'));
     }, () => {
       this.loaded = 'no';
     });
