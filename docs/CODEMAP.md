@@ -319,6 +319,7 @@ file's opening comment; run it again after adding, moving or removing a module.
 - `tools/town/town.py`: Build the houses round Smetlede's church square and along the street to the school, in Blender.
 - `tools/town_board.py`: Build the village notice board on the church square, the one that shows the best Zombies runs, in Blender.
 - `tools/traffic_cars.py`: The village's everyday cars in Blender: a compact hatchback, an estate and a panel van, simple and low on triangles, for the traffic on the roads and the...
+- `tools/tree_huts.py`: Build the tree huts in the wood round the café Sparrenhof in Blender: shooting bases for the Zombies game.
 - `tools/villager_paths.py`: Where the villagers walk and cycle in Explore: web/src/data/villagers.json.
 - `tools/villagers.py`: Build the villagers for Explore in Blender: generic, invented people and a dog, rigged and animated.
 - `tools/weapons.py`: Build the weapons for Action and Paintball in Blender: pistol, rifle, shotgun, sniper rifle and bazooka, with the gloved hands and sleeves that hold them in...
