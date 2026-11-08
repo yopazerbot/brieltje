@@ -101,8 +101,10 @@ export class SintMaarten {
   private hay: THREE.InstancedMesh | null = null;
   private hayAt = -1e9;
   private lit = 0;
+  /** The lanterns and the hay once their shaders are built (in the background: first drawn, they stopped the game a moment) */
+  private ready = new Set<THREE.Object3D>();
 
-  constructor(private world: World, groundAt: (x: number, z: number) => number, precompile: (root: THREE.Object3D) => unknown = () => {}) {
+  constructor(private world: World, groundAt: (x: number, z: number) => number, private precompile: (root: THREE.Object3D) => unknown = () => {}) {
     this.group.name = 'sint-maarten';
     this.rider = new Sinterklaas(world, groundAt, precompile, SINT_MAARTEN);
     this.group.add(this.rider.group);
@@ -145,6 +147,7 @@ export class SintMaarten {
     this.lanterns.frustumCulled = false;
     this.lanterns.userData.ignoreRay = true;
     this.lanterns.raycast = () => {};
+    this.prepare(this.lanterns);
     this.group.add(this.lanterns);
   }
 
@@ -181,7 +184,15 @@ export class SintMaarten {
     this.hay.count = 0;
     this.hay.userData.ignoreRay = true;
     this.hay.raycast = () => {};
+    this.prepare(this.hay);
     this.group.add(this.hay);
+  }
+
+  /** Its shaders built ahead (main.ts precompile), then shown. */
+  private prepare(o: THREE.Object3D): void {
+    Promise.resolve(this.precompile(o))
+      .catch(() => undefined)
+      .then(() => this.ready.add(o));
   }
 
   /** The carrots by the doors: a few doors picked by where they are, beside the step, on the ground there. */
@@ -213,7 +224,7 @@ export class SintMaarten {
     // The carrots and hay, all day on his evenings; placed again now and then (the village's blocks come in late).
     if (this.eve && !this.hay) this.buildHay();
     if (this.hay) {
-      this.hay.visible = this.eve;
+      this.hay.visible = this.eve && this.ready.has(this.hay);
       if (this.eve && this.clock - this.hayAt > 8) {
         this.hayAt = this.clock;
         this.placeHay();
@@ -228,7 +239,7 @@ export class SintMaarten {
     }
     if (!this.lanterns) this.buildLanterns();
     const lanterns = this.lanterns!;
-    lanterns.visible = true;
+    lanterns.visible = this.ready.has(lanterns);
     this.lanternMat!.color.setScalar(0.3 + 1.2 * this.lit); // glows more as it darkens; far under 65504
     let n = 0;
     hands.eachHand((id, x, y, z, yaw, tall, fade, speed) => {
