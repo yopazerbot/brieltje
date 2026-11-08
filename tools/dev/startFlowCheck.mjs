@@ -115,8 +115,10 @@ async function walkSteps(b, c) {
       await setValue(b, 'z-open-place', c.place);
       await click(b, '#z-open [data-room=new]');
     } else {
-      await b.waitFor("!!document.querySelector('#z-room-list button[data-room]:not([disabled])')", 15000);
-      await click(b, '#z-room-list button[data-room]:not([disabled])');
+      // The room named (other rooms may be open too), or the first one open.
+      const sel = c.roomId ? `#z-room-list button[data-room="${c.roomId}"]:not([disabled])` : '#z-room-list button[data-room]:not([disabled])';
+      await b.waitFor(`!!document.querySelector(${JSON.stringify(sel)})`, 15000);
+      await click(b, sel);
     }
   } else {
     await click(b, `#mode-start [data-play=${c.mode}]`);
@@ -124,9 +126,42 @@ async function walkSteps(b, c) {
   }
 }
 
+/** A session cookie in this browser before the start screen asks /api/me: a guest who joined, or a login. */
+async function sessionFirst(b, c) {
+  const acct = c.first ?? c.account;
+  const req = c.who === 'returning'
+    ? ['/api/join', { name: `Back${tag}${port}`, age: true }]
+    : ['/api/account/login', { username: acct.username, password: acct.password }];
+  const status = await b.evaluate(`fetch(${JSON.stringify(req[0])}, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: ${JSON.stringify(JSON.stringify(req[1]))} }).then((r) => r.status)`);
+  if (status !== 200) throw new Error(`${req[0]}: ${status}`);
+  await open(b, o.url, c.input === 'touch');
+}
+
+/** Logging in on the start screen with the phone, by controller: L1 to the login card, ✕ on the phone button, the phone says yes. */
+async function phoneLogin(b, acct) {
+  await padPress(b, 4); // L1: the login card, the focus on "Log in with your phone"
+  const f = await active(b);
+  if (f !== 'login-phone') throw new Error(`L1's focus is on ${f}, not the phone login`);
+  await padPress(b, 0);
+  await b.waitFor("(document.getElementById('login-pair-code').textContent || '').replace(/[^A-Z0-9]/g, '').length >= 8", 15000);
+  const shown = await b.evaluate("({ code: document.getElementById('login-pair-code').textContent, check: document.getElementById('login-pair-check').textContent })", false);
+  // The phone: logged in to the account, it types the 2-digit number and says yes.
+  const login = await call('POST', '/api/account/login', { username: acct.username, password: acct.password });
+  const cookie = login.r.headers.getSetCookie().map((x) => x.split(';')[0]).join('; ');
+  const yes = await call('POST', '/api/pair/approve', { code: shown.code, check: shown.check.replace(/\D/g, '') }, cookie);
+  if (!yes.r.ok) throw new Error(`approve: ${yes.r.status} ${JSON.stringify(yes.data)}`);
+  await waitStep(b, 2, 20000);
+}
+
 /** The same with only the controller: ✕ on each step's likely choice (the ready guest name, Zombies, Controller). */
-async function walkStepsPad(b) {
+async function walkStepsPad(b, c) {
   await padPress(b, 1); // the press that brings the controller in only shows where the focus is
+  if (c.who === 'phone') {
+    await phoneLogin(b, c.account);
+    await padPress(b, 0); // step 2: Alone
+    await waitStep(b, 3);
+    return;
+  }
   for (let i = 0; i < 2; i++) {
     const before = await step(b);
     await padPress(b, 0);
@@ -155,7 +190,10 @@ async function watch(b, c, seconds = 9) {
       const bar = document.getElementById('modebar');
       return { x: p.x, z: p.z, air: p.feet - g, chute: p.chute, solo: s ? s.arena.id : null, armed: briel.weapon.enabled, w: briel.weapon.current,
         kind: briel.games.view.kind, bar: !!bar && !bar.classList.contains('hidden') && bar.offsetParent !== null, barText: bar ? bar.textContent.trim().slice(0, 60) : '',
-        net: briel.net().rtt !== undefined && briel.net().rtt !== null, lang: document.documentElement.lang, play: localStorage.getItem('briel.playMode') };
+        net: briel.net().rtt !== undefined && briel.net().rtt !== null, lang: document.documentElement.lang, play: localStorage.getItem('briel.playMode'),
+        paint: document.body.classList.contains('paintball'),
+        adminTab: !document.getElementById('tab-admin').classList.contains('hidden'),
+        acct: [...document.querySelectorAll('.acct-manage')].some((e) => !e.classList.contains('hidden')) };
     })()`, false));
     await sleep(250);
   }
@@ -189,8 +227,8 @@ function judge(c, s) {
     if (last.kind === 'zombies') bad.push('the Zombies bar outside Zombies');
     if (c.mode === 'explore' && last.armed) bad.push('a weapon in Explore');
     if (c.mode !== 'explore' && !last.armed) bad.push(`no weapon in ${c.mode}`);
-    if (c.mode === 'paintball' && !/^paint|paint/.test(String(last.w))) bad.push(`not the paint gun (${last.w})`);
-    if (c.mode === 'action' && /paint/.test(String(last.w))) bad.push(`a paint gun in Action (${last.w})`);
+    if (c.mode === 'paintball' && !last.paint) bad.push('not with paint');
+    if (c.mode === 'action' && last.paint) bad.push('paint in Action');
     if (c.place) {
       // Free play drops by parachute (the admin's rule): onto the place, or already there.
       const at = c.place === 'house' ? { x: 1, z: 30 } : portalOut(c.place);
@@ -200,6 +238,10 @@ function judge(c, s) {
     }
   }
   if (c.lang && last.lang !== c.lang) bad.push(`page in ${last.lang}, not ${c.lang}`);
+  // A guest never gets an account's or the admin's options; an account its own, the admin the admin's tab.
+  const role = c.who === 'admin' ? 'admin' : ['login', 'cookie', 'phone'].includes(c.who) ? 'player' : 'guest';
+  if (last.adminTab !== (role === 'admin')) bad.push(`the admin tab ${last.adminTab ? 'shows' : 'is missing'} for a ${role}`);
+  if (last.acct !== (role === 'player')) bad.push(`"Your account" ${last.acct ? 'shows' : 'is missing'} for a ${role}`);
   return bad;
 }
 
@@ -213,10 +255,10 @@ async function run(c) {
     if (c.input === 'pad') await b.send('Page.addScriptToEvaluateOnNewDocument', { source: FAKE_PAD });
     if (c.cookie) await b.send('Network.setCookie', { ...c.cookie });
     await open(b, o.url, c.input === 'touch');
-    if (c.before) await c.before(b);
-    if (c.input === 'pad') await walkStepsPad(b);
+    if (c.who === 'returning' || c.who === 'cookie' || c.first) await sessionFirst(b, c);
+    if (c.before) await c.before(b, c);
+    if (c.input === 'pad') await walkStepsPad(b, c);
     else await walkSteps(b, c);
-    if (c.input === 'pad' && c.padSteps) await c.padSteps(b);
     await start(b, c);
     const s = await watch(b, c);
     if (o.shots) await b.screenshot(join(o.shots, `${c.name}.png`));
@@ -301,6 +343,61 @@ async function soloAfterwards(b) {
   return bad;
 }
 
+/** The welcome card's "Other account" (`#welcome-switch`) or "Log out" (`#mp-logout`): the session ends, the who cards are back. */
+const leaveWelcome = (button) => async (b) => {
+  await b.waitFor("!document.getElementById('welcome-card').classList.contains('hidden')", 10000);
+  await click(b, button);
+  await b.waitFor("document.getElementById('welcome-card').classList.contains('hidden') && !document.getElementById('who-cards').classList.contains('hidden')", 10000);
+  await sleep(1000); // the logout reaches the server
+  const me = await b.evaluate("fetch('/api/me').then((r) => r.status)");
+  if (me === 200) throw new Error(`${button}: still logged in on the server`);
+};
+
+/**
+ * Together in one room: an account opens it at `place` from the start screen, a guest joins it from theirs, the
+ * account starts the game (the Together tab's Start), and a second guest joins while it runs. Nobody drops in.
+ */
+async function roomTogether(place) {
+  const owner = await account('sfo');
+  const players = [
+    { name: `room-owner-${place}`, who: 'login', account: owner, mp: 'multi', mode: 'zombies', room: 'open', place, input: 'kbm' },
+    { name: `room-guest-${place}`, who: 'guest', nick: `Gast${tag}${place.slice(0, 3)}a`, mp: 'multi', mode: 'zombies', place, input: 'kbm' },
+    { name: `room-late-${place}`, who: 'guest', nick: `Gast${tag}${place.slice(0, 3)}b`, mp: 'multi', mode: 'zombies', place, input: 'touch' },
+  ];
+  const browsers = [];
+  const out = [];
+  try {
+    for (const [i, c] of players.entries()) {
+      const b = await launch({ port: port++, width: 1280, height: 720 });
+      browsers.push(b);
+      await open(b, o.url, c.input === 'touch');
+      // The guests join the owner's room: its id from the owner's list (marked as theirs).
+      if (i > 0) c.roomId = await browsers[0].evaluate("fetch('/api/rooms').then((r) => r.json()).then((d) => d.rooms.find((r) => r.mine)?.id)");
+      await walkSteps(b, c);
+      await start(b, c);
+      if (i === 1) {
+        // Both in: the owner starts the game from the Together tab, as its hint says.
+        await browsers[0].evaluate("document.getElementById('room-start').click()", false);
+        await browsers[0].waitFor("briel.games.view.kind === 'zombies'", 15000);
+      }
+      const s = await watch(b, c, 8);
+      if (o.shots) await b.screenshot(join(o.shots, `${c.name}.png`));
+      const bad = [...judge(c, s), ...errorsOf(b).map((e) => `console: ${e.slice(0, 160)}`)];
+      if (i > 0 && s.at(-1).kind !== 'zombies') bad.push(`the game bar shows ${s.at(-1).kind}, not the room's Zombies`);
+      if (!s.at(-1).net) bad.push('not connected');
+      out.push({ name: c.name, first: bad.length ? bad.join('; ') : 'ok', again: '-', notes: [] });
+    }
+  } catch (e) {
+    const b = browsers.at(-1);
+    const said = b ? await b.evaluate("document.getElementById('mp-msg').textContent", false).catch(() => '') : '';
+    out.push({ name: `room-${place}`, first: `failed: ${String(e.message ?? e).slice(0, 200)}${said ? ` (the page says: ${said})` : ''}`, again: '-', notes: [] });
+    if (b && o.shots) await b.screenshot(join(o.shots, `room-${place}-failed.png`)).catch(() => {});
+  } finally {
+    for (const b of browsers) b.close();
+  }
+  return out;
+}
+
 // ---- The cases.
 const PLACES = ['house', 'bungalow', 'church', 'molenhoek', 'molenhoek_mid', 'molenhoek_end', 'sparrenhof'];
 const cases = [
@@ -315,9 +412,16 @@ const cases = [
   { name: 'pad-zombies-house', who: 'guest', mp: 'solo', mode: 'zombies', place: 'house', input: 'pad' },
   { name: 'login-zombies-solo', who: 'login', mp: 'solo', mode: 'zombies', place: 'molenhoek', input: 'kbm', needs: 'account' },
   { name: 'admin-zombies-solo', who: 'admin', mp: 'solo', mode: 'zombies', place: 'bungalow', input: 'kbm', needs: 'admin' },
+  { name: 'returning-guest-zombies', who: 'returning', mp: 'solo', mode: 'zombies', place: 'sparrenhof', input: 'kbm', again: false },
+  { name: 'cookie-account-explore', who: 'cookie', mp: 'solo', mode: 'explore', place: 'molenhoek', input: 'kbm', needs: 'account' },
+  { name: 'other-account', who: 'login', first: true, mp: 'solo', mode: 'action', place: 'church', input: 'kbm', needs: 'account', again: false, before: leaveWelcome('#welcome-switch') },
+  { name: 'logout-then-guest', who: 'guest', first: true, mp: 'solo', mode: 'zombies', place: 'house', input: 'kbm', needs: 'account', again: false, before: leaveWelcome('#mp-logout') },
+  { name: 'pad-phone-login', who: 'phone', mp: 'solo', mode: 'zombies', place: 'house', input: 'pad', needs: 'account' },
   { name: 'login-room-open', who: 'login', mp: 'multi', mode: 'zombies', room: 'open', place: 'church', input: 'kbm', needs: 'account' },
   { name: 'login-room-house', who: 'login', mp: 'multi', mode: 'zombies', room: 'open', place: 'house', input: 'kbm', needs: 'account' },
   { name: 'login-together-action', who: 'login', mp: 'multi', mode: 'action', place: 'church', input: 'kbm', needs: 'account' },
+  { name: 'room-molenhoek_mid', room2: true, place: 'molenhoek_mid' },
+  { name: 'room-house', room2: true, place: 'house' },
 ];
 if (o.list) {
   for (const c of cases) console.log(c.name);
@@ -333,9 +437,13 @@ try {
       continue;
     }
     if (c.needs === 'account') c.account = await account('sfc');
-    const r = await run(c);
-    results.push(r);
-    console.log(`${r.first === 'ok' && (r.again === 'ok' || r.again === '') ? 'ok  ' : 'FAIL'} ${r.name}: ${r.first}${r.again ? ` | again: ${r.again}` : ''}${r.notes.length ? ` (${r.notes.join('; ')})` : ''}`);
+    if (c.first === true) c.first = await account('sfc');
+    const rs = c.room2 ? await roomTogether(c.place) : [await run(c)];
+    for (const r of rs) {
+      results.push(r);
+      const pass = r.first === 'ok' && ['ok', '', '-'].includes(r.again);
+      console.log(`${pass ? 'ok  ' : 'FAIL'} ${r.name}: ${r.first}${r.again ? ` | again: ${r.again}` : ''}${r.notes.length ? ` (${r.notes.join('; ')})` : ''}`);
+    }
   }
 } finally {
   // The accounts made here go again.
@@ -345,7 +453,7 @@ try {
     await call('POST', '/api/account/delete', { password: a.password }, cookie);
   }
 }
-const failed = results.filter((r) => r.first !== 'ok' || (r.again && r.again !== 'ok' && r.again !== '-' ));
+const failed = results.filter((r) => r.first !== 'ok' || !['ok', '', '-'].includes(r.again));
 console.log(`\n| Case | First start | Play again as before |\n|---|---|---|`);
 for (const r of results) console.log(`| ${r.name} | ${r.first} | ${r.again || 'not tried'} |`);
 process.exit(failed.length ? 1 : 0);
