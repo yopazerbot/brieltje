@@ -65,9 +65,9 @@ export class AccountCard {
     },
     {
       live: () => this.view === 'phone',
-      done: (username) => {
+      done: (username, role) => {
         const finish = this.hooks.begin(false);
-        if (finish({ username, role: 'player' })) this.close();
+        if (finish({ username, role })) this.close();
       },
     },
   );

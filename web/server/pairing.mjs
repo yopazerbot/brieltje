@@ -22,7 +22,7 @@
 // - CSRF: every call is a same-origin JSON POST (server.mjs body), the cookies SameSite=Strict.
 
 import { createHash, randomBytes } from 'node:crypto';
-import { Attempts, bucketOf, clientIp } from './auth.mjs';
+import { Attempts, bucketOf, clientIp, SESSION_MS } from './auth.mjs';
 import { svgPath } from './qr.mjs';
 
 const TTL_MS = 5 * 60_000;
@@ -94,7 +94,9 @@ export class Pairing {
 
   /** The phone, logged in to an account, says yes: the console may collect a session for it. */
   approve(req, session, code, check) {
-    if (session?.role !== 'player') return { error: 'Log in with your account first.', code: 'pairAccount', status: 403 };
+    // An account, or the game's admin (Yoshi, 8 Nov 2026: the phone login didn't work with the admin's name). The admin's
+    // console gets a game session of SESSION_MS only, never the /admin panel's (that one needs its own login there).
+    if (session?.role !== 'player' && session?.role !== 'admin') return { error: 'Log in with your account first.', code: 'pairAccount', status: 403 };
     const r = this.find(req, session, code);
     if (r.error) return r;
     // The number only the console shows: a wrong one ends this pairing (a link alone never logs a screen in).
@@ -105,6 +107,7 @@ export class Pairing {
       return { error: "That number isn't the one on the other screen. Make a new code there.", code: 'pairCheck', status: 403 };
     }
     r.p.name = session.username;
+    r.p.role = session.role;
     r.p.epoch = this.auth.epoch.get(session.username) || 0;
     this.auth.log('pair_approved', req, { username: session.username });
     return { ok: true, username: session.username };
@@ -118,10 +121,22 @@ export class Pairing {
     if (!p.name) return { state: 'waiting' };
     this.byKey.delete(k); // once
     this.byCode.delete(p.code);
+    if (p.role === 'admin') {
+      // The admin: a game session as the game's own admin login gives (12 hours), checked against a revocation since.
+      if ((this.auth.epoch.get(p.name) || 0) !== p.epoch) return { state: 'gone' };
+      const { token, key } = await this.auth.startSession(p.name, 'admin', SESSION_MS, { ip: bucketOf(clientIp(req)) });
+      if ((this.auth.epoch.get(p.name) || 0) !== p.epoch) {
+        this.auth.sessions.delete(key);
+        await this.auth.store.deleteSession(key);
+        return { state: 'gone' };
+      }
+      this.auth.log('pair_login', req, { username: p.name, detail: 'admin' });
+      return { state: 'done', token, username: p.name, role: 'admin' };
+    }
     const session = await this.accounts.session(req, p.name, p.epoch);
     if (!session) return { state: 'gone' };
     this.auth.log('pair_login', req, { username: p.name });
     this.accounts.seen(p.name);
-    return { state: 'done', token: session, username: p.name };
+    return { state: 'done', token: session, username: p.name, role: 'player' };
   }
 }

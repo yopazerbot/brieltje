@@ -52,7 +52,7 @@ export class PadStart {
       },
       {
         live: () => this.pairOpen(),
-        done: (username) => void this.hooks.begin()({ username, role: 'player' }),
+        done: (username, role) => void this.hooks.begin()({ username, role }),
       },
     );
     $('nick-roll').addEventListener('click', () => this.rollName());

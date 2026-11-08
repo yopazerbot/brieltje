@@ -100,3 +100,22 @@ test('codes expire, and wrong codes are limited per address and per session', as
   for (let i = 0; i < 20; i++) pairing.start(req('198.51.100.9'), 'https://brieltje.be');
   assert.equal(pairing.start(req('198.51.100.9'), 'https://brieltje.be').code, 'tooMany');
 });
+
+test("the game's admin can log a console in too: a game session of 12 hours, never the /admin panel's", async () => {
+  const { auth, pairing } = await ready();
+  const s = pairing.start(req(), 'https://brieltje.be');
+  const admin = { username: 'admin', role: 'admin', key: 'k-admin' };
+  assert.equal(pairing.approve(req(), admin, s.code, s.check).ok, true);
+  const done = await pairing.poll(req(), s.token);
+  assert.equal(done.state, 'done');
+  assert.equal(done.role, 'admin');
+  const made = auth.session({ headers: { cookie: `${auth.names.session}=${done.token}` }, socket: { remoteAddress: '192.0.2.41' } });
+  assert.equal(made.role, 'admin');
+  assert.ok(!made.panel, 'not a panel session');
+  assert.ok(made.expires - Date.now() <= 12 * 3600_000 + 1000, 'at most 12 hours');
+  // Revoked between the yes and the poll: nothing.
+  const t = pairing.start(req(), 'https://brieltje.be');
+  pairing.approve(req(), admin, t.code, t.check);
+  auth.revoke('admin');
+  assert.equal((await pairing.poll(req(), t.token)).state, 'gone');
+});

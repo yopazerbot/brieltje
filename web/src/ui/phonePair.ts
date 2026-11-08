@@ -25,8 +25,8 @@ export interface PairElements {
 }
 
 export interface PairHooks {
-  /** The phone said yes: this screen's session cookie is set, as `username`. */
-  done: (username: string) => void;
+  /** The phone said yes: this screen's session cookie is set, as `username` (an account, or the game's admin). */
+  done: (username: string, role: 'player' | 'admin') => void;
   /** Still wanted once the server answers the start (the card or the step still showing). */
   live: () => boolean;
 }
@@ -83,7 +83,7 @@ export class PhonePair {
       // Done: the cookie is set, so this screen is logged in, even when the card closed meanwhile.
       if (r.state === 'done' && r.username) {
         if (this.pair === pair) this.stop();
-        this.hooks.done(r.username);
+        this.hooks.done(r.username, r.role === 'admin' ? 'admin' : 'player');
         return;
       }
       if (this.pair !== pair) return;

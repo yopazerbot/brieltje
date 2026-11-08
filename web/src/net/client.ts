@@ -228,7 +228,7 @@ export const api = {
   pairStart: () => call<{ token: string; code: string; check: string; url: string; qr: { size: number; d: string }; ms: number }>('POST', '/api/pair/start', {}),
   /** Every session of this account ends, this one too (Your account: "Log out on every device"). */
   logoutAll: () => call<{ ok: boolean }>('POST', '/api/account/logout-all', {}),
-  pairPoll: (token: string) => call<{ state: 'waiting' | 'gone' | 'done'; username?: string; role?: 'player' }>('POST', '/api/pair/poll', { token }),
+  pairPoll: (token: string) => call<{ state: 'waiting' | 'gone' | 'done'; username?: string; role?: 'player' | 'admin' }>('POST', '/api/pair/poll', { token }),
   /** Zombies rooms (server/rooms.mjs): the list, and opening one (an account or the admin). */
   rooms: () => call<{ rooms: RoomEntry[]; max: number }>('GET', '/api/rooms'),
   openRoom: (place: string) => call<{ room: RoomEntry }>('POST', '/api/rooms', { place }),

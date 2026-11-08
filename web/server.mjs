@@ -22,7 +22,7 @@ import { extname, join, resolve, sep } from 'node:path';
 import { openStore } from './server/store.mjs';
 // First among the game's modules: the private data (server/privateData.mjs) is open before they load.
 import { privateData } from './server/privateData.mjs';
-import { Auth, beTime, bucketOf, CLOUDFLARE_ONLY, clientIp, formBucketOf, NAME_RE, RESERVED, seatOf, viaCloudflare } from './server/auth.mjs';
+import { Auth, beTime, bucketOf, CLOUDFLARE_ONLY, clientIp, formBucketOf, NAME_RE, RESERVED, seatOf, SESSION_MS, viaCloudflare } from './server/auth.mjs';
 import { ACCOUNT_MS, Accounts } from './server/accounts.mjs';
 import { Rooms } from './server/rooms.mjs';
 import { Pairing } from './server/pairing.mjs';
@@ -293,7 +293,7 @@ async function api(req, res, url) {
     const b = await body(req);
     const r = await pairing.poll(req, b.token);
     if (r.state !== 'done') return json(res, 200, { state: r.state });
-    return json(res, 200, { state: 'done', username: r.username, role: 'player' }, { 'Set-Cookie': auth.cookie(r.token, ACCOUNT_MS / 1000, seat) });
+    return json(res, 200, { state: 'done', username: r.username, role: r.role }, { 'Set-Cookie': auth.cookie(r.token, (r.role === 'admin' ? SESSION_MS : ACCOUNT_MS) / 1000, seat) });
   }
   // The board of best Zombies runs (accounts only): public, like the names in the game. `place`: one of
   // the places, or none for each account's best anywhere.

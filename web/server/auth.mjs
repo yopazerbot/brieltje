@@ -46,7 +46,7 @@ const TRUST_CLOUDFLARE = process.env.TRUST_CLOUDFLARE === '1';
 const TRUST_PROXY = !!process.env.RAILWAY_ENVIRONMENT || process.env.TRUST_PROXY === '1';
 /** Only answer requests that came through Cloudflare (see viaCloudflare). */
 export const CLOUDFLARE_ONLY = TRUST_CLOUDFLARE && TRUST_PROXY;
-const SESSION_MS = 12 * 3600_000;
+export const SESSION_MS = 12 * 3600_000;
 /**
  * The /admin panel's session (Yoshi, 8 Nov 2026: no session timeout for /admin): as long as a browser keeps a
  * cookie (Chrome caps Max-Age at 400 days). It still ends on Log out, with a new admin password (ADMIN_PASSWORD
