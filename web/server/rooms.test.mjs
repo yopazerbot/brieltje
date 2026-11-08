@@ -129,7 +129,7 @@ test("the admin's rules reach every room (its own limit kept), and the admin clo
   }
 });
 
-test('a Zombies run counts for accounts only; fighting totals too', () => {
+test('a Zombies run counts for accounts and the admin, never a guest; fighting totals too', () => {
   const { auth, main, stop } = hub();
   try {
     let added = 0;
@@ -138,11 +138,11 @@ test('a Zombies run counts for accounts only; fighting totals too', () => {
     main.roles.set('gast', 'guest');
     main.roles.set('admin', 'admin');
     main.zombieRun('church', ['anna', 'gast', 'admin'], 7, { anna: 12, gast: 30 });
-    assert.deepEqual(auth.runs, [['anna', 'church', 7, 12, 3]]);
+    assert.deepEqual(auth.runs, [['anna', 'church', 7, 12, 3], ['admin', 'church', 7, 0, 3]]); // the admin's too (Yoshi, 8 Nov 2026)
     main.stats('anna', { kills: 1 });
     main.stats('gast', { kills: 1 });
     main.stats('admin', { kills: 1 });
-    assert.equal(added, 1);
+    assert.equal(added, 2, 'not the guest');
   } finally {
     stop();
   }

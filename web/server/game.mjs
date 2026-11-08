@@ -316,6 +316,9 @@ const ROOM_REFUSED = new Set(['furn', 'tesla', 'clown', 'rules', 'mood', 'moodsk
 /** The ids a `door` message may carry: the house data's and the end house's door ids (letters, digits, dots and dashes), at most 40 characters. */
 export const DOOR_ID = /^[A-Za-z0-9.-]{1,40}$/;
 
+/** Who is on the boards: players with an account and the admin (Yoshi, 8 Nov 2026: "show yoshi (admin) scores"), never a guest. */
+const onBoard = (role) => role === 'player' || role === 'admin';
+
 export class Game {
   /** The three code-locked homes' gate (server/homeGate.mjs), made on first use. */
   get gate() {
@@ -2292,9 +2295,9 @@ export class Game {
     return typeof r === 'number' ? Math.round(r) : null;
   }
 
-  /** Add to someone's totals for the leaderboard (kept in the database): accounts only (Yoshi, 7 Nov 2026). */
+  /** Add to someone's totals for the leaderboard (kept in the database): accounts and the admin (Yoshi, 7 and 8 Nov 2026). */
   stats(name, add) {
-    if (this.roles.get(name) !== 'player') return;
+    if (!onBoard(this.roles.get(name))) return;
     this.auth.store.addStats(name, add).catch((e) => console.error('stats failed', String(e)));
   }
 
@@ -2304,7 +2307,7 @@ export class Game {
    */
   zombieRun(place, names, wave, beaten) {
     for (const name of names) {
-      if (this.roles.get(name) !== 'player') continue;
+      if (!onBoard(this.roles.get(name))) continue;
       this.auth.store.saveZombieRun(name, place, wave, beaten[name] ?? 0, names.length)
         .then((better) => better && this.hub?.scored())
         .catch((e) => console.error('zombie run failed', String(e)));

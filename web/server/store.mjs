@@ -77,12 +77,13 @@ class FileStore {
   /** Fighting totals for accounts only (Yoshi, 7 Nov 2026): the totals of names without an account go. */
   async statsForAccountsOnly() {
     const names = new Set(this.data.accounts.map((r) => `u:${r.username}`));
+    if (this.boardName) names.add(`u:${this.boardName}`); // the admin's own totals stay (Yoshi, 8 Nov 2026)
     for (const k of Object.keys(this.data.stats)) if (!names.has(k)) delete this.data.stats[k];
     await this.save();
   }
   /** A Zombies run of an account at a place: kept if it beats their best there (the wave, then zombies beaten). */
   async saveZombieRun(username, place, wave, kills, team) {
-    if (!this.data.accounts.some((r) => r.username === username)) return false;
+    if (username !== this.boardName && !this.data.accounts.some((r) => r.username === username)) return false;
     const old = this.data.zombieBest.find((r) => r.username === username && r.place === place);
     if (old && (old.wave > wave || (old.wave === wave && old.kills >= kills))) return false;
     const row = { username, place, wave, kills, team, at: new Date().toISOString() };
@@ -188,6 +189,7 @@ class FileStore {
   }
   async leaderboard() {
     const names = new Set(this.data.accounts.map((r) => r.username));
+    if (this.boardName) names.add(this.boardName);
     return Object.entries(this.data.stats).filter(([k]) => k.startsWith('u:') && names.has(k.slice(2))).map(([k, s]) => ({ username: k.slice(2), ...s }));
   }
   async log(entry) {
@@ -408,7 +410,7 @@ class PgStore {
         disabled boolean not null default false
       );
       create table if not exists zombie_best (
-        username text not null references accounts (username) on delete cascade,
+        username text not null,
         place text not null,
         wave integer not null,
         kills integer not null,
@@ -416,6 +418,9 @@ class PgStore {
         at timestamptz not null default now(),
         primary key (username, place)
       );
+      -- The admin's runs count too (Yoshi, 8 Nov 2026), and the admin has no account: no tie to accounts; an
+      -- account's runs are deleted with it (deleteAccount, pruneAccounts).
+      alter table zombie_best drop constraint if exists zombie_best_username_fkey;
       create table if not exists daily (
         day text not null,
         key text not null,
@@ -515,7 +520,9 @@ class PgStore {
   async leaderboard() {
     // Accounts only (Yoshi, 7 Nov 2026): a row left by a hit in the instant an account went, or by the old
     // server during a deploy, never shows.
-    const r = await this.pool.query('select s.username, s.kills, s.deaths, s.headshots, s.wins from stats s join accounts a on a.username = s.username');
+    const r = await this.pool.query(
+      'select username, kills, deaths, headshots, wins from stats where username in (select username from accounts) or username = $1',
+      [this.boardName ?? '']);
     return r.rows;
   }
   // ---- Accounts (server/accounts.mjs)
@@ -541,7 +548,8 @@ class PgStore {
   }
   async deleteAccount(username) {
     await this.pool.query('delete from stats where username = $1', [username]);
-    const r = await this.pool.query('delete from accounts where username = $1', [username]); // its best runs go with it (on delete cascade)
+    await this.pool.query('delete from zombie_best where username = $1', [username]); // its best runs go with it
+    const r = await this.pool.query('delete from accounts where username = $1', [username]);
     return r.rowCount === 1;
   }
   async listAccounts() {
@@ -551,20 +559,23 @@ class PgStore {
   async pruneAccounts(days) {
     const r = await this.pool.query('delete from accounts where seen < now() - make_interval(days => $1::int) returning username', [days]);
     const gone = r.rows.map((x) => x.username);
-    if (gone.length) await this.pool.query('delete from stats where username = any($1)', [gone]);
+    if (gone.length) {
+      await this.pool.query('delete from stats where username = any($1)', [gone]);
+      await this.pool.query('delete from zombie_best where username = any($1)', [gone]);
+    }
     return gone;
   }
   async statsForAccountsOnly() {
-    await this.pool.query('delete from stats where username not in (select username from accounts)');
+    await this.pool.query('delete from stats where username not in (select username from accounts) and username <> $1', [this.boardName ?? '']);
   }
   async saveZombieRun(username, place, wave, kills, team) {
     // Only a better run replaces the best one there; an account that is gone keeps nothing (the join finds no row).
     const r = await this.pool.query(
       `insert into zombie_best (username, place, wave, kills, team)
-       select username, $2, $3, $4, $5 from accounts where username = $1
+       select $1, $2, $3, $4, $5 where exists (select 1 from accounts where username = $1) or $1 = $6
        on conflict (username, place) do update set wave = $3, kills = $4, team = $5, at = now()
        where zombie_best.wave < $3 or (zombie_best.wave = $3 and zombie_best.kills < $4)`,
-      [username, place, wave, kills, team]);
+      [username, place, wave, kills, team, this.boardName ?? '']);
     return r.rowCount === 1;
   }
   async zombieBoard(place, limit) {
