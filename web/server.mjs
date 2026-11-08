@@ -293,7 +293,7 @@ async function api(req, res, url) {
     const b = await body(req);
     const r = await pairing.poll(req, b.token);
     if (r.state !== 'done') return json(res, 200, { state: r.state });
-    return json(res, 200, { state: 'done', username: r.username, role: r.role }, { 'Set-Cookie': auth.cookie(r.token, (r.role === 'admin' ? SESSION_MS : ACCOUNT_MS) / 1000, seat) });
+    return json(res, 200, { state: 'done', username: r.username, role: r.role }, { 'Set-Cookie': auth.cookie(r.token, Math.ceil((r.role === 'admin' ? r.ms ?? SESSION_MS : ACCOUNT_MS) / 1000), seat) });
   }
   // The board of best Zombies runs (accounts only): public, like the names in the game. `place`: one of
   // the places, or none for each account's best anywhere.

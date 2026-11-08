@@ -348,7 +348,7 @@ export class Auth {
       if (valid && s.role === 'admin' && s.device === 'panel') valid = Number.isFinite(s.since) && s.since > 0;
       if (valid && s.role === 'admin' && s.device === 'panel') {
         this.sessions.set(s.key, { username: s.username, role: 'admin', expires: Math.min(s.expires, s.since + PANEL_MS), panel: true, since: s.since });
-      } else if (valid && s.role === 'admin') this.sessions.set(s.key, { username: s.username, role: 'admin', expires: s.expires, panel: false });
+      } else if (valid && s.role === 'admin') this.sessions.set(s.key, { username: s.username, role: 'admin', expires: s.expires, panel: false, ...(s.device === 'paired' ? { device: 'paired' } : {}) });
       else if (valid) this.sessions.set(s.key, { username: s.username, role: s.role, expires: s.expires, ...(s.device ? { device: s.device } : {}) });
       else await this.store.deleteSession(s.key);
     }
@@ -528,7 +528,8 @@ export class Auth {
     if (s?.panel && s.role === 'admin' && s.expires >= now) return { key, ...s };
     if (this.mfa.on) return null;
     const g = this.session(req);
-    return g?.role === 'admin' ? g : null;
+    // A console logged in from a phone (server/pairing.mjs, marked 'paired') plays as the admin but never opens the panel.
+    return g?.role === 'admin' && g.device !== 'paired' ? g : null;
   }
 
   /**

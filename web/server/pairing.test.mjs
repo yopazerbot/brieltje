@@ -104,7 +104,7 @@ test('codes expire, and wrong codes are limited per address and per session', as
 test("the game's admin can log a console in too: a game session of 12 hours, never the /admin panel's", async () => {
   const { auth, pairing } = await ready();
   const s = pairing.start(req(), 'https://brieltje.be');
-  const admin = { username: 'admin', role: 'admin', key: 'k-admin' };
+  const admin = { username: 'admin', role: 'admin', key: 'k-admin', expires: Date.now() + 12 * 3600_000 };
   assert.equal(pairing.approve(req(), admin, s.code, s.check).ok, true);
   const done = await pairing.poll(req(), s.token);
   assert.equal(done.state, 'done');
@@ -118,4 +118,29 @@ test("the game's admin can log a console in too: a game session of 12 hours, nev
   pairing.approve(req(), admin, t.code, t.check);
   auth.revoke('admin');
   assert.equal((await pairing.poll(req(), t.token)).state, 'gone');
+});
+
+test("a console the admin logs in by phone: never past the phone's own session, never the panel, cut by ending the others", async () => {
+  const { auth, pairing } = await ready();
+  const admin = { username: 'admin', role: 'admin', key: 'k-admin', expires: Date.now() + 3600_000 }; // an hour left
+  // Never longer than the phone's own session: no renewing a 12-hour login by pairing.
+  const s = pairing.start(req(), 'https://brieltje.be');
+  pairing.approve(req(), admin, s.code, s.check);
+  const done = await pairing.poll(req(), s.token);
+  assert.equal(done.state, 'done');
+  const made = auth.session({ headers: { cookie: `${auth.names.session}=${done.token}` }, socket: { remoteAddress: '192.0.2.42' } });
+  assert.ok(made.expires <= admin.expires + 1000, 'within the phone session');
+  // Two-step login off: a game admin session may open the panel, a paired one never.
+  assert.equal(auth.mfa.on, false);
+  assert.equal(auth.panelAdmin({ headers: { cookie: `${auth.names.session}=${done.token}` }, socket: { remoteAddress: '192.0.2.42' } }), false);
+  // "End every other admin session" between the yes and the pickup: nothing.
+  const t = pairing.start(req(), 'https://brieltje.be');
+  pairing.approve(req(), admin, t.code, t.check);
+  await auth.endOtherAdminSessions([]);
+  assert.equal((await pairing.poll(req(), t.token)).state, 'gone');
+  // Two-step login turned on meanwhile: nothing.
+  const u = pairing.start(req(), 'https://brieltje.be');
+  pairing.approve(req(), admin, u.code, u.check);
+  auth.mfa.gen++;
+  assert.equal((await pairing.poll(req(), u.token)).state, 'gone');
 });

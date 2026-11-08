@@ -108,6 +108,14 @@ export class Pairing {
     }
     r.p.name = session.username;
     r.p.role = session.role;
+    if (session.role === 'admin') {
+      // What the console's admin session must not outlive or slip past: this phone's own session (no renewing a 12-hour
+      // login by pairing again and again), "end every other admin session" and turning two-step login on meanwhile.
+      r.p.until = Math.min(r.p.until, session.expires);
+      r.p.parentExpires = session.expires;
+      r.p.adminGen = this.auth.adminGen;
+      r.p.mfaGen = this.auth.mfa.gen;
+    }
     r.p.epoch = this.auth.epoch.get(session.username) || 0;
     this.auth.log('pair_approved', req, { username: session.username });
     return { ok: true, username: session.username };
@@ -122,16 +130,21 @@ export class Pairing {
     this.byKey.delete(k); // once
     this.byCode.delete(p.code);
     if (p.role === 'admin') {
-      // The admin: a game session as the game's own admin login gives (12 hours), checked against a revocation since.
-      if ((this.auth.epoch.get(p.name) || 0) !== p.epoch) return { state: 'gone' };
-      const { token, key } = await this.auth.startSession(p.name, 'admin', SESSION_MS, { ip: bucketOf(clientIp(req)) });
-      if ((this.auth.epoch.get(p.name) || 0) !== p.epoch) {
+      // The admin: a game session as the game's own admin login gives, but never longer than the phone's own session (so
+      // pairing can't renew a login without the password), marked 'paired' (never the /admin panel, auth.panelSession),
+      // and refused when the admin was revoked, ended every other admin session or turned two-step login on since.
+      const still = () => (this.auth.epoch.get(p.name) || 0) === p.epoch && this.auth.adminGen === p.adminGen
+        && this.auth.mfa.gen === p.mfaGen && !((this.auth.blocked.get(p.name) || 0) > Date.now());
+      const ms = Math.min(SESSION_MS, p.parentExpires - Date.now());
+      if (!still() || !(ms > 0)) return { state: 'gone' };
+      const { token, key } = await this.auth.startSession(p.name, 'admin', ms, { ip: bucketOf(clientIp(req)), device: 'paired' });
+      if (!still()) {
         this.auth.sessions.delete(key);
         await this.auth.store.deleteSession(key);
         return { state: 'gone' };
       }
       this.auth.log('pair_login', req, { username: p.name, detail: 'admin' });
-      return { state: 'done', token, username: p.name, role: 'admin' };
+      return { state: 'done', token, username: p.name, role: 'admin', ms };
     }
     const session = await this.accounts.session(req, p.name, p.epoch);
     if (!session) return { state: 'gone' };
