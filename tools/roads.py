@@ -24,7 +24,8 @@ data/street.json (the buildings, the pavings, the hedges), web/src/data/house_sh
   it says, at their real sizes; moved off the road, out of drives and hedges where the model needs it.
   Signs a model draws itself are left out (MODELLED).
 - stops: the bus stops (OpenStreetMap, source/geo/Bushaltes_l72.json), their pole facing the traffic,
-  with a shelter and a litter bin where Street View shows one (STOPS_SEEN).
+  with a shelter and a litter bin where Street View shows one (STOPS_SEEN); no shelter of our own where
+  a model has one (the town centre's by the chip shop: the pole and bin stand by that one).
 - boxes: letterboxes on a post at the front of about two thirds of the houses, by the drive
   (no wheelie bins: Yoshi doesn't like them); bikes: a bike against the front wall of a few houses.
 Nothing is placed within 4 m of a portal or where you come out of one (web/shared/portals.mjs).
@@ -457,13 +458,24 @@ MODELLED = [
 # a yellow litter bin, or the stop's pole alone. Not in the list: not drawn (Molenhoek's two, along the rebuilt
 # stretch, aren't there in the pictures taken after the works).
 STOPS_SEEN = {
-    2243035144: {"shelter": True, "bin": True},  # Smetlede Kerk, on the church square's side, towards Lede
+    # Smetlede Kerk by the chip shop: its shelter is the town centre's own (tools/town/houses.json); the stop's tall pole
+    # stands just past the shelter's end towards the street, the yellow bin at its front corner on that end.
+    2243035144: {"shelter": False, "bin": True, "model_shelter": True},
     2243035142: {"shelter": False, "bin": False},  # Smetlede Kerk, across the street: a yellow pole against a front wall
     2243034970: {"shelter": True, "bin": True},  # Smetlede Serskampstraat, on the verge by the fields
     2243034974: {"shelter": False, "bin": False},  # Smetlede Serskampstraat, across the street
 }
+SHELTER_NEAR = 25.0  # m: no shelter of our own where a model has one this near
 WALKED = 25.0  # m from a house: where people walk under a sign, its lower edge 2.2 m up; elsewhere 1.5 m
 HALF_STREET = 2.9  # m: half the width of Smetlededorp through the centre, where no kerb marks the carriageway
+
+
+def model_shelters():
+    """The bus shelters a model draws itself: the town centre's (tools/town/houses.json), as (x, z, yaw, length, depth).
+    Their local frame as tools/town/town.py's: a along the yaw, c across it, the open front at c < 0."""
+    path = ROOT / "tools" / "town" / "houses.json"
+    fits = json.loads(path.read_text(encoding="utf-8")).get("fittings", []) if path.exists() else []
+    return [(f["p"][0], f["p"][1], f.get("yaw", 0.0), f.get("l", 4.2), f.get("d", 1.5)) for f in fits if f.get("k") == "shelter"]
 
 
 def geo_json(name):
@@ -626,6 +638,7 @@ def street_signs(to_model, area, road, centre, buildings, taken):
         lower = 2.2 if buildings.distance(p) < WALKED else 1.5
         out.append([round(p.x, 2), round(p.y, 2), lower, made])
     stops = []
+    shelters = model_shelters()
     for f in geo_json("Bushaltes_l72.json"):
         pr = f["properties"]
         seen = STOPS_SEEN.get(pr["osm_id"])
@@ -635,7 +648,23 @@ def street_signs(to_model, area, road, centre, buildings, taken):
         if seen is None:
             notes.append(f"bus stop {pr['name']} (node {pr['osm_id']}): not seen in Street View, left out")
             continue
-        spot = spots.find(x, z, margin=0.4)
+        sheltered = [s for s in shelters if math.dist((x, z), s[:2]) < SHELTER_NEAR]
+        bin_hint = None
+        if seen.get("model_shelter") and sheltered:
+            # By the model's shelter: the pole just past its end towards the street, the bin at that end's front corner.
+            sx, sz, syaw, sl, sd = min(sheltered, key=lambda s: math.dist((x, z), s[:2]))
+            cu, su = math.cos(syaw), math.sin(syaw)
+            local = lambda a, c: (sx + cu * a - su * c, sz + su * a + cu * c)
+            end = -1 if spots.centre.distance(Point(local(-sl / 2, 0))) < spots.centre.distance(Point(local(sl / 2, 0))) else 1
+            x, z = local(end * (sl / 2 + 0.9), -0.2)
+            bin_hint = local(end * (sl / 2 - 0.3), -sd / 2 - 0.45)
+        # By a model's shelter the spot is that model's paving (the chip shop's forecourt): only the street and the walls count.
+        here = Point(x, z)
+        if bin_hint and spots.off_road(here, 0.4) and buildings.distance(here) >= 0.3:
+            spot = (here, 0.0)
+            spots.taken.append(here)
+        else:
+            spot = spots.find(x, z, margin=0.4)
         if spot is None:
             notes.append(f"bus stop {pr['name']}: no free spot")
             continue
@@ -646,14 +675,18 @@ def street_signs(to_model, area, road, centre, buildings, taken):
         rx, rz = to_road[0] / n, to_road[1] / n  # towards the road
         bin_at = shelter_at = None
         if seen["bin"]:
-            # The bin on its own post beside the stop's, a little further back, on the side the bus comes from.
-            for s in (0.7, -0.7, 1.1, -1.1):
-                q = Point(p.x - fx * s - rx * 0.25, p.y - fz * s - rz * 0.25)
-                if spots.off_road(q, 0.4) and spots.free(q, 0.5):
+            # The bin on its own post beside the stop's, a little further back, on the side the bus comes from
+            # (by a model's shelter: where it stands there).
+            tries = [(Point(bin_hint), True)] if bin_hint else []
+            tries += [(Point(p.x - fx * s - rx * 0.25, p.y - fz * s - rz * 0.25), False) for s in (0.7, -0.7, 1.1, -1.1)]
+            for q, hinted in tries:
+                if spots.off_road(q, 0.4) and (buildings.distance(q) >= 0.3 if hinted else spots.free(q, 0.5)):
                     bin_at = [round(q.x, 2), round(q.y, 2), round(math.atan2(rx, rz), 3)]
                     spots.taken.append(q)
                     break
-        if seen["shelter"]:
+        if seen["shelter"] and sheltered:
+            notes.append(f"bus stop {pr['name']}: a model has a shelter within {SHELTER_NEAR:.0f} m, none of our own")
+        elif seen["shelter"]:
             # The shelter (3.4 x 1.7 m) beside the pole, its open side to the road, clear of the road, the houses, drives, hedges.
             ang = math.atan2(-fz, -fx)  # its length along the road
             for along in (-2.6, 2.6, -3.2, 3.2, -4.0, 4.0):
