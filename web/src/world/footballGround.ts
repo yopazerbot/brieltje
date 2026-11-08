@@ -122,6 +122,15 @@ function meshTexture(size: number, tile: number, cell: number, wire: number, col
   return t;
 }
 
+/** The pitch's paint as a texture, `k` pixels a metre (pitchCanvas). */
+function paintTexture(k: number): THREE.CanvasTexture {
+  const tex = new THREE.CanvasTexture(pitchCanvas(k));
+  tex.colorSpace = THREE.SRGBColorSpace;
+  tex.flipY = false;
+  tex.anisotropy = 8;
+  return tex;
+}
+
 /** The pitch's paint: lines, stripes and wear over the rail's rectangle, `k` pixels a metre. */
 function pitchCanvas(k: number): HTMLCanvasElement {
   const { rail, length: L, width: Wd } = S;
@@ -214,6 +223,18 @@ function pitchCanvas(k: number): HTMLCanvasElement {
   return c;
 }
 
+/**
+ * Metres from the pitch's middle within which its paint is drawn in full (FINE pixels a metre, COARSE on Low and on a
+ * phone), and beyond which that picture is let go again: further off a small one (FAR) looks the same, the full one
+ * (2120 by 1220 pixels, about 14 MB on the graphics chip) was built at the start for every player, wherever they were.
+ * The training starts at 230 m (world/footballLife.ts).
+ */
+const PAINT_NEAR = 260;
+const PAINT_GONE = 330;
+const FINE = 20;
+const COARSE = 10;
+const FAR = 5;
+
 /** The goal nets' resting scale and their swell after a goal. */
 interface Net {
   mesh: THREE.Object3D;
@@ -234,12 +255,17 @@ export class FootballGround {
   };
   private nets = new Map<string, Net>();
   private clock = 0;
+  /** The pitch's paint, its far picture, and the full one with its pixels a metre (0: none) */
+  private paint: THREE.Mesh<THREE.BufferGeometry, THREE.MeshStandardMaterial> | null = null;
+  private farPaint: THREE.Texture | null = null;
+  private paintK = 0;
   /** How bright the floodlights are now, 0 to 1 (world/footballLife.ts reads it: the evening training). */
   lit = 0;
   /** The ground's level (the origin's ground, house.ground plus the relief there). */
   readonly y: number;
 
-  constructor(private ground: number, private phone: boolean) {
+  /** `coarse`: the pitch's paint at COARSE pixels a metre (Low, a phone), asked again as the preset changes */
+  constructor(private ground: number, private phone: boolean, private coarse: () => boolean = () => phone) {
     this.group.name = 'football ground';
     this.y = ground + terrain.height(S.centre[0], S.centre[1]);
     this.group.add(this.pitch());
@@ -322,9 +348,14 @@ export class FootballGround {
     if (net) net.at = this.clock;
   }
 
-  /** Each frame. */
-  update(dt: number): void {
+  /** Each frame; `eye`: where the camera is (the pitch's paint in full near it). */
+  update(dt: number, eye?: THREE.Vector3): void {
     this.clock += dt;
+    if (eye && this.paint) {
+      const d = Math.hypot(eye.x - S.centre[0], eye.z - S.centre[1]);
+      const k = d < PAINT_NEAR ? (this.coarse() ? COARSE : FINE) : d > PAINT_GONE ? 0 : this.paintK;
+      if (k !== this.paintK) this.paintWith(k);
+    }
     // On from dusk (the street lamps come on at the same ramp), full by night.
     const night = mood.night;
     const on = Math.min(1, Math.max(0, (night - 0.03) / 0.22));
@@ -342,15 +373,20 @@ export class FootballGround {
     }
   }
 
+  /** The pitch's paint at `k` pixels a metre (0: the far picture); a full one before is let go. */
+  private paintWith(k: number): void {
+    const mat = this.paint!.material;
+    if (mat.map !== this.farPaint) mat.map?.dispose();
+    mat.map = k ? paintTexture(k) : this.farPaint;
+    this.paintK = k;
+  }
+
   /** The pitch's decal over the lawn and the floodlights' pool over it. */
   private pitch(): THREE.Object3D {
     const { rail } = S;
     const out = new THREE.Group();
-    const k = this.phone ? 10 : 20;
-    const tex = new THREE.CanvasTexture(pitchCanvas(k));
-    tex.colorSpace = THREE.SRGBColorSpace;
-    tex.flipY = false;
-    tex.anisotropy = 8;
+    const tex = paintTexture(FAR);
+    this.farPaint = tex;
     const quad = (u0: number, u1: number, w0: number, w1: number, lift: number, extra = false) => {
       const pos: number[] = [];
       const uv: number[] = [];
@@ -390,6 +426,7 @@ export class FootballGround {
       quad(rail.u0, rail.u1, rail.w0, rail.w1, 0.012),
       new THREE.MeshStandardMaterial({ map: tex, transparent: true, depthWrite: false, roughness: 0.95, polygonOffset: true, polygonOffsetFactor: -2, polygonOffsetUnits: -4 }),
     );
+    this.paint = paint;
     paint.name = 'football pitch';
     paint.receiveShadow = true;
     paint.renderOrder = 2; // after the lawn under it

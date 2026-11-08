@@ -676,7 +676,7 @@ scene.add(villagers.group);
 // FC Smetlede's football ground (world/footballGround.ts) and its training and watchers (world/footballLife.ts).
 // (?nofootball in the dev build leaves it out, to compare.)
 const noFootball = import.meta.env.DEV && location.search.includes('nofootball');
-const fcGround = new FootballGround(house.ground, phone);
+const fcGround = new FootballGround(house.ground, phone, () => quality === 'low' || phone);
 const fcLife = new FootballLife(villagers, fcGround.y, () => quality === 'low' || phone, (id) => fcGround.goal(id));
 if (!noFootball) scene.add(fcGround.group, fcLife.group);
 // December (world/season.ts): the Christmas lights and the tree, and Sinterklaas on the church square (only in Explore).
@@ -3497,7 +3497,7 @@ renderer.setAnimationLoop((now: number) => {
   if (!net.connected) soloTick(dt);
   zombies.update(dt, camera.position);
   if (!noFootball) {
-    fcGround.update(dt);
+    fcGround.update(dt, camera.position);
     fcLife.update(dt, camera.position); // its figures are drawn with the villagers
   }
   villagers.update(dt, camera.position, camera.getWorldDirection(villagerLook), driving || riding || horses.mounted >= 0 ? null : { x: player.x, z: player.z, feet: player.feet }, [
