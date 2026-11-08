@@ -101,6 +101,7 @@ import { patchFields } from './world/fields';
 import { addDiag, startDiag } from './ui/diag';
 import { IndoorLight } from './world/indoorLight';
 import { Weather } from './world/weather';
+import { warmPasses } from './world/warmShaders';
 import { snowOnModel } from './world/snowCover';
 import { Acoustics, acoustics } from './world/acoustics';
 import { MoodAdmin, moodNotice } from './ui/moodAdmin';
@@ -440,6 +441,7 @@ composer.addPass(bloom);
 composer.addPass(gradedOutput(bloom.output));
 const smaa = new SMAAPass();
 composer.addPass(smaa);
+warmPasses(renderer, ao, smaa); // their shaders compile in the background while the world loads (world/warmShaders.ts)
 
 // Graphics quality: a preset sets resolution, soft shadows, sun shadow detail,
 // edge smoothing and texture sharpness. On top of that, the resolution can dip
@@ -585,6 +587,8 @@ const hud = new Hud();
 const speedometer = new Speedometer(document.getElementById('hud')!);
 const doors = new Doors(house.doors, world, (name) => surfaceMaterial(name, renderer));
 home.add(doors.group);
+// The ground shading's shaders compile before its bake, in the background where the browser can (world/groundShade.ts warm).
+groundShade.warm(renderer, scene, sun, [built.group, hedgeLumps, doors.group, tiles.group], house.ground);
 // Party games the admin starts (multiplayer): hide and seek, tag, treasure hunt.
 const games = new Games();
 scene.add(games.group);
@@ -3626,6 +3630,16 @@ async function buildVillage(): Promise<void> {
   for (const m of models) snowOnModel(m); // their unbaked outdoor parts take the snow (world/snowCover.ts)
   for (const m of models) wetOnModel(m); // and their streets and yards the rain (world/wetGround.ts)
   for (const m of models) glassOnModel(m); // their windows mirror the street over a room (world/glassLook.ts)
+  // The village's ground shading's shaders compile ahead of its bakes (world/groundShade.ts warm): the models' while
+  // its tiles are built, then the tiles' and the ponds' once they are in.
+  const loose = models.filter((m) => !m.parent);
+  if (loose.length) {
+    const warming = new THREE.Group().add(...loose);
+    scene.add(warming);
+    groundShade.warm(renderer, scene, sun, [warming], house.ground);
+    scene.remove(warming);
+    warming.remove(...loose);
+  }
   // The models' baked light and wear (world/bakedLight.ts), fetched while the village's tiles are built.
   const start = startPlace()?.id ?? '';
   const later = (m: THREE.Object3D) => {
@@ -3716,6 +3730,9 @@ async function buildVillage(): Promise<void> {
   portals.settle(); // the village's paving under its portals
   pickups.settle(); // the weapons up on the village's roofs (the church's roof walk, the Sparrenhof)
   await between();
+  tiles.showAll(); // as for the bakes: every tile, the models in it and the ponds' water
+  for (const m of models) m.visible = true;
+  groundShade.warm(renderer, scene, sun, [tiles.group], house.ground);
   bigMap.addVillage(data);
   await environmentReady;
   await between();

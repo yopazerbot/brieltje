@@ -1,6 +1,7 @@
 import * as THREE from 'three';
 import { HDRLoader } from 'three/addons/loaders/HDRLoader.js';
 import { Sky } from './sky';
+import { warmSkyLight } from './warmShaders';
 
 /**
  * Sky and sunlight from a real photographed sky (Poly Haven HDRI, CC0).
@@ -170,7 +171,9 @@ export async function loadEnvironment(
   sun: THREE.DirectionalLight,
   wantedSunDir: THREE.Vector3,
 ): Promise<void> {
-  const look = await loadSky(renderer, '/env/sky_2k.hdr', wantedSunDir);
+  // The light maps' shaders compile while the photo (2048 pixels across) downloads (world/warmShaders.ts).
+  const warmed = warmSkyLight(renderer, 2048);
+  const look = await loadSky(renderer, '/env/sky_2k.hdr', wantedSunDir).finally(warmed);
   scene.environmentRotation.set(0, look.turn, 0);
   const sunDir = look.bright;
 

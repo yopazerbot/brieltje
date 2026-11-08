@@ -5,6 +5,7 @@ import { blockMaterial } from './houseMeshes';
 import type { GrassData } from './houseData';
 import { snowOn } from './snowCover';
 import { wetOn } from './wetGround';
+import { compileDrawn, compileQuad } from './warmShaders';
 
 /**
  * Light on the ground of the whole neighbourhood, worked out once when the sky
@@ -455,8 +456,23 @@ export class GroundShade {
     this.pick();
   }
 
+  /**
+   * A bake's shaders compiled ahead, in the background where the browser can (world/warmShaders.ts): the same steps
+   * as a bake of these casters with nothing drawn. Made at the bake itself, they held the loading up for about half a
+   * second (the depth images' shaders for each kind of mesh, the cover image's and the pass that puts it together).
+   */
+  warm(renderer: THREE.WebGLRenderer, scene: THREE.Scene, sun: THREE.DirectionalLight, casters: THREE.Object3D[], ground: number): void {
+    this.render(renderer, scene, sun, casters, ground, this.center, HALF, SIZE, true);
+  }
+
   private render(renderer: THREE.WebGLRenderer, scene: THREE.Scene, sun: THREE.DirectionalLight, casters: THREE.Object3D[], ground: number,
-    center: THREE.Vector3, half: number, size: number): THREE.WebGLRenderTarget {
+    center: THREE.Vector3, half: number, size: number): THREE.WebGLRenderTarget;
+  private render(renderer: THREE.WebGLRenderer, scene: THREE.Scene, sun: THREE.DirectionalLight, casters: THREE.Object3D[], ground: number,
+    center: THREE.Vector3, half: number, size: number, dry: true): null;
+  private render(renderer: THREE.WebGLRenderer, scene: THREE.Scene, sun: THREE.DirectionalLight, casters: THREE.Object3D[], ground: number,
+    center: THREE.Vector3, half: number, size: number, dry = false): THREE.WebGLRenderTarget | null {
+    // Dry: every step but the drawing, each draw's shaders compiled instead.
+    const draw = dry ? (s: THREE.Object3D, c: THREE.Camera) => compileDrawn(renderer, s, c) : (s: THREE.Object3D, c: THREE.Camera) => renderer.render(s, c);
     const depth = size; // texels across the depth images
     const keep = new Map<THREE.Object3D, boolean>();
     const hide = (o: THREE.Object3D, v: boolean) => {
@@ -491,7 +507,7 @@ export class GroundShade {
     sunCam.position.copy(center).addScaledVector(dir, away);
     sunCam.lookAt(center);
     sunCam.updateMatrixWorld();
-    const sunTarget = depthTarget();
+    const sunTarget = dry ? null : depthTarget();
     // From straight above, for the heights (60 m over the area's own ground, a church tower too).
     const topY = center.y + 60;
     const topCam = new THREE.OrthographicCamera(-half, half, half, -half, 0.5, 80);
@@ -499,29 +515,33 @@ export class GroundShade {
     topCam.up.set(0, 0, -1);
     topCam.lookAt(center.x, center.y, center.z);
     topCam.updateMatrixWorld();
-    const topTarget = depthTarget();
-    const solidTarget = depthTarget();
+    const topTarget = dry ? null : depthTarget();
+    const solidTarget = dry ? null : depthTarget();
 
     const before = renderer.getRenderTarget();
     for (const [cam, target] of [[sunCam, sunTarget], [topCam, topTarget]] as const) {
-      renderer.setRenderTarget(target);
-      renderer.clear();
-      renderer.render(scene, cam);
+      if (target) {
+        renderer.setRenderTarget(target);
+        renderer.clear();
+      }
+      draw(scene, cam);
     }
     // Only what stands on the ground, for the contact shadow: the repeated shapes (tree crowns and trunks,
     // the hedges' leafy lumps, fence posts, lamps) are left out, so a crown doesn't darken a ring round its edge.
     const repeated = shown.filter((o) => o instanceof THREE.InstancedMesh);
     for (const o of repeated) o.visible = false;
-    renderer.setRenderTarget(solidTarget);
-    renderer.clear();
-    renderer.render(scene, topCam);
+    if (solidTarget) {
+      renderer.setRenderTarget(solidTarget);
+      renderer.clear();
+    }
+    draw(scene, topCam);
     for (const o of repeated) o.visible = true;
     scene.overrideMaterial = null;
     for (const f of bakeStandIns) f(false);
 
     // The cover image: the fields, the field tracks and paths, and the water, each in a channel of its own,
     // and the gardens and meadows in the fourth.
-    const cover = new THREE.WebGLRenderTarget(size, size, { minFilter: THREE.LinearFilter, magFilter: THREE.LinearFilter, generateMipmaps: false });
+    const cover = dry ? null : new THREE.WebGLRenderTarget(size, size, { minFilter: THREE.LinearFilter, magFilter: THREE.LinearFilter, generateMipmaps: false });
     const fields = blockMaterial('field_soil', renderer).material;
     const tracks = blockMaterial('gravel', renderer).material;
     const asCover = new Map<THREE.Material, THREE.ShaderMaterial>([[fields, covers.fields], [tracks, covers.tracks]]);
@@ -548,10 +568,12 @@ export class GroundShade {
     const clearAlpha = renderer.getClearAlpha();
     const autoClear = renderer.autoClear;
     renderer.setClearColor(0x000000, 0);
-    renderer.setRenderTarget(cover);
-    renderer.clear();
+    if (cover) {
+      renderer.setRenderTarget(cover);
+      renderer.clear();
+    }
     renderer.autoClear = false;
-    renderer.render(scene, topCam);
+    draw(scene, topCam);
     let lawns: THREE.Mesh | null = null;
     if (this.grass.pos.length) {
       const g = new THREE.BufferGeometry();
@@ -560,7 +582,7 @@ export class GroundShade {
       lawns = new THREE.Mesh(g, grassCover);
       lawns.position.y = center.y;
       lawns.frustumCulled = false;
-      renderer.render(lawns, topCam);
+      draw(lawns, topCam);
     }
     renderer.autoClear = autoClear;
     renderer.setClearColor(clearColor, clearAlpha);
@@ -569,6 +591,10 @@ export class GroundShade {
     scene.background = background;
     scene.fog = fog;
     for (const [o, v] of keep) o.visible = v;
+    if (dry) {
+      compileQuad(renderer, this.combiner());
+      return null;
+    }
 
     const vp = (c: THREE.Camera) => new THREE.Matrix4().multiplyMatrices(c.projectionMatrix, c.matrixWorldInverse);
 
@@ -577,10 +603,10 @@ export class GroundShade {
     out.textures[1].format = THREE.RedFormat;
     const relief = terrainTexture();
     const uniforms = {
-      sunDepth: { value: sunTarget.depthTexture },
-      topDepth: { value: topTarget.depthTexture },
-      solidDepth: { value: solidTarget.depthTexture },
-      cover: { value: cover.texture },
+      sunDepth: { value: sunTarget!.depthTexture },
+      topDepth: { value: topTarget!.depthTexture },
+      solidDepth: { value: solidTarget!.depthTexture },
+      cover: { value: cover!.texture },
       sunMatrix: { value: vp(sunCam) },
       topMatrix: { value: vp(topCam) },
       area: { value: new THREE.Vector3(center.x, center.z, half) },
@@ -592,22 +618,28 @@ export class GroundShade {
       terrainSize: { value: new THREE.Vector2(terrain.nx, terrain.nz) },
       sunTap: { value: (1.5 * 2 * r) / depth }, // a texel and a half of the sun's image, as before
     };
+    const combine = this.combiner();
+    Object.assign(combine.uniforms, uniforms);
+    renderer.setRenderTarget(out);
+    this.combine!.render(renderer);
+    renderer.setRenderTarget(before);
+    for (const t of [sunTarget!, topTarget!, solidTarget!, cover!]) t.dispose();
+    relief.dispose();
+    out.textures[0].anisotropy = out.textures[1].anisotropy = 4;
+    return out;
+  }
+
+  /** The pass's material (made at the first bake or warm-up, kept): its uniforms are each bake's own. */
+  private combiner(): THREE.ShaderMaterial {
     this.combine ??= new FullScreenQuad(
       new THREE.ShaderMaterial({
-        uniforms,
+        uniforms: {},
         vertexShader: 'varying vec2 vUv; void main() { vUv = uv; gl_Position = vec4(position.xy, 0.0, 1.0); }',
         fragmentShader: COMBINE,
         glslVersion: THREE.GLSL3,
       }),
     );
-    Object.assign((this.combine.material as THREE.ShaderMaterial).uniforms, uniforms);
-    renderer.setRenderTarget(out);
-    this.combine.render(renderer);
-    renderer.setRenderTarget(before);
-    for (const t of [sunTarget, topTarget, solidTarget, cover]) t.dispose();
-    relief.dispose();
-    out.textures[0].anisotropy = out.textures[1].anisotropy = 4;
-    return out;
+    return this.combine.material as THREE.ShaderMaterial;
   }
 }
 
