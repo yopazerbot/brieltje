@@ -2128,7 +2128,11 @@ export class Game {
     });
     if (this.roundOver && now >= this.roundOver.until) this.freshRound();
     for (const [name, p] of this.players) {
-      if (!p.alive && !this.roundOver && now >= p.respawnAt) this.respawn(name, p, now, null, true); // after a death: by parachute onto open ground
+      if (!p.alive && !this.roundOver && now >= p.respawnAt) {
+        // After a death: by parachute onto open ground. In a room (Zombies only) at its place, on the ground.
+        if (this.room) this.gather([name], this.room.arena);
+        else this.respawn(name, p, now, null, true);
+      }
       else if (p.drop && !this.dropping(p, now)) this.landed(p, now); // a drop that took too long (a page gone quiet)
       else if (p.drop) this.dropCheck(p, now); // or not coming down
     }
