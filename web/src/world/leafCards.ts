@@ -295,11 +295,41 @@ function* paint(kind: Spray, seed: number, mean: number): Generator<void, Canvas
 }
 
 /**
+ * A spray's coverage faded out towards the edges of its square, to nothing on its outer texels, in every copy.
+ * Smaller copies average the leaves into a haze that reaches the square's edges, and their alpha is scaled up to
+ * keep the spray's share past the cut (build): the haze along the edges then passed the cut too, and the card's
+ * straight edges showed, a faint rectangle round each spray of a crown seen from a little way off (a birch's
+ * hanging twigs against the sky most of all). The poplar's and the spruce's sprays also ran into their square's
+ * edge on the full picture. And a sample at a card's edge reads into the next spray once a copy is small enough
+ * for the two texels' inset (world/cardTrees.ts sprayRect) to be under one of its texels: an empty edge on both
+ * sprays keeps that empty. The fade is EDGE_FADE of the square (at least two texels), so the scale that follows
+ * makes up the coverage inside it.
+ */
+function fadeEdges(a: Float32Array, s: number): void {
+  // The smallest copies (a spray a few texels across: a crown far off, its cards a pixel or two) keep their haze,
+  // or nothing of the spray would be left in them.
+  if (s < 8) return;
+  const margin = Math.max(2, s * EDGE_FADE);
+  for (let y = 0; y < s; y++) {
+    const dy = Math.min(y, s - 1 - y);
+    for (let x = 0; x < s; x++) {
+      const d = Math.min(dy, x, s - 1 - x); // texels from the edge: 0 on the outer ring
+      if (d >= margin) continue;
+      const t = d / margin;
+      a[y * s + x] *= t * t * (3 - 2 * t);
+    }
+  }
+}
+/** The share of a spray's square, from each edge, over which its coverage fades out (fadeEdges). */
+const EDGE_FADE = 0.06;
+
+/**
  * The atlas with its smaller copies, each spray on its own so they don't run into each other, and each
  * copy's coverage kept: its alpha scaled until as much of the spray passes the cut as in the full picture.
  */
 function* build(sprays: Canvas[], cut: number): Generator<void, { image: Uint8Array; mipmaps: { data: Uint8Array; width: number; height: number }[] }> {
   let level = sprays.map((c) => ({ size: TILE, r: c.r, g: c.g, b: c.b, a: c.a }));
+  for (const l of level) fadeEdges(l.a, l.size);
   const target = sprays.map((c) => {
     let n = 0;
     for (let k = 0; k < TILE * TILE; k++) if (c.a[k] >= cut) n++;
@@ -314,6 +344,7 @@ function* build(sprays: Canvas[], cut: number): Generator<void, { image: Uint8Ar
       const ox = (k % 2) * half;
       const oy = Math.floor(k / 2) * half;
       const s = l.size;
+      if (s < TILE) fadeEdges(l.a, s);
       // The alpha's scale for this copy, so the share of it past the cut stays the spray's own.
       let scale = 1;
       if (s < TILE) {
