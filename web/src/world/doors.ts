@@ -272,7 +272,7 @@ export class Doors {
    * you, and the collision plan says whether a wall or a window stands in front (every 2 cm). It went
    * through every triangle in view before: 15 to 20 ms a frame at the house, far more at Molenhoek.
    */
-  lookedAt(camera: THREE.Camera): { name: string; open: boolean; locked: boolean; home: string | null; toggle: () => void } | null {
+  lookedAt(camera: THREE.Camera): { id: string; name: string; open: boolean; locked: boolean; home: string | null; toggle: () => void } | null {
     camera.updateMatrixWorld();
     const eye = camera.getWorldPosition(this.eye);
     const leaves: THREE.Object3D[] = [];
@@ -291,6 +291,7 @@ export class Doors {
     // Up to just before the leaf (its own outline is solid too).
     if (this.world.blocked(eye, this.raycaster.ray.at(Math.max(0, first.distance - 0.04), this.front), 0.02)) return null;
     return {
+      id: door.spec.id,
       name: door.spec.name,
       open: door.target === 1,
       locked: !!this.lockedHome(door.spec.id),

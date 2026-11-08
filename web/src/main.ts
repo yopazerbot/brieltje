@@ -2316,7 +2316,7 @@ net.onMessage = (m: ServerMsg) => {
       }
       showOnline();
       doors.setAll(m.doors, m.doorDir);
-      homeLocks.grant(m.homes ?? []); // what this session typed before (a rejoin, a restart that kept them)
+      homeLocks.grant(m.homes ?? [], m.accountHomes ?? []); // what this session typed before (a rejoin, a restart that kept them), or the account did
       doors.refresh(); // the locked homes' outside doors stay shut here whatever the others left open
       glass.repair();
       for (const i of m.broken ?? []) glass.break(i, null, undefined, true);
@@ -2653,6 +2653,7 @@ net.onMessage = (m: ServerMsg) => {
       doors.setAll(m.doors ?? {}, m.doorDir ?? {});
       for (const i of m.broken ?? []) glass.break(i, null, undefined, true);
       for (const f of m.furniture ?? []) furnishing.put(f);
+      homeLocks.grant([m.id], m.account ? [m.id] : []); // open here too when the account's code was typed on another device
       break;
     }
     case 'homelock':
@@ -3270,6 +3271,7 @@ renderer.setAnimationLoop((now: number) => {
     const speed = (v: number) => Math.round(Math.abs(v) * 3.6);
     const carLabel = carName(car.kind ?? car.id, car.spec.name);
     let prompt = target ? t(target.home ? 'home.door' : target.locked ? 'prompt.locked' : target.open ? 'prompt.close' : 'prompt.open', { key: doorKey, door: doorName(target.name) }) : '';
+    if (target && homeLocks.accountDoor(target.id)) prompt += `  ·  ${t('home.byAccount')}`; // a home the account opens for good
     // The car's speed and keys for the first few seconds in it only (Yoshi, as on a horse).
     if (driving) prompt = carHint > 0 ? t('prompt.driving', { speed: speed(car.speed), hb: key('handbrake', mode), use }) : '';
     else if (tagWho) prompt = t('prompt.tag', { use, name: tagWho });

@@ -84,6 +84,8 @@ export type ServerMsg =
       /** `proto`: the server's protocol (shared/wire.mjs); a different one means this page is out of date (or the server is) */
       /** `room`: the Zombies room this connection is in (server/rooms.mjs), null or missing in the open world */
       t: 'welcome'; proto?: number; you: string; role: string; color: string; room?: { id: string; owner: string; place: string } | null; doors: Record<string, boolean>; doorDir?: Record<string, number>; broken: number[]; homes?: string[];
+      /** Of `homes`, those this player's account opens for good (server/homes.mjs byAccount) */
+      accountHomes?: string[];
       players: { name: string; color: string; role: string }[]; scores: Score[]; limit: number; round: { winner: string; ms: number } | null; items: boolean[];
       time: number; cats: number[]; clowns?: ClownSpec[]; furniture: Piece[]; rules?: Rules; cars?: CarState[]; horses?: HorseState[]; bikes?: BikeState[]; mode?: ModeView;
       /**
@@ -102,7 +104,8 @@ export type ServerMsg =
   | ({ t: 'travel'; name: string; to: string; ok: boolean; car?: string | null; text?: string } & Coded)
   /** A code-locked home is shut to this player (server/homeGate.mjs): they stood inside it, or tried to walk in, without the right. */
   | { t: 'homelock'; id: string }
-  | { t: 'inside'; id: string; doors: Record<string, boolean>; doorDir: Record<string, number>; broken: number[]; furniture: Piece[] }
+  /** This session got the right to home `id` (`account`: through its account, for good, server/homes.mjs) */
+  | { t: 'inside'; id: string; doors: Record<string, boolean>; doorDir: Record<string, number>; broken: number[]; furniture: Piece[]; account?: boolean }
   /** The server put this player out of the end house's garden, to (x, z) */
   | { t: 'unstuck'; x: number; z: number }
   /** The start place picked on the start screen was refused (portals off): where the server has you. */

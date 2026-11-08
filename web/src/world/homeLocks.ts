@@ -11,8 +11,9 @@ import { seatHeaders } from '../seat';
  * - a barrier the shape of its inside keeps this player from walking in (an open door left by somebody else is no way
  *   in). The game server holds the same line (server/homeGate.mjs), so a changed page gains nothing.
  *
- * The code goes to the server and is not kept. Together, the server remembers who typed it (that session, 8 hours);
- * this page's own unlocked state follows what the server says (`homelock`), and starts again with a new session.
+ * The code goes to the server and is not kept. Together, the server remembers who typed it (that session, 8 hours; and,
+ * logged in, the account for good); this page's own unlocked state follows what the server says (`homelock`), and starts
+ * again with a new session.
  */
 export interface LockDeps {
   /** Put one of a home's walking barriers (a ring for the heights `y0` to `y1`, one for each floor) up, or down (null) */
@@ -25,6 +26,8 @@ export interface LockDeps {
 
 export class HomeLocks {
   private open = new Set<string>();
+  /** Of `open`, the homes this player's account opens for good (the server says so): the door says it (accountDoor) */
+  private viaAccount = new Set<string>();
   private admin = false;
   private paneHome: (i: number) => string | null;
   private prisms: Parameters<typeof makePaneHomes>[0]['prisms'];
@@ -61,6 +64,12 @@ export class HomeLocks {
     return home && !this.isOpen(home) ? home : null;
   }
 
+  /** Is door `doorId` one of a home this player's account opens for good (not the admin's)? */
+  accountDoor(doorId: string): boolean {
+    const home = homeOfDoor(doorId);
+    return !!home && !this.admin && this.open.has(home) && this.viaAccount.has(home);
+  }
+
   /** The home a pane belongs to (null: no home's), and whether that home is locked for this player. */
   homeOfPane(i: number): string | null {
     return this.paneHome(i);
@@ -86,22 +95,31 @@ export class HomeLocks {
     if (!r.ok) return t(r.status === 403 ? 'home.wrong' : r.status === 429 ? 'home.slow' : 'home.error');
     this.open.add(id);
     this.sync();
-    const answer = (await r.json().catch(() => null)) as { inside?: unknown } | null;
+    const answer = (await r.json().catch(() => null)) as { inside?: unknown; account?: unknown } | null;
+    if (answer?.account === true) this.viaAccount.add(id); // logged in: the account keeps it
     this.onOpen(id, answer?.inside ?? null); // the right code brings the home's inside with it
     return '';
   }
 
-  /** The server says these homes are open to this session (its welcome): a rejoin keeps what was typed. */
-  grant(ids: string[]): void {
+  /**
+   * The server says these homes are open to this session (its welcome, or the right given later): a rejoin keeps what was
+   * typed; `byAccount`: those the account opens for good.
+   */
+  grant(ids: string[], byAccount: string[] = []): void {
     let any = false;
     const added: string[] = [];
-    for (const h of HOMES) if (ids.includes(h.id) && !this.open.has(h.id)) (this.open.add(h.id), added.push(h.id), (any = true));
+    for (const h of HOMES) {
+      if (!ids.includes(h.id)) continue;
+      if (byAccount.includes(h.id)) this.viaAccount.add(h.id);
+      if (!this.open.has(h.id)) (this.open.add(h.id), added.push(h.id), (any = true));
+    }
     if (any) this.sync();
     for (const id of added) this.onOpen(id, null); // the page fetches the inside itself
   }
 
   /** Every home shut again (a new session: the server has no grant for it). */
   lockAll(): void {
+    this.viaAccount.clear();
     if (!this.open.size) return;
     this.open.clear();
     this.sync();
@@ -110,6 +128,7 @@ export class HomeLocks {
 
   /** One home shut again (the server says this player has no right to it any more). */
   lock(id: string): void {
+    this.viaAccount.delete(id);
     if (!this.open.delete(id)) return;
     this.sync();
     this.deps.relocked();

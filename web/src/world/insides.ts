@@ -116,6 +116,7 @@ export class Insides {
       }
     }
     if (!got || got.id !== id || !Array.isArray(got.doors)) return;
+    if (this.packs.has(id)) return; // installed while this was fetched (the code's own answer came first)
     this.install(got);
   }
 
