@@ -219,6 +219,19 @@
   border: 2px dashed rgba(247, 185, 40, 0.5); border-radius: var(--st-r-card); transition: background-color 0.15s, border-color 0.15s;
 }
 .again.hidden { display: none; }
+/* Pressed: it becomes the loading bar (src/ui/menu.ts startLoading), its second line saying what loads, the share on the right. */
+.again { position: relative; isolation: isolate; overflow: hidden; }
+.again.waiting, .again.loading { cursor: progress; pointer-events: none; border-style: solid; border-color: var(--st-sun); }
+.again.loading::before {
+  content: ''; position: absolute; inset: 0; z-index: -1; background: rgba(247, 185, 40, 0.28);
+  transform-origin: left; transform: scaleX(var(--load, 0)); transition: transform 0.25s ease;
+}
+.again.loading::after { content: attr(data-pct); margin-left: auto; padding-left: 10px; font-weight: 800; font-variant-numeric: tabular-nums; }
+.again.loading #again-sub { display: none; }
+.again .load-line { display: block; font-size: 14px; color: var(--st-chalk-soft); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.again.waiting > svg, .again.loading > svg { animation: again-pulse 1s ease-in-out infinite; }
+@keyframes again-pulse { 50% { opacity: 0.55; transform: scale(0.92); } }
+@media (prefers-reduced-motion: reduce) { .again.loading::before { transition: none; } .again.waiting > svg, .again.loading > svg { animation: none; } }
 .again:hover { background: rgba(31, 42, 82, 0.95); border-color: var(--st-sun); }
 .again > svg { flex: none; width: 40px; height: 40px; padding: 10px 9px 10px 11px; fill: var(--st-night); background: var(--st-sun); border-radius: 50%; box-shadow: 0 3px 0 var(--st-sun-deep); }
 .again-text { min-width: 0; }

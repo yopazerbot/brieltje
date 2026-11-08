@@ -411,7 +411,7 @@ const flow: StartFlow = new StartFlow({
   begin: () => beginLogin(false),
   logout: () => leave(),
   ageOk,
-  start: (mode) => menu.begin(mode),
+  start: (mode, from) => menu.begin(mode, from),
   say: (text) => {
     accountMsg = text;
     accountMsgCalm = false;

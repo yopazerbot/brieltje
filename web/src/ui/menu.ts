@@ -87,6 +87,7 @@ export class Menu {
   /** The way of playing picked while the world loads, its button, and what the loading does (a function: drawn again in another language). */
   private chosenMode: ControlMode = 'kbm';
   private chosen: HTMLButtonElement | null = null;
+  private starting = false; // pressed, waiting for beforeStart (joining a game together)
   private loadText: () => string = () => '';
   /** The tab showing (or showing next time the pause menu opens). */
   private current = 'map';
@@ -347,18 +348,31 @@ export class Menu {
    * A start button or ✕ on the controller, on the start screen (src/ui/startFlow.ts). What needs
    * the click happens now; play starts once `beforeStart` agrees (at once when playing alone).
    */
-  begin(mode: ControlMode): void {
-    if (this.world === 'loading') return; // started already: the chosen button shows the loading
+  begin(mode: ControlMode, from?: HTMLButtonElement): void {
+    // Started already (the chosen button shows the loading), or still waiting for `beforeStart`: a second press does nothing.
+    if (this.world === 'loading' || this.starting) return;
     this.onStartGesture(mode);
     const ok = this.beforeStart();
-    if (ok === true) this.resume(mode);
-    else void ok.then((go) => go && this.resume(mode));
+    if (ok === true) this.resume(mode, from);
+    else {
+      // Joining takes a moment: the pressed button says so at once, and is the one that shows the loading after.
+      this.starting = true;
+      const b = from ?? ($(`choose-${mode}`) as HTMLButtonElement);
+      b.setAttribute('aria-busy', 'true');
+      b.classList.add('waiting');
+      void ok.then((go) => {
+        this.starting = false;
+        b.classList.remove('waiting');
+        b.removeAttribute('aria-busy');
+        if (go) this.resume(mode, from);
+      });
+    }
   }
 
-  resume(mode: ControlMode): void {
+  resume(mode: ControlMode, from?: HTMLButtonElement): void {
     if (this.world !== 'ready') {
       // The first start: the world loads first, and play begins by itself once it is ready (ready()).
-      if (this.world === 'none') this.startLoading(mode);
+      if (this.world === 'none') this.startLoading(mode, from);
       return;
     }
     if (this.onStartScreen && !this.account) {
@@ -380,15 +394,16 @@ export class Menu {
    * arrow and its second line says what is loading. The other start buttons are off meanwhile;
    * the name, the mode, the language and joining still work (the name is taken once play begins).
    */
-  private startLoading(mode: ControlMode): void {
+  private startLoading(mode: ControlMode, from?: HTMLButtonElement): void {
     this.world = 'loading';
     this.chosenMode = mode;
-    this.chosen = $(`choose-${mode}`) as HTMLButtonElement;
+    // The button pressed shows it: a start button of step 3, or "Play again as before" on step 1 (src/ui/startFlow.ts).
+    this.chosen = from ?? ($(`choose-${mode}`) as HTMLButtonElement);
     this.chosen.classList.add('loading');
     this.chosen.setAttribute('aria-busy', 'true');
     const line = document.createElement('span');
     line.className = 'load-line';
-    this.chosen.append(line);
+    (this.chosen.querySelector('.again-text') ?? this.chosen).append(line);
     document.querySelectorAll<HTMLButtonElement>('.start-choices .choice.play').forEach((b) => (b.disabled = b !== this.chosen));
     this.progress(0.02, () => t('load.house'));
     this.onFirstStart(mode);

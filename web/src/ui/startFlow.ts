@@ -65,7 +65,7 @@ export interface FlowHooks {
   /** "I'm 13 or older" ticked on this device. */
   ageOk: () => boolean;
   /** Press a start button: play with these controls (src/ui/menu.ts begin). */
-  start: (mode: ControlMode) => void;
+  start: (mode: ControlMode, from?: HTMLButtonElement) => void;
   /** The message under the steps, or none. */
   say: (text: (() => string) | null) => void;
   /** A new guest joins together (step 2), so step 3 can list the rooms: true once joined (src/start.ts join). */
@@ -466,7 +466,7 @@ export class StartFlow {
   private again(): void {
     if (!this.last || !this.againOk()) return;
     this.selectMp(this.last.mp);
-    this.hooks.start(this.againControl(this.last));
+    this.hooks.start(this.againControl(this.last), $('again') as HTMLButtonElement); // it shows the loading itself
   }
 
   /** Every text and which parts show, for the session and the language. */
