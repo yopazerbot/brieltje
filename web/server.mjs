@@ -22,7 +22,7 @@ import { extname, join, resolve, sep } from 'node:path';
 import { openStore } from './server/store.mjs';
 // First among the game's modules: the private data (server/privateData.mjs) is open before they load.
 import { privateData } from './server/privateData.mjs';
-import { ADMIN_NAME, Auth, beTime, bucketOf, CLOUDFLARE_ONLY, clientIp, formBucketOf, NAME_RE, seatOf, viaCloudflare } from './server/auth.mjs';
+import { Auth, beTime, bucketOf, CLOUDFLARE_ONLY, clientIp, formBucketOf, NAME_RE, RESERVED, seatOf, viaCloudflare } from './server/auth.mjs';
 import { ACCOUNT_MS, Accounts } from './server/accounts.mjs';
 import { Rooms } from './server/rooms.mjs';
 import { Pairing } from './server/pairing.mjs';
@@ -93,7 +93,9 @@ const FRAMEABLE = {
 };
 
 const store = await openStore();
-store.boardName = ADMIN_NAME; // the admin's runs and totals are on the board too (Yoshi, 8 Nov 2026), though not an account
+// The admin's runs and totals are on the board too (Yoshi, 8 Nov 2026: "show yoshi (admin) scores"), though not an account:
+// under each of its reserved names, which only the admin password logs in under (server/auth.mjs RESERVED).
+store.boardNames = [...RESERVED];
 await store.zombieBestForAccountsOnly(); // a run saved as its account was deleted (no foreign key any more) goes
 const auth = new Auth(store, SECURE);
 await auth.loadSessions();

@@ -12,6 +12,11 @@ import { mkdir, readFile, rename, writeFile } from 'node:fs/promises';
 import { resolve } from 'node:path';
 
 const MAX_LOG = 500;
+/**
+ * The names on the boards besides the accounts' (server.mjs sets `boardNames`: the admin's reserved names, server/auth.mjs
+ * RESERVED, which only the admin password logs in under). Yoshi, 8 Nov 2026: the admin's runs and totals are on the board.
+ */
+const boardNames = (store) => (Array.isArray(store.boardNames) ? store.boardNames : []);
 const NAMED = ['join_ok', 'mp_join', 'solo_start', 'login_ok']; // the login log's lines with a player's (or the admin's) name
 
 /** Replace a file. On Windows a virus scanner can hold a file it just saw written for a moment: try again for up to a second. */
@@ -26,7 +31,8 @@ async function replace(from, to) {
   }
 }
 
-class FileStore {
+/** Exported for the tests (server/board-names.test.mjs), on a file of their own. */
+export class FileStore {
   constructor(file) {
     this.file = file;
     this.data = { audit: [], sessions: [], stats: {}, meta: {}, furniture: [], cars: [], interest: [], interestId: 0, daily: {}, feedback: [], feedbackId: 0, gamenight: [], gamenightId: 0, visits: null, accounts: [], zombieBest: [], homeGrants: [] };
@@ -102,13 +108,13 @@ class FileStore {
   /** Fighting totals for accounts only (Yoshi, 7 Nov 2026): the totals of names without an account go. */
   async statsForAccountsOnly() {
     const names = new Set(this.data.accounts.map((r) => `u:${r.username}`));
-    if (this.boardName) names.add(`u:${this.boardName}`); // the admin's own totals stay (Yoshi, 8 Nov 2026)
+    for (const n of boardNames(this)) names.add(`u:${n}`); // the admin's own totals stay (Yoshi, 8 Nov 2026)
     for (const k of Object.keys(this.data.stats)) if (!names.has(k)) delete this.data.stats[k];
     await this.save();
   }
   /** A Zombies run of an account at a place: kept if it beats their best there (the wave, then zombies beaten). */
   async saveZombieRun(username, place, wave, kills, team) {
-    if (username !== this.boardName && !this.data.accounts.some((r) => r.username === username)) return false;
+    if (!boardNames(this).includes(username) && !this.data.accounts.some((r) => r.username === username)) return false;
     const old = this.data.zombieBest.find((r) => r.username === username && r.place === place);
     if (old && (old.wave > wave || (old.wave === wave && old.kills >= kills))) return false;
     const row = { username, place, wave, kills, team, at: new Date().toISOString() };
@@ -121,14 +127,14 @@ class FileStore {
   async zombieBestForAccountsOnly() {
     const names = new Set(this.data.accounts.map((r) => r.username));
     const before = this.data.zombieBest.length;
-    this.data.zombieBest = this.data.zombieBest.filter((r) => names.has(r.username) || r.username === this.boardName);
+    this.data.zombieBest = this.data.zombieBest.filter((r) => names.has(r.username) || boardNames(this).includes(r.username));
     if (this.data.zombieBest.length < before) await this.save();
   }
   /** The best runs: at one place, or each account's best anywhere; the best `limit`. Only accounts' and the admin's. */
   async zombieBoard(place, limit) {
     const better = (a, b) => b.wave - a.wave || b.kills - a.kills || (a.at < b.at ? -1 : 1);
     const names = new Set(this.data.accounts.map((r) => r.username));
-    let rows = this.data.zombieBest.filter((r) => (!place || r.place === place) && (names.has(r.username) || r.username === this.boardName));
+    let rows = this.data.zombieBest.filter((r) => (!place || r.place === place) && (names.has(r.username) || boardNames(this).includes(r.username)));
     if (!place) {
       const best = new Map();
       for (const r of rows) if (!best.has(r.username) || better(r, best.get(r.username)) < 0) best.set(r.username, r);
@@ -232,7 +238,7 @@ class FileStore {
   }
   async leaderboard() {
     const names = new Set(this.data.accounts.map((r) => r.username));
-    if (this.boardName) names.add(this.boardName);
+    for (const n of boardNames(this)) names.add(n);
     return Object.entries(this.data.stats).filter(([k]) => k.startsWith('u:') && names.has(k.slice(2))).map(([k, s]) => ({ username: k.slice(2), ...s }));
   }
   async log(entry) {
@@ -577,8 +583,8 @@ class PgStore {
     // Accounts only (Yoshi, 7 Nov 2026): a row left by a hit in the instant an account went, or by the old
     // server during a deploy, never shows.
     const r = await this.pool.query(
-      'select username, kills, deaths, headshots, wins from stats where username in (select username from accounts) or username = $1',
-      [this.boardName ?? '']);
+      'select username, kills, deaths, headshots, wins from stats where username in (select username from accounts) or username = any($1::text[])',
+      [boardNames(this)]);
     return r.rows;
   }
   // ---- Accounts (server/accounts.mjs)
@@ -647,30 +653,30 @@ class PgStore {
     return gone;
   }
   async statsForAccountsOnly() {
-    await this.pool.query('delete from stats where username not in (select username from accounts) and username <> $1', [this.boardName ?? '']);
+    await this.pool.query('delete from stats where username not in (select username from accounts) and username <> all($1::text[])', [boardNames(this)]);
   }
   async saveZombieRun(username, place, wave, kills, team) {
     // Only a better run replaces the best one there; an account that is gone keeps nothing (the join finds no row).
     const r = await this.pool.query(
       `insert into zombie_best (username, place, wave, kills, team)
-       select $1, $2, $3, $4, $5 where exists (select 1 from accounts where username = $1) or $1 = $6
+       select $1, $2, $3, $4, $5 where exists (select 1 from accounts where username = $1) or $1 = any($6::text[])
        on conflict (username, place) do update set wave = $3, kills = $4, team = $5, at = now()
        where zombie_best.wave < $3 or (zombie_best.wave = $3 and zombie_best.kills < $4)`,
-      [username, place, wave, kills, team, this.boardName ?? '']);
+      [username, place, wave, kills, team, boardNames(this)]);
     return r.rowCount === 1;
   }
   /** Best runs whose name is no account and not the admin (one saved as its account went): gone. At start. */
   async zombieBestForAccountsOnly() {
-    await this.pool.query('delete from zombie_best where username not in (select username from accounts) and username <> $1', [this.boardName ?? '']);
+    await this.pool.query('delete from zombie_best where username not in (select username from accounts) and username <> all($1::text[])', [boardNames(this)]);
   }
   /** Only accounts' and the admin's runs, whatever a race left in the table (no foreign key since the admin's count). */
   async zombieBoard(place, limit) {
-    const who = '(username in (select username from accounts) or username = $1)';
+    const who = '(username in (select username from accounts) or username = any($1::text[]))';
     const r = place
-      ? await this.pool.query(`select username, place, wave, kills, team, at from zombie_best where place = $2 and ${who} order by wave desc, kills desc, at asc limit $3`, [this.boardName ?? '', place, limit])
+      ? await this.pool.query(`select username, place, wave, kills, team, at from zombie_best where place = $2 and ${who} order by wave desc, kills desc, at asc limit $3`, [boardNames(this), place, limit])
       : await this.pool.query(
         `select * from (select distinct on (username) username, place, wave, kills, team, at from zombie_best where ${who}
-         order by username, wave desc, kills desc, at asc) best order by wave desc, kills desc, at asc limit $2`, [this.boardName ?? '', limit]);
+         order by username, wave desc, kills desc, at asc) best order by wave desc, kills desc, at asc limit $2`, [boardNames(this), limit]);
     return r.rows;
   }
   async log(e) {
