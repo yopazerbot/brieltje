@@ -154,13 +154,13 @@ export class FootballLife {
     const nRing = cheap ? 5 : 6;
     for (let i = 0; i < nRing; i++) {
       const t = (i / nRing) * Math.PI * 2;
-      const a = make('kid', K.child, rc.u + Math.cos(t) * rc.r, rc.w + Math.sin(t) * rc.r, kit(false, pick(SKINS)));
+      const a = make('kid', K.child, rc.u + Math.cos(t) * rc.r, rc.w + Math.sin(t) * rc.r, kit(false, pick(SKINS)), 0); // in kit: no cap, no bag
       a.face = a.yaw = heading(-Math.cos(t), -Math.sin(t)); // into the circle
       a.speed = 2.4;
       this.ring.push(a);
     }
     for (let i = 0; i < (cheap ? 1 : 2); i++) {
-      const a = make('kid', K.child, rc.u + rand(-1, 1), rc.w + rand(-1, 1), kit(true, pick(SKINS)));
+      const a = make('kid', K.child, rc.u + rand(-1, 1), rc.w + rand(-1, 1), kit(true, pick(SKINS)), 0);
       a.speed = 3.0;
       this.chasers.push(a);
     }
@@ -169,7 +169,7 @@ export class FootballLife {
     // The shooting drill at the far goal.
     for (let i = 0; i < (cheap ? 3 : 5); i++) {
       const [u, w] = this.queueSpot(i);
-      const a = make('kid', i % 4 === 3 ? K.teen : K.child, u, w, kit(i % 2 === 1, pick(SKINS)));
+      const a = make('kid', i % 4 === 3 ? K.teen : K.child, u, w, kit(i % 2 === 1, pick(SKINS)), 0);
       a.face = a.yaw = heading(-1, 0);
       a.speed = 2.6;
       this.queue.push(a);
