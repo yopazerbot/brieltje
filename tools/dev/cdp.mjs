@@ -133,6 +133,25 @@ export async function startGame(b, url, { phone = false, village = false } = {})
   if (village) await b.waitFor("briel.village() === 'ready'", 240000);
 }
 
+/**
+ * Stop unless `url` points at this computer (localhost, 127.0.0.1 or [::1]). For the checks that change a server's state
+ * (log in as the admin, make or revoke a home's code, make accounts, join as players): they must never run against
+ * brieltje.be or anyone else's server, whatever --api or --url they are given.
+ */
+export function localOnly(url, what = '--api') {
+  let host = '';
+  try {
+    host = new URL(url).hostname;
+  } catch {
+    // not a URL: refused below
+  }
+  if (!['localhost', '127.0.0.1', '[::1]'].includes(host)) {
+    console.error(`${what} must be this computer (localhost, 127.0.0.1 or [::1]), not ${host || String(url)}`);
+    process.exit(2);
+  }
+  return url;
+}
+
 /** Read `--name value` and `--flag` options from process.argv. */
 export function options(defaults) {
   const out = { ...defaults, _: [] };

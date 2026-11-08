@@ -7,9 +7,10 @@
 import WebSocket from '../../web/node_modules/ws/wrapper.mjs';
 import { FLAG, readBike, readPlayer } from '../../web/shared/wire.mjs';
 import BIKES from '../../web/shared/bike.json' with { type: 'json' };
-import { options } from './cdp.mjs';
+import { localOnly, options } from './cdp.mjs';
 
 const o = options({ api: 'http://localhost:8310' });
+localOnly(o.api); // it logs in as the admin and joins players: a throwaway server on this computer only
 const password = process.env.ADMIN_PASSWORD;
 if (!password) throw new Error('ADMIN_PASSWORD is not set');
 const host = new URL(o.api).host;

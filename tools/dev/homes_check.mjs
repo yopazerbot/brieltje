@@ -7,9 +7,11 @@
 // (window.briel), with its /api proxied to --api (API_PORT=8450 npx vite --port 5450), the server a throwaway one on your own port.
 import { mkdirSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
-import { launch, options, startGame } from './cdp.mjs';
+import { launch, localOnly, options, startGame } from './cdp.mjs';
 
 const o = options({ url: 'http://localhost:5450/', api: 'http://localhost:8450', out: '', port: '9450', phone: false, quality: '', admin: false });
+localOnly(o.api); // it makes the homes' codes: a throwaway server on this computer only
+localOnly(o.url, '--url'); // and the page logs in as the admin through it
 if (!o.out) throw new Error('usage: --out <folder>');
 mkdirSync(o.out, { recursive: true });
 const password = process.env.ADMIN_PASSWORD;

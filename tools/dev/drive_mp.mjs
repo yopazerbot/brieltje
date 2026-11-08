@@ -6,9 +6,10 @@
 //   node tools/dev/drive_mp.mjs --url http://localhost:5391/ --ports 9862,9863 [--out <folder>]
 import { mkdirSync } from 'node:fs';
 import { join } from 'node:path';
-import { launch, options } from './cdp.mjs';
+import { launch, localOnly, options } from './cdp.mjs';
 
 const o = options({ url: 'http://localhost:5391/', ports: '9862,9863', out: '' });
+localOnly(o.url, '--url'); // two players join and drive: a throwaway server on this computer only
 const [pa, pb] = o.ports.split(',').map(Number);
 let failed = 0;
 const ok = (name, pass, extra = '') => {

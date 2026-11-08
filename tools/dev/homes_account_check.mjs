@@ -9,9 +9,10 @@
 // the server holds no inside) to one with it. Makes one test account and deletes it at the end.
 import { randomBytes } from 'node:crypto';
 import WebSocket from '../../web/node_modules/ws/wrapper.mjs';
-import { options } from './cdp.mjs';
+import { localOnly, options } from './cdp.mjs';
 
 const o = options({ api: 'http://localhost:8700' });
+localOnly(o.api); // it makes and revokes the main house's code: a throwaway server on this computer only
 const password = process.env.ADMIN_PASSWORD;
 if (!password) throw new Error('ADMIN_PASSWORD is not set');
 const host = new URL(o.api).host;

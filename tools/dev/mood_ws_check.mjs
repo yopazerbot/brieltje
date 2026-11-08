@@ -5,9 +5,10 @@
 //   ADMIN_PASSWORD=... node tools/dev/mood_ws_check.mjs --api http://localhost:8420
 import WebSocket from '../../web/node_modules/ws/wrapper.mjs';
 import { isCycle, winterAt } from '../../web/shared/moods.mjs';
-import { options } from './cdp.mjs';
+import { localOnly, options } from './cdp.mjs';
 
 const o = options({ api: 'http://localhost:8420' });
+localOnly(o.api); // it logs in as the admin and changes the weather: a throwaway server on this computer only
 const password = process.env.ADMIN_PASSWORD;
 if (!password) throw new Error('ADMIN_PASSWORD is not set');
 const host = new URL(o.api).host;

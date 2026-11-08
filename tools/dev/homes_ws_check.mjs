@@ -6,9 +6,10 @@
 //
 // Needs the private data on the server (web/.private/ on this PC): the check says so and stops without it.
 import WebSocket from '../../web/node_modules/ws/wrapper.mjs';
-import { options } from './cdp.mjs';
+import { localOnly, options } from './cdp.mjs';
 
 const o = options({ api: 'http://localhost:8450' });
+localOnly(o.api); // it makes the main house's code: a throwaway server on this computer only
 const password = process.env.ADMIN_PASSWORD;
 if (!password) throw new Error('ADMIN_PASSWORD is not set');
 const host = new URL(o.api).host;
