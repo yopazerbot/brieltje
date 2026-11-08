@@ -38,9 +38,9 @@
     </ul>
   </section>
 
-  <!-- 1. One window, two views -->
+  <!-- One window, two views -->
   <section class="panel" id="views">
-    <p class="step">1</p>
+    <p class="step"></p>
     <h2><span data-lang="nl">Eén raam, twee huizen</span><span data-lang="en">One window, two houses</span></h2>
     <p data-lang="nl">Twee vrienden spelen samen. De ene heeft de code en wandelt binnen. De andere blijft buiten en kijkt door het raam. Sleep de schuifregelaar om te zien wat elk van hen ziet.</p>
     <p data-lang="en">Two friends play together. One has the code and walks in. The other stays outside and looks through the window. Drag the slider to see what each of them sees.</p>
@@ -140,9 +140,9 @@
     </div>
   </section>
 
-  <!-- 2. The pipeline -->
+  <!-- The pipeline -->
   <section class="panel" id="pipeline">
-    <p class="step">2</p>
+    <p class="step"></p>
     <h2><span data-lang="nl">Van je huis tot een verzegeld bestand</span><span data-lang="en">From your home to a sealed file</span></h2>
     <p data-lang="nl">Het 3D-model van je huis wordt in twee delen gesplitst voor het ooit in de openbare code terechtkomt. Het ene deel is voor iedereen, het andere wordt verzegeld.</p>
     <p data-lang="en">The 3D model of your home is split in two before it ever reaches the public code. One part is for everyone, the other gets sealed.</p>
@@ -178,10 +178,95 @@
     </div>
   </section>
 
-  <!-- 3. Live demo -->
+  <!-- Who holds what: the trust zones -->
+  <section class="panel" id="zones">
+    <p class="step"></p>
+    <h2><span data-lang="nl">Wie heeft wat?</span><span data-lang="en">Who holds what?</span></h2>
+    <p data-lang="nl">Elk vak is een plek waar gegevens leven. De pijlen tonen wat er tussen die plekken reist. De privésleutel verlaat de server nooit.</p>
+    <p data-lang="en">Each box is a place where data lives. The arrows show what travels between them. The private key never leaves the server.</p>
+    <div class="zones">
+      <div class="zone z-public">
+        <p class="zone-head"><span class="ico">🌍</span><b><span data-lang="nl">Openbaar: iedereen</span><span data-lang="en">Public: anyone</span></b></p>
+        <p class="zone-sub"><span data-lang="nl">De code van het project op GitHub</span><span data-lang="en">The project's code on GitHub</span></p>
+        <ul class="chips-d">
+          <li><span data-lang="nl">de code van het spel</span><span data-lang="en">the game's code</span></li>
+          <li><span data-lang="nl">de schil van je huis</span><span data-lang="en">the shell of your house</span></li>
+          <li class="sealed"><span data-lang="nl">🔏 de binnenkant, verzegeld (.enc)</span><span data-lang="en">🔏 the inside, sealed (.enc)</span></li>
+          <li><span data-lang="nl">🔓 de openbare sleutel</span><span data-lang="en">🔓 the public key</span></li>
+        </ul>
+      </div>
+      <div class="arrow"><span data-lang="nl">verzegelde bestanden, bij elke update</span><span data-lang="en">sealed files, with every update</span></div>
+      <div class="zone z-server">
+        <p class="zone-head"><span class="ico">🗝️</span><b><span data-lang="nl">De spelserver</span><span data-lang="en">The game server</span></b></p>
+        <p class="zone-sub"><span data-lang="nl">Waar het spel draait</span><span data-lang="en">Where the game runs</span></p>
+        <ul class="chips-d">
+          <li class="key"><span data-lang="nl">🔒 de privésleutel: 32 willekeurige bytes, als instelling</span><span data-lang="en">🔒 the private key: 32 random bytes, as a setting</span></li>
+          <li><span data-lang="nl">de binnenkant, geopend in het geheugen</span><span data-lang="en">the inside, opened in memory</span></li>
+          <li><span data-lang="nl">een scrypt-hash van elke code</span><span data-lang="en">a scrypt hash of each code</span></li>
+          <li><span data-lang="nl">de passen: wie binnen mag, 8 uur</span><span data-lang="en">the passes: who may enter, 8 hours</span></li>
+          <li><span data-lang="nl">tellers van juiste en foute pogingen</span><span data-lang="en">counters of right and wrong tries</span></li>
+        </ul>
+        <p class="never"><span data-lang="nl">De privésleutel verlaat dit vak nooit</span><span data-lang="en">The private key never leaves this box</span></p>
+      </div>
+      <div class="branches">
+        <div class="branch">
+          <div class="arrow both sun"><span data-lang="nl">je code erin, de binnenkant eruit (HTTPS)</span><span data-lang="en">your code in, the inside out (HTTPS)</span></div>
+          <div class="zone z-with">
+            <p class="zone-head"><span class="ico">🙂</span><b><span data-lang="nl">Een speler met je code</span><span data-lang="en">A player with your code</span></b></p>
+            <ul class="chips-d">
+              <li><span data-lang="nl">de schil</span><span data-lang="en">the shell</span></li>
+              <li class="sealed"><span data-lang="nl">de binnenkant, enkel in het geheugen, tot de pagina sluit</span><span data-lang="en">the inside, in memory only, until the page closes</span></li>
+              <li><span data-lang="nl">de andere spelers</span><span data-lang="en">the other players</span></li>
+            </ul>
+          </div>
+        </div>
+        <div class="branch">
+          <div class="arrow muted-a"><span data-lang="nl">de schil en de spelers, nooit de binnenkant</span><span data-lang="en">the shell and the players, never the inside</span></div>
+          <div class="zone z-without">
+            <p class="zone-head"><span class="ico">🙂</span><b><span data-lang="nl">Een speler zonder code</span><span data-lang="en">A player without the code</span></b></p>
+            <ul class="chips-d">
+              <li><span data-lang="nl">de schil</span><span data-lang="en">the shell</span></li>
+              <li><span data-lang="nl">de andere spelers</span><span data-lang="en">the other players</span></li>
+              <li class="no"><span data-lang="nl">de binnenkant</span><span data-lang="en">the inside</span></li>
+            </ul>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- Live demo -->
   <section class="panel" id="demo">
-    <p class="step">3</p>
-    <h2><span data-lang="nl">Probeer het zelf: verzegel een huis</span><span data-lang="en">Try it: seal a home yourself</span></h2>
+    <p class="step"></p>
+    <h2><span data-lang="nl">Het zegel, stap voor stap</span><span data-lang="en">The seal, step by step</span></h2>
+    <div class="ladder" aria-label="">
+      <p class="lad-title l-seal"><span class="ico">🔏</span><b><span data-lang="nl">Verzegelen: dat mag iedereen</span><span data-lang="en">Sealing: anyone may do this</span></b></p>
+      <p class="lad-title l-open"><span class="ico">🗝️</span><b><span data-lang="nl">Openen: enkel de server</span><span data-lang="en">Opening: only the server</span></b></p>
+
+      <div class="rung s1 in"><b><span data-lang="nl">🔓 Openbare sleutel van de server</span><span data-lang="en">🔓 The server's public key</span></b><small><span data-lang="nl">staat in de openbare code</span><span data-lang="en">is in the public code</span></small><b><span data-lang="nl">🎲 Een eenmalig sleutelpaar</span><span data-lang="en">🎲 A one-time key pair</span></b><small><span data-lang="nl">enkel voor dit ene bestand</span><span data-lang="en">for this one file only</span></small></div>
+      <div class="rung s2 op"><b>X25519</b><small><span data-lang="nl">eenmalige privésleutel × openbare sleutel van de server</span><span data-lang="en">one-time private key × server's public key</span></small></div>
+      <div class="rung s3 val"><b><span data-lang="nl">🤝 Gedeeld geheim</span><span data-lang="en">🤝 Shared secret</span></b></div>
+      <div class="rung s4 op"><b>HKDF-SHA256</b><small><span data-lang="nl">+ beide openbare sleutels + de bestandsnaam</span><span data-lang="en">+ both public keys + the file name</span></small></div>
+      <div class="rung s5 val"><b><span data-lang="nl">🔑 AES-256-sleutel</span><span data-lang="en">🔑 AES-256 key</span></b></div>
+      <div class="rung s6 op"><b>AES-256-GCM</b><small><span data-lang="nl">versleutelt de binnenkant en zet een zegel over inhoud én naam</span><span data-lang="en">encrypts the inside and seals both content and name</span></small></div>
+      <div class="rung s7 out"><b><span data-lang="nl">🗑️ Eenmalige privésleutel vergeten</span><span data-lang="en">🗑️ One-time private key forgotten</span></b><small><span data-lang="nl">zelfs wie verzegelde, kan niet meer openen</span><span data-lang="en">even whoever sealed it can't open it again</span></small></div>
+
+      <div class="eq c3"><b>=</b><small><span data-lang="nl">hetzelfde geheim</span><span data-lang="en">the same secret</span></small></div>
+      <div class="eq c5"><b>=</b><small><span data-lang="nl">dezelfde sleutel</span><span data-lang="en">the same key</span></small></div>
+      <div class="file c7"><span class="ico">📦</span><b><span data-lang="nl">Het .enc-bestand</span><span data-lang="en">The .enc file</span></b><small><span data-lang="nl">BPD2 · eenmalige openbare sleutel · nonce · zegel · versleutelde inhoud</span><span data-lang="en">BPD2 · one-time public key · nonce · seal · encrypted content</span></small></div>
+
+      <div class="rung o1 in"><b><span data-lang="nl">🔒 Privésleutel van de server</span><span data-lang="en">🔒 The server's private key</span></b><small><span data-lang="nl">enkel op de server</span><span data-lang="en">only on the server</span></small><b><span data-lang="nl">📦 Eenmalige openbare sleutel</span><span data-lang="en">📦 The one-time public key</span></b><small><span data-lang="nl">uit het bestand</span><span data-lang="en">from the file</span></small></div>
+      <div class="rung o2 op"><b>X25519</b><small><span data-lang="nl">privésleutel van de server × eenmalige openbare sleutel</span><span data-lang="en">server's private key × one-time public key</span></small></div>
+      <div class="rung o3 val"><b><span data-lang="nl">🤝 Gedeeld geheim</span><span data-lang="en">🤝 Shared secret</span></b><small class="mob"><span data-lang="nl">hetzelfde als bij het verzegelen</span><span data-lang="en">the same as when sealing</span></small></div>
+      <div class="rung o4 op"><b>HKDF-SHA256</b><small><span data-lang="nl">dezelfde invoer, dus dezelfde uitkomst</span><span data-lang="en">the same inputs, so the same result</span></small></div>
+      <div class="rung o5 val"><b><span data-lang="nl">🔑 AES-256-sleutel</span><span data-lang="en">🔑 AES-256 key</span></b></div>
+      <div class="rung o6 op"><b>AES-256-GCM</b><small><span data-lang="nl">controleert eerst het zegel, ontsleutelt dan</span><span data-lang="en">checks the seal first, then decrypts</span></small></div>
+      <div class="rung o7 out"><b><span data-lang="nl">✅ De binnenkant, of ❌ geweigerd</span><span data-lang="en">✅ The inside, or ❌ refused</span></b><small><span data-lang="nl">één gewijzigde byte en niets komt eruit</span><span data-lang="en">one changed byte and nothing comes out</span></small></div>
+    </div>
+    <p class="muted small" data-lang="nl">Waarom werkt dat? X25519 heeft een wiskundige eigenschap: jouw privésleutel met mijn openbare sleutel geeft hetzelfde getal als mijn privésleutel met jouw openbare sleutel. Wie enkel de twee openbare sleutels heeft, kan dat getal niet berekenen.</p>
+    <p class="muted small" data-lang="en">Why does this work? X25519 has a mathematical property: your private key with my public key gives the same number as my private key with your public key. Someone with only the two public keys can't work that number out.</p>
+
+    <h3><span data-lang="nl">Probeer het zelf</span><span data-lang="en">Try it yourself</span></h3>
     <p data-lang="nl">Deze demo doet in je eigen browser dezelfde stappen als de server, met hetzelfde bestandsformaat. Er wordt niets verstuurd. De sleutel is een wegwerpsleutel die je browser nu maakt; de echte staat enkel op de server.</p>
     <p data-lang="en">This demo runs the same steps as the server, with the same file format, in your own browser. Nothing is sent anywhere. The key is a throwaway key your browser makes right now; the real one exists only on the server.</p>
 
@@ -236,9 +321,9 @@
     </details>
   </section>
 
-  <!-- 4. The code -->
+  <!-- The code -->
   <section class="panel" id="code">
-    <p class="step">4</p>
+    <p class="step"></p>
     <h2><span data-lang="nl">Je code</span><span data-lang="en">Your code</span></h2>
     <div class="two">
       <div>
@@ -259,6 +344,20 @@
       </ol>
     </div>
 
+    <h3><span data-lang="nl">Wat er gebeurt als je de code typt</span><span data-lang="en">What happens when you type the code</span></h3>
+    <div class="seq">
+      <div class="lanes-h"><span><span data-lang="nl">🙂 Jij</span><span data-lang="en">🙂 You</span></span><span>🗝️ Server</span><span><span data-lang="nl">🗄️ Opslag</span><span data-lang="en">🗄️ Store</span></span></div>
+      <div class="msg f1 t2"><p><span data-lang="nl">het nummer van het huis en de code, enkel vanaf de eigen site</span><span data-lang="en">the home's id and the code, from the site itself only</span></p><i></i></div>
+      <div class="self l2"><span data-lang="nl"><b>Te veel pogingen?</b> 30 per uur per afzender, 8 per huis per 10 minuten. Geteld vóór al de rest.</span><span data-lang="en"><b>Too many tries?</b> 30 an hour per sender, 8 per home per 10 minutes. Counted before anything else.</span></div>
+      <div class="self l2"><span data-lang="nl"><b>Een huis onder vuur?</b> Na 300 controles per uur gaat de rest een voor een, ongeveer één per seconde.</span><span data-lang="en"><b>A home under fire?</b> Past 300 checks an hour, the rest go one at a time, about one a second.</span></div>
+      <div class="msg f2 t3"><p><span data-lang="nl">lees de opgeslagen scrypt-hash</span><span data-lang="en">read the stored scrypt hash</span></p><i></i></div>
+      <div class="self l2"><span data-lang="nl"><b>scrypt(code) = hash?</b> Een onbekend huis wordt tegen een nephash gecontroleerd, zodat elke "nee" er hetzelfde uitziet.</span><span data-lang="en"><b>scrypt(code) = hash?</b> An unknown home is checked against a dummy hash, so every "no" looks the same.</span></div>
+      <div class="msg f2 t3"><p><span data-lang="nl">+1 juist of +1 fout, zonder naam of IP-adres</span><span data-lang="en">+1 right or +1 wrong, with no name or IP address</span></p><i></i></div>
+      <div class="self l2 good"><span data-lang="nl"><b>Juist:</b> een pas voor deze sessie, 8 uur.</span><span data-lang="en"><b>Right:</b> a pass for this session, 8 hours.</span></div>
+      <div class="msg f2 t1 back good"><p><span data-lang="nl">de binnenkant, versleuteld onderweg (HTTPS), nergens bewaard (no-store)</span><span data-lang="en">the inside, encrypted on the way (HTTPS), stored nowhere (no-store)</span></p><i></i></div>
+      <div class="msg f2 t1 back bad"><p><span data-lang="nl">fout: 403, voor elke weigering hetzelfde antwoord</span><span data-lang="en">wrong: 403, the same answer for every refusal</span></p><i></i></div>
+    </div>
+
     <h3><span data-lang="nl">Hoe lang duurt raden?</span><span data-lang="en">How long would guessing take?</span></h3>
     <p data-lang="nl">De server telt elke poging voor hij iets anders doet. Eén afzender krijgt 30 pogingen per uur, en 8 per huis per 10 minuten. Een massa computers samen? Na 300 pogingen per uur voor één huis gaat de rest in een trage rij: ongeveer één per seconde.</p>
     <p data-lang="en">The server counts every try before it does anything else. One sender gets 30 tries an hour, and 8 per home per 10 minutes. A crowd of computers together? After 300 tries an hour at one home, the rest go into a slow lane: about one a second.</p>
@@ -268,9 +367,9 @@
     <p class="note" data-lang="en"><b>And if someone floods wrong codes to keep you out?</b> There's no lock that snaps shut after too many mistakes. A flood of tries is slowed down, you can try again a moment later, and anyone who already has a pass isn't slowed at all.</p>
   </section>
 
-  <!-- 5. Multiplayer -->
+  <!-- Multiplayer -->
   <section class="panel" id="together">
-    <p class="step">5</p>
+    <p class="step"></p>
     <h2><span data-lang="nl">Samen spelen: de server beslist</span><span data-lang="en">Playing together: the server decides</span></h2>
     <p data-lang="nl">De belangrijkste regel van het hele spel: de server vertrouwt niets wat een browser hem stuurt. Elke speler krijgt enkel wat die mag zien.</p>
     <p data-lang="en">The most important rule of the whole game: the server trusts nothing a browser sends it. Each player only gets what they're allowed to see.</p>
@@ -318,9 +417,29 @@
     </ul>
   </section>
 
-  <!-- 6. Honest limits -->
+  <!-- Attacks and what stops them -->
+  <section class="panel" id="attacks">
+    <p class="step"></p>
+    <h2><span data-lang="nl">Elke aanval, en wat hem tegenhoudt</span><span data-lang="en">Every attack, and what stops it</span></h2>
+    <p data-lang="nl">Beveiliging is nooit één slot. Elke manier om binnen te geraken, stuit op een eigen laag.</p>
+    <p data-lang="en">Security is never one lock. Every way of getting in runs into a layer of its own.</p>
+    <ul class="attacks">
+      <li><p class="atk"><span data-lang="nl">De bestanden in de openbare code lezen</span><span data-lang="en">Read the files in the public code</span></p><p class="def"><b><span data-lang="nl">Versleuteling</span><span data-lang="en">Encryption</span></b><span data-lang="nl">Zonder de serversleutel is het .enc-bestand ruis.</span><span data-lang="en">Without the server key, the .enc file is noise.</span></p></li>
+      <li><p class="atk"><span data-lang="nl">Het spel in de browser aanpassen om binnen te kijken</span><span data-lang="en">Modify the game in the browser to look inside</span></p><p class="def"><b><span data-lang="nl">De server beslist</span><span data-lang="en">The server decides</span></b><span data-lang="nl">Zonder pas wordt de binnenkant nooit verstuurd.</span><span data-lang="en">Without a pass, the inside is never sent.</span></p></li>
+      <li><p class="atk"><span data-lang="nl">De code raden</span><span data-lang="en">Guess the code</span></p><p class="def"><b><span data-lang="nl">Lange code en limieten</span><span data-lang="en">A long code and limits</span></b><span data-lang="nl">50 bits en 30 pogingen per uur: miljarden jaren.</span><span data-lang="en">50 bits and 30 tries an hour: billions of years.</span></p></li>
+      <li><p class="atk"><span data-lang="nl">De server bestoken met pogingen</span><span data-lang="en">Flood the server with tries</span></p><p class="def"><b><span data-lang="nl">Beurten en een trage rij</span><span data-lang="en">Turns and a slow lane</span></b><span data-lang="nl">Pogingen wachten op hun beurt; boven het budget één per seconde.</span><span data-lang="en">Tries wait their turn; past the budget, one a second.</span></p></li>
+      <li><p class="atk"><span data-lang="nl">Een verzegeld bestand wijzigen of verwisselen</span><span data-lang="en">Change or swap a sealed file</span></p><p class="def"><b><span data-lang="nl">Het GCM-zegel</span><span data-lang="en">The GCM seal</span></b><span data-lang="nl">Het zegel breekt en de server weigert het bestand.</span><span data-lang="en">The seal breaks and the server refuses the file.</span></p></li>
+      <li><p class="atk"><span data-lang="nl">Binnenwandelen door een deur die openstaat</span><span data-lang="en">Walk in through a door that's open</span></p><p class="def"><b><span data-lang="nl">Positiecontrole</span><span data-lang="en">Position check</span></b><span data-lang="nl">De server weigert de positie en zet je buiten.</span><span data-lang="en">The server refuses the position and puts you outside.</span></p></li>
+      <li><p class="atk"><span data-lang="nl">De naam overnemen van iemand met een pas</span><span data-lang="en">Take over the name of someone with a pass</span></p><p class="def"><b><span data-lang="nl">Pas per sessie</span><span data-lang="en">A pass per session</span></b><span data-lang="nl">Een pas hoort bij een sessie, niet bij een naam.</span><span data-lang="en">A pass belongs to a session, not to a name.</span></p></li>
+      <li><p class="atk"><span data-lang="nl">Uitzoeken welke huizen een slot hebben</span><span data-lang="en">Find out which homes have a lock</span></p><p class="def"><b><span data-lang="nl">Elk "nee" is gelijk</span><span data-lang="en">Every "no" is alike</span></b><span data-lang="nl">Hetzelfde antwoord, met evenveel werk.</span><span data-lang="en">The same answer, for the same amount of work.</span></p></li>
+      <li><p class="atk"><span data-lang="nl">De browser van de beheerder ongemerkt een code laten maken</span><span data-lang="en">Trick the admin's browser into making a code</span></p><p class="def"><b><span data-lang="nl">Enkel vanaf de eigen site</span><span data-lang="en">Only from the site itself</span></b><span data-lang="nl">Elke wijziging moet van brieltje.be zelf komen.</span><span data-lang="en">Every change must come from brieltje.be itself.</span></p></li>
+      <li><p class="atk"><span data-lang="nl">De sleutel stelen</span><span data-lang="en">Steal the key</span></p><p class="def"><b><span data-lang="nl">Enkel op de server</span><span data-lang="en">Only on the server</span></b><span data-lang="nl">Nooit in code of logbestanden. Een nieuwe sleutel verzegelt alles opnieuw.</span><span data-lang="en">Never in code or logs. A new key seals everything again.</span></p></li>
+    </ul>
+  </section>
+
+  <!-- Honest limits -->
   <section class="panel" id="honest">
-    <p class="step">6</p>
+    <p class="step"></p>
     <h2><span data-lang="nl">Wat anderen wél zien</span><span data-lang="en">What others can still see</span></h2>
     <p data-lang="nl">Geen enkele beveiliging is volledig. Dit zijn de keuzes die we bewust gemaakt hebben, zodat je weet waar je aan toe bent.</p>
     <p data-lang="en">No security is complete. These are the choices we made on purpose, so you know where you stand.</p>
@@ -339,9 +458,9 @@
     </div>
   </section>
 
-  <!-- 7. Questions -->
+  <!-- Questions -->
   <section class="panel" id="faq">
-    <p class="step">7</p>
+    <p class="step"></p>
     <h2><span data-lang="nl">Vragen</span><span data-lang="en">Questions</span></h2>
     <details><summary><span data-lang="nl">Kan iemand het versleutelde bestand lezen?</span><span data-lang="en">Can someone read the encrypted file?</span></summary>
       <p data-lang="nl">Het staat in de openbare code, maar zonder de sleutel van de server is het ruis. Die sleutel is 32 willekeurige bytes: 2<sup>256</sup> mogelijkheden, meer dan er atomen in het zichtbare heelal zijn. Er is geen wachtwoord dat je kunt raden.</p>
