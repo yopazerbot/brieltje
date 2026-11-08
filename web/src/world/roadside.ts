@@ -3,22 +3,20 @@ import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
 import { facesMaterial, looseProps, type Face, type Place } from './looseProps';
 import type { V3 } from './rigid';
 import { tileKey, type Piece, type Tiles } from './tiles';
+import { placeWheelieBins } from './wheelieBins';
 
 /**
  * Things along the streets of the road to Smetlede and the village's outer streets
  * (tools/roads.py, web/src/data/roads.json): street name plates on posts at the corners, the
  * village's name where the built-up area starts, zone 30 signs where the traffic slows for the
- * centre, a bus stop with its shelter, letterboxes at the front of the houses, a wheelie bin beside
- * some of them, and a bike against a front wall here and there.
+ * centre, a bus stop with its shelter, letterboxes at the front of the houses, a waste container beside
+ * some of them (world/wheelieBins.ts), and a bike against a front wall here and there.
  *
  * All made here from a few boxes and cylinders (nothing to download) in vertex colours; the
  * plates' and signs' faces come from one picture drawn on a canvas (1024 x 512). The bus shelter
  * joins the surroundings' tiles (world/tiles.ts); the rest are loose (world/looseProps.ts): a car
  * bends the posts and knocks the bins and bikes over.
  */
-
-/** One letterbox in this many gets a wheelie bin beside it (0: none). */
-const BIN_EVERY = 4;
 
 interface RoadsideData {
   plates: [number, number, number, string][];
@@ -58,22 +56,6 @@ function letterbox(): THREE.BufferGeometry {
     block(0.34, 0.4, 0.36, 0, 0.98, 0, '#3a3e43'),
     block(0.38, 0.05, 0.4, 0, 1.38, 0, '#2c2f33'), // the lid
     block(0.24, 0.03, 0.01, 0, 1.24, 0.18, '#141516'), // the slot
-  ]);
-}
-
-/**
- * A wheelie bin, 0.6 x 1.0 x 0.74 m, its front (+z) to the street, its handle and wheels at the back: the
- * body and lid painted light, so each bin's own colour (instance colour) shows on them.
- */
-function wheelieBin(): THREE.BufferGeometry {
-  const wheel = (x: number) => paint(new THREE.CylinderGeometry(0.1, 0.1, 0.05, 10).rotateZ(Math.PI / 2).translate(x, 0.1, -0.29), '#1b1b1b');
-  return mergeGeometries([
-    block(0.56, 0.9, 0.64, 0, 0.06, 0.02, '#d9d9d9'),
-    block(0.6, 0.05, 0.72, 0, 0.96, 0.02, '#cdcdcd'), // the lid
-    block(0.5, 0.04, 0.05, 0, 0.9, -0.34, '#c4c4c4'), // the handle
-    block(0.5, 0.035, 0.035, 0, 0.08, -0.29, '#202020'), // the axle
-    wheel(-0.27),
-    wheel(0.27),
   ]);
 }
 
@@ -233,14 +215,14 @@ const POST = { hz: 2.1, damping: 0.1, yield: 0.1, maxBend: 1.35 };
 
 /**
  * Everything along the streets: the bus shelter as pieces of the tiles it stands in, the rest as loose
- * things (world/looseProps.ts). `groundAt` is the ground (or paving) at a spot.
+ * things (world/looseProps.ts). `groundAt` is the ground (or paving) at a spot; `bins` the waste
+ * containers' models (world/wheelieBins.ts), none without them.
  */
-export function buildRoadside(data: RoadsideData, tiles: Tiles, groundAt: (x: number, z: number) => number): THREE.Texture {
+export function buildRoadside(data: RoadsideData, tiles: Tiles, groundAt: (x: number, z: number) => number, bins: Map<string, THREE.BufferGeometry> | null = null): THREE.Texture {
   const names = [...new Set(data.plates.map((p) => p[3]))];
   const { texture, plate, cells } = drawFaces(names);
   const kit = new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.6, metalness: 0.15 });
   const faces = facesMaterial(new THREE.MeshStandardMaterial({ map: texture, roughness: 0.45, metalness: 0.1 }));
-  const bins = new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.55 });
   const glassMat = new THREE.MeshStandardMaterial({ color: '#cfdde6', roughness: 0.05, metalness: 0.1, transparent: true, opacity: 0.22, depthWrite: false });
   const [shelterFrame, shelterGlass] = shelter();
   const byTile = new Map<string, { solid: THREE.BufferGeometry[]; glass: THREE.BufferGeometry[] }>();
@@ -253,23 +235,9 @@ export function buildRoadside(data: RoadsideData, tiles: Tiles, groundAt: (x: nu
   const up = new THREE.Vector3(0, 1, 0);
   const at = (x: number, z: number, yaw: number, extra: Partial<Place> = {}): Place => ({ x, y: groundAt(x, z), z, yaw, ...extra });
 
-  // Letterboxes, and beside one in BIN_EVERY a wheelie bin (grey or green), on whichever side is clear.
+  // Letterboxes, and beside one in four a waste container (world/wheelieBins.ts).
   const boxes = data.boxes.map(([x, z, yaw]) => at(x, z, yaw));
-  const binAt: Place[] = [];
-  data.boxes.forEach(([x, z, yaw], i) => {
-    if (!BIN_EVERY || i % BIN_EVERY !== 1) return;
-    const c = Math.cos(yaw);
-    const s = Math.sin(yaw);
-    for (const side of [1, -1]) {
-      const bx = x + c * 0.8 * side - s * 0.15;
-      const bz = z - s * 0.8 * side - c * 0.15;
-      const y = groundAt(bx, bz);
-      const turn = yaw + (((i * 7919) % 13) / 13 - 0.5) * 0.3;
-      if (!looseProps.free(bx, bz, turn, 0.66, 0.8, y + 0.15, y + 1.0)) continue;
-      binAt.push({ x: bx, y, z: bz, yaw: turn, color: (i >> 2) % 2 ? '#4f7740' : '#5b6065' });
-      break;
-    }
-  });
+  placeWheelieBins(bins, data.boxes, groundAt);
   const posts: Place[] = [];
   // Name plates: 0.8 x 0.17 m on top of a post, along the street they name, readable from both sides.
   for (const [x, z, a, name] of data.plates) {
@@ -294,7 +262,6 @@ export function buildRoadside(data: RoadsideData, tiles: Tiles, groundAt: (x: nu
     geometry: bike(), material: kit, tag: 'steel', mode: 'rigid', sound: 'metal', mass: 18, push: 0.45, bounce: 0.12, friction: 0.7,
     points: BIKE_POINTS, edges: [[0.3, 1.0, 0], [-0.22, 0.87, 0], [0.86, 0.35, 0], [-0.86, 0.35, 0]], box: [[-0.87, 0, -0.15], [0.87, 1.02, 0.15]], reach: 0.3,
   }, data.bikes.map(([x, z, yaw]) => at(x, z, yaw, { lean: -0.18 }))); // leaning against the wall behind it
-  looseProps.add('bin', { geometry: wheelieBin(), material: bins, tag: 'plastic', mode: 'rigid', sound: 'plastic', mass: 13, push: 1, bounce: 0.3, friction: 0.55, tinted: true }, binAt);
 
   const made: { key: string; pieces: Piece[] }[] = [];
   for (const [key, t] of byTile) {

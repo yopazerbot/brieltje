@@ -7,6 +7,7 @@ import { buildRoadside } from './roadside';
 import { terrain } from './terrain';
 import type { Tiles } from './tiles';
 import { Traffic, type Obstacle, type OtherCar } from './traffic';
+import { loadWheelieBins } from './wheelieBins';
 
 /**
  * Life along the roads: the traffic and the parked cars (traffic.ts), the plates, signs, letterboxes,
@@ -47,12 +48,13 @@ export class RoadLife {
   load(renderer: THREE.WebGLRenderer, scene: THREE.Scene, camera: THREE.Camera,
     prepare: (o: THREE.Object3D) => Promise<unknown> = (o) => renderer.compileAsync(o, camera, scene)): Promise<void> {
     return (this.loading ??= (async () => {
-      const data = (await import('../data/roads.json')).default as unknown as Parameters<typeof buildRoadside>[0] & Parameters<Traffic['load']>[0];
+      const [json, bins] = await Promise.all([import('../data/roads.json'), loadWheelieBins()]);
+      const data = json.default as unknown as Parameters<typeof buildRoadside>[0] & Parameters<Traffic['load']>[0];
       const home = this.group.parent;
       const aside = new THREE.Group();
       aside.add(this.group);
       const before = new Set([...this.tiles.group.children, ...looseProps.group.children]);
-      buildRoadside(data, this.tiles, this.groundAt);
+      buildRoadside(data, this.tiles, this.groundAt, bins);
       const fresh = this.tiles.group.children.filter((o) => !before.has(o));
       const loose = looseProps.group.children.filter((o) => !before.has(o));
       aside.add(...fresh, ...loose);
