@@ -315,7 +315,8 @@ async function soloAfterwards(b) {
   };
   await b.evaluate("briel.command('/parachute')", false);
   await noDrop('/parachute in Zombies', 1000);
-  // A strongman stomps where you stand until you are down (alone it is the page that hurts you).
+  // Down in Zombies: a stomp where you stand until you are down. (The strongmen stand aside in Zombies, alone too; the
+  // stomp is called directly only to knock you down and see that you never come back by parachute.)
   await b.evaluate(`(() => { const p = briel.player; for (let i = 0; i < 20 && briel.combat.alive; i++) briel.clowns.onLand(briel.three.sun.position.clone().set(p.x, p.feet, p.z), 'stomp'); })()`, false);
   if ((await state()).alive) bad.push('a strongman could not hurt you (check the stomp)');
   await noDrop('down in Zombies', 5000);

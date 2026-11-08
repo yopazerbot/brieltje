@@ -3017,7 +3017,7 @@ renderer.setAnimationLoop((now: number) => {
   sintMaarten.setActive(villagersOut && seasonNow().sintMaarten, seasonNow().sintMaartenEve);
   christmas.setSolid(games.zombies ? 'off' : weapon.enabled ? 'walk' : 'full'); // the tree, as the server knows the world
   // The Zombies game: the clowns and strongmen stand aside, nobody flies, and whoever is down waits for the wave.
-  clowns.paused = games.standAside;
+  clowns.paused = games.standAside || !!solo; // alone too (Yoshi: "Strongmen should stay out of zombie")
   player.canFly = rules.flying && !games.zombies;
   if (!player.canFly) player.flying = false;
   combat.waiting = games.view.kind !== 'zombies' ? null : games.zombies && !solo ? () => (helpedBy ? t('z.helping', { name: helpedBy }) : t('z.downWait')) : () => '';
