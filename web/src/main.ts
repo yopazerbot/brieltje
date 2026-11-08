@@ -3919,8 +3919,26 @@ function withoutLandmarks(data: VillageData, names: string[], houses: Ring[] = [
   const drawn: Carrier[] = [];
   for (const p of data.prisms ?? []) if (p.d === undefined) (keptPrisms.has(p) ? drawn : hidden).push(carrier(p.p[0], p.y0, p.y1));
   for (const r of data.roofs) (keptRoofs.has(r) ? drawn : hidden).push(carrier(r.p, r.base ?? r.y, r.ridge));
-  const on = (list: Carrier[], x: number, z: number, y: number) =>
-    list.some((c) => x > c.box[0] && x < c.box[1] && z > c.box[2] && z < c.box[3] && y > c.y0 - 0.3 && y < c.y1 + 0.3 && within([c.ring], x, z, 0.3));
+  // Found by 16 m squares (each carrier in every square its box touches): tried one by one, every window against every
+  // block took a tenth of a second of the loading, half a second on a phone's processor. The same test.
+  const bySquare = (list: Carrier[]) => {
+    const cells = new Map<string, Carrier[]>();
+    for (const c of list) {
+      for (let i = Math.floor(c.box[0] / 16); i <= Math.floor(c.box[1] / 16); i++) {
+        for (let j = Math.floor(c.box[2] / 16); j <= Math.floor(c.box[3] / 16); j++) {
+          const k = `${i},${j}`;
+          const cell = cells.get(k);
+          if (cell) cell.push(c);
+          else cells.set(k, [c]);
+        }
+      }
+    }
+    return cells;
+  };
+  const hiddenCells = bySquare(hidden);
+  const drawnCells = bySquare(drawn);
+  const on = (cells: Map<string, Carrier[]>, x: number, z: number, y: number) =>
+    (cells.get(`${Math.floor(x / 16)},${Math.floor(z / 16)}`) ?? []).some((c) => x > c.box[0] && x < c.box[1] && z > c.box[2] && z < c.box[3] && y > c.y0 - 0.3 && y < c.y1 + 0.3 && within([c.ring], x, z, 0.3));
   return {
     ...data,
     prisms,
@@ -3929,7 +3947,7 @@ function withoutLandmarks(data: VillageData, names: string[], houses: Ring[] = [
       const x = (o.a[0] + o.b[0]) / 2;
       const z = (o.a[1] + o.b[1]) / 2;
       const y = (o.y[0] + o.y[1]) / 2;
-      return !inside(x - o.n[0] * 0.3, z - o.n[1] * 0.3) && !(on(hidden, x, z, y) && !on(drawn, x, z, y));
+      return !inside(x - o.n[0] * 0.3, z - o.n[1] * 0.3) && !(on(hiddenCells, x, z, y) && !on(drawnCells, x, z, y));
     }),
   };
 }
