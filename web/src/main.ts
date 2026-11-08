@@ -3648,6 +3648,9 @@ async function buildVillage(): Promise<void> {
     return name === 'kapellenhoek' || (name.startsWith('molenhoek') && !start.startsWith('molenhoek'));
   };
   const bakes = Promise.all(models.filter((m) => !later(m)).map((m) => bakeLight(m, renderer)));
+  // Their shaders, with the baked light on, compile while the tiles are built (the compile of what the village adds,
+  // below, then finds them ready: it waited a quarter of a second for them).
+  const modelsCompiled = bakes.then(() => Promise.all(models.map((m) => precompile(m))));
   streetBakes = playing.then(() => Promise.all(models.filter(later).map((m) => bakeLight(m, renderer, Infinity, precompile))));
   for (const m of models) clearOpenGround(data, m.userData.clear as [number, number][][] | undefined); // their forecourts free of trees
   const drawn = withRoadDetail(withoutLandmarks(data, models.map((m) => m.userData.landmark as string), models.flatMap((m) => (m.userData.replaces as Ring[] | undefined) ?? [])));
@@ -3714,7 +3717,7 @@ async function buildVillage(): Promise<void> {
   const homes = fresh.map((o) => o.parent!);
   const aside = new THREE.Group();
   aside.add(...fresh);
-  await precompile(aside);
+  await Promise.all([modelsCompiled, precompile(aside)]);
   fresh.forEach((o, i) => homes[i].add(o));
   // Each model's blocks for walking into (the town's; the streets' went into the village data above).
   for (const m of models) world.addPrisms((m.userData.blocks as Prism[] | undefined) ?? []);
