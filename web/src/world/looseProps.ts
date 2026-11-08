@@ -52,7 +52,7 @@ export interface KindSpec {
   tinted?: boolean;
 }
 
-/** A face on a sign: w x h, its bottom `y` up the post and `z` in front of it, facing +z (or -z: `back`), showing `rect` (u, v, width, height) of the picture. */
+/** A face on a sign: w x h, its bottom `y` up the post and `z` in front of it, facing +z (or -z: `back`), showing `rect` (u, v, width, height) of the picture; turned by `yaw` round the post (several faces on one post look different ways). */
 export interface Face {
   w: number;
   h: number;
@@ -60,6 +60,7 @@ export interface Face {
   z: number;
   back: boolean;
   rect: [number, number, number, number];
+  yaw?: number;
 }
 
 /** Where one stands: its foot, its turn (front +z turned by yaw), a lean about its own left-right axis (+ forwards), its height (a post's), its colour, its faces. */
@@ -250,7 +251,8 @@ export class LooseProps {
       for (const p of places) {
         for (const f of p.faces ?? []) {
           rects.setXYZW(k, ...f.rect);
-          const local = new THREE.Matrix4().makeTranslation(0, f.y + f.h / 2, f.z + (f.back ? -0.006 : 0.006));
+          const local = new THREE.Matrix4().makeRotationY(f.yaw ?? 0);
+          local.multiply(new THREE.Matrix4().makeTranslation(0, f.y + f.h / 2, f.z + (f.back ? -0.006 : 0.006)));
           if (f.back) local.multiply(new THREE.Matrix4().makeRotationY(Math.PI));
           kind.faceLocal.push(local.multiply(new THREE.Matrix4().makeScale(f.w, f.h, 1)));
           k++;

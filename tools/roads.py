@@ -18,8 +18,13 @@ data/street.json (the buildings, the pavings, the hedges), web/src/data/house_sh
   don't change when the data does elsewhere.
 - plates: street name plates on a post where two named streets meet in that area (or one street
   becomes another), one per street, on the right of someone coming in along it.
-- signs: the village's name where the roads in cross 330 m from the church (F1; made up, no survey
-  of the signs), zone 30 where the traffic slows down for the centre, and a bus stop with its shelter.
+- signs: the traffic signs where they really stand, from the road agency's register
+  (Verkeersborden.Vlaanderen, source/geo/Verkeersborden*_l72.json from tools/signs_data.py): one pole
+  each, with every face the register gives it (turned as it says) and that face's signs stacked as
+  it says, at their real sizes; moved off the road, out of drives and hedges where the model needs it.
+  Signs a model draws itself are left out (MODELLED).
+- stops: the bus stops (OpenStreetMap, source/geo/Bushaltes_l72.json), their pole facing the traffic,
+  with a shelter and a litter bin where Street View shows one (STOPS_SEEN).
 - boxes: letterboxes on a post at the front of about two thirds of the houses, by the drive
   (no wheelie bins: Yoshi doesn't like them); bikes: a bike against the front wall of a few houses.
 Nothing is placed within 4 m of a portal or where you come out of one (web/shared/portals.mjs).
@@ -39,6 +44,7 @@ from PIL import Image, ImageDraw
 from shapely.affinity import affine_transform, rotate, translate
 from shapely.geometry import LineString, Point, Polygon, box
 from shapely.ops import nearest_points, unary_union
+from shapely.prepared import prep
 from shapely.strtree import STRtree
 
 from neighbours import features, model_frame, zone
@@ -439,91 +445,241 @@ def roadside(road, buildings_list, buildings, pavings, hedges, area):
     return boxes, bikes
 
 
-def street_signs(g, nodes, road, buildings):
-    """The village's name where the built-up area starts on the roads in (F1; the spots are made up),
-    zone 30 at the edge of the slow centre, and a bus stop with a shelter on Kapellenhoek."""
-    out = []
+GEO = ROOT / "source" / "geo"
+# Signs that a model draws itself already, so the register's are left out there (model x, z; sign codes; within m):
+MODELLED = [
+    ((CHURCH[0], CHURCH[1]), ("E9a",), 30),  # tools/school.py: the parking signs for disabled drivers in the bed against the nave
+    ((742.2, -725.0), ("A23", "GIa"), 35),  # tools/molenhoek_survey.py: the warning for a school route on Molenhoek's new stretch
+    ((614.6, -404.6), ("B1",), 15),  # tools/kapellenhoek_survey.py: the give-way sign where Kapelleweg meets Kapellenhoek
+    ((691.5, -748.0), ("D1",), 20),  # tools/molenhoek_survey.py: the keep-left sign on the island
+]
+# The bus stops as Street View showed them (reference only; checked 8 Nov 2026), by OpenStreetMap node: a shelter and
+# a yellow litter bin, or the stop's pole alone. Not in the list: not drawn (Molenhoek's two, along the rebuilt
+# stretch, aren't there in the pictures taken after the works).
+STOPS_SEEN = {
+    2243035144: {"shelter": True, "bin": True},  # Smetlede Kerk, on the church square's side, towards Lede
+    2243035142: {"shelter": False, "bin": False},  # Smetlede Kerk, across the street: a yellow pole against a front wall
+    2243034970: {"shelter": True, "bin": True},  # Smetlede Serskampstraat, on the verge by the fields
+    2243034974: {"shelter": False, "bin": False},  # Smetlede Serskampstraat, across the street
+}
+WALKED = 25.0  # m from a house: where people walk under a sign, its lower edge 2.2 m up; elsewhere 1.5 m
+HALF_STREET = 2.9  # m: half the width of Smetlededorp through the centre, where no kerb marks the carriageway
 
-    def by_road(at, heading, right=True, off=1.2):
-        """A spot `off` m beside the road's edge at `at`, on the right of someone driving along `heading`:
-        never nearer the centre line than MIN_SIDE (where the road surface has a gap, the edge of the drawn
-        road isn't there to go by). Where Molenhoek has its new street, just behind its pavement (the paved
-        forecourts there are part of the GRB's road surface). None if there is no such spot."""
-        rx, rz = -heading[1], heading[0]
-        if not right:
-            rx, rz = -rx, -rz
-        new = NEW_STREET.contains(Point(at))
-        for shift in (0.0, -3.0, 3.0, -6.0, 6.0):  # a little along the road where a drive or side road is in the way
-            for d in np.arange(1.0, 12.0, 0.2):
-                p = Point(at[0] + heading[0] * shift + rx * d, at[1] + heading[1] * shift + rz * d)
-                if d < MIN_SIDE:
-                    continue
-                if new and not NEW_STREET.contains(p) and NEW_STREET.distance(p) >= 0.25:
-                    return p
-                if not new and not road.contains(p) and road.distance(p) >= off - 0.6:
-                    return p
-        return None
 
-    def along(line_pts, frac):
-        line = LineString(line_pts)
-        a = line.interpolate(frac, normalized=True)
-        b = line.interpolate(min(1, frac + 0.01), normalized=True)
-        h = (b.x - a.x, b.y - a.y)
-        n = math.hypot(*h)
-        return (a.x, a.y), (h[0] / n, h[1] / n)
+def geo_json(name):
+    path = GEO / name
+    if not path.exists():
+        raise SystemExit(f"{path.relative_to(ROOT)} is missing: run tools/signs_data.py first")
+    return json.loads(path.read_text(encoding="utf-8"))["features"]
 
-    # Where each road into the village crosses the circles: the name sign for traffic coming in.
-    for e in g.edges(data=True):
-        line = LineString(e[2]["line"])
-        for radius, kind in ((330, "smetlede"), (CENTRE + 25, "zone30")):
-            ring = Point(CHURCH).buffer(radius, 64).exterior
-            hit = line.intersection(ring)
-            for p in getattr(hit, "geoms", [hit]):
-                if p.is_empty or p.geom_type != "Point":
-                    continue
-                d = line.project(p)
-                a, b = line.interpolate(max(0, d - 1)), line.interpolate(min(line.length, d + 1))
-                h = (b.x - a.x, b.y - a.y)
-                if math.dist((b.x, b.y), CHURCH) > math.dist((a.x, a.y), CHURCH):
-                    h = (-h[0], -h[1])  # heading in, towards the church
-                n = math.hypot(*h)
-                h = (h[0] / n, h[1] / n)
-                s = by_road((p.x, p.y), h)
-                if s is None or buildings.distance(s) < 0.6:
-                    continue
-                out.append([round(s.x, 2), round(s.y, 2), round(math.atan2(-h[0], -h[1]), 3), kind])  # facing the traffic coming in
-    # The bus stop: on Kapellenhoek's east side north of Kapelleweg, for the buses to the village.
-    line = unary_union([LineString(e["line"]) for _, _, e in g.edges(data=True) if e["name"] == "Kapellenhoek"])
-    for d in range(-440, -520, -4):
-        hit = line.intersection(LineString([(500, d), (700, d)]))
-        if hit.is_empty:
+
+def sign_text(code, text):
+    """What a sign says (the register's parameters), without the old bank's advertising on the village name signs (F43)."""
+    parts = [t.strip() for t in (text or "").split(",") if t.strip()]
+    if code.startswith("F43"):
+        parts = [t for t in parts if not re.search(r"KREDIET|sparen", t, re.I)]
+    return "|".join(parts)
+
+
+def carriageways():
+    """The carriageways as the game draws them (web/src/data/roadDetail.json, tools/road_detail.py): each street's
+    half widths either side of its line, kerb to kerb, without the pavements. And the lines, to tell where they hold."""
+    detail = json.loads((ROOT / "web" / "src" / "data" / "roadDetail.json").read_text(encoding="utf-8"))
+    polys, lines = [], []
+    for run in detail["runs"] + [detail["school"]]:  # and the stretch past the school, with its plateau
+        p, w = run["p"], run["w"]
+        pts = [(p[k], p[k + 1]) for k in range(0, len(p), 2)]
+        if len(pts) < 2:
             continue
-        at = hit if hit.geom_type == "Point" else list(hit.geoms)[0]
-        p0 = line.interpolate(line.project(at) - 1)
-        p1 = line.interpolate(line.project(at) + 1)
-        h = (p1.x - p0.x, p1.y - p0.y)
-        if h[1] > 0:
-            h = (-h[0], -h[1])  # heading north, into the village
-        n = math.hypot(*h)
-        h = (h[0] / n, h[1] / n)
-        s = by_road((at.x, at.y), h, off=2.2)
-        if s is None:
+        left, right = [], []
+        for k, (x, z) in enumerate(pts):
+            a, b = pts[max(0, k - 2)], pts[min(len(pts) - 1, k + 2)]
+            n = math.hypot(b[0] - a[0], b[1] - a[1]) or 1
+            nx, nz = -(b[1] - a[1]) / n, (b[0] - a[0]) / n  # to the right of the way the line runs (as road_detail.py)
+            left.append((x + nx * w[2 * k], z + nz * w[2 * k]))
+            right.append((x - nx * w[2 * k + 1], z - nz * w[2 * k + 1]))
+        polys.append(Polygon(left + right[::-1]).buffer(0))
+        lines.append(LineString(pts))
+    return unary_union(polys), unary_union(lines)
+
+
+class Spots:
+    """Where a pole may stand: off the carriageway (as the game draws it; behind Molenhoek's new pavements; off the
+    GRB's road surface away from the drawn streets), clear of the buildings, the hedges, the drives and yards, and of
+    the other things along the street. On a pavement is fine: that is where most signs stand."""
+
+    def __init__(self, road, centre, buildings, taken):
+        self.road, self.centre, self.buildings, self.taken = road, centre, buildings, list(taken)
+        self.carriage, self.streets = carriageways()
+        self.carriage_in = prep(self.carriage)
+        self.portals = portal_spots()
+
+    def free(self, p, gap):
+        return (self.buildings.distance(p) >= 0.45 and not BLOCK.contains(p)
+                and all(p.distance(t) >= gap for t in self.taken)
+                and all(math.dist((p.x, p.y), s) >= 4.0 for s in self.portals))
+
+    def off_road(self, p, margin):
+        if NEW_STREET.distance(p) < 8:
+            # Along Molenhoek's new stretch the GRB's road surface takes in the forecourts: go by the street's own outline.
+            return NEW_STREET.distance(p) >= 0.25
+        if self.streets.distance(p) < 10:
+            return not self.carriage_in.contains(p) and self.carriage.distance(p) >= margin
+        if math.dist((p.x, p.y), CHURCH) < CENTRE:
+            # The church square and the street through it are one paved floor (data/smetlede.json): keep clear of the
+            # traffic by the distance from the centre line, half a street's width and a margin.
+            return self.centre.distance(p) >= HALF_STREET + margin
+        return not self.road.contains(p) and self.road.distance(p) >= margin
+
+    def find(self, x, z, margin=0.3, gap=0.9):
+        """The spot nearest (x, z) that is off the road and free: pushed straight out from the centre line, and a little
+        along the road where a drive or a hedge is in the way. (spot, how far it moved) or None."""
+        p0 = Point(x, z)
+        on = nearest_points(self.centre, p0)[0]
+        ox, oz = p0.x - on.x, p0.y - on.y
+        n = math.hypot(ox, oz)
+        if n < 0.05:
+            return None
+        ox, oz = ox / n, oz / n  # away from the centre line
+        ax, az = -oz, ox  # along the road
+        best = None
+        alongs = (0.0, 0.5, -0.5, 1.0, -1.0, 1.5, -1.5, 2.0, -2.0, 3.0, -3.0, 4.0, -4.0, 5.0, -5.0)
+        for along in alongs:
+            if best and best[1] <= abs(along):
+                break  # nothing further along can be nearer
+            for out in np.arange(0.0, 6.01, 0.1):
+                p = Point(x + ax * along + ox * out, z + az * along + oz * out)
+                if self.off_road(p, margin) and self.free(p, gap):
+                    moved = math.hypot(along, out)
+                    if best is None or moved < best[1]:
+                        best = (p, moved)
+                    break
+        if best:
+            self.taken.append(best[0])
+        return best
+
+    def facing_traffic(self, p):
+        """The way a face looks at the traffic on the near side of the road at p (the traffic keeps right)."""
+        on = nearest_points(self.centre, p)[0]
+        line = min(getattr(self.centre, "geoms", [self.centre]), key=lambda l: l.distance(on))
+        d = line.project(on)
+        a, b = line.interpolate(max(0.0, d - 2)), line.interpolate(min(line.length, d + 2))
+        tx, tz = b.x - a.x, b.y - a.y
+        n = math.hypot(tx, tz)
+        tx, tz = tx / n, tz / n
+        ox, oz = p.x - on.x, p.y - on.y
+        # Driving along t, the right is (-tz, tx) in the model's frame (x, z; seen from above, as the yaw turns).
+        if ox * -tz + oz * tx < 0:
+            tx, tz = -tx, -tz  # the traffic on this side goes the other way
+        return -tx, -tz, (-ox, -oz)
+
+
+def street_signs(to_model, area, road, centre, buildings, taken):
+    """The traffic signs of the register (Verkeersborden.Vlaanderen, tools/signs_data.py) inside the area, one pole each:
+    [x, z, lower edge (m), [[yaw, [[code, shape, w, h, dy, text], ...]], ...]], each face's signs from the bottom up
+    (dy: m above the lowest one's lower edge). And the bus stops (OpenStreetMap, STOPS_SEEN):
+    [x, z, yaw, name, bin [x, z, yaw] or None, shelter [x, z, yaw] or None]. Also a list of what moved or was left out."""
+    a, b, d, e, xo, zo = to_model
+    model_pt = lambda x, y: (a * x + b * y + xo, d * x + e * y + zo)
+    by_face = {}
+    for f in geo_json("Verkeersborden_l72.json"):
+        by_face.setdefault(f["properties"]["id_aanzicht"], []).append(f["properties"])
+    poles = {}
+    for f in geo_json("VerkeersbordenOpstellingen_l72.json"):
+        poles.setdefault(f["properties"]["id_opstelling"], []).append(f)
+    spots = Spots(road, centre, buildings, taken)
+    inner = area.buffer(-5)
+    out, notes = [], []
+    for pid in sorted(poles):
+        faces = poles[pid]
+        x, z = model_pt(*faces[0]["geometry"]["coordinates"][:2])
+        if not inner.contains(Point(x, z)):
             continue
-        shelter = car_box(s.x, s.y, math.atan2(h[1], h[0]), 3.2, 1.6)
-        if shelter.distance(buildings) < 0.5 or shelter.intersects(road) or shelter.intersects(BLOCK):
+        made = []
+        for fa in sorted(faces, key=lambda f: f["properties"]["id_aanzicht"]):
+            pr = fa["properties"]
+            signs = by_face.get(pr["id_aanzicht"], [])
+            if pr["status"] != "ACTUEEL" or not signs:
+                continue
+            if any(math.dist((x, z), at) < reach and any(s["bordcode"].startswith(c) for s in signs for c in codes)
+                   for at, codes, reach in MODELLED):
+                notes.append(f"pole {pid}: {'+'.join(s['bordcode'] for s in signs)} drawn by a model already")
+                continue
+            # The way the face looks (Lambert 72 east, north): (sin h, -cos h). Checked against the road: of the faces
+            # along a road, 68 stand on the right of the traffic they face and 5 on its left (zijde_van_rijweg RECHTS).
+            fx, fy = math.sin(pr["hoek"]), -math.cos(pr["hoek"])
+            yaw = math.atan2(a * fx + b * fy, d * fx + e * fy)
+            low = min(s["opstelhoogte"] for s in signs)
+            rows = sorted(([s["bordcode"], s["vorm"], round(s["breedte"] / 1000, 3), round(s["hoogte"] / 1000, 3),
+                            round((s["opstelhoogte"] - low) / 1000, 3), sign_text(s["bordcode"], s["parameters"])] for s in signs),
+                          key=lambda r: r[4])
+            made.append([round(yaw, 3), rows])
+        if not made:
             continue
-        out.append([round(s.x, 2), round(s.y, 2), round(math.atan2(h[1], -h[0]), 3), "shelter"])  # its open side to the road
-        q = Point(s.x + h[0] * 2.6, s.y + h[1] * 2.6)
-        out.append([round(q.x, 2), round(q.y, 2), round(math.atan2(-h[0], -h[1]), 3), "bus"])
-        break
-    return out
+        spot = spots.find(x, z)
+        if spot is None:
+            notes.append(f"pole {pid} ({x:.1f}, {z:.1f}): no free spot off the road")
+            continue
+        p, moved = spot
+        if moved > 0.05:
+            notes.append(f"pole {pid}: moved {moved:.1f} m (off the road or out of a drive, a hedge)")
+        lower = 2.2 if buildings.distance(p) < WALKED else 1.5
+        out.append([round(p.x, 2), round(p.y, 2), lower, made])
+    stops = []
+    for f in geo_json("Bushaltes_l72.json"):
+        pr = f["properties"]
+        seen = STOPS_SEEN.get(pr["osm_id"])
+        x, z = model_pt(*f["geometry"]["coordinates"][:2])
+        if not inner.contains(Point(x, z)):
+            continue
+        if seen is None:
+            notes.append(f"bus stop {pr['name']} (node {pr['osm_id']}): not seen in Street View, left out")
+            continue
+        spot = spots.find(x, z, margin=0.4)
+        if spot is None:
+            notes.append(f"bus stop {pr['name']}: no free spot")
+            continue
+        p = spot[0]
+        fx, fz, to_road = spots.facing_traffic(p)
+        yaw = round(math.atan2(fx, fz), 3)
+        n = math.hypot(*to_road)
+        rx, rz = to_road[0] / n, to_road[1] / n  # towards the road
+        bin_at = shelter_at = None
+        if seen["bin"]:
+            # The bin on its own post beside the stop's, a little further back, on the side the bus comes from.
+            for s in (0.7, -0.7, 1.1, -1.1):
+                q = Point(p.x - fx * s - rx * 0.25, p.y - fz * s - rz * 0.25)
+                if spots.off_road(q, 0.4) and spots.free(q, 0.5):
+                    bin_at = [round(q.x, 2), round(q.y, 2), round(math.atan2(rx, rz), 3)]
+                    spots.taken.append(q)
+                    break
+        if seen["shelter"]:
+            # The shelter (3.4 x 1.7 m) beside the pole, its open side to the road, clear of the road, the houses, drives, hedges.
+            ang = math.atan2(-fz, -fx)  # its length along the road
+            for along in (-2.6, 2.6, -3.2, 3.2, -4.0, 4.0):
+                done = False
+                for back in np.arange(0.9, 3.01, 0.15):
+                    cx, cz = p.x - fx * along - rx * back, p.y - fz * along - rz * back
+                    foot = car_box(cx, cz, ang, 3.4, 1.7)
+                    if foot.distance(spots.carriage) < 0.5 or not all(spots.off_road(Point(c), 0.5) for c in foot.exterior.coords) \
+                            or foot.distance(buildings) < 0.4 or foot.intersects(BLOCK) or any(foot.distance(Point(s)) < 4.0 for s in spots.portals) \
+                            or foot.distance(NEW_STREET) < 0.25 or any(foot.distance(t) < 0.3 for t in spots.taken):
+                        continue
+                    shelter_at = [round(cx, 2), round(cz, 2), round(math.atan2(rx, rz), 3)]
+                    done = True
+                    break
+                if done:
+                    break
+            if shelter_at is None:
+                notes.append(f"bus stop {pr['name']}: no room for its shelter")
+        stops.append([round(p.x, 2), round(p.y, 2), yaw, pr["name"], bin_at, shelter_at])
+    return out, stops, notes
 
 
 MOLENHOEK = None
 BLOCK = None  # hedges and pavings
 # No bike against these front walls (Yoshi): the end house of the new terrace at Molenhoek, which can be walked into.
 NO_BIKE = [(1508.0, -360.1)]
-MIN_SIDE = 3.2  # m from the centre line: a sign never stands nearer (the half width of a narrow road and a margin)
 
 
 def new_street():
@@ -570,11 +726,12 @@ def main():
     MOLENHOEK = unary_union([LineString(e["line"]) for _, _, e in g.edges(data=True) if e["name"] == "Molenhoek"])
     out = {
         "_source": "GRB Wegsegment (road centre lines and street names), buildings, pavings and hedges from tools/neighbours.py and "
-                   "tools/street.py (Digitaal Vlaanderen, open data); parked cars, letterboxes, bins, bikes and the signs' spots are made up",
+                   "tools/street.py (Digitaal Vlaanderen, open data); the traffic signs from Verkeersborden.Vlaanderen (Bron: MOW - AWV, "
+                   "Modellicentie Gratis Hergebruik), the bus stops from OpenStreetMap (ODbL, © OpenStreetMap contributors); "
+                   "parked cars, letterboxes, bins and bikes are made up",
         "routes": routes(g, nodes, area),
         "parked": parked(st["pavings"], buildings, road, hedges),
         "plates": plates(model, area, road, buildings),
-        "signs": street_signs(g, nodes, road, buildings),
     }
     roadside_houses = buildings_list
     custom_garden = ROOT / "data/kouter_house.json"
@@ -583,14 +740,24 @@ def main():
         own = unary_union([Polygon(p) for p in json.loads(custom_garden.read_text(encoding="utf-8"))["clear"]])
         roadside_houses = [b for b in buildings_list if not own.contains(Polygon(b["p"]).centroid)]
     out["boxes"], out["bikes"] = roadside(road, roadside_houses, buildings, st["pavings"], hedges, area)
+    centre = unary_union([model(LineString([p[:2] for p in f["geometry"]["coordinates"]])) for f in features("Wegsegment")
+                          if f["geometry"]["type"] == "LineString"]).intersection(area.buffer(60))
+    taken = [Point(q[0], q[1]) for key in ("plates", "boxes", "bikes") for q in out[key]]
+    out["signs"], out["stops"], notes = street_signs(to_model, area, road, centre, buildings, taken)
+    for n in notes:
+        print("  " + n)
     spots = portal_spots()
     assert len(spots) >= 15, "portals.mjs: the portals' spots weren't found"
-    for key in ("parked", "plates", "signs", "boxes", "bikes"):
-        out[key] = clear_of(spots, out[key], 4.0 + (3.0 if key == "parked" else 0.0))
+    for key in ("parked", "plates", "signs", "stops", "boxes", "bikes"):
+        kept = clear_of(spots, out[key], 4.0 + (3.0 if key == "parked" else 0.0))
+        if key in ("signs", "stops") and len(kept) < len(out[key]):
+            print(f"  {len(out[key]) - len(kept)} {key} left out within 4 m of a portal")
+        out[key] = kept
     OUT.write_text(json.dumps(out, separators=(",", ":"), ensure_ascii=False), encoding="utf-8")
     total = sum(len(l["v"]) for r in out["routes"] for l in r["legs"])
     print(f"wrote {OUT.relative_to(ROOT)} ({OUT.stat().st_size // 1024} KB): {len(out['routes'])} routes ({total} points), "
-          f"{len(out['parked'])} parked cars, {len(out['plates'])} name plates, {len(out['signs'])} signs, "
+          f"{len(out['parked'])} parked cars, {len(out['plates'])} name plates, {len(out['signs'])} sign poles "
+          f"({sum(len(s) for p in out['signs'] for _, s in p[3])} signs), {len(out['stops'])} bus stops, "
           f"{len(out['boxes'])} letterboxes, {len(out['bikes'])} bikes")
     debug(out, area, road, buildings_list, g, nodes)
 
@@ -622,9 +789,16 @@ def debug(out, area, road, buildings_list, g, nodes):
     for x, z, yaw, name in out["plates"]:
         d.rectangle([P((x - 1.5, z - 1.5)), P((x + 1.5, z + 1.5))], fill=(0, 90, 200))
         d.text(P((x + 2, z)), name, fill=(0, 60, 140))
-    for x, z, yaw, kind in out["signs"]:
-        d.rectangle([P((x - 2, z - 2)), P((x + 2, z + 2))], fill=(230, 0, 0))
-        d.text(P((x + 2, z - 8)), kind, fill=(200, 0, 0))
+    for x, z, _, faces in out["signs"]:
+        d.rectangle([P((x - 1.5, z - 1.5)), P((x + 1.5, z + 1.5))], fill=(230, 0, 0))
+        for yaw, signs in faces:
+            d.line([P((x, z)), P((x + math.sin(yaw) * 5, z + math.cos(yaw) * 5))], fill=(230, 0, 0), width=2)
+        d.text(P((x + 2, z - 8)), "+".join(s[0] for _, signs in faces for s in signs), fill=(200, 0, 0))
+    for x, z, yaw, name, bin_at, shelter in out["stops"]:
+        d.ellipse([P((x - 2, z - 2)), P((x + 2, z + 2))], fill=(240, 190, 0))
+        if shelter:
+            d.polygon([P(q) for q in car_box(shelter[0], shelter[1], -shelter[2], 3.4, 1.7).exterior.coords], fill=(120, 120, 120))
+        d.text(P((x + 2, z + 2)), name, fill=(150, 110, 0))
     for x, z, yaw in out["boxes"]:
         d.ellipse([P((x - 1, z - 1)), P((x + 1, z + 1))], fill=(40, 40, 40))
     for x, z, yaw in out["bikes"]:
