@@ -307,3 +307,45 @@ test('a fair kick: numbers only, capped, never down into the ground or steeper t
   const ok = fairKick([3, 1, 4], 9);
   assert.deepEqual(ok, [3, 1, 4]);
 });
+
+// FC Smetlede's pitch (shared/football.json): full-size goals, the ball kept inside the spectators' rail.
+const fc = makePitch(PITCHES.find((p) => p.id === 'fc'), height);
+
+test('the football ground: the ball waits on the penalty spot, inside the rail, on the levelled ground, both goals full size', () => {
+  const b = newBall(fc);
+  assert.ok(insidePitch(fc, b.x, b.z));
+  assert.ok(Math.abs(b.y - (fc.ground(b.x, b.z) + BALL.r)) < 1e-9);
+  assert.equal(fc.goals.length, 2);
+  for (const g of fc.goals) {
+    assert.ok(Math.abs(g.half * 2 - 7.32) < 1e-9);
+    assert.equal(g.height, 2.44);
+    assert.ok(insidePitch(fc, g.mx + g.nx * (g.depth + 0.1), g.mz + g.nz * (g.depth + 0.1)), `goal ${g.id}'s net fits inside the rail`);
+    // The ground is level there (tools/terrain.py): the goal stands on the same ground as the penalty spot.
+    assert.ok(Math.abs(g.y - fc.ground(fc.home.x, fc.home.z)) < 0.02, `goal ${g.id} on the level ground`);
+  }
+});
+
+test('the football ground: a penalty goes in and counts once; hundreds of kicks stay inside the rail', () => {
+  for (const [gi, g] of fc.goals.entries()) {
+    const b = newBall(fc);
+    place(b, fc, g.mx - g.nx * 11, g.mz - g.nz * 11);
+    kickBall(b, [g.nx * KICK.hard, 2, g.nz * KICK.hard], 'kid');
+    const events = [];
+    for (let t = 0; t < 6; t += 1 / 60) events.push(...stepBall(b, fc, 1 / 60));
+    const goals = events.filter((e) => e.kind === 'goal');
+    assert.equal(goals.length, 1, `one goal in ${g.id}`);
+    assert.equal(goals[0].goal, gi);
+  }
+  const rand = rng(7);
+  const b = newBall(fc);
+  for (let k = 0; k < 800; k++) {
+    const [x, z] = spotIn(fc, rand);
+    place(b, fc, x, z);
+    kickBall(b, kickFrom(rand() * Math.PI * 2, rand() * 1.6 - 0.8, BALL.maxSpeed), 't');
+    for (let s = 0; s < 60; s++) {
+      stepBall(b, fc, 1 / 30);
+      assert.ok(insidePitch(fc, b.x, b.z), `inside after kick ${k}`);
+      if (b.asleep) break;
+    }
+  }
+});
