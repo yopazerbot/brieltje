@@ -52,6 +52,13 @@ export const PORTALS = [
     id: 'sparrenhof', name: 'Sparrenhof', sub: 'Oud-Smetlede', color: '#d7a86e', words: ['cafe', 'café', 'sparren'], village: true,
     x: 638, z: 942, yaw: -2.196, out: [641.25, 944.35, -2.196], car: [646, 946, -1.477], // beside the forecourt, not in front of the café's door (Yoshi's photos)
   },
+  // FC Smetlede's football ground by the Wellebeek, at the end of Schildekensstraat (Yoshi, 8 Nov 2026; shared/football.json):
+  // the pad on the car park by the gate to the pitch; you come out at the gate, looking in along the touchline at the
+  // canteen, the stand and the training; the car on the car park.
+  {
+    id: 'football', name: 'Football ground', sub: 'Smetlede', color: '#e53935', words: ['voetbal', 'voetbalveld', 'soccer', 'pitch', 'fc', 'fcsmetlede', 'terrein', 'wellebeek'], village: true,
+    x: -288.54, z: -1195.52, yaw: 1.297, out: [-292.15, -1191.52, 1.297], car: [-282.5, -1222.0, Math.PI],
+  },
 ];
 
 /** The portal a word in the chat names: its id or one of its words, else the first whose name starts with it. */

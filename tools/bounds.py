@@ -17,6 +17,8 @@ the server puts a position outside back in).
 - REACH metres round everything the game puts somewhere to be reached: the portals (their pads and
   where you come out on foot and in a car), the spawns, the cars' parking spots, the horses' walks,
   the cats, the clowns and strongmen, the weapons lying around and the school grounds,
+- FC Smetlede's football ground (web/shared/football.json): GROUND_AROUND metres round its plot, its car park and
+  the lane to it, built by its own model past the village data's area,
 the first two cut to the area the world is built in (village.json `area`, EDGE metres in), and
 AROUND metres round every building whole, so a house on the area's edge (the end of Molenhoek) keeps
 its garden. Pieces closer than 2 x JOIN metres are joined (a closing: out JOIN and back), the holes
@@ -63,6 +65,7 @@ SMOOTH = 12     # m: the radius the corners are rounded to
 SIMPLIFY = 3    # m: the most the simplified outline is off the smooth one
 INSIDE = 15     # m: every portal and spawn at least this far from the edge
 CEILING = 120   # m above the ground under you
+GROUND_AROUND = 25  # m round the football ground's plot
 
 HOME = 22       # m round Yoshi's house and plot during a game
 BUNGALOW = 20   # m round the bungalow and its garden
@@ -134,6 +137,20 @@ def places(portals, spawns, cars, horses, cats, clowns, pickups):
     out += [(f"cat {i}", x, z, False) for i, loop in enumerate(cats["cats"]) for x, z in loop]
     out += [(f"{s[3]} {i}", s[0], s[2], False) for i, s in enumerate(clowns["spots"])]
     out += [(f"weapon {w['where']}", w["x"], w["z"], False) for w in pickups]
+    return out
+
+
+def football_ground():
+    """FC Smetlede's ground (web/shared/football.json, tools/football_site.py), whole: its plot and the meadows to the
+    fences' outside (GROUND_AROUND), the car park, and the lane from Schildekensstraat STREET metres either side. Built
+    by its own model, not the village data, so it is added past the area's edge."""
+    path = WEB / "shared" / "football.json"
+    if not path.exists():
+        return []
+    site = read(path)
+    out = [Polygon(site["plot"]).buffer(GROUND_AROUND, 8), Polygon(site["platform"]["ring"]).buffer(REACH / 2, 8),
+           LineString(site["lane"]).buffer(STREET, 8)]
+    out += [Polygon(r).buffer(REACH / 2, 8) for rings in site["surfaces"].values() for r in rings]
     return out
 
 
@@ -229,6 +246,7 @@ def main():
     shapes += [b.buffer(BUILDING, 8) for b in footprints]
     whole = [Point(x, z).buffer(REACH, 16) for _n, x, z, _s in named] + [Polygon(z["poly"]).buffer(REACH, 16) for z in zones]
     whole += [b.buffer(AROUND, 8) for b in footprints]
+    whole += football_ground()
     big = outline(shapes, area, home, whole)
     check(big, named, INSIDE, "map")
     # Every building with a garden round it: its corners AROUND in (less what simplifying may take).

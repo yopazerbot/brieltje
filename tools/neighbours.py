@@ -306,10 +306,10 @@ def hull(plot):
 
 
 def zone(plot):
-    """The original hull, Molenhoek's western band, the eastward extension, Sparrenhof and southern homes (Lambert 72).
-    Tree budgets, roof colours and ground covers are chosen separately for each extension.
+    """The original hull, Molenhoek's western band, the eastward extension, Sparrenhof, southern homes and the football
+    ground (Lambert 72). Tree budgets, roof colours and ground covers are chosen separately for each extension.
     """
-    return unary_union([before(plot), sparrenhof(plot), kouter(plot)])
+    return unary_union([before(plot), sparrenhof(plot), kouter(plot), football(plot)])
 
 
 def before(plot):
@@ -382,6 +382,30 @@ def kouter(plot):
         return Polygon()
     corridor = unary_union([line.buffer(STREET_SIDE, 16) for line, _ in way] +
                           [Point(KOUTER).buffer(KOUTER_AROUND, 32)])
+    gardens = [p.buffer(15, 8) for f in features("GBG") for p in polygons(f["geometry"])
+               if corridor.contains(p.centroid) and not old.contains(p.centroid)]
+    joined = unary_union([old, corridor, *gardens])
+    connected = next((p for p in getattr(joined, "geoms", [joined])
+                      if p.geom_type == "Polygon" and p.contains(plot.centroid)), Polygon())
+    return connected.difference(old)
+
+
+# FC Smetlede's ground (Yoshi, 8 Nov 2026: "research the soccer field of the town. It is in the east"): the club's one
+# pitch by the Wellebeek at the end of Schildekensstraat, in the strip `e2` (tools/geodata.py). FOOTBALL: the pitch's
+# centre spot (Lambert 72); AROUND_PITCH metres round it (the pitch, its buildings, the car park and the meadows to the
+# brook), and the streets that lead there from the map before STREET_SIDE either side, as for the Sparrenhof.
+# tools/football_site.py measures the ground itself.
+FOOTBALL, AROUND_PITCH = (119988.0, 184308.0), 95.0
+
+
+def football(plot):
+    """The way to the football ground and the ground (Lambert 72), with `geodata.py --strip e2`; without the area before."""
+    if "e2" not in ACTIVE_STRIPS:
+        return Polygon()
+    old = unary_union([before(plot), sparrenhof(plot), kouter(plot)])
+    way = way_to((plot.centroid.x, plot.centroid.y), FOOTBALL)
+    corridor = unary_union([line.buffer(STREET_SIDE, 16) for line, _ in way if not old.contains(line)] +
+                           [Point(FOOTBALL).buffer(AROUND_PITCH, 32)])
     gardens = [p.buffer(15, 8) for f in features("GBG") for p in polygons(f["geometry"])
                if corridor.contains(p.centroid) and not old.contains(p.centroid)]
     joined = unary_union([old, corridor, *gardens])
@@ -684,14 +708,17 @@ def main():
     in_northwest = prep(northwest) if not northwest.is_empty else None
     southern = kouter(plot)
     in_south = prep(southern) if not southern.is_empty else None
+    ground = football(plot)
+    in_ground = prep(ground) if not ground.is_empty else None
     # (centre, radius or None for the zone beyond the ring or "band" for the band, cap in all or None, more on top, gap, lowest)
     tiers = [((cx, cy), RADIUS, 60, 0, 4.0, 3.0), ((cx, cy), 240, 320, 0, 4.0, 3.0), ((cx, cy), AREA, 1700, 0, 7.0, 5.0),
              (CHURCH, 160, None, 260, 4.0, 3.0), (None, None, None, 1400, 7.0, 5.0)] + ([(None, "band", None, 450, 7.0, 5.0)] if in_band else [])
     tiers += [(None, "east", None, 300, 7.0, 5.0)] if in_east else []
     tiers += [(None, "sparrenhof", None, SPARRENHOF_TREES, SPARRENHOF_GAP, 5.0)] if in_northwest else []
     tiers += [(None, "kouter", None, 180, 7.0, 5.0)] if in_south else []
+    tiers += [(None, "football", None, 120, 7.0, 5.0)] if in_ground else []
     regions = {"band": (rest, in_band), "east": (eastern, in_east), "sparrenhof": (northwest, in_northwest),
-               "kouter": (southern, in_south)}
+               "kouter": (southern, in_south), "football": (ground, in_ground)}
     for at, radius, cap, more, gap, low in tiers:
         cap = cap or len(trees) + more
         if radius is None or isinstance(radius, str):
@@ -730,8 +757,10 @@ def main():
     reach_east = area_before.buffer(20).difference(unary_union([reach_old, band().buffer(20)])) if in_east else None
     reach_northwest = northwest.buffer(20).difference(area_before.buffer(20)) if in_northwest else None
     reach_south = southern.buffer(20).difference(unary_union([area_before, northwest]).buffer(20)) if in_south else None
+    reach_ground = ground.buffer(20).difference(unary_union([area_before, northwest, southern]).buffer(20)) if in_ground else None
     for poly in getattr(roads, "geoms", [roads]):
-        pieces = [poly.intersection(reach) for reach in (reach_old, reach_band, reach_east, reach_northwest, reach_south) if reach is not None]
+        pieces = [poly.intersection(reach) for reach in (reach_old, reach_band, reach_east, reach_northwest, reach_south, reach_ground)
+                  if reach is not None]
         clipped = shapely.GeometryCollection([g for piece in pieces for g in getattr(piece, "geoms", [piece])])
         for part in getattr(clipped, "geoms", [clipped]):
             if part.geom_type != "Polygon":
@@ -761,8 +790,9 @@ def main():
     in_ring = [0 if f.centroid.distance(centre) <= AREA else 1 if old_area.contains(f.centroid)
                else 3 if in_east and in_east.contains(f.centroid)
                else 4 if in_northwest and in_northwest.contains(f.centroid)
-               else 5 if in_south and in_south.contains(f.centroid) else 2 for f in footprints]
-    for group in (0, 1, 2, 3, 4, 5):
+               else 5 if in_south and in_south.contains(f.centroid)
+               else 6 if in_ground and in_ground.contains(f.centroid) else 2 for f in footprints]
+    for group in (0, 1, 2, 3, 4, 5, 6):
         roofs_rgb = [(b, q) for b, r in zip(buildings, in_ring) if r == group for q in b["parts"] if q["color"]]
         if len(roofs_rgb) <= 8:
             continue

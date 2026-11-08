@@ -24,6 +24,7 @@ so the area fetched before stays exactly as it was.
     tools/.venv/Scripts/python.exe tools/geodata.py --strip e
     tools/.venv/Scripts/python.exe tools/geodata.py --strip w2
     tools/.venv/Scripts/python.exe tools/geodata.py --strip s
+    tools/.venv/Scripts/python.exe tools/geodata.py --strip e2
 """
 import io
 import json
@@ -44,6 +45,9 @@ STRIPS = {
     "e": (119500, 183600, 119900, 185600),  # east: 400 m more of the village and countryside
     "w2": (117500, 183600, 117900, 185600),  # further west: Oud-Smetlede up to the Sparrenhof and the wood round it
     "s": (117500, 183200, 119900, 183600),  # south: the homes and connecting streets beyond Molenhoek
+    # Further east, the full height of the rows beside it (the downloads stay one rectangle): FC Smetlede's ground by
+    # the Wellebeek, at the end of Schildekensstraat.
+    "e2": (119900, 183200, 120300, 185600),
 }
 LAYERS = ["ADP", "GBG", "GBA", "WBN", "Wegsegment", "WPI", "WTZ", "WLAS", "WGO", "WLI", "IngeschetstGebouw", "TRN", "WGA", "WGR", "WTI"]
 COVERAGES = ["DHMVII_DTM_1m", "DHMVII_DSM_1m"]

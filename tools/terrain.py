@@ -78,10 +78,33 @@ def build():
     # Relative to the plot's own ground (the mean in the plot's middle).
     i0, j0 = int(round((CX - x0) / STEP)), int(round((CZ - z0) / STEP))
     h -= h[j0 - 2:j0 + 3, i0 - 2:i0 + 3].mean()
+    h = level_platforms(h, X, Z)
     w = np.ones_like(h)
     for fx, fz, r0, r1 in FLAT:
         w = np.minimum(w, smoothstep(r0, r1, np.hypot(X - fx, Z - fz)))
     return {"x0": round(x0, 3), "z0": round(z0, 3), "step": STEP, "nx": nx, "nz": nz, "grid": h * w}
+
+
+def level_platforms(h, X, Z):
+    """Level grounds (web/shared/football.json `platform`, tools/football_site.py): flat at the median of the relief
+    inside the ring, blended into the real relief over `blend` metres round it. The football pitch is laid level (the
+    real one falls about a metre across), so the ball, the players and the model stand on one flat ground."""
+    path = ROOT / "web" / "shared" / "football.json"
+    if not path.exists():
+        return h
+    import shapely
+    from shapely.geometry import Polygon
+    site = json.loads(path.read_text(encoding="utf-8"))["platform"]
+    ring, blend = Polygon(site["ring"]), float(site["blend"])
+    x0, z0, x1, z1 = ring.buffer(blend).bounds
+    near = (X >= x0) & (X <= x1) & (Z >= z0) & (Z <= z1)
+    d = shapely.distance(ring, shapely.points(X[near], Z[near]))
+    level = round(float(np.median(h[near][d == 0])), 2)
+    t = 1 - smoothstep(0, blend, d)
+    h = h.copy()
+    h[near] = h[near] * (1 - t) + level * t
+    print(f"  football ground levelled at {level:+.2f} m over {int((d == 0).sum())} grid points")
+    return h
 
 
 def encode(cm):
