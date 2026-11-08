@@ -31,7 +31,7 @@ export function isChoice(c) {
 }
 
 /** Milliseconds a change of mood takes in the cycle: the last part of each mood blends into the next. */
-export const BLEND_MS = 90_000;
+export const BLEND_MS = 60_000;
 /** Milliseconds for the ground to dry to about a third after the rain. */
 export const DRY_MS = 240_000;
 /** Milliseconds for the snow to cover everything once it starts falling (on Auto). */
