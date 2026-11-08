@@ -259,8 +259,12 @@ export class FootballGround {
     const goalNet = meshTexture(this.phone ? 128 : 256, 1.2, 0.12, 0.012, '#f2f2ee', false);
     const fence = meshTexture(this.phone ? 128 : 256, 1.0, 0.05, 0.004, '#2f4a33', true);
     const ballNet = meshTexture(this.phone ? 128 : 256, 1.5, 0.125, 0.01, '#1e2420', false);
+    // In one pass: three draws a two-sided see-through mesh twice (its back faces, then its front), and the nets and
+    // fences are big on the screen near the pitch (6.5 ms of a frame on High on the integrated Radeon). Their sides are
+    // one colour, so the order they blend in doesn't show. Not cut out (alphaTest): far off the wires' mipmaps fade, and
+    // cut out the fences would break up into dashes there.
     const seeThrough = (map: THREE.Texture, color: string, opacity: number) =>
-      new THREE.MeshStandardMaterial({ map, color, transparent: true, opacity, depthWrite: false, side: THREE.DoubleSide, roughness: 0.9 });
+      new THREE.MeshStandardMaterial({ map, color, transparent: true, opacity, depthWrite: false, side: THREE.DoubleSide, roughness: 0.9, forceSinglePass: true });
     const byName: Record<string, THREE.Material> = {
       fb_net: seeThrough(goalNet, '#ffffff', 1),
       fb_fence: seeThrough(fence, '#ffffff', 0.95),
