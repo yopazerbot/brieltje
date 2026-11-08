@@ -502,6 +502,7 @@ function applyQuality(q: Quality): void {
   wet.fine.value = wetMirror.fine ? 1 : 0;
   wetMirror.scale = q === 'medium' || seat ? 4 : 2; // the puddles' picture at a quarter on Medium and in the split screen, else half
   glassProbe.fine = wetMirror.fine; // glass mirrors the street, rooms behind the models' windows (world/glassLook.ts)
+  glassProbe.perFrame = q === 'ultra' ? 3 : q === 'high' ? 2 : 1; // views of the street's picture each frame: it keeps up
   glassLook.fine.value = wet.fine.value;
   setTreeDetail(q !== 'low' && !phone); // the near trees' crowns and the trunks (world/surroundings.ts)
   tiles.drawDistance = phone ? Math.min(FAR_PHONE, preset.far) : preset.far;

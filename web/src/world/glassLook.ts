@@ -20,7 +20,7 @@ import { wet, wetState } from './wetGround';
  * - The open-data houses' windows (world/windows.ts) keep their curtains and rooms and take the street's reflection.
  *
  * What they mirror: on Medium and up, a picture of the scene all round the eye (a cube of six views, 256 pixels each,
- * GlassProbe), one view drawn every second frame, so it is new every twelve frames; a glass reads it as if the street
+ * GlassProbe), one to three views drawn each frame by the preset, so it is new every six, three or two frames; a glass reads it as if the street
  * round it were a box about 36 m across (box projection), so a window across the street shows the houses behind you
  * where they stand. Far from the eye, and on Low, the sky's photo (the scene's environment light) as before.
  *
@@ -347,15 +347,15 @@ export function glassOnModel(root: THREE.Object3D): void {
 const SIZE = 256;
 /** Metres: the probe is drawn only with glass that reads it this near the eye (a glass reads it within 18 m of where it was taken). */
 const NEAR = 20;
-/** Metres the eye moves before the probe is drawn again (when nothing else changed). */
-const MOVED = 1;
+/** Metres the eye moves before the probe is drawn again (when nothing else changed): small, so the glass keeps up as you walk. */
+const MOVED = 0.25;
 /** Seconds after which it is drawn again all the same: what came in or moved since (after a portal, the street round you loads in the first seconds; the cars, the doors). */
-const STALE = 2;
+const STALE = 0.25; // 4 times a second: cars and people passing move in the glass, not in jumps (Yoshi: the reflections lagged)
 /** Metres of the world's grid that the glass near the eye is looked up in. */
 const CELL = 10;
 
 /**
- * The scene all round the eye for the glass to mirror, one of its six views drawn every second frame before the scene
+ * The scene all round the eye for the glass to mirror, `perFrame` of its six views drawn each frame before the scene
  * (the composer's first pass), out to 500 m (beyond, the haze has the houses; the sky stays: nearer, the far ground and
  * woods gave way to the bright sky in the glass, for hardly any time saved), on Medium and up and while
  * the eye is outdoors (indoors the last one stays). Two cubes: one is read while the other is drawn, and they swap once
@@ -392,6 +392,8 @@ export class GlassProbe extends Pass {
   sun: THREE.Object3D | null = null;
   /** The split screen's views on this chip (src/seat.ts): with more than one, a view every eighth frame */
   views = 1;
+  /** Views drawn each frame (main.ts by the preset: Medium 1, High 2, Ultra 3): a whole new set every 6, 3 or 2 frames */
+  perFrame = 1;
 
   constructor(private scene: THREE.Scene, private camera: THREE.Camera, private hide: THREE.Object3D[]) {
     super();
@@ -424,11 +426,21 @@ export class GlassProbe extends Pass {
       glass.probeOn.value = 0;
       return;
     }
-    // A view every second frame (every eighth in the split screen).
-    if (wetState.indoors || this.tick++ % (this.views > 1 ? 8 : 2)) return;
+    // `perFrame` views each frame (one every eighth frame in the split screen).
+    if (wetState.indoors) return;
+    if (this.views > 1) {
+      if (this.tick++ % 8) return;
+      this.drawView(renderer);
+      return;
+    }
+    for (let i = 0; i < this.perFrame; i++) if (!this.drawView(renderer)) return;
+  }
+
+  /** Draw the next of the six views (false: none was due, so the set waits). */
+  private drawView(renderer: THREE.WebGLRenderer): boolean {
     if (this.face === 0) {
       this.camera.getWorldPosition(this.at);
-      if (!this.due()) return;
+      if (!this.due()) return false;
     }
     if (!this.cubes.length) this.cubes = [0, 1].map(() => new THREE.WebGLCubeRenderTarget(SIZE, { type: THREE.HalfFloatType, generateMipmaps: false, minFilter: THREE.LinearFilter }));
     const cams = this.cams;
@@ -461,6 +473,7 @@ export class GlassProbe extends Pass {
       glass.probeOn.value = 1;
       this.back = 1 - this.back;
     }
+    return true;
   }
 
   /** At a set's first view: whether one is needed (glass near that reads it, and the eye moved, the light changed or it is old). */
