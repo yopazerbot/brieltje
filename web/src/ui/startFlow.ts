@@ -166,6 +166,7 @@ export class StartFlow {
       store.set(START_MODE, b.dataset.play!);
       this.pickZombies(false);
     }));
+    this.armZombies(); // Zombies remembered: never with Explore's weapon off
     $('z-together').addEventListener('click', (e) => {
       const b = (e.target as Element).closest<HTMLButtonElement>('button[data-room]');
       if (b && !b.disabled) this.pickRoom(b.dataset.room!);
@@ -258,12 +259,21 @@ export class StartFlow {
     return s?.role === 'player' || s?.role === 'admin';
   }
 
+  /**
+   * Zombies with a weapon: Action's pistol, or Paintball's paint guns when that was the mode, or while the admin has
+   * made the game child-friendly (the menu refuses Action then). Explore, kept from the game's menu, never plays it.
+   */
+  armZombies(): void {
+    if (!this.zombiesOn || this.hooks.play() !== 'explore') return;
+    this.hooks.setPlay('action');
+    if (this.hooks.play() === 'explore') this.hooks.setPlay('paintball');
+  }
+
   private pickZombies(on: boolean): void {
     this.zombiesOn = on;
     if (on) {
       store.set(START_MODE, 'zombies');
-      // Zombies with a weapon: Action's pistol, or Paintball's paint guns when that was the mode.
-      this.hooks.setPlay(this.hooks.play() === 'paintball' ? 'paintball' : 'action');
+      this.armZombies();
       if (this.together()) void this.loadRooms();
     }
     this.hooks.say(null);

@@ -444,6 +444,7 @@ function nameMissing(): boolean {
 // first as a guest under the name typed, and play starts only if that worked.
 menu.beforeStart = () => {
   if (nameMissing()) return Promise.resolve(false);
+  flow.armZombies(); // Zombies plays armed, also when Explore was picked in the game's menu since
   const z = flow.zombieStart();
   startIntent.zombies = null;
   startIntent.place = null;
