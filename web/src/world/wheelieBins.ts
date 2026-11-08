@@ -12,13 +12,13 @@ import { painted } from './yard';
  * (tools/wheelie_bin.py, public/models/wheelie-bins.glb): the body and lid white, tinted here per
  * container.
  *
- * They stand by the letterbox at the front of one plot in four, on the verge, the handle turned to the
- * street as ILvA asks. Most are 140 L, grey or green; some households have the big grey 240 L, a few
+ * Only a few stand out (Yoshi, 8 Nov 2026: "just a few, not too many"): by the letterbox at the front of
+ * one plot in twenty, on the verge, the handle turned to the street as ILvA asks. Most are 140 L, grey or green; some households have the big grey 240 L, a few
  * the portable 40 L. Each is loose (world/looseProps.ts): a car knocks it over, you push it on foot.
  */
 
 /** One letterbox in this many gets a container beside it (0: none). */
-export const BIN_EVERY = 4;
+export const BIN_EVERY = 20; // about 10 over the village
 
 /** The colours of ILvA's containers: grey for the residual waste, green for GFT (HDPE, satin). */
 const GREY = '#50565b';
