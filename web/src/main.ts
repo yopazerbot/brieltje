@@ -21,6 +21,7 @@ import { prepareShotRaycasts } from './world/shotRaycast';
 import { Zombies } from './world/zombies';
 import { Villagers } from './world/villagers';
 import { FootballGround } from './world/footballGround';
+import { FootballLife } from './world/footballLife';
 import { Christmas } from './world/christmas';
 import { fakeDay, seasonNow } from './world/season';
 import { Sinterklaas } from './world/sinterklaas';
@@ -658,9 +659,10 @@ prepareZombies();
 const villagers = new Villagers(world, () => quality === 'low' || phone, (root) => precompile(root));
 const villagerLook = new THREE.Vector3();
 scene.add(villagers.group);
-// FC Smetlede's football ground (world/footballGround.ts).
+// FC Smetlede's football ground (world/footballGround.ts) and its training and watchers (world/footballLife.ts).
 const fcGround = new FootballGround(house.ground, phone);
-scene.add(fcGround.group);
+const fcLife = new FootballLife(villagers, fcGround.y, () => quality === 'low' || phone, (id) => fcGround.goal(id));
+scene.add(fcGround.group, fcLife.group);
 // December (world/season.ts): the Christmas lights and the tree, and Sinterklaas on the church square (only in Explore).
 const christmas = new Christmas(world, (x, z) => house.ground + terrain.height(x, z), (root) => precompile(root));
 const sinterklaas = new Sinterklaas(world, (x, z) => house.ground + terrain.height(x, z), (root) => precompile(root));
@@ -3442,6 +3444,7 @@ renderer.setAnimationLoop((now: number) => {
   if (!net.connected) soloTick(dt);
   zombies.update(dt, camera.position);
   fcGround.update(dt);
+  fcLife.update(dt, camera.position); // its figures are drawn with the villagers
   villagers.update(dt, camera.position, camera.getWorldDirection(villagerLook), driving || riding || horses.mounted >= 0 ? null : { x: player.x, z: player.z, feet: player.feet }, [
     ...roadLife.traffic.cars,
     ...cars.filter((c) => (driving && c === car) || !!c.driver).map((c) => ({ x: c.x, z: c.z, yaw: c.yaw, length: c.spec.length, width: c.spec.width })),

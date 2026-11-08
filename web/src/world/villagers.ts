@@ -36,6 +36,32 @@ const URL_GLB = '/models/villagers.glb';
 const KINDS = ['man', 'woman', 'elder', 'teen', 'child', 'cyclist', 'dog'] as const;
 const MAN = 0, WOMAN = 1, ELDER = 2, TEEN = 3, CHILD = 4, BIKE = 5, DOG = 6;
 const MAX = [16, 16, 10, 10, 12, 12, 8];
+/** Room for the figures someone else moves (`setExtras`: world/footballLife.ts, the training and the spectators), on top of MAX */
+const EXTRA = [10, 10, 2, 6, 16, 0, 0];
+const ALL = MAX.map((n, k) => n + EXTRA[k]);
+/** The kinds' numbers, for `setExtras` and `dressRow`. */
+export const VILLAGER_KIND = { man: 0, woman: 1, elder: 2, teen: 3, child: 4, cyclist: 5, dog: 6 } as const;
+/** Bits of a figure's extras (`flags`): its umbrella up, a cap. */
+export const VILLAGER_UMBRELLA = 1;
+export const VILLAGER_CAP = 4;
+
+/**
+ * A figure someone else moves: drawn with the villagers (the same instanced meshes), but not one of them: where it
+ * stands, which way it faces, its clip and how far into it (s), its palette row (`dressRow`) and how far faded in.
+ */
+export interface Extra {
+  kind: number;
+  x: number;
+  y: number;
+  z: number;
+  yaw: number;
+  scale: number;
+  clip: string;
+  time: number;
+  pal: number;
+  fade: number;
+  flags: number;
+}
 /** How tall each kind stands (m, tools/villagers.py), for what they hold (eachHand) */
 const TALL = [1.79, 1.67, 1.66, 1.71, 1.18, 1.75, 0.6];
 const PALETTE_ROWS = 128;
@@ -291,6 +317,7 @@ export class Villagers {
   private popAt = 0;
   private hubSpots: ([number, number, number][] | null)[] = [];
   private hubTried: number[] = [];
+  private extras: (() => readonly Extra[]) | null = null;
   private prevCars: { x: number; z: number }[] = [];
   private carSpeed: number[] = [];
 
@@ -423,13 +450,13 @@ export class Villagers {
       const geo = new THREE.BufferGeometry();
       for (const a of ['position', 'normal', 'uv', 'skinIndex', 'skinWeight']) if (src.geometry.attributes[a]) geo.setAttribute(a, src.geometry.attributes[a]);
       geo.setIndex(src.geometry.index);
-      const anim = new THREE.InstancedBufferAttribute(new Float32Array(MAX[k] * 4), 4).setUsage(THREE.DynamicDrawUsage);
-      const look = new THREE.InstancedBufferAttribute(new Float32Array(MAX[k] * 4), 4).setUsage(THREE.DynamicDrawUsage);
+      const anim = new THREE.InstancedBufferAttribute(new Float32Array(ALL[k] * 4), 4).setUsage(THREE.DynamicDrawUsage);
+      const look = new THREE.InstancedBufferAttribute(new Float32Array(ALL[k] * 4), 4).setUsage(THREE.DynamicDrawUsage);
       geo.setAttribute('aAnim', anim);
       geo.setAttribute('aLook', look);
       // Its bounds hold any pose (a bike is long): a ball round the figure, made bigger.
       geo.boundingSphere = new THREE.Sphere(new THREE.Vector3(0, 0.8, 0), k === BIKE ? 1.5 : 1.3);
-      const mesh = new THREE.InstancedMesh(geo, villagerMaterial(this.boneTex!, this.palTex), MAX[k]);
+      const mesh = new THREE.InstancedMesh(geo, villagerMaterial(this.boneTex!, this.palTex), ALL[k]);
       mesh.count = 0;
       mesh.castShadow = false; // a patch on the ground instead
       mesh.receiveShadow = true;
@@ -451,6 +478,35 @@ export class Villagers {
       if (v.mode === 'cross' || v.mode === 'goto' || (v.mode === 'ride' && this.paths?.bkind[v.line] === 1)) out.push({ x: v.x, z: v.z, r: v.bike ? 0.6 : 0.35 });
     }
     return out;
+  }
+
+  /** The figures someone else moves, asked for each frame they are drawn (world/footballLife.ts); null for none. */
+  setExtras(fn: (() => readonly Extra[]) | null): void {
+    this.extras = fn;
+  }
+
+  /**
+   * A palette row for such a figure: a villager's colours as `dress` picks them, with these slots set (2 top, 3
+   * bottoms, 4 shoes, 5 and 6 its things, 7 a child's lower legs; tools/villagers.py), and its extras (`flags`, or
+   * picked as a villager's when left out); null when the model isn't in yet or no row is free. Give it back with `freeRow`.
+   */
+  dressRow(kind: number, cols: Record<number, string>, flags?: number): { pal: number; flags: number } | null {
+    if (!this.boneTex) return null;
+    const pal = this.palFree.pop();
+    if (pal === undefined) return null;
+    const v = { kind, pal, flags: 0 } as V;
+    this.dress(v, cols, flags);
+    return { pal, flags: v.flags };
+  }
+
+  freeRow(pal: number): void {
+    if (!this.palFree.includes(pal)) this.palFree.push(pal);
+  }
+
+  /** A clip's length (s) and the metres a loop of it covers (0 for one that stays put), or null without it. */
+  clipOf(kind: number, clip: string): { duration: number; dist: number } | null {
+    const c = this.kinds[kind]?.clips.get(clip);
+    return c ? { duration: c.duration, dist: c.dist } : null;
   }
 
   /** Each villager now, for checks: kind, where, what it does, its clip. */
@@ -495,8 +551,8 @@ export class Villagers {
     return v;
   }
 
-  /** Its colours and extras: written into its row of the palette. */
-  private dress(v: V): void {
+  /** Its colours and extras: written into its row of the palette (`set`, `flags`: a figure dressed for someone else). */
+  private dress(v: V, set?: Record<number, string>, flags?: number): void {
     const k = v.kind;
     const cols: string[] = new Array(16).fill('#808080');
     const skin = pickW(SKINS, SKIN_W);
@@ -535,7 +591,8 @@ export class Villagers {
       } as Record<number, [number, number][]>)[k] ?? [];
       for (const [bit, p] of extras) if (chance(p)) f |= bit;
     }
-    v.flags = f;
+    if (set) for (const [i, col] of Object.entries(set)) cols[Number(i)] = col;
+    v.flags = flags ?? f;
     const c = new THREE.Color();
     for (let i = 0; i < 16; i++) {
       c.set(cols[i]).convertSRGBToLinear();
@@ -1391,8 +1448,8 @@ export class Villagers {
     for (const v of this.vs) {
       const k = this.kinds[v.kind];
       if (!k) continue;
+      if (counts[v.kind] >= MAX[v.kind]) continue;
       const i = counts[v.kind]++;
-      if (i >= MAX[v.kind]) continue;
       _m.compose(_v.set(v.x, v.y, v.z), _q.setFromAxisAngle(UP, v.yaw), _s.setScalar(v.scale));
       k.mesh.setMatrixAt(i, _m);
       const [a0, a1, af] = this.rows(k.clips.get(v.clip), v.time);
@@ -1436,8 +1493,24 @@ export class Villagers {
         leads++;
       }
     }
+    for (const e of this.extras?.() ?? []) {
+      const k = this.kinds[e.kind];
+      if (!k || counts[e.kind] >= ALL[e.kind]) continue;
+      const i = counts[e.kind]++;
+      _m.compose(_v.set(e.x, e.y, e.z), _q.setFromAxisAngle(UP, e.yaw), _s.setScalar(e.scale));
+      k.mesh.setMatrixAt(i, _m);
+      const [rA, rB, mix] = this.rows(k.clips.get(e.clip), e.time);
+      k.anim.setXYZW(i, rA, rB, mix, e.pal);
+      const fade = Math.min(e.fade, this.shown);
+      k.look.setXYZW(i, fade, e.flags, 0, 0);
+      if (patches < 96 && Math.hypot(e.x - eye.x, e.z - eye.z) < 60 && e.clip !== 'Sit') {
+        const r = (e.kind === CHILD ? 0.6 : 0.75) * e.scale * Math.min(1, fade * 1.4);
+        _m.compose(_v.set(e.x, e.y + 0.03, e.z), _q.setFromAxisAngle(UP, e.yaw), _s.set(r, 1, r));
+        this.patches.setMatrixAt(patches++, _m);
+      }
+    }
     this.kinds.forEach((k, kind) => {
-      k.mesh.count = Math.min(MAX[kind], counts[kind]);
+      k.mesh.count = Math.min(ALL[kind], counts[kind]);
       k.mesh.visible = k.mesh.count > 0;
       if (!k.mesh.count) return;
       k.mesh.instanceMatrix.needsUpdate = true;
