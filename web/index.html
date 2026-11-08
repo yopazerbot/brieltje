@@ -482,6 +482,8 @@
                       <p class="label" data-i18n="choose.pad">Controller</p>
                       <p class="note set-why" data-i18n="set.padNote">Connect a controller and press any button to change these.</p>
                       <div class="setting"><label class="field" for="set-stick"><span data-i18n="set.stick">Controller look speed</span> <span class="set-value" data-for="set-stick"></span></label><input class="slider" id="set-stick" type="range" min="0.4" max="2.5" step="0.05" /></div>
+                      <!-- A subtle aim assist against zombies only (src/controls/aimAssist.ts). -->
+                      <label class="check"><input type="checkbox" id="set-aimassist" /> <span data-i18n="set.aimAssist">Aim assist against zombies</span></label>
                       <!-- The names of the buttons in the hints (src/controls/padFamily.ts); each choice shows its face buttons. -->
                       <p class="label" id="padlbl-label" data-i18n="set.padLabels">Button names</p>
                       <div class="seg pad-seg" role="group" aria-labelledby="padlbl-label">

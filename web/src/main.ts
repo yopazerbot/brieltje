@@ -6,6 +6,7 @@ import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 import { SMAAPass } from 'three/addons/postprocessing/SMAAPass.js';
 import { gradedOutput } from './grade';
 import { BloomPass } from './bloom';
+import { AimAssist } from './controls/aimAssist';
 import { NO_INPUT } from './controls/input';
 import { onPadLabels } from './controls/padFamily';
 import { FAR_PHONE, gpuName, guessFromName, loadMode, ORDER, pickQuality, PRESETS, saveMode, timeFrames, type Mode, type Preset, type Quality } from './graphics';
@@ -646,6 +647,8 @@ let localClown = 1000; // ids for clowns placed alone
 // The Zombies game's zombies (our own models, world/zombies.ts): the server's together, this page's alone.
 const zombies = new Zombies((x, z, y) => world.groundAt(x, z, y, 0).y, world, () => quality === 'low' || phone);
 scene.add(zombies.group, zombies.hits);
+// The controller's aim assist against zombies only (src/controls/aimAssist.ts): no snap through a wall.
+const aimAssist = new AimAssist(zombies.hits, (a, b) => !world.blocked(a, b, 0.25));
 // Their shaders compile in the background (see precompile) once the models and the sky's light are in, and again
 // as a Zombies game begins (a moment if nothing changed): hidden until a wave comes, they would compile on first
 // draw and stop the game just as the zombies appear. The sky's light changes their shader, so not before it.
@@ -3067,6 +3070,7 @@ renderer.setAnimationLoop((now: number) => {
       player.ground = world.groundAt(k.x, k.z, k.y + 0.1, 0.3);
     } else {
       // Dead: only looking around. The seeker in hide and seek: eyes shut, not even that.
+      aimAssist.shape(frame, dt, player, camera.position, settings.value.aimAssist && menu.mode === 'pad' && games.zombies && weapon.enabled && !dead, weapon.current === 'sniper');
       const still = games.blindfolded ? NO_INPUT : { ...NO_INPUT, mouseX: frame.mouseX, mouseY: frame.mouseY, lookX: frame.lookX, lookY: frame.lookY };
       player.update(dt, dead || games.blindfolded ? still : frame, camera);
     }
@@ -4056,6 +4060,7 @@ if (import.meta.env.DEV) {
       horses,
       clowns,
       zombies,
+      aimAssist,
       villagers,
       christmas,
       sinterklaas,

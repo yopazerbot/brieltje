@@ -1,8 +1,8 @@
 /**
  * Player settings in the pause menu, remembered in this browser: mouse and
  * controller look speed, field of view, volume, inverted look, controller
- * vibration, the minimap and FPS counter (each with a key as its shortcut), and
- * the weather (world/weather.ts) when playing alone: together the admin's choice
+ * vibration, the controller's aim assist against zombies (src/controls/aimAssist.ts),
+ * the minimap and FPS counter (each with a key as its shortcut), and the weather (world/weather.ts) when playing alone: together the admin's choice
  * holds, and the buttons show it, greyed (lockMood).
  */
 
@@ -20,6 +20,8 @@ export interface Settings {
   volume: number;
   invert: boolean;
   vibration: boolean;
+  /** The controller's aim assist against zombies (src/controls/aimAssist.ts) */
+  aimAssist: boolean;
   /** Baked lighting for the house (test): light bounced between walls, cheaper on weak graphics */
   /** The minimap top right (N) */
   minimap: boolean;
@@ -30,8 +32,8 @@ export interface Settings {
 }
 
 const KEY = 'briel.settings';
-const DEFAULTS: Settings = { mouse: 1, stick: 1, fov: 72, volume: 0.8, invert: false, vibration: true, minimap: true, fps: false, mood: DEFAULT_CHOICE };
-const BOXES = [['set-invert', 'invert'], ['set-vibration', 'vibration'], ['set-minimap', 'minimap'], ['set-fps', 'fps']] as const;
+const DEFAULTS: Settings = { mouse: 1, stick: 1, fov: 72, volume: 0.8, invert: false, vibration: true, aimAssist: true, minimap: true, fps: false, mood: DEFAULT_CHOICE };
+const BOXES = [['set-invert', 'invert'], ['set-vibration', 'vibration'], ['set-aimassist', 'aimAssist'], ['set-minimap', 'minimap'], ['set-fps', 'fps']] as const;
 
 function load(): Settings {
   try {

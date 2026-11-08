@@ -223,6 +223,8 @@ const en = {
   // The same setting with touch controls: how fast dragging turns the view
   'set.touchLook': 'Look speed',
   'set.stick': 'Controller look speed',
+  // The controller slows a little over a zombie and eases towards one as you aim (src/controls/aimAssist.ts)
+  'set.aimAssist': 'Aim assist against zombies',
   // The names on the controller's buttons in the hints (src/controls/padFamily.ts)
   'set.padLabels': 'Button names',
   'set.padNote': 'Connect a controller and press any button to change these.',
@@ -1216,6 +1218,7 @@ const nl = {
   'set.mouse': 'Muisgevoeligheid',
   'set.touchLook': 'Kijksnelheid',
   'set.stick': 'Kijksnelheid controller',
+  'set.aimAssist': 'Hulp bij het richten op zombies',
   'set.padLabels': 'Namen van de knoppen',
   'set.padNote': 'Verbind een controller en druk op een knop om deze aan te passen.',
   'set.fov': 'Gezichtsveld',
