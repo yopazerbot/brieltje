@@ -679,6 +679,7 @@ export class Car {
    * stop looking it swings back behind the car as you drive. It lags the body a little: it
    * drops back as the car speeds up and closes in as it brakes, swings out of a turn, rides
    * the bumps and leans a touch with the body; the view widens a little at speed (fovScale).
+   * It looks a touch into a turn, and while the car slides it looks where the car goes.
    * With reduced motion asked for (the system's setting) it doesn't sway, lean or widen.
    */
   chase(camera: THREE.PerspectiveCamera, dt: number, turnX: number, turnY: number): void {
@@ -690,7 +691,13 @@ export class Car {
       this.camYaw -= this.camYaw * k;
       this.camPitch += (0.22 - this.camPitch) * k;
     }
-    this.camHeading += angle(this.yaw - this.camHeading) * (1 - Math.exp(-dt * 5));
+    // It follows the car's heading a little behind, looks a touch into the turn ahead of it, and while the
+    // car slides it follows more the way the car goes than the way it points, so a spin doesn't whirl the view.
+    const fast = Math.min(1, Math.max(0, (this.speed - 1) / 4));
+    const slip = fast * Math.max(-1, Math.min(1, Math.atan2(this.side, Math.max(1, this.speed))));
+    const into = CALM ? 0 : Math.max(-0.25, Math.min(0.25, 0.3 * this.yawRate)) * fast;
+    const heading = this.yaw - 0.6 * slip + into;
+    this.camHeading += angle(heading - this.camHeading) * (1 - Math.exp(-dt * (4 - 1.5 * Math.min(1, Math.abs(slip) * 3))));
     const h = this.camHeading + this.camYaw;
     const d = Math.min(Math.max(dt, 0), 0.1);
     const lag = 1 - Math.exp(-d * 3);
