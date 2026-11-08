@@ -92,6 +92,8 @@ file's opening comment; run it again after adding, moving or removing a module.
 - `web/src/world/fieldBirds.ts`: Birds over the countryside, all made in code and moved by their vertex shader on one clock:
 - `web/src/world/fields.ts`: Rows in the fields, as they are at the end of October here, by the crop the farmers declared on each this year (tools/crops.py, the Flemish agricultural...
 - `web/src/world/football.ts`: The footballs (shared/ball.mjs): one on the school's playground between two small goals, one on the main house's back lawn.
+- `web/src/world/footballGround.ts`: FC Smetlede's football ground by the Wellebeek, at the end of Schildekensstraat (Yoshi, 8 Nov 2026: "make this a hotspot that is really nice and lively").
+- `web/src/world/footballLife.ts`: Life at FC Smetlede's ground (world/footballGround.ts; Yoshi, 8 Nov 2026: "make this a hotspot that is really nice and lively"): a youth training on the far...
 - `web/src/world/furnishing.ts`: Furniture spawned with /name (src/spawn.ts): simple shapes at real sizes (a bed is 160 x 200 cm), coloured per part.
 - `web/src/world/glass.ts`: Breakable windows: a shot shatters the pane into falling shards, plays a glass sound and opens the gap (no more collision).
 - `web/src/world/glassLook.ts`: Glass that looks like glass: it mirrors the sky and the street round it, more the flatter it is seen (fresnel), over what is behind it.
@@ -277,6 +279,8 @@ file's opening comment; run it again after adding, moving or removing a module.
 - `tools/dormer_house.py`: Build the exterior with Blender: blender -b -P tools/dormer_house.py -- output.glb [editable.blend].
 - `tools/facades.py`: Facades and gardens of the neighbouring houses (the data has only their outlines and heights).
 - `tools/fanlight.py`: Build the old bungalow's front door fanlight in Blender: a sunburst fanlight in a stone arch.
+- `tools/football.py`: Build FC Smetlede's ground in Blender: the goals, the rails, fences and ball-stop nets, the floodlights, the dugouts, the clubhouse with its covered terrace...
+- `tools/football_site.py`: FC Smetlede's ground (Yoshi, 8 Nov 2026: "research the soccer field of the town.
 - `tools/garden.py`: The garden (data/garden.json sets): paving and paths, stepping slabs in the lawn, planted borders, and the wadi, a shallow grassy basin in the front garden...
 - `tools/garden_life.py`: Build the everyday things round the main house and the bungalow, in Blender.
 - `tools/geodata.py`: Download the open data of the surroundings into source/geo/ (not in git).
