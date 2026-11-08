@@ -1082,7 +1082,7 @@ roofs_out.append({"id": "carport", "at": [*[round(c, 3) for c in P((R_U0 + R_U1)
 UP = DECK + 16 * 0.17625               # 5.65: the upper deck, 16 risers over the annex's deck
 UP_D0, UP_D1 = 9.65, 11.4              # across, from just past the gable's verge to its back edge
 UL0, UL1 = 3.85, 5.1                   # its landing behind it, where the flight comes up
-UL_D1 = 12.4
+UL_D1 = 12.65                         # (the flight a hand clear of the deck's edge: no head brushes its rail)
 
 
 def column(u, d, y0, y1, w=0.12):
@@ -1117,7 +1117,7 @@ guard((0.0, UP_D1), (UL0, UP_D1), UP, end_posts=(False, True))
 guard((UL1, UP_D1), (AW, UP_D1), UP, end_posts=(True, False))
 guard((UL1, UP_D1), (UL1, UL_D1), UP, end_posts=(False, True))
 guard((UL0, UL_D1), (UL1, UL_D1), UP, end_posts=(False, False))
-flight("upper", (UL0, (UP_D1 + UL_D1) / 2), (1.0, 0.0), UP, base=DECK)
+flight("upper", (UL0, (UP_D1 + 0.15 + UL_D1) / 2), (1.0, 0.0), UP, base=DECK)
 roofs_out.append({"id": "upper", "at": [*[round(c, 3) for c in P(2.0, (UP_D0 + UP_D1) / 2)], round(UP, 3)]})
 
 # 5. The ridge platform: the flight leaves the deck through its back rail and climbs over the hall's front slope on short
