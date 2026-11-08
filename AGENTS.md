@@ -114,6 +114,7 @@ These come from CONTRIBUTING.md, plus a few that only agents need. A change that
 **Privacy.** The repository is public. Smetlede and Briel are real places, and real neighbours live there.
 
 - No house numbers, addresses or names of people. No personal data, and no photos of people. A house's overrides are keyed by model coordinates, never by address.
+- One exception, Yoshi's choice (8 Nov 2026): the names "Yoshi" and "Liesl" may stay everywhere, as in "Yoshi & Liesl's home" and the chat words `yoshi` and `liesl`. Don't flag or remove them. No other names.
 - Nothing from `source/` or `images/` goes into a commit. Both folders are private and git-ignored. That covers the files, their names and anything copied out of them. Only data built by the tools goes in.
 - Never describe where the main house's data comes from: not its origin, not its maker, not the kind of document. That holds for code, comments, commit messages, pull requests, docs, file names and text in the game. Write "the main house", "the starting layout", "the reference images" or "private source files". The merger checks every merge for words that give the source away.
 - The merger pushes only `main`, only to `origin`. A cloud worker pushes only its own branch. Nobody pushes any other branch.
