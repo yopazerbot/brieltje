@@ -1,14 +1,26 @@
 {
-  "_": "The slideshow's views (web/public/start/), in game metres: the camera, what it looks at, the vertical field of view. The house is the start screen's own camera (export_scene.js). `mood`: the game's weather for the export (export_view.mjs); `drop`: the player's own parachute, placed at `figure` facing `heading`; `render`: extras for render_still.py (its mood, floodlights).",
+  "_": "The slideshow's views (web/public/start/), in game metres: the camera, what it looks at, the vertical field of view. The house is the start screen's own camera (export_scene.js). `mood`: the game's weather for the export (export_view.mjs); `drop`: the player's own parachute, placed at `figure` facing `heading`; `render`: extras for render_still.py (its mood, its own lights: floodlights or lanterns, the sky's strength, the exposure, windows lit, wet ground and puddles, the leaf cards' lift and gaps).",
   "town": { "position": [540, 40, -655], "target": [480, 8, -765], "fov": 55 },
   "house": null,
   "bungalow": { "position": [102, 4.5, 176.5], "target": [86.3, 2.2, 192.6], "fov": 60 },
   "school": { "position": [480, 6.1, -842], "target": [458, 7.2, -803], "fov": 62 },
   "sparrenhof": { "position": [635, -4.6, 950], "target": [662, -4.2, 956], "fov": 44 },
   "town-night": { "position": [585, 27, -708], "target": [522, 12, -722], "fov": 55, "mood": "night",
-    "render": { "lights": [{ "at": [553, 5.6, -743], "aim": [538, 15, -735], "power": 2500, "spread": 34 }, { "at": [553, 5.6, -727], "aim": [538, 15, -735], "power": 2500, "spread": 34 }] } },
+    "render": { "exposure": 0.8, "lights": [{ "at": [553, 5.6, -743], "aim": [538, 15, -735], "power": 2500, "spread": 34 }, { "at": [553, 5.6, -727], "aim": [538, 15, -735], "power": 2500, "spread": 34 }] } },
   "parachute": { "position": [625, 65.5, -741.5], "target": [536, 32.7, -728], "fov": 62, "mood": "night",
     "drop": { "at": [615, -745], "figure": [615, 58, -745], "heading": 1.75, "hold": 4 },
     "render": { "mood": "dusk" } },
-  "street-rain": { "position": [751.5, 8.55, -725.2], "target": [700, 7.9, -727.5], "fov": 58, "mood": "rain" }
+  "street-rain": { "position": [751.5, 8.55, -725.2], "target": [700, 7.9, -727.5], "fov": 58, "mood": "rain" },
+  "sparrenhof-dusk": { "position": [626, -0.5, 1003], "target": [646, -3.5, 948], "fov": 55, "mood": "night",
+    "render": { "mood": "dusk", "ownWindows": 0.85, "skyGain": 0.9, "exposure": 1.9, "cardGaps": 0.75, "lights": [
+      { "kind": "point", "at": [637.8, -0.8, 977.8], "power": 150, "color": [1.0, 0.62, 0.3], "size": 0.15 },
+      { "kind": "point", "at": [641.0, -4.1, 975.3], "power": 100, "color": [1.0, 0.62, 0.3], "size": 0.15 }] } },
+  "football": { "position": [-344.4, 3.3, -1270.1], "target": [-380.2, -5, -1204.2], "fov": 55, "mood": "night",
+    "render": { "mood": "dusk", "lights": [
+      { "at": [-381.4, 9.7, -1255.8], "aim": [-365.1, -5.7, -1216.7], "power": 30000, "spread": 80, "color": [0.92, 0.96, 1], "size": 0.8 },
+      { "at": [-318.4, 9.7, -1254], "aim": [-336.8, -5.7, -1215.9], "power": 30000, "spread": 80, "color": [0.92, 0.96, 1], "size": 0.8 },
+      { "at": [-383.3, 9.7, -1188.6], "aim": [-364.8, -5.7, -1228.7], "power": 30000, "spread": 80, "color": [0.92, 0.96, 1], "size": 0.8 },
+      { "at": [-320.7, 9.7, -1190.8], "aim": [-336.7, -5.7, -1227.9], "power": 30000, "spread": 80, "color": [0.92, 0.96, 1], "size": 0.8 }] } },
+  "square": { "position": [520, 22, -797], "target": [556.5, 6, -762.8], "fov": 54 },
+  "street-night": { "position": [560, 6.9, -765], "target": [520.6, 6.6, -771.9], "fov": 55, "mood": "night", "render": { "wet": true, "puddles": 0.05, "exposure": 0.5 } }
 }

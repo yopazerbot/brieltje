@@ -24,6 +24,11 @@ where the game puts it:
 - dusk: the same, with the sky about three times brighter: the blue hour.
 - rain: the overcast sky darkened as in the game, wet ground and roofs (darker, glossy, with puddles where
   it is flat), rain-darkened walls, and streaks of falling rain in front of the camera.
+- `render.wet` (views.json): the rain's wet ground and puddles in another mood (a night just after the rain), no streaks.
+
+The leaf-card trees (world/leafCards.ts, Medium and up) come in with their painted atlas embedded in the export and
+are cut out as in the game, lit by the crown's shape on both sides (leaf_cards). `render.cardLift` and `render.cardGaps`
+tune how light their leaves are and how much light a crown lets through. The villagers come in posed (export_scene.js).
 """
 import json
 import math
@@ -308,7 +313,77 @@ def emit(nt, bsdf, colour, strength):
             s.default_value = v
 
 
-glass = rebuilt = 0
+def upstream(socket, kind, depth=0):
+    """Whether a node of `kind` feeds this input, through any number of nodes."""
+    return depth < 12 and any(l.from_node.type == kind or any(upstream(s, kind, depth + 1) for s in l.from_node.inputs) for l in socket.links)
+
+
+def surface_out(mat):
+    out = next((n for n in mat.node_tree.nodes if n.type == "OUTPUT_MATERIAL" and n.is_active_output), None)
+    return out if out and out.inputs["Surface"].links else None
+
+
+def cut_out(mat, alpha):
+    """A cut-out (glTF alpha MASK) or see-through material: the cut taken off the surface and put round all of it, the
+    haze too, so nothing of the haze shows where the surface is cut away (a leaf card's empty corners far off)."""
+    nt, bsdf, out = mat.node_tree, principled(mat), surface_out(mat)
+    if not out:
+        return
+    for link in list(bsdf.inputs["Alpha"].links):
+        nt.links.remove(link)
+    bsdf.inputs["Alpha"].default_value = 1.0
+    clear = nt.nodes.new("ShaderNodeBsdfTransparent")
+    mix = nt.nodes.new("ShaderNodeMixShader")
+    nt.links.new(alpha, mix.inputs["Fac"])
+    nt.links.new(clear.outputs[0], mix.inputs[1])
+    nt.links.new(out.inputs["Surface"].links[0].from_socket, mix.inputs[2])
+    nt.links.new(mix.outputs[0], out.inputs["Surface"])
+
+
+def leaf_cards(mat, bsdf):
+    """The leaf cards of the trees, the hedges' sprigs and the undergrowth (world/leafCards.ts): the painted atlas times
+    the colour per corner, cut out (cut_out). As in the game (world/leaves.ts leafLight) every card is lit by the crown's
+    shape round it, on both sides (Cycles turns a card's normal to the eye; turned back here), diffuse only, the sun
+    shining through from behind; and a crown lets some light through to the leaves under it, as a real one does with
+    its gaps, so a wood isn't a black mass inside."""
+    nt = mat.node_tree
+    out = surface_out(mat)
+    lift = nt.nodes.new("ShaderNodeVectorMath")
+    lift.operation = "SCALE"
+    nt.links.new(bsdf.inputs["Base Color"].links[0].from_socket, lift.inputs[0])
+    lift.inputs["Scale"].default_value = float(VIEW.get("cardLift", CARD_LIFT))
+    geo = nt.nodes.new("ShaderNodeNewGeometry")
+    side = node_math(nt, "MULTIPLY_ADD", geo.outputs["Backfacing"], -2.0, 1.0)
+    crown = nt.nodes.new("ShaderNodeVectorMath")
+    crown.operation = "SCALE"
+    nt.links.new(geo.outputs["Normal"], crown.inputs[0])
+    nt.links.new(side, crown.inputs["Scale"])
+    lit = nt.nodes.new("ShaderNodeBsdfDiffuse")
+    nt.links.new(lift.outputs[0], lit.inputs["Color"])
+    nt.links.new(crown.outputs[0], lit.inputs["Normal"])
+    through = nt.nodes.new("ShaderNodeBsdfTranslucent")
+    warm = nt.nodes.new("ShaderNodeVectorMath")
+    warm.operation = "MULTIPLY"
+    nt.links.new(lift.outputs[0], warm.inputs[0])
+    warm.inputs[1].default_value = (1.25, 1.3, 0.55)  # the game's light through the leaves: yellower
+    nt.links.new(warm.outputs[0], through.inputs["Color"])
+    nt.links.new(crown.outputs[0], through.inputs["Normal"])
+    leaf = nt.nodes.new("ShaderNodeMixShader")
+    leaf.inputs["Fac"].default_value = 0.3
+    nt.links.new(lit.outputs[0], leaf.inputs[1])
+    nt.links.new(through.outputs[0], leaf.inputs[2])
+    path = nt.nodes.new("ShaderNodeLightPath")
+    gaps = nt.nodes.new("ShaderNodeMixShader")
+    nt.links.new(node_math(nt, "MULTIPLY", path.outputs["Is Shadow Ray"], float(VIEW.get("cardGaps", CARD_GAPS))), gaps.inputs["Fac"])
+    nt.links.new(leaf.outputs[0], gaps.inputs[1])
+    nt.links.new(nt.nodes.new("ShaderNodeBsdfTransparent").outputs[0], gaps.inputs[2])
+    if out:
+        nt.links.new(gaps.outputs[0], out.inputs["Surface"])
+
+
+CARD_LIFT = 1.3  # the cards' colours a little lighter: the game's leaves catch more light than a path tracer gives them
+CARD_GAPS = 0.45  # how much light a leaf card lets past to what is under it (shadow rays only)
+glass = rebuilt = cards = 0
 glass_mats = []
 for mat in bpy.data.materials:
     if not mat.use_nodes:
@@ -366,8 +441,10 @@ for mat in bpy.data.materials:
             nt.links.new(comb.outputs[0], nmap.inputs["Color"])
             nt.links.new(nmap.outputs["Normal"], bsdf.inputs["Normal"])
         rebuilt += 1
-    if bsdf and mat.get("vertexColors"):
-        # Colour per vertex (leaves, window frames and panes, lamps): times the material's colour.
+    if bsdf and mat.get("vertexColors") and not upstream(bsdf.inputs["Base Color"], "VERTEX_COLOR"):
+        # Colour per vertex (leaves, window frames and panes, lamps): times the material's colour. Blender 5's glTF
+        # importer does this itself (a Color Attribute node into the base colour) unless the game's texture took its
+        # place above; done again on top of the importer's, a colour per vertex came out squared (leaves near black).
         vc = nt.nodes.new("ShaderNodeVertexColor")
         mul = nt.nodes.new("ShaderNodeVectorMath")
         mul.operation = "MULTIPLY"
@@ -401,7 +478,11 @@ for mat in bpy.data.materials:
         else:
             mul.inputs[1].default_value = base.default_value[:3]
         nt.links.new(mul.outputs[0], base)
-    if bsdf and mat.get("foliage") and bsdf.inputs["Base Color"].links:
+    cut = bsdf.inputs["Alpha"].links[0].from_socket if bsdf and bsdf.inputs["Alpha"].links and mat not in glass_mats else None
+    if bsdf and mat.get("cards") and bsdf.inputs["Base Color"].links:
+        leaf_cards(mat, bsdf)
+        cards += 1
+    elif bsdf and mat.get("foliage") and bsdf.inputs["Base Color"].links:
         # Leaves (tree crowns and hedge clumps): the game's leaf shader (world/leaves.ts) lightens their dark vertex
         # greens and breaks them into clumps of leaves; here a leaf-sized noise does that, in colour and relief, and
         # some light comes through them. Without it the crowns rendered as smooth near-black balls.
@@ -437,7 +518,9 @@ for mat in bpy.data.materials:
             nt.links.new(through.outputs[0], mix.inputs[2])
             nt.links.new(mix.outputs[0], out.inputs["Surface"])
     haze_on(mat)
-print(f"{len(bpy.data.materials)} materials: {rebuilt} with the game's textures, {glass} glass; {len(images)} texture files")
+    if cut:
+        cut_out(mat, cut)
+print(f"{len(bpy.data.materials)} materials: {rebuilt} with the game's textures, {glass} glass, {cards} of leaf cards; {len(images)} texture files")
 
 
 # --- The weather's look (night, dusk, rain): lit windows and lamps, or wet surfaces and falling rain.
@@ -524,7 +607,8 @@ def wet(mat, puddles, leaves):
         noise.inputs["Detail"].default_value = 5.0
         noise.inputs["Roughness"].default_value = 0.62
         nt.links.new(pos.outputs["Position"], noise.inputs["Vector"])
-        pool = node_range(nt, noise.outputs["Fac"], 0.54, 0.575)
+        more = float(VIEW.get("puddles", 0.0))  # views.json render: more of the paving under water (0 to about 0.08)
+        pool = node_range(nt, noise.outputs["Fac"], 0.54 - more, 0.575 - more / 2)
         flat = node_range(nt, sep.outputs[2], 0.982, 0.997)
         puddle = node_math(nt, "MULTIPLY", pool, flat)
         rough = node_mix(nt, "FLOAT", puddle, rough, 0.012)
@@ -540,7 +624,7 @@ def wet(mat, puddles, leaves):
     nt.links.new(rough, bsdf.inputs["Roughness"])
 
 
-PAVED = ("asphalt", "concrete", "paving", "pavers", "road", "cobble", "tile", "stone", "gravel", "brick_floor", "kerb")
+PAVED = ("asphalt", "concrete", "pave", "road", "cobble", "tile", "stone", "gravel", "brick_floor", "kerb", "slab")
 if LOOK and LOOK["lit"]:
     rooms = sum(light_rooms(m, LOOK["lit"]) for m in bpy.data.materials if m.name.startswith("village_glass"))
     # Our own models' glass: real glass made above, and the dark panes the models carry (named so, or on an object so named).
@@ -569,15 +653,22 @@ if LOOK:
     for o in painted:
         o.hide_render = True
     print(f"painted horizon left out: {len(painted)} objects")
-if LOOK and MOOD == "rain":
+if LOOK and (MOOD == "rain" or VIEW.get("wet")):  # `wet` (views.json render): a night or dusk just after the rain
     n = 0
+    # The objects' names count too: the village's paving comes as `pave_grey` and the like, its material unnamed.
+    users = {}
+    for o in scene.objects:
+        if o.type == "MESH":
+            for s in o.material_slots:
+                if s.material and len(users.get(s.material, "")) < 400:
+                    users[s.material] = users.get(s.material, "") + " " + o.name
     for m in bpy.data.materials:
         bsdf = principled(m)
         if not bsdf or m in glass_mats or m.name.startswith("village_glass") or bsdf.inputs["Transmission Weight"].default_value > 0.5:
             continue
         tex = m.get("tex")
         tex = tex.to_dict() if hasattr(tex, "to_dict") else (tex or {})
-        names = (m.name + " " + " ".join(v["src"] for v in tex.values())).lower()
+        names = (m.name + " " + " ".join(v["src"] for v in tex.values()) + users.get(m, "")).lower()
         wet(m, any(k in names for k in PAVED), bool(m.get("foliage")))
         n += 1
     print(f"wet: {n} materials")
@@ -644,17 +735,21 @@ if LOOK and LOOK["lit"]:
         only_seen(bulb)
         scene.collection.objects.link(bulb)
         lamps += 1
-    # The view's floodlights (views.json `render.lights`): the church's front lit softly.
+    # The view's own lights (views.json `render.lights`): floodlights (the church's front, a football pitch), or with
+    # `"kind": "point"` a lantern shining all round (a tree hut at dusk).
     for i, f in enumerate(VIEW.get("lights", [])):
-        light = bpy.data.lights.new(f"flood{i}", "SPOT")
+        point = f.get("kind") == "point"
+        light = bpy.data.lights.new(f"flood{i}", "POINT" if point else "SPOT")
         light.energy = float(f.get("power", 3000)) * LOOK["lit"]
         light.color = f.get("color", (1.0, 0.78, 0.55))
-        light.spot_size = math.radians(f.get("spread", 40))
-        light.spot_blend = 0.8
+        if not point:
+            light.spot_size = math.radians(f.get("spread", 40))
+            light.spot_blend = 0.8
         light.shadow_soft_size = float(f.get("size", 0.4))
         fo = bpy.data.objects.new(f"flood{i}", light)
         fo.location = g2b(f["at"])
-        aim(fo, g2b(f["aim"]))
+        if not point:
+            aim(fo, g2b(f["aim"]))
         scene.collection.objects.link(fo)
     print(f"{lamps} street lamps within {reach:.0f} m, {len(VIEW.get('lights', []))} floodlights")
 
