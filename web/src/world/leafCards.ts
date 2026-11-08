@@ -637,20 +637,31 @@ function show(full: boolean): void {
   for (const f of trees.watch) f(full);
 }
 
-/** The atlases painted in idle slices, then on the cards' materials, then the cards shown if still wanted. */
+let paintWarned = false;
+
+/**
+ * The atlases painted in idle slices, then on the cards' materials, then the cards shown if still wanted. A paint
+ * that fails leaves the plain trees, and the next ask for the cards (another preset) tries again.
+ */
 function paintSoon(): void {
   if (trees.painting || trees.ready || !trees.may || !trees.want) return;
   trees.painting = (async () => {
-    atlas ??= await sliced(leafSteps());
-    bark ??= await sliced(barkSteps());
-    for (const m of trees.cards) {
-      m.map = m.userData.bark ? bark : atlas;
-      m.needsUpdate = true;
+    try {
+      atlas ??= await sliced(leafSteps());
+      bark ??= await sliced(barkSteps());
+      for (const m of trees.cards) {
+        m.map = m.userData.bark ? bark : atlas;
+        m.needsUpdate = true;
+      }
+      trees.ready = true;
+      await trees.prepare?.([atlas, bark]).catch(() => undefined);
+    } catch (e) {
+      if (!paintWarned) console.warn('Leaf cards: painting failed, the plain trees stay', e);
+      paintWarned = true;
+    } finally {
+      trees.painting = null;
     }
-    trees.ready = true;
-    await trees.prepare?.([atlas, bark]).catch(() => undefined);
-    trees.painting = null;
-    show(trees.want);
+    show(trees.ready && trees.want);
   })();
 }
 
