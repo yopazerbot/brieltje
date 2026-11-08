@@ -1,7 +1,8 @@
 // The slideshow of renders behind the start screen and the site's other pages: the town with its
-// church and school, by day and at night, the house, Molenhoek in the rain, the bungalow, the
-// school's playground, a parachute over the town at dusk and the café Sparrenhof (tools/still/,
-// Blender), day and night or rain taking turns. Any element with
+// church and school, by day and at night, FC Smetlede's training under the floodlights, the house,
+// a wet street at night, the church square with its board, the bungalow, the tree huts by the café
+// Sparrenhof at dusk, the school's playground, Molenhoek in the rain, the café by day and a parachute
+// over the town at dusk (tools/still/, Blender), day and dusk, night or rain taking turns. Any element with
 // data-slides becomes one; class "bg" fills the window behind the page, class "hero" is a band at
 // the top. Back, pause and next buttons and a dot per slide go into the element, or into
 // [data-slides-controls] when the page has one (a footer, so they never cover the page on a phone).
@@ -12,13 +13,17 @@
 (() => {
   const SLIDES = [
     { src: '/start/town', focus: '72% 50%', nl: 'Smetlede: de kerk en de school', en: 'Smetlede: the church and the school' },
-    { src: '/start/town-night', focus: '62% 50%', nl: 'Smetlede bij nacht', en: 'Smetlede at night' },
+    { src: '/start/football', focus: '66% 50%', nl: 'FC Smetlede: training onder de schijnwerpers', en: 'FC Smetlede: training under the floodlights' },
     { src: '/start/house', focus: '58% 45%', nl: 'Het nieuwe huis', en: 'The new house' },
-    { src: '/start/street-rain', focus: '50% 50%', nl: 'Molenhoek in de regen', en: 'Molenhoek in the rain' },
+    { src: '/start/street-night', focus: '60% 50%', nl: 'Smetlede bij nacht, na de regen', en: 'Smetlede at night, after the rain' },
+    { src: '/start/square', focus: '64% 50%', nl: 'Smetlede: het kerkplein met het dorpsbord', en: 'Smetlede: the church square and its village board' },
+    { src: '/start/town-night', focus: '62% 50%', nl: 'Smetlede bij nacht', en: 'Smetlede at night' },
     { src: '/start/bungalow', focus: '66% 50%', nl: 'De bungalow', en: 'The bungalow' },
+    { src: '/start/sparrenhof-dusk', focus: '62% 50%', nl: 'De boomhutten bij café Sparrenhof in de schemering', en: 'The tree huts by café Sparrenhof at dusk' },
     { src: '/start/school', focus: '60% 50%', nl: 'Smetlede: de speelplaats van de school', en: "Smetlede: the school's playground" },
-    { src: '/start/parachute', focus: '68% 50%', nl: 'Met de parachute boven Smetlede', en: 'By parachute over Smetlede' },
+    { src: '/start/street-rain', focus: '50% 50%', nl: 'Molenhoek in de regen', en: 'Molenhoek in the rain' },
     { src: '/start/sparrenhof', focus: '50% 50%', nl: 'Café Sparrenhof aan het bos', en: 'Café Sparrenhof by the wood' },
+    { src: '/start/parachute', focus: '68% 50%', nl: 'Met de parachute boven Smetlede', en: 'By parachute over Smetlede' },
   ];
   const WORDS = {
     nl: { prev: 'Vorige', next: 'Volgende', pause: 'Pauzeren', play: 'Afspelen', go: 'Naar beeld {n}: {c}', label: 'Beelden uit het spel' },

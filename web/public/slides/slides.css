@@ -21,3 +21,5 @@
 .slides-dot[aria-current="true"]::after { background: #f2b33d; inset: 6px; }
 .slides-caption { padding: 0 6px 0 4px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 260px; opacity: 0.9; }
 @media (max-width: 520px) { .slides-caption { display: none; } }
+/* A phone: twelve dots a little narrower, so the bar with its buttons fits across the screen. */
+@media (max-width: 520px) { .slides-dots { gap: 0; } .slides-dot { width: 18px; } .slides-dot::after { inset: 7px 5px; } .slides-dot[aria-current="true"]::after { inset: 6px 4px; } }
