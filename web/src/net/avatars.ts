@@ -6,6 +6,7 @@ import type { PlayerSample } from '../../shared/wire.mjs';
 import { netClock, Track } from './track';
 import { gunsReady } from '../weapon';
 import { muzzleFlash } from '../world/effects';
+import { hitBoxMaterial } from '../world/hitBox';
 import { buildSwat, hasSwat, SEAT_HIP, swatReady, type Body, type Outfit as SwatOutfit } from './swat';
 import { onLang, t } from '../i18n';
 
@@ -96,7 +97,7 @@ const outfitOf = (name: string, color: string): number => {
 };
 
 const material = new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.85 });
-const hitMaterial = new THREE.MeshBasicMaterial({ visible: false });
+const hitMaterial = hitBoxMaterial;
 const headBox = new THREE.SphereGeometry(0.15, 8, 6);
 const bodyBox = new THREE.BoxGeometry(0.5, 1.45, 0.42);
 const UP = new THREE.Vector3(0, 1, 0);

@@ -6,6 +6,7 @@ import { netClock, Track } from '../net/track';
 import { sound } from '../sound';
 import { paintball } from '../paintball';
 import { daylight } from './daylight';
+import { hitBoxMaterial } from './hitBox';
 import { HEAD_UP, PART_BONES, PARTS, Ragdoll, segmentOf, SEGS, type RagdollWorld } from './ragdoll';
 
 /**
@@ -181,7 +182,7 @@ interface Z extends ZombieState {
   killer: { x: number; z: number; w: string } | null;
 }
 
-const hitMaterial = new THREE.MeshBasicMaterial({ visible: false });
+const hitMaterial = hitBoxMaterial;
 /** How much of the day's light a hit's pale flash shows (world/daylight.ts): it lit them up white by night. */
 const flashLight = { value: 1 };
 const bodyBox = new THREE.BoxGeometry(0.55, 1.2, 0.45).translate(0, 0.6, 0);

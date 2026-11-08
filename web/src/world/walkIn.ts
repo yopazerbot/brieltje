@@ -8,6 +8,7 @@ import type { Glass } from './glass';
 import type { DipSpec, DoorSpec, FixtureSpec, Prism, Ring } from './houseData';
 import { prismGeometry, surfaceMaterial } from './houseMeshes';
 import { clearGlass } from './glassLook';
+import { hitBoxMaterial } from './hitBox';
 import type { GroundCuts } from './terrain';
 import { END_DOOR_GLASS } from '../../shared/homes.mjs';
 
@@ -420,9 +421,8 @@ export async function loadWalkIn(renderer: THREE.WebGLRenderer, model: THREE.Obj
   glassAll.renderOrder = 1;
   glassAll.userData.ignoreRay = true; // shots find the stand-ins (and pass the shower's screen)
   local.add(glassAll);
-  const unseen = new THREE.MeshBasicMaterial({ visible: false });
   paneGeos.forEach((geo, i) => {
-    const pane = new THREE.Mesh(geo, unseen);
+    const pane = new THREE.Mesh(geo, hitBoxMaterial); // unseen: a stand-in for shots
     pane.userData.glassIndex = WALK_IN_GLASS + i;
     panes.set(WALK_IN_GLASS + i, pane);
     local.add(pane);

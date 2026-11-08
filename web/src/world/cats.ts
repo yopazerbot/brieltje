@@ -3,6 +3,7 @@ import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 import * as SkeletonUtils from 'three/addons/utils/SkeletonUtils.js';
 import CATS from '../../shared/cats.json';
 import { sound } from '../sound';
+import { hitBoxMaterial } from './hitBox';
 
 /**
  * Cats wandering around the garden, the front lawn and the side path (the
@@ -14,7 +15,7 @@ import { sound } from '../sound';
 
 const HEIGHT = 0.42; // m
 const HIT = new THREE.SphereGeometry(0.28, 8, 6);
-const hitMaterial = new THREE.MeshBasicMaterial({ visible: false });
+const hitMaterial = hitBoxMaterial;
 
 type Point = [number, number];
 

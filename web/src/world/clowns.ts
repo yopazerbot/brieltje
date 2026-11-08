@@ -8,6 +8,7 @@ import type { BruteSample } from '../../shared/wire.mjs';
 import { netClock, Track } from '../net/track';
 import { sound } from '../sound';
 import { paintJoints } from './paint';
+import { hitBoxMaterial } from './hitBox';
 import { terrain } from './terrain';
 
 /**
@@ -68,7 +69,7 @@ const FIGHT = CLOWNS.kinds.strongman.fight;
 const rockGeo = new THREE.IcosahedronGeometry(0.45, 1);
 const rockMat = new THREE.MeshStandardMaterial({ color: '#8d8a84', roughness: 0.95, flatShading: true });
 const HIT = new THREE.CylinderGeometry(0.3, 0.3, 1.25, 8).translate(0, 0.625, 0);
-const hitMaterial = new THREE.MeshBasicMaterial({ visible: false });
+const hitMaterial = hitBoxMaterial;
 export const CLOWN_DEFAULTS: ClownSpec[] = CLOWNS.spots.map(([x, y, z, kind], i) => ({ id: i + 1, x: +x, y: +y, z: +z, kind: kindOf(kind) }));
 
 /** Where one is at time t on its loop: walking between corners, pausing at each. */
