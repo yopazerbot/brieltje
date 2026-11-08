@@ -162,7 +162,8 @@ function room<T extends Float64Array | Uint32Array | Uint8Array>(a: T, size: num
 
 /**
  * The claims: triangles on the plan, each with its rank and group, found by the squares they lie over. Kept in typed
- * arrays (some 300,000 claims for the whole map: as plain lists they held about 46 MB).
+ * arrays (some 300,000 claims for the whole map: as plain lists they held about 46 MB), and let go once the map is built
+ * (release).
  */
 export class GroundLayers {
   private n = 0;
@@ -186,6 +187,42 @@ export class GroundLayers {
   /** How many triangles are claimed. */
   get size(): number {
     return this.n;
+  }
+
+  /**
+   * Let go of every claim but those whose box on the plan meets one of `keep` ([x0, z0, x1, z1]): once the map is built
+   * only what is built later still cuts (the homes' insides, near the homes). A cut that lies wholly in a kept box comes
+   * out as before. Their order (and so which of one rank wins) stays as it was.
+   */
+  release(keep: [number, number, number, number][] = []): void {
+    const b = this.boxes;
+    const kept: number[] = [];
+    for (let i = 0; i < this.n; i++) {
+      if (keep.some(([x0, z0, x1, z1]) => b[4 * i] <= x1 && b[4 * i + 2] >= x0 && b[4 * i + 1] <= z1 && b[4 * i + 3] >= z0)) kept.push(i);
+    }
+    const old = { pts: this.pts, ranks: this.ranks, groupOf: this.groupOf, boxes: b, planes: this.planes, own: this.own };
+    const m = kept.length;
+    this.n = 0;
+    this.pts = new Float64Array(6 * m);
+    this.ranks = new Float64Array(m);
+    this.groupOf = new Float64Array(m);
+    this.boxes = new Float64Array(4 * m);
+    this.planes = new Float64Array(3 * m);
+    this.own = new Uint8Array(m);
+    this.seen = new Uint32Array(m);
+    this.cells = new Map();
+    this.unsorted.clear();
+    for (const i of kept) {
+      const j = this.n;
+      this.pts.set(old.pts.subarray(6 * i, 6 * i + 6), 6 * j);
+      this.boxes.set(old.boxes.subarray(4 * i, 4 * i + 4), 4 * j);
+      this.planes.set(old.planes.subarray(3 * i, 3 * i + 3), 3 * j);
+      this.ranks[j] = old.ranks[i];
+      this.groupOf[j] = old.groupOf[i];
+      this.own[j] = old.own[i];
+      this.n++;
+      this.index(j);
+    }
   }
 
   /** The claims from number `from` on (up to `n`), as copies (for the ground's worker, world/groundCutter.ts). */

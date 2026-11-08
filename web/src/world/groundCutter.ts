@@ -1,3 +1,4 @@
+import { HOMES } from '../../shared/homes.mjs';
 import type { Prism } from './houseData';
 import { cutAsks, cutCovers, Cuts, groundLayers, packAsks, packCovers, setCoverCuts, type CoverAsk, type CoverGrid, type CutAsk, type GroundLayers } from './groundLayers';
 import { coverAsk } from './houseMeshes';
@@ -97,3 +98,14 @@ export class GroundCutter {
   }
 }
 
+/** Metres round each of the three homes where the claims stay once the map is built: their insides come later. */
+const KEEP = 40;
+
+/**
+ * Once the village and the homes' street are built: the page's claims (world/groundLayers.ts), some 300,000 triangles
+ * and 700,000 entries in their lists (46 MB that stayed for the whole visit), let go but those round the homes, whose
+ * insides are built once their code is given (world/insides.ts) and cut as the rest was.
+ */
+export function releaseGroundClaims(): void {
+  groundLayers.release(HOMES.map((h): [number, number, number, number] => [h.box[0] - KEEP, h.box[1] - KEEP, h.box[2] + KEEP, h.box[3] + KEEP]));
+}

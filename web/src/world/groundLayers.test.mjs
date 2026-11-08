@@ -179,3 +179,12 @@ test('claims copied to another set (the worker\'s), in runs, cut the same', () =
   assert.equal(copy.size, layers.size);
   for (const [t, rank] of [[near, RANK.paving], [far, RANK.gravel], [near, RANK.verge]]) assert.deepEqual(copy.cut(t, rank, 1e7), layers.cut(t, rank, 1e7));
 });
+
+test('claims let go but round a spot still cut the same there, and nothing elsewhere', () => {
+  const layers = someClaims();
+  const before = layers.cut(near, RANK.paving, 1e7);
+  layers.release([[10, 10, 17, 17]]);
+  assert.ok(layers.size < 150, `${layers.size} kept`);
+  assert.deepEqual(layers.cut(near, RANK.paving, 1e7), before);
+  assert.equal(layers.cut(far, RANK.gravel, 1e7)[0], far, 'away from the spot nothing is left to cut it');
+});

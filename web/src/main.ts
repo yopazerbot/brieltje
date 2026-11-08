@@ -128,7 +128,7 @@ import { Crash } from './world/crash';
 import { TyreSpray } from './world/tyreSpray';
 import { clearOpenGround, fitStreetModel, loadStreetModel } from './world/streetModel';
 import { claimModelGround, claimModelGroundSoon } from './world/modelGround';
-import { GroundCutter } from './world/groundCutter';
+import { GroundCutter, releaseGroundClaims } from './world/groundCutter';
 import { bakeLight, setBakeDetail } from './world/bakedLight';
 import { setWindowDetail, setWindowNight } from './world/windows';
 import { wet, WetMirror, wetOnModel } from './world/wetGround';
@@ -3847,6 +3847,7 @@ async function buildVillage(): Promise<void> {
   // And the whole map, coarse, for the ground beyond those areas.
   groundShade.bakeAll(renderer, scene, sun, [built.group, hedgeLumps, tiles.group], house.ground, phone ? 1024 : 2048);
   village = 'ready';
+  void homeBakeReady.then(releaseGroundClaims); // every surface is cut: the ground's claims go, but round the homes
   void prepareShotRaycasts(scene); // the shot index in idle slices, once play has begun (until then three's raycast)
   christmas.villageReady();
   for (const c of cars) c.ready = true; // the cars parked in the village (shared/car.json) with it
