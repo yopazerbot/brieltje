@@ -126,7 +126,7 @@
 #pause-panel .mode-big .seg-btn[data-play] b::before { display: block; width: 26px; height: 26px; margin: 0 0 6px; }
 /* The chosen mode: its colour round it, and in the Play tab a splat of it in the corner. (A browser
    without color-mix(), Safari before 16.2, keeps the plain raised background.) */
-:where(#pause-panel, #zexplore) .seg-btn[data-play].selected { border-color: var(--mode); background: color-mix(in srgb, var(--mode) 12%, var(--dusk-raised)); }
+:where(#pause-panel, #zexplore) .seg-btn[data-play].selected { border-color: var(--mode); background: color-mix(in srgb, var(--mode) 9%, var(--dusk-raised)); }
 :where(#pause-panel, #zexplore) .seg-btn[data-play].selected b { color: var(--ink); }
 #pause-panel .mode-big .seg-btn[data-play].selected::after {
   content: ''; position: absolute; right: -14px; top: -16px; width: 54px; height: 54px; opacity: 0.9; pointer-events: none;
