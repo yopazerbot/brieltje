@@ -408,6 +408,10 @@ const cases = [
   { name: 'paintball-house', who: 'guest', mp: 'solo', mode: 'paintball', place: 'house', input: 'kbm' },
   { name: 'action-school', who: 'guest', mp: 'solo', mode: 'action', place: 'school', input: 'kbm' },
   { name: 'zombies-church-nl', who: 'guest', mp: 'solo', mode: 'zombies', place: 'church', input: 'kbm', lang: 'nl', again: false },
+  { name: 'zombies-sparrenhof-low', who: 'guest', mp: 'solo', mode: 'zombies', place: 'sparrenhof', input: 'kbm', again: false, before: async (b) => {
+    await b.evaluate("localStorage.setItem('briel.graphics', 'low')", false); // the Low preset (src/graphics.ts)
+    await open(b, o.url, false);
+  } },
   { name: 'touch-zombies-house', who: 'guest', mp: 'solo', mode: 'zombies', place: 'house', input: 'touch' },
   { name: 'pad-zombies-house', who: 'guest', mp: 'solo', mode: 'zombies', place: 'house', input: 'pad' },
   { name: 'login-zombies-solo', who: 'login', mp: 'solo', mode: 'zombies', place: 'molenhoek', input: 'kbm', needs: 'account' },
