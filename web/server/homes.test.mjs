@@ -297,6 +297,40 @@ test('a code changed, revoked or switched off while a try waits for its check: t
   }
 });
 
+test('a code changed between the check and the grant (while the unlock is written): that try opens nothing', async () => {
+  for (const change of ['new code', 'revoked', 'switched off']) {
+    const { call, homes } = setup();
+    const code = (await call('POST', `/api/admin/homes/${H1}/code`, {}, { admin: true })).res.data.code;
+    const update = homes.update.bind(homes);
+    let once = true;
+    homes.update = async (id, fn) => {
+      const r = await update(id, fn);
+      if (once) {
+        once = false; // the unlock's count is written: the admin acts now, after the code's check, before the grant
+        if (change === 'new code') await call('POST', `/api/admin/homes/${H1}/code`, {}, { admin: true });
+        if (change === 'revoked') await call('DELETE', `/api/admin/homes/${H1}/code`, undefined, { admin: true });
+        if (change === 'switched off') await call('POST', `/api/admin/homes/${H1}`, { enabled: false }, { admin: true });
+      }
+      return r;
+    };
+    const res = (await call('POST', '/api/home/unlock', { id: H1, code }, { user: 'p1', who: 'w' })).res;
+    assert.deepEqual([res.status, res.data.code, res.data.inside], [403, 'home_denied', undefined], change);
+    assert.equal(homes.granted('p1', H1), false, `${change}: no grant`);
+    await homes.flush();
+  }
+});
+
+test('a grant made with an older code opens nothing once the code changed, even if it slipped in after the change', async () => {
+  const { call, homes } = setup();
+  const code = (await call('POST', `/api/admin/homes/${H1}/code`, {}, { admin: true })).res.data.code;
+  await call('POST', '/api/home/unlock', { id: H1, code }, { user: 'p1', who: 'w' });
+  assert.equal(homes.granted('p1', H1), true);
+  const old = homes.grants.get(`p1|${H1}`).gen;
+  await call('POST', `/api/admin/homes/${H1}/code`, {}, { admin: true });
+  homes.grant('p1', H1, old); // as a try still on its way would have given it
+  assert.equal(homes.granted('p1', H1), false, "the old code's generation: no entry");
+});
+
 test('wrong tries are counted in memory and written to the store at most once a minute', async () => {
   const { call, homes } = setup();
   await call('POST', `/api/admin/homes/${H1}/code`, {}, { admin: true });

@@ -101,7 +101,8 @@ export class Homes {
     this.fails = new Map(); // home id -> { n, at }: wrong tries not in the store yet (see flush)
     this.flushTimer = null;
     this.flushedAt = 0;
-    this.grants = new Map(); // `${session key}|${id}` -> until (ms): the code was typed in this session (the game server asks, see granted)
+    // `${session key}|${id}` -> { until (ms), gen }: the code of generation `gen` was typed in this session (the game server asks, see granted)
+    this.grants = new Map();
     this.state = null;
     this.chain = Promise.resolve();
     this.dummy = null;
@@ -187,7 +188,9 @@ export class Homes {
     if (!key) return false;
     if (!isLive(this.state?.[id])) return false; // a code that is revoked, replaced, switched off or past its end takes the grants with it (see forget)
     if (!this.who(key)) return false; // the session ended (logged out, a new password, kicked, switched off): nothing, at once
-    return (this.grants.get(`${key}|${id}`) ?? 0) > Date.now() || this.byAccount(key, id);
+    // Only a grant made with the code in use now: one given after a code change (a try still on its way) opens nothing.
+    const g = this.grants.get(`${key}|${id}`);
+    return (!!g && g.until > Date.now() && g.gen === genOf(this.state?.[id])) || this.byAccount(key, id);
   }
 
   /**
@@ -260,11 +263,12 @@ export class Homes {
     return true;
   }
 
-  grant(key, id) {
+  /** Session `key` typed home `id`'s code of generation `gen`: it is let in for GRANT_MS, while that code stays in use. */
+  grant(key, id, gen) {
     if (!key) return; // no session: a solo page, nothing on the server to let in
     const now = Date.now();
-    if (this.grants.size > 500) for (const [k, until] of this.grants) if (until <= now) this.grants.delete(k);
-    this.grants.set(`${key}|${id}`, now + GRANT_MS);
+    if (this.grants.size > 500) for (const [k, g] of this.grants) if (g.until <= now) this.grants.delete(k);
+    this.grants.set(`${key}|${id}`, { until: now + GRANT_MS, gen });
     this.onGrant?.(key, id);
   }
 
@@ -394,7 +398,11 @@ export class Homes {
     if (!look) await this.update(home.id, (h) => ({ ...h, unlocks: (h.unlocks ?? 0) + 1, lastUnlockAt: new Date().toISOString() }));
     // Logged in to an account: lasting access for it (keep), and its other sessions are let in now too.
     const kept = !look && (await this.keep(user, home.id, gen));
-    this.grant(user, home.id);
+    // Once more after those writes: a code made, revoked or switched off meanwhile opens nothing (the same answer as a
+    // wrong code). From here to the grant nothing waits.
+    const live = this.state?.[home.id];
+    if (!look && (!isLive(live) || genOf(live) !== gen)) return this.json(res, 403, { error: 'Wrong code', code: 'home_denied' });
+    this.grant(user, home.id, look ? genOf(live) : gen);
     const owner = kept ? this.who(user)?.username : null;
     if (owner) for (const k of this.keysOf(owner)) if (k !== user) this.onGrant?.(k, home.id);
     console.log(JSON.stringify({ event: 'home_unlock', id: home.id, ...(kept ? { account: true } : {}) })); // no name
