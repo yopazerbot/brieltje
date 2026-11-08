@@ -51,7 +51,7 @@ Drawn in code at start-up, no image files: smoke, fire, sparks and debris sprite
 |---|---|---|
 | Plot lines, neighbouring buildings, road surface, addresses (GRB) | Digitaal Vlaanderen, `geo.api.vlaanderen.be/GRB/wfs` | Modellicentie Gratis Hergebruik (free reuse, source: Digitaal Vlaanderen) |
 | Building and tree heights, and the relief of the ground (DHM Vlaanderen II, laser scan 2013-2015) | Digitaal Vlaanderen, `geo.api.vlaanderen.be/DHMV/wcs` | Modellicentie Gratis Hergebruik (free reuse, source: Digitaal Vlaanderen) |
-| Roof colours and the shapes of newer buildings; forecourts, drives, yards, pools, hedges and solar panels (orthophoto mosaic, most recent, 25 cm) | Digitaal Vlaanderen, `geo.api.vlaanderen.be/OMWRGBMRVL/wms` (layer Ortho) | Modellicentie Gratis Hergebruik (free reuse, source: Digitaal Vlaanderen) |
+| Roof colours and the shapes of newer buildings; forecourts, drives, yards, pools, hedges and solar panels; the grass verges along the streets (orthophoto mosaic, most recent, 25 cm) | Digitaal Vlaanderen, `geo.api.vlaanderen.be/OMWRGBMRVL/wms` (layer Ortho) | Modellicentie Gratis Hergebruik (free reuse, source: Digitaal Vlaanderen) |
 | Road centre lines, poles along the road, ponds and ditches (GRB layers Wegsegment, WPI, WTZ) | Digitaal Vlaanderen, `geo.api.vlaanderen.be/GRB/wfs` | Modellicentie Gratis Hergebruik (free reuse, source: Digitaal Vlaanderen) |
 | What grows on the fields, the meadows (the main crop declared on each agricultural parcel this year, Landbouwgebruikspercelen; only the crop's name is used) | Departement Landbouw en Visserij, `geo.api.vlaanderen.be/Landbgebrperc/wfs` | Modellicentie Gratis Hergebruik (free reuse, source: Dept. LV) |
 
