@@ -351,6 +351,15 @@ const NEAR = 20;
 const MOVED = 0.25;
 /** Seconds after which it is drawn again all the same: what came in or moved since (after a portal, the street round you loads in the first seconds; the cars, the doors). */
 const STALE = 0.25; // 4 times a second: cars and people passing move in the glass, not in jumps (Yoshi: the reflections lagged)
+/** Frames that go by between the starts of two sets at least when it is drawn again only for STALE: at 60 a second STALE comes first. */
+const MIN_FRAMES = 12;
+/**
+ * ms a frame (smoothed): from here on a slow chip's, one view a frame at most and the sets SLOW_FRAMES apart, whatever
+ * changed. There a whole set took about a quarter of a second, so it was drawn without a pause: 10 to 24 ms of every
+ * frame on the integrated Radeon at 1440p (the review of 8 Nov 2026), where one view takes about 20 ms at the church.
+ */
+const SLOW = 25;
+const SLOW_FRAMES = 24;
 /** Metres of the world's grid that the glass near the eye is looked up in. */
 const CELL = 10;
 
@@ -363,7 +372,8 @@ const CELL = 10;
  * snow round it, and the small or near things the reflections leave out (world/reflections.ts) are not in it.
  *
  * It is drawn only where it shows and while it changes: with glass that reads it within NEAR metres of the eye, and
- * again once the eye has moved a metre, the light has changed (the mood's blend, the sun) or STALE seconds have gone.
+ * again once the eye has moved a quarter of a metre, the light has changed (the mood's blend, the sun) or STALE seconds
+ * have gone (and MIN_FRAMES frames). On a slow chip one view a frame at most, a set at most every SLOW_FRAMES frames.
  * On Low it lets go of its cubes (`fine` false); in the split screen (`views` over 1) it is drawn a view every eighth
  * frame. Each set's spot and light are checked at its first view.
  */
@@ -392,8 +402,51 @@ export class GlassProbe extends Pass {
   sun: THREE.Object3D | null = null;
   /** The split screen's views on this chip (src/seat.ts): with more than one, a view every eighth frame */
   views = 1;
-  /** Views drawn each frame (main.ts by the preset: Medium 1, High 2, Ultra 3): a whole new set every 6, 3 or 2 frames */
-  perFrame = 1;
+  /** Whole sets drawn so far (for the checks: tools/dev/bench.mjs) */
+  sets = 0;
+  /**
+   * Views a frame at 60 frames a second (main.ts by the preset: Medium 1, High 2, Ultra 3): a whole new set every 6, 3 or
+   * 2 frames. Budgeted by time: as many views a second on a faster screen (fewer a frame), one a frame at most on a slow
+   * chip (SLOW).
+   */
+  get perFrame(): number {
+    return this.views60;
+  }
+
+  set perFrame(n: number) {
+    this.views60 = n;
+    this.eased = 0;
+  }
+
+  private views60 = 1;
+  /** Views a frame the automatic quality step took off (ease) */
+  private eased = 0;
+  /** Views that may be drawn now: the time since the last frame's share, kept up to a frame's worth */
+  private budget = 0;
+  /** ms a frame, smoothed, and when the last frame began */
+  private frameMs = 1000 / 60;
+  private lastFrame = 0;
+  /** Frames counted, the one the last set began in, and when a view was last drawn (ms) */
+  private frames = 0;
+  private setFrame = -Infinity;
+  private lastView = -Infinity;
+
+  /**
+   * The automatic quality step (main.ts adaptQuality), before it lowers the resolution: one view a frame fewer, while it
+   * draws and draws more than one. False when there is nothing to give up here.
+   */
+  ease(): boolean {
+    if (this.views60 - this.eased <= 1 || performance.now() - this.lastView > 1000) return false;
+    this.eased++;
+    return true;
+  }
+
+  /** And back once frames are fast again, after the resolution: false when none were taken off. */
+  unease(): boolean {
+    if (!this.eased) return false;
+    this.eased--;
+    return true;
+  }
 
   constructor(private scene: THREE.Scene, private camera: THREE.Camera, private hide: THREE.Object3D[]) {
     super();
@@ -422,25 +475,38 @@ export class GlassProbe extends Pass {
 
   render(renderer: THREE.WebGLRenderer): void {
     glass.night.value = mood.night;
+    const now = performance.now();
+    const ms = Math.min(100, now - this.lastFrame);
+    this.lastFrame = now;
+    if (ms > 0) this.frameMs += (ms - this.frameMs) * 0.1;
+    this.frames++;
     if (!this.on) {
       glass.probeOn.value = 0;
       return;
     }
-    // `perFrame` views each frame (one every eighth frame in the split screen).
+    // `perFrame` views a sixtieth of a second, at most a frame's worth (one every eighth frame in the split screen).
     if (wetState.indoors) return;
     if (this.views > 1) {
       if (this.tick++ % 8) return;
-      this.drawView(renderer);
+      this.drawView(renderer, false);
       return;
     }
-    for (let i = 0; i < this.perFrame; i++) if (!this.drawView(renderer)) return;
+    const slow = this.frameMs > SLOW;
+    const rate = this.views60 - this.eased;
+    this.budget = Math.min(slow ? 1 : rate, this.budget + (rate * 60 * ms) / 1000);
+    while (this.budget > 0.5) { // whole views, the rest carried on (the frames are never quite a sixtieth)
+      if (!this.drawView(renderer, slow)) return;
+      this.budget--;
+      this.lastView = now;
+    }
   }
 
-  /** Draw the next of the six views (false: none was due, so the set waits). */
-  private drawView(renderer: THREE.WebGLRenderer): boolean {
+  /** Draw the next of the six views (false: none was due, so the set waits). `slow`: a slow chip's (SLOW). */
+  private drawView(renderer: THREE.WebGLRenderer, slow: boolean): boolean {
     if (this.face === 0) {
       this.camera.getWorldPosition(this.at);
-      if (!this.due()) return false;
+      if (!this.due(slow)) return false;
+      this.setFrame = this.frames;
     }
     if (!this.cubes.length) this.cubes = [0, 1].map(() => new THREE.WebGLCubeRenderTarget(SIZE, { type: THREE.HalfFloatType, generateMipmaps: false, minFilter: THREE.LinearFilter }));
     const cams = this.cams;
@@ -467,6 +533,7 @@ export class GlassProbe extends Pass {
     renderer.shadowMap.needsUpdate = shadows;
     wet.mirrorOn.value = mirror;
     if (++this.face === 6) {
+      this.sets++;
       this.face = 0;
       glass.probe.value = this.cubes[this.back].texture;
       glass.probeAt.value.copy(this.at);
@@ -476,9 +543,15 @@ export class GlassProbe extends Pass {
     return true;
   }
 
-  /** At a set's first view: whether one is needed (glass near that reads it, and the eye moved, the light changed or it is old). */
-  private due(): boolean {
+  /**
+   * At a set's first view: whether one is needed (glass near that reads it, and the eye moved, the light changed or it is
+   * old). Old only MIN_FRAMES after the last began, anything on a slow chip only SLOW_FRAMES after.
+   */
+  private due(slow: boolean): boolean {
     const now = performance.now() / 1000;
+    const since = this.frames - this.setFrame;
+    const apart = since >= MIN_FRAMES;
+    if (slow && since < SLOW_FRAMES && glass.probeOn.value === 1) return false;
     const light = this.light;
     light.length = 0;
     light.push(mood.night, mood.wet, mood.overcast, mood.snow, mood.blend);
@@ -486,7 +559,7 @@ export class GlassProbe extends Pass {
       this.sunDir.copy(this.sun.position).normalize();
       light.push(this.sunDir.x, this.sunDir.y, this.sunDir.z);
     }
-    const same = glass.probeOn.value === 1 && this.drawnAt.distanceTo(this.at) < MOVED && now - this.drawnTime < STALE
+    const same = glass.probeOn.value === 1 && this.drawnAt.distanceTo(this.at) < MOVED && (now - this.drawnTime < STALE || !apart)
       && light.length === this.drawnLight.length && light.every((v, i) => Math.abs(v - this.drawnLight[i]) < 0.01);
     if (same || !this.glassNear(now)) return false;
     this.drawnAt.copy(this.at);

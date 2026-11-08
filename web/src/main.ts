@@ -528,6 +528,8 @@ applyQuality(quality);
 
 let slowTime = 0;
 let fastTime = 0;
+/** Development only (briel.three.holdQuality): the preset and the resolution stay as they are, for measuring frame times */
+let qualityHeld = false;
 /** Seconds after play begins or resumes when the resolution is left alone: what comes into view loads then. */
 const SETTLE = 4;
 /**
@@ -536,8 +538,8 @@ const SETTLE = 4;
  * through for a frame (a dark flash, two or three times while joining).
  */
 function adaptQuality(dt: number, now: number): void {
-  // The first seconds load and compile the world round you: hitches once, not a slow computer.
-  if (now - resumedAt < SETTLE * 1000) {
+  // The first seconds load and compile the world round you: hitches once, not a slow computer. (Held: a measurement's, below.)
+  if (now - resumedAt < SETTLE * 1000 || qualityHeld) {
     slowTime = fastTime = 0;
     return;
   }
@@ -549,6 +551,8 @@ function adaptQuality(dt: number, now: number): void {
     slowTime = 0;
     // Weak graphics are limited by pixels, so Low may dip further.
     const lowest = quality === 'low' ? 0.6 : 0.75;
+    // First fewer views a frame of the glass's picture of the street (world/glassLook.ts), then the resolution.
+    if (glassProbe.ease()) return;
     if (dynScale > lowest) {
       dynScale = Math.max(lowest, dynScale - 0.1);
       rescale();
@@ -560,7 +564,7 @@ function adaptQuality(dt: number, now: number): void {
     fastTime = 0;
     dynScale = Math.min(1, dynScale + 0.1);
     rescale();
-  }
+  } else if (fastTime > 4 && glassProbe.unease()) fastTime = 0;
 }
 
 const churchAccess = makeChurch(CHURCH_DATA, house.ground + terrain.height(...CHURCH_DATA.origin as [number, number]));
@@ -4149,7 +4153,7 @@ if (import.meta.env.DEV) {
         for (let i = 0; i < Math.max(1, Math.round(seconds * 60)); i++) player.update(1 / 60, { ...idle, ...partial }, camera);
         return { x: +player.x.toFixed(3), z: +player.z.toFixed(3), feet: +player.feet.toFixed(3), flying: player.flying };
       },
-      three: { renderer, scene, sun, ao, composer, environmentReady, applyQuality, autoDetect, quality: () => quality, groundShade, weather, sunShadow, bloom, presets: PRESETS },
+      three: { renderer, scene, sun, ao, composer, environmentReady, applyQuality, autoDetect, quality: () => quality, groundShade, weather, sunShadow, bloom, presets: PRESETS, holdQuality: (on: boolean) => (qualityHeld = on), glassProbe },
       /** The weather's cycle moved on by this many seconds, on this page only (world/weather.ts forward), and where it is. */
       weatherAhead: (seconds: number) => weather.forward(seconds),
       weatherState: () => weather.state(),
