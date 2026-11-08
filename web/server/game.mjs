@@ -102,8 +102,9 @@ const VILLAGE = houseData('village.json');
 const CHURCH_DATA = shared('church.json');
 const CHURCH = makeChurch(CHURCH_DATA, HOUSE.ground + TERRAIN.height(...CHURCH_DATA.origin));
 const CAFE_DATA = shared('sparrenhof.json');
-/** The café Sparrenhof's blocks with its stairs to the roofs, in place of its plain block (shared/sparrenhof.mjs) */
-const CAFE = makeCafe(CAFE_DATA, HOUSE.ground + TERRAIN.height(...CAFE_DATA.origin));
+const HUTS_DATA = shared('tree_huts.json');
+/** The café Sparrenhof's blocks with its stairs to the roofs, in place of its plain block, and the tree huts (shared/sparrenhof.mjs) */
+const CAFE = makeCafe(CAFE_DATA, HOUSE.ground + TERRAIN.height(...CAFE_DATA.origin), HUTS_DATA);
 /** A Zombies place's village ground (its blocks, hedges, trunks and areas): the same every game, made once per place. */
 const villageGrounds = new Map();
 const villageGroundOf = (arena, edge) => {

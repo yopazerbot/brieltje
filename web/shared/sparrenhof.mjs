@@ -2,24 +2,43 @@
 // where the horde comes out of the woods, with stairs up the café's roofs as a shooting base).
 //
 // - The café's blocks for walking into (tools/sparrenhof.py writes sparrenhof.json, heights above the ground at its
-//   origin): its own walls and roofs in place of the open data's plain block, with three made-up outside stairs of
-//   steel to its roofs (the annex's flat roof with a roof walk across the veranda, and the carport's roof). For
-//   walking, shots and the zombies' grid alike; `area` is where that grid is finer and has every floor, so the zombies
-//   follow the players up the stairs (shared/zombies.mjs makeNav, as in the church tower).
+//   origin): its own walls and roofs in place of the open data's plain block, with made-up outside stairs of steel to
+//   its roofs (the annex's flat roof with a roof walk across the veranda, the carport's roof, and since 8 Nov 2026 an
+//   upper deck, a platform on the hall's ridge and a walkway between two roofs). For walking, shots and the zombies'
+//   grid alike; `area` is where that grid is finer and has every floor, so the zombies follow the players up the
+//   stairs (shared/zombies.mjs makeNav, as in the church tower).
+// - The tree huts in the wood round it (Yoshi, 8 Nov 2026: shooting bases; tools/tree_huts.py writes tree_huts.json):
+//   their blocks with the café's, each hut a finer grid of its own, up their timber stairs as up the café's.
 // - The wood: the trunks of the village's trees as thin blocks the zombies walk round, and the spots deep among them
-//   where the horde comes out.
+//   where the horde comes out (not near a hut).
 
-/** The café's data placed on the ground (`ground`: the game's height of the ground at its origin). */
-export function makeCafe(data, ground) {
+/**
+ * The café's data placed on the ground (`ground`: the game's height of the ground at its origin), with the tree huts
+ * in the wood round it (`huts`: tools/tree_huts.py writes tree_huts.json, its heights measured from the same origin):
+ * their blocks join the café's, each its finer grid for the zombies (`areas`), its floors and stairs.
+ */
+export function makeCafe(data, ground, huts = null) {
   const at = ([x, z, y]) => ({ x, z, y: y + ground });
-  const [x0, z0, x1, z1] = data.area;
+  const box = ([x0, z0, x1, z1]) => ({ minX: x0, minZ: z0, maxX: x1, maxZ: z1 });
+  if (huts && (huts.origin[0] !== data.origin[0] || huts.origin[1] !== data.origin[1])) throw new Error('tree huts: not on the café\'s origin');
+  const lift = (lm) => (p) => ({ ...p, lm, y0: p.y0 + ground, y1: p.y1 + ground });
+  const hutList = (huts?.huts ?? []).map((h) => ({
+    id: h.id,
+    trees: h.trees,
+    floors: h.floors.map(at),
+    stairs: h.stairs.map((s) => ({ id: s.id, foot: at(s.foot), top: at(s.top), risers: s.risers, rise: s.rise, going: s.going })),
+    area: box(h.area),
+    footprint: h.footprint,
+  }));
   return {
-    prisms: data.blocks.map((p) => ({ ...p, lm: 'sparrenhof', y0: p.y0 + ground, y1: p.y1 + ground })),
+    prisms: [...data.blocks.map(lift('sparrenhof')), ...(huts?.blocks ?? []).map(lift('tree_huts'))],
     outlines: data.outlines,
     clear: data.clear,
-    area: { minX: x0, minZ: z0, maxX: x1, maxZ: z1 },
+    area: box(data.area),
+    areas: [box(data.area), ...hutList.map((h) => h.area)],
     stairs: data.stairs.map((s) => ({ id: s.id, foot: at(s.foot), top: at(s.top), risers: s.risers, rise: s.rise, going: s.going })),
     roofs: data.roofs.map((r) => ({ id: r.id, at: at(r.at) })),
+    huts: hutList,
   };
 }
 
@@ -62,11 +81,13 @@ function insideRings(x, z, rings) {
  */
 export function cafePrisms(prisms, cafe) {
   const replaced = (p) => p.d === undefined && p.p[0].every(([x, z]) => cafe.outlines.some((ring) => near(ring, x, z, 0.5)));
-  return [...prisms.filter((p) => p.lm !== 'sparrenhof' && !replaced(p)), ...cafe.prisms];
+  return [...prisms.filter((p) => p.lm !== 'sparrenhof' && p.lm !== 'tree_huts' && !replaced(p)), ...cafe.prisms];
 }
 
 /** m: a trunk's half width for the zombies (a player bumps into 0.35: main.ts `trunks`) */
 const TRUNK = 0.3;
+/** m: a trunk's block reaches this high, over the highest floor in the wood (the tree huts): never a step for the zombies */
+const TRUNK_TOP = 12;
 
 /**
  * The trunks of the trees (village.json's) within `box` (minX, maxX, minZ, maxZ; 2 m more) as blocks on the ground:
@@ -83,7 +104,7 @@ export function woodTrunks(trees, cafe, box) {
       const a = ((k + 0.5) / 8) * Math.PI * 2;
       ring.push([Math.round((t.x + Math.cos(a) * TRUNK) * 1000) / 1000, Math.round((t.z + Math.sin(a) * TRUNK) * 1000) / 1000]);
     }
-    out.push({ m: 'oak', n: 'trunk', d: 1, y0: -0.3, y1: 6, p: [ring] });
+    out.push({ m: 'oak', n: 'trunk', d: 1, y0: -0.3, y1: TRUNK_TOP, p: [ring] });
   }
   return out;
 }
@@ -91,19 +112,23 @@ export function woodTrunks(trees, cafe, box) {
 /** m: how far in among the trees a spot must lie (every way round it still wood), and off the café's open ground */
 export const WOOD_DEPTH = 3;
 const OPEN_SLACK = 4;
+/** m: no zombie comes out this close to a tree hut (its platform, posts and stairs) */
+export const HUT_KEEP = 4;
 
 /**
  * Of the places where zombies can come out (nav.spawnSpots), those deep in the wood: on the woods' ground (the
- * village's `forest` blocks, `prisms`) WOOD_DEPTH m in every way round, and clear of the café's open ground. Each is
- * marked `wood`: the horde (shared/zombies.mjs Horde.pick) may bring one out there in sight, far enough off, as if
- * from between the trees.
+ * village's `forest` blocks, `prisms`) WOOD_DEPTH m in every way round, clear of the café's open ground and HUT_KEEP m
+ * from the tree huts. Each is marked `wood`: the horde (shared/zombies.mjs Horde.pick) may bring one out there in
+ * sight, far enough off, as if from between the trees.
  */
 export function woodSpots(spots, prisms, cafe) {
   const woods = prisms.filter((p) => p.m === 'forest');
   const inWood = (x, z) => woods.some((w) => insideRings(x, z, w.p));
+  const huts = (cafe.huts ?? []).map((h) => h.footprint);
   const out = [];
   for (const s of spots) {
     if (cafe.clear.some((ring) => near(ring, s.x, s.z, OPEN_SLACK))) continue;
+    if (huts.some((ring) => near(ring, s.x, s.z, HUT_KEEP))) continue;
     let deep = inWood(s.x, s.z);
     for (let k = 0; k < 8 && deep; k++) {
       const a = (k / 8) * Math.PI * 2;

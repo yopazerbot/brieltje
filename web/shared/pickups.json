@@ -9,5 +9,6 @@
   { "w": "shotgun", "where": "Middle of Molenhoek", "x": 1060, "z": -568, "y": 11.91 },
   { "w": "rifle", "where": "End of Molenhoek", "x": 1507, "z": -365, "y": 9.19 },
   { "w": "sniper", "where": "Church roof walk", "x": 526.81, "z": -740.39, "y": 18.59 },
-  { "w": "sniper", "where": "Sparrenhof roof", "x": 667.0, "z": 951.1, "y": -3.98 }
+  { "w": "sniper", "where": "Sparrenhof roof", "x": 667.0, "z": 951.1, "y": -3.98 },
+  { "w": "sniper", "where": "Lookout hut", "x": 684.7, "z": 915.26, "y": -1.32 }
 ]

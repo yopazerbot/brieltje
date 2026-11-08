@@ -8,7 +8,8 @@
 //   its stretch of street), each point pulled in to stay 2 m inside the map's edge. The village's own
 //   blocks, hedges and fences are the zombies' walls there, its buildings shut.
 // - `sparrenhof`: the café at the edge of the wood, a circle as in Smetlede. The horde comes out deep among the
-//   trees (`woods`) and walks out between their trunks; the café's outside stairs and roofs are in the zombies' grid.
+//   trees (`woods`) and walks out between their trunks; the café's outside stairs and roofs, and the tree huts in the
+//   wood round it, are in the zombies' grid.
 // - Not the school: nobody shoots on its grounds (shared/zones.mjs), and the church's circle stops
 //   short of them.
 
@@ -79,7 +80,7 @@ export function arenaPrisms(prisms, edge) {
 export function villageGround(a, edge, village, church, cafe) {
   let prisms = cafePrisms(churchPrisms(village.prisms ?? [], church), cafe);
   if (a.woods) prisms = prisms.concat(woodTrunks(village.trees ?? [], cafe, edge));
-  const areas = a.id === 'church' ? [church.area] : a.id === 'sparrenhof' ? [cafe.area] : [];
+  const areas = a.id === 'church' ? [church.area] : a.id === 'sparrenhof' ? (cafe.areas ?? [cafe.area]) : [];
   return { prisms: arenaPrisms(prisms, edge), areas };
 }
 

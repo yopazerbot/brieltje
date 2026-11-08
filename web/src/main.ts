@@ -137,6 +137,7 @@ import BOUNDS from '../shared/bounds.json';
 import CHURCH_DATA from '../shared/church.json';
 import { churchPrisms, makeChurch } from '../shared/church.mjs';
 import CAFE_DATA from '../shared/sparrenhof.json';
+import HUTS_DATA from '../shared/tree_huts.json';
 import { cafePrisms, makeCafe } from '../shared/sparrenhof.mjs';
 import { carName, doorName, lang, onLang, placeName, portalName, serverText, setLang, t, whoName } from './i18n';
 import { seat, tellHost } from './seat';
@@ -550,9 +551,9 @@ function adaptQuality(dt: number, now: number): void {
 }
 
 const churchAccess = makeChurch(CHURCH_DATA, house.ground + terrain.height(...CHURCH_DATA.origin as [number, number]));
-const cafeAccess = makeCafe(CAFE_DATA, house.ground + terrain.height(...CAFE_DATA.origin as [number, number])); // the café's blocks and stairs to its roofs
-// The Sparrenhof's forecourt, terrace and café stand where the open data has wood: no ferns or logs on them.
-undergrowth.addBare([...cafeAccess.clear, ...cafeAccess.outlines].map((ring) => [ring as [number, number][]]));
+const cafeAccess = makeCafe(CAFE_DATA, house.ground + terrain.height(...CAFE_DATA.origin as [number, number]), HUTS_DATA); // the café's blocks and stairs to its roofs, and the tree huts
+// The Sparrenhof's forecourt, terrace and café stand where the open data has wood: no ferns or logs on them, nor under the tree huts.
+undergrowth.addBare([...cafeAccess.clear, ...cafeAccess.outlines, ...cafeAccess.huts.map((h) => h.footprint)].map((ring) => [ring as [number, number][]]));
 const world = new World(house.prisms, house.ground);
 world.addPrisms(house.surroundings?.prisms ?? []);
 world.addPrisms(homeStreet.blocks);
@@ -3585,7 +3586,7 @@ async function buildVillage(): Promise<void> {
   const town = import.meta.env.DEV && location.search.includes('notown')
     ? Promise.reject(new Error('left out'))
     : import('./world/townCentre').then(({ loadTown }) => loadTown(renderer, (x, z) => house.ground + terrain.height(x, z)));
-  const models = (await Promise.all([loadChurch().catch(() => null), loadModel('/models/school.glb').catch(() => null), loadModel('/models/dormer_house.glb').catch(() => null), loadModel('/models/sparrenhof.glb').catch(() => null), loadModel('/models/kouter_house.glb').catch(() => null), town.catch(() => null)])).filter(
+  const models = (await Promise.all([loadChurch().catch(() => null), loadModel('/models/school.glb').catch(() => null), loadModel('/models/dormer_house.glb').catch(() => null), loadModel('/models/sparrenhof.glb').catch(() => null), loadModel('/models/tree_huts.glb').catch(() => null), loadModel('/models/kouter_house.glb').catch(() => null), town.catch(() => null)])).filter(
     (m): m is THREE.Object3D => m !== null,
   );
   // The houses of Molenhoek (and its street) and of Kapellenhoek, the same way: fitted into the village data before its tiles are built.
