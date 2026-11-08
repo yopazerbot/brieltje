@@ -123,6 +123,8 @@ if (seat) {
   const mem = memoryStorage(seed);
   // A logout the normal game still owes is the normal game's to send, not this seat's.
   mem.removeItem('briel.logoutPending');
+  // The start screen's Zombies pick is the normal game's: a seat starts in the world as it is (src/start.ts).
+  mem.removeItem('briel.startMode');
   // One sound for the room: seat 1's. The graphics: Auto, sharing the chip between the views (graphics.ts).
   mem.setItem('briel.sound', seat.n === 1 && mem.getItem('briel.sound') !== 'off' ? 'on' : 'off');
   mem.setItem('briel.graphics', 'auto');
