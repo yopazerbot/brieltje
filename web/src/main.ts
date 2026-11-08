@@ -213,14 +213,19 @@ function loaded(): void {
   // Where to start, picked on the start screen (src/start.ts): the main house as ever, or another
   // portal place, arrived at as through its portal. The village's places wait for the village.
   const at = startPlace();
+  // Zombies picked on the start screen (alone or a room): on the ground at its place, no drop and no start place for
+  // the server to drop you at either (Yoshi, 7 Nov 2026: no parachute in Zombies). The game puts you at its start.
+  const zombiesStart = startIntent.zombies !== null;
   const begin = () => {
     if (at) {
       arrive(at, null);
-      if (!me && rules.parachute !== false) beginDrop(); // alone: by parachute (together the server says so, see 'spawn')
-      // In multiplayer the server is told: now if its welcome came already (it usually does), or when it comes.
-      if (welcomed) net.send({ t: 'spawn', to: at.id });
-      else spawnPending = at;
-    } else if (rules.parachute !== false) {
+      if (!zombiesStart) {
+        if (!me && rules.parachute !== false) beginDrop(); // alone: by parachute (together the server says so, see 'spawn')
+        // In multiplayer the server is told: now if its welcome came already (it usually does), or when it comes.
+        if (welcomed) net.send({ t: 'spawn', to: at.id });
+        else spawnPending = at;
+      }
+    } else if (!zombiesStart && rules.parachute !== false) {
       // The house's start by parachute too (Yoshi), down the lane onto it: alone now, together when the server says so.
       if (!me) beginDrop(HOME_DROP);
       if (welcomed) net.send({ t: 'spawn', to: 'home' });
@@ -3596,8 +3601,9 @@ let endHouse: WalkIn | null = null;
 /** Resolved once play has begun (loaded). */
 let playBegun = () => {};
 const playing = new Promise<void>((r) => (playBegun = r));
-// Zombies picked on the start screen (src/ui/startFlow.ts): alone, the game at its place once the parachute has
-// landed (as the Play tab's button starts it); a room just opened, how to start it once the friends are in.
+// Zombies picked on the start screen (src/ui/startFlow.ts): alone, the game at its place at once, on the ground (as
+// the Play tab's button starts it; never from the air, should a drop have begun); a room just opened, how to start
+// it once the friends are in.
 void playing.then(() => {
   if (startIntent.zombies === 'open') chat.system(() => t('zs.roomHint'));
   if (startIntent.zombies !== 'solo') return;
