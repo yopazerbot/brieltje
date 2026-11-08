@@ -65,7 +65,8 @@
       $('code').focus();
       return;
     }
-    if (me?.role !== 'player') {
+    // An account, or the game's admin (the server lets both say yes; a guest has nothing to lend).
+    if (me?.role !== 'player' && me?.role !== 'admin') {
       show('s-login');
       $('user').focus();
       return;
