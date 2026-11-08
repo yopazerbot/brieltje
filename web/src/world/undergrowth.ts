@@ -66,6 +66,11 @@ function inside(x: number, z: number, rings: Ring[]): boolean {
   return odd;
 }
 
+/** Whether a plant at (x, z) would stand on or hang over the area: its foot or a spot 0.6 m round it inside. */
+function overArea(x: number, z: number, rings: Ring[]): boolean {
+  return inside(x, z, rings) || inside(x + 0.6, z, rings) || inside(x - 0.6, z, rings) || inside(x, z + 0.6, rings) || inside(x, z - 0.6, rings);
+}
+
 /** A fern: seven fronds arching out from the middle, each a stalk with leaflets alternating along it (1 m). */
 function fernGeometry(): THREE.BufferGeometry {
   const pos: number[] = [];
@@ -168,6 +173,12 @@ export class Undergrowth {
   private woodAt = new Map<string, Wood[]>();
   /** Tree trunks by squares of CELL */
   private trunks = new Map<string, [number, number][]>();
+  /**
+   * Ground where nothing grows though the open data's wood covers it, by square of 64 m: a road, a path, paving,
+   * gravel, concrete, a terrace, a building, a hedge, water (every ground cover but the wood's own floor), and the
+   * open ground a place keeps clear (the Sparrenhof's forecourt and terrace: `addBare`).
+   */
+  private bare = new Map<string, { rings: Ring[]; box: [number, number, number, number] }[]>();
   /** Per square of CELL: x, y, z, kind, size, turn, colour, rank for every plant in it */
   private plants = new Map<string, Float32Array>();
   private meshes: THREE.InstancedMesh[] = [];
@@ -278,6 +289,7 @@ export class Undergrowth {
 
   /** The woods' floors (`forest` blocks) of a piece of the data, and its trees (the plants keep off their trunks). */
   addWoods(prisms: { m: string; p: Ring[]; y1: number }[] | undefined, trees: { x: number; z: number }[] | undefined): void {
+    for (const p of prisms ?? []) if (p.m !== 'forest') this.addBare([p.p]);
     for (const p of prisms ?? []) {
       if (p.m !== 'forest') continue;
       let x0 = Infinity, z0 = Infinity, x1 = -Infinity, z1 = -Infinity;
@@ -309,6 +321,31 @@ export class Undergrowth {
     this.last.set(Infinity, 0, 0);
   }
 
+  /** Ground where no plant may stand (each a polygon: its outline, then any holes), on top of any wood. */
+  addBare(polygons: Ring[][]): void {
+    for (const rings of polygons) {
+      if (!rings[0]?.length) continue;
+      let x0 = Infinity, z0 = Infinity, x1 = -Infinity, z1 = -Infinity;
+      for (const [x, z] of rings[0]) {
+        x0 = Math.min(x0, x);
+        z0 = Math.min(z0, z);
+        x1 = Math.max(x1, x);
+        z1 = Math.max(z1, z);
+      }
+      const area = { rings, box: [x0, z0, x1, z1] as [number, number, number, number] };
+      for (let i = Math.floor(x0 / 64); i <= Math.floor(x1 / 64); i++) {
+        for (let j = Math.floor(z0 / 64); j <= Math.floor(z1 / 64); j++) {
+          const key = `${i},${j}`;
+          const list = this.bare.get(key);
+          if (list) list.push(area);
+          else this.bare.set(key, [area]);
+        }
+      }
+    }
+    this.plants.clear();
+    this.last.set(Infinity, 0, 0);
+  }
+
   /** The graphics preset: how far the undergrowth reaches and how much of it stands. */
   setQuality(quality: string, phone: boolean): void {
     const low = quality === 'low' || phone;
@@ -330,6 +367,9 @@ export class Undergrowth {
       (w) => w.box[0] < x0 + CELL && w.box[2] > x0 && w.box[1] < z0 + CELL && w.box[3] > z0,
     );
     const out: number[] = [];
+    const bare = (this.bare.get(`${Math.floor((x0 + CELL / 2) / 64)},${Math.floor((z0 + CELL / 2) / 64)}`) ?? []).filter(
+      (b) => b.box[0] < x0 + CELL && b.box[2] > x0 && b.box[1] < z0 + CELL && b.box[3] > z0,
+    );
     if (woods.length) {
       let s = ((((i * 73856093) ^ (j * 19349663)) >>> 0) % 2147483646) + 1;
       const rand = () => ((s = (s * 16807) % 2147483647) / 2147483647);
@@ -346,6 +386,8 @@ export class Undergrowth {
         const rank = rand();
         const wood = woods.find((w) => inside(x, z, w.rings));
         if (!wood || near.some(([tx, tz]) => Math.hypot(tx - x, tz - z) < TRUNK)) continue;
+        // Nothing on paving, gravel, a terrace, a path or in a building, though the wood's outline runs over it.
+        if (bare.some((b) => x > b.box[0] - 0.6 && x < b.box[2] + 0.6 && z > b.box[1] - 0.6 && z < b.box[3] + 0.6 && overArea(x, z, b.rings))) continue;
         // Ferns in patches, brambles in thickets: a slow wave over the floor says where each grows best.
         const patch = 0.5 + 0.5 * Math.sin(x * 0.19 + z * 0.07) * Math.sin(z * 0.23 - x * 0.05);
         const kind = roll < 0.6 ? (patch > 0.3 ? Kind.Fern : -1) : roll < 0.78 ? (patch < 0.6 ? Kind.Bramble : -1) : roll < 0.93 ? Kind.Shrub : roll < 0.955 ? Kind.Branch : -1;

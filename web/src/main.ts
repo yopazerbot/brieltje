@@ -549,6 +549,8 @@ function adaptQuality(dt: number, now: number): void {
 
 const churchAccess = makeChurch(CHURCH_DATA, house.ground + terrain.height(...CHURCH_DATA.origin as [number, number]));
 const cafeAccess = makeCafe(CAFE_DATA, house.ground + terrain.height(...CAFE_DATA.origin as [number, number])); // the café's blocks and stairs to its roofs
+// The Sparrenhof's forecourt, terrace and café stand where the open data has wood: no ferns or logs on them.
+undergrowth.addBare([...cafeAccess.clear, ...cafeAccess.outlines].map((ring) => [ring as [number, number][]]));
 const world = new World(house.prisms, house.ground);
 world.addPrisms(house.surroundings?.prisms ?? []);
 world.addPrisms(homeStreet.blocks);
