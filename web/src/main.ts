@@ -20,6 +20,7 @@ import { bruteDamage, hurtBy } from '../shared/brutes.mjs';
 import { prepareShotRaycasts } from './world/shotRaycast';
 import { Zombies } from './world/zombies';
 import { Villagers } from './world/villagers';
+import { FootballGround } from './world/footballGround';
 import { Christmas } from './world/christmas';
 import { fakeDay, seasonNow } from './world/season';
 import { Sinterklaas } from './world/sinterklaas';
@@ -657,6 +658,9 @@ prepareZombies();
 const villagers = new Villagers(world, () => quality === 'low' || phone, (root) => precompile(root));
 const villagerLook = new THREE.Vector3();
 scene.add(villagers.group);
+// FC Smetlede's football ground (world/footballGround.ts).
+const fcGround = new FootballGround(house.ground, phone);
+scene.add(fcGround.group);
 // December (world/season.ts): the Christmas lights and the tree, and Sinterklaas on the church square (only in Explore).
 const christmas = new Christmas(world, (x, z) => house.ground + terrain.height(x, z), (root) => precompile(root));
 const sinterklaas = new Sinterklaas(world, (x, z) => house.ground + terrain.height(x, z), (root) => precompile(root));
@@ -753,6 +757,7 @@ scene.add(life.group);
 const football = new Football(scene, (x, z) => house.ground + terrain.height(x, z));
 football.onGoal = (g) => {
   const pitch = football.views.find((v) => v.id === g.pitch)!.pitch;
+  if (g.pitch === 'fc') fcGround.goal(pitch.goals[g.goal]?.id ?? ''); // the net swells
   if (Math.hypot(player.x - pitch.home.x, player.z - pitch.home.z) > 80) return;
   const score = t('ball.score', { a: g.score[0] ?? 0, b: g.score[1] ?? 0 });
   hud.announce(t('ball.goal'), g.by ? t('ball.goalBy', { name: g.by, score }) : score);
@@ -3436,6 +3441,7 @@ renderer.setAnimationLoop((now: number) => {
   // The Zombies game: alone its horde steps here; together the server's ticks move them. Then they're drawn.
   if (!net.connected) soloTick(dt);
   zombies.update(dt, camera.position);
+  fcGround.update(dt);
   villagers.update(dt, camera.position, camera.getWorldDirection(villagerLook), driving || riding || horses.mounted >= 0 ? null : { x: player.x, z: player.z, feet: player.feet }, [
     ...roadLife.traffic.cars,
     ...cars.filter((c) => (driving && c === car) || !!c.driver).map((c) => ({ x: c.x, z: c.z, yaw: c.yaw, length: c.spec.length, width: c.spec.width })),
@@ -3574,6 +3580,7 @@ async function buildVillage(): Promise<void> {
   // A frame between the big steps: built all at once, it stopped the game for a second just after it began.
   const between = () => new Promise((r) => setTimeout(r, 0));
   const data = (await import('./data/village.json')).default as unknown as VillageData;
+  fcGround.addToVillage(data); // the football ground's car park, lane and trees
   wearLonePatches(data); // light patches away from the buildings: worn ground (world/yards.ts)
   undergrowth.addWoods(data.prisms, data.trees);
   const first = poles.length;
@@ -3592,9 +3599,11 @@ async function buildVillage(): Promise<void> {
   const town = import.meta.env.DEV && location.search.includes('notown')
     ? Promise.reject(new Error('left out'))
     : import('./world/townCentre').then(({ loadTown }) => loadTown(renderer, (x, z) => house.ground + terrain.height(x, z)));
-  const models = (await Promise.all([loadChurch().catch(() => null), loadModel('/models/school.glb').catch(() => null), loadModel('/models/dormer_house.glb').catch(() => null), loadModel('/models/sparrenhof.glb').catch(() => null), loadModel('/models/tree_huts.glb').catch(() => null), loadModel('/models/kouter_house.glb').catch(() => null), town.catch(() => null)])).filter(
+  const models = (await Promise.all([loadChurch().catch(() => null), loadModel('/models/school.glb').catch(() => null), loadModel('/models/dormer_house.glb').catch(() => null), loadModel('/models/sparrenhof.glb').catch(() => null), loadModel('/models/tree_huts.glb').catch(() => null), loadModel('/models/kouter_house.glb').catch(() => null), loadModel('/models/football.glb').catch(() => null), town.catch(() => null)])).filter(
     (m): m is THREE.Object3D => m !== null,
   );
+  const fcModel = models.find((m) => m.userData.landmark === 'football');
+  if (fcModel) fcGround.dress(fcModel);
   // The houses of Molenhoek (and its street) and of Kapellenhoek, the same way: fitted into the village data before its tiles are built.
   for (const job of streetJobs) {
     const street = await job;

@@ -18,6 +18,7 @@
 // (it never adds to it), so no number of kicks can make it faster than KICK.hard.
 
 import PLAYGROUND from './playground.json' with { type: 'json' };
+import FOOTBALL from './football.json' with { type: 'json' };
 
 export const BALL = {
   r: 0.105, // m: a size 4 ball (youth football), 66 cm round
@@ -79,9 +80,16 @@ const tBoardAt = (tBoard.from + tBoard.to) / 2;
  * A small goal (3 x 1.6 m, 0.9 m deep, the net sloping from the crossbar to a bar on the ground behind), its
  * mouth's middle at `at`, `inward` the way into it (unit, seen from above).
  */
-function goal(id, at, inward) {
-  return { id, at, inward, half: 1.5, height: 1.6, depth: 0.9, post: 0.045 };
+function goal(id, at, inward, size = { half: 1.5, height: 1.6, depth: 0.9, post: 0.045 }) {
+  return { id, at, inward, ...size };
 }
+
+// FC Smetlede's pitch (shared/football.json, tools/football_site.py; Yoshi, 8 Nov 2026): u along the pitch from the far
+// end to the car park's, w across it to the buildings' side. Full-size goals (7.32 by 2.44 m, the net 2 m deep at the
+// ground, tools/football.py builds them); the ball stays inside the spectators' rail.
+const FC = FOOTBALL;
+const F = (u, w) => [FC.centre[0] + FC.u[0] * u + FC.w[0] * w, FC.centre[1] + FC.u[1] * u + FC.w[1] * w];
+const FULL = { half: 3.66, height: 2.44, depth: 2.0, post: 0.06 };
 
 /** The pitches, as plain data: the server and the page each make their own with makePitch. */
 export const PITCHES = [
@@ -134,6 +142,19 @@ export const PITCHES = [
     bars: [],
     panels: [],
     near: 200,
+  },
+  {
+    id: 'fc',
+    // The spectators' rail round the pitch (the dugouts stand in its line), 20 cm in.
+    outline: [F(FC.rail.u0 + 0.2, FC.rail.w0 + 0.2), F(FC.rail.u1 - 0.2, FC.rail.w0 + 0.2), F(FC.rail.u1 - 0.2, FC.rail.w1 - 0.2), F(FC.rail.u0 + 0.2, FC.rail.w1 - 0.2)],
+    lift: 0.02, // the pitch's grass over the levelled ground (world/footballGround.ts)
+    goals: FC.goals.map((g) => goal(g.id, F(g.u, 0), [g.in * FC.u[0], g.in * FC.u[1]], FULL)),
+    home: F(FC.length / 2 - 11, 0), // the penalty spot at the car park's end
+    // The corner flags.
+    posts: [-1, 1].flatMap((su) => [-1, 1].map((sw) => [...F((su * FC.length) / 2, (sw * FC.width) / 2), 0.02, 1.5])),
+    bars: [],
+    panels: [],
+    near: 180,
   },
 ];
 

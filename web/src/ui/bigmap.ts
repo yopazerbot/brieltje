@@ -1,6 +1,7 @@
 import { PORTALS, type Portal } from '../../shared/portals.mjs';
 import HORSES from '../../shared/horses.json';
 import STREETS from '../data/streets.json';
+import FC from '../../shared/football.json';
 import type { FrameInput } from '../controls/input';
 import type { DipSpec, Prism, Ring, Room, Surroundings } from '../world/houseData';
 import { dist, onLang, t, type PlainKey } from '../i18n';
@@ -30,7 +31,7 @@ const toV = (x: number, z: number) => 0.665617623 * x - 0.746292959 * z;
 const toX = (u: number, v: number) => -0.746292959 * u + 0.665617623 * v;
 const toZ = (u: number, v: number) => -0.665617623 * u - 0.746292959 * v;
 
-type Layer = 'forest' | 'soil' | 'crop' | 'darkField' | 'track' | 'paving' | 'water' | 'road' | 'hedge' | 'building' | 'home' | 'bungalow' | 'church' | 'school';
+type Layer = 'forest' | 'soil' | 'crop' | 'darkField' | 'track' | 'paving' | 'pitch' | 'water' | 'road' | 'hedge' | 'building' | 'home' | 'bungalow' | 'church' | 'school';
 /** Drawn in this order. Strokes are in screen pixels. */
 const STYLE: [Layer, string, string?, number?][] = [
   ['forest', '#b0c995'],
@@ -39,6 +40,7 @@ const STYLE: [Layer, string, string?, number?][] = [
   ['darkField', '#d3c39c'],
   ['track', '#ddd1b4'],
   ['paving', '#efebe3'],
+  ['pitch', '#97cd7f', '#ffffff', 1.2], // FC Smetlede's pitch: its lines in white
   ['water', '#a7d2f0', '#82b6da', 1],
   ['road', '#ffffff', '#bfb6a6', 2.5],
   ['hedge', '#8cab70'],
@@ -80,6 +82,7 @@ const PLACES: Place[] = [
   { name: 'place.school', sub: 'Smetlede', x: 476, z: -818, color: '#69f0ae', portal: portal('school') },
   { name: 'place.molenhoek', sub: 'Smetlede', x: 758, z: -709.5, color: '#ff8a80', portal: portal('molenhoek') },
   { name: 'place.square', sub: 'Smetlede', x: 533, z: -768, color: '#9aa0a8', small: true },
+  { name: 'place.football', sub: 'place.footballSub', x: FC.centre[0], z: FC.centre[1], color: '#e53935', portal: portal('football') },
   { name: 'place.horses', sub: 'place.horsesSub', x: herd.reduce((a, p) => a + p[0], 0) / herd.length, z: herd.reduce((a, p) => a + p[1], 0) / herd.length, color: '#8a5a3a', small: true },
 ];
 /** A place's line under its name: the village (a name in both languages) or a text to translate. */
@@ -221,6 +224,7 @@ export class BigMap {
   /** The village and the band to it (once loaded): their roads, buildings, fields, trees and ponds. */
   addVillage(data: Surroundings & { dips?: DipSpec[]; area?: [number, number][] }): void {
     if (data.area && data.area.length > 2) this.area = data.area.map(([x, z]) => [toU(x, z), toV(x, z)]);
+    this.addFootball();
     this.addSurroundings(data, data.dips ?? []);
     this.dirty = true;
     this.groundVersion++;
@@ -361,6 +365,25 @@ export class BigMap {
 
   // ---- the data
 
+  /** Outside the village data's area, also built in (not muted): the football ground. */
+  private more: Ring[] = [];
+
+  /** FC Smetlede's ground (shared/football.json): the pitch with its lines, its buildings, and its ground not muted. */
+  private addFootball(): void {
+    if (this.more.length) return;
+    const at = (u: number, w: number): [number, number] => [FC.centre[0] + FC.u[0] * u + FC.w[0] * w, FC.centre[1] + FC.u[1] * u + FC.w[1] * w];
+    const box = (u0: number, u1: number, w0: number, w1: number): Ring => [at(u0, w0), at(u1, w0), at(u1, w1), at(u0, w1)];
+    const L = FC.length / 2;
+    const H = FC.width / 2;
+    const rings: Ring[] = [box(-L, L, -H, H), box(-0.06, 0.06, -H, H)];
+    rings.push(Array.from({ length: 28 }, (_, i): [number, number] => at(Math.cos((i / 28) * Math.PI * 2) * 9.15, Math.sin((i / 28) * Math.PI * 2) * 9.15)));
+    for (const s of [-1, 1]) rings.push(box(Math.min(s * L, s * (L - 16.5)), Math.max(s * L, s * (L - 16.5)), -20.16, 20.16));
+    this.add('pitch', rings);
+    this.add('building', Object.values(FC.buildings) as Ring[]);
+    this.add('building', [box(FC.containers.u0, FC.containers.u1, FC.containers.w0, FC.containers.w1)]);
+    this.more = [FC.platform.ring as Ring, ...FC.surfaces.concrete as Ring[], box(-75, 60, -52, 48)];
+  }
+
   private add(layer: Layer, rings: Ring[]): void {
     let path = this.paths.get(layer);
     if (!path) this.paths.set(layer, (path = new Path2D()));
@@ -378,7 +401,7 @@ export class BigMap {
 
   private addPrism(p: Prism): void {
     if (p.lm === 'church' || p.lm === 'school') return this.add(p.lm, p.p);
-    if (p.n === 'street' || p.m === 'road') return this.add('road', p.p);
+    if (p.n === 'street' || p.m === 'road' || p.m === 'rd_asphalt' || p.m === 'rd_concrete') return this.add('road', p.p);
     if (FIELDS[p.m]) return this.add(FIELDS[p.m], p.p);
     if (PAVING.has(p.m) && p.y1 < 0.6) return this.add('paving', p.p);
     if (p.m === 'hedge' || p.m === 'nb_hedge') return this.add('hedge', p.p);
@@ -410,6 +433,10 @@ export class BigMap {
     this.hull = new Path2D();
     hull.forEach(([u, v], i) => (i ? this.hull.lineTo(u, v) : this.hull.moveTo(u, v)));
     this.hull.closePath();
+    for (const ring of this.more) {
+      ring.forEach(([x, z], i) => (i ? this.hull.lineTo(toU(x, z), toV(x, z)) : this.hull.moveTo(toU(x, z), toV(x, z))));
+      this.hull.closePath();
+    }
     this.dirty = true;
   }
 
