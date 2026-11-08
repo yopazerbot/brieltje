@@ -109,6 +109,8 @@ const SETTS = '#8d8b86';
 const KERB_TINT = '#b6b8b8';
 const PAVERS = '#aaa8a3';
 const EARTH = '#8c7f6a';
+/** The worn verge's colour where the earth at the road's edge runs out into the grass. */
+const VERGE = new THREE.Color('#6d7148');
 const KH: Profile = {
   road: 'concrete', tint: '#b2afa7', slab: 5, centreJoint: true, cracks: 0.2, gutter: { w: 0.32, tint: SETTS }, kerb: { h: 0.11, tint: KERB_TINT },
   walk: { m: 'pavers', tint: PAVERS }, shoulder: { w: 0.4, tint: '#a19a8d' }, gullies: 24, manholes: 45, wear: 0.34,
@@ -458,6 +460,24 @@ class Builder {
     }
   }
 
+  /**
+   * The end of a kerb (and the pavement behind it) where it stops: an upright face across the street at station k,
+   * from offset o0 to o1, from lift lo to hi, facing along the street (dir +1: the way the stations run).
+   */
+  cap(f: Frame, k: number, o0: number, o1: number, lo: number, hi: number, tint: string, dir: number): void {
+    if (!this.parts.mine(f.x[k], f.z[k])) return;
+    const mesh = this.parts.get(f.x[k], f.z[k], this.material('kerb'), 'concrete');
+    const c = this.c.set(tint);
+    const [ax, az] = f.at(k, o0);
+    const [bx, bz] = f.at(k, o1);
+    const out: [number, number] = [f.nz[k] * dir, -f.nx[k] * dir];
+    const v0 = mesh.vertex(ax, this.y(ax, az, lo), az, o0, lo, c);
+    const v1 = mesh.vertex(bx, this.y(bx, bz, lo), bz, o1, lo, c);
+    const v2 = mesh.vertex(bx, this.y(bx, bz, hi), bz, o1, hi, c);
+    const v3 = mesh.vertex(ax, this.y(ax, az, hi), az, o0, hi, c);
+    mesh.quad(v0, v1, v2, v3, out);
+  }
+
   /** Paint or iron: a flat shape on the street (points as [s, o]), lift above the relief at each point. */
   flat(f: Frame, pts: [number, number][], tint: string, lift: (s: number, o: number) => number): void {
     const [mx, mz] = f.point(pts[0][0], pts[0][1]);
@@ -628,6 +648,13 @@ class Builder {
           }
           // Cast-iron gullies in the gutter.
           if (pf.gullies) this.gullies(f, k0, k1, sign, w, gw, pf.gullies, seed + side);
+          // Where the kerb stops, its end (and the pavement's) closed off, down to the grass beside it.
+          for (const [k, dir] of [[k0, -1], [k1, 1]] as const) {
+            if (dir < 0 ? k === 0 : k === n - 1) continue;
+            const o0 = sign * w(k);
+            const o1 = sign * (w(k) + KERB + Math.max(0, q(k)));
+            this.cap(f, k, Math.min(o0, o1), Math.max(o0, o1), this.ground - 0.02, road + h(k), pf.kerb.tint, dir);
+          }
         } else {
           // Setts just outside the carriageway where the street has them without a kerb (Kerkhofstraat).
           const st = pf.setts && pf.gutter ? gw : 0;
@@ -652,6 +679,14 @@ class Builder {
             // Meets the slabs at their height and the field softly: down to just over the grass at its outer edge.
             const shLift = (k: number, o: number) => (Math.abs(Math.abs(o) - Math.abs(s0(k))) < 0.01 ? road : this.ground + 0.012);
             this.strip(f, k0, k1, side === 0 ? s0 : s1, side === 0 ? s1 : s0, 'gravel', shLift, (k, _o, out) => out.copy(tint).multiplyScalar(0.9 + 0.2 * hash(k, side + 3, seed)), [0, 1], 1, 'gravel');
+            // Its worn edge into the grass: a ragged fringe of earth gone green, its width wandering along the road,
+            // so the verge doesn't end on a ruled line.
+            const f1 = (k: number) => sign * (Math.abs(s1(k)) + 0.12 + 0.3 * wave(f.s[k], 3.5, seed + side * 7) * (0.6 + 0.4 * hash(k, side + 5, seed)));
+            const fringeLift = (k: number, o: number) => this.ground + (Math.abs(Math.abs(o) - Math.abs(s1(k))) < 0.01 ? 0.012 : 0.004);
+            this.strip(f, k0, k1, side === 0 ? s1 : f1, side === 0 ? f1 : s1, 'gravel', fringeLift, (k, o, out) => {
+              const t = Math.min(1, Math.abs(Math.abs(o) - Math.abs(s1(k))) / 0.3);
+              return out.copy(tint).lerp(VERGE, 0.45 + 0.55 * t).multiplyScalar(0.92 + 0.12 * hash(k, side + 9, seed));
+            }, [0, 1], 1, 'gravel');
           }
         }
       }
