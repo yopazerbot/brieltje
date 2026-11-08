@@ -1,0 +1,382 @@
+<!doctype html>
+<html lang="nl">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+  <meta name="robots" content="noindex" />
+  <title data-en="How your home stays private · Brieltje" data-nl="Zo blijft je huis privé · Brieltje">Zo blijft je huis privé · Brieltje</title>
+  <link rel="icon" href="/favicon.svg" type="image/svg+xml" />
+  <link rel="icon" href="/favicon-32.png" type="image/png" sizes="32x32" />
+  <link rel="icon" href="/icon-192.png" type="image/png" sizes="192x192" />
+  <link rel="stylesheet" href="/brand.css" />
+  <link rel="stylesheet" href="/slides/slides.css" />
+  <link rel="stylesheet" href="/brand/site.css" />
+  <link rel="stylesheet" href="/home-privacy/home-privacy.css" />
+</head>
+<body>
+<div class="slides hero" data-slides></div>
+<main>
+  <header>
+    <a class="brand" href="/"><img src="/brand/logo-row.svg" alt="Brieltje" width="187" height="38" /></a>
+    <nav>
+      <a href="/interested/" data-en="Your home in the game" data-nl="Je huis in het spel">Je huis in het spel</a>
+      <a href="/legal/privacy.html" data-en="Privacy" data-nl="Privacy">Privacy</a>
+    </nav>
+  </header>
+  <div class="langs"><button type="button" data-set="nl">Nederlands</button> <button type="button" data-set="en">English</button></div>
+
+  <!-- Intro -->
+  <section class="intro">
+    <p class="kicker"><span data-lang="nl">Voor wie zijn huis in het spel wil</span><span data-lang="en">For anyone who wants their home in the game</span></p>
+    <h1><span data-lang="nl">Je huis staat in het spel. Je binnenkant niet.</span><span data-lang="en">Your house is in the game. Your inside isn't.</span></h1>
+    <p class="lead" data-lang="nl">De broncode van Brieltje is openbaar: iedereen kan hem lezen. Toch kan niemand de binnenkant van je huis zien zonder jouw code. Niet in het spel, niet in de bestanden en niet met een aangepaste versie van het spel. Op deze pagina zie je precies hoe dat werkt, en je kunt het zelf uitproberen.</p>
+    <p class="lead" data-lang="en">Brieltje's source code is public: anyone can read it. Yet nobody can see the inside of your home without your code. Not in the game, not in the files and not with a modified copy of the game. This page shows exactly how that works, and you can try it yourself.</p>
+    <ul class="promises">
+      <li><b><span data-lang="nl">Nooit in de openbare bestanden</span><span data-lang="en">Never in the public files</span></b><span data-lang="nl">De binnenkant wordt versleuteld voor hij ergens opgeslagen wordt.</span><span data-lang="en">The inside is encrypted before it's stored anywhere.</span></li>
+      <li><b><span data-lang="nl">Enkel open met jouw code</span><span data-lang="en">Opens only with your code</span></b><span data-lang="nl">Een code per huis. Jij beslist wie hem krijgt.</span><span data-lang="en">One code per home. You decide who gets it.</span></li>
+      <li><b><span data-lang="nl">De server beslist</span><span data-lang="en">The server decides</span></b><span data-lang="nl">Wie de code niet heeft, krijgt de binnenkant gewoon nooit toegestuurd.</span><span data-lang="en">Without the code, the inside is simply never sent to you.</span></li>
+    </ul>
+  </section>
+
+  <!-- 1. One window, two views -->
+  <section class="panel" id="views">
+    <p class="step">1</p>
+    <h2><span data-lang="nl">Eén raam, twee huizen</span><span data-lang="en">One window, two houses</span></h2>
+    <p data-lang="nl">Twee vrienden spelen samen. De ene heeft de code en wandelt binnen. De andere blijft buiten en kijkt door het raam. Sleep de schuifregelaar om te zien wat elk van hen ziet.</p>
+    <p data-lang="en">Two friends play together. One has the code and walks in. The other stays outside and looks through the window. Drag the slider to see what each of them sees.</p>
+
+    <figure class="compare">
+      <div class="compare-labels" aria-hidden="true">
+        <span class="tag sun"><span data-lang="nl">Met de code</span><span data-lang="en">With the code</span></span>
+        <span class="tag ghost"><span data-lang="nl">Zonder de code</span><span data-lang="en">Without the code</span></span>
+      </div>
+      <svg id="house" viewBox="0 0 800 460" role="img" aria-labelledby="house-title">
+        <title id="house-title">Een huis met twee ramen: links met meubels, rechts een lege ruimte, met dezelfde speler binnen.</title>
+        <defs>
+          <linearGradient id="g-sky" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#1b2550" /><stop offset="1" stop-color="#3a2f6a" /></linearGradient>
+          <linearGradient id="g-room" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#f3e2bf" /><stop offset="1" stop-color="#e2c79a" /></linearGradient>
+          <linearGradient id="g-shell" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#4a5584" /><stop offset="1" stop-color="#39436d" /></linearGradient>
+          <linearGradient id="g-glass" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#fff" stop-opacity="0.22" /><stop offset="0.45" stop-color="#fff" stop-opacity="0.04" /><stop offset="0.55" stop-color="#fff" stop-opacity="0.12" /><stop offset="1" stop-color="#fff" stop-opacity="0" /></linearGradient>
+          <radialGradient id="g-lamp" cx="0.5" cy="0.2" r="0.8"><stop offset="0" stop-color="#ffd877" stop-opacity="0.75" /><stop offset="1" stop-color="#ffd877" stop-opacity="0" /></radialGradient>
+          <clipPath id="clip-left"><rect id="clip-left-rect" x="0" y="0" width="400" height="460" /></clipPath>
+          <clipPath id="clip-right"><rect id="clip-right-rect" x="400" y="0" width="400" height="460" /></clipPath>
+          <g id="walker">
+            <ellipse cx="0" cy="0" rx="15" ry="4" fill="#000" opacity="0.25" />
+            <rect x="-11" y="-58" width="22" height="34" rx="9" fill="#38c6f4" />
+            <rect class="leg l" x="-9" y="-28" width="7" height="28" rx="3" fill="#1d6f99" />
+            <rect class="leg r" x="2" y="-28" width="7" height="28" rx="3" fill="#1d6f99" />
+            <circle cx="0" cy="-70" r="12" fill="#f2c6a0" />
+            <path d="M-12 -74 a12 12 0 0 1 24 0 z" fill="#1d6f99" />
+          </g>
+        </defs>
+
+        <rect x="0" y="0" width="800" height="460" fill="url(#g-sky)" />
+        <circle cx="690" cy="70" r="26" fill="#fbf6ea" opacity="0.9" />
+        <rect x="0" y="420" width="800" height="40" fill="#24402f" />
+
+        <!-- The inside, furnished (left of the slider) -->
+        <g clip-path="url(#clip-left)">
+          <rect x="150" y="160" width="500" height="260" fill="url(#g-room)" />
+          <rect x="150" y="282" width="500" height="10" fill="#b9946a" />
+          <rect x="150" y="405" width="500" height="15" fill="#a67c52" />
+          <!-- inner wall with a doorway -->
+          <path d="M440 292 h18 v113 h-18 z" fill="#d6b88c" />
+          <!-- upstairs -->
+          <rect x="190" y="198" width="70" height="56" rx="4" fill="#6b4f3a" /><rect x="198" y="206" width="54" height="40" rx="2" fill="#38c6f4" opacity="0.6" />
+          <rect x="300" y="236" width="110" height="34" rx="6" fill="#8f6bc8" /><rect x="300" y="228" width="34" height="18" rx="6" fill="#fbf6ea" />
+          <rect x="460" y="190" width="70" height="92" rx="3" fill="#7a5a40" />
+          <rect x="466" y="198" width="58" height="4" fill="#a6e83a" /><rect x="466" y="214" width="58" height="4" fill="#ff3d9a" /><rect x="466" y="230" width="58" height="4" fill="#f7b928" /><rect x="466" y="246" width="58" height="4" fill="#38c6f4" />
+          <!-- stairs -->
+          <path d="M560 405 v-15 h15 v-15 h15 v-15 h15 v-15 h15 v-15 h15 v-15 h15 v-15 h-10 v113 z" fill="#c49a6c" />
+          <!-- downstairs -->
+          <ellipse cx="300" cy="404" rx="120" ry="6" fill="#ff3d9a" opacity="0.35" />
+          <rect x="200" y="360" width="150" height="40" rx="10" fill="#355c7d" /><rect x="200" y="340" width="150" height="26" rx="10" fill="#406c90" />
+          <circle cx="395" cy="310" r="38" fill="url(#g-lamp)" />
+          <rect x="393" y="300" width="4" height="100" fill="#3a3a3a" /><path d="M380 300 h30 l-6 -16 h-18 z" fill="#f7b928" />
+          <rect x="480" y="370" width="60" height="6" rx="2" fill="#6b4f3a" /><rect x="486" y="376" width="5" height="28" fill="#6b4f3a" /><rect x="529" y="376" width="5" height="28" fill="#6b4f3a" />
+          <circle cx="170" cy="370" r="16" fill="#3f8f4e" /><circle cx="180" cy="356" r="12" fill="#4fa85e" /><rect x="164" y="380" width="18" height="24" rx="3" fill="#b5653f" />
+          <rect x="240" y="306" width="46" height="30" rx="2" fill="#fbf6ea" /><rect x="244" y="310" width="38" height="22" fill="#f08a4b" />
+          <use href="#walker" class="walk" />
+        </g>
+
+        <!-- The inside as the shell only (right of the slider) -->
+        <g clip-path="url(#clip-right)">
+          <rect x="150" y="160" width="500" height="260" fill="url(#g-shell)" />
+          <rect x="150" y="282" width="500" height="10" fill="#2b3359" />
+          <rect x="150" y="405" width="500" height="15" fill="#2b3359" />
+          <path d="M150 160 L650 420 M650 160 L150 420" stroke="#fbf6ea" stroke-opacity="0.05" stroke-width="2" />
+          <use href="#walker" class="walk" />
+        </g>
+
+        <!-- The outside: everyone sees it -->
+        <path fill="#c9b79a" fill-rule="evenodd" d="M140 150 H660 V420 H140 Z M200 300 H620 V405 H200 Z M230 175 H570 V270 H230 Z" />
+        <path d="M120 152 L400 40 L680 152 Z" fill="#7b3b2e" /><path d="M120 152 L400 40 L680 152" fill="none" stroke="#5c2a20" stroke-width="6" />
+        <rect x="140" y="282" width="520" height="10" fill="#b3a083" />
+        <rect x="200" y="300" width="420" height="105" fill="url(#g-glass)" /><rect x="230" y="175" width="340" height="95" fill="url(#g-glass)" />
+        <path d="M410 300 V405 M200 352 H620 M400 175 V270" stroke="#fbf6ea" stroke-width="5" />
+        <rect x="200" y="300" width="420" height="105" fill="none" stroke="#fbf6ea" stroke-width="6" /><rect x="230" y="175" width="340" height="95" fill="none" stroke="#fbf6ea" stroke-width="6" />
+        <rect x="140" y="405" width="520" height="15" fill="#5b5248" />
+
+        <line id="divider" x1="400" y1="20" x2="400" y2="440" stroke="#f7b928" stroke-width="4" />
+        <circle id="knob" cx="400" cy="230" r="17" fill="#f7b928" /><path id="knob-arrows" d="M392 224 l-7 6 l7 6 M408 224 l7 6 l-7 6" stroke="#0d1430" stroke-width="3" fill="none" />
+      </svg>
+      <label class="slider"><span class="sr"><span data-lang="nl">Vergelijk de twee zichten</span><span data-lang="en">Compare the two views</span></span><input type="range" id="split" min="0" max="100" value="50" /></label>
+      <figcaption>
+        <span data-lang="nl">Rechts loopt dezelfde speler door een lege ruimte, soms dwars door muren die er voor de buitenstaander niet zijn. Het huis in de tekening is verzonnen.</span>
+        <span data-lang="en">On the right, the same player walks through an empty space, sometimes straight through walls the outsider doesn't have. The house in the picture is made up.</span>
+      </figcaption>
+    </figure>
+    <div class="two">
+      <div class="note sun-edge">
+        <b><span data-lang="nl">Wie de code heeft, krijgt</span><span data-lang="en">With the code, you get</span></b>
+        <span data-lang="nl">de kamers, de binnenmuren, de trap, de afwerking en alle meubels.</span>
+        <span data-lang="en">the rooms, the inner walls, the stairs, the finishes and all the furniture.</span>
+      </div>
+      <div class="note">
+        <b><span data-lang="nl">Wie de code niet heeft, krijgt</span><span data-lang="en">Without the code, you get</span></b>
+        <span data-lang="nl">enkel de buitenschil: buitenmuren, dak en ramen. Plus de andere spelers, want die horen bij het spel.</span>
+        <span data-lang="en">only the outer shell: outside walls, roof and windows. Plus the other players, because they're part of the game.</span>
+      </div>
+    </div>
+  </section>
+
+  <!-- 2. The pipeline -->
+  <section class="panel" id="pipeline">
+    <p class="step">2</p>
+    <h2><span data-lang="nl">Van je huis tot een verzegeld bestand</span><span data-lang="en">From your home to a sealed file</span></h2>
+    <p data-lang="nl">Het 3D-model van je huis wordt in twee delen gesplitst voor het ooit in de openbare code terechtkomt. Het ene deel is voor iedereen, het andere wordt verzegeld.</p>
+    <p data-lang="en">The 3D model of your home is split in two before it ever reaches the public code. One part is for everyone, the other gets sealed.</p>
+    <div class="flow" aria-hidden="false">
+      <div class="node start"><span class="ico">🏠</span><b><span data-lang="nl">Het 3D-model van je huis</span><span data-lang="en">Your home's 3D model</span></b></div>
+      <div class="lanes">
+        <div class="lane public">
+          <div class="wire"></div>
+          <div class="node"><span class="ico">🧱</span><b><span data-lang="nl">De schil</span><span data-lang="en">The shell</span></b><small><span data-lang="nl">buitenmuren, dak, ramen</span><span data-lang="en">outside walls, roof, windows</span></small></div>
+          <div class="wire"></div>
+          <div class="node"><span class="ico">🌍</span><b><span data-lang="nl">Openbaar</span><span data-lang="en">Public</span></b><small><span data-lang="nl">in het spel en de broncode, voor iedereen</span><span data-lang="en">in the game and the source code, for everyone</span></small></div>
+        </div>
+        <div class="lane private">
+          <div class="wire"></div>
+          <div class="node"><span class="ico">🛋️</span><b><span data-lang="nl">De binnenkant</span><span data-lang="en">The inside</span></b><small><span data-lang="nl">kamers, binnenmuren, trap, meubels</span><span data-lang="en">rooms, inner walls, stairs, furniture</span></small></div>
+          <div class="wire"></div>
+          <div class="node seal"><span class="ico">🔏</span><b><span data-lang="nl">Verzegeld</span><span data-lang="en">Sealed</span></b><small>X25519 · HKDF-SHA256 · AES-256-GCM</small></div>
+          <div class="wire"></div>
+          <div class="node"><span class="ico">📦</span><b><span data-lang="nl">Een .enc-bestand</span><span data-lang="en">An .enc file</span></b><small><span data-lang="nl">in de openbare code, maar onleesbaar</span><span data-lang="en">in the public code, but unreadable</span></small></div>
+          <div class="wire"></div>
+          <div class="node key"><span class="ico">🗝️</span><b><span data-lang="nl">De spelserver</span><span data-lang="en">The game server</span></b><small><span data-lang="nl">heeft de enige sleutel</span><span data-lang="en">holds the only key</span></small></div>
+          <div class="wire"></div>
+          <div class="node"><span class="ico">🎮</span><b><span data-lang="nl">Enkel naar wie de code heeft</span><span data-lang="en">Only to players with your code</span></b></div>
+        </div>
+      </div>
+    </div>
+    <div class="explain">
+      <h3><span data-lang="nl">Een brievenbus met een gleuf</span><span data-lang="en">A mailbox with a slot</span></h3>
+      <p data-lang="nl">De verzegeling werkt als een brievenbus. Iedereen kan er een brief in steken: de "openbare sleutel" staat gewoon in de code, zodat wie aan het spel werkt nieuwe gegevens kan verzegelen zonder ooit een geheim te kennen. Maar er is maar één sleutel die de bus opent: de "privésleutel" van de server. Dat zijn 32 willekeurige bytes. Die staan enkel als instelling op de server waarop het spel draait, nooit in de code, in logbestanden of in een verslag.</p>
+      <p data-lang="en">The seal works like a mailbox. Anyone can drop a letter in: the "public key" is right there in the code, so whoever works on the game can seal new data without ever knowing a secret. But only one key opens the box: the server's "private key". That's 32 random bytes. They exist only as a setting on the server that runs the game, never in the code, in logs or in a report.</p>
+      <p data-lang="nl">Elk bestand krijgt bovendien een eigen, eenmalige sleutel, en de naam van het bestand zit mee in de verzegeling. Wie één byte wijzigt, of twee bestanden van naam wisselt, breekt het zegel: de server weigert het bestand dan. En elk bestand wordt opgevuld tot een veelvoud van 16 KiB, zodat zelfs de grootte niets verraadt over hoe groot je huis is.</p>
+      <p data-lang="en">Each file also gets a one-time key of its own, and the file's name is part of the seal. Changing a single byte, or swapping the names of two files, breaks the seal: the server then refuses the file. And every file is padded to a multiple of 16 KiB, so even its size says nothing about how big your home is.</p>
+    </div>
+  </section>
+
+  <!-- 3. Live demo -->
+  <section class="panel" id="demo">
+    <p class="step">3</p>
+    <h2><span data-lang="nl">Probeer het zelf: verzegel een huis</span><span data-lang="en">Try it: seal a home yourself</span></h2>
+    <p data-lang="nl">Deze demo doet in je eigen browser dezelfde stappen als de server, met hetzelfde bestandsformaat. Er wordt niets verstuurd. De sleutel is een wegwerpsleutel die je browser nu maakt; de echte staat enkel op de server.</p>
+    <p data-lang="en">This demo runs the same steps as the server, with the same file format, in your own browser. Nothing is sent anywhere. The key is a throwaway key your browser makes right now; the real one exists only on the server.</p>
+
+    <div class="demo">
+      <div class="demo-col">
+        <div class="keybox">
+          <span class="label"><span data-lang="nl">Serversleutel (wegwerp)</span><span data-lang="en">Server key (throwaway)</span></span>
+          <code id="key-id">…</code>
+          <button type="button" class="btn ghost small" id="new-key"><span data-lang="nl">Nieuwe sleutel</span><span data-lang="en">New key</span></button>
+        </div>
+        <label class="field" for="file-name"><span data-lang="nl">Bestandsnaam</span><span data-lang="en">File name</span></label>
+        <input type="text" id="file-name" value="demo-home.json" maxlength="64" spellcheck="false" autocomplete="off" />
+        <label class="field" for="plain"><span data-lang="nl">De binnenkant van een verzonnen huis</span><span data-lang="en">The inside of a made-up home</span></label>
+        <textarea id="plain" spellcheck="false" rows="9"></textarea>
+        <div class="actions"><button type="button" class="btn" id="seal"><span data-lang="nl">🔏 Verzegel</span><span data-lang="en">🔏 Seal</span></button></div>
+      </div>
+      <div class="demo-col">
+        <span class="label"><span data-lang="nl">Het verzegelde bestand, byte per byte</span><span data-lang="en">The sealed file, byte by byte</span></span>
+        <div class="hex" id="hex" aria-live="polite"><span class="muted" data-lang="nl">Druk op Verzegel.</span><span class="muted" data-lang="en">Press Seal.</span></div>
+        <ul class="legend">
+          <li><i class="c-magic"></i>BPD2</li>
+          <li><i class="c-eph"></i><span data-lang="nl">eenmalige sleutel</span><span data-lang="en">one-time key</span></li>
+          <li><i class="c-nonce"></i>nonce</li>
+          <li><i class="c-tag"></i><span data-lang="nl">zegel (GCM-tag)</span><span data-lang="en">seal (GCM tag)</span></li>
+          <li><i class="c-ct"></i><span data-lang="nl">versleutelde inhoud</span><span data-lang="en">encrypted content</span></li>
+        </ul>
+        <p class="muted small" id="size"></p>
+        <div class="tests">
+          <button type="button" class="btn small" id="open" disabled><span data-lang="nl">🗝️ Open met de serversleutel</span><span data-lang="en">🗝️ Open with the server key</span></button>
+          <button type="button" class="btn ghost small" id="tamper" disabled><span data-lang="nl">✏️ Wijzig één byte</span><span data-lang="en">✏️ Change one byte</span></button>
+          <button type="button" class="btn ghost small" id="rename" disabled><span data-lang="nl">🔀 Open onder een andere naam</span><span data-lang="en">🔀 Open under another name</span></button>
+          <button type="button" class="btn ghost small" id="wrong-key" disabled><span data-lang="nl">🔑 Open met een andere sleutel</span><span data-lang="en">🔑 Open with another key</span></button>
+        </div>
+        <div class="result" id="result" role="status" hidden></div>
+      </div>
+    </div>
+    <details class="tech">
+      <summary><span data-lang="nl">De stappen, voor wie het precies wil weten</span><span data-lang="en">The steps, for those who want the details</span></summary>
+      <ol>
+        <li data-lang="nl">De opvulling: 4 bytes lengte, de inhoud, dan nullen tot een veelvoud van de blokgrootte (16 KiB op de server, 256 bytes in deze demo zodat je het geheel ziet).</li>
+        <li data-lang="en">Padding: 4 bytes of length, the content, then zeros up to a multiple of the block size (16 KiB on the server, 256 bytes in this demo so you can see the whole thing).</li>
+        <li data-lang="nl">Een eenmalig X25519-sleutelpaar voor dit ene bestand. Samen met de openbare sleutel van de server geeft dat een gedeeld geheim dat enkel de server opnieuw kan berekenen.</li>
+        <li data-lang="en">A one-time X25519 key pair for this one file. Together with the server's public key, it gives a shared secret that only the server can work out again.</li>
+        <li data-lang="nl">HKDF-SHA256 maakt van dat geheim een AES-256-sleutel, gebonden aan beide openbare sleutels en aan de bestandsnaam.</li>
+        <li data-lang="en">HKDF-SHA256 turns that secret into an AES-256 key, bound to both public keys and to the file name.</li>
+        <li data-lang="nl">AES-256-GCM versleutelt de inhoud en maakt een zegel (de tag) over de inhoud en de bestandsnaam.</li>
+        <li data-lang="en">AES-256-GCM encrypts the content and makes a seal (the tag) over the content and the file name.</li>
+        <li data-lang="nl">Het bestand: "BPD2", de eenmalige openbare sleutel, de nonce, de tag en de versleutelde inhoud. De eenmalige privésleutel wordt meteen vergeten.</li>
+        <li data-lang="en">The file: "BPD2", the one-time public key, the nonce, the tag and the encrypted content. The one-time private key is forgotten at once.</li>
+      </ol>
+      <p class="muted small" id="curve-note" hidden></p>
+    </details>
+  </section>
+
+  <!-- 4. The code -->
+  <section class="panel" id="code">
+    <p class="step">4</p>
+    <h2><span data-lang="nl">Je code</span><span data-lang="en">Your code</span></h2>
+    <div class="two">
+      <div>
+        <p data-lang="nl">Een code heeft 10 tekens uit een alfabet van 32. Letters en cijfers die je makkelijk verwart, zitten er niet in.</p>
+        <p data-lang="en">A code has 10 characters from an alphabet of 32. Letters and digits that are easy to mix up are left out.</p>
+        <div class="alphabet" id="alphabet" aria-hidden="true"></div>
+        <div class="sample">
+          <span class="label"><span data-lang="nl">Zo ziet een code eruit (een voorbeeld, net gemaakt):</span><span data-lang="en">What a code looks like (an example, made just now):</span></span>
+          <code id="sample-code">··········</code>
+          <button type="button" class="btn ghost small" id="new-code"><span data-lang="nl">Nog een</span><span data-lang="en">Another</span></button>
+        </div>
+      </div>
+      <ol class="life">
+        <li><b><span data-lang="nl">Gemaakt en één keer getoond</span><span data-lang="en">Made and shown once</span></b><span data-lang="nl">De beheerder maakt hem en geeft hem aan jou. De server bewaart de code zelf niet, enkel een scrypt-hash: een vingerafdruk die je niet kunt terugrekenen.</span><span data-lang="en">The admin makes it and gives it to you. The server doesn't keep the code itself, only a scrypt hash: a fingerprint that can't be turned back into the code.</span></li>
+        <li><b><span data-lang="nl">Jij deelt hem</span><span data-lang="en">You share it</span></b><span data-lang="nl">Met familie of vrienden, met wie je wilt.</span><span data-lang="en">With family or friends, whoever you like.</span></li>
+        <li><b><span data-lang="nl">Getypt aan de deur</span><span data-lang="en">Typed at the door</span></b><span data-lang="nl">Dat geeft een pas van 8 uur voor die sessie. Wie ingelogd is op een account, houdt toegang met dat account, op elk toestel.</span><span data-lang="en">That gives an 8-hour pass for that session. Someone logged in to an account keeps access with that account, on every device.</span></li>
+        <li><b><span data-lang="nl">Ingetrokken of vervangen</span><span data-lang="en">Revoked or replaced</span></b><span data-lang="nl">Een nieuwe code, een ingetrokken code of een einddatum beëindigt meteen elke toegang die met de oude gegeven was. Wie binnen is, staat dan buiten.</span><span data-lang="en">A new code, a revoked code or an end date ends every access given with the old one at once. Anyone inside is put outside.</span></li>
+      </ol>
+    </div>
+
+    <h3><span data-lang="nl">Hoe lang duurt raden?</span><span data-lang="en">How long would guessing take?</span></h3>
+    <p data-lang="nl">De server telt elke poging voor hij iets anders doet. Eén afzender krijgt 30 pogingen per uur, en 8 per huis per 10 minuten. Een massa computers samen? Na 300 pogingen per uur voor één huis gaat de rest in een trage rij: ongeveer één per seconde.</p>
+    <p data-lang="en">The server counts every try before it does anything else. One sender gets 30 tries an hour, and 8 per home per 10 minutes. A crowd of computers together? After 300 tries an hour at one home, the rest go into a slow lane: about one a second.</p>
+    <div class="bars" id="bars"></div>
+    <p class="muted small"><span data-lang="nl">Gemiddelde tijd om de code te vinden, op een logaritmische schaal: elke streep is tien keer langer dan de vorige. Er zijn</span><span data-lang="en">Average time to find the code, on a logarithmic scale: each mark is ten times longer than the one before. There are</span> <b id="combos"></b> <span data-lang="nl">mogelijke codes.</span><span data-lang="en">possible codes.</span></p>
+    <p class="note" data-lang="nl"><b>En als iemand massaal foute codes typt om jou buiten te houden?</b> Er is geen slot dat dichtvalt na te veel fouten. Een vloed van pogingen wordt vertraagd, jij kunt het een ogenblik later opnieuw proberen, en wie al een pas heeft, wordt niet vertraagd.</p>
+    <p class="note" data-lang="en"><b>And if someone floods wrong codes to keep you out?</b> There's no lock that snaps shut after too many mistakes. A flood of tries is slowed down, you can try again a moment later, and anyone who already has a pass isn't slowed at all.</p>
+  </section>
+
+  <!-- 5. Multiplayer -->
+  <section class="panel" id="together">
+    <p class="step">5</p>
+    <h2><span data-lang="nl">Samen spelen: de server beslist</span><span data-lang="en">Playing together: the server decides</span></h2>
+    <p data-lang="nl">De belangrijkste regel van het hele spel: de server vertrouwt niets wat een browser hem stuurt. Elke speler krijgt enkel wat die mag zien.</p>
+    <p data-lang="en">The most important rule of the whole game: the server trusts nothing a browser sends it. Each player only gets what they're allowed to see.</p>
+    <figure class="net">
+      <svg id="netsvg" viewBox="0 70 800 230" role="img" aria-labelledby="net-title">
+        <title id="net-title">De server stuurt de binnenkant naar speler A met de code, en enkel de schil naar speler B zonder code.</title>
+        <defs>
+          <filter id="glow" x="-50%" y="-50%" width="200%" height="200%"><feGaussianBlur stdDeviation="4" result="b" /><feMerge><feMergeNode in="b" /><feMergeNode in="SourceGraphic" /></feMerge></filter>
+        </defs>
+        <path d="M162 165 H330" class="link" /><path d="M470 165 H638" class="link" />
+        <g transform="translate(400 165)">
+          <rect x="-72" y="-82" width="144" height="164" rx="22" fill="#1f2a52" stroke="#f7b928" stroke-width="3" />
+          <rect x="-46" y="-56" width="92" height="16" rx="5" fill="#141d3a" /><circle cx="32" cy="-48" r="4" fill="#a6e83a" />
+          <rect x="-46" y="-30" width="92" height="16" rx="5" fill="#141d3a" /><circle cx="32" cy="-22" r="4" fill="#a6e83a" />
+          <text y="32" class="t big">🗝️</text>
+          <text y="66" class="t"><tspan data-lang="nl">Server</tspan><tspan data-lang="en">Server</tspan></text>
+        </g>
+        <g transform="translate(104 165)">
+          <circle r="58" fill="#141d3a" stroke="#f7b928" stroke-width="3" />
+          <text y="14" class="t big">🙂</text>
+          <text y="88" class="t">A</text>
+          <text y="114" class="t sub"><tspan data-lang="nl">heeft de code</tspan><tspan data-lang="en">has the code</tspan></text>
+        </g>
+        <g transform="translate(696 165)">
+          <circle r="58" fill="#141d3a" stroke="#c3c9e2" stroke-width="3" stroke-dasharray="6 6" />
+          <text y="14" class="t big">🙂</text>
+          <text y="88" class="t">B</text>
+          <text y="114" class="t sub"><tspan data-lang="nl">geen code</tspan><tspan data-lang="en">no code</tspan></text>
+        </g>
+        <g id="packets"></g>
+      </svg>
+      <ol class="log" id="netlog" aria-live="off"></ol>
+    </figure>
+    <ul class="rules">
+      <li data-lang="nl"><b>De binnenkant wordt nooit naar B gestuurd.</b> Er valt dus niets te ontgrendelen met de ontwikkelaarstools van de browser of een aangepaste versie van het spel: wat je nooit kreeg, kun je ook niet bekijken.</li>
+      <li data-lang="en"><b>The inside is never sent to B.</b> So there's nothing to unlock with the browser's developer tools or a modified copy of the game: you can't look at what you never received.</li>
+      <li data-lang="nl"><b>Ook wat er binnen gebeurt, blijft binnen.</b> Deuren, gebroken ruiten en verschoven meubels binnen in je huis gaan enkel naar spelers met toegang.</li>
+      <li data-lang="en"><b>What happens inside stays inside.</b> Doors, broken windows and moved furniture inside your home only go to players with access.</li>
+      <li data-lang="nl"><b>Binnenglippen lukt niet.</b> Loopt B door een deur die A openliet, dan weigert de server die positie en zet hij B terug buiten.</li>
+      <li data-lang="en"><b>Slipping in doesn't work.</b> If B walks through a door A left open, the server refuses that position and puts B back outside.</li>
+      <li data-lang="nl"><b>Toegang hoort bij je sessie, niet bij je naam.</b> Wie later dezelfde spelersnaam kiest, krijgt niets.</li>
+      <li data-lang="en"><b>Access belongs to your session, not your name.</b> Someone who later picks the same player name gets nothing.</li>
+      <li data-lang="nl"><b>Binnen is het veilig.</b> In een privéhuis kan niemand geraakt worden. Die bescherming stopt 30 meter van de kamer, zodat ze geen schuilplaats wordt.</li>
+      <li data-lang="en"><b>Inside is safe.</b> Nobody can be hit inside a private home. That protection stops 30 metres from the room, so it can't become a hiding spot.</li>
+    </ul>
+  </section>
+
+  <!-- 6. Honest limits -->
+  <section class="panel" id="honest">
+    <p class="step">6</p>
+    <h2><span data-lang="nl">Wat anderen wél zien</span><span data-lang="en">What others can still see</span></h2>
+    <p data-lang="nl">Geen enkele beveiliging is volledig. Dit zijn de keuzes die we bewust gemaakt hebben, zodat je weet waar je aan toe bent.</p>
+    <p data-lang="en">No security is complete. These are the choices we made on purpose, so you know where you stand.</p>
+    <div class="grid">
+      <div class="card-s"><b><span data-lang="nl">De buitenkant van je huis</span><span data-lang="en">The outside of your house</span></b><span data-lang="nl">In het spel en in de openbare broncode, zoals vanop straat.</span><span data-lang="en">In the game and in the public source code, as seen from the street.</span></div>
+      <div class="card-s"><b><span data-lang="nl">Dat iemand binnen is</span><span data-lang="en">That someone is inside</span></b><span data-lang="nl">Andere spelers zien de figuur van wie binnen is, en ongeveer waar die loopt. Niet de kamer.</span><span data-lang="en">Other players see the figure of whoever is inside, and roughly where they walk. Not the room.</span></div>
+      <div class="card-s"><b><span data-lang="nl">Een open deur</span><span data-lang="en">An open door</span></b><span data-lang="nl">Die ziet iedereen open staan. Enkel wie de code heeft, kan erdoor.</span><span data-lang="en">Everyone sees it standing open. Only someone with the code can go through it.</span></div>
+      <div class="card-s"><b><span data-lang="nl">De beheerder</span><span data-lang="en">The admin</span></b><span data-lang="nl">Yoshi kan als beheerder binnenkijken zonder code, om het spel te beheren.</span><span data-lang="en">As the admin, Yoshi can look inside without a code, to run the game.</span></div>
+      <div class="card-s"><b><span data-lang="nl">De spelserver</span><span data-lang="en">The game server</span></b><span data-lang="nl">Die opent de binnenkant in zijn geheugen, om hem naar wie de code heeft te kunnen sturen.</span><span data-lang="en">It opens the inside in its memory, so it can send it to people with the code.</span></div>
+      <div class="card-s"><b><span data-lang="nl">Als je ooit "openbaar" kiest</span><span data-lang="en">If you ever choose "public"</span></b><span data-lang="nl">Dan kan iedereen de binnenkant kopiëren. Ga je terug naar privé, dan kunnen we die kopieën niet terughalen.</span><span data-lang="en">Then anyone can copy the inside. If you go back to private, we can't recall those copies.</span></div>
+    </div>
+    <div class="note sun-edge">
+      <b><span data-lang="nl">Wat we nooit bewaren</span><span data-lang="en">What we never keep</span></b>
+      <span data-lang="nl">je code zelf; een adres of naam bij het slot (een huis is voor de server een nummer en een plek op de kaart); een naam of IP-adres bij de tellers van juiste en foute pogingen.</span>
+      <span data-lang="en">your code itself; an address or a name with the lock (to the server, a home is an id and a spot on the map); a name or IP address with the counters of right and wrong tries.</span>
+    </div>
+  </section>
+
+  <!-- 7. Questions -->
+  <section class="panel" id="faq">
+    <p class="step">7</p>
+    <h2><span data-lang="nl">Vragen</span><span data-lang="en">Questions</span></h2>
+    <details><summary><span data-lang="nl">Kan iemand het versleutelde bestand lezen?</span><span data-lang="en">Can someone read the encrypted file?</span></summary>
+      <p data-lang="nl">Het staat in de openbare code, maar zonder de sleutel van de server is het ruis. Die sleutel is 32 willekeurige bytes: 2<sup>256</sup> mogelijkheden, meer dan er atomen in het zichtbare heelal zijn. Er is geen wachtwoord dat je kunt raden.</p>
+      <p data-lang="en">It's in the public code, but without the server's key it's noise. That key is 32 random bytes: 2<sup>256</sup> possibilities, more than there are atoms in the visible universe. There's no password to guess.</p></details>
+    <details><summary><span data-lang="nl">En als de sleutel toch uitlekt?</span><span data-lang="en">And if the key leaks anyway?</span></summary>
+      <p data-lang="nl">Dan maken we een nieuwe sleutel en verzegelen we alles opnieuw. Oude versies in de geschiedenis van het project blijven wel leesbaar met de oude sleutel. Daarom verlaat de sleutel nooit de server.</p>
+      <p data-lang="en">Then we make a new key and seal everything again. Old versions in the project's history do stay readable with the old key. That's why the key never leaves the server.</p></details>
+    <details><summary><span data-lang="nl">Kan iemand het bestand vervalsen of twee huizen verwisselen?</span><span data-lang="en">Can someone forge the file or swap two homes?</span></summary>
+      <p data-lang="nl">Nee. Het zegel dekt elke byte en de bestandsnaam. Eén wijziging en de server weigert het bestand. Probeer het hierboven in de demo.</p>
+      <p data-lang="en">No. The seal covers every byte and the file name. One change and the server refuses the file. Try it in the demo above.</p></details>
+    <details><summary><span data-lang="nl">Verraadt de grootte van het bestand hoe groot mijn huis is?</span><span data-lang="en">Does the file's size give away how big my home is?</span></summary>
+      <p data-lang="nl">Nee. Elk bestand wordt opgevuld tot een veelvoud van 16 KiB.</p>
+      <p data-lang="en">No. Every file is padded to a multiple of 16 KiB.</p></details>
+    <details><summary><span data-lang="nl">Ik ben mijn code kwijt.</span><span data-lang="en">I lost my code.</span></summary>
+      <p data-lang="nl">Vraag per mail een nieuwe aan. De beheerder maakt er een, en de oude stopt meteen met werken.</p>
+      <p data-lang="en">Ask for a new one by email. The admin makes one, and the old one stops working at once.</p></details>
+    <details><summary><span data-lang="nl">Werkt het ook als ik alleen speel?</span><span data-lang="en">Does it work when I play alone too?</span></summary>
+      <p data-lang="nl">Ja. Ook alleen vraagt het spel de code, en de binnenkant komt pas van de server als de code juist is.</p>
+      <p data-lang="en">Yes. Alone, the game asks for the code too, and the inside only comes from the server once the code is right.</p></details>
+  </section>
+
+  <!-- Choice -->
+  <section class="cta">
+    <h2><span data-lang="nl">Jij kiest</span><span data-lang="en">You choose</span></h2>
+    <p data-lang="nl">Wil je je huis in het spel? De binnenkant is standaard privé. Openbaar wordt hij enkel als je dat zelf uitdrukkelijk kiest, en je kunt altijd terug.</p>
+    <p data-lang="en">Want your home in the game? The inside is private by default. It only becomes public if you explicitly choose that yourself, and you can always switch back.</p>
+    <div class="actions"><a class="btn" href="/interested/"><span data-lang="nl">Ik wil mijn huis in het spel</span><span data-lang="en">I want my home in the game</span></a> <a class="btn ghost" href="/legal/privacy.html#en-homes" id="privacy-link"><span data-lang="nl">Lees het privacybeleid</span><span data-lang="en">Read the privacy policy</span></a></div>
+  </section>
+
+  <footer>
+    <span data-lang="nl">Brieltje · De demo op deze pagina draait volledig in je browser en verstuurt niets.</span>
+    <span data-lang="en">Brieltje · The demo on this page runs entirely in your browser and sends nothing.</span>
+  </footer>
+</main>
+<script src="/slides/slides.js"></script>
+<script src="/home-privacy/home-privacy.js"></script>
+</body>
+</html>
