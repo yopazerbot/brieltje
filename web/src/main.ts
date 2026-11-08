@@ -1135,6 +1135,7 @@ avatars.groundAt = (x, z, y) => world.groundAt(x, z, y + 0.3, 0.6).y;
 // Arriving by parachute (shared/parachute.mjs): everyone's on their figures (world/parachutes.ts), yours filmed
 // from behind while you jump (world/dropView.ts).
 const parachutes = new Parachutes();
+parachutes.prepare = precompile; // its shaders built before it shows
 const myChute = new THREE.Group();
 scene.add(myChute);
 const dropView = new DropView((colour) => avatars.figure(me?.username ?? '', colour), myChute, (x, z, y) => world.groundAt(x, z, y, 0).y);
@@ -3647,7 +3648,7 @@ async function buildVillage(): Promise<void> {
     return name === 'kapellenhoek' || (name.startsWith('molenhoek') && !start.startsWith('molenhoek'));
   };
   const bakes = Promise.all(models.filter((m) => !later(m)).map((m) => bakeLight(m, renderer)));
-  streetBakes = playing.then(() => Promise.all(models.filter(later).map((m) => bakeLight(m, renderer))));
+  streetBakes = playing.then(() => Promise.all(models.filter(later).map((m) => bakeLight(m, renderer, Infinity, precompile))));
   for (const m of models) clearOpenGround(data, m.userData.clear as [number, number][][] | undefined); // their forecourts free of trees
   const drawn = withRoadDetail(withoutLandmarks(data, models.map((m) => m.userData.landmark as string), models.flatMap((m) => (m.userData.replaces as Ring[] | undefined) ?? [])));
   // One surface per spot (world/groundLayers.ts): the covers claimed, then the streets in detail built (cut under the

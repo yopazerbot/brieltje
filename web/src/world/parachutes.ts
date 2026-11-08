@@ -142,6 +142,11 @@ function spring(s: Spring, target: number, damping: number, dt: number): void {
 export class Parachutes {
   /** Beyond this (m from the camera) the simpler model: sooner on Low, where thin lines break up. */
   far = 35;
+  /**
+   * Builds the model's shaders ahead (main.ts precompile, in the background where the browser can): drawn first
+   * in a drop, its canopy compiled on the page's thread and stopped the game a moment in the first seconds of play.
+   */
+  prepare: ((o: THREE.Object3D) => Promise<unknown>) | null = null;
   private gltf: GLTF | null = null;
   private loading = false;
   private flights = new Map<string, Flight>();
@@ -287,7 +292,10 @@ export class Parachutes {
     if (this.loading) return;
     this.loading = true;
     new GLTFLoader().loadAsync('/models/parachute.glb').then(
-      (g) => (this.gltf = g),
+      async (g) => {
+        await this.prepare?.(g.scene).catch(() => undefined);
+        this.gltf = g;
+      },
       () => {
         // No model: the drop plays the same, without a parachute to see.
       },

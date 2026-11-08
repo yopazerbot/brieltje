@@ -235,9 +235,11 @@ async function page(file: string, colour: boolean, renderer: THREE.WebGLRenderer
  * Put the baked light on a loaded model's surfaces that have a light layout. Resolves once done (or when there
  * is no bake for it, or it doesn't match: those surfaces keep the real-time light). `until` (performance.now()
  * ms): pages that come in later are not used, so a slow download can't switch materials (and compile their
- * shaders) after loading has gone on without it.
+ * shaders) after loading has gone on without it. `prepare` (main.ts precompile): the baked materials' shaders are
+ * built first, in the background where the browser can, and put on once ready (a bake that comes in during play,
+ * Molenhoek's, compiled them on the page's thread at their first draw and stopped the game a moment).
  */
-export async function bakeLight(root: THREE.Object3D, renderer: THREE.WebGLRenderer, until = Infinity): Promise<void> {
+export async function bakeLight(root: THREE.Object3D, renderer: THREE.WebGLRenderer, until = Infinity, prepare?: (o: THREE.Object3D) => Promise<unknown>): Promise<void> {
   if (import.meta.env.DEV && new URLSearchParams(location.search).has('nobake')) return; // for comparing
   const byModel = new Map<string, THREE.Mesh[]>();
   root.traverse((o) => {
@@ -261,10 +263,18 @@ export async function bakeLight(root: THREE.Object3D, renderer: THREE.WebGLRende
         );
         if (performance.now() > until) return; // too late: loading went on without it
         const cache = new Map<string, THREE.Material>();
-        for (const mesh of fits) {
+        const swaps = fits.map((mesh): [THREE.Mesh, THREE.Material, THREE.Material] => {
           const [light, wear] = pages[mesh.userData.lm as number];
-          mesh.material = baked(mesh.material as THREE.MeshStandardMaterial, light, wear, info.scale, cache);
+          return [mesh, mesh.material as THREE.Material, baked(mesh.material as THREE.MeshStandardMaterial, light, wear, info.scale, cache)];
+        });
+        if (prepare) {
+          // On for the compile only (it asks for the shaders of what is on the meshes now), off again until they are ready.
+          for (const [mesh, , next] of swaps) mesh.material = next;
+          const ready = prepare(root);
+          for (const [mesh, was] of swaps) mesh.material = was;
+          await ready.catch(() => undefined);
         }
+        for (const [mesh, , next] of swaps) mesh.material = next;
       } catch (e) {
         console.warn(`baked light: ${model} not available`, e);
       }
