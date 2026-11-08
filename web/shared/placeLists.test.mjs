@@ -1,5 +1,7 @@
 // Every Zombies place (shared/arenas.mjs) is in each of the page's place menus, and every portal under "Start at":
-// the menus in index.html are written out by hand, so a new place must not be missed in one of them.
+// the menus in index.html are written out by hand, so a new place must not be missed in one of them. (The start
+// screen's two are not built from ARENAS at runtime: that would bring shared/arenas.mjs and what it imports into the
+// first page load, src/start.ts, for a list of names.)
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
@@ -14,8 +16,8 @@ const options = (id) => {
   return new Set([...block.matchAll(/<option value="([^"]+)"/g)].map((m) => m[1]));
 };
 
-test('every Zombies place is in the solo, room and admin menus', () => {
-  for (const menu of ['zombies-place', 'room-place', 'zombies-place-admin']) {
+test('every Zombies place is in the solo, room and admin menus, and in the start screen\'s', () => {
+  for (const menu of ['zombies-place', 'room-place', 'zombies-place-admin', 'z-place', 'z-open-place']) {
     const have = options(menu);
     for (const a of ARENAS) assert.ok(have.has(a.id), `${a.id} missing from #${menu}`);
   }
