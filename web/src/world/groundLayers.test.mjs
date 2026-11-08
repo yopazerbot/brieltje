@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
-import { GroundLayers, RANK, area2, coverRank, minus, overlaps } from './groundLayers.ts';
+import { Cuts, GroundLayers, RANK, area2, coverPieces, coverRank, cutAsks, cutCovers, minus, overlaps, packAsks, packCovers } from './groundLayers.ts';
 
 const area = (pieces) => pieces.reduce((s, p) => s + Math.abs(area2(p)) / 2, 0);
 /** Whether (x, z) lies in a convex polygon. */
@@ -105,4 +105,77 @@ test('the village\'s covers, claimed and cut in order, leave one surface per spo
   const before = fans.reduce((s, f) => s + area(f.tris), 0);
   const after = area(kept.map((k) => k.piece));
   assert.ok(after <= before + 1e-6 && after > before * 0.95, `${after.toFixed(1)} of ${before.toFixed(1)} m²`);
+});
+
+/** A few claims of every kind, some with heights, over a 30 m square. */
+function someClaims() {
+  const layers = new GroundLayers();
+  let seed = 7;
+  const rnd = () => (seed = (seed * 16807) % 2147483647) / 2147483647;
+  const ranks = [RANK.model, RANK.carriageway, RANK.pavement, RANK.paving, RANK.gravel];
+  for (let i = 0; i < 400; i++) {
+    const x = rnd() * 30, z = rnd() * 30;
+    const t = [[x, z], [x + 1 + rnd() * 4, z + rnd()], [x + rnd(), z + 1 + rnd() * 4]];
+    const rank = ranks[i % ranks.length];
+    const ys = rank === RANK.model ? t.map(() => rnd() * 0.1) : undefined;
+    layers.claim(t, rank, layers.group(), ys, rank === RANK.model && i % 3 === 0);
+  }
+  return layers;
+}
+
+test('cuts worked out ahead (as the ground\'s worker does) read back the very pieces, and whole ones as themselves', () => {
+  const layers = someClaims();
+  const asks = [];
+  for (let i = 0; i < 200; i++) {
+    const x = (i % 20) * 1.5, z = Math.floor(i / 20) * 3;
+    const t = [[x, z], [x + 2, z], [x + 1, z + 2]];
+    asks.push(i % 4 === 0 ? { t, rank: RANK.model, group: 1e6 + i, ys: [0.02, 0.05, 0.03] } : { t, rank: [RANK.pavement, RANK.paving, RANK.verge][i % 3], group: 1e6 + i });
+  }
+  const ahead = new Cuts(cutAsks(layers, packAsks(asks)));
+  let cut = 0;
+  for (const a of asks) {
+    const now = layers.cut(a.t, a.rank, a.group, a.ys);
+    const read = ahead.next(a.t);
+    if (now.length === 1 && now[0] === a.t) assert.equal(read[0], a.t, 'whole: the same polygon');
+    else {
+      cut++;
+      assert.deepEqual(read, now);
+    }
+  }
+  ahead.done();
+  assert.ok(cut > 20, `${cut} of them cut`);
+});
+
+test('a cover\'s pieces cut ahead are those its build cuts, in the same order', () => {
+  const layers = someClaims();
+  const grid = { x0: -0.5, z0: -0.25, step: 4 };
+  const covers = [
+    { tris: [[[1, 1], [25, 2], [3, 27]], [[25, 2], [28, 28], [3, 27]]], cell: 8, precise: false, rank: RANK.paving, group: 5e6 },
+    { tris: [[[10, 10], [20, 11], [12, 19]]], cell: 4, precise: true, rank: RANK.gravel, group: Infinity },
+  ];
+  const { out, starts } = cutCovers(layers, packCovers(covers, grid));
+  covers.forEach((c, i) => {
+    const ahead = new Cuts(out, starts[i], i + 1 < covers.length ? starts[i + 1] : out.length);
+    let n = 0;
+    coverPieces(c.tris, c.cell, c.precise, grid, (h, fi) => {
+      const now = layers.cut(h, c.rank, c.group + fi);
+      const read = ahead.next(h);
+      assert.deepEqual(read, now.length === 1 && now[0] === h ? [h] : now);
+      n++;
+    });
+    ahead.done();
+    assert.ok(n > 3);
+  });
+});
+
+const near = [[12, 12], [15, 12.5], [13, 15]];
+const far = [[25, 25], [28, 25.5], [26, 28]];
+
+test('claims copied to another set (the worker\'s), in runs, cut the same', () => {
+  const layers = someClaims();
+  const copy = new GroundLayers();
+  copy.addClaims(layers.claimsFrom(0, 150));
+  copy.addClaims(layers.claimsFrom(150));
+  assert.equal(copy.size, layers.size);
+  for (const [t, rank] of [[near, RANK.paving], [far, RANK.gravel], [near, RANK.verge]]) assert.deepEqual(copy.cut(t, rank, 1e7), layers.cut(t, rank, 1e7));
 });

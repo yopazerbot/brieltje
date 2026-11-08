@@ -9,7 +9,9 @@ import { textureNormalScale } from './surfaceFinish';
 import { loadTexture, textureReady } from './textureFiles';
 import { snowy } from './snowCover';
 import { clearGlass } from './glassLook';
-import { claimOf, coverRank, groundLayers, markClaimed, RANK, type Pt } from './groundLayers';
+import { claimOf, clipDiagonal, clipToBox, coverPieces, coverRank, groundLayers, markClaimed, RANK, takeCoverCuts, type CoverAsk, type Pt } from './groundLayers';
+
+export { clipDiagonal, clipToBox };
 
 /** Real-world width of each texture tile in metres (from Poly Haven, or our own brick). */
 const TILE: Record<string, number> = sizes;
@@ -303,55 +305,6 @@ function insideRings(x: number, z: number, rings: [number, number][][]): boolean
   return hit;
 }
 
-/** A convex polygon clipped to a box (Sutherland-Hodgman). */
-export function clipToBox(poly: [number, number][], x0: number, z0: number, x1: number, z1: number): [number, number][] {
-  let pts = clipSide(poly, 0, x0, 1);
-  if (pts.length >= 3) pts = clipSide(pts, 0, x1, -1);
-  if (pts.length >= 3) pts = clipSide(pts, 1, z0, 1);
-  if (pts.length >= 3) pts = clipSide(pts, 1, z1, -1);
-  return pts.length < 3 ? [] : pts;
-}
-
-/**
- * One side of clipToBox: keep where coordinate k is at least `bound` (dir 1) or at most it (dir -1). Written out
- * without closures (it runs for every piece of every cover at load), the arithmetic as it was.
- */
-function clipSide(pts: [number, number][], k: 0 | 1, bound: number, dir: 1 | -1): [number, number][] {
-  const o = 1 - k;
-  const out: [number, number][] = [];
-  const n = pts.length;
-  for (let i = 0; i < n; i++) {
-    const a = pts[(i + n - 1) % n];
-    const b = pts[i];
-    const inA = dir > 0 ? a[k] >= bound : a[k] <= bound;
-    const inB = dir > 0 ? b[k] >= bound : b[k] <= bound;
-    if (inA !== inB) {
-      const c: [number, number] = [0, 0];
-      c[k] = bound;
-      c[o] = a[o] + ((bound - a[k]) / (b[k] - a[k])) * (b[o] - a[o]);
-      out.push(c);
-    }
-    if (inB) out.push(b);
-  }
-  return out;
-}
-
-/** Keep one side of a terrain cell's diagonal, so paving follows both ground triangles. */
-export function clipDiagonal(poly: [number, number][], gx: number, gz: number, side: number): [number, number][] {
-  const out: [number, number][] = [];
-  for (let i = 0; i < poly.length; i++) {
-    const a = poly[(i + poly.length - 1) % poly.length], b = poly[i];
-    const da = ((a[0] - gx) - (a[1] - gz)) * side;
-    const db = ((b[0] - gx) - (b[1] - gz)) * side;
-    if ((da >= 0) !== (db >= 0)) {
-      const t = da / (da - db);
-      out.push([a[0] + (b[0] - a[0]) * t, a[1] + (b[1] - a[1]) * t]);
-    }
-    if (db >= 0) out.push(b);
-  }
-  return out;
-}
-
 /** Thin ground covers that lie just over the grass: kept on the ground's own surface (hugGround). */
 const HUGGING = new Set(['pave_light', 'pave_warm', 'pave_walk', 'gravel', 'track', 'road', 'forecourt']);
 
@@ -424,6 +377,26 @@ export function hugGround(t: [number, number][], lift: [number, number, number],
 }
 
 /**
+ * One surface per spot (world/groundLayers.ts): the rank and first group a draped cover's top is cut by (it goes where
+ * nothing that beats it lies), or undefined for one that isn't cut.
+ */
+function ownLayer(p: Prism): [number, number] | undefined {
+  const rank = coverRank(p.m);
+  return claimOf(p) ?? (rank !== undefined && p.y1 - p.y0 <= 0.15 ? [rank, Infinity] : undefined);
+}
+
+/**
+ * A draped cover's cuts, to be worked out ahead (world/groundCutter.ts) exactly as drapedGeometry would cut it, or
+ * null for a block that isn't cut so.
+ */
+export function coverAsk(p: Prism): CoverAsk | null {
+  const own = p.d ? ownLayer(p) : undefined; // drapedGeometry's blocks (prismGeometry)
+  if (!own) return null;
+  const precise = p.m === 'pave_grey';
+  return { tris: outlineTriangles(p, true), cell: precise ? terrain.step : p.d!, precise, rank: own[0], group: own[1] };
+}
+
+/**
  * A block out on the relief (p.d metres): its outline triangulated, every triangle cut along
  * the grid (so no piece is bigger than a square) and each corner lifted onto the ground; a
  * hedge or fence also gets its sides, in pieces of at most a square, lifted the same way.
@@ -435,56 +408,40 @@ function drapedGeometry(p: Prism): THREE.BufferGeometry {
   // edges. Those are cut further where the ground isn't flat enough under a piece (hugGround), and only there.
   const precise = p.m === 'pave_grey';
   const hug = HUGGING.has(p.m) || p.m.startsWith('pf:');
-  // One surface per spot (world/groundLayers.ts): the cover's top goes where nothing that beats it lies.
-  const rank = coverRank(p.m);
-  const own = claimOf(p) ?? (rank !== undefined && p.y1 - p.y0 <= 0.15 ? [rank, Infinity] : undefined);
+  const own = ownLayer(p);
   const cell = precise ? terrain.step : p.d!;
   const pos: number[] = [];
   const uv: number[] = [];
   const up = (x: number, z: number, y: number) => [x, y + terrain.height(x, z), z];
-  const contour = p.p[0].map(([x, z]) => new THREE.Vector2(x, z));
-  const holes = p.p.slice(1).map((r) => r.map(([x, z]) => new THREE.Vector2(x, z)));
-  const all = [...contour, ...holes.flat()];
-  const faces = THREE.ShapeUtils.triangulateShape(contour, holes);
-  for (let fi = 0; fi < faces.length; fi++) {
-    const t = faces[fi].map((k): [number, number] => [all[k].x, all[k].y]);
-    // Each triangle of the outline is a group of its own (claimPrism): one that overlaps an earlier one (an outline
-    // that crosses itself) gives way there.
-    const group = own ? own[1] + fi : 0;
-    const xs = t.map((v) => v[0]);
-    const zs = t.map((v) => v[1]);
-    // On the terrain's grid lines, so the pieces' corners lie on the ground's own corners where they can.
-    const gx0 = terrain.x0 + Math.floor((Math.min(...xs) - terrain.x0) / cell) * cell;
-    const gz0 = terrain.z0 + Math.floor((Math.min(...zs) - terrain.z0) / cell) * cell;
-    for (let gx = gx0; gx < Math.max(...xs); gx += cell) {
-      for (let gz = gz0; gz < Math.max(...zs); gz += cell) {
-        const piece = clipToBox(t, gx, gz, gx + cell, gz + cell);
-        const halves = precise ? [clipDiagonal(piece, gx, gz, 1), clipDiagonal(piece, gx, gz, -1)] : [piece];
-        const pieces = own ? halves.flatMap((h) => (h.length < 3 ? [] : groundLayers.cut(h, own[0], group))) : halves;
-        for (const polygon of pieces) {
-          for (let k = 1; k + 1 < polygon.length; k++) {
-            let [a, b, c] = [polygon[0], polygon[k], polygon[k + 1]];
-            if ((b[1] - a[1]) * (c[0] - a[0]) - (b[0] - a[0]) * (c[1] - a[1]) < 0) [b, c] = [c, b]; // facing up
-            if (hug) {
-              hugGround([a, b, c], [p.y1, p.y1, p.y1], (piece) => {
-                for (let j = 1; j + 1 < piece.length; j++) {
-                  for (const v of [piece[0], piece[j], piece[j + 1]]) {
-                    pos.push(...up(v[0], v[1], p.y1));
-                    uv.push(v[0], -v[1]);
-                  }
-                }
-              });
-              continue;
+  // Its cuts worked out ahead in the ground's worker (world/groundCutter.ts), if they were: the same pieces, in order.
+  const ahead = own ? takeCoverCuts(p) : undefined;
+  // Each triangle of the outline is a group of its own (claimPrism): one that overlaps an earlier one (an outline
+  // that crosses itself) gives way there.
+  coverPieces(outlineTriangles(p), cell, precise, terrain, (h, fi) => {
+    const pieces = !own ? [h] : ahead ? ahead.next(h) : groundLayers.cut(h, own[0], own[1] + fi);
+    for (const polygon of pieces) {
+      for (let k = 1; k + 1 < polygon.length; k++) {
+        let [a, b, c] = [polygon[0], polygon[k], polygon[k + 1]];
+        if ((b[1] - a[1]) * (c[0] - a[0]) - (b[0] - a[0]) * (c[1] - a[1]) < 0) [b, c] = [c, b]; // facing up
+        if (hug) {
+          hugGround([a, b, c], [p.y1, p.y1, p.y1], (piece) => {
+            for (let j = 1; j + 1 < piece.length; j++) {
+              for (const v of [piece[0], piece[j], piece[j + 1]]) {
+                pos.push(...up(v[0], v[1], p.y1));
+                uv.push(v[0], -v[1]);
+              }
             }
-            for (const v of [a, b, c]) {
-              pos.push(...up(v[0], v[1], p.y1));
-              uv.push(v[0], -v[1]);
-            }
-          }
+          });
+          continue;
+        }
+        for (const v of [a, b, c]) {
+          pos.push(...up(v[0], v[1], p.y1));
+          uv.push(v[0], -v[1]);
         }
       }
     }
-  }
+  });
+  ahead?.done();
   if (p.y1 - p.y0 > 0.15) {
     for (const ring of p.p) {
       for (let i = 0; i < ring.length; i++) {
@@ -547,13 +504,31 @@ export function claimCovers(prisms: Prism[], ground: number): void {
  * its own, in the order drapedGeometry builds them: an outline that crosses itself overlaps itself there.
  */
 export function claimPrism(p: Prism, rank: number): void {
+  const faces = outlineTriangles(p, p.d !== undefined); // a draped one's again when it is built
+  const first = groundLayers.group(faces.length);
+  faces.forEach((t, k) => groundLayers.claim(t, rank, first + k));
+  markClaimed(p, rank, first);
+}
+
+/** Claimed blocks' outlines in triangles, kept from their claim until they are built (drapedGeometry) */
+const outlines = new WeakMap<Prism, Pt[][]>();
+
+/**
+ * A block's outline in triangles on the plan, as the claim and the build both take it. `keep`: remember them for the
+ * build (claimPrism); the build takes them (and lets them go) or works them out again.
+ */
+export function outlineTriangles(p: Prism, keep = false): Pt[][] {
+  const known = outlines.get(p);
+  if (known) {
+    if (!keep) outlines.delete(p);
+    return known;
+  }
   const contour = p.p[0].map(([x, z]) => new THREE.Vector2(x, z));
   const holes = p.p.slice(1).map((r) => r.map(([x, z]) => new THREE.Vector2(x, z)));
   const all = [...contour, ...holes.flat()];
-  const faces = THREE.ShapeUtils.triangulateShape(contour, holes);
-  const first = groundLayers.group(faces.length);
-  faces.forEach((face, k) => groundLayers.claim(face.map((i): Pt => [all[i].x, all[i].y]), rank, first + k));
-  markClaimed(p, rank, first);
+  const tris = THREE.ShapeUtils.triangulateShape(contour, holes).map((face) => face.map((i): Pt => [all[i].x, all[i].y]));
+  if (keep) outlines.set(p, tris);
+  return tris;
 }
 
 /** A block's geometry: extruded, or draped over the relief (p.d). UVs in metres. */

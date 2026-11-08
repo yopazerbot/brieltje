@@ -128,6 +128,7 @@ import { Crash } from './world/crash';
 import { TyreSpray } from './world/tyreSpray';
 import { clearOpenGround, fitStreetModel, loadStreetModel } from './world/streetModel';
 import { claimModelGround, claimModelGroundSoon } from './world/modelGround';
+import { GroundCutter } from './world/groundCutter';
 import { bakeLight, setBakeDetail } from './world/bakedLight';
 import { setWindowDetail, setWindowNight } from './world/windows';
 import { wet, WetMirror, wetOnModel } from './world/wetGround';
@@ -3684,7 +3685,9 @@ async function buildVillage(): Promise<void> {
     await between();
   }
   // Their ground over the village's covers and streets, and each one's own surfaces one over another cut (world/modelGround.ts).
-  await claimModelGroundSoon(models, house.ground, between);
+  // The cuts are worked out in a worker while the page goes on building (world/groundCutter.ts).
+  const cutter = new GroundCutter();
+  const modelsCut = await claimModelGroundSoon(models, house.ground, between, cutter);
   for (const m of models) snowOnModel(m); // their unbaked outdoor parts take the snow (world/snowCover.ts)
   for (const m of models) wetOnModel(m); // and their streets and yards the rain (world/wetGround.ts)
   for (const m of models) glassOnModel(m); // their windows mirror the street over a room (world/glassLook.ts)
@@ -3714,15 +3717,26 @@ async function buildVillage(): Promise<void> {
   // One surface per spot (world/groundLayers.ts): the covers claimed, then the streets in detail built (cut under the
   // models' ground), then the covers' tiles (cut under both).
   claimCovers(drawn.prisms ?? [], house.ground);
-  const roads = await buildRoadDetailSoon(true, renderer, house.ground, between);
+  // The streets are claimed first: then every claim is in, and the tiles' covers are cut (in the worker) while the streets
+  // and the tiles are built here, the streets between the tiles.
+  const villageTiles = [...splitTiles(drawn, first)];
+  let tileCuts: Promise<void>[] | null = null;
+  const askTiles = () => (tileCuts ??= villageTiles.map(([, t]) => cutter.coversOf(t.prisms ?? [])));
+  let claimed!: () => void;
+  const roadsJob = buildRoadDetailSoon(true, renderer, house.ground, between, cutter, () => (askTiles(), claimed()));
+  await Promise.race([new Promise<void>((r) => (claimed = r)), roadsJob]);
   await between();
   // The centre's clinkers (the church square and the main street) have a texture of their own, fetched with the village: shaded as the other ground covers.
   groundShade.apply(blockMaterial('pave_grey', renderer).material as THREE.MeshStandardMaterial);
   const made: { key: string; pieces: ReturnType<typeof buildTile> }[] = [];
-  for (const [key, t] of splitTiles(drawn, first)) {
+  const cuts = askTiles();
+  for (let i = 0; i < villageTiles.length; i++) {
+    const [key, t] = villageTiles[i];
+    await cuts[i];
     made.push({ key, pieces: buildTile(t, poles, renderer, house.ground, detail) });
     await new Promise((r) => setTimeout(r, 0)); // one tile at a time, between frames
   }
+  const roads = await roadsJob;
   // A set of its own, apart from the ring's (no shadow pass: the sun's shadow is round the house); Molenhoek's far
   // stretch (tile columns from x 904 on) too, as each set draws one run of tiles along the line from the house to the church.
   // Seen from the portal the stretch is a long row of houses down the road: its tiles are drawn within 350 m (the haze
@@ -3743,6 +3757,8 @@ async function buildVillage(): Promise<void> {
     if (set.some(northwest)) tiles.addSet(set.filter(northwest), false, 100, 350);
   }
   world.addPrisms(roads.blocks);
+  await modelsCut;
+  cutter.close();
   await bakes;
   for (const m of models) {
     tiles.group.add(m); // a caster for the village's ground shading, a target for shots

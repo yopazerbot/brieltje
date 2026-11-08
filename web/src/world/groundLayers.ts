@@ -153,26 +153,96 @@ export function minus(p: Pt[], t: Pt[]): Pt[][] {
 /** Development only: ?nolayers leaves every surface whole, as before, for comparing looks and cost. */
 const OFF = !!import.meta.env?.DEV && typeof location !== 'undefined' && new URLSearchParams(location.search).has('nolayers');
 
-/** The claims: triangles on the plan, each with its rank and group, found by the squares they lie over. */
+/** A typed array of `size` numbers that starts with a's. */
+function room<T extends Float64Array | Uint32Array | Uint8Array>(a: T, size: number): T {
+  const b = new (a.constructor as new (n: number) => T)(size);
+  b.set(a);
+  return b;
+}
+
+/**
+ * The claims: triangles on the plan, each with its rank and group, found by the squares they lie over. Kept in typed
+ * arrays (some 300,000 claims for the whole map: as plain lists they held about 46 MB).
+ */
 export class GroundLayers {
-  private pts: number[] = [];
-  private ranks: number[] = [];
-  private groupOf: number[] = [];
-  private boxes: number[] = [];
+  private n = 0;
+  /** Each claim's corners on the plan: x, z three times */
+  private pts = new Float64Array(0);
+  private ranks = new Float64Array(0);
+  private groupOf = new Float64Array(0);
+  /** Each claim's box on the plan: x0, z0, x1, z1 */
+  private boxes = new Float64Array(0);
   /** A claim's plane, y = a x + b z + c (NaN: a claim without heights, that beats by the plan alone) */
-  private planes: number[] = [];
-  /** Beats only surfaces of its own rank (a model's surface above its ground: a step, a sill, a raised floor) */
-  private own: boolean[] = [];
+  private planes = new Float64Array(0);
+  /** Beats only surfaces of its own rank (a model's surface above its ground: a step, a sill, a raised floor): 1 */
+  private own = new Uint8Array(0);
   private cells = new Map<number, number[]>();
   /** The squares claimed in since their lists were last sorted (strongest first: cut stops at the first that can't beat) */
   private unsorted = new Set<number[]>();
-  private seen: number[] = [];
+  private seen = new Uint32Array(0);
   private stamp = 0;
   private groups = 0;
 
   /** How many triangles are claimed. */
   get size(): number {
-    return this.ranks.length;
+    return this.n;
+  }
+
+  /** The claims from number `from` on (up to `n`), as copies (for the ground's worker, world/groundCutter.ts). */
+  claimsFrom(from: number, n = this.n): Claims {
+    return {
+      pts: this.pts.slice(6 * from, 6 * n),
+      ranks: this.ranks.slice(from, n),
+      groupOf: this.groupOf.slice(from, n),
+      planes: this.planes.slice(3 * from, 3 * n),
+      own: this.own.slice(from, n),
+    };
+  }
+
+  /** Claims from another set (claimsFrom), after its own: the same as claimed here one by one. */
+  addClaims(c: Claims): void {
+    const k = c.ranks.length;
+    const n = this.n + k;
+    if (n > this.seen.length) {
+      const m = n + 1024;
+      this.pts = room(this.pts, 6 * m);
+      this.ranks = room(this.ranks, m);
+      this.groupOf = room(this.groupOf, m);
+      this.boxes = room(this.boxes, 4 * m);
+      this.planes = room(this.planes, 3 * m);
+      this.own = room(this.own, m);
+      this.seen = room(this.seen, m);
+    }
+    const i0 = this.n;
+    this.pts.set(c.pts, 6 * i0);
+    this.ranks.set(c.ranks, i0);
+    this.groupOf.set(c.groupOf, i0);
+    this.planes.set(c.planes, 3 * i0);
+    this.own.set(c.own, i0);
+    const p = this.pts;
+    const b = this.boxes;
+    for (let i = i0; i < n; i++) {
+      b[4 * i] = Math.min(p[6 * i], p[6 * i + 2], p[6 * i + 4]);
+      b[4 * i + 1] = Math.min(p[6 * i + 1], p[6 * i + 3], p[6 * i + 5]);
+      b[4 * i + 2] = Math.max(p[6 * i], p[6 * i + 2], p[6 * i + 4]);
+      b[4 * i + 3] = Math.max(p[6 * i + 1], p[6 * i + 3], p[6 * i + 5]);
+      this.index(i);
+    }
+    this.n = n;
+  }
+
+  /** Put claim i in the lists of the squares its box lies over. */
+  private index(i: number): void {
+    const b = this.boxes;
+    for (let cx = Math.floor(b[4 * i] / CELL); cx <= Math.floor(b[4 * i + 2] / CELL); cx++) {
+      for (let cz = Math.floor(b[4 * i + 1] / CELL); cz <= Math.floor(b[4 * i + 3] / CELL); cz++) {
+        const key = cx * 100003 + cz;
+        let list = this.cells.get(key);
+        if (list) list.push(i);
+        else this.cells.set(key, (list = [i]));
+        this.unsorted.add(list);
+      }
+    }
   }
 
   /** A new group (or `n` in a row, the first returned): its claims beat those of the groups after it, of the same rank. */
@@ -191,30 +261,37 @@ export class GroundLayers {
     const [a, b, c] = t;
     // The lowest rank beats nothing: no need to find it.
     if (OFF || rank <= RANK.field || Math.abs(area2(t)) < 1e-8) return;
-    const i = this.ranks.length;
-    this.pts.push(a[0], a[1], b[0], b[1], c[0], c[1]);
-    this.ranks.push(rank);
-    this.groupOf.push(group);
-    if (ys) {
-      const [pa, pb, pc] = plane(t, ys);
-      this.planes.push(pa, pb, pc);
-    } else this.planes.push(NaN, NaN, NaN);
-    this.own.push(ownRank);
-    const x0 = Math.min(a[0], b[0], c[0]);
-    const x1 = Math.max(a[0], b[0], c[0]);
-    const z0 = Math.min(a[1], b[1], c[1]);
-    const z1 = Math.max(a[1], b[1], c[1]);
-    this.boxes.push(x0, z0, x1, z1);
-    this.seen.push(0);
-    for (let cx = Math.floor(x0 / CELL); cx <= Math.floor(x1 / CELL); cx++) {
-      for (let cz = Math.floor(z0 / CELL); cz <= Math.floor(z1 / CELL); cz++) {
-        const key = cx * 100003 + cz;
-        let list = this.cells.get(key);
-        if (list) list.push(i);
-        else this.cells.set(key, (list = [i]));
-        this.unsorted.add(list);
-      }
+    const i = this.n++;
+    if (i >= this.seen.length) {
+      // Every list grown together, by claims (each by its own numbers a claim), to the same room.
+      const m = Math.ceil(i * 1.5) + 1024;
+      this.pts = room(this.pts, 6 * m);
+      this.ranks = room(this.ranks, m);
+      this.groupOf = room(this.groupOf, m);
+      this.boxes = room(this.boxes, 4 * m);
+      this.planes = room(this.planes, 3 * m);
+      this.own = room(this.own, m);
+      this.seen = room(this.seen, m);
     }
+    const p = this.pts;
+    p[6 * i] = a[0];
+    p[6 * i + 1] = a[1];
+    p[6 * i + 2] = b[0];
+    p[6 * i + 3] = b[1];
+    p[6 * i + 4] = c[0];
+    p[6 * i + 5] = c[1];
+    this.ranks[i] = rank;
+    this.groupOf[i] = group;
+    const [pa, pb, pc] = ys ? plane(t, ys) : [NaN, NaN, NaN];
+    this.planes[3 * i] = pa;
+    this.planes[3 * i + 1] = pb;
+    this.planes[3 * i + 2] = pc;
+    this.own[i] = ownRank ? 1 : 0;
+    this.boxes[4 * i] = Math.min(a[0], b[0], c[0]);
+    this.boxes[4 * i + 1] = Math.min(a[1], b[1], c[1]);
+    this.boxes[4 * i + 2] = Math.max(a[0], b[0], c[0]);
+    this.boxes[4 * i + 3] = Math.max(a[1], b[1], c[1]);
+    this.index(i);
   }
 
   /**
@@ -236,20 +313,22 @@ export class GroundLayers {
       this.unsorted.clear();
     }
     const stamp = ++this.stamp;
+    const { ranks, groupOf, boxes: b, seen, own } = this;
     let pieces: Pt[][] = [poly];
     for (let cx = Math.floor(x0 / CELL); cx <= Math.floor(x1 / CELL); cx++) {
       for (let cz = Math.floor(z0 / CELL); cz <= Math.floor(z1 / CELL); cz++) {
         const list = this.cells.get(cx * 100003 + cz);
         if (!list) continue;
-        for (const i of list) {
-          const r = this.ranks[i];
+        for (let k = 0; k < list.length; k++) {
+          const i = list[k];
+          const r = ranks[i];
           // Strongest first: from here on none beats it (but of two with heights, the higher one does, wherever it is).
-          if (r < rank || (r === rank && this.groupOf[i] >= group && !mine)) break;
-          if (this.seen[i] === stamp) continue;
-          this.seen[i] = stamp;
-          if (r !== rank && this.own[i]) continue;
-          const b = this.boxes;
+          if (r < rank || (r === rank && groupOf[i] >= group && !mine)) break;
+          // Its box first (most fail it), then whether it was met in another square already.
           if (b[4 * i] > x1 - EPS || b[4 * i + 2] < x0 + EPS || b[4 * i + 1] > z1 - EPS || b[4 * i + 3] < z0 + EPS) continue;
+          if (seen[i] === stamp) continue;
+          seen[i] = stamp;
+          if (r !== rank && own[i]) continue;
           const heights = mine && !Number.isNaN(this.planes[3 * i]);
           // A neighbour of the same mesh or strip: two triangles with a side in common, on either side of it.
           if (pieces.length === 1 && pieces[0] === poly && poly.length === 3 && this.besides(poly, i)) continue;
@@ -316,23 +395,28 @@ export function plane(t: Pt[], ys: number[]): [number, number, number] {
 }
 
 /** Run a job made of steps (a generator that yields between them) to its end at once. */
-export function runNow<T>(job: Generator<void, T>): T {
+export function runNow<T>(job: Generator<void | Promise<unknown>, T>): T {
   for (;;) {
     const r = job.next();
     if (r.done) return r.value;
+    if (r.value) throw new Error('runNow: a job that waits'); // one that waits for the ground's worker runs with runSoon
   }
 }
 
 /**
  * Run a job made of steps between frames: `between` is awaited each time `slice` ms of work have gone by, so the game
- * goes on drawing while the village is built (it comes in after play has begun).
+ * goes on drawing while the village is built (it comes in after play has begun). A step may give a promise: the job
+ * goes on once it is settled (the ground's worker, world/groundCutter.ts), and the page does other work meanwhile.
  */
-export async function runSoon<T>(job: Generator<void, T>, between: () => Promise<unknown>, slice = 40): Promise<T> {
+export async function runSoon<T>(job: Generator<void | Promise<unknown>, T>, between: () => Promise<unknown>, slice = 40): Promise<T> {
   let start = performance.now();
   for (;;) {
     const r = job.next();
     if (r.done) return r.value;
-    if (performance.now() - start > slice) {
+    if (r.value) {
+      await r.value;
+      start = performance.now();
+    } else if (performance.now() - start > slice) {
       await between();
       start = performance.now();
     }
@@ -355,6 +439,91 @@ export function markClaimed(cover: object, rank: number, group: number): void {
   claimed.set(cover, [rank, group]);
 }
 
+/** A convex polygon clipped to a box (Sutherland-Hodgman). */
+export function clipToBox(poly: [number, number][], x0: number, z0: number, x1: number, z1: number): [number, number][] {
+  let pts = clipSide(poly, 0, x0, 1);
+  if (pts.length >= 3) pts = clipSide(pts, 0, x1, -1);
+  if (pts.length >= 3) pts = clipSide(pts, 1, z0, 1);
+  if (pts.length >= 3) pts = clipSide(pts, 1, z1, -1);
+  return pts.length < 3 ? [] : pts;
+}
+
+/**
+ * One side of clipToBox: keep where coordinate k is at least `bound` (dir 1) or at most it (dir -1). Written out
+ * without closures (it runs for every piece of every cover at load), the arithmetic as it was.
+ */
+function clipSide(pts: [number, number][], k: 0 | 1, bound: number, dir: 1 | -1): [number, number][] {
+  const o = 1 - k;
+  const out: [number, number][] = [];
+  const n = pts.length;
+  for (let i = 0; i < n; i++) {
+    const a = pts[(i + n - 1) % n];
+    const b = pts[i];
+    const inA = dir > 0 ? a[k] >= bound : a[k] <= bound;
+    const inB = dir > 0 ? b[k] >= bound : b[k] <= bound;
+    if (inA !== inB) {
+      const c: [number, number] = [0, 0];
+      c[k] = bound;
+      c[o] = a[o] + ((bound - a[k]) / (b[k] - a[k])) * (b[o] - a[o]);
+      out.push(c);
+    }
+    if (inB) out.push(b);
+  }
+  return out;
+}
+
+/** Keep one side of a terrain cell's diagonal, so paving follows both ground triangles. */
+export function clipDiagonal(poly: [number, number][], gx: number, gz: number, side: number): [number, number][] {
+  const out: [number, number][] = [];
+  for (let i = 0; i < poly.length; i++) {
+    const a = poly[(i + poly.length - 1) % poly.length], b = poly[i];
+    const da = ((a[0] - gx) - (a[1] - gz)) * side;
+    const db = ((b[0] - gx) - (b[1] - gz)) * side;
+    if ((da >= 0) !== (db >= 0)) {
+      const t = da / (da - db);
+      out.push([a[0] + (b[0] - a[0]) * t, a[1] + (b[1] - a[1]) * t]);
+    }
+    if (db >= 0) out.push(b);
+  }
+  return out;
+}
+
+/** A cover's grid (world/houseMeshes.ts drapedGeometry): the terrain's corner and its squares' size. */
+export interface CoverGrid {
+  x0: number;
+  z0: number;
+  step: number;
+}
+
+/**
+ * The pieces a draped cover's top is built of, in the order drapedGeometry builds them: each triangle `t` of its outline
+ * (number `fi`) cut along a grid of `cell` metres laid on the terrain's (and along the squares' diagonals when
+ * `precise`). `each` gets every piece of three corners or more.
+ */
+export function coverPieces(tris: [number, number][][], cell: number, precise: boolean, grid: CoverGrid, each: (piece: [number, number][], fi: number) => void): void {
+  for (let fi = 0; fi < tris.length; fi++) {
+    const t = tris[fi];
+    const xs = t.map((v) => v[0]);
+    const zs = t.map((v) => v[1]);
+    // On the terrain's grid lines, so the pieces' corners lie on the ground's own corners where they can.
+    const gx0 = grid.x0 + Math.floor((Math.min(...xs) - grid.x0) / cell) * cell;
+    const gz0 = grid.z0 + Math.floor((Math.min(...zs) - grid.z0) / cell) * cell;
+    for (let gx = gx0; gx < Math.max(...xs); gx += cell) {
+      for (let gz = gz0; gz < Math.max(...zs); gz += cell) {
+        const piece = clipToBox(t, gx, gz, gx + cell, gz + cell);
+        if (!precise) {
+          if (piece.length >= 3) each(piece, fi);
+          continue;
+        }
+        for (const side of [1, -1]) {
+          const half = clipDiagonal(piece, gx, gz, side);
+          if (half.length >= 3) each(half, fi);
+        }
+      }
+    }
+  }
+}
+
 /** Barycentric weights of (x, z) in the triangle t. */
 export function weightsIn(t: Pt[], x: number, z: number): [number, number, number] {
   const [[ax, az], [bx, bz], [cx, cz]] = t;
@@ -362,4 +531,182 @@ export function weightsIn(t: Pt[], x: number, z: number): [number, number, numbe
   const l1 = ((bz - cz) * (x - cx) + (cx - bx) * (z - cz)) / det;
   const l2 = ((cz - az) * (x - cx) + (ax - cx) * (z - cz)) / det;
   return [l1, l2, 1 - l1 - l2];
+}
+
+/** A run of claims in typed arrays (GroundLayers claimsFrom, addClaims): corners, ranks, groups, planes, own-rank flags. */
+export interface Claims {
+  pts: Float64Array;
+  ranks: Float64Array;
+  groupOf: Float64Array;
+  planes: Float64Array;
+  own: Uint8Array;
+}
+
+/** A polygon to cut: its corners, the surface's rank and group, and its corners' heights (for a model's own surface). */
+export interface CutAsk {
+  t: Pt[];
+  rank: number;
+  group: number;
+  ys?: number[];
+}
+
+/** Polygons to cut, in one list of numbers: for each its corner count, rank, group, whether it has heights, corners, heights. */
+export function packAsks(asks: CutAsk[]): Float64Array {
+  let size = 0;
+  for (const a of asks) size += 4 + a.t.length * (a.ys ? 3 : 2);
+  const out = new Float64Array(size);
+  let o = 0;
+  for (const a of asks) {
+    out[o++] = a.t.length;
+    out[o++] = a.rank;
+    out[o++] = a.group;
+    out[o++] = a.ys ? 1 : 0;
+    for (const [x, z] of a.t) {
+      out[o++] = x;
+      out[o++] = z;
+    }
+    if (a.ys) for (let k = 0; k < a.t.length; k++) out[o++] = a.ys[k];
+  }
+  return out;
+}
+
+/** A cut's outcome into a list of numbers: -1 for the polygon untouched, else the count of pieces and each piece's corners. */
+function putCut(out: number[], poly: Pt[], pieces: Pt[][]): void {
+  if (pieces.length === 1 && pieces[0] === poly) {
+    out.push(-1);
+    return;
+  }
+  out.push(pieces.length);
+  for (const piece of pieces) {
+    out.push(piece.length);
+    for (const [x, z] of piece) out.push(x, z);
+  }
+}
+
+/** Cut every polygon of a packed list (packAsks) by `layers`, in order: their outcomes in one list (read with Cuts). */
+export function cutAsks(layers: GroundLayers, asks: Float64Array): Float64Array {
+  const out: number[] = [];
+  for (let o = 0; o < asks.length; ) {
+    const n = asks[o];
+    const rank = asks[o + 1];
+    const group = asks[o + 2];
+    const heights = asks[o + 3] === 1;
+    o += 4;
+    const t: Pt[] = [];
+    for (let k = 0; k < n; k++, o += 2) t.push([asks[o], asks[o + 1]]);
+    let ys: number[] | undefined;
+    if (heights) {
+      ys = Array.from(asks.subarray(o, o + n));
+      o += n;
+    }
+    putCut(out, t, layers.cut(t, rank, group, ys));
+  }
+  return Float64Array.from(out);
+}
+
+/** A draped cover to cut (world/houseMeshes.ts drapedGeometry): its outline's triangles and how it is cut. */
+export interface CoverAsk {
+  tris: Pt[][];
+  cell: number;
+  precise: boolean;
+  rank: number;
+  /** Its first triangle's group (each triangle of its outline has its own, one after another) */
+  group: number;
+}
+
+/** Covers to cut, in one list of numbers: the grid, then for each its triangle count, cell, precise, rank, group, triangles. */
+export function packCovers(covers: CoverAsk[], grid: CoverGrid): Float64Array {
+  let size = 3;
+  for (const c of covers) size += 5 + 6 * c.tris.length;
+  const out = new Float64Array(size);
+  out[0] = grid.x0;
+  out[1] = grid.z0;
+  out[2] = grid.step;
+  let o = 3;
+  for (const c of covers) {
+    out[o++] = c.tris.length;
+    out[o++] = c.cell;
+    out[o++] = c.precise ? 1 : 0;
+    out[o++] = c.rank;
+    out[o++] = c.group;
+    for (const t of c.tris) {
+      for (const [x, z] of t) {
+        out[o++] = x;
+        out[o++] = z;
+      }
+    }
+  }
+  return out;
+}
+
+/**
+ * Every piece of every packed cover (packCovers) cut by `layers`, as drapedGeometry cuts them: the outcomes in one
+ * list, and where each cover's begin in it.
+ */
+export function cutCovers(layers: GroundLayers, covers: Float64Array): { out: Float64Array; starts: Float64Array } {
+  const grid = { x0: covers[0], z0: covers[1], step: covers[2] };
+  const out: number[] = [];
+  const starts: number[] = [];
+  for (let o = 3; o < covers.length; ) {
+    const n = covers[o];
+    const cell = covers[o + 1];
+    const precise = covers[o + 2] === 1;
+    const rank = covers[o + 3];
+    const group = covers[o + 4];
+    o += 5;
+    const tris: Pt[][] = [];
+    for (let k = 0; k < n; k++, o += 6) tris.push([[covers[o], covers[o + 1]], [covers[o + 2], covers[o + 3]], [covers[o + 4], covers[o + 5]]]);
+    starts.push(out.length);
+    coverPieces(tris, cell, precise, grid, (h, fi) => putCut(out, h, layers.cut(h, rank, group + fi)));
+  }
+  return { out: Float64Array.from(out), starts: Float64Array.from(starts) };
+}
+
+/** Reads cut outcomes (cutAsks, cutCovers) one by one, for the polygons in the order they were asked. */
+export class Cuts {
+  private out: Float64Array;
+  private at: number;
+  private end: number;
+
+  constructor(out: Float64Array, at = 0, end = out.length) {
+    this.out = out;
+    this.at = at;
+    this.end = end;
+  }
+
+  /** The pieces of the next polygon `poly` (the same as asked): [poly] itself when it was left whole. */
+  next(poly: Pt[]): Pt[][] {
+    const o = this.out;
+    if (this.at >= this.end) throw new Error('ground cuts: more pieces asked for than were cut');
+    const count = o[this.at++];
+    if (count === -1) return [poly];
+    const pieces: Pt[][] = [];
+    for (let p = 0; p < count; p++) {
+      const n = o[this.at++];
+      const piece: Pt[] = [];
+      for (let k = 0; k < n; k++, this.at += 2) piece.push([o[this.at], o[this.at + 1]]);
+      pieces.push(piece);
+    }
+    return pieces;
+  }
+
+  /** At the end: every outcome read (else the asks and the build went different ways). */
+  done(): void {
+    if (this.at !== this.end) throw new Error('ground cuts: fewer pieces asked for than were cut');
+  }
+}
+
+/** Covers whose cuts were worked out ahead (world/groundCutter.ts), until they are built. */
+const coverCuts = new WeakMap<object, Cuts>();
+
+/** Give a cover its cuts worked out ahead: drapedGeometry reads them instead of cutting. */
+export function setCoverCuts(cover: object, cuts: Cuts): void {
+  coverCuts.set(cover, cuts);
+}
+
+/** A cover's cuts worked out ahead, once (a later build of it cuts again). */
+export function takeCoverCuts(cover: object): Cuts | undefined {
+  const c = coverCuts.get(cover);
+  coverCuts.delete(cover);
+  return c;
 }

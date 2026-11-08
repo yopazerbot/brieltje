@@ -1,5 +1,6 @@
 import * as THREE from 'three';
 import { area2, groundLayers, plane, RANK, runNow, runSoon, weightsIn, type Pt } from './groundLayers';
+import type { GroundCutter } from './groundCutter';
 import { clipDiagonal, clipToBox } from './houseMeshes';
 import { terrain } from './terrain';
 
@@ -94,15 +95,31 @@ function read(a: THREE.BufferAttribute | THREE.InterleavedBufferAttribute, i: nu
  * their triangles were cut.
  */
 export function claimModelGround(models: THREE.Object3D[], ground: number): number {
-  return runNow(claiming(models, ground));
+  const found = runNow(claiming(models, ground));
+  return runNow(cutting(found, (face) => groundLayers.cut(face.t, RANK.model, face.group, face.ys)));
 }
 
-/** The same between frames (runSoon), for the village's models while play goes on. */
-export function claimModelGroundSoon(models: THREE.Object3D[], ground: number, between: () => Promise<unknown>): Promise<number> {
-  return runSoon(claiming(models, ground), between);
+/**
+ * The same between frames (runSoon), for the village's models while play goes on: once their ground is claimed, the
+ * cuts of their own surfaces are worked out by `cutter` (world/groundCutter.ts) while the page goes on, and put in
+ * later. Resolves once claimed, with what resolves once they are cut.
+ */
+export async function claimModelGroundSoon(models: THREE.Object3D[], ground: number, between: () => Promise<unknown>, cutter: GroundCutter): Promise<Promise<number>> {
+  const found = await runSoon(claiming(models, ground), between);
+  const cuts = cutter.cut(found.faces.map((face) => ({ t: face.t, rank: RANK.model, group: face.group, ys: face.ys })));
+  return cuts.then((c) => {
+    const job = cutting(found, (face) => c.next(face.t));
+    return runSoon(job, between).finally(() => c.done());
+  });
 }
 
-function* claiming(models: THREE.Object3D[], ground: number): Generator<void, number> {
+/** The models' surfaces facing up near the grass, claimed, and how many meshes share each geometry. */
+interface Found {
+  faces: Face[];
+  users: Map<THREE.BufferGeometry, number>;
+}
+
+function* claiming(models: THREE.Object3D[], ground: number): Generator<void, Found> {
   const faces: Face[] = [];
   const users = new Map<THREE.BufferGeometry, number>();
   const v = [new THREE.Vector3(), new THREE.Vector3(), new THREE.Vector3()];
@@ -173,13 +190,17 @@ function* claiming(models: THREE.Object3D[], ground: number): Generator<void, nu
       }
     }
   }
-  // Each model's own lower surfaces, cut under its higher ones.
+  return { faces, users };
+}
+
+/** Each model's own lower surfaces, cut under its higher ones (`cut`: a face's pieces), in their geometry. */
+function* cutting({ faces, users }: Found, cutOf: (face: Face) => Pt[][]): Generator<void, number> {
   const cuts = new Map<THREE.Mesh, Map<number, { t: Pt[]; pieces: Pt[][] }>>();
   let cut = 0;
   for (let n = 0; n < faces.length; n++) {
     const face = faces[n];
     if (n % 500 === 499) yield;
-    const pieces = groundLayers.cut(face.t, RANK.model, face.group, face.ys);
+    const pieces = cutOf(face);
     if (pieces.length === 1 && pieces[0] === face.t) continue;
     let m = cuts.get(face.mesh);
     if (!m) cuts.set(face.mesh, (m = new Map()));

@@ -1,7 +1,8 @@
 import * as THREE from 'three';
 import data from '../data/roadDetail.json';
 import type { Prism, Surroundings } from './houseData';
-import { GroundLayers, groundLayers, RANK, runNow, runSoon, weightsIn, type Pt } from './groundLayers';
+import type { GroundCutter } from './groundCutter';
+import { GroundLayers, groundLayers, RANK, runNow, runSoon, weightsIn, type Cuts, type Pt } from './groundLayers';
 import { blockMaterial, claimPrism, hugGround, prismGeometry } from './houseMeshes';
 import { solidNormals } from './normals';
 import { terrain } from './terrain';
@@ -381,6 +382,8 @@ class Builder {
   private runKey = '';
   private deferred: { mesh: Mesh; a: Corner; b: Corner; c: Corner; rank: number; group: number }[] = [];
   private later: (() => void)[] = [];
+  /** The fills' and patches' blocks, built in finishing (their cuts can be worked out ahead: askCuts) */
+  private laterBlocks: Prism[] = [];
 
   constructor(village: boolean, private renderer: THREE.WebGLRenderer, private ground: number, paint: THREE.MeshStandardMaterial) {
     this.parts = new Parts(village);
@@ -481,13 +484,41 @@ class Builder {
     this.rank = was;
   }
 
-  /** Lay every strip's triangle (drape) cut to what no surface that beats it claims, then the fills and patches: in steps. */
-  *finishing(): Generator<void, void> {
+  /**
+   * Once every strip is claimed: the cuts of the strips' triangles, and of the fills and patches (given to their blocks:
+   * world/groundLayers.ts setCoverCuts), worked out by `cutter` (world/groundCutter.ts) while the page goes on.
+   */
+  askCuts(cutter: GroundCutter): Promise<[Cuts, unknown]> {
+    const fills = cutter.coversOf(this.laterBlocks);
+    // Packed as world/groundLayers.ts packAsks does (each a triangle without heights), with no object for each.
+    const packed = new Float64Array(this.deferred.length * 10);
+    let o = 0;
+    for (const d of this.deferred) {
+      packed[o++] = 3;
+      packed[o++] = d.rank;
+      packed[o++] = d.group;
+      packed[o++] = 0;
+      packed[o++] = d.a[0];
+      packed[o++] = d.a[1];
+      packed[o++] = d.b[0];
+      packed[o++] = d.b[1];
+      packed[o++] = d.c[0];
+      packed[o++] = d.c[1];
+    }
+    const strips = cutter.cutPacked(packed);
+    return Promise.all([strips, fills]);
+  }
+
+  /**
+   * Lay every strip's triangle (drape) cut to what no surface that beats it claims, then the fills and patches: in steps.
+   * `ahead`: the strips' cuts worked out ahead (askCuts), in their order.
+   */
+  *finishing(ahead?: Cuts): Generator<void, void> {
     for (let n = 0; n < this.deferred.length; n++) {
       const d = this.deferred[n];
       if (n % 1000 === 999) yield;
       const t: Pt[] = [[d.a[0], d.a[1]], [d.b[0], d.b[1]], [d.c[0], d.c[1]]];
-      const pieces = groundLayers.cut(t, d.rank, d.group);
+      const pieces = ahead ? ahead.next(t) : groundLayers.cut(t, d.rank, d.group);
       if (pieces.length === 1 && pieces[0] === t) {
         this.lay(d.mesh, d.a, d.b, d.c);
         continue;
@@ -497,6 +528,7 @@ class Builder {
         for (let i = 1; i + 1 < cs.length; i++) this.lay(d.mesh, cs[0], cs[i], cs[i + 1]);
       }
     }
+    ahead?.done();
     this.deferred = [];
     for (let n = 0; n < this.later.length; n++) {
       this.later[n]();
@@ -880,6 +912,7 @@ class Builder {
     // Claimed now with the streets, built once all are in (finishing): under the streets that cross it.
     const block: Prism = { m, y0: this.road - 0.06, y1: this.road, p, d: 4 };
     claimPrism(block, RANK.carriageway);
+    this.laterBlocks.push(block);
     this.later.push(() => this.fillMesh(m, block, cx, cz));
   }
 
@@ -927,6 +960,7 @@ class Builder {
     // Over the paving it lies on, which gives way under it (world/groundLayers.ts); built in finishing.
     const block: Prism = { m: 'pave_grey', y0: this.road + PATCH_LIFT - 0.01, y1: this.road + PATCH_LIFT, p, d: 4 };
     claimPrism(block, RANK.plateau);
+    this.laterBlocks.push(block);
     this.later.push(() => this.patchMesh(t, block, cx, cz));
   }
 
@@ -1031,12 +1065,16 @@ export function buildRoadDetail(village: boolean, renderer: THREE.WebGLRenderer,
   return runNow(building(village, renderer, ground));
 }
 
-/** The same between frames (runSoon): the village's, built while play goes on. */
-export function buildRoadDetailSoon(village: boolean, renderer: THREE.WebGLRenderer, ground: number, between: () => Promise<unknown>): Promise<{ tiles: { key: string; pieces: Piece[] }[]; blocks: Prism[] }> {
-  return runSoon(building(village, renderer, ground), between);
+/**
+ * The same between frames (runSoon): the village's, built while play goes on, its cuts worked out by `cutter`
+ * (world/groundCutter.ts). `claimed` is called once every strip is claimed (the last of the village's claims), before
+ * the streets ask for their own cuts: the asks made in it are cut first.
+ */
+export function buildRoadDetailSoon(village: boolean, renderer: THREE.WebGLRenderer, ground: number, between: () => Promise<unknown>, cutter: GroundCutter, claimed: () => void): Promise<{ tiles: { key: string; pieces: Piece[] }[]; blocks: Prism[] }> {
+  return runSoon(building(village, renderer, ground, cutter, claimed), between);
 }
 
-function* building(village: boolean, renderer: THREE.WebGLRenderer, ground: number): Generator<void, { tiles: { key: string; pieces: Piece[] }[]; blocks: Prism[] }> {
+function* building(village: boolean, renderer: THREE.WebGLRenderer, ground: number, cutter?: GroundCutter, claimed?: () => void): Generator<void | Promise<unknown>, { tiles: { key: string; pieces: Piece[] }[]; blocks: Prism[] }> {
   if (OFF) return { tiles: [], blocks: [] };
   const b = new Builder(village, renderer, ground, roadPaint);
   for (const r of DETAIL.runs) {
@@ -1047,6 +1085,13 @@ function* building(village: boolean, renderer: THREE.WebGLRenderer, ground: numb
   if (village) b.school(DETAIL.school, DETAIL.zebras);
   for (const p of DETAIL.patches ?? []) b.patch(p.t, p.r);
   for (const t of DETAIL.teeth) b.teeth(t);
-  yield* b.finishing();
+  if (cutter) {
+    claimed?.();
+    let ahead: Cuts | undefined;
+    yield b.askCuts(cutter).then(([strips]) => {
+      ahead = strips;
+    });
+    yield* b.finishing(ahead);
+  } else yield* b.finishing();
   return { tiles: b.parts.tiles(), blocks: b.parts.blocks };
 }
