@@ -255,6 +255,15 @@
           <p class="muted small">Lost your phone and your recovery codes? Change ADMIN_PASSWORD in Railway. At its next start the server turns two-step login off, and you log in with the new password.</p>
         </div>
         <p class="error" id="mfa-err" role="alert" hidden></p>
+        <!-- Every other admin session ends (server.mjs /api/admin/sessions). -->
+        <h2 class="sub">Admin sessions</h2>
+        <p class="muted">This panel stays logged in on this browser until you log out, or after 14 days without using it. Logged in somewhere you can't reach now, like a shared or lost device? End every admin session but this browser's: on the panel and in the game.</p>
+        <p class="muted small" id="sess-count" aria-live="polite"></p>
+        <form class="mfa-row" id="sess-form" autocomplete="off">
+          <input type="text" id="sess-code" autocomplete="one-time-code" autocapitalize="off" maxlength="11" spellcheck="false" placeholder="Code" aria-label="Code from your authenticator app" hidden />
+          <button class="btn ghost danger" type="submit" id="sess-out">Log out every other admin session</button>
+        </form>
+        <p class="error" id="sess-err" role="alert" hidden></p>
       </section>
       <section data-panel="logins" id="panel-logins" role="tabpanel" aria-labelledby="tab-logins" hidden>
         <div class="stats" id="login-kpis"></div>

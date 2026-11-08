@@ -206,6 +206,9 @@ async function api(req, res, url) {
   // seatOf). One that isn't 1 to 4 is refused outright rather than read as no seat.
   const seat = seatOf(req);
   if (seat < 0) return json(res, 400, { error: 'Bad seat' });
+  // A call of the panel (brieltje.be/admin): its session's idle limit starts again (server/auth.mjs touchPanel). Only
+  // these paths: the game, the forms and the beacon in the same browser never keep the panel's session alive.
+  if (path.startsWith('/api/admin/')) auth.touchPanel(req);
   // The public key that private files are sealed with (server/privateCrypto.mjs). Public by design: it only
   // lets anyone seal, never open, and the private key is a random secret, so it is no password oracle.
   // Without PRIVATE_DATA_KEY there is no key and nothing to answer.
@@ -239,8 +242,12 @@ async function api(req, res, url) {
     const b = await body(req);
     const r = await auth.login(req, b.username, b.password, typeof b.code === 'string' ? b.code.slice(0, 20) : '');
     if (r.error) return refuse(res, r);
-    return json(res, 200, { username: r.username, role: r.role }, { 'Set-Cookie': [auth.cookie(r.token, r.ms / 1000, seat), auth.deviceCookie(r.device)] });
+    // The panel's session in its own cookie; the game's admin session (12 hours) in the game's.
+    return json(res, 200, { username: r.username, role: r.role }, { 'Set-Cookie': [auth.panelCookie(r.panel.token), auth.cookie(r.token, r.ms / 1000, seat), auth.deviceCookie(r.device)] });
   }
+  // The panel's own calls (brieltje.be/admin), from its own session (server/auth.mjs panelSession), never the game's
+  // cookie alone (that only while two-step login is off, as before).
+  if (path.startsWith('/api/admin/')) return panelApi(req, res, path, method, seat);
   if (path === '/api/join' && method === 'POST') {
     const b = await body(req);
     // Playing together (with its chat) is for 13 and over: the page asks, and only sends this once ticked.
@@ -363,9 +370,47 @@ async function api(req, res, url) {
     await body(req);
     return json(res, 200, { lifted: auth.liftLockouts(s.username) });
   }
-  // The players' accounts (brieltje.be/admin): the list, and a new password, off, on or delete.
-  // From here on brieltje.be/admin only: the game's admin login doesn't open it while two-step login is on.
-  if (!auth.panelAdmin(req)) return json(res, 403, { error: 'Log in on brieltje.be/admin', code: 'panelOnly' });
+  return json(res, 404, { error: 'Not found', code: 'notFound' });
+}
+
+/** This browser's admin sessions: the panel's `s`, and the game's admin session in its cookie, if any. */
+const mine = (req, s) => [s.key, ...(auth.session(req)?.role === 'admin' ? [auth.session(req).key] : [])];
+
+/**
+ * brieltje.be/admin's own calls (/api/admin/...) that the modules above don't answer: logging out, two-step login,
+ * every other admin session, the rooms, the accounts. Each from the panel's session (server/auth.mjs panelSession);
+ * the game's admin login doesn't open them while two-step login is on.
+ */
+async function panelApi(req, res, path, method, seat) {
+  // Log out on the panel: its session and this browser's game admin session (server/auth.mjs panelLogout). A player's
+  // or a guest's game cookie in the same browser stays.
+  if (path === '/api/admin/logout' && method === 'POST') {
+    await body(req);
+    const gameAdmin = auth.session(req)?.role === 'admin';
+    await auth.panelLogout(req);
+    return json(res, 200, { ok: true }, { 'Set-Cookie': [auth.panelCookie('', 0), ...(gameAdmin ? [auth.cookie('', 0, seat)] : [])] });
+  }
+  const s = auth.panelSession(req);
+  if (!s) return auth.session(req) ? json(res, 403, { error: 'Log in on brieltje.be/admin', code: 'panelOnly' }) : json(res, 401, { error: 'Not logged in', code: 'notLoggedIn' });
+  // Every other admin session ends (a shared or lost device): the panel's and the game's, everywhere but this browser.
+  // With two-step login on it asks for a code (or a recovery code), as turning it off does; wrong ones count the same.
+  if (path === '/api/admin/sessions' && method === 'GET') {
+    return json(res, 200, { others: auth.otherAdminSessions(mine(req, s)), mfa: auth.mfa.on });
+  }
+  if (path === '/api/admin/sessions' && method === 'POST') {
+    const b = await body(req);
+    if (b.op !== 'logout-others') return json(res, 400, { error: 'Unknown action', code: 'badOp' });
+    if (auth.mfa.on) {
+      if (auth.codeLimited(req, s.key)) return refuse(res, { error: 'Too many attempts. Try again in 15 minutes.', code: 'tooMany', status: 429 });
+      if (!(await auth.mfa.check(typeof b.code === 'string' ? b.code.slice(0, 20) : ''))) {
+        auth.codeWrong(req, s.username, s.key);
+        return refuse(res, { error: 'That code is not right. Type the 6 digits the app shows now.', code: 'wrongCode', status: 401 });
+      }
+    }
+    const ended = await auth.endOtherAdminSessions(mine(req, s));
+    auth.log('admin_logout_others', req, { username: s.username, detail: `${ended} ended` });
+    return json(res, 200, { ok: true, ended });
+  }
   // The admin's two-step login (server/adminMfa.mjs): on or off; setting up (a secret as a QR code, then a code
   // to confirm); off or new recovery codes, each with a code. Wrong codes count like wrong admin passwords.
   if (path === '/api/admin/mfa' && method === 'GET') return json(res, 200, auth.mfa.view());
@@ -382,7 +427,8 @@ async function api(req, res, url) {
     if (r.code === 'wrongCode') auth.codeWrong(req, s.username, s.key);
     return r.error ? refuse(res, r) : json(res, 200, r);
   }
-  // The admin closes a Zombies room (server/rooms.mjs): its players go back to the open world.
+  // The Zombies rooms with who opened each (server/rooms.mjs); the admin closes one: its players go back to the open world.
+  if (path === '/api/admin/rooms' && method === 'GET') return json(res, 200, rooms.list());
   if (path === '/api/admin/rooms' && method === 'POST') {
     const b = await body(req);
     return rooms.close(b.id, s.username) ? json(res, 200, { ok: true }) : json(res, 404, { error: 'No such room', code: 'notFound' });

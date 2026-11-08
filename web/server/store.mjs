@@ -150,9 +150,19 @@ class FileStore {
     this.data.sessions = this.data.sessions.filter((s) => s.expires > now);
     return this.data.sessions;
   }
-  /** `device`: the guest cookie's id of the browser that joined (server/auth.mjs kick), if any. */
-  async saveSession(key, username, role, expires, device = null) {
-    this.data.sessions.push({ key, username, role, expires, ...(device ? { device } : {}) });
+  /**
+   * `device`: the guest cookie's id of the browser that joined (server/auth.mjs kick), if any, or 'panel' for the admin
+   * panel's session. `since`: a panel session's login time (server/auth.mjs PANEL_MS).
+   */
+  async saveSession(key, username, role, expires, device = null, since = null) {
+    this.data.sessions.push({ key, username, role, expires, ...(device ? { device } : {}), ...(since ? { since } : {}) });
+    await this.save();
+  }
+  /** A panel session's idle limit moved on (server/auth.mjs touchPanel). */
+  async touchSession(key, expires) {
+    const s = this.data.sessions.find((x) => x.key === key);
+    if (!s) return;
+    s.expires = expires;
     await this.save();
   }
   async deleteSession(key) {
@@ -408,6 +418,7 @@ class PgStore {
         expires bigint not null
       );
       alter table sessions add column if not exists device text;
+      alter table sessions add column if not exists since bigint;
       create table if not exists furniture (
         id serial primary key,
         item text not null,
@@ -498,11 +509,14 @@ class PgStore {
   }
   async loadSessions(now) {
     await this.pool.query('delete from sessions where expires <= $1', [now]);
-    const r = await this.pool.query('select key, username, role, expires, device from sessions');
-    return r.rows.map((s) => ({ ...s, expires: Number(s.expires) }));
+    const r = await this.pool.query('select key, username, role, expires, device, since from sessions');
+    return r.rows.map((s) => ({ ...s, expires: Number(s.expires), since: s.since === null ? null : Number(s.since) }));
   }
-  async saveSession(key, username, role, expires, device = null) {
-    await this.pool.query('insert into sessions (key, username, role, expires, device) values ($1, $2, $3, $4, $5)', [key, username, role, expires, device]);
+  async saveSession(key, username, role, expires, device = null, since = null) {
+    await this.pool.query('insert into sessions (key, username, role, expires, device, since) values ($1, $2, $3, $4, $5, $6)', [key, username, role, expires, device, since]);
+  }
+  async touchSession(key, expires) {
+    await this.pool.query('update sessions set expires = $2 where key = $1', [key, expires]);
   }
   async deleteSession(key) {
     await this.pool.query('delete from sessions where key = $1', [key]);

@@ -20,7 +20,7 @@ function memoryStore() {
     async setMeta(key, value) { this.meta.set(key, value); },
     async pruneLog() {}, async log() {},
     async loadSessions() { return this.sessions; },
-    async saveSession(key, username, role, expires, device) { this.sessions.push({ key, username, role, expires, ...(device ? { device } : {}) }); },
+    async saveSession(key, username, role, expires, device, since) { this.sessions.push({ key, username, role, expires, ...(device ? { device } : {}), ...(since ? { since } : {}) }); },
     async deleteSession(key) { this.sessions = this.sessions.filter((s) => s.key !== key); },
     async deleteSessionsOf(username) { this.sessions = this.sessions.filter((s) => s.username !== username); },
     async getAccount() { return null; },
@@ -47,7 +47,7 @@ async function setUp() {
   await auth.loadSessions();
   const first = await auth.login(req(), 'yoshi', secretPass);
   assert.equal(first.role, 'admin');
-  const key = [...auth.sessions.keys()][0];
+  const key = first.panel.key; // the panel's session (the login also gives one for the game)
   const started = auth.mfa.start(key, 'yoshi');
   assert.match(started.uri, /^otpauth:\/\/totp\/Brieltje%3Ayoshi\?secret=[A-Z2-7]{32}&issuer=Brieltje/);
   assert.ok(started.qr.d.length > 100);
@@ -154,15 +154,16 @@ test("the game's admin login needs no code but can't open the panel; the panel's
   await auth.mfa.confirm(key, totp(secret, Math.floor(Date.now() / 30000) - 1));
   const game = await auth.login(req('192.0.2.70'), 'yoshi', secretPass, '', false);
   assert.equal(game.role, 'admin', 'no code in the game');
-  const asCookie = (t) => ({ headers: { cookie: `${auth.names.session}=${t}` }, socket: { remoteAddress: '192.0.2.70' } });
+  const asCookie = (t, name = auth.names.session) => ({ headers: { cookie: `${name}=${t}` }, socket: { remoteAddress: '192.0.2.70' } });
   assert.equal(auth.panelAdmin(asCookie(game.token)), false, "the game's session doesn't open the panel");
   const panel = await auth.login(req('192.0.2.71'), 'yoshi-panel', secretPass, totp(secret, Math.floor(Date.now() / 30000)));
-  assert.equal(auth.panelAdmin(asCookie(panel.token)), true);
+  assert.equal(auth.panelAdmin(asCookie(panel.panel.token, auth.names.panel)), true);
+  assert.equal(auth.panelAdmin(asCookie(panel.token)), false, "the panel login's game session doesn't open the panel either");
   const again = new Auth(store, false);
   again.log = () => {};
   await again.loadSessions();
   assert.equal(again.panelAdmin(asCookie(game.token)), false);
-  assert.equal(again.panelAdmin(asCookie(panel.token)), true);
+  assert.equal(again.panelAdmin(asCookie(panel.panel.token, auth.names.panel)), true);
   // Off: any admin session opens the panel, as before two-step login.
   await auth.mfa.change('off', totp(secret, Math.floor(Date.now() / 30000) + 1), 'yoshi');
   assert.equal(auth.panelAdmin(asCookie(game.token)), true);

@@ -20,7 +20,7 @@ function memoryStore() {
     async setMeta(key, value) { this.meta.set(key, value); },
     async pruneLog() {}, async log() {},
     async loadSessions() { return this.sessions; },
-    async saveSession(key, username, role, expires) { this.sessions.push({ key, username, role, expires }); },
+    async saveSession(key, username, role, expires, device, since) { this.sessions.push({ key, username, role, expires, ...(device ? { device } : {}), ...(since ? { since } : {}) }); },
     async deleteSession(key) { this.sessions = this.sessions.filter((s) => s.key !== key); },
     async deleteSessionsOf(username) { this.sessions = this.sessions.filter((s) => s.username !== username); },
     accounts: new Map(),
@@ -99,8 +99,9 @@ test('admin login, device cookies and existing scrypt session fingerprints remai
   restored.log = () => {};
   await restored.loadSessions();
   assert.equal(store.meta.get('admin_fp'), fingerprint);
-  assert.equal(restored.sessions.size, 1);
-  assert.equal([...restored.sessions.values()][0].role, 'admin');
+  // The login's two sessions: the game's (12 hours) and the panel's own (server/auth.mjs panelSession).
+  assert.equal(restored.sessions.size, 2);
+  assert.deepEqual([...restored.sessions.values()].map((s) => [s.role, s.panel]).sort(), [['admin', false], ['admin', true]]);
 });
 
 test('wrong admin guesses still hit the existing per-address rate limit', async () => {

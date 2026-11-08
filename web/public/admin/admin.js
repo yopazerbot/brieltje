@@ -26,6 +26,7 @@
     room_opened: ['Zombies room opened', '', ''], room_closed: ['Zombies room closed', '', ''],
     login_mfa_failed: ['Wrong two-step code at login', 'bad', 'failed'], mfa_code_failed: ['Wrong two-step code', 'bad', 'failed'],
     mfa_on: ['Two-step login turned on', '', 'admin'], mfa_off: ['Two-step login turned off', '', 'admin'], mfa_codes: ['New recovery codes', '', 'admin'],
+    admin_logout_others: ['Other admin sessions logged out', '', 'admin'],
     mfa_recovery_used: ['Recovery code used', '', 'admin'], mfa_reset: ['Two-step login off (new admin password)', 'bad', 'admin'],
     login_failed: ['Wrong password', 'bad', 'failed'], pin_failed: ['Wrong PIN', 'bad', 'failed'], pin_limited: ['PIN guessing paused for everyone', 'bad', 'failed'],
     pin_limited_address: ['PIN guessing paused for everyone at an address', 'bad', 'failed'], pin_limited_device: ['PIN guessing paused for one browser', 'bad', 'failed'],
@@ -232,7 +233,10 @@
     if (name === 'feedback') loadFeedback();
     if (name === 'homes') loadHomes();
     if (name === 'accounts') loadAccounts();
-    if (name === 'security') loadMfa();
+    if (name === 'security') {
+      loadMfa();
+      loadSessions();
+    }
     if (name === 'online') loadRooms();
   }
   for (const b of tabButtons) b.addEventListener('click', () => openTab(b.dataset.tab, 'push'));
@@ -1129,9 +1133,38 @@
   $('mfa-new-codes').addEventListener('click', () => mfaChange('codes'));
   $('mfa-turn-off').addEventListener('click', () => mfaChange('off'));
 
-  // ---- the Zombies rooms (GET /api/rooms, POST /api/admin/rooms): the admin closes one
+  // ---- every other admin session ends (GET and POST /api/admin/sessions); with two-step login on, with a code
+  const sessErr = (text) => {
+    $('sess-err').textContent = text || '';
+    $('sess-err').hidden = !text;
+  };
+  async function loadSessions() {
+    const r = await fetch('/api/admin/sessions').catch(() => null);
+    if (!r || !r.ok) return;
+    const v = await r.json();
+    $('sess-count').textContent = v.others ? `${count(v.others, 'other admin session')} now.` : 'No other admin session now.';
+    $('sess-code').hidden = !v.mfa;
+  }
+  $('sess-form').addEventListener('submit', async (e) => {
+    e.preventDefault();
+    const code = $('sess-code').value;
+    if (!$('sess-code').hidden && !code.trim()) {
+      sessErr('Type a code from the app first.');
+      $('sess-code').focus();
+      return;
+    }
+    if (!confirm('Log out every other admin session? This browser stays logged in.')) return;
+    const r = await post('/api/admin/sessions', { op: 'logout-others', ...(code ? { code } : {}) }).catch(() => null);
+    const d = r ? await r.json().catch(() => ({})) : {};
+    $('sess-code').value = '';
+    if (!r || !r.ok) return sessErr(d.error || 'That didn\'t work. Try again.');
+    sessErr('');
+    $('sess-count').textContent = `${count(d.ended, 'admin session')} logged out.`;
+  });
+
+  // ---- the Zombies rooms (GET and POST /api/admin/rooms): the admin closes one
   async function loadRooms() {
-    const r = await fetch('/api/rooms').catch(() => null);
+    const r = await fetch('/api/admin/rooms').catch(() => null);
     if (!r || !r.ok) return;
     const { rooms } = await r.json();
     $('room-empty').hidden = rooms.length > 0;
@@ -1394,7 +1427,7 @@
   $('logout').addEventListener('click', async () => {
     live?.close();
     live = null;
-    await post('/api/logout', {});
+    await post('/api/admin/logout', {});
     entries = [];
     log = [];
     feedback = [];

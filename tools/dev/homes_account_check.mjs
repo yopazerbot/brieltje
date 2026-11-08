@@ -24,7 +24,7 @@ const call = async (method, path, body, cookie = '') => {
   const r = await fetch(o.api + path, { method, headers: { 'Content-Type': 'application/json', Origin: o.api, Cookie: cookie }, body: body ? JSON.stringify(body) : undefined });
   return { r, data: await r.json().catch(() => null) };
 };
-const cookieOf = (r) => r.headers.getSetCookie().map((c) => c.split(';')[0]).filter((c) => /_session=./.test(c)).join('; ');
+const cookieOf = (r) => r.headers.getSetCookie().map((c) => c.split(';')[0]).filter((c) => /_(session|panel)=./.test(c)).join('; ');
 const wait = (ms) => new Promise((r) => setTimeout(r, ms));
 /** Has this session the right to the house? 403: no; 200 or 404 (no inside on this server): yes. */
 const inside = async (cookie) => (await call('GET', '/api/home/house/inside', undefined, cookie)).r.status !== 403;

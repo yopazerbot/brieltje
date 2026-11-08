@@ -52,8 +52,15 @@ const SESSION_MS = 12 * 3600_000;
  * cookie (Chrome caps Max-Age at 400 days). It still ends on Log out, with a new admin password (ADMIN_PASSWORD
  * changed: the admin's sessions are dropped at start), and for the other admin sessions when two-step login is
  * turned on (server/adminMfa.mjs). The game's own admin login (`panel` false) keeps SESSION_MS.
+ *
+ * It lives in a cookie of its own (names.panel), read only by the panel's calls (panelSession), never by the game
+ * (session): a browser that logged in on /admin is not the game's admin for 400 days, only for the 12 hours of the
+ * game session that the same login gives (session hijacking on a shared device). It also ends after PANEL_IDLE_MS
+ * without any panel call: the store's `expires` of a panel session is moved on as it is used (touchPanel).
  */
 export const PANEL_MS = 400 * 24 * 3600_000;
+export const PANEL_IDLE_MS = 14 * 24 * 3600_000;
+const PANEL_TOUCH_MS = 3600_000; // a panel session's `expires` is written at most once an hour
 const MAX_FAILS = 10; // wrong admin passwords per address
 const FAIL_WINDOW_MS = 15 * 60_000;
 const ADMIN_FAILS = 20; // tries at the admin password in an hour, from browsers that never logged in as admin
@@ -279,6 +286,10 @@ export class Auth {
       : { session: 'briel_session', device: 'briel_device', guest: 'briel_guest', acct: 'briel_acct' };
     // Split screen: seat N's session cookie (see seatOf). The same prefix and flags as the session's.
     this.names.seats = Array.from({ length: SEATS }, (_, i) => `${secure ? '__Host-' : ''}briel_seat${i + 1}`);
+    // The /admin panel's session (PANEL_MS): the same prefix and flags. __Host- needs Path=/, so the browser sends it with
+    // every call; only the panel's calls read it (panelSession).
+    this.names.panel = `${secure ? '__Host-' : ''}briel_panel`;
+    this.adminGen = 0; // raised when the admin ends every other admin session: a login still saving its own gets none
     this.sessions = new Map(); // hash of the token -> { username, role, expires, ip, device }
     this.failures = new Attempts(FAIL_WINDOW_MS); // wrong admin passwords per address (bucketOf)
     this.adminFails = new Attempts(3600_000); // tries at the admin password, all addresses together (one key)
@@ -333,7 +344,11 @@ export class Auth {
       if (s.role === 'admin') valid = adminOk;
       else if (s.role === 'guest') valid = !RESERVED.has(s.username) && !(await account(s.username));
       else if (s.role === 'player') valid = !RESERVED.has(s.username) && !!(await account(s.username)) && !(await account(s.username)).disabled;
-      if (valid && s.role === 'admin') this.sessions.set(s.key, { username: s.username, role: 'admin', expires: s.expires, panel: s.device === 'panel' });
+      // A panel session from before its own cookie (no `since`) sits in the game's cookie: it goes (a new login on /admin).
+      if (valid && s.role === 'admin' && s.device === 'panel') valid = Number.isFinite(s.since) && s.since > 0;
+      if (valid && s.role === 'admin' && s.device === 'panel') {
+        this.sessions.set(s.key, { username: s.username, role: 'admin', expires: Math.min(s.expires, s.since + PANEL_MS), panel: true, since: s.since });
+      } else if (valid && s.role === 'admin') this.sessions.set(s.key, { username: s.username, role: 'admin', expires: s.expires, panel: false });
       else if (valid) this.sessions.set(s.key, { username: s.username, role: s.role, expires: s.expires, ...(s.device ? { device: s.device } : {}) });
       else await this.store.deleteSession(s.key);
     }
@@ -483,15 +498,85 @@ export class Auth {
     return seat ? this.names.seats[seat - 1] : this.names.session;
   }
 
-  /** Session for a request (cookie), or null. A seat's request reads only that seat's cookie (see seatOf). */
+  /**
+   * Session for a request (cookie), or null. A seat's request reads only that seat's cookie (see seatOf). The game's
+   * session only: a panel session's token never counts here, whichever cookie it comes in (panelSession reads those).
+   */
   session(req) {
     const name = this.sessionName(req);
     if (!name) return null;
-    const m = String(req.headers.cookie || '').match(new RegExp(`(?:^|;\\s*)${name}=([A-Za-z0-9_-]{20,})`));
-    const key = m && keyOf(m[1]);
+    const key = this.tokenKey(req, name);
     const s = key && this.sessions.get(key);
-    if (!s || s.expires < Date.now()) return null;
+    if (!s || s.expires < Date.now() || s.panel) return null;
     return { key, ...s };
+  }
+
+  /** The stored key (hash) of the token in cookie `name`, or null. */
+  tokenKey(req, name) {
+    const m = String(req.headers.cookie || '').match(new RegExp(`(?:^|;\\s*)${name}=([A-Za-z0-9_-]{20,})`));
+    return m ? keyOf(m[1]) : null;
+  }
+
+  /**
+   * The admin's session on brieltje.be/admin, or null: the panel's own cookie (a login there, which asked for the two-step
+   * code), and while two-step login is off any admin session of the game as well (as before two-step login). Only the
+   * panel's calls ask this; the game never does.
+   */
+  panelSession(req, now = Date.now()) {
+    const key = this.tokenKey(req, this.names.panel);
+    const s = key && this.sessions.get(key);
+    if (s?.panel && s.role === 'admin' && s.expires >= now) return { key, ...s };
+    if (this.mfa.on) return null;
+    const g = this.session(req);
+    return g?.role === 'admin' ? g : null;
+  }
+
+  /**
+   * A panel call: the panel session's idle limit starts again (PANEL_IDLE_MS, never past PANEL_MS after its login). In
+   * memory at once, in the store at most once an hour, so a restart keeps it within that hour.
+   */
+  touchPanel(req, now = Date.now()) {
+    const key = this.tokenKey(req, this.names.panel);
+    const s = key && this.sessions.get(key);
+    if (!s?.panel || s.expires < now) return;
+    const until = Math.min(s.since + PANEL_MS, now + PANEL_IDLE_MS);
+    if (until - s.expires < PANEL_TOUCH_MS) return;
+    s.expires = until;
+    this.store.touchSession(key, until).catch((e) => console.error('session touch failed', String(e)));
+  }
+
+  /** The panel's cookie. */
+  panelCookie(token, maxAgeS = PANEL_MS / 1000) {
+    return this.setCookie(this.names.panel, token, maxAgeS);
+  }
+
+  /**
+   * Log out on brieltje.be/admin: the panel's session, and the game's admin session of this browser (the panel login
+   * gave it, or it opened the panel while two-step login was off). A player's or guest's game session stays.
+   */
+  async panelLogout(req) {
+    const key = this.tokenKey(req, this.names.panel);
+    if (key && this.sessions.get(key)?.panel) await this.logout(key);
+    const g = this.session(req);
+    if (g?.role === 'admin') await this.logout(g.key);
+  }
+
+  /**
+   * The admin ends every other admin session (brieltje.be/admin's Security tab): every session of role admin but `keep`
+   * (this browser's), the panel's and the game's, here and in the store. A login still saving its session gets none
+   * (adminGen). Their game connections close within a second (server/game.mjs). How many ended.
+   */
+  async endOtherAdminSessions(keep) {
+    this.adminGen++;
+    const gone = [...this.sessions].filter(([k, s]) => s.role === 'admin' && !keep.includes(k)).map(([k]) => k);
+    for (const k of gone) this.sessions.delete(k);
+    for (const k of gone) await this.store.deleteSession(k);
+    return gone.length;
+  }
+
+  /** How many admin sessions there are besides `keep` (the panel's Security tab). */
+  otherAdminSessions(keep, now = Date.now()) {
+    return [...this.sessions].filter(([k, s]) => s.role === 'admin' && s.expires >= now && !keep.includes(k)).length;
   }
 
   /**
@@ -548,27 +633,45 @@ export class Auth {
     this.failures.undo(ip, now);
     this.adminFails.undo(ADMIN_KEY, now);
     const epoch = this.epoch.get(name) || 0; // kicked while the session is saved: it doesn't count
+    const adminGen = this.adminGen; // every other admin session ended while it is saved: it doesn't count either
+    // The game's session (SESSION_MS) for every admin login. A panel login also gets the panel's own session, for the
+    // panel's own cookie (panelSession): marked in the store's device column, which admin sessions don't use otherwise,
+    // with its login time (`since`, for PANEL_MS); its `expires` is the idle limit (PANEL_IDLE_MS, touchPanel).
     const token = randomBytes(32).toString('base64url');
     const key = keyOf(token);
-    // A panel session is marked (kept in the store's device column, which admin sessions don't use otherwise).
-    const ms = panel ? PANEL_MS : SESSION_MS;
-    await this.store.saveSession(key, name, 'admin', now + ms, panel ? 'panel' : null);
-    if ((this.epoch.get(name) || 0) !== epoch || (this.blocked.get(name) || 0) > Date.now()) {
+    const panelToken = panel ? randomBytes(32).toString('base64url') : null;
+    const panelKey = panelToken && keyOf(panelToken);
+    const panelUntil = now + PANEL_IDLE_MS;
+    const drop = async () => {
       await this.store.deleteSession(key);
+      if (panelKey) await this.store.deleteSession(panelKey);
+    };
+    await this.store.saveSession(key, name, 'admin', now + SESSION_MS, null);
+    if (panelKey) {
+      try {
+        await this.store.saveSession(panelKey, name, 'admin', panelUntil, 'panel', now);
+      } catch (e) {
+        await this.store.deleteSession(key).catch(() => {});
+        throw e;
+      }
+    }
+    if ((this.epoch.get(name) || 0) !== epoch || (this.blocked.get(name) || 0) > Date.now() || this.adminGen !== adminGen) {
+      await drop();
       return { error: 'You were removed by the admin. Try again later.', code: 'removed', status: 403 };
     }
     // A sign-up for this name that began while the session was saved (server/accounts.mjs): the name is theirs.
     if ((await this.store.getAccount(name)) || this.claiming.has(name)) { // claiming last: no await between it and the session below
-      await this.store.deleteSession(key);
+      await drop();
       return { error: `${name} is a player's account. Pick another name.`, code: 'nameAccount', args: { name }, status: 409 };
     }
     if (panel && this.mfa.gen !== mfaGen) {
-      await this.store.deleteSession(key);
+      await drop();
       return { error: 'Two-step login was just turned on. Log in again with a code.', code: 'mfaNeeded', status: 401 };
     }
-    this.sessions.set(key, { username: name, role: 'admin', expires: now + ms, panel });
+    this.sessions.set(key, { username: name, role: 'admin', expires: now + SESSION_MS, panel: false });
+    if (panelKey) this.sessions.set(panelKey, { username: name, role: 'admin', expires: panelUntil, panel: true, since: now });
     this.log('login_ok', req, { username: name, detail: 'admin' });
-    return { token, username: name, role: 'admin', device: this.newDevice(ADMIN_KEY), ms };
+    return { token, username: name, role: 'admin', device: this.newDevice(ADMIN_KEY), ms: SESSION_MS, ...(panelToken ? { panel: { token: panelToken, key: panelKey } } : {}) };
   }
 
   /**
@@ -645,8 +748,7 @@ export class Auth {
    * or any admin session while two-step login is off. The game's admin login works in the game only then.
    */
   panelAdmin(req) {
-    const s = this.session(req);
-    return s?.role === 'admin' && (s.panel === true || !this.mfa.on);
+    return !!this.panelSession(req);
   }
 
   /** A two-step code typed by the logged-in admin (server/adminMfa.mjs): over the limit for wrong ones from here? */
