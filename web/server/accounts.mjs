@@ -16,11 +16,14 @@
 //   every other session; deleting the account, or the admin turning it off, ends them all.
 // - Sign-ups count per address and in all (SIGNUPS_*), so nobody can take every name.
 // - An account nobody logged in to for KEEP_DAYS is deleted with its scores (the privacy policy says so).
+// - Keep this run (server/keepRun.mjs): a sign-up from a guest's own session takes that session's last good
+//   Zombies run onto the board, once, and may keep the guest's own name; the guest session then ends.
 // - The admin (brieltje.be/admin) lists the accounts, sets a new password (shown to the admin once),
 //   turns one off or on, and deletes one.
 
 import { createHash, randomBytes } from 'node:crypto';
 import { RESERVED, Attempts, bucketOf, clientIp, hashPassword, NAME_RE, Turns, verifyHash } from './auth.mjs';
+import { GuestRuns } from './keepRun.mjs';
 
 export const ACCOUNT_MS = 30 * 24 * 3600_000;
 const SESSIONS_PER_ACCOUNT = 10;
@@ -70,6 +73,7 @@ export class Accounts {
     this.signups = new Attempts(3600_000); // sign-ups per address, and 'all'
     this.turns = new Turns(HASHING, QUEUE); // password checks running, and waiting for one of those
     this.seenToday = new Map(); // name -> the day their last use was noted (see seen)
+    this.guestRuns = new GuestRuns(); // a guest's last good Zombies run, for an account made from that session (server/keepRun.mjs)
     auth.onLift = () => {
       const n = this.byAddress.map.size + this.byAccount.map.size;
       this.byAddress = new Attempts(WINDOW_MS);
@@ -148,8 +152,13 @@ export class Accounts {
     return token;
   }
 
-  /** Sign up: the answer has `token` (the session) and `device` (the account's device cookie), or an error. */
-  async register(req, b) {
+  /**
+   * Sign up: the answer has `token` (the session) and `device` (the account's device cookie), or an error.
+   * `own`: the session the request came with (server/auth.mjs session). A guest's own session may take its
+   * own guest name, and its last good Zombies run goes onto the board under the new account (`kept` in the
+   * answer); the guest session then ends. Nothing else about a sign-up changes with it.
+   */
+  async register(req, b, own = null) {
     if (b?.age !== true) return { error: 'Confirm that you are 13 or older to play together.', code: 'age', status: 400 };
     const name = String(b.username ?? '').trim().toLowerCase();
     if (!NAME_RE.test(name)) return { error: 'Your name: 2 to 20 characters, letters, digits, - or _.', code: 'nameFormat', status: 400 };
@@ -167,8 +176,13 @@ export class Accounts {
     const taken = { error: 'That name is taken. Pick another name.', code: 'nameTaken', status: 409 };
     if (RESERVED.has(name)) return taken; // the admin's own names
     if ((this.auth.blocked.get(name) || 0) > now) return { error: 'You were removed by the admin. Try again later.', code: 'removed', status: 403 };
-    // A guest playing or holding the name today keeps it (their session ends within 12 hours).
-    if (this.online(name) || this.auth.nameHeld(name, now)) {
+    // A guest playing or holding the name today keeps it (their session ends within 12 hours), unless that
+    // guest is the one signing up, from that same session, and nobody else has it.
+    const guest = own?.role === 'guest' && typeof own.key === 'string' && this.auth.sessions.get(own.key)?.username === own.username ? own : null;
+    const held = guest?.username === name
+      ? this.auth.claiming.has(name) || [...this.auth.sessions].some(([k, s]) => k !== guest.key && s.username === name && s.expires > now) || this.online(name, guest.key)
+      : this.online(name) || this.auth.nameHeld(name, now);
+    if (held) {
       return { error: `Someone is playing as ${name} right now. Pick another name.`, code: 'nameOnline', args: { name }, status: 409 };
     }
     this.auth.claiming.add(name); // no guest takes it while this runs (server/auth.mjs join)
@@ -184,10 +198,27 @@ export class Accounts {
       const token = row && (await this.session(req, name, epoch));
       if (!token) return { error: 'You were removed by the admin. Try again later.', code: 'removed', status: 403 };
       this.seen(name, true);
-      return { token, username: name, role: 'player', device: this.auth.newDevice(deviceFor(row)) };
+      const kept = guest ? await this.keepRun(req, guest, name) : null;
+      return { token, username: name, role: 'player', device: this.auth.newDevice(deviceFor(row)), ...(kept ? { kept } : {}) };
     } finally {
       this.auth.claiming.delete(name);
     }
+  }
+
+  /**
+   * The new account `name` was made from `guest`'s session: that session's waiting run (if any) goes onto the
+   * board under it, once, and the guest session ends (its name is free, its connection closes within a second).
+   * Only while the guest session still is the one that asked: kicked or ended meanwhile, nothing moves.
+   */
+  async keepRun(req, guest, name) {
+    const live = this.auth.sessions.get(guest.key);
+    if (!live || live.role !== 'guest' || live.username !== guest.username) return null;
+    const run = this.guestRuns.take(guest.key);
+    await this.auth.logout(guest.key);
+    if (!run) return null;
+    await this.store.saveZombieRun(name, run.place, run.wave, run.kills, run.team);
+    this.auth.log('account_kept_run', req, { username: name, detail: `wave ${run.wave} at ${run.place}` });
+    return { place: run.place, wave: run.wave };
   }
 
   /** Log in with a name and password. The same answer for a wrong password and an unknown name. */

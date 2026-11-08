@@ -102,7 +102,8 @@ await game.loadFurniture();
 await game.loadRules();
 // The open world and the Zombies rooms (server/rooms.mjs); the players' accounts (server/accounts.mjs).
 const rooms = new Rooms(game, (room) => new Game(auth, undefined, room));
-const accounts = new Accounts(auth, (name) => rooms.online(name));
+const accounts = new Accounts(auth, (name, exceptKey) => rooms.online(name, exceptKey));
+rooms.guestRuns = accounts.guestRuns; // a guest's last good Zombies run, kept a while for an account made from that session (server/keepRun.mjs)
 await accounts.init();
 rooms.onJoined = (name, session) => session?.role === 'player' && accounts.seen(name);
 // Logging in on a console with the phone (server/pairing.mjs).
@@ -266,9 +267,11 @@ async function api(req, res, url) {
       if (r.error) return refuse(res, r);
       return json(res, 200, { username: r.username, role: r.role }, { 'Set-Cookie': [auth.cookie(r.token, undefined, seat), auth.deviceCookie(r.device)] });
     }
-    const r = path.endsWith('register') ? await accounts.register(req, b) : await accounts.login(req, b);
+    // A sign-up names the session it came with: a guest's own run and name go only to an account made from it.
+    const r = path.endsWith('register') ? await accounts.register(req, b, auth.session(req)) : await accounts.login(req, b);
     if (r.error) return refuse(res, r);
-    return json(res, 200, { username: r.username, role: r.role }, { 'Set-Cookie': [auth.cookie(r.token, ACCOUNT_MS / 1000, seat), auth.accountDeviceCookie(r.device)] });
+    if (r.kept) rooms.scored(); // the board's cache goes
+    return json(res, 200, { username: r.username, role: r.role, ...(r.kept ? { kept: r.kept } : {}) }, { 'Set-Cookie': [auth.cookie(r.token, ACCOUNT_MS / 1000, seat), auth.accountDeviceCookie(r.device)] });
   }
   // Logging in on a console with the phone (server/pairing.mjs): the console starts a pairing and asks how it
   // goes with its secret; the phone, logged in to its account, says yes (below, with a session).
@@ -296,10 +299,18 @@ async function api(req, res, url) {
   }
   if (path === '/api/logout' && method === 'POST') {
     await body(req);
-    if (s) await auth.logout(s.key);
+    if (s) {
+      accounts.guestRuns.drop(s.key); // a guest's waiting run goes with the session
+      await auth.logout(s.key);
+    }
     return json(res, 200, { ok: true }, { 'Set-Cookie': auth.cookie('', 0, seat) });
   }
   if (!s) return json(res, 401, { error: 'Not logged in', code: 'notLoggedIn' });
+  // Keep this run (server/keepRun.mjs): the run waiting for this guest session, if any. Only the session's own,
+  // only what the server recorded; nothing here moves it (a sign-up from this session does).
+  if (path === '/api/account/keep-run' && method === 'GET') {
+    return json(res, 200, { run: s.role === 'guest' ? accounts.guestRuns.peek(s.key) : null });
+  }
   if (path === '/api/leaderboard' && method === 'GET') return json(res, 200, { rows: await store.leaderboard() });
   // A player's own account: what is kept, a new password, deleting it (each asks for the current password).
   if (path === '/api/account' && method === 'GET') {

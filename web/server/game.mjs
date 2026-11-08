@@ -2307,6 +2307,9 @@ export class Game {
    */
   zombieRun(place, names, wave, beaten) {
     for (const name of names) {
+      // A guest still here: the run waits a while for an account made from this same session (server/keepRun.mjs).
+      const p = this.players.get(name);
+      if (this.roles.get(name) === 'guest' && p?.role === 'guest') this.hub?.guestRuns?.offer(p.key, { place, wave, kills: beaten[name] ?? 0, team: names.length });
       if (!onBoard(this.roles.get(name))) continue;
       this.auth.store.saveZombieRun(name, place, wave, beaten[name] ?? 0, names.length)
         .then((better) => better && this.hub?.scored())

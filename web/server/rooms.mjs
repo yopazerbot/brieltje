@@ -44,8 +44,10 @@ export class Rooms {
     return this.games().find((g) => g.players.has(name)) ?? null;
   }
 
-  online(name) {
-    return !!this.gameOf(name);
+  /** Someone plays as `name` right now; with `exceptKey`, someone on another session than that one. */
+  online(name, exceptKey) {
+    const g = this.gameOf(name);
+    return !!g && (exceptKey === undefined || g.players.get(name)?.key !== exceptKey);
   }
 
   /** Everyone playing together, in the open world and the rooms. */
