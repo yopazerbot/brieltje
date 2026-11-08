@@ -261,6 +261,8 @@ file's opening comment; run it again after adding, moving or removing a module.
 - `tools/basisu.mjs`: Runs the Basis Universal command-line encoder (basisu, built for WASI: tools/.bin/basisu/basisu_st.wasm) in Node's own WebAssembly runtime, so no native...
 - `tools/bike.py`: Build the city bike you can ride (web/src/world/bike.ts) in Blender, from a city bike's usual sizes.
 - `tools/bounds.py`: The edge of the game: where you can walk, ride, drive and fly (web/shared/bounds.json).
+- `tools/brand/images.mjs`: The brand's pictures, headless (tools/dev/cdp.mjs), from the SVGs tools/brand/logo.mjs writes: web/public/favicon-32.png the tab icon for browsers without...
+- `tools/brand/logo.mjs`: The Brieltje logo as SVG files (DECISIONS.md, 8 Nov 2026): the roof with its two lit windows over the name in Fredoka Bold.
 - `tools/building_ground.py`: Place level house floors at their entrances and carry walls into sloping ground.
 - `tools/bungalow_site.py`: Where the bungalow stands and where its drive runs, in the game's coordinates (metres): its plot on the open-data outline and the parking place with its...
 - `tools/cattle.py`: Build a low-poly cow and a sheep for the meadows round the house in Blender, to be drawn many times over (web/src/world/herds.ts).
@@ -297,7 +299,6 @@ file's opening comment; run it again after adding, moving or removing a module.
 - `tools/homestreet/houses.py`: The houses round the two portals at home, our own Blender models, for the walkthrough.
 - `tools/homestreet/textures.py`: Textures for the houses round the two portals at home (tools/homestreet/houses.py), all generated here: no downloads, nothing to credit.
 - `tools/horse.py`: Build a saddled riding horse for the meadow in Blender: a generic warmblood type, standing square.
-- `tools/icon.py`: Draw the app icon (home screen on phones and tablets): the house as a light block with its windows on a dark ground, the accent line under it.
 - `tools/interior.py`: Build the game's furniture and decor pieces in Blender.
 - `tools/kapellenhoek_survey.py`: The street Kapellenhoek from the church square to past its junction with Briel, and the first stretch of Kapelleweg: the survey, and the plan...
 - `tools/kouter_house.py`: Build the southern house and its front garden from the public model outline and street-side references.
