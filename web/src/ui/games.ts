@@ -1,6 +1,7 @@
 import * as THREE from 'three';
 import { lang, listOf, onLang, plural, serverText, t } from '../i18n';
 import { paintball } from '../paintball';
+import { keepRun } from '../start';
 
 /**
  * Games in multiplayer (the admin starts them, the server keeps them): hide and seek, tag, a
@@ -367,7 +368,9 @@ export class Games {
       this.zendKey = '';
       return;
     }
-    const key = JSON.stringify([z, lang(), paintball.on, this.me, this.guest]);
+    // A guest's good run waits on the server for an account made now (src/ui/keepRun.ts): asked once per end screen.
+    if (!this.zendKey && this.guest && !z.custom) void keepRun.check();
+    const key = JSON.stringify([z, lang(), paintball.on, this.me, this.guest, keepRun.waiting]);
     if (key === this.zendKey) return;
     this.zendKey = key;
     document.getElementById('zend-title')!.textContent = t('z.endTitle', { n: z.wave });
@@ -393,7 +396,7 @@ export class Games {
     const best = z.best;
     document.getElementById('zend-best')!.textContent = z.record ? t('z.record', { n: z.wave }) : best ? t('z.best', { n: best.wave, names: listOf(best.names.slice(0, 6)) }) : '';
     const keep = document.getElementById('zend-keep')!;
-    keep.textContent = t('z.keepScore');
+    keep.textContent = t(keepRun.waiting ? 'z.keepRun' : 'z.keepScore');
     keep.classList.toggle('hidden', !this.guest || !!z.custom);
   }
 }

@@ -15,6 +15,12 @@ export interface Me {
   role: 'admin' | 'guest' | 'player';
 }
 
+/** A guest's run that a new account takes onto the board (server/keepRun.mjs): as the server recorded it. */
+export interface KeptRun {
+  place: string;
+  wave: number;
+}
+
 /** A Zombies room in the list (server/rooms.mjs): who opened it, where, how many play, the game in it. */
 export interface RoomEntry {
   id: string;
@@ -207,7 +213,9 @@ export const api = {
   /** `age`: "I'm 13 or older" ticked (src/start.ts); sent only then. */
   join: (name: string, age = false) => call<Me>('POST', '/api/join', age ? { name, age: true } : { name }),
   /** Accounts (server/accounts.mjs, src/ui/account.ts). */
-  register: (username: string, email: string, password: string) => call<Me>('POST', '/api/account/register', { username, email, password, age: true }),
+  register: (username: string, email: string, password: string) => call<Me & { kept?: KeptRun }>('POST', '/api/account/register', { username, email, password, age: true }),
+  /** Keep this run: the run waiting for this guest session, if any (src/ui/keepRun.ts). */
+  keepRun: () => call<{ run: (KeptRun & { kills: number; team: number; ms: number }) | null }>('GET', '/api/account/keep-run'),
   /** Players and the admin alike (the admin with the admin password; the game never asks the two-step code). */
   accountLogin: (username: string, password: string) => call<Me>('POST', '/api/account/login', { username, password }),
   account: () => call<{ username: string; email: string; created: string }>('GET', '/api/account'),

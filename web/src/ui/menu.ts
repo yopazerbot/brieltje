@@ -103,12 +103,6 @@ export class Menu {
     $('choose-touch').addEventListener('click', () => this.begin('touch'));
     $('resume').addEventListener('click', () => this.resume(this.mode ?? 'kbm'));
     $('switch').addEventListener('click', () => this.resume(this.mode === 'pad' ? 'kbm' : 'pad'));
-    // Enter in the name field: the first start button (Touch screen on a phone, not keyboard and mouse).
-    this.nick.addEventListener('keydown', (e) => {
-      if (e.key !== 'Enter') return;
-      const first = document.querySelector<HTMLButtonElement>('.start-choices .choice.play:not(.hidden)');
-      this.begin((first?.id.replace('choose-', '') ?? 'kbm') as ControlMode);
-    });
     document.querySelectorAll('.gfx').forEach((b) => b.addEventListener('click', () => this.cycleGraphics()));
     // Settings: the graphics as five choices (the same setting the start screen's pill and □ cycle through).
     document.querySelectorAll<HTMLButtonElement>('[data-gfx]').forEach((b) =>
@@ -340,10 +334,9 @@ export class Menu {
     });
   }
 
-  /** Logged in for multiplayer: your username is your name in the game. */
+  /** Logged in (an account or a guest session, alone too): your username is your name in the game. */
   setAccount(name: string | null): void {
     this.account = name;
-    $('who-box').classList.toggle('hidden', !!name);
     if (name) {
       this.nickname = name;
       $('who').textContent = name;
@@ -351,7 +344,7 @@ export class Menu {
   }
 
   /**
-   * A start button, ✕ on the controller or Enter in the name field, on the start screen. What needs
+   * A start button or ✕ on the controller, on the start screen (src/ui/startFlow.ts). What needs
    * the click happens now; play starts once `beforeStart` agrees (at once when playing alone).
    */
   begin(mode: ControlMode): void {

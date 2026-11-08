@@ -35,6 +35,13 @@ export class PadNav {
     this.current = null;
   }
 
+  /** Put the focus on `el` (the start screen's likely next press), if it is on the page and usable. */
+  focus(el: HTMLElement | null): void {
+    const page = this.page();
+    if (el && page?.contains(el) && usable(el)) this.set(el);
+    else this.step(0, 1);
+  }
+
   private set(el: HTMLElement): void {
     this.current?.classList.remove('pad-focus');
     this.current = el;

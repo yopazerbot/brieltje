@@ -709,13 +709,9 @@ body.on-start #overlay { background: linear-gradient(180deg, rgba(9, 14, 19, 0.2
 .brand-line { display: flex; align-items: flex-start; gap: 12px; min-width: 0; }
 .brand-line .beta { margin-top: 0.55em; }
 .mobile-note { margin: -8px 0 18px; padding: 10px 14px; font-size: 14.5px; line-height: 1.4; color: var(--ink-soft); background: var(--dusk-raised); border-radius: var(--r-field); }
-/* Together picked: the PIN takes the touch screen note's place (it has been read by then). */
-#start-panel:has(#mp-guest-row:not(.hidden)) .mobile-note { display: none; }
 
 /* Labels: sentence case, in the heavy weight. */
 .field, .label { display: block; margin: 0 0 8px; font-size: 15px; font-weight: 800; line-height: 1.3; color: var(--ink); }
-#who-box { margin: 0 0 20px; }
-#who-box .field { display: flex; justify-content: space-between; }
 #nick {
   display: block; width: 100%; margin: 0 0 12px; padding: 11px 14px; font-size: 18px; font-weight: 500; color: var(--ink);
   background: var(--dusk-raised); border: 1px solid var(--line-strong); border-radius: var(--r-field);
@@ -739,19 +735,11 @@ body.on-start #overlay { background: linear-gradient(180deg, rgba(9, 14, 19, 0.2
 .seg-btn.selected { background: var(--lamp-soft); border-color: var(--lamp-line); }
 .seg-btn.selected b { color: var(--lamp); }
 .seg-btn:disabled { cursor: not-allowed; opacity: 0.45; background: var(--dusk-raised); }
-#mp-choice { margin: 0; }
 
-/* Together picked: a line on playing as a guest, the way to an account and the age tick, in a box under
-   the Alone / Together tiles. Gone when nothing in it shows. */
-.together { margin: 8px 0 0; padding: 12px 14px; background: var(--dusk-raised); border-radius: var(--r-tile); }
-.together:not(:has(> :not(.hidden))) { display: none !important; }
-.pin-hint { margin: 0; font-size: 13.5px; color: var(--ink-soft); }
-#mp-together .age-check { margin: 10px 0 0; }
 /* "Log in · Make an account to keep your name ...": the two words as links in a line of text. */
 .acct-links { margin: 6px 0 0; font-size: 13.5px; line-height: 1.45; color: var(--ink-soft); }
 .acct-links .textbtn { padding: 0; font: inherit; font-weight: 800; color: var(--lamp); background: none; border: 0; cursor: pointer; text-decoration: underline; text-underline-offset: 2px; }
 .acct-links .textbtn:hover { color: var(--lamp-bright); }
-.session-btns { display: flex; gap: 6px; flex-wrap: wrap; justify-content: flex-end; }
 .acct-row { margin: 8px 0 0; }
 
 /* The account card (src/ui/account.ts): a native dialog over everything, the start screen's look. */
@@ -833,12 +821,6 @@ body.on-start #overlay { background: linear-gradient(180deg, rgba(9, 14, 19, 0.2
 .mp-msg:empty { display: none; }
 .mp-msg.bad, .admin-msg.bad { color: var(--bad); }
 #start-panel > .mp-msg { margin: -8px 0 16px; }
-/* Joined: who you play as, and the way back to playing alone. */
-.session {
-  display: flex; align-items: center; justify-content: space-between; gap: 12px; margin: 0 0 20px; padding: 10px 10px 10px 16px;
-  font-size: 16px; background: var(--lamp-soft); border-radius: var(--r-tile);
-}
-.session.hidden { display: none; }
 
 /* Small buttons (Join, Log in, Show, Save, Kick ...). */
 .mini {
@@ -998,15 +980,13 @@ body:not(.on-start) #slides-controls { display: none; }
   .start-brand .wordmark { height: 62px; }
 }
 
-/* A laptop's or tablet's screen (up to 900 px high): a little tighter, so the PIN box of Together fits
-   without scrolling too (the sign-up link's second line makes way for it). */
+/* A laptop's or tablet's screen (up to 900 px high): a little tighter, so a step fits without scrolling. */
 @media (min-height: 521px) and (max-height: 900px) {
   #start-panel { padding: 20px 28px 16px; }
   .start-brand .wordmark { height: 48px; }
   #start-panel .intro { margin: 8px 0 16px; font-size: 19px; }
   #start-panel .mobile-note { margin: -4px 0 14px; padding: 8px 12px; }
   #start-panel .field, #start-panel .label { margin-bottom: 6px; }
-  #start-panel #who-box { margin-bottom: 14px; }
   #start-panel #nick { margin-bottom: 10px; padding: 9px 14px; }
   #start-panel .seg { margin-bottom: 14px; }
   #start-panel .seg-btn { padding: 8px 12px; }
@@ -1014,11 +994,6 @@ body:not(.on-start) #slides-controls { display: none; }
   #start-panel .choice { padding-top: 12px; padding-bottom: 12px; }
   #start-panel .invite { margin-bottom: 12px; padding: 9px 14px; }
   #start-panel .legal { margin-top: 8px; }
-  #start-panel:has(#mp-guest-row:not(.hidden)) .invite-house { display: none; }
-  /* The welcome has been read by the time you type the PIN: it makes way, so the start buttons stay in view. */
-  #start-panel:has(#mp-guest-row:not(.hidden)) .intro { display: none; }
-  #start-panel:has(#mp-guest-row:not(.hidden)) .start-head { margin-bottom: 12px; }
-  #start-panel .together { padding: 10px 12px; }
 }
 /* A phone held sideways: everything up to the start buttons fits without scrolling. */
 @media (max-height: 520px) {
@@ -1044,20 +1019,7 @@ body:not(.on-start) #slides-controls { display: none; }
   .invite-house { display: none; }
   .legal { margin-top: 6px; }
   .start-foot .gfx { padding-top: 2px; padding-bottom: 2px; }
-  /* Typing the PIN: the sign-up link makes way, so the links under the start buttons fit too. */
-  #start-panel:has(#mp-guest-row:not(.hidden)) .invite { display: none; }
-  /* Your name beside Alone / Together, and the PIN beside the age tick: two rows fewer, so the start
-     buttons and the links under them fit (the name's label stays for screen readers; the field says Name). */
-  #who-box { display: grid; grid-template-columns: 1fr 1fr; align-items: center; gap: 0 10px; margin-bottom: 8px; }
-  #who-box .field { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
-  #who-box #nick, #who-box #mp-choice { margin: 0; }
-  /* The Together box across both columns: the PIN beside the age tick, without the line about the PIN. */
-  .together { grid-column: 1 / -1; display: grid; grid-template-columns: 1fr 1fr; align-items: center; gap: 0 12px; margin: 8px 0 0; padding: 8px 10px; }
-  #mp-together #mp-pin-row, #mp-together .age-check { margin: 0; }
-  #mp-together #mp-pin, #mp-together #mp-join-btn { min-height: 38px; }
-  .pin-hint { display: none; }
   #start-panel > .mp-msg { margin: 0 0 8px; }
-  .session { margin-bottom: 8px; padding: 6px 6px 6px 12px; }
 }
 /* A small phone held sideways: tighter still, so the start buttons show without scrolling. */
 @media (max-height: 440px) {
@@ -1068,15 +1030,13 @@ body:not(.on-start) #slides-controls { display: none; }
   .mobile-note { margin-bottom: 6px; padding: 4px 8px; font-size: 12.5px; line-height: 1.35; }
   .field, .label { margin-bottom: 3px; }
   .seg { margin-bottom: 6px; }
-  #who-box { margin-bottom: 6px; }
   .start-choices, .invite { margin-bottom: 6px; }
   .invite { padding-top: 6px; padding-bottom: 6px; }
 }
 /* A phone's browser with its bars showing (Safari held sideways): the note and the word "Game mode" go,
-   and the sign-up link while you type the PIN, so the start buttons stay in view. */
+   so the start buttons stay in view. */
 @media (max-height: 360px) {
-  .mobile-note, #start-panel > .label { display: none; }
-  #start-panel:has(#mp-guest-row:not(.hidden)) .invite { display: none; }
+  .mobile-note, #step-play > .label:first-of-type { display: none; }
 }
 /* A phone held upright: a narrower panel, so the three modes and "Start at" fit across it. */
 @media (max-width: 520px) and (orientation: portrait) {
@@ -1524,8 +1484,10 @@ body.touch #controls-card { top: calc(8px + env(safe-area-inset-top, 0px)); tran
 }
 
 /* A seat of the split screen (src/seat.ts) starts at once: while its world loads, the start panel
-   shows only the wordmark, who is playing and the chosen button's progress. */
-body.seat #start-panel > :not(.start-head, #mp-session, .start-choices) { display: none; }
+   shows only the name and the chosen button's progress (in the third step, src/ui/startFlow.ts). */
+body.seat #start-panel > :not(.start-head, #step-play) { display: none; }
+body.seat #start-panel #step-play { display: block; }
+body.seat #step-play > :not(.start-choices) { display: none; }
 body.seat .start-choices .choice:not(.loading) { display: none; }
 /* In a quarter of the screen the HUD is crowded: no wordmark, no credit line, and the list of who is
    online only on the scoreboard (it covered the ammo). The view names itself (below). */

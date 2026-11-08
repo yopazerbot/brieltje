@@ -1,7 +1,7 @@
 /**
  * The page's entry: the start screen, which works before the world exists. The page brings only
  * this, the texts and the start picture, and asks the server who you are (/api/me). That covers
- * the language, your name, alone or together (joining as a guest, or logging in), the mode,
+ * the language, the three steps (who you are: an account or a guest; alone or together; the mode),
  * the graphics setting, the controller, and the Sound and Full screen buttons (the start screen's,
  * and the in-game menu's own in its header).
  *
@@ -16,10 +16,13 @@ import { Input } from './controls/input';
 import { loadMode, saveMode } from './graphics';
 import { applyStatic, onLang, setLang, t, type Lang } from './i18n';
 import { typing } from './keys';
-import { api, errorText, type Me } from './net/client';
+import { api, errorText, type KeptRun, type Me } from './net/client';
 import { sound } from './sound';
 import { Menu } from './ui/menu';
 import { AccountCard } from './ui/account';
+import { KeepRun } from './ui/keepRun';
+import { PadNav } from './ui/padNav';
+import { StartFlow } from './ui/startFlow';
 
 const $ = (id: string) => document.getElementById(id)!;
 
@@ -130,44 +133,62 @@ menu.onGraphics = (next) => {
   menu.setGraphics(next, null, '');
 };
 
-// ---- Alone or together: joining as a guest, or logging in (src/ui/account.ts: players and the admin alike). It is all
-// HTTP, so it works on the start screen. The world (main.ts) follows every change once it is there,
-// and only then connects to the others.
+// ---- Who you are, and alone or together (src/ui/startFlow.ts: the start screen's three steps). Joining as a guest
+// and logging in (src/ui/account.ts: players and the admin alike) are all HTTP, so they work on the start screen.
+// The world (main.ts) follows `me` once it is there, and only then connects to the others.
+//
+// `session` is who the server knows this browser as (the session cookie): a guest, a player or the admin, alone
+// too. `me` is who plays together: the session once Together is picked, null while playing alone.
 export let me: Me | null = null;
-/** The message under joining (start screen and Together tab), as a function: drawn again in another language. */
+let session: Me | null = null;
+/** The message under the steps (start screen) and in the Together tab, as a function: drawn again in another language. */
 let accountMsg: (() => string) | null = null;
+/** That message is news, not a complaint (logged out): not in the complaint's colour. */
+let accountMsgCalm = false;
 const accountListeners: ((account: Me | null) => void)[] = [];
 /** Call `fn` with the account now and on every change (null: playing alone). */
 export function onAccount(fn: (account: Me | null) => void): void {
   accountListeners.push(fn);
   fn(me);
 }
-/** "name", or "name (admin)" for the admin. */
-const withRole = (account: Me) => (account.role === 'admin' ? t('role.admin', { name: account.username }) : account.username);
-/** The texts that depend on the account: the name in the session box, the message, the note in the Together tab. */
+/** The texts that depend on the account: the message, the note in the Together tab, joining there under the session. */
 function showAccountText(): void {
-  $('mp-name').textContent = me ? withRole(me) : '';
   const message = accountMsg?.() ?? '';
   for (const id of ['mp-msg', 'mp-msg2']) {
     $(id).textContent = message;
-    $(id).classList.toggle('bad', !!message && !me);
+    $(id).classList.toggle('bad', !!message && !me && !session && !accountMsgCalm);
   }
+  const withRole = (account: Me) => (account.role === 'admin' ? t('role.admin', { name: account.username }) : account.username);
   $('mp-note').textContent = me ? t('tog.noteTogether', { name: withRole(me) }) : t('tog.noteAlone');
+  // Playing alone with a session (an account, or a guest from before): together under it in one press.
+  const under = !me && session ? session : null;
+  $('mp-acct-row').classList.toggle('hidden', !under);
+  document.querySelectorAll('.mp-guest-only').forEach((el) => el.classList.toggle('hidden', !!under));
+  if (under) $('mp-join-acct').textContent = t('tog.joinAcct', { name: under.username });
 }
-export function setAccount(account: Me | null, message: (() => string) | null = null): void {
-  me = account;
+/** The session alone (the start screen's login, or the cookie found on arrival): playing together waits for step 2. */
+function setSession(account: Me | null, message: (() => string) | null = null, fromLogin = false): void {
+  session = account;
+  if (!account) me = null;
   accountMsg = message;
+  accountMsgCalm = false;
   menu.setAccount(account?.username ?? null);
-  menu.setAdmin(account?.role === 'admin');
-  $('mp-session').classList.toggle('hidden', !account);
+  menu.setAdmin(me?.role === 'admin');
   // "Your account": a new password, deleting it (src/ui/account.ts), for players logged in to their own.
   document.querySelectorAll('.acct-manage').forEach((b) => b.classList.toggle('hidden', account?.role !== 'player'));
   document.querySelectorAll('.acct-row').forEach((b) => b.classList.toggle('hidden', account?.role !== 'player'));
+  if (account?.role !== 'guest') keepRun.clear();
   showAccountText();
+  flow?.sessionChanged(fromLogin);
+}
+/** Play together as `account` (null: alone, and logged out): main.ts connects, or leaves the others. */
+export function setAccount(account: Me | null, message: (() => string) | null = null): void {
+  me = account;
+  setSession(account, message);
   for (const fn of accountListeners) fn(account);
 }
 /**
- * "I'm 13 or older": asked where you join together, ticked once for this device (localStorage
+ * "I'm 13 or older": asked where a guest joins together, ticked once for this device (localStorage
  * briel.age13, every such tick box shows it), and sent with the join; the server refuses a join
  * without it.
  */
@@ -190,6 +211,7 @@ for (const box of ageBoxes()) {
     } catch {
       // private window: for this visit
     }
+    flow?.draw();
   });
 }
 
@@ -213,16 +235,25 @@ function logoutForSure(): void {
 
 /** A join on its way to the server: a second click (Join twice, or Join then a start button) waits for it instead of sending another. */
 let joining: Promise<boolean> | null = null;
+/** The server's refusals of a guest's name: on the start screen, back to step 1 where the name is. */
+const NAME_CODES = /^name/;
 /**
  * Play together as a guest (Yoshi, 7 Nov 2026: no PIN): your name is your name in the game. From the start
  * screen, or from the menu's Together tab while playing alone (`field`: the name's field there).
  * True once joined; false with the reason under the fields.
  */
 function join(name = ($('nick') as HTMLInputElement).value.trim(), field: HTMLElement = $('nick')): Promise<boolean> {
-  const refuse = (text: () => string, field?: HTMLElement) => {
+  const onStart = field.id === 'nick';
+  const refuse = (text: () => string, at?: HTMLElement) => {
     setAccount(null, text);
-    field?.setAttribute('aria-invalid', 'true'); // outlined until typed in
-    field?.focus(); // where to type next
+    if (onStart && at === field) {
+      flow.show(1, false);
+      flow.showCard('guest');
+    }
+    if (onStart && !at) flow.show(2, false);
+    const where = at ?? (onStart ? $('mp-age') : undefined);
+    where?.setAttribute('aria-invalid', 'true'); // outlined until typed in
+    where?.focus(); // where to type next
     return Promise.resolve(false);
   };
   if (joining) return joining;
@@ -242,6 +273,9 @@ function join(name = ($('nick') as HTMLInputElement).value.trim(), field: HTMLEl
       return true;
     })
     .catch((e: unknown) => {
+      const code = String((e as { code?: unknown }).code ?? '');
+      if (NAME_CODES.test(code)) return refuse(errorText(e), field);
+      if (code === 'age') return refuse(errorText(e));
       setAccount(null, errorText(e));
       return false;
     })
@@ -265,19 +299,6 @@ function join(name = ($('nick') as HTMLInputElement).value.trim(), field: HTMLEl
     }
   });
 }
-// Alone or together on the start screen; the admin logs in with the admin password (the Admin link).
-document.querySelectorAll<HTMLButtonElement>('[data-mp]').forEach((b) =>
-  b.addEventListener('click', () => {
-    const multi = b.dataset.mp === 'multi';
-    document.querySelectorAll('[data-mp]').forEach((o) => o.classList.toggle('selected', o === b));
-    $('mp-guest-row').classList.toggle('hidden', !multi);
-    $('mp-age-row').classList.toggle('hidden', !multi);
-    if (!me) {
-      accountMsg = null; // an old complaint doesn't greet you
-      showAccountText();
-    }
-  }),
-);
 // Typing in a field that was complained about: the outline and the complaint go.
 for (const id of ['nick', 'mp-nick2']) {
   $(id).addEventListener('input', () => {
@@ -289,28 +310,42 @@ for (const id of ['nick', 'mp-nick2']) {
     }
   });
 }
+$('mp-age').addEventListener('change', () => $('mp-age').removeAttribute('aria-invalid'));
 const joinHere = () => void join(($('mp-nick2') as HTMLInputElement).value.trim() || menu.nickname, $('mp-nick2'));
 $('mp-join2').addEventListener('click', joinHere);
 $('mp-nick2').addEventListener('keydown', (e) => {
   if ((e as KeyboardEvent).key === 'Enter') joinHere();
 });
+// The Together tab while playing alone with a session: together under it.
+$('mp-join-acct').addEventListener('click', () => session && setAccount(session));
+/**
+ * A login or sign-up is on its way (the start screen's login card, the account card, the phone): its answer,
+ * unless the player left meanwhile. On the start screen it is the session for the next steps; in the game it
+ * is playing together, as before.
+ */
+const beginLogin = (signup: boolean) => {
+  const gen = accountGen;
+  return (account: Me & { kept?: KeptRun }) => {
+    if (gen !== accountGen) {
+      logoutForSure();
+      return false;
+    }
+    logoutDone();
+    const kept = account.kept;
+    const plain: Me = { username: account.username, role: account.role };
+    const message = !signup ? null : kept ? () => t('acct.welcomeKept', { name: plain.username, n: kept.wave }) : () => t('acct.welcome', { name: plain.username });
+    if (signup) keepRun.clear();
+    if (menu.onStartScreen) setSession(plain, message, true);
+    else setAccount(plain, message);
+    return true;
+  };
+};
 // Accounts (src/ui/account.ts): logging in and signing up answer like a join, so leaving meanwhile still wins.
 new AccountCard({
-  me: () => me,
-  typedName: () => (me ? '' : ($('nick') as HTMLInputElement).value.trim() || ($('mp-nick2') as HTMLInputElement).value.trim()),
+  me: () => session,
+  typedName: () => (session?.role === 'guest' ? session.username : session ? '' : ($('login-name') as HTMLInputElement).value.trim() || ($('nick') as HTMLInputElement).value.trim() || ($('mp-nick2') as HTMLInputElement).value.trim()),
   ageOk,
-  begin: (signup) => {
-    const gen = accountGen;
-    return (account) => {
-      if (gen !== accountGen) {
-        logoutForSure();
-        return false;
-      }
-      logoutDone();
-      setAccount(account, signup ? () => t('acct.welcome', { name: account.username }) : null);
-      return true;
-    };
-  },
+  begin: beginLogin,
   ended: (message) => {
     accountGen++;
     setAccount(null, message);
@@ -318,13 +353,32 @@ new AccountCard({
 });
 // Leaving plays alone at once, without waiting for the server: with it out of reach the answer can
 // take seconds. The logout itself is made sure of (see logoutForSure).
-const leave = () => {
+const leave = (message: (() => string) | null = null) => {
   accountGen++;
-  setAccount(null);
+  setAccount(null, message);
   logoutForSure();
 };
-$('mp-logout').addEventListener('click', leave);
-$('mp-leave').addEventListener('click', leave);
+$('mp-logout').addEventListener('click', () => {
+  leave(session?.role === 'guest' ? null : () => t('start.loggedOut'));
+  accountMsgCalm = true;
+  showAccountText();
+});
+$('mp-leave').addEventListener('click', () => leave());
+// Keep this run (src/ui/keepRun.ts): a guest's good Zombies run, offered while it waits on the server.
+export const keepRun = new KeepRun(() => session?.role === 'guest');
+// The three steps (src/ui/startFlow.ts).
+const flow: StartFlow = new StartFlow({
+  session: () => session,
+  begin: () => beginLogin(false),
+  logout: () => leave(),
+  ageOk,
+  start: (mode) => menu.begin(mode),
+  say: (text) => {
+    accountMsg = text;
+    accountMsgCalm = false;
+    showAccountText();
+  },
+});
 let logoutPending = false;
 try {
   logoutPending = localStorage.getItem(LOGOUT) === '1';
@@ -350,23 +404,32 @@ if (logoutPending) {
     setAccount(null);
     tellHost('alone');
   });
-} else api.me().then(setAccount).catch(() => setAccount(null));
-// Together picked but not joined yet: a start button joins first, as a guest under the name typed (an
-// account logs in from its card), and play starts only if that worked.
-const togetherPicked = () => !!document.querySelector('[data-mp=multi].selected');
-/** A name is needed to play, alone too (Yoshi, 1 Nov 2026): the field outlined and focused, the message under it. */
+} else {
+  // A session from before (its cookie): the welcome back on step 1, and nothing joined until step 2 says so.
+  api.me().then((account) => setSession({ username: account.username, role: account.role })).catch(() => setSession(null));
+}
+/** A name is needed to play, alone too (Yoshi, 1 Nov 2026): back to step 1, the field outlined and focused, the message under it. */
 function nameMissing(): boolean {
   const nick = $('nick') as HTMLInputElement;
   const name = nick.value.trim();
-  if (me || (name && name !== 'Guest' && name !== 'Gast')) return false;
+  if (me || session || (name && name !== 'Guest' && name !== 'Gast')) return false;
   setAccount(null, () => t('err.nameFirst'));
+  flow.show(1, false);
+  flow.showCard('guest');
   nick.setAttribute('aria-invalid', 'true'); // outlined until typed in
   nick.focus();
   return true;
 }
+// A start button: alone at once; together under the session (an account, or a guest from before), or joining
+// first as a guest under the name typed, and play starts only if that worked.
 menu.beforeStart = () => {
   if (nameMissing()) return Promise.resolve(false);
-  return togetherPicked() && !me ? join() : true;
+  if (!flow.together() || me) return true;
+  if (session) {
+    setAccount(session);
+    return true;
+  }
+  return join();
 };
 // Another language: the texts made here that aren't drawn every frame (the modules redraw their own).
 onLang(() => {
@@ -375,16 +438,38 @@ onLang(() => {
   showAccountText();
 });
 
-// The controller on the start screen: its name on the Controller button, ✕ starts with it, □
-// changes the graphics, the D-pad the walking speed. From the first start on, the world's loop reads it.
+// The controller on the start screen (src/ui/padNav.ts walks the step showing): the D-pad or the left stick moves,
+// ✕ presses (on the last step, with nothing chosen, it starts with the controller), ○ goes a step back, □ changes
+// the graphics. Its name shows on the Controller button. From the first start on, the world's loop reads it.
+const startNav = new PadNav(() => flow.page());
+let padStep = 0; // the step the controller last saw: on a new one, its likely press gets the focus
 function padLoop(): void {
   const frame = input.poll();
   menu.setPadState(input.padName);
-  if (frame.confirmPressed) menu.begin('pad');
-  else if (frame.squarePressed) menu.cycleGraphics();
-  else if (frame.speedStep) menu.setSpeed(menu.walkSpeed + frame.speedStep * 0.2);
+  if (padStep && padStep !== flow.step) {
+    startNav.reset();
+    startNav.focus(flow.defaultControl(true));
+  }
+  if (padStep) padStep = flow.step;
+  if (frame.anyPadButton) padStep ||= flow.step;
+  if (dialogOpen()) {
+    // The account card is a dialog of its own: the keyboard (or a console's own) works there, the pad waits.
+  } else if (frame.deletePressed && flow.step > 1) {
+    startNav.reset();
+    flow.goBack();
+  } else if (frame.confirmPressed) {
+    if (!startNav.press()) {
+      if (flow.step === 3) menu.begin('pad');
+      else startNav.focus(flow.defaultControl(true));
+    }
+  } else if (frame.squarePressed) menu.cycleGraphics();
+  else if (frame.navX || frame.navY) {
+    if (!startNav.focused()) startNav.focus(flow.defaultControl(true));
+    else if (!(frame.navX && startNav.adjust(frame.navX))) startNav.step(frame.navX, frame.navY);
+  }
   if (menu.world === 'none') requestAnimationFrame(padLoop);
 }
+const dialogOpen = () => !!document.querySelector('dialog[open]');
 requestAnimationFrame(padLoop);
 
 // ---- The first start fetches and builds the world (main.ts). What needs the click itself happens
@@ -395,7 +480,8 @@ menu.onStartGesture = (mode) => {
   if (mode === 'touch') fillScreen();
   void sound.context()?.resume();
 };
-menu.onFirstStart = () => {
+menu.onFirstStart = (mode) => {
+  flow.remember(mode); // the next visit's "Play again as before" (src/ui/startFlow.ts)
   import('./main').catch((e: unknown) => {
     console.error(e);
     menu.loadFailed();
