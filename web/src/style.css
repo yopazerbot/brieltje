@@ -1,46 +1,31 @@
-/* Brieltje's look (DECISIONS.md, 1 Nov 2026): the village at dusk with its lights coming on. Slate
-   blue panels like the roofs after sunset, warm off-white text, and lamplight amber for what to press
-   and what is chosen, as in the wordmark's two lit windows. One typeface, Alegreya Sans (SIL OFL,
-   web/public/fonts/, Latin only), in two weights: 500 for text, 800 for headings and buttons. */
-@font-face {
-  font-family: 'Alegreya Sans';
-  font-style: normal;
-  font-weight: 500;
-  font-display: swap;
-  src: url('/fonts/alegreya-sans-500.woff2') format('woff2');
-  unicode-range: U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC, U+0304, U+0308, U+0329, U+2000-206F, U+20AC, U+2122, U+2191, U+2193, U+2212, U+2215, U+FEFF, U+FFFD;
-}
-@font-face {
-  font-family: 'Alegreya Sans';
-  font-style: normal;
-  font-weight: 800;
-  font-display: swap;
-  src: url('/fonts/alegreya-sans-800.woff2') format('woff2');
-  unicode-range: U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC, U+0304, U+0308, U+0329, U+2000-206F, U+20AC, U+2122, U+2191, U+2193, U+2212, U+2215, U+FEFF, U+FFFD;
-}
-
+/* Brieltje's look: the brand of 8 November 2026 (src/brand.css, DECISIONS.md) over the dusk look of
+   1 November. Evening-blue panels, warm chalk text, and sunny yellow for what to press and what is
+   chosen, as in the logo's two lit windows. Alegreya Sans for text (500, and 800 for small labels),
+   Fredoka for headings and buttons (--display); their @font-face rules are in src/brand.css. The
+   names below are the game's own: each points at a brand colour, or is a step between two. */
 :root {
-  --ink: #f5efe4;          /* text */
-  --ink-soft: #bcc5ce;     /* second lines, labels (9:1 on dusk) */
-  --ink-faint: #95a1ad;    /* small print (5.7:1 on dusk) */
-  --dusk: #16202a;         /* panels */
-  --dusk-deep: #101820;    /* the menu's rail, the page behind */
-  --dusk-raised: #1f2b37;  /* fields, tiles, buttons */
-  --dusk-high: #2a3846;    /* their hover, empty tracks */
-  --line: rgba(220, 230, 240, 0.11);
-  --line-strong: rgba(220, 230, 240, 0.22);
-  --lamp: #f2b544;         /* lamplight: the button to press, what is chosen */
-  --lamp-bright: #f7c867;
-  --lamp-soft: rgba(242, 181, 68, 0.13);
-  --lamp-line: rgba(242, 181, 68, 0.6);
+  --ink: var(--brand-chalk);           /* text (15.4:1 on dusk) */
+  --ink-soft: var(--brand-chalk-soft); /* second lines, labels (10.1:1 on dusk) */
+  --ink-faint: #9aa3c7;                /* small print (6.7:1 on dusk, 5.6:1 on raised) */
+  --dusk: var(--brand-evening);        /* panels */
+  --dusk-deep: var(--brand-night);     /* the menu's rail, the page behind */
+  --dusk-raised: var(--brand-raised);  /* fields, tiles, buttons */
+  --dusk-high: #2a3768;                /* their hover, empty tracks */
+  --line: var(--brand-line);
+  --line-strong: rgba(220, 228, 255, 0.24);
+  --lamp: var(--brand-sun);            /* the button to press, what is chosen */
+  --lamp-bright: #ffcb4d;
+  --lamp-soft: rgba(247, 185, 40, 0.13);
+  --lamp-line: rgba(247, 185, 40, 0.6);
   --bad: #ff9c8a;
   --accent: var(--lamp);   /* the HUD's name for it */
-  --panel: rgba(18, 27, 36, 0.86); /* the HUD's boxes over the 3D view (no blur: the GPU is busy enough) */
+  --panel: rgba(13, 20, 48, 0.86); /* the HUD's boxes over the 3D view (no blur: the GPU is busy enough) */
   --shadow: 0 1px 2px rgba(0, 0, 0, 0.85), 0 0 10px rgba(0, 0, 0, 0.45);
-  --font: 'Alegreya Sans', 'Segoe UI', system-ui, -apple-system, sans-serif;
-  --r-panel: 20px;
-  --r-tile: 12px;
-  --r-field: 10px;
+  --font: var(--brand-body);
+  --display: var(--brand-display);
+  --r-panel: var(--brand-r-card);
+  --r-tile: 14px;
+  --r-field: 12px;
 }
 
 * { box-sizing: border-box; }
@@ -82,7 +67,7 @@ button, input, select, textarea { font-family: inherit; }
   color: var(--ink-soft); border: 1px solid var(--line-strong); border-radius: 6px; pointer-events: none; user-select: none; -webkit-user-select: none;
 }
 /* Over the 3D view: a faint dark fill instead of the HUD's text shadow, so it reads on a bright sky without standing out. */
-#brand .beta { color: rgba(245, 239, 228, 0.82); background: rgba(12, 18, 24, 0.38); border-color: rgba(245, 239, 228, 0.3); text-shadow: none; }
+#brand .beta { color: rgba(251, 246, 234, 0.82); background: rgba(13, 20, 48, 0.38); border-color: rgba(251, 246, 234, 0.3); text-shadow: none; }
 /* The menu's key, always in view while playing. */
 #menu-hint { position: absolute; top: 104px; left: 24px; font-size: 14px; opacity: 0.9; }
 #menu-hint kbd {
@@ -176,7 +161,7 @@ button, input, select, textarea { font-family: inherit; }
   position: absolute; left: 24px; bottom: 44px; width: min(460px, calc(100vw - 48px));
   display: flex; flex-direction: column; gap: 2px; font-size: 15px;
 }
-#chat-log .line { background: rgba(12, 14, 18, 0.55); padding: 3px 8px; transition: opacity 1s; }
+#chat-log .line { background: rgba(13, 20, 48, 0.55); padding: 3px 8px; transition: opacity 1s; }
 #chat-log .line.system { color: var(--accent); }
 #chat-log .line.old { opacity: 0; }
 #chat-log.active .line.old { opacity: 1; }
@@ -220,7 +205,7 @@ button, input, select, textarea { font-family: inherit; }
   position: absolute; top: 300px; right: 24px;
   display: flex; flex-direction: column; align-items: flex-end; gap: 4px; font-size: 15px; font-weight: 600;
 }
-#killfeed .kf { background: rgba(12, 14, 18, 0.6); padding: 3px 10px; transition: opacity 0.8s; border: 1px solid transparent; }
+#killfeed .kf { background: rgba(13, 20, 48, 0.6); padding: 3px 10px; transition: opacity 0.8s; border: 1px solid transparent; }
 #killfeed .kf.me { border-color: rgba(255, 59, 47, 0.8); }
 #killfeed .kf.old { opacity: 0; }
 #killfeed .arrow { opacity: 0.7; }
@@ -242,7 +227,7 @@ button, input, select, textarea { font-family: inherit; }
 #score-table th { text-align: left; font-size: 12px; letter-spacing: 0.12em; text-transform: uppercase; opacity: 0.7; padding: 4px 8px; }
 #score-table th:not(:first-child), #score-table td.num { text-align: right; }
 #score-table td { padding: 6px 8px; border-top: 1px solid rgba(255, 255, 255, 0.08); font-weight: 600; }
-#score-table tr.me td { background: rgba(242, 179, 61, 0.12); }
+#score-table tr.me td { background: var(--lamp-soft); }
 #score-table tr.dead td.name span:first-child { opacity: 0.5; }
 #score-table .exploring { margin-left: 8px; font-size: 12px; font-weight: 400; opacity: 0.6; }
 
@@ -523,7 +508,7 @@ body.zend-on #death { display: none; }
 #zend-table th { font-size: 12px; letter-spacing: 0.12em; text-transform: uppercase; opacity: 0.7; padding: 4px 8px; }
 #zend-table th:last-child, #zend-table td.num { text-align: right; }
 #zend-table td { padding: 6px 8px; border-top: 1px solid rgba(255, 255, 255, 0.08); font-weight: 600; }
-#zend-table tr.me td { background: rgba(242, 179, 61, 0.12); }
+#zend-table tr.me td { background: var(--lamp-soft); }
 #zend-best { margin: 14px 0 0; font-size: 15px; font-weight: 700; color: var(--accent); }
 #zend-keep { margin: 8px 0 0; font-size: 14px; color: var(--ink-soft); }
 #zend-keep.hidden { display: none; }
@@ -534,7 +519,7 @@ body.touch #zend h2 { font-size: 24px; }
 body.touch #blindfold { padding: 24px 150px; font-size: 20px; line-height: 1.35; }
 .context-lost {
   position: fixed; inset: 0; z-index: 100; display: flex; align-items: center; justify-content: center; padding: 24px; text-align: center;
-  font-size: 18px; line-height: 1.5; background: rgba(12, 14, 18, 0.94); color: var(--ink);
+  font-size: 18px; line-height: 1.5; background: rgba(13, 20, 48, 0.94); color: var(--ink);
 }
 
 /* The portals: the list of places while you stand on a pad, and the flash of a trip. */
@@ -604,7 +589,7 @@ body.touch #tv-hint { margin-top: 4px; font-size: 11px; }
 }
 #map-btn .ico {
   position: absolute; left: 14px; bottom: 14px; width: 24px; height: 24px; display: flex; align-items: center; justify-content: center;
-  font-size: 13px; border-radius: 50%; background: rgba(12, 14, 18, 0.8); border: 1px solid rgba(255, 255, 255, 0.35);
+  font-size: 13px; border-radius: 50%; background: rgba(13, 20, 48, 0.8); border: 1px solid rgba(255, 255, 255, 0.35);
 }
 #map-btn:hover .ico, #map-btn:focus-visible .ico { border-color: var(--accent); }
 #map-btn:focus-visible { outline: none; }
@@ -670,7 +655,7 @@ body.touch #map-btn .ico { left: 6px; bottom: 6px; width: 26px; height: 26px; }
 #overlay {
   position: fixed; inset: 0; display: flex; align-items: center; justify-content: center;
   padding: max(16px, env(safe-area-inset-top, 0px)) max(16px, env(safe-area-inset-right, 0px)) max(16px, env(safe-area-inset-bottom, 0px)) max(16px, env(safe-area-inset-left, 0px));
-  background: rgba(9, 14, 19, 0.62);
+  background: rgba(8, 12, 30, 0.62);
 }
 #overlay.hidden, .panel.hidden { display: none; }
 body.on-start #overlay { background: linear-gradient(180deg, rgba(9, 14, 19, 0.2), rgba(9, 14, 19, 0.55)); }
@@ -748,7 +733,7 @@ body.on-start #overlay { background: linear-gradient(180deg, rgba(9, 14, 19, 0.2
   color: var(--ink); background: var(--dusk); border: 0; border-radius: var(--r-panel);
   box-shadow: 0 24px 60px rgba(0, 0, 0, 0.5), inset 0 1px 0 rgba(255, 255, 255, 0.05);
 }
-#acct-dlg::backdrop { background: rgba(9, 14, 19, 0.62); }
+#acct-dlg::backdrop { background: rgba(8, 12, 30, 0.62); }
 #acct-form { position: relative; max-height: calc(100dvh - 32px); overflow-y: auto; padding: 24px 22px 18px; }
 #acct-form [hidden] { display: none !important; }
 #acct-form h2 { margin: 0 36px 14px 0; font-size: 24px; font-weight: 800; line-height: 1.2; }
@@ -827,7 +812,7 @@ body.on-start #overlay { background: linear-gradient(180deg, rgba(9, 14, 19, 0.2
   padding: 8px 14px; cursor: pointer; font-size: 14.5px; font-weight: 800; color: var(--ink);
   background: var(--dusk-high); border: 0; border-radius: var(--r-field); transition: background-color 0.15s;
 }
-.mini:hover { background: #354657; }
+.mini:hover { background: #34427a; }
 .mini.go { color: var(--dusk); background: var(--lamp); }
 .mini.go:hover { background: var(--lamp-bright); }
 .mini.danger:hover { color: var(--bad); }
@@ -841,7 +826,7 @@ body.on-start #overlay { background: linear-gradient(180deg, rgba(9, 14, 19, 0.2
 }
 .check input:checked {
   background-color: var(--lamp); border-color: var(--lamp);
-  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'%3E%3Cpath d='M3.2 8.4l3 3L12.8 4.8' fill='none' stroke='%2316202a' stroke-width='2.4' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E");
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'%3E%3Cpath d='M3.2 8.4l3 3L12.8 4.8' fill='none' stroke='%230d1430' stroke-width='2.4' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E");
 }
 /* Settings that switch at once (the settings and the admin's house rules): a row each, the label on
    the left, a switch on the right. Agreeing to something (the age) stays a tick box. */

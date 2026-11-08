@@ -1,0 +1,62 @@
+/* Brieltje's brand (DECISIONS.md, 8 Nov 2026), from the Game Night poster: evening blue, sunny yellow
+   for what you press and what is chosen, three paint colours for the modes, the sunset for the start and
+   loading screens. Headings and buttons in Fredoka, round and heavy; running text stays in Alegreya Sans.
+   Both fonts are SIL OFL and served from this site (web/public/fonts/): no font service at runtime, so
+   nothing about a visitor goes elsewhere, and the site's CSP (default-src 'self') needs no change.
+
+   The game's own names (src/style.css --ink, --dusk, --lamp ...) and the pages' (public/menu-theme.css)
+   are mapped onto these, so the whole interface follows them. The pages outside the game (legal, game
+   night, pairing) read this same file as /brand.css (vite.config.ts copies it there). */
+
+/* Fredoka: one variable file (weights 300 to 700), the Latin subset Google Fonts serves: every letter
+   Dutch and English need (é, ë, ï, ü ... and the euro sign). */
+@font-face {
+  font-family: 'Fredoka';
+  font-style: normal;
+  font-weight: 300 700;
+  font-display: swap;
+  src: url('/fonts/fredoka.woff2') format('woff2');
+  unicode-range: U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC, U+0304, U+0308, U+0329, U+2000-206F, U+20AC, U+2122, U+2191, U+2193, U+2212, U+2215, U+FEFF, U+FFFD;
+}
+/* Alegreya Sans, the text face: two weights. */
+@font-face {
+  font-family: 'Alegreya Sans';
+  font-style: normal;
+  font-weight: 500;
+  font-display: swap;
+  src: url('/fonts/alegreya-sans-500.woff2') format('woff2');
+  unicode-range: U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC, U+0304, U+0308, U+0329, U+2000-206F, U+20AC, U+2122, U+2191, U+2193, U+2212, U+2215, U+FEFF, U+FFFD;
+}
+@font-face {
+  font-family: 'Alegreya Sans';
+  font-style: normal;
+  font-weight: 800;
+  font-display: swap;
+  src: url('/fonts/alegreya-sans-800.woff2') format('woff2');
+  unicode-range: U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC, U+0304, U+0308, U+0329, U+2000-206F, U+20AC, U+2122, U+2191, U+2193, U+2212, U+2215, U+FEFF, U+FFFD;
+}
+
+:root {
+  /* Colours. Contrast on evening (#141d3a): chalk 15.4:1, chalk-soft 10.1:1, sun 9.4:1. Night text on sun: 10.3:1. */
+  --brand-night: #0d1430;     /* behind everything */
+  --brand-evening: #141d3a;   /* panels, menus */
+  --brand-raised: #1f2a52;    /* fields, cards, the second buttons */
+  --brand-line: rgba(220, 228, 255, 0.14);
+  --brand-sun: #f7b928;       /* what you press, what is chosen; Action */
+  --brand-sun-deep: #d99a0e;  /* the pressable edge under a yellow button */
+  --brand-chalk: #fbf6ea;     /* text */
+  --brand-chalk-soft: #c3c9e2; /* second lines */
+  --brand-lime: #a6e83a;      /* paint: Zombies */
+  --brand-magenta: #ff3d9a;   /* paint: Paintball */
+  --brand-sky: #38c6f4;       /* paint: Explore */
+  --brand-dusk-a: #6b3fa0;    /* the sunset, high up */
+  --brand-dusk-b: #f08a4b;    /* the sunset, at the horizon */
+
+  /* Type. */
+  --brand-display: 'Fredoka', 'Trebuchet MS', 'Segoe UI', system-ui, -apple-system, sans-serif;
+  --brand-body: 'Alegreya Sans', 'Segoe UI', system-ui, -apple-system, sans-serif;
+
+  /* Shapes. */
+  --brand-r-card: 22px;
+  --brand-r-pill: 999px;
+}

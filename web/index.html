@@ -10,7 +10,8 @@
     <meta name="application-name" content="Brieltje" />
     <link rel="icon" href="/favicon.svg" type="image/svg+xml" />
     <link rel="icon" href="/icon-192.png" type="image/png" sizes="192x192" />
-    <!-- The brand's typeface (Alegreya Sans, SIL OFL; web/public/fonts/): fetched at once, so the start screen opens in it. -->
+    <!-- The brand's typefaces (SIL OFL; web/public/fonts/, src/brand.css): fetched at once, so the start screen opens in them. -->
+    <link rel="preload" href="/fonts/fredoka.woff2" as="font" type="font/woff2" crossorigin />
     <link rel="preload" href="/fonts/alegreya-sans-500.woff2" as="font" type="font/woff2" crossorigin />
     <link rel="preload" href="/fonts/alegreya-sans-800.woff2" as="font" type="font/woff2" crossorigin />
     <!-- Added to the home screen it opens without the browser's bars (the only full screen an iPhone allows a page). -->
@@ -20,8 +21,9 @@
     <meta name="mobile-web-app-capable" content="yes" />
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
     <meta name="apple-mobile-web-app-title" content="Brieltje" />
-    <meta name="theme-color" content="#16202a" />
+    <meta name="theme-color" content="#141d3a" />
     <link rel="stylesheet" href="/slides/slides.css" />
+    <link rel="stylesheet" href="/src/brand.css" />
     <link rel="stylesheet" href="/src/style.css" />
     <link rel="stylesheet" href="/menu-theme.css" />
     <!-- The start screen in the brand's colours, type and shapes (its tokens in one place, at its top). -->

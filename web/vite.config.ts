@@ -35,8 +35,29 @@ function brotli(): Plugin {
   };
 }
 
+/**
+ * The brand's colours, fonts and shapes (src/brand.css) for the pages outside the game too (legal,
+ * game night, pairing, admin): the game bundles the file, and this serves the same file as /brand.css,
+ * so there is one copy to change. In dev it is read on each request; the build writes it to dist/.
+ */
+function brandCss(): Plugin {
+  const src = resolve(import.meta.dirname, 'src/brand.css');
+  return {
+    name: 'brand-css',
+    configureServer(server) {
+      server.middlewares.use('/brand.css', (_req, res) => {
+        res.setHeader('Content-Type', 'text/css; charset=utf-8');
+        res.end(readFileSync(src));
+      });
+    },
+    generateBundle() {
+      this.emitFile({ type: 'asset', fileName: 'brand.css', source: readFileSync(src) });
+    },
+  };
+}
+
 export default defineConfig({
-  plugins: [brotli()],
+  plugins: [brotli(), brandCss()],
   // The game, and the split screen (/splitscreen: up to four copies of it on one page, src/splitscreen/).
   build: { rolldownOptions: { input: { index: resolve(import.meta.dirname, 'index.html'), splitscreen: resolve(import.meta.dirname, 'splitscreen/index.html') } } },
   server: {

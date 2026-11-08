@@ -91,6 +91,7 @@ Our own layout (`data/garden.json`): paths, terrace, driveway, planted borders, 
 | Font | Used for | Author | Licence |
 |---|---|---|---|
 | [Alegreya Sans](https://github.com/huertatipografica/Alegreya-Sans), Medium (500) and ExtraBold (800), Latin subset, `web/public/fonts/*.woff2` (the files Google Fonts serves) | Every text in the game, the interest page and its admin page | The Alegreya Sans Project Authors (Huerta Tipográfica) | SIL Open Font License 1.1 (`web/public/fonts/OFL.txt`) |
+| [Fredoka](https://github.com/hafontia/Fredoka-One), weights 300 to 700 in one variable file, Latin subset, `web/public/fonts/fredoka.woff2` (the file Google Fonts serves) | Headings and buttons in the game and on the site's pages, and the Brieltje logo | The Fredoka Project Authors (Hafontia) | SIL Open Font License 1.1 (`web/public/fonts/OFL-Fredoka.txt`) |
 
 The Brieltje wordmark (`web/public/brand/wordmark.svg`, and the `<symbol id="wordmark">` in `web/index.html`) is the word in Alegreya Sans ExtraBold's outlines, with the dots of the i and the j drawn as two lit windows. The icon (`web/public/favicon.svg`, `icon-192.png`, `icon-512.png`, `apple-touch-icon.png`) is our own drawing.
 

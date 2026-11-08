@@ -1,14 +1,16 @@
-/* Shared controls for the game menus, event forms and admin pages. */
+/* Shared controls for the game menus, event forms and admin pages. The colours are the brand's
+   (src/brand.css, served as /brand.css); the values after the commas are the same colours, for the
+   admin pages, which don't load the brand file. */
 :root {
-  --menu-accent: #f2b544;
+  --menu-accent: var(--brand-sun, #f7b928);
   --accent: var(--menu-accent);
-  --menu-edge: #42505d;
-  --menu-surface: #1b2733;
+  --menu-edge: #3a467a;
+  --menu-surface: var(--brand-raised, #1f2a52);
 }
 :is(#start-panel, #pause-panel, .card) {
   color-scheme: dark;
-  background-image: linear-gradient(145deg, #243341, #17212b 48%, #151e27);
-  box-shadow: inset 0 1px 0 #56616a, 0 18px 55px #060a1066;
+  background-image: linear-gradient(145deg, #222e5a, #141d3a 48%, #111936);
+  box-shadow: inset 0 1px 0 #4a568a, 0 18px 55px #050a2066;
 }
 .card > header {
   padding-bottom: 12px;
@@ -17,11 +19,11 @@
 .card .langs {
   display: inline-flex;
   padding: 3px;
-  background: #111a22;
+  background: var(--brand-night, #0d1430);
   border-radius: 999px;
 }
 .card .langs button { min-height: 36px; padding: 4px 10px; border-radius: inherit; }
-.card .langs button[aria-pressed="true"] { color: #fff4d6; background: #36444f; }
+.card .langs button[aria-pressed="true"] { color: #fff8ea; background: #2a3768; }
 .card label.field { font-size: 15px; letter-spacing: .02em; text-transform: none; color: var(--ink); }
 .card :is(input, textarea, select) { color-scheme: dark; }
 .card :is(button, a, input, select, textarea):focus-visible,
@@ -50,8 +52,8 @@
 /* Scrollbars in the theme, not the browser's own (Yoshi, 7 Nov 2026): a slim, rounded slate bar on no track,
    lamplight when pointed at. The standard properties (Chrome, Edge, Firefox) and the older -webkit- ones
    (Safari, which reads only these); where both are known the standard ones win. */
-* { scrollbar-width: thin; scrollbar-color: #4b5d6e transparent; }
+* { scrollbar-width: thin; scrollbar-color: #3a467a transparent; }
 ::-webkit-scrollbar { width: 10px; height: 10px; }
 ::-webkit-scrollbar-track, ::-webkit-scrollbar-corner { background: transparent; }
-::-webkit-scrollbar-thumb { background: #4b5d6e; background-clip: padding-box; border: 2px solid transparent; border-radius: 999px; }
+::-webkit-scrollbar-thumb { background: #3a467a; background-clip: padding-box; border: 2px solid transparent; border-radius: 999px; }
 ::-webkit-scrollbar-thumb:hover { background-color: var(--menu-accent); }
