@@ -445,7 +445,8 @@ body:has(#overlay:not(.hidden) > #start-panel:not(.hidden)) #full-btn { display:
 /* A phone held sideways: the header has the logo and these buttons; the steps sit at the right of the step's title. */
 @media (max-height: 520px) {
   #start-panel .start-tools .icon-btn { width: 40px; height: 40px; }
-  .step-bar { position: static; transform: none; float: right; margin: 6px 0 0 12px; min-height: 40px; }
+  /* Floated beside the step: above it too, or the step's box (which runs under a float) takes the Back button's taps. */
+  .step-bar { position: relative; z-index: 2; inset: auto; transform: none; float: right; margin: 6px 0 0 12px; min-height: 40px; }
 }
 
 /* ---- Pad mode (src/ui/padStart.ts): the start screen with only a controller. It only adds: without a controller none of
