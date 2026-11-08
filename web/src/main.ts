@@ -3737,7 +3737,7 @@ async function buildVillage(): Promise<void> {
   tiles.showAll(); // as for the bakes: every tile, the models in it and the ponds' water
   for (const m of models) m.visible = true;
   groundShade.warm(renderer, scene, sun, [tiles.group], house.ground);
-  bigMap.addVillage(data);
+  void playing.then(() => bigMap.addVillage(data)); // once play has begun, in slices between frames (ui/bigmap.ts)
   await environmentReady;
   await between();
   const c = landmarks[0] ?? new THREE.Vector2(521.5, -744.2); // the church

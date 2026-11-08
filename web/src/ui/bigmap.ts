@@ -225,11 +225,13 @@ export class BigMap {
   addVillage(data: Surroundings & { dips?: DipSpec[]; area?: [number, number][] }): void {
     if (data.area && data.area.length > 2) this.area = data.area.map(([x, z]) => [toU(x, z), toV(x, z)]);
     this.addFootball();
-    // In idle slices of a few milliseconds (they took 0.2 s of the loading on this PC, 0.8 s on a phone's processor):
-    // the map and the minimap's ground show the village once all of it is in, the same paths in the same order.
+    // In slices of 12 ms, one after each frame (it took 0.2 s on this PC, 0.8 s with a phone's processor; main.ts calls it once
+    // play has begun): the map and the minimap's ground show the village once all of it is in, the same paths in the
+    // same order.
     const job = this.adding(data, data.dips ?? []);
-    const slice = (left: () => number) => {
-      const end = performance.now() + Math.min(8, Math.max(2, left()));
+    const next = () => requestAnimationFrame(() => setTimeout(slice, 0));
+    const slice = () => {
+      const end = performance.now() + 12;
       while (performance.now() < end) {
         if (job.next().done) {
           this.dirty = true;
@@ -237,9 +239,9 @@ export class BigMap {
           return;
         }
       }
-      later(slice);
+      next();
     };
-    later(slice);
+    next();
   }
 
   show(you: { x: number; z: number; yaw: number }, control: Control): void {
@@ -893,12 +895,6 @@ function pin(g: CanvasRenderingContext2D, x: number, y: number): void {
   g.fillStyle = '#11151b';
   g.fill();
   g.restore();
-}
-
-/** `f` when the page is idle (given the milliseconds left of the idle time), or within a second. */
-function later(f: (left: () => number) => void): void {
-  if (typeof requestIdleCallback === 'function') requestIdleCallback((d) => f(() => d.timeRemaining()), { timeout: 1000 });
-  else setTimeout(() => f(() => 8), 16);
 }
 
 /** The convex hull of points (monotone chain). */
