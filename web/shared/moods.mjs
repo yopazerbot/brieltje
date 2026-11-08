@@ -31,11 +31,11 @@ export function isChoice(c) {
 }
 
 /** Milliseconds a change of mood takes in the cycle: the last part of each mood blends into the next. */
-export const BLEND_MS = 150_000;
+export const BLEND_MS = 60_000;
 /** Milliseconds for the ground to dry to about a third after the rain. */
 export const DRY_MS = 240_000;
 /** Milliseconds for the snow to cover everything once it starts falling (on Auto). */
-export const SNOW_BUILD_MS = 360_000;
+export const SNOW_BUILD_MS = 150_000;
 /** Milliseconds for the snow lying to melt to about a third once it stops falling. */
 export const SNOW_MELT_MS = 600_000;
 
@@ -44,7 +44,8 @@ export const SNOW_MELT_MS = 600_000;
  * The night comes only after dusk, so dusk's weight is the night's too. Snow only in winter (WINTER), and seldom.
  */
 const WEIGHT = { sunny: 6, overcast: 3, rain: 2, dusk: 1.6, night: 1, snow: 1 };
-const MINUTES = { sunny: [20, 40], overcast: [20, 40], rain: [20, 40], dusk: [10, 16], night: [10, 20], snow: [15, 30] };
+// Every mood holds 5 minutes (Yoshi, 8 Nov 2026: "make weather change every 5 mins"); before, 10 to 40.
+const MINUTES = { sunny: [5, 5], overcast: [5, 5], rain: [5, 5], dusk: [5, 5], night: [5, 5], snow: [5, 5] };
 /**
  * Never straight from the one to the other. A day goes through dusk into the night, never straight from noon to night,
  * and the morning after comes grey (clouds, rain, in winter snow): never from the night straight back to sunny or dusk.
@@ -196,6 +197,14 @@ export class MoodCycle {
     // The snow: when it began to fall (the blend into it) and when it stopped (halfway through the blend out of it).
     this.snowFrom = this.mood === 'snow' ? this.from - BLEND_MS : -Infinity;
     this.snowStop = this.mood === 'snow' ? this.from + this.length - BLEND_MS / 2 : -Infinity;
+    this.snowBase = 0; // what still lay when this snowfall began: it builds on that
+  }
+
+  /** The snow lying at `t` from the last snowfall that stopped before it (melting), or 0. */
+  melted(t) {
+    if (this.snowFrom === -Infinity || t < this.snowStop) return 0;
+    const top = Math.min(1, this.snowBase + Math.min(1, Math.max(0, (this.snowStop - this.snowFrom) / SNOW_BUILD_MS)));
+    return top * Math.exp(-(t - this.snowStop) / SNOW_MELT_MS);
   }
 
   at(t) {
@@ -208,7 +217,9 @@ export class MoodCycle {
       this.length = span(this.r, this.mood);
       this.next = pick(this.r, this.mood, this.winter);
       if (this.mood === 'snow') {
-        this.snowFrom = this.from - BLEND_MS;
+        const begins = this.from - BLEND_MS;
+        this.snowBase = this.melted(begins); // the next snow builds on what is left
+        this.snowFrom = begins;
         this.snowStop = this.from + this.length - BLEND_MS / 2;
       }
     }
@@ -221,9 +232,10 @@ export class MoodCycle {
     const built = (from, to) => Math.min(1, Math.max(0, (to - from) / SNOW_BUILD_MS));
     let snow = 0;
     if (this.snowFrom === -Infinity) snow = 0; // no snow yet
-    else if (t >= this.snowStop) snow = built(this.snowFrom, this.snowStop) * Math.exp(-(t - this.snowStop) / SNOW_MELT_MS);
-    else if (t >= this.snowFrom) snow = built(this.snowFrom, t);
-    if (this.next === 'snow' && t > until - BLEND_MS) snow = Math.max(snow, built(until - BLEND_MS, t));
+    else if (t >= this.snowStop) snow = this.melted(t);
+    else if (t >= this.snowFrom) snow = Math.min(1, this.snowBase + built(this.snowFrom, t));
+    // Into the next snowfall: it begins on what still lies then, as it will once the mood has turned.
+    if (this.next === 'snow' && t > until - BLEND_MS) snow = Math.min(1, this.melted(until - BLEND_MS) + built(until - BLEND_MS, t));
     const progress = Math.min(1, Math.max(0, (t - this.from) / this.length));
     return { mood: this.mood, next: this.next, blend, until, progress, wet, snow };
   }
