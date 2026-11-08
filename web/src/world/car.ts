@@ -5,9 +5,11 @@ import CARS from '../../shared/car.json';
 import type { CarSample } from '../../shared/wire.mjs';
 import { netClock, Track } from '../net/track';
 import { CarBody, groundPlane, PITCH_MAX, ROLL_MAX, skid } from './carBody';
+import { G, MASS, surfaceGrip, tyreForces, YAW_INERTIA } from './carGrip';
 import { CarLamps } from './carLights';
 import { CarSound } from './carSound';
 import type { Point, World } from './collision';
+import { mood } from './mood';
 import { skidMarks } from './skidMarks';
 
 /**
@@ -97,10 +99,12 @@ export interface Obstacle {
 const WHEELBASE = 2.89; // m
 const WHEEL_R = 0.356;  // m
 const ACCEL = 6;        // m/s2 from standstill at full throttle, less towards top speed
-const BRAKE = 9;        // m/s2
+const BRAKE = 9;        // m/s2 asked of the brakes (ABS holds it to what the ground grips: world/carGrip.ts)
 const REVERSE = 3;      // m/s2 backwards
-const HANDBRAKE = 7;    // m/s2; the rear also lets go, so the car slides
-const GRIP = 12;        // how fast sideways sliding dies out (1/s)
+const HANDBRAKE = 1;    // g asked of the front brakes with the handbrake, the wheel straight (less as you steer); the rear wheels lock
+const REGEN = 1;        // m/s2: off the pedal, the motor slows the car (as a Tesla does)
+const GRIP = 12;        // how fast sideways sliding dies out at a crawl (1/s)
+const ESC = 6;          // 1/s: how fast the stability control brings a sliding car back (not while the handbrake is on)
 const STEER = 0.62;     // rad, the front wheels at full lock (less at speed, see step())
 const CLEAR = 0.3;      // m: lower things (kerbs, paving, a step) don't stop the car
 const SPIN_STEP = 0.3;  // rad: the most a wheel turns per frame on screen (faster, the spokes seem to stand or run back)
@@ -273,6 +277,21 @@ export class Car {
   park: { x: number; y: number; z: number; yaw: number };
   private vx = 0;
   private vz = 0;
+  /** rad/s it turns to the right (world/carGrip.ts: the tyres turn it, it isn't set by the steering alone) */
+  private turn = 0;
+  /** The pedals as the car takes them, eased in (a key is all or nothing) */
+  private pedal = 0;
+  private brakePedal = 0;
+  /** m/s2 the tyres push it along itself and to its right, smoothed: the weight on the axles, and the body's lean */
+  private ax = 0;
+  private ay = 0;
+  /** The grip under each wheel (world/carGrip.ts: surfaceGrip), from ground() */
+  private grip = [1, 1, 1, 1];
+  /** m/s the front and rear tyres slide past their grip (the marks and the squeal) */
+  private slideF = 0;
+  private slideR = 0;
+  /** It hit something this frame (the body jolts from its speed change, not the tyres') */
+  private crashed = false;
   private braking = false;
   private pushing = 0;
   private body = new THREE.Group();
@@ -290,7 +309,6 @@ export class Car {
   private lastZ = 0;
   private lastYaw = 0;
   private fresh = true; // just put somewhere: no motion to read from the last frame
-  private handbraking = false;
   // The ground under the wheels: each wheel's spot (on the car: x right, z back; front left, front right,
   // rear left, rear right), the axles' spacing, each wheel's ground height last frame, and the plane they
   // make, smoothed (the twist is what the wheels' own springs take).
@@ -414,16 +432,15 @@ export class Car {
 
   /** You got out: it rolls to a stop where it is. */
   leave(): void {
-    this.vx = this.vz = this.speed = this.spinKick = 0; // a crash's turn ends with the drive
+    this.vx = this.vz = this.speed = this.spinKick = this.turn = this.pedal = this.brakePedal = this.slideF = this.slideR = 0; // a crash's turn ends with the drive
     this.braking = false;
-    this.handbraking = false;
     this.pushing = 0;
     this.track.clear(); // the server's next states start from here
   }
 
   /** Through a portal: standing still at (x, y, z) facing `yaw`, the camera behind it. */
   place(x: number, y: number, z: number, yaw: number): void {
-    Object.assign(this, { x, y, z, yaw, steer: 0, speed: 0, vx: 0, vz: 0, lastSpeed: 0, spinKick: 0, braking: false, camHeading: yaw, camYaw: 0, fresh: true });
+    Object.assign(this, { x, y, z, yaw, steer: 0, speed: 0, vx: 0, vz: 0, turn: 0, pedal: 0, brakePedal: 0, lastSpeed: 0, spinKick: 0, braking: false, camHeading: yaw, camYaw: 0, fresh: true });
     this.motion.reset();
     this.track.clear();
   }
@@ -436,7 +453,7 @@ export class Car {
     this.driver = s.driver;
     this.passenger = s.passenger ?? null;
     if (snap || Math.hypot(s.x - this.x, s.z - this.z) > 10) {
-      Object.assign(this, { x: s.x, y: s.y, z: s.z, yaw: s.yaw, steer: s.s, speed: 0, spinKick: 0, fresh: true });
+      Object.assign(this, { x: s.x, y: s.y, z: s.z, yaw: s.yaw, steer: s.s, speed: 0, spinKick: 0, turn: 0, fresh: true });
       this.motion.reset();
       this.track.clear();
     }
@@ -458,14 +475,14 @@ export class Car {
     this.atEdge = false;
     this.hit = null;
     for (let i = 0; i < steps; i++) impact = Math.max(impact, this.step(dt / steps, input, near));
+    this.crashed = impact > 1;
     const hit = this.hit as CrashHit | null; // step() keeps the hardest
     if (hit && hit.speed > 2.5) {
       Car.onCrash(hit);
       this.camBack -= Math.min(0.8, hit.speed * 0.06); // the camera lurches on with the car's weight, and eases back
     }
     this.braking = (input.brake > 0.05 && this.speed > 0.3) || (input.throttle > 0.05 && this.speed < -0.3) || (input.handbrake && Math.abs(this.speed) > 0.3);
-    this.pushing = input.throttle || input.brake;
-    this.handbraking = input.handbrake;
+    this.pushing = this.pedal || this.brakePedal; // as the car takes the pedals (eased in)
     const g = this.world.groundAt(this.x, this.z, this.y, CLEAR).y;
     this.y += (g - this.y) * (1 - Math.exp(-dt * 12));
     return impact;
@@ -486,30 +503,96 @@ export class Car {
 
   private step(dt: number, input: DriveInput, others: Obstacle[]): number {
     let [fx, fz] = this.forward;
-    let v = this.vx * fx + this.vz * fz; // along the car
-    let side = -this.vx * fz + this.vz * fx; // sideways
-    if (input.throttle > 0) {
-      // Keep the same pull away from rest, easing to 35% power near the cap so the higher top speed is reachable.
-      v += v < -0.3 ? BRAKE * input.throttle * dt : ACCEL * input.throttle * Math.max(0, 1 - 0.65 * (v / this.spec.maxSpeed) ** 2) * dt;
+    const u = this.vx * fx + this.vz * fz; // along the car
+    const side = -this.vx * fz + this.vz * fx; // to its right
+    const speed = Math.abs(u);
+    const max = this.spec.maxSpeed;
+    // The pedals ease in over about a tenth of a second and let go a little faster: a key is all or
+    // nothing, and a sudden full pull or full brake would jolt the car. A pad's triggers stay as pressed.
+    const thr = Math.max(0, Math.min(1, input.throttle || 0));
+    const brk = Math.max(0, Math.min(1, input.brake || 0));
+    this.pedal += (thr - this.pedal) * (1 - Math.exp(-dt * (thr > this.pedal ? 12 : 14)));
+    this.brakePedal += (brk - this.brakePedal) * (1 - Math.exp(-dt * (brk > this.brakePedal ? 20 : 18)));
+    const hb = !!input.handbrake;
+
+    // What the motors and brakes ask of the tyres (N); the tyres give what the ground grips (world/carGrip.ts).
+    let drive = 0;
+    let brake = 0;
+    if (hb) {
+      // The handbrake: the rear wheels lock, and the front ones brake as hard as ABS lets them (the motors
+      // let go), less as you steer so the front still turns the car round.
+      brake = HANDBRAKE * MASS * G * (1 - 0.9 * Math.min(1, Math.abs(input.steer)));
+    } else {
+      if (this.pedal > 0) {
+        // Keep the same pull away from rest, easing to 35% power near the cap so the higher top speed is reachable.
+        if (u < -0.3) brake += BRAKE * this.pedal * MASS;
+        else drive += ACCEL * this.pedal * Math.max(0, 1 - 0.65 * (u / max) ** 2) * MASS;
+      }
+      if (this.brakePedal > 0) {
+        if (u > 0.3) brake += BRAKE * this.brakePedal * MASS;
+        else drive -= REVERSE * this.brakePedal * Math.max(0, 1 + u / this.spec.reverseSpeed) * MASS;
+      }
+      // Off both pedals: the motor slows it a little, fading out at a walk.
+      if (this.pedal < 0.05 && this.brakePedal < 0.05) brake += REGEN * Math.min(1, Math.max(0, (speed - 1) / 3)) * MASS;
     }
-    if (input.brake > 0) {
-      v -= v > 0.3 ? BRAKE * input.brake * dt : REVERSE * input.brake * Math.max(0, 1 + v / this.spec.reverseSpeed) * dt;
-    }
-    if (input.handbrake) v -= Math.sign(v) * Math.min(Math.abs(v), HANDBRAKE * dt);
-    v -= Math.sign(v) * Math.min(Math.abs(v), (0.4 + 0.0004 * v * v) * dt); // rolling and air: it coasts to a stop
-    v = Math.max(-this.spec.reverseSpeed, Math.min(this.spec.maxSpeed, v));
-    side *= Math.exp(-dt * (input.handbrake ? 2 : GRIP));
 
     // Full lock at a crawl (4.3 m turning radius), about 9 m at 36 km/h, 24 m at 72 km/h: sharp in
-    // the village streets, not twitchy flat out. The wheel turns in over about 0.15 s.
-    const lock = STEER / (1 + (Math.abs(v) / 9) ** 1.6);
-    this.steer += (-input.steer * lock - this.steer) * (1 - Math.exp(-dt * 12));
-    const yaw = angle(this.yaw + (v / WHEELBASE) * Math.tan(this.steer) * dt + this.spinKick * dt);
+    // the village streets, not twitchy flat out. The wheel turns in over about a fifth of a second and comes
+    // back to the middle a little faster, faster still at speed, as a car's wheel centres itself.
+    const lock = STEER / (1 + (speed / 9) ** 1.6);
+    const want = -Math.max(-1, Math.min(1, input.steer || 0)) * lock;
+    const out = Math.abs(want) > Math.abs(this.steer) && want * this.steer >= 0;
+    this.steer += (want - this.steer) * (1 - Math.exp(-dt * (out ? 9 : Math.min(16, 10 + speed * 0.2))));
+    const delta = -this.steer; // to the right
+
+    // The tyres on what is under them (front wheels, rear wheels).
+    const muF = (this.grip[0] + this.grip[1]) / 2;
+    const muR = (this.grip[2] + this.grip[3]) / 2;
+    const t = tyreForces({ u, s: side, r: this.turn, delta, drive, brake, locked: hb, muF, muR, ax: this.ax });
+    // At a crawl the tyres can't slide: the car simply follows its front wheels (the sideways slide dies
+    // out), blended into the tyres' own pushing and turning by 5 m/s.
+    const grips = Math.min(1, Math.max(0, (speed - 2) / 3));
+    let du = ((grips * t.fx + (1 - grips) * t.roll) / MASS) * dt;
+    const ds = (t.fy / MASS) * dt;
+    // The brakes stop it, they don't push it back the other way.
+    if ((u > 0 && u + du < 0 && drive >= 0) || (u < 0 && u + du > 0 && drive <= 0)) du = -u;
+    const k = 1 - Math.exp(-dt * 10);
+    this.ax += (t.fx / MASS - this.ax) * k;
+    this.ay += (t.fy / MASS - this.ay) * k;
+    this.slideF = t.slideF;
+    this.slideR = t.slideR;
+
+    // How fast it turns: what the tyres turn it by (at a crawl, the front wheels' way).
+    const follow = (u / WHEELBASE) * Math.tan(delta);
+    let turn = this.turn + (t.mz / YAW_INERTIA) * dt;
+    if (!hb && speed > 5) {
+      // The stability control: turning faster than the wheel asks (the back sliding out), or the other way,
+      // it is brought back to what the tyres can hold. Not while the handbrake is on: that is the point of it.
+      const most = (1.15 * Math.min(muF, muR) * G) / speed;
+      const asked = Math.max(-most, Math.min(most, follow));
+      if (Math.abs(turn) > Math.abs(asked) + 0.05 || (turn * asked < 0 && Math.abs(turn) > 0.05)) turn += (asked - turn) * (1 - Math.exp(-dt * ESC));
+    }
+    turn = grips * turn + (1 - grips) * follow;
+    this.turn = turn;
+    const yaw = angle(this.yaw - turn * dt + this.spinKick * dt);
     this.spinKick *= Math.exp(-dt * 3);
-    fx = -Math.sin(yaw);
-    fz = -Math.cos(yaw);
-    let vx = fx * v - fz * side;
-    let vz = fz * v + fx * side;
+    // Its new speed: as the tyres push it (in the frame it had), or at a crawl turned with the car.
+    const un = u + du;
+    const sn = side + ds;
+    const [gx, gz] = [-Math.sin(yaw), -Math.cos(yaw)];
+    const crawl = side * Math.exp(-dt * GRIP);
+    let vx = grips * (fx * un - fz * sn) + (1 - grips) * (gx * un - gz * crawl);
+    let vz = grips * (fz * un + fx * sn) + (1 - grips) * (gz * un + gx * crawl);
+    // Rolling and air: it coasts to a stop. Never over its top speed, whichever way it goes.
+    const v = Math.hypot(vx, vz);
+    if (v > 1e-9) {
+      const slow = Math.max(0, v - (0.4 + 0.0004 * v * v) * dt);
+      const keep = Math.min(slow, max) / v;
+      vx *= keep;
+      vz *= keep;
+    }
+    fx = gx;
+    fz = gz;
     const x = this.x + vx * dt;
     const z = this.z + vz * dt;
 
@@ -554,8 +637,9 @@ export class Car {
       const [rx, rz] = [-fz, fx]; // to its right
       const left = this.free(this.x + ox - rx * 0.4, this.z + oz - rz * 0.4, this.yaw, others);
       const right = this.free(this.x + ox + rx * 0.4, this.z + oz + rz * 0.4, this.yaw, others);
-      if (left !== right) this.spinKick += (right ? -1 : 1) * Math.sign(v || 1) * Math.min(1.1, impact * 0.07);
+      if (left !== right) this.spinKick += (right ? -1 : 1) * Math.sign(un || 1) * Math.min(1.1, impact * 0.07);
     }
+    if (impact > 1) this.turn *= 0.3; // what it hit holds it: its own spin mostly stops (the knock above turns it)
     this.vx = vx;
     this.vz = vz;
     [fx, fz] = this.forward;
@@ -702,8 +786,11 @@ export class Car {
       along = Math.max(-40, Math.min(40, (this.speed - this.lastSpeed) / dt));
       this.along += (along - this.along) * (1 - Math.exp(-d * 12));
     }
-    const across = -this.speed * this.yawRate; // to the right: turning right turns the heading down
-    this.motion.step(dt, this.along, across);
+    // The pulls the body leans from. At the wheel, the tyres' own (sliding, the car turns faster than it is
+    // pulled round); a crash jolts it by its speed change. Others' cars: from their smoothed track, the
+    // speed times the turn (to the right: turning right turns the heading down).
+    const across = local && !jump ? this.ay : -this.speed * this.yawRate;
+    this.motion.step(dt, local && !jump && !this.crashed ? this.ax : this.along, across);
     this.knock = Math.max(0, this.knock - dt);
     this.still = Math.hypot(dx, dz) < 1e-3 && Math.abs(turned) < 1e-4 ? this.still + 1 : 0;
     if (jump || this.still < 30) this.ground(dt, jump);
@@ -721,7 +808,10 @@ export class Car {
       const tree = this.trees.some((o) => Math.hypot(o.x - x, o.z - z) < o.r + 0.6);
       Car.onCrash({ x, y: this.y + 0.55, z, nx: -fx * way, nz: -fz * way, speed: Math.min(20, -along / 6), what: tree ? 'tree' : at?.key ?? at?.mat ?? at?.name ?? '' });
     }
-    const slip = skid(this.speed, this.side, this.along, across, local && this.handbraking);
+    // How hard the tyres slide: at the wheel from the tyres themselves (world/carGrip.ts), from 0.4 m/s of
+    // slide to all out at 4.4 m/s; others' cars from how they move.
+    const slid = (m: number) => Math.min(1, Math.max(0, (m - 0.4) / 4));
+    const slip = local ? { front: slid(this.slideF), rear: slid(this.slideR) } : skid(this.speed, this.side, this.along, across, false);
     this.marks(slip, jump);
     let paved = 0;
     let rough = 0;
@@ -734,8 +824,7 @@ export class Car {
       x: this.x, y: this.y, z: this.z, speed: Math.abs(this.speed),
       load: local ? Math.min(1, this.pushing) : Math.min(1, Math.max(0, this.along / 5)),
       regen: Math.min(1, Math.max(0, (-this.along * Math.sign(this.speed)) / 6)),
-      skid: Math.max(paved, rough), rough: rough > paved || this.rough.filter(Boolean).length > 2,
-    });
+      skid: Math.max(paved, rough), rough: rough > paved || this.rough.filter(Boolean).length > 2,    });
     this.lastX = this.x;
     this.lastZ = this.z;
     this.lastYaw = this.yaw;
@@ -753,6 +842,7 @@ export class Car {
       this.under[i] = g.y;
       this.rise[i] = Math.max(-0.35, Math.min(0.35, g.y - this.y));
       this.rough[i] = !g.mat || ROUGH.test(g.mat);
+      this.grip[i] = surfaceGrip(g.mat, mood.wet, mood.snow);
     }
     const p = groundPlane(this.rise, this.axle.base, this.axle.track);
     this.plane = { pitch: Math.max(-TILT, Math.min(TILT, p.pitch)), roll: Math.max(-TILT, Math.min(TILT, p.roll)), lift: p.lift, twist: p.twist };

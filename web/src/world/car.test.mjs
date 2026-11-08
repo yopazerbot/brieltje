@@ -5,6 +5,7 @@ import { stripTypeScriptTypes } from 'node:module';
 import * as THREE from 'three';
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 import { CarBody, groundPlane, PITCH_MAX, ROLL_MAX, skid } from './carBody.ts';
+import * as grip from './carGrip.ts';
 
 // Run the actual animation and movement code without the browser-only sound/texture imports.
 const source = readFileSync(new URL('./car.ts', import.meta.url), 'utf8');
@@ -14,14 +15,17 @@ const definition = (name) => {
   assert.ok(start >= 0);
   return stripTypeScriptTypes(source.slice(start, source.indexOf('\n}', start) + 2));
 };
-const constants = ['WHEELBASE', 'WHEEL_R', 'ACCEL', 'BRAKE', 'REVERSE', 'HANDBRAKE', 'GRIP', 'STEER', 'CLEAR', 'SPIN_STEP', 'DRAW', 'ROLL_H', 'TILT', 'ROUGH', 'CALM', 'angle']
+const constants = ['WHEELBASE', 'WHEEL_R', 'ACCEL', 'BRAKE', 'REVERSE', 'HANDBRAKE', 'REGEN', 'GRIP', 'ESC', 'STEER', 'CLEAR', 'SPIN_STEP', 'DRAW', 'ROLL_H', 'TILT', 'ROUGH', 'CALM', 'angle']
   .map(name => source.match(new RegExp(`^const ${name} = .*?;`, 'm'))?.[0]).join('\n');
 const classCode = source.slice(source.indexOf('export class Car')).replace('export class Car', 'class Car');
 // The marks and sounds a car makes, counted instead of drawn and played.
 const laid = [];
 const skidMarks = { lay: (...a) => laid.push(a) };
-const Car = new Function('THREE', 'netClock', 'CarBody', 'groundPlane', 'skid', 'PITCH_MAX', 'ROLL_MAX', 'skidMarks',
-  stripTypeScriptTypes(`${constants}\n${classCode}`, { mode: 'transform' }) + '\nreturn Car;')(THREE, { time: 0 }, CarBody, groundPlane, skid, PITCH_MAX, ROLL_MAX, skidMarks);
+// The weather the tyres feel (world/mood.ts), set by the tests.
+const mood = { wet: 0, snow: 0 };
+const Car = new Function('THREE', 'netClock', 'CarBody', 'groundPlane', 'skid', 'PITCH_MAX', 'ROLL_MAX', 'skidMarks', 'G', 'MASS', 'surfaceGrip', 'tyreForces', 'YAW_INERTIA', 'mood',
+  stripTypeScriptTypes(`${constants}\n${classCode}`, { mode: 'transform' }) + '\nreturn Car;')(THREE, { time: 0 }, CarBody, groundPlane, skid, PITCH_MAX, ROLL_MAX, skidMarks,
+  grip.G, grip.MASS, grip.surfaceGrip, grip.tyreForces, grip.YAW_INERTIA, mood);
 
 function vehicle(spec = specs.cars.tesla, groundAt = () => ({ y: 0, name: 'street', mat: 'asphalt' })) {
   return Object.assign(Object.create(Car.prototype), {
@@ -30,7 +34,8 @@ function vehicle(spec = specs.cars.tesla, groundAt = () => ({ y: 0, name: 'stree
     group: new THREE.Group(), body: new THREE.Group(), chassis: new THREE.Group(), front: [], wheels: [], spin: 0,
     blurMat: new THREE.MeshStandardMaterial(), taillight: new THREE.MeshStandardMaterial(), lamps: { update() {} },
     world: { boxFree: () => true, boxInBounds: () => true, groundAt, setMoving() {}, touching: () => null },
-    motion: new CarBody(), along: 0, side: 0, yawRate: 0, lastX: 0, lastZ: 0, lastYaw: 0, fresh: true, handbraking: false,
+    motion: new CarBody(), along: 0, side: 0, yawRate: 0, lastX: 0, lastZ: 0, lastYaw: 0, fresh: true,
+    turn: 0, pedal: 0, brakePedal: 0, ax: 0, ay: 0, grip: [1, 1, 1, 1], slideF: 0, slideR: 0, crashed: false,
     axle: { at: [[-0.82, -1.45], [0.82, -1.45], [-0.82, 1.42], [0.82, 1.42]], base: 2.87, track: 1.64, hub: [0, 0, 0, 0] },
     under: [0, 0, 0, 0], rise: [0, 0, 0, 0], rough: [false, false, false, false],
     ride: { pitch: 0, roll: 0, lift: 0, twist: 0 }, plane: { pitch: 0, roll: 0, lift: 0, twist: 0 }, still: 0, knock: 0,
@@ -255,4 +260,102 @@ test('a car someone else drives leans from its smoothed track: nose down when it
   }
   assert.ok(least < -0.025, `nose down while it brakes (${least})`);
   assert.ok(jolt < 0.006, `smooth from frame to frame (${jolt})`);
+});
+
+/** A car going straight at `kmh` (along -z), on `mat` (none: grass), the road `wet` (0 to 1). */
+function rolling(kmh, mat = 'asphalt', wet = 0) {
+  mood.wet = wet;
+  const car = vehicle(specs.cars.tesla, () => ({ y: 0, name: mat ? 'street' : 'Garden', mat: mat || undefined }));
+  Object.assign(car, { vz: -kmh / 3.6, speed: kmh / 3.6, lastSpeed: kmh / 3.6 });
+  car.noise.owner = car;
+  car.update(1 / 60, true);
+  return car;
+}
+/** Held until it stands: how far it went (m) and how hard it stopped (g). */
+function stopping(car, input) {
+  const v = Math.hypot(car.vx, car.vz);
+  let t = 0;
+  while (Math.hypot(car.vx, car.vz) > 0.05 && t < 20) {
+    car.drive(1 / 60, input, []);
+    car.update(1 / 60, true);
+    t += 1 / 60;
+  }
+  mood.wet = 0;
+  return { metres: Math.hypot(car.x, car.z), g: v / t / 9.81, t };
+}
+const handbrake = { throttle: 0, brake: 0, steer: 0, handbrake: true };
+/** Its body slip: the angle (rad) between where it points and where it goes. */
+const slipAngle = (car) => Math.atan2(-car.vx * Math.cos(car.yaw) + car.vz * Math.sin(car.yaw), Math.hypot(car.vx, car.vz) > 0.5 ? car.speed : 1);
+
+test('the handbrake stops hard in a straight line: about 0.8 to 0.9 g dry, less when wet and on grass, the rear wheels marking', () => {
+  laid.length = 0;
+  const dry = rolling(50);
+  let lit = false;
+  dry.lamps = { update: (dt, shown, on, braking) => { lit ||= braking; } };
+  const d = stopping(dry, handbrake);
+  assert.ok(d.g > 0.8 && d.g < 0.95, `dry: ${d.g.toFixed(2)} g over ${d.metres.toFixed(1)} m`);
+  assert.ok(Math.abs(dry.x) < 0.01 && Math.abs(dry.yaw) < 1e-3, 'straight, the wheel straight');
+  assert.ok(lit, 'the brake lights come on');
+  assert.ok(laid.length > 5, `the locked rear wheels mark the road (${laid.length})`);
+  const wet = stopping(rolling(50, 'asphalt', 1), handbrake);
+  assert.ok(wet.metres > d.metres * 1.25 && wet.g > 0.5, `wet: ${wet.g.toFixed(2)} g over ${wet.metres.toFixed(1)} m`);
+  const grass = stopping(rolling(50, ''), handbrake);
+  assert.ok(grass.metres > wet.metres && grass.g > 0.35, `grass: ${grass.g.toFixed(2)} g over ${grass.metres.toFixed(1)} m`);
+});
+
+test('ABS: full braking stops at about 0.9 g without locking, and the car still steers', () => {
+  const d = stopping(rolling(50), brake);
+  assert.ok(d.g > 0.85 && d.g < 0.97, `dry: ${d.g.toFixed(2)} g over ${d.metres.toFixed(1)} m`);
+  assert.ok(stopping(rolling(50, 'asphalt', 1), brake).g < 0.75, 'less on a wet road');
+  const turning = rolling(60);
+  run(turning, 1, { ...brake, steer: 1 });
+  assert.ok(-turning.yaw > 0.4, `braking hard it still turns right (${(-turning.yaw * 57.3).toFixed(0)} degrees in a second)`);
+  assert.ok(Math.abs(slipAngle(turning)) < 0.35 && turning.slideR < 0.5 * turning.speed, `its wheels rolling, not sliding round (${slipAngle(turning).toFixed(2)} rad, the rear sliding ${turning.slideR.toFixed(2)} m/s)`);
+});
+
+test('a handbrake turn: with the wheel turned the back swings round, and it recovers once let go', () => {
+  laid.length = 0;
+  const swing = rolling(40);
+  run(swing, 0.8, { ...handbrake, steer: 1 });
+  const plain = rolling(40);
+  run(plain, 0.8, { ...brake, steer: 1 });
+  assert.ok(-swing.yaw > 0.8 && -swing.yaw > 1.5 * -plain.yaw, `swung round ${(-swing.yaw * 57.3).toFixed(0)} degrees (braking alone ${(-plain.yaw * 57.3).toFixed(0)})`);
+  assert.ok(Math.abs(slipAngle(swing)) > 0.25, 'sliding sideways');
+  assert.ok(laid.length > 10, 'marks from the rear');
+  run(swing, 1.5, { ...throttle, throttle: 0.4 });
+  assert.ok(Math.abs(slipAngle(swing)) < 0.05 && Math.abs(swing.turn) < 0.1, 'gripping and going straight again');
+  // Pulled at speed and held, it doesn't keep spinning.
+  const fast = rolling(90);
+  run(fast, 2, { ...handbrake, steer: 1 });
+  assert.ok(-fast.yaw < Math.PI, `at most about half round (${(-fast.yaw * 57.3).toFixed(0)} degrees)`);
+});
+
+test('cornering too fast it runs wide, more on a wet road or grass, and never past its top speed however it slides', () => {
+  const lateral = (kmh, mat, wet) => {
+    const car = rolling(kmh, mat, wet);
+    for (let i = 0; i < 180; i++) {
+      const v = Math.hypot(car.vx, car.vz);
+      car.drive(1 / 60, { ...throttle, throttle: Math.max(0, Math.min(1, (kmh / 3.6 - v) * 0.8)), steer: 1 }, []);
+      car.update(1 / 60, true);
+    }
+    mood.wet = 0;
+    return Math.abs(car.turn) * Math.hypot(car.vx, car.vz) / 9.81;
+  };
+  const dry = lateral(80, 'asphalt', 0);
+  assert.ok(dry > 0.75 && dry < 1.1, `dry: ${dry.toFixed(2)} g round the turn`);
+  assert.ok(lateral(80, 'asphalt', 1) < dry * 0.85, 'wet');
+  assert.ok(lateral(50, '', 0) < 0.6, 'grass');
+  // The server allows a driver the car's top speed (and a little for the network): never more, sliding or not.
+  const car = rolling(200);
+  let most = 0;
+  let step = 0;
+  for (let i = 0; i < 1200; i++) {
+    const [x, z] = [car.x, car.z];
+    car.drive(1 / 60, { throttle: i % 120 < 70 ? 1 : 0, brake: i % 300 > 280 ? 1 : 0, steer: i % 90 < 45 ? 1 : -1, handbrake: i % 50 < 22 }, []);
+    car.update(1 / 60, true);
+    most = Math.max(most, Math.hypot(car.vx, car.vz));
+    step = Math.max(step, Math.hypot(car.x - x, car.z - z) * 60);
+  }
+  assert.ok(most <= car.spec.maxSpeed + 1e-9 && step <= car.spec.maxSpeed + 1e-6, `${most} m/s, ${step} m/s between frames`);
+  assert.ok(finite(car));
 });
