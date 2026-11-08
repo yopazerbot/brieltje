@@ -303,7 +303,7 @@ function insideRings(x: number, z: number, rings: [number, number][][]): boolean
 }
 
 /** A convex polygon clipped to a box (Sutherland-Hodgman). */
-function clipToBox(poly: [number, number][], x0: number, z0: number, x1: number, z1: number): [number, number][] {
+export function clipToBox(poly: [number, number][], x0: number, z0: number, x1: number, z1: number): [number, number][] {
   const sides: [(p: [number, number]) => boolean, (a: [number, number], b: [number, number]) => [number, number]][] = [
     [(p) => p[0] >= x0, (a, b) => [x0, a[1] + ((x0 - a[0]) / (b[0] - a[0])) * (b[1] - a[1])]],
     [(p) => p[0] <= x1, (a, b) => [x1, a[1] + ((x1 - a[0]) / (b[0] - a[0])) * (b[1] - a[1])]],
@@ -328,7 +328,7 @@ function clipToBox(poly: [number, number][], x0: number, z0: number, x1: number,
 }
 
 /** Keep one side of a terrain cell's diagonal, so paving follows both ground triangles. */
-function clipDiagonal(poly: [number, number][], gx: number, gz: number, side: number): [number, number][] {
+export function clipDiagonal(poly: [number, number][], gx: number, gz: number, side: number): [number, number][] {
   const out: [number, number][] = [];
   for (let i = 0; i < poly.length; i++) {
     const a = poly[(i + poly.length - 1) % poly.length], b = poly[i];
@@ -343,14 +343,19 @@ function clipDiagonal(poly: [number, number][], gx: number, gz: number, side: nu
   return out;
 }
 
+/** Thin ground covers that lie just over the grass: draped on the ground's own grid and its diagonals. */
+const HUGGING = new Set(['pave_grey', 'pave_light', 'pave_warm', 'pave_walk', 'gravel', 'track', 'road', 'forecourt']);
+
 /**
  * A block out on the relief (p.d metres): its outline triangulated, every triangle cut along
  * the grid (so no piece is bigger than a square) and each corner lifted onto the ground; a
  * hedge or fence also gets its sides, in pieces of at most a square, lifted the same way.
  */
 function drapedGeometry(p: Prism): THREE.BufferGeometry {
-  // The square's clinkers sit only 2 cm above the grass and must follow the ground's diagonals.
-  const precise = p.m === 'pave_grey';
+  // The square's clinkers sit only 2 cm above the grass and must follow the ground's diagonals. So must every hard
+  // cover laid on the grass (pavers, gravel, the streets' surfaces and their fills): draped only at its own corners
+  // and every 8 m, the grass's 4 m grid rose through it on a bump and showed as green patches with hard edges.
+  const precise = HUGGING.has(p.m) || p.m.startsWith('pf:');
   const cell = precise ? terrain.step : p.d!;
   const pos: number[] = [];
   const uv: number[] = [];

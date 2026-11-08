@@ -1,7 +1,7 @@
 import * as THREE from 'three';
 import data from '../data/roadDetail.json';
 import type { Prism, Surroundings } from './houseData';
-import { blockMaterial, prismGeometry } from './houseMeshes';
+import { blockMaterial, clipDiagonal, clipToBox, prismGeometry } from './houseMeshes';
 import { solidNormals } from './normals';
 import { terrain } from './terrain';
 import { tileKey, type Piece } from './tiles';
@@ -229,6 +229,9 @@ class Mesh {
   }
 }
 
+/** A strip's corner before it is laid on the relief: x, z, lift above the relief, u, v, r, g, b. */
+type Corner = [number, number, number, number, number, number, number, number];
+
 /** The pieces being built, by tile and material. */
 class Parts {
   private meshes = new Map<string, { mesh: Mesh; material: THREE.Material; tag: string; order?: number; small?: boolean }>();
@@ -362,21 +365,63 @@ class Builder {
     const mid = (k0 + k1) >> 1;
     if (!this.parts.mine(f.x[mid], f.z[mid])) return;
     const mesh = this.parts.get(f.x[mid], f.z[mid], this.material(surface), tag ?? (surface === 'kerb' ? 'concrete' : TAG[surface]), order);
-    const first = mesh.pos.length / 3;
+    // The strip's corners: where they lie, how far above the relief, the texture and the colour.
+    const vs: Corner[] = [];
     for (let k = k0; k <= k1; k++) {
       const a = o0(k);
       const b = o1(k);
       for (const t of cols) {
         const o = a + (b - a) * t;
         const [x, z] = f.at(k, o);
-        mesh.vertex(x, this.y(x, z, lift(k, o)), z, o * scale, f.s[k] * scale, col(k, o, this.c));
+        const c = col(k, o, this.c);
+        vs.push([x, z, lift(k, o), o * scale, f.s[k] * scale, c.r, c.g, c.b]);
       }
     }
     const w = cols.length;
     for (let r = 0; r < k1 - k0; r++) {
       for (let j = 0; j < w - 1; j++) {
-        const a = first + r * w + j;
-        mesh.quad(a, a + 1, a + w + 1, a + w);
+        const a = r * w + j;
+        this.drape(mesh, vs[a], vs[a + 1], vs[a + w + 1]);
+        this.drape(mesh, vs[a], vs[a + w + 1], vs[a + w]);
+      }
+    }
+  }
+
+  /**
+   * A triangle of a strip laid on the relief as the grass is: cut along the ground's grid and its diagonals
+   * (world/terrain.ts: 4 m squares, each split corner to corner), each piece's corners lifted onto the ground. A
+   * strip lifted only at its own corners, every 2.5 m along and a few times across, cut through the ground's creases:
+   * on a bump the grass rose through the road in long green lenses.
+   */
+  drape(mesh: Mesh, a: Corner, b: Corner, c: Corner): void {
+    const step = terrain.step;
+    const ax = a[0], az = a[1], bx = b[0], bz = b[1], cx = c[0], cz = c[1];
+    const det = (bz - cz) * (ax - cx) + (cx - bx) * (az - cz);
+    if (Math.abs(det) < 1e-9) return; // no area on the plan
+    const tri: [number, number][] = [[ax, az], [bx, bz], [cx, cz]];
+    const gx0 = terrain.x0 + Math.floor((Math.min(ax, bx, cx) - terrain.x0) / step) * step;
+    const gz0 = terrain.z0 + Math.floor((Math.min(az, bz, cz) - terrain.z0) / step) * step;
+    const x1 = Math.max(ax, bx, cx);
+    const z1 = Math.max(az, bz, cz);
+    const at = (x: number, z: number): number => {
+      // The corner's values where (x, z) lies in the triangle (barycentric on the plan).
+      const l1 = ((bz - cz) * (x - cx) + (cx - bx) * (z - cz)) / det;
+      const l2 = ((cz - az) * (x - cx) + (ax - cx) * (z - cz)) / det;
+      const l3 = 1 - l1 - l2;
+      const v = (i: number) => a[i] * l1 + b[i] * l2 + c[i] * l3;
+      this.c.setRGB(v(5), v(6), v(7));
+      return mesh.vertex(x, this.y(x, z, v(2)), z, v(3), v(4), this.c);
+    };
+    for (let gx = gx0; gx < x1; gx += step) {
+      for (let gz = gz0; gz < z1; gz += step) {
+        const box = clipToBox(tri, gx, gz, gx + step, gz + step);
+        if (box.length < 3) continue;
+        for (const side of [1, -1]) {
+          const piece = clipDiagonal(box, gx, gz, side);
+          if (piece.length < 3) continue;
+          const ids = piece.map(([x, z]) => at(x, z));
+          for (let i = 1; i + 1 < ids.length; i++) mesh.tri(ids[0], ids[i], ids[i + 1]);
+        }
       }
     }
   }
