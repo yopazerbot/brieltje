@@ -225,9 +225,21 @@ export class BigMap {
   addVillage(data: Surroundings & { dips?: DipSpec[]; area?: [number, number][] }): void {
     if (data.area && data.area.length > 2) this.area = data.area.map(([x, z]) => [toU(x, z), toV(x, z)]);
     this.addFootball();
-    this.addSurroundings(data, data.dips ?? []);
-    this.dirty = true;
-    this.groundVersion++;
+    // In idle slices of a few milliseconds (they took 0.2 s of the loading on this PC, 0.8 s on a phone's processor):
+    // the map and the minimap's ground show the village once all of it is in, the same paths in the same order.
+    const job = this.adding(data, data.dips ?? []);
+    const slice = (left: () => number) => {
+      const end = performance.now() + Math.min(8, Math.max(2, left()));
+      while (performance.now() < end) {
+        if (job.next().done) {
+          this.dirty = true;
+          this.groundVersion++;
+          return;
+        }
+      }
+      later(slice);
+    };
+    later(slice);
   }
 
   show(you: { x: number; z: number; yaw: number }, control: Control): void {
@@ -413,9 +425,23 @@ export class BigMap {
   }
 
   private addSurroundings(s: Surroundings | undefined, dips: DipSpec[]): void {
-    for (const p of s?.prisms ?? []) this.addPrism(p);
-    for (const r of s?.roofs ?? []) this.add(r.lm === 'church' || r.lm === 'school' ? r.lm : 'building', [r.p]);
+    const job = this.adding(s, dips);
+    while (!job.next().done);
+  }
+
+  /** The surroundings' outlines, trees and ponds added to the map, a block at a time (yields between them). */
+  private *adding(s: Surroundings | undefined, dips: DipSpec[]): Generator<void, void> {
+    for (const p of s?.prisms ?? []) {
+      this.addPrism(p);
+      yield;
+    }
+    for (const r of s?.roofs ?? []) {
+      this.add(r.lm === 'church' || r.lm === 'school' ? r.lm : 'building', [r.p]);
+      yield;
+    }
+    let n = 0;
     for (const t of s?.trees ?? []) {
+      if (++n % 200 === 0) yield;
       const u = toU(t.x, t.z);
       const v = toV(t.x, t.z);
       const r = Math.max(1.2, t.r * 0.85);
@@ -867,6 +893,12 @@ function pin(g: CanvasRenderingContext2D, x: number, y: number): void {
   g.fillStyle = '#11151b';
   g.fill();
   g.restore();
+}
+
+/** `f` when the page is idle (given the milliseconds left of the idle time), or within a second. */
+function later(f: (left: () => number) => void): void {
+  if (typeof requestIdleCallback === 'function') requestIdleCallback((d) => f(() => d.timeRemaining()), { timeout: 1000 });
+  else setTimeout(() => f(() => 8), 16);
 }
 
 /** The convex hull of points (monotone chain). */
