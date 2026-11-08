@@ -460,7 +460,9 @@ async function togetherNow(z: ZombieStart | null): Promise<boolean> {
   if (!session && !(await join())) return false;
   const s = session;
   if (!s) return false;
+  if (z?.kind === 'none') z = await flow.zombieStartNow(); // "Play again as before": the rooms weren't listed yet
   if (z?.kind === 'none') {
+    if (flow.step !== 3) flow.show(3); // none to join: the list, to pick one or play otherwise
     accountMsg = () => t('zs.pickRoom');
     accountMsgCalm = false;
     showAccountText();

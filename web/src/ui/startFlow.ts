@@ -231,6 +231,22 @@ export class StartFlow {
   zombieStart(): ZombieStart | null {
     if (!this.zombiesOn) return null;
     if (!this.together()) return { kind: 'solo', place: this.zPlace.value };
+    return this.roomStart();
+  }
+
+  /**
+   * The same, with the rooms asked for first when none is picked yet: "Play again as before" starts from step 1,
+   * where the list never loaded (src/start.ts togetherNow).
+   */
+  async zombieStartNow(): Promise<ZombieStart | null> {
+    const z = this.zombieStart();
+    if (z?.kind !== 'none') return z;
+    await this.loadRooms();
+    return this.zombieStart();
+  }
+
+  /** Together: the room picked, the account's own to open, or none yet. */
+  private roomStart(): ZombieStart {
     if (this.roomPick === 'new' && this.canOpen()) return { kind: 'open', place: this.zOpenPlace.value };
     const r = this.rooms.find((x) => x.id === this.roomPick && x.players < x.max);
     return r ? { kind: 'room', id: r.id, place: r.place } : { kind: 'none' };
@@ -447,11 +463,13 @@ export class StartFlow {
     $('again').classList.toggle('hidden', !ok);
     if (ok && this.last) {
       const label = (sel: string) => document.querySelector(sel)?.textContent?.trim() ?? '';
-      const spawn = $<HTMLSelectElement>('spawn');
+      const option = (s: HTMLSelectElement) => s.selectedOptions[0]?.textContent?.trim() ?? '';
+      // Zombies together plays at its room's place, never at "Start at": that one once a room is known, else none.
+      const room = this.zombiesOn && this.last.mp === 'multi' ? this.roomStart() : null;
       const parts = [
         t(this.last.mp === 'multi' ? 'start.together' : 'start.alone'),
         this.zombiesOn ? t('game.zombies') : label('#mode-start [data-play].selected b'),
-        (this.zombiesOn && this.last.mp === 'solo' ? this.zPlace : spawn).selectedOptions[0]?.textContent?.trim() ?? '',
+        room ? (room.kind === 'none' ? '' : portalName({ id: room.place, name: room.place })) : option(this.zombiesOn ? this.zPlace : $<HTMLSelectElement>('spawn')),
         label(`#choose-${this.last.control} b`),
       ];
       $('again-sub').textContent = parts.filter(Boolean).join(' · ');
