@@ -20,9 +20,28 @@ In team games, press V to mark your position for teammates for eight seconds; th
 
 The whole project was made with AI. Yoshi Parlevliet, a cybersecurity consultant rather than a game developer, directed development and used both [OpenAI Codex](https://openai.com/codex/) and [Claude Code](https://claude.com/claude-code) to build the game, the data tools and the Blender scripts. Every choice and the reason for it is in [DECISIONS.md](DECISIONS.md).
 
+## Recent updates — 8 November 2026
+
+- **A new start screen.** Three short steps: who you are (a guest with a ready name, or your account), alone or together, then the game and where to start. Zombies is suggested first. "Play again as before" starts the same game in one press, and shows its own loading bar. It works on a desktop, a tablet and a phone, upright or held sideways.
+- **For console players.** With only a controller, the start screen moves into a pad mode: a big focus ring, the buttons' names along the bottom, and no mouse pointer on an Xbox. Log in by scanning a QR code with your phone and typing the two-digit number shown on the TV.
+- **A playful new look.** The colours of our game-night poster and the rounded Fredoka font, in the game, the menu and the website, with a new logo: a roof with two lit windows over the name.
+- **The football ground.** FC Smetlede's ground east of the village, our own Blender model: the pitch, full-size goals with nets, the floodlights, the canteen and the car park. A youth training runs on it, with a coach, a keeper and parents at the rail. The street now runs all the way there, as on the real map.
+- **The Sparrenhof for Zombies.** Start a Zombies game at the café: the horde comes out of the wood. Steel stairs lead onto the roofs, an upper deck and a walkway, and four tree huts in the wood are shooting bases up timber stairs. Sniper rifles lie on the church's roof walk and on the Sparrenhof's roof.
+- **Zombies on the ground.** Zombies starts on foot at its place, alone or together, never by parachute. Clowns and strongmen stay out of the way while it runs.
+- **Driving.** Tyres grip by the ground they're on, with ABS and a handbrake (Space or ✕) that locks the rear wheels for a slide. The camera looks into a turn, and the tyres screech by how much they slip. Cars knock over letterboxes, posts, bins and bikes along the street.
+- **Rain you can see.** Streets darken, shine and hold puddles that mirror the street, then dry over minutes. Windows mirror the sky and the street, with raindrops running down. Wheels throw spray on a wet road.
+- **Real trees.** On Medium and up, trees, conifers, hedges and the wood's undergrowth are built from leaf cards, with bark, branches and cut-out shadows.
+- **The street, closer to life.** Traffic signs and bus stops stand where they really are, drawn as the Belgian rules draw them. A few grey and green wheelie bins, built from their published sizes. Paving, gravel, kerbs and verges meet cleanly, and no two surfaces flicker on each other anywhere on the map.
+- **A town board.** On the church square, a notice board shows the best Zombies runs behind its glass.
+- **Fewer villagers in the side streets.** The church square stays busy, the other streets are quiet.
+- **Accounts.** Type a home's code once while logged in, and your account keeps access to that home. A guest's good Zombies run can be kept by making an account straight after.
+- **Aim assist.** A subtle one for controller players, against zombies only.
+- **Weather** now changes every 10 minutes.
+- **Faster and lighter.** The game loads in about 6 seconds on a desktop, uses less memory, and stays smooth on slower graphics chips.
+
 ## Recent updates — 7 November 2026
 
-- **Weather and time of day.** The sky now changes by itself, slowly: sunny, overcast, rain and night, each for 20 to 40 minutes (night 10 to 20), blending over a few minutes. Rain falls round you but not indoors, and the roads turn dark and shiny. At night the street lamps glow and about half the village's windows light up. Alone you can fix a mood in Settings (Weather); together the admin picks it for everyone, skips to the next weather or speeds the cycle up.
+- **Weather and time of day.** The sky now changes by itself, slowly: sunny, overcast, rain and night, each for about 10 minutes, blending over a minute. Rain falls round you but not indoors, and the roads turn dark and shiny. At night the street lamps glow and about half the village's windows light up. Alone you can fix a mood in Settings (Weather); together the admin picks it for everyone, skips to the next weather or speeds the cycle up.
 - **Houses with their own look.** Every house from the open data has its own shade of brick or render, its own roof tiles and frames, and a room behind each window: walls, a floor, furniture and curtains.
 - **The ground, the horizon and the trees.** Yards and gravel round the houses are weathered paving instead of flat pale patches. The horizon is a low, hazy band of tree lines. Tree crowns have leaf clusters and lighter undersides, and the wood by the Sparrenhof has fallen leaves, ferns, brambles and shrubs.
 - **Cars that feel heavy.** The body leans in corners, dips when braking and bumps over kerbs; the tyres leave skid marks and the motor whines with the speed.
@@ -46,7 +65,7 @@ The whole project was made with AI. Yoshi Parlevliet, a cybersecurity consultant
 
 - **Faster Teslas, with a speedometer.** Both models now reach about 200 km/h with gradual acceleration. All four wheels roll correctly, including the mirrored left side. A compact km/h readout appears while driving or riding along; on touch screens it sits below the map.
 - **The southern homes.** The map continues along the roads and lanes to Oordegemkouter, with 80 additional buildings and their real terrain. A detailed pale-brick house has a tall glazed entrance, hipped roof with solar panels, gravel driveway, clipped hedges and trees. Its exterior and garden are our own Blender model; the doors stay shut. Use `/location Oordegemkouter` and follow the street to reach it.
-- **Skydive in.** You arrive from 170 m up, seen from behind your own skydiver: steer in free fall, dive head first, open your parachute yourself (it opens by itself at 45 m) and glide down to any spot inside the game. Fresh starts, respawns after a death and Zombies arrivals all come in this way, and `/parachute` in the chat jumps on demand (outside, once a minute together). In Zombies a wave waits until everyone has landed. In multiplayer the server decides every drop and its speeds.
+- **Skydive in.** You arrive from 170 m up, seen from behind your own skydiver: steer in free fall, dive head first, open your parachute yourself (it opens by itself at 45 m) and glide down to any spot inside the game. Fresh starts and respawns after a death come in this way (Zombies starts on the ground), and `/parachute` in the chat jumps on demand (outside, once a minute together). In Zombies a wave waits until everyone has landed. In multiplayer the server decides every drop and its speeds.
 - **The Sparrenhof.** The map now runs up Oud-Smetlede to the café Sparrenhof at the edge of the wood, with a portal on its forecourt (`/sparrenhof`). The café is our own detailed Blender model; the houses on the way come from the open data.
 - **The church square from new photos.** The church's white west door, the calvary chapel by the tower, rough sandstone corners, the flags and the memorial stones; the houses round the square corrected one by one. The gate behind the church portal stands open.
 - **Baked light.** The village's own building models carry light worked out in Blender's Cycles with the whole village round them: shade under eaves and between houses, bounced light, the sun's shadow across the village, and some dirt and rain streaks. The houses at home get theirs behind the loading screen.
@@ -61,7 +80,7 @@ The whole project was made with AI. Yoshi Parlevliet, a cybersecurity consultant
 
 ![The five zombies of the Zombies game](docs/screenshots/zombies-lineup.webp)
 
-The newest game in Brieltje (November 2026). Zombies come in waves, from every side and always out of sight. Each wave is bigger, a little faster and a little tougher than the last. The waves never end: how far do you get? Play it alone from the menu's Play tab (your best wave is kept), or together when the admin starts it for everyone. Pick where: at home round the house and the bungalow, or by a portal in Smetlede (the church square, or one of three spots along Molenhoek). The game's edge closes round that place while it runs.
+The newest game in Brieltje (November 2026). Zombies come in waves, from every side and always out of sight. Each wave is bigger, a little faster and a little tougher than the last. The waves never end: how far do you get? Play it alone from the menu's Play tab (your best wave is kept), or together when the admin starts it for everyone. Pick where: at home round the house and the bungalow, or by a portal in Smetlede (the church square, one of three spots along Molenhoek, or the Sparrenhof by the wood). The game's edge closes round that place while it runs.
 
 - **Five zombies**, our own Blender models, rigged and animated: a thin one in a torn shirt, a teen in a red hoodie, an old mechanic in overalls, a farmer in wellies, and a big one in a white vest. From wave 3 the hoodies sprint. Every fifth wave brings big ones, who stomp and pound the ground round them.
 - **No safe room.** Together the houses are open, and the zombies follow you in: up the stairs, onto the roof terrace, through the doors. A shut door holds them for a moment. Whoever perches where no zombie can reach is warned, and then out of the wave.
@@ -74,7 +93,7 @@ The newest game in Brieltje (November 2026). Zombies come in waves, from every s
 - **Sound.** They groan more often and louder as they come closer, from where they stand. A sprinting runner puffs.
 - **Fair.** In multiplayer the server decides every hit, swipe, pickup and help.
 - **Keep going.** There is no wave limit: the game continues while a fighter is still standing. Brief connection drops have a 15-second reconnect grace instead of resetting the match.
-- **Admin wave control.** During multiplayer Zombies, open Admin → Party games to switch immediately to any wave from 1 to 9999, higher or lower. It replaces the zombies and brings downed teammates back while keeping your gear. These custom runs do not replace best-wave records.
+- **Admin wave control.** During Zombies, alone or together, open the menu's Admin tab to switch immediately to any wave from 1 to 9999, higher or lower. It replaces the zombies and brings downed teammates back while keeping your gear. These custom runs do not replace best-wave records.
 
 ![A runner in a red hoodie comes across the back garden](docs/screenshots/zombies.webp)
 
@@ -82,7 +101,7 @@ The newest game in Brieltje (November 2026). Zombies come in waves, from every s
 
 | | |
 |---|---|
-| **Smetlede** | The village centre as our own Blender models: the Sint-Pharaïldis church, the café beside its tower, the primary school with the chip shop by it, and the houses round the church square. Molenhoek from the church square to its end at Oordegemkouter, on the street as it was rebuilt in 2026, and Kapellenhoek to past Briel: more than 180 houses of our own. At Molenhoek's end you can walk into the end house of the new terrace. The village also includes a custom brick dormer house, and up Oud-Smetlede the café Sparrenhof at the edge of the wood, with its forecourt and terrace. You start on the church square, or at another portal of your choice. |
+| **Smetlede** | The village centre as our own Blender models: the Sint-Pharaïldis church, the café beside its tower, the primary school with the chip shop by it, and the houses round the church square. Molenhoek from the church square to its end at Oordegemkouter, on the street as it was rebuilt in 2026, and Kapellenhoek to past Briel: more than 180 houses of our own. At Molenhoek's end you can walk into the end house of the new terrace. The village also includes a custom brick dormer house, up Oud-Smetlede the café Sparrenhof at the edge of the wood, with its forecourt and terrace, and east of the village FC Smetlede's football ground. You start on the church square, or at another portal of your choice. |
 | **Briel** | The hamlet between the fields: the houses along Briel, the bungalow, and the farms and meadows round them. |
 | **Everything else** | Built from Flemish open data (GRB, the DHM laser scan, the orthophoto): some 1,400 buildings with their roofs, roads, fields, hedges, trees, poles and ponds, on the real relief. The roads, houses and alleys continue up to about 400 m farther east, along Oud-Smetlede through the wood to the Sparrenhof, and south to the homes on Oordegemkouter. Facades follow a Street View survey (used as a reference only). |
 | **Our house** | Real scale, seen from outside. Its inside opens only with a code. Spawn more with a name in the chat: /sofa, /tesla red, /clown (together when the admin allows it). |
@@ -137,6 +156,7 @@ More in the [privacy policy](web/public/legal/privacy.html) and under "Private d
 | Help a teammate up (Zombies) | Hold △ for 3 s | Hold E for 3 s |
 | Free fall: steer, dive | Left stick, hold ○ | W A S D (Z Q S D), hold Ctrl |
 | Open your parachute | ✕ | Space |
+| Drive: gas, brake, steer; handbrake | R2, L2, left stick; ✕ | W, S, A D; Space |
 | Menu | Options | Esc |
 
 Every control is listed in the game's menu (Controls), and in [docs/DETAILS.md](docs/DETAILS.md).
