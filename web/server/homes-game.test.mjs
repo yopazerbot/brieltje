@@ -287,3 +287,20 @@ test('door ids like toString and hasOwnProperty are no doors: no prototype to hi
   assert.equal(told.length, 0, '__proto__ is not an id');
   assert.equal(Object.keys(game.doors).length, 1);
 });
+
+test("an account's lasting access: the welcome and the inside message say so, for that account only", () => {
+  const { game, sent } = setup();
+  const byAccount = new Set(['k-acc|house']); // server/homes.mjs byAccount
+  game.homes = { granted: (key, id) => byAccount.has(`${key}|${id}`), byAccount: (key, id) => byAccount.has(`${key}|${id}`) };
+  game.auth = { session: () => null, log: () => {}, addressOf: () => '127.0.0.1' };
+  const ws = () => ({ readyState: 1, OPEN: 1, send() {}, on() {}, close() {} });
+  game.join(ws(), { username: 'acc', role: 'player', key: 'k-acc' }, { headers: {}, socket: {} });
+  const welcome = sent.find((m) => m.t === 'welcome');
+  assert.deepEqual([welcome.homes, welcome.accountHomes], [['house'], ['house']]);
+  sent.length = 0;
+  game.join(ws(), { username: 'gast', role: 'guest', key: 'k-gast' }, { headers: {}, socket: {} });
+  assert.deepEqual(sent.find((m) => m.t === 'welcome').accountHomes, [], 'another session: nothing');
+  sent.length = 0;
+  game.homeGranted('k-acc', 'house');
+  assert.equal(sent.find((m) => m.t === 'inside').account, true);
+});

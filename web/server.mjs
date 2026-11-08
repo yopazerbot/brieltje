@@ -134,7 +134,12 @@ const feedback = new Feedback(store, { json: (...a) => json(...a), readJson: (re
 const gamenight = new GameNight(store, { json: (...a) => json(...a), readJson: (req) => body(req), clientKey: formKey });
 // The three homes with an access code (server/homes.mjs): who typed a home's code, and the admin's list of them.
 // Senders counted per IPv6 /56 (as the forms), so one attacker's many addresses count as few; accounts wait apart.
-const homes = new Homes(store, { list: HOMES, json: (...a) => json(...a), readJson: (req) => body(req), clientKey: (req) => formBucketOf(clientIp(req)), account: (req) => ['player', 'admin'].includes(auth.session(req)?.role), pack: packFor });
+const homes = new Homes(store, { list: HOMES, json: (...a) => json(...a), readJson: (req) => body(req), clientKey: (req) => formBucketOf(clientIp(req)), account: (req) => ['player', 'admin'].includes(auth.session(req)?.role), pack: packFor,
+  // An account's lasting access (Yoshi, 8 Nov 2026): whose a session is comes from the sessions held here, never from the page.
+  who: (key) => { const s = auth.sessions.get(key); return s && s.expires >= Date.now() ? s : null; },
+  keysOf: (name) => [...auth.sessions].filter(([, s]) => s.username === name && s.role === 'player' && s.expires >= Date.now()).map(([k]) => k) });
+await homes.load(); // before the first player joins: their welcome says which homes their account opens
+accounts.onGone = (name) => homes.dropAccount(name); // a deleted account's access goes with it
 game.homes = homes;
 homes.onGrant = (key, id) => rooms.homeGranted(key, id); // the state of the inside to the page that just got the right, wherever it plays
 // The admin page's live view hears of new log lines, changed sign-ups, feedback and the game night.

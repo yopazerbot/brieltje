@@ -516,7 +516,7 @@ export class Game {
     this.auth.log('mp_join', req, { username: name, ...(this.room ? { detail: `room ${this.room.id}` } : {}) });
 
     this.send(ws, {
-      t: 'welcome', proto: PROTO, you: name, role: session.role, color, doors: this.doorsFor(player), doorDir: this.doorDirFor(player), broken: this.brokenFor(player), homes: HOMES.filter((h) => player.role !== 'admin' && this.homes?.granted(player.key, h.id)).map((h) => h.id), players: this.roster(),
+      t: 'welcome', proto: PROTO, you: name, role: session.role, color, doors: this.doorsFor(player), doorDir: this.doorDirFor(player), broken: this.brokenFor(player), homes: HOMES.filter((h) => player.role !== 'admin' && this.homes?.granted(player.key, h.id)).map((h) => h.id), accountHomes: HOMES.filter((h) => player.role === 'player' && this.homes?.byAccount?.(player.key, h.id)).map((h) => h.id), players: this.roster(),
       time: now, cats: this.catsDown.map((until) => Math.max(0, until - now)), clowns: this.clownList(now), furniture: this.furnitureFor(player), rules: this.rules,
       scores: this.scoreList(), limit: KILL_LIMIT, items: this.items.map((it) => now >= it.until), round: this.roundOver ? { winner: this.roundOver.winner, ms: this.roundOver.until - now } : null,
       cars: Object.values(this.cars), horses: this.horses, bikes: Object.values(this.bikes), mode: this.modes.view(now), mood: this.mood, moodCycle: this.moodView(now),
@@ -1624,7 +1624,7 @@ export class Game {
       const doorDir = Object.fromEntries(Object.entries(this.doorDir).filter(([d]) => homeOfDoor(d) === id));
       const broken = [...this.broken].filter((i) => PANE_HOME(i) === id);
       const furniture = [...this.furniture.values()].filter((f) => pieceHome(f) === id);
-      this.send(p.ws, { t: 'inside', id, doors, doorDir, broken, furniture });
+      this.send(p.ws, { t: 'inside', id, doors, doorDir, broken, furniture, account: !!this.homes?.byAccount?.(key, id) }); // account: lasting access (the page's note)
     }
   }
 

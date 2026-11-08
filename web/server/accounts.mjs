@@ -64,6 +64,7 @@ export class Accounts {
     this.auth = auth;
     this.store = auth.store;
     this.online = online;
+    this.onGone = null; // (name) => void: an account was deleted or pruned (server/homes.mjs: its lasting access goes)
     this.byAddress = new Attempts(WINDOW_MS); // wrong passwords per address
     this.byAccount = new Attempts(WINDOW_MS); // wrong passwords per account name
     this.signups = new Attempts(3600_000); // sign-ups per address, and 'all'
@@ -95,7 +96,10 @@ export class Accounts {
   /** Accounts unused for KEEP_DAYS: deleted with their scores, their sessions ended. */
   async prune() {
     const gone = await this.store.pruneAccounts(KEEP_DAYS);
-    for (const name of gone) await this.auth.endSessionsOf(name);
+    for (const name of gone) {
+      await this.auth.endSessionsOf(name);
+      this.onGone?.(name);
+    }
     if (gone.length) this.auth.log('accounts_pruned', null, { detail: `${gone.length} unused for ${KEEP_DAYS} days` });
   }
 
@@ -291,6 +295,7 @@ export class Accounts {
     if (refused) return refused;
     this.auth.revoke(session.username);
     await this.store.deleteAccount(session.username);
+    this.onGone?.(session.username);
     await this.auth.endSessionsOf(session.username);
     this.auth.log('account_deleted', req, { username: session.username, detail: 'by the player' });
     return { ok: true };
@@ -342,6 +347,7 @@ export class Accounts {
     if (op === 'delete') {
       this.auth.revoke(name);
       await this.store.deleteAccount(name);
+      this.onGone?.(name);
       await this.auth.endSessionsOf(name);
       this.auth.log('account_deleted', req, { username: by, detail: `${name}, by the admin` });
       return { ok: true };

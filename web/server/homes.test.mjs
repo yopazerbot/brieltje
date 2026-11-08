@@ -7,10 +7,39 @@ const H1 = 'house';
 const H2 = 'bungalow';
 const PACK = { id: 'house', prisms: [], doors: [], fixtures: [], props: [] };
 
-function setup() {
-  const meta = new Map();
-  const store = { getMeta: async (k) => meta.get(k) ?? null, setMeta: async (k, v) => void meta.set(k, v) };
+/** A store with the homes' records and the accounts' lasting access (server/store.mjs FileStore's rules: rows only for accounts that exist). */
+function fakeStore(meta = new Map(), accounts = new Set(), grants = []) {
+  return {
+    meta, accounts, grants,
+    getMeta: async (k) => meta.get(k) ?? null,
+    setMeta: async (k, v) => void meta.set(k, v),
+    listHomeGrants: async () => grants.filter((r) => accounts.has(r.username)).map((r) => ({ ...r })),
+    saveHomeGrant: async (username, home, gen) => {
+      if (!accounts.has(username)) return false;
+      const old = grants.find((r) => r.username === username && r.home === home);
+      if (old) Object.assign(old, { gen, at: new Date().toISOString() });
+      else grants.push({ username, home, gen, at: new Date().toISOString() });
+      return true;
+    },
+    deleteHomeGrants: async (home, username = null) => {
+      const before = grants.length;
+      grants.splice(0, grants.length, ...grants.filter((r) => r.home !== home || (username !== null && r.username !== username)));
+      return before - grants.length;
+    },
+    deleteAccount: async (name) => {
+      accounts.delete(name);
+      grants.splice(0, grants.length, ...grants.filter((r) => r.username !== name));
+    },
+  };
+}
+
+function setup({ store = fakeStore(), sessions = new Map() } = {}) {
+  // sessions: key -> { username, role, expires } as server/auth.mjs holds them; who and keysOf read them as server.mjs does.
+  // Any other key stands for a guest's live session (the older tests name sessions 'p1', 'p2').
+  const live = (s) => (s && s.expires >= Date.now() ? s : null);
   const homes = new Homes(store, {
+    who: (key) => (sessions.has(key) ? live(sessions.get(key)) : key ? { username: key, role: 'guest', expires: Infinity } : null),
+    keysOf: (name) => [...sessions].filter(([, s]) => s.username === name && s.role === 'player' && s.expires >= Date.now()).map(([k]) => k),
     list: HOMES,
     json: (res, status, data, headers) => void Object.assign(res, { status, data, headers }),
     readJson: async (req) => {
@@ -25,7 +54,7 @@ function setup() {
     const handled = await homes.handle({ method, body, who, crossSite }, res, new URL(path, 'http://x'), admin, user);
     return { handled, res };
   };
-  return { homes, call };
+  return { homes, call, store, sessions };
 }
 
 test('codes: ten characters of the alphabet, typed in any case with dashes', () => {
@@ -284,4 +313,31 @@ test('wrong tries are counted in memory and written to the store at most once a 
   assert.equal(homes.fails.size, 0);
   assert.equal((await row()).fails, 12, 'and none counted twice');
   assert.equal(JSON.parse(await homes.store.getMeta('homes'))[H1].fails, 12, 'all in the store');
+});
+
+test("at start only the accounts' access made with the code in use counts", async () => {
+  const meta = new Map([['homes', JSON.stringify({ [H1]: { enabled: true, hash: 'x', gen: 3 }, [H2]: { enabled: true, hash: 'y' } })]]);
+  const at = '2026-11-08T10:00:00.000Z';
+  const grants = [
+    { username: 'anna', home: H1, gen: 3, at },
+    { username: 'bert', home: H1, gen: 2, at }, // an older code's
+    { username: 'gone', home: H1, gen: 3, at }, // no account any more
+    { username: 'anna', home: 'nowhere', gen: 0, at },
+    { username: 'anna', home: H2, gen: 0, at }, // a record from before generations: 0
+  ];
+  const store = fakeStore(meta, new Set(['anna', 'bert']), grants);
+  const sessions = new Map([
+    ['ka', { username: 'anna', role: 'player', expires: Date.now() + 60_000 }],
+    ['kb', { username: 'bert', role: 'player', expires: Date.now() + 60_000 }],
+  ]);
+  const { homes, call } = setup({ store, sessions });
+  await homes.load();
+  assert.equal(homes.granted('ka', H1), true);
+  assert.equal(homes.granted('ka', H2), true);
+  assert.equal(homes.granted('kb', H1), false, 'an older code');
+  assert.deepEqual([...homes.lasting.keys()], ['anna']);
+  const rows = (await call('GET', '/api/admin/homes', undefined, { admin: true })).res.data.rows;
+  assert.deepEqual(rows.find((r) => r.id === H1).accounts, [{ username: 'anna', at }]);
+  sessions.set('ka', { ...sessions.get('ka'), expires: Date.now() - 1 });
+  assert.equal(homes.granted('ka', H1), false, 'a session that has ended');
 });

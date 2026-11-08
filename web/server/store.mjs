@@ -29,7 +29,7 @@ async function replace(from, to) {
 class FileStore {
   constructor(file) {
     this.file = file;
-    this.data = { audit: [], sessions: [], stats: {}, meta: {}, furniture: [], cars: [], interest: [], interestId: 0, daily: {}, feedback: [], feedbackId: 0, gamenight: [], gamenightId: 0, visits: null, accounts: [], zombieBest: [] };
+    this.data = { audit: [], sessions: [], stats: {}, meta: {}, furniture: [], cars: [], interest: [], interestId: 0, daily: {}, feedback: [], feedbackId: 0, gamenight: [], gamenightId: 0, visits: null, accounts: [], zombieBest: [], homeGrants: [] };
   }
   async init() {
     await mkdir(resolve(this.file, '..'), { recursive: true });
@@ -43,6 +43,7 @@ class FileStore {
     this.data.accounts.push({ username: a.username, email: a.email, pass: a.pass, created: now, seen: now, disabled: false });
     delete this.data.stats[`u:${a.username}`]; // a new account starts at nothing
     this.data.zombieBest = this.data.zombieBest.filter((r) => r.username !== a.username); // nor any run left under the name
+    this.data.homeGrants = this.data.homeGrants.filter((r) => r.username !== a.username); // nor a home's access
     await this.save();
     return true;
   }
@@ -61,9 +62,32 @@ class FileStore {
     const before = this.data.accounts.length;
     this.data.accounts = this.data.accounts.filter((r) => r.username !== username);
     this.data.zombieBest = this.data.zombieBest.filter((r) => r.username !== username);
+    this.data.homeGrants = this.data.homeGrants.filter((r) => r.username !== username); // its access to the homes goes with it
     delete this.data.stats[`u:${username}`];
     await this.save();
     return this.data.accounts.length < before;
+  }
+  // ---- Accounts' lasting access to the code-locked homes (server/homes.mjs): one row per account and home, made with
+  // the home's code of generation `gen`. Only accounts that exist: a row is never written for a name without one.
+  async listHomeGrants() {
+    const names = new Set(this.data.accounts.map((r) => r.username));
+    return this.data.homeGrants.filter((r) => names.has(r.username)).map(({ username, home, gen, at }) => ({ username, home, gen, at }));
+  }
+  async saveHomeGrant(username, home, gen) {
+    if (!this.data.accounts.some((r) => r.username === username)) return false;
+    const at = new Date().toISOString();
+    const old = this.data.homeGrants.find((r) => r.username === username && r.home === home);
+    if (old) Object.assign(old, { gen, at });
+    else this.data.homeGrants.push({ username, home, gen, at });
+    await this.save();
+    return true;
+  }
+  /** One account's access to `home` (`username`), or every account's (null): how many rows went. */
+  async deleteHomeGrants(home, username = null) {
+    const before = this.data.homeGrants.length;
+    this.data.homeGrants = this.data.homeGrants.filter((r) => r.home !== home || (username !== null && r.username !== username));
+    if (this.data.homeGrants.length < before) await this.save();
+    return before - this.data.homeGrants.length;
   }
   async listAccounts() {
     return this.data.accounts.map(({ pass, ...r }) => r).sort((a, b) => (a.created < b.created ? 1 : -1));
@@ -430,6 +454,15 @@ class PgStore {
       -- The admin's runs count too (Yoshi, 8 Nov 2026), and the admin has no account: no tie to accounts; an
       -- account's runs are deleted with it (deleteAccount, pruneAccounts).
       alter table zombie_best drop constraint if exists zombie_best_username_fkey;
+      -- An account's lasting access to a code-locked home (server/homes.mjs), made with the code of generation gen:
+      -- tied to the account, so it goes when the account goes.
+      create table if not exists home_grants (
+        username text not null references accounts (username) on delete cascade,
+        home text not null,
+        gen integer not null,
+        at timestamptz not null default now(),
+        primary key (username, home)
+      );
       create table if not exists daily (
         day text not null,
         key text not null,
@@ -541,6 +574,7 @@ class PgStore {
     if (r.rowCount === 1) {
       await this.pool.query('delete from stats where username = $1', [a.username]); // a new account starts at nothing
       await this.pool.query('delete from zombie_best where username = $1', [a.username]); // nor any run left under the name
+      await this.pool.query('delete from home_grants where username = $1', [a.username]); // nor a home's access
     }
     return r.rowCount === 1;
   }
@@ -561,8 +595,28 @@ class PgStore {
   async deleteAccount(username) {
     await this.pool.query('delete from stats where username = $1', [username]);
     await this.pool.query('delete from zombie_best where username = $1', [username]); // its best runs go with it
+    await this.pool.query('delete from home_grants where username = $1', [username]); // and its access to the homes (the key would too)
     const r = await this.pool.query('delete from accounts where username = $1', [username]);
     return r.rowCount === 1;
+  }
+  // ---- Accounts' lasting access to the code-locked homes (server/homes.mjs)
+  async listHomeGrants() {
+    const r = await this.pool.query('select username, home, gen, at from home_grants where username in (select username from accounts)');
+    return r.rows.map((x) => ({ ...x, at: new Date(x.at).toISOString() }));
+  }
+  /** Only for an account that exists (false otherwise); a second time for the same home: the newer code's generation. */
+  async saveHomeGrant(username, home, gen) {
+    const r = await this.pool.query(
+      `insert into home_grants (username, home, gen) select $1, $2, $3 where exists (select 1 from accounts where username = $1)
+       on conflict (username, home) do update set gen = $3, at = now()`,
+      [username, home, gen]);
+    return r.rowCount === 1;
+  }
+  async deleteHomeGrants(home, username = null) {
+    const r = username === null
+      ? await this.pool.query('delete from home_grants where home = $1', [home])
+      : await this.pool.query('delete from home_grants where home = $1 and username = $2', [home, username]);
+    return r.rowCount;
   }
   async listAccounts() {
     const r = await this.pool.query('select username, email, created, seen, disabled from accounts order by created desc limit 2000');
@@ -574,6 +628,7 @@ class PgStore {
     if (gone.length) {
       await this.pool.query('delete from stats where username = any($1)', [gone]);
       await this.pool.query('delete from zombie_best where username = any($1)', [gone]);
+      await this.pool.query('delete from home_grants where username = any($1)', [gone]); // gone with the accounts already (the key)
     }
     return gone;
   }
