@@ -387,14 +387,18 @@ export class BigMap {
   private add(layer: Layer, rings: Ring[]): void {
     let path = this.paths.get(layer);
     if (!path) this.paths.set(layer, (path = new Path2D()));
+    const keep = layer === 'road' || layer === 'building';
     for (const ring of rings) {
       if (ring.length < 3) continue;
-      ring.forEach(([x, z], i) => {
+      // A plain loop: the village's rings are many (this ran a fifth of a second while the village loaded).
+      for (let i = 0; i < ring.length; i++) {
+        const [x, z] = ring[i];
         const u = toU(x, z);
         const v = toV(x, z);
-        (i ? path!.lineTo : path!.moveTo).call(path, u, v);
-        if (layer === 'road' || layer === 'building') this.points.push([u, v]);
-      });
+        if (i) path.lineTo(u, v);
+        else path.moveTo(u, v);
+        if (keep) this.points.push([u, v]);
+      }
       path.closePath();
     }
   }
