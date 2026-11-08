@@ -70,9 +70,13 @@ const PLACES: string[] = ARENAS.map((a) => a.id);
 const placeName = (id: string) => (PLACES.includes(id) ? t(`portal.${id}` as PlainKey) : '');
 
 const FONT = '"Alegreya Sans", system-ui, sans-serif';
+/** The brand's heading face (src/brand.css) for the title and the column heads. */
+const TITLE_FONT = 'Fredoka, "Alegreya Sans", system-ui, sans-serif';
 const INK = '#1d2326';
 const PAPER = '#f3f0e6';
-const BAND = '#22302a';
+const BAND = '#141d3a'; // the brand's evening blue, with a stripe of Zombies lime under it
+const STRIPE = '#a6e83a';
+const CHALK = '#fbf6ea';
 const RULE = '#d8d2c2';
 const MEDALS = ['#c9a032', '#9aa3a8', '#b0703f'];
 
@@ -110,7 +114,9 @@ export class TownBoard {
     world.addPrisms(this.blocks(groundAt));
     onLang(() => (this.dirty = true));
     // The page's font comes in with the page; until then the canvas would draw in the fallback.
-    void document.fonts?.load(`800 40px ${FONT}`).then(() => document.fonts.load(`500 30px ${FONT}`)).then(() => (this.dirty = true)).catch(() => undefined);
+    void Promise.all([document.fonts?.load(`800 40px ${FONT}`), document.fonts?.load(`500 30px ${FONT}`), document.fonts?.load(`600 60px ${TITLE_FONT}`)])
+      .then(() => (this.dirty = true))
+      .catch(() => undefined);
   }
 
   /** Its blocks: the posts with the case between them up to the roof, and the roof; cars, players and shots stop at them. */
@@ -211,10 +217,10 @@ export class TownBoard {
     // The band with the title.
     g.fillStyle = BAND;
     g.fillRect(0, 0, W, 100);
-    g.fillStyle = '#7fb069';
+    g.fillStyle = STRIPE;
     g.fillRect(0, 96, W, 6);
-    g.fillStyle = '#f4f1e6';
-    g.font = `800 60px ${FONT}`;
+    g.fillStyle = CHALK;
+    g.font = `600 58px ${TITLE_FONT}`;
     g.textAlign = 'left';
     g.fillText(this.fit(t('board.title'), W - 96), 44, 52);
     g.fillStyle = '#5b5f58';
@@ -225,7 +231,7 @@ export class TownBoard {
     const top = 186; // the first row's upper edge
     const step = 54;
     g.fillStyle = '#7a7d74';
-    g.font = `800 22px ${FONT}`;
+    g.font = `600 21px ${TITLE_FONT}`;
     g.textAlign = 'left';
     g.fillText(t('lb.player').toUpperCase(), COL.name, top - 20);
     g.textAlign = 'right';

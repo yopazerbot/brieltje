@@ -1,0 +1,188 @@
+/* The brand on the game's own screens (DECISIONS.md, 8 Nov 2026), over src/style.css: headings and
+   buttons in Fredoka, yellow pills with a firm edge for the one thing to do next, raised blue for the
+   rest, a colour and an icon per mode, and a paint splat behind what is chosen, sparingly (the menu's
+   tab, the mode). The start screen and the account card have their own look (src/start.ts,
+   src/ui/account.ts) and only take the colours from the names in style.css.
+
+   Over the 3D view (#hud) only the colours and the heading font change: no splats, no extra shadows or
+   blur, nothing that moves. Everything here is drawn once by the page, not by the graphics chip each frame.
+
+   Motion: a small pop when something is chosen, and the Resume button's splat. None of it with reduced
+   motion. Selectors start with :where(...) where they can, so they weigh no more than style.css's own. */
+
+:root {
+  /* The mode colours and icons (one per mode, everywhere a mode is named). */
+  --mode-explore: var(--brand-sky);
+  --mode-paintball: var(--brand-magenta);
+  --mode-action: var(--brand-sun);
+  --mode-zombies: var(--brand-lime);
+  --icon-explore: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 40 40' fill='none' stroke='%23000' stroke-width='3.4' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M5 10l9-4 12 4 9-4v24l-9 4-12-4-9 4z'/%3E%3Cpath d='M14 6v24M26 10v24'/%3E%3C/svg%3E");
+  --icon-paintball: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 40 40' fill='none' stroke='%23000' stroke-width='3.4' stroke-linecap='round' stroke-linejoin='round'%3E%3Ccircle cx='20' cy='20' r='8'/%3E%3Cpath d='M20 4v5M20 31v5M4 20h5M31 20h5M9 9l3.5 3.5M27.5 27.5 31 31M31 9l-3.5 3.5M12.5 27.5 9 31'/%3E%3C/svg%3E");
+  --icon-action: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 40 40' fill='none' stroke='%23000' stroke-width='3.4' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M5 12h28v7H17l-3 13H8l2-13H5z'/%3E%3Cpath d='M17 19l2 5h-5'/%3E%3C/svg%3E");
+  --icon-zombies: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 40 40' fill='none' stroke='%23000' stroke-width='3.4' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M8 18a12 12 0 0 1 24 0v8a4 4 0 0 1-4 4H12a4 4 0 0 1-4-4z'/%3E%3Ccircle cx='15' cy='19' r='3'/%3E%3Ccircle cx='25' cy='19' r='3'/%3E%3Cpath d='M15 30v4M20 30v4M25 30v4'/%3E%3C/svg%3E");
+  /* The paint splat, as a mask (its colour is the element's background). */
+  --splat: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Cg fill='%23000'%3E%3Ccircle cx='50' cy='52' r='26'/%3E%3Ccircle cx='30' cy='36' r='12'/%3E%3Ccircle cx='70' cy='34' r='11'/%3E%3Ccircle cx='74' cy='66' r='13'/%3E%3Ccircle cx='32' cy='70' r='11'/%3E%3Ccircle cx='50' cy='24' r='9'/%3E%3Ccircle cx='84' cy='46' r='6'/%3E%3Ccircle cx='14' cy='52' r='6'/%3E%3Ccircle cx='58' cy='86' r='6'/%3E%3Ccircle cx='90' cy='20' r='4'/%3E%3Ccircle cx='12' cy='20' r='4'/%3E%3C/g%3E%3C/svg%3E");
+  --edge-raised: #0b1129; /* the edge under a blue button */
+}
+
+/* ---- The row logo (index.html #brand-row): the letters in the text's colour ---------------------- */
+.logo-row { display: block; width: auto; aspect-ratio: 559.5 / 113.9; fill: currentColor; }
+#brand .logo-row { height: 30px; color: var(--ink); stroke: rgba(8, 12, 30, 0.6); stroke-width: 10px; stroke-linejoin: round; paint-order: stroke; }
+#pause-panel h1 .logo-row { flex: none; height: 32px; }
+@media (max-height: 520px) { #pause-panel h1 .logo-row { height: 24px; } }
+
+/* ---- Fredoka for headings, titles and buttons ------------------------------------------------------ */
+:where(#pause-panel, #feedback, #home-code, #controls-card, #zexplore, #bigmap, #travel) :is(h1, h2, h3),
+:where(#pause-panel, #zexplore) :is(.seg-btn b, .tool b, .rail .tab, .mini, .resume b),
+:where(#feedback, #home-code) button, #cc-close b, #bigmap .bm-card b, #bigmap button, #travel .tv-head b,
+#leaderboard .lb-title, .room-list .room-what b,
+#hud :is(#toast, #banner b, #death b, #scoreboard h2, #zend h2, #modebar, #ammo, #health, #blindfold) {
+  font-family: var(--display);
+}
+/* Fredoka is wider and taller than Alegreya Sans at the same size: one step down, and 600 is bold enough. */
+#pause-panel .col h2 { font-size: 21px; font-weight: 600; letter-spacing: 0.005em; }
+#pause-panel .ctl-group h3 { font-size: 17px; font-weight: 600; }
+#pause-panel h1 { font-weight: 600; }
+:where(#pause-panel, #zexplore) .seg-btn b { font-weight: 600; font-size: 16px; }
+#pause-panel .mode-big .seg-btn b { font-size: 19px; }
+#pause-panel .tool b { font-weight: 600; font-size: 16px; }
+#pause-panel .rail .tab { font-weight: 600; font-size: 16px; }
+#controls-card h2, #feedback h2, #home-code h2 { font-weight: 600; }
+#leaderboard .lb-title, .room-list .room-what b { font-weight: 600; }
+#hud :is(#toast, #banner b, #death b, #zend h2, #scoreboard h2) { font-weight: 600; }
+#hud #modebar { font-weight: 600; }
+
+/* ---- Buttons: yellow pills for the one thing to do next, raised blue for the rest -------------------- */
+/* The yellow pill: night-blue letters (10.3:1), a deeper yellow edge that sinks when pressed. */
+.resume, :where(#pause-panel, #feedback, #home-code, #controls-card, #bigmap) .mini.go, #cc-close,
+#feedback #fb-send, #home-code .hc-actions .hc-go, #bigmap .bm-row button.main {
+  color: var(--brand-night); background: var(--brand-sun); border: 0; border-radius: var(--brand-r-pill);
+  box-shadow: 0 4px 0 var(--brand-sun-deep); transition: background-color 0.15s, transform 0.08s, box-shadow 0.08s;
+}
+.resume:hover, :where(#pause-panel, #feedback, #home-code, #controls-card, #bigmap) .mini.go:hover, #cc-close:hover,
+#feedback #fb-send:hover:not(:disabled), #home-code .hc-actions .hc-go:hover:not(:disabled), #bigmap .bm-row button.main:hover {
+  background: var(--lamp-bright);
+}
+#cc-close { color: var(--brand-night); margin-bottom: 4px; }
+#cc-close b { font-weight: 600; }
+#feedback #fb-send:disabled { box-shadow: none; }
+/* The raised blue button. */
+:where(#pause-panel, #feedback, #home-code) .mini:not(.go), #feedback .fb-actions button:not(#fb-send),
+#home-code .hc-actions button:not(.hc-go), #pause-panel .icon-btn, #bigmap .bm-tools button {
+  color: var(--ink); background: var(--brand-raised); border: 0; border-radius: var(--brand-r-pill);
+  box-shadow: 0 4px 0 var(--edge-raised); transition: background-color 0.15s, transform 0.08s, box-shadow 0.08s;
+}
+:where(#pause-panel, #feedback, #home-code) .mini:not(.go):hover, #feedback .fb-actions button:not(#fb-send):hover:not(:disabled),
+#home-code .hc-actions button:not(.hc-go):hover:not(:disabled), #pause-panel .icon-btn:hover, #bigmap .bm-tools button:hover {
+  background: var(--dusk-high);
+}
+#pause-panel .icon-btn { border-radius: 50%; }
+#pause-panel .icon-btn.off { color: var(--ink-faint); }
+:where(#pause-panel, #feedback, #home-code) .mini { font-weight: 600; font-size: 15px; padding: 8px 16px; }
+/* Pressed: the button sinks onto its edge. */
+:is(.resume, :where(#pause-panel, #feedback, #home-code, #controls-card, #bigmap) .mini, #cc-close, #feedback .fb-actions button,
+  #home-code .hc-actions button, #pause-panel .icon-btn, #bigmap .bm-row button.main, #bigmap .bm-tools button):active:not(:disabled) {
+  transform: translateY(3px); box-shadow: 0 1px 0 var(--brand-sun-deep);
+}
+:is(:where(#pause-panel, #feedback, #home-code) .mini:not(.go), #feedback .fb-actions button:not(#fb-send),
+  #home-code .hc-actions button:not(.hc-go), #pause-panel .icon-btn, #bigmap .bm-tools button):active:not(:disabled) {
+  box-shadow: 0 1px 0 var(--edge-raised);
+}
+/* Resume: the menu's play button. Its play mark sits on a splat of deeper yellow, which spins a little
+   when pointed at. */
+.resume { position: relative; padding: 0 10px 0 12px; gap: 10px; }
+.resume b { font-weight: 600; font-size: 17px; }
+.resume kbd { color: var(--ink); background: rgba(13, 20, 48, 0.85); }
+.resume::before {
+  content: ''; position: absolute; left: 6px; top: 50%; width: 34px; height: 34px; margin-top: -17px;
+  background: var(--brand-sun-deep); -webkit-mask: var(--splat) center / contain no-repeat; mask: var(--splat) center / contain no-repeat;
+}
+.resume svg { position: relative; width: 14px; height: 14px; padding: 0; margin-left: 4px; }
+@media (max-height: 520px) { .resume::before { width: 30px; height: 30px; margin-top: -15px; } }
+
+/* ---- The menu's tabs: a splat of sun behind the chosen tab's icon ------------------------------------ */
+/* (The splat in the brand's sun, #f7b928, drawn as the icon's background so the icon stays on top.) */
+.rail .tab.selected::before { content: none; }
+.rail .tab.selected svg {
+  box-sizing: content-box; padding: 8px; margin: -8px; color: var(--brand-night); overflow: visible;
+  background: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Cg fill='%23f7b928'%3E%3Ccircle cx='50' cy='52' r='26'/%3E%3Ccircle cx='30' cy='36' r='12'/%3E%3Ccircle cx='70' cy='34' r='11'/%3E%3Ccircle cx='74' cy='66' r='13'/%3E%3Ccircle cx='32' cy='70' r='11'/%3E%3Ccircle cx='50' cy='24' r='9'/%3E%3Ccircle cx='84' cy='46' r='6'/%3E%3Ccircle cx='14' cy='52' r='6'/%3E%3Ccircle cx='58' cy='86' r='6'/%3E%3C/g%3E%3C/svg%3E") center / contain no-repeat;
+  stroke-width: 2.2;
+}
+.rail .tab { border-radius: var(--brand-r-pill); }
+.rail .tab.selected { background: var(--dusk-raised); }
+
+/* ---- Choices: the chosen tile in sun, a mode in its own colour with its icon ------------------------- */
+:where(#pause-panel, #zexplore) .seg-btn { border-width: 2px; border-radius: 16px; }
+:where(#pause-panel, #zexplore) .seg-btn.selected { border-color: var(--brand-sun); background: var(--dusk-raised); }
+:where(#pause-panel, #zexplore) .seg-btn[data-play] { position: relative; overflow: hidden; }
+:where(#pause-panel, #zexplore) .seg-btn[data-play="explore"] { --mode: var(--mode-explore); --icon: var(--icon-explore); }
+:where(#pause-panel, #zexplore) .seg-btn[data-play="paintball"] { --mode: var(--mode-paintball); --icon: var(--icon-paintball); }
+:where(#pause-panel, #zexplore) .seg-btn[data-play="action"] { --mode: var(--mode-action); --icon: var(--icon-action); }
+/* The mode's icon in its colour, before its name: on a line of its own in the Play tab, beside it elsewhere. */
+:where(#pause-panel, #zexplore) .seg-btn[data-play] b::before {
+  content: ''; display: inline-block; width: 1.15em; height: 1.15em; margin: 0 0.35em 0 0; vertical-align: -0.2em;
+  background: var(--mode); -webkit-mask: var(--icon) center / contain no-repeat; mask: var(--icon) center / contain no-repeat;
+}
+#pause-panel .mode-big .seg-btn[data-play] b::before { display: block; width: 26px; height: 26px; margin: 0 0 6px; }
+/* The chosen mode: its colour round it, and in the Play tab a splat of it in the corner. (A browser
+   without color-mix(), Safari before 16.2, keeps the plain raised background.) */
+:where(#pause-panel, #zexplore) .seg-btn[data-play].selected { border-color: var(--mode); background: color-mix(in srgb, var(--mode) 12%, var(--dusk-raised)); }
+:where(#pause-panel, #zexplore) .seg-btn[data-play].selected b { color: var(--ink); }
+#pause-panel .mode-big .seg-btn[data-play].selected::after {
+  content: ''; position: absolute; right: -14px; top: -16px; width: 54px; height: 54px; opacity: 0.9; pointer-events: none;
+  background: var(--mode); -webkit-mask: var(--splat) center / contain no-repeat; mask: var(--splat) center / contain no-repeat;
+}
+/* Zombies (the Play tab's party game): its colour and icon. */
+#zombies-btn { position: relative; padding-right: 58px; border-left: 4px solid var(--mode-zombies); }
+#zombies-btn::after {
+  content: ''; position: absolute; right: 16px; top: 50%; width: 30px; height: 30px; margin-top: -15px;
+  background: var(--mode-zombies); -webkit-mask: var(--icon-zombies) center / contain no-repeat; mask: var(--icon-zombies) center / contain no-repeat;
+}
+/* The other big buttons in the menu: raised tiles with the blue edge. */
+#pause-panel .tool { border-radius: 16px; box-shadow: 0 4px 0 var(--edge-raised); transition: background-color 0.15s, transform 0.08s, box-shadow 0.08s; }
+#pause-panel .tool:active:enabled { transform: translateY(3px); box-shadow: 0 1px 0 var(--edge-raised); }
+#pause-panel .control-actions .tool:disabled { box-shadow: none; }
+#pause-panel .tools { gap: 12px; }
+
+/* ---- The menu's frame, the map, the rooms, the board's list ----------------------------------------- */
+#pause-panel .pause-label { font-family: var(--display); font-weight: 500; }
+#pause-panel .pause-foot .meetup { font-family: var(--display); font-weight: 600; color: var(--brand-sun); }
+#bigmap button { background: rgba(13, 20, 48, 0.88); border-color: var(--brand-line); }
+#bigmap .bm-tools button { width: 44px; height: 44px; border-radius: 50%; }
+#bigmap .bm-card { border-left: 0; border-radius: 18px; background: rgba(13, 20, 48, 0.92); }
+#bigmap .bm-card b { font-weight: 600; }
+#bigmap .bm-row button { border-radius: var(--brand-r-pill); padding: 8px 16px; }
+#bigmap .bm-legend, #bigmap .bm-help { border-radius: var(--brand-r-pill); }
+.room-list li { border-radius: 16px; }
+.room-here { border-radius: 16px; }
+#leaderboard select { border-radius: var(--brand-r-pill); }
+
+/* ---- Cards over the game: How to play, feedback, a home's code --------------------------------------- */
+:is(#controls-card, #feedback, #home-code) { border-radius: var(--brand-r-card); background: var(--brand-evening); }
+#feedback .fb-star { color: #6a78b0; } /* an empty star: 3.9:1 on the card */
+#feedback .fb-actions button { border-radius: var(--brand-r-pill); }
+
+/* ---- The HUD over the 3D view: the brand's colours and type, nothing more ---------------------------- */
+#hud #scoreboard, #hud #zend { border-left-color: var(--brand-sun); }
+body.paintball #hud #scoreboard { border-left-color: var(--mode-paintball); }
+#hud #zend { border-left-color: var(--mode-zombies); }
+#hud #zend-sub { color: var(--mode-zombies); }
+body.paintball #hud #zend { border-left-color: var(--mode-paintball); }
+body.paintball #hud #zend-sub { color: var(--mode-paintball); }
+body.paintball #hud #modebar { border-bottom-color: var(--mode-paintball); }
+#hud #zend h2 { font-size: 32px; }
+#hud #scoreboard h2 { font-size: 26px; }
+
+/* ---- Motion: a small pop when something is chosen ----------------------------------------------------- */
+@media (prefers-reduced-motion: no-preference) {
+  :where(#pause-panel, #zexplore) .seg-btn.selected, #pause-panel .rail .tab.selected svg { animation: brand-pop 0.26s cubic-bezier(0.3, 1.6, 0.5, 1) both; }
+  #pause-panel .mode-big .seg-btn[data-play].selected::after { animation: brand-splat 0.32s cubic-bezier(0.3, 1.5, 0.5, 1) both; }
+  .resume::before { transition: transform 0.25s cubic-bezier(0.3, 1.6, 0.5, 1); }
+  .resume:hover::before, .resume:focus-visible::before { transform: rotate(40deg) scale(1.12); }
+}
+@media (prefers-reduced-motion: reduce) {
+  .resume, :where(#pause-panel, #feedback, #home-code, #controls-card, #bigmap) .mini, #cc-close, #feedback .fb-actions button,
+  #home-code .hc-actions button, #pause-panel .icon-btn, #pause-panel .tool, #bigmap button { transition: none; }
+}
+@keyframes brand-pop { 0% { transform: scale(0.94); } 60% { transform: scale(1.03); } 100% { transform: scale(1); } }
+@keyframes brand-splat { 0% { transform: scale(0.3) rotate(-30deg); opacity: 0; } 100% { transform: scale(1) rotate(0); opacity: 0.9; } }

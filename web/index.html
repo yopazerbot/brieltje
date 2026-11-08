@@ -38,6 +38,7 @@
     <link rel="stylesheet" href="/src/brand.css" />
     <link rel="stylesheet" href="/src/style.css" />
     <link rel="stylesheet" href="/menu-theme.css" />
+    <link rel="stylesheet" href="/src/brand-ui.css" />
     <!-- The start screen in the brand's colours, type and shapes (its tokens in one place, at its top). -->
     <link rel="stylesheet" href="/src/startScreen.css" />
   </head>
@@ -57,7 +58,7 @@
     <div id="hud">
       <div id="damage"></div>
       <!-- The Beta mark beside the wordmark (style.css .beta); with touch controls the mark alone, beside the top row of buttons. -->
-      <div id="brand"><svg class="wordmark" viewBox="0 0 2993 898" role="img" aria-label="Brieltje"><use href="#wordmark"/></svg><span class="beta" data-i18n="brand.beta">Beta</span></div>
+      <div id="brand"><svg class="logo-row" viewBox="0 0 559.5 113.9" role="img" aria-label="Brieltje"><use href="#brand-row"/></svg><span class="beta" data-i18n="brand.beta">Beta</span></div>
       <div id="who"></div>
       <div id="place"></div>
       <div id="menu-hint"><kbd>Esc</kbd> <span data-i18n="hud.menu">Menu</span></div>
@@ -358,7 +359,7 @@
       <div class="panel wide hidden" id="pause-panel">
         <header class="pause-top">
           <div class="pause-title">
-            <h1><svg class="wordmark" viewBox="0 0 2993 898" role="img" aria-label="Brieltje"><use href="#wordmark"/></svg><span class="pause-label" data-i18n="menu.title">Menu</span></h1>
+            <h1><svg class="logo-row" viewBox="0 0 559.5 113.9" role="img" aria-label="Brieltje"><use href="#brand-row"/></svg><span class="pause-label" data-i18n="menu.title">Menu</span></h1>
             <p class="sub" id="pause-who"></p>
           </div>
           <div class="pause-actions">
