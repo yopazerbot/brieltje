@@ -216,6 +216,24 @@
       m.needsUpdate = true;
     }
   });
+  // `render.clear` (views.json): nothing car-sized within that many metres of the camera. The traffic drives where it
+  // likes, and a car passing just in front of a street-level camera filled the bottom of the picture.
+  if (view?.render?.clear) {
+    const eye = scene.position.clone().fromArray(view.position);
+    const ball = new (scene.position.constructor)();
+    scene.traverse((o) => {
+      if (!o.isMesh || !o.visible || o.isInstancedMesh) return;
+      o.geometry.computeBoundingSphere?.();
+      const s = o.geometry.boundingSphere;
+      if (!s) return;
+      ball.copy(s.center).applyMatrix4(o.matrixWorld);
+      const r = s.radius * o.matrixWorld.getMaxScaleOnAxis();
+      if (r < 3.5 && ball.distanceTo(eye) < view.render.clear) {
+        o.visible = false;
+        unseen.push(o);
+      }
+    });
+  }
   for (const o of scene.children) if (o.visible && !o.isLight && !o.isCamera) objects.push(o);
   // The start screen's camera (main.ts startCamera, wide screens), or the view's.
   const fov = view?.fov ?? 72;

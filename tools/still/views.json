@@ -11,10 +11,9 @@
     "drop": { "at": [615, -745], "figure": [615, 58, -745], "heading": 1.75, "hold": 4 },
     "render": { "mood": "dusk" } },
   "street-rain": { "position": [751.5, 8.55, -725.2], "target": [700, 7.9, -727.5], "fov": 58, "mood": "rain" },
-  "sparrenhof-dusk": { "position": [626, -0.5, 1003], "target": [646, -3.5, 948], "fov": 55, "mood": "night",
-    "render": { "mood": "dusk", "ownWindows": 0.85, "skyGain": 0.9, "exposure": 1.9, "cardGaps": 0.75, "lights": [
-      { "kind": "point", "at": [637.8, -0.8, 977.8], "power": 150, "color": [1.0, 0.62, 0.3], "size": 0.15 },
-      { "kind": "point", "at": [641.0, -4.1, 975.3], "power": 100, "color": [1.0, 0.62, 0.3], "size": 0.15 }] } },
+  "sparrenhof-dusk": { "position": [622, -3.5, 935], "target": [665.2, -4.5, 947.4], "fov": 58, "mood": "night",
+    "render": { "mood": "dusk", "ownWindows": 0.9, "skyGain": 1.4, "exposure": 0.6, "cardGaps": 0.6, "lights": [
+      { "kind": "point", "at": [666.3, -2.2, 983.9], "power": 150, "color": [1.0, 0.62, 0.3], "size": 0.15 }] } },
   "football": { "position": [-344.4, 3.3, -1270.1], "target": [-380.2, -5, -1204.2], "fov": 55, "mood": "night",
     "render": { "mood": "dusk", "lights": [
       { "at": [-381.4, 9.7, -1255.8], "aim": [-365.1, -5.7, -1216.7], "power": 30000, "spread": 80, "color": [0.92, 0.96, 1], "size": 0.8 },
@@ -22,5 +21,5 @@
       { "at": [-383.3, 9.7, -1188.6], "aim": [-364.8, -5.7, -1228.7], "power": 30000, "spread": 80, "color": [0.92, 0.96, 1], "size": 0.8 },
       { "at": [-320.7, 9.7, -1190.8], "aim": [-336.7, -5.7, -1227.9], "power": 30000, "spread": 80, "color": [0.92, 0.96, 1], "size": 0.8 }] } },
   "square": { "position": [520, 22, -797], "target": [556.5, 6, -762.8], "fov": 54 },
-  "street-night": { "position": [560, 6.9, -765], "target": [520.6, 6.6, -771.9], "fov": 55, "mood": "night", "render": { "wet": true, "puddles": 0.05, "exposure": 0.5 } }
+  "street-night": { "position": [570, 8.6, -762], "target": [525.3, 6.6, -767.5], "fov": 52, "mood": "night", "render": { "wet": true, "puddles": 0.05, "exposure": 0.9, "clear": 10 } }
 }
