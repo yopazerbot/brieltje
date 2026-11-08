@@ -4,6 +4,7 @@ import type { World } from './collision';
 import { house } from './houseData';
 import { looseProps } from './looseProps';
 import { buildRoadside } from './roadside';
+import { placeDelineators } from './delineators';
 import { terrain } from './terrain';
 import type { Tiles } from './tiles';
 import { Traffic, type Obstacle, type OtherCar } from './traffic';
@@ -55,6 +56,7 @@ export class RoadLife {
       aside.add(this.group);
       const before = new Set([...this.tiles.group.children, ...looseProps.group.children]);
       buildRoadside(data, this.tiles, this.groundAt, bins);
+      placeDelineators(this.groundAt); // the posts at the drives along the outer streets (world/delineators.ts)
       const fresh = this.tiles.group.children.filter((o) => !before.has(o));
       const loose = looseProps.group.children.filter((o) => !before.has(o));
       aside.add(...fresh, ...loose);

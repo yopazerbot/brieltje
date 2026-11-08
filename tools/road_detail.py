@@ -696,6 +696,56 @@ def patches(sm):
     return out
 
 
+def delineators(named, drives, centre):
+    """Red and white posts (about 1 m, red reflectors) where a drive crosses a grass verge along the outer streets
+    (seen at drives on Schildekensstraat on the Street View walks): one each side of the drive's mouth, on the grass
+    just beside it. Not on the footpaths and lanes of loose chippings, not within CENTRE m of the church square, not at
+    forecourts wider than a drive; not every drive has them, so about two in five do (picked by the spot, the same
+    every time). Returns [x, z, yaw]."""
+    CENTRE = 160.0
+    out = []
+    for name, profile, run in named:
+        if profile.startswith(("path_", "lane_loose")):
+            continue
+        for si, sign in ((0, 1), (1, -1)):
+            # The line 0.6 m beyond the carriageway (and its kerb) on this side, where the verge is grass.
+            edge = []
+            for st in run:
+                grass = not st["kerb"][si] or st["walk"][si] <= 0
+                o = st["w"][si] + (KERB if st["kerb"][si] else 0.0) + (st["walk"][si] if not st["kerb"][si] else 0.0) + 0.6
+                edge.append((st["x"] + st["n"][0] * sign * o, st["z"] + st["n"][1] * sign * o) if grass else None)
+            k = 0
+            while k < len(edge):
+                if edge[k] is None:
+                    k += 1
+                    continue
+                j = k
+                while j < len(edge) and edge[j] is not None:
+                    j += 1
+                if j - k >= 2:
+                    line = LineString(edge[k:j])
+                    for piece in getattr(line.intersection(drives), "geoms", [line.intersection(drives)]):
+                        if piece.is_empty or piece.geom_type != "LineString" or not 2.2 <= piece.length <= 9.0:
+                            continue
+                        a, b = Point(piece.coords[0]), Point(piece.coords[-1])
+                        if a.distance(centre) < CENTRE or hash_xz(a.x, a.y) > 0.4:
+                            continue
+                        ux, uz = (b.x - a.x) / piece.length, (b.y - a.y) / piece.length
+                        yaw = math.atan2(ux, uz)
+                        for p, d in ((a, -0.45), (b, 0.45)):
+                            q = (p.x + ux * d, p.y + uz * d)
+                            if not drives.contains(Point(q)):
+                                out.append([round(q[0], 2), round(q[1], 2), round(yaw, 3)])
+                k = j
+    return out
+
+
+def hash_xz(x, z):
+    """A number 0..1 fixed by a spot (to the decimetre)."""
+    h = (int(round(x * 10)) * 73856093) ^ (int(round(z * 10)) * 19349663)
+    return (h & 0xFFFF) / 0xFFFF
+
+
 def pack(name, profile, run):
     k = [(1 if st["kerb"][0] else 0) | (2 if st["kerb"][1] else 0) | (4 if st["low"][0] else 0) | (8 if st["low"][1] else 0) for st in run]
     return {"name": name, "pf": profile, "s0": round(run[0]["s"], 1), "p": [round(v, 2) for st in run for v in (st["x"], st["z"])],
@@ -771,6 +821,7 @@ def main():
         "zebras": [zebra],
         "teeth": give_way(named),
         "patches": patches(sm),
+        "posts": delineators(named, drives, Polygon(sm["pavers"]["p"]).centroid),
     }
     OUT.write_text(json.dumps(out, separators=(",", ":"), ensure_ascii=False), encoding="utf-8")
     total = sum(len(r["p"]) // 2 for r in out["runs"])
