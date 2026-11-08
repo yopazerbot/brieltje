@@ -576,6 +576,7 @@ menu.onStartGesture = (mode) => {
 };
 menu.onFirstStart = (mode) => {
   flow.remember(mode); // the next visit's "Play again as before" (src/ui/startFlow.ts)
+  flow.close(); // its rooms' list is fetched no more
   import('./main').catch((e: unknown) => {
     console.error(e);
     menu.loadFailed();

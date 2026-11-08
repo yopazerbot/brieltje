@@ -180,17 +180,21 @@ export class TownBoard {
   private async fetch(): Promise<void> {
     this.fetching = true;
     this.fetchedAt = performance.now();
+    // Drawn again (and sent to the graphics chip again) only when what it shows changed: the list, or whether it came.
+    const was = `${this.failed}|${JSON.stringify(this.rows)}`;
     try {
       const { rows } = await api.scores();
       this.rows = Array.isArray(rows) ? rows.slice(0, ROWS) : [];
       this.failed = false;
-      this.updated = new Date().toLocaleTimeString(lang() === 'nl' ? 'nl-BE' : 'en-GB', { hour: '2-digit', minute: '2-digit' });
     } catch {
       this.failed = true; // keep the last list, if there is one
     } finally {
       this.fetching = false;
-      this.dirty = true;
     }
+    if (`${this.failed}|${JSON.stringify(this.rows)}` === was) return;
+    // The time the list last changed.
+    if (!this.failed) this.updated = new Date().toLocaleTimeString(lang() === 'nl' ? 'nl-BE' : 'en-GB', { hour: '2-digit', minute: '2-digit' });
+    this.dirty = true;
   }
 
   /** A line of text cut with an ellipsis to fit `max` pixels. */

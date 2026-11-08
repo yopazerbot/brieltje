@@ -81,6 +81,14 @@ export class FootballLife {
   private on = false;
   private shown = 0;
   private built = false;
+  /** Whether it was built for Low or a phone (`cheap`): built again, out of sight, once that changes */
+  private builtCheap = false;
+  // Reused each frame (roll, drawBalls)
+  private m4 = new THREE.Matrix4();
+  private v3 = new THREE.Vector3();
+  private one = new THREE.Vector3(1, 1, 1);
+  private axis = new THREE.Vector3();
+  private turn = new THREE.Quaternion();
   // The rondo
   private ring: Actor[] = [];
   private chasers: Actor[] = [];
@@ -115,11 +123,14 @@ export class FootballLife {
   /** Each frame: `eye` where the camera is. */
   update(dt: number, eye: THREE.Vector3): void {
     const d = Math.hypot(eye.x - S.centre[0], eye.z - S.centre[1]);
-    this.on = d < NEAR;
+    // The preset changed since it was built (fewer of them on Low): it fades out, and comes back as the new one has it.
+    const stale = this.built && this.cheap() !== this.builtCheap;
+    this.on = d < NEAR && !stale;
     this.shown = Math.max(0, Math.min(1, this.shown + (this.on ? dt : -dt) / 1.2));
     if (this.shown <= 0) {
       this.ballMesh.count = 0;
       this.stopMurmur();
+      if (stale) this.unbuild();
       return;
     }
     if (!this.built && !this.build()) return;
@@ -135,10 +146,35 @@ export class FootballLife {
   }
 
   // ---------------------------------------------------------------- who is there
+  /** Out of sight: everyone and every ball gone (their palette rows given back), to be built again (build). */
+  private unbuild(): void {
+    for (const a of this.actors) if (a.dressed) this.villagers.freeRow(a.pal);
+    this.actors = [];
+    this.balls = [];
+    this.ring = [];
+    this.chasers = [];
+    this.rondoBall = null;
+    this.rondoNext = 0;
+    this.rondoFrom = 0;
+    this.rondoTo = 1;
+    this.queue = [];
+    this.shooter = null;
+    this.keeper = null;
+    this.coach = null;
+    this.shotBall = null;
+    this.phase = 'wait';
+    this.phaseAt = 0;
+    this.shotAim = { w: 0, y: 1 };
+    this.shots = 0;
+    this.fans = [];
+    this.built = false;
+  }
+
   private build(): boolean {
     if (!this.villagers.clipOf(K.child, 'Jog')) return false; // the model isn't in yet
     this.built = true;
     const cheap = this.cheap();
+    this.builtCheap = cheap;
     const kit = (bib: boolean, skin: string): Record<number, string> => ({ 0: skin, 2: bib ? BIB : RED, 3: WHITE, 4: pick(['#1c1c1e', '#f2f2f2', '#2a2826']), 7: RED });
     const make = (role: Actor['role'], kind: number, u: number, w: number, cols: Record<number, string>, flags?: number): Actor => {
       const [x, z] = fcAt(u, w);
@@ -528,20 +564,20 @@ export class FootballLife {
     }
     const moved = Math.hypot(b.u - pu, b.w - pw);
     if (moved > 1e-5) {
-      const ax = new THREE.Vector3(-(b.w - pw), 0, b.u - pu).normalize();
-      b.spin.premultiply(new THREE.Quaternion().setFromAxisAngle(ax, moved / BALL_R));
+      const ax = this.axis.set(-(b.w - pw), 0, b.u - pu).normalize();
+      b.spin.premultiply(this.turn.setFromAxisAngle(ax, moved / BALL_R));
     }
     if (b.y <= BALL_R && Math.hypot(b.vu, b.vw) < 0.15 && this.rondoBall !== b) b.state = 'rest';
   }
 
   private drawBalls(): void {
-    const m = new THREE.Matrix4();
-    const s = new THREE.Vector3(1, 1, 1);
+    const m = this.m4;
+    const s = this.one;
     let n = 0;
     for (const b of this.balls) {
       if (!b.visible) continue;
       const [x, z] = fcAt(b.u, b.w);
-      m.compose(new THREE.Vector3(x, this.y + GROUND + b.y, z), b.spin, s.setScalar(Math.max(0.001, this.shown)));
+      m.compose(this.v3.set(x, this.y + GROUND + b.y, z), b.spin, s.setScalar(Math.max(0.001, this.shown)));
       this.ballMesh.setMatrixAt(n++, m);
     }
     this.ballMesh.count = n;

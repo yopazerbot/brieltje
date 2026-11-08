@@ -94,6 +94,8 @@ export class StartFlow {
   /** A controller is in use (src/ui/padStart.ts): each step's focus goes to what a console player most likely picks. */
   padMode = false;
   private panel = $('start-panel');
+  /** The rooms' list fetched again every few seconds while it shows */
+  private roomsTimer: ReturnType<typeof setInterval> | undefined;
   private sections = [...this.panel.querySelectorAll<HTMLElement>('.step')];
   private back = $<HTMLButtonElement>('step-back');
   private nick = $<HTMLInputElement>('nick');
@@ -184,12 +186,17 @@ export class StartFlow {
       this.pickZombies(false);
       this.defaultControl()?.focus();
     });
-    // While the rooms show: the list every few seconds (who joined, which wave).
-    setInterval(() => {
+    // While the rooms show: the list every few seconds (who joined, which wave), until play begins (close).
+    this.roomsTimer = setInterval(() => {
       if (this.step === 3 && this.zombiesOn && this.together() && !this.panel.closest('.hidden')) void this.loadRooms();
     }, 5000);
     onLang(() => this.draw());
     this.show(1, false);
+  }
+
+  /** Play begins: the start screen is done with, and the rooms' list no longer fetched. */
+  close(): void {
+    clearInterval(this.roomsTimer);
   }
 
   /** The step showing now: what the controller walks (src/ui/padNav.ts). */
