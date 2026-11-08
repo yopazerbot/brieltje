@@ -4,6 +4,7 @@ import { Birds } from './birds';
 import { Birdsong } from './birdsong';
 import { Butterflies } from './butterflies';
 import type { World } from './collision';
+import { looseProps } from './looseProps';
 import { Mower } from './mower';
 import { Smoke } from './smoke';
 import { painted, Yard } from './yard';
@@ -48,8 +49,13 @@ export class HomeLife {
     void new GLTFLoader().loadAsync('/models/garden.glb').then(async (gltf) => {
       const models = new Map(gltf.scene.children.map((o) => [o.name, o]));
       const fresh = new THREE.Group();
+      const before = new Set(looseProps.group.children);
       this.yard = new Yard(models, this.world, this.groundY);
       fresh.add(this.yard.group);
+      // The yard's loose things (its chairs and letterboxes, world/looseProps.ts) too: drawn before their shaders
+      // were built, they stopped the game for a fifth of a second about a second into play.
+      const loose = looseProps.group.children.filter((o) => !before.has(o));
+      if (loose.length) fresh.add(...loose);
       if (models.has('Mower')) {
         this.mower = new Mower(painted(models.get('Mower')!), this.groundY);
         fresh.add(this.mower.mesh);
@@ -64,6 +70,7 @@ export class HomeLife {
       this.smoke = new Smoke([new THREE.Vector3(17.38, 11.23, 23.76), new THREE.Vector3(85.85, 6.92, 186.91)]);
       fresh.add(this.butterflies.mesh, this.smoke.mesh);
       await prepare(fresh);
+      if (loose.length) looseProps.group.add(...loose);
       this.group.add(...fresh.children);
     }, () => {}); // missing: the gardens stay as they were
   }
