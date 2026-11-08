@@ -42,6 +42,7 @@ class FileStore {
     const now = new Date().toISOString();
     this.data.accounts.push({ username: a.username, email: a.email, pass: a.pass, created: now, seen: now, disabled: false });
     delete this.data.stats[`u:${a.username}`]; // a new account starts at nothing
+    this.data.zombieBest = this.data.zombieBest.filter((r) => r.username !== a.username); // nor any run left under the name
     await this.save();
     return true;
   }
@@ -92,10 +93,18 @@ class FileStore {
     await this.save();
     return true;
   }
-  /** The best runs: at one place, or each account's best anywhere; the best `limit`. */
+  /** Best runs whose name is no account and not the admin (one saved as its account went): gone. At start. */
+  async zombieBestForAccountsOnly() {
+    const names = new Set(this.data.accounts.map((r) => r.username));
+    const before = this.data.zombieBest.length;
+    this.data.zombieBest = this.data.zombieBest.filter((r) => names.has(r.username) || r.username === this.boardName);
+    if (this.data.zombieBest.length < before) await this.save();
+  }
+  /** The best runs: at one place, or each account's best anywhere; the best `limit`. Only accounts' and the admin's. */
   async zombieBoard(place, limit) {
     const better = (a, b) => b.wave - a.wave || b.kills - a.kills || (a.at < b.at ? -1 : 1);
-    let rows = this.data.zombieBest.filter((r) => !place || r.place === place);
+    const names = new Set(this.data.accounts.map((r) => r.username));
+    let rows = this.data.zombieBest.filter((r) => (!place || r.place === place) && (names.has(r.username) || r.username === this.boardName));
     if (!place) {
       const best = new Map();
       for (const r of rows) if (!best.has(r.username) || better(r, best.get(r.username)) < 0) best.set(r.username, r);
@@ -529,7 +538,10 @@ class PgStore {
   /** False when the name is taken (the primary key decides, so two sign-ups at once can't both get it). */
   async createAccount(a) {
     const r = await this.pool.query('insert into accounts (username, email, pass) values ($1, $2, $3) on conflict (username) do nothing', [a.username, a.email, a.pass]);
-    if (r.rowCount === 1) await this.pool.query('delete from stats where username = $1', [a.username]); // a new account starts at nothing
+    if (r.rowCount === 1) {
+      await this.pool.query('delete from stats where username = $1', [a.username]); // a new account starts at nothing
+      await this.pool.query('delete from zombie_best where username = $1', [a.username]); // nor any run left under the name
+    }
     return r.rowCount === 1;
   }
   async getAccount(username) {
@@ -578,12 +590,18 @@ class PgStore {
       [username, place, wave, kills, team, this.boardName ?? '']);
     return r.rowCount === 1;
   }
+  /** Best runs whose name is no account and not the admin (one saved as its account went): gone. At start. */
+  async zombieBestForAccountsOnly() {
+    await this.pool.query('delete from zombie_best where username not in (select username from accounts) and username <> $1', [this.boardName ?? '']);
+  }
+  /** Only accounts' and the admin's runs, whatever a race left in the table (no foreign key since the admin's count). */
   async zombieBoard(place, limit) {
+    const who = '(username in (select username from accounts) or username = $1)';
     const r = place
-      ? await this.pool.query('select username, place, wave, kills, team, at from zombie_best where place = $1 order by wave desc, kills desc, at asc limit $2', [place, limit])
+      ? await this.pool.query(`select username, place, wave, kills, team, at from zombie_best where place = $2 and ${who} order by wave desc, kills desc, at asc limit $3`, [this.boardName ?? '', place, limit])
       : await this.pool.query(
-        `select * from (select distinct on (username) username, place, wave, kills, team, at from zombie_best
-         order by username, wave desc, kills desc, at asc) best order by wave desc, kills desc, at asc limit $1`, [limit]);
+        `select * from (select distinct on (username) username, place, wave, kills, team, at from zombie_best where ${who}
+         order by username, wave desc, kills desc, at asc) best order by wave desc, kills desc, at asc limit $2`, [this.boardName ?? '', limit]);
     return r.rows;
   }
   async log(e) {

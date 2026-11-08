@@ -94,6 +94,7 @@ const FRAMEABLE = {
 
 const store = await openStore();
 store.boardName = ADMIN_NAME; // the admin's runs and totals are on the board too (Yoshi, 8 Nov 2026), though not an account
+await store.zombieBestForAccountsOnly(); // a run saved as its account was deleted (no foreign key any more) goes
 const auth = new Auth(store, SECURE);
 await auth.loadSessions();
 const game = new Game(auth);
