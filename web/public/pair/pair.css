@@ -4,7 +4,7 @@
 #code { font-size: 26px; letter-spacing: 0.12em; text-transform: uppercase; text-align: center; }
 .pair-q { font-size: 21px; line-height: 1.4; margin: 6px 0 10px; }
 .pair-code b { font-size: 22px; letter-spacing: 0.1em; }
-.pair-warn { padding: 10px 14px; border-left: 3px solid var(--accent); background: rgba(242, 179, 61, 0.08); border-radius: 6px; line-height: 1.45; }
+.pair-warn { padding: 10px 14px; border-left: 3px solid var(--accent); background: rgba(247, 185, 40, 0.08); border-radius: 6px; line-height: 1.45; }
 .pair-ok { font-size: 21px; line-height: 1.4; }
 .actions { display: flex; flex-wrap: wrap; gap: 10px; margin: 16px 0 8px; }
 .linkish { padding: 0; background: none; border: 0; color: var(--muted); font: inherit; text-decoration: underline; cursor: pointer; }

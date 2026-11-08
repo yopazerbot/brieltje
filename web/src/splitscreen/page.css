@@ -3,20 +3,20 @@
 @font-face { font-family: 'Alegreya Sans'; font-style: normal; font-weight: 500; font-display: swap; src: url('/fonts/alegreya-sans-500.woff2') format('woff2'); }
 @font-face { font-family: 'Alegreya Sans'; font-style: normal; font-weight: 800; font-display: swap; src: url('/fonts/alegreya-sans-800.woff2') format('woff2'); }
 :root {
-  --ink: #f4efe6; --muted: rgba(244, 239, 230, 0.72); --field: rgba(255, 255, 255, 0.06); --line: rgba(255, 255, 255, 0.16);
-  --bad: #ff8a80; --good: #69f0ae; --deep: #111a22;
+  --ink: #fbf6ea; --muted: rgba(251, 246, 234, 0.72); --field: rgba(220, 228, 255, 0.07); --line: rgba(220, 228, 255, 0.16);
+  --bad: #ff8a80; --good: #69f0ae; --deep: #0d1430;
 }
 * { box-sizing: border-box; }
 [hidden] { display: none !important; }
-html, body { margin: 0; height: 100%; color: var(--ink); font: 500 20px/1.45 "Alegreya Sans", "Segoe UI", system-ui, sans-serif; background: #0d0f12; }
+html, body { margin: 0; height: 100%; color: var(--ink); font: 500 20px/1.45 "Alegreya Sans", "Segoe UI", system-ui, sans-serif; background: #0d1430; }
 
 main { width: min(1040px, 100%); margin: 0 auto; padding: 24px 16px 40px; }
 .card { border-radius: 22px; padding: 22px 28px 20px; }
 .card > header { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
 .brand { display: block; height: 36px; width: auto; }
 .langs button { background: none; border: 0; color: var(--muted); font: inherit; font-size: 15px; cursor: pointer; }
-h1 { margin: 14px 0 6px; font-size: 22px; font-weight: 800; color: var(--muted); letter-spacing: .02em; }
-h2 { margin: 18px 0 4px; font-size: 38px; font-weight: 800; line-height: 1.1; }
+h1 { margin: 14px 0 6px; font-family: var(--brand-display); font-size: 22px; font-weight: 600; color: var(--muted); letter-spacing: .02em; }
+h2 { margin: 18px 0 4px; font-family: var(--brand-display); font-size: 36px; font-weight: 600; line-height: 1.1; }
 p { margin: 6px 0; }
 .muted { color: var(--muted); }
 .small { font-size: 16px; }
@@ -24,9 +24,9 @@ p { margin: 6px 0; }
 /* The progress line: 1 · 2 · 3 · 4 */
 .steps { display: flex; gap: 6px; margin: 6px 0 0; padding: 0; list-style: none; flex-wrap: wrap; }
 .steps li { display: flex; align-items: center; gap: 8px; padding: 4px 14px 4px 5px; font-size: 17px; color: var(--muted); background: var(--deep); border-radius: 999px; }
-.steps b { display: grid; place-items: center; width: 28px; height: 28px; font-size: 16px; color: var(--ink); background: #2b3842; border-radius: 50%; }
+.steps b { display: grid; place-items: center; width: 28px; height: 28px; font-size: 16px; color: var(--ink); background: #2a3768; border-radius: 50%; }
 .steps li.current { color: var(--ink); box-shadow: inset 0 0 0 2px var(--accent); }
-.steps li.current b, .steps li.done b { color: #1b1406; background: var(--accent); }
+.steps li.current b, .steps li.done b { color: #0d1430; background: var(--accent); }
 
 /* Step 1: three big choices */
 .counts { display: grid; grid-template-columns: repeat(3, 1fr); gap: 16px; margin: 22px 0 8px; }

@@ -22,6 +22,7 @@
 import { btnOf, familyName, familyOf, type PadFamily } from '../controls/padFamily';
 import { applyStatic, listOf, onLang, serverText, setLang, t, type Lang } from '../i18n';
 import { SEAT_COLOURS } from '../seat';
+import '../brand.css';
 import './page.css';
 
 const $ = <T extends HTMLElement = HTMLElement>(id: string) => document.getElementById(id) as T;

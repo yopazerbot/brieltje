@@ -1,0 +1,43 @@
+/* The brand on the site's own pages (DECISIONS.md, 8 Nov 2026): the legal pages, the game night's
+   sign-up (/inschrijven), the interest page and the phone's pairing page. Loaded after each page's own
+   styles and after /brand.css (the colours, the fonts). The admin pages don't load it: they stay plain.
+
+   The logo in the header, headings in Fredoka, text in Alegreya Sans, evening-blue cards on the night,
+   yellow pills with a firm edge for the one thing to do next, raised blue for the rest. */
+
+body { font-family: var(--brand-body); color: var(--brand-chalk); background-color: var(--brand-night); }
+h1, h2, h3 { font-family: var(--brand-display); font-weight: 600; font-style: normal; letter-spacing: 0.005em; }
+a { color: var(--brand-sun); }
+
+/* The header: the row logo (roof and name) on the left. */
+header .brand { display: inline-flex; align-items: center; line-height: 0; }
+header .brand img { display: block; width: auto; height: 38px; }
+@media (max-width: 520px) { header .brand img { height: 32px; } }
+
+/* The language switch: a small pill, the chosen language in sun. */
+.langs button { font-family: var(--brand-display); font-weight: 600; }
+.langs button[aria-pressed="true"] { color: var(--brand-sun); }
+
+/* Buttons. */
+.btn {
+  min-height: 46px; padding: 11px 24px; font-family: var(--brand-display); font-weight: 600; font-size: 17px;
+  color: var(--brand-night); background: var(--brand-sun); border: 0; border-radius: var(--brand-r-pill);
+  box-shadow: 0 4px 0 var(--brand-sun-deep); transition: background-color 0.15s, transform 0.08s, box-shadow 0.08s;
+}
+.btn:hover:not(:disabled) { background: #ffcb4d; }
+.btn.ghost { color: var(--brand-chalk); background: var(--brand-raised); border: 0; box-shadow: 0 4px 0 #0b1129; }
+.btn.ghost:hover:not(:disabled) { background: #2a3768; }
+.btn.danger { color: #ff9c8a; background: var(--brand-raised); border: 0; box-shadow: 0 4px 0 #0b1129; }
+.btn:active:not(:disabled) { transform: translateY(3px); box-shadow: 0 1px 0 var(--brand-sun-deep); }
+.btn:is(.ghost, .danger):active:not(:disabled) { box-shadow: 0 1px 0 #0b1129; }
+.btn:disabled { box-shadow: none; }
+@media (prefers-reduced-motion: reduce) { .btn { transition: none; } }
+
+/* The card on the night: the evening blue, rounder. */
+.card { border-radius: var(--brand-r-card); }
+.choice button, .stepper, .count, .event, .files li, .consent.updates { border-radius: 16px; }
+.choice button { font-family: var(--brand-display); font-weight: 600; }
+.choice button[aria-pressed="true"] { border-color: var(--brand-sun); }
+.chip > span { font-family: var(--brand-display); font-weight: 500; }
+.steps i.on { background: var(--brand-sun); }
+input[type="text"], input[type="email"], input[type="password"], textarea { border-radius: 12px; }
