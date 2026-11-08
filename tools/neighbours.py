@@ -29,10 +29,12 @@ Also, for the facades and gardens drawn around the plot: which wall of each
 building faces the road and which walls it shares with a neighbour, the lines
 between residential plots (for hedges and fences), and the canopies (GBA).
 
-Writes data/neighbours.json and a check image data/debug/neighbours.png.
+Writes data/neighbours.json and a check image data/debug/neighbours.png. What the file already holds is kept
+(`keep_before`): only a part of the map that is new gets new buildings and trees; `--fresh` builds it all anew.
 """
 import json
 import math
+import sys
 from pathlib import Path
 
 import numpy as np
@@ -811,6 +813,8 @@ def main():
             b["roof"] = max(pitched or b["parts"], key=lambda q: Polygon(q["p"]).area)["color"]
     # The area as an outline (model, to 2 m): the big map fills it and mutes what lies outside.
     outline = [[round(x, 1), round(z, 1)] for x, z in model(area.simplify(2.0)).exterior.coords[:-1]]
+    if "--fresh" not in sys.argv:
+        buildings, tree_out, bounds, road_out = keep_before(buildings, tree_out, bounds, road_out)
     OUT.write_text(json.dumps({
         "_source": "GRB and DHM Vlaanderen II (Digitaal Vlaanderen, open data); laser scan 2013-2015",
         "plot": plot_ring, "buildings": buildings, "roads": road_out, "trees": tree_out,
@@ -861,6 +865,50 @@ def main():
     g.rectangle([px(0.11, 0.11), px(8.91, 11.91)], outline=(240, 200, 60), width=3)
     DEBUG.parent.mkdir(parents=True, exist_ok=True)
     img.save(DEBUG)
+
+
+def keep_before(buildings, trees, bounds, roads):
+    """What data/neighbours.json already holds stays as it is: a map that grows must not repaint the village.
+
+    The roof fit and the trees come out a little differently on another machine: other builds of GEOS and numpy move a
+    polygon's corner by a centimetre, a threshold flips, and the k-means of each group's roof colours spreads one changed
+    roof over its whole group (8 November 2026: the file built in a cloud clone on 6 November gave 643 buildings with
+    other roof colours or parts here, from the same downloads). So a building whose footprint is in the file already
+    keeps its entry there; the trees, the plot lines (in their order: data/street.json numbers its hedges by them) and
+    the pieces of road surface there stay; and what is new comes only where the map was not before: trees and plot
+    lines outside the file's `area` (a tree at least 4 m from a kept one), road pieces clear of the kept ones.
+    `--fresh` builds everything anew, for new downloads."""
+    if not OUT.exists():
+        return buildings, trees, bounds, roads
+    before_data = json.loads(OUT.read_text(encoding="utf-8"))
+    by_outline = {json.dumps(b["p"]): b for b in before_data["buildings"]}
+    kept = [by_outline.get(json.dumps(b["p"]), b) for b in buildings]
+    area = Polygon(before_data["area"])
+    old_area = prep(area)
+    old_lines = before_data["boundaries"]
+    known = {json.dumps(b) for b in old_lines}
+    more_lines = []
+    for b in bounds:
+        if json.dumps(b) in known:
+            continue
+        rest = LineString(b["path"]).difference(area)
+        for seg in getattr(rest, "geoms", [rest]):
+            if seg.geom_type == "LineString" and seg.length >= 3:
+                more_lines.append({**b, "path": [[round(x, 2), round(z, 2)] for x, z in seg.coords]})
+    old_trees = before_data["trees"]
+    grid = {}
+    for t in old_trees:
+        grid.setdefault((int(t["x"] // 8), int(t["z"] // 8)), []).append(t)
+    clear = lambda t: all(math.dist((t["x"], t["z"]), (o["x"], o["z"])) >= 4.0 for di in (-1, 0, 1) for dj in (-1, 0, 1)
+                          for o in grid.get((int(t["x"] // 8) + di, int(t["z"] // 8) + dj), ()))
+    added = [t for t in trees if not old_area.contains(Point(t["x"], t["z"])) and clear(t)]
+    old_roads = before_data["roads"]
+    paved = unary_union([Polygon(r[0], r[1:]).buffer(0) for r in old_roads])
+    more_roads = [r for r in roads if r not in old_roads and Polygon(r[0], r[1:]).buffer(0).intersection(paved).area < 1.0]
+    print(f"  kept {sum(k is not b for k, b in zip(kept, buildings))} buildings, {len(old_trees)} trees, {len(old_lines)} plot lines and "
+          f"{len(old_roads)} road pieces as they were; new: {sum(k is b for k, b in zip(kept, buildings))} buildings, {len(added)} trees, "
+          f"{len(more_lines)} plot lines, {len(more_roads)} road pieces")
+    return kept, old_trees + added, old_lines + more_lines, old_roads + more_roads
 
 
 def walls(buildings, footprints, roads):

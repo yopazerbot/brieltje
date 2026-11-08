@@ -34,11 +34,13 @@ road) and WTZ (water surfaces). From them, in model coordinates:
 
 Nothing here is keyed by address: the survey's houses are model positions.
 Writes data/street.json and a check image data/debug/street.png; tools/build_house.py builds them.
+What the file already has is kept (`keep_before`): only a region new to the map is added; `--fresh` builds it all anew.
 Run from the project root:
     tools/.venv/Scripts/python.exe tools/street.py
 """
 import json
 import math
+import sys
 from pathlib import Path
 
 import numpy as np
@@ -46,6 +48,7 @@ from PIL import Image, ImageDraw
 from shapely.affinity import affine_transform
 from shapely.geometry import LineString, Point, Polygon, box
 from shapely.ops import linemerge, nearest_points, unary_union
+from shapely.prepared import prep
 from shapely.strtree import STRtree
 
 import crops
@@ -568,6 +571,34 @@ def solar(buildings):
 
 # ---------------------------------------------------------------- main
 
+LISTS = ("roads", "poles", "tracks", "water", "pavings", "pools", "hedges", "fields", "lawns", "meadows")
+
+
+def keep_before(previous, parts, regions):
+    """What data/street.json already has stays as it is, in its order; only a region it has nothing in (a new part of
+    the map) comes from this run, after it. As in tools/neighbours.py (`keep_before`): on another machine the photo's
+    pavings, the fields and the tracks come out a few centimetres different, and a map that grows must not redraw the
+    village. `previous`: the file as it is; `parts`: this run's output per region; `regions`: their areas (model)."""
+    def anchor(key, e):
+        if key == "poles":
+            return Point(e["x"], e["z"])
+        if key in ("tracks", "hedges"):
+            return LineString(e["path"]).interpolate(0.5, normalized=True)
+        ring = e[0] if key == "roads" else e["rim"] if key == "water" else e if key == "pools" else e["p"][0]
+        return Polygon(ring).buffer(0).representative_point() if len(ring) > 2 else Point(ring[0])
+
+    inside = [prep(r) for r in regions]
+    seen = {i for key in LISTS for e in previous.get(key, []) for i in [next((i for i, r in enumerate(inside) if r.contains(anchor(key, e))), None)]}
+    new = [i for i in range(len(regions)) if i not in seen]
+    # A plot line crossing into a new region goes with that region now (`owner`): its hedges are in the file already.
+    hedged = {h["b"] for h in previous.get("hedges", []) if h["b"] >= 0}
+    out = [{**parts[0], **{k: previous.get(k, []) for k in (*LISTS, "wires", "solar")}}]
+    for i in new:
+        out.append({**parts[i], "hedges": [h for h in parts[i]["hedges"] if h["b"] < 0 or h["b"] not in hedged]})
+    print(f"  kept {len(regions) - len(new)} regions as they were, built {len(new)} anew")
+    return out
+
+
 def main():
     """The area of before (`hull`) as it was, then the band along the rest of Molenhoek on its own (its own raster),
     so nothing chosen over the whole area changes what the area of before had."""
@@ -589,10 +620,16 @@ def main():
         return next((i for i in range(len(regions) - 1, 0, -1) if path.intersects(regions[i])), 0)
 
     out, ras, road = build(old, plot, roads_l72, to_model, nb, lambda line: owner(line) == 0)
+    parts = [out]
     for i, region in enumerate(regions[1:], 1):
         more, _, _ = build(region, plot, roads_l72, to_model, nb, lambda line: owner(line) == i,
                            grow_fields=False if region.equals(eastern) or region.equals(southern) or region.equals(ground)
                            else "forest" if region.equals(northwest) else True)
+        parts.append(more)
+    if OUT.exists() and "--fresh" not in sys.argv:
+        parts = keep_before(json.loads(OUT.read_text(encoding="utf-8")), parts, regions)
+    out = parts[0]
+    for more in parts[1:]:
         offset = len(out["poles"])
         for k in ("roads", "poles", "tracks", "water", "pavings", "pools", "hedges", "fields", "lawns", "meadows"):
             out[k] = out[k] + more[k]
