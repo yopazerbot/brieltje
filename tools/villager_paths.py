@@ -22,8 +22,10 @@ The villagers (web/src/world/villagers.ts, our own models from tools/villagers.p
   within BIKE_JOIN m going a way that doesn't double back; a dead end turns round onto the other side).
 - `seats`: [x, z, facing, height] places to sit: the benches of the church square, the chip shop and the
   bus shelter (tools/town/houses.json). Facing is the game's heading (atan2 of the way they look).
-- `hubs`: [x, z, radius, kind] busier places: 0 the church square, 1 the school, 2 the café Sparrenhof; `hubspots`, per
-  hub, the spots there people stand about on (x, z, ...): public paving off the carriageways and the traffic's routes.
+- `hubs`: [x, z, radius, kind] busier places: 0 the church square, 1 the school, 2 the café Sparrenhof, 3 FC Smetlede's
+  car park by the gate to its ground (its training and spectators are world/footballLife.ts's, inside the fence);
+  `hubspots`, per hub, the spots there people stand about on (x, z, ...): public paving off the carriageways and the
+  traffic's routes, at the football ground its own car park and lane (web/shared/football.json `surfaces`).
 
 Nothing here comes from a person or a house: only the public road data and the benches the town model
 places. Model coordinates (x, z) in metres, two decimals.
@@ -57,7 +59,7 @@ M_WEST, M_EAST = 689.0, 936.0
 # Ground, not things one bumps into.
 GROUND = {"road", "pave_light", "pave_warm", "pave_grey", "concrete", "track", "gravel", "field_crop", "field_soil", "field_dark", "forest",
           "pool_water", "grass", "nb_roof", "pole", "floor_wood", "tiles"}
-HUBS = [(532.0, -762.0, 30.0, 0), (482.0, -790.0, 22.0, 1), (636.0, 945.0, 26.0, 2)]
+HUBS = [(532.0, -762.0, 30.0, 0), (482.0, -790.0, 22.0, 1), (636.0, 945.0, 26.0, 2), (-286.0, -1196.0, 16.0, 3)]
 HUB_STEP = 2.5  # m between the spots people stand about on there
 HUB_GROUND = {"pave_light", "pave_warm", "pave_grey", "concrete"}
 ROUTE_CLEAR = 3.5  # m from the middle of a car's route
@@ -390,6 +392,9 @@ for f in TOWN["fittings"]:
 ROADS = json.loads((ROOT / "web/src/data/roads.json").read_text(encoding="utf-8"))
 ROUTES = unary_union([LineString(pairs(leg["p"])) for r in ROADS["routes"] for leg in r["legs"] if len(leg["p"]) >= 4]).buffer(ROUTE_CLEAR)
 PAVED = [Polygon(pr["p"][0]) for pr in VILLAGE["prisms"] if pr["m"] in HUB_GROUND and len(pr["p"][0]) >= 3]
+# The football ground lays its car park and lane itself (world/footballGround.ts), over the village's ground.
+FOOTBALL = json.loads((ROOT / "web/shared/football.json").read_text(encoding="utf-8"))
+PAVED += [Polygon(r) for k in ("asphalt", "concrete") for r in FOOTBALL["surfaces"][k] if len(r) >= 3]
 PAVED = STRtree([pg if pg.is_valid else pg.buffer(0) for pg in PAVED])
 hubspots = []
 for hx, hz, hr, _ in HUBS:
