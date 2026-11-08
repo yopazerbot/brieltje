@@ -14,6 +14,8 @@ Sources, for measuring only (nothing of them is shipped):
   ("zone zwakke weggebruiker", where the kerb stands) and of an unpaved verge; the bottom edge of the school's
   plateau (WTI; its other plateaus lie on Molenhoek's junction, which isn't drawn here); the drives and forecourts
   of data/street.json;
+- the orthophoto (Digitaal Vlaanderen, 25 cm, as tools/street.py reads it): where a kerbed side's pavement is in
+  fact a grass verge, and which leftover pieces of the road surface are lawn up to the plot line (`Photo`, `verges`);
 - a Street View tour of the streets on 31 Oct 2026 (the newest images: 2023 on Kapellenhoek and Kapelleweg's
   houses, 2026 round the school, 2009 on most of Briel) and the 25 cm orthophoto: what each street is made of,
   written down in PROFILES and below; no images.
@@ -80,7 +82,22 @@ PRIORITY = ["Kapellenhoek", "Smetlededorp", "Molenhoek", "Briel", "Kapelleweg", 
 
 # Each street's profile (web/src/world/roadDetail.ts, PROFILES), from the Street View tour. Narrow stretches of
 # Briel (under NARROW m of carriageway) are its old lanes; other streets not named here are asphalt.
-PROFILES = {"Kapellenhoek": "kh", "Kapelleweg": "kw", "Briel": "briel", "Kerkhofstraat": "kerkhof", "Smetlededorp": "asphalt"}
+# The second walk (8 Nov 2026, the newest images: 2025-2026 on Schildekensstraat, Oud-Smetlede, Serskampstraat and
+# Stefaan Glorieuxstraat, 2009 on Blekte): the outer streets in concrete slabs with a joint down the middle, gutters of
+# setts beside the kerbs, pavers on the pavements where the GRB has them (`concrete`). Diepestraat, Oordegemkouter,
+# Klinkaard, Smetledestraat and Rampsande are asphalt. Neither the road register (Wegenregister) nor the GRB says
+# what a road is made of, only whether it is paved (VERH), so the material comes from the walk. Schildekensstraat
+# between its fork and the village's sign has only 2009 images, with grass verges; the GRB's pavement lines and the
+# newer orthophoto show pavements there since, so the data's pavements stay.
+PROFILES = {"Kapellenhoek": "kh", "Kapelleweg": "kw", "Briel": "briel", "Kerkhofstraat": "kerkhof", "Smetlededorp": "asphalt",
+            "Schildekensstraat": "concrete", "Serskampstraat": "concrete", "Oud-Smetlede": "concrete", "Blekte": "concrete",
+            "Stefaan Glorieuxstraat": "concrete"}
+# Paved in the register (VERH 12: partly fixed, partly loose) but a track of sand and gravel on the walk.
+LOOSE_NAMES = {"Bredenweg"}
+# Grass, not pavers: a kerbed side whose pavement the orthophoto shows green (GREEN: green above the mean of red and
+# blue, on the photo's 0-255 scale; paving and bare earth stay below 0, mown grass is 5 to 20). The GRB's line of the
+# "zone zwakke weggebruiker" runs along a grass verge as well as along a pavement.
+GREEN = 4.0
 NARROW = 3.6
 LOOSE = "~loose"  # marks a street's pieces with a loose surface (Wegsegment)
 # Stretches with a profile of their own: (street, from, to metres along its centre line from its first end, profile).
@@ -101,6 +118,46 @@ PATHS = {"Smetledekouterwegel": ("path_tiles", 1.0), "Pastorijwegel": ("path_pav
 SCHOOL_PLATEAU = {"street": "Smetlededorp", "x": (442.9, 481.5), "red": (469.5, 480.0), "zebra": 474.8}
 # The give-way lines: where a street meets one with priority and the sign says so (data/kapellenhoek.json's props).
 GIVE_WAY = [{"street": "Kapelleweg", "at": (614.6, -404.6)}]
+
+
+class Photo:
+    """The orthophoto (25 cm) in model coordinates: how green it is round a point (3 by 3 pixels)."""
+
+    def __init__(self):
+        import numpy as np
+        from neighbours import ortho_image
+        img, meta = ortho_image()
+        self.np = np
+        self.a = np.asarray(img, dtype=np.int16)
+        _, _, (a, b, d, e, xo, yo) = model_frame()
+        self.inv = np.linalg.inv(np.array([[a, b], [d, e]]))
+        self.off = (xo, yo)
+        self.meta = meta
+        self.k = meta["px"] / (meta["x1"] - meta["x0"])
+
+    def green(self, x, z):
+        lx, ly = self.inv @ self.np.array([x - self.off[0], z - self.off[1]])
+        j, i = int((lx - self.meta["x0"]) * self.k), int((self.meta["y1"] - ly) * self.k)
+        if not (1 <= i < self.a.shape[0] - 1 and 1 <= j < self.a.shape[1] - 1):
+            return 0.0
+        c = self.a[i - 1:i + 2, j - 1:j + 2].reshape(-1, 3).mean(axis=0)
+        return float(c[1] - (c[0] + c[2]) / 2)
+
+    def grass(self, g, step=0.8):
+        """Whether most of a shape is grass on the photo (points on a grid inside it)."""
+        x0, z0, x1, z1 = g.bounds
+        pg = prep(g)
+        n = hit = 0
+        x = x0 + step / 2
+        while x < x1:
+            z = z0 + step / 2
+            while z < z1:
+                if pg.contains(Point(x, z)):
+                    n += 1
+                    hit += self.green(x, z) > GREEN
+                z += step
+            x += step
+        return n >= 2 and hit > 0.6 * n
 
 
 def model_lines(feature_name):
@@ -234,7 +291,7 @@ def centre_lines(road):
         if line.length < 3 or not line.intersects(road):
             continue
         name = props["LSTRNM"] if props["LSTRNM"] != "nvt" else f"nvt{len(by_name)}"
-        if props["VERH"] == 2:  # a loose surface (the GRB's road surface has it all the same): kept apart
+        if props["VERH"] == 2 or props["LSTRNM"] in LOOSE_NAMES:  # a loose surface (the GRB's road surface has it all the same): kept apart
             name += LOOSE
         by_name.setdefault(name, []).append(line)
     out = []
@@ -269,7 +326,7 @@ def molenhoek_rebuilt():
     return unary_union([l.buffer(5.5, cap_style=2) for l in lines])
 
 
-def measure(name, line, rays, pavings, corridor, smetlede):
+def measure(name, line, rays, pavings, corridor, smetlede, photo=None):
     """The street's stations with their carriageway half widths, kerbs, pavements and lowered kerbs, either side."""
     pts = resample(line)
     ns = normals(pts)
@@ -327,7 +384,48 @@ def measure(name, line, rays, pavings, corridor, smetlede):
             q = Point(p.x + n[0] * side * (reach + 0.5), p.y + n[1] * side * (reach + 0.5))
             st["low"][si] = pavings.contains(q) or (rays.covers.contains(q) and out > reach + 1.2)
         stations.append(st)
+    verges(stations, photo)
     return stations
+
+
+def verges(stations, photo):
+    """Each kerbed side's pavement: grass where the photo shows green along most of five stations (a drive across
+    a verge stays grass round it; a tree's shadow on a pavement stays paving), and its width smoothed along the
+    street (the GRB's back line wanders, and a zigzag of a few decimetres reads as a cheap edge)."""
+    if photo is None or not stations:
+        return
+    for si, side in ((0, 1), (1, -1)):
+        g = []
+        for st in stations:
+            if not st["kerb"][si] or st["walk"][si] <= 0:
+                g.append(None)
+                continue
+            mid = st["w"][si] + KERB + st["walk"][si] / 2
+            vals = sorted(photo.green(st["x"] + st["n"][0] * side * o, st["z"] + st["n"][1] * side * o)
+                          for o in (mid - st["walk"][si] / 3, mid, mid + st["walk"][si] / 3))
+            g.append(vals[1])
+        for k, st in enumerate(stations):
+            if g[k] is None:
+                continue
+            near = sorted(v for v in g[max(0, k - 2):k + 3] if v is not None)
+            if near[len(near) // 2] > GREEN:
+                st["walk"][si] = 0.0
+                st["low"][si] = False
+        # The pavement's width along each unbroken stretch of it: a running median, then a running mean.
+        k = 0
+        while k < len(stations):
+            if stations[k]["walk"][si] <= 0:
+                k += 1
+                continue
+            j = k
+            while j < len(stations) and stations[j]["walk"][si] > 0 and stations[j]["i"] == stations[k]["i"] + (j - k):
+                j += 1
+            ws = [st["walk"][si] for st in stations[k:j]]
+            ws = median(ws, 2)
+            ws = [sum(ws[max(0, i - 1):i + 2]) / len(ws[max(0, i - 1):i + 2]) for i in range(len(ws))]
+            for st, w in zip(stations[k:j], ws):
+                st["walk"][si] = round(w, 2)
+            k = j
 
 
 def runs_of(stations):
@@ -426,7 +524,7 @@ def ring_out(r):
     return [round(v, 2) for q in r.coords[:-1] for v in q]
 
 
-def fills(road, kept, corridor, centres, rebuilt):
+def fills(road, kept, corridor, centres, rebuilt, photo=None):
     """The road surface the streets don't cover. On a street's centre line (a junction, where a street gave way)
     and beside a carriageway without kerbs (widenings, lay-bys): the nearest street's carriageway; beyond a
     pavement: pavers (forecourts); on Molenhoek: the village's own road surface. `centres`: every street's centre
@@ -461,6 +559,8 @@ def fills(road, kept, corridor, centres, rebuilt):
                 c = g.representative_point()
                 line, profile, st = lines[index.nearest(c)]
                 kerbed = st["kerb"][0] or st["kerb"][1]
+                if not on_line and photo is not None and photo.grass(g):
+                    continue  # a verge or a lawn up to the plot line: the grass stays
                 add(g, f"pf:{profile}" if on_line or not kerbed or line.distance(c) < max(st["w"]) + 0.6 else "forecourt")
     return out
 
@@ -635,16 +735,18 @@ def main():
     road = unary_union([poly(p) for p in roads])
     rays = Rays(road)
     st = json.loads((ROOT / "data" / "street.json").read_text(encoding="utf-8"))
-    pavings = prep(unary_union([Polygon(q["p"][0]).buffer(0) for q in st["pavings"]]))
+    drives = unary_union([Polygon(q["p"][0]).buffer(0) for q in st["pavings"]])
+    pavings = prep(drives)
     sm = json.loads((ROOT / "data" / "smetlede.json").read_text(encoding="utf-8"))
     smetlede = prep(Polygon(sm["pavers"]["p"]).buffer(0))  # the centre's grey pavers: the village data draws them
     corridor_shape = molenhoek_corridor()
     corridor = prep(corridor_shape)
+    photo = Photo()
     streets, centres = [], []
     for name, line in centre_lines(road):
         if name == "Molenhoek":
             continue
-        stations = measure(name, line, rays, pavings, corridor, smetlede)
+        stations = measure(name, line, rays, pavings, corridor, smetlede, photo)
         if stations:
             streets.append((name, None, stations))
             half = sorted(min(st["w"]) for st in stations)[len(stations) // 2]
@@ -660,11 +762,11 @@ def main():
     school_plateau, zebra = school(rays)
     out = {
         "_source": "GRB Wegsegment, WGO, WTI (Digitaal Vlaanderen, open data) and the road surface of web/src/data/house_shell.json and "
-                   "village.json via tools/road_detail.py; each street's make-up from a Street View tour (31 Oct 2026), written "
-                   "down there, no images",
+                   "village.json via tools/road_detail.py; grass verges from the orthophoto (Digitaal Vlaanderen); each street's "
+                   "make-up from Street View tours (31 Oct and 8 Nov 2026), written down there, no images",
         "hide": sorted({key(p) for p in roads} | set(hidden_paths) | set(hidden_lanes)),
         "runs": runs + path_runs + lane_runs,
-        "fills": fills(road, named, corridor, centres, molenhoek_rebuilt()),
+        "fills": fills(road, named, corridor, centres, molenhoek_rebuilt(), photo),
         "school": school_plateau,
         "zebras": [zebra],
         "teeth": give_way(named),
@@ -696,7 +798,7 @@ def debug(out, road):
         for h in f["r"][1:]:
             d.polygon(ring(h), fill=(236, 240, 228))
     pal = {"kh": (200, 60, 60), "kh_dash": (240, 120, 0), "kw": (60, 140, 60), "briel": (60, 60, 200), "lane": (140, 60, 200),
-           "kerkhof": (20, 20, 20), "asphalt": (90, 90, 90), "lane_asphalt": (120, 120, 120), "lane_loose": (180, 160, 120)}
+           "kerkhof": (20, 20, 20), "asphalt": (90, 90, 90), "concrete": (230, 170, 40), "lane_asphalt": (120, 120, 120), "lane_loose": (180, 160, 120)}
     for r in out["runs"]:
         p, w, q = r["p"], r["w"], r["q"]
         n = len(p) // 2
