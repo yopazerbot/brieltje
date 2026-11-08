@@ -49,6 +49,15 @@ export class Leaderboard {
     }
   }
 
+  /** Open the board and bring it into view (the notice board on the church square: world/townBoard.ts). */
+  reveal(): void {
+    if (!this.open) {
+      this.open = true;
+      this.label();
+    }
+    void this.load().then(() => this.button.scrollIntoView({ block: 'start', behavior: 'smooth' }));
+  }
+
   /** Reload when the menu opens again. */
   refresh(): void {
     if (this.open) void this.load();

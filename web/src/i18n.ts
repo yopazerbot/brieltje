@@ -291,6 +291,13 @@ const en = {
   'lb.zEmpty': 'No runs yet. Play Zombies together with an account to be the first.',
   'lb.accountsOnly': 'Only players with an account are on the board.',
   'lb.zSub': 'Best waves, per account',
+  'board.title': 'Zombies · Best runs',
+  'board.sub': "Each player's best wave, at any place",
+  'board.loading': 'Walk up to the board to see the best runs.',
+  'board.empty': 'No runs yet. Play Zombies together with an account and be the first on this board!',
+  'board.offline': "The best runs can't be fetched just now. Come back in a while.",
+  'board.updated': 'Updated {time}',
+  'prompt.board': '{use}  See the whole leaderboard',
 
   // ---- Accounts (src/ui/account.ts, server/accounts.mjs)
   'acct.login': 'Log in',
@@ -1272,6 +1279,13 @@ const nl = {
   'lb.zEmpty': 'Nog geen rondes. Speel samen Zombies met een account en wees de eerste.',
   'lb.accountsOnly': 'Alleen spelers met een account staan op het scorebord.',
   'lb.zSub': 'Beste golven, per account',
+  'board.title': 'Zombies · Beste rondes',
+  'board.sub': 'De beste golf van elke speler, op eender welke plaats',
+  'board.loading': 'Kom dichterbij om de beste rondes te zien.',
+  'board.empty': 'Nog geen rondes. Speel samen Zombies met een account en sta als eerste op dit bord!',
+  'board.offline': 'De beste rondes kunnen nu niet opgehaald worden. Kom straks nog eens terug.',
+  'board.updated': 'Bijgewerkt om {time}',
+  'prompt.board': '{use}: het volledige klassement bekijken',
 
   'acct.login': 'Inloggen',
   'acct.signup': 'Account maken',
