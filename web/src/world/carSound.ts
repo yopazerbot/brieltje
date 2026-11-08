@@ -36,6 +36,8 @@ interface Loop {
   wind: GainNode;
   squeal: OscillatorNode;
   squealGain: GainNode;
+  squeal2: OscillatorNode;
+  squeal2Gain: GainNode;
   scrub: GainNode;
 }
 
@@ -52,6 +54,8 @@ export interface CarNoise {
   regen: number;
   /** 0 to 1: how hard the tyres slide */
   skid: number;
+  /** m/s the tyres slide over the ground (a locked wheel: about the car's speed); the screech rises with it */
+  slide?: number;
   /** On grass, earth or gravel rather than paving */
   rough: boolean;
 }
@@ -82,11 +86,16 @@ export class CarSound {
     // The wind: only at speed, rising with its square.
     a.windBand.frequency.setTargetAtTime(500 + v * 18, t, 0.2);
     a.wind.gain.setTargetAtTime(0.07 * Math.min(1, (v / 55) ** 2), t, 0.2);
-    // Sliding: a squeal on paving, a scrub on grass or gravel.
-    const s = Math.min(1, n.skid);
-    a.squeal.frequency.setTargetAtTime(820 + v * 5, t, 0.08);
-    a.squealGain.gain.setTargetAtTime(n.rough ? 0 : 0.07 * s, t, s > 0 ? 0.03 : 0.08);
-    a.scrub.gain.setTargetAtTime(n.rough ? 0.2 * s : 0.05 * s, t, 0.05);
+    // Sliding: a squeal on paving, a scrub on grass or gravel. The faster the rubber slides over the road,
+    // the louder it screeches and the lower and rougher it gets (a locked wheel's long howl), its upper note
+    // coming in as it gets hard.
+    const s = Math.min(1, Math.max(0, n.skid));
+    const slide = Math.min(15, Math.max(0, n.slide ?? 3 * s));
+    a.squeal.frequency.setTargetAtTime(880 - slide * 12 + v * 4, t, 0.08);
+    a.squeal2.frequency.setTargetAtTime((880 - slide * 12 + v * 4) * 1.49, t, 0.08);
+    a.squealGain.gain.setTargetAtTime(n.rough ? 0 : Math.min(0.13, (0.05 + 0.006 * slide) * s), t, s > 0 ? 0.03 : 0.08);
+    a.squeal2Gain.gain.setTargetAtTime(n.rough ? 0 : 0.35 * Math.max(0, s - 0.4), t, 0.05);
+    a.scrub.gain.setTargetAtTime(n.rough ? Math.min(0.3, (0.15 + 0.01 * slide) * s) : 0.05 * s, t, 0.05);
   }
 
   private start(c: AudioContext, n: CarNoise): Loop {
@@ -137,9 +146,15 @@ export class CarSound {
     const squealBand = filter('bandpass', 1150, 5);
     const squealGain = gain();
     squeal.connect(squealBand).connect(squealGain).connect(at);
-    const sources = [src, whine, whine2, squeal, wobble];
+    // Its upper note, a fifth over it and wavering the other way, mixed into the same squeal (only as it gets hard).
+    const squeal2 = osc('sawtooth', 1270);
+    const depth2 = gain(-50);
+    wobble.connect(depth2).connect(squeal2.frequency);
+    const squeal2Gain = gain();
+    squeal2.connect(filter('bandpass', 1700, 6)).connect(squeal2Gain).connect(squealGain);
+    const sources = [src, whine, whine2, squeal, squeal2, wobble];
     for (const s of sources) s.start();
-    return { at, sources, whine, whine2, motor, roll, road, windBand, wind, squeal, squealGain, scrub };
+    return { at, sources, whine, whine2, motor, roll, road, windBand, wind, squeal, squealGain, squeal2, squeal2Gain, scrub };
   }
 
   /** A thump from (x, y, z): `strength` about the speed of the knock (m/s), 1 a kerb, 10 a crash. */

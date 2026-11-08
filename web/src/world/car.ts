@@ -831,7 +831,9 @@ export class Car {
       x: this.x, y: this.y, z: this.z, speed: Math.abs(this.speed),
       load: local ? Math.min(1, this.pushing) : Math.min(1, Math.max(0, this.along / 5)),
       regen: Math.min(1, Math.max(0, (-this.along * Math.sign(this.speed)) / 6)),
-      skid: Math.max(paved, rough), rough: rough > paved || this.rough.filter(Boolean).length > 2,    });
+      skid: Math.max(paved, rough), rough: rough > paved || this.rough.filter(Boolean).length > 2,
+      slide: local ? Math.max(this.slideF, this.slideR) : Math.abs(this.side),
+    });
     this.lastX = this.x;
     this.lastZ = this.z;
     this.lastYaw = this.yaw;
