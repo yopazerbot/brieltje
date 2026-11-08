@@ -1,7 +1,7 @@
 import * as THREE from 'three';
 import data from '../data/roadDetail.json';
 import type { Prism, Surroundings } from './houseData';
-import { blockMaterial, clipDiagonal, clipToBox, prismGeometry } from './houseMeshes';
+import { blockMaterial, hugGround, prismGeometry } from './houseMeshes';
 import { solidNormals } from './normals';
 import { terrain } from './terrain';
 import { tileKey, type Piece } from './tiles';
@@ -330,6 +330,8 @@ class Builder {
   private paint: THREE.MeshStandardMaterial;
   private mats = new Map<Surface | 'kerb', THREE.Material>();
   private c = new THREE.Color();
+  /** Each strip corner's vertex, once made (a strip's corners belong to one mesh) */
+  private corners = new WeakMap<Corner, number>();
 
   constructor(village: boolean, private renderer: THREE.WebGLRenderer, private ground: number, paint: THREE.MeshStandardMaterial) {
     this.parts = new Parts(village);
@@ -398,42 +400,26 @@ class Builder {
   }
 
   /**
-   * A triangle of a strip laid on the relief as the grass is: cut along the ground's grid and its diagonals
-   * (world/terrain.ts: 4 m squares, each split corner to corner), each piece's corners lifted onto the ground. A
-   * strip lifted only at its own corners, every 2.5 m along and a few times across, cut through the ground's creases:
-   * on a bump the grass rose through the road in long green lenses.
+   * A triangle of a strip laid on the relief as the grass is (hugGround: cut along the ground's grid and diagonals
+   * where the ground under it isn't flat enough, each piece's corners lifted onto the ground). A strip lifted only at
+   * its own corners, every 2.5 m along and a few times across, cut through the ground's creases: on a bump the grass
+   * rose through the road in long green lenses.
    */
   drape(mesh: Mesh, a: Corner, b: Corner, c: Corner): void {
-    const step = terrain.step;
-    const ax = a[0], az = a[1], bx = b[0], bz = b[1], cx = c[0], cz = c[1];
-    const det = (bz - cz) * (ax - cx) + (cx - bx) * (az - cz);
-    if (Math.abs(det) < 1e-9) return; // no area on the plan
-    const tri: [number, number][] = [[ax, az], [bx, bz], [cx, cz]];
-    const gx0 = terrain.x0 + Math.floor((Math.min(ax, bx, cx) - terrain.x0) / step) * step;
-    const gz0 = terrain.z0 + Math.floor((Math.min(az, bz, cz) - terrain.z0) / step) * step;
-    const x1 = Math.max(ax, bx, cx);
-    const z1 = Math.max(az, bz, cz);
-    const at = (x: number, z: number): number => {
-      // The corner's values where (x, z) lies in the triangle (barycentric on the plan).
-      const l1 = ((bz - cz) * (x - cx) + (cx - bx) * (z - cz)) / det;
-      const l2 = ((cz - az) * (x - cx) + (ax - cx) * (z - cz)) / det;
-      const l3 = 1 - l1 - l2;
-      const v = (i: number) => a[i] * l1 + b[i] * l2 + c[i] * l3;
-      this.c.setRGB(v(5), v(6), v(7));
-      return mesh.vertex(x, this.y(x, z, v(2)), z, v(3), v(4), this.c);
-    };
-    for (let gx = gx0; gx < x1; gx += step) {
-      for (let gz = gz0; gz < z1; gz += step) {
-        const box = clipToBox(tri, gx, gz, gx + step, gz + step);
-        if (box.length < 3) continue;
-        for (const side of [1, -1]) {
-          const piece = clipDiagonal(box, gx, gz, side);
-          if (piece.length < 3) continue;
-          const ids = piece.map(([x, z]) => at(x, z));
-          for (let i = 1; i + 1 < ids.length; i++) mesh.tri(ids[0], ids[i], ids[i + 1]);
-        }
-      }
-    }
+    hugGround([[a[0], a[1]], [b[0], b[1]], [c[0], c[1]]], [a[2], b[2], c[2]], (piece) => {
+      const ids = piece.map(([x, z, l1, l2, l3]) => {
+        // A corner of the strip itself: one vertex, shared with the triangles round it.
+        const own = l1 === 1 ? a : l2 === 1 ? b : l3 === 1 ? c : null;
+        const known = own ? this.corners.get(own) : undefined;
+        if (known !== undefined) return known;
+        const v = (i: number) => a[i] * l1 + b[i] * l2 + c[i] * l3;
+        this.c.setRGB(v(5), v(6), v(7));
+        const id = mesh.vertex(x, this.y(x, z, v(2)), z, v(3), v(4), this.c);
+        if (own) this.corners.set(own, id);
+        return id;
+      });
+      for (let i = 1; i + 1 < ids.length; i++) mesh.tri(ids[0], ids[i], ids[i + 1]);
+    });
   }
 
   /** An upright face along stations k0..k1 at offset o(k), from lift lo(k) to hi(k), facing away from the centre line (out) or towards it. */

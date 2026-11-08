@@ -343,8 +343,62 @@ export function clipDiagonal(poly: [number, number][], gx: number, gz: number, s
   return out;
 }
 
-/** Thin ground covers that lie just over the grass: draped on the ground's own grid and its diagonals. */
-const HUGGING = new Set(['pave_grey', 'pave_light', 'pave_warm', 'pave_walk', 'gravel', 'track', 'road', 'forecourt']);
+/** Thin ground covers that lie just over the grass: kept on the ground's own surface (hugGround). */
+const HUGGING = new Set(['pave_light', 'pave_warm', 'pave_walk', 'gravel', 'track', 'road', 'forecourt']);
+
+/** A piece's corner from hugGround: x, z and its weights on the triangle's three corners. */
+export type Hug = [number, number, number, number, number];
+
+/**
+ * A triangle on the plan, laid on the relief `lift` metres (per corner) over the ground, in as few pieces as keep it
+ * close to the ground's own surface (world/terrain.ts: 4 m squares, each split corner to corner). The ground is
+ * flat between its grid lines and diagonals, so cut along them the triangle follows it exactly; most triangles lie on
+ * ground that is near enough a plane and stay whole. `emit` gets each piece's corners, with their weights on the
+ * triangle's corners to share out what else they carry (the lift, the texture, the colour). A triangle stays whole
+ * while the ground rises less than `tol` over its plane and falls less than `float` under it.
+ */
+export function hugGround(t: [number, number][], lift: [number, number, number], emit: (piece: Hug[]) => void, tol = 0.01, float = 0.05): void {
+  const [[ax, az], [bx, bz], [cx, cz]] = t;
+  const det = (bz - cz) * (ax - cx) + (cx - bx) * (az - cz);
+  if (Math.abs(det) < 1e-9) return; // no area on the plan
+  const weights = (x: number, z: number): [number, number, number] => {
+    const l1 = ((bz - cz) * (x - cx) + (cx - bx) * (z - cz)) / det;
+    const l2 = ((cz - az) * (x - cx) + (ax - cx) * (z - cz)) / det;
+    return [l1, l2, 1 - l1 - l2];
+  };
+  const ya = terrain.height(ax, az) + lift[0];
+  const yb = terrain.height(bx, bz) + lift[1];
+  const yc = terrain.height(cx, cz) + lift[2];
+  const step = terrain.step;
+  const gx0 = terrain.x0 + Math.floor((Math.min(ax, bx, cx) - terrain.x0) / step) * step;
+  const gz0 = terrain.z0 + Math.floor((Math.min(az, bz, cz) - terrain.z0) / step) * step;
+  const x1 = Math.max(ax, bx, cx);
+  const z1 = Math.max(az, bz, cz);
+  const pieces: Hug[][] = [];
+  let above = 0; // the most the ground rises over the triangle's plane: it would show through
+  let below = 0; // the most it falls away under it: the cover floats a little there
+  for (let gx = gx0; gx < x1; gx += step) {
+    for (let gz = gz0; gz < z1; gz += step) {
+      const box = clipToBox(t, gx, gz, gx + step, gz + step);
+      if (box.length < 3) continue;
+      for (const side of [1, -1]) {
+        const piece = clipDiagonal(box, gx, gz, side);
+        if (piece.length < 3) continue;
+        pieces.push(piece.map(([x, z]): Hug => {
+          const [l1, l2, l3] = weights(x, z);
+          // How far the ground's surface (with the lift) is from the whole triangle's plane here.
+          const hug = terrain.height(x, z) + lift[0] * l1 + lift[1] * l2 + lift[2] * l3;
+          const d = hug - (ya * l1 + yb * l2 + yc * l3);
+          above = Math.max(above, d);
+          below = Math.max(below, -d);
+          return [x, z, l1, l2, l3];
+        }));
+      }
+    }
+  }
+  if (above <= tol && below <= float) emit([[ax, az, 1, 0, 0], [bx, bz, 0, 1, 0], [cx, cz, 0, 0, 1]]);
+  else for (const piece of pieces) emit(piece);
+}
 
 /**
  * A block out on the relief (p.d metres): its outline triangulated, every triangle cut along
@@ -352,10 +406,12 @@ const HUGGING = new Set(['pave_grey', 'pave_light', 'pave_warm', 'pave_walk', 'g
  * hedge or fence also gets its sides, in pieces of at most a square, lifted the same way.
  */
 function drapedGeometry(p: Prism): THREE.BufferGeometry {
-  // The square's clinkers sit only 2 cm above the grass and must follow the ground's diagonals. So must every hard
-  // cover laid on the grass (pavers, gravel, the streets' surfaces and their fills): draped only at its own corners
-  // and every 8 m, the grass's 4 m grid rose through it on a bump and showed as green patches with hard edges.
-  const precise = HUGGING.has(p.m) || p.m.startsWith('pf:');
+  // The square's clinkers sit only 2 cm above the grass and must follow the ground's diagonals. So must every other
+  // hard cover laid on the grass (pavers, gravel, the streets' surfaces and their fills): draped only at its own
+  // corners and every 8 m, the grass's 4 m grid rose through it on a bump and showed as green patches with hard
+  // edges. Those are cut further where the ground isn't flat enough under a piece (hugGround), and only there.
+  const precise = p.m === 'pave_grey';
+  const hug = HUGGING.has(p.m) || p.m.startsWith('pf:');
   const cell = precise ? terrain.step : p.d!;
   const pos: number[] = [];
   const uv: number[] = [];
@@ -378,6 +434,17 @@ function drapedGeometry(p: Prism): THREE.BufferGeometry {
           for (let k = 1; k + 1 < polygon.length; k++) {
             let [a, b, c] = [polygon[0], polygon[k], polygon[k + 1]];
             if ((b[1] - a[1]) * (c[0] - a[0]) - (b[0] - a[0]) * (c[1] - a[1]) < 0) [b, c] = [c, b]; // facing up
+            if (hug) {
+              hugGround([a, b, c], [p.y1, p.y1, p.y1], (piece) => {
+                for (let j = 1; j + 1 < piece.length; j++) {
+                  for (const v of [piece[0], piece[j], piece[j + 1]]) {
+                    pos.push(...up(v[0], v[1], p.y1));
+                    uv.push(v[0], -v[1]);
+                  }
+                }
+              });
+              continue;
+            }
             for (const v of [a, b, c]) {
               pos.push(...up(v[0], v[1], p.y1));
               uv.push(v[0], -v[1]);
