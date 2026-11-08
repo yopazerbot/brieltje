@@ -583,7 +583,7 @@ const en = {
   'place.outside': 'Outside',
   'prompt.open': '{key}  Open {door}',
   'prompt.close': '{key}  Close {door}',
-  'prompt.driving': '{speed} km/h  ·  {use}  Get out',
+  'prompt.driving': '{speed} km/h  ·  {hb}  Handbrake  ·  {use}  Get out',
   'prompt.tag': '{use}  Tag {name}',
   'prompt.revive': 'Hold {use} to revive {name}',
   'prompt.reviving': 'Helping {name} up…',
@@ -1568,7 +1568,7 @@ const nl = {
   // A colon after the key or button: "Gebruik: uitstappen" reads as Dutch, where "Gebruik Uitstappen" doesn't.
   'prompt.open': '{key}: {door} openen',
   'prompt.close': '{key}: {door} sluiten',
-  'prompt.driving': '{speed} km/u  ·  {use}: uitstappen',
+  'prompt.driving': '{speed} km/u  ·  {hb}: handrem  ·  {use}: uitstappen',
   'prompt.tag': '{use}: {name} tikken',
   'prompt.revive': 'Houd {use} ingedrukt om {name} te helpen',
   'prompt.reviving': '{name} overeind helpen…',
