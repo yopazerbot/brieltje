@@ -323,7 +323,7 @@ export class FootballGround {
     this.clock += dt;
     // On from dusk (the street lamps come on at the same ramp), full by night.
     const night = mood.night;
-    const on = Math.min(1, Math.max(0, (night - 0.08) / 0.3));
+    const on = Math.min(1, Math.max(0, (night - 0.03) / 0.22));
     this.lit = on;
     this.uniforms.strength.value = on;
     this.poolUniforms.strength.value = on;

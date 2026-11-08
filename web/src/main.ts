@@ -660,9 +660,11 @@ const villagers = new Villagers(world, () => quality === 'low' || phone, (root) 
 const villagerLook = new THREE.Vector3();
 scene.add(villagers.group);
 // FC Smetlede's football ground (world/footballGround.ts) and its training and watchers (world/footballLife.ts).
+// (?nofootball in the dev build leaves it out, to compare.)
+const noFootball = import.meta.env.DEV && location.search.includes('nofootball');
 const fcGround = new FootballGround(house.ground, phone);
 const fcLife = new FootballLife(villagers, fcGround.y, () => quality === 'low' || phone, (id) => fcGround.goal(id));
-scene.add(fcGround.group, fcLife.group);
+if (!noFootball) scene.add(fcGround.group, fcLife.group);
 // December (world/season.ts): the Christmas lights and the tree, and Sinterklaas on the church square (only in Explore).
 const christmas = new Christmas(world, (x, z) => house.ground + terrain.height(x, z), (root) => precompile(root));
 const sinterklaas = new Sinterklaas(world, (x, z) => house.ground + terrain.height(x, z), (root) => precompile(root));
@@ -3443,8 +3445,10 @@ renderer.setAnimationLoop((now: number) => {
   // The Zombies game: alone its horde steps here; together the server's ticks move them. Then they're drawn.
   if (!net.connected) soloTick(dt);
   zombies.update(dt, camera.position);
-  fcGround.update(dt);
-  fcLife.update(dt, camera.position); // its figures are drawn with the villagers
+  if (!noFootball) {
+    fcGround.update(dt);
+    fcLife.update(dt, camera.position); // its figures are drawn with the villagers
+  }
   villagers.update(dt, camera.position, camera.getWorldDirection(villagerLook), driving || riding || horses.mounted >= 0 ? null : { x: player.x, z: player.z, feet: player.feet }, [
     ...roadLife.traffic.cars,
     ...cars.filter((c) => (driving && c === car) || !!c.driver).map((c) => ({ x: c.x, z: c.z, yaw: c.yaw, length: c.spec.length, width: c.spec.width })),
@@ -3583,7 +3587,7 @@ async function buildVillage(): Promise<void> {
   // A frame between the big steps: built all at once, it stopped the game for a second just after it began.
   const between = () => new Promise((r) => setTimeout(r, 0));
   const data = (await import('./data/village.json')).default as unknown as VillageData;
-  fcGround.addToVillage(data); // the football ground's car park, lane and trees
+  if (!noFootball) fcGround.addToVillage(data); // the football ground's car park, lane and trees
   wearLonePatches(data); // light patches away from the buildings: worn ground (world/yards.ts)
   undergrowth.addWoods(data.prisms, data.trees);
   const first = poles.length;
@@ -3602,7 +3606,7 @@ async function buildVillage(): Promise<void> {
   const town = import.meta.env.DEV && location.search.includes('notown')
     ? Promise.reject(new Error('left out'))
     : import('./world/townCentre').then(({ loadTown }) => loadTown(renderer, (x, z) => house.ground + terrain.height(x, z)));
-  const models = (await Promise.all([loadChurch().catch(() => null), loadModel('/models/school.glb').catch(() => null), loadModel('/models/dormer_house.glb').catch(() => null), loadModel('/models/sparrenhof.glb').catch(() => null), loadModel('/models/tree_huts.glb').catch(() => null), loadModel('/models/kouter_house.glb').catch(() => null), loadModel('/models/football.glb').catch(() => null), town.catch(() => null)])).filter(
+  const models = (await Promise.all([loadChurch().catch(() => null), loadModel('/models/school.glb').catch(() => null), loadModel('/models/dormer_house.glb').catch(() => null), loadModel('/models/sparrenhof.glb').catch(() => null), loadModel('/models/tree_huts.glb').catch(() => null), loadModel('/models/kouter_house.glb').catch(() => null), (noFootball ? Promise.resolve(null) : loadModel('/models/football.glb').catch(() => null)), town.catch(() => null)])).filter(
     (m): m is THREE.Object3D => m !== null,
   );
   const fcModel = models.find((m) => m.userData.landmark === 'football');

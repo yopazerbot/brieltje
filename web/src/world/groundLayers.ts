@@ -58,6 +58,9 @@ const COVERS: Record<string, number> = {
   field_dark: RANK.field,
   field_crop: RANK.field,
   forest: RANK.field,
+  // The football ground's car park and lane (world/footballGround.ts), laid as the village's covers
+  rd_asphalt: RANK.road,
+  rd_concrete: RANK.road,
 };
 
 /** The rank of an open-data cover of material `m`, or undefined for what isn't a ground cover. */
