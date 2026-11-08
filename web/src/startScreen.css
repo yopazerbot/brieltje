@@ -447,3 +447,66 @@ body:has(#overlay:not(.hidden) > #start-panel:not(.hidden)) #full-btn { display:
   #start-panel .start-tools .icon-btn { width: 40px; height: 40px; }
   .step-bar { position: static; transform: none; float: right; margin: 6px 0 0 12px; min-height: 40px; }
 }
+
+/* ---- Pad mode (src/ui/padStart.ts): the start screen with only a controller. It only adds: without a controller none of
+   this shows. The focus is a thick sun-yellow ring that grows a little, so it reads from a sofa across the room. */
+#start-panel:not(.pad-mode) .pad-only { display: none !important; }
+#start-panel.pad-mode .pad-hide { display: none; }
+#start-panel.pad-mode { scroll-padding: 24px 0 96px; } /* the focus scrolled into view above the button hints */
+#overlay #start-panel.pad-mode .pad-focus {
+  outline: 4px solid var(--st-sun) !important; outline-offset: 4px;
+  box-shadow: 0 0 0 9px rgba(247, 185, 40, 0.22); scale: 1.04; z-index: 1;
+}
+#overlay #start-panel.pad-mode .who-card input.pad-focus { scale: 1; border-color: var(--st-sun); }
+#start-panel.pad-mode .who-card:has(.pad-focus) { border-color: var(--st-sun); }
+@media (prefers-reduced-motion: no-preference) {
+  #start-panel.pad-mode :is(button, input, select) { transition: scale 0.14s ease-out, box-shadow 0.14s, outline-offset 0.14s; }
+}
+/* Log in: the phone first and big, its code right in the card; name and password under it. */
+#start-panel .phone-first { margin: 4px 0 2px; }
+#start-panel .phone-go {
+  display: flex; align-items: center; gap: 14px; width: 100%; min-height: 72px; padding: 12px 18px; cursor: pointer; text-align: left;
+  color: var(--st-night); background: var(--st-sun); border: 0; border-radius: 20px; box-shadow: 0 5px 0 var(--st-sun-deep);
+}
+#start-panel .phone-go.hidden { display: none; }
+#start-panel .phone-go .card-ico { width: 36px; height: 36px; stroke: var(--st-night); }
+#start-panel .phone-go b { display: block; font-family: var(--st-display); font-size: 21px; font-weight: 700; line-height: 1.15; }
+#start-panel .phone-go b + span { display: block; font-size: 15px; font-weight: 600; line-height: 1.3; }
+#start-panel .phone-go:active { translate: 0 4px; box-shadow: 0 1px 0 var(--st-sun-deep); }
+#start-panel .login-card.pairing .perks { display: none; }
+#start-panel .login-pair { display: grid; grid-template-columns: auto minmax(0, 1fr); gap: 8px 16px; align-items: center; }
+#start-panel .login-pair > :not(.pair-qr, .pair-text) { grid-column: 1 / -1; }
+#start-panel .login-pair.hidden { display: none; }
+#start-panel .pair-qr { flex: none; width: 168px; padding: 10px; background: #fff; border-radius: 16px; }
+#start-panel .pair-qr[hidden] { display: none; }
+#start-panel .pair-qr svg { display: block; width: 100%; height: auto; aspect-ratio: 1; }
+#start-panel .pair-qr path { fill: #000; }
+#start-panel .pair-text { display: grid; gap: 6px; min-width: 0; justify-items: start; }
+#start-panel .login-pair p { margin: 0; font-size: 15px; line-height: 1.35; color: var(--st-chalk-soft); }
+#start-panel .login-pair .pair-state:empty { display: none; }
+#start-panel #login-pair-new { justify-self: start; }
+#start-panel .pair-check b { display: block; font-family: var(--st-display); font-size: 44px; line-height: 1.05; color: var(--st-sun); letter-spacing: 0.06em; }
+#start-panel .pair-or b { color: var(--st-chalk); letter-spacing: 0.08em; white-space: nowrap; }
+#start-panel .or-line { display: flex; align-items: center; gap: 10px; margin: 14px 0 0; font-size: 14px; font-weight: 800; color: var(--st-chalk-soft); }
+#start-panel .or-line::before, #start-panel .or-line::after { content: ''; flex: 1; height: 1px; background: var(--st-line); }
+/* Guest: "Different name" under the ready-made one. */
+#start-panel #nick-roll { display: inline-flex; align-items: center; gap: 8px; align-self: flex-start; margin-top: 8px; }
+#start-panel #nick-roll svg { width: 22px; height: 22px; fill: none; stroke: currentColor; stroke-width: 2; stroke-linejoin: round; }
+#start-panel #nick-roll svg circle { fill: currentColor; stroke: none; }
+/* The button hints, kept in view at the panel's foot while it scrolls. */
+#start-panel .pad-hints {
+  position: sticky; bottom: 0; z-index: 2; display: flex; flex-wrap: wrap; justify-content: flex-start; gap: 8px 22px;
+  margin: 14px 0 0; padding: 10px 16px; font-family: var(--st-display); font-size: 17px; font-weight: 600; color: var(--st-chalk);
+  background: #241c54; border: 1px solid var(--st-line); border-radius: var(--st-r-pill); box-shadow: 0 -10px 24px rgba(13, 20, 48, 0.55);
+}
+#start-panel .pad-hint { display: inline-flex; align-items: center; gap: 6px; }
+#start-panel .pad-hint span { margin-left: 4px; }
+#start-panel .pad-key {
+  display: inline-grid; place-items: center; min-width: 30px; height: 30px; padding: 0 7px; font-family: var(--st-display); font-size: 15px;
+  font-weight: 700; line-height: 1; color: var(--st-night); background: var(--st-chalk); border-radius: var(--st-r-pill); box-shadow: 0 2px 0 var(--st-chalk-soft);
+}
+#start-panel .pad-key:is(.pad-south, .pad-east) { width: 30px; padding: 0; border-radius: 50%; }
+#start-panel .pad-key.pad-south { background: var(--st-sun); box-shadow: 0 2px 0 var(--st-sun-deep); }
+@media (max-width: 640px) {
+  #start-panel .login-pair { grid-template-columns: minmax(0, 1fr); }
+}

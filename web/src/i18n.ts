@@ -105,6 +105,11 @@ const en = {
   'start.guestTitle': 'Play as a guest',
   'start.guestNote': "Just a name. Your scores aren't kept. You can make an account any time.",
   'start.guestGo': 'Go on as a guest',
+  // With a controller (src/ui/padStart.ts): a name ready-made, and logging in with the phone first.
+  'start.nameRoll': 'Different name',
+  'start.phoneSub': 'Scan a code with your phone. Nothing to type here.',
+  'start.phoneScan': "Scan this code with your phone's camera.",
+  'start.orPassword': 'Or with your name and password',
   'start.welcomeBack': 'Welcome back',
   'start.welcomeGuest': 'You play as a guest.',
   'start.welcomeAcct': 'You are logged in.',
@@ -205,6 +210,12 @@ const en = {
   'pad.ps': 'PlayStation controller',
   'pad.xbox': 'Xbox-style controller',
   'pad.nintendo': 'Nintendo-style controller',
+  // The start screen's button hints with a controller: each after its button's name (✕, A or B ...).
+  'pad.hints': 'Controller buttons',
+  'pad.hintChoose': 'Choose',
+  'pad.hintBack': 'Back',
+  'pad.hintWho': 'Log in or guest',
+  'pad.hintMode': 'Game mode',
   'guest': 'Guest',
 
   // ---- Graphics
@@ -1152,6 +1163,10 @@ const nl = {
   'start.guestTitle': 'Speel als gast',
   'start.guestNote': 'Alleen een naam. Je scores worden niet bewaard, en je kan altijd later een account maken.',
   'start.guestGo': 'Verder als gast',
+  'start.nameRoll': 'Andere naam',
+  'start.phoneSub': 'Scan een code met je gsm. Hier hoef je niets te typen.',
+  'start.phoneScan': 'Scan deze code met de camera van je gsm.',
+  'start.orPassword': 'Of met je naam en wachtwoord',
   'start.welcomeBack': 'Welkom terug',
   'start.welcomeGuest': 'Je speelt als gast.',
   'start.welcomeAcct': 'Je bent ingelogd.',
@@ -1249,6 +1264,11 @@ const nl = {
   'pad.ps': 'PlayStation-controller',
   'pad.xbox': 'Controller in Xbox-stijl',
   'pad.nintendo': 'Controller in Nintendo-stijl',
+  'pad.hints': 'Knoppen van de controller',
+  'pad.hintChoose': 'Kiezen',
+  'pad.hintBack': 'Terug',
+  'pad.hintWho': 'Inloggen of gast',
+  'pad.hintMode': 'Spelmodus',
   'guest': 'Gast',
 
   // ---- Graphics

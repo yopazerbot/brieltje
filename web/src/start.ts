@@ -22,6 +22,7 @@ import { Menu } from './ui/menu';
 import { AccountCard } from './ui/account';
 import { KeepRun } from './ui/keepRun';
 import { PadNav } from './ui/padNav';
+import { PadStart } from './ui/padStart';
 import { StartFlow, type ZombieStart } from './ui/startFlow';
 
 const $ = (id: string) => document.getElementById(id)!;
@@ -496,10 +497,28 @@ onLang(() => {
 // ✕ presses (on the last step, with nothing chosen, it starts with the controller), ○ goes a step back, □ changes
 // the graphics. Its name shows on the Controller button. From the first start on, the world's loop reads it.
 const startNav = new PadNav(() => flow.page());
+// Pad mode (src/ui/padStart.ts): a guest name ready, the phone's login in the card, the big focus and the button hints.
+const padStart = new PadStart(flow, startNav, { session: () => session, begin: () => beginLogin(false) });
 let padStep = 0; // the step the controller last saw: on a new one, its likely press gets the focus
 function padLoop(): void {
   const frame = input.poll();
   menu.setPadState(input.padName);
+  if (input.padName && !padStart.active && !seat) {
+    // The controller came in: the press that brought it only shows where the focus is.
+    padStart.enter();
+    padStep = flow.step;
+    startNav.focus(flow.defaultControl(true));
+    if (menu.world === 'none') requestAnimationFrame(padLoop);
+    return;
+  }
+  padStart.tick();
+  if (padStart.active && !dialogOpen()) {
+    // The page moved the focus itself (a field to fix, the age tick): the controller's ring follows it. And when the
+    // focused control went (the session came in, a card closed): the step's likely press again.
+    const el = document.activeElement;
+    if (el instanceof HTMLElement && el !== startNav.focused() && el !== document.body && flow.page().contains(el)) startNav.focus(el);
+    else if (!startNav.focused()) startNav.focus(flow.defaultControl(true));
+  }
   if (padStep && padStep !== flow.step) {
     startNav.reset();
     startNav.focus(flow.defaultControl(true));
@@ -508,6 +527,8 @@ function padLoop(): void {
   if (frame.anyPadButton) padStep ||= flow.step;
   if (dialogOpen()) {
     // The account card is a dialog of its own: the keyboard (or a console's own) works there, the pad waits.
+  } else if (frame.deletePressed && padStart.back()) {
+    // ○ closed the phone's code (step 1)
   } else if (frame.deletePressed && flow.step > 1) {
     startNav.reset();
     flow.goBack();
@@ -517,6 +538,7 @@ function padLoop(): void {
       else startNav.focus(flow.defaultControl(true));
     }
   } else if (frame.squarePressed) menu.cycleGraphics();
+  else if (frame.tabStep) padStart.shoulder(frame.tabStep);
   else if (frame.navX || frame.navY) {
     if (!startNav.focused()) startNav.focus(flow.defaultControl(true));
     else if (!(frame.navX && startNav.adjust(frame.navX))) startNav.step(frame.navX, frame.navY);

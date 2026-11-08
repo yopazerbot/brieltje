@@ -91,6 +91,8 @@ function loadLast(): Last | null {
 
 export class StartFlow {
   step: Step = 1;
+  /** A controller is in use (src/ui/padStart.ts): each step's focus goes to what a console player most likely picks. */
+  padMode = false;
   private panel = $('start-panel');
   private sections = [...this.panel.querySelectorAll<HTMLElement>('.step')];
   private back = $<HTMLButtonElement>('step-back');
@@ -143,7 +145,7 @@ export class StartFlow {
     $('welcome-go').addEventListener('click', () => this.show(2));
     $('welcome-switch').addEventListener('click', () => {
       this.hooks.logout();
-      if (!coarse()) this.loginName.focus();
+      if (!coarse() && !this.padMode) this.loginName.focus();
     });
     // Step 2: a card is the choice and goes on at once.
     document.querySelectorAll<HTMLButtonElement>('#mp-choice [data-mp]').forEach((b) => b.addEventListener('click', () => this.pickMp(b)));
@@ -224,7 +226,7 @@ export class StartFlow {
     });
     this.draw();
     if (step === 3 && this.zombiesOn && this.together()) void this.loadRooms();
-    if (focus) this.defaultControl()?.focus({ preventScroll: true });
+    if (focus) this.defaultControl(this.padMode)?.focus({ preventScroll: true }); // a controller: never a field (a console's keyboard)
     this.panel.scrollTop = 0;
   }
 
@@ -312,6 +314,13 @@ export class StartFlow {
   defaultControl(pad = false): HTMLElement | null {
     const session = this.hooks.session();
     if (this.step === 1) {
+      if (pad && this.padMode) {
+        // A controller: the last visit again in one press, else going on as the session, the phone for an account,
+        // or the guest's ready name.
+        if (!$('again').classList.contains('hidden')) return $('again');
+        if (session) return $('welcome-go');
+        return this.last?.who === 'account' ? $('login-phone') : $('guest-go');
+      }
       if (session) return $('welcome-go');
       if (this.last?.who === 'account') return coarse() ? $('login-go') : this.loginName.value ? this.loginPass : this.loginName;
       if (this.nick.value.trim()) return $('guest-go');
@@ -322,6 +331,19 @@ export class StartFlow {
     const remembered = this.last && $(`choose-${this.last.control}`);
     if (remembered && !remembered.classList.contains('hidden')) return remembered;
     return document.querySelector<HTMLElement>('.start-choices .choice.play:not(.hidden)');
+  }
+
+  /** Who the last visit played as (a guest, an account), or null on a first visit. */
+  lastWho(): Who | null {
+    return this.last?.who ?? null;
+  }
+
+  /** A controller came in: Zombies picked on step 3 unless a mode was picked here before (it is the one to try). */
+  recommendZombies(): void {
+    if (store.get(START_MODE) !== null || this.zombiesOn) return;
+    this.zombiesOn = true;
+    this.armZombies();
+    this.draw();
   }
 
   /** The session changed (logged in, out, or found on arrival): step 1 and step 2 follow. */
@@ -426,13 +448,18 @@ export class StartFlow {
     const who: Who | null = s ? (s.role === 'guest' ? 'guest' : 'account') : this.nick.value.trim() ? 'guest' : null;
     // An account can do whatever its guest did (signed up since): the same choices under the account.
     if ((who !== l.who && !(who === 'account' && l.who === 'guest')) || (l.mp === 'multi' && !s && !this.hooks.ageOk())) return false;
-    return !$(`choose-${l.control}`).classList.contains('hidden');
+    return !$(`choose-${this.againControl(l)}`).classList.contains('hidden');
+  }
+
+  /** The controls "Play again as before" starts with: the controller while one is in use, else the last visit's. */
+  private againControl(l: Last): ControlMode {
+    return this.padMode ? 'pad' : l.control;
   }
 
   private again(): void {
     if (!this.last || !this.againOk()) return;
     this.selectMp(this.last.mp);
-    this.hooks.start(this.last.control);
+    this.hooks.start(this.againControl(this.last));
   }
 
   /** Every text and which parts show, for the session and the language. */
@@ -480,7 +507,7 @@ export class StartFlow {
         t(this.last.mp === 'multi' ? 'start.together' : 'start.alone'),
         this.zombiesOn ? t('game.zombies') : label('#mode-start [data-play].selected b'),
         room ? (room.kind === 'none' ? '' : portalName({ id: room.place, name: room.place })) : option(this.zombiesOn ? this.zPlace : $<HTMLSelectElement>('spawn')),
-        label(`#choose-${this.last.control} b`),
+        label(`#choose-${this.againControl(this.last)} b`),
       ];
       $('again-sub').textContent = parts.filter(Boolean).join(' · ');
     }
