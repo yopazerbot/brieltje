@@ -1,0 +1,49 @@
+<!doctype html>
+<!-- The link preview (web/public/brand/og.png, 1200 x 630): the logo over the sunset, the line from the poster,
+     a row of village roofs along the bottom. tools/brand/images.mjs takes the picture. -->
+<html lang="nl">
+<head>
+<meta charset="utf-8" />
+<style>
+  @font-face { font-family: 'Fredoka'; font-weight: 300 700; src: url('../../web/public/fonts/fredoka.woff2') format('woff2'); }
+  html, body { margin: 0; width: 1200px; height: 630px; overflow: hidden; }
+  body {
+    position: relative; display: grid; justify-items: center; align-content: start; gap: 22px; padding-top: 92px; box-sizing: border-box;
+    font-family: 'Fredoka', sans-serif; color: #fbf6ea;
+    background:
+      radial-gradient(120% 70% at 50% 112%, rgba(240, 138, 75, 0.6), transparent 62%),
+      linear-gradient(180deg, #0d1430 0%, #2a2160 42%, #6b3fa0 74%, #f08a4b 100%);
+  }
+  .logo { height: 262px; }
+  .tag { display: flex; align-items: center; gap: 18px; font-size: 46px; font-weight: 600; letter-spacing: 0.005em; }
+  .spark { width: 44px; height: 36px; }
+  .swoosh { width: 520px; height: 18px; margin-top: -10px; }
+  .village { position: absolute; left: 0; right: 0; bottom: 0; width: 1200px; height: 118px; }
+</style>
+</head>
+<body>
+  <img class="logo" src="../../web/public/brand/logo.svg" alt="" />
+  <div class="tag">
+    <svg class="spark" viewBox="0 0 34 28" style="transform: scaleX(-1)"><path d="M30 4 18 10M32 14H18M30 24l-12-6" stroke="#f7b928" stroke-width="4" stroke-linecap="round"/></svg>
+    <span>Smetlede en Briel, nagebouwd in 3D.</span>
+    <svg class="spark" viewBox="0 0 34 28"><path d="M30 4 18 10M32 14H18M30 24l-12-6" stroke="#f7b928" stroke-width="4" stroke-linecap="round"/></svg>
+  </div>
+  <svg class="swoosh" viewBox="0 0 520 18"><path d="M10 12Q260 -1 510 12" fill="none" stroke="#f7b928" stroke-width="6" stroke-linecap="round"/></svg>
+  <!-- Roofs in night blue against the glow, a few windows lit. -->
+  <svg class="village" id="village" viewBox="0 0 1200 118"></svg>
+  <script>
+    // Houses of different widths and heights side by side, edge to edge; every other one has its lights on.
+    const houses = [[70, 64], [96, 92], [64, 58], [84, 80], [58, 52], [100, 98], [72, 66], [90, 88], [62, 60], [94, 94], [68, 64], [88, 82], [64, 56]];
+    const total = houses.reduce((s, [w]) => s + w, 0);
+    let x = 0, d = '', lit = '';
+    for (const [i, [w0, h]] of houses.entries()) {
+      const w = (w0 * 1200) / total;
+      const eave = 118 - h + w * 0.3;
+      d += `M${x} 118V${eave}L${x + w / 2} ${118 - h}L${x + w} ${eave}V118Z`;
+      if (i % 2 === 1) lit += `<rect x="${x + w / 2 - 14}" y="${eave + 8}" width="11" height="13" rx="2"/><rect x="${x + w / 2 + 3}" y="${eave + 8}" width="11" height="13" rx="2"/>`;
+      x += w;
+    }
+    document.getElementById('village').innerHTML = `<path fill="#0d1430" d="${d}"/><g fill="#f7b928">${lit}</g>`;
+  </script>
+</body>
+</html>
