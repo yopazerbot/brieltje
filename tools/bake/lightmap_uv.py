@@ -38,8 +38,10 @@ CHART_COS = math.cos(math.radians(30))  # a piece grows over triangles within 30
 SKIP_WORDS = ("glass", "clear", "foliage", "detail", "fittings", "trim", "_in")
 # Ground surfaces (roads, pavers, yards, terraces) keep real-time light too: the ground's own shading
 # (world/groundShade.ts) already gives them the houses' shadows, and a rebuilt road lying in the
-# village's ground came out of the bake black, where that ground covered it (Yoshi, 5 Nov 2026).
-GROUND_WORDS = ("asphalt", "pavers", "yard", "slab", "pave")
+# village's ground came out of the bake black, where that ground covered it (Yoshi, 5 Nov 2026). The Sparrenhof's
+# forecourt of gravel and setts too: the skirt down from its edge came out of the bake black, a black wedge along
+# the road (8 Nov 2026).
+GROUND_WORDS = ("asphalt", "pavers", "yard", "slab", "pave", "gravel", "setts")
 
 
 class Glb:
