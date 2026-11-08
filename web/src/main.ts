@@ -13,7 +13,7 @@ import { FAR_PHONE, gpuName, guessFromName, loadMode, ORDER, pickQuality, PRESET
 import { HEIGHT as BODY_HEIGHT, Player, STEP_UP } from './player';
 import { Hud } from './ui/hud';
 import { Speedometer } from './ui/speedometer';
-import { fillScreen, input, me, menu, onAccount, setAccount } from './start';
+import { fillScreen, input, me, menu, onAccount, setAccount, startIntent } from './start';
 import { TouchControls } from './controls/touch';
 import { Games, type ModeView } from './ui/games';
 import { CLOWN_DEFAULTS, Clowns, KINDS, type Kind } from './world/clowns';
@@ -251,6 +251,7 @@ function startPlace(): Portal | null {
   } catch {
     // storage blocked: the select's value
   }
+  if (startIntent.place) id = startIntent.place; // Zombies picked on the start screen: its place (src/start.ts)
   return id === 'house' ? null : PORTALS.find((p) => p.id === id) ?? null;
 }
 THREE.DefaultLoadingManager.onProgress = (_url, done, total) => loading((done / Math.max(1, total)) * 0.8, () => t('load.progress'));
@@ -2691,7 +2692,8 @@ function onTick(m: Tick): void {
   if (m.z) zombies.receive(m.z.map(readZombie), m.st); // the same, during the Zombies game
 }
 // Alone or together from here on (perhaps joined on the start screen already): after the handlers
-// above, so the connection's first status and messages reach them.
+// above, so the connection's first status and messages reach them. A Zombies room picked there: straight into it.
+if (startIntent.room) net.room = startIntent.room;
 onAccount(followAccount);
 
 /**
@@ -3556,6 +3558,18 @@ let endHouse: WalkIn | null = null;
 /** Resolved once play has begun (loaded). */
 let playBegun = () => {};
 const playing = new Promise<void>((r) => (playBegun = r));
+// Zombies picked on the start screen (src/ui/startFlow.ts): alone, the game at its place once the parachute has
+// landed (as the Play tab's button starts it); a room just opened, how to start it once the friends are in.
+void playing.then(() => {
+  if (startIntent.zombies === 'open') chat.system(() => t('zs.roomHint'));
+  if (startIntent.zombies !== 'solo') return;
+  const place = startIntent.place ?? 'house';
+  const landed = setInterval(() => {
+    if (player.chute !== null) return;
+    clearInterval(landed);
+    if (!me) startSolo(place).catch(() => {}); // a village that won't load says so itself (loadVillage)
+  }, 250);
+});
 // The leaf cards' pictures are painted once play has begun, when the preset asks for them (world/leafCards.ts).
 void playing.then(() => treesMayPaint((textures) => {
   for (const t of textures) renderer.initTexture(t);

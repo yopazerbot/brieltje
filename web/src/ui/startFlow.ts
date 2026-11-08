@@ -6,7 +6,11 @@
  *    account and logging in with the phone open the account card (src/ui/account.ts). With a session already
  *    (its cookie), a welcome back in place of the two cards, with Switch account and Log out.
  * 2. Alone or together? A guest ticks "I'm 13 or older" for Together; an account did at sign-up.
- * 3. The game mode, where to start, and the start buttons (src/ui/menu.ts).
+ * 3. The game: Zombies first (Yoshi: "they should be encouraged to pick a specific game mode, for example,
+ *    zombie"), then Paintball, Action and Explore; for Zombies where alone, or a room together (to join, or for an
+ *    account to open); then the start buttons (src/ui/menu.ts). Zombies is no weapon mode of its own: it plays with
+ *    Action's pistol (Paintball's paint guns when that was the mode) and starts its game once play begins
+ *    (src/main.ts startIntent). Only rooms' places and sizes show here, never who opened them.
  *
  * Back (or ○ on the controller, src/start.ts) goes one step back. The last visit's choices are remembered in this
  * browser (localStorage briel.start: guest or account, alone or together, the controls; the mode and the place
@@ -15,9 +19,9 @@
  *
  * What a player or the server typed goes into the page as text only (textContent).
  */
-import { onLang, t } from '../i18n';
-import { api, errorText, type Me } from '../net/client';
-import type { ControlMode } from './menu';
+import { onLang, portalName, t } from '../i18n';
+import { api, errorText, type Me, type RoomEntry } from '../net/client';
+import type { ControlMode, PlayMode } from './menu';
 
 export type Step = 1 | 2 | 3;
 type Who = 'guest' | 'account';
@@ -28,6 +32,27 @@ interface Last {
   control: ControlMode;
 }
 const LAST = 'briel.start';
+const START_MODE = 'briel.startMode'; // 'zombies', or the weapon mode last picked here
+const SOLO_PLACE = 'briel.zombiesPlace'; // shared with the menu's Play tab (src/main.ts)
+const ROOM_PLACE = 'briel.roomPlace';
+/** What Zombies picked on the start screen starts: alone at a place, a room to join, one to open, or nothing picked yet. */
+export type ZombieStart = { kind: 'solo'; place: string } | { kind: 'room'; id: string; place: string } | { kind: 'open'; place: string } | { kind: 'none' };
+const store = {
+  get: (k: string) => {
+    try {
+      return localStorage.getItem(k);
+    } catch {
+      return null; // storage blocked
+    }
+  },
+  set: (k: string, v: string) => {
+    try {
+      localStorage.setItem(k, v);
+    } catch {
+      // private window: for this visit
+    }
+  },
+};
 const CONTROLS: ControlMode[] = ['kbm', 'pad', 'touch'];
 
 export interface FlowHooks {
@@ -43,6 +68,11 @@ export interface FlowHooks {
   start: (mode: ControlMode) => void;
   /** The message under the steps, or none. */
   say: (text: (() => string) | null) => void;
+  /** A new guest joins together (step 2), so step 3 can list the rooms: true once joined (src/start.ts join). */
+  join: () => Promise<boolean>;
+  /** The weapon mode (src/ui/menu.ts). */
+  play: () => PlayMode;
+  setPlay: (play: PlayMode) => void;
 }
 
 const $ = <T extends HTMLElement = HTMLElement>(id: string) => document.getElementById(id) as T;
@@ -74,6 +104,14 @@ export class StartFlow {
   private busy = false;
   private reveal = false;
   private last = loadLast();
+  /** Zombies picked (step 3). */
+  private zombiesOn = store.get(START_MODE) === 'zombies';
+  /** The Zombies rooms open now (together), and the one picked: an id, 'new' (open one) or none. */
+  private rooms: RoomEntry[] = [];
+  private roomPick: string | null = null;
+  private roomsKey = '';
+  private zPlace = $<HTMLSelectElement>('z-place');
+  private zOpenPlace = $<HTMLSelectElement>('z-open-place');
 
   constructor(private hooks: FlowHooks) {
     this.back.addEventListener('click', () => this.goBack());
@@ -116,6 +154,37 @@ export class StartFlow {
     this.showCard(this.last?.who === 'guest' ? 'guest' : 'login');
     // Remembered: alone or together, picked before anything is pressed.
     if (this.last) this.selectMp(this.last.mp);
+    // Step 3: Zombies, or a weapon mode (the menu keeps that one); where Zombies is played, remembered.
+    for (const [select, key] of [[this.zPlace, SOLO_PLACE], [this.zOpenPlace, ROOM_PLACE]] as const) {
+      const kept = store.get(key);
+      if (kept && [...select.options].some((o) => o.value === kept)) select.value = kept;
+      select.addEventListener('change', () => store.set(key, select.value));
+    }
+    this.zOpenPlace.addEventListener('change', () => this.pickRoom('new'));
+    document.querySelector('#mode-start [data-start-mode=zombies]')!.addEventListener('click', () => this.pickZombies(true));
+    document.querySelectorAll<HTMLButtonElement>('#mode-start [data-play]').forEach((b) => b.addEventListener('click', () => {
+      store.set(START_MODE, b.dataset.play!);
+      this.pickZombies(false);
+    }));
+    $('z-together').addEventListener('click', (e) => {
+      const b = (e.target as Element).closest<HTMLButtonElement>('button[data-room]');
+      if (b && !b.disabled) this.pickRoom(b.dataset.room!);
+    });
+    $('z-go-solo').addEventListener('click', () => {
+      this.selectMp('solo');
+      this.hooks.say(null);
+      this.draw();
+      this.zPlace.focus();
+    });
+    $('z-go-world').addEventListener('click', () => {
+      store.set(START_MODE, this.hooks.play());
+      this.pickZombies(false);
+      this.defaultControl()?.focus();
+    });
+    // While the rooms show: the list every few seconds (who joined, which wave).
+    setInterval(() => {
+      if (this.step === 3 && this.zombiesOn && this.together() && !this.panel.closest('.hidden')) void this.loadRooms();
+    }, 5000);
     onLang(() => this.draw());
     this.show(1, false);
   }
@@ -153,8 +222,54 @@ export class StartFlow {
       else d.removeAttribute('aria-current');
     });
     this.draw();
+    if (step === 3 && this.zombiesOn && this.together()) void this.loadRooms();
     if (focus) this.defaultControl()?.focus({ preventScroll: true });
     this.panel.scrollTop = 0;
+  }
+
+  /** What Zombies starts once play begins, or null when another mode is picked. */
+  zombieStart(): ZombieStart | null {
+    if (!this.zombiesOn) return null;
+    if (!this.together()) return { kind: 'solo', place: this.zPlace.value };
+    if (this.roomPick === 'new' && this.canOpen()) return { kind: 'open', place: this.zOpenPlace.value };
+    const r = this.rooms.find((x) => x.id === this.roomPick && x.players < x.max);
+    return r ? { kind: 'room', id: r.id, place: r.place } : { kind: 'none' };
+  }
+
+  /** An account or the admin opens rooms (server/rooms.mjs create); a guest joins them. */
+  private canOpen(): boolean {
+    const s = this.hooks.session();
+    return s?.role === 'player' || s?.role === 'admin';
+  }
+
+  private pickZombies(on: boolean): void {
+    this.zombiesOn = on;
+    if (on) {
+      store.set(START_MODE, 'zombies');
+      // Zombies with a weapon: Action's pistol, or Paintball's paint guns when that was the mode.
+      this.hooks.setPlay(this.hooks.play() === 'paintball' ? 'paintball' : 'action');
+      if (this.together()) void this.loadRooms();
+    }
+    this.hooks.say(null);
+    this.draw();
+  }
+
+  private pickRoom(id: string): void {
+    this.roomPick = id;
+    this.hooks.say(null);
+    this.draw();
+  }
+
+  /** The rooms open now (it needs a session: an account, or a guest who joined on step 2). */
+  private async loadRooms(): Promise<void> {
+    try {
+      this.rooms = (await api.rooms()).rooms;
+    } catch {
+      this.rooms = [];
+    }
+    const open = this.rooms.filter((r) => r.players < r.max);
+    if (this.roomPick !== 'new' && !open.some((r) => r.id === this.roomPick)) this.roomPick = this.canOpen() ? 'new' : open[0]?.id ?? null;
+    this.draw();
   }
 
   goBack(): void {
@@ -262,9 +377,15 @@ export class StartFlow {
   private pickMp(b: HTMLButtonElement): void {
     const multi = b.dataset.mp === 'multi';
     this.selectMp(multi ? 'multi' : 'solo');
-    if (multi && !this.hooks.session() && !this.hooks.ageOk()) {
-      this.hooks.say(() => t('err.age'));
-      $('mp-age').focus();
+    if (multi && !this.hooks.session()) {
+      if (!this.hooks.ageOk()) {
+        this.hooks.say(() => t('err.age'));
+        $('mp-age').focus();
+        return;
+      }
+      // A new guest joins now, so the next step knows the rooms; a refusal says why where it can be fixed.
+      this.hooks.say(null);
+      void this.hooks.join().then((ok) => ok && this.step === 2 && this.show(3));
       return;
     }
     this.hooks.say(null);
@@ -312,6 +433,15 @@ export class StartFlow {
     eye.setAttribute('aria-label', t(this.reveal ? 'acct.hidePass' : 'acct.showPass'));
     this.loginMsg.textContent = this.loginNote?.() ?? '';
     this.loginMsg.classList.toggle('bad', !!this.loginNote);
+    // Step 3: Zombies picked or not; where alone; the rooms together.
+    const together = this.together();
+    $('mode-start').classList.toggle('z', this.zombiesOn);
+    document.querySelector('#mode-start [data-start-mode=zombies]')!.classList.toggle('selected', this.zombiesOn);
+    $('z-start').classList.toggle('hidden', !this.zombiesOn);
+    $('z-solo').classList.toggle('hidden', together);
+    $('z-together').classList.toggle('hidden', !together);
+    $('spawn').parentElement!.classList.toggle('hidden', this.zombiesOn); // Zombies starts at its own place
+    if (this.zombiesOn && together) this.drawRooms();
     // Play again as before: its line from the labels on the page, in the language showing.
     const ok = this.step === 1 && this.againOk();
     $('again').classList.toggle('hidden', !ok);
@@ -320,11 +450,40 @@ export class StartFlow {
       const spawn = $<HTMLSelectElement>('spawn');
       const parts = [
         t(this.last.mp === 'multi' ? 'start.together' : 'start.alone'),
-        label('#mode-start .seg-btn.selected b'),
-        spawn.selectedOptions[0]?.textContent?.trim() ?? '',
+        this.zombiesOn ? t('game.zombies') : label('#mode-start [data-play].selected b'),
+        (this.zombiesOn && this.last.mp === 'solo' ? this.zPlace : spawn).selectedOptions[0]?.textContent?.trim() ?? '',
         label(`#choose-${this.last.control} b`),
       ];
       $('again-sub').textContent = parts.filter(Boolean).join(' · ');
     }
+  }
+
+  /** The rooms to join (their place and size, never who opened them), opening one for an account, or what else to do. */
+  private drawRooms(): void {
+    const canOpen = this.canOpen();
+    $('z-open').classList.toggle('hidden', !canOpen);
+    $('z-open').querySelector('[data-room=new]')!.setAttribute('aria-pressed', String(this.roomPick === 'new'));
+    $('z-none').classList.toggle('hidden', canOpen || this.rooms.some((r) => r.players < r.max));
+    const key = JSON.stringify([this.rooms, this.roomPick, document.documentElement.lang]);
+    if (key === this.roomsKey) return; // the same: the focus stays where it is
+    this.roomsKey = key;
+    const list = $('z-room-list');
+    const hadFocus = list.contains(document.activeElement) ? (document.activeElement as HTMLElement).dataset.room : null;
+    list.replaceChildren(...this.rooms.map((r) => {
+      const b = document.createElement('button');
+      b.type = 'button';
+      b.className = 'z-room';
+      b.dataset.room = r.id;
+      const full = r.players >= r.max;
+      b.disabled = full;
+      b.setAttribute('aria-pressed', String(this.roomPick === r.id));
+      const title = document.createElement('b');
+      title.textContent = t('zs.roomAt', { place: portalName({ id: r.place, name: r.place }) });
+      const sub = document.createElement('span');
+      sub.textContent = full ? t('room.full') : `${t('room.players', { n: r.players, max: r.max })} · ${r.playing ? t('room.wave', { n: r.wave }) : t('room.waiting')}`;
+      b.append(title, sub);
+      return b;
+    }));
+    if (hadFocus) list.querySelector<HTMLElement>(`[data-room="${CSS.escape(hadFocus)}"]`)?.focus();
   }
 }

@@ -22,7 +22,7 @@ import { Menu } from './ui/menu';
 import { AccountCard } from './ui/account';
 import { KeepRun } from './ui/keepRun';
 import { PadNav } from './ui/padNav';
-import { StartFlow } from './ui/startFlow';
+import { StartFlow, type ZombieStart } from './ui/startFlow';
 
 const $ = (id: string) => document.getElementById(id)!;
 
@@ -269,7 +269,10 @@ function join(name = ($('nick') as HTMLInputElement).value.trim(), field: HTMLEl
         return false;
       }
       logoutDone();
-      setAccount(account);
+      // On the start screen the session for the next steps (playing together begins with the start button); from the
+      // Together tab, playing together at once.
+      if (onStart) setSession(account);
+      else setAccount(account);
       return true;
     })
     .catch((e: unknown) => {
@@ -366,8 +369,16 @@ $('mp-logout').addEventListener('click', () => {
 $('mp-leave').addEventListener('click', () => leave());
 // Keep this run (src/ui/keepRun.ts): a guest's good Zombies run, offered while it waits on the server.
 export const keepRun = new KeepRun(() => session?.role === 'guest');
+/**
+ * What the start screen asks of the world once play begins (src/main.ts): Zombies alone at a place after the
+ * landing, or a Zombies room to play in (joined, or opened just now), with the place to start at.
+ */
+export const startIntent: { zombies: 'solo' | 'room' | 'open' | null; place: string | null; room: string | null } = { zombies: null, place: null, room: null };
 // The three steps (src/ui/startFlow.ts).
 const flow: StartFlow = new StartFlow({
+  join: () => join(),
+  play: () => menu.play,
+  setPlay: (play) => menu.setPlay(play),
   session: () => session,
   begin: () => beginLogin(false),
   logout: () => leave(),
@@ -424,13 +435,43 @@ function nameMissing(): boolean {
 // first as a guest under the name typed, and play starts only if that worked.
 menu.beforeStart = () => {
   if (nameMissing()) return Promise.resolve(false);
+  const z = flow.zombieStart();
+  startIntent.zombies = null;
+  startIntent.place = null;
+  startIntent.room = null;
+  if (z?.kind === 'solo') Object.assign(startIntent, { zombies: 'solo', place: z.place });
   if (!flow.together() || me) return true;
-  if (session) {
-    setAccount(session);
-    return true;
-  }
-  return join();
+  return togetherNow(z);
 };
+/**
+ * Start together: as the session (joining first as a new guest), in the Zombies room picked or a new one of the
+ * account's at its place (server/rooms.mjs: who may open one, and how many, stays the server's to say).
+ */
+async function togetherNow(z: ZombieStart | null): Promise<boolean> {
+  if (!session && !(await join())) return false;
+  const s = session;
+  if (!s) return false;
+  if (z?.kind === 'none') {
+    accountMsg = () => t('zs.pickRoom');
+    accountMsgCalm = false;
+    showAccountText();
+    return false;
+  }
+  if (z?.kind === 'open') {
+    try {
+      const { room } = await api.openRoom(z.place);
+      Object.assign(startIntent, { zombies: 'open', place: room.place, room: room.id });
+    } catch (e) {
+      accountMsg = errorText(e);
+      accountMsgCalm = false;
+      showAccountText();
+      return false;
+    }
+  }
+  if (z?.kind === 'room') Object.assign(startIntent, { zombies: 'room', place: z.place, room: z.id });
+  setAccount(s);
+  return true;
+}
 // Another language: the texts made here that aren't drawn every frame (the modules redraw their own).
 onLang(() => {
   showSound();

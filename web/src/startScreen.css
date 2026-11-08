@@ -248,8 +248,43 @@
 #start-panel .age-check small { display: block; font-size: 13.5px; color: var(--st-chalk-soft); }
 #start-panel .age-check:has(input[aria-invalid='true']) { border-color: var(--bad); }
 
-/* Step 3: one colour and one thick round icon per mode (Explore sky, Paintball magenta, Action sun). */
-#start-panel #mode-start { gap: 10px; }
+/* Step 3: one colour and one thick round icon per mode (Zombies lime, Paintball magenta, Action sun, Explore sky).
+   Zombies first, a little bigger, with its "Try this" tag. Picking it leaves a weapon mode on underneath (the
+   menu's), which then doesn't show as picked (.z). */
+#start-panel #mode-start { display: grid; grid-template-columns: 1.25fr 1fr 1fr 1fr; gap: 10px; }
+#start-panel #mode-start .seg-btn { min-width: 0; }
+#start-panel #mode-start [data-start-mode='zombies'] { --c: var(--st-lime); }
+#start-panel #mode-start.z .seg-btn[data-play].selected { border-color: var(--st-line); background: rgba(20, 29, 58, 0.94); }
+#start-panel #mode-start.z .seg-btn[data-play].selected b { color: var(--st-chalk); }
+#start-panel #mode-start.z .seg-btn[data-play].selected::before, #start-panel #mode-start.z .seg-btn[data-play].selected::after { opacity: 0; }
+.mode-badge {
+  position: absolute; top: 10px; right: 10px; padding: 3px 10px; font-family: var(--st-display); font-size: 13px; font-style: normal;
+  font-weight: 700; line-height: 1.2; color: var(--st-night); background: var(--st-lime); border-radius: var(--st-r-pill);
+  transform: rotate(4deg); box-shadow: 0 2px 0 rgba(0, 0, 0, 0.3);
+}
+#start-panel #mode-start .seg-btn.mode-z.selected .mode-badge { opacity: 0; }
+/* Zombies picked: where alone, or the rooms together. */
+.z-start { margin: -6px 0 16px; padding: 14px; background: rgba(166, 232, 58, 0.07); border: 2px solid rgba(166, 232, 58, 0.35); border-radius: 18px; }
+.z-start.hidden, .z-solo.hidden, .z-together.hidden, .z-open.hidden, .z-none.hidden { display: none; }
+.z-solo { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 8px 16px; }
+.z-solo .note { flex: 1 1 220px; margin: 0; font-size: 15px; }
+.z-head { margin: 0 0 8px; font-family: var(--st-display); font-size: 17px; font-weight: 600; }
+.z-room-list { display: grid; grid-template-columns: repeat(auto-fill, minmax(190px, 1fr)); gap: 8px; }
+.z-room-list:empty { display: none; }
+.z-open { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 14px; margin-top: 8px; }
+.z-room {
+  display: grid; gap: 1px; min-height: 52px; padding: 8px 14px; cursor: pointer; text-align: left; color: var(--st-chalk);
+  background: rgba(20, 29, 58, 0.94); border: 2px solid var(--st-line); border-radius: 14px; transition: border-color 0.15s;
+}
+.z-room b { font-family: var(--st-display); font-size: 16px; font-weight: 600; }
+.z-room span { font-size: 13.5px; color: var(--st-chalk-soft); }
+.z-room[aria-pressed='true'] { border-color: var(--st-lime); background: rgba(31, 42, 82, 0.96); }
+.z-room:disabled { cursor: not-allowed; opacity: 0.5; }
+@media (hover: hover) { .z-room:not(:disabled):hover { border-color: rgba(166, 232, 58, 0.6); } }
+.z-none .note { margin: 0 0 8px; }
+.z-none-btns { display: flex; flex-wrap: wrap; gap: 8px; }
+#start-panel .z-start .mini { min-height: 44px; padding: 8px 16px; font-family: var(--st-display); font-weight: 600; border-radius: var(--st-r-pill); background: var(--st-raised); box-shadow: 0 4px 0 var(--st-edge); }
+#start-panel .z-start .spawn-pick select { min-height: 44px; }
 #start-panel #mode-start .seg-btn { display: grid; justify-items: start; align-content: start; gap: 2px; padding: 14px 14px 16px; }
 #start-panel #mode-start [data-play='explore'] { --c: var(--st-sky); }
 #start-panel #mode-start [data-play='paintball'] { --c: var(--st-magenta); }
@@ -325,6 +360,7 @@
   #start-panel .start-brand .roof { width: 48px; }
   .mp-card { min-height: 0; padding: 16px; }
   .mp-card b { font-size: 23px; }
+  #start-panel #mode-start { grid-template-columns: 1fr 1fr; }
   #start-panel #mode-start .seg-btn { padding: 12px 10px 14px; }
   #start-panel #mode-start .seg-btn b { font-size: 17px; }
   .welcome-name { font-size: 34px; }

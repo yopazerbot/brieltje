@@ -263,9 +263,35 @@
           <h2 class="step-title" id="play-title" data-i18n="start.playTitle">Choose your game</h2>
           <p class="label" data-i18n="start.mode">Game mode</p>
           <div class="seg" id="mode-start">
-            <button class="seg-btn" type="button" data-play="explore"><svg class="mode-ico" viewBox="0 0 40 40" aria-hidden="true"><path d="M5 10l9-4 12 4 9-4v24l-9 4-12-4-9 4z"/><path d="M14 6v24M26 10v24"/></svg><b data-i18n="mode.explore">Explore</b><span data-i18n="mode.exploreSub">Walk around</span></button>
+            <!-- Zombies first, and the one to try (Yoshi, 8 Nov 2026): it is no weapon mode of its own; picking it starts a Zombies
+                 game once play begins, alone at a place or in a room together (src/ui/startFlow.ts). -->
+            <button class="seg-btn mode-z" type="button" data-start-mode="zombies"><svg class="mode-ico" viewBox="0 0 40 40" aria-hidden="true"><path d="M8 18a12 12 0 0 1 24 0v8a4 4 0 0 1-4 4H12a4 4 0 0 1-4-4z"/><circle cx="15" cy="19" r="3"/><circle cx="25" cy="19" r="3"/><path d="M15 30v4M20 30v4M25 30v4"/></svg><b data-i18n="game.zombies">Zombies</b><span data-i18n="zs.sub">Wave after wave</span><em class="mode-badge" data-i18n="zs.try">Try this</em></button>
             <button class="seg-btn" type="button" data-play="paintball"><svg class="mode-ico" viewBox="0 0 40 40" aria-hidden="true"><circle cx="20" cy="20" r="8"/><path d="M20 4v5M20 31v5M4 20h5M31 20h5M9 9l3.5 3.5M27.5 27.5 31 31M31 9l-3.5 3.5M12.5 27.5 9 31"/></svg><b data-i18n="mode.paintball">Paintball</b><span data-i18n="mode.paintballSub">With paint guns · for everyone</span></button>
             <button class="seg-btn" type="button" data-play="action"><svg class="mode-ico" viewBox="0 0 40 40" aria-hidden="true"><path d="M5 12h28v7H17l-3 13H8l2-13H5z"/><path d="M17 19l2 5h-5"/></svg><b data-i18n="mode.action">Action</b><span data-i18n="mode.actionSub">With a pistol</span></button>
+            <button class="seg-btn" type="button" data-play="explore"><svg class="mode-ico" viewBox="0 0 40 40" aria-hidden="true"><path d="M5 10l9-4 12 4 9-4v24l-9 4-12-4-9 4z"/><path d="M14 6v24M26 10v24"/></svg><b data-i18n="mode.explore">Explore</b><span data-i18n="mode.exploreSub">Walk around</span></button>
+          </div>
+          <!-- Zombies picked: where, alone; a room to join or your own to open, together. -->
+          <div id="z-start" class="z-start hidden">
+            <div id="z-solo" class="z-solo">
+              <p class="note" data-i18n="play.zombiesSub">Waves of zombies come for you. How long do you last?</p>
+              <label class="spawn-pick" for="z-place"><span data-i18n="zs.where">Where?</span>
+                <select id="z-place"><option value="house" data-i18n="portal.house" selected>Home</option><option value="bungalow" data-i18n="portal.bungalow">Bungalow</option><option value="church" data-i18n="portal.church">Church</option><option value="molenhoek" data-i18n="portal.molenhoek">Molenhoek</option><option value="molenhoek_mid" data-i18n="portal.molenhoek_mid">Middle of Molenhoek</option><option value="molenhoek_end" data-i18n="portal.molenhoek_end">End of Molenhoek</option><option value="sparrenhof" data-i18n="portal.sparrenhof">Sparrenhof</option></select>
+              </label>
+            </div>
+            <div id="z-together" class="z-together hidden">
+              <p class="z-head" data-i18n="room.title">Zombies rooms</p>
+              <div id="z-room-list" class="z-room-list"></div>
+              <div id="z-open" class="z-open hidden">
+                <button class="z-room" type="button" data-room="new"><b data-i18n="zs.openOwn">Open your own room</b><span data-i18n="zs.openSub">Your friends join you from the list</span></button>
+                <label class="spawn-pick" for="z-open-place"><span data-i18n="room.at">At</span>
+                  <select id="z-open-place"><option value="house" data-i18n="portal.house" selected>Home</option><option value="bungalow" data-i18n="portal.bungalow">Bungalow</option><option value="church" data-i18n="portal.church">Church</option><option value="molenhoek" data-i18n="portal.molenhoek">Molenhoek</option><option value="molenhoek_mid" data-i18n="portal.molenhoek_mid">Middle of Molenhoek</option><option value="molenhoek_end" data-i18n="portal.molenhoek_end">End of Molenhoek</option><option value="sparrenhof" data-i18n="portal.sparrenhof">Sparrenhof</option></select>
+                </label>
+              </div>
+              <div id="z-none" class="z-none hidden">
+                <p class="note" data-i18n="zs.none">No Zombies room is open right now. Only players with an account open one.</p>
+                <div class="z-none-btns"><button id="z-go-solo" class="mini" type="button" data-i18n="zs.goSolo">Play Zombies alone</button><button id="z-go-world" class="mini" type="button" data-i18n="zs.goWorld">Join the others in the open world</button></div>
+              </div>
+            </div>
           </div>
           <div class="label-row">
             <p class="label" data-i18n="start.with">Play with</p>
