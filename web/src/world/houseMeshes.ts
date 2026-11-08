@@ -305,27 +305,35 @@ function insideRings(x: number, z: number, rings: [number, number][][]): boolean
 
 /** A convex polygon clipped to a box (Sutherland-Hodgman). */
 export function clipToBox(poly: [number, number][], x0: number, z0: number, x1: number, z1: number): [number, number][] {
-  const sides: [(p: [number, number]) => boolean, (a: [number, number], b: [number, number]) => [number, number]][] = [
-    [(p) => p[0] >= x0, (a, b) => [x0, a[1] + ((x0 - a[0]) / (b[0] - a[0])) * (b[1] - a[1])]],
-    [(p) => p[0] <= x1, (a, b) => [x1, a[1] + ((x1 - a[0]) / (b[0] - a[0])) * (b[1] - a[1])]],
-    [(p) => p[1] >= z0, (a, b) => [a[0] + ((z0 - a[1]) / (b[1] - a[1])) * (b[0] - a[0]), z0]],
-    [(p) => p[1] <= z1, (a, b) => [a[0] + ((z1 - a[1]) / (b[1] - a[1])) * (b[0] - a[0]), z1]],
-  ];
-  let pts = poly;
-  for (const [keep, cut] of sides) {
-    const out: [number, number][] = [];
-    for (let i = 0; i < pts.length; i++) {
-      const a = pts[(i + pts.length - 1) % pts.length];
-      const b = pts[i];
-      if (keep(b)) {
-        if (!keep(a)) out.push(cut(a, b));
-        out.push(b);
-      } else if (keep(a)) out.push(cut(a, b));
+  let pts = clipSide(poly, 0, x0, 1);
+  if (pts.length >= 3) pts = clipSide(pts, 0, x1, -1);
+  if (pts.length >= 3) pts = clipSide(pts, 1, z0, 1);
+  if (pts.length >= 3) pts = clipSide(pts, 1, z1, -1);
+  return pts.length < 3 ? [] : pts;
+}
+
+/**
+ * One side of clipToBox: keep where coordinate k is at least `bound` (dir 1) or at most it (dir -1). Written out
+ * without closures (it runs for every piece of every cover at load), the arithmetic as it was.
+ */
+function clipSide(pts: [number, number][], k: 0 | 1, bound: number, dir: 1 | -1): [number, number][] {
+  const o = 1 - k;
+  const out: [number, number][] = [];
+  const n = pts.length;
+  for (let i = 0; i < n; i++) {
+    const a = pts[(i + n - 1) % n];
+    const b = pts[i];
+    const inA = dir > 0 ? a[k] >= bound : a[k] <= bound;
+    const inB = dir > 0 ? b[k] >= bound : b[k] <= bound;
+    if (inA !== inB) {
+      const c: [number, number] = [0, 0];
+      c[k] = bound;
+      c[o] = a[o] + ((bound - a[k]) / (b[k] - a[k])) * (b[o] - a[o]);
+      out.push(c);
     }
-    pts = out;
-    if (pts.length < 3) return [];
+    if (inB) out.push(b);
   }
-  return pts;
+  return out;
 }
 
 /** Keep one side of a terrain cell's diagonal, so paving follows both ground triangles. */
@@ -367,14 +375,26 @@ export function hugGround(t: [number, number][], lift: [number, number, number],
     const l2 = ((cz - az) * (x - cx) + (ax - cx) * (z - cz)) / det;
     return [l1, l2, 1 - l1 - l2];
   };
-  const ya = terrain.height(ax, az) + lift[0];
-  const yb = terrain.height(bx, bz) + lift[1];
-  const yc = terrain.height(cx, cz) + lift[2];
   const step = terrain.step;
   const gx0 = terrain.x0 + Math.floor((Math.min(ax, bx, cx) - terrain.x0) / step) * step;
   const gz0 = terrain.z0 + Math.floor((Math.min(az, bz, cz) - terrain.z0) / step) * step;
   const x1 = Math.max(ax, bx, cx);
   const z1 = Math.max(az, bz, cz);
+  const whole: Hug[] = [[ax, az, 1, 0, 0], [bx, bz, 0, 1, 0], [cx, cz, 0, 0, 1]];
+  // Within one square, on one side of its diagonal, the ground is one plane: the triangle lies on it whole (it would
+  // come out as its own one piece below, its corners off the plane by rounding only).
+  if (x1 <= gx0 + step && z1 <= gz0 + step) {
+    const da = ax - gx0 - (az - gz0);
+    const db = bx - gx0 - (bz - gz0);
+    const dc = cx - gx0 - (cz - gz0);
+    if ((da > 0 && db > 0 && dc > 0) || (da < 0 && db < 0 && dc < 0)) {
+      emit(whole);
+      return;
+    }
+  }
+  const ya = terrain.height(ax, az) + lift[0];
+  const yb = terrain.height(bx, bz) + lift[1];
+  const yc = terrain.height(cx, cz) + lift[2];
   const pieces: Hug[][] = [];
   let above = 0; // the most the ground rises over the triangle's plane: it would show through
   let below = 0; // the most it falls away under it: the cover floats a little there
@@ -382,22 +402,24 @@ export function hugGround(t: [number, number][], lift: [number, number, number],
     for (let gz = gz0; gz < z1; gz += step) {
       const box = clipToBox(t, gx, gz, gx + step, gz + step);
       if (box.length < 3) continue;
-      for (const side of [1, -1]) {
+      for (let side = 1; side >= -1; side -= 2) {
         const piece = clipDiagonal(box, gx, gz, side);
         if (piece.length < 3) continue;
-        pieces.push(piece.map(([x, z]): Hug => {
+        const hugs: Hug[] = [];
+        for (const [x, z] of piece) {
           const [l1, l2, l3] = weights(x, z);
           // How far the ground's surface (with the lift) is from the whole triangle's plane here.
           const hug = terrain.height(x, z) + lift[0] * l1 + lift[1] * l2 + lift[2] * l3;
           const d = hug - (ya * l1 + yb * l2 + yc * l3);
           above = Math.max(above, d);
           below = Math.max(below, -d);
-          return [x, z, l1, l2, l3];
-        }));
+          hugs.push([x, z, l1, l2, l3]);
+        }
+        pieces.push(hugs);
       }
     }
   }
-  if (above <= tol && below <= float) emit([[ax, az, 1, 0, 0], [bx, bz, 0, 1, 0], [cx, cz, 0, 0, 1]]);
+  if (above <= tol && below <= float) emit(whole);
   else for (const piece of pieces) emit(piece);
 }
 
