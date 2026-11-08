@@ -1,5 +1,5 @@
 // The Sparrenhof as a Zombies place (Yoshi, 7 Nov 2026): the horde comes out of the wood round the café, and its
-// three outside stairs lead up to its roofs, where the zombies follow (shared/sparrenhof.mjs, shared/arenas.mjs).
+// five outside stairs lead up to its roofs and platforms, where the zombies follow (shared/sparrenhof.mjs, shared/arenas.mjs).
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
@@ -49,12 +49,34 @@ test('the Sparrenhof is a Zombies place in the wood, its portal and café inside
 });
 
 test('the stairs are sized for a person: rise at most 18.5 cm, going 25 cm', () => {
-  assert.equal(cafe.stairs.length, 3);
-  assert.deepEqual(cafe.stairs.map((s) => s.id).sort(), ['forecourt', 'side', 'terrace']);
+  assert.equal(cafe.stairs.length, 5);
+  assert.deepEqual(cafe.stairs.map((s) => s.id).sort(), ['forecourt', 'ridge', 'side', 'terrace', 'upper']);
   for (const s of cafe.stairs) {
     assert.ok(s.rise >= 0.15 && s.rise <= 0.185, `${s.id} rise ${s.rise}`);
     assert.equal(s.going, 0.25);
     assert.ok(s.top.y - s.foot.y > 2.4, `${s.id} climbs to a roof`);
+  }
+});
+
+test('the higher platforms (8 Nov 2026): the upper deck and the ridge by stairs from the annex\'s deck, the walkway between two roofs', () => {
+  const at = (id) => cafe.roofs.find((r) => r.id === id).at;
+  const stair = (id) => cafe.stairs.find((s) => s.id === id);
+  const deck = at('deck');
+  for (const id of ['upper', 'ridge']) {
+    assert.ok(Math.abs(stair(id).foot.y - deck.y) < 0.01, `${id} leaves from the deck`);
+    assert.ok(Math.abs(stair(id).top.y - at(id).y) < 0.01, `${id} arrives on its platform`);
+  }
+  assert.ok(at('upper').y - deck.y > 2.6, 'the upper deck a storey over the deck');
+  assert.ok(Math.max(...cafe.roofs.map((r) => r.at.y)) === at('ridge').y, 'the ridge the highest');
+  assert.ok(at('ridge').y - deck.y > 3.2);
+  // The walkway is level with the roofs it links: a step of a few centimetres, no stair.
+  assert.ok(Math.abs(at('link').y - at('carport').y) < 0.2 && Math.abs(at('link').y - at('walk').y) < 0.2);
+  // From each of them a zombie gets at a player: the out-of-reach rule never warns there.
+  const horde = new Horde(nav, spots, { home: { x: portalOf(arena).out[0], z: portalOf(arena).out[1] }, rand: rng(1) });
+  for (const id of ['upper', 'ridge', 'link']) {
+    const s = horde.reachOf({ name: id, ...at(id) });
+    assert.ok(s?.ok, `${id} in reach`);
+    assert.ok(Math.abs(nav.y(s.node) - at(id).y) < 0.3, `${id} on its own floor`);
   }
 });
 
@@ -171,7 +193,7 @@ test('the first waves come out of the wood and walk out between the trees to the
   assert.ok(closest < 2, `they reach the forecourt (closest ${closest.toFixed(1)} m)`);
 });
 
-for (const id of ['deck', 'walk', 'carport']) {
+for (const id of ['deck', 'walk', 'carport', 'upper', 'ridge', 'link']) {
   test(`a wave follows a player up to the ${id}: no unreachable perch`, () => {
     const rand = rng(17);
     const roof = cafe.roofs.find((r) => r.id === id).at;
