@@ -349,8 +349,8 @@ const SIZE = 256;
 const NEAR = 20;
 /** Metres the eye moves before the probe is drawn again (when nothing else changed). */
 const MOVED = 1;
-/** Seconds after which it is drawn again all the same (the village coming in, the cars, the doors). */
-const STALE = 6;
+/** Seconds after which it is drawn again all the same: what came in or moved since (after a portal, the street round you loads in the first seconds; the cars, the doors). */
+const STALE = 2;
 /** Metres of the world's grid that the glass near the eye is looked up in. */
 const CELL = 10;
 
