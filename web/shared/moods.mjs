@@ -31,7 +31,7 @@ export function isChoice(c) {
 }
 
 /** Milliseconds a change of mood takes in the cycle: the last part of each mood blends into the next. */
-export const BLEND_MS = 60_000;
+export const BLEND_MS = 90_000;
 /** Milliseconds for the ground to dry to about a third after the rain. */
 export const DRY_MS = 240_000;
 /** Milliseconds for the snow to cover everything once it starts falling (on Auto). */
@@ -44,8 +44,8 @@ export const SNOW_MELT_MS = 600_000;
  * The night comes only after dusk, so dusk's weight is the night's too. Snow only in winter (WINTER), and seldom.
  */
 const WEIGHT = { sunny: 6, overcast: 3, rain: 2, dusk: 1.6, night: 1, snow: 1 };
-// Every mood holds 5 minutes (Yoshi, 8 Nov 2026: "make weather change every 5 mins"); before, 10 to 40.
-const MINUTES = { sunny: [5, 5], overcast: [5, 5], rain: [5, 5], dusk: [5, 5], night: [5, 5], snow: [5, 5] };
+// Every mood holds 10 minutes (Yoshi, 8 Nov 2026: "Change weather every 10 mins"; 5 just before, 10 to 40 at first).
+const MINUTES = { sunny: [10, 10], overcast: [10, 10], rain: [10, 10], dusk: [10, 10], night: [10, 10], snow: [10, 10] };
 /**
  * Never straight from the one to the other. A day goes through dusk into the night, never straight from noon to night,
  * and the morning after comes grey (clouds, rain, in winter snow): never from the night straight back to sunny or dusk.

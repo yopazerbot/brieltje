@@ -198,7 +198,7 @@ test('the pace: only 1, 10 or 60, only on Auto, back to 1 on a fixed mood and wh
 });
 
 /** The minutes each mood holds (shared/moods.mjs MINUTES). */
-const HOLDS = { sunny: [5, 5], overcast: [5, 5], rain: [5, 5], dusk: [5, 5], night: [5, 5], snow: [5, 5] }; // every 5 minutes (Yoshi, 8 Nov 2026)
+const HOLDS = { sunny: [10, 10], overcast: [10, 10], rain: [10, 10], dusk: [10, 10], night: [10, 10], snow: [10, 10] }; // every 10 minutes (Yoshi, 8 Nov 2026)
 
 /** Walk a cycle for `days` in steps of `step` ms: check the rules on the way, count the moods that came. */
 function walk(seed, winter, days = 3, step = 30_000) {
@@ -276,7 +276,7 @@ test('snow on Auto: only in winter, and seldom; it builds up slowly while it fal
       assert.ok(mid.snow > 0.95, `white before it stops: ${mid.snow}`);
       const after = c.at(s.until + 5 * 60_000);
       assert.ok(after.mood !== 'snow' && after.snow > 0.4 && after.snow < mid.snow, `melting slowly: ${after.snow}`);
-      // Gone an hour later, unless it snowed again in that hour (with a change every 5 minutes it may).
+      // Gone an hour later, unless it snowed again in that hour (with a change every 10 minutes it may).
       let again = false;
       for (let u = s.until; u <= s.until + 60 * 60_000; u += 60_000) {
         const w = new MoodCycle(seed, 0, { winter: true }).at(u);
