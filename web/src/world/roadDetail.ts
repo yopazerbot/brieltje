@@ -267,7 +267,7 @@ class Parts {
       if (!e.mesh.idx.length) continue;
       const tile = key.split('|')[0];
       const list = by.get(tile) ?? [];
-      list.push({ material: e.material, geometry: e.mesh.geometry(), tag: e.tag, shadow: false, order: e.order, small: e.small });
+      list.push({ material: e.material, geometry: e.mesh.geometry(), tag: e.tag, shadow: false, order: e.order, small: e.small, source: 'road' });
       by.set(tile, list);
     }
     return [...by].map(([key, pieces]) => ({ key, pieces }));

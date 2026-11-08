@@ -114,6 +114,8 @@ export interface Piece {
   shadowOnly?: boolean;
   /** Instanced only: 'near' drawn within TREES metres, 'far' in the rest of the shown tiles (two versions of the same trees) */
   lod?: 'near' | 'far';
+  /** Where it comes from, for the checks (tools/dev/groundOverlap.mjs): 'road' for the streets in detail, else the open data */
+  source?: string;
 }
 
 /** One mesh of a set and where each tile's part of it starts (vertices, indices or instances). */
@@ -199,6 +201,7 @@ export class Tiles {
       mesh.userData.material = p.tag;
       mesh.userData.set = this.sets.length; // 0: the ring, 1: the village
       mesh.name = p.tag;
+      mesh.userData.source = p.source ?? 'open data';
       this.group.add(mesh);
     };
     for (const { piece, per } of merged.values()) {
