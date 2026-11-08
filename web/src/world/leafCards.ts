@@ -2,6 +2,7 @@ import * as THREE from 'three';
 import { leafLight } from './leaves';
 import { sway } from './wind';
 import { ATLAS, Spray } from './cardTrees';
+import { swappedMaterials } from './rayShown';
 
 /**
  * The leaves of the trees and hedges as cards on Medium and up: small flat sprays of leaves, cut out
@@ -708,6 +709,7 @@ export function unpaintedOut(root: THREE.Object3D): () => void {
 export function enlist(cards: THREE.MeshStandardMaterial[], plain: THREE.Material[], swap?: (full: boolean) => void): void {
   for (const m of cards) {
     trees.cards.add(m);
+    swappedMaterials.add(m); // hidden, shots pass it (world/rayShown.ts)
     m.visible = trees.full;
     if (trees.ready && !m.map) {
       m.map = m.userData.bark ? barkAtlas() : leafAtlas();
@@ -716,6 +718,7 @@ export function enlist(cards: THREE.MeshStandardMaterial[], plain: THREE.Materia
   }
   for (const m of plain) {
     trees.plain.add(m);
+    swappedMaterials.add(m);
     m.visible = !trees.full;
   }
   if (swap) {
