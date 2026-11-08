@@ -1612,7 +1612,8 @@ function soloHurt(amount: number): void {
   combat.died(t('char.strongman'), false);
   combat.kill(t('char.strongman'), t('char.you'), false, '');
   setTimeout(() => {
-    if (net.connected || combat.alive) return;
+    // In the Zombies game alone a fall is its end: it puts you back at its start, on the ground (stopSolo).
+    if (net.connected || combat.alive || solo) return;
     respawnAt(OUTSIDE_SPAWNS[Math.floor(Math.random() * OUTSIDE_SPAWNS.length)]);
     if (rules.parachute !== false) beginDrop();
   }, 3000);
@@ -2189,7 +2190,7 @@ const CHUTE_WORDS = new Set(['parachute', 'chute', 'para']);
  */
 function chuteCommand(): void {
   if (rules.parachute === false) return chat.system(() => t('srv.chuteOff'));
-  if (!combat.alive || driving || riding || horses.mounted >= 0 || bikes.mounted || trip || player.chute !== null || solo) return chat.system(() => t('srv.chuteNotNow'));
+  if (!combat.alive || driving || riding || horses.mounted >= 0 || bikes.mounted || trip || player.chute !== null || solo || soloStarting) return chat.system(() => t('srv.chuteNotNow'));
   const ground = player.ground.name;
   if (indoorName(ground, roomNames)) return chat.system(() => t('srv.chuteIndoors'));
   if (net.connected) net.send({ t: 'chute' });

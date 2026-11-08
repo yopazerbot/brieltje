@@ -257,10 +257,55 @@ async function run(c) {
   return result;
 }
 
+/**
+ * After a solo Zombies start at home: /parachute is refused; a strongman's stomps end the game (no drop back in);
+ * the end puts you at the start on the ground; Zombies again from the Play tab, stopped from it, then Explore.
+ */
+async function soloAfterwards(b) {
+  const bad = [];
+  const state = () => b.evaluate("(() => { const p = briel.player, s = briel.zombiesSolo.state(); return { chute: p.chute, air: p.feet - briel.world.groundAt(p.x, p.z, p.feet + 0.3, 0).y, x: p.x, z: p.z, solo: s ? s.arena.id : null, alive: briel.combat.alive, armed: briel.weapon.enabled, kind: briel.games.view.kind }; })()", false);
+  const noDrop = async (what, ms) => {
+    for (let t = 0; t < ms; t += 250) {
+      const s = await state();
+      if (s.chute !== null || s.air > 3) return bad.push(`${what}: in the air (chute ${s.chute}, ${s.air.toFixed(1)} m)`);
+      await sleep(250);
+    }
+  };
+  await b.evaluate("briel.command('/parachute')", false);
+  await noDrop('/parachute in Zombies', 1000);
+  // A strongman stomps where you stand until you are down (alone it is the page that hurts you).
+  await b.evaluate(`(() => { const p = briel.player; for (let i = 0; i < 20 && briel.combat.alive; i++) briel.clowns.onLand(briel.three.sun.position.clone().set(p.x, p.feet, p.z), 'stomp'); })()`, false);
+  if ((await state()).alive) bad.push('a strongman could not hurt you (check the stomp)');
+  await noDrop('down in Zombies', 5000);
+  // The game is over once you are down (after the first wave has come), and its end screen 15 s later.
+  await b.waitFor('!briel.zombiesSolo.state()', 40000).catch(() => bad.push('the game did not end after you went down'));
+  const end = await state();
+  const home = zombiesStart('house');
+  if (!end.alive) bad.push('still down after the end');
+  if (Math.hypot(end.x - home.x, end.z - home.z) > home.r) bad.push('not back at the start after the end');
+  await noDrop('after the end', 2000);
+  // Zombies again from the Play tab, then stopped from it: where you stand, on your feet.
+  await b.evaluate("document.getElementById('zombies-place').value = 'house'; document.getElementById('zombies-btn').click()", false);
+  await b.waitFor("briel.zombiesSolo.state()?.arena.id === 'house'", 20000).catch(() => bad.push('the Play tab did not start Zombies'));
+  await noDrop('Zombies from the Play tab', 2000);
+  await b.evaluate("document.getElementById('zombies-btn').click()", false);
+  await sleep(500);
+  const stopped = await state();
+  if (stopped.solo) bad.push('the Play tab did not stop Zombies');
+  if (stopped.kind === 'zombies') bad.push('the Zombies bar stayed after stopping');
+  await noDrop('after stopping', 1500);
+  // Explore from the Play tab: no weapon.
+  await b.evaluate("document.querySelector('#pause-panel [data-play=explore], [data-play=explore]').click()", false);
+  await sleep(300);
+  if ((await state()).armed) bad.push('a weapon in Explore from the Play tab');
+  return bad;
+}
+
 // ---- The cases.
 const PLACES = ['house', 'bungalow', 'church', 'molenhoek', 'molenhoek_mid', 'molenhoek_end', 'sparrenhof'];
 const cases = [
   ...PLACES.map((place) => ({ name: `zombies-${place}`, who: 'guest', mp: 'solo', mode: 'zombies', place, input: 'kbm', again: place === 'house' || place === 'church' })),
+  { name: 'zombies-house-afterwards', who: 'guest', mp: 'solo', mode: 'zombies', place: 'house', input: 'kbm', again: false, after: soloAfterwards },
   { name: 'explore-church', who: 'guest', mp: 'solo', mode: 'explore', place: 'church', input: 'kbm' },
   { name: 'explore-football', who: 'guest', mp: 'solo', mode: 'explore', place: 'football', input: 'kbm', again: false },
   { name: 'paintball-house', who: 'guest', mp: 'solo', mode: 'paintball', place: 'house', input: 'kbm' },
