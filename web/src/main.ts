@@ -94,7 +94,7 @@ import { World } from './world/collision';
 import { loadEnvironment } from './world/environment';
 import { house, type DipSpec, type Prism, type Ring, type VillageData } from './world/houseData';
 import { loadProps } from './world/props';
-import { blockMaterial, buildHouseMeshes, grassMaterial, groundFamilies, setAnisotropy, surfaceMaterial, tintedMaterial } from './world/houseMeshes';
+import { blockMaterial, buildHouseMeshes, claimCovers, grassMaterial, groundFamilies, setAnisotropy, surfaceMaterial, tintedMaterial } from './world/houseMeshes';
 import { patchFields } from './world/fields';
 import { addDiag, startDiag } from './ui/diag';
 import { IndoorLight } from './world/indoorLight';
@@ -116,12 +116,13 @@ import { Smoke } from './world/smoke';
 import { LOOT_LABELS, Tactics } from './ui/tactics';
 import { ZombieWaveControl } from './ui/zombieWave';
 import { HomeStreet, withoutModelled } from './world/homeStreet';
-import { buildRoadDetail, roadPaint, withRoadDetail } from './world/roadDetail';
+import { buildRoadDetail, buildRoadDetailSoon, roadPaint, withRoadDetail } from './world/roadDetail';
 import { RoadLife } from './world/roadLife';
 import { looseProps, type Mover } from './world/looseProps';
 import { Crash } from './world/crash';
 import { TyreSpray } from './world/tyreSpray';
 import { clearOpenGround, fitStreetModel, loadStreetModel } from './world/streetModel';
+import { claimModelGround, claimModelGroundSoon } from './world/modelGround';
 import { bakeLight, setBakeDetail } from './world/bakedLight';
 import { setWindowDetail, setWindowNight } from './world/windows';
 import { wet, WetMirror, wetOnModel } from './world/wetGround';
@@ -346,9 +347,13 @@ const detail = (x: number, z: number) => detailAt.some(([cx, cz]) => Math.hypot(
 if (house.surroundings) wearLonePatches(house.surroundings); // light patches away from the buildings: worn ground (world/yards.ts)
 const ringData = withoutModelled(house.surroundings ?? { roofs: [], trees: [] });
 const ringTiles = (s: typeof ringData.kept) => [...splitTiles(withRoadDetail(s))].map(([key, t]) => ({ key, pieces: buildTile(t, poles, renderer, house.ground, detail) }));
-tiles.addSet(ringTiles(ringData.kept), true);
 // The streets in detail (world/roadDetail.ts) in place of the plain road surface: the ring's now, the village's with it.
+// One surface per spot (world/groundLayers.ts): the house's and the bungalow's own ground claimed first
+// (world/modelGround.ts), then the ring's covers, then the streets built (cut under both) and the covers last.
+claimModelGround([built.group], house.ground);
+claimCovers(withRoadDetail(ringData.kept).prisms ?? [], house.ground);
 const ringRoads = buildRoadDetail(false, renderer, house.ground);
+tiles.addSet(ringTiles(ringData.kept), true);
 tiles.addSet(ringRoads.tiles, true);
 const homeStreet = new HomeStreet(tiles, renderer, house.ground, ringData.removed, (s) => tiles.addSet(ringTiles(s), true));
 /**
@@ -359,6 +364,7 @@ const homeStreet = new HomeStreet(tiles, renderer, house.ground, ringData.remove
 const HOME_BAKE_MS = 8000;
 const homeBakeReady: Promise<void> = homeStreet.ready
   .then(() => {
+    claimModelGround([homeStreet.group], house.ground); // their own surfaces one over another cut (world/modelGround.ts)
     const until = performance.now() + HOME_BAKE_MS;
     return Promise.race([bakeLight(homeStreet.group, renderer, until), new Promise<void>((r) => setTimeout(r, HOME_BAKE_MS))]);
   })
@@ -3599,6 +3605,8 @@ async function buildVillage(): Promise<void> {
     }
     await between();
   }
+  // Their ground over the village's covers and streets, and each one's own surfaces one over another cut (world/modelGround.ts).
+  await claimModelGroundSoon(models, house.ground, between);
   for (const m of models) snowOnModel(m); // their unbaked outdoor parts take the snow (world/snowCover.ts)
   for (const m of models) wetOnModel(m); // and their streets and yards the rain (world/wetGround.ts)
   for (const m of models) glassOnModel(m); // their windows mirror the street over a room (world/glassLook.ts)
@@ -3612,6 +3620,10 @@ async function buildVillage(): Promise<void> {
   streetBakes = playing.then(() => Promise.all(models.filter(later).map((m) => bakeLight(m, renderer))));
   for (const m of models) clearOpenGround(data, m.userData.clear as [number, number][][] | undefined); // their forecourts free of trees
   const drawn = withRoadDetail(withoutLandmarks(data, models.map((m) => m.userData.landmark as string), models.flatMap((m) => (m.userData.replaces as Ring[] | undefined) ?? [])));
+  // One surface per spot (world/groundLayers.ts): the covers claimed, then the streets in detail built (cut under the
+  // models' ground), then the covers' tiles (cut under both).
+  claimCovers(drawn.prisms ?? [], house.ground);
+  const roads = await buildRoadDetailSoon(true, renderer, house.ground, between);
   await between();
   // The centre's clinkers (the church square and the main street) have a texture of their own, fetched with the village: shaded as the other ground covers.
   groundShade.apply(blockMaterial('pave_grey', renderer).material as THREE.MeshStandardMaterial);
@@ -3632,8 +3644,6 @@ async function buildVillage(): Promise<void> {
     const [i, j] = m.key.split(',').map(Number);
     return i >= 2 && j >= 2;
   };
-  const roads = buildRoadDetail(true, renderer, house.ground);
-  await between();
   // What the village adds to the scene from here on is drawn once its shaders are compiled (below).
   const before = new Set([...scene.children, ...tiles.group.children]);
   for (const set of [made, roads.tiles]) {

@@ -9,6 +9,7 @@ import { textureNormalScale } from './surfaceFinish';
 import { loadTexture, textureReady } from './textureFiles';
 import { snowy } from './snowCover';
 import { clearGlass } from './glassLook';
+import { claimOf, coverRank, groundLayers, markClaimed, RANK, type Pt } from './groundLayers';
 
 /** Real-world width of each texture tile in metres (from Poly Haven, or our own brick). */
 const TILE: Record<string, number> = sizes;
@@ -412,6 +413,9 @@ function drapedGeometry(p: Prism): THREE.BufferGeometry {
   // edges. Those are cut further where the ground isn't flat enough under a piece (hugGround), and only there.
   const precise = p.m === 'pave_grey';
   const hug = HUGGING.has(p.m) || p.m.startsWith('pf:');
+  // One surface per spot (world/groundLayers.ts): the cover's top goes where nothing that beats it lies.
+  const rank = coverRank(p.m);
+  const own = claimOf(p) ?? (rank !== undefined && p.y1 - p.y0 <= 0.15 ? [rank, Infinity] : undefined);
   const cell = precise ? terrain.step : p.d!;
   const pos: number[] = [];
   const uv: number[] = [];
@@ -419,8 +423,12 @@ function drapedGeometry(p: Prism): THREE.BufferGeometry {
   const contour = p.p[0].map(([x, z]) => new THREE.Vector2(x, z));
   const holes = p.p.slice(1).map((r) => r.map(([x, z]) => new THREE.Vector2(x, z)));
   const all = [...contour, ...holes.flat()];
-  for (const face of THREE.ShapeUtils.triangulateShape(contour, holes)) {
-    const t = face.map((k): [number, number] => [all[k].x, all[k].y]);
+  const faces = THREE.ShapeUtils.triangulateShape(contour, holes);
+  for (let fi = 0; fi < faces.length; fi++) {
+    const t = faces[fi].map((k): [number, number] => [all[k].x, all[k].y]);
+    // Each triangle of the outline is a group of its own (claimPrism): one that overlaps an earlier one (an outline
+    // that crosses itself) gives way there.
+    const group = own ? own[1] + fi : 0;
     const xs = t.map((v) => v[0]);
     const zs = t.map((v) => v[1]);
     // On the terrain's grid lines, so the pieces' corners lie on the ground's own corners where they can.
@@ -429,7 +437,8 @@ function drapedGeometry(p: Prism): THREE.BufferGeometry {
     for (let gx = gx0; gx < Math.max(...xs); gx += cell) {
       for (let gz = gz0; gz < Math.max(...zs); gz += cell) {
         const piece = clipToBox(t, gx, gz, gx + cell, gz + cell);
-        const pieces = precise ? [clipDiagonal(piece, gx, gz, 1), clipDiagonal(piece, gx, gz, -1)] : [piece];
+        const halves = precise ? [clipDiagonal(piece, gx, gz, 1), clipDiagonal(piece, gx, gz, -1)] : [piece];
+        const pieces = own ? halves.flatMap((h) => (h.length < 3 ? [] : groundLayers.cut(h, own[0], group))) : halves;
         for (const polygon of pieces) {
           for (let k = 1; k + 1 < polygon.length; k++) {
             let [a, b, c] = [polygon[0], polygon[k], polygon[k + 1]];
@@ -489,6 +498,40 @@ function drapedGeometry(p: Prism): THREE.BufferGeometry {
   g.setAttribute('uv', new THREE.Float32BufferAttribute(uv, 2));
   g.computeVertexNormals();
   return solidNormals(g); // cutting along the grid leaves slivers with no area
+}
+
+/**
+ * Claim the low covers among `prisms` (the open data's paving, roads, gravel and fields) on the plan, each by its
+ * material's rank (world/groundLayers.ts), before any of them is built: where two overlap, the one that beats the
+ * other is drawn and the other is cut away there. Claimed in the order given, so of one rank the first wins.
+ */
+export function claimCovers(prisms: Prism[], ground: number): void {
+  for (const p of prisms) {
+    if (claimOf(p)) continue;
+    const rank = coverRank(p.m);
+    if (p.d !== undefined) {
+      if (rank !== undefined && p.y1 - p.y0 <= 0.15) claimPrism(p, rank);
+      continue;
+    }
+    // A low block standing on the ground (a stone terrace, a pool's water): over the covers round it.
+    const [x, z] = p.p[0][0];
+    const top = p.y1 - ground - terrain.height(x, z);
+    if (p.y1 - p.y0 < 0.3 && top > -0.05 && top < 0.2) claimPrism(p, RANK.block);
+  }
+}
+
+/**
+ * Claim a block's outline on the plan for a surface of `rank` (world/groundLayers.ts), each of its triangles a group of
+ * its own, in the order drapedGeometry builds them: an outline that crosses itself overlaps itself there.
+ */
+export function claimPrism(p: Prism, rank: number): void {
+  const contour = p.p[0].map(([x, z]) => new THREE.Vector2(x, z));
+  const holes = p.p.slice(1).map((r) => r.map(([x, z]) => new THREE.Vector2(x, z)));
+  const all = [...contour, ...holes.flat()];
+  const faces = THREE.ShapeUtils.triangulateShape(contour, holes);
+  const first = groundLayers.group(faces.length);
+  faces.forEach((face, k) => groundLayers.claim(face.map((i): Pt => [all[i].x, all[i].y]), rank, first + k));
+  markClaimed(p, rank, first);
 }
 
 /** A block's geometry: extruded, or draped over the relief (p.d). UVs in metres. */

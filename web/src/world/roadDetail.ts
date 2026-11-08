@@ -1,7 +1,8 @@
 import * as THREE from 'three';
 import data from '../data/roadDetail.json';
 import type { Prism, Surroundings } from './houseData';
-import { blockMaterial, hugGround, prismGeometry } from './houseMeshes';
+import { GroundLayers, groundLayers, RANK, runNow, runSoon, weightsIn, type Pt } from './groundLayers';
+import { blockMaterial, claimPrism, hugGround, prismGeometry } from './houseMeshes';
 import { solidNormals } from './normals';
 import { terrain } from './terrain';
 import { tileKey, type Piece } from './tiles';
@@ -170,6 +171,9 @@ const KERB = 0.12; // m: the kerb's width (tools/road_detail.py measures the pav
 const LIFT = 0.006; // m: the paint, joints and iron above the surface they lie on
 const PATCH_LIFT = 0.03; // m: the bays and the forecourt above the village's paving (its blocks follow the relief more coarsely)
 const COVER_ORDER = 0.5; // drawn with the other ground covers (world/surroundings.ts)
+const SEAM = 100; // m: how far past the ring's edge the ring's set claims the village's strips (stripPiece)
+/** Each part of a street's group (world/groundLayers.ts) by the street and the part: the same in the ring's set and the village's */
+const STRIP_GROUPS = new Map<string, number>();
 const PIECE = 10; // stations in one piece of a strip (25 m): each piece goes into the tile it lies in
 const AREA = 540; // m round the plot's middle: the ring's (loaded at the start); beyond, the village's
 const CX = 4.45;
@@ -241,6 +245,40 @@ class Mesh {
 
 /** A strip's corner before it is laid on the relief: x, z, lift above the relief, u, v, r, g, b. */
 type Corner = [number, number, number, number, number, number, number, number];
+
+/**
+ * A strip's triangles with no two over each other. On a bend tighter than the strip is wide its inner edge runs back on
+ * itself: the triangles there turn the other way round on the plan and lie over their neighbours. Those are left out,
+ * and where the rest still lie over each other the later gives way (only in such a strip: it is rare).
+ */
+function unfolded(tris: [Corner, Corner, Corner][]): [Corner, Corner, Corner][] {
+  const turn = ([p, q, t]: [Corner, Corner, Corner]) => (q[0] - p[0]) * (t[1] - p[1]) - (q[1] - p[1]) * (t[0] - p[0]);
+  const way = tris.reduce((s, t) => s + turn(t), 0);
+  if (tris.every((t) => turn(t) * way >= 0)) return tris;
+  const kept = tris.filter((t) => turn(t) * way >= 0);
+  const local = new GroundLayers();
+  const plan = (t: [Corner, Corner, Corner]): Pt[] => t.map((c): Pt => [c[0], c[1]]);
+  kept.forEach((t, i) => local.claim(plan(t), 1 + RANK.field, i));
+  const out: [Corner, Corner, Corner][] = [];
+  kept.forEach((tri, i) => {
+    const t = plan(tri);
+    for (const piece of local.cut(t, 1 + RANK.field, i)) {
+      const cs = piece.map(([x, z]) => corner(tri[0], tri[1], tri[2], t, x, z));
+      for (let k = 1; k + 1 < cs.length; k++) out.push([cs[0], cs[k], cs[k + 1]]);
+    }
+  });
+  return out;
+}
+
+/** The corner at (x, z) in a strip's triangle a, b, c (t on the plan): one of them, or a new one between. */
+function corner(a: Corner, b: Corner, c: Corner, t: Pt[], x: number, z: number): Corner {
+  const [l1, l2, l3] = weightsIn(t, x, z);
+  if (l1 > 1 - 1e-9) return a;
+  if (l2 > 1 - 1e-9) return b;
+  if (l3 > 1 - 1e-9) return c;
+  const v = (i: number) => a[i] * l1 + b[i] * l2 + c[i] * l3;
+  return [x, z, v(2), v(3), v(4), v(5), v(6), v(7)];
+}
 
 /** The pieces being built, by tile and material. */
 class Parts {
@@ -332,6 +370,17 @@ class Builder {
   private c = new THREE.Color();
   /** Each strip corner's vertex, once made (a strip's corners belong to one mesh) */
   private corners = new WeakMap<Corner, number>();
+  /**
+   * One surface per spot (world/groundLayers.ts): what the strips being built now are (their rank) and whose (a part of
+   * a street, a fill, the plateau: its group). Every strip's triangles are claimed as they are made and laid only once
+   * all are in (finishing), each cut to what no surface that beats it claims.
+   */
+  private rank: number = RANK.carriageway;
+  private group = 0;
+  /** The street (or part) being built: its strips' keys in STRIP_GROUPS */
+  private runKey = '';
+  private deferred: { mesh: Mesh; a: Corner; b: Corner; c: Corner; rank: number; group: number }[] = [];
+  private later: (() => void)[] = [];
 
   constructor(village: boolean, private renderer: THREE.WebGLRenderer, private ground: number, paint: THREE.MeshStandardMaterial) {
     this.parts = new Parts(village);
@@ -368,15 +417,29 @@ class Builder {
   strip(f: Frame, k0: number, k1: number, o0: (k: number) => number, o1: (k: number) => number, surface: Surface | 'kerb',
     lift: (k: number, o: number) => number, col: (k: number, o: number, out: THREE.Color) => THREE.Color, cols = [0, 1], scale = 1,
     tag?: string, order = COVER_ORDER): void {
+    // A group for each part of a street (its carriageway, its gutters, kerbs, pavements, verges): where two of one rank
+    // overlap (a gutter and the carriageway where a kerb starts, two streets at a junction) the one made first keeps the
+    // spot. The parts of one kind along a street (its slabs) only touch: one group, so they don't test each other. The
+    // same groups in the ring's set and the village's.
+    const key = `${this.runKey}|${surface}|${tag ?? ''}|${this.rank}`;
+    let group = STRIP_GROUPS.get(key);
+    if (group === undefined) STRIP_GROUPS.set(key, (group = groundLayers.group()));
+    this.group = group;
     if (k1 <= k0) return;
-    if (k1 - k0 > PIECE) {
-      // In pieces, each in the tile (and the set) where it lies.
-      for (let a = k0; a < k1; a += PIECE) this.strip(f, a, Math.min(k1, a + PIECE), o0, o1, surface, lift, col, cols, scale, tag, order);
-      return;
-    }
+    // In pieces, each in the tile (and the set) where it lies.
+    for (let a = k0; a < k1; a += PIECE) this.stripPiece(f, a, Math.min(k1, a + PIECE), o0, o1, surface, lift, col, cols, scale, tag, order);
+  }
+
+  /** A piece of a strip (strip): at most PIECE stations, in the tile where its middle lies. */
+  stripPiece(f: Frame, k0: number, k1: number, o0: (k: number) => number, o1: (k: number) => number, surface: Surface | 'kerb',
+    lift: (k: number, o: number) => number, col: (k: number, o: number, out: THREE.Color) => THREE.Color, cols: number[], scale: number,
+    tag: string | undefined, order: number): void {
     const mid = (k0 + k1) >> 1;
-    if (!this.parts.mine(f.x[mid], f.z[mid])) return;
-    const mesh = this.parts.get(f.x[mid], f.z[mid], this.material(surface), tag ?? (surface === 'kerb' ? 'concrete' : TAG[surface]), order);
+    const mine = this.parts.mine(f.x[mid], f.z[mid]);
+    // The village's strips near the ring's edge are claimed from the ring already (not built there): the ring's covers
+    // that reach over the edge give way to them as to the ring's own.
+    if (!mine && (this.parts.village || Math.hypot(f.x[mid] - CX, f.z[mid] - CZ) > AREA + SEAM)) return;
+    const mesh = mine ? this.parts.get(f.x[mid], f.z[mid], this.material(surface), tag ?? (surface === 'kerb' ? 'concrete' : TAG[surface]), order) : null;
     // The strip's corners: where they lie, how far above the relief, the texture and the colour.
     const vs: Corner[] = [];
     for (let k = k0; k <= k1; k++) {
@@ -390,13 +453,56 @@ class Builder {
       }
     }
     const w = cols.length;
+    const tris: [Corner, Corner, Corner][] = [];
     for (let r = 0; r < k1 - k0; r++) {
       for (let j = 0; j < w - 1; j++) {
         const a = r * w + j;
-        this.drape(mesh, vs[a], vs[a + 1], vs[a + w + 1]);
-        this.drape(mesh, vs[a], vs[a + w + 1], vs[a + w]);
+        tris.push([vs[a], vs[a + 1], vs[a + w + 1]], [vs[a], vs[a + w + 1], vs[a + w]]);
       }
     }
+    if (!mesh) {
+      for (const [p, q, t] of tris) groundLayers.claim([[p[0], p[1]], [q[0], q[1]], [t[0], t[1]]], this.rank, this.group);
+      return;
+    }
+    for (const [p, q, t] of unfolded(tris)) this.drape(mesh, p, q, t);
+  }
+
+  /** A triangle of a strip: claimed now, laid once every surface is claimed (finishing). */
+  drape(mesh: Mesh, a: Corner, b: Corner, c: Corner): void {
+    groundLayers.claim([[a[0], a[1]], [b[0], b[1]], [c[0], c[1]]], this.rank, this.group);
+    this.deferred.push({ mesh, a, b, c, rank: this.rank, group: this.group });
+  }
+
+  /** Strips of another rank: `draw` makes them, then the rank is as it was. */
+  as(rank: number, draw: () => void): void {
+    const was = this.rank;
+    this.rank = rank;
+    draw();
+    this.rank = was;
+  }
+
+  /** Lay every strip's triangle (drape) cut to what no surface that beats it claims, then the fills and patches: in steps. */
+  *finishing(): Generator<void, void> {
+    for (let n = 0; n < this.deferred.length; n++) {
+      const d = this.deferred[n];
+      if (n % 1000 === 999) yield;
+      const t: Pt[] = [[d.a[0], d.a[1]], [d.b[0], d.b[1]], [d.c[0], d.c[1]]];
+      const pieces = groundLayers.cut(t, d.rank, d.group);
+      if (pieces.length === 1 && pieces[0] === t) {
+        this.lay(d.mesh, d.a, d.b, d.c);
+        continue;
+      }
+      for (const piece of pieces) {
+        const cs = piece.map(([x, z]) => corner(d.a, d.b, d.c, t, x, z));
+        for (let i = 1; i + 1 < cs.length; i++) this.lay(d.mesh, cs[0], cs[i], cs[i + 1]);
+      }
+    }
+    this.deferred = [];
+    for (let n = 0; n < this.later.length; n++) {
+      this.later[n]();
+      if (n % 50 === 49) yield;
+    }
+    this.later = [];
   }
 
   /**
@@ -405,7 +511,7 @@ class Builder {
    * its own corners, every 2.5 m along and a few times across, cut through the ground's creases: on a bump the grass
    * rose through the road in long green lenses.
    */
-  drape(mesh: Mesh, a: Corner, b: Corner, c: Corner): void {
+  lay(mesh: Mesh, a: Corner, b: Corner, c: Corner): void {
     hugGround([[a[0], a[1]], [b[0], b[1]], [c[0], c[1]]], [a[2], b[2], c[2]], (piece) => {
       const ids = piece.map(([x, z, l1, l2, l3]) => {
         // A corner of the strip itself: one vertex, shared with the triangles round it.
@@ -470,11 +576,24 @@ class Builder {
     if (!this.parts.mine(mx, mz)) return;
     const mesh = this.parts.get(mx, mz, this.paint, 'road', COVER_ORDER + 0.05, true);
     const c = this.c.set(tint);
-    const ids = pts.map(([s, o]) => {
+    // Its corners: x, z, the lift, s and o.
+    const vs = pts.map(([s, o]) => {
       const [x, z] = f.point(s, o);
-      return mesh.vertex(x, this.y(x, z, lift(s, o) + LIFT), z, s, o, c);
+      return [x, z, lift(s, o) + LIFT, s, o];
     });
-    for (let i = 1; i + 1 < ids.length; i++) mesh.tri(ids[0], ids[i], ids[i + 1]);
+    for (let i = 1; i + 1 < vs.length; i++) {
+      const tri = [vs[0], vs[i], vs[i + 1]];
+      const t = tri.map((v): Pt => [v[0], v[1]]);
+      // Not on the ground our models lay over the street (it would float over theirs where theirs lies lower).
+      for (const piece of groundLayers.cut(t, RANK.paint, Infinity)) {
+        const ids = piece.map(([x, z]) => {
+          const w = weightsIn(t, x, z);
+          const v = (k: number) => tri[0][k] * w[0] + tri[1][k] * w[1] + tri[2][k] * w[2];
+          return mesh.vertex(x, this.y(x, z, v(2)), z, v(3), v(4), c);
+        });
+        for (let k = 1; k + 1 < ids.length; k++) mesh.tri(ids[0], ids[k], ids[k + 1]);
+      }
+    }
   }
 
   /**
@@ -508,6 +627,7 @@ class Builder {
   // ---------------------------------------------------------------- a street
 
   run(r: Run): void {
+    this.runKey = `run ${DETAIL.runs.indexOf(r)}`;
     const pf = PROFILES[r.pf] ?? PROFILES.asphalt;
     const f = new Frame(r.p, r.s0);
     const n = f.n;
@@ -518,8 +638,9 @@ class Builder {
     const qa = (k: number) => r.q[2 * k];
     const qb = (k: number) => r.q[2 * k + 1];
     const road = this.road;
+    this.rank = RANK.carriageway;
     if (pf.path) {
-      this.path(f, r, pf);
+      this.as(RANK.footpath, () => this.path(f, r, pf));
       return;
     }
     // The gutter is part of the carriageway: the slabs or the asphalt stop at it.
@@ -628,7 +749,7 @@ class Builder {
               this.riser(f, ka, kb, t1, () => this.ground, (k) => road + h(k), pf.kerb.tint, true);
               continue;
             }
-            this.strip(f, ka, kb, side === 0 ? p0 : p1, side === 0 ? p1 : p0, pf.walk!.m, walkLift, (k, _o, out) => out.copy(walkTint).multiplyScalar(0.95 + 0.08 * wave(f.s[k], 6, seed + side)), [0, 1], 1, 'pave_light');
+            this.as(RANK.pavement, () => this.strip(f, ka, kb, side === 0 ? p0 : p1, side === 0 ? p1 : p0, pf.walk!.m, walkLift, (k, _o, out) => out.copy(walkTint).multiplyScalar(0.95 + 0.08 * wave(f.s[k], 6, seed + side)), [0, 1], 1, 'pave_light'));
             this.riser(f, ka, kb, p1, () => this.ground, outer, pf.walk!.tint, true);
             for (let c = ka; c < kb; c += 8) this.block(f, c, Math.min(kb, c + 8), side === 0 ? t0 : p1, side === 0 ? p1 : t0, h(c) - 0.02);
           }
@@ -658,6 +779,8 @@ class Builder {
           const apron = pf.apron ? new THREE.Color(pf.apronTint ?? pf.walk?.tint ?? PAVERS) : (pf.core ? edgeTint : base).clone().multiplyScalar(0.94);
           if (q(k0) > st || q(k1) > st) this.strip(f, k0, k1, side === 0 ? e0 : e1, side === 0 ? e1 : e0, apronSurface, flatLift, (_k, _o, out) => out.copy(apron), [0, 1]);
           if (pf.shoulder) {
+            // The verge: under any paving the open data has there (a drive comes out on the road).
+            this.rank = RANK.verge;
             const sh = pf.shoulder;
             const s0 = (k: number) => sign * (w(k) + reach(k));
             const s1 = (k: number) => sign * (w(k) + reach(k) + sh.w * (0.75 + 0.5 * hash(k, side, seed)));
@@ -673,6 +796,7 @@ class Builder {
               const t = Math.min(1, Math.abs(Math.abs(o) - Math.abs(s1(k))) / 0.3);
               return out.copy(tint).lerp(VERGE, 0.45 + 0.55 * t).multiplyScalar(0.92 + 0.12 * hash(k, side + 9, seed));
             }, [0, 1], 1, 'gravel');
+            this.rank = RANK.carriageway;
           }
         }
       }
@@ -753,7 +877,14 @@ class Builder {
     cz /= r0.length / 2;
     if (!this.parts.mine(cx, cz)) return;
     const p: [number, number][][] = rings.map((r) => Array.from({ length: r.length / 2 }, (_, i) => [r[2 * i], r[2 * i + 1]] as [number, number]));
-    const g = prismGeometry({ m, y0: this.road - 0.06, y1: this.road, p, d: 4 });
+    // Claimed now with the streets, built once all are in (finishing): under the streets that cross it.
+    const block: Prism = { m, y0: this.road - 0.06, y1: this.road, p, d: 4 };
+    claimPrism(block, RANK.carriageway);
+    this.later.push(() => this.fillMesh(m, block, cx, cz));
+  }
+
+  fillMesh(m: string, block: Prism, cx: number, cz: number): void {
+    const g = prismGeometry(block);
     let material: THREE.Material;
     let tag = 'road';
     let tint: THREE.Color;
@@ -793,7 +924,14 @@ class Builder {
     cz /= r0.length / 2;
     if (!this.parts.mine(cx, cz)) return;
     const p: [number, number][][] = rings.map((r) => Array.from({ length: r.length / 2 }, (_, i) => [r[2 * i], r[2 * i + 1]] as [number, number]));
-    const g = prismGeometry({ m: 'pave_grey', y0: this.road + PATCH_LIFT - 0.01, y1: this.road + PATCH_LIFT, p, d: 4 });
+    // Over the paving it lies on, which gives way under it (world/groundLayers.ts); built in finishing.
+    const block: Prism = { m: 'pave_grey', y0: this.road + PATCH_LIFT - 0.01, y1: this.road + PATCH_LIFT, p, d: 4 };
+    claimPrism(block, RANK.plateau);
+    this.later.push(() => this.patchMesh(t, block, cx, cz));
+  }
+
+  patchMesh(t: string, block: Prism, cx: number, cz: number): void {
+    const g = prismGeometry(block);
     const tint = new THREE.Color(t);
     const mesh = this.parts.get(cx, cz, this.material('clinker'), 'pave_grey', COVER_ORDER);
     const pos = g.attributes.position;
@@ -819,6 +957,8 @@ class Builder {
     const grey = new THREE.Color('#8e8d8a');
     const red = new THREE.Color('#94564a');
     const isRed = (k: number) => f.x[k] >= s.red[0] && f.x[k] <= s.red[1];
+    this.runKey = 'school';
+    this.rank = RANK.plateau; // over the street's carriageway, which gives way under it
     for (const [k0, k1, r] of spans(f.n, isRed)) {
       const tint = r ? red : grey;
       this.strip(f, k0, k1, wb, wa, 'clinker', (k) => lift(k), (k, _o, out) => out.copy(tint).multiplyScalar(0.96 + 0.08 * hash(k, 5)), [0, 0.5, 1], 1, 'pave_grey', COVER_ORDER - 0.05);
@@ -828,6 +968,7 @@ class Builder {
     this.riser(f, 0, f.n - 1, wb, () => this.road - 0.02, lift, '#7d7c79', true);
     const inner = (k: number) => f.s[k] > RAMP && end - f.s[k] > RAMP;
     for (const [k0, k1, top] of spans(f.n, inner)) if (top) this.block(f, k0, k1, wb, wa, TOP - 0.01, 'pave_grey');
+    this.rank = RANK.carriageway;
     for (const z of zebras) {
       // Bands along the street, half a metre wide and as far apart, three metres long, across the whole carriageway.
       let best = 0;
@@ -887,12 +1028,25 @@ export const roadPaint = new THREE.MeshStandardMaterial({ vertexColors: true, ro
  * the village's (when it loads). `ground`: the lawn's height over the relief.
  */
 export function buildRoadDetail(village: boolean, renderer: THREE.WebGLRenderer, ground: number): { tiles: { key: string; pieces: Piece[] }[]; blocks: Prism[] } {
+  return runNow(building(village, renderer, ground));
+}
+
+/** The same between frames (runSoon): the village's, built while play goes on. */
+export function buildRoadDetailSoon(village: boolean, renderer: THREE.WebGLRenderer, ground: number, between: () => Promise<unknown>): Promise<{ tiles: { key: string; pieces: Piece[] }[]; blocks: Prism[] }> {
+  return runSoon(building(village, renderer, ground), between);
+}
+
+function* building(village: boolean, renderer: THREE.WebGLRenderer, ground: number): Generator<void, { tiles: { key: string; pieces: Piece[] }[]; blocks: Prism[] }> {
   if (OFF) return { tiles: [], blocks: [] };
   const b = new Builder(village, renderer, ground, roadPaint);
-  for (const r of DETAIL.runs) b.run(r);
+  for (const r of DETAIL.runs) {
+    b.run(r);
+    yield;
+  }
   for (const fl of DETAIL.fills) b.fill(fl.m, fl.r);
   if (village) b.school(DETAIL.school, DETAIL.zebras);
   for (const p of DETAIL.patches ?? []) b.patch(p.t, p.r);
   for (const t of DETAIL.teeth) b.teeth(t);
+  yield* b.finishing();
   return { tiles: b.parts.tiles(), blocks: b.parts.blocks };
 }
