@@ -47,15 +47,17 @@ if (matchMedia('(pointer: coarse)').matches) {
 // the in-game menu's header, the switch in its Settings, or Shift+M.
 const soundBtn = $('sound-btn');
 const menuSound = $('menu-sound');
+const startSound = $('start-sound'); // the start screen's, in its panel's header
 const setSound = $('set-sound') as HTMLInputElement; // the switch in the menu's Settings, under Sound
 function showSound(): void {
   setSound.checked = sound.enabled;
   // Icon and word apart: a phone shows only the icon (style.css).
-  soundBtn.children[0].textContent = sound.enabled ? '🔊' : '🔇';
   soundBtn.children[1].textContent = t(sound.enabled ? 'btn.sound' : 'btn.noSound');
   soundBtn.classList.toggle('off', !sound.enabled);
-  menuSound.classList.toggle('off', !sound.enabled); // the crossed-out speaker
-  menuSound.setAttribute('aria-pressed', String(sound.enabled));
+  for (const b of [menuSound, startSound]) {
+    b.classList.toggle('off', !sound.enabled); // the crossed-out speaker
+    b.setAttribute('aria-pressed', String(sound.enabled));
+  }
 }
 function toggleSound(): void {
   sound.set(!sound.enabled);
@@ -66,6 +68,7 @@ soundBtn.addEventListener('click', () => {
   soundBtn.blur();
 });
 menuSound.addEventListener('click', toggleSound);
+startSound.addEventListener('click', toggleSound);
 setSound.addEventListener('change', () => setSound.checked !== sound.enabled && toggleSound());
 window.addEventListener('keydown', (e) => {
   // By the letter on the key, not its place (AZERTY); M alone opens the map (main.ts).
@@ -78,6 +81,7 @@ showSound();
 // (manifest.webmanifest), so the button says how. Started from the home screen, no button.
 const fullBtn = $('full-btn');
 const menuFull = $('menu-full'); // the same in the in-game menu's header
+const startFull = $('start-full'); // and in the start screen's panel
 const fullHint = $('full-hint');
 const fsDoc = document as Document & { webkitFullscreenElement?: Element | null; webkitFullscreenEnabled?: boolean; webkitExitFullscreen?: () => void };
 const fsRoot = document.documentElement as HTMLElement & { webkitRequestFullscreen?: () => void };
@@ -87,12 +91,16 @@ const isFull = () => !!(document.fullscreenElement || fsDoc.webkitFullscreenElem
 if (matchMedia('(pointer: coarse)').matches && !fromHomeScreen) {
   fullBtn.classList.remove('hidden');
   menuFull.classList.remove('hidden');
+  startFull.classList.remove('hidden');
 }
 function showFull(): void {
-  fullBtn.children[0].textContent = isFull() ? '⤡' : '⤢';
+  fullBtn.classList.toggle('on', isFull());
   fullBtn.children[1].textContent = t(isFull() ? 'btn.exitFull' : 'btn.full');
-  menuFull.title = t(isFull() ? 'btn.exitFull' : 'btn.full');
-  menuFull.setAttribute('aria-label', menuFull.title);
+  for (const b of [menuFull, startFull]) {
+    b.title = t(isFull() ? 'btn.exitFull' : 'btn.full');
+    b.setAttribute('aria-label', b.title);
+    b.classList.toggle('on', isFull());
+  }
 }
 showFull();
 fullBtn.addEventListener('click', () => {
@@ -100,6 +108,7 @@ fullBtn.addEventListener('click', () => {
   toggleFull();
 });
 menuFull.addEventListener('click', toggleFull);
+startFull.addEventListener('click', toggleFull);
 function toggleFull(): void {
   if (!canFill) {
     fullHint.classList.toggle('hidden');

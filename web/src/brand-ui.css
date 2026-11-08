@@ -186,3 +186,9 @@ body.paintball #hud #modebar { border-bottom-color: var(--mode-paintball); }
 }
 @keyframes brand-pop { 0% { transform: scale(0.94); } 60% { transform: scale(1.03); } 100% { transform: scale(1); } }
 @keyframes brand-splat { 0% { transform: scale(0.3) rotate(-30deg); opacity: 0; } 100% { transform: scale(1) rotate(0); opacity: 0.9; } }
+/* The loose sound and full-screen buttons while playing: the same drawn icons as the menu's, not emoji. */
+#sound-btn .ico svg, #full-btn .ico svg { width: 20px; height: 20px; vertical-align: middle; fill: none; stroke: currentColor; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
+#sound-btn .ico-off, #sound-btn.off .ico-on { display: none; }
+#sound-btn.off .ico-off { display: inline; }
+#sound-btn, #full-btn { display: inline-flex; align-items: center; gap: 6px; border-radius: var(--brand-r-pill, 999px); font-family: var(--brand-display, inherit); }
+body.touch #sound-btn, body.touch #full-btn { display: inline-grid; place-items: center; border-radius: 50%; }

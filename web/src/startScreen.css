@@ -400,3 +400,50 @@
   #start-panel .start-choices .choice { min-height: 50px; }
   #start-panel .invite { margin-top: 10px; }
 }
+/* A phone held sideways, the header's row: the logo, Back and the steps, and the languages must share one line
+   (Yoshi, 8 Nov 2026: "Ui on landscape mobile looks weird"). Back shows its arrow only (its word stays for screen
+   readers), the dots without the step's name, no Beta tag, a smaller language switch; Alone and Together as low
+   cards with the icon beside the words, so the step fits the height. */
+@media (max-height: 520px) {
+  .step-back { gap: 0; padding: 0 12px; }
+  .step-back span {
+    position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap;
+  }
+  .step-dots li.on .dot-l, .step-dots .dot-l { display: none; }
+  .step-dots li + li::before { width: 12px; }
+  #start-panel .brand-line .beta { display: none; }
+  #start-panel .lang-pick .textbtn { min-height: 38px; padding: 4px 12px; font-size: 14px; }
+  .mp-card {
+    grid-template-columns: auto 1fr; column-gap: 12px; row-gap: 0; align-items: center; justify-items: start;
+  }
+  .mp-card .card-ico { grid-row: span 2; width: 32px; height: 32px; margin: 0; }
+  .mp-card b { font-size: 20px; }
+  .mp-card span { font-size: 14px; }
+}
+/* Held sideways already: the note that says to hold it sideways has nothing to tell. */
+@media (orientation: landscape) and (max-height: 520px) {
+  #start-panel #mobile-note { display: none; }
+}
+/* Sound and full screen in the header, beside the languages (src/start.ts): round, in the panel's colours. While the
+   start screen is up, the loose buttons for playing stay away. */
+#start-panel .start-tools { display: flex; flex: none; align-items: center; gap: 8px; }
+#start-panel .start-tools .icon-btn {
+  display: inline-grid; place-items: center; width: 44px; height: 44px; padding: 0; cursor: pointer;
+  color: var(--st-chalk); background: rgba(13, 20, 48, 0.7); border: 1px solid var(--st-line); border-radius: 50%;
+}
+#start-panel .start-tools .icon-btn.hidden { display: none; }
+#start-panel .start-tools .icon-btn:hover { background: var(--st-raised); }
+#start-panel .start-tools .icon-btn:focus-visible { outline: 3px solid var(--st-sky); outline-offset: 2px; }
+#start-panel .start-tools .icon-btn.off { color: var(--st-chalk-soft); }
+body:has(#overlay:not(.hidden) > #start-panel:not(.hidden)) #sound-btn,
+body:has(#overlay:not(.hidden) > #start-panel:not(.hidden)) #full-btn { display: none; }
+/* A narrow screen: the languages under the logo's row would crowd it; they stay, the icons a little smaller. */
+@media (max-width: 520px) {
+  #start-panel .start-tools { gap: 6px; }
+  #start-panel .start-tools .icon-btn { width: 40px; height: 40px; }
+}
+/* A phone held sideways: the header has the logo and these buttons; the steps sit at the right of the step's title. */
+@media (max-height: 520px) {
+  #start-panel .start-tools .icon-btn { width: 40px; height: 40px; }
+  .step-bar { position: static; transform: none; float: right; margin: 6px 0 0 12px; min-height: 40px; }
+}

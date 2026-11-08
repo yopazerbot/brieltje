@@ -106,8 +106,8 @@
     <div id="travel" class="hidden"><div class="tv-head"><small data-i18n="travel.portal">Portal</small><b id="tv-here"></b></div><div id="tv-list"></div><div id="tv-hint"></div></div>
     <div id="warp"></div>
     <button id="map-btn" type="button" title="Map (M)" aria-label="Open the map" data-i18n-title="btn.map" data-i18n-aria="btn.mapAria"><span class="ico">⤢</span></button>
-    <button id="sound-btn" type="button" title="Sound on or off (Shift+M)" data-i18n-title="btn.soundTitle"><span class="ico">🔊</span> <span class="lbl">Sound</span></button>
-    <button id="full-btn" type="button" class="hidden" title="Fill the whole screen" data-i18n-title="btn.fullTitle"><span class="ico">⤢</span> <span class="lbl">Full screen</span></button>
+    <button id="sound-btn" type="button" title="Sound on or off (Shift+M)" data-i18n-title="btn.soundTitle"><span class="ico"><svg class="ico-on" viewBox="0 0 24 24" aria-hidden="true"><path d="M4 9.5h3.5L12 5.5v13l-4.5-4H4z"/><path d="M15.5 9a4.2 4.2 0 0 1 0 6M18 6.5a7.7 7.7 0 0 1 0 11"/></svg><svg class="ico-off" viewBox="0 0 24 24" aria-hidden="true"><path d="M4 9.5h3.5L12 5.5v13l-4.5-4H4z"/><path d="m16 9.5 5 5M21 9.5l-5 5"/></svg></span> <span class="lbl">Sound</span></button>
+    <button id="full-btn" type="button" class="hidden" title="Fill the whole screen" data-i18n-title="btn.fullTitle"><span class="ico"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 9V4h5M15 4h5v5M20 15v5h-5M9 20H4v-5"/></svg></span> <span class="lbl">Full screen</span></button>
     <div id="full-hint" class="hidden" data-i18n-rich="full.hint">On an iPhone a page can't fill the screen from Safari. Tap <b>Share</b>, then <b>Add to Home Screen</b>, and start Brieltje from your home screen: it opens without Safari's bars.</div>
     <div id="rotate-hint" data-i18n="rotate.hint">Turn your device sideways to play</div>
     <!-- The most important controls when you start playing (src/ui/controlsCard.ts); the menu's Controls tab opens it again. -->
@@ -203,7 +203,13 @@
           <!-- The roof with its two lit windows over the name (the brand, Yoshi 8 Nov 2026). -->
           <div class="brand-line"><h1 class="start-brand" aria-label="Brieltje"><svg class="roof" viewBox="0 0 120 70" aria-hidden="true"><path d="M8 46 L60 8 L112 46" fill="none" stroke-width="10" stroke-linecap="round" stroke-linejoin="round"/><rect x="47" y="40" width="11" height="13" rx="2"/><rect x="62" y="40" width="11" height="13" rx="2"/></svg><span class="brand-word" aria-hidden="true">Brieltje</span></h1><span class="beta" data-i18n="brand.beta">Beta</span></div>
           <!-- English or Dutch, each in its own language; remembered in this browser (src/i18n.ts). -->
-          <div class="lang-pick" role="group" aria-label="Language" data-i18n-aria="lang.label"><button type="button" class="textbtn" data-lang="en" lang="en">English</button><button type="button" class="textbtn" data-lang="nl" lang="nl">Nederlands</button></div>
+          <!-- Sound and full screen in the panel's header (Yoshi, 8 Nov 2026: the loose buttons beside it looked out of place);
+               the same as the in-game menu's header and the buttons while playing (src/start.ts). -->
+          <div class="start-tools">
+            <button id="start-full" class="icon-btn hidden" type="button" title="Full screen" aria-label="Full screen" data-i18n-title="btn.full" data-i18n-aria="btn.full"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 9V4h5M15 4h5v5M20 15v5h-5M9 20H4v-5"/></svg></button>
+            <button id="start-sound" class="icon-btn" type="button" aria-pressed="true" title="Sound on or off (Shift+M)" aria-label="Sound" data-i18n-title="btn.soundTitle" data-i18n-aria="btn.sound"><svg class="ico-on" viewBox="0 0 24 24" aria-hidden="true"><path d="M4 9.5h3.5L12 5.5v13l-4.5-4H4z"/><path d="M15.5 9a4.2 4.2 0 0 1 0 6M18 6.5a7.7 7.7 0 0 1 0 11"/></svg><svg class="ico-off" viewBox="0 0 24 24" aria-hidden="true"><path d="M4 9.5h3.5L12 5.5v13l-4.5-4H4z"/><path d="m16 9.5 5 5M21 9.5l-5 5"/></svg></button>
+            <div class="lang-pick" role="group" aria-label="Language" data-i18n-aria="lang.label"><button type="button" class="textbtn" data-lang="en" lang="en">English</button><button type="button" class="textbtn" data-lang="nl" lang="nl">Nederlands</button></div>
+          </div>
         </header>
         <p class="intro"><span data-i18n="start.intro">Welcome to Smetlede and Briel.</span></p>
         <p id="mobile-note" class="mobile-note hidden" data-i18n="start.mobileNote">Best on a laptop or desktop. Hold your device sideways to play by touch.</p>
