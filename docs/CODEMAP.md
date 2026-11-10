@@ -261,6 +261,7 @@ file's opening comment; run it again after adding, moving or removing a module.
 - `web/server/seats.test.mjs`: Split screen (/splitscreen): four seats in one browser, each with a session cookie of its own (server/auth.mjs seatOf).
 - `web/server/stats.mjs`: How popular the game is, for the admin page (web/public/admin/), counted without cookies and without keeping anything about a person.
 - `web/server/store.mjs`: Sessions, furniture and the spawned Teslas, fighting stats, the login log, the interest page's sign-ups (server/interest.mjs), the daily totals of how much...
+- `web/server/tracer.test.mjs`: A shot may carry where its tracer goes (tx, ty, tz), for the others' picture only, and a state may say the gun is at the eye (a).
 - `web/server/zombie-endless.test.mjs`: Tests for zombie-endless, e.g. "40 waves progress without a round limit, one survivor keeps playing, and both down ends it".
 - `web/server/zombie-landing.test.mjs`: Tests for zombie-landing, e.g. "a wave waits while anyone is still coming down by parachute, and comes LANDED MS after the last landing".
 - `web/server/zombie-wave.test.mjs`: Tests for zombie-wave, e.g. "switching up, down or to the same wave immediately replaces the horde with the selected difficulty".

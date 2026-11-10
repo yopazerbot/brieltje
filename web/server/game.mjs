@@ -268,6 +268,7 @@ const RESPAWN_MS = 3000;
 const PROTECT_MS = 2000; // can't be hurt just after respawning (ends when you shoot)
 const ROUND_BREAK_MS = 8000;
 const MAX_HIT_RANGE = 120; // m
+const TRACER_REACH = 210; // m: as far as a shot is followed on the page that fires it (200), and a little
 const MAX_SPEED = 16; // m/s up or down: falling off the roof is about 13
 // m/s across, on foot or flying: running at the real pace (1.4 m/s walking, 2.5 times that running,
 // fixed together: src/main.ts REAL_WALK), with room for network jitter. Only a changed page goes faster.
@@ -873,7 +874,14 @@ export class Game {
       const w = player.weapons.has(m.w) ? m.w : 'pistol';
       if (!player.alive || !player.state?.armed || this.inCar(name) || now < (player.nextShot || 0)) return;
       player.nextShot = now + WEAPONS[w].delay * 700;
-      this.broadcast({ t: 'shot', name, w, ...where(m) }, name);
+      // `tx, ty, tz`: where a tracer goes (the rifle's every third shot, the sniper rifle's each), only for the
+      // others' picture. Three numbers held to the map, and to this gun's reach from where the server has the
+      // shooter: a page can't draw a streak across the village. Only the two guns that have tracers.
+      const s = player.state;
+      const tracer = (w === 'rifle' || w === 'sniper') && [m.tx, m.ty, m.tz].every((v) => typeof v === 'number' && Number.isFinite(v))
+        ? { tx: num(m.tx, AREA.x0, AREA.x1), ty: num(m.ty, -20, 200), tz: num(m.tz, AREA.z0, AREA.z1) } : null;
+      const shown = tracer && Math.hypot(tracer.tx - s.x, tracer.ty - s.y, tracer.tz - s.z) <= TRACER_REACH ? tracer : null;
+      this.broadcast({ t: 'shot', name, w, ...where(m), ...shown }, name);
     } else if (m.t === 'furn') {
       if (now < (player.nextFurn || 0)) return;
       player.nextFurn = now + 400; // each one a database write

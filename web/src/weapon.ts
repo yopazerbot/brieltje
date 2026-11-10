@@ -499,6 +499,8 @@ export interface Shot {
   /** Camera kick to apply (radians) */
   pitch: number;
   yaw: number;
+  /** A shot that shows as a tracer: where it goes, so the others can see it fly too */
+  tracer?: THREE.Vector3;
   /** Bazooka: the rocket leaves the tube here and flies to `to` */
   rocket?: { from: THREE.Vector3; to: THREE.Vector3 };
 }
@@ -952,6 +954,7 @@ export class Weapon {
     const paint = paintball.on ? { from: this.models[this.current].muzzle.getWorldPosition(new THREE.Vector3()), color: new THREE.Color(GUN_PAINT[this.current]), size: SPLAT[this.current] } : null;
     const players = new Map<string, { body: number; head: number; point: THREE.Vector3; spot?: Spot }>();
     const zombies = new Map<number, ZombieHit>();
+    let tracer: THREE.Vector3 | undefined;
     for (let i = 0; i < spec.pellets; i++) {
       const a = Math.random() * Math.PI * 2;
       const r = spread * Math.sqrt(Math.random());
@@ -962,16 +965,20 @@ export class Weapon {
           pos: this.raycaster.ray.origin.clone(), vel: this.raycaster.ray.direction.clone().multiplyScalar(BULLET_SPEED),
           left: this.raycaster.far, pass: { free: 0, left: 1 },
         });
+        tracer = this.raycaster.ray.at(this.raycaster.far, new THREE.Vector3());
         continue;
       }
       const end = this.strike(spec, this.current, paint, eye, players, zombies);
-      if (!paint && this.current === 'rifle' && this.ammo.rifle % 3 === 0) this.onTracer(this.muzzlePoint(), end.point ?? this.raycaster.ray.at(200, new THREE.Vector3()));
+      if (!paint && this.current === 'rifle' && this.ammo.rifle % 3 === 0) {
+        tracer = end.point ?? this.raycaster.ray.at(200, new THREE.Vector3());
+        this.onTracer(this.muzzlePoint(), tracer);
+      }
       if (end.clown) break;
     }
     for (const [name, e] of players) this.onPlayerHit(name, e.body, e.head, e.point, e.spot, this.current);
     if (zombies.size) this.onZombieHit([...zombies.values()], paint, this.current);
     if (this.ammo[this.current] === 0) this.reload();
-    return this.kickOf(spec);
+    return { ...this.kickOf(spec), tracer };
   }
 
   /**

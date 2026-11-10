@@ -1981,7 +1981,7 @@ function fire(): void {
   if (!paintball.on && !shot.rocket && (weapon.current === 'shotgun' || weapon.current === 'sniper' || Math.random() < 0.3)) effects.muzzleSmoke(weapon.muzzlePoint());
   rumble(weapon.current === 'pistol' ? 0.25 : 0.6, 0.6, weapon.current === 'rifle' ? 50 : 90);
   if (shot.rocket) fireRocket(shot.rocket.from, shot.rocket.to);
-  else net.send({ t: 'shot', w: weapon.current, x: player.x, y: player.feet + 1.5, z: player.z });
+  else net.send({ t: 'shot', w: weapon.current, x: player.x, y: player.feet + 1.5, z: player.z, ...(shot.tracer ? { tx: Math.round(shot.tracer.x * 100) / 100, ty: Math.round(shot.tracer.y * 100) / 100, tz: Math.round(shot.tracer.z * 100) / 100 } : {}) }); // `tx`..: where a tracer goes, for the others to see
   life.scare(camera.getWorldPosition(new THREE.Vector3()));
 }
 /** The bazooka is the admin's, and anyone's playing alone. */
@@ -2527,6 +2527,7 @@ net.onMessage = (m: ServerMsg) => {
       life.scare(from);
       const muzzle = avatars.flash(m.name);
       if (muzzle) effects.muzzleSmoke(muzzle);
+      if (m.tx !== undefined && m.ty !== undefined && m.tz !== undefined) effects.tracer(muzzle ?? from, new THREE.Vector3(m.tx, m.ty, m.tz)); // their tracer
       break;
     }
     case 'scores':

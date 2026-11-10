@@ -178,7 +178,7 @@ export type ServerMsg =
   | { t: 'bell'; id: string }
   | { t: 'chat'; from: string; color: string; text: string }
   | { t: 'door'; id: string; open: boolean; dir?: number; by: string }
-  | { t: 'shot'; name: string; x: number; y: number; z: number; w: string }
+  | { t: 'shot'; name: string; x: number; y: number; z: number; w: string; tx?: number; ty?: number; tz?: number }
   | ({ t: 'system'; text: string } & Coded)
   | { t: 'kicked' }
   /** The room asked for isn't there (any more): the connection closes, the page goes back to the open world */

@@ -1,7 +1,8 @@
 // Two players together on a throwaway game server, through a dev server whose proxy points at it
 // (API_PORT=<server port> npx vite --port <n>): Alice takes the sniper rifle from the roof terrace and
 // aims; Bob, 14 m off at her height, watches. Checks that Bob's page hears that she aims and that she stops (the
-// `aim` flag, shared/wire.mjs), that her scope glints for him only while it points his way, and
+// `aim` flag, shared/wire.mjs), that her scope glints for him only while it points his way, that he sees
+// the tracer of her shot, and
 // saves a picture of her aiming as Bob sees her.
 //   node tools/dev/aim_mp.mjs --url http://localhost:5391/ --ports 9864,9865 [--out <folder>]
 import { mkdirSync } from 'node:fs';
@@ -105,6 +106,15 @@ try {
     await bob.sleep(600);
     await bob.screenshot(join(o.out, 'aim-glint.png'));
   }
+  // She fires: Bob's page draws her bullet's tracer (the shot carries where it goes).
+  await bob.evaluate(`(() => {
+    window.tracers = 0;
+    const draw = briel.effects.tracer.bind(briel.effects);
+    briel.effects.tracer = (from, to) => { window.tracers++; draw(from, to); };
+  })()`, false);
+  await alice.evaluate('briel.fire()', false);
+  await bob.sleep(1500);
+  ok('Bob sees the tracer of her shot', (await bob.evaluate('window.tracers', false)) === 1);
   // She lowers the rifle: Bob hears that too, and the glint is gone.
   await alice.evaluate('window.aimTest = false', false);
   await until('Bob hears that she stopped aiming', (s) => !s.aim && !s.glint);
