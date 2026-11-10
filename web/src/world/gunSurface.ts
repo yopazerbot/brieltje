@@ -8,7 +8,8 @@
  * small picture of noise, drawn here in code once and laid over the gun from three sides by its own
  * position: a fine grain, soft patches that break the edge wear up, and a few scuffs on the flats.
  *
- * It also fills in the inside of a part the camera cuts open, dark, so you never look through a gun.
+ * It also keeps the camera from cutting a gun open (noNearCut): what comes nearer than the camera's near
+ * edge is drawn all the same, so you see the outside of the stock pass by your cheek, never into it.
  *
  * Cost: three lookups in a 128 px picture, on the gun's own pixels only. A gun without the baked
  * shading (the others' guns and the ones on the floor are merged without it) reads it as nothing:
@@ -97,6 +98,29 @@ function noiseTexture(): THREE.DataTexture {
   return noise;
 }
 
+/**
+ * After the vertex is placed on the screen: one that lies nearer than the camera's near edge is put on that
+ * edge instead of being cut away. The gun in your hands is drawn at a quarter of its size close to the camera,
+ * so that edge lies 20 cm (in the gun's size) from your eye, right through the stock and your right arm when
+ * you aim; cut there, each showed its hollow inside. Kept, you see their outsides pass by, as with a real gun
+ * at your cheek. Only the depth changes, never where a point is drawn; what is behind the eye is still left out.
+ */
+const NEAR_KEPT = '#include <project_vertex>\ngl_Position.z = max(gl_Position.z, -gl_Position.w * 0.9995);';
+
+/** Keep the camera from cutting this material's shapes open close to the eye (the gloves and sleeves; the guns get it with their surface). */
+export function noNearCut(m: THREE.Material): void {
+  if (m.userData.nearKept) return;
+  m.userData.nearKept = true;
+  const before = m.onBeforeCompile;
+  m.onBeforeCompile = (shader, renderer) => {
+    before.call(m, shader, renderer);
+    shader.vertexShader = shader.vertexShader.replace('#include <project_vertex>', NEAR_KEPT);
+  };
+  const key = m.customProgramCacheKey.bind(m);
+  m.customProgramCacheKey = () => `${key()}|near-kept`;
+  m.needsUpdate = true;
+}
+
 /** Give one of a gun's materials (by its name in weapons.glb) the worn, grained surface. Others are left alone. */
 export function gunSurface(m: THREE.MeshStandardMaterial): void {
   const look = LOOKS[m.name];
@@ -111,7 +135,8 @@ export function gunSurface(m: THREE.MeshStandardMaterial): void {
     Object.assign(shader.uniforms, uniforms);
     shader.vertexShader = shader.vertexShader
       .replace('#include <common>', '#include <common>\nattribute vec2 _shade;\nvarying vec3 vGunPos;\nvarying vec3 vGunNormal;\nvarying vec2 vGunShade;')
-      .replace('#include <begin_vertex>', '#include <begin_vertex>\nvGunPos = position;\nvGunNormal = normal;\nvGunShade = _shade;');
+      .replace('#include <begin_vertex>', '#include <begin_vertex>\nvGunPos = position;\nvGunNormal = normal;\nvGunShade = _shade;')
+      .replace('#include <project_vertex>', NEAR_KEPT);
     shader.fragmentShader = shader.fragmentShader
       .replace('#include <common>', `#include <common>
 uniform sampler2D uGunNoise;
@@ -131,19 +156,12 @@ vec3 gunN = texture2D(uGunNoise, gunQ.zy).rgb * gunW.x + texture2D(uGunNoise, gu
 float gunWorn = uGunAmount * max(vGunShade.y * smoothstep(0.3, 0.5, gunN.g), 0.5 * smoothstep(0.68, 0.76, gunN.b) * smoothstep(0.5, 0.62, gunN.g));
 diffuseColor.rgb *= 1.0 + (gunN.r - 0.5) * uGunLook.z + (gunN.b - 0.5) * 0.5 * uGunLook.z;
 diffuseColor.rgb = mix(diffuseColor.rgb, uGunWear, gunWorn);
-diffuseColor.rgb *= 1.0 - 0.62 * vGunShade.x; // the seams and the gaps between the parts
-// A part the camera cuts open (the stock beside your cheek, a launcher's tube) shows its inside: filled in dark, as a solid part would look.
-if (!gl_FrontFacing) diffuseColor.rgb = vec3(0.012, 0.013, 0.015);`)
+diffuseColor.rgb *= 1.0 - 0.62 * vGunShade.x; // the seams and the gaps between the parts`)
       .replace('#include <roughnessmap_fragment>', `#include <roughnessmap_fragment>
-roughnessFactor = clamp(mix(roughnessFactor + (gunN.r - 0.5) * 0.5 * uGunLook.z + 0.25 * vGunShade.x, uGunLook.y, gunWorn), 0.05, 1.0);
-if (!gl_FrontFacing) roughnessFactor = 1.0;`)
+roughnessFactor = clamp(mix(roughnessFactor + (gunN.r - 0.5) * 0.5 * uGunLook.z + 0.25 * vGunShade.x, uGunLook.y, gunWorn), 0.05, 1.0);`)
       .replace('#include <metalnessmap_fragment>', `#include <metalnessmap_fragment>
-metalnessFactor = mix(metalnessFactor, uGunLook.x, gunWorn);
-if (!gl_FrontFacing) metalnessFactor = 0.0;`);
+metalnessFactor = mix(metalnessFactor, uGunLook.x, gunWorn);`);
   };
-  // Both sides drawn: the inside of a part shows only where the camera's near edge cuts it open (the gun in your
-  // hands is drawn small and close), and there it is filled in dark instead of being a hole you look through.
-  m.side = THREE.DoubleSide;
   m.customProgramCacheKey = () => 'gun-surface';
   m.needsUpdate = true;
 }

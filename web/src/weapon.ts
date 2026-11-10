@@ -9,7 +9,7 @@ import WEAPONS from '../shared/weapons.json';
 import { LOOT } from '../shared/loot.mjs';
 import { t } from './i18n';
 import { drawn } from './world/rayShown';
-import { gunSurface, setGunWear } from './world/gunSurface';
+import { gunSurface, noNearCut, setGunWear } from './world/gunSurface';
 import { WIND_PUSH, windAt } from './world/wind';
 
 /**
@@ -243,6 +243,7 @@ export const gunsReady: Promise<boolean> = new GLTFLoader().loadAsync('/models/w
         o.userData.hand = true;
         const m = (o as THREE.Mesh).material as THREE.MeshStandardMaterial | undefined;
         if (m?.name === 'Sleeve' && !sleeves.includes(m)) sleeves.push(m);
+        if (m) noNearCut(m); // your arm reaches back past the camera's near edge: drawn, not cut open
       });
       const muzzle = gun.getObjectByName(`${w}_muzzle`)!;
       muzzle.name = 'muzzle';
