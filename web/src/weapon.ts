@@ -67,8 +67,6 @@ const NO_DRIFT = new THREE.Vector2();
  * do. Aiming slows you a quarter more (carrySpeed).
  */
 const WEIGHT: Record<WeaponId, number> = { pistol: 1, rifle: 0.94, shotgun: 0.93, sniper: 0.87, bazooka: 0.8 };
-/** Spare magazines you carry for each gun besides the one in it (rounds for the shotgun, rockets for the bazooka). The pistol never runs out. */
-const SPARE_MAGS = 3;
 /**
  * The sniper rifle's bullet, m/s. Slower than a real one (about 800) so that its flight shows at the
  * distances this village has: 100 m takes a quarter of a second and drops 34 cm, 190 m takes half a
@@ -607,12 +605,6 @@ export class Weapon {
   current: WeaponId = 'pistol';
   owned = new Set<WeaponId>(['pistol']);
   ammo = Object.fromEntries(WEAPON_IDS.map((w) => [w, SPECS[w].mag])) as Record<WeaponId, number>;
-  /**
-   * The rounds you carry besides the ones in each gun: SPARE_MAGS magazines' worth when you take a gun or come
-   * into play, used up by reloading. The pistol's never run out, so you are never without a shot; nor do
-   * Paintball's (paint is refilled, not carried).
-   */
-  spare = Object.fromEntries(WEAPON_IDS.map((w) => [w, w === 'pistol' ? Infinity : SPECS[w].mag * SPARE_MAGS])) as Record<WeaponId, number>;
   /** Field of view without aiming (a setting) */
   baseFov = 72;
   /** Accuracy factor from how you move: crouching is steadier, running is not */
@@ -781,7 +773,6 @@ export class Weapon {
     this.bigMags = new Set(ammo.filter((w): w is WeaponId => w in SPECS));
     if (fresh && fresh in SPECS) {
       this.ammo[fresh as WeaponId] = this.magOf(fresh as WeaponId);
-      if (fresh !== 'pistol') this.spare[fresh as WeaponId] = this.magOf(fresh as WeaponId) * SPARE_MAGS;
       if (fresh === this.current) this.reloading = 0;
     }
     for (const w of WEAPON_IDS) this.ammo[w] = Math.min(this.ammo[w], this.magOf(w));
@@ -835,10 +826,7 @@ export class Weapon {
 
   get status(): string {
     if (!this.enabled) return '';
-    if (this.reloading > 0) return t(paintball.on ? 'paint.refilling' : 'weapon.reloading');
-    // In the gun, and what you carry besides (the pistol and paint never run out: the magazine's size there).
-    const left = this.spareOf(this.current);
-    return `${this.ammo[this.current]} / ${left === Infinity ? this.magOf(this.current) : left}`;
+    return this.reloading > 0 ? t(paintball.on ? 'paint.refilling' : 'weapon.reloading') : `${this.ammo[this.current]} / ${this.magOf(this.current)}`;
   }
 
   /** For the weapon list on screen. */
@@ -850,7 +838,6 @@ export class Weapon {
   refill(): void {
     for (const w of WEAPON_IDS) {
       this.ammo[w] = this.magOf(w);
-      this.spare[w] = w === 'pistol' ? Infinity : this.magOf(w) * SPARE_MAGS;
       this.bloom[w] = 0;
     }
     this.reloading = 0;
@@ -861,11 +848,6 @@ export class Weapon {
     this.owned = new Set(['pistol', ...extra]);
     this.select('pistol');
     this.refill();
-  }
-
-  /** The rounds you carry for gun `w` besides the ones in it; Infinity for the pistol and for paint. */
-  spareOf(w: WeaponId): number {
-    return paintball.on ? Infinity : this.spare[w];
   }
 
   /** How fast you walk with the gun in your hands, of your free pace: slower with the heavy ones, and a quarter slower again aiming. */
@@ -912,7 +894,6 @@ export class Weapon {
   give(w: WeaponId): void {
     this.owned.add(w);
     this.ammo[w] = this.magOf(w);
-    this.spare[w] = w === 'pistol' ? Infinity : this.magOf(w) * SPARE_MAGS; // a gun found again fills you up
     this.select(w);
   }
 
@@ -943,7 +924,7 @@ export class Weapon {
   }
 
   reload(): void {
-    if (this.enabled && this.reloading <= 0 && this.ammo[this.current] < this.magOf(this.current) && this.spareOf(this.current) > 0) {
+    if (this.enabled && this.reloading <= 0 && this.ammo[this.current] < this.magOf(this.current)) {
       // A magazine with rounds left comes out quicker than an empty gun is made ready again
       // (not the shotgun, loaded shell by shell, nor the bazooka).
       const quick = this.ammo[this.current] > 0 && this.current !== 'shotgun' && this.current !== 'bazooka';
@@ -966,9 +947,7 @@ export class Weapon {
     if (this.ammo[this.current] === 0) {
       this.sound('empty');
       this.cooldown = 0.25;
-      // Nothing left to load either: the pistol comes out (it never runs dry).
-      if (this.spareOf(this.current) <= 0) this.select('pistol');
-      else this.reload();
+      this.reload();
       return null;
     }
     this.ammo[this.current]--;
@@ -1263,12 +1242,7 @@ export class Weapon {
     this.cycleTime = Math.max(0, this.cycleTime - dt);
     if (this.reloading > 0) {
       this.reloading -= dt;
-      if (this.reloading <= 0) {
-        // Out of what you carry, as far as it goes.
-        const take = Math.min(this.magOf(this.current) - this.ammo[this.current], this.spareOf(this.current));
-        this.ammo[this.current] += take;
-        if (this.spare[this.current] !== Infinity && !paintball.on) this.spare[this.current] -= take;
-      }
+      if (this.reloading <= 0) this.ammo[this.current] = this.magOf(this.current);
     }
     // It closes again once you let go. (It used to close faster than held fire could open it, so it never showed.)
     if (this.sinceShot > 0.15) for (const w of WEAPON_IDS) this.bloom[w] = Math.max(0, this.bloom[w] - dt * 0.06);
