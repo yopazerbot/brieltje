@@ -1011,9 +1011,11 @@ export function buildHedges(prisms: Prism[]): THREE.Object3D {
       // Half sunk into the block: the texture still shows between them.
       const places: [THREE.Vector2, number][] = [];
       for (const off of [-0.5, 0.5]) places.push([mid(t + (rand() - 0.5) * 0.1, off), p.y1 - 0.05 + (rand() - 0.5) * 0.04]);
-      for (const side of [-1, 1]) for (const h of [0.35, 0.65, 0.92]) places.push([mid(t + (rand() - 0.5) * 0.15, side), p.y0 + (p.y1 - p.y0) * h]);
+      // Three on each side, anywhere up it (one in each third, so none bare), and anywhere along this step: at three
+      // fixed heights they stood in three neat rows the whole length of a hedge.
+      for (const side of [-1, 1]) for (const third of [0, 1, 2]) places.push([mid(t + (rand() - 0.5) * 0.3, side), p.y0 + (p.y1 - p.y0) * (0.14 + (third + rand()) * 0.28)]);
       for (const [pt, y] of places) {
-        const r = 0.1 + rand() * 0.07;
+        const r = 0.075 + rand() * rand() * 0.15; // many small, a few big
         q.setFromEuler(new THREE.Euler(rand() * 3, rand() * 3, rand() * 3));
         spots.push(new THREE.Matrix4().compose(new THREE.Vector3(pt.x, y, pt.y), q, new THREE.Vector3(r, r * 0.85, r)));
         const patch = 0.5 + 0.5 * Math.sin(pt.x * 0.23 + pt.y * 0.19);

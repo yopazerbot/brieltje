@@ -130,6 +130,9 @@ export async function startGame(b, url, { phone = false, village = false } = {})
   await b.waitFor('!!window.briel', 180000);
   // Play has begun once the start panel is gone (loading and the graphics test happen behind it).
   await b.waitFor("(() => { const p = document.getElementById('start-panel'); if (!p || p.offsetParent === null) return true; const s = getComputedStyle(p); return s.visibility === 'hidden' || Number(s.opacity) < 0.05; })()", 240000);
+  // The weapon picker shows as play begins in Action and Paintball: put away, so it is in no picture and takes no keys.
+  await b.sleep(300);
+  await b.evaluate('window.briel?.loadoutCard?.close(false)', false).catch(() => {});
   if (village) await b.waitFor("briel.village() === 'ready'", 240000);
 }
 

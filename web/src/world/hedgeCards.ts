@@ -119,10 +119,20 @@ export function hedgeCardPlaces(prisms: Prism[]): { side: THREE.Matrix4[]; top: 
       basis.makeBasis(x, up, z);
       for (let i = 0; i < n; i++) {
         for (let j = 0; j < rows; j++) {
-          const m = basis.clone().scale(new THREE.Vector3(l, h, 1));
-          const px = sx + x.x * l * i;
-          const pz = sz + x.z * l * i;
-          m.setPosition(px, p.y0 + 0.15 + h * j + lift(px + x.x * l * 0.5, pz + x.z * l * 0.5), pz);
+          // The one patch is copied a metre at a time, and side by side its sprigs lined up in rows. So each copy
+          // is its own: about half of them mirrored end to end (by its place, so a hedge is the same every visit),
+          // each a little taller or shorter and standing out a little more or less. The cards are drawn from both
+          // sides, so a mirrored copy shows as well.
+          const pick = Math.abs(Math.sin(sx * 12.9898 + sz * 78.233 + i * 37.719 + j * 91.17) * 43758.5453) % 1;
+          const flip = pick < 0.5;
+          const tall = 0.88 + ((pick * 7.31) % 1) * 0.24;
+          const out = 0.8 + ((pick * 13.7) % 1) * 0.45;
+          const m = basis.clone().scale(new THREE.Vector3(flip ? -l : l, h * tall, out));
+          const px = sx + x.x * l * (flip ? i + 1 : i);
+          const pz = sz + x.z * l * (flip ? i + 1 : i);
+          const mx = sx + x.x * l * (i + 0.5);
+          const mz = sz + x.z * l * (i + 0.5);
+          m.setPosition(px, p.y0 + 0.15 + h * j + lift(mx, mz), pz);
           side.push(m);
         }
       }
@@ -143,10 +153,13 @@ export function hedgeCardPlaces(prisms: Prism[]): { side: THREE.Matrix4[]; top: 
       const l = len / n;
       basis.makeBasis(x, up, z);
       for (let k = 0; k < n; k++) {
-        const m = basis.clone().scale(new THREE.Vector3(l, 1, Math.max(0.3, width)));
-        const px = ox + x.x * l * k;
-        const pz = oz + x.z * l * k;
-        m.setPosition(px, p.y1 + lift(px + x.x * l * 0.5, pz + x.z * l * 0.5), pz);
+        // As the sides: about half mirrored end to end, each a little taller or shorter.
+        const pick = Math.abs(Math.sin(ox * 12.9898 + oz * 78.233 + k * 53.117) * 43758.5453) % 1;
+        const flip = pick < 0.5;
+        const m = basis.clone().scale(new THREE.Vector3(flip ? -l : l, 0.8 + ((pick * 7.31) % 1) * 0.5, Math.max(0.3, width)));
+        const px = ox + x.x * l * (flip ? k + 1 : k);
+        const pz = oz + x.z * l * (flip ? k + 1 : k);
+        m.setPosition(px, p.y1 + lift(ox + x.x * l * (k + 0.5), oz + x.z * l * (k + 0.5)), pz);
         top.push(m);
       }
       break;
