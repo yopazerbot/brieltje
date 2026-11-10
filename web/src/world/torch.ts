@@ -7,6 +7,11 @@ import * as THREE from 'three';
  * stutter each dusk), so by day it stays where it is with no strength. Not on phones (main.ts makes
  * none there): every lit surface pays a little for it, and a phone has little to spare.
  *
+ * What that costs by day: about 0.15 ms a frame on High and 0.05 on Low (measured with the light in
+ * and out of the scene, alternated). Hiding it by day and compiling the shaders with it in the
+ * background as dusk begins was tried and dropped: starting those compiles alone froze the game for
+ * 0.35 to 0.65 s as night fell, which is worse than the cost it saved.
+ *
  * Only your own torch is a real light. Others see your figure as ever.
  */
 
@@ -31,7 +36,7 @@ export class Torch {
     if (this.light.intensity === 0) return;
     camera.getWorldPosition(this.light.position);
     camera.getWorldDirection(this.ahead);
-    // A little right of and under the eye, where the gun is held, so the beam's edge shows on what is close.
+    // A little ahead of and under the eye, where the gun is held, so the beam's edge shows on what is close.
     this.light.position.addScaledVector(this.ahead, 0.25).y -= 0.12;
     this.light.target.position.copy(this.light.position).addScaledVector(this.ahead, 12);
     this.light.target.updateMatrixWorld();

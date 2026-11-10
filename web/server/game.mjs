@@ -739,7 +739,7 @@ export class Game {
     }
     if (!m || typeof m !== 'object') return;
     if (m.t === 'state' ? ++player.states > 30 : ++player.others > 40) return;
-    if (this.modes.noShooting && ['hit', 'rocket', 'nade', 'boom', 'shot'].includes(m.t)) return; // no fighting during a party game
+    if (this.modes.noShooting && ['hit', 'rocket', 'nade', 'boom', 'shot', 'crack'].includes(m.t)) return; // no fighting during a party game
     // A room changes nothing of the open world and holds its players at its place (server/rooms.mjs).
     if (this.room && ROOM_REFUSED.has(m.t)) return;
 
@@ -872,13 +872,13 @@ export class Game {
       this.modes.zombies?.panes(this.broken); // a way in for the zombies too
     } else if (m.t === 'crack' && Number.isInteger(m.i) && m.i >= 0 && m.i < PANE_LIMIT && PANE_HOME.has(m.i)) {
       // A first bullet cracked a pane (the page's picture of it: world/glass.ts). Only a number that is a pane, whole
-      // and not cracked yet, in a home this player may shoot at (as for breaking one), from a player who can fire, five
+      // and not cracked yet, in a home this player may shoot at (as for breaking one), from a player who can fire, eleven
       // a second at most, 200 cracks in all. The place is three numbers held to the map: it only says where the mark
       // is drawn. It opens nothing: the pane stands until a 'glass' message breaks it, checked as ever.
       if (this.cracked.size >= 200 || this.broken.has(m.i) || this.cracked.has(m.i) || !this.gate.glass(player, m.i)) return;
       if (!player.alive || !player.state?.armed || this.calm(player) || now < (player.nextCrack || 0)) return;
       if (![m.x, m.y, m.z].every((v) => typeof v === 'number' && Number.isFinite(v))) return;
-      player.nextCrack = now + 200;
+      player.nextCrack = now + 90; // as fast as the rifle fires (100 ms a shot): at 200 the others missed every second crack of a sweep
       const at = where(m);
       this.cracked.set(m.i, at);
       this.broadcastHome({ t: 'crack', i: m.i, ...at, by: name }, PANE_HOME(m.i), name);
@@ -904,7 +904,12 @@ export class Game {
       const tracer = (w === 'rifle' || w === 'sniper') && [m.tx, m.ty, m.tz].every((v) => typeof v === 'number' && Number.isFinite(v))
         ? { tx: num(m.tx, AREA.x0, AREA.x1), ty: num(m.ty, -20, 200), tz: num(m.tz, AREA.z0, AREA.z1) } : null;
       const shown = tracer && Math.hypot(tracer.tx - s.x, tracer.ty - s.y, tracer.tz - s.z) <= TRACER_REACH ? tracer : null;
-      this.broadcast({ t: 'shot', name, w, ...where(m), ...shown }, name);
+      // Where the shot comes from: the page's own point, unless that is more than 3 m from where the server has
+      // the shooter (as for a thrown grenade). The others start the tracer and measure a near miss from it, so a
+      // changed page could else draw streaks from anywhere and make players far from it flinch.
+      let from = where(m);
+      if (Math.hypot(from.x - s.x, from.y - s.y - 1.5, from.z - s.z) > 3) from = { x: s.x, y: s.y + 1.5, z: s.z };
+      this.broadcast({ t: 'shot', name, w, ...from, ...shown }, name);
       this.modes.zombies?.noise?.(name, player, w, now); // gunfire draws the zombies (shared/zombies.mjs noise): from where the server has the shooter
     } else if (m.t === 'loadout') {
       // The guns a player chooses to start with (shared/loadout.mjs, the page's picker). Whatever is sent, only
@@ -1853,6 +1858,17 @@ export class Game {
     shooter.protectedUntil = 0; // shooting ends your own spawn protection
     shooter.unfired = false; // a hit counts as firing, whether the page said 'shot' or not: no more swapping guns
     this.damage(name, shooter, targetName, target, body * spec.body + head * spec.head, head > 0, w, now);
+  }
+
+  /** The Zombies game is over: everyone has the guns they chose again (they came down to the pistol as it began), and is told. */
+  gunsBack() {
+    const now = Date.now();
+    for (const p of this.players.values()) {
+      p.weapons = loadout(p);
+      p.unfired = true;
+      p.cameAt = now;
+      this.send(p.ws, { t: 'weapons', list: [...p.weapons], pick: p.pick ?? LOADOUT.first });
+    }
   }
 
   /** The Zombies game begins: everyone down to the pistol, whatever they chose or carried (the rest is found on the map). */

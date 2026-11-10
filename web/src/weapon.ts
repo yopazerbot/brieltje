@@ -73,6 +73,8 @@ const WEIGHT: Record<WeaponId, number> = { pistol: 1, rifle: 0.94, shotgun: 0.93
  * second and drops one mark on the scope's reticle.
  */
 const BULLET_SPEED = 380;
+/** m: how far ahead a flying bullet looks at a time (fly). */
+const BULLET_LOOK = 20;
 /**
  * Thin cover a rifle's or sniper rifle's bullet goes through, by the surface's name, and how deep it
  * is at most (m): the bullet leaves a hole, and counts in full on what is behind. Not walls, floors or
@@ -502,6 +504,24 @@ function lowOnBox(hit: THREE.Intersection): boolean {
   return y < box.min.y + (box.max.y - box.min.y) * 0.4;
 }
 
+const noises = new Map<string, AudioBuffer>();
+/**
+ * A stretch of noise `seconds` long, shaped by `shape` (0..1 along it, giving its loudness there), made the
+ * first time it is asked for and kept: every shot, yours and everyone's, used to fill half a second of
+ * random numbers again.
+ */
+function noiseBuffer(ctx: AudioContext, key: string, seconds: number, shape: (s: number) => number): AudioBuffer {
+  const id = `${key}|${ctx.sampleRate}`;
+  let buf = noises.get(id);
+  if (!buf) {
+    buf = ctx.createBuffer(1, Math.max(1, Math.ceil(ctx.sampleRate * seconds)), ctx.sampleRate);
+    const data = buf.getChannelData(0);
+    for (let i = 0; i < data.length; i++) data[i] = (Math.random() * 2 - 1) * shape(i / data.length);
+    noises.set(id, buf);
+  }
+  return buf;
+}
+
 /** The figure (a player, a clown, a strongman) a hit box belongs to: the paint goes on its body, not on the box round it. */
 function figureOf(o: THREE.Object3D | null): THREE.Object3D | null {
   for (let p = o; p; p = p.parent) if (p.userData.figure) return p;
@@ -683,8 +703,8 @@ export class Weapon {
   private driftAmp = 0;
   private breath = 1;
   private winded = false;
-  /** The sniper rifle's bullets in the air: where, how fast, the range left (m), and the cover each may still go through */
-  private bullets: { pos: THREE.Vector3; vel: THREE.Vector3; left: number; pass: { free: number; left: number } }[] = [];
+  /** The sniper rifle's bullets in the air: where, how fast, the range left (m), how far ahead is known to be clear (m), and the cover each may still go through */
+  private bullets: { pos: THREE.Vector3; vel: THREE.Vector3; left: number; clear: number; pass: { free: number; left: number } }[] = [];
   /** How long the reload under way takes in all (s) */
   private reloadTime = 1;
   /** Your suit's colour, for the sleeves */
@@ -739,9 +759,9 @@ export class Weapon {
         m.mag.userData.len = -low;
       }
       m.hip.fromArray(HIP[w]);
-      m.ads.set(-0.25 * loaded.sight.x, -0.25 * loaded.sight.y, w === 'pistol' ? -0.125 : w === 'rifle' ? -0.088 : m.ads.z); // the pistol held out at arm's length; the rifle as near as it goes before the camera cuts the back of its receiver open
-      // The bazooka lies on your shoulder, the tube beside your face. Held up to its sight the camera cuts the
-      // tube open and you look into it; so aiming holds it lower, and you look along its top with the crosshair.
+      m.ads.set(-0.25 * loaded.sight.x, -0.25 * loaded.sight.y, w === 'pistol' ? -0.125 : w === 'rifle' ? -0.088 : m.ads.z); // the pistol held out at arm's length; the rifle near enough for its red-dot sight's window to be a good size
+      // The bazooka lies on your shoulder, the tube beside your face: held up to its side sight the tube fills
+      // half the view. So aiming holds it lower, and you look along its top with the crosshair.
       if (w === 'bazooka') m.ads.set(0.012, -0.06, -0.1);
       const tip = model.getObjectByName('muzzle')!;
       m.muzzle.position.copy(tip.position);
@@ -821,7 +841,21 @@ export class Weapon {
 
   setEnabled(on: boolean): void {
     this.enabled = on;
+    if (!on) this.settle();
     this.show();
+  }
+
+  /**
+   * Nothing left in the air or owed: the sniper rifle's bullets on their way, the recoil's climb still to come
+   * back, the burst. The weapon stands still while it is off, so a bullet would fly on and the view slide
+   * down whenever it came back.
+   */
+  private settle(): void {
+    this.bullets.length = 0;
+    this.kickDebt = this.recover = this.selfPitch = 0;
+    this.burst = 0;
+    this.recoil.fill(0);
+    this.recoilVel.fill(0);
   }
 
   /** Hidden while you are dead. */
@@ -854,6 +888,7 @@ export class Weapon {
     this.owned = new Set(['pistol', ...extra]);
     this.select('pistol');
     this.refill();
+    this.settle();
   }
 
   /** How fast you walk with the gun in your hands, of your free pace: slower with the heavy ones, and a quarter slower again aiming. */
@@ -1003,7 +1038,7 @@ export class Weapon {
       if (this.current === 'sniper' && !paint) {
         this.bullets.push({
           pos: this.raycaster.ray.origin.clone(), vel: this.raycaster.ray.direction.clone().multiplyScalar(BULLET_SPEED),
-          left: this.raycaster.far, pass: { free: 0, left: 1 },
+          left: this.raycaster.far, clear: 0, pass: { free: 0, left: 1 },
         });
         tracer = this.raycaster.ray.at(this.raycaster.far, new THREE.Vector3());
         continue;
@@ -1100,8 +1135,8 @@ export class Weapon {
 
   /**
    * The sniper rifle's bullets on their way: each flies BULLET_SPEED and falls as anything does, so a
-   * far shot lands a moment later and lower (aim a little high, and ahead of someone running). Each
-   * frame it goes its stretch and strikes what lies on it. It shows as a streak. A bullet still in
+   * far shot lands a moment later and lower (aim a little high, and ahead of someone running). It goes
+   * its stretch each frame and strikes what lies ahead, looked up BULLET_LOOK metres at a time. It shows as a streak. A bullet still in
    * the air when you put the rifle away lands without counting: the server takes a hit only from
    * the gun in your hands.
    */
@@ -1118,18 +1153,26 @@ export class Weapon {
       const wind = windAt(b.pos.x, b.pos.z);
       b.vel.x += wind.x * WIND_PUSH * dt;
       b.vel.z += wind.z * WIND_PUSH * dt;
-      this.raycaster.set(b.pos, step.clone().divideScalar(len));
-      this.raycaster.far = len;
-      const players = new Map<string, { body: number; head: number; point: THREE.Vector3; spot?: Spot }>();
-      const zombies = new Map<number, ZombieHit>();
-      const end = this.strike(spec, 'sniper', null, b.pos, players, zombies, len, b.pass);
-      if (this.current === 'sniper') {
-        for (const [name, e] of players) this.onPlayerHit(name, e.body, e.head, e.point, e.spot, 'sniper');
-        if (zombies.size) this.onZombieHit([...zombies.values()], null, 'sniper');
+      // What lies ahead is looked up BULLET_LOOK metres at a time, not every frame: a look through the whole
+      // world costs about 3 ms, and a bullet is in the air for up to half a second. So about every third frame,
+      // and a hit shows at most a twentieth of a second before the streak gets there.
+      let end: { point?: THREE.Vector3 } = {};
+      if (b.clear < len) {
+        this.raycaster.set(b.pos, step.clone().divideScalar(len));
+        this.raycaster.far = Math.min(b.left, BULLET_LOOK + 25); // a little past the look: a second zombie behind the first (strike stops the first hit at the look's end)
+        const players = new Map<string, { body: number; head: number; point: THREE.Vector3; spot?: Spot }>();
+        const zombies = new Map<number, ZombieHit>();
+        end = this.strike(spec, 'sniper', null, b.pos, players, zombies, Math.min(b.left, BULLET_LOOK), b.pass);
+        if (this.current === 'sniper') {
+          for (const [name, e] of players) this.onPlayerHit(name, e.body, e.head, e.point, e.spot, 'sniper');
+          if (zombies.size) this.onZombieHit([...zombies.values()], null, 'sniper');
+        }
+        b.clear = BULLET_LOOK;
       }
       const to = end.point ?? b.pos.clone().add(step);
       this.onBullet(b.pos.clone(), to, dt);
       b.left -= len;
+      b.clear -= len;
       b.pass.free -= len;
       b.pos.copy(to);
       if (end.point || b.left <= 0) this.bullets.splice(this.bullets.indexOf(b), 1);
@@ -1490,11 +1533,8 @@ export class Weapon {
     const dest = sound.out();
     if (!ctx || !dest || paintball.on) return;
     const t = ctx.currentTime;
-    const buf = ctx.createBuffer(1, Math.ceil(ctx.sampleRate * 0.16), ctx.sampleRate);
-    const data = buf.getChannelData(0);
-    for (let i = 0; i < data.length; i++) data[i] = (Math.random() * 2 - 1) * Math.sin((Math.PI * i) / data.length);
     const air = ctx.createBufferSource();
-    air.buffer = buf;
+    air.buffer = noiseBuffer(ctx, 'whizz', 0.16, (s) => Math.sin(Math.PI * s));
     const band = ctx.createBiquadFilter();
     band.type = 'bandpass';
     band.Q.value = 2.5;
@@ -1562,11 +1602,8 @@ export class Weapon {
       const far = at ? Math.min(500, at.distanceTo(this.camera.getWorldPosition(new THREE.Vector3()))) : 0;
       const t0 = t + far / 343;
       const dull = 1 / (1 + far / 70);
-      const buf = ctx.createBuffer(1, ctx.sampleRate * v.len, ctx.sampleRate);
-      const data = buf.getChannelData(0);
-      for (let i = 0; i < data.length; i++) data[i] = (Math.random() * 2 - 1) * Math.pow(1 - i / data.length, 4);
       const noise = ctx.createBufferSource();
-      noise.buffer = buf;
+      noise.buffer = noiseBuffer(ctx, `shot${v.len}`, v.len, (s) => Math.pow(1 - s, 4));
       const filter = ctx.createBiquadFilter();
       filter.type = 'lowpass';
       filter.frequency.setValueAtTime(Math.max(500, v.f0 * dull), t0);
@@ -1586,11 +1623,8 @@ export class Weapon {
       if (voice === VOICE[w]) {
         // The crack: a few milliseconds of bright noise, only from near by.
         if (far < 60) {
-          const cb = ctx.createBuffer(1, Math.ceil(ctx.sampleRate * 0.02), ctx.sampleRate);
-          const cd = cb.getChannelData(0);
-          for (let i = 0; i < cd.length; i++) cd[i] = (Math.random() * 2 - 1) * Math.pow(1 - i / cd.length, 2);
           const crack = ctx.createBufferSource();
-          crack.buffer = cb;
+          crack.buffer = noiseBuffer(ctx, 'crack', 0.02, (s) => Math.pow(1 - s, 2));
           const high = ctx.createBiquadFilter();
           high.type = 'highpass';
           high.frequency.value = 2200;
@@ -1601,14 +1635,8 @@ export class Weapon {
         }
         // The echo after it: low noise that swells a moment after the shot and rolls away; longer for the big guns.
         const tailLen = 0.5 + v.len * 1.4;
-        const tb = ctx.createBuffer(1, Math.ceil(ctx.sampleRate * tailLen), ctx.sampleRate);
-        const td = tb.getChannelData(0);
-        for (let i = 0; i < td.length; i++) {
-          const s = i / td.length;
-          td[i] = (Math.random() * 2 - 1) * Math.min(1, s * 12) * Math.pow(1 - s, 2.5);
-        }
         const tail = ctx.createBufferSource();
-        tail.buffer = tb;
+        tail.buffer = noiseBuffer(ctx, `tail${tailLen.toFixed(2)}`, tailLen, (s) => Math.min(1, s * 12) * Math.pow(1 - s, 2.5));
         const low = ctx.createBiquadFilter();
         low.type = 'lowpass';
         low.frequency.setValueAtTime(900, t0);

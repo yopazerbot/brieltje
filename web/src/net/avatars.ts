@@ -330,6 +330,7 @@ export interface Seat {
 }
 
 let glintMap: THREE.CanvasTexture | null = null;
+let glintMat: THREE.SpriteMaterial | null = null;
 /** A scope's glint, drawn in code: a soft white core with a thin four-pointed flare. */
 function glintTexture(): THREE.CanvasTexture {
   if (glintMap) return glintMap;
@@ -646,7 +647,7 @@ export class Avatars {
       const atYou = !!eye && alive && t.aim && t.w === 'sniper' && !t.d && far > 12 && a.root.visible
         && (lookX * (eye.x - x) + lookY * (eye.y - y - 1.55) + lookZ * (eye.z - z)) / far > 0.996; // within 5 degrees
       if (atYou && !a.glint) {
-        a.glint = new THREE.Sprite(new THREE.SpriteMaterial({ map: glintTexture(), blending: THREE.AdditiveBlending, depthWrite: false, transparent: true }));
+        a.glint = new THREE.Sprite((glintMat ??= new THREE.SpriteMaterial({ map: glintTexture(), blending: THREE.AdditiveBlending, depthWrite: false, transparent: true }))); // one material for every player's glint
         a.glint.userData.ignoreRay = true;
         a.glint.raycast = () => {};
         a.root.add(a.glint);

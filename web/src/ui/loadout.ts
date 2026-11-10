@@ -100,7 +100,7 @@ export class LoadoutCard {
       if (!this.open) return;
       e.stopPropagation(); // choosing a gun is not walking or switching weapons
       const n = ['Digit1', 'Digit2', 'Digit3', 'Numpad1', 'Numpad2', 'Numpad3'].indexOf(e.code) % 3;
-      if (n >= 0 && e.code.length > 5) {
+      if (n >= 0) {
         this.cursor = n;
         this.toggle(this.guns[n].w);
       } else if (e.key === 'Enter' || e.key === 'Escape') {

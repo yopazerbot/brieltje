@@ -9,8 +9,8 @@ import { gunModel, gunsReady, type WeaponId } from '../weapon';
  * in your hands. Paintball's toy colours give pictures of their own.
  */
 
-const W = 720;
-const H = 360;
+const W = 480; // twice the size it shows at in the picker
+const H = 240;
 const made = new Map<string, string>();
 let loaded = false;
 void gunsReady.then((ok) => (loaded = ok));

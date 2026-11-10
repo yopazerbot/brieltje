@@ -164,8 +164,10 @@ export class Modes {
     if (kind === 'free') {
       if (!this.active) return;
       const teams = this.state.kind === 'teams';
-      if (this.state.kind === 'zombies') this.state.z.stop();
+      const zombies = this.state.kind === 'zombies';
+      if (zombies) this.state.z.stop();
       this.state = { kind: 'free' };
+      if (zombies) this.game.gunsBack?.(); // the guns they chose, back
       if (teams) this.game.teamsChanged(this.names(), false);
       this.send();
       this.say(`${by} stopped the game`, 'gameStopped', { name: by });
@@ -400,6 +402,7 @@ export class Modes {
       const teams = s.kind === 'teams';
       if (s.kind === 'zombies') s.z.stop();
       this.state = { kind: 'free' };
+      if (s.kind === 'zombies') this.game.gunsBack?.(); // the guns they chose, back
       if (teams) {
         this.game.teamsChanged(this.names(), false);
         this.game.freshRound(); // the kills of the teams game would end the next round at once

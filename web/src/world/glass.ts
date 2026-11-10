@@ -25,7 +25,7 @@ interface Shard {
 /** Shards per square metre of pane, and the fewest and the most from one pane. */
 const SHARDS_M2 = 22;
 const SHARDS_MIN = 24;
-const SHARDS_MAX = 70;
+const SHARDS_MAX = 48;
 /** A shard's shape, flat: a small triangle, a long sliver, a four-cornered piece, a pointed dagger. */
 const shardGeos = [
   [0, 0, 0, 0.06, 0.01, 0, 0.02, 0.07, 0],
@@ -119,6 +119,8 @@ export class Glass {
   private broken = new Set<number>();
   /** The panes with a crack in them, and the crack's marks (one on each face) */
   private cracks = new Map<number, THREE.Mesh[]>();
+  /** Cracks the server told of in panes that aren't here yet (a house whose inside comes later): where each is */
+  private pendingCracks = new Map<number, THREE.Vector3>();
   private shards: Shard[] = [];
   /**
    * Whether a shot or a blast may break pane `index` here: false for the panes of a code-locked home that this page has
@@ -139,6 +141,8 @@ export class Glass {
       this.panes.set(i, pane);
       this.others.set(i, (broken) => onBreak(i, broken));
       if (this.pending.delete(i)) this.break(i, null, undefined, true);
+      const mark = this.pendingCracks.get(i);
+      if (mark && this.pendingCracks.delete(i)) this.crack(i, mark, true, true);
     }
   }
 
@@ -226,6 +230,7 @@ export class Glass {
   crack(index: number, hit: THREE.Vector3, told = false, quiet = false): boolean {
     if (!told && this.locked(index)) return false;
     const pane = this.panes.get(index);
+    if (!pane && told && !this.broken.has(index)) this.pendingCracks.set(index, hit.clone()); // cracked before its house came: cracked once it does
     if (!pane || this.broken.has(index) || this.cracks.has(index)) return false;
     const geo = pane.geometry;
     if (!geo.boundingBox) geo.computeBoundingBox();
@@ -233,7 +238,8 @@ export class Glass {
     const size = box.getSize(new THREE.Vector3());
     // The pane's thin way is through the glass; the mark lies in the other two, on each face.
     const thin = size.x <= size.y && size.x <= size.z ? 'x' : size.z <= size.y ? 'z' : 'y';
-    const at = pane.worldToLocal(hit.clone());
+    // On the pane, whatever place was given (another page's word for it): held to its own shape.
+    const at = pane.worldToLocal(hit.clone()).clamp(box.min, box.max);
     crackMat ??= new THREE.MeshBasicMaterial({ map: crackTexture(), transparent: true, depthWrite: false, side: THREE.DoubleSide, polygonOffset: true, polygonOffsetFactor: -2, polygonOffsetUnits: -2 });
     const across = 0.7 + ((index * 37) % 10) * 0.04; // m: each pane its own size and turn, the same for everyone
     const turn = ((index * 53) % 17) * 0.37;
@@ -293,6 +299,7 @@ export class Glass {
 
   repair(): void {
     this.pending.clear();
+    this.pendingCracks.clear();
     for (const index of [...this.cracks.keys()]) this.uncrack(index);
     for (const index of this.broken) {
       const pane = this.panes.get(index);

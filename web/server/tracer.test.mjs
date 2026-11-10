@@ -59,6 +59,16 @@ test('no tracer from a gun without one, past its reach, or from numbers that are
   }
 });
 
+test('a shot said to come from far off comes from where the server has the shooter', () => {
+  const { player, shot } = setup();
+  const anna = player('anna'); // the server has her at (5, 0, 5)
+  const near = shot('anna', anna, { w: 'rifle', x: 5.5, y: 1.6, z: 5.2 });
+  assert.deepEqual([near.x, near.y, near.z], [5.5, 1.6, 5.2], 'her own point, close by');
+  const far = shot('anna', anna, { w: 'rifle', x: 150, y: 1.5, z: -200, tx: 160, ty: 2, tz: -190 });
+  assert.deepEqual([far.x, far.y, far.z], [5, 1.5, 5], 'not from across the village');
+  assert.equal('tx' in far, false, 'and no tracer round a place she is not at');
+});
+
 test('a shot is still held to the gun\'s rate, with or without a tracer', () => {
   const { game, told, player } = setup();
   const anna = player('anna');

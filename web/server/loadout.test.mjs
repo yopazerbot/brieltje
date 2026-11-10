@@ -105,6 +105,20 @@ test('a hit, a throw or half a minute end the swap as a shot does: a page that l
   assert.deepEqual(dirk.pick, ['sniper'], 'kept for the next time they come into play');
 });
 
+test('when the Zombies game is over everyone has their chosen guns again, and is told', () => {
+  const { game, sent, player, choose } = setup();
+  const anna = player('anna');
+  choose('anna', anna, ['sniper', 'shotgun']);
+  game.pistolsOnly();
+  assert.deepEqual([...anna.weapons], ['pistol']);
+  anna.unfired = false;
+  sent.length = 0;
+  game.gunsBack();
+  assert.deepEqual([...anna.weapons], ['pistol', 'sniper', 'shotgun']);
+  assert.equal(anna.unfired, true);
+  assert.deepEqual(sent.find((m) => m.t === 'weapons' && m.to === 'anna').list, ['pistol', 'sniper', 'shotgun']);
+});
+
 test('twice a second at most', () => {
   const { game, sent, player } = setup();
   const anna = player('anna');

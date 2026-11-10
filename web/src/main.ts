@@ -69,7 +69,7 @@ import { PlayTower, TOWER } from './world/playground';
 import { creak, SlideSound } from './world/playgroundSound';
 import { towerPrompt } from './world/playgroundHint';
 import { SettingsPanel, type Settings } from './settings';
-import { SPECS, Weapon, type WeaponId } from './weapon';
+import { gunsReady, SPECS, Weapon, type WeaponId } from './weapon';
 import { paintball, setPaintball, weaponName as shownWeapon } from './paintball';
 import { Decals } from './world/decals';
 import { Effects, type Spot } from './world/effects';
@@ -634,7 +634,7 @@ const homeLocks = new HomeLocks({
 }, house.prisms, house.doors);
 doors.lockedHome = (id) => homeLocks.lockedOfDoor(id);
 // Curtains behind the panes of a home that is locked here: its inside isn't on this page, so the glass showed an empty box (world/curtains.ts).
-const curtains = new Curtains(built.panes, (i) => homeLocks.homeOfPane(i), (id) => homeLocks.isOpen(id));
+const curtains = new Curtains(built.panes, (i) => homeLocks.homeOfPane(i), (id) => homeLocks.isOpen(id), (i) => doors.panes.has(i), scene);
 let curtainsAt = -1e9;
 doors.refresh();
 glass.locked = (i) => {
@@ -1132,7 +1132,7 @@ menu.onPlayMode = (play) => {
   const armed = weapon.enabled;
   weapon.setEnabled(play !== 'explore');
   setPaintball(play === 'paintball');
-  if (!armed && weapon.enabled && playBegan) setTimeout(offerGuns, 400); // into Action or Paintball from Explore: choose your guns (once the menu is closed)
+  if (!armed && weapon.enabled && playBegan) offerWaiting = true; // into Action or Paintball from Explore: choose your guns, once the menu is shut (the frame loop looks)
   combat.setActive((!!me || !!solo) && play !== 'explore'); // health shows together, and in a Zombies game alone
 };
 
@@ -1765,7 +1765,6 @@ async function startSolo(id: string): Promise<void> {
   soloView(true);
   showSoloButton();
 }
-/** Stop it (the button again, the end screen over, or playing together): the zombies go, you're back up. */
 /**
  * Alone, the Zombies game darkens as it goes on: dusk from wave 4, night from wave 6 (your torch comes on by
  * itself, world/torch.ts), and your own weather again when it ends. Said once as it turns. Together the
@@ -1776,10 +1775,11 @@ function nightWave(wave: number): void {
   if (want === nightMood) return;
   nightMood = want;
   weather.setGame(want);
-  if (want) chat.system(() => t(want === 'night' ? 'z.night' : 'z.dusk'));
+  if (want) chat.system(() => t(want === 'night' ? (torch ? 'z.night' : 'z.nightDark') : 'z.dusk')); // no torch on a phone
 }
 let nightMood: 'dusk' | 'night' | null = null;
 
+/** Stop it (the button again, the end screen over, or playing together): the zombies go, you're back up. */
 function stopSolo(): void {
   if (!solo) return;
   nightWave(0);
@@ -3025,6 +3025,7 @@ let restAt = 0;
 let loadPadX = 0; // the controller's stick on the weapon picker
 let loadPadY = 0;
 let wasZombies = false;
+let offerWaiting = false; // the weapon picker is to show as soon as the menu is shut
 let homePadX = 0; // the controller's stick on the home card, as padStick is on the feedback card
 let homePadY = 0;
 let lockKey: 'prompt.locked' | 'prompt.multiplayerOnly' = 'prompt.locked'; // what the hint says: a home is locked, or only in multiplayer (a pane of no home alone)
@@ -3104,7 +3105,17 @@ renderer.setAnimationLoop((now: number) => {
     loadoutCard.close(false);
     weapon.resetLoadout([]);
   }
+  // And when it is over: the guns you chose, back (together the server says so too, 'weapons').
+  if (!games.zombies && wasZombies) {
+    weapon.resetLoadout(startGuns());
+    unfired = true;
+  }
   wasZombies = games.zombies;
+  // The picker asked for while the menu was open (the mode's buttons are in it): once it is shut.
+  if (offerWaiting && !menu.open) {
+    offerWaiting = false;
+    offerGuns();
+  }
   // The controls card shown at the start: a click or ✕ closes it and does nothing else (no shot,
   // no jump); opening the menu closes it too, unless the menu opened it.
   if (controlsCard.open && !controlsCard.fromMenu) {
@@ -3503,7 +3514,7 @@ renderer.setAnimationLoop((now: number) => {
       kit.turrets ? t('loot.turretCount', { key: key('use', mode) }) : '',
     ].filter(Boolean).join('   ·   ') : '';
     hud.setGrenades(armed ? grenades.count : null, GRENADE.carry, grenades.nextIn, key('grenade', mode), pocket);
-    hud.setScope(weapon.scoped, inCar || dropView.outside, weapon.scopeView);
+    hud.setScope(weapon.scoped, inCar || dropView.outside, weapon.scoped ? weapon.scopeView : undefined);
     touch.setScoped(weapon.scoped);
     if (armed) hud.setSpread(weapon.spread, weapon.current === 'bazooka' ? 0 : weapon.aimAmount); // the bazooka aims with the crosshair
     document.body.classList.toggle('drop', dropView.outside); // filmed from behind: the hints go low, clear of your figure (style.css)
@@ -4265,6 +4276,8 @@ async function compileWorld(): Promise<void> {
   // of in the first second of the fall (at most 1.5 s for it; a slow line starts without).
   const chute = rules.parachute !== false && startIntent.zombies === null ? Promise.race([parachutes.load(), new Promise((r) => setTimeout(r, 1500))]) : null;
   await Promise.all([precompile(scene), precompile(figure), chute]);
+  // The weapon picker's gun pictures, here behind the start screen: drawn as it opened, they cost a stutter just as you dropped in.
+  if (await gunsReady) for (const w of LOADOUT.choices as WeaponId[]) gunPicture(renderer, scene.environment, w);
 }
 if (mode === 'auto') void autoDetect().catch(loaded);
 else {

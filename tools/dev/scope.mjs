@@ -103,16 +103,15 @@ try {
   await shot('scope-turning');
   // The sniper rifle's bullet flies: in the air just after the shot at something far, landed a moment later.
   await b.evaluate(`window.scopeTest.aim = false; briel.weapon.select('sniper'); briel.weapon.reload()`, false);
-  await b.sleep(3200);
   await look(0.6, 0.5); // up into the sky: nothing to hit
+  // Once the rifle is loaded and ready (a shot asked for sooner is not fired, and the check failed now and then).
+  await b.waitFor('briel.weapon.reloading <= 0 && briel.weapon.cooldown <= 0 && briel.weapon.current === "sniper"', 15000);
   await b.sleep(300);
-  await b.evaluate('briel.fire()', false);
-  await b.sleep(120);
-  const flying = await b.evaluate('briel.weapon.bullets.map((x) => x.vel.y / Math.hypot(x.vel.x, x.vel.y, x.vel.z))', false);
+  const flying = await b.evaluate('(() => { briel.fire(); return briel.weapon.bullets.length; })()', false);
   await b.sleep(1500);
   const after = await b.evaluate('briel.weapon.bullets.length', false);
-  console.log(`sniper bullet: ${flying.length} in the air 0.12 s after the shot, ${after} after 1.6 s`);
-  check(flying.length === 1 && after === 0, 'the bullet flies, and is gone at the end of its range');
+  console.log(`sniper bullet: ${flying} in the air right after the shot, ${after} after 1.5 s`);
+  check(flying === 1 && after === 0, 'the bullet flies, and is gone at the end of its range');
   // Each gun up close, from the hip and with its sights at the eye: the surfaces, the sights, the rifle's red dot.
   await b.evaluate('window.scopeTest.aim = false', false);
   for (const w of ['pistol', 'rifle', 'shotgun', 'sniper', 'bazooka']) {
