@@ -81,7 +81,7 @@ export class Hud {
     const faint = Math.round(aim * 10);
     if (faint !== this.faint) {
       this.faint = faint;
-      this.crosshair.style.opacity = faint ? `${(0.85 * (1 - 0.07 * faint)).toFixed(2)}` : '';
+      this.crosshair.style.opacity = faint ? `${(0.85 * (1 - 0.1 * faint)).toFixed(2)}` : '';
     }
   }
 

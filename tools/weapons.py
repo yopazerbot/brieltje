@@ -48,13 +48,20 @@ def srgb(h):
     return tuple(v / 12.92 if v <= 0.04045 else ((v + 0.055) / 1.055) ** 2.4 for v in c)
 
 
-def material(name, color, rough=0.5, metal=0.0):
+def material(name, color, rough=0.5, metal=0.0, alpha=1.0, glow=""):
+    """`alpha` under 1: see-through (a sight's window). `glow`: a colour it lights up in by itself (a sight's dot)."""
     m = bpy.data.materials.new(name)
     m.use_nodes = True
     p = m.node_tree.nodes["Principled BSDF"]
     p.inputs["Base Color"].default_value = (*srgb(color), 1)
     p.inputs["Roughness"].default_value = rough
     p.inputs["Metallic"].default_value = metal
+    if alpha < 1:
+        p.inputs["Alpha"].default_value = alpha
+        m.surface_render_method = "BLENDED"
+    if glow:
+        p.inputs["Emission Color"].default_value = (*srgb(glow), 1)
+        p.inputs["Emission Strength"].default_value = 1.0
     m.use_backface_culling = True
     return m
 
@@ -70,6 +77,8 @@ M = {
     "Brass": material("Brass", "#b08a3e", 0.3, 0.9),        # the shotgun's bead and shells
     "Dot": material("Dot", "#e8e4d0", 0.4, 0.0),            # the sights' white dots
     "Glass": material("Glass", "#1d3a4c", 0.05, 0.6),       # the scope's lenses
+    "Lens": material("Lens", "#7fa6b4", 0.05, 0.0, alpha=0.16),  # the red-dot sight's window: you look through it
+    "RedDot": material("RedDot", "#1a0504", 0.5, 0.0, glow="#ff2a14"),  # its dot
     "Warhead": material("Warhead", "#3f4630", 0.5, 0.2),    # the rocket's nose
     "Glove": material("Glove", "#26272a", 0.82, 0.0),
     "GloveTrim": material("GloveTrim", "#3a3c40", 0.6, 0.0),  # knuckle guard, cuff strap
@@ -539,16 +548,28 @@ def build_rifle():
     body.append(lathe("barrel", [(0.435, 0.0092), (0.51, 0.0092)], M["Steel"], 12, at=(0, 0, B)))
     body.append(lathe("hider", [(0.51, 0.0112), (0.513, 0.0118), (0.562, 0.0118), (0.565, 0.011)], M["Steel"], 12, at=(0, 0, B)))
     body.append(disc("bore", 0.0078, M["Dark"], (0, 0.5652, B), 1, 12))
-    # Folding sights on the rail: a front post with its guards, a rear aperture.
+    # Folding sights on the rail, folded down flat (the red-dot sight does the aiming): a front post
+    # between its guards, a rear aperture, each lying back on its base.
     body.append(block("fbase", -0.009, 0.009, 0.405, 0.428, 0.0795, 0.087, M["Dark"], 0.001))
     for s in (-1, 1):
-        body.append(block("fwing", s * 0.0075, s * 0.0045, 0.41, 0.42, 0.087, 0.104, M["Dark"], 0.0006))
-    body.append(block("fpost", -0.0012, 0.0012, 0.413, 0.417, 0.087, 0.0985, M["Dark"], 0.0003))
+        body.append(block("fwing", s * 0.0075, s * 0.0045, 0.388, 0.405, 0.0795, 0.0855, M["Dark"], 0.0006))
+    body.append(block("fpost", -0.0012, 0.0012, 0.392, 0.405, 0.0805, 0.0845, M["Dark"], 0.0003))
     body.append(block("rbase", -0.011, 0.011, -0.08, -0.058, 0.0795, 0.086, M["Dark"], 0.001))
     for s in (-1, 1):
-        body.append(block("rear", s * 0.0075, s * 0.0028, -0.072, -0.067, 0.086, 0.106, M["Dark"], 0.0005))
-    body.append(block("rear", -0.0075, 0.0075, -0.072, -0.067, 0.086, 0.0935, M["Dark"], 0.0004))
-    body.append(block("rear", -0.0075, 0.0075, -0.072, -0.067, 0.1025, 0.106, M["Dark"], 0.0004))
+        body.append(block("rear", s * 0.0075, s * 0.0028, -0.058, -0.038, 0.0795, 0.0845, M["Dark"], 0.0005))
+    body.append(block("rear", -0.0075, 0.0075, -0.058, -0.0505, 0.0795, 0.0845, M["Dark"], 0.0004))
+    body.append(block("rear", -0.0075, 0.0075, -0.0415, -0.038, 0.0795, 0.0845, M["Dark"], 0.0004))
+    # A red-dot sight on the rail over the receiver: a clamp, a hooded frame, a window you look
+    # through and the dot in its middle. A node of its own: the game takes it off for a found scope.
+    DOT = (0, 0.031, 0.1035)
+    optic = [block("oclamp", -0.0125, 0.0125, -0.004, 0.044, 0.0795, 0.0885, M["Dark"], 0.001),
+             block("oknob", 0.0125, 0.017, 0.012, 0.028, 0.08, 0.088, M["Steel"], 0.001),
+             block("odeck", -0.0145, 0.0145, -0.008, 0.046, 0.0885, 0.0905, M["Polymer"], 0.0008)]
+    for s in (-1, 1):
+        optic.append(prism("ohood", [(-0.008, 0.0905), (0.046, 0.0905), (0.046, 0.119), (0.02, 0.119), (-0.008, 0.103)], 0.001, M["Polymer"], 0.0004, x=s * 0.0135))
+    optic.append(prism("oroof", [(0.018, 0.117), (0.046, 0.117), (0.046, 0.119), (0.018, 0.119)], 0.0145, M["Polymer"], 0.0006))
+    optic.append(block("owindow", -0.0125, 0.0125, 0.032, 0.0326, 0.0905, 0.117, M["Lens"], 0))
+    optic.append(disc("odot", 0.00075, M["RedDot"], (DOT[0], 0.0318, DOT[2]), -1, 10))
     body += [prism("charge", [(-0.112, 0.064), (-0.092, 0.064), (-0.092, 0.071), (-0.112, 0.071)], 0.006, M["Dark"], 0.0008),
               block("chargeT", -0.017, 0.017, -0.114, -0.104, 0.064, 0.071, M["Dark"], 0.0012)]
     # A curved 30-round magazine.
@@ -580,8 +601,8 @@ def build_rifle():
                 ([hw.at(-0.03, -40, 0.016), hw.at(0.0, -65, 0.012), hw.at(0.025, -80, 0.011), hw.at(0.048, -88, 0.011), hw.at(0.066, -92, 0.011)], 0.0108),
                 side=-1)
     return finish(W, (0, -0.042, 0.006), body,
-                  {"mag": (mag, (0, 0.068, 0.0), {"out": (0, 0.06, -1)})},
-                  (0, 0.566, B), (0, 0.415, 0.098), kit, [right, left])
+                  {"mag": (mag, (0, 0.068, 0.0), {"out": (0, 0.06, -1)}), "optic": (optic, (0, 0.02, 0.0795))},
+                  (0, 0.566, B), DOT, kit, [right, left])
 
 
 def hopper(x, y, ztop, r, side=0.0, top=False):
@@ -802,10 +823,67 @@ build_shotgun()
 build_sniper()
 build_bazooka()
 
+
+def bake_shade():
+    """Each gun's own shading, stored per face corner in a colour the game reads (web/src/world/gunSurface.ts):
+    red: how closed in the spot is (0 open, 1 deep in a crevice), from rays cast over the gun's own parts where
+    they rest, so the seams, the ports and the gaps between parts are darker; green: 1 on the thin bevels of the
+    hard edges, where paint and bluing wear off first (the game breaks that up into patches). Not the hands or
+    Paintball's kit. The rays are a fixed set, so the file comes out the same every time."""
+    from mathutils.bvhtree import BVHTree
+    rays, reach = 24, 0.02
+    dirs = []
+    for i in range(rays):  # spread over the half sphere, more of them upright (cosine weighted)
+        u, a = (i + 0.5) / rays, 2 * math.pi * ((i * 0.61803398875) % 1.0)
+        dirs.append((math.sqrt(u) * math.cos(a), math.sqrt(u) * math.sin(a), math.sqrt(1 - u)))
+    bpy.context.view_layer.update()
+    for root in [o for o in bpy.data.objects if o.parent is None and o.type == "EMPTY"]:
+        meshes = [o for o in root.children if o.type == "MESH" and not o.name.endswith("_kit")]
+        verts, polys = [], []
+        for o in meshes:
+            base = len(verts)
+            verts += [o.matrix_world @ v.co for v in o.data.vertices]
+            polys += [[base + i for i in p.vertices] for p in o.data.polygons]
+        tree = BVHTree.FromPolygons(verts, polys)
+        for o in meshes:
+            me = o.data
+            bm = bmesh.new()
+            bm.from_mesh(me)
+            worn = []
+            for f in bm.faces:
+                longest = max(e.calc_length() for e in f.edges)
+                width = f.calc_area() / longest if longest > 0 else 1
+                angles = [e.calc_face_angle_signed() for e in f.edges if len(e.link_faces) == 2]
+                strip = width < 0.0032 and longest > 2.5 * width  # a bevel, or a side of a thin pin or tube
+                worn.append(1.0 if strip and sum(a > math.radians(18) for a in angles) >= 2 and min(angles) > -0.02 else 0.0)
+            bm.free()
+            attr = me.color_attributes.new("shade", "FLOAT_COLOR", "CORNER")
+            mw, rot = o.matrix_world, o.matrix_world.to_3x3()
+            for p in me.polygons:
+                n = (rot @ p.normal).normalized()
+                t = n.orthogonal().normalized()
+                b = n.cross(t)
+                mid = mw @ p.center
+                for li in p.loop_indices:
+                    co = mw @ me.vertices[me.loops[li].vertex_index].co
+                    start = co + (mid - co) * 0.08 + n * 0.0005  # just inside its own face, just off the surface
+                    closed = 0.0
+                    for d in dirs:
+                        hit = tree.ray_cast(start, t * d[0] + b * d[1] + n * d[2], reach)
+                        if hit[0] is not None:
+                            closed += 1 - hit[3] / reach
+                    attr.data[li].color = (min(1.0, closed / rays), worn[p.index], 0.0, 1.0)
+            me.color_attributes.active_color = attr
+            me.color_attributes.render_color_index = me.color_attributes.find("shade")
+
+
+bake_shade()
+
 bpy.ops.object.select_all(action="SELECT")
 os.makedirs(os.path.dirname(os.path.abspath(OUT)), exist_ok=True)
 bpy.ops.export_scene.gltf(filepath=OUT, export_format="GLB", use_selection=True, export_apply=True, export_yup=True,
-                          export_extras=True, export_texcoords=False, export_cameras=False, export_lights=False)
+                          export_extras=True, export_texcoords=False, export_cameras=False, export_lights=False,
+                          export_vertex_color="ACTIVE", export_active_vertex_color_when_no_material=True)
 
 
 def pack(path):
@@ -862,6 +940,14 @@ def pack(path):
             n4 = np.zeros((len(nrm), 4), np.int8)
             n4[:, :3] = np.clip(np.round(nrm * 127), -127, 127).astype(np.int8)
             new["NORMAL"] = put(n4, 5120, "VEC3", 34962, True, 4)
+            if "COLOR_0" in at:
+                # The gun's baked shading (bake_shade): two bytes, under a name of its own so that nothing
+                # takes it for a colour to paint the gun in.
+                col = read(at["COLOR_0"]).astype(np.float64)
+                col /= {5123: 65535.0, 5121: 255.0}.get(gl["accessors"][at["COLOR_0"]]["componentType"], 1.0)
+                s4 = np.zeros((len(col), 4), np.uint8)
+                s4[:, :2] = np.clip(np.round(col[:, :2] * 255), 0, 255).astype(np.uint8)
+                new["_SHADE"] = put(s4, 5121, "VEC2", 34962, True, 4)
             idx = read(prim["indices"]).reshape(-1)
             prim["indices"] = put(idx.astype(np.uint16), 5123, "SCALAR", 34963)
             prim["attributes"] = new

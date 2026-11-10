@@ -1,6 +1,6 @@
 // The scope's picture, the crosshair and the recoil, headless (tools/dev/cdp.mjs):
 //
-//   node tools/dev/scope.mjs <out-folder> [--url http://localhost:5200/] [--phone] [--quality low] [--port 9344]
+//   node tools/dev/scope.mjs <out-folder> [--url http://localhost:5200/] [--phone] [--quality low] [--swiftshader] [--port 9344]
 //
 // Starts Zombies alone (guns in hand), then saves pictures: the rifle from the hip, the rifle after a
 // burst (the crosshair opened up), the sniper rifle from the hip, through its scope, through it while
@@ -11,11 +11,11 @@ import { mkdirSync } from 'node:fs';
 import { join } from 'node:path';
 import { launch, options, startGame } from './cdp.mjs';
 
-const o = options({ url: 'http://localhost:5200/', phone: false, quality: '', port: '9344' });
+const o = options({ url: 'http://localhost:5200/', phone: false, quality: '', swiftshader: false, port: '9344' });
 const out = o._[0];
 if (!out) throw new Error('usage: node tools/dev/scope.mjs <out-folder> [options]');
 mkdirSync(out, { recursive: true });
-const b = await launch({ port: Number(o.port), width: o.phone ? 844 : 1600, height: o.phone ? 390 : 900 });
+const b = await launch({ port: Number(o.port), width: o.phone ? 844 : 1600, height: o.phone ? 390 : 900, swiftshader: o.swiftshader });
 let bad = 0;
 const check = (ok, text) => {
   console.log(ok ? 'ok  ' : 'BAD ', text);
@@ -83,7 +83,7 @@ try {
   await b.sleep(1200);
   const held = await drift(1500);
   await shot('scope-breath');
-  await b.sleep(3000);
+  await b.sleep(4500); // the breath lasts four seconds
   const view = await b.evaluate('briel.weapon.scopeView', false);
   console.log(`scope: the reticle drifts up to ${loose.toFixed(4)} of half the view's height, ${held.toFixed(4)} holding your breath; out of breath after 4 s: ${view.winded}`);
   check(loose > 0.004 && loose < 0.03, 'the reticle drifts, a little');
@@ -96,6 +96,19 @@ try {
     await b.sleep(16);
   }
   await shot('scope-turning');
+  // Each gun up close, from the hip and with its sights at the eye: the surfaces, the sights, the rifle's red dot.
+  await b.evaluate('window.scopeTest.aim = false', false);
+  for (const w of ['pistol', 'rifle', 'shotgun', 'sniper']) {
+    await b.evaluate(`briel.weapon.select('${w}')`, false);
+    await look(0.6, 0);
+    await b.sleep(1200);
+    await shot(`gun-${w}`);
+    if (w === 'sniper') continue;
+    await b.evaluate('window.scopeTest.aim = true', false);
+    await b.sleep(900);
+    await shot(`gun-${w}-aimed`);
+    await b.evaluate('window.scopeTest.aim = false', false);
+  }
   const errors = b.logs.filter((l) => /^(error|exception)/.test(l));
   if (errors.length) console.log(errors.join('\n'));
   check(!errors.length, 'no errors on the page');

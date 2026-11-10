@@ -9,6 +9,7 @@ import WEAPONS from '../shared/weapons.json';
 import { LOOT } from '../shared/loot.mjs';
 import { t } from './i18n';
 import { drawn } from './world/rayShown';
+import { gunSurface, setGunWear } from './world/gunSurface';
 
 /**
  * "Action" mode: first-person hands holding a pistol, rifle, shotgun or
@@ -109,7 +110,9 @@ function toy(m: THREE.MeshStandardMaterial, w: WeaponId, role: Role): void {
   dress(part, paintball.on);
 }
 
+setGunWear(!paintball.on);
 onPaintball((on) => {
+  setGunWear(!on); // the toy guns are new plastic: no worn edges
   for (const p of toyParts) dress(p, on);
   for (const m of kitMats) m.visible = on;
 });
@@ -131,7 +134,7 @@ const loadedGuns = new Map<WeaponId, LoadedGun>();
 const sleeves: THREE.MeshStandardMaterial[] = [];
 
 /** For the others' hands, the small accents take the colour of a material nearby: 3 or 4 draws per gun, as before. */
-const FOLD: Record<string, string> = { Dot: 'Steel', Brass: 'Steel', Glass: 'Dark', Grip: 'Dark', Warhead: 'Olive' };
+const FOLD: Record<string, string> = { Dot: 'Steel', Brass: 'Steel', Glass: 'Dark', Lens: 'Dark', RedDot: 'Dark', Grip: 'Dark', Warhead: 'Olive' };
 
 /** The gun merged into one mesh per material (not the parts' moving): a few draws per player who holds it. */
 function liteGun(gun: THREE.Object3D, muzzle: THREE.Vector3): THREE.Group {
@@ -200,7 +203,13 @@ export const gunsReady: Promise<boolean> = new GLTFLoader().loadAsync('/models/w
             if (m.name === 'KitTrim') m.color.set(TOY[w].trim);
             m.visible = paintball.on;
             kitMats.push(m);
-          } else if (ROLE[m.name]) toy(m, w, ROLE[m.name]);
+          } else {
+            if (ROLE[m.name]) toy(m, w, ROLE[m.name]);
+            gunSurface(m); // worn edges, darker seams, a fine grain (world/gunSurface.ts)
+            // The red-dot sight: a window you look through, and a dot that shows in any light.
+            if (m.name === 'Lens') m.depthWrite = false;
+            if (m.name === 'RedDot') m.emissiveIntensity = 3;
+          }
         }
         o.material = m;
       });
@@ -672,7 +681,7 @@ export class Weapon {
         m.mag.userData.len = -low;
       }
       m.hip.fromArray(HIP[w]);
-      m.ads.set(-0.25 * loaded.sight.x, -0.25 * loaded.sight.y, w === 'pistol' ? -0.125 : m.ads.z); // the pistol held out at arm's length
+      m.ads.set(-0.25 * loaded.sight.x, -0.25 * loaded.sight.y, w === 'pistol' ? -0.125 : w === 'rifle' ? -0.062 : m.ads.z); // the pistol held out at arm's length, the rifle's red-dot sight near the eye
       const tip = model.getObjectByName('muzzle')!;
       m.muzzle.position.copy(tip.position);
       m.flash.position.copy(tip.position);
@@ -714,6 +723,9 @@ export class Weapon {
     for (const w of WEAPON_IDS) this.ammo[w] = Math.min(this.ammo[w], this.magOf(w));
     this.scopeOn = scope;
     for (const w of LOOT.scoped as WeaponId[]) {
+      // The scope takes the place of the rifle's red-dot sight on the rail.
+      const optic = this.models[w].gun.getObjectByName(`${w}_optic`);
+      if (optic) optic.visible = !scope;
       let s = this.scopes.get(w);
       if (scope && !s) {
         s = scopeOn(this.models[w].gun, w, this.models[w].flash);
