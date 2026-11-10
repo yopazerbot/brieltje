@@ -3,8 +3,9 @@
 Run (Blender 5, no window):
   blender -b -P tools/villagers.py -- [out.glb] [preview_dir]
 
-Nobody in particular: simple, friendly low-poly figures that read from 30 m, no faces of anyone, no names,
-no logos. Seven kinds, each one mesh on its own armature:
+Nobody in particular: friendly low-poly figures, no faces of anyone, no names, no logos. The people's bodies
+are sculpted, public domain figures (tools/assets/people, see `sculpt` below) on this tool's own skeleton, so
+the clips, the colours and the extras are made here as before. Seven kinds, each one mesh on its own armature:
   man      1.79 m: a shirt or jacket with long sleeves, trousers, shoes, short hair.
   woman    1.67 m: a top, trousers, flat shoes; a ponytail or a bob.
   elder    1.66 m, a little stooped: a cardigan, trousers, grey hair round the sides, a walking stick.
@@ -219,6 +220,21 @@ class Fig:
 
     def __init__(self):
         self.co, self.faces, self.slot, self.group, self.shade, self.allow = [], [], [], [], [], []
+        self.given = {}  # a point's weights as they come with a sculpted body: {bone: weight}
+        self.sculpted = 0  # how many of the first faces are a sculpted body's (they keep their own winding)
+
+    def add_sculpt(self, S, n):
+        """A sculpted body (sculpt()): its points with the weights it came with, its faces each with their slot and shade."""
+        assert not self.co
+        self.co = [Vector(p) for p in S["co"]]
+        self.allow = [("@",)] * len(self.co)
+        self.given = {i: {n(b): w for b, w in ws.items()} for i, ws in enumerate(S["weights"])}
+        for f, (slot, shade) in zip(S["faces"], S["look"]):
+            self.faces.append(tuple(f))
+            self.slot.append(slot)
+            self.group.append(0)
+            self.shade.append(shade)
+        self.sculpted = len(self.faces)
 
     def add(self, piece, slot, allow, shade=1.0, group=0, xform=None):
         verts, faces = piece
@@ -249,18 +265,188 @@ def human_bones(k):
                                        (f"{k}_UpperLeg{s}", f"{k}_Hips"), (f"{k}_LowerLeg{s}", f"{k}_UpperLeg{s}"), (f"{k}_Foot{s}", f"{k}_LowerLeg{s}"))]
 
 
+# ---- Sculpted bodies. The people are not built from tubes any more: each kind takes the body of a sculpted,
+# public domain figure (tools/assets/people, by Quaternius: the family the players' own figure comes from; see
+# docs/CREDITS.md), brought to this tool's skeleton. The sculpt's arms are lowered from its T-pose to hang as
+# ours do, its points keep the weights its maker gave them (its sixty bones gathered into our eighteen), and
+# each of its materials becomes one of our colour slots, so the game still dresses every villager itself.
+PEOPLE = os.path.join(os.path.dirname(os.path.abspath(__file__)), "assets", "people")
+BONE_OF = {"Root": "Hips", "Body": "Hips", "Hips": "Hips", "Abdomen": "Spine", "Torso": "Chest", "Chest": "Chest", "Neck": "Neck", "Head": "Head"}
+for _s in "LR":
+    BONE_OF.update({f"Shoulder.{_s}": "Chest", f"UpperArm.{_s}": f"UpperArm{_s}", f"LowerArm.{_s}": f"LowerArm{_s}", f"Wrist.{_s}": f"Hand{_s}",
+                    f"UpperLeg.{_s}": f"UpperLeg{_s}", f"LowerLeg.{_s}": f"LowerLeg{_s}", f"Foot.{_s}": f"Foot{_s}"})
+    for _f in ("Index", "Middle", "Ring", "Pinky", "Thumb"):
+        for _i in "1234":
+            BONE_OF[f"{_f}{_i}.{_s}"] = f"Hand{_s}"
+# Per figure: its materials as our slots (with a shade), by the part they are on where a name is used twice.
+SCULPTS = {
+    "casual": {"LightBrown": (2, 1.0), "Skin": (0, 1.0), "White": (15, 1.0), "Red_Dark": (4, 1.0), "Skin_Darker": (0, 0.84), "Eyebrows": (1, 0.8),
+               "Eye": (10, 1.0), "Hair": (1, 1.0), "LightBlue": (3, 1.0)},
+    "woman_c": {"White": (2, 1.0), "Skin": (0, 1.0), "Grey": (4, 1.0), "Hair_Blond": (1, 1.0), "Hair_Brown": (1, 0.75), "Brown": (10, 1.0), "Orange": (3, 1.0)},
+    "business": {"Body:Suit": (2, 1.0), "Legs:Suit": (3, 1.0), "White": (9, 1.0), "Tie": (6, 1.0), "Skin": (0, 1.0), "Black": (4, 1.0), "Hair": (1, 1.0),
+                 "Eyebrows": (1, 0.8), "Eye": (10, 1.0)},
+    "hoodie": {"Body:Purple": (2, 1.0), "Feet:Purple": (4, 1.0), "White": (15, 1.0), "Skin": (0, 1.0), "Eyebrows": (1, 0.8), "Eye": (10, 1.0), "Hair": (1, 1.0),
+               "LightBlue": (3, 1.0)},
+}
+
+
+def sculpt(name, H, head=1.0):
+    """The sculpted figure `name` at height H (m), standing as our figures do (arms down, facing -Y): its points,
+    faces, each face's (slot, shade), each point's weights by our bones' short names, and its joints."""
+    import re
+    before = set(bpy.data.objects), set(bpy.data.actions)
+    bpy.ops.import_scene.gltf(filepath=os.path.join(PEOPLE, name + ".glb"))
+    new = [o for o in bpy.data.objects if o not in before[0]]
+    rig = next(o for o in new if o.type == "ARMATURE")
+    rig.animation_data_clear()
+    for pb in rig.pose.bones:
+        pb.matrix_basis.identity()
+    # Thinner where a villager needs less than a close-up figure: the fingers (a third of the sculpt's triangles)
+    # and the hair. The sculpt comes with every triangle on points of its own; those are joined first.
+    for o in new:
+        if o.type != "MESH" or not o.vertex_groups:
+            continue
+        bm = bmesh.new()
+        bm.from_mesh(o.data)
+        bmesh.ops.remove_doubles(bm, verts=bm.verts, dist=1e-4 / o.matrix_world.to_scale().x)
+        bm.to_mesh(o.data)
+        bm.free()
+        part = o.name.split("_")[-1]
+        ratio = {"Body": 0.5, "Head": 0.72}.get(part)
+        if not ratio:
+            continue
+        names = {g.index: g.name for g in o.vertex_groups}
+        thin = o.vertex_groups.new(name="thin")
+        if part == "Body":
+            pick = [v.index for v in o.data.vertices
+                    if sum(g.weight for g in v.groups if BONE_OF.get(names[g.group], "").startswith("Hand")) > 0.5]
+        else:
+            hairy = set()
+            for p in o.data.polygons:
+                if "Hair" in o.data.materials[p.material_index].name:
+                    hairy.update(p.vertices)
+            pick = sorted(hairy)
+        thin.add(pick, 1.0, "REPLACE")
+        mod = o.modifiers.new("thin", "DECIMATE")
+        mod.ratio = ratio
+        mod.vertex_group = "thin"
+        mod.vertex_group_factor = 8.0
+        mod.use_collapse_triangulate = True
+        o.modifiers.move(len(o.modifiers) - 1, 0)
+    bpy.context.view_layer.update()
+    mw = rig.matrix_world
+
+    def at(b):
+        return mw @ rig.pose.bones[b].head
+
+    def turn(b, toward, way):
+        """Turn bone b about its head so that the line from it to `toward` (a bone) lies along `way`."""
+        bpy.context.view_layer.update()
+        head = at(b)
+        q = (at(toward) - head).rotation_difference(Vector(way))
+        m = Matrix.Translation(head) @ q.to_matrix().to_4x4() @ Matrix.Translation(-head)
+        pb = rig.pose.bones[b]
+        pb.matrix = mw.inverted() @ m @ mw @ pb.matrix
+        bpy.context.view_layer.update()
+
+    for s, sg in SIDES:
+        turn(f"UpperArm.{s}", f"LowerArm.{s}", (sg * 0.15, 0.06, -1))   # down, a little out from the body and back
+        turn(f"LowerArm.{s}", f"Wrist.{s}", (sg * 0.06, -0.14, -1))     # the forearm a little forward
+        turn(f"Wrist.{s}", f"Middle1.{s}", (sg * 0.03, -0.16, -1))
+    bpy.context.view_layer.update()
+    dg = bpy.context.evaluated_depsgraph_get()
+    dg.update()
+    co, faces, look, wts = [], [], [], []
+    index = {}
+    table = SCULPTS[name]
+    for o in sorted((o for o in new if o.type == "MESH" and o.vertex_groups), key=lambda o: o.name):
+        part = o.name.split("_")[-1]
+        ev = o.evaluated_get(dg)
+        me = ev.to_mesh()
+        groups = {g.index: g.name for g in o.vertex_groups}
+        local = {}
+        for v in me.vertices:
+            p = ev.matrix_world @ v.co
+            key = (round(p.x, 4), round(p.y, 4), round(p.z, 4))
+            if key not in index:
+                index[key] = len(co)
+                co.append(p)
+                ws = {}
+                for g in v.groups:
+                    b = BONE_OF.get(groups[g.group])
+                    if b and g.weight > 0:
+                        ws[b] = ws.get(b, 0.0) + g.weight
+                wts.append(ws)
+            local[v.index] = index[key]
+        for p in me.polygons:
+            f = [local[i] for i in p.vertices]
+            if len(set(f)) < 3:
+                continue
+            mat = re.sub(r"\.\d+$", "", o.data.materials[p.material_index].name)
+            faces.append(f)
+            look.append(table.get(f"{part}:{mat}") or table[mat])
+        ev.to_mesh_clear()
+    joints = {b: at(b) for b in ("Hips", "Abdomen", "Torso", "Neck", "Head")}
+    for s, _ in SIDES:
+        joints.update({f"UpperArm{s}": at(f"UpperArm.{s}"), f"LowerArm{s}": at(f"LowerArm.{s}"), f"Hand{s}": at(f"Wrist.{s}"), f"HandTip{s}": at(f"Middle4.{s}"),
+                       f"UpperLeg{s}": at(f"UpperLeg.{s}"), f"LowerLeg{s}": at(f"LowerLeg.{s}"), f"Foot{s}": at(f"Foot.{s}")})
+    for o in new:
+        bpy.data.objects.remove(o, do_unlink=True)
+    for a in list(bpy.data.actions):
+        if a not in before[1]:
+            bpy.data.actions.remove(a)
+    # To our size and place: the top of the head at H, the hips over the origin.
+    k = H / max(p.z for p in co)
+    shift = Vector((0, -joints["Hips"].y * k, 0))
+    co = [p * k + shift for p in co]
+    J = {b: p * k + shift for b, p in joints.items()}
+    out = {"Spine": J["Abdomen"], "Chest": J["Torso"], "Neck": J["Neck"], "Head": J["Head"]}
+    for s, sg in SIDES:  # the same on both sides: the left one, mirrored
+        for b in ("UpperArm", "LowerArm", "Hand", "HandTip", "UpperLeg", "LowerLeg", "Foot"):
+            p = J[b + "L"]
+            out[b + s] = Vector((sg * abs(p.x), p.y, p.z))
+        foot = [p for p, w in zip(co, wts) if w.get(f"Foot{s}", 0) > 0.5]
+        out[f"Toe{s}"] = Vector((out[f"Foot{s}"].x, min(p.y for p in foot), 0.02))
+    out["Hips"] = Vector((0, 0, out["UpperLegL"].z + 0.025 * H))
+    # A child has a large head for its body.
+    hj = out["Head"]
+    if head != 1.0:
+        co = [p + (p - hj) * (head - 1.0) * (w.get("Head", 0.0)) for p, w in zip(co, wts)]
+        k2 = H / max(p.z for p in co)
+        co = [p * k2 for p in co]
+        out = {b: p * k2 for b, p in out.items()}
+        hj = out["Head"]
+    skull = [p for p, w in zip(co, wts) if w.get("Head", 0) > 0.9 and p.z > hj.z + 0.02 * H]
+    lo = Vector((min(p.x for p in skull), min(p.y for p in skull), min(p.z for p in skull)))
+    hi = Vector((max(p.x for p in skull), max(p.y for p in skull), max(p.z for p in skull)))
+    out["HeadTop"] = Vector((0, hj.y, hi.z))
+
+    def half(z0, z1):
+        ring_ = [p for p, w in zip(co, wts) if z0 < p.z < z1 and (w.get("Chest", 0) + w.get("Spine", 0) + w.get("Hips", 0)) > 0.6]
+        # Half the width, and how far the body reaches from the middle line to the front or the back: what the
+        # straps, the scarf and the backpack are laid round.
+        return (max(abs(p.x) for p in ring_), max(abs(p.y) for p in ring_) * 1.05)
+
+    # The left eye (its dark faces): its middle, how far forward it lies and half its width, for the glasses.
+    dark = {i for f, (slot, _) in zip(faces, look) if slot == 10 for i in f if co[i].x > 0 and co[i].z > hj.z}
+    ex = [co[i] for i in dark]
+    eye = (sum(p.x for p in ex) / len(ex), min(p.y for p in ex), sum(p.z for p in ex) / len(ex), (max(p.x for p in ex) - min(p.x for p in ex)) / 2)
+    return {"co": co, "faces": faces, "look": look, "weights": wts, "joints": out, "head_c": (lo + hi) / 2, "hr": tuple((hi - lo) / 2), "eye": eye,
+            "chest": half(0.68 * H, 0.77 * H), "waist": half(0.56 * H, 0.62 * H)}
+
+
 KINDS = {
     "man": dict(H=1.79, sh=0.205, hip=0.096, girth=1.0, chest=(0.165, 0.11), waist=(0.15, 0.10), head=1.0, sleeve="long", clips="adult", lead=True, umb=True,
-                walk=1.38, T=1.06, jog=2.8, hair="short", collar=True),
+                walk=1.38, T=1.06, jog=2.8, hair="short", collar=True, src="casual"),
     "woman": dict(H=1.67, sh=0.185, hip=0.1, girth=0.94, chest=(0.15, 0.105), waist=(0.13, 0.092), head=0.97, sleeve="long", clips="adult", lead=True, umb=True,
-                  walk=1.32, T=1.0, jog=2.6, hair="long"),
+                  walk=1.32, T=1.0, jog=2.6, hair="long", src="woman_c"),
     "elder": dict(H=1.66, sh=0.19, hip=0.098, girth=1.04, chest=(0.165, 0.12), waist=(0.16, 0.115), head=0.98, sleeve="long", clips="elder", walk=0.95, T=1.16,
-                  hair="ring", cane=True),
+                  hair="ring", cane=True, src="business"),
     "teen": dict(H=1.71, sh=0.185, hip=0.09, girth=0.9, chest=(0.15, 0.1), waist=(0.13, 0.088), head=0.96, sleeve="hoodie", clips="adult", umb=True, walk=1.42,
-                 T=0.98, jog=3.0, hair="fringe"),
+                 T=0.98, jog=3.0, hair="fringe", src="hoodie"),
     "child": dict(H=1.18, sh=0.15, hip=0.072, girth=0.86, chest=(0.12, 0.085), waist=(0.115, 0.085), head=1.0, sleeve="short", clips="child", walk=1.25, T=0.78,
-                  jog=2.4, hair="short", child=True),
-    "cyclist": dict(H=1.76, sh=0.2, hip=0.096, girth=0.98, chest=(0.16, 0.11), waist=(0.145, 0.1), head=1.0, sleeve="long", clips="bike", hair="short", bike=True),
+                  jog=2.4, hair="short", child=True, src="casual", big_head=1.16),
+    "cyclist": dict(H=1.76, sh=0.2, hip=0.096, girth=0.98, chest=(0.16, 0.11), waist=(0.145, 0.1), head=1.0, sleeve="long", clips="bike", hair="short", bike=True, src="casual"),
 }
 ORDER = ["man", "woman", "elder", "teen", "child", "cyclist", "dog"]
 
@@ -300,6 +486,14 @@ class Body:
             J[f"LowerLeg{s}"] = Vector((sg * hip * 0.98, -0.01, self.z["knee"]))
             J[f"Foot{s}"] = Vector((sg * hip * 0.96, 0.01, self.z["ankle"]))
             J[f"Toe{s}"] = Vector((sg * hip * 0.98, -0.16 * H / 1.79, 0.02))
+        self.S = S = sculpt(P["src"], H, P.get("big_head", 1.0)) if P.get("src") else None
+        if S:
+            J.update(S["joints"])
+            self.z = dict(ankle=J["FootL"].z, knee=J["LowerLegL"].z, hipj=J["UpperLegL"].z, pelvis=J["Hips"].z, spine=J["Spine"].z, chest=J["Chest"].z,
+                          neck=J["Neck"].z, headb=J["Head"].z, shoulder=J["UpperArmL"].z, elbow=J["LowerArmL"].z, wrist=J["HandL"].z, tip=J["HandTipL"].z)
+            self.head_c, self.hr = S["head_c"], S["hr"]
+            self.hs = hs = self.hr[2] / 0.112
+            self.P = P = dict(P, sh=J["UpperArmL"].x, hip=J["UpperLegL"].x, chest=S["chest"], waist=S["waist"], hair="none")
         self.thigh = (J["UpperLegL"] - J["LowerLegL"]).length
         self.shin = (J["LowerLegL"] - J["FootL"]).length
         self.upper = (J["UpperArmL"] - J["LowerArmL"]).length
@@ -333,6 +527,10 @@ def build_person(B):
     k, P, J, H, g, hs = B.k, B.P, B.j, B.H, B.g, B.hs
     n = B.n
     F = Fig()
+    if B.S:
+        F.add_sculpt(B.S, n)
+        extras(F, B)
+        return F
     z = B.z
     cw, cd = P["chest"]
     ww, wd = P["waist"]
@@ -451,9 +649,13 @@ def extras(F, B):
     cw, cd = P["chest"]
     # Glasses: two dark rims and a bridge over the eyes.
     front = hc.y - hr[1]
+    gx, gy, gz, gr, rim = 0.03 * hs, front - 0.004, hc.z + 0.016 * hs, 0.015 * hs, 0.0028
+    if B.S:  # on a sculpted face: round its own eyes
+        gx, gy, gz, gr = B.S["eye"]
+        gy, gr, rim = gy - 0.007, gr * 1.5, 0.0035
     for s, sg in SIDES:
-        F.add(torus(Vector((sg * 0.03 * hs, front - 0.004, hc.z + 0.016 * hs)), 0.015 * hs, 0.0028, 8, 3, euler(pitch=90).to_matrix()), DARK, (n("Head"),), 1, SPECS)
-    F.add(box(Vector((0, front - 0.004, hc.z + 0.018 * hs)), (0.012 * hs, 0.002, 0.002)), DARK, (n("Head"),), 1, SPECS)
+        F.add(torus(Vector((sg * gx, gy, gz)), gr, rim, 10, 3, euler(pitch=90).to_matrix()), DARK, (n("Head"),), 1, SPECS)
+    F.add(box(Vector((0, gy, gz + 0.002)), (max(0.004, gx - gr), 0.002, 0.002)), DARK, (n("Head"),), 1, SPECS)
     # A scarf round the neck.
     F.add(torus(Vector((0, 0.005, z["neck"] + 0.005)), 0.058 * g, 0.022 * g, 10, 5), ACC2, (n("Chest"), n("Neck")), 1, SCARF)
     F.add(box(Vector((0.03 * g, -0.07 * g, z["neck"] - 0.08 * s9)), (0.025 * g, 0.01, 0.07 * s9), euler(pitch=8).to_matrix()), ACC2, (n("Chest"),), 0.92, SCARF)
@@ -469,7 +671,8 @@ def extras(F, B):
         F.add(box(hc + Vector((0, -hr[1] - 0.04 * hs, 0.05 * hs)), (0.06 * hs, 0.05 * hs, 0.005), euler(pitch=-8).to_matrix(), bevel=0.03), ACC, (n("Head"),), 0.9, HAT)
     elif k != "woman":
         flat = lambda d: 1.0 if d.z > 0.25 else 0.8
-        F.add(ellipsoid(hc + Vector((0, -0.004, 0.045 * hs)), (hr[0] * 1.14, hr[1] * 1.16, hr[2] * 0.72), 12, 6, euler(pitch=-6).to_matrix(), shape=flat), ACC,
+        wide = 1.06 if B.S else 1.0  # over sculpted hair
+        F.add(ellipsoid(hc + Vector((0, -0.004, 0.045 * hs)), (hr[0] * 1.14 * wide, hr[1] * 1.16 * wide, hr[2] * 0.72), 12, 6, euler(pitch=-6).to_matrix(), shape=flat), ACC,
               (n("Head"),), 1, HAT)
         F.add(box(hc + Vector((0, -hr[1] - 0.02 * hs, 0.05 * hs)), (0.062 * hs, 0.03 * hs, 0.005), euler(pitch=-12).to_matrix(), bevel=0.02), ACC, (n("Head"),), 0.9, HAT)
     # A bag: the woman's handbag in her left hand, a shoulder bag for the man, a backpack for the teen, the child and the cyclist.
@@ -670,7 +873,14 @@ def weights(B, F):
     groups = {}
     for i, a in enumerate(F.allow):
         groups.setdefault(a, []).append(i)
+    for i, ws in F.given.items():
+        top = sorted(ws.items(), key=lambda kv: -kv[1])[:4]
+        total = sum(w for _, w in top)
+        for b, w in top:
+            W[i, index[b]] = w / total
     for allow, idx in groups.items():
+        if allow == ("@",):
+            continue
         idx = np.array(idx)
         if len(allow) == 1:
             W[idx, index[allow[0]]] = 1.0
@@ -711,7 +921,8 @@ def make_mesh(name, B, F, W, mat, rig):
     # Every piece's faces outward (each piece is closed).
     bm = bmesh.new()
     bm.from_mesh(me)
-    bmesh.ops.recalc_face_normals(bm, faces=bm.faces)
+    bm.faces.ensure_lookup_table()
+    bmesh.ops.recalc_face_normals(bm, faces=[f for f in bm.faces if f.index >= F.sculpted])
     bm.to_mesh(me)
     bm.free()
     me.update()
@@ -1395,7 +1606,7 @@ def render(path, cam_loc, look_at, lens=50, size=(900, 420)):
 
 if PREVIEW:
     os.makedirs(PREVIEW, exist_ok=True)
-    groups_shown = {"man": (HAT, BAG), "woman": (HAIR_A, BAG, SCARF), "elder": (HAT, SPECS), "teen": (BAG,), "child": (HAT,), "cyclist": (HAT, BAG), "dog": (HAIR_A,)}
+    groups_shown = {"man": (HAT, BAG, SPECS), "woman": (HAIR_A, BAG, SCARF), "elder": (HAT, SPECS, SCARF), "teen": (BAG, SPECS), "child": (HAT,), "cyclist": (HAT, BAG), "dog": (HAIR_A,)}
     poses = {"man": "Walk", "woman": "Walk", "elder": "Walk", "teen": "Idle", "child": "Walk", "cyclist": "Ride", "dog": "Walk"}
     for i, k in enumerate(ORDER):
         top, rig, mesh, B = FIGS[k]
@@ -1428,3 +1639,6 @@ if PREVIEW:
     scene.frame_set(10)
     render(os.path.join(PREVIEW, "poses.png"), (0.0, -9.5, 1.3), (0.0, 0, 0.85), 35, (1200, 420))
     render(os.path.join(PREVIEW, "face.png"), (-3.3 + 0.0, -1.2, 1.62), (-3.3, 0, 1.58), 50, (500, 400))
+    for i, k in enumerate(ORDER[:6]):
+        hz = FIGS[k][3].head_c.z + (0.35 if k == "cyclist" else 0.0)
+        render(os.path.join(PREVIEW, f"head_{k}.png"), (i * 1.1 - 3.3 - 0.35, -1.0, hz + 0.05), (i * 1.1 - 3.3, -0.05, hz - 0.12), 50, (420, 420))

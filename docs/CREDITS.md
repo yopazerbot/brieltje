@@ -44,6 +44,7 @@ Drawn in code at start-up, no image files: smoke, fire, sparks and debris sprite
 |---|---|---|---|
 | SWAT (rigged, 24 animations), `web/public/models/swat.glb`, recoloured per player in the game | Quaternius | CC0 1.0 | https://poly.pizza/m/Btfn3G5Xv4 |
 | Cat (animated), `web/public/models/cat.glb` | Quaternius | CC0 1.0 | https://poly.pizza/m/2f54vbV0In |
+| The villagers' bodies: "Casual Character", "Animated Woman", "Business Man" and "Hoodie Character", `tools/assets/people/`, brought to the villagers' own skeleton and colours by `tools/villagers.py` | Quaternius | CC0 1.0 | https://poly.pizza/m/kZ3DmIoGip, https://poly.pizza/m/qJ2gsTUBHL, https://poly.pizza/m/JFrLIKqvCH, https://poly.pizza/m/gKLBoRsyKe |
 | The hands that hold the guns ("FPS arms, rigged only"), `tools/assets/fps_arms.blend`, posed round each gun and gloved by `tools/weapons.py` | para, on OpenGameArt | CC0 1.0 | https://opengameart.org/content/fps-arms-rigged-only |
 
 ## Surroundings (open data)

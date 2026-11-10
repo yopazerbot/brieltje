@@ -313,6 +313,7 @@ file's opening comment; run it again after adding, moving or removing a module.
 - `tools/dev/scope.mjs`: The scope's picture, the crosshair and the recoil, headless (tools/dev/cdp.mjs):
 - `tools/dev/shot.mjs`: A screenshot of the game from a given spot, headless (tools/dev/cdp.mjs).
 - `tools/dev/startFlowCheck.mjs`: The start screen end to end, headless (tools/dev/cdp.mjs): every way from opening the page to playing, through the three steps (who, alone or together, the...
+- `tools/dev/villagers.mjs`: Pictures of the villagers from close by, headless (tools/dev/cdp.mjs): one of each kind that is out, and the square.
 - `tools/dev/zombieHits.mjs`: Do shots hit the zombies?
 - `tools/dormer_house.py`: Build the exterior with Blender: blender -b -P tools/dormer_house.py -- output.glb [editable.blend].
 - `tools/facades.py`: Facades and gardens of the neighbouring houses (the data has only their outlines and heights).
