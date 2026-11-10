@@ -61,6 +61,18 @@ export const WEAPON_IDS = Object.keys(SPECS) as WeaponId[];
 /** How fast each gun comes up to the eye (1/s): the pistol at once, the long and heavy ones slower. */
 const AIM_SPEED: Record<WeaponId, number> = { pistol: 20, rifle: 14, shotgun: 12, sniper: 9, bazooka: 8 };
 const NO_DRIFT = new THREE.Vector2();
+/**
+ * The sniper rifle's bullet, m/s. Slower than a real one (about 800) so that its flight shows at the
+ * distances this village has: 100 m takes a quarter of a second and drops 34 cm, 190 m takes half a
+ * second and drops one mark on the scope's reticle.
+ */
+const BULLET_SPEED = 380;
+/**
+ * Thin cover a rifle's or sniper rifle's bullet goes through, by the surface's name, and how deep it
+ * is at most (m): the bullet leaves a hole, and counts in full on what is behind. Not walls, floors or
+ * wooden cladding (a wall is behind that), and not for the pistol or the shotgun's pellets.
+ */
+const COVER: Record<string, number> = { hedge: 1.6, nb_hedge: 1.6, oak: 0.2, walnut: 0.2, fence: 0.2 };
 
 /** Muzzle flash length per gun, in metres. */
 const FLASH: Record<WeaponId, number> = { pistol: 0.16, rifle: 0.26, shotgun: 0.34, sniper: 0.32, bazooka: 0.45 };
@@ -584,7 +596,7 @@ export class Weapon {
   /** A bullet hit window pane `index` at `point`, fired from `from`; `normal` is the pane's face there, `pane` its mesh. */
   onGlassHit: (index: number, point: THREE.Vector3, from: THREE.Vector3, normal: THREE.Vector3, pane: THREE.Object3D) => void = () => {};
   /** Bullets (pellets) of one shot that hit another player's body and head; in paintball `spot` is where the paint sticks. */
-  onPlayerHit: (name: string, body: number, head: number, point: THREE.Vector3, spot?: Spot) => void = () => {};
+  onPlayerHit: (name: string, body: number, head: number, point: THREE.Vector3, spot: Spot | undefined, w: WeaponId) => void = () => {};
   /** A bullet hit one of the cats. */
   onCatHit: (index: number, point: THREE.Vector3) => void = () => {};
   onClownHit: (id: number, point: THREE.Vector3, spot?: Spot) => void = () => {};
@@ -592,7 +604,7 @@ export class Weapon {
    * One shot's pellets that hit zombies (the Zombies game), per zombie: pellets on the body and the
    * head, where the first hit, and its ray (paintball's paint is found on the posed body from it).
    */
-  onZombieHit: (hits: ZombieHit[], paint: Paint | null) => void = () => {};
+  onZombieHit: (hits: ZombieHit[], paint: Paint | null, w: WeaponId) => void = () => {};
   /** Paintball: a pellet's paintball flies from the gun to `to` (where it hit, or as far as it goes). */
   onPaintball: (from: THREE.Vector3, to: THREE.Vector3, paint: Paint) => void = () => {};
   /** A bullet hit the house or the ground (`on` is the mesh it hit): a hole, and dust, sparks or chips. */
@@ -601,6 +613,8 @@ export class Weapon {
   onEject: (w: WeaponId) => void = () => {};
   /** A bullet you can see fly: from the muzzle to where it lands (the rifle's every third, the sniper rifle's each one). */
   onTracer: (from: THREE.Vector3, to: THREE.Vector3) => void = () => {};
+  /** The sniper rifle's bullet went this stretch in the last `dt` seconds. */
+  onBullet: (from: THREE.Vector3, to: THREE.Vector3, dt: number) => void = () => {};
   private models: Record<WeaponId, ViewModel>;
   private cooldown = 0;
   private reloading = 0;
@@ -641,6 +655,8 @@ export class Weapon {
   private driftAmp = 0;
   private breath = 1;
   private winded = false;
+  /** The sniper rifle's bullets in the air: where, how fast, the range left (m), and the cover each may still go through */
+  private bullets: { pos: THREE.Vector3; vel: THREE.Vector3; left: number; pass: { free: number; left: number } }[] = [];
   /** How long the reload under way takes in all (s) */
   private reloadTime = 1;
   /** Your suit's colour, for the sleeves */
@@ -940,54 +956,131 @@ export class Weapon {
       const a = Math.random() * Math.PI * 2;
       const r = spread * Math.sqrt(Math.random());
       this.raycaster.setFromCamera(new THREE.Vector2((at.x + Math.cos(a) * r) / aspect, at.y + Math.sin(a) * r), this.camera);
-      const hits = this.raycaster.intersectObjects(this.scene.children, true);
-      const hit = hits.find((h) => drawn(h.object) && !h.object.userData.ignoreRay && h.face);
-      if (paint) this.onPaintball(paint.from, hit ? hit.point : this.raycaster.ray.at(120, new THREE.Vector3()), paint);
-      else if (this.current === 'sniper' || (this.current === 'rifle' && this.ammo.rifle % 3 === 0)) this.onTracer(this.muzzlePoint(), hit ? hit.point : this.raycaster.ray.at(200, new THREE.Vector3()));
-      if (!hit || !hit.face) continue;
-      const player = hit.object.userData.player as string | undefined;
-      const zombie = hit.object.userData.zombie as number | undefined;
-      if (zombie !== undefined) {
-        const e = zombies.get(zombie) ?? { id: zombie, body: 0, head: 0, point: hit.point.clone(), ray: this.raycaster.ray.clone() };
-        if (hit.object.userData.part === 'head') e.head++;
-        else e.body++;
-        zombies.set(zombie, e);
-        // The sniper's bullet goes on through it: the next zombie behind on the same line, if nothing else
-        // (a wall, a pane, a player) comes first. Its own other hit box doesn't count.
-        for (let k = hits.indexOf(hit) + 1, left = (spec.pierce ?? 1) - 1; left > 0 && k < hits.length; k++) {
-          const h = hits[k];
-          if (!drawn(h.object) || h.object.userData.ignoreRay || !h.face) continue;
-          const next = h.object.userData.zombie as number | undefined;
-          if (next === zombie || (next !== undefined && zombies.has(next))) continue;
-          if (next === undefined) break;
-          zombies.set(next, { id: next, body: h.object.userData.part === 'head' ? 0 : 1, head: h.object.userData.part === 'head' ? 1 : 0, point: h.point.clone(), ray: this.raycaster.ray.clone() });
-          left--;
-        }
+      // The sniper rifle's bullet takes its time and falls on the way (update flies it); paint and the other guns land at once.
+      if (this.current === 'sniper' && !paint) {
+        this.bullets.push({
+          pos: this.raycaster.ray.origin.clone(), vel: this.raycaster.ray.direction.clone().multiplyScalar(BULLET_SPEED),
+          left: this.raycaster.far, pass: { free: 0, left: 1 },
+        });
         continue;
       }
-      if (hit.object.userData.clown !== undefined) {
-        this.onClownHit(hit.object.userData.clown, hit.point.clone(), paint ? this.spot(hits, hit, false) : undefined);
-        break;
-      }
-      if (hit.object.userData.cat !== undefined) {
-        this.onCatHit(hit.object.userData.cat, hit.point.clone());
-      } else if (player) {
-        const e = players.get(player) ?? { body: 0, head: 0, point: hit.point.clone(), spot: paint ? this.spot(hits, hit, true) : undefined };
-        if (hit.object.userData.part === 'head') e.head++;
-        else e.body++;
-        players.set(player, e);
-      } else if (hit.object.userData.glassIndex !== undefined) {
-        const normal = hit.face.normal.clone().transformDirection(hit.object.matrixWorld);
-        this.onGlassHit(hit.object.userData.glassIndex, hit.point.clone(), eye, normal, hit.object);
-      } else {
-        const normal = hit.face.normal.clone().transformDirection(hit.object.matrixWorld);
-        this.onImpact(hit.point.clone(), normal, String(hit.object.userData.material ?? ''), hit.object);
-      }
+      const end = this.strike(spec, this.current, paint, eye, players, zombies);
+      if (!paint && this.current === 'rifle' && this.ammo.rifle % 3 === 0) this.onTracer(this.muzzlePoint(), end.point ?? this.raycaster.ray.at(200, new THREE.Vector3()));
+      if (end.clown) break;
     }
-    for (const [name, e] of players) this.onPlayerHit(name, e.body, e.head, e.point, e.spot);
-    if (zombies.size) this.onZombieHit([...zombies.values()], paint);
+    for (const [name, e] of players) this.onPlayerHit(name, e.body, e.head, e.point, e.spot, this.current);
+    if (zombies.size) this.onZombieHit([...zombies.values()], paint, this.current);
     if (this.ammo[this.current] === 0) this.reload();
     return this.kickOf(spec);
+  }
+
+  /**
+   * What the ray now in the raycaster hits within `reach` metres, for gun `w`: a zombie or a player goes
+   * into `zombies` or `players` (the caller tells the game once the shot's pellets are counted), the rest
+   * is told at once (a clown, a cat, a pane, a surface). Returns where it ended, and whether on a clown
+   * (which ends a shotgun's volley).
+   *
+   * The rifle's and the sniper rifle's bullets go through one piece of thin cover (COVER: a hedge, a
+   * wooden door or table, a wire fence) and on to what is behind it; `pass` keeps count along the ray.
+   */
+  private strike(
+    spec: Spec, w: WeaponId, paint: (Paint & { from: THREE.Vector3 }) | null, eye: THREE.Vector3,
+    players: Map<string, { body: number; head: number; point: THREE.Vector3; spot?: Spot }>, zombies: Map<number, ZombieHit>,
+    reach = Infinity, pass = { free: 0, left: !paint && (w === 'rifle' || w === 'sniper') ? 1 : 0 },
+  ): { point?: THREE.Vector3; clown?: boolean } {
+    const hits = this.raycaster.intersectObjects(this.scene.children, true);
+    let hit: THREE.Intersection | undefined;
+    for (const h of hits) {
+      if (h.distance > reach) break;
+      if (!drawn(h.object) || h.object.userData.ignoreRay || !h.face) continue;
+      const depth = COVER[String(h.object.userData.material ?? '')];
+      if (depth && h.distance < pass.free) continue; // still inside the cover it is going through
+      if (depth && pass.left > 0) {
+        pass.left--;
+        pass.free = h.distance + depth;
+        this.onImpact(h.point.clone(), h.face.normal.clone().transformDirection(h.object.matrixWorld), String(h.object.userData.material), h.object);
+        continue;
+      }
+      hit = h;
+      break;
+    }
+    if (paint) this.onPaintball(paint.from, hit ? hit.point : this.raycaster.ray.at(120, new THREE.Vector3()), paint);
+    if (!hit || !hit.face) return {};
+    const point = hit.point.clone();
+    const player = hit.object.userData.player as string | undefined;
+    const zombie = hit.object.userData.zombie as number | undefined;
+    if (zombie !== undefined) {
+      const e = zombies.get(zombie) ?? { id: zombie, body: 0, head: 0, point: hit.point.clone(), ray: this.raycaster.ray.clone() };
+      if (hit.object.userData.part === 'head') e.head++;
+      else e.body++;
+      zombies.set(zombie, e);
+      // The sniper's bullet goes on through it: the next zombie behind on the same line, if nothing else
+      // (a wall, a pane, a player) comes first. Its own other hit box doesn't count.
+      for (let k = hits.indexOf(hit) + 1, left = (spec.pierce ?? 1) - 1; left > 0 && k < hits.length; k++) {
+        const h = hits[k];
+        if (!drawn(h.object) || h.object.userData.ignoreRay || !h.face) continue;
+        const next = h.object.userData.zombie as number | undefined;
+        if (next === zombie || (next !== undefined && zombies.has(next))) continue;
+        if (next === undefined) break;
+        zombies.set(next, { id: next, body: h.object.userData.part === 'head' ? 0 : 1, head: h.object.userData.part === 'head' ? 1 : 0, point: h.point.clone(), ray: this.raycaster.ray.clone() });
+        left--;
+      }
+      return { point };
+    }
+    if (hit.object.userData.clown !== undefined) {
+      this.onClownHit(hit.object.userData.clown, hit.point.clone(), paint ? this.spot(hits, hit, false) : undefined);
+      return { point, clown: true };
+    }
+    if (hit.object.userData.cat !== undefined) {
+      this.onCatHit(hit.object.userData.cat, hit.point.clone());
+    } else if (player) {
+      const e = players.get(player) ?? { body: 0, head: 0, point: hit.point.clone(), spot: paint ? this.spot(hits, hit, true) : undefined };
+      if (hit.object.userData.part === 'head') e.head++;
+      else e.body++;
+      players.set(player, e);
+    } else if (hit.object.userData.glassIndex !== undefined) {
+      const normal = hit.face.normal.clone().transformDirection(hit.object.matrixWorld);
+      this.onGlassHit(hit.object.userData.glassIndex, hit.point.clone(), eye, normal, hit.object);
+    } else {
+      const normal = hit.face.normal.clone().transformDirection(hit.object.matrixWorld);
+      this.onImpact(hit.point.clone(), normal, String(hit.object.userData.material ?? ''), hit.object);
+    }
+    return { point };
+  }
+
+  /**
+   * The sniper rifle's bullets on their way: each flies BULLET_SPEED and falls as anything does, so a
+   * far shot lands a moment later and lower (aim a little high, and ahead of someone running). Each
+   * frame it goes its stretch and strikes what lies on it. It shows as a streak. A bullet still in
+   * the air when you put the rifle away lands without counting: the server takes a hit only from
+   * the gun in your hands.
+   */
+  private fly(dt: number): void {
+    if (!this.bullets.length) return;
+    const spec = SPECS.sniper;
+    const far = this.raycaster.far;
+    for (const b of [...this.bullets]) {
+      const step = b.vel.clone().multiplyScalar(dt);
+      const len = step.length();
+      if (len <= 0) continue;
+      b.vel.y -= 9.81 * dt;
+      this.raycaster.set(b.pos, step.clone().divideScalar(len));
+      this.raycaster.far = len;
+      const players = new Map<string, { body: number; head: number; point: THREE.Vector3; spot?: Spot }>();
+      const zombies = new Map<number, ZombieHit>();
+      const end = this.strike(spec, 'sniper', null, b.pos, players, zombies, len, b.pass);
+      if (this.current === 'sniper') {
+        for (const [name, e] of players) this.onPlayerHit(name, e.body, e.head, e.point, e.spot, 'sniper');
+        if (zombies.size) this.onZombieHit([...zombies.values()], null, 'sniper');
+      }
+      const to = end.point ?? b.pos.clone().add(step);
+      this.onBullet(b.pos.clone(), to, dt);
+      b.left -= len;
+      b.pass.free -= len;
+      b.pos.copy(to);
+      if (end.point || b.left <= 0) this.bullets.splice(this.bullets.indexOf(b), 1);
+    }
+    this.raycaster.far = far;
   }
 
   /**
@@ -1092,6 +1185,7 @@ export class Weapon {
     if (!this.enabled) return;
     const spec = this.spec;
     this.clock += dt;
+    this.fly(dt);
     const cycleBefore = this.cycleTime;
     this.cycleTime = Math.max(0, this.cycleTime - dt);
     if (this.reloading > 0) {

@@ -1051,6 +1051,7 @@ weapon.onImpact = (point, normal, material, on) => {
 weapon.onPaintball = (from, to, paint) => effects.paintShot(from, to, paint);
 weapon.onEject = (w) => effects.casing(camera, w, weapon.aimAmount);
 weapon.onTracer = (from, to) => effects.tracer(from, to);
+weapon.onBullet = (from, to, dt) => effects.bullet(from, to, dt);
 
 /** The walking speed together: the real pace for everyone (alone, the menu's own). Running is 2.5 times it. */
 const REAL_WALK = 1.4;
@@ -1453,13 +1454,13 @@ weapon.onGlassHit = (i, point, from, normal, pane) => {
     lockKey = homeLocks.homeOfPane(i) ? 'prompt.locked' : 'prompt.multiplayerOnly';
   }
 };
-weapon.onPlayerHit = (name, body, head, point, spot) => {
+weapon.onPlayerHit = (name, body, head, point, spot, w) => {
   if (games.friend(name)) return; // your own team in the teams game
   effects.hit(point, spot);
   avatars.flinch(name);
   if (!avatars.canBeHit(name)) return;
   combat.hitMarker(false, head > 0);
-  net.send({ t: 'hit', target: name, w: weapon.current, body, head });
+  net.send({ t: 'hit', target: name, w, body, head }); // `w`: the gun that fired it (a sniper's bullet lands a moment later)
 };
 
 /** Which way a hit came from, relative to where you look (0 = ahead, positive = left). */
@@ -1627,8 +1628,7 @@ $('newround-btn').addEventListener('click', () => net.send({ t: 'newround' }));
 /** A zombie's name in the kill feed and on the death screen. */
 const zombieName = (big: boolean) => whoName(big ? 'a big zombie' : 'a zombie');
 /** One shot's hits on zombies: a puff (or paint that sticks to them), and the hits for the server, or here alone. */
-weapon.onZombieHit = (hits, paint) => {
-  const w = weapon.current;
+weapon.onZombieHit = (hits, paint, w) => {
   const spec = WEAPON_SPECS[w];
   for (const h of hits) {
     effects.zombieHit(h.point);
@@ -3413,7 +3413,7 @@ renderer.setAnimationLoop((now: number) => {
           : k
             ? { x: cm(k.x), y: cm(k.y), z: cm(k.z), yaw: mrad(k.yaw), pitch: mrad(player.pitch), flying: false, c: false } // on the bike: its place and its way
           : { x: cm(player.x), y: cm(player.feet), z: cm(player.z), yaw: mrad(player.yaw), pitch: mrad(player.pitch), flying: player.flying, c: player.crouching, ...(player.chute !== null ? { pc: 1, ...(player.canopy !== null ? { po: 1 } : {}) } : {}) };
-      const state = { t: 'state', ...where, armed: weapon.enabled, w: weapon.current };
+      const state = { t: 'state', ...where, armed: weapon.enabled, w: weapon.current, ...(weapon.enabled && weapon.aimAmount > 0.6 ? { a: 1 } : {}) }; // `a`: the gun at your eye, for how the others see you
       const key = JSON.stringify(state);
       const changed = key !== sent.key;
       const every = changed || sent.moved ? 50 : 300;

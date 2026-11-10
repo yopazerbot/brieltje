@@ -746,6 +746,8 @@ export class Game {
         ...where(m),
         // No flying in the Zombies game: hovering over the zombies would be out of their reach for good.
         yaw: num(m.yaw, -100, 100), pitch: num(m.pitch, -2, 2), armed: !!m.armed, flying: !!m.flying && this.rules.flying && !inCar && !bike && !this.modes.zombies,
+        // `a`: the gun at their eye. Only how the figure looks to the others (it aims, a sniper's scope glints); nothing is decided by it.
+        a: !!m.a && !!m.armed && !inCar && !bike,
         w: player.weapons.has(m.w) ? m.w : 'pistol', c: !!m.c && !inCar && !bike, d: inCar, s: driving ? num(m.s, -1, 1) : 0, bk: !!bike,
         // In a drop, and its canopy out: only while the server has them dropping (a page can't claim one, see drop).
         chute: !!m.pc && this.dropping(player, now),

@@ -42,6 +42,8 @@ export interface Pose {
   forward: number;
   side: number;
   armed: boolean;
+  /** The gun at their eye: the head goes down to the sights, the shoulders in */
+  aim?: boolean;
   alive: boolean;
   crouch: boolean;
   flying: boolean;
@@ -526,6 +528,7 @@ export function buildSwat(name: string, color: string, outfit: Outfit, hitMateri
   let legYaw = NaN;
   let stepping = false;
   let armedW = 1;
+  let aimW = 0;
   let dirW = [1, 0, 0, 0]; // forwards, backwards, right, left
   let crouchW = 0;
   let airW = 0;
@@ -601,6 +604,7 @@ export function buildSwat(name: string, color: string, outfit: Outfit, hitMateri
       airW += ((inAir ? 1 : 0) - airW) * k(inAir ? 14 : 20);
       flyW += ((flying ? 1 : 0) - flyW) * k(5);
       armedW += ((p.armed ? 1 : 0) - armedW) * k(8);
+      aimW += ((p.aim && p.armed && alive ? 1 : 0) - aimW) * k(10);
       if (inAir) fall = Math.min(fall, p.vy);
       else {
         // Down from a jump or a fall: the knees take it, deeper the harder it was.
@@ -762,10 +766,15 @@ export function buildSwat(name: string, color: string, outfit: Outfit, hitMateri
         rotateWorld(head, UP, twist * 0.15);
       }
       const pitch = Math.max(-1.2, Math.min(1.2, p.pitch)) * (1 - deathW);
-      if (Math.abs(pitch) > 0.005) {
+      if (Math.abs(pitch) > 0.005 || aimW > 0.01) {
         side.set(0, 0, -1).applyQuaternion(rootQ).setY(0).normalize().cross(UP).normalize();
         rotateWorld(neck, side, pitch * (p.armed ? 0.2 : 0.3));
         rotateWorld(head, side, pitch * (p.armed ? 0.35 : 0.45));
+        // Aiming: the shoulders come forward over the gun and the head goes down to its sights.
+        if (aimW > 0.01) {
+          rotateWorld(spine[2], side, -0.12 * aimW);
+          rotateWorld(neck, side, -0.1 * aimW);
+        }
       }
       spine[0].updateMatrixWorld(true); // the upper body (arms and head with it) as turned
 

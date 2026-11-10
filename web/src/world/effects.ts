@@ -384,6 +384,19 @@ export class Effects {
     this.particles.spawn(s, true);
   }
 
+  /** The sniper rifle's bullet on its way: the stretch it went this frame, as a bright streak that is gone the next. */
+  bullet(from: THREE.Vector3, to: THREE.Vector3, dt: number): void {
+    const life = Math.max(0.016, dt);
+    const s = this.at(from);
+    s.vx = (to.x - from.x) / life;
+    s.vy = (to.y - from.y) / life;
+    s.vz = (to.z - from.z) / life;
+    Object.assign(s, { life, size0: 0.035, size1: 0.035, alpha: 0.9, cell: PARTICLE.glow, stretch: 0.012 });
+    s.c0.set('#fff0c4');
+    s.c1.set('#ffc070');
+    this.particles.spawn(s, true);
+  }
+
   /** A little smoke where a gun went off. */
   muzzleSmoke(at: THREE.Vector3): void {
     this.throw(at, new THREE.Vector3(0, 0.3, 0), 2, 0.4, 0.6, (s) => {

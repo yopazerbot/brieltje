@@ -7,7 +7,7 @@
 // through the zombies' hit boxes (world/rayShown.ts drawn, and its test). Exits 1 when no shot hit.
 import { launch, options, startGame } from './cdp.mjs';
 
-const o = options({ url: 'http://localhost:5200/', place: 'house', shots: '40', port: '9342' });
+const o = options({ url: 'http://localhost:5200/', place: 'house', shots: '40', weapon: '', port: '9342' });
 const b = await launch({ port: Number(o.port), width: 1280, height: 720 });
 let hits = 0;
 try {
@@ -15,6 +15,8 @@ try {
   await b.evaluate(`briel.zombiesSolo.start(${JSON.stringify(o.place)})`, false);
   await b.waitFor('(briel.zombiesSolo.state()?.horde.zombies.size ?? 0) > 0', 90000);
   await b.sleep(3000); // the first wave on its way
+  // --weapon sniper: with that gun (its bullet flies; from the hip it is wide, so fewer land).
+  if (o.weapon) await b.evaluate(`briel.weapon.give(${JSON.stringify(o.weapon)}); briel.weapon.select(${JSON.stringify(o.weapon)})`, false);
   let shots = 0;
   let beaten = 0;
   // Aim and fire in one go (the zombie can't step aside in between); a press while reloading fires nothing and

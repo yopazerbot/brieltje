@@ -41,6 +41,8 @@ export interface PlayerSample {
   open: boolean;
   /** On a bike (src/world/bike.ts) */
   bike: boolean;
+  /** The gun at their eye: the figure aims, a sniper's scope glints */
+  aim: boolean;
 }
 
 export interface CarSample {

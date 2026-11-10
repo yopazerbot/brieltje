@@ -329,6 +329,30 @@ export interface Seat {
   bike?: { pedals: [THREE.Vector3, THREE.Vector3]; grips: [THREE.Vector3, THREE.Vector3] };
 }
 
+let glintMap: THREE.CanvasTexture | null = null;
+/** A scope's glint, drawn in code: a soft white core with a thin four-pointed flare. */
+function glintTexture(): THREE.CanvasTexture {
+  if (glintMap) return glintMap;
+  const c = document.createElement('canvas');
+  c.width = c.height = 64;
+  const g = c.getContext('2d')!;
+  const core = g.createRadialGradient(32, 32, 0, 32, 32, 14);
+  core.addColorStop(0, 'rgba(255,255,255,1)');
+  core.addColorStop(0.4, 'rgba(220,235,255,0.55)');
+  core.addColorStop(1, 'rgba(200,225,255,0)');
+  g.fillStyle = core;
+  g.fillRect(0, 0, 64, 64);
+  for (const [w, h] of [[60, 2], [2, 60]]) {
+    const flare = g.createRadialGradient(32, 32, 0, 32, 32, 30);
+    flare.addColorStop(0, 'rgba(255,255,255,0.9)');
+    flare.addColorStop(1, 'rgba(255,255,255,0)');
+    g.fillStyle = flare;
+    g.fillRect(32 - w / 2, 32 - h / 2, w, h);
+  }
+  glintMap = new THREE.CanvasTexture(c);
+  return glintMap;
+}
+
 interface Avatar {
   body: Body;
   color: string;
@@ -346,6 +370,8 @@ interface Avatar {
   /** Their part in a party game, its ring and its word (see Role) */
   role: Role | null;
   marks: THREE.Object3D[];
+  /** The glint of their sniper scope when it points at you (made when first needed) */
+  glint?: THREE.Sprite;
   speed: number;
   forward: number;
   side: number;
@@ -592,7 +618,7 @@ export class Avatars {
       const cycling = seat?.bike ?? null;
       a.root.rotation.set(cycling ? seat!.pitch ?? 0 : 0, cycling ? seat!.yaw + Math.PI : yaw, cycling ? seat!.roll ?? 0 : 0, 'YXZ');
       a.body.animate(dt, {
-        speed: a.speed, forward: a.forward, side: a.side, armed: t.armed && !cycling, alive, crouch: t.c && !seat, flying: t.flying,
+        speed: a.speed, forward: a.forward, side: a.side, armed: t.armed && !cycling, aim: t.aim, alive, crouch: t.c && !seat, flying: t.flying,
         pitch, weapon: t.w as WeaponId, yaw: cycling ? seat!.yaw + Math.PI : yaw, air: Math.max(0, y - ground), vy: a.vy, seat: seat ? seat.yaw + Math.PI : null, far, bike: cycling,
       });
       this.onFigure(name, a.root, a.body, a.color, !!t.chute && alive && !t.d, !!t.open, ground === y && far >= 80 ? 99 : Math.max(0, y - ground), dt); // far off the ground isn't looked up: not flaring
@@ -612,6 +638,27 @@ export class Avatars {
       // Just respawned: blink while they can't be hurt (not under a parachute: it shows why). In the car only their name shows, above it.
       a.body.root.visible = !t.d && (!(t.safe && alive && !t.chute) || Math.floor(now / 120) % 2 === 0);
       a.tag.visible = alive && this.showNames;
+      // A sniper rifle aimed your way: its scope catches the light, a fair warning from 12 m out. It
+      // is drawn in the world, so a wall between you hides it.
+      const lookX = -Math.sin(yaw) * Math.cos(pitch);
+      const lookY = Math.sin(pitch);
+      const lookZ = -Math.cos(yaw) * Math.cos(pitch);
+      const atYou = !!eye && alive && t.aim && t.w === 'sniper' && !t.d && far > 12 && a.root.visible
+        && (lookX * (eye.x - x) + lookY * (eye.y - y - 1.55) + lookZ * (eye.z - z)) / far > 0.996; // within 5 degrees
+      if (atYou && !a.glint) {
+        a.glint = new THREE.Sprite(new THREE.SpriteMaterial({ map: glintTexture(), blending: THREE.AdditiveBlending, depthWrite: false, transparent: true }));
+        a.glint.userData.ignoreRay = true;
+        a.glint.raycast = () => {};
+        a.root.add(a.glint);
+      }
+      if (a.glint) {
+        a.glint.visible = atYou;
+        if (atYou) {
+          a.root.updateMatrixWorld();
+          a.root.worldToLocal(a.glint.position.set(x + lookX * 0.55, y + 1.55 + lookY * 0.55, z + lookZ * 0.55));
+          a.glint.scale.setScalar((0.22 + far * 0.012) * (0.8 + 0.2 * Math.sin(now / 70)));
+        }
+      }
       for (const m of a.marks) m.visible = alive; // the part shows also when names are off (hide and seek)
       for (const h of a.body.hits) h.visible = alive && t.armed && !t.d && a.root.visible;
       // The name keeps a readable size on screen (about a thirtieth of its height) from 4.5 m out
