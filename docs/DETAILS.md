@@ -57,6 +57,10 @@ During a wave break, the top bar prompts reloading and preparation, counts rewar
 
 Moving with a rifle adds 10 percent to its spread. Aiming a shotgun tightens its pellet spread by 25 percent. A scoped sniper is accurate while stationary and gains spread while moving.
 
+**Aiming.** The crosshair's four ticks stand as far out as the next shot can land. They open when you move, jump or hold the trigger. Held rifle fire climbs for eight shots and then weaves left and right in a fixed pattern. Half of the climb comes back when you let go. Through a scope the reticle drifts with your breath and the shot follows it. Hold Shift (L3 on a controller) to hold your breath for about four seconds. The rifle has a red-dot sight. `tools/dev/scope.mjs` checks all of this headless and saves pictures.
+
+**Gun surfaces.** `tools/weapons.py` bakes each gun's seams and hard edges into `weapons.glb`. `web/src/world/gunSurface.ts` turns that into darker seams, worn edges and a fine grain.
+
 ## Hosting (Railway)
 
 The Railway project has two services: `briel-GTA` (builds from the `web` folder of `main` and runs `web/server.mjs`) and `Postgres` (accounts and the login log). Anyone with the URL can walk around alone, and play together as a guest with a name or with an account. Search engines are asked not to index the site.

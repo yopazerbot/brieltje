@@ -1,8 +1,10 @@
 # Progress
 
-Last update: 2026-11-07
+Last update: 2026-11-10
 
 <!-- The handover: rewrite these four at the end of every session (AGENTS.md, "Working efficiently"). Keep each short. -->
+
+**New on 10 Nov (shooting):** a real scope picture (reticle with range marks, a dark edge that creeps in), breathing sway with Shift or L3 to hold your breath, a crosshair that shows your accuracy, rifle recoil in a fixed pattern with half the climb coming back, guns that look used (baked seams and edge wear, grain), a red-dot sight on the rifle. Check: `node tools/dev/scope.mjs <folder> --url http://localhost:<port>/`. Not done yet: bullet travel time and drop for the sniper (needs the server's hit checks to follow), muzzle smoke, casings that stay on the floor. Not tested: a real phone, a real controller, two players together. Open for Yoshi: the rifle's held fire is a little less accurate than before; touch has no button to hold your breath (the drift is halved there).
 
 **Live:** brieltje.be follows `main`. New on 7 Nov, evening: no PIN any more. Players play together as a guest with a name, or with their own account (unique name, email kept but unused, password; Your account: new password, delete, log out everywhere). Zombies rooms: an account opens one at a Zombies place, anyone joins, the open world plays on. A board of the best Zombies runs, accounts only. The admin: an Accounts tab, two-step login with an authenticator app (Security tab), rooms to close, tables that sort. Consoles log in with a phone (QR code plus a 2-digit number). "yoshi" is reserved. Villagers walk in every mode but Zombies. No parachute drops in Zombies. Earlier on 7 Nov: (batch 1 of the "next level" plan): weather moods (Auto by default: sunny, overcast, rain, night, slowly cycling; the admin picks, skips or speeds it up together, players pick alone in Settings), the open-data houses' own brick, roofs and frames with rooms behind the windows (lit at night), weathered yards, a low hazy horizon, leafier crowns and undergrowth in the woods.
 
