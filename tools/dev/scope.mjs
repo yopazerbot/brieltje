@@ -26,6 +26,7 @@ try {
   if (o.quality) await b.evaluate(`briel.three.applyQuality(${JSON.stringify(o.quality)})`, false);
   await b.evaluate(`briel.zombiesSolo.start('house')`, false);
   await b.waitFor('briel.weapon.enabled', 90000);
+  await b.sleep(1000); // the Zombies game takes every gun but the pistol as it begins: hand the others out after that
   // Aiming and holding your breath by hand: the page's own update, with our say over the two inputs.
   await b.evaluate(`(() => {
     const w = briel.weapon;

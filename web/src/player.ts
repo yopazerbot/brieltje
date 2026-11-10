@@ -119,7 +119,7 @@ export class Player {
   private vx = 0;
   private vz = 0;
   private vy = 0;
-  private eyeY: number;
+  eyeY: number;
   private bob = 0;
   private stepDist = 0;
   private holdTime = 0;

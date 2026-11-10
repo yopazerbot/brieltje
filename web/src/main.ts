@@ -2579,7 +2579,19 @@ net.onMessage = (m: ServerMsg) => {
       life.scare(from);
       const muzzle = avatars.flash(m.name);
       if (muzzle) effects.muzzleSmoke(muzzle);
-      if (m.tx !== undefined && m.ty !== undefined && m.tz !== undefined) effects.tracer(muzzle ?? from, new THREE.Vector3(m.tx, m.ty, m.tz)); // their tracer
+      if (m.tx !== undefined && m.ty !== undefined && m.tz !== undefined) {
+        const to = new THREE.Vector3(m.tx, m.ty, m.tz);
+        effects.tracer(muzzle ?? from, to); // their tracer
+        // Passing close by your head (and from more than a few metres off): you hear it and flinch.
+        const line = new THREE.Line3(from, to);
+        const eye = camera.getWorldPosition(new THREE.Vector3());
+        const along = line.closestPointToPointParameter(eye, true);
+        const by = line.at(along, new THREE.Vector3()).distanceTo(eye);
+        if (by < 1.6 && along * line.distance() > 4 && combat.alive && weapon.enabled) {
+          hud.nearMiss(1 - by / 1.6);
+          weapon.whizz(1 - by / 1.6);
+        }
+      }
       break;
     }
     case 'scores':
@@ -2970,6 +2982,8 @@ let shake = 0;
 let flyHint = 0; // seconds the flying controls still show after taking off
 let edgeHint = 0; // seconds "you can't go further" still shows after pushing against the edge of the game
 let calmHint = 0; // seconds "no shooting here" still shows on the school grounds
+let resting = false; // the gun rested on something in front of you (steadier), and when that was last looked up (ms)
+let restAt = 0;
 let loadPadX = 0; // the controller's stick on the weapon picker
 let loadPadY = 0;
 let wasZombies = false;
@@ -3317,6 +3331,18 @@ renderer.setAnimationLoop((now: number) => {
       }
       // Accuracy: steady when crouching, worse when running or in the air.
       const moving = Math.hypot(frame.moveX, frame.moveY);
+      // The gun rested on something: standing still with a ledge, a sill, a low wall or a car's roof in front at
+      // chest height and nothing at eye height. Looked up four times a second.
+      if (now - restAt > 250) {
+        restAt = now;
+        const fx = -Math.sin(player.yaw) * 0.8;
+        const fz = -Math.cos(player.yaw) * 0.8;
+        const chest = player.eyeY - 0.42;
+        resting = moving < 0.1 && !player.flying
+          && world.blocked({ x: player.x, y: chest, z: player.z }, { x: player.x + fx, y: chest, z: player.z + fz })
+          && !world.blocked({ x: player.x, y: player.eyeY, z: player.z }, { x: player.x + fx, y: player.eyeY, z: player.z + fz });
+      }
+      weapon.rest = resting ? 0.6 : 1;
       weapon.spreadMul = player.crouching ? 0.6 : player.flying || player.feet > player.ground.y + 0.05 ? 2 : frame.sprint && moving ? 1.8 : moving ? (weapon.current === 'rifle' ? 1.1 : weapon.current === 'sniper' ? 1.8 : 1.25) : 1;
     }
     // The school grounds: no shooting or throwing (shared/zones.mjs; the server refuses too). Said on

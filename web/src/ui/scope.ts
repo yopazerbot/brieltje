@@ -20,6 +20,8 @@ export interface ScopePicture {
   /** The breath left, 0..1, and being out of it */
   breath: number;
   winded: boolean;
+  /** The wind across the line of sight, m/s (to the right positive); null when the gun's bullet doesn't feel it */
+  wind?: number | null;
 }
 
 /** The reticle, in a square from -100 to 100 (the lens's edge): thick posts outside, fine lines with marks inside. */
@@ -69,6 +71,8 @@ export class ScopeView {
   private shade = document.createElement('div');
   private bar = document.createElement('div');
   private fill = document.createElement('i');
+  private wind = document.createElement('div');
+  private windShown = '';
   private on = false;
 
   constructor() {
@@ -79,7 +83,8 @@ export class ScopeView {
     this.shade.className = 'shade';
     this.bar.className = 'breath';
     this.bar.appendChild(this.fill);
-    this.root.append(this.shade, this.sight, this.bar);
+    this.wind.className = 'wind';
+    this.root.append(this.shade, this.sight, this.bar, this.wind);
   }
 
   set(on: boolean, v?: ScopePicture): void {
@@ -96,6 +101,13 @@ export class ScopeView {
     const clamp = (n: number) => Math.max(-0.16, Math.min(0.16, n));
     this.shade.style.transform = `translate(${(x + clamp(v.shadeX) * half).toFixed(1)}px, ${(y + clamp(v.shadeY) * half).toFixed(1)}px)`;
     this.bar.classList.toggle('on', v.breath < 0.995);
+    // The wind across your shot: an arrow the way it pushes the bullet, and how hard (m/s). Nothing in a lull.
+    const w = v.wind ?? 0;
+    const text = Math.abs(w) < 0.75 ? '' : `${w < 0 ? '\u2190 ' : ''}${Math.round(Math.abs(w))} m/s${w > 0 ? ' \u2192' : ''}`;
+    if (text !== this.windShown) {
+      this.windShown = text;
+      this.wind.textContent = text;
+    }
     this.bar.classList.toggle('winded', v.winded);
     this.fill.style.transform = `scaleX(${v.breath.toFixed(3)})`;
   }

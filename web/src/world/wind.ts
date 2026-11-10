@@ -31,6 +31,22 @@ export const wind = {
   },
 };
 
+/** m/s: the wind at its strongest gust, a light breeze. */
+const WIND_MAX = 4.5;
+/** How hard the wind pushes the sniper rifle's bullet, m/s² for each m/s of wind (weapon.ts). */
+export const WIND_PUSH = 0.7;
+
+/**
+ * The wind as it pushes things at (x, z) now, m/s along x and z: the way the trees lean and with their
+ * gusts, so what you see in the crowns is what carries a muzzle's smoke off (world/effects.ts) and pushes
+ * a long sniper shot a little sideways (weapon.ts, where the scope shows it). Gentle on purpose: at its
+ * strongest a 190 m shot across it lands some 40 cm off, one at 100 m about 10 cm.
+ */
+export function windAt(x: number, z: number): { x: number; z: number; speed: number } {
+  const speed = wind.gust(x, z) * WIND_MAX;
+  return { x: DIR.x * speed, z: DIR.y * speed, speed };
+}
+
 /**
  * Make an instanced material sway. `lean` is how far the top leans (in the shape's own units: a
  * crown is about 1 across, a hedge lump too), `flutter` how far its surface trembles.

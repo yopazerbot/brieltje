@@ -65,6 +65,22 @@ export class Hud {
     this.crosshair.classList.toggle('hidden', on || noCross);
   }
 
+  private miss: HTMLElement | null = null;
+  /** A bullet passed close by you: the edges of the view darken at once and clear again (`near` 0..1: how close). */
+  nearMiss(near: number): void {
+    if (!this.miss) {
+      this.miss = document.createElement('div');
+      this.miss.id = 'near-miss';
+      this.crosshair.parentElement!.appendChild(this.miss);
+    }
+    const el = this.miss;
+    el.classList.add('now');
+    el.style.opacity = `${(0.35 + 0.5 * Math.max(0, Math.min(1, near))).toFixed(2)}`;
+    void el.offsetWidth; // shown at once, then let go
+    el.classList.remove('now');
+    el.style.opacity = '0';
+  }
+
   private gap = -1;
   private faint = -1;
   /**

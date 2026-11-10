@@ -1,6 +1,7 @@
 import * as THREE from 'three';
 import { anyPaint, GUN_PAINT, onPaintball, paintball } from '../paintball';
 import { sound } from '../sound';
+import { windAt } from './wind';
 import { Decals } from './decals';
 import { Particles, type Spawn } from './particles';
 import { Splashes } from './splashes';
@@ -399,7 +400,10 @@ export class Effects {
 
   /** A little smoke where a gun went off. */
   muzzleSmoke(at: THREE.Vector3): void {
+    const wind = windAt(at.x, at.z);
     this.throw(at, new THREE.Vector3(0, 0.3, 0), 2, 0.4, 0.6, (s) => {
+      s.vx += wind.x * 0.45; // the breeze carries it off
+      s.vz += wind.z * 0.45;
       Object.assign(s, { life: 0.8 + Math.random() * 0.4, size0: 0.06, size1: 0.35, alpha: 0.22, cell: PARTICLE.wisp, drag: 2, gravity: -0.3, spin: 1 });
       s.c0.set('#d8d4cc');
       s.c1.set('#c4c0b8');

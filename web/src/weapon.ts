@@ -10,6 +10,7 @@ import { LOOT } from '../shared/loot.mjs';
 import { t } from './i18n';
 import { drawn } from './world/rayShown';
 import { gunSurface, setGunWear } from './world/gunSurface';
+import { WIND_PUSH, windAt } from './world/wind';
 
 /**
  * "Action" mode: first-person hands holding a pistol, rifle, shotgun or
@@ -616,6 +617,8 @@ export class Weapon {
   baseFov = 72;
   /** Accuracy factor from how you move: crouching is steadier, running is not */
   spreadMul = 1;
+  /** The gun rested on a ledge or a sill in front of you (main.ts): 0.6, else 1. Steadies the shot and the scope's drift. */
+  rest = 1;
   /** Zombies' rewards (shared/loot.mjs): the guns with the bigger magazines, and the scope on the rifle and the pistol */
   private bigMags = new Set<WeaponId>();
   private scopeOn = false;
@@ -1126,6 +1129,10 @@ export class Weapon {
       const len = step.length();
       if (len <= 0) continue;
       b.vel.y -= 9.81 * dt;
+      // The wind pushes it sideways a little (world/wind.ts; the scope shows which way).
+      const wind = windAt(b.pos.x, b.pos.z);
+      b.vel.x += wind.x * WIND_PUSH * dt;
+      b.vel.z += wind.z * WIND_PUSH * dt;
       this.raycaster.set(b.pos, step.clone().divideScalar(len));
       this.raycaster.far = len;
       const players = new Map<string, { body: number; head: number; point: THREE.Vector3; spot?: Spot }>();
@@ -1179,7 +1186,7 @@ export class Weapon {
       ? (this.aim > 0.85 ? .015 * Math.max(0, this.spreadMul - 1) : spec.hipSpread ?? 0.09)
       : spec.spread * (1 - (spec.pellets > 1 ? .25 : .6) * this.aim);
     if (this.hasScope(this.current) && this.aim > 0.85) spread *= 0.25; // steady through a found scope
-    return (spread * this.spreadMul + this.bloom[this.current]) * 1.3;
+    return (spread * this.spreadMul * this.rest + this.bloom[this.current]) * 1.3;
   }
 
   /**
@@ -1210,8 +1217,12 @@ export class Weapon {
    * the dark edge has crept in (you turned or fired: your eye is off the scope's line for a moment),
    * and your breath.
    */
-  get scopeView(): { x: number; y: number; shadeX: number; shadeY: number; breath: number; winded: boolean } {
+  get scopeView(): { x: number; y: number; shadeX: number; shadeY: number; breath: number; winded: boolean; wind: number | null } {
+    // The wind across your line of sight, m/s (to the right positive): only the sniper rifle's bullet flies and feels it.
+    const e = this.camera.matrixWorld.elements;
+    const blow = windAt(e[12], e[14]);
     return {
+      wind: this.current === 'sniper' && !paintball.on ? blow.x * e[0] + blow.z * e[2] : null,
       x: this.drift.x, y: this.drift.y,
       shadeX: -this.lag.x * 0.035, shadeY: this.lag.y * 0.035 + this.recoil[1] * 1.6,
       breath: this.breath, winded: this.winded,
@@ -1301,7 +1312,7 @@ export class Weapon {
     if (this.breath <= 0) this.winded = true;
     else if (this.breath > 0.5) this.winded = false;
     if (this.scoped) {
-      const amp = 0.011 * Math.min(2.2, this.spreadMul) * (holding ? 0.12 : this.winded ? 1.7 : 1) * (document.body.classList.contains('touch') ? 0.6 : 1);
+      const amp = 0.011 * Math.min(2.2, this.spreadMul) * this.rest * (holding ? 0.12 : this.winded ? 1.7 : 1) * (document.body.classList.contains('touch') ? 0.6 : 1);
       this.driftAmp += (amp - this.driftAmp) * ease(5);
       const t = this.clock;
       this.drift.set(
@@ -1490,6 +1501,28 @@ export class Weapon {
       else left.copy(at).multiplyScalar(1 - smooth(0.62, 0.8, p));
     }
     if (left && m.handL) m.handL.position.add(left);
+  }
+
+  /** A bullet that passed close by you: a short hiss falling in pitch, in your ears (`near` 0..1: how close). */
+  whizz(near: number): void {
+    const ctx = sound.context();
+    const dest = sound.out();
+    if (!ctx || !dest || paintball.on) return;
+    const t = ctx.currentTime;
+    const buf = ctx.createBuffer(1, Math.ceil(ctx.sampleRate * 0.16), ctx.sampleRate);
+    const data = buf.getChannelData(0);
+    for (let i = 0; i < data.length; i++) data[i] = (Math.random() * 2 - 1) * Math.sin((Math.PI * i) / data.length);
+    const air = ctx.createBufferSource();
+    air.buffer = buf;
+    const band = ctx.createBiquadFilter();
+    band.type = 'bandpass';
+    band.Q.value = 2.5;
+    band.frequency.setValueAtTime(5200, t);
+    band.frequency.exponentialRampToValueAtTime(1400, t + 0.15);
+    const gain = ctx.createGain();
+    gain.gain.value = 0.18 + 0.3 * Math.max(0, Math.min(1, near));
+    air.connect(band).connect(gain).connect(dest);
+    air.start(t);
   }
 
   /** Another player's shot (or a turret's, at a lower `volume`): that weapon's sound, from where they stand. */

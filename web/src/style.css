@@ -259,6 +259,11 @@ button, input, select, textarea { font-family: inherit; }
   background: rgba(0, 0, 0, 0.4); border-radius: 2px; opacity: 0; transition: opacity 0.2s;
 }
 #scope .breath.on { opacity: 1; }
+/* The wind across a sniper's shot, low in the lens: an arrow and its speed. */
+#scope .wind { position: absolute; left: 50%; top: calc(50% + var(--r) * 0.82); transform: translateX(-50%); font: 700 13px/1 var(--font); letter-spacing: 0.04em; color: rgba(10, 12, 13, 0.82); white-space: nowrap; }
+/* A bullet passed close by (ui/hud.ts nearMiss): the edges of the view darken for a moment. */
+#near-miss { position: absolute; inset: 0; pointer-events: none; opacity: 0; background: radial-gradient(ellipse at center, transparent 48%, rgba(0, 0, 0, 0.6) 100%); transition: opacity 0.9s ease-out; }
+#near-miss.now { transition: none; }
 #scope .breath i { display: block; height: 100%; border-radius: 2px; background: #eef3f4; transform-origin: left center; }
 #scope .breath.winded i { background: #e8693f; }
 #hitdir {

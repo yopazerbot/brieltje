@@ -90,15 +90,17 @@ try {
     const b = await bob.evaluate('({ x: briel.player.x, z: briel.player.z })', false);
     if (Math.abs(b.x - (at.x + 14)) < 1) break;
   }
-  const b = await bob.evaluate('({ x: briel.player.x, y: briel.player.feet, z: briel.player.z })', false);
+  let b = await bob.evaluate('({ x: briel.player.x, y: briel.player.feet, z: briel.player.z })', false);
   // Alice aims, looking away from Bob: he hears of it, and sees no glint.
   await alice.evaluate(`briel.player.yaw = ${Math.atan2(-(b.x - at.x), -(b.z - at.z)) + Math.PI}; briel.player.pitch = 0; window.aimTest = true`, false);
   await until('Bob hears that she aims', (s) => s.aim);
   await bob.sleep(800);
   ok('no glint while her scope points away', !(await seen()).glint);
   // She turns her scope on him: it glints.
+  await bob.sleep(1500);
+  b = await bob.evaluate('({ x: briel.player.x, y: briel.player.feet, z: briel.player.z })', false); // where he stands now (he may have come down)
   const flat = Math.hypot(b.x - at.x, b.z - at.z);
-  await alice.evaluate(`briel.player.yaw = ${Math.atan2(-(b.x - at.x), -(b.z - at.z))}; briel.player.pitch = ${Math.atan2(b.y - at.y, flat)}`, false);
+  await alice.evaluate(`briel.player.yaw = ${Math.atan2(-(b.x - at.x), -(b.z - at.z))}; briel.player.pitch = ${Math.atan2(b.y - at.y, flat)}`, false); // eye to eye: both stand 1.65 m over their feet
   await until('her scope glints when it points at him', (s) => s.glint);
   if (o.out) {
     mkdirSync(o.out, { recursive: true });
@@ -107,14 +109,16 @@ try {
     await bob.screenshot(join(o.out, 'aim-glint.png'));
   }
   // She fires: Bob's page draws her bullet's tracer (the shot carries where it goes).
+  await bob.evaluate('briel.weapon.setEnabled(true)', false); // armed: a bullet close by is his business
   await bob.evaluate(`(() => {
     window.tracers = 0;
     const draw = briel.effects.tracer.bind(briel.effects);
-    briel.effects.tracer = (from, to) => { window.tracers++; draw(from, to); };
+    briel.effects.tracer = (from, to) => { window.tracers++; window.tracerLine = { from: from.toArray(), to: to.toArray(), eye: briel.three.scene.getObjectByProperty('isCamera', true)?.getWorldPosition(from.clone()).toArray(), alive: briel.combat.alive, armed: briel.weapon.enabled }; draw(from, to); };
   })()`, false);
   await alice.evaluate('briel.fire()', false);
   await bob.sleep(1500);
   ok('Bob sees the tracer of her shot', (await bob.evaluate('window.tracers', false)) === 1);
+  ok('the shot passing close made his view flinch', await bob.evaluate("!!document.getElementById('near-miss')", false), JSON.stringify(await bob.evaluate('window.tracerLine', false)));
   // She lowers the rifle: Bob hears that too, and the glint is gone.
   await alice.evaluate('window.aimTest = false', false);
   await until('Bob hears that she stopped aiming', (s) => !s.aim && !s.glint);
