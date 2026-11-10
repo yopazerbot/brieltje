@@ -681,7 +681,10 @@ export class Weapon {
         m.mag.userData.len = -low;
       }
       m.hip.fromArray(HIP[w]);
-      m.ads.set(-0.25 * loaded.sight.x, -0.25 * loaded.sight.y, w === 'pistol' ? -0.125 : w === 'rifle' ? -0.062 : m.ads.z); // the pistol held out at arm's length, the rifle's red-dot sight near the eye
+      m.ads.set(-0.25 * loaded.sight.x, -0.25 * loaded.sight.y, w === 'pistol' ? -0.125 : w === 'rifle' ? -0.088 : m.ads.z); // the pistol held out at arm's length; the rifle as near as it goes before the camera cuts the back of its receiver open
+      // The bazooka lies on your shoulder, the tube beside your face. Held up to its sight the camera cuts the
+      // tube open and you look into it; so aiming holds it lower, and you look along its top with the crosshair.
+      if (w === 'bazooka') m.ads.set(0.012, -0.06, -0.1);
       const tip = model.getObjectByName('muzzle')!;
       m.muzzle.position.copy(tip.position);
       m.flash.position.copy(tip.position);

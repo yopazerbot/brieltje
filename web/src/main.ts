@@ -3357,7 +3357,7 @@ renderer.setAnimationLoop((now: number) => {
     ].filter(Boolean).join('   ·   ') : '';
     hud.setGrenades(armed ? grenades.count : null, GRENADE.carry, grenades.nextIn, key('grenade', mode), pocket);
     hud.setScope(weapon.scoped, inCar || dropView.outside, weapon.scopeView);
-    if (armed) hud.setSpread(weapon.spread, weapon.aimAmount);
+    if (armed) hud.setSpread(weapon.spread, weapon.current === 'bazooka' ? 0 : weapon.aimAmount); // the bazooka aims with the crosshair
     document.body.classList.toggle('drop', dropView.outside); // filmed from behind: the hints go low, clear of your figure (style.css)
     // The flying controls for the first few seconds after taking off only (Yoshi: annoying when it stays).
     if (player.flying && !wasFlying) flyHint = 4;

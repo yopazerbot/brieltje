@@ -561,15 +561,17 @@ def build_rifle():
     body.append(block("rear", -0.0075, 0.0075, -0.0415, -0.038, 0.0795, 0.0845, M["Dark"], 0.0004))
     # A red-dot sight on the rail over the receiver: a clamp, a hooded frame, a window you look
     # through and the dot in its middle. A node of its own: the game takes it off for a found scope.
-    DOT = (0, 0.031, 0.1035)
-    optic = [block("oclamp", -0.0125, 0.0125, -0.004, 0.044, 0.0795, 0.0885, M["Dark"], 0.001),
-             block("oknob", 0.0125, 0.017, 0.012, 0.028, 0.08, 0.088, M["Steel"], 0.001),
-             block("odeck", -0.0145, 0.0145, -0.008, 0.046, 0.0885, 0.0905, M["Polymer"], 0.0008)]
+    # A large window (33 by 35 mm), and far enough back to fill a good part of the view when you aim: the
+    # game can't hold the rifle nearer the eye than it does, or the camera cuts the receiver's back open.
+    DOT = (0, 0.02, 0.108)
+    optic = [block("oclamp", -0.0125, 0.0125, -0.030, 0.036, 0.0795, 0.0885, M["Dark"], 0.001),
+             block("oknob", 0.0125, 0.018, -0.008, 0.012, 0.08, 0.088, M["Steel"], 0.001),
+             block("odeck", -0.0187, 0.0187, -0.034, 0.038, 0.0885, 0.0905, M["Polymer"], 0.0008)]
     for s in (-1, 1):
-        optic.append(prism("ohood", [(-0.008, 0.0905), (0.046, 0.0905), (0.046, 0.119), (0.02, 0.119), (-0.008, 0.103)], 0.001, M["Polymer"], 0.0004, x=s * 0.0135))
-    optic.append(prism("oroof", [(0.018, 0.117), (0.046, 0.117), (0.046, 0.119), (0.018, 0.119)], 0.0145, M["Polymer"], 0.0006))
-    optic.append(block("owindow", -0.0125, 0.0125, 0.032, 0.0326, 0.0905, 0.117, M["Lens"], 0))
-    optic.append(disc("odot", 0.00075, M["RedDot"], (DOT[0], 0.0318, DOT[2]), -1, 10))
+        optic.append(prism("ohood", [(-0.034, 0.0905), (0.038, 0.0905), (0.038, 0.128), (0.006, 0.128), (-0.034, 0.106)], 0.0012, M["Polymer"], 0.0004, x=s * 0.0175))
+    optic.append(prism("oroof", [(0.004, 0.1255), (0.038, 0.1255), (0.038, 0.128), (0.004, 0.128)], 0.0187, M["Polymer"], 0.0006))
+    optic.append(block("owindow", -0.0163, 0.0163, 0.020, 0.0206, 0.0905, 0.1255, M["Lens"], 0))
+    optic.append(disc("odot", 0.0009, M["RedDot"], (DOT[0], 0.0198, DOT[2]), -1, 10))
     body += [prism("charge", [(-0.112, 0.064), (-0.092, 0.064), (-0.092, 0.071), (-0.112, 0.071)], 0.006, M["Dark"], 0.0008),
               block("chargeT", -0.017, 0.017, -0.114, -0.104, 0.064, 0.071, M["Dark"], 0.0012)]
     # A curved 30-round magazine.
@@ -601,7 +603,7 @@ def build_rifle():
                 ([hw.at(-0.03, -40, 0.016), hw.at(0.0, -65, 0.012), hw.at(0.025, -80, 0.011), hw.at(0.048, -88, 0.011), hw.at(0.066, -92, 0.011)], 0.0108),
                 side=-1)
     return finish(W, (0, -0.042, 0.006), body,
-                  {"mag": (mag, (0, 0.068, 0.0), {"out": (0, 0.06, -1)}), "optic": (optic, (0, 0.02, 0.0795))},
+                  {"mag": (mag, (0, 0.068, 0.0), {"out": (0, 0.06, -1)}), "optic": (optic, (0, 0.0, 0.0795))},
                   (0, 0.566, B), DOT, kit, [right, left])
 
 

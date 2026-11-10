@@ -32,7 +32,7 @@ try {
     const update = w.update.bind(w);
     window.scopeTest = { aim: false, steady: false };
     w.update = (dt, moving, aiming, look) => update(dt, moving, window.scopeTest.aim, look && { ...look, steady: window.scopeTest.steady });
-    for (const id of ['pistol', 'rifle', 'shotgun', 'sniper']) w.give(id);
+    for (const id of ['pistol', 'rifle', 'shotgun', 'sniper', 'bazooka']) w.give(id);
   })()`, false);
   const shot = (name) => b.screenshot(join(out, `${name}.png`));
   const look = (yaw, pitch) => b.evaluate(`briel.teleport(briel.player.x, briel.player.z, briel.player.feet, ${yaw}, ${pitch})`, false);
@@ -83,8 +83,12 @@ try {
   await b.sleep(1200);
   const held = await drift(1500);
   await shot('scope-breath');
-  await b.sleep(4500); // the breath lasts four seconds
-  const view = await b.evaluate('briel.weapon.scopeView', false);
+  // The breath lasts about four seconds; then you are out of it until half is back (so look for the moment, don't wait past it).
+  const view = { winded: false };
+  for (let t = 0; t < 12000 && !view.winded; t += 100) {
+    view.winded = await b.evaluate('briel.weapon.scopeView.winded', false);
+    await b.sleep(100);
+  }
   console.log(`scope: the reticle drifts up to ${loose.toFixed(4)} of half the view's height, ${held.toFixed(4)} holding your breath; out of breath after 4 s: ${view.winded}`);
   check(loose > 0.004 && loose < 0.03, 'the reticle drifts, a little');
   check(held < loose * 0.4, 'holding your breath stills it');
@@ -98,7 +102,7 @@ try {
   await shot('scope-turning');
   // Each gun up close, from the hip and with its sights at the eye: the surfaces, the sights, the rifle's red dot.
   await b.evaluate('window.scopeTest.aim = false', false);
-  for (const w of ['pistol', 'rifle', 'shotgun', 'sniper']) {
+  for (const w of ['pistol', 'rifle', 'shotgun', 'sniper', 'bazooka']) {
     await b.evaluate(`briel.weapon.select('${w}')`, false);
     await look(0.6, 0);
     await b.sleep(1200);
