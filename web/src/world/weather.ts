@@ -170,6 +170,8 @@ export class Weather {
   private soloCycle: Cycle = newCycle(Math.floor(Math.random() * 2 ** 32), Date.now(), winterAt(Date.now()));
   private soloRun = runOf(this.soloCycle);
   private server: Choice | null = null;
+  /** A game's own choice while it lasts (alone, the Zombies game's later waves: dusk, then night), or null */
+  private game: Choice | null = null;
   private serverCycle: Cycle | null = null;
   private serverRun: MoodCycle | null = null;
   /** The server's clock minus this page's (ms), from its last message */
@@ -228,7 +230,7 @@ export class Weather {
 
   /** The choice that holds: the server's when playing together, else the player's own. */
   get chosen(): Choice {
-    return this.server ?? this.solo;
+    return this.server ?? this.game ?? this.solo;
   }
 
   /** The mood that shows most now. */
@@ -251,6 +253,16 @@ export class Weather {
     const next = isChoice(c) ? c : DEFAULT_CHOICE;
     if (next === this.solo) return; // another setting changed
     this.solo = next;
+    if (this.server === null) this.picked();
+  }
+
+  /**
+   * A game's own mood while it lasts, over the player's own choice and under the server's (together the admin's
+   * holds): alone, the Zombies game darkens through its waves. Null: the player's own again.
+   */
+  setGame(c: Choice | null): void {
+    if (c === this.game) return;
+    this.game = c;
     if (this.server === null) this.picked();
   }
 

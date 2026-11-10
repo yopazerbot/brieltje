@@ -105,6 +105,7 @@ import { patchFields } from './world/fields';
 import { addDiag, startDiag } from './ui/diag';
 import { IndoorLight } from './world/indoorLight';
 import { Weather } from './world/weather';
+import { Torch } from './world/torch';
 import { warmPasses } from './world/warmShaders';
 import { snowOnModel } from './world/snowCover';
 import { Acoustics, acoustics } from './world/acoustics';
@@ -361,6 +362,8 @@ const tiles = new Tiles();
 const poles = [...(house.surroundings?.poles ?? [])];
 // The weather and time of day (world/weather.ts): alone the settings' pick, together the admin's; lamps on these poles at night.
 const weather = new Weather(renderer, scene, sun, indoorLight, environmentReady, poles, house.ground);
+// The torch on your gun, on by itself in the dark (world/torch.ts): made now, before any shader is compiled. Not on phones.
+const torch = phone ? null : new Torch(scene);
 const detailAt: [number, number][] = [[4.45, -3]]; // trees get their full crowns within 160 m of these (and the village's landmarks)
 const detail = (x: number, z: number) => detailAt.some(([cx, cz]) => Math.hypot(x - cx, z - cz) < 160);
 // The houses round the two portals at home are our own models (world/homeStreet.ts): their open-data blocks aren't drawn.
@@ -1754,8 +1757,23 @@ async function startSolo(id: string): Promise<void> {
   showSoloButton();
 }
 /** Stop it (the button again, the end screen over, or playing together): the zombies go, you're back up. */
+/**
+ * Alone, the Zombies game darkens as it goes on: dusk from wave 4, night from wave 6 (your torch comes on by
+ * itself, world/torch.ts), and your own weather again when it ends. Said once as it turns. Together the
+ * weather is the admin's for everyone, so the game leaves it alone there.
+ */
+function nightWave(wave: number): void {
+  const want = wave >= 6 ? 'night' : wave >= 4 ? 'dusk' : null;
+  if (want === nightMood) return;
+  nightMood = want;
+  weather.setGame(want);
+  if (want) chat.system(() => t(want === 'night' ? 'z.night' : 'z.dusk'));
+}
+let nightMood: 'dusk' | 'night' | null = null;
+
 function stopSolo(): void {
   if (!solo) return;
+  nightWave(0);
   const wasDown = !combat.alive;
   const arena = solo.arena;
   solo = null;
@@ -1804,6 +1822,7 @@ function soloWave(wave: number): void {
     if (e.type !== 'wave') continue; // the old zombies go with the next look at the horde (zombies.follow)
     solo.loot.wave();
     chat.system(() => t(e.bigs > 1 ? 'srv.zWaveBigs' : e.big ? 'srv.zWaveBig' : 'srv.zWave', { n: e.wave, count: e.count }));
+    nightWave(e.wave);
   }
   soloView(true);
 }
@@ -1821,6 +1840,7 @@ function soloTick(dt: number): void {
     if (e.type === 'wave') {
       solo.loot.wave();
       chat.system(() => t(e.bigs > 1 ? 'srv.zWaveBigs' : e.big ? 'srv.zWaveBig' : 'srv.zWave', { n: e.wave, count: e.count }));
+      nightWave(e.wave);
     }
     else if (e.type === 'cleared') chat.system(() => t('srv.zCleared', { n: e.wave }));
     else if (e.type === 'runners') runnersComing(true);
@@ -3423,6 +3443,8 @@ renderer.setAnimationLoop((now: number) => {
     });
     player.pitch -= weapon.takeRecover(); // the recoil's climb comes back down after the burst
     player.carry = weapon.carrySpeed; // a heavy gun slows your walk, aiming more
+    // The torch: from dusk on, with a gun in your hands and on your feet.
+    torch?.update(camera, weapon.enabled && !dead && !inCar ? Math.max(0, Math.min(1, (mood.night - 0.35) / 0.35)) : 0, dt);
     // The keys in the prompts come from the one table (src/shortcuts.ts). In Explore a click opens doors too.
     const doorKey = key(action ? 'use' : 'click', mode);
     const use = key('use', mode);
