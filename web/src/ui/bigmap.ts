@@ -225,13 +225,13 @@ export class BigMap {
   addVillage(data: Surroundings & { dips?: DipSpec[]; area?: [number, number][] }): void {
     if (data.area && data.area.length > 2) this.area = data.area.map(([x, z]) => [toU(x, z), toV(x, z)]);
     this.addFootball();
-    // In slices of 8 ms, one after each frame (it took 0.2 s on this PC, 0.8 s with a phone's processor; main.ts calls it once
+    // In slices of 4 ms, one after each frame (8 ms pushed every frame past its 16.7; it took 0.2 s on this PC, 0.8 s with a phone's processor; main.ts calls it once
     // play has begun): the map and the minimap's ground show the village once all of it is in, the same paths in the
     // same order.
     const job = this.adding(data, data.dips ?? []);
     const next = () => requestAnimationFrame(() => setTimeout(slice, 0));
     const slice = () => {
-      const end = performance.now() + 8;
+      const end = performance.now() + 4;
       while (performance.now() < end) {
         if (job.next().done) {
           this.dirty = true;

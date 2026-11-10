@@ -148,7 +148,7 @@ export class Parachutes {
    */
   prepare: ((o: THREE.Object3D) => Promise<unknown>) | null = null;
   private gltf: GLTF | null = null;
-  private loading = false;
+  private loading: Promise<void> | null = null;
   private flights = new Map<string, Flight>();
   private accents = new Map<string, THREE.Material>();
   /** The materials that glow a little by day (the canopy's cloth and every accent) */
@@ -287,11 +287,13 @@ export class Parachutes {
     return !!f && (body === undefined || f.body === body);
   }
 
-  /** Fetch the model now, before anyone drops (after the world is in: it is small). */
-  load(): void {
-    if (this.loading) return;
-    this.loading = true;
-    new GLTFLoader().loadAsync('/models/parachute.glb').then(
+  /**
+   * Fetch the model now, before anyone drops (it is small). The promise ends when it is in and its shaders
+   * are built: a start by parachute waits for it behind the start screen, so nothing is fetched, unpacked or
+   * compiled while you fall.
+   */
+  load(): Promise<void> {
+    return (this.loading ??= new GLTFLoader().loadAsync('/models/parachute.glb').then(
       async (g) => {
         await this.prepare?.(g.scene).catch(() => undefined);
         this.gltf = g;
@@ -299,7 +301,7 @@ export class Parachutes {
       () => {
         // No model: the drop plays the same, without a parachute to see.
       },
-    );
+    ));
   }
 
   /**

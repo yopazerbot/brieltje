@@ -174,6 +174,7 @@ export class Portals {
     const ringGeo = new THREE.TorusGeometry(RING, TUBE, 10, 72);
     const glowGeo = new THREE.TorusGeometry(RING - TUBE - 0.02, 0.035, 6, 72);
     const discGeo = new THREE.CircleGeometry(RING - 0.05, 64);
+    this.spare();
     const footGeo = new THREE.BoxGeometry(0.42, 0.42, 0.62);
     const seeds = new Float32Array(SPARKS * 3);
     for (let i = 0; i < seeds.length; i++) seeds[i] = Math.random();
@@ -275,20 +276,27 @@ export class Portals {
     }
   }
 
+  /**
+   * A column of light ready to show, not shown yet. The first is made with the portals, so its shader is
+   * compiled with the world's: made at your own arrival, the game stopped for it in the first frame of play.
+   */
+  private spare(): { mesh: THREE.Mesh; life: { value: number } } {
+    const life = { value: 1 };
+    const mesh = new THREE.Mesh(
+      new THREE.CylinderGeometry(0.8, 0.8, 4.5, 24, 1, true).translate(0, 2.25, 0),
+      new THREE.ShaderMaterial({ ...pulseShader, uniforms: { uColor: { value: new THREE.Color() }, uLife: life }, transparent: true, depthWrite: false, blending: THREE.AdditiveBlending, side: THREE.DoubleSide }),
+    );
+    noRay(mesh);
+    mesh.visible = false;
+    this.group.add(mesh);
+    const p = { mesh, life };
+    this.pulses.push(p);
+    return p;
+  }
+
   /** A column of light where someone leaves or arrives. Its sound: `here` your own trip, `there` from that spot, false none. */
   pulse(x: number, y: number, z: number, color: string, hear: 'here' | 'there' | false): void {
-    let p = this.pulses.find((q) => !q.mesh.visible);
-    if (!p) {
-      const life = { value: 1 };
-      const mesh = new THREE.Mesh(
-        new THREE.CylinderGeometry(0.8, 0.8, 4.5, 24, 1, true).translate(0, 2.25, 0),
-        new THREE.ShaderMaterial({ ...pulseShader, uniforms: { uColor: { value: new THREE.Color() }, uLife: life }, transparent: true, depthWrite: false, blending: THREE.AdditiveBlending, side: THREE.DoubleSide }),
-      );
-      noRay(mesh);
-      this.group.add(mesh);
-      p = { mesh, life };
-      this.pulses.push(p);
-    }
+    const p = this.pulses.find((q) => !q.mesh.visible) ?? this.spare();
     p.life.value = 0;
     p.mesh.position.set(x, y, z);
     p.mesh.visible = true;

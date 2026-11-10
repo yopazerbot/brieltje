@@ -358,11 +358,20 @@ export class Villagers {
 
   private async load(): Promise<boolean> {
     try {
+      // A frame between the steps: the model unpacked, the paths, the figures and the shaders in one go
+      // stopped the game for 80 ms.
+      const frame = () => new Promise<void>((r) => requestAnimationFrame(() => setTimeout(r, 0)));
       const [gltf, data] = await Promise.all([new GLTFLoader().loadAsync(URL_GLB), import('../data/villagers.json')]);
+      await frame();
       this.paths = new Paths((data.default ?? data) as unknown as PathData);
+      await frame();
       this.build(gltf);
       this.hubSpots = this.paths.hubs.map(() => null);
       this.hubTried = this.paths.hubs.map(() => -1e9);
+      // Out of sight until their shaders are built: a frame is drawn before that now, and drawing them in it
+      // (even none of them) made the game wait for the shader after all.
+      if (this.compile) for (const k of this.kinds) k.mesh.visible = false;
+      await frame();
       if (this.compile) {
         // Shown for the moment the shaders are gathered (nothing is drawn), then as they were.
         const was = this.group.visible;

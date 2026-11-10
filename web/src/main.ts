@@ -153,6 +153,11 @@ import { seat, tellHost } from './seat';
 // with the start screen): before that the page has loaded no texture, model, sky or sound.
 const canvas = document.getElementById('view') as HTMLCanvasElement;
 const renderer = new THREE.WebGLRenderer({ canvas, antialias: false, powerPreference: 'high-performance' });
+// three asks the graphics driver for a shader's error log the first time each one is used, and the driver makes
+// the page wait for the answer: 5 to 31 ms a shader on this PC, also for shaders compiled in the background long
+// before. A dozen of them fell in the first second of play (the stutter while you drop in). Only while developing,
+// and with ?diag in the address (the panel for a phone that draws black): a broken shader then says why.
+renderer.debug.checkShaderErrors = import.meta.env.DEV || new URLSearchParams(location.search).has('diag');
 // Render at normal resolution even on high-DPI laptop screens: the extra
 // pixels cost more frame time than they add on a mid-range GPU.
 renderer.setPixelRatio(1);
@@ -244,7 +249,7 @@ function loaded(): void {
   } else begin();
   setTimeout(() => void loadVillage(), 500); // playing: now the village
   setTimeout(() => life.load(precompile), 900); // and the gardens' things, birds and the mower
-  setTimeout(() => rules.parachute !== false && parachutes.load(), 1200); // and the parachute, ready before anyone drops in
+  setTimeout(() => rules.parachute !== false && void parachutes.load(), 1200); // and the parachute, if the start didn't bring it in
   setTimeout(() => void startCountryside(), 900); // and the countryside's life
 }
 setTimeout(loaded, 25000); // never keep the player waiting forever
@@ -1167,7 +1172,7 @@ avatars.onFigure = (name, root, body, colour, chute, open, air, dt) => parachute
  */
 function beginDrop(at?: { x: number; z: number; yaw: number; feet?: number; sx?: number; sz?: number }, from?: { sx?: number; sz?: number }, edge = world.bounds): void {
   if (driving || riding || horses.mounted >= 0 || bikes.mounted) return;
-  parachutes.load(); // in case it isn't in yet
+  void parachutes.load(); // in case it isn't in yet
   const [x, z, yaw] = at ? [at.x, at.z, at.yaw] : [player.x, player.z, player.yaw];
   const told = from ?? at;
   const given = typeof told?.sx === 'number' && typeof told?.sz === 'number';
@@ -3016,9 +3021,12 @@ renderer.setAnimationLoop((now: number) => {
   games.setExploring(!weapon.enabled); // the teams game's and Zombies' hints follow a change of mode
   // The villagers in every mode, Action and Paintball too (Yoshi, 7 Nov 2026), but never during Zombies, its end
   // screen included. Shots pass through them: they are never a target (world/villagers.ts).
+  // Not in the first seconds of play: building them (unpacking the model, their paths) took 30 ms and more of one
+  // frame just as you dropped in, on top of everything else that starts then. One after the other, a little later.
+  const played = playBegan ? performance.now() - playBegan : 0;
   const villagersOut = !menu.onStartScreen && games.view.kind !== 'zombies';
-  villagers.setActive(villagersOut);
-  sinterklaas.setActive(villagersOut && seasonNow().sinterklaas); // the same rule
+  villagers.setActive(villagersOut && played > 2500);
+  sinterklaas.setActive(villagersOut && played > 4000 && seasonNow().sinterklaas); // the same rule
   sintMaarten.setActive(villagersOut && seasonNow().sintMaarten, seasonNow().sintMaartenEve);
   christmas.setSolid(games.zombies ? 'off' : weapon.enabled ? 'walk' : 'full'); // the tree, as the server knows the world
   // The Zombies game: the clowns and strongmen stand aside, nobody flies, and whoever is down waits for the wave.
@@ -3623,6 +3631,9 @@ void playing.then(() => {
     if (!me) startSolo(place).catch(() => {}); // a village that won't load says so itself (loadVillage)
   }, 250);
 });
+/** When play began (ms, the page's clock); 0 before. Work that can wait is kept out of its first seconds. */
+let playBegan = 0;
+void playing.then(() => (playBegan = performance.now()));
 // The leaf cards' pictures are painted once play has begun, when the preset asks for them (world/leafCards.ts).
 void playing.then(() => treesMayPaint((textures) => {
   for (const t of textures) renderer.initTexture(t);
@@ -3825,7 +3836,7 @@ async function buildVillage(): Promise<void> {
   tiles.showAll(); // as for the bakes: every tile, the models in it and the ponds' water
   for (const m of models) m.visible = true;
   groundShade.warm(renderer, scene, sun, [tiles.group], house.ground);
-  void playing.then(() => bigMap.addVillage(data)); // once play has begun, in slices between frames (ui/bigmap.ts)
+  void playing.then(() => setTimeout(() => bigMap.addVillage(data), 1500)); // once play has begun and its first second is over, in slices between frames (ui/bigmap.ts)
   await environmentReady;
   await between();
   const c = landmarks[0] ?? new THREE.Vector2(521.5, -744.2); // the church
@@ -4106,7 +4117,10 @@ async function compileWorld(): Promise<void> {
   // scene and never disposed, so its shaders stay compiled for yours and the others'.
   const figure = new THREE.Group();
   figure.add(avatars.figure('', myColour()).root);
-  await Promise.all([precompile(scene), precompile(figure)]);
+  // The parachute too, when the start is a drop: fetched and unpacked here, behind the start screen, instead
+  // of in the first second of the fall (at most 1.5 s for it; a slow line starts without).
+  const chute = rules.parachute !== false && startIntent.zombies === null ? Promise.race([parachutes.load(), new Promise((r) => setTimeout(r, 1500))]) : null;
+  await Promise.all([precompile(scene), precompile(figure), chute]);
 }
 if (mode === 'auto') void autoDetect().catch(loaded);
 else {

@@ -8,6 +8,8 @@
  * small picture of noise, drawn here in code once and laid over the gun from three sides by its own
  * position: a fine grain, soft patches that break the edge wear up, and a few scuffs on the flats.
  *
+ * It also fills in the inside of a part the camera cuts open, dark, so you never look through a gun.
+ *
  * Cost: three lookups in a 128 px picture, on the gun's own pixels only. A gun without the baked
  * shading (the others' guns and the ones on the floor are merged without it) reads it as nothing:
  * it gets the grain and the scuffs and no more.
@@ -129,12 +131,19 @@ vec3 gunN = texture2D(uGunNoise, gunQ.zy).rgb * gunW.x + texture2D(uGunNoise, gu
 float gunWorn = uGunAmount * max(vGunShade.y * smoothstep(0.3, 0.5, gunN.g), 0.5 * smoothstep(0.68, 0.76, gunN.b) * smoothstep(0.5, 0.62, gunN.g));
 diffuseColor.rgb *= 1.0 + (gunN.r - 0.5) * uGunLook.z + (gunN.b - 0.5) * 0.5 * uGunLook.z;
 diffuseColor.rgb = mix(diffuseColor.rgb, uGunWear, gunWorn);
-diffuseColor.rgb *= 1.0 - 0.62 * vGunShade.x; // the seams and the gaps between the parts`)
+diffuseColor.rgb *= 1.0 - 0.62 * vGunShade.x; // the seams and the gaps between the parts
+// A part the camera cuts open (the stock beside your cheek, a launcher's tube) shows its inside: filled in dark, as a solid part would look.
+if (!gl_FrontFacing) diffuseColor.rgb = vec3(0.012, 0.013, 0.015);`)
       .replace('#include <roughnessmap_fragment>', `#include <roughnessmap_fragment>
-roughnessFactor = clamp(mix(roughnessFactor + (gunN.r - 0.5) * 0.5 * uGunLook.z + 0.25 * vGunShade.x, uGunLook.y, gunWorn), 0.05, 1.0);`)
+roughnessFactor = clamp(mix(roughnessFactor + (gunN.r - 0.5) * 0.5 * uGunLook.z + 0.25 * vGunShade.x, uGunLook.y, gunWorn), 0.05, 1.0);
+if (!gl_FrontFacing) roughnessFactor = 1.0;`)
       .replace('#include <metalnessmap_fragment>', `#include <metalnessmap_fragment>
-metalnessFactor = mix(metalnessFactor, uGunLook.x, gunWorn);`);
+metalnessFactor = mix(metalnessFactor, uGunLook.x, gunWorn);
+if (!gl_FrontFacing) metalnessFactor = 0.0;`);
   };
+  // Both sides drawn: the inside of a part shows only where the camera's near edge cuts it open (the gun in your
+  // hands is drawn small and close), and there it is filled in dark instead of being a hole you look through.
+  m.side = THREE.DoubleSide;
   m.customProgramCacheKey = () => 'gun-surface';
   m.needsUpdate = true;
 }
