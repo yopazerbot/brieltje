@@ -23,8 +23,12 @@ interface Look {
   metal: number;
   rough: number;
   grain: number;
-  /** Stretch the noise along the barrel into streaks (wood) */
-  streak?: boolean;
+  /** How many times the noise repeats per metre along x, y and z: stretched along the barrel into streaks for wood, fine for cloth (14 each way without) */
+  scale?: [number, number, number];
+  /** How much of the wear shows on this material, 0..1 (1 without) */
+  amount?: number;
+  /** Cloth and leather: worn means faded to a paler shade of its own colour, not to `wear` */
+  fade?: boolean;
 }
 const LOOKS: Record<string, Look> = {
   Steel: { wear: '#b4b8be', metal: 1, rough: 0.26, grain: 0.35 }, // bluing worn to bright steel
@@ -33,8 +37,12 @@ const LOOKS: Record<string, Look> = {
   Grip: { wear: '#3c3e41', metal: 0, rough: 0.6, grain: 0.6 }, // stippled
   Olive: { wear: '#9a9d98', metal: 0.8, rough: 0.35, grain: 0.3 }, // paint chipped to bare tube
   Warhead: { wear: '#8b8e86', metal: 0.7, rough: 0.4, grain: 0.25 },
-  Wood: { wear: '#b98a5e', metal: 0, rough: 0.6, grain: 0.95, streak: true }, // oil finish worn to paler wood
+  Wood: { wear: '#b98a5e', metal: 0, rough: 0.6, grain: 0.95, scale: [34, 34, 2.6], amount: 0.4 }, // oil finish worn to paler wood, in small patches along the grain
   Brass: { wear: '#d8b866', metal: 1, rough: 0.2, grain: 0.15 },
+  // Your hands and arms: the sleeve's cloth (a fine weave, faded where it rubs), the glove's leather and its trim.
+  Sleeve: { wear: '#ffffff', metal: 0, rough: 0.95, grain: 0.75, scale: [70, 70, 70], amount: 0.5, fade: true },
+  Glove: { wear: '#ffffff', metal: 0, rough: 0.7, grain: 0.55, scale: [46, 46, 46], amount: 0.35, fade: true },
+  GloveTrim: { wear: '#ffffff', metal: 0, rough: 0.55, grain: 0.4, scale: [46, 46, 46], amount: 0.3, fade: true },
 };
 
 /** How much of the wear shows: 1, or 0 for Paintball's bright toy guns (they are new plastic). */
@@ -103,9 +111,11 @@ function noiseTexture(): THREE.DataTexture {
  * edge instead of being cut away. The gun in your hands is drawn at a quarter of its size close to the camera,
  * so that edge lies 20 cm (in the gun's size) from your eye, right through the stock and your right arm when
  * you aim; cut there, each showed its hollow inside. Kept, you see their outsides pass by, as with a real gun
- * at your cheek. Only the depth changes, never where a point is drawn; what is behind the eye is still left out.
+ * at your cheek. Only the depth changes, never where a point is drawn. Down to a third of the near edge's
+ * distance and no closer: what is right beside the eye (your forearm towards the elbow) is still left out, or
+ * it filled a corner of the view as a grey lump.
  */
-const NEAR_KEPT = '#include <project_vertex>\ngl_Position.z = max(gl_Position.z, -gl_Position.w * 0.9995);';
+const NEAR_KEPT = '#include <project_vertex>\nif (gl_Position.z > -4.7 * gl_Position.w) gl_Position.z = max(gl_Position.z, -gl_Position.w * 0.9995);';
 
 /** Keep the camera from cutting this material's shapes open close to the eye (the gloves and sleeves; the guns get it with their surface). */
 export function noNearCut(m: THREE.Material): void {
@@ -121,14 +131,16 @@ export function noNearCut(m: THREE.Material): void {
   m.needsUpdate = true;
 }
 
-/** Give one of a gun's materials (by its name in weapons.glb) the worn, grained surface. Others are left alone. */
-export function gunSurface(m: THREE.MeshStandardMaterial): void {
+/** Give one of a gun's or the hands' materials (by its name in weapons.glb) the worn, grained surface. Others are left alone (false). */
+export function gunSurface(m: THREE.MeshStandardMaterial): boolean {
   const look = LOOKS[m.name];
-  if (!look) return;
+  if (!look) return false;
   const uniforms = {
     uGunNoise: { value: noiseTexture() },
     uGunWear: { value: new THREE.Color(look.wear) },
-    uGunLook: { value: new THREE.Vector4(look.metal, look.rough, look.grain, look.streak ? 1 : 0) },
+    uGunLook: { value: new THREE.Vector4(look.metal, look.rough, look.grain, look.amount ?? 1) },
+    uGunScale: { value: new THREE.Vector3(...(look.scale ?? [14, 14, 14])) },
+    uGunFade: { value: look.fade ? 1 : 0 },
     uGunAmount: amount,
   };
   m.onBeforeCompile = (shader) => {
@@ -142,6 +154,8 @@ export function gunSurface(m: THREE.MeshStandardMaterial): void {
 uniform sampler2D uGunNoise;
 uniform vec3 uGunWear;
 uniform vec4 uGunLook;
+uniform vec3 uGunScale;
+uniform float uGunFade;
 uniform float uGunAmount;
 varying vec3 vGunPos;
 varying vec3 vGunNormal;
@@ -150,12 +164,12 @@ varying vec2 vGunShade;`)
 // The noise from the three sides, most from the side the surface faces. Wood: stretched along the barrel into streaks.
 vec3 gunW = pow(abs(normalize(vGunNormal)), vec3(4.0));
 gunW /= gunW.x + gunW.y + gunW.z;
-vec3 gunQ = vGunPos * mix(vec3(14.0), vec3(34.0, 34.0, 2.6), uGunLook.w);
+vec3 gunQ = vGunPos * uGunScale;
 vec3 gunN = texture2D(uGunNoise, gunQ.zy).rgb * gunW.x + texture2D(uGunNoise, gunQ.xz).rgb * gunW.y + texture2D(uGunNoise, gunQ.xy).rgb * gunW.z;
 // Worn: the hard edges in patches, and a few scuffs on the flats.
-float gunWorn = uGunAmount * max(vGunShade.y * smoothstep(0.3, 0.5, gunN.g), 0.5 * smoothstep(0.68, 0.76, gunN.b) * smoothstep(0.5, 0.62, gunN.g));
+float gunWorn = uGunAmount * uGunLook.w * max(vGunShade.y * smoothstep(0.3, 0.5, gunN.g), 0.5 * smoothstep(0.68, 0.76, gunN.b) * smoothstep(0.5, 0.62, gunN.g));
 diffuseColor.rgb *= 1.0 + (gunN.r - 0.5) * uGunLook.z + (gunN.b - 0.5) * 0.5 * uGunLook.z;
-diffuseColor.rgb = mix(diffuseColor.rgb, uGunWear, gunWorn);
+diffuseColor.rgb = mix(diffuseColor.rgb, mix(uGunWear, diffuseColor.rgb * 1.7 + 0.015, uGunFade), gunWorn);
 diffuseColor.rgb *= 1.0 - 0.62 * vGunShade.x; // the seams and the gaps between the parts`)
       .replace('#include <roughnessmap_fragment>', `#include <roughnessmap_fragment>
 roughnessFactor = clamp(mix(roughnessFactor + (gunN.r - 0.5) * 0.5 * uGunLook.z + 0.25 * vGunShade.x, uGunLook.y, gunWorn), 0.05, 1.0);`)
@@ -164,4 +178,5 @@ metalnessFactor = mix(metalnessFactor, uGunLook.x, gunWorn);`);
   };
   m.customProgramCacheKey = () => 'gun-surface';
   m.needsUpdate = true;
+  return true;
 }

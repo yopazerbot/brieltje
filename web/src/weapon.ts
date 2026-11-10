@@ -243,7 +243,12 @@ export const gunsReady: Promise<boolean> = new GLTFLoader().loadAsync('/models/w
         o.userData.hand = true;
         const m = (o as THREE.Mesh).material as THREE.MeshStandardMaterial | undefined;
         if (m?.name === 'Sleeve' && !sleeves.includes(m)) sleeves.push(m);
-        if (m) noNearCut(m); // your arm reaches back past the camera's near edge: drawn, not cut open
+        // Cloth and leather with their grain and the shade between the fingers; and your arm reaches back past the
+        // camera's near edge: drawn, not cut open (the surface brings that along; noNearCut for what has none).
+        if (m && !m.userData.dressed) {
+          m.userData.dressed = true;
+          if (!gunSurface(m)) noNearCut(m);
+        }
       });
       const muzzle = gun.getObjectByName(`${w}_muzzle`)!;
       muzzle.name = 'muzzle';

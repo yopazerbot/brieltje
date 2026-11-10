@@ -325,8 +325,12 @@ class Wrap:
 def finger(name, line, r):
     """A gloved finger along `line` (knuckle first): a little thicker at the knuckle."""
     n = len(line)
-    radii = [r * (1.08 - 0.16 * i / max(1, n - 1)) for i in range(n)]
-    return sweep(name, line, radii, M["Glove"], sides=8)
+    # Thicker at its two joints, thinner between them: a finger, not a tube.
+    def joint(i):
+        s = i / max(1, n - 1)
+        return 0.085 * max(0.0, 1 - abs(s - 0.36) * 7) + 0.07 * max(0.0, 1 - abs(s - 0.7) * 7)
+    radii = [r * (1.06 - 0.16 * i / max(1, n - 1) + joint(i)) for i in range(n)]
+    return sweep(name, line, radii, M["Glove"], sides=10)
 
 
 def arm(name, wrist, direction, length, side):
@@ -338,11 +342,16 @@ def arm(name, wrist, direction, length, side):
     bend = Vector((side * 0.02, 0, -0.03))
     pts = [w + d * 0.035, w + d * 0.05, w + d * 0.065]
     rad = [0.034, 0.038, 0.036]
-    for k in range(1, 6):
-        s = k / 5
-        pts.append(w + d * (0.065 + (length - 0.065) * s) + bend * s * s)
-        rad.append(0.036 + 0.012 * s)
-    sleeve = sweep(name + "Sleeve", pts, rad, M["Sleeve"], sides=10, tip=False)
+    # In sixteen steps, the cloth gathered in folds: deeper near the wrist, where the sleeve is pushed up, and
+    # each fold a little off the forearm's line, so they don't read as rings.
+    steps = 16
+    for k in range(1, steps + 1):
+        s = k / steps
+        fold = math.sin(k * 1.9 + side) * (1 - 0.55 * s)
+        off = Vector((math.sin(k * 2.7), 0, math.cos(k * 1.3))) * 0.0016 * (1 - 0.5 * s)
+        pts.append(w + d * (0.065 + (length - 0.065) * s) + bend * s * s + off)
+        rad.append(0.036 + 0.012 * s + 0.0042 * fold)
+    sleeve = sweep(name + "Sleeve", pts, rad, M["Sleeve"], sides=14, tip=False)
     return [cuff, sleeve]
 
 
@@ -830,8 +839,8 @@ def bake_shade():
     """Each gun's own shading, stored per face corner in a colour the game reads (web/src/world/gunSurface.ts):
     red: how closed in the spot is (0 open, 1 deep in a crevice), from rays cast over the gun's own parts where
     they rest, so the seams, the ports and the gaps between parts are darker; green: 1 on the thin bevels of the
-    hard edges, where paint and bluing wear off first (the game breaks that up into patches). Not the hands or
-    Paintball's kit. The rays are a fixed set, so the file comes out the same every time."""
+    hard edges, where paint and bluing wear off first (the game breaks that up into patches). The hands too, for
+    the shade between the fingers and under the cuffs (no worn edges on them). Not Paintball's kit. The rays are a fixed set, so the file comes out the same every time."""
     from mathutils.bvhtree import BVHTree
     rays, reach = 24, 0.02
     dirs = []
@@ -841,6 +850,8 @@ def bake_shade():
     bpy.context.view_layer.update()
     for root in [o for o in bpy.data.objects if o.parent is None and o.type == "EMPTY"]:
         meshes = [o for o in root.children if o.type == "MESH" and not o.name.endswith("_kit")]
+        hands = [h for e in root.children if e.type == "EMPTY" and e.name.endswith("_hands") for h in e.children if h.type == "MESH"]
+        meshes += hands
         verts, polys = [], []
         for o in meshes:
             base = len(verts)
@@ -859,8 +870,30 @@ def bake_shade():
                 strip = width < 0.0032 and longest > 2.5 * width  # a bevel, or a side of a thin pin or tube
                 worn.append(1.0 if strip and sum(a > math.radians(18) for a in angles) >= 2 and min(angles) > -0.02 else 0.0)
             bm.free()
+            if o in hands:
+                worn = [0.0] * len(worn)
             attr = me.color_attributes.new("shade", "FLOAT_COLOR", "CORNER")
             mw, rot = o.matrix_world, o.matrix_world.to_3x3()
+            if o in hands:
+                # Smooth shapes: one value per point (from its own normal), the same on every corner that shares
+                # it, so no point is split in the file (per corner the hands tripled in size).
+                per = {}
+                for v in me.vertices:
+                    n = (rot @ v.normal).normalized()
+                    t = n.orthogonal().normalized()
+                    b = n.cross(t)
+                    start = mw @ v.co + n * 0.0006
+                    closed = 0.0
+                    for d in dirs:
+                        hit = tree.ray_cast(start, t * d[0] + b * d[1] + n * d[2], reach)
+                        if hit[0] is not None:
+                            closed += 1 - hit[3] / reach
+                    per[v.index] = min(1.0, closed / rays)
+                for l in me.loops:
+                    attr.data[l.index].color = (per[l.vertex_index], 0.0, 0.0, 1.0)
+                me.color_attributes.active_color = attr
+                me.color_attributes.render_color_index = me.color_attributes.find("shade")
+                continue
             for p in me.polygons:
                 n = (rot @ p.normal).normalized()
                 t = n.orthogonal().normalized()
