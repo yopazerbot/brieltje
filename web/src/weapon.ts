@@ -57,6 +57,10 @@ interface Spec {
 export const SPECS = WEAPONS as Record<WeaponId, Spec>;
 export const WEAPON_IDS = Object.keys(SPECS) as WeaponId[];
 
+/** How fast each gun comes up to the eye (1/s): the pistol at once, the long and heavy ones slower. */
+const AIM_SPEED: Record<WeaponId, number> = { pistol: 20, rifle: 14, shotgun: 12, sniper: 9, bazooka: 8 };
+const NO_DRIFT = new THREE.Vector2();
+
 /** Muzzle flash length per gun, in metres. */
 const FLASH: Record<WeaponId, number> = { pistol: 0.16, rifle: 0.26, shotgun: 0.34, sniper: 0.32, bazooka: 0.45 };
 
@@ -605,6 +609,17 @@ export class Weapon {
   /** Recoil as springs: back (m), barrel up (rad), roll (rad); and their speeds */
   private recoil = [0, 0, 0];
   private recoilVel = [0, 0, 0];
+  /** Shots in the burst so far: the recoil's pattern follows it. A burst ends a moment after its last shot. */
+  private burst = 0;
+  /** The part of the recoil's climb the view still gives back (rad), what the gun itself turned the view since the last update, and what it asks back this frame */
+  private kickDebt = 0;
+  private selfPitch = 0;
+  private recover = 0;
+  /** Through a scope: where the reticle drifts with your breath (in half view heights), the breath you have left (0..1), and being out of it */
+  private drift = new THREE.Vector2();
+  private driftAmp = 0;
+  private breath = 1;
+  private winded = false;
   /** Your suit's colour, for the sleeves */
   private sleeve = '#4b4c3b';
 
@@ -875,13 +890,12 @@ export class Weapon {
       return { pitch: spec.kick, yaw: 0, rocket: { from, to } };
     }
 
-    // Spread: the sniper rifle is only accurate through the scope; aiming steadies the others.
-    let spread = this.current === 'sniper'
-      ? (this.aim > 0.85 ? .015 * Math.max(0, this.spreadMul - 1) : spec.hipSpread ?? 0.09)
-      : spec.spread * (1 - (spec.pellets > 1 ? .25 : .6) * this.aim);
-    if (this.hasScope(this.current) && this.aim > 0.85) spread *= 0.25; // steady through a found scope
-    spread = spread * this.spreadMul + this.bloom[this.current];
-    if (spec.auto) this.bloom[this.current] = Math.min(0.03, this.bloom[this.current] + 0.005);
+    const spread = this.spread;
+    // Held automatic fire opens up, shot by shot (the crosshair shows it); short bursts stay tight.
+    if (spec.auto) this.bloom[this.current] = Math.min(0.01, this.bloom[this.current] + 0.002);
+    // Through a scope the shot goes where the reticle is, and that drifts with your breath (update).
+    const aspect = this.camera.aspect || 1;
+    const at = this.scoped ? this.drift : NO_DRIFT;
 
     this.camera.updateMatrixWorld();
     const eye = this.camera.getWorldPosition(new THREE.Vector3());
@@ -892,7 +906,7 @@ export class Weapon {
     for (let i = 0; i < spec.pellets; i++) {
       const a = Math.random() * Math.PI * 2;
       const r = spread * Math.sqrt(Math.random());
-      this.raycaster.setFromCamera(new THREE.Vector2(Math.cos(a) * r, Math.sin(a) * r), this.camera);
+      this.raycaster.setFromCamera(new THREE.Vector2((at.x + Math.cos(a) * r) / aspect, at.y + Math.sin(a) * r), this.camera);
       const hits = this.raycaster.intersectObjects(this.scene.children, true);
       const hit = hits.find((h) => drawn(h.object) && !h.object.userData.ignoreRay && h.face);
       if (paint) this.onPaintball(paint.from, hit ? hit.point : this.raycaster.ray.at(120, new THREE.Vector3()), paint);
@@ -939,8 +953,68 @@ export class Weapon {
     for (const [name, e] of players) this.onPlayerHit(name, e.body, e.head, e.point, e.spot);
     if (zombies.size) this.onZombieHit([...zombies.values()], paint);
     if (this.ammo[this.current] === 0) this.reload();
-    const k = spec.kick * (0.8 + Math.random() * 0.4) * (1 - 0.4 * this.aim);
-    return { pitch: k, yaw: spec.auto ? (Math.random() - 0.5) * k * 0.8 : 0 };
+    return this.kickOf(spec);
+  }
+
+  /**
+   * The view's kick for this shot. Held automatic fire follows a pattern you can learn instead of
+   * chance: the barrel climbs for the first eight shots, then stays about level and weaves left and
+   * right. Half of the climb comes back by itself once you let go (update, takeRecover).
+   */
+  private kickOf(spec: Spec): Shot {
+    const i = this.burst++;
+    const k = spec.kick * (1 - 0.4 * this.aim);
+    if (!spec.auto) {
+      const pitch = k * (0.9 + Math.random() * 0.2);
+      this.kickDebt += pitch * 0.5;
+      this.selfPitch += pitch;
+      return { pitch, yaw: (Math.random() - 0.5) * k * 0.2 };
+    }
+    const pitch = k * (i < 8 ? 1.15 : 0.4) * (0.95 + Math.random() * 0.1);
+    const weave = i < 2 ? 0 : 0.55 * Math.sin((i - 2) * 0.55);
+    this.kickDebt = Math.min(0.12, this.kickDebt + pitch * 0.5);
+    this.selfPitch += pitch;
+    return { pitch, yaw: k * (weave + (Math.random() - 0.5) * 0.2) };
+  }
+
+  /**
+   * How wide the next shot can land from the middle of the view, in half view heights: what the
+   * crosshair shows. A circle on the screen whatever the window's shape (it was wider than tall
+   * on a wide screen); 1.3 keeps its area as it was at 16:9.
+   */
+  get spread(): number {
+    const spec = this.spec;
+    if (spec.rocket) return 0;
+    // The sniper rifle is only accurate through the scope; aiming steadies the others.
+    let spread = this.current === 'sniper'
+      ? (this.aim > 0.85 ? .015 * Math.max(0, this.spreadMul - 1) : spec.hipSpread ?? 0.09)
+      : spec.spread * (1 - (spec.pellets > 1 ? .25 : .6) * this.aim);
+    if (this.hasScope(this.current) && this.aim > 0.85) spread *= 0.25; // steady through a found scope
+    return (spread * this.spreadMul + this.bloom[this.current]) * 1.3;
+  }
+
+  /**
+   * The turn the gun asks of the view this frame (rad, to take off the pitch): the recoil's climb
+   * coming back down after the burst.
+   */
+  takeRecover(): number {
+    const d = this.recover;
+    this.recover = 0;
+    this.selfPitch -= d;
+    return d;
+  }
+
+  /**
+   * The picture through the scope (ui/scope.ts), in half view heights: where the reticle is, how far
+   * the dark edge has crept in (you turned or fired: your eye is off the scope's line for a moment),
+   * and your breath.
+   */
+  get scopeView(): { x: number; y: number; shadeX: number; shadeY: number; breath: number; winded: boolean } {
+    return {
+      x: this.drift.x, y: this.drift.y,
+      shadeX: -this.lag.x * 0.035, shadeY: this.lag.y * 0.035 + this.recoil[1] * 1.6,
+      breath: this.breath, winded: this.winded,
+    };
   }
 
   /**
@@ -968,7 +1042,7 @@ export class Weapon {
    * `look`: where the player looks, sideways step input (-1..1, right positive), sprinting
    * and being in the air; this drives how the gun moves with the body.
    */
-  update(dt: number, moving: number, aiming: boolean, look?: { yaw: number; pitch: number; side: number; sprint: boolean; air: boolean }): void {
+  update(dt: number, moving: number, aiming: boolean, look?: { yaw: number; pitch: number; side: number; sprint: boolean; air: boolean; steady?: boolean }): void {
     if (!this.enabled) return;
     const spec = this.spec;
     this.clock += dt;
@@ -978,7 +1052,8 @@ export class Weapon {
       this.reloading -= dt;
       if (this.reloading <= 0) this.ammo[this.current] = this.magOf(this.current);
     }
-    for (const w of WEAPON_IDS) this.bloom[w] = Math.max(0, this.bloom[w] - dt * 0.06);
+    // It closes again once you let go. (It used to close faster than held fire could open it, so it never showed.)
+    if (this.sinceShot > 0.15) for (const w of WEAPON_IDS) this.bloom[w] = Math.max(0, this.bloom[w] - dt * 0.06);
     this.flashTime = Math.max(0, this.flashTime - dt);
     // Switching: the gun in your hands drops away (a tenth of a second), then the next comes up.
     if (this.shown !== this.current) {
@@ -993,8 +1068,43 @@ export class Weapon {
     m.flash.visible = this.flashTime > 0 && this.shown === this.current;
     this.sway += dt * (1.5 + moving * 4);
     this.sinceShot += dt;
-    this.aim += ((aiming && this.reloading <= 0 ? 1 : 0) - this.aim) * (1 - Math.exp(-dt * 14));
+    // Raising the sights takes as long as the gun is heavy: the pistol is up at once, the sniper rifle last.
+    this.aim += ((aiming && this.reloading <= 0 ? 1 : 0) - this.aim) * (1 - Math.exp(-dt * AIM_SPEED[this.current]));
     const ease = (k: number) => 1 - Math.exp(-dt * k);
+
+    // The burst ends a moment after its last shot; then half of the climb comes back down, unless
+    // you already pulled the view down yourself (that pays the debt off first).
+    if (this.sinceShot > Math.max(0.3, Math.min(0.5, spec.delay * 1.5))) this.burst = 0;
+    if (look && this.lastLook) {
+      const own = look.pitch - this.lastLook.pitch - this.selfPitch;
+      if (own < 0) this.kickDebt = Math.max(0, this.kickDebt + own);
+    }
+    this.selfPitch = 0;
+    if (this.kickDebt > 0 && this.sinceShot > Math.min(0.22, spec.delay * 1.6)) {
+      const back = this.kickDebt < 0.0002 ? this.kickDebt : this.kickDebt * ease(7);
+      this.kickDebt -= back;
+      this.recover += back;
+    }
+
+    // Through a scope the reticle drifts with your breath, a slow figure of eight: less crouched,
+    // more on the move. Holding your breath (`steady`) stills it for about four seconds; out of
+    // breath it drifts wider until you have some back.
+    const holding = !!look?.steady && this.scoped && !this.winded && this.breath > 0;
+    this.breath = Math.max(0, Math.min(1, this.breath + (holding ? -dt / 4 : dt / 5)));
+    if (this.breath <= 0) this.winded = true;
+    else if (this.breath > 0.5) this.winded = false;
+    if (this.scoped) {
+      const amp = 0.011 * Math.min(2.2, this.spreadMul) * (holding ? 0.12 : this.winded ? 1.7 : 1) * (document.body.classList.contains('touch') ? 0.5 : 1);
+      this.driftAmp += (amp - this.driftAmp) * ease(5);
+      const t = this.clock;
+      this.drift.set(
+        this.driftAmp * (Math.sin(t * 0.9) + 0.25 * Math.sin(t * 2.3 + 1)),
+        this.driftAmp * (0.6 * Math.sin(t * 1.8) + 0.2 * Math.sin(t * 3.1)),
+      );
+    } else {
+      this.driftAmp = 0;
+      this.drift.set(0, 0);
+    }
 
     // Springs: recoil settles quickly with a small overshoot; the landing dip a little slower.
     for (let i = 0; i < 3; i++) {

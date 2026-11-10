@@ -109,9 +109,17 @@ button, input, select, textarea { font-family: inherit; }
   position: absolute; left: 50%; top: 50%; width: 6px; height: 6px; margin: -3px 0 0 -3px;
   border-radius: 50%; background: rgba(255, 255, 255, 0.85); box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.5);
 }
-#crosshair.gun { width: 18px; height: 18px; margin: -9px 0 0 -9px; background: none; box-shadow: none;
-  background-image: linear-gradient(#fff, #fff), linear-gradient(#fff, #fff);
-  background-size: 2px 18px, 18px 2px; background-position: center; background-repeat: no-repeat; opacity: 0.85; }
+/* With a gun: a dot and four ticks. The ticks stand as far out as the next shot can land (--gap, ui/hud.ts). */
+#crosshair i { display: none; }
+#crosshair.gun { width: 2px; height: 2px; margin: -1px 0 0 -1px; border-radius: 0; background: #fff; box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.35); opacity: 0.85; --gap: 5px; }
+#crosshair.gun i {
+  display: block; position: absolute; left: 0; top: 0; width: 2px; height: 7px; background: #fff;
+  box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.35); transition: transform 0.07s linear;
+}
+#crosshair.gun i:nth-child(1) { transform: translateY(calc(-7px - var(--gap))); }
+#crosshair.gun i:nth-child(2) { transform: translateY(calc(2px + var(--gap))); }
+#crosshair.gun i:nth-child(3) { width: 7px; height: 2px; transform: translateX(calc(-7px - var(--gap))); }
+#crosshair.gun i:nth-child(4) { width: 7px; height: 2px; transform: translateX(calc(2px + var(--gap))); }
 #crosshair.hidden { display: none; }
 /* Zombies: the ring that fills while you help a teammate up. */
 #ring { position: absolute; left: 50%; top: 50%; width: 64px; height: 64px; margin: -32px 0 0 -32px; display: none; transform: rotate(-90deg); }
@@ -235,14 +243,24 @@ button, input, select, textarea { font-family: inherit; }
 #slots { position: absolute; right: 48px; bottom: 210px; display: flex; flex-direction: column; align-items: flex-end; gap: 2px; font-size: 14px; }
 #slots .slot { opacity: 0.55; padding: 1px 8px; }
 #slots .slot.current { opacity: 1; color: var(--accent); font-weight: 700; border-right: 3px solid var(--accent); }
-#scope {
-  position: absolute; inset: 0; display: none;
-  background:
-    linear-gradient(#000, #000) center / 2px 100% no-repeat,
-    linear-gradient(#000, #000) center / 100% 2px no-repeat,
-    radial-gradient(circle at center, transparent 0, transparent 38vh, rgba(0, 0, 0, 0.6) 38.3vh, #000 39vh);
-}
+/* The picture through a scope (ui/scope.ts): the tube round the lens, the reticle, the dark edge that
+   creeps in, the breath bar. The parts are larger than the view, so moving them never shows a gap. */
+#scope { position: absolute; inset: 0; display: none; overflow: hidden; pointer-events: none; --r: min(38vh, 46vw); }
 #scope.show { display: block; }
+#scope .sight, #scope .shade { position: absolute; inset: -25%; will-change: transform; }
+#scope .tube { position: absolute; inset: 0; background: radial-gradient(circle at center, transparent calc(var(--r) - 2px), #000 var(--r)); }
+#scope .shade { background: radial-gradient(circle at center, transparent calc(var(--r) * 0.7), rgba(0, 0, 0, 0.32) calc(var(--r) * 0.92), rgba(0, 0, 0, 0.96) calc(var(--r) * 1.1)); }
+#scope .reticle {
+  position: absolute; left: 50%; top: 50%; width: calc(var(--r) * 2); height: calc(var(--r) * 2);
+  margin: calc(var(--r) * -1) 0 0 calc(var(--r) * -1); stroke: #0a0c0d; fill: #0a0c0d; opacity: 0.94;
+}
+#scope .breath {
+  position: absolute; left: 50%; top: calc(50% + var(--r) * 0.74); width: 96px; height: 3px; margin-left: -48px;
+  background: rgba(0, 0, 0, 0.4); border-radius: 2px; opacity: 0; transition: opacity 0.2s;
+}
+#scope .breath.on { opacity: 1; }
+#scope .breath i { display: block; height: 100%; border-radius: 2px; background: #eef3f4; transform-origin: left center; }
+#scope .breath.winded i { background: #e8693f; }
 #hitdir {
   position: absolute; left: 50%; top: 50%; width: 220px; height: 220px; opacity: 0; pointer-events: none;
   border-radius: 50%; border: 6px solid transparent; border-top-color: rgba(255, 40, 30, 0.85);

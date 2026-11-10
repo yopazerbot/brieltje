@@ -40,6 +40,8 @@ export interface FrameInput {
   useHeld: boolean;
   /** Right mouse button or L2 held: aim down the sights */
   aimHeld: boolean;
+  /** Shift or L3 held: through a scope, hold your breath */
+  steadyHeld: boolean;
   /** R key or Square while playing: reload */
   reloadPressed: boolean;
   /** R, Square or the touch reload button held down (Zombies: held, it plants a row of stakes) */
@@ -82,7 +84,7 @@ export interface FrameInput {
 
 export const NO_INPUT: FrameInput = {
   moveX: 0, moveY: 0, lookX: 0, lookY: 0, mouseX: 0, mouseY: 0, sprint: false,
-  jumpPressed: false, jumpHeld: false, downHeld: false, clickPressed: false, usePressed: false, useHeld: false, aimHeld: false, reloadPressed: false, reloadHeld: false,
+  jumpPressed: false, jumpHeld: false, downHeld: false, clickPressed: false, usePressed: false, useHeld: false, aimHeld: false, steadyHeld: false, reloadPressed: false, reloadHeld: false,
   menuPressed: false, fpsPressed: false, confirmPressed: false, squarePressed: false, speedStep: 0, tabStep: 0, navX: 0, navY: 0, scoreHeld: false, mapPressed: false, fireHeld: false, weaponSlot: 0, weaponCycle: 0, throwPressed: false, throwHeld: false, deletePressed: false, anyPadButton: false,
   throttle: 0, brake: 0,
 };
@@ -222,6 +224,7 @@ export class Input {
     out.moveY += (k('KeyW') || k('ArrowUp') ? 1 : 0) - (k('KeyS') || k('ArrowDown') ? 1 : 0);
     out.moveX += (k('KeyD') || k('ArrowRight') ? 1 : 0) - (k('KeyA') || k('ArrowLeft') ? 1 : 0);
     out.sprint = k('ShiftLeft') || k('ShiftRight');
+    out.steadyHeld = out.sprint;
     out.jumpHeld = k('Space');
     out.downHeld = k('ControlLeft') || k('ControlRight') || k('KeyC');
     out.useHeld = k('KeyE');
@@ -251,6 +254,7 @@ export class Input {
       if (edge(BTN.l3)) this.padSprint = true;
       if (lx === 0 && ly === 0) this.padSprint = false;
       out.sprint ||= this.padSprint;
+      out.steadyHeld ||= !!pressed[BTN.l3];
       if (edge(BTN.options)) out.menuPressed = true;
       // The touchpad (PlayStation) is the map and the scores, Create the FPS counter. Without a
       // touchpad, View or − (Create's place) is the map and the scores; the FPS counter is in Settings.

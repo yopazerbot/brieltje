@@ -2,6 +2,7 @@ import { familyName, oddLayout } from '../controls/padFamily';
 import { lang, t } from '../i18n';
 import { paintball, weaponName } from '../paintball';
 import type { WeaponId } from '../weapon';
+import { ScopeView, type ScopePicture } from './scope';
 
 /** On-screen text while playing: where you are, controller status, frame rate and (together) the ping. */
 export class Hud {
@@ -15,7 +16,13 @@ export class Hud {
   private crosshair = document.getElementById('crosshair')!;
   private ring = document.getElementById('ring')!;
   private ringArc = this.ring.querySelector('circle.arc') as SVGCircleElement;
+  private scope = new ScopeView();
   private lastPlace = '';
+
+  constructor() {
+    // The crosshair's four ticks (style.css shows them with a gun in your hands).
+    for (let i = 0; i < 4; i++) this.crosshair.appendChild(document.createElement('i'));
+  }
   private toastTimer = 0;
   private frames = 0;
   private fpsTime = 0;
@@ -43,7 +50,6 @@ export class Hud {
     }));
   }
 
-  /** The sniper's scope; `noCross` hides the crosshair too (driving, with the camera behind the car). */
   /** The ring round the crosshair filling up while you help a teammate up (0..1); null hides it. */
   setRing(progress: number | null): void {
     this.ring.classList.toggle('show', progress !== null);
@@ -53,9 +59,30 @@ export class Hud {
     this.ringArc.style.strokeDashoffset = `${len * (1 - Math.max(0, Math.min(1, progress)))}`;
   }
 
-  setScope(on: boolean, noCross = false): void {
-    document.getElementById('scope')!.classList.toggle('show', on);
+  /** The picture through a scope (ui/scope.ts); `noCross` hides the crosshair too (driving, with the camera behind the car). */
+  setScope(on: boolean, noCross = false, picture?: ScopePicture): void {
+    this.scope.set(on, picture);
     this.crosshair.classList.toggle('hidden', on || noCross);
+  }
+
+  private gap = -1;
+  private faint = -1;
+  /**
+   * The crosshair's ticks stand as far out as the next shot can land: `spread` in half view heights
+   * (weapon.ts), so they open up when you run, jump or keep firing. `aim` (0..1): with the sights
+   * at your eye the crosshair goes faint, the sights do the work.
+   */
+  setSpread(spread: number, aim: number): void {
+    const gap = Math.round(Math.max(3, Math.min(90, spread * window.innerHeight / 2)));
+    if (gap !== this.gap) {
+      this.gap = gap;
+      this.crosshair.style.setProperty('--gap', `${gap}px`);
+    }
+    const faint = Math.round(aim * 10);
+    if (faint !== this.faint) {
+      this.faint = faint;
+      this.crosshair.style.opacity = faint ? `${(0.85 * (1 - 0.07 * faint)).toFixed(2)}` : '';
+    }
   }
 
   setWeapon(armed: boolean, status: string): void {

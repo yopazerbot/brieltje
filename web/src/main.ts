@@ -2942,6 +2942,8 @@ let wasOnHorse = false;
 let carHint = 0; // the same for the car's speed and keys after getting in
 let wasInCar = false;
 let bikeHint = 0; // the same on a bike
+let scopeHint = 0; // how to hold your breath, for the first seconds through a scope
+let wasScoped = false;
 let wasOnBike = false;
 let wasCalm = false;
 let wasFlying = false;
@@ -3308,8 +3310,9 @@ renderer.setAnimationLoop((now: number) => {
     weapon.setSleeve(avatars.suit(me?.username ?? '', myColour())); // your sleeves as your figure's suit
     weapon.update(dt, inCar ? 0 : Math.min(1, Math.hypot(frame.moveX, frame.moveY)), frame.aimHeld && !inCar, {
       yaw: player.yaw, pitch: player.pitch, side: dead ? 0 : frame.moveX, sprint: frame.sprint && !player.crouching,
-      air: player.flying || player.feet > player.ground.y + 0.05,
+      air: player.flying || player.feet > player.ground.y + 0.05, steady: frame.steadyHeld,
     });
+    player.pitch -= weapon.takeRecover(); // the recoil's climb comes back down after the burst
     // The keys in the prompts come from the one table (src/shortcuts.ts). In Explore a click opens doors too.
     const doorKey = key(action ? 'use' : 'click', mode);
     const use = key('use', mode);
@@ -3345,6 +3348,10 @@ renderer.setAnimationLoop((now: number) => {
     hud.setRing(helping ? (helping.start ? (now - helping.start) / helping.ms : 0) : null);
     if (pad) prompt = ''; // the list says it all
     else if ((!inCar || onBike) && portalNear(player.x, player.z) && (onHorse || onBike || !rules.portals || games.fenced)) prompt = t(onHorse ? 'prompt.horsePortal' : onBike ? 'prompt.bikePortal' : games.fenced ? 'prompt.portalGame' : 'prompt.portalsOff');
+    // Through a scope: how to hold your breath, for the first seconds of each look (not with the touch controls, which have no key for it).
+    scopeHint = weapon.scoped ? (wasScoped ? Math.max(0, scopeHint - dt) : 3) : 0;
+    wasScoped = weapon.scoped;
+    if (scopeHint > 0 && !prompt && mode !== 'touch') prompt = t('prompt.breath', { key: key('sprint', mode) });
     hud.setPrompt(prompt);
     const armed = action && !dead && !inCar;
     hud.setWeapon(armed, dead || inCar ? '' : weapon.status);
@@ -3355,7 +3362,8 @@ renderer.setAnimationLoop((now: number) => {
       kit.turrets ? t('loot.turretCount', { key: key('use', mode) }) : '',
     ].filter(Boolean).join('   ·   ') : '';
     hud.setGrenades(armed ? grenades.count : null, GRENADE.carry, grenades.nextIn, key('grenade', mode), pocket);
-    hud.setScope(weapon.scoped, inCar || dropView.outside);
+    hud.setScope(weapon.scoped, inCar || dropView.outside, weapon.scopeView);
+    if (armed) hud.setSpread(weapon.spread, weapon.aimAmount);
     document.body.classList.toggle('drop', dropView.outside); // filmed from behind: the hints go low, clear of your figure (style.css)
     // The flying controls for the first few seconds after taking off only (Yoshi: annoying when it stays).
     if (player.flying && !wasFlying) flyHint = 4;
