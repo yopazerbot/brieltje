@@ -92,7 +92,7 @@ export type ServerMsg =
   | {
       /** `proto`: the server's protocol (shared/wire.mjs); a different one means this page is out of date (or the server is) */
       /** `room`: the Zombies room this connection is in (server/rooms.mjs), null or missing in the open world */
-      t: 'welcome'; proto?: number; you: string; role: string; color: string; room?: { id: string; owner: string; place: string } | null; doors: Record<string, boolean>; doorDir?: Record<string, number>; broken: number[]; homes?: string[];
+      t: 'welcome'; cracked?: [number, number, number, number][]; proto?: number; you: string; role: string; color: string; room?: { id: string; owner: string; place: string } | null; doors: Record<string, boolean>; doorDir?: Record<string, number>; broken: number[]; homes?: string[];
       /** Of `homes`, those this player's account opens for good (server/homes.mjs byAccount) */
       accountHomes?: string[];
       players: { name: string; color: string; role: string }[]; scores: Score[]; limit: number; round: { winner: string; ms: number } | null; items: boolean[];
@@ -159,6 +159,7 @@ export type ServerMsg =
   | { t: 'round'; winner: string; ms: number }
   | ({ t: 'newround'; text: string } & Coded)
   | { t: 'glass'; i: number; by: string }
+  | { t: 'crack'; i: number; x: number; y: number; z: number; by: string }
   /** `quiet`: the server put them back itself (the Zombies game began): no line in the chat */
   | { t: 'repair'; by: string; quiet?: boolean }
   | { t: 'join'; name: string; color: string }

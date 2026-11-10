@@ -6,6 +6,10 @@ import type { World } from './collision';
  * Breakable windows: a shot shatters the pane into falling shards, plays a
  * glass sound and opens the gap (no more collision). "Repair windows" in the
  * menu puts them all back.
+ *
+ * A pistol's or a rifle's first bullet only cracks a pane: a small hole with cracks running out from
+ * it, on both faces, where it struck (`crack`). The pane still stands and still stops you; the next
+ * bullet brings it down. A shotgun, a sniper rifle, a blast or a zombie breaks it at once.
  */
 
 interface Shard {
@@ -26,8 +30,84 @@ const shardMat = new THREE.MeshStandardMaterial({
   color: '#d6ecf5', roughness: 0.05, metalness: 0.2, transparent: true, opacity: 0.55, side: THREE.DoubleSide,
 });
 
+let crackMap: THREE.CanvasTexture | null = null;
+/**
+ * A bullet's mark in glass, drawn in code once: a small dark hole with a bright crushed rim, cracks
+ * running out from it (each a jagged line that thins), and two broken rings where the cracks join.
+ * The same picture for every crack, turned and sized differently; from a fixed seed.
+ */
+function crackTexture(): THREE.CanvasTexture {
+  if (crackMap) return crackMap;
+  const N = 256;
+  const c = document.createElement('canvas');
+  c.width = c.height = N;
+  const g = c.getContext('2d')!;
+  let seed = 0x51ed270b;
+  const rnd = () => {
+    seed = (seed + 0x6d2b79f5) | 0;
+    let t = Math.imul(seed ^ (seed >>> 15), 1 | seed);
+    t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t;
+    return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+  };
+  const mid = N / 2;
+  g.lineCap = 'round';
+  const rays = 11;
+  const ends: number[] = [];
+  for (let k = 0; k < rays; k++) {
+    const a = ((k + rnd() * 0.7) / rays) * Math.PI * 2;
+    const len = (0.45 + rnd() * 0.5) * mid;
+    ends.push(a);
+    let x = mid;
+    let y = mid;
+    const steps = 7;
+    for (let s = 1; s <= steps; s++) {
+      const r = (len * s) / steps;
+      const wob = a + (rnd() - 0.5) * 0.22;
+      const nx = mid + Math.cos(wob) * r;
+      const ny = mid + Math.sin(wob) * r;
+      g.strokeStyle = `rgba(240, 249, 252, ${(1 - 0.6 * (s / steps)).toFixed(2)})`;
+      g.lineWidth = 3.4 * (1 - s / (steps + 1)) + 0.9;
+      g.beginPath();
+      g.moveTo(x, y);
+      g.lineTo(nx, ny);
+      g.stroke();
+      [x, y] = [nx, ny];
+    }
+  }
+  for (const [r, alpha] of [[0.2, 0.75], [0.42, 0.5]] as const) {
+    for (let k = 0; k < rays; k++) {
+      if (rnd() < 0.3) continue; // a ring is never whole
+      const a0 = ends[k];
+      const a1 = ends[(k + 1) % rays] + (k + 1 === rays ? Math.PI * 2 : 0);
+      const rr = r * mid * (0.9 + rnd() * 0.2);
+      g.strokeStyle = `rgba(230, 244, 250, ${alpha})`;
+      g.lineWidth = 1.8;
+      g.beginPath();
+      g.moveTo(mid + Math.cos(a0) * rr, mid + Math.sin(a0) * rr);
+      g.lineTo(mid + Math.cos(a1) * rr, mid + Math.sin(a1) * rr);
+      g.stroke();
+    }
+  }
+  const rim = g.createRadialGradient(mid, mid, 1, mid, mid, 11);
+  rim.addColorStop(0, 'rgba(12, 16, 20, 0.95)');
+  rim.addColorStop(0.42, 'rgba(12, 16, 20, 0.9)');
+  rim.addColorStop(0.5, 'rgba(245, 252, 255, 0.95)');
+  rim.addColorStop(1, 'rgba(240, 250, 255, 0)');
+  g.fillStyle = rim;
+  g.beginPath();
+  g.arc(mid, mid, 11, 0, Math.PI * 2);
+  g.fill();
+  crackMap = new THREE.CanvasTexture(c);
+  crackMap.colorSpace = THREE.SRGBColorSpace;
+  return crackMap;
+}
+const crackGeo = new THREE.PlaneGeometry(1, 1);
+let crackMat: THREE.MeshBasicMaterial | null = null;
+
 export class Glass {
   private broken = new Set<number>();
+  /** The panes with a crack in them, and the crack's marks (one on each face) */
+  private cracks = new Map<number, THREE.Mesh[]>();
   private shards: Shard[] = [];
   /**
    * Whether a shot or a blast may break pane `index` here: false for the panes of a code-locked home that this page has
@@ -88,6 +168,7 @@ export class Glass {
     if (!pane) this.pending.add(index); // broken before its house came: broken once it does
     if (!pane || this.broken.has(index)) return false;
     this.broken.add(index);
+    this.uncrack(index);
     const box = new THREE.Box3().setFromObject(pane);
     pane.visible = false;
     this.setSolid(index, false);
@@ -112,8 +193,88 @@ export class Glass {
     return true;
   }
 
+  /** Whether pane `index` has a crack in it (the next bullet breaks it). */
+  cracked(index: number): boolean {
+    return this.cracks.has(index);
+  }
+
+  /**
+   * A bullet's first hit on pane `index`, at `hit` (in the world): a crack there, on both faces, and the tick of
+   * glass giving. True when that is new: false for a pane that is cracked already (break it), broken, locked or
+   * not here. `told`: the server says so (another player's bullet): a lock does not stop that. `quiet`: no sound
+   * (the cracks there were when we joined).
+   */
+  crack(index: number, hit: THREE.Vector3, told = false, quiet = false): boolean {
+    if (!told && this.locked(index)) return false;
+    const pane = this.panes.get(index);
+    if (!pane || this.broken.has(index) || this.cracks.has(index)) return false;
+    const geo = pane.geometry;
+    if (!geo.boundingBox) geo.computeBoundingBox();
+    const box = geo.boundingBox!;
+    const size = box.getSize(new THREE.Vector3());
+    // The pane's thin way is through the glass; the mark lies in the other two, on each face.
+    const thin = size.x <= size.y && size.x <= size.z ? 'x' : size.z <= size.y ? 'z' : 'y';
+    const at = pane.worldToLocal(hit.clone());
+    crackMat ??= new THREE.MeshBasicMaterial({ map: crackTexture(), transparent: true, depthWrite: false, side: THREE.DoubleSide, polygonOffset: true, polygonOffsetFactor: -2, polygonOffsetUnits: -2 });
+    const across = 0.7 + ((index * 37) % 10) * 0.04; // m: each pane its own size and turn, the same for everyone
+    const turn = ((index * 53) % 17) * 0.37;
+    const marks: THREE.Mesh[] = [];
+    for (const face of [box.min[thin] - 0.003, box.max[thin] + 0.003]) {
+      const mark = new THREE.Mesh(crackGeo, crackMat);
+      mark.position.copy(at);
+      mark.position[thin] = face;
+      if (thin === 'x') mark.rotation.set(turn, Math.PI / 2, 0, 'YXZ');
+      else if (thin === 'y') mark.rotation.set(Math.PI / 2, 0, turn);
+      else mark.rotation.set(0, 0, turn);
+      // Its size in the world, whatever the pane's own scale.
+      mark.scale.set(across / pane.scale.x, across / pane.scale.y, across / pane.scale.z);
+      mark.renderOrder = pane.renderOrder + 1;
+      mark.userData.ignoreRay = true;
+      mark.raycast = () => {};
+      pane.add(mark);
+      marks.push(mark);
+    }
+    this.cracks.set(index, marks);
+    if (!quiet) this.crackSound(hit);
+    return true;
+  }
+
+  private uncrack(index: number): void {
+    for (const m of this.cracks.get(index) ?? []) m.removeFromParent();
+    this.cracks.delete(index);
+  }
+
+  /** The crack of glass giving without falling: a sharp tick and one small ring, made in code. */
+  private crackSound(at: THREE.Vector3): void {
+    const ctx = sound.context();
+    const dest = sound.at(at.x, at.y, at.z, 3);
+    if (!ctx || !dest) return;
+    const t = ctx.currentTime;
+    const buf = ctx.createBuffer(1, Math.ceil(ctx.sampleRate * 0.05), ctx.sampleRate);
+    const data = buf.getChannelData(0);
+    for (let i = 0; i < data.length; i++) data[i] = (Math.random() * 2 - 1) * Math.pow(1 - i / data.length, 6);
+    const tick = ctx.createBufferSource();
+    tick.buffer = buf;
+    const hp = ctx.createBiquadFilter();
+    hp.type = 'highpass';
+    hp.frequency.value = 3500;
+    const gain = ctx.createGain();
+    gain.gain.value = 0.5;
+    tick.connect(hp).connect(gain).connect(dest);
+    tick.start(t);
+    const o = ctx.createOscillator();
+    o.frequency.value = 5200 + Math.random() * 1800;
+    const g = ctx.createGain();
+    g.gain.setValueAtTime(0.05, t + 0.01);
+    g.gain.exponentialRampToValueAtTime(0.0001, t + 0.16);
+    o.connect(g).connect(dest);
+    o.start(t);
+    o.stop(t + 0.18);
+  }
+
   repair(): void {
     this.pending.clear();
+    for (const index of [...this.cracks.keys()]) this.uncrack(index);
     for (const index of this.broken) {
       const pane = this.panes.get(index);
       if (pane) pane.visible = true;

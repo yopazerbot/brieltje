@@ -617,7 +617,7 @@ export class Weapon {
   private scopeOn = false;
   private scopes = new Map<WeaponId, THREE.Group>();
   /** A bullet hit window pane `index` at `point`, fired from `from`; `normal` is the pane's face there, `pane` its mesh. */
-  onGlassHit: (index: number, point: THREE.Vector3, from: THREE.Vector3, normal: THREE.Vector3, pane: THREE.Object3D) => void = () => {};
+  onGlassHit: (index: number, point: THREE.Vector3, from: THREE.Vector3, normal: THREE.Vector3, pane: THREE.Object3D, w: WeaponId) => void = () => {};
   /** Bullets (pellets) of one shot that hit another player's body and head; in paintball `spot` is where the paint sticks. */
   onPlayerHit: (name: string, body: number, head: number, point: THREE.Vector3, spot: Spot | undefined, w: WeaponId) => void = () => {};
   /** A bullet hit one of the cats. */
@@ -1085,7 +1085,7 @@ export class Weapon {
       players.set(player, e);
     } else if (hit.object.userData.glassIndex !== undefined) {
       const normal = hit.face.normal.clone().transformDirection(hit.object.matrixWorld);
-      this.onGlassHit(hit.object.userData.glassIndex, hit.point.clone(), eye, normal, hit.object);
+      this.onGlassHit(hit.object.userData.glassIndex, hit.point.clone(), eye, normal, hit.object, w);
     } else {
       const normal = hit.face.normal.clone().transformDirection(hit.object.matrixWorld);
       this.onImpact(hit.point.clone(), normal, String(hit.object.userData.material ?? ''), hit.object);

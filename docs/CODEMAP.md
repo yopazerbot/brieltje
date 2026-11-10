@@ -225,6 +225,7 @@ file's opening comment; run it again after adding, moving or removing a module.
 - `web/server/board-names.test.mjs`: The boards (the leaderboard and the best Zombies runs): accounts, and the admin under each of its reserved names (server/auth.mjs RESERVED, which only the...
 - `web/server/constant-time-text.mjs`: Compare UTF-8 text without hashing passwords or returning early for different lengths.
 - `web/server/constant-time-text.test.mjs`: Tests for constant-time-text, e.g. "exact text comparison preserves ASCII and Unicode password behaviour".
+- `web/server/crack.test.mjs`: A first bullet cracks a pane (world/glass.ts) and the page says so with crack, so the others see the mark.
 - `web/server/door-ids.test.mjs`: Tests for door-ids, e.g. "every door id of the shell is one the server takes in a door message".
 - `web/server/feedback.mjs`: Feedback from players (Yoshi, 1 Nov 2026): after two minutes of play the game asks once for 1 to 5 stars and a comment (src/ui/feedback.ts).
 - `web/server/feedback.test.mjs`: The forms' senders (server/auth.mjs formBucketOf) and the admin's delete of a comment.

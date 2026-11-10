@@ -1460,8 +1460,11 @@ $('set-unlock').addEventListener('click', async () => {
     msg.classList.add('bad');
   }
 });
-weapon.onGlassHit = (i, point, from, normal, pane) => {
-  if (glass.break(i, point, from)) net.send({ t: 'glass', i });
+weapon.onGlassHit = (i, point, from, normal, pane, w) => {
+  // A pistol's or a rifle's first bullet cracks a pane, the next one breaks it; the shotgun and the sniper rifle break it at once.
+  const light = w === 'pistol' || w === 'rifle';
+  if (light && glass.crack(i, point)) net.send({ t: 'crack', i, x: Math.round(point.x * 100) / 100, y: Math.round(point.y * 100) / 100, z: Math.round(point.z * 100) / 100 });
+  else if (glass.cracked(i) || !light ? glass.break(i, point, from) : false) net.send({ t: 'glass', i });
   else if (glass.locked(i)) {
     // A locked home's panes hold: the bullet chips off, and the way in is explained.
     effects.shot(point, normal, 'black_glass', pane);
@@ -2439,6 +2442,7 @@ net.onMessage = (m: ServerMsg) => {
       doors.refresh(); // the locked homes' outside doors stay shut here whatever the others left open
       glass.repair();
       for (const i of m.broken ?? []) glass.break(i, null, undefined, true);
+      for (const [i, x, y, z] of m.cracked ?? []) glass.crack(i, new THREE.Vector3(x, y, z), true, true); // the cracks there are
       combat.me = m.you;
       combat.reset(m.scores ?? [], m.limit ?? 10, m.round ?? null);
       grenades.refill();
@@ -2584,6 +2588,9 @@ net.onMessage = (m: ServerMsg) => {
       break;
     case 'door':
       doors.set(m.id, m.open, m.dir);
+      break;
+    case 'crack':
+      glass.crack(m.i, new THREE.Vector3(m.x, m.y, m.z), true); // another player's first bullet in a pane
       break;
     case 'glass': {
       const at = glass.bounds(m.i)?.getCenter(new THREE.Vector3()) ?? null;

@@ -357,6 +357,7 @@ export class Game {
     this.moodCycle = newCycle(randomInt(0, 2 ** 32), Date.now(), winterAt(Date.now()));
     this.moodRun = runOf(this.moodCycle);
     this.broken = new Set(); // window pane numbers that are broken
+    this.cracked = new Map(); // pane number -> where its crack is ({ x, y, z }): hit once, standing still
     this.scores = new Map(); // username -> { kills, deaths, points }, kept over reconnects until the next round
     this.roundOver = null; // { winner, until } during the break after a round
     this.items = PICKUPS.map(() => ({ until: 0 })); // weapons lying around: taken until
@@ -523,7 +524,7 @@ export class Game {
     this.auth.log('mp_join', req, { username: name, ...(this.room ? { detail: `room ${this.room.id}` } : {}) });
 
     this.send(ws, {
-      t: 'welcome', proto: PROTO, you: name, role: session.role, color, doors: this.doorsFor(player), doorDir: this.doorDirFor(player), broken: this.brokenFor(player), homes: HOMES.filter((h) => player.role !== 'admin' && this.homes?.granted(player.key, h.id)).map((h) => h.id), accountHomes: HOMES.filter((h) => player.role === 'player' && this.homes?.byAccount?.(player.key, h.id)).map((h) => h.id), players: this.roster(),
+      t: 'welcome', proto: PROTO, you: name, role: session.role, color, doors: this.doorsFor(player), doorDir: this.doorDirFor(player), broken: this.brokenFor(player), cracked: this.crackedFor(player), homes: HOMES.filter((h) => player.role !== 'admin' && this.homes?.granted(player.key, h.id)).map((h) => h.id), accountHomes: HOMES.filter((h) => player.role === 'player' && this.homes?.byAccount?.(player.key, h.id)).map((h) => h.id), players: this.roster(),
       time: now, cats: this.catsDown.map((until) => Math.max(0, until - now)), clowns: this.clownList(now), furniture: this.furnitureFor(player), rules: this.rules,
       scores: this.scoreList(), limit: KILL_LIMIT, items: this.items.map((it) => now >= it.until), round: this.roundOver ? { winner: this.roundOver.winner, ms: this.roundOver.until - now } : null,
       cars: Object.values(this.cars), horses: this.horses, bikes: Object.values(this.bikes), mode: this.modes.view(now), mood: this.mood, moodCycle: this.moodView(now),
@@ -866,12 +867,26 @@ export class Game {
     } else if (m.t === 'glass' && Number.isInteger(m.i) && m.i >= 0 && m.i < PANE_LIMIT && PANE_HOME.has(m.i)) { // only numbers that are a pane (shared/homes.mjs)
       if (this.broken.size >= 200 || this.broken.has(m.i) || !this.gate.glass(player, m.i)) return; // a code-locked home's pane needs the right too
       this.broken.add(m.i);
+      this.cracked.delete(m.i);
       this.broadcastHome({ t: 'glass', i: m.i, by: name }, PANE_HOME(m.i), name);
       this.modes.zombies?.panes(this.broken); // a way in for the zombies too
+    } else if (m.t === 'crack' && Number.isInteger(m.i) && m.i >= 0 && m.i < PANE_LIMIT && PANE_HOME.has(m.i)) {
+      // A first bullet cracked a pane (the page's picture of it: world/glass.ts). Only a number that is a pane, whole
+      // and not cracked yet, in a home this player may shoot at (as for breaking one), from a player who can fire, five
+      // a second at most, 200 cracks in all. The place is three numbers held to the map: it only says where the mark
+      // is drawn. It opens nothing: the pane stands until a 'glass' message breaks it, checked as ever.
+      if (this.cracked.size >= 200 || this.broken.has(m.i) || this.cracked.has(m.i) || !this.gate.glass(player, m.i)) return;
+      if (!player.alive || !player.state?.armed || this.calm(player) || now < (player.nextCrack || 0)) return;
+      if (![m.x, m.y, m.z].every((v) => typeof v === 'number' && Number.isFinite(v))) return;
+      player.nextCrack = now + 200;
+      const at = where(m);
+      this.cracked.set(m.i, at);
+      this.broadcastHome({ t: 'crack', i: m.i, ...at, by: name }, PANE_HOME(m.i), name);
     } else if (m.t === 'repair') {
       if (now - (this.lastRepair || 0) < 2000) return;
       this.lastRepair = now;
       this.broken.clear();
+      this.cracked.clear();
       this.broadcast({ t: 'repair', by: name });
       this.modes.zombies?.panes(this.broken);
     } else if (m.t === 'shot') {
@@ -1642,6 +1657,11 @@ export class Game {
   /** The broken panes a player may be told: none of a home they have no right to. */
   brokenFor(player) {
     return [...this.broken].filter((i) => this.gate.glass(player, i));
+  }
+
+  /** The cracked panes this player may know of (as the broken ones): [pane, x, y, z] each. */
+  crackedFor(player) {
+    return [...this.cracked].filter(([i]) => this.gate.glass(player, i)).map(([i, at]) => [i, at.x, at.y, at.z]);
   }
 
   /** The furniture a player may be told: not the pieces inside a home they have no right to. */

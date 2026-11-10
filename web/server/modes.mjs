@@ -202,6 +202,7 @@ export class Modes {
       this.game.pistolsOnly?.(); // and with the pistol only: the other guns are found on the map
       this.game.roundOver = null;
       this.game.broken.clear();
+      this.game.cracked?.clear();
       this.game.broadcast({ t: 'repair', by, quiet: true });
       const z = new ZombieGame(this.game, this, names, now, arena);
       this.state = { kind, phase: z.phase, until: z.horde.until, z };
