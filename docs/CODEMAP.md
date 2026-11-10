@@ -322,6 +322,7 @@ file's opening comment; run it again after adding, moving or removing a module.
 - `tools/garden.py`: The garden (data/garden.json sets): paving and paths, stepping slabs in the lawn, planted borders, and the wadi, a shallow grassy basin in the front garden...
 - `tools/garden_life.py`: Build the everyday things round the main house and the bungalow, in Blender.
 - `tools/geodata.py`: Download the open data of the surroundings into source/geo/ (not in git).
+- `tools/gloves.py`: Paint the gloves on the hands that hold the guns: blender -b --disable-autoexec -P tools/gloves.py -- web/public/models [previews]
 - `tools/homestreet/houses.py`: The houses round the two portals at home, our own Blender models, for the walkthrough.
 - `tools/homestreet/textures.py`: Textures for the houses round the two portals at home (tools/homestreet/houses.py), all generated here: no downloads, nothing to credit.
 - `tools/horse.py`: Build a saddled riding horse for the meadow in Blender: a generic warmblood type, standing square.

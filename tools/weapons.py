@@ -81,7 +81,7 @@ M = {
     "RedDot": material("RedDot", "#1a0504", 0.5, 0.0, glow="#ff2a14"),  # its dot
     "Warhead": material("Warhead", "#3f4630", 0.5, 0.2),    # the rocket's nose
     "Glove": material("Glove", "#26272a", 0.82, 0.0),
-    "GloveTrim": material("GloveTrim", "#3a3c40", 0.6, 0.0),  # knuckle guard, cuff strap
+    "GloveTrim": material("GloveTrim", "#23251f", 0.8, 0.0),  # the glove's cuff and its strap: dark webbing
     "Sleeve": material("Sleeve", "#4b4c3b", 0.9, 0.0),      # recoloured in the game to the player's suit
     "Hopper": material("Hopper", "#2f8cff", 0.15, 0.0),     # Paintball's kit: coloured per gun in the game
     "KitTrim": material("KitTrim", "#ffd23f", 0.4, 0.0),
@@ -326,32 +326,28 @@ class Wrap:
 # OpenGameArt, CC0), with a skeleton down to each finger bone. Each hand is laid on its grip and its
 # finger bones are turned to follow the lines the fingers take round it; what comes out is the posed
 # skin from the fingertips to a little above the wrist, at the size of a real hand.
-ARMS = os.path.join(os.path.dirname(os.path.abspath(__file__)), "assets", "fps_arms.blend")
-HAND_SCALE = 0.088  # the sculpt's units to metres: a gloved hand 18.5 cm from wrist to fingertip
+# Its glove is painted by tools/gloves.py in the sculpt's own flat layout; that file also holds what both
+# must agree on (the hand's size, which part of the sculpt is the hand, where the hands lie in the layout).
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+import gloves  # noqa: E402
+
+HAND_SCALE = gloves.HAND_SCALE
 _arms = {}
 
 
 def source_arms():
     if not _arms:
-        with bpy.data.libraries.load(ARMS) as (have, take):
-            take.objects = [n for n in have.objects if n.startswith("caucasian_male_1")]
-        for o in take.objects:
-            link(o)
-            o.hide_render = True
-        _arms["rig"] = next(o for o in take.objects if o.type == "ARMATURE")
-        # The rig's own helpers (each finger's end bones copying its first, the forearm reaching for the hand)
-        # would undo a pose set bone by bone.
-        for pb in _arms["rig"].pose.bones:
-            for c in list(pb.constraints):
-                pb.constraints.remove(c)
-        _arms["body"] = next(o for o in take.objects if o.type == "MESH")
+        _arms["rig"], _arms["body"] = gloves.load_arms(link)
+        bpy.context.view_layer.update()
+        _arms["box"] = gloves.uv_box(_arms["rig"], _arms["body"])
     return _arms["rig"], _arms["body"]
 
 
 def drop_arms():
     """Take the sculpt out again before the bake and the export."""
-    for o in list(_arms.values()):
-        bpy.data.objects.remove(o, do_unlink=True)
+    for o in (_arms.get("rig"), _arms.get("body")):
+        if o:
+            bpy.data.objects.remove(o, do_unlink=True)
     _arms.clear()
 
 
@@ -460,17 +456,22 @@ def real_hand(name, lines, thumb_line, wrist, side, wrap):
     wr = mw @ fore.tail_local
     up = (mw @ fore.head_local - wr).normalized()
     bw = body.matrix_world
-    keep = {v.index for v in body.data.vertices
-            if (bw @ v.co).x * side > 0 and (bw @ v.co - wr).dot(up) < 0.045 / HAND_SCALE}
+    keep = gloves.kept(rig, body, side)
+    u0, v0, u1, v1 = _arms["box"]
     dg = bpy.context.evaluated_depsgraph_get()
     dg.update()
     ev = body.evaluated_get(dg)
     me = ev.to_mesh()
     bm = bmesh.new()
     made = {i: bm.verts.new(place @ (bw @ me.vertices[i].co)) for i in sorted(keep)}
+    # With the sculpt's flat layout, cut to the hands' corner of it: the painted glove lies on it (tools/gloves.py).
+    uv = bm.loops.layers.uv.new("UVMap")
     for p in me.polygons:
         if all(i in keep for i in p.vertices):
-            bm.faces.new([made[i] for i in p.vertices])
+            f = bm.faces.new([made[i] for i in p.vertices])
+            for loop, li in zip(f.loops, p.loop_indices):
+                c = gloves.uv_of(me, li)
+                loop[uv].uv = (min(1.0, max(0.0, (c.x - u0) / (u1 - u0))), min(1.0, max(0.0, (c.y - v0) / (v1 - v0))))
     ev.to_mesh_clear()
     # The wrist as it lies now: its middle, the forearm's way from it, its thin side and its half sizes (for the cuff).
     turn = place.to_3x3()
@@ -497,7 +498,7 @@ def arm(name, wrist, way, flat, wide, thick, elbow, side):
     # The glove's cuff: snug round the wrist, a strap's ridge, then flaring under the sleeve. Made round at
     # the wrist's width, then pressed to its thickness: a wrist is half again as wide as it is thick.
     g = wide
-    cuff = sweep(name + "Cuff", [w - d * 0.016, w - d * 0.004, w + d * 0.008, w + d * 0.014, w + d * 0.02, w + d * 0.1],
+    cuff = sweep(name + "Cuff", [w - d * 0.016, w - d * 0.004, w + d * 0.008, w + d * 0.014, w + d * 0.02, w + d * 0.075],
                  [g + 0.001, g + 0.002, g + 0.0037, g + 0.0037, g + 0.0027, g + 0.0045], M["GloveTrim"], sides=16, tip=False)
     press = (thick + 0.003) / (wide + 0.003)
     for v in cuff.data.vertices:
@@ -505,7 +506,7 @@ def arm(name, wrist, way, flat, wide, thick, elbow, side):
         v.co = v.co - n * rel.dot(n) * (1 - press)
     # The sleeve: a rolled edge, then the forearm widening towards the elbow, in a bend from the wrist's own way.
     bend = Vector((side * 0.02, 0, -0.03))
-    pts = [w + d * 0.08, w + d * 0.09, w + d * 0.1]
+    pts = [w + d * 0.056, w + d * 0.067, w + d * 0.08]
     rad = [g + 0.0045, g + 0.0085, g + 0.0075]
     p0 = pts[-1]
     reach = (Vector(elbow) - p0).length
@@ -1064,7 +1065,7 @@ bake_shade()
 bpy.ops.object.select_all(action="SELECT")
 os.makedirs(os.path.dirname(os.path.abspath(OUT)), exist_ok=True)
 bpy.ops.export_scene.gltf(filepath=OUT, export_format="GLB", use_selection=True, export_apply=True, export_yup=True,
-                          export_extras=True, export_texcoords=False, export_cameras=False, export_lights=False,
+                          export_extras=True, export_texcoords=True, export_cameras=False, export_lights=False,
                           export_vertex_color="ACTIVE", export_active_vertex_color_when_no_material=True)
 
 
@@ -1130,6 +1131,10 @@ def pack(path):
                 s4 = np.zeros((len(col), 4), np.uint8)
                 s4[:, :2] = np.clip(np.round(col[:, :2] * 255), 0, 255).astype(np.uint8)
                 new["_SHADE"] = put(s4, 5121, "VEC2", 34962, True, 4)
+            if "TEXCOORD_0" in at and gl["materials"][prim["material"]]["name"] == "Glove":
+                # The gloves' place in their painted pictures: two 16-bit numbers.
+                uvs = read(at["TEXCOORD_0"]).astype(np.float64)
+                new["TEXCOORD_0"] = put(np.clip(np.round(uvs * 65535), 0, 65535).astype(np.uint16), 5123, "VEC2", 34962, True, 4)
             idx = read(prim["indices"]).reshape(-1)
             prim["indices"] = put(idx.astype(np.uint16), 5123, "SCALAR", 34963)
             prim["attributes"] = new

@@ -41,7 +41,7 @@ const LOOKS: Record<string, Look> = {
   Brass: { wear: '#d8b866', metal: 1, rough: 0.2, grain: 0.15 },
   // Your hands and arms: the sleeve's cloth (a fine weave, faded where it rubs), the glove's leather and its trim.
   Sleeve: { wear: '#ffffff', metal: 0, rough: 0.95, grain: 0.75, scale: [70, 70, 70], amount: 0.5, fade: true },
-  Glove: { wear: '#ffffff', metal: 0, rough: 0.7, grain: 0.55, scale: [46, 46, 46], amount: 0.35, fade: true },
+  Glove: { wear: '#ffffff', metal: 0, rough: 0.7, grain: 0.25, scale: [46, 46, 46], amount: 0.2, fade: true }, // its pieces are painted (tools/gloves.py): a little grain over them
   GloveTrim: { wear: '#ffffff', metal: 0, rough: 0.55, grain: 0.4, scale: [46, 46, 46], amount: 0.3, fade: true },
 };
 

@@ -198,6 +198,28 @@ function liteGun(gun: THREE.Object3D, muzzle: THREE.Vector3): THREE.Group {
   return lite;
 }
 
+/**
+ * The glove on your hands: its painted pictures (tools/gloves.py), laid on the hands by the model's own
+ * layout. Leather, fabric, rubber pads, seams and stitches: the colours, the relief and how dull each
+ * piece is. Set before the first draw, so the material is compiled once, with them.
+ */
+function gloveMaps(m: THREE.MeshStandardMaterial): void {
+  const loader = new THREE.TextureLoader();
+  const load = (name: string, colour: boolean) => {
+    const t = loader.load(`/models/${name}.webp`);
+    t.flipY = false; // as a model's own pictures are
+    t.colorSpace = colour ? THREE.SRGBColorSpace : THREE.NoColorSpace;
+    t.anisotropy = 4;
+    return t;
+  };
+  m.map = load('glove_color', true);
+  m.normalMap = load('glove_normal', false);
+  m.normalScale.set(1, 1);
+  m.roughnessMap = load('glove_rough', false);
+  m.color.set('#ffffff');
+  m.roughness = 1;
+}
+
 /** The weapons' model: one file, a node per weapon (tools/weapons.py). */
 export const gunsReady: Promise<boolean> = new GLTFLoader().loadAsync('/models/weapons.glb').then(
   (gltf) => {
@@ -249,6 +271,7 @@ export const gunsReady: Promise<boolean> = new GLTFLoader().loadAsync('/models/w
         // camera's near edge: drawn, not cut open (the surface brings that along; noNearCut for what has none).
         if (m && !m.userData.dressed) {
           m.userData.dressed = true;
+          if (m.name === 'Glove') gloveMaps(m);
           if (!gunSurface(m)) noNearCut(m);
         }
       });
