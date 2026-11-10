@@ -1050,6 +1050,7 @@ weapon.onImpact = (point, normal, material, on) => {
 };
 weapon.onPaintball = (from, to, paint) => effects.paintShot(from, to, paint);
 weapon.onEject = (w) => effects.casing(camera, w, weapon.aimAmount);
+weapon.onTracer = (from, to) => effects.tracer(from, to);
 
 /** The walking speed together: the real pace for everyone (alone, the menu's own). Running is 2.5 times it. */
 const REAL_WALK = 1.4;
@@ -1457,7 +1458,7 @@ weapon.onPlayerHit = (name, body, head, point, spot) => {
   effects.hit(point, spot);
   avatars.flinch(name);
   if (!avatars.canBeHit(name)) return;
-  combat.hitMarker();
+  combat.hitMarker(false, head > 0);
   net.send({ t: 'hit', target: name, w: weapon.current, body, head });
 };
 
@@ -1634,8 +1635,9 @@ weapon.onZombieHit = (hits, paint) => {
     if (paint) zombies.paint(h.id, h.ray, paint.color, paint.size);
     zombies.struck(h.id, h.point, h.ray.direction, w); // which way it falls, if this beats it
   }
+  const headshot = hits.some((h) => h.head > 0);
   if (net.connected) {
-    combat.hitMarker();
+    combat.hitMarker(false, headshot);
     net.send({ t: 'zhit', w, hits: hits.map((h) => [h.id, h.body, h.head]) });
     return;
   }
@@ -1645,14 +1647,14 @@ weapon.onZombieHit = (hits, paint) => {
   for (const h of hits) {
     const res = solo.horde.hit(h.id, h.body * spec.body + h.head * spec.head, SOLO_ME, now);
     if (res === 'down') downs++;
-    zombieResult(h.id, res, w);
+    zombieResult(h.id, res, w, h.head > 0);
   }
   if (downs > 1 && (spec as { pierce?: number }).pierce) combat.double(''); // one sniper's bullet, two zombies
 };
 /** Alone: what a hit did. Beaten: it falls (or vanishes in paint) and the kill feed says so. */
-function zombieResult(id: number, res: 'down' | 'hurt' | null, w: string): void {
+function zombieResult(id: number, res: 'down' | 'hurt' | null, w: string, head = false): void {
   if (!res) return;
-  if (res !== 'down') return w === 'turret' ? undefined : combat.hitMarker(); // a turret's hits aren't yours to see
+  if (res !== 'down') return w === 'turret' ? undefined : combat.hitMarker(false, head); // a turret's hits aren't yours to see
   zombies.beaten(id, { x: player.x, z: player.z, w });
   // Maybe a reward where it fell (the wave's last leaves one when none fell yet).
   const z = solo?.horde.zombies.get(id);
@@ -1975,6 +1977,8 @@ function fire(): void {
   if (!shot) return;
   player.pitch += shot.pitch;
   player.yaw += shot.yaw;
+  // Smoke at the muzzle: from every shot of the big guns, now and then from the others (not paint guns).
+  if (!paintball.on && !shot.rocket && (weapon.current === 'shotgun' || weapon.current === 'sniper' || Math.random() < 0.3)) effects.muzzleSmoke(weapon.muzzlePoint());
   rumble(weapon.current === 'pistol' ? 0.25 : 0.6, 0.6, weapon.current === 'rifle' ? 50 : 90);
   if (shot.rocket) fireRocket(shot.rocket.from, shot.rocket.to);
   else net.send({ t: 'shot', w: weapon.current, x: player.x, y: player.feet + 1.5, z: player.z });
@@ -3357,6 +3361,7 @@ renderer.setAnimationLoop((now: number) => {
     ].filter(Boolean).join('   ·   ') : '';
     hud.setGrenades(armed ? grenades.count : null, GRENADE.carry, grenades.nextIn, key('grenade', mode), pocket);
     hud.setScope(weapon.scoped, inCar || dropView.outside, weapon.scopeView);
+    touch.setScoped(weapon.scoped);
     if (armed) hud.setSpread(weapon.spread, weapon.current === 'bazooka' ? 0 : weapon.aimAmount); // the bazooka aims with the crosshair
     document.body.classList.toggle('drop', dropView.outside); // filmed from behind: the hints go low, clear of your figure (style.css)
     // The flying controls for the first few seconds after taking off only (Yoshi: annoying when it stays).

@@ -145,7 +145,7 @@ export class TouchControls {
     this.pressed.add(b);
     this.held.set(b, e.pointerId);
     if (b === 'aim') this.aimOn = !this.aimOn;
-    if (b === 'run') this.runOn = !this.runOn;
+    if (b === 'run' && !this.scoped) this.runOn = !this.runOn; // through a scope the button holds your breath instead
     this.els.get('aim')?.classList.toggle('on', this.aimOn);
     this.els.get('run')?.classList.toggle('on', this.runOn);
     this.els.get(b)?.classList.add('down');
@@ -155,6 +155,15 @@ export class TouchControls {
   show(on: boolean): void {
     this.root.classList.toggle('hidden', !on);
     document.body.classList.toggle('touch', on);
+  }
+
+  private scoped = false;
+  /** Looking through a scope: the Run button becomes Breath, held to hold your breath (weapon.ts). */
+  setScoped(on: boolean): void {
+    if (on === this.scoped) return;
+    this.scoped = on;
+    const el = this.els.get('run');
+    if (el && !el.classList.contains('hidden')) el.textContent = label(on ? 'touch.breath' : 'touch.run');
   }
 
   /** Which buttons show: in a drop (its free fall or under the canopy), fighting on foot, walking, in a car, or on a bike. */
@@ -186,6 +195,7 @@ export class TouchControls {
     out.throttle = Math.max(out.throttle, this.moveY);
     out.brake = Math.max(out.brake, -this.moveY);
     out.sprint ||= this.runOn; // Run stays on until it is tapped again
+    out.steadyHeld ||= this.scoped && holds('run');
     out.jumpPressed ||= has('jump');
     out.jumpHeld ||= holds('jump');
     out.downHeld ||= holds('down');

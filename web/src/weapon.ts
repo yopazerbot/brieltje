@@ -204,6 +204,13 @@ export const gunsReady: Promise<boolean> = new GLTFLoader().loadAsync('/models/w
             m.visible = paintball.on;
             kitMats.push(m);
           } else {
+            // The scope's lenses mirror the sky, as coated glass does (before `toy` notes the real look).
+            if (m.name === 'Glass') {
+              m.metalness = 1;
+              m.roughness = 0.04;
+              m.color.set('#4a6a7c');
+              m.envMapIntensity = 1.5;
+            }
             if (ROLE[m.name]) toy(m, w, ROLE[m.name]);
             gunSurface(m); // worn edges, darker seams, a fine grain (world/gunSurface.ts)
             // The red-dot sight: a window you look through, and a dot that shows in any light.
@@ -592,6 +599,8 @@ export class Weapon {
   onImpact: (point: THREE.Vector3, normal: THREE.Vector3, material: string, on: THREE.Object3D) => void = () => {};
   /** A spent casing leaves the gun (after the shot, or when the pump or bolt is worked). */
   onEject: (w: WeaponId) => void = () => {};
+  /** A bullet you can see fly: from the muzzle to where it lands (the rifle's every third, the sniper rifle's each one). */
+  onTracer: (from: THREE.Vector3, to: THREE.Vector3) => void = () => {};
   private models: Record<WeaponId, ViewModel>;
   private cooldown = 0;
   private reloading = 0;
@@ -613,6 +622,9 @@ export class Weapon {
   private dip = 0;
   private dipVel = 0;
   private sprint = 0;
+  /** Seconds standing idle with the gun, and how far it is turned over to look at (0..1) */
+  private idle = 0;
+  private look = 0;
   private sinceShot = 9;
   private clock = 0;
   /** Recoil as springs: back (m), barrel up (rad), roll (rad); and their speeds */
@@ -629,6 +641,8 @@ export class Weapon {
   private driftAmp = 0;
   private breath = 1;
   private winded = false;
+  /** How long the reload under way takes in all (s) */
+  private reloadTime = 1;
   /** Your suit's colour, for the sleeves */
   private sleeve = '#4b4c3b';
 
@@ -859,7 +873,11 @@ export class Weapon {
 
   reload(): void {
     if (this.enabled && this.reloading <= 0 && this.ammo[this.current] < this.magOf(this.current)) {
-      this.reloading = this.spec.reload;
+      // A magazine with rounds left comes out quicker than an empty gun is made ready again
+      // (not the shotgun, loaded shell by shell, nor the bazooka).
+      const quick = this.ammo[this.current] > 0 && this.current !== 'shotgun' && this.current !== 'bazooka';
+      this.reloadTime = this.spec.reload * (quick ? 0.8 : 1);
+      this.reloading = this.reloadTime;
       this.sound('reload');
     }
   }
@@ -925,6 +943,7 @@ export class Weapon {
       const hits = this.raycaster.intersectObjects(this.scene.children, true);
       const hit = hits.find((h) => drawn(h.object) && !h.object.userData.ignoreRay && h.face);
       if (paint) this.onPaintball(paint.from, hit ? hit.point : this.raycaster.ray.at(120, new THREE.Vector3()), paint);
+      else if (this.current === 'sniper' || (this.current === 'rifle' && this.ammo.rifle % 3 === 0)) this.onTracer(this.muzzlePoint(), hit ? hit.point : this.raycaster.ray.at(200, new THREE.Vector3()));
       if (!hit || !hit.face) continue;
       const player = hit.object.userData.player as string | undefined;
       const zombie = hit.object.userData.zombie as number | undefined;
@@ -1006,6 +1025,18 @@ export class Weapon {
       : spec.spread * (1 - (spec.pellets > 1 ? .25 : .6) * this.aim);
     if (this.hasScope(this.current) && this.aim > 0.85) spread *= 0.25; // steady through a found scope
     return (spread * this.spreadMul + this.bloom[this.current]) * 1.3;
+  }
+
+  /**
+   * Where the muzzle would be at the gun's real size (the gun in your hands is drawn small and
+   * close): what leaves it starts here, smoke and tracers. Lower right from the hip, in the
+   * middle of the view when aimed.
+   */
+  muzzlePoint(): THREE.Vector3 {
+    const q = this.camera.getWorldQuaternion(new THREE.Quaternion());
+    const loose = 1 - this.aim;
+    return this.camera.getWorldPosition(new THREE.Vector3())
+      .add(new THREE.Vector3(0.13 * loose, -0.05 - 0.07 * loose, this.current === 'pistol' ? -0.6 : -0.95).applyQuaternion(q));
   }
 
   /**
@@ -1109,7 +1140,7 @@ export class Weapon {
     if (this.breath <= 0) this.winded = true;
     else if (this.breath > 0.5) this.winded = false;
     if (this.scoped) {
-      const amp = 0.011 * Math.min(2.2, this.spreadMul) * (holding ? 0.12 : this.winded ? 1.7 : 1) * (document.body.classList.contains('touch') ? 0.5 : 1);
+      const amp = 0.011 * Math.min(2.2, this.spreadMul) * (holding ? 0.12 : this.winded ? 1.7 : 1) * (document.body.classList.contains('touch') ? 0.6 : 1);
       this.driftAmp += (amp - this.driftAmp) * ease(5);
       const t = this.clock;
       this.drift.set(
@@ -1163,7 +1194,7 @@ export class Weapon {
     pos.z += this.recoil[0] * (spec.pellets > 1 || this.current === 'sniper' ? 1.4 : 1);
 
     // Reload (p from 0 to 1): the gun comes in towards the middle, muzzle up a little, turned to show where it loads.
-    const p = this.reloading > 0 ? 1 - this.reloading / spec.reload : 0;
+    const p = this.reloading > 0 ? 1 - this.reloading / this.reloadTime : 0;
     const hold = this.reloading > 0 ? smooth(0, 0.14, p) * (1 - smooth(0.84, 1, p)) : 0;
     const tube = this.current === 'bazooka';
     pos.x -= hold * (tube ? 0.004 : 0.012);
@@ -1175,6 +1206,18 @@ export class Weapon {
       this.recoil[2] * 2 - this.tilt * 0.06 + this.sprint * 0.22 - across * 0.025 * bob,
     );
     m.gun.rotation.z = hold * (tube ? -0.1 : 0.4);
+    // Standing still with nothing to do, you turn the gun over in your hands now and then and look at it.
+    const idle = moving < 0.05 && !aiming && this.reloading <= 0 && this.sinceShot > 6 && this.shown === this.current && !look?.air;
+    this.idle = idle ? this.idle + dt : 0;
+    const turn = (this.idle + 6) % 11; // first after five seconds, then every eleven
+    this.look += ((idle && turn < 3.2 ? 1 : 0) - this.look) * ease(3);
+    if (this.look > 0.001 && !tube) {
+      m.root.rotation.z += 0.42 * this.look;
+      m.root.rotation.y += 0.3 * this.look;
+      m.root.rotation.x += 0.08 * this.look;
+      m.root.position.x -= 0.012 * this.look;
+      m.root.position.y += 0.012 * this.look;
+    }
     this.animateParts(m, p);
     // Pump or bolt worked: its click, and the spent case comes out.
     if ((this.current === 'shotgun' || this.current === 'sniper') && cycleBefore > spec.delay * 0.6 && this.cycleTime <= spec.delay * 0.6) {
@@ -1339,6 +1382,11 @@ export class Weapon {
       thump.stop(t + 0.12);
     } else if (kind === 'shot') {
       const v = voice;
+      // A shot far away: it reaches you later (sound does 343 m/s), duller, and more of it is the
+      // echo rolling over the fields. Your own: a hard crack on top, at once.
+      const far = at ? Math.min(500, at.distanceTo(this.camera.getWorldPosition(new THREE.Vector3()))) : 0;
+      const t0 = t + far / 343;
+      const dull = 1 / (1 + far / 70);
       const buf = ctx.createBuffer(1, ctx.sampleRate * v.len, ctx.sampleRate);
       const data = buf.getChannelData(0);
       for (let i = 0; i < data.length; i++) data[i] = (Math.random() * 2 - 1) * Math.pow(1 - i / data.length, 4);
@@ -1346,20 +1394,55 @@ export class Weapon {
       noise.buffer = buf;
       const filter = ctx.createBiquadFilter();
       filter.type = 'lowpass';
-      filter.frequency.setValueAtTime(v.f0, t);
-      filter.frequency.exponentialRampToValueAtTime(v.f1, t + v.len);
+      filter.frequency.setValueAtTime(Math.max(500, v.f0 * dull), t0);
+      filter.frequency.exponentialRampToValueAtTime(Math.max(90, v.f1 * dull), t0 + v.len);
       noise.connect(filter).connect(out);
       const thump = ctx.createOscillator();
-      thump.frequency.setValueAtTime(v.thump, t);
-      thump.frequency.exponentialRampToValueAtTime(35, t + 0.14);
+      thump.frequency.setValueAtTime(v.thump, t0);
+      thump.frequency.exponentialRampToValueAtTime(35, t0 + 0.14);
       const tg = ctx.createGain();
-      tg.gain.setValueAtTime(0.8, t);
-      tg.gain.exponentialRampToValueAtTime(0.001, t + 0.18);
+      tg.gain.setValueAtTime(0.8, t0);
+      tg.gain.exponentialRampToValueAtTime(0.001, t0 + 0.18);
       thump.connect(tg).connect(out);
-      out.gain.setValueAtTime(v.gain, t);
-      noise.start(t);
-      thump.start(t);
-      thump.stop(t + 0.2);
+      out.gain.setValueAtTime(v.gain, t0);
+      noise.start(t0);
+      thump.start(t0);
+      thump.stop(t0 + 0.2);
+      if (voice === VOICE[w]) {
+        // The crack: a few milliseconds of bright noise, only from near by.
+        if (far < 60) {
+          const cb = ctx.createBuffer(1, Math.ceil(ctx.sampleRate * 0.02), ctx.sampleRate);
+          const cd = cb.getChannelData(0);
+          for (let i = 0; i < cd.length; i++) cd[i] = (Math.random() * 2 - 1) * Math.pow(1 - i / cd.length, 2);
+          const crack = ctx.createBufferSource();
+          crack.buffer = cb;
+          const high = ctx.createBiquadFilter();
+          high.type = 'highpass';
+          high.frequency.value = 2200;
+          const cg = ctx.createGain();
+          cg.gain.value = 0.55 * (1 - far / 60);
+          crack.connect(high).connect(cg).connect(out);
+          crack.start(t0);
+        }
+        // The echo after it: low noise that swells a moment after the shot and rolls away; longer for the big guns.
+        const tailLen = 0.5 + v.len * 1.4;
+        const tb = ctx.createBuffer(1, Math.ceil(ctx.sampleRate * tailLen), ctx.sampleRate);
+        const td = tb.getChannelData(0);
+        for (let i = 0; i < td.length; i++) {
+          const s = i / td.length;
+          td[i] = (Math.random() * 2 - 1) * Math.min(1, s * 12) * Math.pow(1 - s, 2.5);
+        }
+        const tail = ctx.createBufferSource();
+        tail.buffer = tb;
+        const low = ctx.createBiquadFilter();
+        low.type = 'lowpass';
+        low.frequency.setValueAtTime(900, t0);
+        low.frequency.exponentialRampToValueAtTime(180, t0 + tailLen);
+        const tailGain = ctx.createGain();
+        tailGain.gain.value = 0.16 + 0.2 * (1 - dull);
+        tail.connect(low).connect(tailGain).connect(out);
+        tail.start(t0 + 0.03);
+      }
     } else if (kind === 'throw') {
       // The pin's click, then a short whoosh rising in pitch (a paint balloon: only the whoosh).
       const buf = ctx.createBuffer(1, ctx.sampleRate * 0.35, ctx.sampleRate);

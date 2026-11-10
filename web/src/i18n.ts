@@ -625,6 +625,7 @@ const en = {
   'touch.use': 'Use',
   'touch.down': 'Down',
   'touch.run': 'Run',
+  'touch.breath': 'Breath',
   'touch.open': 'Open',
   'touch.dive': 'Dive',
 
@@ -1668,6 +1669,7 @@ const nl = {
   'touch.use': 'Gebruik',
   'touch.down': 'Omlaag',
   'touch.run': 'Ren',
+  'touch.breath': 'Adem',
   'touch.open': 'Open',
   'touch.dive': 'Duik',
 

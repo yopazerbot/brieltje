@@ -200,10 +200,13 @@ export class Combat {
   }
 
   /** The X around the crosshair: white for a hit, red for a kill. */
-  hitMarker(kill = false): void {
-    this.marker = kill ? 0.45 : 0.2;
+  /** `head`: a hit on the head sounds higher, twice. */
+  hitMarker(kill = false, head = false): void {
+    this.marker = kill ? 0.45 : head ? 0.3 : 0.2;
     $('hitmarker').classList.toggle('kill', kill);
-    if (!kill) this.tone(1900, 0.03, 0.15, 'square');
+    if (kill) return;
+    this.tone(head ? 2500 : 1900, 0.03, 0.15, 'square');
+    if (head) setTimeout(() => this.tone(3300, 0.04, 0.13, 'square'), 55);
   }
 
   round(winner: string, ms: number): void {

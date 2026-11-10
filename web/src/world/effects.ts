@@ -364,6 +364,26 @@ export class Effects {
     });
   }
 
+  /**
+   * A bullet you can see fly: a short bright streak from `from` to `to`, faster than the eye follows
+   * but slow enough to show which way the fire goes. Nothing for a shot at something close by.
+   */
+  tracer(from: THREE.Vector3, to: THREE.Vector3): void {
+    const d = this.v.copy(to).sub(from);
+    const len = d.length();
+    if (len < 8) return;
+    const speed = 280;
+    d.multiplyScalar(speed / len);
+    const s = this.at(from);
+    s.vx = d.x;
+    s.vy = d.y;
+    s.vz = d.z;
+    Object.assign(s, { life: len / speed, size0: 0.03, size1: 0.03, alpha: 0.9, cell: PARTICLE.glow, stretch: 0.02 });
+    s.c0.set('#ffe6a8');
+    s.c1.set('#ffb25a');
+    this.particles.spawn(s, true);
+  }
+
   /** A little smoke where a gun went off. */
   muzzleSmoke(at: THREE.Vector3): void {
     this.throw(at, new THREE.Vector3(0, 0.3, 0), 2, 0.4, 0.6, (s) => {
@@ -519,7 +539,7 @@ export class Effects {
     this.casings = this.casings.filter((c) => c.i !== i);
     this.casings.push({
       i, pos, vel, rot: new THREE.Euler(Math.random() * 3, Math.random() * 3, Math.random() * 3),
-      spin: new THREE.Vector3((Math.random() - 0.5) * 30, (Math.random() - 0.5) * 30, (Math.random() - 0.5) * 30), life: 4, bounces: 0, len: spec.len, r: spec.r, shell: !!spec.shell,
+      spin: new THREE.Vector3((Math.random() - 0.5) * 30, (Math.random() - 0.5) * 30, (Math.random() - 0.5) * 30), life: 9, bounces: 0, len: spec.len, r: spec.r, shell: !!spec.shell,
     });
     this.casingMesh.count = Math.max(this.casingMesh.count, i + 1);
     this.casingMesh.setColorAt(i, color(spec.shell ? '#a3302a' : '#c9a35c'));
