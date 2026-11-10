@@ -46,6 +46,8 @@ export class Player {
   walkSpeed = 1.4;
   /** Times faster, walking and flying: 1, or 15 for the admin who asks for it (src/main.ts). */
   turbo = 1;
+  /** How much the gun in your hands slows you (1: not at all; main.ts sets it from weapon.ts WEIGHT, less again while aiming) */
+  carry = 1;
   flying = false;
   /** Off when the admin has turned flying off in multiplayer */
   canFly = true;
@@ -189,7 +191,7 @@ export class Player {
     const wade = !w ? 1 : w.swimming ? SWIM : 1 / (1 + 1.1 * w.depth);
     // Just after a hard landing: slowed for a moment while you find your feet.
     const shaken = this.stumble > 0 && this.stumbleT < STUMBLE ? 1 - 0.6 * this.stumble * (1 - this.stumbleT / STUMBLE) : 1;
-    const speed = (this.crouching ? this.walkSpeed * 0.45 : this.walkSpeed * (input.sprint ? sprint : 1)) * wade * this.turbo * shaken;
+    const speed = (this.crouching ? this.walkSpeed * 0.45 : this.walkSpeed * (input.sprint ? sprint : 1)) * wade * this.turbo * shaken * this.carry;
     if (this.chute !== null) {
       // The skydive (shared/parachute.mjs): in the free fall the move keys track and slide and the dive key
       // dives; jump opens the canopy. Under it left and right turn (picked up and let go of gently), forward

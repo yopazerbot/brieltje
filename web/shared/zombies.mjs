@@ -57,6 +57,17 @@ export const ZOMBIE = {
   downMs: 3000,
   /** m: closer than this, with a clear way, a zombie walks straight at you */
   straight: 7,
+  /**
+   * Gunfire draws them. m: how far each gun is heard (the pistol is the quiet one); a zombie that hears a shot
+   * walks `alert` times its pace for `alertMs`, and for that long the shooter counts as nearer than they are
+   * (`loud` of the distance) when it chooses between players close by.
+   */
+  hear: { pistol: 12, rifle: 22, shotgun: 30, sniper: 45, bazooka: 55, grenade: 45, turret: 0 },
+  alert: 1.18,
+  alertMs: 4000,
+  loud: 0.6,
+  /** A zombie shot in the legs limps on at this share of its pace, for good */
+  lame: 0.6,
   /** m along the way: the distance field reaches this far round the players */
   fieldReach: 110,
   /** ms between two distance fields */
@@ -1123,6 +1134,7 @@ export class Horde {
     /** Player name -> zombies they beat in this game */
     this.beaten = Object.create(null);
     this.shielded = Object.create(null); // player name -> hit until (no second hit that soon)
+    this.loud = Object.create(null); // player name -> heard firing until (ms)
     /** Player name -> where they can be got at ({ node, gap, ok }), worked out with each field */
     this.seeds = new Map();
     /** Player name -> out of every zombie's reach since (ms), and whether they were warned */
@@ -1495,11 +1507,15 @@ export class Horde {
     let td = Infinity;
     let any = null;
     let ad = Infinity;
+    // Who fired a moment ago counts as nearer than they are (`aw`, `tw`: the weighed distances the choice goes by).
+    let aw = Infinity;
+    let tw = Infinity;
     for (const p of targets) {
       const d = Math.hypot(p.x - z.x, p.z - z.z);
-      if (d < ad) [any, ad] = [p, d];
+      const w = d * (now < (this.loud[p.name] ?? 0) ? ZOMBIE.loud : 1);
+      if (w < aw) [any, ad, aw] = [p, d, w];
       const dy = p.y - z.y;
-      if (dy > LEVEL_LO && dy < LEVEL_HI && d < td) [tgt, td] = [p, d];
+      if (dy > LEVEL_LO && dy < LEVEL_HI && w < tw) [tgt, td, tw] = [p, d, w];
     }
     z.target = (tgt ?? any)?.name ?? null;
     // Whether its swipe would reach them from here (looked at only when they are close).
@@ -1582,7 +1598,9 @@ export class Horde {
     // row of stakes too, and a moment after (shared/loot.mjs sets `slow` and `slowUntil`).
     const facing = Math.max(0, Math.cos(wrap(want - z.yaw)));
     const wading = now < (z.slowUntil ?? 0) ? z.slow ?? 1 : 1;
-    const speed = stop ? 0 : z.top * (0.3 + 0.7 * facing) * wading * (now < (z.climbUntil ?? 0) ? ZOMBIE.climb : 1);
+    // Faster for a moment after it heard a shot; slower for good once shot in the legs.
+    const stirred = (now < (z.alertUntil ?? 0) ? ZOMBIE.alert : 1) * (z.lame ? ZOMBIE.lame : 1);
+    const speed = stop ? 0 : z.top * (0.3 + 0.7 * facing) * wading * stirred * (now < (z.climbUntil ?? 0) ? ZOMBIE.climb : 1);
     const vx = Math.sin(z.yaw) * speed + push.x;
     const vz = Math.cos(z.yaw) * speed + push.z;
     const bx = z.x;
@@ -1611,6 +1629,31 @@ export class Horde {
     if (p.safe || damage <= 0 || now < (this.shielded[p.name] ?? 0)) return;
     this.shielded[p.name] = now + ZOMBIE.shield;
     ev.push({ type: 'swipe', id: z.id, name: p.name, damage });
+  }
+
+  /**
+   * A shot from gun `w` at (x, z), fired by `name`: every zombie up within the gun's earshot (ZOMBIE.hear)
+   * walks faster for a while, and `name` counts as nearer for as long. Returns how many heard it.
+   */
+  noise(x, z, w, now, name = null) {
+    const far = ZOMBIE.hear[w] ?? 0;
+    if (!(far > 0)) return 0;
+    if (name !== null) this.loud[name] = now + ZOMBIE.alertMs;
+    let heard = 0;
+    for (const q of this.zombies.values()) {
+      if (q.act === 'down' || Math.hypot(q.x - x, q.z - z) > far) continue;
+      q.alertUntil = now + ZOMBIE.alertMs;
+      heard++;
+    }
+    return heard;
+  }
+
+  /** Zombie `id` was shot in the legs: it limps from now on (ZOMBIE.lame). True when that is new. */
+  lame(id) {
+    const z = this.zombies.get(id);
+    if (!z || z.act === 'down' || z.lame) return false;
+    z.lame = true;
+    return true;
   }
 
   /**

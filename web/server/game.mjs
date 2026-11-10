@@ -890,6 +890,7 @@ export class Game {
         ? { tx: num(m.tx, AREA.x0, AREA.x1), ty: num(m.ty, -20, 200), tz: num(m.tz, AREA.z0, AREA.z1) } : null;
       const shown = tracer && Math.hypot(tracer.tx - s.x, tracer.ty - s.y, tracer.tz - s.z) <= TRACER_REACH ? tracer : null;
       this.broadcast({ t: 'shot', name, w, ...where(m), ...shown }, name);
+      this.modes.zombies?.noise?.(name, player, w, now); // gunfire draws the zombies (shared/zombies.mjs noise): from where the server has the shooter
     } else if (m.t === 'loadout') {
       // The guns a player chooses to start with (shared/loadout.mjs, the page's picker). Whatever is sent, only
       // the known guns, each once, two at most (cleanPick); twice a second at most. It counts the next time they

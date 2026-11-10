@@ -450,9 +450,11 @@ export class ZombieGame {
     let pellets = 0;
     const hits = [];
     for (const h of m.hits) {
-      if (!Array.isArray(h) || h.length !== 3) return;
-      const [id, body, head] = h;
+      // [id, body, head], and since the leg hits a fourth: how many of the body's landed on the legs (never more than them).
+      if (!Array.isArray(h) || (h.length !== 3 && h.length !== 4)) return;
+      const [id, body, head, legs = 0] = h;
       if (!Number.isInteger(id) || !Number.isInteger(body) || !Number.isInteger(head) || body < 0 || head < 0 || body + head < 1 || seen.has(id)) return;
+      if (!Number.isInteger(legs) || legs < 0 || legs > body) return;
       seen.add(id);
       pellets += body + head;
       if (pierce > 1 && body + head !== 1) return; // one bullet through each
@@ -460,7 +462,7 @@ export class ZombieGame {
       if (!z || z.act === 'down') continue; // gone or down already (another player's shot came first): no harm in that
       const d = Math.hypot(z.x - p.state.x, z.z - p.state.z);
       if (d > MAX_RANGE) continue;
-      hits.push({ id, amount: body * spec.body + head * spec.head, z, d });
+      hits.push({ id, amount: body * spec.body + head * spec.head, z, d, legs });
     }
     if (pellets > spec.pellets * (pierce > 1 ? m.hits.length : 1)) return;
     if (pierce > 1 && hits.length > 1) {
@@ -478,7 +480,16 @@ export class ZombieGame {
     p.protectedUntil = 0; // shooting ends your own spawn protection
     p.unfired = false; // and the time a new choice of guns counts at once (game.mjs, 'loadout')
     let downs = 0;
-    for (const h of hits) if (this.damage(h.id, h.amount, name, w, now, pierce > 1 && downs === 1)) downs++;
+    for (const h of hits) {
+      if (h.legs > 0) this.horde.lame(h.id); // it limps from now on (if it still stands after this)
+      if (this.damage(h.id, h.amount, name, w, now, pierce > 1 && downs === 1)) downs++;
+    }
+  }
+
+  /** `name` fired gun `w` (game.mjs, the 'shot' it already checked): the zombies within its earshot stir. */
+  noise(name, p, w, now) {
+    if (this.horde.phase === 'over' || !p.state) return;
+    this.horde.noise(p.state.x, p.state.z, w, now, name);
   }
 
   /** A blast (a rocket's or a grenade's, set off by `name`): every zombie near it on its floor loses health. */

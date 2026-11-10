@@ -1648,13 +1648,14 @@ weapon.onZombieHit = (hits, paint, w) => {
   const headshot = hits.some((h) => h.head > 0);
   if (net.connected) {
     combat.hitMarker(false, headshot);
-    net.send({ t: 'zhit', w, hits: hits.map((h) => [h.id, h.body, h.head]) });
+    net.send({ t: 'zhit', w, hits: hits.map((h) => (h.legs ? [h.id, h.body, h.head, h.legs] : [h.id, h.body, h.head])) }); // a fourth number: the body's hits that landed on the legs
     return;
   }
   if (!solo) return;
   const now = performance.now();
   let downs = 0;
   for (const h of hits) {
+    if (h.legs) solo.horde.lame(h.id); // shot in the legs: it limps from now on
     const res = solo.horde.hit(h.id, h.body * spec.body + h.head * spec.head, SOLO_ME, now);
     if (res === 'down') downs++;
     zombieResult(h.id, res, w, h.head > 0);
@@ -1988,6 +1989,7 @@ function fire(): void {
   player.pitch += shot.pitch;
   player.yaw += shot.yaw;
   unfired = false; // your choice of guns is fixed until you come into play again
+  if (solo) solo.horde.noise(player.x, player.z, weapon.current, performance.now(), SOLO_ME); // gunfire draws the zombies (together the server does this)
   // Smoke at the muzzle: from every shot of the big guns, now and then from the others (not paint guns).
   if (!paintball.on && !shot.rocket && (weapon.current === 'shotgun' || weapon.current === 'sniper' || Math.random() < 0.3)) effects.muzzleSmoke(weapon.muzzlePoint());
   rumble(weapon.current === 'pistol' ? 0.25 : 0.6, 0.6, weapon.current === 'rifle' ? 50 : 90);
@@ -3389,6 +3391,7 @@ renderer.setAnimationLoop((now: number) => {
       air: player.flying || player.feet > player.ground.y + 0.05, steady: frame.steadyHeld,
     });
     player.pitch -= weapon.takeRecover(); // the recoil's climb comes back down after the burst
+    player.carry = weapon.carrySpeed; // a heavy gun slows your walk, aiming more
     // The keys in the prompts come from the one table (src/shortcuts.ts). In Explore a click opens doors too.
     const doorKey = key(action ? 'use' : 'click', mode);
     const use = key('use', mode);

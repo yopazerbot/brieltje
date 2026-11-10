@@ -26,6 +26,11 @@ export const ZOMBIE: {
   swipeEvery: number;
   bigEvery: number;
   shield: number;
+  hear: Record<string, number>;
+  alert: number;
+  alertMs: number;
+  loud: number;
+  lame: number;
   hurtMs: number;
   downMs: number;
   straight: number;
@@ -169,6 +174,10 @@ export interface Zombie {
   /** In a row of stakes (shared/loot.mjs): the share of its pace it walks at, until slowUntil (ms) */
   slow?: number;
   slowUntil?: number;
+  /** Heard a shot: walks faster until this (ms) */
+  alertUntil?: number;
+  /** Shot in the legs: limps for good */
+  lame?: boolean;
 }
 
 export interface HordePlayer {
@@ -211,6 +220,8 @@ export class Horde {
   selectWave(now: number, wave: number, players: number): HordeEvent[] | null;
   tick(now: number, dt: number, players: HordePlayer[]): HordeEvent[];
   hit(id: number, amount: number, by: string, now: number, flinch?: boolean): 'down' | 'hurt' | null;
+  noise(x: number, z: number, w: string, now: number, name?: string | null): number;
+  lame(id: number): boolean;
   blast(x: number, z: number, radius: number, amount: number, by: string, now: number, y?: number | null): [number, 'down' | 'hurt'][];
   reachOf(p: { x: number; y: number; z: number }): (Seed & { ok: boolean }) | null;
 }
