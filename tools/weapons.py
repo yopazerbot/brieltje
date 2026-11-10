@@ -322,26 +322,62 @@ class Wrap:
         return out
 
 
-def finger(name, line, r):
-    """A gloved finger along `line` (knuckle first): a little thicker at the knuckle."""
-    n = len(line)
-    # Thicker at its two joints, thinner between them: a finger, not a tube.
-    def joint(i):
-        s = i / max(1, n - 1)
-        return 0.085 * max(0.0, 1 - abs(s - 0.36) * 7) + 0.07 * max(0.0, 1 - abs(s - 0.7) * 7)
-    radii = [r * (1.06 - 0.16 * i / max(1, n - 1) + joint(i)) for i in range(n)]
-    return sweep(name, line, radii, M["Glove"], sides=10)
+def finger(name, line, r, thumb=False):
+    """A gloved finger along `line` (knuckle first), shaped as a finger is: thickest at its root, a
+    little waisted along each bone, swelling at its two joints (a thumb has one), slimmer to a
+    rounded tip. The line is filled in to a point every few millimetres so the joints are smooth."""
+    pts = [Vector(p) for p in line]
+    fine = [pts[0]]
+    for p, q in zip(pts, pts[1:]):
+        fine += [p.lerp(q, 1 / 3), p.lerp(q, 2 / 3), q]
+    n = len(fine)
+    joints = (0.52,) if thumb else (0.4, 0.72)
+
+    def girth(i):
+        t = i / max(1, n - 1)
+        swell = sum(0.085 * math.exp(-((t - j) / 0.075) ** 2) for j in joints)
+        return r * 0.95 * ((1.12 - 0.36 * t) + swell)
+    return sweep(name, fine, [girth(i) for i in range(n)], M["Glove"], sides=12)
+
+
+def ball(name, at, r, mat, squash=(1.0, 1.0, 1.0)):
+    """A small round lump (a knuckle, the ball of the thumb), `squash`ed along x, y and z."""
+    bm = bmesh.new()
+    bmesh.ops.create_icosphere(bm, subdivisions=2, radius=r)
+    for v in bm.verts:
+        v.co = Vector((v.co.x * squash[0], v.co.y * squash[1], v.co.z * squash[2])) + Vector(at)
+    return mesh_obj(name, bm, [mat], smooth=True)
+
+
+def skin(name, parts, tris):
+    """One skin over a hand's fingers, palm and lumps: joined, turned into a single closed surface (so the
+    fingers run into the palm and into each other, with the webs between them, as a glove's do), smoothed,
+    and thinned to about `tris` triangles."""
+    obj = join(name, parts)
+    apply_mod(obj, "REMESH", mode="VOXEL", voxel_size=0.0019, adaptivity=0.0)
+    apply_mod(obj, "SMOOTH", factor=0.5, iterations=5)
+    obj.data.calc_loop_triangles()
+    have = len(obj.data.loop_triangles)
+    if have > tris:
+        apply_mod(obj, "DECIMATE", ratio=tris / have)
+    if not obj.data.materials:
+        obj.data.materials.append(M["Glove"])
+    for p in obj.data.polygons:
+        p.use_smooth = True
+        p.material_index = 0
+    return obj
 
 
 def arm(name, wrist, direction, length, side):
     """The cuff of the glove and the sleeve from the wrist back along the forearm (past the view)."""
     d = Vector(direction).normalized()
     w = Vector(wrist)
-    cuff = sweep(name + "Cuff", [w - d * 0.012, w + d * 0.02, w + d * 0.05], [0.026, 0.03, 0.031], M["GloveTrim"], sides=12, tip=False)
+    # The glove's cuff: snug round the wrist (narrower than the hand), a strap's ridge, then flaring under the sleeve.
+    cuff = sweep(name + "Cuff", [w - d * 0.016, w - d * 0.004, w + d * 0.008, w + d * 0.014, w + d * 0.02, w + d * 0.05], [0.0235, 0.0245, 0.0262, 0.0262, 0.0252, 0.029], M["GloveTrim"], sides=16, tip=False)
     # The sleeve: a rolled edge, then the forearm widening towards the elbow, bending a little.
     bend = Vector((side * 0.02, 0, -0.03))
     pts = [w + d * 0.035, w + d * 0.05, w + d * 0.065]
-    rad = [0.034, 0.038, 0.036]
+    rad = [0.032, 0.0365, 0.035]
     # In sixteen steps, the cloth gathered in folds: deeper near the wrist, where the sleeve is pushed up, and
     # each fold a little off the forearm's line, so they don't read as rings.
     steps = 16
@@ -359,7 +395,7 @@ def hand(name, wrap, fingers, palm, wrist, fore, thumb, index=None, knuckle=True
     """A gloved hand round `wrap`. fingers: (t, deg0, step, length, radius, slope) per finger;
     palm: points of the palm and back of the hand (the hull also takes the finger roots and the
     wrist); thumb and index: centre lines with a radius; fore: the forearm's way and length."""
-    parts = []
+    parts = []  # the glove itself: everything that becomes one skin
     roots = []
     for i, (t, deg0, step, length, r, slope) in enumerate(fingers):
         line = wrap.curl(t, deg0, step, length, r * 0.95, slope)
@@ -368,7 +404,7 @@ def hand(name, wrap, fingers, palm, wrist, fore, thumb, index=None, knuckle=True
     if index:
         parts.append(finger(f"{name}Index", index[0], index[1]))
         roots.append(Vector(index[0][0]))
-    parts.append(finger(f"{name}Thumb", thumb[0], thumb[1]))
+    parts.append(finger(f"{name}Thumb", thumb[0], thumb[1] * 1.08, thumb=True))
     w = Vector(wrist)
     d = Vector(fore[0]).normalized()
     # The wrist: a flattened ring across the forearm.
@@ -377,9 +413,19 @@ def hand(name, wrap, fingers, palm, wrist, fore, thumb, index=None, knuckle=True
         u = d.cross(Vector((1, 0, 0)))
     u.normalize()
     v = d.cross(u).normalized()
-    ring = [w + u * (0.03 * math.cos(a)) + v * (0.022 * math.sin(a)) for a in [k * math.pi / 5 for k in range(10)]]
+    ring = [w + u * (0.027 * math.cos(a)) + v * (0.02 * math.sin(a)) for a in [k * math.pi / 5 for k in range(10)]]
     pts = [Vector(p) for p in palm] + roots + ring + [Vector(thumb[0][0])]
     parts.append(hull(name + "Palm", pts, M["Glove"], round_=True))
+    # The knuckles: a lump over each finger's root, on the back of the hand. And the ball of the thumb, the
+    # muscle between the wrist and the thumb's root.
+    centre = sum(pts, Vector()) / len(pts)
+    for i, root in enumerate(roots):
+        away = (root - centre).normalized()
+        parts.append(ball(f"{name}Knuckle{i}", root + away * 0.003, 0.0105, M["Glove"]))
+    t0 = Vector(thumb[0][0])
+    parts.append(ball(name + "Thenar", w.lerp(t0, 0.55) + (t0 - centre).normalized() * 0.004, 0.017, M["Glove"], (1.0, 1.0, 0.85)))
+    glove = skin(name + "Skin", parts, 1700)
+    parts = [glove]
     if knuckle:
         # A padded guard over the knuckles, as tactical gloves have.
         k0, k1 = roots[0], roots[-1]
@@ -1020,6 +1066,10 @@ if PREVIEW:
     os.makedirs(PREVIEW, exist_ok=True)
     roots = {o.name: o for o in bpy.data.objects if o.parent is None and o.type == "EMPTY"}
     views = {"pistol": (0.09, 0.4), "rifle": (0.2, 1.1), "shotgun": (0.2, 1.2), "sniper": (0.25, 1.3), "bazooka": (0.3, 1.6)}
+    clay = bpy.data.materials.new("Clay")
+    clay.use_nodes = True
+    clay.node_tree.nodes["Principled BSDF"].inputs["Base Color"].default_value = (0.62, 0.6, 0.57, 1)
+    clay.node_tree.nodes["Principled BSDF"].inputs["Roughness"].default_value = 0.7
     for w, (mid, dist) in views.items():
         for name, r in roots.items():
             r.hide_render = name != w
@@ -1032,3 +1082,24 @@ if PREVIEW:
             cam.data.lens = 50
             scene.render.filepath = os.path.join(PREVIEW, f"{w}_{label}.png")
             bpy.ops.render.render(write_still=True)
+        # The hands alone, close, in clay: from the shooter's side and from the left.
+        hands = [c for c in roots[w].children_recursive if c.type == "MESH" and "_hand" in c.name]
+        for c in roots[w].children_recursive:
+            c.hide_render = c not in hands
+        kept = [(h, [slot.material for slot in h.material_slots]) for h in hands]
+        for h, _ in kept:
+            for slot in h.material_slots:
+                slot.material = clay
+        for h in hands:
+            # The hand itself: what lies within 13 cm of the wrist (the object's own origin), not the sleeve behind it.
+            near = [h.matrix_world @ v.co for v in h.data.vertices if v.co.length < 0.13]
+            centre = sum(near, Vector()) / max(1, len(near))
+            for label, off in (("back", Vector((-0.03, -0.24, 0.2))), ("side", Vector((-0.34, -0.04, 0.08))), ("front", Vector((0.1, 0.3, 0.12)))):
+                cam.location = centre + off
+                cam.rotation_euler = (centre - cam.location).to_track_quat("-Z", "Y").to_euler()
+                cam.data.lens = 50
+                scene.render.filepath = os.path.join(PREVIEW, f"{h.name}_{label}.png")
+                bpy.ops.render.render(write_still=True)
+        for h, mats in kept:
+            for slot, m in zip(h.material_slots, mats):
+                slot.material = m
