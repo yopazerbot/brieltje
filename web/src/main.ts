@@ -2942,8 +2942,6 @@ let wasOnHorse = false;
 let carHint = 0; // the same for the car's speed and keys after getting in
 let wasInCar = false;
 let bikeHint = 0; // the same on a bike
-let scopeHint = 0; // how to hold your breath, for the first seconds through a scope
-let wasScoped = false;
 let wasOnBike = false;
 let wasCalm = false;
 let wasFlying = false;
@@ -3348,10 +3346,6 @@ renderer.setAnimationLoop((now: number) => {
     hud.setRing(helping ? (helping.start ? (now - helping.start) / helping.ms : 0) : null);
     if (pad) prompt = ''; // the list says it all
     else if ((!inCar || onBike) && portalNear(player.x, player.z) && (onHorse || onBike || !rules.portals || games.fenced)) prompt = t(onHorse ? 'prompt.horsePortal' : onBike ? 'prompt.bikePortal' : games.fenced ? 'prompt.portalGame' : 'prompt.portalsOff');
-    // Through a scope: how to hold your breath, for the first seconds of each look (not with the touch controls, which have no key for it).
-    scopeHint = weapon.scoped ? (wasScoped ? Math.max(0, scopeHint - dt) : 3) : 0;
-    wasScoped = weapon.scoped;
-    if (scopeHint > 0 && !prompt && mode !== 'touch') prompt = t('prompt.breath', { key: key('sprint', mode) });
     hud.setPrompt(prompt);
     const armed = action && !dead && !inCar;
     hud.setWeapon(armed, dead || inCar ? '' : weapon.status);
