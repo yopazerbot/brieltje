@@ -1351,7 +1351,9 @@ function followAccount(account: Me | null): void {
   // The main house, the bungalow and the end house open only with their codes, alone and together (src/world/homeLocks.ts).
   // The admin needs none; a new session (joining, another account) starts locked, as the server has no grant for it. A Zombies game alone stops.
   if (account) stopSolo();
-  homeLocks.setAdmin(account?.role === 'admin');
+  // The admin sees every inside, playing together and playing alone (the session is the admin's then: the server
+  // gives a home's inside to an admin session, and to no other without the code).
+  homeLocks.setAdmin(account?.role === 'admin' || (!account && sessionAdmin()));
   if (account && (!wasTogether || account.username !== homeUser)) homeLocks.lockAll();
   homeUser = account?.username ?? null;
   // Together everyone walks and runs at the real pace; alone, the speed you chose (the server holds
@@ -2809,6 +2811,9 @@ function onTick(m: Tick): void {
 if (startIntent.room) net.room = startIntent.room;
 onAccount(followAccount);
 onSession(showAdminParts); // the admin's session alone too: the admin tab's parts for playing alone
+onSession(() => {
+  if (!me) homeLocks.setAdmin(sessionAdmin()); // and every home's inside, alone too (logged in or out since)
+});
 
 /**
  * The map is the menu's first tab (ui/bigmap.ts in its page). M, a short press on the controller's
