@@ -96,6 +96,7 @@ import { Furnishing, buildFixtures, footprint, type Piece } from './world/furnis
 import { findThing, thingNames, type Thing } from './spawn';
 import { Doors } from './world/doors';
 import { Glass } from './world/glass';
+import { Curtains } from './world/curtains';
 import { World } from './world/collision';
 import { loadEnvironment } from './world/environment';
 import { house, type DipSpec, type Prism, type Ring, type VillageData } from './world/houseData';
@@ -632,6 +633,9 @@ const homeLocks = new HomeLocks({
   relocked: () => (putOutside(), furnishing.redraw()),
 }, house.prisms, house.doors);
 doors.lockedHome = (id) => homeLocks.lockedOfDoor(id);
+// Curtains behind the panes of a home that is locked here: its inside isn't on this page, so the glass showed an empty box (world/curtains.ts).
+const curtains = new Curtains(built.panes, (i) => homeLocks.homeOfPane(i), (id) => homeLocks.isOpen(id));
+let curtainsAt = -1e9;
 doors.refresh();
 glass.locked = (i) => {
   const home = homeLocks.homeOfPane(i);
@@ -3589,6 +3593,11 @@ renderer.setAnimationLoop((now: number) => {
   setWindowNight(mood.night); // lights in about half of the village's rooms at night (world/windows.ts)
   player.lookScale = camera.fov / weapon.baseFov; // slower turning while zoomed in (not faster for the car's wider view)
   glass.update(dt);
+  // The curtains follow the locks and the panes that come later (a door's glass, the end house): looked at every second and a half.
+  if (now - curtainsAt > 1500) {
+    curtainsAt = now;
+    curtains.sync();
+  }
   furnishing.update(dt, camera.position);
   effects.particles.budget = quality === 'low' ? 0.5 : 1; // big smoke puffs are many pixels each
   // Splashes: rings round you afloat, spray from the wheels of a car through a ford (world/splashes.ts).
