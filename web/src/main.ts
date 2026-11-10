@@ -1055,8 +1055,10 @@ let mapTimer = 0;
 window.addEventListener('keydown', (e) => {
   if (e.code === 'KeyN' && !e.repeat && !typing(e)) settings.toggle('minimap'); // the setting's shortcut (Settings: Minimap)
 });
-weapon.onImpact = (point, normal, material, on) => {
-  effects.shot(point, normal, material, on);
+/** A bullet hole's size by gun, of the usual one: a shotgun pellet's is small, a sniper's bullet's large. */
+const HOLE_SIZE: Partial<Record<WeaponId, number>> = { pistol: 0.9, rifle: 1, shotgun: 0.6, sniper: 1.5 };
+weapon.onImpact = (point, normal, material, on, w) => {
+  effects.shot(point, normal, material, on, HOLE_SIZE[w] ?? 1);
   looseProps.shot(point, normal, on); // a post rings, a bin rocks
 };
 weapon.onPaintball = (from, to, paint) => effects.paintShot(from, to, paint);

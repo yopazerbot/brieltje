@@ -45,6 +45,13 @@ const LOOKS: Record<string, Look> = {
   GloveTrim: { wear: '#ffffff', metal: 0, rough: 0.55, grain: 0.4, scale: [46, 46, 46], amount: 0.3, fade: true },
 };
 
+/**
+ * The muzzle flash on your own hands and sleeves, 0..1 (weapon.ts sets it for the flash's moment): they
+ * light up warm, as cloth and leather next to a real flash do. Only they: the gloves' and sleeves'
+ * materials are yours alone, while a gun's are shared with the guns the others hold.
+ */
+export const handFlash = { value: 0 };
+
 /** How much of the wear shows: 1, or 0 for Paintball's bright toy guns (they are new plastic). */
 const amount = { value: 1 };
 export function setGunWear(on: boolean): void {
@@ -141,6 +148,7 @@ export function gunSurface(m: THREE.MeshStandardMaterial): boolean {
     uGunLook: { value: new THREE.Vector4(look.metal, look.rough, look.grain, look.amount ?? 1) },
     uGunScale: { value: new THREE.Vector3(...(look.scale ?? [14, 14, 14])) },
     uGunFade: { value: look.fade ? 1 : 0 },
+    uHandFlash: look.fade ? handFlash : { value: 0 },
     uGunAmount: amount,
   };
   m.onBeforeCompile = (shader) => {
@@ -156,6 +164,7 @@ uniform vec3 uGunWear;
 uniform vec4 uGunLook;
 uniform vec3 uGunScale;
 uniform float uGunFade;
+uniform float uHandFlash;
 uniform float uGunAmount;
 varying vec3 vGunPos;
 varying vec3 vGunNormal;
@@ -173,6 +182,8 @@ diffuseColor.rgb = mix(diffuseColor.rgb, mix(uGunWear, diffuseColor.rgb * 1.7 + 
 diffuseColor.rgb *= 1.0 - 0.62 * vGunShade.x; // the seams and the gaps between the parts`)
       .replace('#include <roughnessmap_fragment>', `#include <roughnessmap_fragment>
 roughnessFactor = clamp(mix(roughnessFactor + (gunN.r - 0.5) * 0.5 * uGunLook.z + 0.25 * vGunShade.x, uGunLook.y, gunWorn), 0.05, 1.0);`)
+      .replace('#include <emissivemap_fragment>', `#include <emissivemap_fragment>
+totalEmissiveRadiance += uHandFlash * vec3(1.0, 0.6, 0.28) * 0.55 * (0.6 + 0.8 * gunN.r);`)
       .replace('#include <metalnessmap_fragment>', `#include <metalnessmap_fragment>
 metalnessFactor = mix(metalnessFactor, uGunLook.x, gunWorn);`);
   };

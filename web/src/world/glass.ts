@@ -18,14 +18,25 @@ interface Shard {
   spin: THREE.Vector3;
   life: number;
   floor: number;
+  /** s it still hangs in its place before it falls (the pieces far from the bullet let go last) */
+  wait: number;
 }
 
-const SHARDS = 36;
-const shardGeo = new THREE.BufferGeometry().setAttribute(
-  'position',
-  new THREE.Float32BufferAttribute([0, 0, 0, 0.06, 0.01, 0, 0.02, 0.07, 0], 3),
-);
-shardGeo.computeVertexNormals();
+/** Shards per square metre of pane, and the fewest and the most from one pane. */
+const SHARDS_M2 = 22;
+const SHARDS_MIN = 24;
+const SHARDS_MAX = 70;
+/** A shard's shape, flat: a small triangle, a long sliver, a four-cornered piece, a pointed dagger. */
+const shardGeos = [
+  [0, 0, 0, 0.06, 0.01, 0, 0.02, 0.07, 0],
+  [0, 0, 0, 0.025, 0.004, 0, 0.012, 0.16, 0],
+  [0, 0, 0, 0.07, 0.015, 0, 0.085, 0.07, 0, 0, 0, 0, 0.085, 0.07, 0, 0.01, 0.06, 0],
+  [0, 0, 0, 0.05, 0, 0, 0.03, 0.12, 0],
+].map((corners) => {
+  const g = new THREE.BufferGeometry().setAttribute('position', new THREE.Float32BufferAttribute(corners, 3));
+  g.computeVertexNormals();
+  return g;
+});
 const shardMat = new THREE.MeshStandardMaterial({
   color: '#d6ecf5', roughness: 0.05, metalness: 0.2, transparent: true, opacity: 0.55, side: THREE.DoubleSide,
 });
@@ -175,19 +186,27 @@ export class Glass {
     if (!hit) return true;
 
     const dir = from ? hit.clone().sub(from).setY(0).normalize() : new THREE.Vector3();
-    for (let i = 0; i < SHARDS; i++) {
-      const mesh = new THREE.Mesh(shardGeo, shardMat);
+    // More shards from a large pane, of four shapes and many sizes. Those from near where it was struck fly off
+    // with the bullet; those from further out drop almost straight down, and the lowest ones a moment later.
+    const size = box.getSize(new THREE.Vector3());
+    const area = size.y * Math.max(size.x, size.z);
+    const reach = Math.max(0.5, Math.hypot(size.y, Math.max(size.x, size.z)) / 2);
+    const count = Math.round(Math.max(SHARDS_MIN, Math.min(SHARDS_MAX, area * SHARDS_M2)));
+    for (let i = 0; i < count; i++) {
+      const mesh = new THREE.Mesh(shardGeos[i % shardGeos.length], shardMat);
       mesh.position.set(
         THREE.MathUtils.lerp(box.min.x, box.max.x, Math.random()),
         THREE.MathUtils.lerp(box.min.y, box.max.y, Math.random()),
         THREE.MathUtils.lerp(box.min.z, box.max.z, Math.random()),
       );
       mesh.rotation.set(Math.random() * 6, Math.random() * 6, Math.random() * 6);
-      mesh.scale.setScalar(0.6 + Math.random() * 1.6);
+      mesh.scale.setScalar(0.5 + Math.random() * Math.random() * 2.6);
       mesh.userData.ignoreRay = true;
       this.scene.add(mesh);
-      const v = dir.clone().multiplyScalar(1 + Math.random() * 2.5).add(new THREE.Vector3((Math.random() - 0.5) * 1.2, Math.random() * 1.2, (Math.random() - 0.5) * 1.2));
-      this.shards.push({ mesh, v, spin: new THREE.Vector3(Math.random() * 10, Math.random() * 10, Math.random() * 10), life: 2.5, floor: box.min.y - 3.2 });
+      const near = Math.max(0, 1 - mesh.position.distanceTo(hit) / reach); // 1 at the bullet, 0 at the far corner
+      const v = dir.clone().multiplyScalar((0.3 + 3.2 * near) * (0.6 + Math.random() * 0.8))
+        .add(new THREE.Vector3((Math.random() - 0.5) * (0.4 + near), Math.random() * 1.4 * near, (Math.random() - 0.5) * (0.4 + near)));
+      this.shards.push({ mesh, v, spin: new THREE.Vector3(Math.random() * 10, Math.random() * 10, Math.random() * 10), life: 2.5 + (1 - near) * 0.6, floor: box.min.y - 3.2, wait: (1 - near) * 0.18 * Math.random() });
     }
     this.shatterSound(hit);
     return true;
@@ -287,6 +306,10 @@ export class Glass {
     for (let i = this.shards.length - 1; i >= 0; i--) {
       const s = this.shards[i];
       s.life -= dt;
+      if (s.wait > 0) {
+        s.wait -= dt;
+        continue;
+      }
       s.v.y -= 9.81 * dt;
       s.mesh.position.addScaledVector(s.v, dt);
       s.mesh.rotation.x += s.spin.x * dt;

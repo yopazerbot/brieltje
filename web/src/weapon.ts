@@ -9,7 +9,7 @@ import WEAPONS from '../shared/weapons.json';
 import { LOOT } from '../shared/loot.mjs';
 import { t } from './i18n';
 import { drawn } from './world/rayShown';
-import { gunSurface, noNearCut, setGunWear } from './world/gunSurface';
+import { gunSurface, handFlash, noNearCut, setGunWear } from './world/gunSurface';
 import { WIND_PUSH, windAt } from './world/wind';
 
 /**
@@ -636,7 +636,7 @@ export class Weapon {
   /** Paintball: a pellet's paintball flies from the gun to `to` (where it hit, or as far as it goes). */
   onPaintball: (from: THREE.Vector3, to: THREE.Vector3, paint: Paint) => void = () => {};
   /** A bullet hit the house or the ground (`on` is the mesh it hit): a hole, and dust, sparks or chips. */
-  onImpact: (point: THREE.Vector3, normal: THREE.Vector3, material: string, on: THREE.Object3D) => void = () => {};
+  onImpact: (point: THREE.Vector3, normal: THREE.Vector3, material: string, on: THREE.Object3D, w: WeaponId) => void = () => {};
   /** A spent casing leaves the gun (after the shot, or when the pump or bolt is worked). */
   onEject: (w: WeaponId) => void = () => {};
   /** A bullet you can see fly: from the muzzle to where it lands (the rifle's every third, the sniper rifle's each one). */
@@ -1045,7 +1045,7 @@ export class Weapon {
       if (depth && pass.left > 0) {
         pass.left--;
         pass.free = h.distance + depth;
-        this.onImpact(h.point.clone(), h.face.normal.clone().transformDirection(h.object.matrixWorld), String(h.object.userData.material), h.object);
+        this.onImpact(h.point.clone(), h.face.normal.clone().transformDirection(h.object.matrixWorld), String(h.object.userData.material), h.object, w);
         continue;
       }
       hit = h;
@@ -1093,7 +1093,7 @@ export class Weapon {
       this.onGlassHit(hit.object.userData.glassIndex, hit.point.clone(), eye, normal, hit.object, w);
     } else {
       const normal = hit.face.normal.clone().transformDirection(hit.object.matrixWorld);
-      this.onImpact(hit.point.clone(), normal, String(hit.object.userData.material ?? ''), hit.object);
+      this.onImpact(hit.point.clone(), normal, String(hit.object.userData.material ?? ''), hit.object, w);
     }
     return { point };
   }
@@ -1253,6 +1253,7 @@ export class Weapon {
     // It closes again once you let go. (It used to close faster than held fire could open it, so it never showed.)
     if (this.sinceShot > 0.15) for (const w of WEAPON_IDS) this.bloom[w] = Math.max(0, this.bloom[w] - dt * 0.06);
     this.flashTime = Math.max(0, this.flashTime - dt);
+    handFlash.value = this.enabled && !this.hiddenFlag && !paintball.on ? this.flashTime / 0.05 : 0; // the flash on your hands (world/gunSurface.ts)
     // Switching: the gun in your hands drops away (a tenth of a second), then the next comes up.
     if (this.shown !== this.current) {
       this.raise -= dt * 10;

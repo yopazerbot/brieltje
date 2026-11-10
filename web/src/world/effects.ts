@@ -205,9 +205,10 @@ export class Effects {
   }
 
   /** A bullet hit a surface: a hole with the surface's look, and a burst of what it is made of. */
-  impact(point: THREE.Vector3, normal: THREE.Vector3, material: string, on?: THREE.Object3D): void {
+  /** `size`: the hole's, of the usual one (a shotgun pellet's is small, a sniper's bullet's large). */
+  impact(point: THREE.Vector3, normal: THREE.Vector3, material: string, on?: THREE.Object3D, size = 1): void {
     if (material === 'water') return this.splashes.shot(point); // a pond or ditch: a spout and a ring, no hole
-    if (material !== 'cat') this.decals.add(point, normal, Decals.look(material), Decals.look(material) === HOLE.earth ? 0.1 : 0.08, on);
+    if (material !== 'cat') this.decals.add(point, normal, Decals.look(material), (Decals.look(material) === HOLE.earth ? 0.1 : 0.08) * size, on);
     const kind = KIND[material] ?? 'dust';
     const dust = color(DUST[material] ?? '#ddd6ca');
     const p = point.clone().addScaledVector(normal, 0.02);
@@ -265,8 +266,8 @@ export class Effects {
   }
 
   /** One of your shots hit a surface: a hole and a burst (impact), or in paintball a splat where the paintball lands. */
-  shot(point: THREE.Vector3, normal: THREE.Vector3, material: string, on?: THREE.Object3D): void {
-    if (!paintball.on || material === 'water') return this.impact(point, normal, material, on); // paint sinks
+  shot(point: THREE.Vector3, normal: THREE.Vector3, material: string, on?: THREE.Object3D, size = 1): void {
+    if (!paintball.on || material === 'water') return this.impact(point, normal, material, on, size); // paint sinks
     this.splats.landing(point, (paint, dir) => {
       this.splats.add(point, normal, paint.color, paint.size, on, dir);
       this.splash(point, normal, paint.color, paint.size);
