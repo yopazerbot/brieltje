@@ -126,6 +126,7 @@ const SIGN_UP = /plans?\b|floor ?plans?|PDF/i;
 const ALLOWED = [
   { file: /^web\/shared\/publicClean\.test\.mjs$/, why: 'this test names the words it looks for' },
   { file: /^web\/shared\/terrain\.json$/, words: /^WC$/, why: 'a base64 height grid: two letters by chance, not a word' },
+  { file: /^tools\/assets\/fps_arms\.blend$/, words: /^WC$/, why: 'a binary model file (the CC0 hands): two letters by chance, not a word' },
   // the game's furniture catalogue: generic pieces
   { file: /^web\/shared\/furniture\.json$/, line: /"id": "(dining200|dining160|oval220|chair|officechair|bookwall|jacuzzi)"/, words: /dining|office|book ?wall|jacuzzi/i, why: 'catalogue entries: generic pieces' },
   { file: /^web\/src\/i18n\.ts$/, line: /dining200: 'Eettafel|desk: 'Bureau 140|officechair: 'Bureaustoel|desksetup: 'Bureau 180|bookwall: 'Boekenwand|kidsdesk: 'Laag bureau/, words: /dining|bureau|book ?wall|jacuzzi/i, why: 'Dutch names of catalogue pieces' },

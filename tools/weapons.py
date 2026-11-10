@@ -33,7 +33,7 @@ import sys
 
 import bmesh
 import bpy
-from mathutils import Matrix, Vector
+from mathutils import Matrix, Quaternion, Vector
 
 argv = sys.argv[sys.argv.index("--") + 1:]
 OUT = argv[0]
@@ -322,62 +322,194 @@ class Wrap:
         return out
 
 
-def finger(name, line, r, thumb=False):
-    """A gloved finger along `line` (knuckle first), shaped as a finger is: thickest at its root, a
-    little waisted along each bone, swelling at its two joints (a thumb has one), slimmer to a
-    rounded tip. The line is filled in to a point every few millimetres so the joints are smooth."""
-    pts = [Vector(p) for p in line]
-    fine = [pts[0]]
+# The hands are a sculpted pair of arms (tools/assets/fps_arms.blend: "FPS arms, rigged only" from
+# OpenGameArt, CC0), with a skeleton down to each finger bone. Each hand is laid on its grip and its
+# finger bones are turned to follow the lines the fingers take round it; what comes out is the posed
+# skin from the fingertips to a little above the wrist, at the size of a real hand.
+ARMS = os.path.join(os.path.dirname(os.path.abspath(__file__)), "assets", "fps_arms.blend")
+HAND_SCALE = 0.088  # the sculpt's units to metres: a gloved hand 18.5 cm from wrist to fingertip
+_arms = {}
+
+
+def source_arms():
+    if not _arms:
+        with bpy.data.libraries.load(ARMS) as (have, take):
+            take.objects = [n for n in have.objects if n.startswith("caucasian_male_1")]
+        for o in take.objects:
+            link(o)
+            o.hide_render = True
+        _arms["rig"] = next(o for o in take.objects if o.type == "ARMATURE")
+        # The rig's own helpers (each finger's end bones copying its first, the forearm reaching for the hand)
+        # would undo a pose set bone by bone.
+        for pb in _arms["rig"].pose.bones:
+            for c in list(pb.constraints):
+                pb.constraints.remove(c)
+        _arms["body"] = next(o for o in take.objects if o.type == "MESH")
+    return _arms["rig"], _arms["body"]
+
+
+def drop_arms():
+    """Take the sculpt out again before the bake and the export."""
+    for o in list(_arms.values()):
+        bpy.data.objects.remove(o, do_unlink=True)
+    _arms.clear()
+
+
+def fit(src, dst, weights, scale):
+    """The turn R and the move T that lay the points `src` (scaled) best on `dst`: dst = R (scale src) + T."""
+    import numpy as np
+    A = np.array([list(p) for p in src]) * scale
+    B = np.array([list(p) for p in dst])
+    w = np.array(weights, dtype=float)[:, None]
+    ca, cb = (A * w).sum(0) / w.sum(), (B * w).sum(0) / w.sum()
+    U, _, Vt = np.linalg.svd(((A - ca) * w).T @ (B - cb))
+    d = 1.0 if np.linalg.det(Vt.T @ U.T) > 0 else -1.0
+    R = Vt.T @ np.diag([1.0, 1.0, d]) @ U.T
+    T = cb - R @ ca
+    err = [round(float(e) * 1000, 1) for e in np.linalg.norm(A @ R.T + T - B, axis=1)]
+    return Matrix(R.tolist()), Vector(T.tolist()), err
+
+
+def along(pts, run):
+    """The point `run` along the line through pts (past its end: straight on)."""
+    left = run
     for p, q in zip(pts, pts[1:]):
-        fine += [p.lerp(q, 1 / 3), p.lerp(q, 2 / 3), q]
-    n = len(fine)
-    joints = (0.52,) if thumb else (0.4, 0.72)
-
-    def girth(i):
-        t = i / max(1, n - 1)
-        swell = sum(0.085 * math.exp(-((t - j) / 0.075) ** 2) for j in joints)
-        return r * 0.95 * ((1.12 - 0.36 * t) + swell)
-    return sweep(name, fine, [girth(i) for i in range(n)], M["Glove"], sides=12)
+        seg = (q - p).length
+        if left <= seg and seg > 0:
+            return p.lerp(q, left / seg)
+        left -= seg
+    p, q = pts[-2], pts[-1]
+    return q + (q - p).normalized() * left
 
 
-def ball(name, at, r, mat, squash=(1.0, 1.0, 1.0)):
-    """A small round lump (a knuckle, the ball of the thumb), `squash`ed along x, y and z."""
+def aim(rig, bone, way, limit=None):
+    """Turn a pose bone, by the shortest turn (at most `limit`), so it points along `way` (world)."""
+    if way.length < 1e-9:
+        return
+    bpy.context.view_layer.update()
+    mw = rig.matrix_world
+    head = mw @ bone.head
+    q = (mw @ bone.tail - head).rotation_difference(way)
+    if limit is not None and q.angle > limit:
+        q = Quaternion(q.axis, limit)
+    turn = Matrix.Translation(head) @ q.to_matrix().to_4x4() @ Matrix.Translation(-head)
+    bone.matrix = mw.inverted() @ turn @ mw @ bone.matrix
+    bpy.context.view_layer.update()
+
+
+def reach(rig, bone, point):
+    """Turn a pose bone so it points from where it starts to `point` (world)."""
+    bpy.context.view_layer.update()
+    aim(rig, bone, point - rig.matrix_world @ bone.head)
+
+
+def real_hand(name, lines, thumb_line, wrist, side, wrap):
+    """The sculpted hand, its knuckles and wrist laid on the first point of each of `lines` (index or
+    middle finger first, the little finger last) and on `wrist`, its fingers bent along the lines."""
+    rig, body = source_arms()
+    X = ".R" if side > 0 else ".L"
+    bones = rig.pose.bones
+    for pb in bones:
+        pb.matrix_basis = Matrix.Identity(4)
+    bpy.context.view_layer.update()
+    mw = rig.matrix_world
+    names = ["index", "middle", "ring", "pinky"][4 - len(lines):]
+    lines = [[Vector(p) for p in line] for line in lines]
+    thumb_line = [Vector(p) for p in thumb_line]
+    src = [mw @ bones[f"f_{n}.01{X}"].head for n in names] + [mw @ bones["hand" + X].head, mw @ bones["thumb.01" + X].tail]
+    dst = [line[0] for line in lines] + [Vector(wrist), thumb_line[0]]
+    # The palm faces what it holds: a point 3 cm off the middle of the knuckles on the palm's side (the side the
+    # sculpt's relaxed fingers bend to) goes 3 cm towards the middle of the grip.
+    k0, k1 = mw @ bones["palm_middle" + X].head, mw @ bones["palm_middle" + X].tail
+    bone_way = (k1 - k0).normalized()
+    bend = mw @ bones["f_middle.03" + X].tail - k1
+    bend = (bend - bone_way * bend.dot(bone_way)).normalized()
+    mid_s = (src[len(lines) - 3] + src[len(lines) - 2]) / 2  # between the middle and the ring finger
+    mid_t = (dst[len(lines) - 3] + dst[len(lines) - 2]) / 2
+    inward = (wrap.C + wrap.A * wrap.A.dot(mid_t - wrap.C) - mid_t).normalized()
+    src.append(mid_s + bend * (0.03 / HAND_SCALE))
+    dst.append(mid_t + inward * 0.03)
+    # The knuckles count most: they are where the hand meets the gun. The wrist follows from the hand's own size.
+    R, T, err = fit(src, dst, [1.0] * len(lines) + [0.05, 0.1, 1.0], HAND_SCALE)
+    place = Matrix.Translation(T) @ R.to_4x4() @ Matrix.Scale(HAND_SCALE, 4)
+    back = place.inverted()
+    for n, line in zip(names, lines):
+        pts = [back @ p for p in line]
+        palm = bones[f"palm_{n}{X}"]
+        aim(rig, palm, pts[0] - mw @ palm.head, math.radians(18))
+        run = 0.0
+        for k in ("01", "02", "03"):
+            pb = bones[f"f_{n}.{k}{X}"]
+            run += pb.bone.length
+            reach(rig, pb, along(pts, run))
+    bpy.context.view_layer.update()
+    tips = []
+    for n, line in zip(names, lines):
+        span = sum(bones[f"f_{n}.{k}{X}"].bone.length for k in ("01", "02", "03")) * HAND_SCALE
+        tips.append(round((place @ (mw @ bones[f"f_{n}.03{X}"].tail) - along(line, span)).length * 1000, 1))
+    pts = [back @ p for p in thumb_line]
+    root = bones["thumb.01" + X]
+    aim(rig, root, pts[0] - mw @ root.head, math.radians(35))
+    run = 0.0
+    for k in ("02", "03"):
+        pb = bones[f"thumb.{k}{X}"]
+        run += pb.bone.length
+        reach(rig, pb, along(pts, run))
+    # The skin of this hand, from the fingertips to 4.5 cm up the forearm (the cuff covers the cut).
+    fore = rig.data.bones["forearm" + X]
+    wr = mw @ fore.tail_local
+    up = (mw @ fore.head_local - wr).normalized()
+    bw = body.matrix_world
+    keep = {v.index for v in body.data.vertices
+            if (bw @ v.co).x * side > 0 and (bw @ v.co - wr).dot(up) < 0.045 / HAND_SCALE}
+    dg = bpy.context.evaluated_depsgraph_get()
+    dg.update()
+    ev = body.evaluated_get(dg)
+    me = ev.to_mesh()
     bm = bmesh.new()
-    bmesh.ops.create_icosphere(bm, subdivisions=2, radius=r)
-    for v in bm.verts:
-        v.co = Vector((v.co.x * squash[0], v.co.y * squash[1], v.co.z * squash[2])) + Vector(at)
-    return mesh_obj(name, bm, [mat], smooth=True)
+    made = {i: bm.verts.new(place @ (bw @ me.vertices[i].co)) for i in sorted(keep)}
+    for p in me.polygons:
+        if all(i in keep for i in p.vertices):
+            bm.faces.new([made[i] for i in p.vertices])
+    ev.to_mesh_clear()
+    # The wrist as it lies now: its middle, the forearm's way from it, its thin side and its half sizes (for the cuff).
+    turn = place.to_3x3()
+    way = (turn @ up).normalized()
+    flat = turn @ bend
+    flat = (flat - way * flat.dot(way)).normalized()
+    across = way.cross(flat)
+    at = place @ wr
+    ring = [v.co - at for v in bm.verts if 0.0 <= (v.co - at).dot(way) <= 0.04]
+    mid = sum((r - way * r.dot(way) for r in ring), Vector()) / len(ring)
+    at = at + mid
+    wide = max(abs((r - mid).dot(across)) for r in ring)
+    thick = max(abs((r - mid).dot(flat)) for r in ring)
+    print(f"{name}: knuckles, wrist, thumb and palm off by {err} mm, fingertips by {tips} mm, wrist {wide * 2000:.0f} x {thick * 2000:.0f} mm, {len(bm.faces)} faces")
+    return mesh_obj(name + "Skin", bm, [M["Glove"]], smooth=True), (at, way, flat, wide, thick)
 
 
-def skin(name, parts, tris):
-    """One skin over a hand's fingers, palm and lumps: joined, turned into a single closed surface (so the
-    fingers run into the palm and into each other, with the webs between them, as a glove's do), smoothed,
-    and thinned to about `tris` triangles."""
-    obj = join(name, parts)
-    apply_mod(obj, "REMESH", mode="VOXEL", voxel_size=0.0019, adaptivity=0.0)
-    apply_mod(obj, "SMOOTH", factor=0.5, iterations=5)
-    obj.data.calc_loop_triangles()
-    have = len(obj.data.loop_triangles)
-    if have > tris:
-        apply_mod(obj, "DECIMATE", ratio=tris / have)
-    if not obj.data.materials:
-        obj.data.materials.append(M["Glove"])
-    for p in obj.data.polygons:
-        p.use_smooth = True
-        p.material_index = 0
-    return obj
-
-
-def arm(name, wrist, direction, length, side):
-    """The cuff of the glove and the sleeve from the wrist back along the forearm (past the view)."""
-    d = Vector(direction).normalized()
+def arm(name, wrist, way, flat, wide, thick, elbow, side):
+    """The cuff of the glove round the wrist and the sleeve from there to `elbow` (past the view). `way`: along
+    the forearm from the wrist; `flat`: across the wrist's thin side; wide, thick: the wrist's half sizes."""
+    d = Vector(way).normalized()
+    n = Vector(flat).normalized()
     w = Vector(wrist)
-    # The glove's cuff: snug round the wrist (narrower than the hand), a strap's ridge, then flaring under the sleeve.
-    cuff = sweep(name + "Cuff", [w - d * 0.016, w - d * 0.004, w + d * 0.008, w + d * 0.014, w + d * 0.02, w + d * 0.05], [0.0235, 0.0245, 0.0262, 0.0262, 0.0252, 0.029], M["GloveTrim"], sides=16, tip=False)
-    # The sleeve: a rolled edge, then the forearm widening towards the elbow, bending a little.
+    # The glove's cuff: snug round the wrist, a strap's ridge, then flaring under the sleeve. Made round at
+    # the wrist's width, then pressed to its thickness: a wrist is half again as wide as it is thick.
+    g = wide
+    cuff = sweep(name + "Cuff", [w - d * 0.016, w - d * 0.004, w + d * 0.008, w + d * 0.014, w + d * 0.02, w + d * 0.1],
+                 [g + 0.001, g + 0.002, g + 0.0037, g + 0.0037, g + 0.0027, g + 0.0045], M["GloveTrim"], sides=16, tip=False)
+    press = (thick + 0.003) / (wide + 0.003)
+    for v in cuff.data.vertices:
+        rel = v.co - w
+        v.co = v.co - n * rel.dot(n) * (1 - press)
+    # The sleeve: a rolled edge, then the forearm widening towards the elbow, in a bend from the wrist's own way.
     bend = Vector((side * 0.02, 0, -0.03))
-    pts = [w + d * 0.035, w + d * 0.05, w + d * 0.065]
-    rad = [0.032, 0.0365, 0.035]
+    pts = [w + d * 0.08, w + d * 0.09, w + d * 0.1]
+    rad = [g + 0.0045, g + 0.0085, g + 0.0075]
+    p0 = pts[-1]
+    reach = (Vector(elbow) - p0).length
+    p1 = p0 + d * reach * 0.1
     # In sixteen steps, the cloth gathered in folds: deeper near the wrist, where the sleeve is pushed up, and
     # each fold a little off the forearm's line, so they don't read as rings.
     steps = 16
@@ -385,57 +517,25 @@ def arm(name, wrist, direction, length, side):
         s = k / steps
         fold = math.sin(k * 1.9 + side) * (1 - 0.55 * s)
         off = Vector((math.sin(k * 2.7), 0, math.cos(k * 1.3))) * 0.0016 * (1 - 0.5 * s)
-        pts.append(w + d * (0.065 + (length - 0.065) * s) + bend * s * s + off)
-        rad.append(0.036 + 0.012 * s + 0.0042 * fold)
+        pts.append(p0.lerp(p1, s).lerp(p1.lerp(Vector(elbow), s), s) + bend * s * s + off)
+        rad.append(g + 0.008 + 0.008 * s + 0.0036 * fold)
     sleeve = sweep(name + "Sleeve", pts, rad, M["Sleeve"], sides=14, tip=False)
     return [cuff, sleeve]
 
 
 def hand(name, wrap, fingers, palm, wrist, fore, thumb, index=None, knuckle=True, side=1):
-    """A gloved hand round `wrap`. fingers: (t, deg0, step, length, radius, slope) per finger;
-    palm: points of the palm and back of the hand (the hull also takes the finger roots and the
-    wrist); thumb and index: centre lines with a radius; fore: the forearm's way and length."""
-    parts = []  # the glove itself: everything that becomes one skin
-    roots = []
-    for i, (t, deg0, step, length, r, slope) in enumerate(fingers):
-        line = wrap.curl(t, deg0, step, length, r * 0.95, slope)
-        parts.append(finger(f"{name}F{i}", line, r))
-        roots.append(line[0])
-    if index:
-        parts.append(finger(f"{name}Index", index[0], index[1]))
-        roots.append(Vector(index[0][0]))
-    parts.append(finger(f"{name}Thumb", thumb[0], thumb[1] * 1.08, thumb=True))
+    """A gloved hand round `wrap`: the sculpted hand (real_hand), posed. fingers: (t, deg0, step, length,
+    radius, slope) per finger, the line each takes round the wrap, knuckle first; thumb and index: such
+    lines given as points; wrist: about where the wrist is (the hand's own size decides, and the game
+    turns the hand about this point); fore: the way to the elbow and how far. palm and knuckle are no
+    longer used."""
+    lines = [index[0]] if index else []
+    lines += [wrap.curl(t, deg0, step, length, r * 0.95, slope) for (t, deg0, step, length, r, slope) in fingers]
     w = Vector(wrist)
     d = Vector(fore[0]).normalized()
-    # The wrist: a flattened ring across the forearm.
-    u = d.cross(Vector((0, 0, 1)))
-    if u.length < 0.1:
-        u = d.cross(Vector((1, 0, 0)))
-    u.normalize()
-    v = d.cross(u).normalized()
-    ring = [w + u * (0.027 * math.cos(a)) + v * (0.02 * math.sin(a)) for a in [k * math.pi / 5 for k in range(10)]]
-    pts = [Vector(p) for p in palm] + roots + ring + [Vector(thumb[0][0])]
-    parts.append(hull(name + "Palm", pts, M["Glove"], round_=True))
-    # The knuckles: a lump over each finger's root, on the back of the hand. And the ball of the thumb, the
-    # muscle between the wrist and the thumb's root.
-    centre = sum(pts, Vector()) / len(pts)
-    for i, root in enumerate(roots):
-        away = (root - centre).normalized()
-        parts.append(ball(f"{name}Knuckle{i}", root + away * 0.003, 0.0105, M["Glove"]))
-    t0 = Vector(thumb[0][0])
-    parts.append(ball(name + "Thenar", w.lerp(t0, 0.55) + (t0 - centre).normalized() * 0.004, 0.017, M["Glove"], (1.0, 1.0, 0.85)))
-    glove = skin(name + "Skin", parts, 1700)
-    parts = [glove]
-    if knuckle:
-        # A padded guard over the knuckles, as tactical gloves have.
-        k0, k1 = roots[0], roots[-1]
-        mid = (k0 + k1) / 2
-        out = (mid - w).normalized()
-        back = (mid - (wrap.C + wrap.A * (wrap.A.dot(mid - wrap.C)))).normalized()
-        g = [p + back * 0.012 - out * s for p in (k0, k1) for s in (0.006, 0.022)]
-        g += [p + back * 0.005 - out * s for p in (k0, k1) for s in (0.004, 0.026)]
-        parts.append(hull(name + "Guard", g, M["GloveTrim"]))
-    parts += arm(name, wrist, d, fore[1], side)
+    glove, (at, way, flat, wide, thick) = real_hand(name, lines, thumb[0], wrist, side, wrap)
+    # The sleeve starts at the wrist the hand really has, and runs to where the forearm leaves the view as before.
+    parts = [glove] + arm(name, at, way, flat, wide, thick, w + d * fore[1], side)
     obj = join(name, parts)
     for p in obj.data.polygons:
         p.use_smooth = True
@@ -546,7 +646,7 @@ def build_pistol():
                  [(0.034, 70, -1, 0.092, 0.0098, 0.0), (0.054, 72, -1, 0.087, 0.0094, 0.0), (0.073, 76, -1, 0.07, 0.0086, 0.0)],
                  [gw.at(0.022, 95, 0.004), gw.at(0.085, 100, 0.004), gw.at(0.022, 150, 0.004), gw.at(0.085, 150, 0.006),
                   gw.at(0.02, 200, 0.002), gw.at(0.07, 185, 0.004), gw.at(0.03, 95, 0.026), gw.at(0.07, 100, 0.026)],
-                 (0.012, -0.075, -0.042), ((0.22, -1, -0.42), 0.36),
+                 (0.012, -0.075, -0.042), ((0.25, -1, -0.85), 0.36),
                  ([(-0.006, -0.026, -0.0), (-0.021, -0.008, 0.0015), (-0.0255, 0.016, 0.003), (-0.025, 0.040, 0.0035), (-0.023, 0.058, 0.004)], 0.0105),
                  ([gw.at(0.012, 72, 0.01), (0.021, 0.028, -0.011), (0.017, 0.044, -0.015), (0.009, 0.0475, -0.019), (0.004, 0.045, -0.022)], 0.0095))
     lw = Wrap((0, -0.0005, -0.006), (0, -0.017, -0.092), (0, 1, 0), 0.0245 + 0.016, 0.0148 + 0.017)
@@ -554,7 +654,7 @@ def build_pistol():
                 [(0.036, -95, 1, 0.105, 0.0098, 0.0), (0.054, -98, 1, 0.1, 0.0096, 0.0), (0.071, -100, 1, 0.09, 0.009, 0.0), (0.087, -102, 1, 0.07, 0.0084, 0.0)],
                 [lw.at(0.03, -100, 0.0), lw.at(0.09, -105, 0.0), lw.at(0.03, -150, 0.0), lw.at(0.09, -150, 0.0),
                  lw.at(0.035, -110, 0.024), lw.at(0.085, -115, 0.024), (-0.05, -0.05, -0.02)],
-                (-0.045, -0.072, -0.068), ((-0.45, -1, -0.5), 0.36),
+                (-0.045, -0.072, -0.068), ((-0.5, -1, -0.9), 0.36),
                 ([(-0.045, -0.02, -0.035), (-0.036, 0.0, -0.02), (-0.031, 0.022, -0.017), (-0.029, 0.045, -0.016), (-0.028, 0.062, -0.016)], 0.0108),
                 side=-1)
     return finish(W, (0, -0.023, -0.004), body,
@@ -651,11 +751,11 @@ def build_rifle():
     hw = Wrap((0, 0.30, B), (0, 1, 0), (0, 0, -1), 0.0262, 0.0262)
     # Across the handguard the fingers lie one behind the other: the index the furthest forward.
     left = hand("rifle_handL", Wrap((0, 0.30, B), (0, -1, 0), (0, 0, -1), 0.0262, 0.0262),
-                [(-0.03, -45, -1, 0.062, 0.0098, 0.0), (-0.009, -45, -1, 0.064, 0.0096, 0.0), (0.012, -47, -1, 0.058, 0.009, 0.0), (0.031, -50, -1, 0.048, 0.0084, 0.0)],
+                [(-0.03, 2, 1, 0.062, 0.0098, 0.0), (-0.009, 2, 1, 0.064, 0.0096, 0.0), (0.012, 4, 1, 0.058, 0.009, 0.0), (0.031, 8, 1, 0.048, 0.0084, 0.0)],
                 [hw.at(-0.04, -10, 0.004), hw.at(0.04, -10, 0.004), hw.at(-0.04, 40, 0.004), hw.at(0.04, 40, 0.004),
                  hw.at(-0.03, 10, 0.026), hw.at(0.035, 10, 0.026), hw.at(0.0, 45, 0.02)],
                 (-0.012, 0.225, B - 0.055), ((-0.95, -1, -0.75), 0.45),
-                ([hw.at(-0.03, -40, 0.016), hw.at(0.0, -65, 0.012), hw.at(0.025, -80, 0.011), hw.at(0.048, -88, 0.011), hw.at(0.066, -92, 0.011)], 0.0108),
+                ([hw.at(-0.03, 40, 0.016), hw.at(0.0, 65, 0.012), hw.at(0.025, 80, 0.011), hw.at(0.048, 88, 0.011), hw.at(0.066, 92, 0.011)], 0.0108),
                 side=-1)
     return finish(W, (0, -0.042, 0.006), body,
                   {"mag": (mag, (0, 0.068, 0.0), {"out": (0, 0.06, -1)}), "optic": (optic, (0, 0.0, 0.0795))},
@@ -732,11 +832,11 @@ def build_shotgun():
     pw = Wrap((0, 0.39, 0.022), (0, -1, 0), (0, 0, -1), 0.0228, 0.0228 * 0.95)
     hw = Wrap((0, 0.39, 0.022), (0, 1, 0), (0, 0, -1), 0.0228, 0.0228)
     left = hand("shotgun_handL", pw,
-                [(-0.03, -45, -1, 0.062, 0.0098, 0.0), (-0.009, -45, -1, 0.064, 0.0096, 0.0), (0.012, -47, -1, 0.058, 0.009, 0.0), (0.031, -50, -1, 0.048, 0.0084, 0.0)],
+                [(-0.03, 2, 1, 0.062, 0.0098, 0.0), (-0.009, 2, 1, 0.064, 0.0096, 0.0), (0.012, 4, 1, 0.058, 0.009, 0.0), (0.031, 8, 1, 0.048, 0.0084, 0.0)],
                 [hw.at(-0.04, -10, 0.004), hw.at(0.04, -10, 0.004), hw.at(-0.04, 40, 0.004), hw.at(0.04, 40, 0.004),
                  hw.at(-0.03, 10, 0.026), hw.at(0.035, 10, 0.026), hw.at(0.0, 45, 0.02)],
                 (-0.012, 0.315, 0.022 - 0.055), ((-0.95, -1, -0.75), 0.45),
-                ([hw.at(-0.03, -40, 0.016), hw.at(0.0, -65, 0.012), hw.at(0.025, -80, 0.011), hw.at(0.048, -88, 0.011), hw.at(0.066, -92, 0.011)], 0.0108),
+                ([hw.at(-0.03, 40, 0.016), hw.at(0.0, 65, 0.012), hw.at(0.025, 80, 0.011), hw.at(0.048, 88, 0.011), hw.at(0.066, 92, 0.011)], 0.0108),
                 side=-1)
     sh = join("shotgun_shell", shell)
     for p in sh.data.polygons:
@@ -810,11 +910,11 @@ def build_sniper():
     pw = Wrap((0, 0.28, fz), (0, -1, 0), (0, 0, -1), 0.019, 0.0185)
     hw = Wrap((0, 0.28, fz), (0, 1, 0), (0, 0, -1), 0.019, 0.0185)
     left = hand("sniper_handL", pw,
-                [(-0.03, -45, -1, 0.062, 0.0098, 0.0), (-0.009, -45, -1, 0.064, 0.0096, 0.0), (0.012, -47, -1, 0.058, 0.009, 0.0), (0.031, -50, -1, 0.048, 0.0084, 0.0)],
+                [(-0.03, 2, 1, 0.062, 0.0098, 0.0), (-0.009, 2, 1, 0.064, 0.0096, 0.0), (0.012, 4, 1, 0.058, 0.009, 0.0), (0.031, 8, 1, 0.048, 0.0084, 0.0)],
                 [hw.at(-0.04, -10, 0.004), hw.at(0.04, -10, 0.004), hw.at(-0.04, 40, 0.004), hw.at(0.04, 40, 0.004),
                  hw.at(-0.03, 10, 0.026), hw.at(0.035, 10, 0.026), hw.at(0.0, 45, 0.02)],
                 (-0.012, 0.205, fz - 0.052), ((-0.95, -1, -0.75), 0.45),
-                ([hw.at(-0.03, -40, 0.016), hw.at(0.0, -65, 0.012), hw.at(0.025, -80, 0.011), hw.at(0.048, -88, 0.011), hw.at(0.066, -92, 0.011)], 0.0108),
+                ([hw.at(-0.03, 40, 0.016), hw.at(0.0, 65, 0.012), hw.at(0.025, 80, 0.011), hw.at(0.048, 88, 0.011), hw.at(0.066, 92, 0.011)], 0.0108),
                 side=-1)
     return finish(W, (0, -0.046, 0.004), body,
                   {"bolt": (bolt, (0, -0.06, B), {"knob": (0.04, -0.066, B - 0.02)}), "mag": (mag, (0, 0.052, 0.0), {"out": (0, 0.0, -1)})},
@@ -958,6 +1058,7 @@ def bake_shade():
             me.color_attributes.render_color_index = me.color_attributes.find("shade")
 
 
+drop_arms()
 bake_shade()
 
 bpy.ops.object.select_all(action="SELECT")
@@ -1084,8 +1185,6 @@ if PREVIEW:
             bpy.ops.render.render(write_still=True)
         # The hands alone, close, in clay: from the shooter's side and from the left.
         hands = [c for c in roots[w].children_recursive if c.type == "MESH" and "_hand" in c.name]
-        for c in roots[w].children_recursive:
-            c.hide_render = c not in hands
         kept = [(h, [slot.material for slot in h.material_slots]) for h in hands]
         for h, _ in kept:
             for slot in h.material_slots:
@@ -1094,12 +1193,16 @@ if PREVIEW:
             # The hand itself: what lies within 13 cm of the wrist (the object's own origin), not the sleeve behind it.
             near = [h.matrix_world @ v.co for v in h.data.vertices if v.co.length < 0.13]
             centre = sum(near, Vector()) / max(1, len(near))
-            for label, off in (("back", Vector((-0.03, -0.24, 0.2))), ("side", Vector((-0.34, -0.04, 0.08))), ("front", Vector((0.1, 0.3, 0.12)))):
+            for other in hands:
+                other.hide_render = other is not h
+            for label, off in (("back", Vector((-0.04, -0.5, 0.3))), ("left", Vector((-0.6, -0.05, 0.1))), ("right", Vector((0.6, -0.05, 0.1))),
+                               ("front", Vector((0.1, 0.55, 0.15))), ("under", Vector((-0.1, -0.1, -0.6)))):
                 cam.location = centre + off
                 cam.rotation_euler = (centre - cam.location).to_track_quat("-Z", "Y").to_euler()
-                cam.data.lens = 50
+                cam.data.lens = 85
                 scene.render.filepath = os.path.join(PREVIEW, f"{h.name}_{label}.png")
                 bpy.ops.render.render(write_still=True)
         for h, mats in kept:
+            h.hide_render = False
             for slot, m in zip(h.material_slots, mats):
                 slot.material = m
