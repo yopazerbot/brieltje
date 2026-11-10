@@ -41,6 +41,9 @@ import { Leaderboard } from './ui/leaderboard';
 import { Minimap, type Blip } from './ui/minimap';
 import { ASK_AFTER, FeedbackCard } from './ui/feedback';
 import { HomeCodeCard } from './ui/homeCode';
+import { LoadoutCard } from './ui/loadout';
+import { gunPicture } from './ui/gunPictures';
+import { cleanPick, LOADOUT, startingWeapons } from '../shared/loadout.mjs';
 import { HomeLocks } from './world/homeLocks';
 import { barrierHeights, findHome, homeAt, inEndGarden } from '../shared/homes.mjs';
 import { ControlsCard } from './ui/controlsCard';
@@ -1117,8 +1120,10 @@ menu.onSpeed = (v) => (player.walkSpeed = me ? REAL_WALK : v);
 weapon.setEnabled(menu.playing !== 'explore');
 setPaintball(menu.playing === 'paintball');
 menu.onPlayMode = (play) => {
+  const armed = weapon.enabled;
   weapon.setEnabled(play !== 'explore');
   setPaintball(play === 'paintball');
+  if (!armed && weapon.enabled && playBegan) setTimeout(offerGuns, 400); // into Action or Paintball from Explore: choose your guns (once the menu is closed)
   combat.setActive((!!me || !!solo) && play !== 'explore'); // health shows together, and in a Zombies game alone
 };
 
@@ -1982,6 +1987,7 @@ function fire(): void {
   if (!shot) return;
   player.pitch += shot.pitch;
   player.yaw += shot.yaw;
+  unfired = false; // your choice of guns is fixed until you come into play again
   // Smoke at the muzzle: from every shot of the big guns, now and then from the others (not paint guns).
   if (!paintball.on && !shot.rocket && (weapon.current === 'shotgun' || weapon.current === 'sniper' || Math.random() < 0.3)) effects.muzzleSmoke(weapon.muzzlePoint());
   rumble(weapon.current === 'pistol' ? 0.25 : 0.6, 0.6, weapon.current === 'rifle' ? 50 : 90);
@@ -1992,6 +1998,40 @@ function fire(): void {
 /** The bazooka is the admin's, and anyone's playing alone. */
 function adminWeapons(): WeaponId[] {
   return !me || me.role === 'admin' ? ['bazooka'] : [];
+}
+
+// The guns you chose to start with (shared/loadout.mjs, the picker: ui/loadout.ts), kept on this device.
+let myPick: string[] = LOADOUT.first;
+try {
+  const kept = localStorage.getItem('briel.loadout');
+  if (kept !== null) myPick = cleanPick(JSON.parse(kept));
+} catch {
+  // no storage, or not a list: the first choice
+}
+/** Not fired since you came into play: a new choice of guns still counts at once (the server has the same rule). */
+let unfired = true;
+/** The guns you come into play with, besides the pistol: yours and the admin's; none in the Zombies game. */
+function startGuns(): WeaponId[] {
+  return startingWeapons(myPick, adminWeapons(), games.zombies).filter((w) => w !== 'pistol') as WeaponId[];
+}
+const loadoutCard = new LoadoutCard();
+loadoutCard.picture = (w) => gunPicture(renderer, scene.environment, w);
+loadoutCard.onDone = (pick, click) => {
+  myPick = pick;
+  try {
+    localStorage.setItem('briel.loadout', JSON.stringify(pick));
+  } catch {
+    // no storage: the choice lasts this visit
+  }
+  // Together the server hands the guns out (and answers with them, 'weapons'); alone it is the same rule here.
+  if (net.connected) net.send({ t: 'loadout', w: pick });
+  else if (unfired && !games.zombies) weapon.setOwned(startGuns());
+  if (click && !menu.open && menu.mode === 'kbm') lockMouse();
+};
+/** The picker, when you come into Action or Paintball; not in the Zombies game (pistol only, the rest is found). */
+function offerGuns(): void {
+  if (!weapon.enabled || games.zombies || startIntent.zombies !== null || menu.onStartScreen || menu.open) return;
+  loadoutCard.show(myPick, menu.mode === 'pad');
 }
 
 /** Get in: alone right away; in multiplayer once the server says the car is yours. Not during the Zombies game (the server refuses too). */
@@ -2080,7 +2120,8 @@ function respawnAt(i: number, at?: { x?: number; z?: number; y?: number; fx?: nu
   player.down = 0;
   player.update(0, NO_INPUT, camera);
   combat.respawned();
-  weapon.resetLoadout(adminWeapons());
+  weapon.resetLoadout(startGuns());
+  unfired = true;
   grenades.refill();
 }
 
@@ -2350,6 +2391,7 @@ net.onMessage = (m: ServerMsg) => {
     case 'welcome':
       // Started somewhere else than the street: the server moves us there before our first update.
       welcomed = true;
+      net.send({ t: 'loadout', w: myPick }); // the guns you chose, for when you come into play
       netClock.reset(); // perhaps a restarted server, with a clock of its own
       if (spawnPending === 'home') {
         // The house's start by parachute: only while still near it (not after walking off alone first).
@@ -2421,6 +2463,9 @@ net.onMessage = (m: ServerMsg) => {
       if (notice) chat.system(notice);
       break;
     }
+    case 'weapons':
+      weapon.setOwned(m.list); // the guns the server has for you (after your choice)
+      break;
     case 'mode':
       followGame(m.mode);
       applyRules(rules); // names over heads off during hide and seek, back on after
@@ -2615,7 +2660,8 @@ net.onMessage = (m: ServerMsg) => {
           player.update(0, NO_INPUT, camera);
         }
         combat.respawned(m.hp);
-        weapon.resetLoadout(adminWeapons()); // as the server has it: what you picked up stayed where you fell
+        weapon.resetLoadout(startGuns()); // as the server has it: what you picked up stayed where you fell
+        unfired = true;
       } else avatars.revive(m.name);
       if (helping?.name === m.name) helping = null;
       break;
@@ -2902,7 +2948,7 @@ document.addEventListener('pointerlockchange', () => {
   // the menu opening), the menu is open already and stays on its tab. Not just after the menu closed:
   // the Esc that closed it can still take back the capture asked for on closing, and the menu (on
   // the map) came straight back, as if Esc didn't close the map (Yoshi). The click hint shows then.
-  if (!document.pointerLockElement && menu.mode === 'kbm' && !menu.open && !chat.typing && !feedback.open && !homeCard.open && performance.now() - resumedAt > 800) openMenu();
+  if (!document.pointerLockElement && menu.mode === 'kbm' && !menu.open && !chat.typing && !feedback.open && !homeCard.open && !loadoutCard.open && performance.now() - loadoutCard.closedAt > 800 && performance.now() - resumedAt > 800) openMenu();
 });
 
 window.addEventListener('resize', resize);
@@ -2922,6 +2968,9 @@ let shake = 0;
 let flyHint = 0; // seconds the flying controls still show after taking off
 let edgeHint = 0; // seconds "you can't go further" still shows after pushing against the edge of the game
 let calmHint = 0; // seconds "no shooting here" still shows on the school grounds
+let loadPadX = 0; // the controller's stick on the weapon picker
+let loadPadY = 0;
+let wasZombies = false;
 let homePadX = 0; // the controller's stick on the home card, as padStick is on the feedback card
 let homePadY = 0;
 let lockKey: 'prompt.locked' | 'prompt.multiplayerOnly' = 'prompt.locked'; // what the hint says: a home is locked, or only in multiplayer (a pane of no home alone)
@@ -2963,7 +3012,7 @@ renderer.setAnimationLoop((now: number) => {
   last = now;
   const polled = input.poll();
   // The feedback card takes the keys while it shows, and for a moment after (its Esc isn't the menu's).
-  const card = feedback.open || homeCard.open || now - Math.max(feedback.closedAt, homeCard.closedAt) < 250;
+  const card = feedback.open || homeCard.open || loadoutCard.open || now - Math.max(feedback.closedAt, homeCard.closedAt, loadoutCard.closedAt) < 250;
   const frame = card ? { ...NO_INPUT } : polled;
   if (feedback.open && menu.mode === 'pad') {
     // A controller: the stick picks the stars, ✕ sends, ○ or Options closes.
@@ -2986,6 +3035,22 @@ renderer.setAnimationLoop((now: number) => {
     else if (polled.deletePressed) homeCard.padBack();
     else if (polled.menuPressed) homeCard.close(false);
   }
+  // The weapon picker with a controller: the stick or D-pad moves, the south button picks (or plays), east or Options plays.
+  if (loadoutCard.open && menu.mode === 'pad') {
+    const sx = Math.abs(polled.moveX) > 0.6 ? Math.sign(polled.moveX) : 0;
+    const sy = Math.abs(polled.moveY) > 0.6 ? -Math.sign(polled.moveY) : 0;
+    loadoutCard.padMove((sx !== loadPadX ? sx : 0) + Math.sign(polled.speedStep), (sy !== loadPadY ? sy : 0) - Math.sign(polled.weaponCycle));
+    loadPadX = sx;
+    loadPadY = sy;
+    if (polled.confirmPressed) loadoutCard.padPress();
+    else if (polled.deletePressed || polled.menuPressed) loadoutCard.close(false);
+  }
+  // The Zombies game begins (alone or together): down to the pistol, the picker away. The rest is found on the map.
+  if (games.zombies && !wasZombies) {
+    loadoutCard.close(false);
+    weapon.resetLoadout([]);
+  }
+  wasZombies = games.zombies;
   // The controls card shown at the start: a click or ✕ closes it and does nothing else (no shot,
   // no jump); opening the menu closes it too, unless the menu opened it.
   if (controlsCard.open && !controlsCard.fromMenu) {
@@ -3633,7 +3698,12 @@ void playing.then(() => {
 });
 /** When play began (ms, the page's clock); 0 before. Work that can wait is kept out of its first seconds. */
 let playBegan = 0;
-void playing.then(() => (playBegan = performance.now()));
+void playing.then(() => {
+  playBegan = performance.now();
+  // Your guns from the start, and the picker to change them (Action and Paintball, alone or together).
+  if (!net.connected && !games.zombies) weapon.setOwned(startGuns());
+  offerGuns();
+});
 // The leaf cards' pictures are painted once play has begun, when the preset asks for them (world/leafCards.ts).
 void playing.then(() => treesMayPaint((textures) => {
   for (const t of textures) renderer.initTexture(t);
@@ -4193,6 +4263,7 @@ if (import.meta.env.DEV) {
       homeLocks,
       insides,
       homeCard,
+      loadoutCard,
       fire,
       /** One frame of input, e.g. { jumpPressed: true } or { usePressed: true }. */
       press(partial: Partial<typeof NO_INPUT>, seconds = 1 / 60) {

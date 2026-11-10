@@ -199,6 +199,7 @@ export class Modes {
       // come in through a broken one).
       const arena = arenaOf(place);
       this.game.gather(names, arena); // everyone at the place, on the ground: no parachute in Zombies (the first wave comes after 8 s)
+      this.game.pistolsOnly?.(); // and with the pistol only: the other guns are found on the map
       this.game.roundOver = null;
       this.game.broken.clear();
       this.game.broadcast({ t: 'repair', by, quiet: true });

@@ -830,6 +830,15 @@ export class Weapon {
     this.refill();
   }
 
+  /**
+   * The guns you carry are these now, with the pistol (as the server has them, or as you chose alone): the
+   * gun in your hands stays if it is among them, the magazines as they were.
+   */
+  setOwned(list: string[]): void {
+    this.owned = new Set<WeaponId>(['pistol', ...list.filter((w): w is WeaponId => w in SPECS)]);
+    if (!this.owned.has(this.current)) this.select('pistol');
+  }
+
   /** The admin's weapons: carried by the admin and when playing alone, by nobody else. */
   setAdminWeapons(on: boolean): void {
     for (const w of WEAPON_IDS.filter((id) => SPECS[id].admin)) {

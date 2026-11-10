@@ -42,6 +42,7 @@ import { HomeGate } from './homeGate.mjs';
 import { noShoot } from '../shared/zones.mjs';
 import { boxesOverlap, boxPoints, clearOfPortals, makeIndoors, makeSolids } from '../shared/parking.mjs';
 import { bikeFields, bruteEntry, carFields, horseFields, playerFields, PROTO, TICK_MS } from '../shared/wire.mjs';
+import { cleanPick, LOADOUT, startingWeapons } from '../shared/loadout.mjs';
 import { houseAreas, makeNav, MAX_ADMIN_WAVE } from '../shared/zombies.mjs';
 import { cycleTime, DEFAULT_CHOICE, isChoice, newCycle, runOf, seasonCycle, skipCycle, SPEEDS, winterAt, withSpeed } from '../shared/moods.mjs';
 import { arenaEdge, arenaHome, arenaSpots, ARENAS, portalOf, villageGround } from '../shared/arenas.mjs';
@@ -259,7 +260,11 @@ const SPAWN_CHARACTERS = 2;
 const ruleOk = (k, v) => (k === 'maxPlayers' ? Number.isInteger(v) && v >= 2 && v <= MAX_PLAYERS : typeof v === 'boolean');
 /** Weapons only the admin carries (the bazooka), on top of the pistol everyone starts with. */
 const ADMIN_WEAPONS = Object.keys(WEAPONS).filter((w) => WEAPONS[w].admin);
-const loadout = (role) => new Set(['pistol', ...(role === 'admin' ? ADMIN_WEAPONS : [])]);
+/**
+ * The guns a player has coming into play (shared/loadout.mjs): the pistol, the admin's, and the ones they chose
+ * (`p.pick`; the first rifle for who never chose). In the Zombies game the pistol only: the rest is found.
+ */
+const loadout = (p, zombies = false) => new Set(startingWeapons(p.pick ?? LOADOUT.first, p.role === 'admin' ? ADMIN_WEAPONS : [], zombies));
 const PICKUP_MS = 20000; // a taken weapon comes back after this
 const HEALTH = 100;
 const POINTS = { kill: 100, headshot: 50 };
@@ -492,7 +497,7 @@ export class Game {
       // The browser that joined (its guest cookie's id, kept with the session): what a kick keeps out
       // (server/auth.mjs). Never the cookie this connection happens to carry: that one proves nothing.
       device: session.device ?? null,
-      score, hp: HEALTH, alive: true, respawnAt: 0, protectedUntil: now + PROTECT_MS, nextHit: 0, weapons: loadout(session.role), joinTime: now, spawned: false,
+      score, hp: HEALTH, alive: true, respawnAt: 0, protectedUntil: now + PROTECT_MS, nextHit: 0, weapons: loadout({ role: session.role }, !!this.modes.zombies), unfired: true, joinTime: now, spawned: false,
       nades: Array(GRENADE.carry).fill(0), thrown: [],
       // The ticks: which the page reads, when its state was taken (`stamp`, the server's clock), whether
       // it sent one since the last tick, a counter of the server's moves (respawn, portal), the state
@@ -616,7 +621,8 @@ export class Game {
     this.releaseHorse(targetName);
     this.releaseBike(targetName);
     target.score.deaths++;
-    target.weapons = loadout(target.role); // dropped what they picked up
+    target.weapons = loadout(target, !!this.modes.zombies); // dropped what they picked up
+    target.unfired = true;
     this.broadcast({ t: 'kill', killer: by, victim: targetName, head: false, w: by === 'a strongman' ? 'strongman' : 'zombie' });
     this.stats(targetName, { deaths: 1 });
     this.broadcast({ t: 'scores', list: this.scoreList() });
@@ -874,6 +880,7 @@ export class Game {
       const w = player.weapons.has(m.w) ? m.w : 'pistol';
       if (!player.alive || !player.state?.armed || this.inCar(name) || now < (player.nextShot || 0)) return;
       player.nextShot = now + WEAPONS[w].delay * 700;
+      player.unfired = false; // the choice of guns is fixed now, until they come into play again
       // `tx, ty, tz`: where a tracer goes (the rifle's every third shot, the sniper rifle's each), only for the
       // others' picture. Three numbers held to the map, and to this gun's reach from where the server has the
       // shooter: a page can't draw a streak across the village. Only the two guns that have tracers.
@@ -882,6 +889,20 @@ export class Game {
         ? { tx: num(m.tx, AREA.x0, AREA.x1), ty: num(m.ty, -20, 200), tz: num(m.tz, AREA.z0, AREA.z1) } : null;
       const shown = tracer && Math.hypot(tracer.tx - s.x, tracer.ty - s.y, tracer.tz - s.z) <= TRACER_REACH ? tracer : null;
       this.broadcast({ t: 'shot', name, w, ...where(m), ...shown }, name);
+    } else if (m.t === 'loadout') {
+      // The guns a player chooses to start with (shared/loadout.mjs, the page's picker). Whatever is sent, only
+      // the known guns, each once, two at most (cleanPick); twice a second at most. It counts the next time they
+      // come into play, and at once only while they haven't fired since they came in: a page can't swap guns in
+      // the middle of a fight, nor get more than the pistol and two. Never in the Zombies game (pistol only).
+      // The answer goes to this player alone: the guns the server has for them now.
+      if (now < (player.nextLoadout || 0)) return;
+      player.nextLoadout = now + 500;
+      player.pick = cleanPick(m.w);
+      if (player.alive && player.unfired && !this.modes.zombies) {
+        player.weapons = loadout(player);
+        if (player.state && !player.weapons.has(player.state.w)) player.state.w = 'pistol';
+      }
+      this.send(player.ws, { t: 'weapons', list: [...player.weapons], pick: player.pick });
     } else if (m.t === 'furn') {
       if (now < (player.nextFurn || 0)) return;
       player.nextFurn = now + 400; // each one a database write
@@ -1808,6 +1829,14 @@ export class Game {
     this.damage(name, shooter, targetName, target, body * spec.body + head * spec.head, head > 0, w, now);
   }
 
+  /** The Zombies game begins: everyone down to the pistol, whatever they chose or carried (the rest is found on the map). */
+  pistolsOnly() {
+    for (const p of this.players.values()) {
+      p.weapons = loadout(p, true);
+      if (p.state) p.state.w = 'pistol';
+    }
+  }
+
   /**
    * Bazooka: the rocket flies from the shooter to where they aimed (`tx, ty, tz`) and the server
    * sets off the blast when it arrives, hurting everyone near it by distance (walls do not
@@ -1820,6 +1849,7 @@ export class Game {
     if (this.calm(shooter)) return;
     if (now < (shooter.nextRocket || 0)) return;
     shooter.nextRocket = now + spec.reload * 800; // one rocket per load, with room for network jitter
+    shooter.unfired = false;
     shooter.protectedUntil = 0;
     const s = shooter.state;
     const from = { x: s.x, y: s.y + 1.5, z: s.z };
@@ -1981,7 +2011,8 @@ export class Game {
     target.score.deaths++;
     shooter.score.kills++;
     shooter.score.points += POINTS.kill + (head ? POINTS.headshot : 0);
-    target.weapons = loadout(target.role); // dropped what they picked up
+    target.weapons = loadout(target, !!this.modes.zombies); // dropped what they picked up
+    target.unfired = true;
     this.broadcast({ t: 'kill', killer: name, victim: targetName, head, w });
     this.stats(name, { kills: 1, headshots: head ? 1 : 0 });
     this.stats(targetName, { deaths: 1 });
@@ -2005,7 +2036,8 @@ export class Game {
     this.releaseBike(name);
     p.hp = HEALTH;
     p.alive = true;
-    p.weapons = loadout(p.role);
+    p.weapons = loadout(p, !!this.modes.zombies);
+    p.unfired = true; // may still change their choice of guns, until they fire
     p.nades.fill(0);
     p.protectedUntil = now + PROTECT_MS;
     let spawn = at?.spawn;

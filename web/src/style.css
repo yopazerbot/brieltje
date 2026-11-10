@@ -1359,6 +1359,53 @@ html:lang(nl) #touch .t-reload, html:lang(nl) #touch .t-nade { font-size: 9px; l
   background: var(--dusk); border-radius: var(--r-panel); box-shadow: 0 24px 60px rgba(0, 0, 0, 0.5), inset 0 1px 0 rgba(255, 255, 255, 0.05);
 }
 #home-code.hidden { display: none; }
+/* The weapon picker (ui/loadout.ts): three guns side by side, each a picture, a name and three bars; one column on a narrow phone. */
+#loadout {
+  position: fixed; z-index: 40; left: 50%; top: 50%; transform: translate(-50%, -50%);
+  width: min(760px, calc(100vw - 24px)); max-height: calc(100vh - 16px); overflow-y: auto; padding: 24px 24px 20px; color: var(--ink); text-align: center;
+  background: var(--dusk); border-radius: var(--r-panel); box-shadow: 0 24px 60px rgba(0, 0, 0, 0.5), inset 0 1px 0 rgba(255, 255, 255, 0.05);
+}
+#loadout.hidden, #loadout .hidden { display: none; }
+#loadout h2 { margin: 0 0 4px; font-size: 26px; font-weight: 800; line-height: 1.2; }
+#loadout .lo-sub { margin: 0 0 16px; font-size: 15px; line-height: 1.4; color: var(--ink-soft); }
+#loadout .lo-guns { display: grid; grid-template-columns: repeat(3, 1fr); gap: 12px; }
+#loadout .lo-gun {
+  position: relative; display: flex; flex-direction: column; align-items: stretch; gap: 8px; padding: 12px 12px 14px; border: 2px solid transparent; border-radius: 14px;
+  font: inherit; color: var(--ink); text-align: left; background: var(--dusk-raised); cursor: pointer; transition: border-color 0.12s, background 0.12s, transform 0.12s;
+}
+#loadout .lo-gun:hover { background: var(--dusk-high); }
+#loadout .lo-gun.on { border-color: var(--lamp); background: var(--dusk-high); }
+#loadout .lo-gun.at { outline: 3px solid var(--ink); outline-offset: 2px; }
+#loadout .lo-gun img { display: block; width: 100%; aspect-ratio: 2 / 1; object-fit: contain; filter: drop-shadow(0 6px 10px rgba(0, 0, 0, 0.45)); opacity: 0.75; transition: opacity 0.12s; }
+#loadout .lo-gun.on img, #loadout .lo-gun:hover img { opacity: 1; }
+#loadout .lo-gun b { font-size: 18px; font-weight: 800; }
+#loadout .lo-key { position: absolute; left: 10px; top: 8px; font-size: 12px; font-weight: 700; color: var(--ink-soft); }
+#loadout.pad .lo-key, body.touch #loadout .lo-key { display: none; }
+#loadout .lo-tick {
+  position: absolute; right: 10px; top: 8px; width: 22px; height: 22px; border-radius: 50%; font-size: 14px; font-weight: 800; line-height: 22px; text-align: center;
+  color: var(--dusk); background: var(--lamp); opacity: 0; transform: scale(0.6); transition: opacity 0.12s, transform 0.12s;
+}
+#loadout .lo-gun.on .lo-tick { opacity: 1; transform: none; }
+#loadout .lo-bars { display: grid; grid-template-columns: auto 1fr; align-items: center; gap: 5px 8px; font-size: 12.5px; color: var(--ink-soft); }
+#loadout .lo-bars > i { display: block; height: 5px; border-radius: 3px; background: rgba(255, 255, 255, 0.12); overflow: hidden; }
+#loadout .lo-bars > i > i { display: block; height: 100%; border-radius: 3px; background: var(--lamp); }
+#loadout .lo-note { margin: 14px 0 4px; font-size: 13.5px; line-height: 1.4; color: var(--ink-soft); }
+#loadout .lo-hint { margin: 2px 0 0; font-size: 13px; color: var(--ink-soft); }
+#loadout .lo-go { margin-top: 12px; min-width: 180px; min-height: 46px; padding: 12px 28px; border: 0; border-radius: 12px; font: 800 17px/1 var(--font); color: var(--dusk); background: var(--lamp); cursor: pointer; }
+#loadout .lo-go:hover { filter: brightness(1.06); }
+#loadout .lo-go.at { outline: 3px solid var(--ink); outline-offset: 2px; }
+@media (max-width: 560px), (max-height: 430px) {
+  #loadout { padding: 14px 14px 12px; }
+  #loadout h2 { font-size: 20px; }
+  #loadout .lo-sub { margin-bottom: 10px; font-size: 13.5px; }
+  #loadout .lo-guns { gap: 8px; }
+  #loadout .lo-gun { padding: 8px 8px 10px; gap: 5px; }
+  #loadout .lo-gun b { font-size: 15px; }
+  #loadout .lo-bars { font-size: 11px; gap: 3px 6px; }
+  #loadout .lo-note { margin-top: 8px; font-size: 12px; }
+  #loadout .lo-go { margin-top: 8px; }
+}
+@media (max-width: 420px) { #loadout .lo-bars > span { display: none; } #loadout .lo-bars { grid-template-columns: 1fr; } }
 #home-code h2 { margin: 0 0 6px; font-size: 24px; font-weight: 800; line-height: 1.2; }
 #home-code .hc-sub { margin: 0 0 14px; font-size: 15px; line-height: 1.4; color: var(--ink-soft); }
 #home-code input {
