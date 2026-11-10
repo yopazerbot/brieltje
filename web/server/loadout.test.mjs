@@ -16,10 +16,10 @@ function setup() {
   const player = (name, role = 'player') => {
     const now = Date.now();
     const p = {
-      ws: { name }, key: `k-${name}`, role, alive: true, protectedUntil: 0, drop: null, warp: 0, stamp: 0, unfired: true,
+      ws: { name }, key: `k-${name}`, role, alive: true, protectedUntil: 0, drop: null, warp: 0, stamp: 0, unfired: true, cameAt: now,
       state: { x: 5, y: 0, z: 5, yaw: 0, pitch: 0, armed: true, flying: false, w: 'pistol', c: false },
       weapons: new Set(['pistol']), nades: [0, 0], window: now, msgs: 0, states: 0, others: 0, budget: 0.5, vbudget: 0.5, movedAt: now,
-      hp: 100, score: { kills: 0, deaths: 0, points: 0 },
+      hp: 100, score: { kills: 0, deaths: 0, points: 0 }, thrown: [],
     };
     game.players.set(name, p);
     return p;
@@ -79,6 +79,30 @@ test('once fired the choice waits for the next time they come into play', () => 
   game.respawn('anna', anna, Date.now());
   assert.deepEqual([...anna.weapons], ['pistol', 'sniper', 'shotgun']);
   assert.equal(anna.unfired, true);
+});
+
+test('a hit, a throw or half a minute end the swap as a shot does: a page that leaves its shots unsaid gains nothing', () => {
+  const { game, player, choose } = setup();
+  const anna = player('anna');
+  const bert = player('bert');
+  choose('anna', anna, ['rifle']);
+  anna.state.w = 'rifle';
+  // A hit claimed without any 'shot' before it.
+  game.handle('anna', anna, JSON.stringify({ t: 'hit', target: 'bert', w: 'rifle', body: 1, head: 0 }));
+  assert.ok(bert.hp < 100, 'the hit counted');
+  assert.equal(anna.unfired, false);
+  choose('anna', anna, ['sniper', 'shotgun']);
+  assert.deepEqual([...anna.weapons], ['pistol', 'rifle']);
+  // A throw.
+  const cara = player('cara');
+  game.handle('cara', cara, JSON.stringify({ t: 'nade', x: 5, y: 1.5, z: 5, vx: 1, vy: 1, vz: 1 }));
+  assert.equal(cara.unfired, false);
+  // Standing about for more than half a minute.
+  const dirk = player('dirk');
+  dirk.cameAt = Date.now() - 31000;
+  choose('dirk', dirk, ['sniper']);
+  assert.deepEqual([...dirk.weapons], ['pistol']);
+  assert.deepEqual(dirk.pick, ['sniper'], 'kept for the next time they come into play');
 });
 
 test('twice a second at most', () => {

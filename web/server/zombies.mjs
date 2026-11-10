@@ -476,6 +476,7 @@ export class ZombieGame {
     }
     p.nextZombie = now + spec.delay * 700; // 70% of the fire delay, for network jitter (as for hits on players)
     p.protectedUntil = 0; // shooting ends your own spawn protection
+    p.unfired = false; // and the time a new choice of guns counts at once (game.mjs, 'loadout')
     let downs = 0;
     for (const h of hits) if (this.damage(h.id, h.amount, name, w, now, pierce > 1 && downs === 1)) downs++;
   }

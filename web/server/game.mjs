@@ -266,6 +266,7 @@ const ADMIN_WEAPONS = Object.keys(WEAPONS).filter((w) => WEAPONS[w].admin);
  */
 const loadout = (p, zombies = false) => new Set(startingWeapons(p.pick ?? LOADOUT.first, p.role === 'admin' ? ADMIN_WEAPONS : [], zombies));
 const PICKUP_MS = 20000; // a taken weapon comes back after this
+const LOADOUT_MS = 30000; // a new choice of guns counts at once only this long after coming into play (and not once they fought)
 const HEALTH = 100;
 const POINTS = { kill: 100, headshot: 50 };
 const KILL_LIMIT = 10; // first to this many kills wins the round
@@ -497,7 +498,7 @@ export class Game {
       // The browser that joined (its guest cookie's id, kept with the session): what a kick keeps out
       // (server/auth.mjs). Never the cookie this connection happens to carry: that one proves nothing.
       device: session.device ?? null,
-      score, hp: HEALTH, alive: true, respawnAt: 0, protectedUntil: now + PROTECT_MS, nextHit: 0, weapons: loadout({ role: session.role }, !!this.modes.zombies), unfired: true, joinTime: now, spawned: false,
+      score, hp: HEALTH, alive: true, respawnAt: 0, protectedUntil: now + PROTECT_MS, nextHit: 0, weapons: loadout({ role: session.role }, !!this.modes.zombies), unfired: true, cameAt: now, joinTime: now, spawned: false,
       nades: Array(GRENADE.carry).fill(0), thrown: [],
       // The ticks: which the page reads, when its state was taken (`stamp`, the server's clock), whether
       // it sent one since the last tick, a counter of the server's moves (respawn, portal), the state
@@ -894,11 +895,13 @@ export class Game {
       // the known guns, each once, two at most (cleanPick); twice a second at most. It counts the next time they
       // come into play, and at once only while they haven't fired since they came in: a page can't swap guns in
       // the middle of a fight, nor get more than the pistol and two. Never in the Zombies game (pistol only).
+      // `unfired` ends with anything the server takes as fighting (a shot, a hit, a rocket, a throw), so a page
+      // that leaves its shots unsaid gains nothing; and LOADOUT_MS after coming in it ends whatever happened.
       // The answer goes to this player alone: the guns the server has for them now.
       if (now < (player.nextLoadout || 0)) return;
       player.nextLoadout = now + 500;
       player.pick = cleanPick(m.w);
-      if (player.alive && player.unfired && !this.modes.zombies) {
+      if (player.alive && player.unfired && now - (player.cameAt ?? 0) < LOADOUT_MS && !this.modes.zombies) {
         player.weapons = loadout(player);
         if (player.state && !player.weapons.has(player.state.w)) player.state.w = 'pistol';
       }
@@ -944,6 +947,7 @@ export class Game {
       if (this.calm(player)) return;
       if (now < (player.nextBrute || 0)) return;
       player.nextBrute = now + (WEAPONS[w]?.delay ?? 0.1) * 800;
+      player.unfired = false;
       this.hurtBrute(c, name, bruteDamage(w, WEAPONS), w, now);
     } else if (m.t === 'clownhit' && this.clowns.has(m.id)) {
       // Like the cats: no points, at most one every 300 ms per player.
@@ -1826,6 +1830,7 @@ export class Game {
     if (this.calm(shooter) || this.calm(target)) return; // nobody shoots on the school grounds, in or out
     shooter.nextHit = now + spec.delay * 700; // 70% of the fire delay, for network jitter
     shooter.protectedUntil = 0; // shooting ends your own spawn protection
+    shooter.unfired = false; // a hit counts as firing, whether the page said 'shot' or not: no more swapping guns
     this.damage(name, shooter, targetName, target, body * spec.body + head * spec.head, head > 0, w, now);
   }
 
@@ -1877,6 +1882,7 @@ export class Game {
     if (slot < 0) return;
     p.nades[slot] = now + (GRENADE.back - 0.5) * 1000; // half a second early, for network jitter
     p.protectedUntil = 0;
+    p.unfired = false; // a throw too
     const s = p.state;
     let from = where(m);
     if (Math.hypot(from.x - s.x, from.y - s.y - 1.5, from.z - s.z) > 3) from = { x: s.x, y: s.y + 1.5, z: s.z };
@@ -2037,7 +2043,8 @@ export class Game {
     p.hp = HEALTH;
     p.alive = true;
     p.weapons = loadout(p, !!this.modes.zombies);
-    p.unfired = true; // may still change their choice of guns, until they fire
+    p.unfired = true; // may still change their choice of guns, until they fight (or LOADOUT_MS)
+    p.cameAt = now;
     p.nades.fill(0);
     p.protectedUntil = now + PROTECT_MS;
     let spawn = at?.spawn;
