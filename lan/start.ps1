@@ -347,5 +347,5 @@ try {
   docker compose -f $compose stop
   $script:token = $null
   $script:password = $null
-  Write-Host 'Stopped. Tonight''s players and scores are kept for next time (a new evening starts with the server).'
+  Write-Host 'Stopped. Accounts and rules are kept for next time. Tonight''s scores start fresh.'
 }

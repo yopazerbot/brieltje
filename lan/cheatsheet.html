@@ -1,0 +1,183 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Start a local game server</title>
+<!-- The source of lan/Start local game server.pdf. Print it again after a change:
+     node tools/dev/pdf.mjs lan/cheatsheet.html "lan/Start local game server.pdf" -->
+<style>
+  @page { size: A4; margin: 14mm 15mm 13mm; }
+  :root { --night: #101a3f; --ink: #1d2440; --soft: #5a6285; --line: #d9dceb; --sun: #f7b928; --sun-soft: #fff5d9; --tint: #f3f4fa; }
+  * { box-sizing: border-box; }
+  body { margin: 0; font: 9.6pt/1.42 "Segoe UI", system-ui, -apple-system, sans-serif; color: var(--ink); background: #fff; }
+  header { display: flex; justify-content: space-between; align-items: flex-end; padding-bottom: 3mm; border-bottom: 2.5pt solid var(--night); margin-bottom: 4mm; }
+  h1 { margin: 0; font-size: 20pt; line-height: 1.1; color: var(--night); letter-spacing: -0.2pt; }
+  .sub { margin: 1.2mm 0 0; color: var(--soft); font-size: 10pt; }
+  .url { text-align: right; font-size: 8.5pt; color: var(--soft); }
+  .url b { display: block; font: 700 13pt/1.2 Consolas, "Cascadia Mono", monospace; color: var(--night); background: var(--sun-soft); border: 1pt solid var(--sun); border-radius: 3pt; padding: 1mm 2.5mm; margin-top: 0.8mm; }
+  h2 { display: flex; align-items: center; gap: 2.5mm; margin: 4.5mm 0 2mm; font-size: 12pt; color: var(--night); }
+  h2 .n { display: inline-grid; place-items: center; width: 6mm; height: 6mm; border-radius: 50%; background: var(--sun); color: var(--night); font-size: 10pt; }
+  h2 .when { font-weight: 400; font-size: 9pt; color: var(--soft); }
+  ol, ul { margin: 0; padding-left: 5.5mm; }
+  li { margin: 0.9mm 0; }
+  li::marker { color: var(--soft); font-weight: 600; }
+  code, kbd { font: 600 8.8pt Consolas, "Cascadia Mono", monospace; background: var(--tint); border: 0.6pt solid var(--line); border-radius: 2pt; padding: 0 1mm; white-space: nowrap; }
+  kbd { background: #fff; border-bottom-width: 1.4pt; }
+  .grid { display: grid; grid-template-columns: 1fr 1fr; gap: 5mm; }
+  .box { border: 0.8pt solid var(--line); border-radius: 4pt; padding: 2.5mm 3.5mm 3mm; break-inside: avoid; }
+  .box h3 { margin: 0 0 1.2mm; font-size: 9.8pt; color: var(--night); }
+  .note { background: var(--sun-soft); border-left: 2.5pt solid var(--sun); padding: 1.8mm 3mm; margin: 2.5mm 0 0; border-radius: 0 3pt 3pt 0; }
+  table { width: 100%; border-collapse: collapse; font-size: 9pt; }
+  th { text-align: left; font-size: 8pt; text-transform: uppercase; letter-spacing: 0.4pt; color: var(--soft); border-bottom: 1.2pt solid var(--night); padding: 1mm 2mm; }
+  td { vertical-align: top; padding: 1.4mm 2mm; border-bottom: 0.6pt solid var(--line); }
+  td:first-child { width: 40%; font-weight: 600; }
+  tr { break-inside: avoid; }
+  .page2 { break-before: page; }
+  .q { display: grid; grid-template-columns: auto 1fr; gap: 0.6mm 3mm; margin: 1.5mm 0 0; }
+  .q dt { font-weight: 600; }
+  .q dd { margin: 0; }
+  footer { margin-top: 4mm; padding-top: 2mm; border-top: 0.6pt solid var(--line); color: var(--soft); font-size: 8pt; display: flex; justify-content: space-between; }
+</style>
+</head>
+<body>
+
+<header>
+  <div>
+    <h1>Start a local game server</h1>
+    <p class="sub">Brieltje on your own laptop for a LAN night.</p>
+  </div>
+  <div class="url">Players type<b>https://lan.brieltje.be</b></div>
+</header>
+
+<h2><span class="n">1</span> Once, at home <span class="when">needs the internet</span></h2>
+<div class="grid">
+  <div class="box">
+    <h3>Docker</h3>
+    <ol>
+      <li>Install Docker Desktop (docker.com).</li>
+      <li>Start it. Wait until it says it is running.</li>
+    </ol>
+    <h3 style="margin-top:2.5mm">Cloudflare token</h3>
+    <ol>
+      <li>Open <b>dash.cloudflare.com</b>.</li>
+      <li>Go to Manage Account &rsaquo; Account API Tokens. My Profile &rsaquo; API Tokens works too.</li>
+      <li>Create Token. Pick the <b>Edit zone DNS</b> template.</li>
+      <li>Add a second permission: <code>Zone</code> &middot; <code>Zone</code> &middot; <code>Read</code>.</li>
+      <li>Zone Resources: <code>Specific zone</code> &middot; <code>brieltje.be</code>.</li>
+      <li>Leave IP filtering empty.</li>
+      <li>Create the token. Copy it. Cloudflare shows it only once.</li>
+    </ol>
+  </div>
+  <div class="box">
+    <h3>First start</h3>
+    <ol>
+      <li>Double-click <code>lan.cmd</code> in the game's folder.</li>
+      <li>The first time it builds Caddy. That takes a few minutes.</li>
+      <li>Paste the token at <i>The token (not shown)</i>. Right-click pastes. Nothing shows on screen.</li>
+      <li>Answer the questions (see step 3).</li>
+      <li>Wait for <i>Certificate valid until &hellip;</i>.</li>
+      <li>Press <kbd>Enter</kbd> to stop.</li>
+    </ol>
+    <p class="note">The certificate lasts 90 days. Caddy renews it whenever lan.cmd runs with internet. Start once at home in the weeks before a night.</p>
+  </div>
+</div>
+
+<h2><span class="n">2</span> The network <span class="when">once per venue</span></h2>
+<div class="grid">
+  <div class="box">
+    <h3>Router</h3>
+    <ul>
+      <li>Give the laptop a fixed address with a DHCP reservation.</li>
+      <li>Put the laptop on a cable if you can.</li>
+      <li>Players' Wi-Fi must let devices reach each other. Turn off client isolation.</li>
+    </ul>
+  </div>
+  <div class="box">
+    <h3>Local DNS</h3>
+    <ul>
+      <li>Add one A record: <code>lan.brieltje.be</code> &rarr; the laptop's address.</li>
+      <li>Only that name. Not a whole zone.</li>
+      <li>Allow that name past the router's rebinding protection.</li>
+    </ul>
+  </div>
+</div>
+<p class="note">lan.cmd also points the public record at the laptop on every start with internet. Phones that skip your DNS still find it that way.</p>
+
+<h2><span class="n">3</span> On the night</h2>
+<div class="grid">
+  <div class="box">
+    <h3>Start</h3>
+    <ol>
+      <li>Start Docker Desktop.</li>
+      <li>Double-click <code>lan.cmd</code>.</li>
+      <li>Answer its questions:</li>
+    </ol>
+    <dl class="q">
+      <dt>Which network?</dt><dd><kbd>Enter</kbd> takes the first. It is usually right.</dd>
+      <dt>Make it Private?</dt><dd>Type <kbd>y</kbd> on your own network.</dd>
+      <dt>Fix the firewall?</dt><dd><kbd>Enter</kbd>. Then Yes in the Windows prompt.</dd>
+      <dt>Admin password</dt><dd>At least 8 characters. Only for tonight.</dd>
+    </dl>
+    <ol start="4">
+      <li>Wait until it shows <i>Players type this</i>.</li>
+    </ol>
+  </div>
+  <div class="box">
+    <h3>Run the evening</h3>
+    <ul>
+      <li>Players: <code>https://lan.brieltje.be</code></li>
+      <li>You: <code>/admin/</code>. Log in as admin. Then <b>Host</b>.</li>
+      <li>Big screen: <code>/admin/scores/</code>. Press <kbd>F</kbd> for full screen.</li>
+      <li>Watch players: <code>/admin/watch/</code>. One player, or four side by side.</li>
+      <li>Leave the lan.cmd window open. It follows a change of network on its own.</li>
+    </ul>
+    <h3 style="margin-top:2.5mm">Stop</h3>
+    <ul>
+      <li>Press <kbd>Enter</kbd> or <kbd>Q</kbd> in the lan.cmd window.</li>
+      <li>Accounts stay in Docker for next time. Tonight's scores start fresh.</li>
+    </ul>
+  </div>
+</div>
+
+<div class="page2">
+<h2><span class="n">4</span> When something goes wrong</h2>
+<table>
+  <tr><th>What you see</th><th>What to do</th></tr>
+  <tr><td>Docker is not running</td><td>Start Docker Desktop. Wait until it runs. Start lan.cmd again.</td></tr>
+  <tr><td>A phone finds no site at lan.brieltje.be</td><td>Check the local DNS record. It must point at the laptop's address. Check the rebinding exception.</td></tr>
+  <tr><td>The name is found. The page doesn't load.</td><td>Windows keeps players out. Close lan.cmd. Start it again. Answer <kbd>y</kbd> to Private and <kbd>Enter</kbd> to the firewall.</td></tr>
+  <tr><td>A phone on Wi-Fi can't reach it. A laptop on cable can.</td><td>Client isolation is on for that Wi-Fi. Turn it off in the access point.</td></tr>
+  <tr><td><i>Cloudflare refused the token</i></td><td>Make a new token. Start <code>lan.cmd -NewToken</code> and paste it.</td></tr>
+  <tr><td><i>Port 443 is in use by &hellip;</i></td><td>Close the program it names. Start lan.cmd again.</td></tr>
+  <tr><td><i>No internet and no certificate</i></td><td>Best: start once where there is internet. Or type <kbd>y</kbd> for plain http. Players then type the address it shows. Passwords then travel unencrypted.</td></tr>
+  <tr><td><i>This computer's address changed</i></td><td>lan.cmd moves the public record itself. Update the local DNS record to the new address.</td></tr>
+  <tr><td><i>Caddy keeps stopping</i></td><td>Stop with <kbd>Enter</kbd>. Start lan.cmd again. Its log is in the folder below.</td></tr>
+  <tr><td>The certificate runs out within three weeks</td><td>Start lan.cmd once with internet. Caddy renews it.</td></tr>
+</table>
+
+<h2><span class="n">5</span> Options</h2>
+<p style="margin:0 0 1.5mm">Run them in a terminal in the game's folder, for example <code>.\lan.cmd -Http</code>.</p>
+<table>
+  <tr><th>Option</th><th>What it does</th></tr>
+  <tr><td><code>-Address 192.168.1.10</code></td><td>Uses this address instead of the one it picks.</td></tr>
+  <tr><td><code>-Http</code></td><td>Plain http on the laptop's address. No name. No certificate.</td></tr>
+  <tr><td><code>-Http -Port 8090</code></td><td>Plain http on another port.</td></tr>
+  <tr><td><code>-NewToken</code></td><td>Asks for the Cloudflare token again.</td></tr>
+  <tr><td><code>-Domain spel.brieltje.be</code></td><td>Another name under brieltje.be. It gets its own certificate.</td></tr>
+  <tr><td><code>-Staging</code></td><td>Let's Encrypt's test service. Browsers don't trust it. Only for trying out.</td></tr>
+</table>
+
+<h2><span class="n">6</span> Where things are</h2>
+<table>
+  <tr><th>What</th><th>Where</th></tr>
+  <tr><td>Caddy, the certificate, the token</td><td><code>%LOCALAPPDATA%\brieltje-lan</code>. The token is encrypted for your Windows account.</td></tr>
+  <tr><td>Players, accounts, rules</td><td>The Docker volume <code>brieltje-lan_brieltje-lan-data</code>.</td></tr>
+  <tr><td>Caddy's log</td><td><code>%LOCALAPPDATA%\brieltje-lan\caddy.log</code></td></tr>
+  <tr><td>More detail</td><td><code>docs/DETAILS.md</code>, "A LAN night".</td></tr>
+</table>
+<p class="note">Keep the token to yourself. If it ever leaks, roll it in Cloudflare. Then start <code>lan.cmd -NewToken</code>.</p>
+</div>
+
+<footer><span>Brieltje &middot; LAN night</span><span>lan.cmd &middot; lan/start.ps1</span></footer>
+</body>
+</html>
