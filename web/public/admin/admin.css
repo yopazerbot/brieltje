@@ -10,7 +10,7 @@
 .head-tools { display: flex; align-items: center; gap: 8px; flex-wrap: nowrap; justify-content: flex-end; margin-left: auto; }
 #logout, #scores-link { padding: 8px 14px; font-size: 15px; white-space: nowrap; }
 #scores-link .short { display: none; }
-.signed-out .head-tools .live, .signed-out #scores-link { display: none; }
+.signed-out .head-tools .live, .signed-out #scores-link, .signed-out #host-link { display: none; }
 .live { font-size: 12px; font-weight: 700; letter-spacing: 0.1em; text-transform: uppercase; color: var(--muted); margin-right: 4px; white-space: nowrap; }
 .live i { display: inline-block; width: 8px; height: 8px; border-radius: 50%; background: #666; margin-right: 3px; }
 .live.on i { background: var(--good); box-shadow: 0 0 8px var(--good); animation: beat 2s infinite; }

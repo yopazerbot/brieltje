@@ -73,3 +73,20 @@ footer { display: grid; grid-template-columns: 1fr auto 1fr; align-items: center
 .gate a { color: var(--accent); }
 [hidden] { display: none !important; }
 .row.head .num { font-size: 1.8vmin; font-weight: 600; color: var(--muted); }
+
+/* Tonight (a LAN night, server/host.mjs): the teams' totals over the ranking, in two columns past eight players. */
+main:has(.tonight) { justify-content: flex-start; }
+.totals { display: flex; flex-wrap: wrap; gap: 1.6vmin; margin: 0 0 2vmin; }
+.total { flex: 1 1 20vmin; display: flex; align-items: baseline; justify-content: space-between; gap: 1.6vmin; padding: 1.2vmin 2.4vmin; border-left: 1vmin solid; border-radius: 1.2vmin; background: var(--panel); font-size: 3.4vmin; font-weight: 700; }
+.total b { font-size: 5.6vmin; line-height: 1; }
+.total.first { background: rgba(247, 185, 40, 0.16); }
+.tonight .cols.two { display: grid; grid-template-columns: 1fr 1fr; gap: 0 3vmin; }
+.tonight .row { grid-template-columns: 5vmin 2vmin 1fr repeat(3, 11vmin); padding: 0.9vmin 1.8vmin; }
+.tonight .cols.two .row { grid-template-columns: 5vmin 2vmin 1fr repeat(3, 10vmin); }
+.tonight .row .name { font-size: 3.2vmin; }
+.tonight .row:not(.head) .num, .tonight .row .rank { font-size: 3.4vmin; }
+.tonight .rows { gap: 0.8vmin; }
+.tonight .cols.tight .row { padding: 0.25vmin 1.6vmin; }
+.tonight .cols.tight .row .name, .tonight .cols.tight .row:not(.head) .num, .tonight .cols.tight .row .rank { font-size: 2.1vmin; }
+.tonight .cols.tight .rows { gap: 0.35vmin; }
+.tonight .cols.tight .row .dot { width: 1.8vmin; height: 1.8vmin; }

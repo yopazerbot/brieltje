@@ -1,0 +1,119 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <meta name="robots" content="noindex" />
+  <title>Host · Brieltje</title>
+  <link rel="icon" href="/icon-192.png" />
+  <link rel="stylesheet" href="/interested/interested.css" />
+  <link rel="stylesheet" href="/admin/admin.css" />
+  <link rel="stylesheet" href="/menu-theme.css" />
+  <link rel="stylesheet" href="/admin/host/host.css" />
+</head>
+<!-- The host's screen for a LAN night (server/host.mjs): one page beside you on a laptop or tablet. People on the left,
+     the game in the middle, the programme and the evening's scoreboard on the right. Admin only: it reads and acts
+     through /api/host with the admin's session from /admin. -->
+<body class="admin host">
+<main>
+  <header class="host-head">
+    <a class="brand" href="/"><img src="/brand/wordmark.svg" alt="Brieltje" width="120" height="36" /></a>
+    <span class="live" id="live"><i></i> <span id="live-text">Connecting</span></span>
+    <span class="head-tools">
+      <a class="btn ghost" href="/admin/scores/" target="_blank" rel="noopener">Big screen ↗</a>
+      <a class="btn ghost" href="/admin/">Admin</a>
+    </span>
+  </header>
+
+  <section id="signin" class="card" hidden>
+    <h1>Host</h1>
+    <p>Log in on the <a href="/admin/">admin page</a> first, then come back here.</p>
+  </section>
+
+  <section id="app" hidden>
+    <!-- The bar: what touches everyone at once. -->
+    <div class="bar card">
+      <div class="bar-group">
+        <button class="big" type="button" id="doors"></button>
+        <label class="limit"><span>Players at once</span> <b id="limit-value"></b>
+          <input type="range" id="limit" min="2" max="32" step="1" /></label>
+      </div>
+      <div class="bar-group">
+        <button class="big" type="button" id="freeze"></button>
+        <input type="text" id="freeze-text" maxlength="120" placeholder="Why (optional): listen to the rules" />
+      </div>
+      <form class="bar-group grow" id="announce-form">
+        <input type="text" id="announce" maxlength="120" placeholder="Announce on every screen: pizza is here!" />
+        <select id="announce-secs" aria-label="How long"><option value="5">5 s</option><option value="10" selected>10 s</option><option value="20">20 s</option><option value="45">45 s</option></select>
+        <button class="btn" type="submit">Announce</button>
+      </form>
+      <div class="bar-group">
+        <button class="btn ghost" type="button" id="bring-all">Bring everyone to me</button>
+        <button class="btn ghost" type="button" id="chat"></button>
+      </div>
+      <p class="host-msg" id="msg" role="status"></p>
+    </div>
+
+    <div class="cols">
+      <!-- People -->
+      <section class="card col">
+        <h2>People <span class="count" id="people-count"></span></h2>
+        <div id="knocking" class="knocking" hidden>
+          <h3>At the door</h3>
+          <ul id="knock-list"></ul>
+        </div>
+        <div class="teams-bar">
+          <span>Teams</span>
+          <span class="seg small" id="team-count">
+            <button type="button" data-n="0">None</button><button type="button" data-n="2">2</button><button type="button" data-n="3">3</button><button type="button" data-n="4">4</button>
+          </span>
+          <button class="btn ghost small" type="button" id="shuffle">Shuffle</button>
+        </div>
+        <ul class="people" id="people"></ul>
+        <details class="words">
+          <summary>Word filter</summary>
+          <p class="muted small">Swear words in English and Dutch are always starred out of the chat and refused in names. Add your own, one per line:</p>
+          <textarea id="words" rows="4" spellcheck="false"></textarea>
+          <button class="btn ghost small" type="button" id="words-save">Save words</button>
+        </details>
+      </section>
+
+      <!-- The game -->
+      <section class="card col">
+        <h2>Now</h2>
+        <div class="now-game" id="now-game"></div>
+        <div class="row">
+          <button class="btn ghost" type="button" id="stop">Stop the game</button>
+          <button class="btn ghost" type="button" id="cancel" hidden>Call off the countdown</button>
+        </div>
+        <h2>A game</h2>
+        <form id="game-form" class="game-form">
+          <label>Game <select id="g-kind"></select></label>
+          <label id="g-place-label">Where <select id="g-place"></select></label>
+          <label>Minutes <input type="number" id="g-minutes" min="1" max="30" placeholder="usual" /></label>
+          <label id="g-goal-label">Kills to win <input type="number" id="g-goal" min="5" max="100" placeholder="25" /></label>
+          <div class="row">
+            <button class="btn" type="submit">Start in 10 s</button>
+            <button class="btn ghost" type="button" id="add">Add to the programme</button>
+          </div>
+        </form>
+        <p class="muted small">With two teams for the evening, House against bungalow is played by them.</p>
+      </section>
+
+      <!-- Programme and scoreboard -->
+      <section class="card col">
+        <h2>Programme</h2>
+        <ol class="programme" id="programme"></ol>
+        <div class="row"><button class="btn" type="button" id="next"></button></div>
+        <h2>Tonight's scoreboard <span class="count" id="games-count"></span></h2>
+        <div class="team-totals" id="team-totals"></div>
+        <table class="board"><thead><tr><th>#</th><th>Player</th><th>Points</th><th>Wins</th><th>Games</th></tr></thead><tbody id="board"></tbody></table>
+        <p class="muted small">Each game: 1 point to everyone who took part, 3 more to its winners. Zombies: also 1 for every 3 waves. A won round of free play counts as a game.</p>
+        <button class="btn ghost small" type="button" id="reset"></button>
+      </section>
+    </div>
+  </section>
+</main>
+<script src="/admin/host/host.js"></script>
+</body>
+</html>

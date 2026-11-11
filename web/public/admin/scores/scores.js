@@ -1,7 +1,9 @@
 // The scoreboard for a big screen at the meetup (brieltje.be/admin/scores): the multiplayer game's
 // scores, the round and the game being played, live from the admin stream (server/stats.mjs, event
 // "board"), in Dutch or English. Admin only: the stream needs the admin's session. Names are what
-// players typed, so everything is put on the page as text, never as HTML.
+// players typed, so everything is put on the page as text, never as HTML. At a LAN night (server/host.mjs) the
+// "Tonight" button shows the evening's scoreboard instead: the teams' totals and everyone's points; the footer
+// shows the address this screen was opened on, which is the one players type on a local server.
 (() => {
   const $ = (id) => document.getElementById(id);
   const T = {
@@ -15,6 +17,8 @@
       join: 'Speel mee op ', count: '{a} samen · {b} alleen', live: 'Live', retry: 'Opnieuw verbinden…', full: 'Volledig scherm (F)',
       gate: 'Log eerst in op de beheerpagina.', gateLink: 'Naar de beheerpagina', out: 'uit',
       zombies: 'Zombies', wave: 'golf {n}', break: 'pauze', zleft: 'nog {n} zombies', zbeaten: 'Zombies verslagen', zbest: 'Beste ooit: golf {n}', down: 'neer',
+      tonight: 'Vanavond', game: 'Het spel', games: '{n} spellen gespeeld', won: 'Winst', played: 'Spellen', noGames: 'Nog geen spellen gespeeld vanavond',
+      blue: 'Blauw', orange: 'Oranje', green: 'Groen', purple: 'Paars',
     },
     en: {
       free: 'Free play', hide: 'Hide and seek', tag: 'Tag', treasure: 'Treasure hunt', teams: 'House against bungalow',
@@ -26,6 +30,8 @@
       join: 'Play along at ', count: '{a} together · {b} alone', live: 'Live', retry: 'Reconnecting…', full: 'Full screen (F)',
       gate: 'Log in on the admin page first.', gateLink: 'To the admin page', out: 'out',
       zombies: 'Zombies', wave: 'wave {n}', break: 'break', zleft: '{n} zombies left', zbeaten: 'Zombies beaten', zbest: 'Best ever: wave {n}', down: 'down',
+      tonight: 'Tonight', game: 'The game', games: '{n} games played', won: 'Wins', played: 'Games', noGames: 'No games played yet tonight',
+      blue: 'Blue', orange: 'Orange', green: 'Green', purple: 'Purple',
     },
   };
   let lang = 'nl';
@@ -48,6 +54,13 @@
   };
 
   let board = null;
+  let evening = false; // the evening's scoreboard (the "Tonight" button) instead of the game's
+  try {
+    evening = localStorage.getItem('briel.scoresView') === 'evening';
+  } catch {
+    // storage blocked
+  }
+  const TEAM_COLOURS = { blue: '#4fa3e0', orange: '#ff9f43', green: '#5cc28a', purple: '#c77dff' };
   let boardAt = 0;
   let playing = { together: [], alone: [] };
 
@@ -80,7 +93,8 @@
     for (const b of document.querySelectorAll('.tools [data-set]')) b.setAttribute('aria-pressed', String(b.dataset.set === lang));
     document.documentElement.lang = lang;
     $('full').textContent = t('full');
-    $('join').replaceChildren(document.createTextNode(t('join')), el('b', '', 'brieltje.be'));
+    $('join').replaceChildren(document.createTextNode(t('join')), el('b', '', location.host));
+    $('evening').textContent = evening ? t('game') : t('tonight');
     $('count').textContent = t('count', { a: playing.together.length, b: playing.alone.length });
     if (!board) return;
     const mode = board.mode;
@@ -93,6 +107,13 @@
       : [t(mode.phase) ?? '', mode.phase !== 'done' ? t('left', { t: clock(left) }) : ''].filter(Boolean).join(' · ');
     const players = board.players;
     const main = $('board');
+    if (evening && board.evening) {
+      $('mode-title').textContent = t('tonight');
+      $('mode-sub').textContent = t('games', { n: board.evening.games });
+      main.replaceChildren(tonight(board.evening));
+      $('banner').hidden = true;
+      return;
+    }
     if (!players.length) {
       const box = el('div', 'empty');
       box.append(el('div', 'big', t('emptyBig')), el('p', '', t('emptySub')));
@@ -149,6 +170,41 @@
     const list = [...players].sort((a, b) => b.kills - a.kills || a.deaths - b.deaths || b.points - a.points);
     box.append(head([t('kills'), t('deaths'), t('points')]));
     list.forEach((p, i) => box.append(row(i + 1, p, [p.kills, p.deaths, p.points], { lead: p.kills > 0, out: !p.alive, note: p.alive ? '' : t('out'), bar: p.kills / board.limit })));
+    return box;
+  }
+
+  /** The evening's scoreboard (server/host.mjs board): the teams' totals, then everyone's points, wins and games. */
+  function tonight(ev) {
+    const box = el('div', 'tonight');
+    if (ev.teams.length) {
+      const totals = el('div', 'totals');
+      const best = Math.max(...ev.teams.map((x) => x.points));
+      for (const team of [...ev.teams].sort((a, b) => b.points - a.points)) {
+        const c = el('div', `total${team.points === best && best > 0 ? ' first' : ''}`);
+        c.style.borderColor = TEAM_COLOURS[team.id];
+        c.append(el('span', '', t(team.id)), el('b', '', String(team.points)));
+        totals.append(c);
+      }
+      box.append(totals);
+    }
+    if (!ev.players.length) {
+      const empty = el('div', 'empty');
+      empty.append(el('div', 'big', t('noGames')));
+      box.append(empty);
+      return box;
+    }
+    // Up to 32 players: in two columns of compact rows past eight, each with its own heading.
+    const shown = ev.players.slice(0, 32);
+    const cols = shown.length > 8 ? [shown.slice(0, Math.ceil(shown.length / 2)), shown.slice(Math.ceil(shown.length / 2))] : [shown];
+    const grid = el('div', `cols${cols.length > 1 ? ' two' : ''}${shown.length > 16 ? ' tight' : ''}`);
+    let rank = 0;
+    for (const list of cols) {
+      const col = el('div', 'rows');
+      col.append(head([t('points'), t('won'), t('played')]));
+      for (const p of list) col.append(row(++rank, { name: p.name, color: TEAM_COLOURS[p.team] ?? '#9aa5b1' }, [p.points, p.wins, p.played], { lead: p.points > 0, out: !p.here, note: p.team ? t(p.team) : '' }));
+      grid.append(col);
+    }
+    box.append(grid);
     return box;
   }
 
@@ -246,6 +302,15 @@
       draw();
     });
   }
+  $('evening').addEventListener('click', () => {
+    evening = !evening;
+    try {
+      localStorage.setItem('briel.scoresView', evening ? 'evening' : 'game');
+    } catch {
+      // storage blocked
+    }
+    draw();
+  });
   const full = () => (document.fullscreenElement ? document.exitFullscreen() : document.documentElement.requestFullscreen()).catch(() => {});
   $('full').addEventListener('click', full);
   addEventListener('keydown', (e) => {
