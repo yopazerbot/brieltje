@@ -1,0 +1,12 @@
+# The LAN night over plain http on this computer's address (lan.cmd -Http): no domain, no certificate. Caddy still
+# stands in front of the game for the same reason as in lan/Caddyfile: it sees each player's own address, Docker
+# Desktop doesn't. No `encode` (BREACH) and no access log, as there.
+{
+	admin off
+	storage file_system {$LAN_CADDY_DATA}
+	auto_https off
+}
+
+http://:{$LAN_PORT:8080} {
+	reverse_proxy 127.0.0.1:{$LAN_GAME_PORT:18080}
+}

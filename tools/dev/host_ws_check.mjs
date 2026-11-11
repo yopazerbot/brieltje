@@ -31,7 +31,7 @@ const view = async () => (await call('GET', '/api/host', null, adminCookie)).dat
 /** A connection under a session cookie: its messages, and how it closed. */
 const connect = async (name, cookie) => {
   const log = [];
-  const ws = new WebSocket(`ws://${host}/ws?v=2`, { headers: { Cookie: cookie, Origin: o.api } });
+  const ws = new WebSocket(`${o.api.startsWith('https') ? 'wss' : 'ws'}://${host}/ws?v=2`, { headers: { Cookie: cookie, Origin: o.api } });
   const c = { name, ws, log, closed: null, send: (m) => ws.send(JSON.stringify(m)), of: (t) => log.filter((m) => m.t === t) };
   ws.on('message', (d) => {
     const m = JSON.parse(String(d));

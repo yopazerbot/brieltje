@@ -12,7 +12,7 @@ RUN npm run build
 
 FROM node:22.12.0-bookworm-slim
 WORKDIR /app
-# Plain http on the local network: secure cookies only with NODE_ENV=production (server.mjs), so it stays unset.
+# NODE_ENV comes from lan/compose.yaml: production over https (secure cookies, server.mjs), empty over plain http.
 COPY --from=build --chown=node:node /app /app
 RUN mkdir -p /app/.data && chown node:node /app/.data
 USER node

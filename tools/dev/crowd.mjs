@@ -31,7 +31,7 @@ for (let i = 0; i < N; i++) {
   const name = `crowd${process.env.TAG ?? ''}${String(i).padStart(2, '0')}`;
   const r = await fetch(`${o.api}/api/join`, { method: 'POST', headers: { 'Content-Type': 'application/json', Origin: o.api }, body: JSON.stringify({ name, age: true }) });
   if (!r.ok) throw new Error(`${name} could not join: ${r.status} ${await r.text()}`);
-  const ws = new WebSocket(`ws://${host}/ws?v=2`, { headers: { Cookie: cookieOf(r), Origin: o.api } });
+  const ws = new WebSocket(`${o.api.startsWith('https') ? 'wss' : 'ws'}://${host}/ws?v=2`, { headers: { Cookie: cookieOf(r), Origin: o.api } });
   const bot = { name, ws, bytes: 0, msgs: 0, closed: null };
   ws.on('message', (d) => {
     bot.bytes += d.length;

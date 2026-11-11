@@ -1,7 +1,9 @@
-# A LAN night on this computer, in Docker: double-click lan.cmd (it asks for the admin password and runs this), or
-#   ADMIN_PASSWORD=... docker compose -f lan/compose.yaml up --build -d
-# The game on http://<this computer's address>:8080 (LAN_PORT to change it). Tonight's players, accounts and rules
-# stay in the volume brieltje-lan-data, apart from brieltje.be's and from a developer's web/.data.
+# A LAN night on this computer, in Docker: double-click lan.cmd. It asks for the admin password, starts this, and puts
+# Caddy (lan/Caddyfile) in front of it: https://lan.brieltje.be, or http://<this computer's address>:8080 with -Http.
+# The game's own port is open to this computer only (127.0.0.1): players reach it through Caddy, which passes on their
+# address; the game believes that header (TRUST_PROXY), so nobody else may reach the port and write it themselves.
+# Tonight's players, accounts and rules stay in the volume brieltje-lan-data, apart from brieltje.be's and from a
+# developer's web/.data.
 name: brieltje-lan
 services:
   game:
@@ -11,10 +13,13 @@ services:
     image: brieltje-lan
     restart: on-failure # never again by itself after a restart of Docker or the computer: tonight only
     ports:
-      - "${LAN_PORT:-8080}:8080"
+      - "127.0.0.1:${LAN_GAME_PORT:-18080}:8080"
     environment:
       ADMIN_PASSWORD: ${ADMIN_PASSWORD:?Set ADMIN_PASSWORD (lan.cmd asks for it)}
       PORT: "8080"
+      TRUST_PROXY: "1"
+      # production over https: secure cookies and https links (server.mjs SECURE); empty over plain http.
+      NODE_ENV: ${LAN_NODE_ENV:-}
     volumes:
       - brieltje-lan-data:/app/.data
 volumes:

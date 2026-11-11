@@ -1,0 +1,27 @@
+# The LAN night's front door over https (Yoshi, 11 Nov 2026: "I want people to just navigate to a domain name. And I
+# want it to serve over HTTPS"). lan/start.ps1 runs Caddy with this file on Windows itself, not in Docker: Docker
+# Desktop shows the game one address for every player, Caddy on Windows sees each player's own and passes it on in
+# X-Forwarded-For (the game believes that header: TRUST_PROXY=1, and its port is open to this computer only).
+#
+# The certificate comes from Let's Encrypt by the DNS challenge: Caddy writes a TXT record in brieltje.be's DNS at
+# Cloudflare with the token start.ps1 hands it, so nothing has to reach this computer from the internet. It is kept
+# in LAN_CADDY_DATA for its 90 days; without internet at the venue Caddy serves the one it has.
+#
+# No `encode`: the game sends its files compressed itself, and compressing its JSON answers here could leak a secret
+# through their size (BREACH). No access log: players' addresses are not written down.
+{
+	admin off
+	storage file_system {$LAN_CADDY_DATA}
+	acme_ca {$LAN_ACME_CA:https://acme-v02.api.letsencrypt.org/directory}
+	http_port {$LAN_HTTP_PORT:80}
+	https_port {$LAN_HTTPS_PORT:443}
+}
+
+{$LAN_DOMAIN} {
+	tls {
+		dns cloudflare {env.CF_API_TOKEN}
+		# Ask public resolvers whether the TXT record is there: the venue's own DNS may answer for the name itself.
+		resolvers 1.1.1.1 1.0.0.1
+	}
+	reverse_proxy 127.0.0.1:{$LAN_GAME_PORT:18080}
+}

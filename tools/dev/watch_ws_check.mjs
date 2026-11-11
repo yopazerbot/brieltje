@@ -26,7 +26,7 @@ const tag = Math.random().toString(36).slice(2, 5);
 
 const open = (cookie, watch) => new Promise((resolve) => {
   const log = [];
-  const ws = new WebSocket(`ws://${host}/ws?v=2${watch ? '&watch=1' : ''}`, { headers: { Cookie: cookie, Origin: o.api } });
+  const ws = new WebSocket(`${o.api.startsWith('https') ? 'wss' : 'ws'}://${host}/ws?v=2${watch ? '&watch=1' : ''}`, { headers: { Cookie: cookie, Origin: o.api } });
   const c = { ws, log, refused: false, send: (m) => ws.send(JSON.stringify(m)), of: (t) => log.filter((m) => m.t === t) };
   ws.on('message', (d) => {
     const m = JSON.parse(String(d));
