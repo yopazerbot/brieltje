@@ -73,6 +73,9 @@ const paneMat = paneMaterial();
 const postMat = new THREE.MeshStandardMaterial({ color: '#cfccc4', roughness: 0.9 });
 const lampMat = new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.45, metalness: 0.5 });
 const cableMat = new THREE.MeshStandardMaterial({ color: '#1d1e20', roughness: 0.6 });
+// Not in the ground's baked shade (world/groundShade.ts): a wire is thinner than a texel there, and its shadow came
+// out as a row of dark smudges along the pavement under it.
+cableMat.userData.noGroundShade = true;
 const panelEdgeMat = new THREE.MeshStandardMaterial({ color: '#8f9398', roughness: 0.45, metalness: 0.6, side: THREE.DoubleSide });
 let panelMat: THREE.MeshStandardMaterial | null = null;
 /** Materials made on first use and shared by every tile (the roof tiles, the bungalow's gables and ceilings). */

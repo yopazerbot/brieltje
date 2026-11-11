@@ -487,7 +487,7 @@ export class GroundShade {
       root.traverse((o) => {
         if (!(o instanceof THREE.Mesh)) return;
         const m = o.material as THREE.Material;
-        const solid = !(m.transparent || m.alphaTest > 0 || o.userData.glassIndex !== undefined);
+        const solid = !(m.transparent || m.alphaTest > 0 || o.userData.glassIndex !== undefined || m.userData?.noGroundShade);
         hide(o, solid);
         if (solid) shown.push(o);
       });
