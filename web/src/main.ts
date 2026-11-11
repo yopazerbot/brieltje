@@ -1250,12 +1250,23 @@ function showOnline(): void {
   title.textContent = count;
   onlineBox.append(title);
   document.getElementById('tog-count')!.textContent = count;
-  for (const [name, color] of online) {
+  // In the HUD you and at most three others, then how many more (32 at a LAN night would run down the screen);
+  // the menu's Together tab lists everyone.
+  const HUD_NAMES = 4;
+  let shown = 0;
+  for (const [name, color] of [...online].sort(([a], [b]) => Number(b === me?.username) - Number(a === me?.username))) {
     const label = name === me.username ? t('online.you', { name }) : name;
-    const row = document.createElement('div');
-    row.textContent = label;
-    row.style.color = color;
-    onlineBox.append(row);
+    if (shown < HUD_NAMES) {
+      const row = document.createElement('div');
+      row.textContent = label;
+      row.style.color = color;
+      onlineBox.append(row);
+    } else if (shown === HUD_NAMES) {
+      const more = document.createElement('div');
+      more.textContent = t('online.more', { n: online.size - HUD_NAMES });
+      onlineBox.append(more);
+    }
+    shown++;
     const item = document.createElement('li');
     const dot = document.createElement('i');
     dot.style.background = color;

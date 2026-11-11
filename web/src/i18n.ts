@@ -640,6 +640,7 @@ const en = {
   'hud.kmh': 'km/h',
   'online.count': '{n} of {max} online',
   'online.you': '{name} (you)',
+  'online.more': '+ {n} more',
   'role.admin': '{name} (admin)',
   'place.outside': 'Outside',
   'prompt.open': '{key}  Open {door}',
@@ -1714,6 +1715,7 @@ const nl = {
   'hud.kmh': 'km/h',
   'online.count': '{n} van {max} online',
   'online.you': '{name} (jij)',
+  'online.more': '+ {n} anderen',
   'role.admin': '{name} (beheerder)',
   'place.outside': 'Buiten',
   // A colon after the key or button: "Gebruik: uitstappen" reads as Dutch, where "Gebruik Uitstappen" doesn't.

@@ -13,11 +13,11 @@
       left: 'nog {t}', kills: 'Kills', deaths: 'Dood', points: 'Punten', timeIt: 'Tijd als tikker', coins: 'Munten',
       coinsLeft: '{n} munten liggen nog verstopt', fewest: 'Wie het minst lang tikker was, wint', seeks: 'zoekt', hidden: 'verstopt', it: 'tikker',
       house: 'Huis', bungalow: 'Bungalow', goal: 'eerste tot {n}', wins: '{name} wint de ronde!', next: 'Volgende ronde over {n} s', over: 'Afgelopen!',
-      emptyBig: 'Nog niemand speelt samen', emptySub: 'Open brieltje.be, kies Samen en typ je naam.',
+      emptyBig: 'Nog niemand speelt samen', emptySub: 'Open {host}, kies Samen en typ je naam.',
       join: 'Speel mee op ', count: '{a} samen · {b} alleen', live: 'Live', retry: 'Opnieuw verbinden…', full: 'Volledig scherm (F)',
       gate: 'Log eerst in op de beheerpagina.', gateLink: 'Naar de beheerpagina', out: 'uit',
       zombies: 'Zombies', wave: 'golf {n}', break: 'pauze', zleft: 'nog {n} zombies', zbeaten: 'Zombies verslagen', zbest: 'Beste ooit: golf {n}', down: 'neer',
-      tonight: 'Vanavond', game: 'Het spel', games: '{n} spellen gespeeld', won: 'Winst', played: 'Spellen', noGames: 'Nog geen spellen gespeeld vanavond',
+      tonight: 'Vanavond', game: 'Het spel', games: '{n} spellen gespeeld', games1: '1 spel gespeeld', won: 'Winst', played: 'Spellen', noGames: 'Nog geen spellen gespeeld vanavond',
       blue: 'Blauw', orange: 'Oranje', green: 'Groen', purple: 'Paars',
     },
     en: {
@@ -26,11 +26,11 @@
       left: '{t} left', kills: 'Kills', deaths: 'Deaths', points: 'Points', timeIt: 'Time as it', coins: 'Coins',
       coinsLeft: '{n} coins still hidden', fewest: 'Least time as it wins', seeks: 'seeks', hidden: 'hidden', it: 'it',
       house: 'House', bungalow: 'Bungalow', goal: 'first to {n}', wins: '{name} wins the round!', next: 'Next round in {n} s', over: 'Game over!',
-      emptyBig: "Nobody's playing together yet", emptySub: 'Open brieltje.be, choose Together and type your name.',
+      emptyBig: "Nobody's playing together yet", emptySub: 'Open {host}, choose Together and type your name.',
       join: 'Play along at ', count: '{a} together · {b} alone', live: 'Live', retry: 'Reconnecting…', full: 'Full screen (F)',
       gate: 'Log in on the admin page first.', gateLink: 'To the admin page', out: 'out',
       zombies: 'Zombies', wave: 'wave {n}', break: 'break', zleft: '{n} zombies left', zbeaten: 'Zombies beaten', zbest: 'Best ever: wave {n}', down: 'down',
-      tonight: 'Tonight', game: 'The game', games: '{n} games played', won: 'Wins', played: 'Games', noGames: 'No games played yet tonight',
+      tonight: 'Tonight', game: 'The game', games: '{n} games played', games1: '1 game played', won: 'Wins', played: 'Games', noGames: 'No games played yet tonight',
       blue: 'Blue', orange: 'Orange', green: 'Green', purple: 'Purple',
     },
   };
@@ -66,7 +66,8 @@
 
   /** One row of the ranking: rank, colour, name (and a note), then up to three numbers. */
   function row(rank, p, nums, opts = {}) {
-    const r = el('div', `row${rank === 1 && opts.lead ? ' first' : ''}${opts.it ? ' it' : ''}${opts.out ? ' out' : ''}`);
+    // The top three in gold, silver and bronze (once they have scored).
+    const r = el('div', `row${rank === 1 && opts.lead ? ' first' : ''}${rank >= 1 && rank <= 3 && opts.lead ? ` p${rank}` : ''}${opts.it ? ' it' : ''}${opts.out ? ' out' : ''}`);
     const dot = el('i', 'dot');
     dot.style.background = colour(p.color);
     const name = el('div', 'name', p.name);
@@ -109,19 +110,19 @@
     const main = $('board');
     if (evening && board.evening) {
       $('mode-title').textContent = t('tonight');
-      $('mode-sub').textContent = t('games', { n: board.evening.games });
+      $('mode-sub').textContent = t(board.evening.games === 1 ? 'games1' : 'games', { n: board.evening.games });
       main.replaceChildren(tonight(board.evening));
       $('banner').hidden = true;
       return;
     }
     if (!players.length) {
       const box = el('div', 'empty');
-      box.append(el('div', 'big', t('emptyBig')), el('p', '', t('emptySub')));
+      box.append(el('div', 'big', t('emptyBig')), el('p', '', t('emptySub', { host: location.host })));
       main.replaceChildren(box);
     } else if (kind === 'teams') {
       main.replaceChildren(teams(mode, players));
     } else {
-      main.replaceChildren(ranking(kind, mode, players));
+      main.replaceChildren(fit(ranking(kind, mode, players)));
     }
     banner(kind, mode);
   }
@@ -173,6 +174,25 @@
     return box;
   }
 
+  /**
+   * A ranking with more players than fit in big rows (a LAN night, up to 32): in two columns of compact rows, each
+   * with its own heading, as the Tonight view.
+   */
+  function fit(box) {
+    const [top, ...rows] = [...box.children];
+    if (rows.length <= 8 || !top?.classList.contains('head')) return box;
+    const half = Math.ceil(rows.length / 2);
+    const grid = el('div', `cols two${rows.length > 16 ? ' tight' : ''}`);
+    for (const part of [rows.slice(0, half), rows.slice(half)]) {
+      const col = el('div', 'rows');
+      col.append(top.cloneNode(true), ...part);
+      grid.append(col);
+    }
+    const wrap = el('div', 'tonight');
+    wrap.append(grid);
+    return wrap;
+  }
+
   /** The evening's scoreboard (server/host.mjs board): the teams' totals, then everyone's points, wins and games. */
   function tonight(ev) {
     const box = el('div', 'tonight');
@@ -181,7 +201,7 @@
       const best = Math.max(...ev.teams.map((x) => x.points));
       for (const team of [...ev.teams].sort((a, b) => b.points - a.points)) {
         const c = el('div', `total${team.points === best && best > 0 ? ' first' : ''}`);
-        c.style.borderColor = TEAM_COLOURS[team.id];
+        c.style.setProperty('--team', TEAM_COLOURS[team.id]);
         c.append(el('span', '', t(team.id)), el('b', '', String(team.points)));
         totals.append(c);
       }

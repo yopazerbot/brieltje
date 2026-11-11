@@ -224,21 +224,35 @@ button, input, select, textarea { font-family: inherit; }
 #banner { position: absolute; left: 50%; top: 18%; transform: translateX(-50%); text-align: center; white-space: nowrap; }
 #banner b { display: block; font-size: 42px; }
 #banner small { display: block; font-size: 15px; letter-spacing: 0.15em; text-transform: uppercase; color: var(--accent); }
-/* The LAN night host's announcement and freeze (src/ui/hostNotice.ts). */
+/* The LAN night host's announcement and freeze (src/ui/hostNotice.ts), in the brand (src/brand.css): a raised evening
+   card with a sun edge, Fredoka, the countdown in a yellow pill; the freeze dims the view, its title with the swoosh. */
 #host-bar {
   position: absolute; left: 50%; top: 9%; transform: translateX(-50%); z-index: 30; pointer-events: none;
-  max-width: min(760px, calc(100vw - 32px)); padding: 12px 22px; text-align: center;
-  background: var(--panel); border-left: 4px solid var(--accent); color: #fff;
+  max-width: min(760px, calc(100vw - 32px)); padding: 14px 28px 16px; text-align: center; color: var(--brand-chalk, #fbf6ea);
+  background: linear-gradient(180deg, var(--brand-raised, #1f2a52), var(--brand-evening, #141d3a)); border-radius: 22px;
+  box-shadow: inset 0 0 0 3px var(--brand-sun, #f7b928), 0 5px 0 var(--brand-sun-deep, #d99a0e), 0 14px 40px rgba(5, 10, 32, 0.5);
+  animation: host-pop 0.35s ease-out;
 }
-#host-bar b { display: block; font-size: 30px; line-height: 1.2; overflow-wrap: anywhere; }
-#host-bar small { display: block; font-size: 15px; letter-spacing: 0.12em; text-transform: uppercase; color: var(--accent); }
+#host-bar b { display: block; font-family: var(--display); font-size: 30px; font-weight: 600; line-height: 1.2; overflow-wrap: anywhere; }
+#host-bar small {
+  display: inline-block; margin-top: 8px; padding: 3px 14px; border-radius: 999px; font-family: var(--display); font-size: 16px; font-weight: 600;
+  color: var(--brand-night, #0d1430); background: var(--brand-sun, #f7b928);
+}
 #host-bar small:empty { display: none; }
+@keyframes host-pop { from { transform: translateX(-50%) translateY(-12px) scale(0.92); opacity: 0; } }
 #host-freeze {
-  position: fixed; inset: 0; z-index: 29; display: flex; flex-direction: column; align-items: center; justify-content: center;
-  background: rgba(8, 12, 30, 0.55); color: #fff; text-align: center; pointer-events: none; padding: 16px;
+  position: fixed; inset: 0; z-index: 29; display: flex; flex-direction: column; align-items: center; justify-content: center; padding: 16px;
+  color: var(--brand-chalk, #fbf6ea); text-align: center; pointer-events: none;
+  background: radial-gradient(70% 60% at 50% 50%, rgba(13, 20, 48, 0.55), rgba(13, 20, 48, 0.8));
 }
-#host-freeze b { font-size: 44px; }
-#host-freeze small { font-size: 18px; margin-top: 8px; max-width: 700px; overflow-wrap: anywhere; }
+#host-freeze b { font-family: var(--display); font-size: 48px; font-weight: 700; }
+#host-freeze b::after {
+  content: ''; display: block; width: 160px; height: 14px; margin: 6px auto 0; background: var(--brand-sun, #f7b928);
+  -webkit-mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 200 20'%3E%3Cpath d='M6 13 Q100 1 194 13' fill='none' stroke='black' stroke-width='6' stroke-linecap='round'/%3E%3C/svg%3E") center / contain no-repeat;
+  mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 200 20'%3E%3Cpath d='M6 13 Q100 1 194 13' fill='none' stroke='black' stroke-width='6' stroke-linecap='round'/%3E%3C/svg%3E") center / contain no-repeat;
+}
+#host-freeze small { max-width: 700px; margin-top: 12px; font-size: 20px; overflow-wrap: anywhere; }
+@media (prefers-reduced-motion: reduce) { #host-bar { animation: none; } }
 #host-bar.hidden, #host-freeze.hidden { display: none; }
 body.touch #host-bar b { font-size: 20px; }
 body.touch #host-freeze b { font-size: 28px; }
