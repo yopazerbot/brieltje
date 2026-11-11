@@ -20,6 +20,12 @@ In team games, press V to mark your position for teammates for eight seconds; th
 
 The whole project was made with AI. Yoshi Parlevliet, a cybersecurity consultant rather than a game developer, directed development and used both [OpenAI Codex](https://openai.com/codex/) and [Claude Code](https://claude.com/claude-code) to build the game, the data tools and the Blender scripts. Every choice and the reason for it is in [DECISIONS.md](DECISIONS.md).
 
+## Recent updates — 11 November 2026
+
+- **LAN nights.** Up to 32 players at once. Double-click `lan.cmd` to host on your own computer: it asks for an admin password and shows the address players type. The host runs the evening from `/admin/host/`: lock the doors, announce on every screen, freeze everyone, bring players to you, mute, a word filter, teams for the evening, a programme of games with a countdown, and tonight's scoreboard per player and per team, also on the big screen.
+- **Grass and leaves.** Blades of grass on lawns and verges round you, short where mown and taller in rough grass, and fallen autumn leaves under the trees (Medium and up).
+- **Worn roads.** Repair patches, tar-sealed cracks and the seam down the middle of the asphalt streets.
+
 ## Recent updates — 8 November 2026
 
 - **A new start screen.** Three short steps: who you are (a guest with a ready name, or your account), alone or together, then the game and where to start. Zombies is suggested first. "Play again as before" starts the same game in one press, and shows its own loading bar. It works on a desktop, a tablet and a phone, upright or held sideways.
