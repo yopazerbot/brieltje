@@ -21,6 +21,11 @@ import type { GroundShadeUniforms } from './undergrowth';
  * again after every few metres walked: the relief's height, and whether anything of the fixed world (not the
  * grass) lies within half a metre over it: a road, paving, a floor, a field, a hedge's foot, water. A tuft reads
  * both at its foot: it stands on the relief and shrinks to nothing where the ground is covered.
+ *
+ * Fallen leaves lie the same way (it is November): yellow, orange and brown, flat on whatever is there (the grass,
+ * a road, a pavement: the second image also keeps how high the cover lies), where the sky is half hidden in the
+ * ground's baked shade: under the crowns and along walls and hedges, where leaves gather. Not where it is fully
+ * hidden (indoors, under a roof).
  */
 
 /** Metres: the square the tufts' places repeat over (more than twice the furthest reach). */
@@ -28,6 +33,8 @@ const TILE = 72;
 /** Tufts in that square at most (about twelve to the square metre on Ultra; thinned with distance). */
 const COUNT = 62000;
 const BLADES = 7;
+/** Fallen leaves in that square at most (shown only where leaves gather). */
+const LEAVES = 40000;
 /** Metres the eye may move before the images are drawn again; they reach this much further than the tufts. */
 const STEP = 7;
 const SIZE = 512;
@@ -69,11 +76,21 @@ function tuft(): THREE.BufferGeometry {
   return g;
 }
 
+/** A fallen leaf: a pointed oval lying flat, a little cupped, paler along its midrib. */
+function leaf(): THREE.BufferGeometry {
+  const g = new THREE.BufferGeometry();
+  g.setAttribute('position', new THREE.Float32BufferAttribute([-0.5, 0, 0, 0, 0.06, -0.3, 0.5, 0, 0, 0, 0.06, 0.3, 0, 0.02, 0], 3));
+  g.setAttribute('color', new THREE.Float32BufferAttribute([0.8, 0.8, 0.8, 0.95, 0.95, 0.95, 0.8, 0.8, 0.8, 0.95, 0.95, 0.95, 1.15, 1.15, 1.15], 3));
+  g.setIndex([0, 4, 1, 1, 4, 2, 2, 4, 3, 3, 4, 0]);
+  return g;
+}
+
 export class GrassTufts {
   readonly group = new THREE.Group();
   private mesh: THREE.Mesh;
+  private leaves: THREE.Mesh;
   private heights = new THREE.WebGLRenderTarget(SIZE, SIZE, { type: THREE.HalfFloatType, minFilter: THREE.LinearFilter, magFilter: THREE.LinearFilter, generateMipmaps: false, depthBuffer: true });
-  private cover = new THREE.WebGLRenderTarget(SIZE, SIZE, { minFilter: THREE.LinearFilter, magFilter: THREE.LinearFilter, generateMipmaps: false, depthBuffer: false });
+  private cover = new THREE.WebGLRenderTarget(SIZE, SIZE, { minFilter: THREE.LinearFilter, magFilter: THREE.LinearFilter, generateMipmaps: false, depthBuffer: true });
   private camera = new THREE.OrthographicCamera(-1, 1, 1, -1, 1, 600);
   /** The images' centre x, z and half size; the height their heights are counted from. */
   private area = { value: new THREE.Vector3(0, 0, 1) };
@@ -90,29 +107,32 @@ export class GrassTufts {
    * the world that stands still (the house, the tiles): what of them lies on the ground keeps the tufts off.
    */
   constructor(shade: GroundShadeUniforms, private grass: THREE.Material, private fixed: () => THREE.Object3D[]) {
-    const g = new THREE.InstancedBufferGeometry();
-    const one = tuft();
-    g.setAttribute('position', one.getAttribute('position'));
-    g.setAttribute('color', one.getAttribute('color'));
-    g.setIndex(one.getIndex());
-    const place = new Float32Array(COUNT * 4);
-    const make = new Float32Array(COUNT * 4);
-    let seed = 99;
-    const rnd = () => (seed = (seed * 48271) % 2147483647) / 2147483647;
-    for (let i = 0; i < COUNT; i++) {
-      place.set([rnd() * TILE, rnd() * TILE, rnd() * Math.PI * 2, rnd()], i * 4);
-      make.set([0.7 + 0.6 * rnd(), rnd(), rnd(), rnd()], i * 4);
-    }
-    g.setAttribute('gtPlace', new THREE.InstancedBufferAttribute(place, 4));
-    g.setAttribute('gtMake', new THREE.InstancedBufferAttribute(make, 4));
-    g.instanceCount = COUNT;
-    this.mesh = new THREE.Mesh(g, this.material(shade));
-    this.mesh.frustumCulled = false; // placed round the eye in the vertex shader
-    this.mesh.userData.ignoreRay = true;
-    this.mesh.userData.noAO = true;
-    this.mesh.raycast = () => {};
-    this.mesh.visible = false;
-    this.group.add(this.mesh);
+const scattered = (one: THREE.BufferGeometry, count: number, kind: 'tuft' | 'leaf', seed: number): THREE.Mesh => {
+      const g = new THREE.InstancedBufferGeometry();
+      g.setAttribute('position', one.getAttribute('position'));
+      g.setAttribute('color', one.getAttribute('color'));
+      g.setIndex(one.getIndex());
+      const place = new Float32Array(count * 4);
+      const make = new Float32Array(count * 4);
+      const rnd = () => (seed = (seed * 48271) % 2147483647) / 2147483647;
+      for (let i = 0; i < count; i++) {
+        place.set([rnd() * TILE, rnd() * TILE, rnd() * Math.PI * 2, rnd()], i * 4);
+        make.set([0.7 + 0.6 * rnd(), rnd(), rnd(), rnd()], i * 4);
+      }
+      g.setAttribute('gtPlace', new THREE.InstancedBufferAttribute(place, 4));
+      g.setAttribute('gtMake', new THREE.InstancedBufferAttribute(make, 4));
+      g.instanceCount = count;
+      const mesh = new THREE.Mesh(g, this.material(shade, kind));
+      mesh.frustumCulled = false; // placed round the eye in the vertex shader
+      mesh.userData.ignoreRay = true;
+      mesh.userData.noAO = true;
+      mesh.raycast = () => {};
+      mesh.visible = false;
+      this.group.add(mesh);
+      return mesh;
+    };
+    this.mesh = scattered(tuft(), COUNT, 'tuft', 99);
+    this.leaves = scattered(leaf(), LEAVES, 'leaf', 4242);
     reflectionSkips.objects.add(this.group);
 
     // The two passes from above. Where a point lands in the image is worked out here, not by the camera (which
@@ -145,18 +165,18 @@ export class GrassTufts {
         void main() {
           float over = vY - texture2D(gtHeights, gl_FragCoord.xy / ${SIZE}.0).r;
           if (over > 0.5 || over < -0.5) discard;
-          gl_FragColor = vec4(1.0);
+          // Covered, and how high over the relief (the highest of what lies there is kept: the depth test).
+          gl_FragColor = vec4(1.0, over + 0.5, 0.0, 1.0);
         }`,
       side: THREE.DoubleSide,
-      depthTest: false,
-      depthWrite: false,
     });
     this.camera.up.set(0, 0, -1);
   }
 
-  private material(shade: GroundShadeUniforms): THREE.MeshStandardMaterial {
+  private material(shade: GroundShadeUniforms, kind: 'tuft' | 'leaf'): THREE.MeshStandardMaterial {
+    const tufts = kind === 'tuft';
     // The lawn's own colour (its texture's mean times its tint), so the blades and the ground are one.
-    const m = new THREE.MeshStandardMaterial({ color: new THREE.Color(0.086, 0.104, 0.021), vertexColors: true, roughness: 1, side: THREE.DoubleSide });
+    const m = new THREE.MeshStandardMaterial({ color: tufts ? new THREE.Color(0.086, 0.104, 0.021) : new THREE.Color(1, 1, 1), vertexColors: true, roughness: 1, side: THREE.DoubleSide });
     m.onBeforeCompile = (shader) => {
       Object.assign(shader.uniforms, {
         gtArea: this.area, gtBase: this.base, gtReach: this.reach, gtSnow: this.snow,
@@ -195,7 +215,8 @@ export class GrassTufts {
           vec2 gtUv = (gtRoot - gtArea.xy) / gtArea.z * 0.5 + 0.5;
           vec4 gtGround = textureLod(gtHeights, gtUv, 0.0);
           float gtY = gtGround.r;
-          float gtCovered = textureLod(gtCover, gtUv, 0.0).r;
+          vec4 gtOver = textureLod(gtCover, gtUv, 0.0);
+          float gtCovered = gtOver.r;
           // The ground's light and the grass's kind at the foot (world/groundShade.ts).
           vec2 uvFine = (gtRoot - ugArea.xy) / ugArea.z * 0.5 + 0.5;
           vec2 uvAll = (gtRoot - ugAreaAll.xy) / ugAreaAll.z * 0.5 + 0.5;
@@ -206,7 +227,7 @@ export class GrassTufts {
           if (fine < 1.0 && max(edgeAll.x, edgeAll.y) < 0.5) gs = textureLod(ugShadeAll, uvAll, 0.0);
           if (fine > 0.0) gs = mix(gs, textureLod(ugShade, uvFine, 0.0), fine);
           vGtLight = gs.rg;
-          float gtWild = clamp(1.0 - gs.a * 2.0, 0.0, 1.0);
+${tufts ? `          float gtWild = clamp(1.0 - gs.a * 2.0, 0.0, 1.0);
           float gtMown = clamp(gs.a * 2.0 - 1.0, 0.0, 1.0);
           // How tall: a mown lawn a few centimetres, plain grass a hand, rough grass to the shin.
           float gtTall = mix(mix(0.12, 0.075, gtMown), 0.26, gtWild) * gtMake.x * (1.0 - smoothstep(0.05, 0.45, gtSnow));
@@ -227,7 +248,20 @@ export class GrassTufts {
           // Its colour: yellower or greener with the ground's slow variation, drier in rough grass, each its own.
           vGtTint = mix(vec3(1.06, 1.0, 0.78), vec3(0.95, 1.02, 1.1), gs.b) * mix(vec3(1.0), vec3(1.25, 1.12, 0.7), gtWild * gtMake.y)
             * (0.85 + 0.3 * gtMake.z) * (1.0 + 0.14 * gtMown);
-`,
+` : `          float gtInside = step(0.9, gtGround.a) * step(max(abs(gtUv.x - 0.5), abs(gtUv.y - 0.5)), 0.49);
+          // Where leaves gather: the sky half hidden (under a crown, along a wall or a hedge), not fully (indoors).
+          float gtGather = smoothstep(0.9, 0.5, gs.g) * smoothstep(0.1, 0.28, gs.g);
+          float gtShow = gtInside * step(gtPlace.w, gtGather * 0.95) * smoothstep(gtReach, gtReach * 0.75, gtFar) * (1.0 - smoothstep(0.05, 0.3, gtSnow));
+          float gtSize = (0.05 + 0.04 * gtMake.x) * gtShow;
+          float gtC = cos(gtPlace.z), gtS = sin(gtPlace.z);
+          vec3 transformed = vec3(position.x * gtC - position.z * gtS, position.y, position.x * gtS + position.z * gtC) * gtSize;
+          // Flat on what is there, a little tipped, each a hair higher than the last so they don't fight.
+          transformed.y += transformed.x * (gtMake.z - 0.5) * 0.5;
+          float gtOn = gtCovered > 0.5 ? max(gtOver.g - 0.5, 0.0) : 0.0;
+          transformed += vec3(gtRoot.x, gtY + gtBase + gtOn + 0.012 + 0.01 * gtMake.w, gtRoot.y);
+          // Yellow, orange or brown.
+          vGtTint = gtMake.y < 0.35 ? vec3(0.5, 0.34, 0.03) : gtMake.y < 0.65 ? vec3(0.42, 0.16, 0.025) : vec3(0.16, 0.085, 0.03);
+          vGtTint *= 0.8 + 0.4 * gtMake.z;`}`,
         );
       shader.fragmentShader = shader.fragmentShader
         .replace('#include <common>', '#include <common>\nvarying vec2 vGtLight;\nvarying vec3 vGtTint;')
@@ -240,7 +274,7 @@ export class GrassTufts {
           reflectedLight.indirectDiffuse *= vGtLight.y;`,
         );
     };
-    m.customProgramCacheKey = () => 'grassTufts';
+    m.customProgramCacheKey = () => `grassTufts|${kind}`;
     return m;
   }
 
@@ -251,6 +285,8 @@ export class GrassTufts {
     // The places are scattered evenly: the first so many of them are a thinner lawn.
     (this.mesh.geometry as THREE.InstancedBufferGeometry).instanceCount = quality === 'medium' ? 26000 : quality === 'high' ? 46000 : COUNT;
     this.mesh.visible = on;
+    this.leaves.visible = on;
+    (this.leaves.geometry as THREE.InstancedBufferGeometry).instanceCount = quality === 'medium' ? 20000 : LEAVES;
     this.drawnAt.set(Infinity, 0, 0);
   }
 
@@ -295,7 +331,7 @@ export class GrassTufts {
     const background = scene.background;
     const override = scene.overrideMaterial;
     const shown = this.mesh.visible;
-    this.mesh.visible = false;
+    this.mesh.visible = this.leaves.visible = false;
     renderer.shadowMap.autoUpdate = false;
     renderer.autoClear = true;
     scene.background = null;
@@ -319,6 +355,6 @@ export class GrassTufts {
     renderer.autoClear = autoClear;
     renderer.setClearColor(color, alpha);
     renderer.setRenderTarget(target);
-    this.mesh.visible = shown;
+    this.mesh.visible = this.leaves.visible = shown;
   }
 }
