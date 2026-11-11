@@ -35,6 +35,7 @@ import { HOMES } from './shared/homes.mjs';
 import { GameNight } from './server/gamenight.mjs';
 import { Interest } from './server/interest.mjs';
 import { Stats } from './server/stats.mjs';
+import { monitor } from './server/monitor.mjs';
 import { decodePath } from './server/paths.mjs';
 
 const DIST = resolve(import.meta.dirname, 'dist');
@@ -104,6 +105,14 @@ await game.loadFurniture();
 await game.loadRules();
 // The open world and the Zombies rooms (server/rooms.mjs); the players' accounts (server/accounts.mjs).
 const rooms = new Rooms(game, (room) => new Game(auth, undefined, room));
+// Who is connected, for the server's own figures on the host's screen (server/monitor.mjs): counts and pings only.
+monitor.people = () => {
+  const games = rooms.games();
+  return {
+    players: games.reduce((n, g) => n + g.players.size, 0), watchers: game.watchers.size, rooms: games.length - 1,
+    pings: games.flatMap((g) => [...g.players.values()].map((p) => (typeof p.rttAvg === 'number' ? Math.round(p.rttAvg) : null))),
+  };
+};
 const accounts = new Accounts(auth, (name, exceptKey) => rooms.online(name, exceptKey));
 rooms.guestRuns = accounts.guestRuns; // a guest's last good Zombies run, kept a while for an account made from that session (server/keepRun.mjs)
 await accounts.init();
@@ -370,7 +379,7 @@ async function api(req, res, url) {
   // The host's controls for a LAN night (server/host.mjs, web/public/admin/host/): what the host page shows, and one
   // action at a time. Behind the admin's session (above) and body()'s same-origin JSON check (no cross-site posts);
   // every action is checked again there, and at most ten a second.
-  if (path === '/api/host' && method === 'GET') return json(res, 200, game.host.view());
+  if (path === '/api/host' && method === 'GET') return json(res, 200, { ...game.host.view(), server: monitor.view() });
   if (path === '/api/host' && method === 'POST') {
     const r = game.host.act(s.username, await body(req));
     return r.error ? json(res, 400, r) : json(res, 200, r);

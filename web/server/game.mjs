@@ -52,6 +52,7 @@ import { DROP, dropFrom, HOME_DROP } from '../shared/parachute.mjs';
 import { Football } from './football.mjs';
 import { blastPoint } from './grenade.mjs';
 import { Host } from './host.mjs';
+import { monitor } from './monitor.mjs';
 import { words } from './words.mjs';
 
 /** /parachute (manualDrop): once every CHUTE_MS, and not within HURT_CALM_MS of being hit. */
@@ -404,7 +405,11 @@ export class Game {
     this.horseAt = this.horses.map(() => 0);
     this.football = new Football((x, z) => HOUSE.ground + TERRAIN.height(x, z)); // the footballs (server/football.mjs)
     this.timers = [
-      setInterval(() => this.tick(), TICK_MS).unref(),
+      setInterval(() => {
+        const t0 = performance.now();
+        this.tick();
+        monitor.tick(performance.now() - t0); // how long a tick takes (server/monitor.mjs)
+      }, TICK_MS).unref(),
       setInterval(() => this.moodSeason(Date.now()), 60_000).unref(), // winter begins or ends: snow on Auto or not
       // Sessions can end while connected (logout, password reset, account deleted or turned off,
       // kicked, expired): close those connections within a second.
@@ -789,6 +794,7 @@ export class Game {
   /** A message from a player's browser. A mistake handling one is logged, never fatal to the server. */
   receive(name, player, raw) {
     player.heard = mono();
+    monitor.in(raw.length);
     try {
       this.handle(name, player, raw);
     } catch (e) {
@@ -2449,7 +2455,9 @@ export class Game {
       p.full = false;
       if (all) everything ??= rest(true);
       const others = join(players.filter((e) => e.name !== name), all);
-      p.ws.send(`{"t":"s","st":${st}${part('p', others)}${all ? everything : changed}}`);
+      const tick = `{"t":"s","st":${st}${part('p', others)}${all ? everything : changed}}`;
+      monitor.out(tick.length);
+      p.ws.send(tick);
     }
     // The watch views: everyone.
     for (const w of this.watchers) {
@@ -2457,7 +2465,9 @@ export class Game {
       const all = w.full;
       w.full = false;
       if (all) everything ??= rest(true);
-      w.ws.send(`{"t":"s","st":${st}${part('p', join(players, all))}${all ? everything : changed}}`);
+      const tick = `{"t":"s","st":${st}${part('p', join(players, all))}${all ? everything : changed}}`;
+      monitor.out(tick.length);
+      w.ws.send(tick);
     }
     if (old && turn % OLD_EVERY === 0) this.oldStates(now);
   }
@@ -2526,12 +2536,17 @@ export class Game {
   }
 
   send(ws, msg) {
-    if (ws.readyState === ws.OPEN) ws.send(JSON.stringify(msg));
+    if (ws.readyState !== ws.OPEN) return;
+    const data = JSON.stringify(msg);
+    monitor.out(data.length);
+    ws.send(data);
   }
 
   broadcast(msg, except) {
     const data = JSON.stringify(msg);
-    for (const [name, p] of this.players) if (name !== except && p.ws.readyState === p.ws.OPEN) p.ws.send(data);
-    for (const w of this.watchers) if (w.ws.readyState === w.ws.OPEN) w.ws.send(data); // the admin's watch views (src/watch.ts)
+    let n = 0;
+    for (const [name, p] of this.players) if (name !== except && p.ws.readyState === p.ws.OPEN) (p.ws.send(data), n++);
+    for (const w of this.watchers) if (w.ws.readyState === w.ws.OPEN) (w.ws.send(data), n++); // the admin's watch views (src/watch.ts)
+    monitor.out(data.length, n);
   }
 }
