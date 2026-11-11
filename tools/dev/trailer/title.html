@@ -1,0 +1,123 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Brieltje Zombies trailer: intro and outro</title>
+<!-- The trailer's intro (?scene=intro) and outro (?scene=outro), in the start screen's colours and letters, over the
+     game's own renders. Nothing plays by itself: tools/dev/trailer/titles.mjs calls seek(seconds) for every frame
+     and photographs it, so the frames are the same each time. -->
+<style>
+  @font-face { font-family: Fredoka; src: url('../../../web/public/fonts/fredoka.woff2') format('woff2'); font-weight: 300 700; }
+  @font-face { font-family: 'Alegreya Sans'; src: url('../../../web/public/fonts/alegreya-sans-500.woff2') format('woff2'); font-weight: 500; }
+  @font-face { font-family: 'Alegreya Sans'; src: url('../../../web/public/fonts/alegreya-sans-800.woff2') format('woff2'); font-weight: 800; }
+  :root { --night: #0b1230; --chalk: #f4f1e6; --soft: #c9cee6; --lamp: #f7b928; --lamp-bright: #ffcb4d; }
+  * { box-sizing: border-box; margin: 0; }
+  html, body { width: 1920px; height: 1080px; overflow: hidden; background: #000; }
+  .scene { position: absolute; inset: 0; overflow: hidden; display: none; color: var(--chalk); font-family: 'Alegreya Sans', sans-serif; }
+  .scene.on { display: block; }
+  .bg { position: absolute; inset: -4%; background-size: cover; background-position: center; }
+  .shade { position: absolute; inset: 0; background: radial-gradient(ellipse at 50% 45%, rgba(11, 18, 48, 0.25) 0%, rgba(5, 8, 22, 0.86) 78%, #04060f 100%); }
+  .fog { position: absolute; left: -10%; right: -10%; bottom: -6%; height: 46%; background: linear-gradient(to top, rgba(4, 6, 15, 0.98) 8%, rgba(20, 30, 70, 0.5) 55%, transparent); }
+  .line { position: absolute; left: 0; right: 0; top: 43%; text-align: center; font-weight: 500; font-size: 76px; letter-spacing: 1px; text-shadow: 0 4px 30px #000; opacity: 0; }
+  .line.lamp { color: var(--lamp-bright); font-weight: 800; font-size: 96px; }
+  .herd { position: absolute; left: 50%; bottom: -70px; width: 1900px; transform: translateX(-50%); filter: brightness(0.05) saturate(0.4) drop-shadow(0 0 40px rgba(120, 160, 255, 0.25)); opacity: 0; }
+  .big { position: absolute; right: 40px; bottom: -160px; height: 1180px; filter: brightness(0.04) drop-shadow(0 0 60px rgba(120, 160, 255, 0.3)); opacity: 0; }
+  .title { position: absolute; left: 0; right: 0; top: 250px; text-align: center; opacity: 0; }
+  .logo { height: 120px; color: var(--chalk); fill: var(--chalk); filter: drop-shadow(0 6px 30px #000); }
+  .logo .lit { fill: var(--lamp); }
+  .zombies { display: block; margin-top: 6px; font-family: Fredoka, sans-serif; font-weight: 700; font-size: 330px; line-height: 1; letter-spacing: 6px; color: var(--lamp);
+    text-shadow: 0 0 90px rgba(247, 185, 40, 0.55), 0 10px 0 #7a5200, 0 18px 50px #000; }
+  .tag { display: inline-block; margin-top: 26px; font-family: Fredoka, sans-serif; font-weight: 500; font-size: 44px; letter-spacing: 12px; text-transform: uppercase; color: var(--soft); }
+  .flash { position: absolute; inset: 0; background: #fff; opacity: 0; }
+  /* the outro */
+  .lineup { position: absolute; left: 50%; bottom: -40px; width: 1500px; transform: translateX(-50%); filter: drop-shadow(0 30px 60px #000); opacity: 0; }
+  .ask { position: absolute; left: 0; right: 0; top: 84px; text-align: center; font-family: Fredoka, sans-serif; font-weight: 700; font-size: 150px; color: var(--chalk); text-shadow: 0 8px 40px #000; opacity: 0; }
+  .end { position: absolute; left: 0; right: 0; top: 96px; text-align: center; opacity: 0; }
+  .end .logo { height: 150px; }
+  .end .zombies { font-size: 120px; letter-spacing: 16px; margin-top: 14px; text-shadow: 0 0 50px rgba(247, 185, 40, 0.5), 0 6px 0 #7a5200; }
+  .play { display: inline-block; margin-top: 34px; padding: 16px 54px 20px; border-radius: 999px; background: var(--lamp); color: #101a3f; font-family: Fredoka, sans-serif; font-weight: 600; font-size: 62px;
+    box-shadow: 0 0 70px rgba(247, 185, 40, 0.5), 0 8px 0 #9a6b00; }
+  /* a caption over the gameplay: the page is see-through but for its words */
+  html.caption, html.caption body { background: transparent; }
+  .cap { position: absolute; left: 0; right: 0; bottom: 118px; text-align: center; font-family: Fredoka, sans-serif; font-weight: 700; font-size: 124px; letter-spacing: 3px; color: var(--lamp);
+    -webkit-text-stroke: 10px #0b1230; paint-order: stroke fill; text-shadow: 0 10px 0 #0b1230, 0 0 60px rgba(0, 0, 0, 0.8); }
+  .small { display: block; margin-top: 26px; font-size: 36px; color: var(--soft); letter-spacing: 1px; }
+</style>
+</head>
+<body>
+<svg width="0" height="0" style="position:absolute" id="symbols"></svg>
+
+<div class="scene" id="intro">
+  <div class="bg" style="background-image:url('../../../web/public/start/street-night-2560.webp')"></div>
+  <div class="shade"></div>
+  <img class="herd" src="../../../docs/poster/zombies_lineup.png" alt="">
+  <img class="big" src="../../../docs/poster/zombie_big.png" alt="">
+  <div class="fog"></div>
+  <div class="line" id="l1">Smetlede. A quiet evening.</div>
+  <div class="line lamp" id="l2">Until tonight.</div>
+  <div class="title">
+    <svg class="logo" viewBox="0 0 559.5 113.9"><use href="#brand-row"/></svg>
+    <span class="zombies">ZOMBIES</span>
+    <span class="tag">Gameplay trailer</span>
+  </div>
+  <div class="flash"></div>
+</div>
+
+<div class="scene" id="outro">
+  <div class="bg" style="background-image:url('../../../web/public/start/town-night-2560.webp')"></div>
+  <div class="shade"></div>
+  <div class="fog"></div>
+  <img class="lineup" src="../../../docs/poster/zombies_lineup.png" alt="">
+  <div class="ask">How far do you get?</div>
+  <div class="end">
+    <svg class="logo" viewBox="0 0 559.5 113.9"><use href="#brand-row"/></svg>
+    <span class="zombies">ZOMBIES</span>
+    <span class="play">Play free at brieltje.be</span>
+    <span class="small">In your browser. Alone or together.</span>
+  </div>
+  <div class="flash"></div>
+</div>
+
+<div class="scene" id="caption"><div class="cap"></div></div>
+
+<script>
+  const scene = new URLSearchParams(location.search).get('scene') || 'intro';
+  const root = document.getElementById(scene);
+  if (scene === 'caption') {
+    document.documentElement.classList.add('caption');
+    root.querySelector('.cap').textContent = new URLSearchParams(location.search).get('text') || '';
+  }
+  root.classList.add('on');
+  const $ = (q) => root.querySelector(q);
+  const ease = 'cubic-bezier(.2,.7,.2,1)';
+  /** One animation: keyframes from `from` seconds for `dur` seconds, held before and after. */
+  const anim = (el, frames, from, dur, easing = 'linear') => el.animate(frames, { delay: from * 1000, duration: dur * 1000, fill: 'both', easing });
+  const LENGTH = { intro: 6.5, outro: 7, caption: 0 }[scene];
+  if (scene === 'intro') {
+    anim($('.bg'), [{ transform: 'scale(1)' }, { transform: 'scale(1.12)' }], 0, LENGTH);
+    anim($('#l1'), [{ opacity: 0, transform: 'translateY(14px)' }, { opacity: 1, transform: 'none', offset: 0.25 }, { opacity: 1, offset: 0.8 }, { opacity: 0 }], 0.3, 2.3);
+    anim($('#l2'), [{ opacity: 0, transform: 'scale(0.96)' }, { opacity: 1, transform: 'none', offset: 0.2 }, { opacity: 1, offset: 0.8 }, { opacity: 0 }], 2.6, 1.3);
+    anim($('.herd'), [{ opacity: 0, transform: 'translateX(-50%) translateY(120px)' }, { opacity: 1, transform: 'translateX(-50%) translateY(0)' }], 2.5, 2.4, ease);
+    anim($('.big'), [{ opacity: 0, transform: 'translateY(200px)' }, { opacity: 1, transform: 'none' }], 3.1, 2.2, ease);
+    anim($('.flash'), [{ opacity: 0 }, { opacity: 0.85, offset: 0.12 }, { opacity: 0 }], 3.9, 0.5);
+    anim($('.title'), [{ opacity: 0, transform: 'scale(1.5)' }, { opacity: 1, transform: 'scale(1)' }], 3.95, 0.45, ease);
+    anim($('.zombies'), [{ letterSpacing: '6px' }, { letterSpacing: '22px' }], 4.4, 2.1);
+    anim($('.tag'), [{ opacity: 0 }, { opacity: 1 }], 4.6, 0.5);
+    anim(root, [{ opacity: 1 }, { opacity: 0 }], 6.1, 0.4);
+  } else if (scene === 'outro') {
+    anim($('.bg'), [{ transform: 'scale(1.1)' }, { transform: 'scale(1)' }], 0, LENGTH);
+    anim(root, [{ opacity: 0 }, { opacity: 1 }], 0, 0.4);
+    anim($('.lineup'), [{ opacity: 0, transform: 'translateX(-50%) translateY(160px)' }, { opacity: 1, transform: 'translateX(-50%) translateY(0)' }], 0.2, 1.2, ease);
+    anim($('.ask'), [{ opacity: 0, transform: 'scale(1.25)' }, { opacity: 1, transform: 'none', offset: 0.18 }, { opacity: 1, offset: 0.86 }, { opacity: 0 }], 0.4, 2.5, ease);
+    anim($('.flash'), [{ opacity: 0 }, { opacity: 0.6, offset: 0.15 }, { opacity: 0 }], 2.9, 0.45);
+    anim($('.end'), [{ opacity: 0, transform: 'translateY(30px)' }, { opacity: 1, transform: 'none' }], 2.95, 0.5, ease);
+    anim($('.play'), [{ transform: 'scale(1)' }, { transform: 'scale(1.06)' }, { transform: 'scale(1)' }], 3.6, 1.6, 'ease-in-out');
+    anim(root, [{ opacity: 1 }, { opacity: 0 }], 6.4, 0.6);
+  }
+  for (const a of document.getAnimations()) a.pause();
+  window.LENGTH = LENGTH;
+  window.seek = (t) => { for (const a of document.getAnimations()) a.currentTime = t * 1000; };
+  window.seek(0);
+</script>
+</body>
+</html>
