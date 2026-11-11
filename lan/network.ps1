@@ -173,10 +173,8 @@ function Get-WindowsFixes($net, [string]$caddy) {
   $public = $net -and $net.Category -eq 'Public'
   $todo = @()
   $fix = @()
-  if ($public) {
-    $todo += "Windows treats the network on $($net.Alias) as Public, which keeps players out."
-    $fix += "Set-NetConnectionProfile -InterfaceIndex $($net.Index) -NetworkCategory Private"
-  }
+  $profileFix = $null
+  if ($public) { $profileFix = "Set-NetConnectionProfile -InterfaceIndex $($net.Index) -NetworkCategory Private" }
   if ($blocking) {
     $todo += 'A firewall rule blocks Caddy (left by an unanswered Windows question).'
     $fix += ($blocking | ForEach-Object { "Remove-NetFirewallRule -Name '$($_.Name -replace "'", "''")'" })
@@ -185,19 +183,37 @@ function Get-WindowsFixes($net, [string]$caddy) {
     $todo += 'No firewall rule lets players reach Caddy yet.'
     $fix += "New-NetFirewallRule -DisplayName '$($ruleName -replace "'", "''")' -Direction Inbound -Action Allow -Profile Private,Domain -Program '$($program -replace "'", "''")' | Out-Null"
   }
-  [pscustomobject]@{ Todo = $todo; Fix = $fix }
+  [pscustomobject]@{ Todo = $todo; Fix = $fix; ProfileFix = $profileFix }
 }
 
 function Repair-Windows($net, [string]$caddy, [bool]$ask) {
   $f = Get-WindowsFixes $net $caddy
   $todo = @($f.Todo)
-  $fix = @($f.Fix)
-  if (-not $todo) { return }
+  $fix = @()
+  if (-not $todo -and -not $f.ProfileFix) { return }
   Write-Host ''
-  $todo | ForEach-Object { Write-Host "Careful: $_" }
-  if (-not $ask) { Write-Host '  Start lan.cmd yourself to fix it.'; return }
-  $yes = Read-Host 'Fix it now? Windows asks for permission once. [Y/n]'
-  if ($yes -and $yes -notmatch '^(y|j)') { Write-Host '  Left as it is. Players may not get in.'; return }
+  if (-not $ask) {
+    if ($f.ProfileFix) { Write-Host "Careful: Windows treats the network on $($net.Alias) as Public, which keeps players out." }
+    $todo | ForEach-Object { Write-Host "Careful: $_" }
+    Write-Host '  Start lan.cmd yourself to fix it.'
+    return
+  }
+  # The network's type is a choice about the network, not about Caddy: asked on its own, and only a typed yes.
+  if ($f.ProfileFix) {
+    $name = $net.Network
+    if (-not $name) { $name = $net.Alias }
+    Write-Host "Windows treats the network '$name' ($($net.Alias)) as Public, which keeps players out."
+    Write-Host '  Make it Private only if you trust this network: Windows then remembers it as private (only this one).'
+    $yes = Read-Host '  Make it Private? [y/N]'
+    if ($yes -match '^(y|j)') { $fix += $f.ProfileFix } else { Write-Host '  Left Public. Players on it will not get in.' }
+  }
+  if ($todo) {
+    $todo | ForEach-Object { Write-Host "Careful: $_" }
+    $yes = Read-Host '  Fix the firewall for Caddy? [Y/n]'
+    if ($yes -and $yes -notmatch '^(y|j)') { Write-Host '  Left as it is. Players may not get in.' } else { $fix += @($f.Fix) }
+  }
+  if (-not $fix) { return }
+  Write-Host '  Windows asks for permission once.'
   $cmd = ($fix -join '; ')
   $encoded = [Convert]::ToBase64String([Text.Encoding]::Unicode.GetBytes("`$ErrorActionPreference = 'Stop'; $cmd"))
   try {

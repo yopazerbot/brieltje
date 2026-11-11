@@ -12,7 +12,7 @@
 #   lan.cmd -Http [-Port 8090]       plain http on this computer's address: no name, no certificate
 #   lan.cmd -StopAfter 30            stop by itself after so many minutes (a test run)
 #
-# Without internet it uses the certificate it has; without one either, it starts over plain http by itself.
+# Without internet it uses the certificate it has; without one either, it offers plain http (never by itself).
 param(
   [string]$Domain = 'lan.brieltje.be',
   [string]$Address = '',
@@ -101,6 +101,16 @@ function Wait-Caddy($proc, [bool]$overHttp, [int]$seconds) {
   return $false
 }
 
+# Plain http only on a typed yes: the admin's and players' passwords then cross the network unencrypted.
+# Without a person at the keyboard: no.
+function Confirm-Http([string]$why) {
+  Write-Host "`n$why"
+  Write-Host 'Plain http works, but passwords (yours as admin, and players'' accounts) then cross the network unencrypted.'
+  if (-not $interactive) { Write-Host 'Not starting over plain http without a person to agree. Use lan.cmd -Http to choose it.'; return $false }
+  $yes = Read-Host 'Start over plain http instead (players type this computer''s address)? [y/N]'
+  return ($yes -match '^(y|j)')
+}
+
 function Stop-Caddy($proc) {
   if ($proc -and -not $proc.HasExited) { Stop-Process -Id $proc.Id -Force -ErrorAction SilentlyContinue; $proc.WaitForExit(5000) | Out-Null }
 }
@@ -181,8 +191,7 @@ if (-not $Http) {
     Write-Host ("Certificate for {0}: valid until {1:d MMM yyyy} ({2} days)." -f $Domain, $end, $days)
     if ($days -lt 21 -and -not $online) { Write-Host '  Under three weeks: start once with internet before the night, so Caddy renews it.' }
   } elseif (-not $online) {
-    Write-Host "`nNo internet and no certificate for $Domain yet: starting over plain http instead."
-    Write-Host '(Start once with internet to get the certificate; after that the venue needs none.)'
+    if (-not (Confirm-Http "No internet and no certificate for $Domain yet. (Start once with internet to get one; after that the venue needs none.)")) { exit 1 }
     $Http = $true
   }
 }
@@ -259,9 +268,7 @@ try {
     Copy-Item $caddyLog "$caddyLog.failed" -Force -ErrorAction SilentlyContinue # kept: the next start writes a new log
     Write-Host "  (Caddy's log: $caddyLog.failed)"
     if ($Http) { return }
-    $yes = 'y'
-    if ($interactive) { $yes = Read-Host "`nStart over plain http instead (players type this computer's address)? [Y/n]" }
-    if ($yes -and $yes -notmatch '^(y|j)') { return }
+    if (-not (Confirm-Http 'There is no certificate, so https does not work yet.')) { return }
     $Http = $true
     if (@(Get-PortUsers @($Port) $caddy | Where-Object { -not $_.Ours })) { Write-Host "Port $Port is in use. Try: lan.cmd -Http -Port 8090"; return }
     if (-not (Start-Game $true)) { Write-Host 'The game did not start again.'; return }
