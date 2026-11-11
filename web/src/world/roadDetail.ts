@@ -745,6 +745,7 @@ class Builder {
       }
     } else {
       for (let k0 = 0; k0 < n - 1; k0 += 8) this.strip(f, k0, Math.min(n - 1, k0 + 8), inB, inA, surface, flatLift, shade(base, 1), COLS);
+      if (surface === 'asphalt') this.asphaltWear(f, inB, inA, wide, base, seed);
     }
 
     // Either side: the gutter, the kerb and the pavement, or the apron and the shoulder.
@@ -854,6 +855,78 @@ class Builder {
         const worn = pf.wear * Math.exp(-((o / 0.35) ** 2));
         return out.copy(tint).multiplyScalar((0.94 + 0.12 * hash(k, seed)) * (1 - worn));
       }, [0, 0.5, 1]);
+    }
+  }
+
+  /**
+   * Asphalt after some years, between offsets lo(k) and hi(k): the seam down the middle where two lanes were laid
+   * (wide roads), a trench now and then sawn across for a pipe or a cable and filled with newer, darker (or older,
+   * paler) asphalt with tar along its edges, long cracks sealed with a wandering line of tar, and a crack across.
+   * By the street's own seed: the same on every visit. Not surveyed street by street.
+   */
+  asphaltWear(f: Frame, lo: (k: number) => number, hi: (k: number) => number, wide: boolean, tint: THREE.Color, seed: number): void {
+    const lift = () => this.road;
+    const n = f.n;
+    const [from, to] = [f.s[0], f.s[n - 1]];
+    const kAt = (s: number) => {
+      let k = 0;
+      while (k < n - 2 && f.s[k + 1] <= s) k++;
+      return k;
+    };
+    const tone = (m: number) => `#${new THREE.Color().copy(tint).multiplyScalar(m).getHexString()}`;
+    // Darker than they are: the matte paint takes more of the sky's light than the grainy asphalt beside it.
+    const TAR = '#151516';
+    // The seam, away from the street's ends (the junctions).
+    if (wide) {
+      const seam = tone(0.42);
+      for (let k = 0; k < n - 1; k++) if (f.s[k] > from + 5 && f.s[k + 1] < to - 5) this.line(f, f.s[k], 0, f.s[k + 1], 0, 0.022, seam, lift);
+    }
+    // Trenches across: from one edge to past the middle, or right across.
+    for (let s = from + 7 + 30 * hash(seed, 1); s < to - 10; s += 18 + 36 * hash(s, 2, seed)) {
+      const k = kAt(s);
+      const a = Math.max(lo(k), lo(k + 1)) + 0.1;
+      const b = Math.min(hi(k), hi(k + 1)) - 0.1;
+      if (b - a < 2) continue;
+      const len = 1.1 + 1.4 * hash(s, 4, seed);
+      const reach = hash(s, 3, seed) < 0.35 ? 1 : 0.45 + 0.35 * hash(s, 5, seed);
+      const fromA = hash(s, 6, seed) < 0.5;
+      const o0 = fromA ? b - (b - a) * reach : a;
+      const o1 = fromA ? b : a + (b - a) * reach;
+      const m = hash(s, 7, seed) < 0.65 ? 0.66 + 0.1 * hash(s, 8, seed) : 1.16;
+      // Asphalt of its own, laid in the carriageway's place (a rank over it: the road under it is cut away), along
+      // a short frame of its own on the street's centre line.
+      const at = [0, 0.5, 1].flatMap((t) => f.point(s + len * t, 0));
+      const g = new Frame(at, s);
+      const shade = new THREE.Color().copy(tint).multiplyScalar(m);
+      this.as(RANK.carriageway + 0.2, () => this.strip(g, 0, 2, () => o0, () => o1, 'asphalt', lift,
+        (k, o, out) => out.copy(shade).multiplyScalar(0.97 + 0.06 * hash(k, Math.round(o * 3), s)), [0, 0.5, 1]));
+      const up = () => lift() + 0.002;
+      this.line(g, s, o0, s, o1, 0.03, TAR, up);
+      this.line(g, s + len, o0, s + len, o1, 0.03, TAR, up);
+      if (reach < 1) this.line(g, s, fromA ? o0 : o1, s + len, fromA ? o0 : o1, 0.03, TAR, up);
+    }
+    // Long cracks along the street, sealed with tar.
+    for (let s = from + 6 + 20 * hash(seed, 11); s < to - 20; s += 14 + 30 * hash(s, 12, seed)) {
+      const len = 4 + 10 * hash(s, 14, seed);
+      let o = 0;
+      let at = s;
+      for (let i = 0; at < s + len; i++) {
+        const k = kAt(at);
+        const [a, b] = [lo(k) + 0.3, hi(k) - 0.3];
+        if (b - a < 1) break;
+        if (i === 0) o = a + (b - a) * hash(s, 13, seed);
+        const next = at + 0.5 + 0.5 * hash(at, 15, seed);
+        const no = Math.max(a, Math.min(b, o + (hash(at, 16, seed) - 0.5) * 0.26));
+        this.line(f, at, o, next, no, 0.032, TAR, lift);
+        at = next;
+        o = no;
+      }
+    }
+    // And one across, here and there.
+    for (let s = from + 9; s < to - 9; s += 11) {
+      if (hash(s, 21, seed) > 0.3) continue;
+      const k = kAt(s);
+      this.crack(f, s, s + 2.4, lo(k), hi(k), hash(s, 22, seed));
     }
   }
 
