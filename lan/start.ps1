@@ -1,23 +1,30 @@
-# A LAN night on this computer (lan.cmd runs this; lan/compose.yaml, lan/Dockerfile, lan/Caddyfile).
-# Asks for tonight's admin password (not shown, not saved), builds and starts the game's container, starts Caddy in
-# front of it and shows the address players type. Enter stops both. Tonight's data stays in a Docker volume.
+# A LAN night on this computer (lan.cmd runs this; lan/compose.yaml, lan/Dockerfile, lan/Caddyfile, lan/network.ps1).
+# Finds the network the players are on, fixes what in Windows would keep them out, asks for tonight's admin password
+# (not shown, not saved), starts the game's container and Caddy in front of it, and shows the address players type.
+# While it runs it keeps an eye on the network: a new address (another network, a new lease) moves the name along.
+# Enter or Q stops both. Tonight's data stays in a Docker volume.
 #
 #   lan.cmd                          https://lan.brieltje.be: a certificate from Let's Encrypt, the name in Cloudflare
-#   lan.cmd -Address 192.168.1.10    the address the name points at, when this computer has several networks
+#   lan.cmd -Address 192.168.1.10    the address the name points at, instead of the one it picks
 #   lan.cmd -Domain spel.brieltje.be another name under brieltje.be
 #   lan.cmd -NewToken                type the Cloudflare token again
 #   lan.cmd -Staging                 Let's Encrypt's test service (browsers don't trust it: only for trying out)
 #   lan.cmd -Http [-Port 8090]       plain http on this computer's address: no name, no certificate
+#   lan.cmd -StopAfter 30            stop by itself after so many minutes (a test run)
+#
+# Without internet it uses the certificate it has; without one either, it starts over plain http by itself.
 param(
   [string]$Domain = 'lan.brieltje.be',
   [string]$Address = '',
   [switch]$Http,
   [int]$Port = 8080,
   [switch]$NewToken,
-  [switch]$Staging
+  [switch]$Staging,
+  [int]$StopAfter = 0
 )
 $ErrorActionPreference = 'Stop'
 [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12
+. (Join-Path $PSScriptRoot 'network.ps1')
 $compose = Join-Path $PSScriptRoot 'compose.yaml'
 $gamePort = 18080 # the game's own port, open to this computer only (compose.yaml); players come in through Caddy
 # Caddy with its Cloudflare add-on, built from these versions in Docker on the first start and kept in $own (outside
@@ -30,12 +37,95 @@ $arch = 'amd64'
 if ($env:PROCESSOR_IDENTIFIER -match '^ARM') { $arch = 'arm64' } # e.g. "ARMv8 (64-bit) Family 8 ..."
 $caddy = Join-Path $own "caddy-$caddyVersion-cloudflare-$cloudflareVersion-$arch.exe"
 $tokenFile = Join-Path $own 'cloudflare-token.dpapi'
+$caddyData = Join-Path $own 'caddy'
 $caddyLog = Join-Path $own 'caddy.log'
+$interactive = -not [Console]::IsInputRedirected
 $line = '-' * 64
 
 function Get-Plain([Security.SecureString]$s) {
   $bstr = [Runtime.InteropServices.Marshal]::SecureStringToBSTR($s)
   try { return [Runtime.InteropServices.Marshal]::PtrToStringBSTR($bstr) } finally { [Runtime.InteropServices.Marshal]::ZeroFreeBSTR($bstr) }
+}
+
+# The game's container, over https (secure cookies) or plain http. The password reaches only the container.
+function Start-Game([bool]$overHttp) {
+  $env:ADMIN_PASSWORD = Get-Plain $script:password
+  $env:LAN_GAME_PORT = "$gamePort"
+  if ($overHttp) { $env:LAN_NODE_ENV = '' } else { $env:LAN_NODE_ENV = 'production' }
+  try {
+    docker compose -f $compose up --build --detach --wait
+    return $LASTEXITCODE -eq 0
+  } finally {
+    Remove-Item Env:ADMIN_PASSWORD -ErrorAction SilentlyContinue
+  }
+}
+
+# Caddy on Windows itself: it sees each player's own address (Docker Desktop would show the game one for all).
+function Start-Caddy([bool]$overHttp) {
+  $env:LAN_CADDY_DATA = $caddyData -replace '\\', '/'
+  $env:LAN_GAME_PORT = "$gamePort"
+  if ($overHttp) {
+    $env:LAN_PORT = "$Port"
+    $config = Join-Path $PSScriptRoot 'Caddyfile.http'
+  } else {
+    $env:LAN_DOMAIN = $Domain
+    $env:CF_API_TOKEN = Get-Plain $script:token
+    if ($Staging) { $env:LAN_ACME_CA = 'https://acme-staging-v02.api.letsencrypt.org/directory' }
+    $config = Join-Path $PSScriptRoot 'Caddyfile'
+  }
+  try {
+    return Start-Process -FilePath $caddy -ArgumentList @('run', '--config', "`"$config`"", '--adapter', 'caddyfile') `
+      -NoNewWindow -PassThru -RedirectStandardError $caddyLog -RedirectStandardOutput "$caddyLog.out"
+  } finally {
+    Remove-Item Env:CF_API_TOKEN -ErrorAction SilentlyContinue # only Caddy keeps it
+  }
+}
+
+# Waits until Caddy answers on the players' address. True when it does.
+function Wait-Caddy($proc, [bool]$overHttp, [int]$seconds) {
+  if ($overHttp) { $url = "http://127.0.0.1:$Port/"; $resolve = @() }
+  else { $url = "https://$Domain/"; $resolve = @('--resolve', "${Domain}:443:127.0.0.1") }
+  $insecure = @()
+  if ($Staging) { $insecure = @('-k') }
+  $deadline = (Get-Date).AddSeconds($seconds)
+  do {
+    Start-Sleep -Seconds 2
+    Write-Host -NoNewline '.'
+    if ($proc.HasExited) { break }
+    $code = & curl.exe -s --ssl-no-revoke -o NUL -w '%{http_code}' --max-time 5 @resolve @insecure $url
+    if ($code -eq '200') { Write-Host ''; return $true }
+    # A refused token won't come right by waiting (other failures may: Caddy tries again).
+    if (-not $overHttp -and "$(Get-CertificateTrouble $caddyLog)" -match 'refused') { break }
+  } while ((Get-Date) -lt $deadline)
+  Write-Host ''
+  return $false
+}
+
+function Stop-Caddy($proc) {
+  if ($proc -and -not $proc.HasExited) { Stop-Process -Id $proc.Id -Force -ErrorAction SilentlyContinue; $proc.WaitForExit(5000) | Out-Null }
+}
+
+function Show-Addresses([bool]$overHttp, $net, $nets) {
+  Write-Host "`n$line"
+  if ($overHttp) {
+    $real = @($nets | Where-Object { -not $_.Virtual })
+    if ($real) {
+      Write-Host "Players type this in their browser (same network):`n"
+      foreach ($n in $real) { Write-Host ("    http://{0}:{1}    ({2})" -f $n.Address, $Port, $n.Alias) }
+    } else {
+      Write-Host "No network found: only this computer can play (http://localhost:$Port)."
+    }
+    $base = "http://localhost:$Port"
+  } else {
+    Write-Host "Players type this in their browser (same network):`n"
+    Write-Host "    https://$Domain"
+    Write-Host "`n  (this computer: $($net.Address) on $($net.Alias))"
+    $base = "https://$Domain"
+  }
+  Write-Host "`nYou, the host:   $base/admin/  (log in as admin), then Host"
+  Write-Host "Watch players:   $base/admin/watch/  (one player or up to four side by side)"
+  Write-Host "The big screen:  $base/admin/scores/  (F for full screen)"
+  Write-Host $line
 }
 
 Write-Host "`nBrieltje: a LAN night on this computer`n"
@@ -49,10 +139,13 @@ if ($LASTEXITCODE -ne 0) {
   exit 1
 }
 New-Item -ItemType Directory -Force $own | Out-Null
+$online = Test-Internet
+if ($online) { Write-Host 'Internet: yes.' } else { Write-Host 'Internet: no (fine once there is a certificate).' }
 
 # Caddy, once.
 if (-not (Test-Path $caddy)) {
-  Write-Host "Building Caddy $caddyVersion with its Cloudflare add-on (only the first time: a few minutes, needs the internet)..."
+  if (-not $online) { Write-Host 'The first start needs the internet: it builds Caddy. Connect, then try again.'; exit 1 }
+  Write-Host "Building Caddy $caddyVersion with its Cloudflare add-on (only the first time: a few minutes)..."
   $out = Join-Path $own 'build'
   New-Item -ItemType Directory -Force $out | Out-Null
   $buildLog = Join-Path $own 'caddy-build.log'
@@ -63,48 +156,56 @@ if (-not (Test-Path $caddy)) {
   $built = $LASTEXITCODE -eq 0
   $ErrorActionPreference = 'Stop'
   if (-not $built -or -not (Test-Path (Join-Path $out 'caddy.exe'))) {
-    Write-Host "`nCaddy could not be built. Is there internet? Try again. What went wrong is in $buildLog"
+    Write-Host "`nCaddy could not be built. Try again. What went wrong is in $buildLog"
     exit 1
   }
   Move-Item -Force (Join-Path $out 'caddy.exe') $caddy
   Remove-Item -Recurse -Force $out
 }
 
-# A network Windows calls Public blocks players from reaching this computer.
-foreach ($p in @(Get-NetConnectionProfile -ErrorAction SilentlyContinue | Where-Object { $_.NetworkCategory -eq 'Public' })) {
-  Write-Host "Careful: Windows treats the network '$($p.Name)' ($($p.InterfaceAlias)) as Public, so players on it can't reach"
-  Write-Host "this computer. Make it private: Settings > Network & internet > $($p.InterfaceAlias) > Private network.`n"
+# The network the players are on.
+$nets = Get-LanNetworks
+$net = Select-LanNetwork $nets $Address $interactive
+if (-not $net) {
+  Write-Host 'No network found. Connect this computer to the players'' network (cable or Wi-Fi), then try again.'
+  exit 1
+}
+Write-Host ('Players'' network: {0}' -f (Format-LanNetwork $net))
+Repair-Windows $net $caddy $interactive
+
+# Plain http when there's no other way: no internet and no certificate.
+if (-not $Http) {
+  $end = Get-CertificateEnd $caddyData $Domain $Staging
+  if ($end -and $end -gt (Get-Date)) {
+    $days = [int]($end - (Get-Date)).TotalDays
+    Write-Host ("Certificate for {0}: valid until {1:d MMM yyyy} ({2} days)." -f $Domain, $end, $days)
+    if ($days -lt 21 -and -not $online) { Write-Host '  Under three weeks: start once with internet before the night, so Caddy renews it.' }
+  } elseif (-not $online) {
+    Write-Host "`nNo internet and no certificate for $Domain yet: starting over plain http instead."
+    Write-Host '(Start once with internet to get the certificate; after that the venue needs none.)'
+    $Http = $true
+  }
 }
 
-# This computer's addresses on its networks: real ones first; virtual adapters (WSL, Hyper-V, VirtualBox, Docker, VPNs)
-# set apart, as players can't reach those. By the adapter's name and its description (VirtualBox's is called Ethernet 2).
-$virtual = 'vEthernet|VirtualBox|WSL|Hyper-V|Docker|VMware|VPN|Tailscale|ZeroTier|Loopback|Bluetooth'
-$all = Get-NetIPAddress -AddressFamily IPv4 -ErrorAction SilentlyContinue | Where-Object { $_.IPAddress -notlike '127.*' -and $_.IPAddress -notlike '169.254.*' }
-$desc = @{}
-Get-NetAdapter -ErrorAction SilentlyContinue | ForEach-Object { $desc[[int]$_.ifIndex] = $_.InterfaceDescription }
-$isVirtual = { param($a) ($a.InterfaceAlias -match $virtual) -or ("$($desc[[int]$a.InterfaceIndex])" -match $virtual) }
-$real = @($all | Where-Object { -not (& $isVirtual $_) })
-$other = @($all | Where-Object { & $isVirtual $_ })
-
-$token = $null
-if (-not $Http) {
-  # The address the name points at.
-  if (-not $Address) {
-    if ($real.Count -eq 1) { $Address = $real[0].IPAddress }
-    elseif ($real.Count -gt 1) {
-      Write-Host 'This computer is on several networks. Which one do the players use?'
-      for ($i = 0; $i -lt $real.Count; $i++) { Write-Host ("  {0}. {1}  ({2})" -f ($i + 1), $real[$i].IPAddress, $real[$i].InterfaceAlias) }
-      do { $n = 0; [void][int]::TryParse((Read-Host 'Number'), [ref]$n) } while ($n -lt 1 -or $n -gt $real.Count)
-      $Address = $real[$n - 1].IPAddress
-    } else {
-      Write-Host 'No network found. Connect this computer to the players'' network, or try: lan.cmd -Http'
-      exit 1
-    }
+# The ports Caddy needs.
+$ports = @($Port)
+if (-not $Http) { $ports = @(80, 443) }
+foreach ($u in @(Get-PortUsers $ports $caddy)) {
+  if ($u.Ours) {
+    Write-Host "A Caddy from an earlier start still runs (process $($u.Id)): stopping it."
+    Stop-Process -Id $u.Id -Force -ErrorAction SilentlyContinue
+  } else {
+    Write-Host "Port $($u.Port) is in use by $($u.Name) (process $($u.Id)). Close that program, then try again."
+    if ($Http) { Write-Host '  Or use another port: lan.cmd -Http -Port 8090' }
+    exit 1
   }
+}
 
+$script:token = $null
+if (-not $Http) {
   # The Cloudflare token: asked once, kept encrypted for this Windows account on this computer (DPAPI).
   if ($NewToken -or -not (Test-Path $tokenFile)) {
-    Write-Host "Caddy needs a Cloudflare API token to get the certificate and to point $Domain at this computer."
+    Write-Host "`nCaddy needs a Cloudflare API token to get the certificate and to point $Domain at this computer."
     Write-Host 'Make one at dash.cloudflare.com: My Profile > API Tokens > Create Token > "Edit zone DNS" template.'
     Write-Host '  Permissions: Zone / DNS / Edit, and add Zone / Zone / Read.'
     Write-Host "  Zone Resources: Include / Specific zone / $((($Domain -split '\.')[-2..-1]) -join '.'). Then Continue, Create Token.`n"
@@ -112,141 +213,131 @@ if (-not $Http) {
     $secure | ConvertFrom-SecureString | Set-Content -Path $tokenFile -Encoding ASCII
     Write-Host "Kept encrypted in $tokenFile (lan.cmd -NewToken to change it).`n"
   }
-  $token = Get-Plain (Get-Content $tokenFile | ConvertTo-SecureString)
-
-  # The public record, so phones and browsers that ask Google or Cloudflare instead of your DNS still find this computer.
-  $zoneName = (($Domain -split '\.')[-2..-1]) -join '.'
-  try {
-    $api = 'https://api.cloudflare.com/client/v4'
-    $h = @{ Authorization = "Bearer $token" }
-    $zone = @((Invoke-RestMethod -Headers $h -Uri "$api/zones?name=$zoneName" -TimeoutSec 10).result)[0]
-    if (-not $zone) { throw "the token can't see $zoneName (it needs Zone / Zone / Read)" }
-    $rec = @((Invoke-RestMethod -Headers $h -Uri "$api/zones/$($zone.id)/dns_records?type=A&name=$Domain" -TimeoutSec 10).result)[0]
-    $body = @{ type = 'A'; name = $Domain; content = $Address; ttl = 60; proxied = $false; comment = 'LAN night (lan.cmd): the host computer on the local network' } | ConvertTo-Json
-    if (-not $rec) {
-      Invoke-RestMethod -Method Post -Headers $h -ContentType 'application/json' -Uri "$api/zones/$($zone.id)/dns_records" -Body $body -TimeoutSec 10 | Out-Null
-    } elseif ($rec.content -ne $Address -or $rec.proxied) {
-      Invoke-RestMethod -Method Patch -Headers $h -ContentType 'application/json' -Uri "$api/zones/$($zone.id)/dns_records/$($rec.id)" -Body $body -TimeoutSec 10 | Out-Null
-    }
-    Write-Host "Public DNS: $Domain points at $Address."
-  } catch {
-    Write-Host "Public DNS not changed ($($_.Exception.Message)). Your own DNS must point $Domain at $Address."
+  $script:token = Get-Content $tokenFile | ConvertTo-SecureString
+  $recordSet = $false
+  if ($online) {
+    $why = Set-PublicRecord $Domain $net.Address (Get-Plain $script:token)
+    if ($why) { Write-Host "Public DNS not changed ($why)." } else { Write-Host "Public DNS: $Domain points at $($net.Address)."; $recordSet = $true }
   }
-  $seen = @()
-  try { $seen = @(Resolve-DnsName -Name $Domain -Type A -DnsOnly -QuickTimeout -ErrorAction Stop | Where-Object { $_.Type -eq 'A' } | ForEach-Object { $_.IPAddress }) } catch {}
-  if ($seen -notcontains $Address) {
-    Write-Host "Careful: this computer's DNS answers $Domain with '$($seen -join ', ')', not $Address."
-    Write-Host "Point it at $Address in your DNS (only that name, not a whole zone). Just changed? Wait a minute.`n"
-  }
+  Show-NameCheck $Domain $net.Address $online
 }
 
 if ($env:ADMIN_PASSWORD -and $env:ADMIN_PASSWORD.Length -ge 8) {
-  $plain = $env:ADMIN_PASSWORD # given beforehand, for a start without a person at the keyboard
+  $script:password = ConvertTo-SecureString $env:ADMIN_PASSWORD -AsPlainText -Force # given beforehand: a start without a person
+  Remove-Item Env:ADMIN_PASSWORD
 } else {
   do {
-    $plain = Get-Plain (Read-Host -AsSecureString 'An admin password for tonight (at least 8 characters, not shown)')
-    if ($plain.Length -lt 8) { Write-Host 'Too short. Try again.' }
-  } while ($plain.Length -lt 8)
-}
-
-Write-Host "`nBuilding and starting the game (the first time takes a few minutes)..."
-$env:ADMIN_PASSWORD = $plain
-$env:LAN_GAME_PORT = "$gamePort"
-if ($Http) { $env:LAN_NODE_ENV = '' } else { $env:LAN_NODE_ENV = 'production' }
-try {
-  docker compose -f $compose up --build --detach --wait
-  $ok = $LASTEXITCODE -eq 0
-} finally {
-  # Only the container keeps it: gone from this window's environment at once.
-  Remove-Item Env:ADMIN_PASSWORD -ErrorAction SilentlyContinue
-  $plain = $null
-}
-if (-not $ok) {
-  Write-Host "`nThe game did not start. Is port $gamePort in use by something else on this computer?"
-  exit 1
+    $script:password = Read-Host -AsSecureString "`nAn admin password for tonight (at least 8 characters, not shown)"
+    if ($script:password.Length -lt 8) { Write-Host 'Too short. Try again.' }
+  } while ($script:password.Length -lt 8)
 }
 
 $caddyProc = $null
 try {
-  # Caddy on Windows itself: it sees each player's own address (Docker Desktop would show the game one for all).
-  $env:LAN_CADDY_DATA = (Join-Path $own 'caddy') -replace '\\', '/'
-  if ($Http) {
-    $env:LAN_PORT = "$Port"
-    $config = Join-Path $PSScriptRoot 'Caddyfile.http'
-  } else {
-    $env:LAN_DOMAIN = $Domain
-    $env:CF_API_TOKEN = $token
-    if ($Staging) { $env:LAN_ACME_CA = 'https://acme-staging-v02.api.letsencrypt.org/directory' }
-    $config = Join-Path $PSScriptRoot 'Caddyfile'
+  Write-Host "`nBuilding and starting the game (the first time takes a few minutes)..."
+  if (-not (Start-Game $Http)) {
+    Write-Host "`nThe game did not start. Is port $gamePort in use by something else on this computer?"
+    return
   }
-  try {
-    $caddyProc = Start-Process -FilePath $caddy -ArgumentList @('run', '--config', "`"$config`"", '--adapter', 'caddyfile') `
-      -NoNewWindow -PassThru -RedirectStandardError $caddyLog -RedirectStandardOutput "$caddyLog.out"
-  } finally {
-    # Only Caddy keeps the token.
-    Remove-Item Env:CF_API_TOKEN -ErrorAction SilentlyContinue
-    $token = $null
-  }
-
-  if ($Http) { $url = "http://127.0.0.1:$Port/"; $resolve = @() } else { $url = "https://$Domain/"; $resolve = @('--resolve', "${Domain}:443:127.0.0.1") }
-  $insecure = @()
-  if ($Staging) { $insecure = @('-k') }
+  $caddyProc = Start-Caddy $Http
   Write-Host -NoNewline "`nStarting Caddy"
-  if (-not $Http) { Write-Host -NoNewline ' and getting the certificate (with internet, up to a minute or two the first time)' }
-  $deadline = (Get-Date).AddSeconds(180)
-  $code = ''
-  do {
-    Start-Sleep -Seconds 2
-    Write-Host -NoNewline '.'
-    if ($caddyProc.HasExited) { break }
-    $code = & curl.exe -s --ssl-no-revoke -o NUL -w '%{http_code}' --max-time 5 @resolve @insecure $url
-  } while ($code -ne '200' -and (Get-Date) -lt $deadline)
-  Write-Host ''
-  if ($code -ne '200') {
-    Write-Host "`nCaddy did not answer on $url. Its last words ($caddyLog):"
-    Get-Content $caddyLog -Tail 8 -ErrorAction SilentlyContinue | ForEach-Object { Write-Host "  $_" }
-    if (-not $Http) { Write-Host "`nNo internet for a first certificate? Start once where there is internet, or use: lan.cmd -Http" }
-    return # the finally below stops Caddy and the game
-  }
-
+  $wait = 20
   if (-not $Http) {
-    # How long the certificate lasts (Caddy renews it itself, a month ahead, whenever it has the internet).
-    try {
-      $tcp = New-Object Net.Sockets.TcpClient('127.0.0.1', 443)
-      $ssl = New-Object Net.Security.SslStream($tcp.GetStream(), $false, ([Net.Security.RemoteCertificateValidationCallback] { $true }))
-      $ssl.AuthenticateAsClient($Domain)
-      $end = (New-Object Security.Cryptography.X509Certificates.X509Certificate2($ssl.RemoteCertificate)).NotAfter
-      $ssl.Dispose(); $tcp.Dispose()
-      $days = [int]($end - (Get-Date)).TotalDays
-      Write-Host ("Certificate valid until {0:d MMM yyyy} ({1} days)." -f $end, $days)
-      if ($days -lt 21) { Write-Host 'Under three weeks: start once with internet before the night, so Caddy renews it.' }
-    } catch {}
+    Write-Host -NoNewline ' and the certificate'
+    if (-not (Get-CertificateEnd $caddyData $Domain $Staging)) { Write-Host -NoNewline ' (a first one takes a minute or two)'; $wait = 180 }
   }
-
-  Write-Host "`n$line"
-  if ($Http) {
-    if ($real) {
-      Write-Host "Players type this in their browser (same network):`n"
-      foreach ($a in $real) { Write-Host ("    http://{0}:{1}    ({2})" -f $a.IPAddress, $Port, $a.InterfaceAlias) }
+  if (-not (Wait-Caddy $caddyProc $Http $wait)) {
+    $trouble = $null
+    if (-not $Http) { $trouble = Get-CertificateTrouble $caddyLog }
+    if ($trouble) {
+      Write-Host "`n$trouble"
     } else {
-      Write-Host "No network found: only this computer can play (http://localhost:$Port)."
+      Write-Host "`nCaddy did not answer. Its last words:"
+      Get-Content $caddyLog -Tail 4 -ErrorAction SilentlyContinue | ForEach-Object { Write-Host "  $($_.Substring(0, [Math]::Min(200, $_.Length)))" }
     }
-    if ($other) { Write-Host ("`n  (not for players: " + (($other | ForEach-Object { "$($_.IPAddress) on $($_.InterfaceAlias)" }) -join ', ') + ')') }
-    $base = "http://localhost:$Port"
-  } else {
-    Write-Host "Players type this in their browser (same network):`n"
-    Write-Host "    https://$Domain"
-    Write-Host "`n  (this computer: $Address)"
-    $base = "https://$Domain"
+    Stop-Caddy $caddyProc
+    Copy-Item $caddyLog "$caddyLog.failed" -Force -ErrorAction SilentlyContinue # kept: the next start writes a new log
+    Write-Host "  (Caddy's log: $caddyLog.failed)"
+    if ($Http) { return }
+    $yes = 'y'
+    if ($interactive) { $yes = Read-Host "`nStart over plain http instead (players type this computer's address)? [Y/n]" }
+    if ($yes -and $yes -notmatch '^(y|j)') { return }
+    $Http = $true
+    if (@(Get-PortUsers @($Port) $caddy | Where-Object { -not $_.Ours })) { Write-Host "Port $Port is in use. Try: lan.cmd -Http -Port 8090"; return }
+    if (-not (Start-Game $true)) { Write-Host 'The game did not start again.'; return }
+    $caddyProc = Start-Caddy $true
+    Write-Host -NoNewline 'Starting Caddy over plain http'
+    if (-not (Wait-Caddy $caddyProc $true 20)) { Write-Host "Caddy did not answer. See $caddyLog"; return }
   }
-  Write-Host "`nYou, the host:   $base/admin/  (log in as admin), then Host"
-  Write-Host "Watch players:   $base/admin/watch/  (one player or up to four side by side)"
-  Write-Host "The big screen:  $base/admin/scores/  (F for full screen)"
-  Write-Host "`nWindows may ask whether Caddy may use the network: allow it on private networks."
-  Write-Host $line
-  Read-Host "`nPress Enter to stop the server"
+  if (-not $Http) {
+    $end = Get-CertificateEnd $caddyData $Domain $Staging
+    if ($end) { Write-Host ("Certificate valid until {0:d MMM yyyy}." -f $end) }
+  }
+  $script:password = $null
+
+  Show-Addresses $Http $net $nets
+  Write-Host 'Windows may ask whether Caddy may use the network: allow it on private networks.'
+
+  # Running: keep an eye on the network until Enter or Q (or -StopAfter).
+  $stopAt = [datetime]::MaxValue
+  if ($StopAfter -gt 0) { $stopAt = (Get-Date).AddMinutes($StopAfter) }
+  if (-not $interactive -and $StopAfter -le 0) {
+    Read-Host "`nPress Enter to stop the server"
+    return
+  }
+  Write-Host "`nPress Enter or Q to stop the server. Meanwhile this window keeps an eye on the network."
+  $nextCheck = (Get-Date).AddSeconds(15)
+  $restarts = 0
+  $lost = $false
+  $nextRecordTry = Get-Date
+  while ((Get-Date) -lt $stopAt) {
+    if ($interactive -and [Console]::KeyAvailable) {
+      $k = [Console]::ReadKey($true)
+      if ($k.Key -eq 'Enter' -or $k.Key -eq 'Q' -or $k.Key -eq 'Escape') { break }
+    }
+    Start-Sleep -Milliseconds 250
+    if ((Get-Date) -lt $nextCheck) { continue }
+    $nextCheck = (Get-Date).AddSeconds(15)
+
+    if ($caddyProc.HasExited) {
+      if ($restarts -ge 3) { Write-Host "`nCaddy keeps stopping; see $caddyLog. Stop with Enter and start lan.cmd again."; $nextCheck = $stopAt; continue }
+      $restarts++
+      Write-Host "`n$(Get-Date -Format HH:mm) Caddy stopped; starting it again."
+      $caddyProc = Start-Caddy $Http
+    }
+
+    # A new address: another network, or a new lease from the router.
+    $new = Find-NewAddress $net
+    if ($new) {
+      if ($new -is [string]) { # 'lost'
+        if (-not $lost) { Write-Host "`n$(Get-Date -Format HH:mm) This computer lost its network ($($net.Address)). Waiting for it to come back..." }
+        $lost = $true
+        continue
+      }
+      $lost = $false
+      $nets = Get-LanNetworks
+      Write-Host "`n$(Get-Date -Format HH:mm) This computer's address changed: $($net.Address) is now $($new.Address) on $($new.Alias)."
+      $old = $net
+      $net = $new
+      if ($net.Category -eq 'Public' -or $net.Index -ne $old.Index) { Repair-Windows $net $caddy $interactive }
+      if ($Http) { Show-Addresses $true $net $nets } else { $recordSet = $false; $nextRecordTry = Get-Date; Show-NameCheck $Domain $net.Address $false }
+    }
+    if (-not $Http -and -not $recordSet -and (Get-Date) -ge $nextRecordTry) {
+      $nextRecordTry = (Get-Date).AddMinutes(2) # a refused token: not every 15 s all night
+      if (Test-Internet) {
+        $why = Set-PublicRecord $Domain $net.Address (Get-Plain $script:token)
+        if (-not $why) {
+          $recordSet = $true
+          Write-Host "$(Get-Date -Format HH:mm) Public DNS: $Domain points at $($net.Address)."
+          Show-NameCheck $Domain $net.Address $true
+        }
+      }
+    }
+  }
 } finally {
-  if ($caddyProc -and -not $caddyProc.HasExited) { Stop-Process -Id $caddyProc.Id -Force -ErrorAction SilentlyContinue }
+  Stop-Caddy $caddyProc
   docker compose -f $compose stop
+  $script:token = $null
+  $script:password = $null
   Write-Host 'Stopped. Tonight''s players and scores are kept for next time (a new evening starts with the server).'
 }
