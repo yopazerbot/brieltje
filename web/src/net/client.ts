@@ -3,6 +3,7 @@ import type { Piece } from '../world/furnishing';
 import { serverText, t } from '../i18n';
 import { PROTO, type Tick } from '../../shared/wire.mjs';
 import { seatHeaders, seatProtocols } from '../seat';
+import { watch } from '../watch';
 
 /**
  * Talking to the server: login and admin calls (HTTP), and the shared house
@@ -92,7 +93,8 @@ export type ServerMsg =
   | {
       /** `proto`: the server's protocol (shared/wire.mjs); a different one means this page is out of date (or the server is) */
       /** `room`: the Zombies room this connection is in (server/rooms.mjs), null or missing in the open world */
-      t: 'welcome'; cracked?: [number, number, number, number][]; proto?: number; you: string; role: string; color: string; room?: { id: string; owner: string; place: string } | null; doors: Record<string, boolean>; doorDir?: Record<string, number>; broken: number[]; homes?: string[];
+      /** `watch`: this connection watches (src/watch.ts, the admin only): no player of its own */
+      t: 'welcome'; watch?: boolean; cracked?: [number, number, number, number][]; proto?: number; you: string; role: string; color: string; room?: { id: string; owner: string; place: string } | null; doors: Record<string, boolean>; doorDir?: Record<string, number>; broken: number[]; homes?: string[];
       /** Of `homes`, those this player's account opens for good (server/homes.mjs byAccount) */
       accountHomes?: string[];
       players: { name: string; color: string; role: string }[]; scores: Score[]; limit: number; round: { winner: string; ms: number } | null; items: boolean[];
@@ -295,7 +297,7 @@ export class Net {
     // the first, and the second's welcome would reset the player).
     clearTimeout(this.retryTimer);
     // The room's id is no secret (anyone playing together sees the list) and grants nothing on its own: the session is the cookie.
-    const url = `${location.protocol === 'https:' ? 'wss' : 'ws'}://${location.host}/ws?v=${PROTO}${this.room ? `&room=${encodeURIComponent(this.room)}` : ''}`;
+    const url = `${location.protocol === 'https:' ? 'wss' : 'ws'}://${location.host}/ws?v=${PROTO}${this.room ? `&room=${encodeURIComponent(this.room)}` : ''}${watch ? '&watch=1' : ''}`;
     this.rtt = null;
     // In the split screen, the seat in the subprotocol (src/seat.ts), never in the URL.
     const ws = new WebSocket(url, seatProtocols);

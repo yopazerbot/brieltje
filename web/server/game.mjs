@@ -60,6 +60,8 @@ const HURT_CALM_MS = 10_000;
 // The most the admin can allow at once (every player's moves go to every other one). 32 for a LAN night (Yoshi, 11 Nov 2026:
 // about 30 people; tools/dev/crowd.mjs measures what a full house costs the server).
 const MAX_PLAYERS = 32;
+/** The most watch views at once (src/watch.ts: the admin's watch page shows up to four, a second screen four more). */
+const MAX_WATCHERS = 8;
 const KEYFRAME = 20; // ticks: everything goes to every page at least this often (once a second), moved or not
 const OLD_EVERY = 2; // ticks: pages from before protocol 2 get the full states every other tick (ten a second, as before)
 const PING_MS = 2000;
@@ -353,6 +355,8 @@ export class Game {
     // No compression: chat (typed by players) shares the connection with game state.
     this.wss = new WebSocketServer({ noServer: true, maxPayload: 4096, perMessageDeflate: false });
     this.players = new Map(); // username -> { ws, role, color, state, lastChat }
+    // The admin's watch views (src/watch.ts): sent everything the players are, never counted or seen, nothing taken from them.
+    this.watchers = new Set();
     this.doors = Object.create(null); // door id -> open (no prototype: ids like toString are only ids)
     this.doorDir = Object.create(null); // door id -> 1 or -1: the way a double-action door swings
     this.rules = { ...RULES };
@@ -464,6 +468,16 @@ export class Game {
         ws.close(4004, 'No such room');
       });
     }
+    // A watch view (src/watch.ts): the admin's session only, in the open world, a few at once. It sees every player
+    // (a wallhack, so nobody else may), and is never a player.
+    if (new URL(req.url, 'http://local').searchParams.get('watch') === '1') {
+      const v = Number(new URL(req.url, 'http://local').searchParams.get('v'));
+      if (session.role !== 'admin' || this.room || this.watchers.size >= MAX_WATCHERS || !(v >= PROTO)) {
+        socket.write('HTTP/1.1 403 Forbidden\r\n\r\n');
+        return socket.destroy();
+      }
+      return this.wss.handleUpgrade(req, socket, head, (ws) => this.watcher(ws, session));
+    }
     const already = this.players.has(session.username);
     // The doors locked by the host (server/host.mjs): a newcomer waits outside, told so, and the page tries again.
     if (!already && this.host?.shut(session)) {
@@ -536,16 +550,56 @@ export class Game {
     this.hub?.joined(name, this, session); // one place at a time: a connection in the open world or another room ends
     this.auth.log('mp_join', req, { username: name, ...(this.room ? { detail: `room ${this.room.id}` } : {}) });
 
-    this.send(ws, {
-      t: 'welcome', proto: PROTO, you: name, role: session.role, color, doors: this.doorsFor(player), doorDir: this.doorDirFor(player), broken: this.brokenFor(player), cracked: this.crackedFor(player), homes: HOMES.filter((h) => player.role !== 'admin' && this.homes?.granted(player.key, h.id)).map((h) => h.id), accountHomes: HOMES.filter((h) => player.role === 'player' && this.homes?.byAccount?.(player.key, h.id)).map((h) => h.id), players: this.roster(),
+    this.send(ws, this.welcome(player, name, color, now));
+    this.broadcast({ t: 'join', name, color }, name);
+    this.host?.joined(name, player);
+    this.modes.join(name);
+    this.joined(ws, name, player);
+  }
+
+  /** What a page gets on joining: the world as it is now, as this player may see it. */
+  welcome(player, name, color, now) {
+    return {
+      t: 'welcome', proto: PROTO, you: name, role: player.role, color, doors: this.doorsFor(player), doorDir: this.doorDirFor(player), broken: this.brokenFor(player), cracked: this.crackedFor(player), homes: HOMES.filter((h) => player.role !== 'admin' && this.homes?.granted(player.key, h.id)).map((h) => h.id), accountHomes: HOMES.filter((h) => player.role === 'player' && this.homes?.byAccount?.(player.key, h.id)).map((h) => h.id), players: this.roster(),
       time: now, cats: this.catsDown.map((until) => Math.max(0, until - now)), clowns: this.clownList(now), furniture: this.furnitureFor(player), rules: this.rules,
       scores: this.scoreList(), limit: KILL_LIMIT, items: this.items.map((it) => now >= it.until), round: this.roundOver ? { winner: this.roundOver.winner, ms: this.roundOver.until - now } : null,
       cars: Object.values(this.cars), horses: this.horses, bikes: Object.values(this.bikes), mode: this.modes.view(now), mood: this.mood, moodCycle: this.moodView(now),
       room: this.roomView(),
+    };
+  }
+
+  /**
+   * A watch view of the admin's watch page connected (src/watch.ts): the world as the admin may see it, then every
+   * broadcast and every tick with all the players in it. Nothing it sends is taken but its answer to the ping (at most
+   * thirty messages a second are even read); it goes on its close or when it falls silent (pings).
+   */
+  watcher(ws, session) {
+    const w = { ws, key: session.key, role: 'admin', full: true, heard: mono(), pingN: 0, pingAt: 0, pingNext: mono() + 500, rtt: null, msgs: 0, window: 0 };
+    this.watchers.add(w);
+    this.send(ws, { ...this.welcome(w, '', '', Date.now()), watch: true, role: 'watcher' });
+    ws.on('message', (raw) => {
+      const now = Date.now();
+      if (now - w.window > 1000) {
+        w.window = now;
+        w.msgs = 0;
+      }
+      if (++w.msgs > 30) return;
+      let m;
+      try {
+        m = JSON.parse(String(raw));
+      } catch {
+        return;
+      }
+      if (m?.t !== 'pong' || !w.pingN || m.n !== w.pingN) return;
+      w.heard = mono();
+      w.pingN = 0;
+      w.rtt = mono() - w.pingAt;
     });
-    this.broadcast({ t: 'join', name, color }, name);
-    this.host?.joined(name, player);
-    this.modes.join(name);
+    ws.on('close', () => this.watchers.delete(w));
+  }
+
+  /** The rest of joining (join): this player's messages and their leaving. */
+  joined(ws, name, player) {
     // In a room without a game on: at the place's start, on the ground (a game on puts them in itself: zombies.mjs join).
     if (this.room && !this.modes.zombies) this.gather([name], this.room.arena);
     this.broadcast({ t: 'scores', list: this.scoreList() }, name);
@@ -2274,12 +2328,12 @@ export class Game {
       else if (p.drop) this.dropCheck(p, now); // or not coming down
     }
     this.modes.tick(now, TICK_MS);
+    this.pings(); // the watch views too, when nobody plays (they would fall silent)
     if (!this.players.size) return;
     this.fenceAll();
     this.stepBrutes(now);
     this.football.tick(this.players, now, (n) => this.onFoot(n), (p, msg) => this.send(p.ws, msg));
     this.snapshot(now);
-    this.pings();
   }
 
   /**
@@ -2392,6 +2446,14 @@ export class Game {
       const others = join(players.filter((e) => e.name !== name), all);
       p.ws.send(`{"t":"s","st":${st}${part('p', others)}${all ? everything : changed}}`);
     }
+    // The watch views: everyone.
+    for (const w of this.watchers) {
+      if (w.ws.readyState !== w.ws.OPEN) continue;
+      const all = w.full;
+      w.full = false;
+      if (all) everything ??= rest(true);
+      w.ws.send(`{"t":"s","st":${st}${part('p', join(players, all))}${all ? everything : changed}}`);
+    }
     if (old && turn % OLD_EVERY === 0) this.oldStates(now);
   }
 
@@ -2416,7 +2478,7 @@ export class Game {
    */
   pings() {
     const t = mono();
-    for (const p of this.players.values()) {
+    for (const p of [...this.players.values(), ...this.watchers]) {
       if (p.proto < PROTO) continue;
       if (t - p.heard > SILENT_MS) {
         p.ws.terminate();
@@ -2465,5 +2527,6 @@ export class Game {
   broadcast(msg, except) {
     const data = JSON.stringify(msg);
     for (const [name, p] of this.players) if (name !== except && p.ws.readyState === p.ws.OPEN) p.ws.send(data);
+    for (const w of this.watchers) if (w.ws.readyState === w.ws.OPEN) w.ws.send(data); // the admin's watch views (src/watch.ts)
   }
 }

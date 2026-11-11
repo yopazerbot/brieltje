@@ -155,6 +155,8 @@ import HUTS_DATA from '../shared/tree_huts.json';
 import { cafePrisms, makeCafe } from '../shared/sparrenhof.mjs';
 import { carName, doorName, lang, onLang, placeName, portalName, serverText, setLang, t, whoName } from './i18n';
 import { seat, tellHost } from './seat';
+import { onWatch, watch } from './watch';
+import { WatchView } from './ui/watchView';
 
 // The world. This module is fetched and run on the first start (src/start.ts, the page's entry,
 // with the start screen): before that the page has loaded no texture, model, sky or sound.
@@ -440,7 +442,7 @@ const wetMirror = new WetMirror(scene, camera, [camera, weather.rain.mesh, weath
 composer.addPass(wetMirror);
 wetMirror.paused = () => menu.open && !menu.onStartScreen; // behind the pause menu the puddles keep their last picture
 glassProbe.sun = sun; // the light it was drawn in, to tell when to draw it again
-glassProbe.views = seat?.views ?? 1; // the split screen's views each draw their own: rarely there
+glassProbe.views = seat?.views ?? watch?.views ?? 1; // the split screen's views each draw their own: rarely there
 composer.addPass(new RenderPass(scene, camera));
 const ao = new GTAOPass(scene, camera, window.innerWidth, window.innerHeight);
 ao.updateGtaoMaterial({ radius: 0.6, distanceExponent: 1.5, thickness: 1.5, scale: 1.2, samples: 12 });
@@ -617,6 +619,11 @@ input.touch = touch;
 const hud = new Hud();
 // The LAN night host's announcements and freeze (server/host.mjs, ui/hostNotice.ts).
 const hostNotice = new HostNotice();
+// A view of the admin's watch page (src/watch.ts): the camera follows a player; their kills for its tag.
+const watchView = watch ? new WatchView() : null;
+let watching = false;
+const killsOf = new Map<string, number>();
+onWatch((o) => watchView?.set(o.target, o.mode));
 let eveningTeam: keyof typeof EVENING_TEAMS | null = null;
 const EVENING_TEAMS = { blue: 'eteam.blue', orange: 'eteam.orange', green: 'eteam.green', purple: 'eteam.purple' } as const;
 const GAME_NAMES = { hide: 'game.hide', tag: 'game.tag', treasure: 'game.treasure', teams: 'game.teams', zombies: 'game.zombies' } as const;
@@ -2089,7 +2096,7 @@ loadoutCard.onDone = (pick, click) => {
 };
 /** The picker, when you come into Action or Paintball; not in the Zombies game (pistol only, the rest is found). */
 function offerGuns(): void {
-  if (!weapon.enabled || games.zombies || startIntent.zombies !== null || menu.onStartScreen || menu.open) return;
+  if (!weapon.enabled || games.zombies || startIntent.zombies !== null || menu.onStartScreen || menu.open || watch) return;
   loadoutCard.show(myPick, menu.mode === 'pad');
 }
 
@@ -2452,6 +2459,7 @@ net.onMessage = (m: ServerMsg) => {
       welcomed = true;
       hostNotice.freeze(false); // the server says so again if everyone is still frozen
       eveningTeam = null;
+      watching = !!watch && m.watch === true; // a watcher: the server sends everyone, takes nothing (src/watch.ts)
       net.send({ t: 'loadout', w: myPick }); // the guns you chose, for when you come into play
       netClock.reset(); // perhaps a restarted server, with a clock of its own
       if (spawnPending === 'home') {
@@ -2659,6 +2667,7 @@ net.onMessage = (m: ServerMsg) => {
     }
     case 'scores':
       combat.setScores(m.list);
+      for (const s of m.list) killsOf.set(s.name, s.kills);
       break;
     case 'hurt':
       combat.hurt(m.hp);
@@ -3114,7 +3123,7 @@ renderer.setAnimationLoop((now: number) => {
   // The feedback card takes the keys while it shows, and for a moment after (its Esc isn't the menu's).
   const card = feedback.open || homeCard.open || loadoutCard.open || now - Math.max(feedback.closedAt, homeCard.closedAt, loadoutCard.closedAt) < 250;
   // Frozen by the host: only looking round and the menu (the server keeps everyone where they stood too).
-  const frame = card ? { ...NO_INPUT } : hostNotice.frozen
+  const frame = card || watching ? { ...NO_INPUT } : hostNotice.frozen
     ? { ...NO_INPUT, mouseX: polled.mouseX, mouseY: polled.mouseY, lookX: polled.lookX, lookY: polled.lookY, menuPressed: polled.menuPressed, scoreHeld: polled.scoreHeld, confirmPressed: polled.confirmPressed, navX: polled.navX, navY: polled.navY, tabStep: polled.tabStep, jumpPressed: player.chute !== null && polled.jumpPressed } // a drop: the parachute still opens
     : polled;
   if (feedback.open && menu.mode === 'pad') {
@@ -3325,7 +3334,7 @@ renderer.setAnimationLoop((now: number) => {
     const onBike = bikes.mounted !== null;
     const inCar = driving || riding || onBike; // on a bike as in a car: no weapons, no doors
     const onHorse = horses.mounted >= 0; // you may shoot from the saddle
-    weapon.hidden = dead || inCar || games.peaceful || player.chute !== null || dropView.outside; // in a drop, and until the camera is back in your eyes
+    weapon.hidden = dead || inCar || games.peaceful || player.chute !== null || dropView.outside || watching; // in a drop, and until the camera is back in your eyes
 
     // The portals: on a pad (or stopped on one in the car) the list of places opens, and takes the
     // number keys, the wheel or D-pad and E. Not on horseback, nor from the passenger seat.
@@ -3603,7 +3612,7 @@ renderer.setAnimationLoop((now: number) => {
     // Tell the others where you are: 20 times a second while anything changes, and once more when
     // it stops (so they see you stand where you stopped), then about three times a second. Each
     // carries this page's time for it (`ct`), so the others draw it at an even pace (shared/wire.mjs).
-    if (net.connected && !trip?.answer) {
+    if (net.connected && !trip?.answer && !watching) { // a watch view has no player of its own (src/watch.ts)
       const r = horses.ridden;
       const k = bikes.ridden;
       const cm = (v: number) => Math.round(v * 100) / 100;
@@ -3735,6 +3744,11 @@ renderer.setAnimationLoop((now: number) => {
   football.update(dt, camera.position, onFoot ? { x: player.x, z: player.z, feet: player.feet, name: me?.username ?? '' } : null, net.connected);
   // The others, after the horses and bikes: a rider sits in the saddle where it is drawn this frame.
   avatars.tick(dt, camera.position, driving || riding || horses.mounted >= 0 || bikes.mounted ? null : { x: player.x, z: player.z });
+  // Watching: the camera on the player followed, and this page's own player with them (the place name, the map, what loads).
+  if (watching && watchView) {
+    const at = watchView.update(dt, camera, avatars, (n) => online.get(n) ?? '#fbf6ea', (n) => t('watch.kills', { n: killsOf.get(n) ?? 0 }), (a, b) => world.clearance(a, b));
+    if (at) player.place(at.x, at.z, at.y, player.yaw, 0);
+  }
   slideSound.update(player.slideSpeed); // the whoosh down the play tower's slide
   myChute.position.set(player.x, player.feet, player.z);
   myChute.rotation.y = player.yaw;
@@ -4295,7 +4309,7 @@ async function autoDetect(): Promise<void> {
       }, gl, 5);
     }
     return total / views.length;
-  }, seat?.views ?? 1); // the split screen's views share the chip (src/seat.ts)
+  }, seat?.views ?? watch?.views ?? 1); // the split screen's (or the watch page's) views share the chip (src/seat.ts, src/watch.ts)
   player.place(keep.x, keep.z, keep.feet, keep.yaw, keep.pitch);
   player.update(0, still, camera);
   if (mode === 'auto') applyQuality(result.quality);

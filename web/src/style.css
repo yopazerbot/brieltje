@@ -253,6 +253,19 @@ button, input, select, textarea { font-family: inherit; }
 }
 #host-freeze small { max-width: 700px; margin-top: 12px; font-size: 20px; overflow-wrap: anywhere; }
 @media (prefers-reduced-motion: reduce) { #host-bar { animation: none; } }
+/* A view of the admin's watch page (src/watch.ts, src/ui/watchView.ts): the world only, with the followed player's name
+   and kills in the corner and the host's announcements; none of this page's own HUD, cards or menus. */
+body.watching #hud > :not(#host-bar),
+body.watching :is(#controls-card, #feedback, #loadout, #overlay, #chat, #touch, #zexplore, #sound-btn, #map-btn) { display: none !important; }
+#watch-tag {
+  position: fixed; left: 2.2vmin; top: 2.2vmin; z-index: 31; display: flex; align-items: baseline; gap: 1.2vmin; padding: 0.9vmin 2.2vmin 1.1vmin;
+  color: var(--brand-chalk, #fbf6ea); background: linear-gradient(180deg, var(--brand-raised, #1f2a52), var(--brand-evening, #141d3a));
+  border-radius: 999px; box-shadow: 0 0.5vmin 0 #0b1129, 0 1vmin 3vmin rgba(5, 10, 32, 0.45); pointer-events: none;
+}
+#watch-tag b { font-family: var(--display); font-size: max(18px, 4vmin); font-weight: 700; line-height: 1.1; }
+#watch-tag small { font-family: var(--display); font-size: max(13px, 2.4vmin); font-weight: 600; color: var(--brand-chalk-soft, #c3c9e2); }
+#watch-tag small:empty { display: none; }
+#watch-tag.hidden, body:not(.watching) #watch-tag { display: none; }
 #host-bar.hidden, #host-freeze.hidden { display: none; }
 body.touch #host-bar b { font-size: 20px; }
 body.touch #host-freeze b { font-size: 28px; }

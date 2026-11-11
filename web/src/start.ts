@@ -12,6 +12,7 @@
  */
 // First: in the split screen it puts the seat's own settings in place before any module reads one.
 import { seat, tellHost } from './seat';
+import { tellWatchPage, watch } from './watch';
 import { Input } from './controls/input';
 import { loadMode, saveMode } from './graphics';
 import { applyStatic, onLang, setLang, t, type Lang } from './i18n';
@@ -425,6 +426,16 @@ try {
 if (logoutPending) {
   setAccount(null);
   logoutForSure(); // left last time while the server was out of reach: finish that first
+} else if (watch) {
+  // A view of the admin's watch page (src/watch.ts): straight into the world with the admin's session, no form, no
+  // player of its own (the server takes this connection as a watcher). Anyone else is told it is for the admin.
+  api.me().then((account) => {
+    if (account.role !== 'admin') return tellWatchPage('notAdmin');
+    document.body.classList.add('watching');
+    setAccount(account);
+    tellWatchPage('ready');
+    menu.begin('kbm');
+  }).catch(() => tellWatchPage('notAdmin'));
 } else if (seat) {
   // A seat of the split screen (src/seat.ts): the page around it joined it already, so it starts
   // straight away, as that player, without the start screen's form. Its controller, or seat 1's

@@ -385,6 +385,8 @@ interface Avatar {
   /** How far the figure stands aside so it isn't inside another one (m; only drawn, never sent) */
   push: THREE.Vector2;
   want: THREE.Vector2;
+  /** Where they look, as drawn this frame, and whether they crouch or sit in a car (for a camera that follows them, src/ui/watchView.ts) */
+  look?: { yaw: number; pitch: number; crouch: boolean; car: boolean; alive: boolean };
 }
 
 const ANGLES = [false, false, false, true, true] as const; // x, y, z, yaw, pitch
@@ -407,6 +409,8 @@ export class Avatars {
   groundAt: ((x: number, z: number, y: number) => number) | null = null;
   /** The saddle of the horse a player rides (drawn this frame), or null on foot. */
   seatOf: ((name: string) => Seat | null) | null = null;
+  /** A player watched through their own eyes (src/ui/watchView.ts): their figure isn't drawn, as yours isn't. */
+  hidden: string | null = null;
   private avatars = new Map<string, Avatar>();
   private pose = [0, 0, 0, 0, 0];
   private shadows = shadowPatches(16);
@@ -607,6 +611,7 @@ export class Avatars {
       a.side += (vx * Math.cos(yaw) - vz * Math.sin(yaw) - a.side) * k;
       a.vy += (Math.max(-20, Math.min(20, vy)) - a.vy) * Math.min(1, k * 2);
       const alive = t.alive && !a.killed;
+      a.look = { yaw, pitch, crouch: !!t.c, car: !!t.d, alive };
       const far = eye ? Math.hypot(x - eye.x, y - eye.y, z - eye.z) : 0;
       // The ground under them: for jumps and falls, and for their shadow patch (only near enough to see).
       const ground = this.groundAt && !t.d && far < 80 ? this.groundAt(x, z, y) : y;
@@ -637,8 +642,8 @@ export class Avatars {
       if (step && alive && !t.flying && !t.d && !seat && a.speed > 0.6 && a.root.visible) this.onStep(name, a.root.position, a.speed);
 
       // Just respawned: blink while they can't be hurt (not under a parachute: it shows why). In the car only their name shows, above it.
-      a.body.root.visible = !t.d && (!(t.safe && alive && !t.chute) || Math.floor(now / 120) % 2 === 0);
-      a.tag.visible = alive && this.showNames;
+      a.body.root.visible = !t.d && (!(t.safe && alive && !t.chute) || Math.floor(now / 120) % 2 === 0) && name !== this.hidden;
+      a.tag.visible = alive && this.showNames && name !== this.hidden;
       // A sniper rifle aimed your way: its scope catches the light, a fair warning from 12 m out. It
       // is drawn in the world, so a wall between you hides it.
       const lookX = -Math.sin(yaw) * Math.cos(pitch);
@@ -743,6 +748,17 @@ export class Avatars {
   /** The other players you can see, by name: the big map. */
   marks(): { name: string; x: number; z: number; color: string }[] {
     return [...this.avatars.entries()].filter(([, a]) => a.root.visible && a.latest?.alive !== false).map(([name, a]) => ({ name, x: a.root.position.x, z: a.root.position.z, color: a.color }));
+  }
+
+  /** Where a player is and looks, as drawn this frame (a camera following them); null before their first state. */
+  view(name: string): { at: THREE.Vector3; yaw: number; pitch: number; crouch: boolean; car: boolean; alive: boolean } | null {
+    const a = this.avatars.get(name);
+    return a?.look && !Number.isNaN(a.x) ? { at: a.root.position, ...a.look } : null;
+  }
+
+  /** Everyone drawn here, by name (the watch view's choice when it follows nobody yet). */
+  names(): string[] {
+    return [...this.avatars.keys()];
   }
 
   position(name: string): THREE.Vector3 | null {

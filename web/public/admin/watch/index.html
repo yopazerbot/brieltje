@@ -1,0 +1,32 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <meta name="robots" content="noindex" />
+  <title>Watch · Brieltje</title>
+  <link rel="icon" href="/icon-192.png" />
+  <link rel="stylesheet" href="/brand.css" />
+  <link rel="stylesheet" href="/admin/watch/watch.css" />
+</head>
+<!-- The admin's watch page (src/watch.ts): one player, or up to four side by side, each view a copy of the game that
+     follows its player, behind them or through their eyes. For a projector or a TV: F for full screen, the controls
+     hide when the mouse is still. Admin only: the views connect with the admin's session from /admin. -->
+<body class="watch-page">
+  <div class="bar" id="bar">
+    <a class="logo" href="/admin/host/" title="Back to the host screen"><img src="/brand/logo-row.svg" alt="Brieltje" width="157" height="32" /></a>
+    <span class="seg" id="layout" role="group" aria-label="Views">
+      <button type="button" data-n="1">1</button><button type="button" data-n="2">2</button><button type="button" data-n="3">3</button><button type="button" data-n="4">4</button>
+    </span>
+    <label class="check"><input type="checkbox" id="rotate" /> Switch players every 20 s</label>
+    <span class="grow"></span>
+    <button class="pill" type="button" id="full">Full screen (F)</button>
+    <a class="pill ghost" href="/admin/host/">Host</a>
+  </div>
+  <main id="tiles"></main>
+  <div class="gate" id="gate" hidden>
+    <p>Log in on the <a href="/admin/">admin page</a> first, then come back here.</p>
+  </div>
+  <script src="/admin/watch/watch.js"></script>
+</body>
+</html>
