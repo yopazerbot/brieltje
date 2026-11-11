@@ -725,6 +725,7 @@ class Builder {
         if (k0 > 0) for (const [a, b] of mid ? halves : [[lo, hi]]) this.line(f, f.s[k0], a(k0), f.s[k0], b(k0), 0.04, '#64635f', flatLift);
         if (hash(sAt, 7, seed) < (pf.cracks ?? 0)) this.crack(f, f.s[k0], f.s[k1], lo(k0), hi(k0), hash(sAt, 9, seed));
       }
+      if (!mid && !core) this.asphaltWear(f, lo, hi, false, new THREE.Color('#55575a'), seed, true);
       if (halves.length > 1 && !mid) {
         for (let k = 0; k < n - 1; k++) this.line(f, f.s[k], 0, f.s[k + 1], 0, 0.025, '#66655f', flatLift);
       }
@@ -862,9 +863,10 @@ class Builder {
    * Asphalt after some years, between offsets lo(k) and hi(k): the seam down the middle where two lanes were laid
    * (wide roads), a trench now and then sawn across for a pipe or a cable and filled with newer, darker (or older,
    * paler) asphalt with tar along its edges, long cracks sealed with a wandering line of tar, and a crack across.
-   * By the street's own seed: the same on every visit. Not surveyed street by street.
+   * By the street's own seed: the same on every visit. Not surveyed street by street. `inConcrete`: only the
+   * trenches, fewer of them, filled with asphalt in a concrete street.
    */
-  asphaltWear(f: Frame, lo: (k: number) => number, hi: (k: number) => number, wide: boolean, tint: THREE.Color, seed: number): void {
+  asphaltWear(f: Frame, lo: (k: number) => number, hi: (k: number) => number, wide: boolean, tint: THREE.Color, seed: number, inConcrete = false): void {
     const lift = () => this.road;
     const n = f.n;
     const [from, to] = [f.s[0], f.s[n - 1]];
@@ -877,12 +879,12 @@ class Builder {
     // Darker than they are: the matte paint takes more of the sky's light than the grainy asphalt beside it.
     const TAR = '#151516';
     // The seam, away from the street's ends (the junctions).
-    if (wide) {
+    if (wide && !inConcrete) {
       const seam = tone(0.42);
       for (let k = 0; k < n - 1; k++) if (f.s[k] > from + 5 && f.s[k + 1] < to - 5) this.line(f, f.s[k], 0, f.s[k + 1], 0, 0.022, seam, lift);
     }
     // Trenches across: from one edge to past the middle, or right across.
-    for (let s = from + 7 + 30 * hash(seed, 1); s < to - 10; s += 18 + 36 * hash(s, 2, seed)) {
+    for (let s = from + 7 + 30 * hash(seed, 1); s < to - 10; s += (18 + 36 * hash(s, 2, seed)) * (inConcrete ? 2.2 : 1)) {
       const k = kAt(s);
       const a = Math.max(lo(k), lo(k + 1)) + 0.1;
       const b = Math.min(hi(k), hi(k + 1)) - 0.1;
@@ -892,7 +894,7 @@ class Builder {
       const fromA = hash(s, 6, seed) < 0.5;
       const o0 = fromA ? b - (b - a) * reach : a;
       const o1 = fromA ? b : a + (b - a) * reach;
-      const m = hash(s, 7, seed) < 0.65 ? 0.66 + 0.1 * hash(s, 8, seed) : 1.16;
+      const m = inConcrete ? 0.9 + 0.25 * hash(s, 8, seed) : hash(s, 7, seed) < 0.65 ? 0.66 + 0.1 * hash(s, 8, seed) : 1.16;
       // Asphalt of its own, laid in the carriageway's place (a rank over it: the road under it is cut away), along
       // a short frame of its own on the street's centre line.
       const at = [0, 0.5, 1].flatMap((t) => f.point(s + len * t, 0));
@@ -905,6 +907,7 @@ class Builder {
       this.line(g, s + len, o0, s + len, o1, 0.03, TAR, up);
       if (reach < 1) this.line(g, s, fromA ? o0 : o1, s + len, fromA ? o0 : o1, 0.03, TAR, up);
     }
+    if (inConcrete) return;
     // Long cracks along the street, sealed with tar.
     for (let s = from + 6 + 20 * hash(seed, 11); s < to - 20; s += 14 + 30 * hash(s, 12, seed)) {
       const len = 4 + 10 * hash(s, 14, seed);
