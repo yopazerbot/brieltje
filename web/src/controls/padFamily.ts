@@ -18,12 +18,12 @@ import { t } from '../i18n';
 export type PadFamily = 'ps' | 'xbox' | 'nintendo';
 export type PadLabels = 'auto' | PadFamily;
 /** A button by its place in the standard layout. */
-export type PadButton = 'south' | 'east' | 'west' | 'north' | 'l1' | 'r1' | 'l2' | 'r2' | 'l3' | 'select' | 'start';
+export type PadButton = 'south' | 'east' | 'west' | 'north' | 'l1' | 'r1' | 'l2' | 'r2' | 'l3' | 'r3' | 'select' | 'start';
 
 const NAMES: Record<PadFamily, Record<PadButton, string>> = {
-  ps: { south: '✕', east: '○', west: '□', north: '△', l1: 'L1', r1: 'R1', l2: 'L2', r2: 'R2', l3: 'L3', select: 'Create', start: 'Options' },
-  xbox: { south: 'A', east: 'B', west: 'X', north: 'Y', l1: 'LB', r1: 'RB', l2: 'LT', r2: 'RT', l3: 'LS', select: 'View', start: 'Menu' },
-  nintendo: { south: 'B', east: 'A', west: 'Y', north: 'X', l1: 'L', r1: 'R', l2: 'ZL', r2: 'ZR', l3: 'LS', select: '−', start: '+' },
+  ps: { south: '✕', east: '○', west: '□', north: '△', l1: 'L1', r1: 'R1', l2: 'L2', r2: 'R2', l3: 'L3', r3: 'R3', select: 'Create', start: 'Options' },
+  xbox: { south: 'A', east: 'B', west: 'X', north: 'Y', l1: 'LB', r1: 'RB', l2: 'LT', r2: 'RT', l3: 'LS', r3: 'RS', select: 'View', start: 'Menu' },
+  nintendo: { south: 'B', east: 'A', west: 'Y', north: 'X', l1: 'L', r1: 'R', l2: 'ZL', r2: 'ZR', l3: 'LS', r3: 'RS', select: '−', start: '+' },
 };
 
 const STORE = 'briel.padLabels';

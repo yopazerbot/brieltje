@@ -1550,6 +1550,16 @@ function applyKit(k: Kit, fresh?: string): void {
   kit = { ammo: [...k.ammo], scope: k.scope, claymores: k.claymores, stakes: k.stakes ?? 0, turrets: k.turrets ?? 0 };
   weapon.setKit(kit.ammo, kit.scope, fresh);
 }
+/** The scope found in Zombies off the guns, or back on (B, R3, or a tap on the ammo counter on a phone). */
+function switchScope(): void {
+  if (!weapon.scopeOwned) return;
+  const on = weapon.toggleScope();
+  hud.announce(t(on ? 'loot.scopeOn' : 'loot.scopeOff'), t(on ? 'loot.scopeOnSub' : 'loot.scopeOffSub', { key: key('scope', menu.mode ?? 'kbm') }));
+}
+document.getElementById('ammo')!.addEventListener('click', () => {
+  if (document.body.classList.contains('touch')) switchScope();
+});
+
 /** What you just took: on your gun or in your pocket, said in a banner and the chat. */
 function gift(kind: string, w: string | undefined, k: Kit): void {
   applyKit(k, kind === 'ammo' ? w : undefined);
@@ -1557,7 +1567,7 @@ function gift(kind: string, w: string | undefined, k: Kit): void {
     const name = weaponName(w);
     const n = weapon.magOf(w as WeaponId);
     hud.announce(t(paintball.on ? 'loot.ammoPaint' : 'loot.ammo'), t('loot.ammoSub', { w: name, n }));
-  } else if (kind === 'scope') hud.announce(t('loot.scope'), t('loot.scopeSub'));
+  } else if (kind === 'scope') hud.announce(t('loot.scope'), t('loot.scopeSub', { key: key('scope', menu.mode ?? 'kbm') }));
   else if (kind === 'claymore') hud.announce(mineName(), t('loot.mineSub', { key: key('grenade', menu.mode ?? 'kbm') }));
   else if (kind === 'stakes') hud.announce(t('loot.stakes'), t('loot.stakesSub', { key: key('reload', menu.mode ?? 'kbm') }));
   else if (kind === 'turret') hud.announce(t('loot.turret'), t('loot.turretSub', { key: key('use', menu.mode ?? 'kbm') }));
@@ -3498,6 +3508,7 @@ renderer.setAnimationLoop((now: number) => {
           throwGrenade();
         }
       } else if (frame.throwPressed) throwGrenade();
+      if (frame.scopePressed) switchScope();
     } else holdT = 0;
     // Walk over a reward to take it (the server decides together).
     if (action && !dead && !inCar && games.zombies) {
@@ -3569,6 +3580,7 @@ renderer.setAnimationLoop((now: number) => {
       kit.claymores ? t('loot.mines', { name: mineName(), n: kit.claymores, key: key('grenade', mode) }) : '',
       kit.stakes ? t('loot.stakesCount', { n: kit.stakes, key: key('reload', mode) }) : '',
       kit.turrets ? t('loot.turretCount', { key: key('use', mode) }) : '',
+      weapon.scopeOwned ? t(weapon.scopeFitted ? 'loot.scopeIsOn' : 'loot.scopeIsOff', { key: key('scope', mode) }) : '',
     ].filter(Boolean).join('   ·   ') : '';
     hud.setGrenades(armed ? grenades.count : null, GRENADE.carry, grenades.nextIn, key('grenade', mode), pocket);
     hud.setScope(weapon.scoped, inCar || dropView.outside, weapon.scoped ? weapon.scopeView : undefined);

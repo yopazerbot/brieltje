@@ -14,7 +14,7 @@ const DEAD_ZONE = 0.15;
 // Button numbers in the browser's "standard" layout, by their place: Chrome and Edge use it for the
 // DualSense, Xbox pads (XInput) and Nintendo's Pro Controller alike. Named here as on the DualSense
 // (cross is the lowest face button: A on Xbox, B on Nintendo); create is View or − on the others.
-const BTN = { cross: 0, circle: 1, square: 2, triangle: 3, l1: 4, r1: 5, l2: 6, r2: 7, create: 8, options: 9, l3: 10, up: 12, down: 13, left: 14, right: 15, touchpad: 17 };
+const BTN = { cross: 0, circle: 1, square: 2, triangle: 3, l1: 4, r1: 5, l2: 6, r2: 7, create: 8, options: 9, l3: 10, r3: 11, up: 12, down: 13, left: 14, right: 15, touchpad: 17 };
 
 export interface FrameInput {
   moveX: number;
@@ -73,6 +73,8 @@ export interface FrameInput {
   weaponCycle: number;
   /** G or R1: throw a grenade */
   throwPressed: boolean;
+  /** The found scope on or off (Zombies): B, or a click of the right stick */
+  scopePressed: boolean;
   /** G, R1 or the touch grenade button held down (Zombies: held, it places a claymore) */
   throwHeld: boolean;
   /** Driving: accelerate (W or Up, or R2 as far as it is pressed), 0..1 */
@@ -85,7 +87,7 @@ export interface FrameInput {
 export const NO_INPUT: FrameInput = {
   moveX: 0, moveY: 0, lookX: 0, lookY: 0, mouseX: 0, mouseY: 0, sprint: false,
   jumpPressed: false, jumpHeld: false, downHeld: false, clickPressed: false, usePressed: false, useHeld: false, aimHeld: false, steadyHeld: false, reloadPressed: false, reloadHeld: false,
-  menuPressed: false, fpsPressed: false, confirmPressed: false, squarePressed: false, speedStep: 0, tabStep: 0, navX: 0, navY: 0, scoreHeld: false, mapPressed: false, fireHeld: false, weaponSlot: 0, weaponCycle: 0, throwPressed: false, throwHeld: false, deletePressed: false, anyPadButton: false,
+  menuPressed: false, fpsPressed: false, confirmPressed: false, squarePressed: false, scopePressed: false, speedStep: 0, tabStep: 0, navX: 0, navY: 0, scoreHeld: false, mapPressed: false, fireHeld: false, weaponSlot: 0, weaponCycle: 0, throwPressed: false, throwHeld: false, deletePressed: false, anyPadButton: false,
   throttle: 0, brake: 0,
 };
 
@@ -130,6 +132,7 @@ export class Input {
   private rightHeld = false;
   private slot = 0;
   private keyDelete = false;
+  private keyScope = false;
   private keyThrow = false;
   private cycle = 0;
 
@@ -151,6 +154,7 @@ export class Input {
       if (digit && !e.repeat) this.slot = Number(digit[1]);
       if (e.code === 'KeyQ' && !e.repeat) this.cycle = 2;
       if (e.code === 'KeyG' && !e.repeat) this.keyThrow = true;
+      if (e.code === 'KeyB' && !e.repeat) this.keyScope = true;
       if ((e.code === 'KeyX' || e.code === 'Delete') && !e.repeat) this.keyDelete = true;
       // While playing: no page scrolling or focus jumps. In a menu they move the keyboard's focus and the sliders.
       if (!this.menuOpen() && (e.code === 'Space' || e.code === 'Tab' || e.code.startsWith('Arrow'))) e.preventDefault();
@@ -212,9 +216,9 @@ export class Input {
       menuPressed: this.keyMenu, fpsPressed: this.keyFps, jumpPressed: this.keyJump,
       clickPressed: this.click, usePressed: this.keyUse, reloadPressed: this.keyReload, aimHeld: this.rightHeld,
       fireHeld: this.leftHeld && document.pointerLockElement === this.canvas, weaponSlot: this.slot, weaponCycle: this.cycle,
-      deletePressed: this.keyDelete, throwPressed: this.keyThrow,
+      deletePressed: this.keyDelete, throwPressed: this.keyThrow, scopePressed: this.keyScope,
     };
-    this.keyDelete = this.keyThrow = false;
+    this.keyDelete = this.keyThrow = this.keyScope = false;
     this.slot = this.cycle = 0;
     this.mouseX = this.mouseY = 0;
     this.keyMenu = this.keyFps = this.keyJump = this.keyUse = this.keyReload = this.click = false;
@@ -286,6 +290,7 @@ export class Input {
       if (edge(BTN.circle)) out.deletePressed = true;
       if (edge(BTN.up)) out.weaponCycle = 1;
       if (edge(BTN.r1)) out.throwPressed = true;
+      if (edge(BTN.r3)) out.scopePressed = true;
       out.throwHeld ||= !!pressed[BTN.r1];
       if (edge(BTN.down) || edge(BTN.l1)) out.weaponCycle = -1;
       if (edge(BTN.l1)) out.tabStep -= 1;

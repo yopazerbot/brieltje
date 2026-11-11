@@ -663,6 +663,8 @@ export class Weapon {
   /** Zombies' rewards (shared/loot.mjs): the guns with the bigger magazines, and the scope on the rifle and the pistol */
   private bigMags = new Set<WeaponId>();
   private scopeOn = false;
+  /** The found scope taken off again by the player (B): it stays yours, the gun is as it was without */
+  private scopeOff = false;
   private scopes = new Map<WeaponId, THREE.Group>();
   /** A bullet hit window pane `index` at `point`, fired from `from`; `normal` is the pane's face there, `pane` its mesh. */
   onGlassHit: (index: number, point: THREE.Vector3, from: THREE.Vector3, normal: THREE.Vector3, pane: THREE.Object3D, w: WeaponId) => void = () => {};
@@ -811,7 +813,7 @@ export class Weapon {
 
   /** Whether gun `w` has a scope on (Zombies: the rifle and the pistol, once you found one). */
   hasScope(w: WeaponId): boolean {
-    return this.scopeOn && LOOT.scoped.includes(w);
+    return this.scopeOn && !this.scopeOff && LOOT.scoped.includes(w);
   }
 
   /**
@@ -826,6 +828,13 @@ export class Weapon {
     }
     for (const w of WEAPON_IDS) this.ammo[w] = Math.min(this.ammo[w], this.magOf(w));
     this.scopeOn = scope;
+    if (!scope) this.scopeOff = false; // a scope found later starts on
+    this.showScopes();
+  }
+
+  /** The scopes on the guns as they stand: on when you have one and haven't taken it off. */
+  private showScopes(): void {
+    const scope = this.scopeOn && !this.scopeOff;
     for (const w of LOOT.scoped as WeaponId[]) {
       // The scope takes the place of the rifle's red-dot sight on the rail.
       const optic = this.models[w].gun.getObjectByName(`${w}_optic`);
@@ -837,6 +846,24 @@ export class Weapon {
       }
       if (s) s.visible = scope;
     }
+  }
+
+  /** Whether you found a scope in this Zombies game (on the guns or taken off). */
+  get scopeOwned(): boolean {
+    return this.scopeOn;
+  }
+
+  /** Whether the found scope is on the guns now. */
+  get scopeFitted(): boolean {
+    return this.scopeOn && !this.scopeOff;
+  }
+
+  /** Takes the found scope off the rifle and the pistol, or puts it back (Yoshi, 11 Nov 2026). Says whether it is on now. */
+  toggleScope(): boolean {
+    if (!this.scopeOn) return false;
+    this.scopeOff = !this.scopeOff;
+    this.showScopes();
+    return !this.scopeOff;
   }
 
   get spec(): Spec {

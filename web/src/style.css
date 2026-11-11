@@ -438,7 +438,7 @@ body.touch #online > div { display: inline; }
 body.touch #online > div:first-child { display: none; }
 body.touch #online > div:nth-child(n+3)::before { content: ' · '; color: var(--ink); opacity: 0.6; }
 body.touch #minimap { top: 8px; right: 12px; width: 110px; height: 110px; }
-body.touch #ammo { top: 124px; bottom: auto; right: 12px; font-size: 22px; }
+body.touch #ammo { top: 124px; bottom: auto; right: 12px; font-size: 22px; pointer-events: auto; } /* a tap takes the found scope off or puts it back (main.ts switchScope) */
 /* The chat: just above the stick, beside Run; the newest lines stay, older ones are cut off at the top. */
 body.touch #chat-log {
   left: 72px; bottom: 196px; width: min(240px, 30vw); max-height: min(100px, calc(100% - 300px));
