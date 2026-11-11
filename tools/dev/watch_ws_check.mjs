@@ -87,6 +87,18 @@ const more = [];
 for (let i = 0; i < 8; i++) more.push(await open(admin, true));
 ok('at most eight watch at once', more.slice(0, 7).every((c) => !c.refused) && more[7].refused, more.map((c) => (c.refused ? 'x' : '.')).join(''));
 
-for (const c of [bob, ann, w, ...more]) c.ws.close();
+// The admin's session ends (a logout): its watch views close within a second or so.
+for (const c of more) c.ws.close();
+let closed = null;
+w.ws.on('close', (code) => (closed = code));
+const other = cookieOf(await post('/api/login', { username: 'admin', password })); // the check goes on with a second session
+await post('/api/logout', {}, admin);
+await sleep(1800);
+ok('a watch view closes once the admin\'s session ends', closed === 4002, String(closed));
+const after = await open(admin, true);
+ok('and the ended session can\'t watch again', after.refused);
+await post('/api/logout', {}, other);
+
+for (const c of [bob, ann, w, after]) c.ws.close();
 console.log(failed ? `${failed} FAILED` : 'all passed');
 process.exit(failed ? 1 : 0);

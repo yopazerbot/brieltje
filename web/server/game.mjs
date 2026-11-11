@@ -412,6 +412,11 @@ export class Game {
         for (const [name, p] of this.players) {
           if (!this.auth.sessions.has(p.key)) p.ws.close(4002, 'Session ended');
         }
+        // A watch view (src/watch.ts) too: only while its session lasts and is still the admin's (a logout, a new
+        // admin password, the other admin sessions logged out from the admin page).
+        for (const w of this.watchers) {
+          if (this.auth.sessions.get(w.key)?.role !== 'admin') w.ws.close(4002, 'Session ended');
+        }
       }, 1000).unref(),
     ];
   }
