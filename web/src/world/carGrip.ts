@@ -43,17 +43,18 @@ const LOCKED = 0.7;
  * name, or none for the bare ground (grass). `wet` and `snow` 0 to 1 (world/mood.ts: mood.wet, mood.snow).
  */
 const SURFACES: [RegExp, number, number][] = [
-  // [the material, its grip dry, its grip wet]
-  [/mud|sand/i, 0.4, 0.3],
-  [/grass|lawn|meadow|field|earth|soil|garden|hedge|leaves|moss|forest|wood_floor/i, 0.55, 0.42],
-  [/gravel|dirt|grit/i, 0.65, 0.55],
-  [/cobble|sett|klinker|old_stone|brick|track/i, 0.85, 0.6],
+  // [the material, its grip dry, its grip wet]. Wet is a little less, not a real wet road's 0.7: that played as
+  // ice (Yoshi, 11 Nov 2026: "driving in the rain is too slippery"). The rain still shows: a stop is a sixth longer.
+  [/mud|sand/i, 0.4, 0.34],
+  [/grass|lawn|meadow|field|earth|soil|garden|hedge|leaves|moss|forest|wood_floor/i, 0.55, 0.48],
+  [/gravel|dirt|grit/i, 0.65, 0.59],
+  [/cobble|sett|klinker|old_stone|brick|track/i, 0.85, 0.74],
 ];
 export function surfaceGrip(mat: string | undefined, wet: number, snow: number): number {
   let dry = 0.55;
-  let damp = 0.42;
+  let damp = 0.48;
   if (mat) {
-    [dry, damp] = [1, 0.7]; // asphalt, concrete, paving
+    [dry, damp] = [1, 0.86]; // asphalt, concrete, paving
     for (const [re, d, w] of SURFACES) {
       if (re.test(mat)) {
         [dry, damp] = [d, w];

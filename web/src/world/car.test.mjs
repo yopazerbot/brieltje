@@ -298,7 +298,7 @@ test('the handbrake stops hard in a straight line: about 0.8 to 0.9 g dry, less 
   assert.ok(lit, 'the brake lights come on');
   assert.ok(laid.length > 5, `the locked rear wheels mark the road (${laid.length})`);
   const wet = stopping(rolling(50, 'asphalt', 1), handbrake);
-  assert.ok(wet.metres > d.metres * 1.25 && wet.g > 0.5, `wet: ${wet.g.toFixed(2)} g over ${wet.metres.toFixed(1)} m`);
+  assert.ok(wet.metres > d.metres * 1.08 && wet.metres < d.metres * 1.25 && wet.g > 0.65, `wet: ${wet.g.toFixed(2)} g over ${wet.metres.toFixed(1)} m`);
   const grass = stopping(rolling(50, ''), handbrake);
   assert.ok(grass.metres > wet.metres && grass.g > 0.35, `grass: ${grass.g.toFixed(2)} g over ${grass.metres.toFixed(1)} m`);
 });
@@ -306,7 +306,8 @@ test('the handbrake stops hard in a straight line: about 0.8 to 0.9 g dry, less 
 test('ABS: full braking stops at about 0.9 g without locking, and the car still steers', () => {
   const d = stopping(rolling(50), brake);
   assert.ok(d.g > 0.85 && d.g < 0.97, `dry: ${d.g.toFixed(2)} g over ${d.metres.toFixed(1)} m`);
-  assert.ok(stopping(rolling(50, 'asphalt', 1), brake).g < 0.75, 'less on a wet road');
+  const wetStop = stopping(rolling(50, 'asphalt', 1), brake).g;
+  assert.ok(wetStop < 0.85 && wetStop > 0.7, `a little less on a wet road, not ice (${wetStop.toFixed(2)} g)`);
   const turning = rolling(60);
   run(turning, 1, { ...brake, steer: 1 });
   assert.ok(-turning.yaw > 0.4, `braking hard it still turns right (${(-turning.yaw * 57.3).toFixed(0)} degrees in a second)`);
@@ -343,7 +344,8 @@ test('cornering too fast it runs wide, more on a wet road or grass, and never pa
   };
   const dry = lateral(80, 'asphalt', 0);
   assert.ok(dry > 0.75 && dry < 1.1, `dry: ${dry.toFixed(2)} g round the turn`);
-  assert.ok(lateral(80, 'asphalt', 1) < dry * 0.85, 'wet');
+  const wetTurn = lateral(80, 'asphalt', 1);
+  assert.ok(wetTurn < dry * 0.95 && wetTurn > dry * 0.8, `wet: a little wider, it still turns (${wetTurn.toFixed(2)} g against ${dry.toFixed(2)})`);
   assert.ok(lateral(50, '', 0) < 0.6, 'grass');
   // The server allows a driver the car's top speed (and a little for the network): never more, sliding or not.
   const car = rolling(200);

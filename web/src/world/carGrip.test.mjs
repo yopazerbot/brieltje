@@ -7,7 +7,7 @@ const rolling = { u: 20, s: 0, r: 0, delta: 0, drive: 0, brake: 0, locked: false
 test('grip by surface: asphalt best, then cobbles, gravel, grass; less when wet or under snow', () => {
   const dry = surfaceGrip('road', 0, 0);
   assert.equal(dry, 1);
-  assert.ok(surfaceGrip('road', 1, 0) < 0.75 && surfaceGrip('road', 1, 0) > 0.6, 'wet asphalt about 0.7');
+  assert.ok(surfaceGrip('road', 1, 0) < 0.9 && surfaceGrip('road', 1, 0) > 0.8, 'wet asphalt about 0.86: a little less than dry, not ice');
   assert.ok(surfaceGrip('old_stone', 0, 0) < dry);
   assert.ok(surfaceGrip('gravel', 0, 0) < surfaceGrip('old_stone', 0, 0));
   assert.ok(surfaceGrip(undefined, 0, 0) < surfaceGrip('gravel', 0, 0), 'the bare ground is grass');
