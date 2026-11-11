@@ -88,6 +88,7 @@ import { setWaterDetail, waterLevel, wetGround } from './world/water';
 import { buildHorizon } from './world/horizon';
 import { wearLonePatches, weatherYards } from './world/yards';
 import { Undergrowth } from './world/undergrowth';
+import { GrassTufts } from './world/grassTufts';
 import { GroundShade } from './world/groundShade';
 import { SunShadow } from './world/sunShadow';
 import { groundPiece, groundPieceCoarse, groundPieces, groundSkirt, pieceOf, PIECE, terrain, type GroundCuts } from './world/terrain';
@@ -410,6 +411,9 @@ weatherYards(['pave_light', 'gravel'].map((n) => blockMaterial(n, renderer).mate
 const undergrowth = new Undergrowth(groundShade.uniforms);
 undergrowth.addWoods(house.surroundings?.prisms, house.surroundings?.trees);
 scene.add(undergrowth.group);
+// Blades of grass round the eye on Medium and up (world/grassTufts.ts).
+const grassTufts = new GrassTufts(groundShade.uniforms, grassMat, () => [built.group, hedgeLumps, doors.group, tiles.group]);
+scene.add(grassTufts.group);
 // The fields' rows (world/fields.ts) from the start: their large shader is compiled while loading. Added when the
 // countryside came, the fields waited for it, and the game stopped for up to two seconds just after it began.
 patchFields(blockMaterial('field_soil', renderer).material as THREE.MeshStandardMaterial);
@@ -539,6 +543,7 @@ function applyQuality(q: Quality): void {
   setTreeDetail(q !== 'low' && !phone); // the near trees' crowns and the trunks (world/surroundings.ts)
   tiles.drawDistance = phone ? Math.min(FAR_PHONE, preset.far) : preset.far;
   undergrowth.setQuality(q, phone);
+  grassTufts.setQuality(q, phone);
   dynScale = 1;
   resize();
 }
@@ -3732,6 +3737,7 @@ renderer.setAnimationLoop((now: number) => {
   horizon.position.z = camera.position.z;
   tiles.update(dt, camera.position);
   undergrowth.update(camera.position);
+  grassTufts.update(renderer, scene, camera.position, performance.now() / 1000);
   groundDetail(camera.position);
   homeStreet.update(dt, camera.position);
   groundShade.follow(camera.position);

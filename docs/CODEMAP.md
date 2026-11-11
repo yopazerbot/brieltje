@@ -111,6 +111,7 @@ file's opening comment; run it again after adding, moving or removing a module.
 - `web/src/world/furnishing.ts`: Furniture spawned with /name (src/spawn.ts): simple shapes at real sizes (a bed is 160 x 200 cm), coloured per part.
 - `web/src/world/glass.ts`: Breakable windows: a shot shatters the pane into falling shards, plays a glass sound and opens the gap (no more collision).
 - `web/src/world/glassLook.ts`: Glass that looks like glass: it mirrors the sky and the street round it, more the flatter it is seen (fresnel), over what is behind it.
+- `web/src/world/grassTufts.ts`: Blades of grass round where you are (Yoshi, 11 Nov 2026: "do it all", the grass first on the list): the lawns, verges and meadows were a flat green carpet.
 - `web/src/world/grenades.ts`: Hand grenades (G, or R1 on the controller).
 - `web/src/world/groundCutter.ts`: The village's ground cuts (world/groundLayers.ts) worked out in a worker of their own (world/groundWorker.ts), on another core, while the page goes on...
 - `web/src/world/groundLayers.test.mjs`: Tests for groundLayers, e.g. "a square less a triangle over its corner keeps the rest of its area, in convex pieces turned as it is".
