@@ -73,7 +73,7 @@ export async function player({ url, port, name, width = 1280, height = 720, grap
  * Before the page's own scripts: everything the game sends to its speakers also goes into a recorder, so the
  * trailer has the game's real sound (a headless browser plays none). window.__audio.start() and .stop() -> base64 webm.
  */
-const AUDIO_TAP = `(() => {
+export const AUDIO_TAP = `(() => {
   const taps = new Map();
   const connect = AudioNode.prototype.connect;
   AudioNode.prototype.connect = function (to, ...rest) {
@@ -150,8 +150,16 @@ export async function record(b, dir, { quality = 92, everyNth = 1 } = {}) {
 export const BOT = `(() => {
   const B = (window.__bot = { on: false, home: null, range: 15, cadence: 260, next: 0, look: null, shots: 0, turn: 0.16, retreat: 4.2, fwd: 1, sway: 0.4, phase: Math.random() * 6 });
   const wrap = (a) => Math.atan2(Math.sin(a), Math.cos(a));
+  // Looking through the scope is holding the aim button: the bot holds it (B.aim) where a player would.
+  const hold = () => {
+    if (!window.briel?.weapon || B.held) return;
+    B.held = true;
+    const update = briel.weapon.update.bind(briel.weapon);
+    briel.weapon.update = (dt, move, aim, ...rest) => update(dt, move, aim || !!B.aim, ...rest);
+  };
   const loop = () => {
     requestAnimationFrame(loop);
+    hold();
     if (!B.on || !window.briel || !briel.combat.alive) return;
     const p = briel.player;
     let best = null, bd = 1e9;
@@ -192,3 +200,52 @@ export const css = (b, text) => b.evaluate(`(() => { const s = document.createEl
 
 /** The picture's size, whatever the window's. */
 export const size = (b, width, height) => b.send('Emulation.setDeviceMetricsOverride', { width, height, deviceScaleFactor: 1, mobile: false });
+
+/**
+ * The director, run inside the watch page's view (the game's own page, where every player is an avatar): it moves
+ * that page's camera just before each frame is drawn, so the picture always holds the players and the zombies
+ * nearest to them. window.__cine.mode: 'zombie' (from among the zombies, towards the players), 'over' (behind the players' shoulders, towards the zombies), 'side' (the
+ * players on one side, the zombies on the other), 'front' (the players' faces, the zombies coming past), 'high'
+ * (from above and behind), 'orbit' (circling the fight), or null: the view's own camera. Returns what it found.
+ */
+export const CINE = `(() => {
+  const cam = briel.weapon.camera;
+  const composer = briel.three.composer;
+  if (!cam || !cam.isCamera) return 'no camera';
+  const C = (window.__cine = { mode: null, pos: null, look: null, dir: [0, -1], t0: performance.now() });
+  const lerp = (a, b, k) => a.map((v, i) => v + (b[i] - v) * k);
+  const render = composer.render.bind(composer);
+  composer.render = (dt) => {
+    if (C.mode) {
+      const ps = [...briel.avatars.avatars.values()].map((v) => v.latest).filter((s) => s && Number.isFinite(s.x));
+      if (ps.length) {
+        const g = [ps.reduce((s, p) => s + p.x, 0) / ps.length, ps.reduce((s, p) => s + p.y, 0) / ps.length, ps.reduce((s, p) => s + p.z, 0) / ps.length];
+        const zs = [...briel.zombies.zs.values()].filter((z) => z.hp > 0 && !z.downAt).map((z) => [z.x, z.z, Math.hypot(z.x - g[0], z.z - g[2])]).filter((z) => z[2] < 32).sort((a, b) => a[2] - b[2]).slice(0, 5);
+        if (zs.length) {
+          const zx = zs.reduce((s, z) => s + z[0], 0) / zs.length - g[0], zz = zs.reduce((s, z) => s + z[1], 0) / zs.length - g[2];
+          const d = Math.hypot(zx, zz) || 1;
+          C.dir = lerp(C.dir, [zx / d, zz / d], 0.02); // the zombies' side turns slowly: no swinging about
+        }
+        const n = Math.hypot(C.dir[0], C.dir[1]) || 1;
+        const dx = C.dir[0] / n, dz = C.dir[1] / n;
+        const t = (performance.now() - C.t0) / 1000;
+        let pos, look;
+        if (C.mode === 'over') { pos = [g[0] - dx * 6.5, g[1] + 2.7, g[2] - dz * 6.5]; look = [g[0] + dx * 6, g[1] + 1.1, g[2] + dz * 6]; }
+        else if (C.mode === 'side') { pos = [g[0] + dx * 3 - dz * 9, g[1] + 1.7, g[2] + dz * 3 + dx * 9]; look = [g[0] + dx * 3.5, g[1] + 1.2, g[2] + dz * 3.5]; }
+        else if (C.mode === 'front') { pos = [g[0] + dx * 5.5 + dz * 1.5, g[1] + 1.25, g[2] + dz * 5.5 - dx * 1.5]; look = [g[0], g[1] + 1.35, g[2]]; }
+        else if (C.mode === 'zombie' && zs.length) { const zd = Math.min(14, zs[0][2] + 3.5); pos = [g[0] + dx * zd - dz * 1.2, g[1] + 2.0, g[2] + dz * zd + dx * 1.2]; look = [g[0], g[1] + 1.2, g[2]]; }
+        else if (C.mode === 'high') { pos = [g[0] - dx * 9, g[1] + 9.5, g[2] - dz * 9]; look = [g[0] + dx * 5, g[1] + 0.5, g[2] + dz * 5]; }
+        else { const a = t * 0.3; pos = [g[0] + dx * 3 + Math.cos(a) * 10, g[1] + 3.4, g[2] + dz * 3 + Math.sin(a) * 10]; look = [g[0] + dx * 3, g[1] + 1.1, g[2] + dz * 3]; }
+        const fresh = C.last !== C.mode;
+        C.last = C.mode;
+        C.pos = fresh || !C.pos ? pos : lerp(C.pos, pos, 0.06);
+        C.look = fresh || !C.look ? look : lerp(C.look, look, 0.06);
+        cam.position.set(C.pos[0], C.pos[1], C.pos[2]);
+        cam.lookAt(C.look[0], C.look[1], C.look[2]);
+        cam.updateMatrixWorld(true);
+      }
+    } else C.last = null;
+    return render(dt);
+  };
+  return 'ready';
+})()`;

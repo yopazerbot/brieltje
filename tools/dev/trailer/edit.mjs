@@ -1,5 +1,5 @@
-// Cuts the Zombies trailer from what record.mjs filmed, titles.mjs drew and music.mjs made: the intro, sixteen short
-// cuts on the beat (each with the game's own sound from that moment, some with a caption), the outro, and the
+// Cuts the Zombies trailer from what record.mjs and extras.mjs filmed, titles.mjs drew and music.mjs made: the intro,
+// eighteen short cuts on the beat (each with the game's own sound from that moment, some with a caption), the outro, and the
 // music under it all. Needs ffmpeg (not in the repository: give its path).
 //
 //   node tools/dev/trailer/edit.mjs --take <record's folder> --titles <titles' folder> --music music.wav
@@ -19,22 +19,24 @@ const ff = (...args) => execFileSync(o.ffmpeg, ['-v', 'error', '-y', ...args], {
 // The cuts: scene, camera, where it starts in that camera's take (seconds), how long (the music's beat is 0.4 s),
 // and a caption's number (titles.mjs --captions, from 1). 35.2 s in all: 22 bars.
 const CUTS = [
-  ['dusk', 'eyes', 9, 2.4, 1],
-  ['dusk', 'watch', 12, 2.4],
-  ['runners', 'watch', 14, 2.0, 2],
-  ['runners', 'eyes', 12, 2.4],
-  ['runners', 'watch', 24, 1.6],
-  ['rain', 'watch', 3, 2.4, 3],
-  ['rain', 'eyes', 14, 2.4],
-  ['rain', 'watch', 15, 2.0],
-  ['big', 'eyes', 14, 1.6, 4],
-  ['big', 'watch', 14, 1.6],
-  ['rain', 'eyes', 21, 2.4],
-  ['snow', 'eyes', 15, 2.4, 5],
-  ['snow', 'watch', 9, 2.0],
-  ['snow', 'eyes', 21, 2.4],
-  ['snow', 'watch', 27, 2.4, 6],
-  ['snow', 'eyes', 31, 2.8],
+  ['drop', 'eyes', 9.5, 2.0, 1], // the jump over the village
+  ['drop', 'eyes', 12.6, 1.2], // the parachute opens over the church
+  ['car', 'eyes', 6.0, 1.6, 2], // flat out up the road into Smetlede
+  ['runners', 'watch', 18.5, 2.4, 3], // the church square, a zombie in front
+  ['runners', 'watch', 10, 2.0], // over the players' shoulders
+  ['wood', 'eyes', 15.2, 2.4, 4], // through the sniper's scope
+  ['wood', 'watch', 26, 2.0], // from among the zombies, the cafe behind
+  ['wood', 'eyes', 24.2, 2.0],
+  ['rain', 'watch', 10.5, 2.0, 5], // the players' faces in the rain
+  ['rain', 'eyes', 12.2, 2.0], // the shotgun, two teammates ahead
+  ['rain', 'watch', 18.2, 1.6],
+  ['wood', 'watch', 31, 2.0], // from above
+  ['snow', 'watch', 2, 2.0, 6],
+  ['snow', 'watch', 17, 1.6],
+  ['snow', 'watch', 22, 2.4],
+  ['dusk', 'watch', 29, 2.0], // the four of them at dusk, the church behind
+  ['dusk', 'watch', 22, 2.0], // from the side, a zombie coming in
+  ['wood', 'eyes', 28, 2.0, 7],
 ];
 const VIDEO = ['-c:v', 'libx264', '-preset', 'medium', '-crf', '17', '-pix_fmt', 'yuv420p', '-r', '30'];
 const AUDIO = ['-c:a', 'aac', '-b:a', '192k', '-ar', '48000', '-ac', '2'];
