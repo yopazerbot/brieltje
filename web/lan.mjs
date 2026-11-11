@@ -1,7 +1,7 @@
 // A LAN night on this computer (Yoshi, 11 Nov 2026: "I will host locally"): builds the game if needed, asks for an admin
 // password for tonight (typed, never shown, never saved), starts the server and says which address the players type.
 //
-//   npm run lan              (in web/; or double-click lan.cmd in the repository's folder on Windows)
+//   npm run lan              (in web/, without Docker; lan.cmd in the repository's folder runs the game in Docker)
 //   npm run lan -- --port 8090 --build
 //
 // The server keeps tonight's players, accounts and rules in web/.data/ on this computer, apart from brieltje.be's.
@@ -94,6 +94,7 @@ const show = () => {
     console.log('No network found: only this computer can play (http://localhost:' + port + ').');
   }
   console.log(`\nYou, the host:   http://localhost:${port}/admin/  (log in as admin), then /admin/host/`);
+  console.log(`Watch players:   http://localhost:${port}/admin/watch/  (one player or up to four side by side)`);
   console.log(`The big screen:  http://localhost:${port}/admin/scores/  (F for full screen)`);
   console.log(`\nWindows may ask whether Node.js may use the network: allow it on private networks.`);
   console.log(`Stop the server: Ctrl+C in this window.\n${line}\n`);

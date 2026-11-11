@@ -69,7 +69,9 @@ file's opening comment; run it again after adding, moving or removing a module.
 - `web/src/ui/startFlow.ts`: The start screen's three steps (Yoshi, 8 Nov 2026: "I first want people to select if they play as guests or if they want to log in.
 - `web/src/ui/tactics.ts`: Small world-space placement guides and screen-space cooperative markers.
 - `web/src/ui/travel.ts`: The list of places while you stand on a portal's pad (or stop the car on it): every portal by its number, how far it is, the one you came from marked "back"...
+- `web/src/ui/watchView.ts`: A view of the admin's watch page (src/watch.ts): the camera follows one player, behind them (over their shoulder, a few metres back, further when they...
 - `web/src/ui/zombieWave.ts`: The admin's wave picker; the server authorizes and applies every change.
+- `web/src/watch.ts`: Watching (Yoshi, 11 Nov 2026: "continue building the spectator views.
 - `web/src/weapon.ts`: "Action" mode: first-person hands holding a pistol, rifle, shotgun or sniper rifle, like Counter-Strike.
 - `web/src/world/acoustics.ts`: The echo of where you are, made in code (no sound files): out of doors none, a short one in a house's rooms, a long one at the foot of the church tower...
 - `web/src/world/ambience.ts`: The sounds of the countryside, all made in code (nothing to download):
@@ -321,6 +323,7 @@ file's opening comment; run it again after adding, moving or removing a module.
 - `tools/dev/shot.mjs`: A screenshot of the game from a given spot, headless (tools/dev/cdp.mjs).
 - `tools/dev/startFlowCheck.mjs`: The start screen end to end, headless (tools/dev/cdp.mjs): every way from opening the page to playing, through the three steps (who, alone or together, the...
 - `tools/dev/villagers.mjs`: Pictures of the villagers from close by, headless (tools/dev/cdp.mjs): one of each kind that is out, and the square.
+- `tools/dev/watch_ws_check.mjs`: Watching (src/watch.ts, server/game.mjs watcher) against a throwaway game server (a build of this branch on this computer): the admin's session may watch...
 - `tools/dev/zombieHits.mjs`: Do shots hit the zombies?
 - `tools/dormer_house.py`: Build the exterior with Blender: blender -b -P tools/dormer_house.py -- output.glb [editable.blend].
 - `tools/facades.py`: Facades and gardens of the neighbouring houses (the data has only their outlines and heights).

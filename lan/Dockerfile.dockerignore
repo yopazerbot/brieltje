@@ -1,0 +1,7 @@
+# What the LAN night's image leaves out of web/ (lan/Dockerfile): what is built inside, local data, private plain copies.
+node_modules
+dist
+.data
+.private
+.sealed.json
+.vite

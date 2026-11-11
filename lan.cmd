@@ -1,6 +1,6 @@
 @echo off
-rem A LAN night on this computer: double-click. Builds the game if needed, asks for tonight's admin password,
-rem starts the server and shows the address players type (web/lan.mjs).
-cd /d "%~dp0web"
-node lan.mjs %*
+rem A LAN night on this computer: double-click. Starts the game in Docker (lan/start.ps1, lan/compose.yaml): asks for
+rem tonight's admin password, shows the address players type, and stops the game when you press Enter.
+rem Another port: lan.cmd -Port 8090. Without Docker: cd web, then npm run lan.
+powershell -NoProfile -ExecutionPolicy Bypass -File "%~dp0lan\start.ps1" %*
 pause
