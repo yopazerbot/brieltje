@@ -215,7 +215,8 @@ if (-not $Http) {
   # The Cloudflare token: asked once, kept encrypted for this Windows account on this computer (DPAPI).
   if ($NewToken -or -not (Test-Path $tokenFile)) {
     Write-Host "`nCaddy needs a Cloudflare API token to get the certificate and to point $Domain at this computer."
-    Write-Host 'Make one at dash.cloudflare.com: My Profile > API Tokens > Create Token > "Edit zone DNS" template.'
+    Write-Host 'Make one at dash.cloudflare.com: My Profile > API Tokens > Create Token > "Edit zone DNS" template'
+    Write-Host '  (an account token works too: Manage Account > Account API Tokens).'
     Write-Host '  Permissions: Zone / DNS / Edit, and add Zone / Zone / Read.'
     Write-Host "  Zone Resources: Include / Specific zone / $((($Domain -split '\.')[-2..-1]) -join '.'). Then Continue, Create Token.`n"
     do { $secure = Read-Host -AsSecureString 'The token (not shown)' } while ($secure.Length -lt 20)
