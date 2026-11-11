@@ -367,6 +367,14 @@ async function api(req, res, url) {
     return json(res, 200, { ok: true });
   }
   if (path === '/api/audit' && method === 'GET') return json(res, 200, { log: await store.recentLog(60) });
+  // The host's controls for a LAN night (server/host.mjs, web/public/admin/host/): what the host page shows, and one
+  // action at a time. Behind the admin's session (above) and body()'s same-origin JSON check (no cross-site posts);
+  // every action is checked again there, and at most ten a second.
+  if (path === '/api/host' && method === 'GET') return json(res, 200, game.host.view());
+  if (path === '/api/host' && method === 'POST') {
+    const r = game.host.act(s.username, await body(req));
+    return r.error ? json(res, 400, r) : json(res, 200, r);
+  }
   // Lift every lockout on joining (kicks, guest joins, wrong account passwords): the in-game admin tab's button.
   if (path === '/api/lockouts' && method === 'POST') {
     await body(req);

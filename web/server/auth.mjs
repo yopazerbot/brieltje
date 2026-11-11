@@ -36,6 +36,7 @@ import { promisify } from 'node:util';
 import { BlockList, isIP, isIPv6 } from 'node:net';
 import { sameText } from './constant-time-text.mjs';
 import { AdminMfa } from './adminMfa.mjs';
+import { words } from './words.mjs';
 
 const scryptAsync = promisify(scrypt);
 const ADMIN = (process.env.ADMIN_USERNAME || 'admin').toLowerCase();
@@ -703,6 +704,7 @@ export class Auth {
     }
     const name = String(nickname || '').trim().toLowerCase();
     if (!NAME_RE.test(name)) return out({ error: 'Your name: 2 to 20 characters, letters, digits, - or _.', code: 'nameFormat', status: 400 });
+    if (words.rude(name)) return out({ error: 'Pick another name.', code: 'nameRude', status: 400 }); // server/words.mjs
     if (this.guestJoins.count(ip, now) >= GUEST_JOINS) {
       return out({ error: 'Too many joins from this network. Try again in 15 minutes.', code: 'joinsTooMany', status: 429 });
     }
@@ -792,9 +794,9 @@ export class Auth {
    * in memory with the kick, as the kicks do (a restart ends them all). Their browsers are forgotten
    * as having joined there. An account's name stays out for those minutes too (server/accounts.mjs login).
    */
-  async kick(username, { devices = [], addresses = [] } = {}) {
+  async kick(username, { devices = [], addresses = [] } = {}, ms = KICK_MS) {
     const now = Date.now();
-    const until = now + KICK_MS;
+    const until = now + Math.min(Math.max(ms ?? KICK_MS, KICK_MS), 24 * 3600_000);
     this.blocked.set(username, until);
     for (const s of this.sessions.values()) {
       if (s.username !== username) continue;

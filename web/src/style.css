@@ -224,6 +224,24 @@ button, input, select, textarea { font-family: inherit; }
 #banner { position: absolute; left: 50%; top: 18%; transform: translateX(-50%); text-align: center; white-space: nowrap; }
 #banner b { display: block; font-size: 42px; }
 #banner small { display: block; font-size: 15px; letter-spacing: 0.15em; text-transform: uppercase; color: var(--accent); }
+/* The LAN night host's announcement and freeze (src/ui/hostNotice.ts). */
+#host-bar {
+  position: absolute; left: 50%; top: 9%; transform: translateX(-50%); z-index: 30; pointer-events: none;
+  max-width: min(760px, calc(100vw - 32px)); padding: 12px 22px; text-align: center;
+  background: var(--panel); border-left: 4px solid var(--accent); color: #fff;
+}
+#host-bar b { display: block; font-size: 30px; line-height: 1.2; overflow-wrap: anywhere; }
+#host-bar small { display: block; font-size: 15px; letter-spacing: 0.12em; text-transform: uppercase; color: var(--accent); }
+#host-bar small:empty { display: none; }
+#host-freeze {
+  position: fixed; inset: 0; z-index: 29; display: flex; flex-direction: column; align-items: center; justify-content: center;
+  background: rgba(8, 12, 30, 0.55); color: #fff; text-align: center; pointer-events: none; padding: 16px;
+}
+#host-freeze b { font-size: 44px; }
+#host-freeze small { font-size: 18px; margin-top: 8px; max-width: 700px; overflow-wrap: anywhere; }
+#host-bar.hidden, #host-freeze.hidden { display: none; }
+body.touch #host-bar b { font-size: 20px; }
+body.touch #host-freeze b { font-size: 28px; }
 #scoreboard {
   position: absolute; left: 50%; top: 52%; transform: translate(-50%, -50%);
   width: min(560px, calc(100vw - 32px)); padding: 18px 24px;

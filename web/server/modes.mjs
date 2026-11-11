@@ -100,6 +100,8 @@ export class Modes {
     const s = this.state;
     const p = this.game.players.get(name);
     if (s.kind !== 'teams' || s.phase !== 'playing' || !p || typeof team !== 'string' || !Object.hasOwn(TEAM_NAMES, team) || s.teams[name] === team) return;
+    // The host's teams for the evening (server/host.mjs): only the host moves a player.
+    if (this.game.host?.sideOf(name)) return this.game.send(p.ws, { t: 'system', text: 'The host picks the teams tonight', code: 'hostTeams' });
     const now = Date.now();
     const since = now - (s.switched[name] ?? -Infinity);
     if (!p.alive && since < 1000) return;
@@ -120,7 +122,7 @@ export class Modes {
     const team = s.teams[killer];
     if (!team || team === s.teams[victim]) return;
     s.score[team]++;
-    if (s.score[team] >= TEAM_GOAL) this.finish(`Team ${TEAM_NAMES[team]} wins, ${s.score.house} to ${s.score.bungalow}`, 'teamWon', { team, ...s.score });
+    if (s.score[team] >= (s.goal ?? TEAM_GOAL)) this.finish(`Team ${TEAM_NAMES[team]} wins, ${s.score.house} to ${s.score.bungalow}`, 'teamWon', { team, ...s.score });
     else this.send();
   }
 
@@ -132,7 +134,7 @@ export class Modes {
       kind: s.kind, phase: s.phase, ms: Math.max(0, s.until - now), title: KINDS[s.kind],
       seekers: s.seekers ? [...s.seekers].filter((n) => this.game.players.has(n)) : undefined, it: s.it, times: s.times, coins: s.coins, counts: s.counts,
       result: s.result, resultCode: s.resultCode, resultArgs: s.resultArgs,
-      teams: s.teams && this.here(s.teams), score: s.score, goal: s.kind === 'teams' ? TEAM_GOAL : undefined,
+      teams: s.teams && this.here(s.teams), score: s.score, goal: s.kind === 'teams' ? s.goal ?? TEAM_GOAL : undefined,
       // Zombies: the wave, how many are left, who stands, everyone's count and the best ever; the break's countdown.
       ...(s.kind === 'zombies' ? { zombies: s.z.view(now), ms: s.phase === 'done' ? Math.max(0, s.until - now) : s.z.ms(now) } : {}),
     };
@@ -158,9 +160,13 @@ export class Modes {
     return list[Math.floor(Math.random() * list.length)];
   }
 
-  /** The admin starts a game (or 'free' to stop one); Zombies at `place` (shared/arenas.mjs). */
-  start(kind, by, place = 'house') {
+  /**
+   * The admin starts a game (or 'free' to stop one); Zombies at `place` (shared/arenas.mjs). `opts` from the host's
+   * programme (server/host.mjs, checked there): `minutes`, how long it lasts (not Zombies), `goal`, the teams' kills to win.
+   */
+  start(kind, by, place = 'house', opts = {}) {
     const now = Date.now();
+    const ms = (fixed) => (opts.minutes ? opts.minutes * 60_000 : fixed);
     if (kind === 'free') {
       if (!this.active) return;
       const teams = this.state.kind === 'teams';
@@ -182,17 +188,20 @@ export class Modes {
     if (kind === 'hide') {
       // `players`: who took part, so someone back after a dropped connection plays on as before (see join).
       const seeker = this.pick(names);
-      this.state = { kind, phase: 'hiding', until: now + HIDE_MS, seekers: new Set([seeker]), first: seeker, players: new Set(names) };
+      this.state = { kind, phase: 'hiding', until: now + HIDE_MS, seekers: new Set([seeker]), first: seeker, players: new Set(names), seekMs: ms(SEEK_MS) };
       this.say(`${by} started hide and seek: ${seeker} seeks. Hide! (30 seconds)`, 'hideStarted', { name: by, seeker });
     } else if (kind === 'teams') {
-      // Everyone on a team, the teams as even as can be (in random order); each starts at its house.
+      // Everyone on a team, the teams as even as can be (in random order); each starts at its house. With the host's two
+      // teams for the evening (server/host.mjs), those.
       const teams = byName();
+      const sides = this.game.host?.sides(names);
       for (const n of [...names].sort(() => Math.random() - 0.5)) {
         const count = Object.values(teams).filter((t) => t === 'house').length;
-        teams[n] = count <= Object.keys(teams).length - count ? 'house' : 'bungalow';
+        teams[n] = sides?.[n] ?? (count <= Object.keys(teams).length - count ? 'house' : 'bungalow');
       }
-      this.state = { kind, phase: 'playing', until: now + TEAMS_MS, teams, score: { house: 0, bungalow: 0 }, switched: byName() };
-      this.say(`${by} started House against bungalow: first team to ${TEAM_GOAL} kills. Switch teams in the menu.`, 'teamsStarted', { name: by, n: TEAM_GOAL });
+      const goal = opts.goal ?? TEAM_GOAL;
+      this.state = { kind, phase: 'playing', until: now + ms(TEAMS_MS), teams, score: { house: 0, bungalow: 0 }, switched: byName(), goal };
+      this.say(`${by} started House against bungalow: first team to ${goal} kills. Switch teams in the menu.`, 'teamsStarted', { name: by, n: goal });
       this.game.roundOver = null; // the teams' score counts now
       this.game.teamsChanged(names);
     } else if (kind === 'zombies') {
@@ -211,7 +220,7 @@ export class Modes {
       this.say(`${by} started Zombies (${portalOf(arena).name}). Beat the waves together. The first one comes in 8 seconds.`, 'zombiesStartedAt', { name: by, place: arena.id });
     } else if (kind === 'tag') {
       const it = this.pick(names);
-      this.state = { kind, phase: 'playing', until: now + TAG_MS, it, last: null, lastAt: 0, times: byName(names.map((n) => [n, 0])) };
+      this.state = { kind, phase: 'playing', until: now + ms(TAG_MS), it, last: null, lastAt: 0, times: byName(names.map((n) => [n, 0])) };
       this.say(`${by} started tag: ${it} is it. The least time as "it" wins.`, 'tagStarted', { name: by, it });
     } else {
       const spots = [...OUTSIDE];
@@ -220,7 +229,7 @@ export class Modes {
         const [x, y, z] = spots.splice(Math.floor(Math.random() * spots.length), 1)[0];
         coins.push({ i: coins.length, x: +x.toFixed(2), y: +y.toFixed(2), z: +z.toFixed(2) });
       }
-      this.state = { kind, phase: 'playing', until: now + HUNT_MS, coins, counts: byName(names.map((n) => [n, 0])) };
+      this.state = { kind, phase: 'playing', until: now + ms(HUNT_MS), coins, counts: byName(names.map((n) => [n, 0])) };
       this.say(`${by} started a treasure hunt: ${COINS} coins in and around the house`, 'huntStarted', { name: by, n: COINS });
     }
     if (kind !== 'teams' && kind !== 'zombies') this.game.gather(names); // played at the house: everyone there, spread out
@@ -284,6 +293,7 @@ export class Modes {
   /** The game is over: its result (as for `say`) shows in the bar for a while and goes in the chat. */
   finish(result, code, args) {
     const long = this.state.kind === 'zombies'; // the end screen: the wave, everyone's zombies and the best ever
+    this.game.host?.gameOver(this.state, code, args); // the evening's scoreboard (server/host.mjs)
     this.state = { ...this.state, phase: 'done', until: Date.now() + (long ? ZOMBIES_DONE_MS : DONE_MS), result, resultCode: code, resultArgs: args };
     this.say(result, code, args);
     this.send();
@@ -299,7 +309,7 @@ export class Modes {
     const s = this.state;
     if (s.kind === 'teams' && s.phase === 'playing') {
       const back = name in s.teams;
-      if (!back) s.teams[name] = this.smaller();
+      if (!back) s.teams[name] = this.game.host?.sideOf(name) ?? this.smaller();
       this.game.teamsChanged([name], !back);
     }
     if (s.kind === 'hide') {
@@ -417,7 +427,7 @@ export class Modes {
     }
     if (s.kind === 'hide' && s.phase === 'hiding') {
       s.phase = 'seeking';
-      s.until = now + SEEK_MS;
+      s.until = now + (s.seekMs ?? SEEK_MS);
       this.say(`Ready or not, here ${s.first} comes!`, 'ready', { name: s.first });
       return this.send();
     }

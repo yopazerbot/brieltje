@@ -24,6 +24,7 @@
 import { createHash, randomBytes } from 'node:crypto';
 import { RESERVED, Attempts, bucketOf, clientIp, hashPassword, NAME_RE, Turns, verifyHash } from './auth.mjs';
 import { GuestRuns } from './keepRun.mjs';
+import { words } from './words.mjs';
 
 export const ACCOUNT_MS = 30 * 24 * 3600_000;
 const SESSIONS_PER_ACCOUNT = 10;
@@ -162,6 +163,7 @@ export class Accounts {
     if (b?.age !== true) return { error: 'Confirm that you are 13 or older to play together.', code: 'age', status: 400 };
     const name = String(b.username ?? '').trim().toLowerCase();
     if (!NAME_RE.test(name)) return { error: 'Your name: 2 to 20 characters, letters, digits, - or _.', code: 'nameFormat', status: 400 };
+    if (words.rude(name)) return { error: 'Pick another name.', code: 'nameRude', status: 400 }; // server/words.mjs
     const email = String(b.email ?? '').trim().toLowerCase();
     if (email.length > EMAIL_MAX || !EMAIL_RE.test(email)) return { error: 'That email address doesn\'t look right.', code: 'emailFormat', status: 400 };
     const password = typeof b.password === 'string' ? b.password : '';

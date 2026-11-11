@@ -51,11 +51,15 @@ import { cafePrisms, makeCafe } from '../shared/sparrenhof.mjs';
 import { DROP, dropFrom, HOME_DROP } from '../shared/parachute.mjs';
 import { Football } from './football.mjs';
 import { blastPoint } from './grenade.mjs';
+import { Host } from './host.mjs';
+import { words } from './words.mjs';
 
 /** /parachute (manualDrop): once every CHUTE_MS, and not within HURT_CALM_MS of being hit. */
 const CHUTE_MS = 60_000;
 const HURT_CALM_MS = 10_000;
-const MAX_PLAYERS = 16; // the most the admin can allow at once (every player's moves go to every other one)
+// The most the admin can allow at once (every player's moves go to every other one). 32 for a LAN night (Yoshi, 11 Nov 2026:
+// about 30 people; tools/dev/crowd.mjs measures what a full house costs the server).
+const MAX_PLAYERS = 32;
 const KEYFRAME = 20; // ticks: everything goes to every page at least this often (once a second), moved or not
 const OLD_EVERY = 2; // ticks: pages from before protocol 2 get the full states every other tick (ten a second, as before)
 const PING_MS = 2000;
@@ -65,7 +69,8 @@ const PING_MS = 2000;
 const SILENT_MS = 30_000;
 /** The server's own clock for the ticks (ms): monotonic, unlike the wall clock. */
 const mono = () => Math.round(performance.now());
-const COLORS = ['#f2b33d', '#4fa3e0', '#e0614f', '#5cc28a', '#c77dff', '#ff8fab', '#7ae0e6', '#f4e04d', '#a0c4ff', '#ff9f43', '#b8e994', '#e66767', '#9aa5b1', '#d4a373', '#70d6ff', '#e9c46a'];
+const COLORS = ['#f2b33d', '#4fa3e0', '#e0614f', '#5cc28a', '#c77dff', '#ff8fab', '#7ae0e6', '#f4e04d', '#a0c4ff', '#ff9f43', '#b8e994', '#e66767', '#9aa5b1', '#d4a373', '#70d6ff', '#e9c46a',
+  '#c9184a', '#2a9d8f', '#8338ec', '#fb8500', '#06d6a0', '#ef476f', '#118ab2', '#ffd166', '#9b5de5', '#f15bb5', '#00bbf9', '#80b918', '#bc6c25', '#ff006e', '#3a86ff', '#e5989b'];
 
 const shared = (file) => JSON.parse(readFileSync(new URL(`../shared/${file}`, import.meta.url), 'utf8'));
 const SPAWNS = shared('spawns.json');
@@ -385,6 +390,7 @@ export class Game {
     // Horses: on their walks until someone rides one; left where they are got off (until a restart).
     this.horses = HORSES.herd.map((_, i) => ({ i, x: 0, z: 0, yaw: 0, speed: 0, rider: null, parked: false }));
     this.modes = new Modes(this); // hide and seek, tag, treasure hunt, the teams, Zombies (the admin starts them)
+    this.host = room ? null : new Host(this); // the host's controls for a LAN night (server/host.mjs), in the open world
     this.zombieBests = Object.create(null); // place id -> the best wave ever in the Zombies game there (loadRules, saveZombieBest)
     // The ticks (see snapshot): their count, and what each car, horse and strongman looked like in the
     // last one, kept here so the objects sent in 'car' and 'horse' messages stay as they are.
@@ -459,6 +465,13 @@ export class Game {
       });
     }
     const already = this.players.has(session.username);
+    // The doors locked by the host (server/host.mjs): a newcomer waits outside, told so, and the page tries again.
+    if (!already && this.host?.shut(session)) {
+      return this.wss.handleUpgrade(req, socket, head, (ws) => {
+        this.send(ws, { t: 'locked' });
+        ws.close(4005, 'The doors are locked');
+      });
+    }
     // The page asks for the ticks it reads (/ws?v=2, shared/wire.mjs); without, it is from before them.
     const v = Number(new URL(req.url, 'http://local').searchParams.get('v'));
     const proto = v >= PROTO ? PROTO : 1;
@@ -531,6 +544,7 @@ export class Game {
       room: this.roomView(),
     });
     this.broadcast({ t: 'join', name, color }, name);
+    this.host?.joined(name, player);
     this.modes.join(name);
     // In a room without a game on: at the place's start, on the ground (a game on puts them in itself: zombies.mjs join).
     if (this.room && !this.modes.zombies) this.gather([name], this.room.arena);
@@ -703,6 +717,7 @@ export class Game {
       players: this.scoreList(), limit: KILL_LIMIT, points: POINTS,
       round: this.roundOver ? { winner: this.roundOver.winner, ms: Math.max(0, this.roundOver.until - now) } : null,
       mode: this.modes.view(now), peaceful: this.modes.peaceful,
+      evening: this.host?.board() ?? null, // the LAN night's scoreboard (server/host.mjs)
     };
   }
 
@@ -739,7 +754,7 @@ export class Game {
     }
     if (!m || typeof m !== 'object') return;
     if (m.t === 'state' ? ++player.states > 30 : ++player.others > 40) return;
-    if (this.modes.noShooting && ['hit', 'rocket', 'nade', 'boom', 'shot', 'crack'].includes(m.t)) return; // no fighting during a party game
+    if ((this.modes.noShooting || this.host?.holds(player)) && ['hit', 'rocket', 'nade', 'boom', 'shot', 'crack'].includes(m.t)) return; // no fighting during a party game or a freeze
     // A room changes nothing of the open world and holds its players at its place (server/rooms.mjs).
     if (this.room && ROOM_REFUSED.has(m.t)) return;
 
@@ -810,6 +825,8 @@ export class Game {
       // changed page says (state spoofing while down: crawling somewhere to be helped up there).
       const fell = !player.alive ? this.modes.zombies?.fell.get(name) : null;
       if (fell) Object.assign(next, fell);
+      // Frozen by the host: where they stood (looking round is still theirs; a fall still comes down).
+      if (this.host?.holds(player)) Object.assign(next, { x: prev.x, z: prev.z });
       player.state = next;
       if (drop) this.dropCheck(player, now); // on the ground, or not coming down: the drop ends
       this.stampState(player, m.ct);
@@ -846,9 +863,12 @@ export class Game {
       player.rtt = mono() - player.pingAt;
       player.rttAvg = player.rttAvg === null ? player.rtt : player.rttAvg * 0.7 + player.rtt * 0.3;
     } else if (m.t === 'chat') {
-      const text = String(m.text || '').replace(/[\u0000-\u001f]/g, ' ').trim().slice(0, 200);
+      // The word filter (server/words.mjs) on every line; the host may mute a player or turn the chat off (server/host.mjs).
+      const text = words.clean(String(m.text || '').replace(/[\u0000-\u001f]/g, ' ').trim().slice(0, 200));
       if (!text || now - player.lastChat < 700) return;
       player.lastChat = now;
+      const silenced = this.host?.silenced(name, player);
+      if (silenced) return this.send(player.ws, { t: 'system', text: silenced === 'muted' ? 'The host muted your chat' : 'The host turned the chat off', code: silenced === 'muted' ? 'youMuted' : 'chatOffAll' });
       this.broadcast({ t: 'chat', from: name, color: player.color, text });
     } else if (m.t === 'unstuck') {
       // Somebody in the end house's fenced garden without the code has no way out: the server puts them outside (the page can't, see putOut).
@@ -1416,11 +1436,12 @@ export class Game {
     return !this.carOf(name) && !this.horseOf(name);
   }
 
-  async kick(target, by) {
+  /** `ms`: how long they stay out (server/auth.mjs: ten minutes; the host's kick for the evening, longer). */
+  async kick(target, by, ms) {
     const p = this.players.get(target);
     // Memory first, so they are out right away; with the browser, address and cookies of their connection.
-    const ended = this.auth.kick(target, p ? { devices: [p.device], addresses: [p.address] } : {});
-    this.auth.log('kick', null, { username: target, detail: `by ${by}` });
+    const ended = this.auth.kick(target, p ? { devices: [p.device], addresses: [p.address] } : {}, ms);
+    this.auth.log('kick', null, { username: target, detail: `by ${by}${ms ? ' for the evening' : ''}` });
     if (p) {
       this.send(p.ws, { t: 'kicked' });
       p.ws.close(4001, 'Removed by the admin');
@@ -2063,6 +2084,7 @@ export class Game {
     this.modes.scored(name, targetName);
     if (shooter.score.kills >= KILL_LIMIT && this.modes.state.kind !== 'teams') { // in the teams game the teams' score counts
       this.roundOver = { winner: name, until: now + ROUND_BREAK_MS };
+      this.host?.roundWon(name);
       this.broadcast({ t: 'round', winner: name, ms: ROUND_BREAK_MS });
       this.auth.log('round_won', null, { username: name });
       this.stats(name, { wins: 1 });
@@ -2152,6 +2174,35 @@ export class Game {
       const p = this.players.get(name);
       if (p) this.respawn(name, p, now, spots.length ? spots[k % spots.length] : null, drop, fence);
     });
+  }
+
+  /** The most the admin can allow at once (the host page's limit slider). */
+  get most() {
+    return MAX_PLAYERS;
+  }
+
+  /**
+   * The host brings one player (or '*', everyone else) to where the host stands (server/host.mjs): spread round them,
+   * inside the edge that holds now and never into a home they have no right to. As a respawn, not a death. False when
+   * the host isn't in the game.
+   */
+  bring(by, who) {
+    const me = this.players.get(by)?.state;
+    if (!me) return false;
+    const names = who === '*' ? [...this.players.keys()].filter((n) => n !== by) : this.players.has(who) && who !== by ? [who] : [];
+    const fence = this.fence();
+    const now = Date.now();
+    names.forEach((name, k) => {
+      const p = this.players.get(name);
+      const ring = 1.5 + 1.2 * Math.floor(k / 8);
+      const a = (k % 8) * (Math.PI / 4) + Math.floor(k / 8) * 0.4;
+      let x = me.x + Math.sin(a) * ring;
+      let z = me.z + Math.cos(a) * ring;
+      if (!fence.inside(x, z) || !this.gate.mayStand(p, x, me.y, z)) [x, z] = [me.x, me.z];
+      if (!this.gate.mayStand(p, x, me.y, z)) return;
+      this.respawn(name, p, now, { spawn: 0, x: +x.toFixed(2), y: me.y, z: +z.toFixed(2), face: [me.x, me.z] });
+    });
+    return true;
   }
 
   /** Health at the start and after a respawn. */

@@ -123,8 +123,8 @@ export class Rooms {
   }
 
   /** The admin removes `name`, wherever they play. */
-  kick(name, by) {
-    return (this.gameOf(name) ?? this.main).kick(name, by);
+  kick(name, by, ms) {
+    return (this.gameOf(name) ?? this.main).kick(name, by, ms);
   }
 
   /** Who plays where, for the admin. */

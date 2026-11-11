@@ -89,6 +89,7 @@ import { buildHorizon } from './world/horizon';
 import { wearLonePatches, weatherYards } from './world/yards';
 import { Undergrowth } from './world/undergrowth';
 import { GrassTufts } from './world/grassTufts';
+import { HostNotice } from './ui/hostNotice';
 import { GroundShade } from './world/groundShade';
 import { SunShadow } from './world/sunShadow';
 import { groundPiece, groundPieceCoarse, groundPieces, groundSkirt, pieceOf, PIECE, terrain, type GroundCuts } from './world/terrain';
@@ -614,6 +615,11 @@ const touch = new TouchControls();
 document.getElementById('rotate-hint')!.before(touch.root);
 input.touch = touch;
 const hud = new Hud();
+// The LAN night host's announcements and freeze (server/host.mjs, ui/hostNotice.ts).
+const hostNotice = new HostNotice();
+let eveningTeam: keyof typeof EVENING_TEAMS | null = null;
+const EVENING_TEAMS = { blue: 'eteam.blue', orange: 'eteam.orange', green: 'eteam.green', purple: 'eteam.purple' } as const;
+const GAME_NAMES = { hide: 'game.hide', tag: 'game.tag', treasure: 'game.treasure', teams: 'game.teams', zombies: 'game.zombies' } as const;
 const speedometer = new Speedometer(document.getElementById('hud')!);
 const doors = new Doors(house.doors, world, (name) => surfaceMaterial(name, renderer));
 home.add(doors.group);
@@ -1904,6 +1910,10 @@ function soloTick(dt: number): void {
   soloView();
 }
 /** The game's first runners are out: a heads-up in the banner (`line`: and the chat, alone; together the server's line is there). */
+/** A party game's name in the current language (the host's countdown), or the game's id if unknown. */
+function gameName(kind: unknown): string {
+  return typeof kind === 'string' && Object.hasOwn(GAME_NAMES, kind) ? t(GAME_NAMES[kind as keyof typeof GAME_NAMES]) : String(kind ?? '');
+}
 function runnersComing(line: boolean): void {
   hud.announce(t('z.runners'), t('z.runnersSub'));
   if (line) chat.system(() => t('srv.zRunners'));
@@ -2429,6 +2439,8 @@ net.onMessage = (m: ServerMsg) => {
     case 'welcome':
       // Started somewhere else than the street: the server moves us there before our first update.
       welcomed = true;
+      hostNotice.freeze(false); // the server says so again if everyone is still frozen
+      eveningTeam = null;
       net.send({ t: 'loadout', w: myPick }); // the guns you chose, for when you come into play
       netClock.reset(); // perhaps a restarted server, with a clock of its own
       if (spawnPending === 'home') {
@@ -2817,6 +2829,23 @@ net.onMessage = (m: ServerMsg) => {
         chat.system(() => t('home.shut'));
       }
       break;
+    case 'announce': // the host's announcement, or the next game's countdown (server/host.mjs)
+      hostNotice.announce(typeof m.text === 'string' ? m.text : '', typeof m.ms === 'number' ? m.ms : 0,
+        m.code === 'nextGame' ? gameName((m.args as { kind?: unknown } | undefined)?.kind) : undefined, !!m.count);
+      break;
+    case 'freeze':
+      hostNotice.freeze(!!m.on, typeof m.text === 'string' ? m.text : '');
+      break;
+    case 'eveningteams': { // the host's teams for the evening: told when yours changes
+      const got = m.count && combat.me && m.teams && typeof m.teams === 'object' ? m.teams[combat.me] : null;
+      const mine = typeof got === 'string' && Object.hasOwn(EVENING_TEAMS, got) ? (got as keyof typeof EVENING_TEAMS) : null;
+      if (mine !== eveningTeam) {
+        if (mine) chat.system(() => t('host.yourTeam', { team: t(EVENING_TEAMS[mine]) }));
+        else if (eveningTeam) chat.system(() => t('host.teamsOff'));
+        eveningTeam = mine;
+      }
+      break;
+    }
     case 'kicked':
       // Said at the top too: leaving drops the connection before its close could say it, and the
       // message under the join fields is out of sight while playing.
@@ -3073,7 +3102,10 @@ renderer.setAnimationLoop((now: number) => {
   const polled = input.poll();
   // The feedback card takes the keys while it shows, and for a moment after (its Esc isn't the menu's).
   const card = feedback.open || homeCard.open || loadoutCard.open || now - Math.max(feedback.closedAt, homeCard.closedAt, loadoutCard.closedAt) < 250;
-  const frame = card ? { ...NO_INPUT } : polled;
+  // Frozen by the host: only looking round and the menu (the server keeps everyone where they stood too).
+  const frame = card ? { ...NO_INPUT } : hostNotice.frozen
+    ? { ...NO_INPUT, mouseX: polled.mouseX, mouseY: polled.mouseY, lookX: polled.lookX, lookY: polled.lookY, menuPressed: polled.menuPressed, scoreHeld: polled.scoreHeld, confirmPressed: polled.confirmPressed, navX: polled.navX, navY: polled.navY, tabStep: polled.tabStep, jumpPressed: player.chute !== null && polled.jumpPressed } // a drop: the parachute still opens
+    : polled;
   if (feedback.open && menu.mode === 'pad') {
     // A controller: the stick picks the stars, ✕ sends, ○ or Options closes.
     const stick = Math.abs(polled.moveX) > 0.6 ? Math.sign(polled.moveX) : 0;

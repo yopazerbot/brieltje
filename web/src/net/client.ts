@@ -183,6 +183,10 @@ export type ServerMsg =
   | { t: 'shot'; name: string; x: number; y: number; z: number; w: string; tx?: number; ty?: number; tz?: number }
   | ({ t: 'system'; text: string } & Coded)
   | { t: 'kicked' }
+  /** The LAN night host (server/host.mjs): an announcement (`code` nextGame: a countdown to the next game), everyone frozen, the evening's teams */
+  | ({ t: 'announce'; text: string; ms: number; count?: boolean } & Coded)
+  | { t: 'freeze'; on: boolean; text?: string }
+  | { t: 'eveningteams'; count: number; teams: Record<string, string> }
   /** The room asked for isn't there (any more): the connection closes, the page goes back to the open world */
   | { t: 'roomgone' };
 
@@ -278,6 +282,8 @@ export class Net {
   room: string | null = null;
   /** The room asked for is gone, or full: the page goes back to the open world (src/ui/rooms.ts). */
   onRoomGone: (why: 'gone' | 'full') => void = () => {};
+  /** The last refusal was the host's locked doors (server/host.mjs). */
+  private lockedOut = false;
 
   get connected(): boolean {
     return this.ws?.readyState === WebSocket.OPEN;
@@ -303,7 +309,7 @@ export class Net {
       const text = String(e.data);
       this.counts.bytesIn += text.length;
       this.counts.msgsIn++;
-      let m: ServerMsg | { t: 'ping'; n: number; rtt: number | null } | { t: 'full'; max?: unknown };
+      let m: ServerMsg | { t: 'ping'; n: number; rtt: number | null } | { t: 'full'; max?: unknown } | { t: 'locked' };
       try {
         m = JSON.parse(text);
       } catch {
@@ -317,6 +323,11 @@ export class Net {
       if (m.t === 'full') {
         // No room in the house: the close that follows says so (see onclose).
         this.fullAt = typeof m.max === 'number' ? m.max : 0;
+        return;
+      }
+      if (m.t === 'locked') {
+        // The host locked the doors (server/host.mjs): the close that follows says so, and we try again soon.
+        this.lockedOut = true;
         return;
       }
       if (m.t === 'kicked') this.stopped = true;
@@ -354,6 +365,13 @@ export class Net {
         this.room = null;
         this.onRoomGone('full');
         this.connect();
+        return;
+      }
+      // The doors locked (4005): said, and tried again every few seconds until the host lets us in.
+      if (e.code === 4005 || this.lockedOut) {
+        this.lockedOut = false;
+        this.onStatus(() => t('net.locked'));
+        this.retryTimer = window.setTimeout(() => !this.stopped && this.connect(), 4000);
         return;
       }
       // Full (4003): said, and tried again a little later like a dropped connection, until there is room.
