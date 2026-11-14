@@ -23,10 +23,27 @@
   .gun-pick { margin-bottom: 10px; }
   .gun-chip { min-height: 40px; }
 }
-/* A phone held sideways: the start screen's row stays one line, without the rule. */
+.gun-short { display: none; margin: 0; font-size: 14px; white-space: nowrap; color: var(--ink-soft); }
+/* A phone held sideways: the start screen's row stays one line, with the rule in two words ("Up to 2"). */
 @media (orientation: landscape) and (max-height: 520px) and (max-width: 759px) {
+  #guns-start { column-gap: 8px; }
+  #guns-start .gun-chips { gap: 6px; }
+  #guns-start .gun-chip { gap: 6px; padding: 4px 30px 4px 8px; font-size: 14px; }
+  #guns-start .gun-ico { width: 36px; height: 15px; }
+  #guns-start .gun-tick { right: 6px; }
   #guns-start .gun-note { display: none; }
+  #guns-start .gun-short { display: block; }
 }
+/* A phone held upright: the three chips side by side, each its icon over its name. */
+@media (max-width: 520px) and (orientation: portrait) {
+  #guns-start .gun-chips { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); width: 100%; }
+  #guns-start .gun-chip { flex-direction: column; justify-content: center; gap: 4px; padding: 8px 6px; text-align: center; font-size: 14px; }
+  #guns-start .gun-ico { margin-top: 10px; }
+  #guns-start .gun-tick { top: 4px; right: 4px; width: 18px; height: 18px; margin-top: 0; font-size: 12px; line-height: 18px; }
+}
+/* A controller's focus ring (4 px, 4 px out, growing a little) needs the room between the chips. */
+#start-panel.pad-mode .gun-chips { gap: 18px; }
+#start-panel.pad-mode .gun-pick { column-gap: 18px; }
 @media (prefers-reduced-motion: reduce) {
   .gun-chip, .gun-tick { transition: none; }
 }
