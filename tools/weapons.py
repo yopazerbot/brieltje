@@ -892,10 +892,10 @@ def build_shotgun():
     # Hands: the right round the stock's wrist, the left round the pump.
     # The knuckles well round to the front of the grip, the palm behind it, so the forearm can go down and back
     # (and stays low in the picture when you aim); the fingers no further round than the stock's left side: it is
-    # deep there, they lie along it.
+    # deep there, they lie along it; the ring and little fingers curl up under its front, not below it.
     gw = Wrap((0, -0.062, 0.028), (0, -0.04, -0.1), (0, 1, 0.25), 0.023, 0.0165)
     right = hand("shotgun_handR", gw,
-                 [(0.03, 30, -1, 0.07, 0.0098, 0.0), (0.05, 34, -1, 0.07, 0.0094, 0.0), (0.069, 36, -1, 0.062, 0.0086, 0.0)],
+                 [(0.03, 30, -1, 0.07, 0.0098, 0.0), (0.05, 34, -1, 0.07, 0.0094, -0.3), (0.069, 36, -1, 0.062, 0.0086, -1.0)],
                  [gw.at(0.018, 95, 0.004), gw.at(0.08, 100, 0.004), gw.at(0.018, 150, 0.004), gw.at(0.08, 150, 0.006),
                   gw.at(0.012, 200, 0.002), gw.at(0.065, 185, 0.004), gw.at(0.03, 95, 0.026), gw.at(0.07, 100, 0.026)],
                  (0.012, -0.135, 0.0), (0.28, -0.7, -0.66),
