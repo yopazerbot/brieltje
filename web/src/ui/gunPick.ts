@@ -66,12 +66,14 @@ function icon(w: string): SVGSVGElement {
   return svg;
 }
 
-type Note = 'guns.rule' | 'guns.now' | 'guns.later' | 'guns.zombies';
+type Note = 'guns.rule' | 'guns.now' | 'guns.later' | 'guns.zombies' | 'guns.sending';
 
 export class GunPick {
   private chips: { w: string; el: HTMLButtonElement; ico: SVGSVGElement; img: HTMLImageElement; name: HTMLElement }[] = [];
   private row = document.createElement('div');
   private note = document.createElement('p');
+  /** The rule in two words, where the row has no room for it (a phone held sideways, gunPick.css) */
+  private short = document.createElement('p');
   private noteKey: Note = 'guns.rule';
   private paint = false;
 
@@ -101,7 +103,10 @@ export class GunPick {
       this.chips.push({ w, el, ico, img, name });
     }
     this.note.className = 'gun-note';
-    mount.append(this.row, this.note);
+    this.note.setAttribute('aria-live', 'polite'); // what became of a change is read out
+    this.short.className = 'gun-short';
+    this.short.setAttribute('aria-hidden', 'true'); // the full rule is there for screen readers
+    mount.append(this.row, this.note, this.short);
     this.words();
     this.ticks();
     onLang(() => this.words());
@@ -119,10 +124,17 @@ export class GunPick {
     this.mount.classList.toggle('hidden', !on);
   }
 
-  /** The line under the chips: the rule, or what became of a change. */
+  /** The line under the chips: the rule, or what became of a change (the paint pistol's name in Paintball). */
   say(key: Note): void {
     this.noteKey = key;
-    this.note.textContent = this.noteKey === 'guns.rule' ? t('guns.rule', { n: LOADOUT.most }) : t(this.noteKey);
+    const n = LOADOUT.most;
+    const p = this.paint;
+    this.note.textContent =
+      key === 'guns.rule' ? t(p ? 'guns.rulePaint' : 'guns.rule', { n })
+      : key === 'guns.zombies' ? t(p ? 'guns.zombiesPaint' : 'guns.zombies')
+      : key === 'guns.now' && !gunChoice.pick.length ? t(p ? 'guns.pistolOnlyPaint' : 'guns.pistolOnly') // nothing ticked: the pistol alone
+      : t(key);
+    this.short.textContent = t('guns.short', { n });
   }
 
   /** The pictures (`opts.picture`), where there are any now. */

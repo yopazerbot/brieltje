@@ -88,7 +88,7 @@ if (watch) {
   map.delete('briel.logoutPending');
   map.delete('briel.startMode');
   map.set('briel.sound', 'off');
-  map.set('briel.playMode', 'explore'); // no gun of its own, no weapon picker
+  map.set('briel.playMode', 'explore'); // no gun of its own, no guns to choose
   if (watch.views > 1) map.set('briel.graphics', 'auto');
   const mem: Storage = {
     get length() {
