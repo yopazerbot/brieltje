@@ -106,6 +106,9 @@ export class BigMap {
   private top = document.createElement('canvas');
   private card = document.createElement('div');
   private help = document.createElement('div');
+  /** The legend's line for the garden gnomes found (world/goals.ts), hidden while empty */
+  private goals = document.createElement('span');
+  private goalsText = document.createTextNode('');
   private paths = new Map<Layer, Path2D>();
   private trees = new Path2D();
   private hull = new Path2D();
@@ -170,6 +173,11 @@ export class BigMap {
       legend.append(item);
       named.push([text, key, 'text']);
     }
+    const gnome = document.createElement('i');
+    gnome.className = 'lg-gnome';
+    this.goals.style.display = 'none'; // the legend's spans are flex: `hidden` alone would not hide it
+    this.goals.append(gnome, this.goalsText);
+    legend.append(this.goals);
     const name = () => {
       for (const [el, key, what] of named) {
         if (what === 'text') el.textContent = t(key);
@@ -210,6 +218,12 @@ export class BigMap {
   addInside(rooms: Room[]): void {
     for (const r of rooms) if (r.level === 'gf') this.add('home', r.p);
     this.dirty = true;
+  }
+
+  /** The legend's line for the gnomes found, already in the page's language; '' hides it. */
+  setGoals(text: string): void {
+    this.goalsText.textContent = text;
+    this.goals.style.display = text ? '' : 'none';
   }
 
   /** The edge of the game (shared/bounds.json, the one that holds now): drawn as a dashed line, so you see how far you can go. */

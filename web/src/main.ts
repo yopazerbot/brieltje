@@ -80,6 +80,7 @@ import { Decals } from './world/decals';
 import { Effects, type Spot } from './world/effects';
 import { GRENADE, Grenades } from './world/grenades';
 import { Pickups } from './world/pickups';
+import { Goals } from './world/goals';
 import { Cats } from './world/cats';
 import { Car, placedSpec, PLACED_MAX, setCarDetail, type CarState } from './world/car';
 import { carLights } from './world/carLights';
@@ -948,6 +949,10 @@ const insides = new Insides({
 homeLocks.onOpen = (id, pack) => void insides.open(id, pack);
 bigMap.setEdge(edges.map.ring);
 minimap.setGround((g, k) => bigMap.paintGroundGame(g, k), () => bigMap.groundVersion); // the ground under the minimap, everywhere
+// Garden gnomes to find and timed routes, kept in this browser (world/goals.ts).
+const goals = new Goals({ ground: groundY, floor: (x, z, y) => world.groundAt(x, z, y + 0.4, 0).y, particles: effects.particles, announce: (big, small) => hud.announce(big, small), count: (text) => bigMap.setGoals(text), low: () => quality === 'low' || phone });
+goals.enabled = !(import.meta.env.DEV && location.search.includes('nogoals'));
+if (goals.enabled) scene.add(goals.group);
 const mapBtn = document.getElementById('map-btn')!;
 
 // The furniture: shared through the server when logged in, kept in this browser otherwise. New pieces
@@ -3473,6 +3478,7 @@ renderer.setAnimationLoop((now: number) => {
   // rings look like odd logos.
   pickups.group.visible = (!menu.onStartScreen || warm.on) && weapon.enabled; // in the warm-up's frames too (src/startWarm.ts)
   portals.group.visible = !menu.onStartScreen || warm.on;
+  goals.group.visible = (!menu.onStartScreen || warm.on) && !games.active && !watching; // the gnomes and gates, in the warm-up's frames too
   if (menu.onStartScreen) weapon.hidden = !(warm.on && warmGun); // nor the pistol in your hand: from the start view its barrel is a ring mid-screen
   games.setExploring(!weapon.enabled); // the teams game's and Zombies' hints follow a change of mode
   // The villagers in every mode, Action and Paintball too (Yoshi, 7 Nov 2026), but never during Zombies, its end
@@ -4017,6 +4023,7 @@ renderer.setAnimationLoop((now: number) => {
   townBoard.update(camera.position);
   // The footballs: walked into on foot (alone here; together the server does it too, and leads).
   const onFoot = combat.alive && !driving && !riding && !bikes.mounted && horses.mounted < 0 && !player.flying && player.chute === null;
+  goals.update(dt, camera, { x: player.x, z: player.z, feet: player.feet, yaw: player.yaw, by: driving ? 'car' : bikes.mounted ? 'bike' : onFoot ? 'foot' : null, on: goals.group.visible && !menu.open && !trip && combat.alive && !player.flying && player.chute === null });
   football.update(dt, camera.position, onFoot ? { x: player.x, z: player.z, feet: player.feet, name: me?.username ?? '' } : null, net.connected);
   // The others, after the horses and bikes: a rider sits in the saddle where it is drawn this frame.
   avatars.tick(dt, camera.position, driving || riding || horses.mounted >= 0 || bikes.mounted ? null : { x: player.x, z: player.z });
@@ -4082,6 +4089,7 @@ renderer.setAnimationLoop((now: number) => {
       ...horses.blips().map((h) => ({ ...h, color: '#8a5a3a', kind: 'horse' as const })),
       ...(games.hideOthers ? [] : avatars.marks().map((a) => ({ ...a, kind: 'player' as const }))),
       ...games.coinSpots().map((c) => ({ x: c.x, z: c.z, color: '#f2c14e', kind: 'coin' as const })),
+      ...goals.marks(),
     ];
     bigMap.tick(mapYou(), marks);
   } else if (!menu.onStartScreen) composer.render(dt); // the menu's Map tab covers most of the screen: the world isn't drawn behind it
@@ -4349,6 +4357,7 @@ async function buildVillage(): Promise<void> {
   pruneTrunks();
   portals.settle(); // the village's paving under its portals
   pickups.settle(); // the weapons up on the village's roofs (the church's roof walk, the Sparrenhof)
+  goals.settle();
   await between();
   tiles.showAll(); // as for the bakes: every tile, the models in it and the ponds' water
   for (const m of models) m.visible = true;
@@ -4395,6 +4404,7 @@ async function buildVillage(): Promise<void> {
   christmas.villageReady();
   for (const c of cars) c.ready = true; // the cars parked in the village (shared/car.json) with it
   bikes.villageReady(); // and the bikes in its racks (shared/bike.json)
+  goals.villageReady(); // the gnomes and gates of the village (world/goals.ts)
   // What comes with the village: a start waits for it too (getEverythingReady).
   villageAfter = Promise.all([mapped, indexed, roadLife.load(renderer, scene, camera, precompile), townBoard.load(renderer, precompile)].map((j) => j.catch(() => undefined)));
 }
@@ -4668,6 +4678,7 @@ if (import.meta.env.DEV) {
       grenades,
       throwGrenade,
       pickups,
+      goals,
       cats,
       car,
       cars,
