@@ -586,11 +586,15 @@ const idle = (): Promise<IdleDeadline | null> =>
     else setTimeout(() => resolve(null), 16);
   });
 
-/** Paint a little at a time while the page is idle, a few milliseconds a slice, so play never stalls for it. */
+/**
+ * Paint a little at a time while the page is idle, a few milliseconds a slice, so play never stalls for it; or when
+ * and for as long as `trees.pace` says (main.ts, src/startWarm.ts: flat out before play, a little a frame after).
+ */
 async function sliced<T>(steps: Generator<void, T>): Promise<T> {
   for (;;) {
-    const d = await idle();
-    const end = performance.now() + Math.min(8, Math.max(3, d ? d.timeRemaining() : 4));
+    const pace = trees.pace;
+    const d = pace ? null : await idle();
+    const end = pace ? (await pace()) + performance.now() : performance.now() + Math.min(8, Math.max(3, d ? d.timeRemaining() : 4));
     while (performance.now() < end) {
       const r = steps.next();
       if (r.done) return r.value;
@@ -621,6 +625,8 @@ const trees = {
   painting: null as Promise<void> | null,
   /** Uploads the atlases and compiles the cards' shaders before they show (main.ts) */
   prepare: null as ((textures: THREE.Texture[]) => Promise<unknown>) | null,
+  /** When the next slice of painting may run and for how long (ms); null: in idle moments */
+  pace: null as (() => Promise<number>) | null,
   cards: new Set<THREE.MeshStandardMaterial>(),
   plain: new Set<THREE.Material>(),
   swaps: new Set<(full: boolean) => void>(),
@@ -675,13 +681,16 @@ export function switchTrees(full: boolean): void {
 }
 
 /**
- * Play has begun: from now on the atlases are painted when a preset asks for the cards. `prepare` uploads them and
- * compiles the cards' shaders (in the background where the browser can) before the cards show.
+ * From now on the atlases are painted when a preset asks for the cards (main.ts: before play begins). `prepare` uploads
+ * them and compiles the cards' shaders (in the background where the browser can) before the cards show; `pace` says
+ * when each slice of painting runs and for how long. Resolves once the painting asked for now is over (at once if none).
  */
-export function treesMayPaint(prepare: (textures: THREE.Texture[]) => Promise<unknown>): void {
+export function treesMayPaint(prepare: (textures: THREE.Texture[]) => Promise<unknown>, pace?: () => Promise<number>): Promise<void> {
   trees.may = true;
   trees.prepare = prepare;
+  trees.pace = pace ?? null;
   paintSoon();
+  return trees.painting ?? Promise.resolve();
 }
 
 /** On a phone (main.ts): the cards never show, so they are never built (world/surroundings.ts, hedgeCards.ts, streetConifers.ts). */

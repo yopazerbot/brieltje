@@ -160,6 +160,7 @@ import HUTS_DATA from '../shared/tree_huts.json';
 import { cafePrisms, makeCafe } from '../shared/sparrenhof.mjs';
 import { carName, doorName, lang, onLang, placeName, portalName, serverText, setLang, t, whoName } from './i18n';
 import { seat, tellHost } from './seat';
+import { gather, pace, playBegins, StartWarm } from './startWarm';
 import { onWatch, watch } from './watch';
 import { WatchView } from './ui/watchView';
 
@@ -222,9 +223,23 @@ const environmentReady = loadEnvironment(renderer, scene, sun, wantedSun);
 // graphics test. Once it is done, play begins (menu.ready).
 let loadShare = 0;
 function loading(share: number, text?: () => string): void {
+  if (worldReady) return; // the last part has a bar of its own (getReady), the village's models no longer move it
   loadShare = Math.max(loadShare, share);
-  menu.progress(loadShare, text);
+  menu.progress(loadShare * WORLD_SHARE, text);
 }
+/** The world itself fills the bar to here; getting everything else ready (src/startWarm.ts) the rest. */
+const WORLD_SHARE = 0.75;
+function getReady(share: number, text?: () => string): void {
+  menu.progress(WORLD_SHARE + (1 - WORLD_SHARE) * Math.min(1, share), text);
+}
+/** About when the start was clicked (this file is fetched then): a phone waits for the rest until a minute after it. */
+const clickedAt = performance.now();
+/** At most this long (ms) for everything else once the world is in (src/startWarm.ts); then play begins and it goes on. */
+const START_WAIT = 20000;
+const PHONE_WAIT = 60000;
+const warm = new StartWarm();
+/** In the warm-up's views where you stand on the ground: the gun in your hands drawn too. */
+let warmGun = false;
 let worldReady = false;
 function loaded(): void {
   if (worldReady) return; // the time limit, and Auto chosen again later in the settings, come here too
@@ -250,21 +265,90 @@ function loaded(): void {
       if (welcomed) net.send({ t: 'spawn', to: 'home' });
       else spawnPending = 'home';
     }
-    loading(1);
+    getReady(1);
     setTimeout(() => {
       menu.ready(); // the bar full for a moment, then play
       playBegun();
     }, 150);
   };
-  if (at?.village) {
-    loading(0.92, () => t('travel.village'));
-    // Its shaders were compiled for the preset before the test: once more for the one picked (nothing new if the same).
-    void loadVillage().then(() => precompile(scene)).then(begin, begin);
-  } else begin();
-  setTimeout(() => void loadVillage(), 500); // playing: now the village
-  setTimeout(() => life.load(precompile), 900); // and the gardens' things, birds and the mower
+  // Everything else first, then a few frames drawn from where play begins, whatever the start (getEverythingReady).
+  void getEverythingReady(at, zombiesStart).then(begin, begin);
   setTimeout(() => rules.parachute !== false && void parachutes.load(), 1200); // and the parachute, if the start didn't bring it in
-  setTimeout(() => void startCountryside(), 900); // and the countryside's life
+}
+/**
+ * Before play begins, at every start (Yoshi, 14 Nov 2026: "take a bit longer to load but have a smooth start instead";
+ * src/startWarm.ts): the village and what comes with it (the road's life, the town board, the shot index, the map's
+ * village), the gardens' and the countryside's life, the parachute, the villagers and in his days Sinterklaas, the leaf
+ * cards' pictures; then the scene's shaders once more (for the preset picked: nothing new if the same), and frames drawn
+ * behind the start screen from where play begins, so their first use and the textures' uploads are paid there. At most
+ * START_WAIT once the world is in (a phone: until PHONE_WAIT after the click); then play begins and the rest goes on.
+ */
+async function getEverythingReady(at: Portal | null, zombiesStart: boolean): Promise<void> {
+  const now = performance.now();
+  const until = now + (phone ? Math.max(START_WAIT, PHONE_WAIT - (now - clickedAt)) : START_WAIT);
+  const drop = !zombiesStart && rules.parachute !== false && !watch;
+  const text = () => t(village === 'ready' ? 'load.ready' : 'load.progress');
+  getReady(0, text);
+  performance.mark('briel:ready');
+  await gather([
+    loadVillage().then(() => villageAfter),
+    life.load(precompile), // the gardens' things, birds and the mower
+    startCountryside(),
+    drop ? parachutes.load() : null,
+    zombiesStart ? null : villagers.preload(),
+    !zombiesStart && seasonNow().sinterklaas ? sinterklaas.prepare() : null,
+    // The leaf cards' pictures, when the preset asks for them (world/leafCards.ts).
+    treesMayPaint((textures) => {
+      for (const t of textures) renderer.initTexture(t);
+      return precompile(scene);
+    }, pace),
+  ], until, (share) => getReady(share * 0.85, text));
+  await Promise.race([precompile(scene), new Promise((r) => setTimeout(r, Math.max(0, until - performance.now())))]);
+  performance.mark('briel:warm');
+  if (!menu.onStartScreen || performance.now() >= until) {
+    warm.hold(() => player.update(0, NO_INPUT, camera)); // no warm-up, but the camera where play begins (see below)
+    return;
+  }
+  // The warm-up: where play begins, at eye height, four ways round; then the drop's first view, your figure under its
+  // parachute filmed from behind (world/dropView.ts), so their shaders and their shadows' are used once too.
+  const keep = { x: player.x, z: player.z, feet: player.feet, yaw: player.yaw, pitch: player.pitch };
+  const [x, z, yaw] = at ? at.out : drop ? [HOME_DROP.x, HOME_DROP.z, HOME_DROP.yaw] : [keep.x, keep.z, keep.yaw];
+  const feet = at || drop ? groundY(x, z) : keep.feet;
+  const views = [0, 1, 2, 3].map((k) => () => {
+    warmGun = true;
+    player.place(x, z, feet, yaw + (k * Math.PI) / 2, 0);
+    player.update(0, NO_INPUT, camera);
+  });
+  if (drop) {
+    let dropping = false;
+    // From your eyes as the drop begins, then from behind as it goes on.
+    for (const behind of [false, true]) {
+      views.push(() => {
+        warmGun = false;
+        if (!dropping) {
+          dropping = true;
+          player.place(x, z, feet, yaw, 0);
+          beginDrop(at ? undefined : HOME_DROP); // as play will begin (begin in loaded): the clock stands still behind the start screen
+        }
+        player.update(0, NO_INPUT, camera);
+        if (behind) dropView.update(5, camera, player, parachutes.has('', ownFigure));
+      });
+    }
+  }
+  try {
+    await warm.frames(views, renderer.info, () => glassProbe.midSet, until, (done) => getReady(0.85 + (0.15 * done) / views.length, () => t('load.ready')));
+  } finally {
+    // Back as it was: the camera in your eyes (as the drop begins), the warm-up's parachute taken away (given no figure,
+    // world/parachutes.ts lets it go) and you where you stood. Play begins from there (begin in loaded).
+    warmGun = false;
+    dropView.update(60, camera, { ...keep, chute: null, canopy: null, air: 0, steer: 0 }, false);
+    parachutes.fly('', myChute, null, myColour(), false, false, 0, 0, camera.position);
+    player.place(keep.x, keep.z, keep.feet, keep.yaw, keep.pitch);
+    player.update(0, NO_INPUT, camera);
+    // Until play begins, the camera stays where play begins (in your eyes, as begin places you), not on the house.
+    warm.hold(() => player.update(0, NO_INPUT, camera));
+    performance.mark('briel:play');
+  }
 }
 setTimeout(loaded, 25000); // never keep the player waiting forever
 /** The start place picked on the start screen (the church by default), or null for the main house, where the world itself starts. */
@@ -3354,18 +3438,17 @@ renderer.setAnimationLoop((now: number) => {
 
   // The weapons lying around: only in Action mode (Yoshi), and never from the start view, where their
   // rings look like odd logos.
-  pickups.group.visible = !menu.onStartScreen && weapon.enabled;
-  portals.group.visible = !menu.onStartScreen;
-  if (menu.onStartScreen) weapon.hidden = true; // nor the pistol in your hand: from the start view its barrel is a ring mid-screen
+  pickups.group.visible = (!menu.onStartScreen || warm.on) && weapon.enabled; // in the warm-up's frames too (src/startWarm.ts)
+  portals.group.visible = !menu.onStartScreen || warm.on;
+  if (menu.onStartScreen) weapon.hidden = !(warm.on && warmGun); // nor the pistol in your hand: from the start view its barrel is a ring mid-screen
   games.setExploring(!weapon.enabled); // the teams game's and Zombies' hints follow a change of mode
   // The villagers in every mode, Action and Paintball too (Yoshi, 7 Nov 2026), but never during Zombies, its end
   // screen included. In Action a grown-up can be shot, in Paintball painted (Yoshi, 14 Nov 2026; world/villagers.ts).
-  // Not in the first seconds of play: building them (unpacking the model, their paths) took 30 ms and more of one
-  // frame just as you dropped in, on top of everything else that starts then. One after the other, a little later.
-  const played = playBegan ? performance.now() - playBegan : 0;
-  const villagersOut = !menu.onStartScreen && games.view.kind !== 'zombies';
-  villagers.setActive(villagersOut && played > 2500);
-  sinterklaas.setActive(villagersOut && played > 4000 && seasonNow().sinterklaas); // the same rule
+  // They are built before play begins (getEverythingReady), and out for the warm-up's frames behind the start screen
+  // too (src/startWarm.ts), so their shaders are used once before play.
+  const villagersOut = (!menu.onStartScreen || (warm.on && startIntent.zombies === null)) && games.view.kind !== 'zombies';
+  villagers.setActive(villagersOut);
+  sinterklaas.setActive(villagersOut && seasonNow().sinterklaas); // the same rule
   sintMaarten.setActive(villagersOut && seasonNow().sintMaarten, seasonNow().sintMaartenEve);
   christmas.setSolid(games.zombies ? 'off' : weapon.enabled ? 'walk' : 'full'); // the tree, as the server knows the world
   // The Zombies game: the clowns and strongmen stand aside, nobody flies, and whoever is down waits for the wave.
@@ -3376,7 +3459,7 @@ renderer.setAnimationLoop((now: number) => {
   if (menu.open) {
     travelPanel.hide();
     stallCard.hide(); // the menu or the big map came up: the stall shuts and its chip goes
-    if (menu.onStartScreen) startCamera();
+    if (menu.onStartScreen) warm.place(startCamera); // or the warm-up's view (src/startWarm.ts)
     else if (menu.tab === 'play') placesList.show(driving ? car.x : player.x, driving ? car.z : player.z, menu.mode ?? 'kbm', travelBlock());
     // Controller in a menu: ✕ picks the controller on the start screen. In the pause menu Options
     // or ○ resumes, and ✕ too except on the map, where it sets a waypoint at the cross; L1 and R1
@@ -3968,6 +4051,8 @@ renderer.setAnimationLoop((now: number) => {
   } else if (!menu.onStartScreen) composer.render(dt); // the menu's Map tab covers most of the screen: the world isn't drawn behind it
   // Nor behind the start screen: its slideshow covers the canvas, and drawing there compiled the shaders one by one
   // on the page's thread while the world loaded (5.8 s of it). They compile in the background instead (compileWorld).
+  // Only the warm-up's frames are drawn there, once everything is in and compiled (src/startWarm.ts).
+  else warm.draw(() => composer.render(dt), renderer.getContext());
   hud.tick(dt, renderer.info.render.calls, preset.scale * dynScale, t(`gfx.${quality}`), net.connected ? net.rtt : null);
 });
 
@@ -3983,6 +4068,8 @@ player.update(0, input.poll(), camera);
  */
 let village: 'waiting' | 'loading' | 'ready' = 'waiting';
 let villageJob: Promise<void> | null = null;
+/** What comes in with the village once it is built (the road's life, the town board, the shot index, the map's village). */
+let villageAfter: Promise<unknown> = Promise.resolve();
 /** The end house of the new terrace at Molenhoek, to walk into (world/walkIn.ts), once its street model is in. */
 let endHouse: WalkIn | null = null;
 /** Resolved once play has begun (loaded). */
@@ -4005,6 +4092,8 @@ void playing.then(() => {
 let playBegan = 0;
 void playing.then(() => {
   playBegan = performance.now();
+  playBegins(); // what is left of getting ready goes on a little a frame (src/startWarm.ts)
+  warm.hold(null);
   // Your guns from the start, and the picker to change them (Action and Paintball, alone or together).
   if (!net.connected && !games.zombies) weapon.setOwned(startGuns());
   offerGuns();
@@ -4034,11 +4123,6 @@ function followMusic(): void {
   const fighting = v.kind === 'zombies' && weapon.enabled && !watching && (!me || net.connected);
   music.zombies({ on: fighting, rest: v.phase === 'break', over: v.phase === 'done', wave, left: v.zombies?.left ?? 0, big: bigsSeen.size });
 }
-// The leaf cards' pictures are painted once play has begun, when the preset asks for them (world/leafCards.ts).
-void playing.then(() => treesMayPaint((textures) => {
-  for (const t of textures) renderer.initTexture(t);
-  return precompile(scene);
-}));
 /**
  * The baked light of the streets away from where you start (Molenhoek's and Kapellenhoek's pages, about 4 MB): fetched
  * once play has begun, not before. They keep real-time light until it is in; a trip into the village waits for it.
@@ -4236,7 +4320,7 @@ async function buildVillage(): Promise<void> {
   tiles.showAll(); // as for the bakes: every tile, the models in it and the ponds' water
   for (const m of models) m.visible = true;
   groundShade.warm(renderer, scene, sun, [tiles.group], house.ground);
-  void playing.then(() => setTimeout(() => bigMap.addVillage(data), 1500)); // once play has begun and its first second is over, in slices between frames (ui/bigmap.ts)
+  const mapped = bigMap.addVillage(data, pace); // in slices: before play flat out, after it a little a frame (ui/bigmap.ts, src/startWarm.ts)
   await environmentReady;
   await between();
   const c = landmarks[0] ?? new THREE.Vector2(521.5, -744.2); // the church
@@ -4274,12 +4358,12 @@ async function buildVillage(): Promise<void> {
   groundShade.bakeAll(renderer, scene, sun, [built.group, hedgeLumps, tiles.group], house.ground, phone ? 1024 : 2048);
   village = 'ready';
   void homeBakeReady.then(releaseGroundClaims); // every surface is cut: the ground's claims go, but round the homes
-  void prepareShotRaycasts(scene); // the shot index in idle slices, once play has begun (until then three's raycast)
+  const indexed = prepareShotRaycasts(scene, 4, pace); // the shot index, before play flat out (until then three's raycast)
   christmas.villageReady();
   for (const c of cars) c.ready = true; // the cars parked in the village (shared/car.json) with it
   bikes.villageReady(); // and the bikes in its racks (shared/bike.json)
-  void roadLife.load(renderer, scene, camera, precompile);
-  townBoard.load(renderer, precompile).catch(() => undefined);
+  // What comes with the village: a start waits for it too (getEverythingReady).
+  villageAfter = Promise.all([mapped, indexed, roadLife.load(renderer, scene, camera, precompile), townBoard.load(renderer, precompile)].map((j) => j.catch(() => undefined)));
 }
 
 /** The countryside's life (world/countryside.ts): herds, birds, bales, field rows, wind and sounds; a chunk of its own. */

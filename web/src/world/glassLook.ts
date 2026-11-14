@@ -456,6 +456,11 @@ export class GlassProbe extends Pass {
     for (const c of this.cams.children) reflectionLayers(c.layers, c.layers);
   }
 
+  /** Part way through a set of views (the start's warm-up frames let it finish: src/startWarm.ts). */
+  get midSet(): boolean {
+    return this.on && this.face !== 0;
+  }
+
   /** Medium and up, not a phone. Off, the cubes are let go (their memory freed) and made again when it is back on. */
   get fine(): boolean {
     return this.on;

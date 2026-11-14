@@ -222,26 +222,29 @@ export class BigMap {
   }
 
   /** The village and the band to it (once loaded): their roads, buildings, fields, trees and ponds. */
-  addVillage(data: Surroundings & { dips?: DipSpec[]; area?: [number, number][] }): void {
+  addVillage(data: Surroundings & { dips?: DipSpec[]; area?: [number, number][] }, pace?: () => Promise<number>): Promise<void> {
     if (data.area && data.area.length > 2) this.area = data.area.map(([x, z]) => [toU(x, z), toV(x, z)]);
     this.addFootball();
-    // In slices of 4 ms, one after each frame (8 ms pushed every frame past its 16.7; it took 0.2 s on this PC, 0.8 s with a phone's processor; main.ts calls it once
-    // play has begun): the map and the minimap's ground show the village once all of it is in, the same paths in the
-    // same order.
+    // In slices of 4 ms, one after each frame (8 ms pushed every frame past its 16.7; it took 0.2 s on this PC, 0.8 s with
+    // a phone's processor): the map and the minimap's ground show the village once all of it is in, the same paths in the
+    // same order. `pace`, when given, says when each slice runs and for how long (src/startWarm.ts: before play flat out).
     const job = this.adding(data, data.dips ?? []);
-    const next = () => requestAnimationFrame(() => setTimeout(slice, 0));
-    const slice = () => {
-      const end = performance.now() + 4;
-      while (performance.now() < end) {
-        if (job.next().done) {
-          this.dirty = true;
-          this.groundVersion++;
-          return;
+    return new Promise<void>((done) => {
+      const next = () => (pace ? void pace().then(slice) : requestAnimationFrame(() => setTimeout(() => slice(4), 0)));
+      const slice = (ms: number) => {
+        const end = performance.now() + ms;
+        while (performance.now() < end) {
+          if (job.next().done) {
+            this.dirty = true;
+            this.groundVersion++;
+            done();
+            return;
+          }
         }
-      }
+        next();
+      };
       next();
-    };
-    next();
+    });
   }
 
   show(you: { x: number; z: number; yaw: number }, control: Control): void {

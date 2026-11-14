@@ -56,6 +56,7 @@ const en = {
   'load.house': 'Building the village…',
   'load.progress': 'Building the village…',
   'load.gfx': 'Testing your graphics',
+  'load.ready': 'Getting everything ready…',
   'load.failed': "The game didn't load. Reload the page to try again.",
   // The legal pages (web/public/legal/): the line under the start screen, and the short links
   'legal.accept': 'By playing you accept the',
@@ -1194,6 +1195,7 @@ const nl = {
   'load.house': 'Het dorp wordt opgebouwd…',
   'load.progress': 'Het dorp wordt opgebouwd…',
   'load.gfx': 'Je grafische kaart wordt getest',
+  'load.ready': 'Alles wordt klaargezet…',
   'load.failed': 'Het spel is niet geladen. Herlaad de pagina om het opnieuw te proberen.',
   'legal.accept': 'Door te spelen aanvaard je de',
   'legal.terms': 'gebruiksvoorwaarden',

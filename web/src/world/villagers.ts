@@ -385,6 +385,11 @@ export class Villagers {
     if (on && !this.ready) this.ready = this.load();
   }
 
+  /** The model and the paths loaded, the figures built and their shaders compiled, without bringing them out (before play: main.ts). */
+  preload(): Promise<boolean> {
+    return (this.ready ??= this.load());
+  }
+
   /** How many are about, for the diagnostics. */
   get count(): number {
     return this.active.size;

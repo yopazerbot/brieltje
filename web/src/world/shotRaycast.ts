@@ -181,20 +181,29 @@ export function prepareShotMesh(mesh: THREE.Mesh): boolean {
 
 /**
  * Index every big static mesh under `root` in idle slices of a few milliseconds (after play has begun: it took 1.4 s
- * of loading at once). Each mesh keeps three's raycast until its own index is done.
+ * of loading at once). Each mesh keeps three's raycast until its own index is done. `pace`, when given, says when the
+ * next slice may run and for how long (ms) instead (src/startWarm.ts: flat out before play, a little a frame after).
  */
-export async function prepareShotRaycasts(root: THREE.Object3D, sliceMs = 4): Promise<void> {
+export async function prepareShotRaycasts(root: THREE.Object3D, sliceMs = 4, pace?: () => Promise<number>): Promise<void> {
   const meshes: THREE.Mesh[] = [];
   root.traverse((o) => { if ((o as THREE.Mesh).isMesh) meshes.push(o as THREE.Mesh); });
   const idle = () => new Promise<number>((resolve) => {
     if (typeof requestIdleCallback === 'function') requestIdleCallback((d) => resolve(d.timeRemaining()), { timeout: 100 });
     else setTimeout(() => resolve(0), 0);
   });
-  let until = performance.now() + sliceMs;
+  const paced = async () => {
+    const ms = await pace!();
+    return performance.now() + ms;
+  };
+  let until = pace ? await paced() : performance.now() + sliceMs;
   for (const mesh of meshes) {
     const job = indexJob(mesh);
     while (!job.next().done) {
       if (performance.now() < until) continue;
+      if (pace) {
+        until = await paced();
+        continue;
+      }
       const spare = await idle();
       until = performance.now() + Math.min(sliceMs, Math.max(spare - 1, 2));
     }

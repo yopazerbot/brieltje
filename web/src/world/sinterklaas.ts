@@ -144,11 +144,19 @@ export class Sinterklaas {
     this.active = on;
   }
 
+  /** Loaded and his shaders built, without bringing him out (before play: main.ts). True once he is in. */
+  prepare(): Promise<boolean> {
+    if (this.loaded === 'no') this.load();
+    return this.job;
+  }
+
+  private job: Promise<boolean> = Promise.resolve(false);
+
   private load(): void {
     this.loaded = 'loading';
     const loader = new GLTFLoader();
     // His horse: a copy of the herd's model, fetched once for both (world/horseModel.ts).
-    void Promise.all([horseModel(), loader.loadAsync(this.spec.model)]).then(([horse, s]) => {
+    this.job = Promise.all([horseModel(), loader.loadAsync(this.spec.model)]).then(([horse, s]) => {
       paintJoints(horse, HORSE_JOINTS, this.spec.horse); // one draw call a joint
       const saint = s.scene;
       paintJoints(saint, SAINT_JOINTS);
@@ -162,11 +170,15 @@ export class Sinterklaas {
       this.buildTreats();
       // Shown once his shaders are built (in the background): drawn at once, they stopped the game for about 150 ms
       // a second into play on his days.
-      void Promise.resolve(this.precompile(this.group))
+      return Promise.resolve(this.precompile(this.group))
         .catch(() => undefined)
-        .then(() => (this.loaded = 'yes'));
+        .then(() => {
+          this.loaded = 'yes';
+          return true;
+        });
     }, () => {
       this.loaded = 'no';
+      return false;
     });
   }
 

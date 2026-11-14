@@ -26,7 +26,7 @@ export class HomeLife {
   readonly group = new THREE.Group();
   /** Seconds on the shared clock minus seconds on this page's clock; alone, the computer's own clock (everyone's is close). */
   private offset = Date.now() / 1000 - performance.now() / 1000;
-  private loading = false;
+  private loading: Promise<void> | null = null;
   private yard: Yard | null = null;
   private mower: Mower | null = null;
   private birds: Birds | null = null;
@@ -42,11 +42,13 @@ export class HomeLife {
     this.group.userData.life = this; // for the automated checks
   }
 
-  /** Fetch the models and set everything up (once). `prepare` readies their shaders before they are shown (main.ts). */
-  load(prepare: (o: THREE.Object3D) => Promise<unknown> = async () => undefined): void {
-    if (this.loading) return;
-    this.loading = true;
-    void new GLTFLoader().loadAsync('/models/garden.glb').then(async (gltf) => {
+  /**
+   * Fetch the models and set everything up (once). `prepare` readies their shaders before they are shown (main.ts).
+   * Resolves once they are in (or didn't load).
+   */
+  load(prepare: (o: THREE.Object3D) => Promise<unknown> = async () => undefined): Promise<void> {
+    if (this.loading) return this.loading;
+    return (this.loading = new GLTFLoader().loadAsync('/models/garden.glb').then(async (gltf) => {
       const models = new Map(gltf.scene.children.map((o) => [o.name, o]));
       const fresh = new THREE.Group();
       const before = new Set(looseProps.group.children);
@@ -72,7 +74,7 @@ export class HomeLife {
       await prepare(fresh);
       if (loose.length) looseProps.group.add(...loose);
       this.group.add(...fresh.children);
-    }, () => {}); // missing: the gardens stay as they were
+    }, () => {})); // missing: the gardens stay as they were
   }
 
   /** Line up with the server's clock (ms since 1970), so every player sees the mower in the same place. */
