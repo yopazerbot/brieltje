@@ -2308,7 +2308,7 @@ function offerGuns(): void {
 const stallCard = new StallCard();
 const stallNav = new PadNav(() => stallCard.page);
 stallCard.can = () => games.zombies && games.view.phase === 'break' && weapon.enabled && combat.alive && !driving && !riding && horses.mounted < 0 && bikes.mounted === null
-  && !menu.open && !menu.onStartScreen && !bigMap.open && !chat.typing && !watch && !watching && !feedback.open && !homeCard.open && !loadoutCard.open && !controlsCard.open;
+  && !menu.open && !menu.onStartScreen && !bigMap.open && !chat.typing && !watch && !watching && !feedback.open && !homeCard.open && !controlsCard.open;
 stallCard.onBuy = (kind) => {
   if (net.connected) return net.send({ t: 'zbuy', k: kind }); // the kind only: the server has the coins, the price and the rest
   if (!solo) return;
@@ -2322,7 +2322,7 @@ stallCard.onBuy = (kind) => {
 stallCard.onClose = (relock) => {
   stallNav.reset();
   // Back to the game with a keyboard and mouse (K, Enter, Esc, the button, the wave beginning): the mouse looks again.
-  if (relock && !menu.open && !bigMap.open && menu.mode === 'kbm' && !feedback.open && !homeCard.open && !loadoutCard.open && !controlsCard.open) lockMouse();
+  if (relock && !menu.open && !bigMap.open && menu.mode === 'kbm' && !feedback.open && !homeCard.open && !controlsCard.open) lockMouse();
 };
 
 /** Get in: alone right away; in multiplayer once the server says the car is yours. Not during the Zombies game (the server refuses too). */
@@ -3303,7 +3303,7 @@ document.addEventListener('pointerlockchange', () => {
   // the menu opening), the menu is open already and stays on its tab. Not just after the menu closed:
   // the Esc that closed it can still take back the capture asked for on closing, and the menu (on
   // the map) came straight back, as if Esc didn't close the map (Yoshi). The click hint shows then.
-  if (!document.pointerLockElement && menu.mode === 'kbm' && !menu.open && !chat.typing && !feedback.open && !homeCard.open && !loadoutCard.open && performance.now() - loadoutCard.closedAt > 800 && !stallCard.open && performance.now() - stallCard.closedAt > 800 && performance.now() - resumedAt > 800) openMenu();
+  if (!document.pointerLockElement && menu.mode === 'kbm' && !menu.open && !chat.typing && !feedback.open && !homeCard.open && !stallCard.open && performance.now() - stallCard.closedAt > 800 && performance.now() - resumedAt > 800) openMenu();
 });
 
 window.addEventListener('resize', resize);
@@ -3370,7 +3370,7 @@ renderer.setAnimationLoop((now: number) => {
   last = now;
   const polled = input.poll();
   // The feedback card takes the keys while it shows, and for a moment after (its Esc isn't the menu's).
-  const card = feedback.open || homeCard.open || loadoutCard.open || stallCard.open || now - Math.max(feedback.closedAt, homeCard.closedAt, loadoutCard.closedAt, stallCard.closedAt) < 250;
+  const card = feedback.open || homeCard.open || stallCard.open || now - Math.max(feedback.closedAt, homeCard.closedAt, stallCard.closedAt) < 250;
   // Frozen by the host: only looking round and the menu (the server keeps everyone where they stood too).
   const frame = card || watching ? { ...NO_INPUT } : hostNotice.frozen
     ? { ...NO_INPUT, mouseX: polled.mouseX, mouseY: polled.mouseY, lookX: polled.lookX, lookY: polled.lookY, menuPressed: polled.menuPressed, scoreHeld: polled.scoreHeld, confirmPressed: polled.confirmPressed, navX: polled.navX, navY: polled.navY, tabStep: polled.tabStep, jumpPressed: player.chute !== null && polled.jumpPressed } // a drop: the parachute still opens
