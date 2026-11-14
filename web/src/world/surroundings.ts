@@ -18,7 +18,7 @@ import { cardCrown, cardTrunk, crownFit, FORK, HEIGHT, Kind, KINDS, spotHash, TR
 import { hedgeCardMesh, hedgeCardPieces } from './hedgeCards';
 import { barkMaterial, cardsBuilt, enlist, leafCardMaterial, plainForBake, switchTrees } from './leafCards';
 import { reflectionSkips } from './reflections';
-import { chimney, chimneyRoofs, roofFrame } from './houseTrim';
+import { chimney, chimneyRoofs, roofEdges, roofFrame, type RoofEdges } from './houseTrim';
 import { houseStyle } from './houseStyle';
 import { snowy } from './snowCover';
 
@@ -98,6 +98,9 @@ interface RoofParts {
   frames: THREE.BufferGeometry | null;
   gableFrames: THREE.BufferGeometry | null;
   panels: THREE.BufferGeometry | null;
+  /** Verge boards (vertex colours, for the frames) and ridge tiles (for the roof tiles): world/houseTrim.ts */
+  trim?: THREE.BufferGeometry | null;
+  ridge?: THREE.BufferGeometry | null;
 }
 
 /**
@@ -226,17 +229,14 @@ function gutters(r: RoofSpec, c: THREE.Vector2[], L: number, W: number, along: T
   return g;
 }
 
-function roof(r: RoofSpec): RoofParts {
-  const c = r.p.map(([x, z]) => new THREE.Vector2(x, z));
-  // Make c[0]-c[1] a long side (unless windows are measured from the corners as given).
-  if (!r.fixed && !r.windows && !r.gableWindows && c[0].distanceTo(c[1]) < c[1].distanceTo(c[2])) c.push(c.shift()!);
-  const L = c[0].distanceTo(c[1]);
-  const W = c[0].distanceTo(c[3]);
-  const along = c[1].clone().sub(c[0]).normalize();
-  const across = c[3].clone().sub(c[0]).normalize();
+/** `edges`: verge boards and ridge tiles in the house's trim (world/houseTrim.ts); none without. */
+function roof(r: RoofSpec, edges?: RoofEdges): RoofParts {
+  const frame = roofFrame(r); // c[0]-c[1] a long side (unless windows are measured from the corners as given)
+  const { c, L, W, along, across } = frame;
   const o = 0.3;
   const eave = r.y - 0.15; // the overhang drops a little
   const gutter = gutters(r, c, L, W, along, across, o, eave);
+  const { trim, ridge } = edges ? roofEdges(r, frame, edges) : { trim: null, ridge: null };
   const mid = new THREE.Vector3(c[0].x + (c[2].x - c[0].x) / 2, (r.y + r.ridge) / 2, c[0].y + (c[2].y - c[0].y) / 2);
   /** The roof surface at (a along, b across), and a point of a gable at (b across, height y). */
   const at = (a: number, b: number, lift = 0): THREE.Vector3 => {
@@ -265,7 +265,7 @@ function roof(r: RoofSpec): RoofParts {
     g.computeVertexNormals();
     return solidNormals(g); // a gable round its windows is cut into triangles, some with no area (world/normals.ts)
   };
-  if (r.shape === 'hip' || r.shape === 'shed') return { ...sloped(r, c, L, W, along, across, o, wall, tri, quad), gutters: gutter };
+  if (r.shape === 'hip' || r.shape === 'shed') return { ...sloped(r, c, L, W, along, across, o, wall, tri, quad), gutters: gutter, trim, ridge };
 
   // Slopes: one each side of the ridge, cut into strips around the roof windows.
   const roofPos: number[] = [];
@@ -356,7 +356,7 @@ function roof(r: RoofSpec): RoofParts {
     const z = gp.getZ(i) - c[0].y;
     guv.setXY(i, x * along.x + z * along.y, x * across.x + z * across.y);
   }
-  return { roof: roofGeo, gables: gableGeo, glass: geo(glassPos), frames: geo(framePos), gableFrames: geo(gableFramePos), panels: geo(panelPos), gutters: gutter };
+  return { roof: roofGeo, gables: gableGeo, glass: geo(glassPos), frames: geo(framePos), gableFrames: geo(gableFramePos), panels: geo(panelPos), gutters: gutter, trim, ridge };
 }
 
 /** A box `w` wide (along `d`), `h` high and `t` deep (along `n`), centred at `at`, in one colour. */
@@ -557,17 +557,28 @@ export function buildTile(data: TileData, poles: Pole[], renderer: THREE.WebGLRe
   // Each house's chimney goes on its largest roof that can carry one (world/houseTrim.ts).
   const chimneys = chimneyRoofs(data.roofs, data.prisms ?? [], keyOf);
   for (const r of data.roofs) {
-    const g = roof(r);
-    if (g.gutters) gutterGeos.push(g.gutters);
     const side = r.ceiling ? THREE.FrontSide : THREE.DoubleSide;
     const tint = r.tiles ?? '#4a3f3a';
     const key = keyOf(r);
     const style = houseStyle(key, r.wall ?? '', !!r.wall && isBrick(r.wall) && brickLook(r.wall, key).render === 1);
+    // Verge boards and ridge tiles in the house's trim; not on a roof over a room (the bungalow's) or a landmark's. An
+    // edge where a neighbour's walls stand above our eaves less 1.5 m (a terraced row) keeps none.
+    const edges: RoofEdges | undefined = r.ceiling || r.lm ? undefined : {
+      trim: new THREE.Color(style.trim),
+      free: (x, z) => {
+        const w = houses.wallAt(x, z);
+        return !w || w.p.y1 < r.y - 1.5;
+      },
+    };
+    const g = roof(r, edges);
+    if (g.gutters) gutterGeos.push(g.gutters);
     if (r.ceiling) put(material(`tiles|${tint}|${side}`, () => tintedMaterial('roof_tiles', tint, renderer, side)), g.roof, 'nb_roof');
     else {
       const look = roofLook(tint, key);
       put(tiles, byteAttribute(paint(g.roof, look.color), 'gloss', look.gloss), 'nb_roof');
+      if (g.ridge) put(tiles, byteAttribute(paint(g.ridge, look.color.clone().multiplyScalar(0.85)), 'gloss', look.gloss), 'nb_roof');
     }
+    if (g.trim) put(frameMat, g.trim, 'alu', false, undefined, true);
     const ch = chimneys.has(r) ? style.chimney : null;
     if (ch) {
       // The stack in the walls' brick and shade, as a wall; its cap and pots with the frames.
