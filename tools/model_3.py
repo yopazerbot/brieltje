@@ -313,6 +313,10 @@ def body_material(u, x, z, nz):
     return "Paint"
 
 
+# The rings bunch up at the nose and leave ripples in the bumper: smooth them out.
+nose = [v for v in bm.verts if L / 2 - v.co.y < 0.35 and v.co.z > 0.22]
+for _ in range(6):
+    bmesh.ops.smooth_vert(bm, verts=nose, factor=0.5, use_axis_x=True, use_axis_y=True, use_axis_z=True)
 cp.flare(bm, (L / 2 - U_F, L / 2 - U_R), TYRE_R, ARCH_R, 0.010)
 for f in bm.faces:
     c = f.calc_center_median()
@@ -598,7 +602,7 @@ for s in (-1, 1):
     # The light line: along the lower edge from near the inner tip, then up the outer end.
     line = [FRONT(a, hl_lo(a) + 0.0045) for a in across(s * hl_a(0.06), s * hl_a(0.985), 34)]
     line += [FRONT(s * hl_a(0.985), z) for z in across(hl_lo(s * HL[1]) + 0.010, hl_top(s * HL[1]) - 0.008, 3)]
-    ribbon(B, line, 0.006, "LightBar", out=0.0058)
+    ribbon(B, line, 0.010, "LightBar", out=0.0058)
     # Inside: a thin chrome reflector band under the top edge, towards the outer end.
     panel(B, FRONT, across(s * hl_a(0.5), s * hl_a(0.95), 12), lambda a: across(hl_top(a) - 0.026, hl_top(a) - 0.014, 1),
           "Chrome", out=0.0050, skirt=0)
@@ -668,7 +672,12 @@ for s in (-1, 1):
                  [(3.60, lz(3.60)), (3.655, 0.95), (3.625, 0.84), (3.50, 0.69), (3.37, 0.55), (3.25, 0.44), (3.12, 0.345),
                   (3.02, 0.29), (2.99, 0.28)]):
         groove([side(u, z) for u, z in dense(line, 0.035)])
-    groove([side(u, 0.28) for u in across(1.44, 2.99, 30)])
+    # The crease along the side, rising from over the front arch to the tail lamp: the panel under it
+    # stands out by a few millimetres, its top edge a sharp line.
+    crease = lambda u: 0.80 + 0.12 * smooth((u - 1.25) / 3.1)
+    for u0, u1, k in ((1.28, 1.455, 3), (1.485, 2.622, 14), (2.652, 3.615, 12), (3.668, 4.36, 9)):  # stopping at the doors' gaps
+        panel(B, side, across(u0, u1, k), lambda u: [crease(u) - 0.045, crease(u) - 0.02, crease(u)], "Paint", out=0.0035,
+              skirt=0.0035)
     # Black window frames: along the glass's foot and its top edge, the B-pillar (leaning back), the divider
     # in front of the quarter window and the quarter window's tip.
     ribbon(B, [side(u, lz(u) + 0.002) for u in across(A_FOOT + 0.015, U_QW_EDGE, 80)], 0.02, "LampGlass", out=0.003)

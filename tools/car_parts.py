@@ -177,7 +177,7 @@ def arch_lip(panel, B, ray, u_axle, tyre_r, r0, width, mat, out=0.006, a0=-30, a
 
 def weighted_normals(obj):
     """Shade each corner by the faces round it weighted by their size; the sharp edges stay sharp."""
-    mod = obj.modifiers.new("weighted", "WEIGHTED_NORMAL")
+    mod =obj.modifiers.new("weighted", "WEIGHTED_NORMAL")
     mod.keep_sharp = True
     mod.mode = "FACE_AREA"
     mod.weight = 50
@@ -195,10 +195,10 @@ def _hemisphere(n):
     return out
 
 
-def bake_ao(objs, blockers=(), ground=True, rays=24, reach=0.6, lo=0.3, skip=("Glass", "GlassDark")):
+def bake_ao(objs, blockers=(), ground=True, rays=64, reach=0.6, lo=0.3, skip=("Glass", "GlassDark"), blur=4):
     """The shade each corner of `objs` gets from the car itself (and the ground under it): `rays` rays over
-    its half sphere, against everything within `reach`; a corner every ray leaves gets 1, one every ray
-    hits within a hair gets `lo`. Glass lets light through (the cabin is lit through the windows). Stored
+    its half sphere, against everything within `reach`, blurred over the mesh `blur` times; an open corner
+    gets 1, a deep recess `lo`. Glass lets light through (the cabin is lit through the windows). Stored
     as the mesh's colour, which the export writes and the game multiplies the material by."""
     verts, polys = [], []
     for o in list(objs) + list(blockers):
@@ -240,7 +240,18 @@ def bake_ao(objs, blockers=(), ground=True, rays=24, reach=0.6, lo=0.3, skip=("G
                 loc, _, _, dist = tree.ray_cast(p, w, reach)
                 if loc is not None:
                     hit += 1 - 0.5 * dist / reach
-            vals.append(lo + (1 - lo) * (1 - hit / rays))
+            vals.append(1 - hit / rays)
+        # Blurred over the mesh (a few rounds of each corner with its neighbours), so the shade of the rays
+        # doesn't show as blotches or stripes from one corner to the next; then only real recesses, the
+        # underside and the wheel wells darken: an open panel stays at 1.
+        nbrs = [[] for _ in me.vertices]
+        for e in me.edges:
+            a, b = e.vertices
+            nbrs[a].append(b)
+            nbrs[b].append(a)
+        for _ in range(blur):
+            vals = [0.5 * v + 0.5 * (sum(vals[j] for j in nb) / len(nb)) if nb else v for v, nb in zip(vals, nbrs)]
+        vals = [lo + (1 - lo) * smooth((v - 0.25) / 0.6) for v in vals]
         attr = me.color_attributes.new("AO", "BYTE_COLOR", "POINT")
         for i, val in enumerate(vals):
             attr.data[i].color = (val, val, val, 1.0)
@@ -287,14 +298,19 @@ def aero_wheel(Builder, tyre_r, tyre_w, rim_r, seg=40, spokes=5, sweep=0.0, name
     # Rim: a narrow dark lip at the tyre's bead, the barrel going in, closed at the back.
     lip_x = hw - 0.018
     loft([(lip_x - 0.002, rim_r + 0.004), (lip_x + 0.004, rim_r + 0.001), (lip_x + 0.005, rim_r - 0.006), (lip_x, rim_r - 0.012)],
-         "RimDark", right=False)
+         "Rim", right=False)
     back = loft([(lip_x, rim_r - 0.012), (lip_x - 0.03, rim_r - 0.014), (-hw + 0.02, rim_r - 0.014)], "RimDark", right=False)[-1]
     W.face(back, "RimDark", Vector((1, 0, 0)))
-    # Cover: a disc from the lip to the cap, dished 15 mm towards the middle.
+    # Cover: dished 15 mm towards the middle; an outer ring and an inner dish joined by the spokes, with
+    # windows between them through which the brake disc shows.
     x_edge = lip_x - 0.004
     dish = lambda r: x_edge - 0.015 * (1 - smooth((r - 0.07) / (rim_r - 0.08)))
-    rs = [rim_r - 0.012 - (rim_r - 0.012 - 0.075) * i / 7 for i in range(8)]
-    loft([(dish(r), r) for r in rs], "RimDark", right=False)
+    outer = [rim_r - 0.012 - 0.038 * i / 2 for i in range(3)]
+    loft([(dish(r), r) for r in outer], "RimDark", right=False)
+    loft([(dish(outer[-1]) - 0.012, outer[-1]), (dish(outer[-1]), outer[-1])], "RimDark", right=True)  # the ring's inner edge
+    inner = [0.125 - 0.05 * i / 2 for i in range(3)]
+    loft([(dish(inner[0]) - 0.012, inner[0]), (dish(inner[0]), inner[0])], "RimDark", right=False)  # the dish's outer edge
+    loft([(dish(r), r) for r in inner], "RimDark", right=False)
     cap = dish(0.075)
     loft([(cap, 0.075), (cap + 0.006, 0.070), (cap + 0.009, 0.055)], "RimDark", n=seg, right=False, centre=cap + 0.010)
     # Spokes: raised bars from the cap to the lip, 60 mm wide, a slot down each.
@@ -308,23 +324,25 @@ def aero_wheel(Builder, tyre_r, tyre_w, rim_r, seg=40, spokes=5, sweep=0.0, name
             ang = a0 + sweep * t ** 1.5
             half = 0.030 / r * (0.8 + 0.2 * t)
             slot = 0.006 / r
-            x0 = dish(r)
-            lift = 0.007
+            x0 = dish(r) - 0.010  # from behind the cover's face, across the windows
+            lift = 0.022
             pts = [(x0, ang - half), (x0 + lift, ang - half + 0.004 / r), (x0 + lift, ang - slot), (x0 + lift - 0.004, ang - slot),
                    (x0 + lift - 0.004, ang + slot), (x0 + lift, ang + slot), (x0 + lift, ang + half - 0.004 / r), (x0, ang + half)]
             rows.append([W.v((x, r * math.cos(a), r * math.sin(a))) for x, a in pts])
         for i, (r0, r1) in enumerate(zip(rows, rows[1:])):
             ang = a0 + sweep * ((i + 0.5) / steps) ** 1.5
             tang = Vector((0, -math.sin(ang), math.cos(ang)))
-            for k in range(len(r0) - 1):
-                # The profile runs across the spoke over its top: its outside is to its right.
-                d = r0[k + 1].co - r0[k].co
+            n_p = len(r0)
+            for k in range(n_p):
+                # The profile runs across the spoke over its top and back under it: its outside is to its right.
+                k1 = (k + 1) % n_p
+                d = r0[k1].co - r0[k].co
                 ds, dx = d.dot(tang), d.x
-                W.face((r0[k], r1[k], r1[k + 1], r0[k + 1]), "RimDark", tang * -dx + Vector((ds, 0, 0)))
+                W.face((r0[k], r1[k], r1[k1], r0[k1]), "Rim" if k in (1, 5) else "RimDark", tang * -dx + Vector((ds, 0, 0)))
         W.face(rows[0], "RimDark", -Vector((0, math.cos(a0), math.sin(a0))))
         W.face(rows[-1], "RimDark", Vector((0, math.cos(a0 + sweep), math.sin(a0 + sweep))))
-    # Brake disc behind the cover (seen through nothing, but in the arch from low down).
-    loft([(-0.02, 0.10), (-0.04, 0.11), (-0.04, rim_r - 0.07), (-0.065, rim_r - 0.07)], "Disc", n=24, centre=-0.02)
+    # Brake disc behind the cover, seen through its windows.
+    loft([(0.01, 0.09), (-0.01, 0.105), (-0.01, rim_r - 0.035), (-0.035, rim_r - 0.035)], "Disc", n=32, centre=0.01)
     obj = W.obj()
     me = obj.data
     me.set_sharp_from_angle(angle=math.radians(40))
