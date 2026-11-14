@@ -21,11 +21,11 @@ export const CHIMNEY_POTS = 1 / 3;
 export const PLINTH_PAINT = 0.3;
 export const PLINTH_CEMENT = 0.2;
 export const PLINTH_BRICK = 0.25;
-/** Plinths on rendered and white houses: tarred black; the rest has none (a damp base). */
-export const PLINTH_TAR = 0.7;
+/** Plinths on rendered and white houses: tarred, a dark grey; the rest has none (a damp base). */
+export const PLINTH_TAR = 0.5;
 const PAINT = '#343332';
 const CEMENT = '#8f8c86';
-const TAR = '#2a2827';
+const TAR = '#4b4845';
 /** A brick plinth: the wall's own tint times this. */
 export const PLINTH_BRICK_SHADE = 0.7;
 
