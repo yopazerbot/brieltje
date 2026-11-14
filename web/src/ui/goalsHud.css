@@ -1,0 +1,18 @@
+/* The timed routes' line (ui/goalsHud.ts): top centre, where the games' bar shows during a game. */
+#goal-line {
+  position: absolute; left: 50%; top: 18px; transform: translateX(-50%); max-width: calc(100vw - 480px);
+  display: flex; align-items: center; gap: 10px; padding: 7px 14px;
+  font-size: 15px; font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+  background: var(--panel); border-bottom: 3px solid var(--lamp); color: var(--ink); pointer-events: none;
+}
+#goal-line[hidden], #goal-line [hidden] { display: none; }
+#goal-line b { font-size: 18px; font-weight: 800; font-variant-numeric: tabular-nums; }
+#goal-line span { overflow: hidden; text-overflow: ellipsis; }
+#goal-line i { display: inline-block; font-style: normal; font-size: 18px; font-weight: 800; line-height: 1; color: var(--lamp); }
+/* With touch controls: between the wordmark (and its Beta tag) and the minimap, and the toasts below it. */
+body.touch #goal-line { top: 8px; left: 320px; right: 130px; width: fit-content; max-width: none; margin: 0 auto; transform: none; padding: 5px 10px; font-size: 12px; gap: 7px; }
+body.touch #goal-line b, body.touch #goal-line i { font-size: 14px; }
+body.touch:has(#goal-line:not([hidden])) #hud-top { top: 44px; }
+/* A small view (a split-screen seat): smaller, clear of the name top left and the minimap top right. */
+body.compact #goal-line { top: 8px; left: 200px; right: 148px; width: fit-content; max-width: none; margin: 0 auto; transform: none; padding: 4px 9px; font-size: 12px; gap: 6px; }
+body.compact #goal-line b, body.compact #goal-line i { font-size: 13px; }
