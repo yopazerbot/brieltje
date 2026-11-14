@@ -3,7 +3,7 @@
 //
 //   node tools/dev/carshots.mjs <outFolder> --url http://localhost:5251/ --port 9451
 //     [--quality high|medium|low] [--mood sunny|overcast|rain|dusk|night|snow] [--lights] [--phone]
-//     [--views all|shape|few|far|<name,name>] [--paint "#c4c7cc"] [--stats]
+//     [--views all|shape|few|far|<name,name>] [--paint "#c4c7cc"] [--stats] [--eval "<script run before the pictures>"]
 //
 // --lights: both cars as if someone sits in them (headlights and tail lights at night). --paint: one colour for both
 // (grey shows the shape best). --stats: meshes and triangles drawn per car, by material, into stats.json. Pictures are
@@ -12,7 +12,7 @@ import { mkdirSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { launch, options, startGame } from './cdp.mjs';
 
-const o = options({ url: 'http://localhost:5173/', port: '9350', quality: 'high', mood: 'sunny', views: 'all', lights: false, paint: '', stats: false, phone: false });
+const o = options({ url: 'http://localhost:5173/', port: '9350', quality: 'high', mood: 'sunny', views: 'all', lights: false, paint: '', stats: false, phone: false, eval: '' });
 const out = o._[0];
 if (!out) {
   console.error('usage: node tools/dev/carshots.mjs <outFolder> --url <dev server> --port <debugging port> [options]');
@@ -81,12 +81,12 @@ try {
   })()`, false));
   if (o.paint) await b.evaluate(`for (const c of briel.cars.slice(0, 2)) { c.paint.color.set(${JSON.stringify(o.paint)}); c.paint.metalness = 0.3; }`, false);
   if (o.lights) await b.evaluate("briel.cars[0].driver = 'Check'; briel.cars[1].driver = 'Check'", false);
-  await b.evaluate(`__look(${cars[0].x + 6}, ${cars[0].y + 2}, ${cars[0].z}, ${cars[0].x}, ${cars[0].y}, ${cars[0].z})`, false);
+  if (o.eval) await b.evaluate(o.eval, false); // a change to try out first, e.g. a material's setting  await b.evaluate(`__look(${cars[0].x + 6}, ${cars[0].y + 2}, ${cars[0].z}, ${cars[0].x}, ${cars[0].y}, ${cars[0].z})`, false);
   await b.evaluate("(() => { const st = document.createElement('style'); st.textContent = '#hud, #credit, #sound-btn, #map-btn, #touch { visibility: hidden !important; }'; document.head.appendChild(st); })()", false);
-  await b.sleep(10000); // the mood blends in; the tiles round the spot load
+  await b.sleep(20000); // the mood blends in; the tiles round the spot load; the start's parachute is packed away
 
   if (o.stats) {
-    // What each car draws now (the camera is 6 m from the first): its meshes (each a draw call) and triangles, by material.
+    // What each car draws near: its meshes (each a draw call) and triangles, by material.
     const stats = await b.evaluate(`(() => {
       const res = {};
       briel.cars.slice(0, 2).forEach((car, i) => {
@@ -94,9 +94,7 @@ try {
         let meshes = 0, tris = 0;
         car.group.traverse((m) => {
           if (!m.isMesh || !m.userData.part) return;
-          let shown = true;
-          for (let p = m; p; p = p.parent) shown &&= p.visible;
-          if (!shown) return;
+          for (let p = m; p; p = p.parent) if (p.name === 'Far') return; // the copy for far off: not drawn near
           meshes++;
           const t = (m.geometry.index ? m.geometry.index.count : m.geometry.attributes.position.count) / 3;
           tris += t;
