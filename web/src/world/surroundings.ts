@@ -18,7 +18,7 @@ import { cardCrown, cardTrunk, crownFit, FORK, HEIGHT, Kind, KINDS, spotHash, TR
 import { hedgeCardMesh, hedgeCardPieces } from './hedgeCards';
 import { barkMaterial, cardsBuilt, enlist, leafCardMaterial, plainForBake, switchTrees } from './leafCards';
 import { reflectionSkips } from './reflections';
-import { bandedWalls, chimney, chimneyRoofs, roofEdges, roofFrame, wallBases, type RoofEdges } from './houseTrim';
+import { bandedWalls, chimney, chimneyRoofs, openingTrim, roofEdges, roofFrame, wallBases, type OpeningContext, type RoofEdges } from './houseTrim';
 import { houseStyle } from './houseStyle';
 import { snowy } from './snowCover';
 
@@ -373,13 +373,15 @@ function slab(at: THREE.Vector3, d: THREE.Vector3, n: THREE.Vector3, w: number, 
 /**
  * Windows, doors and garage doors on the neighbours' walls: a frame standing a few
  * centimetres proud of the brick, glass (or a door panel) in it, a centre bar on wide
- * windows and a stone sill under each window. `ground`: the flat ground's height, to tell
- * the ground floor's windows from those above.
+ * windows and a stone sill under each window; round them the house's lintels, doorsteps and shutters
+ * (world/houseTrim.ts). `ground`: the flat ground's height, to tell the ground floor's windows from those
+ * above. `pitched`: the keys of the houses with a pitched roof.
  */
-function buildOpenings(list: Opening[], ground: number, houses: Houses): Piece[] {
+function buildOpenings(list: Opening[], ground: number, houses: Houses, pitched: Set<number>): Piece[] {
   const solid: THREE.BufferGeometry[] = [];
   const glass: THREE.BufferGeometry[] = [];
   const sill = new THREE.Color('#d8d3c7');
+  const trim: OpeningContext = { houses, groundAt: (x, z) => ground + terrain.height(x, z), pitched, list };
   list.forEach((o, i) => {
     const a = new THREE.Vector3(o.a[0], 0, o.a[1]);
     const b = new THREE.Vector3(o.b[0], 0, o.b[1]);
@@ -394,6 +396,7 @@ function buildOpenings(list: Opening[], ground: number, houses: Houses): Piece[]
     const out = (k: number) => mid.clone().addScaledVector(n, k);
     const frame = frameColour(o.f, houses.at(mid.x - n.x * 0.3, mid.z - n.z * 0.3)); // the house the wall belongs to
     solid.push(slab(out(0.02), d, n, w + 0.1, h + 0.1, 0.05, frame));
+    solid.push(...openingTrim(o, d, n, w, mid, trim));
     if (o.k === 'w') {
       const upper = y0 - (ground + terrain.height(mid.x, mid.z)) > 2;
       glass.push(paneGeometry(out(0.053), d, n, w, h, paneLook(mid.x, mid.z, n.x, n.z, upper, i, h >= 1.9), mid.x + mid.y + mid.z * 1.7));
@@ -559,10 +562,13 @@ export function buildTile(data: TileData, poles: Pole[], renderer: THREE.WebGLRe
   };
   // Each house's chimney goes on its largest roof that can carry one (world/houseTrim.ts).
   const chimneys = chimneyRoofs(data.roofs, data.prisms ?? [], keyOf);
+  /** The houses with a gable or hip roof (leaf shutters go only on those) */
+  const pitched = new Set<number>();
   for (const r of data.roofs) {
     const side = r.ceiling ? THREE.FrontSide : THREE.DoubleSide;
     const tint = r.tiles ?? '#4a3f3a';
     const key = keyOf(r);
+    if (r.shape !== 'shed') pitched.add(key);
     const style = houseStyle(key, r.wall ?? '', !!r.wall && isBrick(r.wall) && brickLook(r.wall, key).render === 1);
     // Verge boards and ridge tiles in the house's trim; not on a roof over a room (the bungalow's) or a landmark's. An
     // edge where a neighbour's walls stand above our eaves less 1.5 m (a terraced row) keeps none.
@@ -615,7 +621,7 @@ export function buildTile(data: TileData, poles: Pole[], renderer: THREE.WebGLRe
     out.push({ material: mat, geometry: geos.length > 1 ? mergeGeometries(geos) : geos[0], tag, shadow, order, small });
     if (geos.length > 1) geos.forEach((g) => g.dispose());
   }
-  if (data.openings?.length) out.push(...buildOpenings(data.openings, ground, houses));
+  if (data.openings?.length) out.push(...buildOpenings(data.openings, ground, houses, pitched));
   if (data.poleIds.length || data.wires?.length) out.push(...buildLamps(poles, data.poleIds, data.wires ?? [], ground));
   if (data.solar?.length) out.push(...buildSolar(data.solar));
   if (data.posts?.length) out.push(buildPosts(data.posts, ground));
