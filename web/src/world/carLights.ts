@@ -286,6 +286,9 @@ export class CarLamps {
       if (part === 'TailLight') tail.push(...pointsOf(o.geometry, shift.clone().multiply(o.matrixWorld)));
     });
     this.spots = spotsFrom(head, tail, this.spots);
+    // The Teslas' tail lamps wrap round the corners: their glows a little in from there, or one seen past the
+    // corner sits outside the car's outline.
+    for (const p of this.spots.tail) p.set(p.x * 0.82, p.y, p.z - 0.15);
   }
 
   /**

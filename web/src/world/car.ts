@@ -134,8 +134,9 @@ const MATERIALS: Record<string, THREE.Material> = {
   GlassDark: new THREE.MeshStandardMaterial({ color: '#050607', roughness: 0.03, metalness: 0.3, transparent: true, opacity: 0.96, depthWrite: false, envMapIntensity: 1.6 }),
   Trim: new THREE.MeshStandardMaterial({ color: '#101112', roughness: 0.6, ...shaded }),
   Tyre: new THREE.MeshStandardMaterial({ color: '#121212', roughness: 0.9, ...shaded }),
-  Rim: new THREE.MeshStandardMaterial({ color: '#7c8088', roughness: 0.32, metalness: 0.85, ...shaded }),
-  RimDark: new THREE.MeshStandardMaterial({ color: '#0d0d0e', roughness: 0.3, metalness: 0.3, ...shaded }),
+  // The aero covers: graphite, the spokes' faces and the rim's edge lighter than the dish, both clearly lighter than the tyre.
+  Rim: new THREE.MeshStandardMaterial({ color: '#6a6e76', roughness: 0.3, metalness: 0.75, ...shaded }),
+  RimDark: new THREE.MeshStandardMaterial({ color: '#303237', roughness: 0.38, metalness: 0.5, ...shaded }),
   LightBar: new THREE.MeshStandardMaterial({ color: '#e4ecf5', roughness: 0.1, emissive: '#dfe9ff', emissiveIntensity: 2 }),
   LampGlass: new THREE.MeshStandardMaterial({ color: '#08090b', roughness: 0.05, metalness: 0.3 }),
   Gap: new THREE.MeshStandardMaterial({ color: '#000000', roughness: 0.9 }),
@@ -160,6 +161,33 @@ const FAR_IN = 50;
  */
 const cars = new Set<Car>();
 let fineDetail = true;
+
+/**
+ * The paint mirrors the ground below the horizon darker than the sky above it, with the horizon's haze a bright
+ * band between: the sky's light map (world/environment.ts) is bright all round, so without this a car's side
+ * mirrored one even grey and looked matt. The band is as soft as the layer is rough. A few sums per pixel.
+ */
+function horizonReflection(m: THREE.MeshStandardMaterial): void {
+  m.onBeforeCompile = (shader) => {
+    shader.fragmentShader = shader.fragmentShader.replace(
+      '#include <envmap_physical_pars_fragment>',
+      THREE.ShaderChunk.envmap_physical_pars_fragment.replace(
+        /vec4 envMapColor = textureCubeUV\( envMap, envMapRotation \* reflectVec, roughness \);\s*return envMapColor\.rgb \* envMapIntensity;/,
+        `vec4 envMapColor = textureCubeUV( envMap, envMapRotation * reflectVec, roughness );
+			// Above the horizon the sky, lifted a little so the band at the horizon is the bright haze over it;
+			// below it the ground, dark.
+			vec3 skyVec = normalize( vec3( reflectVec.x, max( reflectVec.y, 0.15 ), reflectVec.z ) );
+			vec3 sky = textureCubeUV( envMap, envMapRotation * skyVec, roughness ).rgb;
+			float soft = 0.02 + 0.6 * roughness * roughness;
+			float above = smoothstep( - soft, soft, reflectVec.y );
+			vec3 seen = mix( envMapColor.rgb * 0.3, mix( sky, envMapColor.rgb, smoothstep( 0.15, 0.4, reflectVec.y ) ), above );
+			seen *= 1.0 + 1.4 * exp( - pow( reflectVec.y / ( 0.04 + soft ), 2.0 ) ) * above;
+			return seen * envMapIntensity;`,
+      ),
+    );
+  };
+  m.customProgramCacheKey = () => 'car-paint-horizon';
+}
 /** The graphics preset changed (main.ts: applyQuality): `fine` on Medium and up, not on phones. */
 export function setCarDetail(fine: boolean): void {
   fineDetail = fine;
@@ -389,8 +417,11 @@ export class Car {
     this.group.rotation.order = 'YXZ'; // its heading, then the ground's slope under it
     this.body.position.y = ROLL_H;
     this.lamps = new CarLamps((MATERIALS.LightBar as THREE.MeshStandardMaterial).clone(), spec.length, spec.width, ROLL_H);
-    const paint = (this.paint = new THREE.MeshPhysicalMaterial({ color: spec.paint, metalness: spec.metal, roughness: 0.38, clearcoat: 1, clearcoatRoughness: 0.04, envMapIntensity: 1.15, vertexColors: true }));
-    this.plainPaint = new THREE.MeshStandardMaterial({ color: spec.paint, metalness: spec.metal, roughness: 0.2, vertexColors: true });
+    // Less metal than car.json's figure under the clear coat: the base keeps its colour, the coat does the mirroring.
+    const paint = (this.paint = new THREE.MeshPhysicalMaterial({ color: spec.paint, metalness: spec.metal * 0.6, roughness: 0.28, clearcoat: 1, clearcoatRoughness: 0.03, envMapIntensity: 2, vertexColors: true }));
+    this.plainPaint = new THREE.MeshStandardMaterial({ color: spec.paint, metalness: spec.metal * 0.6, roughness: 0.18, envMapIntensity: 1.6, vertexColors: true });
+    horizonReflection(paint);
+    horizonReflection(this.plainPaint);
     cars.add(this);
     void modelCopy(spec.model).then((scene) => {
       if (this.gone) return;
@@ -987,7 +1018,6 @@ export class Car {
   dress(): void {
     const paint = fineDetail ? this.paint : this.plainPaint;
     this.plainPaint.color.copy(this.paint.color); // a colour set on `paint` (a check's grey) carries over
-    this.plainPaint.metalness = this.paint.metalness;
     this.group.traverse((o) => {
       if (o instanceof THREE.Mesh && o.userData.part === 'Paint') o.material = paint;
     });
