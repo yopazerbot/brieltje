@@ -5,16 +5,18 @@
 //
 //   node tools/dev/loadtime.mjs http://localhost:8650/ http://localhost:8651/ [--rounds 3] [--port 9940]
 //        [--spawn church] [--gfx high] [--phone] [--throttle 4] [--after 10] [--wait 6]
-//        [--prof out.cpuprofile] [--profafter 0] [--top 30] [--swiftshader]
+//        [--prof out.cpuprofile] [--profafter 0] [--top 30] [--swiftshader] [--slow 50]
 //
 // --phone: touch and a phone's screen; --throttle 4: the processor 4x slower (as for a phone).
 // --prof: a CPU profile from the click to play, saved (open it in Chrome's DevTools), and its top functions
 // printed by their own time and by the time spent in them and what they call. --profafter 2: the profile goes on
-// 2 s into play (for the long frames just after it begins).
+// 2 s into play (for the long frames just after it begins). --slow 25: a frame counts as long from 25 ms on
+// (50 by default: three frames of a 60 Hz screen), and up to 40 of them are listed with their time into play.
 import { writeFileSync } from 'node:fs';
 import { launch, options } from './cdp.mjs';
 
-const o = options({ rounds: '1', port: '9940', spawn: 'church', gfx: '', phone: false, throttle: '1', after: '10', wait: '6', prof: '', profafter: '0', top: '30', swiftshader: false });
+const o = options({ rounds: '1', port: '9940', spawn: 'church', gfx: '', phone: false, throttle: '1', after: '10', wait: '6', prof: '', profafter: '0', top: '30', swiftshader: false, slow: '50' });
+const SLOW = Number(o.slow);
 const urls = o._;
 if (!urls.length) throw new Error('give one or more URLs');
 
@@ -67,12 +69,12 @@ async function once(url, round) {
       const play = window.__play, end = play + ${Number(o.after) * 1000};
       const after = window.__frames.filter(([t]) => t > play && t <= end).map(([, d]) => d);
       const before = window.__frames.filter(([t]) => t > window.__click && t <= play).map(([, d]) => d);
-      const slow = window.__frames.filter(([t, d]) => t > play && t <= end && d > 50).map(([t, d]) => ((t - play) / 1000).toFixed(2) + 's:' + d.toFixed(0));
+      const slow = window.__frames.filter(([t, d]) => t > play && t <= end && d > ${SLOW}).map(([t, d]) => ((t - play) / 1000).toFixed(2) + 's:' + d.toFixed(0));
       const s = [...after].sort((a, z) => a - z);
-      return { play: (play - window.__click) / 1000, n: after.length, median: s[Math.floor(s.length / 2)], worst: s.slice(-3).reverse(), over50: after.filter((d) => d > 50).length, slow, beforeWorst: Math.max(0, ...before) };
+      return { play: (play - window.__click) / 1000, n: after.length, median: s[Math.floor(s.length / 2)], worst: s.slice(-3).reverse(), over50: after.filter((d) => d > ${SLOW}).length, lost: after.reduce((a, d) => a + Math.max(0, d - 17), 0), slow, beforeWorst: Math.max(0, ...before) };
     })()`, false);
     const errs = b.logs.filter((l) => /^(error|exception)/.test(l)).slice(0, 4);
-    console.log(`round ${round} ${url}  PLAY ${r.play.toFixed(2)} s; first ${o.after} s: ${r.n} frames, median ${r.median?.toFixed(1)} ms, worst ${r.worst.map((x) => x.toFixed(0)).join(' ')} ms, over 50 ms: ${r.over50}${r.slow.length ? ' (' + r.slow.slice(0, 8).join(' ') + ')' : ''}${errs.length ? '\n  errors: ' + errs.join(' | ') : ''}`);
+    console.log(`round ${round} ${url}  PLAY ${r.play.toFixed(2)} s; first ${o.after} s: ${r.n} frames, median ${r.median?.toFixed(1)} ms, worst ${r.worst.map((x) => x.toFixed(0)).join(' ')} ms, over ${SLOW} ms: ${r.over50}, ${r.lost.toFixed(0)} ms lost to long frames${r.slow.length ? ' (' + r.slow.slice(0, SLOW < 50 ? 40 : 8).join(' ') + ')' : ''}${errs.length ? '\n  errors: ' + errs.join(' | ') : ''}`);
     if (profile) summarise(profile, `${o.prof.replace(/\.cpuprofile$/, '')}${urls.length > 1 || Number(o.rounds) > 1 ? `-${round}-${urls.indexOf(url)}` : ''}.cpuprofile`);
     return r;
   } finally {
@@ -117,5 +119,5 @@ const all = new Map(urls.map((u) => [u, []]));
 for (let i = 1; i <= Number(o.rounds); i++) for (const u of urls) all.get(u).push(await once(u, i));
 for (const [u, rs] of all) {
   const p = rs.map((r) => r.play).sort((a, z) => a - z);
-  console.log(`${u}: play ${p.map((x) => x.toFixed(2)).join(', ')} s (median ${p[Math.floor(p.length / 2)].toFixed(2)}); frames over 50 ms in the first ${o.after} s: ${rs.map((r) => r.over50).join(', ')}`);
+  console.log(`${u}: play ${p.map((x) => x.toFixed(2)).join(', ')} s (median ${p[Math.floor(p.length / 2)].toFixed(2)}); frames over ${SLOW} ms in the first ${o.after} s: ${rs.map((r) => r.over50).join(', ')}`);
 }
