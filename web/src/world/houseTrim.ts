@@ -4,7 +4,10 @@ import { prismGeometry } from './houseMeshes';
 import { brickLook, Houses, isBrick } from './facadeLook';
 import { houseStyle, PLINTH_BRICK_SHADE, rollerDown, type HouseStyle } from './houseStyle';
 import { cutAt, planSteps, type BasePlan } from './housePlan';
-import { inside } from './houseKeys';
+import { inside, stable } from './houseKeys';
+import { COVER, paneGeometry, type PaneLook } from './windows';
+// The game's own south (its map's), so the panels face the sun at midday.
+import { SOUTH } from '../ui/bigmap';
 
 /**
  * The details that make an open-data house (world/surroundings.ts) read as a house and not a block, built in code from
@@ -298,20 +301,18 @@ export function flatEdge(p: Prism, colour: THREE.Color, sides: number[]): THREE.
 
 // ---- On the slopes: solar panels and roof windows ----
 
-/** South in the model: the tilted rows of panels on the ring's flat roofs, set out to face it, face -z. */
-const SOUTH = new THREE.Vector2(0, -1);
-
 export type SolarArray = { q: [number, number, number][]; n: [number, number] };
 
 /**
  * Solar panels and roof windows for a gable roof, by its house's style: an array of one or two rows of panels
  * (1.0 by 1.7 m) on the slope that faces south (none when both slopes face east and west), and one or two roof
  * windows of 0.78 by 1.18 m on the other slope (or the one the panels leave free). The panels go to world/surroundings.ts
- * `buildSolar` with the data's own; a roof window is a frame and dark glass lying on the tiles (no hole: there is no
- * room under these roofs to look into), for the frames' mesh. `taken`: whether the data puts panels on this roof already.
+ * `buildSolar` with the data's own; a roof window is a dark frame (for the frames' mesh) and glass lying on the tiles in
+ * the windows' own glass (world/windows.ts: a dark room with its light off, so it mirrors the sky as their panes do by
+ * day); no hole, as there is no room under these roofs to look into. `taken`: whether the data puts panels on this roof.
  */
-export function roofExtras(r: RoofSpec, f: RoofFrame, style: HouseStyle, taken: boolean): { solar: SolarArray[]; windows: THREE.BufferGeometry[] } {
-  const none = { solar: [], windows: [] };
+export function roofExtras(r: RoofSpec, f: RoofFrame, style: HouseStyle, taken: boolean): { solar: SolarArray[]; frames: THREE.BufferGeometry[]; glass: THREE.BufferGeometry[] } {
+  const none = { solar: [], frames: [], glass: [] };
   if ((r.shape ?? 'gable') !== 'gable' || r.lm || r.ceiling || r.windows || r.gableWindows || r.panels || taken) return none;
   const { c, L, W, along, across } = f;
   const o = OVERHANG;
@@ -327,7 +328,7 @@ export function roofExtras(r: RoofSpec, f: RoofFrame, style: HouseStyle, taken: 
     return new THREE.Vector3(q.x, eave + (u / S) * (r.ridge - eave), q.y).addScaledVector(normal(s), lift);
   };
   // Which slope faces south, and how well.
-  const facing = [-1, 1].map((k) => (across.x * SOUTH.x + across.y * SOUTH.y) * k);
+  const facing = [-1, 1].map((k) => (across.x * SOUTH.x + across.y * SOUTH.z) * k); // (across.y is z)
   const sunny = facing[0] >= facing[1] ? 0 : 1;
   const solar: SolarArray[] = [];
   let used = -1;
@@ -342,22 +343,29 @@ export function roofExtras(r: RoofSpec, f: RoofFrame, style: HouseStyle, taken: 
       used = sunny;
     }
   }
-  const windows: THREE.BufferGeometry[] = [];
+  const frames: THREE.BufferGeometry[] = [];
+  const glass: THREE.BufferGeometry[] = [];
   if (style.roofWindows && r.ridge - r.y >= 3 && S >= 2.6) {
     const s = used === 0 ? 1 : used === 1 ? 0 : 1 - sunny; // the street side is not known: the slope the panels leave free
     const places = style.roofWindows === 2 && L >= 6 ? [L / 3, (2 * L) / 3] : [L / 2];
-    // Darker than they look: lying face up they catch the whole sky, which the textured tiles round them don't show.
     const frame = new THREE.Color('#1f1d1b');
-    const glass = new THREE.Color('#0d1218');
     const n = normal(s);
+    const side = new THREE.Vector3(along.x, 0, along.y);
+    const upSlope = n.clone().cross(side).normalize(); // side x upSlope = n
     const u = S * 0.5;
-    for (const a of places) {
-      windows.push(slopeQuad([at(s, a - 0.39, u - 0.59, 0.03), at(s, a + 0.39, u - 0.59, 0.03), at(s, a + 0.39, u + 0.59, 0.03), at(s, a - 0.39, u + 0.59, 0.03)], n, frame));
-      windows.push(slopeQuad([at(s, a - 0.33, u - 0.53, 0.045), at(s, a + 0.33, u - 0.53, 0.045), at(s, a + 0.33, u + 0.53, 0.045), at(s, a - 0.33, u + 0.53, 0.045)], n, glass));
-    }
+    places.forEach((a, k) => {
+      frames.push(slopeQuad([at(s, a - 0.39, u - 0.59, 0.03), at(s, a + 0.39, u - 0.59, 0.03), at(s, a + 0.39, u + 0.59, 0.03), at(s, a - 0.39, u + 0.59, 0.03)], n, frame));
+      // The pane, made upright at the origin as the windows' are, then laid on the slope.
+      const centre = at(s, a, u, 0.045);
+      const pane = paneGeometry(new THREE.Vector3(), new THREE.Vector3(1, 0, 0), new THREE.Vector3(0, 0, 1), 0.66, 1.06, { ...ROOF_PANE, seed: 0.62 + 0.3 * stable(centre.x, centre.z, k) }, centre.x + centre.z * 1.7);
+      glass.push(pane.applyMatrix4(new THREE.Matrix4().makeBasis(side, upSlope, n).setPosition(centre)));
+    });
   }
-  return { solar, windows };
+  return { solar, frames, glass };
 }
+
+/** A roof window's glass: nothing hung behind it, a dark room with its light off (a seed over one half), glossy. */
+const ROOF_PANE: PaneLook = { cell: COVER.none, tint: new THREE.Color('#ffffff'), roughness: 0.05, f0: 0.2, mirror: false, room: 0.1, sill: 0, seed: 0.9 };
 
 /** A quad of four corners (in order round it), facing n: the frames' attributes. */
 function slopeQuad(v: THREE.Vector3[], n: THREE.Vector3, colour: THREE.Color): THREE.BufferGeometry {

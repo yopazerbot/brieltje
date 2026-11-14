@@ -605,7 +605,8 @@ export function buildTile(data: TileData, poles: Pole[], renderer: THREE.WebGLRe
     });
     const extras = roofExtras(r, frame, style, taken);
     madeSolar.push(...extras.solar);
-    for (const w of extras.windows) put(frameMat, w, 'alu', false, undefined, true);
+    for (const w of extras.frames) put(frameMat, w, 'alu', false, undefined, true);
+    for (const w of extras.glass) put(paneMat, w, 'black_glass', false, undefined, true); // with the windows' panes
     const ch = chimneys.has(r) ? style.chimney : null;
     if (ch) {
       // The stack in the walls' brick and shade, as a wall; its cap and pots with the frames.

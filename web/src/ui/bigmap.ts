@@ -30,6 +30,8 @@ const toV = (x: number, z: number) => 0.665617623 * x - 0.746292959 * z;
 /** And back. */
 const toX = (u: number, v: number) => -0.746292959 * u + 0.665617623 * v;
 const toZ = (u: number, v: number) => -0.665617623 * u - 0.746292959 * v;
+/** South in the model (x, z), a unit vector: the way the map's v grows (world/houseTrim.ts faces solar panels to it). */
+export const SOUTH = { x: toV(1, 0), z: toV(0, 1) };
 
 type Layer = 'forest' | 'soil' | 'crop' | 'darkField' | 'track' | 'paving' | 'pitch' | 'water' | 'road' | 'hedge' | 'building' | 'home' | 'bungalow' | 'church' | 'school';
 /** Drawn in this order. Strokes are in screen pixels. */
