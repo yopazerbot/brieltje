@@ -136,6 +136,7 @@ import { ZombieWaveControl } from './ui/zombieWave';
 import { chooseSoloWave, soloRecord } from './ui/soloWave';
 import { HomeStreet, withoutModelled } from './world/homeStreet';
 import { buildRoadDetail, buildRoadDetailSoon, roadPaint, withRoadDetail } from './world/roadDetail';
+import { villagePlots } from './world/villagePlots';
 import { RoadLife } from './world/roadLife';
 import { looseProps, type Mover } from './world/looseProps';
 import { Crash } from './world/crash';
@@ -4327,7 +4328,9 @@ async function buildVillage(): Promise<void> {
   const modelsCompiled = bakes.then(() => Promise.all(models.map((m) => precompile(m))));
   streetBakes = playing.then(() => Promise.all(models.filter(later).map((m) => bakeLight(m, renderer, Infinity, precompile))));
   for (const m of models) clearOpenGround(data, m.userData.clear as [number, number][][] | undefined); // their forecourts free of trees
-  const drawn = withRoadDetail(withoutLandmarks(data, models.map((m) => m.userData.landmark as string), models.flatMap((m) => (m.userData.replaces as Ring[] | undefined) ?? [])));
+  const kept = withoutLandmarks(data, models.map((m) => m.userData.landmark as string), models.flatMap((m) => (m.userData.replaces as Ring[] | undefined) ?? []));
+  const drawn = withRoadDetail(kept);
+  drawn.prisms?.push(...(await villagePlots(kept, drawn, models, house.ground))); // paths, drives and strips (world/villagePlots.ts): drawn only
   // One surface per spot (world/groundLayers.ts): the covers claimed, then the streets in detail built (cut under the
   // models' ground), then the covers' tiles (cut under both).
   claimCovers(drawn.prisms ?? [], house.ground);

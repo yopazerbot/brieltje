@@ -1146,6 +1146,9 @@ const hidden = new Set(DETAIL.hide);
 /** Development only: ?noroads leaves the village's plain road surface, for comparing looks and cost. */
 const OFF = import.meta.env.DEV && new URLSearchParams(location.search).has('noroads');
 
+/** The streets' runs (their stations, half widths and aprons), for the plots' ways to the street (world/plots.ts). */
+export const streetRuns = (): readonly Run[] => DETAIL.runs;
+
 /** The surroundings without the road blocks (and footpaths' gravel) drawn here instead; they stay for walking on. */
 export function withRoadDetail<T extends Surroundings>(s: T): T {
   if (!s.prisms || OFF) return s;
