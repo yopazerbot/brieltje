@@ -755,7 +755,9 @@ def build_rifle():
     body.append(prism("grip", grip, 0.0145, M["Polymer"], 0.003, 2))
     body.append(prism("panel", [(-0.012, -0.02), (-0.025, -0.095), (-0.063, -0.097), (-0.052, -0.02)], 0.015, M["Grip"], 0.0006))
     # Buffer tube and a sliding stock with a rubber pad.
-    body.append(lathe("tube", [(-0.10, 0.0145), (-0.30, 0.0145)], M["Dark"], 14, at=(0, 0, 0.046)))
+    # The tube ends just inside the stock: right by the eye the game draws the stock's back flat at the camera's near
+    # edge, and a tube end inside it would show through.
+    body.append(lathe("tube", [(-0.10, 0.0145), (-0.21, 0.0145)], M["Dark"], 14, at=(0, 0, 0.046)))
     body.append(prism("stock", [(-0.205, 0.066), (-0.335, 0.07), (-0.36, 0.071), (-0.362, -0.074), (-0.35, -0.082), (-0.33, -0.079),
                                 (-0.29, -0.02), (-0.245, 0.02), (-0.205, 0.026)], lambda y: 0.018 if y > -0.3 else 0.021, M["Polymer"], 0.003, 2))
     body.append(prism("pad", [(-0.36, 0.071), (-0.375, 0.071), (-0.375, -0.078), (-0.36, -0.082)], 0.0215, M["Grip"], 0.003, 2))

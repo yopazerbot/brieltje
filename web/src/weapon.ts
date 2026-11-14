@@ -456,7 +456,7 @@ const HIP: Record<WeaponId, [number, number, number]> = {
   bazooka: [0.072, -0.048, -0.1],
 };
 
-/** From the hip the gun is drawn as with a 54 degree view instead of 72: this much further off, and as much bigger. */
+/** From the hip the gun is drawn as with a 54 degree view instead of 72: its own depth this much shorter. */
 const HIP_VIEW = Math.tan((36 * Math.PI) / 180) / Math.tan((27 * Math.PI) / 180);
 
 /** How much further in and up the gun is held from the hip while playing with the touch controls. */
@@ -1462,7 +1462,8 @@ export class Weapon {
     pos.x -= hold * (tube ? 0.004 : 0.012);
     pos.y += hold * (tube ? -0.02 : 0.01);
     // From the hip the gun is drawn as with a 54 degree view, as shooters do (less stretch: the gun's back
-    // end no longer huge, its muzzle no longer tiny): further off and as much bigger. Aimed, as before.
+    // end no longer huge, its muzzle no longer tiny): its place `near` times further off here, then the whole of it
+    // squeezed along the view by as much (the scale below), the gun's own depth shorter. Aimed, as before.
     const near = 1 + (HIP_VIEW - 1) * (1 - this.aim);
     pos.z *= near;
     m.root.position.copy(pos);
@@ -1495,7 +1496,9 @@ export class Weapon {
     // The same size on screen whatever the field of view: the view model is stretched across the view
     // by as much as a wider view would shrink it (the picture is exactly the one at 72 degrees).
     const wide = Math.tan((this.baseFov * Math.PI) / 360) / Math.tan((72 * Math.PI) / 360);
-    this.root.scale.set(wide * near, wide * near, 1);
+    // From the hip, the same picture squeezed along the view by `near` instead of pushed away by it: the gun reaches
+    // no further forward than at 72 degrees, so it doesn't go through a wall you stand against.
+    this.root.scale.set(wide, wide, 1 / near);
     // A found scope zooms further: 0.3 on the rifle, 0.42 on the pistol (the sniper's 0.22).
     const zoom = this.hasScope(this.current) ? (this.current === 'rifle' ? 0.3 : 0.42) : spec.zoom;
     const fov = this.baseFov * (1 - (1 - zoom) * this.aim);
