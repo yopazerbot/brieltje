@@ -54,6 +54,7 @@ The whole project was made with AI. Yoshi Parlevliet, a cybersecurity consultant
 - **Cars that feel heavy.** The body leans in corners, dips when braking and bumps over kerbs; the tyres leave skid marks and the motor whines with the speed.
 - **Zombies that fall.** A beaten zombie goes limp and falls the way the shot pushed it, against walls and down stairs. Nothing more: no blood.
 - **New guns and hands.** All five guns and the gloved hands are our own models now. The pistol's slide kicks back, the shotgun is pumped, the sniper's bolt is worked, and every reload is done by hand.
+- **Arms that look like arms.** The sleeves are the sculpted model's own forearms, with straight wrists, coming up from the bottom of the picture. The gun is drawn with a narrower view at the hip, as shooters do, and no longer pokes through a wall you stand against.
 - **Sound with room.** Houses and the church tower echo, and the outdoors sounds muffled when you're inside. The bells ring loud in the tower.
 - **A calmer menu.** The settings are grouped (display, sound, weather, on screen, moving and looking, language and keyboard), and only what applies to the way you play is shown. A small Beta mark replaces "Work in progress".
 - **Bikes.** Thirteen city bikes stand by the main house, at the bungalow and in racks at the portals. Get on with Use, pedal up to 25 km/h (slower uphill, faster downhill), lean into the corners and ring the bell.
