@@ -740,6 +740,9 @@ groove([top_ray(1.21, x) for x in across(-0.70, 0.70, 40)])  # the hood's back e
 groove([back_ray(x, 0.575) for x in across(-(TL_IN - 0.025), TL_IN - 0.025, 34)])
 
 cuts.add(cp.bar([FRONT(a, BAR_Z(a)) for a in across(-BAR_A, BAR_A, 50)], 0.026, 0.018, extend=0.004), "LampGlass")
+# The bar is thinner than a pixel from a few metres (on Low sooner) and breaks into dashes: it is also drawn as a
+# line, as the gaps are (BAR_LINE, the node "BarLine"), 2.5 mm over the slot's mouth along the bar's middle.
+BAR_LINE = [h[0] + h[1].normalized() * G_LIFT for h in (FRONT(a, BAR_Z(a)) for a in across(-(BAR_A - 1.5), BAR_A - 1.5, 80)) if h]
 # Headlamps: small dark wedges low at the bumper's outer corners, below and outboard of the bar's ends:
 # a thin point inboard, deepest where they wrap round the corner.
 HL = (fa(0.52, 0.655), fa(0.90, 0.651))
@@ -1139,6 +1142,15 @@ lbm.to_mesh(lme)
 lbm.free()
 gap_lines = link(bpy.data.objects.new("GapLines", lme))
 print(f"model_y: gap lines {len(lme.edges)} segments")
+# The light bar's line (world/car.ts lights it with the bar).
+lbm = bmesh.new()
+vs = [lbm.verts.new(p) for p in BAR_LINE]
+for a, b in zip(vs, vs[1:]):
+    lbm.edges.new((a, b))
+bme = bpy.data.meshes.new("BarLine")
+lbm.to_mesh(bme)
+lbm.free()
+bar_line = link(bpy.data.objects.new("BarLine", bme))
 
 
 def export(objs, out):
@@ -1152,7 +1164,7 @@ def export(objs, out):
                               export_vertex_color="ACTIVE", export_all_vertex_colors=False, use_mesh_edges=True)
 
 
-export([body, *wheels, far, gap_lines], OUT)
+export([body, *wheels, far, gap_lines, bar_line], OUT)
 print(f"model_y: {os.path.getsize(OUT)} bytes")
 
 if PREVIEW:
