@@ -94,7 +94,7 @@ BOTTOM = curve([(0.0, 0.30), (0.05, 0.235), (0.16, 0.20), (0.45, 0.18), (1.0, 0.
 # Plan: half the body's width (the flare adds FLARE round the arches; the doors stay 15 mm in), and half
 # the width of the roof's glass (or of the hood's top).
 WIDTH = curve([(0.0, 0.62), (0.03, 0.70), (0.08, 0.78), (0.16, 0.85), (0.35, 0.915), (0.70, 0.942), (1.0, 0.948), (1.45, 0.948),
-               (1.70, 0.945), (3.20, 0.945), (3.50, 0.948), (3.80, 0.948), (4.10, 0.94), (4.35, 0.915), (4.55, 0.875),
+               (1.70, 0.940), (2.40, 0.932), (3.10, 0.934), (3.50, 0.938), (3.80, 0.938), (4.10, 0.932), (4.35, 0.915), (4.55, 0.875),
                (4.68, 0.82), (4.78, 0.74)])
 ROOF = curve([(0.0, 0.40), (0.15, 0.62), (0.60, 0.72), (1.30, 0.76), (2.10, 0.635), (2.70, 0.61), (3.50, 0.59),
               (4.20, 0.57), (4.50, 0.60), (4.65, 0.63), (4.78, 0.54)])
@@ -102,34 +102,10 @@ ROOF = curve([(0.0, 0.40), (0.15, 0.62), (0.60, 0.72), (1.30, 0.76), (2.10, 0.63
 DROP = curve([(0.0, 0.12), (0.15, 0.115), (0.70, 0.08), (1.27, 0.05), (4.78, 0.05)])
 
 
-def rounded_nose(f, u_join, tip, p=3.0):
-    """Round the nose off: towards u=0 the curve bends to `tip` like a superellipse (steep at the tip,
-    joining the curve at u_join with the same slope)."""
-    def g(u):
-        if u >= u_join:
-            return f(u)
-        q = max(0.0, u / u_join)
-        return tip + (f(u) - tip) * (1 - (1 - q) ** p) ** (1 / p)
-    return g
-
-
-def rounded_tail(f, u_join, u_end, tip, p=2.6):
-    """The same at the tail: from u_join back to u_end the curve bends round to `tip`."""
-    def g(u):
-        if u <= u_join:
-            return f(u)
-        q = max(0.0, (u_end - u) / (u_end - u_join))
-        return tip + (f(u) - tip) * (1 - (1 - q) ** p) ** (1 / p)
-    return g
-
-
-TOP = rounded_nose(TOP, 0.06, 0.70, 2.4)        # the hood rolls over into the bumper's face
-BOTTOM = rounded_nose(BOTTOM, 0.16, 0.30)
-WIDTH = rounded_nose(WIDTH, 0.30, 0.32)         # a broad bumper face, rounding into the fenders
-WIDTH = rounded_tail(WIDTH, 4.28, 4.78, 0.26, 2.3)  # the rear corners round in plan, the body tapering to the tail
 # Bottom edge of the side windows: from the windshield's foot, rising a little towards the back.
 BELT = curve([(1.30, 1.04), (1.80, 1.095), (2.60, 1.12), (3.40, 1.16), (3.90, 1.215), (4.12, 1.26), (4.50, 1.26)])
 GREENHOUSE = (1.30, 4.50)
+U_GLASS_END = 4.655  # the tailgate's glass runs back to the lip
 U_QW = 4.10       # the side glass (rear quarter window) ends here; behind it the C-pillar is painted
 U_B = 2.565        # the B-pillar: clear glass in front of it, dark glass behind
 U_WS = 2.40        # the windshield's top edge: the dark roof glass behind it
@@ -142,7 +118,15 @@ def belt(u):
 
 def haunch(u, z):
     """The rear haunch: the shoulder over the rear wheel stands out to the full width."""
-    return 0.010 * cp.smooth((u - 3.30) / 0.3) * cp.smooth((4.35 - u) / 0.3) * cp.smooth(1 - abs(z - 0.93) / 0.12)
+    return 0.020 * cp.smooth((u - 3.25) / 0.35) * cp.smooth((4.40 - u) / 0.35) * cp.smooth(1 - abs(z - 0.88) / 0.20)
+
+
+TUCK = (0.04, 0.10)  # the side above its widest point leans in this much (tumblehome), and towards the
+                     # back this much more: narrow shoulders over wide haunches
+
+
+def tuck(u):
+    return TUCK[0] + TUCK[1] * cp.smooth((u - 3.0) / 1.1)
 
 
 def section(u):
@@ -152,7 +136,8 @@ def section(u):
     zb, zt, w = BOTTOM(u), TOP(u), WIDTH(u)
     k = min(1.0, w / 0.6)            # the small sections at the tip of the nose scale their details down
     drop = DROP(u) * min(1.0, (zt - zb) / 0.25)
-    wr = min(ROOF(u), w - (0.10 + RAIL) * k)
+    tk = tuck(u)
+    wr = min(ROOF(u), w - (0.10 + RAIL) * k - tk)
     bl = min(belt(u), zt)
     glass = max(0.0, min(1.0, (zt - bl) / 0.1))
     crown = lambda x: zt - drop * (x / w) ** 2
@@ -166,11 +151,12 @@ def section(u):
     for i in range(n_side + 1):  # tucked in at the bottom, widest at 60%, rolling in to the shoulder
         t = i / n_side
         z = zb + rb + (zs - zb - rb) * t
-        x = w * (0.975 + 0.025 * math.sin(math.pi / 2 * t / 0.6)) if t <= 0.6 else w - 0.03 * ((t - 0.6) / 0.4) ** 2
+        x = w * (0.975 + 0.025 * math.sin(math.pi / 2 * t / 0.6)) if t <= 0.6 else \
+            w - 0.03 * ((t - 0.6) / 0.4) ** 2 - tk * ((t - 0.6) / 0.4) ** 1.5
         pts.append((x + haunch(u, z), z))
-    lx = w - 0.08 * k
+    lx = w - 0.08 * k - tk
     lz = min(bl + 0.012, crown(lx))
-    pts.append((w - 0.035 * k, (zs + lz) / 2 + 0.004 * k))
+    pts.append((w - 0.035 * k - tk, (zs + lz) / 2 + 0.004 * k))
     pts.append((lx, lz))
     tx = wr + RAIL * k
     tz = crown(tx) - 0.035 * glass
@@ -182,11 +168,95 @@ def section(u):
     for t in (0.0, 1 / 6, 2 / 6, 3 / 6, 4 / 6, 5 / 6, 1.0):
         x = wr * (1 - t)
         pts.append((x, crown(x)))
-    return pts, bl, {"lx": lx, "lz": lz, "tx": tx, "tz": tz, "wr": wr}
+    return pts, bl, {"lx": lx, "lz": lz, "tx": tx, "tz": tz, "wr": wr, "bl": bl, "zt": zt, "zb": zb, "w": w}
+
+
+# ---- The nose and the tail. A section that shrinks towards the tip by its own curves changes shape from
+# ring to ring (its shoulder, hood edge and corners each go their own way), and a flat cap closing the last
+# ring is a fan of long thin triangles: together they put ripples into the bumper's face. So in front of
+# U_J and behind U_T every ring is the section there, scaled: across by the half width, up and down
+# between the bottom and the top. Each of the three runs along a straight line (the curve's tangent at the
+# join, so the surface carries on without a kink) times a quarter superellipse that closes it at the tip:
+# upright and flat at the face, rolling round into the hood, the sides and the chin. The rings end in one
+# point. The face is then smooth by construction: nothing is pushed or smoothed after the build.
+U_N0 = 0.012       # the nose's tip (the front plate stands in front of it, inside the car's length)
+U_J = 0.40
+U_T = 4.30
+NOSE_W, NOSE_T, NOSE_B = (U_J - U_N0, 2.15), (0.16, 3.6), (0.20, 3.6)   # (reach, roundness) of each
+TAIL_W, TAIL_T, TAIL_B = (0.30, 4.0), (0.12, 6.0), (0.20, 2.6)
+ZC_N, ZC_T = 0.42, 0.70   # the heights where the nose and the tail end
+
+
+def ease(q, p):
+    """A quarter superellipse: 0 at q=0 rising steeply, 1 at q=1 arriving level."""
+    q = cp.clamp01(q)
+    return (1 - (1 - q) ** p) ** (1 / p)
+
+
+def tangent(f, u0, u, h=0.01):
+    return f(u0) + (f(u0 + h) - f(u0 - h)) / (2 * h) * (u - u0)
+
+
+def nose_ext(u):
+    d = u - U_N0
+    return (tangent(WIDTH, U_J, u) * ease(d / NOSE_W[0], NOSE_W[1]),
+            ZC_N + (tangent(TOP, U_J, u) - ZC_N) * ease(d / NOSE_T[0], NOSE_T[1]),
+            ZC_N - (ZC_N - tangent(BOTTOM, U_J, u)) * ease(d / NOSE_B[0], NOSE_B[1]))
+
+
+def tail_ext(u):
+    d = L - 0.01 - u
+    return (tangent(WIDTH, U_T, u) * ease(d / TAIL_W[0], TAIL_W[1]),
+            ZC_T + (tangent(TOP, U_T, u) - ZC_T) * ease(d / TAIL_T[0], TAIL_T[1]),
+            ZC_T - (ZC_T - tangent(BOTTOM, U_T, u)) * ease(d / TAIL_B[0], TAIL_B[1]))
+
+
+TEMPLATES = {u: section(u) for u in (U_J, U_T)}
+
+
+def softened(pts, rounds=40):
+    """The same half section with its corners rounded away (a smooth loop), at the same width and height.
+    Each point stays near its place on the loop, so the quads between a section and its softened copy
+    don't twist."""
+    p = list(pts)
+    for _ in range(rounds):
+        # The two ends lie on the middle line: their neighbours are the next point and its mirror image, so
+        # they move up or down with the rest and leave no peak in the middle.
+        p = [(0.0, (p[0][1] + p[1][1]) / 2)] + \
+            [((a[0] + 2 * c[0] + b[0]) / 4, (a[1] + 2 * c[1] + b[1]) / 4) for a, c, b in zip(p, p[1:], p[2:])] + \
+            [(0.0, (p[-1][1] + p[-2][1]) / 2)]
+    x1 = max(x for x, _ in p)
+    z0, z1 = min(z for _, z in p), max(z for _, z in p)
+    X1 = max(x for x, _ in pts)
+    Z0, Z1 = min(z for _, z in pts), max(z for _, z in pts)
+    return [(x * X1 / x1, Z0 + (z - z0) * (Z1 - Z0) / (z1 - z0)) for x, z in p]
+
+
+SOFT = {u: softened(TEMPLATES[u][0]) for u in TEMPLATES}
+# Where the scaled section's corners (its shoulder, the hood's edge, the bottom corner) would run across the
+# face as creases towards the tip, the rings turn into the softened loop: fully within SOFT_N[0] of the tip,
+# not at all from SOFT_N[1] on. Further back the corners stay: the creases along the hood.
+SOFT_N, SOFT_T = (0.05, 0.24), (0.03, 0.12)
+
+
+def shell_ring(u):
+    """Half a cross-section of the shell at u, as section() gives it (points, belt, key points)."""
+    if U_J <= u <= U_T:
+        return section(u)
+    tu, ext, sr, d = (U_J, nose_ext, SOFT_N, u - U_N0) if u < U_J else (U_T, tail_ext, SOFT_T, L - 0.01 - u)
+    pts0, bl0, i0 = TEMPLATES[tu]
+    f = 1 - cp.smooth((d - sr[0]) / (sr[1] - sr[0]))
+    pts0 = [(a[0] + (s[0] - a[0]) * f, a[1] + (s[1] - a[1]) * f) for a, s in zip(pts0, SOFT[tu])]
+    w, t, b = ext(u)
+    sx = w / i0["w"]
+    mz = lambda z: b + (t - b) * (z - i0["zb"]) / (i0["zt"] - i0["zb"])
+    info = {"lx": i0["lx"] * sx, "lz": mz(i0["lz"]), "tx": i0["tx"] * sx, "tz": mz(i0["tz"]), "wr": i0["wr"] * sx,
+            "bl": mz(bl0), "zt": t, "zb": b, "w": w}
+    return [(x * sx, mz(z)) for x, z in pts0], info["bl"], info
 
 
 def key(u, name):
-    return section(u)[2][name]
+    return shell_ring(u)[2][name]
 
 
 def material(name, color, rough=0.5, metal=0.0, emit=None, strength=0.0, coat=0.0):
@@ -242,36 +312,55 @@ ORDER = list(MAT)
 
 def body_material(u, x, z, nz):
     """The material of a face of the body at (u, |x|, z) with its normal's height nz."""
-    w = WIDTH(u)
-    bl = min(belt(u), TOP(u))
-    if GREENHOUSE[0] + 0.02 < u < GREENHOUSE[1] - 0.02 and z > bl + 0.015 and x < w - 0.075 and TOP(u) - bl > 0.03:
-        info = section(u)[2]
+    info = shell_ring(u)[2]
+    w, bl = info["w"], info["bl"]
+    if U_QW < u < U_GLASS_END and x < info["wr"] and nz > 0.25:
+        return "GlassDark"  # the tailgate's glass, down below the side windows' line to the lip
+    if GREENHOUSE[0] + 0.02 < u < U_GLASS_END and z > bl + 0.015 and x < w - 0.075 and info["zt"] - bl > 0.03:
         if x > info["tx"] - 0.003:  # the side glass
             return "Paint" if u > U_QW else ("Glass" if u < U_B else "GlassDark")
         if x > info["wr"] + 0.003:  # the rail along the roof, the A-pillar
             return "Paint"
         return "Glass" if u < U_WS else "GlassDark"
-    if nz < -0.35 and z < 0.5:
+    if nz < -0.5 and z < 0.32:
         return "Trim"  # underside
     return "Paint"
 
 
-# ---- Body: rings of cross-sections, closed at both ends.
-# 20 mm apart near the ends and within half a metre of each axle, 40 mm elsewhere; denser still at the tips.
-# The tail stops 1 cm short so the plate on it stays within the car's length.
+# ---- Body: rings of cross-sections, closed at both ends in a point.
+# 35 mm apart within half a metre of each axle, 70 mm elsewhere; over the nose and the tail about 30 mm
+# apart in the ring's size as well as along the car. The tail stops 1 cm short so the plate on it stays
+# within the car's length.
 L_BODY = L - 0.01
-STEP, STEP_NEAR = 0.07, 0.035  # the rings' spacing; nearer the axles the arches need it finer
-SMOOTH_ENDS = 10   # rounds of smoothing over the nose and the tail
+STEP, STEP_NEAR, STEP_END = 0.085, 0.035, 0.034
+
+
+def end_stations(u_a, u_b, ext, step):
+    """Rings from u_a to u_b, about `step` apart measured along the car and in the ring's width, top and bottom."""
+    N = 4000
+    fine = [u_a + (u_b - u_a) * i / N for i in range(N + 1)]
+    e = [ext(u) for u in fine]
+    acc = [0.0]
+    for i in range(1, N + 1):
+        du = fine[i] - fine[i - 1]
+        acc.append(acc[-1] + max(math.hypot(du, e[i][k] - e[i - 1][k]) for k in range(3)))
+    m = max(2, round(acc[-1] / step))
+    out, k = [], 0
+    for j in range(m + 1):
+        while k < N and acc[k] < acc[-1] * j / m:
+            k += 1
+        out.append(fine[k])
+    return out
 
 
 def stations():
-    us = [0.3 * (1 - math.cos(math.pi / 2 * i / 12)) for i in range(13)]
-    u = 0.3
-    while u < L_BODY - 0.3 - 1e-6:
+    us = end_stations(U_N0, U_J, nose_ext, STEP_END)[1:]
+    u = U_J
+    while u < U_T - 1e-6:
         near = min(abs(u - U_F), abs(u - U_R)) < 0.5
         u += STEP_NEAR if near else STEP
-        us.append(min(u, L_BODY - 0.3))
-    us += [L_BODY - 0.3 * (1 - math.cos(math.pi / 2 * i / 12)) for i in range(11, -1, -1)]
+        us.append(min(u, U_T))
+    us += end_stations(U_T, L_BODY, tail_ext, STEP_END)[:-1]
     out = []
     for v in us:
         if not out or v - out[-1] > 1e-4:
@@ -283,31 +372,18 @@ us = stations()
 bm = bmesh.new()
 rings = []
 for u in us:
-    half, _, _ = section(u)
+    half, _, _ = shell_ring(u)
     full = half + [(-x, z) for x, z in reversed(half[1:-1])]
     rings.append([bm.verts.new((x, L / 2 - u, z)) for x, z in full])
 n = len(rings[0])
 for a, b in zip(rings, rings[1:]):
     for i in range(n):
         bm.faces.new((a[i], a[(i + 1) % n], b[(i + 1) % n], b[i]))
-for ring, flip in ((rings[0], True), (rings[-1], False)):
-    mid = bm.verts.new(sum((v.co for v in ring), Vector()) / n)
+for rg, tip, flip in ((rings[0], (U_N0, ZC_N), True), (rings[-1], (L_BODY, ZC_T), False)):
+    mid = bm.verts.new((0.0, L / 2 - tip[0], tip[1]))
     for i in range(n):
-        f = (ring[i], ring[(i + 1) % n], mid)
+        f = (rg[i], rg[(i + 1) % n], mid)
         bm.faces.new(f[::-1] if flip else f)
-# The bumper's face is round in side view: furthest forward at the middle of its height, leaning back
-# up to the hood's edge and down to the lip.
-for v in bm.verts:
-    u = L / 2 - v.co.y
-    if u < 0.4:
-        z = v.co.z
-        back = 0.045 * cp.clamp01((z - 0.48) / 0.27) ** 2 + 0.05 * cp.clamp01((0.42 - z) / 0.2) ** 2
-        v.co.y -= back * (1 - cp.smooth(u / 0.4))
-# The rings bunch up at the nose and tail and leave ripples there: smooth them out.
-for lo_u, hi_u in ((-0.1, 0.45), (L_BODY - 0.45, L + 0.1)):
-    ends = [v for v in bm.verts if lo_u < L / 2 - v.co.y < hi_u and v.co.z > 0.24]
-    for _ in range(SMOOTH_ENDS):
-        bmesh.ops.smooth_vert(bm, verts=ends, factor=0.5, use_axis_x=True, use_axis_y=True, use_axis_z=True)
 bmesh.ops.recalc_face_normals(bm, faces=bm.faces)
 cp.flare(bm, (L / 2 - U_F, L / 2 - U_R), TYRE_R, ARCH_R, FLARE)
 for f in bm.faces:
@@ -568,6 +644,22 @@ def groove(hits, closed=False):
     cuts.add(cp.bar(hits, G_W, G_D, extend=0.002), "Gap")
 
 
+def fa(x, z):
+    """The angle of the FRONT ray whose hit lies x across the car at height z (signed like x)."""
+    return math.copysign(angle_at(FRONT, abs(x), z), x)
+
+
+# The light bar: a slot just under the hood's leading edge, across the whole nose and a little way round
+# the corners into the fenders; the bar's ends.
+BAR_A = 80
+BAR_Z = lambda a: 0.738 - 0.024 * (abs(a) / BAR_A) ** 2.5
+_end = FRONT(BAR_A, BAR_Z(BAR_A))[0]
+BAR_END = (L / 2 - _end.y, _end.x)
+# The tail: the ducktail lip's rows on the deck and its overhang; the channel under it (bottom, top, how far
+# round in REAR's angles); the corner lamps.
+LIP_U, LIP_OUT = (4.62, 4.65, 4.675, 4.698), 0.060
+CH, CH_A = (1.022, 1.086), 86
+TL_A, TL_Z = (60, 86), (0.990, 1.092)
 lzf = lambda u: key(u, "lz")
 for s in (-1, 1):
     side = side_ray(s)
@@ -576,36 +668,40 @@ for s in (-1, 1):
                  [(2.565, lzf(2.565) - 0.004), (2.567, 0.86), (2.570, 0.56), (2.573, 0.33)],
                  [(3.600, lzf(3.60) - 0.004), (3.585, 0.95), (3.548, 0.80), (3.50, 0.70), (3.47, 0.66)]):
         groove([side(u, z) for u, z in dense(line, G_STEP)])
-    # Where the bumper meets the front fender, from the light bar's end down to the arch.
-    groove([side(u, z) for u, z in dense([(0.22, 0.735), (0.36, 0.672), (0.47, 0.615), (0.50, 0.595)], G_STEP)])
-    # Hood (frunk) gaps along the fender tops back to the cowl.
-    groove([top_ray(u, s * x) for u, x in dense([(0.10, 0.79), (0.40, 0.775), (0.80, 0.745), (1.10, 0.718), (1.27, 0.70)], G_STEP)])
+    # Hood (frunk) gaps from the light bar's ends along the creases back to the cowl. (The bumper's face runs
+    # into the fenders without a seam.)
+    groove([top_ray(u, s * x) for u, x in dense([(BAR_END[0] + 0.03, BAR_END[1] - 0.04), (0.40, 0.775), (0.80, 0.745),
+                                                  (1.10, 0.718), (1.27, 0.70)], G_STEP)])
     # The tailgate's sides: across the deck behind the glass, then down the tail to the bumper.
     groove([top_ray(u, s * x) for u, x in dense([(4.40, ROOF(4.40) + 0.10), (4.50, 0.66), (4.56, 0.645)], G_STEP)])
-    groove([back_ray(s * x, z) for x, z in dense([(0.56, 1.005), (0.555, 0.75), (0.545, 0.575)], G_STEP)])
+    groove([back_ray(s * x, z) for x, z in dense([(0.56, CH[0] - 0.01), (0.555, 0.75), (0.545, 0.575)], G_STEP)])
 groove([top_ray(1.27, x) for x in across(-0.70, 0.70, 40)])  # the hood's back edge under the windshield
 groove([side_ray(-1)(u, z) for u, z in rounded_rect(4.46, 0.985, 0.115, 0.088, 0.02, 3)], closed=True)  # charge port
 # The tailgate's bottom edge, along the top of the black bumper.
 groove([back_ray(x, 0.575) for x in across(-0.545, 0.545, 34)])
 
-# The light bar: a slot along the hood's front edge, wrapping round the corners.
-BAR_Z = lambda a: 0.752 - 0.022 * (abs(a) / 80) ** 2.5
-cuts.add(cp.bar([FRONT(a, BAR_Z(a)) for a in across(-80, 80, 50)], 0.028, 0.018, extend=0.004), "LampGlass")
-# Headlamps: a slim pod under each end of the bar, deeper at the outer end.
-HL = (angle_at(FRONT, 0.45, 0.67), angle_at(FRONT, 0.86, 0.655))
+cuts.add(cp.bar([FRONT(a, BAR_Z(a)) for a in across(-BAR_A, BAR_A, 50)], 0.026, 0.018, extend=0.004), "LampGlass")
+# Headlamps: small dark wedges low at the bumper's outer corners, below and outboard of the bar's ends:
+# a thin point inboard, deepest where they wrap round the corner.
+HL = (fa(0.56, 0.60), fa(0.92, 0.585))
 HL_T = lambda a: abs((abs(a) - HL[0]) / (HL[1] - HL[0]))
-HL_Z = lambda a: 0.672 - 0.014 * HL_T(a)          # the pod's middle: a little lower at the outer end
-HL_H = lambda a: 0.024 + 0.034 * HL_T(a)          # its height: a slim wedge, deeper at the outer end
+HL_Z = lambda a: 0.598 - 0.018 * HL_T(a)          # the wedge's middle: lower at the outer end
+HL_H = lambda a: 0.020 + 0.050 * HL_T(a) ** 0.7   # its height
 for s in (-1, 1):
     a_vals = across(s * HL[0], s * HL[1], 24)
-    cuts.add(cp.bar([FRONT(a, HL_Z(a)) for a in a_vals], lambda t: 0.024 + 0.034 * t, 0.012, extend=0.002), "LampGlass")
-# The black band across the lower bumper (12 mm in), wide at the bottom, its top falling at the corners; the
-# intake in it (40 mm in).
-cuts.add(cp.bar([FRONT(a, 0.300 - 0.03 * (abs(a) / 74) ** 3) for a in across(-74, 74, 48)],
-                lambda t: 0.155 - 0.06 * abs(2 * t - 1) ** 3, 0.012), "Trim")
-cuts.add(cp.bar([FRONT(a, 0.298) for a in across(-58, 58, 36)], 0.10, 0.040), "Trim")
-# The channel under the rear lip, across the tail.
-cuts.add(cp.bar([REAR(a, 1.062) for a in across(-76, 76, 40)], 0.07, 0.03, extend=0.004), "LampGlass")
+    cuts.add(cp.bar([FRONT(a, HL_Z(a)) for a in a_vals], lambda t: HL_H(HL[0] + t * (HL[1] - HL[0])), 0.012,
+                    extend=0.002), "LampGlass")
+# The intake: a wide black opening along the bottom of the bumper's face, 40 mm in.
+INTAKE = (fa(0.64, 0.31), 0.307, 0.100)           # its half width (as an angle), middle height, height
+# Cut straight back (not along the surface's normal, which turns down and out under the chin and would
+# twist the cut's edges).
+cuts.add(cp.bar([(h[0], Vector((0, 1, 0))) for h in (FRONT(a, INTAKE[1]) for a in across(-INTAKE[0], INTAKE[0], 40)) if h],
+                INTAKE[2], 0.040), "Trim")
+# The tail: the channel under the lip from corner to corner (30 mm in) and the taller lamps at the corners.
+cuts.add(cp.bar([REAR(a, sum(CH) / 2) for a in across(-CH_A, CH_A, 48)], CH[1] - CH[0], 0.036, extend=0.004), "LampGlass")
+for s in (-1, 1):
+    cuts.add(cp.bar([REAR(a, sum(TL_Z) / 2) for a in across(s * TL_A[0], s * TL_A[1], 14)], TL_Z[1] - TL_Z[0], 0.024,
+                    extend=0.003), "LampGlass")
 shell_tris = cp.triangles([body])
 cuts.apply(body, MAT, ORDER)
 retree()
@@ -615,20 +711,27 @@ B = Builder("Details")
 
 # ---- Front: the light bar in its slot, the headlamps in their pods, the slats in the intake, the lip.
 # 18 mm tall: thinner, it breaks up into dashes from a few metres without the smoothing of the higher presets.
-panel(B, FRONT, across(-78.5, 78.5, 60), lambda a: [BAR_Z(a) - 0.009, BAR_Z(a) + 0.009], "LightBar", out=0.001, skirt=0)
+panel(B, FRONT, across(-(BAR_A - 1.5), BAR_A - 1.5, 60), lambda a: [BAR_Z(a) - 0.008, BAR_Z(a) + 0.008], "LightBar",
+      out=0.001, skirt=0)
 for s in (-1, 1):
     a_vals = across(s * (HL[0] + 0.5), s * (HL[1] - 0.5), 14)
     zc = HL_Z
     hh = lambda a: HL_H(a) / 2
-    # The lit line along the pod's top; under it a reflector at the outer end.
-    panel(B, FRONT, a_vals, lambda a: [zc(a) + hh(a) - 0.014, zc(a) + hh(a) - 0.004], "LightBar", out=0.001, skirt=0)
-    oa = across(s * (HL[0] + 0.55 * (HL[1] - HL[0])), s * (HL[1] - 1.0), 8)
+    # The lit line along the wedge's top; under it a reflector at the outer end.
+    panel(B, FRONT, a_vals, lambda a: [zc(a) + hh(a) - 0.009, zc(a) + hh(a) - 0.003], "LightBar", out=0.001, skirt=0)
+    oa = across(s * (HL[0] + 0.6 * (HL[1] - HL[0])), s * (HL[1] - 1.0), 8)
     panel(B, FRONT, oa, lambda a: [zc(a) - hh(a) + 0.005, zc(a) + hh(a) - 0.013], "Chrome", out=0.004, skirt=0.004)
-for z in (0.268, 0.300, 0.332):
-    panel(B, FRONT, across(-54, 54, 45), lambda a, z=z: [z - 0.005, z + 0.005], "Trim", out=0.032, skirt=0.032)
-panel(B, FRONT, across(-74, 74, 45), lambda a: [0.205, 0.226], "Trim", out=0.010, skirt=0.010)  # the lip under the bumper
-ribbon(B, [FRONT(0.0 + 1.6 * math.cos(t), 0.425 + 0.011 * math.sin(t)) for t in across(0, 2 * math.pi, 16)],
-       0.012, "Gap", out=0.002, closed=True)  # front camera
+ia = INTAKE[0] - 2
+for z in (INTAKE[1] - 0.030, INTAKE[1], INTAKE[1] + 0.030):  # slats in the intake
+    panel(B, FRONT, across(-ia, ia, 45), lambda a, z=z: [z - 0.005, z + 0.005], "Trim", out=0.032, skirt=0.032)
+# The black lip under the bumper, the whole width.
+panel(B, FRONT, across(-fa(0.90, 0.23), fa(0.90, 0.23), 50), lambda a: [0.198, INTAKE[1] - INTAKE[2] / 2 - 0.004], "Trim",
+      out=0.010, skirt=0.010)
+ribbon(B, [FRONT(1.4 * math.cos(t), 0.548 + 0.011 * math.sin(t)) for t in across(0, 2 * math.pi, 16)],
+       0.010, "Gap", out=0.002, closed=True)  # front camera, in the middle of the face
+# The front plate (blank), under the camera.
+rounded_panel(B, lambda x, z: cast((x, L / 2 + 1.0, z), (0, -1, 0)), 0.0, 0.445, 0.52, 0.11, 0.008, "Plate", na=16, nb=3,
+              out=0.008, skirt=0.004)
 # Wipers parked at the foot of the windshield, and the camera housing at its top.
 ribbon(B, [top_ray(u, x) for u, x in dense([(1.452, -0.70), (1.43, -0.30), (1.415, 0.02)], 0.03)], 0.016, "Trim", out=0.009)
 ribbon(B, [top_ray(u, x) for u, x in dense([(1.445, 0.08), (1.425, 0.35), (1.41, 0.62)], 0.03)], 0.016, "Trim", out=0.009)
@@ -669,18 +772,27 @@ for s in (-1, 1):
 ribbon(B, [top_ray(U_WS, x) for x in across(-ROOF(U_WS), ROOF(U_WS), 40)], 0.03, "Trim", out=0.002)
 
 # ---- Rear: the spoiler lip, the tail light strip and the corner lamps, the black lower bumper and the plate.
-# Spoiler lip: the deck kicks up into a sharp edge that overhangs the channel by 45 mm.
+# Ducktail lip: the glass's end kicks up into a sharp edge that stands out over the channel, across the deck
+# and tapering into the corners over the lamps.
+def on_deck(x):
+    h = top_ray(LIP_U[-1], x)
+    return h is not None and h[0].z > CH[1] + 0.004 and h[1].z > 0.35
+
+
+lip_x = 0.0
+while lip_x < 0.95 and on_deck(lip_x + 0.01):
+    lip_x += 0.01
 lip_rows = []
-for x in across(-0.68, 0.68, 40):
-    k = min(1.0, (0.68 - abs(x)) / 0.18)
-    k = max(0.1, k * k * (3 - 2 * k))
-    top = [top_ray(u, x) for u in (4.47, 4.52, 4.565, 4.612)]
+for x in across(-lip_x, lip_x, 44):
+    k = cp.smooth((lip_x - abs(x)) / 0.16)
+    k = max(0.12, k)
+    top = [top_ray(u, x) for u in LIP_U]
     if not all(top):
         continue
-    lift = (0.0006, 0.004 * k, 0.010 * k, 0.016 * k)
+    lift = (0.0006, 0.006 * k, 0.013 * k, 0.020 * k)
     row = [h[0] + Vector((0, 0, d)) for h, d in zip(top, lift)]
-    edge = row[-1] + Vector((0, -0.045 * k, -0.002 * k))
-    row += [edge, edge + Vector((0, 0, -0.011 * k - 0.002)), top[-1][0] + Vector((0, 0.008, -0.036))]
+    edge = row[-1] + Vector((0, -LIP_OUT * k, -0.002 * k))
+    row += [edge, edge + Vector((0, 0.006 * k, -0.012 * k - 0.003)), top[-1][0] + Vector((0, 0.008, -0.040))]
     lip_rows.append([B.v(p) for p in row])
 for r0, r1 in zip(lip_rows, lip_rows[1:]):
     for j in range(len(r0) - 1):
@@ -688,24 +800,36 @@ for r0, r1 in zip(lip_rows, lip_rows[1:]):
         B.face((r0[j], r1[j], r1[j + 1], r0[j + 1]), "Paint", hint)
 for r, hint in ((lip_rows[0], Vector((-1, 0, 0))), (lip_rows[-1], Vector((1, 0, 0)))):
     B.face(r, "Paint", hint)
-# In the channel: the red strip along its top, a C-shaped lamp at each corner in a smoked housing.
-panel(B, REAR, across(-62, 62, 50), lambda a: [1.078, 1.094], "TailLight", out=0.001, skirt=0)
-# Under it, the panel across the tailgate that its light shines onto (the light is indirect on this car).
-panel(B, REAR, across(-60, 60, 40), lambda a: [1.040, 1.070], "Reflector", out=0.001, skirt=0)
+# In the channel: the red strip along its top from corner to corner; at each corner a taller lamp (a C of
+# red in the smoked glass) wrapping round onto the side.
+panel(B, REAR, across(-(CH_A - 2), CH_A - 2, 60), lambda a: [CH[1] - 0.018, CH[1] - 0.006], "TailLight", out=0.001, skirt=0)
 for s in (-1, 1):
-    panel(B, REAR, across(s * 63.5, s * 75, 10), lambda a: across(1.032, 1.094, 3), "LampGlass", out=0.003, skirt=0.003)
-    c_pts = [(s * 74, 1.086), (s * 66, 1.086), (s * 64.5, 1.078), (s * 64.5, 1.046), (s * 66, 1.040), (s * 72, 1.040)]
-    ribbon(B, [REAR(a, z) for a, z in dense(c_pts, 0.6)], 0.010, "TailLight", out=0.0045)
-ribbon(B, [REAR(1.3 * math.cos(t), 1.12 + 0.008 * math.sin(t)) for t in across(0, 2 * math.pi, 14)], 0.009, "Gap",
-       out=0.003, closed=True)  # rear camera
-# Black lower bumper, wrapping round the corners to the arches, a step into the diffuser; the plate; reflectors.
-lower_top = lambda a: 0.565 if abs(a) < 50 else (0.565 - 0.135 * min(1.0, (abs(a) - 50) / 14) ** 1.5 if abs(a) < 64
-                                                 else 0.43 - 0.07 * (abs(a) - 64) / 25)
-panel(B, REAR, across(-89, 89, 44), lambda a: across(0.20, lower_top(a), 5), "Trim", out=0.006, skirt=0.006)
-panel(B, REAR, across(-58, 58, 24), lambda a: across(0.20, 0.30, 2), "Trim", out=0.022, skirt=0.022)  # the diffuser's step
-rounded_panel(B, back_ray, 0.0, 0.46, 0.52, 0.11, 0.008, "Plate", na=16, nb=3, out=0.010, skirt=0.004)
+    a0, a1 = TL_A
+    c_pts = [(s * (a1 - 1), TL_Z[1] - 0.010), (s * (a0 + 2), TL_Z[1] - 0.010), (s * (a0 + 0.8), TL_Z[1] - 0.022),
+             (s * (a0 + 0.8), TL_Z[0] + 0.020), (s * (a0 + 2), TL_Z[0] + 0.010), (s * (a1 - 3), TL_Z[0] + 0.010)]
+    ribbon(B, [REAR(a, z) for a, z in dense(c_pts, 0.6)], 0.010, "TailLight", out=0.002)
+# Black lower bumper, wrapping round the corners to the arches, a step into the diffuser; the plate; the
+# camera over it; a small red reflector at each top corner.
+# Its top: level across the tailgate, then falling to the corners, where the body colour comes down round it.
+x_at = {}
+
+
+def lower_top(a):
+    if a not in x_at:
+        h = REAR(a, 0.40)
+        x_at[a] = abs(h[0].x) if h else 1.0
+    x = x_at[a]
+    return 0.565 - 0.25 * cp.smooth((x - 0.47) / 0.36) - 0.04 * cp.smooth((x - 0.80) / 0.10)
+
+
+panel(B, REAR, across(-80, 80, 48), lambda a: across(0.20, lower_top(a), 5), "Trim", out=0.006, skirt=0.006)
+panel(B, REAR, across(-56, 56, 24), lambda a: across(0.20, 0.28 + 0.02 * (abs(a) / 56) ** 2, 2), "Trim", out=0.020,
+      skirt=0.020)  # the diffuser's step
+rounded_panel(B, back_ray, 0.0, 0.455, 0.52, 0.11, 0.008, "Plate", na=16, nb=3, out=0.010, skirt=0.004)
+ribbon(B, [back_ray(0.012 * math.cos(t), 0.535 + 0.008 * math.sin(t)) for t in across(0, 2 * math.pi, 14)], 0.009, "Gap",
+       out=0.008, closed=True)  # rear camera
 for s in (-1, 1):
-    panel(B, REAR, across(s * 52, s * 62, 6), lambda a: [0.405, 0.418], "Reflector", out=0.008, skirt=0)
+    panel(B, REAR, across(s * 53, s * 61, 6), lambda a: [0.520, 0.534], "Reflector", out=0.008, skirt=0)
 
 # ---- Mirrors: a body-coloured cap on a black foot, the glass facing back, a lens strip at its front edge.
 for s in (-1, 1):
@@ -874,7 +998,7 @@ FAR_N = 20
 
 
 def far_section(u):
-    return section(u)[0]
+    return shell_ring(u)[0]
 
 
 def far_material(u, x, z, nrm):
@@ -884,7 +1008,7 @@ def far_material(u, x, z, nrm):
     return ORDER.index("GlassDark" if name.startswith("Glass") else name)
 
 
-far_us = [L_BODY * (1 - math.cos(math.pi * i / 35)) / 2 for i in range(36)]
+far_us = [U_N0 + 0.004 + (L_BODY - U_N0 - 0.008) * (1 - math.cos(math.pi * i / 35)) / 2 for i in range(36)]
 far_me = cp.far_car("Far", L, far_section, far_us, FAR_N, far_material,
                     [(s * (0.962 + FLARE), L / 2 - u) for u in (U_F, U_R) for s in (-1, 1)], TYRE_R)
 for m in MAT.values():
@@ -892,7 +1016,7 @@ for m in MAT.values():
 far = link(bpy.data.objects.new("Far", far_me))
 FB = Builder("FarLamps")
 ribbon(FB, [FRONT(a, BAR_Z(a)) for a in across(-78, 78, 12)], 0.02, "LightBar", out=0.012)
-ribbon(FB, [REAR(a, 1.075) for a in across(-72, 72, 12)], 0.02, "TailLight", out=0.03)
+ribbon(FB, [REAR(a, sum(CH) / 2) for a in across(-80, 80, 12)], 0.02, "TailLight", out=0.03)
 fl = FB.obj()
 bpy.ops.object.select_all(action="DESELECT")
 far.select_set(True)
@@ -919,4 +1043,4 @@ if PREVIEW:
     cp.previews(PREVIEW, (("front3q", (5.4, 6.1, 1.55), (0, 0.25, 0.72), 42), ("rear3q", (-5.3, -6.2, 1.75), (0, -0.3, 0.78), 42),
                           ("side", (10.5, 0.0, 0.95), (0, 0, 0.8), 50), ("wheel", (2.25, 2.35, 0.62), (0.84, 1.46, 0.36), 55),
                           ("front", (0.6, 8.6, 1.05), (0, 0, 0.72), 50), ("nose", (1.3, 4.3, 0.75), (0.25, 2.3, 0.5), 50), ("rear", (-0.6, -8.6, 1.15), (0, 0, 0.8), 50),
-                          ("cabin", (-1.9, 3.3, 1.85), (-0.15, 0.55, 0.95), 35)), L)
+                          ("cabin", (-1.9, 3.3, 1.85), (-0.15, 0.55, 0.95), 35), ("tailc", (-2.2, -4.6, 1.0), (0.55, -1.7, 0.7), 40), ("deck", (-0.5, -4.2, 1.9), (0, -2.2, 1.05), 40)), L)
