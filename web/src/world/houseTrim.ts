@@ -309,6 +309,81 @@ function insideRing(ring: [number, number][], x: number, z: number): boolean {
   return yes;
 }
 
+// ---- On the slopes: solar panels and roof windows ----
+
+/** South in the model: the tilted rows of panels on the ring's flat roofs, set out to face it, face -z. */
+const SOUTH = new THREE.Vector2(0, -1);
+
+export type SolarArray = { q: [number, number, number][]; n: [number, number] };
+
+/**
+ * Solar panels and roof windows for a gable roof, by its house's style: an array of one or two rows of panels
+ * (1.0 by 1.7 m) on the slope that faces south (none when both slopes face east and west), and one or two roof
+ * windows of 0.78 by 1.18 m on the other slope (or the one the panels leave free). The panels go to world/surroundings.ts
+ * `buildSolar` with the data's own; a roof window is a frame and dark glass lying on the tiles (no hole: there is no
+ * room under these roofs to look into), for the frames' mesh. `taken`: whether the data puts panels on this roof already.
+ */
+export function roofExtras(r: RoofSpec, f: RoofFrame, style: HouseStyle, taken: boolean): { solar: SolarArray[]; windows: THREE.BufferGeometry[] } {
+  const none = { solar: [], windows: [] };
+  if ((r.shape ?? 'gable') !== 'gable' || r.lm || r.ceiling || r.windows || r.gableWindows || r.panels || taken) return none;
+  const { c, L, W, along, across } = f;
+  const o = OVERHANG;
+  const eave = r.y - 0.15;
+  const run = W / 2 + o;
+  const S = Math.hypot(run, r.ridge - eave); // eave to ridge along the slope
+  if (r.ridge - eave < 0.8 || L < 3) return none;
+  /** A point on slope `s` (0: the side of p[0]-p[1], 1: the far side), `a` along, `u` up the slope from the eave, `lift` off the tiles. */
+  const normal = (s: number) => new THREE.Vector3(across.x * (s ? 1 : -1) * (r.ridge - eave), run, across.y * (s ? 1 : -1) * (r.ridge - eave)).normalize();
+  const at = (s: number, a: number, u: number, lift: number): THREE.Vector3 => {
+    const b = s ? W + o - (u * run) / S : -o + (u * run) / S;
+    const q = c[0].clone().addScaledVector(along, a).addScaledVector(across, b);
+    return new THREE.Vector3(q.x, eave + (u / S) * (r.ridge - eave), q.y).addScaledVector(normal(s), lift);
+  };
+  // Which slope faces south, and how well.
+  const facing = [-1, 1].map((k) => (across.x * SOUTH.x + across.y * SOUTH.y) * k);
+  const sunny = facing[0] >= facing[1] ? 0 : 1;
+  const solar: SolarArray[] = [];
+  let used = -1;
+  if (style.solar && facing[sunny] > 0.3) {
+    const cols = Math.min(style.solar, Math.floor((L - 1.2) / 1.02));
+    const rows = S >= 0.5 + 2 * 1.72 + 0.8 ? 2 : S >= 0.5 + 1.72 + 0.8 ? 1 : 0;
+    if (cols >= 4 && rows) {
+      const [a0, a1] = [L / 2 - cols * 0.51, L / 2 + cols * 0.51];
+      const [u0, u1] = [0.5, 0.5 + rows * 1.72];
+      // Corners 12 cm over the tiles (buildSolar's edge drops to them).
+      solar.push({ q: [at(sunny, a0, u0, 0.12), at(sunny, a1, u0, 0.12), at(sunny, a1, u1, 0.12), at(sunny, a0, u1, 0.12)].map((v) => v.toArray() as [number, number, number]), n: [cols, rows] });
+      used = sunny;
+    }
+  }
+  const windows: THREE.BufferGeometry[] = [];
+  if (style.roofWindows && r.ridge - r.y >= 3 && S >= 2.6) {
+    const s = used === 0 ? 1 : used === 1 ? 0 : 1 - sunny; // the street side is not known: the slope the panels leave free
+    const places = style.roofWindows === 2 && L >= 6 ? [L / 3, (2 * L) / 3] : [L / 2];
+    // Darker than they look: lying face up they catch the whole sky, which the textured tiles round them don't show.
+    const frame = new THREE.Color('#1f1d1b');
+    const glass = new THREE.Color('#0d1218');
+    const n = normal(s);
+    const u = S * 0.5;
+    for (const a of places) {      windows.push(slopeQuad([at(s, a - 0.39, u - 0.59, 0.03), at(s, a + 0.39, u - 0.59, 0.03), at(s, a + 0.39, u + 0.59, 0.03), at(s, a - 0.39, u + 0.59, 0.03)], n, frame));
+      windows.push(slopeQuad([at(s, a - 0.33, u - 0.53, 0.045), at(s, a + 0.33, u - 0.53, 0.045), at(s, a + 0.33, u + 0.53, 0.045), at(s, a - 0.33, u + 0.53, 0.045)], n, glass));
+    }
+  }
+  return { solar, windows };
+}
+
+/** A quad of four corners (in order round it), facing n: the frames' attributes. */
+function slopeQuad(v: THREE.Vector3[], n: THREE.Vector3, colour: THREE.Color): THREE.BufferGeometry {
+  const k = v[1].clone().sub(v[0]).cross(v[2].clone().sub(v[0])).dot(n) > 0 ? [0, 1, 2, 0, 2, 3] : [0, 2, 1, 0, 3, 2];
+  const pos = new Float32Array(18);
+  k.forEach((j, i) => pos.set(v[j].toArray(), i * 3));
+  const nor = new Float32Array(18);
+  for (let i = 0; i < 6; i++) nor.set([n.x, n.y, n.z], i * 3);
+  const g = new THREE.BufferGeometry();
+  g.setAttribute('position', new THREE.BufferAttribute(pos, 3));
+  g.setAttribute('normal', new THREE.BufferAttribute(nor, 3));
+  return colourAll(g, colour);
+}
+
 // ---- Chimneys ----
 
 /**

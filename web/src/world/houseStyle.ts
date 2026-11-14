@@ -51,6 +51,8 @@ export const FLAT_EDGE = 0.6;
 
 /** Of the village's gable roofs, the share with solar panels on the slope facing south. */
 export const SOLAR_SHARE = 0.2;
+/** Of the houses with rooms under the roof (3 m or more from eaves to ridge), the share with one or two roof windows. */
+export const ROOF_WINDOWS = 0.25;
 /** Of the houses with a dormer-worthy roof, the share with a dormer. */
 export const DORMER_SHARE = 1 / 9;
 
@@ -78,8 +80,10 @@ export interface HouseStyle {
   rollers: string | null;
   /** An edge trim round its flat roofs */
   flatEdge: boolean;
-  /** Solar panels on a south-facing slope (change 5) */
-  solar: boolean;
+  /** Solar panels on a slope facing south: how many panels across (4 to 8), or none */
+  solar: number;
+  /** Roof windows (0 to 2) on a roof with rooms under it */
+  roofWindows: number;
   /** A dormer over the front door (change 7) */
   dormer: boolean;
 }
@@ -137,7 +141,8 @@ export function houseStyle(key: number, brick: string, rendered: boolean, pitche
     shutters,
     rollers,
     flatEdge: stable(key, 73) < FLAT_EDGE,
-    solar: stable(key, 67) < SOLAR_SHARE,
+    solar: stable(key, 67) < SOLAR_SHARE ? 4 + Math.floor(stable(key, 67, 1) * 5) : 0,
+    roofWindows: stable(key, 69) < ROOF_WINDOWS ? 1 + Math.floor(stable(key, 69, 1) * 2) : 0,
     dormer: stable(key, 71) < DORMER_SHARE,
   };
 }

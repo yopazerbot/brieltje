@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import {
   houseStyle, rollerDown, stable, CHIMNEY_SHARE, FLAT_EDGE, LEAF_SHUTTERS, LINTEL_SOLDIER, LINTEL_STONE, LINTEL_STONE_RENDERED, PLINTH_BRICK,
-  PLINTH_CEMENT, PLINTH_PAINT, PLINTH_TAR, ROLLER_DOWN, ROLLER_HOUSES, ROLLER_PART,
+  PLINTH_CEMENT, PLINTH_PAINT, PLINTH_TAR, ROLLER_DOWN, ROLLER_HOUSES, ROLLER_PART, ROOF_WINDOWS, SOLAR_SHARE,
 } from './houseStyle.ts';
 
 // world/facadeLook.ts's hash (that module needs three.js, so it is compared as text): the copy must be the same.
@@ -51,6 +51,9 @@ test('the shares come out within 5 % over 10,000 houses', () => {
   near(count(brick, (s) => s.rollers), (1 - LEAF_SHUTTERS) * ROLLER_HOUSES, 'roller shutters');
   assert.equal(count(brick, (s) => s.rollers && s.shutters), 0);
   near(count(brick, (s) => s.flatEdge), FLAT_EDGE, 'flat roofs with an edge trim');
+  near(count(brick, (s) => s.solar), SOLAR_SHARE, 'solar panels');
+  near(count(brick, (s) => s.roofWindows), ROOF_WINDOWS, 'roof windows');
+  for (const s of brick) assert.ok((s.solar === 0 || (s.solar >= 4 && s.solar <= 8)) && s.roofWindows <= 2);
   for (const s of brick) assert.ok(s.plinth.height >= 0.35 && s.plinth.height <= 0.7);
 });
 

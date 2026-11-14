@@ -18,7 +18,7 @@ import { cardCrown, cardTrunk, crownFit, FORK, HEIGHT, Kind, KINDS, spotHash, TR
 import { hedgeCardMesh, hedgeCardPieces } from './hedgeCards';
 import { barkMaterial, cardsBuilt, enlist, leafCardMaterial, plainForBake, switchTrees } from './leafCards';
 import { reflectionSkips } from './reflections';
-import { bandedWalls, chimney, chimneyRoofs, flatEdge, openingTrim, roofEdges, roofFrame, wallBases, type OpeningContext, type RoofEdges } from './houseTrim';
+import { bandedWalls, chimney, chimneyRoofs, flatEdge, openingTrim, roofEdges, roofExtras, roofFrame, wallBases, type OpeningContext, type RoofEdges, type SolarArray } from './houseTrim';
 import { houseStyle } from './houseStyle';
 import { snowy } from './snowCover';
 
@@ -571,6 +571,9 @@ export function buildTile(data: TileData, poles: Pole[], renderer: THREE.WebGLRe
   const chimneys = chimneyRoofs(data.roofs, data.prisms ?? [], keyOf);
   /** The houses with a gable or hip roof (leaf shutters go only on those) */
   const pitched = new Set<number>();
+  // Solar panels the data has (the ring's, from the aerial photo): a roof with some gets no made-up ones.
+  const surveyedSolar = (data.solar ?? []).map((s) => [s.q.reduce((t, q) => t + q[0], 0) / s.q.length, s.q.reduce((t, q) => t + q[2], 0) / s.q.length]);
+  const madeSolar: SolarArray[] = [];
   for (const r of data.roofs) {
     const side = r.ceiling ? THREE.FrontSide : THREE.DoubleSide;
     const tint = r.tiles ?? '#4a3f3a';
@@ -595,6 +598,16 @@ export function buildTile(data: TileData, poles: Pole[], renderer: THREE.WebGLRe
       if (g.ridge) put(tiles, byteAttribute(paint(g.ridge, look.color.clone().multiplyScalar(0.85)), 'gloss', look.gloss), 'nb_roof');
     }
     if (g.trim) put(frameMat, g.trim, 'alu', false, undefined, true);
+    // Solar panels on the slope facing south and roof windows, by the house's style (world/houseTrim.ts).
+    const frame = roofFrame(r);
+    const taken = surveyedSolar.some(([x, z]) => {
+      const a = (x - frame.c[0].x) * frame.along.x + (z - frame.c[0].y) * frame.along.y;
+      const b = (x - frame.c[0].x) * frame.across.x + (z - frame.c[0].y) * frame.across.y;
+      return a >= -0.5 && a <= frame.L + 0.5 && b >= -0.5 && b <= frame.W + 0.5;
+    });
+    const extras = roofExtras(r, frame, style, taken);
+    madeSolar.push(...extras.solar);
+    for (const w of extras.windows) put(frameMat, w, 'alu', false, undefined, true);
     const ch = chimneys.has(r) ? style.chimney : null;
     if (ch) {
       // The stack in the walls' brick and shade, as a wall; its cap and pots with the frames.
@@ -630,7 +643,7 @@ export function buildTile(data: TileData, poles: Pole[], renderer: THREE.WebGLRe
   }
   if (data.openings?.length) out.push(...buildOpenings(data.openings, ground, houses, pitched));
   if (data.poleIds.length || data.wires?.length) out.push(...buildLamps(poles, data.poleIds, data.wires ?? [], ground));
-  if (data.solar?.length) out.push(...buildSolar(data.solar));
+  if (data.solar?.length || madeSolar.length) out.push(...buildSolar([...(data.solar ?? []), ...madeSolar]));
   if (data.posts?.length) out.push(buildPosts(data.posts, ground));
   if (data.trees.length) out.push(...buildTrees(data.trees, detail, data.prisms ?? []));
   // Medium and up: sprigs of leaves out of the hedges' sides and tops, in the tiles round the eye (world/hedgeCards.ts).
