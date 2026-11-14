@@ -274,6 +274,41 @@ function merge(list: THREE.BufferGeometry[]): THREE.BufferGeometry {
   return out;
 }
 
+/**
+ * An edge trim round a flat roof's lid (an nb_roof block): a quad over each of its sides, 4 cm in front of it (closer
+ * would flicker from a distance), from 4 cm under the lid to 2 cm over it, a little longer than the side so the
+ * corners close.
+ */
+export function flatEdge(p: Prism, colour: THREE.Color): THREE.BufferGeometry[] {
+  const ring = p.p[0];
+  const out: THREE.BufferGeometry[] = [];
+  const y = (p.y0 - 0.04 + p.y1 + 0.02) / 2;
+  const h = p.y1 + 0.02 - (p.y0 - 0.04);
+  for (let i = 0; i < ring.length; i++) {
+    const [ax, az] = ring[i];
+    const [bx, bz] = ring[(i + 1) % ring.length];
+    const length = Math.hypot(bx - ax, bz - az);
+    if (length < 0.3) continue;
+    const d = new THREE.Vector3((bx - ax) / length, 0, (bz - az) / length);
+    const n = new THREE.Vector3(d.z, 0, -d.x);
+    const mx = (ax + bx) / 2;
+    const mz = (az + bz) / 2;
+    if (insideRing(ring, mx + n.x * 0.05, mz + n.z * 0.05)) n.negate(); // outward
+    out.push(face(new THREE.Vector3(mx + n.x * 0.04, y, mz + n.z * 0.04), d, n, length + 0.08, h, colour));
+  }
+  return out;
+}
+
+function insideRing(ring: [number, number][], x: number, z: number): boolean {
+  let yes = false;
+  for (let i = 0, j = ring.length - 1; i < ring.length; j = i++) {
+    const [xi, zi] = ring[i];
+    const [xj, zj] = ring[j];
+    if (zi > z !== zj > z && x < ((xj - xi) * (z - zi)) / (zj - zi) + xi) yes = !yes;
+  }
+  return yes;
+}
+
 // ---- Chimneys ----
 
 /**

@@ -46,6 +46,9 @@ export const ROLLER_DOWN = 0.05;
 export const ROLLER_PART = 0.08;
 const ROLLER_COLOURS = ['#ece9e2', '#d8ccb4', '#8c8f92', '#5b4535'];
 
+/** Of the houses with a flat roof, the share with an edge trim round it in the house's trim colour. */
+export const FLAT_EDGE = 0.6;
+
 /** Of the village's gable roofs, the share with solar panels on the slope facing south. */
 export const SOLAR_SHARE = 0.2;
 /** Of the houses with a dormer-worthy roof, the share with a dormer. */
@@ -73,6 +76,8 @@ export interface HouseStyle {
   shutters: string | null;
   /** Roller shutters' colour (sRGB hex), or none */
   rollers: string | null;
+  /** An edge trim round its flat roofs */
+  flatEdge: boolean;
   /** Solar panels on a south-facing slope (change 5) */
   solar: boolean;
   /** A dormer over the front door (change 7) */
@@ -131,6 +136,7 @@ export function houseStyle(key: number, brick: string, rendered: boolean, pitche
     lintel,
     shutters,
     rollers,
+    flatEdge: stable(key, 73) < FLAT_EDGE,
     solar: stable(key, 67) < SOLAR_SHARE,
     dormer: stable(key, 71) < DORMER_SHARE,
   };

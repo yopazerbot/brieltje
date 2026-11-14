@@ -18,7 +18,7 @@ import { cardCrown, cardTrunk, crownFit, FORK, HEIGHT, Kind, KINDS, spotHash, TR
 import { hedgeCardMesh, hedgeCardPieces } from './hedgeCards';
 import { barkMaterial, cardsBuilt, enlist, leafCardMaterial, plainForBake, switchTrees } from './leafCards';
 import { reflectionSkips } from './reflections';
-import { bandedWalls, chimney, chimneyRoofs, openingTrim, roofEdges, roofFrame, wallBases, type OpeningContext, type RoofEdges } from './houseTrim';
+import { bandedWalls, chimney, chimneyRoofs, flatEdge, openingTrim, roofEdges, roofFrame, wallBases, type OpeningContext, type RoofEdges } from './houseTrim';
 import { houseStyle } from './houseStyle';
 import { snowy } from './snowCover';
 
@@ -548,6 +548,13 @@ export function buildTile(data: TileData, poles: Pole[], renderer: THREE.WebGLRe
     fieldRows(g, p); // the fields' rows (world/fields.ts)
     if (isBrick(p.m)) put(renderable(mat), base ? g : walls(p.m, houses.keyOf(p), g), tag);
     else put(mat, coloured(mat) ? paint(g, tint) : g, tag, true, GROUND_COVERS.has(p.m) ? COVER_ORDER : undefined);
+    if (p.m === 'nb_roof' && !p.lm) {
+      // A flat roof: on many houses an edge trim in the house's trim colour (world/houseTrim.ts).
+      const ring = p.p[0];
+      const house = houses.wallAt(ring.reduce((s, q) => s + q[0], 0) / ring.length, ring.reduce((s, q) => s + q[1], 0) / ring.length);
+      const style = house && houseStyle(house.key, house.m, brickLook(house.m, house.key).render === 1);
+      if (style?.flatEdge) for (const e of flatEdge(p, new THREE.Color(style.trim))) put(frameMat, e, 'alu', false, undefined, true);
+    }
   }
 
   // Roofs: the tiles in their colour per vertex, the gables in the brick of the walls below. A roof

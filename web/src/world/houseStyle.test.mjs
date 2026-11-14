@@ -2,7 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import {
-  houseStyle, rollerDown, stable, CHIMNEY_SHARE, LEAF_SHUTTERS, LINTEL_SOLDIER, LINTEL_STONE, LINTEL_STONE_RENDERED, PLINTH_BRICK,
+  houseStyle, rollerDown, stable, CHIMNEY_SHARE, FLAT_EDGE, LEAF_SHUTTERS, LINTEL_SOLDIER, LINTEL_STONE, LINTEL_STONE_RENDERED, PLINTH_BRICK,
   PLINTH_CEMENT, PLINTH_PAINT, PLINTH_TAR, ROLLER_DOWN, ROLLER_HOUSES, ROLLER_PART,
 } from './houseStyle.ts';
 
@@ -50,6 +50,7 @@ test('the shares come out within 5 % over 10,000 houses', () => {
   assert.equal(count(keys.map((k) => houseStyle(k, 'nb_red', false, false)), (s) => s.shutters), 0, 'no leaf shutters without a pitched roof');
   near(count(brick, (s) => s.rollers), (1 - LEAF_SHUTTERS) * ROLLER_HOUSES, 'roller shutters');
   assert.equal(count(brick, (s) => s.rollers && s.shutters), 0);
+  near(count(brick, (s) => s.flatEdge), FLAT_EDGE, 'flat roofs with an edge trim');
   for (const s of brick) assert.ok(s.plinth.height >= 0.35 && s.plinth.height <= 0.7);
 });
 
