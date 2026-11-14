@@ -141,8 +141,9 @@ export interface RoofEdges {
 
 /**
  * Verge boards and ridge tiles for a roof (world/surroundings.ts `roof`): a board 16 cm deep and 3 cm thick at the
- * tiles' edge along each sloping gable edge (gable roofs), along both sloping ends and the high edge (shed roofs); a
- * row of ridge tiles along the ridge (gable and hip roofs). Leaves out an edge where a neighbour's wall stands against it.
+ * tiles' edge along each sloping gable edge (gable roofs), along both sloping ends and the high edge (shed roofs), up and
+ * down both slopes at the ends of a closed one; a row of ridge tiles along the ridge (gable and hip roofs, a closed shed,
+ * the larger half of a pair: world/roofPlan.ts). Leaves out an edge where a neighbour's wall stands against it.
  * `trim` goes to the frames' mesh, `ridge` (with texture coordinates in metres) to the roof tiles'.
  */
 export function roofEdges(r: RoofSpec, f: RoofFrame, e: RoofEdges): { trim: THREE.BufferGeometry | null; ridge: THREE.BufferGeometry | null } {
@@ -169,11 +170,24 @@ export function roofEdges(r: RoofSpec, f: RoofFrame, e: RoofEdges): { trim: THRE
     const shift = n.clone().multiplyScalar(0.01);
     boards.push(strip(p.clone().add(shift), q.clone().add(shift), n, 0.16, e.trim));
   };
-  if (r.shape === 'shed') {
+  if (r.closed) {
+    // A wedge closed with a second slope (world/roofPlan.ts): up the near slope to the ridge, down the far one.
+    const { at, far } = r.closed;
+    const k = (r.ridge - r.y) / Math.max(0.01, at);
+    const kF = (r.ridge - far) / Math.max(0.01, W - at);
+    for (const [a, side] of [[-o, -1], [L + o, 1]] as const) {
+      if (!free(a + side * 0.3, W / 2)) continue;
+      const n = along3.clone().multiplyScalar(side);
+      const top = pt(a, at, r.ridge);
+      verge(pt(a, -o, r.y - k * o), top, n);
+      verge(top, pt(a, W + o, far - kF * o), n);
+    }
+  } else if (r.shape === 'shed') {
     const k = (r.ridge - r.y) / Math.max(0.5, W);
     const low = r.y - k * o;
-    // Where a wall stands against the high side (the other half of a house, a taller house), the ends stop at it.
-    const open = free(L / 2, W + o + 0.3);
+    // Where something stands against the high side (the other half of a pair, a taller wall: world/roofPlan.ts), the
+    // slope and the ends stop at it.
+    const open = !r.tight;
     const end = open ? W + o : W;
     const high = r.ridge + k * (end - W);
     for (const [a, side] of [[-o, -1], [L + o, 1]] as const) {
@@ -193,7 +207,13 @@ export function roofEdges(r: RoofSpec, f: RoofFrame, e: RoofEdges): { trim: THRE
 
   // Ridge tiles: a low rounded row over the ridge line, its edges on the slopes.
   let ridge: THREE.BufferGeometry | null = null;
-  if (r.shape !== 'shed') {
+  if (r.closed) {
+    const { at, far } = r.closed;
+    ridge = ridgeRow(pt(-o, at, r.ridge), pt(L + o, at, r.ridge), across3, (r.ridge - r.y) / Math.max(0.01, at), (r.ridge - far) / Math.max(0.01, W - at));
+  } else if (r.crown !== undefined) {
+    // The larger half of a pair: the pair's ridge row along its high edge, over the other half's slope too.
+    ridge = ridgeRow(pt(-o, W, r.ridge), pt(L + o, W, r.ridge), across3, (r.ridge - r.y) / Math.max(0.5, W), r.crown);
+  } else if (r.shape !== 'shed') {
     const k = (r.ridge - eave) / (W / 2 + o); // drop per metre across
     let a0 = -o;
     let a1 = L + o;
@@ -207,11 +227,14 @@ export function roofEdges(r: RoofSpec, f: RoofFrame, e: RoofEdges): { trim: THRE
   return { trim, ridge };
 }
 
-/** A row of ridge tiles from p to q (on the ridge), across the ridge along `side`, the slopes dropping k per metre. */
-function ridgeRow(p: THREE.Vector3, q: THREE.Vector3, side: THREE.Vector3, k: number): THREE.BufferGeometry {
+/**
+ * A row of ridge tiles from p to q (on the ridge), across the ridge along `side`, the slopes dropping k per metre (k2 on
+ * the side `side` points to, when the two differ).
+ */
+function ridgeRow(p: THREE.Vector3, q: THREE.Vector3, side: THREE.Vector3, k: number, k2 = k): THREE.BufferGeometry {
   const s = 0.13;
   // The cross-section: [across, up] from the ridge line.
-  const section: [number, number][] = [[-s, 0.005 - s * k], [-0.07, 0.055], [0, 0.075], [0.07, 0.055], [s, 0.005 - s * k]];
+  const section: [number, number][] = [[-s, 0.005 - s * k], [-0.07, 0.055], [0, 0.075], [0.07, 0.055], [s, 0.005 - s * k2]];
   const length = p.distanceTo(q);
   const dir = q.clone().sub(p).normalize();
   const at = (from: THREE.Vector3, [b, y]: [number, number]) => from.clone().addScaledVector(side, b).addScaledVector(UP, y);
@@ -386,9 +409,10 @@ function slopeQuad(v: THREE.Vector3[], n: THREE.Vector3, colour: THREE.Color): T
  * The roof of each house in this tile that gets the house's chimney (if its style has one): the largest gable or hip
  * roof over brick walls that is high and big enough, of a house with no chimney in the data already (a small brick
  * block standing above the eaves inside one of its roofs). Custom roofs (with windows, panels or a ceiling) and a
- * landmark's are left alone.
+ * landmark's are left alone. A closed single slope counts as a gable, and so does the larger half of a pair (the one with
+ * the ridge row: world/roofPlan.ts) with the other half's width (`partnerOf`).
  */
-export function chimneyRoofs(roofs: RoofSpec[], prisms: Prism[], keyOf: (r: RoofSpec) => number): Map<RoofSpec, number> {
+export function chimneyRoofs(roofs: RoofSpec[], prisms: Prism[], keyOf: (r: RoofSpec) => number, partnerOf: (r: RoofSpec) => RoofSpec | undefined = () => undefined): Map<RoofSpec, number> {
   const stacks = prisms.filter((p) => isBrick(p.m) && !p.d && area(p.p[0]) < 1.5);
   const best = new Map<number, { r: RoofSpec; size: number }>();
   const surveyed = new Set<number>();
@@ -411,9 +435,16 @@ export function chimneyRoofs(roofs: RoofSpec[], prisms: Prism[], keyOf: (r: Roof
       const z = ring.reduce((t, q) => t + q[1], 0) / ring.length;
       if (inside(x, z)) surveyed.add(key);
     }
-    const shape = r.shape ?? 'gable';
+    const other = r.crown !== undefined ? partnerOf(r) : undefined;
+    const shape = r.closed || other ? 'gable' : r.shape ?? 'gable';
     if (!r.wall || !isBrick(r.wall) || (shape !== 'gable' && shape !== 'hip') || r.windows || r.gableWindows || r.panels) continue;
-    if (r.ridge - r.y < 1.5 || r.y - (r.base ?? r.y - 2.7) < 2.3 || f.L < 6 || f.W < 4.5) continue;
+    const width = other ? f.W + roofFrame(other).W : f.W;
+    if (r.ridge - r.y < 1.5 || r.y - (r.base ?? r.y - 2.7) < 2.3 || f.L < 6 || width < 4.5) continue;
+    if (other) {
+      // The other half reaches both ends of the ridge (the stack stands on both halves, near an end).
+      const span = other.p.map(([x, z]) => (x - f.c[0].x) * f.along.x + (z - f.c[0].y) * f.along.y);
+      if (Math.min(...span) > 0.5 || Math.max(...span) < f.L - 0.5) continue;
+    }
     if (shape === 'hip' && f.L - f.W < 1) continue;
     const size = f.L * f.W;
     const b = best.get(key);
@@ -431,7 +462,17 @@ export function chimneyRoofs(roofs: RoofSpec[], prisms: Prism[], keyOf: (r: Roof
 export function chimney(r: RoofSpec, f: RoofFrame, ch: NonNullable<HouseStyle['chimney']>): { stack: Prism; parts: THREE.BufferGeometry[] } {
   const { c, L, W, along, across } = f;
   const eave = r.y - 0.15;
-  const k = (r.ridge - eave) / (W / 2 + OVERHANG);
+  // The ridge across from the low side, and the steeper slope's drop per metre: a gable's middle; a closed single
+  // slope's ridge; the high edge of a pair's larger half (world/roofPlan.ts).
+  let ridgeAt = W / 2;
+  let k = (r.ridge - eave) / (W / 2 + OVERHANG);
+  if (r.closed) {
+    ridgeAt = r.closed.at;
+    k = Math.max((r.ridge - r.y) / Math.max(0.01, r.closed.at), (r.ridge - r.closed.far) / Math.max(0.01, W - r.closed.at));
+  } else if (r.crown !== undefined) {
+    ridgeAt = W;
+    k = Math.max((r.ridge - r.y) / Math.max(0.5, W), r.crown);
+  }
   let a: number;
   if (r.shape === 'hip') {
     // Just inside the end of the ridge (or in its middle when it is short).
@@ -441,7 +482,7 @@ export function chimney(r: RoofSpec, f: RoofFrame, ch: NonNullable<HouseStyle['c
     a = r1 - r0 < ch.along + 0.6 ? (r0 + r1) / 2 : ch.end === 0 ? r0 + ch.along / 2 + 0.3 : r1 - ch.along / 2 - 0.3;
   } else a = ch.end === 0 ? ch.from : L - ch.from;
   const pt = (da: number, db: number): [number, number] => {
-    const q = c[0].clone().addScaledVector(along, a + da).addScaledVector(across, W / 2 + db);
+    const q = c[0].clone().addScaledVector(along, a + da).addScaledVector(across, ridgeAt + db);
     return [q.x, q.y];
   };
   const [al, ac] = [ch.along / 2, ch.across / 2];

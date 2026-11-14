@@ -159,6 +159,18 @@ export interface RoofSpec {
   panels?: { a: [number, number]; b: [number, number]; y0: number; ya: number; yb: number }[];
   /** Part of a landmark (the church) */
   lm?: string;
+  /**
+   * Set on the page by world/roofPlan.ts, never in the data. A single slope closed with a second one: the ridge `at`
+   * metres across from the low side (at `ridge`), the far eaves at `far`, the far downpipe down to `foot`.
+   */
+  closed?: { at: number; far: number; foot: number };
+  /** Set on the page by world/roofPlan.ts, never in the data: the slope stops at its high edge (something stands there) */
+  tight?: boolean;
+  /**
+   * Set on the page by world/roofPlan.ts, never in the data: this half of a pair draws the pair's ridge row along its
+   * high edge; the other half's drop per metre.
+   */
+  crown?: number;
 }
 
 /**

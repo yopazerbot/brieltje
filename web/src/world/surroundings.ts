@@ -18,7 +18,7 @@ import { cardCrown, cardTrunk, crownFit, FORK, HEIGHT, Kind, KINDS, spotHash, TR
 import { hedgeCardMesh, hedgeCardPieces } from './hedgeCards';
 import { barkMaterial, cardsBuilt, enlist, leafCardMaterial, plainForBake, switchTrees } from './leafCards';
 import { reflectionSkips } from './reflections';
-import { houseIndex, roofKey } from './houseIndex';
+import { houseIndex } from './houseIndex';
 import { pointInside } from './houseKeys';
 import { flatEdgeSides } from './housePlan';
 import { bandedWalls, chimney, flatEdge, openingTrim, roofEdges, roofExtras, roofFrame, type OpeningContext, type RoofEdges, type SolarArray } from './houseTrim';
@@ -153,16 +153,45 @@ function sloped(r: RoofSpec, c: THREE.Vector2[], L: number, W: number, along: TH
       else tri(roofPos, pts[0], pts[1], pts[2], true);
       uvs(roofPos, roofUv, from, dir, stretch);
     }
+  } else if (r.closed) {
+    // A wedge closed (world/roofPlan.ts): the slope up to the ridge `at` across, a second slope down past the far wall
+    // with the same overhang, the end walls up to both, and the far wall up to the far eaves.
+    const { at, far } = r.closed;
+    const k = (r.ridge - r.y) / Math.max(0.01, at);
+    const kF = (r.ridge - far) / Math.max(0.01, W - at);
+    for (const [p, q, s, t, slope] of [
+      [wall(-o, -o, r.y - k * o), wall(L + o, -o, r.y - k * o), wall(L + o, at, r.ridge), wall(-o, at, r.ridge), k],
+      [wall(-o, at, r.ridge), wall(L + o, at, r.ridge), wall(L + o, W + o, far - kF * o), wall(-o, W + o, far - kF * o), kF],
+    ] as const) {
+      const from = roofPos.length;
+      quad(roofPos, p, q, s, t);
+      uvs(roofPos, roofUv, from, along, Math.hypot(1, slope) / Math.max(0.01, slope));
+    }
+    for (const a of [0, L]) {
+      const w0 = wallPos.length;
+      tri(wallPos, wall(a, 0, r.y), wall(a, W, r.y), wall(a, at, r.ridge), false);
+      if (far > r.y + 0.02) tri(wallPos, wall(a, W, r.y), wall(a, W, far), wall(a, at, r.ridge), false);
+      uvs(wallPos, wallUv, w0, across, 1);
+    }
+    if (far > r.y + 0.02) {
+      const w0 = wallPos.length;
+      quad(wallPos, wall(0, W, r.y), wall(L, W, r.y), wall(L, W, far), wall(0, W, far), false);
+      uvs(wallPos, wallUv, w0, along, 1);
+    }
   } else {
     const k = (r.ridge - r.y) / Math.max(0.5, W); // rise per metre across
     const stretch = Math.hypot(1, k) / Math.max(0.01, k);
     const from = roofPos.length;
-    quad(roofPos, wall(-o, -o, r.y - k * o), wall(L + o, -o, r.y - k * o), wall(L + o, W + o, r.ridge + k * o), wall(-o, W + o, r.ridge + k * o));
+    // Against something as high (the other half of a pair, a taller wall: world/roofPlan.ts) it stops at its high edge.
+    const end = r.tight ? 0 : o;
+    quad(roofPos, wall(-o, -o, r.y - k * o), wall(L + o, -o, r.y - k * o), wall(L + o, W + end, r.ridge + k * end), wall(-o, W + end, r.ridge + k * end));
     uvs(roofPos, roofUv, from, along, stretch);
-    // The walls under the slope: a triangle at each end, the high wall along the back.
+    // The walls under the slope: a triangle at each end, the high wall along the back. Against the other half of a pair
+    // the ends reach 3 cm past the high edge, so no hairline shows the sky where the two halves' ends meet.
+    const past = r.tight ? 0.03 : 0;
     for (const a of [0, L]) {
       const w0 = wallPos.length;
-      tri(wallPos, wall(a, 0, r.y), wall(a, W, r.y), wall(a, W, r.ridge), false);
+      tri(wallPos, wall(a, 0, r.y), wall(a, W + past, r.y), wall(a, W + past, r.ridge), false);
       uvs(wallPos, wallUv, w0, across, 1);
     }
     const w0 = wallPos.length;
@@ -203,11 +232,12 @@ function closeUnder(r: RoofSpec, out: number[], wall: (a: number, b: number, y: 
 
 /**
  * Gutters along a roof's eaves and a downpipe from each down to the ground, against the wall:
- * the eaves of both long sides of a gable roof, all four of a hip roof, the low side of a shed.
+ * the eaves of both long sides of a gable roof, all four of a hip roof, the low side of a shed (and the far side of a
+ * closed one).
  */
-function gutters(r: RoofSpec, c: THREE.Vector2[], L: number, W: number, along: THREE.Vector2, across: THREE.Vector2, o: number, eave: number): THREE.BufferGeometry | null {
+function gutters(r: RoofSpec, c: THREE.Vector2[], L: number, W: number, along: THREE.Vector2, across: THREE.Vector2, o: number, eaves: number): THREE.BufferGeometry | null {
   const color = new THREE.Color(r.gutter ?? '#8f9396');
-  const base = r.base ?? r.y - 2.7;
+  const foot = r.base ?? r.y - 2.7;
   const up = new THREE.Vector3(0, 1, 0);
   const box = (at: THREE.Vector3, d: THREE.Vector3, n: THREE.Vector3, w: number, h: number, t: number) => {
     if (d.clone().cross(up).dot(n) < 0) d = d.clone().negate(); // right-handed, so faces point out
@@ -217,13 +247,17 @@ function gutters(r: RoofSpec, c: THREE.Vector2[], L: number, W: number, along: T
   const corner = (a: number, b: number) => c[0].clone().addScaledVector(along, a).addScaledVector(across, b);
   // Each eave: from, to (with the overhang), outward, and whether it gets a downpipe.
   const lines: [THREE.Vector2, THREE.Vector2, THREE.Vector2][] = [[corner(-o, -o), corner(L + o, -o), across.clone().negate()]];
-  if (r.shape !== 'shed') lines.push([corner(-o, W + o), corner(L + o, W + o), across.clone()]);
+  if (r.shape !== 'shed' || r.closed) lines.push([corner(-o, W + o), corner(L + o, W + o), across.clone()]);
   if (r.shape === 'hip') lines.push([corner(-o, -o), corner(-o, W + o), along.clone().negate()], [corner(L + o, -o), corner(L + o, W + o), along.clone()]);
   const out: THREE.BufferGeometry[] = [];
   lines.forEach(([p, q, n], k) => {
     const d = v3(q.clone().sub(p).normalize());
     const nn = v3(n);
     const length = p.distanceTo(q);
+    // A closed wedge's far eaves (world/roofPlan.ts): under the far slope's edge, its pipe down to what stands behind.
+    const far = k === 1 && r.closed ? r.closed : null;
+    const eave = far ? far.far - ((r.ridge - far.far) / Math.max(0.01, W - far.at)) * o : eaves;
+    const base = far ? far.foot : foot;
     out.push(box(v3(p.clone().add(q).multiplyScalar(0.5).addScaledVector(n, 0.07), eave - 0.06), d, nn, length, 0.1, 0.13));
     if (k > 1 || eave - base < 1.5) return; // downpipes on the two long sides only
     // Near one end (opposite ends on the two sides): along the wall, then a short bend out to the gutter.
@@ -579,12 +613,12 @@ export function buildTile(data: TileData, poles: Pole[], renderer: THREE.WebGLRe
   const gutterGeos: THREE.BufferGeometry[] = [];
   // The house under a roof; each house's chimney on its largest roof that can carry one; the houses with a gable or hip
   // roof (leaf shutters go only on those): all for the whole set (world/houseIndex.ts).
-  const keyOf = (r: RoofSpec) => roofKey(houses, r);
-  const { chimneys, pitched } = index;
+  const { chimneys, pitched, keyOf } = index;
   // Solar panels the data has (the ring's, from the aerial photo): a roof with some gets no made-up ones.
   const surveyedSolar = (data.solar ?? []).map((s) => [s.q.reduce((t, q) => t + q[0], 0) / s.q.length, s.q.reduce((t, q) => t + q[2], 0) / s.q.length]);
   const madeSolar: SolarArray[] = [];
-  for (const r of data.roofs) {
+  for (const r0 of data.roofs) {
+    const r = index.drawn.get(r0) ?? r0; // a single slope as it is drawn: halves joined, ramps turned, wedges closed (world/roofPlan.ts)
     const side = r.ceiling ? THREE.FrontSide : THREE.DoubleSide;
     const tint = r.tiles ?? '#4a3f3a';
     const key = keyOf(r);
