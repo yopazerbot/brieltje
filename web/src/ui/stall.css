@@ -12,6 +12,7 @@
 body.touch #stall-chip {
   left: 210px; right: 320px; width: -webkit-fit-content; width: fit-content; margin: 0 auto; transform: none;
   bottom: calc(48px + env(safe-area-inset-bottom, 0px)); min-height: 30px; padding: 4px 12px; font-size: 13px; pointer-events: auto; cursor: pointer;
+  white-space: normal; text-align: center; line-height: 1.25; /* a long count or word wraps on a narrow phone, upwards */
 }
 body.touch[data-touch=walk] #stall-chip { right: 180px; }
 body.touch #stall-chip.open { color: var(--dusk); background: var(--lamp); }

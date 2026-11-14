@@ -2200,7 +2200,7 @@ function offerGuns(): void {
 const stallCard = new StallCard();
 const stallNav = new PadNav(() => stallCard.page);
 stallCard.can = () => games.zombies && games.view.phase === 'break' && weapon.enabled && combat.alive && !driving && !riding && horses.mounted < 0 && bikes.mounted === null
-  && !menu.open && !menu.onStartScreen && !chat.typing && !watch && !watching && !feedback.open && !homeCard.open && !loadoutCard.open && !controlsCard.open;
+  && !menu.open && !menu.onStartScreen && !bigMap.open && !chat.typing && !watch && !watching && !feedback.open && !homeCard.open && !loadoutCard.open && !controlsCard.open;
 stallCard.onBuy = (kind) => {
   if (net.connected) return net.send({ t: 'zbuy', k: kind }); // the kind only: the server has the coins, the price and the rest
   if (!solo) return;
@@ -2211,9 +2211,10 @@ stallCard.onBuy = (kind) => {
   stallCard.set(solo.stall.view(SOLO_ME));
   stallCard.result(code || undefined);
 };
-stallCard.onClose = (click) => {
+stallCard.onClose = (relock) => {
   stallNav.reset();
-  if (click && !menu.open && menu.mode === 'kbm') lockMouse();
+  // Back to the game with a keyboard and mouse (K, Enter, Esc, the button, the wave beginning): the mouse looks again.
+  if (relock && !menu.open && !bigMap.open && menu.mode === 'kbm' && !feedback.open && !homeCard.open && !loadoutCard.open && !controlsCard.open) lockMouse();
 };
 
 /** Get in: alone right away; in multiplayer once the server says the car is yours. Not during the Zombies game (the server refuses too). */
@@ -2525,6 +2526,7 @@ net.onStatus = (text) => {
   games.setOffline(!net.connected && !!me); // the game's bar greys and stops while the connection is down
   zombieWaveControl.update(games.view, waveAllowed());
   followMood();
+  if (!net.connected && me) stallCard.close(true); // the connection dropped: no purchase can go
 };
 /** The menu opens at the team picker the first time after the teams game starts (see openMenu). */
 let teamsMenu = false;
@@ -3373,7 +3375,7 @@ renderer.setAnimationLoop((now: number) => {
   combat.waiting = games.view.kind !== 'zombies' ? null : games.zombies && !solo ? () => (helpedBy ? t('z.helping', { name: helpedBy }) : t('z.downWait')) : () => '';
   if (menu.open) {
     travelPanel.hide();
-    stallCard.close(false); // the menu came up (the touch ☰): the stall shuts
+    stallCard.hide(); // the menu or the big map came up: the stall shuts and its chip goes
     if (menu.onStartScreen) startCamera();
     else if (menu.tab === 'play') placesList.show(driving ? car.x : player.x, driving ? car.z : player.z, menu.mode ?? 'kbm', travelBlock());
     // Controller in a menu: ✕ picks the controller on the start screen. In the pause menu Options

@@ -20,8 +20,10 @@ import './stall.css';
  */
 
 const DIGITS = ['Digit1', 'Digit2', 'Digit3', 'Digit4', 'Digit5', 'Digit6', 'Numpad1', 'Numpad2', 'Numpad3', 'Numpad4', 'Numpad5', 'Numpad6'];
-/** ms a purchase waits for its answer before the card takes another */
+/** ms a purchase waits for its answer before the card sends another */
 const WAIT_MS = 600;
+/** ms between two purchases sent: a little more than the server's 300, which drops anything sooner in silence */
+const GAP_MS = 350;
 
 const clock = (ms: number) => {
   const s = Math.max(0, Math.ceil(ms / 1000));
@@ -37,12 +39,16 @@ export class StallCard {
   can: () => boolean = () => false;
   /** Buy one `kind` (main.ts: to the server together, the page's own Stall alone) */
   onBuy: (kind: StallKind) => void = () => {};
-  /** It closed; `click`: with the mouse (the game takes the mouse back) */
-  onClose: (click: boolean) => void = () => {};
+  /** It closed; `relock`: back to the game (the game takes the mouse back with a keyboard and mouse) */
+  onClose: (relock: boolean) => void = () => {};
   private coins = 0;
   private counts: number[] = STALL.items.map(() => 0);
-  /** performance.now() when a purchase was asked, 0 when the card is free */
+  /** performance.now() when a purchase was asked, 0 when its answer came */
   private asked = 0;
+  /** When the last purchase was sent; the one pressed meanwhile, sent when its time comes (flush) */
+  private sentAt = -1e9;
+  private pending: StallKind | null = null;
+  private timer = 0;
   private pad = false;
   private mode: Control = 'kbm';
   private brk = false;
@@ -92,7 +98,10 @@ export class StallCard {
       const price = document.createElement('span');
       price.className = 'st-price';
       el.append(n, name, what, price);
-      el.addEventListener('click', () => this.press(kind));
+      el.addEventListener('click', () => {
+        el.blur(); // Space or Enter after a click must not buy it again
+        this.press(kind);
+      });
       grid.append(el);
       this.items.push({ kind, el, name, what, price });
     });
@@ -101,8 +110,7 @@ export class StallCard {
     this.hint.className = 'st-hint';
     this.back.type = 'button';
     this.back.className = 'st-close';
-    this.back.addEventListener('click', () => this.close(true));
-    r.append(this.title, this.sub, this.purse, grid, this.note, this.hint, this.back);
+    this.back.addEventListener('click', () => this.close(true));    r.append(this.title, this.sub, this.purse, grid, this.note, this.hint, this.back);
     document.body.append(c, r);
     this.words();
     onLang(() => this.words());
@@ -124,8 +132,11 @@ export class StallCard {
         if (!e.repeat) this.press(this.items[n].kind);
       } else if (e.code === 'KeyK' || e.key === 'Escape' || e.key === 'Enter') {
         e.preventDefault();
-        this.close(false);
-      }
+        this.close(true);
+      } else if (e.code === 'Space') e.preventDefault(); // a focused thing is not bought by Space
+    }, true);
+    document.addEventListener('keyup', (e) => {
+      if (this.open && e.code === 'Space') e.preventDefault();
     }, true);
   }
 
@@ -152,7 +163,7 @@ export class StallCard {
     const can = s.on && s.brk && this.can();
     this.brk = can; // the key on the chip only when it would open the card
     this.left = s.left;
-    if (this.open && !can) this.close(false);
+    if (this.open && !can) this.close(true); // the wave began, or you went down: back to the game
     this.chip.hidden = !s.on;
     this.chip.classList.toggle('open', this.brk);
     this.chipText();
@@ -175,28 +186,55 @@ export class StallCard {
     this.root.classList.remove('hidden');
   }
 
-  close(click: boolean): void {
+  /** Close it. `relock`: back to the game (main.ts takes the mouse back); false where something else comes up. */
+  close(relock: boolean): void {
     if (!this.open) return;
     this.open = false;
     this.closedAt = performance.now();
+    this.pending = null;
+    clearTimeout(this.timer);
     this.root.classList.add('hidden');
     (document.activeElement as HTMLElement | null)?.blur?.();
-    this.onClose(click);
+    this.onClose(relock);
   }
 
-  /** Buy `kind`: not while the last purchase waits for its answer. */
+  /** The menu or the big map is up: the card shuts and the chip goes until the game is back (update). */
+  hide(): void {
+    this.close(false);
+    this.chip.hidden = true;
+  }
+
+  /**
+   * Buy `kind`. Sent at once when the last purchase was sent GAP_MS ago and answered (or WAIT_MS passed);
+   * else kept, the latest press only, and sent when that time comes: never sooner than the server takes it.
+   */
   press(kind: StallKind): void {
-    const now = performance.now();
-    if (!this.open || (this.asked && now - this.asked < WAIT_MS)) return;
-    this.asked = now;
+    if (!this.open) return;
     this.note.textContent = '';
+    this.pending = kind;
+    this.flush();
+  }
+
+  private flush(): void {
+    clearTimeout(this.timer);
+    if (!this.pending || !this.open) return;
+    const now = performance.now();
+    const wait = Math.max(this.sentAt + GAP_MS - now, this.asked ? this.asked + WAIT_MS - now : 0);
+    if (wait > 0) {
+      this.timer = window.setTimeout(() => this.flush(), wait);
+      return;
+    }
+    const kind = this.pending;
+    this.pending = null;
+    this.sentAt = this.asked = now;
     this.onBuy(kind);
   }
 
-  /** The answer came: free again; `code`, a refusal (zStallShut, zStallShort, zStallFull), said in the card. */
+  /** The answer came; `code`, a refusal (zStallShut, zStallShort, zStallFull), said in the card. A press kept meanwhile goes when its time comes. */
   result(code?: string): void {
     this.asked = 0;
     if (code) this.note.textContent = serverText(code, {}, '');
+    this.flush();
   }
 
   private chipText(): void {
