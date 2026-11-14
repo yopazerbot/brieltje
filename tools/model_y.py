@@ -368,7 +368,10 @@ def body_material(u, x, z, nz, seg=None):
         if x > info["wr"] + 0.003:  # the rail along the roof, the A-pillar
             return "Paint"
         return "Glass" if u < U_WS else "GlassDark"
-    if nz < -0.5 and z < 0.32:
+    if u > U_T:  # round the bowed tail by height (its corners' bottoms face down too): a level black band
+        if z < 0.27 and nz < 0.3:
+            return "Trim"
+    elif nz < -0.5 and z < 0.32:
         return "Trim"  # underside
     return "Paint"
 
@@ -788,7 +791,7 @@ ia = INTAKE[0] - 2
 for z in (INTAKE[1] - 0.038, INTAKE[1], INTAKE[1] + 0.038):  # slats in the intake
     panel(B, FRONT, across(-ia, ia, 45), lambda a, z=z: [z - 0.005, z + 0.005], "Trim", out=0.032, skirt=0.032)
 # The black lip under the bumper, the whole width.
-panel(B, FRONT, across(-fa(0.90, 0.23), fa(0.90, 0.23), 50), lambda a: [0.198, INTAKE[1] - INTAKE[2] / 2 - 0.004], "Trim",
+panel(B, FRONT, across(-fa(0.90, 0.23), fa(0.90, 0.23), 50), lambda a: across(0.198, INTAKE[1] - INTAKE[2] / 2 - 0.004, 3), "Trim",
       out=0.010, skirt=0.010)
 ribbon(B, [FRONT(1.4 * math.cos(t), 0.60 + 0.011 * math.sin(t)) for t in across(0, 2 * math.pi, 16)],
        0.010, "Gap", out=0.002, closed=True)  # front camera, in the middle of the face
@@ -915,7 +918,9 @@ for s in (-1, 1):
 INS_Z = (0.245, 0.565)      # its bottom and top
 INS_HX = (0.615, 0.765)     # its half width at the bottom and at the top
 ins_hx = lambda z: INS_HX[0] + (INS_HX[1] - INS_HX[0]) * (z - INS_Z[0]) / (INS_Z[1] - INS_Z[0])
-behind = lambda z, x: back_ray(x, z)
+# Its rays fan out from inside the car towards x at the tail's end: on the bowed corners a ray straight from
+# behind meets the surface edge on, and the insert's edge comes out torn.
+behind = lambda z, x: cast((0, L / 2 - 4.2, z), (x, -(L - 4.2), 0))
 panel(B, behind, across(INS_Z[0], INS_Z[1], 8), lambda z: across(-ins_hx(z), ins_hx(z), 44), "Trim", out=0.006,
       skirt=0.006)
 panel(B, behind, across(INS_Z[0], 0.31, 2), lambda z: across(-ins_hx(z) + 0.10, ins_hx(z) - 0.10, 30), "Trim",
