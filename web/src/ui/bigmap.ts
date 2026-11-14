@@ -7,6 +7,7 @@ import type { DipSpec, Prism, Ring, Room, Surroundings } from '../world/houseDat
 import { dist, onLang, t, type PlainKey } from '../i18n';
 import { moveKeys, typing } from '../keys';
 import { key, type Control } from '../shortcuts';
+import { stallMark } from './minimap';
 
 /**
  * The big map: the whole area at once, north up, drawn from the same data as the world (roads,
@@ -72,7 +73,7 @@ export interface Mark {
   color: string;
   name?: string;
   yaw?: number;
-  kind: 'player' | 'car' | 'horse' | 'coin';
+  kind: 'player' | 'car' | 'horse' | 'coin' | 'stall';
 }
 
 const portal = (id: string) => PORTALS.find((p) => p.id === id);
@@ -324,6 +325,8 @@ export class BigMap {
         g.fill();
         g.stroke();
         g.restore();
+      } else if (m.kind === 'stall') {
+        stallMark(g, x, y, 14); // the Zombies stall (ui/minimap.ts draws it the same)
       } else {
         g.beginPath();
         g.arc(x, y, m.kind === 'horse' || m.kind === 'coin' ? 3.5 : 5.5, 0, Math.PI * 2); // a hunt's coin: small and gold

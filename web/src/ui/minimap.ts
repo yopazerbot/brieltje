@@ -26,7 +26,20 @@ export interface Blip {
   z: number;
   y: number;
   color: string;
-  kind: 'player' | 'cat' | 'item' | 'coin' | 'zombie';
+  kind: 'player' | 'cat' | 'item' | 'coin' | 'zombie' | 'stall';
+}
+
+/** The Zombies stall on a map (here and ui/bigmap.ts): a small awning, red and cream stripes over a dark table, `s` px wide. */
+export function stallMark(g: CanvasRenderingContext2D, x: number, y: number, s: number): void {
+  const w = s, h = s * 0.8;
+  g.fillStyle = 'rgba(30, 20, 10, 0.9)';
+  g.fillRect(x - w / 2 - 1, y - h / 2 - 1, w + 2, h + 2);
+  g.fillStyle = '#8a6a45';
+  g.fillRect(x - w / 2, y, w, h / 2);
+  for (let i = 0; i < 4; i++) {
+    g.fillStyle = i % 2 ? '#efe6d0' : '#d0382e';
+    g.fillRect(x - w / 2 + (w / 4) * i, y - h / 2, w / 4, h / 2);
+  }
 }
 
 export class Minimap {
@@ -190,6 +203,8 @@ export class Minimap {
         g.strokeStyle = 'rgba(16, 24, 12, 0.9)';
         g.lineWidth = 1.2;
         g.stroke();
+      } else if (b.kind === 'stall') {
+        stallMark(g, 0, 0, 10); // the Zombies stall: where to buy (ui/stall.ts)
       } else if (b.kind === 'coin') {
         // A treasure hunt's coin: gold with a dark edge, faint on another floor.
         g.beginPath();

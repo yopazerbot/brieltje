@@ -2373,6 +2373,11 @@ const stallChip = new StallChip();
 const marketStall = new MarketStall(world, (x, z) => house.ground + terrain.height(x, z), (root) => precompile(root));
 scene.add(marketStall.group);
 let stallWait = 0;
+/** Where the stall stands, for the minimap and the big map: during the Zombies game you play in, armed (as its rewards), else none. */
+const stallOnMap = (): { x: number; z: number }[] => {
+  const s = weapon.enabled && games.zombies ? stallSpot(games.view.zombies?.place) : null;
+  return s ? [{ x: s.x, z: s.z }] : [];
+};
 /**
  * Use at the stall on the thing you face: a purchase (not sooner than the server's 300 ms, nor with too few coins).
  * Whether it took Use: when it can't buy, Use goes on down the chain as if no stall were there (a turret beside it).
@@ -4108,6 +4113,7 @@ renderer.setAnimationLoop((now: number) => {
       ...(games.hideOthers ? [] : avatars.blips().map((b) => ({ ...b, kind: 'player' as const }))),
       ...games.coinSpots().map((c) => ({ ...c, color: '#f2c14e', kind: 'coin' as const })), // the hunt's coins left
       ...zombies.blips().map((z) => ({ ...z, color: z.big ? '#4f7a3a' : '#8fb070', kind: 'zombie' as const })), // the Zombies game's, small dots
+      ...stallOnMap().map((s) => ({ ...s, y: player.feet, color: '', kind: 'stall' as const })),
     ];
     const shapes = [...furnishing.pieces.values()].filter((p) => !p.item.startsWith('rug')).map((p) => ({ ring: footprint(p), y: p.y }));
     for (const c of cars) if (c.ready) shapes.push({ ring: c.footprint(), y: c.y });
@@ -4134,6 +4140,7 @@ renderer.setAnimationLoop((now: number) => {
       ...(games.hideOthers ? [] : avatars.marks().map((a) => ({ ...a, kind: 'player' as const }))),
       ...games.coinSpots().map((c) => ({ x: c.x, z: c.z, color: '#f2c14e', kind: 'coin' as const })),
       ...goals.marks(),
+      ...stallOnMap().map((s) => ({ ...s, color: '#d0382e', name: t('stall.map'), kind: 'stall' as const })),
     ];
     bigMap.tick(mapYou(), marks);
   } else if (!menu.onStartScreen) composer.render(dt); // the menu's Map tab covers most of the screen: the world isn't drawn behind it
