@@ -11,7 +11,7 @@ registerHooks({
   },
 });
 const { Houses, inside } = await import('./houseKeys.ts');
-const { planBases, cutAt, isPlinthOf, area } = await import('./housePlan.ts');
+const { planBases, planSteps, cutAt, isPlinthOf, area } = await import('./housePlan.ts');
 const { makeTerrain } = await import('../../shared/terrain.mjs');
 
 const read = (file) => JSON.parse(fs.readFileSync(new URL(file, import.meta.url), 'utf8'));
@@ -62,6 +62,28 @@ for (const [name, set] of Object.entries(sets)) {
         assert.ok(top <= o.y[0] - 0.2 + 1e-6, `${name}: a plinth at ${top.toFixed(2)} by a window at ${o.y[0].toFixed(2)} (${x.toFixed(1)}, ${z.toFixed(1)})`);
       }
     }
+  });
+
+  test(`${name}: every door step stands on the ground, and no riser is over 18 cm`, () => {
+    let flights = 0;
+    for (const o of set.openings ?? []) {
+      const steps = planSteps(o, houses, groundAt);
+      if (steps.length > 1) flights++;
+      const l = Math.hypot(o.n[0], o.n[1]);
+      const w = Math.hypot(o.b[0] - o.a[0], o.b[1] - o.a[1]);
+      steps.forEach((s, k) => {
+        for (const t of [s.from, (s.from + s.to) / 2, s.to]) {
+          for (const u of [-0.5, 0, 0.5]) {
+            const x = (o.a[0] + o.b[0]) / 2 + (o.n[0] / l) * t + ((o.b[0] - o.a[0]) / w) * u * (w + 0.3);
+            const z = (o.a[1] + o.b[1]) / 2 + (o.n[1] / l) * t + ((o.b[1] - o.a[1]) / w) * u * (w + 0.3);
+            assert.ok(s.bottom <= groundAt(x, z) - 0.04, `${name}: a step over the ground at (${x.toFixed(1)}, ${z.toFixed(1)})`);
+          }
+        }
+        if (k) assert.ok(steps[k - 1].top - s.top <= 0.18 + 1e-6, `${name}: a riser of ${(steps[k - 1].top - s.top).toFixed(2)} m`);
+      });
+      if (steps.length === 1) assert.ok(steps[0].top - steps[0].bottom <= 0.35 + 0.3, `${name}: one step ${(steps[0].top - steps[0].bottom).toFixed(2)} m high`);
+    }
+    assert.ok(flights > 0, `${name}: some doors get a flight`);
   });
 
   test(`${name}: no band is painted over a plinth the data has`, () => {

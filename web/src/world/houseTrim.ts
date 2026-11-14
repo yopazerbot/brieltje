@@ -3,7 +3,7 @@ import type { Opening, Prism, RoofSpec } from './houseData';
 import { prismGeometry } from './houseMeshes';
 import { brickLook, Houses, isBrick } from './facadeLook';
 import { houseStyle, PLINTH_BRICK_SHADE, rollerDown, type HouseStyle } from './houseStyle';
-import { cutAt, type BasePlan } from './housePlan';
+import { cutAt, planSteps, type BasePlan } from './housePlan';
 
 /**
  * The details that make an open-data house (world/surroundings.ts) read as a house and not a block, built in code from
@@ -546,14 +546,9 @@ export function openingTrim(o: Opening, d: THREE.Vector3, n: THREE.Vector3, w: n
     if (style.lintel === 'stone') parts.push(face(out(0.03, y1 + 0.05 + 0.09), d, n, w + 0.24, 0.18, new THREE.Color('#d9d4c8')));
     else parts.push(face(out(0.03, y1 + 0.05 + 0.055), d, n, w + 0.1, 0.11, look.tint.clone().multiplyScalar(SOLDIER * BRICK_MEAN)));
   }
-  if (o.k === 'd') {
-    // A bluestone step from just under the ground in front up to the threshold.
-    const ground = Math.min(...[-1, 0, 1].map((s) => {
-      const q = out(0.35).addScaledVector(d, (s * (w + 0.3)) / 2);
-      return ctx.groundAt(q.x, q.z);
-    }));
-    const bottom = Math.max(ground - 0.05, y0 - 1.2);
-    if (y0 - bottom >= 0.06) parts.push(box(out(0.175, (y0 + bottom) / 2), d, n, w + 0.3, y0 - bottom, 0.35, new THREE.Color('#6b7177')));
+  // Bluestone steps up to a door, each block down to the ground under it (world/housePlan.ts).
+  for (const s of planSteps(o, ctx.houses, ctx.groundAt)) {
+    parts.push(box(out((s.from + s.to) / 2, (s.top + s.bottom) / 2), d, n, w + 0.3, s.top - s.bottom, s.to - s.from, new THREE.Color('#6b7177')));
   }
   if (o.k !== 'w') return parts;
   const upper = y0 - ctx.groundAt(mid.x, mid.z) > 2;

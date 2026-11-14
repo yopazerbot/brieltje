@@ -111,6 +111,56 @@ function followGround(ring: [number, number][], groundAt: GroundAt): [number, nu
   return out;
 }
 
+/** One block of a door's steps: from `from` to `to` metres out from the wall, its top and bottom heights. */
+export interface StepBlock {
+  from: number;
+  to: number;
+  top: number;
+  bottom: number;
+}
+
+/** Steps: a riser at most this high, a tread this deep, the top step (at the threshold) this deep, at most this many risers. */
+const RISER = 0.18;
+const TREAD = 0.28;
+const LANDING = 0.35;
+const MOST_RISERS = 6;
+
+/**
+ * The bluestone steps under a door, 30 cm wider than it: one step up to 30 cm over the ground in front, else a short
+ * flight of risers of up to 18 cm down to the ground (every block standing on the ground under it); none for a door
+ * more than about 1.1 m up (not a door to the street) or where the flight would run into a wall.
+ */
+export function planSteps(o: Opening, houses: Houses, groundAt: GroundAt): StepBlock[] {
+  if (o.k !== 'd') return [];
+  const l = Math.hypot(o.n[0], o.n[1]) || 1;
+  const [nx, nz] = [o.n[0] / l, o.n[1] / l];
+  const [mx, mz] = [(o.a[0] + o.b[0]) / 2, (o.a[1] + o.b[1]) / 2];
+  const w = Math.hypot(o.b[0] - o.a[0], o.b[1] - o.a[1]) || 1;
+  const [dx, dz] = [(o.b[0] - o.a[0]) / w, (o.b[1] - o.a[1]) / w];
+  const half = w / 2 + 0.15;
+  /** The lowest ground under the strip from `from` to `to` metres out (its corners and middle). */
+  const under = (from: number, to: number) => Math.min(...[from, (from + to) / 2, to].flatMap((t) => [-1, 0, 1].map((s) => groundAt(mx + nx * t + dx * s * half, mz + nz * t + dz * s * half))));
+  const y0 = o.y[0];
+  let risers = 1;
+  for (let k = 0; k < 2; k++) {
+    const rise = y0 - under(0, LANDING + (risers - 1) * TREAD);
+    if (rise < 0.06) return [];
+    risers = rise <= 0.3 ? 1 : Math.ceil(rise / RISER);
+  }
+  if (risers > MOST_RISERS) return [];
+  const depth = LANDING + (risers - 1) * TREAD;
+  // The flight's far corners and middle must stand in the open.
+  for (const s of [-1, 0, 1]) if (houses.wallsAt(mx + nx * (depth - 0.05) + dx * s * (half - 0.05), mz + nz * (depth - 0.05) + dz * s * (half - 0.05)).length) return [];
+  const rise = y0 - under(0, depth);
+  const out: StepBlock[] = [];
+  for (let k = 0; k < risers; k++) {
+    const from = k ? LANDING + (k - 1) * TREAD : 0;
+    const to = LANDING + k * TREAD;
+    out.push({ from, to, top: y0 - (k * rise) / risers, bottom: under(from, to) - 0.05 });
+  }
+  return out;
+}
+
 /**
  * The bases of the house walls of a whole set (the ring's or the village's): per wall block of a house (brick, 2.2 m
  * or more high, 12 m² or more, standing on the ground) a plinth of its house's style, or a damp base, following the
