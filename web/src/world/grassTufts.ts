@@ -232,7 +232,9 @@ ${tufts ? `          float gtWild = clamp(1.0 - gs.a * 2.0, 0.0, 1.0);
           // How tall: a mown lawn a few centimetres, plain grass a hand, rough grass to the shin.
           float gtTall = mix(mix(0.12, 0.075, gtMown), 0.26, gtWild) * gtMake.x * (1.0 - smoothstep(0.05, 0.45, gtSnow));
           // Shown: on grass, inside the images, within reach (fewer further off, growing in at the edge).
-          float gtShow = (1.0 - smoothstep(0.04, 0.4, gtCovered)) * step(0.9, gtGround.a)
+          // Up to the edge of what covers the ground and a hand over it: the blades hang over a paving's edge, so no
+          // lawn ends on a ruled line.
+          float gtShow = (1.0 - smoothstep(0.3, 0.75, gtCovered)) * step(0.9, gtGround.a)
             * step(max(abs(gtUv.x - 0.5), abs(gtUv.y - 0.5)), 0.49)
             * smoothstep(gtReach, gtReach * 0.75, gtFar)
             * step(gtPlace.w, mix(1.0, 0.3, smoothstep(gtReach * 0.25, gtReach * 0.9, gtFar)));

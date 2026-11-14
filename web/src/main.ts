@@ -407,7 +407,9 @@ const groundShade = new GroundShade(center, sunShadow.uniforms);
 groundShade.apply(grassMat, 0.35, true);
 groundShade.addGrass(house.surroundings?.grass); // the gardens' stripes and the meadows
 // The garden's own paths, drive and planted borders too (not the terraces: one is on the roof).
-for (const m of [...groundFamilies(renderer), roadPaint, surfaceMaterial('paving', renderer), surfaceMaterial('bed', renderer)]) groundShade.apply(m as THREE.MeshStandardMaterial);
+// The hard ones (all but the fields' soil and the borders' earth) take earth and green where they meet the grass.
+const softGround = new Set<THREE.Material>([blockMaterial('field_soil', renderer).material, surfaceMaterial('bed', renderer)]);
+for (const m of [...groundFamilies(renderer), roadPaint, surfaceMaterial('paving', renderer), surfaceMaterial('bed', renderer)]) groundShade.apply(m as THREE.MeshStandardMaterial, 1, false, !softGround.has(m));
 // The yards and gravel round the houses weathered, after the shading (world/yards.ts).
 weatherYards(['pave_light', 'gravel'].map((n) => blockMaterial(n, renderer).material as THREE.MeshStandardMaterial));
 // Ferns, brambles and shrubs on the woods' floor round the eye (world/undergrowth.ts), in the ground's shade.
@@ -3983,7 +3985,7 @@ async function buildVillage(): Promise<void> {
   await Promise.race([new Promise<void>((r) => (claimed = r)), roadsJob]);
   await between();
   // The centre's clinkers (the church square and the main street) have a texture of their own, fetched with the village: shaded as the other ground covers.
-  groundShade.apply(blockMaterial('pave_grey', renderer).material as THREE.MeshStandardMaterial);
+  groundShade.apply(blockMaterial('pave_grey', renderer).material as THREE.MeshStandardMaterial, 1, false, true);
   const made: { key: string; pieces: ReturnType<typeof buildTile> }[] = [];
   const cuts = askTiles();
   for (let i = 0; i < villageTiles.length; i++) {

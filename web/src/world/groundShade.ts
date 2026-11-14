@@ -1,11 +1,12 @@
 import * as THREE from 'three';
 import { FullScreenQuad } from 'three/addons/postprocessing/Pass.js';
 import { terrain, terrainTexture } from './terrain';
-import { blockMaterial } from './houseMeshes';
+import { blockMaterial, surfaceMaterial } from './houseMeshes';
 import type { GrassData } from './houseData';
 import { snowOn } from './snowCover';
 import { wetOn } from './wetGround';
 import { compileDrawn, compileQuad } from './warmShaders';
+import { groundNoise } from './groundNoise';
 
 /**
  * Light on the ground of the whole neighbourhood, worked out once when the sky
@@ -172,15 +173,33 @@ void main() {
       nearOpen = max(nearOpen, (1.0 - c.r) * (1.0 - dist / 1.6));
     }
   }
+  // Where hard ground (a road, paving, a yard, a track: the cover's second channel) meets the open grass, each side
+  // how near the other is, out to a metre: the grass grows rough along the edge, and the hard ground takes earth and
+  // green there (HARD below). Only level ground counts as open: a wall's or a hedge's foot has the contact band.
+  float hardHere = step(0.3, here.g) * (1.0 - step(0.5, here.r));
+  float nearOther = 0.0;
+  for (int k = 0; k < 8; k++) {
+    float a = float(k) * 0.785398 + 0.2;
+    vec2 dir = vec2(cos(a), sin(a));
+    for (int r = 0; r < 3; r++) {
+      float dist = 0.22 + float(r) * 0.3;
+      vec2 q = xz + dir * dist;
+      float hardThere = step(0.3, coverAt(q).g);
+      float level = step(heightAt(q) - ground - terrainAt(q), 0.08);
+      nearOther = max(nearOther, (hardHere > 0.5 ? (1.0 - hardThere) * level : hardThere) * (1.0 - dist));
+    }
+  }
   // Rough: on a field, weeds at its edge; on the grass, the unmown margins of fields, the banks of ditches
   // and ponds, the strip down a field track. Ragged, in clumps of a metre or so.
   float ragged = noise(xz / 2.3) * 0.5 + noise(xz / 0.9) * 0.5;
   float wild = here.r > 0.5 ? nearOpen * 0.9 : max(max(nearField, nearWater), nearTrack * 0.85);
   wild = smoothstep(0.2, 0.75, wild + (ragged - 0.5) * 0.75);
+  if (here.r < 0.5) wild = max(wild, smoothstep(0.3, 0.75, nearOther + (ragged - 0.5) * 0.45)); // the unmown fringe along paving
   float lawn = step(0.45, here.a); // a garden mown in stripes: mown up to its edge
   float meadow = here.a > 0.05 && here.a < 0.45 ? here.a * 2.0 * (0.7 + 0.6 * noise(xz / 9.0)) * (1.0 - here.r) : 0.0;
   wild = max(wild * (1.0 - lawn), meadow);
   float grass = wild > 0.004 ? 0.5 - 0.5 * wild : 0.5 + lawn * (here.a - 0.5);
+  if (hardHere > 0.5) grass = 0.5 - 0.5 * nearOther; // hard ground: how near the grass is, read as the rough grass is
 
   // Slow variation in colour, in patches of several metres.
   float macro = noise(xz / 23.0) * 0.6 + noise(xz / 7.0) * 0.4;
@@ -233,6 +252,29 @@ const grassCover = new THREE.ShaderMaterial({
   depthWrite: false,
   side: THREE.DoubleSide,
 });
+
+/**
+ * Hard ground (roads, pavements, drives, yards, squares) where it meets the grass and where the sky is hidden. A real
+ * street's edge is never a clean line: earth washes onto the paving, then the grass itself creeps over it in ragged
+ * tongues; along a wall's foot and under trees it stays damp and dark; and no stretch is one even colour. The bake's
+ * fourth channel says how near the open grass is (under a half, as it marks rough grass), its second how much sky a
+ * spot sees. One read of the small noise tile (world/groundNoise.ts) and a few sums; no geometry.
+ */
+const HARD = /* glsl */ `
+          float gsGrain = texture2D(groundGrain, vGroundXZ / 2.9).r;
+          float gsCrumb = texture2D(groundGrain, vGroundXZ / 0.63 + 0.41).r; // tufts and crumbs of a hand's width
+          // Only where the fine texture is read: the whole map's coarse one smears an edge over metres.
+          float gsNear = clamp(1.0 - gs.a * 2.0, 0.0, 1.0) * gsFine;
+          float gsEarth = smoothstep(0.1, 0.6, gsNear + (gsGrain - 0.5) * 0.5 * step(0.02, gsNear));
+          float gsGreen = smoothstep(0.6, 0.7, (gsNear - 0.4) * 1.5 + gsCrumb * 0.45 + (gsGrain - 0.5) * 0.25); // within a foot or so of the edge
+          float gsDamp = (1.0 - smoothstep(0.35, 0.8, gs.g)) * (0.5 + 0.5 * gsGrain);
+          diffuseColor.rgb *= 0.94 + 0.12 * gsGrain;
+          diffuseColor.rgb = mix(diffuseColor.rgb, diffuseColor.rgb * vec3(0.7, 0.64, 0.54), gsEarth * 0.6);
+          diffuseColor.rgb *= 1.0 - 0.3 * gsDamp;
+          diffuseColor.rgb = mix(diffuseColor.rgb, vec3(0.088, 0.106, 0.03) * (0.75 + 0.5 * gsCrumb), gsGreen * 0.9);`;
+
+/** Development only: ?nogrime leaves the hard ground clean, for comparing looks and cost. */
+const NO_GRIME = import.meta.env.DEV && new URLSearchParams(location.search).has('nogrime');
 
 const neutral = new THREE.DataTexture(new Uint8Array([255, 255, 128, 128]), 1, 1);
 neutral.needsUpdate = true;
@@ -344,14 +386,17 @@ export class GroundShade {
    * Make a ground material (grass, road) read the shading. `sheen` scales the sky's
    * reflection: grass seen towards the sun otherwise turns pale like sand. `grass`: the
    * lawn itself, which also draws its kind (the texture's fourth channel): mown stripes in
-   * the gardens, rough grass along fields, ditches and tracks, the meadows a little rougher.
+   * the gardens, rough grass along fields, ditches and tracks, the meadows a little rougher. `hard`: a road, paving
+   * or a yard, which takes earth and green where it meets the grass and stays damp where the sky is hidden (HARD).
    */
-  apply(material: THREE.MeshStandardMaterial, sheen = 1, grass = false): void {
+  apply(material: THREE.MeshStandardMaterial, sheen = 1, grass = false, hard = false): void {
+    if (NO_GRIME) hard = false;
     material.onBeforeCompile = (shader) => {
       Object.assign(shader.uniforms, this.uniforms, this.live);
       shader.uniforms.grassDetail = grassDetail;
+      if (hard) shader.uniforms.groundGrain = { value: groundNoise() };
       shader.vertexShader = shader.vertexShader
-        .replace('#include <common>', '#include <common>\nuniform vec3 groundArea;\nuniform vec3 groundAreaAll;\nuniform mat4 liveMatrix;\nvarying vec2 vGroundUv;\nvarying vec2 vGroundUvAll;\nvarying vec3 vGroundLive;')
+        .replace('#include <common>', '#include <common>\nuniform vec3 groundArea;\nuniform vec3 groundAreaAll;\nuniform mat4 liveMatrix;\nvarying vec2 vGroundUv;\nvarying vec2 vGroundUvAll;\nvarying vec3 vGroundLive;' + (hard ? '\nvarying vec2 vGroundXZ;' : ''))
         .replace(
           '#include <begin_vertex>',
           `#include <begin_vertex>
@@ -359,12 +404,13 @@ export class GroundShade {
           vec2 gsXZ = gsWorld.xz;
           vGroundUv = (gsXZ - groundArea.xy) / groundArea.z * 0.5 + 0.5;
           vGroundUvAll = (gsXZ - groundAreaAll.xy) / groundAreaAll.z * 0.5 + 0.5;
-          vGroundLive = (liveMatrix * vec4(gsWorld, 1.0)).xyz; // in the real-time shadow map: -1 to 1 inside`,
+          vGroundLive = (liveMatrix * vec4(gsWorld, 1.0)).xyz; // in the real-time shadow map: -1 to 1 inside
+          ${hard ? 'vGroundXZ = gsXZ;' : ''}`,
         );
       shader.fragmentShader = shader.fragmentShader
         .replace(
           '#include <common>',
-          '#include <common>\nuniform sampler2D groundShade;\nuniform sampler2D groundShadeAll;\nuniform sampler2D groundContact;\nuniform sampler2D groundContactAll;\nuniform float liveOn;\nuniform float grassDetail;\nvarying vec2 vGroundUv;\nvarying vec2 vGroundUvAll;\nvarying vec3 vGroundLive;',
+          '#include <common>\nuniform sampler2D groundShade;\nuniform sampler2D groundShadeAll;\nuniform sampler2D groundContact;\nuniform sampler2D groundContactAll;\nuniform float liveOn;\nuniform float grassDetail;\nvarying vec2 vGroundUv;\nvarying vec2 vGroundUvAll;\nvarying vec3 vGroundLive;' + (hard ? '\nuniform sampler2D groundGrain;\nvarying vec2 vGroundXZ;' : ''),
         )
         .replace(
           '#include <map_fragment>',
@@ -379,7 +425,7 @@ export class GroundShade {
           }
           if (gsFine > 0.0) gs = mix(gs, texture2D(groundShade, vGroundUv), gsFine);
           diffuseColor.rgb *= mix(0.86, 1.1, gs.b);
-          ${grass ? GRASS : ''}`,
+          ${grass ? GRASS : hard ? HARD : ''}`,
         )
         .replace(
           '#include <lights_fragment_end>',
@@ -414,6 +460,7 @@ export class GroundShade {
       wetOn(shader, grass ? { hollow: '(gs.b - 0.5) * 0.3', dark: 0.82, pools: 0.35, gloss: 0.3 } : { hollow: '(gs.b - 0.5) * 0.3' });
     };
     if (grass) material.customProgramCacheKey = () => 'groundShade|grass';
+    else if (hard) material.customProgramCacheKey = () => 'groundShade|hard';
     material.needsUpdate = true;
   }
 
@@ -550,6 +597,7 @@ export class GroundShade {
     for (const name of ['road', 'rd_concrete', 'rd_asphalt', 'rd_tiles', 'pave_light', 'pave_grey']) {
       asCover.set(blockMaterial(name, renderer).material, covers.roadEdges);
     }
+    asCover.set(surfaceMaterial('paving', renderer), covers.roadEdges); // the main house's own drive and paths
     const waterCover = covers.water;
     // Nothing else is drawn: whatever shares a group with the casters (the furniture in the house's) is hidden too.
     const swapped: [THREE.Mesh, THREE.Material | THREE.Material[]][] = [];

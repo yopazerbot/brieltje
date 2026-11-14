@@ -113,6 +113,10 @@ const PAVERS = '#aaa8a3';
 const EARTH = '#8c7f6a';
 /** The worn verge's colour where the earth at the road's edge runs out into the grass. */
 const VERGE = new THREE.Color('#6d7148');
+/** What gathers along a street's edges: silt and earth in the gutter, against the kerb and at the pavement's back. */
+const SILT = new THREE.Color('#6a6253');
+/** Metres: a kerbstone's length (the joints between them show). */
+const KERBSTONE = 1;
 const KH: Profile = {
   road: 'concrete', tint: '#b2afa7', slab: 5, centreJoint: true, cracks: 0.2, gutter: { w: 0.32, tint: SETTS }, kerb: { h: 0.11, tint: KERB_TINT },
   walk: { m: 'pavers', tint: PAVERS }, shoulder: { w: 0.4, tint: '#a19a8d' }, gullies: 24, manholes: 45, wear: 0.34,
@@ -561,23 +565,24 @@ class Builder {
   }
 
   /** An upright face along stations k0..k1 at offset o(k), from lift lo(k) to hi(k), facing away from the centre line (out) or towards it. */
-  riser(f: Frame, k0: number, k1: number, o: (k: number) => number, lo: (k: number) => number, hi: (k: number) => number, tint: string, outward: boolean): void {
+  riser(f: Frame, k0: number, k1: number, o: (k: number) => number, lo: (k: number) => number, hi: (k: number) => number, tint: string, outward: boolean, foot = 1): void {
     if (k1 <= k0) return;
     if (k1 - k0 > PIECE) {
-      for (let a = k0; a < k1; a += PIECE) this.riser(f, a, Math.min(k1, a + PIECE), o, lo, hi, tint, outward);
+      for (let a = k0; a < k1; a += PIECE) this.riser(f, a, Math.min(k1, a + PIECE), o, lo, hi, tint, outward, foot);
       return;
     }
     const mid = (k0 + k1) >> 1;
     if (!this.parts.mine(f.x[mid], f.z[mid])) return;
     const mesh = this.parts.get(f.x[mid], f.z[mid], this.material('kerb'), 'concrete');
     const c = this.c.set(tint);
+    const dark = foot === 1 ? c : new THREE.Color(tint).multiplyScalar(foot).lerp(SILT, 0.3); // the foot, where the dirt lies against it
     for (let k = k0; k < k1; k++) {
       const [ax, az] = f.at(k, o(k));
       const [bx, bz] = f.at(k + 1, o(k + 1));
       const side = Math.sign(o(k)) || 1;
       const out: [number, number] = [f.nx[k] * side * (outward ? 1 : -1), f.nz[k] * side * (outward ? 1 : -1)];
-      const v0 = mesh.vertex(ax, this.y(ax, az, lo(k)), az, f.s[k], lo(k), c);
-      const v1 = mesh.vertex(bx, this.y(bx, bz, lo(k + 1)), bz, f.s[k + 1], lo(k + 1), c);
+      const v0 = mesh.vertex(ax, this.y(ax, az, lo(k)), az, f.s[k], lo(k), dark);
+      const v1 = mesh.vertex(bx, this.y(bx, bz, lo(k + 1)), bz, f.s[k + 1], lo(k + 1), dark);
       const v2 = mesh.vertex(bx, this.y(bx, bz, hi(k + 1)), bz, f.s[k + 1], hi(k + 1), c);
       const v3 = mesh.vertex(ax, this.y(ax, az, hi(k)), az, f.s[k], hi(k), c);
       mesh.quad(v0, v1, v2, v3, out);
@@ -690,11 +695,13 @@ class Builder {
     const shade = (tint: THREE.Color, slab: number) => (k: number, o: number, out: THREE.Color) => {
       let track = 0;
       for (const t of tracks(k)) track = Math.max(track, Math.exp(-(((o - t) / 0.32) ** 2)));
-      const edge = Math.min(o - inB(k), inA(k) - o);
-      const dirt = edge < 0.5 ? 0.92 + 0.16 * Math.max(0, edge) : 1;
+      const edge = Math.max(0, Math.min(o - inB(k), inA(k) - o));
+      // Silt against the gutter or the verge: an earthy band a hand or two wide, heavier along some stretches than others.
+      const silt = Math.exp(-((edge / 0.3) ** 2)) * (0.3 + 0.7 * wave(f.s[k], 7, seed + (o > 0 ? 3 : 5)));
+      const dirt = (edge < 0.5 ? 0.94 + 0.12 * edge : 1) * (1 - 0.34 * silt);
       const along = 0.95 + 0.1 * wave(f.s[k], 9, seed);
       const blotch = 0.94 + 0.12 * hash(k, Math.round(o * 4), seed);
-      return out.copy(tint).multiplyScalar((1 - pf.wear * track) * dirt * along * slab * blotch);
+      return out.copy(tint).multiplyScalar((1 - pf.wear * track) * dirt * along * slab * blotch).lerp(SILT, 0.38 * silt);
     };
     const flatLift = () => road;
     const surface = pf.road;
@@ -718,7 +725,7 @@ class Builder {
         const sAt = Math.round(f.s[k0]);
         halves.forEach(([a, b], h) => {
           const tone = 0.93 + 0.14 * hash(sAt, h, seed);
-          this.strip(f, k0, k1, a, b, 'concrete', flatLift, shade(base, tone), halves.length > 1 ? [0, 0.25, 0.5, 0.75, 1] : COLS);
+          this.strip(f, k0, k1, a, b, 'concrete', flatLift, shade(base, tone), halves.length > 1 ? [0, 0.1, 0.25, 0.5, 0.75, 0.9, 1] : COLS);
         });
         // The joint across, sealed dark (across each concrete strip where the middle is another surface), and now
         // and then a crack sealed in black.
@@ -761,21 +768,34 @@ class Builder {
           const g0 = (k: number) => sign * (w(k) - gw);
           const g1 = (k: number) => sign * w(k);
           const setts = new THREE.Color(pf.gutter.tint);
-          // The gutter: setts, in two rows, the texture's pavers at half size.
-          this.strip(f, k0, k1, side === 0 ? g0 : g1, side === 0 ? g1 : g0, 'pavers', flatLift, (k, _o, out) => out.copy(setts).multiplyScalar(0.94 + 0.12 * hash(k, side, seed)), [0, 1], 2, 'concrete');
-          // The kerb: its face to the road and its top.
+          // The gutter: setts, in two rows, the texture's pavers at half size; dark with what the rain leaves against the kerb.
+          this.strip(f, k0, k1, side === 0 ? g0 : g1, side === 0 ? g1 : g0, 'pavers', flatLift, (k, o, out) => {
+            const atKerb = Math.min(1, Math.max(0, (Math.abs(o) - (w(k) - gw)) / (gw || 1)));
+            const muck = atKerb * atKerb * (0.45 + 0.55 * wave(f.s[k], 5, seed + side * 13));
+            return out.copy(setts).multiplyScalar((0.94 + 0.12 * hash(k, side, seed)) * (1 - 0.42 * muck)).lerp(SILT, 0.45 * muck);
+          }, [0, 0.55, 1], 2, 'concrete');
+          // The kerb: its face to the road, darker at its foot, and its top, every stretch a shade of its own.
           const kerbTint = new THREE.Color(pf.kerb.tint);
-          this.riser(f, k0, k1, (k) => sign * w(k), () => road, (k) => road + h(k), pf.kerb.tint, false);
+          this.riser(f, k0, k1, (k) => sign * w(k), () => road, (k) => road + h(k), pf.kerb.tint, false, 0.55);
           const t0 = (k: number) => sign * w(k);
           const t1 = (k: number) => sign * (w(k) + KERB);
-          this.strip(f, k0, k1, side === 0 ? t0 : t1, side === 0 ? t1 : t0, 'kerb', (k) => road + h(k), (_k, _o, out) => out.copy(kerbTint), [0, 1], 1, 'concrete', 0);
+          this.strip(f, k0, k1, side === 0 ? t0 : t1, side === 0 ? t1 : t0, 'kerb', (k) => road + h(k), (k, _o, out) => out.copy(kerbTint).multiplyScalar(0.9 + 0.14 * hash(k, side + 11, seed)), [0, 1], 1, 'concrete', 0);
+          // The joints between the kerbstones.
+          for (let s = Math.ceil(f.s[k0] / KERBSTONE + 0.5) * KERBSTONE; s < f.s[k1] - 0.3; s += KERBSTONE) {
+            let k = k0;
+            while (k < k1 - 1 && f.s[k + 1] <= s) k++;
+            const t = (s - f.s[k]) / (f.s[k + 1] - f.s[k] || 1);
+            const top = road + h(k) + (h(k + 1) - h(k)) * t;
+            const edge = w(k) + (w(k + 1) - w(k)) * t;
+            this.line(f, s, sign * (edge + 0.004), s, sign * (edge + KERB - 0.004), 0.014, '#6c6b66', () => top);
+          }
           // The pavement: sloping a little towards the road, down to the drive or the grass at its back.
           const p0 = (k: number) => sign * (w(k) + KERB);
           const p1 = (k: number) => sign * (w(k) + KERB + Math.max(0, q(k)));
           const walkTint = new THREE.Color(pf.walk!.tint);
           const inner = (k: number) => road + h(k) - 0.005;
           const outer = (k: number) => road + Math.max(0.025, h(k) - 0.04);
-          const walkLift = (k: number, o: number) => (Math.abs(o) - (w(k) + KERB) < 0.01 ? inner(k) : outer(k));
+          const walkLift = (k: number, o: number) => inner(k) + (outer(k) - inner(k)) * Math.min(1, Math.max(0, (Math.abs(o) - (w(k) + KERB)) / Math.max(0.05, q(k))));
           for (const [a, b, paved] of spans(k1 - k0 + 1, (i) => q(k0 + i) > 0)) {
             const ka = k0 + a;
             const kb = k0 + b;
@@ -783,7 +803,12 @@ class Builder {
               this.riser(f, ka, kb, t1, () => this.ground, (k) => road + h(k), pf.kerb.tint, true);
               continue;
             }
-            this.as(RANK.pavement, () => this.strip(f, ka, kb, side === 0 ? p0 : p1, side === 0 ? p1 : p0, pf.walk!.m, walkLift, (k, _o, out) => out.copy(walkTint).multiplyScalar(0.95 + 0.08 * wave(f.s[k], 6, seed + side)), [0, 1], 1, 'pave_light'));
+            // Its pavers a little different every few steps, and dirty along its back, where the gardens' earth washes on.
+            this.as(RANK.pavement, () => this.strip(f, ka, kb, side === 0 ? p0 : p1, side === 0 ? p1 : p0, pf.walk!.m, walkLift, (k, o, out) => {
+              const back = Math.max(0, q(k) - (Math.abs(o) - (w(k) + KERB)));
+              const muck = Math.exp(-((back / 0.22) ** 2)) * (0.4 + 0.6 * wave(f.s[k], 4, seed + side * 17 + 2));
+              return out.copy(walkTint).multiplyScalar((0.93 + 0.1 * wave(f.s[k], 6, seed + side)) * (0.96 + 0.08 * hash(k, Math.round(o * 3), seed)) * (1 - 0.24 * muck)).lerp(SILT, 0.3 * muck);
+            }, [0, 0.18, 0.82, 1], 1, 'pave_light'));
             this.riser(f, ka, kb, p1, () => this.ground, outer, pf.walk!.tint, true);
             for (let c = ka; c < kb; c += 8) this.block(f, c, Math.min(kb, c + 8), side === 0 ? t0 : p1, side === 0 ? p1 : t0, h(c) - 0.02);
           }
@@ -958,8 +983,9 @@ class Builder {
       const o = sign * (w(k) - gw / 2);
       const rect = (hs: number, ho: number): [number, number][] => [[s - hs, o - ho], [s + hs, o - ho], [s + hs, o + ho], [s - hs, o + ho]];
       this.flat(f, rect(0.3, Math.min(0.2, gw / 2 + 0.03)), '#777570', lift);
-      this.flat(f, rect(0.25, Math.min(0.16, gw / 2 - 0.01)), '#2e2f31', () => lift() + 0.002);
-      for (let i = -2; i <= 2; i++) this.line(f, s + i * 0.09, o - 0.12, s + i * 0.09, o + 0.12, 0.025, '#4c4d4f', () => lift() + 0.003);
+      // Cast iron left out in the rain: rust brown, as the tour showed them.
+      this.flat(f, rect(0.25, Math.min(0.16, gw / 2 - 0.01)), '#2a211c', () => lift() + 0.002);
+      for (let i = -2; i <= 2; i++) this.line(f, s + i * 0.09, o - 0.12, s + i * 0.09, o + 0.12, 0.025, '#4a372d', () => lift() + 0.003);
     }
   }
 
