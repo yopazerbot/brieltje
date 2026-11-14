@@ -1519,6 +1519,11 @@ export class Weapon {
       if (o.userData.restQ) o.quaternion.copy(o.userData.restQ as THREE.Quaternion);
     }
     if (m.shell) m.shell.visible = false;
+    // Aimed, the shotgun's stock reaches past the view's near edge from an aim of about 0.974 on, and through
+    // the cut the firing hand under it showed as an open palm. Put away from 0.97 (until then the stock covers
+    // it whole, so nothing is seen to go); below that it holds the grip as before. Moving it away instead
+    // showed its fingers at the foot of the view while aiming in.
+    if (m.handR) m.handR.visible = !(m === this.models.shotgun && this.aim >= 0.97);
     if (this.shown !== this.current) return; // dropping away: as it was
     const w = this.current;
     const spec = this.spec;
