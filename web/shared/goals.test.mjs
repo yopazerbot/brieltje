@@ -160,6 +160,12 @@ test('stepRun: a long step, a change of vehicle or two minutes without a point s
   assert.equal(stepRun(r0.run, ROUTE, { x: -1, z: 0 }, { x: -1, z: 0 }, null, 100).event, 'stop');
   assert.equal(stepRun(r0.run, ROUTE, { x: -1, z: 0 }, { x: -1, z: 0 }, 'foot', TIMEOUT_MS).event, null);
   assert.equal(stepRun(r0.run, ROUTE, { x: -1, z: 0 }, { x: -1, z: 0 }, 'foot', TIMEOUT_MS + 1).event, 'stop');
+  // A hop across the gate (a trip, a respawn, a teleport) starts nothing, the right way or not.
+  assert.equal(stepRun(null, ROUTE, { x: -20, z: 0 }, { x: 20, z: 0 }, 'foot', 0).event, null);
+  assert.equal(stepRun(null, ROUTE, { x: -5.5, z: 0 }, { x: 0, z: 0 }, 'foot', 0).event, null);
+  assert.equal(stepRun(null, ROUTE, { x: -4.5, z: 0 }, { x: 0, z: 0 }, 'foot', 0).event, 'start');
+  assert.equal(stepRun(null, { ...ROUTE, by: 'car', radius: 8 }, { x: -25, z: 0 }, { x: -7, z: 0 }, 'car', 0).event, 'start');
+  assert.equal(stepRun(null, { ...ROUTE, by: 'car', radius: 8 }, { x: -30, z: 0 }, { x: -7, z: 0 }, 'car', 0).event, null);
   // Standing in the gate after a finish does not start again: it starts only coming in from outside.
   assert.equal(stepRun(null, ROUTE, { x: 0, z: 0.5 }, { x: 1, z: 0 }, 'foot', 0).event, null);
 });

@@ -93,7 +93,7 @@ export const pointsOf = (route) => [...route.checkpoints, route.gate];
 /**
  * One frame of a run along `route`, the step from `from` to `to` ({ x, z }) moving `by` ('foot', 'bike', 'car' or null).
  * `run`: null, or { id, next (index into pointsOf), t0, last } (ms). Returns the run after it and what happened:
- * 'start' (through the gate, from outside it, towards the first checkpoint, moving as the route asks), 'checkpoint',
+ * 'start' (through the gate, from outside it, in a step no longer than STEP_MAX, towards the first checkpoint, moving as the route asks), 'checkpoint',
  * 'finish' (with `time` in ms), 'stop' (moved another way, a step too long, or too long since the last point), or null.
  */
 export function stepRun(run, route, from, to, by, nowMs) {
@@ -102,6 +102,8 @@ export function stepRun(run, route, from, to, by, nowMs) {
   if (!run || run.id !== route.id) {
     if (by !== route.by) return { run: null, event: null };
     if (Math.hypot(from.x - gx, from.z - gz) < r) return { run: null, event: null }; // already in it: go through it
+    // A hop (a trip, a respawn, a teleport) is no way through it.
+    if (!(Math.hypot(to.x - from.x, to.z - from.z) <= (STEP_MAX[route.by] ?? 5))) return { run: null, event: null };
     if (!passes(from.x, from.z, to.x, to.z, gx, gz, r)) return { run: null, event: null };
     const [fx, fz] = route.checkpoints[0];
     if ((to.x - from.x) * (fx - gx) + (to.z - from.z) * (fz - gz) <= 0) return { run: null, event: null }; // the wrong way
