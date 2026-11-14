@@ -81,6 +81,10 @@ export class Gnomes {
   readonly heights: number[];
   private found = new Set<string>();
   private villageIn = false;
+  /** All found: the golden gnome stands (once the village is in) */
+  private gold = false;
+  /** The warm-up frames behind the start screen: the golden gnome drawn too */
+  private warm = false;
   private mesh: THREE.InstancedMesh;
   private golden: THREE.Mesh;
   /** Instance i of the mesh draws spot shown[i] */
@@ -159,7 +163,14 @@ export class Gnomes {
 
   /** The golden gnome on the church square: once all are found. */
   setGolden(on: boolean): void {
-    this.golden.visible = on && this.villageIn;
+    this.gold = on;
+    this.golden.visible = this.warm || (on && this.villageIn);
+  }
+
+  /** The warm-up frames (world/goals.ts warming): the golden gnome drawn once before play, where it stands. */
+  warming(on: boolean): void {
+    this.warm = on;
+    this.setGolden(this.gold);
   }
 
   private rebuild(): void {
@@ -181,7 +192,7 @@ export class Gnomes {
     this.mesh.count = this.shown.length;
     this.mesh.instanceMatrix.needsUpdate = true;
     if (this.mesh.instanceColor) this.mesh.instanceColor.needsUpdate = true;
-    if (this.golden.visible && !this.villageIn) this.golden.visible = false;
+    this.golden.visible = this.warm || (this.gold && this.villageIn);
   }
 
   /** The first shown gnome not yet found within reach of your feet, or -1. */

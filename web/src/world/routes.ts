@@ -13,6 +13,8 @@ export const ROUTE_LIST: readonly Route[] = ROUTES.routes as Route[];
 const GATE_SHOW = 300;
 /** The line about a gate shows this close to it. */
 const GATE_NEAR = 15;
+/** The ring as drawn (m): smaller than the pass radius, so it stays clear of the houses by the road. */
+const drawnRadius = (route: Route) => Math.min(route.radius, route.by === 'car' ? 4 : 2.5);
 
 export interface RunResult {
   event: 'start' | 'checkpoint' | 'finish' | 'stop';
@@ -37,6 +39,8 @@ export class Routes {
   private villageIn = false;
   /** The rings as last placed: route and next point */
   private ringKey = '';
+  /** Every ring shown once for the warm-up frames behind the start screen (warming) */
+  private warm = false;
 
   constructor(private ground: (x: number, z: number) => number) {
     const ring = new THREE.TorusGeometry(1, 0.045, 6, 48);
@@ -59,7 +63,7 @@ export class Routes {
 
   /** A ring of `route`'s size standing at point (x, z), its face across the way from (fx, fz). */
   private stand(o: THREE.Mesh, route: Route, x: number, z: number, fx: number, fz: number): void {
-    const r = route.radius;
+    const r = drawnRadius(route);
     o.scale.setScalar(r);
     o.position.set(x, this.ground(x, z) + r * 0.92, z);
     o.rotation.set(0, Math.atan2(x - fx, z - fz), 0);
@@ -93,6 +97,41 @@ export class Routes {
     return this.run ? ROUTE_LIST.find((r) => r.id === this.run!.id) ?? null : null;
   }
 
+  /** The gates within 300 m of the camera: each frame the group is shown, playing or not (a menu, the warm-up). */
+  showGates(camera: THREE.Vector3): void {
+    for (let i = 0; i < ROUTE_LIST.length; i++) {
+      const [gx, gz] = ROUTE_LIST[i].gate;
+      this.gates[i].visible = this.warm || (this.villageIn && Math.hypot(gx - camera.x, gz - camera.z) < GATE_SHOW);
+    }
+  }
+
+  /** Not playing and no run on: the next step starts afresh (no hop from where you were before a trip or a respawn). */
+  forget(): void {
+    if (!this.run) this.last = null;
+  }
+
+  /**
+   * The warm-up frames behind the start screen (main.ts): while on, every ring is drawn, each material once (the gates,
+   * the next ring and the faint one after it, standing at the first gate), so none is drawn for the first time in play.
+   */
+  warming(on: boolean): void {
+    if (on === this.warm) return;
+    this.warm = on;
+    if (on) {
+      const r = ROUTE_LIST[0];
+      const [gx, gz] = r.gate;
+      for (const [o, m] of [[this.next, this.solid.get(r.id)!], [this.after, this.faint.get(r.id)!]] as const) {
+        o.material = m;
+        this.stand(o, r, gx, gz, gx - 1, gz);
+        o.visible = true;
+      }
+      for (const g of this.gates) g.visible = true;
+    } else {
+      this.ringKey = '-';
+      this.showRings(this.route());
+    }
+  }
+
   /** Stop a run where it is (a game began, the page went to the start screen): 'stop', or null when none was on. */
   stop(): RunResult | null {
     const route = this.route();
@@ -103,14 +142,10 @@ export class Routes {
   }
 
   /**
-   * Each frame while you play: the step from last frame's place to this one's for the run, and the rings. `by`: how you
+   * Each frame while you play: the step from last frame's place to this one's for the run, and its rings. `by`: how you
    * move (null: as a passenger or on a horse: no route). Returns what happened, or null.
    */
-  update(camera: THREE.Vector3, me: { x: number; z: number; by: By | null }, nowMs: number): RunResult | null {
-    for (let i = 0; i < ROUTE_LIST.length; i++) {
-      const [gx, gz] = ROUTE_LIST[i].gate;
-      this.gates[i].visible = this.villageIn && Math.hypot(gx - camera.x, gz - camera.z) < GATE_SHOW;
-    }
+  update(me: { x: number; z: number; by: By | null }, nowMs: number): RunResult | null {
     const from = this.last;
     this.last = { x: me.x, z: me.z };
     if (!this.villageIn || !from) return null;
@@ -152,6 +187,7 @@ export class Routes {
   }
 
   private showRings(route: Route | null): void {
+    if (this.warm) return;
     const key = route && this.run ? `${route.id}:${this.run.next}` : '';
     if (key === this.ringKey) return;
     this.ringKey = key;

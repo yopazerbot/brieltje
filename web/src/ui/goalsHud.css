@@ -9,10 +9,16 @@
 #goal-line b { font-size: 18px; font-weight: 800; font-variant-numeric: tabular-nums; }
 #goal-line span { overflow: hidden; text-overflow: ellipsis; }
 #goal-line i { display: inline-block; font-style: normal; font-size: 18px; font-weight: 800; line-height: 1; color: var(--lamp); }
-/* With touch controls: between the wordmark (and its Beta tag) and the minimap, and the toasts below it. */
-body.touch #goal-line { top: 8px; left: 320px; right: 130px; width: fit-content; max-width: none; margin: 0 auto; transform: none; padding: 5px 10px; font-size: 12px; gap: 7px; }
-body.touch #goal-line b, body.touch #goal-line i { font-size: 14px; }
-body.touch:has(#goal-line:not([hidden])) #hud-top { top: 44px; }
-/* A small view (a split-screen seat): smaller, clear of the name top left and the minimap top right. */
-body.compact #goal-line { top: 8px; left: 200px; right: 148px; width: fit-content; max-width: none; margin: 0 auto; transform: none; padding: 4px 9px; font-size: 12px; gap: 6px; }
-body.compact #goal-line b, body.compact #goal-line i { font-size: 13px; }
+/* With touch controls: between the wordmark (and its Beta tag) and the minimap, the toasts below it. At most two lines,
+   never wider than the room between them (a flex row's nowrap text would otherwise widen it past the map). */
+body.touch #goal-line, body.compact #goal-line {
+  top: 8px; left: 320px; right: auto; width: auto; max-width: calc(100vw - 452px); transform: none;
+  padding: 5px 10px; font-size: 12px; line-height: 1.25; gap: 7px; white-space: normal;
+}
+body.touch #goal-line span, body.compact #goal-line span {
+  min-width: 0; display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; line-clamp: 2; overflow: hidden;
+}
+body.touch #goal-line b, body.touch #goal-line i, body.compact #goal-line b, body.compact #goal-line i { font-size: 14px; flex: none; }
+body.touch:has(#goal-line:not([hidden])) #hud-top { top: 60px; }
+/* A split-screen seat: its name top left is narrower than the wordmark. */
+body.compact #goal-line { left: 200px; max-width: calc(100% - 350px); }

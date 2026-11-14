@@ -67,6 +67,10 @@ export class Goals {
   private played = 0;
   private villageIn = false;
   private look = new THREE.Vector3();
+  /** The big map's count shown (the group was visible last frame) */
+  private counted = true;
+  /** Warm-up frames behind the start screen: drawn, but nothing is found, run or shown in the line */
+  private warm = false;
 
   constructor(private o: GoalsOptions) {
     this.gnomes = new Gnomes(o.ground, o.floor, o.particles, o.low);
@@ -91,7 +95,37 @@ export class Goals {
   }
 
   private showCount(): void {
-    this.o.count(t('map.gnomes', { n: this.list.length, total: SPOTS.length }));
+    this.o.count(this.counted ? t('map.gnomes', { n: this.list.length, total: SPOTS.length }) : '');
+  }
+
+  /** Save what was found, merged with what another tab of this browser saved meanwhile. */
+  private saveFound(): void {
+    const kept = readFound(load(FOUND_KEY), GNOME_IDS);
+    const more = kept.found.filter((id) => !this.list.includes(id));
+    if (more.length) {
+      this.list.push(...more);
+      this.gnomes.setFound(this.list);
+      this.gnomes.setGolden(this.allFound());
+    }
+    this.told ||= kept.told;
+    save(FOUND_KEY, writeFound(this.list, this.told));
+  }
+
+  /** Save the best times, keeping a better one another tab saved meanwhile. */
+  private saveBest(): void {
+    const kept = readBest(load(BEST_KEY), BEST_KEYS);
+    for (const [key, ms] of Object.entries(kept)) if (!(this.routes.best[key] <= ms)) this.routes.best[key] = ms;
+    save(BEST_KEY, writeBest(this.routes.best));
+  }
+
+  /**
+   * The warm-up frames behind the start screen (main.ts): while on, the rings and the golden gnome are drawn too, each
+   * material once, so nothing is drawn for the first time in play; off puts everything back as it was.
+   */
+  warming(on: boolean): void {
+    this.warm = on;
+    this.gnomes.warming(on);
+    this.routes.warming(on);
   }
 
   settle(): void {
@@ -109,29 +143,37 @@ export class Goals {
   update(dt: number, camera: THREE.Camera, me: Me): void {
     if (!this.enabled) return;
     this.gnomes.update(dt);
+    // The big map's count goes with the rest: not during a game nor for a watcher.
+    if (this.group.visible !== this.counted) {
+      this.counted = this.group.visible;
+      this.showCount();
+    }
     if (!this.group.visible) {
       // A game, the start screen or watching: no run goes on through it.
       this.routes.stop();
       this.hud.set('', '', null);
       return;
     }
-    if (!me.on) {
-      // A menu over the game: the run waits (its clock does not), unless you stopped moving as the route asks.
+    camera.getWorldPosition(this.look);
+    this.routes.showGates(this.look);
+    if (!me.on || this.warm) {
+      // A menu over the game: the run waits (its clock does not), unless you stopped moving as the route asks. With no
+      // run on, where you were is forgotten: a trip, a respawn or a parachute drop is no step through a gate.
       const route = this.routes.route();
       if (route && me.by !== route.by) this.report(this.routes.stop());
+      this.routes.forget();
       this.hud.set('', '', null);
       return;
     }
     this.played += dt;
     if (!this.told && this.played > INTRO_AFTER) {
       this.told = true;
-      save(FOUND_KEY, writeFound(this.list, true));
+      this.saveFound();
       if (!this.list.length) this.o.announce(t('goals.intro', { total: SPOTS.length }), t('goals.introSub'));
     }
     const i = this.gnomes.near(me.x, me.z, me.feet);
     if (i >= 0) this.find(i, me);
-    camera.getWorldPosition(this.look);
-    this.report(this.routes.update(this.look, me, performance.now()));
+    this.report(this.routes.update(me, performance.now()));
     this.line(camera, me);
   }
 
@@ -140,7 +182,7 @@ export class Goals {
     if (this.list.includes(id)) return;
     this.list.push(id);
     this.told = true;
-    save(FOUND_KEY, writeFound(this.list, true));
+    this.saveFound();
     this.gnomes.mark(i);
     this.gnomes.pop(i);
     this.showCount();
@@ -160,7 +202,7 @@ export class Goals {
     if (r.event === 'stop') this.o.announce(t('route.stopped'), t('route.stoppedSub'));
     else if (r.event === 'finish') {
       const time = formatTime(r.time ?? 0, comma);
-      if (r.newBest) save(BEST_KEY, writeBest(this.routes.best));
+      if (r.newBest) this.saveBest();
       const best = this.routes.best[bestKey(r.route)];
       this.o.announce(time, r.newBest ? t('route.newBest') : t('route.best', { time: formatTime(best ?? r.time ?? 0, comma) }));
     }
@@ -195,7 +237,9 @@ export class Goals {
       return;
     }
     const by = this.byName(gate.by);
-    const how = me.by === gate.by ? t('route.start', { by }) : t('route.need', { by });
+    // A small screen (touch controls, a split-screen seat): the short way of saying it, between the wordmark and the map.
+    const narrow = document.body.classList.contains('touch') || document.body.classList.contains('compact');
+    const how = me.by === gate.by ? (narrow ? t('route.startShort') : t('route.start', { by })) : t(narrow ? 'route.needShort' : 'route.need', { by });
     const best = this.routes.best[bestKey(gate)];
     const parts = [this.routeName(gate.id), how];
     if (best !== undefined) parts.push(t('route.best', { time: formatTime(best, lang() === 'nl') }));
