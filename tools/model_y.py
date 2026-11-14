@@ -97,8 +97,8 @@ BOTTOM = curve([(0.0, 0.30), (0.05, 0.235), (0.16, 0.20), (0.45, 0.18), (1.0, 0.
 # Plan: half the body's width (the flare adds FLARE round the arches; the doors stay 15 mm in), and half
 # the width of the roof's glass (or of the hood's top).
 WIDTH = curve([(0.0, 0.62), (0.03, 0.70), (0.08, 0.78), (0.16, 0.85), (0.35, 0.915), (0.70, 0.942), (1.0, 0.948), (1.45, 0.948),
-               (1.70, 0.940), (2.40, 0.932), (3.10, 0.934), (3.50, 0.938), (3.80, 0.938), (4.10, 0.935), (4.35, 0.928), (4.55, 0.915),
-               (4.68, 0.90), (4.78, 0.88)])
+               (1.70, 0.940), (2.40, 0.932), (3.10, 0.934), (3.50, 0.938), (3.80, 0.938), (4.10, 0.928), (4.35, 0.900), (4.55, 0.878),
+               (4.68, 0.864), (4.78, 0.853)])
 ROOF = curve([(0.0, 0.40), (0.15, 0.62), (0.60, 0.72), (1.30, 0.76), (2.10, 0.635), (2.70, 0.61), (3.50, 0.585),
               (4.00, 0.56), (4.30, 0.55), (4.50, 0.56), (4.65, 0.58), (4.78, 0.54)])
 # How far the hood's middle stands over its edges (8 cm at the nose: full and nearly flat across, so its
@@ -220,7 +220,7 @@ U_N0 = 0.012       # the nose's tip (the front plate stands in front of it, insi
 U_J = 0.40
 U_T = 4.30
 NOSE_W, NOSE_T, NOSE_B = (U_J - U_N0, 1.75), (0.16, 3.6), (0.20, 3.6)   # (reach, roundness) of each
-TAIL_W, TAIL_T, TAIL_B = (0.24, 4.5), (0.12, 6.0), (0.10, 3.0)
+TAIL_W, TAIL_T, TAIL_B = (0.47, 2.0), (0.12, 6.0), (0.10, 3.0)
 ZC_N, ZC_T = 0.42, 0.60   # the heights where the nose and the tail end
 
 
@@ -272,8 +272,9 @@ def softened(pts, rounds=40):
 SOFT = {u: softened(TEMPLATES[u][0]) for u in TEMPLATES}
 # Where the scaled section's corners (its shoulder, the hood's edge, the bottom corner) would run across the
 # face as creases towards the tip, the rings turn into the softened loop: fully within SOFT_N[0] of the tip,
-# not at all from SOFT_N[1] on. Further back the corners stay: the creases along the hood.
-SOFT_N, SOFT_T = (0.05, 0.24), (0.03, 0.12)
+# not at all from SOFT_N[1] on. Further back the corners stay: the creases along the hood. The tail narrows over
+# its last 47 cm (TAIL_W), so its softening reaches that far too.
+SOFT_N, SOFT_T = (0.05, 0.24), (0.10, 0.45)
 
 
 def shell_ring(u):
@@ -730,7 +731,8 @@ for s in (-1, 1):
     groove([top_ray(u, s * x) for u, x in dense([(0.19, 0.60), (0.24, 0.645), (0.40, valley(0.40)),
                                                   (0.80, valley(0.80)), (1.05, valley(1.05)), (1.21, valley(1.21))], G_STEP)])
     # The tailgate's sides: across the deck behind the glass, then down the tail to the bumper.
-    groove([top_ray(u, s * x) for u, x in dense([(4.40, ROOF(4.40) + 0.10), (4.50, 0.66), (4.56, 0.645)], G_STEP)])
+    groove([top_ray(u, s * x) for u, x in dense([(4.40, ROOF(4.40) + 0.10), (4.50, key(4.50, "lx") - 0.085),
+                                                  (4.56, key(4.56, "lx") - 0.085)], G_STEP)])
     groove([back_ray(s * x, z) for x, z in dense([(TL_IN - 0.01, TL_Z[0] - 0.006), (TL_IN - 0.015, 0.75), (TL_IN - 0.025, 0.575)], G_STEP)])
 groove([top_ray(1.21, x) for x in across(-0.70, 0.70, 40)])  # the hood's back edge under the windshield
 # The tailgate's bottom edge, along the top of the black bumper.
@@ -830,26 +832,60 @@ ribbon(B, [top_ray(U_WS, x) for x in across(-ROOF(U_WS), ROOF(U_WS), 40)], 0.03,
 
 # ---- Rear: the spoiler lip, the tail light strip and the corner lamps, the black lower bumper and the plate.
 # Ducktail lip: the glass's end kicks up into a sharp edge that stands out over the channel, across the deck
-# and tapering into the corners over the lamps.
-def on_deck(x):
-    h = top_ray(LIP_U[-1], x)
-    return h is not None and h[0].z > CH[1] + 0.004 and h[1].z > 0.35
+# and tapering into the corners over the lamps. It follows the deck's rear edge round the bowed tail: its rows
+# lie as far in front of that edge as they do in the middle (LIP_U), its overhang reaches out across the edge.
+def on_deck(h):
+    # By height alone: a hit's normal is its triangle's, so a test on it jumps from triangle to triangle and
+    # puts steps into the lip.
+    return h is not None and h[0].z > CH[1] + 0.004
+
+
+def deck_edge(x):
+    """Where the deck ends going back at x (its u), or None where there is no deck."""
+    u = 4.40
+    if not on_deck(top_ray(u, x)):
+        return None
+    while on_deck(top_ray(u + 0.005, x)):
+        u += 0.005
+    lo, hi = u, u + 0.005  # then by halving, so the lip has no 5 mm steps
+    for _ in range(10):
+        mid = (lo + hi) / 2
+        lo, hi = (mid, hi) if on_deck(top_ray(mid, x)) else (lo, mid)
+    return lo
+
+
+LIP_BACK = deck_edge(0.0) - LIP_U[-1]
+
+
+def lip_u(x):
+    e = deck_edge(x)
+    return None if e is None else [e - LIP_BACK - (LIP_U[-1] - u) for u in LIP_U]
+
+
+def on_paint(x):
+    """The lip's rows at x all lie on the painted deck (behind the tailgate's glass or beside it)."""
+    us_ = lip_u(x)
+    return us_ is not None and all(u >= U_GLASS_END or abs(x) > key(u, "wr") + 0.01 for u in us_)
 
 
 lip_x = 0.0
-while lip_x < 0.95 and on_deck(lip_x + 0.01):
+while lip_x < 0.95 and on_paint(lip_x + 0.01):
     lip_x += 0.01
-lip_rows = []
+lip_top = []
 for x in across(-lip_x, lip_x, 44):
+    top = [top_ray(u, x) for u in lip_u(x) or []]
+    if top and all(top):
+        lip_top.append((x, top))
+lip_rows = []
+for i, (x, top) in enumerate(lip_top):
     k = cp.smooth((lip_x - abs(x)) / 0.16)
     k = max(0.12, k)
-    top = [top_ray(u, x) for u in LIP_U]
-    if not all(top):
-        continue
+    t = lip_top[min(i + 1, len(lip_top) - 1)][1][-1][0] - lip_top[max(i - 1, 0)][1][-1][0]
+    out = Vector((t.y, -t.x, 0)).normalized()  # back, and out towards the corners
     lift = (0.0006, 0.006 * k, 0.013 * k, 0.020 * k)
     row = [h[0] + Vector((0, 0, d)) for h, d in zip(top, lift)]
-    edge = row[-1] + Vector((0, -LIP_OUT * k, -0.002 * k))
-    row += [edge, edge + Vector((0, 0.006 * k, -0.012 * k - 0.003)), top[-1][0] + Vector((0, 0.008, -0.040))]
+    edge = row[-1] + out * LIP_OUT * k + Vector((0, 0, -0.002 * k))
+    row += [edge, edge - out * 0.006 * k + Vector((0, 0, -0.012 * k - 0.003)), top[-1][0] - out * 0.008 + Vector((0, 0, -0.040))]
     lip_rows.append([B.v(p) for p in row])
 for r0, r1 in zip(lip_rows, lip_rows[1:]):
     for j in range(len(r0) - 1):
@@ -964,7 +1000,7 @@ print(f"model_y: details {cp.triangles([details])} triangles")
 C = Builder("Cabin")
 tub = []
 for u in across(1.40, 4.40, 14):
-    info = section(u)[2]
+    info = shell_ring(u)[2]
     lx, bl = info["lx"], min(belt(u), TOP(u))
     zt = min(bl, TOP(u) - 0.03) - 0.004
     w_in = lx - 0.045
