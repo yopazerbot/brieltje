@@ -153,8 +153,11 @@ const taillight = () => new THREE.MeshStandardMaterial({ color: '#5a0a0d', rough
  * The panel gaps as lines ("GapLines" in a model): one pixel wide at any distance, where a groove in the body
  * narrower than a pixel breaks up into dots. Each car fades its own out further off (Car.update).
  */
-const gapLine = (): THREE.LineBasicMaterial => {
-  const m = new THREE.LineBasicMaterial({ color: '#000000', transparent: true, opacity: 0, depthWrite: false });
+const gapLine = (): THREE.LineBasicMaterial =>
+  towardsEye(new THREE.LineBasicMaterial({ color: '#000000', transparent: true, opacity: 0, depthWrite: false }));
+/** The light bar as a line ("BarLine" in a model): it stays whole where the bar is thinner than a pixel. Car.update gives it the bar's colour. */
+const barLine = (): THREE.LineBasicMaterial => towardsEye(new THREE.LineBasicMaterial({ color: '#e4ecf5' }));
+function towardsEye(m: THREE.LineBasicMaterial): THREE.LineBasicMaterial {
   // Drawn a little towards the eye (2 cm, more further off, as the depth buffer grows coarser), so the body's
   // surface just round its groove can't hide it in places. Where it lies on the screen stays the same.
   m.onBeforeCompile = (shader) => {
@@ -168,7 +171,7 @@ const gapLine = (): THREE.LineBasicMaterial => {
   };
   m.customProgramCacheKey = () => 'car-gap-line';
   return m;
-};
+}
 /** The parts that cast the car's shadow: the body, its glass and trim, the seats, the tyres. */
 const SHADOW_PARTS = new Set(['Paint', 'Glass', 'GlassDark', 'Trim', 'Interior', 'Tyre']);
 /** m from the eye: further off a car shows its simple copy ("Far" in the model), nearer again its full model. */
@@ -283,7 +286,7 @@ function prepare(scene: THREE.Group, own: Record<string, THREE.Material>, blurMa
       if (name === 'Glass' || name === 'GlassDark') o.renderOrder = 1; // after the cabin behind it
       o.userData.vehicle = true; // bullet holes stay on it when it drives off (see Decals)
     } else if (o instanceof THREE.LineSegments) {
-      o.material = own.GapLines ?? o.material; // the panel gaps' lines
+      o.material = (o.name === 'BarLine' ? own.BarLine : own.GapLines) ?? o.material; // the light bar's line, the panel gaps' lines
       o.raycast = () => {}; // no bullet or click stops on a line
     }
     // GLTF also names the tyre/rim material meshes Wheel_1..3. Animate only the axle parents:
@@ -416,6 +419,7 @@ export class Car {
   private key: string; // its moving block in the collision world
   private taillight = taillight();
   private gapLine = gapLine();
+  private barLine = barLine();
   /** Its headlights and tail lights at night (world/carLights.ts) */
   private lamps: CarLamps;
   private blurMat = blurMaterial();
@@ -449,7 +453,7 @@ export class Car {
     cars.add(this);
     void modelCopy(spec.model).then((scene) => {
       if (this.gone) return;
-      const own = { Paint: paint, TailLight: this.taillight, LightBar: this.lamps.bar, GapLines: this.gapLine };
+      const own = { Paint: paint, TailLight: this.taillight, LightBar: this.lamps.bar, GapLines: this.gapLine, BarLine: this.barLine };
       // The simple copy goes straight on the body, hidden until the car is far off; its lamps aren't the lamps' spots.
       const far = scene.getObjectByName('Far') ?? null;
       if (far) {
@@ -874,6 +878,7 @@ export class Car {
     this.lastSpeed = this.speed;
     // Its lights: the brake lights as by day, and at night while someone drives it the headlights and tail lights.
     this.lamps.update(dt, this.group.visible, local || this.driver !== null, this.braking, this.taillight, this.body, this.group);
+    if (this.barLine) this.barLine.color.copy(this.lamps.bar.emissive); // the light bar's line, lit with the bar
     this.world.setMoving(this.key, this.footprint(), this.y, this.y + this.spec.height);
   }
 
@@ -1039,7 +1044,7 @@ export class Car {
       mat.dispose();
     });
     cars.delete(this);
-    for (const m of [this.paint, this.plainPaint, this.taillight, this.blurMat, this.gapLine]) m.dispose();
+    for (const m of [this.paint, this.plainPaint, this.taillight, this.blurMat, this.gapLine, this.barLine]) m.dispose();
     this.lamps.dispose();
     this.noise.dispose();
   }
