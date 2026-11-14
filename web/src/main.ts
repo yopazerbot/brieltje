@@ -2373,18 +2373,25 @@ const stallChip = new StallChip();
 const marketStall = new MarketStall(world, (x, z) => house.ground + terrain.height(x, z), (root) => precompile(root));
 scene.add(marketStall.group);
 let stallWait = 0;
-/** Use at the stall on the thing you face: a purchase (not sooner than the server's 300 ms, nor with too few coins). */
-function buyAtStall(kind: StallKind): void {
+/**
+ * Use at the stall on the thing you face: a purchase (not sooner than the server's 300 ms, nor with too few coins).
+ * Whether it took Use: when it can't buy, Use goes on down the chain as if no stall were there (a turret beside it).
+ */
+function buyAtStall(kind: StallKind): boolean {
   const now = performance.now();
-  if (now < stallWait || stallChip.coins < stallChip.price(kind)) return;
+  if (now < stallWait || stallChip.coins < stallChip.price(kind)) return false;
   stallWait = now + 350;
-  if (net.connected) return net.send({ t: 'zbuy', k: kind }); // the kind only: the server has the coins, the price, where you stand and the rest
-  if (!solo) return;
+  if (net.connected) {
+    net.send({ t: 'zbuy', k: kind }); // the kind only: the server has the coins, the price, where you stand and the rest
+    return true;
+  }
+  if (!solo) return true;
   const r = solo.stall.buy(solo.loot, SOLO_ME, { x: player.x, y: player.feet, z: player.z, w: weapon.current, hp: combat.hp, guns: [...weapon.owned] }, kind, solo.horde.phase, now, solo.stallAt);
   if (r.got) gift(r.got.kind, r.got.w, r.got.kit, r.got.kind === 'medkit' ? Math.min(LOOT.health, combat.hp + (r.got.heal ?? 0)) : undefined);
   const code = r.why && { shut: 'zStallShut', far: 'zStallFar', short: 'zStallShort', full: 'zStallFull' }[r.why as 'shut' | 'far' | 'short' | 'full'];
   if (code) chat.system(() => serverText(code, {}, ''));
   stallChip.set(solo.stall.view(SOLO_ME));
+  return true;
 }
 
 /** Get in: alone right away; in multiplayer once the server says the car is yours. Not during the Zombies game (the server refuses too). */
@@ -3704,12 +3711,10 @@ renderer.setAnimationLoop((now: number) => {
         }
       }
     }
-    // The stall at the Zombies place (world/stall.ts): the thing you face on its table, bought with Use in the break. Shut, Use is left alone (a turret beside it).
-    const stallAim = action && !watching && !dead && !inCar && !onHorse && !tagWho && !downed && !target && games.zombies ? marketStall.aim(player.x, player.feet, player.z, player.yaw) : null;
-    if (stallAim && stallAim !== 'shut' && frame.usePressed) {
-      frame.usePressed = false;
-      buyAtStall(stallAim);
-    }
+    // The stall at the Zombies place (world/stall.ts): the thing you face on its table, bought with Use in the break. Shut, or
+    // with too few coins, Use is left alone (a turret beside it); a ball in reach is kicked first, and its line shows.
+    const stallAim = action && !watching && !dead && !inCar && !onHorse && !tagWho && !downed && !target && !ball && games.zombies ? marketStall.aim(player.x, player.feet, player.z, player.yaw) : null;
+    if (stallAim && stallAim !== 'shut' && frame.usePressed && buyAtStall(stallAim)) frame.usePressed = false;
     games.update(dt, player.x, player.feet, player.z, key('use', mode));
     // The cars: E or Triangle next to one gets you in (unless two are in it already), and out again.
     if (!inCar && !wantCar) car = cars.reduce((a, b) => (b.distanceTo(player.x, player.z) < a.distanceTo(player.x, player.z) ? b : a));
@@ -3878,7 +3883,7 @@ renderer.setAnimationLoop((now: number) => {
     if (downed) prompt = helping?.start ? t('prompt.reviving', { name: downed }) : t('prompt.revive', { use, name: downed });
     hud.setRing(helping ? (helping.start ? (now - helping.start) / helping.ms : 0) : null);
     if (pad) prompt = ''; // the list says it all
-    else if ((!inCar || onBike) && portalNear(player.x, player.z) && (onHorse || onBike || !rules.portals || games.fenced)) prompt = t(onHorse ? 'prompt.horsePortal' : onBike ? 'prompt.bikePortal' : games.fenced ? 'prompt.portalGame' : 'prompt.portalsOff');
+    else if (!stallAim && (!inCar || onBike) && portalNear(player.x, player.z) && (onHorse || onBike || !rules.portals || games.fenced)) prompt = t(onHorse ? 'prompt.horsePortal' : onBike ? 'prompt.bikePortal' : games.fenced ? 'prompt.portalGame' : 'prompt.portalsOff');
     hud.setPrompt(prompt);
     const armed = action && !dead && !inCar;
     hud.setWeapon(armed, dead || inCar ? '' : weapon.status);
