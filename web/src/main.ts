@@ -3965,13 +3965,24 @@ function seeBigs<L extends Iterable<{ id: number; kind: number }>>(list: L): L {
   for (const s of list) if (s.kind === BIG_ZOMBIE) bigsSeen.add(s.id);
   return list;
 }
-/** Every frame: the start screen's theme fades once play has begun, and the music follows the Zombies game as this page knows it. */
+let musicPhase: string | undefined;
+let musicWave = 0;
+/**
+ * Every frame: the start screen's theme fades once play has begun, and the music follows the Zombies game as this page
+ * knows it, for a player in the fight only (armed, not in Explore, not watching), and together only while connected
+ * (a dropped connection leaves the game's view as it was).
+ */
 function followMusic(): void {
   const v = games.view;
+  const wave = v.zombies?.wave ?? 0;
   if (!menu.onStartScreen) music.theme(false);
-  if (v.kind !== 'zombies') bigsSeen.clear();
-  else if (solo) seeBigs(solo.horde.zombies.values());
-  music.zombies({ on: v.kind === 'zombies', rest: v.phase === 'break', over: v.phase === 'done', wave: v.zombies?.wave ?? 0, left: v.zombies?.left ?? 0, big: bigsSeen.size });
+  // A new game (none now, one beginning again after its end, a lower wave): its own big ones.
+  if (v.kind !== 'zombies' || (musicPhase === 'done' && v.phase !== 'done') || wave < musicWave) bigsSeen.clear();
+  musicPhase = v.kind === 'zombies' ? v.phase : undefined;
+  musicWave = wave;
+  if (v.kind === 'zombies' && solo) seeBigs(solo.horde.zombies.values());
+  const fighting = v.kind === 'zombies' && weapon.enabled && !watching && (!me || net.connected);
+  music.zombies({ on: fighting, rest: v.phase === 'break', over: v.phase === 'done', wave, left: v.zombies?.left ?? 0, big: bigsSeen.size });
 }
 // The leaf cards' pictures are painted once play has begun, when the preset asks for them (world/leafCards.ts).
 void playing.then(() => treesMayPaint((textures) => {

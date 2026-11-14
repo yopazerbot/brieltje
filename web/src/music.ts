@@ -12,15 +12,19 @@
  *   a last hit that rings out when the game ends. Changes wait for a bar line; starting and stopping crossfade.
  *
  * A look-ahead scheduler: every 100 ms a timer puts the notes of the next 300 ms on the audio clock, so the music
- * keeps time through a slow frame (and further ahead in a background tab, whose timers run late). At most about a
- * dozen sources sound at once; every node is let go once its note ends. Nothing is scheduled while the music is at 0
- * or the sound is off. The music has its own gain on the master volume (sound.ts musicOut), past the room's echo and
- * the walls' muffling: it is not in the world.
+ * keeps time through a slow frame; the theme, which reacts to nothing, a bar further ahead (the world loading holds
+ * the page up). A one-off hit whose bar line was passed over comes late rather than not at all. At most about a dozen
+ * sources sound at once; every node is let go once its note ends. With the Sound off everything stops at once and the
+ * timer with it; at Music 0 and in a background tab the music fades out (0.2 s, 0.5 s) and the timer stops; it comes
+ * back as things are then. The music has its own gain on the master volume (sound.ts musicOut), past the room's echo
+ * and the walls' muffling: it is not in the world.
  *
  * The same pieces play onto any BaseAudioContext: `render` (the dev build's brielMusic, tools/dev/music.mjs) plays
- * them into an OfflineAudioContext, for checks without ears. No three.js here: the start screen uses this.
+ * them into an OfflineAudioContext, for checks without ears. No three.js here: the start screen fetches this at its first click (src/start.ts).
  */
+import { seat } from './seat';
 import { sound } from './sound';
+import { watch } from './watch';
 
 /** What the page knows of the Zombies game (src/main.ts). `big`: how many big ones came out so far. */
 export interface ZombieState {
@@ -48,6 +52,11 @@ function seeded(seed: number): () => number {
 /** Sources at once: low notes (hats, the arpeggio, the melody's extras) are left out above SOFT, every note above HARD. */
 const SOFT = 12;
 const HARD = 14;
+/**
+ * The music's bus is the Music setting times this: at 100 % (and the volume at 100 %) the loudest case, wave 8 with a
+ * big one, stays at or under 0.3 of full scale (tools/dev/music.mjs: 0.414 unscaled, 0.28 with this).
+ */
+const BUS = 0.68;
 
 /**
  * Where the notes go: one per context. It keeps count of the sources that will sound (to keep under SOFT and HARD) and
@@ -65,8 +74,11 @@ class Sink {
   mute = false;
   /** The notes' times on the audio clock, with how many sources each: [start, stop, n] */
   private spans: [number, number, number][] = [];
-  /** Offline: every note's span, to find the most sources at once afterwards */
+  /** Offline (and in the dev build): every note's span, to find the most sources at once afterwards */
   log: [number, number, number][] | null = null;
+  /** Who puts the next notes on the clock (a piece), and the notes not yet ended by owner, to stop them at once */
+  owner: object | null = null;
+  private owned = new Map<object, Set<AudioScheduledSourceNode[]>>();
 
   constructor(readonly c: BaseAudioContext, rnd: () => number) {
     const n = c.sampleRate;
@@ -96,6 +108,10 @@ class Sink {
     this.notes++;
     this.live += sources.length;
     this.nodes += sources.length + others.length;
+    const owner = this.owner;
+    let mine = owner ? this.owned.get(owner) : undefined;
+    if (owner && !mine) this.owned.set(owner, (mine = new Set()));
+    mine?.add(sources);
     let left = sources.length;
     for (const s of sources) {
       s.onended = () => {
@@ -105,6 +121,7 @@ class Sink {
         if (--left > 0) return;
         for (const node of [...sources, ...others]) node.disconnect();
         this.nodes -= sources.length + others.length;
+        mine?.delete(sources);
       };
       const offset = this.offsets.get(s);
       if (offset === undefined) s.start(start);
@@ -116,6 +133,20 @@ class Sink {
   /** Forget the spans that ended before `now`. */
   prune(now: number): void {
     if (this.spans.length > 40) this.spans = this.spans.filter((s) => s[1] > now);
+  }
+
+  /** Stop every note of `owner` at `now`, the ones still waiting to start too; their nodes go as they end. */
+  stopOwned(owner: object, now: number): void {
+    for (const sources of this.owned.get(owner) ?? []) {
+      for (const s of sources) {
+        try {
+          s.stop(now);
+        } catch {
+          // an older browser that allows one stop() only: it plays out, cut off from the music's gain
+        }
+      }
+    }
+    this.owned.delete(owner);
   }
 
   osc(type: OscillatorType, f: number, detune = 0): OscillatorNode {
@@ -390,19 +421,33 @@ abstract class Piece {
     this.fadeEnd = now + secs;
   }
 
+  /**
+   * Seconds put on the clock beyond the look-ahead. The theme reacts to nothing (its fade is on its gain), so it is a
+   * bar ahead: a page thread held up for a while as the world loads can't make it skip a chord.
+   */
+  readonly lead: number = 0;
+
   /** Put the steps due before `until` on the clock. A step long gone (the clock jumped: a hitch, a sleeping tab) is passed over. */
   run(now: number, until: number): void {
-    while (this.time < until && (this.fadeEnd === null || this.time < this.fadeEnd)) {
+    this.s.owner = this;
+    while (this.time < until + this.lead && (this.fadeEnd === null || this.time < this.fadeEnd)) {
       if (this.time >= now - 0.02) this.play(this.step, this.time);
       else this.pass(this.step);
       this.step++;
       this.time += this.stepLen;
     }
+    this.s.owner = null;
   }
 
-  /** Done and silent: its gain can go (the longest note rings 6 s). */
+  /** Faded out: what still rings of it is silent, and can be stopped. */
   gone(now: number): boolean {
-    return this.fadeEnd !== null && now > this.fadeEnd + 6.5;
+    return this.fadeEnd !== null && now > this.fadeEnd + 0.05;
+  }
+
+  /** Stop all its notes now, those waiting to start too, and let its gain go. */
+  drop(now: number): void {
+    this.s.stopOwned(this, now);
+    this.gain.disconnect();
   }
 
   protected abstract play(step: number, t: number): void;
@@ -469,21 +514,34 @@ const above = (m: number) => SCALE.find((x) => x > m) ?? m + 2;
 class Theme extends Piece {
   readonly stepLen = 60 / 70 / 2; // eighths at 70 beats a minute
   readonly peak = 1;
+  readonly lead = (60 / 70 / 2) * 8; // a bar ahead
   /** This bar's notes, with this pass's changes: [eighth, pitch, length in s, loudness, low] */
   private bar: [number, number, number, number, boolean][] = [];
+  /** The bar's first eighth was passed over: its chord comes in late, on the first eighth played */
+  private padLate = false;
+
+  private chord(barNo: number): number[] {
+    return TCHORD[PHRASES[Math.floor(barNo / 4) % 4].chords[barNo % 4]];
+  }
 
   protected play(step: number, t: number): void {
     const pos = step % 8;
     const barNo = Math.floor(step / 8);
     if (pos === 0) {
-      const phrase = PHRASES[Math.floor(barNo / 4) % 4];
-      const chord = TCHORD[phrase.chords[barNo % 4]];
-      pad(this.s, this.gain, t, this.stepLen * 8, chord, 0.05, this.rnd);
+      pad(this.s, this.gain, t, this.stepLen * 8, this.chord(barNo), 0.05, this.rnd);
       this.bar = this.vary(barNo);
-    }
+    } else if (this.padLate) pad(this.s, this.gain, t, this.stepLen * (8 - pos), this.chord(barNo), 0.05, this.rnd);
+    this.padLate = false;
     for (const [at, midi, len, loud, low] of this.bar) {
       if (at === pos) bell(this.s, this.gain, t, midi, 0.2 * loud, len, (this.rnd() - 0.5) * 0.5, low);
     }
+  }
+
+  /** A step passed over (the clock jumped): the bar's melody stays this bar's, and a missed chord comes in late. */
+  protected pass(step: number): void {
+    if (step % 8 !== 0) return;
+    this.bar = this.vary(Math.floor(step / 8));
+    this.padLate = true;
   }
 
   /** Bar `barNo`'s melody with this pass's small changes. */
@@ -529,10 +587,16 @@ class Zombies extends Piece {
   /** This bar's part and loudness (latched at the bar line) */
   section: Section = 'none';
   private intensity = 0;
-  private sectionBar = 0;
   private wave = 0;
   private bigs = -1;
   private bigDue = false;
+  /** The one-off hits seen coming on a bar line: played on the first step played after it, late if it was passed over */
+  private boomDue = false;
+  private endDue = false;
+  /** When the break's drone now playing ends (the next one starts as it fades) */
+  private droneEnd = 0;
+  /** The first step's time: big ones counted in the first 1.5 s were out already (joined mid-wave, a reconnect) */
+  private firstT = -1;
 
   /** How hard a wave drives: up with its number, down as its last few zombies are left. 0..1 */
   static intensity(wave: number, left: number): number {
@@ -540,35 +604,35 @@ class Zombies extends Piece {
     return base * (0.55 + 0.45 * Math.min(1, left / 6));
   }
 
-  private latch(barNo: number): boolean {
+  /** On a bar line: this bar's part and loudness, and the hits a change brings. */
+  private latch(): void {
     const z = this.state;
     const next: Section = !z.on ? 'none' : z.over ? 'end' : z.rest ? 'rest' : 'wave';
     const before = this.section;
-    const newWave = next === 'wave' && (before !== 'wave' || z.wave !== this.wave);
-    if (next !== before) this.sectionBar = barNo;
+    if (next === 'wave' && (before !== 'wave' || z.wave !== this.wave)) this.boomDue = true;
+    if (next === 'end' && (before === 'wave' || before === 'rest')) this.endDue = true;
+    if (next !== 'wave') this.boomDue = false;
     this.section = next;
     this.wave = z.wave;
     this.intensity = Zombies.intensity(z.wave, z.left);
-    return newWave;
   }
 
   protected pass(step: number): void {
-    if (step % 16 === 0) this.latch(Math.floor(step / 16));
-    this.watchBigs();
+    if (step % 16 === 0) this.latch();
   }
 
-  private watchBigs(): void {
+  private watchBigs(t: number): void {
     const n = this.state.big;
-    if (this.bigs >= 0 && n > this.bigs) this.bigDue = true;
+    if (this.firstT < 0) this.firstT = t;
+    if (this.bigs >= 0 && n > this.bigs && t > this.firstT + 1.5) this.bigDue = true;
     this.bigs = n;
   }
 
   protected play(step: number, t: number): void {
     const pos = step % 16;
     const barNo = Math.floor(step / 16);
-    const before = this.section;
-    const newWave = pos === 0 && this.latch(barNo);
-    this.watchBigs();
+    if (pos === 0) this.latch();
+    this.watchBigs(t);
     const s = this.s;
     const out = this.gain;
     const r = this.rnd;
@@ -576,7 +640,11 @@ class Zombies extends Piece {
     const sec = this.section;
     if (sec === 'rest') {
       this.bigDue = false;
-      if (pos === 0 && (barNo - this.sectionBar) % 2 === 0) drone(s, out, t, barLen * 2 + 0.9, 0.035, r, 320);
+      // The drone: two bars at a time, the next one coming in as the last fades (also after a passed-over step).
+      if (t >= this.droneEnd - 0.9) {
+        drone(s, out, t, barLen * 2 + 0.9, 0.035, r, 320);
+        this.droneEnd = t + barLen * 2 + 0.9;
+      }
       if (pos === 0 || pos === 8) {
         thump(s, out, t, 0.2);
         thump(s, out, t + 0.22, 0.13);
@@ -585,7 +653,8 @@ class Zombies extends Piece {
       const i = this.intensity;
       const root = ROOTS[barNo % 4];
       const lift = 0.6 + 0.4 * i;
-      if (newWave) boom(s, out, t, 0.14, 2.4, r);
+      if (this.boomDue) boom(s, out, t, 0.14, 2.4, r);
+      this.boomDue = false;
       if (pos % 4 === 0) kick(s, out, t, 0.24 * (0.75 + 0.25 * i));
       if (i >= 0.75 && pos === 14 && barNo % 2 === 1) kick(s, out, t, 0.17);
       if (pos === 4 || pos === 12) {
@@ -605,8 +674,9 @@ class Zombies extends Piece {
         this.bigDue = false;
         lowStab(s, out, t, 0.075);
       }
-    } else if (sec === 'end' && pos === 0 && barNo === this.sectionBar && (before === 'wave' || before === 'rest')) {
+    } else if (sec === 'end' && this.endDue) {
       // The last hit, ringing out: a deep boom, a long open chord of E, and the drone once more, fading.
+      this.endDue = false;
       boom(s, out, t, 0.22, 4, r);
       stab(s, out, t, 5.5, [E3, E3 + 7, E3 + 12, E3 + 15], 0.03, r);
       drone(s, out, t + 0.5, 5.5, 0.05, r, 200);
@@ -626,12 +696,27 @@ class Player {
   constructor(readonly c: BaseAudioContext, out: AudioNode, private rnd: () => number, level: number) {
     this.s = new Sink(c, rnd);
     this.bus = c.createGain();
-    this.bus.gain.value = level;
+    this.bus.gain.value = level * BUS;
     this.bus.connect(out);
   }
 
   setLevel(v: number, now: number): void {
-    this.bus.gain.setTargetAtTime(v, now, 0.08);
+    this.bus.gain.setTargetAtTime(v * BUS, now, 0.08);
+  }
+
+  /** Fade everything out over `secs` (a hidden tab, the music at 0); the pieces are stopped once silent. */
+  silence(now: number, secs: number): void {
+    for (const p of this.pieces) p.fade(now, secs);
+    this.theme = null;
+    this.zombies = null;
+  }
+
+  /** Stop everything at once (the sound off: inaudible already), so nothing is left to play on when it comes back. */
+  dropAll(now: number): void {
+    for (const p of this.pieces) p.drop(now);
+    this.pieces = [];
+    this.theme = null;
+    this.zombies = null;
   }
 
   want(theme: boolean, z: ZombieState | null, now: number): void {
@@ -653,7 +738,7 @@ class Player {
     this.s.mute = mute;
     this.s.prune(now);
     for (const p of this.pieces) p.run(now, now + ahead);
-    for (const p of this.pieces.filter((q) => q.gone(now))) p.gain.disconnect();
+    for (const p of this.pieces.filter((q) => q.gone(now))) p.drop(now);
     this.pieces = this.pieces.filter((q) => !q.gone(now));
   }
 
@@ -671,15 +756,25 @@ class Player {
 
 const TICK_MS = 100;
 const AHEAD = 0.3;
-const AHEAD_HIDDEN = 1.6; // a background tab's timers may run once a second
 let player: Player | null = null;
 let timer: ReturnType<typeof setInterval> | null = null;
 let level = 0.5;
-let allowed = true;
+/** One player per room: not the watch page, and in the split screen only seat 1. */
+const allowed = !watch && (!seat || seat.n === 1);
 let wantTheme = false;
 let wantZombies: ZombieState | null = null;
+/** The tab is in the background: the music fades out and waits */
+let hidden = typeof document !== 'undefined' && document.hidden;
 
 const wanted = () => wantTheme || !!wantZombies?.on;
+/** Whether music may sound now: on the Sound switch, the Music setting and the tab in view. */
+const audible = () => sound.enabled && level > 0 && !hidden;
+
+function stopTimer(): void {
+  if (timer === null) return;
+  clearInterval(timer);
+  timer = null;
+}
 
 /** The time the timer took on the page's thread (ms), and how often it ran: for the dev build's checks */
 let tickMs = 0;
@@ -693,33 +788,46 @@ function tick(): void {
 }
 
 function step(): void {
-  // Never the first to make the audio context: browsers start one only from a click, tap or key.
-  if (!wanted() && !player) return;
-  const out = allowed ? sound.musicOut() : null;
-  if (!out) return;
-  const c = out.context as AudioContext;
-  if (!player || player.c !== c) player = new Player(c, out, Math.random, level);
-  const now = c.currentTime;
-  player.want(wantTheme, wantZombies, now);
-  const ahead = typeof document !== 'undefined' && document.hidden ? AHEAD_HIDDEN : AHEAD;
-  player.tick(now, ahead, level <= 0 || !sound.enabled || c.state !== 'running');
-  if (!wanted() && player.idle && timer !== null) {
-    clearInterval(timer);
-    timer = null;
+  if (!allowed) return stopTimer();
+  if (!sound.enabled) {
+    // Inaudible already (the context is suspended): stop everything, so nothing plays on when the sound comes back.
+    if (player) player.dropAll(player.c.currentTime);
+    return stopTimer();
   }
+  // Never the first to make the audio context: browsers start one only from a click, tap or key.
+  if (!player && (!wanted() || !audible())) return stopTimer();
+  const out = sound.musicOut();
+  if (!out) return stopTimer();
+  const c = out.context as AudioContext;
+  if (!player || player.c !== c) {
+    player = new Player(c, out, Math.random, level);
+    if (import.meta.env.DEV) player.s.log = []; // the checks' look at the chords
+  }
+  const now = c.currentTime;
+  if (audible()) player.want(wantTheme, wantZombies, now);
+  else player.silence(now, hidden ? 0.5 : 0.2);
+  player.tick(now, AHEAD, c.state !== 'running');
+  if (player.idle && (!wanted() || !audible())) stopTimer();
 }
 
+/** Something changed: run the timer if there is something to play (or to fade out), and look at once. */
 function wake(): void {
-  if (!allowed || (!wanted() && !player)) return;
+  if (!allowed || (!wanted() && (!player || player.idle))) return;
   if (timer === null) timer = setInterval(tick, TICK_MS);
   tick();
 }
 
+if (typeof document !== 'undefined') {
+  // A tab in the background: fade out over half a second and stop; in view again, the music as things are now.
+  document.addEventListener('visibilitychange', () => {
+    hidden = document.hidden;
+    wake();
+  });
+}
+// The Sound switch: off stops everything at once, on starts what is wanted now.
+sound.onSwitch(wake);
+
 export const music = {
-  /** Whether this page plays music at all: not the watch page, and in the split screen only seat 1 (src/start.ts). */
-  allow(on: boolean): void {
-    allowed = on;
-  },
   /** The Music setting, 0 (off) to 1 (src/settings.ts); 0.5 by default. */
   setLevel(v: number): void {
     level = Math.max(0, Math.min(1, Number.isFinite(v) ? v : 0.5));
@@ -761,14 +869,19 @@ export async function render(kind: 'theme' | 'zombies', seconds: number, rate = 
   return { buffer, maxSources, notes: p.s.notes, leftSources: p.s.live, leftNodes: p.s.nodes };
 }
 
-/** The scripted Zombies run for the checks: a break, wave 1, a short break, wave 5 with a big one, the end. */
+/**
+ * The scripted Zombies run for the checks (80 s): a break, wave 1, a short break, wave 5 with a big one at 34 s, a short
+ * break, wave 8 (the loudest) with another big one at 54 s, and the end at 66 s.
+ */
 export function zombieRun(t: number): ZombieState {
   const z: ZombieState = { on: true, rest: false, over: false, wave: 0, left: 0, big: 0 };
   if (t < 10) return { ...z, rest: true };
   if (t < 26) return { ...z, wave: 1, left: Math.max(1, Math.ceil(8 - (t - 10) * 0.45)) };
   if (t < 30) return { ...z, rest: true, wave: 1 };
-  if (t < 48) return { ...z, wave: 5, left: Math.max(1, Math.ceil(14 - (t - 30) * 0.7)), big: t >= 34 ? 1 : 0 };
-  return { ...z, over: true, wave: 5, big: 1 };
+  if (t < 46) return { ...z, wave: 5, left: Math.max(1, Math.ceil(14 - (t - 30) * 0.7)), big: t >= 34 ? 1 : 0 };
+  if (t < 50) return { ...z, rest: true, wave: 5, big: 1 };
+  if (t < 66) return { ...z, wave: 8, left: Math.max(1, Math.ceil(20 - (t - 50))), big: t >= 54 ? 2 : 1 };
+  return { ...z, over: true, wave: 8, big: 2 };
 }
 
 /** Dev build: the music's state now, for the headless checks. */
@@ -786,6 +899,9 @@ function liveState(): Record<string, unknown> {
     nodes: player?.s.nodes ?? 0,
     notes: player?.s.notes ?? 0,
     twice: player?.s.twice ?? 0,
+    /** The last 3-source notes' start times: the theme's chords (to see none is missing after a stall) */
+    chords: (player?.s.log ?? []).filter(([, , n]) => n === 3).slice(-12).map(([a]) => Math.round(a * 1000) / 1000),
+    hidden,
     tickMs,
     ticks,
     timer: timer !== null,

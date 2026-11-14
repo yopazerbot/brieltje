@@ -46,8 +46,6 @@ function load(): Settings {
     return { ...DEFAULTS };
   }
 }
-/** The settings as stored, before the menu exists: the start screen's volume and music (src/start.ts). */
-export const storedSettings = load;
 
 const $ = (id: string) => document.getElementById(id) as HTMLInputElement;
 

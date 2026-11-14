@@ -19,8 +19,6 @@ import { applyStatic, onLang, setLang, t, type Lang } from './i18n';
 import { typing } from './keys';
 import { api, errorText, type KeptRun, type Me } from './net/client';
 import { sound } from './sound';
-import { music } from './music';
-import { storedSettings } from './settings';
 
 // Xbox's Edge browser turns the controller into a mouse pointer unless the page says it reads the controller itself
 // (Microsoft's gamepadInputEmulation); other browsers don't have the property and ignore it.
@@ -88,18 +86,33 @@ window.addEventListener('keydown', (e) => {
 });
 showSound();
 
-// Music (src/music.ts): one for the room, so not on the watch page and in the split screen only from seat 1. The
-// volume and the music as set before, from the start. The theme begins with the first click, key or touch on the
-// start screen (browsers start sound only from one); after the Sound button's own click too, so it can switch it on.
-music.allow(!watch && (!seat || seat.n === 1));
-sound.setVolume(storedSettings().volume);
-music.setLevel(storedSettings().music);
+// Music (src/music.ts, fetched at the first click, key or touch on the start screen: browsers start sound only from
+// one; after the Sound button's own click too, so it can switch it on): the start screen's theme. Not in the split
+// screen's seats nor on the watch page, which go straight into the game. The volume and the music as set before
+// (src/settings.ts keeps them; its menu takes over once the world is there), read here without it.
+function stored(key: 'volume' | 'music', fallback: number): number {
+  try {
+    const v = (JSON.parse(localStorage.getItem('briel.settings') || '{}') as Record<string, unknown>)[key];
+    return typeof v === 'number' && Number.isFinite(v) ? Math.max(0, Math.min(1, v)) : fallback;
+  } catch {
+    return fallback; // storage blocked, or not JSON
+  }
+}
+sound.setVolume(stored('volume', 0.8));
+let musicModule: Promise<typeof import('./music')> | null = null;
 const themeOnGesture = () => {
   if (!menu.onStartScreen || seat || watch) return;
   void sound.context()?.resume();
-  music.theme(true);
+  musicModule ??= import('./music');
+  void musicModule.then(({ music }) => {
+    if (!menu.onStartScreen) return; // play began meanwhile
+    music.setLevel(stored('music', 0.5));
+    music.theme(true);
+  });
 };
 for (const type of ['pointerdown', 'keydown', 'click'] as const) window.addEventListener(type, themeOnGesture);
+// The dev build: the music's checks (tools/dev/music.mjs) find window.brielMusic without a click.
+if (import.meta.env.DEV) void import('./music');
 
 // Full screen on phones and tablets: the browser's own where it has one (Android, iPad). Safari on an
 // iPhone has none for pages; there the game only fills the screen when started from the home screen

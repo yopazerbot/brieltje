@@ -25,6 +25,7 @@ let master: GainNode | null = null;
 let outdoors: GainNode | null = null; // out-of-doors sounds, into `walls`
 let walls: BiquadFilterNode | null = null; // the walls and windows between them and you: a lowpass, open outside
 let musicOut: GainNode | null = null; // the music (src/music.ts): the master volume, but no echo and no walls
+const switched: (() => void)[] = [];
 /** The echoes now playing: the newest fades in, the ones before it fade out and are let go. */
 let echoes: { send: GainNode; conv: ConvolverNode; level: number }[] = [];
 /** world/acoustics.ts: whether a spot is inside a building (a sound from there is not muffled). */
@@ -53,6 +54,11 @@ export const sound = {
       // ignore
     }
     if (ctx) void (on ? ctx.resume() : ctx.suspend());
+    for (const fn of switched) fn();
+  },
+  /** Call `fn` after every change of Sound on/off (src/music.ts). */
+  onSwitch(fn: () => void): void {
+    switched.push(fn);
   },
   /** The audio context, or null when sound is off. */
   context(): AudioContext | null {
