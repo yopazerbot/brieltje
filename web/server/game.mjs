@@ -45,6 +45,7 @@ import { boxesOverlap, boxPoints, clearOfPortals, makeIndoors, makeSolids } from
 import { bikeFields, bruteEntry, carFields, horseFields, playerFields, PROTO, TICK_MS } from '../shared/wire.mjs';
 import { cleanPick, LOADOUT, startingWeapons } from '../shared/loadout.mjs';
 import { houseAreas, makeNav, MAX_ADMIN_WAVE } from '../shared/zombies.mjs';
+import { LOOT } from '../shared/loot.mjs';
 import { cycleTime, DEFAULT_CHOICE, isChoice, newCycle, runOf, seasonCycle, skipCycle, SPEEDS, winterAt, withSpeed } from '../shared/moods.mjs';
 import { arenaEdge, arenaHome, arenaSpots, ARENAS, portalOf, villageGround } from '../shared/arenas.mjs';
 import { churchPrisms, makeChurch } from '../shared/church.mjs';
@@ -2011,8 +2012,10 @@ export class Game {
   throwNade(name, p, m, now) {
     if (!p.alive || !p.state?.armed || this.roundOver || this.inCar(name) || this.calm(p)) return; // none from the car or the school grounds
     const slot = p.nades.findIndex((t) => now >= t);
-    if (slot < 0) return;
-    p.nades[slot] = now + (GRENADE.back - 0.5) * 1000; // half a second early, for network jitter
+    // None back: in Zombies a spare from extra grenades, on the server's count (server/zombies.mjs spareNade).
+    if (slot < 0 && !this.modes.zombies?.spareNade(name, p, now)) return;
+    if (slot >= 0) p.nades[slot] = now + (GRENADE.back - 0.5) * 1000; // half a second early, for network jitter
+    p.lastNade = now;
     p.protectedUntil = 0;
     p.unfired = false; // a throw too
     const s = p.state;
@@ -2022,7 +2025,7 @@ export class Game {
     // Where the blast may be (server/grenade.mjs): from where the server has the thrower, at the speed the throw carried.
     const vh = typeof m.vx === 'number' && typeof m.vz === 'number' ? Math.hypot(v('vx'), v('vz')) : undefined;
     p.thrown.push({ at: now, x: s.x, y: s.y + 1.5, z: s.z, vh });
-    if (p.thrown.length > GRENADE.carry) p.thrown.shift();
+    if (p.thrown.length > GRENADE.carry + LOOT.nadesCarry) p.thrown.shift();
     this.broadcast({ t: 'nade', name, ...from, vx: v('vx'), vy: v('vy'), vz: v('vz') }, name);
   }
 

@@ -1598,9 +1598,11 @@ export class Horde {
     // row of stakes too, and a moment after (shared/loot.mjs sets `slow` and `slowUntil`).
     const facing = Math.max(0, Math.cos(wrap(want - z.yaw)));
     const wading = now < (z.slowUntil ?? 0) ? z.slow ?? 1 : 1;
+    // Near a music box playing (shared/loot.mjs sets `lull` and `lullUntil`, its own: a row of stakes can't overwrite them).
+    const lulled = now < (z.lullUntil ?? 0) ? z.lull ?? 1 : 1;
     // Faster for a moment after it heard a shot; slower for good once shot in the legs.
     const stirred = (now < (z.alertUntil ?? 0) ? ZOMBIE.alert : 1) * (z.lame ? ZOMBIE.lame : 1);
-    const speed = stop ? 0 : z.top * (0.3 + 0.7 * facing) * wading * stirred * (now < (z.climbUntil ?? 0) ? ZOMBIE.climb : 1);
+    const speed = stop ? 0 : z.top * (0.3 + 0.7 * facing) * wading * lulled * stirred *(now < (z.climbUntil ?? 0) ? ZOMBIE.climb : 1);
     const vx = Math.sin(z.yaw) * speed + push.x;
     const vz = Math.cos(z.yaw) * speed + push.z;
     const bx = z.x;

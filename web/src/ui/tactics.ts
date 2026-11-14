@@ -3,7 +3,7 @@ import { t } from '../i18n';
 import { paintball } from '../paintball';
 import { compactHud } from './compact';
 
-export const LOOT_LABELS = { ammo: 'loot.ammo', scope: 'loot.scope', claymore: 'loot.claymore', stakes: 'loot.stakes', turret: 'loot.turret' } as const;
+export const LOOT_LABELS = { ammo: 'loot.ammo', scope: 'loot.scope', claymore: 'loot.claymore', stakes: 'loot.stakes', turret: 'loot.turret', medkit: 'loot.medkit', armor: 'loot.armor', nades: 'loot.nades', lull: 'loot.lull', gun: 'loot.gun' } as const;
 
 /** Small world-space placement guides and screen-space cooperative markers. */
 export class Tactics {

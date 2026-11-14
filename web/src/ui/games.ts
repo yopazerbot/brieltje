@@ -2,6 +2,7 @@ import * as THREE from 'three';
 import { lang, listOf, onLang, plural, serverText, t } from '../i18n';
 import { paintball } from '../paintball';
 import { keepRun } from '../start';
+import type { LootKind } from '../../shared/loot.mjs';
 
 /**
  * Games in multiplayer (the admin starts them, the server keeps them): hide and seek, tag, a
@@ -41,11 +42,13 @@ export interface ZombiesView {
    * The rewards lying ([id, kind, x, y, z]), the claymores down ([id, x, y, z, yaw, owner]) and the rows
    * of stakes ([id, x, y, z, yaw, a, b, standing, owner]): shared/loot.mjs view
    */
-  items?: [number, 'ammo' | 'scope' | 'claymore' | 'stakes' | 'turret', number, number, number][];
+  items?: [number, LootKind, number, number, number][];
   mines?: [number, number, number, number, number, string][];
   stakes?: [number, number, number, number, number, number, number, number, string][];
   /** The turrets up: [id, x, y, z, yaw as set up, owner] */
   turrets?: [number, number, number, number, number, string][];
+  /** The music boxes playing: [id, x, y, z] */
+  lulls?: [number, number, number, number][];
 }
 
 export interface ModeView {

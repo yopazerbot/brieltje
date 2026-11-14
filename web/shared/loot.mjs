@@ -23,6 +23,16 @@
 //   player). After LOOT.turretArm it turns to the nearest zombie it can see within LOOT.turretRange
 //   and shoots it, LOOT.turretDamage every LOOT.turretEvery ms: a helper, a sixth of a rifle. After
 //   LOOT.turretRounds rounds it is spent and gone. It never hurts a player.
+// - A first-aid kit: LOOT.heal health back, LOOT.health at most. Only for who misses LOOT.healMin or
+//   more: it stays for a hurt teammate.
+// - An armour vest: LOOT.armor points in the kit. A swipe takes them first (soak), the rest takes
+//   health. Gone when you go down, kept between waves.
+// - Extra grenades: LOOT.nades spares, LOOT.nadesCarry at most. A throw uses a regular grenade when
+//   one is back, else a spare (spare), at least LOOT.nadeGap ms after the last throw. They don't come back.
+// - A music box: it opens where it lay and plays for LOOT.lullMs. Every zombie within LOOT.lullReach of
+//   it (LOOT.lullRise up or down) walks at LOOT.lullSlow of its pace (a big one LOOT.lullBigSlow), and
+//   for LOOT.lullHold after. LOOT.lullsAll play at once at most (the oldest stops).
+// - A supply crate: one of LOOT.guns you lack, at random. Lost when you go down, as every found gun.
 //
 // Who has what is a kit per player name (kits), kept for the game, a dropped connection included.
 
@@ -34,7 +44,7 @@ export const LOOT = {
   runnerChance: 0.1,
   bigChance: 1,
   /** Which reward, by weight */
-  weights: [['ammo', 0.45], ['claymore', 0.35], ['scope', 0.2]],
+  weights: [['ammo', 0.3], ['claymore', 0.16], ['nades', 0.13], ['medkit', 0.12], ['scope', 0.09], ['armor', 0.08], ['lull', 0.07], ['gun', 0.05]],
   /** At most this many lying at once; ms each lies before it is gone */
   lying: 6,
   life: 45000,
@@ -89,6 +99,26 @@ export const LOOT = {
   turretDamage: 12,
   turretTurn: 3.5,
   turretCone: 0.12,
+  /** First-aid kit: full health, what it gives back, and how much you must miss to take it */
+  health: 100,
+  heal: 50,
+  healMin: 15,
+  /** Armour vest: its points */
+  armor: 50,
+  /** Extra grenades: spares in one, carried at most, and ms after the last throw before a spare goes */
+  nades: 3,
+  nadesCarry: 6,
+  nadeGap: 400,
+  /** Supply crate: the guns it may hold */
+  guns: ['rifle', 'shotgun', 'sniper'],
+  /** Music box: m around it and up or down, ms it plays, the pace a zombie keeps in it (a big one), ms that lasts after, how many at once */
+  lullReach: 7,
+  lullRise: 3,
+  lullMs: 10000,
+  lullSlow: 0.3,
+  lullBigSlow: 0.6,
+  lullHold: 600,
+  lullsAll: 4,
 };
 
 const r2 = (v) => Math.round(v * 100) / 100;
@@ -109,7 +139,9 @@ export class Loot {
     this.rows = new Map();
     /** The turrets up: id -> { id, owner, x, y, z, set (its yaw as set up), yaw (where it aims), armedAt, rounds, next (ms: its next shot), target (zombie id or -1), at (its last tick) } */
     this.turrets = new Map();
-    /** Player name -> { ammo: [weapons with the bigger magazines], scope, claymores, stakes (rows carried), turrets } */
+    /** The music boxes playing: id -> { id, x, y, z, until } */
+    this.lulls = new Map();
+    /** Player name -> { ammo: [weapons with the bigger magazines], scope, claymores, stakes (rows carried), turrets, armor (points), nades (spares) } */
     this.kits = new Map();
     this.nextId = 1;
     /** Whether something fell in this wave yet (its last zombie leaves one if not) */
@@ -118,14 +150,32 @@ export class Loot {
 
   kit(name) {
     let k = this.kits.get(name);
-    if (!k) this.kits.set(name, (k = { ammo: [], scope: false, claymores: 0, stakes: 0, turrets: 0 }));
+    if (!k) this.kits.set(name, (k = { ammo: [], scope: false, claymores: 0, stakes: 0, turrets: 0, armor: 0, nades: 0 }));
     return k;
+  }
+
+  /** A swipe of `amount` on `name`: their armour takes what it can; the damage left (all of it for a non-finite or negative amount). */
+  soak(name, amount) {
+    if (!Number.isFinite(amount) || amount < 0) return amount;
+    const k = this.kits.get(name);
+    if (!k || !(k.armor > 0)) return amount;
+    const used = Math.min(k.armor, amount);
+    k.armor = Math.max(0, k.armor - used);
+    return amount - used;
+  }
+
+  /** `name` throws one of their spare grenades: true, or false with none left. */
+  spare(name) {
+    const k = this.kits.get(name);
+    if (!k || !(k.nades >= 1)) return false;
+    k.nades--;
+    return true;
   }
 
   /** Check placement with the same rules on a disposable copy of the inventories and placed objects. */
   preview(kind, name, player, at, now) {
     const probe = new Loot(this.nav, this.rand);
-    const kit = this.kits.get(name) ?? { ammo: [], scope: false, claymores: 0, stakes: 0, turrets: 0 };
+    const kit = this.kits.get(name) ?? { ammo: [], scope: false, claymores: 0, stakes: 0, turrets: 0, armor: 0, nades: 0 };
     probe.kits.set(name, { ...kit, ammo: [...kit.ammo] });
     probe.mines = new Map(this.mines);
     probe.rows = new Map(this.rows);
@@ -151,10 +201,7 @@ export class Loot {
     // `side` m to its right, `ahead` m in front of it (a zombie walks along sin, cos of its yaw).
     const leave = (kind, side, ahead = 0) => {
       const x = z.x + side * Math.cos(z.yaw) + ahead * Math.sin(z.yaw), zz = z.z - side * Math.sin(z.yaw) + ahead * Math.cos(z.yaw);
-      const item = { id: this.nextId++, kind, x: r2(x), y: r2(z.y), z: r2(zz), until: now + LOOT.life };
-      this.items.set(item.id, item);
-      this.dropped = true;
-      out.push(item);
+      out.push(this.put(kind, x, z.y, zz, now));
     };
     const big = z.kind === BIG;
     if (big) {
@@ -179,10 +226,20 @@ export class Loot {
     return out;
   }
 
+  /** Item `kind` lies at x, y, z from `now` (a beaten zombie's, or the dev build's own). */
+  put(kind, x, y, z, now) {
+    const item = { id: this.nextId++, kind, x: r2(x), y: r2(y), z: r2(z), until: now + LOOT.life };
+    this.items.set(item.id, item);
+    this.dropped = true;
+    return item;
+  }
+
   /**
-   * Player `name`, standing at `p` ({ x, y, z } and `w` the weapon in hand), takes item `id`: what
-   * they got ({ kind, w, kit }) or null (no such item, too far, or nothing in it for them: a second
-   * scope, a claymore, stakes or a turret over what they can carry; it stays for someone else).
+   * Player `name`, standing at `p` ({ x, y, z }, `w` the weapon in hand, `hp` their health and `guns`
+   * the guns they carry), takes item `id`: what they got ({ kind, w, heal, kit }) or null (no such
+   * item, too far, or nothing in it for them: a second scope, a claymore, stakes, a turret, spare
+   * grenades or a vest over what they can carry, a first-aid kit while they miss little, a supply
+   * crate with every gun in it carried already; it stays for someone else).
    */
   take(name, p, id, now) {
     const it = this.items.get(id);
@@ -193,13 +250,32 @@ export class Loot {
     if (it.kind === 'claymore' && k.claymores >= LOOT.carry) return null;
     if (it.kind === 'stakes' && k.stakes >= LOOT.stakesCarry) return null;
     if (it.kind === 'turret' && k.turrets >= 1) return null;
+    if (it.kind === 'armor' && k.armor >= LOOT.armor) return null;
+    if (it.kind === 'nades' && k.nades >= LOOT.nadesCarry) return null;
+    if (it.kind === 'medkit' && !(Number.isFinite(p.hp) && LOOT.health - p.hp >= LOOT.healMin)) return null;
+    const lacking = it.kind === 'gun' && Array.isArray(p.guns) ? LOOT.guns.filter((g) => !p.guns.includes(g)) : [];
+    if (it.kind === 'gun' && !lacking.length) return null;
     this.items.delete(id);
+    let w;
+    let heal;
     if (it.kind === 'scope') k.scope = true;
     else if (it.kind === 'claymore') k.claymores++;
     else if (it.kind === 'stakes') k.stakes = Math.min(LOOT.stakesCarry, k.stakes + LOOT.bundle);
     else if (it.kind === 'turret') k.turrets = 1;
-    else if (!k.ammo.includes(p.w)) k.ammo.push(p.w);
-    return { kind: it.kind, w: it.kind === 'ammo' ? p.w : undefined, kit: k };
+    else if (it.kind === 'armor') k.armor = LOOT.armor;
+    else if (it.kind === 'nades') k.nades = Math.min(LOOT.nadesCarry, k.nades + LOOT.nades);
+    else if (it.kind === 'medkit') heal = Math.min(LOOT.heal, LOOT.health - p.hp);
+    else if (it.kind === 'gun') w = lacking[Math.min(lacking.length - 1, Math.floor(this.rand() * lacking.length))];
+    else if (it.kind === 'lull') {
+      // It plays where it lay, not where its taker goes; the oldest stops when too many play.
+      while (this.lulls.size >= LOOT.lullsAll) this.lulls.delete(this.lulls.keys().next().value);
+      const l = { id: this.nextId++, x: it.x, y: it.y, z: it.z, until: now + LOOT.lullMs };
+      this.lulls.set(l.id, l);
+    } else {
+      w = p.w;
+      if (!k.ammo.includes(p.w)) k.ammo.push(p.w);
+    }
+    return { kind: it.kind, w, heal, kit: k };
   }
 
   /**
@@ -362,20 +438,32 @@ export class Loot {
    * right next to it). The caller hurts them (LOOT.damage) and tells everyone. A zombie in a row of
    * stakes is slowed (its `slow` and `slowUntil`, which the horde walks by) and wears it: `broke` the
    * rows worn through (gone now), `worn` whether a stake fell in one (the view changed). And the
-   * turrets shoot (`shots`: { turret, id }, the caller hurts the zombie; `spent`: turrets gone).
+   * turrets shoot (`shots`: { turret, id }, the caller hurts the zombie; `spent`: turrets gone). A
+   * music box that played out stops (`faded`: their ids); a zombie near one playing is lulled (its
+   * `lull` and `lullUntil`, which the horde walks by).
    */
   tick(now, zombies) {
     const gone = [];
     for (const it of this.items.values()) if (now >= it.until) gone.push(it.id);
     for (const id of gone) this.items.delete(id);
+    const faded = [];
+    for (const l of this.lulls.values()) if (now >= l.until) faded.push(l.id);
+    for (const id of faded) this.lulls.delete(id);
     const booms = [];
     const broke = [];
     const shots = [];
     const spent = [];
     let worn = false;
-    if (!this.mines.size && !this.rows.size && !this.turrets.size) return { gone, booms, broke, worn, shots, spent };
+    if (!this.mines.size && !this.rows.size && !this.turrets.size && !this.lulls.size) return { gone, booms, broke, worn, shots, spent, faded };
     const up = [];
     for (const q of zombies) if (q.act !== 'down') up.push(q);
+    for (const l of this.lulls.values()) {
+      for (const q of up) {
+        if (Math.hypot(q.x - l.x, q.z - l.z) > LOOT.lullReach || Math.abs(q.y - l.y) > LOOT.lullRise) continue;
+        q.lull = q.kind === BIG ? LOOT.lullBigSlow : LOOT.lullSlow;
+        q.lullUntil = now + LOOT.lullHold;
+      }
+    }
     this.turretTick(now, up, shots, spent);
     for (const r of [...this.rows.values()]) {
       const ux = Math.cos(r.yaw), uz = -Math.sin(r.yaw);
@@ -422,13 +510,14 @@ export class Loot {
       this.mines.delete(m.id);
       booms.push({ mine: m, ids });
     }
-    return { gone, booms, broke, worn, shots, spent };
+    return { gone, booms, broke, worn, shots, spent, faded };
   }
 
   /**
    * What every page draws: the items lying, [id, kind, x, y, z]; the mines down, [id, x, y, z, yaw, owner];
    * the rows of stakes, [id, x, y, z, yaw, a, b, stakes standing, owner]; the turrets up, [id, x, y, z,
-   * yaw as set up, owner] (where they aim and their rounds go with each shot: the caller's zfire).
+   * yaw as set up, owner] (where they aim and their rounds go with each shot: the caller's zfire); the
+   * music boxes playing, [id, x, y, z].
    */
   view() {
     return {
@@ -436,6 +525,7 @@ export class Loot {
       mines: [...this.mines.values()].map((m) => [m.id, m.x, m.y, m.z, m.yaw, m.owner]),
       stakes: [...this.rows.values()].map((r) => [r.id, r.x, r.y, r.z, r.yaw, r.a, r.b, r.up, r.owner]),
       turrets: [...this.turrets.values()].map((t) => [t.id, t.x, t.y, t.z, t.set, t.owner]),
+      lulls: [...this.lulls.values()].map((l) => [l.id, l.x, l.y, l.z]),
     };
   }
 
@@ -444,5 +534,6 @@ export class Loot {
     this.mines.clear();
     this.rows.clear();
     this.turrets.clear();
+    this.lulls.clear();
   }
 }

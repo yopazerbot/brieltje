@@ -16,12 +16,16 @@
 // claims to hover or stand in a wall) is warned, and out of the wave if they stay (perch).
 //
 // Rewards (shared/loot.mjs): a beaten zombie sometimes leaves one (a bigger ammo pack, a scope, a
-// claymore), and a big one a bundle of stakes and a turret too. The server keeps them: what lies where, who has
+// claymore, a first-aid kit, an armour vest, extra grenades, a music box, a supply crate), and a big
+// one a bundle of stakes and a turret too. The server keeps them: what lies where, who has
 // what, every pickup (take: an item that is there, within reach of the server's position, useful to
 // them; taken once), every claymore placed (place: carried, on a floor near the player, at most two
 // down) and set off (each tick, by the zombies the server has; its blast only hurts zombies), every
 // row of stakes planted (stakes: as a claymore) and worn through (each tick, by its zombies), and
-// every turret set up (turret: as a claymore), its aim and its shots (each tick; zombies only).
+// every turret set up (turret: as a claymore), its aim and its shots (each tick; zombies only). What
+// is in the five newer ones is the server's too: the health a kit gives (on its own count of it), the
+// vest that takes a swipe first (swipe), the spare grenades a throw may use (spareNade), where a
+// music box plays and which zombies it slows (each tick), the gun in a crate. No page names any of it.
 //
 // Who goes down waits for the end of the wave (their page shows it), then everyone comes back at
 // the place's start (the house's outside start places, or by the portal), unless a teammate helps
@@ -192,7 +196,7 @@ export class ZombieGame {
         changed = true;
       } else if (e.type === 'swipe') {
         const p = g.players.get(e.name);
-        if (p) g.zombieHurt(e.name, p, e.damage, this.horde.zombies.get(e.id)?.kind === BIG, now, this.horde.zombies.get(e.id));
+        if (p) this.swipe(e, p, now);
       } else if (e.type === 'door') {
         g.zombieDoor(e.id, e.dir);
       } else if (e.type === 'runners') {
@@ -221,8 +225,8 @@ export class ZombieGame {
     }
     // The rewards: items lying too long go; a claymore a zombie walked into goes off (zombies only); the
     // zombies in a row of stakes wade through it and wear it (a stake falls, or the row is gone).
-    const { gone, booms, broke, worn, shots, spent } = this.loot.tick(now, this.horde.zombies.values());
-    if (gone.length || worn || spent.length) changed = true;
+    const { gone, booms, broke, worn, shots, spent, faded } = this.loot.tick(now, this.horde.zombies.values());
+    if (gone.length || worn || spent.length || faded.length) changed = true;
     // The turrets' shots this tick: everyone sees each one fired at its zombie ([turret, zombie, rounds
     // left]), then it is hurt as by anyone's bullet, for the turret's owner.
     if (shots.length) g.broadcast({ t: 'zfire', s: shots.map(({ turret: t, id }) => [t.id, id, t.rounds]) });
@@ -250,10 +254,46 @@ export class ZombieGame {
     p.nextItem = now + 250;
     if (!Number.isInteger(m.id) || !p.alive || !p.state?.armed || g.inCar(name) || this.horde.phase === 'over') return;
     const s = p.state;
-    const got = this.loot.take(name, { x: s.x, y: s.y, z: s.z, w: s.w }, m.id, now);
+    const got = this.loot.take(name, { x: s.x, y: s.y, z: s.z, w: s.w, hp: p.hp, guns: [...(p.weapons ?? [])] }, m.id, now);
     if (!got) return;
-    g.send(p.ws, { t: 'zgift', kind: got.kind, w: got.w, kit: got.kit });
+    // What is in it is the server's: health back on its own count, a gun into the guns it checks each hit with.
+    if (got.kind === 'medkit') p.hp = Math.min(LOOT.health, p.hp + got.heal);
+    else if (got.kind === 'gun') p.weapons.add(got.w);
+    g.send(p.ws, { t: 'zgift', kind: got.kind, w: got.w, kit: got.kit, ...(got.kind === 'medkit' ? { hp: p.hp } : {}) });
     this.modes.send();
+  }
+
+  /**
+   * A zombie's swipe (event `e`) lands on `p`, unless they're out of it as game.zombieHurt has it: their
+   * vest takes it first (shared/loot.mjs soak), the rest goes on as any swipe. A swipe the vest took
+   * whole still counts as a hit: a teammate helping someone up lets go, and the page shows where from.
+   */
+  swipe(e, p, now) {
+    const g = this.game;
+    const name = e.name;
+    if (!p.alive || !p.state?.armed || g.inCar(name) || now < (p.protectedUntil || 0) || g.calm(p)) return;
+    const z = this.horde.zombies.get(e.id);
+    const big = z?.kind === BIG;
+    const before = this.loot.kits.get(name)?.armor ?? 0;
+    const left = this.loot.soak(name, e.damage);
+    if ((this.loot.kits.get(name)?.armor ?? 0) !== before) g.send(p.ws, { t: 'zgift', kind: 'kit', kit: this.loot.kit(name) });
+    if (left <= 0) {
+      p.hurtAt = now;
+      g.send(p.ws, { t: 'hurt', hp: p.hp, by: big ? 'a big zombie' : 'a zombie', ...(z ? { from: { x: z.x, z: z.z } } : {}) });
+      return;
+    }
+    g.zombieHurt(name, p, left, big, now, z);
+  }
+
+  /**
+   * game.throwNade found none of the regular grenades back: `name` throws a spare, if they carry one
+   * (on the server's count) and their last throw was LOOT.nadeGap ago. Their page gets the count left.
+   */
+  spareNade(name, p, now) {
+    if (this.horde.phase === 'over' || now - (p.lastNade ?? 0) < LOOT.nadeGap) return false;
+    if (!this.loot.spare(name)) return false;
+    this.game.send(p.ws, { t: 'zgift', kind: 'kit', kit: this.loot.kit(name) });
+    return true;
   }
 
   /**
@@ -422,9 +462,15 @@ export class ZombieGame {
     this.modes.send();
   }
 
-  /** A player went down (game.zombieHurt or a hit): they wait for the end of the wave. */
+  /** A player went down (game.zombieHurt or a hit): they wait for the end of the wave. Their vest is gone. */
   downed(name) {
     this.down.add(name);
+    const k = this.loot.kits.get(name);
+    if (k?.armor) {
+      k.armor = 0;
+      const p = this.game.players.get(name);
+      if (p) this.game.send(p.ws, { t: 'zgift', kind: 'kit', kit: k });
+    }
     const s = this.game.players.get(name)?.state;
     if (s && !this.fell.has(name)) this.fell.set(name, { x: s.x, y: s.y, z: s.z });
     this.downs[name] = (this.downs[name] ?? 0) + 1;

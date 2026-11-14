@@ -19,9 +19,16 @@ import type { Ring } from './houseData';
  * The turrets: a tripod whose head unfolds, turns to the zombie it shoots (the server says which, in
  * each shot) and flashes; its eye goes from green to amber to blinking red as its rounds run out, and
  * when they are out it is gone in a puff. Four draws a turret, five as it flashes.
+ * The five newer rewards' signs: a white first-aid kit with a red cross, a dark blue vest with two
+ * straps, three grenades, a little wooden music box with a crank, a big crate with two white bands.
+ * A music box taken opens where it lay and plays its tune; glowing dots on the ground mark the circle
+ * it slows the zombies in (all of them one instanced draw).
  */
 
-const COLORS: Record<LootKind, string> = { ammo: '#f2c14e', scope: '#5fd3f3', claymore: '#ff7a45', stakes: '#9be36b', turret: '#c58cff' };
+const COLORS: Record<LootKind, string> = {
+  ammo: '#f2c14e', scope: '#5fd3f3', claymore: '#ff7a45', stakes: '#9be36b', turret: '#c58cff',
+  nades: '#d7e05a', medkit: '#ff5d73', armor: '#4f8dff', lull: '#ff8ad8', gun: '#ffffff',
+};
 const REACH = 1.0; // m: the page asks for one this close (the server allows LOOT.reach)
 
 const ringGeo = new THREE.RingGeometry(0.3, 0.4, 32).rotateX(-Math.PI / 2);
@@ -145,7 +152,75 @@ const mats = {
   leg: lit('#2a2a2a', '#000000', 0),
   led: new THREE.MeshBasicMaterial({ color: '#ff2a1a' }),
   ledOff: new THREE.MeshBasicMaterial({ color: '#3a0d0a' }),
+  white: lit('#f2f2f0', '#ffffff', 0.35),
+  cross: lit('#e0263c', '#e0263c', 0.6),
+  vest: lit('#1f3a6b', '#0c1a33', 0.35),
+  strap: lit('#9aa3ad', '#2a2f35', 0.2),
+  musicWood: lit('#8a5a32', '#2a1608', 0.3),
+  brass: lit('#d4a640', '#5a4010', 0.4),
 };
+
+// The newer signs' own shapes: a red cross for each side of the first-aid kit, a vest's body and
+// straps, a grenade, a music box (its lid apart, so it can open) and its crank, a crate's bands.
+const crossGeo = mergeGeometries([-1, 1].flatMap((side) => [
+  new THREE.BoxGeometry(0.12, 0.035, 0.006).translate(0, 0, side * 0.087),
+  new THREE.BoxGeometry(0.035, 0.11, 0.006).translate(0, 0, side * 0.087),
+]));
+const vestGeo = new THREE.BoxGeometry(0.24, 0.3, 0.1);
+const strapGeo = mergeGeometries([-1, 1].map((side) => new THREE.BoxGeometry(0.04, 0.33, 0.106).translate(side * 0.065, 0.01, 0)));
+const nadeGeo = new THREE.SphereGeometry(0.06, 12, 9).scale(1, 1.2, 1);
+const musicGeo = new THREE.BoxGeometry(0.2, 0.11, 0.14).translate(0, 0.055, 0);
+const lidGeo = new THREE.BoxGeometry(0.2, 0.025, 0.14).translate(0, 0.0125, 0.07); // hinged at its back edge
+const crankGeo = mergeGeometries([
+  new THREE.CylinderGeometry(0.008, 0.008, 0.05, 6).rotateZ(Math.PI / 2).translate(0.125, 0.06, 0),
+  new THREE.BoxGeometry(0.01, 0.06, 0.012).translate(0.15, 0.035, 0),
+  new THREE.CylinderGeometry(0.01, 0.01, 0.03, 6).rotateZ(Math.PI / 2).translate(0.165, 0.01, 0),
+]);
+const crateBandGeo = mergeGeometries([-1, 1].map((side) => new THREE.BoxGeometry(0.035, 0.155, 0.175).translate(side * 0.07, 0, 0)));
+
+/** A music box: open (playing on the ground) or shut (a reward's sign). Its foot at the origin. */
+function musicBox(open: boolean): THREE.Group {
+  const g = new THREE.Group();
+  const lid = new THREE.Mesh(lidGeo, mats.musicWood);
+  lid.position.set(0, 0.11, -0.07);
+  lid.rotation.x = open ? -1.9 : 0;
+  g.add(new THREE.Mesh(musicGeo, mats.musicWood), lid, new THREE.Mesh(crankGeo, mats.brass));
+  g.traverse((o) => (o.userData.ignoreRay = true));
+  return g;
+}
+
+/** Dots on the ground round each music box playing: this many on its circle; at most LOOT.lullsAll play. */
+const LULL_DOTS = 16;
+const dotGeo = new THREE.SphereGeometry(0.07, 8, 6);
+const dotMat = new THREE.MeshBasicMaterial({ color: COLORS.lull, transparent: true, opacity: 0.8, depthWrite: false });
+/** The music box's tune: eight notes of its own (semitones over C5), one every NOTE_S, played again every PHRASE_S. */
+const TUNE = [4, 9, 7, 12, 9, 14, 11, 7];
+const NOTE_S = 0.3;
+const PHRASE_S = 2.6;
+
+/** One phrase of the tune from the box at `at`: plucked notes dying away, a little bell over each. */
+function tune(at: THREE.Vector3): void {
+  const ctx = sound.context();
+  const dest = sound.at(at.x, at.y + 0.2, at.z, 3);
+  if (!ctx || !dest) return;
+  const t0 = ctx.currentTime + 0.02;
+  TUNE.forEach((semi, i) => {
+    const f = 523.25 * Math.pow(2, semi / 12);
+    const t = t0 + i * NOTE_S;
+    for (const [mul, gain] of [[1, 0.22], [4, 0.04]]) {
+      const o = ctx.createOscillator();
+      o.type = 'sine';
+      o.frequency.value = f * mul;
+      const g = ctx.createGain();
+      g.gain.setValueAtTime(0.0001, t);
+      g.gain.exponentialRampToValueAtTime(gain, t + 0.008);
+      g.gain.exponentialRampToValueAtTime(0.0001, t + (mul === 1 ? 0.9 : 0.3));
+      o.connect(g).connect(dest);
+      o.start(t);
+      o.stop(t + 0.95);
+    }
+  });
+}
 
 /** A claymore's own shape: its front is its -z (the way it faces). */
 function mineModel(paint: boolean): { g: THREE.Group; led: THREE.Mesh } {
@@ -229,6 +304,26 @@ function sign(kind: LootKind): THREE.Group {
     t.g.scale.setScalar(0.5);
     t.g.position.y = -0.3;
     g.add(t.g);
+  } else if (kind === 'medkit') {
+    g.add(new THREE.Mesh(boxGeo, mats.white), new THREE.Mesh(crossGeo, mats.cross));
+  } else if (kind === 'armor') {
+    g.add(new THREE.Mesh(vestGeo, mats.vest), new THREE.Mesh(strapGeo, mats.strap));
+  } else if (kind === 'nades') {
+    for (const [x, y] of [[-0.075, -0.04], [0.075, -0.04], [0, 0.07]]) {
+      const n = new THREE.Mesh(nadeGeo, paintball.on ? mats.minePaint : mats.mine);
+      n.position.set(x, y, 0);
+      g.add(n);
+    }
+  } else if (kind === 'lull') {
+    const m = musicBox(false);
+    m.scale.setScalar(1.3);
+    m.position.y = -0.08;
+    g.add(m);
+  } else if (kind === 'gun') {
+    const crate = new THREE.Group();
+    crate.add(new THREE.Mesh(boxGeo, mats.box), new THREE.Mesh(crateBandGeo, mats.white));
+    crate.scale.setScalar(1.4);
+    g.add(crate);
   } else {
     const m = mineModel(paintball.on).g;
     m.position.y = -0.12;
@@ -266,6 +361,9 @@ export class Rewards {
   private turrets = new Map<number, { m: TurretModel; set: number; aim: number; pitch: number; born: number; shotAt: number; flashLeft: number; rounds: number; paint: boolean }>();
   /** A turret ran out of rounds and folded away: where (the caller puffs). */
   onSpent: (at: THREE.Vector3) => void = () => {};
+  /** The music boxes playing: the open box on the ground, when its tune plays next (this clock). */
+  private lulls = new Map<number, { g: THREE.Group; at: THREE.Vector3; next: number }>();
+  private dotMesh = new THREE.InstancedMesh(dotGeo, dotMat, LULL_DOTS * LOOT.lullsAll);
 
   /** `ground`: the floor's height at (x, z) near height y, for each stake's foot. */
   constructor(private ground: (x: number, z: number, y: number) => number,
@@ -279,6 +377,87 @@ export class Rewards {
       m.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
       this.group.add(m);
     }
+    this.dotMesh.count = 0;
+    this.dotMesh.userData.ignoreRay = true;
+    this.dotMesh.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
+    this.group.add(this.dotMesh);
+  }
+
+  /**
+   * The music boxes playing now ([id, x, y, z]): a new one opens on the ground with its circle of dots
+   * (LOOT.lullReach round it, each dot on the floor there) and plays its tune until it is gone.
+   */
+  setLulls(list: [number, number, number, number][]): void {
+    const ids = new Set(list.map((l) => l[0]));
+    let changed = false;
+    for (const [id, l] of this.lulls) {
+      if (ids.has(id)) continue;
+      l.g.removeFromParent();
+      this.lulls.delete(id);
+      changed = true;
+    }
+    for (const [id, x, y, z] of list) {
+      if (this.lulls.has(id)) continue;
+      const g = musicBox(true);
+      g.position.set(x, this.ground(x, z, y), z);
+      g.scale.setScalar(1.6);
+      this.group.add(g);
+      this.lulls.set(id, { g, at: new THREE.Vector3(x, y, z), next: this.clock });
+      changed = true;
+    }
+    if (!changed) return;
+    const m = new THREE.Matrix4();
+    let n = 0;
+    for (const l of this.lulls.values()) {
+      for (let i = 0; i < LULL_DOTS && n < LULL_DOTS * LOOT.lullsAll; i++) {
+        const a = (i / LULL_DOTS) * Math.PI * 2;
+        const x = l.at.x + Math.cos(a) * LOOT.lullReach, z = l.at.z + Math.sin(a) * LOOT.lullReach;
+        this.dotMesh.setMatrixAt(n++, m.makeTranslation(x, this.ground(x, z, l.at.y) + 0.08, z));
+      }
+    }
+    this.dotMesh.count = n;
+    this.dotMesh.instanceMatrix.needsUpdate = true;
+    this.dotMesh.computeBoundingSphere();
+  }
+
+  /** You took a first-aid kit (two notes going up) or opened a supply crate (a knock on wood), at `at`. */
+  pickup(kind: 'medkit' | 'gun', at: THREE.Vector3): void {
+    if (kind === 'gun') return woodSound(at, 'knock');
+    const ctx = sound.context();
+    const dest = sound.out();
+    if (!ctx || !dest) return;
+    const t0 = ctx.currentTime + 0.01;
+    for (const [i, f] of [[0, 523.25], [1, 783.99]]) {
+      const t = t0 + i * 0.12;
+      const o = ctx.createOscillator();
+      o.type = 'sine';
+      o.frequency.value = f;
+      const g = ctx.createGain();
+      g.gain.setValueAtTime(0.0001, t);
+      g.gain.exponentialRampToValueAtTime(0.25, t + 0.01);
+      g.gain.exponentialRampToValueAtTime(0.0001, t + 0.35);
+      o.connect(g).connect(dest);
+      o.start(t);
+      o.stop(t + 0.4);
+    }
+  }
+
+  /** Your vest took a swipe: a dull thunk. */
+  soaked(): void {
+    const ctx = sound.context();
+    const dest = sound.out();
+    if (!ctx || !dest) return;
+    const t = ctx.currentTime;
+    const o = ctx.createOscillator();
+    o.type = 'triangle';
+    o.frequency.setValueAtTime(120, t);
+    o.frequency.exponentialRampToValueAtTime(55, t + 0.12);
+    const g = ctx.createGain();
+    g.gain.setValueAtTime(0.4, t);
+    g.gain.exponentialRampToValueAtTime(0.0001, t + 0.16);
+    o.connect(g).connect(dest);
+    o.start(t);
+    o.stop(t + 0.18);
   }
 
   /**
@@ -494,6 +673,7 @@ export class Rewards {
     this.setMines([]);
     this.setStakes([]);
     this.setTurrets([], true);
+    this.setLulls([]);
   }
 
   /** The item within reach of your feet (the nearest), or -1. */
@@ -515,6 +695,13 @@ export class Rewards {
   /** Every frame: the signs turn and bob, the beams breathe, an armed claymore blinks, a worn stake tips over, a turret unfolds, aims and flashes. */
   update(dt: number): void {
     this.clock += dt;
+    // The music boxes play their tune again and again; their dots glow with it.
+    for (const l of this.lulls.values()) {
+      if (this.clock < l.next) continue;
+      l.next = this.clock + PHRASE_S;
+      tune(l.at);
+    }
+    if (this.lulls.size) dotMat.opacity = 0.55 + 0.35 * Math.abs(Math.sin(this.clock * Math.PI / NOTE_S / 2));
     for (const t of this.turrets.values()) {
       // Unfolding: the head rises out of the hub, the barrel down; then it turns to where it shoots,
       // or, a while after its last shot, looks slowly round about the way it was set up.

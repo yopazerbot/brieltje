@@ -4,6 +4,7 @@ import { sound } from '../sound';
 import type { World } from './collision';
 import { waterLevel } from './water';
 import SPEC from '../../shared/grenade.json';
+import { LOOT } from '../../shared/loot.mjs';
 
 /**
  * Hand grenades (G, or R1 on the controller). Everyone carries two; a thrown one is back
@@ -91,6 +92,9 @@ export class Grenades {
   private live: Live[] = [];
   /** When each of your grenades is back, on this clock (seconds); in your pocket once passed */
   private back: number[] = Array(GRENADE.carry).fill(0);
+  /** Spare grenades found in Zombies (shared/loot.mjs: the kit's `nades`); they don't come back */
+  extra = 0;
+  private lastThrow = -Infinity;
   private clock = 0;
   private next = new THREE.Vector3();
   private n = new THREE.Vector3();
@@ -114,13 +118,19 @@ export class Grenades {
     this.back.fill(0);
   }
 
-  /** Throw one of yours from `from` at `vel` (m/s); false when you have none. */
-  throw(from: THREE.Vector3, vel: THREE.Vector3): boolean {
+  /**
+   * Throw one of yours from `from` at `vel` (m/s): 'own' (one of the regular ones), 'spare' (none of those
+   * back: one of the `extra` found in Zombies, at least LOOT.nadeGap after the last throw, as the server
+   * counts it), or false when you have none.
+   */
+  throw(from: THREE.Vector3, vel: THREE.Vector3): 'own' | 'spare' | false {
     const i = this.back.findIndex((t) => this.clock >= t);
-    if (i < 0) return false;
-    this.back[i] = this.clock + GRENADE.back;
+    if (i < 0 && !(this.extra > 0 && this.clock - this.lastThrow >= LOOT.nadeGap / 1000)) return false;
+    if (i >= 0) this.back[i] = this.clock + GRENADE.back;
+    else this.extra--;
+    this.lastThrow = this.clock;
     this.add(from, vel, null);
-    return true;
+    return i >= 0 ? 'own' : 'spare';
   }
 
   /** Someone else threw one. */

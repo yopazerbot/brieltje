@@ -174,6 +174,9 @@ export interface Zombie {
   /** In a row of stakes (shared/loot.mjs): the share of its pace it walks at, until slowUntil (ms) */
   slow?: number;
   slowUntil?: number;
+  /** Near a music box playing (shared/loot.mjs): the share of its pace it walks at, until lullUntil (ms) */
+  lull?: number;
+  lullUntil?: number;
   /** Heard a shot: walks faster until this (ms) */
   alertUntil?: number;
   /** Shot in the legs: limps for good */

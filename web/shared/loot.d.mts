@@ -2,7 +2,7 @@
 
 import type { Nav, Zombie } from './zombies.mjs';
 
-export type LootKind = 'ammo' | 'scope' | 'claymore' | 'stakes' | 'turret';
+export type LootKind = 'ammo' | 'scope' | 'claymore' | 'stakes' | 'turret' | 'medkit' | 'armor' | 'nades' | 'lull' | 'gun';
 
 export const LOOT: {
   chance: number;
@@ -49,6 +49,21 @@ export const LOOT: {
   turretDamage: number;
   turretTurn: number;
   turretCone: number;
+  health: number;
+  heal: number;
+  healMin: number;
+  armor: number;
+  nades: number;
+  nadesCarry: number;
+  nadeGap: number;
+  guns: string[];
+  lullReach: number;
+  lullRise: number;
+  lullMs: number;
+  lullSlow: number;
+  lullBigSlow: number;
+  lullHold: number;
+  lullsAll: number;
 };
 
 export interface Kit {
@@ -59,6 +74,10 @@ export interface Kit {
   stakes: number;
   /** A turret carried (0 or 1) */
   turrets: number;
+  /** Armour points left of a vest */
+  armor: number;
+  /** Spare grenades carried */
+  nades: number;
 }
 
 export interface Item {
@@ -111,6 +130,15 @@ export interface Turret {
   at: number;
 }
 
+/** A music box playing: where it lies, and until when (ms). */
+export interface Lull {
+  id: number;
+  x: number;
+  y: number;
+  z: number;
+  until: number;
+}
+
 type At = { x: number; y: number; z: number; yaw: number };
 
 export class Loot {
@@ -119,23 +147,28 @@ export class Loot {
   mines: Map<number, Mine>;
   rows: Map<number, Row>;
   turrets: Map<number, Turret>;
+  lulls: Map<number, Lull>;
   kits: Map<string, Kit>;
   kit(name: string): Kit;
+  soak(name: string, amount: number): number;
+  spare(name: string): boolean;
+  put(kind: LootKind, x: number, y: number, z: number, now: number): Item;
   wave(): void;
   drop(z: Zombie, now: number, last?: boolean, fighters?: string[]): Item[];
-  take(name: string, p: { x: number; y: number; z: number; w: string }, id: number, now: number): { kind: LootKind; w?: string; kit: Kit } | null;
+  take(name: string, p: { x: number; y: number; z: number; w: string; hp?: number; guns?: string[] }, id: number, now: number): { kind: LootKind; w?: string; heal?: number; kit: Kit } | null;
   place(name: string, p: { x: number; y: number; z: number }, at: At, now: number): { mine?: Mine; why?: 'none' | 'max' | 'spot' };
   spot(p: { x: number; y: number; z: number }, at: At): (At & { node: number }) | null;
   placeStakes(name: string, p: { x: number; y: number; z: number }, at: At): { row?: Row; why?: 'none' | 'max' | 'spot' };
   preview(kind: 'claymore' | 'stakes' | 'turret', name: string, p: { x: number; y: number; z: number }, at: At, now: number): { ok: boolean; why?: 'none' | 'max' | 'all' | 'spot'; a?: number; b?: number };
   placeTurret(name: string, p: { x: number; y: number; z: number }, at: At, now: number): { turret?: Turret; why?: 'none' | 'max' | 'all' | 'spot' };
   sees(t: Turret, q: Zombie): number;
-  tick(now: number, zombies: Iterable<Zombie>): { gone: number[]; booms: { mine: Mine; ids: number[] }[]; broke: Row[]; worn: boolean; shots: { turret: Turret; id: number }[]; spent: Turret[] };
+  tick(now: number, zombies: Iterable<Zombie>): { gone: number[]; booms: { mine: Mine; ids: number[] }[]; broke: Row[]; worn: boolean; shots: { turret: Turret; id: number }[]; spent: Turret[]; faded: number[] };
   view(): {
     items: [number, LootKind, number, number, number][];
     mines: [number, number, number, number, number, string][];
     stakes: [number, number, number, number, number, number, number, number, string][];
     turrets: [number, number, number, number, number, string][];
+    lulls: [number, number, number, number][];
   };
   clear(): void;
 }

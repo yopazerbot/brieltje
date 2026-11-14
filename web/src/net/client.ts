@@ -136,7 +136,7 @@ export type ServerMsg =
   | { t: 'zdown'; id: number; by: string; w: string; double?: boolean }
   | { t: 'zgone'; ids: number[] }
   | { t: 'revive'; op: 'start' | 'stop'; name?: string; by?: string; ms?: number }
-  | { t: 'zgift'; kind: 'ammo' | 'scope' | 'claymore' | 'stakes' | 'turret' | 'placed' | 'kit'; w?: string; kit: { ammo: string[]; scope: boolean; claymores: number; stakes?: number; turrets?: number } }
+  | { t: 'zgift'; kind: 'ammo' | 'scope' | 'claymore' | 'stakes' | 'turret' | 'medkit' | 'armor' | 'nades' | 'lull' | 'gun' | 'placed' | 'kit'; w?: string; hp?: number; kit: { ammo: string[]; scope: boolean; claymores: number; stakes?: number; turrets?: number; armor?: number; nades?: number } }
   | { t: 'zboom'; id: number; x: number; y: number; z: number; yaw: number; by: string }
   /** A row of stakes worn through by the zombies: it's gone (the view follows) */
   | { t: 'zbroke'; id: number }

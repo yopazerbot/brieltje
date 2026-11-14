@@ -207,6 +207,9 @@ button, input, select, textarea { font-family: inherit; }
 .hp-icon { color: var(--accent); font-style: normal; }
 .hp-bar { width: 160px; height: 8px; background: rgba(255, 255, 255, 0.15); box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.5); }
 #hp-fill { height: 100%; width: 100%; background: var(--accent); transition: width 0.15s; }
+/* A vest's armour in Zombies: a thin blue bar just over the health bar, full with a whole vest. */
+.hp-bar { position: relative; }
+#hp-armor { position: absolute; left: 0; bottom: calc(100% + 2px); height: 3px; width: 0; background: #4f8dff; transition: width 0.15s; }
 #health.low { color: #ff8a7a; }
 #health.low #hp-fill { background: #ff3b2f; }
 #killfeed {

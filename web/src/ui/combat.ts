@@ -2,6 +2,7 @@ import type { Score } from '../net/client';
 import { anyPaint, onPaintball, paintball } from '../paintball';
 import { sound } from '../sound';
 import { onLang, t } from '../i18n';
+import { LOOT } from '../../shared/loot.mjs';
 
 /**
  * Multiplayer fighting on screen: health, red flash when hit, hit marker,
@@ -26,6 +27,8 @@ function span(text: string, cls = '', color = ''): HTMLSpanElement {
 
 export class Combat {
   hp = 100;
+  /** A vest's armour points left (Zombies) */
+  armor = 0;
   alive = true;
   me = '';
   private limit = 10;
@@ -258,8 +261,16 @@ export class Combat {
     const box = $('health');
     box.classList.toggle('hidden', !this.active);
     box.classList.toggle('low', this.hp <= 34);
-    $('hp-value').textContent = String(this.hp);
+    $('hp-value').textContent = this.armor > 0 ? `${this.hp} +${this.armor}` : String(this.hp);
     $('hp-fill').style.width = `${this.hp}%`;
+    $('hp-armor').style.width = `${Math.min(100, (this.armor / LOOT.armor) * 100)}%`;
+  }
+
+  /** Armour points of a vest (Zombies): "+50" after your health, and a thin blue bar over it, full with a whole vest. */
+  setArmor(n: number): void {
+    if (n === this.armor) return;
+    this.armor = n;
+    this.drawHealth();
   }
 
   /** The teams game (its goal and the teams' score) for the scoreboard's heading, or null outside it. */
