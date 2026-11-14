@@ -1,0 +1,20 @@
+{
+  "_note": "Timed routes (src/world/routes.ts, shared/goals.mjs). Model metres x, z. The finish is the gate. Raise rev when a layout changes: best times are kept per id@rev.",
+  "routes": [
+    {
+      "id": "foot", "rev": 1, "by": "foot", "radius": 3, "colour": "#ffd54f",
+      "gate": [542, -762],
+      "checkpoints": [[547, -747], [539.5, -735], [527, -752], [514.5, -769.5], [519.5, -782], [527, -777]]
+    },
+    {
+      "id": "bike", "rev": 1, "by": "bike", "radius": 5, "colour": "#69f0ae",
+      "gate": [510, -779],
+      "checkpoints": [[473, -782], [369, -818], [333, -833], [312, -774], [386, -750], [451, -731], [520, -706], [545, -726], [545, -750]]
+    },
+    {
+      "id": "car", "rev": 1, "by": "car", "radius": 8, "colour": "#4fc3f7",
+      "gate": [59.2, -12.1],
+      "checkpoints": [[74.1, -85.6], [117.4, -216.4], [110.8, -295.8], [198.2, -350.7], [316.1, -347.4], [422.1, -304.5], [525.2, -244.5], [508.8, -150.1], [389.7, -142], [270.4, -152.8], [154.6, -170.9]]
+    }
+  ]
+}
