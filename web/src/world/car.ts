@@ -124,28 +124,47 @@ function modelCopy(url: string): Promise<THREE.Group> {
   return scene.then((s) => s.clone()); // the original keeps the model's material names (prepare reads them)
 }
 
-// The paint is each car's own (see prepare); the light bars glow; tinted glass you can just see
-// the cabin through. Plain (not clear-coated) materials: the graphics are limited by pixels.
+// The paint is each car's own (see prepare); the light bars glow; the windshield and front side windows
+// are tinted glass you can just see the cabin through, the roof and the glass behind the front doors dark.
+// The models carry the shade the car casts on itself as a colour per corner (tools/car_parts.py: bake_ao),
+// which the opaque materials multiply in (vertexColors).
+const shaded = { vertexColors: true } as const;
 const MATERIALS: Record<string, THREE.Material> = {
-  Glass: new THREE.MeshStandardMaterial({ color: '#07080a', roughness: 0.05, metalness: 0.3, transparent: true, opacity: 0.78, depthWrite: false }),
-  Trim: new THREE.MeshStandardMaterial({ color: '#101112', roughness: 0.6 }),
-  Tyre: new THREE.MeshStandardMaterial({ color: '#121212', roughness: 0.9 }),
-  Rim: new THREE.MeshStandardMaterial({ color: '#7c8088', roughness: 0.32, metalness: 0.85 }),
-  RimDark: new THREE.MeshStandardMaterial({ color: '#0d0d0e', roughness: 0.3, metalness: 0.3 }),
+  Glass: new THREE.MeshStandardMaterial({ color: '#07080a', roughness: 0.05, metalness: 0.3, transparent: true, opacity: 0.86, depthWrite: false, envMapIntensity: 1.6 }),
+  GlassDark: new THREE.MeshStandardMaterial({ color: '#050607', roughness: 0.03, metalness: 0.3, transparent: true, opacity: 0.96, depthWrite: false, envMapIntensity: 1.6 }),
+  Trim: new THREE.MeshStandardMaterial({ color: '#101112', roughness: 0.6, ...shaded }),
+  Tyre: new THREE.MeshStandardMaterial({ color: '#121212', roughness: 0.9, ...shaded }),
+  Rim: new THREE.MeshStandardMaterial({ color: '#7c8088', roughness: 0.32, metalness: 0.85, ...shaded }),
+  RimDark: new THREE.MeshStandardMaterial({ color: '#0d0d0e', roughness: 0.3, metalness: 0.3, ...shaded }),
   LightBar: new THREE.MeshStandardMaterial({ color: '#e4ecf5', roughness: 0.1, emissive: '#dfe9ff', emissiveIntensity: 2 }),
   LampGlass: new THREE.MeshStandardMaterial({ color: '#08090b', roughness: 0.05, metalness: 0.3 }),
   Gap: new THREE.MeshStandardMaterial({ color: '#000000', roughness: 0.9 }),
   Chrome: new THREE.MeshStandardMaterial({ color: '#e6e7ea', roughness: 0.05, metalness: 1 }),
-  Disc: new THREE.MeshStandardMaterial({ color: '#7a7c80', roughness: 0.45, metalness: 0.85 }),
-  Caliper: new THREE.MeshStandardMaterial({ color: '#3a3b3e', roughness: 0.45, metalness: 0.3 }),
-  Interior: new THREE.MeshStandardMaterial({ color: '#1a1a1c', roughness: 0.8 }),
+  Disc: new THREE.MeshStandardMaterial({ color: '#7a7c80', roughness: 0.45, metalness: 0.85, ...shaded }),
+  Caliper: new THREE.MeshStandardMaterial({ color: '#3a3b3e', roughness: 0.45, metalness: 0.3, ...shaded }),
+  Interior: new THREE.MeshStandardMaterial({ color: '#1a1a1c', roughness: 0.8, ...shaded }),
   Screen: new THREE.MeshStandardMaterial({ color: '#0a0c10', roughness: 0.1, metalness: 0.2 }),
   Reflector: new THREE.MeshStandardMaterial({ color: '#8a0f12', roughness: 0.3 }),
-  Plate: new THREE.MeshStandardMaterial({ color: '#e8e8e2', roughness: 0.5 }),
+  Plate: new THREE.MeshStandardMaterial({ color: '#e8e8e2', roughness: 0.5, ...shaded }),
 };
 const taillight = () => new THREE.MeshStandardMaterial({ color: '#5a0a0d', roughness: 0.2, emissive: '#ff2020', emissiveIntensity: 0.5 });
 /** The parts that cast the car's shadow: the body, its glass and trim, the seats, the tyres. */
-const SHADOW_PARTS = new Set(['Paint', 'Glass', 'Trim', 'Interior', 'Tyre']);
+const SHADOW_PARTS = new Set(['Paint', 'Glass', 'GlassDark', 'Trim', 'Interior', 'Tyre']);
+/** m from the eye: further off a car shows its simple copy ("Far" in the model), nearer again its full model. */
+const FAR_OUT = 60;
+const FAR_IN = 50;
+
+/**
+ * The paint for the graphics preset: clear-coated on Medium and up (the sides mirror the street and the sky in
+ * a second, sharp layer), on Low and on phones a plain one, a little glossier, that costs less per pixel.
+ */
+const cars = new Set<Car>();
+let fineDetail = true;
+/** The graphics preset changed (main.ts: applyQuality): `fine` on Medium and up, not on phones. */
+export function setCarDetail(fine: boolean): void {
+  fineDetail = fine;
+  for (const c of cars) c.dress();
+}
 
 /**
  * A model's shape in one geometry (positions and normals), for a see-through copy of a
@@ -158,6 +177,7 @@ export function carShape(spec: { model: string; width: number; length: number; h
   if (!shapes.has(`${spec.model} box`)) {
     shapes.set(`${spec.model} box`, new THREE.BoxGeometry(spec.width, spec.height, spec.length).translate(0, spec.height / 2, 0));
     void modelCopy(spec.model).then((scene) => {
+      scene.getObjectByName('Far')?.removeFromParent(); // the simple copy for far off is the same shape again
       scene.updateMatrixWorld(true);
       const parts: THREE.BufferGeometry[] = [];
       scene.traverse((o) => {
@@ -211,8 +231,8 @@ function prepare(scene: THREE.Group, own: Record<string, THREE.Material>, blurMa
       // Only the parts that make the shadow's outline cast one: the small ones flush with the body and
       // the wheels' insides (behind the tyre) would be 24 more draw calls a car in the shadow pass.
       o.castShadow = SHADOW_PARTS.has(name);
-      o.userData.material = name === 'Glass' || name === 'LampGlass' ? 'black_glass' : 'steel'; // bullets spark off it
-      if (name === 'Glass') o.renderOrder = 1; // after the cabin behind it
+      o.userData.material = name === 'Glass' || name === 'GlassDark' || name === 'LampGlass' ? 'black_glass' : 'steel'; // bullets spark off it
+      if (name === 'Glass' || name === 'GlassDark') o.renderOrder = 1; // after the cabin behind it
       o.userData.vehicle = true; // bullet holes stay on it when it drives off (see Decals)
     }
     // GLTF also names the tyre/rim material meshes Wheel_1..3. Animate only the axle parents:
@@ -347,8 +367,14 @@ export class Car {
   /** Its headlights and tail lights at night (world/carLights.ts) */
   private lamps: CarLamps;
   private blurMat = blurMaterial();
-  private paint: THREE.MeshStandardMaterial;
+  private paint: THREE.MeshPhysicalMaterial;
+  /** The paint on Low and on phones (setCarDetail) */
+  private plainPaint: THREE.MeshStandardMaterial;
   private gone = false;
+  /** The full model (without its wheels, on the chassis) and the simple copy for far off, once loaded; which one shows. */
+  private near: THREE.Object3D | null = null;
+  private far: THREE.Object3D | null = null;
+  private farOn = false;
 
   /** `kind`: a spawned Tesla (shared/car.json: placed), null for the game's own four. */
   constructor(private world: World, private trees: Obstacle[], readonly id: string, readonly spec: CarSpec, readonly kind: string | null = null) {
@@ -363,10 +389,24 @@ export class Car {
     this.group.rotation.order = 'YXZ'; // its heading, then the ground's slope under it
     this.body.position.y = ROLL_H;
     this.lamps = new CarLamps((MATERIALS.LightBar as THREE.MeshStandardMaterial).clone(), spec.length, spec.width, ROLL_H);
-    const paint = (this.paint = new THREE.MeshStandardMaterial({ color: spec.paint, roughness: 0.2, metalness: spec.metal }));
+    const paint = (this.paint = new THREE.MeshPhysicalMaterial({ color: spec.paint, metalness: spec.metal, roughness: 0.38, clearcoat: 1, clearcoatRoughness: 0.04, envMapIntensity: 1.15, vertexColors: true }));
+    this.plainPaint = new THREE.MeshStandardMaterial({ color: spec.paint, metalness: spec.metal, roughness: 0.2, vertexColors: true });
+    cars.add(this);
     void modelCopy(spec.model).then((scene) => {
       if (this.gone) return;
-      const { front, wheels } = prepare(scene, { Paint: paint, TailLight: this.taillight, LightBar: this.lamps.bar }, this.blurMat);
+      const own = { Paint: paint, TailLight: this.taillight, LightBar: this.lamps.bar };
+      // The simple copy goes straight on the body, hidden until the car is far off; its lamps aren't the lamps' spots.
+      const far = scene.getObjectByName('Far') ?? null;
+      if (far) {
+        far.removeFromParent();
+        prepare(far as THREE.Group, own, this.blurMat);
+        far.position.y = -ROLL_H;
+        far.visible = false;
+        this.body.add(far);
+        this.far = far;
+      }
+      this.near = scene;
+      const { front, wheels } = prepare(scene, own, this.blurMat);
       // The wheels move to the chassis, where they were on the model; their spots give the axles.
       scene.updateMatrixWorld(true);
       this.lamps.find(scene, -ROLL_H); // the scene sits ROLL_H under the body's origin (below)
@@ -387,6 +427,7 @@ export class Car {
       this.body.add(scene);
       this.front = front;
       this.wheels = wheels;
+      this.dress();
     }, () => {});
     this.update(0, true);
   }
@@ -725,7 +766,16 @@ export class Car {
    * its block and its sound; drawn when it is in the game and within DRAW m of `eye`.
    */
   update(dt: number, local: boolean, eye?: THREE.Vector3): void {
-    this.group.visible = this.ready && (!eye || (this.x - eye.x) ** 2 + (this.z - eye.z) ** 2 < DRAW * DRAW);
+    const away = eye ? (this.x - eye.x) ** 2 + (this.z - eye.z) ** 2 : 0;
+    this.group.visible = this.ready && away < DRAW * DRAW;
+    // Far off, the simple copy instead of the full model (a little nearer again before it swaps back).
+    const farOn = !!this.far && away > (this.farOn ? FAR_IN * FAR_IN : FAR_OUT * FAR_OUT);
+    if (farOn !== this.farOn && this.far && this.near) {
+      this.farOn = farOn;
+      this.far.visible = farOn;
+      this.near.visible = !farOn;
+      this.chassis.visible = !farOn;
+    }
     if (!this.ready) {
       this.world.setMoving(this.key, null); // nothing to walk or drive into before it is there
       return;
@@ -927,9 +977,20 @@ export class Car {
       mat.map?.dispose();
       mat.dispose();
     });
-    for (const m of [this.paint, this.taillight, this.blurMat]) m.dispose();
+    cars.delete(this);
+    for (const m of [this.paint, this.plainPaint, this.taillight, this.blurMat]) m.dispose();
     this.lamps.dispose();
     this.noise.dispose();
+  }
+
+  /** The paint for the graphics preset (setCarDetail) on the body and its far copy. */
+  dress(): void {
+    const paint = fineDetail ? this.paint : this.plainPaint;
+    this.plainPaint.color.copy(this.paint.color); // a colour set on `paint` (a check's grey) carries over
+    this.plainPaint.metalness = this.paint.metalness;
+    this.group.traverse((o) => {
+      if (o instanceof THREE.Mesh && o.userData.part === 'Paint') o.material = paint;
+    });
   }
 
   /** It hit something (`strength` in m/s): a thump from where it is, and the body jolts. */

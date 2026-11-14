@@ -78,7 +78,7 @@ import { Effects, type Spot } from './world/effects';
 import { GRENADE, Grenades } from './world/grenades';
 import { Pickups } from './world/pickups';
 import { Cats } from './world/cats';
-import { Car, placedSpec, PLACED_MAX, type CarState } from './world/car';
+import { Car, placedSpec, PLACED_MAX, setCarDetail, type CarState } from './world/car';
 import { carLights } from './world/carLights';
 import { skidMarks } from './world/skidMarks';
 import { boxesOverlap, boxPoints, clearOfPortals, indoorName, makeIndoors } from '../shared/parking.mjs';
@@ -548,6 +548,7 @@ function applyQuality(q: Quality): void {
   glassProbe.perFrame = q === 'ultra' ? 3 : q === 'high' ? 2 : 1; // views of the street's picture each frame: it keeps up
   glassLook.fine.value = wet.fine.value;
   setTreeDetail(q !== 'low' && !phone); // the near trees' crowns and the trunks (world/surroundings.ts)
+  setCarDetail(q !== 'low' && !phone); // the Teslas' clear-coated paint (world/car.ts)
   tiles.drawDistance = phone ? Math.min(FAR_PHONE, preset.far) : preset.far;
   undergrowth.setQuality(q, phone);
   grassTufts.setQuality(q, phone);
