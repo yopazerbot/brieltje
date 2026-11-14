@@ -111,6 +111,30 @@ function followGround(ring: [number, number][], groundAt: GroundAt): [number, nu
   return out;
 }
 
+/**
+ * The sides of a flat roof's lid (an nb_roof block) that get its edge trim, by number (side i from corner i to i + 1):
+ * not a side that meets another lid at about its height or a wall rising beside it (the trim would stand inside it).
+ */
+export function flatEdgeSides(p: Prism, lids: BlockGrid, houses: Houses): number[] {
+  const ring = p.p[0];
+  const out: number[] = [];
+  const y = p.y1 - 0.06;
+  for (let i = 0; i < ring.length; i++) {
+    const [ax, az] = ring[i];
+    const [bx, bz] = ring[(i + 1) % ring.length];
+    const l = Math.hypot(bx - ax, bz - az);
+    if (l < 0.3) continue;
+    let [nx, nz] = [(bz - az) / l, -(bx - ax) / l];
+    const [mx, mz] = [(ax + bx) / 2, (az + bz) / 2];
+    if (inside(ring, mx + nx * 0.05, mz + nz * 0.05)) [nx, nz] = [-nx, -nz]; // outward
+    const [x, z] = [mx + nx * 0.15, mz + nz * 0.15];
+    if (lids.at(x, z).some((q) => q !== p && q.y0 - 0.3 <= y && y <= q.y1 + 0.3)) continue;
+    if (houses.holds(x, z, y)) continue;
+    out.push(i);
+  }
+  return out;
+}
+
 /** One block of a door's steps: from `from` to `to` metres out from the wall, its top and bottom heights. */
 export interface StepBlock {
   from: number;

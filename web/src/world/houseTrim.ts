@@ -4,6 +4,7 @@ import { prismGeometry } from './houseMeshes';
 import { brickLook, Houses, isBrick } from './facadeLook';
 import { houseStyle, PLINTH_BRICK_SHADE, rollerDown, type HouseStyle } from './houseStyle';
 import { cutAt, planSteps, type BasePlan } from './housePlan';
+import { inside } from './houseKeys';
 
 /**
  * The details that make an open-data house (world/surroundings.ts) read as a house and not a block, built in code from
@@ -274,38 +275,25 @@ function merge(list: THREE.BufferGeometry[]): THREE.BufferGeometry {
 }
 
 /**
- * An edge trim round a flat roof's lid (an nb_roof block): a quad over each of its sides, 4 cm in front of it (closer
- * would flicker from a distance), from 4 cm under the lid to 2 cm over it, a little longer than the side so the
- * corners close.
+ * An edge trim round a flat roof's lid (an nb_roof block): a band 14 cm high over the given sides (world/housePlan.ts
+ * `flatEdgeSides`), 4 cm in front of them, from 12 cm under the lid's top to 2 cm over it, a little longer than the
+ * side so the corners close.
  */
-export function flatEdge(p: Prism, colour: THREE.Color): THREE.BufferGeometry[] {
+export function flatEdge(p: Prism, colour: THREE.Color, sides: number[]): THREE.BufferGeometry[] {
   const ring = p.p[0];
   const out: THREE.BufferGeometry[] = [];
-  const y = (p.y0 - 0.04 + p.y1 + 0.02) / 2;
-  const h = p.y1 + 0.02 - (p.y0 - 0.04);
-  for (let i = 0; i < ring.length; i++) {
+  for (const i of sides) {
     const [ax, az] = ring[i];
     const [bx, bz] = ring[(i + 1) % ring.length];
     const length = Math.hypot(bx - ax, bz - az);
-    if (length < 0.3) continue;
     const d = new THREE.Vector3((bx - ax) / length, 0, (bz - az) / length);
     const n = new THREE.Vector3(d.z, 0, -d.x);
     const mx = (ax + bx) / 2;
     const mz = (az + bz) / 2;
-    if (insideRing(ring, mx + n.x * 0.05, mz + n.z * 0.05)) n.negate(); // outward
-    out.push(face(new THREE.Vector3(mx + n.x * 0.04, y, mz + n.z * 0.04), d, n, length + 0.08, h, colour));
+    if (inside(ring, mx + n.x * 0.05, mz + n.z * 0.05)) n.negate(); // outward
+    out.push(face(new THREE.Vector3(mx + n.x * 0.04, p.y1 - 0.05, mz + n.z * 0.04), d, n, length + 0.08, 0.14, colour));
   }
   return out;
-}
-
-function insideRing(ring: [number, number][], x: number, z: number): boolean {
-  let yes = false;
-  for (let i = 0, j = ring.length - 1; i < ring.length; j = i++) {
-    const [xi, zi] = ring[i];
-    const [xj, zj] = ring[j];
-    if (zi > z !== zj > z && x < ((xj - xi) * (z - zi)) / (zj - zi) + xi) yes = !yes;
-  }
-  return yes;
 }
 
 // ---- On the slopes: solar panels and roof windows ----

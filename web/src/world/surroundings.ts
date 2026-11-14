@@ -19,6 +19,8 @@ import { hedgeCardMesh, hedgeCardPieces } from './hedgeCards';
 import { barkMaterial, cardsBuilt, enlist, leafCardMaterial, plainForBake, switchTrees } from './leafCards';
 import { reflectionSkips } from './reflections';
 import { houseIndex, roofKey } from './houseIndex';
+import { pointInside } from './houseKeys';
+import { flatEdgeSides } from './housePlan';
 import { bandedWalls, chimney, flatEdge, openingTrim, roofEdges, roofExtras, roofFrame, type OpeningContext, type RoofEdges, type SolarArray } from './houseTrim';
 import { houseStyle } from './houseStyle';
 import { snowy } from './snowCover';
@@ -552,11 +554,12 @@ export function buildTile(data: TileData, poles: Pole[], renderer: THREE.WebGLRe
     if (isBrick(p.m)) put(renderable(mat), base ? g : walls(p.m, houses.keyOf(p), g), tag);
     else put(mat, coloured(mat) ? paint(g, tint) : g, tag, true, GROUND_COVERS.has(p.m) ? COVER_ORDER : undefined);
     if (p.m === 'nb_roof' && !p.lm) {
-      // A flat roof: on many houses an edge trim in the house's trim colour (world/houseTrim.ts).
-      const ring = p.p[0];
-      const house = houses.wallAt(ring.reduce((s, q) => s + q[0], 0) / ring.length, ring.reduce((s, q) => s + q[1], 0) / ring.length);
+      // A flat roof: on many houses an edge trim in the house's trim colour (world/houseTrim.ts), found from a point
+      // inside the lid (the middle of an L-shaped one is outside it) and the walls under it.
+      const at = pointInside(p.p[0]);
+      const house = at && houses.wallAt(at[0], at[1], p.y0 - 0.3);
       const style = house && houseStyle(house.key, house.m, brickLook(house.m, house.key).render === 1);
-      if (style?.flatEdge) for (const e of flatEdge(p, new THREE.Color(style.trim))) put(frameMat, e, 'alu', false, undefined, true);
+      if (style?.flatEdge) for (const e of flatEdge(p, new THREE.Color(style.trim), flatEdgeSides(p, index.lids, houses))) put(frameMat, e, 'alu', false, undefined, true);
     }
   }
 

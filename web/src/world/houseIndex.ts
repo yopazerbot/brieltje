@@ -1,5 +1,5 @@
 import type { Prism, RoofSpec, Surroundings } from './houseData';
-import { Houses } from './houseKeys';
+import { BlockGrid, Houses } from './houseKeys';
 import { planBases, type BasePlan, type GroundAt } from './housePlan';
 import { chimneyRoofs } from './houseTrim';
 
@@ -18,6 +18,8 @@ export interface HouseIndex {
   pitched: Set<number>;
   /** The band at the foot of each house wall that gets one (world/housePlan.ts) */
   bases: Map<Prism, BasePlan>;
+  /** The flat roofs' lids (nb_roof blocks), to keep their edge trims out of each other */
+  lids: BlockGrid;
 }
 
 const built = new WeakMap<object, HouseIndex>();
@@ -37,7 +39,9 @@ export function houseIndex(set: Pick<Surroundings, 'roofs' | 'prisms' | 'opening
   const keyOf = (r: RoofSpec) => roofKey(houses, r);
   const pitched = new Set<number>();
   for (const r of set.roofs) if (r.shape !== 'shed') pitched.add(keyOf(r));
-  index = { houses, chimneys: chimneyRoofs(set.roofs, prisms, keyOf), pitched, bases: planBases(prisms, set.openings ?? [], houses, groundAt) };
+  const lids = new BlockGrid();
+  for (const p of prisms) if (p.m === 'nb_roof') lids.add(p);
+  index = { houses, chimneys: chimneyRoofs(set.roofs, prisms, keyOf), pitched, bases: planBases(prisms, set.openings ?? [], houses, groundAt), lids };
   built.set(set, index);
   return index;
 }
