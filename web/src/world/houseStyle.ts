@@ -1,0 +1,148 @@
+/**
+ * The made-up details of each open-data house (world/houseTrim.ts and world/surroundings.ts build them): the colour of
+ * its trim, whether it has a chimney, a plinth, lintels, shutters or roller shutters, and how they look. The open data
+ * gives only outlines, heights and openings, so all of this is chosen by the house's key (world/facadeLook.ts `Houses`),
+ * which comes from where the house stands in the model: every player sees the same house on every visit, and nothing
+ * is a real house's look. One object per house, so its parts agree.
+ *
+ * The shares and colours below are Yoshi's to tune. Colours are sRGB hex. No imports, so node can test it
+ * (houseStyle.test.mjs).
+ */
+
+// Trim (verge boards, flat roofs' edges, dormers): white, anthracite, brown, zinc. The shares add up to 1.
+const TRIM: [string, number][] = [['#f1efe9', 0.45], ['#3a3c3f', 0.25], ['#4c3427', 0.15], ['#8f9396', 0.15]];
+
+/** Of the houses with a gable or hip roof that can carry one, the share with a brick chimney on the ridge. */
+export const CHIMNEY_SHARE = 0.6;
+/** Of the chimneys, the share with one or two clay pots on top. */
+export const CHIMNEY_POTS = 1 / 3;
+
+// Plinths on brick houses: dark grey paint, grey cement, the same brick darker; the rest has none (a damp base).
+export const PLINTH_PAINT = 0.3;
+export const PLINTH_CEMENT = 0.2;
+export const PLINTH_BRICK = 0.25;
+/** Plinths on rendered and white houses: tarred black; the rest has none (a damp base). */
+export const PLINTH_TAR = 0.7;
+const PAINT = '#343332';
+const CEMENT = '#8f8c86';
+const TAR = '#2a2827';
+/** A brick plinth: the wall's own tint times this. */
+export const PLINTH_BRICK_SHADE = 0.7;
+
+// Lintels over the openings of brick houses: pale stone, a soldier course of the wall's brick; the rest has none.
+export const LINTEL_STONE = 0.3;
+export const LINTEL_SOLDIER = 0.3;
+/** Lintels over the openings of rendered and white houses: pale stone; the rest has none. */
+export const LINTEL_STONE_RENDERED = 0.2;
+
+/** Of the houses with a pitched roof, the share with leaf shutters beside the ground floor's windows. */
+export const LEAF_SHUTTERS = 0.08;
+const LEAF_COLOURS = ['#2f4a3a', '#5a3d2b', '#6e2a24', '#efede6'];
+
+/** Of the houses without leaf shutters, the share with roller shutters (drawn only where one is down). */
+export const ROLLER_HOUSES = 0.33;
+/** Of those houses' windows, the share with the shutter fully down, and the share with it partly down (30 to 70 %). */
+export const ROLLER_DOWN = 0.05;
+export const ROLLER_PART = 0.08;
+const ROLLER_COLOURS = ['#ece9e2', '#d8ccb4', '#8c8f92', '#5b4535'];
+
+/** Of the village's gable roofs, the share with solar panels on the slope facing south. */
+export const SOLAR_SHARE = 0.2;
+/** Of the houses with a dormer-worthy roof, the share with a dormer. */
+export const DORMER_SHARE = 1 / 9;
+
+/** A number from 0 to 1 that depends only on the numbers given: the same as world/facadeLook.ts `stable`. */
+export function stable(...v: number[]): number {
+  let h = 2166136261;
+  for (const x of v) h = Math.imul(h ^ Math.round(x * 1000), 16777619) ^ (h >>> 13);
+  return ((h >>> 0) % 100003) / 100003;
+}
+
+export type PlinthKind = 'paint' | 'cement' | 'brick' | 'tar' | 'none';
+
+export interface HouseStyle {
+  /** Verge boards and edges (sRGB hex) */
+  trim: string;
+  /** A chimney on the ridge, or none: which end (0 at the ridge's start, 1 at its end), metres from that gable end, its size along and across the ridge, its rise above the ridge, its pots (0 to 2) */
+  chimney: { end: 0 | 1; from: number; along: number; across: number; rise: number; pots: number } | null;
+  /** The plinth: its kind, its colour (sRGB hex; null for the wall's own brick, darker), whether it is rendered, its height above the highest ground round the house */
+  plinth: { kind: PlinthKind; colour: string | null; render: boolean; height: number };
+  /** Lintels over the openings */
+  lintel: 'stone' | 'soldier' | 'none';
+  /** Leaf shutters' colour (sRGB hex), or none */
+  shutters: string | null;
+  /** Roller shutters' colour (sRGB hex), or none */
+  rollers: string | null;
+  /** Solar panels on a south-facing slope (change 5) */
+  solar: boolean;
+  /** A dormer over the front door (change 7) */
+  dormer: boolean;
+}
+
+/** Pick from a list of [value, share] by h (0 to 1). */
+function share<T>(list: [T, number][], h: number): T {
+  let sum = 0;
+  for (const [v, s] of list) {
+    sum += s;
+    if (h < sum) return v;
+  }
+  return list[list.length - 1][0];
+}
+
+/**
+ * The style of the house with key `key` (0 to 1), its brick `brick` (nb_red and so on) and whether its walls are
+ * rendered. `pitched`: whether it has a pitched roof (leaf shutters go only on those).
+ */
+export function houseStyle(key: number, brick: string, rendered: boolean, pitched = true): HouseStyle {
+  const pale = rendered || brick === 'nb_white';
+  const trim = share(TRIM, stable(key, 41));
+  const c = stable(key, 43);
+  const chimney = c < CHIMNEY_SHARE
+    ? {
+      end: (stable(key, 43, 1) < 0.5 ? 0 : 1) as 0 | 1,
+      from: 0.9 + 0.7 * stable(key, 43, 2),
+      along: 0.45 + 0.15 * stable(key, 43, 3),
+      across: 0.6 + 0.3 * stable(key, 43, 4),
+      rise: 0.7 + 0.4 * stable(key, 43, 5),
+      pots: stable(key, 43, 6) < CHIMNEY_POTS ? (stable(key, 43, 7) < 0.5 ? 1 : 2) : 0,
+    }
+    : null;
+  const p = stable(key, 47);
+  const kind: PlinthKind = pale
+    ? (p < PLINTH_TAR ? 'tar' : 'none')
+    : share<PlinthKind>([['paint', PLINTH_PAINT], ['cement', PLINTH_CEMENT], ['brick', PLINTH_BRICK], ['none', 1]], p);
+  const plinth = {
+    kind,
+    colour: kind === 'paint' ? PAINT : kind === 'cement' ? CEMENT : kind === 'tar' ? TAR : null,
+    render: kind === 'paint' || kind === 'cement' || kind === 'tar',
+    height: 0.35 + 0.35 * stable(key, 47, 1),
+  };
+  const l = stable(key, 53);
+  const lintel = pale
+    ? (l < LINTEL_STONE_RENDERED ? 'stone' : 'none')
+    : share<'stone' | 'soldier' | 'none'>([['stone', LINTEL_STONE], ['soldier', LINTEL_SOLDIER], ['none', 1]], l);
+  const s = stable(key, 59);
+  const shutters = pitched && s < LEAF_SHUTTERS ? LEAF_COLOURS[Math.floor(stable(key, 59, 1) * LEAF_COLOURS.length)] : null;
+  const rollers = !shutters && stable(key, 61) < ROLLER_HOUSES ? ROLLER_COLOURS[Math.floor(stable(key, 61, 1) * ROLLER_COLOURS.length)] : null;
+  return {
+    trim,
+    chimney,
+    plinth,
+    lintel,
+    shutters,
+    rollers,
+    solar: stable(key, 67) < SOLAR_SHARE,
+    dormer: stable(key, 71) < DORMER_SHARE,
+  };
+}
+
+/**
+ * How far a window's roller shutter is down (0 up, 1 fully down), by the window's own place (x, y, z in the model),
+ * on a house that has roller shutters.
+ */
+export function rollerDown(x: number, y: number, z: number): number {
+  const h = stable(x, y, z, 61);
+  if (h < ROLLER_DOWN) return 1;
+  if (h < ROLLER_DOWN + ROLLER_PART) return 0.3 + 0.4 * stable(x, y, z, 62);
+  return 0;
+}

@@ -531,8 +531,8 @@ export function outlineTriangles(p: Prism, keep = false): Pt[][] {
   return tris;
 }
 
-/** A block's geometry: extruded, or draped over the relief (p.d). UVs in metres. */
-export function prismGeometry(p: Prism): THREE.BufferGeometry {
+/** A block's geometry: extruded, or draped over the relief (p.d). UVs in metres. `steps`: rows of side faces up the extrusion. */
+export function prismGeometry(p: Prism, steps = 1): THREE.BufferGeometry {
   if (p.d) return drapedGeometry(p);
   // The plan's z axis becomes the shape's -y so that, after tilting the
   // extrusion upright, x and z land where they are on the plan.
@@ -541,6 +541,7 @@ export function prismGeometry(p: Prism): THREE.BufferGeometry {
   for (const hole of p.p.slice(1)) shape.holes.push(new THREE.Path(toShapePts(hole)));
   const geo = new THREE.ExtrudeGeometry(shape, {
     depth: p.y1 - p.y0,
+    steps,
     bevelEnabled: false,
     curveSegments: 1,
     UVGenerator: worldUV(p.y0),

@@ -139,6 +139,15 @@ export class Houses {
     }
     return found ? this.keyOf(found) : stable(Math.round(x), Math.round(z), 31);
   }
+
+  /** The house whose walls stand round (x, z): its key, its brick and that wall block; null where no wall stands. */
+  wallAt(x: number, z: number): { key: number; m: string; p: Prism } | null {
+    for (const w of this.walls) {
+      if (x < w.box[0] || x > w.box[2] || z < w.box[1] || z > w.box[3] || !inside(w.ring, x, z)) continue;
+      return { key: this.keyOf(w.p), m: w.p.m, p: w.p };
+    }
+    return null;
+  }
 }
 
 /** Whether (x, z) lies inside a ring. */
