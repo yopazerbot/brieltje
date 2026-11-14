@@ -23,7 +23,7 @@ The whole project was made with AI. Yoshi Parlevliet, a cybersecurity consultant
 ## Recent updates — 11 November 2026
 
 - **LAN nights.** Up to 32 players at once. Double-click `lan.cmd` to host on your own computer in Docker: it asks for an admin password, and players type https://lan.brieltje.be (Caddy in front of the game, with a real certificate; `lan.cmd -Http` for plain http on the computer's address). Watch players on `/admin/watch/`: one, or up to four side by side, to put on a projector. The host runs the evening from `/admin/host/`: lock the doors, announce on every screen, freeze everyone, bring players to you, mute, a word filter, teams for the evening, a programme of games with a countdown, and tonight's scoreboard per player and per team, also on the big screen.
-- **Grass and leaves.** Blades of grass on lawns and verges round you, short where mown and taller in rough grass, and fallen autumn leaves under the trees (Medium and up).
+- **Grass and leaves.** Thin blades of grass round you, at the height the place asks for: none on the football pitch, a few centimetres on lawns and verges, taller clumps in the pastures, shin-high along fields and ditches. Fallen autumn leaves under the trees (Medium and up).
 - **Worn roads.** Repair patches, tar-sealed cracks and the seam down the middle of the asphalt streets.
 - **Streets that look used.** Silt in the gutters, kerbstones with joints, rust-brown drains. Earth and grass creep over the edges of roads, pavements and drives. Molenhoek has its light concrete edging beside the red cycle lanes.
 

@@ -278,6 +278,7 @@ file's opening comment; run it again after adding, moving or removing a module.
 - `web/server/words.test.mjs`: Tests for words, e.g. "swear words are starred out in chat, whole or hidden in a longer word, in English and Dutch".
 - `web/server/zombie-endless.test.mjs`: Tests for zombie-endless, e.g. "40 waves progress without a round limit, one survivor keeps playing, and both down ends it".
 - `web/server/zombie-landing.test.mjs`: Tests for zombie-landing, e.g. "a wave waits while anyone is still coming down by parachute, and comes LANDED MS after the last landing".
+- `web/server/zombie-loot.test.mjs`: The Zombies game's five newer rewards on the server (server/zombies.mjs, shared/loot.mjs): a page only says "I walked over item 12" (zitem).
 - `web/server/zombie-wave.test.mjs`: Tests for zombie-wave, e.g. "switching up, down or to the same wave immediately replaces the horde with the selected difficulty".
 - `web/server/zombies.mjs`: The Zombies party game on the server (server/modes.mjs starts and stops it; shared/zombies.mjs runs the horde).
 
