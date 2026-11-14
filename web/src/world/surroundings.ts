@@ -18,7 +18,8 @@ import { cardCrown, cardTrunk, crownFit, FORK, HEIGHT, Kind, KINDS, spotHash, TR
 import { hedgeCardMesh, hedgeCardPieces } from './hedgeCards';
 import { barkMaterial, cardsBuilt, enlist, leafCardMaterial, plainForBake, switchTrees } from './leafCards';
 import { reflectionSkips } from './reflections';
-import { bandedWalls, chimney, chimneyRoofs, flatEdge, openingTrim, roofEdges, roofExtras, roofFrame, wallBases, type OpeningContext, type RoofEdges, type SolarArray } from './houseTrim';
+import { houseIndex, roofKey } from './houseIndex';
+import { bandedWalls, chimney, flatEdge, openingTrim, roofEdges, roofExtras, roofFrame, wallBases, type OpeningContext, type RoofEdges, type SolarArray } from './houseTrim';
 import { houseStyle } from './houseStyle';
 import { snowy } from './snowCover';
 
@@ -533,8 +534,10 @@ export function buildTile(data: TileData, poles: Pole[], renderer: THREE.WebGLRe
     else parts.set(mat, { geos: [g], tag, shadow, order, small });
   };
   const coloured = (m: THREE.Material) => (m as THREE.MeshStandardMaterial).vertexColors;
-  // Each house its own shade of brick, render or not, roof covering and frames (world/facadeLook.ts).
-  const houses = new Houses(data.prisms ?? []);
+  // Each house its own shade of brick, render or not, roof covering and frames (world/facadeLook.ts), the same in every
+  // tile it stands in: the houses are worked out once for the whole set (world/houseIndex.ts).
+  const index = houseIndex(data.whole ?? data);
+  const houses = index.houses;
   const walls = (m: string, key: number, g: THREE.BufferGeometry) => {
     const look = brickLook(m, key);
     return byteAttribute(paint(g, look.tint), 'facade', look.render);
@@ -562,15 +565,10 @@ export function buildTile(data: TileData, poles: Pole[], renderer: THREE.WebGLRe
   // underside (back faces) differ.
   const tiles = material('tiles', () => glazeable(Object.assign(tintedMaterial('roof_tiles', '#ffffff', renderer, THREE.DoubleSide), { vertexColors: true })));
   const gutterGeos: THREE.BufferGeometry[] = [];
-  // The house under a roof: the walls round the middle of its outline.
-  const keyOf = (r: RoofSpec) => {
-    const [cx, cz] = r.p.reduce(([x, z], q) => [x + q[0] / r.p.length, z + q[1] / r.p.length], [0, 0]);
-    return houses.at(cx, cz, r.wall);
-  };
-  // Each house's chimney goes on its largest roof that can carry one (world/houseTrim.ts).
-  const chimneys = chimneyRoofs(data.roofs, data.prisms ?? [], keyOf);
-  /** The houses with a gable or hip roof (leaf shutters go only on those) */
-  const pitched = new Set<number>();
+  // The house under a roof; each house's chimney on its largest roof that can carry one; the houses with a gable or hip
+  // roof (leaf shutters go only on those): all for the whole set (world/houseIndex.ts).
+  const keyOf = (r: RoofSpec) => roofKey(houses, r);
+  const { chimneys, pitched } = index;
   // Solar panels the data has (the ring's, from the aerial photo): a roof with some gets no made-up ones.
   const surveyedSolar = (data.solar ?? []).map((s) => [s.q.reduce((t, q) => t + q[0], 0) / s.q.length, s.q.reduce((t, q) => t + q[2], 0) / s.q.length]);
   const madeSolar: SolarArray[] = [];
@@ -578,7 +576,6 @@ export function buildTile(data: TileData, poles: Pole[], renderer: THREE.WebGLRe
     const side = r.ceiling ? THREE.FrontSide : THREE.DoubleSide;
     const tint = r.tiles ?? '#4a3f3a';
     const key = keyOf(r);
-    if (r.shape !== 'shed') pitched.add(key);
     const style = houseStyle(key, r.wall ?? '', !!r.wall && isBrick(r.wall) && brickLook(r.wall, key).render === 1);
     // Verge boards and ridge tiles in the house's trim; not on a roof over a room (the bungalow's) or a landmark's. An
     // edge where walls (any of the blocks stacked there) stand above our eaves less 1.5 m (a terraced row, the other

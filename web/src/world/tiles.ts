@@ -57,6 +57,8 @@ export function tileKey(x: number, z: number): string {
 export interface TileData extends Omit<Surroundings, 'poles'> {
   /** Numbers of the poles that stand in this tile */
   poleIds: number[];
+  /** The whole set the tile was cut from (its houses are looked up across the tiles: world/houseIndex.ts) */
+  whole?: Surroundings;
 }
 
 export function splitTiles(data: Surroundings, poleOffset = 0): Map<string, TileData> {
@@ -65,7 +67,7 @@ export function splitTiles(data: Surroundings, poleOffset = 0): Map<string, Tile
     const key = tileKey(x, z);
     let t = tiles.get(key);
     if (!t) {
-      t = { roofs: [], trees: [], openings: [], posts: [], prisms: [], solar: [], wires: [], poleIds: [] };
+      t = { roofs: [], trees: [], openings: [], posts: [], prisms: [], solar: [], wires: [], poleIds: [], whole: data };
       tiles.set(key, t);
     }
     return t;
