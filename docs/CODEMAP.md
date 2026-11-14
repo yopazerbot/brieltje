@@ -67,6 +67,7 @@ file's opening comment; run it again after adding, moving or removing a module.
 - `web/src/ui/soloWave.test.mjs`: Tests for soloWave, e.g. "alone, a chosen wave starts at once and makes the run custom".
 - `web/src/ui/soloWave.ts`: Alone, the admin's wave picker (the menu's admin tab, src/ui/zombieWave.ts): the horde in this page jumps to the chosen wave, as the server's zwave does...
 - `web/src/ui/speedometer.ts`: A quiet, permanent speed readout while driving or riding along; metres per second in, km/h on screen.
+- `web/src/ui/stall.ts`: The stall in the Zombies game (shared/stall.mjs): a small chip above your health with your coins, and in the break between waves a card with six things to buy.
 - `web/src/ui/startFlow.ts`: The start screen's three steps (Yoshi, 8 Nov 2026: "I first want people to select if they play as guests or if they want to log in.
 - `web/src/ui/tactics.ts`: Small world-space placement guides and screen-space cooperative markers.
 - `web/src/ui/travel.ts`: The list of places while you stand on a portal's pad (or stop the car on it): every portal by its number, how far it is, the one you came from marked "back"...
@@ -280,6 +281,7 @@ file's opening comment; run it again after adding, moving or removing a module.
 - `web/server/zombie-endless.test.mjs`: Tests for zombie-endless, e.g. "40 waves progress without a round limit, one survivor keeps playing, and both down ends it".
 - `web/server/zombie-landing.test.mjs`: Tests for zombie-landing, e.g. "a wave waits while anyone is still coming down by parachute, and comes LANDED MS after the last landing".
 - `web/server/zombie-loot.test.mjs`: The Zombies game's five newer rewards on the server (server/zombies.mjs, shared/loot.mjs): a page only says "I walked over item 12" (zitem).
+- `web/server/zombie-stall.test.mjs`: The stall in the Zombies game on the server (server/zombies.mjs buy, beat and bonus; shared/stall.mjs): a page only says "I buy a claymore" (zbuy, one field).
 - `web/server/zombie-wave.test.mjs`: Tests for zombie-wave, e.g. "switching up, down or to the same wave immediately replaces the horde with the selected difficulty".
 - `web/server/zombies.mjs`: The Zombies party game on the server (server/modes.mjs starts and stops it; shared/zombies.mjs runs the horde).
 
