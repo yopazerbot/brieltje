@@ -3,6 +3,7 @@ import type { Opening, Prism, RoofSpec } from './houseData';
 import { prismGeometry } from './houseMeshes';
 import { brickLook, Houses, isBrick } from './facadeLook';
 import { houseStyle, PLINTH_BRICK_SHADE, rollerDown, type HouseStyle } from './houseStyle';
+import { cutAt, type BasePlan } from './housePlan';
 
 /**
  * The details that make an open-data house (world/surroundings.ts) read as a house and not a block, built in code from
@@ -22,8 +23,6 @@ const BRICK_MEAN = 0.56;
 const SOLDIER = 0.78;
 /** A damp base: the bottom of the wall at this times its tint, back to its own at the cut. */
 const DAMP = 0.82;
-/** Metres above the highest ground round the house where a damp base has faded out. */
-const DAMP_TOP = 0.8;
 /** The roofs' overhang, as world/surroundings.ts draws them. */
 const OVERHANG = 0.3;
 
@@ -465,114 +464,47 @@ export function chimney(r: RoofSpec, f: RoofFrame, ch: NonNullable<HouseStyle['c
 
 // ---- The foot of the walls: plinth or damp ----
 
-export interface WallBase {
-  /** Height (model y) of the line between the base and the wall above */
-  cut: number;
-  tint: THREE.Color;
-  render: number;
-  /** The plinth's colour and render; null for a damp base (darker at the bottom, fading out at the cut) */
-  plinth: { colour: THREE.Color; render: number } | null;
-}
-
 /**
- * The bases of the house walls in a tile: per wall block of a house (brick, at least 2.2 m high and 12 m² on the plan,
- * standing on the ground) a plinth up to its style's height above the highest ground round the house, or a damp base.
- * A house of which a wall stands on a plinth in the data (a low brick block with a corner and height under it) keeps
- * its plain walls. `groundAt`: the ground's height at (x, z).
+ * A wall block cut in two along its base (world/housePlan.ts `planBases`): the cut runs its plan's height over the
+ * ground at every point of the outline (which has points added where the ground bends), so the band follows the ground.
+ * Below it the plinth's colour, or for a damp base the wall's own a little darker at the foot fading out up to the cut;
+ * above it the wall's. The brick courses run on through (texture coordinates are heights in metres). The colour and
+ * render byte as world/facadeLook.ts's walls have them; `key` the wall's house.
  */
-export function wallBases(prisms: Prism[], houses: Houses, groundAt: (x: number, z: number) => number): Map<Prism, WallBase> {
-  // The low brick blocks (up to 1.2 m high, 12 m² or more), their corners in cells of half a metre.
-  const cell = (x: number, z: number) => `${Math.round(x * 2)}|${Math.round(z * 2)}`;
-  const low = new Map<string, { p: Prism; x: number; z: number }[]>();
-  for (const p of prisms) {
-    if (!isBrick(p.m) || p.d || p.y1 - p.y0 > 1.2 || area(p.p[0]) < 12) continue;
-    for (const [x, z] of p.p[0]) {
-      const at = cell(x, z);
-      const list = low.get(at) ?? [];
-      list.push({ p, x, z });
-      low.set(at, list);
-    }
-  }
-  /** Whether a plinth in the data goes round this wall: a low block with two or more corners within 25 cm of the
-   * wall's, from the wall's foot (a band round it) or up to it (a block under it). */
-  const onPlinth = (w: Prism) => {
-    const hits = new Map<Prism, number>();
-    for (const [x, z] of w.p[0]) {
-      const seen = new Set<Prism>();
-      for (let i = -1; i <= 1; i++) {
-        for (let j = -1; j <= 1; j++) {
-          for (const q of low.get(`${Math.round(x * 2) + i}|${Math.round(z * 2) + j}`) ?? []) {
-            if (seen.has(q.p) || Math.hypot(q.x - x, q.z - z) > 0.25) continue;
-            if (Math.abs(q.p.y0 - w.y0) > 0.15 && Math.abs(q.p.y1 - w.y0) > 0.15) continue;
-            seen.add(q.p);
-            hits.set(q.p, (hits.get(q.p) ?? 0) + 1);
-          }
-        }
-      }
-    }
-    return [...hits.values()].some((n) => n >= 2);
-  };
-  const walls = prisms.filter((p) => isBrick(p.m) && !p.d && !p.lm && p.y1 - p.y0 >= 2.2 && area(p.p[0]) >= 12);
-  const top = new Map<number, number>();
-  const plinthed = new Set<number>();
-  for (const p of walls) {
-    const key = houses.keyOf(p);
-    let g = top.get(key) ?? -Infinity;
-    for (const [x, z] of p.p[0]) g = Math.max(g, groundAt(x, z));
-    top.set(key, g);
-  }
-  // (Only walls on the ground: a low wall round a terrace stands at the foot of the storey above it.)
-  for (const p of walls) if (p.y0 <= top.get(houses.keyOf(p))! + 0.25 && onPlinth(p)) plinthed.add(houses.keyOf(p));
-  const out = new Map<Prism, WallBase>();
-  for (const p of walls) {
-    const key = houses.keyOf(p);
-    if (plinthed.has(key)) continue;
-    const g = top.get(key)!;
-    if (p.y0 > g + 0.25) continue; // stands on something else (an upper storey, a terrace)
-    const look = brickLook(p.m, key);
-    const style = houseStyle(key, p.m, look.render === 1);
-    const kind = style.plinth;
-    const cut = kind.kind === 'none' ? g + DAMP_TOP : g + kind.height;
-    if (cut <= p.y0 + 0.1 || cut >= p.y1 - 1.2) continue;
-    // A painted or tarred plinth shows its colour (render shows the vertex colour at about the texture's mean).
-    const plinth = kind.kind === 'none'
-      ? null
-      : { colour: kind.colour ? new THREE.Color(kind.colour).multiplyScalar(1 / BRICK_MEAN) : look.tint.clone().multiplyScalar(PLINTH_BRICK_SHADE), render: kind.render ? 1 : look.render };
-    out.set(p, { cut, tint: look.tint, render: look.render, plinth });
-  }
-  return out;
-}
-
-/**
- * A wall block cut in two at its base's height: below, the plinth's colour (or the damp's darker shade fading out
- * up to the cut), above, the wall's. The brick courses run on through (texture coordinates are heights in metres).
- * The colour and render byte as world/facadeLook.ts's walls have them.
- */
-export function bandedWalls(p: Prism, base: WallBase): THREE.BufferGeometry {
-  const g = prismGeometry(p, 2);
+export function bandedWalls(p: Prism, plan: BasePlan, key: number, groundAt: (x: number, z: number) => number): THREE.BufferGeometry {
+  const g = prismGeometry({ ...p, p: [plan.ring, ...p.p.slice(1)] }, 2);
   const pos = g.attributes.position as THREE.BufferAttribute;
   const uv = g.attributes.uv as THREE.BufferAttribute;
   const mid = p.y0 + (p.y1 - p.y0) / 2;
+  // Each corner's row: 0 at the foot, 1 the cut, 2 the top.
+  const row = new Uint8Array(pos.count);
   for (let i = 0; i < pos.count; i++) {
-    if (Math.abs(pos.getY(i) - mid) > 1e-3) continue;
-    pos.setY(i, base.cut);
-    uv.setY(i, base.cut);
+    const y = pos.getY(i);
+    row[i] = Math.abs(y - mid) < 1e-3 ? 1 : y < mid ? 0 : 2;
+    if (row[i] !== 1) continue;
+    const cut = cutAt(plan, groundAt(pos.getX(i), pos.getZ(i)));
+    pos.setY(i, cut);
+    uv.setY(i, cut);
   }
+  const look = brickLook(p.m, key);
   const colors = new Uint8Array(pos.count * 3);
   const facade = new Uint8Array(pos.count);
   const byte = (c: THREE.Color) => [c.r, c.g, c.b].map((v) => Math.round(Math.min(1, v) * 255));
-  const wall = byte(base.tint);
-  const damp = byte(base.tint.clone().multiplyScalar(DAMP));
-  const plinth = base.plinth ? byte(base.plinth.colour) : null;
+  const wall = byte(look.tint);
+  const damp = byte(look.tint.clone().multiplyScalar(DAMP));
+  // A painted, cement or tarred plinth shows its colour (render shows the vertex colour at about the texture's mean).
+  const plinth = plan.kind === 'none' ? null
+    : byte(plan.colour ? new THREE.Color(plan.colour).multiplyScalar(1 / BRICK_MEAN) : look.tint.clone().multiplyScalar(PLINTH_BRICK_SHADE));
+  const plinthRender = plan.render ? 255 : look.render * 255;
   for (let t = 0; t < pos.count; t += 3) {
-    const below = (pos.getY(t) + pos.getY(t + 1) + pos.getY(t + 2)) / 3 < base.cut - 1e-4;
+    const below = row[t] < 2 && row[t + 1] < 2 && row[t + 2] < 2;
     for (let i = t; i < t + 3; i++) {
       if (below && plinth) {
         colors.set(plinth, i * 3);
-        facade[i] = Math.round(base.plinth!.render * 255);
+        facade[i] = plinthRender;
       } else {
-        colors.set(!plinth && pos.getY(i) < base.cut - 1e-4 ? damp : wall, i * 3);
-        facade[i] = Math.round(base.render * 255);
+        colors.set(!plinth && row[i] === 0 ? damp : wall, i * 3);
+        facade[i] = look.render * 255;
       }
     }
   }

@@ -1,5 +1,6 @@
 import type { Prism, RoofSpec, Surroundings } from './houseData';
 import { Houses } from './houseKeys';
+import { planBases, type BasePlan, type GroundAt } from './housePlan';
 import { chimneyRoofs } from './houseTrim';
 
 /**
@@ -15,6 +16,8 @@ export interface HouseIndex {
   chimneys: Map<RoofSpec, number>;
   /** The keys of the houses with a gable or hip roof */
   pitched: Set<number>;
+  /** The band at the foot of each house wall that gets one (world/housePlan.ts) */
+  bases: Map<Prism, BasePlan>;
 }
 
 const built = new WeakMap<object, HouseIndex>();
@@ -25,7 +28,8 @@ export const roofKey = (houses: Houses, r: RoofSpec): number => {
   return houses.at(cx, cz, r.wall);
 };
 
-export function houseIndex(set: Pick<Surroundings, 'roofs' | 'prisms'>): HouseIndex {
+/** `groundAt`: the ground's height at (x, z). */
+export function houseIndex(set: Pick<Surroundings, 'roofs' | 'prisms' | 'openings'>, groundAt: GroundAt): HouseIndex {
   let index = built.get(set);
   if (index) return index;
   const prisms: Prism[] = set.prisms ?? [];
@@ -33,7 +37,7 @@ export function houseIndex(set: Pick<Surroundings, 'roofs' | 'prisms'>): HouseIn
   const keyOf = (r: RoofSpec) => roofKey(houses, r);
   const pitched = new Set<number>();
   for (const r of set.roofs) if (r.shape !== 'shed') pitched.add(keyOf(r));
-  index = { houses, chimneys: chimneyRoofs(set.roofs, prisms, keyOf), pitched };
+  index = { houses, chimneys: chimneyRoofs(set.roofs, prisms, keyOf), pitched, bases: planBases(prisms, set.openings ?? [], houses, groundAt) };
   built.set(set, index);
   return index;
 }

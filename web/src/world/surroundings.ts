@@ -19,7 +19,7 @@ import { hedgeCardMesh, hedgeCardPieces } from './hedgeCards';
 import { barkMaterial, cardsBuilt, enlist, leafCardMaterial, plainForBake, switchTrees } from './leafCards';
 import { reflectionSkips } from './reflections';
 import { houseIndex, roofKey } from './houseIndex';
-import { bandedWalls, chimney, flatEdge, openingTrim, roofEdges, roofExtras, roofFrame, wallBases, type OpeningContext, type RoofEdges, type SolarArray } from './houseTrim';
+import { bandedWalls, chimney, flatEdge, openingTrim, roofEdges, roofExtras, roofFrame, type OpeningContext, type RoofEdges, type SolarArray } from './houseTrim';
 import { houseStyle } from './houseStyle';
 import { snowy } from './snowCover';
 
@@ -536,18 +536,18 @@ export function buildTile(data: TileData, poles: Pole[], renderer: THREE.WebGLRe
   const coloured = (m: THREE.Material) => (m as THREE.MeshStandardMaterial).vertexColors;
   // Each house its own shade of brick, render or not, roof covering and frames (world/facadeLook.ts), the same in every
   // tile it stands in: the houses are worked out once for the whole set (world/houseIndex.ts).
-  const index = houseIndex(data.whole ?? data);
+  const groundAt = (x: number, z: number) => ground + terrain.height(x, z);
+  const index = houseIndex(data.whole ?? data, groundAt);
   const houses = index.houses;
   const walls = (m: string, key: number, g: THREE.BufferGeometry) => {
     const look = brickLook(m, key);
     return byteAttribute(paint(g, look.tint), 'facade', look.render);
   };
-  // The house walls' bases: a plinth or a damp base (world/houseTrim.ts).
-  const bases = wallBases(data.prisms ?? [], houses, (x, z) => ground + terrain.height(x, z));
   for (const p of data.prisms ?? []) {
     const { material: mat, tint, tag } = blockMaterial(p.m, renderer);
-    const base = bases.get(p);
-    const g = base ? bandedWalls(p, base) : prismGeometry(p);
+    // A house wall's base: a plinth or a damp base following the ground (world/housePlan.ts, world/houseTrim.ts).
+    const base = index.bases.get(p);
+    const g = base ? bandedWalls(p, base, houses.keyOf(p), groundAt) : prismGeometry(p);
     fieldRows(g, p); // the fields' rows (world/fields.ts)
     if (isBrick(p.m)) put(renderable(mat), base ? g : walls(p.m, houses.keyOf(p), g), tag);
     else put(mat, coloured(mat) ? paint(g, tint) : g, tag, true, GROUND_COVERS.has(p.m) ? COVER_ORDER : undefined);

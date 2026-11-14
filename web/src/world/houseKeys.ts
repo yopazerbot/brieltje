@@ -74,6 +74,20 @@ export class BlockGrid {
     }
   }
 
+  /** The blocks whose box overlaps a box [x0, z0, x1, z1] (each once). */
+  inBox(b: [number, number, number, number]): Prism[] {
+    const seen = new Set<number>();
+    for (let cx = Math.floor(b[0] / CELL); cx <= Math.floor(b[2] / CELL); cx++) {
+      for (let cz = Math.floor(b[1] / CELL); cz <= Math.floor(b[3] / CELL); cz++) {
+        for (const i of this.cells.get(`${cx}|${cz}`) ?? []) {
+          const box = this.list[i].box;
+          if (box[0] <= b[2] && box[2] >= b[0] && box[1] <= b[3] && box[3] >= b[1]) seen.add(i);
+        }
+      }
+    }
+    return [...seen].sort((x, y) => x - y).map((i) => this.list[i].p);
+  }
+
   /** The blocks whose outline holds (x, z). */
   at(x: number, z: number): Prism[] {
     const out: Prism[] = [];
