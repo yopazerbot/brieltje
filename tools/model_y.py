@@ -49,7 +49,7 @@ L = 4.79           # length
 U_F, U_R = 0.889, 3.779  # axles, from the front bumper (wheelbase 2.89; overhangs 0.889 and 1.011 with the plate)
 TYRE_R = 0.356     # 255/45 R19
 TRACK = 1.636
-ARCH_R = 0.405     # wheel arch radius: the tyre fills it, 5 cm under its top
+ARCH_R = 0.395     # wheel arch radius: the tyre fills it, 4 cm under its top
 FLARE = 0.012      # the sides flare out this much round the arches
 
 
@@ -102,8 +102,11 @@ WIDTH = curve([(0.0, 0.62), (0.03, 0.70), (0.08, 0.78), (0.16, 0.85), (0.35, 0.9
                (4.68, 0.90), (4.78, 0.88)])
 ROOF = curve([(0.0, 0.40), (0.15, 0.62), (0.60, 0.72), (1.30, 0.76), (2.10, 0.635), (2.70, 0.61), (3.50, 0.585),
               (4.00, 0.56), (4.30, 0.55), (4.50, 0.56), (4.65, 0.58), (4.78, 0.54)])
-# How far the hood's middle stands over its edges (12 cm at the nose, 5 at the cowl); the roof's crown.
-DROP = curve([(0.0, 0.12), (0.15, 0.12), (0.70, 0.10), (1.22, 0.06), (1.60, 0.05), (4.78, 0.05)])
+# How far the hood's middle stands over its edges (17 cm at the nose, 6 at the cowl); the roof's crown.
+DROP = curve([(0.0, 0.17), (0.15, 0.17), (0.70, 0.15), (1.05, 0.10), (1.22, 0.06), (1.60, 0.05), (4.78, 0.05)])
+# The wings over the hood: their crest this much further in than the glass's foot further back, standing this
+# high over the hood's curve, this wide; the side's top this far under the crest (the roll into the side).
+WING = (0.06, 0.035, 0.06, 0.16)
 
 
 # Bottom edge of the side windows (the waistline): from the windshield's foot, rising gently towards the back.
@@ -152,13 +155,18 @@ def section(u):
     k = min(1.0, w / 0.6)            # the small sections at the tip of the nose scale their details down
     drop = DROP(u) * min(1.0, (zt - zb) / 0.25)
     tk, tg = TUCK[0], tuck(u)
-    wr = min(ROOF(u), w - (0.10 + RAIL) * k - tg)
+    # In front of the windshield (hf 1) the hood: domed across, highest down the middle, falling to a shallow
+    # valley at its edges (the gaps), the wings' tops a little proud of it over the wheels, rolling round
+    # into the body side. The section's points crowd towards the edges there (wr smaller) to carry that.
+    hf = 1 - cp.smooth((u - 1.0) / 0.2)
+    wr = min(ROOF(u), w - (0.10 + RAIL) * k - tg, w * (0.58 + 0.5 * (1 - hf)))
     bl = min(belt(u), zt)
     glass = max(0.0, min(1.0, (zt - bl) / 0.1))
-    crown = lambda x: zt - drop * (x / w) ** 2
-    lx = w - 0.08 * k - tg
+    lx = w - (0.08 + WING[0] * hf) * k - tg
+    crown = lambda x: zt - drop * (x / w) ** (2 - 0.35 * hf) + hf * WING[1] * k * math.exp(-((x - lx) / WING[2]) ** 2)
     lz = min(bl + 0.012, crown(lx))
-    zs = min(lz - (0.03 + 0.5 * tg) * k, crown(w) - drop)  # top of the side, where the shoulder rolls in
+    zs_g = min(lz - (0.03 + 0.5 * tg) * k, crown(w) - drop)
+    zs = zs_g + (lz - WING[3] * k - zs_g) * hf  # top of the side, where the shoulder rolls in
     rb = min(0.065, (zs - zb) * 0.3)
     # Along the doors the side bulges (tucked under at the sill, rolling in to the shoulder); towards the
     # tail and the nose it stands nearly upright.
@@ -185,9 +193,12 @@ def section(u):
     # The side glass (or the edge of the hood) leaning in: up to td the glass, from there to the top the
     # painted C-pillar (a sliver under the black frame where the glass reaches the top).
     td = min(1 - 0.03, max(TD_MIN, dlo(u)))
+    td += (0.8 - td) * hf
     for t in (td / 3, 2 * td / 3, td, (1 + td) / 2):
         bow = 0.012 * glass * math.sin(math.pi * t)
-        pts.append((lx + (tx - lx) * t + bow, lz + (tz - lz) * t))
+        x = lx + (tx - lx) * t + bow
+        z = lz + (tz - lz) * t
+        pts.append((x, z + (crown(x) - z) * hf))  # over the hood: on its curve (the wing, the valley)
     pts.append((tx, tz))
     pts.append(((tx + wr) / 2, crown((tx + wr) / 2) - 0.008 * glass))  # the rail's top
     for t in (0.0, 1 / 6, 2 / 6, 3 / 6, 4 / 6, 5 / 6, 1.0):
@@ -208,7 +219,7 @@ def section(u):
 U_N0 = 0.012       # the nose's tip (the front plate stands in front of it, inside the car's length)
 U_J = 0.40
 U_T = 4.30
-NOSE_W, NOSE_T, NOSE_B = (U_J - U_N0, 2.15), (0.16, 3.6), (0.20, 3.6)   # (reach, roundness) of each
+NOSE_W, NOSE_T, NOSE_B = (U_J - U_N0, 1.75), (0.16, 3.6), (0.20, 3.6)   # (reach, roundness) of each
 TAIL_W, TAIL_T, TAIL_B = (0.24, 4.5), (0.12, 6.0), (0.10, 3.0)
 ZC_N, ZC_T = 0.42, 0.60   # the heights where the nose and the tail end
 
@@ -665,11 +676,17 @@ def place(x, u, z, tilt=0.0):
     return Matrix.Translation((x, L / 2 - u, z)) @ Matrix.Rotation(math.radians(tilt), 4, "X")
 
 
-# ---- Cuts into the body: the panel gaps as grooves (5 mm wide, 4 mm deep), the light bar's slot, the
+# ---- Cuts into the body: the panel gaps as grooves (8 mm wide, 5 mm deep), the light bar's slot, the
 # headlamps' pods, the intake, the channel under the rear lip.
-G_W, G_D = 0.005, 0.004
+# A groove narrower than a pixel (5 mm at 7 m on High, 9 mm on Low; on the hood, seen along it from the front,
+# far less) breaks up into rows of dots, however wide it is made within reason. So each gap is also drawn as
+# a line (GAP_LINES, the node "GapLines"): the game draws it one pixel wide at any distance, 2.5 mm over the
+# groove's middle, and fades it out further off (world/car.ts).
+G_W, G_D = 0.008, 0.005
 G_STEP = 0.035  # m between a groove's samples
+G_LIFT = 0.0025
 cuts = cp.Cuts()
+GAP_LINES = []
 
 
 def groove(hits, closed=False):
@@ -678,6 +695,7 @@ def groove(hits, closed=False):
         hits = hits + hits[:2]
     # Its walls are matt black: painted, they caught the sky and glinted as dotted lines.
     cuts.add(cp.bar(hits, G_W, G_D, extend=0.002), "Gap")
+    GAP_LINES.append([h[0] + h[1].normalized() * G_LIFT for h in hits])
 
 
 def fa(x, z):
@@ -688,7 +706,7 @@ def fa(x, z):
 # The light bar: a slot just under the hood's leading edge, across the whole nose and a little way round
 # the corners into the fenders; the bar's ends.
 BAR_A = 80
-BAR_Z = lambda a: 0.738 - 0.024 * (abs(a) / BAR_A) ** 2.5
+BAR_Z = lambda a: 0.730 - 0.045 * (abs(a) / BAR_A) ** 2.2  # under the hood's edge, which falls to the corners
 _end = FRONT(BAR_A, BAR_Z(BAR_A))[0]
 BAR_END = (L / 2 - _end.y, _end.x)
 # The tail: the ducktail lip's rows on the deck and its overhang; the channel under it (bottom, top, how far
@@ -705,10 +723,11 @@ for s in (-1, 1):
                  [(2.565, lzf(2.565) - 0.004), (2.567, 0.86), (2.570, 0.56), (2.573, 0.33)],
                  [(3.600, lzf(3.60) - 0.004), (3.585, 0.95), (3.548, 0.80), (3.50, 0.70), (3.47, 0.66)]):
         groove([side(u, z) for u, z in dense(line, G_STEP)])
-    # Hood (frunk) gaps from the light bar's ends along the creases back to the cowl. (The bumper's face runs
-    # into the fenders without a seam.)
-    groove([top_ray(u, s * x) for u, x in dense([(BAR_END[0] + 0.03, BAR_END[1] - 0.04), (0.40, 0.775), (0.80, 0.745),
-                                                  (1.05, 0.718), (1.21, 0.70)], G_STEP)])
+    # Hood (frunk) gaps from the light bar's ends back to the cowl, in the valley between the hood and the wing.
+    # (The bumper's face runs into the fenders without a seam.)
+    valley = lambda u: key(u, "lx") - 0.055
+    groove([top_ray(u, s * x) for u, x in dense([(BAR_END[0] + 0.03, BAR_END[1] - 0.04), (0.40, valley(0.40)),
+                                                  (0.80, valley(0.80)), (1.05, valley(1.05)), (1.21, valley(1.21))], G_STEP)])
     # The tailgate's sides: across the deck behind the glass, then down the tail to the bumper.
     groove([top_ray(u, s * x) for u, x in dense([(4.40, ROOF(4.40) + 0.10), (4.50, 0.66), (4.56, 0.645)], G_STEP)])
     groove([back_ray(s * x, z) for x, z in dense([(TL_IN - 0.01, TL_Z[0] - 0.006), (TL_IN - 0.015, 0.75), (TL_IN - 0.025, 0.575)], G_STEP)])
@@ -746,9 +765,10 @@ print(f"model_y: shell {len(us)} rings x {n} points, {shell_tris} triangles; wit
 B = Builder("Details")
 
 # ---- Front: the light bar in its slot, the headlamps in their pods, the slats in the intake, the lip.
-# 18 mm tall: thinner, it breaks up into dashes from a few metres without the smoothing of the higher presets.
-panel(B, FRONT, across(-(BAR_A - 1.5), BAR_A - 1.5, 60), lambda a: [BAR_Z(a) - 0.008, BAR_Z(a) + 0.008], "LightBar",
-      out=0.001, skirt=0)
+# 18 mm tall, 4 mm proud of the slot's floor: thinner, it breaks up into dashes from a few metres; further out,
+# its straight pieces cut through the slot's lips where the bar curves and it shows as dashes too.
+panel(B, FRONT, across(-(BAR_A - 1.5), BAR_A - 1.5, 80), lambda a: [BAR_Z(a) - 0.009, BAR_Z(a) + 0.009], "LightBar",
+      out=0.004, skirt=0)
 for s in (-1, 1):
     a_vals = across(s * (HL[0] + 0.5), s * (HL[1] - 0.5), 14)
     zc = HL_Z
@@ -776,7 +796,7 @@ rounded_panel(B, lambda x, u: top_ray(u, x), 0.0, 2.29, 0.17, 0.13, 0.03, "Gap",
 # ---- Arches: a black lip round each.
 for u in (U_F, U_R):
     for s in (-1, 1):
-        cp.arch_lip(panel, B, side_ray(s), u, TYRE_R, ARCH_R, 0.028, "Trim", out=0.006)
+        cp.arch_lip(panel, B, side_ray(s), u, TYRE_R, ARCH_R, 0.020, "Trim", out=0.006)
 
 # ---- Sides.
 for s in (-1, 1):
@@ -942,7 +962,7 @@ print(f"model_y: details {cp.triangles([details])} triangles")
 # the steering wheel (round, on the left), two front seats, the rear seats and the console between.
 C = Builder("Cabin")
 tub = []
-for u in across(1.40, 4.40, 20):
+for u in across(1.40, 4.40, 14):
     info = section(u)[2]
     lx, bl = info["lx"], min(belt(u), TOP(u))
     zt = min(bl, TOP(u) - 0.03) - 0.004
@@ -981,7 +1001,7 @@ C.face(dash[-1], "Interior", Vector((1, 0, 0)))
 scr = place(0.0, 1.865, 1.07, -16)
 rbox(C, "Interior", (0.36, 0.024, 0.225), 0.006, scr, segs=1)
 sv = [C.v(scr @ Vector((x, -0.0125, z))) for x, z in ((-0.168, -0.102), (0.168, -0.102), (0.168, 0.102), (-0.168, 0.102))]
-C.face(sv, "Screen", scr.to_3x3() @ Vector((0, -1, 0)))
+C.face(sv, "LampGlass", scr.to_3x3() @ Vector((0, -1, 0)))  # the screen: dark glass (no draw call of its own)
 rbox(C, "Interior", (0.05, 0.07, 0.09), 0.01, place(0.0, 1.86, 0.97, -16), segs=1)
 # Steering wheel: a round rim with two side spokes and one below, the hub, the column into the dash.
 sw = place(-0.37, 2.02, 0.905, -24)
@@ -1042,7 +1062,7 @@ def far_material(u, x, z, nrm):
     return ORDER.index("GlassDark" if name.startswith("Glass") else name)
 
 
-far_us = [U_N0 + 0.004 + (L_BODY - U_N0 - 0.008) * (1 - math.cos(math.pi * i / 31)) / 2 for i in range(32)]
+far_us = [U_N0 + 0.004 + (L_BODY - U_N0 - 0.008) * (1 - math.cos(math.pi * i / 27)) / 2 for i in range(28)]
 far_me = cp.far_car("Far", L, far_section, far_us, FAR_N, far_material,
                     [(s * (0.962 + FLARE), L / 2 - u) for u in (U_F, U_R) for s in (-1, 1)], TYRE_R)
 for m in MAT.values():
@@ -1069,7 +1089,32 @@ wheel_tris = cp.triangles([wheels[0]])
 far_tris = cp.triangles([far])
 print(f"model_y: {body_tris + 4 * wheel_tris} triangles near (body {body_tris - cabin_tris}, cabin {cabin_tris}, "
       f"wheel {wheel_tris} each); far {far_tris}")
-cp.export([body, *wheels, far], OUT)
+
+# ---- The panel gaps as lines (edges only, no faces): see groove().
+lbm = bmesh.new()
+for path in GAP_LINES:
+    vs = [lbm.verts.new(p) for p in path]
+    for a, b in zip(vs, vs[1:]):
+        lbm.edges.new((a, b))
+lme = bpy.data.meshes.new("GapLines")
+lbm.to_mesh(lme)
+lbm.free()
+gap_lines = link(bpy.data.objects.new("GapLines", lme))
+print(f"model_y: gap lines {len(lme.edges)} segments")
+
+
+def export(objs, out):
+    """As car_parts.export, with the loose edges (the gap lines) exported as lines."""
+    bpy.ops.object.select_all(action="DESELECT")
+    for o in objs:
+        o.select_set(True)
+    os.makedirs(os.path.dirname(os.path.abspath(out)), exist_ok=True)
+    bpy.ops.export_scene.gltf(filepath=out, export_format="GLB", use_selection=True, export_apply=True, export_yup=True,
+                              export_texcoords=False, export_cameras=False, export_lights=False,
+                              export_vertex_color="ACTIVE", export_all_vertex_colors=False, use_mesh_edges=True)
+
+
+export([body, *wheels, far, gap_lines], OUT)
 print(f"model_y: {os.path.getsize(OUT)} bytes")
 
 if PREVIEW:
@@ -1082,4 +1127,5 @@ if PREVIEW:
                           ("oside", (40.0, 0.0, 0.85), (0, 0, 0.85), 250), ("orear", (0.0, -40.0, 0.85), (0, 0, 0.85), 480),
                           # Left side, front and rear three-quarters, and the rear from its right.
                           ("lfront", (-6.2, 5.2, 1.0), (0, 0.3, 0.75), 40), ("lfront2", (-4.6, 6.6, 1.55), (0, 0.6, 0.7), 40),
-                          ("lrear", (-4.3, -5.4, 1.35), (0, -0.6, 0.8), 30), ("rrear", (2.6, -7.5, 1.6), (0, -0.3, 0.75), 45)), L)
+                          ("lrear", (-4.3, -5.4, 1.35), (0, -0.6, 0.8), 30), ("rrear", (2.6, -7.5, 1.6), (0, -0.3, 0.75), 45),
+                          ("top", (0.0, 1.6, 30.0), (0, 1.6, 0), 360), ("ofront", (0.0, 40.0, 1.0), (0, 0, 0.8), 480)), L)
