@@ -1032,6 +1032,9 @@ export class Game {
     } else if (m.t === 'zitem') {
       // Walking over a reward (server/zombies.mjs take: there, within reach, of use, taken once).
       this.modes.zombies?.take(name, player, m, now);
+    } else if (m.t === 'zbuy') {
+      // Buying at the stall between waves (server/zombies.mjs buy: the kind only; rate, who, break, coins, use).
+      this.modes.zombies?.buy(name, player, m, now);
     } else if (m.t === 'claymore') {
       // Placing a claymore (server/zombies.mjs place: carried, on a floor near the player, two down at most).
       this.modes.zombies?.place(name, player, m, now);
