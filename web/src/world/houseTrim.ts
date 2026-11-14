@@ -524,19 +524,21 @@ export interface OpeningContext {
 /**
  * What goes round one window, door or garage door (world/surroundings.ts `buildOpenings` places the frame): a lintel
  * over it, a bluestone step under a door, leaf shutters beside a ground-floor window, a lowered roller shutter in front
- * of a window. For the frames' mesh. `d`, `n`: the wall's direction (d x up = n) and its outside; `mid` the opening's middle.
+ * of a window. `flat`: the parts lying flat on the wall, for the trims' mesh; `solid`: the steps, for the frames'. `d`,
+ * `n`: the wall's direction (d x up = n) and its outside; `mid` the opening's middle.
  */
-export function openingTrim(o: Opening, d: THREE.Vector3, n: THREE.Vector3, w: number, mid: THREE.Vector3, ctx: OpeningContext): THREE.BufferGeometry[] {
+export function openingTrim(o: Opening, d: THREE.Vector3, n: THREE.Vector3, w: number, mid: THREE.Vector3, ctx: OpeningContext): { flat: THREE.BufferGeometry[]; solid: THREE.BufferGeometry[] } {
   // The wall block the opening is in (a house is often blocks stacked on each other: the one at its height).
   const [wx, wz] = [mid.x - n.x * 0.3, mid.z - n.z * 0.3];
   const house = ctx.houses.wallAt(wx, wz, mid.y);
-  if (!house) return [];
+  if (!house) return { flat: [], solid: [] };
   const look = brickLook(house.m, house.key);
   const style = houseStyle(house.key, house.m, look.render === 1, ctx.pitched.has(house.key));
   const [y0, y1] = o.y;
   const h = y1 - y0;
   const out = (k: number, y = mid.y) => mid.clone().addScaledVector(n, k).setY(y);
-  const parts: THREE.BufferGeometry[] = [];
+  const parts: THREE.BufferGeometry[] = []; // flat on the wall (the trims' material, with its polygon offset)
+  const solid: THREE.BufferGeometry[] = [];
   // Lintel: over the frame (5 cm above the opening), unless no wall of the house goes on above it.
   if (style.lintel !== 'none' && ctx.houses.holds(wx, wz, y1 + 0.25)) {
     if (style.lintel === 'stone') parts.push(face(out(0.03, y1 + 0.05 + 0.09), d, n, w + 0.24, 0.18, new THREE.Color('#d9d4c8')));
@@ -544,9 +546,9 @@ export function openingTrim(o: Opening, d: THREE.Vector3, n: THREE.Vector3, w: n
   }
   // Bluestone steps up to a door, each block down to the ground under it (world/housePlan.ts).
   for (const s of planSteps(o, ctx.houses, ctx.groundAt)) {
-    parts.push(box(out((s.from + s.to) / 2, (s.top + s.bottom) / 2), d, n, w + 0.3, s.top - s.bottom, s.to - s.from, new THREE.Color('#6b7177')));
+    solid.push(box(out((s.from + s.to) / 2, (s.top + s.bottom) / 2), d, n, w + 0.3, s.top - s.bottom, s.to - s.from, new THREE.Color('#6b7177')));
   }
-  if (o.k !== 'w') return parts;
+  if (o.k !== 'w') return { flat: parts, solid };
   const upper = y0 - ctx.groundAt(mid.x, mid.z) > 2;
   if (style.shutters && !upper && w < 1.9 && h < 1.9) {
     const colour = new THREE.Color(style.shutters);
@@ -571,7 +573,7 @@ export function openingTrim(o: Opening, d: THREE.Vector3, n: THREE.Vector3, w: n
       }
     }
   }
-  return parts;
+  return { flat: parts, solid };
 }
 
 /** Whether another opening on the same wall overlaps a leaf shutter `width` wide, centred at `at`, between heights y0 and y1. */

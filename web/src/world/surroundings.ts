@@ -75,6 +75,11 @@ bakeStandIns.add(plainForBake);
 const gutterMat = new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.4, metalness: 0.55 });
 // Snow lies on what faces up: sills, chimney caps, doorsteps (world/snowCover.ts).
 const frameMat = snowy(new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.55 }));
+// The same for the houses' flat parts a few centimetres off a wall or roof (lintels, shutters, edge trims, roof-window
+// frames: world/houseTrim.ts), drawn 2 depth steps nearer: with the view's near plane at 5 cm a step is 3 cm at 160 m
+// and 5 cm at 220 m, and they fought with the wall behind from there. (Not the window frames: their panes lie 8 mm in
+// front of them.) The same shader as the frames, one more draw call per set.
+const trimMat = snowy(new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.55, polygonOffset: true, polygonOffsetFactor: 0, polygonOffsetUnits: -2 }));
 // Opaque and glossy: from outside, windows mostly mirror the sky over what hangs behind them (world/windows.ts).
 const paneMat = paneMaterial();
 const postMat = new THREE.MeshStandardMaterial({ color: '#cfccc4', roughness: 0.9 });
@@ -382,6 +387,7 @@ function slab(at: THREE.Vector3, d: THREE.Vector3, n: THREE.Vector3, w: number, 
  */
 function buildOpenings(list: Opening[], ground: number, houses: Houses, pitched: Set<number>): Piece[] {
   const solid: THREE.BufferGeometry[] = [];
+  const flat: THREE.BufferGeometry[] = [];
   const glass: THREE.BufferGeometry[] = [];
   const sill = new THREE.Color('#d8d3c7');
   const trim: OpeningContext = { houses, groundAt: (x, z) => ground + terrain.height(x, z), pitched, list };
@@ -399,7 +405,9 @@ function buildOpenings(list: Opening[], ground: number, houses: Houses, pitched:
     const out = (k: number) => mid.clone().addScaledVector(n, k);
     const frame = frameColour(o.f, houses.at(mid.x - n.x * 0.3, mid.z - n.z * 0.3)); // the house the wall belongs to
     solid.push(slab(out(0.02), d, n, w + 0.1, h + 0.1, 0.05, frame));
-    solid.push(...openingTrim(o, d, n, w, mid, trim));
+    const round = openingTrim(o, d, n, w, mid, trim);
+    solid.push(...round.solid);
+    flat.push(...round.flat);
     if (o.k === 'w') {
       const upper = y0 - (ground + terrain.height(mid.x, mid.z)) > 2;
       glass.push(paneGeometry(out(0.053), d, n, w, h, paneLook(mid.x, mid.z, n.x, n.z, upper, i, h >= 1.9), mid.x + mid.y + mid.z * 1.7));
@@ -424,6 +432,7 @@ function buildOpenings(list: Opening[], ground: number, houses: Houses, pitched:
     geos.forEach((g) => g.dispose());
   };
   add(solid, frameMat, 'alu');
+  add(flat, trimMat, 'alu');
   add(glass, paneMat, 'black_glass');
   return out;
 }
@@ -559,7 +568,7 @@ export function buildTile(data: TileData, poles: Pole[], renderer: THREE.WebGLRe
       const at = pointInside(p.p[0]);
       const house = at && houses.wallAt(at[0], at[1], p.y0 - 0.3);
       const style = house && houseStyle(house.key, house.m, brickLook(house.m, house.key).render === 1);
-      if (style?.flatEdge) for (const e of flatEdge(p, new THREE.Color(style.trim), flatEdgeSides(p, index.lids, houses))) put(frameMat, e, 'alu', false, undefined, true);
+      if (style?.flatEdge) for (const e of flatEdge(p, new THREE.Color(style.trim), flatEdgeSides(p, index.lids, houses))) put(trimMat, e, 'alu', false, undefined, true);
     }
   }
 
@@ -605,7 +614,7 @@ export function buildTile(data: TileData, poles: Pole[], renderer: THREE.WebGLRe
     });
     const extras = roofExtras(r, frame, style, taken);
     madeSolar.push(...extras.solar);
-    for (const w of extras.frames) put(frameMat, w, 'alu', false, undefined, true);
+    for (const w of extras.frames) put(trimMat, w, 'alu', false, undefined, true);
     for (const w of extras.glass) put(paneMat, w, 'black_glass', false, undefined, true); // with the windows' panes
     const ch = chimneys.has(r) ? style.chimney : null;
     if (ch) {
