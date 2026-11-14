@@ -4,7 +4,7 @@
 // (A, B, A, B), because other agents share the graphics chip and the processor (AGENTS.md).
 //
 //   node tools/dev/loadtime.mjs http://localhost:8650/ http://localhost:8651/ [--rounds 3] [--port 9940]
-//        [--spawn church] [--gfx high] [--phone] [--throttle 4] [--after 10] [--wait 6]
+//        [--spawn church] [--play action|paintball] [--gfx high] [--phone] [--throttle 4] [--after 10] [--wait 6]
 //        [--prof out.cpuprofile] [--profafter 0] [--top 30] [--swiftshader] [--slow 50]
 //
 // --phone: touch and a phone's screen; --throttle 4: the processor 4x slower (as for a phone).
@@ -17,7 +17,7 @@
 import { writeFileSync } from 'node:fs';
 import { launch, options } from './cdp.mjs';
 
-const o = options({ rounds: '1', port: '9940', spawn: 'church', gfx: '', phone: false, throttle: '1', after: '10', wait: '6', prof: '', profafter: '0', top: '30', swiftshader: false, slow: '50' });
+const o = options({ rounds: '1', port: '9940', spawn: 'church', play: 'action', gfx: '', phone: false, throttle: '1', after: '10', wait: '6', prof: '', profafter: '0', top: '30', swiftshader: false, slow: '50' });
 const SLOW = Number(o.slow);
 const urls = o._;
 if (!urls.length) throw new Error('give one or more URLs');
@@ -35,7 +35,7 @@ async function once(url, round) {
     await b.send('Network.setCacheDisabled', { cacheDisabled: true });
     await b.send('Page.navigate', { url });
     await b.waitFor("!!document.querySelector('#choose-kbm')", 60000);
-    await b.evaluate(`(() => { localStorage.setItem('briel.spawn', ${JSON.stringify(o.spawn)}); ${o.gfx ? `localStorage.setItem('briel.graphics', ${JSON.stringify(o.gfx)});` : ''} })()`, false);
+    await b.evaluate(`(() => { localStorage.setItem('briel.spawn', ${JSON.stringify(o.spawn)}); localStorage.setItem('briel.playMode', ${JSON.stringify(o.play)}); ${o.gfx ? `localStorage.setItem('briel.graphics', ${JSON.stringify(o.gfx)});` : ''} })()`, false);
     await b.send('Page.reload');
     await b.sleep(500);
     await b.waitFor("!!document.querySelector('#choose-kbm') && !document.getElementById('overlay').classList.contains('hidden')", 60000);
@@ -58,7 +58,7 @@ async function once(url, round) {
       new MutationObserver(() => { if (!window.__play && ov.classList.contains('hidden')) window.__play = performance.now(); }).observe(ov, { attributes: true });
       const n = document.getElementById('nick');
       if (n && !n.value) { n.value = 'Check'; n.dispatchEvent(new Event('input', { bubbles: true })); }
-      document.querySelector('#mode-start [data-play=action]')?.click();
+      document.querySelector('#mode-start [data-play=${o.play}]')?.click();
       window.__click = performance.now();
       document.querySelector('${button}').click();
     })()`, false);

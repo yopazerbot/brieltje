@@ -1,7 +1,8 @@
 // The start screen end to end, headless (tools/dev/cdp.mjs): every way from opening the page to playing, through the
 // three steps (who, alone or together, the game), with the keyboard and mouse, a controller (a fake one in the page)
 // or touch, then "Play again as before" after a reload. After each start it watches the first seconds of play:
-// the mode and the place, no parachute in Zombies, no weapon in Explore, the game bar, and no console errors.
+// the mode and the place, no parachute in Zombies, no weapon in Explore, the guns chosen in Action and Paintball (step 3's
+// chips), no card opening by itself, the game bar, and no console errors.
 //
 //   ADMIN_PASSWORD=... node tools/dev/startFlowCheck.mjs --url http://localhost:5580/ --api http://localhost:8810
 //          [--only zombies-house,explore-church] [--shots <folder>] [--port 10240] [--list]
@@ -67,7 +68,7 @@ async function padPress(b, i) {
   await b.evaluate(`(() => { const k = window.__pad.buttons[${i}]; k.pressed = false; k.value = 0; window.__pad.timestamp++; })()`, false);
   await sleep(160);
 }
-const active = (b) => b.evaluate("(() => { const e = document.activeElement; return e ? (e.id || e.dataset.mp || e.dataset.play || e.dataset.startMode || e.tagName) : null; })()", false);
+const active = (b) => b.evaluate("(() => { const e = document.activeElement; return e ? (e.id || e.dataset.mp || e.dataset.play || e.dataset.startMode || (e.dataset.gun && `gun-${e.dataset.gun}`) || e.tagName) : null; })()", false);
 
 async function open(b, url, phone) {
   if (phone) {
@@ -82,6 +83,38 @@ const step = (b) => b.evaluate("Number(document.getElementById('start-panel').da
 const js = (b, code) => b.evaluate(`(() => { ${code} })()`, false);
 const setValue = (b, id, value) => js(b, `const e = document.getElementById(${JSON.stringify(id)}); e.value = ${JSON.stringify(value)}; e.dispatchEvent(new Event('input', { bubbles: true })); e.dispatchEvent(new Event('change', { bubbles: true }));`);
 const click = (b, sel) => js(b, `const e = document.querySelector(${JSON.stringify(sel)}); if (!e) throw new Error('no ' + ${JSON.stringify(sel)}); e.click();`);
+/** A finger's tap on `sel` (touch emulation), scrolled into view first: it must be reachable, not only clickable. */
+async function tap(b, sel) {
+  const r = await js(b, `const e = document.querySelector(${JSON.stringify(sel)}); if (!e) throw new Error('no ' + ${JSON.stringify(sel)}); e.scrollIntoView({ block: 'nearest' }); const q = e.getBoundingClientRect(); return { x: q.left + q.width / 2, y: q.top + q.height / 2 };`);
+  await sleep(200);
+  await b.send('Input.dispatchTouchEvent', { type: 'touchStart', touchPoints: [{ x: r.x, y: r.y }] });
+  await b.send('Input.dispatchTouchEvent', { type: 'touchEnd', touchPoints: [] });
+  await sleep(200);
+}
+/** Step 3's gun chips set to `guns`: the ones not wanted put back first, then the wanted ones picked. */
+async function setGuns(b, guns, touch) {
+  const now = await b.evaluate("[...document.querySelectorAll('#guns-start .gun-chip')].map((e) => [e.dataset.gun, e.getAttribute('aria-pressed') === 'true'])", false);
+  if (!now.length) throw new Error('no gun chips on step 3');
+  const todo = [...now.filter(([w, on]) => on && !guns.includes(w)), ...now.filter(([w, on]) => !on && guns.includes(w))].map(([w]) => w);
+  for (const w of todo) await (touch ? tap(b, `#guns-start [data-gun=${w}]`) : click(b, `#guns-start [data-gun=${w}]`));
+  const after = await b.evaluate("[...document.querySelectorAll('#guns-start .gun-chip[aria-pressed=true]')].map((e) => e.dataset.gun).sort().join()", false);
+  if (after !== [...guns].sort().join()) throw new Error(`the chips show ${after || 'none'}, not ${guns.join()}`);
+}
+/** With the controller on step 3: the D-pad up from the Controller button to the last chip, ✕ toggles it, down again. */
+async function padGuns(b) {
+  let f = await active(b);
+  for (let i = 0; i < 8 && !String(f).startsWith('gun-'); i++) {
+    await padPress(b, 12);
+    f = await active(b);
+  }
+  if (!String(f).startsWith('gun-')) throw new Error(`D-pad up never reached the chips (focus on ${f})`);
+  await padPress(b, 0);
+  for (let i = 0; i < 8 && f !== 'choose-pad'; i++) {
+    await padPress(b, 13);
+    f = await active(b);
+  }
+  return f;
+}
 async function waitStep(b, n, ms = 15000) {
   await b.waitFor(`Number(document.getElementById('start-panel').dataset.step) === ${n}`, ms);
 }
@@ -121,8 +154,9 @@ async function walkSteps(b, c) {
       await click(b, sel);
     }
   } else {
-    await click(b, `#mode-start [data-play=${c.mode}]`);
+    await (c.tap ? tap(b, `#mode-start [data-play=${c.mode}]`) : click(b, `#mode-start [data-play=${c.mode}]`));
     if (c.place) await setValue(b, 'spawn', c.place);
+    if (c.guns) await setGuns(b, c.guns, c.tap);
   }
 }
 
@@ -174,8 +208,10 @@ async function start(b, c) {
   if (c.input === 'pad') {
     const f = await active(b);
     if (f !== 'choose-pad') throw new Error(`step 3's focus is on ${f}, not the Controller button`);
+    if (c.padGuns && (await padGuns(b)) !== 'choose-pad') throw new Error(`D-pad down from the chips never reached the Controller button (focus on ${await active(b)})`);
     await padPress(b, 0);
-  } else await click(b, `#choose-${c.input}`);
+  } else if (c.tap) await tap(b, `#choose-${c.input}`);
+  else await click(b, `#choose-${c.input}`);
   await b.waitFor('!!window.briel', 180000);
   await b.waitFor("(() => { const p = document.getElementById('start-panel'); if (!p || p.offsetParent === null) return true; const s = getComputedStyle(p); return s.visibility === 'hidden' || Number(s.opacity) < 0.05; })()", 240000);
 }
@@ -193,7 +229,11 @@ async function watch(b, c, seconds = 9) {
         net: briel.net().rtt !== undefined && briel.net().rtt !== null, lang: document.documentElement.lang, play: localStorage.getItem('briel.playMode'),
         paint: document.body.classList.contains('paintball'),
         adminTab: !document.getElementById('tab-admin').classList.contains('hidden'),
-        acct: [...document.querySelectorAll('.acct-manage')].some((e) => !e.classList.contains('hidden')) };
+        acct: [...document.querySelectorAll('.acct-manage')].some((e) => !e.classList.contains('hidden')),
+        owned: [...briel.weapon.owned].sort(), guns: briel.guns(), stored: JSON.parse(localStorage.getItem('briel.loadout') ?? 'null'),
+        // Any card open over the game but the controls card (the start's own): nothing is to open by itself.
+        dialog: [...document.querySelectorAll('[role=dialog]')].filter((e) => e.id !== 'controls-card' && e.getClientRects().length > 0 && getComputedStyle(e).visibility !== 'hidden').map((e) => e.id || e.className).join(','),
+        focus: document.activeElement ? (document.activeElement.id || document.activeElement.tagName) : null };
     })()`, false));
     await sleep(250);
   }
@@ -236,6 +276,20 @@ function judge(c, s) {
       const d = Math.hypot(target.x - at.x, target.z - at.z);
       if (!anyChute && d > 40) bad.push(`${d.toFixed(0)} m from ${c.place}`);
     }
+  }
+  // Nothing opens by itself during play (the guns are chosen on the start screen), and the focus stays put.
+  const dialogs = [...new Set(s.map((x) => x.dialog).filter(Boolean))];
+  if (dialogs.length) bad.push(`a card showed during play: ${dialogs.join(', ')}`);
+  const foci = [...new Set(s.map((x) => x.focus))];
+  if (foci.length > 1) bad.push(`the focus moved during play: ${foci.join(' > ')}`);
+  // In Action and Paintball the guns in hand are the pistol, the bazooka (alone, or the admin's) and the pick; together
+  // the server holds that pick.
+  if (c.mode === 'action' || c.mode === 'paintball') {
+    const pick = last.stored ?? ['rifle'];
+    if (c.guns && [...pick].sort().join() !== [...c.guns].sort().join()) bad.push(`the stored pick is ${pick.join('+')}, not ${c.guns.join('+')}`);
+    const want = ['pistol', ...(c.mp === 'solo' || c.who === 'admin' ? ['bazooka'] : []), ...pick].sort().join('+');
+    if (last.owned.join('+') !== want) bad.push(`guns in hand ${last.owned.join('+')}, not ${want}`);
+    if (c.mp === 'multi' && [...(last.guns.server ?? [])].sort().join() !== [...pick].sort().join()) bad.push(`the server holds ${(last.guns.server ?? ['nothing']).join('+')}, not ${pick.join('+')}`);
   }
   if (c.lang && last.lang !== c.lang) bad.push(`page in ${last.lang}, not ${c.lang}`);
   // A guest never gets an account's or the admin's options; an account its own, the admin the admin's tab.
@@ -408,6 +462,14 @@ const cases = [
   { name: 'explore-football', who: 'guest', mp: 'solo', mode: 'explore', place: 'football', input: 'kbm', again: false },
   { name: 'paintball-house', who: 'guest', mp: 'solo', mode: 'paintball', place: 'house', input: 'kbm' },
   { name: 'action-school', who: 'guest', mp: 'solo', mode: 'action', place: 'school', input: 'kbm' },
+  // The guns chosen on step 3: by mouse, by finger on a phone held sideways, and with only a controller.
+  { name: 'action-church-guns', who: 'guest', mp: 'solo', mode: 'action', place: 'church', input: 'kbm', guns: ['shotgun', 'sniper'] },
+  { name: 'touch-paintball-guns', who: 'guest', mp: 'solo', mode: 'paintball', place: 'church', input: 'touch', tap: true, guns: ['shotgun', 'sniper'], again: false },
+  { name: 'pad-action-guns', who: 'guest', mp: 'solo', mode: 'action', place: 'church', input: 'pad', padGuns: true, before: async (b) => {
+    // Action picked before (else a first visit's controller lands on Zombies), and the first choice of guns, the rifle.
+    await js(b, "localStorage.setItem('briel.startMode', 'action'); localStorage.setItem('briel.playMode', 'action'); localStorage.removeItem('briel.loadout');");
+    await open(b, o.url, false);
+  }, after: async (b, s) => ([...(s.at(-1).stored ?? [])].sort().join() === 'rifle,sniper' ? [] : [`the controller's pick is ${(s.at(-1).stored ?? []).join('+')}, not rifle+sniper`]) },
   { name: 'zombies-church-nl', who: 'guest', mp: 'solo', mode: 'zombies', place: 'church', input: 'kbm', lang: 'nl', again: false },
   { name: 'zombies-sparrenhof-low', who: 'guest', mp: 'solo', mode: 'zombies', place: 'sparrenhof', input: 'kbm', again: false, before: async (b) => {
     await b.evaluate("localStorage.setItem('briel.graphics', 'low')", false); // the Low preset (src/graphics.ts)
