@@ -70,7 +70,8 @@ import { creak, SlideSound } from './world/playgroundSound';
 import { towerPrompt } from './world/playgroundHint';
 import { SettingsPanel, type Settings } from './settings';
 import { gunsReady, SPECS, Weapon, type WeaponId } from './weapon';
-import { paintball, setPaintball, weaponName as shownWeapon } from './paintball';
+import { GUN_PAINT, paintball, setPaintball, weaponName as shownWeapon } from './paintball';
+import { VILLAGER_HIT_MAX, VILLAGER_PAINT_S } from '../shared/villagers.mjs';
 import { Decals } from './world/decals';
 import { Effects, type Spot } from './world/effects';
 import { GRENADE, Grenades } from './world/grenades';
@@ -1645,6 +1646,38 @@ function catHit(i: number, point: THREE.Vector3, w: string): void {
   net.send({ t: 'cat', i, w });
 }
 weapon.onCatHit = (i, point) => catHit(i, point, weapon.current);
+/**
+ * A villager hit by your bullet or paintball, or caught in your blast (`w` 'grenade' or 'bazooka'): in Action it
+ * cries out and tips over (a cartoon puff, no blood; no points), in Paintball the paint sticks to its clothes and
+ * it jumps. world/villagers.ts says who can be hit (never a child, a dog or someone with a child, never on the
+ * school grounds); in multiplayer the server checks it again and tells the others.
+ */
+const villagerSent: { ids: number[]; w: string } = { ids: [], w: '' };
+function villagerHit(id: number, point: THREE.Vector3, w: string): void {
+  if (paintball.on) {
+    if (!villagers.canPaint(id)) return;
+    villagers.splat(id, GUN_PAINT[w] ?? GUN_PAINT.pistol, VILLAGER_PAINT_S);
+    effects.puff(point);
+    combat.hitMarker(false);
+  } else {
+    if (!villagers.hit(id, { x: player.x, z: player.z })) return;
+    effects.puff(point);
+    combat.hitMarker(true);
+    combat.kill(youName(), t('char.villager'), false, weaponName(w));
+  }
+  // One message for all a shot or a blast caught (a shotgun's pellets, a grenade).
+  if (!net.connected || villagerSent.ids.length >= VILLAGER_HIT_MAX || villagerSent.ids.includes(id)) return;
+  if (!villagerSent.ids.length) {
+    queueMicrotask(() => {
+      net.send({ t: 'vil', ids: villagerSent.ids, w: villagerSent.w });
+      villagerSent.ids = [];
+    });
+  }
+  villagerSent.ids.push(id);
+  villagerSent.w = w;
+}
+weapon.villagerAt = (ray, max) => villagers.rayHit(ray.origin, ray.direction, max);
+weapon.onVillagerHit = (id, point, w) => villagerHit(id, point, w);
 /** A clown hit by your bullet or caught in your blast: it honks and falls over. `spot`: where paintball's paint sticks on him. */
 function clownHit(id: number, point: THREE.Vector3, w: string, spot?: Spot): void {
   effects.puff(point, spot); // the same cartoon puff
@@ -2019,6 +2052,7 @@ function explode(at: THREE.Vector3, mine: boolean, w: 'bazooka' | 'grenade' = 'b
   if (!mine) return;
   for (const i of glass.near(at, radius * 0.7)) if (glass.break(i, at, at)) net.send({ t: 'glass', i });
   for (const i of cats.near(at, radius)) catHit(i, at, w);
+  for (const id of villagers.near(at, radius)) villagerHit(id, villagers.where(id)?.setY(at.y) ?? at, w);
   for (const id of clowns.near(at, radius)) clownHit(id, at, w);
   // Alone, zombies caught in it lose health here (together the server works it out from the blast).
   if (solo) for (const [id, res] of solo.horde.blast(at.x, at.z, radius, bruteDamage(w, WEAPON_SPECS), SOLO_ME, performance.now())) zombieResult(id, res, w);
@@ -2503,6 +2537,7 @@ net.onMessage = (m: ServerMsg) => {
       pickups.setAll(m.items ?? []);
       if (m.time) {
         cats.setClock(m.time);
+        villagers.setClock(m.time);
         clowns.setClock(m.time);
         horses.setClock(m.time);
         life.setClock(m.time);
@@ -2510,6 +2545,8 @@ net.onMessage = (m: ServerMsg) => {
         roadLife.setClock(m.time);
       }
       cats.setDown(m.cats ?? []);
+      villagers.setDown(m.vils);
+      villagers.setPaint((m.vilPaint ?? []).map(([i, w, ms]) => [i, GUN_PAINT[w] ?? GUN_PAINT.pistol, ms]));
       clowns.setAll(m.clowns ?? CLOWN_DEFAULTS);
       furnishing.setAll(m.furniture ?? []);
       games.me = m.you;
@@ -2708,6 +2745,20 @@ net.onMessage = (m: ServerMsg) => {
       cats.down(m.i, m.ms / 1000);
       combat.kill(m.by, t('char.cat'), false, weaponName(m.w));
       break;
+    case 'vil': {
+      // Someone else's shot: the server decided it. Each falls away from the shooter, or wears the gun's paint.
+      const from = avatars.position(m.by);
+      for (const id of Array.isArray(m.ids) ? m.ids.slice(0, VILLAGER_HIT_MAX) : []) {
+        if (m.paint) villagers.splat(id, GUN_PAINT[m.w] ?? GUN_PAINT.pistol, m.ms / 1000);
+        else {
+          villagers.down(id, m.ms / 1000, from ? { x: from.x, z: from.z } : undefined);
+          const at = villagers.where(id);
+          if (at) effects.impact(at.setY(at.y + 1.1), new THREE.Vector3(0, 1, 0), 'cat');
+          combat.kill(m.by, t('char.villager'), false, weaponName(m.w));
+        }
+      }
+      break;
+    }
     case 'clowns':
       clowns.setAll(m.list);
       break;
@@ -3219,7 +3270,7 @@ renderer.setAnimationLoop((now: number) => {
   if (menu.onStartScreen) weapon.hidden = true; // nor the pistol in your hand: from the start view its barrel is a ring mid-screen
   games.setExploring(!weapon.enabled); // the teams game's and Zombies' hints follow a change of mode
   // The villagers in every mode, Action and Paintball too (Yoshi, 7 Nov 2026), but never during Zombies, its end
-  // screen included. Shots pass through them: they are never a target (world/villagers.ts).
+  // screen included. In Action a grown-up can be shot, in Paintball painted (Yoshi, 14 Nov 2026; world/villagers.ts).
   // Not in the first seconds of play: building them (unpacking the model, their paths) took 30 ms and more of one
   // frame just as you dropped in, on top of everything else that starts then. One after the other, a little later.
   const played = playBegan ? performance.now() - playBegan : 0;

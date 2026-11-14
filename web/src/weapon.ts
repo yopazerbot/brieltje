@@ -674,6 +674,12 @@ export class Weapon {
   onCatHit: (index: number, point: THREE.Vector3) => void = () => {};
   onClownHit: (id: number, point: THREE.Vector3, spot?: Spot) => void = () => {};
   /**
+   * The villagers take no rays (world/villagers.ts): this finds the one a shot along `ray` meets within `max`
+   * metres, or null. A bullet or a paintball hit villager `id` at `point`.
+   */
+  villagerAt: (ray: THREE.Ray, max: number) => { id: number; point: THREE.Vector3 } | null = () => null;
+  onVillagerHit: (id: number, point: THREE.Vector3, w: WeaponId) => void = () => {};
+  /**
    * One shot's pellets that hit zombies (the Zombies game), per zombie: pellets on the body and the
    * head, where the first hit, and its ray (paintball's paint is found on the posed body from it).
    */
@@ -1135,6 +1141,13 @@ export class Weapon {
       }
       hit = h;
       break;
+    }
+    // A villager nearer than what the ray hit: the shot ends on it.
+    const villager = this.villagerAt(this.raycaster.ray, Math.min(reach, hit ? hit.distance : 400, this.raycaster.far));
+    if (villager) {
+      if (paint) this.onPaintball(paint.from, villager.point, paint);
+      this.onVillagerHit(villager.id, villager.point.clone(), w);
+      return { point: villager.point };
     }
     if (paint) this.onPaintball(paint.from, hit ? hit.point : this.raycaster.ray.at(120, new THREE.Vector3()), paint);
     if (!hit || !hit.face) return {};

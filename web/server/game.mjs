@@ -40,6 +40,7 @@ import { mergeHouse } from '../shared/insideData.mjs';
 import { defaultLayout, housePacks, packFor } from './insides.mjs';
 import { HomeGate } from './homeGate.mjs';
 import { noShoot } from '../shared/zones.mjs';
+import { buildVillagers, villagerHittable, VILLAGER_DOWN_S, VILLAGER_HIT_MAX, VILLAGER_HIT_MS, VILLAGER_PAINT_S, VILLAGER_RANGE } from '../shared/villagers.mjs';
 import { boxesOverlap, boxPoints, clearOfPortals, makeIndoors, makeSolids } from '../shared/parking.mjs';
 import { bikeFields, bruteEntry, carFields, horseFields, playerFields, PROTO, TICK_MS } from '../shared/wire.mjs';
 import { cleanPick, LOADOUT, startingWeapons } from '../shared/loadout.mjs';
@@ -101,6 +102,8 @@ const where = (m) => ({ x: num(m.x, AREA.x0, AREA.x1), y: num(m.y, -20, 200), z:
 const BOUNDS = loadBounds(shared('bounds.json'));
 /** The house data (src/data/): the house and its surroundings, and the village. */
 const houseData = (file) => JSON.parse(readFileSync(new URL(`../src/data/${file}`, import.meta.url), 'utf8'));
+/** The villagers, on the shared clock (shared/villagers.mjs): the same list the pages build from the same paths. */
+const VILLAGERS = buildVillagers(houseData('villagers.json'));
 // The house data is the shell plus the insides of the main house and the bungalow, when the private data holds them
 // (server/insides.mjs). The server uses the insides for its own sums (walls, floors, the zombies); a page gets one only
 // with the home's right (server/homes.mjs).
@@ -373,6 +376,8 @@ export class Game {
     this.items = PICKUPS.map(() => ({ until: 0 })); // weapons lying around: taken until
     this.lastPos = new Map(); // username -> last position, so a reconnect is checked against it
     this.catsDown = CATS.cats.map(() => 0); // cat index -> down until
+    this.vilDown = new Map(); // villager number -> down until
+    this.vilPaint = new Map(); // villager number -> { until, w }: paint on its clothes, from which gun
     // Clowns and strongmen: id -> { id, x, y, z, kind, until (down until) }; the starting ones, then the admin's (until a restart).
     this.clowns = this.startingClowns();
     this.free = groundMap(); // where the strongmen have room to walk
@@ -571,7 +576,7 @@ export class Game {
   welcome(player, name, color, now) {
     return {
       t: 'welcome', proto: PROTO, you: name, role: player.role, color, doors: this.doorsFor(player), doorDir: this.doorDirFor(player), broken: this.brokenFor(player), cracked: this.crackedFor(player), homes: HOMES.filter((h) => player.role !== 'admin' && this.homes?.granted(player.key, h.id)).map((h) => h.id), accountHomes: HOMES.filter((h) => player.role === 'player' && this.homes?.byAccount?.(player.key, h.id)).map((h) => h.id), players: this.roster(),
-      time: now, cats: this.catsDown.map((until) => Math.max(0, until - now)), clowns: this.clownList(now), furniture: this.furnitureFor(player), rules: this.rules,
+      time: now, cats: this.catsDown.map((until) => Math.max(0, until - now)), ...this.villagersView(now), clowns: this.clownList(now), furniture: this.furnitureFor(player), rules: this.rules,
       scores: this.scoreList(), limit: KILL_LIMIT, items: this.items.map((it) => now >= it.until), round: this.roundOver ? { winner: this.roundOver.winner, ms: this.roundOver.until - now } : null,
       cars: Object.values(this.cars), horses: this.horses, bikes: Object.values(this.bikes), mode: this.modes.view(now), mood: this.mood, moodCycle: this.moodView(now),
       room: this.roomView(),
@@ -819,7 +824,7 @@ export class Game {
     }
     if (!m || typeof m !== 'object') return;
     if (m.t === 'state' ? ++player.states > 30 : ++player.others > 40) return;
-    if ((this.modes.noShooting || this.host?.holds(player)) && ['hit', 'rocket', 'nade', 'boom', 'shot', 'crack'].includes(m.t)) return; // no fighting during a party game or a freeze
+    if ((this.modes.noShooting || this.host?.holds(player)) && ['hit', 'rocket', 'nade', 'boom', 'shot', 'crack', 'vil'].includes(m.t)) return; // no fighting during a party game or a freeze
     // A room changes nothing of the open world and holds its players at its place (server/rooms.mjs).
     if (this.room && ROOM_REFUSED.has(m.t)) return;
 
@@ -1095,6 +1100,8 @@ export class Game {
       player.nextCat = now + 300;
       this.catsDown[m.i] = now + CATS.respawnSeconds * 1000;
       this.broadcast({ t: 'cat', i: m.i, by: name, ms: CATS.respawnSeconds * 1000, w: m.w === 'grenade' ? 'grenade' : player.state.w }, name);
+    } else if (m.t === 'vil' && Array.isArray(m.ids)) {
+      this.villagersHit(name, player, m, now);
     } else if (m.t === 'pickup' && Number.isInteger(m.i) && m.i >= 0 && m.i < PICKUPS.length) {
       const item = this.items[m.i];
       const spot = PICKUPS[m.i];
@@ -2060,6 +2067,47 @@ export class Game {
   /** The clowns and strongmen everyone starts with (shared/clowns.json), before the admin adds any. */
   startingClowns() {
     return new Map(CLOWNS.spots.map(([x, y, z, kind], i) => [i + 1, this.character(i + 1, x, y, z, kindOf(kind))]));
+  }
+
+  /**
+   * Villagers hit by a player's shot or blast (`m.ids`, at most VILLAGER_HIT_MAX): in Action they fall and are
+   * back after a while, with paintball on the paint sticks to their clothes. Just for show: no points.
+   *
+   * The villagers walk on the shared clock (shared/villagers.mjs), so the server works out itself where each
+   * one is now and takes nothing of that from the page. A hit counts only for a number in the list, a kind that
+   * may be hit (never a child, a dog or someone with a child), a villager that is out and not down, outside
+   * the school grounds, within the gun's reach of where the server has the player; from a player who is alive,
+   * armed, not on the school grounds and not in a Zombies game or a room; one message every VILLAGER_HIT_MS.
+   * A page that lies can at most fell a villager it couldn't see (hit forgery without a prize).
+   */
+  villagersHit(name, player, m, now) {
+    if (this.room || this.modes.zombies || !player.alive || !player.state?.armed || this.calm(player)) return;
+    if (now < (player.nextVil || 0)) return;
+    player.nextVil = now + VILLAGER_HIT_MS;
+    const blast = m.w === 'grenade' || m.w === 'bazooka';
+    const w = blast ? m.w : player.state.w;
+    if (!Object.hasOwn(WEAPONS, w) && w !== 'grenade') return;
+    const paint = !!this.rules.paintball;
+    const ids = [];
+    for (const i of m.ids.slice(0, VILLAGER_HIT_MAX)) {
+      if (ids.includes(i) || !villagerHittable(VILLAGERS, i, now / 1000, player.state.x, player.state.z, VILLAGER_RANGE)) continue;
+      if (now < (this.vilDown.get(i) || 0)) continue;
+      ids.push(i);
+      if (paint) this.vilPaint.set(i, { until: now + VILLAGER_PAINT_S * 1000, w });
+      else this.vilDown.set(i, now + VILLAGER_DOWN_S * 1000);
+    }
+    if (!ids.length) return;
+    this.broadcast({ t: 'vil', ids, by: name, w, paint, ms: (paint ? VILLAGER_PAINT_S : VILLAGER_DOWN_S) * 1000 }, name);
+  }
+
+  /** For a page that joins: the villagers that are down and those with paint on them, with the ms each has left. */
+  villagersView(now) {
+    for (const [i, until] of this.vilDown) if (now >= until) this.vilDown.delete(i);
+    for (const [i, p] of this.vilPaint) if (now >= p.until) this.vilPaint.delete(i);
+    return {
+      vils: [...this.vilDown].map(([i, until]) => [i, until - now]),
+      vilPaint: [...this.vilPaint].map(([i, p]) => [i, p.w, p.until - now]),
+    };
   }
 
   /** Whether a player stands where nobody shoots (the school grounds, shared/zones.mjs). */

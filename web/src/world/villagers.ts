@@ -3,27 +3,35 @@ import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 import { mood } from './mood';
 import type { World } from './collision';
 import type { Obstacle } from './traffic';
-import { closest, Line, Paths, type At, type PathData } from './villagerPaths';
+import { sound } from '../sound';
+import { noShoot } from '../../shared/zones.mjs';
+import { buildVillagers, dice, rebuildHub, villagerPose, VILLAGER_DOWN_S, type VillagerDef, type VillagerPaths, type VillagerPose, type VillagerSet } from '../../shared/villagers.mjs';
 
 /**
  * Villagers: people walking and cycling round the village, in every mode (Yoshi, 7 Nov 2026: Action and
- * Paintball too), but gone during Zombies. They are never targets: shots pass through them. Our own models (tools/villagers.py,
+ * Paintball too), but gone during Zombies. Our own models (tools/villagers.py,
  * web/public/models/villagers.glb): a man, a woman, an older person with a stick, a teen, a child, a cyclist
  * on a city bike and a dog, invented and generic, each villager in colours of its own (clothes, skin, hair,
  * a bag, a cap, glasses, a scarf, an umbrella in the rain).
  *
- * Where they go (world/villagerPaths.ts, tools/villager_paths.py): along the pavements and the edges of the
- * country roads, on the footpaths, across a street at a crossing or a junction after looking for cars (the
- * traffic stops for one on the road), cyclists one way on the right, on Molenhoek's red cycle lanes. More of
- * them round the church square, the school and the Sparrenhof, fewer in the fields. Some stand and chat in
- * twos, some sit on the benches, a parent walks with a child or a dog on a lead, a jogger runs by. Close to
- * the player they step aside or stop, look at you, and now and then wave. Fewer at night, and in heavy rain
- * only a few, under umbrellas (world/mood.ts).
+ * The same villagers for everyone (Yoshi, 14 Nov 2026): who there is and where each one is now follows from
+ * a clock shared with the server (shared/villagers.mjs), as the cats do it, so every player sees the same
+ * villager in the same place and nothing of their walking goes over the network. Each walks up and down a
+ * way of its own along the pavements and the edges of the country roads, across a street at a crossing (the
+ * traffic stops for one on the road), cyclists one way on the right. More of them round the church square,
+ * the school and the Sparrenhof, fewer in the fields. Friends stand and chat, some sit on the benches, a
+ * parent walks with a child or a dog on a lead, a jogger runs by. Fewer at night, and in heavy rain only a
+ * few, under umbrellas (world/mood.ts).
  *
- * Purely local and for show: nothing of them goes over the network, they are no target for anything (no hit
- * boxes, their meshes take no rays), cars and the player pass through them (they step out of the way of a car
- * coming at them), and walls keep them out (world/collision.ts). They fade away when
- * a Zombies game starts, and come back when it is over.
+ * What a page adds of its own, for show: close to the player a villager steps aside or stops, looks at you,
+ * and now and then waves, then catches up with where the clock has it; it steps out of the way of a car
+ * coming at it; walls keep it out (world/collision.ts). Cars and the player still pass through them.
+ *
+ * In Action a grown-up or a teen can be shot (Yoshi, 14 Nov 2026): a short cry, a puff of dust, it tips over
+ * and fades away, cartoon style and no blood, and it is back after a while. In Paintball the paint sticks to
+ * its clothes and it jumps. Never a child, a dog or someone walking with a child, and never on the school
+ * grounds (shared/zones.mjs). Their meshes take no rays: `rayHit` finds the one a shot meets, and in
+ * multiplayer the server decides (server/game.mjs).
  *
  * Cheap to draw, as world/zombies.ts does it: every clip of every kind is sampled into one picture of bone
  * matrices (half floats), and each kind is one instanced mesh skinned in its vertex shader, so seven kinds are
@@ -31,7 +39,6 @@ import { closest, Line, Paths, type At, type PathData } from './villagerPaths';
  * come from a small picture too (16 colours a villager). Only within reach of the player (fewer and nearer
  * on Low and on phones), and the model and the paths load the first time they are needed.
  */
-
 const URL_GLB = '/models/villagers.glb';
 const KINDS = ['man', 'woman', 'elder', 'teen', 'child', 'cyclist', 'dog'] as const;
 const MAN = 0, WOMAN = 1, ELDER = 2, TEEN = 3, CHILD = 4, BIKE = 5, DOG = 6;
@@ -67,22 +74,16 @@ const TALL = [1.79, 1.67, 1.66, 1.71, 1.18, 1.75, 0.6];
 const PALETTE_ROWS = 128;
 const BLEND = 0.25; // s to change from one clip to the next
 const FADE = 0.9; // s to fade in or out
-/** How many villagers and how far: [desktop, phone or Low]. */
-const COUNT = [30, 13];
-/**
- * Away from the busy places (the church square, the school, the Sparrenhof: the paths' hubs) only this share of COUNT
- * walks about (Yoshi, 8 Nov 2026: "quite a lot at the church, but not in other streets like Briel"). Full within
- * BUSY_NEAR metres of a hub's edge, down to QUIET by BUSY_FAR.
- */
-const QUIET = 0.2;
-const BUSY_NEAR = 40;
-const BUSY_FAR = 160;
+/** How far off they are drawn: [desktop, phone or Low]; and the share of them a phone or Low shows. */
 const REACH = [105, 65];
-// Extras (the model's groups): an umbrella, a bag, a cap or helmet, a scarf, glasses, two choices of hair (or ears).
+const CHEAP_SHARE = 0.6;
+/** A villager that is hit: how long it takes to tip over (s), and how long it lies before it fades away. */
+const FALL = 0.45;
+const LIE = 1.7;
+
 const UMB = 1, BAG = 2, HAT = 4, SCARF = 8, SPECS = 16, HAIR_A = 32, HAIR_B = 64;
 
-type Mode = 'walk' | 'wait' | 'cross' | 'stand' | 'sit' | 'goto' | 'ride' | 'follow' | 'hub';
-
+type Mode = 'walk' | 'cross' | 'stand' | 'sit' | 'ride' | 'follow' | 'hub' | 'down';
 interface Clip {
   row: number;
   frames: number;
@@ -97,11 +98,11 @@ interface Kind {
   anim: THREE.InstancedBufferAttribute;
   look: THREE.InstancedBufferAttribute;
 }
-
+/** A villager near enough to draw: what this page shows of it. */
 interface V {
   id: number;
+  def: VillagerDef;
   kind: number;
-  mode: Mode;
   x: number;
   y: number;
   z: number;
@@ -110,21 +111,15 @@ interface V {
   ground: number;
   gx: number;
   gz: number;
-  /** On a line: which, how far along, which way, how far to the right of it (now and wanted); a bike line or a walk */
-  line: number;
-  s: number;
-  dir: number;
-  lat: number;
-  latWant: number;
-  bike: boolean;
   speed: number;
-  pace: number;
-  /** Going straight to a point (a crossing, a seat, a spot on the square), and what it does there */
-  tx: number;
-  tz: number;
-  next: { line: number; s: number; dir: number } | null;
+  /** As the shared clock has it now: sitting, standing with its friend, on a carriageway */
+  sit: boolean;
+  talk: boolean;
   road: boolean;
-  timer: number;
+  /** Put where the clock has it (false: at once, without walking there) */
+  placed: boolean;
+  /** How long it has stood still (s) */
+  still: number;
   /** Its clip, time, the clip it changes from and how far */
   clip: string;
   time: number;
@@ -135,28 +130,28 @@ interface V {
   once: string;
   onceEnd: number;
   fade: number;
-  leaving: boolean;
   pal: number;
   flags: number;
-  jog: boolean;
-  lead: boolean;
-  leader: V | null;
-  /** A follower's place: to the right of its leader and ahead of it (m) */
-  side: number;
-  ahead: number;
-  partner: V | null;
-  seat: number;
-  hub: number;
   waved: number;
-  /** The way it came off a line (not taken straight back), and when */
-  cameFrom: number;
-  cameAt: number;
+  /** Standing still for a moment (a wave, a fright), until when */
+  holdUntil: number;
+  /** How far to the right of its way it steps round the player */
+  avoid: number;
   /** Stepping out of a car's way: until when, and which way */
   dodgeUntil: number;
   dodgeX: number;
   dodgeZ: number;
-  /** Pushed off its way by a wall this long (s) */
-  stuck: number;
+  /** Hit: when it started to fall (-1 not), which way it tips, and away until it is back */
+  downAt: number;
+  fallX: number;
+  fallZ: number;
+  away: boolean;
+  /** A little jump (paint, a fright): when it started */
+  hopAt: number;
+  /** Paint on its clothes: the colour its top had before */
+  topWas: [number, number, number] | null;
+  drawn: boolean;
+  dist: number;
 }
 
 // ---- Colours (sRGB; the picture holds them linear). Slots as in tools/villagers.py.
@@ -175,14 +170,42 @@ const COATS = ['#2a2420', '#6b4a2a', '#c9a66b', '#e8dcc4', '#8a5a32', '#3a3a3c',
 const PATCHES = ['#e8dcc4', '#f1ece2', '#c9a66b', '#2a2420', '#8a6a4a'];
 const COLLARS = ['#b02a2a', '#1f3f8a', '#2b6b3a', '#e3b21f', '#7a3b8a'];
 
-const pick = <T>(list: readonly T[]): T => list[Math.floor(Math.random() * list.length)];
+/** The dice the picks below throw: the villager's own while it is dressed (the same clothes on every page), else any. */
+let rnd: () => number = Math.random;
+const pick = <T>(list: readonly T[]): T => list[Math.floor(rnd() * list.length)];
 function pickW<T>(list: readonly T[], w: readonly number[]): T {
-  let t = Math.random() * w.reduce((a, b) => a + b, 0);
+  let t = rnd() * w.reduce((a, b) => a + b, 0);
   for (let i = 0; i < list.length; i++) if ((t -= w[i]) <= 0) return list[i];
   return list[list.length - 1];
 }
-const chance = (p: number) => Math.random() < p;
-const rand = (a: number, b: number) => a + Math.random() * (b - a);
+const chance = (p: number) => rnd() < p;
+
+/** A short cry made in code, cartoon style: a voice that jumps up and falls off ("oh!"). `soft`: a fright, not a fall. */
+function cry(x: number, y: number, z: number, kind: number, soft: boolean): void {
+  const ctx = sound.context();
+  const dest = sound.at(x, y + 1.4, z, 3);
+  if (!ctx || !dest) return;
+  const t = ctx.currentTime;
+  const len = soft ? 0.22 : 0.42;
+  const base = (kind === WOMAN ? 330 : kind === TEEN ? 290 : kind === ELDER ? 170 : 200) * (0.92 + Math.random() * 0.16);
+  const o = ctx.createOscillator();
+  o.type = 'sawtooth';
+  o.frequency.setValueAtTime(base * 1.1, t);
+  o.frequency.exponentialRampToValueAtTime(base * (soft ? 1.7 : 1.5), t + len * 0.25);
+  o.frequency.exponentialRampToValueAtTime(base * (soft ? 1.3 : 0.75), t + len);
+  const f = ctx.createBiquadFilter();
+  f.type = 'bandpass';
+  f.Q.value = 2.5;
+  f.frequency.setValueAtTime(700, t);
+  f.frequency.linearRampToValueAtTime(soft ? 1100 : 500, t + len);
+  const g = ctx.createGain();
+  g.gain.setValueAtTime(0.0001, t);
+  g.gain.exponentialRampToValueAtTime(soft ? 0.3 : 0.45, t + 0.03);
+  g.gain.exponentialRampToValueAtTime(0.0001, t + len);
+  o.connect(f).connect(g).connect(dest);
+  o.start(t);
+  o.stop(t + len + 0.05);
+}
 
 /** The skinning added to the standard material: each villager's frames from the bone picture, its colours from the palette, its extras shown or not. */
 const VERT_PARS = /* glsl */ `
@@ -275,9 +298,9 @@ const _m = new THREE.Matrix4();
 const _q = new THREE.Quaternion();
 const _v = new THREE.Vector3();
 const _s = new THREE.Vector3();
+const _q2 = new THREE.Quaternion();
+const _p: VillagerPose = { x: 0, z: 0, yaw: 0, hx: 0, hz: 1, speed: 0, here: true, road: false, sit: false, talk: false };
 const UP = new THREE.Vector3(0, 1, 0);
-const _at: At = { x: 0, z: 0, dx: 0, dz: 1 };
-const _bt: At = { x: 0, z: 0, dx: 0, dz: 1 };
 const wrapAngle = (a: number) => Math.atan2(Math.sin(a), Math.cos(a));
 
 /** A car near the villagers: where, which way it faces (forward is (-sin yaw, -cos yaw)), its size. */
@@ -299,7 +322,8 @@ export class Villagers {
   readonly group = new THREE.Group();
   /** Resolves when the model and the paths are in (false if they couldn't be loaded); started by the first setActive(true). */
   ready: Promise<boolean> | null = null;
-  private paths: Paths | null = null;
+  private data: VillagerPaths | null = null;
+  private set: VillagerSet | null = null;
   private kinds: Kind[] = [];
   private boneTex: THREE.DataTexture | null = null;
   private palData = new Uint8Array(16 * PALETTE_ROWS * 4);
@@ -307,15 +331,22 @@ export class Villagers {
   private palFree: number[] = [];
   private patches = shadowPatches(96);
   private leashes: THREE.LineSegments;
-  private vs: V[] = [];
-  private nextId = 1;
+  /** Those near enough to draw, by number; `order` the same, nearest first */
+  private active = new Map<number, V>();
+  private order: V[] = [];
+  /** Who is down, and until when (s on the shared clock); whose clothes have paint on them */
+  private downs = new Map<number, number>();
+  private paints = new Map<number, { until: number; color: string }>();
+  /** The shared clock minus this page's (s) */
+  private offset = Date.now() / 1000 - performance.now() / 1000;
   private clock = 0;
+  private scanAt = 0;
+  private lastT = 0;
   private want = false;
   /** 0 hidden .. 1 shown: all of them together, as a Zombies game comes and goes */
   private shown = 0;
-  private filled = false;
-  private popAt = 0;
-  private hubSpots: ([number, number, number][] | null)[] = [];
+  private hubLen: number[] = [];
+  private hubDone: boolean[] = [];
   private hubTried: number[] = [];
   private extras: (() => readonly Extra[]) | null = null;
   private prevCars: { x: number; z: number }[] = [];
@@ -353,7 +384,17 @@ export class Villagers {
 
   /** How many are about, for the diagnostics. */
   get count(): number {
-    return this.vs.length;
+    return this.active.size;
+  }
+
+  /** The shared clock now (s). */
+  private get now(): number {
+    return performance.now() / 1000 + this.offset;
+  }
+
+  /** Line up with the server's clock (ms since 1970), so all players see the villagers in the same place. */
+  setClock(serverMs: number): void {
+    this.offset = serverMs / 1000 - performance.now() / 1000;
   }
 
   private async load(): Promise<boolean> {
@@ -363,11 +404,13 @@ export class Villagers {
       const frame = () => new Promise<void>((r) => requestAnimationFrame(() => setTimeout(r, 0)));
       const [gltf, data] = await Promise.all([new GLTFLoader().loadAsync(URL_GLB), import('../data/villagers.json')]);
       await frame();
-      this.paths = new Paths((data.default ?? data) as unknown as PathData);
+      this.data = (data.default ?? data) as unknown as VillagerPaths;
+      this.set = buildVillagers(this.data);
       await frame();
       this.build(gltf);
-      this.hubSpots = this.paths.hubs.map(() => null);
-      this.hubTried = this.paths.hubs.map(() => -1e9);
+      this.hubLen = this.set.hubs.map(() => -1);
+      this.hubDone = this.set.hubs.map(() => false);
+      this.hubTried = this.set.hubs.map(() => -1e9);
       // Out of sight until their shaders are built: a frame is drawn before that now, and drawing them in it
       // (even none of them) made the game wait for the shader after all.
       if (this.compile) for (const k of this.kinds) k.mesh.visible = false;
@@ -388,7 +431,6 @@ export class Villagers {
       return false;
     }
   }
-
   /** Every kind's clips sampled into the bone picture, and an instanced mesh per kind. */
   private build(gltf: { scene: THREE.Group; animations: THREE.AnimationClip[] }): void {
     const scene = gltf.scene;
@@ -478,17 +520,16 @@ export class Villagers {
     });
   }
 
-  /** What the traffic stops for: villagers that may be on a carriageway (crossing, going somewhere straight, cycling on the road). */
+  /** What the traffic stops for: villagers on a carriageway (crossing, cycling on the road). */
   obstacles(): Obstacle[] {
     const out: Obstacle[] = [];
     if (this.shown <= 0) return out;
-    for (const v of this.vs) {
-      if (v.fade < 0.5) continue;
-      if (v.mode === 'cross' || v.mode === 'goto' || (v.mode === 'ride' && this.paths?.bkind[v.line] === 1)) out.push({ x: v.x, z: v.z, r: v.bike ? 0.6 : 0.35 });
+    for (const v of this.order) {
+      if (v.fade < 0.5 || v.away || v.downAt >= 0 || !v.road) continue;
+      out.push({ x: v.x, z: v.z, r: v.kind === BIKE ? 0.6 : 0.35 });
     }
     return out;
   }
-
   /** The figures someone else moves, asked for each frame they are drawn (world/footballLife.ts); null for none. */
   setExtras(fn: (() => readonly Extra[]) | null): void {
     this.extras = fn;
@@ -518,24 +559,196 @@ export class Villagers {
     return c ? { duration: c.duration, dist: c.dist } : null;
   }
 
-  /** Each villager now, for checks: kind, where, what it does, its clip. */
-  states(): { kind: string; x: number; y: number; z: number; mode: Mode; clip: string; fade: number; flags: number }[] {
-    return this.vs.map((v) => ({ kind: KINDS[v.kind], x: +v.x.toFixed(2), y: +v.y.toFixed(2), z: +v.z.toFixed(2), mode: v.mode, clip: v.clip, fade: +v.fade.toFixed(2), flags: v.flags }));
+
+  /** Each villager now, for checks: its number, kind, where, what it does, its clip, whether it can be hit, how far it is from its place on the clock. */
+  states(): { id: number; kind: string; what: string; x: number; y: number; z: number; mode: Mode; clip: string; fade: number; flags: number; canHit: boolean; off: number }[] {
+    const T = this.now;
+    return this.order.map((v) => {
+      villagerPose(this.set!, v.id, T, _p);
+      return {
+        id: v.id, kind: KINDS[v.kind], what: v.def.what, x: +v.x.toFixed(2), y: +v.y.toFixed(2), z: +v.z.toFixed(2), mode: this.modeOf(v), clip: v.clip, fade: +v.fade.toFixed(2),
+        flags: v.flags, canHit: this.canHit(v), off: +Math.hypot(_p.x - v.x, _p.z - v.z).toFixed(2), // `off`: how far from where the shared clock has it (m)
+      };
+    });
+  }
+
+  private modeOf(v: V): Mode {
+    if (v.away || v.downAt >= 0) return 'down';
+    if (v.sit) return 'sit';
+    if (v.kind === BIKE) return 'ride';
+    if (v.def.role === 'follow') return 'follow';
+    if (v.def.role === 'hub') return 'hub';
+    return v.speed > 0.1 ? (v.road ? 'cross' : 'walk') : 'stand';
   }
 
   /**
    * Each person on foot with the right hand free, for world/sintmaarten.ts's paper lanterns: not a dog, a cyclist or
-   * someone with a stick, not sitting, jogging, walking a dog or under an umbrella. Its number (the same while it is
-   * about), where its feet are, which way it faces, how tall it is (m), how far it has faded in (0 to 1), its speed.
+   * someone with a stick, not sitting, jogging, walking a dog or under an umbrella. Its number (the same on every
+   * page), where its feet are, which way it faces, how tall it is (m), how far it has faded in (0 to 1), its speed.
    */
   eachHand(fn: (id: number, x: number, y: number, z: number, yaw: number, tall: number, fade: number, speed: number) => void): void {
     if (this.shown <= 0) return;
-    for (const v of this.vs) {
-      if ((v.kind !== MAN && v.kind !== WOMAN && v.kind !== TEEN && v.kind !== CHILD) || v.mode === 'sit' || v.jog || v.lead || v.flags & UMB) continue;
+    for (const v of this.order) {
+      if ((v.kind !== MAN && v.kind !== WOMAN && v.kind !== TEEN && v.kind !== CHILD) || v.sit || v.def.jog || v.def.lead || v.flags & UMB || v.away || v.downAt >= 0) continue;
       fn(v.id, v.x, v.y, v.z, v.yaw, TALL[v.kind] * v.scale, Math.min(v.fade, this.shown), v.speed);
     }
   }
 
+  // ---------------------------------------------------------------- shot, or painted
+  /** Whether this one can be hit now: a grown-up or a teen without a child, drawn and standing, not where nobody shoots. */
+  private canHit(v: V): boolean {
+    return v.def.shootable && v.drawn && v.fade > 0.6 && this.shown > 0.6 && v.downAt < 0 && !v.away && !this.downs.has(v.id) && !noShoot(v.x, v.z);
+  }
+
+  /** How high its body stands (m) and how wide round (m), for a shot. */
+  private body(v: V): [number, number] {
+    return [(v.sit ? 1.25 : TALL[v.kind]) * v.scale, v.kind === BIKE ? 0.4 : 0.3];
+  }
+
+  /**
+   * The villager a shot meets first: from `from` along `dir` (length 1), no farther than `max` metres. Its
+   * number, where it is struck and how far off; null for none. A child, a dog and the others no shot may hit
+   * let it through.
+   */
+  rayHit(from: THREE.Vector3, dir: THREE.Vector3, max: number): { id: number; point: THREE.Vector3; dist: number } | null {
+    const a = dir.x * dir.x + dir.z * dir.z;
+    if (a < 1e-9 || this.shown <= 0) return null;
+    let best = max;
+    let who = -1;
+    for (const v of this.order) {
+      if (v.dist > max + 2 || !this.canHit(v)) continue;
+      const [tall, r] = this.body(v);
+      const ox = from.x - v.x;
+      const oz = from.z - v.z;
+      const b = 2 * (ox * dir.x + oz * dir.z);
+      const disc = b * b - 4 * a * (ox * ox + oz * oz - r * r);
+      if (disc < 0) continue;
+      const root = Math.sqrt(disc);
+      let t = (-b - root) / (2 * a);
+      const out = (-b + root) / (2 * a);
+      if (out < 0) continue;
+      t = Math.max(0, t);
+      let y = from.y + dir.y * t;
+      if (y > v.y + tall && dir.y < 0) {
+        // Over its head on the way in: down through the top, if still above it.
+        t = (v.y + tall - from.y) / dir.y;
+        if (t > out) continue;
+        y = v.y + tall;
+      }
+      if (y < v.y || y > v.y + tall || t >= best) continue;
+      best = t;
+      who = v.id;
+    }
+    return who < 0 ? null : { id: who, point: from.clone().addScaledVector(dir, best), dist: best };
+  }
+
+  /** Those a blast at `at` catches: within `radius` of it. */
+  near(at: THREE.Vector3, radius: number): number[] {
+    const out: number[] = [];
+    for (const v of this.order) {
+      if (!this.canHit(v) || Math.hypot(v.x - at.x, v.z - at.z) > radius || at.y < v.y - radius || at.y > v.y + 1.8 + radius) continue;
+      out.push(v.id);
+    }
+    return out;
+  }
+
+  /** Where villager `id` stands (its feet), or null when it isn't near. */
+  where(id: number): THREE.Vector3 | null {
+    const v = this.active.get(id);
+    return v ? new THREE.Vector3(v.x, v.y, v.z) : null;
+  }
+
+  /** Your shot or blast hit villager `id` (`from`: where it came from): true if it could be hit, and then it falls. */
+  hit(id: number, from?: { x: number; z: number }): boolean {
+    const v = this.active.get(id);
+    if (!v || !this.canHit(v)) return false;
+    this.down(id, VILLAGER_DOWN_S, from);
+    return true;
+  }
+
+  /** Villager `id` is down (someone hit it, or it was down when you joined: then `quiet`), back in `seconds`. */
+  down(id: number, seconds: number, from?: { x: number; z: number }, quiet = false): void {
+    if (!this.set || !Number.isInteger(id) || id < 0 || id >= this.set.list.length || !(seconds > 0)) return;
+    this.downs.set(id, this.now + Math.min(seconds, 600));
+    const v = this.active.get(id);
+    if (!v || v.away || v.downAt >= 0) return;
+    if (quiet || v.fade <= 0) {
+      v.away = true;
+      v.fade = 0;
+      return;
+    }
+    v.downAt = this.clock;
+    // It tips away from where the shot came from (backwards when that isn't known).
+    let fx = from ? v.x - from.x : -Math.sin(v.yaw);
+    let fz = from ? v.z - from.z : -Math.cos(v.yaw);
+    const L = Math.hypot(fx, fz) || 1;
+    fx /= L;
+    fz /= L;
+    v.fallX = fx;
+    v.fallZ = fz;
+    v.once = '';
+    cry(v.x, v.y, v.z, v.kind, false);
+  }
+
+  /** Those down when you join: [number, ms until it is back] each. */
+  setDown(list: unknown): void {
+    this.downs.clear();
+    for (const v of this.order) {
+      if (v.away) v.placed = false;
+      v.away = false;
+      v.downAt = -1;
+    }
+    if (!Array.isArray(list)) return;
+    for (const e of list.slice(0, 600)) if (Array.isArray(e) && typeof e[1] === 'number') this.down(Number(e[0]), e[1] / 1000, undefined, true);
+  }
+
+  /** Whether your paint may land on villager `id` (the same ones a shot may hit). */
+  canPaint(id: number): boolean {
+    const v = this.active.get(id);
+    return !!v && this.canHit(v);
+  }
+
+  /** Paint of `color` (#rrggbb) on villager `id`'s clothes for `seconds`; with `fright` it jumps and stops a moment. */
+  splat(id: number, color: string, seconds: number, fright = true): void {
+    if (!this.set || !Number.isInteger(id) || id < 0 || id >= this.set.list.length || !(seconds > 0) || !/^#[0-9a-f]{6}$/i.test(color)) return;
+    this.paints.set(id, { until: this.now + Math.min(seconds, 600), color });
+    const v = this.active.get(id);
+    if (!v) return;
+    this.paintOn(v, color);
+    if (!fright || v.away || v.downAt >= 0) return;
+    v.hopAt = this.clock;
+    v.holdUntil = this.clock + 1.3;
+    cry(v.x, v.y, v.z, v.kind, true);
+  }
+
+  /** Those with paint on them when you join: [number, colour, ms left] each. */
+  setPaint(list: unknown): void {
+    for (const v of this.order) this.paintOff(v);
+    this.paints.clear();
+    if (!Array.isArray(list)) return;
+    for (const e of list.slice(0, 600)) if (Array.isArray(e) && typeof e[1] === 'string' && typeof e[2] === 'number') this.splat(Number(e[0]), e[1], e[2] / 1000, false);
+  }
+
+  /** The paint goes onto its top (slot 2 of its colours). */
+  private paintOn(v: V, color: string): void {
+    const o = (v.pal * 16 + 2) * 4;
+    if (!v.topWas) v.topWas = [this.palData[o], this.palData[o + 1], this.palData[o + 2]];
+    const c = new THREE.Color(color).convertSRGBToLinear();
+    this.palData[o] = Math.round(c.r * 255);
+    this.palData[o + 1] = Math.round(c.g * 255);
+    this.palData[o + 2] = Math.round(c.b * 255);
+    this.palTex.needsUpdate = true;
+  }
+
+  private paintOff(v: V): void {
+    if (!v.topWas) return;
+    const o = (v.pal * 16 + 2) * 4;
+    [this.palData[o], this.palData[o + 1], this.palData[o + 2]] = v.topWas;
+    v.topWas = null;
+    this.palTex.needsUpdate = true;
+  }
+
+  // ---------------------------------------------------------------- who is near
   // ---------------------------------------------------------------- the population
   private ground(x: number, z: number, hint: number | null): number {
     const bare = this.world.groundAt(x, z, -1e4, 0).y;
@@ -547,21 +760,178 @@ export class Villagers {
     return this.world.boxFree(x, z, 0, 0.25, 0.25, y + 0.35, y + 1.6);
   }
 
-  private make(kind: number, x: number, z: number, y: number, yaw: number): V {
+  private make(def: VillagerDef, p: VillagerPose): V | null {
+    const pal = this.palFree.pop();
+    if (pal === undefined) return null;
+    const r = dice(def.seed + 1);
+    const kind = def.kind;
     const v: V = {
-      id: this.nextId++, kind, mode: 'walk', x, y, z, yaw, scale: kind === DOG ? rand(0.72, 1.08) : kind === CHILD ? rand(0.9, 1.08) : rand(0.95, 1.05), ground: y, gx: x, gz: z,
-      line: -1, s: 0, dir: 1, lat: 0, latWant: 0, bike: kind === BIKE, speed: 0, pace: 1.3, tx: x, tz: z, next: null, road: false, timer: 0,
-      clip: 'Idle', time: Math.random() * 4, from: '', fromTime: 0, blend: 1, once: '', onceEnd: 0, fade: 0, leaving: false, pal: this.palFree.pop() ?? 0, flags: 0,
-      jog: false, lead: false, leader: null, side: 0, ahead: 0, partner: null, seat: -1, hub: -1, waved: -1e9, cameFrom: -1, cameAt: -1e9, dodgeUntil: 0, dodgeX: 0,
-      dodgeZ: 0, stuck: 0,
+      id: def.id, def, kind, x: p.x, y: 0, z: p.z, yaw: p.yaw, scale: kind === DOG ? 0.72 + r() * 0.36 : kind === CHILD ? 0.9 + r() * 0.18 : 0.95 + r() * 0.1, ground: 0, gx: p.x, gz: p.z,
+      speed: p.speed, sit: p.sit, talk: p.talk, road: p.road, placed: false, still: 0,
+      clip: kind === BIKE ? 'Ride' : p.sit ? 'Sit' : 'Idle', time: r() * 4, from: '', fromTime: 0, blend: 1, once: '', onceEnd: 0, fade: 0, pal, flags: 0, waved: -1e9,
+      holdUntil: 0, avoid: 0, dodgeUntil: 0, dodgeX: 0, dodgeZ: 0, downAt: -1, fallX: 0, fallZ: 1, away: false, hopAt: -1e9, topWas: null, drawn: false, dist: 0,
     };
     this.dress(v);
-    this.vs.push(v);
+    if (def.jog) v.flags &= ~(BAG | SCARF | UMB);
+    if (def.lead) v.flags &= ~BAG;
+    v.ground = this.ground(p.x, p.z, null);
+    v.y = p.sit ? v.ground + ((this.set!.seats[def.seat]?.[3] ?? 0.45) - 0.45) : v.ground;
+    const paint = this.paints.get(def.id);
+    if (paint) this.paintOn(v, paint.color);
+    this.active.set(def.id, v);
     return v;
   }
 
-  /** Its colours and extras: written into its row of the palette (`set`, `flags`: a figure dressed for someone else). */
+  private remove(v: V): void {
+    v.topWas = null;
+    this.palFree.push(v.pal);
+    this.active.delete(v.id);
+  }
+
+  private reach(): number {
+    return REACH[this.cheap() ? 1 : 0];
+  }
+
+  private get raining(): boolean {
+    return mood.wet > 0.35;
+  }
+
+  /**
+   * Whether this villager is out now: fewer at night, few in the rain (those who can hold an umbrella, and
+   * cyclists), fewer on a phone or on Low. Those with the lowest `rank` stay, so every page drops the same ones.
+   */
+  private out(d: VillagerDef): boolean {
+    const night = mood.night > 0.5;
+    const rain = this.raining;
+    let share = (this.cheap() ? CHEAP_SHARE : 1) * (1 - 0.7 * mood.night) * (1 - 0.8 * Math.min(1, mood.wet / 0.6));
+    switch (d.what) {
+      case 'elder': if (rain) return false; share *= night ? 0.3 : 1; break;
+      case 'teen': share *= night ? 0.67 : 1; break;
+      case 'jog': case 'dog': if (rain) return false; break;
+      case 'family': case 'sit': if (rain || night) return false; break;
+      case 'chat': if (rain) return false; share *= night ? 0.25 : 1; break;
+      case 'hub': if (rain || (d.kind === CHILD && mood.night > 0.3)) return false; break;
+      default: break;
+    }
+    return d.rank < share;
+  }
+
+  /** Whether (x, z) is in view and nearer than `d`. */
+  private seen(x: number, z: number, eye: THREE.Vector3, look: THREE.Vector3, d: number): boolean {
+    const dx = x - eye.x;
+    const dz = z - eye.z;
+    const L = Math.hypot(dx, dz);
+    if (L > d) return false;
+    if (L < 4) return true;
+    const fl = Math.hypot(look.x, look.z) || 1;
+    return (dx * look.x + dz * look.z) / (L * fl) > 0.55;
+  }
+
+  /**
+   * A busy place near: the spots on its paving that are free in this page's world (blocks with a material: not a
+   * lawn, not a garden; not on top of something), looked for again until the world round it is in.
+   */
+  private hubSpots(eye: THREE.Vector3): void {
+    const set = this.set!;
+    set.hubs.forEach(([hx, hz, r], h) => {
+      if (this.hubDone[h] || this.clock - this.hubTried[h] < 30 || Math.hypot(hx - eye.x, hz - eye.z) > this.reach() + r) return;
+      this.hubTried[h] = this.clock;
+      const flat = this.data!.hubspots?.[h] ?? [];
+      const out: number[] = [];
+      for (let i = 0; i < flat.length; i += 2) {
+        const x = flat[i];
+        const z = flat[i + 1];
+        const bare = this.world.groundAt(x, z, -1e4, 0).y;
+        const g = this.world.groundAt(x, z, bare + 0.6, 0);
+        if (!g.mat || g.mat === 'forest' || g.y - bare > 0.5 || !this.free(x, z, g.y)) continue;
+        out.push(x, z);
+      }
+      if (out.length >= 24) this.hubDone[h] = true;
+      if (out.length === this.hubLen[h]) return;
+      this.hubLen[h] = out.length;
+      rebuildHub(set, h, out);
+    });
+  }
+
+  /** Who is near enough to draw: those in reach come in, nearest first. */
+  private scan(eye: THREE.Vector3): void {
+    const set = this.set!;
+    const T = this.now;
+    const R = this.reach();
+    this.hubSpots(eye);
+    // Back again: one nobody has near.
+    for (const [id, until] of this.downs) if (T >= until && !this.active.has(id)) this.downs.delete(id);
+    for (const [id, p] of this.paints) {
+      if (T < p.until) continue;
+      this.paints.delete(id);
+      const v = this.active.get(id);
+      if (v) this.paintOff(v);
+    }
+    if (this.want) {
+      for (const d of set.list) {
+        if (d.gone || this.active.has(d.id) || this.downs.has(d.id) || !this.out(d)) continue;
+        if (d.kind === DOG && this.downs.has(d.leader)) continue;
+        if (Math.hypot(d.cx - eye.x, d.cz - eye.z) > R + d.r) continue;
+        villagerPose(set, d.id, T, _p);
+        if (!_p.here || Math.hypot(_p.x - eye.x, _p.z - eye.z) > R) continue;
+        if (!this.make(d, _p)) break;
+      }
+    }
+    this.order = [...this.active.values()].sort((a, b) => a.dist - b.dist);
+  }
+
+  // ---------------------------------------------------------------- every frame
+  /**
+   * Every frame. `eye`: the camera, `look`: where it looks; `me`: the player on foot (or null in a car or on a
+   * horse); `cars`: the moving cars near (the traffic and anyone driving).
+   */
+  update(dt: number, eye: THREE.Vector3, look: THREE.Vector3, me: Me | null, cars: CarNear[]): void {
+    this.shown = Math.max(0, Math.min(1, this.shown + (this.want ? dt : -dt) / FADE));
+    if (!this.want && this.shown <= 0) {
+      if (this.active.size) {
+        for (const v of [...this.active.values()]) this.remove(v);
+        this.order = [];
+      }
+      this.group.visible = false;
+      return;
+    }
+    if (!this.set || !this.boneTex) return;
+    this.group.visible = true;
+    this.clock += dt;
+    this.carSpeeds(cars, dt);
+    if (this.clock > this.scanAt) {
+      this.scanAt = this.clock + 0.4;
+      this.scan(eye);
+    }
+    const T = this.now;
+    // How long since the last frame on the shared clock: a villager keeps up with it however slowly the frames
+    // come (the game's own `dt` is capped), up to a second.
+    const real = Math.max(dt, Math.min(1, T - this.lastT));
+    this.lastT = T;
+    const near = this.cheap() ? 30 : 45;
+    let gone = false;
+    for (const v of this.order) {
+      villagerPose(this.set, v.id, T, _p);
+      v.dist = Math.hypot(v.x - eye.x, v.z - eye.z);
+      this.step(v, _p, dt, real, T, eye, look, me, cars, v.dist < near);
+      if (!this.active.has(v.id)) gone = true;
+    }
+    if (gone) this.order = this.order.filter((v) => this.active.has(v.id));
+    this.draw(eye);
+  }
+
   private dress(v: V, set?: Record<number, string>, flags?: number): void {
+    // A villager's own dice, so it wears the same on every page; a figure dressed for someone else throws any.
+    rnd = v.def ? dice(v.def.seed) : Math.random;
+    try {
+      this.dress1(v, set, flags);
+    } finally {
+      rnd = Math.random;
+    }
+  }
+
+  /** Its colours and extras: written into its row of the palette (`set`, `flags`: a figure dressed for someone else). */
+  private dress1(v: V, set?: Record<number, string>, flags?: number): void {
     const k = v.kind;
     const cols: string[] = new Array(16).fill('#808080');
     const skin = pickW(SKINS, SKIN_W);
@@ -614,328 +984,6 @@ export class Villagers {
     this.palTex.needsUpdate = true;
   }
 
-  private remove(v: V): void {
-    this.palFree.push(v.pal);
-    const i = this.vs.indexOf(v);
-    if (i >= 0) this.vs.splice(i, 1);
-  }
-
-  /** Go: it and whoever walks with it fade out. */
-  private leave(v: V): void {
-    v.leaving = true;
-    for (const o of this.vs) if (o.leader === v || o.partner === v) o.leaving = true;
-  }
-
-  private reach(): number {
-    return REACH[this.cheap() ? 1 : 0];
-  }
-
-  /** How many there should be now: many round the busy places, few in the other streets; fewer at night, few in the rain. */
-  private target(eye: THREE.Vector3): number {
-    const base = COUNT[this.cheap() ? 1 : 0];
-    return Math.max(1, Math.round(base * this.busy(eye) * (1 - 0.7 * mood.night) * (1 - 0.8 * Math.min(1, mood.wet / 0.6))));
-  }
-
-  /** 1 near a busy place (the paths' hubs), QUIET away from them. */
-  private busy(eye: THREE.Vector3): number {
-    let near = Infinity;
-    for (const [x, z, r] of this.paths?.hubs ?? []) near = Math.min(near, Math.hypot(x - eye.x, z - eye.z) - r);
-    const t = Math.min(1, Math.max(0, (near - BUSY_NEAR) / (BUSY_FAR - BUSY_NEAR)));
-    return 1 - (1 - QUIET) * t;
-  }
-
-  private get raining(): boolean {
-    return mood.wet > 0.35;
-  }
-
-  private population(eye: THREE.Vector3, look: THREE.Vector3): void {
-    const R = this.reach();
-    // Too far: go (out of sight it is gone at once). In the rain those without an umbrella go home.
-    for (const v of this.vs) {
-      if (v.leaving || v.leader) continue;
-      const d = Math.hypot(v.x - eye.x, v.z - eye.z);
-      if (d > R + 15) this.leave(v);
-      else if (this.raining && !v.bike && !(v.kind === MAN || v.kind === WOMAN || v.kind === TEEN) && !this.seen(v.x, v.z, eye, look, 45)) this.leave(v);
-      else if (this.raining && (v.mode === 'sit' || v.mode === 'stand' || v.mode === 'hub' || v.lead || v.jog) && !this.seen(v.x, v.z, eye, look, 45)) this.leave(v);
-    }
-    const alive = this.vs.filter((v) => !v.leaving && v.kind !== DOG && !v.leader).length;
-    const target = this.target(eye);
-    if (alive > target + 2) {
-      // Too many: the farthest one out of sight goes.
-      const far = this.vs.filter((v) => !v.leaving && !v.leader && !this.seen(v.x, v.z, eye, look, 50)).sort((a, b) => Math.hypot(b.x - eye.x, b.z - eye.z) - Math.hypot(a.x - eye.x, a.z - eye.z))[0];
-      if (far) this.leave(far);
-    }
-    const first = !this.filled;
-    for (let n = 0; n < (first ? target : 2) && alive + n < target; n++) this.spawn(eye, look, first ? 6 : 28, R);
-    this.filled = true;
-  }
-
-  /** Whether (x, z) is in view and nearer than `d`. */
-  private seen(x: number, z: number, eye: THREE.Vector3, look: THREE.Vector3, d: number): boolean {
-    const dx = x - eye.x;
-    const dz = z - eye.z;
-    const L = Math.hypot(dx, dz);
-    if (L > d) return false;
-    if (L < 4) return true;
-    const fl = Math.hypot(look.x, look.z) || 1;
-    return (dx * look.x + dz * look.z) / (L * fl) > 0.55;
-  }
-
-  private spawn(eye: THREE.Vector3, look: THREE.Vector3, rMin: number, rMax: number): void {
-    const P = this.paths!;
-    const night = mood.night > 0.5;
-    const rain = this.raining;
-    // A busy place in reach (of two, either: the church square and the school are 60 m apart).
-    const hubsNear = P.hubs.map((_, i) => i).filter((i) => Math.hypot(P.hubs[i][0] - eye.x, P.hubs[i][1] - eye.z) < rMax + P.hubs[i][2]);
-    const hubNear = hubsNear.length ? pick(hubsNear) : -1;
-    const seatFree = P.seats.findIndex(([x, z], i) => !this.vs.some((v) => v.seat === i) && Math.hypot(x - eye.x, z - eye.z) < rMax && Math.hypot(x - eye.x, z - eye.z) > (this.filled ? 25 : 3)
-      && !(this.filled && this.seen(x, z, eye, look, 60)));
-    const options: [() => boolean, number][] = [
-      [() => this.spawnWalker(pick([MAN, WOMAN]), eye, look, rMin, rMax), 36],
-      [() => !rain && this.spawnWalker(ELDER, eye, look, rMin, rMax), night ? 3 : 10],
-      [() => this.spawnWalker(TEEN, eye, look, rMin, rMax), night ? 6 : 9],
-      [() => !rain && this.spawnWalker(pick([MAN, WOMAN, TEEN]), eye, look, rMin, rMax, 'jog'), 5],
-      [() => !rain && !night && this.spawnFamily(eye, look, rMin, rMax), 9],
-      [() => !rain && this.spawnWalker(pick([MAN, WOMAN]), eye, look, rMin, rMax, 'dog'), 7],
-      [() => this.spawnCyclist(eye, look, rMin, rMax), rain ? 8 : 13],
-      [() => !rain && this.spawnChat(eye, look, rMin, rMax), night ? 2 : 8],
-      [() => !rain && !night && seatFree >= 0 && this.spawnSitter(seatFree), seatFree >= 0 ? 7 : 0],
-      [() => !rain && hubNear >= 0 && this.spawnHub(hubNear, eye, look, rMin), hubNear >= 0 ? 14 : 0],
-    ];
-    for (let tries = 0; tries < 4; tries++) {
-      const fn = pickW(options.map((o) => o[0]), options.map((o) => o[1]));
-      if (fn()) return;
-    }
-  }
-
-  /** A spot on a line, free and out of sight (unless filling the first time). */
-  private spotOn(bikes: boolean, eye: THREE.Vector3, look: THREE.Vector3, rMin: number, rMax: number): { line: number; s: number; x: number; z: number; y: number } | null {
-    let y = 0;
-    const hit = this.paths!.sample(eye.x, eye.z, rMin, rMax, bikes, (_l, _s, px, pz) => {
-      if (this.filled && this.seen(px, pz, eye, look, 70)) return false;
-      if (this.vs.some((v) => Math.abs(v.x - px) < 2 && Math.abs(v.z - pz) < 2)) return false;
-      y = this.ground(px, pz, null);
-      return this.free(px, pz, y);
-    });
-    if (!hit) return null;
-    const L = bikes ? this.paths!.bikes[hit.line] : this.paths!.walks[hit.line];
-    L.at(hit.s, _at);
-    return { ...hit, x: _at.x, z: _at.z, y };
-  }
-
-  /** Whether the kinds' instanced meshes have room for these (each a villager to come; -1 none). */
-  private room(...kinds: number[]): boolean {
-    const want = MAX.map(() => 0);
-    for (const k of kinds) if (k >= 0) want[k]++;
-    for (const v of this.vs) want[v.kind]++;
-    return want.every((n, k) => n <= MAX[k]);
-  }
-
-  private spawnWalker(kind: number, eye: THREE.Vector3, look: THREE.Vector3, rMin: number, rMax: number, what: '' | 'jog' | 'dog' = ''): boolean {
-    if (!this.room(kind, what === 'dog' ? DOG : -1)) return false;
-    const p = this.spotOn(false, eye, look, rMin, rMax);
-    if (!p) return false;
-    const v = this.make(kind, p.x, p.z, p.y, 0);
-    this.onLine(v, p.line, p.s, chance(0.5) ? 1 : -1);
-    v.pace = kind === ELDER ? rand(0.8, 1.0) : kind === TEEN ? rand(1.3, 1.5) : rand(1.2, 1.45);
-    if (what === 'jog') {
-      v.jog = true;
-      v.pace = rand(2.4, 3.0);
-      v.flags &= ~(BAG | SCARF | UMB);
-    }
-    if (what === 'dog') {
-      v.lead = true;
-      v.pace = rand(1.0, 1.25);
-      v.flags &= ~BAG;
-      const d = this.make(DOG, p.x, p.z, p.y, v.yaw);
-      d.mode = 'follow';
-      d.leader = v;
-      d.side = rand(0.35, 0.6);
-      d.ahead = rand(1.2, 1.6);
-    }
-    return true;
-  }
-
-  private spawnFamily(eye: THREE.Vector3, look: THREE.Vector3, rMin: number, rMax: number): boolean {
-    const pk = pick([MAN, WOMAN]);
-    const kids = chance(0.3) ? 2 : 1;
-    if (!this.room(pk, CHILD, kids === 2 ? CHILD : -1)) return false;
-    const p = this.spotOn(false, eye, look, rMin, rMax);
-    if (!p) return false;
-    const parent = this.make(pk, p.x, p.z, p.y, 0);
-    this.onLine(parent, p.line, p.s, chance(0.5) ? 1 : -1);
-    parent.pace = rand(1.0, 1.2);
-    for (let i = 0; i < kids; i++) {
-      const c = this.make(CHILD, p.x, p.z, p.y, 0);
-      c.mode = 'follow';
-      c.leader = parent;
-      c.side = i ? -0.7 : 0.65;
-      c.ahead = i ? 0.1 : -0.15;
-    }
-    return true;
-  }
-
-  private spawnCyclist(eye: THREE.Vector3, look: THREE.Vector3, rMin: number, rMax: number): boolean {
-    if (!this.room(BIKE)) return false;
-    const p = this.spotOn(true, eye, look, rMin, rMax);
-    if (!p) return false;
-    const v = this.make(BIKE, p.x, p.z, p.y, 0);
-    v.mode = 'ride';
-    v.bike = true;
-    v.line = p.line;
-    v.s = p.s;
-    v.dir = 1;
-    v.pace = rand(3.6, 5.2);
-    v.speed = v.pace;
-    this.paths!.bikes[p.line].at(p.s, _at);
-    v.yaw = Math.atan2(_at.dx, _at.dz);
-    return true;
-  }
-
-  private spawnChat(eye: THREE.Vector3, look: THREE.Vector3, rMin: number, rMax: number): boolean {
-    const kinds = [MAN, WOMAN, ELDER, TEEN];
-    const [ka, kb] = [pick(kinds), pick(kinds)];
-    if (!this.room(ka, kb)) return false;
-    const p = this.spotOn(false, eye, look, rMin, rMax);
-    if (!p) return false;
-    const L = this.paths!.walks[p.line];
-    const s2 = p.s + (p.s + 1.2 < L.length ? 1.1 : -1.1);
-    L.at(s2, _bt);
-    if (!this.free(_bt.x, _bt.z, p.y)) return false;
-    const a = this.make(ka, p.x, p.z, p.y, Math.atan2(_bt.x - p.x, _bt.z - p.z));
-    const b = this.make(kb, _bt.x, _bt.z, p.y, Math.atan2(p.x - _bt.x, p.z - _bt.z));
-    for (const [v, s] of [[a, p.s], [b, s2]] as [V, number][]) {
-      this.onLine(v, p.line, s, chance(0.5) ? 1 : -1);
-      v.lat = 0;
-      v.mode = 'stand';
-      v.timer = rand(20, 70);
-      v.speed = 0;
-    }
-    a.partner = b;
-    b.partner = a;
-    a.x = p.x;
-    a.z = p.z;
-    b.x = _bt.x;
-    b.z = _bt.z;
-    a.yaw = Math.atan2(b.x - a.x, b.z - a.z);
-    b.yaw = Math.atan2(a.x - b.x, a.z - b.z);
-    return true;
-  }
-
-  private spawnSitter(seat: number): boolean {
-    const [x, z, face, h] = this.paths!.seats[seat];
-    // The Sit clip sits on 45 cm: the figure goes up or down by the seat's own height.
-    const k = pick([MAN, WOMAN, ELDER, ELDER, TEEN]);
-    if (!this.room(k)) return false;
-    const y = this.ground(x, z, null) + (h - 0.45);
-    const v = this.make(k, x, z, y, face);
-    v.mode = 'sit';
-    v.seat = seat;
-    v.timer = rand(30, 120);
-    v.flags &= ~UMB;
-    return true;
-  }
-
-  private spawnHub(h: number, eye: THREE.Vector3, look: THREE.Vector3, rMin: number): boolean {
-    const spots = this.hubSpotsFor(h);
-    if (!spots?.length) return false;
-    const [hx, hz, , kind] = this.paths!.hubs[h];
-    for (let tries = 0; tries < 6; tries++) {
-      const [x, z, y] = pick(spots);
-      if (this.filled && (this.seen(x, z, eye, look, 60) || Math.hypot(x - eye.x, z - eye.z) < Math.min(rMin, 20))) continue;
-      if (this.vs.some((v) => Math.abs(v.x - x) < 1.5 && Math.abs(v.z - z) < 1.5)) continue;
-      const k = kind === 1 ? pick([MAN, WOMAN, CHILD, CHILD]) : pick([MAN, WOMAN, ELDER, TEEN, MAN, WOMAN]);
-      if ((k === CHILD && mood.night > 0.3) || !this.room(k)) continue;
-      const v = this.make(k, x, z, y, Math.atan2(hx - x, hz - z) + rand(-1, 1));
-      v.mode = 'hub';
-      v.hub = h;
-      v.timer = rand(2, 12);
-      v.pace = k === ELDER ? rand(0.8, 1.0) : rand(1.0, 1.3);
-      v.tx = x;
-      v.tz = z;
-      return true;
-    }
-    return false;
-  }
-
-  /** Free spots on a busy place's paving (blocks with a material: not a lawn, not a garden), found once the world round it is in. */
-  private hubSpotsFor(h: number): [number, number, number][] | null {
-    const have = this.hubSpots[h];
-    if ((have && have.length >= 12) || this.clock - this.hubTried[h] < 30) return have;
-    this.hubTried[h] = this.clock;
-    const flat = this.paths!.hubSpots[h] ?? [];
-    const out: [number, number, number][] = [];
-    for (let i = 0; i < flat.length; i += 2) {
-      const x = flat[i];
-      const z = flat[i + 1];
-      // On paving (not a lawn), not on top of something, and free of every block (the town's and the school's models too).
-      const bare = this.world.groundAt(x, z, -1e4, 0).y;
-      const g = this.world.groundAt(x, z, bare + 0.6, 0);
-      if (!g.mat || g.mat === 'forest' || g.y - bare > 0.5 || !this.free(x, z, g.y)) continue;
-      out.push([x, z, g.y]);
-    }
-    this.hubSpots[h] = out;
-    return out;
-  }
-
-  /** Put a villager on a walk line. */
-  private onLine(v: V, line: number, s: number, dir: number): void {
-    v.mode = 'walk';
-    v.line = line;
-    v.s = s;
-    v.dir = dir;
-    v.latWant = v.lat = rand(0.15, 0.45);
-    this.paths!.walks[line].at(s, _at);
-    v.yaw = Math.atan2(_at.dx * dir, _at.dz * dir);
-  }
-
-  // ---------------------------------------------------------------- every frame
-  /**
-   * Every frame. `eye`: the camera, `look`: where it looks; `me`: the player on foot (or null in a car or on a
-   * horse); `cars`: the moving cars near (the traffic and anyone driving).
-   */
-  update(dt: number, eye: THREE.Vector3, look: THREE.Vector3, me: Me | null, cars: CarNear[]): void {
-    this.shown = Math.max(0, Math.min(1, this.shown + (this.want ? dt : -dt) / FADE));
-    if (!this.want && this.shown <= 0) {
-      if (this.vs.length) {
-        for (const v of [...this.vs]) this.remove(v);
-        this.filled = false;
-      }
-      this.group.visible = false;
-      return;
-    }
-    if (!this.paths || !this.boneTex) return;
-    this.group.visible = true;
-    this.clock += dt;
-    this.carSpeeds(cars, dt);
-    if (this.want && this.clock > this.popAt) {
-      this.popAt = this.clock + (this.filled ? 0.7 : 0);
-      this.population(eye, look);
-    }
-    const near = this.cheap() ? 30 : 45;
-    for (const v of [...this.vs]) {
-      // Fading in, or out when it goes (at once if nobody sees it).
-      if (v.leaving) {
-        v.fade -= dt / FADE;
-        if (v.fade <= 0 || !this.seen(v.x, v.z, eye, look, 80)) {
-          this.remove(v);
-          continue;
-        }
-      } else v.fade = Math.min(1, v.fade + dt / FADE);
-      if (v.leader && !this.vs.includes(v.leader)) {
-        this.leave(v);
-        v.leader = null;
-        v.mode = 'stand';
-        v.timer = 99;
-      }
-      if (v.partner && !this.vs.includes(v.partner)) v.partner = null;
-      const d = Math.hypot(v.x - eye.x, v.z - eye.z);
-      this.step(v, dt, me, cars, d < near);
-    }
-    this.draw(eye);
-  }
-
-  /** The cars' speeds, from how far each moved since the last frame (the nearest one then). */
   private carSpeeds(cars: CarNear[], dt: number): void {
     this.carSpeed = cars.map((c) => {
       let best = Infinity;
@@ -945,36 +993,66 @@ export class Villagers {
     this.prevCars = cars.map((c) => ({ x: c.x, z: c.z }));
   }
 
-  private step(v: V, dt: number, me: Me | null, cars: CarNear[], near: boolean): void {
-    const P = this.paths!;
-    let moving = false;
-    let pace = v.pace;
-    // Something in the way ahead: the player, another villager; slow, step aside, stop.
-    const fx = Math.sin(v.yaw);
-    const fz = Math.cos(v.yaw);
-    let block = Infinity;
-    let push = 0;
-    const consider = (x: number, z: number, r: number) => {
-      const dx = x - v.x;
-      const dz = z - v.z;
-      const along = dx * fx + dz * fz;
-      const side = dx * fz - dz * fx; // + on its left
-      const reach = v.bike ? 7 : 2.6;
-      if (along > 0 && along < reach && Math.abs(side) < r + (v.bike ? 0.9 : 0.55)) {
-        block = Math.min(block, along);
-        push += (side >= 0 ? 1 : -1) * (1 - along / reach); // + steps to its right
-      }
-    };
-    if (me && Math.abs(me.feet - v.y) < 2) consider(me.x, me.z, 0.35);
-    if (v.mode === 'walk' || v.mode === 'ride' || v.mode === 'goto' || v.mode === 'hub') {
-      for (const o of this.vs) {
-        if (o === v || o.leader === v || v.leader === o || o.kind === DOG) continue;
-        if (Math.abs(o.x - v.x) > 8 || Math.abs(o.z - v.z) > 8) continue;
-        consider(o.x, o.z, o.bike ? 0.5 : 0.3);
+
+  /** One villager, one frame: `p` where the shared clock has it now. */
+  private step(v: V, p: VillagerPose, dt: number, real: number, T: number, eye: THREE.Vector3, look: THREE.Vector3, me: Me | null, cars: CarNear[], near: boolean): void {
+    const d = v.def;
+    const R = this.reach();
+    // Down: back when its time is up and nobody looks (or a little later anyway).
+    const until = this.downs.get(v.id);
+    if (until !== undefined && T >= until && v.downAt < 0 && (!this.seen(p.x, p.z, eye, look, 80) || T > until + 12)) {
+      this.downs.delete(v.id);
+      v.away = false;
+      v.placed = false;
+    }
+    let show = p.here && this.out(d) && v.dist < R + 15 && !v.away && this.want && !(d.kind === DOG && this.downs.has(d.leader));
+    if (v.downAt >= 0) {
+      // Falling, lying a moment, then it fades away.
+      show = this.clock - v.downAt < LIE;
+      if (!show && v.fade <= 0) {
+        v.downAt = -1;
+        v.away = true;
       }
     }
+    v.fade = Math.max(0, Math.min(1, v.fade + (show ? dt : -dt) / FADE));
+    if (v.fade <= 0 && !show && v.downAt < 0 && (!v.away || v.dist > R + 15)) {
+      this.remove(v);
+      return;
+    }
+    if (v.away || v.downAt >= 0) return;
+    v.sit = p.sit;
+    v.talk = p.talk;
+    v.road = p.road && p.speed > 0;
+    if (p.sit) {
+      v.x = p.x;
+      v.z = p.z;
+      v.yaw = p.yaw;
+      v.speed = 0;
+      v.placed = true;
+      this.animate(v, dt, 0, false);
+      this.ground1(v, dt);
+      return;
+    }
+    let tx = p.x;
+    let tz = p.z;
+    let hold = this.clock < v.holdUntil;
+    // The player in its way ahead: it steps round, and stops when you stand right before it.
+    let aside = 0;
+    const meNear = me && Math.abs(me.feet - v.y) < 2 ? Math.hypot(me.x - v.x, me.z - v.z) : Infinity;
+    if (me && meNear < 3 && p.speed > 0 && v.kind !== DOG) {
+      const along = (me.x - v.x) * p.hx + (me.z - v.z) * p.hz;
+      const side = (me.x - v.x) * p.hz - (me.z - v.z) * p.hx; // + on its left
+      const reach = v.kind === BIKE ? 7 : 2.6;
+      if (along > 0 && along < reach && Math.abs(side) < 0.9) {
+        aside = side >= 0 ? 0.8 : -0.8;
+        if (along < 0.8 && Math.abs(side) < 0.45) hold = true;
+      }
+    }
+    v.avoid += (aside - v.avoid) * Math.min(1, dt * 2.5);
+    tx += -p.hz * v.avoid;
+    tz += p.hx * v.avoid;
     // A car coming at it: step out of its way, quickly.
-    if (!v.leader && v.mode !== 'sit') {
+    if (d.role !== 'follow') {
       cars.forEach((c, i) => {
         const sp = this.carSpeed[i] ?? 0;
         if (sp < 1.2) return;
@@ -992,375 +1070,54 @@ export class Villagers {
         }
       });
     }
-    if (this.clock < v.dodgeUntil) {
-      const sp = v.bike ? 2.5 : 2.6;
-      this.move(v, v.dodgeX * sp * dt, v.dodgeZ * sp * dt, near);
-      if (v.mode === 'walk' || v.mode === 'ride') {
-        // Back on its way afterwards: its line where it now stands.
-        const L = v.bike ? P.bikes[v.line] : P.walks[v.line];
-        const c = closest(L, v.x, v.z);
-        v.s = c.s;
-        if (!v.bike) v.lat = v.latWant = Math.max(-1.2, Math.min(1.2, this.latOf(v, L)));
-      }
-      this.animate(v, dt, v.bike ? Math.max(1, v.speed) : 2.6, false);
-      this.ground1(v, dt);
-      return;
+    const dodging = this.clock < v.dodgeUntil;
+    if (dodging) {
+      tx = v.x + v.dodgeX * 2;
+      tz = v.z + v.dodgeZ * 2;
+      hold = false;
     }
-    switch (v.mode) {
-      case 'walk': {
-        const L = P.walks[v.line];
-        if (block < 0.9) pace = 0;
-        else if (block < 2.6) pace *= 0.45;
-        v.latWant = Math.max(-0.9, Math.min(1.1, v.latWant + push * dt * 1.6));
-        if (block === Infinity) v.latWant += (Math.max(0.15, Math.min(0.45, v.latWant)) - v.latWant) * Math.min(1, dt * 0.5);
-        v.lat += (v.latWant - v.lat) * Math.min(1, dt * 2.5);
-        v.speed += (pace - v.speed) * Math.min(1, dt * 3);
-        const s0 = v.s;
-        v.s += v.dir * v.speed * dt;
-        L.at(v.s, _at);
-        const rx = -_at.dz * v.dir;
-        const rz = _at.dx * v.dir;
-        const tx = _at.x + rx * v.lat;
-        const tz = _at.z + rz * v.lat;
-        const before = Math.hypot(tx - v.x, tz - v.z);
-        this.move(v, tx - v.x, tz - v.z, near);
-        // A wall pushed it off its way: it slips round (the push goes into how far right it walks); stuck, it turns.
-        const off = Math.hypot(tx - v.x, tz - v.z);
-        if (off > 0.25 && before > 0) {
-          v.lat = this.latOf(v, L);
-          v.latWant = v.lat;
-          v.stuck += dt;
-        } else v.stuck = Math.max(0, v.stuck - dt);
-        if (v.stuck > 1.5) {
-          v.stuck = 0;
-          v.dir = -v.dir;
-          v.latWant = 0.3;
-        }
-        moving = v.speed > 0.1;
-        const want = Math.atan2(_at.dx * v.dir, _at.dz * v.dir);
-        v.yaw += wrapAngle(want - v.yaw) * Math.min(1, dt * 5);
-        this.passPoints(v, s0, v.s);
-        // Now and then it stops to look round.
-        if (chance(dt / 45)) {
-          v.mode = 'stand';
-          v.timer = rand(2, 7);
-        }
-        break;
+    const gx = tx - v.x;
+    const gz = tz - v.z;
+    const gap = Math.hypot(gx, gz);
+    let moved = 0;
+    if (!v.placed || gap > 14) {
+      // Too far to walk there (the page slept, it came back): put there, faded in again.
+      if (v.placed) v.fade = 0;
+      v.x = tx;
+      v.z = tz;
+      v.yaw = p.yaw;
+      v.speed = p.speed;
+      v.placed = true;
+      v.ground = this.ground(v.x, v.z, null);
+      v.y = v.ground;
+    } else {
+      // It walks after where the clock has it: at that pace when it is there, quicker to catch up.
+      const max = dodging ? 2.7 : v.kind === BIKE ? d.pace * 1.5 : Math.max(2.2, d.pace * 1.7);
+      const sp = hold ? 0 : Math.min(max, p.speed + gap * 1.5);
+      moved = Math.min(gap, sp * real);
+      if (moved > 1e-5) this.move(v, (gx / gap) * moved, (gz / gap) * moved, near);
+      v.speed += (moved / Math.max(real, 1e-3) - v.speed) * Math.min(1, dt * 8);
+      let want = p.yaw;
+      if (moved > 1e-4 && gap > 0.35) want = Math.atan2(gx, gz);
+      else if (p.speed === 0 || hold) {
+        // Standing: it looks at the player when close (friends keep to each other unless you come right up).
+        if (meNear < (p.talk ? 3.5 : 7) && me) want = Math.atan2(me.x - v.x, me.z - v.z);
       }
-      case 'wait': {
-        // At the kerb: until no car comes, then across.
-        v.speed = 0;
-        v.yaw += wrapAngle(Math.atan2(v.tx - v.x, v.tz - v.z) - v.yaw) * Math.min(1, dt * 4);
-        v.timer -= dt;
-        if (this.clear(v.x, v.z, v.tx, v.tz, cars)) {
-          v.mode = 'cross';
-        } else if (v.timer <= 0) {
-          v.next = null;
-          v.mode = 'walk';
-          v.dir = -v.dir;
-        }
-        break;
-      }
-      case 'cross':
-      case 'goto': {
-        const dx = v.tx - v.x;
-        const dz = v.tz - v.z;
-        const L = Math.hypot(dx, dz);
-        const sp = v.mode === 'cross' ? pace * 1.2 : pace;
-        if (block < 0.8 && v.mode === 'goto') v.speed = 0;
-        else v.speed += (sp - v.speed) * Math.min(1, dt * 3);
-        if (L < 0.3) {
-          this.arrive(v);
-          break;
-        }
-        const k = Math.min(L, v.speed * dt) / L;
-        this.move(v, dx * k, dz * k, near);
-        v.yaw += wrapAngle(Math.atan2(dx, dz) - v.yaw) * Math.min(1, dt * 6);
-        moving = v.speed > 0.1;
-        v.timer -= dt;
-        if (v.timer < -40) this.leave(v); // never got there
-        break;
-      }
-      case 'stand': {
-        v.speed = 0;
-        v.timer -= dt;
-        // Face the one it talks to, or the player when close.
-        let face = v.partner ? Math.atan2(v.partner.x - v.x, v.partner.z - v.z) : NaN;
-        if (me) {
-          const d = Math.hypot(me.x - v.x, me.z - v.z);
-          if (d < (v.partner ? 3.5 : 7)) face = Math.atan2(me.x - v.x, me.z - v.z);
-        }
-        if (Number.isFinite(face)) v.yaw += wrapAngle(face - v.yaw) * Math.min(1, dt * 2);
-        if (v.timer <= 0 && (!v.partner || v.partner.timer <= 0)) {
-          if (v.partner) v.partner.partner = null;
-          v.partner = null;
-          if (v.line >= 0) {
-            const L = P.walks[v.line];
-            v.mode = 'walk';
-            v.s = closest(L, v.x, v.z).s;
-            v.lat = this.latOf(v, L);
-          } else if (v.hub >= 0) v.mode = 'hub';
-          else this.leave(v);
-        }
-        break;
-      }
-      case 'sit': {
-        v.speed = 0;
-        v.timer -= dt;
-        const [sx, sz, face] = P.seats[v.seat];
-        v.x = sx;
-        v.z = sz;
-        v.yaw = face;
-        if (v.timer <= 0 || this.raining) {
-          // Up, and off to the nearest walk.
-          const w = P.nearestWalk(v.x, v.z, 25);
-          if (!w) {
-            this.leave(v);
-            break;
-          }
-          P.walks[w.line].at(w.s, _at);
-          v.mode = 'goto';
-          v.seat = -1;
-          v.tx = _at.x;
-          v.tz = _at.z;
-          v.next = { line: w.line, s: w.s, dir: chance(0.5) ? 1 : -1 };
-          v.pace = v.kind === ELDER ? 0.85 : 1.2;
-          v.timer = 0;
-        }
-        break;
-      }
-      case 'hub': {
-        v.timer -= dt;
-        const dx = v.tx - v.x;
-        const dz = v.tz - v.z;
-        const L = Math.hypot(dx, dz);
-        if (v.once) v.speed = 0;
-        else if (L > 0.3) {
-          if (block < 0.8) v.speed = 0;
-          else v.speed += (v.pace - v.speed) * Math.min(1, dt * 3);
-          const k = Math.min(L, v.speed * dt) / L;
-          this.move(v, dx * k, dz * k, near);
-          v.yaw += wrapAngle(Math.atan2(dx, dz) - v.yaw) * Math.min(1, dt * 6);
-          moving = v.speed > 0.1;
-          if (v.timer < -30) {
-            v.tx = v.x;
-            v.tz = v.z;
-          }
-        } else {
-          v.speed = 0;
-          if (me && Math.hypot(me.x - v.x, me.z - v.z) < 7) v.yaw += wrapAngle(Math.atan2(me.x - v.x, me.z - v.z) - v.yaw) * Math.min(1, dt * 2);
-          if (v.timer <= 0) this.nextHubSpot(v);
-        }
-        break;
-      }
-      case 'follow': {
-        const l = v.leader;
-        if (!l) break;
-        const lfx = Math.sin(l.yaw);
-        const lfz = Math.cos(l.yaw);
-        // Its place beside or ahead of its leader (a dog ahead on its lead; a child at the side).
-        const tx = l.x + lfx * v.ahead - lfz * v.side;
-        const tz = l.z + lfz * v.ahead + lfx * v.side;
-        const dx = tx - v.x;
-        const dz = tz - v.z;
-        const L = Math.hypot(dx, dz);
-        const want = L > 0.05 ? Math.min(l.speed + L * 1.5, 3.2) : 0;
-        v.speed += (want - v.speed) * Math.min(1, dt * 4);
-        if (L > 6) {
-          v.x = tx;
-          v.z = tz;
-        } else if (L > 0.02) {
-          const k = Math.min(L, v.speed * dt) / L;
-          this.move(v, dx * k, dz * k, near);
-        }
-        const face = l.speed > 0.15 || L > 0.3 ? Math.atan2(L > 0.3 ? dx : lfx, L > 0.3 ? dz : lfz) : l.mode === 'stand' && l.partner ? Math.atan2(l.partner.x - v.x, l.partner.z - v.z) : l.yaw;
-        v.yaw += wrapAngle(face - v.yaw) * Math.min(1, dt * 5);
-        moving = v.speed > 0.12;
-        break;
-      }
-      case 'ride': {
-        const L = P.bikes[v.line];
-        if (block < 2.5) pace = 0;
-        else if (block < 7) pace = Math.min(pace, 1.5 + block * 0.4);
-        // A car ahead in its lane: keep behind it.
-        for (const c of cars) {
-          const dx = c.x - v.x;
-          const dz = c.z - v.z;
-          const along = dx * fx + dz * fz;
-          if (along > 0 && along < 9 + c.length / 2 && Math.abs(dx * fz - dz * fx) < 1.6) pace = Math.min(pace, Math.max(0, (along - c.length / 2 - 2) * 0.8));
-        }
-        v.speed += (pace - v.speed) * Math.min(1, dt * (pace < v.speed ? 3 : 1));
-        v.s += v.speed * dt;
-        if (v.s >= L.length) {
-          const next = P.bnext[v.line];
-          if (!next?.length) {
-            this.leave(v);
-            v.s = L.length;
-          } else {
-            const [line, idx] = pick(next);
-            v.line = line;
-            v.s = P.bikes[line].s[Math.min(idx, P.bikes[line].count - 1)];
-          }
-        }
-        const B = P.bikes[v.line];
-        B.at(v.s, _at);
-        const tx = _at.x;
-        const tz = _at.z;
-        // A turn onto another lane is a short swerve, not a jump.
-        const jump = Math.hypot(tx - v.x, tz - v.z);
-        if (jump > 4) this.move(v, (tx - v.x) * Math.min(1, dt * 2.5), (tz - v.z) * Math.min(1, dt * 2.5), near);
-        else this.move(v, tx - v.x, tz - v.z, near);
-        const want = jump > 1 ? Math.atan2(tx - v.x, tz - v.z) : Math.atan2(_at.dx, _at.dz);
-        v.yaw += wrapAngle(want - v.yaw) * Math.min(1, dt * 4);
-        moving = v.speed > 0.2;
-        break;
-      }
+      v.yaw += wrapAngle(want - v.yaw) * Math.min(1, dt * 5);
     }
-    this.lookAndWave(v, me);
-    this.animate(v, dt, v.speed, moving);
+    const moving = v.speed > 0.15;
+    v.still = moving ? 0 : v.still + dt;
+    this.lookAndWave(v, me, moving);
+    this.animate(v, real, v.speed, moving);
     this.ground1(v, dt);
   }
 
-  /** How far to the right of its line (as it walks) a villager stands. */
-  private latOf(v: V, L: Line): number {
-    const c = closest(L, v.x, v.z);
-    L.at(c.s, _bt);
-    const rx = -_bt.dz * v.dir;
-    const rz = _bt.dx * v.dir;
-    return (v.x - _bt.x) * rx + (v.z - _bt.z) * rz;
-  }
-
-  /** Points of its line it passed this frame: a way off there may be taken; at an end it must, or it turns. */
-  private passPoints(v: V, s0: number, s1: number): void {
-    const P = this.paths!;
-    const L = P.walks[v.line];
-    const last = L.count - 1;
-    let idxs: number[] = [];
-    if (s1 >= L.length) idxs = [last];
-    else if (s1 <= 0) idxs = [0];
-    else {
-      const a = L.seg(Math.min(s0, s1));
-      const b = L.seg(Math.max(s0, s1));
-      for (let i = a + 1; i <= b; i++) idxs.push(i);
-    }
-    for (const i of idxs) {
-      const end = i === 0 || i === last;
-      if (end && !((i === last && v.dir > 0) || (i === 0 && v.dir < 0))) continue;
-      const links = P.linksAt(v.line, i).filter((l) => !(l.to * 65536 + l.idx === v.cameFrom && this.clock - v.cameAt < 20));
-      if (links.length && (end || chance(links.some((l) => l.road) ? 0.18 : 0.3))) {
-        const l = pick(links);
-        this.takeLink(v, i, l);
-        return;
-      }
-      if (end) {
-        // A dead end: turn round, perhaps after a moment.
-        v.dir = -v.dir;
-        v.s = Math.max(0, Math.min(L.length, v.s));
-        if (chance(0.5)) {
-          v.mode = 'stand';
-          v.timer = rand(1, 4);
-        }
-        return;
-      }
-    }
-  }
-
-  private takeLink(v: V, i: number, l: { to: number; idx: number; road: boolean }): void {
-    const P = this.paths!;
-    const B = P.walks[l.to];
-    const idx = Math.min(l.idx, B.count - 1);
-    v.tx = B.x[idx];
-    v.tz = B.z[idx];
-    v.road = l.road;
-    // Which way on the new line: as straight on as it can, now and then the other way.
-    const hx = Math.sin(v.yaw);
-    const hz = Math.cos(v.yaw);
-    B.at(B.s[idx], _bt);
-    let dir = _bt.dx * hx + _bt.dz * hz >= 0 ? 1 : -1;
-    if (chance(0.3)) dir = -dir;
-    if (idx === 0) dir = 1;
-    if (idx === B.count - 1) dir = -1;
-    v.next = { line: l.to, s: B.s[idx], dir };
-    v.cameFrom = v.line * 65536 + i;
-    v.cameAt = this.clock;
-    if (l.road) {
-      v.mode = 'wait';
-      v.timer = 25;
-    } else {
-      v.mode = 'goto';
-      v.timer = 0;
-    }
-  }
-
-  /** Arrived where it went: onto its next line, or a new spot on the square. */
-  private arrive(v: V): void {
-    if (v.next) {
-      const n = v.next;
-      v.next = null;
-      this.onLine(v, n.line, n.s, n.dir);
-      v.lat = 0;
-      v.latWant = rand(0.15, 0.45);
-      v.cameAt = this.clock;
-      return;
-    }
-    if (v.hub >= 0) {
-      v.mode = 'hub';
-      v.timer = rand(2, 6);
-    } else this.leave(v);
-  }
-
-  private nextHubSpot(v: V): void {
-    const spots = this.hubSpots[v.hub];
-    if (!spots?.length || chance(0.12)) {
-      // Off the square: to the nearest walk, and on.
-      const w = this.paths!.nearestWalk(v.x, v.z, 40);
-      if (!w) {
-        v.timer = rand(4, 10);
-        return;
-      }
-      this.paths!.walks[w.line].at(w.s, _at);
-      v.mode = 'goto';
-      v.tx = _at.x;
-      v.tz = _at.z;
-      v.next = { line: w.line, s: w.s, dir: chance(0.5) ? 1 : -1 };
-      v.hub = -1;
-      return;
-    }
-    for (let tries = 0; tries < 5; tries++) {
-      const [x, z] = pick(spots);
-      const d = Math.hypot(x - v.x, z - v.z);
-      if (d < 3 || d > 20) continue;
-      if (this.world.blocked({ x: v.x, y: v.y + 0.6, z: v.z }, { x, y: v.y + 0.6, z }, 0.25)) continue;
-      v.tx = x;
-      v.tz = z;
-      v.timer = rand(3, 14);
-      return;
-    }
-    v.timer = rand(2, 6);
-  }
-
-  /** Whether the way across from (x, z) to (tx, tz) is clear of cars coming (none heading for it within 35 m, none right there). */
-  private clear(x: number, z: number, tx: number, tz: number, cars: CarNear[]): boolean {
-    const mx = (x + tx) / 2;
-    const mz = (z + tz) / 2;
-    return cars.every((c, i) => {
-      const d = Math.hypot(c.x - mx, c.z - mz);
-      if (d < 7) return false;
-      if (d > 38) return true;
-      const cfx = -Math.sin(c.yaw);
-      const cfz = -Math.cos(c.yaw);
-      const toward = ((mx - c.x) * cfx + (mz - c.z) * cfz) / d;
-      return toward < 0.5 || (this.carSpeed[i] ?? 0) < 0.5;
-    });
-  }
-
-  /** Move by (dx, dz), kept out of walls (near the player every frame, farther off every other). */
   private move(v: V, dx: number, dz: number, near: boolean): void {
     v.x += dx;
     v.z += dz;
     if (near || (this.clock * 60 + v.id) % 3 < 1) {
       const pos = { x: v.x, z: v.z };
-      this.world.resolve(pos, v.y, v.bike ? 0.3 : 0.25, 0.45, 1.6);
+      this.world.resolve(pos, v.y, v.kind === BIKE ? 0.3 : 0.25, 0.45, 1.6);
       v.x = pos.x;
       v.z = pos.z;
     }
@@ -1368,31 +1125,26 @@ export class Villagers {
 
   /** Its feet on the ground: looked up again every 25 cm, eased up and down a step. */
   private ground1(v: V, dt: number): void {
-    if (v.mode === 'sit') {
-      v.y = v.ground; // the seat's height (spawnSitter)
-      return;
-    }
     if (Math.hypot(v.x - v.gx, v.z - v.gz) > 0.25) {
       v.ground = this.ground(v.x, v.z, v.ground);
       v.gx = v.x;
       v.gz = v.z;
     }
-    v.y = Math.abs(v.ground - v.y) > 1.2 ? v.ground : v.y + (v.ground - v.y) * Math.min(1, dt * 12);
+    // A sitter is on its seat: the Sit clip sits on 45 cm, so it goes up or down by the seat's own height.
+    const want = v.sit ? v.ground + ((this.set!.seats[v.def.seat]?.[3] ?? 0.45) - 0.45) : v.ground;
+    v.y = Math.abs(want - v.y) > 1.2 ? want : v.y + (want - v.y) * Math.min(1, dt * 12);
   }
 
-  /** Close to the player and looked at: it may wave (now and then, a child more often). */
-  private lookAndWave(v: V, me: Me | null): void {
-    if (!me || v.kind === DOG || v.bike || v.jog || v.mode === 'sit' || v.once || v.fade < 1) return;
+  /** Close to the player and looked at: it may wave (now and then), and stops for it. */
+  private lookAndWave(v: V, me: Me | null, moving: boolean): void {
+    if (!me || v.kind === DOG || v.kind === BIKE || v.def.jog || v.sit || v.once || v.fade < 1) return;
     const d = Math.hypot(me.x - v.x, me.z - v.z);
     if (d > 9 || d < 1.5 || this.clock - v.waved < 60) return;
     v.waved = this.clock;
     if (!chance(v.kind === CHILD ? 0.55 : 0.3)) return;
     v.once = 'Wave';
     v.onceEnd = this.clock + 2.4;
-    if (v.mode === 'walk' || v.mode === 'hub') {
-      v.mode = 'stand';
-      v.timer = 2.6;
-    }
+    if (moving && v.def.role !== 'follow') v.holdUntil = this.clock + 2.6;
   }
 
   /** Which clip it plays and how far along, blending a change over BLEND. */
@@ -1403,16 +1155,16 @@ export class Villagers {
     let want: string;
     if (v.kind === BIKE) want = 'Ride';
     else if (v.once && !moving) want = v.once;
-    else if (v.mode === 'sit') want = 'Sit';
+    else if (v.sit) want = 'Sit';
     else if (moving) {
       if (v.kind === DOG || v.kind === CHILD || v.kind === ELDER) want = v.kind === CHILD && speed > 2 ? 'Jog' : 'Walk';
-      else if (v.jog) want = 'Jog';
+      else if (v.def.jog || speed > 2.3) want = 'Jog';
       else if (v.flags & UMB) want = 'WalkUmb';
-      else if (v.lead) want = 'WalkLead';
+      else if (v.def.lead) want = 'WalkLead';
       else want = 'Walk';
     } else if (v.flags & UMB) want = 'WalkUmb';
-    else if (v.kind === DOG && v.leader?.mode === 'stand' && v.leader.timer > 4) want = 'Sit';
-    else if (v.partner && v.kind !== CHILD) want = 'Talk';
+    else if (v.kind === DOG && v.still > 4) want = 'Sit';
+    else if (v.talk && v.kind !== CHILD) want = 'Talk';
     else want = 'Idle';
     if (!k.clips.has(want)) want = k.clips.has('Idle') ? 'Idle' : 'Ride';
     if (want !== v.clip) {
@@ -1433,8 +1185,8 @@ export class Villagers {
   /** In the rain the umbrella is up (those who have one: the man, the woman, the teen walking). */
   private umbrellas(): void {
     const up = this.raining;
-    for (const v of this.vs) {
-      const can = (v.kind === MAN || v.kind === WOMAN || v.kind === TEEN) && !v.jog && !v.lead && v.mode !== 'sit';
+    for (const v of this.order) {
+      const can = (v.kind === MAN || v.kind === WOMAN || v.kind === TEEN) && !v.def.jog && !v.def.lead && !v.sit;
       if (up && can) v.flags |= UMB;
       else v.flags &= ~UMB;
     }
@@ -1454,12 +1206,29 @@ export class Villagers {
     let patches = 0;
     const lead = this.leashes.geometry.attributes.position as THREE.BufferAttribute;
     let leads = 0;
-    for (const v of this.vs) {
+    for (const v of this.order) {
       const k = this.kinds[v.kind];
-      if (!k) continue;
+      v.drawn = false;
+      if (!k || v.away) continue;
       if (counts[v.kind] >= MAX[v.kind]) continue;
+      v.drawn = true;
       const i = counts[v.kind]++;
-      _m.compose(_v.set(v.x, v.y, v.z), _q.setFromAxisAngle(UP, v.yaw), _s.setScalar(v.scale));
+      const fade = Math.min(v.fade, this.shown);
+      _q.setFromAxisAngle(UP, v.yaw);
+      let y = v.y;
+      const hop = this.clock - v.hopAt;
+      if (hop < 0.4) y += 0.3 * Math.sin((Math.PI * hop) / 0.4);
+      const down = v.downAt >= 0;
+      if (down) {
+        // Tipping over, away from the shot, with a little bounce as it lands; it lies on the ground, not in it.
+        const ft = this.clock - v.downAt;
+        const f = Math.min(1, ft / FALL);
+        let ang = (Math.PI / 2) * f * f;
+        if (ft > FALL && ft < FALL + 0.25) ang -= 0.16 * Math.sin((Math.PI * (ft - FALL)) / 0.25);
+        _q.premultiply(_q2.setFromAxisAngle(_v.set(v.fallZ, 0, -v.fallX), ang));
+        y += 0.14 * Math.sin(ang) * v.scale;
+      }
+      _m.compose(_v.set(v.x, y, v.z), _q, _s.setScalar(v.scale));
       k.mesh.setMatrixAt(i, _m);
       const [a0, a1, af] = this.rows(k.clips.get(v.clip), v.time);
       let [rA, rB, mix] = [a0, a1, af];
@@ -1468,17 +1237,17 @@ export class Villagers {
         [rA, rB, mix] = [f0, a0, v.blend];
       }
       k.anim.setXYZW(i, rA, rB, mix, v.pal);
-      k.look.setXYZW(i, Math.min(v.fade, this.shown), v.flags, 0, 0);
+      k.look.setXYZW(i, fade, v.flags, 0, 0);
       const d = Math.hypot(v.x - eye.x, v.z - eye.z);
-      if (d < 60 && patches < 96) {
-        const r = (v.kind === DOG ? 0.55 : v.kind === BIKE ? 0.9 : v.kind === CHILD ? 0.6 : 0.75) * v.scale * Math.min(1, Math.min(v.fade, this.shown) * 1.4);
-        const ground = v.mode === 'sit' ? v.y - (this.paths!.seats[v.seat][3] - 0.45) : v.y;
+      if (d < 60 && patches < 96 && !down) {
+        const r = (v.kind === DOG ? 0.55 : v.kind === BIKE ? 0.9 : v.kind === CHILD ? 0.6 : 0.75) * v.scale * Math.min(1, fade * 1.4);
+        const ground = v.sit ? v.ground : v.y;
         _m.compose(_v.set(v.x, ground + 0.03, v.z), _q.setFromAxisAngle(UP, v.yaw), _s.set(v.kind === BIKE ? r * 0.7 : r, 1, v.kind === BIKE ? r * 1.6 : r));
         this.patches.setMatrixAt(patches++, _m);
       }
       // The dog's lead: from the walker's right hand to the collar, sagging.
-      if (v.kind === DOG && v.leader && leads < MAX[DOG] && Math.min(v.fade, this.shown) > 0.5) {
-        const l = v.leader;
+      const l = v.kind === DOG ? this.active.get(v.def.leader) : undefined;
+      if (l && !l.away && l.downAt < 0 && leads < MAX[DOG] && Math.min(fade, l.fade) > 0.5) {
         const lfx = Math.sin(l.yaw);
         const lfz = Math.cos(l.yaw);
         const hx = l.x + lfx * 0.32 - lfz * 0.22; // the right hand, a little ahead
