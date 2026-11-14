@@ -8,7 +8,8 @@
  * 2. Alone or together? A guest ticks "I'm 13 or older" for Together; an account did at sign-up.
  * 3. The game: Zombies first (Yoshi: "they should be encouraged to pick a specific game mode, for example,
  *    zombie"), then Paintball, Action and Explore; for Zombies where alone, or a room together (to join, or for an
- *    account to open); then the start buttons (src/ui/menu.ts). Zombies is no weapon mode of its own: it plays with
+ *    account to open); in Paintball and Action the guns to start with (src/ui/gunPick.ts);
+ *    then the start buttons (src/ui/menu.ts). Zombies is no weapon mode of its own: it plays with
  *    Action's pistol (Paintball's paint guns when that was the mode) and starts its game once play begins
  *    (src/main.ts startIntent). Only rooms' places and sizes show here, never who opened them.
  *
@@ -21,6 +22,7 @@
  */
 import { onLang, portalName, t } from '../i18n';
 import { api, errorText, type Me, type RoomEntry } from '../net/client';
+import { GunPick } from './gunPick';
 import type { ControlMode, PlayMode } from './menu';
 
 export type Step = 1 | 2 | 3;
@@ -116,6 +118,8 @@ export class StartFlow {
   private roomsKey = '';
   private zPlace = $<HTMLSelectElement>('z-place');
   private zOpenPlace = $<HTMLSelectElement>('z-open-place');
+  /** The guns you start with, under the modes in Paintball and Action (ui/gunPick.ts) */
+  private guns = new GunPick($('guns-start'));
 
   constructor(private hooks: FlowHooks) {
     this.back.addEventListener('click', () => this.goBack());
@@ -501,6 +505,8 @@ export class StartFlow {
     $('z-solo').classList.toggle('hidden', together);
     $('z-together').classList.toggle('hidden', !together);
     $('spawn').parentElement!.classList.toggle('hidden', this.zombiesOn); // Zombies starts at its own place
+    this.guns.shown(!this.zombiesOn && this.hooks.play() !== 'explore'); // Zombies starts with the pistol only
+    this.guns.setPaint(this.hooks.play() === 'paintball');
     if (this.zombiesOn && together) this.drawRooms();
     // Play again as before: its line from the labels on the page, in the language showing.
     const ok = this.step === 1 && this.againOk();

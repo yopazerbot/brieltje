@@ -123,7 +123,7 @@ if (!o.together) {
     })()`, false);
     await b.waitFor('!!window.briel', 90000);
     await b.waitFor("(() => { const p = document.getElementById('start-panel'); if (!p || p.offsetParent === null) return true; const s = getComputedStyle(p); return s.visibility === 'hidden' || Number(s.opacity) < 0.05; })()", 180000);
-    await b.evaluate("document.getElementById('cc-close')?.click(); window.briel?.loadoutCard?.close(false)", false).catch(() => {});
+    await b.evaluate("document.getElementById('cc-close')?.click()", false).catch(() => {});
     await b.evaluate('briel.weapon.setEnabled(true)', false);
     return b;
   };

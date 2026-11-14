@@ -1,0 +1,43 @@
+/* The guns you start with (ui/gunPick.ts): on the start screen a row under the modes (the label, three chips, the
+   rule); in the pause menu's Play tab three equal tiles with the game's picture of each gun above its name. */
+.gun-pick { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 12px; margin: 0 0 14px; }
+.gun-pick > .label { margin: 0; }
+.gun-chips { display: flex; flex-wrap: wrap; gap: 8px; }
+.gun-chip {
+  position: relative; display: inline-flex; align-items: center; gap: 8px; min-height: 44px; padding: 4px 36px 4px 10px;
+  border: 2px solid var(--line); border-radius: 12px; font: inherit; font-size: 15px; font-weight: 700; line-height: 1.2;
+  color: var(--ink); background: var(--dusk-raised); cursor: pointer; transition: border-color 0.12s, background 0.12s;
+}
+.gun-chip:hover { background: var(--dusk-high); }
+.gun-chip.on { border-color: var(--lamp); background: var(--dusk-high); }
+.gun-ico { flex: none; width: 48px; height: 20px; fill: none; stroke: var(--ink-soft); stroke-width: 1.7; stroke-linecap: round; stroke-linejoin: round; }
+.gun-chip.on .gun-ico { stroke: var(--lamp); }
+.gun-tick {
+  position: absolute; right: 8px; top: 50%; width: 20px; height: 20px; margin-top: -10px; border-radius: 50%;
+  font-size: 13px; font-weight: 800; line-height: 20px; text-align: center; color: var(--dusk); background: var(--lamp);
+  opacity: 0; transform: scale(0.6); transition: opacity 0.12s, transform 0.12s;
+}
+.gun-chip.on .gun-tick { opacity: 1; transform: none; }
+.gun-note { margin: 0; font-size: 14px; line-height: 1.35; color: var(--ink-soft); }
+@media (max-height: 520px) {
+  .gun-pick { margin-bottom: 10px; }
+  .gun-chip { min-height: 40px; }
+}
+/* A phone held sideways: the start screen's row stays one line, without the rule. */
+@media (orientation: landscape) and (max-height: 520px) and (max-width: 759px) {
+  #guns-start .gun-note { display: none; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .gun-chip, .gun-tick { transition: none; }
+}
+
+/* The menu's tiles. */
+.gun-pick.big { display: block; margin: 0; }
+.gun-pick.big .gun-chips { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 10px; }
+.gun-pick.big .gun-chip { flex-direction: column; justify-content: center; gap: 6px; padding: 10px 10px 12px; text-align: center; }
+.gun-pick.big :is(.gun-ico, .gun-img) { display: block; width: 100%; height: auto; aspect-ratio: 2 / 1; }
+.gun-pick.big .gun-ico { padding: 8% 6%; box-sizing: border-box; }
+.gun-pick.big .gun-img { object-fit: contain; filter: drop-shadow(0 6px 10px rgba(0, 0, 0, 0.45)); opacity: 0.75; transition: opacity 0.12s; }
+.gun-pick.big .gun-chip.on .gun-img, .gun-pick.big .gun-chip:hover .gun-img { opacity: 1; }
+.gun-pick.big .gun-tick { top: 8px; margin-top: 0; }
+.gun-pick.big .gun-note { margin-top: 10px; }

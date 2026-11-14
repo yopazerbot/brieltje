@@ -1,5 +1,5 @@
 // The weapons a player chooses to start with in Action and Paintball, shared by the server (which
-// checks the choice and hands the guns out) and the page (the picker, src/ui/loadout.ts, and playing
+// checks the choice and hands the guns out) and the page (the chips, src/ui/gunPick.ts, and playing
 // alone): plain data and plain functions.
 //
 // Everyone carries the pistol. On top of it a player picks up to LOADOUT.most of the long guns. The

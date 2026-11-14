@@ -3,13 +3,13 @@ import { paintball } from '../paintball';
 import { gunModel, gunsReady, type WeaponId } from '../weapon';
 
 /**
- * A picture of each gun for the menus (the weapon picker, ui/loadout.ts): the game's own model, drawn once
+ * A picture of each gun for the pause menu's chips (ui/gunPick.ts): the game's own model, drawn once
  * from its right side, a little turned towards you, into a small off-screen picture and kept as a data URL.
  * Drawn with the game's renderer (no second one), under the sky the game has, so the metal looks as it does
  * in your hands. Paintball's toy colours give pictures of their own.
  */
 
-const W = 480; // twice the size it shows at in the picker
+const W = 480; // about twice the size it shows at in the menu
 const H = 240;
 const made = new Map<string, string>();
 let loaded = false;

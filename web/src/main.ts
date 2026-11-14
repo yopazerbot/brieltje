@@ -43,9 +43,9 @@ import { Leaderboard } from './ui/leaderboard';
 import { Minimap, type Blip } from './ui/minimap';
 import { ASK_AFTER, FeedbackCard } from './ui/feedback';
 import { HomeCodeCard } from './ui/homeCode';
-import { LoadoutCard } from './ui/loadout';
+import { GunPick, gunChoice } from './ui/gunPick';
 import { gunPicture } from './ui/gunPictures';
-import { cleanPick, LOADOUT, startingWeapons } from '../shared/loadout.mjs';
+import { LOADOUT, startingWeapons } from '../shared/loadout.mjs';
 import { HomeLocks } from './world/homeLocks';
 import { barrierHeights, findHome, homeAt, inEndGarden } from '../shared/homes.mjs';
 import { ControlsCard } from './ui/controlsCard';
@@ -74,7 +74,7 @@ import { creak, SlideSound } from './world/playgroundSound';
 import { towerPrompt } from './world/playgroundHint';
 import { SettingsPanel, type Settings } from './settings';
 import { gunsReady, SPECS, Weapon, type WeaponId } from './weapon';
-import { GUN_PAINT, paintball, setPaintball, weaponName as shownWeapon } from './paintball';
+import { GUN_PAINT, onPaintball, paintball, setPaintball, weaponName as shownWeapon } from './paintball';
 import { VILLAGER_HIT_MAX, VILLAGER_HIT_MS, VILLAGER_PAINT_S, VILLAGER_SHOT_MAX } from '../shared/villagers.mjs';
 import { Decals } from './world/decals';
 import { Effects, type Spot } from './world/effects';
@@ -1264,10 +1264,9 @@ menu.onSpeed = (v) => (player.walkSpeed = me ? REAL_WALK : v);
 weapon.setEnabled(menu.playing !== 'explore');
 setPaintball(menu.playing === 'paintball');
 menu.onPlayMode = (play) => {
-  const armed = weapon.enabled;
   weapon.setEnabled(play !== 'explore');
   setPaintball(play === 'paintball');
-  if (!armed && weapon.enabled && playBegan) offerWaiting = true; // into Action or Paintball from Explore: choose your guns, once the menu is shut (the frame loop looks)
+  gunsMenu.shown(weapon.enabled); // into Action or Paintball from Explore: the chips under the mode just pressed
   combat.setActive((!!me || !!solo) && play !== 'explore'); // health shows together, and in a Zombies game alone
 };
 
@@ -2271,38 +2270,57 @@ function adminWeapons(): WeaponId[] {
   return !me || me.role === 'admin' ? ['bazooka'] : [];
 }
 
-// The guns you chose to start with (shared/loadout.mjs, the picker: ui/loadout.ts), kept on this device.
-let myPick: string[] = LOADOUT.first;
-try {
-  const kept = localStorage.getItem('briel.loadout');
-  if (kept !== null) myPick = cleanPick(JSON.parse(kept));
-} catch {
-  // no storage, or not a list: the first choice
-}
+// The guns you chose to start with (shared/loadout.mjs), on the start screen or in the menu (ui/gunPick.ts), kept on this device.
+let myPick: string[] = gunChoice.pick;
 /** Not fired since you came into play: a new choice of guns still counts at once (the server has the same rule). */
 let unfired = true;
 /** The guns you come into play with, besides the pistol: yours and the admin's; none in the Zombies game. */
 function startGuns(): WeaponId[] {
   return startingWeapons(myPick, adminWeapons(), games.zombies).filter((w) => w !== 'pistol') as WeaponId[];
 }
-const loadoutCard = new LoadoutCard();
-loadoutCard.picture = (w) => gunPicture(renderer, scene.environment, w);
-loadoutCard.onDone = (pick, click) => {
+// The menu's chips, under the Mode buttons of the Play tab: the game's own picture of each gun (drawn behind the
+// start screen, compileWorld), hidden in Explore. Nothing opens by itself during play.
+const gunsMenu = new GunPick(document.getElementById('guns-pause')!, { picture: (w) => gunPicture(renderer, scene.environment, w as WeaponId) });
+gunsMenu.setPaint(paintball.on);
+gunsMenu.shown(weapon.enabled);
+onPaintball((on) => {
+  gunsMenu.setPaint(on);
+  if (menu.open) gunsMenu.refresh(); // the paint guns' pictures: only while the menu shows, never during play
+});
+/** A choice that counts the next time you come into play; one sent to the server, its answer awaited; the server's pick. */
+let pickWaits = false;
+let pickAsked = false;
+let pickTimer: ReturnType<typeof setTimeout> | undefined;
+let serverPick: string[] | null = null;
+gunChoice.on((pick) => {
   myPick = pick;
-  try {
-    localStorage.setItem('briel.loadout', JSON.stringify(pick));
-  } catch {
-    // no storage: the choice lasts this visit
+  // Together the server hands the guns out (and answers with them, 'weapons'): once the chips rest, under its two a
+  // second. Alone it is the same rule here.
+  if (net.connected) {
+    clearTimeout(pickTimer);
+    pickTimer = setTimeout(() => {
+      if (!net.connected) return;
+      pickAsked = true;
+      net.send({ t: 'loadout', w: myPick });
+    }, 600);
+    return;
   }
-  // Together the server hands the guns out (and answers with them, 'weapons'); alone it is the same rule here.
-  if (net.connected) net.send({ t: 'loadout', w: pick });
-  else if (unfired && !games.zombies) weapon.setOwned(startGuns());
-  if (click && !menu.open && menu.mode === 'kbm') lockMouse();
-};
-/** The picker, when you come into Action or Paintball; not in the Zombies game (pistol only, the rest is found). */
-function offerGuns(): void {
-  if (!weapon.enabled || games.zombies || startIntent.zombies !== null || menu.onStartScreen || menu.open || watch) return;
-  loadoutCard.show(myPick, menu.mode === 'pad');
+  const now = unfired && !games.zombies;
+  if (now) weapon.setOwned(startGuns());
+  pickLanded(now);
+});
+/** What became of a change: yours at once, or the next time you come into play (the menu's line says which). */
+function pickLanded(now: boolean): void {
+  pickWaits = !now;
+  gunsMenu.say(games.zombies ? 'guns.zombies' : now ? 'guns.now' : 'guns.later');
+}
+/** Into play again (a new life, the Zombies game over): a choice that waited is yours now. Not as a game alone begins. */
+function gunsCameIn(): void {
+  if (pickWaits && !games.zombies && !(solo && solo.horde.phase !== 'over')) {
+    pickWaits = false;
+    chat.system(() => t('guns.arrived'));
+    gunsMenu.say('guns.rule');
+  }
 }
 /** The stall between waves in Zombies (ui/stall.ts, shared/stall.mjs): together the server decides each purchase. */
 const stallCard = new StallCard();
@@ -2413,6 +2431,7 @@ function respawnAt(i: number, at?: { x?: number; z?: number; y?: number; fx?: nu
   combat.respawned();
   weapon.resetLoadout(startGuns());
   unfired = true;
+  gunsCameIn();
   grenades.refill();
 }
 
@@ -2765,6 +2784,12 @@ net.onMessage = (m: ServerMsg) => {
     }
     case 'weapons':
       weapon.setOwned(m.list); // the guns the server has for you (after your choice)
+      serverPick = m.pick;
+      if (pickAsked) {
+        // Applied, the server's list is exactly the pistol, the admin's and the pick: else it counts next time.
+        pickAsked = false;
+        pickLanded(LOADOUT.choices.every((w) => m.list.includes(w) === myPick.includes(w)));
+      }
       break;
     case 'mode':
       followGame(m.mode);
@@ -3197,6 +3222,8 @@ function openMenu(tab?: string): void {
     teamsMenu = false;
   }
   menu.showPause(tab);
+  gunsMenu.say(games.zombies ? 'guns.zombies' : pickWaits ? 'guns.later' : 'guns.rule');
+  gunsMenu.refresh();
   document.exitPointerLock?.();
   if (me?.role === 'admin') admin.show(me.username);
   leaderboard.refresh();
@@ -3325,10 +3352,7 @@ let edgeHint = 0; // seconds "you can't go further" still shows after pushing ag
 let calmHint = 0; // seconds "no shooting here" still shows on the school grounds
 let resting = false; // the gun rested on something in front of you (steadier), and when that was last looked up (ms)
 let restAt = 0;
-let loadPadX = 0; // the controller's stick on the weapon picker
-let loadPadY = 0;
 let wasZombies = false;
-let offerWaiting = false; // the weapon picker is to show as soon as the menu is shut
 let homePadX = 0; // the controller's stick on the home card, as padStick is on the feedback card
 let homePadY = 0;
 let lockKey: 'prompt.locked' | 'prompt.multiplayerOnly' = 'prompt.locked'; // what the hint says: a home is locked, or only in multiplayer (a pane of no home alone)
@@ -3396,16 +3420,6 @@ renderer.setAnimationLoop((now: number) => {
     else if (polled.deletePressed) homeCard.padBack();
     else if (polled.menuPressed) homeCard.close(false);
   }
-  // The weapon picker with a controller: the stick or D-pad moves, the south button picks (or plays), east or Options plays.
-  if (loadoutCard.open && menu.mode === 'pad') {
-    const sx = Math.abs(polled.moveX) > 0.6 ? Math.sign(polled.moveX) : 0;
-    const sy = Math.abs(polled.moveY) > 0.6 ? -Math.sign(polled.moveY) : 0;
-    loadoutCard.padMove((sx !== loadPadX ? sx : 0) + Math.sign(polled.speedStep), (sy !== loadPadY ? sy : 0) - Math.sign(polled.weaponCycle));
-    loadPadX = sx;
-    loadPadY = sy;
-    if (polled.confirmPressed) loadoutCard.padPress();
-    else if (polled.deletePressed || polled.menuPressed) loadoutCard.close(false);
-  }
   // The stall with a controller: the D-pad or stick moves, the south button buys, east or Options closes; D-pad right opens it in the break.
   if (stallCard.open && menu.mode === 'pad') {
     if (polled.navX || polled.navY) stallNav.step(polled.navX, polled.navY);
@@ -3415,9 +3429,8 @@ renderer.setAnimationLoop((now: number) => {
     stallCard.show(true);
     stallNav.focus(null);
   }
-  // The Zombies game begins (alone or together): down to the pistol, the picker away. The rest is found on the map.
+  // The Zombies game begins (alone or together): down to the pistol. The rest is found on the map.
   if (games.zombies && !wasZombies) {
-    loadoutCard.close(false);
     weapon.resetLoadout([]);
   }
   // And when it is over: the guns you chose, back (together the server says so too, 'weapons').
@@ -3425,14 +3438,10 @@ renderer.setAnimationLoop((now: number) => {
     stallCard.set({ c: 0, n: [] });
     weapon.resetLoadout(startGuns());
     unfired = true;
+    gunsCameIn();
   }
   wasZombies = games.zombies;
   followMusic();
-  // The picker asked for while the menu was open (the mode's buttons are in it): once it is shut.
-  if (offerWaiting && !menu.open) {
-    offerWaiting = false;
-    offerGuns();
-  }
   // The controls card shown at the start: a click or ✕ closes it and does nothing else (no shot,
   // no jump); opening the menu closes it too, unless the menu opened it.
   if (controlsCard.open && !controlsCard.fromMenu) {
@@ -4115,18 +4124,12 @@ void playing.then(() => {
     if (!me) startSolo(place).catch(() => {}); // a village that won't load says so itself (loadVillage)
   }, 250);
 });
-/** When play began (ms, the page's clock); 0 before. Work that can wait is kept out of its first seconds. */
-let playBegan = 0;
 void playing.then(() => {
-  playBegan = performance.now();
   playBegins(); // what is left of getting ready goes on a little a frame (src/startWarm.ts)
   warm.hold(null);
   sound.setWorld(true); // the world is heard from now on, not behind the start screen (src/sound.ts)
-  // Your guns from the start, and the picker to change them (Action and Paintball, alone or together).
+  // Your guns from the start, as chosen on the start screen (Action and Paintball; together the welcome's 'loadout').
   if (!net.connected && !games.zombies) weapon.setOwned(startGuns());
-  // The picker a second later (the guns are yours from the first frame): opened as the start screen went, the two
-  // together took a frame of 70 to 130 ms in the browser's page drawing, the first frames of play.
-  setTimeout(() => (menu.open ? (offerWaiting = true) : offerGuns()), 1000); // the menu opened meanwhile: once it is shut
 });
 /** The big zombies seen in this Zombies game, alone or together: the music's low stab for each new one (src/music.ts). */
 const bigsSeen = new Set<number>();
@@ -4635,7 +4638,7 @@ async function compileWorld(): Promise<void> {
   // of in the first second of the fall (at most 1.5 s for it; a slow line starts without).
   const chute = rules.parachute !== false && startIntent.zombies === null ? Promise.race([parachutes.load(), new Promise((r) => setTimeout(r, 1500))]) : null;
   await Promise.all([precompile(scene), precompile(figure), chute]);
-  // The weapon picker's gun pictures, here behind the start screen: drawn as it opened, they cost a stutter just as you dropped in.
+  // The menu's gun pictures (its Play tab), here behind the start screen: drawn during play, they cost a stutter.
   if (await gunsReady) for (const w of LOADOUT.choices as WeaponId[]) gunPicture(renderer, scene.environment, w);
 }
 if (mode === 'auto') void autoDetect().catch(loaded);
@@ -4715,7 +4718,8 @@ if (import.meta.env.DEV) {
       homeLocks,
       insides,
       homeCard,
-      loadoutCard,
+      /** The guns chosen, the server's copy of the choice (together), and whether a change waits for the next life. */
+      guns: () => ({ pick: myPick, server: serverPick, waits: pickWaits }),
       stallCard,
       stallNav,
       fire,
