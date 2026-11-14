@@ -65,6 +65,7 @@ import { DROP, dropFrom, dropStart, HOME_DROP } from '../shared/parachute.mjs';
 import { netClock } from './net/track';
 import { PROTO, readBike, readBrute, readCar, readHorse, readPlayer, readZombie, type Tick } from '../shared/wire.mjs';
 import { sound } from './sound';
+import { music } from './music';
 import { footstep, surfaceOf } from './footsteps';
 import { PlayTower, TOWER } from './world/playground';
 import { creak, SlideSound } from './world/playgroundSound';
@@ -1109,6 +1110,7 @@ function applySettings(s: Settings): void {
     camera.updateProjectionMatrix();
   }
   sound.setVolume(s.volume);
+  music.setLevel(s.music);
   touch.haptics = s.vibration; // a tick on the touch buttons where the phone can vibrate
   // The minimap (N) and the FPS counter (F, Create): settings, so touch and controller players have them too.
   document.getElementById('minimap')!.classList.toggle('hidden', !s.minimap);
@@ -2992,7 +2994,7 @@ function onTick(m: Tick): void {
   horses.receive((m.h ?? []).map(readHorse), m.st, self);
   bikes.receive((m.k ?? []).map(readBike), m.st, self);
   if (m.b) clowns.receive(m.b.map(readBrute), m.st); // every other tick
-  if (m.z) zombies.receive(m.z.map(readZombie), m.st); // the same, during the Zombies game
+  if (m.z) zombies.receive(seeBigs(m.z.map(readZombie)), m.st); // the same, during the Zombies game
 }
 // Alone or together from here on (perhaps joined on the start screen already): after the handlers
 // above, so the connection's first status and messages reach them. A Zombies room picked there: straight into it.
@@ -3269,6 +3271,7 @@ renderer.setAnimationLoop((now: number) => {
     unfired = true;
   }
   wasZombies = games.zombies;
+  followMusic();
   // The picker asked for while the menu was open (the mode's buttons are in it): once it is shut.
   if (offerWaiting && !menu.open) {
     offerWaiting = false;
@@ -3956,6 +3959,20 @@ void playing.then(() => {
   if (!net.connected && !games.zombies) weapon.setOwned(startGuns());
   offerGuns();
 });
+/** The big zombies seen in this Zombies game, alone or together: the music's low stab for each new one (src/music.ts). */
+const bigsSeen = new Set<number>();
+function seeBigs<L extends Iterable<{ id: number; kind: number }>>(list: L): L {
+  for (const s of list) if (s.kind === BIG_ZOMBIE) bigsSeen.add(s.id);
+  return list;
+}
+/** Every frame: the start screen's theme fades once play has begun, and the music follows the Zombies game as this page knows it. */
+function followMusic(): void {
+  const v = games.view;
+  if (!menu.onStartScreen) music.theme(false);
+  if (v.kind !== 'zombies') bigsSeen.clear();
+  else if (solo) seeBigs(solo.horde.zombies.values());
+  music.zombies({ on: v.kind === 'zombies', rest: v.phase === 'break', over: v.phase === 'done', wave: v.zombies?.wave ?? 0, left: v.zombies?.left ?? 0, big: bigsSeen.size });
+}
 // The leaf cards' pictures are painted once play has begun, when the preset asks for them (world/leafCards.ts).
 void playing.then(() => treesMayPaint((textures) => {
   for (const t of textures) renderer.initTexture(t);

@@ -1,6 +1,6 @@
 /**
  * Player settings in the pause menu, remembered in this browser: mouse and
- * controller look speed, field of view, volume, inverted look, controller
+ * controller look speed, field of view, volume, music, inverted look, controller
  * vibration, the controller's aim assist against zombies (src/controls/aimAssist.ts),
  * the minimap and FPS counter (each with a key as its shortcut), and the weather (world/weather.ts) when playing alone: together the admin's choice
  * holds, and the buttons show it, greyed (lockMood).
@@ -18,6 +18,8 @@ export interface Settings {
   fov: number;
   /** Master volume 0..1 */
   volume: number;
+  /** The music's loudness 0..1, 0 is off (src/music.ts) */
+  music: number;
   invert: boolean;
   vibration: boolean;
   /** The controller's aim assist against zombies (src/controls/aimAssist.ts) */
@@ -32,7 +34,7 @@ export interface Settings {
 }
 
 const KEY = 'briel.settings';
-const DEFAULTS: Settings = { mouse: 1, stick: 1, fov: 72, volume: 0.8, invert: false, vibration: true, aimAssist: true, minimap: true, fps: false, mood: DEFAULT_CHOICE };
+const DEFAULTS: Settings = { mouse: 1, stick: 1, fov: 72, volume: 0.8, music: 0.5, invert: false, vibration: true, aimAssist: true, minimap: true, fps: false, mood: DEFAULT_CHOICE };
 const BOXES = [['set-invert', 'invert'], ['set-vibration', 'vibration'], ['set-aimassist', 'aimAssist'], ['set-minimap', 'minimap'], ['set-fps', 'fps']] as const;
 
 function load(): Settings {
@@ -44,6 +46,8 @@ function load(): Settings {
     return { ...DEFAULTS };
   }
 }
+/** The settings as stored, before the menu exists: the start screen's volume and music (src/start.ts). */
+export const storedSettings = load;
 
 const $ = (id: string) => document.getElementById(id) as HTMLInputElement;
 
@@ -68,6 +72,7 @@ export class SettingsPanel {
       ['set-stick', 'stick', (v) => `${num(v, 2)}×`],
       ['set-fov', 'fov', (v) => `${v}°`],
       ['set-volume', 'volume', (v) => `${Math.round(v * 100)}%`],
+      ['set-music', 'music', (v) => `${Math.round(v * 100)}%`],
     ];
     for (const [id, key, label] of sliders) {
       const input = $(id);
@@ -109,7 +114,7 @@ export class SettingsPanel {
     $('set-reset').addEventListener('click', () => {
       Object.assign(this.value, DEFAULTS);
       this.showMood();
-      for (const [id, key] of [['set-mouse', 'mouse'], ['set-stick', 'stick'], ['set-fov', 'fov'], ['set-volume', 'volume']] as const) {
+      for (const [id, key] of [['set-mouse', 'mouse'], ['set-stick', 'stick'], ['set-fov', 'fov'], ['set-volume', 'volume'], ['set-music', 'music']] as const) {
         $(id).value = String(this.value[key]);
         $(id).dispatchEvent(new Event('input'));
       }

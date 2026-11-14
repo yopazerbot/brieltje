@@ -10,7 +10,7 @@ import type * as THREE from 'three';
  * The room's echo (world/acoustics.ts) hangs on the master volume: a send into a
  * convolver, so every sound gets it without knowing. Sounds from out of doors go
  * through `outside()` (or are placed outdoors with `at`), which muffles them while
- * you are inside.
+ * you are inside. The music (src/music.ts) has a gain of its own at the master volume, without either.
  */
 
 const KEY = 'briel.sound';
@@ -24,6 +24,7 @@ let ctx: AudioContext | null = null;
 let master: GainNode | null = null;
 let outdoors: GainNode | null = null; // out-of-doors sounds, into `walls`
 let walls: BiquadFilterNode | null = null; // the walls and windows between them and you: a lowpass, open outside
+let musicOut: GainNode | null = null; // the music (src/music.ts): the master volume, but no echo and no walls
 /** The echoes now playing: the newest fades in, the ones before it fade out and are let go. */
 let echoes: { send: GainNode; conv: ConvolverNode; level: number }[] = [];
 /** world/acoustics.ts: whether a spot is inside a building (a sound from there is not muffled). */
@@ -67,8 +68,15 @@ export const sound = {
       walls.Q.value = 0.5;
       outdoors = ctx.createGain();
       outdoors.connect(walls).connect(master);
+      musicOut = ctx.createGain();
+      musicOut.gain.value = volume;
+      musicOut.connect(ctx.destination);
     }
     return ctx;
+  },
+  /** Where the music goes (src/music.ts): its own gain at the master volume, past the room's echo and the walls. */
+  musicOut(): GainNode | null {
+    return this.context() ? musicOut : null;
   },
   /** Where sounds without a place go (your own gun, your steps): the master volume. */
   out(): AudioNode | null {
@@ -157,6 +165,7 @@ export const sound = {
   setVolume(v: number): void {
     volume = v;
     if (master) master.gain.value = v;
+    if (musicOut) musicOut.gain.value = v;
   },
   /** The ears follow the camera; call once per frame. */
   listen(camera: THREE.Camera): void {

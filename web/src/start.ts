@@ -19,6 +19,8 @@ import { applyStatic, onLang, setLang, t, type Lang } from './i18n';
 import { typing } from './keys';
 import { api, errorText, type KeptRun, type Me } from './net/client';
 import { sound } from './sound';
+import { music } from './music';
+import { storedSettings } from './settings';
 
 // Xbox's Edge browser turns the controller into a mouse pointer unless the page says it reads the controller itself
 // (Microsoft's gamepadInputEmulation); other browsers don't have the property and ignore it.
@@ -85,6 +87,19 @@ window.addEventListener('keydown', (e) => {
   if (e.key.toLowerCase() === 'm' && e.shiftKey && !e.repeat && !typing(e)) toggleSound();
 });
 showSound();
+
+// Music (src/music.ts): one for the room, so not on the watch page and in the split screen only from seat 1. The
+// volume and the music as set before, from the start. The theme begins with the first click, key or touch on the
+// start screen (browsers start sound only from one); after the Sound button's own click too, so it can switch it on.
+music.allow(!watch && (!seat || seat.n === 1));
+sound.setVolume(storedSettings().volume);
+music.setLevel(storedSettings().music);
+const themeOnGesture = () => {
+  if (!menu.onStartScreen || seat || watch) return;
+  void sound.context()?.resume();
+  music.theme(true);
+};
+for (const type of ['pointerdown', 'keydown', 'click'] as const) window.addEventListener(type, themeOnGesture);
 
 // Full screen on phones and tablets: the browser's own where it has one (Android, iPad). Safari on an
 // iPhone has none for pages; there the game only fills the screen when started from the home screen
