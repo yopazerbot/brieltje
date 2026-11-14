@@ -18,7 +18,7 @@ import { cardCrown, cardTrunk, crownFit, FORK, HEIGHT, Kind, KINDS, spotHash, TR
 import { hedgeCardMesh, hedgeCardPieces } from './hedgeCards';
 import { barkMaterial, cardsBuilt, enlist, leafCardMaterial, plainForBake, switchTrees } from './leafCards';
 import { reflectionSkips } from './reflections';
-import { chimney, chimneyRoofs, roofEdges, roofFrame, type RoofEdges } from './houseTrim';
+import { bandedWalls, chimney, chimneyRoofs, roofEdges, roofFrame, wallBases, type RoofEdges } from './houseTrim';
 import { houseStyle } from './houseStyle';
 import { snowy } from './snowCover';
 
@@ -536,11 +536,14 @@ export function buildTile(data: TileData, poles: Pole[], renderer: THREE.WebGLRe
     const look = brickLook(m, key);
     return byteAttribute(paint(g, look.tint), 'facade', look.render);
   };
+  // The house walls' bases: a plinth or a damp base (world/houseTrim.ts).
+  const bases = wallBases(data.prisms ?? [], houses, (x, z) => ground + terrain.height(x, z));
   for (const p of data.prisms ?? []) {
     const { material: mat, tint, tag } = blockMaterial(p.m, renderer);
-    const g = prismGeometry(p);
+    const base = bases.get(p);
+    const g = base ? bandedWalls(p, base) : prismGeometry(p);
     fieldRows(g, p); // the fields' rows (world/fields.ts)
-    if (isBrick(p.m)) put(renderable(mat), walls(p.m, houses.keyOf(p), g), tag);
+    if (isBrick(p.m)) put(renderable(mat), base ? g : walls(p.m, houses.keyOf(p), g), tag);
     else put(mat, coloured(mat) ? paint(g, tint) : g, tag, true, GROUND_COVERS.has(p.m) ? COVER_ORDER : undefined);
   }
 
