@@ -33,10 +33,12 @@ import { groundNoise } from './groundNoise';
  * the sunlight by up to half: real sunlight isn't dimmed there, but the eye reads
  * the band as weight, and on light paving in the sun a weaker band doesn't show.
  *
- * The fourth channel tells the grass what kind it is (see `apply`): the gardens
- * that are mown in stripes (their stripes are drawn in), the meadows (tools/crops.py),
+ * The fourth channel tells the grass what kind it is (see `apply`): 0.5 plain grass;
+ * 0.6 to 1 the gardens that are mown in stripes (their stripes are drawn in, so the
+ * dark stripe too is told from plain grass); under 0.5 the meadows (tools/crops.py)
  * and rough grass and weeds along the fields' edges, ditches, ponds and field
- * tracks, worked out from the cover image, with a ragged edge.
+ * tracks, worked out from the cover image, with a ragged edge. Along paving the
+ * grass is only a little longer (at most 0.45 of rough), not a rough strip.
  *
  * The village has a texture of its own (bakeVillage), made once its tiles are
  * in, and so has Molenhoek's far stretch. The ground materials read one of them,
@@ -194,11 +196,11 @@ void main() {
   float ragged = noise(xz / 2.3) * 0.5 + noise(xz / 0.9) * 0.5;
   float wild = here.r > 0.5 ? nearOpen * 0.9 : max(max(nearField, nearWater), nearTrack * 0.85);
   wild = smoothstep(0.2, 0.75, wild + (ragged - 0.5) * 0.75);
-  if (here.r < 0.5) wild = max(wild, smoothstep(0.3, 0.75, nearOther + (ragged - 0.5) * 0.45)); // the unmown fringe along paving
+  if (here.r < 0.5) wild = max(wild, 0.45 * smoothstep(0.3, 0.75, nearOther + (ragged - 0.5) * 0.45)); // the unmown fringe along paving: a little longer, never rough
   float lawn = step(0.45, here.a); // a garden mown in stripes: mown up to its edge
   float meadow = here.a > 0.05 && here.a < 0.45 ? here.a * 2.0 * (0.7 + 0.6 * noise(xz / 9.0)) * (1.0 - here.r) : 0.0;
   wild = max(wild * (1.0 - lawn), meadow);
-  float grass = wild > 0.004 ? 0.5 - 0.5 * wild : 0.5 + lawn * (here.a - 0.5);
+  float grass = wild > 0.004 ? 0.5 - 0.5 * wild : 0.5 + lawn * (0.1 + 0.8 * (here.a - 0.5)); // a striped lawn 0.6 to 1
   if (hardHere > 0.5) grass = 0.5 - 0.5 * nearOther; // hard ground: how near the grass is, read as the rough grass is
 
   // Slow variation in colour, in patches of several metres.
@@ -693,14 +695,14 @@ export class GroundShade {
 
 /**
  * The lawn's own part (after the texture and the slow variation): its kind from the shading's fourth
- * channel, 0.5 plain grass, above it a garden's mown stripe, below it rough grass. The same texture once
+ * channel, 0.5 plain grass, 0.6 to 1 a garden mown in stripes (dark to light stripe), below 0.5 rough grass. The same texture once
  * more at 3.4 times the size breaks up its repeats and gives the rough grass its tussocks (not on phones).
  */
 const GRASS = /* glsl */ `
 #ifdef USE_MAP
 if (grassDetail > 0.0) {
   float gsWild = clamp(1.0 - gs.a * 2.0, 0.0, 1.0);
-  float gsStripe = clamp(gs.a * 2.0 - 1.0, 0.0, 1.0);
+  float gsStripe = clamp((gs.a - 0.6) * 2.5, 0.0, 1.0);
   float gsClump = 1.0;
   float gsFar = smoothstep(50.0, 80.0, length(vViewPosition)); // further off the texture's own repeats are lost anyway
   if (grassDetail > 1.5 && gsFar < 1.0) {
