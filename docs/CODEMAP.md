@@ -296,6 +296,7 @@ file's opening comment; run it again after adding, moving or removing a module.
 - `tools/brand/logo.mjs`: The Brieltje logo as SVG files (DECISIONS.md, 8 Nov 2026): the roof with its two lit windows over the name in Fredoka Bold.
 - `tools/building_ground.py`: Place level house floors at their entrances and carry walls into sloping ground.
 - `tools/bungalow_site.py`: Where the bungalow stands and where its drive runs, in the game's coordinates (metres): its plot on the open-data outline and the parking place with its...
+- `tools/car_parts.py`: Shared parts of the two Tesla models (tools/model_y.py and tools/model_3.py), for Blender 5.
 - `tools/cattle.py`: Build a low-poly cow and a sheep for the meadows round the house in Blender, to be drawn many times over (web/src/world/herds.ts).
 - `tools/christmas_lights.mjs`: Where the Christmas lights hang in December (web/src/world/christmas.ts): web/src/data/christmas.json.
 - `tools/church.py`: Build the Sint-Pharaïldiskerk of Smetlede (Lede, East Flanders) in Blender, for the walkthrough.
@@ -309,6 +310,7 @@ file's opening comment; run it again after adding, moving or removing a module.
 - `tools/dev/bike.mjs`: Check the bikes you can ride (web/src/world/bike.ts) in a fresh browser, on a running dev server: getting on with E by the main house, riding out of the...
 - `tools/dev/bike_ws_check.mjs`: Two players against a throwaway game server (a build of this branch): Alice gets on the bike by the main house and rides it, Bob sees her ride it in the ticks.
 - `tools/dev/car.mjs`: Check the real car models and speedometer in a fresh browser, on a running dev server.
+- `tools/dev/carshots.mjs`: Photograph the two Teslas (the Model Y and the Model 3) in the game from fixed views, on a running dev server.
 - `tools/dev/cdp.mjs`: A small headless Chromium driver over the DevTools protocol, for checks on this PC (no Playwright library: only the Chromium that Playwright installed under...
 - `tools/dev/codemap.mjs`: Writes docs/CODEMAP.md: one line per module in web/src, web/server (and web/server.mjs) and tools, taken from the first sentence of each file's opening...
 - `tools/dev/crowd.mjs`: A full house against a throwaway game server (a build of this branch on this computer): N guests join and walk in circles round the house, each sending its...
@@ -354,7 +356,7 @@ file's opening comment; run it again after adding, moving or removing a module.
 - `tools/kouter_house.py`: Build the southern house and its front garden from the public model outline and street-side references.
 - `tools/ktx2.py`: GPU-compressed copies (KTX2, Basis Universal) of every surface texture in web/public/textures/.
 - `tools/model_3.py`: Build the Tesla Model 3 (Highland facelift, 2024+, Deep Blue Metallic) for the game in Blender, from its real sizes.
-- `tools/model_y.py`: Build the Tesla Model Y (2025, black) for the game in Blender, from its real sizes.
+- `tools/model_y.py`: Build the Tesla Model Y (2025 refresh, black) for the game in Blender, from its real sizes.
 - `tools/molenhoek.py`: Build the street Molenhoek round its portal in Blender: its houses and the rebuilt street.
 - `tools/molenhoek_end_survey.py`: Molenhoek past the junction where the map used to end, along the branch to its end at Oordegemkouter: the survey, and the plans tools/molenhoek.py builds...
 - `tools/molenhoek_survey.py`: The street Molenhoek round its portal: the survey, and the plan tools/molenhoek.py builds on.
