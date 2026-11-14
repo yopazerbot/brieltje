@@ -49,8 +49,6 @@ const TABLE = {
   grenade: { kbm: place('KeyG'), pad: pad('r1'), touch: say('touch.nade') },
   /** The scope found in Zombies, on or off (on a phone: a tap on the ammo counter). */
   scope: { kbm: place('KeyB'), pad: pad('r3'), touch: say('touch.scope') },
-  /** The stall between waves in Zombies (K as in "kraampje"; on a phone: a tap on the coins). */
-  stall: { kbm: place('KeyK'), pad: say('key.dpadRight'), touch: say('touch.stall') },
   /** Doors, cars, horses, a portal's choice; tagging in a party game. */
   use: { kbm: place('KeyE'), pad: pad('north'), touch: say('touch.use') },
   /** Doors in Explore mode also open with a click (R2), which shoots in Action mode. */
@@ -135,7 +133,7 @@ function padOrKeyGroups(control: 'kbm' | 'pad', action: boolean): Group[] {
         [t('ctl.switchWeapon'), k('weapons')], [t('ctl.grenade'), k('grenade')], [t('ctl.pickUp'), t('ctl.pickUpHow')],
         [t('ctl.claymore'), hold('grenade')], [t('ctl.stakes'), hold('reload')], [t('ctl.turret'), hold('use')],
         [t('ctl.scope'), k('scope')],
-        [t('ctl.stall'), k('stall')],
+        [t('ctl.stall'), k('use')],
       ],
     });
   }
@@ -201,7 +199,7 @@ function touchGroups(action: boolean): Group[] {
         [t('tctl.shoot'), k('shoot')], [t('ctl.aim'), t('tctl.aimHow')], [t('ctl.reload'), k('reload')], [t('tctl.grenade'), k('grenade')], [t('tctl.nextWeapon'), k('weapons')],
         [t('ctl.claymore'), t('key.hold', { key: k('grenade') })], [t('ctl.stakes'), t('key.hold', { key: k('reload') })], [t('ctl.turret'), t('key.hold', { key: k('use') })],
         [t('ctl.scope'), k('scope')],
-        [t('ctl.stall'), k('stall')],
+        [t('ctl.stall'), k('use')],
       ],
     });
   }

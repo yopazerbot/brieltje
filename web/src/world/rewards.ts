@@ -746,3 +746,4 @@ export class Rewards {
     }
   }
 }
+export { sign as rewardSign };

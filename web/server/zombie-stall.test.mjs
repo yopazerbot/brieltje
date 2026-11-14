@@ -6,8 +6,9 @@ import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import test from 'node:test';
 import { makeBounds } from '../shared/bounds.mjs';
+import { arenaOf, ARENAS } from '../shared/arenas.mjs';
 import { LOOT } from '../shared/loot.mjs';
-import { priceOf, STALL } from '../shared/stall.mjs';
+import { priceOf, STALL, stallSpot } from '../shared/stall.mjs';
 import { BIG, makeNav, RUNNER } from '../shared/zombies.mjs';
 import { Game } from './game.mjs';
 import { ZombieGame } from './zombies.mjs';
@@ -32,7 +33,7 @@ function fixture() {
   game.broadcast = (m) => all.push(m);
   game.send = (ws, m) => ws?.push(m);
   game.stats = () => {};
-  game.zombieGround = () => ({ nav, spots: nav.spawnSpots(), home: { x: 0, z: 0 }, edge });
+  game.zombieGround = () => ({ nav, spots: nav.spawnSpots(), home: { x: 0, z: 0 }, edge, stall: { x: 0, y: 0, z: 0 } });
   game.players.set('a', player(0));
   game.players.set('b', player(0.5));
   const z = new ZombieGame(game, game.modes, ['a', 'b'], Date.now());
@@ -379,4 +380,72 @@ test('10. coins belong to a session: another one under the name starts at 0; the
   game.players.set('d', d);
   z.join('d', d);
   assert.deepEqual(f.of(d, 'zcoins'), [{ t: 'zcoins', c: 0, n: [0, 0, 0, 0, 0, 0] }]);
+});
+
+test('11. remote purchase: only where the server holds the buyer to be counts; a message naming a place is never read', () => {
+  const f = fixture();
+  const { z, a, b, say, coins, codes } = f;
+  z.stall.coins.set('a', 500);
+  z.stall.coins.set('b', 500);
+  a.hp = 40;
+  a.state.x = 30; // 30 m from the stall, on the server's own record
+  const before = snap(f, 'a');
+  const beforeB = snap(f, 'b');
+  say('a', { t: 'zbuy', k: 'medkit' });
+  assert.deepEqual(codes(a), ['zStallFar'], 'refused with its word why');
+  assert.equal(snap(f, 'a'), before, 'coins, counts, kit and health unchanged');
+  assert.equal(f.lastCoins(a).c, 500, 'a is told its coins again');
+  assert.equal(f.of(b, 'zcoins').length + f.of(b, 'system').length, 0, 'b hears nothing');
+  // Fields a page could add to put itself at the stall: never looked at.
+  a.ws.length = 0;
+  say('a', { t: 'zbuy', k: 'medkit', x: 0, y: 0, z: 0, near: true, at: { x: 30, y: 0, z: 0 }, stall: { x: 30, y: 0, z: 0 }, state: { x: 0 } });
+  assert.deepEqual(codes(a), ['zStallFar']);
+  assert.equal(snap(f, 'a'), before);
+  // The server's own record at 3.4 m: it buys.
+  a.ws.length = 0;
+  a.state.x = 3.4;
+  say('a', { t: 'zbuy', k: 'medkit' });
+  assert.equal(coins('a'), 500 - priceOf('medkit', 0));
+  assert.equal(a.hp, 90);
+  assert.equal(f.of(a, 'zgift').at(-1).kind, 'medkit');
+  // 1.7 m above (a roof over the stall): refused.
+  a.ws.length = 0;
+  a.state.x = 0;
+  a.state.y = 1.7;
+  say('a', { t: 'zbuy', k: 'claymore' });
+  assert.deepEqual(codes(a), ['zStallFar']);
+  assert.equal(z.loot.kit('a').claymores, 0);
+  a.state.y = 0;
+  // A game without a stall sells nothing.
+  a.ws.length = 0;
+  z.stallAt = null;
+  say('a', { t: 'zbuy', k: 'claymore' });
+  assert.deepEqual(codes(a), ['zStallFar']);
+  assert.equal(z.loot.kit('a').claymores, 0);
+  z.stallAt = { x: 0, y: 0, z: 0 };
+  // In a wave from 30 m: shut first, as before.
+  a.ws.length = 0;
+  a.state.x = 30;
+  z.horde.phase = 'wave';
+  say('a', { t: 'zbuy', k: 'claymore' });
+  assert.deepEqual(codes(a), ['zStallShut']);
+  z.horde.phase = 'break';
+  // Ten forged messages at once: one answer (the rate comes first and counts refusals).
+  a.ws.length = 0;
+  for (let i = 0; i < 10; i++) say('a', { t: 'zbuy', k: 'claymore', x: 0, z: 0 }, i > 0);
+  assert.deepEqual(codes(a), ['zStallFar']);
+  assert.equal(f.of(a, 'zcoins').length, 1);
+  assert.equal(snap(f, 'b'), beforeB, 'b untouched throughout');
+});
+
+test('12. the real ground: every place\'s stall stands where the zombies cannot', () => {
+  const game = new Game({ session: () => null }, []);
+  for (const a of ARENAS) {
+    const g = game.zombieGround(arenaOf(a.id));
+    const s = g.stall;
+    assert.ok(s && [s.x, s.y, s.z].every(Number.isFinite), a.id);
+    assert.equal(s.x, stallSpot(a.id).x);
+    assert.equal(s.z, stallSpot(a.id).z);
+    assert.equal(g.nav.walkable(s.x, s.z), false, `${a.id}: its square is shut`);
+  }
 });

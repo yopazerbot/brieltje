@@ -1,5 +1,5 @@
-/* The stall in Zombies (ui/stall.ts): a small chip with your coins above your health, and in the break a
-   card of six things, as the weapon picker (#loadout) looks. No blur, no full-screen effect. */
+/* The coins in Zombies (ui/stall.ts): a small chip with your coins above your health. Buying is at the stall in
+   the world (world/stall.ts): the chip is no button. */
 #stall-chip {
   position: fixed; z-index: 16; left: 50%; bottom: calc(70px + env(safe-area-inset-bottom, 0px)); transform: translateX(-50%);
   padding: 4px 12px; border: 1px solid rgba(245, 239, 228, 0.18); border-radius: 999px;
@@ -8,58 +8,13 @@
 }
 #stall-chip[hidden] { display: none; }
 #stall-chip.open { border-color: var(--lamp); }
-/* On a phone it is the button that opens the card: between the thumbs, over the health, clear of the buttons. */
+/* On a phone: between the thumbs, over the health, clear of the buttons. */
 body.touch #stall-chip {
   left: 210px; right: 320px; width: -webkit-fit-content; width: fit-content; margin: 0 auto; transform: none;
-  bottom: calc(48px + env(safe-area-inset-bottom, 0px)); min-height: 30px; padding: 4px 12px; font-size: 13px; pointer-events: auto; cursor: pointer;
+  bottom: calc(48px + env(safe-area-inset-bottom, 0px)); min-height: 30px; padding: 4px 12px; font-size: 13px;
   white-space: normal; text-align: center; line-height: 1.25; /* a long count or word wraps on a narrow phone, upwards */
 }
 body.touch[data-touch=walk] #stall-chip { right: 180px; }
-body.touch #stall-chip.open { color: var(--dusk); background: var(--lamp); }
 body.compact #stall-chip { font-size: 12px; padding: 3px 10px; }
 body.compact:not(.touch) #stall-chip { bottom: calc(60px + env(safe-area-inset-bottom, 0px)); }
-
-#stall {
-  position: fixed; z-index: 40; left: 50%; top: 50%; transform: translate(-50%, -50%);
-  width: min(760px, calc(100vw - 24px)); max-height: calc(100vh - 16px); overflow-y: auto; padding: 22px 24px 18px; color: var(--ink); text-align: center;
-  background: var(--dusk); border-radius: var(--r-panel); box-shadow: 0 24px 60px rgba(0, 0, 0, 0.5), inset 0 1px 0 rgba(255, 255, 255, 0.05);
-}
-#stall.hidden { display: none; }
-#stall h2 { margin: 0 0 4px; font-size: 26px; font-weight: 800; line-height: 1.2; }
-#stall .st-sub { margin: 0; font-size: 15px; line-height: 1.4; color: var(--ink-soft); font-variant-numeric: tabular-nums; }
-#stall .st-purse { margin: 6px 0 14px; font-size: 18px; font-weight: 800; color: var(--lamp); font-variant-numeric: tabular-nums; }
-#stall .st-items { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; }
-#stall .st-item {
-  position: relative; display: flex; flex-direction: column; align-items: stretch; gap: 5px; padding: 12px 12px 12px; border: 2px solid transparent; border-radius: 14px;
-  font: inherit; color: var(--ink); text-align: left; background: var(--dusk-raised); cursor: pointer; transition: border-color 0.12s, background 0.12s, opacity 0.12s;
-}
-#stall .st-item:hover { background: var(--dusk-high); border-color: var(--lamp); }
-#stall .st-item b { padding-right: 18px; font-size: 17px; font-weight: 800; }
-#stall .st-what { flex: 1; font-size: 13px; line-height: 1.35; color: var(--ink-soft); }
-#stall .st-price { font-size: 15px; font-weight: 800; color: var(--lamp); font-variant-numeric: tabular-nums; }
-#stall .st-key { position: absolute; right: 10px; top: 8px; font-size: 12px; font-weight: 700; color: var(--ink-soft); }
-#stall.pad .st-key, body.touch #stall .st-key { display: none; }
-#stall .st-item.short { opacity: 0.45; cursor: default; }
-#stall .st-item.short:hover { background: var(--dusk-raised); border-color: transparent; }
-#stall .st-item.short .st-price { color: var(--ink-soft); }
-#stall .st-note { min-height: 1.4em; margin: 10px 0 0; font-size: 14px; line-height: 1.4; color: #ffb4a8; }
-#stall .st-hint { margin: 2px 0 0; font-size: 13px; color: var(--ink-soft); }
-#stall .st-hint:empty { display: none; }
-#stall .st-close { margin-top: 10px; min-width: 180px; min-height: 46px; padding: 12px 28px; border: 0; border-radius: 12px; font: 800 17px/1 var(--font); color: var(--dusk); background: var(--lamp); cursor: pointer; }
-#stall .st-close:hover { filter: brightness(1.06); }
-#stall .pad-focus { outline: 3px solid var(--ink); outline-offset: 2px; }
-@media (max-width: 560px), (max-height: 430px) {
-  #stall { padding: 12px 12px 10px; }
-  #stall h2 { font-size: 20px; }
-  #stall .st-sub { font-size: 13px; }
-  #stall .st-purse { margin: 2px 0 8px; font-size: 15px; }
-  #stall .st-items { gap: 6px; }
-  #stall .st-item { padding: 7px 9px; gap: 2px; }
-  #stall .st-item b { font-size: 14px; }
-  #stall .st-what { font-size: 11.5px; line-height: 1.3; }
-  #stall .st-price { font-size: 13px; }
-  #stall .st-note { margin-top: 6px; font-size: 12.5px; }
-  #stall .st-close { margin-top: 6px; min-height: 40px; padding: 10px 24px; font-size: 15px; }
-}
-@media (orientation: portrait) and (max-width: 700px) { #stall .st-items { grid-template-columns: repeat(2, 1fr); } }
-body.watching :is(#stall, #stall-chip) { display: none !important; }
+body.watching #stall-chip { display: none !important; }

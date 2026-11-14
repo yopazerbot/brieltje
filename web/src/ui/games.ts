@@ -238,11 +238,6 @@ export class Games {
     return this.view.kind === 'zombies' && this.view.phase !== 'done';
   }
 
-  /** ms left on the bar's clock (the break before the next wave, in Zombies), as update shows it. */
-  get left(): number {
-    return this.offline ? this.frozen : this.ends - performance.now();
-  }
-
   /** The clowns and strongmen stand aside (hidden) during the Zombies game, its end screen too. */
   get standAside(): boolean {
     return this.view.kind === 'zombies';

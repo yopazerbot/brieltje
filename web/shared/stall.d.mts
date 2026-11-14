@@ -12,8 +12,20 @@ export const STALL: {
   readonly downShare: number;
   readonly max: number;
   readonly steps: number;
+  readonly near: number;
+  readonly reach: number;
+  readonly rise: number;
+  readonly box: { readonly halfL: number; readonly halfW: number };
   readonly items: readonly (readonly [StallKind, number, number])[];
 };
+
+export type StallSpot = { readonly x: number; readonly z: number; readonly yaw: number };
+export type StallAt = { x: number; y: number; z: number };
+
+export const STALL_SPOTS: readonly (readonly [string, number, number, number])[];
+export function stallSpot(id: unknown): StallSpot | null;
+export function stallBox(id: unknown): { x: number; z: number; yaw: number; halfL: number; halfW: number } | null;
+export function stallReach(p: { x: number; y: number; z: number } | null | undefined, at: StallAt | null | undefined): boolean;
 
 export function sold(kind: unknown): kind is StallKind;
 export function priceOf(kind: unknown, bought: number): number;
@@ -37,5 +49,6 @@ export class Stall {
     kind: unknown,
     phase: string,
     now: number,
-  ): { got: { kind: LootKind; w?: string; heal?: number; kit: Kit }; price: number; why?: undefined } | { why: 'kind' | 'shut' | 'short' | 'full'; got?: undefined; price?: undefined };
+    at: StallAt | null | undefined,
+  ): { got: { kind: LootKind; w?: string; heal?: number; kit: Kit }; price: number; why?: undefined } | { why: 'kind' | 'shut' | 'far' | 'short' | 'full'; got?: undefined; price?: undefined };
 }

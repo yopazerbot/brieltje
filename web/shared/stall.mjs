@@ -10,7 +10,9 @@
 // - STALL.items: what is sold, in the card's order, with its first price and how much each next one
 //   of that thing costs more, STALL.steps times at most. A purchase hands over the same thing, with
 //   the same refusals, as picking that reward up (Loot.give); a refused one costs nothing.
-// - Buying is possible in the break only.
+// - Buying is possible in the break only, standing at the place's stall (STALL_SPOTS): within
+//   STALL.reach of it on the plan and STALL.rise up or down, measured from where the server (alone:
+//   the page) holds the player to be.
 //
 // The page sends only which thing it wants; the coins, the prices and the counts are kept here.
 
@@ -28,7 +30,15 @@ export const STALL = Object.freeze({
   max: 99999,
   /** A price rises this many times at most */
   steps: 20,
-  /** [Loot kind, first price, each next one costs this much more], in the card's order */
+  /** m: the page offers a thing on the table this close to the stall's middle */
+  near: 2.5,
+  /** m: the rule, a metre more than `near` for the lag (a sprint is 3.5 m/s) */
+  reach: 3.5,
+  /** m up or down from the stall's ground, as LOOT.rise */
+  rise: 1.6,
+  /** The stall's footprint for the zombies' grid (makeNav's boxes): half its depth and half its width */
+  box: Object.freeze({ halfL: 0.6, halfW: 1.3 }),
+  /** [Loot kind, first price, each next one costs this much more], from the buyer's left to right on the table */
   items: Object.freeze([
     Object.freeze(['medkit', 100, 50]),
     Object.freeze(['nades', 120, 40]),
@@ -41,6 +51,43 @@ export const STALL = Object.freeze({
 
 /** kind -> its index in STALL.items. A Map, so a page's string ('__proto__', 'constructor') finds nothing. */
 const INDEX = new Map(STALL.items.map(([kind], i) => [kind, i]));
+
+/**
+ * Where the stall stands at each Zombies place (shared/arenas.mjs): [place, x, z, yaw], model
+ * coordinates, the game's yaw (0 looks along -z); the stall's front looks along its yaw.
+ */
+export const STALL_SPOTS = Object.freeze([
+  Object.freeze(['house', -6.5, 26.5, -0.8]),
+  Object.freeze(['bungalow', 96.5, 183.5, -0.14]),
+  Object.freeze(['church', 541, -764, 0.55]),
+  Object.freeze(['molenhoek', 759, -705, 0]),
+  Object.freeze(['molenhoek_mid', 1056.5, -561.5, -0.81]),
+  Object.freeze(['molenhoek_end', 1520, -358.3, 1.0]),
+  Object.freeze(['sparrenhof', 645, 951.5, 0.48]),
+]);
+/** place -> its spot. A Map, so a string such as '__proto__' finds nothing. */
+const SPOTS = new Map(STALL_SPOTS.map(([id, x, z, yaw]) => [id, Object.freeze({ x, z, yaw })]));
+
+/** The stall's spot at place `id`: { x, z, yaw }, or null (no stall there, or not a place). */
+export const stallSpot = (id) => (typeof id === 'string' && SPOTS.get(id)) || null;
+
+/** The stall at place `id` as a box for the zombies' grid (makeNav's boxes), or null. */
+export function stallBox(id) {
+  const s = stallSpot(id);
+  return s ? { x: s.x, z: s.z, yaw: s.yaw, halfL: STALL.box.halfL, halfW: STALL.box.halfW } : null;
+}
+
+const finite = (o) => !!o && Number.isFinite(o.x) && Number.isFinite(o.y) && Number.isFinite(o.z);
+
+/**
+ * Whether a player at `p` ({ x, y, z }, y the feet) stands at the stall `at` ({ x, y, z }, y its
+ * ground): within STALL.reach on the plan and STALL.rise up or down. No stall, or a number that is
+ * not finite, is never at it.
+ */
+export function stallReach(p, at) {
+  if (!finite(p) || !finite(at)) return false;
+  return Math.hypot(p.x - at.x, p.z - at.z) <= STALL.reach && Math.abs(p.y - at.y) <= STALL.rise;
+}
 
 /** Whether `kind` is one of the things sold. */
 export const sold = (kind) => typeof kind === 'string' && INDEX.has(kind);
@@ -115,13 +162,15 @@ export class Stall {
 
   /**
    * `name`, at `p` (as for Loot.take: position, weapon, health, guns), buys one `kind` in game phase
-   * `phase`. One synchronous call: nothing is charged before the thing was given. Returns { got, price }
-   * or { why }: 'kind' (not sold), 'shut' (not the break), 'short' (too few coins), 'full' (nothing in
+   * `phase` at the stall `at` ({ x, y, z }; none: nothing is sold). One synchronous call: nothing is
+   * charged before the thing was given. Returns { got, price } or { why }: 'kind' (not sold), 'shut'
+   * (not the break), 'far' (not at the stall: stallReach), 'short' (too few coins), 'full' (nothing in
    * it for them now).
    */
-  buy(loot, name, p, kind, phase, now) {
+  buy(loot, name, p, kind, phase, now, at) {
     if (!sold(kind)) return { why: 'kind' };
     if (phase !== 'break') return { why: 'shut' };
+    if (!stallReach(p, at)) return { why: 'far' };
     const i = INDEX.get(kind);
     const counts = this.bought.get(name) ?? STALL.items.map(() => 0);
     const price = priceOf(kind, counts[i]);

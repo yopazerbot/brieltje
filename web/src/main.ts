@@ -30,7 +30,7 @@ import { SintMaarten } from './world/sintmaarten';
 import { TownBoard } from './world/townBoard';
 import { BIG as BIG_ZOMBIE, bigOf, Horde, houseAreas, makeNav } from '../shared/zombies.mjs';
 import { Loot, LOOT } from '../shared/loot.mjs';
-import { Stall } from '../shared/stall.mjs';
+import { Stall, stallBox, stallSpot, type StallKind } from '../shared/stall.mjs';
 import type { LootKind } from '../shared/loot.mjs';
 import { Rewards } from './world/rewards';
 import WEAPON_SPECS from '../shared/weapons.json';
@@ -58,7 +58,8 @@ const OUTSIDE_SPAWNS = HOUSE_SPAWNS.filter((i) => spawns[i].outside);
 import { api, errorText, Net, type Me, type Rules, type ServerMsg } from './net/client';
 import { Rooms } from './ui/rooms';
 import { PadNav } from './ui/padNav';
-import { StallCard } from './ui/stall';
+import { StallChip } from './ui/stall';
+import { MarketStall } from './world/stall';
 import { Avatars } from './net/avatars';
 import type { Body } from './net/swat';
 import { Parachutes } from './world/parachutes';
@@ -1904,7 +1905,7 @@ function zombieResult(id: number, res: 'down' | 'hurt' | null, w: string, head =
   if (solo && z) solo.loot.drop(z, performance.now(), solo.horde.left === 0, [SOLO_ME]);
   if (solo && z) {
     solo.stall.earn(SOLO_ME, z.kind); // its coins (ui/stall.ts)
-    stallCard.set(solo.stall.view(SOLO_ME));
+    stallChip.set(solo.stall.view(SOLO_ME));
   }
   combat.zombie('', zombieName(zombies.isBig(id)), weaponName(w)); // "You beat a zombie · Pistol" (marks the crosshair)
 }
@@ -1915,7 +1916,7 @@ const SOLO_ME = 'me';
 /** The best wave alone, per place (home's under its key from before the places), and the place picked last. */
 const soloBestKey = (a: Arena) => (a.id === 'house' ? 'briel.zombiesBest' : `briel.zombiesBest.${a.id}`);
 const SOLO_PLACE = 'briel.zombiesPlace';
-let solo: { horde: Horde; loot: Loot; stall: Stall; arena: Arena; endAt: number; best: number; record: boolean; custom: boolean; key: string } | null = null;
+let solo: { horde: Horde; loot: Loot; stall: Stall; stallAt: { x: number; y: number; z: number } | null; arena: Arena; endAt: number; best: number; record: boolean; custom: boolean; key: string } | null = null;
 let soloStarting = false;
 function soloBest(a: Arena): number {
   try {
@@ -1973,12 +1974,15 @@ async function startSolo(id: string): Promise<void> {
   getOffHorse(false);
   getOffBike(false);
   const boxes = cars.filter((c) => c.ready && edge.inside(c.x, c.z)).map((c) => ({ x: c.x, z: c.z, yaw: c.yaw, halfL: c.spec.length / 2, halfW: c.spec.width / 2 }));
+  const stallSeat = stallSpot(arena.id); // the place's stall (shared/stall.mjs, world/stall.ts): zombies walk round it
+  if (stallSeat) boxes.push(stallBox(arena.id)!);
   const nav = ground
     ? makeNav({ prisms, height: (x, z) => terrain.height(x, z), base: house.ground, edge, boxes, areas: ground.areas, doors: [], shut: true, panes: 0 })
     : makeNav({ prisms, height: (x, z) => terrain.height(x, z), base: house.ground, edge, boxes, areas: houseAreas(insides.housePrisms(house.prisms)), doors: insides.houseDoors(house.doors), shut: true, panes: insides.housePrisms(house.prisms).length });
   const horde = new Horde(nav, data ? arenaSpots(arena, nav.spawnSpots(), data, cafeAccess) : nav.spawnSpots(), { home: arenaHome(arena) });
   horde.start(performance.now());
-  solo = { horde, loot: new Loot(nav), stall: new Stall(), arena, endAt: 0, best: soloBest(arena), record: false, custom: false, key: '' };
+  const stallAt = stallSeat ? { x: stallSeat.x, y: house.ground + terrain.height(stallSeat.x, stallSeat.z), z: stallSeat.z } : null;
+  solo = { horde, loot: new Loot(nav), stall: new Stall(), stallAt, arena, endAt: 0, best: soloBest(arena), record: false, custom: false, key: '' };
   applyKit(NO_KIT);
   respawnAtArena(arena);
   combat.setActive(weapon.enabled); // your health on screen while they come
@@ -2010,7 +2014,7 @@ function stopSolo(): void {
   solo = null;
   zombies.clear();
   rewards.clear();
-  stallCard.set({ c: 0, n: [] });
+  stallChip.set({ c: 0, n: [] });
   applyKit(NO_KIT);
   games.set({ kind: 'free' });
   zombieWaveControl.update(games.view, false);
@@ -2077,7 +2081,7 @@ function soloTick(dt: number): void {
     else if (e.type === 'cleared') {
       chat.system(() => t('srv.zCleared', { n: e.wave }));
       const n = solo.stall.cleared([SOLO_ME], [], e.wave).get(SOLO_ME) ?? 0; // the wave bonus (shared/stall.mjs)
-      stallCard.set(solo.stall.view(SOLO_ME));
+      stallChip.set(solo.stall.view(SOLO_ME));
       if (n) chat.system(() => t('srv.zBonus', { n }));
     }
     else if (e.type === 'runners') runnersComing(true);
@@ -2329,26 +2333,24 @@ function gunsCameIn(): void {
     gunsMenu.say('guns.rule');
   }
 }
-/** The stall between waves in Zombies (ui/stall.ts, shared/stall.mjs): together the server decides each purchase. */
-const stallCard = new StallCard();
-const stallNav = new PadNav(() => stallCard.page);
-stallCard.can = () => games.zombies && games.view.phase === 'break' && weapon.enabled && combat.alive && !driving && !riding && horses.mounted < 0 && bikes.mounted === null
-  && !menu.open && !menu.onStartScreen && !bigMap.open && !chat.typing && !watch && !watching && !feedback.open && !homeCard.open && !controlsCard.open;
-stallCard.onBuy = (kind) => {
-  if (net.connected) return net.send({ t: 'zbuy', k: kind }); // the kind only: the server has the coins, the price and the rest
+/** The coins and the stall in Zombies (ui/stall.ts, world/stall.ts, shared/stall.mjs): together the server decides each purchase. */
+const stallChip = new StallChip();
+const marketStall = new MarketStall(world, (x, z) => house.ground + terrain.height(x, z), (root) => precompile(root));
+scene.add(marketStall.group);
+let stallWait = 0;
+/** Use at the stall on the thing you face: a purchase (not sooner than the server's 300 ms, nor with too few coins). */
+function buyAtStall(kind: StallKind): void {
+  const now = performance.now();
+  if (now < stallWait || stallChip.coins < stallChip.price(kind)) return;
+  stallWait = now + 350;
+  if (net.connected) return net.send({ t: 'zbuy', k: kind }); // the kind only: the server has the coins, the price, where you stand and the rest
   if (!solo) return;
-  const r = solo.stall.buy(solo.loot, SOLO_ME, { x: player.x, y: player.feet, z: player.z, w: weapon.current, hp: combat.hp, guns: [...weapon.owned] }, kind, solo.horde.phase, performance.now());
+  const r = solo.stall.buy(solo.loot, SOLO_ME, { x: player.x, y: player.feet, z: player.z, w: weapon.current, hp: combat.hp, guns: [...weapon.owned] }, kind, solo.horde.phase, now, solo.stallAt);
   if (r.got) gift(r.got.kind, r.got.w, r.got.kit, r.got.kind === 'medkit' ? Math.min(LOOT.health, combat.hp + (r.got.heal ?? 0)) : undefined);
-  const code = r.why && { shut: 'zStallShut', short: 'zStallShort', full: 'zStallFull' }[r.why as 'shut' | 'short' | 'full'];
+  const code = r.why && { shut: 'zStallShut', far: 'zStallFar', short: 'zStallShort', full: 'zStallFull' }[r.why as 'shut' | 'far' | 'short' | 'full'];
   if (code) chat.system(() => serverText(code, {}, ''));
-  stallCard.set(solo.stall.view(SOLO_ME));
-  stallCard.result(code || undefined);
-};
-stallCard.onClose = (relock) => {
-  stallNav.reset();
-  // Back to the game with a keyboard and mouse (K, Enter, Esc, the button, the wave beginning): the mouse looks again.
-  if (relock && !menu.open && !bigMap.open && menu.mode === 'kbm' && !feedback.open && !homeCard.open && !controlsCard.open) lockMouse();
-};
+  stallChip.set(solo.stall.view(SOLO_ME));
+}
 
 /** Get in: alone right away; in multiplayer once the server says the car is yours. Not during the Zombies game (the server refuses too). */
 function getIn(): void {
@@ -2660,7 +2662,6 @@ net.onStatus = (text) => {
   games.setOffline(!net.connected && !!me); // the game's bar greys and stops while the connection is down
   zombieWaveControl.update(games.view, waveAllowed());
   followMood();
-  if (!net.connected && me) stallCard.close(true); // the connection dropped: no purchase can go
 };
 /** The menu opens at the team picker the first time after the teams game starts (see openMenu). */
 let teamsMenu = false;
@@ -3003,8 +3004,7 @@ net.onMessage = (m: ServerMsg) => {
       else gift(m.kind, m.w, m.kit, m.hp);
       break;
     case 'zcoins': // your own coins and what you bought at the stall (ui/stall.ts checks them)
-      stallCard.set(m);
-      stallCard.result();
+      stallChip.set(m);
       break;
     case 'zboom': // a claymore went off (the server hurt the zombies in front of it)
       explode(new THREE.Vector3(m.x, m.y + 0.25, m.z), false, 'grenade');
@@ -3071,7 +3071,6 @@ net.onMessage = (m: ServerMsg) => {
     case 'system':
       chat.system(() => serverText(m.code, m.args, m.text));
       if (m.code === 'zRunners') runnersComing(false); // the game's first runners: the banner too
-      if (typeof m.code === 'string' && m.code.startsWith('zStall')) stallCard.result(m.code); // the stall said no: in its card too
       break;
     case 'spawn':
       if (m.ok) {
@@ -3337,7 +3336,7 @@ document.addEventListener('pointerlockchange', () => {
   // the menu opening), the menu is open already and stays on its tab. Not just after the menu closed:
   // the Esc that closed it can still take back the capture asked for on closing, and the menu (on
   // the map) came straight back, as if Esc didn't close the map (Yoshi). The click hint shows then.
-  if (!document.pointerLockElement && menu.mode === 'kbm' && !menu.open && !chat.typing && !feedback.open && !homeCard.open && !stallCard.open && performance.now() - stallCard.closedAt > 800 && performance.now() - resumedAt > 800) openMenu();
+  if (!document.pointerLockElement && menu.mode === 'kbm' && !menu.open && !chat.typing && !feedback.open && !homeCard.open && performance.now() - resumedAt > 800) openMenu();
 });
 
 window.addEventListener('resize', resize);
@@ -3401,7 +3400,7 @@ renderer.setAnimationLoop((now: number) => {
   last = now;
   const polled = input.poll();
   // The feedback card takes the keys while it shows, and for a moment after (its Esc isn't the menu's).
-  const card = feedback.open || homeCard.open || stallCard.open || now - Math.max(feedback.closedAt, homeCard.closedAt, stallCard.closedAt) < 250;
+  const card = feedback.open || homeCard.open || now - Math.max(feedback.closedAt, homeCard.closedAt) < 250;
   // Frozen by the host: only looking round and the menu (the server keeps everyone where they stood too).
   const frame = card || watching ? { ...NO_INPUT } : hostNotice.frozen
     ? { ...NO_INPUT, mouseX: polled.mouseX, mouseY: polled.mouseY, lookX: polled.lookX, lookY: polled.lookY, menuPressed: polled.menuPressed, scoreHeld: polled.scoreHeld, confirmPressed: polled.confirmPressed, navX: polled.navX, navY: polled.navY, tabStep: polled.tabStep, jumpPressed: player.chute !== null && polled.jumpPressed } // a drop: the parachute still opens
@@ -3427,22 +3426,13 @@ renderer.setAnimationLoop((now: number) => {
     else if (polled.deletePressed) homeCard.padBack();
     else if (polled.menuPressed) homeCard.close(false);
   }
-  // The stall with a controller: the D-pad or stick moves, the south button buys, east or Options closes; D-pad right opens it in the break.
-  if (stallCard.open && menu.mode === 'pad') {
-    if (polled.navX || polled.navY) stallNav.step(polled.navX, polled.navY);
-    if (polled.confirmPressed) stallNav.press();
-    else if (polled.deletePressed || polled.menuPressed) stallCard.close(false);
-  } else if (menu.mode === 'pad' && polled.speedStep > 0 && !card && stallCard.can()) {
-    stallCard.show(true);
-    stallNav.focus(null);
-  }
   // The Zombies game begins (alone or together): down to the pistol. The rest is found on the map.
   if (games.zombies && !wasZombies) {
     weapon.resetLoadout([]);
   }
   // And when it is over: the guns you chose, back (together the server says so too, 'weapons').
   if (!games.zombies && wasZombies) {
-    stallCard.set({ c: 0, n: [] });
+    stallChip.set({ c: 0, n: [] });
     weapon.resetLoadout(startGuns());
     unfired = true;
     gunsCameIn();
@@ -3495,6 +3485,7 @@ renderer.setAnimationLoop((now: number) => {
   sinterklaas.setActive(villagersOut && seasonNow().sinterklaas); // the same rule
   sintMaarten.setActive(villagersOut && seasonNow().sintMaarten, seasonNow().sintMaartenEve);
   christmas.setSolid(games.zombies ? 'off' : weapon.enabled ? 'walk' : 'full'); // the tree, as the server knows the world
+  marketStall.show(games.zombies ? stallSpot(games.view.zombies?.place) : null, games.view.phase === 'break'); // the stall at the Zombies place (world/stall.ts)
   // The Zombies game: the clowns and strongmen stand aside, nobody flies, and whoever is down waits for the wave.
   clowns.paused = games.standAside || !!solo; // alone too (Yoshi: "Strongmen should stay out of zombie")
   player.canFly = rules.flying && !games.zombies;
@@ -3502,7 +3493,7 @@ renderer.setAnimationLoop((now: number) => {
   combat.waiting = games.view.kind !== 'zombies' ? null : games.zombies && !solo ? () => (helpedBy ? t('z.helping', { name: helpedBy }) : t('z.downWait')) : () => '';
   if (menu.open) {
     travelPanel.hide();
-    stallCard.hide(); // the menu or the big map came up: the stall shuts and its chip goes
+    stallChip.hide(); // the menu or the big map came up: the coins' chip goes
     if (menu.onStartScreen) warm.place(startCamera); // or the warm-up's view (src/startWarm.ts)
     else if (menu.tab === 'play') placesList.show(driving ? car.x : player.x, driving ? car.z : player.z, menu.mode ?? 'kbm', travelBlock());
     // Controller in a menu: ✕ picks the controller on the start screen. In the pause menu Options
@@ -3674,6 +3665,12 @@ renderer.setAnimationLoop((now: number) => {
         }
       }
     }
+    // The stall at the Zombies place (world/stall.ts): the thing you face on its table, bought with Use in the break. Shut, Use is left alone (a turret beside it).
+    const stallAim = action && !watching && !dead && !inCar && !onHorse && !tagWho && !downed && !target && games.zombies ? marketStall.aim(player.x, player.feet, player.z, player.yaw) : null;
+    if (stallAim && stallAim !== 'shut' && frame.usePressed) {
+      frame.usePressed = false;
+      buyAtStall(stallAim);
+    }
     games.update(dt, player.x, player.feet, player.z, key('use', mode));
     // The cars: E or Triangle next to one gets you in (unless two are in it already), and out again.
     if (!inCar && !wantCar) car = cars.reduce((a, b) => (b.distanceTo(player.x, player.z) < a.distanceTo(player.x, player.z) ? b : a));
@@ -3838,6 +3835,7 @@ renderer.setAnimationLoop((now: number) => {
     else if (nearBoard) prompt = t('prompt.board', { use });
     else if (player.towerHint && !inCar && !onHorse) prompt = towerPrompt(player.towerHint, mode); // the play tower's ladder
     if (ball && !tagWho && !driving && !riding) prompt = t('prompt.kick', { key: key(action && !noShoot(player.x, player.z) ? 'use' : 'click', mode), run: key('sprint', mode) });
+    if (stallAim) prompt = stallAim === 'shut' ? t('srv.zStallShut') : stallChip.line(stallAim, mode);
     if (downed) prompt = helping?.start ? t('prompt.reviving', { name: downed }) : t('prompt.revive', { use, name: downed });
     hud.setRing(helping ? (helping.start ? (now - helping.start) / helping.ms : 0) : null);
     if (pad) prompt = ''; // the list says it all
@@ -3854,7 +3852,7 @@ renderer.setAnimationLoop((now: number) => {
       weapon.scopeOwned ? t(weapon.scopeFitted ? 'loot.scopeIsOn' : 'loot.scopeIsOff', { key: key('scope', mode) }) : '',
     ].filter(Boolean).join('   ·   ') : '';
     hud.setGrenades(armed ? grenades.count : null, GRENADE.carry, grenades.nextIn, key('grenade', mode), pocket);
-    stallCard.update({ on: armed && games.zombies, brk: games.view.phase === 'break', left: games.left, mode });
+    stallChip.update({ on: armed && games.zombies, brk: games.view.phase === 'break' });
     hud.setScope(weapon.scoped, inCar || dropView.outside, weapon.scoped ? weapon.scopeView : undefined);
     touch.setScoped(weapon.scoped);
     if (armed) hud.setSpread(weapon.spread, weapon.current === 'bazooka' ? 0 : weapon.aimAmount); // the bazooka aims with the crosshair
@@ -4733,8 +4731,8 @@ if (import.meta.env.DEV) {
       homeCard,
       /** The guns chosen, the server's copy of the choice (together), and whether a change waits for the next life. */
       guns: () => ({ pick: myPick, server: serverPick, waits: pickWaits }),
-      stallCard,
-      stallNav,
+      stallChip,
+      marketStall,
       fire,
       /** One frame of input, e.g. { jumpPressed: true } or { usePressed: true }. */
       press(partial: Partial<typeof NO_INPUT>, seconds = 1 / 60) {

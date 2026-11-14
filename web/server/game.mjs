@@ -46,6 +46,7 @@ import { bikeFields, bruteEntry, carFields, horseFields, playerFields, PROTO, TI
 import { cleanPick, LOADOUT, startingWeapons } from '../shared/loadout.mjs';
 import { houseAreas, makeNav, MAX_ADMIN_WAVE } from '../shared/zombies.mjs';
 import { LOOT } from '../shared/loot.mjs';
+import { stallBox, stallSpot } from '../shared/stall.mjs';
 import { cycleTime, DEFAULT_CHOICE, isChoice, newCycle, runOf, seasonCycle, skipCycle, SPEEDS, winterAt, withSpeed } from '../shared/moods.mjs';
 import { arenaEdge, arenaHome, arenaSpots, ARENAS, portalOf, villageGround } from '../shared/arenas.mjs';
 import { churchPrisms, makeChurch } from '../shared/church.mjs';
@@ -742,6 +743,8 @@ export class Game {
       const s = carSpec(c);
       return { x: c.x, z: c.z, yaw: c.yaw, halfL: s.length / 2, halfW: s.width / 2 };
     });
+    const spot = stallSpot(arena.id); // the place's stall (shared/stall.mjs): zombies walk round it
+    if (spot) boxes.push(stallBox(arena.id));
     const height = (x, z) => TERRAIN.height(x, z);
     // The village's part never changes per place: made once (a start no longer walks all the blocks again).
     const village = arena.center ? villageGroundOf(arena, edge) : null;
@@ -752,6 +755,7 @@ export class Game {
     return {
       nav, edge, spots: arenaSpots(arena, nav.spawnSpots(), VILLAGE, CAFE), home: arenaHome(arena), doors: arena.center ? [] : HOUSE.doors,
       doorOpen: (id) => this.doors[id] ?? DOOR_OPEN[id] ?? true,
+      stall: spot ? { x: spot.x, y: HOUSE.ground + TERRAIN.height(spot.x, spot.z), z: spot.z } : null,
     };
   }
 

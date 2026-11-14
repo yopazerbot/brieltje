@@ -71,8 +71,10 @@ export class ZombieGame {
     this.game = game;
     this.modes = modes;
     this.arena = arena;
-    const { nav, spots, home, doors, doorOpen, edge } = game.zombieGround(arena);
+    const { nav, spots, home, doors, doorOpen, edge, stall } = game.zombieGround(arena);
     this.edge = edge;
+    /** Where the place's stall stands ({ x, y, z }; shared/stall.mjs STALL_SPOTS), or null: nothing is sold then */
+    this.stallAt = stall ?? null;
     this.horde = new Horde(nav, spots, { home, doors, doorOpen });
     /** The rewards: what lies where, the claymores down, who has what */
     this.loot = new Loot(nav);
@@ -328,9 +330,11 @@ export class ZombieGame {
    * A page buys one thing at the stall: `m.k`, the kind, its only field (the page never names coins, a
    * price, a count or a player). Checked in this order: the rate (refused messages count too), who
    * (the socket's player: here, alive, armed, not down, not in a car), the kind (one of the six), the
-   * break (the server's phase now), the coins (the server's own count) and what it gives (Loot.give on
-   * the server's position, health and guns); charged only when it gave something. Refusals from the
-   * break on get a word why; every answer goes to the buyer's page alone.
+   * break (the server's phase now), the reach (the server's own position for the player, p.state, at
+   * the place's stall: stallReach; the message's other fields are never read), the coins (the server's
+   * own count) and what it gives (Loot.give on the server's position, health and guns); charged only
+   * when it gave something. Refusals from the break on get a word why; every answer goes to the buyer's
+   * page alone.
    */
   buy(name, p, m, now) {
     const g = this.game;
@@ -340,10 +344,10 @@ export class ZombieGame {
     const k = m.k;
     if (!sold(k)) return;
     const s = p.state;
-    const r = this.stall.buy(this.loot, name, { x: s.x, y: s.y, z: s.z, w: s.w, hp: p.hp, guns: [...(p.weapons ?? [])] }, k, this.horde.phase, now);
+    const r = this.stall.buy(this.loot, name, { x: s.x, y: s.y, z: s.z, w: s.w, hp: p.hp, guns: [...(p.weapons ?? [])] }, k, this.horde.phase, now, this.stallAt);
     if (r.got) this.handOver(name, p, r.got); // nothing public changed: no view for everyone
     else {
-      const why = { shut: ['zStallShut', 'The stall is shut during a wave.'], short: ['zStallShort', "You don't have enough coins for that."], full: ['zStallFull', 'You have enough of that.'] }[r.why];
+      const why = { shut: ['zStallShut', 'The stall is shut during a wave.'], far: ['zStallFar', 'Walk up to the stall to buy.'], short: ['zStallShort', "You don't have enough coins for that."], full: ['zStallFull', 'You have enough of that.'] }[r.why];
       if (why) g.send(p.ws, { t: 'system', text: why[1], code: why[0] });
     }
     this.tell(name, p);
