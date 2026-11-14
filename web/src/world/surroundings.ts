@@ -581,13 +581,11 @@ export function buildTile(data: TileData, poles: Pole[], renderer: THREE.WebGLRe
     if (r.shape !== 'shed') pitched.add(key);
     const style = houseStyle(key, r.wall ?? '', !!r.wall && isBrick(r.wall) && brickLook(r.wall, key).render === 1);
     // Verge boards and ridge tiles in the house's trim; not on a roof over a room (the bungalow's) or a landmark's. An
-    // edge where a neighbour's walls stand above our eaves less 1.5 m (a terraced row) keeps none.
+    // edge where walls (any of the blocks stacked there) stand above our eaves less 1.5 m (a terraced row, the other
+    // half of a house) keeps none.
     const edges: RoofEdges | undefined = r.ceiling || r.lm ? undefined : {
       trim: new THREE.Color(style.trim),
-      free: (x, z) => {
-        const w = houses.wallAt(x, z);
-        return !w || w.p.y1 < r.y - 1.5;
-      },
+      free: (x, z) => !houses.wallsAt(x, z).some((w) => w.p.y1 > r.y - 1.5),
     };
     const g = roof(r, edges);
     if (g.gutters) gutterGeos.push(g.gutters);

@@ -1,24 +1,24 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import fs from 'node:fs';
 import {
   houseStyle, rollerDown, stable, CHIMNEY_SHARE, FLAT_EDGE, LEAF_SHUTTERS, LINTEL_SOLDIER, LINTEL_STONE, LINTEL_STONE_RENDERED, PLINTH_BRICK,
   PLINTH_CEMENT, PLINTH_PAINT, PLINTH_TAR, ROLLER_DOWN, ROLLER_HOUSES, ROLLER_PART, ROOF_WINDOWS, SOLAR_SHARE,
 } from './houseStyle.ts';
 
-// world/facadeLook.ts's hash (that module needs three.js, so it is compared as text): the copy must be the same.
-const bodyOf = (file) => fs.readFileSync(new URL(file, import.meta.url), 'utf8').match(/export function stable\(\.\.\.v: number\[\]\): number \{([\s\S]*?)\n\}/)?.[1];
+// The houses' own hash (world/houseKeys.ts): the copy here must give the same numbers.
+import { stable as keyHash } from './houseKeys.ts';
 
 const N = 10000;
 // Keys as world/facadeLook.ts's Houses makes them: from a house's corner, in decimetres.
 const keys = Array.from({ length: N }, (_, i) => stable(Math.round((i * 7.31) % 900) / 10, Math.round((i * 3.17) % 1200) / 10, 29 + Math.floor(i / 9000)));
 const near = (got, want, what) => assert.ok(Math.abs(got - want) < 0.05, `${what}: ${got.toFixed(3)}, want about ${want.toFixed(3)}`);
 
-test('the copy of the hash is the same as world/facadeLook.ts', () => {
-  const original = bodyOf('./facadeLook.ts');
-  assert.ok(original, 'stable() in facadeLook.ts');
-  assert.equal(bodyOf('./houseStyle.ts'), original);
-  // And it gives the numbers it gave when the copy was made.
+test('the copy of the hash gives the same numbers as world/houseKeys.ts', () => {
+  for (let i = 0; i < 2000; i++) {
+    const v = [i * 0.37 - 40, i * 1.913, 41 + (i % 31)];
+    assert.equal(stable(...v), keyHash(...v));
+  }
+  // And the numbers it gave when the copy was made.
   assert.equal(stable(0.5, 41), 0.08056758297251082);
   assert.equal(stable(123.4, -56.7, 29), 0.7691269261922142);
 });

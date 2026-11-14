@@ -599,7 +599,9 @@ export interface OpeningContext {
  * of a window. For the frames' mesh. `d`, `n`: the wall's direction (d x up = n) and its outside; `mid` the opening's middle.
  */
 export function openingTrim(o: Opening, d: THREE.Vector3, n: THREE.Vector3, w: number, mid: THREE.Vector3, ctx: OpeningContext): THREE.BufferGeometry[] {
-  const house = ctx.houses.wallAt(mid.x - n.x * 0.3, mid.z - n.z * 0.3);
+  // The wall block the opening is in (a house is often blocks stacked on each other: the one at its height).
+  const [wx, wz] = [mid.x - n.x * 0.3, mid.z - n.z * 0.3];
+  const house = ctx.houses.wallAt(wx, wz, mid.y);
   if (!house) return [];
   const look = brickLook(house.m, house.key);
   const style = houseStyle(house.key, house.m, look.render === 1, ctx.pitched.has(house.key));
@@ -607,8 +609,8 @@ export function openingTrim(o: Opening, d: THREE.Vector3, n: THREE.Vector3, w: n
   const h = y1 - y0;
   const out = (k: number, y = mid.y) => mid.clone().addScaledVector(n, k).setY(y);
   const parts: THREE.BufferGeometry[] = [];
-  // Lintel: over the frame (5 cm above the opening), unless the wall ends there.
-  if (style.lintel !== 'none' && y1 + 0.25 < house.p.y1) {
+  // Lintel: over the frame (5 cm above the opening), unless no wall of the house goes on above it.
+  if (style.lintel !== 'none' && ctx.houses.holds(wx, wz, y1 + 0.25)) {
     if (style.lintel === 'stone') parts.push(face(out(0.03, y1 + 0.05 + 0.09), d, n, w + 0.24, 0.18, new THREE.Color('#d9d4c8')));
     else parts.push(face(out(0.03, y1 + 0.05 + 0.055), d, n, w + 0.1, 0.11, look.tint.clone().multiplyScalar(SOLDIER * BRICK_MEAN)));
   }
@@ -629,7 +631,7 @@ export function openingTrim(o: Opening, d: THREE.Vector3, n: THREE.Vector3, w: n
       const centre = out(0.035).addScaledVector(d, side * (w / 2 + 0.06 + w / 4));
       const edge = centre.clone().addScaledVector(d, (side * w) / 4);
       // Only where the wall goes on and no other opening is in the way.
-      const back = ctx.houses.wallAt(edge.x - n.x * 0.3, edge.z - n.z * 0.3);
+      const back = ctx.houses.wallAt(edge.x - n.x * 0.3, edge.z - n.z * 0.3, mid.y);
       if (!back || back.key !== house.key || blocked(ctx.list, o, centre, d, n, w / 2, y0, y1)) continue;
       parts.push(face(centre, d, n, w / 2, h + 0.1, colour));
     }

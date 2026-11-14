@@ -1,6 +1,9 @@
 import * as THREE from 'three';
-import type { Prism } from './houseData';
 import { snowOn } from './snowCover';
+import { renderOf, stable } from './houseKeys';
+
+// Which house a block belongs to, and the hash everything here is picked by (world/houseKeys.ts).
+export { Houses, isBrick, stable } from './houseKeys';
 
 /**
  * Each open-data house its own look (world/surroundings.ts builds them): the shade of its brick within
@@ -11,17 +14,6 @@ import { snowOn } from './snowCover';
  * All of it rides on the vertices of the geometry the tiles already merge (a colour, a byte for render,
  * a byte for glaze), so the walls stay one draw call per tile and the roofs another, as before.
  */
-
-/** A number from 0 to 1 that depends only on the numbers given. */
-export function stable(...v: number[]): number {
-  let h = 2166136261;
-  for (const x of v) h = Math.imul(h ^ Math.round(x * 1000), 16777619) ^ (h >>> 13);
-  return ((h >>> 0) % 100003) / 100003;
-}
-
-/** The neighbours' bricks (houseMeshes.ts's nb_ family), the walls of a house. */
-const BRICK = /^nb_(red|brown|yellow|white|grey|dark)$/;
-export const isBrick = (m: string): boolean => BRICK.test(m);
 
 /**
  * Shades of each brick within its kind (sRGB, for the generated brick texture), as Flemish streets have
@@ -48,7 +40,7 @@ export interface BrickLook {
 export function brickLook(m: string, key: number): BrickLook {
   const pick = (list: string[], h: number) => list[Math.floor(h * list.length) % list.length];
   // About two in five white houses and one in eight yellow ones are rendered rather than bare brick.
-  const render = (m === 'nb_white' && key < 0.4) || (m === 'nb_yellow' && key < 0.12) ? 1 : 0;
+  const render = renderOf(m, key);
   const tint = new THREE.Color(render ? pick(RENDER, stable(key, 3)) : pick(SHADES[m] ?? SHADES.nb_red, stable(key, 5)));
   tint.multiplyScalar(0.94 + 0.12 * stable(key, 7)); // and a little lighter or darker, house by house
   return { tint, render };
@@ -84,81 +76,6 @@ export function frameColour(data: string, key: number): THREE.Color {
 export function byteAttribute(g: THREE.BufferGeometry, name: string, value: number): THREE.BufferGeometry {
   g.setAttribute(name, new THREE.BufferAttribute(new Uint8Array(g.attributes.position.count).fill(Math.round(value * 255)), 1, true));
   return g;
-}
-
-/**
- * The houses of one tile: walls of the same brick that touch (a house's main block and its annex) are one
- * house, with one key (a stable random 0 to 1), fixed by the corner of its walls furthest west (then north).
- */
-export class Houses {
-  private walls: { p: Prism; ring: [number, number][]; box: [number, number, number, number] }[] = [];
-  private keys = new Map<Prism, number>();
-
-  constructor(prisms: Prism[]) {
-    const own = prisms.filter((p) => isBrick(p.m));
-    const parent = own.map((_, i) => i);
-    const find = (i: number): number => (parent[i] === i ? i : (parent[i] = find(parent[i])));
-    const corner = new Map<string, number>();
-    own.forEach((p, i) => {
-      for (const [x, z] of p.p[0]) {
-        const at = `${p.m}|${Math.round(x * 20)}|${Math.round(z * 20)}`;
-        const j = corner.get(at);
-        if (j === undefined) corner.set(at, i);
-        else parent[find(i)] = find(j);
-      }
-    });
-    const first = new Map<number, [number, number]>();
-    own.forEach((p, i) => {
-      const r = find(i);
-      for (const [x, z] of p.p[0]) {
-        const f = first.get(r);
-        if (!f || x < f[0] - 1e-6 || (Math.abs(x - f[0]) < 1e-6 && z < f[1])) first.set(r, [x, z]);
-      }
-    });
-    own.forEach((p, i) => {
-      const [x, z] = first.get(find(i))!;
-      this.keys.set(p, stable(Math.round(x * 10) / 10, Math.round(z * 10) / 10, 29));
-      const xs = p.p[0].map((q) => q[0]);
-      const zs = p.p[0].map((q) => q[1]);
-      this.walls.push({ p, ring: p.p[0], box: [Math.min(...xs), Math.min(...zs), Math.max(...xs), Math.max(...zs)] });
-    });
-  }
-
-  /** The key of the house a wall block belongs to. */
-  keyOf(p: Prism): number {
-    return this.keys.get(p) ?? stable(p.p[0][0][0], p.p[0][0][1], 29);
-  }
-
-  /** The key of the house whose walls stand round (x, z), preferring brick `m`; or one of the spot itself. */
-  at(x: number, z: number, m?: string): number {
-    let found: Prism | null = null;
-    for (const w of this.walls) {
-      if (x < w.box[0] || x > w.box[2] || z < w.box[1] || z > w.box[3] || !inside(w.ring, x, z)) continue;
-      found = w.p;
-      if (!m || w.p.m === m) break;
-    }
-    return found ? this.keyOf(found) : stable(Math.round(x), Math.round(z), 31);
-  }
-
-  /** The house whose walls stand round (x, z): its key, its brick and that wall block; null where no wall stands. */
-  wallAt(x: number, z: number): { key: number; m: string; p: Prism } | null {
-    for (const w of this.walls) {
-      if (x < w.box[0] || x > w.box[2] || z < w.box[1] || z > w.box[3] || !inside(w.ring, x, z)) continue;
-      return { key: this.keyOf(w.p), m: w.p.m, p: w.p };
-    }
-    return null;
-  }
-}
-
-/** Whether (x, z) lies inside a ring. */
-function inside(ring: [number, number][], x: number, z: number): boolean {
-  let yes = false;
-  for (let i = 0, j = ring.length - 1; i < ring.length; j = i++) {
-    const [xi, zi] = ring[i];
-    const [xj, zj] = ring[j];
-    if (zi > z !== zj > z && x < ((xj - xi) * (z - zi)) / (zj - zi) + xi) yes = !yes;
-  }
-  return yes;
 }
 
 const rendered = new WeakSet<THREE.Material>();
