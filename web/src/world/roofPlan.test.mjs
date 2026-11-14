@@ -10,21 +10,38 @@ registerHooks({
     return next(specifier, context);
   },
 });
-const { planRoofs, ROOF_OVERRIDES, TURN_PITCH } = await import('./roofPlan.ts');
+const { planRoofs, ROOF_OVERRIDES, TURN_PITCH, PAIR_OVERLAP, SHOW_THROUGH } = await import('./roofPlan.ts');
 const { BlockGrid, Houses, inside, isBrick } = await import('./houseKeys.ts');
 
 const read = (file) => JSON.parse(fs.readFileSync(new URL(file, import.meta.url), 'utf8'));
 const shell = read('../data/house_shell.json');
 // The two sets the houses are built from: the village and the ring round the home.
 const sets = { village: read('../data/village.json'), ring: shell.surroundings };
+// And, given a file from tools/dev/houseSets.mjs, the sets the page plans on: the village after our models took their
+// houses out and the ring round the home without the houses round its portals, each with the whole data behind it.
+if (process.env.HOUSE_SETS) {
+  const page = JSON.parse(fs.readFileSync(process.env.HOUSE_SETS, 'utf8')).sets.filter((s) => s.unfiltered);
+  page.sort((a, b) => b.roofs.length - a.roofs.length);
+  for (const s of page) {
+    // One object per roof and block again (the file has them twice): the plan looks the set's up among the whole data's.
+    for (const key of ['roofs', 'prisms']) {
+      const own = new Map(s[key].map((r) => [JSON.stringify(r), r]));
+      s.unfiltered[key] = s.unfiltered[key].map((r) => own.get(JSON.stringify(r)) ?? r);
+    }
+  }
+  [sets['page village'], sets['page ring']] = page;
+}
 
 /**
- * What the plan made of the committed data (counted when it was written; a change in the data or the rule shows here).
- * One ramp in the village is kept: a taller part's window looks out over its low end, which the turned gable would hide.
+ * What the plan made of the committed data (counted when it was written; a change in the data or the rule shows here),
+ * the raw sets and the page's. One ramp in the village is kept: a taller part's window looks out over its low end,
+ * which the turned gable would hide.
  */
 const EXPECT = {
-  village: { pair: 176, levelled: 98, close: 79, turn: 8, keep: 163 },
-  ring: { pair: 30, levelled: 12, close: 14, turn: 0, keep: 20 },
+  village: { pair: 174, levelled: 98, close: 76, turn: 5, keep: 171 },
+  ring: { pair: 30, levelled: 12, close: 13, turn: 0, keep: 21 },
+  'page village': { pair: 124, levelled: 70, close: 48, turn: 4, keep: 125 },
+  'page ring': { pair: 30, levelled: 12, close: 12, turn: 0, keep: 21 },
 };
 
 const frame = (r) => {
@@ -48,7 +65,8 @@ const surfaceAt = (r, f, b) => {
 for (const [name, set] of Object.entries(sets)) {
   const prisms = set.prisms ?? [];
   const openings = set.openings ?? [];
-  const plan = planRoofs(set.roofs, prisms, openings, set.solar ?? []);
+  const behind = set.unfiltered ?? undefined;
+  const plan = planRoofs(set.roofs, prisms, openings, set.solar ?? [], undefined, behind);
   const changed = [...plan.drawn].filter(([r]) => plan.cases.get(r).kind !== 'keep');
 
   test(`${name}: the single slopes come out as counted (pairs, levelled, closed, turned, kept)`, () => {
@@ -66,7 +84,7 @@ for (const [name, set] of Object.entries(sets)) {
     const lids = new BlockGrid();
     for (const p of prisms) if (p.m === 'nb_roof') lids.add(p);
     const standing = (x, z) => [...houses.wallsAt(x, z).map((w) => w.p), ...lids.at(x, z)];
-    for (const again of [planRoofs(set.roofs, prisms, openings, set.solar ?? []), planRoofs(set.roofs, prisms, openings, set.solar ?? [], standing)]) {
+    for (const again of [planRoofs(set.roofs, prisms, openings, set.solar ?? [], undefined, behind), planRoofs(set.roofs, prisms, openings, set.solar ?? [], standing, behind)]) {
       assert.equal(again.drawn.size, plan.drawn.size);
       for (const [r, d] of plan.drawn) assert.deepEqual(again.drawn.get(r), d);
     }
@@ -85,8 +103,13 @@ for (const [name, set] of Object.entries(sets)) {
       assert.ok(a.tight && b.tight, 'both stop at the high edge');
       assert.equal((a.crown !== undefined) + (b.crown !== undefined), 1, 'one ridge row');
       // The high edges: the other half's high corners on or within this one's high edge (no gap between them).
+      // and no more than PAIR_OVERLAP into it (else both high walls stand out of the other half's tiles as a wedge).
       const f = frame(b);
-      for (const q of [a.p[2], a.p[3]]) assert.ok(local(f, q[0], q[1])[1] <= f.W + 0.05, `${name}: a gap at the apex at (${q[0].toFixed(1)}, ${q[1].toFixed(1)})`);
+      for (const q of [a.p[2], a.p[3]]) {
+        const across = local(f, q[0], q[1])[1];
+        assert.ok(across <= f.W + 0.05, `${name}: a gap at the apex at (${q[0].toFixed(1)}, ${q[1].toFixed(1)})`);
+        assert.ok(across >= f.W - PAIR_OVERLAP - 1e-9, `${name}: halves ${(f.W - across).toFixed(2)} m into each other at (${q[0].toFixed(1)}, ${q[1].toFixed(1)})`);
+      }
       // Nothing above the pair's top.
       assert.ok(a.ridge <= Math.max(r.ridge, b.ridge) + 1e-9);
       pairs++;
@@ -139,11 +162,46 @@ for (const [name, set] of Object.entries(sets)) {
         const slack = c.kind === 'pair' && !c.levelled ? 0.3 : 0.05;
         if (was < o.y[1]) assert.ok(now <= Math.max(was, o.y[0]) + slack, `${name}: a window ${(now - Math.max(was, o.y[0])).toFixed(2)} m under the new roof at (${o.a[0].toFixed(1)}, ${o.a[1].toFixed(1)})`);
       }
-      // No wall block under it reaches over its eaves (the blocks are what players and the server collide with).
+      // No wall block under it stands out of its drawn tiles (the blocks are what players and the server collide with), on
+      // a grid over the whole roof.
       const [mx, mz] = [f.c[0][0] + f.ax * (f.L / 2) + f.bx * (f.W / 2), f.c[0][1] + f.az * (f.L / 2) + f.bz * (f.W / 2)];
-      for (const p of prisms) {
-        if (p.d !== undefined || !isBrick(p.m) || Math.abs(p.p[0][0][0] - mx) > 40) continue;
-        if (inside(p.p[0], mx, mz)) assert.ok(p.y1 <= r.y + 0.3, `${name}: a wall ${(p.y1 - r.y).toFixed(2)} m over the eaves under a changed roof`);
+      const walls = prisms.filter((p) => p.d === undefined && isBrick(p.m) && Math.abs(p.p[0][0][0] - mx) < 40 && Math.abs(p.p[0][0][1] - mz) < 40);
+      const fd = frame(d);
+      for (let u = 1; u < 6; u++) {
+        for (let v = 1; v < 6; v++) {
+          const [x, z] = [f.c[0][0] + f.ax * (f.L * u / 6) + f.bx * (f.W * v / 6), f.c[0][1] + f.az * (f.L * u / 6) + f.bz * (f.W * v / 6)];
+          const now = surfaceAt(d, fd, Math.max(0, Math.min(fd.W, local(fd, x, z)[1])));
+          const was = surfaceAt(r, f, local(f, x, z)[1]);
+          const slack = plan.cases.get(r).kind === 'pair' && !plan.cases.get(r).levelled ? 0.3 : SHOW_THROUGH; // less is lost under the eaves
+          for (const p of walls) {
+            if (inside(p.p[0], x, z)) assert.ok(!(p.y1 > now + slack && p.y1 <= was + 0.05), `${name}: a wall ${(p.y1 - now).toFixed(2)} m out of a changed roof at (${x.toFixed(1)}, ${z.toFixed(1)})`);
+          }
+        }
+      }
+    }
+  });
+
+  test(`${name}: no other roof shows through a changed roof where the data's slope hid it`, () => {
+    const all = behind?.roofs ?? set.roofs;
+    const frames = new Map(all.map((q) => [q, frame(q)]));
+    for (const [r, d] of changed) {
+      const f = frame(r);
+      const fd = frame(d);
+      const near = all.filter((q) => q !== r && !q.ceiling && Math.abs(q.p[0][0] - r.p[0][0]) < 40 && Math.abs(q.p[0][1] - r.p[0][1]) < 40);
+      for (let u = 1; u < 8; u++) {
+        for (let v = 1; v < 8; v++) {
+          const [x, z] = [f.c[0][0] + f.ax * (f.L * u / 8) + f.bx * (f.W * v / 8), f.c[0][1] + f.az * (f.L * u / 8) + f.bz * (f.W * v / 8)];
+          const was = surfaceAt(r, f, local(f, x, z)[1]);
+          const now = surfaceAt(d, fd, Math.max(0, Math.min(fd.W, local(fd, x, z)[1])));
+          for (const q of near) {
+            const fq = frames.get(q);
+            const [a, b] = local(fq, x, z);
+            if (a < 0 || a > fq.L || b < 0 || b > fq.W) continue;
+            const s = surfaceAt(q, fq, b);
+            const pairSlack = plan.cases.get(r).kind === 'pair' && !plan.cases.get(r).levelled ? 0.3 : SHOW_THROUGH; // halves closer than 0.6 m move to their mean as they are
+            assert.ok(!(s > now + pairSlack && s <= was + 0.05), `${name}: a roof shows ${(s - now).toFixed(2)} m through a changed one at (${x.toFixed(1)}, ${z.toFixed(1)})`);
+          }
+        }
       }
     }
   });

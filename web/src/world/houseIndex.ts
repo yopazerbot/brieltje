@@ -29,6 +29,9 @@ export interface HouseIndex {
 
 const built = new WeakMap<object, HouseIndex>();
 
+/** Development only: the sets the roofs were planned on, as the page has them (tools/dev/houseSets.mjs reads them). */
+export const plannedSets: Pick<Surroundings, 'roofs' | 'prisms' | 'openings' | 'solar' | 'unfiltered'>[] = [];
+
 /** The house under a roof: the walls round the middle of its outline. */
 export const roofKey = (houses: Houses, r: RoofSpec): number => {
   const [cx, cz] = r.p.reduce(([x, z], q) => [x + q[0] / r.p.length, z + q[1] / r.p.length], [0, 0]);
@@ -36,21 +39,29 @@ export const roofKey = (houses: Houses, r: RoofSpec): number => {
 };
 
 /** `groundAt`: the ground's height at (x, z). */
-export function houseIndex(set: Pick<Surroundings, 'roofs' | 'prisms' | 'openings' | 'solar'>, groundAt: GroundAt): HouseIndex {
+export function houseIndex(set: Pick<Surroundings, 'roofs' | 'prisms' | 'openings' | 'solar' | 'unfiltered'>, groundAt: GroundAt): HouseIndex {
   let index = built.get(set);
   if (index) return index;
+  if (import.meta.env?.DEV) plannedSets.push(set);
   const prisms: Prism[] = set.prisms ?? [];
   const houses = new Houses(prisms);
   const lids = new BlockGrid();
   for (const p of prisms) if (p.m === 'nb_roof') lids.add(p);
   // The walls and lids round a point, from the grids built here already.
   const standing = (x: number, z: number) => [...houses.wallsAt(x, z).map((w) => w.p), ...lids.at(x, z)];
-  const plan = planRoofs(set.roofs, prisms, set.openings ?? [], set.solar ?? [], standing);
+  const plan = planRoofs(set.roofs, prisms, set.openings ?? [], set.solar ?? [], standing, set.unfiltered && { roofs: set.unfiltered.roofs, prisms: set.unfiltered.prisms ?? [] });
   const roofs = set.roofs.map((r) => plan.drawn.get(r) ?? r);
-  // A pair's smaller half takes the key of the half with the ridge row (the larger).
+  // Both halves of a pair take one house's key: that of the larger half (the one with the ridge row), or of the other
+  // where only that one has walls under its middle (else the key would come from the spot, not the house).
+  const walled = (r: RoofSpec) => {
+    const [cx, cz] = r.p.reduce(([x, z], q) => [x + q[0] / r.p.length, z + q[1] / r.p.length], [0, 0]);
+    return houses.wallsAt(cx, cz).length > 0;
+  };
   const keyOf = (r: RoofSpec): number => {
     const other = plan.partner.get(r);
-    return roofKey(houses, other?.crown !== undefined ? other : r);
+    if (!other) return roofKey(houses, r);
+    const [big, small] = r.crown !== undefined ? [r, other] : [other, r];
+    return roofKey(houses, walled(big) || !walled(small) ? big : small);
   };
   const pitched = new Set<number>();
   for (const r of roofs) if (r.shape !== 'shed' || r.closed || plan.partner.has(r)) pitched.add(keyOf(r));

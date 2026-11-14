@@ -50,6 +50,23 @@ const BEHIND = 0.6;
 const PARTNER_EDGE = 1.2;
 /** A window this close (m) to a slope's rectangle, looking out over it, must not be hidden more than the data's slope does. */
 const NEAR = 0.3;
+/** Two halves whose high edges run into each other by more than this (m) at an end are no pair: they'd show a wedge. */
+export const PAIR_OVERLAP = 0.35;
+/**
+ * A changed roof may not let another roof's faces, or a wall or lid, show through it by more than this (m) where the
+ * data's slope hid them (less is lost in its eaves' overhang and gutter).
+ */
+export const SHOW_THROUGH = 0.5;
+/** Another roof's faces count from this far (m) inside a changed roof's rectangle: at its edges roofs of one house meet. */
+const EDGE = 0.6;
+/** A slope this close (m) to a wall of a house one of our models stands in for is kept as it is. */
+const BY_MODEL = 1;
+
+function boxOf(ring: [number, number][]): [number, number, number, number] {
+  const xs = ring.map((q) => q[0]);
+  const zs = ring.map((q) => q[1]);
+  return [Math.min(...xs), Math.min(...zs), Math.max(...xs), Math.max(...zs)];
+}
 
 /**
  * One roof that came out wrong, by a point inside it (model coordinates, never an address): drawn as said here. Empty;
@@ -64,7 +81,7 @@ export interface RoofOutcome {
   /** A pair whose tops were further apart than MEET */
   levelled?: boolean;
   /** Why it is kept ('windows': on its own drawn walls, or looking out over it from close by and hidden by the new shape) */
-  why?: 'panels' | 'lean-to' | 'step' | 'windows' | 'low' | 'one storey' | 'override';
+  why?: 'panels' | 'model' | 'lean-to' | 'step' | 'windows' | 'low' | 'one storey' | 'neighbour' | 'override';
 }
 
 export interface RoofPlan {
@@ -98,12 +115,11 @@ function frameOf(r: RoofSpec): Frame {
 const local = (f: Frame, x: number, z: number): [number, number] => [(x - f.x) * f.ax + (z - f.z) * f.az, (x - f.x) * f.bx + (z - f.z) * f.bz];
 const point = (f: Frame, a: number, b: number): [number, number] => [f.x + f.ax * a + f.bx * b, f.z + f.az * a + f.bz * b];
 
-/** A roof's surface at (x, z), or null outside it (a hip as a gable: near enough for what stands behind). */
+/** A roof's surface at (x, z) as drawn, or null outside it (a hip as a gable: near enough for what stands behind). */
 function surface(r: RoofSpec, f: Frame, x: number, z: number): number | null {
   const [a, b] = local(f, x, z);
   if (a < -0.05 || a > f.L + 0.05 || b < -0.05 || b > f.W + 0.05) return null;
-  if (r.shape === 'shed') return r.y + ((r.ridge - r.y) * b) / f.W;
-  return r.y + (r.ridge - r.y) * (1 - Math.abs(b - f.W / 2) / (f.W / 2));
+  return drawnTop(r, f, x, z);
 }
 
 /** A roof's tiles over the spot of its rectangle nearest to (x, z), as drawn: a closed slope, a single one, a gable. */
@@ -158,17 +174,18 @@ interface Look {
 /**
  * The single slopes of a set and what each is drawn as. `solar`: the data's panel arrays (a roof with some is kept).
  * `standingAt`: the walls and flat-roof lids standing round a point, when the caller has them in a grid already
- * (world/houseIndex.ts); else they are found here.
+ * (world/houseIndex.ts); else they are found here. `behind`: the whole data the set was cut from, before our models'
+ * houses were taken out of it (main.ts): what stands behind a slope is looked up there, so a slope against a house a
+ * model now stands in for is still a lean-to.
  */
 export function planRoofs(roofs: RoofSpec[], prisms: Prism[], openings: Opening[], solar: { q: [number, number, number][] }[] = [],
-  standingAt?: (x: number, z: number) => Prism[]): RoofPlan {
-  let blocks: { at: (x: number, z: number) => Prism[] };
-  if (standingAt) blocks = { at: standingAt };
-  else {
+  standingAt?: (x: number, z: number) => Prism[], behind?: Behind): RoofPlan {
+  const standingGrid = (list: Prism[]) => {
     const grid = new BlockGrid();
-    for (const p of prisms) if (p.d === undefined && STANDING.test(p.m)) grid.add(p);
-    blocks = grid;
-  }
+    for (const p of list) if (p.d === undefined && STANDING.test(p.m)) grid.add(p);
+    return grid;
+  };
+  const blocks: { at: (x: number, z: number) => Prism[] } = standingAt ? { at: standingAt } : standingGrid(prisms);
   const frames = roofs.map(frameOf);
   const isSlope = (r: RoofSpec) => r.shape === 'shed' && !r.lm && !r.ceiling;
   // Every roof (for what stands behind a slope), and the single slopes alone (for the windows and panels on or by them).
@@ -222,33 +239,68 @@ export function planRoofs(roofs: RoofSpec[], prisms: Prism[], openings: Opening[
     }
   }
 
+  // What stands behind: the whole data's walls, lids and roofs (with the houses our models stand in for), the roofs of
+  // this set as they are drawn once decided.
+  const backRoofs = behind?.roofs ?? roofs;
+  const backBlocks = behind ? standingGrid(behind.prisms) : blocks;
+  const backFrames = behind ? backRoofs.map(frameOf) : frames;
+  const backGrid = behind ? new Cells() : grid;
+  if (behind) {
+    backRoofs.forEach((r, j) => {
+      const xs = r.p.map((q) => q[0]);
+      const zs = r.p.map((q) => q[1]);
+      backGrid.add(j, Math.min(...xs) - NEAR, Math.min(...zs) - NEAR, Math.max(...xs) + NEAR, Math.max(...zs) + NEAR);
+    });
+  }
+  const drawn = new Map<RoofSpec, RoofSpec>();
+  const drawnFrames = new Map<RoofSpec, Frame>();
+  /** Another roof's surface at (x, z): as drawn when `asDrawn` and it is decided, else as the data has it. */
+  const roofAt = (j: number, x: number, z: number, asDrawn: boolean) => {
+    const q = backRoofs[j];
+    const d = asDrawn ? drawn.get(q) : undefined;
+    if (!d || d.p === q.p) return surface(d ?? q, backFrames[j], x, z);
+    let f = drawnFrames.get(d);
+    if (!f) drawnFrames.set(d, (f = frameOf(d)));
+    return surface(d, f, x, z);
+  };
+  /** The median of the highest things standing 0.6 m behind slope i's high side, at three points along it. */
+  const heightBehind = (i: number, asDrawn: boolean) => {
+    const r = roofs[i];
+    const f = frames[i];
+    return BEHIND_AT.map((t) => {
+      const [x, z] = point(f, f.L * t, f.W + BEHIND);
+      let top = -Infinity;
+      for (const p of backBlocks.at(x, z)) top = Math.max(top, p.y1);
+      for (const j of backGrid.at(x, z)) {
+        if (backRoofs[j] === r || backRoofs[j].ceiling) continue;
+        const s = roofAt(j, x, z, asDrawn);
+        if (s !== null) top = Math.max(top, s);
+      }
+      return top;
+    }).sort((a, b) => a - b)[1];
+  };
+
   const looks = new Map<number, Look>();
   roofs.forEach((r, i) => {
     if (!isSlope(r)) return;
     const f = frames[i];
+    // A partner: a single slope of this set the other way, its high edge near the points looked at.
     const hits = new Map<number, number>();
-    const tops = BEHIND_AT.map((t) => {
+    for (const t of BEHIND_AT) {
       const [x, z] = point(f, f.L * t, f.W + BEHIND);
-      let top = -Infinity;
-      for (const p of blocks.at(x, z)) top = Math.max(top, p.y1);
       for (const j of grid.at(x, z)) {
         const q = roofs[j];
-        if (j === i || q.ceiling) continue;
-        const s = surface(q, frames[j], x, z);
-        if (s === null) continue;
-        top = Math.max(top, s);
-        // A partner: a single slope the other way, its high edge near here.
         const fq = frames[j];
-        if (isSlope(q) && fq.bx * f.bx + fq.bz * f.bz < -0.9 && local(fq, x, z)[1] > fq.W - PARTNER_EDGE) hits.set(j, (hits.get(j) ?? 0) + 1);
+        if (j === i || !isSlope(q) || surface(q, fq, x, z) === null) continue;
+        if (fq.bx * f.bx + fq.bz * f.bz < -0.9 && local(fq, x, z)[1] > fq.W - PARTNER_EDGE) hits.set(j, (hits.get(j) ?? 0) + 1);
       }
-      return top;
-    }).sort((a, b) => a - b);
+    }
     // The first roof (in the data's order) found at two of the three points.
     const found = [...hits].filter(([, n]) => n >= 2).map(([j]) => j).sort((a, b) => a - b)[0];
     looks.set(i, {
       f,
       base: r.base ?? r.y - 2.7,
-      T: tops[1],
+      T: heightBehind(i, false),
       partner: found === undefined ? null : roofs[found],
       taken: taken.has(i),
       glazed: glazed.has(i),
@@ -268,9 +320,79 @@ export function planRoofs(roofs: RoofSpec[], prisms: Prism[], openings: Opening[
     }
     return false;
   };
+  /**
+   * Whether drawing slope i as `d` lets something show through it: a neighbouring gable that overlaps the rectangle, or
+   * a wall or lid standing under it, hidden under the data's slope and now above the drawn one (looked at on a grid over
+   * the rectangle).
+   */
+  const exposes = (i: number, d: RoofSpec) => {
+    const r = roofs[i];
+    const f = frames[i];
+    const fd = d.p === r.p ? f : frameOf(d);
+    // Every half metre or so inside it.
+    const nu = Math.max(2, Math.ceil(f.L / 0.5));
+    const nv = Math.max(2, Math.ceil(f.W / 0.5));
+    for (let u = 1; u < nu; u++) {
+      for (let v = 1; v < nv; v++) {
+        const [x, z] = point(f, (f.L * u) / nu, (f.W * v) / nv);
+        const was = drawnTop(r, f, x, z);
+        const now = drawnTop(d, fd, x, z);
+        if (now >= was - SHOW_THROUGH) continue;
+        // A wall or a lid under the slope that would stand out of the lower tiles.
+        if (backBlocks.at(x, z).some((p) => p.y1 > now + SHOW_THROUGH && p.y1 <= was + 0.05)) return true;
+        // Another roof's faces, more than EDGE in (roofs of one house meet at their edges, and an eave overlaps).
+        const [a, b] = [(f.L * u) / nu, (f.W * v) / nv];
+        if (a < EDGE || a > f.L - EDGE || b < EDGE || b > f.W - EDGE) continue;
+        for (const j of backGrid.at(x, z)) {
+          const q = backRoofs[j];
+          if (q === r || q.ceiling) continue;
+          const s = surface(q, backFrames[j], x, z);
+          if (s !== null && s > now + SHOW_THROUGH) return true; // crossing the new shape, hidden or not before
+        }
+      }
+    }
+    return false;
+  };
+  // The walls of the houses our models stand in for (in the whole data, not in this set): a slope beside one is kept, as
+  // the model's house is not the data's.
+  const own = new Set(prisms);
+  const replaced = new Cells();
+  const gone = behind ? behind.prisms.filter((p) => p.d === undefined && STANDING.test(p.m) && !own.has(p)) : [];
+  gone.forEach((p, k) => {
+    const b = boxOf(p.p[0]);
+    replaced.add(k, b[0] - BY_MODEL, b[1] - BY_MODEL, b[2] + BY_MODEL, b[3] + BY_MODEL);
+  });
+  /** Whether a wall of a house a model replaced stands within BY_MODEL of slope i's rectangle. */
+  const byModel = (i: number) => {
+    if (!gone.length) return false;
+    const f = frames[i];
+    const seen = new Set<number>();
+    for (const [u, v] of [[0, 0], [1, 0], [1, 1], [0, 1], [0.5, 0.5], [0.5, 0], [1, 0.5], [0.5, 1], [0, 0.5]]) {
+      const [x, z] = point(f, f.L * u, f.W * v);
+      for (const k of replaced.at(x, z)) {
+        if (seen.has(k)) continue;
+        seen.add(k);
+        const ring = gone[k].p[0];
+        const near = ring.some(([px, pz]) => {
+          const [a, b] = local(f, px, pz);
+          return a >= -BY_MODEL && a <= f.L + BY_MODEL && b >= -BY_MODEL && b <= f.W + BY_MODEL;
+        }) || [[0, 0], [1, 0], [1, 1], [0, 1]].some(([cu, cv]) => inside(ring, ...point(f, f.L * cu, f.W * cv)));
+        if (near) return true;
+      }
+    }
+    return false;
+  };
+  /** How far two halves' high edges run into each other at their ends (m; 0 where they meet or leave a gap). */
+  const overlap = (r: RoofSpec, q: RoofSpec) => {
+    let most = 0;
+    for (const [a, b] of [[r, q], [q, r]]) {
+      const fb = frames[indexOf.get(b)!];
+      for (const c of [a.p[2], a.p[3]]) most = Math.max(most, fb.W - local(fb, c[0], c[1])[1]);
+    }
+    return most;
+  };
 
   const cases = new Map<RoofSpec, RoofOutcome>();
-  const drawn = new Map<RoofSpec, RoofSpec>();
   const partner = new Map<RoofSpec, RoofSpec>();
   const forced = (r: RoofSpec) => ROOF_OVERRIDES.find((o) => inside(r.p, o.at[0], o.at[1]))?.as;
 
@@ -290,7 +412,7 @@ export function planRoofs(roofs: RoofSpec[], prisms: Prism[], openings: Opening[
 
   for (const [i, look] of looks) {
     const r = roofs[i];
-    const { f, partner: other, T, base } = look;
+    const { partner: other, T } = look;
     const as = forced(r);
     if (as === 'keep') {
       cases.set(r, { kind: 'keep', why: 'override' });
@@ -305,12 +427,19 @@ export function planRoofs(roofs: RoofSpec[], prisms: Prism[], openings: Opening[
       cases.set(r, { kind: 'keep', why: 'panels' });
       continue;
     }
+    if (byModel(i)) {
+      cases.set(r, { kind: 'keep', why: 'model' });
+      continue;
+    }
     const mate = other ? lookOf(other) : null;
-    if (other && mate && mate.partner === r && !mate.taken && !forced(other)) {
+    if (other && mate && mate.partner === r && !mate.taken && !forced(other) && overlap(r, other) <= PAIR_OVERLAP) {
       const d = Math.abs(other.ridge - r.ridge);
       const mean = (r.ridge + other.ridge) / 2;
-      // Windows on either half's own walls, or one looking out over a half that the level top would hide.
-      const fixed = look.glazed || mate.glazed || covers(i, { ...r, ridge: mean }) || covers(indexOf.get(other)!, { ...other, ridge: mean });
+      const j = indexOf.get(other)!;
+      // Windows on either half's own walls, or one looking out over a half (or a neighbour's roof showing through one)
+      // that the level top would hide.
+      const fixed = look.glazed || mate.glazed || covers(i, { ...r, ridge: mean }) || covers(j, { ...other, ridge: mean })
+        || exposes(i, { ...r, ridge: mean }) || exposes(j, { ...other, ridge: mean });
       if (d <= MEET || (d <= LEVEL && !fixed)) {
         cases.set(r, { kind: 'pair', levelled: d > MEET });
         continue; // drawn below, with its partner
@@ -320,20 +449,7 @@ export function planRoofs(roofs: RoofSpec[], prisms: Prism[], openings: Opening[
         continue;
       }
     }
-    const show = r.ridge - Math.max(T, base);
-    const ramp = f.W >= RAMP_W && f.W >= RAMP * f.L;
-    const shape = ramp ? turn(r, look) : close(r, look);
-    if (look.glazed) cases.set(r, { kind: 'keep', why: 'windows' });
-    else if (show <= SHOW) cases.set(r, { kind: 'keep', why: 'lean-to' });
-    else if (r.ridge - r.y < RISE || look.k < FLAT) cases.set(r, { kind: 'keep', why: 'low' });
-    else if (r.ridge - base < STOREY) cases.set(r, { kind: 'keep', why: 'one storey' });
-    else if (covers(i, shape)) cases.set(r, { kind: 'keep', why: 'windows' }); // a window looks out over it
-    else {
-      cases.set(r, { kind: ramp ? 'turn' : 'close' });
-      drawn.set(r, shape);
-    }
-    // A kept slope with something behind up to near its top stops at its high edge.
-    if (cases.get(r)!.kind === 'keep' && T >= r.ridge - TIGHT) drawn.set(r, { ...r, tight: true });
+    decide(i, look, T);
   }
 
   // The pairs: one top (the mean: halves closer than MEET move by at most half of it, windows or not), the tile colour
@@ -355,5 +471,49 @@ export function planRoofs(roofs: RoofSpec[], prisms: Prism[], openings: Opening[
     partner.set(a, b);
     partner.set(b, a);
   }
+
+  // A lean-to is judged again against what is drawn behind it: where the roof it leaned on was closed, turned or
+  // levelled, its high wall may stand free now, and it is decided as any other slope (a few rounds, as one change can
+  // free another).
+  for (let round = 0; round < 3; round++) {
+    let changed = false;
+    for (const [i, look] of looks) {
+      const r = roofs[i];
+      if (cases.get(r)?.why !== 'lean-to') continue;
+      const T = heightBehind(i, true);
+      if (r.ridge - Math.max(T, look.base) <= SHOW) continue;
+      drawn.delete(r);
+      decide(i, look, T);
+      changed = true;
+    }
+    if (!changed) break;
+  }
   return { drawn, cases, partner };
+
+  /** A slope that is no pair: kept, turned or closed, by what stands behind it (`T` high). */
+  function decide(i: number, look: Look, T: number): void {
+    const r = roofs[i];
+    const { f, base } = look;
+    const show = r.ridge - Math.max(T, base);
+    const ramp = f.W >= RAMP_W && f.W >= RAMP * f.L;
+    const shape = ramp ? turn(r, look) : close(r, { ...look, T });
+    if (look.glazed) cases.set(r, { kind: 'keep', why: 'windows' });
+    else if (show <= SHOW) cases.set(r, { kind: 'keep', why: 'lean-to' });
+    else if (r.ridge - r.y < RISE || look.k < FLAT) cases.set(r, { kind: 'keep', why: 'low' });
+    else if (r.ridge - base < STOREY) cases.set(r, { kind: 'keep', why: 'one storey' });
+    else if (covers(i, shape)) cases.set(r, { kind: 'keep', why: 'windows' }); // a window looks out over it
+    else if (exposes(i, shape)) cases.set(r, { kind: 'keep', why: 'neighbour' }); // another roof would show through it
+    else {
+      cases.set(r, { kind: ramp ? 'turn' : 'close' });
+      drawn.set(r, shape);
+    }
+    // A kept slope with something behind up to near its top stops at its high edge.
+    if (cases.get(r)!.kind === 'keep' && T >= r.ridge - TIGHT) drawn.set(r, { ...r, tight: true });
+  }
+}
+
+/** What stands round a set: the whole data it was cut from (main.ts), before our models' houses were taken out. */
+export interface Behind {
+  roofs: RoofSpec[];
+  prisms: Prism[];
 }

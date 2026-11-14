@@ -208,6 +208,11 @@ export interface Surroundings {
   prisms?: Prism[];
   /** The gardens mown in stripes and the meadows, for the grass (world/groundShade.ts) */
   grass?: GrassData;
+  /**
+   * Set on the page (main.ts), never in the data: the whole set this one was cut from, before our models' houses were
+   * taken out. world/roofPlan.ts looks behind a slope in it, so a slope against such a house stays a lean-to.
+   */
+  unfiltered?: Pick<Surroundings, 'roofs' | 'prisms'>;
 }
 
 /** The gardens mown in stripes and the meadows (tools/street.py). */

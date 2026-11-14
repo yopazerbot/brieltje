@@ -504,6 +504,7 @@ const detail = (x: number, z: number) => detailAt.some(([cx, cz]) => Math.hypot(
 // The houses round the two portals at home are our own models (world/homeStreet.ts): their open-data blocks aren't drawn.
 if (house.surroundings) wearLonePatches(house.surroundings); // light patches away from the buildings: worn ground (world/yards.ts)
 const ringData = withoutModelled(house.surroundings ?? { roofs: [], trees: [] });
+if (ringData.kept !== house.surroundings) ringData.kept.unfiltered = house.surroundings; // roofs look behind them there (world/roofPlan.ts)
 const ringTiles = (s: typeof ringData.kept) => [...splitTiles(withRoadDetail(s))].map(([key, t]) => ({ key, pieces: buildTile(t, poles, renderer, house.ground, detail) }));
 // The streets in detail (world/roadDetail.ts) in place of the plain road surface: the ring's now, the village's with it.
 // One surface per spot (world/groundLayers.ts): the house's and the bungalow's own ground claimed first
@@ -4329,6 +4330,7 @@ async function buildVillage(): Promise<void> {
   streetBakes = playing.then(() => Promise.all(models.filter(later).map((m) => bakeLight(m, renderer, Infinity, precompile))));
   for (const m of models) clearOpenGround(data, m.userData.clear as [number, number][][] | undefined); // their forecourts free of trees
   const kept = withoutLandmarks(data, models.map((m) => m.userData.landmark as string), models.flatMap((m) => (m.userData.replaces as Ring[] | undefined) ?? []));
+  kept.unfiltered = data; // the roofs look behind them in the whole village, with the houses our models stand in for (world/roofPlan.ts)
   const drawn = withRoadDetail(kept);
   drawn.prisms?.push(...(await villagePlots(kept, drawn, models, house.ground))); // paths, drives and strips (world/villagePlots.ts): drawn only
   // One surface per spot (world/groundLayers.ts): the covers claimed, then the streets in detail built (cut under the
