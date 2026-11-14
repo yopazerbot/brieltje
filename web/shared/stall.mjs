@@ -102,6 +102,12 @@ export class Stall {
     return out;
   }
 
+  /** `name`'s coins and purchases are gone (another session took the name). */
+  forget(name) {
+    this.coins.delete(name);
+    this.bought.delete(name);
+  }
+
   /** What `name`'s own page is told: { c: coins, n: purchases of each thing }. */
   view(name) {
     return { c: this.of(name), n: [...(this.bought.get(name) ?? STALL.items.map(() => 0))] };

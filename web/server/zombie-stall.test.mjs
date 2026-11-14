@@ -40,6 +40,10 @@ function fixture() {
   z.horde.phase = 'break';
   const a = game.players.get('a');
   const b = game.players.get('b');
+  /** What each page was told as the game began; then the pages' logs start empty */
+  const started = { a: [...a.ws], b: [...b.ws] };
+  a.ws.length = 0;
+  b.ws.length = 0;
   /** A message from `name`'s page, as the socket hands it to the server; the stall's and the shot's rate cleared first unless `keep`. */
   const say = (name, m, keep = false) => {
     const p = game.players.get(name);
@@ -54,7 +58,7 @@ function fixture() {
   const zombie = (id, kind = 0, hp = 1, x = 5) => z.horde.zombies.set(id, { id, kind, x, y: 0, z: 0, yaw: 0, hp, act: 'walk' });
   /** One shot of `w` on zombie `id`: one body hit (a shotgun: one pellet). */
   const shoot = (name, id, w = 'pistol') => say(name, { t: 'zhit', w, hits: [[id, 1, 0]] });
-  return { game, z, all, a, b, say, of, coins, lastCoins, codes, zombie, shoot };
+  return { game, z, all, a, b, started, say, of, coins, lastCoins, codes, zombie, shoot };
 }
 
 /** The kit's numbers and the coins of `name`, to compare before and after. */
@@ -275,18 +279,31 @@ test('7. the server\'s own effect: health on its count, a crate\'s gun that coun
   assert.ok(!all.some((m) => m.t === 'zcoins' || m.code === 'zBonus'));
 });
 
-test('8. rejoin and the wave bonus: kept coins come back; full when standing, half when down, before revive', () => {
+/** A wave begins and is beaten on the horde's own events (wave `n`), with whoever fights at each moment. */
+const wave = (z, n, between = () => {}) => {
+  z.horde.wave = n;
+  z.horde.tick = () => [{ type: 'wave', wave: n, count: 5, big: false, bigs: 0, runners: 0 }];
+  z.tick(Date.now(), 50);
+  between();
+  z.horde.tick = () => [{ type: 'cleared', wave: n }];
+  z.tick(Date.now(), 50);
+  z.horde.tick = () => [];
+};
+
+test('8. the wave bonus: full when standing, half when down, counted before revive, said after the wave line', () => {
   const f = fixture();
   const { game, z, a, b } = f;
+  game.broadcast = (m) => {
+    f.all.push(m);
+    for (const p of game.players.values()) p.ws.push(m); // here everyone hears the wave's own lines, in order
+  };
   game.players.set('c', player(1));
   const c = game.players.get('c');
   c.state.armed = false; // an onlooker
-  z.stall.coins.set('a', 0);
-  b.alive = false;
-  z.down.add('b');
-  z.horde.wave = 3;
-  z.horde.tick = () => [{ type: 'cleared', wave: 3 }];
-  z.tick(Date.now(), 50);
+  wave(z, 3, () => {
+    b.alive = false;
+    z.down.add('b');
+  });
   assert.equal(z.stall.of('a'), 35, 'standing: the full bonus');
   assert.equal(z.stall.of('b'), 17, 'down: half, rounded down');
   assert.equal(z.stall.of('c'), 0, 'an unarmed onlooker: nothing');
@@ -296,18 +313,70 @@ test('8. rejoin and the wave bonus: kept coins come back; full when standing, ha
   assert.deepEqual(line(b).args, { n: 17 });
   assert.equal(line(c), undefined);
   assert.equal(f.lastCoins(b).c, 17);
-  // A dropped connection and back within the game: the page is told its coins and purchases.
+  const codes = f.of(a, 'system').map((m) => m.code);
+  assert.ok(codes.indexOf('zCleared') >= 0 && codes.indexOf('zCleared') < codes.indexOf('zBonus'), `the bonus after "wave beaten": ${codes}`);
+});
+
+test('9. the wave bonus only for who fought in the wave: not from a car, not for arming at the last moment', () => {
+  const f = fixture();
+  const { game, z, a, b } = f;
+  // b sits armed in a car all wave: the horde never counts them.
+  game.inCar = (n) => n === 'b';
+  wave(z, 2);
+  assert.equal(z.stall.of('a'), 30);
+  assert.equal(z.stall.of('b'), 0, 'armed in a car: no bonus');
+  // b gets out, but stays unarmed as the wave begins and arms just before its last zombie falls.
+  delete game.inCar;
+  b.state.armed = false;
+  wave(z, 3, () => (b.state.armed = true));
+  assert.equal(z.stall.of('b'), 0, 'armed at the last moment: no bonus');
+  assert.equal(z.stall.of('a'), 30 + 35);
+  // A fighter as the wave began who sits in a car at its end: nothing either.
+  wave(z, 4, () => (game.inCar = (n) => n === 'a'));
+  delete game.inCar;
+  assert.equal(z.stall.of('a'), 30 + 35);
+  assert.equal(z.stall.of('b'), 40, 'b fought all of wave 4');
+});
+
+test('10. coins belong to a session: another one under the name starts at 0; the same one coming back keeps them', () => {
+  const f = fixture();
+  const { game, z, a } = f;
+  // Every page is told 0 as the game begins (never the last game's coins).
+  assert.deepEqual(f.started.a.filter((m) => m.t === 'zcoins'), [{ t: 'zcoins', c: 0, n: [0, 0, 0, 0, 0, 0] }]);
+  assert.deepEqual(f.started.b.filter((m) => m.t === 'zcoins'), [{ t: 'zcoins', c: 0, n: [0, 0, 0, 0, 0, 0] }]);
+  // A dropped connection and back within the game, the same session: coins and purchases told again.
   z.stall.coins.set('a', 400);
   f.say('a', { t: 'zbuy', k: 'claymore' });
   z.leave('a', a, Date.now());
-  const back = player(0);
+  game.players.delete('a');
+  const back = player(0); // the same key: the same session
   game.players.set('a', back);
   z.join('a', back);
-  const told = f.of(back, 'zcoins').at(-1);
-  assert.deepEqual(told, { t: 'zcoins', c: 250, n: [0, 0, 1, 0, 0, 0] });
-  // Someone with no coins yet hears nothing on joining.
+  assert.deepEqual(f.of(back, 'zcoins').at(-1), { t: 'zcoins', c: 250, n: [0, 0, 1, 0, 0, 0] });
+  // The name taken by another session once that one is gone: it starts at 0, and its prices at the first.
+  z.leave('a', back, Date.now());
+  game.players.delete('a');
+  const other = player(0);
+  other.key = 'someone-else';
+  game.players.set('a', other);
+  z.join('a', other);
+  assert.deepEqual(f.of(other, 'zcoins').at(-1), { t: 'zcoins', c: 0, n: [0, 0, 0, 0, 0, 0] });
+  assert.equal(z.stall.of('a'), 0);
+  // A kill credited to the name while nobody holds it pays the name; a new session still starts clean.
+  z.stall.coins.set('a', 0);
+  game.players.delete('a');
+  f.zombie(1, BIG, 1);
+  z.damage(1, 12, 'a', 'turret', Date.now());
+  assert.equal(z.stall.of('a'), 100);
+  const third = player(0);
+  third.key = 'a-third';
+  game.players.set('a', third);
+  z.join('a', third);
+  assert.equal(z.stall.of('a'), 0);
+  assert.deepEqual(f.of(third, 'zcoins').at(-1), { t: 'zcoins', c: 0, n: [0, 0, 0, 0, 0, 0] });
+  // Someone new hears 0 on joining.
   const d = player(2);
   game.players.set('d', d);
   z.join('d', d);
-  assert.equal(f.of(d, 'zcoins').length, 0);
+  assert.deepEqual(f.of(d, 'zcoins'), [{ t: 'zcoins', c: 0, n: [0, 0, 0, 0, 0, 0] }]);
 });

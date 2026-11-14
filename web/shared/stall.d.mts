@@ -28,6 +28,7 @@ export class Stall {
   add(name: string, n: number): void;
   earn(name: string, zombieKind: number): number;
   cleared(standing: string[], down: string[], wave: number): Map<string, number>;
+  forget(name: string): void;
   view(name: string): StallView;
   buy(
     loot: Loot,

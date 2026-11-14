@@ -78,9 +78,18 @@ export class ZombieGame {
     this.loot = new Loot(nav);
     /** Coins and the stall (shared/stall.mjs): per player name for the game, a dropped connection included */
     this.stall = new Stall();
+    /** Player name -> the session (p.key) its coins belong to: another session under the name starts at 0 (join) */
+    this.purses = new Map();
+    /** Who fought (armed, on foot) when the wave began: only they get its bonus */
+    this.waveFighters = new Set();
     this.horde.start(now);
     /** Who took part (any time in this game), and who is down until the wave is beaten */
     this.players = new Set(names);
+    // Every page starts the game at 0 coins (not the last game's), told to it alone.
+    for (const [name, p] of game.players) {
+      this.purses.set(name, p.key);
+      this.tell(name, p);
+    }
     this.down = new Set();
     /** Player name -> times down in this game (the scoreboard's column) */
     this.downs = Object.create(null);
@@ -165,6 +174,7 @@ export class ZombieGame {
 
   waveStarted(e) {
     this.loot.wave();
+    this.waveFighters = new Set([...this.game.players].filter(([n, p]) => this.fights(n, p)).map(([n]) => n));
     const code = e.bigs > 1 ? 'zWaveBigs' : e.big ? 'zWaveBig' : 'zWave';
     const more = e.bigs > 1 ? ' Big ones are with them!' : e.big ? ' A big one is with them!' : '';
     this.modes.say(`Wave ${e.wave}: ${e.count} zombies are coming!${more}`, code, { n: e.wave, count: e.count });
@@ -220,9 +230,10 @@ export class ZombieGame {
           g.npcDamage(e.name, p, p.hp, now, 'a zombie');
         }
       } else if (e.type === 'cleared') {
-        this.bonus(e.wave); // before revive: who is down now gets the down share
+        const paid = this.bonus(e.wave); // before revive: who is down now gets the down share
         this.revive();
         this.modes.say(`Wave ${e.wave} beaten! The next one comes in 15 seconds.`, 'zCleared', { n: e.wave });
+        this.paid(paid); // each one's bonus line after the wave's own
         changed = true;
       } else if (e.type === 'gone') {
         g.broadcast({ t: 'zgone', ids: e.ids });
@@ -265,6 +276,7 @@ export class ZombieGame {
     const got = this.loot.take(name, { x: s.x, y: s.y, z: s.z, w: s.w, hp: p.hp, guns: [...(p.weapons ?? [])] }, m.id, now);
     if (!got) return;
     this.handOver(name, p, got);
+    this.modes.send(); // the item is gone for everyone
   }
 
   /** `name` (player `p`) got `got` (picked up, or bought at the stall): its effect on the server, and their page told. */
@@ -274,7 +286,11 @@ export class ZombieGame {
     if (got.kind === 'medkit') p.hp = Math.min(LOOT.health, p.hp + got.heal);
     else if (got.kind === 'gun') p.weapons.add(got.w);
     g.send(p.ws, { t: 'zgift', kind: got.kind, w: got.w, kit: got.kit, ...(got.kind === 'medkit' ? { hp: p.hp } : {}) });
-    this.modes.send();
+  }
+
+  /** Whether `name` (player `p`) fights as the horde counts it (roster): armed, on foot. */
+  fights(name, p) {
+    return !!p?.state?.armed && !this.game.inCar(name);
   }
 
   /** `name`'s own page (and no other) gets their coins and what they bought: { t: 'zcoins', c, n }. */
@@ -283,18 +299,24 @@ export class ZombieGame {
   }
 
   /**
-   * Wave `wave` is beaten: the wave bonus (shared/stall.mjs) for everyone who fights, the full one for
-   * who stands, the down share for who is down; each hears their own in a line of their own.
+   * Wave `wave` is beaten: the wave bonus (shared/stall.mjs) for who fought in it (a fighter as the horde
+   * counts them when it began: arming at its last moment, or sitting in a car, earns nothing), the full one
+   * for who stands and fights now, the down share for who is down. Returns name -> what each got (paid).
    */
   bonus(wave) {
     const standing = [];
     const down = [];
     for (const [name, p] of this.game.players) {
-      if (!p.state?.armed) continue;
+      if (!this.waveFighters.has(name)) continue;
       if (this.down.has(name)) down.push(name);
-      else if (p.alive) standing.push(name);
+      else if (p.alive && this.fights(name, p)) standing.push(name);
     }
-    for (const [name, n] of this.stall.cleared(standing, down, wave)) {
+    return this.stall.cleared(standing, down, wave);
+  }
+
+  /** Each one their own bonus line (bonus), and their coins. */
+  paid(got) {
+    for (const [name, n] of got) {
       const p = this.game.players.get(name);
       if (!p) continue;
       this.game.send(p.ws, { t: 'system', text: `Wave bonus: +${n} coins. The stall is open until the next wave.`, code: 'zBonus', args: { n } });
@@ -319,7 +341,7 @@ export class ZombieGame {
     if (!sold(k)) return;
     const s = p.state;
     const r = this.stall.buy(this.loot, name, { x: s.x, y: s.y, z: s.z, w: s.w, hp: p.hp, guns: [...(p.weapons ?? [])] }, k, this.horde.phase, now);
-    if (r.got) this.handOver(name, p, r.got);
+    if (r.got) this.handOver(name, p, r.got); // nothing public changed: no view for everyone
     else {
       const why = { shut: ['zStallShut', 'The stall is shut during a wave.'], short: ['zStallShort', "You don't have enough coins for that."], full: ['zStallFull', 'You have enough of that.'] }[r.why];
       if (why) g.send(p.ws, { t: 'system', text: why[1], code: why[0] });
@@ -631,7 +653,7 @@ export class ZombieGame {
       this.stall.earn(by, z.kind);
       this.tell(by);
     }
-    const fighters =[...this.game.players].filter(([, p]) => p.state?.armed).map(([n]) => n);
+    const fighters = [...this.game.players].filter(([, p]) => p.state?.armed).map(([n]) => n);
     if (z) this.loot.drop(z, Date.now(), this.horde.left === 0, fighters);
     this.modes.send();
   }
@@ -654,11 +676,14 @@ export class ZombieGame {
   join(name, p) {
     this.players.add(name);
     if (this.away.get(name)?.key !== p?.key) this.away.delete(name);
+    // Coins belong to a session, not a name: another session under a name that left starts at 0.
+    if (p && this.purses.has(name) && this.purses.get(name) !== p.key) this.stall.forget(name);
+    if (p) this.purses.set(name, p.key);
     this.horde.fieldAt = -Infinity;
     // Out of the place (just joined, at the house's start places): to its start, not just inside its edge (maybe in a wall).
     if (p?.state && !this.edge.inside(p.state.x, p.state.z) && !this.down.has(name)) this.game.gather([name], this.arena);
     if (p && this.loot.kits.has(name)) this.game.send(p.ws, { t: 'zgift', kind: 'kit', kit: this.loot.kit(name) }); // back: what they had
-    if (p && this.stall.coins.has(name)) this.tell(name, p); // and their coins
+    if (p) this.tell(name, p); // and their coins (0 when none: never the last game's)
     if (this.down.has(name) && this.horde.phase === 'wave' && p) {
       p.alive = false;
       p.hp = 0;
