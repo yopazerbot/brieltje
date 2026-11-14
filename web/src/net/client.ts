@@ -98,7 +98,7 @@ export type ServerMsg =
       /** Of `homes`, those this player's account opens for good (server/homes.mjs byAccount) */
       accountHomes?: string[];
       players: { name: string; color: string; role: string }[]; scores: Score[]; limit: number; round: { winner: string; ms: number } | null; items: boolean[];
-      time: number; cats: number[]; clowns?: ClownSpec[]; furniture: Piece[]; rules?: Rules; cars?: CarState[]; horses?: HorseState[]; bikes?: BikeState[]; mode?: ModeView;
+      time: number; cats: number[]; vils?: [number, number][]; vilPaint?: [number, string, number][]; clowns?: ClownSpec[]; furniture: Piece[]; rules?: Rules; cars?: CarState[]; horses?: HorseState[]; bikes?: BikeState[]; mode?: ModeView;
       /**
        * The weather and time of day for everyone (shared/moods.mjs), and the cycle Auto follows with the server's time;
        * missing from an older server. Checked where they are used (world/weather.ts).
@@ -153,6 +153,7 @@ export type ServerMsg =
   | { t: 'kill'; killer: string; victim: string; head: boolean; w: string }
   | { t: 'item'; i: number; ready: boolean; by?: string }
   | { t: 'cat'; i: number; by: string; ms: number; w: string }
+  | { t: 'vil'; ids: number[]; by: string; ms: number; w: string; paint: boolean }
   | { t: 'furn'; op: 'put'; f: Piece }
   | { t: 'furn'; op: 'del'; id: number }
   | { t: 'furn'; op: 'all'; list: Piece[]; by: string; reset: boolean }
