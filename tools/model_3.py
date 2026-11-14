@@ -41,6 +41,9 @@ import bpy
 from mathutils import Matrix, Vector
 from mathutils.bvhtree import BVHTree
 
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+import car_parts as cp  # noqa: E402
+
 argv = sys.argv[sys.argv.index("--") + 1:]
 OUT = argv[0]
 PREVIEW = os.path.abspath(argv[1]) if len(argv) > 1 else ""  # absolute: Blender resolves relative render paths elsewhere
@@ -123,8 +126,8 @@ BOTTOM = curve([(0.0, 0.232), (0.02, 0.216), (0.05, 0.207), (0.10, 0.199), (0.20
 # Plan, from the drawing: half the body's width (a pointed nose, the front fenders and the rear haunches
 # wider than the doors, a rounded tail), and half the width of the hood, the roof or the deck.
 WIDTH = curve([(0.0, 0.142), (0.02, 0.298), (0.05, 0.434), (0.10, 0.540), (0.15, 0.615), (0.20, 0.678), (0.30, 0.778),
-               (0.40, 0.866), (0.50, 0.906), (0.60, 0.918), (0.80, 0.925), (1.00, 0.925), (1.20, 0.922), (1.40, 0.914),
-               (1.60, 0.906), (2.00, 0.905), (2.80, 0.905), (3.20, 0.907), (3.50, 0.918), (3.80, 0.925), (4.00, 0.922),
+               (0.40, 0.862), (0.50, 0.900), (0.60, 0.910), (0.80, 0.915), (1.00, 0.915), (1.20, 0.914), (1.40, 0.910),
+               (1.60, 0.905), (2.00, 0.905), (2.80, 0.905), (3.20, 0.907), (3.50, 0.912), (3.80, 0.915), (4.00, 0.914),
                (4.20, 0.890), (4.30, 0.851), (4.40, 0.817), (4.50, 0.762), (4.60, 0.640), (4.65, 0.534), (4.68, 0.45),
                (4.70, 0.327), (4.72, 0.12)])
 ROOF = curve([(0.0, 0.10), (0.10, 0.40), (0.20, 0.53), (0.30, 0.61), (0.45, 0.69), (0.70, 0.73), (1.00, 0.735),
@@ -236,6 +239,7 @@ MAT = {
     # Metallic base (dark in the shade, blue sheen in the light) under a glossy clear coat.
     "Paint": material("Paint", PAINT, 0.30, 0.75, coat=1.0),
     "Glass": material("Glass", (0.008, 0.009, 0.011), 0.03, 0.0),
+    "GlassDark": material("GlassDark", (0.004, 0.005, 0.006), 0.03, 0.0),
     "Trim": material("Trim", (0.02, 0.02, 0.02), 0.55),
     "Tyre": material("Tyre", (0.015, 0.015, 0.015), 0.85),
     "Rim": material("Rim", (0.50, 0.51, 0.53), 0.28, 0.9),
@@ -285,25 +289,34 @@ for ring, flip in ((rings[0], True), (rings[-1], False)):
         f = (ring[i], ring[(i + 1) % n], mid)
         bm.faces.new(f[::-1] if flip else f)
 bmesh.ops.recalc_face_normals(bm, faces=bm.faces)
-for f in bm.faces:
-    c = f.calc_center_median()
-    u = L / 2 - c.y
-    x, z = abs(c.x), c.z
+U_WS = 2.185       # the windshield's top edge: the dark roof glass behind it
+U_B = 2.635        # the B-pillar: clear glass in front of it, dark glass behind
+
+
+def body_material(u, x, z, nz):
+    """The material of a face of the body at (u, |x|, z) with its normal's height nz."""
     bl = min(belt(u), TOP(u))
-    name = "Paint"
     if GREENHOUSE[0] + 0.004 < u < GREENHOUSE[1] - 0.004 and z > bl + 0.012 and TOP(u) - bl > 0.012:
         info = section(u)[2]
+        top = "Glass" if u < U_WS else "GlassDark"
         if x < info["wr"] + 0.005:
-            name = "Glass"  # windshield, glass roof, rear glass
-        elif x < info["tx"] + 0.004:
+            return top  # windshield, glass roof, rear glass
+        if x < info["tx"] + 0.004:
             # The thin painted strip between the side glass and the roof glass: the A-pillars, the roof
             # rails, the rear glass's edges (the inner half of the corner is glass too).
-            name = "Paint" if x > info["wr"] + 0.022 else "Glass"
-        elif x < info["lx"] - 0.003 and A_FOOT < u < U_QW:
-            name = "Glass"  # side windows
-    elif f.normal.z < -0.6:
-        name = "Trim"  # underside
-    f.material_index = ORDER.index(name)
+            return "Paint" if x > info["wr"] + 0.022 else top
+        if x < info["lx"] - 0.003 and A_FOOT < u < U_QW:
+            return "Glass" if u < U_B else "GlassDark"  # side windows
+        return "Paint"
+    if nz < -0.6:
+        return "Trim"  # underside
+    return "Paint"
+
+
+cp.flare(bm, (L / 2 - U_F, L / 2 - U_R), TYRE_R, ARCH_R, 0.010)
+for f in bm.faces:
+    c = f.calc_center_median()
+    f.material_index = ORDER.index(body_material(L / 2 - c.y, abs(c.x), c.z, f.normal.z))
 mesh = bpy.data.meshes.new("Body")
 bm.to_mesh(mesh)
 bm.free()
@@ -328,7 +341,18 @@ for u in (U_F, U_R):
             mod.material_mode = "TRANSFER"
         apply(body, mod)
         bpy.data.objects.remove(cut)
-body.data.set_sharp_from_angle(angle=math.radians(65))
+cp.Cuts().apply(body, MAT, ORDER)  # tidies the slots the arch cuts added
+# Panel gaps are cut into the body as grooves (5 mm wide, 4 mm deep), once the details are laid on it.
+cuts = cp.Cuts()
+
+
+def groove(hits, closed=False):
+    hits = [h for h in hits if h]
+    if closed and hits:
+        hits = hits + hits[:2]
+    # Its walls are matt black: painted, they caught the sky and glinted as dotted lines.
+    cuts.add(cp.bar(hits, 0.005, 0.004, extend=0.002), "Gap")
+
 
 # ---- Everything else is built into one more mesh, mostly laid on the body's surface.
 deps = bpy.context.evaluated_depsgraph_get()
@@ -473,17 +497,30 @@ def panel(B, ray, a_vals, b_fn, mat, out=0.003, skirt=0.003):
     centre /= count
     loop = [(0, j) for j in range(nb)] + [(i, nb - 1) for i in range(1, na)] + \
            [(na - 1, j) for j in range(nb - 2, -1, -1)] + [(i, 0) for i in range(na - 2, 0, -1)]
+    # The edge slopes down to the surface a little outside the panel (a bevel, not a wall): a thin wall
+    # facing the sky would catch it and glint as a dotted line from a few metres.
+    edges = [((i0, j0), (i1, j1)) for (i0, j0), (i1, j1) in zip(loop, loop[1:] + loop[:1]) if V[i0][j0] and V[i1][j1]]
+    away = {}
+    for k0, k1 in edges:
+        c0, c1 = V[k0[0]][k0[1]], V[k1[0]][k1[1]]
+        e = c1[0].co - c0[0].co
+        o = c0[1][1].cross(e)
+        if o.dot((c0[0].co + c1[0].co) / 2 - centre) < 0:
+            o = -o
+        if o.length > 1e-9:
+            o.normalize()
+        for k in (k0, k1):
+            away[k] = away.get(k, Vector()) + o
     low = {}
-    for (i0, j0), (i1, j1) in zip(loop, loop[1:] + loop[:1]):
-        c0, c1 = V[i0][j0], V[i1][j1]
-        if not c0 or not c1:
-            continue
-        for key_, c in (((i0, j0), c0), ((i1, j1), c1)):
+    for k0, k1 in edges:
+        c0, c1 = V[k0[0]][k0[1]], V[k1[0]][k1[1]]
+        for key_, c in ((k0, c0), (k1, c1)):
             if key_ not in low:
                 p, nrm = c[1]
-                low[key_] = B.v(p - nrm * 0.002)
+                o = away[key_].normalized() if away[key_].length > 1e-9 else Vector()
+                low[key_] = B.v(p - nrm * 0.002 + o * min(2.5 * out, 0.012))
         mid = (c0[0].co + c1[0].co) / 2
-        B.face((c0[0], c1[0], low[(i1, j1)], low[(i0, j0)]), mat, mid - centre)
+        B.face((c0[0], c1[0], low[k1], low[k0]), mat, mid - centre)
 
 
 def rounded_panel(B, ray, ca, cb, wa, wb, r, mat, na=12, nb=6, out=0.003, skirt=0.003):
@@ -566,17 +603,16 @@ for s in (-1, 1):
     panel(B, FRONT, across(s * hl_a(0.5), s * hl_a(0.95), 12), lambda a: across(hl_top(a) - 0.026, hl_top(a) - 0.014, 1),
           "Chrome", out=0.0050, skirt=0)
 # The hood's front gap across the nose, then along the lamps' tops to where the hood's sides turn back.
-ribbon(B, [FRONT(a, 0.652 - 0.006 * (1 - (a / HL[0]) ** 2)) for a in across(-HL[0], HL[0], 56)], 0.012, "Gap", out=0.003)
+groove([FRONT(a, 0.652 - 0.006 * (1 - (a / HL[0]) ** 2)) for a in across(-HL[0], HL[0], 30)])
 for s in (-1, 1):
     hood_corner = angle_at(FRONT, 0.60, 0.70)
     edge = [FRONT(a, hl_top(a) + 0.006) for a in across(s * HL[0], s * hood_corner, 14)]
     edge = [h for h in edge if h]
     u_join = L / 2 - edge[-1][0].y
-    edge += [top_ray(u, s * (key(u, "wr") + 0.004)) for u in across(u_join + 0.03, 1.25, 40)]
-    ribbon(B, edge, 0.012, "Gap", out=0.003)
+    edge += [top_ray(u, s * (key(u, "wr") + 0.004)) for u in across(u_join + 0.03, 1.25, 26)]
+    groove(edge)
     # Where the bumper meets the front fender: from the lamp's outer end back to the arch.
-    ribbon(B, [side_ray(s)(u, z) for u, z in dense([(0.38, 0.705), (0.47, 0.668), (0.56, 0.648), (0.64, 0.632)], 0.02)],
-           0.012, "Gap", out=0.003)
+    groove([side_ray(s)(u, z) for u, z in dense([(0.38, 0.705), (0.47, 0.668), (0.56, 0.648), (0.64, 0.632)], 0.035)])
 # Lower intake: a narrow black slot with rounded ends across the bumper, its mesh bars.
 SLOT = angle_at(FRONT, 0.58, 0.287)
 slot_h = lambda a: 0.025 * math.sqrt(clamp01(1 - (abs(a) / SLOT) ** 8))
@@ -631,8 +667,8 @@ for s in (-1, 1):
                  [(2.635, lz(2.635)), (2.640, 0.80), (2.636, 0.50), (2.628, 0.28)],
                  [(3.60, lz(3.60)), (3.655, 0.95), (3.625, 0.84), (3.50, 0.69), (3.37, 0.55), (3.25, 0.44), (3.12, 0.345),
                   (3.02, 0.29), (2.99, 0.28)]):
-        ribbon(B, [side(u, z) for u, z in dense(line, 0.02)], 0.012, "Gap", out=0.003)
-    ribbon(B, [side(u, 0.28) for u in across(1.44, 2.99, 40)], 0.012, "Gap", out=0.003)
+        groove([side(u, z) for u, z in dense(line, 0.035)])
+    groove([side(u, 0.28) for u in across(1.44, 2.99, 30)])
     # Black window frames: along the glass's foot and its top edge, the B-pillar (leaning back), the divider
     # in front of the quarter window and the quarter window's tip.
     ribbon(B, [side(u, lz(u) + 0.002) for u in across(A_FOOT + 0.015, U_QW_EDGE, 80)], 0.02, "LampGlass", out=0.003)
@@ -646,18 +682,16 @@ for s in (-1, 1):
     ribbon(B, [side(U_QW_EDGE, z) for z in across(lz(U_QW_EDGE), tz(U_QW_EDGE) - 0.006, 4)], 0.02, "LampGlass", out=0.003)
     # Flush door handles: a body-coloured bar in a dark outline, a pocket at its front end.
     for cu, cz in ((2.555, 0.852), (3.52, 0.898)):
-        ribbon(B, [side(u, z) for u, z in rounded_rect(cu, cz, 0.178, 0.032, 0.013)], 0.008, "Gap", out=0.0022, closed=True)
         rounded_panel(B, side, cu, cz, 0.170, 0.024, 0.010, "Paint", out=0.0035, skirt=0.0035)
         rounded_panel(B, side, cu - 0.062, cz, 0.038, 0.018, 0.007, "Gap", na=6, nb=3, out=0.0042, skirt=0)
     # Side camera on the front fender, behind the arch: a small dark wedge.
     panel(B, side, across(1.09, 1.22, 8), lambda u: across(0.728 + (u - 1.09) * 0.14, 0.764 - (u - 1.09) * 0.10, 2),
           "LampGlass", out=0.004, skirt=0.004)
     # Where the rear bumper meets the quarter panel: down from the tail light, then forward to the arch.
-    ribbon(B, [side(u, z) for u, z in dense([(4.43, 0.95), (4.432, 0.75), (4.425, 0.632), (4.38, 0.605), (4.20, 0.60),
-                                             (4.03, 0.60)], 0.02)], 0.012, "Gap", out=0.003)
+    groove([side(u, z) for u, z in dense([(4.43, 0.95), (4.432, 0.75), (4.425, 0.632), (4.38, 0.605), (4.20, 0.60),
+                                          (4.03, 0.60)], 0.035)])
 # Charge port flap, in the left tail light's outer part.
-ribbon(B, [side_ray(-1)(u, z) for u, z in rounded_rect(4.525, 0.915, 0.13, 0.09, 0.02, 4)], 0.008, "Gap",
-       out=0.0052, closed=True)
+groove([side_ray(-1)(u, z) for u, z in rounded_rect(4.525, 0.915, 0.13, 0.09, 0.02, 3)], closed=True)
 
 # ---- Rear: the lip spoiler on the boot lid, the C-shaped tail lights, the lid's gaps, the plate and the
 # black diffuser with its reflector.
@@ -724,10 +758,10 @@ for s in (-1, 1):
           "Reflector", out=0.0052, skirt=0)
 # Boot lid: its sides along the deck and down the tail face, its bottom edge above the bumper.
 for s in (-1, 1):
-    ribbon(B, [top_ray(u, s * (key(u, "wr") + 0.012)) for u in across(4.20, deck_end(0.5) - 0.01, 24)], 0.012, "Gap", out=0.003)
-    ribbon(B, [back_ray(s * x, z) for x, z in dense([(0.60, 1.02), (0.595, 0.92), (0.585, 0.80), (0.565, 0.70), (0.53, 0.656),
-                                                     (0.48, 0.646)], 0.012)], 0.012, "Gap", out=0.003)
-ribbon(B, [back_ray(x, 0.646) for x in across(-0.48, 0.48, 36)], 0.012, "Gap", out=0.003)
+    groove([top_ray(u, s * (key(u, "wr") + 0.012)) for u in across(4.20, deck_end(0.5) - 0.01, 14)])
+    groove([back_ray(s * x, z) for x, z in dense([(0.60, 1.02), (0.595, 0.92), (0.585, 0.80), (0.565, 0.70), (0.53, 0.656),
+                                                  (0.48, 0.646)], 0.03)])
+groove([back_ray(x, 0.646) for x in across(-0.48, 0.48, 24)])
 # The plate in a shallow recess on the lid, the rear camera above it.
 rounded_panel(B, back_ray, 0.0, 0.74, 0.565, 0.14, 0.016, "Gap", na=20, nb=4, out=0.0045, skirt=0)
 rounded_panel(B, back_ray, 0.0, 0.74, 0.52, 0.11, 0.008, "Plate", na=16, nb=3, out=0.0072, skirt=0.0025)
@@ -885,94 +919,23 @@ for x in (-0.42, 0.0, 0.42):
     rbox(B, "Interior", (0.24, 0.075, 0.13), 0.03, place(x, 3.84, 1.10, 24))
 rbox(B, "Interior", (1.18, 0.30, 0.025), 0.01, place(0.0, 3.93, 1.05, -6), segs=1)
 
+# ---- Arches: a body-coloured lip round each.
+for u in (U_F, U_R):
+    for s in (-1, 1):
+        cp.arch_lip(panel, B, side_ray(s), u, TYRE_R, ARCH_R, 0.024, "Paint", out=0.005)
+
 details = B.obj()
+details.data.set_sharp_from_angle(angle=math.radians(50))
+cuts.apply(body, MAT, ORDER)
 bpy.ops.object.select_all(action="DESELECT")
 body.select_set(True)
 details.select_set(True)
 bpy.context.view_layer.objects.active = body
 bpy.ops.object.join()
-body.data.set_sharp_from_angle(angle=math.radians(65))
+cp.weighted_normals(body)
 
-
-# ---- Wheels: one mesh for all four. A 235/40 R19 tyre with a rounded sidewall and three tread grooves; a
-# two-tone 19-inch wheel with five pairs of spokes (silver faces, dark sides) in front of a dark barrel; the
-# brake disc behind (it rolls with the wheel).
-def wheel_mesh():
-    W = Builder("Wheel")
-    seg = 56
-
-    def ring(x, r, n):
-        return [W.v((x, r * math.cos(2 * math.pi * k / n), r * math.sin(2 * math.pi * k / n))) for k in range(n)]
-
-    def loft(profile, mat, n=seg, right=True, centre=None):
-        """Turn an (x, r) profile round the axle. Its outside is on the right of the walking direction
-        (or the left); `centre` closes the first ring with a cap at that x."""
-        rs = [ring(x, r, n) for x, r in profile]
-        if centre is not None:
-            c = W.v((centre, 0, 0))
-            for k in range(n):
-                W.face((c, rs[0][k], rs[0][(k + 1) % n]), mat, Vector((1, 0, 0)))
-        for (xa, ra), (xb, rb), a, b in zip(profile, profile[1:], rs, rs[1:]):
-            nx, nr = (rb - ra, -(xb - xa)) if right else (-(rb - ra), xb - xa)
-            for k in range(n):
-                th = 2 * math.pi * (k + 0.5) / n
-                W.face((a[k], a[(k + 1) % n], b[(k + 1) % n], b[k]), mat, Vector((nx, nr * math.cos(th), nr * math.sin(th))))
-        return rs
-
-    # Tyre, from the outer bead over the shoulder, across the tread with three grooves, to the inner bead.
-    tread = []
-    for gx in (0.041, 0.0, -0.041):
-        tread += [(gx + 0.0042, 0.3353), (gx + 0.0042, 0.3293), (gx - 0.0042, 0.3293), (gx - 0.0042, 0.3353)]
-    loft([(0.0957, 0.2475), (0.1058, 0.2588), (0.1136, 0.2742), (0.1173, 0.2912), (0.1155, 0.3074), (0.1095, 0.3196),
-          (0.0994, 0.3289), (0.0865, 0.3340), (0.0736, 0.3353)] + tread +
-         [(-0.0736, 0.3353), (-0.0957, 0.3305), (-0.1113, 0.3172), (-0.1173, 0.2912), (-0.1104, 0.2652), (-0.0957, 0.2475)],
-         "Tyre")
-    # Rim: the flange (the bright lip round the spokes), then the dark barrel going in, closed at the back.
-    loft([(0.0957, 0.2485), (0.1035, 0.2455), (0.1053, 0.239), (0.1021, 0.2335), (0.092, 0.231)], "Rim", right=False)
-    back = loft([(0.092, 0.231), (-0.087, 0.231)], "RimDark", right=False)[-1]
-    W.face(back, "RimDark", Vector((1, 0, 0)))  # the hub side, seen through the spokes
-    # Five pairs of spokes: each pair grows from one root at the hub and opens into a V towards the lip;
-    # straight blades, narrow at the hub and wide at the lip, folded along a ridge.
-    for sp in range(10):
-        pair, side = divmod(sp, 2)
-        side = 1 if side else -1
-        a0 = 2 * math.pi * pair / 5
-        root = Vector((math.cos(a0 + side * 0.03), math.sin(a0 + side * 0.03))) * 0.05
-        tip = Vector((math.cos(a0 + side * 0.175 + 0.04), math.sin(a0 + side * 0.175 + 0.04))) * 0.2335
-        pts = []
-        for i in range(7):
-            t = i / 6
-            c = root.lerp(tip, t)
-            r = c.length
-            ang = math.atan2(c.y, c.x)
-            hw = (0.0068 + 0.0195 * t ** 1.1) / r
-            xf = 0.081 + 0.016 * t
-            cs = lambda a_, rr=r: (rr * math.cos(a_), rr * math.sin(a_))
-            ridge = ang + side * 0.3 * hw  # the fold sits towards the outside of the V
-            front = [(xf - 0.008, *cs(ang - hw)), (xf, *cs(ridge)), (xf - 0.008, *cs(ang + hw))]
-            rear = [(xf - 0.028, *cs(ang - hw)), (xf - 0.028, *cs(ang + hw))]
-            pts.append(([W.v(p) for p in front], [W.v(p) for p in rear], ang))
-        for (f0, b0, g0), (f1, b1, g1) in zip(pts, pts[1:]):
-            gm = (g0 + g1) / 2
-            tang = Vector((0, -math.sin(gm), math.cos(gm)))
-            W.face((f0[0], f1[0], f1[1], f0[1]), "Rim", Vector((1, 0, 0)) - tang * 0.5)
-            W.face((f0[1], f1[1], f1[2], f0[2]), "Rim", Vector((1, 0, 0)) + tang * 0.5)
-            W.face((f0[0], b0[0], b1[0], f1[0]), "RimDark", -tang)
-            W.face((f0[2], f1[2], b1[1], b0[1]), "RimDark", tang)
-            W.face((b0[0], b0[1], b1[1], b1[0]), "RimDark", Vector((-1, 0, 0)))
-    # Hub: a shallow dome with a plain dark centre cap.
-    loft([(0.0845, 0.02), (0.0839, 0.034), (0.083, 0.046)], "RimDark", n=30, centre=0.0848)
-    loft([(0.083, 0.046), (0.0814, 0.056), (0.0754, 0.064), (0.055, 0.064)], "Rim", n=30)
-    # Brake disc with its hat, behind the spokes.
-    loft([(0.033, 0.098), (-0.004, 0.106), (-0.004, 0.162), (-0.028, 0.162)], "Disc", n=48, centre=0.033)
-    me_obj = W.obj()
-    me = me_obj.data
-    bpy.data.objects.remove(me_obj)
-    me.set_sharp_from_angle(angle=math.radians(40))
-    return me
-
-
-wheel_data = wheel_mesh()
+# ---- Wheels: one mesh for all four: a 235/45 R18 tyre and a flat black aero cover with five swept blades.
+wheel_data = cp.aero_wheel(Builder, TYRE_R, 0.235, 0.2286, seg=40, spokes=5, sweep=0.55)
 wheels = []
 for name, s, u in (("Wheel_FL", -1, U_F), ("Wheel_FR", 1, U_F), ("Wheel_RL", -1, U_R), ("Wheel_RR", 1, U_R)):
     obj = link(bpy.data.objects.new(name, wheel_data))
@@ -981,15 +944,46 @@ for name, s, u in (("Wheel_FL", -1, U_F), ("Wheel_FR", 1, U_F), ("Wheel_RL", -1,
         obj.rotation_euler = (0, 0, math.pi)  # the wheel's face looks out on the left too
     wheels.append(obj)
 
-tris = sum(len(p.vertices) - 2 for o in [body, *wheels] for p in o.data.polygons)
-print(f"model_3: {tris} triangles (body {sum(len(p.vertices) - 2 for p in body.data.polygons)})")
+bpy.context.view_layer.update()
 
+# ---- Far off: the same body at a few rings and points, plain wheels, the lamps as strips.
+def far_material(u, x, z, nrm):
+    if u is None:
+        return ORDER.index("Trim")
+    name = body_material(u, x, z, nrm.z)
+    return ORDER.index("GlassDark" if name.startswith("Glass") else name)
+
+
+far_us = [L_BODY * (1 - math.cos(math.pi * i / 35)) / 2 for i in range(36)]
+far_me = cp.far_car("Far", L, lambda u: section(u)[0], far_us, 20, far_material,
+                    [(s * 0.929, L / 2 - u) for u in (U_F, U_R) for s in (-1, 1)], TYRE_R)
+for m in MAT.values():
+    far_me.materials.append(m)
+far = link(bpy.data.objects.new("Far", far_me))
+FB = Builder("FarLamps")
+for s in (-1, 1):
+    ribbon(FB, [FRONT(a, 0.66) for a in across(s * HL[0], s * HL[1], 6)], 0.02, "LightBar", out=0.012)
+    ribbon(FB, [REAR(a, 0.93) for a in across(s * TL[0], s * TL[1], 6)], 0.03, "TailLight", out=0.012)
+fl = FB.obj()
 bpy.ops.object.select_all(action="DESELECT")
-for o in [body, *wheels]:
-    o.select_set(True)
-os.makedirs(os.path.dirname(os.path.abspath(OUT)), exist_ok=True)
-bpy.ops.export_scene.gltf(filepath=OUT, export_format="GLB", use_selection=True, export_apply=True, export_yup=True,
-                          export_texcoords=False, export_cameras=False, export_lights=False)
+far.select_set(True)
+fl.select_set(True)
+bpy.context.view_layer.objects.active = far
+bpy.ops.object.join()
+far.data.set_sharp_from_angle(angle=math.radians(60))
+
+# ---- Shade: the car on itself and on the ground under it, the wheels on themselves, the far copy.
+cp.bake_ao([body], blockers=wheels)
+cp.bake_ao([wheels[1]], ground=False)
+cp.bake_ao([far])
+
+body_tris = cp.triangles([body])
+wheel_tris = cp.triangles([wheels[0]])
+print(f"model_3: {body_tris + 4 * wheel_tris} triangles near (body and cabin {body_tris}, wheel {wheel_tris} each); "
+      f"far {cp.triangles([far])}")
+cp.export([body, *wheels, far], OUT)
+print(f"model_3: {os.path.getsize(OUT)} bytes")
+far.hide_render = True
 
 # ---- Preview renders: front and rear three-quarter, side, top, straight front and back, a wheel close up,
 # the cabin through the driver's window, orthographic side, front, back and top views at a known scale to
@@ -997,10 +991,10 @@ bpy.ops.export_scene.gltf(filepath=OUT, export_format="GLB", use_selection=True,
 if PREVIEW:
     scene = bpy.context.scene
     scene.render.engine = "BLENDER_EEVEE"
-    scene.eevee.taa_render_samples = 48
+    scene.eevee.taa_render_samples = 24
     if hasattr(scene.eevee, "use_raytracing"):
         scene.eevee.use_raytracing = True
-    scene.render.resolution_x, scene.render.resolution_y = 1280, 720
+    scene.render.resolution_x, scene.render.resolution_y = 800, 450
     # Sky above, a bright horizon and dark ground below, so the paint has something to reflect.
     world = bpy.data.worlds.new("Sky")
     world.use_nodes = True
@@ -1036,8 +1030,8 @@ if PREVIEW:
     scene.camera = cam
     os.makedirs(PREVIEW, exist_ok=True)
     only = set(os.environ.get("VIEWS", "").split(",")) - {""}
-    # Orthographic views: (label, location, rotation, metres across the image). The side and top at 232.7 px
-    # per metre, the front and back at 426.7, the ground 0.72 m under the middle of the image.
+    # Orthographic views: (label, location, rotation, metres across the image). The side and top at 145.5 px
+    # per metre, the front and back at 266.7, the ground 0.72 m under the middle of the image.
     ortho = {"side_ortho": ((20, 0, 0.72), (math.pi / 2, 0, math.pi / 2), 5.5),
              "front_ortho": ((0, 20, 0.72), (math.pi / 2, 0, math.pi), 3.0),
              "rear_ortho": ((0, -20, 0.72), (math.pi / 2, 0, 0), 3.0),
