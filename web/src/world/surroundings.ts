@@ -18,6 +18,9 @@ import { cardCrown, cardTrunk, crownFit, FORK, HEIGHT, Kind, KINDS, spotHash, TR
 import { hedgeCardMesh, hedgeCardPieces } from './hedgeCards';
 import { barkMaterial, cardsBuilt, enlist, leafCardMaterial, plainForBake, switchTrees } from './leafCards';
 import { reflectionSkips } from './reflections';
+import { chimney, chimneyRoofs, roofFrame } from './houseTrim';
+import { houseStyle } from './houseStyle';
+import { snowy } from './snowCover';
 
 /**
  * Around the plot, from Flemish open data (GRB footprints, DHM laser heights;
@@ -67,7 +70,8 @@ enlist([], [leafMat, barkMat]);
 // The ground's baked shade (world/groundShade.ts) takes no cut-out shapes: the smooth crowns throw it for the cards.
 bakeStandIns.add(plainForBake);
 const gutterMat = new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.4, metalness: 0.55 });
-const frameMat = new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.55 });
+// Snow lies on what faces up: sills, chimney caps, doorsteps (world/snowCover.ts).
+const frameMat = snowy(new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.55 }));
 // Opaque and glossy: from outside, windows mostly mirror the sky over what hangs behind them (world/windows.ts).
 const paneMat = paneMaterial();
 const postMat = new THREE.MeshStandardMaterial({ color: '#cfccc4', roughness: 0.9 });
@@ -545,18 +549,32 @@ export function buildTile(data: TileData, poles: Pole[], renderer: THREE.WebGLRe
   // underside (back faces) differ.
   const tiles = material('tiles', () => glazeable(Object.assign(tintedMaterial('roof_tiles', '#ffffff', renderer, THREE.DoubleSide), { vertexColors: true })));
   const gutterGeos: THREE.BufferGeometry[] = [];
+  // The house under a roof: the walls round the middle of its outline.
+  const keyOf = (r: RoofSpec) => {
+    const [cx, cz] = r.p.reduce(([x, z], q) => [x + q[0] / r.p.length, z + q[1] / r.p.length], [0, 0]);
+    return houses.at(cx, cz, r.wall);
+  };
+  // Each house's chimney goes on its largest roof that can carry one (world/houseTrim.ts).
+  const chimneys = chimneyRoofs(data.roofs, data.prisms ?? [], keyOf);
   for (const r of data.roofs) {
     const g = roof(r);
     if (g.gutters) gutterGeos.push(g.gutters);
     const side = r.ceiling ? THREE.FrontSide : THREE.DoubleSide;
     const tint = r.tiles ?? '#4a3f3a';
-    // The house under the roof: the walls round the middle of its outline.
-    const [cx, cz] = r.p.reduce(([x, z], q) => [x + q[0] / r.p.length, z + q[1] / r.p.length], [0, 0]);
-    const key = houses.at(cx, cz, r.wall);
+    const key = keyOf(r);
+    const style = houseStyle(key, r.wall ?? '', !!r.wall && isBrick(r.wall) && brickLook(r.wall, key).render === 1);
     if (r.ceiling) put(material(`tiles|${tint}|${side}`, () => tintedMaterial('roof_tiles', tint, renderer, side)), g.roof, 'nb_roof');
     else {
       const look = roofLook(tint, key);
       put(tiles, byteAttribute(paint(g.roof, look.color), 'gloss', look.gloss), 'nb_roof');
+    }
+    const ch = chimneys.has(r) ? style.chimney : null;
+    if (ch) {
+      // The stack in the walls' brick and shade, as a wall; its cap and pots with the frames.
+      const { stack, parts: cap } = chimney(r, roofFrame(r), ch);
+      const { material: mat, tag } = blockMaterial(r.wall!, renderer);
+      put(renderable(mat), walls(r.wall!, key, prismGeometry(stack)), tag);
+      for (const part of cap) put(frameMat, part, 'alu', false, undefined, true);
     }
     if (r.wall) {
       const { material: mat, tint: brick, tag } = blockMaterial(r.wall, renderer);
