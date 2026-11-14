@@ -6,6 +6,7 @@ import type { World } from './collision';
 import { daylight } from './daylight';
 import { mood } from './mood';
 import { rewardSign } from './rewards';
+import { ITEM_X, ITEM_Z, stallPick } from './stallAim';
 
 /**
  * The market stall at the Zombies place (shared/stall.mjs STALL_SPOTS) while a game runs there: a wooden table
@@ -31,15 +32,10 @@ const C = {
   dark: '#2a2622',
   bulbOff: '#4a4438',
 };
-/** Where each thing lies on the table, in STALL.items order: from the buyer's left (+x) to right. */
-const ITEM_X = STALL.items.map((_, i) => 1.0 - 0.4 * i);
-const ITEM_Z = -0.05;
 const ITEM_FIT = 0.34;
 const BULB = new THREE.Vector3(0, 1.75, -0.3);
 /** The lamp's light on the goods: from the front and above */
 const LAMP_DIR = new THREE.Vector3(0, 0.89, -0.45).normalize();
-/** rad: how far from where you face a thing may be and still be the one you face */
-const AIM = 0.5;
 const KEY = 'stall';
 
 /** One part with a colour on its vertices: position, normal and colour only, not indexed (they all merge). */
@@ -213,22 +209,8 @@ export class MarketStall {
   aim(x: number, feet: number, z: number, yaw: number): StallKind | 'shut' | null {
     const s = this.spot;
     if (!s || (!this.group.visible && !this.mute)) return null; // hidden (muted for the checks: still there)
-    if (Math.hypot(x - s.x, z - s.z) > STALL.near || Math.abs(feet - this.ground) > 1) return null;
-    const cos = Math.cos(s.yaw), sin = Math.sin(s.yaw);
-    let best = -1;
-    let bestA = AIM;
-    for (let i = 0; i < ITEM_X.length; i++) {
-      // The local (x, z) turned by the yaw, as three.js turns the group: x' = x cos + z sin, z' = -x sin + z cos.
-      const ix = s.x + ITEM_X[i] * cos + ITEM_Z * sin;
-      const iz = s.z - ITEM_X[i] * sin + ITEM_Z * cos;
-      const want = Math.atan2(-(ix - x), -(iz - z)); // the game's yaw that looks at it
-      let d = want - yaw;
-      d = Math.atan2(Math.sin(d), Math.cos(d));
-      if (Math.abs(d) < bestA) {
-        bestA = Math.abs(d);
-        best = i;
-      }
-    }
+    if (Math.abs(feet - this.ground) > 1) return null;
+    const best = stallPick(s, x, z, yaw); // in front or behind, never from an end (world/stallAim.ts)
     if (best < 0) return null;
     return this.open ? STALL.items[best][0] : 'shut';
   }
