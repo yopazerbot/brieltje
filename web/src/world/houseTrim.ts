@@ -364,7 +364,8 @@ export function roofExtras(r: RoofSpec, f: RoofFrame, style: HouseStyle, taken: 
     const glass = new THREE.Color('#0d1218');
     const n = normal(s);
     const u = S * 0.5;
-    for (const a of places) {      windows.push(slopeQuad([at(s, a - 0.39, u - 0.59, 0.03), at(s, a + 0.39, u - 0.59, 0.03), at(s, a + 0.39, u + 0.59, 0.03), at(s, a - 0.39, u + 0.59, 0.03)], n, frame));
+    for (const a of places) {
+      windows.push(slopeQuad([at(s, a - 0.39, u - 0.59, 0.03), at(s, a + 0.39, u - 0.59, 0.03), at(s, a + 0.39, u + 0.59, 0.03), at(s, a - 0.39, u + 0.59, 0.03)], n, frame));
       windows.push(slopeQuad([at(s, a - 0.33, u - 0.53, 0.045), at(s, a + 0.33, u - 0.53, 0.045), at(s, a + 0.33, u + 0.53, 0.045), at(s, a - 0.33, u + 0.53, 0.045)], n, glass));
     }
   }
@@ -630,14 +631,16 @@ export function openingTrim(o: Opening, d: THREE.Vector3, n: THREE.Vector3, w: n
       // Only where the wall goes on and no other opening is in the way.
       const back = ctx.houses.wallAt(edge.x - n.x * 0.3, edge.z - n.z * 0.3);
       if (!back || back.key !== house.key || blocked(ctx.list, o, centre, d, n, w / 2, y0, y1)) continue;
-      parts.push(face(centre, d, n, w / 2, h + 0.1, colour));    }
+      parts.push(face(centre, d, n, w / 2, h + 0.1, colour));
+    }
   }
   if (style.rollers) {
     const down = rollerDown(mid.x, mid.y, mid.z);
     if (down > 0) {
       // Strips 16 cm high with a centimetre between them, down from the top of the window.
       const colour = new THREE.Color(style.rollers);
-      const reach = down * h;      for (let top = y1; top > y1 - reach + 1e-3; top -= 0.17) {
+      const reach = down * h;
+      for (let top = y1; top > y1 - reach + 1e-3; top -= 0.17) {
         const strip = Math.min(0.16, top - (y1 - reach));
         parts.push(face(out(0.075, top - strip / 2), d, n, w, strip, colour));
       }
