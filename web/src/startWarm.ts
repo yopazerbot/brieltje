@@ -36,10 +36,14 @@ export function playBegins(): void {
   begun = true;
 }
 
+/** The frame (its start, from `tick`) whose SLICE_MS a job has had: one slice a frame for all the jobs together */
+let sliceFrame = -1;
+
 /**
  * Waits for the next slice of a job and says how long it may work (ms). Before play: at once, FLAT_MS. After play:
- * after a frame is drawn, SLICE_MS, and never just after a long frame. The jobs that take it: the shot index
- * (world/shotRaycast.ts), the leaf cards' pictures (world/leafCards.ts), the map's village (ui/bigmap.ts).
+ * after a frame is drawn, SLICE_MS, shared: one job a frame (the others wait for the frames after), and never just
+ * after a long frame. The jobs that take it: the shot index (world/shotRaycast.ts), the leaf cards' pictures
+ * (world/leafCards.ts), the map's village (ui/bigmap.ts).
  */
 export async function pace(): Promise<number> {
   if (!begun) {
@@ -52,7 +56,9 @@ export async function pace(): Promise<number> {
   }
   for (;;) {
     await new Promise((r) => requestAnimationFrame(() => setTimeout(r, 0)));
-    if (!long()) return SLICE_MS;
+    if (long() || sliceFrame === lastFrame) continue;
+    sliceFrame = lastFrame;
+    return SLICE_MS;
   }
 }
 
@@ -129,24 +135,22 @@ export class StartWarm {
   /**
    * Draws each view until no new shader program or texture comes, two frames in a row take under QUICK_MS and `busy`
    * (the glass's probe in the middle of its views) is over; MAX_FRAMES at most. Stops at `until` (the page's clock).
-   * `step` is told how many views are done.
+   * `step` is told how many views are done. `cancel` stops it after the frame being drawn.
    */
-  async frames(views: (() => void)[], info: THREE.WebGLInfo, busy: () => boolean, until: number, step: (done: number) => void): Promise<{ frames: number; ms: number }> {
-    const t0 = performance.now();
-    let count = 0;
+  async frames(views: (() => void)[], info: THREE.WebGLInfo, busy: () => boolean, until: number, step: (done: number) => void): Promise<void> {
+    this.cancelled = false;
     // No frame drawn by then (a hidden page draws none): play begins all the same.
     let timer = 0;
-    const late = new Promise<null>((r) => (timer = window.setTimeout(() => r(null), Math.max(0, until - t0))));
+    const late = new Promise<null>((r) => (timer = window.setTimeout(() => r(null), Math.max(0, until - performance.now()))));
     try {
-      for (let i = 0; i < views.length && performance.now() < until; i++) {
+      for (let i = 0; i < views.length && performance.now() < until && !this.cancelled; i++) {
         this.view = views[i];
         let programs = -1;
         let textures = -1;
         let quick = 0;
         for (let n = 0; n < MAX_FRAMES; n++) {
           const ms = await Promise.race([new Promise<number>((r) => (this.drawn = r)), late]);
-          if (ms === null) return { frames: count, ms: performance.now() - t0 };
-          count++;
+          if (ms === null || this.cancelled) return;
           const p = info.programs?.length ?? 0;
           const grew = p !== programs || info.memory.textures !== textures;
           programs = p;
@@ -162,6 +166,12 @@ export class StartWarm {
       this.view = null;
       this.drawn = null;
     }
-    return { frames: count, ms: performance.now() - t0 };
+  }
+
+  private cancelled = false;
+
+  /** Stop the warm-up after the frame being drawn (main.ts: something else placed the player meanwhile). */
+  cancel(): void {
+    this.cancelled = true;
   }
 }

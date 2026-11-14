@@ -236,10 +236,14 @@ function getReady(share: number, text?: () => string): void {
 const clickedAt = performance.now();
 /** At most this long (ms) for everything else once the world is in (src/startWarm.ts); then play begins and it goes on. */
 const START_WAIT = 20000;
+// The server takes a 'spawn' (the start place, the drop) only in the first 90 s after joining (server/game.mjs): this
+// leaves 30 s to spare. Raise both or neither.
 const PHONE_WAIT = 60000;
 const warm = new StartWarm();
 /** In the warm-up's views where you stand on the ground: the gun in your hands drawn too. */
 let warmGun = false;
+/** A Zombies start's game has begun (the villagers stay off until then, and are not loaded for it). */
+let zombiesBegan = false;
 let worldReady = false;
 function loaded(): void {
   if (worldReady) return; // the time limit, and Auto chosen again later in the settings, come here too
@@ -289,7 +293,7 @@ async function getEverythingReady(at: Portal | null, zombiesStart: boolean): Pro
   const drop = !zombiesStart && rules.parachute !== false && !watch;
   const text = () => t(village === 'ready' ? 'load.ready' : 'load.progress');
   getReady(0, text);
-  performance.mark('briel:ready');
+  performance.mark('briel:ready'); // the world is in; then 'briel:warm' and 'briel:play' (tools/dev/loadtime.mjs prints the three parts)
   await gather([
     loadVillage().then(() => villageAfter),
     life.load(precompile), // the gardens' things, birds and the mower
@@ -303,10 +307,14 @@ async function getEverythingReady(at: Portal | null, zombiesStart: boolean): Pro
       return precompile(scene);
     }, pace),
   ], until, (share) => getReady(share * 0.85, text));
+  // A start at a village place waits for the village itself whatever the time (its blocks, ponds and portals): only
+  // the rest has the limit. A village that fails says so (loadVillage), and play begins at the place without it.
+  if (at?.village) await loadVillage().catch(() => undefined);
   await Promise.race([precompile(scene), new Promise((r) => setTimeout(r, Math.max(0, until - performance.now())))]);
   performance.mark('briel:warm');
   if (!menu.onStartScreen || performance.now() >= until) {
     warm.hold(() => player.update(0, NO_INPUT, camera)); // no warm-up, but the camera where play begins (see below)
+    performance.mark('briel:play');
     return;
   }
   // The warm-up: where play begins, at eye height, four ways round; then the drop's first view, your figure under its
@@ -314,16 +322,30 @@ async function getEverythingReady(at: Portal | null, zombiesStart: boolean): Pro
   const keep = { x: player.x, z: player.z, feet: player.feet, yaw: player.yaw, pitch: player.pitch };
   const [x, z, yaw] = at ? at.out : drop ? [HOME_DROP.x, HOME_DROP.z, HOME_DROP.yaw] : [keep.x, keep.z, keep.yaw];
   const feet = at || drop ? groundY(x, z) : keep.feet;
-  const views = [0, 1, 2, 3].map((k) => () => {
+  // Where the warm-up last put you: anything else that places you meanwhile (the server: a refused start place, a
+  // respawn) stops the warm-up, and its place is kept.
+  let placed: { x: number; z: number; feet: number } | null = null;
+  let movedAway = false;
+  const elsewhere = () => !!placed && (Math.abs(player.x - placed.x) > 1e-3 || Math.abs(player.z - placed.z) > 1e-3 || Math.abs(player.feet - placed.feet) > 1e-3);
+  const ours = (put: () => void) => () => {
+    if (movedAway || elsewhere()) {
+      movedAway = true;
+      warm.cancel();
+      return;
+    }
+    put();
+    placed = { x: player.x, z: player.z, feet: player.feet };
+  };
+  const views = [0, 1, 2, 3].map((k) => ours(() => {
     warmGun = true;
     player.place(x, z, feet, yaw + (k * Math.PI) / 2, 0);
     player.update(0, NO_INPUT, camera);
-  });
+  }));
   if (drop) {
     let dropping = false;
     // From your eyes as the drop begins, then from behind as it goes on.
     for (const behind of [false, true]) {
-      views.push(() => {
+      views.push(ours(() => {
         warmGun = false;
         if (!dropping) {
           dropping = true;
@@ -332,18 +354,20 @@ async function getEverythingReady(at: Portal | null, zombiesStart: boolean): Pro
         }
         player.update(0, NO_INPUT, camera);
         if (behind) dropView.update(5, camera, player, parachutes.has('', ownFigure));
-      });
+      }));
     }
   }
   try {
     await warm.frames(views, renderer.info, () => glassProbe.midSet, until, (done) => getReady(0.85 + (0.15 * done) / views.length, () => t('load.ready')));
   } finally {
     // Back as it was: the camera in your eyes (as the drop begins), the warm-up's parachute taken away (given no figure,
-    // world/parachutes.ts lets it go) and you where you stood. Play begins from there (begin in loaded).
+    // world/parachutes.ts lets it go) and you where you stood, unless something else placed you meanwhile. Play begins
+    // from there (begin in loaded).
     warmGun = false;
+    if (elsewhere()) movedAway = true;
     dropView.update(60, camera, { ...keep, chute: null, canopy: null, air: 0, steer: 0 }, false);
     parachutes.fly('', myChute, null, myColour(), false, false, 0, 0, camera.position);
-    player.place(keep.x, keep.z, keep.feet, keep.yaw, keep.pitch);
+    if (!movedAway) player.place(keep.x, keep.z, keep.feet, keep.yaw, keep.pitch);
     player.update(0, NO_INPUT, camera);
     // Until play begins, the camera stays where play begins (in your eyes, as begin places you), not on the house.
     warm.hold(() => player.update(0, NO_INPUT, camera));
@@ -3446,7 +3470,10 @@ renderer.setAnimationLoop((now: number) => {
   // screen included. In Action a grown-up can be shot, in Paintball painted (Yoshi, 14 Nov 2026; world/villagers.ts).
   // They are built before play begins (getEverythingReady), and out for the warm-up's frames behind the start screen
   // too (src/startWarm.ts), so their shaders are used once before play.
-  const villagersOut = (!menu.onStartScreen || (warm.on && startIntent.zombies === null)) && games.view.kind !== 'zombies';
+  // A Zombies start (alone, or a room) keeps them off until its game has begun and is over: never loaded for it.
+  if (games.view.kind === 'zombies') zombiesBegan = true;
+  const zombiesComing = startIntent.zombies !== null && !zombiesBegan;
+  const villagersOut = (!menu.onStartScreen || warm.on) && !zombiesComing && games.view.kind !== 'zombies';
   villagers.setActive(villagersOut);
   sinterklaas.setActive(villagersOut && seasonNow().sinterklaas); // the same rule
   sintMaarten.setActive(villagersOut && seasonNow().sintMaarten, seasonNow().sintMaartenEve);
@@ -4094,6 +4121,7 @@ void playing.then(() => {
   playBegan = performance.now();
   playBegins(); // what is left of getting ready goes on a little a frame (src/startWarm.ts)
   warm.hold(null);
+  sound.setWorld(true); // the world is heard from now on, not behind the start screen (src/sound.ts)
   // Your guns from the start, and the picker to change them (Action and Paintball, alone or together).
   if (!net.connected && !games.zombies) weapon.setOwned(startGuns());
   // The picker a second later (the guns are yours from the first frame): opened as the start screen went, the two
@@ -4701,7 +4729,7 @@ if (import.meta.env.DEV) {
       weatherAhead: (seconds: number) => weather.forward(seconds),
       weatherState: () => weather.state(),
       /** Where the ears are for the echo, the echo's send and the walls' cutoff now (world/acoustics.ts). */
-      acoustics: () => ({ room: roomSound.room, ...sound.echoState(), walls: sound.wallsCutoff(), ctx: sound.context()?.state ?? null }),
+      acoustics: () => ({ room: roomSound.room, ...sound.echoState(), walls: sound.wallsCutoff(), ctx: sound.context()?.state ?? null, world: sound.worldLevel() }),
       bells: roadLife.bells,
       tiles,
       home,

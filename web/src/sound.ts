@@ -11,6 +11,10 @@ import type * as THREE from 'three';
  * convolver, so every sound gets it without knowing. Sounds from out of doors go
  * through `outside()` (or are placed outdoors with `at`), which muffles them while
  * you are inside. The music (src/music.ts) has a gain of its own at the master volume, without either.
+ *
+ * The world's sounds (`out`, `outside`, `at`) pass one more gain, silent until play begins (main.ts `setWorld`): the
+ * world is built and drawn behind the start screen (src/startWarm.ts), and none of it is to be heard there. The start
+ * screen's own sounds go straight to the master volume (`screen`); the music does not pass the world's gain either.
  */
 
 const KEY = 'briel.sound';
@@ -22,6 +26,8 @@ try {
 }
 let ctx: AudioContext | null = null;
 let master: GainNode | null = null;
+let world: GainNode | null = null; // the world's sounds, into `master`: silent until play begins
+let worldOn = false;
 let outdoors: GainNode | null = null; // out-of-doors sounds, into `walls`
 let walls: BiquadFilterNode | null = null; // the walls and windows between them and you: a lowpass, open outside
 let musicOut: GainNode | null = null; // the music (src/music.ts): the master volume, but no echo and no walls
@@ -68,12 +74,15 @@ export const sound = {
       master = ctx.createGain();
       master.gain.value = volume;
       master.connect(ctx.destination);
+      world = ctx.createGain();
+      world.gain.value = worldOn ? 1 : 0;
+      world.connect(master);
       walls = ctx.createBiquadFilter();
       walls.type = 'lowpass';
       walls.frequency.value = 20000;
       walls.Q.value = 0.5;
       outdoors = ctx.createGain();
-      outdoors.connect(walls).connect(master);
+      outdoors.connect(walls).connect(world);
       musicOut = ctx.createGain();
       musicOut.gain.value = volume;
       musicOut.connect(ctx.destination);
@@ -84,9 +93,22 @@ export const sound = {
   musicOut(): GainNode | null {
     return this.context() ? musicOut : null;
   },
-  /** Where sounds without a place go (your own gun, your steps): the master volume. */
+  /** Where sounds without a place go (your own gun, your steps): the world's sounds, then the master volume. */
   out(): AudioNode | null {
+    return this.context() ? world : null;
+  },
+  /** The start screen's own sounds: the master volume, heard before play begins too. */
+  screen(): AudioNode | null {
     return this.context() ? master : null;
+  },
+  /** Whether the world is heard: off until play begins (main.ts), faded in over a moment. */
+  setWorld(on: boolean): void {
+    worldOn = on;
+    if (ctx && world) world.gain.setTargetAtTime(on ? 1 : 0, ctx.currentTime, 0.1);
+  },
+  /** Dev build: the world's gain now (0 before play begins), for checking headless (no sound is played there). */
+  worldLevel(): number {
+    return world?.gain.value ?? (worldOn ? 1 : 0);
   },
   /** Where sounds of out of doors without a place go (the wind, the rain): muffled while you are inside. */
   outside(): AudioNode | null {
@@ -155,7 +177,7 @@ export const sound = {
    */
   at(x: number, y: number, z: number, ref = 2): AudioNode | null {
     const c = this.context();
-    if (!c || !master || !outdoors) return null;
+    if (!c || !world || !outdoors) return null;
     const p = c.createPanner();
     p.panningModel = 'HRTF';
     p.distanceModel = 'inverse';
@@ -165,7 +187,7 @@ export const sound = {
     p.positionX.value = x;
     p.positionY.value = y;
     p.positionZ.value = z;
-    p.connect(indoorSpot && !indoorSpot(x, y, z) ? outdoors : master);
+    p.connect(indoorSpot && !indoorSpot(x, y, z) ? outdoors : world);
     return p;
   },
   setVolume(v: number): void {
