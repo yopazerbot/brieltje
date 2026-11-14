@@ -11,6 +11,7 @@ import { LOOT } from '../shared/loot.mjs';
 import { priceOf, STALL, stallSpot } from '../shared/stall.mjs';
 import { BIG, makeNav, RUNNER } from '../shared/zombies.mjs';
 import { Game } from './game.mjs';
+import { Rooms } from './rooms.mjs';
 import { ZombieGame } from './zombies.mjs';
 
 const GRENADE = JSON.parse(readFileSync(new URL('../shared/grenade.json', import.meta.url), 'utf8'));
@@ -447,5 +448,66 @@ test('12. the real ground: every place\'s stall stands where the zombies cannot'
     assert.equal(s.x, stallSpot(a.id).x);
     assert.equal(s.z, stallSpot(a.id).z);
     assert.equal(g.nav.walkable(s.x, s.z), false, `${a.id}: its square is shut`);
+  }
+});
+
+test('13. two games at once: the open world\'s at the house and a room\'s at the church; each sells only at its own stall', () => {
+  const auth = { log() {}, addressOf: () => '192.0.2.1', session: () => null, store: { saveZombieRun: async () => true, addStats: async () => {}, setMeta: async () => {} } };
+  const main = new Game(auth);
+  const made = [];
+  const rooms = new Rooms(main, (room) => {
+    const g = new Game(auth, undefined, room);
+    made.push(g);
+    return g;
+  });
+  try {
+    const { id } = rooms.create({ username: 'bert', role: 'player' }, 'church').room;
+    const room = rooms.rooms.get(id).game;
+    /** A Zombies game in the break at `place` in `game`, its one player `name`, 500 coins; their page's messages logged. */
+    const zombiesIn = (game, place, name) => {
+      game.send = (ws, m) => ws?.push(m);
+      game.broadcast = () => {};
+      game.stats = () => {};
+      game.players.set(name, player(0));
+      const z = new ZombieGame(game, game.modes, [name], Date.now(), arenaOf(place));
+      game.modes.state = { kind: 'zombies', phase: 'break', until: 0, z };
+      z.horde.phase = 'break';
+      z.stall.coins.set(name, 500);
+      return z;
+    };
+    const zMain = zombiesIn(main, 'house', 'anna');
+    const zRoom = zombiesIn(room, 'church', 'bert');
+    const house = zMain.stallAt, church = zRoom.stallAt;
+    assert.ok(house && church && Math.hypot(house.x - church.x, house.z - church.z) > 100, 'two stalls far apart');
+    /** `name` in `game` stands at `at` and buys a claymore: the codes their page got back. */
+    const buyAt = (game, name, at) => {
+      const p = game.players.get(name);
+      Object.assign(p.state, { x: at.x + 1, y: at.y, z: at.z });
+      p.ws.length = 0;
+      p.nextBuy = 0;
+      game.handle(name, p, JSON.stringify({ t: 'zbuy', k: 'claymore' }));
+      return p.ws.filter((m) => m.t === 'system').map((m) => m.code);
+    };
+    // At the other game's stall: refused, nothing charged, nothing given, the other game untouched.
+    assert.deepEqual(buyAt(main, 'anna', church), ['zStallFar'], 'anna (open world) at the room\'s stall');
+    assert.deepEqual(buyAt(room, 'bert', house), ['zStallFar'], 'bert (room) at the open world\'s stall');
+    assert.equal(zMain.stall.of('anna'), 500);
+    assert.equal(zRoom.stall.of('bert'), 500);
+    assert.equal(zMain.loot.kit('anna').claymores, 0);
+    assert.equal(zRoom.loot.kit('bert').claymores, 0);
+    // At their own: bought, in their own game only.
+    assert.deepEqual(buyAt(main, 'anna', house), []);
+    assert.deepEqual(buyAt(room, 'bert', church), []);
+    assert.equal(zMain.stall.of('anna'), 500 - priceOf('claymore', 0));
+    assert.equal(zRoom.stall.of('bert'), 500 - priceOf('claymore', 0));
+    assert.equal(zMain.loot.kit('anna').claymores, 1);
+    assert.equal(zRoom.loot.kit('bert').claymores, 1);
+    assert.equal(zMain.stall.of('bert') + zRoom.stall.of('anna'), 0, 'neither game knows the other\'s player');
+    assert.equal(zRoom.loot.kits.has('anna') || zMain.loot.kits.has('bert'), false);
+  } finally {
+    for (const g of [main, ...made]) {
+      g.players.clear(); // their pages are logs here, not sockets to close
+      g.close();
+    }
   }
 });
