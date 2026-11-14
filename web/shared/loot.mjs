@@ -245,37 +245,47 @@ export class Loot {
     const it = this.items.get(id);
     if (!it || now >= it.until) return null;
     if (Math.hypot(p.x - it.x, p.z - it.z) > LOOT.reach || Math.abs(p.y - it.y) > LOOT.rise) return null;
+    const got = this.give(name, p, it.kind, now, it);
+    if (got) this.items.delete(id);
+    return got;
+  }
+
+  /**
+   * Player `name` (at `p`, as for take) gets one `kind` without an item on the ground (picked up by take,
+   * bought at the stall): the same refusals and the same effect. `at`: where a music box plays. What they
+   * got, or null.
+   */
+  give(name, p, kind, now, at = p) {
     const k = this.kit(name);
-    if (it.kind === 'scope' && k.scope) return null;
-    if (it.kind === 'claymore' && k.claymores >= LOOT.carry) return null;
-    if (it.kind === 'stakes' && k.stakes >= LOOT.stakesCarry) return null;
-    if (it.kind === 'turret' && k.turrets >= 1) return null;
-    if (it.kind === 'armor' && k.armor >= LOOT.armor) return null;
-    if (it.kind === 'nades' && k.nades >= LOOT.nadesCarry) return null;
-    if (it.kind === 'medkit' && !(Number.isFinite(p.hp) && LOOT.health - p.hp >= LOOT.healMin)) return null;
-    const lacking = it.kind === 'gun' && Array.isArray(p.guns) ? LOOT.guns.filter((g) => !p.guns.includes(g)) : [];
-    if (it.kind === 'gun' && !lacking.length) return null;
-    this.items.delete(id);
+    if (kind === 'scope' && k.scope) return null;
+    if (kind === 'claymore' && k.claymores >= LOOT.carry) return null;
+    if (kind === 'stakes' && k.stakes >= LOOT.stakesCarry) return null;
+    if (kind === 'turret' && k.turrets >= 1) return null;
+    if (kind === 'armor' && k.armor >= LOOT.armor) return null;
+    if (kind === 'nades' && k.nades >= LOOT.nadesCarry) return null;
+    if (kind === 'medkit' && !(Number.isFinite(p.hp) && LOOT.health - p.hp >= LOOT.healMin)) return null;
+    const lacking = kind === 'gun' && Array.isArray(p.guns) ? LOOT.guns.filter((g) => !p.guns.includes(g)) : [];
+    if (kind === 'gun' && !lacking.length) return null;
     let w;
     let heal;
-    if (it.kind === 'scope') k.scope = true;
-    else if (it.kind === 'claymore') k.claymores++;
-    else if (it.kind === 'stakes') k.stakes = Math.min(LOOT.stakesCarry, k.stakes + LOOT.bundle);
-    else if (it.kind === 'turret') k.turrets = 1;
-    else if (it.kind === 'armor') k.armor = LOOT.armor;
-    else if (it.kind === 'nades') k.nades = Math.min(LOOT.nadesCarry, k.nades + LOOT.nades);
-    else if (it.kind === 'medkit') heal = Math.min(LOOT.heal, LOOT.health - p.hp);
-    else if (it.kind === 'gun') w = lacking[Math.min(lacking.length - 1, Math.floor(this.rand() * lacking.length))];
-    else if (it.kind === 'lull') {
+    if (kind === 'scope') k.scope = true;
+    else if (kind === 'claymore') k.claymores++;
+    else if (kind === 'stakes') k.stakes = Math.min(LOOT.stakesCarry, k.stakes + LOOT.bundle);
+    else if (kind === 'turret') k.turrets = 1;
+    else if (kind === 'armor') k.armor = LOOT.armor;
+    else if (kind === 'nades') k.nades = Math.min(LOOT.nadesCarry, k.nades + LOOT.nades);
+    else if (kind === 'medkit') heal = Math.min(LOOT.heal, LOOT.health - p.hp);
+    else if (kind === 'gun') w = lacking[Math.min(lacking.length - 1, Math.floor(this.rand() * lacking.length))];
+    else if (kind === 'lull') {
       // It plays where it lay, not where its taker goes; the oldest stops when too many play.
       while (this.lulls.size >= LOOT.lullsAll) this.lulls.delete(this.lulls.keys().next().value);
-      const l = { id: this.nextId++, x: it.x, y: it.y, z: it.z, until: now + LOOT.lullMs };
+      const l = { id: this.nextId++, x: at.x, y: at.y, z: at.z, until: now + LOOT.lullMs };
       this.lulls.set(l.id, l);
     } else {
       w = p.w;
       if (!k.ammo.includes(p.w)) k.ammo.push(p.w);
     }
-    return { kind: it.kind, w, heal, kit: k };
+    return { kind, w, heal, kit: k };
   }
 
   /**

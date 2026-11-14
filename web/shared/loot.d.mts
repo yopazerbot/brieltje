@@ -156,6 +156,7 @@ export class Loot {
   wave(): void;
   drop(z: Zombie, now: number, last?: boolean, fighters?: string[]): Item[];
   take(name: string, p: { x: number; y: number; z: number; w: string; hp?: number; guns?: string[] }, id: number, now: number): { kind: LootKind; w?: string; heal?: number; kit: Kit } | null;
+  give(name: string, p: { x: number; y: number; z: number; w: string; hp?: number; guns?: string[] }, kind: LootKind, now: number, at?: { x: number; y: number; z: number }): { kind: LootKind; w?: string; heal?: number; kit: Kit } | null;
   place(name: string, p: { x: number; y: number; z: number }, at: At, now: number): { mine?: Mine; why?: 'none' | 'max' | 'spot' };
   spot(p: { x: number; y: number; z: number }, at: At): (At & { node: number }) | null;
   placeStakes(name: string, p: { x: number; y: number; z: number }, at: At): { row?: Row; why?: 'none' | 'max' | 'spot' };
