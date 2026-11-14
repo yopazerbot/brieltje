@@ -25,6 +25,7 @@ The whole project was made with AI. Yoshi Parlevliet, a cybersecurity consultant
 - **LAN nights.** Up to 32 players at once. Double-click `lan.cmd` to host on your own computer in Docker: it asks for an admin password, and players type https://lan.brieltje.be (Caddy in front of the game, with a real certificate; `lan.cmd -Http` for plain http on the computer's address). Watch players on `/admin/watch/`: one, or up to four side by side, to put on a projector. The host runs the evening from `/admin/host/`: lock the doors, announce on every screen, freeze everyone, bring players to you, mute, a word filter, teams for the evening, a programme of games with a countdown, and tonight's scoreboard per player and per team, also on the big screen.
 - **Grass and leaves.** Blades of grass on lawns and verges round you, short where mown and taller in rough grass, and fallen autumn leaves under the trees (Medium and up).
 - **Worn roads.** Repair patches, tar-sealed cracks and the seam down the middle of the asphalt streets.
+- **Streets that look used.** Silt in the gutters, kerbstones with joints, rust-brown drains. Earth and grass creep over the edges of roads, pavements and drives. Molenhoek has its light concrete edging beside the red cycle lanes.
 
 ## Recent updates — 8 November 2026
 
@@ -57,7 +58,7 @@ The whole project was made with AI. Yoshi Parlevliet, a cybersecurity consultant
 - **A calmer menu.** The settings are grouped (display, sound, weather, on screen, moving and looking, language and keyboard), and only what applies to the way you play is shown. A small Beta mark replaces "Work in progress".
 - **Bikes.** Thirteen city bikes stand by the main house, at the bungalow and in racks at the portals. Get on with Use, pedal up to 25 km/h (slower uphill, faster downhill), lean into the corners and ring the bell.
 - **Football.** A ball and two small goals on the school's playground, and a ball on the back lawn. Walk into it to dribble, press Use to kick. Together, the server keeps the ball, so everyone sees the same game.
-- **Villagers.** In Explore, invented villagers walk the pavements, cycle the red lanes, walk their dogs, chat and wave. In Action, Paintball and Zombies they are gone.
+- **Villagers.** Invented villagers walk the pavements, cycle the red lanes, walk their dogs, chat and wave. Everyone sees the same ones in the same place. In Action a shot fells one for 40 seconds: a cartoon tumble, no blood, no points. In Paintball the paint sticks to their clothes. Never a child, a dog, a parent with a child or anyone at the school. In Zombies they are gone.
 - **Water.** Wade through ditches, swim in the ponds, splash, and watch the rain ring the water.
 - **New start pictures.** Smetlede at night, Molenhoek in the rain, and a parachute over the church square at dusk.
 - **Dusk and snow.** Two more weather moods: a low golden sun turning into blue hour, and snow that whitens roofs and fields (on Auto only in winter, and rarely).

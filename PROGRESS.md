@@ -1,8 +1,10 @@
 # Progress
 
-Last update: 2026-11-11
+Last update: 2026-11-14
 
 <!-- The handover: rewrite these four at the end of every session (AGENTS.md, "Working efficiently"). Keep each short. -->
+
+**New on 14 Nov (streets and villagers):** the streets look used: silt in the gutters, kerbstones with joints, rust-brown drains, each stretch of kerb and pavement its own shade (`world/roadDetail.ts`); earth and grass over the edges of hard ground where the fine ground shade is baked (the house, the village centre, Molenhoek, the Sparrenhof; `world/groundShade.ts`, dev `?nogrime` to compare); grass blades hang over paving edges on Medium and up; Molenhoek's black bands beside the cycle lanes are gone (`world/streetModel.ts`). Villagers can be shot in Action and painted in Paintball, the same ones for everyone (`shared/villagers.mjs`; from a cloud branch, reviewed and fixed here before the merge). New tools: `tools/dev/shots.mjs` (many pictures in one page load), `tools/dev/streetview.mjs` (a Street View link for a game spot), `tools/dev/villagers_hit.mjs`. Not tested: a real phone or iPad, a controller. For Yoshi: front-garden walls, fences and gates, taller weeds along the country roads, ochre tiles by the school and finer grass blades are the next steps Street View points to; the edge dirt does not reach the streets between the baked areas (Kapellenhoek, Briel), which only have the gutter and kerb dirt.
 
 **New on 11 Nov (LAN night):** the local server runs in Docker (`lan.cmd`, `lan/`); watching players on `/admin/watch/` (one, or up to four side by side, to project); 32 players at once; the host's controls on `/admin/host/` (doors, announce, freeze, bring, mute, chat off, word filter, kick for the evening, teams for the evening, a programme with a countdown, tonight's scoreboard, also on the big screen's Tonight view); a start script, `lan.cmd` or `npm run lan`. Checks: `tools/dev/host_ws_check.mjs` and `tools/dev/crowd.mjs`. Not tested: real phones, a venue's network, 30 real browsers, a real projector, `lan.cmd`'s password prompt end to end. Also live: blades of grass and fallen leaves round the player on Medium and up, worn asphalt.
 
