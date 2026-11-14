@@ -25,7 +25,8 @@ the web of the right hand sits on the grip. Nodes per weapon `w`:
                          extras "grip": where it holds, from the wrist
         shotgun_shell    (in the left hand: the shell it loads)
 Inside Blender the barrel runs along +y and up is +z; the exporter turns that into the above.
-With preview_dir it also renders a small picture of each weapon there.
+With preview_dir it also renders small pictures of each weapon there, from the side and as the player sees
+it (<w>_hip_eye, <w>_ads_eye), and of each hand in clay.
 """
 import math
 import os
@@ -187,7 +188,7 @@ def disc(name, r, mat, at, facing, sides=16):
 
 
 def sweep(name, pts, radii, mat, sides=8, tip=True, base=True):
-    """A tube along a centre line with a radius per point and a rounded tip: fingers, sleeves."""
+    """A tube along a centre line with a radius per point and a rounded tip: a bolt handle."""
     pts = [Vector(p) for p in pts]
     n = len(pts)
     tang = []
@@ -325,7 +326,8 @@ class Wrap:
 # The hands are a sculpted pair of arms (tools/assets/fps_arms.blend: "FPS arms, rigged only" from
 # OpenGameArt, CC0), with a skeleton down to each finger bone. Each hand is laid on its grip and its
 # finger bones are turned to follow the lines the fingers take round it; what comes out is the posed
-# skin from the fingertips to a little above the wrist, at the size of a real hand.
+# skin from the fingertips past the elbow, at the size of a real hand: the glove, its cuff and the sleeve
+# over the sculpt's own forearm.
 # Its glove is painted by tools/gloves.py in the sculpt's own flat layout; that file also holds what both
 # must agree on (the hand's size, which part of the sculpt is the hand, where the hands lie in the layout).
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
@@ -399,9 +401,51 @@ def reach(rig, bone, point):
     aim(rig, bone, point - rig.matrix_world @ bone.head)
 
 
-def real_hand(name, lines, thumb_line, wrist, side, wrap):
+ARM_KEEP = 0.42     # m of the sculpt's arm kept behind the wrist, along the forearm and on up the upper arm
+SLEEVE_FROM = 0.05  # m up the forearm where the sleeve starts; the glove's cuff ends under it
+WRIST_MAX = math.radians(35)  # the most the wrist bends to send the forearm the way it should go
+ELBOW = math.radians(15)      # how far the upper arm stays off the forearm's line (the sculpt rests at 47 degrees)
+SLEEVE_FINE = 0.25  # m: the sleeve is made finer up to here, where it can be in view
+ARM_GROUPS = ("forearm", "upper_arm", "deltoid", "clavicle")
+
+
+def arm_points(rig, body, side):
+    """The sculpt's points that are this hand and its arm, up to ARM_KEEP from the wrist (none of the shoulder),
+    each with how far up the arm it lies (m, negative on the hand), its share of the arm's weights (it turns with
+    the forearm at the wrist) and its share of the upper arm's (it turns at the elbow)."""
+    X = ".R" if side > 0 else ".L"
+    mw, bw = rig.matrix_world, body.matrix_world
+    fore, upper = rig.data.bones["forearm" + X], rig.data.bones["upper_arm" + X]
+    wr, elbow = mw @ fore.tail_local, mw @ fore.head_local
+    f_way = (elbow - wr).normalized()
+    u_way = (mw @ upper.head_local - elbow).normalized()
+    length = (elbow - wr).length
+    names = {g.index: g.name for g in body.vertex_groups}
+    out = {}
+    for v in body.data.vertices:
+        p = bw @ v.co
+        if p.x * side <= 0:
+            continue
+        w = {}
+        for g in v.groups:
+            n = names[g.group]
+            if n.endswith(X) and n[:-2] in ARM_GROUPS:
+                w[n[:-2]] = w.get(n[:-2], 0.0) + g.weight
+        total = sum(g.weight for g in v.groups)
+        armw = sum(w.values())
+        if total and (w.get("deltoid", 0) + w.get("clavicle", 0)) / total >= 0.5:
+            continue
+        up_s = (armw - w.get("forearm", 0)) / armw if armw else 0.0
+        run = (p - wr).dot(f_way) * (1 - up_s) + (length + (p - elbow).dot(u_way)) * up_s
+        if run * HAND_SCALE < ARM_KEEP:
+            out[v.index] = (run * HAND_SCALE, armw / total if total else 0.0, up_s * armw / total if total else 0.0)
+    return out, elbow, f_way, u_way
+
+
+def real_hand(name, lines, thumb_line, wrist, side, wrap, fore):
     """The sculpted hand, its knuckles and wrist laid on the first point of each of `lines` (index or
-    middle finger first, the little finger last) and on `wrist`, its fingers bent along the lines."""
+    middle finger first, the little finger last) and on `wrist`, its fingers bent along the lines; and its
+    own forearm, bent at the wrist towards `fore` (the way from the wrist to the elbow), in its sleeve."""
     rig, body = source_arms()
     X = ".R" if side > 0 else ".L"
     bones = rig.pose.bones
@@ -451,92 +495,114 @@ def real_hand(name, lines, thumb_line, wrist, side, wrap):
         pb = bones[f"thumb.{k}{X}"]
         run += pb.bone.length
         reach(rig, pb, along(pts, run))
-    # The skin of this hand, from the fingertips to 4.5 cm up the forearm (the cuff covers the cut).
-    fore = rig.data.bones["forearm" + X]
-    wr = mw @ fore.tail_local
-    up = (mw @ fore.head_local - wr).normalized()
+    # The skin of this hand and of its arm, ARM_KEEP up from the wrist: the sculpt's own forearm and the start of its
+    # upper arm, never a shape made in code. Straightened at the elbow first, in the sculpt's own place, so the arm
+    # runs on back past the view instead of bending into it.
+    fore_b = rig.data.bones["forearm" + X]
+    wr = mw @ fore_b.tail_local
+    up = (mw @ fore_b.head_local - wr).normalized()
     bw = body.matrix_world
-    keep = gloves.kept(rig, body, side)
+    pts, elbow, f_way, u_way = arm_points(rig, body, side)
+    keep = set(pts)
+    open_ = f_way.angle(u_way)
+    straighten = Quaternion(f_way.cross(u_way).normalized(), ELBOW - open_)
+    # The wrist: the forearm turned from the hand's own forearm line towards `fore`, every point by its share of
+    # the arm's weights (the hand stays where it holds, the forearm follows, the skin between bends).
+    way0 = (place.to_3x3() @ up).normalized()
+    at0 = place @ wr
+    q = way0.rotation_difference(Vector(fore).normalized())
+    need = q.angle
+    if q.angle > WRIST_MAX:
+        q = Quaternion(q.axis, WRIST_MAX)
+    print(f"{name}: wrist turn needed {math.degrees(need):.0f} deg, used {math.degrees(q.angle):.0f}; elbow {math.degrees(open_):.0f} to {math.degrees(ELBOW):.0f} deg")
     u0, v0, u1, v1 = _arms["box"]
     dg = bpy.context.evaluated_depsgraph_get()
     dg.update()
     ev = body.evaluated_get(dg)
     me = ev.to_mesh()
+
+    def posed(i):
+        run, arm_w, up_w = pts[i]
+        p = bw @ me.vertices[i].co
+        if up_w > 0:
+            p = elbow + Quaternion(straighten.axis, straighten.angle * up_w) @ (p - elbow)
+        p = place @ p
+        if arm_w > 0:
+            p = at0 + Quaternion(q.axis, q.angle * arm_w) @ (p - at0)
+        return p
+
+    where = {i: posed(i) for i in sorted(keep)}
+    faces = [p for p in me.polygons if all(i in keep for i in p.vertices)]
     bm = bmesh.new()
-    made = {i: bm.verts.new(place @ (bw @ me.vertices[i].co)) for i in sorted(keep)}
+    run_l = bm.verts.layers.float.new("run")
+    made = {}
+    for i in sorted(keep):
+        made[i] = bm.verts.new(where[i])
+        made[i][run_l] = pts[i][0]
     # With the sculpt's flat layout, cut to the hands' corner of it: the painted glove lies on it (tools/gloves.py).
     uv = bm.loops.layers.uv.new("UVMap")
-    for p in me.polygons:
-        if all(i in keep for i in p.vertices):
-            f = bm.faces.new([made[i] for i in p.vertices])
-            for loop, li in zip(f.loops, p.loop_indices):
-                c = gloves.uv_of(me, li)
-                loop[uv].uv = (min(1.0, max(0.0, (c.x - u0) / (u1 - u0))), min(1.0, max(0.0, (c.y - v0) / (v1 - v0))))
+    for p in faces:
+        f = bm.faces.new([made[i] for i in p.vertices])
+        # The sleeve, and its edge tucked in under the cuff: the glove's painting ends at the wrist.
+        f.material_index = 1 if any(pts[i][0] > SLEEVE_FROM for i in p.vertices) else 0
+        for loop, li in zip(f.loops, p.loop_indices):
+            c = gloves.uv_of(me, li)
+            loop[uv].uv = (min(1.0, max(0.0, (c.x - u0) / (u1 - u0))), min(1.0, max(0.0, (c.y - v0) / (v1 - v0))))
+    # The glove's cuff: the same skin from just over the wrist to under the sleeve's edge, a little proud of it, and
+    # prouder still over the strap.
+    cm = bmesh.new()
+    cmade = {}
+    for p in faces:
+        if all(-0.012 <= pts[i][0] <= 0.055 for i in p.vertices):
+            for i in p.vertices:
+                if i not in cmade:
+                    cmade[i] = cm.verts.new(where[i])
+            cm.faces.new([cmade[i] for i in p.vertices])
     ev.to_mesh_clear()
-    # The wrist as it lies now: its middle, the forearm's way from it, its thin side and its half sizes (for the cuff).
-    turn = place.to_3x3()
-    way = (turn @ up).normalized()
-    flat = turn @ bend
-    flat = (flat - way * flat.dot(way)).normalized()
-    across = way.cross(flat)
-    at = place @ wr
-    ring = [v.co - at for v in bm.verts if 0.0 <= (v.co - at).dot(way) <= 0.04]
-    mid = sum((r - way * r.dot(way) for r in ring), Vector()) / len(ring)
-    at = at + mid
-    wide = max(abs((r - mid).dot(across)) for r in ring)
-    thick = max(abs((r - mid).dot(flat)) for r in ring)
-    print(f"{name}: knuckles, wrist, thumb and palm off by {err} mm, fingertips by {tips} mm, wrist {wide * 2000:.0f} x {thick * 2000:.0f} mm, {len(bm.faces)} faces")
-    return mesh_obj(name + "Skin", bm, [M["Glove"]], smooth=True), (at, way, flat, wide, thick)
-
-
-def arm(name, wrist, way, flat, wide, thick, elbow, side):
-    """The cuff of the glove round the wrist and the sleeve from there to `elbow` (past the view). `way`: along
-    the forearm from the wrist; `flat`: across the wrist's thin side; wide, thick: the wrist's half sizes."""
-    d = Vector(way).normalized()
-    n = Vector(flat).normalized()
-    w = Vector(wrist)
-    # The glove's cuff: snug round the wrist, a strap's ridge, then flaring under the sleeve. Made round at
-    # the wrist's width, then pressed to its thickness: a wrist is half again as wide as it is thick.
-    g = wide
-    cuff = sweep(name + "Cuff", [w - d * 0.016, w - d * 0.004, w + d * 0.008, w + d * 0.014, w + d * 0.02, w + d * 0.075],
-                 [g + 0.001, g + 0.002, g + 0.0037, g + 0.0037, g + 0.0027, g + 0.0045], M["GloveTrim"], sides=16, tip=False)
-    press = (thick + 0.003) / (wide + 0.003)
-    for v in cuff.data.vertices:
-        rel = v.co - w
-        v.co = v.co - n * rel.dot(n) * (1 - press)
-    # The sleeve: a rolled edge, then the forearm widening towards the elbow, in a bend from the wrist's own way.
-    bend = Vector((side * 0.02, 0, -0.03))
-    pts = [w + d * 0.056, w + d * 0.067, w + d * 0.08]
-    rad = [g + 0.0045, g + 0.0085, g + 0.0075]
-    p0 = pts[-1]
-    reach = (Vector(elbow) - p0).length
-    p1 = p0 + d * reach * 0.1
-    # In sixteen steps, the cloth gathered in folds: deeper near the wrist, where the sleeve is pushed up, and
-    # each fold a little off the forearm's line, so they don't read as rings.
-    steps = 16
-    for k in range(1, steps + 1):
-        s = k / steps
-        fold = math.sin(k * 1.9 + side) * (1 - 0.55 * s)
-        off = Vector((math.sin(k * 2.7), 0, math.cos(k * 1.3))) * 0.0016 * (1 - 0.5 * s)
-        pts.append(p0.lerp(p1, s).lerp(p1.lerp(Vector(elbow), s), s) + bend * s * s + off)
-        rad.append(g + 0.008 + 0.008 * s + 0.0036 * fold)
-    sleeve = sweep(name + "Sleeve", pts, rad, M["Sleeve"], sides=14, tip=False)
-    return [cuff, sleeve]
+    cm.normal_update()
+    for i, v in cmade.items():
+        r = pts[i][0]
+        strap = min(1.0, max(0.0, (r - 0.005) / 0.003)) * min(1.0, max(0.0, (0.017 - r) / 0.003))
+        v.co += v.normal * (0.0015 + 0.0022 * strap)
+    cuff = mesh_obj(name + "Cuff", cm, [M["GloveTrim"]], smooth=True)
+    # The sleeve: once finer, then the cloth over the forearm, a rolled edge where it starts, a little looser up
+    # the arm, and folds 3 cm apart that wind a little round it (so they don't read as rings), shallower by the elbow.
+    sleeve_faces = [f for f in bm.faces if f.material_index == 1 and all(v[run_l] < SLEEVE_FINE for v in f.verts)]
+    edges = list({e for f in sleeve_faces for e in f.edges})
+    bmesh.ops.subdivide_edges(bm, edges=edges, cuts=1, use_grid_fill=True, smooth=1.0)
+    bm.normal_update()
+    axis = q @ way0
+    e1 = axis.orthogonal().normalized()
+    e2 = axis.cross(e1)
+    centre = {}
+    for v in bm.verts:
+        r = v[run_l]
+        if r <= SLEEVE_FROM:
+            continue
+        s = min(1.0, (r - SLEEVE_FROM) / (0.25 - SLEEVE_FROM))
+        cloth = 0.005 + 0.002 * s + 0.002 * max(0.0, 1 - (r - SLEEVE_FROM) / 0.012)
+        rel = v.co - at0
+        a = math.atan2(rel.dot(e2), rel.dot(e1))  # the way round the arm
+        fold = 0.0025 * (1 - 0.5 * min(1.0, (r - SLEEVE_FROM) / (0.235 - SLEEVE_FROM))) * 0.5 * (1 + math.cos(2 * math.pi * r / 0.03 + a))
+        centre[v] = v.normal * (cloth + fold)
+    for v, d in centre.items():
+        v.co += d
+    bm.verts.layers.float.remove(run_l)
+    skin = mesh_obj(name + "Skin", bm, [M["Glove"], M["Sleeve"]], smooth=True)
+    print(f"{name}: knuckles, wrist, thumb and palm off by {err} mm, fingertips by {tips} mm, {len(skin.data.polygons)} faces, cuff {len(cuff.data.polygons)}")
+    return [skin, cuff]
 
 
 def hand(name, wrap, fingers, palm, wrist, fore, thumb, index=None, knuckle=True, side=1):
     """A gloved hand round `wrap`: the sculpted hand (real_hand), posed. fingers: (t, deg0, step, length,
     radius, slope) per finger, the line each takes round the wrap, knuckle first; thumb and index: such
     lines given as points; wrist: about where the wrist is (the hand's own size decides, and the game
-    turns the hand about this point); fore: the way to the elbow and how far. palm and knuckle are no
-    longer used."""
+    turns the hand about this point); fore: the way the forearm goes from the wrist to the elbow, which
+    leaves the view by its bottom edge. palm and knuckle are no longer used."""
     lines = [index[0]] if index else []
     lines += [wrap.curl(t, deg0, step, length, r * 0.95, slope) for (t, deg0, step, length, r, slope) in fingers]
     w = Vector(wrist)
-    d = Vector(fore[0]).normalized()
-    glove, (at, way, flat, wide, thick) = real_hand(name, lines, thumb[0], wrist, side, wrap)
-    # The sleeve starts at the wrist the hand really has, and runs to where the forearm leaves the view as before.
-    parts = [glove] + arm(name, at, way, flat, wide, thick, w + d * fore[1], side)
+    parts = real_hand(name, lines, thumb[0], wrist, side, wrap, fore)
     obj = join(name, parts)
     for p in obj.data.polygons:
         p.use_smooth = True
@@ -644,18 +710,18 @@ def build_pistol():
     # the left cups the right from the left side, its thumb forward under the right one.
     gw = Wrap((0, -0.0005, -0.006), (0, -0.017, -0.092), (0, 1, 0), 0.0245, 0.0148)
     right = hand("pistol_handR", gw,
-                 [(0.034, 70, -1, 0.092, 0.0098, 0.0), (0.054, 72, -1, 0.087, 0.0094, 0.0), (0.073, 76, -1, 0.07, 0.0086, 0.0)],
+                 [(0.034, 25, -1, 0.068, 0.0098, 0.0), (0.054, 27, -1, 0.063, 0.0094, 0.0), (0.073, 31, -1, 0.046, 0.0086, 0.0)],
                  [gw.at(0.022, 95, 0.004), gw.at(0.085, 100, 0.004), gw.at(0.022, 150, 0.004), gw.at(0.085, 150, 0.006),
                   gw.at(0.02, 200, 0.002), gw.at(0.07, 185, 0.004), gw.at(0.03, 95, 0.026), gw.at(0.07, 100, 0.026)],
-                 (0.012, -0.075, -0.042), ((0.25, -1, -0.85), 0.36),
+                 (0.012, -0.075, -0.042), (0.45, -0.55, -0.7),
                  ([(-0.006, -0.026, -0.0), (-0.021, -0.008, 0.0015), (-0.0255, 0.016, 0.003), (-0.025, 0.040, 0.0035), (-0.023, 0.058, 0.004)], 0.0105),
-                 ([gw.at(0.012, 72, 0.01), (0.021, 0.028, -0.011), (0.017, 0.044, -0.015), (0.009, 0.0475, -0.019), (0.004, 0.045, -0.022)], 0.0095))
+                 ([gw.at(0.012, 60, 0.01), (0.021, 0.028, -0.011), (0.017, 0.044, -0.015), (0.009, 0.0475, -0.019), (0.004, 0.045, -0.022)], 0.0095))
     lw = Wrap((0, -0.0005, -0.006), (0, -0.017, -0.092), (0, 1, 0), 0.0245 + 0.016, 0.0148 + 0.017)
     left = hand("pistol_handL", lw,
-                [(0.036, -95, 1, 0.105, 0.0098, 0.0), (0.054, -98, 1, 0.1, 0.0096, 0.0), (0.071, -100, 1, 0.09, 0.009, 0.0), (0.087, -102, 1, 0.07, 0.0084, 0.0)],
+                [(0.028, -53, 1, 0.09, 0.0098, 0.0), (0.051, -54, 1, 0.085, 0.0096, 0.0), (0.071, -59, 1, 0.075, 0.009, 0.0), (0.091, -69, 1, 0.055, 0.0084, 0.0)],
                 [lw.at(0.03, -100, 0.0), lw.at(0.09, -105, 0.0), lw.at(0.03, -150, 0.0), lw.at(0.09, -150, 0.0),
                  lw.at(0.035, -110, 0.024), lw.at(0.085, -115, 0.024), (-0.05, -0.05, -0.02)],
-                (-0.045, -0.072, -0.068), ((-0.5, -1, -0.9), 0.36),
+                (-0.045, -0.072, -0.068), (-0.5, -0.5, -0.7),
                 ([(-0.045, -0.02, -0.035), (-0.036, 0.0, -0.02), (-0.031, 0.022, -0.017), (-0.029, 0.045, -0.016), (-0.028, 0.062, -0.016)], 0.0108),
                 side=-1)
     return finish(W, (0, -0.023, -0.004), body,
@@ -746,16 +812,16 @@ def build_rifle():
                  [(0.034, 70, -1, 0.09, 0.0098, 0.0), (0.054, 72, -1, 0.086, 0.0094, 0.0), (0.073, 76, -1, 0.07, 0.0086, 0.0)],
                  [gw.at(0.022, 95, 0.004), gw.at(0.085, 100, 0.004), gw.at(0.022, 150, 0.004), gw.at(0.085, 150, 0.006),
                   gw.at(0.02, 200, 0.002), gw.at(0.07, 185, 0.004), gw.at(0.03, 95, 0.026), gw.at(0.07, 100, 0.026)],
-                 (0.012, -0.10, -0.035), ((0.22, -1, -0.4), 0.38),
+                 (0.012, -0.10, -0.035), (0.25, -0.82, -0.5),
                  ([(-0.006, -0.05, 0.004), (-0.02, -0.03, 0.012), (-0.024, -0.008, 0.02), (-0.023, 0.014, 0.026), (-0.02, 0.03, 0.029)], 0.0105),
                  ([gw.at(0.01, 72, 0.01), (0.02, 0.0, -0.004), (0.016, 0.014, -0.006), (0.009, 0.017, -0.008), (0.004, 0.015, -0.01)], 0.0095))
     hw = Wrap((0, 0.30, B), (0, 1, 0), (0, 0, -1), 0.0262, 0.0262)
     # Across the handguard the fingers lie one behind the other: the index the furthest forward.
     left = hand("rifle_handL", Wrap((0, 0.30, B), (0, -1, 0), (0, 0, -1), 0.0262, 0.0262),
-                [(-0.03, 2, 1, 0.062, 0.0098, 0.0), (-0.009, 2, 1, 0.064, 0.0096, 0.0), (0.012, 4, 1, 0.058, 0.009, 0.0), (0.031, 8, 1, 0.048, 0.0084, 0.0)],
+                [(-0.03, 13, 1, 0.062, 0.0098, -0.6), (-0.009, 38, 1, 0.064, 0.0096, -0.6), (0.012, 50, 1, 0.058, 0.009, -0.6), (0.031, 59, 1, 0.048, 0.0084, -0.6)],
                 [hw.at(-0.04, -10, 0.004), hw.at(0.04, -10, 0.004), hw.at(-0.04, 40, 0.004), hw.at(0.04, 40, 0.004),
                  hw.at(-0.03, 10, 0.026), hw.at(0.035, 10, 0.026), hw.at(0.0, 45, 0.02)],
-                (-0.012, 0.225, B - 0.055), ((-0.95, -1, -0.75), 0.45),
+                (-0.012, 0.225, B - 0.055), (-0.35, -0.5, -0.79),
                 ([hw.at(-0.03, 40, 0.016), hw.at(0.0, 65, 0.012), hw.at(0.025, 80, 0.011), hw.at(0.048, 88, 0.011), hw.at(0.066, 92, 0.011)], 0.0108),
                 side=-1)
     return finish(W, (0, -0.042, 0.006), body,
@@ -822,21 +888,24 @@ def build_shotgun():
              lathe("head", [(-0.013, 0.0112), (0.0, 0.0112)], M["Brass"], 10, at=(0, 0, 0))]
     kit = hopper(-0.068, 0.10, 0.058, 0.042, side=0.0185) + tank(0.50, 0.63, 0.015, (0, 0.0195 - 0.0105 - 0.017))
     # Hands: the right round the stock's wrist, the left round the pump.
+    # The knuckles well round to the front of the grip, the palm behind it, so the forearm can go down and back
+    # (and stays low in the picture when you aim); the fingers no further round than the stock's left side: it is
+    # deep there, they lie along it.
     gw = Wrap((0, -0.062, 0.028), (0, -0.04, -0.1), (0, 1, 0.25), 0.023, 0.0165)
     right = hand("shotgun_handR", gw,
-                 [(0.03, 70, -1, 0.092, 0.0098, 0.0), (0.05, 72, -1, 0.087, 0.0094, 0.0), (0.069, 76, -1, 0.074, 0.0086, 0.0)],
+                 [(0.03, 30, -1, 0.07, 0.0098, 0.0), (0.05, 34, -1, 0.07, 0.0094, 0.0), (0.069, 36, -1, 0.062, 0.0086, 0.0)],
                  [gw.at(0.018, 95, 0.004), gw.at(0.08, 100, 0.004), gw.at(0.018, 150, 0.004), gw.at(0.08, 150, 0.006),
                   gw.at(0.012, 200, 0.002), gw.at(0.065, 185, 0.004), gw.at(0.03, 95, 0.026), gw.at(0.07, 100, 0.026)],
-                 (0.012, -0.135, 0.0), ((0.22, -1, -0.45), 0.38),
+                 (0.012, -0.135, 0.0), (0.28, -0.7, -0.66),
                  ([(-0.006, -0.085, 0.045), (-0.02, -0.064, 0.055), (-0.024, -0.042, 0.062), (-0.022, -0.02, 0.066), (-0.02, -0.002, 0.068)], 0.0105),
-                 ([gw.at(0.008, 72, 0.01), (0.02, 0.012, 0.004), (0.015, 0.025, 0.0), (0.008, 0.028, -0.004), (0.003, 0.026, -0.006)], 0.0095))
+                 ([gw.at(0.008, 70, 0.01), (0.02, 0.012, 0.004), (0.015, 0.025, 0.0), (0.008, 0.028, -0.004), (0.003, 0.026, -0.006)], 0.0095))
     pw = Wrap((0, 0.39, 0.022), (0, -1, 0), (0, 0, -1), 0.0228, 0.0228 * 0.95)
     hw = Wrap((0, 0.39, 0.022), (0, 1, 0), (0, 0, -1), 0.0228, 0.0228)
     left = hand("shotgun_handL", pw,
-                [(-0.03, 2, 1, 0.062, 0.0098, 0.0), (-0.009, 2, 1, 0.064, 0.0096, 0.0), (0.012, 4, 1, 0.058, 0.009, 0.0), (0.031, 8, 1, 0.048, 0.0084, 0.0)],
+                [(-0.03, 13, 1, 0.062, 0.0098, -0.6), (-0.009, 38, 1, 0.064, 0.0096, -0.6), (0.012, 50, 1, 0.058, 0.009, -0.6), (0.031, 59, 1, 0.048, 0.0084, -0.6)],
                 [hw.at(-0.04, -10, 0.004), hw.at(0.04, -10, 0.004), hw.at(-0.04, 40, 0.004), hw.at(0.04, 40, 0.004),
                  hw.at(-0.03, 10, 0.026), hw.at(0.035, 10, 0.026), hw.at(0.0, 45, 0.02)],
-                (-0.012, 0.315, 0.022 - 0.055), ((-0.95, -1, -0.75), 0.45),
+                (-0.012, 0.315, 0.022 - 0.055), (-0.35, -0.5, -0.79),
                 ([hw.at(-0.03, 40, 0.016), hw.at(0.0, 65, 0.012), hw.at(0.025, 80, 0.011), hw.at(0.048, 88, 0.011), hw.at(0.066, 92, 0.011)], 0.0108),
                 side=-1)
     sh = join("shotgun_shell", shell)
@@ -904,17 +973,17 @@ def build_sniper():
                  [(0.032, 70, -1, 0.09, 0.0098, 0.0), (0.052, 72, -1, 0.086, 0.0094, 0.0), (0.071, 76, -1, 0.07, 0.0086, 0.0)],
                  [gw.at(0.022, 95, 0.004), gw.at(0.085, 100, 0.004), gw.at(0.022, 150, 0.004), gw.at(0.085, 150, 0.006),
                   gw.at(0.02, 200, 0.002), gw.at(0.07, 185, 0.004), gw.at(0.03, 95, 0.026), gw.at(0.07, 100, 0.026)],
-                 (0.012, -0.10, -0.03), ((0.22, -1, -0.4), 0.38),
+                 (0.012, -0.10, -0.03), (0.25, -0.82, -0.5),
                  ([(-0.006, -0.053, 0.006), (-0.02, -0.035, 0.015), (-0.024, -0.012, 0.024), (-0.023, 0.008, 0.03), (-0.02, 0.024, 0.033)], 0.0105),
                  ([gw.at(0.01, 72, 0.01), (0.02, 0.003, -0.004), (0.016, 0.018, -0.006), (0.009, 0.021, -0.008), (0.004, 0.019, -0.01)], 0.0095))
     fz = 0.026  # the fore-end's middle height
     pw = Wrap((0, 0.28, fz), (0, -1, 0), (0, 0, -1), 0.019, 0.0185)
     hw = Wrap((0, 0.28, fz), (0, 1, 0), (0, 0, -1), 0.019, 0.0185)
     left = hand("sniper_handL", pw,
-                [(-0.03, 2, 1, 0.062, 0.0098, 0.0), (-0.009, 2, 1, 0.064, 0.0096, 0.0), (0.012, 4, 1, 0.058, 0.009, 0.0), (0.031, 8, 1, 0.048, 0.0084, 0.0)],
+                [(-0.03, 13, 1, 0.062, 0.0098, -0.6), (-0.009, 38, 1, 0.064, 0.0096, -0.6), (0.012, 50, 1, 0.058, 0.009, -0.6), (0.031, 59, 1, 0.048, 0.0084, -0.6)],
                 [hw.at(-0.04, -10, 0.004), hw.at(0.04, -10, 0.004), hw.at(-0.04, 40, 0.004), hw.at(0.04, 40, 0.004),
                  hw.at(-0.03, 10, 0.026), hw.at(0.035, 10, 0.026), hw.at(0.0, 45, 0.02)],
-                (-0.012, 0.205, fz - 0.052), ((-0.95, -1, -0.75), 0.45),
+                (-0.012, 0.205, fz - 0.052), (-0.35, -0.5, -0.79),
                 ([hw.at(-0.03, 40, 0.016), hw.at(0.0, 65, 0.012), hw.at(0.025, 80, 0.011), hw.at(0.048, 88, 0.011), hw.at(0.066, 92, 0.011)], 0.0108),
                 side=-1)
     return finish(W, (0, -0.046, 0.004), body,
@@ -959,7 +1028,7 @@ def build_bazooka():
                  [(0.032, 70, -1, 0.09, 0.0098, 0.0), (0.052, 72, -1, 0.086, 0.0094, 0.0), (0.071, 76, -1, 0.07, 0.0086, 0.0)],
                  [gw.at(0.022, 95, 0.004), gw.at(0.085, 100, 0.004), gw.at(0.022, 150, 0.004), gw.at(0.085, 150, 0.006),
                   gw.at(0.02, 200, 0.002), gw.at(0.07, 185, 0.004), gw.at(0.03, 95, 0.026), gw.at(0.07, 100, 0.026)],
-                 (0.012, -0.085, -0.03), ((0.22, -1, -0.4), 0.38),
+                 (0.012, -0.085, -0.03), (0.25, -0.82, -0.5),
                  ([(-0.006, -0.04, 0.004), (-0.02, -0.022, 0.01), (-0.024, 0.0, 0.016), (-0.023, 0.02, 0.02), (-0.021, 0.036, 0.022)], 0.0105),
                  ([gw.at(0.01, 72, 0.01), (0.02, 0.012, -0.006), (0.016, 0.026, -0.008), (0.009, 0.029, -0.01), (0.004, 0.027, -0.012)], 0.0095))
     fw = Wrap((0, 0.332, T - 0.045), (0, -0.01, -1), (0, 1, 0), 0.016, 0.0145)
@@ -967,7 +1036,7 @@ def build_bazooka():
                 [(0.012, -60, 1, 0.07, 0.0098, 0.0), (0.032, -60, 1, 0.07, 0.0096, 0.0), (0.052, -62, 1, 0.066, 0.009, 0.0), (0.07, -64, 1, 0.055, 0.0084, 0.0)],
                 [fw.at(0.012, -95, 0.004), fw.at(0.075, -100, 0.004), fw.at(0.012, -150, 0.004), fw.at(0.075, -150, 0.006),
                  fw.at(0.02, -175, 0.004), fw.at(0.07, -175, 0.004), fw.at(0.03, -110, 0.026), fw.at(0.07, -115, 0.026)],
-                (-0.03, 0.285, -0.035), ((-0.8, -1, -0.6), 0.45),
+                (-0.03, 0.285, -0.035), (-0.35, -0.6, -0.72),
                 ([fw.at(0.0, -160, 0.01), fw.at(-0.004, -185, 0.011), fw.at(-0.007, -215, 0.011), fw.at(-0.009, -240, 0.011)], 0.0108),
                 side=-1)
     return finish(W, (0, -0.032, 0.0), body,
@@ -1176,11 +1245,40 @@ if PREVIEW:
     clay.use_nodes = True
     clay.node_tree.nodes["Principled BSDF"].inputs["Base Color"].default_value = (0.62, 0.6, 0.57, 1)
     clay.node_tree.nodes["Principled BSDF"].inputs["Roughness"].default_value = 0.7
+    # The painted glove on the hands, as in the game (tools/gloves.py writes it next to the model).
+    paint = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "web", "public", "models", "glove_color.webp")
+    if os.path.exists(paint):
+        nodes = M["Glove"].node_tree.nodes
+        tex = nodes.new("ShaderNodeTexImage")
+        tex.image = bpy.data.images.load(paint)
+        M["Glove"].node_tree.links.new(tex.outputs["Color"], nodes["Principled BSDF"].inputs["Base Color"])
+    # From the player's eye, as the game draws it (weapon.ts): from the hip at 54 degrees (HIP, the grip a quarter
+    # size, as far again), and aimed (the eye on the line of sight, the view narrowed by the gun's zoom).
+    hip = {"pistol": (0.048, -0.04, -0.1), "rifle": (0.05, -0.045, -0.095), "shotgun": (0.05, -0.046, -0.095),
+           "sniper": (0.05, -0.046, -0.095), "bazooka": (0.072, -0.048, -0.1)}
+    ads = {"pistol": (0.5, 50.4), "rifle": (0.352, 46.8), "shotgun": (0.4, 57.6)}
+    hip_far = math.tan(math.radians(36)) / math.tan(math.radians(27))
     for w, (mid, dist) in views.items():
         for name, r in roots.items():
             r.hide_render = name != w
             for c in r.children_recursive:
-                c.hide_render = name != w
+                c.hide_render = name != w or c.name.endswith("_kit")
+        x, y, z = hip[w]
+        eyes = [("hip_eye", Vector((-x / 0.25, z * hip_far / 0.25, -y / 0.25)), 54.0)]
+        if w in ads:
+            s = next(c for c in roots[w].children if c.name == w + "_sight").matrix_world.translation
+            eyes.append(("ads_eye", Vector((s.x, -ads[w][0], s.z)), ads[w][1]))
+        elif w == "bazooka":
+            eyes.append(("ads_eye", Vector((-0.012 / 0.25, -0.1 / 0.25, 0.06 / 0.25)), 57.6))
+        for label, at, deg in eyes:
+            cam.location = at
+            cam.rotation_euler = (math.radians(90), 0, 0)
+            cam.data.sensor_fit = "VERTICAL"
+            cam.data.angle_y = math.radians(deg)
+            cam.data.clip_start = 0.07  # the game draws what lies past a third of its near edge (gunSurface.ts)
+            scene.render.filepath = os.path.join(PREVIEW, f"{w}_{label}.png")
+            bpy.ops.render.render(write_still=True)
+        cam.data.sensor_fit = "AUTO"
         for label, at in (("left", (-dist, mid - 0.15 * dist, 0.2 * dist)), ("eye", (-0.18 * dist, -0.55 * dist, 0.25 * dist))):
             cam.location = Vector(at)
             target = Vector((0, mid, 0.0))
