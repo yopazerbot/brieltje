@@ -4096,7 +4096,9 @@ void playing.then(() => {
   warm.hold(null);
   // Your guns from the start, and the picker to change them (Action and Paintball, alone or together).
   if (!net.connected && !games.zombies) weapon.setOwned(startGuns());
-  offerGuns();
+  // The picker a second later (the guns are yours from the first frame): opened as the start screen went, the two
+  // together took a frame of 70 to 130 ms in the browser's page drawing, the first frames of play.
+  setTimeout(() => (menu.open ? (offerWaiting = true) : offerGuns()), 1000); // the menu opened meanwhile: once it is shut
 });
 /** The big zombies seen in this Zombies game, alone or together: the music's low stab for each new one (src/music.ts). */
 const bigsSeen = new Set<number>();
