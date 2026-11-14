@@ -5,7 +5,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
-import { buildVillagers, villagerHittable, villagerPose, VKIND, VILLAGER_DOWN_S, VILLAGER_HIT_MAX, VILLAGER_HIT_MS } from '../shared/villagers.mjs';
+import { buildVillagers, villagerHittable, villagerPose, VKIND, HUB_PEOPLE, VILLAGER_DOWN_S, VILLAGER_HIT_MAX, VILLAGER_HIT_MS, VILLAGER_SHOT_MAX } from '../shared/villagers.mjs';
 import { noShoot } from '../shared/zones.mjs';
 import { Game } from './game.mjs';
 
@@ -81,7 +81,10 @@ test('the server decides: in reach it falls and the others hear, out of reach or
     const child = set.list.find((d) => d.kind === VKIND.child).id;
     const farOff = set.list.find((d) => d.shootable && !d.gone && Math.hypot(d.cx - anna.state.x, d.cz - anna.state.z) > 600).id;
     sent.length = 0;
-    g.villagersHit('anna', anna, { ids: [child, farOff, -1, 'x', v.id, v.id] }, now);
+    // A shot names at most VILLAGER_SHOT_MAX: first three that are no target, then the real one among rubbish.
+    g.villagersHit('anna', anna, { ids: [child, farOff, -1] }, now - 1000);
+    assert.equal(sent.filter(([, m]) => m.t === 'vil').length, 0, 'a child, one out of reach and no number at all');
+    g.villagersHit('anna', anna, { ids: ['x', v.id, v.id] }, now);
     const told = sent.filter(([, m]) => m.t === 'vil');
     assert.equal(told.length, 1, 'one message');
     assert.equal(told[0][0], 'bert', 'to the others, not back to the shooter');
@@ -176,5 +179,61 @@ test('a villager on the school grounds is no target', () => {
       seen++;
       assert.equal(villagerHittable(set, d.id, t, p.x + 5, p.z, 100), false);
     }
+  }
+});
+
+test('the grown-ups waiting among the children at the school are no target', () => {
+  let schools = 0;
+  set.hubs.forEach(([, , , kind], h) => {
+    if (kind !== 1) return;
+    schools++;
+    for (let k = 0; k < HUB_PEOPLE; k++) {
+      const d = set.list[set.hubBase + h * HUB_PEOPLE + k];
+      assert.equal(d.shootable, false, `${d.what} ${d.id} at the school`);
+      assert.equal(villagerHittable(set, d.id, 1.7e9, d.cx + 3, d.cz, 100), false);
+    }
+  });
+  assert.ok(schools > 0, 'the school is a busy place');
+});
+
+test('a blast is believed only when the server set one off itself, and only round where it was', () => {
+  const g = new Game(auth());
+  try {
+    const now = Date.now();
+    const v = target(now);
+    const anna = someone('anna', v.x + 20, v.z);
+    const bert = someone('bert', v.x + 30, v.z);
+    g.players.set('anna', anna);
+    g.players.set('bert', bert);
+    const told = () => sent.filter(([, m]) => m.t === 'vil');
+    // No blast of hers: a page that says "bazooka" is heard as the pistol the server has in her hands.
+    sent.length = 0;
+    g.villagersHit('anna', anna, { ids: [v.id], w: 'bazooka' }, now);
+    assert.equal(told().length, 1);
+    assert.equal(told()[0][1].w, 'pistol', 'the weapon is what the server has, not what the page says');
+    // Her grenade went off far from the next villager: it is a shot again, and a shot names few.
+    const more = [];
+    for (let k = 0; k < VILLAGER_HIT_MAX; k++) more.push(target(now, [v.id, ...more.map((o) => o.id)]));
+    anna.lastBlast = { x: more[0].x + 400, z: more[0].z, at: now + 400, w: 'grenade' };
+    sent.length = 0;
+    g.villagersHit('anna', anna, { ids: [more[0].id], w: 'grenade' }, now + 500);
+    assert.equal(told().length, 0, 'not within the blast');
+    // It went off beside that villager: believed, as a grenade.
+    anna.lastBlast = { x: more[0].x + 2, z: more[0].z, at: now + 900, w: 'grenade' };
+    sent.length = 0;
+    g.villagersHit('anna', anna, { ids: [more[0].id], w: 'grenade' }, now + 1000);
+    assert.equal(told().length, 1);
+    assert.deepEqual([told()[0][1].ids, told()[0][1].w], [[more[0].id], 'grenade']);
+    // An old blast is none: long after it the same words are a pistol shot.
+    sent.length = 0;
+    anna.state.x = more[1].x + 15;
+    anna.state.z = more[1].z;
+    g.villagersHit('anna', anna, { ids: [more[1].id], w: 'grenade' }, now + 60000);
+    assert.equal(told().length, 1);
+    assert.equal(told()[0][1].w, 'pistol');
+    // A shot names at most VILLAGER_SHOT_MAX, whatever the page lists.
+    assert.ok(VILLAGER_SHOT_MAX < VILLAGER_HIT_MAX);
+  } finally {
+    g.close();
   }
 });

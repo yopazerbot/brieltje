@@ -318,6 +318,9 @@ export interface Me {
   feet: number;
 }
 
+/** A villager's number is under this before the list is in (it has about 300): what is heard earlier is kept, bounded. */
+const MOST = 4096;
+
 export class Villagers {
   readonly group = new THREE.Group();
   /** Resolves when the model and the paths are in (false if they couldn't be loaded); started by the first setActive(true). */
@@ -406,6 +409,9 @@ export class Villagers {
       await frame();
       this.data = (data.default ?? data) as unknown as VillagerPaths;
       this.set = buildVillagers(this.data);
+      // Who was down or painted before the villagers were in (the server's welcome comes first): only real numbers stay.
+      for (const id of [...this.downs.keys()]) if (id >= this.set.list.length) this.downs.delete(id);
+      for (const id of [...this.paints.keys()]) if (id >= this.set.list.length) this.paints.delete(id);
       await frame();
       this.build(gltf);
       this.hubLen = this.set.hubs.map(() => -1);
@@ -595,8 +601,13 @@ export class Villagers {
   }
 
   // ---------------------------------------------------------------- shot, or painted
-  /** Whether this one can be hit now: a grown-up or a teen without a child, drawn and standing, not where nobody shoots. */
+  /**
+   * Whether this one can be hit now: a grown-up or a teen without a child, drawn and standing, not where nobody
+   * shoots. As the server decides it (shared/villagers.mjs villagerHittable): for someone standing about on a busy
+   * place the place's own middle counts too, so the page never shows a fall the server would refuse.
+   */
   private canHit(v: V): boolean {
+    if (v.def.role === 'hub' && noShoot(v.def.cx, v.def.cz)) return false;
     return v.def.shootable && v.drawn && v.fade > 0.6 && this.shown > 0.6 && v.downAt < 0 && !v.away && !this.downs.has(v.id) && !noShoot(v.x, v.z);
   }
 
@@ -668,7 +679,7 @@ export class Villagers {
 
   /** Villager `id` is down (someone hit it, or it was down when you joined: then `quiet`), back in `seconds`. */
   down(id: number, seconds: number, from?: { x: number; z: number }, quiet = false): void {
-    if (!this.set || !Number.isInteger(id) || id < 0 || id >= this.set.list.length || !(seconds > 0)) return;
+    if (!Number.isInteger(id) || id < 0 || id >= (this.set ? this.set.list.length : MOST) || !(seconds > 0)) return;
     this.downs.set(id, this.now + Math.min(seconds, 600));
     const v = this.active.get(id);
     if (!v || v.away || v.downAt >= 0) return;
@@ -710,7 +721,7 @@ export class Villagers {
 
   /** Paint of `color` (#rrggbb) on villager `id`'s clothes for `seconds`; with `fright` it jumps and stops a moment. */
   splat(id: number, color: string, seconds: number, fright = true): void {
-    if (!this.set || !Number.isInteger(id) || id < 0 || id >= this.set.list.length || !(seconds > 0) || !/^#[0-9a-f]{6}$/i.test(color)) return;
+    if (!Number.isInteger(id) || id < 0 || id >= (this.set ? this.set.list.length : MOST) || !(seconds > 0) || !/^#[0-9a-f]{6}$/i.test(color)) return;
     this.paints.set(id, { until: this.now + Math.min(seconds, 600), color });
     const v = this.active.get(id);
     if (!v) return;

@@ -71,7 +71,7 @@ import { towerPrompt } from './world/playgroundHint';
 import { SettingsPanel, type Settings } from './settings';
 import { gunsReady, SPECS, Weapon, type WeaponId } from './weapon';
 import { GUN_PAINT, paintball, setPaintball, weaponName as shownWeapon } from './paintball';
-import { VILLAGER_HIT_MAX, VILLAGER_PAINT_S } from '../shared/villagers.mjs';
+import { VILLAGER_HIT_MAX, VILLAGER_HIT_MS, VILLAGER_PAINT_S, VILLAGER_SHOT_MAX } from '../shared/villagers.mjs';
 import { Decals } from './world/decals';
 import { Effects, type Spot } from './world/effects';
 import { GRENADE, Grenades } from './world/grenades';
@@ -1652,8 +1652,12 @@ weapon.onCatHit = (i, point) => catHit(i, point, weapon.current);
  * it jumps. world/villagers.ts says who can be hit (never a child, a dog or someone with a child, never on the
  * school grounds); in multiplayer the server checks it again and tells the others.
  */
-const villagerSent: { ids: number[]; w: string } = { ids: [], w: '' };
+const villagerSent: { ids: number[]; w: string; next: number; waiting: boolean } = { ids: [], w: '', next: 0, waiting: false };
 function villagerHit(id: number, point: THREE.Vector3, w: string): void {
+  // Together, no more than the server will take in its next message (a blast's few, a shot's fewer): what it would
+  // drop is not shown here either, so this page never shows a fall the others don't see.
+  const blast = w === 'grenade' || w === 'bazooka';
+  if (net.connected && !villagerSent.ids.includes(id) && villagerSent.ids.length >= (blast ? VILLAGER_HIT_MAX : VILLAGER_SHOT_MAX)) return;
   if (paintball.on) {
     if (!villagers.canPaint(id)) return;
     villagers.splat(id, GUN_PAINT[w] ?? GUN_PAINT.pistol, VILLAGER_PAINT_S);
@@ -1665,16 +1669,19 @@ function villagerHit(id: number, point: THREE.Vector3, w: string): void {
     combat.hitMarker(true);
     combat.kill(youName(), t('char.villager'), false, weaponName(w));
   }
-  // One message for all a shot or a blast caught (a shotgun's pellets, a grenade).
-  if (!net.connected || villagerSent.ids.length >= VILLAGER_HIT_MAX || villagerSent.ids.includes(id)) return;
-  if (!villagerSent.ids.length) {
-    queueMicrotask(() => {
-      net.send({ t: 'vil', ids: villagerSent.ids, w: villagerSent.w });
-      villagerSent.ids = [];
-    });
-  }
+  // One message for all a shot or a blast caught (a shotgun's pellets, a grenade), and no sooner after the last
+  // than the server takes one (VILLAGER_HIT_MS, with room for the network's jitter): held fire is gathered.
+  if (!net.connected || villagerSent.ids.includes(id)) return;
   villagerSent.ids.push(id);
   villagerSent.w = w;
+  if (villagerSent.waiting) return;
+  villagerSent.waiting = true;
+  setTimeout(() => {
+    villagerSent.waiting = false;
+    villagerSent.next = performance.now() + VILLAGER_HIT_MS + 60;
+    if (net.connected) net.send({ t: 'vil', ids: villagerSent.ids, w: villagerSent.w });
+    villagerSent.ids = [];
+  }, Math.max(0, villagerSent.next - performance.now()));
 }
 weapon.villagerAt = (ray, max) => villagers.rayHit(ray.origin, ray.direction, max);
 weapon.onVillagerHit = (id, point, w) => villagerHit(id, point, w);

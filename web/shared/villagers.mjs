@@ -18,8 +18,12 @@ const MAN = 0, WOMAN = 1, ELDER = 2, TEEN = 3, CHILD = 4, BIKE = 5, DOG = 6;
 /** How long a villager that fell stays away (s), and how long paint stays on one (s). */
 export const VILLAGER_DOWN_S = 40;
 export const VILLAGER_PAINT_S = 120;
-/** How many villagers one message may name (a blast catches a few), and how long between two messages (ms). */
+/**
+ * How many villagers one message may name: a blast catches a few, a shot fewer (a shotgun's pellets, a quarter of a
+ * second of rifle fire). And how long between two messages (ms).
+ */
 export const VILLAGER_HIT_MAX = 6;
+export const VILLAGER_SHOT_MAX = 3;
 export const VILLAGER_HIT_MS = 250;
 /** How far a shot may reach one (m), and how far a blast (m, on top of its radius). */
 export const VILLAGER_RANGE = 160;
@@ -367,6 +371,8 @@ export function buildVillagers(data) {
       const k = kind === 1 ? [MAN, WOMAN, CHILD, CHILD][Math.floor(r() * 4)] : [MAN, WOMAN, ELDER, TEEN, MAN, WOMAN][Math.floor(r() * 6)];
       const d = add(k, 'hub', 'hub', r(), k === ELDER ? 0.8 + r() * 0.2 : 1.0 + r() * 0.3);
       d.hub = h;
+      // At the school the grown-ups stand among the children: no target, as someone walking with a child is none.
+      if (kind === 1) d.shootable = false;
       d.cx = x;
       d.cz = z;
       d.r = rad + 8;

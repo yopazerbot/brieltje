@@ -40,7 +40,7 @@ import { mergeHouse } from '../shared/insideData.mjs';
 import { defaultLayout, housePacks, packFor } from './insides.mjs';
 import { HomeGate } from './homeGate.mjs';
 import { noShoot } from '../shared/zones.mjs';
-import { buildVillagers, villagerHittable, VILLAGER_DOWN_S, VILLAGER_HIT_MAX, VILLAGER_HIT_MS, VILLAGER_PAINT_S, VILLAGER_RANGE } from '../shared/villagers.mjs';
+import { buildVillagers, villagerHittable, VILLAGER_DOWN_S, VILLAGER_HIT_MAX, VILLAGER_HIT_MS, VILLAGER_PAINT_S, VILLAGER_RANGE, VILLAGER_SHOT_MAX } from '../shared/villagers.mjs';
 import { boxesOverlap, boxPoints, clearOfPortals, makeIndoors, makeSolids } from '../shared/parking.mjs';
 import { bikeFields, bruteEntry, carFields, horseFields, playerFields, PROTO, TICK_MS } from '../shared/wire.mjs';
 import { cleanPick, LOADOUT, startingWeapons } from '../shared/loadout.mjs';
@@ -104,6 +104,8 @@ const BOUNDS = loadBounds(shared('bounds.json'));
 const houseData = (file) => JSON.parse(readFileSync(new URL(`../src/data/${file}`, import.meta.url), 'utf8'));
 /** The villagers, on the shared clock (shared/villagers.mjs): the same list the pages build from the same paths. */
 const VILLAGERS = buildVillagers(houseData('villagers.json'));
+/** ms: how long after the server set off a player's blast its page may still name the villagers it caught */
+const BLAST_MS = 1500;
 // The house data is the shell plus the insides of the main house and the bungalow, when the private data holds them
 // (server/insides.mjs). The server uses the insides for its own sums (walls, floors, the zombies); a page gets one only
 // with the home's right (server/homes.mjs).
@@ -2044,6 +2046,7 @@ export class Game {
     // The thrower's browser has set off its own grenade already.
     this.broadcast({ t: 'blast', by: name, w, x: at.x, y: at.y, z: at.z }, w === 'grenade' ? name : undefined);
     const shooter = this.players.get(name);
+    if (shooter) shooter.lastBlast = { x: at.x, z: at.z, at: now, w }; // for the villagers its page says it caught (villagersHit)
     if (!shooter || this.roundOver) return;
     // Zombies caught in it lose health (server/zombies.mjs), as the strongmen do.
     this.modes.zombies?.blast(name, at, radius, bruteDamage(w, WEAPONS), w, now); // on its floor (at.y)
@@ -2078,19 +2081,28 @@ export class Game {
    * may be hit (never a child, a dog or someone with a child), a villager that is out and not down, outside
    * the school grounds, within the gun's reach of where the server has the player; from a player who is alive,
    * armed, not on the school grounds and not in a Zombies game or a room; one message every VILLAGER_HIT_MS.
+   *
+   * A blast (`m.w` 'grenade' or 'bazooka') is believed only when the server set one off for this player itself
+   * (blast: its own grenade after `boom`, its rocket after the flight) no longer than BLAST_MS ago, and then only for
+   * villagers within that blast's radius of where the server has it. Otherwise the message counts as a shot of
+   * the gun the server has in the player's hands, which names fewer villagers (VILLAGER_SHOT_MAX). So the weapon in
+   * the kill feed and the paint's colour never come from the page.
    * A page that lies can at most fell a villager it couldn't see (hit forgery without a prize).
    */
   villagersHit(name, player, m, now) {
     if (this.room || this.modes.zombies || !player.alive || !player.state?.armed || this.calm(player)) return;
     if (now < (player.nextVil || 0)) return;
     player.nextVil = now + VILLAGER_HIT_MS;
-    const blast = m.w === 'grenade' || m.w === 'bazooka';
-    const w = blast ? m.w : player.state.w;
+    const b = player.lastBlast;
+    const blast = (m.w === 'grenade' || m.w === 'bazooka') && !!b && b.w === m.w && now - b.at >= 0 && now - b.at < BLAST_MS;
+    const w = blast ? b.w : player.state.w;
     if (!Object.hasOwn(WEAPONS, w) && w !== 'grenade') return;
     const paint = !!this.rules.paintball;
+    // From where: the blast's own place and radius, or the player's place and the gun's reach.
+    const [fx, fz, reach] = blast ? [b.x, b.z, (w === 'grenade' ? GRENADE : WEAPONS.bazooka.rocket).radius] : [player.state.x, player.state.z, VILLAGER_RANGE];
     const ids = [];
-    for (const i of m.ids.slice(0, VILLAGER_HIT_MAX)) {
-      if (ids.includes(i) || !villagerHittable(VILLAGERS, i, now / 1000, player.state.x, player.state.z, VILLAGER_RANGE)) continue;
+    for (const i of m.ids.slice(0, blast ? VILLAGER_HIT_MAX : VILLAGER_SHOT_MAX)) {
+      if (ids.includes(i) || !villagerHittable(VILLAGERS, i, now / 1000, fx, fz, reach)) continue;
       if (now < (this.vilDown.get(i) || 0)) continue;
       ids.push(i);
       if (paint) this.vilPaint.set(i, { until: now + VILLAGER_PAINT_S * 1000, w });

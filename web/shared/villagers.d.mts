@@ -2,6 +2,7 @@ export const VKIND: { man: 0; woman: 1; elder: 2; teen: 3; child: 4; cyclist: 5;
 export const VILLAGER_DOWN_S: number;
 export const VILLAGER_PAINT_S: number;
 export const VILLAGER_HIT_MAX: number;
+export const VILLAGER_SHOT_MAX: number;
 export const VILLAGER_HIT_MS: number;
 export const VILLAGER_RANGE: number;
 export const HUB_PEOPLE: number;
