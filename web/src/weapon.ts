@@ -449,12 +449,15 @@ function buildViewModel(id: WeaponId): ViewModel {
  * the gun's own line of sight (its `sight` point) on the middle instead.
  */
 const HIP: Record<WeaponId, [number, number, number]> = {
-  pistol: [0.045, -0.05, -0.1],
-  rifle: [0.05, -0.052, -0.095],
-  shotgun: [0.05, -0.054, -0.095],
-  sniper: [0.05, -0.054, -0.095],
-  bazooka: [0.072, -0.052, -0.1],
+  pistol: [0.048, -0.04, -0.1],
+  rifle: [0.05, -0.045, -0.095],
+  shotgun: [0.05, -0.046, -0.095],
+  sniper: [0.05, -0.046, -0.095],
+  bazooka: [0.072, -0.048, -0.1],
 };
+
+/** From the hip the gun is drawn as with a 54 degree view instead of 72: this much further off, and as much bigger. */
+const HIP_VIEW = Math.tan((36 * Math.PI) / 180) / Math.tan((27 * Math.PI) / 180);
 
 /** How much further in and up the gun is held from the hip while playing with the touch controls. */
 const TOUCH_HIP = new THREE.Vector3(-0.02, 0.01, 0);
@@ -1458,6 +1461,10 @@ export class Weapon {
     const tube = this.current === 'bazooka';
     pos.x -= hold * (tube ? 0.004 : 0.012);
     pos.y += hold * (tube ? -0.02 : 0.01);
+    // From the hip the gun is drawn as with a 54 degree view, as shooters do (less stretch: the gun's back
+    // end no longer huge, its muzzle no longer tiny): further off and as much bigger. Aimed, as before.
+    const near = 1 + (HIP_VIEW - 1) * (1 - this.aim);
+    pos.z *= near;
     m.root.position.copy(pos);
     m.root.rotation.set(
       this.recoil[1] + hold * (tube ? -0.15 : 0.2) - (1 - raised) * 0.6 - this.lag.y * 0.012 * loose + breathe * 0.004 - this.sprint * 0.32 + step * 0.012 * bob,
@@ -1488,7 +1495,7 @@ export class Weapon {
     // The same size on screen whatever the field of view: the view model is stretched across the view
     // by as much as a wider view would shrink it (the picture is exactly the one at 72 degrees).
     const wide = Math.tan((this.baseFov * Math.PI) / 360) / Math.tan((72 * Math.PI) / 360);
-    this.root.scale.set(wide, wide, 1);
+    this.root.scale.set(wide * near, wide * near, 1);
     // A found scope zooms further: 0.3 on the rifle, 0.42 on the pistol (the sniper's 0.22).
     const zoom = this.hasScope(this.current) ? (this.current === 'rifle' ? 0.3 : 0.42) : spec.zoom;
     const fov = this.baseFov * (1 - (1 - zoom) * this.aim);
