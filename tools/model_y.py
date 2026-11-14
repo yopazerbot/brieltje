@@ -117,20 +117,18 @@ U_QW = 3.90       # behind this the roof's middle is the tailgate's glass, down 
 U_B = 2.565        # the B-pillar: clear glass in front of it, dark glass behind
 U_WS = 2.40        # the windshield's top edge: the dark roof glass behind it
 RAIL = 0.09        # the body-coloured rail along the roof's sides (and the A-pillars)
-# The side glass's outline is a teardrop: its top edge follows the roof, then from U_TD0 curves down to meet the
-# rising bottom edge in a point at U_PT (the small pointed quarter window behind the rear door).
-U_TD0, U_PT = 3.66, 4.24
-TD_MIN = 0.05
+# The side glass's outline: its top edge follows the roof; from U_K0 its bottom edge kicks up to meet the top in
+# a high point at U_PT, just behind the rear axle (the small pointed quarter window behind the rear door).
+U_K0, U_PT = 3.50, 3.92
 
 
 def belt(u):
     return BELT(u) if GREENHOUSE[0] <= u <= GREENHOUSE[1] else 99.0
 
 
-def dlo(u):
-    """How far up the side glass's surface (0 its bottom edge, 1 its top) the glass reaches at u."""
-    q = (u - U_TD0) / (U_PT - U_TD0)
-    return 1.0 if q <= 0 else max(0.0, 1 - q ** 1.7)
+def kick(u):
+    """How far up the side glass's surface (0 the waistline, 1 the top) its bottom edge has risen at u."""
+    return cp.clamp01((u - U_K0) / (U_PT - U_K0)) ** 1.4
 
 
 def haunch(u, z):
@@ -150,7 +148,7 @@ def tuck(u):
 def section(u):
     """Half a cross-section at u, from the bottom middle round to the top middle: (x, z) points,
     the belt height and the window's key points (lx, lz: its bottom edge; tx, tz: its top edge; dz: the
-    glass's top at u, below tz where the teardrop closes; wr: the roof glass's edge)."""
+    glass's top at u; kz: the glass's bottom at u, over lz where it kicks up; wr: the roof glass's edge)."""
     zb, zt, w = BOTTOM(u), TOP(u), WIDTH(u)
     k = min(1.0, w / 0.6)            # the small sections at the tip of the nose scale their details down
     drop = DROP(u) * min(1.0, (zt - zb) / 0.25)
@@ -190,11 +188,13 @@ def section(u):
     pts.append((lx, lz))
     tx = wr + RAIL * k
     tz = crown(tx) - 0.035 * glass
-    # The side glass (or the edge of the hood) leaning in: up to td the glass, from there to the top the
-    # painted C-pillar (a sliver under the black frame where the glass reaches the top).
-    td = min(1 - 0.03, max(TD_MIN, dlo(u)))
+    # The side glass (or the edge of the hood) leaning in: up to td the glass, from there to the top a painted
+    # sliver under the black frame. From U_K0 the glass starts at kb, its bottom edge kicking up; under it paint.
+    td = 1 - 0.03
     td += (0.8 - td) * hf
-    for t in (td / 3, 2 * td / 3, td, (1 + td) / 2):
+    kb = min(kick(u) * td, td - 0.05)
+    t0 = kb if kb >= 0.04 else td / 3
+    for t in (t0, (t0 + td) / 2, td, (1 + td) / 2):
         bow = 0.012 * glass * math.sin(math.pi * t)
         x = lx + (tx - lx) * t + bow
         z = lz + (tz - lz) * t
@@ -204,7 +204,8 @@ def section(u):
     for t in (0.0, 1 / 6, 2 / 6, 3 / 6, 4 / 6, 5 / 6, 1.0):
         x = wr * (1 - t)
         pts.append((x, crown(x)))
-    return pts, bl, {"lx": lx, "lz": lz, "tx": tx, "tz": tz, "dz": lz + (tz - lz) * dlo(u), "wr": wr, "bl": bl,
+    return pts, bl, {"lx": lx, "lz": lz, "tx": tx, "tz": tz, "dz": tz, "kz": lz + (tz - lz) * kb if kb >= 0.04 else lz,
+                     "wr": wr, "bl": bl,
                      "zt": zt, "zb": zb, "w": w, "i_lo": i_lo}
 
 
@@ -288,7 +289,7 @@ def shell_ring(u):
     w, t, b = ext(u)
     sx = w / i0["w"]
     mz = lambda z: b + (t - b) * (z - i0["zb"]) / (i0["zt"] - i0["zb"])
-    info = {"lx": i0["lx"] * sx, "lz": mz(i0["lz"]), "tx": i0["tx"] * sx, "tz": mz(i0["tz"]), "dz": mz(i0["dz"]),
+    info = {"lx": i0["lx"] * sx, "lz": mz(i0["lz"]), "tx": i0["tx"] * sx, "tz": mz(i0["tz"]), "dz": mz(i0["dz"]), "kz": mz(i0["kz"]),
             "wr": i0["wr"] * sx, "bl": mz(bl0), "zt": t, "zb": b, "w": w, "i_lo": i0["i_lo"]}
     return [(x * sx, mz(z)) for x, z in pts0], info["bl"], info
 
@@ -356,10 +357,10 @@ def body_material(u, x, z, nz, seg=None):
     if U_QW < u < U_GLASS_END and x < info["wr"] and nz > 0.25:
         return "GlassDark"  # the tailgate's glass, down below the side windows' line to its end
     if GREENHOUSE[0] + 0.02 < u < U_GLASS_END and z > bl + 0.015 and x < w - 0.075 and info["zt"] - bl > 0.03:
-        if seg is not None and info["i_lo"] <= seg < info["i_lo"] + 5:  # the side glass and the C-pillar over it
-            on = seg < info["i_lo"] + 3 and u < U_PT
+        if seg is not None and info["i_lo"] <= seg < info["i_lo"] + 5:  # the side glass and the paint round it
+            on = info["i_lo"] + (1 if info["kz"] > info["lz"] else 0) <= seg < info["i_lo"] + 3 and u < U_PT
         elif seg is None and x > info["tx"] - 0.003:
-            on = u < U_PT and z < info["dz"] + 0.003
+            on = u < U_PT and info["kz"] - 0.003 < z < info["dz"] + 0.003
         else:
             on = None
         if on is not None:
@@ -721,9 +722,9 @@ lzf = lambda u: key(u, "lz")
 for s in (-1, 1):
     side = side_ray(s)
     # Door gaps: from the window down to the black sill (the last one round the rear arch).
-    for line in ([(1.530, lzf(1.53) - 0.004), (1.526, 0.86), (1.522, 0.56), (1.535, 0.33)],
+    for line in ([(1.440, lzf(1.44) - 0.004), (1.436, 0.86), (1.432, 0.56), (1.445, 0.33)],
                  [(2.565, lzf(2.565) - 0.004), (2.567, 0.86), (2.570, 0.56), (2.573, 0.33)],
-                 [(3.600, lzf(3.60) - 0.004), (3.585, 0.95), (3.548, 0.80), (3.50, 0.70), (3.47, 0.66)]):
+                 [(3.600, key(3.60, "kz") - 0.004), (3.585, 0.95), (3.548, 0.80), (3.50, 0.70), (3.47, 0.66)]):
         groove([side(u, z) for u, z in dense(line, G_STEP)])
     # Hood (frunk) gaps from where the bar starts to climb back to the cowl, in the valley between the hood and
     # the wing. (The bumper's face runs into the fenders without a seam.)
@@ -806,25 +807,25 @@ for s in (-1, 1):
     side = side_ray(s)
     lz = lambda u: key(u, "lz")
     tz = lambda u: key(u, "tz")
-    dz = lambda u: key(u, "dz")
-    # Black window frames round the teardrop: the sill, the top edge (wide at the A-pillar) curving down to
-    # meet the sill in a point, the B-pillar, the pillar between the rear door glass and the quarter window.
-    ribbon(B, [side(u, lz(u) + 0.002) for u in across(1.50, U_PT, 30)], 0.022, "LampGlass", out=0.003)
-    ribbon(B, [side(u, min(tz(u) - 0.012, dz(u) - 0.002)) for u in across(1.25, U_PT, 44)],
+    kz = lambda u: key(u, "kz")
+    # Black window frames round the glass: the sill (kicking up behind the rear door), the top edge (wide at the
+    # A-pillar) along the roof, meeting the sill in a point, the B-pillar, the pillar between the rear door glass
+    # and the quarter window.
+    ribbon(B, [side(u, kz(u) + 0.002) for u in across(1.50, U_PT, 30)], 0.022, "LampGlass", out=0.003)
+    ribbon(B, [side(u, tz(u) - 0.012) for u in across(1.25, U_PT, 44)],
            lambda t: 0.050 - 0.028 * min(1.0, max(0.0, (t - 0.167) / 0.10)), "LampGlass", out=0.003)
     panel(B, side, across(2.505, 2.625, 3), lambda u: across(lz(u) + 0.004, tz(u) - 0.01, 6), "LampGlass", out=0.003,
           skirt=0.003)
-    panel(B, side, across(3.60, 3.65, 2), lambda u: across(lz(u) + 0.004, tz(u) - 0.01, 6), "LampGlass", out=0.003,
+    panel(B, side, across(3.60, 3.65, 2), lambda u: across(kz(u) + 0.004, tz(u) - 0.01, 6), "LampGlass", out=0.003,
           skirt=0.003)
     # A thin black sill between the arches.
     panel(B, side, across(1.33, 3.37, 24), lambda u: [0.175, 0.245], "Trim", out=0.005, skirt=0.005)
     # Flush door handles near each door's rear edge: black, a pocket at the front.
-    for cu in (2.425, 3.445):
-        cz = lz(cu) - 0.092
+    for cu, cz in ((2.425, 0.967), (3.445, 1.003)):
         rounded_panel(B, side, cu, cz, 0.150, 0.024, 0.01, "Trim", out=0.0035, skirt=0.0035)
         rounded_panel(B, side, cu - 0.058, cz, 0.034, 0.016, 0.007, "Gap", na=6, nb=3, out=0.0042, skirt=0)
     # Side repeater camera on the front fender just behind the arch: a dark wedge, tall in front, pointed behind.
-    panel(B, side, across(1.345, 1.445, 6), lambda u: across(0.872 + (u - 1.345) * 0.13, 0.906 - (u - 1.345) * 0.21, 2),
+    panel(B, side, across(1.245, 1.345, 6), lambda u: across(0.872 + (u - 1.245) * 0.13, 0.906 - (u - 1.245) * 0.21, 2),
           "LampGlass", out=0.004, skirt=0.004)
 
 # ---- Roof: a dark seam where the windshield meets the roof glass.
