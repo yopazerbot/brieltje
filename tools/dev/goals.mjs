@@ -6,7 +6,8 @@
 // (it keeps behind the traffic, backs off and finds a way round when stuck; --trace prints where it is every 5 s).
 //
 //   node tools/dev/goals.mjs --url http://localhost:5200/ --port 9920 [--quality high] [--phone] [--shots <folder>]
-//                            [--only spots,reach,shots,find,foot,climb,zombies,bike,car] [--ride] [--trace]
+//                            [--only spots,reach,shots,find,foot,line,climb,warm,zombies,bike,car] [--ride] [--trace]
+//                            [--size 667x375]
 //
 // Prints one line per check and a summary; exits 1 when any check failed.
 import { mkdirSync, readFileSync } from 'node:fs';
@@ -15,10 +16,10 @@ import { makeChurch } from '../../web/shared/church.mjs';
 import { makeTerrain } from '../../web/shared/terrain.mjs';
 import { launch, options, startGame } from './cdp.mjs';
 
-const o = options({ url: 'http://localhost:5200/', port: '9920', quality: 'high', phone: false, shots: '', only: '', ride: false, trace: false });
+const o = options({ url: 'http://localhost:5200/', port: '9920', quality: 'high', phone: false, shots: '', only: '', ride: false, trace: false, size: '' });
 const ROUTES = JSON.parse(readFileSync(new URL('../../web/shared/routes.json', import.meta.url))).routes;
 const ROADS = JSON.parse(readFileSync(new URL('../../web/src/data/roads.json', import.meta.url)));
-const all = ['spots', 'reach', 'shots', 'find', 'foot', 'climb', 'zombies', ...(o.ride ? ['bike', 'car'] : [])];
+const all = ['spots', 'reach', 'shots', 'find', 'foot', 'line', 'climb', 'warm', 'zombies', ...(o.ride ? ['bike', 'car'] : [])];
 const only = new Set(o.only ? o.only.split(',') : all);
 if (o.shots) mkdirSync(o.shots, { recursive: true });
 
@@ -165,6 +166,12 @@ async function start() {
     source: `localStorage.setItem('briel.graphics','${o.quality}');localStorage.setItem('briel.lang','en');localStorage.setItem('briel.spawn','house');localStorage.setItem('briel.playMode','explore');localStorage.setItem('briel.feedback','later');`,
   });
   await startGame(b, o.url, { phone: o.phone, village: true });
+  if (o.size) {
+    // Another phone's screen (--size 667x375), after the start (startGame sets 844x390 for --phone).
+    const [width, height] = o.size.split('x').map(Number);
+    await b.send('Emulation.setDeviceMetricsOverride', { width, height, deviceScaleFactor: 1, mobile: o.phone });
+    await b.sleep(1000);
+  }
   await b.evaluate(`briel.three.applyQuality(${js(o.quality)}); briel.three.holdQuality(true); briel.three.weather.setSolo('sunny'); briel.weatherAhead(3600); document.getElementById('cc-close')?.click()`, false);
   // Pictures without the hint to click (headless has no pointer lock).
   await b.evaluate("document.head.append(Object.assign(document.createElement('style'), { textContent: '#capture-hint { display: none !important; }' }))", false);
@@ -261,6 +268,13 @@ try {
     await lookAt(s.x, s.z, s.y, 3, -0.4);
     await b.sleep(2000);
     await shot('find_g01_reloaded');
+    // A found gnome next to one not found: g02 drawn for a moment 0.8 m beside g01.
+    const [ax, az] = [s.x + 0.55, s.z + 0.55];
+    await b.evaluate(`(() => { const m = briel.goals.gnomes.mesh, M = new briel.three.scene.matrix.constructor(); m.getMatrixAt(1, M); M.setPosition(${ax}, ${s.y}, ${az}); m.setMatrixAt(1, M); m.instanceMatrix.needsUpdate = true; })()`, false);
+    await lookAt(s.x + 0.3, s.z + 0.3, s.y, 2.2, -0.45);
+    await b.sleep(1500);
+    await shot('pale_compare');
+    await b.evaluate('briel.goals.gnomes.setFound(briel.goals.found())', false);
   }
 
   if (only.has('foot')) {
@@ -307,6 +321,43 @@ try {
     await b.sleep(200);
     const stopped = await toast();
     check('a teleport stops the run', running && stopped.includes('Route stopped') && !(await b.evaluate('!!briel.goals.run()', false)), `running before ${running}, toast "${stopped}"`);
+    // A hop across the gate (a teleport 6 m before it to 6 m past it) starts no clock.
+    await b.evaluate(`briel.teleport(${sx}, ${sz}, ${sg}, 0, 0)`, false);
+    await b.evaluate('__g.frame()');
+    const px = gx + ((fx - gx) / len) * 6, pz = gz + ((fz - gz) / len) * 6;
+    await b.evaluate(`briel.teleport(${px}, ${pz}, briel.world.groundAt(${px}, ${pz}, 60, 0).y, 0, 0)`, false);
+    await b.evaluate('__g.frame()');
+    check('a hop across the gate starts nothing', !(await b.evaluate('!!briel.goals.run()', false)));
+  }
+
+  if (only.has('line')) {
+    // The line at the top by the walking gate and during a run, in English and Dutch, with a best time: clear of the
+    // wordmark (and its Beta tag) and of the minimap.
+    const r = ROUTES.find((x) => x.id === 'foot');
+    const [gx, gz] = r.gate, [fx, fz] = r.checkpoints[0];
+    const len = Math.hypot(fx - gx, fz - gz);
+    const sx = gx - ((fx - gx) / len) * 6, sz = gz - ((fz - gz) / len) * 6;
+    await b.evaluate("briel.travel('church')", false);
+    await b.sleep(3000);
+    const clear = () => b.evaluate(`(() => { const r = (id) => document.getElementById(id)?.getBoundingClientRect(); const l = r('goal-line'), m = r('minimap'), w = document.querySelector('#brand')?.getBoundingClientRect(); const hit = (a, c) => a && c && c.width && a.left < c.right && c.left < a.right && a.top < c.bottom && c.top < a.bottom; return JSON.stringify({ map: hit(l, m), brand: hit(l, w), right: Math.round(l.right), mapLeft: Math.round(m.left), lines: Math.round(l.height) }); })()`, false).then(JSON.parse);
+    for (const lang of ['en', 'nl']) {
+      await b.evaluate(`briel.i18n.setLang(${js(lang)}); briel.goals.routes.best['foot@1'] = 75432`, false);
+      const sg = await b.evaluate(`briel.world.groundAt(${sx}, ${sz}, briel.world.groundAt(${sx}, ${sz}, 60, 0).y + 0.6, 0).y`, false);
+      await b.evaluate(`briel.teleport(${sx}, ${sz}, ${sg}, ${Math.atan2(-(gx - sx), -(gz - sz))}, 0)`, false);
+      await b.sleep(1200);
+      const g = await clear();
+      await shot(`line_gate_${lang}`);
+      check(`line by the gate clear (${lang})`, !g.map && !g.brand, `${await line()} ${js(g)}`);
+      await b.evaluate(`__g.walkTo(${gx}, ${gz}, 0.8)`);
+      await b.evaluate(`__g.walkTo(${(gx + fx) / 2}, ${(gz + fz) / 2}, 1)`);
+      await b.sleep(400);
+      const run = await clear();
+      await shot(`line_run_${lang}`);
+      check(`line during a run clear (${lang})`, !run.map && !run.brand && !!(await b.evaluate('!!briel.goals.run()', false)), `${await line()} ${js(run)}`);
+      await b.evaluate(`briel.teleport(${gx + 100}, ${gz}, briel.world.groundAt(${gx + 100}, ${gz}, 60, 0).y)`, false);
+      await b.evaluate('__g.frame()');
+    }
+    await b.evaluate("briel.i18n.setLang('en')", false);
   }
 
   if (only.has('climb')) {
@@ -342,6 +393,22 @@ try {
       await b.sleep(1500);
       await shot(`climb_${id}`);
     }
+  }
+
+  if (only.has('warm')) {
+    // The warm-up frames behind the start screen (main.ts calls goals.warming): every ring and the golden gnome drawn,
+    // and all back as it was after.
+    const seen = `JSON.stringify((() => { const r = briel.goals.routes, g = briel.goals.gnomes; return { next: r.next.visible, after: r.after.visible, gates: r.gates.map((o) => o.visible), golden: g.golden.visible }; })())`;
+    await b.evaluate("briel.travel('house')", false);
+    await b.sleep(2000);
+    const before = await b.evaluate(seen, false);
+    await b.evaluate('briel.goals.warming(true)', false);
+    await b.evaluate('__g.frame()');
+    const on = JSON.parse(await b.evaluate(seen, false));
+    await b.evaluate('briel.goals.warming(false)', false);
+    await b.evaluate('__g.frame()');
+    const off = await b.evaluate(seen, false);
+    check('warming shows every ring and the golden gnome, then puts them back', on.next && on.after && on.gates.every(Boolean) && on.golden && off === before, `${before} then ${js(on)} then ${off}`);
   }
 
   if (only.has('zombies')) {
