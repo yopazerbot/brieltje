@@ -97,7 +97,70 @@ export async function loadStreetModel(renderer: THREE.WebGLRenderer, ground: num
   cardConifers(scene, [x, z]); // the gardens' cone conifers as leaf-card ones on Medium and up (world/streetConifers.ts)
   scene.position.set(x, ground + terrain.height(x, z), z);
   scene.userData = { ...root.userData, landmark: name };
+  streetGroundUnbaked(scene, ground, (root.userData as Extras).street ?? []);
   return scene;
+}
+
+/** m: a baked surface in the rebuilt street lying wholly within this of the grass is its edging (a gutter band, a kerb: 15 cm) */
+const STREET_BAND = 0.2;
+
+/**
+ * The street's own edging keeps the real-time light. A rebuilt street's concrete gutter bands and kerbs share their
+ * material with the houses' stonework (sills, plinths), which has baked light (world/bakedLight.ts). In the bake the
+ * village's ground lay over those flat strips, so they came out black: black bands between Molenhoek's asphalt and
+ * its red cycle lanes. Its asphalt and pavers are left out of the bake for that reason (tools/bake/lightmap_uv.py);
+ * here the same for whatever of a baked mesh lies inside the rebuilt street's outline within STREET_BAND of the
+ * grass: those triangles go into a mesh of their own, with the same material and no light layout, so the bake
+ * passes it by. The houses' own low stonework (a footing, a step) stands outside the outline and keeps its bake.
+ */
+function streetGroundUnbaked(scene: THREE.Object3D, ground: number, street: [number, number][]): void {
+  if (street.length < 3) return; // the village's own street: nothing rebuilt
+  scene.updateMatrixWorld(true);
+  const baked: THREE.Mesh[] = [];
+  scene.traverse((o) => {
+    const mesh = o as THREE.Mesh;
+    if (mesh.isMesh && mesh.userData.lmModel && mesh.geometry.attributes.uv1 && !(mesh.parent as THREE.LOD | null)?.isLOD) baked.push(mesh);
+  });
+  const v = new THREE.Vector3();
+  for (const mesh of baked) {
+    const g = mesh.geometry;
+    const pos = g.attributes.position;
+    const index = g.index ? Array.from(g.index.array) : Array.from({ length: pos.count }, (_, i) => i);
+    // Each corner's height over the grass, worked out once.
+    const over = new Float32Array(pos.count).fill(NaN);
+    const at = new Float32Array(pos.count * 2);
+    const height = (i: number) => {
+      if (Number.isNaN(over[i])) {
+        v.fromBufferAttribute(pos, i).applyMatrix4(mesh.matrixWorld);
+        over[i] = v.y - ground - terrain.height(v.x, v.z);
+        at.set([v.x, v.z], i * 2);
+      }
+      return over[i];
+    };
+    const inStreet = (tri: number[]) => near(street, (at[tri[0] * 2] + at[tri[1] * 2] + at[tri[2] * 2]) / 3, (at[tri[0] * 2 + 1] + at[tri[1] * 2 + 1] + at[tri[2] * 2 + 1]) / 3, 0.3);
+    const low: number[] = [];
+    const rest: number[] = [];
+    for (let t = 0; t + 2 < index.length; t += 3) {
+      const tri = [index[t], index[t + 1], index[t + 2]];
+      (tri.every((i) => Math.abs(height(i)) < STREET_BAND) && inStreet(tri) ? low : rest).push(...tri);
+    }
+    if (!low.length) continue;
+    const edging = new THREE.BufferGeometry();
+    for (const [name, attribute] of Object.entries(g.attributes)) if (name !== 'uv1') edging.setAttribute(name, attribute);
+    edging.setIndex(low);
+    g.setIndex(rest);
+    g.boundingBox = g.boundingSphere = null;
+    const part = new THREE.Mesh(edging, mesh.material);
+    part.name = mesh.name;
+    part.position.copy(mesh.position);
+    part.quaternion.copy(mesh.quaternion);
+    part.scale.copy(mesh.scale);
+    part.receiveShadow = mesh.receiveShadow;
+    part.renderOrder = mesh.renderOrder;
+    const { lmModel: _model, lmId: _id, lm: _page, lmSize: _size, ...userData } = mesh.userData as Record<string, unknown>;
+    part.userData = userData;
+    mesh.parent!.add(part);
+  }
 }
 
 /**
