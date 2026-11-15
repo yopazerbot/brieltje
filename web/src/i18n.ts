@@ -2633,7 +2633,7 @@ export function placeName(name: string): string {
 /** The doors (the house data): "door to <room>" and the named ones; after "E: " in the prompt, so lower case. */
 const DOORS_NL: Record<string, string> = {
   'sliding door': 'schuifdeur', 'outside door': 'buitendeur', 'front door': 'voordeur',
-  'garage door': 'garagepoort', 'side door': 'zijdeur', 'back door': 'achterdeur', 'store door': 'bergingsdeur',
+  'garage door': 'garagepoort', 'side door': 'zijdeur', 'back door': 'achterdeur', 'rear door 2': 'achterdeur 2',
   // the café at the church (tools/keet.py): its rooms' names are English, so its "door to" names are here whole
   'bar gate': 'klapdeurtje van de toog', 'toilet door': 'toiletdeur', 'door to the bar room': 'deur naar de gelagzaal',
   'door to the back hall': 'deur naar de gang', 'door to the toilets': 'deur naar de toiletten',

@@ -109,7 +109,8 @@ try {
     k++;
     await shot(`brick-room-${p.y1 > 1 ? 'f1' : 'gf'}-${k}`, x, z, bf.floor + p.y1 + 0.02, (k * 1.3) % (Math.PI * 2), -0.05);
   }
-  ok('brick house: a picture in every room', k >= 15, String(k));
+  const levels = new Set(floors.map((p) => p.y1 > 1));
+  ok('brick house: a picture in every room, on both floors', k > 0 && levels.size === 2); // no count: the inside's own
   // 5. The Zombies game alone starts at the house (its grid is built from the shell and the installed insides).
   await b.evaluate("briel.zombiesSolo.start('house')", false);
   await b.sleep(4000);

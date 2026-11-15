@@ -36,7 +36,7 @@
     9.0
    ]
   ],
-  "mainGroundFloorRight": 11.67,
+  "mainEdge": 11.67,
   "rear": [
    [
     4.98,
@@ -598,7 +598,7 @@
    "depth": 0.16
   },
   {
-   "id": "store-door",
+   "id": "rear-door-2",
    "wall": "wing-back",
    "kind": "door",
    "a": [

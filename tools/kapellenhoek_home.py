@@ -646,7 +646,7 @@ h.box("vh_metal_small", UR - .05, UR + .03, VM - .03, VM + .05, 0, FLAT - .2, "#
 h.wall("wing-right", (UL, 0), (UL, VB), (1, 0), WEAVE - .02,
        [Opening("wing-window", (8.20 + 10.00) / 2, 1.2, 1.8, .9, cols=2, rows=1)])
 h.wall("wing-back", (UM, VB), (UL, VB), (0, 1), WEAVE - .02,
-       [Opening("store-door", (11.96 + 12.93) / 2 - UM, 0, .97, 2.15, "door", reveal=.18, door=("kh-home-store", "store door"))])
+       [Opening("rear-door-2", (11.96 + 12.93) / 2 - UM, 0, .97, 2.15, "door", reveal=.18, door=("kh-home-rear2", "rear door 2"))])
 # Over the rear part's roof, the wing's side up to its back slope.
 h.wall("wing-left", (UM, VM), (UM, VB), (-1, 0), [(0, wing_roof(UM, VM) - .03), (VB - VM, WEAVE - .02)], bottom=FLAT - .2)
 
@@ -915,7 +915,7 @@ data = {
     "floor": {"relief": FT, "game": round(F, 3)},
     "wall": WALL,
     "storeys": STOREYS,
-    "blocks": {"main": [[0, 0], [UMU, VM]], "mainGroundFloorRight": UM, "rear": [[UR, VM], [UM, VB]], "wing": [[UM, 0], [UL, VB]], "terrace": [[0, VM], [UR, VB]]},
+    "blocks": {"main": [[0, 0], [UMU, VM]], "mainEdge": UM, "rear": [[UR, VM], [UM, VB]], "wing": [[UM, 0], [UL, VB]], "terrace": [[0, VM], [UR, VB]]},
     "roof": {"eaves": EAVE, "ridge": RIDGE, "ridgeV": VR, "overhang": OVER, "wingEaves": WEAVE, "wingTop": WTOP, "flat": FLAT},
     "walls": h.walls,
     "openings": h.openings,
