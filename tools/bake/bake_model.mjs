@@ -74,4 +74,4 @@ for (const sub of ['', 'half']) {
     n++;
   }
 }
-console.log(`${n} files of ${model} copied into web/public/baked`);
+console.log(`${n} files of ${model} copied into ${dst}`);
