@@ -9,7 +9,8 @@
 // The classes:
 // - trees: every drawn tree trunk (and the street models' conifers) walked at from four sides by a walker that does
 //   what Player.update does (8 cm steps, World.resolve, the edge, a step up of 0.5 m); every --sample'th tree by the
-//   real player too. A body that passes within 10 cm of a trunk's axis went through it. Also: falls (3 m) onto 40 trunks in
+//   real player too. A body that passes within 10 cm of a trunk's axis went through it; a side whose start lies outside
+//   the game's edge is left out (counted: no player stands there, and the edge would push the walker in). Also: falls (3 m) onto 40 trunks in
 //   the woods (the body must end beside the trunk, on the ground), and a body put into each narrow gap between a
 //   trunk and a wall must come out free, by itself or walking out.
 // - walls: every drawn triangle of the static world sampled at body height (0.55 to 1.75 m over the floor there);
@@ -301,12 +302,18 @@ function trees(sample) {
   };
   const SIDES = [[1, 0], [-1, 0], [0, 1], [0, -1]];
   const rows = [];
-  let tested = 0, through = 0, real = 0, realThrough = 0;
+  let tested = 0, through = 0, real = 0, realThrough = 0, outside = 0;
   trunks.forEach((t, n) => {
     const g = floorAt(t.x, t.z);
     let tried = 0, passed = 0, closest = Infinity, start = null;
     for (const [dx, dz] of SIDES) {
       const sx = t.x - dx * 2, sz = t.z - dz * 2;
+      // A start outside the game's edge is no place a player stands: the edge would push the walker in, through the
+      // trunk. Counted, so the rule shows how much it leaves out.
+      if (!W.bounds.inside(sx, sz)) {
+        outside++;
+        continue;
+      }
       const f0 = floorAt(sx, sz);
       if (Math.abs(f0 - g) > 0.5 || !free(sx, sz, f0)) continue;
       const e = walk(sx, sz, f0, dx, dz, 4, [t.x, t.z]);
@@ -387,10 +394,11 @@ function trees(sample) {
   const fallsIn = falls.filter((f) => f.inTrunk);
   return {
     count: through + fallsIn.length + wedges.length,
-    line: `${through} of ${tested} trees walked through (real player ${realThrough} of ${real}); falls into a trunk ${fallsIn.length} of ${falls.length}; wedged ${wedges.length} of ${gaps} gaps`,
+    line: `${through} of ${tested} trees walked through (real player ${realThrough} of ${real}; ${outside} sides left out, their start outside the edge); falls into a trunk ${fallsIn.length} of ${falls.length}; wedged ${wedges.length} of ${gaps} gaps`,
     worst: [...rows.map((r) => ({ ...r, what: 'walked through' })), ...fallsIn.map((f) => ({ ...f, what: 'fell into' })), ...wedges.map((w) => ({ ...w, what: 'wedged' }))],
     trunks: trunks.length,
     tested,
+    outside,
     through,
     real,
     realThrough,
