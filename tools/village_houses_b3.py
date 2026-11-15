@@ -466,7 +466,86 @@ def hedge_bungalow():
     h.export()
 
 
-HOUSES = {"vh_old_farm": old_farm, "vh_seventies": seventies, "vh_hedge_bungalow": hedge_bungalow}
+# ======================================================================================================================
+# 12. x 1629.1, z -364.2: an old cottage in weathered cream render on the road, one storey with a room in its steep slate
+# roof, a round window ringed in brick high in the gable toward Molenhoek, brick quoins at that corner, small windows
+# and a door in flat brick surrounds, two rendered chimneys, a flat-roofed back part; grass up to its walls.
+def cottage():
+    # (found by its back corner: its front corners are the street's paving's too)
+    h = House("vh_cottage", [1634.93, -370.54], ([1623.96, -358.84], [1634.14, -358.19]), 9.69, {
+        "vh_render": {"texture": "plaster", "tint": "#d6cab2", "normalScale": .9},
+        "vh_brick": {"texture": "nb_brick", "tint": "#7f4a3c", "normalScale": .6},
+        "vh_roof": {"texture": "roof_tiles", "tint": "#3f4347", "normalScale": .25},
+        "vh_trim": TRIM, "vh_stone": STONE, "vh_glass": GLASS, "vh_frames_small": SMALL, "vh_metal_small": METAL,
+    })
+    # u along the road front to the east (u -5.1: the gable toward Molenhoek), d from the front (0) to the back.
+    lift = h.base
+    gy = lambda u, d: h.ground(u, d)
+    white, red, foot_c = "#f2f1ec", "#8a5140", "#77746e"
+    E, RG, D, ov, vg = 3.0 + lift, 7.0 + lift, 7.95, .3, .12
+    k = (RG - E) / (D / 2)
+    main = Roof([(-5.1 - vg, -ov), (5.1 + vg, -ov), (5.1 + vg, D + ov), (-5.1 - vg, D + ov)],
+                [eave((0, -ov), (0, 1), E - k * ov, k), eave((0, D + ov), (0, -1), E - k * ov, k)], under="#cfc7b6", edge="#3a3c3f", board=.14)
+    roofs = [main]
+    FL = 2.7 + lift
+    back = [(-5.09, 7.95), (5.1, 7.95), (5.1, 12.38), (2.01, 12.45), (1.97, 9.59), (-.14, 9.6), (-.18, 9.18), (-5.09, 9.32)]
+    flat_at = over(back, FL + .07)
+    foot = [(.4, "vh_trim", foot_c)]
+
+    def wall(a, b, ops=(), **kw):
+        top = kw.pop("top", None)
+        return h.wall(a, b, top if top is not None else top_over(roofs, a, b, also=[flat_at]), ops, mesh="vh_render", bands=kw.pop("bands", foot), **kw)
+
+    g0 = gy(.5, -.2)
+    fl = g0 + .12
+    win = lambda s, y=None, w=.9, hh=1.2: Opening(s, fl + .78 if y is None else y, w, hh, frame=white, reveal=.16, cols=2 if w > .8 else 1, surround=red, sill=False)
+    # --- the road front: two windows, the door, a window -------------------------------------------------------------------
+    ops = [win(1.4), win(3.5), Opening(5.7, fl, .9, 2.0, "door", door="#efeeea", frame=white, panels="glazed", reveal=.16, sill=False, surround=red, step=(g0, .25)), win(7.9)]
+    W, N, T = wall((-5.1, 0), (5.1, 0), ops, out=(0, -1))
+    # --- the gable toward Molenhoek: the round window in its brick ring, brick quoins at the road's corner --------------
+    L = math.dist((-5.09, 9.32), (-5.1, 0))
+    oc, oy, r0, r1 = L - D / 2, E + 1.55, .4, .55
+    # (a square hole a little smaller than the glass; the brick ring covers its corners)
+    Wg, Ng, Tg = wall((-5.09, 9.32), (-5.1, 0), [Opening(oc, oy - .38, .76, .76, "round", reveal=.12, sill=False)], out=(-1, 0))
+    at = lambda a, r, dep: Wg(oc + math.cos(a) * r, oy + math.sin(a) * r, dep)
+    for i in range(16):  # the glass set in, a white frame, the brick ring a little proud and its reveal
+        a0, a1 = math.tau * i / 16, math.tau * (i + 1) / 16
+        am = (a0 + a1) / 2
+        h.poly("vh_glass", [Wg(oc, oy, .12), at(a0, r0, .12), at(a1, r0, .12)], Ng)
+        h.poly("vh_frames_small", [at(a0, r0, .1), at(a1, r0, .1), at(a1, r0 - .06, .1), at(a0, r0 - .06, .1)], Ng, white)
+        h.poly("vh_brick", [at(a0, r0, -.02), at(a1, r0, -.02), at(a1, r1, -.02), at(a0, r1, -.02)], Ng)
+        h.poly("vh_brick", [at(a0, r0, -.02), at(a1, r0, -.02), at(a1, r0, .12), at(a0, r0, .12)],
+               tuple(-Tg[q] * math.cos(am) - (0, 0, 1)[q] * math.sin(am) for q in range(3)))
+        h.poly("vh_brick", [at(a0, r1, -.02), at(a1, r1, -.02), at(a1, r1, 0), at(a0, r1, 0)],
+               tuple(Tg[q] * math.cos(am) + (0, 0, 1)[q] * math.sin(am) for q in range(3)))
+    # quoins: brick blocks at the corner, long and short in turn, on both faces, from the foot to the eaves
+    y = .4
+    i = 0
+    while y < E - .3:
+        lng = .36 if i % 2 == 0 else .2
+        h.wbox(Wg, Ng, Tg, "vh_brick", L - lng, L, y, y + .22, -.02, 0)
+        h.wbox(W, N, T, "vh_brick", 0, .2 if i % 2 == 0 else .36, y, y + .22, -.02, 0)
+        y += .26
+        i += 1
+    # --- the other gable, the back and the flat-roofed back part --------------------------------------------------------------
+    wall((5.1, 0), (5.1, 12.38), [win(2.0), win(3.975, E + .9, .6, .8), win(10.5, None, .8, 1.0)], out=(1, 0))
+    wall((5.1, 12.38), (2.01, 12.45), [Opening(1.5, gy(3.5, 12.6) + .1, .85, 1.95, "door", door="#6f6a62", frame=white, reveal=.14, sill=False)], top=FL, out=(0, 1))
+    wall((2.01, 12.45), (1.97, 9.59), top=FL, out=(-1, 0))
+    wall((1.97, 9.59), (-.14, 9.6), [win(1.05, None, .8, 1.0)], top=FL, out=(0, 1))
+    wall((-.14, 9.6), (-.18, 9.18), top=FL, out=(-1, 0))
+    wall((-.18, 9.18), (-5.09, 9.32), [win(2.4, None, .9, 1.0)], top=FL, out=(0, 1))
+    h.wall((5.1, D), (-5.09, D), top_over([main], (5.1, D), (-5.09, D)), mesh="vh_render", bottom=FL - .1, out=(0, 1))
+    flat_roof(h, back, FL)
+    draw_roofs(h, roofs)
+    ye = E - k * ov - .16
+    h.gutter((-5.1 - vg, -ov, ye), (5.1 + vg, -ov, ye), (0, -1, 0), "#7c7e7c", down=[(4.98, -.08, gy(4.98, -.08))])
+    h.gutter((5.1 + vg, D + ov, ye), (-5.1 - vg, D + ov, ye), (0, 1, 0), "#7c7e7c")
+    for cu in (-4.75, 1.2):  # two rendered chimneys on the ridge, the first at the gable's top
+        h.chimney(cu, D / 2, .55, .6, RG - .5, RG + .85, "vh_render", cap="#8c8984")
+    h.export()
+
+
+HOUSES = {"vh_old_farm": old_farm, "vh_seventies": seventies, "vh_hedge_bungalow": hedge_bungalow, "vh_cottage": cottage}
 for _name, _build in HOUSES.items():
     if not ONLY or _name in ONLY:
         _build()
