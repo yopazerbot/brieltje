@@ -8,6 +8,7 @@ from unittest.mock import patch
 import numpy as np
 from PIL import Image
 from shapely.geometry import LineString, Point, Polygon
+from shapely.ops import unary_union
 
 import neighbours as nb
 
@@ -255,6 +256,85 @@ class SouthernWorldTests(unittest.TestCase):
         for p in self.village["prisms"]:
             if p["y1"] - p["y0"] > .4 and p["m"] != "road":
                 self.assertFalse(Polygon(p["p"][0], p["p"][1:]).intersects(approach), p["m"])
+
+
+class KeepEdgeTests(unittest.TestCase):
+    def test_an_outline_moves_only_where_the_map_grew(self):
+        old = [[0, 0], [400, 0], [400, 300], [0, 300]]
+        self.assertEqual(nb.keep_edge(old, old, 1), old)
+        # Rounded anew a metre off all round, and grown by a block of 100 by 100 m at the east end.
+        new = [[1, 1], [400, 1], [400, 100], [500, 100], [500, 200], [400, 200], [400, 299], [1, 299]]
+        kept = Polygon(nb.keep_edge(old, new, 1))
+        self.assertTrue(kept.contains(Point(450, 150)))  # the new block
+        for x, z in ([0, 0], [0, 300], [200, 0]):  # the old edge far from it, as it was
+            self.assertLess(kept.exterior.distance(Point(x, z)), 1e-6)
+
+
+class BlekteDataTests(unittest.TestCase):
+    """What the tools made of Blekte (the committed data, model metres), 60 m round its runs of the road detail and away
+    from the two stubs the map had before: no building over its drawn road surface, no tree on a road or a track, no
+    hedge in or against a building, nothing drawn past the game's edge."""
+    STUBS = [(604.0, 22.0), (684.0, 474.0)]  # where Blekte met the map before (Kapellenhoek, Oud-Smetlede)
+    OLD = 150  # m round them: the map before (its own plot lines and hedges) and Blekte's old stubs
+    HEDGE = 0.4  # m: a hedge's half thickness as the village draws it (0.35 m) and a little
+
+    @classmethod
+    def setUpClass(cls):
+        root = Path(__file__).resolve().parents[1]
+        read = lambda p: json.loads((root / p).read_text(encoding="utf-8"))
+        detail, cls.nb, cls.st = read("web/src/data/roadDetail.json"), read("data/neighbours.json"), read("data/street.json")
+        cls.edge = Polygon(read("web/shared/bounds.json")["map"])
+        line_of = lambda r: LineString([(r["p"][2 * i], r["p"][2 * i + 1]) for i in range(len(r["p"]) // 2)])
+        runs = [r for r in detail["runs"] if r["name"] == "Blekte" or r["name"].startswith("Blekte~")]
+        if not runs:
+            raise unittest.SkipTest("no Blekte in the road detail")
+        stubs = unary_union([Point(s).buffer(cls.OLD) for s in cls.STUBS])
+        cls.band = unary_union([line_of(r) for r in runs]).buffer(60).difference(stubs)
+        # Every street's drawn surface in the band (Blekte's, the lanes and tracks that leave it, the crossing streets).
+        surfaces = []
+        for r in detail["runs"]:
+            if r["pf"].startswith("path_") or not cls.band.intersects(line_of(r)):
+                continue
+            pts = list(line_of(r).coords)
+            for i in range(len(pts) - 1):
+                surfaces.append(Polygon([cls.side(r, pts, i, 1), cls.side(r, pts, i, 0), cls.side(r, pts, i + 1, 0), cls.side(r, pts, i + 1, 1)]).buffer(0))
+        cls.road = unary_union(surfaces)
+        cls.buildings = [Polygon(b["p"]).buffer(0) for b in cls.nb["buildings"] if cls.band.intersects(Polygon(b["p"]))]
+
+    @staticmethod
+    def side(r, pts, i, si):
+        """Station i's outer edge on side si: its carriageway and, without a kerb, its apron."""
+        a, b = pts[max(0, i - 2)], pts[min(len(pts) - 1, i + 2)]
+        tx, tz = b[0] - a[0], b[1] - a[1]
+        n = (tx * tx + tz * tz) ** 0.5 or 1
+        nx, nz = -tz / n, tx / n
+        w = r["w"][2 * i + si] + (r["q"][2 * i + si] if not r["k"][i] & (1 << si) else 0)
+        s = 1 if si == 0 else -1
+        return (pts[i][0] + nx * s * w, pts[i][1] + nz * s * w)
+
+    def test_no_building_over_its_road(self):
+        over = [(round(b.centroid.x), round(b.centroid.y), round(b.intersection(self.road).area, 1)) for b in self.buildings
+                if b.intersection(self.road).area > 0.5]
+        self.assertEqual(over, [])
+
+    def test_no_tree_on_a_road_or_track(self):
+        tracks = unary_union([LineString(t["path"]) for t in self.st["tracks"] if len(t["path"]) > 1])
+        bad = [(t["x"], t["z"]) for t in self.nb["trees"] if self.band.contains(Point(t["x"], t["z"]))
+               and (self.road.contains(Point(t["x"], t["z"])) or tracks.distance(Point(t["x"], t["z"])) < 1.0)]
+        self.assertEqual(bad, [])
+
+    def test_no_hedge_in_or_against_a_building(self):
+        bad = []
+        for h in self.st["hedges"]:
+            line = LineString(h["path"])
+            if self.band.intersects(line) and any(b.distance(line) < self.HEDGE for b in self.buildings):
+                bad.append([round(v, 1) for v in h["path"][0]])
+        self.assertEqual(bad, [])
+
+    def test_no_plot_line_or_hedge_past_the_edge(self):
+        out = lambda path: LineString(path).intersection(self.band).difference(self.edge).length
+        self.assertEqual([b["path"][0] for b in self.nb["boundaries"] if out(b["path"]) > 1.0], [])
+        self.assertEqual([h["path"][0] for h in self.st["hedges"] if out(h["path"]) > 1.0], [])
 
 
 if __name__ == "__main__":
