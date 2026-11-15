@@ -1,9 +1,9 @@
-// Logging out from the game's menu (src/ui/menuLogout.ts, src/start.ts), headless (tools/dev/cdp.mjs): the button at the
-// foot of the Together tab, two presses, and the start screen at step 1 after. One Chromium with two pages in browser
+// Logging out from the game's menu (src/ui/menuLogout.ts, src/start.ts), headless (tools/dev/cdp.mjs): the button in the
+// Together tab under who you play as, two presses, and the start screen at step 1 after. One Chromium with two pages in browser
 // contexts of their own (two players, each with its own cookies).
 //
 //   ADMIN_PASSWORD=... node tools/dev/menuLogoutCheck.mjs --url http://localhost:5744/ --api http://localhost:8744
-//          [--only account,guest,room,offline,home,pad,touch] [--shots <folder>] [--port 9844]
+//          [--only account,guest,room,offline,home,home-together,ended,pad,touch] [--shots <folder>] [--port 9844]
 //
 // --url is a dev server (window.briel) whose /api goes to --api (API_PORT=<its port> npx vite --port <n>): a throwaway
 // game server on this computer only, as the check makes accounts and logs in as the admin (the home case). The accounts
@@ -17,11 +17,16 @@
 // - room: in a Zombies room game the owner logs out; the game goes on for the other player.
 // - offline: the logout can't reach the server: the page still goes to the start screen, the pending flag stays, the
 //   server still knows the session; the next visit with the server in reach ends it.
-// - home: an account that opened the main house logs out; played alone after, the house is sealed again.
+// - home: an account that opened the main house alone logs out; played alone after, the house is sealed again. The
+//   browser's storage (localStorage, sessionStorage, IndexedDB, the Cache API) holds nothing of the inside while it is
+//   open, nor after; an old stored inside from before the fix is removed at load (src/world/furnitureStore.ts).
+// - home-together: the same with the house opened together, an old value planted as an older tab would write it.
+// - ended: the house open, the session is ended from elsewhere (logged out on every device): the storage is cleaned.
 // - pad: a fake controller opens the menu, R1 to Together, the D-pad down to the button, ✕ twice.
 // - touch: touch emulation at 844x390 and 667x375 on Low, the Together tab and the asking state in English and Dutch.
 import { mkdirSync } from 'node:fs';
 import { join } from 'node:path';
+import { homeAt } from '../../web/shared/homes.mjs';
 import { launch, localOnly, options } from './cdp.mjs';
 
 const o = options({ url: 'http://localhost:5744/', api: 'http://localhost:8744', port: '9844', only: '', shots: '' });
@@ -425,24 +430,89 @@ async function caseOffline(a) {
   ok('offline: the next visit ends it on the server', (await meWith(oldCookie)) === 401 && next.pending === null && !next.welcome, JSON.stringify(next));
 }
 
-async function caseHome(a) {
-  if (!ADMIN) return ok('home: skipped (no ADMIN_PASSWORD)', false);
-  const acct = await account('lh');
-  const admin = await call('POST', '/api/login', { username: 'admin', password: ADMIN });
-  const adminCookie = cookieOf(admin.r);
-  const code = (await call('POST', '/api/admin/homes/house/code', {}, adminCookie)).data?.code;
-  ok('home: a code for the main house', !!code);
-  await open(a);
-  await loginFirst(a, acct);
-  await play(a, 'solo');
+// ---- What the browser stores, and whether it holds anything of a home's inside.
+/** Everything the page could keep: localStorage (keys and values), sessionStorage, IndexedDB and the Cache API. */
+const storage = (p) =>
+  p.evaluate(
+    "(async () => ({ local: Object.fromEntries(Object.keys(localStorage).map((k) => [k, localStorage.getItem(k)])), session: sessionStorage.length, idb: indexedDB.databases ? (await indexedDB.databases()).map((d) => d.name) : [], caches: typeof caches === 'undefined' ? [] : await caches.keys() }))()",
+  );
+/** A piece in the shape the furniture is stored in, read from any stored value that is a list. */
+const piecesIn = (value) => {
+  try {
+    const v = JSON.parse(value);
+    return Array.isArray(v) ? v.filter((p) => p && typeof p === 'object' && Number.isFinite(p.x) && Number.isFinite(p.z)) : [];
+  } catch {
+    return [];
+  }
+};
+/**
+ * The storage holds nothing of a home's inside: no piece inside a home, none of `layout` (the starting pieces the inside
+ * brought, kept here in memory only and never printed), no old furniture keys, and nothing in the other stores.
+ */
+function storageClean(name, st, layout) {
+  const keys = Object.keys(st.local);
+  const pieces = keys.flatMap((k) => piecesIn(st.local[k]));
+  const inside = pieces.filter((p) => homeAt(p.x, p.z, p.y ?? 0) !== null).length;
+  const fromLayout = pieces.filter((p) => layout.some(([item, x, , z]) => p.item === item && Math.abs(p.x - x) < 1e-6 && Math.abs(p.z - z) < 1e-6)).length;
+  const old = keys.filter((k) => k === 'briel.furniture' || k.startsWith('briel.furnitureRestore'));
+  ok(
+    `${name}: storage holds nothing of the inside`,
+    !inside && !fromLayout && !old.length && !st.session && !st.idb.length && !st.caches.length,
+    `${inside} pieces inside, ${fromLayout} starting pieces, old keys [${old.join(', ')}], sessionStorage ${st.session}, IndexedDB [${st.idb.join(', ')}], caches [${st.caches.join(', ')}]`,
+  );
+}
+/** An old value as the page wrote it before the fix (or an older tab would): a piece inside the main house, its restore number. */
+const plantOld = (p) => p.evaluate("localStorage.setItem('briel.furniture', JSON.stringify([{ id: -1, item: 'chair', x: 4, y: 1, z: 5, yaw: 0 }, { id: -2, item: 'chair', x: 100, y: 0, z: 100, yaw: 0 }])); localStorage.setItem('briel.furnitureRestore.house', '1')", false);
+/** Open the main house with its code from the page; the starting pieces it brought (kept in memory, never printed). */
+async function openHouse(a, code, name) {
   const msg = await a.evaluate(`briel.homeLocks.unlock('house', ${JSON.stringify(code)})`);
   await a.waitFor("briel.insides.packs.has('house')", 20000).catch(() => {});
-  ok('home: the main house opened with the code', msg === '' && (await a.evaluate("briel.insides.packs.has('house')", false)), String(msg));
+  ok(`${name}: the main house opened with the code`, msg === '' && (await a.evaluate("briel.insides.packs.has('house')", false)), String(msg));
+  await sleep(1500);
+  return a.evaluate("briel.insides.layout().flatMap((l) => l.pieces)", false);
+}
+async function homeCode() {
+  const admin = await call('POST', '/api/login', { username: 'admin', password: ADMIN });
+  const cookie = cookieOf(admin.r);
+  const code = (await call('POST', '/api/admin/homes/house/code', {}, cookie)).data?.code;
+  return { code, done: async () => {
+    await call('DELETE', '/api/admin/homes/house/code', undefined, cookie); // the throwaway code goes too
+    await call('POST', '/api/logout', {}, cookie);
+  } };
+}
+async function logOutFromMenu(a) {
   await menuTogether(a);
   await click(a, '#menu-logout');
   await sleep(600);
   await click(a, '#menu-logout');
   await backAtStart(a);
+}
+
+async function caseHome(a) {
+  if (!ADMIN) return ok('home: skipped (no ADMIN_PASSWORD)', false);
+  const acct = await account('lh');
+  const h = await homeCode();
+  ok('home: a code for the main house', !!h.code);
+  await open(a);
+  // A value from before the fix: gone at the next load.
+  await plantOld(a);
+  await loginFirst(a, acct);
+  const atLoad = await storage(a);
+  ok('home: an old stored inside is removed at load', !('briel.furniture' in atLoad.local) && !Object.keys(atLoad.local).some((k) => k.startsWith('briel.furnitureRestore')), Object.keys(atLoad.local).join(', '));
+  await play(a, 'solo');
+  // Alone: the inside's furniture is there to see, but not in storage.
+  const layout = await openHouse(a, h.code, 'home alone');
+  const shown = await a.evaluate('briel.furnishing.pieces.size', false);
+  ok('home alone: the starting furniture is in the house', layout.length > 0 && shown >= layout.length, `${layout.length} starting pieces, ${shown} pieces in all`);
+  storageClean('home alone, open', await storage(a), layout);
+  // A piece put outside the homes is kept.
+  await a.evaluate("briel.command('/chair')", false).catch(() => {});
+  await sleep(500);
+  const stored = await a.evaluate("localStorage.getItem('briel.furnitureAlone')", false);
+  console.log(`     after /chair alone: briel.furnitureAlone holds ${piecesIn(stored).length} pieces`);
+  await logOutFromMenu(a);
+  storageClean('home alone, after the logout', await storage(a), layout);
+  console.log(`     kept after the logout: ${Object.keys((await storage(a)).local).sort().join(', ')}`);
   // Alone after, under a name (no session): the house shut, its inside not on the page.
   await setValue(a, 'nick', `Alone${tag}`);
   await click(a, '#guest-go');
@@ -451,11 +521,49 @@ async function caseHome(a) {
   await sleep(3000);
   const sealed = await a.evaluate("({ packs: briel.insides.packs.size, open: briel.homeLocks.isOpen('house'), me: null })", false);
   ok('home: sealed again after the logout', sealed.packs === 0 && sealed.open === false, JSON.stringify(sealed));
-  const furniture = await a.evaluate("(() => { try { return JSON.parse(localStorage.getItem('briel.furniture') || '[]').length; } catch { return -1; } })()", false);
-  console.log(`     note: briel.furniture in this browser holds ${furniture} pieces (the furniture alone, seeded from the opened inside)`);
+  storageClean('home: played alone after', await storage(a), layout);
   await shot(a, 'home-sealed-after');
-  await call('DELETE', '/api/admin/homes/house/code', undefined, adminCookie); // the throwaway code goes too
-  await call('POST', '/api/logout', {}, adminCookie);
+  await h.done();
+}
+
+async function caseHomeTogether(a) {
+  if (!ADMIN) return ok('home together: skipped (no ADMIN_PASSWORD)', false);
+  const acct = await account('lt');
+  const h = await homeCode();
+  await open(a);
+  await loginFirst(a, acct);
+  await play(a, 'multi');
+  const layout = await openHouse(a, h.code, 'home together');
+  storageClean('home together, open', await storage(a), layout);
+  await plantOld(a); // as an older tab would write it
+  await logOutFromMenu(a);
+  storageClean('home together, after the logout', await storage(a), layout);
+  await h.done();
+}
+
+/** The session ends elsewhere (every device logged out from another one) while the house is open: the storage is cleaned at once. */
+async function caseEnded(a) {
+  if (!ADMIN) return ok('ended: skipped (no ADMIN_PASSWORD)', false);
+  const acct = await account('le');
+  const h = await homeCode();
+  await open(a);
+  await loginFirst(a, acct);
+  await play(a, 'solo');
+  const layout = await openHouse(a, h.code, 'ended');
+  // Together under the account, then the old value as an older tab would write it.
+  await menuTogether(a);
+  await click(a, '#mp-join-acct');
+  await a.waitFor('briel.net().rtt !== null && briel.net().rtt !== undefined', 30000);
+  await key(a, 'Escape', 'Escape', 27);
+  await plantOld(a);
+  const other = await call('POST', '/api/account/login', { username: acct.username, password: acct.password });
+  const all = await call('POST', '/api/account/logout-all', {}, cookieOf(other.r));
+  ok('ended: every session of the account ended from elsewhere', all.r.ok, String(all.r.status));
+  await a.waitFor("localStorage.getItem('briel.furniture') === null", 10000).catch(() => {});
+  const st = await storage(a);
+  ok('ended: the page knows the session ended', (await meInPage(a)) === 401);
+  storageClean('ended, after the session ended elsewhere', st, layout);
+  await h.done();
 }
 
 async function casePad(a) {
@@ -468,11 +576,19 @@ async function casePad(a) {
   for (let i = 0; i < 6 && (await a.evaluate("document.getElementById('tab-together').getAttribute('aria-selected')", false)) !== 'true'; i++) await padPress(a, 5);
   ok('pad: R1 reaches the Together tab', (await a.evaluate("document.getElementById('tab-together').getAttribute('aria-selected')", false)) === 'true');
   let f = '';
+  const order = [];
   for (let i = 0; i < 30 && f !== 'menu-logout'; i++) {
     await padPress(a, 13);
-    f = await a.evaluate('document.activeElement?.id ?? ""', false);
+    f = await a.evaluate('(() => { const e = document.activeElement; return e ? e.id || e.textContent.trim().slice(0, 24) : ""; })()', false);
+    order.push(f);
   }
-  ok('pad: the D-pad reaches the button', f === 'menu-logout', f);
+  ok('pad: the D-pad reaches the button', f === 'menu-logout', `down ${order.length}x: ${order.join(' > ')}`);
+  // On down past it: the rest of the page follows, and up comes back to it.
+  await padPress(a, 13);
+  const next = await a.evaluate('(() => { const e = document.activeElement; return e ? e.id || e.textContent.trim().slice(0, 24) : ""; })()', false);
+  await padPress(a, 12);
+  const back = await a.evaluate('document.activeElement?.id ?? ""', false);
+  ok('pad: down goes on past it, up comes back to it', next !== 'menu-logout' && back === 'menu-logout', `next ${next}, back ${back}`);
   await shot(a, 'pad-focus');
   await padPress(a, 0);
   const s = await button(a);
@@ -567,6 +683,8 @@ try {
   }
   await run('offline', () => caseOffline(chrome));
   await run('home', () => caseHome(chrome));
+  await run('home-together', () => caseHomeTogether(chrome));
+  await run('ended', () => caseEnded(chrome));
   await run('pad', async () => {
     // A page of its own: the fake controller is put in before the page's scripts.
     const p = await secondPage(chrome);
