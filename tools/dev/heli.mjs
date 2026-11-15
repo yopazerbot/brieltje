@@ -10,12 +10,12 @@
 // English and Dutch). With --sound, the sound by numbers (as tools/dev/music.mjs): the blade slap's rate against the
 // rotor's speed, the peak, the RMS, clipped samples, and that nothing plays after getting out.
 //
-//   node tools/dev/heli.mjs --url http://localhost:5274/ --port 9681 [--out <folder>] [--quality low|high] [--phone] [--pad] [--sound] [--swiftshader]
+//   node tools/dev/heli.mjs --url http://localhost:5274/ --port 9681 [--out <folder>] [--quality low|high] [--phone] [--pad] [--sound [--soundonly]] [--swiftshader]
 import { mkdirSync } from 'node:fs';
 import { join } from 'node:path';
 import { launch, options, startGame } from './cdp.mjs';
 
-const o = options({ url: 'http://localhost:5274/', port: '9681', out: '', quality: 'medium', phone: false, pad: false, sound: false, swiftshader: false, lang: 'en' });
+const o = options({ url: 'http://localhost:5274/', port: '9681', out: '', quality: 'medium', phone: false, pad: false, sound: false, soundonly: false, swiftshader: false, lang: 'en' });
 const phone = !!o.phone && o.phone !== 'false';
 const b = await launch({ port: Number(o.port), width: 1280, height: 720, swiftshader: !!o.swiftshader && o.swiftshader !== 'false' });
 let failed = false;
@@ -88,49 +88,82 @@ try {
   console.log(`helicopter, ${o.quality}${phone ? ', phone (touch)' : ''}${o.pad ? ', a controller' : ''}`);
 
   if (o.sound) {
-    // The sound by numbers: the dev build renders the loop offline (world/heliSound.ts render).
+    // The sound by numbers (world/heliSound.ts: the dev build renders its loop offline, the same nodes as live): its
+    // default script runs up over 6 s, hovers (7-10 s), climbs (10-13), flies at top speed (13-17), sinks (17-21) and
+    // runs down over 8 s (22-30). Before the game's volume, at the panner's reference distance.
     const r = await b.evaluate(`(async () => {
-      const { buffer, rotor } = await brielHeliSound.render(30, 48000);
-      const d = buffer.getChannelData(0), sr = buffer.sampleRate;
-      let peak = 0, sum = 0, clipped = 0;
-      for (const v of d) { const a = Math.abs(v); if (a > peak) peak = a; if (a >= 1) clipped++; sum += v * v; }
-      // The slap's rate: the envelope (2 ms RMS) between two times, its strongest repeat between 16 and 120 ms.
-      const rate = (t0, t1) => {
-        const w = Math.round(sr * 0.002), env = [];
-        for (let i = Math.round(t0 * sr); i + w < t1 * sr; i += w) { let e = 0; for (let k = 0; k < w; k++) e += d[i + k] * d[i + k]; env.push(Math.sqrt(e / w)); }
-        const mean = env.reduce((a, b) => a + b, 0) / env.length;
-        let best = 0, lag = 0;
-        const cor = []; for (let L = 0; L <= 62; L++) { let c = 0; for (let i = 0; i + L < env.length; i++) c += (env[i] - mean) * (env[i + L] - mean); cor.push(c); }
-        for (let L = 8; L <= 60; L++) if (cor[L] > cor[L - 1] && cor[L] >= cor[L + 1] && cor[L] > best) { best = cor[L]; lag = L; } // the strongest repeat that is a peak of its own
-        return lag ? 1 / (lag * 0.002) : 0;
+      const sr = 48000;
+      const stats = (d) => {
+        const rms = (t0, t1) => { let e = 0, n = 0; for (let i = Math.round(t0 * sr); i < Math.min(d.length, t1 * sr); i++) { e += d[i] * d[i]; n++; } return Math.sqrt(e / Math.max(1, n)); };
+        const peak = (t0, t1) => { let p = 0; for (let i = Math.round(t0 * sr); i < Math.min(d.length, t1 * sr); i++) p = Math.max(p, Math.abs(d[i])); return p; };
+        // The pulse's rate: the low band (two one-pole lowpasses at 300 Hz), its envelope smoothed (60 Hz) every 1 ms,
+        // the strongest repeat that is a peak of its own between 15 and 125 ms.
+        const rate = (t0, t1) => {
+          const a = Math.exp((-2 * Math.PI * 300) / sr), e = Math.exp((-2 * Math.PI * 60) / sr), step = Math.round(sr / 1000);
+          let l1 = 0, l2 = 0, en = 0;
+          const env = [];
+          for (let i = Math.round(t0 * sr); i < t1 * sr; i++) {
+            l1 = a * l1 + (1 - a) * d[i];
+            l2 = a * l2 + (1 - a) * l1;
+            en = e * en + (1 - e) * Math.abs(l2);
+            if (i % step === 0) env.push(en);
+          }
+          const mean = env.reduce((x, y) => x + y, 0) / env.length;
+          const cor = []; for (let L = 0; L <= 127; L++) { let c = 0; for (let i = 0; i + L < env.length; i++) c += (env[i] - mean) * (env[i + L] - mean); cor.push(c); }
+          let best = 0, lag = 0;
+          for (let L = 15; L <= 125; L++) if (cor[L] > cor[L - 1] && cor[L] >= cor[L + 1] && cor[L] > best) { best = cor[L]; lag = L; }
+          return lag ? 1000 / lag : 0;
+        };
+        // The biggest jump from one sample to the next (a click shows as one far over the rest).
+        const jump = (t0, t1) => { let j = 0; for (let i = Math.max(1, Math.round(t0 * sr)); i < Math.min(d.length, t1 * sr); i++) j = Math.max(j, Math.abs(d[i] - d[i - 1])); return j; };
+        let clipped = 0;
+        for (const v of d) if (Math.abs(v) >= 1) clipped++;
+        return { rms, peak, rate, jump, clipped };
       };
-      const rms = (t0, t1) => { let e = 0, n = 0; for (let i = Math.round(t0 * sr); i < t1 * sr; i++) { e += d[i] * d[i]; n++; } return Math.sqrt(e / n); };
-      const main = { peak, rms: Math.sqrt(sum / d.length), clipped, full: rate(7, 10), end: rms(29.6, 30), hover: rms(7, 10), descent: rms(18, 20.5), BLADE: brielHeliSound.BLADE_HZ, MAX: brielHeliSound.LOOP_MAX };
-      // The rotor held at 60 % and then at 40 % with the lever up: the slap's rate must follow it.
-      const held = await brielHeliSound.render(8, 48000, (t) => ({ x: 0, y: 0, z: 0, rotor: t < 4 ? 0.6 : 0.4, coll: 0.7, sink: 0, air: 0, side: 0, start: 0 }));
-      const e = held.buffer.getChannelData(0);
-      const rate2 = (t0, t1) => {
-        const w = Math.round(sr * 0.002), env = [];
-        for (let i = Math.round(t0 * sr); i + w < t1 * sr; i += w) { let q = 0; for (let k = 0; k < w; k++) q += e[i + k] * e[i + k]; env.push(Math.sqrt(q / w)); }
-        const mean = env.reduce((a, b) => a + b, 0) / env.length;
-        const cor = []; for (let L = 0; L <= 62; L++) { let c = 0; for (let i = 0; i + L < env.length; i++) c += (env[i] - mean) * (env[i + L] - mean); cor.push(c); }
-        let best = 0, lag = 0;
-        for (let L = 8; L <= 60; L++) if (cor[L] > cor[L - 1] && cor[L] >= cor[L + 1] && cor[L] > best) { best = cor[L]; lag = L; }
-        return lag ? 1 / (lag * 0.002) : 0;
+      const hover = (inside) => () => ({ x: 0, y: 0, z: 0, rotor: 1, coll: 0.55, sink: 0, air: 0, inside });
+      const all = stats((await brielHeliSound.render(30, sr)).buffer.getChannelData(0));
+      const high = stats((await brielHeliSound.render(30, sr, undefined, 3000)).buffer.getChannelData(0));
+      const held = stats((await brielHeliSound.render(8, sr, (t) => ({ x: 0, y: 0, z: 0, rotor: t < 4 ? 0.6 : 0.4, coll: 0.7, sink: 0, air: 0, inside: false }))).buffer.getChannelData(0));
+      const out = stats((await brielHeliSound.render(4, sr, hover(false), 1000)).buffer.getChannelData(0));
+      const ins = stats((await brielHeliSound.render(4, sr, hover(true), 1000)).buffer.getChannelData(0));
+      let music = null;
+      try {
+        const md = (await brielMusic.render('theme', 10, sr)).buffer.getChannelData(0);
+        let p = 0, e = 0;
+        for (const v of md) { p = Math.max(p, Math.abs(v)); e += v * v; }
+        music = { peak: p, rms: Math.sqrt(e / md.length) };
+      } catch {}
+      return {
+        BLADE: brielHeliSound.BLADE_HZ, LEVELS: brielHeliSound.LEVELS, clipped: all.clipped, music,
+        rateFull: all.rate(7, 10), rate60: held.rate(1, 3.8), rate40: held.rate(5, 7.8),
+        hover: [all.peak(7, 10), all.rms(7, 10)], climb: [all.peak(10.5, 13), all.rms(10.5, 13)], top: [all.peak(13.5, 17), all.rms(13.5, 17)], descent: [all.peak(17.5, 21), all.rms(17.5, 21)],
+        peak: all.peak(0, 30), high: high.rms(7, 21) / all.rms(7, 21), highPeak: high.peak(7, 21),
+        end: all.rms(29.6, 30), startJump: all.jump(0, 1), endJump: all.jump(28, 30), flightJump: all.jump(7, 21),
+        cockpit: ins.rms(0.5, 4) / out.rms(0.5, 4),
       };
-      return { ...main, half: rate2(1, 3.8), slow: rate2(5, 7.8), rotorHalf: 0.6, rotorSlow: 0.4 };
     })()`);
-    row('blade slap at full speed', `${r1(r.full)} Hz (blade pass ${r1(r.BLADE)} Hz)`);
-    row('blade slap, rotor held at 60 %', `${r1(r.half)} Hz at rotor ${r1(r.rotorHalf * 100)} % (expect ${r1(r.BLADE * r.rotorHalf)})`);
-    row('blade slap, rotor held at 40 %', `${r1(r.slow)} Hz at rotor ${r1(r.rotorSlow * 100)} % (expect ${r1(r.BLADE * r.rotorSlow)})`);
-    row('levels', `peak ${r.peak.toFixed(3)}, RMS ${r.rms.toFixed(3)} (hover ${r.hover.toFixed(3)}, descent ${r.descent.toFixed(3)}), clipped ${r.clipped}`);
-    check(Math.abs(r.full - r.BLADE) < 2.5, 'the slap follows the rotor at full speed');
-    check(Math.abs(r.half - r.BLADE * r.rotorHalf) < 2.5 && Math.abs(r.slow - r.BLADE * r.rotorSlow) < 2.5, "and at 60 % and 40 % of the rotor's speed");
-    check(r.peak <= r.MAX + 0.05 && r.clipped === 0, `peak under ${r.MAX} at the reference distance (the car's thump reaches 0.55), nothing clipped`);
+    const db = (v) => (20 * Math.log10(Math.max(v, 1e-9))).toFixed(0);
+    row('pulse at full speed', `${r1(r.rateFull)} Hz (blade pass ${r1(r.BLADE)} Hz)`);
+    row('pulse, rotor held at 60 % / 40 %', `${r1(r.rate60)} / ${r1(r.rate40)} Hz (expect ${r1(r.BLADE * 0.6)} / ${r1(r.BLADE * 0.4)})`);
+    for (const k of ['hover', 'climb', 'top', 'descent']) row(`peak / RMS, ${k}`, `${r[k][0].toFixed(3)} / ${r[k][1].toFixed(4)}`);
+    row('above 3 kHz in flight', `${db(r.high)} dB under the whole (peak ${r.highPeak.toFixed(4)})`);
+    row('the cockpit against behind, over 1 kHz', `${db(r.cockpit)} dB`);
+    row('largest step between samples', `start ${r.startJump.toFixed(4)}, run-down ${r.endJump.toFixed(4)}, in flight ${r.flightJump.toFixed(4)}`);
+    if (r.music) row('the music (start theme, 50 %)', `peak ${r.music.peak.toFixed(3)}, RMS ${r.music.rms.toFixed(4)}`);
+    row('levels to turn', JSON.stringify(r.LEVELS));
+    check(Math.abs(r.rateFull - r.BLADE) < 2.5 && Math.abs(r.rate60 - r.BLADE * 0.6) < 2.5 && Math.abs(r.rate40 - r.BLADE * 0.4) < 2.5, "the pulse follows the rotor's speed");
+    check(r.peak <= 0.1 && r.clipped === 0, `peak ${r.peak.toFixed(3)}: about half the first version's 0.18, nothing clipped`);
+    check(r.high < 0.05, 'next to nothing above 3 kHz');
+    check(r.cockpit < 0.7, "a touch muffled from the pilot's seat");
+    check(r.startJump < r.flightJump && r.endJump < r.flightJump, 'no click starting or stopping (no step bigger than in flight)');
     check(r.end < 1e-3, `silent once run down (RMS ${r.end.toExponential(1)})`);
     check(await b.evaluate('briel.acoustics().world') >= 0, `the world's gain: ${await b.evaluate('briel.acoustics().world')} now (0 before play begins: sound.ts setWorld)`);
   }
 
+  if (o.soundonly) {
+    b.close();
+    process.exit(failed ? 1 : 0);
+  }
   // Getting in: beside it, the use key.
   const m0 = await state();
   await b.evaluate(`briel.teleport(${m0.x + 2.0}, ${m0.z - 0.6}, ${m0.y}, 1.2)`, false);
@@ -147,6 +180,7 @@ try {
   }
   /** A touch button held or let go (touch emulation: a touch on its middle). */
   const touchBtn = async (cls, on) => {
+    if (on) await b.waitFor("document.body.dataset.touch === 'heli'", 5000); // the helicopter's layout first (Up is where Down was on foot)
     const at = await b.evaluate(`(() => { const r = document.querySelector('#touch .${cls}').getBoundingClientRect(); return [r.left + r.width / 2, r.top + r.height / 2]; })()`);
     await b.send('Input.dispatchTouchEvent', { type: on ? 'touchStart' : 'touchEnd', touchPoints: on ? [{ x: at[0], y: at[1], id: 7 }] : [] });
   };
@@ -172,6 +206,7 @@ try {
     else if (on) await down('ArrowRight');
     else await up('ArrowRight');
   };
+  const restDraws = await b.evaluate('briel.helis.dev.state().draws');
   await lift(true);
   const spin = await until((s) => !s.ground, 15);
   const tOff = spin.at(-1).t;
@@ -191,6 +226,26 @@ try {
   row('hover 20 s hands off', `drift ${r1(drift)} m across, ${r1(dh)} m in height (the page's own wind blowing)`);
   check(drift < 1 && dh < 0.5, 'the hover holds');
   console.log(`  instruments: "${await b.evaluate("document.getElementById('heli-hud')?.textContent")}"`);
+  const flightDraws = await b.evaluate('briel.helis.dev.state().draws');
+  row('draws (machine, near)', `${restDraws} at rest, ${flightDraws} in flight (budget 24)`);
+  check(restDraws <= 24 && flightDraws <= 24, 'within the draw budget');
+  // Sideways alone: the nose stays; sideways with the turn the same way (D with the right arrow): it still slides.
+  const yaw0 = (await state()).yaw;
+  await down('KeyD');
+  await b.sleep(8000);
+  const slid = await state();
+  await up('KeyD');
+  const sideOf = (q) => Math.abs(q.vx * Math.cos(q.yaw) - q.vz * Math.sin(q.yaw)); // speed along the machine's right
+  row('D alone 8 s', `nose turned ${deg(Math.atan2(Math.sin(slid.yaw - yaw0), Math.cos(slid.yaw - yaw0)))} deg, ${r1(sideOf(slid))} m/s sideways`);
+  check(Math.abs(Math.atan2(Math.sin(slid.yaw - yaw0), Math.cos(slid.yaw - yaw0))) < 0.02, 'sideways alone the nose stays where it was');
+  await b.sleep(4000);
+  await down('KeyD', 'ArrowRight');
+  await b.sleep(3000);
+  const both = await state();
+  await up('KeyD', 'ArrowRight');
+  row('D with the right arrow 3 s', `${r1(speed(both))} m/s over the ground (${r1(sideOf(both))} along its right) while turning on the spot`);
+  check(speed(both) > 5, 'D and the right arrow together still slide it (cancelled, it would turn on the spot at 0 m/s)');
+  await b.sleep(4000);
   // Down to 30 m.
   await sink(true);
   const desc = await until((s) => s.h <= 30, 30);
@@ -280,7 +335,7 @@ try {
   check(!(await b.evaluate('briel.helis.dev.state().sound')) && (await S('s.rotor')) === 0, 'the rotor ran down and nothing plays any more');
 
   // The church's platform: a test deck (until the church has its own), a landing from 12 m over it after a sidestep.
-  if (phone) await b.send('Input.dispatchTouchEvent', { type: 'touchCancel', touchPoints: [] }); // no button left held from before
+  if (phone) await b.send('Input.dispatchTouchEvent', { type: 'touchCancel', touchPoints: [] }).catch(() => {}); // no button left held from before (none may be)
   await b.evaluate('briel.helis.dev.deck()');
   const pad = await b.evaluate("briel.helis.dev.put('church', 1)");
   await b.evaluate(`briel.teleport(${pad.x}, ${pad.z}, ${pad.y}, 0)`, false);
