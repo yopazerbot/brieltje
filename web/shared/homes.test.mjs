@@ -4,6 +4,7 @@ import test from 'node:test';
 import { barrierHeights, DOOR_GLASS, distanceToHome, END_DOOR_GLASS, findHome, HOMES, homeAt, homeOfDoor, inEndGarden, makePaneHomes, PANE_LIMIT, WALK_IN_GLASS, WALK_INS } from './homes.mjs';
 import { brick, brickInside, end, HAVE_PRIVATE, house, packs, pickupsInside, SKIP, spawnsInside } from './testData.mjs';
 import { loadBounds } from './bounds.mjs';
+import { PUBLIC_WALK_INS } from './keet.mjs';
 import { makeSolids } from './parking.mjs';
 import { PORTALS } from './portals.mjs';
 import { makeTerrain } from './terrain.mjs';
@@ -251,7 +252,8 @@ test('panes: windows by where they stand, the end house by range, door glass by 
   assert.ok(brick.panes.length > 10 && brick.panes.length < k.size, `${brick.panes.length} windows`);
   for (let i = k.glass; i < k.glass + brick.panes.length; i++) assert.equal(pane(i), 'kapellenhoek_home');
   for (const i of [k.doorGlass, k.doorGlass + k.size - 1, k.glass + k.size - 1]) assert.equal(pane(i), 'kapellenhoek_home', String(i));
-  assert.equal(PANE_LIMIT, k.doorGlass + k.size);
+  assert.ok(k.doorGlass + k.size <= PUBLIC_WALK_INS.keet.glass, 'the homes\' numbers end before the café\'s (shared/keet.mjs)');
+  assert.equal(PANE_LIMIT, PUBLIC_WALK_INS.keet.doorGlass + PUBLIC_WALK_INS.keet.size);
   assert.equal(pane(5999), null, 'the insides\' own range ends where the brick house begins');
   for (const bad of [8000, 8001, 1e9]) assert.equal(pane.has(bad), false, String(bad));
   // Door glass: the number each leaf carries, in its door's home.

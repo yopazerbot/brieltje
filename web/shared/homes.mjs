@@ -160,8 +160,8 @@ export function homeOfDoor(id) {
 export const WALK_IN_GLASS = 2000;
 export const DOOR_GLASS = 3000;
 export const END_DOOR_GLASS = 4000;
-/** One past the highest pane number (the server's limit) */
-export const PANE_LIMIT = 8000;
+/** One past the highest pane number (the server's limit): the café at the church's are from 8000 (shared/keet.mjs), no home's */
+export const PANE_LIMIT = 9000;
 /**
  * The houses walked into (src/world/walkIn.ts): their windows' numbers from `glass` (the shell's panes in order), their door
  * glass from `doorGlass` (the shell's doors first, then the pack's, in order), each range `size` long. The same on the page

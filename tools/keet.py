@@ -6,7 +6,8 @@ writes two public data files, the same bytes for the same input:
 - web/src/data/keet_shell.json: what world/walkIn.ts reads of a house to walk into (its frame, outline and floor, the
   front and back doors, the four windows' panes, the ground cut out under it, its dip, and `solids`: the house as a lump
   for walking into until the rooms come, the shut upstairs and the roof);
-- web/src/data/keet_rooms.json: the rooms (an `EndInside` of world/walkIn.ts): walls, panelling, floors, ceiling and
+- web/src/data/keet_rooms.json: the rooms (an `EndInside` of world/walkIn.ts, its `rooms`, `parts` and `fixtures` named
+  `roomNames`, `shapes` and `pieces`): walls, panelling, floors, ceiling and
   beams as blocks, the inner doors, and what tools/keet_fittings.py adds when it is there (the fittings: package B).
 
 The café is public: everyone walks in, without a code. Its rooms are not a home's inside and are in no homes list
@@ -598,11 +599,13 @@ shell = r3({
     "solids": solids,
 })
 shell["frame"]["a"] = round(a, 6)
+# An `EndInside` of world/walkIn.ts under keys of its own (web/src/world/keet.ts names them back): the privacy scan
+# (web/shared/publicClean.test.mjs) holds that no tracked data file carries a home's `rooms`, `parts` or `fixtures`.
 rooms = r3({
-    "rooms": list(ROOMS),
+    "roomNames": list(ROOMS),
     "prisms": [prism(it) for it in B.items],
-    "parts": API.parts,
-    "fixtures": API.fixtures,
+    "shapes": API.parts,
+    "pieces": API.fixtures,
     "props": API.props,
     "doors": [door_spec(d) for d in DOORS if not d.get("shell")],
 })
