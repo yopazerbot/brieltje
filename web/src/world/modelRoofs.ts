@@ -80,7 +80,21 @@ export async function addModelRoofs(world: World, roots: THREE.Object3D[], groun
     await pause();
     since = performance.now();
   };
-  const boxes = roots.map((r) => new THREE.Box3().setFromObject(r));
+  // Each model's box, a mesh at a time (a mesh's own box is a pass over its corners).
+  const boxes: THREE.Box3[] = [];
+  const part = new THREE.Box3();
+  for (const root of roots) {
+    const box = new THREE.Box3();
+    root.updateMatrixWorld(true);
+    const meshes: THREE.Mesh[] = [];
+    root.traverse((o) => (o as THREE.Mesh).isMesh && (o as THREE.Mesh).geometry?.attributes.position && meshes.push(o as THREE.Mesh));
+    for (const mesh of meshes) {
+      if (!mesh.geometry.boundingBox) mesh.geometry.computeBoundingBox();
+      box.union(part.copy(mesh.geometry.boundingBox!).applyMatrix4(mesh.matrixWorld));
+      await tick();
+    }
+    boxes.push(box);
+  }
   const left = roots.map((_, i) => i);
   const far = (i: number, at: { x: number; z: number }) => boxes[i].distanceToPoint(a.set(at.x, (boxes[i].min.y + boxes[i].max.y) / 2, at.z));
   while (left.length) {
@@ -114,7 +128,7 @@ export async function addModelRoofs(world: World, roots: THREE.Object3D[], groun
           w[i * 3 + 1] = e[1] * x + e[5] * y + e[9] * z + e[13];
           w[i * 3 + 2] = e[2] * x + e[6] * y + e[10] * z + e[14];
         } else a.fromBufferAttribute(pos, i).applyMatrix4(mesh.matrixWorld).toArray(w, i * 3);
-        if (i % (CHUNK * 16) === 0) await tick();
+        if (i % CHUNK === 0) await tick();
       }
       const building = new Int32Array(pos.count).fill(-2); // -2: not asked yet
       const buildingOf = (v: number) => (building[v] === -2 ? (building[v] = ask(w[v * 3], w[v * 3 + 2])) : building[v]);
@@ -128,7 +142,7 @@ export async function addModelRoofs(world: World, roots: THREE.Object3D[], groun
       const roofy = [mesh.name, mesh.userData.material, ...mats.map((m) => m.name)].some((n) => typeof n === 'string' && ROOFS.test(n));
       const turned = mesh.matrixWorld.determinant() < 0;
       for (let k = 0; k + 2 < corners; k += 3) {
-        if (k % (CHUNK * 12) === 0) await tick();
+        if (k % (CHUNK / 4 * 3) === 0) await tick(); // every 64 triangles: one may be halved many times
         const i = index ? index[k] : k;
         const j = index ? index[turned ? k + 2 : k + 1] : turned ? k + 2 : k + 1;
         const l = index ? index[turned ? k + 1 : k + 2] : turned ? k + 1 : k + 2;
@@ -146,7 +160,10 @@ export async function addModelRoofs(world: World, roots: THREE.Object3D[], groun
     // at every half metre inside each: a block can lie under one triangle whose corners stand over a larger block).
     if (found.b.length) {
       const own = new RoofField();
-      own.add(found.c, Infinity);
+      for (let i = 0; i < found.c.length; i += CHUNK * 9) {
+        own.add(found.c.slice(i, i + CHUNK * 9), Infinity);
+        await tick();
+      }
       const box = boxes[r];
       for (const k of world.modelledIn(box.min.x, box.min.z, box.max.x, box.max.z)) {
         if (!keepBlocks(...world.blockMiddle(k))) world.capUnder(own, k); // not a left-out building's (a private home's)
