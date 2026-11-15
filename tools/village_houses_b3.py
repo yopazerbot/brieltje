@@ -146,14 +146,14 @@ def old_farm():
     barn = Roof([(.24, -ov), (8.29 + .25, -ov), (8.29 + .25, DB + ov), (.24, DB + ov)],
                 [eave((0, -ov), (0, 1), EB - kb * ov, kb), eave((0, DB + ov), (0, -1), EB - kb * ov, kb)], under="#cfccc5", edge="#232426", board=.2)
     # The wing behind, u 2.78 to 6.82, d 17.5 to 34.4: low walls, a steep roof, its ridge away from the street.
-    EW, RW = 2.7 + lift, 6.2 + lift
+    EW, RW, wo = 3.2 + lift, 6.4 + lift, .15  # (the ground rises half a metre toward the wing's end: its eaves stay over a head)
     kw = (RW - EW) / 2.02
-    wing = Roof([(2.78 - .3, 17.5), (6.82 + .3, 17.5), (6.82 + .3, 34.4 + .3), (2.78 - .3, 34.4 + .3)],
-                [eave((2.78 - .3, 0), (1, 0), EW - kw * .3, kw), eave((6.82 + .3, 0), (-1, 0), EW - kw * .3, kw)], under="#cfccc5", edge="#232426", board=.18)
+    wing = Roof([(2.78 - wo, 17.5), (6.82 + wo, 17.5), (6.82 + wo, 34.4 + .3), (2.78 - wo, 34.4 + .3)],
+                [eave((2.78 - wo, 0), (1, 0), EW - kw * wo, kw), eave((6.82 + wo, 0), (-1, 0), EW - kw * wo, kw)], under="#cfccc5", edge="#232426", board=.18)
     roofs = [house, barn, wing]
     # Between the barn and the wing a low part under a flat roof.
     FL = 2.91 + lift
-    flat = [(3.1, 7.01), (8.29, 7.01), (8.29, 19.43), (6.82, 19.58), (6.82, 17.5), (2.95, 17.5), (3.1, 7.74)]
+    flat = [(3.1, 7.01), (8.29, 7.01), (8.29, 19.43), (6.82, 19.58), (6.82, 17.5), (2.886, 17.5), (3.1, 7.74)]  # (2.886: the south wall's line)
     flat_at = over(flat, FL + .07)
 
     def wall(a, b, ops=(), **kw):
@@ -213,7 +213,7 @@ def old_farm():
     bot = [(0, barn.height(.24, 0) - .25), (DB / 2, barn.height(.24, DB / 2) - .25), (7.69, barn.height(.24, 7.69) - .25)]
     h.wall((.24, 0), (.24, 7.69), top_over([house], (.24, 0), (.24, 7.69)), bottom=bot, out=(1, 0))
     # The wing's gable over the flat roof, toward the street.
-    h.wall((2.95, 17.5), (6.82, 17.5), top_over([wing], (2.95, 17.5), (6.82, 17.5)), bottom=FL - .1, out=(0, -1))
+    h.wall((2.886, 17.5), (6.82, 17.5), top_over([wing], (2.886, 17.5), (6.82, 17.5)), bottom=FL - .1, out=(0, -1))
     # The barn's back over the flat roof.
     h.wall((3.1, 7.01), (8.29, 7.01), top_over([barn], (3.1, 7.01), (8.29, 7.01)), bottom=FL - .1, out=(0, 1))
     flat_roof(h, flat, FL)
@@ -302,10 +302,10 @@ def seventies():
     narrow = Roof([(-9.58 - no, n0 - no), (-4.34, n0 - no), (-4.34, n1 + no), (-9.58 - no, n1 + no)],
                   [eave((0, n0 - no), (0, 1), NE - kn * no, kn), eave((0, n1 + no), (0, -1), NE - kn * no, kn)], under=white, edge="#3a3b3e", board=.22)
     # The shed behind it: u -8.1 to -4.3, d 10 to 24.4, its ridge away from the street.
-    SE, SR = 2.6 + lift, 4.6 + lift
+    SE, SR = 3.0 + lift, 4.9 + lift  # (the ground rises toward its end: its eaves stay over a head)
     ks = (SR - SE) / 1.9
-    shed = Roof([(-8.1 - .3, 10.0), (-4.25, 10.0), (-4.25, 24.41 + .3), (-8.1 - .3, 24.41 + .3)],
-                [eave((-8.1 - .3, 0), (1, 0), SE - ks * .3, ks), eave((-4.3, 0), (-1, 0), SE, ks)], under=white, edge="#3a3b3e", board=.18)
+    shed = Roof([(-8.1 - .15, 10.0), (-4.25, 10.0), (-4.25, 24.41 + .3), (-8.1 - .15, 24.41 + .3)],
+                [eave((-8.1 - .15, 0), (1, 0), SE - ks * .15, ks), eave((-4.3, 0), (-1, 0), SE, ks)], under=white, edge="#3a3b3e", board=.18)
     roofs = [main, narrow, shed]
     FL = 3.1 + lift
     back = [(-4.32, 10.11), (4.25, 10.09), (4.24, 10.59), (4.36, 13.59), (-4.31, 13.55)]
