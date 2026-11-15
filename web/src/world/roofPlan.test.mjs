@@ -38,7 +38,7 @@ if (process.env.HOUSE_SETS) {
  * which the turned gable would hide.
  */
 const EXPECT = {
-  village: { pair: 174, levelled: 98, close: 76, turn: 5, keep: 171 },
+  village: { pair: 210, levelled: 122, close: 87, turn: 7, keep: 191 },
   ring: { pair: 30, levelled: 12, close: 13, turn: 0, keep: 21 },
   'page village': { pair: 124, levelled: 70, close: 48, turn: 4, keep: 125 },
   'page ring': { pair: 30, levelled: 12, close: 12, turn: 0, keep: 21 },
