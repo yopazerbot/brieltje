@@ -99,7 +99,7 @@ export interface Obstacle {
 const WHEELBASE = 2.89; // m
 const WHEEL_R = 0.356;  // m
 const ACCEL = 6;        // m/s2 from standstill at full throttle, less towards top speed
-const BRAKE = 9;        // m/s2 asked of the brakes (ABS holds it to what the ground grips: world/carGrip.ts)
+const BRAKE = 10.5;     // m/s2 asked of the brakes (ABS holds it to what the ground grips: world/carGrip.ts)
 const REVERSE = 3;      // m/s2 backwards
 const HANDBRAKE = 1;    // g asked of the front brakes with the handbrake, the wheel straight (less as you steer); the rear wheels lock
 const REGEN = 1;        // m/s2: off the pedal, the motor slows the car (as a Tesla does)
@@ -113,6 +113,7 @@ const STEER_HALF = 11.5;  // m/s where the lock at speed is down to half (higher
 const STEER_FALL = 2.2;   // how fast the lock falls beyond that (higher: calmer flat out)
 const STEER_IN = 12;      // 1/s: how fast the wheel turns in
 const STICK_CURVE = 1.5;  // a stick's push to the wheel, softer round the middle (1: straight); keys are full or nothing
+const REVERSE_HOLD = 0.35; // s the brake is held at a standstill before it drives backwards (a new press at rest: at once)
 const CLEAR = 0.3;      // m: lower things (kerbs, paving, a step) don't stop the car
 const SPIN_STEP = 0.3;  // rad: the most a wheel turns per frame on screen (faster, the spokes seem to stand or run back)
 const DRAW = 250;       // m from the eye: further off a car isn't drawn (about 30 draw calls each; the village's parked cars go at 200 m)
@@ -374,6 +375,10 @@ export class Car {
   /** It hit something this frame (the body jolts from its speed change, not the tyres') */
   private crashed = false;
   private braking = false;
+  /** The brake drives it backwards (it stood still on it long enough, or it was pressed anew at rest): see drive() */
+  private reverse = false;
+  private stood = 0; // s at a standstill with the brake held
+  private brakeWas = false; // the brake held last frame
   private pushing = 0;
   private body = new THREE.Group();
   /** The wheels, out of the body: they stay on the ground while the body leans over them. */
@@ -540,14 +545,15 @@ export class Car {
   /** You got out: it rolls to a stop where it is. */
   leave(): void {
     this.vx = this.vz = this.speed = this.spinKick = this.turn = this.pedal = this.brakePedal = this.slideF = this.slideR = 0; // a crash's turn ends with the drive
-    this.braking = false;
+    this.braking = this.reverse = this.brakeWas = false;
+    this.stood = 0;
     this.pushing = 0;
     this.track.clear(); // the server's next states start from here
   }
 
   /** Through a portal: standing still at (x, y, z) facing `yaw`, the camera behind it. */
   place(x: number, y: number, z: number, yaw: number): void {
-    Object.assign(this, { x, y, z, yaw, steer: 0, speed: 0, vx: 0, vz: 0, turn: 0, pedal: 0, brakePedal: 0, lastSpeed: 0, spinKick: 0, braking: false, camHeading: yaw, camYaw: 0, fresh: true });
+    Object.assign(this, { x, y, z, yaw, steer: 0, speed: 0, vx: 0, vz: 0, turn: 0, pedal: 0, brakePedal: 0, lastSpeed: 0, spinKick: 0, braking: false, reverse: false, stood: 0, brakeWas: false, camHeading: yaw, camYaw: 0, fresh: true });
     this.motion.reset();
     this.track.clear();
   }
@@ -578,6 +584,20 @@ export class Car {
     const reach = 8 + this.spec.maxSpeed * dt;
     const near = [...others, ...this.trees.filter((o) => Math.abs(o.x - this.x) < reach && Math.abs(o.z - this.z) < reach)];
     const steps = Math.max(1, Math.ceil(dt * 120));
+    // The brake stops the car and only then drives it backwards: held on through the stop for REVERSE_HOLD, or
+    // let go and pressed again while it stands. Rolling, it never flips into reverse; rolling backwards it stays in.
+    const v = Math.hypot(this.vx, this.vz);
+    const brk = input.brake > 0.05;
+    if (v >= 0.5) {
+      this.reverse = this.speed < -0.5;
+      this.stood = 0;
+    } else if (input.throttle > 0.05) {
+      this.reverse = false;
+      this.stood = 0;
+    } else if (brk) {
+      if (!this.brakeWas || (this.stood += dt) >= REVERSE_HOLD) this.reverse = true;
+    } else this.stood = 0;
+    this.brakeWas = brk;
     let impact = 0;
     this.atEdge = false;
     this.hit = null;
@@ -588,7 +608,8 @@ export class Car {
       Car.onCrash(hit);
       this.camBack -= Math.min(0.8, hit.speed * 0.06); // the camera lurches on with the car's weight, and eases back
     }
-    this.braking = (input.brake > 0.05 && this.speed > 0.3) || (input.throttle > 0.05 && this.speed < -0.3) || (input.handbrake && Math.abs(this.speed) > 0.3);
+    // The brake lights: braking, and standing on the brake or the handbrake.
+    this.braking = (brk && !this.reverse) || (input.throttle > 0.05 && this.speed < -0.3) || !!input.handbrake;
     this.pushing = this.pedal || this.brakePedal; // as the car takes the pedals (eased in)
     const g = this.world.groundAt(this.x, this.z, this.y, CLEAR).y;
     this.y += (g - this.y) * (1 - Math.exp(-dt * 12));
@@ -636,7 +657,7 @@ export class Car {
         else drive += ACCEL * this.pedal * Math.max(0, 1 - 0.65 * (u / max) ** 2) * MASS;
       }
       if (this.brakePedal > 0) {
-        if (u > 0.3) brake += BRAKE * this.brakePedal * MASS;
+        if (u > 0.3 || !this.reverse) brake += BRAKE * this.brakePedal * MASS;
         else drive -= REVERSE * this.brakePedal * Math.max(0, 1 + u / this.spec.reverseSpeed) * MASS;
       }
       // Off both pedals: the motor slows it a little, fading out at a walk.

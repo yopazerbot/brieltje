@@ -15,7 +15,7 @@ const definition = (name) => {
   assert.ok(start >= 0);
   return stripTypeScriptTypes(source.slice(start, source.indexOf('\n}', start) + 2));
 };
-const constants = ['WHEELBASE', 'WHEEL_R', 'ACCEL', 'BRAKE', 'REVERSE', 'HANDBRAKE', 'REGEN', 'GRIP', 'ESC', 'STEER', 'TYRE', 'STEER_HALF', 'STEER_FALL', 'STEER_IN', 'STICK_CURVE', 'CLEAR', 'SPIN_STEP', 'DRAW', 'ROLL_H', 'TILT', 'ROUGH', 'CALM', 'angle']
+const constants = ['WHEELBASE', 'WHEEL_R', 'ACCEL', 'BRAKE', 'REVERSE', 'HANDBRAKE', 'REGEN', 'GRIP', 'ESC', 'STEER', 'TYRE', 'STEER_HALF', 'STEER_FALL', 'STEER_IN', 'STICK_CURVE', 'REVERSE_HOLD', 'CLEAR', 'SPIN_STEP', 'DRAW', 'ROLL_H', 'TILT', 'ROUGH', 'CALM', 'angle']
   .map(name => source.match(new RegExp(`^const ${name} = .*?;`, 'm'))?.[0]).join('\n');
 const classCode = source.slice(source.indexOf('export class Car')).replace('export class Car', 'class Car');
 // The marks and sounds a car makes, counted instead of drawn and played.
@@ -35,7 +35,7 @@ function vehicle(spec = specs.cars.tesla, groundAt = () => ({ y: 0, name: 'stree
     blurMat: new THREE.MeshStandardMaterial(), taillight: new THREE.MeshStandardMaterial(), lamps: { update() {} },
     world: { boxFree: () => true, boxInBounds: () => true, groundAt, setMoving() {}, touching: () => null },
     motion: new CarBody(), along: 0, side: 0, yawRate: 0, lastX: 0, lastZ: 0, lastYaw: 0, fresh: true,
-    turn: 0, pedal: 0, brakePedal: 0, ax: 0, ay: 0, grip: [1, 1, 1, 1], slideF: 0, slideR: 0, crashed: false,
+    turn: 0, pedal: 0, brakePedal: 0, ax: 0, ay: 0, grip: [1, 1, 1, 1], slideF: 0, slideR: 0, crashed: false, reverse: false, stood: 0, brakeWas: false,
     axle: { at: [[-0.82, -1.45], [0.82, -1.45], [-0.82, 1.42], [0.82, 1.42]], base: 2.87, track: 1.64, hub: [0, 0, 0, 0] },
     under: [0, 0, 0, 0], rise: [0, 0, 0, 0], rough: [false, false, false, false],
     ride: { pitch: 0, roll: 0, lift: 0, twist: 0 }, plane: { pitch: 0, roll: 0, lift: 0, twist: 0 }, still: 0, knock: 0,
@@ -303,11 +303,11 @@ test('the handbrake stops hard in a straight line: about 0.9 to 1 g dry, less wh
   assert.ok(grass.metres > wet.metres && grass.g > 0.35, `grass: ${grass.g.toFixed(2)} g over ${grass.metres.toFixed(1)} m`);
 });
 
-test('ABS: full braking stops at about 0.9 g without locking, and the car still steers', () => {
+test('ABS: full braking stops at about 1 g without locking, and the car still steers', () => {
   const d = stopping(rolling(50), brake);
-  assert.ok(d.g > 0.85 && d.g < 0.97, `dry: ${d.g.toFixed(2)} g over ${d.metres.toFixed(1)} m`);
+  assert.ok(d.g > 1.0 && d.g < 1.15, `dry: ${d.g.toFixed(2)} g over ${d.metres.toFixed(1)} m`);
   const wetStop = stopping(rolling(50, 'asphalt', 1), brake).g;
-  assert.ok(wetStop <= d.g + 1e-9 && wetStop > 0.75, `on a wet road no more, not ice (${wetStop.toFixed(2)} g)`);
+  assert.ok(wetStop < d.g && wetStop > 0.85 && wetStop < 1.02, `a little less on a wet road, not ice (${wetStop.toFixed(2)} g)`);
   const turning = rolling(60);
   run(turning, 1, { ...brake, steer: 1 });
   assert.ok(-turning.yaw > 0.4, `braking hard it still turns right (${(-turning.yaw * 57.3).toFixed(0)} degrees in a second)`);
@@ -383,6 +383,58 @@ test('sharper turning: the circle at 20, 30, 50, 100 and 200 km/h with the wheel
     const c = circle(kmh);
     assert.ok(Math.abs(c.radius - radius) < radius * 0.1, `${kmh} km/h: ${c.radius.toFixed(1)} m (about ${radius} m)`);
   }
+});
+
+test('the brake stops from 50, 100 and 200 km/h in about 9.4, 36 and 136 m; wet a tenth longer, snow more', () => {
+  for (const [kmh, metres] of [[50, 9.4], [100, 36], [200, 136]]) {
+    const d = stopping(rolling(kmh), brake);
+    assert.ok(Math.abs(d.metres - metres) < metres * 0.08, `${kmh} km/h: ${d.metres.toFixed(1)} m (about ${metres})`);
+  }
+  const dry = stopping(rolling(50), brake).metres;
+  const wet = stopping(rolling(50, 'asphalt', 1), brake).metres;
+  mood.snow = 1;
+  const snow = stopping(rolling(50), brake).metres;
+  mood.snow = 0;
+  assert.ok(wet > dry * 1.04 && wet < dry * 1.2, `wet ${wet.toFixed(1)} m against ${dry.toFixed(1)} m`);
+  assert.ok(snow > dry * 1.4 && snow < dry * 1.9, `snow ${snow.toFixed(1)} m`);
+});
+
+/** Frames of `input` (a function of the frame's time) until `seconds`: the car's speed along itself each frame. */
+function speeds(car, seconds, input) {
+  const out = [];
+  for (let i = 0; i < Math.round(seconds * 60); i++) {
+    car.drive(1 / 60, input(i / 60), []);
+    car.update(1 / 60, true);
+    out.push({ t: (i + 1) / 60, speed: car.speed, v: Math.hypot(car.vx, car.vz), lit: car.braking });
+  }
+  return out;
+}
+
+test('the brake held from 50 km/h stops the car, keeps it standing with its brake lights on, and reverses only after a moment', () => {
+  const log = speeds(rolling(50), 4, () => brake);
+  const stood = log.find((f) => f.v < 0.05).t;
+  const back = log.find((f) => f.speed < -0.05).t;
+  assert.ok(back - stood >= 0.3 && back - stood < 0.5, `stood at ${stood.toFixed(2)} s, backwards at ${back.toFixed(2)} s`);
+  assert.ok(log.filter((f) => f.t < stood).every((f) => f.speed >= 0), 'never backwards while it rolls');
+  assert.ok(log.filter((f) => f.t >= stood && f.t < stood + 0.25).every((f) => f.lit), 'the brake lights on while it stands on the brake');
+  assert.ok(log[log.length - 1].speed < -2, `then it drives backwards (${log[log.length - 1].speed.toFixed(2)} m/s)`);
+});
+
+test('the brake pumped from 30 km/h never goes backwards; let go and pressed again at rest, it reverses at once', () => {
+  const car = rolling(30);
+  const pumped = [];
+  for (let t = 0; t < 5 && !(pumped.length && pumped[pumped.length - 1].v < 0.05); t += 1 / 60) {
+    pumped.push(...speeds(car, 1 / 60, () => (Math.floor(t / 0.1) % 2 ? { ...brake, brake: 0 } : brake)));
+  }
+  assert.ok(pumped[pumped.length - 1].v < 0.05, 'it stands');
+  assert.ok(pumped.every((f) => f.speed > -0.05), `never backwards on the way (${Math.min(...pumped.map((f) => f.speed)).toFixed(3)} m/s)`);
+  speeds(car, 0.3, () => ({ ...brake, brake: 0 }));
+  const again = speeds(car, 1, () => brake);
+  const back = again.find((f) => f.speed < -0.05)?.t ?? Infinity;
+  assert.ok(back < 0.2, `backwards ${back.toFixed(2)} s after the new press`);
+  // The throttle while it rolls back brakes it, then drives it forwards.
+  const forward = speeds(car, 1.5, () => throttle);
+  assert.ok(forward[forward.length - 1].speed > 2, `forwards again (${forward[forward.length - 1].speed.toFixed(2)} m/s)`);
 });
 
 test('a stick pushed half way turns the wheel about a third of the way; full over it turns all the way', () => {

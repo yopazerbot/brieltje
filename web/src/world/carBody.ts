@@ -106,8 +106,8 @@ export function skid(speed: number, side: number, along: number, across: number,
   const clamp = (x: number) => (x > 0 ? (x < 1 ? x : 1) : 0);
   const slide = clamp((Math.abs(side) - 1.2) / 3);
   const turn = v > 6 ? clamp((Math.abs(across) - 9) / 6) : 0;
-  // Only the hardest stops from 40 km/h up (it brakes at about 9 m/s2 flat out).
-  const stop = v > 11 ?0.75 * clamp((-along * Math.sign(speed) - 7.5) / 2.5) : 0;
+  // Only the hardest stops from 40 km/h up (it brakes at about 10.5 m/s2 flat out).
+  const stop = v > 11 ?0.75 * clamp((-along * Math.sign(speed) - 9) / 3) : 0;
   const pulled = handbrake && v > 3 ? 0.9 * clamp(v / 10) : 0;
   return { front: Math.max(0.8 * turn, stop, 0.5 * slide), rear: Math.max(slide, turn, 0.8 * stop, pulled) };
 }
