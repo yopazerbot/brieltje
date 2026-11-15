@@ -105,10 +105,10 @@ for (const p of [a, b]) {
   await sleep(200);
   await walk(p, ox, oz, groundAt);
 }
-/** Bob's last position as Alice's ticks show it. */
+/** A player's last position as the admin's ticks show it (the admin sees into every home; Alice no longer sees Bob inside). */
 const seen = (who) => {
-  for (let i = a.log.length - 1; i >= 0; i--) {
-    const m = a.log[i];
+  for (let i = root.log.length - 1; i >= 0; i--) {
+    const m = root.log[i];
     if (m.t !== 's' || !m.p) continue;
     const e = m.p.find((q) => q[0] === who);
     if (e) return { x: e[2], y: e[3], z: e[4] };
