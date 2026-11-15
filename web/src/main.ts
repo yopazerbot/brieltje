@@ -4237,12 +4237,12 @@ async function buildVillage(): Promise<void> {
       const home4 = street.userData.landmark === 'kapellenhoek' ? models.find((m) => m.userData.landmark === 'kapellenhoek_home') : undefined;
       for (const ring of (home4?.userData.replaces as [number, number][][] | undefined) ?? []) cutOut(street, ring, 0.9);
       models.push(street);
-      if (street.userData.landmark === 'molenhoek_end3') endHouse = await loadWalkIn(renderer, { id: 'molenhoek_end', model: street, village: 'molenhoek_end3', open: () => homeLocks.isOpen('molenhoek_end'), clock: sharedClock, prepare: precompile }).catch(() => null);
+      if (street.userData.landmark === 'molenhoek_end3') endHouse = await loadWalkIn(renderer, { id: 'molenhoek_end', model: street, village: 'molenhoek_end3', open: () => homeLocks.isOpen('molenhoek_end'), clock: sharedClock, prepare: precompile, viewer: () => camera.position }).catch(() => null);
     }
     await between();
   }
   const brickModel = models.find((m) => m.userData.landmark === 'kapellenhoek_home');
-  if (brickModel) brickHouse = await loadWalkIn(renderer, { id: 'kapellenhoek_home', model: brickModel, village: 'outline', open: () => homeLocks.isOpen('kapellenhoek_home'), clock: sharedClock, prepare: precompile }).catch(() => null);
+  if (brickModel) brickHouse = await loadWalkIn(renderer, { id: 'kapellenhoek_home', model: brickModel, village: 'outline', open: () => homeLocks.isOpen('kapellenhoek_home'), clock: sharedClock, prepare: precompile, viewer: () => camera.position }).catch(() => null);
   brickHouse?.clearPlot(data); // its garden lies level, not on the relief: the village's covers there give way
   // Their ground over the village's covers and streets, and each one's own surfaces one over another cut (world/modelGround.ts).
   // The cuts are worked out in a worker while the page goes on building (world/groundCutter.ts).

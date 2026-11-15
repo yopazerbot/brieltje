@@ -56,6 +56,7 @@ const CYCLE = 120; // s: one round of lying, getting up, walking, lying down
 const SPEED = 0.6; // m/s on its round
 const NEAR = 4; // m: it notices a player this close
 const FADE = 0.35; // s between two clips
+const NECK = 1.2; // radians its head turns at most to look at someone (about 70 degrees)
 
 let model: Promise<GLTF> | null = null;
 const load = () => (model ??= new GLTFLoader().loadAsync(URL));
@@ -222,7 +223,9 @@ export function addPets(parent: THREE.Object3D, pets: PetSpec[], clock: () => nu
       if (near) {
         yaw = Math.atan2(dx, dz) - heading;
         yaw = Math.atan2(Math.sin(yaw), Math.cos(yaw));
-        yaw = Math.max(-0.9, Math.min(0.9, yaw));
+        // As far as a neck turns; a player further round, behind it, gets no look (it faces ahead): the head never
+        // swings from one shoulder to the other as someone walks behind it.
+        yaw = Math.abs(yaw) > NECK + 0.35 ? 0 : Math.max(-NECK, Math.min(NECK, yaw));
         pitch = Math.max(-0.2, Math.min(0.3, Math.atan2(local.y - p.y - 0.3 * pet.spec.scale, Math.hypot(dx, dz))));
       }
       const ease = 1 - Math.exp(-4 * dt);

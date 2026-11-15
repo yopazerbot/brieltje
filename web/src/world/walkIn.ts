@@ -73,6 +73,8 @@ export interface WalkInSpec {
   clock: () => number;
   /** Compiles a new part's shaders before it shows (main.ts precompile) */
   prepare?: (o: THREE.Object3D) => Promise<unknown>;
+  /** Where this page's own camera is (its pets look at the player, never at another camera that draws the house) */
+  viewer: () => THREE.Vector3;
 }
 
 interface Block {
@@ -588,9 +590,13 @@ export async function loadWalkIn(renderer: THREE.WebGLRenderer, spec: WalkInSpec
     // Seen through the glass front door from the street: closer than 3 m only, the hall's doors looked open from further off.
     inDoors.visible = now || edgeDistance(eye.x, eye.z, outline) < 15;
     if (liner) liner.visible = !spec.open();
+    // Its pets, once a frame (this runs for every camera that draws it: a reflection's or a shadow's too, whose place
+    // the dog's look must never follow): drawn near only, they move only then.
     const t = performance.now();
-    if (pets) pets.update(Math.min(0.1, (t - petsAt) / 1000)); // drawn near only: its pets move only then
-    petsAt = t;
+    if (pets && t - petsAt > 4) {
+      pets.update(Math.min(0.1, (t - petsAt) / 1000));
+      petsAt = t;
+    }
   };
   let pets: Pets | null = null;
   let petsAt = performance.now();
@@ -666,7 +672,7 @@ export async function loadWalkIn(renderer: THREE.WebGLRenderer, spec: WalkInSpec
       const pieces = fixtureGroup(outlined ? pack.fixtures.filter((f) => known.has(f.item)) : pack.fixtures, (m) => sunless(m), false);
       if (pieces) local.add(pieces);
       // Its pets (their model is fetched only now, with the inside).
-      if (pack.pets?.length) pets = addPets(local, pack.pets, spec.clock, () => eye, { look: (m) => sunless(m), prepare: spec.prepare });
+      if (pack.pets?.length) pets = addPets(local, pack.pets, spec.clock, spec.viewer, { look: (m) => sunless(m), prepare: spec.prepare });
 
       // The toilets (our own model, tools/toilet.py), glossy, into the plain mesh once they come.
       if (pack.props.length) {
