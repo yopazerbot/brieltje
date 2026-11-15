@@ -45,7 +45,7 @@ for (const spot of o.spots ? o.spots.split(';') : []) {
 
 const b = await launch({ port: Number(o.port) });
 try {
-  await startGame(b, o.url, { phone: o.phone, village: true });
+  await startGame(b, o.url, { phone: o.phone, village: true, noAsk: true });
   await b.evaluate(`briel.three.applyQuality(${JSON.stringify(o.quality)})`, false);
   await b.evaluate(`briel.three.weather.setSolo(${JSON.stringify(o.mood)})`, false);
   await b.sleep(9000); // a mood picked by hand blends in over 8 s (world/weather.ts PICK_MS)

@@ -15,7 +15,7 @@ const out = o._[0];
 if (!out) throw new Error('usage: node tools/dev/shot.mjs <out.png> [options]');
 const b = await launch({ port: Number(o.port), swiftshader: o.swiftshader });
 try {
-  await startGame(b, o.url, { phone: o.phone, village: o.village });
+  await startGame(b, o.url, { phone: o.phone, village: o.village, noAsk: true });
   if (o.quality) await b.evaluate(`briel.three.applyQuality(${JSON.stringify(o.quality)})`, false);
   if (o.at) {
     const [x, z, feet, yaw = 0, pitch = 0] = o.at.split(',').map(Number);

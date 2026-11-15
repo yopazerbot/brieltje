@@ -114,13 +114,15 @@ export async function launch({ port = 9340, width = 1600, height = 900, swiftsha
 
 /**
  * Open the game and click through the start screen (a name, then keyboard and mouse, or touch with
- * `phone`), then wait for `window.briel` (dev server only). `village`: also wait until the village is in.
+ * `phone`), then wait for `window.briel` (dev server only). `village`: also wait until the village is in. `noAsk`: the
+ * feedback card (ui/feedback.ts) held back for this page, as asked before, so it never covers a picture.
  */
-export async function startGame(b, url, { phone = false, village = false } = {}) {
+export async function startGame(b, url, { phone = false, village = false, noAsk = false } = {}) {
   if (phone) {
     await b.send('Emulation.setTouchEmulationEnabled', { enabled: true, maxTouchPoints: 5 });
     await b.send('Emulation.setDeviceMetricsOverride', { width: 844, height: 390, deviceScaleFactor: 1, mobile: true });
   }
+  if (noAsk) await b.send('Page.addScriptToEvaluateOnNewDocument', { source: "try { localStorage.setItem('briel.feedback', 'later'); } catch {}" });
   await b.send('Page.navigate', { url });
   const button = phone ? '#choose-touch' : '#choose-kbm';
   await b.waitFor(`!!document.querySelector('${button}')`);
