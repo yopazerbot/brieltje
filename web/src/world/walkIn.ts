@@ -493,9 +493,12 @@ export async function loadWalkIn(renderer: THREE.WebGLRenderer, spec: WalkInSpec
   const panes = new Map<number, THREE.Mesh>();
   const paneGeos = data.panes.map((p) => prismGeometry({ m: 'glass', y0: p.y0, y1: p.y1, p: p.p }));
   const broken = new Set<number>();
-  // The glass's own see-through and colour per vertex: clear as the house's windows, the side light frosted.
+  // The glass's own see-through and colour per vertex: clear as the house's windows, the side light frosted. The brick
+  // house's panes fill their whole openings, its model's frames and glazing bars outside them: a pale sheet over those
+  // drew a second, washed-out set of bars from inside, so its glass is only a faint sheen.
+  const clearAlpha = spec.village === 'outline' ? 0.03 : 0.18;
   const tinted = (g: THREE.BufferGeometry, matte: boolean) => {
-    const rgba = matte ? [0.87, 0.87, 0.88, 0.86] : [1, 1, 1, 0.18];
+    const rgba = matte ? [0.87, 0.87, 0.88, 0.86] : [1, 1, 1, clearAlpha];
     const c = new Float32Array(g.attributes.position.count * 4);
     for (let i = 0; i < c.length; i += 4) c.set(rgba, i);
     g.setAttribute('color', new THREE.BufferAttribute(c, 4));
