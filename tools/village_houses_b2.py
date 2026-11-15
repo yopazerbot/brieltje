@@ -387,9 +387,9 @@ def fermette():
         L = math.dist(a, b)
         for i in range(int(L / .7) + 1):
             p = Vector(a) + (Vector(b) - Vector(a)) * (i / max(1, int(L / .7)))
-            h.blob("vh_hedge", p.x, p.y, gy(p.x, p.y) + .22, (.42, .42, .3), rings=3, steps=6)
+            h.blob("vh_hedge", p.x, p.y, gy(p.x, p.y) + .2, (.42, .42, .3), rings=4, steps=9)
     for u, d, r in ((-8.6, 1.6, .38), (-10.3, 2.2, .45), (-11.6, 1.3, .35), (-7.6, 2.8, .3), (-12.6, -1.8, .4)):
-        h.blob("vh_hedge", u, d, gy(u, d) + r * .8, (r, r, r * .85), rings=3, steps=6)
+        h.blob("vh_hedge", u, d, gy(u, d) + .5 - r * .85, (r, r, r * .85), rings=4, steps=9)
     h.export()
 
 
@@ -528,7 +528,7 @@ def terrace():
     roof = Roof([(-4.2, -ov), (4.19, -ov), (4.36, dB + ov), (-3.86, dB + ov)],
                 [eave((0, -ov), (0, 1), E - k * ov, k), eave((0, dB + ov), (0, -1), E - k * ov, k)], under="#e4e2dc", edge="#e9e8e3", board=.22)
     roofs = [roof]
-    white, buff, grey = "#f2f1ec", "#c9b07c", "#7f7d79"
+    white, buff, grey = "#f2f1ec", "#bf9c74", "#7f7d79"
     foot = [(.9, "vh_trim", grey)]
     gy = lambda u, d: h.ground(u, d)
     g0 = gy(-.6, -.2)
@@ -651,7 +651,7 @@ def fork_house():
         h.seg("vh_trim", (a + .06, fy(a)), (b - .06, fy(b)), .07, min(ga, gb) + .5, max(ga, gb) + .62, white)
         h.seg_block("concrete", (a - .06, fy(a)), (b + .06, fy(b)), .14, min(ga, gb) - .1, max(ga, gb) + .66)
     for u, d, r in ((-5.4, -1.7, .45), (-3.9, -2.1, .4), (-2.3, -1.6, .5), (-1.2, -2.2, .35), (2.0, -.9, .35), (-4.6, -.8, .3)):
-        h.blob("vh_hedge", u, d, gy(u, d) + r * .7, (r, r, r * .9), rings=3, steps=6)
+        h.blob("vh_hedge", u, d, gy(u, d) + .5 - r * .9, (r, r, r * .9), rings=4, steps=9)
     h.export()
 
 
