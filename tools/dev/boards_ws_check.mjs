@@ -3,8 +3,8 @@
 // server's time, within a tenth of a second of this script's own stopwatch (the same rules on the positions it sent,
 // its own clock); a guest walks it too and is on tonight's board only (GET /api/host). Then every forgery the boards
 // could be abused with must count nothing: a page's own race and gnome messages, a trip through the portals mid-run
-// (chat travel), the route on a bike, flying, a skipped checkpoint, running at twice the pace; a straight line through
-// the houses gets no time under the route's floor (the server checks no walls for players). A gnome counts once. The Zombies board, the fights' totals and the host's board answer as before.
+// (chat travel), the route on a bike, flying, a skipped checkpoint, a straight line through the houses, running at twice
+// the pace. A gnome counts once. The Zombies board, the fights' totals and the host's board answer as before.
 // The account is deleted at the end.
 //
 //   ADMIN_PASSWORD=... node tools/dev/boards_ws_check.mjs --api http://localhost:8437
@@ -167,8 +167,8 @@ const flew = await acc.races(mark, 800);
 await acc.church();
 await acc.walk([...LAP.slice(0, 8), ...LAP.slice(11)], RUN);
 const skipped = await acc.races(mark, 800);
-// Straight through the houses from the second checkpoint to the third: the server checks no walls for players (the
-// plan's rule against it stopped honest walks by the page), so this may count, but never under the route's floor.
+// Straight through the houses from the second checkpoint to the third: more than the metre on foot through the server's
+// blocks that honest walks by the page need (server/goals.mjs WALL_FOOT_M).
 await acc.church();
 let at = acc.log.length;
 await acc.walk([...LAP.slice(0, 4), LAP[6], ...LAP.slice(7)], RUN);
@@ -183,7 +183,7 @@ ok('a page\'s own race and gnome messages count nothing', !acc.log.slice(mark).s
 ok('a trip mid-run: no time', travelled.length === 0, JSON.stringify(travelled));
 ok('flying: no time', flew.length === 0, JSON.stringify(flew));
 ok('a skipped checkpoint: no time', skipped.length === 0, JSON.stringify(skipped));
-ok('a line through the houses: no time under the floor (21.2 s)', walls.every((m) => m.ms >= 21_200), JSON.stringify(walls));
+ok('a line through the houses: no time', walls.length === 0, JSON.stringify(walls));
 const fastMs = fast.at(-1)?.ms;
 ok('twice the pace: no time faster than the budget allows', fast.length === 0 || fastMs >= serverMs / 1.3 - 200, `${fast.length} times${fastMs ? `, ${fastMs} ms against ${serverMs} at a run` : ''}`);
 

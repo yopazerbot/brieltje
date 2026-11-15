@@ -11,6 +11,7 @@
 // (API_PORT=<a throwaway server's port> npx vite --port <n>): the walks go at the real pace, the script waits after its
 // jumps for the server to catch up, and each route checks that the server timed it too (server/goals.mjs: its `race`
 // message, within a few tenths of the page's own time). Use --only foot,bike,car --ride.
+// --target <m/s>: the bike's or the car's autopilot aims at this speed instead of its calm 5.5 or 10 (a fast lap).
 //
 //   node tools/dev/goals.mjs --url http://localhost:5200/ --port 9920 [--quality high] [--phone] [--shots <folder>]
 //                            [--only spots,reach,shots,find,foot,line,race,climb,warm,zombies,bike,car] [--ride] [--trace]
@@ -24,7 +25,7 @@ import { lengthOf, makeRoads } from '../../web/shared/roadPath.mjs';
 import { makeTerrain } from '../../web/shared/terrain.mjs';
 import { launch, options, startGame } from './cdp.mjs';
 
-const o = options({ url: 'http://localhost:5200/', port: '9920', quality: 'high', phone: false, shots: '', only: '', ride: false, trace: false, size: '', together: '' });
+const o = options({ url: 'http://localhost:5200/', port: '9920', quality: 'high', phone: false, shots: '', only: '', ride: false, trace: false, size: '', together: '', target: '' });
 /** Together: a while for the server's place of you to catch up with a jump of the page's (it moves you at the pace of your way). */
 const settle = (ms) => (o.together ? b.sleep(ms) : Promise.resolve());
 /** Together: the server's `race` messages for route `id` (recorded in the page), the newest last. */
@@ -73,8 +74,8 @@ async function serverTimed(id, stored) {
   const page = Object.entries(JSON.parse(stored || '{}').best ?? {}).find(([k]) => k.startsWith(`${id}@`))?.[1];
   const timed = !!got && typeof page === 'number' && Math.abs(got.ms - page) < 500;
   check(`${id}: the server timed it too`, timed, `server ${js(got ?? null)}, page ${page} ms`);
-  // Not timed: the states this page sent (time, x, y, z, flying), to replay against the server's rules.
-  if (!timed && o.shots) writeFileSync(join(o.shots, `${id}_states.json`), await b.evaluate('JSON.stringify(window.__sent ?? [])', false));
+  // The states this page sent (time, x, y, z, flying), to replay against the server's rules.
+  if (o.shots) writeFileSync(join(o.shots, `${id}_states_${timed ? 'timed' : 'not'}_${Date.now()}.json`), await b.evaluate('JSON.stringify(window.__sent ?? [])', false));
 }
 const toast = () => b.evaluate("document.getElementById('toast')?.textContent ?? ''", false);
 const line = () => b.evaluate("(() => { const l = document.getElementById('goal-line'); return l && !l.hidden ? l.textContent : ''; })()", false);
@@ -744,9 +745,15 @@ try {
     if (kind === 'bike') {
       await b.evaluate("briel.travel('church')", false);
       await b.sleep(3000);
-      await b.evaluate('briel.teleport(533, -769, briel.world.groundAt(533, -769, 60, 0).y)', false);
+      // Together the bikes stay where the last rider left them: the free one standing nearest the church's rack.
+      const bikeId = o.together
+        ? await b.evaluate("(() => { let best = 'church1', d = Infinity; for (const [id, k] of briel.bikes.byId) { if (k.rider || k.lie) continue; const e = Math.hypot(k.x - 533, k.z + 770); if (e < d) [best, d] = [id, e]; } return best; })()", false)
+        : 'church1';
+      await b.evaluate(o.together
+        ? `(() => { const k = briel.bikes.byId.get(${js(bikeId)}); briel.teleport(k.x + 1.2, k.z, briel.world.groundAt(k.x + 1.2, k.z, 60, 0).y); })()`
+        : 'briel.teleport(533, -769, briel.world.groundAt(533, -769, 60, 0).y)', false);
       await settle(5000);
-      await b.evaluate("briel.getOnBike('church1')", false);
+      await b.evaluate(`briel.getOnBike(${js(bikeId)})`, false);
       await b.sleep(o.together ? 1500 : 500);
       // Along the road register's centre lines from point to point (src/ui/route.ts: the streets, the field tracks too);
       // where it has no line (a straight leg) and something stands in the way, round it over cells a bike fits through.
@@ -811,7 +818,7 @@ try {
     await b.evaluate(`(() => {
       const kind = ${js(kind)};
       const path = ${js(path)};
-      const target = kind === 'bike' ? 5.5 : 10;
+      const target = ${o.target ? Number(o.target) : 'kind === \'bike\' ? 5.5 : 10'}; // --target: the autopilot's speed (m/s)
       const st = window.__auto = { i: 0, done: false, t0: performance.now(), at: null };
       const pose = () => { if (kind === 'bike') { const k = briel.bikes.ridden; return k && { x: k.x, z: k.z, yaw: k.yaw, v: k.speed }; } const c = briel.currentCar(); return { x: c.x, z: c.z, yaw: c.yaw, v: Math.hypot(c.vx, c.vz) }; };
       const input = (base) => {
@@ -930,6 +937,7 @@ try {
     await shot(`${kind}_finish`);
     if (kind === 'bike') await b.evaluate('briel.getOffBike()', false);
     else await b.evaluate('briel.getOut()', false);
+    await settle(2000); // together: the server has you off the bike before the next trip (it refuses a trip on one)
   }
 
   const errors = b.logs.filter((l) => /^(error|exception)/.test(l));
