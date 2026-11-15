@@ -2795,7 +2795,7 @@ net.onMessage = (m: ServerMsg) => {
         else net.send({ t: 'bike', op: 'off' }); // not asked for (an old connection's): give it back
       } else if (!mine && bikes.mounted === k.id) getOffBike(false); // taken back: you died or respawned
       if (bikeWanted === k.id) bikeWanted = null;
-      bikes.setAll([k], me?.username ?? '');
+      bikes.setAll([k], me?.username ?? '', false, m.knock); // `knock`: a car knocked it over (server/bikeHits.mjs), it falls there
       break;
     }
     case 'bell':
@@ -3481,6 +3481,8 @@ renderer.setAnimationLoop((now: number) => {
         rumble(Math.min(1, hit / 10), 0.6, 140);
         shake = Math.max(shake, Math.min(0.5, hit / 20));
       }
+      const knocked = bikes.struck(car, dt, indoorsAt); // a free bike in its way is knocked aside (world/bike.ts): the car drives on
+      if (knocked) { car.nudge(knocked); rumble(0.3, 0.3, 90); shake = Math.max(shake, 0.06); }
       car.chase(camera, dt, turn, tilt);
       // You are where the car is: for the map, the place name, and what the others see.
       player.place(car.x, car.z, car.y, player.yaw, player.pitch);

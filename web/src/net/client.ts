@@ -179,7 +179,7 @@ export type ServerMsg =
   /** A goal: in goal `g` of ball `b`'s pitch, by who touched it last, and the score */
   | { t: 'ballgoal'; b: string; g: number; by: string; sc: number[] }
   /** Someone got on or off a bike (src/world/bike.ts), or the server's answer to yours */
-  | { t: 'bike'; bike: BikeState }
+  | { t: 'bike'; bike: BikeState; knock?: { ms: number; v: number }; home?: boolean }
   /** A rider rang the bell of bike `id` (rung where that bike is drawn) */
   | { t: 'bell'; id: string }
   | { t: 'chat'; from: string; color: string; text: string }

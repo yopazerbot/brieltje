@@ -2,6 +2,7 @@ import * as THREE from 'three';
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
 import CARS from '../../shared/car.json';
+import { KNOCK } from '../../shared/bikeKnock.mjs';
 import type { CarSample } from '../../shared/wire.mjs';
 import { netClock, Track } from '../net/track';
 import { CarBody, groundPlane, PITCH_MAX, ROLL_MAX, skid } from './carBody';
@@ -1110,5 +1111,17 @@ export class Car {
     this.noise.thump(this.x, this.y, this.z, strength);
     const k = Math.min(1, strength / 10);
     this.motion.kick(0, 0.3 * k * (Math.random() - 0.5), 0.25 * k);
+  }
+
+  /** It knocked a bike aside at `speed` m/s (world/bike.ts struck): it drives on, KNOCK.keep of its speed (at least KNOCK.loss m/s off), with a bump. */
+  nudge(speed: number): void {
+    const v = Math.hypot(this.vx, this.vz);
+    if (v > 0) {
+      const k = Math.max(0, Math.min(KNOCK.keep, 1 - KNOCK.loss / v));
+      this.vx *= k;
+      this.vz *= k;
+      this.speed *= k;
+    }
+    this.bump(Math.min(4, 1 + speed * 0.1));
   }
 }

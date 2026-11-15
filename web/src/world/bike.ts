@@ -2,6 +2,8 @@ import * as THREE from 'three';
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
 import BIKES from '../../shared/bike.json';
+import { clearSpot, KNOCK, KNOCK_HOME_MS, knockBike, sweptHit, tumblePose, type Fall } from '../../shared/bikeKnock.mjs';
+import { boxesOverlap, boxPoints } from '../../shared/parking.mjs';
 import type { BikeSample } from '../../shared/wire.mjs';
 import { netClock, Track } from '../net/track';
 import { SEAT_HIP, type Body, type Pose } from '../net/swat';
@@ -9,6 +11,8 @@ import type { Seat } from '../net/avatars';
 import type { Obstacle } from './car';
 import type { Point, World } from './collision';
 import { BikeSound, ringBell } from './bikeSound';
+import { knock } from './propSound';
+import { waterLevel } from './water';
 
 /**
  * Bikes you can ride (shared/bike.json): one against the side wall of the main house, one at the
@@ -30,6 +34,13 @@ import { BikeSound, ringBell } from './bikeSound';
  * frame, the fork and bars (turning about the steering axis), the wheels, the crank, the pedals
  * (kept level) and the stand. Every bike's part is one instance of one mesh, painted per vertex
  * (the paint tinted per bike), so all the bikes together are ten draws.
+ *
+ * A car driven into a bike nobody rides doesn't stop: the bike tips over, or is thrown aside and
+ * lies on its side (shared/bikeKnock.mjs, `struck`). Alone that is where it lies; together it is a
+ * guess at once, and the server's 'bike' message with `knock` gives the place (the fall bends to it,
+ * or the bike stands back up when none comes). Getting on a lying bike stands it up. One left lying
+ * unused goes back to its spot after KNOCK_HOME_MS (together the server sends it). A standing bike is
+ * in the way of people walking and of other bikes, not of cars; a lying one is in nobody's way.
  */
 
 export interface BikeState {
@@ -41,6 +52,17 @@ export interface BikeState {
   yaw: number;
   /** Who rides it, or null */
   rider: string | null;
+  /** Knocked over by a car: 1 lying on its right side, -1 on its left, 0 (or missing) standing */
+  lie?: number;
+}
+
+/** A knocked bike's fall under way (shared/bikeKnock.mjs tumblePose), `t` ms of `ms` gone; `y0` the ground it stood on. */
+interface Falling extends Fall {
+  ms: number;
+  t: number;
+  y0: number;
+  /** The server's place differs from the page's guess: added over the rest of the fall, from `u` on */
+  bend: { dx: number; dz: number; dyaw: number; u: number } | null;
 }
 
 export interface PedalInput {
@@ -84,6 +106,10 @@ const HALF_W = BIKES.width / 2;
 const DRAW = 160; // m from the eye: further off a bike isn't drawn
 const SPIN_STEP = 0.3; // rad: the most a wheel turns per frame on screen (faster, the spokes seem to stand)
 const CAM_PITCH = 0.24;
+// A bike on its side rests on its bars and a pedal, its middle this far up (m), and is lifted with its lean past a ridden one's.
+const LIE_LIFT = 0.2;
+const LIFT_FROM = Math.cos(0.6);
+const LIFT_PER = LIE_LIFT / (LIFT_FROM - Math.cos(KNOCK.lie));
 /** Ground the tyres sound rougher on: grass, earth, gravel. */
 const ROUGH = /grass|lawn|meadow|field|earth|soil|mud|gravel|sand|hedge|leaves|moss|forest|Garden/i;
 /** The player's system asks for less motion: no camera roll. */
@@ -178,6 +204,17 @@ class Bike {
   rider: string | null = null;
   /** In the game: a village bike once the village has loaded, the others from the start */
   ready: boolean;
+  /** Knocked over: 1 lying on its right side, -1 on its left, 0 standing */
+  lie = 0;
+  /** Its fall under way, or null */
+  fall: Falling | null = null;
+  /** m it is up in the air, thrown */
+  hop = 0;
+  /** When it was last knocked (Bikes' clock, s) */
+  knockedAt = -Infinity;
+  /** Together: when the page guessed a knock the server has not answered yet (s), 0 for none; and how it stood before */
+  guess = 0;
+  saved: { x: number; y: number; z: number; yaw: number; lie: number; lean: number } | null = null;
   /** Pedalled this frame (the cranks turn), else it rolls on the freewheel */
   pedalling = false;
   rough = false;
@@ -238,6 +275,7 @@ const _e = new THREE.Euler();
 const _v = new THREE.Vector3();
 const _s = new THREE.Vector3(1, 1, 1);
 const ZERO = new THREE.Matrix4().makeScale(0, 0, 0);
+const POSE = { x: 0, z: 0, yaw: 0, lean: 0, hop: 0 };
 
 export class Bikes {
   readonly group = new THREE.Group();
@@ -259,6 +297,14 @@ export class Bikes {
   private camPitch = CAM_PITCH;
   private lookIdle = 0;
   private camRoll = 0;
+  /** s: the bikes' own clock (update's frames), for the knocks */
+  private clock = 0;
+  /** Together (joined a server): the server's word on a knock is the last; alone the page's */
+  private together = false;
+  /** The car at the wheel in the last frame `struck` saw: its block's key and place */
+  private lastCar: { key: string; x: number; z: number; yaw: number } | null = null;
+  /** ms a knocked bike lies unused before it goes back to its spot, alone (shared/bikeKnock.mjs; the dev tools shorten it) */
+  homeMs = KNOCK_HOME_MS;
 
   /** `figure`: your own figure, as the others see it (net/avatars.ts figure). */
   constructor(private world: World, private trees: Obstacle[], private figure: () => Body) {
@@ -321,6 +367,7 @@ export class Bikes {
     k.rider = me;
     k.speed = 0;
     k.track.clear();
+    this.standUp(k); // a lying one stands up as you get on
     this.camHeading = k.yaw;
     this.camYaw = 0;
     this.camPitch = CAM_PITCH;
@@ -355,17 +402,25 @@ export class Bikes {
     return { x: free.x, y: k.y, z: free.z, yaw: k.yaw };
   }
 
-  /** The others' bikes as the server has them (joining: `snap`, there at once; or one got on or off). */
-  setAll(list: BikeState[], me: string, snap = false): void {
+  /**
+   * The others' bikes as the server has them (joining: `snap`, there at once; or one got on or off, was knocked
+   * over by a car: `knock`, it falls there; or went back to its spot).
+   */
+  setAll(list: BikeState[], me: string, snap = false, knock?: { ms?: unknown; v?: unknown }): void {
+    if (snap) this.together = true;
     for (const s of list) {
       const k = typeof s?.id === 'string' ? this.byId.get(s.id) : undefined;
-      if (!k) continue;
+      if (!k || ![s.x, s.y, s.z, s.yaw].every(Number.isFinite)) continue;
       if (k.id === this.mounted && s.rider === me) continue; // yours: you move it
       k.rider = typeof s.rider === 'string' ? s.rider : null;
-      if (snap || Math.hypot(s.x - k.x, s.z - k.z) > 10) {
-        Object.assign(k, { x: s.x, y: s.y, z: s.z, yaw: s.yaw, speed: 0, fresh: true });
-        k.track.clear();
+      const lie = s.lie === 1 || s.lie === -1 ? s.lie : 0;
+      if (k.rider) this.standUp(k);
+      else if (knock && lie) {
+        const ms = typeof knock.ms === 'number' && knock.ms > 0 ? Math.min(knock.ms, 3000) : 600;
+        this.fallTo(k, { x: s.x, z: s.z, yaw: s.yaw, lie }, ms, typeof knock.v === 'number' ? knock.v : 0, false);
+        continue;
       }
+      if (snap || Math.hypot(s.x - k.x, s.z - k.z) > 10 || (!k.rider && lie !== k.lie && !k.fall)) this.put(k, s.x, s.y, s.z, s.yaw, lie);
     }
   }
 
@@ -375,16 +430,142 @@ export class Bikes {
       const k = this.byId.get(s.id);
       if (!k || (k.id === this.mounted && s.rider === me)) continue;
       k.rider = s.rider;
+      if (s.rider) this.standUp(k);
+      else if (k.fall || k.guess) continue; // its fall plays out; the server's word on it comes in its own message
+      else if (s.lie || k.lie) {
+        // Lying where the server has it (one who joined, or missed the fall): no sliding there along the track.
+        if (s.lie !== k.lie || Math.hypot(s.x - k.x, s.z - k.z) > 0.05) this.put(k, s.x, s.y, s.z, s.yaw, s.lie);
+        continue;
+      }
       k.track.push(st - s.age, [s.x, s.y, s.z, s.yaw], null, false, !s.rider);
     }
   }
 
   /** Back alone: nobody else rides any more; each bike stays where it is. */
   reset(): void {
+    this.together = false;
     for (const k of this.bikes) if (k.id !== this.mounted) {
       k.rider = null;
       k.track.clear();
+      k.guess = 0;
     }
+  }
+
+  /**
+   * Each frame at the wheel (main.ts, after car.drive): the car's box from where it was last frame to where it is
+   * now against every bike nobody rides; one in the way falls at once (shared/bikeKnock.mjs, with this page's idea
+   * of where it may lie: `indoors` from main.ts). Alone that is where it lies; together a guess the server's
+   * answer corrects. Returns the car's speed if it knocked one (main.ts: it loses a little and bumps), else 0.
+   */
+  struck(car: { id: string; x: number; y: number; z: number; yaw: number; spec: { length: number; width: number } }, dt: number, indoors: (x: number, z: number) => boolean): number {
+    const key = `car-${car.id}`;
+    const last = this.lastCar;
+    this.lastCar = { key, x: car.x, z: car.z, yaw: car.yaw };
+    if (!last || last.key !== key || !(dt > 0)) return 0;
+    const dx = car.x - last.x;
+    const dz = car.z - last.z;
+    const d = Math.hypot(dx, dz);
+    if (!(d > 0) || d > 10) return 0; // put somewhere (a portal, a reset): no drive
+    const v = Math.min(KNOCK.top, d / dt);
+    if (v < KNOCK.min) return 0;
+    const box = { halfL: car.spec.length / 2, halfW: car.spec.width / 2 };
+    let hardest = 0;
+    for (const k of this.bikes) {
+      if (!k.ready || k.rider || Math.abs(k.y - car.y) > KNOCK.height || this.clock - k.knockedAt < KNOCK.again / 1000) continue;
+      const at = sweptHit(box, last, car, { x: k.x, z: k.z, yaw: k.yaw, halfL: HALF_L, halfW: HALF_W });
+      if (!at) continue;
+      const rest = knockBike(k, at, (dx / d) * v, (dz / d) * v, (x, z, yaw) => this.spotOk(x, z, yaw, k.y, key, indoors));
+      if (!rest) continue;
+      this.fallTo(k, rest, rest.ms, rest.v, true);
+      hardest = Math.max(hardest, rest.v);
+    }
+    return hardest;
+  }
+
+  /**
+   * Whether a knocked bike may lie at (x, z) turned `yaw` (as the server's server/bikeHits.mjs spotOk, with what the
+   * page knows): inside the edge, off the portals and the start places, out of the locked homes (clearSpot), not
+   * indoors or in the water, clear of walls, hedges, fences and the other cars (`skip`: the one that hit it).
+   */
+  private spotOk(x: number, z: number, yaw: number, near: number, skip: string, indoors: (x: number, z: number) => boolean): boolean {
+    const { halfL, halfW } = KNOCK;
+    const y = this.world.groundAt(x, z, near + 0.3, 0).y;
+    const edge = this.world.bounds;
+    return (!edge || edge.boxInside(x, z, yaw, halfL, halfW)) && clearSpot(x, z, y, yaw)
+      && !boxPoints(x, z, yaw, halfL, halfW, 0.5).some(([px, pz]) => indoors(px, pz) || waterLevel(px, pz) !== null)
+      && this.world.boxFree(x, z, yaw, halfL, halfW, y + 0.3, y + 1.0, skip);
+  }
+
+  /**
+   * Bike `k` falls to `to` over `ms`, knocked by a car at `v` m/s. `guess`: this page's own (alone final; together
+   * the server's answer is awaited). The server's answer while the page's guess still falls bends the fall to it.
+   */
+  private fallTo(k: Bike, to: { x: number; z: number; yaw: number; lie: number }, ms: number, v: number, guess: boolean): void {
+    const lie = to.lie === -1 ? -1 : 1;
+    const f = k.fall;
+    if (!guess && k.guess) {
+      k.guess = 0;
+      k.saved = null;
+      if (f && f.to.lie === lie) {
+        // Still falling the page's way: the difference is made up over the rest of the fall.
+        const u = Math.min(1, f.t / f.ms);
+        f.bend = { dx: to.x - f.to.x, dz: to.z - f.to.z, dyaw: angle(to.yaw - f.to.yaw), u };
+        return;
+      }
+      if (!f && k.lie === lie && Math.hypot(to.x - k.x, to.z - k.z) < 0.05) return; // where the page put it
+      v = 0; // elsewhere: it slides there, no new throw
+      ms = 300 + 110 * Math.hypot(to.x - k.x, to.z - k.z);
+    }
+    if (guess && this.together) {
+      k.guess = this.clock;
+      k.saved = { x: k.x, y: k.y, z: k.z, yaw: k.yaw, lie: k.lie, lean: k.lean };
+    }
+    k.fall = { from: { x: k.x, z: k.z, yaw: k.yaw, lean: k.lean }, to: { x: to.x, z: to.z, yaw: to.yaw, lie }, v, ms: Math.max(50, ms), t: 0, y0: k.y, bend: null };
+    k.knockedAt = this.clock;
+    k.speed = 0;
+    k.track.clear();
+    if (v > 0) knock('metal', k.x, k.y + 0.6, k.z, Math.min(8, 1.5 + v * 0.3));
+  }
+
+  /** One frame of a falling bike: its pose from tumblePose (and the server's bend), the ground under it; at the end it lies. */
+  private tumble(k: Bike, dt: number): void {
+    const f = k.fall!;
+    f.t += dt * 1000;
+    const u = Math.min(1, f.t / f.ms);
+    const p = tumblePose(f, u, POSE);
+    let { x, z, yaw } = p;
+    if (f.bend) {
+      const w = clamp((u - f.bend.u) / Math.max(1e-3, 1 - f.bend.u), 0, 1);
+      const s = w * w * (3 - 2 * w);
+      x += f.bend.dx * s;
+      z += f.bend.dz * s;
+      yaw += f.bend.dyaw * s;
+    }
+    Object.assign(k, { x, z, yaw: angle(yaw), lean: p.lean, hop: p.hop, y: this.world.groundAt(x, z, f.y0 + 0.3, 0).y });
+    if (u < 1) return;
+    k.fall = null;
+    k.lie = f.to.lie;
+    k.lean = k.lie * KNOCK.lie;
+    k.hop = 0;
+    if (f.v > 0) knock('metal', k.x, k.y + 0.2, k.z, Math.min(5, 1 + f.v * 0.15)); // it lands
+  }
+
+  /** Put bike `k` there at once, standing (`lie` 0) or lying (on the ground where this page has it). */
+  private put(k: Bike, x: number, y: number, z: number, yaw: number, lie: number): void {
+    const flat = lie === 1 || lie === -1 ? lie : 0;
+    Object.assign(k, { x, z, yaw, speed: 0, fresh: true, lie: flat, fall: null, guess: 0, saved: null, hop: 0 });
+    k.y = flat ? this.world.groundAt(x, z, y + 0.3, 0).y : y;
+    k.lean = flat ? flat * KNOCK.lie : PARK_LEAN;
+    k.track.clear();
+  }
+
+  /** Ridden: on its wheels again (the lean eases back up in feel). */
+  private standUp(k: Bike): void {
+    k.lie = 0;
+    k.fall = null;
+    k.guess = 0;
+    k.saved = null;
+    k.hop = 0;
   }
 
   /** Your bell, at your bike. */
@@ -436,6 +617,11 @@ export class Bikes {
 
   private free(k: Bike, x: number, z: number, yaw: number, others: Obstacle[]): boolean {
     if (!this.world.boxFree(x, z, yaw, HALF_L, HALF_W, k.y + CLEAR, k.y + RIDER_H, k.key)) return false;
+    // A standing bike is only in the way of people and bikes (a car knocks it aside): its block is a walking one, so here.
+    for (const o of this.bikes) {
+      if (o === k || !o.ready || o.rider || o.lie || o.fall || Math.abs(o.y - k.y) > 1.1 || Math.abs(o.x - x) > 2.5 || Math.abs(o.z - z) > 2.5) continue;
+      if (boxesOverlap({ x, z, yaw, halfL: HALF_L, halfW: HALF_W }, { x: o.x, z: o.z, yaw: o.yaw, halfL: HALF_L, halfW: HALF_W })) return false;
+    }
     const fx = -Math.sin(yaw);
     const fz = -Math.cos(yaw);
     return !others.some((o) => {
@@ -541,14 +727,27 @@ export class Bikes {
    * within DRAW m of `eye` once in the game. Then your figure on yours, pedalling.
    */
   update(dt: number, eye: THREE.Vector3): void {
+    if (dt > 0) this.clock += Math.min(dt, 0.25);
     for (const k of this.bikes) {
       const mine = k.id === this.mounted;
       if (!k.ready) {
         this.world.setMoving(k.key, null);
+        this.world.setMoving(k.key, null, 0, 0, true);
         this.hide(k);
         continue;
       }
-      if (!mine && k.track.at(netClock.time, k.pose)) {
+      // Knocked over: its fall; together a guess the server didn't take up within a second stands back up where it stood.
+      if (k.fall) this.tumble(k, dt);
+      if (k.guess && this.clock - k.guess > 1 && k.saved) {
+        const s = k.saved;
+        this.put(k, s.x, s.y, s.z, s.yaw, s.lie);
+        if (!s.lie) k.lean = s.lean;
+      }
+      // Alone, one left lying unused goes back to its own spot (together the server sends it there).
+      if (!this.together && k.lie && !k.rider && !k.fall && this.clock - k.knockedAt > this.homeMs / 1000) {
+        this.put(k, k.park.x, k.park.y, k.park.z, k.park.yaw, 0);
+      }
+      if (!mine && !k.fall && !(k.lie && !k.rider) && k.track.at(netClock.time, k.pose)) {
         const [x, y, z, yaw] = k.pose;
         const v = dt > 0 ? ((x - k.x) * -Math.sin(yaw) + (z - k.z) * -Math.cos(yaw)) / dt : 0;
         k.speed += (clamp(v, -BACK, MAX * 1.3) - k.speed) * (1 - Math.exp(-dt * 8));
@@ -564,8 +763,11 @@ export class Bikes {
         this.hide(k);
         k.noise.stop();
       }
-      // Its block: people walk round a bike standing; yours isn't in your own way.
-      this.world.setMoving(k.key, k.footprint(), k.y, k.y + (k.rider ? RIDER_H : 1.1));
+      // Its block: ridden, in everyone's way (yours isn't in your own); standing, only in the way of people walking
+      // (and of bikes: free), a car knocks it aside; lying, in nobody's way.
+      const stands = !k.rider && !k.lie && !k.fall;
+      this.world.setMoving(k.key, k.rider ? k.footprint() : null, k.y, k.y + RIDER_H);
+      this.world.setMoving(k.key, stands ? k.footprint() : null, k.y, k.y + 1.1, true);
     }
     for (const m of Object.values(this.meshes)) {
       m.instanceMatrix.needsUpdate = true;
@@ -591,9 +793,12 @@ export class Bikes {
     }
     // Leaning into the turn as much as the speed and the turn ask; on its stand when nobody rides it.
     // (Turning right the heading goes down: a negative yaw rate leans it right.)
-    const want = k.rider ? clamp(-Math.atan((v * k.yawRate) / G), -LEAN_MAX, LEAN_MAX) * Math.min(1, Math.abs(v) / 1.5) : PARK_LEAN;
-    k.lean += (want - k.lean) * ease(k.rider ? 7 : 3);
-    k.fold += ((k.rider ? 1 : 0) - k.fold) * ease(k.rider ? 10 : 4);
+    // Knocked over: falling, its lean is the fall's; lying, on its side, turned with the ground across it.
+    if (!k.fall) {
+      const want = k.rider ? clamp(-Math.atan((v * k.yawRate) / G), -LEAN_MAX, LEAN_MAX) * Math.min(1, Math.abs(v) / 1.5) : k.lie ? k.lie * KNOCK.lie + this.across(k) : PARK_LEAN;
+      k.lean += (want - k.lean) * ease(k.rider ? 7 : k.lie ? 12 : 3);
+    }
+    k.fold += ((k.rider || k.lie || k.fall ? 1 : 0) - k.fold) * ease(k.rider || k.fall ? 10 : 4);
     const turn = (v / WHEEL_R) * dt;
     k.spin -= Math.sign(turn) * Math.min(Math.abs(turn), SPIN_STEP);
     if (k.pedalling) k.crank -= Math.sign(turn) * Math.min(Math.abs(turn) / GEAR, SPIN_STEP);
@@ -612,7 +817,10 @@ export class Bikes {
 
   /** Each of the bike's parts where it is this frame, and where its rider sits, holds on and pedals. */
   private place(k: Bike): void {
-    k.matrix.compose(_v.set(k.x, k.y, k.z), _q.setFromEuler(_e.set(k.pitch, k.yaw, -k.lean, 'YXZ')), _s);
+    // Leaning past a ridden bike's most (knocked over, falling or lying), it is lifted onto its bars and pedal; in the air thrown.
+    const lean = Math.abs(angle(k.lean));
+    const lift = Math.max(0, LIFT_FROM - Math.cos(lean)) * LIFT_PER + k.hop;
+    k.matrix.compose(_v.set(k.x, k.y + lift, k.z), _q.setFromEuler(_e.set(k.pitch, k.yaw, -k.lean, 'YXZ')), _s);
     k.up.set(0, 1, 0).applyQuaternion(_q);
     const rig = this.rig;
     if (!rig) return;
@@ -645,6 +853,15 @@ export class Bikes {
     });
     set('Stand', _m.multiplyMatrices(k.matrix, rig.rest.Stand).multiply(_n.makeRotationFromQuaternion(_q.slerpQuaternions(NO_TURN, FOLD, k.fold))));
     k.saddle.copy(rig.saddle).applyMatrix4(k.matrix);
+  }
+
+  /** A lying bike: the slope of the ground across it (rad, rising to its right lessens a lean to the right), when drawn. */
+  private across(k: Bike): number {
+    if (!k.shown) return 0;
+    const [fx, fz] = k.forward;
+    const right = this.world.groundAt(k.x - fz * 0.4, k.z + fx * 0.4, k.y + 0.3, 0.3).y;
+    const left = this.world.groundAt(k.x + fz * 0.4, k.z - fx * 0.4, k.y + 0.3, 0.3).y;
+    return clamp(-Math.atan2(right - left, 0.8), -0.4, 0.4);
   }
 
   private hide(k: Bike): void {
