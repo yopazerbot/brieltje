@@ -1,9 +1,10 @@
 import * as THREE from 'three';
-import { bestKey, dropRace, finishRace, formatTime, newRace, pointsOf, readBest, readFound, stepRace, writeBest, writeFound, type By, type Race } from '../../shared/goals.mjs';
+import { bestKey, cleanTime, dropRace, finishRace, formatTime, newRace, pointsOf, readBest, readFound, stepRace, writeBest, writeFound, type By, type Race } from '../../shared/goals.mjs';
 import { lengthOf, onLine } from '../../shared/roadPath.mjs';
 import { dist, lang, onLang, plural, t } from '../i18n';
 import { typing } from '../keys';
 import { seat } from '../seat';
+import { me as together } from '../start';
 import { key, type Control } from '../shortcuts';
 import { GoalsHud } from '../ui/goalsHud';
 import type { RaceWay } from '../ui/minimap';
@@ -16,7 +17,9 @@ import { ROUTE_LIST, Routes, type RunResult } from './routes';
  * Something to do alone in the open world (Yoshi, 14 Nov 2026): garden gnomes to find (world/gnomes.ts) and timed routes
  * (world/routes.ts), with what was found and the best times kept in this browser only (nothing is sent). The one class
  * main.ts talks to: it owns both, the storage and the line at the top (ui/goalsHud.ts). Shown in Explore, Action and
- * Paintball, never during a game or on the start screen (main.ts hides `group`).
+ * Paintball, never during a game or on the start screen (main.ts hides `group`). Playing together, the server times the
+ * routes and counts the gnomes itself, for the leaderboards (server/goals.mjs); its word on a result shows for a moment
+ * in the same line (`server`).
  */
 
 const FOUND_KEY = 'briel.gnomes';
@@ -26,6 +29,12 @@ const INTRO_AFTER = 8;
 const BEST_KEYS = ROUTE_LIST.map(bestKey);
 /** The line says the race stopped this long (ms) */
 const NOTICE_MS = 3000;
+/** The server's word on a result (a time or a gnome on the board) stays in the line this long (ms) */
+const BOARD_MS = 4000;
+/** A finish while playing together with no word from the server this long after it (ms): not counted for the board */
+const BOARD_WAIT_MS = 2000;
+/** The highest place the line shows (a place is a whole number from 1) */
+const PLACE_MAX = 9999;
 /** The race key on the keyboard, by its place (src/shortcuts.ts `race`: K on AZERTY and QWERTY) */
 const RACE_KEY = 'KeyK';
 /** Further than this (m) off the race's line, the way from where you are is worked out again */
@@ -75,6 +84,22 @@ function save(key: string, value: string): void {
   }
 }
 
+/**
+ * What this browser keeps (the menu's leaderboard shows it beside the boards, as "on this device": ui/leaderboard.ts):
+ * the best time per route id, and how many gnomes were found. Read from storage, as checked as on loading.
+ */
+export function onDevice(): { best: Record<string, number>; found: number; total: number } {
+  const kept = readBest(load(BEST_KEY), BEST_KEYS);
+  const best: Record<string, number> = {};
+  for (const r of ROUTE_LIST) if (kept[bestKey(r)] !== undefined) best[r.id] = kept[bestKey(r)];
+  return { best, found: readFound(load(FOUND_KEY), GNOME_IDS).found.length, total: SPOTS.length };
+}
+
+/** A whole number from `min` to `max`, else null (a value from the server, checked before use). */
+function whole(v: unknown, min: number, max: number): number | null {
+  return typeof v === 'number' && Number.isInteger(v) && v >= min && v <= max ? v : null;
+}
+
 export class Goals {
   readonly group = new THREE.Group();
   /** False with ?nogoals on the dev server (for the bench): update returns at once */
@@ -99,6 +124,11 @@ export class Goals {
   private shown = false;
   /** Until when the line says the race stopped (ms) */
   private notice = 0;
+  /** The server's word on a result while playing together, in the current language, and until when it shows (ms) */
+  private board: (() => string) | null = null;
+  private boardUntil = 0;
+  /** A finish while playing together waits for the server's time until then (ms); 0: waiting for none */
+  private boardWait = 0;
   /** How you play, for the key in the texts (main.ts prompt) */
   private mode: Control = 'kbm';
   /**
@@ -191,6 +221,11 @@ export class Goals {
 
   update(dt: number, camera: THREE.Camera, me: Me): void {
     if (!this.enabled) return;
+    if (this.boardWait && performance.now() > this.boardWait) {
+      // Finished together, and the server timed nothing: a rule of its refused the run (server/goals.mjs).
+      this.boardWait = 0;
+      this.say(() => t('board.line.not'));
+    }
     this.gnomes.update(dt);
     // The big map's count goes with the rest: not during a game nor for a watcher.
     if (this.group.visible !== this.counted) {
@@ -352,9 +387,42 @@ export class Goals {
     else if (r.event === 'finish') {
       const time = formatTime(r.time ?? 0, comma);
       if (r.newBest) this.saveBest();
+      if (together) this.boardWait = performance.now() + BOARD_WAIT_MS; // the server times it too (its `race`: server)
       const best = this.routes.best[bestKey(r.route)];
       this.o.announce(time, r.newBest ? t('route.newBest') : t('route.best', { time: formatTime(best ?? r.time ?? 0, comma) }));
     }
+  }
+
+  /**
+   * The server's word on a result while playing together (main.ts: its `race` and `gnome` messages, to you alone;
+   * server/goals.mjs). Checked as anything from the wire: a route id of the page's own list, a time the game keeps,
+   * whole numbers in range, booleans; anything else changes nothing. A new best on a board, or a gnome counted, shows
+   * for a while in the line at the top; nothing else appears. Its text is the page's own, with numbers only.
+   */
+  server(m: unknown): void {
+    if (!m || typeof m !== 'object') return;
+    const o = m as Record<string, unknown>;
+    if (typeof o.tonight !== 'boolean') return;
+    const tonight = o.tonight;
+    if (o.t === 'race') {
+      const route = ROUTE_LIST.find((r) => r.id === o.id);
+      const ms = cleanTime(o.ms);
+      const place = o.place === null ? null : whole(o.place, 1, PLACE_MAX);
+      if (!route || ms === null || ms !== o.ms || typeof o.best !== 'boolean' || (o.place !== null && place === null)) return;
+      this.boardWait = 0; // counted: no "not counted"
+      if (!o.best || place === null) return;
+      this.say(() => t(tonight ? 'board.line.raceTonight' : 'board.line.race', { time: formatTime(ms, lang() === 'nl'), n: place }));
+    } else if (o.t === 'gnome') {
+      const n = whole(o.n, 1, SPOTS.length);
+      if (n === null) return;
+      this.say(() => t(tonight ? 'board.line.gnomeTonight' : 'board.line.gnome', { n, total: SPOTS.length }));
+    }
+  }
+
+  /** The line at the top says this for a while (BOARD_MS). */
+  private say(text: () => string): void {
+    this.board = text;
+    this.boardUntil = performance.now() + BOARD_MS;
   }
 
   private routeName(id: string): string {
@@ -394,6 +462,10 @@ export class Goals {
       const d = Math.hypot(gx - me.x, gz - me.z);
       const how = d < 15 ? (narrow ? t('route.startShort') : t('route.start', { by: this.byName(armed.by) })) : t('route.toStart');
       this.hud.set('', `${this.routeName(armed.id)} · ${how} · ${dist(d)}`, this.turn(camera, me, gx, gz), true);
+      return;
+    }
+    if (this.board && performance.now() < this.boardUntil) {
+      this.hud.set('', this.board(), null);
       return;
     }
     if (performance.now() < this.notice) {

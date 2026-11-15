@@ -1265,6 +1265,15 @@ body.touch .not-touch, body.touch [data-hide-on~="touch"] { display: none; }
 .lb-note { margin: 8px 0 0; font-size: 13px; color: var(--ink-faint); }
 #leaderboard .lb-title { margin: 14px 0 6px; font-size: 15px; font-weight: 800; }
 #leaderboard select { padding: 6px 10px; font: inherit; font-size: 14px; color: var(--ink); background: var(--dusk-raised); border: 1px solid var(--line-strong); border-radius: var(--r-field); }
+/* The boards' buttons (src/ui/leaderboard.ts): one board at a time; on a narrow screen they go onto a second row. */
+#leaderboard .lb-pick { flex-wrap: wrap; margin: 4px 0 10px; }
+#leaderboard .lb-pick .seg-btn { flex: 1 1 auto; padding: 8px 12px; text-align: center; }
+#leaderboard .lb-pick .seg-btn b { font-size: 15px; }
+#leaderboard .lb-routes .seg-btn b::first-letter { text-transform: uppercase; }
+#leaderboard .lb-sub { margin: 0 0 4px; font-size: 14px; font-weight: 800; color: var(--ink-soft); }
+#leaderboard .lb-mine { margin: 8px 0 0; font-size: 14px; font-weight: 800; }
+#leaderboard .lb-table { max-width: 100%; overflow-x: auto; }
+#leaderboard .lb-table td:first-child { white-space: nowrap; }
 /* Controls: a list per group, two columns where there is room. */
 #controls { columns: 2 340px; column-gap: 48px; max-width: 1180px; }
 .ctl-group { break-inside: avoid; margin: 0 0 26px; }

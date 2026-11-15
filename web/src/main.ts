@@ -2910,6 +2910,10 @@ net.onMessage = (m: ServerMsg) => {
       combat.setScores(m.list);
       for (const s of m.list) killsOf.set(s.name, s.kills);
       break;
+    case 'race': // the server timed a route you finished together, or counted a gnome: a moment in the route's line (world/goals.ts checks it)
+    case 'gnome':
+      goals.server(m);
+      break;
     case 'hurt':
       combat.hurt(m.hp);
       rumble(0.8, 0.5, 180);
