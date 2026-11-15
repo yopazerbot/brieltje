@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { clearSpot, KNOCK, KNOCK_HOME_MS, knockBike, sweptHit, tumblePose } from './bikeKnock.mjs';
+import { answerGuess, bendShare, clearSpot, fallEnd, KNOCK, KNOCK_HOME_MS, knockBike, sweptHit, tumblePose } from './bikeKnock.mjs';
 import { HOMES } from './homes.mjs';
 import { PORTALS } from './portals.mjs';
 import SPAWNS from './spawns.json' with { type: 'json' };
@@ -59,11 +59,60 @@ test('the path ends before the first place it may not lie; a wall at once and it
   assert.ok(r.dist <= 2.1 && r.dist > 2.1 - KNOCK.step, `stopped before the wall: ${r.dist}`);
   assert.ok(asked.every(([x, z, yaw]) => [x, z, yaw].every(Number.isFinite)), 'only finite places asked');
   assert.ok(asked.length <= Math.ceil(KNOCK.far / KNOCK.step), 'no more steps than 8 m');
-  const stuck = hit(100, { x: 3, z: 1, yaw: 0.5 }, () => false, { x: 3, z: 4 });
-  assert.ok(stuck.x === 3 && stuck.z === 1 && stuck.dist === 0, `tipped over in place: ${JSON.stringify(stuck)}`);
+  // Hemmed in: it tips over where it stands, turned only if that may lie there, else as it stood, else not at all.
+  const B = { x: 3, z: 1, yaw: 0.5 };
+  const here = (x, z) => x === B.x && z === B.z;
+  const turned = hit(100, B, (x, z) => here(x, z), { x: 3, z: 4 });
+  assert.ok(here(turned.x, turned.z) && turned.dist === 0 && turned.yaw !== B.yaw, `tipped over in place, turned: ${JSON.stringify(turned)}`);
+  const asStood = hit(100, B, (x, z, yaw) => here(x, z) && yaw === B.yaw, { x: 3, z: 4 });
+  assert.ok(here(asStood.x, asStood.z) && asStood.yaw === B.yaw && (asStood.lie === 1 || asStood.lie === -1), `tipped over as it stood: ${JSON.stringify(asStood)}`);
+  assert.equal(hit(100, B, () => false, { x: 3, z: 4 }), null, 'nowhere it may lie, not even where it stands: it stays standing');
   // Through a gap in a wall it does not jump: one refused step ends the path even if the far side is free.
   const gap = hit(100, BIKE, (x, z) => !(Math.hypot(x, z) > 1 && Math.hypot(x, z) < 1.5));
   assert.ok(gap.dist <= 1, `no jump over the wall: ${gap.dist}`);
+});
+
+test('whatever pose comes back, the place it may lie said yes to it (2000 seeded hits against random walls)', () => {
+  let seed = 7;
+  const rnd = () => ((seed = (seed * 1103515245 + 12345) & 0x7fffffff) / 0x7fffffff);
+  let none = 0;
+  for (let i = 0; i < 2000; i++) {
+    // A random patchwork of places it may and may not lie, by position and heading.
+    const cut = rnd();
+    const ok = (x, z, yaw) => Math.sin(x * 3.1 + cut * 9) + Math.cos(z * 2.7 - cut * 5) + 0.6 * Math.sin(yaw * 2) > 0.2;
+    const bike = { x: rnd() * 20 - 10, z: rnd() * 20 - 10, yaw: rnd() * 6 - 3 };
+    const a = rnd() * 6.28;
+    const v = 0.6 + rnd() * 60;
+    const r = knockBike(bike, { x: bike.x - Math.cos(a) * 2.5, z: bike.z - Math.sin(a) * 2.5 }, Math.cos(a) * v, Math.sin(a) * v, ok);
+    if (!r) {
+      none++;
+      assert.ok(!ok(bike.x, bike.z, bike.yaw), 'nothing only when even where it stood may not');
+      continue;
+    }
+    assert.ok(ok(r.x, r.z, r.yaw), `${i}: ${JSON.stringify(r)}`);
+  }
+  assert.ok(none > 0 && none < 2000);
+});
+
+test('the page\'s guess and the server\'s answer: bent over the rest of the fall, there already, or gone to anew', () => {
+  const fall = { from: { ...BIKE, lean: 0 }, to: { x: 1, z: -3, yaw: 0.4, lie: 1 }, v: 11 };
+  // The same side: the difference is bent in over the rest of the fall, from where the fall is now.
+  const a = answerGuess(fall, 0.3, { x: 0.2, z: -0.5, yaw: 0.1, lie: 0 }, { x: 1.3, z: -2.6, yaw: 0.5, lie: 1 });
+  assert.ok(a.bend && Math.abs(a.bend.dx - 0.3) < 1e-9 && Math.abs(a.bend.dz - 0.4) < 1e-9 && Math.abs(a.bend.dyaw - 0.1) < 1e-9 && a.bend.u === 0.3);
+  assert.equal(bendShare(a.bend, 0.3), 0, 'none of it shows at once');
+  assert.equal(bendShare(a.bend, 1), 1, 'all of it at the end');
+  assert.ok(bendShare(a.bend, 0.65) > 0.4 && bendShare(a.bend, 0.65) < 0.6, 'smoothly between');
+  const end = fallEnd({ ...fall, bend: a.bend });
+  assert.ok(Math.abs(end.x - 1.3) < 1e-9 && Math.abs(end.z + 2.6) < 1e-9 && Math.abs(end.yaw - 0.5) < 1e-9 && end.lie === 1, 'it ends where the server has it');
+  assert.deepEqual(fallEnd(fall), { x: 1, z: -3, yaw: 0.4, lie: 1 }, 'without a bend: where the page put it');
+  // The other side, or after the fall somewhere else: it goes there anew. Lying where the server has it: nothing to do.
+  assert.equal(answerGuess(fall, 0.5, BIKE, { x: 1, z: -3, yaw: 0.4, lie: -1 }), 'go');
+  assert.equal(answerGuess(null, 1, { x: 1, z: -3, yaw: 0.4, lie: 1 }, { x: 1.02, z: -3, yaw: 0.41, lie: 1 }), 'there');
+  assert.equal(answerGuess(null, 1, { x: 1, z: -3, yaw: 0.4, lie: 1 }, { x: 2, z: -3, yaw: 0.4, lie: 1 }), 'go');
+  // Back up on its wheels (a guess the server didn't take up): `lie` 0 eases to standing, no hop, no roll.
+  const up = { from: { x: 1, z: -3, yaw: 0.4, lean: 1.45 }, to: { x: 0, z: 0, yaw: 0, lie: 0 }, v: 0 };
+  for (let u = 0; u <= 1; u += 0.1) assert.equal(tumblePose(up, u).hop, 0);
+  assert.ok(Math.abs(tumblePose(up, 1).lean) < 1e-9 && tumblePose(up, 1).x === 0, 'standing where it stood');
 });
 
 test('made-up numbers knock nothing', () => {

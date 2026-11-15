@@ -11,6 +11,8 @@ export interface Home {
 }
 export const HOME_ID: RegExp;
 export const HOMES: Home[];
+/** The end house's garden: its lawn's ring and height */
+export const END_GARDEN: { y: number; ring: [number, number][] };
 export const WALK_IN_GLASS: number;
 export const DOOR_GLASS: number;
 export const END_DOOR_GLASS: number;

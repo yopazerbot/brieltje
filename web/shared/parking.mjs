@@ -164,6 +164,15 @@ export function indoorName(name, rooms) {
  * floor covers the whole house. With a height `y` (a sound's spot), up to 2.5 m over the roof terrace, a roof or the
  * top of the outside stair, over that floor, is out of doors.
  */
+/**
+ * The indoor floors of makeIndoors as blocks of every height (makeSolids): whether a whole rectangle is outdoors,
+ * its sides tested against the floors' outlines rather than points on it (server/bikeHits.mjs, a knocked bike's box).
+ */
+export function indoorBlocks(prisms, rooms) {
+  const names = new Set(rooms);
+  return makeSolids(prisms.filter((p) => indoorName(p.n, names)).map((p) => ({ y0: -Infinity, y1: Infinity, p: [p.p[0]] })), () => 0);
+}
+
 export function makeIndoors(prisms, rooms) {
   const names = new Set(rooms);
   const ring = (p) => {

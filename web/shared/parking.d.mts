@@ -17,4 +17,5 @@ export function makeSolids(
   height: (x: number, z: number) => number,
 ): { boxFree(cx: number, cz: number, yaw: number, halfL: number, halfW: number, y0: number, y1: number): boolean };
 export function indoorName(name: string | undefined, rooms: ReadonlySet<string>): boolean;
+export function indoorBlocks(prisms: { n?: string; p: number[][][] }[], rooms: string[]): ReturnType<typeof makeSolids>;
 export function makeIndoors(prisms: { n?: string; p: number[][][]; y1?: number }[], rooms: string[]): (x: number, z: number, y?: number) => boolean;

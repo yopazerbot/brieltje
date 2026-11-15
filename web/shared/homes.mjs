@@ -37,7 +37,7 @@ const BANDS = {
 // The end house's garden: fenced all round, so that the only way in is through the house (src/world/walkIn.ts: the lawn,
 // at its own height). Its ring is the lawn polygon of molenhoek_end_shell.json. Somebody in it without the home's code
 // (they dropped in) has no way out and is put out by the server (Game.unstuck) or, playing alone, by the page.
-const END_GARDEN = { y: 9.428, ring: [[1510.675, -359], [1508.66, -351.09], [1503.89, -348.43], [1500.129, -349.356], [1498.227, -341.599], [1505.476, -345.731], [1519.4, -353.666], [1519.361, -353.7], [1516.001, -356.615], [1516.254, -357.64], [1510.679, -358.999]] };
+export const END_GARDEN = { y: 9.428, ring: [[1510.675, -359], [1508.66, -351.09], [1503.89, -348.43], [1500.129, -349.356], [1498.227, -341.599], [1505.476, -345.731], [1519.4, -353.666], [1519.361, -353.7], [1516.001, -356.615], [1516.254, -357.64], [1510.679, -358.999]] };
 
 /** Ids a page or the server may name (the admin page's URLs, the unlock call's `id`). */
 export const HOME_ID = /^[a-z][a-z0-9_]{1,20}$/;

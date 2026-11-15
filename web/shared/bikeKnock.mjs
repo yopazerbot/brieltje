@@ -5,8 +5,8 @@
 // server (server/bikeHits.mjs: together the answer), so every page shows the same fall to the same place.
 // A heading is the game's yaw (nose along -z, turned by yaw); a bike's right is (-fz, fx) of its nose.
 import SPAWNS from './spawns.json' with { type: 'json' };
-import { homeAt, inEndGarden } from './homes.mjs';
-import { boxCorners, boxDistance, boxesOverlap, clearOfPortals } from './parking.mjs';
+import { END_GARDEN, HOMES } from './homes.mjs';
+import { boxDistance, boxesOverlap, clearOfPortals, makeSolids } from './parking.mjs';
 import { PORTALS, REACH } from './portals.mjs';
 
 /** The numbers of a knock (m, m/s, rad, ms). */
@@ -43,6 +43,13 @@ export const KNOCK = {
   /** the car keeps this much of its speed, and loses at least `loss` m/s */
   keep: 0.97,
   loss: 0.3,
+  /**
+   * Together, the car's speed for a throw (server/bikeHits.mjs): how far the server had it go over the last
+   * `window` ms of its own clock, and at most `gain` m/s more than over the window before that (about 10 m/s2,
+   * more than the car can speed up), so a sudden jump buys no throw
+   */
+  window: 300,
+  gain: 3,
 };
 
 /**
@@ -53,14 +60,25 @@ export const KNOCK_HOME_MS = 5 * 60_000;
 
 const angle = (a) => Math.atan2(Math.sin(a), Math.cos(a));
 const finite = (...v) => v.every((n) => typeof n === 'number' && Number.isFinite(n));
+/**
+ * Where no bike may lie, as blocks between heights (shared/parking.mjs makeSolids): the code-locked homes' bands
+ * (shared/homes.mjs) and the end house's garden, 1.5 m round its lawn's height. A lying bike's whole box is tested
+ * against their outlines, not points on it.
+ */
+const KEEP_OUT = makeSolids([
+  ...HOMES.flatMap((h) => h.bands.map((b) => ({ y0: b.y0, y1: b.y1, p: [b.ring] }))),
+  { y0: END_GARDEN.y - 1.5, y1: END_GARDEN.y + 1.5, p: [END_GARDEN.ring] },
+], () => 0);
 
 /**
  * Where a bike (`bike`: x, z, yaw) knocked by a car at (`car`: x, z, where the two met) going (vx, vz)
  * comes to rest: { x, z, yaw, lie, ms, v, dist }, or null for a car under KNOCK.min. `lie` is the side
  * it lies on (1 its right, -1 its left): the side away from the car. `ms` how long its fall takes, `v`
  * the car's speed (at most KNOCK.top) and `dist` how far it went. `ok(x, z, yaw)` says where it may lie:
- * the path ends before the first place it may not, and it tips over where it stands when the first
- * step already may not.
+ * the path ends before the first place it may not. When the first step already may not, it tips over
+ * where it stands, turned only if that turned pose may lie there too, else as it stood; and when even
+ * that may not (a bike left hard against a wall, on a pad), null: it stays standing. Whatever comes
+ * back has passed `ok`.
  */
 export function knockBike(bike, car, vx, vz, ok) {
   if (!bike || !car || !finite(bike.x, bike.z, bike.yaw, car.x, car.z, vx, vz)) return null;
@@ -78,9 +96,10 @@ export function knockBike(bike, car, vx, vz, ok) {
   const s = Math.sin(KNOCK.aside) * side;
   const tx = dx * c + rx * s;
   const tz = dz * c + rz * s;
-  const yaw = angle(bike.yaw + side * Math.min(2.6, 0.1 * v));
+  let yaw = angle(bike.yaw + side * Math.min(2.6, 0.1 * v));
   let x = bike.x;
   let z = bike.z;
+  let moved = false;
   const steps = Math.ceil(far / KNOCK.step - 1e-9);
   for (let i = 1; i <= steps; i++) {
     const d = Math.min(far, i * KNOCK.step);
@@ -89,6 +108,12 @@ export function knockBike(bike, car, vx, vz, ok) {
     if (!ok(px, pz, yaw)) break;
     x = px;
     z = pz;
+    moved = true;
+  }
+  // Hemmed in: it tips over where it stands, turned if that may lie there, else as it stood, else not at all.
+  if (!moved && !ok(x, z, yaw)) {
+    if (!ok(x, z, bike.yaw)) return null;
+    yaw = bike.yaw;
   }
   // It falls the way it was thrown: onto its right when that points along the throw.
   const fx = -Math.sin(yaw);
@@ -119,6 +144,36 @@ export function tumblePose(fall, u, out = {}) {
   const q = Math.min(1, t / 0.8);
   out.lean = from.lean + (end - from.lean) * (thrown ? q * q * (3 - 2 * q) : q * q); // tipped: slow, then faster, as it topples
   return out;
+}
+
+/**
+ * The page's guess and the server's answer (src/world/bike.ts). Where a fall ends: its `to`, with the
+ * server's correction (`bend`) when it has one.
+ */
+export function fallEnd(fall) {
+  const b = fall.bend;
+  return { x: fall.to.x + (b ? b.dx : 0), z: fall.to.z + (b ? b.dz : 0), yaw: angle(fall.to.yaw + (b ? b.dyaw : 0)), lie: fall.to.lie };
+}
+
+/**
+ * The server's place for a bike the page guessed a knock of (`told`: x, z, yaw, lie). `fall`: the page's fall
+ * under way and how far it is (`u`, 0 to 1), or null when it has ended (`at`: where the bike is then). Returns
+ * { bend } to make up the difference over the rest of the fall (the same side), 'there' when it lies where the
+ * server has it already, or 'go' when it has to go there anew (the other side, or elsewhere after the fall).
+ */
+export function answerGuess(fall, u, at, told) {
+  if (fall && fall.to.lie === told.lie) {
+    return { bend: { dx: told.x - fall.to.x, dz: told.z - fall.to.z, dyaw: angle(told.yaw - fall.to.yaw), u: Math.min(1, Math.max(0, u)) } };
+  }
+  if (!fall && at.lie === told.lie && Math.hypot(told.x - at.x, told.z - at.z) < 0.05 && Math.abs(angle(told.yaw - at.yaw)) < 0.05) return 'there';
+  return 'go';
+}
+
+/** How much of a bend shows at `u` of the fall: none before it came, all of it at the end, smoothly between. */
+export function bendShare(bend, u) {
+  if (!bend) return 0;
+  const w = Math.min(1, Math.max(0, (u - bend.u) / Math.max(1e-3, 1 - bend.u)));
+  return w * w * (3 - 2 * w);
 }
 
 /**
@@ -156,8 +211,5 @@ export function clearSpot(x, z, y, yaw) {
   const box = { x, z, yaw, halfL: KNOCK.halfL, halfW: KNOCK.halfW };
   if (!clearOfPortals(box, PORTALS, REACH)) return false;
   if (SPAWNS.some((s) => boxDistance(box, s.x, s.z) < KNOCK.spawn)) return false;
-  for (const [px, pz] of [[x, z], ...boxCorners(x, z, yaw, KNOCK.halfL, KNOCK.halfW)]) {
-    if (homeAt(px, pz, y + 0.3) || homeAt(px, pz, y + 1) || inEndGarden(px, pz, y)) return false;
-  }
-  return true;
+  return KEEP_OUT.boxFree(x, z, yaw, KNOCK.halfL, KNOCK.halfW, y, y + 1); // its whole box, from the ground it lies on to 1 m up
 }
