@@ -31,7 +31,7 @@
 .heli-horizon { position: relative; flex: none; width: 44px; height: 44px; overflow: hidden; border-radius: 50%; border: 1px solid rgba(245, 239, 228, 0.3); }
 .heli-sky { position: absolute; inset: -50%; background: linear-gradient(#5d8fb8 50%, #6b5440 50%); }
 .heli-mark { position: absolute; left: 9px; right: 9px; top: 21px; height: 2px; background: var(--lamp); border-radius: 1px; }
-body:not(.touch).heli-hud #toast { bottom: 185px; } /* the place's name, clear over the instruments */
+body:not(.touch) #toast.over-heli { bottom: 185px; } /* the place's name, clear over the instruments */
 /* On touch: under the map, where the speedometer goes; smaller. */
 body.touch #heli-hud { top: 130px; bottom: auto; right: 12px; gap: 9px; padding: 8px 10px; border-radius: 13px; }
 body.touch #heli-hud .speed-value { font-size: 32px; }
@@ -39,8 +39,8 @@ body.touch #heli-hud .heli-main { min-width: 78px; }
 body.touch .heli-row { font-size: 11px; margin-top: 5px; }
 body.touch .heli-horizon { width: 34px; height: 34px; }
 body.touch .heli-mark { left: 7px; right: 7px; top: 16px; }
-/* A small screen on its side (a phone): the bottom left corner, clear of the buttons on the right and the view's middle. */
-@media (max-height: 420px) { body.touch #heli-hud { top: auto; right: auto; bottom: calc(10px + env(safe-area-inset-bottom, 0px)); left: calc(10px + env(safe-area-inset-left, 0px)); } }
+/* A small screen on its side (a phone): the bottom middle, clear of the stick under the left thumb and the buttons on the right. */
+@media (max-height: 420px) { body.touch #heli-hud { top: auto; right: auto; bottom: calc(10px + env(safe-area-inset-bottom, 0px)); left: 50%; transform: translateX(-50%); } }
 @media (min-height: 600px) { body.touch #heli-hud { top: 160px; } }
 body.compact #heli-hud { right: 12px; bottom: 72px; padding: 7px 9px; border-radius: 12px; gap: 8px; } /* over the Sound button */
 body.compact #heli-hud .speed-value { font-size: 30px; }
@@ -50,3 +50,7 @@ body.touch[data-touch=heli] #touch.heli .t-down { right: 26px; bottom: 26px; wid
 body.touch[data-touch=heli] #touch.heli .t-use { right: 112px; bottom: 30px; width: 56px; height: 56px; }
 body.touch[data-touch=heli] #touch.heli .t-view { right: 112px; bottom: 104px; width: 48px; height: 48px; font-size: 11px; }
 body.touch[data-touch=heli] #prompt { right: 190px; }
+/* Aboard, the line at the bottom, not over the machine (heliPilot.ts); on a phone over the instruments. */
+#prompt.heli-low { top: auto; bottom: calc(96px + env(safe-area-inset-bottom, 0px)); }
+body.touch #prompt.heli-low { top: auto; bottom: calc(64px + env(safe-area-inset-bottom, 0px)); }
+@media (max-height: 420px) { body.touch #prompt.heli-low { bottom: calc(96px + env(safe-area-inset-bottom, 0px)); } }

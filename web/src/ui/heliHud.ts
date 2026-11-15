@@ -73,8 +73,11 @@ export class HeliHud {
 
   /** Null: hidden (on foot, in the menu, when down). */
   update(r: HeliReading | null): void {
-    this.root.hidden = r === null;
-    document.body.classList.toggle('heli-hud', r !== null);
+    // Only what changes is touched: a class on the page's body would restyle the whole page at the first boarding.
+    if (this.root.hidden !== (r === null)) {
+      this.root.hidden = r === null;
+      document.getElementById('toast')?.classList.toggle('over-heli', r !== null);
+    }
     if (r === null) return;
     const kmh = Math.round(Math.max(0, r.speed) * 3.6);
     const m = Math.round(Math.max(0, r.height));
