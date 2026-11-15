@@ -480,7 +480,10 @@ try {
   await b.sleep(400);
   await tap('KeyE');
   await b.sleep(300);
-  check(!(await b.evaluate('briel.helis.aboard')), `no boarding in Zombies ("${await prompt()}", ${r1(await b.evaluate('briel.helis.machines[0].distanceTo(briel.player.x, briel.player.z)'))} m from it)`);
+  // The game's fence keeps you off the pad (it lies outside it); within reach the line says why not.
+  const zDist = await b.evaluate('briel.helis.machines[0].distanceTo(briel.player.x, briel.player.z)');
+  const zLine = await prompt();
+  check(!(await b.evaluate('briel.helis.aboard')) && (zDist > 1.5 || /game/i.test(zLine)), `no boarding in Zombies (${zDist > 1.5 ? `out of reach behind the game's fence, ${r1(zDist)} m from it` : `"${zLine}"`})`);
   await b.evaluate('briel.zombiesSolo.stop()').catch(() => {});
   await b.sleep(1500);
   // The other vehicles still work.
