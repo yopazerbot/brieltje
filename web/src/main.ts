@@ -145,7 +145,7 @@ import { Crash } from './world/crash';
 import { TyreSpray } from './world/tyreSpray';
 import { clearOpenGround, cutOut, fitStreetModel, loadStreetModel } from './world/streetModel';
 import { TrunkBlocks } from './world/trunkBlocks';
-import { RoofField } from './world/roofField';
+import { boxAround, RoofField } from './world/roofField';
 import { addModelRoofs, privateHomes, villageRoofs } from './world/modelRoofs';
 import { type TreeSpot, zombieTrunks } from '../shared/trees.mjs';
 import { claimModelGround, claimModelGroundSoon } from './world/modelGround';
@@ -753,7 +753,7 @@ const ringModelled = new Set(ringData.removed.prisms ?? []); // not drawn: our m
 world.addPrisms(house.surroundings?.prisms ?? [], (p) => ringModelled.has(p));
 world.addPrisms(homeStreet.blocks);
 // Their roofs as drawn, once they are in (world/modelRoofs.ts); not over the main house or the bungalow.
-void homeStreet.ready.then(() => addModelRoofs(world, [homeStreet.group], house.ground, privateHomes(house.prisms, house.surroundings?.roofs ?? []), () => new Promise((r) => setTimeout(r, 0))));
+void homeStreet.ready.then(() => addModelRoofs(world, [homeStreet.group], house.ground, privateHomes(house.prisms, house.surroundings?.roofs ?? [])));
 world.addPrisms(ringRoads.blocks); // the pavements, a few centimetres up
 const playTower = new PlayTower(TOWER, house.ground); // the school's play tower: its platform, ladder and slide (world/playground.ts)
 world.addPrisms(playTower.prisms());
@@ -4400,10 +4400,12 @@ async function buildVillage(): Promise<void> {
   aside.add(...fresh);
   await Promise.all([modelsCompiled, precompile(aside)]);
   fresh.forEach((o, i) => homes[i].add(o));
-  // Each model's blocks for walking into (the town's; the streets' went into the village data above), not drawn themselves.
-  for (const m of models) world.addPrisms((m.userData.blocks as Prism[] | undefined) ?? [], () => true);
-  // Their roofs as drawn, a little a frame once play has begun (world/modelRoofs.ts).
-  void playing.then(() => villageRoofs(world, models, house.ground, endHouse, between));
+  // Each model's blocks for walking into (the town's; the streets' went into the village data above).
+  for (const m of models) world.addPrisms((m.userData.blocks as Prism[] | undefined) ?? []);
+  // Their roofs as drawn, a little a frame once play has begun, the nearest to you first (world/modelRoofs.ts); not the
+  // school's play tower (its own ladder, platform, little roof and slide).
+  const towerBox = boxAround(playTower.prisms().flatMap((p) => p.p[0]), 1);
+  void playing.then(() => villageRoofs(world, models, house.ground, endHouse, [towerBox], () => player));
   world.addDips(data.dips);
   addDips(data.dips);
   groundCuts.cells.push(...data.groundCuts.cells);

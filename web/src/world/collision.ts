@@ -1,6 +1,6 @@
 import type { Bounds } from '../../shared/bounds.mjs';
 import type { Prism, Ring } from './houseData';
-import { RoofField } from './roofField';
+import { climb, RoofField } from './roofField';
 import { terrain } from './terrain';
 
 interface Solid {
@@ -18,8 +18,10 @@ interface Solid {
   mat?: string;
   /** Never a floor or a ceiling: a tree's trunk (shared/trees.mjs), which stops you but nobody stands on */
   noFloor?: boolean;
-  /** Not drawn: a model of ours stands for it, so its top goes no higher than the model's drawn roof (World.hi) */
+  /** Not drawn: a model of ours stands for it, so its top goes no higher than the model's drawn roof (World.capBlock) */
   modelled?: boolean;
+  /** Its top as capped once the model's roof is in: one height for the whole block, so it never moves under a body */
+  cap?: number;
   minX: number;
   minZ: number;
   maxX: number;
@@ -99,6 +101,8 @@ const cellOf = (v: number) => Math.floor(v / CELL);
  * walker goes up an eave that comes down by the ground (a house in a dip, a shed's back on a bank).
  */
 const ROOF_LOW = 1.0;
+/** The most a body is pushed off a roof's side in one step (m: World.roofPush). */
+const PUSH = 0.08;
 /** The four sides a body's edge is tried on against a roof (World.roofPush). */
 const SIDES = [[1, 0], [-1, 0], [0, 1], [0, -1]] as const;
 const cellKey = (i: number, j: number) => (i + 32768) * 65536 + (j + 32768);
@@ -204,9 +208,8 @@ export class World {
   }
 
   private hi(s: Solid, x: number, z: number): number {
-    const top = s.lift ? s.y1 + terrain.height(x, z) : s.y1;
-    // A block a model stands for: no higher than the model's roof drawn over it (else a floor on air over the roof).
-    return s.modelled && this.roofs.sample(x, z, this.roofLow(x, z)) && this.roofs.top < top ? this.roofs.top : top;
+    if (s.cap !== undefined) return s.cap;
+    return s.lift ? s.y1 + terrain.height(x, z) : s.y1;
   }
 
   /** The lowest a drawn roof counts from at (x, z): ROOF_LOW over the ground (an eave by the ground is no ramp up). */
@@ -214,16 +217,65 @@ export class World {
     return this.baseGround + terrain.height(x, z) + ROOF_LOW;
   }
 
-  /** The highest top of a block at (x, z) no higher than y (the building under a model's roof: world/modelRoofs.ts), or -Infinity. */
-  blockTop(x: number, z: number, y: number): number {
-    let best = -Infinity;
+  /**
+   * The building standing at (x, z) for a model's roof over it (world/modelRoofs.ts): the number of the highest block
+   * there reaching more than `over` over the ground there, or -1.
+   */
+  buildingAt(x: number, z: number, over: number): number {
+    let best = -1;
+    let bestTop = this.baseGround + terrain.height(x, z) + over;
     for (const k of this.at(x, z)) {
       const s = this.solids[k];
       if (s.off || s.noFloor || x < s.minX || x > s.maxX || z < s.minZ || z > s.maxZ) continue;
-      const top = s.lift ? s.y1 + terrain.height(x, z) : s.y1; // as it stands, under any roof
-      if (top <= y && top > best && inside(x, z, s.rings)) best = top;
+      const top = s.lift ? s.y1 + terrain.height(x, z) : s.y1;
+      if (top > bestTop && inside(x, z, s.rings)) [best, bestTop] = [k, top];
     }
     return best;
+  }
+
+  /** Whether block `index` is one a model stands for (not drawn), whose top a model's roof may cap. */
+  modelledBlock(index: number): boolean {
+    const s = this.solids[index];
+    return !!s?.modelled && !s.lift;
+  }
+
+  /** The blocks a model stands for whose boxes overlap a rectangle on the plan, by number. */
+  modelledIn(minX: number, minZ: number, maxX: number, maxZ: number): number[] {
+    return this.near(minX, minZ, maxX, maxZ).filter((i) => {
+      const s = this.solids[i];
+      return s.modelled && !s.lift && !s.off && s.maxX >= minX && s.minX <= maxX && s.maxZ >= minZ && s.minZ <= maxZ;
+    });
+  }
+
+  /** Cap block `index` (capBlock) at the lowest of `roof` (a model's own) over it, looked at every half metre inside it. */
+  capUnder(roof: RoofField, index: number): void {
+    const s = this.solids[index];
+    let low = Infinity;
+    for (let x = s.minX + 0.25; x < s.maxX; x += 0.5) {
+      for (let z = s.minZ + 0.25; z < s.maxZ; z += 0.5) {
+        if (inside(x, z, s.rings) && roof.sample(x, z, this.roofLow(x, z))) low = Math.min(low, roof.top);
+      }
+    }
+    this.capBlock(index, low);
+  }
+
+  /** Block `index`'s top as it stands: capped, or its own; NaN if switched off (gone for standing over the roof). */
+  blockTopOf(index: number): number {
+    const s = this.solids[index];
+    return s.off ? NaN : (s.cap ?? s.y1);
+  }
+
+  /**
+   * Cap a block a model stands for at `y`: the lowest of the model's drawn roof over it (world/modelRoofs.ts), set
+   * once that roof is in. One height for the whole block, never raised, so a block never changes height under a body
+   * (a top that followed the roof under each point threw a body stepping off a low roof inside the block).
+   */
+  capBlock(index: number, y: number): void {
+    const s = this.solids[index];
+    if (!s?.modelled || s.lift || !(y < Math.min(s.y1, s.cap ?? Infinity))) return;
+    // Wholly over the roof (a lid stacked on a lower block): gone, so no floor stands on air there.
+    if (y <= s.y0 + 0.01) s.off = true;
+    else s.cap = y;
   }
 
   /** Switch a block (by its number in the house data) off or back on: broken windows. */
@@ -269,9 +321,9 @@ export class World {
         if (best === null || under < best) best = under;
       }
     }
-    // Under a roof: its underside (an overhang's, or the eaves where walls stand under it).
+    // Under a building's roof: what is solid under it (an open slab, an overhang's or a shelter's, the head passes).
     const r = this.roofs;
-    if (r.sample(x, z, this.roofLow(x, z)) && r.bottom >= fromY - 0.02 && r.bottom <= toY && (best === null || r.bottom < best)) best = r.bottom;
+    if (r.sample(x, z, this.roofLow(x, z)) && !r.open && r.bottom >= fromY - 0.02 && r.bottom <= toY && (best === null || r.bottom < best)) best = r.bottom;
     return best;
   }
 
@@ -357,24 +409,60 @@ export class World {
    * ridges and valleys are walked. world/roofField.ts.
    */
   roofBlocks(x: number, z: number, feet: number, stepUp: number, height: number): boolean {
-    return this.roofs.blocks(x, z, feet, stepUp, height, this.roofLow(x, z));
+    return this.roofs.blocks(x, z, feet, stepUp, height, this.roofLow(x, z)) && this.walled(x, z, this.roofs.bottom);
+  }
+
+  /**
+   * Whether a wall stands under a roof's solid at (x, z): a block there reaching up to within 0.3 m of it (`bottom`). A
+   * roof stops a walker from the side only as part of a closed building; over open ground (outside its walls, a
+   * recess, a car port) the head passes, as when roofs were drawn only.
+   */
+  private walled(x: number, z: number, bottom: number): boolean {
+    for (const k of this.at(x, z)) {
+      const s = this.solids[k];
+      if (s.off || s.noFloor || x < s.minX || x > s.maxX || z < s.minZ || z > s.maxZ) continue;
+      if (this.hi(s, x, z) >= bottom - 0.3 && this.lo(s, x, z) <= bottom && inside(x, z, s.rings)) return true;
+    }
+    return false;
+  }
+
+  /**
+   * The slope of the drawn roof at (x, z), in degrees (0 flat), or null where none (a helicopter refuses a steep one).
+   * Its normal, if wanted: (-gx, 1, -gz) normalised, from `roofs.gx` and `roofs.gz` after this call.
+   */
+  roofSlope(x: number, z: number): number | null {
+    return this.roofs.slope(x, z, this.roofLow(x, z));
+  }
+
+  /**
+   * What part of a step (dx, dz) from (x, z) a body standing on a roof takes: full pace along and down and up to 35
+   * degrees, less and less up to 60, none steeper (world/roofField.ts climb). 1 off the roofs.
+   */
+  roofClimb(x: number, z: number, dx: number, dz: number): number {
+    const d = Math.hypot(dx, dz);
+    const r = this.roofs;
+    if (d < 1e-9 || !r.sample(x, z, this.roofLow(x, z))) return 1;
+    return climb((r.gx * dx + r.gz * dz) / d);
   }
 
   /**
    * Push a circle (the body) off the sides of drawn roofs rising more than a step and a half beside it, as `resolve`
-   * does off blocks: its edge, tried on four sides, backs off until clear (at most the radius). True when it pushed.
+   * does off blocks, but gently: its edge, tried on four sides, backs off 2 cm at a time, at most PUSH a step (a body
+   * standing against a gable is eased off it over a few steps, never thrown). True when it pushed.
    */
   roofPush(pos: { x: number; z: number }, feet: number, radius: number, stepUp: number, height: number): boolean {
     const r = this.roofs;
-    let pushed = false;
+    let moved = 0;
+    if (this.roofBlocks(pos.x, pos.z, feet, stepUp, height)) return false; // inside one already: lifted out, not pushed
     for (const [dx, dz] of SIDES) {
-      for (let k = 0; k < 4 && r.blocks(pos.x + dx * radius, pos.z + dz * radius, feet, stepUp + 0.5, height, this.roofLow(pos.x + dx * radius, pos.z + dz * radius)); k++) {
-        pos.x -= (dx * radius) / 4;
-        pos.z -= (dz * radius) / 4;
-        pushed = true;
+      const sx = pos.x + dx * radius, sz = pos.z + dz * radius;
+      while (moved < PUSH && r.blocks(pos.x + dx * radius, pos.z + dz * radius, feet, stepUp + 0.5, height, this.roofLow(sx, sz)) && this.walled(pos.x + dx * radius, pos.z + dz * radius, r.bottom)) {
+        pos.x -= dx * 0.02;
+        pos.z -= dz * 0.02;
+        moved += 0.02;
       }
     }
-    return pushed;
+    return moved > 0;
   }
 
   /**
