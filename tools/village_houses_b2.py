@@ -18,6 +18,18 @@ sys.path.insert(0, str(Path(__file__).resolve().parent))
 from village_houses_kit import *  # noqa: E402,F403  (House, Opening, the materials, Vector, math, ONLY)
 
 
+class House(House):  # noqa: F405
+    """The toolkit's House, its walls' ends drawn onto the outline's corners where they lie within 10 cm of one,
+    so two walls meeting at a corner leave no slit (the measures here are rounded to the centimetre)."""
+
+    def snap(self, p):
+        q = min(self.ring, key=lambda r: (r[0] - p[0]) ** 2 + (r[1] - p[1]) ** 2)
+        return tuple(q) if (q[0] - p[0]) ** 2 + (q[1] - p[1]) ** 2 < .01 else tuple(p)
+
+    def wall(self, a, b, *args, **kw):
+        return super().wall(self.snap(a), self.snap(b), *args, **kw)
+
+
 # ======================================================================================================================
 # Roofs as planes over a footprint.
 def lefts(poly):
@@ -445,8 +457,11 @@ def red_villa():
         h.rod("vh_metal_small", (u, -.02, cy - .02), (u, -.8, cy - .02), .02, 4, "#2a2a28")
     # --- the front gable's wall, over the bay; the bay's three sides and its flat lead top --------------------------
     bay_top = 3.35
-    Wg, Ng, Tg = wall((2.64, -.96), (6.56, -.96), [win(1.96, 4.5), Opening(1.96, 7.75, .7, .9, frame=frame, reveal=.18, cols=2)],
-                      bottom=[(0, h.foot), (.34, h.foot), (.341, bay_top), (3.56, bay_top), (3.561, h.foot), (3.92, h.foot)], out=(0, -1))
+    # Over the bay the wall starts at its top; beside it, down to the foot, a centimetre past the bay's own corners.
+    ga, gb = h.snap((2.64, -.96)), h.snap((6.56, -.96))
+    s0, s1 = math.dist(ga, h.snap((2.98, -.96))) + .01, math.dist(ga, h.snap((6.2, -.96))) - .01
+    Wg, Ng, Tg = wall(ga, gb, [win(1.96, 4.5), Opening(1.96, 7.75, .7, .9, frame=frame, reveal=.18, cols=2)],
+                      bottom=[(0, h.foot), (s0, h.foot), (s0 + .001, bay_top), (s1 - .001, bay_top), (s1, h.foot), (math.dist(ga, gb), h.foot)], out=(0, -1))
     h.wall((2.64, 0), (2.64, -.96), top_over(roofs, (2.64, 0), (2.64, -.96)), bands=bands)
     bay = [(2.98, -.96), (3.76, -1.77), (5.47, -1.77), (6.2, -.96)]
     for (a, b) in zip(bay, bay[1:]):
