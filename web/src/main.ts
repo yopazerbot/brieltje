@@ -3826,13 +3826,13 @@ renderer.setAnimationLoop((now: number) => {
     // The keys in the prompts come from the one table (src/shortcuts.ts). In Explore a click opens doors too.
     const doorKey = key(action ? 'use' : 'click', mode);
     const use = key('use', mode);
-    touch.setState(action, inCar, player.chute === null ? null : player.canopy === null ? 'fall' : 'canopy', onBike);
+    touch.setState(action, inCar, player.chute === null ? null : player.canopy === null ? 'fall' : 'canopy', onBike, driving);
     const speed = (v: number) => Math.round(Math.abs(v) * 3.6);
     const carLabel = carName(car.kind ?? car.id, car.spec.name);
     let prompt = target ? t(target.home ? 'home.door' : target.locked ? 'prompt.locked' : target.open ? 'prompt.close' : 'prompt.open', { key: doorKey, door: doorName(target.name) }) : '';
     if (target && homeLocks.accountDoor(target.id)) prompt += `  ·  ${t('home.byAccount')}`; // a home the account opens for good
     // The car's speed and keys for the first few seconds in it only (Yoshi, as on a horse).
-    if (driving) prompt = carHint > 0 ? t('prompt.driving', { speed: speed(car.speed), hb: key('handbrake', mode), use }) : '';
+    if (driving) prompt = carHint <= 0 ? '' : mode === 'touch' ? t('prompt.drivingTouch', { speed: speed(car.speed), use }) : t('prompt.driving', { speed: speed(car.speed), brake: key('brake', mode), hb: key('handbrake', mode), use });
     else if (tagWho) prompt = t('prompt.tag', { use, name: tagWho });
     else if (riding) prompt = carHint > 0 ? t('prompt.riding', { name: car.driver ?? t('prompt.nobody'), speed: speed(car.speed), use }) : '';
     else if (nearCar && !target) {

@@ -56,7 +56,9 @@ const TABLE = {
   /** Faster and slower (a car, a horse). */
   drive: { kbm: () => `${keyName('KeyW')} / ${keyName('KeyS')}`, pad: pads('r2', 'l2'), touch: say('tctl.thumbUpDown') },
   steer: { kbm: () => `${keyName('KeyA')} / ${keyName('KeyD')}`, pad: say('key.leftStick'), touch: say('tctl.thumbLeftRight') },
-  handbrake: { kbm: say('key.space'), pad: pad('south'), touch: say('touch.brake') },
+  /** The brake in a car (held at a standstill it reverses); on touch its own button at the wheel. */
+  brake: { kbm: place('KeyS'), pad: pad('l2'), touch: say('touch.brake') },
+  handbrake: { kbm: say('key.space'), pad: pad('south'), touch: say('touch.handbrake') },
   /** A bike's bell (the jump key, as the car's handbrake). */
   bell: { kbm: say('key.space'), pad: pad('south'), touch: say('touch.bell') },
   /** A place in a portal's list (digits pick only places while it shows: src/ui/travel.ts). */
@@ -146,7 +148,10 @@ function padOrKeyGroups(control: 'kbm' | 'pad', action: boolean): Group[] {
         ...(kbm ? [[t('ctl.spawn'), t('ctl.spawnHow')], [t('ctl.despawn'), t('ctl.despawnHow')], [t('ctl.parachute'), t('ctl.parachuteHow')]] as [string, string][] : []),
       ],
     },
-    { title: t('ctl.cars'), rows: [[t('ctl.getIn'), k('use')], [t('ctl.drive'), k('drive')], [t('ctl.steer'), k('steer')], [t('ctl.handbrake'), k('handbrake')]] },
+    {
+      title: t('ctl.cars'),
+      rows: [[t('ctl.getIn'), k('use')], [t('ctl.drive'), k('drive')], [t('ctl.reverse'), t('ctl.reverseHow', { key: k('brake') })], [t('ctl.steer'), k('steer')], [t('ctl.handbrake'), k('handbrake')]],
+    },
     {
       title: t('ctl.portals'),
       rows: [
@@ -205,7 +210,10 @@ function touchGroups(action: boolean): Group[] {
   }
   groups.push(
     { title: t('ctl.house'), rows: [[t('ctl.door'), k('use')]] },
-    { title: t('ctl.cars'), rows: [[t('ctl.getIn'), k('use')], [t('ctl.drive'), k('drive')], [t('ctl.steer'), k('steer')], [t('ctl.handbrake'), k('handbrake')]] },
+    {
+      title: t('ctl.cars'),
+      rows: [[t('ctl.getIn'), k('use')], [t('ctl.drive'), k('drive')], [t('ctl.reverse'), t('ctl.reverseHow', { key: k('brake') })], [t('ctl.steer'), k('steer')], [t('ctl.handbrake'), k('handbrake')]],
+    },
     {
       title: t('ctl.horses'),
       rows: [[t('ctl.getOn'), k('use')], [t('ctl.faster'), k('drive')], [t('ctl.steer'), k('steer')], [t('ctl.gallop'), k('sprint')], [t('ctl.jump'), k('jump')]],

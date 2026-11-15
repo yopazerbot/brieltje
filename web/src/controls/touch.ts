@@ -10,17 +10,18 @@ import { onLang, t, type PlainKey } from '../i18n';
 const STICK_R = 56; // px: how far the stick's knob goes from where the thumb landed
 const LOOK = 1.6;   // look speed: a drag in px counts as this many mouse px
 
-type Button = 'fire' | 'aim' | 'jump' | 'use' | 'reload' | 'nade' | 'weapon' | 'down' | 'run' | 'menu';
+type Button = 'fire' | 'aim' | 'brake' | 'jump' | 'use' | 'reload' | 'nade' | 'weapon' | 'down' | 'run' | 'menu';
 
 /**
  * Which buttons show depends on what you are doing: walking (Explore, or on a horse), fighting
- * (Action on foot), in a car (at the wheel or riding along), on a bike (laid out as in a car, the
- * Bell where the car's Brake is), or in a drop (shared/parachute.mjs): the
- * free fall (Open the canopy, Dive) and under the canopy (the stick steers). Each state
- * has its own arrangement in style.css (`body[data-touch=...]`), so no button is left where it
- * makes no sense, and the HUD keeps clear of the ones that show.
+ * (Action on foot), at the wheel of a car (a big Brake in the corner, the Handbrake beside it),
+ * riding along in one, on a bike (laid out as in a car, the Bell where the car's Brake is), or in a
+ * drop (shared/parachute.mjs): the free fall (Open the canopy, Dive) and under the canopy (the stick
+ * steers). Each state has its own arrangement in style.css (`body[data-touch=...]`; at the wheel,
+ * riding along and on a bike it is the car's, `#touch.driving` at the wheel), so no button is left where
+ * it makes no sense, and the HUD keeps clear of the ones that show.
  */
-export type TouchState = 'walk' | 'fight' | 'car' | 'bike' | 'fall' | 'canopy';
+export type TouchState = 'walk' | 'fight' | 'drive' | 'car' | 'bike' | 'fall' | 'canopy';
 
 // Each button's label (src/i18n.ts) in the states it shows in; '⇄' and '☰' are signs, the same in every language.
 const BUTTONS: [Button, Partial<Record<TouchState, PlainKey | '⇄' | '☰'>>][] = [
@@ -29,12 +30,15 @@ const BUTTONS: [Button, Partial<Record<TouchState, PlainKey | '⇄' | '☰'>>][]
   ['reload', { fight: 'touch.reload' }],
   ['nade', { fight: 'touch.nade' }],
   ['weapon', { fight: '⇄' }],
-  ['jump', { walk: 'touch.jump', fight: 'touch.jump', car: 'touch.brake', bike: 'touch.bell', fall: 'touch.open' }], // the handbrake in a car, the bell on a bike, the canopy in a free fall
-  ['use', { walk: 'touch.use', fight: 'touch.use', car: 'touch.use', bike: 'touch.use' }],
+  ['brake', { drive: 'touch.brake' }],
+  ['jump', { walk: 'touch.jump', fight: 'touch.jump', drive: 'touch.handbrake', bike: 'touch.bell', fall: 'touch.open' }], // the handbrake at the wheel, the bell on a bike, the canopy in a free fall
+  ['use', { walk: 'touch.use', fight: 'touch.use', drive: 'touch.use', car: 'touch.use', bike: 'touch.use' }],
   ['down', { walk: 'touch.down', fight: 'touch.down', fall: 'touch.dive' }],
   ['run', { walk: 'touch.run', fight: 'touch.run' }],
-  ['menu', { walk: '☰', fight: '☰', car: '☰', bike: '☰', fall: '☰', canopy: '☰' }],
+  ['menu', { walk: '☰', fight: '☰', drive: '☰', car: '☰', bike: '☰', fall: '☰', canopy: '☰' }],
 ];
+/** At the wheel the stick's sideways push counts this much more, so a thumb pushed up and aside still turns the wheel all the way. */
+const DRIVE_STEER = 1.4;
 const label = (k: PlainKey | '⇄' | '☰') => (k === '⇄' || k === '☰' ? k : t(k));
 
 export class TouchControls {
@@ -166,12 +170,13 @@ export class TouchControls {
     if (el && !el.classList.contains('hidden')) el.textContent = label(on ? 'touch.breath' : 'touch.run');
   }
 
-  /** Which buttons show: in a drop (its free fall or under the canopy), fighting on foot, walking, in a car, or on a bike. */
-  setState(action: boolean, inCar: boolean, drop: 'fall' | 'canopy' | null = null, bike = false): void {
-    const state: TouchState = drop ?? (bike ? 'bike' : inCar ? 'car' : action ? 'fight' : 'walk');
+  /** Which buttons show: in a drop (its free fall or under the canopy), fighting on foot, walking, in a car (`wheel`: at the wheel), or on a bike. */
+  setState(action: boolean, inCar: boolean, drop: 'fall' | 'canopy' | null = null, bike = false, wheel = false): void {
+    const state: TouchState = drop ?? (bike ? 'bike' : inCar ? (wheel ? 'drive' : 'car') : action ? 'fight' : 'walk');
     if (state === this.state) return;
     this.state = state;
-    document.body.dataset.touch = state === 'bike' ? 'car' : state; // the layout for this state (style.css); a bike's is the car's
+    document.body.dataset.touch = state === 'bike' || state === 'drive' ? 'car' : state; // the layout for this state (style.css); a bike's is the car's
+    this.root.classList.toggle('driving', state === 'drive');
     for (const [name, labels] of BUTTONS) {
       const el = this.els.get(name)!;
       const k = labels[state];
@@ -187,13 +192,13 @@ export class TouchControls {
     if (this.root.classList.contains('hidden')) return;
     const has = (b: Button) => this.pressed.has(b);
     const holds = (b: Button) => this.held.has(b);
-    out.moveX += this.moveX;
+    out.moveX += this.state === 'drive' ? Math.max(-1, Math.min(1, this.moveX * DRIVE_STEER)) : this.moveX;
     out.moveY += this.moveY;
     out.mouseX += this.lookX * LOOK;
     out.mouseY += this.lookY * LOOK;
     this.lookX = this.lookY = 0;
     out.throttle = Math.max(out.throttle, this.moveY);
-    out.brake = Math.max(out.brake, -this.moveY);
+    out.brake = Math.max(out.brake, -this.moveY, holds('brake') ? 1 : 0); // the stick pulled down brakes too
     out.sprint ||= this.runOn; // Run stays on until it is tapped again
     out.steadyHeld ||= this.scoped && holds('run');
     out.jumpPressed ||= has('jump');
