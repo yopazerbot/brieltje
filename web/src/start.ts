@@ -30,6 +30,7 @@ try {
 import { Menu } from './ui/menu';
 import { AccountCard } from './ui/account';
 import { KeepRun } from './ui/keepRun';
+import { MenuLogout } from './ui/menuLogout';
 import { PadNav } from './ui/padNav';
 import { PadStart } from './ui/padStart';
 import { StartFlow, type ZombieStart } from './ui/startFlow';
@@ -283,11 +284,11 @@ const logoutDone = () => {
     localStorage.removeItem(LOGOUT);
   } catch {}
 };
-function logoutForSure(): void {
+function logoutForSure(): Promise<void> {
   try {
     localStorage.setItem(LOGOUT, '1');
   } catch {}
-  api.logout().then(logoutDone).catch(() => {});
+  return api.logout().then(logoutDone).catch(() => {});
 }
 
 /** A join on its way to the server: a second click (Join twice, or Join then a start button) waits for it instead of sending another. */
@@ -416,8 +417,18 @@ new AccountCard({
 const leave = (message: (() => string) | null = null) => {
   accountGen++;
   setAccount(null, message);
-  logoutForSure();
+  return logoutForSure();
 };
+// Logging out from the game's menu (src/ui/menuLogout.ts): left as above (the others see us go, as when the tab
+// closes), then the page loads again once the server has the logout, or after a few seconds without an answer (the
+// flag above finishes it then). A fresh page is the start screen at step 1 with nothing of the session in memory:
+// no name, no account's options, no home's inside. Not in a split-screen seat (its page joins and leaves it) nor on
+// the watch page (the admin's view, no player of its own).
+const menuLogout = new MenuLogout($('menu-logout') as HTMLButtonElement, () => {
+  const wait = new Promise((done) => setTimeout(done, 3000));
+  void Promise.race([leave(), wait]).then(() => location.reload());
+});
+onSession(() => menuLogout.show(!!session && !seat && !watch));
 $('mp-logout').addEventListener('click', () => {
   leave(session?.role === 'guest' ? null : () => t('start.loggedOut'));
   accountMsgCalm = true;
