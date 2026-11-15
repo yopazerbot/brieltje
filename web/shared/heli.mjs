@@ -536,10 +536,17 @@ export function heliExit(s, steps, ground, free) {
   const rx = -fz, rz = fx;
   const outside = (x, y, z) => homeAt(x, z, y) === null && !inEndGarden(x, z, y);
   const local = [...steps.map(([x, z]) => [x + Math.sign(x) * 0.15, z]), ...steps.map(([x, z]) => [x + Math.sign(x) * 0.15, z + 1.4]), [0, -4], [0, 8]];
+  // The way there from the hub, every 5 cm: nothing higher than a step in it (a rail, a wall), so you never step out
+  // across a deck's rail onto the roof beside it (the church's landing deck: shared/church.json).
+  const clear = (px, pz) => {
+    const n = Math.ceil(Math.hypot(px - s.x, pz - s.z) / 0.05);
+    for (let i = 1; i < n; i++) if (num(ground(s.x + ((px - s.x) * i) / n, s.z + ((pz - s.z) * i) / n, stand + 2)) > stand + 0.5) return false;
+    return true;
+  };
   for (const [x, z] of local) {
     const px = s.x + rx * x - fx * z, pz = s.z + rz * x - fz * z;
     const g = num(ground(px, pz, stand + 0.5));
-    if (Math.abs(g - stand) > 0.5 || !outside(px, g, pz) || !free(px, pz, g)) continue;
+    if (Math.abs(g - stand) > 0.5 || !outside(px, g, pz) || !free(px, pz, g) || !clear(px, pz)) continue;
     return { x: px, y: g, z: pz };
   }
   return outside(s.x, stand, s.z) ? { x: s.x, y: stand, z: s.z } : null;
