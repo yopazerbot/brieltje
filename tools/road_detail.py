@@ -78,7 +78,7 @@ CX, CZ, TILE = 4.45, -3.0, 200  # the browser's tiles (web/src/world/tiles.ts)
 
 # Who gives way to whom where streets meet: a street's carriageway stops at those before it.
 PRIORITY = ["Kapellenhoek", "Smetlededorp", "Molenhoek", "Briel", "Kapelleweg", "Kerkhofstraat", "Stefaan Glorieuxstraat",
-            "Schildekensstraat", "Serskampstraat", "Oud-Smetlede", "Diepestraat", "Blekte", "Wolfgat"]
+            "Schildekensstraat", "Serskampstraat", "Oud-Smetlede", "Diepestraat", "Klinkaard", "Blekte", "Wolfgat"]
 
 # Each street's profile (web/src/world/roadDetail.ts, PROFILES), from the Street View tour. Narrow stretches of
 # Briel (under NARROW m of carriageway) are its old lanes; other streets not named here are asphalt.
@@ -117,11 +117,13 @@ STRETCHES = [("Kapellenhoek", 0.0, 165.0, "kh_dash"),
 # - Serskampstraat from its junction with Schildekensstraat to x -330: the same red footpath where it has one (red at
 #   x -122 and -140);
 # - Serskampstraat's bend at x -483, z -789: asphalt, and its leg south of it to the map's edge a narrow asphalt lane
-#   between the fields.
+#   between the fields;
+# - Blekte's last stretch to Klinkaard, from about x 1725 (pictures of 2024): new asphalt with a kerb.
 AREAS = [("Schildekensstraat", (-400.0, -1400.0, 102.0, -950.0), "concrete_red"),
          ("Serskampstraat", (-330.0, -1200.0, -60.0, -860.0), "concrete_red"),
          ("Serskampstraat", (-505.0, -812.0, -461.0, -772.0), "asphalt"),
-         ("Serskampstraat", (-700.0, -786.0, -340.0, -250.0), "lane_asphalt")]
+         ("Serskampstraat", (-700.0, -786.0, -340.0, -250.0), "lane_asphalt"),
+         ("Blekte", (1725.0, 200.0, 1900.0, 320.0), "asphalt")]
 # Lanes without a road surface in the village data, drawn on their GRB centre line with a street's profile: name:
 # (profile, half its width, the earth either side, the street it leaves, metres left off where it leaves it and at its
 # other end). Meulewegel, from Molenhoek to Kapelleweg, rebuilt as Kapelleweg's last stretch: two pale concrete strips
@@ -136,7 +138,8 @@ PATHS = {"Smetledekouterwegel": ("path_tiles", 1.0), "Pastorijwegel": ("path_pav
 SCHOOL_PLATEAU = {"street": "Smetlededorp", "x": (442.9, 481.5), "red": (469.5, 480.0), "zebra": 474.8}
 # The give-way lines: where a street meets one with priority and the sign says so (data/kapellenhoek.json's props).
 GIVE_WAY = [{"street": "Kapelleweg", "at": (614.6, -404.6)},
-            {"street": "Rampsande", "at": (-487.8, -786.8)}]  # where it meets Serskampstraat's bend (the pictures of 15 Nov 2026)
+            {"street": "Rampsande", "at": (-487.8, -786.8)},  # where it meets Serskampstraat's bend (the pictures of 15 Nov 2026)
+            {"street": "Blekte", "at": (1855.1, 281.8)}]  # where it meets Klinkaard (the pictures of 2024)
 
 
 class Photo:
@@ -675,7 +678,9 @@ def give_way(kept):
             inward = run[1] if st is run[0] else run[-2]  # back along the street, away from the junction
             ux, uz = st["x"] - inward["x"], st["z"] - inward["z"]
             n = math.hypot(ux, uz)
-            out.append({"x": round(st["x"], 2), "z": round(st["z"], 2), "u": [round(ux / n, 3), round(uz / n, 3)], "w": [round(st["w"][0], 2), round(st["w"][1], 2)]})
+            # The widths as seen facing the junction (+ side first): at a run's first station that is against the run.
+            w = st["w"] if st is run[-1] else st["w"][::-1]
+            out.append({"x": round(st["x"], 2), "z": round(st["z"], 2), "u": [round(ux / n, 3), round(uz / n, 3)], "w": [round(w[0], 2), round(w[1], 2)]})
     return out
 
 
