@@ -210,6 +210,11 @@ test('GET /api/home/:id/inside: the inside only for a session with the grant and
   assert.deepEqual((await inside(H1, { user: 'p1' })).data, denied, 'no grant');
   assert.deepEqual((await inside(H1, {})).data, denied, 'no session');
   assert.deepEqual((await inside('nowhere', { admin: true })).data, denied, 'an unknown home stays unknown');
+  // The café at the church is no home (shared/keet.mjs): its id answers as an unknown one, whoever asks.
+  for (const opts of [{ admin: true }, { user: 'p1' }, {}]) {
+    const [cafe, none] = [await inside('keet', opts), await inside('nosuch', opts)];
+    assert.deepEqual([cafe.status, cafe.data, cafe.headers], [none.status, none.data, none.headers], JSON.stringify(opts));
+  }
   await call('POST', '/api/home/unlock', { id: H1, code }, { user: 'p1', who: 'w' });
   const ok = await inside(H1, { user: 'p1' });
   assert.deepEqual([ok.status, ok.data], [200, PACK]);

@@ -65,6 +65,7 @@ import { HELI_DOWN, HELI_SPEED, Helis } from './helis.mjs';
 import { Host } from './host.mjs';
 import { monitor } from './monitor.mjs';
 import { words } from './words.mjs';
+import { makeKeet } from '../shared/keet.mjs';
 
 /** /parachute (manualDrop): once every CHUTE_MS, and not within HURT_CALM_MS of being hit. */
 const CHUTE_MS = 60_000;
@@ -123,6 +124,8 @@ const PACKS = housePacks();
 const HOUSE = mergeHouse(houseData('house_shell.json'), PACKS);
 for (const p of PACKS) registerDoors(p.id, p.doors.map((d) => d.id));
 const VILLAGE = houseData('village.json');
+/** The café at the church (shared/keet.mjs): public, no home. Only its door ids and pane numbers matter here. */
+const KEET = makeKeet(houseData('keet_shell.json'), houseData('keet_rooms.json'));
 const CHURCH_DATA = shared('church.json');
 const CHURCH = makeChurch(CHURCH_DATA, HOUSE.ground + TERRAIN.height(...CHURCH_DATA.origin));
 const CAFE_DATA = shared('sparrenhof.json');
@@ -226,13 +229,13 @@ const HOUSE_AREAS = houseAreas(HOUSE.prisms);
 /** Where the best wave at Zombies place `id` is kept (meta table): home's key from before the places, the others with their id. */
 const bestKey = (id) => (id === 'house' ? 'zombies_best' : 'zombies_best_' + id);
 /** The house data's doors: whether each stands open before anyone touched it (the page's default too). */
-const DOOR_OPEN = Object.assign(Object.create(null), Object.fromEntries(HOUSE.doors.map((d) => [d.id, !!d.open])));
+const DOOR_OPEN = Object.assign(Object.create(null), Object.fromEntries([...HOUSE.doors, ...KEET.doors].map((d) => [d.id, !!d.open])));
 /**
  * Every door a page can swing: the house data's (the shell's and the insides' of the main house and the bungalow), the
  * walked-into houses' shells and their insides when the private data holds them. The village has no doors. A `door` message
  * for any other id is ignored, so nobody can fill the door table with made-up ids (it is never larger than this list).
  */
-const KNOWN_DOORS = new Set([...HOUSE.doors, ...['molenhoek_end', 'kapellenhoek_home'].flatMap((id) => [...houseData(`${id}_shell.json`).doors, ...(packFor(id)?.doors ?? [])])].map((d) => d.id));
+const KNOWN_DOORS = new Set([...HOUSE.doors, ...['molenhoek_end', 'kapellenhoek_home'].flatMap((id) => [...houseData(`${id}_shell.json`).doors, ...(packFor(id)?.doors ?? [])]), ...KEET.doors].map((d) => d.id)); // and the café's (shared/keet.mjs)
 /** Is `id` one of the doors of the game? */
 export const knownDoor = (id) => KNOWN_DOORS.has(id);
 // Which of the code-locked homes a pane belongs to (shared/homes.mjs, server/homeGate.mjs).
@@ -807,6 +810,21 @@ export class Game {
   }
 
   /**
+   * The café at the church during a Zombies game there (package Z removes this, once the zombies follow players inside):
+   * its doors stay shut for everyone. Whether such a game runs; `starting`: one starts now, so every café door shuts and
+   * every page is told (a door message for one is ignored meanwhile, see `door`).
+   */
+  keetClosed(starting = false) {
+    if (starting) {
+      for (const id of KEET.doorIds) {
+        this.doors[id] = false;
+        this.broadcast({ t: 'door', id, open: false, dir: this.doorDir[id] ?? 1, by: '' });
+      }
+    }
+    return this.modes.state.kind === 'zombies' && this.modes.state.z?.arena?.id === 'church';
+  }
+
+  /**
    * What the zombies walk on for a new game at `arena` (shared/arenas.mjs; server/zombies.mjs): at home
    * the grid over the party area with every floor of the two houses and their doors, with whether each
    * stands open now (a zombie shoves a shut one open: zombieDoor); in Smetlede the grid over its circle
@@ -815,6 +833,7 @@ export class Game {
    * edge. About 40 ms at home, 5 in the village.
    */
   zombieGround(arena) {
+    if (arena.id === 'church') this.keetClosed(true);
     const edge = arenaEdge(arena, BOUNDS);
     const boxes = Object.values(this.cars).filter((c) => edge.inside(c.x, c.z)).map((c) => {
       const s = carSpec(c);
@@ -1068,17 +1087,18 @@ export class Game {
       // flood would slam doors on every page). Pressing E as fast as one can stays under it.
       if (now < (player.nextDoor || 0)) return;
       player.nextDoor = now + 200;
+      if (KEET.doorIds.has(m.id) && this.keetClosed()) return; // the café is shut during Zombies at the church (until package Z)
       if (!this.gate.door(player, m.id)) return; // one of the code-locked homes' doors, and no right to it
       this.doors[m.id] = !!m.open;
       if (m.dir === 1 || m.dir === -1) this.doorDir[m.id] = m.dir;
       this.broadcastHome({ t: 'door', id: m.id, open: !!m.open, dir: this.doorDir[m.id] ?? 1, by: name }, homeOfDoor(m.id), name); // an inside door's state goes only to those with the right
-    } else if (m.t === 'glass' && Number.isInteger(m.i) && m.i >= 0 && m.i < PANE_LIMIT && PANE_HOME.has(m.i)) { // only numbers that are a pane (shared/homes.mjs)
+    } else if (m.t === 'glass' && Number.isInteger(m.i) && m.i >= 0 && m.i < PANE_LIMIT && (PANE_HOME.has(m.i) || KEET.publicPane(m.i))) { // only numbers that are a pane (shared/homes.mjs)
       if (this.broken.size >= 200 || this.broken.has(m.i) || !this.gate.glass(player, m.i)) return; // a code-locked home's pane needs the right too
       this.broken.add(m.i);
       this.cracked.delete(m.i);
       this.broadcastHome({ t: 'glass', i: m.i, by: name }, PANE_HOME(m.i), name);
       this.modes.zombies?.panes(this.broken); // a way in for the zombies too
-    } else if (m.t === 'crack' && Number.isInteger(m.i) && m.i >= 0 && m.i < PANE_LIMIT && PANE_HOME.has(m.i)) {
+    } else if (m.t === 'crack' && Number.isInteger(m.i) && m.i >= 0 && m.i < PANE_LIMIT && (PANE_HOME.has(m.i) || KEET.publicPane(m.i))) {
       // A first bullet cracked a pane (the page's picture of it: world/glass.ts). Only a number that is a pane, whole
       // and not cracked yet, in a home this player may shoot at (as for breaking one), from a player who can fire, eleven
       // a second at most, 200 cracks in all. The place is three numbers held to the map: it only says where the mark
