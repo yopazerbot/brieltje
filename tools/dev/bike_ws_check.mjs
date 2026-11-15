@@ -1,7 +1,9 @@
 // Two players against a throwaway game server (a build of this branch): Alice gets on the bike by the main house and
 // rides it, Bob sees her ride it in the ticks. Every forged message the bikes could be abused with is tried and must
 // change nothing: getting on from afar, taking a ridden bike, riding faster than a bike, a ride state forged on foot,
-// a bell from someone on foot.
+// a bell from someone on foot. Then Alice drives the Tesla into the bike (server/bikeHits.mjs): Alice and Bob get the same
+// knock, Carol joining later gets it lying there; a car state past the speed budget, made-up messages and a forged car
+// flag on foot move no bike; a ridden bike is never knocked.
 //
 //   ADMIN_PASSWORD=... node tools/dev/bike_ws_check.mjs --api http://localhost:8310
 import WebSocket from '../../web/node_modules/ws/wrapper.mjs';
@@ -142,7 +144,99 @@ const ran = foot1.x - foot0.x;
 ok('on foot, a forged ride state is held to running pace', ran <= RUN * 1.2 + 0.5, `${ran.toFixed(2)} m in 0.5 s (30 m asked)`);
 ok('and the bike flag stays off', !foot1.bike);
 
-for (const p of [a, b]) p.ws.close();
+// A car into the bike (server/bikeHits.mjs): no message of its own. Alice walks to the Tesla, gets in and drives along
+// the street through the bike she left there, at 40 km/h, thirty states a second (the car's states are hers).
+const knocked = (log, from) => log.slice(from).filter((m) => m.t === 'bike' && m.knock);
+const left = [...b.log].reverse().find((m) => m.t === 'bike' && m.bike.id === 'house').bike;
+await a.go(4.6, a.z, RUN * 0.9);
+await a.go(4.6, 14.5, RUN * 0.9);
+await sleep(350);
+a.send({ t: 'car', op: 'in', id: 'tesla' });
+await sleep(400);
+ok('Alice is at the wheel of the Tesla', a.log.some((m) => m.t === 'car' && m.car.id === 'tesla' && m.car.driver === A));
+/** Drive (Alice's states as the car's) to (x, z) at `speed` m/s, thirty states a second, facing the way she goes. */
+const drive = async (x, z, speed) => {
+  for (;;) {
+    const d = Math.hypot(x - a.x, z - a.z);
+    const step = Math.min(d, speed / 30);
+    if (d > 1e-6) {
+      a.yaw = Math.atan2(-(x - a.x), -(z - a.z));
+      a.x += ((x - a.x) / d) * step;
+      a.z += ((z - a.z) / d) * step;
+    }
+    a.state({ s: 0 });
+    await sleep(33);
+    if (d <= step) return;
+  }
+};
+// Across the drive to the street, slowly (the server holds no walls for a car; only the speed budget), then along it.
+await drive(2.17, left.z, 3);
+await drive(left.x - 25, left.z, 11);
+const [ka, kb] = [a.log.length, b.log.length];
+await drive(left.x + 25, left.z, 40 / 3.6);
+await sleep(300);
+const ma = knocked(a.log, ka);
+const mb = knocked(b.log, kb);
+ok('driving into it: one knock, told to both', ma.length === 1 && mb.length === 1, `${ma.length} ${mb.length}`);
+const k = mb[0]?.bike ?? {};
+const moved = Math.hypot(k.x - left.x, k.z - left.z);
+ok('the same place and side on both', JSON.stringify(ma[0]?.bike) === JSON.stringify(mb[0]?.bike) && (k.lie === 1 || k.lie === -1), JSON.stringify(k));
+ok('thrown aside, about 3 m at 40 km/h', moved > 2 && moved < 3.6, `${moved.toFixed(2)} m, ${JSON.stringify(mb[0]?.knock)}`);
+const tickK = seen(kb, 'house', A).last;
+ok('the ticks carry it lying there', tickK?.lie === k.lie && Math.abs(tickK.x - k.x) < 0.02, JSON.stringify(tickK));
+// Carol joins afterwards: her welcome has it lying where it lies.
+const c = await guest('Carol');
+const cw = c.log.find((m) => m.t === 'welcome')?.bikes?.find((x) => x.id === 'house');
+ok('Carol, joining later, gets it lying there', cw && cw.lie === k.lie && Math.abs(cw.x - k.x) < 0.02 && Math.abs(cw.z - k.z) < 0.02, JSON.stringify(cw));
+
+// Forged: car states claiming a place the speed budget doesn't allow (the church's rack, 900 m off), a 'bike' message
+// with a place, made-up kinds of message, and Bob on foot with the car flag running over a bike: nothing moves.
+const church = BIKES.bikes.church1.park;
+const [fa, fb] = [a.log.length, b.log.length];
+a.x = church.x;
+a.z = church.z;
+a.state({ s: 1 });
+await sleep(100);
+for (const m of [
+  { t: 'bike', op: 'knock', id: 'church1', x: 0, z: 0, lie: 1 }, { t: 'bike', id: 'church2', x: 0, z: 0, lie: -1 },
+  { t: 'bikehit', id: 'church3', x: 0, z: 0 }, { t: 'knock', id: 'church1' },
+]) b.send(m);
+await sleep(1300); // past a keyframe: every bike in a tick at least once a second
+const any = [...a.log.slice(fa), ...b.log.slice(fb)].filter((m) => m.t === 'bike');
+ok('a car state 900 m off and made-up messages move no bike', any.length === 0, JSON.stringify(any.map((m) => m.bike.id)));
+const ticks = seen(fb, 'church1', A).bikes.concat(seen(fb, 'church2', A).bikes, seen(fb, 'church3', A).bikes);
+ok('the church\'s bikes stand where they stood', ticks.length > 0 && ticks.every((t) => !t.lie && Math.hypot(t.x - church.x, t.z - church.z) < 1.6), JSON.stringify(ticks.at(-1)));
+// Back to the street (in steps the budget allows, never near a bike), then Bob on foot over the lying bike with d: true.
+a.x = left.x + 60;
+a.z = left.z;
+for (let i = 0; i < 40; i++) {
+  a.state({ s: 0 });
+  await sleep(60);
+}
+await b.go(-1.6, 19, RUN * 0.9);
+await b.go(k.x - 3, k.z, RUN * 0.9);
+const lf = b.log.length;
+await b.go(k.x + 3, k.z, RUN * 0.9, { d: true, s: 1 });
+await sleep(300);
+ok('Bob on foot with the car flag forged knocks nothing', knocked(b.log, lf).length === 0);
+
+// Bob gets on the lying bike (it stands up), and Alice drives through him at 40 km/h: a ridden bike is never knocked.
+await b.go(k.x + 1, k.z, RUN * 0.9);
+await sleep(350);
+b.send({ t: 'bike', op: 'on', id: 'house' });
+await sleep(400);
+ok('Bob gets on the lying bike and it stands', b.log.some((m) => m.t === 'bike' && m.bike.id === 'house' && m.bike.rider === B && m.bike.lie === 0));
+const rf = b.log.length;
+await drive(k.x - 20, k.z, 30);
+await sleep(400);
+await drive(k.x + 20, k.z, 40 / 3.6);
+await sleep(300);
+ok('a ridden bike is never knocked; Bob rides on', knocked(b.log, rf).length === 0 && seen(rf, 'house', A).last?.rider === B);
+b.send({ t: 'bike', op: 'off' });
+a.send({ t: 'car', op: 'out' });
+await sleep(300);
+
+for (const p of [a, b, c]) p.ws.close();
 await sleep(200);
 console.log(failed ? `${failed} FAILED` : 'all passed');
 process.exit(failed ? 1 : 0);
