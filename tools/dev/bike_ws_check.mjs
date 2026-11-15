@@ -169,11 +169,13 @@ const drive = async (x, z, speed) => {
     if (d <= step) return;
   }
 };
-// Across the drive to the street, slowly (the server holds no walls for a car; only the speed budget), then along it.
-await drive(2.17, left.z, 3);
-await drive(left.x - 25, left.z, 11);
+// Across the drive to the street, slowly, then along its lane 1.2 m south of where the bike stands (the car's box meets
+// the bike's; on the bike's own line a car would be in the hedge, and the server counts no knock through its blocks).
+const lane = left.z - 1.2;
+await drive(2.17, lane, 3);
+await drive(left.x - 25, lane, 11);
 const [ka, kb] = [a.log.length, b.log.length];
-await drive(left.x + 25, left.z, 40 / 3.6);
+await drive(left.x + 25, lane, 40 / 3.6);
 await sleep(300);
 const ma = knocked(a.log, ka);
 const mb = knocked(b.log, kb);
@@ -227,9 +229,9 @@ b.send({ t: 'bike', op: 'on', id: 'house' });
 await sleep(400);
 ok('Bob gets on the lying bike and it stands', b.log.some((m) => m.t === 'bike' && m.bike.id === 'house' && m.bike.rider === B && m.bike.lie === 0));
 const rf = b.log.length;
-await drive(k.x - 20, k.z, 30);
+await drive(k.x - 20, k.z - 1.2, 30);
 await sleep(400);
-await drive(k.x + 20, k.z, 40 / 3.6);
+await drive(k.x + 20, k.z - 1.2, 40 / 3.6);
 await sleep(300);
 ok('a ridden bike is never knocked; Bob rides on', knocked(b.log, rf).length === 0 && seen(rf, 'house', A).last?.rider === B);
 b.send({ t: 'bike', op: 'off' });

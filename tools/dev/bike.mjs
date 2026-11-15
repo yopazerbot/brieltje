@@ -43,8 +43,13 @@ async function knocks() {
     window.__want = null; // km/h to hold, or null: the player's own pedals
     car.drive = function (dt, input, others) {
       const kmh = Math.hypot(car.vx, car.vz) * 3.6;
-      const mine = window.__want === null ? input : { ...input, steer: 0, handbrake: false, brake: window.__want === 0 && kmh > 0.5 ? 1 : 0,
-        throttle: window.__want > 0 ? (kmh < window.__want - 2 ? 1 : kmh < window.__want ? 0.35 : 0) : 0 };
+      // __mode 'back': the brake key held to drive backwards up to __want km/h; 'hand': only the handbrake held.
+      const mode = window.__mode;
+      const mine = window.__want === null ? input
+        : mode === 'back' ? { ...input, steer: 0, handbrake: false, throttle: 0, brake: kmh < window.__want ? 1 : 0 }
+        : mode === 'hand' ? { ...input, steer: 0, handbrake: true, throttle: 0, brake: 0 }
+        : { ...input, steer: 0, handbrake: window.__want < 0, brake: window.__want === 0 && kmh > 0.5 ? 1 : 0,
+          throttle: window.__want > 0 ? (kmh < window.__want - 2 ? 1 : kmh < window.__want ? 0.35 : 0) : 0 };
       return drive.call(this, dt, mine, others);
     };
     const nudge = car.nudge;
@@ -106,6 +111,36 @@ async function knocks() {
   out.slow = await hit(8, 'knock_tip');
   out.mid = await hit(40, 'knock_40');
   out.fast = await hit(100, 'knock_throw');
+  // Into a bike in reverse (the brake key held from a standstill drives backwards), and sliding into one with only the
+  // handbrake held from 50 km/h: knocked the way the car goes, and it drives on.
+  const odd = async (mode) => {
+    await b.evaluate("window.__mode = null; window.__want = -1", false); // the handbrake on: standing still
+    const at = await json(`__set(${mode === 'back' ? -9 : 45})`);
+    await b.waitFor('Math.hypot(briel.currentCar().vx, briel.currentCar().vz) < 0.05', 10000 * slow);
+    const r = await json('({ x: briel.currentCar().x, z: briel.currentCar().z })');
+    await b.evaluate(mode === 'back' ? "window.__mode = 'back'; window.__want = 18" : "window.__mode = null; window.__want = 50", false);
+    if (mode === 'hand') {
+      await b.waitFor(`Math.hypot(briel.currentCar().x - ${at.x}, briel.currentCar().z - ${at.z}) < 14`, 60000 * slow);
+      await b.evaluate("window.__mode = 'hand'", false);
+    }
+    await b.waitFor('(() => { const k = briel.bikes.bikes.find((k) => k.id === "house"); return !!k.lie && !k.fall; })()', 30000 * slow).catch(async (e) => {
+      console.log(mode, 'stuck:', await b.evaluate(`JSON.stringify({ car: { x: briel.currentCar().x, z: briel.currentCar().z, speed: briel.currentCar().speed }, at: ${JSON.stringify(at)}, bike: __bike(), driving: briel.driving(), mode: window.__mode, want: window.__want })`));
+      throw e;
+    });
+    const rest = await json('__bike()');
+    const nudges = await json('__nudges');
+    await b.evaluate("window.__mode = null; window.__want = 0", false);
+    await b.waitFor('Math.hypot(briel.currentCar().vx, briel.currentCar().vz) < 0.3', 30000 * slow);
+    // Along the road: + ahead of the car's start, - behind it.
+    const along = (p) => ((p.x - r.x) * road.dx + (p.z - r.z) * road.dz);
+    const res = { mode, nudge: nudges[0], from: +along(at).toFixed(2), rest: +along(rest).toFixed(2), dist: +Math.hypot(rest.x - at.x, rest.z - at.z).toFixed(2), lie: rest.lie };
+    assert.equal(nudges.length, 1, `${mode}: one knock ${JSON.stringify(res)}`);
+    assert.ok(res.nudge.after < res.nudge.before, `${mode}: a little slower ${JSON.stringify(res)}`);
+    assert.ok(mode === 'back' ? res.rest < res.from : res.rest > res.from, `${mode}: knocked the way the car went ${JSON.stringify(res)}`);
+    return res;
+  };
+  out.reverse = await odd('back');
+  out.handbrake = await odd('hand');
   // The same hit twice, frame by frame at 60 a second inside one evaluate (no frame times of the browser's): the same place.
   out.twice = await json(`(() => {
     const B = briel.bikes, k = B.bikes.find((k) => k.id === 'house'), car = briel.currentCar();

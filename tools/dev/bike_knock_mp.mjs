@@ -105,6 +105,18 @@ try {
   await alice.sleep(2000);
   await alice.evaluate(`__put(-12, ${STREET.z})`, false);
   await alice.sleep(2500);
+  // On Bob's page: where the Tesla is drawn when the bike starts to move (its fall is held by the track's delay, so the
+  // car he sees is at the bike, not still metres off).
+  await bob.evaluate(`(() => {
+    const k = briel.bikes.bikes.find((k) => k.id === 'house'), car = briel.cars.find((c) => c.id === 'tesla');
+    const x0 = k.x, z0 = k.z;
+    window.__meet = null;
+    const look = () => {
+      if (Math.hypot(k.x - x0, k.z - z0) > 0.02) window.__meet = { gap: +Math.hypot(car.x - x0, car.z - z0).toFixed(2), delay: briel.net().delay };
+      else requestAnimationFrame(look);
+    };
+    requestAnimationFrame(look);
+  })()`, false);
   await alice.evaluate('window.__want = 40', false);
   await alice.waitFor(`briel.currentCar().x > ${STREET.x + 12}`, 20000);
   await bob.sleep(150);
@@ -119,6 +131,9 @@ try {
   ok('in the same place on both pages', Math.hypot(ka.x - kb.x, ka.z - kb.z) < 0.02 && Math.abs(ka.yaw - kb.yaw) < 0.01, `${Math.hypot(ka.x - kb.x, ka.z - kb.z).toFixed(3)} m apart`);
   ok('thrown about 3 m', Math.hypot(ka.x - STREET.x, ka.z - STREET.z) > 2 && Math.hypot(ka.x - STREET.x, ka.z - STREET.z) < 3.8);
   ok('Alice\'s page guessed at once and the car drove on', guesses === 1 && speeds.length === 2 && speeds[1] > 35 && speeds[1] < speeds[0], JSON.stringify(speeds));
+  const meet = await bob.evaluate('window.__meet');
+  // The car's middle at most its half length and a little more from the bike's when it starts to fall (2.4 + 1.6 m).
+  ok('on Bob\'s page the bike starts to fall as the car he sees gets there', !!meet && meet.gap < 4, JSON.stringify(meet));
   await shot(bob, 'bob-sees-it-lie');
 
   // Bob walks up to the lying bike and gets on: it stands up, on Alice's page too.
