@@ -38,6 +38,8 @@ export class HeliHud {
   private fill = document.createElement('i');
   private last = '';
   private lastHorizon = '';
+  private size = 44;
+  private viewAt = '';
 
   constructor(parent: HTMLElement) {
     this.root.id = 'heli-hud';
@@ -99,7 +101,14 @@ export class HeliHud {
     }
     // The horizon: the roll turns it the other way, the nose down lifts it (more ground shows), as in a real one.
     const roll = Math.round((-r.roll * 180) / Math.PI);
-    const shift = Math.round(Math.max(-16, Math.min(16, -(r.pitch * 180) / Math.PI * 0.6)));
+    // At most a quarter of the disc either way, so it never goes one colour (34 px on touch, 44 px elsewhere).
+    const view = `${innerWidth}x${innerHeight}`;
+    if (view !== this.viewAt && this.horizon.clientWidth) {
+      this.viewAt = view;
+      this.size = this.horizon.clientWidth;
+    }
+    const most = this.size * 0.25;
+    const shift = Math.round(Math.max(-most, Math.min(most, -(r.pitch * 180) / Math.PI * 0.6)));
     const h = `${roll}:${shift}`;
     if (h !== this.lastHorizon) {
       this.lastHorizon = h;

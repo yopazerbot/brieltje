@@ -1499,7 +1499,7 @@ let wasTogether = false; // playing with the others until this account change
 let homeUser: string | null = null; // the account the homes' locks were last set for
 /** Out of a home that is locked for this player (its lock came back while they stood in it): in front of it, at its portal. */
 function putOutside(): void {
-  if (driving || riding) return;
+  if (driving || riding || helis.aboard) return;
   let home = homeAt(player.x, player.z, player.feet);
   if (!home && !player.flying && player.chute === null && inEndGarden(player.x, player.z, player.feet) && !homeLocks.isOpen('molenhoek_end')) {
     // The end house's fenced garden, which is only reached through the house: together the server moves the player (its copy
@@ -1855,7 +1855,7 @@ clowns.onLand = (at, what) => {
     rumble(near, near * 0.6, 200);
   }
   // In multiplayer the server decides who is hurt; alone it's decided here.
-  if (net.connected || !combat.alive || driving || riding || !weapon.enabled || Math.abs(player.feet - at.y) > 2.5) return;
+  if (net.connected || !combat.alive || driving || riding || helis.aboard || !weapon.enabled || Math.abs(player.feet - at.y) > 2.5) return;
   const f = KINDS.strongman.fight;
   const hp = what === 'stomp' ? hurtBy(Math.hypot(player.x - at.x, player.z - at.z), f.stompRadius, f.stompDamage) : hurtBy(Math.hypot(player.x - at.x, player.z - at.z), f.rockRadius, f.rockDamage);
   if (hp > 0) {
@@ -2532,7 +2532,7 @@ const CHUTE_WORDS = new Set(['parachute', 'chute', 'para']);
  */
 function chuteCommand(): void {
   if (rules.parachute === false) return chat.system(() => t('srv.chuteOff'));
-  if (!combat.alive || driving || riding || horses.mounted >= 0 || bikes.mounted || trip || player.chute !== null || solo || soloStarting) return chat.system(() => t('srv.chuteNotNow'));
+  if (!combat.alive || driving || riding || helis.aboard || horses.mounted >= 0 || bikes.mounted || trip || player.chute !== null || solo || soloStarting) return chat.system(() => t('srv.chuteNotNow'));
   const ground = player.ground.name;
   if (indoorName(ground, roomNames)) return chat.system(() => t('srv.chuteIndoors'));
   if (net.connected) net.send({ t: 'chute' });
@@ -2557,7 +2557,7 @@ const wrapAngle = (a: number) => Math.atan2(Math.sin(a), Math.cos(a));
  */
 function spawnThing(thing: Thing): void {
   if (!maySpawn()) return chat.system(() => t('srv.spawnOff'));
-  if (!combat.alive || driving || riding || bikes.mounted || trip) return chat.system(() => t('spawn.notNow'));
+  if (!combat.alive || driving || riding || helis.aboard || bikes.mounted || trip) return chat.system(() => t('spawn.notNow'));
   const fx = -Math.sin(player.yaw), fz = -Math.cos(player.yaw);
   const eye = { x: player.x, y: player.feet + 1.2, z: player.z };
   // A spot `d` m ahead on the floor near your level, with no wall between it and you; or null.
@@ -3506,7 +3506,7 @@ renderer.setAnimationLoop((now: number) => {
     // Dead: the view sinks to the floor; you can look around but not move or shoot.
     const dead = !combat.alive;
     player.down += ((dead ? 1 : 0) - player.down) * (1 - Math.exp(-dt * 5));
-    if (helis.aboard && (games.fenced || games.zombies)) helis.leaveNow(); // a game puts everyone on their feet
+    if (helis.aboard && (games.fenced || games.zombies)) helis.leaveNow(true); // a game puts everyone on their feet, the machine back on its pad
     if (helis.aboard) {
       // In the helicopter (src/heliPilot.ts): it flies as you walk, turns as you look and rises as you fly on foot.
       const hit = helis.fly(dt, frame, frame === polled ? input.heli : null, player.look(dt, frame), camera, avatars.obstacles());
@@ -3986,7 +3986,7 @@ renderer.setAnimationLoop((now: number) => {
   life.update(dt, camera.position);
   villageSmoke?.follow(dt, camera.position, !phone && quality !== 'low');
   // Alone, the strongmen fight here, going for you when you fight (in multiplayer the server runs them).
-  if (!net.connected) clowns.stepAlone(dt, combat.alive && weapon.enabled && !driving && !riding && !games.peaceful ? { x: player.x, y: player.feet, z: player.z } : null);
+  if (!net.connected) clowns.stepAlone(dt, combat.alive && weapon.enabled && !driving && !riding && !helis.aboard && !games.peaceful ? { x: player.x, y: player.feet, z: player.z } : null);
   clowns.update(camera.position);
   // The Zombies game: alone its horde steps here; together the server's ticks move them. Then they're drawn.
   if (!net.connected) soloTick(dt);

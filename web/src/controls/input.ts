@@ -243,7 +243,7 @@ export class Input {
     out.sprint = k('ShiftLeft') || k('ShiftRight');
     out.steadyHeld = out.sprint;
     out.jumpHeld = k('Space');
-    out.downHeld = k('ControlLeft') || k('ControlRight') || k('KeyC');
+    out.downHeld = k('KeyC') || k('ControlLeft') || k('ControlRight');
     out.useHeld = k('KeyE');
     out.reloadHeld = k('KeyR');
     out.throwHeld = k('KeyG');
@@ -328,7 +328,10 @@ export class Input {
     this.touch?.into(out);
     const arrows = (k('ArrowRight') ? 1 : 0) - (k('ArrowLeft') ? 1 : 0);
     const trigger = (b: number) => (p ? p.buttons[b]?.value ?? 0 : 0);
-    this.heli = { fwd: Math.max(-1, Math.min(1, out.moveY)), side: Math.max(-1, Math.min(1, out.moveX - arrows)), turn: arrows, triggers: trigger(BTN.r2) - trigger(BTN.l2), view: this.keyView };
+    // Sideways: the keys' A and D alone (moveX took D or the right arrow as one), then the sticks as they are.
+    const keysX = (k('KeyD') || k('ArrowRight') ? 1 : 0) - (k('KeyA') || k('ArrowLeft') ? 1 : 0);
+    const side = out.moveX - keysX + (k('KeyD') ? 1 : 0) - (k('KeyA') ? 1 : 0);
+    this.heli = { fwd: Math.max(-1, Math.min(1, out.moveY)), side: Math.max(-1, Math.min(1, side)), turn: arrows, triggers: trigger(BTN.r2) - trigger(BTN.l2), view: this.keyView };
     this.keyView = false;
     out.steer = Math.max(-1, Math.min(1, out.moveX));
     const mag = Math.hypot(out.moveX, out.moveY);

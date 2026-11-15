@@ -65,7 +65,7 @@ const TABLE = {
   heliMove: { kbm: () => moveKeys(), pad: say('key.leftStick'), touch: say('tctl.move') },
   heliTurn: { kbm: () => t('key.or', { a: t('key.mouse'), b: '← / →' }), pad: say('key.rightStick'), touch: say('tctl.look') },
   heliUp: { kbm: say('key.space'), pad: pads('r2', 'south'), touch: say('touch.up') },
-  heliDown: { kbm: () => t('key.or', { a: t('key.ctrlC'), b: keyName('KeyC') }), pad: pads('l2', 'east'), touch: say('touch.down') },
+  heliDown: { kbm: () => t('key.or', { a: keyName('KeyC'), b: t('key.ctrlC') }), pad: pads('l2', 'east'), touch: say('touch.down') }, // C first: Ctrl with W closes the tab
   heliView: { kbm: place('KeyI'), pad: pad('r3'), touch: say('touch.view') },
   /** A place in a portal's list (digits pick only places while it shows: src/ui/travel.ts). */
   portal: {
