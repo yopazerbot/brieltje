@@ -138,3 +138,29 @@ main:has(.tonight) { justify-content: flex-start; }
 .tonight .cols.tight .rows { gap: 0.45vmin; }
 .tonight .cols.tight .row .dot { width: 1.8vmin; height: 1.8vmin; }
 .tonight .cols.two .row .bar { display: none; }
+
+/* Tonight's route times and gnomes beside the points (under them on a narrow screen), and the all-time boards: small
+   cards with a title and a line per player, the top three's places in gold, silver and bronze. */
+.split { display: grid; gap: 3vmin; align-items: start; }
+@media (min-aspect-ratio: 4/3) { .split { grid-template-columns: minmax(0, 1fr) minmax(0, 0.8fr); } }
+.extras { display: grid; gap: 2vmin; }
+.block h2 { margin: 0 0 1vmin; font-family: var(--display); font-size: 2.4vmin; font-weight: 600; letter-spacing: 0.1em; text-transform: uppercase; color: var(--muted); }
+.cards { display: grid; gap: 1.6vmin; }
+.cards.three { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+.cards.six { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+.card { min-width: 0; padding: 1.4vmin 1.8vmin; background: var(--raised); border-radius: 1.8vmin; box-shadow: 0 0.45vmin 0 var(--edge); }
+.card h3 { margin: 0 0 0.8vmin; font-family: var(--display); font-size: 2.3vmin; font-weight: 600; line-height: 1.2; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.card .line { display: grid; grid-template-columns: 3vmin minmax(0, 1fr) auto; align-items: center; gap: 1vmin; padding: 0.35vmin 0; border-top: 1px solid var(--line); font-size: 2.2vmin; }
+.card .pos { font-family: var(--display); font-weight: 700; color: var(--muted); text-align: center; }
+.card .line.p1 .pos { color: var(--accent); }
+.card .line.p2 .pos { color: var(--silver); }
+.card .line.p3 .pos { color: var(--bronze); }
+.card .who { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.card .line b { font-family: var(--display); font-weight: 700; font-variant-numeric: tabular-nums; }
+.card .none { padding: 0.6vmin 0; font-size: 2vmin; color: var(--muted); }
+/* All-time: six boards of ten in a grid of three by two, fitting between the header and the footer. */
+main:has(.alltime) { justify-content: flex-start; padding-top: 0; padding-bottom: 0; }
+.cards.six { gap: 1.6vmin 2.4vmin; }
+.alltime .card { padding: 1.1vmin 2vmin 1.3vmin; }
+.alltime .card h3 { margin-bottom: 0.5vmin; font-size: 2.5vmin; }
+.alltime .card .line { font-size: 2.05vmin; padding: 0.12vmin 0; }

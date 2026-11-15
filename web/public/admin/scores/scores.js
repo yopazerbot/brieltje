@@ -2,8 +2,12 @@
 // scores, the round and the game being played, live from the admin stream (server/stats.mjs, event
 // "board"), in Dutch or English. Admin only: the stream needs the admin's session. Names are what
 // players typed, so everything is put on the page as text, never as HTML. At a LAN night (server/host.mjs) the
-// "Tonight" button shows the evening's scoreboard instead: the teams' totals and everyone's points; the footer
-// shows the address this screen was opened on, which is the one players type on a local server.
+// "Tonight" button shows the evening's scoreboard instead: the teams' totals and everyone's points, with tonight's best
+// route times and gnomes found beside them (guests too); pressed again, "All-time": the six all-time boards (Zombies,
+// the three routes, the gnomes, the party games; accounts only) from the public GET /api/boards and /api/scores,
+// fetched when shown and each minute. Everything from the server is checked (route ids looked up in this page's own
+// list, times and counts in range) and goes in as text. The footer shows the address this screen was opened on, which
+// is the one players type on a local server.
 (() => {
   const $ = (id) => document.getElementById(id);
   const T = {
@@ -19,6 +23,10 @@
       zombies: 'Zombies', wave: 'golf {n}', break: 'pauze', zleft: 'nog {n} zombies', zbeaten: 'Zombies verslagen', zbest: 'Beste ooit: golf {n}', down: 'neer',
       tonight: 'Vanavond', game: 'Het spel', games: '{n} spellen gespeeld', games1: '1 spel gespeeld', won: 'Winst', played: 'Spellen', noGames: 'Nog geen spellen gespeeld vanavond',
       blue: 'Blauw', orange: 'Oranje', green: 'Groen', purple: 'Paars',
+      allTime: 'Aller tijden', racesTonight: 'Races vanavond', gnomesTonight: 'Kabouters vanavond', gamesWon: 'Gewonnen groepsspelletjes',
+      nobody: 'Nog niemand', foot: 'Het kerkplein te voet', bike: 'Dorpsronde met de fiets', car: 'Toertje Briel met de auto',
+      bestRuns: 'Zombies: beste rondes', gnomesFound: 'Gevonden kabouters', carTonight: 'Telt alleen voor vanavond',
+      accounts: 'Spelers met een account · bijgewerkt om {time}', offline: 'Nu even niet op te halen',
     },
     en: {
       free: 'Free play', hide: 'Hide and seek', tag: 'Tag', treasure: 'Treasure hunt', teams: 'House against bungalow',
@@ -32,6 +40,10 @@
       zombies: 'Zombies', wave: 'wave {n}', break: 'break', zleft: '{n} zombies left', zbeaten: 'Zombies beaten', zbest: 'Best ever: wave {n}', down: 'down',
       tonight: 'Tonight', game: 'The game', games: '{n} games played', games1: '1 game played', won: 'Wins', played: 'Games', noGames: 'No games played yet tonight',
       blue: 'Blue', orange: 'Orange', green: 'Green', purple: 'Purple',
+      allTime: 'All-time', racesTonight: 'Races tonight', gnomesTonight: 'Gnomes tonight', gamesWon: 'Party games won',
+      nobody: 'Nobody yet', foot: 'Church square on foot', bike: 'Village loop by bike', car: 'Round Briel by car',
+      bestRuns: 'Zombies: best runs', gnomesFound: 'Gnomes found', carTonight: 'Counts for tonight only',
+      accounts: 'Players with an account · updated {time}', offline: "Can't be fetched just now",
     },
   };
   let lang = 'nl';
@@ -54,9 +66,13 @@
   };
 
   let board = null;
-  let evening = false; // the evening's scoreboard (the "Tonight" button) instead of the game's
+  // What the screen shows, in turn on one button: the game ('game'), the evening's scoreboard ('evening', "Tonight"),
+  // or the all-time boards ('alltime').
+  const VIEWS = ['game', 'evening', 'alltime'];
+  let view = 'game';
   try {
-    evening = localStorage.getItem('briel.scoresView') === 'evening';
+    const kept = localStorage.getItem('briel.scoresView');
+    if (VIEWS.includes(kept)) view = kept;
   } catch {
     // storage blocked
   }
@@ -95,8 +111,17 @@
     document.documentElement.lang = lang;
     $('full').textContent = t('full');
     $('join').replaceChildren(document.createTextNode(t('join')), el('b', '', location.host));
-    $('evening').textContent = evening ? t('game') : t('tonight');
+    const next = VIEWS[(VIEWS.indexOf(view) + 1) % VIEWS.length];
+    $('evening').textContent = next === 'game' ? t('game') : next === 'evening' ? t('tonight') : t('allTime');
     $('count').textContent = t('count', { a: playing.together.length, b: playing.alone.length });
+    if (view === 'alltime') {
+      // The all-time boards: from the public lists, not the stream (fetched each minute while shown).
+      $('mode-title').textContent = t('allTime');
+      $('mode-sub').textContent = allTimeAt ? t('accounts', { time: allTimeAt }) : '';
+      $('board').replaceChildren(allTime());
+      $('banner').hidden = true;
+      return;
+    }
     if (!board) return;
     const mode = board.mode;
     const kind = mode.kind || 'free';
@@ -108,7 +133,7 @@
       : [t(mode.phase) ?? '', mode.phase !== 'done' ? t('left', { t: clock(left) }) : ''].filter(Boolean).join(' · ');
     const players = board.players;
     const main = $('board');
-    if (evening && board.evening) {
+    if (view === 'evening' && board.evening) {
       $('mode-title').textContent = t('tonight');
       $('mode-sub').textContent = t(board.evening.games === 1 ? 'games1' : 'games', { n: board.evening.games });
       main.replaceChildren(tonight(board.evening));
@@ -207,10 +232,13 @@
       }
       box.append(totals);
     }
+    // The points on the left, tonight's route times and gnomes beside them (under them on a narrow screen).
+    const split = el('div', 'split');
     if (!ev.players.length) {
       const empty = el('div', 'empty');
       empty.append(el('div', 'big', t('noGames')));
-      box.append(empty);
+      split.append(empty, extras(ev));
+      box.append(split);
       return box;
     }
     // Up to 32 players: in two columns of compact rows past eight, each with its own heading.
@@ -224,6 +252,119 @@
       for (const p of list) col.append(row(++rank, { name: p.name, color: TEAM_COLOURS[p.team] ?? '#9aa5b1' }, [p.points, p.wins, p.played], { lead: p.points > 0, out: !p.here, note: p.team ? t(p.team) : '' }));
       grid.append(col);
     }
+    split.append(grid, extras(ev));
+    box.append(split);
+    return box;
+  }
+
+  // ---- the boards of the routes, the gnomes and the party games (server/goals.mjs, server/boards.mjs)
+  /** The routes, by the ids this page knows: a route id from the server is only ever looked up here, never shown. */
+  const ROUTES = ['foot', 'bike', 'car'];
+  /** A name as it may be shown (as text only): a string of 1 to 40 characters, else null. */
+  const nameOf = (v) => (typeof v === 'string' && v.length > 0 && v.length <= 40 ? v : null);
+  /** A whole number from `min` to `max`, else null. */
+  const whole = (v, min, max) => (typeof v === 'number' && Number.isInteger(v) && v >= min && v <= max ? v : null);
+  /** A time the game keeps (shared/goals.mjs TIME_MIN, TIME_MAX), as m:ss.t (m:ss,t in Dutch), else null. */
+  const time = (ms) => {
+    if (typeof ms !== 'number' || !Number.isFinite(ms) || ms < 3000 || ms > 3600000) return null;
+    const tenths = Math.floor(ms / 100);
+    return `${Math.floor(tenths / 600)}:${String(Math.floor((tenths % 600) / 10)).padStart(2, '0')}${lang === 'nl' ? ',' : '.'}${tenths % 10}`;
+  };
+  const own = (o, k) => (o && typeof o === 'object' && !Array.isArray(o) && Object.hasOwn(o, k) ? o[k] : undefined);
+  const rowsOf = (v, max) => (Array.isArray(v) ? v.slice(0, max) : []);
+
+  /** A small board: its title, then a line per row (place, name, value), or a quiet line when it has none. */
+  function card(title, lines, emptyText = t('nobody')) {
+    const c = el('div', 'card');
+    c.append(el('h3', '', title));
+    if (!lines.length) c.append(el('div', 'none', emptyText));
+    lines.forEach(([name, value], i) => {
+      const r = el('div', `line${i < 3 ? ` p${i + 1}` : ''}`);
+      r.append(el('span', 'pos', String(i + 1)), el('span', 'who', name), el('b', '', value));
+      c.append(r);
+    });
+    return c;
+  }
+
+  /** Tonight's best route times (top 5 per route) and gnomes found (top 5), from the host's board: guests too. */
+  function extras(ev) {
+    const box = el('div', 'extras');
+    const races = el('section', 'block');
+    races.append(el('h2', '', t('racesTonight')));
+    const cards = el('div', 'cards three');
+    for (const id of ROUTES) {
+      const lines = rowsOf(own(ev.races, id), 5).flatMap((r) => {
+        const n = nameOf(r?.name), v = time(r?.ms);
+        return n && v ? [[n, v]] : [];
+      });
+      cards.append(card(t(id), lines));
+    }
+    races.append(cards);
+    const gnomes = el('section', 'block');
+    gnomes.append(el('h2', '', t('gnomesTonight')));
+    const lines = rowsOf(ev.gnomes, 5).flatMap((r) => {
+      const n = nameOf(r?.name), v = whole(r?.n, 1, 200);
+      return n && v ? [[n, String(v)]] : [];
+    });
+    const one = el('div', 'cards');
+    one.append(card(t('gnomesFound'), lines));
+    gnomes.append(one);
+    box.append(races, gnomes);
+    return box;
+  }
+
+  /** The all-time boards (GET /api/boards and /api/scores, public): the last answers, and when they came. */
+  let allTimeData = null;
+  let allTimeAt = '';
+  let allTimeFailed = false;
+  async function fetchAllTime() {
+    const get = (path) => fetch(path, { credentials: 'same-origin' }).then((r) => (r.ok ? r.json() : Promise.reject(new Error(String(r.status)))));
+    const [boards, scores] = await Promise.allSettled([get('/api/boards'), get('/api/scores')]);
+    if (boards.status === 'fulfilled' || scores.status === 'fulfilled') {
+      allTimeData = {
+        boards: boards.status === 'fulfilled' ? boards.value : allTimeData?.boards ?? null,
+        scores: scores.status === 'fulfilled' ? scores.value : allTimeData?.scores ?? null,
+      };
+      allTimeAt = new Date().toLocaleTimeString(lang === 'nl' ? 'nl-BE' : 'en-GB', { hour: '2-digit', minute: '2-digit' });
+    }
+    allTimeFailed = boards.status === 'rejected' && scores.status === 'rejected';
+    if (view === 'alltime') draw();
+  }
+
+  /** The six all-time boards in a grid: Zombies, the three routes, the gnomes, the party games; ten rows each at most. */
+  function allTime() {
+    const box = el('div', 'alltime');
+    if (!allTimeData) {
+      const empty = el('div', 'empty');
+      empty.append(el('div', 'big', allTimeFailed ? t('offline') : '…'));
+      box.append(empty);
+      return box;
+    }
+    const b = allTimeData.boards;
+    const grid = el('div', 'cards six');
+    const zombies = rowsOf(own(allTimeData.scores, 'rows'), 10).flatMap((r) => {
+      const n = nameOf(r?.username), w = whole(r?.wave, 0, 9999);
+      return n && w !== null ? [[n, t('wave', { n: w })]] : [];
+    });
+    grid.append(card(t('bestRuns'), zombies));
+    for (const id of ROUTES) {
+      const lines = rowsOf(own(own(b, 'races'), id), 10).flatMap((r) => {
+        const n = nameOf(r?.username), v = time(r?.ms);
+        return n && v ? [[n, v]] : [];
+      });
+      grid.append(card(t(id), lines, id === 'car' ? t('carTonight') : t('nobody')));
+    }
+    const total = whole(own(b, 'gnomeTotal'), 1, 200);
+    const gnomes = rowsOf(own(b, 'gnomes'), 10).flatMap((r) => {
+      const n = nameOf(r?.username), v = whole(r?.n, 1, total ?? 200);
+      return n && v ? [[n, total ? `${v} / ${total}` : String(v)]] : [];
+    });
+    grid.append(card(t('gnomesFound'), gnomes));
+    const games = rowsOf(own(b, 'games'), 10).flatMap((r) => {
+      const n = nameOf(r?.username), v = whole(r?.wins, 1, 9999);
+      return n && v ? [[n, String(v)]] : [];
+    });
+    grid.append(card(t('gamesWon'), games));
     box.append(grid);
     return box;
   }
@@ -302,6 +443,7 @@
       return;
     }
     $('gate').hidden = true;
+    if (view === 'alltime') void fetchAllTime();
     connect();
   }
 
@@ -323,14 +465,19 @@
     });
   }
   $('evening').addEventListener('click', () => {
-    evening = !evening;
+    view = VIEWS[(VIEWS.indexOf(view) + 1) % VIEWS.length];
     try {
-      localStorage.setItem('briel.scoresView', evening ? 'evening' : 'game');
+      localStorage.setItem('briel.scoresView', view);
     } catch {
       // storage blocked
     }
+    if (view === 'alltime') void fetchAllTime();
     draw();
   });
+  // The all-time boards come again each minute while they show (the server builds them every 15 s at most).
+  setInterval(() => {
+    if (view === 'alltime' && $('gate').hidden) void fetchAllTime();
+  }, 60_000);
   const full = () => (document.fullscreenElement ? document.exitFullscreen() : document.documentElement.requestFullscreen()).catch(() => {});
   $('full').addEventListener('click', full);
   addEventListener('keydown', (e) => {
