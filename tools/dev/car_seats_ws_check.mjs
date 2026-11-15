@@ -3,7 +3,8 @@
 // change nothing: a passenger's own position (pinned to the car), hits on and from the car, a grenade's blast at it,
 // a pickup, a cat, a clown and villagers from a seat, a forged leap after getting out. Honest play still works: the
 // passenger rides along, gets out beside the car and back in. Out, two hits and back in at once: refused, either seat,
-// for 10 s after hitting or being hit (the page told why). The treasure hunt's coins from a car: none (on foot:
+// for 10 s after hitting or being hit (the page told why). A walker's forged rise is held to the climbing budget, an
+// honest one taken whole. The treasure hunt's coins from a car: none (on foot:
 // counted); tag from a car: none, being tagged in it: yes. A car standing inside a code-locked home: no guest gets in.
 //
 //   ADMIN_PASSWORD=... node tools/dev/car_seats_ws_check.mjs --api http://localhost:8310
@@ -289,6 +290,40 @@ for (let i = 0; i < 50; i++) {
   ok('   control: ten seconds on, both get in again', carSeen()?.driver === dr.name && carSeen()?.passenger === pa.name, JSON.stringify({ driver: carSeen()?.driver, passenger: carSeen()?.passenger }));
   Object.assign(dr, carSeen() ? { x: carSeen().x, y: carSeen().y, z: carSeen().z } : {});
   Object.assign(pa, { x: dr.x, y: dr.y, z: dr.z });
+}
+
+// 5c. Rising on foot (position forgery): states 1 m higher every 50 ms (20 m/s) for 3 s, not flying. Before, the server
+// took 16 m/s of it (a walker on the ground was at 56 m after 3 s); now at most the climbing budget (server/game.mjs
+// FOOT_RISE: 5 m stored and 3 m/s). Back down at a fall's pace; then an honest sprint up a stair, 2.9 m in a second, whole.
+{
+  wa.sync();
+  const y0 = wa.y;
+  for (let k = 1; k <= 60; k++) {
+    wa.send({ t: 'state', x: wa.x, y: y0 + k, z: wa.z, yaw: 0, pitch: 0, armed: true, w: 'pistol' });
+    dr.state();
+    pa.state();
+    await sleep(50);
+  }
+  await sleep(300);
+  const up = (seen(wa)?.y ?? y0) - y0;
+  ok('5c. forged states rising at 20 m/s for 3 s, on foot: held to the climbing budget', up <= 5 + 3 * 3.4 + 0.5, `${up.toFixed(2)} m up (it was 56)`);
+  for (let k = 0; k < 40; k++) {
+    wa.send({ t: 'state', x: wa.x, y: y0, z: wa.z, yaw: 0, pitch: 0, armed: true, w: 'pistol' });
+    await sleep(50);
+  }
+  const down = (seen(wa)?.y ?? 0) - y0;
+  for (let k = 1; k <= 20; k++) {
+    wa.send({ t: 'state', x: wa.x, y: y0 + (2.9 * k) / 20, z: wa.z, yaw: 0, pitch: 0, armed: true, w: 'pistol' });
+    await sleep(50);
+  }
+  await sleep(300);
+  const stair = (seen(wa)?.y ?? y0) - y0;
+  ok('   control: back down, then a sprint up a stair (2.9 m in a second) taken whole', Math.abs(down) < 0.05 && Math.abs(stair - 2.9) < 0.05, `down to ${down.toFixed(2)} m, then ${stair.toFixed(2)} m up`);
+  for (let k = 0; k < 10; k++) {
+    wa.send({ t: 'state', x: wa.x, y: y0, z: wa.z, yaw: 0, pitch: 0, armed: true, w: 'pistol' });
+    await sleep(50);
+  }
+  wa.sync();
 }
 
 // 6. The treasure hunt: nobody collects from the car; on foot the same coin counts.

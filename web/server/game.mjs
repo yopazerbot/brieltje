@@ -319,6 +319,13 @@ const ADMIN_SPEED = 16 * 15; // m/s: the admin may move extremely fast (src/play
 // for network jitter as running has; and how far up a drop may go (m, refilling at `rate` m/s): next to nothing.
 const DROP_SPEED = DROP.across * 1.3;
 const DROP_RISE = { max: 0.6, rate: 0.5 };
+// Going up on foot (not flying, in no drop, seat or saddle; the admin's own speed aside) has a budget of its own: m/s it
+// refills at, and m it holds. Measured on the page at 30 and 144 Hz and with 250 ms frames (DECISIONS.md): the steepest
+// stair (the main house's to its roof terrace) 2.8 m in a second at a sprint, hopping up it 3.1 m; the church's tower
+// stair 1.5 m/s for 8 s; up a 40-degree roof 2.9 m in a second; a jump 0.5 m; the play tower's ladder 0.5 m/s; the lift
+// out of a drawn roof 4 m/s, 3.9 m in a second. The store covers a second's states arriving at once after a laggy gap;
+// the rate the longest climbs. Down stays as fast as a fall (MAX_SPEED).
+const FOOT_RISE = { rate: 3, store: 5 };
 const CAR_SPEED = Math.max(...Object.values(CARS.cars).map((c) => c.maxSpeed)) * 1.2; // m/s in a car, with room for network jitter
 const HORSE_SPEED = HORSES.gallop * 1.3; // m/s on horseback
 const BIKE_SPEED = BIKES.maxSpeed * 1.3; // m/s on a bike: its top speed (downhill), with room for network jitter
@@ -1022,6 +1029,16 @@ export class Game {
         next.y = prev.y + dy;
         next.yaw = this.helis.turn(player, heli, next.yaw, secs);
       }
+      // Up on foot no faster than climbing goes (FOOT_RISE): before, a forged page rose at 16 m/s to the ceiling (position
+      // forgery). Flying, a drop, the helicopter's seats, horses, bikes and the admin keep their own rules, and a car its
+      // MAX_SPEED (a driver's honest climbs at the car's speed were not measured). The budget refills whatever they do, and
+      // only a climb on foot spends it.
+      const ubudget = Math.min(FOOT_RISE.store, (player.ubudget ?? FOOT_RISE.store) + FOOT_RISE.rate * secs);
+      const onFoot = !inCar && !horse && !bike && !heli && !drop && !next.flying && player.role !== 'admin';
+      if (onFoot && dy > ubudget) {
+        dy = ubudget;
+        next.y = prev.y + dy;
+      }
       const across = Math.hypot(dx, dz);
       const step = Math.min(across, budget);
       const vstep = Math.min(Math.abs(dy), vbudget);
@@ -1029,6 +1046,7 @@ export class Game {
       if (Math.abs(dy) > vstep) next.y = prev.y + Math.sign(dy) * vstep;
       player.budget = budget - step;
       player.vbudget = vbudget - vstep;
+      player.ubudget = ubudget - (onFoot && dy > 0 ? vstep : 0);
       player.movedAt = now;
       // The edge of the game: a position outside it (only a changed page sends one) is put back just inside.
       // The ceiling too, but in a drop the one it started under (it starts over the flying ceiling).
