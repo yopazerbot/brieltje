@@ -34,7 +34,6 @@ export class HeliPilot {
   /** s the flying keys still show (after the lift-off), the "land first" and "no room" lines */
   private hint = 0;
   private landHint = 0;
-  private roomHint = 0;
   private shownKeys = false;
 
   constructor(
@@ -85,7 +84,10 @@ export class HeliPilot {
     return game ? 'prompt.heliGame' : together ? 'prompt.heliAlone' : null;
   }
 
-  /** Out, if it is on a floor (or nearly) and there is room by a door; else a line says why. True when out. */
+  /**
+   * Out, if it is at rest (on a floor, or on its boom or cabin on something) or nearly on a floor; flying, a line says
+   * to land. At rest you always get out: by a door with room, else on the floor below its hub.
+   */
   leave(cameraAt: THREE.Vector3): boolean {
     const m = this.heli;
     if (!m) return false;
@@ -93,25 +95,27 @@ export class HeliPilot {
       this.landHint = 2.5;
       return false;
     }
-    const at = m.exitSpot();
-    if (!at) {
-      this.roomHint = 2.5;
-      return false;
-    }
+    const at = m.exitSpot() ?? { x: m.s.x, y: this.world.groundAt(m.s.x, m.s.z, m.s.y - 0.5, 0).y, z: m.s.z };
     m.leave();
     this.heli = null;
     this.placePlayer(at.x, at.z, at.y, Math.atan2(cameraAt.x - m.s.x, cameraAt.z - m.s.z));
     return true;
   }
 
-  /** Out at once wherever it is (a game starts, a respawn, a trip from the chat): the machine is set down on the floor below. */
-  leaveNow(): void {
+  /**
+   * Out at once wherever it is (a respawn, a trip from the chat, joining others): the machine is set down on the floor
+   * below, or with `home` on its own pad (a game starting: never inside a game's fence); you stand where you were, on
+   * the floor below you.
+   */
+  leaveNow(home = false): void {
     const m = this.heli;
     if (!m) return;
-    m.leave();
+    const x = m.s.x, y = m.s.y, z = m.s.z, yaw = m.s.yaw;
+    const at = home ? null : m.exitSpot();
+    m.leave(home);
     this.heli = null;
-    const at = m.exitSpot() ?? { x: m.s.x + 2.2 * Math.cos(m.s.yaw), y: m.s.floor, z: m.s.z - 2.2 * Math.sin(m.s.yaw) };
-    this.placePlayer(at.x, at.z, at.y, m.s.yaw);
+    if (at) this.placePlayer(at.x, at.z, at.y, yaw);
+    else this.placePlayer(x, z, this.world.groundAt(x, z, y + 0.5, 0).y, yaw);
   }
 
   /**
@@ -140,7 +144,6 @@ export class HeliPilot {
     else m.chase(camera, dt, -look[1]);
     this.hint = Math.max(0, this.hint - dt);
     this.landHint = Math.max(0, this.landHint - dt);
-    this.roomHint = Math.max(0, this.roomHint - dt);
     return hit;
   }
 
@@ -151,26 +154,36 @@ export class HeliPilot {
     if (!m) return near ? (why ? t(why as 'prompt.heliGame') : t('prompt.heli', { use: key('use', mode) })) : '';
     const s = m.s;
     if (s.down > 0) return t('prompt.heliDown', { n: Math.ceil(s.down) });
-    if (this.roomHint > 0) return t('prompt.heliNoRoom');
     if (this.landHint > 0) return t('prompt.heliLand');
     if (!s.engine && s.ground) return t('prompt.heliStart', { up });
     if (s.engine && s.rotor < HELI.LIFT_RPM) return t('prompt.heliSpinning', { up });
     if (s.atCeiling) return t('prompt.heliCeiling');
     if (s.atEdge) return t('prompt.edge');
-    if (this.hint > 0) return t('prompt.heliFlying', { up, down: key('heliDown', mode), move: key('heliMove', mode), turn: key('heliTurn', mode), use: key('use', mode) });
+    // The keys for the first seconds in the air, one short line; on touch none (the buttons say what they do).
+    if (this.hint > 0 && mode !== 'touch') return t('prompt.heliFlying', { up, down: key('heliDown', mode), view: key('heliView', mode), use: key('use', mode) });
     return '';
   }
 
   /** Every frame: the machines (the one you fly and those standing or running down) and the instruments (`shown`: playing, not in the menu). */
   update(dt: number, camera: THREE.Camera, shown: boolean): void {
-    for (const m of this.machines) m.update(dt, camera.position, camera.position);
+    for (const m of this.machines) m.update(dt, camera.position);
     const m = this.heli;
+    if (this.painting) return; // laid out and drawn unseen until play begins (prepaint)
     this.hud.update(shown && m ? { speed: Math.hypot(m.s.vx, m.s.vz), height: m.s.h, climb: m.s.vy, pitch: m.s.pitch, roll: m.s.roll, rotor: m.s.rotor, liftAt: HELI.LIFT_RPM } : null);
   }
 
-  /** The warm-up behind the start screen: every part of every machine drawn and the instruments laid out once. */
+  /** The warm-up behind the start screen: every part of every machine drawn, the blur discs' and lamps' shaders made. */
   warm(on: boolean): void {
     for (const m of this.machines) m.warm(on);
+  }
+
+  private painting = false;
+  /**
+   * Until play (main.ts prepaint): the instruments shown in the unseen HUD behind the start screen, so their first
+   * layout and drawing (the horizon's layer, the digits) are paid there, not at the first boarding.
+   */
+  prepaint(on: boolean): void {
+    this.painting = on;
     this.hud.update(on ? { speed: 12, height: 34, climb: 1.5, pitch: 0.1, roll: -0.1, rotor: 0.5, liftAt: HELI.LIFT_RPM } : null);
   }
 
@@ -184,7 +197,7 @@ export class HeliPilot {
     /** A machine put down at a pad ('house', 'church') or a spot, its rotor at `rotor` (0 to 1: running when at speed). */
     put: (where: string | { x: number; y?: number; z: number; yaw?: number }, rotor = 0, i = 0) => {
       const m = this.machines[i];
-      const p = typeof where === 'string' ? PADS.find((q) => q.id === where) : where;
+      const p = typeof where === 'string' ? HELIS.pads.find((q) => q.id === where) : where; // the planned ones too
       if (!m || !p) return null;
       const y = this.world.groundAt(p.x, p.z, (p.y ?? 0) + 1, 0).y;
       m.place(p.x, y, p.z, p.yaw ?? m.s.yaw, rotor);
@@ -198,7 +211,7 @@ export class HeliPilot {
     crowns: () => this.crowns,
     state: (i = 0) => {
       const m = this.machines[i];
-      return { ...m.s, view: m.view, sound: m.soundOn, flown: m.flown };
+      return { ...m.s, view: m.view, sound: m.soundOn, flown: m.flown, ready: m.ready, draws: m.draws() };
     },
   };
 }

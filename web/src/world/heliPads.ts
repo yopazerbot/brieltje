@@ -17,7 +17,8 @@ export interface Pad {
   yaw: number;
 }
 
-export const PADS: Pad[] = HELIS.pads.map((p) => ({ id: p.id, x: p.x, y: p.y, z: p.z, yaw: p.yaw }));
+/** The pads that are there: a `planned` one (the church's, until its platform is built) has no ring and no pull yet. */
+export const PADS: Pad[] = HELIS.pads.filter((p) => !('planned' in p && p.planned)).map((p) => ({ id: p.id, x: p.x, y: p.y, z: p.z, yaw: p.yaw }));
 
 /** The nearest pad within `reach` m on the plan, or null. */
 export function padNear(x: number, z: number, reach = 12): Pad | null {

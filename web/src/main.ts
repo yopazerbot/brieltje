@@ -14,7 +14,7 @@ import { HEIGHT as BODY_HEIGHT, Player, STEP_UP } from './player';
 import { Hud } from './ui/hud';
 import { Speedometer } from './ui/speedometer';
 import { HeliPilot } from './heliPilot';
-import { setHeliDetail } from './world/heli';
+import { heliModel, setHeliDetail } from './world/heli';
 import { fillScreen, input, me, menu, onAccount, onSession, sessionAdmin, setAccount, startIntent } from './start';
 import { TouchControls } from './controls/touch';
 import { Games, type ModeView } from './ui/games';
@@ -298,6 +298,7 @@ function prepaint(on: boolean): void {
   document.body.classList.toggle('prepaint', on);
   for (const id of ['hud', 'controls-card']) $(id).inert = on;
   controlsCard.prepaint(menu.startingMode, weapon.enabled, on);
+  helis.prepaint(on); // and the helicopter's instruments (src/heliPilot.ts)
 }
 /**
  * Before play begins, at every start (Yoshi, 14 Nov 2026: "take a bit longer to load but have a smooth start instead";
@@ -317,6 +318,7 @@ async function getEverythingReady(at: Portal | null, zombiesStart: boolean): Pro
   await gather([
     loadVillage().then(() => villageAfter),
     life.load(precompile), // the gardens' things, birds and the mower
+    heliModel(), // the helicopter's model: the machine shows only once it is in (world/heli.ts)
     startCountryside(),
     drop ? parachutes.load() : null,
     zombiesStart ? null : villagers.preload(),
