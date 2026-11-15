@@ -223,10 +223,11 @@ async function setup() {
     const roofIn = (x, z) => !!W.roofBlocks?.(x, z, feet, STEP_UP, H);
     for (let i = 0; i < n; i++) {
       const was = { x: pos.x, z: pos.z };
-      // Up a roof slower the steeper (as Player.update): none from 60 degrees.
-      const k = W.roofClimb && W.groundAt(pos.x, pos.z, feet, 0).mat === 'roof' ? W.roofClimb(pos.x, pos.z, dx, dz) : 1;
-      pos.x += (dx * dist * k) / n;
-      pos.z += (dz * dist * k) / n;
+      // Up a roof slower the steeper (as Player.update): only the part straight up it, none from 60 degrees.
+      const s = { x: (dx * dist) / n, z: (dz * dist) / n };
+      if (W.roofStep && W.groundAt(pos.x, pos.z, feet, 0).drawn) W.roofStep(pos.x, pos.z, s.x, s.z, s);
+      pos.x += s.x;
+      pos.z += s.z;
       W.resolve(pos, feet, R, STEP_UP, H);
       if (W.keepIn(pos, R)) edge = true;
       // A drawn roof beside: pushed off; ahead: along it on x or z, else stay (world/roofField.ts, as Player.update).

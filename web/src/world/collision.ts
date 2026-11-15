@@ -38,6 +38,8 @@ export interface Ground {
   y: number;
   name?: string;
   mat?: string;
+  /** A drawn roof (world/roofField.ts), not a block (a block of the house material `roof` is a block) */
+  drawn?: boolean;
 }
 
 /** Even-odd test across the outline and its holes. */
@@ -106,8 +108,6 @@ const ROOF_LOW = 1.3;
 const HEAD_ROOM = 0.15;
 /** Metres: a walker steps onto a drawn roof up to this more than its own step (an eave by a terrace, 6 cm over a step). */
 const ROOF_STEP = 0.1;
-/** Rise per metre (10 degrees) from which a step on a roof counts as going up it (World.roofClimb). */
-const UP_ALONG = 0.18;
 /** Metres over its ground under which a block that stood higher is never capped (World.capBlock): it stays a wall. */
 const CAP_LOW = 2.0;
 /** Metres over its ground from which a block is a building a roof's solid reaches down to (World.roofHere). */
@@ -441,6 +441,7 @@ export class World {
       g.y = r.top;
       g.name = undefined;
       g.mat = 'roof';
+      g.drawn = true;
     }
     return g;
   }
@@ -528,19 +529,25 @@ export class World {
   }
 
   /**
-   * What part of a step (dx, dz) from (x, z) a body standing on a roof takes: full pace along and down and up to 35
-   * degrees, less and less up to 60, none steeper (world/roofField.ts climb). A step that goes up the roof (within 60
-   * degrees of straight up it) is cut by the roof's own steepest slope, not by its own rise: no zigzag up a steep roof.
-   * One more across it is cut by its own rise, so along it (in a valley, round a ridge) stays free. 1 off the roofs.
+   * The part of a step (dx, dz) from (x, z) a body standing on a roof takes, into `out`: the part along the roof's
+   * contour (level along it: in a valley, round a ridge) and down it whole, the part straight up it cut by the roof's own
+   * steepest slope: full pace to 35 degrees, less and less up to 60, none steeper (world/roofField.ts climb), whatever
+   * the way of the step, so no zigzag or walk across climbs a steep roof faster than straight up. Off the roofs, whole.
    */
-  roofClimb(x: number, z: number, dx: number, dz: number): number {
-    const d = Math.hypot(dx, dz);
+  roofStep(x: number, z: number, dx: number, dz: number, out: { x: number; z: number }): { x: number; z: number } {
+    out.x = dx;
+    out.z = dz;
     const r = this.roofs;
-    if (d < 1e-9 || !r.sample(x, z, this.roofLow(x, z))) return 1;
-    const rise = (r.gx * dx + r.gz * dz) / d;
+    if (Math.hypot(dx, dz) < 1e-9 || !r.sample(x, z, this.roofLow(x, z))) return out;
     const steepest = Math.hypot(r.gx, r.gz);
-    // Up the roof: rising more than UP_ALONG, within 60 degrees of straight up it (a zigzag's legs are 45 off).
-    return rise > UP_ALONG && rise > 0.5 * steepest ? climb(steepest) : climb(rise);
+    if (steepest < 1e-6) return out;
+    const ux = r.gx / steepest, uz = r.gz / steepest; // straight up the roof
+    const up = dx * ux + dz * uz;
+    if (up <= 0) return out;
+    const lose = up * (1 - climb(steepest));
+    out.x = dx - ux * lose;
+    out.z = dz - uz * lose;
+    return out;
   }
 
   /**
