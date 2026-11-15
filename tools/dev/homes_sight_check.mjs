@@ -33,7 +33,7 @@ const call = async (method, path, body, cookie = '') => {
 const cookieOf = (r) => r.headers.getSetCookie().map((c) => c.split(';')[0]).join('; ');
 const connect = async (cookie) => {
   const log = [];
-  const ws = new WebSocket(`ws://${host}/ws?v=4`, { headers: { Cookie: cookie, Origin: o.api } });
+  const ws = new WebSocket(`ws://${host}/ws?v=4&sight=1`, { headers: { Cookie: cookie, Origin: o.api } });
   ws.on('message', (d) => {
     const m = JSON.parse(String(d));
     if (m.t === 'ping') ws.send(JSON.stringify({ t: 'pong', n: m.n })); // as a page does: a silent one is let go
@@ -148,11 +148,32 @@ for (const h of HOMES) {
   const chat = capture.find((m) => m.t === 'chat' && m.from === b.name);
   ok(`${h.id}: his chat line comes, without a place`, !!chat && Object.keys(chat).every((k) => ['t', 'from', 'color', 'text'].includes(k)));
   ok(`${h.id}: Bob still sees Alice`, !!inB);
-  // Out again: in Alice's very next ticks.
+  // A grenade thrown from inside, Bob out of the door before it goes off at Alice's feet: she is not hurt, and told of the
+  // blast without his name (homeGate: nobody hurts someone who could not see them at the moment of the act).
+  const al = pos[a.name];
+  // Bob to the last spot inside on his way out, so he steps out within the grenade's fuse.
+  const steps = 60;
+  let last = inside;
+  for (let k = 1; k <= steps; k++) {
+    const q = { x: inside.x + ((out[0] - inside.x) * k) / steps, z: inside.z + ((out[1] - inside.z) * k) / steps, y: floor + 0.05 };
+    if (homeAt(q.x, q.z, q.y) !== h.id) break;
+    last = q;
+  }
+  await walk(b, last.x, last.z, last.y);
   a.log.length = 0;
+  const thrown = Date.now();
+  b.send({ t: 'nade', x: last.x, y: last.y + 1.5, z: last.z, vx: 0, vy: 2, vz: 0 });
+  // Out again: in Alice's very next ticks.
   await walk(b, out[0], out[1], floor);
-  await sleep(500);
+  await sleep(400);
   ok(`${h.id}: Bob is back in Alice's ticks once out`, a.log.some((m) => m.t === 's' && (m.p ?? []).some((e) => e[0] === b.name)));
+  ok(`${h.id}: out before it goes off (the server takes a bang 2 to 6 s after the throw)`, Date.now() - thrown < 5400, `${Date.now() - thrown} ms`);
+  await sleep(Math.max(0, thrown + 2600 - Date.now()));
+  b.send({ t: 'boom', x: al.x, y: al.y + 0.9, z: al.z });
+  await sleep(600);
+  const bl = a.log.find((m) => m.t === 'blast');
+  ok(`${h.id}: his grenade from inside goes off by Alice: she is told of the blast, without his name`, !!bl && bl.by === '', JSON.stringify(bl ?? null));
+  ok(`${h.id}: and it spares her`, !a.log.some((m) => m.t === 'hurt' || m.t === 'kill'));
   await call('DELETE', `/api/admin/homes/${h.id}/code`, undefined, admin);
 }
 if (o.out) {
