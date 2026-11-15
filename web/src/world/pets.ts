@@ -143,6 +143,8 @@ interface Pet {
   geometry: THREE.BufferGeometry[];
   /** The head's turn towards a player now (eased), yaw and pitch */
   look: { yaw: number; pitch: number; wag: number };
+  /** The head's and the tail's pose as their clip set it, before the look and the wag turned them */
+  pose: [THREE.Quaternion, THREE.Quaternion] | null;
 }
 
 /**
@@ -184,6 +186,7 @@ export function addPets(parent: THREE.Object3D, pets: PetSpec[], clock: () => nu
         list.push({
           spec, group, mixer, actions, current: '', route: route(spec), offset: phase(i, spec), geometry,
           head: body.getObjectByName('Head'), tail: body.getObjectByName('Tail1'), look: { yaw: 0, pitch: 0, wag: 0 },
+          pose: null,
         });
       }
       update(0);
@@ -210,7 +213,16 @@ export function addPets(parent: THREE.Object3D, pets: PetSpec[], clock: () => nu
           pet.current = state;
         }
       }
+      // The mixer writes a bone only when its clip's value changes: on a held pose the head kept last frame's turn,
+      // and each frame turned it further (the head spun round). Back to the clip's pose first, every frame.
+      if (pet.pose) {
+        pet.head?.quaternion.copy(pet.pose[0]);
+        pet.tail?.quaternion.copy(pet.pose[1]);
+      }
       pet.mixer.update(dt);
+      pet.pose ??= [new THREE.Quaternion(), new THREE.Quaternion()];
+      if (pet.head) pet.pose[0].copy(pet.head.quaternion);
+      if (pet.tail) pet.pose[1].copy(pet.tail.quaternion);
       // On this page only: a player close by, while it lies, sits or stands, gets a look and a wag.
       const still = state !== 'Walk';
       local.copy(eye());
