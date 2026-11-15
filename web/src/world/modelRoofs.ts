@@ -70,7 +70,7 @@ interface Found {
  * Resolves to the triangles kept.
  */
 export async function addModelRoofs(world: World, roots: THREE.Object3D[], ground: number, leaveOut: (x: number, z: number) => boolean = () => false,
-  pause: () => Promise<unknown> = nextFrame, near: () => { x: number; z: number } | null = () => null): Promise<number> {
+  pause: () => Promise<unknown> = nextFrame, near: () => { x: number; z: number } | null = () => null, keepBlocks = leaveOut): Promise<number> {
   let kept = 0;
   let since = performance.now();
   const tick = async () => {
@@ -130,11 +130,11 @@ export async function addModelRoofs(world: World, roots: THREE.Object3D[], groun
       own.add(found.c, Infinity);
       const box = boxes[r];
       for (const k of world.modelledIn(box.min.x, box.min.z, box.max.x, box.max.z)) {
-        world.capUnder(own, k);
+        if (!keepBlocks(...world.blockMiddle(k))) world.capUnder(own, k); // not a left-out building's (a private home's)
         await tick();
       }
     }
-    for (const [b, y] of lowest) world.capBlock(b, y);
+    for (const [b, y] of lowest) if (!keepBlocks(...world.blockMiddle(b))) world.capBlock(b, y);
     // Second pass: solid down to the building's top where all three corners stand over one, else an open slab.
     const tri: number[] = [];
     const under: number[] = [];
@@ -204,12 +204,13 @@ const OWN = ['church', 'sparrenhof', 'tree_huts'];
  * roof, `endHouse`, with its eaves 0.8 m round it), and none in `leave` (boxes: the school's play tower, whose ladder,
  * platform, little roof and slide are its own: world/playground.ts).
  */
-export function villageRoofs(world: World, models: THREE.Object3D[], ground: number, endHouse: { contains(x: number, z: number): boolean } | null,
+export function villageRoofs(world: World, models: THREE.Object3D[], ground: number, endHouse: { contains(x: number, z: number): boolean; encloses(x: number, z: number): boolean } | null,
   leave: readonly (readonly number[])[], near: () => { x: number; z: number } | null, pause: () => Promise<unknown> = nextFrame): Promise<number> {
   const roofed = models.filter((m) => !OWN.includes(String(m.userData.landmark)));
   const AROUND = [[0, 0], [0.8, 0], [-0.8, 0], [0, 0.8], [0, -0.8]];
   const end = (x: number, z: number) => inBoxes(leave, x, z) || (!!endHouse && AROUND.some(([a, b]) => endHouse.contains(x + a, z + b)));
-  return addModelRoofs(world, roofed, ground, end, pause, near);
+  // Its blocks, and those in its fenced garden (reached only through it), keep their heights.
+  return addModelRoofs(world, roofed, ground, end, pause, near, (x, z) => end(x, z) || !!endHouse?.encloses(x, z));
 }
 
 /**

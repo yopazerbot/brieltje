@@ -247,6 +247,12 @@ export class World {
     });
   }
 
+  /** The middle of block `index`'s box on the plan. */
+  blockMiddle(index: number): [number, number] {
+    const s = this.solids[index];
+    return [(s.minX + s.maxX) / 2, (s.minZ + s.maxZ) / 2];
+  }
+
   /** Cap block `index` (capBlock) at the lowest of `roof` (a model's own) over it, looked at every half metre inside it. */
   capUnder(roof: RoofField, index: number): void {
     const s = this.solids[index];
