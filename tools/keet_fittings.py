@@ -108,7 +108,7 @@ class Fit:
         def p(a, b, y):
             return (cu + a * ru + b * fu, y, cv + a * rv + b * fv)
 
-        api.lathe(cu, .43, cv, [(0, 0), (.2, 0), (.2, .03), (0, .03)], SEAT, 10)
+        api.lathe(cu, .43, cv, [(.2, 0), (.2, .03), (0, .03)], SEAT, 9)  # no underside: nobody sees it
         for a, b in ((.13, .13), (-.13, .13), (.13, -.13), (-.13, -.13)):
             api.rod(p(a, b, .43), p(a * 1.19, b * 1.19, 0), .013, DARK, 6)
         api.lathe(cu, .2, cv, [(.2, 0), (.2, .016)], DARK, 6)
@@ -123,21 +123,21 @@ class Fit:
     def stool(self, cu, cv):
         """A bar stool: a round seat of 0.34 m at 0.76 m on four splayed legs with a foot ring."""
         api = self.api
-        api.lathe(cu, .72, cv, [(0, 0), (.17, 0), (.17, .04), (0, .04)], WOOD, 12)
+        api.lathe(cu, .72, cv, [(.17, 0), (.17, .04), (0, .04)], WOOD, 10)
         for su, sv in ((1, 1), (-1, 1), (1, -1), (-1, -1)):
             api.rod((cu + su * .09, .72, cv + sv * .09), (cu + su * .14, 0, cv + sv * .14), .016, DARK, 6)
-        api.lathe(cu, .29, cv, [(.168, 0), (.168, .02)], BRASS, 12)
+        api.lathe(cu, .29, cv, [(.168, 0), (.168, .02)], BRASS, 8)
         self.solid(cu - .18, cv - .18, cu + .18, cv + .18, 0, .76)
 
     def mat(self, u, y, v, k):
         """A beer mat: a plain disc of 10 cm."""
-        self.api.lathe(u, y, v, [(.05, 0), (.05, .004), (0, .004)], (MAT_CREAM, MAT_RED)[k % 2], 8)
+        self.api.lathe(u, y, v, [(.05, .003), (0, .003)], (MAT_CREAM, MAT_RED)[k % 2], 8)  # its top only
 
     def pendant(self, u, v, bottom, r, color=OPAL):
         """A hanging lamp: a cord and a brass cap, a closed shade of opal glass with its underside at `bottom`."""
         api = self.api
         h = r * .8
-        api.lathe(u, bottom, v, [(0, 0), (r, 0), (r * .85, h * .45), (r * .35, h * .9), (0, h)], color, 8)
+        api.lathe(u, bottom, v, [(0, 0), (r, 0), (r * .85, h * .45), (r * .35, h * .9), (0, h)], color, 7)
         api.lathe(u, bottom + h - .01, v, [(.03, 0), (.025, .05), (0, .05)], BRASS, 6)
         api.rod((u, bottom + h + .04, v), (u, self.ceiling(u, v), v), .006, IRON, 6)
 
@@ -145,7 +145,7 @@ class Fit:
         """A small opal globe on a brass rod."""
         api = self.api
         prof = [(r * math.sin(math.pi * k / 4), r - r * math.cos(math.pi * k / 4)) for k in range(5)]
-        api.lathe(u, bottom, v, prof, OPAL, 8)
+        api.lathe(u, bottom, v, prof, OPAL, 7)
         api.lathe(u, bottom + 2 * r - .015, v, [(.035, 0), (.035, .03), (0, .03)], BRASS, 6)
         api.rod((u, bottom + 2 * r + .015, v), (u, self.ceiling(u, v), v), .008, BRASS, 6)
 
@@ -221,10 +221,10 @@ def back_bar(f):
         for k, y in enumerate((.08, .36, .62)):
             if k:
                 api.box((u0 + u1) / 2 + .02, y - .015, (a + b) / 2, u1 - u0 - .1, .015, b - a - .03, NICKEL)
-            for j in range(4):
-                v = a + .135 + j * .11
+            for j in range(2 + (k == 1)):  # three on the middle shelf, two above and below
+                v = a + (.16 + j * .14 if k == 1 else .2 + j * .2)
                 col = BOTTLES[(j + k + int(a * 10)) % 3]
-                api.lathe(.66, y, v, [(.028, 0), (.028, .15), (.011, .2), (0, .22)], col, 5)  # behind glass: five sides do
+                api.lathe(.66, y, v, [(.028, 0), (.028, .15), (0, .22)], col, 5)  # behind glass: a plain shape does
     # The cupboard and the sink's cabinet, the worktop over all, a steel top over the sink.
     api.box((u0 + u1) / 2 + .02, 0, 10.3, u1 - u0 - .04, .9, 1.4, WOOD, 0, "oak")
     for v in (9.95, 10.65):
@@ -250,17 +250,17 @@ def back_bar(f):
     straight = [(.03, 0), (.034, .12), (0, .12)]  # open underneath: they stand on the shelf
     tulip = [(.026, 0), (.036, .06), (.03, .12), (0, .12)]
     goblet = [(.032, 0), (.006, .012), (.006, .07), (.04, .1), (0, .15)]
-    bottle = [(.034, 0), (.034, .18), (.014, .24), (.012, .28), (0, .28)]
+    bottle = [(.034, 0), (.034, .18), (.012, .25), (0, .28)]
     for j in range(18):  # the lowest shelf: straight glasses and tulips
         v = 8.2 + j * .17 + (.2 if j >= 9 else 0)
-        api.lathe(.44, shelves[0], v, straight if j % 2 else tulip, GLASS, 8)
+        api.lathe(.44, shelves[0], v, straight if j % 2 else tulip, GLASS, 5)
     for k, y in enumerate(shelves[1:]):  # the upper two: bottles at both ends, goblets between
         for j in range(12):
             v = 8.15 + j * .1 + (1.7 if j >= 6 else 0)
-            api.lathe(.45, y, v, bottle, BOTTLES[(j + k) % 3], 8)
+            api.lathe(.45, y, v, bottle, BOTTLES[(j + k) % 3], 6)
             api.rod((.45, y + .275, v), (.45, y + .3, v), .013, BRASS if (j + k) % 2 else NICKEL, 6)
         for j in range(9):
-            api.lathe(.44, y, 8.95 + j * .15, goblet, GLASS, 8)
+            api.lathe(.44, y, 8.95 + j * .15, goblet, GLASS, 5)
 
 
 def front_room(f):
@@ -268,10 +268,10 @@ def front_room(f):
     # --- the pool table: centre (2.50, 4.40), 2.24 m along u, 1.27 m along v, 0.80 m high ---
     cu, cv, L, W = 2.50, 4.40, 2.24, 1.27
     u0, u1, v0, v1 = cu - L / 2, cu + L / 2, cv - W / 2, cv + W / 2
-    leg = [(.06, 0), (.075, .04), (.05, .1), (.066, .3), (.05, .5), (.06, .56)]
+    leg = [(.06, 0), (.075, .04), (.05, .12), (.066, .32), (.055, .56)]
     for u in (u0 + .14, cu, u1 - .14):
         for v in (v0 + .12, v1 - .12):
-            api.lathe(u, 0, v, leg, WOOD, 6)
+            api.lathe(u, 0, v, leg, WOOD, 5)
     api.box(cu, .56, cv, L - .06, .18, W - .06, WOOD, 0, "oak")
     api.box(cu, .62, cv, L - .24, .125, W - .24, CLOTH)
     rail = .12
@@ -290,21 +290,21 @@ def front_room(f):
     for k in (1, 2, 3):  # the rails' small pale diamonds
         for s in (-1, 1):
             for v in (v0 + rail / 2, v1 - rail / 2):
-                api.box(cu + s * k * .25, .8, v, .022, .003, .022, CREAM)
+                api.lathe(cu + s * k * .25, .8, v, [(.014, .002), (0, .002)], CREAM, 4)  # four corners: a diamond
     for v in (cv - .26, cv, cv + .26):
         for u in (u0 + rail / 2, u1 - rail / 2):
-            api.box(u, .8, v, .022, .003, .022, CREAM)
+            api.lathe(u, .8, v, [(.014, .002), (0, .002)], CREAM, 4)
     # Fifteen balls in a triangle near the east end (plain colours: no numbers, no stripes) and the white one.
     r = .028
-    ball = [(r * math.sin(math.pi * k / 4), r - r * math.cos(math.pi * k / 4)) for k in range(5)]
+    ball = [(r * math.sin(math.pi * k / 3), r - r * math.cos(math.pi * k / 3)) for k in range(4)]  # 5.7 cm: a few faces do
     n = 0
     for row in range(5):
         for j in range(row + 1):
             col = BLACK if (row, j) == (2, 1) else BALLS[n % 7]
             if (row, j) != (2, 1):
                 n += 1
-            api.lathe(3.0 + row * .0495, .745, cv + (j - row / 2) * .0575, ball, col, 6)
-    api.lathe(1.95, .745, cv + .05, ball, WHITE, 6)
+            api.lathe(3.0 + row * .0495, .745, cv + (j - row / 2) * .0575, ball, col, 4)
+    api.lathe(1.95, .745, cv + .05, ball, WHITE, 4)
     f.solid(u0, v0, u1, v1, 0, .8)
     # The lamp over it: a long dark green shade with brass rims, warm bulbs under it, on two chains.
     y0 = 1.75
@@ -338,7 +338,7 @@ def front_room(f):
     dv, dy = 6.3, 1.73
     api.box(.32, dy - .3, dv, .04, .6, .6, WOOD, 0, "oak")
     f.disc("u", .34, .01, dv, dy, .225, BLACK)
-    f.disc("u", .34, .014, dv, dy, .17, RED)
+    f.disc("u", .34, .014, dv, dy, .17, RED, 8)
     f.disc("u", .34, .018, dv, dy, .16, CREAM)
     for k in range(10):  # ten dark wedges between the cream ones (a twentieth turn each)
         t = math.pi / 2 + k * math.pi / 5
@@ -376,9 +376,9 @@ def front_room(f):
     for a in (-1, 1):
         api.rod((su + a * .2, .4, front), (su + a * .2, .7, 6.72), .008, NICKEL, 6)
     api.lathe(su, .73, 7.36, [(.075, 0), (.075, .03)], NICKEL, 12)
-    api.rod((su, .73, 7.36), (su, 2.05, 7.36), .06, IRON, 12)
-    api.rod((su, 2.05, 7.36), (su, 2.17, 7.47), .06, IRON, 12)
-    api.rod((su, 2.17, 7.45), (su, 2.17, 7.58), .06, IRON, 12)
+    api.rod((su, .73, 7.36), (su, 2.05, 7.36), .06, IRON, 10)
+    api.rod((su, 2.05, 7.36), (su, 2.17, 7.47), .06, IRON, 10)
+    api.rod((su, 2.17, 7.45), (su, 2.17, 7.58), .06, IRON, 10)
     f.disc("v", 7.55, -.006, su, 2.17, .1, NICKEL, 8)
     f.solid(su - .3, 6.75, su + .3, 7.55, 0, .9)
     f.solid(su - .08, 7.28, su + .08, 7.55, .9, 2.26)
@@ -424,11 +424,11 @@ def front_room(f):
     for w in api.windows:
         if w["fixed"] == "v":
             at, y0, y1 = w["w0"] + .19, .95, 1.75
-            api.curtain(w["s0"] + .01, at, w["s1"] - .01, at, y0, y1 - .02, .012, 8, NET)
+            api.curtain(w["s0"] + .01, at, w["s1"] - .01, at, y0, y1 - .02, .012, 5, NET)
             api.rod((w["s0"], y1, at), (w["s1"], y1, at), .008, BRASS, 6)
         else:
             at, y0, y1 = 5.73 - .19, .85, 1.55
-            api.curtain(at, w["s0"] + .01, at, w["s1"] - .01, y0, y1 - .02, .012, 5, NET)
+            api.curtain(at, w["s0"] + .01, at, w["s1"] - .01, y0, y1 - .02, .012, 3, NET)
             api.rod((at, y1, w["s0"]), (at, y1, w["s1"]), .008, BRASS, 6)
 
 
@@ -464,7 +464,7 @@ def bar_room(f):
         f.pendant(tu, tv, 1.95, .13)
     # --- the round regulars' table at the back, a brass bell in its middle, five chairs, its own lamp ---
     cu, cv = 3.95, 16.05
-    api.lathe(cu, .715, cv, [(0, 0), (.475, 0), (.475, .035), (0, .035)], WOOD, 20)
+    api.lathe(cu, .715, cv, [(.475, 0), (.475, .035), (0, .035)], WOOD, 20)
     api.lathe(cu, .05, cv, [(.09, 0), (.06, .06), (.045, .2), (.07, .36), (.045, .52), (.06, .665)], DARK, 8)
     for k in range(3):
         t = math.pi / 2 + k * 2 * math.pi / 3
@@ -499,7 +499,7 @@ def bar_room(f):
     jug = [(0, 0), (.06, 0), (.075, .08), (.05, .17), (.056, .2), (0, .2)]
     tankard = [(0, 0), (.045, 0), (.045, .12), (.04, .13), (0, .13)]
     for k, (v, shape, col) in enumerate(((14.95, jug, "#8a8f96"), (15.35, tankard, "#d8ccb0"), (15.8, jug, "#6a4a30"), (16.2, tankard, "#9a9a94"), (16.6, jug, "#d8ccb0"))):
-        api.lathe(2.9, 2.05, v, shape, col, 6)
+        api.lathe(2.9, 2.05, v, shape, col, 5)
         hu = 2.9 + (.07 if shape is jug else .05)
         api.rod((hu, 2.05 + .05, v), (hu + .03, 2.05 + .1, v), .007, col, 6)
 
@@ -514,12 +514,12 @@ def toilets(f):
         api.box(cu, .4, vb - .09, .4, .4, .18, PORCELAIN)
         api.box(cu, .8, vb - .095, .43, .03, .2, PORCELAIN)
         api.box(cu + .12, .83, vb - .09, .05, .02, .03, NICKEL)  # the flush button
-        api.lathe(cu, 0, vb - .37, [(.12, 0), (.1, .06), (.1, .22), (.18, .36), (.19, .39), (.13, .4), (0, .33)], PORCELAIN, 8)
-        api.lathe(cu, 0, vb - .37, [(.19, .405), (.185, .42), (.13, .42), (.12, .41)], DARK, 8)
+        api.lathe(cu, 0, vb - .37, [(.12, 0), (.1, .06), (.1, .22), (.18, .36), (.19, .39), (.13, .4), (0, .33)], PORCELAIN, 7)
+        api.lathe(cu, 0, vb - .37, [(.19, .405), (.185, .42), (.13, .42), (.12, .41)], DARK, 7)
         u0, _, u1, _ = f.room(cu, 16.5)
         f.solid(u0, vb - .56, u1, vb + .01, 0, .83)  # wall to wall: no slot of 0.37 m beside the bowl
         bu = side + sign * .12
-        api.lathe(bu, .72, 15.9, [(0, 0), (.08, 0), (.18, .1), (.2, .14), (.16, .15), (0, .11)], PORCELAIN, 8)
+        api.lathe(bu, .72, 15.9, [(0, 0), (.08, 0), (.18, .1), (.2, .14), (.16, .15), (0, .11)], PORCELAIN, 7)
         api.rod((bu, 0, 15.9), (bu, .72, 15.9), .06, PORCELAIN, 10)
         api.rod((side, .92, 15.9), (side + sign * .1, .92, 15.9), .01, NICKEL, 6)
         api.rod((side + sign * .1, .92, 15.9), (side + sign * .1, .88, 15.9), .01, NICKEL, 6)
@@ -549,8 +549,22 @@ def toilets(f):
     api.box(2.53, .05, 13.12, .28, .03, .05, "#7a6a4a")
 
 
+class _Lean:
+    """tools/keet.py's api, with thin rods (legs, hoops, rails, cords, cues: 16 mm or less) drawn on four sides: at that
+    size nobody tells a square from a round one, and they are most of the rods."""
+
+    def __init__(self, api):
+        self._api = api
+
+    def __getattr__(self, name):
+        return getattr(self._api, name)
+
+    def rod(self, a, b, r, color, sides=8):
+        self._api.rod(a, b, r, color, 4 if r <= .016 else sides)
+
+
 def fittings(api):
-    f = Fit(api)
+    f = Fit(_Lean(api))
     counter(f)
     back_bar(f)
     front_room(f)
