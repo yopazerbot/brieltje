@@ -149,6 +149,8 @@ const NO_DIST = existsSync(DIST) ? false : 'web/dist is absent: run `npm run bui
 test('the build holds nothing of an inside: door ids, room names, the inside files\' names', { skip: NO_DIST || SKIP }, () => {
   const { ids } = insideWords();
   const rooms = new Set([...endInside.rooms, ...brickInside.rooms]);
+  // And the names a pack brings for its rooms and doors in the other language (names.en, names.doors).
+  for (const walkIn of [endInside, brickInside]) for (const map of [walkIn.names?.en, walkIn.names?.doors]) for (const n of Object.values(map ?? {})) rooms.add(n);
   for (const d of [...shell.doors, ...endShell.doors, ...brickShell.doors]) rooms.delete(d.name);
   const files = [];
   const walk = (dir) => {

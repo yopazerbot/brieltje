@@ -102,15 +102,24 @@ try {
   ok('brick house inside installed', (await ev("briel.insides.packs.has('kapellenhoek_home')")) === true);
   await shot('brick-open-front', away[0], away[1], bf.floor - 0.3, look, 0.02);
   const brickPack = await packOf('kapellenhoek_home');
-  const floors = brickPack.prisms.filter((p) => p.n && brickPack.rooms.includes(p.n) && ['wood', 'tile', 'concrete'].includes(p.m) && p.y1 - p.y0 > 0.05);
+  // One picture in each room the pack names: on its largest floor slab (a thin block at a floor's height), whatever it is made of.
+  const area = (ring) => Math.abs(ring.reduce((t, [x, z], i) => { const [x2, z2] = ring[(i + 1) % ring.length]; return t + x * z2 - x2 * z; }, 0)) / 2;
+  const slabs = (room) => brickPack.prisms.filter((p) => p.n === room && p.y1 - p.y0 <= 0.3 && (p.y1 < 0.3 || Math.abs(p.y1 - 2.9) < 0.3) && p.p?.[0]?.length);
+  const missing = [];
+  const levels = new Set();
   let k = 0;
-  for (const p of floors) {
+  for (const room of brickPack.rooms) {
+    const p = slabs(room).sort((u, v) => area(v.p[0]) - area(u.p[0]))[0];
+    if (!p) {
+      missing.push(room);
+      continue;
+    }
     const [x, z] = brickWorld(centroid(p.p[0]));
     k++;
+    levels.add(p.y1 > 1);
     await shot(`brick-room-${p.y1 > 1 ? 'f1' : 'gf'}-${k}`, x, z, bf.floor + p.y1 + 0.02, (k * 1.3) % (Math.PI * 2), -0.05);
   }
-  const levels = new Set(floors.map((p) => p.y1 > 1));
-  ok('brick house: a picture in every room, on both floors', k > 0 && levels.size === 2); // no count: the inside's own
+  ok('brick house: a picture in every room the pack names, on both floors', missing.length === 0 && levels.size === 2, missing.length ? `${missing.length} without a floor found` : ''); // no count, no name: the inside's own
   // 5. The Zombies game alone starts at the house (its grid is built from the shell and the installed insides).
   await b.evaluate("briel.zombiesSolo.start('house')", false);
   await b.sleep(4000);
