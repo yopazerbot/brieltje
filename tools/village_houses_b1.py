@@ -729,7 +729,95 @@ def gable_house():
     h.export()
 
 
-HOUSES = {"vh_farm": farm, "vh_gable_house": gable_house}
+# ======================================================================================================================
+# 03. x -46.7, z -1089.5: a buff brick villa of the 1950s, its gable to the street, arched windows, a balcony.
+def arch_villa():
+    h = House("vh_arch_villa", [-52.4, -1092.05], ([-49.32, -1098.44], [-42.93, -1097.28]), -3.52, {
+        "vh_brick": {"texture": "nb_brick", "tint": "#c7a56f", "normalScale": .5},
+        "vh_roof": {"texture": "roof_tiles", "tint": "#3d4046", "normalScale": .3},
+        "vh_paving": {"texture": "pavers", "tint": "#9c9a95"},
+        "vh_hedge": {"texture": "hedge", "tint": "#8eab68"},
+        "vh_trim": TRIM, "vh_stone": STONE, "vh_glass": GLASS, "vh_frames_small": SMALL, "vh_metal_small": METAL,
+    })
+    # u along the street gable (u -5: the drive's side), d from the gable (0) to the back (16.8).
+    lift = h.base
+    R, E = 8.4 + lift, 4.5 + lift
+    kn, kw = (R - E) / 3.25, (R - E) / 5.13  # the gable wing's roof, the wide roof behind it
+    narrow = lambda u: R - kn * abs(u)
+    wide = lambda u: R - kw * abs(u)
+    floor, frame, white = .3, "#2f3033", "#f0efe9"
+    foot = [(.55, "vh_stone", "#8d8a84")]
+    annex = 3.2
+    # The street gable: two round-arched windows under brick arches, a wide glazed door onto the balcony.
+    arch = lambda s: Opening(s, .95, 1.1, 1.9, arch=True, frame=frame, header=True, cols=2, reveal=.2)
+    h.wall((-3.25, 0), (3.25, 0), [(0, narrow(-3.25) - .06), (3.25, R - .06), (6.5, narrow(3.25) - .06)],
+           [arch(3.25 - 1.55), arch(3.25 + 1.55), Opening(3.25, 3.3, 2.4, 1.9, frame=frame, cols=3, sill=False, reveal=.2)], bands=foot)
+    h.box("vh_stone", -1.6, 1.6, -.9, .02, 3.12, 3.3, "#b3b0a9", bottom=True)  # the balcony's slab
+    rail = "#151515"
+    for a, b in (((-1.57, -.87), (1.57, -.87)), ((-1.57, -.87), (-1.57, 0)), ((1.57, -.87), (1.57, 0))):
+        h.seg("vh_metal_small", a, b, .04, 4.24, 4.3, rail)
+        h.seg("vh_metal_small", a, b, .03, 3.36, 3.4, rail)
+        av, bv = Vector(a), Vector(b)
+        n = max(2, round((bv - av).length / .12))
+        for i in range(n + 1):
+            p = av + (bv - av) * (i / n)
+            h.box("vh_metal_small", p.x - .012, p.x + .012, p.y - .012, p.y + .012, 3.3, 4.24, rail)
+    # The gable wing's sides, under its eaves; on the right the door, round the corner, under a flat canopy.
+    h.wall((-3.25, 4.33), (-3.25, 0), narrow(3.25) - .06, [Opening(2.2, 1.2, 1.4, 1.3, frame=frame, cols=2)], bands=foot)
+    gy = h.ground(3.8, 5.6)
+    h.wall((3.25, 0), (3.25, 6.86), [(0, narrow(3.25) - .06), (4.33, narrow(3.25) - .06), (4.331, wide(3.25) - .06), (6.86, wide(3.25) - .06)],
+           [Opening(2.0, 1.2, 1.4, 1.3, frame=frame, cols=2),
+            Opening(5.6, floor, 1.0, 2.15, "door", door="#6b4a35", frame=frame, panels="glazed", step=(gy, .5), reveal=.2)], bands=foot)
+    h.box("vh_stone", 3.25, 4.15, 4.95, 6.25, 2.6, 2.72, "#b3b0a9", bottom=True)
+    # The wide part behind: its front shoulders, its sides, its back gable over the low wing behind.
+    h.wall((-5.11, 4.35), (3.25, 4.33), [(0, wide(5.11) - .06), (5.11, R - .06), (8.36, wide(3.25) - .06)],
+           bottom=[(0, h.foot), (1.85, h.foot), (1.851, narrow(3.25) - .2), (5.11, R - .2), (8.36, narrow(3.25) - .2)], bands=foot,
+           openings=[Opening(.95, 1.2, .9, 1.2, frame=frame)], out=(0, -1))
+    h.wall((3.25, 6.86), (5.14, 6.84), [(0, wide(3.25) - .06), (1.89, wide(5.14) - .06)], bands=foot)
+    h.wall((5.14, 6.84), (5.11, 12.94), wide(5.13) - .06, [Opening(1.6, 1.2, 1.4, 1.3, frame=frame, cols=2), Opening(4.5, 1.2, 1.4, 1.3, frame=frame, cols=2)], bands=foot)
+    h.wall((5.11, 12.94), (-5.11, 12.92), [(0, wide(5.11) - .06), (5.11, R - .06), (10.22, wide(5.11) - .06)],
+           bottom=[(0, h.foot), (5.8, h.foot), (5.801, annex - .15), (10.22, annex - .15)], bands=foot,
+           openings=[Opening(2.4, 1.2, 1.2, 1.3, frame=frame, cols=2), Opening(5.11, 4.6, .9, 1.0, frame=frame)], out=(0, 1))
+    h.wall((-5.11, 12.92), (-5.11, 4.35), wide(5.11) - .06, bottom=[(0, annex - .15), (3.27, annex - .15), (3.271, h.foot), (8.57, h.foot)],
+           bands=foot, openings=[Opening(5.6, 1.2, 1.4, 1.3, frame=frame, cols=2)], out=(-1, 0))
+    # The low wing at the back and the side, with its garage door to the drive.
+    h.wall((-4.97, 9.65), (-8.07, 9.64), annex, [Opening(1.55, h.ground(-6.5, 9.4) + .02, 2.5, 2.1, "garage", door=white, reveal=.12, sill=False)], bands=foot)
+    h.wall((-8.07, 9.64), (-7.96, 16.82), annex, [Opening(4.5, 1.2, 1.2, 1.1, frame=frame)], bands=foot)
+    h.wall((-7.96, 16.82), (-.69, 16.7), annex, [Opening(2.2, 1.2, 1.2, 1.1, frame=frame), Opening(5.4, floor + .1, .9, 2.1, "door", door="#6b4a35", frame=frame, panels="glazed", reveal=.12)], bands=foot)
+    h.wall((-.69, 16.7), (-.69, 12.89), annex, [Opening(1.8, 1.2, 1.2, 1.1, frame=frame)], bands=foot)
+    ring = [(-5.11, 9.65), (-8.07, 9.64), (-7.96, 16.82), (-.69, 16.7), (-.69, 12.92), (-5.11, 12.92)]
+    h.poly("vh_trim", [(u, d, annex - .02) for u, d in ring], (0, 0, 1), "#3a3a3a")
+    for a, b in zip(ring[:5], ring[1:5]):
+        h.seg("vh_stone", a, b, .28, annex, annex + .07, "#b3b0a9")
+    # The roofs: dark grey concrete tiles, white verge and gutter boards.
+    ov = .3
+    yn = narrow(3.25 + ov)
+    h.roof([(-3.25 - ov, -.25, yn), (-3.25 - ov, 4.43, yn), (0, 4.43, R), (0, -.25, R)], free=(0, 3), edge=white, board=.22, under=white)
+    h.roof([(3.25 + ov, 4.43, yn), (3.25 + ov, -.25, yn), (0, -.25, R), (0, 4.43, R)], free=(0, 1), edge=white, board=.22, under=white)
+    yw = wide(5.13 + ov)
+    h.roof([(-5.13 - ov, 4.05, yw), (-5.13 - ov, 13.22, yw), (0, 13.22, R), (0, 4.05, R)], free=(0, 1, 3), edge=white, board=.22, under=white)
+    h.roof([(5.13 + ov, 13.22, yw), (5.13 + ov, 4.05, yw), (0, 4.05, R), (0, 13.22, R)], free=(0, 1, 3), edge=white, board=.22, under=white)
+    h.rod("vh_roof", (0, -.25, R + .02), (0, 13.22, R + .02), .12, 6)
+    tile = "#34373c"
+    h.tile_ends((-3.25 - ov, -.25, yn), (-3.25 - ov, 4.43, yn), (-1, 0, 0), tile)
+    h.tile_ends((3.25 + ov, 4.43, yn), (3.25 + ov, -.25, yn), (1, 0, 0), tile)
+    h.tile_ends((-5.13 - ov, 4.05, yw), (-5.13 - ov, 13.22, yw), (-1, 0, 0), tile)
+    h.tile_ends((5.13 + ov, 13.22, yw), (5.13 + ov, 4.05, yw), (1, 0, 0), tile)
+    h.gutter((-3.25 - ov, -.25, yn - .22), (-3.25 - ov, 4.43, yn - .22), (-1, 0, 0), white, down=[(-3.62, .1, h.ground(-3.62, .1))])
+    h.gutter((3.25 + ov, -.25, yn - .22), (3.25 + ov, 4.43, yn - .22), (1, 0, 0), white, down=[(3.62, .1, h.ground(3.62, .1))])
+    h.gutter((-5.13 - ov, 4.05, yw - .22), (-5.13 - ov, 13.22, yw - .22), (-1, 0, 0), white)
+    h.gutter((5.13 + ov, 4.05, yw - .22), (5.13 + ov, 13.22, yw - .22), (1, 0, 0), white, down=[(5.5, 12.8, h.ground(5.5, 12.8))])
+    h.box("vh_trim", 4.95, 5.07, 4.38, 4.5, h.ground(5, 4.44) - .1, wide(5.0) - .1, white)  # a slim post at the porch's corner
+    h.chimney(-2.0, 10.4, .6, .6, wide(2.0) - .4, R + .7, "vh_brick", pots=[(-.14, 0), (.14, 0)])
+    # The front garden: lawn, three low clipped shrubs, a drive of grey pavers to the side, a path to the door.
+    for u, d in ((-2.6, -1.4), (2.6, -1.4), (4.6, -.9)):
+        h.blob("vh_hedge", u, d, h.ground(u, d) + .25, (.45, .4, .38))
+    h.pave([(-7.75, 9.5), (-5.25, 9.5), (-5.25, -9.0), (-7.75, -9.0)])
+    h.pave([(3.3, 6.75), (4.6, 6.75), (4.6, -9.0), (3.3, -9.0)])
+    h.export()
+
+
+HOUSES = {"vh_farm": farm, "vh_gable_house": gable_house, "vh_arch_villa": arch_villa}
 for _name, _build in HOUSES.items():
     if not ONLY or _name in ONLY:
         _build()
