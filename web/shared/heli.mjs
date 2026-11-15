@@ -272,6 +272,8 @@ export function heliStep(s, input, env, dt) {
     tx = (dx / d) * v;
     tz = (dz / d) * v;
     s.holding = false;
+    // A long deck's pull turns the nose to its line too, the nearer way round: the tail never rests on its end rails.
+    if (pad.long && turnIn === 0) yawCmd = clamp(3 * wrap(pad.yaw + Math.PI * Math.round(wrap(s.yaw - pad.yaw) / Math.PI) - s.yaw), -H.YAW_SLOW, H.YAW_SLOW);
   } else if (idle) {
     // Let go: hold the spot where it came to a stop.
     if (!s.holding && Math.hypot(s.vx, s.vz) < 1.5) {
@@ -536,11 +538,15 @@ export function heliExit(s, steps, ground, free) {
   const rx = -fz, rz = fx;
   const outside = (x, y, z) => homeAt(x, z, y) === null && !inEndGarden(x, z, y);
   const local = [...steps.map(([x, z]) => [x + Math.sign(x) * 0.15, z]), ...steps.map(([x, z]) => [x + Math.sign(x) * 0.15, z + 1.4]), [0, -4], [0, 8]];
-  // The way there from the hub, every 5 cm: nothing higher than a step in it (a rail, a wall), so you never step out
-  // across a deck's rail onto the roof beside it (the church's landing deck: shared/church.json).
+  // The way there from the hub, every 5 cm: no floor higher than a step in it (a rail's top) and, every 25 cm, room for
+  // a body (`free`: a wall of any height), so you never step out across a deck's rail onto the roof beside it (the
+  // church's landing deck: shared/church.json) nor through a wall.
   const clear = (px, pz) => {
     const n = Math.ceil(Math.hypot(px - s.x, pz - s.z) / 0.05);
-    for (let i = 1; i < n; i++) if (num(ground(s.x + ((px - s.x) * i) / n, s.z + ((pz - s.z) * i) / n, stand + 2)) > stand + 0.5) return false;
+    for (let i = 1; i < n; i++) {
+      const qx = s.x + ((px - s.x) * i) / n, qz = s.z + ((pz - s.z) * i) / n;
+      if (num(ground(qx, qz, stand + 2)) > stand + 0.5 || (i % 5 === 0 && !free(qx, qz, stand))) return false;
+    }
     return true;
   };
   for (const [x, z] of local) {

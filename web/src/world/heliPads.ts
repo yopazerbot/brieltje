@@ -16,10 +16,12 @@ export interface Pad {
   y: number;
   z: number;
   yaw: number;
+  /** A deck with a line (a length and a width): its pull also turns the nose along it (shared/heli.mjs). */
+  long: boolean;
 }
 
 /** The pads that are there: a `planned` one (nothing built there yet) has no ring and no pull. */
-export const PADS: Pad[] = HELIS.pads.filter((p) => !('planned' in p && p.planned)).map((p) => ({ id: p.id, x: p.x, y: p.y, z: p.z, yaw: p.yaw }));
+export const PADS: Pad[] = HELIS.pads.filter((p) => !('planned' in p && p.planned)).map((p) => ({ id: p.id, x: p.x, y: p.y, z: p.z, yaw: p.yaw, long: 'l' in p }));
 
 /** The nearest pad within `reach` m on the plan, or null. */
 export function padNear(x: number, z: number, reach = 12): Pad | null {

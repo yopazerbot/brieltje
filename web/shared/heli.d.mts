@@ -72,7 +72,8 @@ export interface HeliEnv {
   ceiling: number;
   wind?: [number, number] | number[];
   edge?: { x: number; z: number; nx: number; nz: number } | null;
-  pad?: { x: number; y: number; z: number } | null;
+  /** `long`: a deck with a line (the church's): its pull also turns the nose along `yaw` or the other way round. */
+  pad?: { x: number; y: number; z: number; yaw?: number; long?: boolean } | null;
 }
 
 export function heliStart(at?: { x?: number; y?: number; z?: number; yaw?: number }): HeliState;

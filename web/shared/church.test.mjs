@@ -8,7 +8,7 @@ import { loadBounds } from './bounds.mjs';
 import { arenaOf, arenaEdge, arenaPrisms } from './arenas.mjs';
 import { makeNav, Horde } from './zombies.mjs';
 import { noShoot } from './zones.mjs';
-import { heliExit, heliStart } from './heli.mjs';
+import { heliExit, heliFly, heliPlace, heliStart } from './heli.mjs';
 
 const read = (path) => JSON.parse(readFileSync(new URL(path, import.meta.url)));
 const data = read('./church.json');
@@ -262,6 +262,49 @@ test('getting out of a helicopter on the deck puts you on the deck, a net or the
     }
   }
   assert.ok(outs > 1000);
+});
+
+test("heli.json's church pad and its machine's park are the deck's middle (church.json anchors.pad), across the axis", () => {
+  const pad = heliData.pads.find((p) => p.id === 'church');
+  const machine = heliData.machines.find((m) => m.id === 'church');
+  const a = church.anchors.pad;
+  for (const q of [pad, machine.park]) {
+    assert.ok(Math.hypot(q.x - a.x, q.z - a.z) < 0.01, `${JSON.stringify(q)} against ${JSON.stringify(a)}`);
+    assert.ok(Math.abs(q.y - a.y) < 0.01);
+    assert.ok(Math.abs(Math.atan2(Math.sin(q.yaw - church.anchors.padYaw), Math.cos(q.yaw - church.anchors.padYaw))) < 0.001);
+  }
+  assert.deepEqual([pad.w, pad.l], data.pad.size);
+  assert.ok(!pad.planned);
+});
+
+test('let down over the deck at any heading, the pad turns the nose along the deck before the skids touch', () => {
+  const pad = { ...church.anchors.pad, yaw: church.anchors.padYaw, long: true };
+  const solids = churchPrisms(village.prisms, church).filter((p) => p.p[0].some(([x, z]) => Math.hypot(x - pad.x, z - pad.z) < 20));
+  const inRing = (x, z, r) => {
+    let c = false;
+    for (let i = 0, j = r.length - 1; i < r.length; j = i++) {
+      const [xi, zi] = r[i], [xj, zj] = r[j];
+      if ((zi > z) !== (zj > z) && x < ((xj - xi) * (z - zi)) / (zj - zi) + xi) c = !c;
+    }
+    return c;
+  };
+  const ground = (x, z, top) => {
+    let g = house.ground + height(x, z);
+    for (const p of solids) if (p.y1 <= top && p.y1 > g && inRing(x, z, p.p[0])) g = p.y1;
+    return g;
+  };
+  for (let k = 0; k < 8; k++) {
+    const s = heliStart({ x: pad.x, y: pad.y, z: pad.z, yaw: pad.yaw + (k * Math.PI) / 4 });
+    heliPlace(s, pad.x, pad.y + 4, pad.z, s.yaw, 1);
+    Object.assign(s, { ground: false, holdY: pad.y + 4, heightHeld: true, coll: 0.5 });
+    const env = { ground, ceiling: Infinity, wind: [0, 0], edge: null, pad };
+    let t = 0;
+    for (; t < 20 && !s.ground; t += 0.05) heliFly(s, { lift: -1 }, env, 0.05);
+    heliFly(s, { lift: -1 }, env, 1);
+    const off = Math.abs(Math.atan2(Math.sin(2 * (s.yaw - pad.yaw)), Math.cos(2 * (s.yaw - pad.yaw)))) / 2;
+    assert.ok(s.ground && Math.abs(s.y - pad.y) < 0.05, `turned ${k * 45} degrees: ground ${s.ground}, ${s.y - pad.y} over the deck`);
+    assert.ok(off < 0.05, `turned ${k * 45} degrees: it came down ${(off * 180) / Math.PI} degrees off the deck's line`);
+  }
 });
 
 test('hovering above the roof still triggers the existing unreachable-perch rule', () => {

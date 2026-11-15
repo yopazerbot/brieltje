@@ -510,6 +510,7 @@ export class Heli {
     this.far = far && far.children.length ? far : null;
     if (this.far) {
       prep(this.far);
+      this.far.traverse((o) => (o.castShadow = false)); // from 45 or 90 m off: no shadow pass of its own (the contact shadow stays)
       this.far.visible = false;
       this.body.add(this.far);
     }
@@ -573,8 +574,9 @@ export class Heli {
   get stranded(): boolean {
     const s = this.s;
     if (this.flown || this.pilot || !this.atRest) return false;
-    if (HELIS.pads.some((p) => Math.hypot(s.x - p.x, s.z - p.z) < 3 && Math.abs(s.y - p.y) < 1.5)) return false;
-    if (!s.ground) return true;
+    if (!s.ground) return true; // resting on its boom or cabin (on a rail, a roof's edge): never left so, on a pad or not
+    if (this.atHome) return false; // on its own pad; on another machine's it is away
+    if (HELIS.pads.some((p) => Math.hypot(s.x - p.x, s.z - p.z) < 3 && Math.abs(s.y - p.y) < 1.5)) return true;
     const bare = this.world.groundAt(s.x, s.z, -1e4, 0).y; // the land itself, under anything built
     const water = waterLevel(s.x, s.z);
     return Math.abs(s.y - bare) > 1.2 || (water !== null && water > s.y - 0.3) || homeAt(s.x, s.z, s.y + 1) !== null || inEndGarden(s.x, s.z, s.y);
@@ -583,14 +585,40 @@ export class Heli {
   /** s it has been stranded (world/heli.ts update): after LOST_AFTER it goes back to its pad by itself. */
   private lost = 0;
 
-  /** Back on its pad (its rotor running down there, so it sounds as it comes back). Not while someone stands there. */
+  /** Within 3 m of its own pad, at its height. */
+  get atHome(): boolean {
+    return Math.hypot(this.s.x - this.park.x, this.s.z - this.park.z) < 3 && Math.abs(this.s.y - this.park.y) < 1.5;
+  }
+
+  /** Another machine on this one's own pad, or null. */
+  private squatter(): Heli | null {
+    for (const m of machines) if (m !== this && m.ready && Math.hypot(m.s.x - this.park.x, m.s.z - this.park.z) < 6 && Math.abs(m.s.y - this.park.y) < 3) return m;
+    return null;
+  }
+
+  /**
+   * Back on its own pad (its rotor running down there, so it sounds as it comes back). Not while someone stands there.
+   * Another machine standing on that pad first goes to its own (the two swap when each is on the other's); one being
+   * flown there, or one whose own pad is taken by a third, holds it back (it waits: false).
+   */
   sendHome(eye: THREE.Vector3 | null = null): boolean {
     const p = this.park;
     if (eye && Math.hypot(eye.x - p.x, eye.z - p.z) < 7) return false;
+    const other = this.squatter();
+    if (other) {
+      const theirs = other.squatter();
+      if (other.flown || other.pilot || (theirs && theirs !== this)) return false;
+      other.goHome();
+    }
+    this.goHome();
+    return true;
+  }
+
+  private goHome(): void {
+    const p = this.park;
     this.lost = 0;
     this.place(p.x, this.world.groundAt(p.x, p.z, p.y + 2, 0).y, p.z, p.yaw, Math.max(this.s.rotor, 0.8));
     this.s.engine = false;
-    return true;
   }
 
   /** Whether you may get out now: at rest on anything, or within 1.5 m of a floor and slow. */
@@ -627,7 +655,8 @@ export class Heli {
   leave(home = false): void {
     this.flown = false;
     const s = this.s;
-    if (home) this.place(this.park.x, this.world.groundAt(this.park.x, this.park.z, this.park.y + 2, 0).y, this.park.z, this.park.yaw, s.rotor);
+    const rotor = s.rotor;
+    if (home && this.sendHome()) s.rotor = rotor; // its own pad (another machine there going to its own first)
     else if (!this.atRest) heliPlace(s, s.x, s.floor, s.z, s.yaw, s.rotor);
     s.engine = false;
     s.coll = 0;
@@ -729,7 +758,8 @@ export class Heli {
         s.y = Math.max(s.y, was.y);
         s.vy = Math.max(0, s.vy);
         if (Math.hypot(s.vx, s.vz) < 0.5) s.vx = s.vz = 0;
-        s.held = true;
+        // On another machine it is held off, never at rest: nobody lands on a parked machine (nor gets out up there).
+        s.held = !this.world.touching(s.x, s.z, s.y - 0.4, s.y + 0.4, 2.5, this.key)?.key?.startsWith('heli-');
       }
     }
     if (impact > 0.5) this.contact(vx, vz, impact);
@@ -923,8 +953,12 @@ export class Heli {
   }
 
   /** Dev and the warm-up: every part drawn (the discs, the blades, the far copy too) so their shaders are made before play. */
-  warm(on: boolean): void {
+  warm(on: boolean, at: { x: number; y: number; z: number } | null = null): void {
     this.warmOn = on;
+    // Drawn 8 m from `at` (where play begins) while warming, so its shadow is cast there too and the shadow pass's
+    // programs are made now, not at its first landing far off (a machine 600 m away is in no shadow).
+    if (on && at) this.group.position.set(at.x + 8 - this.s.x, at.y - this.s.y, at.z + 8 - this.s.z);
+    else this.group.position.set(0, 0, 0);
     if (on) {
       this.noise.warm(); // its sound's nodes made once too
       this.discMat.opacity = this.tailMat.opacity = 0.01;

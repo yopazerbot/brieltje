@@ -198,8 +198,8 @@ export class HeliPilot {
   }
 
   /** The warm-up behind the start screen: every part of every machine drawn, the blur discs' and lamps' shaders made. */
-  warm(on: boolean): void {
-    for (const m of this.machines) m.warm(on);
+  warm(on: boolean, x?: number, y?: number, z?: number): void {
+    for (const m of this.machines) m.warm(on, x === undefined || y === undefined || z === undefined ? null : { x, y, z });
   }
 
   private painting = false;
