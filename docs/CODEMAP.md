@@ -477,6 +477,8 @@ file's opening comment; run it again after adding, moving or removing a module.
 - `tools/traffic_cars.py`: The village's everyday cars in Blender: a compact hatchback, an estate and a panel van, simple and low on triangles, for the traffic on the roads and the...
 - `tools/tree_huts.py`: Build the tree huts in the wood round the café Sparrenhof in Blender: shooting bases for the Zombies game.
 - `tools/village_houses_b1.py`: Hand-made houses among the generated ones, package B1: four houses in the north-west of the village.
+- `tools/village_houses_b2.py`: Hand-made houses among the generated ones, package B2: four houses in the east of the village.
+- `tools/village_houses_kit.py`: The toolkit of the hand-made village houses: House, Opening, the ground, the export to .glb.
 - `tools/villager_paths.py`: Where the villagers walk and cycle in Explore: web/src/data/villagers.json.
 - `tools/villagers.py`: Build the villagers for Explore in Blender: generic, invented people and a dog, rigged and animated.
 - `tools/weapons.py`: Build the weapons for Action and Paintball in Blender: pistol, rifle, shotgun, sniper rifle and bazooka, with the gloved hands and sleeves that hold them in...
