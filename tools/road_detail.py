@@ -119,12 +119,16 @@ STRETCHES = [("Kapellenhoek", 0.0, 165.0, "kh_dash"),
 # - Serskampstraat's bend at x -483, z -789: asphalt, and its leg south of it to the map's edge a narrow asphalt lane
 #   between the fields: past the first 100 m from the bend, where houses and drives meet it, the road surface beside
 #   its asphalt is a rough verge (`lane_verge`), so it reads as about 4.7 m of asphalt between the grass;
+# - Oud-Smetlede by the reference spots at z 112 and 221, its + side (to larger x): open fields with a rough verge, no house
+#   or drive within 30 m on that side (the street's other side has them and keeps its pavers);
 # - Blekte's last stretch to Klinkaard, from about x 1725 (pictures of 2024): new asphalt with a kerb.
 AREAS = [("Schildekensstraat", (-400.0, -1400.0, 102.0, -950.0), "concrete_red"),
          ("Serskampstraat", (-330.0, -1200.0, -60.0, -860.0), "concrete_red"),
          ("Serskampstraat", (-505.0, -812.0, -461.0, -772.0), "asphalt"),
          ("Serskampstraat", (-700.0, -678.0, -340.0, -250.0), "lane_verge"),
          ("Serskampstraat", (-700.0, -786.0, -340.0, -250.0), "lane_asphalt"),
+         ("Oud-Smetlede", (640.0, 187.5, 660.0, 236.5), "concrete_verge"),
+         ("Oud-Smetlede", (620.0, 100.0, 650.0, 172.5), "concrete_verge"),
          ("Blekte", (1725.0, 200.0, 1900.0, 320.0), "asphalt")]
 # Lanes without a road surface in the village data, drawn on their GRB centre line with a street's profile: name:
 # (profile, half its width, the earth either side, the street it leaves, metres left off where it leaves it and at its
@@ -882,7 +886,7 @@ def debug(out, road):
             d.polygon(ring(h), fill=(236, 240, 228))
     pal = {"kh": (200, 60, 60), "kh_dash": (240, 120, 0), "kw": (60, 140, 60), "briel": (60, 60, 200), "lane": (140, 60, 200),
            "kerkhof": (20, 20, 20), "asphalt": (90, 90, 90), "concrete": (230, 170, 40), "concrete_red": (200, 90, 70), "lane_asphalt": (120, 120, 120), "lane_loose": (180, 160, 120),
-           "lane_verge": (140, 125, 100)}
+           "lane_verge": (140, 125, 100), "concrete_verge": (200, 150, 60)}
     for r in out["runs"]:
         p, w, q = r["p"], r["w"], r["q"]
         n = len(p) // 2

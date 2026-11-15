@@ -92,6 +92,8 @@ interface Profile {
   apron?: Surface;
   /** The apron's colour (else the pavements') */
   apronTint?: string;
+  /** The apron on the run's - side where it differs from the + side's (`apron`, `apronTint`) */
+  apronMinus?: { m: Surface; tint: string };
   kerb?: { h: number; tint: string };
   walk?: { m: Surface; tint: string };
   /** The pavement on the run's - side where it differs from the + side's (`walk`) */
@@ -170,6 +172,9 @@ const PROFILES: Record<string, Profile> = {
   // with its lane, Serskampstraat by its junction with Schildekensstraat; the pictures show grey pavers across the road).
   // A dull brick red as bright as the grey pavers: in the sun as light against the road as they are on the pictures.
   concrete_red: { ...OUTER, walk: { m: 'pavers', tint: '#ad877c' }, walkMinus: OUTER.walk },
+  // The same past open fields on the run's + side (Oud-Smetlede's stretches with no house or drive on that side): the
+  // road surface beside the slabs there is the rough verge of the lanes in the fields; the - side keeps its pavers.
+  concrete_verge: { ...OUTER, apron: 'gravel', apronTint: VERGE_EARTH, apronMinus: { m: 'pavers', tint: OUTER.apronTint! } },
   // The other streets: asphalt, setts and kerbs where the GRB has a pavement.
   asphalt: {
     road: 'asphalt', tint: '#595b5e', gutter: { w: 0.3, tint: SETTS }, kerb: { h: 0.1, tint: KERB_TINT }, walk: { m: 'pavers', tint: PAVERS },
@@ -854,8 +859,13 @@ class Builder {
           const reach = (k: number) => Math.max(st, q(k));
           const e0 = (k: number) => sign * (w(k) + st);
           const e1 = (k: number) => sign * (w(k) + reach(k));
-          const apronSurface: Surface = pf.apron ?? (pf.core ? 'asphalt' : surface);
-          const apron = pf.apron ? new THREE.Color(pf.apronTint ?? pf.walk?.tint ?? PAVERS) : (pf.core ? edgeTint : base).clone().multiplyScalar(0.94);
+          const minus = side === 1 ? pf.apronMinus : undefined;
+          const apronSurface: Surface = minus?.m ?? pf.apron ?? (pf.core ? 'asphalt' : surface);
+          const apron = minus
+            ? new THREE.Color(minus.tint)
+            : pf.apron
+              ? new THREE.Color(pf.apronTint ?? pf.walk?.tint ?? PAVERS)
+              : (pf.core ? edgeTint : base).clone().multiplyScalar(0.94);
           if (q(k0) > st || q(k1) > st) this.strip(f, k0, k1, side === 0 ? e0 : e1, side === 0 ? e1 : e0, apronSurface, flatLift, (_k, _o, out) => out.copy(apron), [0, 1]);
           if (pf.shoulder) {
             // The verge: under any paving the open data has there (a drive comes out on the road).
