@@ -1,4 +1,4 @@
-// The sets the page really plans the generated houses' roofs and plots on (world/houseIndex.ts `plannedSets`,
+// The sets the page really works the generated houses' roofs and plots out on (world/houseIndex.ts `plannedSets`,
 // world/villagePlots.ts `plotInputs`: the village after our models took their houses out, the ring round the home),
 // written to a JSON file, so world/roofPlan.test.mjs and world/plots.test.mjs can check them as the page draws them:
 //

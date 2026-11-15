@@ -17,7 +17,7 @@ const read = (file) => JSON.parse(fs.readFileSync(new URL(file, import.meta.url)
 const shell = read('../data/house_shell.json');
 // The two sets the houses are built from: the village and the ring round the home.
 const sets = { village: read('../data/village.json'), ring: shell.surroundings };
-// And, given a file from tools/dev/houseSets.mjs, the sets the page plans on: the village after our models took their
+// And, given a file from tools/dev/houseSets.mjs, the sets the page works the roofs out on: the village after our models took their
 // houses out and the ring round the home without the houses round its portals, each with the whole data behind it.
 if (process.env.HOUSE_SETS) {
   const page = JSON.parse(fs.readFileSync(process.env.HOUSE_SETS, 'utf8')).sets.filter((s) => s.unfiltered);
