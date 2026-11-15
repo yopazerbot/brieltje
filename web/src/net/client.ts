@@ -46,6 +46,33 @@ export interface ZombieRun {
   at: string;
 }
 
+/** The party games on the board of games won (server/store.mjs GAME_KINDS), each a column. */
+export interface GameWins {
+  wins: number;
+  hide: number;
+  tag: number;
+  treasure: number;
+  teams: number;
+}
+
+/**
+ * The boards of the timed routes, the gnomes and the party games (server/boards.mjs), the best ten of each: accounts and
+ * the admin only. `races` by route id (match it to the page's own routes, never show it raw); `at`: the day.
+ */
+export interface Boards {
+  races: Record<string, { username: string; ms: number; at: string }[]>;
+  gnomes: { username: string; n: number; at: string }[];
+  games: ({ username: string } & GameWins)[];
+  gnomeTotal: number;
+}
+
+/** Your own lines on those boards (your session's account); empty for a guest. */
+export interface BoardsMine {
+  races?: Record<string, { ms: number; place: number }>;
+  gnomes?: number;
+  games?: GameWins;
+}
+
 export interface Score {
   name: string;
   color: string;
@@ -149,6 +176,13 @@ export type ServerMsg =
   | { t: 'blast'; by: string; x: number; y: number; z: number; w?: string }
   | { t: 'nade'; name: string; x: number; y: number; z: number; vx: number; vy: number; vz: number }
   | { t: 'scores'; list: Score[] }
+  /**
+   * The server timed a route you finished playing together (server/goals.mjs), to you alone: `ms` its time, `best` a new
+   * best on the board, `place` its place then (else null); `tonight`: a guest's, on tonight's board only
+   */
+  | { t: 'race'; id: string; ms: number; best: boolean; place: number | null; tonight: boolean }
+  /** The server noted a gnome you walked up to: `n` found on the board (a guest's: tonight) */
+  | { t: 'gnome'; n: number; tonight: boolean }
   | { t: 'hurt'; hp: number; by: string; from?: { x: number; z: number } }
   | { t: 'rally'; name: string; x: number; y: number; z: number }
   | { t: 'placement'; id: number; ok: boolean; why?: 'none' | 'max' | 'all' | 'spot'; a?: number; b?: number }
@@ -245,6 +279,10 @@ export const api = {
   openRoom: (place: string) => call<{ room: RoomEntry }>('POST', '/api/rooms', { place }),
   /** The board of best Zombies runs: at one place, or each account's best anywhere (''). */
   scores: (place = '') => call<{ rows: ZombieRun[] }>('GET', `/api/scores${place ? `?place=${encodeURIComponent(place)}` : ''}`),
+  /** The boards of the routes, the gnomes and the party games (public); asked only when a board opens. */
+  boards: () => call<Boards>('GET', '/api/boards'),
+  /** Your own lines on them: playing together with an account or as the admin ({} for a guest). */
+  boardsMine: () => call<BoardsMine>('GET', '/api/boards/mine'),
   logout: () => call('POST', '/api/logout', {}),
   players: () => call<{ players: { name: string; color: string; role: string }[]; max: number }>('GET', '/api/players'),
   kick: (name: string) => call('POST', '/api/kick', { name }),
