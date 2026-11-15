@@ -21,5 +21,9 @@
       { "at": [-383.3, 9.7, -1188.6], "aim": [-364.8, -5.7, -1228.7], "power": 30000, "spread": 80, "color": [0.92, 0.96, 1], "size": 0.8 },
       { "at": [-320.7, 9.7, -1190.8], "aim": [-336.7, -5.7, -1227.9], "power": 30000, "spread": 80, "color": [0.92, 0.96, 1], "size": 0.8 }] } },
   "square": { "position": [520, 22, -797], "target": [556.5, 6, -762.8], "fov": 54 },
+  "heli-church": { "position": [557, 36.5, -699], "target": [547, 26.2, -730.9], "fov": 50, "season": "2026-10-15",
+    "heli": { "at": [556, 31, -728], "yaw": 2.23, "pitch": 0.1, "roll": -0.2 } },
+  "square-dusk": { "position": [530, 6.4, -778], "target": [546, 13, -740], "fov": 56, "mood": "night", "season": "2026-10-15",
+    "render": { "mood": "dusk", "exposure": 1.2 } },
   "street-night": { "position": [570, 8.6, -762], "target": [525.3, 6.6, -767.5], "fov": 52, "mood": "night", "render": { "wet": true, "puddles": 0.05, "exposure": 0.9, "clear": 10 } }
 }

@@ -1,5 +1,6 @@
 // The slideshow of renders behind the start screen and the site's other pages: the town with its
-// church and school, by day and at night, FC Smetlede's training under the floodlights, the house,
+// church and school, by day and at night, FC Smetlede's training under the floodlights, the helicopter
+// over the church square, the square at dusk, the house,
 // a wet street at night, the church square with its board, the bungalow, the tree huts by the café
 // Sparrenhof at dusk, the school's playground, Molenhoek in the rain, the café by day and a parachute
 // over the town at dusk (tools/still/, Blender), day and dusk, night or rain taking turns. Any element with
@@ -14,6 +15,8 @@
   const SLIDES = [
     { src: '/start/town', focus: '72% 50%', nl: 'Smetlede: de kerk en de school', en: 'Smetlede: the church and the school' },
     { src: '/start/football', focus: '66% 50%', nl: 'FC Smetlede: training onder de schijnwerpers', en: 'FC Smetlede: training under the floodlights' },
+    { src: '/start/heli-church', focus: '70% 40%', nl: 'Smetlede: de helikopter boven het kerkplein', en: 'Smetlede: the helicopter over the church square' },
+    { src: '/start/square-dusk', focus: '72% 50%', nl: 'Smetlede: het kerkplein in de schemering', en: 'Smetlede: the church square at dusk' },
     { src: '/start/house', focus: '58% 45%', nl: 'Het nieuwe huis', en: 'The new house' },
     { src: '/start/street-night', focus: '60% 50%', nl: 'Smetlede bij nacht, na de regen', en: 'Smetlede at night, after the rain' },
     { src: '/start/square', focus: '64% 50%', nl: 'Smetlede: het kerkplein met het dorpsbord', en: 'Smetlede: the church square and its village board' },
