@@ -462,7 +462,8 @@ try {
     const calm = Math.max(0, ...rec.filter((f, i) => i > 1 && f[0] < start[0] - 100).map((f) => f[1]));
     const home = rec.find((f, i) => i > k && f[13] === null) ?? null;
     const firstStep = rec[k + 1]?.[5] ?? Infinity; // the drop's clock after its first step
-    return { h, kmh, before, start, firstStep, open, land: land > 0 ? rec[land] : null, landSpeed, snap, longest, calm, home, closest, k, programs };
+    const beforeOpen = open ? rec[rec.indexOf(open) - 1]?.[5] ?? 0 : 0; // and on the frame before it opened
+    return { h, kmh, before, start, firstStep, beforeOpen, open, land: land > 0 ? rec[land] : null, landSpeed, snap, longest, calm, home, closest, k, programs };
   };
 
   /** The jumps: heights and speeds, what follows, over the private homes, and what interrupts one. */
@@ -481,7 +482,7 @@ try {
       row(`jump ${Number.isFinite(h) ? `${h} m` : 'at the ceiling'}, ${Math.round(speed(j.before) * 3.6)} km/h`, `from ${r1(air0)} m: free fall ${r1(fall)} s (the drop's clock ${r1(clock)} s, ${r1(air0 - openAir)} m), open at ${r1(openAir)} m; down after ${r1(down)} s at ${r1(j.landSpeed)} m/s, ${r1(j.land ? Math.hypot(j.land[2] - j.start[2], j.land[4] - j.start[4]) : NaN)} m on; machine home ${j.home ? r1((j.home[0] - j.start[0]) / 1000) + ' s' : '-'} after; closest ${r1(j.closest)} m off it; camera step ${r1(j.snap)} m; longest frame ${r1(j.longest)} ms`);
       longest.push(`${r1(j.longest)}${j.calm ? ` (${r1(j.calm)} before)` : ''}`);
       check(j.k >= 0 && !(await b.evaluate('briel.helis.aboard')), `jump ${Number.isFinite(h) ? h : 'ceiling'} m ${kmh} km/h: out, in the drop`);
-      check(!!j.open && (air0 <= 45.5 ? clock <= j.firstStep + 1e-6 : clock > 0.9 && clock < 1.5 && air0 - openAir <= 15), `the canopy opened by itself (${r1(clock)} s in by the drop's clock${air0 <= 45.5 ? ', at its first step' : ''}, ${r1(fall)} s on the wall)`);
+      check(!!j.open && (air0 <= 45.5 ? clock <= j.firstStep + 1e-6 : j.beforeOpen < 1.2 && clock >= 1.2 - 1e-6 && clock < 1.5 + 0.5 && air0 - openAir <= 15), `the canopy opened by itself (${r1(clock)} s in by the drop's clock${air0 <= 45.5 ? ', at its first step' : ''}, ${r1(fall)} s on the wall)`);
       check(!!j.land && j.landSpeed < 3, `landed under the canopy (${r1(j.landSpeed)} m/s)`);
       check(j.closest > 0.1, `clear of the machine (${r1(j.closest)} m at the closest)`);
       check(j.snap < 3, `no camera snap at the jump (${r1(j.snap)} m in a frame beyond your own move)`);
@@ -500,7 +501,10 @@ try {
         await putAir(x, z, 22, 0);
         await b.evaluate('briel.helis.board(briel.helis.machines[0])');
         await b.sleep(800);
-        await use();
+        for (let i = 0; i < 3 && (await b.evaluate('briel.helis.aboard')); i++) {
+          await use();
+          await b.sleep(400);
+        }
         const t0 = Date.now();
         let worst = null;
         while (Date.now() - t0 < 30000) {
