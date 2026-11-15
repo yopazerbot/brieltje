@@ -178,7 +178,9 @@ export type ServerMsg =
   | { t: 'scores'; list: Score[] }
   /**
    * The server timed a route you finished playing together (server/goals.mjs), to you alone: `ms` its time, `best` a new
-   * best on the board, `place` its place then (else null); `tonight`: a guest's, on tonight's board only
+   * best on the board, `place` its place then (else null); `tonight`: on tonight's board only (a guest's, or the car's).
+   * Before using `race` or `gnome`, check the types and ranges as for any server message (a known route id from the
+   * page's own list, finite whole numbers in range, booleans), and put any of it on screen with textContent only.
    */
   | { t: 'race'; id: string; ms: number; best: boolean; place: number | null; tonight: boolean }
   /** The server noted a gnome you walked up to: `n` found on the board (a guest's: tonight) */
