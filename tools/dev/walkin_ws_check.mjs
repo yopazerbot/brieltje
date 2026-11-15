@@ -188,6 +188,37 @@ const aNow = (() => {
 })();
 ok('a: a forged position inside is not taken', aNow && homeAt(aNow.x, aNow.z, aNow.y) === null, JSON.stringify(aNow));
 
+// A garage door that opens (the brick house's rises): Bob opens it, Alice is told nothing and is held at it all the same.
+const garage = shell.doors.find((d) => d.id === 'kh-home-garage' && d.panels.some((p) => p.lift || p.slide || p.swing));
+if (garage) {
+  a.log.length = 0;
+  b.send({ t: 'door', id: garage.id, open: true, dir: 1 });
+  await sleep(1100);
+  ok('the admin hears the garage door open', root.log.some((m) => m.t === 'door' && m.id === garage.id && m.open));
+  const ga = toWorld(garage.panels[0].a);
+  const gb = toWorld(garage.panels[0].b);
+  const gm = [(ga[0] + gb[0]) / 2, (ga[1] + gb[1]) / 2];
+  const gl = Math.hypot(gb[0] - ga[0], gb[1] - ga[1]);
+  let gn = [-(gb[1] - ga[1]) / gl, (gb[0] - ga[0]) / gl];
+  if (homeAt(gm[0] + gn[0] * 1.2, gm[1] + gn[1] * 1.2, floor) !== H) gn = [-gn[0], -gn[1]];
+  const gStep = (k) => [gm[0] + gn[0] * k, gm[1] + gn[1] * k];
+  ok('the spot behind the garage door is the home\'s', homeAt(...gStep(1.2), floor) === H);
+  await walk(a, px, pz, floor);
+  await walk(a, ...gStep(-1), floor);
+  await walk(a, ...gStep(1.2), floor);
+  await sleep(600);
+  ok('a: the open garage door is no way in', a.log.some((m) => m.t === 'homelock' && m.id === H));
+  const aG = (() => {
+    for (let i = b.log.length - 1; i >= 0; i--) {
+      const e = b.log[i].t === 's' ? b.log[i].p?.find((q) => q[0] === a.name) : null;
+      if (e) return { x: e[2], y: e[3], z: e[4] };
+    }
+    return null;
+  })();
+  ok('a: the others see her outside the garage, never in', aG && homeAt(aG.x, aG.z, aG.y) === null, JSON.stringify(aG));
+  ok('a hears nothing of the garage door: she sees it shut', !a.log.some(ofHome), `${a.log.filter(ofHome).length} messages`);
+}
+
 // The admin revokes the code: Bob, inside, is put out on the home's spot at his next move.
 const revoked = await call('DELETE', `/api/admin/homes/${H}/code`, undefined, admin);
 ok('the admin revoked the code', revoked.r.status === 200);
