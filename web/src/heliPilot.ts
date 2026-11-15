@@ -16,11 +16,12 @@ import { groundPads, PADS, testDeck } from './world/heliPads';
  * Flying the helicopter (world/heli.ts, shared/heli.mjs), for main.ts: which machine you are in, getting in and out,
  * the keys to the flight, the line at the bottom and the instruments (ui/heliHud.ts).
  *
- * One idea for the keys: it moves as you move on foot, turns as you look round, and rises and sinks as flying on foot
- * does. Keyboard: W A S D (Z Q S D on AZERTY) and the arrows up and down fly it, the mouse or the arrows left and right
- * turn it, Space up, Ctrl or C down, I the pilot's view, E in and out. Controller: the left stick flies it, the right
- * stick turns it and tilts the camera, R2 up and L2 down as far as they are pressed (or ✕ and ○), R3 the view,
- * △ in and out. Touch: the stick flies it, a drag on the right turns it, the Up and Down buttons, View, Use.
+ * The keys as the helicopters of open-world driving games have them (Yoshi, 15 Nov 2026), on the same flight. Keyboard: W and S (Z and
+ * S on AZERTY) and the arrows up and down fly forward and back, A and D (Q and D) turn it, the arrows left and right fly
+ * sideways, Space up, C or Ctrl down, I or B the pilot's view, E in, out or the jump; the mouse only looks round (the
+ * view goes back behind it by itself). Controller: the left stick flies it (forward, back, sideways), L1 and R1 turn it,
+ * the right stick looks, R2 up and L2 down as far as they are pressed (or ✕ and ○), R3 the view, △ in and out. Touch:
+ * the stick flies forward and back and, pushed sideways, turns it; a drag on the right looks; Up, Down, View, Use.
  *
  * You may get out on a floor, or within 1.5 m of one and slow; higher up than DROP.jumpMin over the floor below the same
  * key jumps: out of the door, a short free fall and the parachute opens by itself (shared/parachute.mjs jumpStart, the
@@ -181,28 +182,25 @@ export class HeliPilot {
 
   /**
    * A frame at the controls: `frame` the frame's input, `extras` the helicopter's own (controls/input.ts heli), `look`
-   * what player.look made of the mouse and the right stick this frame (rad: the turn and the tilt). Returns how hard
-   * it hit something (m/s).
+   * what player.look made of the mouse, the right stick and a drag this frame (rad: right and up): the camera's only.
+   * Returns how hard it hit something (m/s).
    */
   fly(dt: number, frame: FrameInput, extras: Input['heli'] | null, look: [number, number], camera: THREE.PerspectiveCamera, others: Obstacle[]): number {
     const m = this.heli;
     if (!m) return 0;
     const ex = extras ?? { fwd: 0, side: 0, turn: 0, triggers: 0, view: false };
     const clamp = (v: number) => Math.max(-1, Math.min(1, v));
-    // The turn: as fast as the view would turn on foot (the mouse, the right stick), at most a hover's turn rate; the
-    // arrow keys left and right in full. Eased a little, so a flick turns it and a still mouse flies straight.
-    const rate = dt > 0 ? look[0] / dt : 0;
-    const want = clamp(rate / HELI.YAW_SLOW + ex.turn);
-    this.turnIn += (want - this.turnIn) * (1 - Math.exp(-Math.max(0, dt) * 10));
+    // The turn: the turn keys (A and D, L1 and R1, the touch stick sideways), eased a little. The mouse doesn't turn it.
+    this.turnIn += (clamp(ex.turn) - this.turnIn) * (1 - Math.exp(-Math.max(0, dt) * 10));
     const lift = clamp((frame.jumpHeld ? 1 : 0) - (frame.downHeld ? 1 : 0) + ex.triggers);
-    if (ex.view || frame.scopePressed) m.view = m.view === 'chase' ? 'cockpit' : 'chase';
+    if (ex.view || frame.scopePressed) m.switchView();
     const hit = m.fly(dt, { fwd: ex.fwd, side: ex.side, turn: Math.abs(this.turnIn) < 0.01 ? 0 : this.turnIn, lift }, others);
     if (m.s.ev & EV.LIFTOFF && !this.shownKeys) {
       this.shownKeys = true;
       this.hint = 5; // the flying keys, for the first seconds in the air (once a session)
     }
-    if (m.view === 'cockpit') m.cockpit(camera, dt, look[1]);
-    else m.chase(camera, dt, -look[1]);
+    if (m.view === 'cockpit') m.cockpit(camera, dt, look[1], look[0]);
+    else m.chase(camera, dt, -look[1], look[0]);
     this.hint = Math.max(0, this.hint - dt);
     this.landHint = Math.max(0, this.landHint - dt);
     return hit;
@@ -221,7 +219,7 @@ export class HeliPilot {
     if (s.atCeiling) return t('prompt.heliCeiling');
     if (s.atEdge) return t('prompt.edge');
     // The keys for the first seconds in the air, one short line; on touch none (the buttons say what they do).
-    if (this.hint > 0 && mode !== 'touch') return t('prompt.heliFlying', { up, down: key('heliDown', mode), view: key('heliView', mode), use: key('use', mode) });
+    if (this.hint > 0 && mode !== 'touch') return t('prompt.heliFlying', { turn: key('heliTurn', mode), up, down: key('heliDown', mode), view: key('heliView', mode), use: key('use', mode) });
     return '';
   }
 
@@ -294,7 +292,7 @@ export class HeliPilot {
     crowns: () => this.crowns,
     state: (i = 0) => {
       const m = this.machines[i];
-      return { ...m.s, view: m.view, sound: m.soundOn, flown: m.flown, ready: m.ready, draws: m.draws() };
+      return { ...m.s, view: m.view, sound: m.soundOn, flown: m.flown, ready: m.ready, draws: m.draws(), look: m.look };
     },
   };
 }

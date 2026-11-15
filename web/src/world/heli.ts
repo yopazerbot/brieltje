@@ -61,6 +61,13 @@ const LAMPS: Record<string, string> = { LightRed: '#ff2a1a', LightGreen: '#20ff6
 /** Materials drawn with another's: the gaps (black) and the rubber with the trim, the lamps as one. */
 const DRAWN_AS: Record<string, string> = { Gap: 'Trim', Rubber: 'Trim', ...Object.fromEntries(Object.keys(LAMPS).map((k) => [k, 'Lamp'])) };
 const angle = (a: number) => Math.atan2(Math.sin(a), Math.cos(a));
+/** s without looking round before the view eases back behind the machine (or ahead from the seat) */
+const LOOK_BACK = 2;
+/** The pilot's head: rad up and down, and to each side */
+const HEAD = { pitch: 0.7, yaw: 1.92 };
+const _seat = new THREE.Quaternion();
+const _head = new THREE.Quaternion();
+const _euler = new THREE.Euler(0, 0, 0, 'YXZ');
 const smooth = (a: number, b: number, v: number) => {
   const t = Math.min(1, Math.max(0, (v - a) / (b - a)));
   return t * t * (3 - 2 * t);
@@ -422,6 +429,8 @@ export class Heli {
   private camLand = 0;
   private lookIdle = 0;
   private lookPitch = 0;
+  /** The look round (the mouse, the right stick, a drag): rad from straight behind it (chase) or ahead (the pilot's seat) */
+  private lookYaw = 0;
   // The trees' crowns by 32 m square, built when the list grows.
   private crownCells = new Map<number, Crown[]>();
   private crownCount = -1;
@@ -652,6 +661,29 @@ export class Heli {
     this.lookPitch = 0;
     this.camLand = this.s.h < 15 ? 1 : 0;
     this.view = 'chase';
+    this.lookYaw = 0;
+  }
+
+  /** Behind it, or the pilot's view: the look starts straight again (a cut, not an ease). */
+  switchView(): void {
+    this.view = this.view === 'chase' ? 'cockpit' : 'chase';
+    this.lookYaw = 0;
+    this.lookPitch = 0;
+  }
+
+  /** Dev: the look round (rad): yaw from straight behind or ahead, the pilot's tilt, seconds without a look. */
+  get look(): { yaw: number; pitch: number; idle: number } {
+    return { yaw: this.lookYaw, pitch: this.lookPitch, idle: this.lookIdle };
+  }
+
+  /**
+   * The look round, a frame: `pan` and `tilt` (rad) from the mouse, the right stick or a drag; after LOOK_BACK s
+   * without one it eases back, the ease itself eased in over a second (no jerk). Returns the share to ease back by.
+   */
+  private lookRound(d: number, pan: number, tilt: number): number {
+    this.lookYaw = angle(this.lookYaw - pan);
+    this.lookIdle = pan || tilt ? 0 : this.lookIdle + d;
+    return 1 - Math.exp(-d * 1.5 * smooth(LOOK_BACK, LOOK_BACK + 1, this.lookIdle));
   }
 
   /**
@@ -904,10 +936,10 @@ export class Heli {
    * The camera behind it: from CAM_DIST behind (further with speed) and CAM_SIDE to the right, CAM_PITCH down, following the nose and, at
    * speed, the way it flies; looking up a little in a climb and down in a descent, so the landing spot comes into
    * view by itself. The horizon stays level (the machine is seen banking). Low and slow it comes nearer and steeper.
-   * Walls and the tower pull it in; pulled in close it rises to look down on the machine. `tilt` (rad) from the mouse
-   * or the right stick tilts it.
+   * Walls and the tower pull it in; pulled in close it rises to look down on the machine. `tilt` and `pan` (rad) from
+   * the mouse, the right stick or a drag swing it round the machine (looking round); it comes back behind by itself.
    */
-  chase(camera: THREE.PerspectiveCamera, dt: number, tilt: number): void {
+  chase(camera: THREE.PerspectiveCamera, dt: number, tilt: number, pan = 0): void {
     const s = this.s;
     const d = Math.min(Math.max(dt, 0), 0.1);
     const speed = Math.hypot(s.vx, s.vz);
@@ -915,8 +947,9 @@ export class Heli {
     const heading = s.yaw + 0.7 * smooth(10, 18, speed) * angle(path - s.yaw);
     this.camHeading += angle(heading - this.camHeading) * (1 - Math.exp(-d * HELI.CAM_FOLLOW));
     this.camTilt = Math.max(-0.25, Math.min(0.9, this.camTilt + tilt));
-    this.lookIdle = tilt ? 0 : this.lookIdle + d;
-    if (this.lookIdle > 2) this.camTilt -= this.camTilt * (1 - Math.exp(-d * 1.5));
+    const back = this.lookRound(d, pan, tilt);
+    this.camTilt -= this.camTilt * back;
+    this.lookYaw -= this.lookYaw * back;
     const low = s.h < 15 && speed < 8 ? 1 : 0;
     this.camLand += (low - this.camLand) * (1 - Math.exp(-d * 1.2));
     const climb = Math.max(-0.2, Math.min(0.2, -0.4 * Math.atan(s.vy / Math.max(speed, 4))));
@@ -924,7 +957,7 @@ export class Heli {
     const dist = (HELI.CAM_DIST + HELI.CAM_SPEED * speed) * (1 - this.camLand) + landDist * this.camLand;
     let pitch = HELI.CAM_PITCH * (1 - this.camLand) + landPitch * this.camLand + climb + this.camTilt;
     const target = { x: s.x, y: s.y + HELI.CAM_UP, z: s.z };
-    const h = this.camHeading;
+    const h = this.camHeading + this.lookYaw;
     const side = HELI.CAM_SIDE * (1 - this.camLand); // a little to its right: its side and livery show, not only the fin
     const at = (p: number) => ({
       x: target.x + Math.sin(h) * Math.cos(p) * dist + Math.cos(h) * side,
@@ -953,13 +986,23 @@ export class Heli {
     this.fovScale += (1 + 0.12 * wide - this.fovScale) * (1 - Math.exp(-d * 1.5));
   }
 
-  /** The view from the pilot's seat (Eye_Pilot), turning and leaning with the machine; `tilt` looks up and down by up to 60 degrees. */
-  cockpit(camera: THREE.PerspectiveCamera, dt: number, tilt: number): void {
-    this.lookPitch = Math.max(-1.05, Math.min(1.05, this.lookPitch + tilt));
+  /**
+   * The view from the pilot's seat (Eye_Pilot), turning and leaning with the machine; `tilt` and `pan` turn the head, up to
+   * 40 degrees up and down and 110 to each side (out of the side windows, down at a landing spot), back ahead by itself.
+   */
+  cockpit(camera: THREE.PerspectiveCamera, dt: number, tilt: number, pan = 0): void {
+    const d = Math.min(Math.max(dt, 0), 0.1);
+    this.lookPitch = Math.max(-HEAD.pitch, Math.min(HEAD.pitch, this.lookPitch + tilt));
+    const back = this.lookRound(d, pan, tilt);
+    this.lookYaw = Math.max(-HEAD.yaw, Math.min(HEAD.yaw, this.lookYaw));
+    this.lookYaw -= this.lookYaw * back;
+    this.lookPitch -= this.lookPitch * back;
     this.body.updateMatrixWorld(true);
     camera.position.copy(this.eye).applyMatrix4(this.body.matrixWorld);
     const s = this.s;
-    camera.rotation.set(-(CALM ? 0 : s.pitch) + this.lookPitch, s.yaw, CALM ? 0 : -s.roll, 'YXZ');
+    // The head turns in the cabin: the machine's lean, then the look.
+    _seat.setFromEuler(_euler.set(CALM ? 0 : -s.pitch, s.yaw, CALM ? 0 : -s.roll, 'YXZ'));
+    camera.quaternion.copy(_seat).multiply(_head.setFromEuler(_euler.set(this.lookPitch, this.lookYaw, 0, 'YXZ')));
     this.fovScale += (1 - this.fovScale) * (1 - Math.exp(-Math.min(dt, 0.1) * 1.5));
     this.camHeading = s.yaw;
   }

@@ -142,9 +142,11 @@ export class Input {
   private cycle = 0;
   private keyView = false;
   /**
-   * The helicopter's extras this frame (src/heliPilot.ts): forward and sideways before the stick's push is evened out
-   * to length 1, without the arrow keys' left and right (`turn`: they turn it); R2 less L2 (up and down); I pressed
-   * (the cockpit view).
+   * The helicopter's extras this frame (src/heliPilot.ts; Yoshi, 15 Nov 2026: a bit more controls like the helicopters
+   * in open-world driving games): `fwd` forward and back (W and S, the arrows up and down, the left stick, the touch stick) before the
+   * stick's push is evened out to length 1; `side` sideways (the arrows left and right, the left stick); `turn` (A and D,
+   * L1 and R1, the touch stick pushed sideways); R2 less L2 (up and down); I pressed (the cockpit view). The mouse, the
+   * right stick and a drag on touch only look.
    */
   heli = { fwd: 0, side: 0, turn: 0, triggers: 0, view: false };
 
@@ -253,6 +255,7 @@ export class Input {
 
     // Controller
     const p = this.pad();
+    let padX = 0; // the left stick's push sideways (the helicopter flies sideways with it)
     this.padName = p ? p.id : null;
     notePad(p);
     if (p) {
@@ -264,6 +267,7 @@ export class Input {
       const [lx, ly] = stick(p.axes[0] ?? 0, p.axes[1] ?? 0);
       const [rx, rys] = stick(p.axes[2] ?? 0, ry ?? 0);
       out.moveX += lx;
+      padX = lx;
       out.moveY -= ly; // stick up is negative
       out.lookX = rx;
       out.lookY = -rys;
@@ -325,13 +329,15 @@ export class Input {
       this.prevButtons = pressed;
     }
 
+    const beforeTouch = out.moveX;
     this.touch?.into(out);
-    const arrows = (k('ArrowRight') ? 1 : 0) - (k('ArrowLeft') ? 1 : 0);
+    const touchX = out.moveX - beforeTouch; // the touch stick pushed sideways: it turns the helicopter
     const trigger = (b: number) => (p ? p.buttons[b]?.value ?? 0 : 0);
-    // Sideways: the keys' A and D alone (moveX took D or the right arrow as one), then the sticks as they are.
-    const keysX = (k('KeyD') || k('ArrowRight') ? 1 : 0) - (k('KeyA') || k('ArrowLeft') ? 1 : 0);
-    const side = out.moveX - keysX + (k('KeyD') ? 1 : 0) - (k('KeyA') ? 1 : 0);
-    this.heli = { fwd: Math.max(-1, Math.min(1, out.moveY)), side: Math.max(-1, Math.min(1, side)), turn: arrows, triggers: trigger(BTN.r2) - trigger(BTN.l2), view: this.keyView };
+    const held = (b: number) => (p?.buttons[b]?.pressed ? 1 : 0);
+    const one = (v: number) => Math.max(-1, Math.min(1, v));
+    const turn = (k('KeyD') ? 1 : 0) - (k('KeyA') ? 1 : 0) + held(BTN.r1) - held(BTN.l1) + touchX;
+    const side = (k('ArrowRight') ? 1 : 0) - (k('ArrowLeft') ? 1 : 0) + padX;
+    this.heli = { fwd: one(out.moveY), side: one(side), turn: one(turn), triggers: trigger(BTN.r2) - trigger(BTN.l2), view: this.keyView };
     this.keyView = false;
     out.steer = Math.max(-1, Math.min(1, out.moveX));
     const mag = Math.hypot(out.moveX, out.moveY);

@@ -1,6 +1,9 @@
 // The helicopter in the real game (src/heliPilot.ts, world/heli.ts, shared/heli.mjs), headless (tools/dev/cdp.mjs) on a
 // running dev server, flown by real key events (and a fake controller, and touch with --phone). It prints the numbers
-// of set manoeuvres: getting in, the rotor's run-up and the lift-off, a climb to 100 m, a hover held for 20 s, the way
+// of set manoeuvres with the keys of the helicopters in open-world driving games (W and S fly, A and D turn, the arrows sideways,
+// the mouse only looks; L1 and R1 turn on a controller, the right stick looks; the touch stick turns pushed sideways and
+// a drag looks): looking round and the view's way back, the pilot's head, the turn rates, a curve, getting in, the
+// rotor's run-up and the lift-off, a climb to 100 m, a hover held for 20 s, the way
 // down, a dash to top speed and the stop, a full turn at cruise, the ceiling, the game's edge, landings on the meadow
 // and on the church's 6 by 10 m landing deck (its own machine set aside for it), bumps into a wall and into a tree crown at 5 and 20 m/s and how long until it flies again, getting out on the
 // ground and not too low in the air, and the jump (E higher up: the parachute opens by itself) from 20, 40, 80 and
@@ -35,7 +38,7 @@ const shot = async (name) => {
 };
 const r1 = (v) => (Math.round(v * 10) / 10).toFixed(1);
 const deg = (v) => r1((v * 180) / Math.PI);
-const CODES = { KeyW: ['w', 87], KeyA: ['a', 65], KeyS: ['s', 83], KeyD: ['d', 68], KeyC: ['c', 67], KeyE: ['e', 69], KeyI: ['i', 73], KeyK: ['k', 75], Space: [' ', 32], ArrowRight: ['ArrowRight', 39], ArrowLeft: ['ArrowLeft', 37] };
+const CODES = { KeyB: ['b', 66], ArrowUp: ['ArrowUp', 38], ArrowDown: ['ArrowDown', 40], KeyW: ['w', 87], KeyA: ['a', 65], KeyS: ['s', 83], KeyD: ['d', 68], KeyC: ['c', 67], KeyE: ['e', 69], KeyI: ['i', 73], KeyK: ['k', 75], Space: [' ', 32], ArrowRight: ['ArrowRight', 39], ArrowLeft: ['ArrowLeft', 37] };
 const key = (type, code) => b.send('Input.dispatchKeyEvent', { type, code, key: CODES[code][0], windowsVirtualKeyCode: CODES[code][1] });
 const down = (...codes) => Promise.all(codes.map((c) => key('keyDown', c)));
 const up = (...codes) => Promise.all(codes.map((c) => key('keyUp', c)));
@@ -204,10 +207,157 @@ try {
     else if (v) await down('KeyW');
     else await up('KeyW');
   };
+  /** Turn right: D (A and D turn it), R1 on a controller. */
   const turnRight = async (on) => {
-    if (o.pad) await b.evaluate(`__pad.axes[2] = ${on ? 1 : 0}`, false);
-    else if (on) await down('ArrowRight');
-    else await up('ArrowRight');
+    if (o.pad) await b.evaluate(`(() => { const x = __pad.buttons[5]; x.value = ${on ? 1 : 0}; x.pressed = ${on}; })()`, false);
+    else if (on) await down('KeyD');
+    else await up('KeyD');
+  };
+  const turnBy = (a, c) => Math.atan2(Math.sin(a - c), Math.cos(a - c));
+  /** The camera's heading (as a yaw: 0 looks along -z) and the look round the machine keeps. */
+  const view = () => b.evaluate(`(() => { const c = window.__cam ??= briel.three.scene.children.find((x) => x.isPerspectiveCamera); c.updateMatrixWorld(); const e = c.matrixWorld.elements; const m = briel.helis.machines[0]; return { cam: Math.atan2(e[8], e[10]), yaw: m.s.yaw, look: m.look, view: m.view }; })()`);
+  /** Looking round: the mouse moved (`dx`, `dy` pixels, in steps), the right stick held, or a drag on the right on touch. */
+  const lookBy = async (dx, dy = 0, how = phone ? 'touch' : o.pad ? 'pad' : 'mouse') => {
+    if (how === 'mouse') {
+      const n = Math.max(1, Math.ceil(Math.max(Math.abs(dx), Math.abs(dy)) / 40));
+      for (let i = 0; i < n; i++) {
+        await b.evaluate(`(() => { const c = briel.three.renderer.domElement; Object.defineProperty(document, 'pointerLockElement', { get: () => c, configurable: true }); document.dispatchEvent(new MouseEvent('mousemove', { movementX: ${dx / n}, movementY: ${dy / n} })); })()`, false);
+        await b.sleep(20);
+      }
+      await b.evaluate('delete document.pointerLockElement', false);
+    } else if (how === 'pad') {
+      // The right stick, held as long as the turn takes at its speed (curved: full at the edge).
+      await b.evaluate(`(() => { __pad.axes[2] = ${Math.sign(dx)}; __pad.axes[3] = ${Math.sign(dy)}; })()`, false);
+      await b.sleep(Math.round((Math.abs(dx || dy) * 0.0022 / 2.6) * 1000));
+      await b.evaluate('(() => { __pad.axes[2] = 0; __pad.axes[3] = 0; })()', false);
+    } else {
+      // A drag on the right side of the screen (controls/touch.ts: a dragged pixel looks as 1.6 of the mouse's).
+      const at = await b.evaluate('[innerWidth * 0.72, innerHeight * 0.45]');
+      await b.send('Input.dispatchTouchEvent', { type: 'touchStart', touchPoints: [{ x: at[0], y: at[1], id: 9 }] });
+      const n = 12;
+      for (let i = 1; i <= n; i++) {
+        await b.send('Input.dispatchTouchEvent', { type: 'touchMove', touchPoints: [{ x: at[0] + (dx * i) / n / 1.6, y: at[1] + (dy * i) / n / 1.6, id: 9 }] });
+        await b.sleep(20);
+      }
+      await b.send('Input.dispatchTouchEvent', { type: 'touchEnd', touchPoints: [] });
+    }
+  };
+  /** The touch stick pushed (`x` right, `y` forward, -1 to 1) for `ms`. */
+  const touchStick = async (x, y, ms) => {
+    const at = await b.evaluate('[innerWidth * 0.16, innerHeight * 0.72]');
+    await b.send('Input.dispatchTouchEvent', { type: 'touchStart', touchPoints: [{ x: at[0], y: at[1], id: 8 }] });
+    await b.sleep(50);
+    await b.send('Input.dispatchTouchEvent', { type: 'touchMove', touchPoints: [{ x: at[0] + x * 70, y: at[1] - y * 70, id: 8 }] });
+    await b.sleep(ms);
+    await b.send('Input.dispatchTouchEvent', { type: 'touchEnd', touchPoints: [] });
+  };
+
+  /**
+   * The keys of the helicopters in open-world driving games, from a hover: looking round (the machine's heading stays), the way back
+   * behind it, the pilot's head, the turn keys' rate, W with A a curve, the arrows sideways, the controller's and the
+   * touch stick's turn.
+   */
+  const controls = async () => {
+    await b.sleep(2500);
+    // Looking 90 degrees left at a hover: the machine keeps its heading; the view swings round it.
+    const v0 = await view();
+    const map0 = await b.evaluate('briel.minimapFacing()');
+    // Every frame's look from here (rad from behind it, seconds since the last look), for the way back below.
+    await b.evaluate(`(() => { const r = window.__look = []; const go = () => { if (window.__look !== r) return; const l = briel.helis.machines[0].look; r.push([performance.now(), l.yaw, l.idle]); requestAnimationFrame(go); }; requestAnimationFrame(go); })()`, false);
+    await lookBy(-714);
+    await b.sleep(300);
+    const v1 = await view();
+    const map1 = await b.evaluate('briel.minimapFacing()');
+    row('look 90 deg left at a hover', `the view turned ${deg(turnBy(v1.cam, v0.cam))} deg, the machine ${deg(turnBy(v1.yaw, v0.yaw))} deg; the map turned ${deg(turnBy(map1.heading, map0.heading))} deg, its arrow ${deg(map1.facing)} (machine ${deg(v1.yaw)})`);
+    check(Math.abs(turnBy(v1.yaw, v0.yaw)) < 0.0175, 'looking round leaves the machine\'s heading within 1 degree');
+    check(Math.abs(turnBy(v1.cam, v0.cam)) > 1.2, 'the view looks round');
+    check(map1.facing !== null && Math.abs(turnBy(map1.facing, v1.yaw)) < 0.01 && Math.abs(turnBy(map1.heading, map0.heading)) > 1.2, 'the map turns with the view, its arrow shows the machine');
+    await shot(`look-chase${phone ? '-phone' : ''}`);
+    // The way back: nothing for about 2 s after the last look, then eased back behind it, no jerk (its speed changes
+    // no faster than an eased start allows: rad/s per s, on the game's own clock, the seconds since the last look).
+    await b.sleep(6500);
+    const all = await b.evaluate('(() => { const r = window.__look; window.__look = null; return r; })()');
+    const back = all.slice(all.findLastIndex((f) => f[2] === 0) + 1);
+    const at2 = back.find((f) => f[2] >= 1.9);
+    const end = back.at(-1);
+    let accel = 0;
+    const steps = back.filter((f, i) => i === 0 || f[2] > back[i - 1][2] + 1e-4); // one per game frame
+    for (let i = 2; i < steps.length; i++) {
+      const v1 = (steps[i - 1][1] - steps[i - 2][1]) / (steps[i - 1][2] - steps[i - 2][2]);
+      const v2 = (steps[i][1] - steps[i - 1][1]) / (steps[i][2] - steps[i - 1][2]);
+      accel = Math.max(accel, Math.abs(v2 - v1) / ((steps[i][2] - steps[i - 2][2]) / 2));
+    }
+    row('the view back behind it', `${deg(back[0][1])} deg after the last look, ${deg(at2[1])} at 1.9 s, ${deg(end[1])} at ${r1(end[2])} s; its turn picks up at most ${r1(accel * 57.3)} deg/s each second`);
+    check(Math.abs(at2[1] - back[0][1]) < 0.02 && Math.abs(end[1]) < 0.09 && accel < 8, 'it waits about 2 s, then eases back behind it without a jerk');
+    // The pilot's head: 110 degrees to each side at most, 40 up and down.
+    await tap(o.pad ? 'KeyI' : 'KeyB');
+    await b.sleep(300);
+    await lookBy(-650, 0, 'mouse');
+    await b.sleep(200);
+    await shot(`look-cockpit${phone ? '-phone' : ''}`); // out of the left window, level
+    await lookBy(2700, 0, 'mouse');
+    await lookBy(0, -900, 'mouse');
+    const hd = await view();
+    await lookBy(-4000, 1800, 'mouse');
+    const hd2 = await view();
+    row("the pilot's head", `right ${deg(-hd.look.yaw)} deg and up ${deg(hd.look.pitch)}; left ${deg(hd2.look.yaw)} deg and down ${deg(-hd2.look.pitch)} (view ${hd.view})`);
+    check(hd.view === 'cockpit' && Math.abs(Math.abs(hd.look.yaw) - 1.92) < 0.01 && Math.abs(Math.abs(hd.look.pitch) - 0.7) < 0.01 && Math.abs(Math.abs(hd2.look.yaw) - 1.92) < 0.01, "the pilot's head turns 110 degrees each way and 40 up and down at most");
+    await tap('KeyI');
+    await b.sleep(3500);
+    // The turn keys at a hover: D (R1 on a controller) for 2 s.
+    let t0 = await state();
+    await turnRight(true);
+    await b.sleep(2000);
+    let t1 = await state();
+    await turnRight(false);
+    await b.sleep(1500);
+    row(`turn at a hover, ${o.pad ? 'R1' : 'D'} 2 s`, `${deg(-turnBy(t1.yaw, t0.yaw))} deg (${r1(-turnBy(t1.yaw, t0.yaw) / 2)} rad/s; a hover's full turn ${1.4})`);
+    check(-turnBy(t1.yaw, t0.yaw) > 1.8, 'the turn key turns it at a hover');
+    if (o.pad) {
+      // The right stick only looks: the machine keeps its heading.
+      t0 = await state();
+      await lookBy(700, 0, 'pad');
+      await b.sleep(300);
+      t1 = await state();
+      check(Math.abs(turnBy(t1.yaw, t0.yaw)) < 0.0175, `the right stick only looks (the machine turned ${deg(turnBy(t1.yaw, t0.yaw))} deg)`);
+    }
+    if (phone) {
+      // The touch stick pushed sideways turns it; a drag looks.
+      t0 = await state();
+      await touchStick(1, 0, 2000);
+      await b.sleep(400);
+      t1 = await state();
+      row('touch stick right 2 s', `${deg(-turnBy(t1.yaw, t0.yaw))} deg, ${r1(speed(t1))} m/s`);
+      check(-turnBy(t1.yaw, t0.yaw) > 1.2 && speed(t1) < 2, 'the touch stick pushed sideways turns it (no sideways flight)');
+      t0 = await state();
+      const c0 = await view();
+      await lookBy(-300, 0, 'touch');
+      await b.sleep(300);
+      t1 = await state();
+      const c1 = await view();
+      row('a drag on the right', `the view ${deg(turnBy(c1.cam, c0.cam))} deg, the machine ${deg(turnBy(t1.yaw, t0.yaw))} deg`);
+      check(Math.abs(turnBy(t1.yaw, t0.yaw)) < 0.0175 && Math.abs(turnBy(c1.cam, c0.cam)) > 0.2, 'a drag only looks');
+      await b.sleep(3500);
+    }
+    // W with A: a curve to the left (6 s), the turn and the way counted as it goes.
+    t0 = await state();
+    await forward(1);
+    if (o.pad) await b.evaluate('(() => { const x = __pad.buttons[4]; x.value = 1; x.pressed = true; })()', false);
+    else await down('KeyA');
+    let turned = 0, way = 0, prev = t0;
+    await until((q) => {
+      turned += turnBy(q.yaw, prev.yaw);
+      way += Math.hypot(q.x - prev.x, q.z - prev.z);
+      prev = q;
+      return false;
+    }, 6, 100);
+    t1 = prev;
+    if (o.pad) await b.evaluate('(() => { const x = __pad.buttons[4]; x.value = 0; x.pressed = false; })()', false);
+    else await up('KeyA');
+    await forward(0);
+    row(`${o.pad ? 'the left stick forward with L1' : 'W with A'} 6 s`, `turned ${deg(turned)} deg left along ${r1(way)} m (a widening curve from the hover), ${r1(speed(t1) * 3.6)} km/h at the end, bank ${deg(-t1.roll)} deg`);
+    check(turned > 0.8 && way > 15, 'forward with a turn flies a curve');
+    await b.sleep(8000);
   };
   /** The use key, button or touch button: in, out, or the jump. */
   const use = async () => {
@@ -247,7 +397,7 @@ try {
       await until((q) => speed(q) * 3.6 >= kmh - 3, 40, 50);
     }
     const before = await state();
-    const programs0 = await b.evaluate('briel.three.renderer.info.programs.length');
+    const programs0 = await b.evaluate('(window.__progs = new Set(briel.three.renderer.info.programs.map((p) => p.id))).size');
     await b.evaluate(`(() => {
       const r = window.__jrec = { frames: [], at: performance.now() };
       const c = window.__cam ??= briel.three.scene.children.find((x) => x.isPerspectiveCamera);
@@ -289,14 +439,19 @@ try {
       for (let i = 0; i < 40 && (await b.evaluate('briel.helis.machines[0].away')) !== null; i++) await b.sleep(250);
     }
     const rec = await b.evaluate('(() => { const r = window.__jrec; window.__jrec = null; return r.frames; })()');
-    const programs = (await b.evaluate('briel.three.renderer.info.programs.length')) - programs0;
+    const fresh = await b.evaluate('briel.three.renderer.info.programs.filter((p) => !__progs.has(p.id)).map((p) => p.name + " " + p.cacheKey.slice(0, 120))');
+    const programs = fresh.length;
+    if (programs) console.log(`  new programs: ${fresh.join(' | ')}`);
     // The closest the player came to the machine in its first 4 s away (shared/heli.mjs heliGap, in the page).
     const closest = await b.evaluate(`Promise.all([import('/shared/heli.mjs'), import('/shared/heli.json')]).then(([m, d]) => { let g = Infinity; for (const f of ${JSON.stringify(rec.filter((f) => f[13] !== null && f[13] < 4))}) g = Math.min(g, m.heliGap({ x: f[10], y: f[11], z: f[12], yaw: f[16], roll: f[17], pitch: f[18] }, (d.default ?? d).size, f[2], f[3], f[4])); return g; })`);
     const k = rec.findIndex((f) => f[5] !== null);
     const start = rec[k] ?? rec[0];
     const open = rec.find((f) => f[6] !== null) ?? null;
     const land = rec.findIndex((f, i) => i > k && f[5] === null);
-    const landSpeed = land > 1 ? (rec[land - 2][3] - rec[land - 1][3]) / Math.max(1e-3, rec[land - 1][1] / 1000) : NaN;
+    // The touchdown's speed: the average descent over the last 0.4 s before it (frames and the game's steps needn't line up).
+    const lastAir = land > 1 ? rec[land - 1] : null;
+    const before04 = lastAir ? rec.slice(0, land).findLast((f) => lastAir[0] - f[0] >= 400) : null;
+    const landSpeed = before04 ? (before04[3] - lastAir[3]) / ((lastAir[0] - before04[0]) / 1000) : NaN;
     // The camera's handover: its largest move in one frame over the first 0.6 s, less what you moved that frame.
     let snap = 0;
     for (let i = Math.max(1, k); i < rec.length && rec[i][0] - start[0] < 600; i++) {
@@ -306,7 +461,8 @@ try {
     const longest = Math.max(...rec.filter((f) => f[0] - start[0] < 1500 && f[0] >= start[0] - 50).map((f) => f[1]));
     const calm = Math.max(0, ...rec.filter((f, i) => i > 1 && f[0] < start[0] - 100).map((f) => f[1]));
     const home = rec.find((f, i) => i > k && f[13] === null) ?? null;
-    return { h, kmh, before, start, open, land: land > 0 ? rec[land] : null, landSpeed, snap, longest, calm, home, closest, k, programs };
+    const firstStep = rec[k + 1]?.[5] ?? Infinity; // the drop's clock after its first step
+    return { h, kmh, before, start, firstStep, open, land: land > 0 ? rec[land] : null, landSpeed, snap, longest, calm, home, closest, k, programs };
   };
 
   /** The jumps: heights and speeds, what follows, over the private homes, and what interrupts one. */
@@ -325,7 +481,7 @@ try {
       row(`jump ${Number.isFinite(h) ? `${h} m` : 'at the ceiling'}, ${Math.round(speed(j.before) * 3.6)} km/h`, `from ${r1(air0)} m: free fall ${r1(fall)} s (the drop's clock ${r1(clock)} s, ${r1(air0 - openAir)} m), open at ${r1(openAir)} m; down after ${r1(down)} s at ${r1(j.landSpeed)} m/s, ${r1(j.land ? Math.hypot(j.land[2] - j.start[2], j.land[4] - j.start[4]) : NaN)} m on; machine home ${j.home ? r1((j.home[0] - j.start[0]) / 1000) + ' s' : '-'} after; closest ${r1(j.closest)} m off it; camera step ${r1(j.snap)} m; longest frame ${r1(j.longest)} ms`);
       longest.push(`${r1(j.longest)}${j.calm ? ` (${r1(j.calm)} before)` : ''}`);
       check(j.k >= 0 && !(await b.evaluate('briel.helis.aboard')), `jump ${Number.isFinite(h) ? h : 'ceiling'} m ${kmh} km/h: out, in the drop`);
-      check(!!j.open && (air0 <= 45.5 ? clock <= j.start[5] + 1e-6 : clock > 0.9 && clock < 1.5 && air0 - openAir <= 15), `the canopy opened by itself (${r1(clock)} s in by the drop's clock${air0 <= 45.5 ? ', at its first step' : ''}, ${r1(fall)} s on the wall)`);
+      check(!!j.open && (air0 <= 45.5 ? clock <= j.firstStep + 1e-6 : clock > 0.9 && clock < 1.5 && air0 - openAir <= 15), `the canopy opened by itself (${r1(clock)} s in by the drop's clock${air0 <= 45.5 ? ', at its first step' : ''}, ${r1(fall)} s on the wall)`);
       check(!!j.land && j.landSpeed < 3, `landed under the canopy (${r1(j.landSpeed)} m/s)`);
       check(j.closest > 0.1, `clear of the machine (${r1(j.closest)} m at the closest)`);
       check(j.snap < 3, `no camera snap at the jump (${r1(j.snap)} m in a frame beyond your own move)`);
@@ -478,22 +634,29 @@ try {
   const flightDraws = await b.evaluate('briel.helis.dev.state().draws');
   row('draws (machine, near)', `${restDraws} at rest, ${flightDraws} in flight (budget 24)`);
   check(restDraws <= 24 && flightDraws <= 24, 'within the draw budget');
-  // Sideways alone: the nose stays; sideways with the turn the same way (D with the right arrow): it still slides.
+  await controls();
+  // Sideways alone (the right arrow): the nose stays; sideways and the turn together (the right arrow with D): it slides
+  // sideways while it turns (the two keys are two things now: no cancelling).
   const yaw0 = (await state()).yaw;
-  await down('KeyD');
+  await down('ArrowRight');
   await b.sleep(8000);
   const slid = await state();
-  await up('KeyD');
+  await up('ArrowRight');
   const sideOf = (q) => Math.abs(q.vx * Math.cos(q.yaw) - q.vz * Math.sin(q.yaw)); // speed along the machine's right
-  row('D alone 8 s', `nose turned ${deg(Math.atan2(Math.sin(slid.yaw - yaw0), Math.cos(slid.yaw - yaw0)))} deg, ${r1(sideOf(slid))} m/s sideways`);
+  row('the right arrow alone 8 s', `nose turned ${deg(Math.atan2(Math.sin(slid.yaw - yaw0), Math.cos(slid.yaw - yaw0)))} deg, ${r1(sideOf(slid))} m/s sideways`);
   check(Math.abs(Math.atan2(Math.sin(slid.yaw - yaw0), Math.cos(slid.yaw - yaw0))) < 0.02, 'sideways alone the nose stays where it was');
   await b.sleep(4000);
+  let prevYaw = (await state()).yaw, turnedRight = 0, fastest = 0;
   await down('KeyD', 'ArrowRight');
-  await b.sleep(3000);
-  const both = await state();
+  const both = (await until((q) => {
+    turnedRight -= turnBy(q.yaw, prevYaw);
+    prevYaw = q.yaw;
+    fastest = Math.max(fastest, speed(q));
+    return false;
+  }, 3, 100)).at(-1);
   await up('KeyD', 'ArrowRight');
-  row('D with the right arrow 3 s', `${r1(speed(both))} m/s over the ground (${r1(sideOf(both))} along its right) while turning on the spot`);
-  check(speed(both) > 5, 'D and the right arrow together still slide it (cancelled, it would turn on the spot at 0 m/s)');
+  row('the right arrow with D 3 s', `up to ${r1(fastest)} m/s over the ground (${r1(sideOf(both))} along its right at the end) while turning ${deg(turnedRight)} deg right`);
+  check(fastest > 3 && turnedRight > 0.5, 'the right arrow with D slides it sideways while it turns');
   await b.sleep(4000);
   // Down to 30 m.
   await sink(true);
@@ -616,9 +779,9 @@ try {
   await lift(true);
   await until((s) => s.h > 12, 10);
   await lift(false);
-  await down('KeyD');
+  await down('ArrowRight');
   await b.sleep(400); // a short step aside (the deck is 6 m wide); the pad's pull brings it back over the middle
-  await up('KeyD');
+  await up('ArrowRight');
   await b.sleep(2500);
   await record();
   await sink(true);

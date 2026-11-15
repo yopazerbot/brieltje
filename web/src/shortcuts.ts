@@ -61,12 +61,17 @@ const TABLE = {
   handbrake: { kbm: say('key.space'), pad: pad('south'), touch: say('touch.handbrake') },
   /** A bike's bell (the jump key, as the car's handbrake). */
   bell: { kbm: say('key.space'), pad: pad('south'), touch: say('touch.bell') },
-  /** The helicopter (src/heliPilot.ts): it moves as you walk, turns as you look and rises and sinks as you fly on foot. */
-  heliMove: { kbm: () => moveKeys(), pad: say('key.leftStick'), touch: say('tctl.move') },
-  heliTurn: { kbm: () => t('key.or', { a: t('key.mouse'), b: '← / →' }), pad: say('key.rightStick'), touch: say('tctl.look') },
+  /**
+   * The helicopter (src/heliPilot.ts; Yoshi, 15 Nov 2026: as in open-world driving games): W and S fly, A and D turn,
+   * the arrows fly sideways, the mouse only looks.
+   */
+  heliMove: { kbm: () => `${keyName('KeyW')} / ${keyName('KeyS')} · ↑ / ↓`, pad: say('key.stickUpDown'), touch: say('tctl.thumbUpDown') },
+  heliTurn: { kbm: () => `${keyName('KeyA')} / ${keyName('KeyD')}`, pad: pads('l1', 'r1'), touch: say('tctl.thumbLeftRight') },
+  heliSide: { kbm: named('← / →'), pad: say('key.stickLeftRight') },
+  heliLook: { kbm: say('key.mouse'), pad: say('key.rightStick'), touch: say('tctl.look') },
   heliUp: { kbm: say('key.space'), pad: pads('r2', 'south'), touch: say('touch.up') },
   heliDown: { kbm: () => t('key.or', { a: keyName('KeyC'), b: t('key.ctrlC') }), pad: pads('l2', 'east'), touch: say('touch.down') }, // C first: Ctrl with W closes the tab
-  heliView: { kbm: place('KeyI'), pad: pad('r3'), touch: say('touch.view') },
+  heliView: { kbm: () => `${keyName('KeyI')} / ${keyName('KeyB')}`, pad: pad('r3'), touch: say('touch.view') },
   /** A place in a portal's list (digits pick only places while it shows: src/ui/travel.ts). */
   portal: {
     kbm: (): string => t('travel.pickKbm', { n: PORTALS.length, use: key('use', 'kbm') }),
@@ -206,8 +211,9 @@ function heliGroup(k: (a: Action) => string): Group {
     title: t('ctl.heli'),
     rows: [
       [t('ctl.heliIn'), k('use')], [t('ctl.heliStart'), t('key.hold', { key: k('heliUp') })], [t('ctl.heliFly'), k('heliMove')], [t('ctl.heliTurn'), k('heliTurn')],
-      [t('ctl.heliUp'), k('heliUp')], [t('ctl.heliDown'), k('heliDown')], [t('ctl.heliView'), k('heliView')],
-    ],
+      [t('ctl.heliSide'), k('heliSide')], [t('ctl.heliUp'), k('heliUp')], [t('ctl.heliDown'), k('heliDown')], [t('ctl.heliView'), k('heliView')],
+      [t('ctl.heliLook'), k('heliLook')],
+    ].filter(([, v]) => v !== '') as [string, string][],
   };
 }
 
