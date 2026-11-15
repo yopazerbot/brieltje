@@ -23,12 +23,16 @@ const CANOPY = { height: 3, dist: 7.5 };
 const LIFT = 0.17;
 /** At least this far over the ground under the camera (m). */
 const CLEAR = 0.8;
+/** Seconds from another camera (the helicopter's, at a jump) to the drop's, eased; and the swing round from the side. */
+const HAND_S = 0.45;
+const SWING_S = 1.8;
 
 const ease = (u: number) => (u <= 0 ? 0 : u >= 1 ? 1 : u * u * (3 - 2 * u));
 const lerp = (a: number, b: number, u: number) => a + (b - a) * u;
 const _q = new THREE.Quaternion();
 const _e = new THREE.Euler(0, 0, 0, 'YXZ');
 const _p = new THREE.Vector3();
+const _from = new THREE.Vector3();
 
 export interface DropState {
   x: number;
@@ -56,6 +60,13 @@ export class DropView {
   private roll = 0;
   private body: Body | null = null;
   private colour = '';
+  /** A handover (handover): s left, and where the camera was, from your feet then, and how it looked */
+  private hand = 0;
+  private handAt = new THREE.Vector3();
+  private handQ = new THREE.Quaternion();
+  /** After a jump: filmed from that side first (rad round you), swinging round behind you over SWING_S */
+  private swing = 0;
+  private swingT = 0;
 
   /**
    * `figure` builds your figure in a colour (net/avatars.ts: the one the others see); `holder` is the group at
@@ -66,6 +77,21 @@ export class DropView {
     private holder: THREE.Object3D,
     private groundAt: (x: number, z: number, y: number) => number,
   ) {}
+
+  /**
+   * A drop that begins from another camera (a jump from the helicopter: its chase or pilot's view): the drop's view
+   * from the first frame, reached from where `camera` is now over HAND_S, eased, moving along with you (your feet at
+   * x, feet, z now). No snap, and your eyes' view never shows in between. `side` (1 right, -1 left): you stepped out
+   * that way: filmed from out there first, the machine beyond you, swinging round behind you as it climbs away.
+   */
+  handover(camera: THREE.Camera, x: number, feet: number, z: number, side = 0): void {
+    this.mix = 1;
+    this.swing = side * 1.2;
+    this.swingT = SWING_S;
+    this.hand = HAND_S;
+    this.handAt.set(camera.position.x - x, camera.position.y - feet, camera.position.z - z);
+    this.handQ.copy(camera.quaternion);
+  }
 
   /** Seen from behind now (the figure shows; your eyes' parachute view doesn't). */
   get outside(): boolean {
@@ -92,17 +118,27 @@ export class DropView {
       this.roll += ((s.canopy === null ? 0 : -s.steer * 0.08) - this.roll) * k;
       const pitch = Math.max(-1.35, Math.min(0.6, s.pitch));
       const cp = Math.cos(pitch);
-      const yaw = s.yaw + this.spin;
+      if (this.swingT > 0) this.swingT = Math.max(0, this.swingT - dt);
+      const yaw = s.yaw + this.spin + this.swing * ease(this.swingT / SWING_S);
       const dx = -Math.sin(yaw) * cp, dy = Math.sin(pitch), dz = -Math.cos(yaw) * cp;
       _p.set(s.x - dx * this.dist, s.feet + this.height - dy * this.dist + LIFT * this.dist, s.z - dz * this.dist);
       _p.y = Math.max(_p.y, this.groundAt(_p.x, _p.z, _p.y + 2) + CLEAR);
       _q.setFromEuler(_e.set(pitch, yaw, this.roll));
       camera.position.lerp(_p, b);
       camera.quaternion.slerp(_q, b);
+      if (this.hand > 0) {
+        this.hand = Math.max(0, this.hand - dt);
+        const k = ease(1 - this.hand / HAND_S);
+        _from.set(s.x + this.handAt.x, s.feet + this.handAt.y, s.z + this.handAt.z);
+        camera.position.copy(_from.lerp(camera.position, k));
+        camera.quaternion.copy(_q.copy(this.handQ).slerp(camera.quaternion, k));
+      }
     } else {
       this.height = FALL.height;
       this.dist = FALL.dist;
       this.roll = 0;
+      this.hand = 0;
+      this.swingT = 0;
     }
     if (this.body) this.body.root.visible = this.outside && ready;
   }

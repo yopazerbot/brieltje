@@ -1,6 +1,8 @@
 import * as THREE from 'three';
 import HELIS from '../shared/heli.json';
-import { EV, HELI, heliBump } from '../shared/heli.mjs';
+import { AWAY, EV, HELI, heliBump, heliJump } from '../shared/heli.mjs';
+import { homeAt, inEndGarden } from '../shared/homes.mjs';
+import { DROP, jumpStart } from '../shared/parachute.mjs';
 import type { FrameInput, Input } from './controls/input';
 import { t } from './i18n';
 import { key, type Control } from './shortcuts';
@@ -20,7 +22,10 @@ import { groundPads, PADS, testDeck } from './world/heliPads';
  * stick turns it and tilts the camera, R2 up and L2 down as far as they are pressed (or ✕ and ○), R3 the view,
  * △ in and out. Touch: the stick flies it, a drag on the right turns it, the Up and Down buttons, View, Use.
  *
- * You may get out on a floor, or within 1.5 m of one and slow. Alone only for now: together the server will decide
+ * You may get out on a floor, or within 1.5 m of one and slow; higher up than DROP.jumpMin over the floor below the same
+ * key jumps: out of the door, a short free fall and the parachute opens by itself (shared/parachute.mjs jumpStart, the
+ * player's drop), while the machine climbs away and is back on its pad once out of sight (shared/heli.mjs AWAY).
+ * Alone only for now: together the server will decide
  * who flies which machine (not built yet); until then the prompt says so. Not during a game (Zombies, a party game):
  * a game starting puts you on your feet.
  */
@@ -40,6 +45,11 @@ export class HeliPilot {
   private shownKeys = false;
   /** The line under the machine, not over it (#prompt.heli-low, ui/heliHud.css) */
   private low = false;
+  /** The view's width: the machine's while you fly, eased back to 1 after a jump (no snap) */
+  private fov = 1;
+  private frustum = new THREE.Frustum();
+  private viewProj = new THREE.Matrix4();
+  private sphere = new THREE.Sphere(new THREE.Vector3(), 8);
 
   constructor(
     private world: World,
@@ -49,6 +59,11 @@ export class HeliPilot {
     onHit: (hit: CrashHit) => void,
     /** Put you on your feet at (x, z) on the floor `y`, facing `yaw`. */
     private placePlayer: (x: number, z: number, y: number, yaw: number) => void,
+    /**
+     * The jump (the player's drop): `start` puts your feet at `at` facing its yaw and begins the drop with the jump's
+     * speeds and its opening; `at` says where you are while a jump from here is still on (else null).
+     */
+    private jumper: { start: (at: { x: number; z: number; feet: number; yaw: number; side: number }, jump: ReturnType<typeof jumpStart>) => void; at: () => { x: number; z: number; feet: number } | null },
   ) {
     Heli.onHit = onHit;
     this.machines = HELIS.machines.map((spec) => new Heli(world, crowns, spec, skipCrown));
@@ -67,12 +82,12 @@ export class HeliPilot {
     return this.heli !== null;
   }
   get fovScale(): number {
-    return this.heli?.fovScale ?? 1;
+    return this.heli?.fovScale ?? this.fov;
   }
 
   /** The machine within reach of someone standing at (x, z) with their feet at `feet`, or null. */
   near(x: number, z: number, feet: number): Heli | null {
-    for (const m of this.machines) if (m.distanceTo(x, z) < HELIS.reach && Math.abs(feet - m.s.y) < 1 && !m.pilot) return m;
+    for (const m of this.machines) if (m.distanceTo(x, z) < HELIS.reach && Math.abs(feet - m.s.y) < 1 && !m.pilot && m.away === null) return m;
     return null;
   }
 
@@ -98,7 +113,8 @@ export class HeliPilot {
     const m = this.heli;
     if (!m) return false;
     if (!m.canLeave) {
-      this.landHint = 2.5;
+      if (!m.s.ground && m.s.h >= DROP.jumpMin) return this.jump(m);
+      this.landHint = 2.5; // too low for the canopy: higher, or land
       return false;
     }
     const at = m.exitSpot();
@@ -113,11 +129,36 @@ export class HeliPilot {
   }
 
   /**
+   * The jump (E in the air, over DROP.jumpMin): out of the door on the side that is down, clear of the cabin, the tail and
+   * the rotor's disc (shared/heli.mjs heliJump), with the machine's speed within the drop's limits; the machine flies
+   * itself away and home.
+   */
+  private jump(m: Heli): boolean {
+    const j = heliJump(m.s, HELIS.size);
+    const v = jumpStart(m.s.vx, m.s.vz, m.s.vy, j.push);
+    this.fov = m.fovScale;
+    m.jumpedFrom();
+    this.heli = null;
+    this.jumper.start({ x: j.x, z: j.z, feet: j.y, yaw: m.s.yaw, side: j.side }, v);
+    return true;
+  }
+
+  /**
    * Out at once wherever it is (a respawn, a trip from the chat, joining others): the machine is set down on the floor
    * below (no bump), or with `home` on its own pad (a game starting: never inside a game's fence); you stand by it as on
-   * getting out, else at its hub on its floor (with `home`, where you were, on the floor below you).
+   * getting out, else at its hub on its floor (with `home`, where you were, on the floor below you). After a jump the
+   * machine is back on its pad at once and a jump still going on ends: you stand on the floor below you (in a private
+   * home or the end house's garden: beside the machine on its pad instead), so a session never begins in a jump.
    */
   leaveNow(home = false): void {
+    for (const a of this.machines) if (a.away !== null) a.sendHome();
+    const fall = this.jumper.at();
+    if (fall) {
+      const y = this.world.groundAt(fall.x, fall.z, fall.feet, 0).y;
+      const pad = this.machines[0];
+      const spot = homeAt(fall.x, fall.z, y) !== null || inEndGarden(fall.x, fall.z, y) ? (pad.exitSpot() ?? { x: pad.park.x + 3, y: pad.s.y, z: pad.park.z }) : { x: fall.x, y, z: fall.z };
+      this.placePlayer(spot.x, spot.z, spot.y, pad.s.yaw);
+    }
     const m = this.heli;
     if (!m) return;
     const x = m.s.x, y = m.s.y, z = m.s.z, yaw = m.s.yaw;
@@ -135,7 +176,7 @@ export class HeliPilot {
 
   /** A respawn, a game starting: every machine left where nobody can reach it back on its pad at once. */
   tidy(): void {
-    for (const m of this.machines) if (m.stranded) m.sendHome();
+    for (const m of this.machines) if (m.stranded || m.away !== null) m.sendHome();
   }
 
   /**
@@ -174,7 +215,7 @@ export class HeliPilot {
     if (!m) return near ? (why ? t(why as 'prompt.heliGame') : t('prompt.heli', { use: key('use', mode) })) : '';
     const s = m.s;
     if (s.down > 0) return t('prompt.heliDown', { n: Math.ceil(s.down) });
-    if (this.landHint > 0) return t('prompt.heliLand');
+    if (this.landHint > 0) return t('prompt.heliLow');
     if (!s.engine && s.ground) return t('prompt.heliStart', { up });
     if (s.engine && s.rotor < HELI.LIFT_RPM) return t('prompt.heliSpinning', { up });
     if (s.atCeiling) return t('prompt.heliCeiling');
@@ -187,6 +228,13 @@ export class HeliPilot {
   /** Every frame: the machines (the one you fly and those standing or running down) and the instruments (`shown`: playing, not in the menu). */
   update(dt: number, camera: THREE.Camera, shown: boolean): void {
     for (const m of this.machines) m.update(dt, camera.position);
+    // After a jump: back on its pad once out of your sight (or at the latest whatever); the view's width eases back.
+    for (const a of this.machines) {
+      if (a.away === null || a.away < AWAY.home) continue;
+      if (a.away < AWAY.latest && this.seen(a, camera)) continue;
+      a.sendHome(camera.position);
+    }
+    if (!this.heli) this.fov += (1 - this.fov) * (1 - Math.exp(-Math.max(0, dt) * 6));
     const m = this.heli;
     // Aboard, the line goes to the bottom of the screen, clear of the machine in the middle (its own element only).
     if (this.low !== !!m) {
@@ -195,6 +243,16 @@ export class HeliPilot {
     }
     if (this.painting) return; // laid out and drawn unseen until play begins (prepaint)
     this.hud.update(shown && m ? { speed: Math.hypot(m.s.vx, m.s.vz), height: m.s.h, climb: m.s.vy, pitch: m.s.pitch, roll: m.s.roll, rotor: m.s.rotor, liftAt: HELI.LIFT_RPM } : null);
+  }
+
+  /** Whether the machine `m` is in the view (within its drawing distance). */
+  private seen(m: Heli, camera: THREE.Camera): boolean {
+    if (!m.group.visible) return false;
+    camera.updateMatrixWorld();
+    this.viewProj.multiplyMatrices(camera.projectionMatrix, camera.matrixWorldInverse);
+    this.frustum.setFromProjectionMatrix(this.viewProj);
+    this.sphere.center.set(m.s.x, m.s.y + 2, m.s.z);
+    return this.frustum.intersectsSphere(this.sphere);
   }
 
   /** The warm-up behind the start screen: every part of every machine drawn, the blur discs' and lamps' shaders made. */

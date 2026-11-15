@@ -25,6 +25,11 @@ export const DROP: {
   flareAt: number;
   flareGlide: number;
   flareSink: number;
+  jumpFree: number;
+  jumpSink: number;
+  jumpPush: number;
+  jumpDrop: number;
+  jumpMin: number;
   across: number;
   maxMs: number;
   graceMs: number;
@@ -42,6 +47,8 @@ export interface DropFlight {
   vz: number;
   vy: number;
   air: number;
+  /** After a jump: the canopy opens by itself this many seconds in (jumpStart) */
+  openAfter?: number;
 }
 
 export interface DropInput {
@@ -55,7 +62,7 @@ export function dropWant(s: DropFlight, input: DropInput): { forward: number; si
 export function dropStep(s: DropFlight, input: DropInput, yaw: number, dt: number): void;
 export function fly(
   dt?: number,
-  options?: { height?: number; input?: DropInput; openAt?: number; turn?: number },
+  options?: { height?: number; input?: DropInput; openAt?: number; turn?: number; jump?: boolean; forward?: number; down?: number },
 ): {
   reach: number;
   side: number;
@@ -64,7 +71,10 @@ export function fly(
   across: number;
   slowest: number;
   path: { t: number; y: number; x: number; side: number; open: number | null }[];
+  landing: number;
+  openedAt: number | null;
 };
+export function jumpStart(vx: number, vz: number, vy: number, push?: [number, number]): { vx: number; vz: number; vy: number; openAfter: number };
 export function dropStart(x: number, z: number, yaw: number): { x: number; z: number };
 export function dropFrom(x: number, z: number, yaw: number, inside: (x: number, z: number) => boolean): { x: number; z: number };
 export const HOME_DROP: { x: number; z: number; yaw: number };

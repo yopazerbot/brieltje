@@ -2,7 +2,7 @@ import * as THREE from 'three';
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
 import HELIS from '../../shared/heli.json';
-import { EV, HELI, heliBump, heliExit, heliPlace, heliStart, heliStep, type HeliEnv, type HeliInput, type HeliState } from '../../shared/heli.mjs';
+import { awayInput, awayKeep, EV, HELI, heliBump, heliExit, heliPlace, heliStart, heliStep, type HeliEnv, type HeliInput, type HeliState } from '../../shared/heli.mjs';
 import type { CrashHit, Obstacle } from './car';
 import type { World } from './collision';
 import { homeAt, inEndGarden } from '../../shared/homes.mjs';
@@ -380,6 +380,9 @@ export class Heli {
   pilot: string | null = null;
   /** You fly it */
   flown = false;
+  /** s since you jumped out of it (it flies itself home: shared/heli.mjs AWAY), or null */
+  away: number | null = null;
+  private keep = { fwd: 0, side: 0 };
   /** In the game (drawn, solid, boardable): once its model is in (or, failing that, the stand-in) */
   ready = false;
   /** The view a little wider at speed (main.ts multiplies the field of view by it). */
@@ -643,6 +646,7 @@ export class Heli {
   /** You got in: the camera starts behind it. */
   enter(): void {
     this.flown = true;
+    this.away = null;
     this.camHeading = this.s.yaw;
     this.camTilt = 0;
     this.lookPitch = 0;
@@ -666,8 +670,20 @@ export class Heli {
     s.down = 0;
   }
 
+  /**
+   * You jumped out (src/heliPilot.ts): nobody aboard, it flies itself home (shared/heli.mjs AWAY): the engine keeps
+   * running, it climbs away keeping the way it flew for a moment, then eases to a hover, still climbing, until the
+   * pilot's code puts it back on its pad.
+   */
+  jumpedFrom(): void {
+    this.flown = false;
+    this.away = 0;
+    this.keep = awayKeep(this.s);
+  }
+
   /** Put somewhere (a dev hook): still on the floor at (x, y, z) facing `yaw`, its rotor at `rotor` (and running with it). */
   place(x: number, y: number, z: number, yaw: number, rotor = 0): void {
+    this.away = null;
     heliPlace(this.s, x, y, z, yaw, rotor);
     this.camHeading = yaw;
     this.pose();
@@ -972,7 +988,8 @@ export class Heli {
    */
   update(dt: number, eye: THREE.Vector3): void {
     const s = this.s;
-    if (!this.flown && dt > 0 && (s.rotor > 0 || !s.ground)) this.fly(dt, {});
+    if (this.away !== null && dt > 0) this.away += dt;
+    if (!this.flown && dt > 0 && (s.rotor > 0 || !s.ground)) this.fly(dt, this.away !== null ? awayInput(this.away, this.keep) : {});
     // Left where nobody can reach it: back on its pad after a while.
     this.lost = this.stranded ? this.lost + dt : 0;
     if (this.lost > LOST_AFTER) this.sendHome(eye);

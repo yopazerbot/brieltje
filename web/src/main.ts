@@ -922,7 +922,11 @@ const heliCrowns = [...(house.surroundings?.trees ?? [])];
 const helis = new HeliPilot(world, heliCrowns, (x, z) => treesLeftOut.has(treeKey(x, z)), document.getElementById('hud')!, (hit) => crash.hit(hit), (x, z, y, yaw) => {
   player.place(x, z, y, yaw, 0);
   player.update(0, NO_INPUT, camera);
-});
+}, { start: (at, jump) => { // a jump: the drop from the door, filmed from where the chase camera was (world/dropView.ts)
+  player.place(at.x, at.z, at.feet, at.yaw, player.pitch);
+  player.startDrop(jump);
+  dropView.handover(camera, at.x, at.feet, at.z, at.side);
+}, at: () => (player.jumped ? { x: player.x, z: player.z, feet: player.feet } : null) });
 scene.add(helis.group);
 let bikeWanted: string | null = null; // asked the server for this bike
 // What knocks the street's loose things about: the cars and bikes being ridden (yours and the others', as drawn), and you on foot.
@@ -3366,6 +3370,7 @@ let homePadX = 0; // the controller's stick on the home card, as padStick is on 
 let homePadY = 0;
 let lockKey: 'prompt.locked' | 'prompt.multiplayerOnly' = 'prompt.locked'; // what the hint says: a home is locked, or only in multiplayer (a pane of no home alone)
 let gardenCheck = 0; // seconds to the next look at the end house's garden (it is only reached through the house)
+player.onChuteLand = () => void (gardenCheck = 0); // a drop or a jump touching down there: put out in the same frame
 let lockHint = 0; // seconds "only in multiplayer" still shows after trying a door or a pane alone
 /**
  * Zombies together: helping a downed teammate up. You hold Use next to them; the server keeps the
@@ -3812,7 +3817,7 @@ renderer.setAnimationLoop((now: number) => {
       }
     }
     // In a car the view widens a little at speed (world/car.ts: fovScale), from the player's own field of view.
-    weapon.baseFov = settings.value.fov * (driving || riding ? car.fovScale : helis.aboard ? helis.fovScale : 1);
+    weapon.baseFov = settings.value.fov * (driving || riding ? car.fovScale : helis.fovScale);
     if (!weapon.enabled && Math.abs(camera.fov - weapon.baseFov) > 0.01) {
       camera.fov = weapon.baseFov;
       camera.updateProjectionMatrix();

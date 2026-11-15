@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
-import { DROP, dropStart, dropStep, fly, HOME_DROP } from '../shared/parachute.mjs';
+import { DROP, dropStart, dropStep, fly, HOME_DROP, jumpStart } from '../shared/parachute.mjs';
 import { FLAG, playerFields, readPlayer } from '../shared/wire.mjs';
 import { Game } from './game.mjs';
 import { ZombieGame } from './zombies.mjs';
@@ -421,4 +421,50 @@ test('steered freely, a drop in a Zombies place stays inside its edge', () => {
   const seen = drive(g, p, now, 240, 50, () => ({ dx: 0.45, dy: -0.6, dz: 0.3 }), () => ({ pc: 1 }));
   for (const s of seen) assert.ok(edge.inside(s.x, s.z), `out of the edge at ${s.x}, ${s.z}`);
   assert.ok(Math.hypot(seen.at(-1).x - cx, seen.at(-1).z - cz) > arena.radius - 6, 'it did reach the edge');
+});
+
+test('a jump from the helicopter: the canopy opens by itself, at once low down, after a short fall high up; never lands closed', () => {
+  // The lowest jump the helicopter allows: over the canopy's braking, under the 20 m the brief asked for at most.
+  assert.ok(DROP.jumpMin >= 8 && DROP.jumpMin <= 20, `jumpMin ${DROP.jumpMin} m`);
+  assert.ok(DROP.jumpFree >= 1 && DROP.jumpFree <= 1.5);
+  for (let h = DROP.jumpMin; h <= 125; h += 1) {
+    for (const forward of [0, 22 / 3.6, 80 / 3.6, DROP.across]) {
+      for (const down of [0, DROP.jumpDrop, DROP.jumpSink]) {
+        for (const dt of [1 / 30, 1 / 60, 1 / 144]) {
+          const f = fly(dt, { height: h, jump: true, forward: Math.min(forward, DROP.across), down });
+          assert.ok(f.openedAt !== null, 'it opens');
+          const opened = f.path.find((p) => p.open !== null);
+          // Under DROP.openAt at once (the first step); higher after DROP.jumpFree s of free fall (at most 15 m of it).
+          if (h <= DROP.openAt) assert.ok(opened.t <= dt * 1.01, `from ${h} m it opened after ${opened.t} s`);
+          else {
+            assert.ok(Math.abs(opened.t - DROP.jumpFree) <= dt * 1.01 || f.openedAt >= DROP.openAt - 1, `from ${h} m it opened after ${opened.t} s`);
+            assert.ok(h - f.openedAt <= 15, `from ${h} m it fell ${h - f.openedAt} m closed`);
+          }
+          // Under the canopy all the way down: braked before the flare, a canopy's touchdown.
+          assert.ok(f.landing <= DROP.sink + 1, `from ${h} m at ${forward} m/s, ${down} down: landed at ${f.landing} m/s`);
+          assert.ok(f.down <= Math.max(down, DROP.diveDown) && f.across <= DROP.across + 1e-9, "inside the drop's limits");
+        }
+      }
+    }
+  }
+});
+
+test("a jump takes the machine's speed along within the drop's limits: never up, at most DROP.across across and DROP.jumpSink down", () => {
+  for (const [vx, vz, vy] of [[0, 0, 0], [47, 0, 0], [-30, 40, 9], [5, -3, -14], [NaN, Infinity, -Infinity], [0, 0, 3]]) {
+    const j = jumpStart(vx, vz, vy, [1, 0]);
+    assert.ok(Number.isFinite(j.vx) && Number.isFinite(j.vz) && Number.isFinite(j.vy));
+    assert.ok(Math.hypot(j.vx, j.vz) <= DROP.across + 1e-9, 'across');
+    assert.ok(j.vy <= -DROP.jumpDrop + 1e-9 && j.vy >= -DROP.jumpSink - 1e-9, `down ${j.vy}`);
+    assert.equal(j.openAfter, DROP.jumpFree);
+  }
+  // At a hover the step out is the only speed across: sideways, away from the cabin.
+  const still = jumpStart(0, 0, 0, [0, -1]);
+  assert.ok(Math.abs(still.vx) < 1e-9 && Math.abs(still.vz + DROP.jumpPush) < 1e-9);
+  // At speed you go on the way the machine flew.
+  const fast = jumpStart(0, -40, 0, [1, 0]);
+  assert.ok(fast.vz < -11);
+  // A hand on the jump key still opens it from DROP.minFall on, before the canopy would open by itself.
+  const s = { t: DROP.minFall, open: null, vx: 0, vz: 0, vy: -8, air: 100, openAfter: DROP.jumpFree };
+  dropStep(s, { open: true }, 0, 1 / 60);
+  assert.equal(s.open, 0);
 });

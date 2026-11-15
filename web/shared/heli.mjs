@@ -557,3 +557,96 @@ export function heliExit(s, steps, ground, free) {
   }
   return outside(s.x, stand, s.z) ? { x: s.x, y: stand, z: s.z } : null;
 }
+
+/** A body frame point (x right, y up, z back, metres from the origin) of the machine `s` in the world, as world/heli.ts poses it. */
+export function heliToWorld(s, x, y, z) {
+  // The body's rotation is Euler (-pitch, yaw, -roll) in the order YXZ: R = Ry(yaw) Rx(-pitch) Rz(-roll).
+  const cr = Math.cos(-s.roll), sr = Math.sin(-s.roll);
+  const x1 = x * cr - y * sr, y1 = x * sr + y * cr, z1 = z;
+  const cp = Math.cos(-s.pitch), sp = Math.sin(-s.pitch);
+  const y2 = y1 * cp - z1 * sp, z2 = y1 * sp + z1 * cp, x2 = x1;
+  const cy = Math.cos(s.yaw), sy = Math.sin(s.yaw);
+  return { x: s.x + x2 * cy + z2 * sy, y: s.y + y2, z: s.z - x2 * sy + z2 * cy };
+}
+
+/** A world point in the machine's body frame (the inverse of heliToWorld). */
+export function heliToBody(s, x, y, z) {
+  const dx = x - s.x, dy = y - s.y, dz = z - s.z;
+  const cy = Math.cos(s.yaw), sy = Math.sin(s.yaw);
+  const x2 = dx * cy - dz * sy, z2 = dx * sy + dz * cy, y2 = dy;
+  const cp = Math.cos(-s.pitch), sp = Math.sin(-s.pitch);
+  const y1 = y2 * cp + z2 * sp, z1 = -y2 * sp + z2 * cp, x1 = x2;
+  const cr = Math.cos(-s.roll), sr = Math.sin(-s.roll);
+  return { x: x1 * cr + y1 * sr, y: -x1 * sr + y1 * cr, z: z1 };
+}
+
+/**
+ * Where a jump from the helicopter starts (src/heliPilot.ts): out of the door on the side that is down (the pilot's,
+ * the right, when it flies level), beside the step (its z), past the tail's stabiliser by a body's width and more, the
+ * feet at the skids' level: so the fall goes away from the cabin and under the rotor's disc, and the tail passes
+ * outside. `size`: heli.json's. Returns the feet's place, the side (1 right, -1 left) and the unit vector across, away
+ * from the cabin, for the step out (shared/parachute.mjs jumpStart).
+ */
+export function heliJump(s, size) {
+  // Flying sideways the machine would catch you up on that side (your fall keeps less of its speed): out of the other.
+  const across = s.vx * Math.cos(s.yaw) - s.vz * Math.sin(s.yaw);
+  const side = Math.abs(across) > 2 ? -Math.sign(across) : s.roll < 0 ? -1 : 1;
+  const out = size.stabiliser.halfX + JUMP_CLEAR;
+  const z = size.steps[side > 0 ? 1 : 0][1];
+  const at = heliToWorld(s, side * out, 0, z);
+  at.y = Math.min(at.y, s.y); // banked away from you, the door's side is high: you start no higher than the skids' level
+  const rx = Math.cos(s.yaw), rz = -Math.sin(s.yaw); // the machine's right on the plan
+  // Banked, a body standing upright there leans into the cabin with its head: further out, 10 cm at a time, until
+  // it is clear by a body's radius.
+  for (let i = 0; i < 30 && heliGap(s, size, at.x, at.y, at.z) < JUMP_CLEAR - 0.3; i++) {
+    at.x += rx * side * 0.1;
+    at.z += rz * side * 0.1;
+  }
+  return { x: at.x, y: at.y, z: at.z, side, push: [rx * side, rz * side] };
+}
+/** m: a jump starts this far out past the stabiliser's tip (a body's radius, 0.3, and as much again). */
+export const JUMP_CLEAR = 0.6;
+
+/**
+ * Nobody aboard after a jump (world/heli.ts away): the machine flies itself home. It climbs away at full up at once
+ * (never falling on you or the village) and keeps the way it flew for `keep` s, so it doesn't lean over onto you as it
+ * would braking hard; then hands off it eases to a hover, still climbing; from `home` s, once out of your sight, or at
+ * `latest` s whatever, it is back on its pad (src/heliPilot.ts).
+ */
+export const AWAY = { keep: 1, home: 3, latest: 12 };
+/** The machine's sticks as it flew at the jump (`s`): forward and sideways for the speed it had, in its own frame. */
+export function awayKeep(s) {
+  const fx = -Math.sin(s.yaw), fz = -Math.cos(s.yaw);
+  const u = s.vx * fx + s.vz * fz, w = s.vx * -fz + s.vz * fx;
+  return { fwd: clamp(u >= 0 ? u / HELI.V_TOP : u / HELI.V_SLOW, -1, 1), side: clamp(w / HELI.V_SLOW, -1, 1) };
+}
+/** The machine's input `t` s after a jump left it (`keep`: awayKeep at the jump). */
+export const awayInput = (t, keep) => (t < AWAY.keep ? { ...keep, lift: 1 } : { lift: 1 });
+
+/**
+ * How far (m) a standing body (`r` round, from `feet` to `feet + height`, in the world) is from the machine `s`: its
+ * cabin, skids, boom, fin, stabiliser and the rotor's disc as boxes in its own frame (heli.json's sizes). Under 0:
+ * inside. For the jump's test: the jump never passes through any of them.
+ */
+export function heliGap(s, size, x, feet, z, r = 0.3, height = 1.8) {
+  const c = size.cabin, b = size.boom, t = size.stabiliser;
+  const boxes = [
+    [-c.halfX, c.y0, c.z0, c.halfX, c.y1, c.z1], // the cabin and the cowling
+    [-size.skidX, 0, SKIDS[0][1] - 0.4, size.skidX, c.y0, SKIDS[2][1] + 0.4], // the skids and their struts
+    [-b.halfX, b.y0, b.z0, b.halfX, b.y1, b.z1], // the boom, the fin and the tail rotor
+    [-t.halfX, t.y0, t.z0, t.halfX, t.y1, t.z1], // the stabiliser with its end plates
+  ];
+  let gap = Infinity;
+  for (let i = 0; i <= 6; i++) {
+    const p = heliToBody(s, x, feet + (height * i) / 6, z);
+    for (const [x0, y0, z0, x1, y1, z1] of boxes) {
+      const dx = Math.max(x0 - p.x, 0, p.x - x1), dy = Math.max(y0 - p.y, 0, p.y - y1), dz = Math.max(z0 - p.z, 0, p.z - z1);
+      gap = Math.min(gap, Math.hypot(dx, dy, dz) - r);
+    }
+    // The rotor's disc: a slab 0.6 m thick round the mast at its height, out to the blades' tips.
+    const out = Math.hypot(p.x, p.z) - size.rotor.r;
+    const dy = Math.abs(p.y - size.rotor.y) - 0.3;
+    gap = Math.min(gap, (out > 0 ? Math.hypot(out, Math.max(0, dy)) : Math.max(0, dy)) - r);
+  }
+  return gap;
+}

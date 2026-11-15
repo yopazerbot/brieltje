@@ -148,7 +148,7 @@ export class Player {
 
   /** Put the player somewhere directly, camera included (used by the dev test hook). */
   place(x: number, z: number, feet: number, yaw: number, pitch: number): void {
-    Object.assign(this, { x, z, feet, yaw, pitch, vx: 0, vz: 0, vy: 0, eyeY: feet + EYE, flying: false, chute: null, canopy: null, dip: -1, stumble: 0, water: null, wetHere: null, ride: null, towerHint: null, glide: 0, jumpFrom: null });
+    Object.assign(this, { x, z, feet, yaw, pitch, vx: 0, vz: 0, vy: 0, eyeY: feet + EYE, flying: false, chute: null, canopy: null, openAfter: undefined, dip: -1, stumble: 0, water: null, wetHere: null, ride: null, towerHint: null, glide: 0, jumpFrom: null });
   }
 
   /** Going down the play tower's slide: how fast (m/s along it); 0 off it. */
@@ -156,10 +156,19 @@ export class Player {
     return this.ride?.kind === 'slide' ? this.ride.speed : 0;
   }
 
-  /** Start a drop from where you are (place yourself up high first): the free fall, then the canopy. */
-  startDrop(): void {
-    Object.assign(this, { chute: 0, canopy: null, flying: false, vy: 0, vx: 0, vz: 0, steer: 0, autoLook: true, lastStep: performance.now() });
+  /**
+   * Start a drop from where you are (place yourself up high first): the free fall, then the canopy. `jump`: out of
+   * the helicopter (shared/parachute.mjs jumpStart): its speed along and the canopy opening by itself after a moment.
+   */
+  startDrop(jump?: { vx: number; vz: number; vy: number; openAfter: number }): void {
+    Object.assign(this, { chute: 0, canopy: null, flying: false, vy: jump?.vy ?? 0, vx: jump?.vx ?? 0, vz: jump?.vz ?? 0, steer: 0, autoLook: true, lastStep: performance.now(), openAfter: jump?.openAfter });
     this.air = Math.max(0, this.feet - this.world.groundAt(this.x, this.z, this.feet, 0).y);
+  }
+  /** After a jump from the helicopter: the canopy opens by itself this many seconds in (else at DROP.openAt only). */
+  private openAfter: number | undefined;
+  /** In a drop that began as a jump from the helicopter. */
+  get jumped(): boolean {
+    return this.chute !== null && this.openAfter !== undefined;
   }
 
   /**
@@ -208,7 +217,7 @@ export class Player {
       this.crouching = false;
       this.steer += ((this.canopy === null ? 0 : input.moveX) - this.steer) * (1 - Math.exp(-dt * 4));
       this.yaw -= this.steer * DROP.turn * dt;
-      const s = { t: this.chute, open: this.canopy, vx: this.vx, vz: this.vz, vy: this.vy, air: this.air };
+      const s = { t: this.chute, open: this.canopy, vx: this.vx, vz: this.vz, vy: this.vy, air: this.air, openAfter: this.openAfter };
       dropStep(s, { moveX: input.moveX, moveY: input.moveY, dive: input.downHeld, open: input.jumpPressed }, this.yaw, dt);
       Object.assign(this, { canopy: s.open, vx: s.vx, vz: s.vz, vy: s.vy });
     } else {

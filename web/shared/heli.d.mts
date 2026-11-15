@@ -83,3 +83,21 @@ export function heliStep(s: HeliState, input: HeliInput, env: HeliEnv, dt: numbe
 export function heliFly(s: HeliState, input: HeliInput, env: HeliEnv, dt: number): HeliState;
 /** Where you stand after getting out, or null (stay aboard): see heli.mjs. */
 export function heliExit(s: HeliState, steps: [number, number][], ground: (x: number, z: number, top: number) => number, free: (x: number, z: number, feet: number) => boolean): { x: number; y: number; z: number } | null;
+/** The sizes heliJump and heliGap read (heli.json's `size`). */
+export interface HeliSize {
+  cabin: { halfX: number; z0: number; z1: number; y0: number; y1: number };
+  skidX: number;
+  boom: { halfX: number; z0: number; z1: number; y0: number; y1: number };
+  stabiliser: { halfX: number; z0: number; z1: number; y0: number; y1: number };
+  rotor: { y: number; r: number };
+  steps: number[][];
+}
+export function heliToWorld(s: HeliState, x: number, y: number, z: number): { x: number; y: number; z: number };
+export function heliToBody(s: HeliState, x: number, y: number, z: number): { x: number; y: number; z: number };
+/** Where a jump starts: the feet's place, the side (1 right, -1 left), the step out's direction across. */
+export function heliJump(s: HeliState, size: HeliSize): { x: number; y: number; z: number; side: number; push: [number, number] };
+export const JUMP_CLEAR: number;
+export function heliGap(s: HeliState, size: HeliSize, x: number, feet: number, z: number, r?: number, height?: number): number;
+export const AWAY: { keep: number; home: number; latest: number };
+export function awayKeep(s: HeliState): { fwd: number; side: number };
+export function awayInput(t: number, keep: { fwd: number; side: number }): HeliInput;

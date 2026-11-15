@@ -2,7 +2,8 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
-import { EV, HELI, SKIDS, heliBump, heliExit, heliFly, heliPlace, heliStart } from './heli.mjs';
+import { AWAY, EV, HELI, SKIDS, awayInput, awayKeep, heliBump, heliExit, heliFly, heliGap, heliJump, heliPlace, heliStart, heliToBody, heliToWorld } from './heli.mjs';
+import { DROP, dropStep, jumpStart } from './parachute.mjs';
 import { END_GARDEN, HOMES, homeAt, inEndGarden } from './homes.mjs';
 
 const DATA = JSON.parse(readFileSync(new URL('./heli.json', import.meta.url), 'utf8'));
@@ -435,4 +436,69 @@ test('getting out never puts you inside a private home or its fenced garden, nor
   } finally {
     HOMES.splice(HOMES.indexOf(fourth), 1);
   }
+});
+
+test('the body frame and the world agree, both ways, whatever the lean', () => {
+  const s = { ...heliStart({ x: 5, y: 40, z: -3, yaw: 2.2 }), pitch: 0.4, roll: -0.6 };
+  for (const [x, y, z] of [[1, 2, 3], [-1.3, 0, -0.4], [0, 3.2, 0]]) {
+    const w = heliToWorld(s, x, y, z);
+    const b = heliToBody(s, w.x, w.y, w.z);
+    assert.ok(Math.hypot(b.x - x, b.y - y, b.z - z) < 1e-9);
+  }
+  // Level, the right (+x) is to the right of the nose; rolled right (+roll) the right side is lower.
+  const level = heliToWorld({ ...s, pitch: 0, roll: 0 }, 1, 0, 0);
+  assert.ok(Math.abs(level.y - 40) < 1e-9);
+  assert.ok(heliToWorld({ ...s, pitch: 0, roll: 0.3 }, 1, 0, 0).y < 40);
+  assert.ok(heliToWorld({ ...s, pitch: 0.3, roll: 0 }, 0, 0, -3).y < 40, 'nose down: the nose lower');
+});
+
+test('a jump clears the machine: never through the cabin, the skids, the boom, the stabiliser or the rotor disc, at any speed, lean or turn', () => {
+  const DTJ = 1 / 60;
+  let jumps = 0, worst = Infinity;
+  const inputs = [];
+  for (const fwd of [0, 0.3, 0.6, 1, -1]) for (const side of [0, 1, -1]) for (const turn of [0, 1, -1]) for (const lift of [0, 1, -1]) inputs.push({ fwd, side, turn, lift });
+  for (const ceiling of [400, 82]) for (const input of inputs) for (const secs of [0.3, 1, 2, 6]) {
+    const env = flat({ ceiling });
+    const s = hovering(80, env);
+    fly(s, secs, input, env);
+    const j = heliJump(s, DATA.size);
+    // Out of the door, below the disc, at least a body's radius off everything.
+    assert.ok(heliGap(s, DATA.size, j.x, j.y, j.z) >= 0.29, `starts ${heliGap(s, DATA.size, j.x, j.y, j.z)} m off`);
+    assert.ok(j.y <= s.y + 1e-9, 'no higher than the skids');
+    const v = jumpStart(s.vx, s.vz, s.vy, j.push);
+    const keep = awayKeep(s);
+    const p = { x: j.x, feet: j.y, z: j.z, t: 0, open: null, vx: v.vx, vz: v.vz, vy: v.vy, air: 80, openAfter: v.openAfter };
+    const yaw = s.yaw, y0 = s.y;
+    jumps++;
+    for (let t = 0; t < 4; t += DTJ) {
+      worst = Math.min(worst, heliGap(s, DATA.size, p.x, p.feet, p.z));
+      dropStep(p, {}, yaw, DTJ);
+      p.x += p.vx * DTJ;
+      p.z += p.vz * DTJ;
+      p.feet += p.vy * DTJ;
+      p.t += DTJ;
+      p.air = p.feet;
+      heliFly(s, awayInput(t, keep), env, DTJ);
+    }
+    assert.ok(worst > 0.1, `${worst.toFixed(3)} m off the machine after ${JSON.stringify(input)} for ${secs} s under ${ceiling}`);
+    // Nobody aboard: it never comes down (it climbs away, or holds under the ceiling): a sink it had stops within 4 m (under the ceiling: of where its thrust fades).
+    assert.ok(s.y >= Math.min(y0, ceiling - HELI.CEIL_FADE) - 4, `sank to ${s.y} from ${y0} after ${JSON.stringify(input)} for ${secs} s under ${ceiling}, ${speed(s)} m/s`);
+  }
+  assert.ok(jumps >= 1000, `${jumps} jumps`);
+  console.log(`# ${jumps} jumps, the closest ${worst.toFixed(2)} m off the machine`);
+});
+
+test('after a jump the machine eases to a hover while it climbs away; it keeps its way for AWAY.keep s only', () => {
+  const env = flat({ ceiling: 300 });
+  const s = hovering(60, env);
+  fly(s, 15, { fwd: 1 }, env);
+  assert.ok(speed(s) > 35, `${speed(s)} m/s`);
+  const keep = awayKeep(s);
+  assert.ok(keep.fwd > 0.85 && Math.abs(keep.side) < 0.1, JSON.stringify(keep));
+  let t = 0;
+  for (; t < 20; t += DT) heliFly(s, awayInput(t, keep), env, DT);
+  assert.ok(speed(s) < 1.5, `still ${speed(s)} m/s after 20 s`);
+  assert.ok(s.y > 60 + 50, `climbed to ${s.y}`);
+  assert.ok(AWAY.home > AWAY.keep && AWAY.latest > AWAY.home);
+  assert.ok(DROP.jumpMin < 20);
 });
