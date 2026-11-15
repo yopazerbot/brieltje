@@ -62,8 +62,10 @@
       o.visible = false;
       unseen.push(o);
     }
+    // `people: false` (views.json): nobody in the picture, for a private home: a passer-by on its drive would look
+    // like someone who lives there.
     kinds.forEach((o) => {
-      if (!o.count) return;
+      if (!o.count || view?.people === false) return;
       for (let q = o.parent; q; q = q.parent) if (!q.visible) return;
       const fake = { uniforms: {}, vertexShader: '', fragmentShader: '' };
       o.material.onBeforeCompile(fake, t.renderer);

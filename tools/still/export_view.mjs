@@ -11,7 +11,8 @@
 // doesn't depend on how the flight went. The camera is the view's own position and target; `house` (null in views.json)
 // is the start screen's own camera (export_scene.js), with the player put by the road in front of the house.
 // A view with `heli` has the helicopter in the air in it (below). A view with `season` ('2026-10-15') is exported as on
-// that day (world/season.ts), so a picture kept all year shows no Sinterklaas, Sint-Maarten or Christmas lights.
+// that day (world/season.ts), so a picture kept all year shows no Sinterklaas, Sint-Maarten or Christmas lights. A view
+// with `people: false` has no villagers in it (export_scene.js).
 import { existsSync, mkdirSync, readFileSync, statSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { launch, options, startGame } from '../dev/cdp.mjs';
@@ -95,7 +96,7 @@ try {
     if (!put) throw new Error('the helicopter was not ready');
     console.log('helicopter put', JSON.stringify(put));
   }
-  await b.evaluate(`window.stillView = ${view ? JSON.stringify({ position: view.position, target: view.target, fov: view.fov, render: view.render }) : 'null'}`, false);
+  await b.evaluate(`window.stillView = ${view ? JSON.stringify({ position: view.position, target: view.target, fov: view.fov, render: view.render, people: view.people }) : 'null'}`, false);
   console.log(await b.evaluate(readFileSync(new URL('./export_scene.js', import.meta.url), 'utf8')));
   // The two downloads, once they have stopped growing.
   for (let i = 0, last = -1; i < 240; i++) {
