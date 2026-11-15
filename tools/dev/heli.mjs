@@ -301,7 +301,23 @@ try {
     await lookBy(-4000, 1800, 'mouse');
     const hd2 = await view();
     row("the pilot's head", `right ${deg(-hd.look.yaw)} deg and up ${deg(hd.look.pitch)}; left ${deg(hd2.look.yaw)} deg and down ${deg(-hd2.look.pitch)} (view ${hd.view})`);
-    check(hd.view === 'cockpit' && Math.abs(Math.abs(hd.look.yaw) - 1.92) < 0.01 && Math.abs(Math.abs(hd.look.pitch) - 0.7) < 0.01 && Math.abs(Math.abs(hd2.look.yaw) - 1.92) < 0.01, "the pilot's head turns 110 degrees each way and 40 up and down at most");
+    check(hd.view === 'cockpit' && Math.abs(Math.abs(hd.look.yaw) - 1.92) < 0.01 && Math.abs(hd.look.pitch - 0.7) < 0.01 && Math.abs(Math.abs(hd2.look.yaw) - 1.92) < 0.01 && Math.abs(hd2.look.pitch + 1.05) < 0.01, "the pilot's head turns 110 degrees each way, 40 up and 60 down at most");
+    // Looking down stays (a landing from the seat with the mouse still); turned to the side it comes back ahead.
+    await b.sleep(5000);
+    const hd3 = await view();
+    row("the pilot's look after 5 s still", `down ${deg(-hd3.look.pitch)} deg, to the side ${deg(Math.abs(hd3.look.yaw))} deg`);
+    check(Math.abs(hd3.look.pitch + 1.05) < 0.01 && Math.abs(hd3.look.yaw) < 0.2, "the look down stays; the look to the side eases back ahead");
+    // The pad from the seat: 18 m up, 25 m short of it, facing it, looking down.
+    {
+      const was = await state();
+      const park = await b.evaluate('briel.helis.machines[0].park');
+      await putAir(park.x + Math.sin(park.yaw) * 25, park.z + Math.cos(park.yaw) * 25, 18, park.yaw);
+      await lookBy(0, -190, 'mouse'); // from 60 down to about 36: the pad 25 m ahead and 18 m below
+      await b.sleep(600);
+      await shot(`cockpit-pad${phone ? '-phone' : ''}`);
+      await putAir(was.x, was.z, was.h, was.yaw);
+      await lookBy(0, -2000, 'mouse');
+    }
     await tap('KeyI');
     await b.sleep(3500);
     // The turn keys at a hover: D (R1 on a controller) for 2 s.

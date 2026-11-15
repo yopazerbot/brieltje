@@ -63,8 +63,8 @@ const DRAWN_AS: Record<string, string> = { Gap: 'Trim', Rubber: 'Trim', ...Objec
 const angle = (a: number) => Math.atan2(Math.sin(a), Math.cos(a));
 /** s without looking round before the view eases back behind the machine (or ahead from the seat) */
 const LOOK_BACK = 2;
-/** The pilot's head: rad up and down, and to each side */
-const HEAD = { pitch: 0.7, yaw: 1.92 };
+/** The pilot's head: rad up, down (a landing spot below stays in view: it isn't eased back) and to each side */
+const HEAD = { up: 0.7, down: 1.05, yaw: 1.92 };
 const _seat = new THREE.Quaternion();
 const _head = new THREE.Quaternion();
 const _euler = new THREE.Euler(0, 0, 0, 'YXZ');
@@ -1008,15 +1008,15 @@ export class Heli {
 
   /**
    * The view from the pilot's seat (Eye_Pilot), turning and leaning with the machine; `tilt` and `pan` turn the head, up to
-   * 40 degrees up and down and 110 to each side (out of the side windows, down at a landing spot), back ahead by itself.
+   * 40 degrees up, 60 down and 110 to each side (out of the side windows, down at a landing spot). Turned to the side it
+   * comes back ahead by itself; looking down it stays (a landing from the seat with a still mouse).
    */
   cockpit(camera: THREE.PerspectiveCamera, dt: number, tilt: number, pan = 0): void {
     const d = Math.min(Math.max(dt, 0), 0.1);
-    this.lookPitch = Math.max(-HEAD.pitch, Math.min(HEAD.pitch, this.lookPitch + tilt));
+    this.lookPitch = Math.max(-HEAD.down, Math.min(HEAD.up, this.lookPitch + tilt));
     const back = this.lookRound(d, pan, tilt);
     this.lookYaw = Math.max(-HEAD.yaw, Math.min(HEAD.yaw, this.lookYaw));
     this.lookYaw -= this.lookYaw * back;
-    this.lookPitch -= this.lookPitch * back;
     this.body.updateMatrixWorld(true);
     camera.position.copy(this.eye).applyMatrix4(this.body.matrixWorld);
     const s = this.s;
