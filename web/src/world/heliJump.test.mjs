@@ -2,9 +2,8 @@
 // the code-locked homes. The page's own collision (world/collision.ts) and player (src/player.ts) run here, with only the
 // homes' walking barriers in the world (main.ts homeLocks.barrier, the server's rule homeAt) and, in one pass, a roof
 // over each home's top band; in the other no roofs either, the worst case. However a jump comes in, hands off or steered
-// hard at a home, slow or at speed: nobody touches down inside a home's inside (its bands), and nobody is inside for more
-// than the one frame the barrier takes to push them out (the page moves a body across before it sinks it: sinking
-// through a band's top edge beside the ring, the next frame's push puts it out; the real homes' walls are blocks too).
+// hard at a home, slow or at speed: nobody is inside a home's inside (its bands) at any frame, nor touches down there
+// (a drop sinks after it moves across: the barrier is asked again after the sink, src/player.ts).
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
@@ -74,7 +73,7 @@ for (const roofs of [true, false]) test(`no jump from the helicopter lands anyon
                 const inside = homeAt(p.x, p.z, p.feet);
                 run = inside ? run + 1 : 0;
                 if (inside) frames++;
-                assert.ok(run <= 1, `inside ${inside} at ${p.x.toFixed(2)}, ${p.feet.toFixed(2)}, ${p.z.toFixed(2)} for ${run} frames (jump over ${x}, ${z} from ${up} m at ${speed} m/s)`);
+                assert.ok(run === 0, `inside ${inside} at ${p.x.toFixed(2)}, ${p.feet.toFixed(2)}, ${p.z.toFixed(2)} for ${run} frames (jump over ${x}, ${z} from ${up} m at ${speed} m/s)`);
               }
               assert.equal(p.chute, null, 'every jump comes down');
               assert.equal(homeAt(p.x, p.z, p.feet), null, `touched down inside at ${p.x.toFixed(2)}, ${p.feet.toFixed(2)}, ${p.z.toFixed(2)}`);
@@ -87,7 +86,7 @@ for (const roofs of [true, false]) test(`no jump from the helicopter lands anyon
     // The end house's garden has no barrier: a touchdown there is put out in front of the house in the same frame
     // (main.ts player.onChuteLand, the garden check), as for every drop. Counted, not refused here.
     assert.ok(jumps > 1500, `${jumps} jumps`);
-    console.log(`# ${roofs ? 'roofs' : 'no roofs'}: ${jumps} jumps, ${steps} steps, none touched down inside a home, ${frames} single frames inside before the push; ${garden} touched down in the end house's garden (put out at once)`);
+    console.log(`# ${roofs ? 'roofs' : 'no roofs'}: ${jumps} jumps, ${steps} steps, none touched down inside a home, ${frames} frames inside; ${garden} touched down in the end house's garden (put out at once)`);
   } finally {
     HOMES.splice(HOMES.indexOf(fourth), 1);
   }

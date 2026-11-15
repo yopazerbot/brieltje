@@ -272,8 +272,19 @@ export class Player {
     this.x = pos.x;
     this.z = pos.z;
 
-    if (this.chute !== null) this.descend(dt);
-    else this.vertical(dt, input);
+    if (this.chute !== null) {
+      this.descend(dt);
+      // Sunk this frame into a block's or a home barrier's height (a drop moves across first, then down): out of it now,
+      // not a frame later.
+      pos.x = this.x;
+      pos.z = this.z;
+      this.world.resolve(pos, this.feet, RADIUS, STEP_UP, HEIGHT);
+      if (pos.x !== this.x || pos.z !== this.z) {
+        this.x = pos.x;
+        this.z = pos.z;
+        this.ground = this.world.groundAt(pos.x, pos.z, this.feet, STEP_UP);
+      }
+    } else this.vertical(dt, input);
     this.air = Math.max(0, this.feet - this.ground.y);
     this.water = this.wetHere && !this.flying && this.feet < this.wetHere.level ? this.wetHere : null;
     const swim = this.water?.swimming ? 1 : 0;
