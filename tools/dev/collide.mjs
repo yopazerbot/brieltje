@@ -35,7 +35,8 @@
 //   stalls, pick-ups, bikes and parked cars: free for a body (or a car), no trunk within 0.3 m; with --compare, the
 //   floor under each as in that earlier run.
 // - drops: 60 real parachute drops over the church square and Molenhoek, hands off: the feet within 0.5 m of the
-//   highest drawn surface where they land (a landing on the ground under the eaves, free there, is fine).
+//   highest drawn surface where they land (a landing on the ground under the eaves, free there, is fine). The known
+//   falls (KNOWN_FALLS: where a landing ends metres under a roof, and why) are let fall on and printed every run.
 //
 // What the probes need (learnt the hard way): three is imported from the page's own module, every tile is shown
 // and kept so (tiles.update emptied on this page), skinned meshes, `ignoreRay`, vehicles, hidden materials and all
@@ -770,7 +771,7 @@ function roofWedges(list, max) {
     // On what is drawn there: the first surface down from the head within half a metre of the feet.
     const under = cast(at.x, at.feet + 1.7, at.z, 0, -1, 0, 4, /hedge\||steel|foliage|leaves|loose-|\|cut/)[0];
     const onRoof = !!under && Math.abs(under.y - at.feet) < 0.5;
-    if (!free(at.x, at.z, at.feet) || moved < 0.5 || !onRoof) wedges.push({ x: +s.x.toFixed(2), z: +s.z.toFixed(2), kind: s.kind, ended: [+at.x.toFixed(2), +at.feet.toFixed(2), +at.z.toFixed(2)], free: free(at.x, at.z, at.feet), moved: +moved.toFixed(2), onRoof });
+    if (!free(at.x, at.z, at.feet) || moved < 0.5 || !onRoof) wedges.push({ x: +s.x.toFixed(2), z: +s.z.toFixed(2), kind: s.kind, ended: [+at.x.toFixed(2), +at.feet.toFixed(2), +at.z.toFixed(2)], free: free(at.x, at.z, at.feet), moved: +moved.toFixed(2), onRoof, drawn: under ? +under.y.toFixed(2) : null, cls: under?.cls ?? "" });
   }
   put(keep.x, keep.z, keep.feet, keep.yaw);
   p.flying = keep.flying;
@@ -871,7 +872,8 @@ function insideRoofs() {
       }
       const room = under - floor;
       // A block reaching up through it (capped a little over the roof) fills it.
-      if (room < 1 || W.touching(x, z, floor + 0.1, under - 0.05, 0) !== null) continue;
+      // A block hanging over the floor (a lid wider than the walls, out to the eaves): under it is outside the building.
+      if (room < 1 || floor < s.y0 - 0.5 || W.touching(x, z, floor + 0.1, under - 0.05, 0) !== null) continue;
       n++;
       if (open) out.open++;
       if (!worst || room > worst.room) worst = { x: +x.toFixed(2), z: +z.toFixed(2), feet: +floor.toFixed(2), roof: +top.toFixed(2), room: +room.toFixed(2), open, block: s.mat };
@@ -955,6 +957,32 @@ function drops(centres) {
   }
   return rows;
 }
+
+/**
+ * Known falls: a body let fall from 40 m at 60 Hz onto spots where a landing was found to end metres under the drawn
+ * roof (`list`: [x, z, why]). Printed every run as known, with where it ended; not counted.
+ */
+function knownFalls(list) {
+  const { W } = window.__c;
+  const p = briel.player;
+  const keep = { x: p.x, z: p.z, feet: p.feet, yaw: p.yaw, flying: p.flying };
+  p.flying = false;
+  const rows = [];
+  for (const [x, z, why] of list) {
+    const top = W.groundAt(x, z, 1e6, 0).y;
+    p.vx = p.vy = p.vz = 0;
+    briel.teleport(x, z, top + 40, 0, 0);
+    for (let i = 0; i < 600 && (i < 30 || p.feet > p.ground.y + 0.01 || p.vy !== 0); i++) briel.press({}, 1 / 60);
+    rows.push({ why, x, z, top: +top.toFixed(2), ended: [+p.x.toFixed(2), +p.feet.toFixed(2), +p.z.toFixed(2)], under: +(top - p.feet).toFixed(2) });
+  }
+  briel.teleport(keep.x, keep.z, keep.feet, keep.yaw, 0);
+  p.flying = keep.flying;
+  return rows;
+}
+const KNOWN_FALLS = [
+  [579.36, -666.06, 'a 20 cm ledge beside a taller roof: pushed off it, down beside the house'],
+  [646.99, -754.71, 'a crack between open-data blocks under the roof (there on main too)'],
+];
 
 // ------------------------------------------------------------------------------------------------ the run
 
@@ -1086,6 +1114,8 @@ try {
     const under = rows.filter((r) => r.under).length;
     record('drops', wrong.length, `${wrong.length} of ${rows.length} landings more than 0.5 m off the drawn surface (${wrong.filter((r) => r.off > 0.5).length} sunk, ${wrong.filter((r) => r.off < -0.5).length} on air); ${under} on the ground under eaves`, wrong, { rows: wrong, under });
     excuse(`${under} landings on the ground under eaves, free there`, rows.filter((r) => r.under));
+    const known = await run(knownFalls, KNOWN_FALLS);
+    excuse(`${known.filter((r) => r.under > 1).length} of ${known.length} known falls end over a metre under the drawn roof (where, and why)`, known);
   }
 
   if (o.shots) {
