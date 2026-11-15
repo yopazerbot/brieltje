@@ -68,15 +68,22 @@ const connect = async (cookie, watch = false) => {
       if (d <= step) return;
     }
   };
-  /** Walk to (x, z) round the main house's east side (no way through a code-locked home), at a jog. */
+  /**
+   * Walk to (x, z) round the main house's east side (no way through a code-locked home), at a jog, on the ground (-0.1:
+   * the yard's height; a gathering may have put them on the roof terrace, and a car is entered only at its own height).
+   */
   me.walk = async (x, z) => {
     me.sync();
+    me.y = -0.1;
     if (Math.min(me.x, x) < 9.5 && Math.min(me.z, z) < 12.5) {
       await me.go(12, me.z, RUN * 0.9);
       await me.go(12, z, RUN * 0.9);
     }
     await me.go(x, z, RUN * 0.9);
-    await sleep(150);
+    for (let i = 0; i < 10; i++) {
+      me.state(); // held there while the server's budget catches up with the page
+      await sleep(50);
+    }
     me.sync();
   };
   /** Where the server has me now (from the watcher's ticks), copied into my own page's idea of it. */
@@ -95,7 +102,7 @@ admin.send({ t: 'rules', parachute: false }); // a party game's gathering by par
 const gun = await guest('Gunner', true);
 const dr = await guest('Driver');
 const pa = await guest('Rider');
-const wa = await guest('Walker');
+const wa = await guest('Walker', true); // a second watcher: a page's ticks may leave out its own player
 const all = [admin, gun, dr, pa, wa];
 const seen = (c) => world.players.get(c.name);
 const carSeen = () => world.car;
@@ -293,6 +300,7 @@ for (let i = 0; i < 50; i++) {
   ok('7. a game of tag', view?.kind === 'tag', `${view?.it} is it`);
   for (const c of all) c.sync();
   const car = await board();
+  ok('   driver and passenger in for the game', car?.driver === dr.name && car?.passenger === pa.name);
   const foot = all.filter((c) => c !== dr && c !== pa);
   const itIs = () => [...admin.log].reverse().find((m) => m.t === 'mode')?.mode?.it;
   // Everyone on foot next to the passenger's door (within the tag's 1.8 m of the car's middle).
@@ -310,14 +318,18 @@ for (let i = 0; i < 50; i++) {
     runner.sync();
     wa.sync();
     await runner.go(wa.x, wa.z + 0.8, RUN * 0.9);
-    await sleep(100);
+    for (let i = 0; i < 10; i++) {
+      runner.state(); // held there while the server's budget catches up with the page
+      await sleep(50);
+    }
     runner.send({ t: 'tag', target: wa.name });
     await sleep(400);
     ok('   control: on foot it is passed on', itIs() === wa.name);
     const sitter = runner === dr ? pa : dr;
     wa.send({ t: 'tag', target: sitter.name });
     await sleep(400);
-    ok('   someone in the car is tagged', itIs() === sitter.name);
+    const [ws, ss] = [seen(wa), seen(sitter)];
+    ok('   someone in the car is tagged', itIs() === sitter.name, `${itIs()} is it; ${Math.hypot(ws.x - ss.x, ws.z - ss.z).toFixed(2)} m apart, ${(ws.y - ss.y).toFixed(2)} m up`);
   } else {
     runner.send({ t: 'tag', target: pa.name });
     await sleep(400);
