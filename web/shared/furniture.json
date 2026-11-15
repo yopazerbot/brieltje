@@ -53,6 +53,15 @@
     { "id": "weightbench", "name": "Weight bench", "size": [1.4, 0.45, 0.6] },
     { "id": "smartbike", "name": "Indoor bike for Zwift, with screen", "size": [0.6, 1.9, 1.45] },
     { "id": "gymball", "name": "Gym ball", "size": [0.65, 0.65, 0.65] },
-    { "id": "loungesofa", "name": "Garden sofa (round, wicker)", "size": [1.5, 0.95, 0.75] }
+    { "id": "loungesofa", "name": "Garden sofa (round, wicker)", "size": [1.5, 0.95, 0.75] },
+    { "id": "loungecorner", "name": "Corner sofa with headrests (mustard)", "size": [3.0, 2.4, 0.85] },
+    { "id": "nesttables", "name": "Two round nesting tables", "size": [1.1, 0.8, 0.45] },
+    { "id": "domeblack", "name": "Dome pendant light (black)", "size": [0.5, 0.5, 2.47] },
+    { "id": "table240", "name": "Table 240 x 100, black cross legs", "size": [2.4, 1.0, 0.76] },
+    { "id": "bucketchair", "name": "Bucket chair (cognac leather)", "size": [0.55, 0.58, 0.85] },
+    { "id": "wirependants", "name": "Rail with five wire pendants", "size": [1.5, 0.3, 2.47] },
+    { "id": "sideboard220", "name": "Sideboard 220 (pale oak)", "size": [2.2, 0.45, 0.85] },
+    { "id": "steelshelf", "name": "Open shelf unit (black steel)", "size": [0.8, 0.35, 1.8] },
+    { "id": "ovaltable150", "name": "Oval table 150 x 100 (pale oak)", "size": [1.5, 1.0, 0.75] }
   ]
 }

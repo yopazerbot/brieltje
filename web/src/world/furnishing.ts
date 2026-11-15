@@ -1,5 +1,5 @@
 import * as THREE from 'three';
-import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
+import { mergeGeometries, mergeVertices } from 'three/addons/utils/BufferGeometryUtils.js';
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 import { RoundedBoxGeometry } from 'three/addons/geometries/RoundedBoxGeometry.js';
 import CATALOGUE from '../../shared/furniture.json';
@@ -174,6 +174,40 @@ const col = (hex: string) => new THREE.Color(hex);
 /** An upholstered block w x d x h standing on the floor, centred on x, z: rounded edges, in the flecked cloth. */
 const soft = (w: number, d: number, h: number, x: number, z: number, color = C.boucle, r = 0.06): Part =>
   cloth(paint(new RoundedBoxGeometry(w, h, d, 2, r).translate(x, h / 2, z), col(color))); // made of loose triangles already
+
+/**
+ * A plump block w x d x h with its bottom at y, centred on x, z, in 48 triangles: a box of two segments a side
+ * whose edges and corners are pulled in by r, shaded smooth. In the flecked cloth, or plain (`fabric` false: leather).
+ */
+function puff(w: number, d: number, h: number, x: number, y: number, z: number, color: string, r = 0.05, fabric = true): Part {
+  const g = new THREE.BoxGeometry(w, h, d, 2, 2, 2);
+  g.deleteAttribute('uv');
+  g.deleteAttribute('normal');
+  const p = g.attributes.position;
+  const half = [w / 2, h / 2, d / 2];
+  for (let i = 0; i < p.count; i++) {
+    const v = [p.getX(i), p.getY(i), p.getZ(i)];
+    const edge = v.map((c, k) => Math.abs(Math.abs(c) - half[k]) < 1e-6);
+    const n = edge.filter(Boolean).length;
+    if (n < 2) continue;
+    const pull = r * (n === 3 ? 0.75 : 0.5);
+    const [px, py, pz] = v.map((c, k) => (edge[k] ? c - Math.sign(c) * pull : c));
+    p.setXYZ(i, px, py, pz);
+  }
+  const merged = mergeVertices(g);
+  merged.computeVertexNormals();
+  const geo = paint(merged.toNonIndexed().translate(x, y + h / 2, z), col(color));
+  return fabric ? cloth(geo) : geo;
+}
+
+/** A round rod of radius r from point a to point b (legs set at an angle). */
+function rod(a: THREE.Vector3Tuple, b: THREE.Vector3Tuple, r: number, color: string, seg = 6): Part {
+  const from = new THREE.Vector3(...a);
+  const dir = new THREE.Vector3(...b).sub(from);
+  const g = new THREE.CylinderGeometry(r, r, dir.length(), seg);
+  g.applyQuaternion(new THREE.Quaternion().setFromUnitVectors(new THREE.Vector3(0, 1, 0), dir.clone().normalize()));
+  return coloured(g.translate(from.x + dir.x / 2, from.y + dir.y / 2, from.z + dir.z / 2), color);
+}
 
 /**
  * A surface over a grid (u and v from 0 to 1), coloured point by point: rugs, bedding, curtains, a
@@ -873,6 +907,150 @@ function parts(id: string, [w, d, h]: [number, number, number]): Part[] {
       }
       return p;
     }
+    case 'loungecorner': {
+      // A big L in mustard fabric on short black legs: the long part along the back, a chaise at +x
+      // reaching to the front, an arm at -x, plump seat and back cushions and five raised headrests.
+      const fab = '#c4862c';
+      const deep = 1.0; // the long part's depth
+      const chaise = 1.0; // the chaise's width
+      const back = 0.22;
+      const arm = 0.22;
+      const foot = 0.08;
+      const seatY = 0.42;
+      const z0 = -d / 2;
+      const p = [
+        cloth(box(w, deep, seatY - 0.1 - foot, 0, foot, z0 + deep / 2, fab)),
+        cloth(box(chaise, d - deep, seatY - 0.1 - foot, w / 2 - chaise / 2, foot, z0 + deep + (d - deep) / 2, fab)),
+        cloth(box(w, back, 0.66 - foot, 0, foot, z0 + back / 2, fab)),
+        puff(arm, deep, 0.62 - foot, -w / 2 + arm / 2, foot, z0 + deep / 2, fab, 0.06),
+      ];
+      for (const [x, z] of [[-w / 2 + 0.06, z0 + 0.06], [w / 2 - 0.06, z0 + 0.06], [-w / 2 + 0.06, z0 + deep - 0.06], [w / 2 - chaise + 0.06, z0 + deep - 0.06], [w / 2 - 0.06, d / 2 - 0.06], [w / 2 - chaise + 0.06, d / 2 - 0.06]]) {
+        p.push(box(0.05, 0.05, foot, x, 0, z, C.black));
+      }
+      // Seats: two along the long part, one in the corner, the chaise.
+      const seat0 = -w / 2 + arm;
+      const long = w - chaise - arm;
+      for (let i = 0; i < 2; i++) p.push(puff(long / 2 - 0.01, deep - back, 0.12, seat0 + (long / 2) * (i + 0.5), seatY - 0.1, z0 + back + (deep - back) / 2, fab, 0.07));
+      p.push(puff(chaise - 0.01, deep - back, 0.12, w / 2 - chaise / 2, seatY - 0.1, z0 + back + (deep - back) / 2, fab, 0.07));
+      p.push(puff(chaise - 0.01, d - deep - 0.01, 0.12, w / 2 - chaise / 2, seatY - 0.1, z0 + deep + (d - deep) / 2, fab, 0.07));
+      // Back cushions leaning on the back, and above each the headrest raised on its stem.
+      const span = w - arm;
+      for (let i = 0; i < 5; i++) {
+        const x = seat0 + (span / 5) * (i + 0.5);
+        p.push(puff(span / 5 - 0.015, 0.16, 0.34, x, seatY, z0 + back + 0.06, fab, 0.06));
+        p.push(puff(span / 5 - 0.08, 0.15, h - 0.66, x, 0.66, z0 + 0.12, fab, 0.06));
+      }
+      return p;
+    }
+    case 'nesttables': {
+      // Two round wood tops on black steel frames (a ring under the top, three legs, a ring on the
+      // floor): the big one at -x, the small one lower, half under it.
+      const p: Part[] = [];
+      const ring = (r: number, y: number, x: number, z: number) =>
+        coloured(new THREE.TorusGeometry(r, 0.008, 3, 16).rotateX(Math.PI / 2).translate(x, y, z), C.black);
+      // The big one's legs turn away from the small one, which slides under it.
+      for (const [r, top, x, z, turn] of [[0.4, h, -w / 2 + 0.4, 0, Math.PI], [0.275, h - 0.07, w / 2 - 0.275, 0.1, 0.5]]) {
+        p.push(cyl(r, r, 0.03, x, top - 0.03, z, '#b08a62', 20));
+        p.push(coloured(new THREE.CylinderGeometry(r - 0.04, r - 0.04, 0.025, 16, 1, true).translate(x, top - 0.0425, z), C.black));
+        p.push(ring(r - 0.04, 0.008, x, z));
+        for (let i = 0; i < 3; i++) {
+          const a = i * 2.094 + turn;
+          p.push(box(0.016, 0.016, top - 0.04, x + Math.cos(a) * (r - 0.04), 0, z + Math.sin(a) * (r - 0.04), C.black));
+        }
+      }
+      return p;
+    }
+    case 'domeblack': {
+      // A matt black metal dome 50 cm across on a thin cord, warm and pale inside, its rim 85 cm under the ceiling (h).
+      const rim = h - 0.85;
+      const outer = [[0.25, 0], [0.235, 0.07], [0.18, 0.16], [0.09, 0.22], [0.03, 0.24], [0.03, 0.28]].map(([r, y]) => new THREE.Vector2(r, y));
+      const inner = [[0.03, 0.22], [0.245, 0], [0.25, 0]].map(([r, y]) => new THREE.Vector2(r, y));
+      return [
+        coloured(new THREE.LatheGeometry(outer, 12).translate(0, rim, 0), '#1d1d1f'),
+        coloured(new THREE.LatheGeometry(inner, 12).translate(0, rim, 0), '#d9bb8a'),
+        cyl(0.003, 0.003, h - rim - 0.28, 0, rim + 0.28, 0, C.black, 4),
+        box(0.1, 0.1, 0.015, 0, h - 0.015, 0, C.black),
+      ];
+    }
+    case 'table240': {
+      // A pale top 5 cm thick whose long edges wave a little (a tree's edge), its sheen drawn as an
+      // extra; on two black steel X frames across the width.
+      const top = new THREE.ExtrudeGeometry(waveTop(w, d), { depth: 0.05, bevelEnabled: false }).rotateX(-Math.PI / 2).translate(0, h - 0.05, 0);
+      const p = [coloured(top, '#cfb28a')];
+      const legH = h - 0.05;
+      const tilt = Math.atan2(d - 0.24, legH);
+      const len = Math.hypot(d - 0.24, legH);
+      for (const x of [-w / 2 + 0.32, w / 2 - 0.32]) {
+        for (const s of [-1, 1]) p.push(coloured(new THREE.BoxGeometry(0.07, len, 0.04).rotateX(s * tilt).translate(x, legH / 2, 0), C.black));
+        p.push(box(0.07, d - 0.2, 0.03, x, legH - 0.03, 0, C.black));
+      }
+      return p;
+    }
+    case 'bucketchair': {
+      // A rounded shell in cognac leather: a plump seat and a back that wraps round to the sides,
+      // highest behind; four splayed black legs.
+      const leather = '#8a4b2c';
+      const seatY = 0.44;
+      const r = 0.25;
+      const p = [puff(0.46, 0.44, 0.08, 0, seatY - 0.06, 0.04, leather, 0.035, false)];
+      const shape = new THREE.Shape();
+      shape.absarc(0, 0, r, -0.25, Math.PI + 0.25, false);
+      shape.absarc(0, 0, r - 0.035, Math.PI + 0.25, -0.25, true);
+      const shell = new THREE.ExtrudeGeometry(shape, { depth: 0.44, bevelEnabled: false, curveSegments: 6 }).rotateX(-Math.PI / 2);
+      const pos = shell.attributes.position;
+      for (let i = 0; i < pos.count; i++) {
+        const behind = Math.max(0, Math.min(1, -pos.getZ(i) / r)); // 1 at the back, 0 at the sides
+        pos.setY(i, pos.getY(i) * (0.45 + 0.55 * behind));
+      }
+      shell.computeVertexNormals();
+      p.push(coloured(shell.rotateX(-0.12).translate(0, seatY - 0.06, 0.03), leather));
+      for (const sx of [-1, 1]) for (const sz of [-1, 1]) p.push(rod([sx * 0.15, seatY - 0.06, sz * 0.14 + 0.03], [sx * 0.24, 0, sz * 0.26], 0.012, C.black));
+      return p;
+    }
+    case 'wirependants': {
+      // A black rail on the ceiling (h) and five cords of different lengths, each with an open wire
+      // shade (an egg of brass wires, see-through) round a bare bulb; the bulbs are extras.
+      const p = [box(w, 0.04, 0.03, 0, h - 0.03, 0, C.black)];
+      for (const [x, y] of WIRES) {
+        p.push(cyl(0.003, 0.003, h - 0.03 - y - 0.15, x, y + 0.15, 0, C.black, 4), cyl(0.016, 0.016, 0.035, x, y + 0.115, 0, C.black, 6));
+        p.push(wireShade(x, y));
+      }
+      return p;
+    }
+    case 'sideboard220': {
+      // Pale oak on short black legs: three doors and a column of three drawers at +x, black bar handles.
+      const oak = '#c9ab80';
+      const gap = '#6e5a43';
+      const foot = 0.1;
+      const col3 = w / 4;
+      const p = [box(w, d, h - foot - 0.03, 0, foot, 0, oak), box(w + 0.02, d + 0.02, 0.03, 0, h - 0.03, 0, oak), ...legs(w - 0.04, d - 0.04, foot, 0.035, 0.03, C.black)];
+      const front = d / 2 + 0.001;
+      const bodyH = h - foot - 0.03;
+      for (let i = 1; i < 4; i++) p.push(box(0.006, 0.004, bodyH - 0.02, -w / 2 + col3 * i, foot + 0.01, front, gap));
+      for (let r = 1; r < 3; r++) p.push(box(col3 - 0.02, 0.004, 0.006, w / 2 - col3 / 2, foot + (bodyH / 3) * r, front, gap));
+      for (let i = 0; i < 3; i++) p.push(box(0.16, 0.016, 0.014, -w / 2 + col3 * (i + 0.5), foot + bodyH - 0.1, front + 0.008, C.black));
+      for (let r = 0; r < 3; r++) p.push(box(0.16, 0.016, 0.014, w / 2 - col3 / 2, foot + (bodyH / 3) * (r + 0.5), front + 0.008, C.black));
+      return p;
+    }
+    case 'steelshelf': {
+      // A frame of black square tube with four pale wood shelves, empty.
+      const t = 0.025;
+      const p: Part[] = [];
+      for (const sx of [-1, 1]) for (const sz of [-1, 1]) p.push(box(t, t, h, sx * (w / 2 - t / 2), 0, sz * (d / 2 - t / 2), C.black));
+      for (const y of [0.1, 0.65, 1.2, h - 0.035]) {
+        p.push(box(w - 2 * t, d - 0.01, 0.02, 0, y + 0.012, 0, '#cdb08a'));
+        for (const sz of [-1, 1]) p.push(box(w - 2 * t, t, 0.012, 0, y, sz * (d / 2 - t / 2), C.black));
+        for (const sx of [-1, 1]) p.push(box(t, d - 2 * t, 0.012, sx * (w / 2 - t / 2), y, 0, C.black));
+      }
+      return p;
+    }
+    case 'ovaltable150': {
+      // A pale oak oval top (straight sides, round ends) on four round oak legs, a little thinner at the foot.
+      const slab = new THREE.ExtrudeGeometry(track(w, d), { depth: 0.028, bevelEnabled: false, curveSegments: 7 }).rotateX(-Math.PI / 2);
+      const p = [coloured(slab.translate(0, h - 0.028, 0), '#cf9f62')];
+      for (const sx of [-1, 1]) for (const sz of [-1, 1]) p.push(cyl(0.022, 0.028, h - 0.028, sx * (w / 2 - 0.3), 0, sz * (d / 2 - 0.2), '#c99a5e', 8));
+      return p;
+    }
   }
   return [box(w, d, h, 0, 0, 0, C.grey)];
 }
@@ -885,6 +1063,37 @@ const LAMPS: Record<string, [number, number, number, number][]> = {
   globes: [[-0.22, 0.05, 1.72, 0.12], [0.04, -0.14, 1.9, 0.12], [0.24, 0.12, 1.62, 0.12]],
 };
 const ISLAND = [-0.5, 0.5]; // the pendants along their rail
+// The wire pendants along their rail: x, height of the shade's middle above the floor.
+const WIRES: [number, number][] = [[-0.6, 1.64], [-0.3, 1.88], [0, 1.7], [0.3, 1.92], [0.6, 1.62]];
+
+/**
+ * An open wire shade round (x, y): an egg 24 cm tall of brass wires, drawn with the see-through lattice
+ * (its UVs scaled to eight upright wires and four rings).
+ */
+function wireShade(x: number, y: number): Part {
+  const egg = [[0.012, -0.12], [0.06, -0.09], [0.085, -0.03], [0.08, 0.03], [0.06, 0.08], [0.03, 0.112], [0.014, 0.12]].map(([r, h]) => new THREE.Vector2(r, h));
+  const g = new THREE.LatheGeometry(egg, 8).toNonIndexed();
+  const uv = g.attributes.uv;
+  for (let i = 0; i < uv.count; i++) uv.setXY(i, (uv.getX(i) * 8) / 36, (uv.getY(i) * 4) / 36);
+  paint(g.translate(x, y, 0), col('#a8844c'));
+  g.userData.kind = 'lattice';
+  return g;
+}
+
+/** A table top w x d whose long edges wave a little, as a tree's edge does (front and back differ). */
+function waveTop(w: number, d: number): THREE.Shape {
+  const n = 12;
+  const pts: THREE.Vector2[] = [];
+  for (let i = 0; i <= n; i++) {
+    const x = -w / 2 + (w * i) / n;
+    pts.push(new THREE.Vector2(x, -d / 2 + 0.012 * Math.sin(i * 1.3) + 0.008 * Math.sin(i * 0.55)));
+  }
+  for (let i = n; i >= 0; i--) {
+    const x = -w / 2 + (w * i) / n;
+    pts.push(new THREE.Vector2(x, d / 2 + 0.01 * Math.sin(i * 1.1 + 1) - 0.008 * Math.cos(i * 0.7)));
+  }
+  return new THREE.Shape(pts);
+}
 
 /** The outline of a running track, l long (x) and b wide: straight sides and half-round ends (a table top). */
 function track(l: number, b: number): THREE.Shape {
@@ -970,6 +1179,13 @@ function extras(id: string, [w, d, h]: [number, number, number]): Extra[] {
       return [{ show: 'mirror', w: 0, h: 0, x: -0.18, y: 1.5, z: -d / 2 + 0.008, geo: () => new THREE.ShapeGeometry(pebble(0.28, 0.44), 40) }];
     case 'tracklight':
       return TRACK.map(([x, tilt]) => ({ show: 'lamp' as Show, w: 0.024, h: 0, x, y: 2.52 - 0.14 - Math.cos(tilt) * 0.05, z: Math.sin(tilt) * 0.1 }));
+    case 'domeblack':
+      return [{ show: 'lamp', w: 0.05, h: 0, x: 0, y: h - 0.85 + 0.09, z: 0 }];
+    case 'wirependants':
+      return WIRES.map(([x, y]) => ({ show: 'lamp' as Show, w: 0.032, h: 0, x, y: y - 0.01, z: 0 }));
+    case 'table240':
+      // The top's gloss: a clear coat over it, with the room's reflections.
+      return [{ show: 'glass', w, h: 0, x: 0, y: h + 0.002, z: 0, geo: () => new THREE.ShapeGeometry(waveTop(w, d)).rotateX(-Math.PI / 2) }];
   }
   return [];
 }
@@ -1199,7 +1415,7 @@ export function fixtureGroup(list: FixtureSpec[], look: (m: THREE.Material) => T
   loadModels((file) => files.has(file) && draw());
   return group;
 }
-const HANGING = new Set(['pendants', 'globes', 'rattandome', 'tracklight']);
+const HANGING = new Set(['pendants', 'globes', 'rattandome', 'tracklight', 'domeblack', 'wirependants']);
 // Fixtures you walk under, past or over: lamps, things on walls and ceilings, cushions on the seat, toys.
 const NO_BLOCK = new Set([...HANGING, 'islandlamps', 'domelamp', 'speaker', 'relief', 'painting', 'llama', 'cubeshelves', 'wallshelf', 'cushion', 'cushiongrey', 'books', 'traintrack']);
 // Fixtures flat on a wall, the ceiling, the seat or the floor: their shadows would hardly show.

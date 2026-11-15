@@ -2523,6 +2523,9 @@ const FURNITURE_NL: Record<string, string> = {
   pouf: 'Poef', bench: 'Zitbank aan het raam', lsofa: 'Zetel met chaise longue (crème)', roundcoffee: 'Ronde salontafel (marmer)',
   ruground: 'Rond tapijt 120', weightbench: 'Halterbank', smartbike: 'Fietstrainer voor Zwift, met scherm', gymball: 'Fitnessbal',
   loungesofa: 'Tuinzetel (rond, gevlochten)',
+  loungecorner: 'Hoeksalon met hoofdsteunen (mosterdgeel)', nesttables: 'Twee ronde bijzettafels', domeblack: 'Koepelhanglamp (zwart)',
+  table240: 'Eettafel 240 x 100, zwarte kruispoten', bucketchair: 'Kuipstoel (cognac leder)', wirependants: 'Rail met vijf draadlampen',
+  sideboard220: 'Dressoir 220 (lichte eik)', steelshelf: 'Open rek (zwart staal)', ovaltable150: 'Ovale tafel 150 x 100 (lichte eik)',
 };
 export function furnitureName(id: string, fallback: string): string {
   if (current === 'en') return fallback;
