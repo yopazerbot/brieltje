@@ -1,24 +1,38 @@
 // The server's own timing of the routes and noting of the gnomes (server/goals.mjs), on a fake clock and a fake store:
-// every rule a page could try to get round. Run: node --test server/goals.test.mjs
+// every rule a page could try to get round. In the game with its real world, honest runs with lag and the cheats a
+// review tried: server/goals-honest.test.mjs. Run: node --test server/goals.test.mjs
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
-import { ABOVE_MAX, GoalTracker, loadGoals, readGoals, shortest, START_GAP_MS, TONIGHT_MAX } from './goals.mjs';
+import { ABOVE_MAX, GoalTracker, loadGoals, readGoals, TONIGHT_MAX, WALL_FOOT_M } from './goals.mjs';
+import { cutPath } from './floors.mjs';
 import { TIMEOUT_MS } from '../shared/goals.mjs';
 import { Game } from './game.mjs';
 
 const RUN_SPEED = 1.4 * 2.5 * 1.3; // server/game.mjs
 const PACE = { foot: RUN_SPEED, bike: 13, car: 66.72 };
-const TOP = { foot: RUN_SPEED / 1.3, bike: 10, car: 55.6 };
+const AVG = { foot: 3.5 * 1.05, bike: 6.94 * 1.1 * 1.05, car: 55.6 * 1.05 };
+const MODELS = { bike: { pedal: 6.94, max: 10 }, car: { top: 55.6 } };
 /** A square on foot: the gate at the origin, three corners, 120 m round; radius 2. */
 const SQUARE = { id: 'sq', rev: 1, by: 'foot', radius: 2, gate: [0, 0], checkpoints: [[30, 0], [30, 30], [0, 30]] };
+/** The same square ridden, 10 times the size. */
+const LOOP = { id: 'lp', rev: 1, by: 'bike', radius: 5, gate: [1000, 0], checkpoints: [[1300, 0], [1300, 300], [1000, 300]] };
 const CARRT = { id: 'cr', rev: 2, by: 'car', radius: 8, gate: [500, 0], checkpoints: [[800, 0], [800, 300], [500, 300]] };
 const GNOMES = [
   { id: 'g1', x: 15, z: -6, y: null },
   { id: 'roof', x: 15, z: 36, y: 6 },
+  { id: 'g3', x: -20, z: -20, y: null },
 ];
+/** A wall 0.5 m thick across x = 15, from z 25 to 35 (the square's third leg crosses it), only while `wall.on`. */
+const wall = { on: false, x: 15, z0: 25, z1: 35 };
+const lineFree = (cx, cz, yaw, halfL) => {
+  if (!wall.on) return true;
+  const fx = -Math.sin(yaw), fz = -Math.cos(yaw);
+  const ax = cx - fx * halfL, bx = cx + fx * halfL, az = cz - fz * halfL, bz = cz + fz * halfL;
+  return !(Math.min(ax, bx) <= wall.x + 0.25 && Math.max(ax, bx) >= wall.x - 0.25 && Math.max(az, bz) > wall.z0 && Math.min(az, bz) < wall.z1);
+};
 
-function setup({ role = 'player', store: extra = {} } = {}) {
+function setup({ role = 'player', store: extra = {}, allTime } = {}) {
   const writes = [];
   const told = [];
   let changed = 0;
@@ -48,30 +62,31 @@ function setup({ role = 'player', store: extra = {} } = {}) {
     ...extra,
   };
   const g = new GoalTracker({
-    routes: [SQUARE, CARRT], gnomes: GNOMES, reach: 1.5, ground: () => 0, pace: PACE, top: TOP, store, clock: () => clock.t,
-    tell: (name, m) => told.push({ name, ...m }), changed: () => changed++, onBoard: (r) => r === 'player' || r === 'admin',
+    routes: [SQUARE, LOOP, CARRT], gnomes: GNOMES, reach: 1.5, ground: () => 0, lineFree, pace: PACE, avg: AVG, models: MODELS, allTime,
+    store, clock: () => clock.t, tell: (name, m) => told.push({ name, ...m }), changed: () => changed++, onBoard: (r) => r === 'player' || r === 'admin',
   });
   const me = { x: -6, y: 0, z: 0 };
   /** One state `ms` after the last, to (x, z) at height y: what the game passes on. */
-  const step = (x, z, { by = 'foot', ms = 50, y = 0, cut = false, seek = true, name = 'anna' } = {}) => {
+  const step = (x, z, { by = 'foot', ms = 50, y = 0, seek = true, name = 'anna' } = {}) => {
     const prev = { ...me };
     me.x = x;
     me.z = z;
     me.y = y;
     clock.t += ms;
-    g.moved(name, prev, { ...me }, by, { gapMs: ms, cut, seek });
+    g.moved(name, prev, { ...me }, by, { gapMs: ms, seek });
   };
-  /** Straight to (x, z) at `speed` m/s, twenty states a second. */
-  const go = (x, z, speed = 4, opts = {}) => {
+  /** Straight to (x, z) at `speed` m/s, `hz` states a second. */
+  const go = (x, z, speed = 3.5, opts = {}) => {
+    const hz = opts.hz ?? 20;
     for (;;) {
       const d = Math.hypot(x - me.x, z - me.z);
-      const s = Math.min(d, speed / 20);
-      step(me.x + ((x - me.x) / (d || 1)) * s, me.z + ((z - me.z) / (d || 1)) * s, opts);
+      const s = Math.min(d, speed / hz);
+      step(me.x + ((x - me.x) / (d || 1)) * s, me.z + ((z - me.z) / (d || 1)) * s, { ms: 1000 / hz, ...opts });
       if (d <= s + 1e-9) return;
     }
   };
   /** The square round from just before the gate: start, three corners, the gate again. */
-  const lap = (speed = 4, opts = {}) => {
+  const lap = (speed = 3.5, opts = {}) => {
     go(-0.5, 0, speed, opts);
     go(30, 0, speed, opts);
     go(30, 30, speed, opts);
@@ -79,20 +94,17 @@ function setup({ role = 'player', store: extra = {} } = {}) {
     go(0, 0, speed, opts);
   };
   const flush = () => new Promise((r) => setTimeout(r, 0));
-  return { g, store, writes, told, clock, me, step, go, lap, flush, changes: () => changed, joined: () => g.joined('anna', role) };
+  return { g, store, writes, told, clock, me, step, go, lap, flush, changes: () => changed, joined: (name = 'anna') => g.joined(name, role) };
 }
 
 const races = (writes) => writes.filter((w) => w[0] === 'race');
 
-test('the game data loads whole and checked: routes, gnomes, the shortest times', () => {
+test('the game data loads whole and checked; the floors as built, from the tightest line through the rings', () => {
   const { routes, gnomes, reach } = readGoals();
   const raw = JSON.parse(readFileSync(new URL('../shared/routes.json', import.meta.url), 'utf8'));
   assert.equal(routes.length, raw.routes.length);
   assert.equal(gnomes.length, 30);
   assert.equal(reach, 1.5);
-  // The shortest times as the plan worked them out from today's layouts (on foot 3.5 m/s, a bike 10, a car 55.6).
-  const secs = Object.fromEntries(routes.map((r) => [r.id, +(shortest(r) / TOP[r.by]).toFixed(1)]));
-  assert.deepEqual(secs, { foot: 21.2, bike: 46.9, car: 21.5 });
   // Bad entries are left out, never trusted.
   const bad = loadGoals(
     { routes: [{ ...SQUARE, id: 'Bad Id' }, { ...SQUARE, by: 'horse' }, { ...SQUARE, radius: NaN }, { ...SQUARE, checkpoints: [] }, SQUARE, SQUARE] },
@@ -101,25 +113,28 @@ test('the game data loads whole and checked: routes, gnomes, the shortest times'
   assert.deepEqual(bad.routes.map((r) => r.id), ['sq']);
   assert.deepEqual(bad.gnomes.map((g) => g.id), ['g2']);
   assert.equal(bad.reach, 1.5);
+  // The square: its tightest line at a run, 3 % under.
+  const s = setup();
+  assert.equal(s.g.floor.sq, Math.ceil((cutPath(SQUARE).length / 3.5) * 1000 * 0.97));
+  assert.ok(cutPath(SQUARE).length < 120 && cutPath(SQUARE).length > 100);
 });
 
 test('a clean run is stored with the server\'s time, and told to that player alone', async () => {
   const s = setup();
   await s.joined();
   s.step(-5.9, 0); // the first state after joining is no step
-  s.lap(4);
+  s.lap(3.5);
   await s.flush();
   const w = races(s.writes);
   assert.equal(w.length, 1);
   assert.equal(w[0][2], 'sq@1');
-  // Into the gate's circle (2 m before it) and round to its circle again (2 m after the last corner): 120 m at 4 m/s,
-  // on the server's clock from the one state to the other.
-  assert.ok(Math.abs(w[0][3] - 30_000) < 100, String(w[0][3]));
+  // Into the gate's circle (2 m before it) and round to its circle again: 120 m at 3.5 m/s, on the server's clock.
+  assert.ok(Math.abs(w[0][3] - 120_000 / 3.5) < 100, String(w[0][3]));
   assert.deepEqual(s.told.map(({ name, t, id, best, place, tonight }) => ({ name, t, id, best, place, tonight })), [{ name: 'anna', t: 'race', id: 'sq', best: true, place: 1, tonight: false }]);
   assert.equal(s.changes(), 1);
   // A slower lap after it is written but no better: nothing changes on the board.
   s.go(-6, 0);
-  s.lap(3.9);
+  s.lap(3.3);
   await s.flush();
   assert.equal(races(s.writes).length, 2);
   assert.equal(s.told.at(-1).best, false);
@@ -129,11 +144,8 @@ test('a clean run is stored with the server\'s time, and told to that player alo
 
 test('a skipped checkpoint, one out of order, the wrong way through the gate: no time', async () => {
   const ways = {
-    // Skipped: straight from the first corner to the last, then the gate.
     skipped: [[-0.5, 0], [30, 0], [0, 30], [0, 0], [-6, 0]],
-    // Out of order: the third corner before the second.
     order: [[-0.5, 0], [30, 0], [0, 30], [30, 30], [0, 0], [-6, 0]],
-    // The wrong way: into the gate from the far side, round the other way.
     wrong: [[6, 0], [0, 0], [-6, 0], [0, 30], [30, 30], [30, 0], [0, 0], [-6, 0]],
   };
   for (const [why, path] of Object.entries(ways)) {
@@ -146,7 +158,7 @@ test('a skipped checkpoint, one out of order, the wrong way through the gate: no
   }
 });
 
-test('a step longer than the budget stops the run; a finish under the shortest time is refused', async () => {
+test('the pace: a step over the budget stops the run; a whole run faster than the honest top on average is refused', async () => {
   const s = setup();
   await s.joined();
   s.step(-5.9, 0);
@@ -155,20 +167,52 @@ test('a step longer than the budget stops the run; a finish under the shortest t
   s.go(30, 0); s.go(30, 30); s.go(0, 30); s.go(0, 0);
   await s.flush();
   assert.deepEqual(races(s.writes), [], 'the long step stopped it');
-  // Steps within the budget each, but sped up: the budget is spent and refilled at the normal pace only.
+  // Within the budget every step (it has the room for jitter), but 4.5 m/s on average: refused (the honest top is 3.5).
+  for (const speed of [4.5, 3.8]) {
+    const q = setup();
+    await q.joined();
+    q.step(-5.9, 0);
+    q.lap(speed);
+    await q.flush();
+    assert.deepEqual(races(q.writes), [], `${speed} m/s`);
+  }
+  // At 3.6 m/s (a little over a run, under the 5 % room): counts.
+  const r = setup();
+  await r.joined();
+  r.step(-5.9, 0);
+  r.lap(3.6);
+  await r.flush();
+  assert.equal(races(r.writes).length, 1);
+});
+
+test('the floor: a run faster than the tightest line through the rings at a run is refused, whatever its average', async () => {
+  // The square's tightest line, 5 cm inside each ring (a point on the ring itself is not in it). With the average rule
+  // out of the way, at 4.3 m/s: under the floor, refused.
+  const centres = [SQUARE.gate, ...SQUARE.checkpoints, SQUARE.gate];
+  const cut = cutPath(SQUARE).pts.map(([x, z], i) => {
+    const [cx, cz] = centres[i], d = Math.hypot(x - cx, z - cz);
+    return [x + ((cx - x) * 0.05) / d, z + ((cz - z) * 0.05) / d];
+  });
+  const s = setup();
+  s.g.avg = { ...AVG, foot: 100 };
+  await s.joined();
+  s.step(-5.9, 0);
+  s.go(-2.5, 0.2);
+  for (const [x, z] of cut) s.go(x, z, 4.3);
   s.go(-6, 0);
-  s.lap(9);
   await s.flush();
-  assert.deepEqual(races(s.writes), [], 'twice the pace: stopped');
-  // Within the budget (it has room for jitter over the real pace) but faster than anyone runs the route's shortest line:
-  // 4.5 m/s takes 26.7 s, the floor is (120 m - 16 m) / 3.5 m/s = 29.7 s.
-  const quick = setup();
-  await quick.joined();
-  quick.step(-5.9, 0);
-  quick.lap(4.5);
-  await quick.flush();
-  assert.deepEqual(races(quick.writes), [], 'under the floor');
-  assert.equal(quick.g.floor.sq, Math.ceil(((120 - 16) / TOP.foot) * 1000));
+  assert.deepEqual(races(s.writes), [], 'under the floor');
+  assert.equal(s.g.refuse(SQUARE, s.g.floor.sq - 1, 0, 0), 'floor');
+  assert.equal(s.g.refuse(SQUARE, s.g.floor.sq, 0, 0), null);
+  // The same line at 3.4 m/s: over the floor (an honest runner on the tightest line), counts.
+  const t = setup();
+  await t.joined();
+  t.step(-5.9, 0);
+  t.go(-2.5, 0.2);
+  for (const [x, z] of cut) t.go(x, z, 3.4);
+  t.go(-6, 0);
+  await t.flush();
+  assert.equal(races(t.writes).length, 1);
 });
 
 test('the way of moving: started on foot and finished by car, a passenger (no way), a horse: no time', async () => {
@@ -177,7 +221,7 @@ test('the way of moving: started on foot and finished by car, a passenger (no wa
   s.step(-5.9, 0);
   s.go(-0.5, 0); s.go(30, 0); s.go(30, 30);
   s.go(0, 30, 10, { by: 'car' }); s.go(0, 0, 10, { by: 'car' });
-  s.go(-6, 0, 4, { by: null }); s.lap(4, { by: null });
+  s.go(-6, 0, 3.5, { by: null }); s.lap(3.5, { by: null });
   await s.flush();
   assert.deepEqual(races(s.writes), []);
 });
@@ -187,12 +231,10 @@ test('a hop mid-run stops it; a hop across the gate starts nothing', async () =>
   await s.joined();
   s.step(-5.9, 0);
   s.go(-0.5, 0); s.go(30, 0);
-  // Something else moved them (a portal, chat travel, a respawn): the next state starts where the server put them.
   s.me.x = 30; s.me.z = 29; // the server's own move: prev is no longer where the tracker saw them
   s.go(30, 30); s.go(0, 30); s.go(0, 0);
   await s.flush();
   assert.deepEqual(races(s.writes), [], 'the hop stopped it');
-  // Put down just outside the gate and stepping through: the first step after a hop counts nothing.
   s.go(-6, 0);
   s.me.x = -0.9; // a respawn just before the gate
   s.step(0.5, 0);
@@ -201,59 +243,101 @@ test('a hop mid-run stops it; a hop across the gate starts nothing', async () =>
   assert.deepEqual(races(s.writes), []);
 });
 
-test('flying (the flag: no way of moving) and 10 m up without it: no time', async () => {
+test('flying (the flag: no way of moving) and 10 m up without it: no time; a little up still runs', async () => {
   const s = setup();
   await s.joined();
   s.step(-5.9, 0);
-  s.lap(4, { by: null });
+  s.lap(3.5, { by: null });
   s.go(-6, 0);
-  s.lap(4, { y: 10 });
+  s.lap(3.5, { y: 10 });
   await s.flush();
   assert.deepEqual(races(s.writes), []);
   assert.ok(ABOVE_MAX < 10);
-  // A little up (a kerb, a step, a bridge's deck under 3 m) still runs.
   s.go(-6, 0);
-  s.lap(4, { y: ABOVE_MAX - 0.5 });
+  s.lap(3.5, { y: ABOVE_MAX - 0.5 });
   await s.flush();
   assert.equal(races(s.writes).length, 1);
 });
 
-test('a shortcut (as through a wall: the server checks no walls for players) still gets no time under the floor', async () => {
-  // The square's diagonal cut short: gate, first corner, straight across to the last corner over the second (within its
-  // radius), back to the gate. At the budget's most (4.5 m/s) it is under the floor; at a run it counts, as any line does.
-  const cut = [[-0.5, 0], [30, 0], [28.6, 28.6], [0, 30], [0, 0], [-6, 0]];
-  const s = setup();
-  await s.joined();
-  s.step(-5.9, 0);
-  for (const [x, z] of cut) s.go(x, z, 4.5);
-  await s.flush();
-  assert.deepEqual(races(s.writes), [], 'under the floor');
-  assert.ok(s.g.floor.sq > 0);
+test('walls: by bike a step through a block stops the run; on foot a few metres pass, more are refused', async () => {
+  wall.on = true;
+  try {
+    // On foot the third leg crosses the wall (0.5 m, with the steps that touch it under a metre): within WALL_FOOT_M, counts.
+    const s = setup();
+    await s.joined();
+    s.step(-5.9, 0);
+    s.lap(3.5);
+    await s.flush();
+    assert.equal(races(s.writes).length, 1, 'a metre through');
+    // Along the wall's length (x = 15, z 26 to 34) and back: 16 m through blocks, refused.
+    const t = setup();
+    await t.joined();
+    t.step(-5.9, 0);
+    t.go(-0.5, 0); t.go(30, 0); t.go(30, 30); t.go(15, 30); t.go(15, 26); t.go(15, 34); t.go(15, 30); t.go(0, 30); t.go(0, 0);
+    await t.flush();
+    assert.ok(WALL_FOOT_M < 16);
+    assert.deepEqual(races(t.writes), [], 'along the wall');
+    // A bike through the same kind of wall: the run stops at once.
+    wall.x = 1150;
+    wall.z0 = 250;
+    wall.z1 = 350;
+    const b = setup();
+    await b.joined();
+    b.me.x = 990;
+    b.step(990.1, 0, { by: 'bike' });
+    for (const [x, z] of [[995.5, 0], [1300, 0], [1300, 300], [1000, 300], [1000, 0]]) b.go(x, z, 7, { by: 'bike' });
+    await b.flush();
+    assert.deepEqual(races(b.writes), [], 'the bike through the wall');
+    wall.on = false;
+    const c = setup();
+    await c.joined();
+    c.me.x = 990;
+    c.step(990.1, 0, { by: 'bike' });
+    for (const [x, z] of [[995.5, 0], [1300, 0], [1300, 300], [1000, 300], [1000, 0]]) c.go(x, z, 7, { by: 'bike' });
+    await c.flush();
+    assert.equal(races(c.writes).length, 1, 'the bike without the wall');
+  } finally {
+    Object.assign(wall, { on: false, x: 15, z0: 25, z1: 35 });
+  }
 });
 
-test('a burst after a 2 s stall starts nothing; a state the game cut starts nothing', async () => {
+test('the start: a standing start and a hiccup at the ring count; a burst through the gate gains nothing on the average', async () => {
+  // Standing 15 cm outside the ring, the page sending every 300 ms (src/main.ts: a standing player), then off at a run.
   const s = setup();
   await s.joined();
   s.step(-5.9, 0);
-  s.go(-2.5, 0);
-  s.step(-1.2, 0, { ms: 2000 }); // held back two seconds, then through the gate
-  s.go(30, 0); s.go(30, 30); s.go(0, 30); s.go(0, 0);
+  s.go(-2.15, 0);
+  for (let i = 0; i < 5; i++) s.step(-2.15, 0, { ms: 300 });
+  s.lap(3.5);
+  // A 260 ms hiccup right at the ring, then on.
   s.go(-6, 0);
-  s.go(-2.5, 0);
-  s.step(-1.2, 0, { cut: true });
-  s.go(30, 0); s.go(30, 30); s.go(0, 30); s.go(0, 0);
+  s.go(-2.15, 0);
+  s.step(-1.9, 0, { ms: 260 });
+  s.lap(3.5);
   await s.flush();
-  assert.deepEqual(races(s.writes), []);
-  assert.ok(START_GAP_MS <= 200);
-  // A stall mid-run only adds time.
-  s.go(-6, 0);
-  s.go(-0.5, 0); s.go(30, 0);
-  s.step(30.1, 0, { ms: 3000 });
-  s.go(30, 30); s.go(0, 30); s.go(0, 0);
-  await s.flush();
-  const w = races(s.writes);
-  assert.equal(w.length, 1);
-  assert.ok(w[0][3] > 32_000, String(w[0][3]));
+  assert.equal(races(s.writes).length, 2, 'both counted');
+  // A hold of 1.2 s, one still state, then three states of 0.9 m in 15 ms through the gate, then on at the most the
+  // average allows: the burst's time comes out of the same average (the run's own path over its time), so it is refused.
+  const b = setup();
+  await b.joined();
+  b.step(-5.9, 0);
+  b.go(-3.5, 0);
+  b.step(-3.5, 0, { ms: 1200 });
+  for (const x of [-2.6, -1.7, -0.8]) b.step(x, 0, { ms: 5 });
+  b.go(30, 0, AVG.foot); b.go(30, 30, AVG.foot); b.go(0, 30, AVG.foot); b.go(0, 0, AVG.foot);
+  await b.flush();
+  assert.deepEqual(races(b.writes), [], 'a burst on top of the most the average allows');
+  // At a run with the burst: counts, no faster than the stored budget's half metre's worth (under 2 %).
+  const c = setup();
+  await c.joined();
+  c.step(-5.9, 0);
+  c.go(-3.5, 0);
+  c.step(-3.5, 0, { ms: 1200 });
+  for (const x of [-2.6, -1.7, -0.8]) c.step(x, 0, { ms: 5 });
+  c.go(30, 0); c.go(30, 30); c.go(0, 30); c.go(0, 0);
+  await c.flush();
+  const ms = races(c.writes)[0]?.[3];
+  assert.ok(ms > (120_000 / 3.5) * 0.98, String(ms));
 });
 
 test(`${TIMEOUT_MS / 1000} s without a checkpoint stops the run`, async () => {
@@ -261,7 +345,7 @@ test(`${TIMEOUT_MS / 1000} s without a checkpoint stops the run`, async () => {
   await s.joined();
   s.step(-5.9, 0);
   s.go(-0.5, 0); s.go(20, 0);
-  for (let i = 0; i < TIMEOUT_MS / 1000 + 2; i++) s.step(20, 0, { ms: 1000 }); // standing still
+  for (let i = 0; i < TIMEOUT_MS / 1000 + 2; i++) s.step(20, 0, { ms: 1000 });
   s.go(30, 0); s.go(30, 30); s.go(0, 30); s.go(0, 0);
   await s.flush();
   assert.deepEqual(races(s.writes), []);
@@ -271,16 +355,15 @@ test('gnomes: none from 50 m, one in reach once, the same twice written once, th
   const s = setup();
   await s.joined();
   s.step(-5.9, 0);
-  s.go(15, -56); // 50 m from g1
+  s.go(15, -56);
   await s.flush();
   assert.deepEqual(s.writes, []);
-  s.go(15, -7.5); // within reach
+  s.go(15, -7.5);
   s.go(15, -20);
   s.go(15, -7);
   await s.flush();
   assert.deepEqual(s.writes, [['gnome', 'anna', 'g1']], 'written once');
   assert.deepEqual(s.told.map(({ t, n, tonight }) => ({ t, n, tonight })), [{ t: 'gnome', n: 1, tonight: false }]);
-  // On the ground under the roof gnome: not found; up there (6 m), found.
   s.go(15, 36);
   await s.flush();
   assert.equal(s.writes.length, 1);
@@ -288,14 +371,12 @@ test('gnomes: none from 50 m, one in reach once, the same twice written once, th
   s.step(15, 35.5, { y: 6 });
   await s.flush();
   assert.deepEqual(s.writes.at(-1), ['gnome', 'anna', 'roof']);
-  // Not while flying, down or in a party game (the game passes seek: false).
   const t = setup();
   await t.joined();
   t.step(-5.9, 0);
-  t.go(15, -6, 4, { seek: false });
+  t.go(15, -6, 3.5, { seek: false });
   await t.flush();
   assert.deepEqual(t.writes, []);
-  // The store says it had it already (found before, in another session): no second message.
   const u = setup({ store: { gnomesOf: async () => ['g1'] } });
   await u.joined();
   u.step(-5.9, 0);
@@ -304,11 +385,34 @@ test('gnomes: none from 50 m, one in reach once, the same twice written once, th
   assert.deepEqual(u.writes, [], 'known from the store: not written again');
 });
 
-test('a guest reaches tonight\'s tables and never the store; the admin is stored', async () => {
+test('tonight\'s gnomes are kept per name: reconnects and a second socket count each gnome once, never past the total', async () => {
+  const s = setup({ role: 'guest' });
+  for (let round = 0; round < 3; round++) {
+    await s.joined(); // a new connection each round (the old one's record goes)
+    s.me.x = -5.9; s.me.z = 0;
+    s.step(-5.9, 0.05);
+    s.go(15, -7.5);
+    s.go(-5.9, 0);
+  }
+  await s.flush();
+  assert.deepEqual(s.g.tonight().gnomes, [{ name: 'anna', n: 1 }]);
+  assert.deepEqual(s.told.filter((m) => m.t === 'gnome').map((m) => m.n), [1], 'one message, n 1');
+  // Two sockets at once under one name (the second replaces the first's record): still once.
+  s.g.joined('anna', 'guest');
+  s.step(-5.9, 0.1);
+  s.go(15, -7.5);
+  assert.equal(s.g.tonight().gnomes[0].n, 1);
+  // Every gnome, many times over: at most the number of gnomes.
+  for (let i = 0; i < 5; i++) for (const g of GNOMES) s.g.tonightGnome('anna', g.id);
+  s.g.tonightGnome('anna', 'nope');
+  assert.equal(s.g.tonight().gnomes[0].n, GNOMES.length);
+});
+
+test('a guest reaches tonight\'s tables and never the store; the admin is stored; a way not on the all-time boards: tonight only', async () => {
   const s = setup({ role: 'guest' });
   await s.joined();
   s.step(-5.9, 0);
-  s.lap(4);
+  s.lap(3.5);
   s.go(15, -6);
   await s.flush();
   assert.deepEqual(s.writes, []);
@@ -320,19 +424,28 @@ test('a guest reaches tonight\'s tables and never the store; the admin is stored
   assert.deepEqual(s.told.map((m) => [m.t, m.tonight]), [['race', true], ['gnome', true]]);
   assert.equal(s.told[0].place, 1);
   s.g.resetTonight();
-  assert.deepEqual(s.g.tonight(), { races: { sq: [], cr: [] }, gnomes: [] });
+  assert.deepEqual(s.g.tonight(), { races: { sq: [], lp: [], cr: [] }, gnomes: [] });
   const a = setup({ role: 'admin' });
   await a.joined();
   a.step(-5.9, 0);
-  a.lap(4);
+  a.lap(3.5);
   await a.flush();
   assert.equal(races(a.writes).length, 1);
+  // An account's walk when only the bike counts all-time: tonight's table and a tonight message, no store write.
+  const o = setup({ allTime: ['bike'] });
+  await o.joined();
+  o.step(-5.9, 0);
+  o.lap(3.5);
+  await o.flush();
+  assert.deepEqual(races(o.writes), []);
+  assert.equal(o.told[0].tonight, true);
+  assert.equal(o.g.tonight().races.sq[0].name, 'anna');
 });
 
 test(`tonight's tables stop at ${TONIGHT_MAX} names`, () => {
   const s = setup({ role: 'guest' });
   for (let i = 0; i < TONIGHT_MAX + 20; i++) s.g.tonightRace(`g${i}`, 'sq', 30_000 + i);
-  for (let i = 0; i < TONIGHT_MAX + 20; i++) s.g.tonightGnome(`h${i}`);
+  for (let i = 0; i < TONIGHT_MAX + 20; i++) s.g.tonightGnome(`h${i}`, 'g1');
   assert.equal(s.g.night.names.size, TONIGHT_MAX);
   assert.equal(s.g.night.races.sq.size, TONIGHT_MAX);
   assert.equal(s.g.night.gnomes.size, 0, 'the names were taken by the races');

@@ -9,34 +9,45 @@
 //  3. no hops: when a player's last position is not where the tracker last saw them, something else moved them (a
 //     portal, chat travel, a spawn, a respawn, a party game's gather, the host's bring): the run stops, and that step
 //     passes no gate and finds no gnome;
-//  4. a steady start: a run starts only on a state that came within START_GAP_MS of the one before and was not cut;
-//  5. the pace: a step longer than the normal budget for that way stops the run (the admin's fast walking never sets a
-//     time); a finish faster than the route's shortest line at the top speed of that way is refused;
+//  4. the pace of each step: one longer than the normal budget for that way stops the run, or starts none (the admin's
+//     fast walking never sets a time);
+//  5. the pace of the whole run: its own path (the server's positions, step by step) over its time, no faster on average
+//     than the way's honest top (`avg`): what the budget's room for jitter could add is refused. Lag moves when states
+//     arrive, not the path, so a bad connection is not refused for it; only the start can shift, by the budget's stored
+//     half second at most. And no finish under the route's floor (server/floors.mjs: the tightest line through the rings
+//     at the page's own top speed, pull, brakes and grip);
 //  6. on the ground: feet more than ABOVE_MAX m over the ground stop the run;
-//  7. the time is the server's monotonic clock at the arrival of the two states, in whole ms.
-//
-// The plan had one more: the step's line clear of the village's blocks (shared/parking.mjs). It stopped an honest walk
-// by the page round the walking route (between its second and third checkpoints the page lets you through where the
-// server's blocks do not), so it is left out: as before, the server checks no walls for players. A line through the
-// houses is still held by the budget and the shortest time (rule 5).
+//  7. walls: by bike and by car a step whose line crosses the village's blocks (shared/parking.mjs) stops the run. On
+//     foot the page lets a walker through a few places where the server's blocks do not (by the walking route's second
+//     and third checkpoints), so the metres through blocks are counted and a run with more than WALL_FOOT_M is refused;
+//  8. the time is the server's monotonic clock at the arrival of the two states, in whole ms.
 //
 // The boards (server/store.mjs) are for accounts and the admin's reserved names; tonight's tables (the host's big screen)
-// hold every name that played, guests too, in memory until the host resets the evening or the server restarts.
+// hold every name that played, guests too, in memory until the host resets the evening or the server restarts. A way
+// not in `allTime` counts for tonight only (a route whose floor is not shown to be solid yet).
 // No sockets and no store of its own: the game gives it `store`, `tell` (a message to one player) and `changed` (a board
 // changed: the caches go).
 
 import { readFileSync } from 'node:fs';
 import { bestKey, cleanTime, passes, pointsOf, stepRun } from '../shared/goals.mjs';
+import { floors } from './floors.mjs';
 
 /** Route and gnome ids: short, plain (they are keys in the store and in messages). */
 const ID = /^[a-z0-9]{1,12}$/;
 const WAYS = ['foot', 'bike', 'car'];
 const MAX_ROUTES = 20;
 const MAX_GNOMES = 200;
-/** A run starts only on a state this soon after the one before (ms): a burst of held-back states gains at most this. */
-export const START_GAP_MS = 200;
 /** Feet more than this over the ground (m) stop a run: flying without the flag, a helicopter. */
 export const ABOVE_MAX = 3;
+/**
+ * On foot, the most metres of a run whose line crosses the server's blocks (rule 7). Honest walks by the page round the
+ * walking route in a session crossed 0.15 m (by its second checkpoint); its tightest line through the houses 3.75 m.
+ */
+export const WALL_FOOT_M = 1;
+/** The step's line checked against the blocks: this wide (half, m), this high over the feet (m). */
+const LINE_HALF_W = 0.05;
+const LINE_Y0 = 0.5;
+const LINE_Y1 = 1.5;
 /** A gnome is found when the step's line comes this much closer than the page's reach (m), the feet this near its height. */
 const GNOME_SLACK = 0.5;
 const GNOME_DY = 2;
@@ -78,35 +89,33 @@ export function readGoals() {
   return loadGoals(read('routes.json'), read('gnomes.json'));
 }
 
-/** The shortest a route can be ridden: its line from point to point, less the radius at both ends of every leg (m). */
-export function shortest(route) {
-  const pts = [route.gate, ...pointsOf(route)];
-  let len = 0;
-  for (let i = 1; i < pts.length; i++) len += Math.hypot(pts[i][0] - pts[i - 1][0], pts[i][1] - pts[i - 1][1]);
-  return Math.max(0, len - 2 * route.radius * (pts.length - 1));
-}
-
 export class GoalTracker {
   /**
-   * `pace`: the game's speed budget per way of moving (m/s, with its room for jitter); `top`: the real top speed of each
-   * way (m/s, for the shortest time); `ground(x, z)`: the ground's height; `store()`: the store; `clock()`: ms, monotonic;
-   * `tell(name, message)`; `changed()`; `onBoard(role)`: whether that role is on the all-time boards.
+   * `pace`: the game's speed budget per way of moving (m/s, with its room for jitter); `avg`: the most a whole run may
+   * average per way (m/s); `models`: for the floors (server/floors.mjs: { bike: { pedal, max }, car: { top } });
+   * `ground(x, z)`: the ground's height; `lineFree(cx, cz, yaw, halfL, halfW, y0, y1)`: a box clear of the blocks;
+   * `allTime`: the ways whose runs go on the all-time boards (the others: tonight only); `store()`: the store; `clock()`:
+   * ms, monotonic; `tell(name, message)`; `changed()`; `onBoard(role)`: whether that role is on the all-time boards.
    */
-  constructor({ routes, gnomes, reach, ground, pace, top, store, clock, tell, changed, onBoard }) {
+  constructor({ routes, gnomes, reach, ground, lineFree, pace, avg, models, allTime = WAYS, store, clock, tell, changed, onBoard }) {
     this.routes = routes.map((r) => ({ ...r, key: bestKey(r) }));
     this.gnomes = gnomes;
     this.reach = reach + GNOME_SLACK;
     this.ground = ground;
+    this.lineFree = lineFree;
     this.store = typeof store === 'function' ? store : () => store;
     this.clock = clock;
     this.tell = tell;
     this.changed = changed;
     this.onBoard = onBoard;
     this.pace = pace;
+    this.avg = avg;
+    this.allTime = new Set(allTime);
     // The budget's most (as the game's: half a second's worth and half a metre) and the longest step a run keeps (a metre more).
     this.cap = Object.fromEntries(WAYS.map((w) => [w, pace[w] * 0.5 + 0.5]));
     this.stepMax = Object.fromEntries(WAYS.map((w) => [w, this.cap[w] + 1]));
-    this.floor = Object.fromEntries(this.routes.map((r) => [r.id, Math.ceil((shortest(r) / top[r.by]) * 1000)]));
+    this.floors = floors(this.routes, { height: ground, ...models });
+    this.floor = Object.fromEntries(Object.entries(this.floors).map(([id, f]) => [id, f.ms]));
     this.byWay = Object.fromEntries(WAYS.map((w) => [w, this.routes.filter((r) => r.by === w)]));
     // Where each gnome stands: its floor, else the ground.
     this.gnomeY = gnomes.map((g) => (g.y !== null ? g.y : ground(g.x, g.z)));
@@ -117,7 +126,7 @@ export class GoalTracker {
 
   /** Someone joined: a fresh start (the first step is no step), and an account's found gnomes from the store, once. */
   async joined(name, role) {
-    const p = { role, seen: false, x: 0, z: 0, budget: 0.5, run: null, route: null, found: new Set(), tonight: new Set() };
+    const p = { role, seen: false, x: 0, z: 0, budget: 0.5, run: null, route: null, dist: 0, blocked: 0, found: new Set() };
     this.players.set(name, p);
     if (!this.onBoard(role)) return;
     try {
@@ -135,10 +144,10 @@ export class GoalTracker {
   /**
    * A state taken (server/game.mjs, straight after the server's own checks): the step from `prev` to `next`, the server's
    * positions. `by`: 'foot', 'bike', 'car' or null (a passenger, on a horse, flying, in a drop, down, a party game, frozen);
-   * `gapMs`: since the state before; `cut`: the game held this step to its budget; `seek`: gnomes may be found on it
-   * (alive, not flying, not in a drop, no party game or freeze).
+   * `gapMs`: since the state before; `seek`: gnomes may be found on it (alive, not flying, not in a drop, no party game
+   * or freeze).
    */
-  moved(name, prev, next, by, { gapMs, cut, seek }) {
+  moved(name, prev, next, by, { gapMs, seek }) {
     const p = this.players.get(name);
     if (!p || !prev || !next) return;
     const hop = !p.seen || prev.x !== p.x || prev.z !== p.z;
@@ -149,17 +158,16 @@ export class GoalTracker {
       p.run = null; // rule 3: moved by something else
       return;
     }
-    const dx = next.x - prev.x, dz = next.z - prev.z;
-    const step = Math.hypot(dx, dz);
-    // Rule 5: the normal budget for that way, refilled as the game's (the admin's own fast budget is not this one).
+    const step = Math.hypot(next.x - prev.x, next.z - prev.z);
+    // Rule 4: the normal budget for that way, refilled as the game's (the admin's own fast budget is not this one).
     let fast = false;
     if (by) {
-      p.budget = Math.min(this.cap[by], p.budget + this.pace[by] * Math.max(0, gapMs) / 1000);
+      p.budget = Math.min(this.cap[by], p.budget + (this.pace[by] * Math.max(0, gapMs)) / 1000);
       fast = step > p.budget + EPS;
       p.budget = Math.max(0, p.budget - step);
     }
     if (seek) this.seek(name, p, prev, next);
-    this.race(name, p, prev, next, by, fast, gapMs, cut);
+    this.race(name, p, prev, next, by, step, fast);
   }
 
   /** Rule 6: on the ground. */
@@ -167,39 +175,61 @@ export class GoalTracker {
     return next.y - this.ground(next.x, next.z) <= ABOVE_MAX;
   }
 
-  race(name, p, prev, next, by, fast, gapMs, cut) {
+  /** Rule 7: the step's line, 0.5 to 1.5 m over the feet, clear of the blocks. */
+  clear(prev, next, step) {
+    if (step < 0.01) return true;
+    const yaw = Math.atan2(-(next.x - prev.x), -(next.z - prev.z));
+    const lo = Math.min(prev.y, next.y), hi = Math.max(prev.y, next.y);
+    return this.lineFree((prev.x + next.x) / 2, (prev.z + next.z) / 2, yaw, step / 2, LINE_HALF_W, lo + LINE_Y0, hi + LINE_Y1);
+  }
+
+  race(name, p, prev, next, by, step, fast) {
     if (p.run) {
       const route = p.route;
       if (by !== route.by || fast || !this.grounded(next)) {
         p.run = null;
         return;
       }
+      if (!this.clear(prev, next, step)) {
+        if (by !== 'foot') {
+          p.run = null;
+          return;
+        }
+        p.blocked += step;
+      }
+      p.dist += step;
       const r = stepRun(p.run, route, prev, next, by, this.clock(), this.stepMax[by]);
       p.run = r.run;
       if (r.event === 'finish') this.finish(name, p, route, r.time);
       return;
     }
-    // Rule 4: a steady start, at the normal pace.
-    if (!by || fast || cut || !(gapMs <= START_GAP_MS)) return;
+    if (!by || fast || !this.grounded(next)) return;
     for (const route of this.byWay[by]) {
       // Most steps are nowhere near a gate: nothing more is worked out for them.
       if (!passes(prev.x, prev.z, next.x, next.z, route.gate[0], route.gate[1], route.radius)) continue;
-      if (!this.grounded(next)) continue;
       const r = stepRun(null, route, prev, next, by, this.clock(), this.stepMax[by]);
-      if (r.event === 'start') {
-        p.run = r.run;
-        p.route = route;
-        return;
-      }
+      if (r.event !== 'start') continue;
+      const through = !this.clear(prev, next, step);
+      if (through && by !== 'foot') return;
+      Object.assign(p, { run: r.run, route, dist: 0, blocked: through ? step : 0 });
+      return;
     }
   }
 
-  /** A run finished: kept when it is no faster than the route allows (rule 5) and a time the game keeps at all. */
+  /** Why a finish of `ms` over `dist` m (`blocked` of them through blocks) on `route` is refused, or null. */
+  refuse(route, ms, dist, blocked) {
+    if (ms < this.floor[route.id]) return 'floor';
+    if (dist / (ms / 1000) > this.avg[route.by]) return 'pace';
+    if (blocked > WALL_FOOT_M) return 'walls';
+    return null;
+  }
+
+  /** A run finished: kept when it is a time the game keeps and no rule refuses it (rules 5 and 7). */
   finish(name, p, route, time) {
     const ms = cleanTime(time);
-    if (ms === null || ms < this.floor[route.id]) return;
+    if (ms === null || this.refuse(route, ms, p.dist, p.blocked)) return;
     const night = this.tonightRace(name, route.id, ms);
-    if (!this.onBoard(p.role)) {
+    if (!this.onBoard(p.role) || !this.allTime.has(route.by)) {
       if (night) this.tell(name, { t: 'race', id: route.id, ms, best: night.best, place: night.best ? night.place : null, tonight: true });
       return;
     }
@@ -230,14 +260,13 @@ export class GoalTracker {
   }
 
   found(name, p, id) {
-    const night = !p.tonight.has(id) && this.tonightGnome(name);
-    if (night) p.tonight.add(id);
+    const night = this.tonightGnome(name, id); // tonight's count for this name, when this gnome is new to it tonight
     if (!this.onBoard(p.role)) {
-      if (night) this.tell(name, { t: 'gnome', n: p.tonight.size, tonight: true });
+      if (night) this.tell(name, { t: 'gnome', n: night, tonight: true });
       return;
     }
     if (p.found.has(id)) return;
-    p.found.add(id); // in memory: the store is written once per new gnome
+    p.found.add(id); // in memory: the store is written once per new gnome (and the store keeps one row per name and gnome)
     const saved = this.store()?.saveGnome?.(name, id);
     if (!saved) return;
     saved
@@ -271,12 +300,18 @@ export class GoalTracker {
     return { best, place };
   }
 
-  /** A gnome found tonight (each counts once a name and evening): whether it counted. */
-  tonightGnome(name) {
-    if (!this.tonightName(name)) return false;
-    const old = this.night.gnomes.get(name);
-    this.night.gnomes.set(name, { n: (old?.n ?? 0) + 1, at: this.clock() });
-    return true;
+  /**
+   * Gnome `id` found tonight by `name`: the name's count tonight when it is new to it, else 0. Kept per name, never per
+   * connection (a reconnect or a second socket finds nothing twice), so a count is at most the number of gnomes.
+   */
+  tonightGnome(name, id) {
+    if (!this.gnomeIds.has(id) || !this.tonightName(name)) return 0;
+    const row = this.night.gnomes.get(name) ?? { ids: new Set(), at: 0 };
+    if (row.ids.has(id)) return 0;
+    row.ids.add(id);
+    row.at = this.clock();
+    this.night.gnomes.set(name, row);
+    return row.ids.size;
   }
 
   /** Tonight's best: each route's quickest names, and who found the most gnomes (the first to that many first). */
@@ -288,13 +323,12 @@ export class GoalTracker {
         ? [...list].sort((a, b) => a[1].ms - b[1].ms || a[1].at - b[1].at).slice(0, TONIGHT_TOP).map(([name, v]) => ({ name, ms: v.ms }))
         : [];
     }
-    const gnomes = [...this.night.gnomes].sort((a, b) => b[1].n - a[1].n || a[1].at - b[1].at).slice(0, TONIGHT_TOP).map(([name, v]) => ({ name, n: v.n }));
+    const gnomes = [...this.night.gnomes].sort((a, b) => b[1].ids.size - a[1].ids.size || a[1].at - b[1].at).slice(0, TONIGHT_TOP).map(([name, v]) => ({ name, n: v.ids.size }));
     return { races, gnomes };
   }
 
   /** The host's Reset (server/host.mjs): a new evening. */
   resetTonight() {
     this.night = { names: new Set(), races: Object.create(null), gnomes: new Map() };
-    for (const p of this.players.values()) p.tonight.clear();
   }
 }

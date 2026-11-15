@@ -309,10 +309,18 @@ const DROP_RISE = { max: 0.6, rate: 0.5 };
 const CAR_SPEED = Math.max(...Object.values(CARS.cars).map((c) => c.maxSpeed)) * 1.2; // m/s in a car, with room for network jitter
 const HORSE_SPEED = HORSES.gallop * 1.3; // m/s on horseback
 const BIKE_SPEED = BIKES.maxSpeed * 1.3; // m/s on a bike: its top speed (downhill), with room for network jitter
-/** The timed routes and the gnomes the server notes itself (server/goals.mjs): the budgets above per way, each way's real top speed. */
+/**
+ * The timed routes and the gnomes the server notes itself (server/goals.mjs): the budgets above per way; the most a whole
+ * run may average, the honest top and 5 % (running; pedalling flat out on this loop averages 7 m/s, a tenth over the
+ * pedalling speed; the car's top speed); the numbers for the floors (server/floors.mjs). The car's route counts for
+ * tonight only until its floor is shown to be solid against a page driven as fast as it goes.
+ */
 const GOALS = readGoals();
 const GOAL_PACE = { foot: RUN_SPEED, bike: BIKE_SPEED, car: CAR_SPEED };
-const GOAL_TOP = { foot: RUN_SPEED / 1.3, bike: BIKES.maxSpeed, car: Math.max(...Object.values(CARS.cars).map((c) => c.maxSpeed)) };
+const CAR_TOP = Math.max(...Object.values(CARS.cars).map((c) => c.maxSpeed));
+const GOAL_AVG = { foot: (RUN_SPEED / 1.3) * 1.05, bike: BIKES.pedalSpeed * 1.1 * 1.05, car: CAR_TOP * 1.05 };
+const GOAL_MODELS = { bike: { pedal: BIKES.pedalSpeed, max: BIKES.maxSpeed }, car: { top: CAR_TOP } };
+const GOAL_ALL_TIME = ['foot', 'bike'];
 const TRAVEL_MS = 1500; // at most one trip through the portals this often
 const TRAVEL_SLACK = 3; // m: the server's idea of where you are may lag a little behind yours
 
@@ -437,7 +445,8 @@ export class Game {
     this.host = room ? null : new Host(this); // the host's controls for a LAN night (server/host.mjs), in the open world
     // The timed routes and the gnomes, timed and noted by the server from its own positions (server/goals.mjs), in the open world.
     this.goals = room ? null : new GoalTracker({
-      ...GOALS, ground: (x, z) => HOUSE.ground + TERRAIN.height(x, z), pace: GOAL_PACE, top: GOAL_TOP,
+      ...GOALS, ground: (x, z) => HOUSE.ground + TERRAIN.height(x, z), lineFree: (...a) => SOLIDS.boxFree(...a),
+      pace: GOAL_PACE, avg: GOAL_AVG, models: GOAL_MODELS, allTime: GOAL_ALL_TIME,
       store: () => this.auth?.store, clock: mono, tell: (name, m) => this.players.has(name) && this.send(this.players.get(name).ws, m), changed: () => this.hub?.scored(), onBoard,
     });
     this.zombieBests = Object.create(null); // place id -> the best wave ever in the Zombies game there (loadRules, saveZombieBest)
@@ -961,7 +970,7 @@ export class Game {
       player.state = next;
       // The routes and the gnomes (server/goals.mjs), from this step as the server has it, and the way of moving by its own lists.
       const free = player.alive && !next.flying && !drop && !this.modes.active && !this.host?.holds(player);
-      this.goals?.moved(name, prev, next, !free ? null : driving ? 'car' : bike ? 'bike' : !inCar && !horse ? 'foot' : null, { gapMs: secs * 1000, cut: across > step, seek: free });
+      this.goals?.moved(name, prev, next, !free ? null : driving ? 'car' : bike ? 'bike' : !inCar && !horse ? 'foot' : null, { gapMs: secs * 1000, seek: free });
       if (drop) this.dropCheck(player, now); // on the ground, or not coming down: the drop ends
       this.stampState(player, m.ct);
       if (driving) {
