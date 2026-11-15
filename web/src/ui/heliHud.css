@@ -31,7 +31,7 @@
 .heli-horizon { position: relative; flex: none; width: 44px; height: 44px; overflow: hidden; border-radius: 50%; border: 1px solid rgba(245, 239, 228, 0.3); }
 .heli-sky { position: absolute; inset: -50%; background: linear-gradient(#5d8fb8 50%, #6b5440 50%); }
 .heli-mark { position: absolute; left: 9px; right: 9px; top: 21px; height: 2px; background: var(--lamp); border-radius: 1px; }
-body:not(.touch).heli-hud #toast { bottom: 155px; }
+body:not(.touch).heli-hud #toast { bottom: 185px; } /* the place's name, clear over the instruments */
 /* On touch: under the map, where the speedometer goes; smaller. */
 body.touch #heli-hud { top: 130px; bottom: auto; right: 12px; gap: 9px; padding: 8px 10px; border-radius: 13px; }
 body.touch #heli-hud .speed-value { font-size: 32px; }
