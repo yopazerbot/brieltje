@@ -438,7 +438,7 @@ test('a jump from the helicopter: the canopy opens by itself, soon low down, aft
           const opened = f.path.find((p) => p.open !== null);
           // Under DROP.openAt at once below DROP.jumpClearMin, after DROP.jumpClear above it; higher up after DROP.jumpFree
           // s of free fall (at most 15 m of it).
-          const soon = h >= DROP.jumpClearMin ? DROP.jumpClear : 0;
+          const soon = jumpStart(0, 0, -down, [0, 0], h).openSoon; // what the jump waits for its height and sink
           if (h <= DROP.openAt) assert.ok(opened.t >= soon - 1e-9 && opened.t <= soon + dt * 2.01, `from ${h} m it opened after ${opened.t} s`);
           else {
             // (Just over DROP.openAt it sinks past it while it waits to be clear: then it opens at DROP.jumpClear.)
@@ -462,7 +462,8 @@ test("a jump takes the machine's speed along within the drop's limits: never up,
     assert.ok(j.vy <= -DROP.jumpDrop + 1e-9 && j.vy >= -DROP.jumpSink - 1e-9, `down ${j.vy}`);
     assert.equal(j.openAfter, DROP.jumpFree);
     assert.equal(j.openSoon, DROP.jumpClear, 'high enough (no height given): it waits to be clear of the machine');
-    assert.equal(jumpStart(vx, vz, vy, [1, 0], DROP.jumpClearMin - 0.5).openSoon, 0, 'low down: at once');
+    const low = jumpStart(vx, vz, vy, [1, 0], DROP.jumpClearMin - 0.5).openSoon;
+    assert.ok(low >= 0 && low <= DROP.jumpClear, `low down it waits no more than DROP.jumpClear (${low} s)`);
   }
   // At a hover the step out is the only speed across: sideways, away from the cabin.
   const still = jumpStart(0, 0, 0, [0, -1]);
@@ -474,4 +475,19 @@ test("a jump takes the machine's speed along within the drop's limits: never up,
   const s = { t: DROP.minFall, open: null, vx: 0, vz: 0, vy: -8, air: 100, openAfter: DROP.jumpFree };
   dropStep(s, { open: true }, 0, 1 / 60);
   assert.equal(s.open, 0);
+});
+
+test('a low jump waits out from under the machine as long as it still brakes: from a hover even at 12 m, at once only sinking fast from the lowest', () => {
+  // From a hover (the step out's 2 m/s down) every jump from DROP.jumpMin up waits the whole DROP.jumpClear.
+  for (let h = DROP.jumpMin; h <= 45; h += 1) assert.equal(jumpStart(0, 0, 0, [1, 0], h).openSoon, DROP.jumpClear, `${h} m at a hover`);
+  // Sinking at full down from the lowest jump: none (it would not brake), and more as the height allows.
+  assert.equal(jumpStart(0, 0, -DROP.jumpSink, [1, 0], DROP.jumpMin).openSoon, 0);
+  let last = 0;
+  for (let h = DROP.jumpMin; h <= DROP.jumpClearMin; h += 1) {
+    const soon = jumpStart(0, 0, -DROP.jumpSink, [1, 0], h).openSoon;
+    assert.ok(soon >= last - 1e-9, `never less as it gets higher (${h} m: ${soon} s)`);
+    last = soon;
+  }
+  // The step out takes you sideways and down at once: at least 3 m/s across at a hover.
+  assert.ok(Math.abs(jumpStart(0, 0, 0, [1, 0]).vx - DROP.jumpPush) < 1e-9 && DROP.jumpPush >= 3);
 });
