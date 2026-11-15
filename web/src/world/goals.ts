@@ -1,10 +1,13 @@
 import * as THREE from 'three';
-import { bestKey, dropRace, finishRace, formatTime, newRace, readBest, readFound, stepRace, writeBest, writeFound, type By, type Race } from '../../shared/goals.mjs';
+import { bestKey, dropRace, finishRace, formatTime, newRace, pointsOf, readBest, readFound, stepRace, writeBest, writeFound, type By, type Race } from '../../shared/goals.mjs';
+import { lengthOf, onLine } from '../../shared/roadPath.mjs';
 import { dist, lang, onLang, plural, t } from '../i18n';
 import { typing } from '../keys';
 import { seat } from '../seat';
 import { key, type Control } from '../shortcuts';
 import { GoalsHud } from '../ui/goalsHud';
+import type { RaceWay } from '../ui/minimap';
+import { ROADS } from '../ui/route';
 import { GNOME_IDS, Gnomes, SPOTS } from './gnomes';
 import type { Particles } from './particles';
 import { ROUTE_LIST, Routes, type RunResult } from './routes';
@@ -25,6 +28,16 @@ const BEST_KEYS = ROUTE_LIST.map(bestKey);
 const NOTICE_MS = 3000;
 /** The race key on the keyboard, by its place (src/shortcuts.ts `race`: K on AZERTY and QWERTY) */
 const RACE_KEY = 'KeyK';
+/** Further than this (m) off the race's line, the way from where you are is worked out again */
+const OFF_LINE = 25;
+/** How often (s) the line is checked for that */
+const OFF_EVERY = 0.25;
+/**
+ * The points drawn ahead: the next and the two after it. The car's loop comes back along its first street to the
+ * finish, and the whole rest drawn there looked like the way already driven.
+ */
+const POINTS_AHEAD = 3;
+type P = [number, number];
 
 export interface Me {
   x: number;
@@ -88,6 +101,20 @@ export class Goals {
   private notice = 0;
   /** How you play, for the key in the texts (main.ts prompt) */
   private mode: Control = 'kbm';
+  /**
+   * The race's way along the roads for the maps (Yoshi: "Bij een route, toon gps in de minimap"): `first` from where
+   * you were to the next point, `rest` on through the two points after it; `key` the route and next point it
+   * was worked out for. Worked out when the race is asked for and at each checkpoint, and `first` again only when you
+   * are more than OFF_LINE m off it; never each frame.
+   */
+  private way: { key: string; first: P[]; rest: P[]; points: P[] } | null = null;
+  /** The legs between a route's points along the roads, once each (by route and point) */
+  private legs = new Map<string, P[]>();
+  private offCheck = 0;
+  /** Where you were last frame */
+  private at: P = [0, 0];
+  /** How many times a way was worked out along the roads (the check in tools/dev/goals.mjs counts them) */
+  ways = 0;
 
   constructor(private o: GoalsOptions) {
     this.gnomes = new Gnomes(o.ground, o.floor, o.particles, o.low);
@@ -179,9 +206,11 @@ export class Goals {
       this.race = { ...dropRace(this.race), offer: null, offerLeft: 0 };
       this.routes.armed = null;
       this.routes.showGates(this.look);
+      this.way = null;
       this.hud.set('', '', null);
       return;
     }
+    this.at = [me.x, me.z];
     const now = performance.now();
     const step = stepRace(this.race, ROUTE_LIST, me, pressed, now, shownMs);
     this.race = step.race;
@@ -202,6 +231,7 @@ export class Goals {
       const route = this.routes.route();
       if (route && me.by !== route.by) this.report(this.routes.stop());
       this.routes.forget();
+      this.plan(dt);
       this.hud.set('', '', null);
       return;
     }
@@ -221,7 +251,61 @@ export class Goals {
     this.routes.armed = this.race.armed;
     this.routes.canStart = !!this.race.armed && !this.race.done;
     this.report(run);
+    this.plan(dt);
     this.line(camera, me);
+  }
+
+  /** A way along the roads (shared/roadPath.mjs), counted. */
+  private road(from: P, to: P): P[] {
+    this.ways++;
+    return ROADS.route(from, to).line;
+  }
+
+  /**
+   * The race's way for the maps: before the start from where you are to the gate; during a run from where you are to
+   * the next checkpoint and on through the two after it. Worked out again only for a new next point, or when you
+   * are well off it (checked four times a second); the legs between the route's points once each.
+   */
+  private plan(dt: number): void {
+    const run = this.routes.run;
+    const route = this.routes.route() ?? ROUTE_LIST.find((r) => r.id === this.race.armed);
+    if (!route || (!run && (!this.race.armed || this.race.done))) {
+      this.way = null;
+      return;
+    }
+    const all = pointsOf(route) as P[];
+    const from = run ? run.next : -1; // -1: the gate, before the start
+    const key = `${route.id}:${from}`;
+    if (this.way?.key !== key) {
+      const points: P[] = from < 0 ? [route.gate] : all.slice(from, from + POINTS_AHEAD);
+      const rest: P[] = [];
+      for (let k = Math.max(0, from); k + 1 < Math.min(all.length, from + POINTS_AHEAD) && from >= 0; k++) {
+        const id = `${route.id}:${k}`;
+        let leg = this.legs.get(id);
+        if (!leg) this.legs.set(id, (leg = this.road(all[k], all[k + 1])));
+        rest.push(...(rest.length ? leg.slice(1) : leg));
+      }
+      this.way = { key, first: this.road(this.at, points[0]), rest, points };
+      this.offCheck = 0;
+      return;
+    }
+    if ((this.offCheck += dt) < OFF_EVERY) return;
+    this.offCheck = 0;
+    if (onLine(this.way.first, this.at[0], this.at[1]).d > OFF_LINE) this.way.first = this.road(this.at, this.way.points[0]);
+  }
+
+  /**
+   * For the minimap and the big map (main.ts): the way ahead from where you are, the part already behind you left out;
+   * the next point, the points after it, and how far the next is along the way. Null with no race, during a game or
+   * for a watcher.
+   */
+  nav(): RaceWay | null {
+    const way = this.way;
+    if (!way || !this.enabled || !this.group.visible) return null;
+    const [x, z] = this.at;
+    const on = onLine(way.first, x, z);
+    const ahead: P[] = [[x, z], on.p, ...way.first.slice(on.i + 1)];
+    return { line: [...ahead, ...way.rest.slice(1)], next: way.points[0], later: way.points.slice(1), toNext: lengthOf(ahead) };
   }
 
   /** The controller's race button (main.ts: the D-pad's right), as the K key and a tap on the line. */
@@ -351,6 +435,7 @@ export class Goals {
     this.routes.stop();
     this.race = newRace();
     this.routes.armed = null;
+    this.way = null;
     save(FOUND_KEY, writeFound([], false));
     save(BEST_KEY, writeBest({}));
     this.gnomes.setFound([]);

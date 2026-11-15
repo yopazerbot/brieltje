@@ -9,7 +9,8 @@ import { compactHud } from './compact';
  * small orange dots and weapons lying around yellow diamonds. A portal is a ring in its
  * colour; the nearest one off the map is an arrow on the edge with how far it is. A waypoint set on
  * the big map is a yellow pin, or a yellow arrow on the edge with its distance, and the way to it
- * along the roads a blue line. The floor's name shows under it indoors only (outside it would say
+ * along the roads a blue line; a timed race's way a magenta one, its next checkpoint a disc or an arrow on the
+ * edge. The floor's name shows under it indoors only (outside it would say
  * "Ground floor" on the church square), and its words have a dark edge: the village's ground is light.
  */
 
@@ -20,6 +21,18 @@ const SCALE = 7; // px per metre
 const PAD = 40; // m of plan around the house drawn into each level image
 const CUT = 1.2; // m above the floor
 const GROUND = 128; // m: the piece of the big map's ground drawn around you, drawn again after moving 40 m
+
+/** A timed race's way (world/goals.ts nav): the line ahead from you, the next point, the ones after it, how far the next is (m). */
+export interface RaceWay {
+  line: [number, number][];
+  next: [number, number];
+  later: [number, number][];
+  toNext: number;
+}
+/** A race's line on the maps: magenta, apart from the roads (white), the waypoint's line (blue) and the other marks */
+export const RACE_LINE = '#e6178c';
+/** Its dark edge, so it reads on the light ground and the white roads */
+export const RACE_EDGE = 'rgba(40, 6, 28, 0.9)';
 
 export interface Blip {
   x: number;
@@ -54,6 +67,8 @@ export class Minimap {
 
   private w = 0;
   private h = 0;
+  /** A timed race's way, set before each draw (main.ts from world/goals.ts), or null */
+  race: RaceWay | null = null;
 
   constructor(private prisms: Prism[], private levels: Level[], private rooms: Room[]) {
     this.canvas.width = this.canvas.height = FULL * devicePixelRatio;
@@ -241,6 +256,67 @@ export class Minimap {
         g.arc(bx, bz, 6, 0, Math.PI * 2);
         g.stroke();
       } else if (!nearest || d < nearest.d) nearest = { bx, bz, d, color: p.color };
+    }
+    // A timed race's way, as a car's navigation draws it (nothing at all with the minimap switched off in the settings).
+    const race = this.race && !this.canvas.classList.contains('hidden') ? this.race : null;
+    if (race && race.line.length > 1) {
+      g.beginPath();
+      race.line.forEach(([rx, rz], i) => (i ? g.lineTo : g.moveTo).call(g, (rx - x) * SCALE, (rz - z) * SCALE));
+      g.lineJoin = g.lineCap = 'round';
+      g.strokeStyle = RACE_EDGE;
+      g.lineWidth = 7;
+      g.stroke();
+      g.strokeStyle = RACE_LINE;
+      g.lineWidth = 4;
+      g.stroke();
+      // The points after the next: small rings; the next: a disc with a light edge, or an arrow on the rim with how far.
+      for (const [px, pz] of race.later) {
+        const bx = (px - x) * SCALE;
+        const bz = (pz - z) * SCALE;
+        if (Math.hypot(bx, bz) >= rim) continue;
+        g.beginPath();
+        g.arc(bx, bz, 4, 0, Math.PI * 2);
+        g.fillStyle = 'rgba(255, 255, 255, 0.9)';
+        g.fill();
+        g.strokeStyle = RACE_LINE;
+        g.lineWidth = 2;
+        g.stroke();
+      }
+      const bx = (race.next[0] - x) * SCALE;
+      const bz = (race.next[1] - z) * SCALE;
+      const d = Math.hypot(bx, bz);
+      g.save();
+      g.fillStyle = RACE_LINE;
+      if (d < rim) {
+        g.beginPath();
+        g.arc(bx, bz, 6, 0, Math.PI * 2);
+        g.fill();
+        g.strokeStyle = '#ffffff';
+        g.lineWidth = 2;
+        g.stroke();
+      } else {
+        const a = Math.atan2(bz, bx);
+        g.translate(Math.cos(a) * rim, Math.sin(a) * rim);
+        g.rotate(a);
+        g.beginPath();
+        g.moveTo(8, 0);
+        g.lineTo(-4, -6);
+        g.lineTo(-1, 0);
+        g.lineTo(-4, 6);
+        g.closePath();
+        g.strokeStyle = '#ffffff';
+        g.lineWidth = 1.5;
+        g.fill();
+        g.stroke();
+        g.rotate(-a);
+        g.translate(-Math.cos(a) * 30, -Math.sin(a) * 30); // further in than a portal's distance (16) and a waypoint's (18)
+        g.rotate(-yaw);
+        g.font = '700 10px Bahnschrift, Arial Narrow, sans-serif';
+        g.textAlign = 'center';
+        g.textBaseline = 'middle';
+        label(g, dist(race.toNext));
+      }
+      g.restore();
     }
     if (waypoint && route && route.line.length > 1) {
       // The way to it, as a car's navigation draws it.

@@ -7,7 +7,7 @@ import type { DipSpec, Prism, Ring, Room, Surroundings } from '../world/houseDat
 import { dist, onLang, t, type PlainKey } from '../i18n';
 import { moveKeys, typing } from '../keys';
 import { key, type Control } from '../shortcuts';
-import { stallMark } from './minimap';
+import { RACE_EDGE, RACE_LINE, stallMark, type RaceWay } from './minimap';
 
 /**
  * The big map: the whole area at once, north up, drawn from the same data as the world (roads,
@@ -103,6 +103,8 @@ export class BigMap {
   route: { line: [number, number][]; length: number } | null = null;
   /** A new waypoint: work out the way at once */
   onWaypoint: () => void = () => {};
+  /** A timed race's way (world/goals.ts nav, set by main.ts with the minimap's), or null */
+  race: RaceWay | null = null;
 
   private root = document.createElement('div');
   private base = document.createElement('canvas');
@@ -337,6 +339,31 @@ export class BigMap {
         g.stroke();
       }
       if (m.name) this.label(g, m.name, x + 9, y + 4, '600 12px', m.color, 'left');
+    }
+    if (this.race && this.race.line.length > 1) {
+      // A timed race's way, as on the minimap: magenta with a dark edge, the next point a disc, the ones after it rings.
+      g.beginPath();
+      this.race.line.forEach(([rx, rz], i) => {
+        const [px, py] = this.screen(rx, rz);
+        (i ? g.lineTo : g.moveTo).call(g, px, py);
+      });
+      g.lineJoin = g.lineCap = 'round';
+      g.strokeStyle = RACE_EDGE;
+      g.lineWidth = 8;
+      g.stroke();
+      g.strokeStyle = RACE_LINE;
+      g.lineWidth = 4.5;
+      g.stroke();
+      for (const [i, [rx, rz]] of [this.race.next, ...this.race.later].entries()) {
+        const [px, py] = this.screen(rx, rz);
+        g.beginPath();
+        g.arc(px, py, i ? 4.5 : 7, 0, Math.PI * 2);
+        g.fillStyle = i ? '#ffffff' : RACE_LINE;
+        g.fill();
+        g.strokeStyle = i ? RACE_LINE : '#ffffff';
+        g.lineWidth = 2;
+        g.stroke();
+      }
     }
     if (this.waypoint && this.route) {
       // The way there: a blue line with a light edge, as in a car's navigation.

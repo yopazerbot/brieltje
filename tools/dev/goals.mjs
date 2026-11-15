@@ -13,16 +13,19 @@
 //                            [--size 667x375]
 //
 // Prints one line per check and a summary; exits 1 when any check failed.
-import { mkdirSync, readFileSync } from 'node:fs';
+import { mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { makeChurch } from '../../web/shared/church.mjs';
+import { lengthOf, makeRoads } from '../../web/shared/roadPath.mjs';
 import { makeTerrain } from '../../web/shared/terrain.mjs';
 import { launch, options, startGame } from './cdp.mjs';
 
 const o = options({ url: 'http://localhost:5200/', port: '9920', quality: 'high', phone: false, shots: '', only: '', ride: false, trace: false, size: '' });
 const ROUTES = JSON.parse(readFileSync(new URL('../../web/shared/routes.json', import.meta.url))).routes;
 const ROADS = JSON.parse(readFileSync(new URL('../../web/src/data/roads.json', import.meta.url)));
-const all = ['spots', 'reach', 'shots', 'find', 'foot', 'line', 'race', 'climb', 'warm', 'zombies', ...(o.ride ? ['bike', 'car'] : [])];
+/** The road register's network, as the game's sat-nav line uses it (web/shared/roadPath.mjs) */
+const NET = makeRoads(JSON.parse(readFileSync(new URL('../../web/src/data/streets.json', import.meta.url))).graph);
+const all = ['spots', 'reach', 'shots', 'find', 'foot', 'line', 'race', 'gps', 'climb', 'warm', 'zombies', ...(o.ride ? ['bike', 'car'] : [])];
 const only = new Set(o.only ? o.only.split(',') : all);
 if (o.shots) mkdirSync(o.shots, { recursive: true });
 
@@ -33,6 +36,27 @@ const check = (name, ok, detail = '') => {
   if (!ok) failures.push(name);
 };
 const shot = async (name) => o.shots && b.screenshot(join(o.shots, `${name}.png`));
+/** A picture of the minimap alone, at twice its size. */
+async function mapShot(name) {
+  if (!o.shots) return;
+  const r = JSON.parse(await b.evaluate("JSON.stringify((() => { const r = document.getElementById('minimap').getBoundingClientRect(); return { x: r.left, y: r.top, width: r.width, height: r.height }; })())", false));
+  const png = await b.send('Page.captureScreenshot', { format: 'png', clip: { ...r, scale: 2 } });
+  writeFileSync(join(o.shots, `${name}.png`), Buffer.from(png.data, 'base64'));
+}
+/** The race's line drawn on the minimap: how many of its pixels are the line's magenta. */
+const magenta = () => b.evaluate("(() => { const c = document.getElementById('minimap'); const d = c.getContext('2d').getImageData(0, 0, c.width, c.height).data; let n = 0; for (let i = 0; i < d.length; i += 4) if (Math.abs(d[i] - 230) < 25 && d[i + 1] < 70 && Math.abs(d[i + 2] - 140) < 35) n++; return n; })()", false);
+/** The race's way for the maps (world/goals.ts nav), where you are, and how many ways were worked out. */
+const navNow = () => b.evaluate("JSON.stringify({ nav: briel.goals.nav(), p: [briel.player.x, briel.player.z], ways: briel.goals.ways })", false).then(JSON.parse);
+/** Points along `line` every `step` m. */
+function sample(line, step = 2) {
+  const out = [];
+  for (let i = 1; i < line.length; i++) {
+    const [ax, az] = line[i - 1], [bx, bz] = line[i];
+    const n = Math.max(1, Math.ceil(Math.hypot(bx - ax, bz - az) / step));
+    for (let k = 0; k < n; k++) out.push([ax + ((bx - ax) * k) / n, az + ((bz - az) * k) / n]);
+  }
+  return out;
+}
 const js = (v) => JSON.stringify(v);
 const toast = () => b.evaluate("document.getElementById('toast')?.textContent ?? ''", false);
 const line = () => b.evaluate("(() => { const l = document.getElementById('goal-line'); return l && !l.hidden ? l.textContent : ''; })()", false);
@@ -535,6 +559,68 @@ try {
     }
   }
 
+  if (only.has('gps')) {
+    // The race's way on the minimap and the big map, like a sat-nav (Yoshi: "Bij een route, toon gps in de minimap").
+    await b.evaluate('briel.goals.reset()', false);
+    const car = ROUTES.find((x) => x.id === 'car');
+    await b.evaluate("briel.travel('house')", false);
+    await b.sleep(2500);
+    await b.evaluate('briel.getIn()', false);
+    await b.waitFor('briel.driving()', 15000);
+    await b.sleep(400);
+    const none = await navNow();
+    const before = await magenta();
+    await raceKey();
+    await b.sleep(600);
+    const s = await navNow();
+    const line = s.nav?.line ?? [];
+    // From where it joins the roads (line[2]: line[0] is you, line[1] where you are along the way) to where it leaves them.
+    const off = sample(line.slice(2, -1)).filter(([x, z]) => NET.nearest(x, z).d > 3);
+    const starts = line.length > 1 && Math.hypot(line[0][0] - s.p[0], line[0][1] - s.p[1]) < 1;
+    const ends = line.length > 1 && Math.hypot(line.at(-1)[0] - car.gate[0], line.at(-1)[1] - car.gate[1]) < 0.5;
+    check('no line without a race', none.nav === null && before === 0, `${js(none.nav)}, ${before} magenta pixels`);
+    check('a race asked for in a car at the main house: the line from you to the gate, on the roads', starts && ends && !off.length && s.nav.next[0] === car.gate[0], `${line.length} points, ${Math.round(lengthOf(line))} m, starts at you ${starts}, ends at the gate ${ends}, ${off.length} samples off the roads${off.length ? ` (first ${js(off[0])})` : ''}`);
+    const shown = await magenta();
+    await mapShot('gps_minimap_start');
+    await shot('gps_start');
+    // The minimap switched off in the settings (N): nothing drawn.
+    await tapKey('KeyN');
+    await b.sleep(400);
+    const hidden = await magenta();
+    const isHidden = await b.evaluate("document.getElementById('minimap').classList.contains('hidden')", false);
+    await tapKey('KeyN');
+    await b.sleep(300);
+    check('the minimap draws the line, and nothing with the minimap off', shown > 50 && isHidden && hidden === 0, `${shown} magenta pixels on, ${hidden} off (hidden ${isHidden})`);
+    // The big map shows it too.
+    await tapKey('KeyM');
+    await b.sleep(1500);
+    const big = await b.evaluate("JSON.stringify({ open: !!document.getElementById('bigmap')?.offsetParent, nav: !!briel.goals.nav() })", false);
+    await shot('gps_bigmap');
+    await tapKey('KeyM');
+    await b.sleep(800);
+    check('the big map open with the line (see gps_bigmap.png)', big.includes('"nav":true'), big);
+    // Well off the line (30 m across it, 10 m a frame: no hop): the way from you is worked out again, once.
+    const w0 = (await navNow()).ways;
+    const [a0, a1] = [line[1], line[2] ?? line[1]];
+    const len = Math.hypot(a1[0] - a0[0], a1[1] - a0[1]) || 1;
+    const [nx, nz] = [-(a1[1] - a0[1]) / len, (a1[0] - a0[0]) / len];
+    for (let k = 1; k <= 3; k++) {
+      await b.evaluate(`(() => { const c = briel.currentCar(); const x = c.x + ${nx * 10}, z = c.z + ${nz * 10}; c.place(x, briel.world.groundAt(x, z, 50, 0.3).y, z, c.yaw); })()`, false);
+      await b.evaluate('__g.frame()');
+    }
+    await b.sleep(1000);
+    const moved = await navNow();
+    check('30 m off the line: worked out again once, from where you are', moved.nav && moved.ways === w0 + 1 && Math.hypot(moved.nav.line[0][0] - moved.p[0], moved.nav.line[0][1] - moved.p[1]) < 1 && (await rings()).armed === 'car', `ways ${w0} then ${moved.ways}, armed ${(await rings()).armed}`);
+    const w1 = moved.ways;
+    await b.sleep(1500);
+    check('standing still: not worked out again', (await navNow()).ways === w1, `${w1} then ${(await navNow()).ways}`);
+    await raceKey();
+    await b.evaluate('briel.getOut()', false);
+    await b.sleep(400);
+    const gone = await navNow();
+    check('the key stops it and the line goes', gone.nav === null && (await magenta()) === 0, js(gone.nav));
+  }
+
   if (only.has('climb')) {
     // The two gnomes on a floor, climbed to as a player does: the church's stair to its roof walk (g12, by the sniper),
     // the tree hut's stair (g30).
@@ -666,6 +752,8 @@ try {
     await b.evaluate('__g.frame()');
     await raceKey();
     check(`${kind} race asked for`, (await rings()).armed === kind, js(await rings()));
+    const ways0 = (await navNow()).ways;
+    const gps = { shots: new Set(), behind: null };
     // The autopilot: every frame the vehicle's own input, steering at a point 5 m ahead on the path.
     await b.evaluate(`(() => {
       const kind = ${js(kind)};
@@ -686,9 +774,13 @@ try {
         if (now - st.moved > 2000) {
           st.moved = now + 1500;
           if (st.backed) {
+            // Round it to the run's next checkpoint when that is near (a way round must not miss it), else further on.
+            const tg = briel.goals.run()?.target;
+            const near = tg && Math.hypot(tg.x - p.x, tg.z - p.z) < 30 ? __g.way(tg.x, tg.z, 2, [p.x, p.z], 0.8) : null;
             const j = Math.min(path.length - 1, st.i + 12);
-            const round = __g.way(path[j][0], path[j][1], 1.5, [p.x, p.z], 0.8);
-            if (round) path.splice(st.i, j - st.i, ...round.slice(1));
+            const round = near ? null : __g.way(path[j][0], path[j][1], 1.5, [p.x, p.z], 0.8);
+            if (near) path.splice(st.i, 0, ...near.slice(1));
+            else if (round) path.splice(st.i, j - st.i, ...round.slice(1));
             st.reroutes = (st.reroutes ?? 0) + 1;
             st.backed = false;
           } else {
@@ -717,13 +809,16 @@ try {
       st.off = 0;
       briel.goals.update = function (dt, cam, me) {
         if (!me.on || !this.group.visible) st.off++;
-        return goalsUpdate.call(this, dt, cam, me);
+        const armed = this.race.armed;
+        const out = goalsUpdate.call(this, dt, cam, me);
+        if (armed && !this.race.armed && !st.ended) st.ended = { by: me.by, on: me.on, at: [+me.x.toFixed(1), +me.z.toFixed(1)], dt: +dt.toFixed(3) };
+        return out;
       };
       const routes = briel.goals.routes, update = routes.update;
       let tPrev = performance.now();
-      routes.update = function (cam, me, now) {
+      routes.update = function (me, now) {
         const from = this.last, run = this.run;
-        const r = update.call(this, cam, me, now);
+        const r = update.call(this, me, now);
         if (r && r.event === 'stop') st.stopped = { by: me.by, step: from ? +Math.hypot(me.x - from.x, me.z - from.z).toFixed(2) : null, frameMs: Math.round(now - tPrev), sinceLast: run ? Math.round(now - run.last) : null, at: [+me.x.toFixed(1), +me.z.toFixed(1)] };
         tPrev = now;
         return r;
@@ -746,6 +841,23 @@ try {
           if (seen.length === 2) await shot(`${kind}_run`);
         }
       }
+      // The race's line: before the start, a little after the first checkpoint (the part driven left out), near the finish.
+      const n = await navNow();
+      const pic = !st.run ? 'start' : st.run.next === 1 && n.nav ? 'mid' : st.run.target?.finish ? 'finish' : '';
+      if (pic && !gps.shots.has(pic)) {
+        gps.shots.add(pic);
+        await mapShot(`gps_${kind}_${pic}`);
+        if (pic === 'mid') {
+          const r = ROUTES.find((x) => x.id === kind);
+          const along = NET.route(n.p, r.checkpoints[1]).length;
+          gps.behind = { next: n.nav.next, later: n.nav.later.length, toNext: Math.round(n.nav.toNext), roads: Math.round(along), starts: +Math.hypot(n.nav.line[0][0] - n.p[0], n.nav.line[0][1] - n.p[1]).toFixed(2) };
+          // The whole way on to the finish: on the roads (the car's; the bike's may cross a square or a track straight).
+          const all = sample(n.nav.line.slice(2, -1));
+          gps.behind.offRoad = all.filter(([x, z]) => NET.nearest(x, z).d > 6).length;
+          gps.behind.metres = Math.round(lengthOf(n.nav.line));
+          gps.behind.ok = n.nav.next[0] === r.checkpoints[1][0] && gps.behind.later === 2 && gps.behind.starts < 1 && n.nav.toNext <= along * 1.5 + 30 && (kind !== 'car' || gps.behind.offRoad === 0);
+        }
+      }
       if (o.trace && Math.floor((Date.now() - t0) / 5000) !== Math.floor((Date.now() - t0 - 400) / 5000)) console.log('     trace', JSON.stringify({ i: st.a.i, at: st.a.at, run: st.run && st.run.next }));
       if (st.a.done) break;
       if (Date.now() - t0 > 20000 && st.a.i < 3) break;
@@ -754,7 +866,13 @@ try {
     const best = await b.evaluate("localStorage.getItem('briel.routes') ?? ''", false);
     const at = await b.evaluate('JSON.stringify(window.__auto)', false);
     console.log(`     ${kind}: ${seen.join(' > ')}; autopilot ${at.slice(0, 120)} of ${path.length} points`);
+    const why = JSON.parse(at);
+    if (why.stopped || why.ended) console.log(`     ${kind} run stopped: ${js(why.stopped ?? null)}, race ended: ${js(why.ended ?? null)}`);
     check(`${kind} route`, best.includes(`${kind}@1`), `toast "${finish}", stored ${best}`);
+    const ways = (await navNow()).ways - ways0;
+    const most = 3 * (ROUTES.find((x) => x.id === kind).checkpoints.length + 1);
+    check(`${kind}: after the first checkpoint the line starts at you, the part behind left out`, !!gps.behind?.ok, js(gps.behind));
+    check(`${kind}: the way worked out a bounded number of times over the run`, ways > 0 && ways <= most, `${ways} times (at most ${most}); pictures ${[...gps.shots].join(', ')}`);
     await shot(`${kind}_finish`);
     if (kind === 'bike') await b.evaluate('briel.getOffBike()', false);
     else await b.evaluate('briel.getOut()', false);

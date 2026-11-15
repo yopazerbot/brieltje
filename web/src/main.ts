@@ -4092,6 +4092,7 @@ renderer.setAnimationLoop((now: number) => {
     // A waypoint from the big map is done when you reach it.
     if (bigMap.waypoint && Math.hypot(bigMap.waypoint.x - player.x, bigMap.waypoint.z - player.z) < 6) bigMap.waypoint = bigMap.route = null;
     if (bigMap.waypoint && (routeTimer += 0.05) > 0.5) updateRoute();
+    minimap.race = bigMap.race = goals.nav(); // a timed race's way along the roads (world/goals.ts)
     minimap.draw(player.x, player.z, player.feet - (endHouse?.floorAt(player.x, player.z) ?? terrain.height(player.x, player.z)), player.yaw, weapon.enabled ? blips : blips.filter((b) => b.kind !== 'item'), shapes, rules.portals ? portalMarks : [], bigMap.waypoint, bigMap.route, inside);
   }
   horizon.position.x = camera.position.x;
