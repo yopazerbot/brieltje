@@ -141,6 +141,8 @@ import { looseProps, type Mover } from './world/looseProps';
 import { Crash } from './world/crash';
 import { TyreSpray } from './world/tyreSpray';
 import { clearOpenGround, fitStreetModel, loadStreetModel } from './world/streetModel';
+import { TrunkBlocks } from './world/trunkBlocks';
+import type { TreeSpot } from '../shared/trees.mjs';
 import { claimModelGround, claimModelGroundSoon } from './world/modelGround';
 import { GroundCutter, releaseGroundClaims } from './world/groundCutter';
 import { bakeLight, setBakeDetail } from './world/bakedLight';
@@ -736,6 +738,9 @@ world.addPrisms(homeStreet.blocks);
 world.addPrisms(ringRoads.blocks); // the pavements, a few centimetres up
 const playTower = new PlayTower(TOWER, house.ground); // the school's play tower: its platform, ladder and slide (world/playground.ts)
 world.addPrisms(playTower.prisms());
+// A block for every drawn tree's trunk (world/trunkBlocks.ts): the ring's now, the village's and the street models' conifers when they come.
+const trunkBlocks = new TrunkBlocks(world);
+trunkBlocks.add(house.surroundings?.trees ?? []);
 const slideSound = new SlideSound();
 world.setDips(house.dips ?? []);
 // The edge of the game (shared/bounds.json): round the built-up area, or round the two houses while a game in the house runs.
@@ -867,7 +872,8 @@ let clockOffset = 0; // the shared clock minus this page's (s), for the herds in
 let countryside: import('./world/countryside').Countryside | null = null;
 horses.onDust = (at) => effects.impact(at, new THREE.Vector3(0, 1, 0), 'cat'); // a little dust at a gallop
 // The cars (the Tesla on our driveway, the Model 3 at the bungalow, a Model Y and a Model 3 by the
-// church, there once the village is); they stop against tree trunks too (the trees have no blocks).
+// church, there once the village is); they stop against tree trunks too: these circles, which hold the trunks' blocks
+// (trunkBlocks), so a car or a bike meets a tree as before and its crash is a tree's.
 // `car` is the one you are in, or else the nearest.
 const trunks = (house.surroundings?.trees ?? []).map((t) => ({ x: t.x, z: t.z, r: 0.35 }));
 // Trees left out round the house and the church have no trunk to stop against (kept in place: cars and bikes share it).
@@ -4291,6 +4297,8 @@ async function buildVillage(): Promise<void> {
   }
   for (const t of data.trees) trunks.push({ x: t.x, z: t.z, r: 0.35 });
   pruneTrunks();
+  trunkBlocks.add(data.trees);
+  for (const m of models) trunkBlocks.add((m.userData.conifers as TreeSpot[] | undefined) ?? []);
   portals.settle(); // the village's paving under its portals
   pickups.settle(); // the weapons up on the village's roofs (the church's roof walk, the Sparrenhof)
   goals.settle();

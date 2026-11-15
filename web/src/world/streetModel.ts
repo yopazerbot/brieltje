@@ -94,9 +94,10 @@ export async function loadStreetModel(renderer: THREE.WebGLRenderer, ground: num
     lod.addLevel(new THREE.Object3D(), DETAIL);
   }
   const [x, z] = (root.userData as Extras).origin;
-  cardConifers(scene, [x, z]); // the gardens' cone conifers as leaf-card ones on Medium and up (world/streetConifers.ts)
+  const cones = cardConifers(scene, [x, z]); // the gardens' cone conifers as leaf-card ones on Medium and up (world/streetConifers.ts)
   scene.position.set(x, ground + terrain.height(x, z), z);
-  scene.userData = { ...root.userData, landmark: name };
+  const conifers = cones.map((c) => ({ ...c, y: c.y + scene.position.y })); // for their trunks' blocks (main.ts, world/trunkBlocks.ts)
+  scene.userData = { ...root.userData, landmark: name, conifers };
   streetGroundUnbaked(scene, ground, (root.userData as Extras).street ?? []);
   return scene;
 }

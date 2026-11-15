@@ -1,4 +1,5 @@
 import * as THREE from 'three';
+import type { TreeSpot } from '../../shared/trees.mjs';
 import { COLUMN_HEIGHT, columnConifer } from './cardTrees';
 import { cardsBuilt, enlist, leafCardMaterial } from './leafCards';
 import { terrain } from './terrain';
@@ -32,22 +33,23 @@ let shape: THREE.BufferGeometry | null = null;
 
 /**
  * Swap the cones of a street model for leaf-card conifers (`scene`: the model as loaded, before it is placed; `at`:
- * where its origin will stand on the map, x and z, for the ground under each cone).
+ * where its origin will stand on the map, x and z, for the ground under each cone). Returns the cones as trees on the
+ * map (x, z, height, radius; y their foot in the model's own heights), on every preset, for their trunks' blocks
+ * (world/trunkBlocks.ts).
  */
-export function cardConifers(scene: THREE.Object3D, at: [number, number]): void {
-  if (!cardsBuilt()) return; // a phone keeps the cones
+export function cardConifers(scene: THREE.Object3D, at: [number, number]): TreeSpot[] {
   scene.updateMatrixWorld(true);
   let foliage: THREE.Mesh | null = null;
   scene.traverse((o) => {
     if ((o as THREE.Mesh).isMesh && o.name === 'mh_foliage') foliage = o as THREE.Mesh;
   });
-  if (!foliage) return;
+  if (!foliage) return [];
   const mesh = foliage as THREE.Mesh;
   const geometry = mesh.geometry;
   const pos = geometry.getAttribute('position');
   const col = geometry.getAttribute('color');
   const index = geometry.getIndex();
-  if (!index) return;
+  if (!index) return [];
   // Every corner in the model's space, and how high it stands over the ground under it.
   const p: THREE.Vector3[] = [];
   const over: number[] = [];
@@ -68,7 +70,7 @@ export function cardConifers(scene: THREE.Object3D, at: [number, number]): void 
     const foot = q.y - over[i];
     cones.push({ x: q.x, z: q.z, foot, tip: q.y, r: 0, colour: new THREE.Color(1, 1, 1) });
   }
-  if (!cones.length) return;
+  if (!cones.length) return [];
   // Each cone's axis and width from its corners a little above the foot (its broadest tiers), and its colour.
   for (const c of cones) {
     const h = c.tip - c.foot;
@@ -98,6 +100,8 @@ export function cardConifers(scene: THREE.Object3D, at: [number, number]): void 
       c.r = Math.max(0.35, h * 0.13);
     }
   }
+  const trees = cones.map((c) => ({ x: at[0] + c.x, y: c.foot, z: at[1] + c.z, h: c.tip - c.foot, r: c.r }));
+  if (!cardsBuilt()) return trees; // a phone keeps the cones
   // The cones' triangles: every corner within its cone.
   const inCone = (i: number) =>
     cones.some((c) => p[i].y >= c.foot + 0.2 && p[i].y <= c.tip + 0.05 && Math.hypot(p[i].x - c.x, p[i].z - c.z) <= c.r * 1.2 + 0.06);
@@ -109,7 +113,7 @@ export function cardConifers(scene: THREE.Object3D, at: [number, number]): void 
     const c = index.getX(t + 2);
     (inCone(a) && inCone(b) && inCone(c) ? gone : keep).push(a, b, c);
   }
-  if (!gone.length) return;
+  if (!gone.length) return trees;
   const without = geometry.clone();
   without.setIndex(keep);
   // The conifers: one copy each, as tall and wide as its cone, its colour lifted from the cone's (the model's
@@ -136,4 +140,5 @@ export function cardConifers(scene: THREE.Object3D, at: [number, number]): void 
     mesh.geometry = full ? without : whole;
     conifers.visible = full;
   });
+  return trees;
 }

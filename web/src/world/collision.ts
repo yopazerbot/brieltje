@@ -15,6 +15,8 @@ interface Solid {
   name?: string;
   /** Material, e.g. floor_wood (decides the footstep sound) */
   mat?: string;
+  /** Never a floor or a ceiling: a tree's trunk (shared/trees.mjs), which stops you but nobody stands on */
+  noFloor?: boolean;
   minX: number;
   minZ: number;
   maxX: number;
@@ -140,7 +142,7 @@ export class World {
         maxZ = Math.max(maxZ, z);
       }
       const index = this.solids.length;
-      this.solids.push({ y0: p.y0, y1: hopOver(p), lift: !!p.d, rings: p.p, name: p.n, mat: p.m, key: p.k, minX, maxX, minZ, maxZ });
+      this.solids.push({ y0: p.y0, y1: hopOver(p), lift: !!p.d, rings: p.p, name: p.n, mat: p.m, key: p.k, noFloor: p.n === 'trunk', minX, maxX, minZ, maxZ });
       if (p.m === 'glass' && Number.isInteger(p.glass)) this.panes.set(p.glass!, index);
       for (let i = cellOf(minX); i <= cellOf(maxX); i++) {
         for (let j = cellOf(minZ); j <= cellOf(maxZ); j++) {
@@ -224,7 +226,7 @@ export class World {
     let best: number | null = null;
     for (const k of this.near(x - radius, z - radius, x + radius, z + radius)) {
       const s = this.solids[k];
-      if (s.off || x + radius < s.minX || x - radius > s.maxX || z + radius < s.minZ || z - radius > s.maxZ) continue;
+      if (s.off || s.noFloor || x + radius < s.minX || x - radius > s.maxX || z + radius < s.minZ || z - radius > s.maxZ) continue;
       const under = this.lo(s, x, z);
       if (under < fromY - 0.02 || under > toY) continue;
       const [cx, cz] = closestOnRings(x, z, s.rings);
@@ -292,7 +294,7 @@ export class World {
     const g: Ground = { y: this.baseAt(x, z), name: 'Garden' };
     for (const k of this.at(x, z)) {
       const s = this.solids[k];
-      if (s.off || x < s.minX || x > s.maxX || z < s.minZ || z > s.maxZ) continue;
+      if (s.off || s.noFloor || x < s.minX || x > s.maxX || z < s.minZ || z > s.maxZ) continue;
       const top = this.hi(s, x, z);
       if (top > feet + stepUp || top <= g.y) continue;
       if (inside(x, z, s.rings)) {
