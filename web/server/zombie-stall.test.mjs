@@ -9,7 +9,7 @@ import { makeBounds } from '../shared/bounds.mjs';
 import { arenaOf, ARENAS } from '../shared/arenas.mjs';
 import { LOOT } from '../shared/loot.mjs';
 import { priceOf, STALL, stallSpot } from '../shared/stall.mjs';
-import { BIG, makeNav, RUNNER } from '../shared/zombies.mjs';
+import { BIG, breakAfter, makeNav, RUNNER } from '../shared/zombies.mjs';
 import { Game } from './game.mjs';
 import { Rooms } from './rooms.mjs';
 import { ZombieGame } from './zombies.mjs';
@@ -287,7 +287,7 @@ const wave = (z, n, between = () => {}) => {
   z.horde.tick = () => [{ type: 'wave', wave: n, count: 5, big: false, bigs: 0, runners: 0 }];
   z.tick(Date.now(), 50);
   between();
-  z.horde.tick = () => [{ type: 'cleared', wave: n }];
+  z.horde.tick = () => [{ type: 'cleared', wave: n, ms: breakAfter(n) }];
   z.tick(Date.now(), 50);
   z.horde.tick = () => [];
 };
@@ -317,6 +317,7 @@ test('8. the wave bonus: full when standing, half when down, counted before revi
   assert.equal(f.lastCoins(b).c, 17);
   const codes = f.of(a, 'system').map((m) => m.code);
   assert.ok(codes.indexOf('zCleared') >= 0 && codes.indexOf('zCleared') < codes.indexOf('zBonus'), `the bonus after "wave beaten": ${codes}`);
+  assert.deepEqual(f.of(a, 'system').find((m) => m.code === 'zCleared').args, { n: 3, s: 18 }, 'the line names the break after wave 3');
 });
 
 test('9. the wave bonus only for who fought in the wave: not from a car, not for arming at the last moment', () => {

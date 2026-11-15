@@ -3,7 +3,8 @@
 //
 // The players are one team round the house and the bungalow (shared/bounds.json `party`). Zombies
 // come in waves from all over that area, out of sight, each wave bigger, a little faster and a
-// little tougher than the last, with a break of BREAK_MS between them. From wave 3 some of them are
+// little tougher than the last, with a break between them (breakAfter: a little longer each wave, to
+// restock at the stall). From wave 3 some of them are
 // runners: as fast as you nearly, and fragile. A zombie goes for the nearest player who fights
 // (Action or Paintball), round walls, fences, hedges and the parked cars, and into the houses after
 // them: up their stairs, through their doors (a closed one it shoves open) and through a pane that
@@ -30,9 +31,11 @@ export const ZOMBIE = {
   /** m: the side of a square of the grid outdoors, and in the houses */
   cell: 0.5,
   fine: 0.25,
-  /** ms: the first wave comes after this, the next ones after BREAK */
+  /** ms: the first wave comes after this, the next ones after BREAK, a breakStep longer for each wave beaten, breakMax at most (breakAfter) */
   firstBreak: 8000,
   break: 15000,
+  breakStep: 1000,
+  breakMax: 25000,
   /** The most up at once, however many players */
   maxAlive: 30,
   /** m: a zombie's half width (they keep this far apart); the big one's */
@@ -206,6 +209,16 @@ export function zombieStats(n, big, jitter = 0.5, runner = false) {
   const damage = Math.min(25, 10 + k);
   if (runner) return { speed: Math.min(ZOMBIE.runTop, ZOMBIE.runSpeed + 0.02 * Math.max(0, n - ZOMBIE.runFrom) + 0.2 * jitter), hp: Math.round((50 + 12 * k) / 2), damage };
   return { speed: Math.min(2.3, 0.65 + 0.06 * k) * (0.9 + 0.2 * jitter), hp: 50 + 12 * k, damage };
+}
+
+/**
+ * ms of the break after wave `n` is beaten, to restock at the stall: 15 s plus a second for each wave
+ * beaten (16 s after wave 1, 20 s after wave 5), 25 s from wave 10 on. Before wave 1 (`n` 0, or
+ * anything not a wave) the first break, 8 s. Always between firstBreak and breakMax.
+ */
+export function breakAfter(n) {
+  if (!(n >= 1)) return ZOMBIE.firstBreak; // 0, negative, NaN, not a number
+  return Math.min(ZOMBIE.breakMax, ZOMBIE.break + ZOMBIE.breakStep * Math.floor(n));
 }
 
 /** ms between two zombies coming out: quicker in later waves. */
@@ -1192,8 +1205,8 @@ export class Horde {
    * { type: 'spawn', id }, { type: 'runners' } (the game's first runner is out), { type: 'swipe',
    * id, name, damage } (a player hit), { type: 'door', id, dir } (a zombie shoved door `id` open),
    * { type: 'perch', name, ms } (player `name` stands out of every zombie's reach: out of the wave in
-   * `ms` unless they come down), { type: 'perchOut', name } (they stayed), { type: 'cleared', wave }
-   * (everyone down comes back now), { type: 'gone', ids } (fallen zombies to take away) and
+   * `ms` unless they come down), { type: 'perchOut', name } (they stayed), { type: 'cleared', wave, ms }
+   * (everyone down comes back now; the break lasts `ms`: breakAfter), { type: 'gone', ids } (fallen zombies to take away) and
    * { type: 'over', wave }.
    */
   tick(now, dt, players) {
@@ -1241,8 +1254,9 @@ export class Horde {
     if (gone.length) ev.push({ type: 'gone', ids: gone });
     if (this.phase === 'wave' && this.left === 0) {
       this.phase = 'break';
-      this.until = now + ZOMBIE.break;
-      ev.push({ type: 'cleared', wave: this.wave });
+      const ms = breakAfter(this.wave);
+      this.until = now + ms;
+      ev.push({ type: 'cleared', wave: this.wave, ms });
     }
     return ev;
   }

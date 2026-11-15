@@ -16,7 +16,7 @@ test('40 waves progress without a round limit, one survivor keeps playing, and b
   const h=new Horde(nav,nav.spawnSpots(),{home:{x:0,z:0},rand:()=>{random=(random*1664525+1013904223)>>>0;return random/2**32;}});
   const players=roster();h.start(0);
   let now=0,cleared=0;
-  while(cleared<40&&now<3_600_000){
+  while(cleared<40&&now<7_200_000){ // two hours of game time at most (the breaks grow to 25 s)
     const events=h.tick(now,.1,players);
     assert.ok(!events.some(e=>e.type==='over'));
     for(const z of h.zombies.values())if(z.act!=='down')h.hit(z.id,1e9,'admin',now);

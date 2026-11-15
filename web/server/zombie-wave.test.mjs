@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { makeBounds } from '../shared/bounds.mjs';
-import { Horde, makeNav, waveSize, bigOf, runnersOf, aliveCap, zombieStats, BIG, RUNNER, MAX_ADMIN_WAVE, ZOMBIE } from '../shared/zombies.mjs';
+import { Horde, makeNav, waveSize, bigOf, runnersOf, aliveCap, zombieStats, BIG, RUNNER, MAX_ADMIN_WAVE, ZOMBIE, breakAfter } from '../shared/zombies.mjs';
 import { ZombieGame } from './zombies.mjs';
 import { Game } from './game.mjs';
 
@@ -55,8 +55,9 @@ test('new zombies use new IDs and the selected wave stats, then normal progressi
   const easier=[...h.zombies.values()][0];
   assert.ok(easier.id>42);assert.equal(easier.max,50);
   h.zombies.clear();h.toSpawn=h.bigs=0;
-  assert.ok(h.tick(33_000,0,players).some(e=>e.type==='cleared'&&e.wave===1));
-  assert.ok(h.tick(33_000+ZOMBIE.break,0,players).some(e=>e.type==='wave'&&e.wave===2));
+  assert.ok(h.tick(33_000,0,players).some(e=>e.type==='cleared'&&e.wave===1&&e.ms===breakAfter(1)));
+  assert.ok(!h.tick(33_000+breakAfter(1)-1,0,players).some(e=>e.type==='wave'));
+  assert.ok(h.tick(33_000+breakAfter(1),0,players).some(e=>e.type==='wave'&&e.wave===2));
 });
 
 function gameFixture(){

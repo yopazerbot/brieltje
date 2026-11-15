@@ -12,6 +12,8 @@ export const ZOMBIE: {
   fine: number;
   firstBreak: number;
   break: number;
+  breakStep: number;
+  breakMax: number;
   maxAlive: number;
   radius: number;
   bigRadius: number;
@@ -58,6 +60,8 @@ export function aliveCap(players: number): number;
 export function runnersOf(n: number, size: number): number;
 export function zombieStats(n: number, big: boolean, jitter?: number, runner?: boolean): { speed: number; hp: number; damage: number };
 export function spawnEvery(n: number): number;
+/** ms of the break after wave `n` is beaten (0: the first break before wave 1) */
+export function breakAfter(n: number): number;
 
 interface Prism {
   p: number[][][];
@@ -201,7 +205,7 @@ export type HordeEvent =
   | { type: 'door'; id: string; dir: number }
   | { type: 'perch'; name: string; ms: number }
   | { type: 'perchOut'; name: string }
-  | { type: 'cleared'; wave: number }
+  | { type: 'cleared'; wave: number; ms: number }
   | { type: 'gone'; ids: number[] }
   | { type: 'over'; wave: number };
 

@@ -2077,7 +2077,7 @@ function soloTick(dt: number): void {
       chat.system(() => t(e.bigs > 1 ? 'srv.zWaveBigs' : e.big ? 'srv.zWaveBig' : 'srv.zWave', { n: e.wave, count: e.count }));
     }
     else if (e.type === 'cleared') {
-      chat.system(() => t('srv.zCleared', { n: e.wave }));
+      chat.system(() => t('srv.zCleared', { n: e.wave, s: Math.round(e.ms / 1000) }));
       const n = solo.stall.cleared([SOLO_ME], [], e.wave).get(SOLO_ME) ?? 0; // the wave bonus (shared/stall.mjs)
       stallChip.set(solo.stall.view(SOLO_ME));
       if (n) chat.system(() => t('srv.zBonus', { n }));

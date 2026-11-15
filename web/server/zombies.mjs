@@ -234,7 +234,8 @@ export class ZombieGame {
       } else if (e.type === 'cleared') {
         const paid = this.bonus(e.wave); // before revive: who is down now gets the down share
         this.revive();
-        this.modes.say(`Wave ${e.wave} beaten! The next one comes in 15 seconds.`, 'zCleared', { n: e.wave });
+        const s = Math.round(e.ms / 1000); // the break the horde set (shared/zombies.mjs breakAfter)
+        this.modes.say(`Wave ${e.wave} beaten! The next one comes in ${s} seconds.`, 'zCleared', { n: e.wave, s });
         this.paid(paid); // each one's bonus line after the wave's own
         changed = true;
       } else if (e.type === 'gone') {
