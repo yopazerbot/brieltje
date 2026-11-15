@@ -47,10 +47,13 @@ export class RoadLife {
    * browser can: main.ts precompile), so the first car that comes into view doesn't stall a frame.
    */
   load(renderer: THREE.WebGLRenderer, scene: THREE.Scene, camera: THREE.Camera,
-    prepare: (o: THREE.Object3D) => Promise<unknown> = (o) => renderer.compileAsync(o, camera, scene)): Promise<void> {
+    prepare: (o: THREE.Object3D) => Promise<unknown> = (o) => renderer.compileAsync(o, camera, scene),
+    cleared: (x: number, z: number) => boolean = () => false): Promise<void> {
     return (this.loading ??= (async () => {
       const [json, bins] = await Promise.all([import('../data/roads.json'), loadWheelieBins()]);
-      const data = json.default as unknown as Parameters<typeof buildRoadside>[0] & Parameters<Traffic['load']>[0];
+      const all = json.default as unknown as Parameters<typeof buildRoadside>[0] & Parameters<Traffic['load']>[0];
+      // A parked bike or a letterbox of a house a model of its own replaced, in that model's plot (home 4's): gone with it.
+      const data = { ...all, bikes: all.bikes.filter(([x, z]) => !cleared(x, z)), boxes: all.boxes.filter(([x, z]) => !cleared(x, z)) };
       const home = this.group.parent;
       const aside = new THREE.Group();
       aside.add(this.group);

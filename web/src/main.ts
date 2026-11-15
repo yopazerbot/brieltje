@@ -4428,7 +4428,7 @@ async function buildVillage(): Promise<void> {
   bikes.villageReady(); // and the bikes in its racks (shared/bike.json)
   goals.villageReady(); // the gnomes and gates of the village (world/goals.ts)
   // What comes with the village: a start waits for it too (getEverythingReady).
-  villageAfter = Promise.all([mapped, indexed, roadLife.load(renderer, scene, camera, precompile), townBoard.load(renderer, precompile)].map((j) => j.catch(() => undefined)));
+  villageAfter = Promise.all([mapped, indexed, roadLife.load(renderer, scene, camera, precompile, (x, z) => !!brickHouse?.inPlot(x, z)), townBoard.load(renderer, precompile)].map((j) => j.catch(() => undefined)));
 }
 
 /** The countryside's life (world/countryside.ts): herds, birds, bales, field rows, wind and sounds; a chunk of its own. */

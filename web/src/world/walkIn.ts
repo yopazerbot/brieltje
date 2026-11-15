@@ -360,6 +360,8 @@ export interface WalkIn {
   addInside(pack: EndInside, world: World, doors: Doors, glass: Glass): void;
   /** Whether (x, z) lies inside it */
   contains(x: number, z: number): boolean;
+  /** The brick house: whether (x, z) lies in its levelled plot (what stood there for the old house goes); never for the end house */
+  inPlot(x: number, z: number): boolean;
   /** Whether (x, z) lies in it or in its garden, inside the garden's fences */
   encloses(x: number, z: number): boolean;
   /** The garden's lawn at the floor's level, in the ground's material (`material`: the ground's own) */
@@ -706,6 +708,7 @@ export async function loadWalkIn(renderer: THREE.WebGLRenderer, spec: WalkInSpec
       rooms.push(...pack.rooms);
     },
     contains,
+    inPlot: (x, z) => outlined && inside(x, z, data.plot),
     encloses: (x, z) => contains(x, z) || inside(x, z, data.lawn.p),
     lawn(material) {
       const shape = new THREE.Shape(data.lawn.p.map(([x, z]) => new THREE.Vector2(x, -z)));
