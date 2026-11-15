@@ -13,6 +13,8 @@ import { FAR_PHONE, gpuName, guessFromName, loadMode, ORDER, pickQuality, PRESET
 import { HEIGHT as BODY_HEIGHT, Player, STEP_UP } from './player';
 import { Hud } from './ui/hud';
 import { Speedometer } from './ui/speedometer';
+import { HeliPilot } from './heliPilot';
+import { setHeliDetail } from './world/heli';
 import { fillScreen, input, me, menu, onAccount, onSession, sessionAdmin, setAccount, startIntent } from './start';
 import { TouchControls } from './controls/touch';
 import { Games, type ModeView } from './ui/games';
@@ -328,7 +330,9 @@ async function getEverythingReady(at: Portal | null, zombiesStart: boolean): Pro
   // A start at a village place waits for the village itself whatever the time (its blocks, ponds and portals): only
   // the rest has the limit. A village that fails says so (loadVillage), and play begins at the place without it.
   if (at?.village) await loadVillage().catch(() => undefined);
+  helis.warm(true); // the helicopter's rotor blur and far copy are compiled too, and its instruments laid out (src/heliPilot.ts)
   await Promise.race([precompile(scene), new Promise((r) => setTimeout(r, Math.max(0, until - performance.now())))]);
+  helis.warm(false);
   performance.mark('briel:warm');
   if (!menu.onStartScreen || performance.now() >= until) {
     warm.hold(() => player.update(0, NO_INPUT, camera)); // no warm-up, but the camera where play begins (see below)
@@ -683,6 +687,7 @@ function applyQuality(q: Quality): void {
   glassLook.fine.value = wet.fine.value;
   setTreeDetail(q !== 'low' && !phone); // the near trees' crowns and the trunks (world/surroundings.ts)
   setCarDetail(q !== 'low' && !phone); // the Teslas' clear-coated paint (world/car.ts)
+  setHeliDetail(q === 'low' || phone); // the helicopter's simple copy from nearer (world/heli.ts)
   tiles.drawDistance = phone ? Math.min(FAR_PHONE, preset.far) : preset.far;
   undergrowth.setQuality(q, phone);
   grassTufts.setQuality(q, phone);
@@ -900,6 +905,13 @@ const bikes = new Bikes(world, trunks, () => avatars.figure(me?.username ?? '', 
 scene.add(bikes.group);
 const carPeople = new CarPeople((c) => avatars.figure(me?.username ?? '', c)); // who sits in the Teslas (world/carPeople.ts)
 scene.add(carPeople.group);
+// The helicopter on the meadow beside the main house (src/heliPilot.ts, world/heli.ts); the trees' crowns slow it.
+const heliCrowns = [...(house.surroundings?.trees ?? [])];
+const helis = new HeliPilot(world, heliCrowns, (x, z) => treesLeftOut.has(treeKey(x, z)), document.getElementById('hud')!, (hit) => crash.hit(hit), (x, z, y, yaw) => {
+  player.place(x, z, y, yaw, 0);
+  player.update(0, NO_INPUT, camera);
+});
+scene.add(helis.group);
 let bikeWanted: string | null = null; // asked the server for this bike
 // What knocks the street's loose things about: the cars and bikes being ridden (yours and the others', as drawn), and you on foot.
 // One list and one record per mover, kept from frame to frame (no new objects every frame).
@@ -2381,6 +2393,7 @@ function getOffBike(tell = true): void {
  * portal gathers them there: `y` the ground's height and `fx, fz` the portal to face.
  */
 function respawnAt(i: number, at?: { x?: number; z?: number; y?: number; fx?: number; fz?: number }): void {
+  helis.leaveNow();
   getOut(false);
   getOffHorse(false);
   getOffBike(false);
@@ -2421,6 +2434,7 @@ async function travel(to: Destination, via: 'portal' | 'chat'): Promise<void> {
     return;
   }
   if (via === 'chat') {
+    helis.leaveNow(); // the helicopter stays (set down where it was)
     if (riding) getOut(); // the driver keeps the car
     if (horses.mounted >= 0) getOffHorse();
     if (bikes.mounted) getOffBike();
@@ -3484,11 +3498,22 @@ renderer.setAnimationLoop((now: number) => {
     // The feedback card at a quiet moment after two minutes: not while down, driving, riding along,
     // furnishing, typing in the chat or travelling.
     if (!seat && feedback.due && !feedback.open && document.visibilityState === 'visible' && (askClock += dt) >= ASK_AFTER
-      && combat.alive && !driving && !riding && !chat.typing && !trip) feedback.show();
+      && combat.alive && !driving && !riding && !helis.aboard && !chat.typing && !trip) feedback.show();
     // Dead: the view sinks to the floor; you can look around but not move or shoot.
     const dead = !combat.alive;
     player.down += ((dead ? 1 : 0) - player.down) * (1 - Math.exp(-dt * 5));
-    if (driving) {
+    if (helis.aboard && (games.fenced || games.zombies)) helis.leaveNow(); // a game puts everyone on their feet
+    if (helis.aboard) {
+      // In the helicopter (src/heliPilot.ts): it flies as you walk, turns as you look and rises as you fly on foot.
+      const hit = helis.fly(dt, frame, frame === polled ? input.heli : null, player.look(dt, frame), camera, avatars.obstacles());
+      if (hit > 2.5) {
+        rumble(Math.min(1, hit / 10), 0.6, 140);
+        shake = Math.max(shake, Math.min(0.4, hit / 25));
+      }
+      const h = helis.heli!;
+      player.place(h.s.x, h.s.z, h.s.y, h.s.yaw, player.pitch);
+      player.ground = world.groundAt(h.s.x, h.s.z, h.s.y + 0.1, 0.3);
+    } else if (driving) {
       // At the wheel: W/S or R2/L2, steer with A/D or the left stick, Space or Cross for the handbrake.
       const [turn, tilt] = player.look(dt, frame);
       const hit = car.drive(dt, { throttle: frame.throttle, brake: frame.brake, steer: frame.steer, handbrake: frame.jumpHeld }, avatars.obstacles());
@@ -3550,14 +3575,14 @@ renderer.setAnimationLoop((now: number) => {
     }
     combat.showBoard(frame.scoreHeld && !!me);
     const onBike = bikes.mounted !== null;
-    const inCar = driving || riding || onBike; // on a bike as in a car: no weapons, no doors
+    const inCar = driving || riding || onBike || helis.aboard; // on a bike or in the helicopter as in a car: no weapons, no doors
     const onHorse = horses.mounted >= 0; // you may shoot from the saddle
     weapon.hidden = dead || inCar || games.peaceful || player.chute !== null || dropView.outside || watching; // in a drop, and until the camera is back in your eyes
 
     // The portals: on a pad (or stopped on one in the car) the list of places opens, and takes the
     // number keys, the wheel or D-pad and E. Not on horseback, nor from the passenger seat.
     const mode = menu.mode ?? 'kbm';
-    let pad = !rules.portals || trip || dead || riding || onHorse || onBike || games.fenced ? null
+    let pad = !rules.portals || trip || dead || riding || onHorse || onBike || helis.aboard || games.fenced ? null
       : driving ? (Math.abs(car.speed) < CAR_SLOW ? portalNear(car.x, car.z, CAR_REACH) : null)
       : portalNear(player.x, player.z);
     if (pad && !driving && Math.abs(player.feet - portals.groundOf(pad)) > 1.5) pad = null; // flying over it
@@ -3632,7 +3657,14 @@ renderer.setAnimationLoop((now: number) => {
     const nearBoard = !inCar && !onHorse && !dead && !nearCar && nearHorse < 0 && !nearBike && !target && !nearSint && !games.zombies && townBoard.near(player.x, player.z, player.feet);
     const carTaken = !!car.driver && car.driver !== me?.username;
     const seatFree = carTaken && !car.passenger;
-    if ((driving || riding) && frame.usePressed) getOut();
+    // The helicopter (src/heliPilot.ts): E or Triangle beside it gets you in, alone and outside a game; out on a floor.
+    const nearHeli = !inCar && !onHorse && !dead && !nearCar && nearHorse < 0 && !nearBike && !target ? helis.near(player.x, player.z, player.feet) : null;
+    const heliWhy = helis.why(games.fenced || games.zombies, net.connected);
+    if (helis.aboard && frame.usePressed) helis.leave(camera.position);
+    else if (nearHeli && !heliWhy && frame.usePressed) {
+      player.flying = false;
+      helis.board(nearHeli);
+    } else if ((driving || riding) && frame.usePressed) getOut();
     else if (onHorse && frame.usePressed) getOffHorse();
     else if (onBike && frame.usePressed) getOffBike();
     else if (nearCar && !target && (!carTaken || seatFree) && !wantCar && frame.usePressed) getIn();
@@ -3735,7 +3767,7 @@ renderer.setAnimationLoop((now: number) => {
       }
     }
     // In a car the view widens a little at speed (world/car.ts: fovScale), from the player's own field of view.
-    weapon.baseFov = settings.value.fov * (driving || riding ? car.fovScale : 1);
+    weapon.baseFov = settings.value.fov * (driving || riding ? car.fovScale : helis.aboard ? helis.fovScale : 1);
     if (!weapon.enabled && Math.abs(camera.fov - weapon.baseFov) > 0.01) {
       camera.fov = weapon.baseFov;
       camera.updateProjectionMatrix();
@@ -3752,7 +3784,7 @@ renderer.setAnimationLoop((now: number) => {
     // The keys in the prompts come from the one table (src/shortcuts.ts). In Explore a click opens doors too.
     const doorKey = key(action ? 'use' : 'click', mode);
     const use = key('use', mode);
-    touch.setState(action, inCar, player.chute === null ? null : player.canopy === null ? 'fall' : 'canopy', onBike, driving);
+    touch.setState(action, inCar, player.chute === null ? null : player.canopy === null ? 'fall' : 'canopy', onBike, driving, helis.aboard);
     const speed = (v: number) => Math.round(Math.abs(v) * 3.6);
     const carLabel = carName(car.kind ?? car.id, car.spec.name);
     let prompt = target ? t(target.home ? 'home.door' : target.locked ? 'prompt.locked' : target.open ? 'prompt.close' : 'prompt.open', { key: doorKey, door: doorName(target.name) }) : '';
@@ -3779,6 +3811,7 @@ renderer.setAnimationLoop((now: number) => {
     else if (nearSint) prompt = t(nearSint.spec.prompt, { use });
     else if (nearBoard) prompt = t('prompt.board', { use });
     else if (player.towerHint && !inCar && !onHorse) prompt = towerPrompt(player.towerHint, mode); // the play tower's ladder
+    if (helis.aboard || nearHeli) prompt = helis.line(mode, nearHeli, heliWhy); // the helicopter: in it what to do, beside it how to get in
     if (ball && !tagWho && !driving && !riding) prompt = t('prompt.kick', { key: key(action && !noShoot(player.x, player.z) ? 'use' : 'click', mode), run: key('sprint', mode) });
     if (stallAim) prompt = stallAim === 'shut' ? t('srv.zStallShut') : stallChip.line(stallAim, mode);
     if (downed) prompt = helping?.start ? t('prompt.reviving', { name: downed }) : t('prompt.revive', { use, name: downed });
@@ -3880,6 +3913,7 @@ renderer.setAnimationLoop((now: number) => {
   netClock.frame(now); // the time the others are drawn at (net/track.ts)
   for (const c of cars) c.update(dt, driving && c === car, camera.position);
   carPeople.update(dt, cars, driving || riding ? { car, passenger: riding } : null, myColour(), camera); // seated as the cars are drawn
+  helis.update(dt, camera, !menu.open && combat.alive); // the helicopters and, flying, their instruments
   const cycling = driving || riding ? null : bikes.ridden;
   speedometer.update(!menu.open && combat.alive ? (driving || riding ? car.speed : cycling?.speed ?? null) : null, cycling ? BIKES_DATA.maxSpeed : car.spec.maxSpeed);
   combat.tick(dt);
@@ -3968,7 +4002,7 @@ renderer.setAnimationLoop((now: number) => {
   sintMaarten.update(dt, camera, driving || riding || horses.mounted >= 0 || bikes.mounted ? null : { x: player.x, z: player.z }, !menu.open, { w: window.innerWidth, h: window.innerHeight }, villagers);
   townBoard.update(camera.position);
   // The footballs: walked into on foot (alone here; together the server does it too, and leads).
-  const onFoot = combat.alive && !driving && !riding && !bikes.mounted && horses.mounted < 0 && !player.flying && player.chute === null;
+  const onFoot = combat.alive && !driving && !riding && !bikes.mounted && horses.mounted < 0 && !helis.aboard && !player.flying && player.chute === null;
   if (frame.speedStep > 0) goals.press(); // the controller's race button: the D-pad's right, free while playing (K and a tap: world/goals.ts)
   goals.update(dt, camera, { x: player.x, z: player.z, feet: player.feet, yaw: player.yaw, by: driving ? 'car' : bikes.mounted ? 'bike' : onFoot ? 'foot' : null, on: goals.group.visible && !menu.open && !trip && combat.alive && !player.flying && player.chute === null });
   football.update(dt, camera.position, onFoot ? { x: player.x, z: player.z, feet: player.feet, name: me?.username ?? '' } : null, net.connected);
@@ -4015,13 +4049,14 @@ renderer.setAnimationLoop((now: number) => {
     ];
     const shapes = [...furnishing.pieces.values()].filter((p) => !p.item.startsWith('rug')).map((p) => ({ ring: footprint(p), y: p.y }));
     for (const c of cars) if (c.ready) shapes.push({ ring: c.footprint(), y: c.y });
+    for (const h of helis.machines) shapes.push({ ring: h.footprint(), y: h.s.y });
     // The floor by the height above the ground there (the village stands 5 m higher than the plot).
     // A waypoint from the big map is done when you reach it.
     if (bigMap.waypoint && Math.hypot(bigMap.waypoint.x - player.x, bigMap.waypoint.z - player.z) < 6) bigMap.waypoint = bigMap.route = null;
     if (bigMap.waypoint && (routeTimer += 0.05) > 0.5) updateRoute();
     minimap.race = bigMap.race = goals.nav(); // a timed race's way along the roads (world/goals.ts)
     minimap.facing = driving || riding ? car.yaw : bikes.mounted ? bikes.ridden?.yaw ?? null : horses.mounted >= 0 ? (horses.ridden?.yaw ?? 0) + Math.PI : null; // your arrow: the way your car, bike or horse points
-    minimap.draw(player.x, player.z, player.feet - (endHouse?.floorAt(player.x, player.z) ?? terrain.height(player.x, player.z)), minimap.heading(camera), weapon.enabled ? blips : blips.filter((b) => b.kind !== 'item'), shapes, rules.portals ? portalMarks : [], bigMap.waypoint, bigMap.route, inside);
+    minimap.draw(player.x, player.z, player.feet - (endHouse?.floorAt(player.x, player.z) ?? terrain.height(player.x, player.z)), minimap.heading(camera), weapon.enabled ? blips : blips.filter((b) => b.kind !== 'item'), shapes, [...(rules.portals ? portalMarks : []), ...helis.padMarks()], bigMap.waypoint, bigMap.route, inside);
   }
   horizon.position.x = camera.position.x;
   horizon.position.z = camera.position.z;
@@ -4309,6 +4344,7 @@ async function buildVillage(): Promise<void> {
     layGround(pi, pj);
   }
   for (const t of data.trees) trunks.push({ x: t.x, z: t.z, r: 0.35 });
+  heliCrowns.push(...data.trees); // the village's crowns for the helicopter
   pruneTrunks();
   trunkBlocks.add(data.trees);
   for (const m of models) trunkBlocks.add((m.userData.conifers as TreeSpot[] | undefined) ?? []);
@@ -4669,6 +4705,8 @@ if (import.meta.env.DEV) {
       getOnBike,
       getOffBike,
       driving: () => driving,
+      /** The helicopters (src/heliPilot.ts): helis.dev.put('church', 1), helis.dev.deck(), helis.dev.state(). */
+      helis,
       furnishing,
       feedback,
       /** Seconds played towards the feedback card, and what holds it back. */

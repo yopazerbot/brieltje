@@ -1,0 +1,51 @@
+/* The helicopter's instruments, in the speedometer's place and look (ui/speedometer.css): slate, warm digits. */
+#heli-hud {
+  position: absolute;
+  right: 28px;
+  bottom: calc(72px + env(safe-area-inset-bottom, 0px)); /* over the Sound button */
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  padding: 13px 16px 12px;
+  border: 1px solid rgba(245, 239, 228, 0.18);
+  border-radius: 18px;
+  background: rgba(22, 32, 42, 0.88);
+  color: var(--ink);
+  box-shadow: 0 5px 20px rgba(0, 0, 0, 0.2);
+  text-shadow: none;
+  text-align: right;
+  pointer-events: none;
+}
+#heli-hud[hidden] { display: none; }
+#heli-hud .speed-value { font-size: 46px; }
+#heli-hud .heli-main { min-width: 104px; }
+#heli-hud .heli-rotor { margin-top: 8px; }
+#heli-hud .heli-rotor[hidden] { display: none; }
+.heli-row { display: flex; justify-content: flex-end; align-items: baseline; gap: 6px; margin-top: 8px; font-size: 13px; color: var(--ink-soft); font-variant-numeric: tabular-nums; white-space: nowrap; }
+.heli-height { margin-left: 8px; color: var(--ink); font-weight: 700; }
+.heli-arrow { display: inline-block; width: 0; height: 0; border-left: 5px solid transparent; border-right: 5px solid transparent; }
+.heli-arrow[data-way=up] { border-bottom: 8px solid var(--lamp); }
+.heli-arrow[data-way=down] { border-top: 8px solid var(--lamp); }
+.heli-arrow[data-way=level] { width: 10px; height: 2px; border: 0; background: var(--ink-soft); }
+/* The horizon: a disc, sky over ground, turned and shifted; the machine's level line fixed over it. */
+.heli-horizon { position: relative; flex: none; width: 44px; height: 44px; overflow: hidden; border-radius: 50%; border: 1px solid rgba(245, 239, 228, 0.3); }
+.heli-sky { position: absolute; inset: -50%; background: linear-gradient(#5d8fb8 50%, #6b5440 50%); }
+.heli-mark { position: absolute; left: 9px; right: 9px; top: 21px; height: 2px; background: var(--lamp); border-radius: 1px; }
+body:not(.touch).heli-hud #toast { bottom: 155px; }
+/* On touch: under the map, where the speedometer goes; smaller. */
+body.touch #heli-hud { top: 130px; bottom: auto; right: 12px; gap: 9px; padding: 8px 10px; border-radius: 13px; }
+body.touch #heli-hud .speed-value { font-size: 32px; }
+body.touch #heli-hud .heli-main { min-width: 78px; }
+body.touch .heli-row { font-size: 11px; margin-top: 5px; }
+body.touch .heli-horizon { width: 34px; height: 34px; }
+body.touch .heli-mark { left: 7px; right: 7px; top: 16px; }
+@media (max-height: 380px) { body.touch #heli-hud { right: 104px; } }
+@media (min-height: 600px) { body.touch #heli-hud { top: 160px; } }
+body.compact #heli-hud { right: 12px; bottom: 8px; padding: 7px 9px; border-radius: 12px; gap: 8px; }
+body.compact #heli-hud .speed-value { font-size: 30px; }
+/* The touch buttons in the helicopter (controls/touch.ts, state 'heli'): Up over Down on the right, Use and View beside them. */
+body.touch[data-touch=heli] #touch.heli .t-jump { right: 26px; bottom: 112px; width: 72px; height: 72px; font-size: 13px; }
+body.touch[data-touch=heli] #touch.heli .t-down { right: 26px; bottom: 26px; width: 72px; height: 72px; font-size: 13px; }
+body.touch[data-touch=heli] #touch.heli .t-use { right: 112px; bottom: 30px; width: 56px; height: 56px; }
+body.touch[data-touch=heli] #touch.heli .t-view { right: 112px; bottom: 104px; width: 48px; height: 48px; font-size: 11px; }
+body.touch[data-touch=heli] #prompt { right: 190px; }

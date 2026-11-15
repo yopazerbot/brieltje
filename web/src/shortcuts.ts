@@ -61,6 +61,12 @@ const TABLE = {
   handbrake: { kbm: say('key.space'), pad: pad('south'), touch: say('touch.handbrake') },
   /** A bike's bell (the jump key, as the car's handbrake). */
   bell: { kbm: say('key.space'), pad: pad('south'), touch: say('touch.bell') },
+  /** The helicopter (src/heliPilot.ts): it moves as you walk, turns as you look and rises and sinks as you fly on foot. */
+  heliMove: { kbm: () => moveKeys(), pad: say('key.leftStick'), touch: say('tctl.move') },
+  heliTurn: { kbm: () => t('key.or', { a: t('key.mouse'), b: '← / →' }), pad: say('key.rightStick'), touch: say('tctl.look') },
+  heliUp: { kbm: say('key.space'), pad: pads('r2', 'south'), touch: say('touch.up') },
+  heliDown: { kbm: () => t('key.or', { a: t('key.ctrlC'), b: keyName('KeyC') }), pad: pads('l2', 'east'), touch: say('touch.down') },
+  heliView: { kbm: place('KeyI'), pad: pad('r3'), touch: say('touch.view') },
   /** A place in a portal's list (digits pick only places while it shows: src/ui/travel.ts). */
   portal: {
     kbm: (): string => t('travel.pickKbm', { n: PORTALS.length, use: key('use', 'kbm') }),
@@ -170,6 +176,7 @@ function padOrKeyGroups(control: 'kbm' | 'pad', action: boolean): Group[] {
       ],
     },
     { title: t('ctl.bikes'), rows: [[t('ctl.getOn'), k('use')], [t('ctl.pedal'), k('drive')], [t('ctl.steer'), k('steer')], [t('ctl.bell'), k('bell')]] },
+    heliGroup(k),
     {
       title: t('ctl.other'),
       rows: [
@@ -191,6 +198,17 @@ function padOrKeyGroups(control: 'kbm' | 'pad', action: boolean): Group[] {
     },
   );
   return groups;
+}
+
+/** The helicopter's group, the same for every way of playing. */
+function heliGroup(k: (a: Action) => string): Group {
+  return {
+    title: t('ctl.heli'),
+    rows: [
+      [t('ctl.heliIn'), k('use')], [t('ctl.heliStart'), t('key.hold', { key: k('heliUp') })], [t('ctl.heliFly'), k('heliMove')], [t('ctl.heliTurn'), k('heliTurn')],
+      [t('ctl.heliUp'), k('heliUp')], [t('ctl.heliDown'), k('heliDown')], [t('ctl.heliView'), k('heliView')],
+    ],
+  };
 }
 
 /** The touch controls: the same groups in a few lines. */
@@ -222,6 +240,7 @@ function touchGroups(action: boolean): Group[] {
       rows: [[t('ctl.getOn'), k('use')], [t('ctl.faster'), k('drive')], [t('ctl.steer'), k('steer')], [t('ctl.gallop'), k('sprint')], [t('ctl.jump'), k('jump')]],
     },
     { title: t('ctl.bikes'), rows: [[t('ctl.getOn'), k('use')], [t('ctl.pedal'), k('drive')], [t('ctl.steer'), k('steer')], [t('ctl.bell'), k('bell')]] },
+    heliGroup(k),
     {
       title: t('ctl.portals'),
       rows: [[t('tctl.goElsewhere'), t('tctl.goElsewhereHow')], [t('ctl.withCar'), t('tctl.withCarHow')], [t('ctl.fromMenu'), t('tctl.fromMenuHow')]],

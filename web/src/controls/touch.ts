@@ -10,7 +10,7 @@ import { onLang, t, type PlainKey } from '../i18n';
 const STICK_R = 56; // px: how far the stick's knob goes from where the thumb landed
 const LOOK = 1.6;   // look speed: a drag in px counts as this many mouse px
 
-type Button = 'fire' | 'aim' | 'brake' | 'jump' | 'use' | 'reload' | 'nade' | 'weapon' | 'down' | 'run' | 'menu';
+type Button = 'fire' | 'aim' | 'brake' | 'jump' | 'use' | 'reload' | 'nade' | 'weapon' | 'down' | 'run' | 'menu' | 'view';
 
 /**
  * Which buttons show depends on what you are doing: walking (Explore, or on a horse), fighting
@@ -21,7 +21,7 @@ type Button = 'fire' | 'aim' | 'brake' | 'jump' | 'use' | 'reload' | 'nade' | 'w
  * riding along and on a bike it is the car's, `#touch.driving` at the wheel), so no button is left where
  * it makes no sense, and the HUD keeps clear of the ones that show.
  */
-export type TouchState = 'walk' | 'fight' | 'drive' | 'car' | 'bike' | 'fall' | 'canopy';
+export type TouchState = 'walk' | 'fight' | 'drive' | 'car' | 'bike' | 'fall' | 'canopy' | 'heli';
 
 // Each button's label (src/i18n.ts) in the states it shows in; '⇄' and '☰' are signs, the same in every language.
 const BUTTONS: [Button, Partial<Record<TouchState, PlainKey | '⇄' | '☰'>>][] = [
@@ -31,11 +31,12 @@ const BUTTONS: [Button, Partial<Record<TouchState, PlainKey | '⇄' | '☰'>>][]
   ['nade', { fight: 'touch.nade' }],
   ['weapon', { fight: '⇄' }],
   ['brake', { drive: 'touch.brake' }],
-  ['jump', { walk: 'touch.jump', fight: 'touch.jump', drive: 'touch.handbrake', bike: 'touch.bell', fall: 'touch.open' }], // the handbrake at the wheel, the bell on a bike, the canopy in a free fall
-  ['use', { walk: 'touch.use', fight: 'touch.use', drive: 'touch.use', car: 'touch.use', bike: 'touch.use' }],
-  ['down', { walk: 'touch.down', fight: 'touch.down', fall: 'touch.dive' }],
+  ['jump', { walk: 'touch.jump', fight: 'touch.jump', drive: 'touch.handbrake', bike: 'touch.bell', fall: 'touch.open', heli: 'touch.up' }], // the handbrake at the wheel, the bell on a bike, the canopy in a free fall, up in the helicopter
+  ['use', { walk: 'touch.use', fight: 'touch.use', drive: 'touch.use', car: 'touch.use', bike: 'touch.use', heli: 'touch.use' }],
+  ['down', { walk: 'touch.down', fight: 'touch.down', fall: 'touch.dive', heli: 'touch.down' }],
+  ['view', { heli: 'touch.view' }], // the helicopter: behind it or from the pilot's seat
   ['run', { walk: 'touch.run', fight: 'touch.run' }],
-  ['menu', { walk: '☰', fight: '☰', drive: '☰', car: '☰', bike: '☰', fall: '☰', canopy: '☰' }],
+  ['menu', { walk: '☰', fight: '☰', drive: '☰', car: '☰', bike: '☰', fall: '☰', canopy: '☰', heli: '☰' }],
 ];
 /** At the wheel the stick's sideways push counts this much more, so a thumb pushed up and aside still turns the wheel all the way. */
 const DRIVE_STEER = 1.4;
@@ -170,13 +171,14 @@ export class TouchControls {
     if (el && !el.classList.contains('hidden')) el.textContent = label(on ? 'touch.breath' : 'touch.run');
   }
 
-  /** Which buttons show: in a drop (its free fall or under the canopy), fighting on foot, walking, in a car (`wheel`: at the wheel), or on a bike. */
-  setState(action: boolean, inCar: boolean, drop: 'fall' | 'canopy' | null = null, bike = false, wheel = false): void {
-    const state: TouchState = drop ?? (bike ? 'bike' : inCar ? (wheel ? 'drive' : 'car') : action ? 'fight' : 'walk');
+  /** Which buttons show: in a drop (its free fall or under the canopy), fighting on foot, walking, in a car (`wheel`: at the wheel), on a bike, or flying the helicopter. */
+  setState(action: boolean, inCar: boolean, drop: 'fall' | 'canopy' | null = null, bike = false, wheel = false, heli = false): void {
+    const state: TouchState = drop ?? (heli ? 'heli' : bike ? 'bike' : inCar ? (wheel ? 'drive' : 'car') : action ? 'fight' : 'walk');
     if (state === this.state) return;
     this.state = state;
     document.body.dataset.touch = state === 'bike' || state === 'drive' ? 'car' : state; // the layout for this state (style.css); a bike's is the car's
     this.root.classList.toggle('driving', state === 'drive');
+    this.root.classList.toggle('heli', state === 'heli'); // its layout: ui/heliHud.css
     for (const [name, labels] of BUTTONS) {
       const el = this.els.get(name)!;
       const k = labels[state];
@@ -214,6 +216,7 @@ export class TouchControls {
     out.throwPressed ||= has('nade');
     out.throwHeld ||= holds('nade');
     if (has('weapon')) out.weaponCycle = 1;
+    if (has('view')) out.scopePressed = true; // the helicopter's view (src/heliPilot.ts), as R3
     out.menuPressed ||= has('menu');
     this.pressed.clear();
   }

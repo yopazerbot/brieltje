@@ -140,6 +140,13 @@ export class Input {
   private keyScope = false;
   private keyThrow = false;
   private cycle = 0;
+  private keyView = false;
+  /**
+   * The helicopter's extras this frame (src/heliPilot.ts): forward and sideways before the stick's push is evened out
+   * to length 1, without the arrow keys' left and right (`turn`: they turn it); R2 less L2 (up and down); I pressed
+   * (the cockpit view).
+   */
+  heli = { fwd: 0, side: 0, turn: 0, triggers: 0, view: false };
 
   constructor(private canvas: HTMLCanvasElement) {
     window.addEventListener('keyup', (e) => {
@@ -160,6 +167,7 @@ export class Input {
       if (e.code === 'KeyQ' && !e.repeat) this.cycle = 2;
       if (e.code === 'KeyG' && !e.repeat) this.keyThrow = true;
       if (e.code === 'KeyB' && !e.repeat) this.keyScope = true;
+      if (e.code === 'KeyI' && !e.repeat) this.keyView = true;
       if ((e.code === 'KeyX' || e.code === 'Delete') && !e.repeat) this.keyDelete = true;
       // While playing: no page scrolling or focus jumps. In a menu they move the keyboard's focus and the sliders.
       if (!this.menuOpen() && (e.code === 'Space' || e.code === 'Tab' || e.code.startsWith('Arrow'))) e.preventDefault();
@@ -318,6 +326,10 @@ export class Input {
     }
 
     this.touch?.into(out);
+    const arrows = (k('ArrowRight') ? 1 : 0) - (k('ArrowLeft') ? 1 : 0);
+    const trigger = (b: number) => (p ? p.buttons[b]?.value ?? 0 : 0);
+    this.heli = { fwd: Math.max(-1, Math.min(1, out.moveY)), side: Math.max(-1, Math.min(1, out.moveX - arrows)), turn: arrows, triggers: trigger(BTN.r2) - trigger(BTN.l2), view: this.keyView };
+    this.keyView = false;
     out.steer = Math.max(-1, Math.min(1, out.moveX));
     const mag = Math.hypot(out.moveX, out.moveY);
     if (mag > 1) {
