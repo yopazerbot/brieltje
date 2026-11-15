@@ -170,6 +170,21 @@ test('stepRun: a long step, a change of vehicle or two minutes without a point s
   assert.equal(stepRun(null, ROUTE, { x: 0, z: 0.5 }, { x: 1, z: 0 }, 'foot', 0).event, null);
 });
 
+test('stepRun: stepMax, when given, is the longest step instead of the page\'s', () => {
+  const CAR = { ...ROUTE, by: 'car', radius: 8 };
+  // The page's 20 m for a car; the server's budget lets a caught-up car step 34 m.
+  assert.equal(stepRun(null, CAR, { x: -40, z: 0 }, { x: -7, z: 0 }, 'car', 0).event, null);
+  assert.equal(stepRun(null, CAR, { x: -40, z: 0 }, { x: -7, z: 0 }, 'car', 0, 34).event, 'start');
+  const r0 = stepRun(null, CAR, { x: -12, z: 0 }, { x: -7, z: 0 }, 'car', 0);
+  assert.equal(stepRun(r0.run, CAR, { x: -7, z: 0 }, { x: 20, z: 0 }, 'car', 50).event, 'stop');
+  assert.notEqual(stepRun(r0.run, CAR, { x: -7, z: 0 }, { x: 20, z: 0 }, 'car', 50, 34).event, 'stop');
+  // And smaller: a foot step of 4 m is too long for a cap of 3.
+  const f0 = stepRun(null, ROUTE, { x: -3, z: 0 }, { x: -1, z: 0 }, 'foot', 0, 3);
+  assert.equal(f0.event, 'start');
+  assert.equal(stepRun(f0.run, ROUTE, { x: -1, z: 0 }, { x: 3, z: 0 }, 'foot', 50, 3).event, 'stop');
+  assert.equal(stepRun(f0.run, ROUTE, { x: -1, z: 0 }, { x: 1, z: 0 }, 'foot', 50, 3).event, null);
+});
+
 test('formatTime: m:ss.d, a comma in Dutch', () => {
   assert.equal(formatTime(23400), '0:23.4');
   assert.equal(formatTime(67449, true), '1:07,4');

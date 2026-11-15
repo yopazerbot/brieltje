@@ -95,22 +95,24 @@ export const pointsOf = (route) => [...route.checkpoints, route.gate];
  * `run`: null, or { id, next (index into pointsOf), t0, last } (ms). Returns the run after it and what happened:
  * 'start' (through the gate, from outside it, in a step no longer than STEP_MAX, towards the first checkpoint, moving as the route asks), 'checkpoint',
  * 'finish' (with `time` in ms), 'stop' (moved another way, a step too long, or too long since the last point), or null.
+ * `stepMax`: the longest step that keeps a run going (m), the page's STEP_MAX unless given (the server passes its own
+ * movement budget's cap: server/goals.mjs).
  */
-export function stepRun(run, route, from, to, by, nowMs) {
+export function stepRun(run, route, from, to, by, nowMs, stepMax = STEP_MAX[route.by] ?? 5) {
   const r = route.radius;
   const [gx, gz] = route.gate;
   if (!run || run.id !== route.id) {
     if (by !== route.by) return { run: null, event: null };
     if (Math.hypot(from.x - gx, from.z - gz) < r) return { run: null, event: null }; // already in it: go through it
     // A hop (a trip, a respawn, a teleport) is no way through it.
-    if (!(Math.hypot(to.x - from.x, to.z - from.z) <= (STEP_MAX[route.by] ?? 5))) return { run: null, event: null };
+    if (!(Math.hypot(to.x - from.x, to.z - from.z) <= stepMax)) return { run: null, event: null };
     if (!passes(from.x, from.z, to.x, to.z, gx, gz, r)) return { run: null, event: null };
     const [fx, fz] = route.checkpoints[0];
     if ((to.x - from.x) * (fx - gx) + (to.z - from.z) * (fz - gz) <= 0) return { run: null, event: null }; // the wrong way
     return { run: { id: route.id, next: 0, t0: nowMs, last: nowMs }, event: 'start' };
   }
   const step = Math.hypot(to.x - from.x, to.z - from.z);
-  if (by !== route.by || !(step <= (STEP_MAX[route.by] ?? 5)) || nowMs - run.last > TIMEOUT_MS) return { run: null, event: 'stop' };
+  if (by !== route.by || !(step <= stepMax) || nowMs - run.last > TIMEOUT_MS) return { run: null, event: 'stop' };
   const points = pointsOf(route);
   const [px, pz] = points[run.next];
   if (!passes(from.x, from.z, to.x, to.z, px, pz, r)) return { run, event: null };

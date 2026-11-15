@@ -42,6 +42,8 @@ export function stepRun(
   to: { x: number; z: number },
   by: By | null,
   nowMs: number,
+  /** The longest step that keeps a run going (m); STEP_MAX[route.by] when left out */
+  stepMax?: number,
 ): { run: Run | null; event: RunEvent; time?: number };
 export function formatTime(ms: number, comma?: boolean): string;
 
