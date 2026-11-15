@@ -72,6 +72,8 @@ file's opening comment; run it again after adding, moving or removing a module.
 - `web/src/ui/startFlow.ts`: The start screen's three steps (Yoshi, 8 Nov 2026: "I first want people to select if they play as guests or if they want to log in.
 - `web/src/ui/tactics.ts`: Small world-space placement guides and screen-space cooperative markers.
 - `web/src/ui/travel.ts`: The list of places while you stand on a portal's pad (or stop the car on it): every portal by its number, how far it is, the one you came from marked "back"...
+- `web/src/ui/viewHeading.test.mjs`: A camera's forward and up as three.js builds them from yaw, pitch (rotation order YXZ) and no roll.
+- `web/src/ui/viewHeading.ts`: Which way the view looks, flat on the ground: the minimap's up (ui/minimap.ts).
 - `web/src/ui/watchView.ts`: A view of the admin's watch page (src/watch.ts): the camera follows one player, behind them (over their shoulder, a few metres back, further when they...
 - `web/src/ui/zombieWave.ts`: The admin's wave picker; the server authorizes and applies every change.
 - `web/src/watch.ts`: Watching (Yoshi, 11 Nov 2026: "continue building the spectator views.
