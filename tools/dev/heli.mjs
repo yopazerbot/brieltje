@@ -280,6 +280,7 @@ try {
   check(!(await b.evaluate('briel.helis.dev.state().sound')) && (await S('s.rotor')) === 0, 'the rotor ran down and nothing plays any more');
 
   // The church's platform: a test deck (until the church has its own), a landing from 12 m over it after a sidestep.
+  if (phone) await b.send('Input.dispatchTouchEvent', { type: 'touchCancel', touchPoints: [] }); // no button left held from before
   await b.evaluate('briel.helis.dev.deck()');
   const pad = await b.evaluate("briel.helis.dev.put('church', 1)");
   await b.evaluate(`briel.teleport(${pad.x}, ${pad.z}, ${pad.y}, 0)`, false);
