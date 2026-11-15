@@ -79,7 +79,7 @@ function touchdown(frames) {
 const putAir = (x, z, h, yaw, v = [0, 0]) => b.evaluate(`(() => { const m = briel.helis.machines[0]; const g = briel.world.groundAt(${x}, ${z}, 999, 0).y; m.place(${x}, g, ${z}, ${yaw}, 1); Object.assign(m.s, { y: g + ${h}, holdY: g + ${h}, heightHeld: true, ground: ${h} <= 0, vx: ${v[0]}, vz: ${v[1]}, holding: false, coll: 0.5 }); return g; })()`);
 
 try {
-  await b.send('Page.addScriptToEvaluateOnNewDocument', { source: `localStorage.setItem('briel.graphics','${o.quality}');localStorage.setItem('briel.lang','${o.lang}');localStorage.setItem('briel.spawn','house');localStorage.setItem('briel.playMode','explore');` });
+  await b.send('Page.addScriptToEvaluateOnNewDocument', { source: `localStorage.setItem('briel.graphics','${o.quality}');localStorage.setItem('briel.lang','${o.lang}');localStorage.setItem('briel.spawn','house');localStorage.setItem('briel.playMode','explore');localStorage.setItem('briel.feedback','later');` }); // no feedback card in the middle of a run
   const url = new URL(o.url);
   url.searchParams.set('nobake', '');
   await startGame(b, url.href, { phone });
@@ -200,10 +200,12 @@ try {
 
   // The dash, the turn and the stop: from 70 m over the house's meadow (over the church's spire), towards the village.
   const fromHome = await b.evaluate("briel.helis.dev.put('house', 1)");
-  await putAir(fromHome.x, fromHome.z, 70, Math.atan2(-(512 - fromHome.x), -(-750 - fromHome.z)));
+  // The heading with the most room: of 16, the one whose next 1.5 km stays deepest inside the edge.
+  const roomy = await b.evaluate(`(() => { const e = briel.world.bounds; let best = 0, yaw = 0; for (let k = 0; k < 16; k++) { const a = (k / 16) * Math.PI * 2; let least = Infinity; for (let d = 0; d <= 1500; d += 50) least = Math.min(least, e.depth(${fromHome.x} - Math.sin(a) * d, ${fromHome.z} - Math.cos(a) * d)); if (least > best) { best = least; yaw = a; } } return yaw; })()`);
+  await putAir(fromHome.x, fromHome.z, 70, roomy);
   await b.sleep(1500);
   await forward(1);
-  const dash = await until(() => false, 22, 200);
+  const dash = await until(() => false, 14, 200);
   await shot('chase-dash');
   const top = Math.max(...dash.map(speed));
   const t90 = dash.find((s) => speed(s) > 0.9 * top)?.t ?? NaN;
@@ -223,7 +225,8 @@ try {
   await shot('chase-turn');
   await turnRight(false);
   check(await b.evaluate('briel.helis.aboard') && (await S('s.down')) === 0, 'still flying after the dash and the turn (no bump on the way)');
-  row('full turn at cruise', `${r1(turn.at(-1).t)} s at ${r1(speed(turn.at(-1)) * 3.6)} km/h, radius ${r1((Math.max(...xs) - Math.min(...xs) + Math.max(...zs) - Math.min(...zs)) / 4)} m, bank ${deg(Math.max(...turn.map((s) => s.roll)))} deg, height ${r1(Math.max(...turn.map((s) => s.y)) - Math.min(...turn.map((s) => s.y)))} m`);
+  const inside = await b.evaluate(`briel.world.bounds.depth(${turn.at(-1).x}, ${turn.at(-1).z})`);
+  row('full turn at cruise', `${r1(inside)} m inside the edge; ${r1(turn.at(-1).t)} s at ${r1(speed(turn.at(-1)) * 3.6)} km/h, radius ${r1((Math.max(...xs) - Math.min(...xs) + Math.max(...zs) - Math.min(...zs)) / 4)} m, bank ${deg(Math.max(...turn.map((s) => s.roll)))} deg, height ${r1(Math.max(...turn.map((s) => s.y)) - Math.min(...turn.map((s) => s.y)))} m`);
   await forward(0);
   const s0 = await state();
   const stop = await until((s) => speed(s) < 0.5, 30, 100);
@@ -285,7 +288,7 @@ try {
   await until((s) => s.h > 12, 10);
   await lift(false);
   await down('KeyD');
-  await b.sleep(1200);
+  await b.sleep(400); // a short step aside (the deck is 6 m wide); the pad's pull brings it back over the middle
   await up('KeyD');
   await b.sleep(2500);
   await record();
@@ -323,8 +326,10 @@ try {
     const bumped = f.some((x) => x[4] & 4);
     await lift(true);
     const t0 = Date.now();
-    await b.waitFor('!briel.helis.machines[0].s.ground && briel.helis.machines[0].s.down === 0', 30000).catch(() => {});
+    const again = await until((q) => !q.ground && q.down === 0, 30);
+    if (again.at(-1).ground) console.log('  still down:', JSON.stringify(again.at(-1)), await b.evaluate('briel.helis.aboard'));
     await lift(false);
+    check(!again.at(-1).ground && again.at(-1).down === 0, `after the bump into the wall at ${v} m/s it flies again (${r1(again.at(-1).t)} s with up held)`);
     row(`into a wall at ${v} m/s`, `${bumped ? 'a bump (sparks or dust, a clang, set down)' : 'stopped, no bump'}; flying again ${r1((Date.now() - t0) / 1000)} s after (up held)`);
   }
   const crown = await b.evaluate(`(() => { const p = briel.helis.machines[0].s; let best = null, d = Infinity; for (const c of briel.helis.dev.crowns()) { const e = Math.hypot(c.x - p.x, c.z - p.z); if (c.h > 8 && e < d) { d = e; best = c; } } return best; })()`);
@@ -346,8 +351,10 @@ try {
   await b.evaluate("briel.zombiesSolo.start('house')").catch(() => {});
   await b.sleep(1500);
   check(!(await b.evaluate('briel.helis.aboard')), 'Zombies puts you on your feet');
-  await b.evaluate(`briel.teleport(${hm.x + 2}, ${hm.z - 0.6}, ${hm.y}, 1.2)`, false);
-  await b.sleep(300);
+  await b.sleep(3000); // the game's start places you; then back beside the machine
+  const hz = await state();
+  await b.evaluate(`briel.teleport(${hz.x + 2}, ${hz.z - 0.6}, ${hz.y}, 1.2)`, false);
+  await b.sleep(400);
   await tap('KeyE');
   await b.sleep(300);
   check(!(await b.evaluate('briel.helis.aboard')), `no boarding in Zombies ("${await prompt()}", ${r1(await b.evaluate('briel.helis.machines[0].distanceTo(briel.player.x, briel.player.z)'))} m from it)`);
