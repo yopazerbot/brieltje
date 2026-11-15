@@ -12,6 +12,7 @@ export const STEP_UP = 0.5;       // m, highest edge you walk onto without jumpi
 const SPRINT_FACTOR = 2.5; // sprint speed = walking speed x this
 const GRAVITY = 9.81;      // m/s2
 const JUMP_HEIGHT = 0.5;   // m
+const RISE = 4;            // m/s: lifted out of a roof that came in round you
 const STUMBLE = 0.7;       // s a hard landing shakes you
 
 /**
@@ -223,8 +224,16 @@ export class Player {
     const pos = { x: this.x, z: this.z };
     for (let i = 0; i < steps; i++) {
       const was = { x: pos.x, z: pos.z };
-      pos.x += (this.vx * dt) / steps;
-      pos.z += (this.vz * dt) / steps;
+      let sx = (this.vx * dt) / steps;
+      let sz = (this.vz * dt) / steps;
+      // Up a roof slower the steeper it is: full pace to 35 degrees, none from 60 (down and along free; world/roofField.ts).
+      if (this.chute === null && !this.flying && this.ground.mat === 'roof' && this.feet <= this.ground.y + 0.01) {
+        const k = this.world.roofClimb(pos.x, pos.z, sx, sz);
+        sx *= k;
+        sz *= k;
+      }
+      pos.x += sx;
+      pos.z += sz;
       this.world.resolve(pos, this.feet, RADIUS, STEP_UP, HEIGHT);
       if (this.world.keepIn(pos, RADIUS)) this.atEdge = true;
       // A drawn roof rising beside you (a gable over a lower roof, a chimney, a dormer, a low eave) pushes you off as a
@@ -239,7 +248,8 @@ export class Player {
       }
       this.ground = this.world.groundAt(pos.x, pos.z, this.feet, STEP_UP);
       this.wetHere = this.chute === null ? wetGround(pos.x, pos.z, this.ground) : null; // a pond's floor, or afloat
-      if (this.ground.y > this.feet && this.vy <= 0) this.feet = this.ground.y; // step up
+      // Step up; out of a roof that came in round you (world/modelRoofs.ts) at RISE, not in one jolt.
+      if (this.ground.y > this.feet && this.vy <= 0) this.feet = this.lifted(this.ground.y, dt / steps);
     }
     this.x = pos.x;
     this.z = pos.z;
@@ -420,7 +430,19 @@ export class Player {
   }
 
   /** Jumping, falling, and Minecraft-style flying (hold jump to rise, C or Circle to sink). */
+  /**
+   * Feet going up to `floor`: a step at once, but out of a roof the feet are inside (it came in round you after you
+   * stood there: world/modelRoofs.ts fills the models' roofs once play has begun) at RISE m/s.
+   */
+  private lifted(floor: number, dt: number): number {
+    return floor - this.feet <= STEP_UP + 0.01 || this.ground.mat !== 'roof' ? floor : this.feet + Math.min(floor - this.feet, RISE * dt);
+  }
+
   private vertical(dt: number, input: FrameInput): void {
+    if (!this.flying && this.vy <= 0 && this.ground.mat === 'roof' && this.ground.y - this.feet > STEP_UP + 0.01) {
+      this.feet = this.lifted(this.ground.y, dt); // still on the way up out of a roof
+      return;
+    }
     const grounded = !this.flying && this.vy <= 0 && this.feet <= this.ground.y + 0.001;
 
     if (input.jumpPressed) {
