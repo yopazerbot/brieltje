@@ -80,6 +80,10 @@ RING = 500         # m round the plot's middle: the ring loaded at the start (54
 PLOT = (4.45, -3)
 NEAR_MODEL = 80    # m from a street model's house: in the village
 PAD = 6            # m from a portal's middle: its pad (and the list on it) stays for those who walk onto it
+# A street whose spot stays on the stretch nearest a point (model) rather than on its longest: Vrommensweide, a track
+# from Molenhoek's far end to Blekte's side arm, keeps the spot it had by its southern end (Blekte made its northern
+# stretch the longer one; the name belongs to the whole track, not to the fork).
+NEAR = {"Vrommensweide": (1711.8, -318.3)}
 
 
 def read(path):
@@ -255,6 +259,9 @@ def main():
             left_out.append(f"{name}: no stretch of {MIN_LENGTH} m inside the edge ({parts[0].length:.0f} m)" if parts else f"{name}: outside the edge")
             continue
         line = parts[0]
+        if name in NEAR:  # the stretch nearest a given point, if it is long enough
+            near = min((q for q in parts if q.length >= MIN_LENGTH), key=lambda q: q.distance(Point(NEAR[name])))
+            line = near
         found = None
         n = int(line.length * SLIDE / STEP)
         for k in [0] + [s * j for j in range(1, n + 1) for s in (1, -1)]:
