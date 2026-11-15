@@ -606,8 +606,13 @@ def fork_house():
     W, N, T = wall((uL, 0), (uR, 0), ops)
     lamp(h, W, N, T, 5.45, fl + 1.85)
     h.wbox(W, N, T, "vh_trim", up.s - up.w / 2 + .02, up.s + up.w / 2 - .02, up.y + .45, up.y + up.h - .2, up.reveal - .07, up.reveal - .05, "#e4e2dc")  # a blind half down
-    for y in (.93, 3.68):  # a course of bricks standing out under the sills of each floor
-        h.wbox(W, N, T, "vh_brick", 0, uR - uL, y - .07, y, -.03, 0)
+    for y in (.93, 3.68):  # a course of bricks standing out under the sills of each floor, broken by the doors
+        cuts = sorted((o.s - o.w / 2, o.s + o.w / 2) for o in ops if o.y < y and o.y + o.h > y - .07)
+        s = 0.0
+        for c0, c1 in cuts + [(uR - uL, uR - uL)]:
+            if c0 - s > .05:
+                h.wbox(W, N, T, "vh_brick", s, c0, y - .07, y, -.03, 0)
+            s = max(s, c1)
     h.wbox(W, N, T, "vh_trim", 8.65, 11.35, 2.3, 2.45, -.02, 0, "#9b9893")  # the garage's concrete lintel
     # --- the sides, split where the flat-roofed back rooms begin ------------------------------------------------------
     wall((uR, 0), (5.98, 7.45), [win(3.7, 1.0, 1.2, 1.3), win(3.7, 3.75, 1.2, 1.3)])
