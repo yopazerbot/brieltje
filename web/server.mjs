@@ -148,7 +148,7 @@ async function board(place) {
 const goalBoards = new Boards(store, {
   routes: goalRoutes, gnomeTotal: GOALS.gnomes.length, json: (...a) => json(...a), readJson: (req) => body(req),
   known: async (name) => RESERVED.has(name) || !!(await store.getAccount(name)), log: (event, req, extra) => auth.log(event, req, extra),
-  reserved: [...RESERVED],
+  reserved: [...RESERVED], forget: (name, board, route) => game.goals?.forget(name, board, route),
 });
 
 // The forms count a sender per IPv6 /56 (formBucketOf): one household can't fill their caps for everyone.

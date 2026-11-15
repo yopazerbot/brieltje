@@ -48,6 +48,8 @@ export const WALL_FOOT_M = 1;
 const LINE_HALF_W = 0.05;
 const LINE_Y0 = 0.5;
 const LINE_Y1 = 1.5;
+/** Feet less than this over the ground stand on it; higher, they stand on a block whose top is this near under them. */
+const STAND_MAX = 0.35;
 /** A gnome is found when the step's line comes this much closer than the page's reach (m), the feet this near its height. */
 const GNOME_SLACK = 0.5;
 const GNOME_DY = 2;
@@ -175,12 +177,27 @@ export class GoalTracker {
     return next.y - this.ground(next.x, next.z) <= ABOVE_MAX;
   }
 
-  /** Rule 7: the step's line, 0.5 to 1.5 m over the feet, clear of the blocks. */
+  /**
+   * Rule 7: the step's line clear of the blocks over a body's whole column, up to 1.5 m over the feet. Every step that
+   * moves is tested, however short (a page creeping through a wall in tiny steps is caught too).
+   */
   clear(prev, next, step) {
-    if (step < 0.01) return true;
+    if (step < 1e-6) return true;
     const yaw = Math.atan2(-(next.x - prev.x), -(next.z - prev.z));
-    const lo = Math.min(prev.y, next.y), hi = Math.max(prev.y, next.y);
-    return this.lineFree((prev.x + next.x) / 2, (prev.z + next.z) / 2, yaw, step / 2, LINE_HALF_W, lo + LINE_Y0, hi + LINE_Y1);
+    const lo = Math.min(this.bottom(prev), this.bottom(next)), hi = Math.max(prev.y, next.y);
+    return this.lineFree((prev.x + next.x) / 2, (prev.z + next.z) / 2, yaw, Math.max(step / 2, 0.005), LINE_HALF_W, lo, hi + LINE_Y1);
+  }
+
+  /**
+   * Where a body's column starts: 0.5 m over what the feet stand on. On the ground (or near it): the feet. Higher: a
+   * block just under the feet (a step, a terrace) is what they stand on; with none, they are in the air, and the column
+   * goes down to the ground (feet reported up in the air pass over no wall).
+   */
+  bottom(p) {
+    const g = this.ground(p.x, p.z);
+    if (p.y - g < STAND_MAX) return p.y + LINE_Y0;
+    const on = !this.lineFree(p.x, p.z, 0, 0.05, 0.05, p.y - STAND_MAX, p.y - 0.02);
+    return (on ? p.y : g) + LINE_Y0;
   }
 
   race(name, p, prev, next, by, step, fast) {
@@ -325,6 +342,22 @@ export class GoalTracker {
     }
     const gnomes = [...this.night.gnomes].sort((a, b) => b[1].ids.size - a[1].ids.size || a[1].at - b[1].at).slice(0, TONIGHT_TOP).map(([name, v]) => ({ name, n: v.ids.size }));
     return { races, gnomes };
+  }
+
+  /**
+   * The admin removed a name's rows (server/boards.mjs): what this tracker holds for it goes too. 'gnomes': its found
+   * gnomes in memory (on every connection under that name) and tonight's; 'race': tonight's times (one route's, or all);
+   * 'games': nothing held here. `board` null: all of them.
+   */
+  forget(name, board = null, routeId = null) {
+    if (board === null || board === 'gnomes') {
+      const p = this.players.get(name);
+      if (p) p.found.clear();
+      this.night.gnomes.delete(name);
+    }
+    if (board === null || board === 'race') {
+      for (const [id, list] of Object.entries(this.night.races)) if (routeId === null || id === routeId) list.delete(name);
+    }
   }
 
   /** The host's Reset (server/host.mjs): a new evening. */

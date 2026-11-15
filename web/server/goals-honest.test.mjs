@@ -219,6 +219,44 @@ test('the review\'s edited pages on foot: at the budget, the tightest line, its 
   }
 });
 
+test('hovering 2.9 m up (no flying flag) passes no wall: the tightest line through the rings is refused as on the ground', async () => {
+  const cut = cutLine(ROUTES.foot);
+  for (const y of [0, 2.9]) {
+    const s = session('foot', 'player', cut[0]);
+    try {
+      s.deliver(cut[0][0], cut[0][1], 40, y);
+      s.go(cut.slice(1), 3.4, { y }); // over the floor and under the average: only the walls can refuse it
+      s.stand(3000);
+      await s.flush();
+      assert.deepEqual(s.races(), [], `${y} m up`);
+    } finally {
+      s.close();
+    }
+  }
+  // The metres of that line through blocks, 2.9 m up: the line only 0.5 to 1.5 m over the feet (the first rule) passed
+  // over them, a body's column (now) does not.
+  const s = session('foot', 'player', cut[0]);
+  try {
+    const t = s.game.goals;
+    let before = 0, now = 0;
+    for (let i = 1; i < cut.length; i++) {
+      const [ax, az] = cut[i - 1], [bx, bz] = cut[i];
+      const n = Math.ceil(Math.hypot(bx - ax, bz - az) / 0.2);
+      for (let k = 0; k < n; k++) {
+        const p = { x: ax + ((bx - ax) * k) / n, z: az + ((bz - az) * k) / n }, q = { x: ax + ((bx - ax) * (k + 1)) / n, z: az + ((bz - az) * (k + 1)) / n };
+        p.y = t.ground(p.x, p.z) + 2.9;
+        q.y = t.ground(q.x, q.z) + 2.9;
+        const d = Math.hypot(q.x - p.x, q.z - p.z), yaw = Math.atan2(-(q.x - p.x), -(q.z - p.z));
+        if (!t.lineFree((p.x + q.x) / 2, (p.z + q.z) / 2, yaw, d / 2, 0.05, Math.min(p.y, q.y) + 0.5, Math.max(p.y, q.y) + 1.5)) before += d;
+        if (!t.clear(p, q, d)) now += d;
+      }
+    }
+    assert.ok(before <= 1 && now > 1, `through blocks 2.9 m up: ${before.toFixed(2)} m by the line over the feet, ${now.toFixed(2)} m by the column`);
+  } finally {
+    s.close();
+  }
+});
+
 test('the review\'s edited pages by bike and by car: the tightest line through the houses, at any speed: no time', async () => {
   for (const [id, speeds] of [['bike', [12.9, 11.25, 10, 6.94]], ['car', [66.4, 60.66, 55.6]]]) {
     const cut = cutLine(ROUTES[id]);

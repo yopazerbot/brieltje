@@ -301,6 +301,52 @@ test('walls: by bike a step through a block stops the run; on foot a few metres 
   }
 });
 
+test('walls: steps under a centimetre are tested too: a bike creeping through a wall is stopped', async () => {
+  wall.on = true;
+  Object.assign(wall, { x: 1150, z0: -5, z1: 5 }); // across the loop's first leg
+  try {
+    const s = setup();
+    await s.joined();
+    s.me.x = 990;
+    s.step(990.1, 0, { by: 'bike' });
+    s.go(995.5, 0, 7, { by: 'bike' });
+    s.go(1149, 0, 7, { by: 'bike' });
+    for (let x = 1149; x < 1151.5; x += 0.008) s.step(x, 0, { by: 'bike', ms: 50 }); // 8 mm a state, 0.16 m/s
+    assert.equal(s.g.players.get('anna').run, null, 'stopped in the wall');
+    // And one such step alone is not clear.
+    assert.equal(s.g.clear({ x: 1150, y: 0, z: 0 }, { x: 1150.005, y: 0, z: 0 }, 0.005), false);
+    assert.equal(s.g.clear({ x: 1100, y: 0, z: 0 }, { x: 1100.005, y: 0, z: 0 }, 0.005), true);
+  } finally {
+    Object.assign(wall, { on: false, x: 15, z0: 25, z1: 35 });
+  }
+});
+
+test('the admin\'s removal reaches the live tracker: found gnomes in memory and tonight\'s rows go', async () => {
+  const s = setup();
+  await s.joined();
+  s.step(-5.9, 0);
+  s.lap(3.5);
+  s.go(15, -7.5);
+  await s.flush();
+  assert.equal(s.g.tonight().races.sq.length, 1);
+  assert.equal(s.g.tonight().gnomes.length, 1);
+  assert.ok(s.g.players.get('anna').found.has('g1'));
+  s.g.forget('anna', 'gnomes');
+  assert.equal(s.g.players.get('anna').found.size, 0);
+  assert.deepEqual(s.g.tonight().gnomes, []);
+  assert.equal(s.g.tonight().races.sq.length, 1, 'times stay when only the gnomes are cleared');
+  s.g.forget('anna', 'race', 'lp');
+  assert.equal(s.g.tonight().races.sq.length, 1, 'another route\'s');
+  s.g.forget('anna');
+  assert.deepEqual(s.g.tonight().races.sq, []);
+  // Found again after the removal: written again (the store no longer has it).
+  s.store.found.clear();
+  s.go(15, -20);
+  s.go(15, -7.5);
+  await s.flush();
+  assert.equal(s.writes.filter((w) => w[0] === 'gnome').length, 2);
+});
+
 test('the start: a standing start and a hiccup at the ring count; a burst through the gate gains nothing on the average', async () => {
   // Standing 15 cm outside the ring, the page sending every 300 ms (src/main.ts: a standing player), then off at a run.
   const s = setup();

@@ -127,16 +127,17 @@ const ROUTES = [{ id: 'foot', key: 'foot@1' }, { id: 'bike', key: 'bike@1' }, { 
 async function boards() {
   const { store, done } = await fileStore();
   const logged = [];
+  const forgot = [];
   const b = new Boards(store, {
     routes: ROUTES, gnomeTotal: 30, json, readJson, known: async (n) => RESERVED.has(n) || !!(await store.getAccount(n)), log: (event, _req, extra) => logged.push({ event, ...extra }),
-    reserved: [...RESERVED],
+    reserved: [...RESERVED], forget: (...a) => forgot.push(a),
   });
   const call = async (method, path, { body, headers, panel = null, session = null } = {}) => {
     const r = res();
     const handled = await b.handle(req(method, path, body, headers), r, new URL(path, 'http://game.test'), panel, session);
     return handled ? r : null;
   };
-  return { store, b, logged, call, done };
+  return { store, b, logged, forgot, call, done };
 }
 
 test('GET /api/boards: ten rows at most, only names that pass NAME_RE, kept a while and built again after a change', async () => {
@@ -170,7 +171,11 @@ test('GET /api/boards: ten rows at most, only names that pass NAME_RE, kept a wh
     b.clear();
     assert.equal((await call('GET', '/api/boards')).body.races.foot[0].username, 'fast');
     // Other methods and paths are not this module's.
-    assert.equal(await call('POST', '/api/boards'), null);
+    // Another method on the public paths: 405, never the 401 of a missing session.
+    for (const method of ['POST', 'PUT', 'DELETE', 'HEAD']) {
+      assert.equal((await call(method, '/api/boards')).status, 405, method);
+      assert.equal((await call(method, '/api/boards/mine')).status, 405, `${method} mine`);
+    }
     assert.equal(await call('GET', '/api/boards/other'), null);
   } finally {
     await done();
@@ -197,7 +202,7 @@ test('GET /api/boards/mine: 401 without a session, {} for a guest, the session\'
 });
 
 test('POST /api/admin/boards: the panel\'s admin only, same-origin JSON, checked, at most ten a minute, logged', async () => {
-  const { store, logged, call, done } = await boards();
+  const { store, logged, forgot, call, done } = await boards();
   const panel = { username: 'admin', role: 'admin' };
   const remove = (body, extra = {}) => call('POST', '/api/admin/boards', { body, panel, ...extra });
   try {
@@ -238,7 +243,9 @@ test('POST /api/admin/boards: the panel\'s admin only, same-origin JSON, checked
     await store.saveRaceTime('anna', 'foot@1', 41_000);
     await store.saveGnome('anna', 'g02');
     await store.addGameWin('anna', 'tag');
+    forgot.length = 0;
     const all = await remove({ op: 'remove', name: 'anna' });
+    assert.deepEqual(forgot, [['anna', null, null]], 'the live tracker told: all boards');
     assert.deepEqual([all.status, all.body], [200, { ok: true, removed: 4 }]);
     assert.deepEqual([await store.racesOf('anna'), await store.gnomesOf('anna'), (await store.gamesOf('anna')).wins], [[], [], 0]);
     assert.deepEqual(logged.at(-1), { event: 'board_removed', username: 'admin', detail: 'anna: all boards' });

@@ -34,9 +34,11 @@ export class Boards {
    * `routes`: the game's routes ({ id, key }); `gnomeTotal`: how many gnomes there are; `json(res, status, data)`,
    * `readJson(req)`: server.mjs's; `known(name)`: an account or a reserved name; `log(event, req, extra)`: the login log.
    */
-  constructor(store, { routes, gnomeTotal, json, readJson, known, log, reserved = [], now = () => Date.now() }) {
+  /** `forget(name, board, routeId)`: the live tracker forgets what it holds for a removed name (server/goals.mjs). */
+  constructor(store, { routes, gnomeTotal, json, readJson, known, log, reserved = [], forget = () => {}, now = () => Date.now() }) {
     this.store = store;
     this.reserved = [...reserved];
+    this.forget = forget;
     this.routes = routes;
     this.gnomeTotal = gnomeTotal;
     this.json = json;
@@ -58,7 +60,8 @@ export class Boards {
   /** Answers the boards' paths; false for any other. `panel`: the panel's session or null; `session`: the game's. */
   async handle(req, res, url, panel, session) {
     const p = url.pathname;
-    if (p === '/api/boards' && req.method === 'GET') return (this.json(res, 200, await this.boards()), true);
+    if ((p === '/api/boards' || p === '/api/boards/mine') && req.method !== 'GET') return (this.json(res, 405, { error: 'Not allowed' }, { Allow: 'GET' }), true);
+    if (p === '/api/boards') return (this.json(res, 200, await this.boards()), true);
     if (p === '/api/boards/mine' && req.method === 'GET') {
       if (!session) return (this.json(res, 401, { error: 'Not logged in', code: 'notLoggedIn' }), true);
       if (session.role === 'guest') return (this.json(res, 200, {}), true);
@@ -147,6 +150,7 @@ export class Boards {
     this.removals.push(t);
     let removed = 0;
     for (const board of all ? BOARDS : [b.board]) removed += await this.store.removeScores(name, board, route?.key ?? null);
+    this.forget(name, all ? null : b.board, route?.id ?? null); // the live tracker's memory and tonight's tables too
     this.clear();
     this.log('board_removed', req, { username: by, detail: `${name}: ${all ? 'all boards' : b.board}${route ? ` ${route.id}` : ''}` });
     return { ok: true, removed };
