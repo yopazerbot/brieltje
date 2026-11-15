@@ -400,6 +400,16 @@ export class Game {
     this.homes = null; // the code-locked homes (server/homes.mjs), set by server.mjs: who has a code's grant
     // No compression: chat (typed by players) shares the connection with game state.
     this.wss = new WebSocketServer({ noServer: true, maxPayload: 4096, perMessageDeflate: false });
+    // Every socket taken on gets an 'error' listener before anything else: a message over maxPayload (or a broken
+    // frame) makes the library emit 'error' on that socket, and an 'error' nobody listens for ends the whole process:
+    // one oversize message from any page would stop the server for everyone (denial of service). The library closes
+    // such a socket itself (1009), and its 'close' tidies the player up as any other leaving does.
+    const take = this.wss.handleUpgrade.bind(this.wss);
+    this.wss.handleUpgrade = (req, socket, head, done) =>
+      take(req, socket, head, (ws) => {
+        ws.on('error', () => {});
+        done(ws);
+      });
     this.players = new Map(); // username -> { ws, role, color, state, lastChat }
     // The admin's watch views (src/watch.ts): sent everything the players are, never counted or seen, nothing taken from them.
     this.watchers = new Set();
