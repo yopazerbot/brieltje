@@ -190,6 +190,18 @@ export class HeliSound {
     if (c && at) oneShot(c, at, 'rattle', 1, c.currentTime);
   }
 
+  /**
+   * Before play (the warm-up behind the start screen, silent there): the loop's nodes made once and let go, so the
+   * first start-up in play builds nothing new (the panner's HRTF, the noise, the shaper's curve).
+   */
+  warm(): void {
+    const c = sound.context();
+    if (!c || this.loop) return;
+    noiseBuffer(c);
+    const at = sound.at(0, -500, 0, 8);
+    if (at) stopLoop(buildLoop(c, at));
+  }
+
   dispose(): void {
     if (this.loop) stopLoop(this.loop);
     this.loop = null;

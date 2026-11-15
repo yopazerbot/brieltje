@@ -865,6 +865,7 @@ export class Heli {
   warm(on: boolean): void {
     this.warmOn = on;
     if (on) {
+      this.noise.warm(); // its sound's nodes made once too
       this.discMat.opacity = this.tailMat.opacity = 0.01;
       this.discMat.visible = this.tailMat.visible = true;
       if (this.far) this.far.visible = true;
