@@ -13,6 +13,7 @@ const SPRINT_FACTOR = 2.5; // sprint speed = walking speed x this
 const GRAVITY = 9.81;      // m/s2
 const JUMP_HEIGHT = 0.5;   // m
 const RISE = 4;            // m/s: lifted out of a roof that came in round you
+const LIFT_AT_ONCE = 1.0;  // m: up onto a roof at once up to this (a jump onto an edge), at RISE from more
 const STUMBLE = 0.7;       // s a hard landing shakes you
 
 /**
@@ -435,11 +436,11 @@ export class Player {
    * stood there: world/modelRoofs.ts fills the models' roofs once play has begun) at RISE m/s.
    */
   private lifted(floor: number, dt: number): number {
-    return floor - this.feet <= STEP_UP + 0.01 || this.ground.mat !== 'roof' ? floor : this.feet + Math.min(floor - this.feet, RISE * dt);
+    return floor - this.feet <= LIFT_AT_ONCE || this.ground.mat !== 'roof' ? floor : this.feet + Math.min(floor - this.feet, RISE * dt);
   }
 
   private vertical(dt: number, input: FrameInput): void {
-    if (!this.flying && this.vy <= 0 && this.ground.mat === 'roof' && this.ground.y - this.feet > STEP_UP + 0.01) {
+    if (!this.flying && this.vy <= 0 && this.ground.mat === 'roof' && this.ground.y - this.feet > LIFT_AT_ONCE) {
       this.feet = this.lifted(this.ground.y, dt); // still on the way up out of a roof
       return;
     }
