@@ -96,6 +96,9 @@ export async function loadTown(renderer: THREE.WebGLRenderer, ground: (x: number
     mesh.material = mat;
     mesh.castShadow = mesh.receiveShadow = false;
     if (!mesh.geometry.getAttribute('normal')) mesh.geometry.computeVertexNormals(); // an older model without normals
+    // Shots and other rays take the near copy, however far: its hidden far copy's walls have no openings, and stood in
+    // front of the café's windows (world/rayShown.ts looks at the mesh's own visibility, not its LOD's).
+    if (name.startsWith('far_')) mesh.userData.ignoreRay = true;
     (name.startsWith('far_') ? far : near).add(mesh);
   }
   const lod = new THREE.LOD();
