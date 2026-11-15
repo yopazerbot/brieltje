@@ -149,10 +149,12 @@ const PROFILES: Record<string, Profile> = {
   // The outer streets in concrete (the second Street View walk, 8 Nov 2026: Schildekensstraat, Serskampstraat,
   // Oud-Smetlede, Blekte, Stefaan Glorieuxstraat): light grey slabs with a joint across every five metres and one
   // down the middle, a little stained; setts in the gutter and a kerb where the GRB has a pavement, pavers on it or
-  // the grass the photo shows; earth and gravel at the edge where the grass comes up to the slabs.
+  // the grass the photo shows; earth and gravel at the edge where the grass comes up to the slabs. The road surface the
+  // open data has beyond the carriageway where there is no kerb (the apron: forecourts, the strip in front of the
+  // gardens) in darker grey pavers, so the street reads as wide as its slabs and not as the whole apron.
   concrete: {
     road: 'concrete', tint: '#aaa79f', slab: 5, centreJoint: true, cracks: 0.15, gutter: { w: 0.32, tint: SETTS }, kerb: { h: 0.1, tint: KERB_TINT },
-    walk: { m: 'pavers', tint: PAVERS }, shoulder: { w: 0.4, tint: '#857f72' }, gullies: 25, manholes: 50, wear: 0.28,
+    walk: { m: 'pavers', tint: PAVERS }, apron: 'pavers', apronTint: '#8b8985', shoulder: { w: 0.4, tint: '#857f72' }, gullies: 25, manholes: 50, wear: 0.28,
   },
   // The other streets: asphalt, setts and kerbs where the GRB has a pavement.
   asphalt: {
