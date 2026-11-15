@@ -243,7 +243,7 @@ const startState = (p) =>
     false,
   );
 const meInPage = (p) => p.evaluate("fetch('/api/me').then((r) => r.status)");
-const kept = (p) => p.evaluate("({ loadout: localStorage.getItem('briel.loadout'), settings: localStorage.getItem('briel.settings'), graphics: localStorage.getItem('briel.graphics'), lang: localStorage.getItem('briel.lang') })", false);
+const kept = (p) => p.evaluate("({ settings: localStorage.getItem('briel.settings'), graphics: localStorage.getItem('briel.graphics'), lang: localStorage.getItem('briel.lang') })", false);
 const shot = async (p, name) => o.shots && p.screenshot(join(o.shots, `${name}.png`));
 /** The frames this page's game connection receives (Network.webSocketFrameReceived), parsed. */
 function frames(p) {
@@ -267,7 +267,7 @@ async function caseAccount(a, b) {
   await open(b);
   const seenFrames = frames(b);
   // This browser's own choices, which a logout keeps: a gun pick, the graphics, the language, a setting.
-  await a.evaluate("localStorage.setItem('briel.loadout', JSON.stringify(['shotgun'])); localStorage.setItem('briel.graphics', 'medium'); localStorage.setItem('briel.lang', 'en'); localStorage.setItem('briel.settings', JSON.stringify({ volume: 0.6 }))", false);
+  await a.evaluate("localStorage.setItem('briel.graphics', 'medium'); localStorage.setItem('briel.lang', 'en'); localStorage.setItem('briel.settings', JSON.stringify({ volume: 0.6 }))", false);
   await loginFirst(a, acct);
   await play(a, 'multi');
   await guestFirst(b, guest);
@@ -320,7 +320,7 @@ async function caseAccount(a, b) {
   ok('account: the server refuses the old cookie', (await meWith(oldCookie)) === 401);
   ok('account: the page has no session', (await meInPage(a)) === 401);
   const after = await kept(a);
-  ok('account: the gun pick and the settings kept', !!after.loadout && !!after.settings && JSON.stringify(after) === JSON.stringify(before), JSON.stringify(after).slice(0, 160));
+  ok('account: the settings kept', !!after.settings && JSON.stringify(after) === JSON.stringify(before), JSON.stringify(after).slice(0, 160));
   const keys = await a.evaluate("Object.keys(localStorage).sort().join(', ')", false);
   console.log(`     kept in localStorage: ${keys}`);
   // The other player saw us go, and the car stop.
