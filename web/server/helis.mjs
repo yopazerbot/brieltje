@@ -121,9 +121,28 @@ export class Helis {
     return this.ground(x, z);
   }
 
-  /** Within 3 m across and 1.5 m in height of a built pad. */
+  /** Within 3 m across and 1.5 m in height of its own pad (its park): each machine has its own. */
   atPad(h) {
+    const q = this.inner.get(h.id).park;
+    return Math.hypot(h.x - q.x, h.z - q.z) <= 3 && Math.abs(h.y - q.y) <= 1.5;
+  }
+
+  /** On a built pad, its own or another machine's. */
+  onPad(h) {
     return PADS.some((q) => Math.hypot(h.x - q.x, h.z - q.z) <= 3 && Math.abs(h.y - q.y) <= 1.5);
+  }
+
+  /** Another machine standing on `h`'s own pad, or null. */
+  squatter(h) {
+    const q = this.inner.get(h.id).park;
+    for (const o of this.machines.values()) if (o !== h && Math.hypot(o.x - q.x, o.z - q.z) < 6 && Math.abs(o.y - q.y) < 3) return o;
+    return null;
+  }
+
+  /** The pose (x, y, z) on or in another machine: the hub within a metre of its cabin, from a metre under it to its fin's top. */
+  onMachine(h, x, y, z) {
+    for (const o of this.machines.values()) if (o !== h && this.reach(o, x, z) < 1 && y > o.y - 1 && y < o.y + DATA.size.boom.y1) return true;
+    return false;
   }
 
   /** More than 3 m over the server's floor, and not on a pad. */
@@ -308,7 +327,8 @@ export class Helis {
    */
   pose(h, prev, next) {
     next.y = Math.max(next.y, this.floor(next.x, next.z) - 1);
-    if (!this.inHome(next.x, next.y, next.z, next.yaw)) return false;
+    const landing = this.onMachine(h, next.x, next.y, next.z) && !this.onMachine(h, prev.x, prev.y, prev.z); // never onto another machine
+    if (!this.inHome(next.x, next.y, next.z, next.yaw) && !landing) return false;
     Object.assign(next, { x: prev.x, y: prev.y, z: prev.z, yaw: h.yaw });
     return true;
   }
@@ -342,8 +362,8 @@ export class Helis {
 
   /**
    * From the game's tick: a game running (or a room) or the rule off empties every machine and sends it home; high up
-   * with nobody at the stick for PILOTLESS_MS puts everyone out and sends it home; empty on a spot others need for
-   * IN_THE_WAY_MS, or anywhere but a pad for IDLE_MS, it goes home.
+   * with nobody at the stick for PILOTLESS_MS puts everyone out and sends it home; empty on a spot others need (or on
+   * another machine's pad) for IN_THE_WAY_MS, or anywhere but its own pad for IDLE_MS, it goes home.
    */
   tick(now) {
     const g = this.game;
@@ -356,7 +376,8 @@ export class Helis {
         this.home(h, now);
       } else if (empty && !this.atPad(h)) {
         const idle = now - (s.emptyAt ?? now);
-        if (idle >= IDLE_MS || (idle >= IN_THE_WAY_MS && NEEDED.some(([x, z]) => Math.hypot(h.x - x, h.z - z) <= 8))) this.home(h, now);
+        // Another machine's pad is a spot others need too.
+        if (idle >= IDLE_MS || (idle >= IN_THE_WAY_MS && (this.onPad(h) || NEEDED.some(([x, z]) => Math.hypot(h.x - x, h.z - z) <= 8)))) this.home(h, now);
       }
     }
   }
@@ -371,17 +392,27 @@ export class Helis {
 
   /**
    * Back on its park spot, still, its seats empty. Unless `force`, it waits while somebody not aboard stands within 6 m
-   * of that spot (the next tick tries again). True when it went.
+   * of that spot (the next tick tries again). Another machine standing on that pad goes to its own first (the two swap
+   * when each is on the other's); one with somebody aboard, or whose own pad a third holds, makes it wait. True when it went.
    */
   home(h, now, force = false) {
+    const crowded = ({ x, y, z }) => [...this.game.players].some(([n, q]) => q.state && !this.of(n) && Math.hypot(q.state.x - x, q.state.z - z) <= 6 && Math.abs(q.state.y - y) < 4);
+    const s = this.inner.get(h.id);
+    if (!force && crowded(s.park)) return false;
+    const other = this.squatter(h);
+    if (other) {
+      const theirs = this.squatter(other);
+      if (other.seats.some(Boolean) || (theirs && theirs !== h) || (!force && crowded(this.inner.get(other.id).park))) return false;
+      this.park(other, now);
+    }
+    this.park(h, now);
+    return true;
+  }
+
+  /** On its park spot at once, still, its seats empty; everyone is told. */
+  park(h, now) {
     const s = this.inner.get(h.id);
     const { x, y, z, yaw } = s.park;
-    if (!force) {
-      for (const [n, q] of this.game.players) {
-        const st = q.state;
-        if (st && !this.of(n) && Math.hypot(st.x - x, st.z - z) <= 6 && Math.abs(st.y - y) < 4) return false;
-      }
-    }
     for (const n of h.seats) if (n) this.release(n, now);
     Object.assign(h, { x, y, z, yaw, p: 0, r: 0, n: 0, g: 1 });
     s.noPilotAt = null;
@@ -389,6 +420,5 @@ export class Helis {
     s.trail = [];
     this.at[h.id] = this.mono();
     this.tell(h, { home: 1 });
-    return true;
   }
 }

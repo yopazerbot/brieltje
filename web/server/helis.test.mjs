@@ -620,8 +620,13 @@ test('a late joiner sees the machines in welcome; the tick carries them, and a p
   put({ x: -50, y: 12, z: -20, yaw: 1 });
   state('pia', pia, { x: -51, y: 12.5, z: -20, yaw: 1, hp: 0.1, hr: 0.2, hn: 1, hg: 0 });
   const w = game.welcome(pia, 'pia', '#fff', s.now());
-  assert.deepEqual(w.helis, [{ id: ID, x: h.x, y: h.y, z: h.z, yaw: h.yaw, p: 0.1, r: 0.2, n: 1, g: 0, seats: ['pia', 'bo', null, null] }]);
-  assert.equal(Object.hasOwn(w.helis[0], 'trail'), false, 'nothing the server keeps for itself');
+  // Every machine of heli.json, in its order; the one flown as it flies, the others on their pads.
+  assert.deepEqual(w.helis.map((q) => q.id), DATA.machines.map((d) => d.id));
+  assert.deepEqual(w.helis.find((q) => q.id === ID), { id: ID, x: h.x, y: h.y, z: h.z, yaw: h.yaw, p: 0.1, r: 0.2, n: 1, g: 0, seats: ['pia', 'bo', null, null] });
+  for (const d of DATA.machines.filter((q) => q.id !== ID)) {
+    assert.deepEqual(w.helis.find((q) => q.id === d.id), { id: d.id, x: d.park.x, y: d.park.y, z: d.park.z, yaw: d.park.yaw, p: 0, r: 0, n: 0, g: 1, seats: [null, null, null, null] });
+  }
+  for (const q of w.helis) assert.equal(Object.hasOwn(q, 'trail'), false, 'nothing the server keeps for itself');
   let out = '';
   const late = s.player('late', { x: 0, y: 0, z: 0 });
   late.ws = { name: 'late', OPEN: 1, readyState: 1, send: (t) => (out = t) };
@@ -629,7 +634,8 @@ test('a late joiner sees the machines in welcome; the tick carries them, and a p
   for (const p of game.players.values()) if (p !== late) p.ws = { ...p.ws, OPEN: 1, readyState: 0 };
   game.snapshot(s.now());
   const tick = JSON.parse(out);
-  const e = readHeli(tick.e[0]);
+  assert.deepEqual(tick.e.map((q) => q[0]), DATA.machines.map((d) => d.id), 'a page that just connected gets every machine');
+  const e = readHeli(tick.e.find((q) => q[0] === ID));
   assert.deepEqual({ ...e, age: 0 }, { ...readHeli([ID, 0, ...heliFields(h)]), age: 0 });
   assert.deepEqual(e.seats, ['pia', 'bo', null, null]);
   assert.equal(e.x, -51);
@@ -685,4 +691,56 @@ test('dying, respawning or being gathered empties the seat; the leaderboard can 
   game.damage('foe', { score: { kills: 0, points: 0 } }, 'cas', cas, 1000, false, 'pistol', s.now());
   assert.equal(game.helis.of('cas'), null, 'a death empties the seat');
   void bo;
+});
+
+test('two machines, each with its own pad: the church\'s on its deck; one on another\'s pad goes home after 20 s; one sent home first sends the one on its pad to its own, or waits', () => {
+  const s = setup();
+  const { game, h, put, now, at, told, state } = s;
+  assert.equal(DATA.machines.length, 2, 'the house\'s machine and the church\'s');
+  const ch = game.helis.machines.get('church');
+  const CH = DATA.machines.find((d) => d.id === 'church').park;
+  assert.deepEqual([ch.x, ch.y, ch.z, ch.yaw], [CH.x, CH.y, CH.z, CH.yaw]);
+  assert.equal(game.helis.atPad(ch), true);
+  // The house's machine left on the church's deck: away, it goes home once it has stood empty there 20 s.
+  put({ x: CH.x, y: CH.y, z: CH.z, yaw: CH.yaw });
+  assert.equal(game.helis.atPad(h), false, 'another machine\'s pad is not its own');
+  ch.x += 30; // the church's machine is elsewhere meanwhile
+  game.helis.inner.get(ID).emptyAt = now();
+  at(IN_THE_WAY_MS - 1000);
+  game.helis.tick(now());
+  assert.deepEqual([h.x, h.z], [CH.x, CH.z]);
+  at(1000);
+  game.helis.tick(now());
+  assert.deepEqual([h.x, h.z], [PARK.x, PARK.z], 'home after 20 s');
+  // The house's machine back on the church's deck, the church's sent home: the house's goes to its own pad first.
+  put({ x: CH.x, y: CH.y, z: CH.z, yaw: CH.yaw });
+  const before = told.length;
+  assert.equal(game.helis.home(ch, now(), true), true);
+  assert.deepEqual([h.x, h.z, ch.x, ch.z], [PARK.x, PARK.z, CH.x, CH.z]);
+  assert.deepEqual(told.slice(before).map((m) => m.heli.id), [ID, 'church'], 'everyone is told both');
+  // Each on the other's pad: they swap.
+  Object.assign(h, { x: CH.x, y: CH.y, z: CH.z });
+  Object.assign(ch, { x: PARK.x, y: PARK.y, z: PARK.z });
+  assert.equal(game.helis.home(ch, now(), true), true);
+  assert.deepEqual([h.x, h.z, ch.x, ch.z], [PARK.x, PARK.z, CH.x, CH.z]);
+  // Somebody aboard the one on its pad: it waits.
+  const [pia] = crew(s, ['pia']);
+  put({ x: CH.x, y: CH.y, z: CH.z, yaw: CH.yaw });
+  state('pia', pia, { x: CH.x, y: CH.y, z: CH.z, yaw: CH.yaw });
+  ch.x += 30;
+  assert.equal(game.helis.home(ch, now(), true), false, 'it waits while the other is flown');
+  assert.equal(ch.x, CH.x + 30);
+});
+
+test('nobody lands on a parked machine: a step onto the other\'s cabin is put back; beside it the flight goes on', () => {
+  const s = setup();
+  const { game, h, state, put } = s;
+  const [pia] = crew(s, ['pia']);
+  const ch = game.helis.machines.get('church');
+  put({ x: ch.x, y: ch.y + 6, z: ch.z, yaw: ch.yaw });
+  state('pia', pia, { x: ch.x, y: ch.y + 6, z: ch.z, yaw: ch.yaw }, 200);
+  state('pia', pia, { x: ch.x, y: ch.y + 3, z: ch.z, yaw: ch.yaw }, 400);
+  assert.ok(h.y >= ch.y + 6 - 1e-9, `held off at ${h.y - ch.y} m over it`);
+  state('pia', pia, { x: ch.x + 4, y: ch.y + 5, z: ch.z, yaw: ch.yaw }, 1000);
+  assert.ok(Math.abs(h.x - (ch.x + 4)) < 1e-9, 'beside it the step is taken');
 });
