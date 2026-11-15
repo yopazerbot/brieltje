@@ -53,7 +53,7 @@ from shapely.strtree import STRtree
 
 import crops
 import bungalow_site
-from neighbours import TILE_H, TILE_W, TILE_X0, TILE_Y1, band, east, features, football, hull, kouter, model_frame, ortho_image, polygons, raster, sparrenhof, zone
+from neighbours import TILE_H, TILE_W, TILE_X0, TILE_Y1, band, blekte, east, features, football, hull, kouter, model_frame, ortho_image, polygons, raster, sparrenhof, zone
 
 ROOT = Path(__file__).resolve().parents[1]
 OUT = ROOT / "data" / "street.json"
@@ -588,7 +588,10 @@ def keep_before(previous, parts, regions):
         return Polygon(ring).buffer(0).representative_point() if len(ring) > 2 else Point(ring[0])
 
     inside = [prep(r) for r in regions]
-    seen = {i for key in LISTS for e in previous.get(key, []) for i in [next((i for i, r in enumerate(inside) if r.contains(anchor(key, e))), None)]}
+    # Not by the hedges: they follow plot lines across a region's edge, and one that runs on into a new region (Blekte's
+    # by the old edge) would make it look built already.
+    seen = {i for key in LISTS if key != "hedges" for e in previous.get(key, [])
+            for i in [next((i for i, r in enumerate(inside) if r.contains(anchor(key, e))), None)]}
     new = [i for i in range(len(regions)) if i not in seen]
     # A plot line crossing into a new region goes with that region now (`owner`): its hedges are in the file already.
     hedged = {h["b"] for h in previous.get("hedges", []) if h["b"] >= 0}
@@ -612,7 +615,8 @@ def main():
     northwest = model(sparrenhof(plot))
     southern = model(kouter(plot))
     ground = model(football(plot))  # the football ground and the way there: no crop fields either
-    regions = [old] + [part for part in (rest, eastern, northwest, southern, ground) if not part.is_empty]
+    lane = model(blekte(plot))  # Blekte, last: no crop fields either
+    regions = [old] + [part for part in (rest, eastern, northwest, southern, ground, lane) if not part.is_empty]
 
     def owner(line):
         # A plot line crossing the old edge goes with its extension, once only.
@@ -623,7 +627,7 @@ def main():
     parts = [out]
     for i, region in enumerate(regions[1:], 1):
         more, _, _ = build(region, plot, roads_l72, to_model, nb, lambda line: owner(line) == i,
-                           grow_fields=False if region.equals(eastern) or region.equals(southern) or region.equals(ground)
+                           grow_fields=False if region.equals(eastern) or region.equals(southern) or region.equals(ground) or region.equals(lane)
                            else "forest" if region.equals(northwest) else True)
         parts.append(more)
     if OUT.exists() and "--fresh" not in sys.argv:

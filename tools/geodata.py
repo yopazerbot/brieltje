@@ -25,6 +25,7 @@ so the area fetched before stays exactly as it was.
     tools/.venv/Scripts/python.exe tools/geodata.py --strip w2
     tools/.venv/Scripts/python.exe tools/geodata.py --strip s
     tools/.venv/Scripts/python.exe tools/geodata.py --strip e2
+    tools/.venv/Scripts/python.exe tools/geodata.py --strip w3
 """
 import io
 import json
@@ -49,6 +50,8 @@ STRIPS = {
     # Further east, the full height of the rows beside it (the downloads stay one rectangle): FC Smetlede's ground by
     # the Wellebeek, at the end of Schildekensstraat.
     "e2": (119900, 183200, 120300, 185600),
+    # Further west, the full height as well: Blekte's last stretch to its junction with Klinkaard.
+    "w3": (117100, 183200, 117500, 185600),
 }
 LAYERS = ["ADP", "GBG", "GBA", "WBN", "Wegsegment", "WPI", "WTZ", "WLAS", "WGO", "WLI", "IngeschetstGebouw", "TRN", "WGA", "WGR", "WTI"]
 COVERAGES = ["DHMVII_DTM_1m", "DHMVII_DSM_1m"]

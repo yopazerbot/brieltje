@@ -187,6 +187,38 @@ class MapExtensionTests(unittest.TestCase):
         with patch.object(nb, "ACTIVE_STRIPS", {}):
             self.assertTrue(nb.kouter(plot).is_empty)
 
+    def blekte_roads(self):
+        # Blekte from the plot west to a crossing street, an earth track of the same name on north from its end, and the
+        # crossing street running south from there.
+        paved = "weg bestaande uit één rijbaan"
+        end = (117900, 184981)
+        roads = [([(118911, 184981), end], {"LBLMORF": paved, "LSTRNM": "Blekte", "RSTRNM": "Blekte"}),
+                 ([end, (117900, 185500)], {"LBLMORF": "aardeweg", "LSTRNM": "Blekte", "RSTRNM": "Blekte"}),
+                 ([end, (117900, 184400)], {"LBLMORF": paved, "LSTRNM": "Elders", "RSTRNM": "Elders"})]
+        return [{"geometry": {"type": "LineString", "coordinates": line}, "properties": props} for line, props in roads]
+
+    def test_without_blekte_download_keeps_area(self):
+        plot = Point(118911, 184981)
+        features = self.blekte_roads()
+        with patch.object(nb, "features", side_effect=lambda name, **kw: features if name == "Wegsegment" else []), \
+                patch.object(nb, "ACTIVE_STRIPS", {}), patch.object(nb, "band", return_value=Polygon()):
+            self.assertTrue(nb.blekte(plot).is_empty)
+            self.assertTrue(nb.zone(plot).equals(nb.hull(plot)))
+
+    def test_blekte_takes_the_paved_street_only(self):
+        plot = Point(118911, 184981)
+        features = self.blekte_roads()
+        with patch.object(nb, "features", side_effect=lambda name, **kw: features if name == "Wegsegment" else []), \
+                patch.object(nb, "ACTIVE_STRIPS", {"w3": ()}), patch.object(nb, "band", return_value=Polygon()):
+            old = nb.before(plot)
+            extension = nb.blekte(plot)
+            self.assertLess(extension.intersection(old).area, 1e-6)
+            self.assertTrue(old.difference(nb.zone(plot)).is_empty)
+            self.assertTrue(extension.contains(Point(118100, 185021)))  # beside the street, 40 m from its line
+            self.assertTrue(extension.contains(Point(117900, 184981)))  # its end at the crossing street
+            self.assertFalse(extension.contains(Point(117900, 185400)))  # the earth track of the same name
+            self.assertFalse(extension.contains(Point(117900, 184500)))  # the crossing street past the band
+
     def test_features_keep_base_priority_and_deduplicate_both_strips(self):
         self.geo.stop()
         with tempfile.TemporaryDirectory() as folder:

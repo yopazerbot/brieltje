@@ -309,10 +309,10 @@ def hull(plot):
 
 
 def zone(plot):
-    """The original hull, Molenhoek's western band, the eastward extension, Sparrenhof, southern homes and the football
-    ground (Lambert 72). Tree budgets, roof colours and ground covers are chosen separately for each extension.
+    """The original hull, Molenhoek's western band, the eastward extension, Sparrenhof, southern homes, the football
+    ground and Blekte (Lambert 72). Tree budgets, roof colours and ground covers are chosen separately for each extension.
     """
-    return unary_union([before(plot), sparrenhof(plot), kouter(plot), football(plot)])
+    return unary_union([before(plot), sparrenhof(plot), kouter(plot), football(plot), blekte(plot)])
 
 
 def before(plot):
@@ -433,6 +433,38 @@ def football_window(plot):
     the village's trees of the region leave it to that."""
     ground = football(plot)
     return Polygon() if ground.is_empty else box(*ground.intersection(Point(FOOTBALL).buffer(110)).bounds)
+
+
+# Blekte (Yoshi, 15 Nov 2026: "Also include de blekte in the map", the whole street and no extras): the paved lane from
+# Kapellenhoek round to Oud-Smetlede, its two short arms at the fork and its arm west to Klinkaard, whose last stretch
+# lies in the strip `w3` (tools/geodata.py). Every paved piece of the road register with the name on either side (not
+# its earth track, not a footpath), STREET_SIDE either side, and the gardens of the houses along it, as for the
+# Sparrenhof; the crossing street at its end stays out past that band.
+BLEKTE = "Blekte"
+
+
+def blekte(plot):
+    """Blekte and what stands along it (Lambert 72), with `geodata.py --strip w3`; without the map before."""
+    if "w3" not in ACTIVE_STRIPS:
+        return Polygon()
+    old = unary_union([before(plot), sparrenhof(plot), kouter(plot), football(plot)])
+    lines = []
+    for f in features("Wegsegment"):
+        geometry, props = f.get("geometry"), f["properties"]
+        kind = props.get("LBLMORF", "")
+        if (not geometry or geometry["type"] != "LineString" or kind == "aardeweg" or kind.startswith("wandel")
+                or BLEKTE not in (props.get("LSTRNM"), props.get("RSTRNM"))):
+            continue
+        lines.append(LineString([p[:2] for p in geometry["coordinates"]]))
+    if not lines:
+        return Polygon()
+    corridor = unary_union([line.buffer(STREET_SIDE, 16) for line in lines])
+    gardens = [p.buffer(15, 8) for f in features("GBG") for p in polygons(f["geometry"])
+               if corridor.contains(p.centroid) and not old.contains(p.centroid)]
+    joined = unary_union([old, corridor, *gardens])
+    connected = next((p for p in getattr(joined, "geoms", [joined])
+                      if p.geom_type == "Polygon" and p.contains(plot.centroid)), Polygon())
+    return connected.difference(old)
 
 
 def east(plot):
@@ -731,6 +763,8 @@ def main():
     in_south = prep(southern) if not southern.is_empty else None
     ground = football(plot)
     in_ground = prep(ground) if not ground.is_empty else None
+    lane = blekte(plot)
+    in_lane = prep(lane) if not lane.is_empty else None
     # (centre, radius or None for the zone beyond the ring or "band" for the band, cap in all or None, more on top, gap, lowest)
     tiers = [((cx, cy), RADIUS, 60, 0, 4.0, 3.0), ((cx, cy), 240, 320, 0, 4.0, 3.0), ((cx, cy), AREA, 1700, 0, 7.0, 5.0),
              (CHURCH, 160, None, 260, 4.0, 3.0), (None, None, None, 1400, 7.0, 5.0)] + ([(None, "band", None, 450, 7.0, 5.0)] if in_band else [])
@@ -738,10 +772,12 @@ def main():
     tiers += [(None, "sparrenhof", None, SPARRENHOF_TREES, SPARRENHOF_GAP, 5.0)] if in_northwest else []
     tiers += [(None, "kouter", None, 180, 7.0, 5.0)] if in_south else []
     tiers += [(None, "football", None, 120, 7.0, 5.0)] if in_ground else []
+    tiers += [(None, "blekte", None, 250, 7.0, 5.0)] if in_lane else []
     # Round the football ground its plan has the trees (tools/football_site.py): the region's own stop at its window.
     ground_trees = ground.difference(football_window(plot)) if in_ground else ground
     regions = {"band": (rest, in_band), "east": (eastern, in_east), "sparrenhof": (northwest, in_northwest),
-               "kouter": (southern, in_south), "football": (ground_trees, prep(ground_trees) if in_ground else None)}
+               "kouter": (southern, in_south), "football": (ground_trees, prep(ground_trees) if in_ground else None),
+               "blekte": (lane, in_lane)}
     for at, radius, cap, more, gap, low in tiers:
         cap = cap or len(trees) + more
         if radius is None or isinstance(radius, str):
@@ -783,8 +819,11 @@ def main():
     # Without the football ground's own lane and car park (it lays them itself, world/footballGround.ts).
     reach_ground = (ground.buffer(20).difference(unary_union([area_before, northwest, southern]).buffer(20)).difference(football_paved())
                     if in_ground else None)
+    reach_lane = (lane.buffer(20).difference(unary_union([area_before, northwest, southern, ground]).buffer(20))
+                  if in_lane else None)
     for poly in getattr(roads, "geoms", [roads]):
-        pieces = [poly.intersection(reach) for reach in (reach_old, reach_band, reach_east, reach_northwest, reach_south, reach_ground)
+        pieces = [poly.intersection(reach) for reach in (reach_old, reach_band, reach_east, reach_northwest, reach_south, reach_ground,
+                                                         reach_lane)
                   if reach is not None]
         clipped = shapely.GeometryCollection([g for piece in pieces for g in getattr(piece, "geoms", [piece])])
         for part in getattr(clipped, "geoms", [clipped]):
@@ -816,8 +855,9 @@ def main():
                else 3 if in_east and in_east.contains(f.centroid)
                else 4 if in_northwest and in_northwest.contains(f.centroid)
                else 5 if in_south and in_south.contains(f.centroid)
-               else 6 if in_ground and in_ground.contains(f.centroid) else 2 for f in footprints]
-    for group in (0, 1, 2, 3, 4, 5, 6):
+               else 6 if in_ground and in_ground.contains(f.centroid)
+               else 7 if in_lane and in_lane.contains(f.centroid) else 2 for f in footprints]
+    for group in (0, 1, 2, 3, 4, 5, 6, 7):
         roofs_rgb = [(b, q) for b, r in zip(buildings, in_ring) if r == group for q in b["parts"] if q["color"]]
         if len(roofs_rgb) <= 8:
             continue
