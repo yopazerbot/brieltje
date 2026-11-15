@@ -447,6 +447,7 @@ export class Game {
     });
     // Horses: on their walks until someone rides one; left where they are got off (until a restart).
     this.horses = HORSES.herd.map((_, i) => ({ i, x: 0, z: 0, yaw: 0, speed: 0, rider: null, parked: false }));
+    this.horseHomes = new Map(); // a parked horse's index: the home it was left in (homeOf)
     this.modes = new Modes(this); // hide and seek, tag, treasure hunt, the teams, Zombies (the admin starts them)
     this.host = room ? null : new Host(this); // the host's controls for a LAN night (server/host.mjs), in the open world
     // The timed routes and the gnomes, timed and noted by the server from its own positions (server/goals.mjs), in the open world.
@@ -632,9 +633,9 @@ export class Game {
   welcome(player, name, color, now) {
     return {
       t: 'welcome', proto: PROTO, you: name, role: player.role, color, doors: this.doorsFor(player), doorDir: this.doorDirFor(player), broken: this.brokenFor(player), cracked: this.crackedFor(player), homes: HOMES.filter((h) => player.role !== 'admin' && this.homes?.granted(player.key, h.id)).map((h) => h.id), accountHomes: HOMES.filter((h) => player.role === 'player' && this.homes?.byAccount?.(player.key, h.id)).map((h) => h.id), players: this.roster(),
-      time: now, cats: this.catsDown.map((until) => Math.max(0, until - now)), ...this.villagersView(now), clowns: this.clownList(now), furniture: this.furnitureFor(player), rules: this.rules,
+      time: now, cats: this.catsDown.map((until) => Math.max(0, until - now)), ...this.villagersView(now), clowns: this.clownList(now, player), furniture: this.furnitureFor(player), rules: this.rules,
       scores: this.scoreList(), limit: KILL_LIMIT, items: this.items.map((it) => now >= it.until), round: this.roundOver ? { winner: this.roundOver.winner, ms: this.roundOver.until - now } : null,
-      cars: Object.values(this.cars).filter((c) => !this.gate.hidesAt(c.x, c.z, c.y, player)), horses: this.horses, bikes: Object.values(this.bikes).filter((k) => !this.gate.hidesAt(k.x, k.z, k.y, player)), helis: this.helis.view(), mode: this.modes.view(now), mood: this.mood, moodCycle: this.moodView(now),
+      cars: Object.values(this.cars).filter((c) => this.seenBy(player, 'car', c)), horses: this.horses.filter((h) => this.seenBy(player, 'horse', h)), bikes: Object.values(this.bikes).filter((k) => this.seenBy(player, 'bike', k)), helis: this.helis.view(), mode: this.modes.view(now), mood: this.mood, moodCycle: this.moodView(now),
       room: this.roomView(),
     };
   }
@@ -702,7 +703,7 @@ export class Game {
   /** The strongmen for pages from before protocol 2: where each is, what he does, his health. */
   bruteList() {
     return [...this.clowns.values()]
-      .filter((c) => c.brain)
+      .filter((c) => c.brain && !this.homeOf('brute', c.brain))
       .map(({ id, brain: b }) => ({ id, x: +b.x.toFixed(2), z: +b.z.toFixed(2), yaw: +b.yaw.toFixed(3), speed: +b.speed.toFixed(2), act: b.act, hp: b.hp }));
   }
 
@@ -711,7 +712,7 @@ export class Game {
     if (this.modes.state.kind === 'zombies') return; // they stand aside during the Zombies game (the pages hide them)
     const fighting = !this.roundOver && !this.modes.peaceful;
     const targets = fighting
-      ? [...this.players].filter(([n, p]) => p.alive && p.state?.armed && !this.inCar(n) && now >= p.protectedUntil).map(([name, p]) => ({ name, x: p.state.x, y: p.state.y, z: p.state.z }))
+      ? [...this.players].filter(([n, p]) => p.alive && p.state?.armed && !this.inCar(n) && now >= p.protectedUntil && !this.gate.insideOf(p)).map(([name, p]) => ({ name, x: p.state.x, y: p.state.y, z: p.state.z }))
       : [];
     for (const c of this.clowns.values()) {
       if (!c.brain) continue;
@@ -721,9 +722,9 @@ export class Game {
       for (const e of stepBrute(c.brain, targets, now, TICK_MS / 1000, FIGHT, this.free)) {
         if (e.type === 'throw') {
           this.rocks.push({ id: c.id, to: e.to, at: now + e.ms });
-          this.broadcast({ t: 'rock', ...e });
+          this.broadcastThing({ t: 'rock', ...e }, 'brute', c.brain);
         } else {
-          this.broadcast({ t: 'stomp', ...e });
+          this.broadcastThing({ t: 'stomp', ...e }, 'brute', c.brain);
           this.bruteHits(e.at, FIGHT.stompRadius, FIGHT.stompDamage, now);
         }
       }
@@ -748,7 +749,7 @@ export class Game {
     c.brain.hp = Math.max(0, c.brain.hp - amount);
     if (c.brain.hp > 0) return;
     c.until = now + CLOWNS.respawnSeconds * 1000;
-    this.broadcast({ t: 'clownhit', id: c.id, by: name, ms: CLOWNS.respawnSeconds * 1000, w });
+    this.broadcastEvent({ t: 'clownhit', id: c.id, by: name, ms: CLOWNS.respawnSeconds * 1000, w }, c.brain, name);
   }
 
   /** Health taken by a strongman (or a zombie, `by`): like damage(), but nobody scores the kill. */
@@ -834,8 +835,16 @@ export class Game {
     this.auth.store.setMeta(bestKey(id), JSON.stringify(best)).catch((e) => console.error('zombies best failed', String(e)));
   }
 
-  clownList(now = Date.now()) {
-    return [...this.clowns.values()].map(({ id, x, y, z, kind, until }) => ({ id, x, y, z, kind, ms: Math.max(0, until - now) }));
+  clownList(now = Date.now(), viewer = null) {
+    return [...this.clowns.values()].filter((c) => !viewer || this.seenBy(viewer, 'point', c)).map(({ id, x, y, z, kind, until }) => ({ id, x, y, z, kind, ms: Math.max(0, until - now) }));
+  }
+
+  /** Every page its list of the spawned figures, as it may see them (one spawned inside a home: only with its right). */
+  sendClowns(now) {
+    if (![...this.clowns.values()].some((c) => this.homeOf('point', c))) return this.broadcast({ t: 'clowns', list: this.clownList(now) });
+    for (const p of this.players.values()) if (p.ws.readyState === p.ws.OPEN) p.ws.send(JSON.stringify({ t: 'clowns', list: this.clownList(now, p) }));
+    const all = JSON.stringify({ t: 'clowns', list: this.clownList(now) });
+    for (const w of this.watchers) if (w.ws.readyState === w.ws.OPEN) w.ws.send(all);
   }
 
   roster() {
@@ -1139,7 +1148,7 @@ export class Game {
       if (now < c.until || !player.alive || !player.state?.armed || now < (player.nextCat || 0)) return;
       player.nextCat = now + 300;
       c.until = now + CLOWNS.respawnSeconds * 1000;
-      this.broadcast({ t: 'clownhit', id: m.id, by: name, ms: CLOWNS.respawnSeconds * 1000, w: m.w === 'grenade' ? 'grenade' : player.state.w }, name);
+      this.broadcastEvent({ t: 'clownhit', id: m.id, by: name, ms: CLOWNS.respawnSeconds * 1000, w: m.w === 'grenade' ? 'grenade' : player.state.w }, c, name, name);
     } else if (m.t === 'clown') {
       // A clown or a strongman spawned with /clown, /strongman, or one taken away with /remove: the admin
       // always and any; the others when the admin allows spawning, near themselves, SPAWN_CHARACTERS each,
@@ -1166,13 +1175,13 @@ export class Game {
         this.clowns.delete(m.id);
         this.owners.delete(`c${m.id}`);
       } else return;
-      this.broadcast({ t: 'clowns', list: this.clownList(now) });
+      this.sendClowns(now);
     } else if (m.t === 'cat' && Number.isInteger(m.i) && m.i >= 0 && m.i < CATS.cats.length) {
       // Just for fun: no points. At most one cat every 300 ms per player.
       if (now < this.catsDown[m.i] || !player.alive || !player.state?.armed || now < (player.nextCat || 0)) return;
       player.nextCat = now + 300;
       this.catsDown[m.i] = now + CATS.respawnSeconds * 1000;
-      this.broadcast({ t: 'cat', i: m.i, by: name, ms: CATS.respawnSeconds * 1000, w: m.w === 'grenade' ? 'grenade' : player.state.w }, name);
+      this.broadcastEvent({ t: 'cat', i: m.i, by: name, ms: CATS.respawnSeconds * 1000, w: m.w === 'grenade' ? 'grenade' : player.state.w }, null, name, name); // cats never walk into a home (homeSight.test.mjs)
     } else if (m.t === 'vil' && Array.isArray(m.ids)) {
       this.villagersHit(name, player, m, now);
     } else if (m.t === 'pickup' && Number.isInteger(m.i) && m.i >= 0 && m.i < PICKUPS.length) {
@@ -1183,7 +1192,7 @@ export class Game {
       if (Math.hypot(st.x - spot.x, st.z - spot.z) > 2.5 || Math.abs(st.y - spot.y) > 2) return;
       item.until = now + PICKUP_MS;
       player.weapons.add(spot.w);
-      this.broadcast({ t: 'item', i: m.i, ready: false, by: name });
+      this.broadcastEvent({ t: 'item', i: m.i, ready: false, by: name }, spot, name);
     } else if (m.t === 'car') {
       if (now < (player.nextCar || 0)) return;
       player.nextCar = now + 300;
@@ -1413,7 +1422,7 @@ export class Game {
       if (rider?.state) move(rider);
     }
     this.broadcast({ t: 'travel', name, to: id, ok: true, car: car?.id ?? null });
-    if (car) this.broadcast({ t: 'car', car });
+    if (car) this.broadcastThing({ t: 'car', car }, 'car', car);
   }
 
   /**
@@ -1446,16 +1455,16 @@ export class Game {
   /** Get in, when the player stands next to it, is alive and in no car yet: at the wheel if nobody drives, else in the passenger seat if it's free. */
   enterCar(name, p, car) {
     const st = p.state;
-    if (this.carOf(name) || this.bikeOf(name) || this.helis.of(name) || !p.alive || !st) return this.send(p.ws, { t: 'car', car });
+    if (this.carOf(name) || this.bikeOf(name) || this.helis.of(name) || !p.alive || !st) return this.tellThing(p, 'car', car);
     // Close to its outline: the middle of the car plus its half diagonal and the reach.
     const spec = carSpec(car);
     const near = Math.hypot(spec.length, spec.width) / 2 + CARS.reach + 0.5;
-    if (Math.hypot(st.x - car.x, st.z - car.z) > near || Math.abs(st.y - car.y) > 1.5) return this.send(p.ws, { t: 'car', car });
-    if (!this.gate.mayStand(p, car.x, car.y, car.z)) return this.send(p.ws, { t: 'car', car }); // a car in a home they may not enter: no way in through it
+    if (Math.hypot(st.x - car.x, st.z - car.z) > near || Math.abs(st.y - car.y) > 1.5) return this.tellThing(p, 'car', car);
+    if (!this.gate.mayStand(p, car.x, car.y, car.z)) return this.tellThing(p, 'car', car); // a car in a home they may not enter: no way in through it
     if (!car.driver) car.driver = name;
     else if (!car.passenger) car.passenger = name;
-    else return this.send(p.ws, { t: 'car', car });
-    this.broadcast({ t: 'car', car });
+    else return this.tellThing(p, 'car', car);
+    this.broadcastThing({ t: 'car', car }, 'car', car);
   }
 
   /** The driver or the passenger got out, left, died or respawned: the car stays where it is. */
@@ -1467,25 +1476,28 @@ export class Game {
       car.driver = null;
       car.s = 0;
     } else car.passenger = null;
-    this.broadcast({ t: 'car', car });
+    this.broadcastThing({ t: 'car', car }, 'car', car);
   }
 
   /** Get on a horse nobody rides, when the player stands next to it, is alive and in no car. */
   mountHorse(name, p, horse, now) {
     const st = p.state;
-    if (horse.rider || this.carOf(name) || this.horseOf(name) || this.bikeOf(name) || this.helis.of(name) || !p.alive || !st) return this.send(p.ws, { t: 'horse', horse });
+    if (horse.rider || this.carOf(name) || this.horseOf(name) || this.bikeOf(name) || this.helis.of(name) || !p.alive || !st) return this.tellThing(p, 'horse', horse);
     const at = horse.parked ? horse : horseOnLoop(horse.i, now / 1000);
-    if (Math.hypot(st.x - at.x, st.z - at.z) > HORSES.reach + 1) return this.send(p.ws, { t: 'horse', horse });
+    if (Math.hypot(st.x - at.x, st.z - at.z) > HORSES.reach + 1) return this.tellThing(p, 'horse', horse);
     Object.assign(horse, { x: at.x, z: at.z, yaw: horse.parked ? horse.yaw : at.heading, speed: 0, rider: name, parked: false });
-    this.broadcast({ t: 'horse', horse });
+    this.horseHomes.delete(horse.i);
+    this.broadcastThing({ t: 'horse', horse }, 'horse', horse);
   }
 
   /** The rider got off, left, died or respawned: the horse stays where it is and grazes. */
   releaseHorse(name) {
     const horse = this.horseOf(name);
     if (!horse) return;
+    // Where it is left (a rider who left the game is no longer among the players: their last place).
+    this.horseHomes.set(horse.i, this.homeOf('point', this.players.get(name)?.state ?? this.lastPos.get(name)));
     Object.assign(horse, { rider: null, parked: true, speed: 0, jump: 0 });
-    this.broadcast({ t: 'horse', horse });
+    this.broadcastThing({ t: 'horse', horse }, 'horse', horse);
   }
 
   horseOf(name) {
@@ -1499,12 +1511,12 @@ export class Game {
    */
   mountBike(name, p, bike, now) {
     const st = p.state;
-    if (bike.rider || this.carOf(name) || this.horseOf(name) || this.bikeOf(name) || this.helis.of(name) || !p.alive || !st || st.flying || this.dropping(p, now)) return this.send(p.ws, { t: 'bike', bike });
+    if (bike.rider || this.carOf(name) || this.horseOf(name) || this.bikeOf(name) || this.helis.of(name) || !p.alive || !st || st.flying || this.dropping(p, now)) return this.tellThing(p, 'bike', bike);
     const near = Math.hypot(BIKES.length, BIKES.width) / 2 + BIKES.reach + 0.5;
-    if (Math.hypot(st.x - bike.x, st.z - bike.z) > near || Math.abs(st.y - bike.y) > 1.5) return this.send(p.ws, { t: 'bike', bike });
+    if (Math.hypot(st.x - bike.x, st.z - bike.z) > near || Math.abs(st.y - bike.y) > 1.5) return this.tellThing(p, 'bike', bike);
     bike.rider = name;
     this.bikeHits.mounted(bike); // a lying one stands up
-    this.broadcastHome({ t: 'bike', bike }, homeAt(bike.x, bike.z, bike.y));
+    this.broadcastThing({ t: 'bike', bike }, 'bike', bike);
   }
 
   /** The rider got off, left, died or respawned: the bike stays where it is, on its stand. */
@@ -1512,7 +1524,7 @@ export class Game {
     const bike = this.bikeOf(name);
     if (!bike) return;
     bike.rider = null;
-    this.broadcastHome({ t: 'bike', bike }, homeAt(bike.x, bike.z, bike.y)); // left inside a home: only those who may see in
+    this.broadcastThing({ t: 'bike', bike }, 'bike', bike); // left inside a home: only those who may see in
   }
 
   /** The bike a player rides, if any. */
@@ -1791,7 +1803,7 @@ export class Game {
       }
       // The characters spawned go too: back to the starting clowns and strongmen.
       this.clowns = this.startingClowns();
-      this.broadcast({ t: 'clowns', list: this.clownList(Date.now()) });
+      this.sendClowns(Date.now());
       await this.clearPlaced(); // and the Teslas (the four of the game stay)
     } else if (m.op === 'del' && this.furniture.has(m.id)) {
       // Taken away (/remove): the admin's any piece, everyone else's only what they spawned themselves.
@@ -1830,6 +1842,55 @@ export class Game {
   /** `msg` about where `p` is (a shot, a throw, a rally): to those who may see them there (homeGate.hides), except `except`. */
   broadcastFrom(msg, p, except) {
     this.broadcastHome(msg, this.gate.insideOf(p), except);
+  }
+
+  /**
+   * The home a thing of any kind stands in now (shared/homes.mjs, its bands), or null: the one place every tick entry
+   * and every message with a place asks (homeGate.hides). Kinds: 'player'; 'horse' (its rider's, or where it was left);
+   * 'zombie' (a tick entry, shared/wire.mjs zombieEntry); 'piece' of furniture; 'car', 'bike', 'heli', 'brute' and 'point'
+   * (anything with x, y, z).
+   */
+  homeOf(kind, t) {
+    if (!t) return null;
+    if (kind === 'player') return this.gate.insideOf(t);
+    if (kind === 'horse') return t.rider ? this.gate.insideOf(this.players.get(t.rider)) : (this.horseHomes.get(t.i) ?? null);
+    if (kind === 'zombie') return homeAt(t[1], t[2], t[6]); // [id, x, z, yaw, state, hp, y]
+    if (kind === 'piece') return pieceHome(t);
+    return homeAt(t.x, t.z, t.y);
+  }
+
+  /**
+   * An event with a place and a doer (a figure hit, a pickup): not to a page that may not see `at` (homeOf 'point'; null:
+   * a place that is never inside a home); a page that may not see the doer `by` (homeGate.hides: inside a home) gets it
+   * without their name (`by` empty: no line in its kill feed), so a shot out of a window gives nobody away.
+   */
+  broadcastEvent(msg, at, by, except) {
+    const home = this.homeOf('point', at);
+    const doer = by ? this.players.get(by) : null;
+    if (!home && !this.gate.insideOf(doer)) return this.broadcast(msg, except); // the usual case: nothing to hide
+    const full = JSON.stringify(msg);
+    let blind = null;
+    for (const [name, p] of this.players) {
+      if (name === except || p.ws.readyState !== p.ws.OPEN || (home && !this.gate.may(p, home))) continue;
+      p.ws.send(doer && this.gate.hides(doer, p) ? (blind ??= JSON.stringify({ ...msg, by: '' })) : full);
+    }
+    for (const w of this.watchers) if (w.ws.readyState === w.ws.OPEN) w.ws.send(full);
+  }
+
+  /** May `viewer` see thing `t` of `kind` where it is (homeOf)? */
+  seenBy(viewer, kind, t) {
+    const home = this.homeOf(kind, t);
+    return !home || this.gate.may(viewer, home);
+  }
+
+  /** `msg` about thing `t` of `kind` (homeOf): to those who may see it there, except `except`. */
+  broadcastThing(msg, kind, t, except) {
+    this.broadcastHome(msg, this.homeOf(kind, t), except);
+  }
+
+  /** Tell player `p` a thing as it is (a refused mount): only when they may see it there, else nothing at all. */
+  tellThing(p, kind, t) {
+    if (this.seenBy(p, kind, t)) this.send(p.ws, { t: kind, [kind]: t });
   }
 
   /** The door states a player may be told: no inside door of a home they have no right to. */
@@ -1899,7 +1960,11 @@ export class Game {
 
   /** Everyone's list of placed Teslas, after one was placed, moved or taken away. */
   sendPlaced() {
-    this.broadcast({ t: 'teslas', list: this.placedList() });
+    const list = this.placedList();
+    if (!list.some((c) => this.homeOf('car', c))) return this.broadcast({ t: 'teslas', list });
+    for (const p of this.players.values()) if (p.ws.readyState === p.ws.OPEN) p.ws.send(JSON.stringify({ t: 'teslas', list: list.filter((c) => this.seenBy(p, 'car', c)) }));
+    const all = JSON.stringify({ t: 'teslas', list });
+    for (const w of this.watchers) if (w.ws.readyState === w.ws.OPEN) w.ws.send(all);
   }
 
   /**
@@ -1984,7 +2049,7 @@ export class Game {
     if (!clearOfPortals({ x, z, yaw, halfL, halfW }, PORTALS, REACH)) return ['teslaPortal', 'The portals stay free.'];
     const ground = HOUSE.ground + TERRAIN.height(x, z);
     if (y < ground - 1.5 || y > ground + 0.5) return room; // the page puts it on paving or a kerb at most 0.3 m up
-    if (boxPoints(x, z, yaw, halfL, halfW, 0.5).some(([px, pz]) => INDOORS(px, pz))) return ['teslaInside', 'Cars stay outdoors.'];
+    if (boxPoints(x, z, yaw, halfL, halfW, 0.5).some(([px, pz]) => INDOORS(px, pz) || homeAt(px, pz, y + 0.5))) return ['teslaInside', 'Cars stay outdoors.'];
     if (!SOLIDS.boxFree(x, z, yaw, halfL, halfW, y + 0.3, y + spec.height)) return room; // 0.3: kerbs and paving don't count, as for driving
     const box = { x, z, yaw, halfL, halfW };
     if (PARKED.some((p) => boxesOverlap(box, p))) return room;
@@ -2195,7 +2260,7 @@ export class Game {
       else this.vilDown.set(i, now + VILLAGER_DOWN_S * 1000);
     }
     if (!ids.length) return;
-    this.broadcast({ t: 'vil', ids, by: name, w, paint, ms: (paint ? VILLAGER_PAINT_S : VILLAGER_DOWN_S) * 1000 }, name);
+    this.broadcastEvent({ t: 'vil', ids, by: name, w, paint, ms: (paint ? VILLAGER_PAINT_S : VILLAGER_DOWN_S) * 1000 }, null, name, name); // villagers never walk into a home (homeSight.test.mjs)
   }
 
   /** For a page that joins: the villagers that are down and those with paint on them, with the ms each has left. */
@@ -2549,19 +2614,19 @@ export class Game {
     };
     Object.values(this.cars).forEach((c, i) => {
       const f = JSON.stringify(carFields(c));
-      add('c', `c${c.id}`, i, f, entry(c.id, this.carAt[c.id] ?? 0, f), !!this.players.get(c.driver)?.fresh, homeAt(c.x, c.z, c.y));
+      add('c', `c${c.id}`, i, f, entry(c.id, this.carAt[c.id] ?? 0, f), !!this.players.get(c.driver)?.fresh, this.homeOf('car', c));
     });
     for (const h of this.horses) {
       const f = JSON.stringify(horseFields(h));
-      add('h', `h${h.i}`, h.i + 5, f, entry(h.i, this.horseAt[h.i], f), !!this.players.get(h.rider)?.fresh, h.rider ? this.gate.insideOf(this.players.get(h.rider)) : null);
+      add('h', `h${h.i}`, h.i + 5, f, entry(h.i, this.horseAt[h.i], f), !!this.players.get(h.rider)?.fresh, this.homeOf('horse', h));
     }
     Object.values(this.bikes).forEach((k, i) => {
       const f = JSON.stringify(bikeFields(k));
-      add('k', `k${k.id}`, i + 9, f, entry(k.id, this.bikeAt[k.id] ?? 0, f), !!this.players.get(k.rider)?.fresh, homeAt(k.x, k.z, k.y));
+      add('k', `k${k.id}`, i + 9, f, entry(k.id, this.bikeAt[k.id] ?? 0, f), !!this.players.get(k.rider)?.fresh, this.homeOf('bike', k));
     });
     [...this.helis.machines.values()].forEach((h, i) => {
       const f = JSON.stringify(heliFields(h));
-      add('e', `e${h.id}`, i + 13, f, entry(h.id, this.helis.at[h.id] ?? 0, f), !!this.players.get(h.seats[0])?.fresh);
+      add('e', `e${h.id}`, i + 13, f, entry(h.id, this.helis.at[h.id] ?? 0, f), !!this.players.get(h.seats[0])?.fresh, this.homeOf('heli', h));
     });
     // The strongmen every other tick (ten a second is plenty for their walk), keeping what was sent until then.
     const brutes = turn % 2 === 0;
@@ -2569,9 +2634,10 @@ export class Game {
       if (!c.brain) continue;
       const key = `b${c.id}`;
       const json = JSON.stringify(bruteEntry(c.id, c.brain));
-      if (brutes) add('b', key, c.id * 2, json, json, false);
+      const home = this.homeOf('brute', c.brain);
+      if (brutes) add('b', key, c.id * 2, json, json, false, home);
       else {
-        things.b.push({ json, due: false }); // only for a page that just connected
+        things.b.push({ json, home, due: false }); // only for a page that just connected
         if (this.sent.has(key)) sent.set(key, this.sent.get(key));
       }
     }
@@ -2580,7 +2646,7 @@ export class Game {
     for (const e of zombies ?? []) {
       const key = `z${e[0]}`;
       const json = JSON.stringify(e);
-      const home = homeAt(e[1], e[2], e[6]); // [id, x, z, yaw, state, hp, y] (shared/wire.mjs zombieEntry)
+      const home = this.homeOf('zombie', e);
       if (brutes) add('z', key, e[0] * 2, json, json, false, home);
       else {
         things.z.push({ json, home, due: false });
@@ -2593,7 +2659,7 @@ export class Game {
     const join = (list, all, sees = null) => list.filter((e) => (all || e.due) && (!sees || !e.home || sees(e.home))).map((e) => e.json).join(',');
     const part = (k, text) => (text ? `,"${k}":[${text}]` : '');
     // The strongmen's list goes with every other tick even when empty: one left out of it stood still. The zombies' too, while the game runs.
-    const rest = (all, sees = null) => part('c', join(things.c, all, sees)) + part('h', join(things.h, all, sees)) + part('k', join(things.k, all, sees)) + part('e', join(things.e, all, sees)) + (brutes || all ? `,"b":[${join(things.b, all)}]` : '')
+    const rest = (all, sees = null) => part('c', join(things.c, all, sees)) + part('h', join(things.h, all, sees)) + part('k', join(things.k, all, sees)) + part('e', join(things.e, all, sees)) + (brutes || all ? `,"b":[${join(things.b, all, sees)}]` : '')
       + (zombies && (brutes || all) ? `,"z":[${join(things.z, all, sees)}]` : '');
     // Inside a home (homeGate.hides): only for those with its right. Shared when nothing is inside one, as before.
     const inside = players.some((e) => e.home) || Object.values(things).some((list) => list.some((e) => e.home));
@@ -2647,7 +2713,7 @@ export class Game {
     const states = [];
     // Nobody inside a home (homeGate.hides): this one list goes to every old page alike.
     for (const [name, p] of this.players) if (p.state && !this.gate.insideOf(p)) states.push({ name, ...p.state, alive: p.alive, safe: now < p.protectedUntil });
-    send({ t: 'states', players: states, cars: Object.values(this.cars).filter((c) => !homeAt(c.x, c.z, c.y)), horses: this.horses });
+    send({ t: 'states', players: states, cars: Object.values(this.cars).filter((c) => !this.homeOf('car', c)), horses: this.horses.filter((h) => !this.homeOf('horse', h)) });
   }
 
   /**

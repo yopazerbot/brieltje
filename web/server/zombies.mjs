@@ -650,7 +650,8 @@ export class ZombieGame {
   /** Zombie `id` is beaten by `by`: the kill feed (in friendly words on a paintball page), and the count left. `double`: the second of a double. */
   beat(id, by, w, double = false) {
     this.players.add(by);
-    this.game.broadcast({ t: 'zdown', id, by, w, ...(double ? { double: true } : {}) });
+    const at = this.horde.zombies.get(id);
+    this.game.broadcastEvent({ t: 'zdown', id, by, w, ...(double ? { double: true } : {}) }, at && { x: at.x, y: at.y ?? 0, z: at.z }, by); // inside a home: only with its right; from inside one: without the name for the others
     // Maybe a reward where it fell (the wave's last leaves one when none fell yet).
     const z = this.horde.zombies.get(id);
     if (z) {

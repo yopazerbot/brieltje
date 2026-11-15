@@ -113,7 +113,7 @@ export class Helis {
 
   /** Everyone is told the machine as it is now (a seat changed); `extra`: { home: 1 } on a flight home. */
   tell(h, extra = {}) {
-    this.game.broadcast({ t: 'heli', heli: this.pub(h), ...extra });
+    this.game.broadcastThing({ t: 'heli', heli: this.pub(h), ...extra }, 'heli', h); // one standing inside a home: only to those with its right (Game.homeOf)
   }
 
   /** The server's floor under (x, z): the relief. It knows no roofs, so nothing is decided from "on the ground". */

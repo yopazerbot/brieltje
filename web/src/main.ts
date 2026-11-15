@@ -2940,7 +2940,7 @@ net.onMessage = (m: ServerMsg) => {
       break;
     case 'cat':
       cats.down(m.i, m.ms / 1000);
-      combat.kill(m.by, t('char.cat'), false, weaponName(m.w));
+      if (m.by) combat.kill(m.by, t('char.cat'), false, weaponName(m.w)); // no name: someone you may not see (server/game.mjs broadcastEvent)
       break;
     case 'vil': {
       // Someone else's shot: the server decided it. Each falls away from the shooter, or wears the gun's paint.
@@ -2951,7 +2951,7 @@ net.onMessage = (m: ServerMsg) => {
           villagers.down(id, m.ms / 1000, from ? { x: from.x, z: from.z } : undefined);
           const at = villagers.where(id);
           if (at) effects.impact(at.setY(at.y + 1.1), new THREE.Vector3(0, 1, 0), 'cat');
-          combat.kill(m.by, t('char.villager'), false, weaponName(m.w));
+          if (m.by) combat.kill(m.by, t('char.villager'), false, weaponName(m.w));
         }
       }
       break;
@@ -2965,14 +2965,14 @@ net.onMessage = (m: ServerMsg) => {
       break;
     case 'clownhit':
       clowns.down(m.id, m.ms / 1000);
-      combat.kill(m.by, whoName(clowns.name(m.id)), false, weaponName(m.w));
+      if (m.by) combat.kill(m.by, whoName(clowns.name(m.id)), false, weaponName(m.w));
       break;
     case 'zdown': { // a zombie beaten (server/zombies.mjs): it falls (away from whoever beat it), or vanishes in paint
       const by = m.by === me?.username ? player : avatars.position(m.by);
       zombies.beaten(m.id, by && { x: by.x, z: by.z, w: m.w });
       // In the kill feed: your own, and the big ones (sixteen players beat over a hundred in a wave: a flood otherwise).
-      if (m.by === me?.username || zombies.isBig(m.id)) combat.zombie(m.by, zombieName(zombies.isBig(m.id)), weaponName(m.w));
-      if (m.double) combat.double(m.by); // one sniper's bullet, two zombies: everyone's feed
+      if (m.by && (m.by === me?.username || zombies.isBig(m.id))) combat.zombie(m.by, zombieName(zombies.isBig(m.id)), weaponName(m.w));
+      if (m.double && m.by) combat.double(m.by); // one sniper's bullet, two zombies: everyone's feed
       break;
     }
     case 'revive': // helping a teammate up (you: `name`), or being helped up (`by`): it starts or stops

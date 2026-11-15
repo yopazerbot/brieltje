@@ -1,7 +1,9 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import { Game } from './game.mjs';
-import { HOMES, homeAt } from '../shared/homes.mjs';
+import { readFileSync } from 'node:fs';
+import { distanceToHome, HOMES, homeAt } from '../shared/homes.mjs';
+import { KICK, PITCHES } from '../shared/ball.mjs';
 import { PROTO } from '../shared/wire.mjs';
 
 // A player inside a code-locked home is out of sight for everyone without that home's right (server/homeGate.mjs
@@ -175,3 +177,183 @@ test('hide and seek and tag: nobody stands inside a home, with its code or not, 
     assert.equal(game.gate.mayStand(owner, inside.x, inside.y, inside.z), true, kind);
   }
 });
+
+// ---------------------------------------------------------------- every kind of thing with a place (Game.homeOf)
+// Each kind that can stand inside a home: out of the welcome, the ticks and every message of a page without its right.
+// Each kind that can never be inside one: a test that says so. The admin's watch view sees everything (broadcastHome).
+
+const json = (p) => JSON.parse(readFileSync(new URL(p, import.meta.url), 'utf8'));
+/** How far (x, z) is from the inside of the nearest home, at the heights y0 to y1 (any height without them). */
+const nearestHome = (x, z, y0, y1) => Math.min(...HOMES.map((h) => distanceToHome(h.id, x, z, y0, y1)));
+/** The least distance to a home along a line of points [[x, z], ...], sampled every 0.25 m. */
+function closest(points) {
+  let best = Infinity;
+  for (let i = 0; i < points.length; i++) {
+    const [ax, az] = points[i];
+    const [bx, bz] = points[Math.min(i + 1, points.length - 1)];
+    const n = Math.max(1, Math.ceil(Math.hypot(bx - ax, bz - az) / 0.25));
+    for (let k = 0; k <= n; k++) best = Math.min(best, nearestHome(ax + ((bx - ax) * k) / n, az + ((bz - az) * k) / n));
+  }
+  return best;
+}
+const pairs = (flat) => Array.from({ length: flat.length / 2 }, (_, i) => [flat[2 * i], flat[2 * i + 1]]);
+/** The entries of list `k` ('c', 'h', 'k', 'b', 'z') in a page's ticks. */
+const entries = (p, k) => p.got.filter((m) => m.t === 's').flatMap((m) => m[k] ?? []);
+
+for (const h of HOMES) {
+  test(`${h.id}: a horse left inside is in no welcome, tick, message or refusal of a page without the right`, () => {
+    const { game, grants, player } = setup();
+    const { inside, outside } = spots(h);
+    const rider = player('rider', inside);
+    const friend = player('friend', outside);
+    const other = player('other', outside);
+    const old = player('old', outside);
+    old.proto = 1;
+    grants.add(`k-rider|${h.id}`);
+    grants.add(`k-friend|${h.id}`);
+    const horse = game.horses[0];
+    Object.assign(horse, { x: inside.x, z: inside.z, rider: 'rider', parked: false });
+    game.releaseHorse('rider');
+    assert.equal(other.got.filter((m) => m.t === 'horse').length, 0, 'getting off inside');
+    assert.equal(friend.got.filter((m) => m.t === 'horse').length, 1);
+    assert.ok(!game.welcome(other, 'other', '#888', Date.now()).horses.some((q) => q.i === 0), 'the welcome');
+    assert.ok(game.welcome(friend, 'friend', '#888', Date.now()).horses.some((q) => q.i === 0));
+    game.snapshot(Date.now());
+    assert.ok(!entries(other, 'h').some((e) => e[0] === 0), 'the ticks');
+    assert.ok(entries(friend, 'h').some((e) => e[0] === 0));
+    game.oldStates(Date.now());
+    assert.ok(!old.got.find((m) => m.t === 'states').horses.some((q) => q.i === 0), 'pages from before the ticks');
+    other.alive = false; // a refused mount tells the page the horse as it is: not this one
+    other.got.length = 0;
+    game.mountHorse('other', other, horse, Date.now());
+    assert.equal(other.got.length, 0, 'a refusal');
+  });
+
+  test(`${h.id}: a car and a bike inside are in no tick, message or refusal of a page without the right`, () => {
+    const { game, grants, player } = setup();
+    const { inside, outside } = spots(h);
+    const driver = player('driver', inside);
+    const other = player('other', outside);
+    const friend = player('friend', outside);
+    grants.add(`k-driver|${h.id}`);
+    grants.add(`k-friend|${h.id}`);
+    game.cars = { c9: { id: 'c9', ...inside, yaw: 0, s: 0, driver: 'driver', passenger: null } };
+    game.bikes = { k9: { id: 'k9', ...inside, yaw: 0, rider: 'driver' } };
+    assert.equal(game.homeOf('car', game.cars.c9), h.id);
+    game.snapshot(Date.now());
+    assert.ok(!entries(other, 'c').some((e) => e[0] === 'c9') && !entries(other, 'k').some((e) => e[0] === 'k9'), 'the ticks');
+    assert.ok(entries(friend, 'c').some((e) => e[0] === 'c9') && entries(friend, 'k').some((e) => e[0] === 'k9'));
+    game.releaseCar('driver');
+    game.releaseBike('driver');
+    assert.ok(!other.got.some((m) => m.t === 'car' || m.t === 'bike'), 'getting out inside');
+    assert.ok(friend.got.some((m) => m.t === 'car') && friend.got.some((m) => m.t === 'bike'));
+    other.alive = false;
+    other.got.length = 0;
+    game.enterCar('other', other, game.cars.c9);
+    game.mountBike('other', other, game.bikes.k9, Date.now());
+    assert.equal(other.got.length, 0, 'refusals');
+  });
+
+  test(`${h.id}: a figure spawned inside and a strongman who walked in are out of sight; nobody inside is his target`, () => {
+    const { game, grants, player } = setup();
+    const { inside, outside } = spots(h);
+    const owner = player('owner', inside);
+    const other = player('other', { ...outside });
+    other.state.armed = false;
+    grants.add(`k-owner|${h.id}`);
+    game.clowns = new Map([[1, game.character(1, inside.x, inside.y, inside.z, 'clown')], [2, game.character(2, inside.x, inside.y, inside.z, 'strongman')]]);
+    assert.deepEqual(game.clownList(Date.now(), other), [], 'the welcome\'s figures');
+    assert.equal(game.clownList(Date.now(), owner).length, 2);
+    game.sendClowns(Date.now());
+    assert.deepEqual(other.got.find((m) => m.t === 'clowns').list, []);
+    game.snapshot(Date.now());
+    assert.ok(!entries(other, 'b').some((e) => e[0] === 2), 'the strongman in the ticks');
+    assert.ok(entries(owner, 'b').some((e) => e[0] === 2));
+    // A strongman just outside, the owner inside armed and within his reach: no rock, no stomp, no harm.
+    game.clowns = new Map([[3, game.character(3, outside.x + 2.5, outside.y, outside.z + 2.5, 'strongman')]]);
+    const near = { ...inside };
+    owner.state = { ...owner.state, ...near };
+    for (let i = 0; i < 100; i++) game.stepBrutes(Date.now() + i * 50);
+    assert.equal(owner.hp, 100);
+  });
+
+  test(`${h.id}: a figure hit, a pickup or a zombie beaten from inside: the others are told without the name`, () => {
+    const { game, grants, player } = setup();
+    const { inside, outside } = spots(h);
+    const owner = player('owner', inside);
+    const friend = player('friend', outside);
+    const other = player('other', outside);
+    grants.add(`k-owner|${h.id}`);
+    grants.add(`k-friend|${h.id}`);
+    owner.nextCat = 0;
+    game.handle('owner', owner, JSON.stringify({ t: 'cat', i: 0, w: 'rifle' }));
+    assert.equal(other.got.find((m) => m.t === 'cat')?.by, '', 'a cat');
+    assert.equal(friend.got.find((m) => m.t === 'cat')?.by, 'owner');
+    // At a place inside (a zombie that went in, a figure spawned there): not at all.
+    game.broadcastEvent({ t: 'zdown', id: 5, by: 'friend', w: 'rifle' }, inside, 'friend');
+    assert.ok(!other.got.some((m) => m.t === 'zdown'), 'something beaten inside');
+    assert.ok(owner.got.some((m) => m.t === 'zdown'));
+    assert.equal(game.homeOf('zombie', [5, inside.x, inside.z, 0, 0, 1, inside.y]), h.id, 'a zombie\'s tick entry');
+  });
+
+  test(`${h.id}: a placed car never stands inside, and each page's list leaves out one that does`, () => {
+    const { game, grants, player } = setup();
+    const { inside, outside } = spots(h);
+    const other = player('other', outside);
+    const owner = player('owner', inside);
+    grants.add(`k-owner|${h.id}`);
+    assert.ok(game.parkingProblem('modelY-white', { ...inside, yaw: 0 }), 'refused inside');
+    game.cars = { p1: { id: 'p1', kind: 'modelY-white', ...inside, yaw: 0, s: 0, driver: null, passenger: null } };
+    game.sendPlaced();
+    assert.deepEqual(other.got.find((m) => m.t === 'teslas').list, []);
+    assert.equal(owner.got.find((m) => m.t === 'teslas').list.length, 1);
+  });
+
+  test(`${h.id}: furniture inside is in the welcome of those with the right only`, () => {
+    const { game, grants, player } = setup();
+    const { inside, outside } = spots(h);
+    const other = player('other', outside);
+    const owner = player('owner', outside);
+    grants.add(`k-owner|${h.id}`);
+    game.furniture = new Map([[1, { id: 1, item: 'chair', ...inside, yaw: 0 }]]);
+    assert.equal(game.welcome(other, 'other', '#888', Date.now()).furniture.length, 0);
+    assert.equal(game.welcome(owner, 'owner', '#888', Date.now()).furniture.length, 1);
+  });
+}
+
+test('things that can never be inside a home: cats, villagers, pickups and the footballs keep clear of every one', () => {
+  for (const [i, path] of json('../shared/cats.json').cats.entries()) assert.ok(closest(path) > 0.5, `cat ${i}`);
+  const villagers = json('../src/data/villagers.json');
+  for (const [i, walk] of [...villagers.walks, ...villagers.bikes].entries()) assert.ok(closest(pairs(walk)) > 0.5, `villager route ${i}`);
+  for (const [i, s] of json('../shared/pickups.json').entries()) assert.ok(nearestHome(s.x, s.z, s.y - 0.5, s.y + 2) > 0.5, `pickup ${i}`); // taken from inside (within reach of a wall): broadcastEvent leaves the name out
+  // A ball's middle never leaves its pitch's outline, and a kick reaches KICK.reach from it.
+  for (const p of PITCHES) {
+    const ring = p.outline;
+    assert.ok(closest([...ring, ring[0]]) > KICK.reach + 0.5, `${p.id}: its edge`);
+    for (const h of HOMES) for (const band of h.bands) assert.ok(!band.ring.some(([x, z]) => inside2d(x, z, ring)), `${p.id}: no home within it`);
+  }
+});
+
+test('pets and chat carry no place: the dog lives in a home\'s sealed pack only, a chat line has no position', () => {
+  for (const f of ['house_shell.json', 'kapellenhoek_home_shell.json', 'molenhoek_end_shell.json']) assert.equal(json(`../src/data/${f}`).pets, undefined, f);
+  const { game, player } = setup();
+  const h = HOMES[3];
+  const { inside, outside } = spots(h);
+  const owner = player('owner', inside);
+  const other = player('other', outside);
+  assert.equal('pets' in game.welcome(other, 'other', '#888', Date.now()), false);
+  game.handle('owner', owner, JSON.stringify({ t: 'chat', text: 'hello' }));
+  const line = other.got.find((m) => m.t === 'chat');
+  assert.ok(line && Object.keys(line).every((k) => ['t', 'from', 'color', 'text'].includes(k)), JSON.stringify(line));
+});
+
+/** Whether (x, z) lies inside ring `ring` (even-odd). */
+function inside2d(x, z, ring) {
+  let c = false;
+  for (let i = 0, j = ring.length - 1; i < ring.length; j = i++) {
+    const [xi, zi] = ring[i];
+    const [xj, zj] = ring[j];
+    if (zi > z !== zj > z && x < ((xj - xi) * (z - zi)) / (zj - zi) + xi) c = !c;
+  }
+  return c;
+}
