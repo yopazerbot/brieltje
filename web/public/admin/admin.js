@@ -22,7 +22,7 @@
     account_created: ['Account made', 'good', 'in'], account_login: ['Logged in to an account', 'good', 'in'],
     account_login_failed: ['Wrong account password', 'bad', 'failed'], account_password_wrong: ['Wrong current password', 'bad', 'failed'],
     account_password: ['Account password changed', '', ''], account_deleted: ['Account deleted', '', 'admin'], account_reset: ['Account given a new password', '', 'admin'],
-    account_off: ['Account turned off', '', 'admin'], account_on: ['Account turned on', '', 'admin'], accounts_pruned: ['Unused accounts deleted', '', 'admin'],
+    account_off: ['Account turned off', '', 'admin'], account_on: ['Account turned on', '', 'admin'], accounts_pruned: ['Unused accounts deleted', '', 'admin'], board_removed: ['Board scores removed', '', 'admin'],
     room_opened: ['Zombies room opened', '', ''], room_closed: ['Zombies room closed', '', ''],
     login_mfa_failed: ['Wrong two-step code at login', 'bad', 'failed'], mfa_code_failed: ['Wrong two-step code', 'bad', 'failed'],
     mfa_on: ['Two-step login turned on', '', 'admin'], mfa_off: ['Two-step login turned off', '', 'admin'], mfa_codes: ['New recovery codes', '', 'admin'],
@@ -998,6 +998,28 @@
             loadAccounts();
           }
         }, 'btn ghost danger'),
+        // Off the boards of the routes, the gnomes and the party games (POST /api/admin/boards, logged): asked twice.
+        btn('Clear board scores', async (b) => {
+          if (!b.dataset.armed) {
+            b.dataset.armed = '1';
+            b.textContent = 'Sure? Clear';
+            setTimeout(() => {
+              delete b.dataset.armed;
+              b.textContent = 'Clear board scores';
+            }, 5000);
+            return;
+          }
+          let n = 0;
+          for (const board of ['race', 'gnomes', 'games']) {
+            const r = await post('/api/admin/boards', { op: 'remove', name: a.username, board }).catch(() => null);
+            if (!r || !r.ok) {
+              $('acct-msg').textContent = `${a.username}: not done. Try again.`;
+              return;
+            }
+            n += (await r.json()).removed ?? 0;
+          }
+          $('acct-msg').textContent = `${a.username}: ${n} board ${n === 1 ? 'row' : 'rows'} cleared (route times, gnomes, party games won).`;
+        }),
         shown,
       );
       tr.append(el('td', '', a.username), el('td', '', a.email), el('td', '', a.created), el('td', '', a.seen), state, actions);
