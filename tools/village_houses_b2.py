@@ -381,7 +381,119 @@ def fermette():
     h.export()
 
 
-HOUSES = {"vh_fermette": fermette}
+# ======================================================================================================================
+# 06. x 316.4, z -821.9: a tall red brick villa of the 1920s, white bands, a hipped roof with a front gable over a
+# canted bay window, the door up four stone steps under a small canopy, a low annex behind, gravel to the street.
+def red_villa():
+    h = House("vh_red_villa", [313.3, -831.97], ([321.26, -827.26], [316.47, -829.46]), 1.99, {
+        "vh_brick": {"texture": "nb_brick", "tint": "#904e3e", "normalScale": .55},  # the most orange of nb_red's range
+        "vh_roof": {"texture": "roof_tiles", "tint": "#3a3d42", "normalScale": .3},
+        "vh_gravel": {"texture": "gravel", "tint": "#8e8b85"},
+        "vh_trim": TRIM, "vh_stone": STONE, "vh_glass": GLASS, "vh_frames_small": SMALL, "vh_metal_small": METAL,
+    })
+    # u along the street front to the west (left to right seen from the street), d from the front (0) to the back.
+    lift = h.base
+    E, RG, ov = 7.77 + lift, 11.31 + lift, .35
+    uE, uW, dB = -2.64, 6.57, 8.4
+    k = (RG - E) / (dB / 2)
+    white, frame, foot = "#ebe8e1", "#f2f1ec", "#8d8a84"
+    main = Roof([(uE - ov, -ov), (uW + ov, -ov), (uW + ov, dB + ov), (uE - ov, dB + ov)],
+                [eave((0, -ov), (0, 1), E - k * ov, k), eave((0, dB + ov), (0, -1), E - k * ov, k),
+                 eave((uE - ov, 0), (1, 0), E - k * ov, k), eave((uW + ov, 0), (-1, 0), E - k * ov, k)],
+                under=white, edge=white, board=.3)
+    # The front gable over the bay: its own steeper roof, its ridge toward the street.
+    gu0, gu1, gd0 = 2.64, 6.56, -.96
+    kc = (10.05 + lift - E) / ((gu1 - gu0) / 2)
+    cross = Roof([(gu0 - .25, gd0 - .3), (gu1 + .36, gd0 - .3), (gu1 + .36, 4.6), (gu0 - .25, 4.6)],
+                 [eave((gu0 - .25, 0), (1, 0), E - kc * .25, kc), eave((gu1 + .36, 0), (-1, 0), E - kc * .36, kc)],
+                 under=white, edge=white, board=.24)
+    # The annex behind the east half: low, its gable to the street.
+    aE, aW, ad0, ad1 = -6.78, -.06, 7.9, 15.0
+    AE, ak, ao = 3.1 + lift, .94, .3
+    annex = Roof([(aE - ao, ad0 - ao), (aW + ao, ad0 - ao), (aW + ao, ad1 + ao), (aE - ao, ad1 + ao)],
+                 [eave((0, ad0 - ao), (0, 1), AE - ak * ao, ak), eave((0, ad1 + ao), (0, -1), AE - ak * ao, ak)],
+                 under=white, edge=white, board=.22)
+    roofs = [main, cross, annex]
+    bands = [(.8, "vh_stone", foot), (.95, "vh_brick", None), (1.1, "vh_trim", white), (3.0, "vh_brick", None), (3.15, "vh_trim", white),
+             (4.35, "vh_brick", None), (4.5, "vh_trim", white), (6.4, "vh_brick", None), (6.55, "vh_trim", white)]
+    gy = lambda u, d: h.ground(u, d)
+    win = lambda s, y=1.1, w=1.0, hh=1.9: Opening(s, y, w, hh, frame=frame, reveal=.2, cols=2, transom=.75)
+
+    def wall(a, b, ops=(), top=None, boxes=True, **kw):
+        W, N, T = h.wall(a, b, top if top is not None else top_over(roofs, a, b), ops, bands=kw.pop("bands", bands), **kw)
+        for o in ops:
+            if o.kind == "window" and boxes:
+                shutter_box(h, W, N, T, o, frame)
+        return W, N, T
+
+    # --- the street front: a window and the door; above them two windows -------------------------------------------
+    gd = gy(1.75, -.6)
+    fl = gd + .62
+    # (s along this wall runs from the gable's corner, u 2.64, eastward)
+    door = Opening(.8, fl, 1.0, 1.95, "door", door="#f3f2ee", frame=frame, panels="glazed", reveal=.2, sill=False)
+    light = Opening(.8, fl + 2.0, 1.0, .45, frame=frame, reveal=.2, cols=2, sill=False)
+    Wf, Nf, Tf = wall((2.64, 0), (-2.64, 0), [door, light, win(3.8), win(3.8, 4.5), win(.8, 4.5)])
+    lamp(h, Wf, Nf, Tf, door.s + .78, fl + 1.75)
+    for i in range(4):  # four stone steps up to the door
+        h.wbox(Wf, Nf, Tf, "vh_stone", door.s - .75, door.s + .72, gd - .3, fl - .155 * i, -.3 * (i + 1), 0, "#a7a49d")
+    # A small tiled canopy on two plain iron struts.
+    cy = fl + 2.6
+    u0c, u1c = 2.64 - .8 - .85, 2.62
+    h.roof([(u0c, -.85, cy), (u1c, -.85, cy), (u1c, 0, cy + .35), (u0c, 0, cy + .35)], free=(0, 1, 3), under=white, edge=white, thick=.08, board=.12)
+    for u in (u0c + .12, u1c - .12):
+        h.rod("vh_metal_small", (u, -.02, cy - .75), (u, -.75, cy - .05), .025, 4, "#2a2a28")
+        h.rod("vh_metal_small", (u, -.02, cy - .02), (u, -.8, cy - .02), .02, 4, "#2a2a28")
+    # --- the front gable's wall, over the bay; the bay's three sides and its flat lead top --------------------------
+    bay_top = 3.35
+    Wg, Ng, Tg = wall((2.64, -.96), (6.56, -.96), [win(1.96, 4.5), Opening(1.96, 7.75, .7, .9, frame=frame, reveal=.18, cols=2)],
+                      bottom=[(0, h.foot), (.34, h.foot), (.341, bay_top), (3.56, bay_top), (3.561, h.foot), (3.92, h.foot)], out=(0, -1))
+    h.wall((2.64, 0), (2.64, -.96), top_over(roofs, (2.64, 0), (2.64, -.96)), bands=bands)
+    bay = [(2.98, -.96), (3.76, -1.77), (5.47, -1.77), (6.2, -.96)]
+    for (a, b) in zip(bay, bay[1:]):
+        L = math.dist(a, b)
+        o = Opening(L / 2, 1.1, L - .34, 1.9, frame=frame, reveal=.14, cols=2 if L > 1.4 else 1, transom=.75)
+        h.wall(a, b, bay_top, [o], bands=bands[:3])
+    ring = [(2.94, -.92), (3.74, -1.82), (5.49, -1.82), (6.24, -.92)]
+    h.prism("vh_stone", ring, bay_top - .12, bay_top + .06, "#6e7176", bottom=True)
+    # --- the sides and the back ---------------------------------------------------------------------------------------
+    wall((-2.64, 0), (-2.64, dB), [win(2.0, 1.1, 1.0, 1.7), win(5.8, 1.1, 1.0, 1.7), win(2.0, 4.5, 1.0, 1.7), win(5.8, 4.5, 1.0, 1.7)], out=(-1, 0))
+    wall((6.56, -.96), (6.57, 8.33), [win(3.0, 1.1, 1.0, 1.7), win(6.6, 1.1, 1.0, 1.7), win(3.0, 4.5, 1.0, 1.7), win(6.6, 4.5, 1.0, 1.7)])
+    wall((6.57, 8.33), (-2.64, dB), [win(1.6, 1.1, 1.0, 1.7), win(4.4, 1.1, 1.0, 1.7), win(1.6, 4.5, 1.0, 1.7), win(4.4, 4.5, 1.0, 1.7)], out=(0, 1))
+    # --- the annex: its front with a side door, its gable to the street, the back and the shed behind ------------------
+    ab = bands[:1]
+    aw = lambda a, b, ops=(): wall(a, b, ops, top=top_over([annex], a, b), bands=ab)
+    aw((-2.63, 7.9), (-6.78, 7.97), [Opening(1.2, gy(-3.8, 7.6) + .15, .9, 2.05, "door", door="#f3f2ee", frame=frame, panels="glazed", reveal=.15, sill=False),
+                                     win(2.9, 1.1, 1.0, 1.3)])
+    aw((-6.78, 7.97), (-6.62, 15.01), [win(1.8, 1.1, 1.0, 1.3), win(5.2, 1.1, 1.0, 1.3), Opening(3.5, 3.6, .5, .5, frame=frame, reveal=.15)])
+    aw((-6.62, 15.01), (-6.43, 15.01))
+    aw((-.15, 14.94), (-2.79, 14.97), [win(1.3, 1.1, .9, 1.2)])
+    aw((-.06, 8.4), (-.15, 14.94), [win(3.3, 1.1, 1.0, 1.3), Opening(3.3, 3.6, .5, .5, frame=frame, reveal=.15)])
+    shed = 2.85 + lift
+    for a, b in (((-2.79, 14.97), (-2.69, 18.1)), ((-2.69, 18.1), (-6.32, 18.26)), ((-6.32, 18.26), (-6.43, 15.01))):
+        wall(a, b, [win(math.dist(a, b) / 2, 1.2, .8, .9)] if b[1] > 18 else (), top=shed, bands=ab)
+    sring = [(-2.79, 14.95), (-2.69, 18.1), (-6.32, 18.26), (-6.43, 14.95)]
+    h.poly("vh_stone", [(u, d, shed - .02) for u, d in sring], (0, 0, 1), "#3a3a3a")  # takes the snow
+    for a, b in zip(sring[:3], sring[1:]):
+        h.seg("vh_stone", a, b, .28, shed, shed + .07, "#b3b0a9")
+    draw_roofs(h, roofs)
+    # The white boxed eaves carry gutters all round; downpipes at the corners.
+    ye = E - k * ov - .3
+    h.gutter((uE - ov, -ov, ye), (gu0 - .25, -ov, ye), (0, -1, 0), white, down=[(uE + .08, -.08, gy(uE, 0))])
+    h.gutter((uW + ov, -ov, ye), (uW + ov, dB + ov, ye), (1, 0, 0), white, down=[(uW + .08, -.88, gy(uW, -.9))])
+    h.gutter((uW + ov, dB + ov, ye), (uE - ov, dB + ov, ye), (0, 1, 0), white)
+    h.gutter((uE - ov, dB + ov, ye), (uE - ov, -ov, ye), (-1, 0, 0), white)
+    ya = AE - ak * ao - .22
+    h.gutter((aE - ao, ad0 - ao, ya), (uE, ad0 - ao, ya), (0, -1, 0), white, down=[(aE + .08, ad0 - .08, gy(aE, ad0))])
+    h.gutter((aW + ao, ad1 + ao, ya), (aE - ao, ad1 + ao, ya), (0, 1, 0), white)
+    h.chimney(.17, 3.92, .55, .55, main.height(.17, 3.92) - .4, 12.2 + lift, "vh_brick", pots=[(0, 0)])
+    # --- gravel from the house to the street's paving (its edge from the data); the lawn beyond -------------------------
+    edge = [(307.56, -838.89), (312.97, -835.0), (322.75, -830.32), (331.21, -826.69)]
+    h.pave([(6.56, -.98), (6.2, -.98), (5.47, -1.79), (3.76, -1.79), (2.98, -.98), (2.62, -.98), (2.62, -.02), (-2.66, -.02), (-2.66, 7.88),
+            (-7.6, 7.95), (-7.6, 10.2), (-10.6, 10.2), (-10.6, 4.0), edge_at(h, edge, u=-10.6), h.local((322.75, -830.32)), edge_at(h, edge, u=7.4), (7.4, -.98)], mesh="vh_gravel", lift=.03, cell=1.5)
+    h.export()
+
+
+HOUSES = {"vh_fermette": fermette, "vh_red_villa": red_villa}
 for _name, _build in HOUSES.items():
     if not ONLY or _name in ONLY:
         _build()

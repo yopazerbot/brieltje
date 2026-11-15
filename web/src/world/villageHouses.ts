@@ -17,6 +17,7 @@ export const VILLAGE_HOUSES: readonly (readonly [name: string, reach: number])[]
   ['vh_arch_villa', Infinity], // x -46.7, z -1089.5: a buff villa of the 1950s with arched windows
   ['vh_white_bungalow', Infinity], // x 39.7, z -1050.1: a white bungalow of the 1960s
   ['vh_fermette', Infinity], // x 287.4, z -836.2: a villa in farmhouse style with a low dark wing (tools/village_houses_b2.py)
+  ['vh_red_villa', Infinity], // x 316.4, z -821.9: a tall red villa of the 1920s with white bands and a bay window
   ['kapellenhoek_home', 350], // x 616.5, z -352.6: home 4, the brick house on Kapellenhoek (tools/kapellenhoek_home.py, world/walkIn.ts)
 ];
 
