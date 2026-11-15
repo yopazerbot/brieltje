@@ -2,7 +2,7 @@ import * as THREE from 'three';
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
 import HELIS from '../../shared/heli.json';
-import { awayInput, awayKeep, EV, HELI, heliBump, heliExit, heliPlace, heliStart, heliStep, type HeliEnv, type HeliInput, type HeliState } from '../../shared/heli.mjs';
+import { AWAY, awayInput, awayKeep, EV, HELI, heliBump, heliExit, heliPlace, heliStart, heliStep, type HeliEnv, type HeliInput, type HeliState } from '../../shared/heli.mjs';
 import type { CrashHit, Obstacle } from './car';
 import type { World } from './collision';
 import { homeAt, inEndGarden } from '../../shared/homes.mjs';
@@ -389,6 +389,9 @@ export class Heli {
   flown = false;
   /** s since you jumped out of it (it flies itself home: shared/heli.mjs AWAY), or null */
   away: number | null = null;
+  /** After a jump and watched too long: flying off, away from `from` (the eye) and up through the ceiling (AWAY) */
+  leaving = false;
+  private from = new THREE.Vector3();
   private keep = { fwd: 0, side: 0 };
   /** In the game (drawn, solid, boardable): once its model is in (or, failing that, the stand-in) */
   ready = false;
@@ -656,6 +659,7 @@ export class Heli {
   enter(): void {
     this.flown = true;
     this.away = null;
+    this.leaving = false;
     this.camHeading = this.s.yaw;
     this.camTilt = 0;
     this.lookPitch = 0;
@@ -710,12 +714,28 @@ export class Heli {
   jumpedFrom(): void {
     this.flown = false;
     this.away = 0;
+    this.leaving = false;
     this.keep = awayKeep(this.s);
+  }
+
+  /** Flying off (AWAY): full forward and full up, the nose turned away from where `eye` was when it set off. */
+  private flyOff(eye: THREE.Vector3): HeliInput {
+    if (!this.from.lengthSq()) this.from.copy(eye);
+    const want = Math.atan2(-(this.s.x - this.from.x), -(this.s.z - this.from.z));
+    return { fwd: 1, lift: 1, turn: Math.max(-1, Math.min(1, -angle(want - this.s.yaw) * 2)) };
+  }
+
+  /** Watched too long after a jump: it flies off (AWAY), drawn out to AWAY.far. */
+  flyAway(): void {
+    if (this.leaving) return;
+    this.leaving = true;
+    this.from.set(0, 0, 0);
   }
 
   /** Put somewhere (a dev hook): still on the floor at (x, y, z) facing `yaw`, its rotor at `rotor` (and running with it). */
   place(x: number, y: number, z: number, yaw: number, rotor = 0): void {
     this.away = null;
+    this.leaving = false;
     heliPlace(this.s, x, y, z, yaw, rotor);
     this.camHeading = yaw;
     this.pose();
@@ -734,7 +754,7 @@ export class Heli {
     };
     const edge = this.world.bounds?.nearest(this.s.x, this.s.z, HELI.EDGE_PAD) ?? null;
     const pad = padNear(this.s.x, this.s.z, HELI.MAGNET_R + 1);
-    return { ground, ceiling: this.world.skyAt(this.s.x, this.s.z), wind: [w.x, w.z], edge, pad };
+    return { ground, ceiling: this.leaving ? Infinity : this.world.skyAt(this.s.x, this.s.z), wind: [w.x, w.z], edge, pad };
   }
 
   /**
@@ -1032,12 +1052,12 @@ export class Heli {
   update(dt: number, eye: THREE.Vector3): void {
     const s = this.s;
     if (this.away !== null && dt > 0) this.away += dt;
-    if (!this.flown && dt > 0 && (s.rotor > 0 || !s.ground)) this.fly(dt, this.away !== null ? awayInput(this.away, this.keep) : {});
+    if (!this.flown && dt > 0 && (s.rotor > 0 || !s.ground)) this.fly(dt, this.away === null ? {} : this.leaving ? this.flyOff(eye) : awayInput(this.away, this.keep));
     // Left where nobody can reach it: back on its pad after a while.
     this.lost = this.stranded ? this.lost + dt : 0;
     if (this.lost > LOST_AFTER) this.sendHome(eye);
     const away = Math.hypot(s.x - eye.x, s.z - eye.z, s.y - eye.y);
-    this.group.visible = this.ready && (away < DRAW || this.warmOn);
+    this.group.visible = this.ready && (away < (this.leaving ? AWAY.far : DRAW) || this.warmOn);
     const farOn = !!this.far && !this.warmOn && away > (lowDetail ? FAR_LOW : FAR) && !this.flown;
     if (this.far && this.near) {
       this.far.visible = farOn || this.warmOn;

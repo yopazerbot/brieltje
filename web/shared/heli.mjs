@@ -610,10 +610,12 @@ export const JUMP_CLEAR = 0.6;
 /**
  * Nobody aboard after a jump (world/heli.ts away): the machine flies itself home. It climbs away at full up at once
  * (never falling on you or the village) and keeps the way it flew for `keep` s, so it doesn't lean over onto you as it
- * would braking hard; then hands off it eases to a hover, still climbing; from `home` s, once out of your sight, or at
- * `latest` s whatever, it is back on its pad (src/heliPilot.ts).
+ * would braking hard; then hands off it eases to a hover, still climbing (up to the ceiling, where it hovers); from
+ * `home` s, once out of your sight, it is back on its pad (src/heliPilot.ts). Still watched at `latest` s, it flies off:
+ * away from you and up through the ceiling, drawn out to `far` m, a speck in the haze; it is put home once out of sight
+ * or that far off, or `leave` s later whatever. It never vanishes while drawn near.
  */
-export const AWAY = { keep: 1, home: 3, latest: 12 };
+export const AWAY = { keep: 1, home: 3, latest: 45, leave: 60, far: 1500 };
 /** The machine's sticks as it flew at the jump (`s`): forward and sideways for the speed it had, in its own frame. */
 export function awayKeep(s) {
   const fx = -Math.sin(s.yaw), fz = -Math.cos(s.yaw);

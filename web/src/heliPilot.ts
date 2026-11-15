@@ -226,11 +226,13 @@ export class HeliPilot {
   /** Every frame: the machines (the one you fly and those standing or running down) and the instruments (`shown`: playing, not in the menu). */
   update(dt: number, camera: THREE.Camera, shown: boolean): void {
     for (const m of this.machines) m.update(dt, camera.position);
-    // After a jump: back on its pad once out of your sight (or at the latest whatever); the view's width eases back.
+    // After a jump: back on its pad once out of your sight; watched too long, it flies off first (AWAY), never vanishing
+    // while drawn near. The view's width eases back.
     for (const a of this.machines) {
       if (a.away === null || a.away < AWAY.home) continue;
-      if (a.away < AWAY.latest && this.seen(a, camera)) continue;
-      a.sendHome(camera.position);
+      const off = Math.hypot(a.s.x - camera.position.x, a.s.z - camera.position.z, a.s.y - camera.position.y);
+      if (!this.seen(a, camera) || a.away >= AWAY.latest + AWAY.leave || (a.leaving && off >= AWAY.far)) a.sendHome(camera.position);
+      else if (a.away >= AWAY.latest) a.flyAway();
     }
     if (!this.heli) this.fov += (1 - this.fov) * (1 - Math.exp(-Math.max(0, dt) * 6));
     const m = this.heli;

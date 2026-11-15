@@ -98,6 +98,6 @@ export function heliToBody(s: HeliState, x: number, y: number, z: number): { x: 
 export function heliJump(s: HeliState, size: HeliSize): { x: number; y: number; z: number; side: number; push: [number, number] };
 export const JUMP_CLEAR: number;
 export function heliGap(s: HeliState, size: HeliSize, x: number, feet: number, z: number, r?: number, height?: number): number;
-export const AWAY: { keep: number; home: number; latest: number };
+export const AWAY: { keep: number; home: number; latest: number; leave: number; far: number };
 export function awayKeep(s: HeliState): { fwd: number; side: number };
 export function awayInput(t: number, keep: { fwd: number; side: number }): HeliInput;
