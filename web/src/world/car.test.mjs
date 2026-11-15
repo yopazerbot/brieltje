@@ -15,7 +15,7 @@ const definition = (name) => {
   assert.ok(start >= 0);
   return stripTypeScriptTypes(source.slice(start, source.indexOf('\n}', start) + 2));
 };
-const constants = ['WHEELBASE', 'WHEEL_R', 'ACCEL', 'BRAKE', 'REVERSE', 'HANDBRAKE', 'REGEN', 'GRIP', 'ESC', 'STEER', 'TYRE', 'STEER_HALF', 'STEER_FALL', 'STEER_IN', 'STICK_CURVE', 'REVERSE_HOLD', 'CLEAR', 'SPIN_STEP', 'DRAW', 'ROLL_H', 'TILT', 'ROUGH', 'CALM', 'angle']
+const constants = ['WHEELBASE', 'WHEEL_R', 'ACCEL', 'BRAKE', 'REVERSE', 'HANDBRAKE', 'REGEN', 'GRIP', 'ESC', 'STEER', 'TYRE', 'STEER_HALF', 'STEER_FALL', 'STEER_IN', 'STICK_CURVE', 'REVERSE_HOLD', 'SPIN_FROM', 'SPIN_DAMP', 'CAM_FOLLOW', 'CAM_SLIDE', 'CAM_SWING', 'CLEAR', 'SPIN_STEP', 'DRAW', 'ROLL_H', 'TILT', 'ROUGH', 'CALM', 'angle']
   .map(name => source.match(new RegExp(`^const ${name} = .*?;`, 'm'))?.[0]).join('\n');
 const classCode = source.slice(source.indexOf('export class Car')).replace('export class Car', 'class Car');
 // The marks and sounds a car makes, counted instead of drawn and played.
@@ -328,9 +328,53 @@ test('a handbrake turn: with the wheel turned the back swings round, and it reco
   run(swing, 1.5, { ...throttle, throttle: 0.4 });
   assert.ok(Math.abs(slipAngle(swing)) < 0.05 && Math.abs(swing.turn) < 0.1, 'gripping and going straight again');
   // Pulled at speed and held, it doesn't keep spinning.
-  const fast = rolling(90);
-  run(fast, 2, { ...handbrake, steer: 1 });
-  assert.ok(-fast.yaw < Math.PI, `at most about half round (${(-fast.yaw * 57.3).toFixed(0)} degrees)`);
+  for (const kmh of [60, 90, 150, 200]) {
+    const fast = handbrakeTurn(kmh, 5);
+    assert.ok(fast.most < 200, `${kmh} km/h held 5 s: at most about half round (${fast.most.toFixed(0)} degrees)`);
+  }
+});
+
+/**
+ * The handbrake held `hold` s at `kmh` with the wheel full over to the right, then let go with a little throttle
+ * for 2 s: degrees turned when let go and the most at any time (counted through, not wrapped), and the seconds
+ * after letting go until the rear grips again (the slide under 5 degrees, the spin nearly gone).
+ */
+function handbrakeTurn(kmh, hold, wet = 0, snow = 0) {
+  const car = rolling(kmh, 'asphalt', wet);
+  mood.snow = snow;
+  let turned = 0;
+  let most = 0;
+  let atRelease = 0;
+  let grips = null;
+  let last = car.yaw;
+  for (let i = 0; i < (hold + 2) * 60; i++) {
+    const t = i / 60;
+    car.drive(1 / 60, t < hold ? { ...handbrake, steer: 1 } : { ...throttle, throttle: 0.4 }, []);
+    car.update(1 / 60, true);
+    turned -= Math.atan2(Math.sin(car.yaw - last), Math.cos(car.yaw - last));
+    last = car.yaw;
+    most = Math.max(most, turned);
+    if (t < hold) atRelease = turned;
+    // (Swung half round it may still roll on backwards: rolling straight that way grips too.)
+    const slide = Math.atan2(-car.vx * Math.cos(car.yaw) + car.vz * Math.sin(car.yaw), Math.max(0.5, Math.abs(car.speed)));
+    if (t >= hold && grips === null && Math.abs(slide) < 0.087 && Math.abs(car.turn) < 0.15) grips = t - hold;
+  }
+  mood.wet = mood.snow = 0;
+  return { atRelease: (atRelease * 180) / Math.PI, most: (most * 180) / Math.PI, grips: grips ?? Infinity };
+}
+
+test('a handbrake turn swings a quarter round from 40 km/h and half round from 60 km/h, never further, and the rear grips again', () => {
+  const quarter = handbrakeTurn(40, 0.8);
+  assert.ok(quarter.most > 75 && quarter.most < 100, `40 km/h, 0.8 s: ${quarter.most.toFixed(0)} degrees`);
+  assert.ok(quarter.grips < 0.5, `40 km/h: gripping again ${quarter.grips.toFixed(2)} s after letting go`);
+  const half = handbrakeTurn(60, 1.6);
+  assert.ok(half.most > 165 && half.most < 195, `60 km/h, 1.6 s: ${half.most.toFixed(0)} degrees`);
+  assert.ok(half.grips < 0.5, `60 km/h: gripping again ${half.grips.toFixed(2)} s after letting go`);
+  // In the rain and on snow it swings less far and slides a little longer, but grips again within the 2 s.
+  const wet = handbrakeTurn(60, 1.2, 1);
+  const snow = handbrakeTurn(50, 1.2, 0, 1);
+  assert.ok(wet.most < 200 && wet.grips < 1, `wet: ${wet.most.toFixed(0)} degrees, grips in ${wet.grips.toFixed(2)} s`);
+  assert.ok(snow.most < 200 && snow.grips < 1.5, `snow: ${snow.most.toFixed(0)} degrees, grips in ${snow.grips.toFixed(2)} s`);
 });
 
 test('cornering too fast it runs wide, more on a wet road or grass, and never past its top speed however it slides', () => {

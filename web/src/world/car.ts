@@ -114,6 +114,11 @@ const STEER_FALL = 2.2;   // how fast the lock falls beyond that (higher: calmer
 const STEER_IN = 12;      // 1/s: how fast the wheel turns in
 const STICK_CURVE = 1.5;  // a stick's push to the wheel, softer round the middle (1: straight); keys are full or nothing
 const REVERSE_HOLD = 0.35; // s the brake is held at a standstill before it drives backwards (a new press at rest: at once)
+const SPIN_FROM = 2.5;    // rad of slide where a held handbrake stops swinging the car further round (about half round)
+const SPIN_DAMP = 8;      // 1/s: how firmly it stops there
+const CAM_FOLLOW = 5;     // 1/s: how fast the camera follows the car's heading
+const CAM_SLIDE = 3.5;    // 1/s: and while it slides
+const CAM_SWING = 2.5;    // rad/s: the fastest the camera swings round the car (about 140 degrees a second)
 const CLEAR = 0.3;      // m: lower things (kerbs, paving, a step) don't stop the car
 const SPIN_STEP = 0.3;  // rad: the most a wheel turns per frame on screen (faster, the spokes seem to stand or run back)
 const DRAW = 250;       // m from the eye: further off a car isn't drawn (about 30 draw calls each; the village's parked cars go at 200 m)
@@ -681,7 +686,9 @@ export class Car {
     const t = tyreForces({ u, s: side, r: this.turn, delta, drive, brake, locked: hb, muF, muR, ax: this.ax });
     // At a crawl the tyres can't slide: the car simply follows its front wheels (the sideways slide dies
     // out), blended into the tyres' own pushing and turning by 5 m/s.
-    const grips = Math.min(1, Math.max(0, (speed - 2) / 3));
+    // (Its whole speed, not only along itself: a car sliding sideways in a handbrake turn is no crawl.)
+    const moving = Math.hypot(u, side);
+    const grips = Math.min(1, Math.max(0, (moving - 2) / 3));
     let du = ((grips * t.fx + (1 - grips) * t.roll) / MASS) * dt;
     const ds = (t.fy / MASS) * dt;
     // The brakes stop it, they don't push it back the other way.
@@ -695,10 +702,16 @@ export class Car {
     // How fast it turns: what the tyres turn it by (at a crawl, the front wheels' way).
     const follow = (u / WHEELBASE) * Math.tan(delta);
     let turn = this.turn + (t.mz / YAW_INERTIA) * dt;
-    if (!hb && speed > 5) {
+    if (hb) {
+      // A handbrake turn swings the car round as far as about half round, not on into a spin: past SPIN_FROM
+      // of slide its turning dies away.
+      const beta = Math.abs(Math.atan2(side, u));
+      turn *= Math.exp(-dt * SPIN_DAMP * Math.min(1, Math.max(0, (beta - SPIN_FROM) / 0.5)));
+    }
+    if (!hb && moving > 5) {
       // The stability control: turning faster than the wheel asks (the back sliding out), or the other way,
       // it is brought back to what the tyres can hold. Not while the handbrake is on: that is the point of it.
-      const most = (1.15 * Math.min(muF, muR) * G) / speed;
+      const most = (1.15 * Math.min(muF, muR) * G) / moving;
       const asked = Math.max(-most, Math.min(most, follow));
       if (Math.abs(turn) > Math.abs(asked) + 0.05 || (turn * asked < 0 && Math.abs(turn) > 0.05)) turn += (asked - turn) * (1 - Math.exp(-dt * ESC));
     }
@@ -827,7 +840,11 @@ export class Car {
     const slip = fast * Math.max(-1, Math.min(1, Math.atan2(this.side, Math.max(1, this.speed))));
     const into = CALM ? 0 : Math.max(-0.25, Math.min(0.25, 0.3 * this.yawRate)) * fast;
     const heading = this.yaw - 0.6 * slip + into;
-    this.camHeading += angle(heading - this.camHeading) * (1 - Math.exp(-dt * (4 - 1.5 * Math.min(1, Math.abs(slip) * 3))));
+    // Never swinging round faster than CAM_SWING: in a handbrake turn the car spins faster than a view
+    // should, so the camera lags it a moment and comes round behind it as it slows.
+    const swing = angle(heading - this.camHeading) * (1 - Math.exp(-dt * (CAM_FOLLOW - (CAM_FOLLOW - CAM_SLIDE) * Math.min(1, Math.abs(slip) * 3))));
+    const most = CAM_SWING * Math.max(0, dt);
+    this.camHeading += Math.max(-most, Math.min(most, swing));
     const h = this.camHeading + this.camYaw;
     const d = Math.min(Math.max(dt, 0), 0.1);
     const lag = 1 - Math.exp(-d * 3);
