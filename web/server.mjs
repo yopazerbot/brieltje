@@ -101,10 +101,11 @@ const store = await openStore();
 // under each of its reserved names, which only the admin password logs in under (server/auth.mjs RESERVED).
 store.boardNames = [...RESERVED];
 await store.zombieBestForAccountsOnly(); // a run saved as its account was deleted (no foreign key any more) goes
-// The boards of the routes, the gnomes and the party games (server/goals.mjs): rows of no account, of an old layout or an unknown gnome go.
+// The boards of the routes, the gnomes and the party games (server/goals.mjs): rows of a name that is no account any more go
+// (never by route or gnome: a route that didn't load or a layout rolled back keeps its rows).
 const GOALS = readGoals();
 const goalRoutes = GOALS.routes.map((r) => ({ id: r.id, key: bestKey(r) }));
-await store.boardsForAccountsOnly(goalRoutes.map((r) => r.key), GOALS.gnomes.map((g) => g.id));
+await store.boardsForAccountsOnly();
 const auth = new Auth(store, SECURE);
 await auth.loadSessions();
 const game = new Game(auth);
@@ -147,6 +148,7 @@ async function board(place) {
 const goalBoards = new Boards(store, {
   routes: goalRoutes, gnomeTotal: GOALS.gnomes.length, json: (...a) => json(...a), readJson: (req) => body(req),
   known: async (name) => RESERVED.has(name) || !!(await store.getAccount(name)), log: (event, req, extra) => auth.log(event, req, extra),
+  reserved: [...RESERVED],
 });
 
 // The forms count a sender per IPv6 /56 (formBucketOf): one household can't fill their caps for everyone.

@@ -246,14 +246,16 @@ export class FileStore {
     if (n) await this.save();
     return n;
   }
-  /** At start: rows of no account and no reserved name, of an old layout (a route key not in `routeKeys`), of an unknown gnome, go. */
-  async boardsForAccountsOnly(routeKeys, gnomeIds) {
+  /**
+   * At start: rows of a name that is no longer an account (nor reserved) go. Never by route, gnome or kind: a route whose
+   * data didn't load, a layout rolled back or an unknown gnome keeps its rows (rows of an unknown key are simply not read).
+   */
+  async boardsForAccountsOnly() {
     const names = this.boardSet();
-    const routes = new Set(routeKeys), gnomes = new Set(gnomeIds);
     const before = this.data.raceBest.length + this.data.gnomeFound.length + this.data.gameWins.length;
-    this.data.raceBest = this.data.raceBest.filter((r) => names.has(r.username) && routes.has(r.route));
-    this.data.gnomeFound = this.data.gnomeFound.filter((r) => names.has(r.username) && gnomes.has(r.gnome));
-    this.data.gameWins = this.data.gameWins.filter((r) => names.has(r.username) && GAME_KINDS.includes(r.kind));
+    this.data.raceBest = this.data.raceBest.filter((r) => names.has(r.username));
+    this.data.gnomeFound = this.data.gnomeFound.filter((r) => names.has(r.username));
+    this.data.gameWins = this.data.gameWins.filter((r) => names.has(r.username));
     if (this.data.raceBest.length + this.data.gnomeFound.length + this.data.gameWins.length < before) await this.save();
   }
   /** One write at a time, via a temporary file, so overlapping saves can't mix up the file. */
@@ -892,11 +894,11 @@ class PgStore {
       : await this.pool.query(`delete from ${table} where username = $1`, [username]);
     return r.rowCount;
   }
-  async boardsForAccountsOnly(routeKeys, gnomeIds) {
-    const gone = 'username not in (select username from accounts) and username <> all($1::text[])';
-    await this.pool.query(`delete from race_best where (${gone}) or route <> all($2::text[])`, [boardNames(this), routeKeys]);
-    await this.pool.query(`delete from gnome_found where (${gone}) or gnome <> all($2::text[])`, [boardNames(this), gnomeIds]);
-    await this.pool.query(`delete from game_wins where (${gone}) or kind <> all($2::text[])`, [boardNames(this), GAME_KINDS]);
+  /** Rows of a name that is no longer an account (nor reserved) go; never by route, gnome or kind (see FileStore). */
+  async boardsForAccountsOnly() {
+    for (const table of ['race_best', 'gnome_found', 'game_wins']) {
+      await this.pool.query(`delete from ${table} where username not in (select username from accounts) and username <> all($1::text[])`, [boardNames(this)]);
+    }
   }
   async log(e) {
     await this.pool.query('insert into audit_log (time_be, event, username, ip, detail) values ($1, $2, $3, $4, $5)',

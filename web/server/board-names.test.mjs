@@ -64,7 +64,7 @@ test('the boards of the routes, the gnomes and the party games: every reserved n
     assert.deepEqual((await store.raceBoard('foot@1', 20)).map((r) => r.username).sort(), want);
     assert.deepEqual((await store.gnomeBoard(20)).map((r) => r.username).sort(), want);
     assert.deepEqual((await store.gameBoard(20)).map((r) => r.username).sort(), want);
-    await store.boardsForAccountsOnly(['foot@1'], ['g01']);
+    await store.boardsForAccountsOnly();
     assert.deepEqual((await store.raceBoard('foot@1', 20)).map((r) => r.username).sort(), want, 'kept at start');
   } finally {
     await done();

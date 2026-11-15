@@ -82,20 +82,31 @@ test('deleting and pruning an account removes its rows; a new account under an o
   }
 });
 
-test('at start: rows of no account, an old layout and unknown gnomes go; the reserved names stay', async () => {
+test('at start: only rows whose account is gone go; never by route, gnome or kind (a route that did not load, a layout rolled back)', async () => {
   const { store, done } = await fileStore();
   try {
     await account(store, 'anna');
     await store.saveRaceTime('anna', 'foot@1', 40_000);
     await store.saveRaceTime('yoshi', 'foot@1', 41_000);
     const at = new Date().toISOString();
-    store.data.raceBest.push({ username: 'anna', route: 'foot@0', ms: 30_000, at }, { username: 'gone', route: 'foot@1', ms: 20_000, at });
+    store.data.raceBest.push(
+      { username: 'anna', route: 'bike@1', ms: 90_000, at }, // a route whose data failed its checks this start
+      { username: 'anna', route: 'foot@2', ms: 30_000, at }, // a layout bumped, then rolled back to foot@1: both kept
+      { username: 'gone', route: 'foot@1', ms: 20_000, at },
+    );
     store.data.gnomeFound.push({ username: 'anna', gnome: 'g01', at }, { username: 'anna', gnome: 'old', at }, { username: 'gone', gnome: 'g01', at });
     store.data.gameWins.push({ username: 'anna', kind: 'tag', wins: 2 }, { username: 'anna', kind: 'old', wins: 2 }, { username: 'gone', kind: 'tag', wins: 9 });
-    await store.boardsForAccountsOnly(['foot@1', 'bike@1'], ['g01', 'g02']);
-    assert.deepEqual(store.data.raceBest.map((r) => `${r.username} ${r.route}`).sort(), ['anna foot@1', 'yoshi foot@1']);
-    assert.deepEqual(store.data.gnomeFound.map((r) => `${r.username} ${r.gnome}`), ['anna g01']);
-    assert.deepEqual(store.data.gameWins.map((r) => `${r.username} ${r.kind}`), ['anna tag']);
+    await store.boardsForAccountsOnly();
+    assert.deepEqual(store.data.raceBest.map((r) => `${r.username} ${r.route}`).sort(), ['anna bike@1', 'anna foot@1', 'anna foot@2', 'yoshi foot@1']);
+    assert.deepEqual(store.data.gnomeFound.map((r) => `${r.username} ${r.gnome}`), ['anna g01', 'anna old']);
+    assert.deepEqual(store.data.gameWins.map((r) => `${r.username} ${r.kind}`), ['anna tag', 'anna old']);
+    // Rows of a key nobody reads are simply not shown: the board asks by key, the party games by known kind.
+    assert.deepEqual((await store.raceBoard('foot@1', 10)).map((r) => r.username).sort(), ['anna', 'yoshi']);
+    assert.deepEqual(await store.gamesOf('anna'), { wins: 2, hide: 0, tag: 2, treasure: 0, teams: 0 });
+    // With no account at all, the reserved names' rows stay and nothing else is touched.
+    await store.deleteAccount('anna');
+    await store.boardsForAccountsOnly();
+    assert.deepEqual(store.data.raceBest.map((r) => r.username), ['yoshi']);
   } finally {
     await done();
   }
@@ -118,6 +129,7 @@ async function boards() {
   const logged = [];
   const b = new Boards(store, {
     routes: ROUTES, gnomeTotal: 30, json, readJson, known: async (n) => RESERVED.has(n) || !!(await store.getAccount(n)), log: (event, _req, extra) => logged.push({ event, ...extra }),
+    reserved: [...RESERVED],
   });
   const call = async (method, path, { body, headers, panel = null, session = null } = {}) => {
     const r = res();
@@ -195,7 +207,10 @@ test('POST /api/admin/boards: the panel\'s admin only, same-origin JSON, checked
     await store.saveGnome('anna', 'g01');
     // Without the panel's session (a game session, even the admin's, is not it): refused.
     assert.equal((await call('POST', '/api/admin/boards', { body: { op: 'remove', name: 'anna', board: 'gnomes' }, session: { username: 'admin', role: 'admin' } })).status, 403);
-    assert.equal((await call('GET', '/api/admin/boards', { panel })).status, 405);
+    assert.equal((await call('PUT', '/api/admin/boards', { panel })).status, 405);
+    // GET: the reserved names, for the panel's own row (behind the panel's session too).
+    assert.deepEqual((await call('GET', '/api/admin/boards', { panel })).body, { reserved: [...RESERVED] });
+    assert.equal((await call('GET', '/api/admin/boards')).status, 403);
     // From another site, or as a form: the same-origin check throws (server.mjs answers its status).
     await assert.rejects(remove({ op: 'remove', name: 'anna', board: 'gnomes' }, { headers: { origin: 'https://evil.example' } }), { status: 403 });
     await assert.rejects(remove({ op: 'remove', name: 'anna', board: 'gnomes' }, { headers: { 'content-type': 'application/x-www-form-urlencoded' } }), { status: 415 });
@@ -208,6 +223,8 @@ test('POST /api/admin/boards: the panel\'s admin only, same-origin JSON, checked
     assert.equal((await remove({ op: 'remove', name: 'anna', board: 'race', route: 'foot@1' })).body.code, 'badValue');
     assert.equal((await remove({ op: 'remove', name: 'anna', board: 'gnomes', route: 'foot' })).body.code, 'badValue');
     assert.equal(logged.length, 0);
+    // A refusal's body carries its error and code, never the HTTP status.
+    assert.deepEqual(Object.keys((await remove({ op: 'drop', name: 'anna' })).body).sort(), ['code', 'error']);
     // One route's time, then the gnomes.
     const r = await remove({ op: 'remove', name: 'anna', board: 'race', route: 'foot' });
     assert.deepEqual([r.status, r.body], [200, { ok: true, removed: 1 }]);
@@ -217,8 +234,18 @@ test('POST /api/admin/boards: the panel\'s admin only, same-origin JSON, checked
       { event: 'board_removed', username: 'admin', detail: 'anna: race foot' },
       { event: 'board_removed', username: 'admin', detail: 'anna: gnomes' },
     ]);
+    // No board named: all three at once, one request, one log line. The reserved names too.
+    await store.saveRaceTime('anna', 'foot@1', 41_000);
+    await store.saveGnome('anna', 'g02');
+    await store.addGameWin('anna', 'tag');
+    const all = await remove({ op: 'remove', name: 'anna' });
+    assert.deepEqual([all.status, all.body], [200, { ok: true, removed: 4 }]);
+    assert.deepEqual([await store.racesOf('anna'), await store.gnomesOf('anna'), (await store.gamesOf('anna')).wins], [[], [], 0]);
+    assert.deepEqual(logged.at(-1), { event: 'board_removed', username: 'admin', detail: 'anna: all boards' });
+    await store.saveGnome('yoshi', 'g03');
+    assert.equal((await remove({ op: 'remove', name: 'yoshi' })).body.removed, 1);
     // At most ten a minute.
-    for (let i = 0; i < 8; i++) await remove({ op: 'remove', name: 'anna', board: 'games' });
+    for (let i = 0; i < 6; i++) await remove({ op: 'remove', name: 'anna', board: 'games' }); // ten so far
     assert.equal((await remove({ op: 'remove', name: 'anna', board: 'games' })).status, 429);
   } finally {
     await done();

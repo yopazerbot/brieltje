@@ -942,6 +942,44 @@
     if (!r || !r.ok) return;
     accounts = (await r.json()).accounts ?? [];
     drawAccounts();
+    drawReserved();
+  }
+  /**
+   * Off the boards of the routes, the gnomes and the party games, all three at once (POST /api/admin/boards, one request,
+   * logged): asked twice. `btn(text, fn, cls)` makes the button.
+   */
+  function clearScores(name, btn) {
+    return btn('Clear board scores', async (b) => {
+      if (!b.dataset.armed) {
+        b.dataset.armed = '1';
+        b.textContent = 'Sure? Clear';
+        setTimeout(() => {
+          delete b.dataset.armed;
+          b.textContent = 'Clear board scores';
+        }, 5000);
+        return;
+      }
+      const r = await post('/api/admin/boards', { op: 'remove', name }).catch(() => null);
+      if (!r || !r.ok) {
+        $('acct-msg').textContent = `${name}: not done. Try again.`;
+        return;
+      }
+      const n = (await r.json()).removed ?? 0;
+      $('acct-msg').textContent = `${name}: ${n} board ${n === 1 ? 'row' : 'rows'} cleared (route times, gnomes, party games won).`;
+    });
+  }
+  /** The admin's own reserved names (no account row of their own): a clear button each. Names as text only. */
+  async function drawReserved() {
+    const r = await fetch('/api/admin/boards').catch(() => null);
+    if (!r || !r.ok) return;
+    const names = ((await r.json()).reserved ?? []).filter((n) => typeof n === 'string');
+    const btn = (text, fn, cls = 'btn ghost') => {
+      const b = el('button', cls, text);
+      b.type = 'button';
+      b.addEventListener('click', () => fn(b));
+      return b;
+    };
+    $('acct-reserved').replaceChildren(el('span', '', "The admin's own names on the boards: "), ...names.flatMap((n) => [el('b', '', n), ' ', clearScores(n, btn), ' ']));
   }
   function drawAccounts() {
     const q = $('acct-search').value.trim().toLowerCase();
@@ -998,28 +1036,7 @@
             loadAccounts();
           }
         }, 'btn ghost danger'),
-        // Off the boards of the routes, the gnomes and the party games (POST /api/admin/boards, logged): asked twice.
-        btn('Clear board scores', async (b) => {
-          if (!b.dataset.armed) {
-            b.dataset.armed = '1';
-            b.textContent = 'Sure? Clear';
-            setTimeout(() => {
-              delete b.dataset.armed;
-              b.textContent = 'Clear board scores';
-            }, 5000);
-            return;
-          }
-          let n = 0;
-          for (const board of ['race', 'gnomes', 'games']) {
-            const r = await post('/api/admin/boards', { op: 'remove', name: a.username, board }).catch(() => null);
-            if (!r || !r.ok) {
-              $('acct-msg').textContent = `${a.username}: not done. Try again.`;
-              return;
-            }
-            n += (await r.json()).removed ?? 0;
-          }
-          $('acct-msg').textContent = `${a.username}: ${n} board ${n === 1 ? 'row' : 'rows'} cleared (route times, gnomes, party games won).`;
-        }),
+        clearScores(a.username, btn),
         shown,
       );
       tr.append(el('td', '', a.username), el('td', '', a.email), el('td', '', a.created), el('td', '', a.seen), state, actions);

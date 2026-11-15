@@ -5,9 +5,10 @@
 //   time or a count, a day). Built at most once in CACHE_MS, and again after a board changed. No input is read.
 // - GET /api/boards/mine, for the session's own name only (there is no name parameter anywhere): where you stand on
 //   each board; a guest gets {}. Kept MINE_MS per name.
-// - POST /api/admin/boards, the panel's admin only: { op: 'remove', name, board, route? }. Behind the panel's session,
-//   through the same-origin JSON check (server.mjs body: no cross-site form posts), at most REMOVE_MAX a minute, logged
-//   as board_removed with the admin's name and the account's.
+// - POST /api/admin/boards, the panel's admin only: { op: 'remove', name, board?, route? } (no board: all three). Behind
+//   the panel's session, through the same-origin JSON check (server.mjs body: no cross-site form posts), at most
+//   REMOVE_MAX a minute, logged once as board_removed with the admin's name and the account's. GET gives the panel the
+//   admin's reserved names (they have no account row to clear them from).
 //
 // Every answer goes through server.mjs json(): no-store, no-transform, never compressed (BREACH); none holds a secret or
 // echoes what a request sent.
@@ -33,8 +34,9 @@ export class Boards {
    * `routes`: the game's routes ({ id, key }); `gnomeTotal`: how many gnomes there are; `json(res, status, data)`,
    * `readJson(req)`: server.mjs's; `known(name)`: an account or a reserved name; `log(event, req, extra)`: the login log.
    */
-  constructor(store, { routes, gnomeTotal, json, readJson, known, log, now = () => Date.now() }) {
+  constructor(store, { routes, gnomeTotal, json, readJson, known, log, reserved = [], now = () => Date.now() }) {
     this.store = store;
+    this.reserved = [...reserved];
     this.routes = routes;
     this.gnomeTotal = gnomeTotal;
     this.json = json;
@@ -64,10 +66,12 @@ export class Boards {
     }
     if (p === '/api/admin/boards') {
       if (!panel) return (this.json(res, 403, { error: 'Admin only' }), true);
+      // The admin's reserved names, for the panel's own row (they have no account to clear from the accounts list).
+      if (req.method === 'GET') return (this.json(res, 200, { reserved: this.reserved }), true);
       if (req.method !== 'POST') return (this.json(res, 405, { error: 'Not allowed' }), true);
       const b = await this.readJson(req); // the same-origin JSON check: throws 403 or 415 for a cross-site post
-      const r = await this.remove(req, panel.username, b);
-      return (this.json(res, r.status ?? 200, r), true);
+      const { status = 200, ...r } = await this.remove(req, panel.username, b);
+      return (this.json(res, status, r), true);
     }
     return false;
   }
@@ -121,7 +125,10 @@ export class Boards {
     return { races, gnomes, games: await this.store.gamesOf(name) };
   }
 
-  /** The admin removes a name's rows from one board: checked, rate-limited, logged. */
+  /**
+   * The admin removes a name's rows: from one board, or (no `board`) from all three at once; checked, rate-limited,
+   * logged once. The answer's `status` is the HTTP status, never part of its body.
+   */
   async remove(req, by, b) {
     const t = this.now();
     this.removals = this.removals.filter((x) => t - x < 60_000);
@@ -129,7 +136,8 @@ export class Boards {
     if (b?.op !== 'remove') return { error: 'Unknown action', code: 'badOp', status: 400 };
     const name = b.name;
     if (typeof name !== 'string' || !NAME_RE.test(name)) return { error: 'No such account', code: 'noAccount', status: 404 };
-    if (!BOARDS.includes(b.board)) return { error: 'Not a board', code: 'badValue', status: 400 };
+    const all = b.board === undefined || b.board === null;
+    if (!all && !BOARDS.includes(b.board)) return { error: 'Not a board', code: 'badValue', status: 400 };
     let route = null;
     if (b.route !== undefined && b.route !== null) {
       route = b.board === 'race' ? this.routes.find((r) => r.id === b.route) ?? null : null;
@@ -137,9 +145,10 @@ export class Boards {
     }
     if (!(await this.known(name))) return { error: 'No such account', code: 'noAccount', status: 404 };
     this.removals.push(t);
-    const removed = await this.store.removeScores(name, b.board, route?.key ?? null);
+    let removed = 0;
+    for (const board of all ? BOARDS : [b.board]) removed += await this.store.removeScores(name, board, route?.key ?? null);
     this.clear();
-    this.log('board_removed', req, { username: by, detail: `${name}: ${b.board}${route ? ` ${route.id}` : ''}` });
+    this.log('board_removed', req, { username: by, detail: `${name}: ${all ? 'all boards' : b.board}${route ? ` ${route.id}` : ''}` });
     return { ok: true, removed };
   }
 }
