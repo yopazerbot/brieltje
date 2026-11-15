@@ -247,10 +247,10 @@ export class World {
     });
   }
 
-  /** The middle of block `index`'s box on the plan. */
-  blockMiddle(index: number): [number, number] {
+  /** Block `index`'s corners on the plan and the middle of its box: a block is in a place if any of them is. */
+  blockPoints(index: number): [number, number][] {
     const s = this.solids[index];
-    return [(s.minX + s.maxX) / 2, (s.minZ + s.maxZ) / 2];
+    return [[(s.minX + s.maxX) / 2, (s.minZ + s.maxZ) / 2], ...s.rings.flat().map((p) => [p[0], p[1]] as [number, number])];
   }
 
   /** Cap block `index` (capBlock) at the lowest of `roof` (a model's own) over it, looked at every metre inside it. */

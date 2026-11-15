@@ -3,6 +3,7 @@ import type { Prism, RoofSpec } from './houseData';
 import type { World } from './collision';
 import { facesUp, inBoxes, RoofField } from './roofField';
 import { terrain } from './terrain';
+import { distanceToHome, END_GARDEN, HOMES } from '../../shared/homes.mjs';
 
 /**
  * Our models' roofs as floors and solids (world/roofField.ts), from their meshes as drawn, once a model is in place: the
@@ -166,12 +167,12 @@ export async function addModelRoofs(world: World, roots: THREE.Object3D[], groun
       }
       const box = boxes[r];
       for (const k of world.modelledIn(box.min.x, box.min.z, box.max.x, box.max.z)) {
-        if (!keepBlocks(...world.blockMiddle(k))) world.capUnder(own, k); // not a left-out building's (a private home's)
+        if (!world.blockPoints(k).some((p) => keepBlocks(...p))) world.capUnder(own, k); // not a left-out building's (a private home's)
         await tick();
       }
     }
-    for (const [b, y] of lowest) if (!keepBlocks(...world.blockMiddle(b))) world.capBlock(b, y);
-    // Second pass: solid down to the building's top where all three corners stand over one, else an open slab.
+    for (const [b, y] of lowest) if (!world.blockPoints(b).some((p) => keepBlocks(...p))) world.capBlock(b, y);
+    // Second pass: solid down to the building's top where a corner stands over one, else an open slab (settle).
     const tri: number[] = [];
     const under: number[] = [];
     for (let t = 0; t < found.b.length; t += 3) {
@@ -244,15 +245,50 @@ export function villageRoofs(world: World, models: THREE.Object3D[], ground: num
   leave: readonly (readonly number[])[], near: () => { x: number; z: number } | null, pause: () => Promise<unknown> = nextFrame): Promise<number> {
   const roofed = models.filter((m) => !OWN.includes(String(m.userData.landmark)));
   const AROUND = [[0, 0], [0.8, 0], [-0.8, 0], [0, 0.8], [0, -0.8]];
-  const end = (x: number, z: number) => inBoxes(leave, x, z) || (!!endHouse && AROUND.some(([a, b]) => endHouse.contains(x + a, z + b)));
-  // Its blocks, and those in its fenced garden (reached only through it), keep their heights.
-  return addModelRoofs(world, roofed, ground, end, pause, near, (x, z) => end(x, z) || !!endHouse?.encloses(x, z));
+  // Every home in the shared data too (a new one is left out with no change here), and the end house's fenced garden
+  // (reached only through it): no roof added there, and their blocks keep their heights.
+  const out = (x: number, z: number) => inBoxes(leave, x, z) || inHomes(x, z) || (!!endHouse && (endHouse.encloses(x, z) || AROUND.some(([a, b]) => endHouse.contains(x + a, z + b))));
+  return addModelRoofs(world, roofed, ground, out, pause, near, out);
+}
+
+/** Metres round a home's rings (shared/homes.mjs) where no model's roof is added and no block is capped: its eaves. */
+const HOME_MARGIN = 1.5;
+
+function inRing(x: number, z: number, ring: readonly (readonly number[])[]): boolean {
+  let hit = false;
+  for (let i = 0, j = ring.length - 1; i < ring.length; j = i++) {
+    const [xi, zi] = ring[i];
+    const [xj, zj] = ring[j];
+    if (zi > z !== zj > z && x < ((xj - xi) * (z - zi)) / (zj - zi) + xi) hit = !hit;
+  }
+  return hit;
+}
+
+/**
+ * Whether (x, z) is in or within HOME_MARGIN of a private home (any band of any home in shared/homes.mjs) or of the end
+ * house's garden: places a model's roof leaves as they are (world/homeLocks.ts keeps whoever has no code out of them).
+ */
+export function inHomes(x: number, z: number): boolean {
+  const m = HOME_MARGIN;
+  for (const h of HOMES) {
+    const b = h.box;
+    if (x < b[0] - m || x > b[2] + m || z < b[1] - m || z > b[3] + m) continue;
+    if (distanceToHome(h.id, x, z) <= m) return true;
+  }
+  const g = END_GARDEN.ring;
+  return inRing(x, z, g) || g.some((p, i) => {
+    const q = g[(i + 1) % g.length];
+    const dx = q[0] - p[0], dz = q[1] - p[1];
+    const t = Math.max(0, Math.min(1, ((x - p[0]) * dx + (z - p[1]) * dz) / (dx * dx + dz * dz || 1e-9)));
+    return Math.hypot(x - p[0] - dx * t, z - p[1] - dz * t) <= m;
+  });
 }
 
 /**
  * The two private homes round the house (world/homeLocks.ts): the main house (its floors, stairs and roofs in the house
  * data) and the bungalow (its veranda, and its roof: the ring's roof over a room), each with a margin. Our models'
- * trim there (the bungalow's roof trim) adds no roof: their own blocks and floors stay as they are.
+ * trim there (the bungalow's roof trim) adds no roof: their own blocks and floors stay as they are. Every home in the
+ * shared data as well (inHomes).
  */
 export function privateHomes(prisms: Prism[], roofs: RoofSpec[]): (x: number, z: number) => boolean {
   const boxes: [number, number, number, number][] = [];
@@ -265,5 +301,5 @@ export function privateHomes(prisms: Prism[], roofs: RoofSpec[]): (x: number, z:
   const named = (re: RegExp) => prisms.filter((p) => re.test(p.n ?? '')).flatMap((p) => p.p[0]);
   box(named(/^(?!.*\(old house\)).*(floor|stairs|roof|terras)/i), 1);
   box([...named(/^veranda \(old house\)$/i), ...roofs.filter((r) => r.ceiling).flatMap((r) => r.p)], 0.6);
-  return (x, z) => boxes.some(([x0, z0, x1, z1]) => x >= x0 && x <= x1 && z >= z0 && z <= z1);
+  return (x, z) => inHomes(x, z) || boxes.some(([x0, z0, x1, z1]) => x >= x0 && x <= x1 && z >= z0 && z <= z1);
 }

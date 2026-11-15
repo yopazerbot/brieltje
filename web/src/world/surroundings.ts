@@ -24,6 +24,7 @@ import { flatEdgeSides } from './housePlan';
 import { bandedWalls, chimney, flatEdge, openingTrim, roofEdges, roofExtras, roofFrame, type OpeningContext, type RoofEdges, type SolarArray } from './houseTrim';
 import { houseStyle } from './houseStyle';
 import type { RoofField } from './roofField';
+import { inHomes } from './modelRoofs';
 import { snowy } from './snowCover';
 
 /**
@@ -634,7 +635,7 @@ export function buildTile(data: TileData, poles: Pole[], renderer: THREE.WebGLRe
       free: (x, z) => !houses.wallsAt(x, z).some((w) => w.p.y1 > r.y - 1.5),
     };
     const g = roof(r, edges);
-    const solid = roofs && !r.ceiling && !r.lm;
+    const solid = roofs && !r.ceiling && !r.lm && !r.p.some(([x, z]) => inHomes(x, z)); // a private home's as on main
     if (solid) roofs.add(g.roof.attributes.position.array, r.y, g.roof.index?.array);
     if (g.gutters) gutterGeos.push(g.gutters);
     if (r.ceiling) put(material(`tiles|${tint}|${side}`, () => tintedMaterial('roof_tiles', tint, renderer, side)), g.roof, 'nb_roof');
