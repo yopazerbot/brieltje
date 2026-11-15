@@ -35,7 +35,7 @@ const SIDE = SPEC.width / 2 + 0.45; // the page's exit spot: half the width and 
 
 /** Everyone the server has, as one page's ticks show them; and the Tesla. */
 const world = { players: new Map(), car: null };
-const connect = async (cookie, watch = false) => {
+const connect = async (cookie, watch = false, into = world) => {
   const log = [];
   const ws = new WebSocket(`ws://${host}/ws?v=2`, { headers: { Cookie: cookie, Origin: o.api } });
   ws.on('message', (d) => {
@@ -43,8 +43,8 @@ const connect = async (cookie, watch = false) => {
     if (m.t === 'ping') return ws.send(JSON.stringify({ t: 'pong', n: m.n }));
     if (m.t === 's') {
       if (!watch) return;
-      for (const e of m.p ?? []) world.players.set(String(e[0]), readPlayer(e));
-      for (const e of m.c ?? []) if (e[0] === 'tesla') world.car = readCar(e);
+      for (const e of m.p ?? []) into.players.set(String(e[0]), readPlayer(e));
+      for (const e of m.c ?? []) if (e[0] === 'tesla') into.car = readCar(e);
       return;
     }
     log.push(m);
@@ -96,7 +96,9 @@ const connect = async (cookie, watch = false) => {
 };
 const guest = async (name, watch = false) => connect(cookieOf((await call('POST', '/api/join', { name, age: true })).r), watch);
 
-const admin = await connect(cookieOf((await call('POST', '/api/login', { username: 'admin', password })).r));
+// The admin's own ticks: a car inside a code-locked home is out of every guest's sight, so only these still show it.
+const adminWorld = { players: new Map(), car: null };
+const admin = await connect(cookieOf((await call('POST', '/api/login', { username: 'admin', password })).r), true, adminWorld);
 admin.armed = false;
 admin.send({ t: 'rules', parachute: false }); // a party game's gathering by parachute would take long
 const gun = await guest('Gunner', true);
@@ -359,9 +361,10 @@ for (let i = 0; i < 50; i++) {
   admin.send({ t: 'car', op: 'in', id: 'tesla' });
   await sleep(400);
   Object.assign(admin, { x: car.x, y: car.y, z: car.z });
+  admin.sync = () => null; // inside the home the guests' ticks no longer show the admin: keep the script's own idea of the place
   await admin.walk(inside.x, inside.z); // at the wheel: the car goes along (round the house's east side)
   await sleep(400);
-  const parked = carSeen();
+  const parked = adminWorld.car ?? carSeen();
   ok('   the admin drove the car into the house', homeAt(parked.x, parked.z, parked.y) === 'house', JSON.stringify({ x: parked.x, z: parked.z }));
   admin.send({ t: 'car', op: 'out' });
   await sleep(400);
@@ -372,7 +375,7 @@ for (let i = 0; i < 50; i++) {
   await sleep(500);
   const got = [...wa.log.slice(n)].reverse().find((m) => m.t === 'car' && m.car.id === 'tesla')?.car;
   const w = seen(wa);
-  ok('   a guest outside within reach: not let in', !!got && got.driver !== wa.name && got.passenger !== wa.name && homeAt(w.x, w.z, w.y) === null, `${Math.hypot(w.x - parked.x, w.z - parked.z).toFixed(1)} m from the car, told ${JSON.stringify({ driver: got?.driver, passenger: got?.passenger })}`);
+  ok('   a guest outside within reach: not let in', got?.driver !== wa.name && got?.passenger !== wa.name && homeAt(w.x, w.z, w.y) === null, `${Math.hypot(w.x - parked.x, w.z - parked.z).toFixed(1)} m from the car, told ${JSON.stringify({ driver: got?.driver, passenger: got?.passenger })}`);
 }
 
 clearInterval(keepAlive);

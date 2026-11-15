@@ -340,12 +340,13 @@ test('a car standing inside a code-locked home: nobody without the right gets in
     const at = insideOf(h);
     assert.ok(at, `${h.id}: a point inside`);
     put({ x: at.x, y: at.y, z: at.z, yaw: 0 }); // left there by a code's holder with a changed page
-    // A guest within reach (on the server's positions) asks to get in: refused, and told the car as it is.
+    // A guest within reach (on the server's positions) asks to get in: refused, and told nothing of a car out of their sight.
     const gus = s.player('gus', { x: at.x + 1, y: at.y, z: at.z }, 'guest');
     send('gus', gus, { t: 'car', op: 'in', id: 'tesla' });
     assert.equal(game.carOf('gus'), null, `${h.id}: no way in through the car`);
-    assert.equal(sent.get('gus').at(-1)?.t, 'car');
+    assert.ok(!(sent.get('gus') ?? []).some((m) => m.t === 'car'), `${h.id}: the hidden car is not told`);
     // The admin (who may enter every home) gets in as ever.
+    game.broadcastHome = () => {}; // a home's own broadcast writes to real sockets; this test has none
     const ada = s.player('ada', { x: at.x - 1, y: at.y, z: at.z }, 'admin');
     send('ada', ada, { t: 'car', op: 'in', id: 'tesla' });
     assert.equal(car.driver, 'ada', `${h.id}: the admin gets in`);
