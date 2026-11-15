@@ -91,6 +91,8 @@ export class RoofField {
   private range = new Int32Array(2 * 1024);
   private groups = 0;
   private cells = new Map<number, number[]>();
+  /** What filling the models' roofs in took (world/modelRoofs.ts): slices of work, their total and the longest (ms). */
+  readonly fill = { slices: 0, workMs: 0, longestMs: 0 };
   /**
    * After a `sample` that found a roof: the drawn surface there, the bottom of what is solid under it, whether that is
    * only an open slab (no building under it), its slope (rise per metre along x and z).

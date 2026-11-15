@@ -260,16 +260,35 @@ export class World {
     return [[(s.minX + s.maxX) / 2, (s.minZ + s.maxZ) / 2], ...s.rings.flat().map((p) => [p[0], p[1]] as [number, number])];
   }
 
-  /** Cap block `index` (capBlock) at the lowest of `roof` (a model's own) over it, looked at every metre inside it. */
-  capUnder(roof: RoofField, index: number): void {
+  /** How many metre-wide columns block `index` is looked at in (roofOver). */
+  columns(index: number): number {
+    const s = this.solids[index];
+    return Math.max(0, Math.ceil(s.maxX - s.minX - 0.5));
+  }
+
+  /**
+   * The lowest of `roof` (a model's own) over block `index`, looked at every metre in its columns `from` to `from + n`
+   * (column 0 its corners as well, 5 cm in towards its middle: a narrow block between the grid's points, an eave's lowest
+   * corner), or Infinity: capBlock caps it at the lowest of all its columns (world/modelRoofs.ts, a few at a time).
+   */
+  roofOver(roof: RoofField, index: number, from: number, n: number): number {
     const s = this.solids[index];
     let low = Infinity;
-    for (let x = s.minX + 0.5; x < s.maxX; x += 1) {
+    for (let c = from, x = s.minX + 0.5 + from; c < from + n && x < s.maxX; c++, x += 1) {
       for (let z = s.minZ + 0.5; z < s.maxZ; z += 1) {
         if (inside(x, z, s.rings) && roof.sample(x, z, this.roofLow(x, z))) low = Math.min(low, roof.top);
       }
     }
-    this.capBlock(index, low);
+    if (from > 0) return low;
+    const [mx, mz] = [(s.minX + s.maxX) / 2, (s.minZ + s.maxZ) / 2];
+    for (const ring of s.rings) {
+      for (const [px, pz] of ring) {
+        const d = Math.hypot(mx - px, mz - pz) || 1;
+        const x = px + ((mx - px) / d) * 0.05, z = pz + ((mz - pz) / d) * 0.05;
+        if (roof.sample(x, z, this.roofLow(x, z))) low = Math.min(low, roof.top);
+      }
+    }
+    return low;
   }
 
   /** Block `index`'s top as it stands: capped, or its own; NaN if switched off (gone for standing over the roof). */
@@ -566,7 +585,7 @@ export class World {
     }
     // A drawn roof (-3): its slope from above, its underside from below, else the way the ball came.
     const roof = this.roofs;
-    if (roof.sample(b.x, b.z, this.roofLow(b.x, b.z)) && b.y - r < roof.top && b.y + r > roof.bottom) {
+    if (this.roofHere(b.x, b.z) && b.y - r < roof.top && b.y + r > roof.bottom) {
       const { top, bottom, gx, gz } = roof;
       if (a.y - r >= top + gx * (a.x - b.x) + gz * (a.z - b.z) - 1e-4) {
         const n = Math.hypot(gx, 1, gz);
