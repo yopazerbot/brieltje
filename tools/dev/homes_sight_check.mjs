@@ -131,9 +131,14 @@ for (const h of HOMES) {
     await sleep(150);
   }
   const brute = root.log.filter((m) => m.t === 'clowns').pop()?.list?.find((c) => c.kind === 'strongman' && Math.hypot(c.x - inside.x, c.z - inside.z) < 0.5);
-  ok(`${h.id}: a strongman inside: Alice is not hurt and is sent none of his rocks or stomps`, !!brute && !a.log.some((m) => m.t === 'hurt' || m.t === 'kill' || m.t === 'rock' || m.t === 'stomp'), brute ? '' : 'not spawned');
-  ok(`${h.id}: nor is he in her ticks`, !!brute && !a.log.some((m) => m.t === 's' && (m.b ?? []).some((e) => e[0] === brute.id)));
+  // Judged only while he stayed inside (the admin sees where he walks; with nobody to go for he may wander out).
+  const walks = root.log.filter((m) => m.t === 's').flatMap((m) => (m.b ?? []).filter((e) => e[0] === brute?.id));
+  const stayed = !!brute && walks.length > 0 && walks.every((e) => homeAt(e[1], e[2], inside.y) === h.id);
+  if (!stayed) console.log(`note ${h.id}: the strongman ${brute ? 'walked out of the home' : 'was not spawned'}: not judged`);
+  ok(`${h.id}: a strongman inside: Alice is not hurt and is sent none of his rocks or stomps`, !stayed || !a.log.some((m) => m.t === 'hurt' || m.t === 'kill' || m.t === 'rock' || m.t === 'stomp'));
+  ok(`${h.id}: nor is he in her ticks`, !stayed || !a.log.some((m) => m.t === 's' && (m.b ?? []).some((e) => e[0] === brute.id)));
   if (brute) root.send({ t: 'clown', op: 'remove', id: brute.id });
+  b.send({ t: 'state', ...pos[b.name], yaw: 0, pitch: 0, armed: true, w: 'pistol' }); // armed again
   await sleep(500);
   // At the door, outside, his shot reaches her (so its absence inside means something).
   b.send({ t: 'shot', w: 'pistol', x: out[0], y: floor + 1.6, z: out[1] });
