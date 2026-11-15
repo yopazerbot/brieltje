@@ -41,7 +41,7 @@ body.touch .heli-horizon { width: 34px; height: 34px; }
 body.touch .heli-mark { left: 7px; right: 7px; top: 16px; }
 @media (max-height: 380px) { body.touch #heli-hud { right: 104px; } }
 @media (min-height: 600px) { body.touch #heli-hud { top: 160px; } }
-body.compact #heli-hud { right: 12px; bottom: 8px; padding: 7px 9px; border-radius: 12px; gap: 8px; }
+body.compact #heli-hud { right: 12px; bottom: 72px; padding: 7px 9px; border-radius: 12px; gap: 8px; } /* over the Sound button */
 body.compact #heli-hud .speed-value { font-size: 30px; }
 /* The touch buttons in the helicopter (controls/touch.ts, state 'heli'): Up over Down on the right, Use and View beside them. */
 body.touch[data-touch=heli] #touch.heli .t-jump { right: 26px; bottom: 112px; width: 72px; height: 72px; font-size: 13px; }
