@@ -7,6 +7,10 @@
 // stopping it, getting out, a passenger, the controller and (--phone) the tap, and the Controls tab's row.
 // --ride: also the bike route ridden and the car route driven, by a simple autopilot along the roads
 // (it keeps behind the traffic, backs off and finds a way round when stuck; --trace prints where it is every 5 s).
+// --together <name>: played together as a guest of that name, against the server behind the dev server's proxy
+// (API_PORT=<a throwaway server's port> npx vite --port <n>): the walks go at the real pace, the script waits after its
+// jumps for the server to catch up, and each route checks that the server timed it too (server/goals.mjs: its `race`
+// message, within a few tenths of the page's own time). Use --only foot,bike,car --ride.
 //
 //   node tools/dev/goals.mjs --url http://localhost:5200/ --port 9920 [--quality high] [--phone] [--shots <folder>]
 //                            [--only spots,reach,shots,find,foot,line,race,climb,warm,zombies,bike,car] [--ride] [--trace]
@@ -20,7 +24,11 @@ import { lengthOf, makeRoads } from '../../web/shared/roadPath.mjs';
 import { makeTerrain } from '../../web/shared/terrain.mjs';
 import { launch, options, startGame } from './cdp.mjs';
 
-const o = options({ url: 'http://localhost:5200/', port: '9920', quality: 'high', phone: false, shots: '', only: '', ride: false, trace: false, size: '' });
+const o = options({ url: 'http://localhost:5200/', port: '9920', quality: 'high', phone: false, shots: '', only: '', ride: false, trace: false, size: '', together: '' });
+/** Together: a while for the server's place of you to catch up with a jump of the page's (it moves you at the pace of your way). */
+const settle = (ms) => (o.together ? b.sleep(ms) : Promise.resolve());
+/** Together: the server's `race` messages for route `id` (recorded in the page), the newest last. */
+const serverRaces = async (id) => (o.together ? JSON.parse(await b.evaluate('JSON.stringify(window.__boardMsgs ?? [])', false)).filter((m) => m.t === 'race' && m.id === id) : []);
 const ROUTES = JSON.parse(readFileSync(new URL('../../web/shared/routes.json', import.meta.url))).routes;
 const ROADS = JSON.parse(readFileSync(new URL('../../web/src/data/roads.json', import.meta.url)));
 /** The road register's network, as the game's sat-nav line uses it (web/shared/roadPath.mjs) */
@@ -58,6 +66,16 @@ function sample(line, step = 2) {
   return out;
 }
 const js = (v) => JSON.stringify(v);
+/** Together: the server timed route `id` as the page did (its race message; the page's best time from its storage). */
+async function serverTimed(id, stored) {
+  await b.sleep(1500);
+  const got = (await serverRaces(id)).at(-1);
+  const page = Object.entries(JSON.parse(stored || '{}').best ?? {}).find(([k]) => k.startsWith(`${id}@`))?.[1];
+  const timed = !!got && typeof page === 'number' && Math.abs(got.ms - page) < 500;
+  check(`${id}: the server timed it too`, timed, `server ${js(got ?? null)}, page ${page} ms`);
+  // Not timed: the states this page sent (time, x, y, z, flying), to replay against the server's rules.
+  if (!timed && o.shots) writeFileSync(join(o.shots, `${id}_states.json`), await b.evaluate('JSON.stringify(window.__sent ?? [])', false));
+}
 const toast = () => b.evaluate("document.getElementById('toast')?.textContent ?? ''", false);
 const line = () => b.evaluate("(() => { const l = document.getElementById('goal-line'); return l && !l.hidden ? l.textContent : ''; })()", false);
 const prompt = () => b.evaluate("document.getElementById('prompt')?.textContent ?? ''", false);
@@ -185,16 +203,19 @@ async function helpers() {
       /** Walk towards (tx, tz) in steps of 0.25 s with a frame between, until within r. */
       async straight(tx, tz, r, maxSteps = 200) {
         let stuck = 0;
-        for (let n = 0; n < maxSteps; n++) {
+        for (let n = 0; n < maxSteps * (window.__together ? 5 : 1); n++) {
           const p = briel.player;
           const d = Math.hypot(tx - p.x, tz - p.z);
           if (d < r) return { ok: true, n };
           const yaw = Math.atan2(-(tx - p.x), -(tz - p.z));
           briel.teleport(p.x, p.z, p.feet, yaw, 0);
           const before = [p.x, p.z];
-          briel.walk(Math.min(0.25, d / 4), 0, 1);
-          await frame();
-          if (Math.hypot(p.x - before[0], p.z - before[1]) < 0.05) { if (++stuck > 6) return { ok: false, n, stuck: [+p.x.toFixed(1), +p.z.toFixed(1)] }; } else stuck = 0;
+          // Together: at the real pace, a twentieth of a second at a time (the page then sends a state each step).
+          const dt = window.__together ? Math.min(0.05, d / 4) : Math.min(0.25, d / 4);
+          briel.walk(dt, 0, 1);
+          if (window.__together) await new Promise((r) => setTimeout(r, dt * 1000));
+          else await frame();
+          if (Math.hypot(p.x - before[0], p.z - before[1]) < (window.__together ? 0.01 : 0.05)) { if (++stuck > (window.__together ? 30 : 6)) return { ok: false, n, stuck: [+p.x.toFixed(1), +p.z.toFixed(1)] }; } else stuck = 0;
         }
         return { ok: false, n: maxSteps };
       },
@@ -206,7 +227,24 @@ async function start() {
   await b.send('Page.addScriptToEvaluateOnNewDocument', {
     source: `localStorage.setItem('briel.graphics','${o.quality}');localStorage.setItem('briel.lang','en');localStorage.setItem('briel.spawn','house');localStorage.setItem('briel.playMode','explore');localStorage.setItem('briel.feedback','later');`,
   });
-  await startGame(b, o.url, { phone: o.phone, village: true });
+  if (o.together) {
+    // The server's race and gnome messages to this page, kept for the checks (server/goals.mjs).
+    await b.send('Page.addScriptToEvaluateOnNewDocument', {
+      source: "window.__together = true; window.__boardMsgs = []; { const W = window.WebSocket; window.WebSocket = class extends W { constructor(...a) { super(...a); this.addEventListener('message', (e) => { try { const m = JSON.parse(e.data); if (m.t === 'race' || m.t === 'gnome') window.__boardMsgs.push(m); } catch {} }); } send(d) { try { const m = JSON.parse(d); if (m.t === 'state') { window.__sent.push([Math.round(performance.now()), m.x, m.y, m.z, m.flying ? 1 : 0]); if (window.__sent.length > 20000) window.__sent.splice(0, 5000); } } catch {} return super.send(d); } }; window.__sent = []; }",
+    });
+    await b.send('Page.navigate', { url: o.url });
+    await b.waitFor("!!document.querySelector('#choose-kbm')");
+    await b.sleep(6000); // the dev build attaches the start screen's handlers late
+    await b.evaluate(`(() => {
+      const n = document.querySelector('#nick'); n.value = ${js(o.together)}; n.dispatchEvent(new Event('input', { bubbles: true }));
+      document.querySelector('[data-mp=multi]').click();
+      const age = document.querySelector('#mp-age'); if (!age.checked) age.click();
+      document.querySelector('#choose-kbm').click();
+    })()`, false);
+    await b.waitFor('!!window.briel', 180000);
+    await b.waitFor("(() => { const p = document.getElementById('start-panel'); if (!p || p.offsetParent === null) return true; const s = getComputedStyle(p); return s.visibility === 'hidden' || Number(s.opacity) < 0.05; })()", 240000);
+    await b.waitFor("briel.village() === 'ready'", 240000);
+  } else await startGame(b, o.url, { phone: o.phone, village: true });
   if (o.size) {
     // Another phone's screen (--size 667x375), after the start (startGame sets 844x390 for --phone).
     const [width, height] = o.size.split('x').map(Number);
@@ -333,12 +371,13 @@ try {
     // From 6 m before the gate, 4 m up and back, so the square shows in the picture.
     await b.evaluate(`briel.teleport(${sx}, ${sz}, ${sg}, ${Math.atan2(-(gx - sx), -(gz - sz))}, 0)`, false);
     await b.sleep(1500);
+    await settle(6000); // together: the server catches up with the jump (the offer's 8 s run out meanwhile: not checked then)
     await shot('foot_gate_line');
     const near = await line();
     const offered = await prompt();
     const before = await rings();
     check('no ring on the church square before the race', noRing(before), js(before));
-    check('the walking race offered by its start', near.includes('Church square on foot') && offered.includes(wanted('en', 'Church square on foot')) && before.offer === 'foot', `line "${near}", prompt "${offered}"`);
+    if (!o.together) check('the walking race offered by its start', near.includes('Church square on foot') && offered.includes(wanted('en', 'Church square on foot')) && before.offer === 'foot', `line "${near}", prompt "${offered}"`);
     await raceKey();
     await b.sleep(800);
     const after = await rings();
@@ -371,6 +410,7 @@ try {
     await b.sleep(4600);
     const gone = await rings();
     check('after a finish the gate stays a while, then goes', fin.armed === 'foot' && fin.gates.some(Boolean) && noRing(gone) && gone.armed === null, `${js(fin)} then ${js(gone)}`);
+    if (o.together) await serverTimed('foot', best);
     // A run stopped by a teleport 100 m away (the race asked for again first).
     await b.evaluate(`briel.teleport(${sx}, ${sz}, ${sg}, ${Math.atan2(-(gx - sx), -(gz - sz))}, 0)`, false);
     await b.evaluate('__g.frame()');
@@ -704,8 +744,10 @@ try {
     if (kind === 'bike') {
       await b.evaluate("briel.travel('church')", false);
       await b.sleep(3000);
-      await b.evaluate("briel.teleport(533, -769, briel.world.groundAt(533, -769, 60, 0).y); briel.getOnBike('church1')", false);
-      await b.sleep(500);
+      await b.evaluate('briel.teleport(533, -769, briel.world.groundAt(533, -769, 60, 0).y)', false);
+      await settle(5000);
+      await b.evaluate("briel.getOnBike('church1')", false);
+      await b.sleep(o.together ? 1500 : 500);
       // Along the road register's centre lines from point to point (src/ui/route.ts: the streets, the field tracks too);
       // where it has no line (a straight leg) and something stands in the way, round it over cells a bike fits through.
       path = JSON.parse(await b.evaluate(`(async () => {
@@ -744,9 +786,20 @@ try {
       for (let k = 0, i = s0; k < loop.length + 40; k++, i = (i + 1) % loop.length) path.push(loop[i]);
       await b.evaluate('briel.travel(\'house\')', false);
       await b.sleep(3000);
+      // Together: by the Tesla's door, and a while for the server to see you there.
+      if (o.together) {
+        await b.evaluate("(() => { const car = briel.cars.find((c) => c.id === 'tesla'); const at = car.exitSpot(); briel.player.place(at.x, at.z, car.y, 0, 0); })()", false);
+        await settle(6000);
+      }
       await b.evaluate('briel.getIn()', false);
+      // Together: the server lets you in only once its place of you is by the car; ask again until it does (as drive_mp.mjs).
+      for (let i = 0; o.together && i < 30 && !(await b.evaluate('briel.driving()', false)); i++) {
+        await b.sleep(1500);
+        await b.evaluate('briel.getIn()', false);
+      }
       await b.waitFor('briel.driving()', 15000);
       await b.evaluate(`(() => { const car = briel.currentCar(); const [x, z] = ${js(path[0])}, [nx, nz] = ${js(path[3])}; const g = briel.world.groundAt(x, z, 50, 0.3); car.place(x, g.y, z, Math.atan2(-(nx - x), -(nz - z))); })()`, false);
+      await settle(5000);
     }
     // The race asked for (after the car's move to the start of the path: a hop ends a race).
     await b.evaluate('__g.frame()');
@@ -869,6 +922,7 @@ try {
     const why = JSON.parse(at);
     if (why.stopped || why.ended) console.log(`     ${kind} run stopped: ${js(why.stopped ?? null)}, race ended: ${js(why.ended ?? null)}`);
     check(`${kind} route`, best.includes(`${kind}@1`), `toast "${finish}", stored ${best}`);
+    if (o.together) await serverTimed(kind, best);
     const ways = (await navNow()).ways - ways0;
     const most = 3 * (ROUTES.find((x) => x.id === kind).checkpoints.length + 1);
     check(`${kind}: after the first checkpoint the line starts at you, the part behind left out`, !!gps.behind?.ok, js(gps.behind));
