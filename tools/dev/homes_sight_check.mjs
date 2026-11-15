@@ -12,6 +12,7 @@ import { mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import WebSocket from '../../web/node_modules/ws/wrapper.mjs';
 import { HOMES, homeAt } from '../../web/shared/homes.mjs';
 import { PORTALS } from '../../web/shared/portals.mjs';
+import { makeTerrain } from '../../web/shared/terrain.mjs';
 import { localOnly, options } from './cdp.mjs';
 
 const PLACES = JSON.parse(readFileSync(new URL('../../web/shared/places.json', import.meta.url), 'utf8')).places;
@@ -87,6 +88,8 @@ const seen = (p, who) => {
 };
 
 const admin = cookieOf((await call('POST', '/api/login', { username: 'admin', password })).r);
+const root = await connect(admin); // spawns a strongman inside each home
+const TERRAIN = makeTerrain(JSON.parse(readFileSync(new URL('../../web/shared/terrain.json', import.meta.url), 'utf8')));
 const a = await guest('Alice'); // no right
 const b = await guest('Bob'); // types each home's code
 await sleep(600);
@@ -118,6 +121,20 @@ for (const h of HOMES) {
   await Promise.all([walk(a, out[0] + 1.5, out[1] + 1.5, floor), walk(b, out[0], out[1], floor)]);
   await sleep(600);
   ok(`${h.id}: Alice sees Bob at the door`, !!seen(a, b.name));
+  // A strongman inside the home (the admin's), Bob unarmed for now: he goes for nobody who may not see in, his rocks
+  // and stomps hurt nobody outside, and Alice is sent none of them.
+  b.send({ t: 'state', ...pos[b.name], yaw: 0, pitch: 0, armed: false });
+  a.log.length = 0;
+  root.send({ t: 'clown', op: 'add', kind: 'strongman', x: inside.x, y: inside.y - TERRAIN.height(inside.x, inside.z), z: inside.z });
+  for (let i = 0; i < 40; i++) {
+    at(a, pos[a.name].x + (i % 2 ? 0.05 : -0.05), pos[a.name].z, pos[a.name].y); // Alice keeps moving: fresh, armed
+    await sleep(150);
+  }
+  const brute = root.log.filter((m) => m.t === 'clowns').pop()?.list?.find((c) => c.kind === 'strongman' && Math.hypot(c.x - inside.x, c.z - inside.z) < 0.5);
+  ok(`${h.id}: a strongman inside: Alice is not hurt and is sent none of his rocks or stomps`, !!brute && !a.log.some((m) => m.t === 'hurt' || m.t === 'kill' || m.t === 'rock' || m.t === 'stomp'), brute ? '' : 'not spawned');
+  ok(`${h.id}: nor is he in her ticks`, !!brute && !a.log.some((m) => m.t === 's' && (m.b ?? []).some((e) => e[0] === brute.id)));
+  if (brute) root.send({ t: 'clown', op: 'remove', id: brute.id });
+  await sleep(500);
   // At the door, outside, his shot reaches her (so its absence inside means something).
   b.send({ t: 'shot', w: 'pistol', x: out[0], y: floor + 1.6, z: out[1] });
   await sleep(500);
@@ -162,7 +179,9 @@ for (const h of HOMES) {
   await walk(b, last.x, last.z, last.y);
   a.log.length = 0;
   const thrown = Date.now();
-  b.send({ t: 'nade', x: last.x, y: last.y + 1.5, z: last.z, vx: 0, vy: 2, vz: 0 });
+  // A real throw towards her (the server keeps the bang within what the throw's speed reaches in its fuse).
+  const dx = al.x - last.x, dz = al.z - last.z, dd = Math.hypot(dx, dz) || 1;
+  b.send({ t: 'nade', x: last.x, y: last.y + 1.5, z: last.z, vx: (dx / dd) * 12, vy: 4, vz: (dz / dd) * 12 });
   // Out again: in Alice's very next ticks.
   await walk(b, out[0], out[1], floor);
   await sleep(400);
@@ -173,6 +192,7 @@ for (const h of HOMES) {
   await sleep(600);
   const bl = a.log.find((m) => m.t === 'blast');
   ok(`${h.id}: his grenade from inside goes off by Alice: she is told of the blast, without his name`, !!bl && bl.by === '', JSON.stringify(bl ?? null));
+  ok(`${h.id}: the bang is at her feet (within the blast's reach of her)`, !!bl && Math.hypot(bl.x - al.x, bl.z - al.z) < 2, bl ? `${Math.hypot(bl.x - al.x, bl.z - al.z).toFixed(2)} m` : '');
   ok(`${h.id}: and it spares her`, !a.log.some((m) => m.t === 'hurt' || m.t === 'kill'));
   await call('DELETE', `/api/admin/homes/${h.id}/code`, undefined, admin);
 }
@@ -182,5 +202,6 @@ if (o.out) {
 }
 a.ws.close();
 b.ws.close();
+root.ws.close();
 console.log(failed ? `${failed} FAILED` : 'all ok');
 process.exit(failed ? 1 : 0);

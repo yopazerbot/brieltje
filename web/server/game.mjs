@@ -712,32 +712,43 @@ export class Game {
     if (this.modes.state.kind === 'zombies') return; // they stand aside during the Zombies game (the pages hide them)
     const fighting = !this.roundOver && !this.modes.peaceful;
     const targets = fighting
-      ? [...this.players].filter(([n, p]) => p.alive && p.state?.armed && !this.inCar(n) && now >= p.protectedUntil && !this.gate.insideOf(p)).map(([name, p]) => ({ name, x: p.state.x, y: p.state.y, z: p.state.z }))
+      ? [...this.players].filter(([n, p]) => p.alive && p.state?.armed && !this.inCar(n) && now >= p.protectedUntil && !this.gate.insideOf(p)).map(([name, p]) => ({ name, p, x: p.state.x, y: p.state.y, z: p.state.z }))
       : [];
     for (const c of this.clowns.values()) {
       if (!c.brain) continue;
       if (now < c.until) continue; // down
       if (c.brain.hp <= 0) Object.assign(c.brain, newBrute(c.id, c.x, c.y, c.z, FIGHT)); // back, fresh, at his spot
       c.brain.y = c.y + TERRAIN.height(c.brain.x, c.brain.z); // on the relief: rocks leave and stomps land at his feet
-      for (const e of stepBrute(c.brain, targets, now, TICK_MS / 1000, FIGHT, this.free)) {
+      // Inside a home he goes only for those who may see into it (they alone are told of his rocks and stomps).
+      const home = this.homeOf('brute', c.brain);
+      const his = home ? targets.filter((t) => this.gate.may(t.p, home)) : targets;
+      for (const e of stepBrute(c.brain, his, now, TICK_MS / 1000, FIGHT, this.free)) {
         if (e.type === 'throw') {
-          this.rocks.push({ id: c.id, to: e.to, at: now + e.ms });
+          this.rocks.push({ id: c.id, to: e.to, at: now + e.ms, home });
           this.broadcastThing({ t: 'rock', ...e }, 'brute', c.brain);
         } else {
           this.broadcastThing({ t: 'stomp', ...e }, 'brute', c.brain);
-          this.bruteHits(e.at, FIGHT.stompRadius, FIGHT.stompDamage, now);
+          this.bruteHits(e.at, FIGHT.stompRadius, FIGHT.stompDamage, now, home);
         }
       }
     }
-    for (const r of this.rocks.filter((q) => now >= q.at)) this.bruteHits(r.to, FIGHT.rockRadius, FIGHT.rockDamage, now);
+    for (const r of this.rocks.filter((q) => now >= q.at)) this.bruteHits(r.to, FIGHT.rockRadius, FIGHT.rockDamage, now, r.home);
     this.rocks = this.rocks.filter((q) => now < q.at);
   }
 
-  /** A rock landing or a stomp: everyone near it who fights is hurt by distance. */
-  bruteHits(at, radius, damage, now) {
+  /**
+   * A rock landing or a stomp: everyone near it who fights is hurt by distance; `from`: the home the strongman stood in
+   * when he threw or stomped. Hurt and told agree: only those who may see where he was (they were sent his rock or
+   * stomp) and where it lands, and nobody inside another home than his (out of his sight, as for a player's blast).
+   */
+  bruteHits(at, radius, damage, now, from = null) {
     if (this.roundOver || this.modes.peaceful) return;
+    const land = homeAt(at.x, at.z, at.y);
     for (const [name, p] of this.players) {
       if (!p.alive || !p.state?.armed || this.inCar(name) || now < p.protectedUntil) continue;
+      if ((from && !this.gate.may(p, from)) || (land && !this.gate.may(p, land))) continue;
+      const inside = this.gate.insideOf(p);
+      if (inside && inside !== from) continue;
       const s = p.state;
       if (Math.abs(s.y - at.y) > 2.5) continue;
       this.npcDamage(name, p, hurtBy(Math.hypot(s.x - at.x, s.z - at.z), radius, damage), now, 'a strongman', at);
@@ -836,12 +847,12 @@ export class Game {
   }
 
   clownList(now = Date.now(), viewer = null) {
-    return [...this.clowns.values()].filter((c) => !viewer || this.seenBy(viewer, 'point', c)).map(({ id, x, y, z, kind, until }) => ({ id, x, y, z, kind, ms: Math.max(0, until - now) }));
+    return [...this.clowns.values()].filter((c) => !viewer || this.seenBy(viewer, 'clown', c)).map(({ id, x, y, z, kind, until }) => ({ id, x, y, z, kind, ms: Math.max(0, until - now) }));
   }
 
   /** Every page its list of the spawned figures, as it may see them (one spawned inside a home: only with its right). */
   sendClowns(now) {
-    if (![...this.clowns.values()].some((c) => this.homeOf('point', c))) return this.broadcast({ t: 'clowns', list: this.clownList(now) });
+    if (![...this.clowns.values()].some((c) => this.homeOf('clown', c))) return this.broadcast({ t: 'clowns', list: this.clownList(now) });
     for (const p of this.players.values()) if (p.ws.readyState === p.ws.OPEN) p.ws.send(JSON.stringify({ t: 'clowns', list: this.clownList(now, p) }));
     const all = JSON.stringify({ t: 'clowns', list: this.clownList(now) });
     for (const w of this.watchers) if (w.ws.readyState === w.ws.OPEN) w.ws.send(all);
@@ -1149,7 +1160,7 @@ export class Game {
       if (now < c.until || !player.alive || !player.state?.armed || now < (player.nextCat || 0)) return;
       player.nextCat = now + 300;
       c.until = now + CLOWNS.respawnSeconds * 1000;
-      this.broadcastEvent({ t: 'clownhit', id: m.id, by: name, ms: CLOWNS.respawnSeconds * 1000, w: m.w === 'grenade' ? 'grenade' : player.state.w }, c, name, name);
+      this.broadcastEvent({ t: 'clownhit', id: m.id, by: name, ms: CLOWNS.respawnSeconds * 1000, w: m.w === 'grenade' ? 'grenade' : player.state.w }, { x: c.x, y: c.y + TERRAIN.height(c.x, c.z), z: c.z }, name, name); // its spot's y is over the relief
     } else if (m.t === 'clown') {
       // A clown or a strongman spawned with /clown, /strongman, or one taken away with /remove: the admin
       // always and any; the others when the admin allows spawning, near themselves, SPAWN_CHARACTERS each,
@@ -1851,7 +1862,7 @@ export class Game {
   /**
    * The home a thing of any kind stands in now (shared/homes.mjs, its bands), or null: the one place every tick entry
    * and every message with a place asks (homeGate.hides). Kinds: 'player'; 'horse' (its rider's, or where it was left);
-   * 'zombie' (a tick entry, shared/wire.mjs zombieEntry); 'piece' of furniture; 'car', 'bike', 'heli', 'brute' and 'point'
+   * 'zombie' (a tick entry, shared/wire.mjs zombieEntry); 'piece' of furniture; 'clown' (a figure's spot, its y over the relief); 'car', 'bike', 'heli', 'brute' and 'point'
    * (anything with x, y, z).
    */
   homeOf(kind, t) {
@@ -1860,6 +1871,7 @@ export class Game {
     if (kind === 'horse') return t.rider ? this.gate.insideOf(this.players.get(t.rider)) : (this.horseHomes.get(t.i) ?? null);
     if (kind === 'zombie') return homeAt(t[1], t[2], t[6]); // [id, x, z, yaw, state, hp, y]
     if (kind === 'piece') return pieceHome(t);
+    if (kind === 'clown') return homeAt(t.x, t.z, t.y + TERRAIN.height(t.x, t.z)); // a figure's spot: its y is over the relief
     return homeAt(t.x, t.z, t.y);
   }
 
@@ -2461,10 +2473,18 @@ export class Game {
     p.budget = p.vbudget = 0.5;
     this.moved(p);
     // In Smetlede (Zombies there) also the height to stand at and what to face: the spawn point is the house's.
-    this.broadcast({
+    const msg = {
       t: 'respawn', name, spawn, ...(at ? { x: at.x, z: at.z } : {}), ...(at?.face ? { y: +at.y.toFixed(2), fx: at.face[0], fz: at.face[1] } : {}),
       ...(fly ? { drop: 1, sx: from.x, sz: from.z, ...(at && !at.face ? { y: +at.y.toFixed(2) } : {}) } : {}),
-    });
+    };
+    // A place inside a home (brought by the host to where they stand, at.face their spot): its numbers only to the player
+    // and to those who may see in; the others (their pages use only the name) get the name.
+    const homes = at ? [homeAt(at.x, at.z, pos.y ?? p.state?.y ?? 0), at.face ? homeAt(at.face[0], at.face[1], pos.y ?? p.state?.y ?? 0) : null].filter(Boolean) : [];
+    if (!homes.length) return this.broadcast(msg);
+    const bare = JSON.stringify({ t: 'respawn', name, spawn });
+    const full = JSON.stringify(msg);
+    for (const [n, q] of this.players) if (q.ws.readyState === q.ws.OPEN) q.ws.send(n === name || homes.every((h) => this.gate.may(q, h)) ? full : bare);
+    for (const w of this.watchers) if (w.ws.readyState === w.ws.OPEN) w.ws.send(full);
   }
 
   /**
@@ -2719,6 +2739,7 @@ export class Game {
     const inside = players.some((e) => e.home) || Object.values(things).some((list) => list.some((e) => e.home));
     const changed = rest(false);
     let everything = null;
+    let prevKeys = null;
     let old = false;
     for (const [name, p] of this.players) {
       if (p.proto < PROTO) {
@@ -2735,6 +2756,7 @@ export class Game {
         const tick = `{"t":"s","st":${st}${part('p', others)}${all ? everything : changed}}`;
         monitor.out(tick.length);
         p.ws.send(tick);
+        p.hadThings = null; // it has every thing of this tick (prevKeys, next tick)
         continue;
       }
       const may = new Map();
@@ -2748,17 +2770,24 @@ export class Game {
       const others = players.filter((e) => e.name !== name && !unseen.has(e.name) && (all || e.due || was.has(e.name))).map((e) => e.json).join(',');
       if (all) everything ??= rest(true);
       // The things out of sight now, the same way: those newly so in `g` by list (the page takes them away).
+      // Only things it had (seen in its last tick: a figure spawned inside a home it never saw is never named).
       const wasThings = p.unseenThings ?? new Set();
+      const had = all ? new Set() : (p.hadThings ?? (prevKeys ??= new Set(Object.values(this.prevThings ?? {}).flatMap((list) => list.map((e) => e.key)))));
+      const hadNow = new Set();
       const unseenThings = new Set();
       const goneThings = {};
       for (const [k, list] of Object.entries(things)) {
         for (const e of list) {
-          if (!e.home || sees(e.home)) continue;
+          if (!e.home || sees(e.home)) {
+            hadNow.add(e.key);
+            continue;
+          }
           unseenThings.add(e.key);
-          if (!wasThings.has(e.key)) (goneThings[k] ??= []).push(JSON.parse(e.json)[0]);
+          if (!wasThings.has(e.key) && had.has(e.key)) (goneThings[k] ??= []).push(JSON.parse(e.json)[0]);
         }
       }
       p.unseenThings = unseenThings;
+      p.hadThings = hadNow;
       const own = inside || wasThings.size ? rest(all, sees, wasThings) : all ? everything : changed;
       const g = Object.keys(goneThings).length ? `,"g":${JSON.stringify(goneThings)}` : '';
       const tick = `{"t":"s","st":${st}${part('p', others)}${own}${gone.length ? `,"o":${JSON.stringify(gone)}` : ''}${g}}`;
@@ -2775,6 +2804,7 @@ export class Game {
       monitor.out(tick.length);
       w.ws.send(tick);
     }
+    this.prevThings = things; // what a page in the shared lists had (its keys only looked at when something goes out of sight)
     if (old && turn % OLD_EVERY === 0) this.oldStates(now);
   }
 

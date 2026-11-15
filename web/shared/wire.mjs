@@ -12,6 +12,8 @@
 //   z   zombies    [id, x, z, yaw, state, hp, y]  (the Zombies game: state = act + 4 * kind, see zombieEntry)
 //   o   names      players gone out of this page's sight since its last tick: inside a home it has no right to
 //                  (server/homeGate.mjs hides); whatever is inside one is left out of that page's ticks
+//   g   {c, h, k, e, b, z}  things gone out of this page's sight since its last tick, by list (cars, horses, bikes,
+//                  helicopters, strongmen, zombies): only those it had; one back in sight comes whole at once
 // `age`: how long before `st` that state was where it says (ms). A player's state carries the time
 // their own page took it, lined up with the server's clock (game.mjs), so network jitter on the way
 // in doesn't show as a stutter. Positions are rounded to the centimetre, angles to a milliradian.

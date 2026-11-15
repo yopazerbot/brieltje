@@ -314,7 +314,8 @@ export class Loot {
     if (down >= LOOT.placed) return { why: 'max' };
     const s = this.spot(p, at, hidden);
     if (!s) return { why: 'spot' };
-    for (const m of this.mines.values()) if (Math.hypot(m.x - s.x, m.z - s.z) < LOOT.apart) return { why: 'spot' };
+    // Not on another one, of those this player may see (one inside a home out of their sight is not there for them).
+    for (const m of this.mines.values()) if (!hidden?.(m.x, m.y, m.z) && Math.hypot(m.x - s.x, m.z - s.z) < LOOT.apart) return { why: 'spot' };
     k.claymores--;
     const mine = { id: this.nextId++, owner: name, x: r2(s.x), y: r2(s.y), z: r2(s.z), yaw: s.yaw, armedAt: now + LOOT.armMs };
     this.mines.set(mine.id, mine);
@@ -354,7 +355,7 @@ export class Loot {
     if (down >= LOOT.stakesPlaced || this.rows.size >= LOOT.stakesAll) return { why: 'max' };
     const s = this.spot(p, at, hidden);
     if (!s) return { why: 'spot' };
-    for (const r of this.rows.values()) if (Math.hypot(r.x - s.x, r.z - s.z) < LOOT.stakesApart) return { why: 'spot' };
+    for (const r of this.rows.values()) if (!hidden?.(r.x, r.y, r.z) && Math.hypot(r.x - s.x, r.z - s.z) < LOOT.stakesApart) return { why: 'spot' };
     const ux = Math.cos(s.yaw), uz = -Math.sin(s.yaw); // along the row (the game's yaw: forward is -z at 0)
     const side = (dir) => {
       let d = 0;
@@ -386,7 +387,7 @@ export class Loot {
     if (this.turrets.size >= LOOT.turretsAll) return { why: 'all' };
     const s = this.spot(p, at, hidden);
     if (!s) return { why: 'spot' };
-    for (const t of this.turrets.values()) if (Math.hypot(t.x - s.x, t.z - s.z) < 1) return { why: 'spot' };
+    for (const t of this.turrets.values()) if (!hidden?.(t.x, t.y, t.z) && Math.hypot(t.x - s.x, t.z - s.z) < 1) return { why: 'spot' };
     k.turrets--;
     const turret = { id: this.nextId++, owner: name, x: r2(s.x), y: r2(s.y), z: r2(s.z), set: s.yaw, yaw: s.yaw, armedAt: now + LOOT.turretArm, rounds: LOOT.turretRounds, next: 0, target: -1, at: now };
     this.turrets.set(turret.id, turret);

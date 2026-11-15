@@ -252,7 +252,18 @@ export class ZombieGame {
     if (gone.length || worn || spent.length || faded.length) changed = true;
     // The turrets' shots this tick: everyone sees each one fired at its zombie ([turret, zombie, rounds
     // left]), then it is hurt as by anyone's bullet, for the turret's owner.
-    if (shots.length) g.broadcast({ t: 'zfire', s: shots.map(({ turret: t, id }) => [t.id, id, t.rounds]) });
+    if (shots.length) {
+      // A turret inside a home: its shots only to those who may see in (by place, as the turrets' list).
+      const fire = shots.map(({ turret: t, id }) => [t.id, id, t.rounds, homeAt(t.x, t.z, t.y)]);
+      if (!fire.some((f) => f[3])) g.broadcast({ t: 'zfire', s: fire.map((f) => f.slice(0, 3)) });
+      else {
+        for (const [, q] of g.players) {
+          const s = fire.filter((f) => !f[3] || g.gate.may(q, f[3])).map((f) => f.slice(0, 3));
+          if (s.length) g.send(q.ws, { t: 'zfire', s });
+        }
+        for (const w of g.watchers) g.send(w.ws, { t: 'zfire', s: fire.map((f) => f.slice(0, 3)) });
+      }
+    }
     for (const { turret: t, id } of shots) this.damage(id, LOOT.turretDamage, t.owner, 'turret', now);
     for (const { mine: m, ids } of booms) {
       g.broadcastHome({ t: 'zboom', id: m.id, x: m.x, y: m.y, z: m.z, yaw: m.yaw, by: m.owner }, homeAt(m.x, m.z, m.y)); // inside a home: only with its right
@@ -560,8 +571,11 @@ export class ZombieGame {
     // Helped up inside a home: the place only to those who may see in; the others learn only that it happened.
     const msg = { t: 'revived', name, by, hp: REVIVE_HP };
     const home = at ? homeAt(at.x, at.z, at.y) : null;
-    if (at) this.game.broadcastHome({ ...msg, x: at.x, y: at.y, z: at.z }, home);
-    if (!at || home) for (const [, q] of this.game.players) if (!at || !this.game.gate.may(q, home)) this.game.send(q.ws, msg);
+    if (!at) this.game.broadcast(msg);
+    else {
+      this.game.broadcastHome({ ...msg, x: at.x, y: at.y, z: at.z }, home); // the watch views too
+      if (home) for (const [, q] of this.game.players) if (!this.game.gate.may(q, home)) this.game.send(q.ws, msg);
+    }
     this.modes.say(`${by} helped ${name} up.`, 'zRevived', { name: by, target: name });
     this.modes.send();
   }

@@ -378,7 +378,7 @@ export class Bikes {
     let best: Bike | null = null;
     let bd = BIKES.reach;
     for (const k of this.bikes) {
-      if (Math.abs(feet - k.y) > 1) continue;
+      if (k.away || Math.abs(feet - k.y) > 1) continue; // out of sight (inside a home this page may not see into): not offered
       const d = k.distanceTo(x, z);
       if (d < bd) [best, bd] = [k, d];
     }

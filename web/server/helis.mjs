@@ -186,6 +186,7 @@ export class Helis {
     const g = this.game;
     if (typeof id !== 'string' || !this.machines.has(id)) return;
     const h = this.machines.get(id);
+    if (!g.seenBy(p, 'heli', h)) return; // standing inside a home they may not see into: not through its wall, and not a word
     const no = (code, text) => {
       if (code) g.send(p.ws, { t: 'system', text, code });
       g.send(p.ws, { t: 'heli', heli: this.pub(h) });

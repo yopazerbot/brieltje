@@ -3,6 +3,7 @@ import test from 'node:test';
 import { Game } from './game.mjs';
 import { readFileSync } from 'node:fs';
 import { distanceToHome, HOMES, homeAt } from '../shared/homes.mjs';
+import { makeTerrain } from '../shared/terrain.mjs';
 import { KICK, PITCHES } from '../shared/ball.mjs';
 import { Loot, LOOT } from '../shared/loot.mjs';
 import { PROTO } from '../shared/wire.mjs';
@@ -184,6 +185,7 @@ test('hide and seek and tag: nobody stands inside a home, with its code or not, 
 // Each kind that can never be inside one: a test that says so. The admin's watch view sees everything (broadcastHome).
 
 const json = (p) => JSON.parse(readFileSync(new URL(p, import.meta.url), 'utf8'));
+const TERRAIN = makeTerrain(json('../shared/terrain.json'));
 /** How far (x, z) is from the inside of the nearest home, at the heights y0 to y1 (any height without them). */
 const nearestHome = (x, z, y0, y1) => Math.min(...HOMES.map((h) => distanceToHome(h.id, x, z, y0, y1)));
 /** The least distance to a home along a line of points [[x, z], ...], sampled every 0.25 m. */
@@ -262,7 +264,9 @@ for (const h of HOMES) {
     const other = player('other', { ...outside });
     other.state.armed = false;
     grants.add(`k-owner|${h.id}`);
-    game.clowns = new Map([[1, game.character(1, inside.x, inside.y, inside.z, 'clown')], [2, game.character(2, inside.x, inside.y, inside.z, 'strongman')]]);
+    const over = inside.y - TERRAIN.height(inside.x, inside.z); // a figure's spot: its y over the relief
+    game.clowns = new Map([[1, game.character(1, inside.x, over, inside.z, 'clown')], [2, game.character(2, inside.x, over, inside.z, 'strongman')]]);
+    game.clowns.get(2).brain.y = inside.y; // where the relief puts him (stepBrutes)
     assert.deepEqual(game.clownList(Date.now(), other), [], 'the welcome\'s figures');
     assert.equal(game.clownList(Date.now(), owner).length, 2);
     game.sendClowns(Date.now());
@@ -556,4 +560,119 @@ test('a page from before the out-of-sight notices gets no event whose doer it ma
   game.handle('owner', owner, JSON.stringify({ t: 'cat', i: 0, w: 'rifle' }));
   assert.equal(old.got.filter((m) => m.t === 'cat').length, 0);
   assert.equal(now.got.find((m) => m.t === 'cat')?.by, '');
+});
+
+// ---------------------------------------------------------------- the second review: strongmen, the host's bring, helicopters, placing by hidden things
+
+for (const h of HOMES) {
+  test(`${h.id}: a strongman inside goes for nobody who may not see in, and his rocks and stomps hurt nobody outside`, () => {
+    const { game, player } = setup();
+    const { inside, outside } = spots(h);
+    const other = player('other', { ...outside });
+    game.modes.friends = () => false;
+    game.clowns = new Map([[9, game.character(9, inside.x, inside.y, inside.z, 'strongman')]]);
+    const c = game.clowns.get(9);
+    const brain = c.brain;
+    const t0 = Date.now();
+    other.state.armed = false;
+    game.stepBrutes(t0); // the relief's height under him: c.y is over it
+    other.state.armed = true;
+    c.y -= brain.y - inside.y;
+    for (let i = 0; i < 400; i++) {
+      Object.assign(brain, { x: inside.x, z: inside.z }); // he stays inside (the test holds him there)
+      game.stepBrutes(t0 + i * 50);
+    }
+    assert.equal(game.homeOf('brute', brain), h.id, 'he is inside');
+    assert.equal(other.hp, 100);
+    assert.ok(!other.got.some((m) => m.t === 'rock' || m.t === 'stomp'));
+    // A rock thrown from inside, landing by the outsider: no harm (they were not sent it).
+    game.bruteHits({ x: outside.x, y: outside.y, z: outside.z }, 3, 50, Date.now(), h.id);
+    assert.equal(other.hp, 100, 'a rock from inside');
+    // A rock from outside, landing inside: no harm to someone without the right standing by the wall outside.
+    const by = besideWall(h, inside);
+    const near = player('near', { x: by.x, y: by.y, z: by.z });
+    game.bruteHits({ x: by.inX, y: by.y, z: by.z }, 3, 50, Date.now(), null);
+    assert.equal(near.hp, 100, 'a rock landing inside');
+    // And one landing outside by someone inside (without the right, out of his sight): no harm either.
+    const hidden = player('hidden', { ...inside });
+    game.bruteHits({ x: by.x, y: by.y, z: by.z }, 6, 50, Date.now(), null);
+    assert.equal(hidden.hp, 100, 'someone inside');
+    assert.ok(near.hp < 100, 'the one outside by it is hurt: the rule spares only who could not see');
+  });
+
+  test(`${h.id}: the host's bring into a home gives its place only to those who may see in`, () => {
+    const { game, grants, player } = setup();
+    const { inside, outside } = spots(h);
+    const brought = player('brought', { ...outside });
+    const other = player('other', { ...outside });
+    const friend = player('friend', { ...outside });
+    grants.add(`k-friend|${h.id}`);
+    game.respawn('brought', brought, Date.now(), { spawn: 0, x: inside.x, y: inside.y, z: inside.z, face: [inside.x + 0.5, inside.z] });
+    const r = (p) => p.got.find((m) => m.t === 'respawn');
+    assert.deepEqual(Object.keys(r(other)).sort(), ['name', 'spawn', 't'], 'no place for the one without the right');
+    assert.equal(r(friend).x, inside.x);
+    assert.equal(r(brought).x, inside.x);
+  });
+
+  test(`${h.id}: nobody boards a helicopter standing inside through the wall, and a refusal says nothing`, () => {
+    const { game, grants, player } = setup();
+    const { inside } = spots(h);
+    const owner = player('owner', { ...inside });
+    grants.add(`k-owner|${h.id}`);
+    const by = besideWall(h, inside);
+    const other = player('other', { x: by.x, y: by.y, z: by.z });
+    const heli = [...game.helis.machines.values()][0];
+    Object.assign(heli, { x: inside.x, y: inside.y, z: inside.z });
+    for (const [x, z] of [[by.x, by.z], [inside.x, inside.z]]) {
+      Object.assign(other.state, { x, z });
+      other.got.length = 0;
+      game.helis.board('other', other, heli.id, Date.now());
+      assert.ok(!heli.seats.includes('other'));
+      assert.equal(other.got.length, 0, 'not a word');
+    }
+    assert.equal(owner.alive, true);
+  });
+
+  test(`${h.id}: a claymore, row or turret inside does not stop an outsider placing by it, nor shows in the preview`, () => {
+    const { game, grants, player } = setup();
+    const { inside } = spots(h);
+    const by = besideWall(h, inside);
+    const other = player('other', { x: by.x, y: by.y, z: by.z });
+    const owner = player('owner', { ...inside });
+    grants.add(`k-owner|${h.id}`);
+    const loot = new Loot({ locate: () => 0, y: () => by.y, walk: () => 0 });
+    // Things of the owner's inside, 0.3 m from where the outsider asks (inside the band, by the wall).
+    const ix = by.inX;
+    loot.mines.set(1, { id: 1, owner: 'owner', x: ix, y: by.y, z: by.z, yaw: 0 });
+    loot.rows.set(2, { id: 2, owner: 'owner', x: ix, y: by.y, z: by.z, yaw: 0, a: 0, b: 0 });
+    loot.turrets.set(3, { id: 3, owner: 'owner', x: ix, y: by.y, z: by.z });
+    const ask = { x: by.x + (by.inX - by.x) * 0.55, y: by.y, z: by.z, yaw: 0 }; // still outside, near them
+    assert.equal(homeAt(ask.x, ask.z, ask.y), null);
+    const hidden = (x, y, z) => game.gate.hidesAt(x, z, y, other);
+    Object.assign(loot.kit('other'), { claymores: 1, stakes: 1, turrets: 1 });
+    for (const kind of ['claymore', 'stakes', 'turret']) assert.equal(loot.preview(kind, 'other', other.state, ask, Date.now(), hidden).ok, true, `${kind}: the preview`);
+    assert.ok(loot.place('other', other.state, ask, Date.now(), hidden).mine, 'a claymore');
+    assert.ok(loot.placeTurret('other', other.state, ask, Date.now(), hidden).turret, 'a turret');
+    assert.ok(loot.placeStakes('other', other.state, ask, hidden).row, 'a row');
+    // The owner, who sees them, is refused there (they are in the way).
+    const own = new Loot({ locate: () => 0, y: () => by.y, walk: () => 0 });
+    own.mines.set(1, { id: 1, owner: 'x', x: ix, y: by.y, z: by.z, yaw: 0 });
+    own.kit('owner').claymores = 1;
+    assert.equal(own.place('owner', other.state, ask, Date.now(), (x, y, z) => game.gate.hidesAt(x, z, y, owner)).why, 'spot');
+  });
+}
+
+test('`g` never names a thing the page never had: a strongman spawned inside', () => {
+  const { game, player } = setup();
+  const h = HOMES[3];
+  const { inside, outside } = spots(h);
+  const other = player('other', { ...outside });
+  game.snapshot(Date.now());
+  game.snapshot(Date.now());
+  game.clowns = new Map([[10, game.character(10, inside.x, inside.y, inside.z, 'strongman')]]);
+  Object.assign(game.clowns.get(10).brain, { y: inside.y });
+  other.got.length = 0;
+  game.snapshot(Date.now());
+  game.snapshot(Date.now());
+  assert.ok(!other.got.some((m) => m.t === 's' && m.g), JSON.stringify(other.got.filter((m) => m.g).map((m) => m.g)));
 });
