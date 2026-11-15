@@ -105,6 +105,8 @@ test('the sweep: a fast car between two updates still meets the bike; one passin
   assert.equal(sweptHit(car, { x: 0, z: 30, yaw: 0 }, { x: 0, z: 20, yaw: 0 }, bike), null, 'not yet there');
   const at = sweptHit(car, { x: 0, z: 10, yaw: 0 }, { x: 0, z: -10, yaw: 0 }, bike);
   assert.ok(at.z > 0 && at.z <= car.halfL + bike.halfL + KNOCK.sweep, `where they first meet: ${at.z}`);
+  // Already on it (standing on it, or rolling on over one it just tipped over): no new hit.
+  assert.equal(sweptHit(car, { x: 0, z: 1, yaw: 0 }, { x: 0, z: -1, yaw: 0 }, bike), null);
 });
 
 test('never on a portal, a start place or in a locked home; open ground is fine', () => {

@@ -422,16 +422,16 @@ test('200 hits round every bike, the house, the portals, the start places, the e
     const bz = tz + Math.sin(a) * r;
     Object.assign(bike, { x: bx, z: bz, y: H.env.ground(bx, bz), yaw: rnd() * 6.28 - 3.14, lie: 0, rider: null });
     H.knocks.clear();
-    // The car comes at it from 6 m away, aimed through it at the target, at 3 to 200 km/h.
+    // The car comes at it from 3.6 m (its middle; clear of it), aimed through it at the target, at 8 to 200 km/h.
     const toward = Math.atan2(tz - bz, tx - bx) + (rnd() - 0.5);
-    const v = (3 + rnd() * 197) / 3.6;
+    const v = (8 + rnd() * 192) / 3.6;
     const dx = Math.cos(toward);
     const dz = Math.sin(toward);
     const yaw = Math.atan2(-dx, -dz);
-    const gap = 33;
-    const step = v * (gap / 1000);
+    const step = Math.max(1, v * 0.033);
+    const gap = (step / v) * 1000;
     const car = game.cars.tesla;
-    const before = { x: bx - dx * (step + 2.5), y: bike.y, z: bz - dz * (step + 2.5), yaw, at: 5000 };
+    const before = { x: bx - dx * 3.6, y: bike.y, z: bz - dz * 3.6, yaw, at: 5000 };
     Object.assign(car, { x: before.x + dx * step, y: bike.y, z: before.z + dz * step, yaw, driver: 'anna' });
     game.carAt.tesla = before.at + gap;
     game.players.get('anna') ?? game.players.set('anna', { bikeKnocks: [] });

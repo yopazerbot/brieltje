@@ -124,7 +124,8 @@ export function tumblePose(fall, u, out = {}) {
 /**
  * Whether a car's box (`car`: halfL, halfW) moved from `from` to `to` (x, z, yaw) meets a bike's box
  * (`bike`: x, z, yaw, halfL, halfW): checked every KNOCK.sweep m, so a fast car does not jump over
- * one between two updates. The car's place where they first meet, or null.
+ * one between two updates. The car's place where they first meet, or null; null too when the car is
+ * on it already at `from` (it stands on it, or rolls on over one it just tipped over: once is enough).
  */
 export function sweptHit(car, from, to, bike) {
   if (!finite(from.x, from.z, from.yaw, to.x, to.z, to.yaw, bike.x, bike.z, bike.yaw)) return null;
@@ -139,7 +140,7 @@ export function sweptHit(car, from, to, bike) {
   for (let i = 0; i <= n; i++) {
     const f = i / n;
     const at = { x: from.x + (to.x - from.x) * f, z: from.z + (to.z - from.z) * f, yaw: from.yaw + turn * f, halfL: car.halfL, halfW: car.halfW };
-    if (boxesOverlap(at, bike)) return at;
+    if (boxesOverlap(at, bike)) return i === 0 ? null : at;
   }
   return null;
 }
