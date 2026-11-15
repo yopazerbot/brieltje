@@ -65,6 +65,7 @@ import type { Body } from './net/swat';
 import { Parachutes } from './world/parachutes';
 import { DropView } from './world/dropView';
 import { CarPeople } from './world/carPeople';
+import { HeliPeople } from './world/heliPeople';
 import { DROP, dropFrom, dropStart, HOME_DROP } from '../shared/parachute.mjs';
 import { netClock } from './net/track';
 import { PROTO, readBike, readBrute, readCar, readHorse, readPlayer, readZombie, type Tick } from '../shared/wire.mjs';
@@ -402,12 +403,14 @@ async function getEverythingReady(at: Portal | null, zombiesStart: boolean): Pro
   }
   goals.warming(true); // the routes' rings and the golden gnome drawn once too (world/goals.ts)
   carPeople.warming(true); // and your figure seated, with the lighter glass (world/carPeople.ts)
+  heliPeople.warming(true); // and as the helicopter's pilot (world/heliPeople.ts)
   helis.warm(true); // and the helicopter with its blur, blades and far copy, its shadows' programs too (src/heliPilot.ts)
   try {
     await warm.frames(views, renderer.info, () => glassProbe.midSet, until, (done) => getReady(0.85 + (0.15 * done) / views.length, () => t('load.ready')));
   } finally {
     goals.warming(false);
     carPeople.warming(false);
+    heliPeople.warming(false);
     helis.warm(false);
     // Back as it was: the camera in your eyes (as the drop begins), the warm-up's parachute taken away (given no figure,
     // world/parachutes.ts lets it go) and you where you stood, unless something else placed you meanwhile. Play begins
@@ -933,6 +936,8 @@ const bikes = new Bikes(world, trunks, () => avatars.figure(me?.username ?? '', 
 scene.add(bikes.group);
 const carPeople = new CarPeople((c) => avatars.figure(me?.username ?? '', c)); // who sits in the Teslas (world/carPeople.ts)
 scene.add(carPeople.group);
+const heliPeople = new HeliPeople((c) => avatars.figure(me?.username ?? '', c)); // who sits in the helicopters (world/heliPeople.ts)
+scene.add(heliPeople.group);
 // The helicopter on the meadow beside the main house (src/heliPilot.ts, world/heli.ts); the trees' crowns slow it.
 const heliCrowns = [...(house.surroundings?.trees ?? [])];
 const helis = new HeliPilot(world, heliCrowns, (x, z) => treesLeftOut.has(treeKey(x, z)), document.getElementById('hud')!, (hit) => crash.hit(hit), (x, z, y, yaw) => {
@@ -1391,7 +1396,7 @@ function dropPrompt(mode: 'kbm' | 'pad' | 'touch'): string {
   const [dive, open] = mode === 'touch' ? [t('touch.dive'), t('touch.open')] : [key('down', mode), key('jump', mode)];
   return t('prompt.fall', { move, dive, open });
 }
-avatars.seatOf = (name) => carPeople.seat(name) ?? horses.seat(name) ?? bikes.seat(name); // a rider sits in the saddle as their horse (or bike, or car) is drawn
+avatars.seatOf = (name) => carPeople.seat(name) ?? heliPeople.seat(name) ?? horses.seat(name) ?? bikes.seat(name); // a rider sits in the saddle as their horse (or bike, or car) is drawn
 const chat = new Chat();
 chat.paused = () => menu.open; // T and Enter belong to the menu while it is open
 const combat = new Combat();
@@ -3982,6 +3987,7 @@ renderer.setAnimationLoop((now: number) => {
   for (const c of cars) c.update(dt, driving && c === car, camera.position);
   carPeople.update(dt, cars, driving || riding ? { car, passenger: riding } : null, myColour(), camera); // seated as the cars are drawn
   helis.update(dt, camera, !menu.open && combat.alive); // the helicopters and, flying, their instruments
+  heliPeople.update(dt, helis.machines, helis.heli ? { heli: helis.heli, seat: Math.max(0, helis.heli.seats.indexOf(me?.username ?? '')) } : null, myColour(), camera); // seated as the machines are drawn
   const cycling = driving || riding ? null : bikes.ridden;
   speedometer.update(!menu.open && combat.alive ? (driving || riding ? car.speed : cycling?.speed ?? null) : null, cycling ? BIKES_DATA.maxSpeed : car.spec.maxSpeed);
   combat.tick(dt);
@@ -4799,6 +4805,8 @@ if (import.meta.env.DEV) {
       car,
       cars,
       carPeople,
+      /** The people in the helicopters (world/heliPeople.ts): heliPeople.dummy(helis.machines[0], 1, '#d8452f') fills a seat, heliPeople.report(m) the fit. */
+      heliPeople,
       currentCar: () => car,
       teslas: { fits: teslaFits, placed: placedCars },
       getIn,

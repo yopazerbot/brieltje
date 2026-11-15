@@ -393,6 +393,9 @@ export class Heli {
   leaving = false;
   private from = new THREE.Vector3();
   private keep = { fwd: 0, side: 0 };
+  /** Who sits in its four seats (Seat_0 the pilot's, 1 beside it, 2 and 3 behind): a name ('' for you alone) or null (world/heliPeople.ts) */
+  readonly seats: (string | null)[] = [null, null, null, null];
+  private seatAt = [0, 1, 2, 3].map((i) => new THREE.Vector3(i % 2 ? -0.37 : 0.37, SIZE.seat, i < 2 ? -1.28 : 0.55));
   /** In the game (drawn, solid, boardable): once its model is in (or, failing that, the stand-in) */
   ready = false;
   /** The view a little wider at speed (main.ts multiplies the field of view by it). */
@@ -538,6 +541,19 @@ export class Heli {
     if (eye) this.eye.copy(eye.position);
     const steps = ['Step_L', 'Step_R'].map((n) => scene.getObjectByName(n)).filter((o): o is THREE.Object3D => !!o);
     if (steps.length === 2) this.steps = steps.map((o) => [o.position.x, o.position.z]);
+    this.seatAt.forEach((v, i) => v.copy(scene.getObjectByName(`Seat_${i}`)?.position ?? v));
+  }
+
+  /** The hip point of seat `i` (0 to 3) in the model's frame (world/heliPeople.ts). */
+  seatPoint(i: number): THREE.Vector3 {
+    return this.seatAt[i];
+  }
+
+  /** The model's frame in the world while its near model is drawn (the people aboard sit in it: world/heliPeople.ts), else null. */
+  cabin(m: THREE.Matrix4): THREE.Matrix4 | null {
+    if (!this.ready || !this.group.visible || !this.near?.visible) return null;
+    this.body.updateMatrix();
+    return m.multiplyMatrices(this.group.matrixWorld, this.body.matrix);
   }
 
   /** A paint material for the model's `name` (Paint, PaintB, PaintC), fine or plain for the preset; the stand-in's own. */
@@ -656,10 +672,11 @@ export class Heli {
   }
 
   /** You got in: the camera starts behind it. */
-  enter(): void {
+  enter(name = ''): void {
     this.flown = true;
     this.away = null;
     this.leaving = false;
+    this.seats[0] = name;
     this.camHeading = this.s.yaw;
     this.camTilt = 0;
     this.lookPitch = 0;
@@ -697,6 +714,7 @@ export class Heli {
    */
   leave(home = false): void {
     this.flown = false;
+    this.seats[0] = null;
     const s = this.s;
     const rotor = s.rotor;
     if (home && this.sendHome()) s.rotor = rotor; // its own pad (another machine there going to its own first)
@@ -712,8 +730,8 @@ export class Heli {
    * pilot's code puts it back on its pad.
    */
   jumpedFrom(): void {
-    // (The seated figures' branch clears the pilot's seat here: seats[0] = null.)
     this.flown = false;
+    this.seats[0] = null; // nobody left seated (world/heliPeople.ts)
     this.away = 0;
     this.leaving = false;
     this.keep = awayKeep(this.s);
