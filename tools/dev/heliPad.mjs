@@ -117,7 +117,7 @@ try {
   }
   check(await b.evaluate(`briel.helis.heli === ${M()}`), `in with E on the deck (the line beside it: "${line}")`);
   check((await b.evaluate('briel.helis.padMarks().length')) === 2, 'flying, the minimap shows both pads');
-  const programs = await b.evaluate('briel.three.renderer.info.programs.length');
+  const programs = await b.evaluate('(window.__progs = new Set(briel.three.renderer.info.programs.map((p) => p.cacheKey))).size');
   await key('keyDown', 'Space');
   const up = await until(`${M()}.s.h > 15`, 20);
   await key('keyUp', 'Space');
@@ -135,7 +135,8 @@ try {
   const bump = frames.some((f) => f[3] & 4);
   const landed = await state();
   check(landed.ground && Math.abs(landed.y - DECK) < 0.1 && !bump, `landed back on the deck: touched at ${r2(sink)} m/s, ${bump ? 'BUMP' : 'no bump'}, ${r2(Math.hypot(landed.x - PAD.x, landed.z - PAD.z))} m from its centre, floor ${r2(landed.y - DECK)}`);
-  check((await b.evaluate('briel.three.renderer.info.programs.length')) === programs, `no new shader programs in flight (${programs})`);
+  const fresh = await b.evaluate('briel.three.renderer.info.programs.filter((p) => !__progs.has(p.cacheKey)).map((p) => p.name)');
+  check(fresh.length === 0, `no new shader programs in flight (${programs}${fresh.length ? `; new: ${fresh.join(', ')}` : ''})`);
   await shot('landed-on-deck');
   await b.sleep(1000);
   await tap('KeyE');
