@@ -27,10 +27,20 @@ const MIN_DRIVE = 80;
 const OFF = 6;
 const js = (v) => JSON.stringify(v);
 
-const runs = DETAIL.runs
+const pieces = DETAIL.runs
   .filter((r) => r.name === o.street || r.name.startsWith(`${o.street}~`))
   .map((r) => ({ name: r.name, pf: r.pf, pts: Array.from({ length: r.p.length / 2 }, (_, i) => [r.p[2 * i], r.p[2 * i + 1]]) }));
-if (!runs.length) throw new Error(`no runs named ${o.street} in the road detail`);
+if (!pieces.length) throw new Error(`no runs named ${o.street} in the road detail`);
+// A street's run is cut where its profile changes, the next piece starting where the last ends: joined again, so the
+// walks and drives go end to end.
+const runs = [];
+for (const p of pieces) {
+  const last = runs.find((r) => r.name === p.name && Math.hypot(r.pts.at(-1)[0] - p.pts[0][0], r.pts.at(-1)[1] - p.pts[0][1]) < 0.05);
+  if (last) {
+    last.pts.push(...p.pts.slice(1));
+    if (!last.pf.split('+').includes(p.pf)) last.pf += `+${p.pf}`;
+  } else runs.push({ ...p, pts: [...p.pts] });
+}
 const len = (pts) => pts.reduce((s, p, i) => (i ? s + Math.hypot(p[0] - pts[i - 1][0], p[1] - pts[i - 1][1]) : 0), 0);
 /** Every `step` m along a run (and its last point). */
 const every = (pts, step) => {
