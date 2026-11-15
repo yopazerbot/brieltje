@@ -608,9 +608,9 @@ h.box("vh_trim", 5.07, 5.93, -.03, 0, 1.0, 1.9, "#2b2420")
 for i in range(7):
     s = 5.11 + i * .12
     h.box("vh_trim", s, s + .08, -.06, -.03, 1.0, 1.9, WOOD)
-# The left gable: a sliding glass door to the side garden, no window upstairs.
+# The left gable: a tall fixed glazed opening to the side garden (it does not open), no window upstairs.
 h.wall("left", (0, 0), (0, VM), (-1, 0), [(0, roof_under(0)), (VR, roof_under(VR)), (VM, roof_under(VM))],
-       [Opening("side-door", (3.30 + 5.10) / 2, 0, 1.8, 2.2, "slide", leaves=2, door=("kh-home-side", "side door"))])
+       [Opening("side-glass", (3.30 + 5.10) / 2, 0, 1.8, 2.2, "glazing", cols=1, rows=1, sill=False)])
 # The right gable upstairs, over the wing's roof.
 h.wall("right-f1", (UMU, 0), (UMU, VM), (1, 0), [(0, roof_under(0)), (VR, roof_under(VR)), (VM, roof_under(VM))], bottom=3.3)
 # The back: on the terrace three sliding glass leaves; upstairs five windows; over the rear part's flat roof.

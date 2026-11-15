@@ -422,9 +422,9 @@
    "depth": 0.18
   },
   {
-   "id": "side-door",
+   "id": "side-glass",
    "wall": "left",
-   "kind": "slide",
+   "kind": "glazing",
    "a": [
     0.0,
     3.3
