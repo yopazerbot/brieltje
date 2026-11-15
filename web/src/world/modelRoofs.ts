@@ -145,7 +145,7 @@ export async function addModelRoofs(world: World, roots: THREE.Object3D[], groun
       const roofy = [mesh.name, mesh.userData.material, ...mats.map((m) => m.name)].some((n) => typeof n === 'string' && ROOFS.test(n));
       const turned = mesh.matrixWorld.determinant() < 0;
       for (let k = 0; k + 2 < corners; k += 3) {
-        if (k % (CHUNK / 4 * 3) === 0) await tick(); // every 64 triangles: one may be halved many times
+        if (k % 48 === 0) await tick(); // every 16 triangles: one may be halved many times
         const i = index ? index[k] : k;
         const j = index ? index[turned ? k + 2 : k + 1] : turned ? k + 2 : k + 1;
         const l = index ? index[turned ? k + 1 : k + 2] : turned ? k + 1 : k + 2;
@@ -182,7 +182,7 @@ export async function addModelRoofs(world: World, roots: THREE.Object3D[], groun
         if (under.length) kept += world.roofs.add(tri, under);
         tri.length = under.length = 0;
         await tick();
-      }
+      } else if (t % 48 === 0) await tick(); // every 16 triangles: one may be halved many times (settle)
       // A block switched off by its cap (a lid stacked on the house, often wider than it, out to the eaves): the
       // building under that corner is asked again (the house block, or none past its walls).
       const b = [0, 1, 2].map((c) => {
