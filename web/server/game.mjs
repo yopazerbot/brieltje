@@ -969,7 +969,7 @@ export class Game {
       if (flyer) this.helis.pose(heli, prev, next);
       player.state = next;
       // The routes and the gnomes (server/goals.mjs), from this step as the server has it, and the way of moving by its own lists.
-      const free = player.alive && !next.flying && !drop && !this.modes.active && !this.host?.holds(player);
+      const free = player.alive && !next.flying && !drop && !heli && !this.modes.active && !this.host?.holds(player); // nor from a helicopter's seat
       this.goals?.moved(name, prev, next, !free ? null : driving ? 'car' : bike ? 'bike' : !inCar && !horse ? 'foot' : null, { gapMs: secs * 1000, seek: free });
       if (drop) this.dropCheck(player, now); // on the ground, or not coming down: the drop ends
       this.stampState(player, m.ct);
