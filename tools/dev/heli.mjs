@@ -396,7 +396,7 @@ try {
    * against the ceiling) and at `kmh` (full forward until then), then the use key. Every frame in the page from the
    * key on: you, the camera, the machine, the frame's time. With `wait`, until you are down; `during` runs 2 s in.
    */
-  const jumpFrom = async (h, kmh, { wait = true, during = null } = {}) => {
+  const jumpFrom = async (h, kmh, { wait = true, during = null, late = 0 } = {}) => {
     await b.evaluate('briel.helis.leaveNow()');
     const pad = await b.evaluate("briel.helis.dev.put('house', 1)");
     const yaw = await b.evaluate(`(() => { const e = briel.world.bounds; let best = 0, yaw = 0; for (let k = 0; k < 16; k++) { const a = (k / 16) * Math.PI * 2; let least = Infinity; for (let d = 0; d <= 1500; d += 50) least = Math.min(least, e.depth(${pad.x} - Math.sin(a) * d, ${pad.z} - Math.cos(a) * d)); if (least > best) { best = least; yaw = a; } } return yaw; })()`);
@@ -435,6 +435,10 @@ try {
     const tag = `${Number.isFinite(h) ? h : 'ceiling'}-${kmh}`;
     await b.sleep(120);
     await shot(`jump-${tag}`);
+    if (late) {
+      await b.sleep(late - 120);
+      await shot(`jump-${tag}-${late}ms`); // the canopy against the rotor's disc as it opens
+    }
     if (during) {
       await b.sleep(1900);
       await during();
@@ -512,6 +516,38 @@ try {
       check(inside === null, `landed outside every private home (${inside})`);
     }
     row('longest frame 1.5 s from each jump', `${longest.join(', ')} ms (in brackets: the longest in the 1.5 s flying before it; the graphics chip shared with other work)`);
+    // Low jumps at a hover: the canopy waits out from under the machine (pictures at 0.12 and 0.7 s).
+    for (const h of [12, 13, 16, 19]) {
+      const j = await jumpFrom(h, 0, { wait: false, late: 700 });
+      await b.sleep(1500);
+      const q = await b.evaluate('({ chute: briel.player.chute, canopy: briel.player.canopy, x: briel.player.x, z: briel.player.z, m: briel.helis.machines[0].s })');
+      row(`jump ${h} m at a hover`, `canopy open ${q.canopy === null ? 'not yet' : r1(q.chute - q.canopy) + ' s in'}, ${r1(Math.hypot(q.x - q.m.x, q.z - q.m.z))} m across from the machine and ${r1(q.m.y - j.start[3])} m over the jump's height 2 s in`);
+      check(q.canopy !== null && q.chute - q.canopy > 0.3, `a low jump from ${h} m waits before its canopy opens`);
+      await b.evaluate('briel.helis.leaveNow()');
+    }
+    // The church's machine: a jump from it, and the house's machine standing on the church's pad meanwhile; flying off,
+    // the church's goes to its own pad and the house's to its own, never one onto the other.
+    {
+      await b.evaluate('briel.helis.leaveNow()');
+      const church = await b.evaluate("briel.helis.dev.put('church', 1, 1)");
+      await b.evaluate(`briel.teleport(${church.x + 3}, ${church.z}, ${church.y}, 0)`, false);
+      await b.sleep(500);
+      await b.evaluate(`(() => { const m = briel.helis.machines[1]; briel.helis.board(m); Object.assign(m.s, { y: m.s.y + 40, holdY: m.s.y + 40, heightHeld: true, ground: false, coll: 0.5 }); })()`, false);
+      await b.sleep(1500);
+      await use();
+      await b.sleep(1500);
+      const off = await b.evaluate('({ jumped: briel.player.jumped, away: briel.helis.machines[1].away })');
+      check(off.jumped && off.away !== null, "a jump from the church's machine");
+      await b.evaluate("briel.helis.dev.put('church', 0, 0)"); // the house's machine on the church's pad
+      await b.evaluate('briel.helis.machines[1].flyAway()');
+      const t0 = Date.now();
+      while (Date.now() - t0 < 75000 && (await b.evaluate('briel.helis.machines[1].away')) !== null) await b.sleep(500);
+      const at = await b.evaluate('briel.helis.machines.map((m) => ({ x: m.s.x, y: m.s.y, z: m.s.z, park: m.park, away: m.away }))');
+      const onPad = (m) => Math.hypot(m.x - m.park.x, m.z - m.park.z) < 1;
+      row("the church's machine flown off", `home after ${r1((Date.now() - t0) / 1000)} s; the church's ${onPad(at[1]) ? 'on its own pad' : 'elsewhere'}, the house's ${onPad(at[0]) ? 'on its own pad' : 'elsewhere'}, ${r1(Math.hypot(at[0].x - at[1].x, at[0].z - at[1].z))} m apart`);
+      check(at[1].away === null && onPad(at[1]) && onPad(at[0]), "each machine on its own pad, never one onto the other");
+      await b.evaluate('briel.helis.leaveNow()');
+    }
     // Over each private home and the end house's garden, low: hands off, and steering at its middle.
     for (const [name, x, z] of [['the main house', 4.5, 6], ['the bungalow', 84, 190], ['the end house', 1505.5, -354], ['its garden', 1512, -353]]) {
       for (const steer of [false, true]) {
