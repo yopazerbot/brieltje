@@ -14,7 +14,7 @@
   {
    "id": "long-house",
    "grb": [
-    93
+    99
    ],
    "floor_at": [
     509.0,
@@ -194,7 +194,7 @@
   {
    "id": "barn",
    "grb": [
-    62
+    67
    ],
    "floor_at": [
     498.0,
@@ -280,7 +280,7 @@
   {
    "id": "corner-shop",
    "grb": [
-    363
+    386
    ],
    "floor_at": [
     551.5,
@@ -563,7 +563,7 @@
   {
    "id": "brick-house-east",
    "grb": [
-    54
+    59
    ],
    "floor_at": [
     563.6,
@@ -658,7 +658,7 @@
   {
    "id": "blue-trim-house",
    "grb": [
-    6
+    7
    ],
    "floor_at": [
     571.0,
@@ -778,7 +778,7 @@
   {
    "id": "white-corner",
    "grb": [
-    866
+    929
    ],
    "floor_at": [
     547.3,
@@ -1052,7 +1052,7 @@
   {
    "id": "grey-house",
    "grb": [
-    439
+    469
    ],
    "floor_at": [
     556.7,
@@ -1197,7 +1197,7 @@
   {
    "id": "brick-row-east",
    "grb": [
-    703
+    756
    ],
    "floor_at": [
     570.2,
@@ -1298,7 +1298,7 @@
   {
    "id": "small-white-house",
    "grb": [
-    419
+    448
    ],
    "floor_at": [
     532.9,
@@ -1535,7 +1535,7 @@
   {
    "id": "yellow-pair",
    "grb": [
-    647
+    695
    ],
    "floor_at": [
     525.2,
@@ -1752,7 +1752,7 @@
   {
    "id": "arched-house",
    "grb": [
-    75
+    80
    ],
    "floor_at": [
     512.4,
@@ -1952,7 +1952,7 @@
   {
    "id": "flats",
    "grb": [
-    269
+    284
    ],
    "floor_at": [
     501.0,
@@ -2130,7 +2130,7 @@
   {
    "id": "chip-shop",
    "grb": [
-    215
+    230
    ],
    "floor_at": [
     491.0,
@@ -2247,7 +2247,7 @@
   {
    "id": "cafe",
    "grb": [
-    97
+    103
    ],
    "floor_at": [
     540.8,
@@ -2505,7 +2505,7 @@
   {
    "id": "white-house",
    "grb": [
-    592
+    636
    ],
    "floor_at": [
     529.8,
@@ -2722,7 +2722,7 @@
   {
    "id": "lane-cottage",
    "grb": [
-    738
+    793
    ],
    "floor_at": [
     549.0,
@@ -2927,7 +2927,7 @@
   {
    "id": "barn-door-house",
    "grb": [
-    713
+    767
    ],
    "floor_at": [
     548.3,
@@ -3113,7 +3113,7 @@
   {
    "id": "lane-new-house",
    "grb": [
-    720
+    774
    ],
    "floor_at": [
     547.4,
@@ -3250,7 +3250,7 @@
   {
    "id": "gable-house-kerkhof",
    "grb": [
-    113
+    119
    ],
    "floor_at": [
     530.6,
@@ -3383,8 +3383,8 @@
   {
    "id": "grey-house-kerkhof",
    "grb": [
-    491,
-    500
+    525,
+    534
    ],
    "floor_at": [
     504.6,
@@ -3555,7 +3555,7 @@
   {
    "id": "narrow-yellow-kerkhof",
    "grb": [
-    803
+    860
    ],
    "floor_at": [
     508.2,
@@ -3633,8 +3633,8 @@
   {
    "id": "tower-house",
    "grb": [
-    337,
-    415
+    356,
+    444
    ],
    "floor_at": [
     441.0,
@@ -3887,7 +3887,7 @@
   {
    "id": "barn-door-row",
    "grb": [
-    44
+    47
    ],
    "floor_at": [
     425.4,
@@ -4110,7 +4110,7 @@
   {
    "id": "mansard-house",
    "grb": [
-    602
+    647
    ],
    "floor_at": [
     438.5,
@@ -4330,7 +4330,7 @@
   {
    "id": "hipped-house-parking",
    "grb": [
-    574
+    617
    ],
    "floor_at": [
     476.0,
@@ -4467,8 +4467,8 @@
   {
    "id": "seventies-pair",
    "grb": [
-    85,
-    362
+    90,
+    385
    ],
    "floor_at": [
     455.0,
@@ -4770,7 +4770,7 @@
   {
    "id": "glazed-brick-row",
    "grb": [
-    877
+    940
    ],
    "floor_at": [
     583.0,
