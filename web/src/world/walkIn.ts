@@ -13,6 +13,7 @@ import type { GroundCuts } from './terrain';
 import { ITEMS } from './furnishing';
 import { addPets, type PetSpec, type Pets } from './pets';
 import { bandsOf, WALK_INS } from '../../shared/homes.mjs';
+import { PUBLIC_WALK_INS } from '../../shared/keet.mjs';
 
 /**
  * A house you can walk into: the end house of the new terrace at Molenhoek (in its street model), and the brick house on
@@ -53,12 +54,13 @@ const ROOF_SLABS = 3.3;
 const SHELLS: Record<string, () => Promise<{ default: unknown }>> = {
   molenhoek_end: () => import('../data/molenhoek_end_shell.json'),
   kapellenhoek_home: () => import('../data/kapellenhoek_home_shell.json'),
+  keet: () => import('../data/keet_shell.json'), // the café at the church: public, no home (world/keet.ts)
 };
 
 /** Which house to walk into, and how. */
 export interface WalkInSpec {
   /** The home's id (shared/homes.mjs) */
-  id: 'molenhoek_end' | 'kapellenhoek_home';
+  id: 'molenhoek_end' | 'kapellenhoek_home' | 'keet';
   /** The model whose `shut` meshes (its panes and outside doors) stand in the openings from afar; null: none */
   model: THREE.Object3D | null;
   /**
@@ -123,7 +125,7 @@ interface Shell {
 }
 
 /** Patterns of the plain mesh (see patterns()). */
-const PATTERN = { none: 0, tiles: 1, screed: 2, bath: 3, oak: 4, paint: 5, planks: 6 };
+const PATTERN = { none: 0, tiles: 1, screed: 2, bath: 3, oak: 4, paint: 5, planks: 6, check: 7 };
 
 /**
  * Each surface: the pattern the shader draws it with (no textures: every surface of the inside is in one mesh, one
@@ -138,6 +140,7 @@ const SURFACES: Record<string, { pattern: number; rough: number; tint: string; h
   concrete: { pattern: PATTERN.screed, rough: 0.8, tint: '#9a9b99', hit: 'concrete' },
   bath: { pattern: PATTERN.bath, rough: 0.3, tint: '#ededeb', hit: 'floor_bath' },
   c: { pattern: PATTERN.none, rough: 0.62, tint: '#efede8', hit: 'plaster' },
+  cement: { pattern: PATTERN.check, rough: 0.55, tint: '#b9a888', hit: 'floor_tile' }, // the café's old cement tiles
 };
 
 const sunlessCache = new WeakMap<THREE.Material, THREE.Material>();
@@ -224,7 +227,15 @@ function patterns(shader: THREE.WebGLProgramParametersWithUniforms): void {
         vec2 p = vTileUv;
         float cloud = 0.5 + 0.25 * sin(p.x * 2.3 + sin(p.y * 1.7)) * sin(p.y * 2.9 + sin(p.x * 1.3)) + 0.12 * sin(p.x * 9.1 + p.y * 7.3) * sin(p.y * 8.7 - p.x * 5.9);
         diffuseColor.rgb *= vLook.x > 4.5 && vLook.x < 5.5 ? 0.985 + 0.03 * cloud : 0.96 + 0.08 * cloud;
-        if (vLook.x > 5.5) {
+        if (vLook.x > 6.5) {
+          // old cement tiles of 20 cm in a two-tone check (the café's): every other one darker, a thin joint
+          vec2 q = (p - vec2(0.1)) / 0.2;
+          vec2 f = (0.5 - abs(fract(q) - 0.5)) * 0.2;
+          float d = min(f.x, f.y);
+          float joint = 1.0 - smoothstep(0.0012, 0.0012 + max(fwidth(d), 1e-4) * 1.5, d);
+          float id = fract(sin(dot(floor(q), vec2(12.9898, 78.233))) * 43758.5453);
+          diffuseColor.rgb *= mix(1.0, 0.68, mod(floor(q.x) + floor(q.y), 2.0)) * (0.97 + 0.05 * id) * mix(1.0, 0.72, joint);
+        } else if (vLook.x > 5.5) {
           // planks 19 cm wide and 1.2 m long, their ends staggered row by row, each a shade of its own
           float row = floor(p.y / 0.19);
           float x = p.x / 1.2 + fract(row * 0.37);
@@ -454,7 +465,7 @@ function lining(id: string, floor: number): THREE.Mesh {
 export async function loadWalkIn(renderer: THREE.WebGLRenderer, spec: WalkInSpec): Promise<WalkIn> {
   const data = (await SHELLS[spec.id]()).default as Shell;
   const model = spec.model;
-  const range = WALK_INS[spec.id];
+  const range = WALK_INS[spec.id as keyof typeof WALK_INS] ?? PUBLIC_WALK_INS[spec.id as keyof typeof PUBLIC_WALK_INS];
   const { o, a, floor } = data.frame;
   const c = Math.cos(a);
   const s = Math.sin(a);
@@ -568,10 +579,11 @@ export async function loadWalkIn(renderer: THREE.WebGLRenderer, spec: WalkInSpec
   // main roof's slabs do neither).
   const solids = (data.solids ?? []).map((b) => ({ m: 'nb_red', y0: b.y0, y1: b.y1, p: b.p }) as Prism);
   const top = bandsOf(spec.id).at(-1)?.ring ?? [];
-  const mid: [number, number] = [top.reduce((t, q) => t + q[0], 0) / (top.length || 1), top.reduce((t, q) => t + q[1], 0) / (top.length || 1)];
+  // A house with no bands (the café: no home) takes its shell's middle.
+  const mid: [number, number] = top.length ? [top.reduce((t, q) => t + q[0], 0) / top.length, top.reduce((t, q) => t + q[1], 0) / top.length] : [cx, cz];
   const fills = solids.map((b) => b.y0 < floor + ROOF_SLABS && inside(mid[0], mid[1], b.p[0]));
   let firstSolid = -1;
-  const liner = spec.village === 'outline' ? lining(spec.id, floor) : null;
+  const liner = spec.village === 'outline' && top.length ? lining(spec.id, floor) : null; // none for a house with no bands (the café)
   if (liner) near.add(liner);
 
   const outline = data.outline;

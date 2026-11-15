@@ -157,6 +157,7 @@ import { glass as glassLook, GlassProbe, glassOnModel } from './world/glassLook'
 import { trackVillageHouse, VILLAGE_HOUSES } from './world/villageHouses';
 import { mood } from './world/mood';
 import { loadWalkIn, type WalkIn } from './world/walkIn';
+import { holdKeetShut, isKeetDoor, keetRooms, loadKeet } from './world/keet';
 import { Insides, type InsidePack } from './world/insides';
 import { CAR_REACH, CAR_SLOW, findPortal, PORTALS, portalNear, REACH, type Portal } from '../shared/portals.mjs';
 import { noShoot } from '../shared/zones.mjs';
@@ -3249,7 +3250,7 @@ menu.onGraphics = (next) => {
 };
 
 function levelName(feet: number): string {
-  const own = endHouse?.level(player.x, player.z, feet) ?? brickHouse?.level(player.x, player.z, feet); // a walked-into house: its own floors, at its own height
+  const own = endHouse?.level(player.x, player.z, feet) ?? brickHouse?.level(player.x, player.z, feet) ?? keet?.level(player.x, player.z, feet); // a walked-into house: its own floors, at its own height
   if (own) return own;
   let name = house.levels[0].name;
   for (const lv of house.levels) if (feet >= lv.floor - 0.3) name = lv.name;
@@ -3349,7 +3350,7 @@ const roomNames = new Set<string>(); // the rooms of the insides that are instal
 /** A home's inside has been installed (world/insides.ts): its rooms count as indoors, its starting furniture goes in alone. */
 function insideInstalled(pack: InsidePack): void {
   for (const r of (pack.rooms ?? []) as unknown as (string | { name: string })[]) roomNames.add(typeof r === 'string' ? r : r.name);
-  indoorsAt = makeIndoors([...house.prisms, ...insides.prisms(), ...(house.surroundings?.prisms ?? [])], [...roomNames]);
+  indoorsAt = makeIndoors([...house.prisms, ...insides.prisms(), ...keetFloors, ...(house.surroundings?.prisms ?? [])], [...roomNames]);
   furnishing.redraw();
   seedLocalFurniture(pack);
 }
@@ -3664,8 +3665,11 @@ renderer.setAnimationLoop((now: number) => {
       football.kick(ball, player.yaw, player.pitch, me?.username ?? '', net.connected ? (msg) => net.send(msg) : null);
       frame.usePressed = frame.clickPressed = false;
     }
+    holdKeetShut(keetShut(), doors); // the café's doors during a Zombies game at the church (world/keet.ts)
     if (target && (frame.usePressed || (!action && frame.clickPressed))) {
-      if (target.home) {
+      if (keetShut() && isKeetDoor(target.id)) {
+        frame.usePressed = false; // shut for the game: nothing swings, nothing is sent
+      } else if (target.home) {
         // A locked home (src/world/homeLocks.ts): the door asks for its code.
         frame.usePressed = false;
         const home = findHome(target.home);
@@ -3829,6 +3833,7 @@ renderer.setAnimationLoop((now: number) => {
     const speed = (v: number) => Math.round(Math.abs(v) * 3.6);
     const carLabel = carName(car.kind ?? car.id, car.spec.name);
     let prompt = target ? t(target.home ? 'home.door' : target.locked ? 'prompt.locked' : target.open ? 'prompt.close' : 'prompt.open', { key: doorKey, door: doorName(target.name) }) : '';
+    if (target && keetShut() && isKeetDoor(target.id)) prompt = t('keet.shutZombies');
     if (target && homeLocks.accountDoor(target.id)) prompt += `  ·  ${t('home.byAccount')}`; // a home the account opens for good
     // The car's speed and keys for the first few seconds in it only (Yoshi, as on a horse).
     if (driving) prompt = carHint <= 0 ? '' : mode === 'touch' ? t('prompt.drivingTouch', { speed: speed(car.speed), use }) : t('prompt.driving', { speed: speed(car.speed), brake: key('brake', mode), hb: key('handbrake', mode), use });
@@ -4097,7 +4102,7 @@ renderer.setAnimationLoop((now: number) => {
     if (bigMap.waypoint && (routeTimer += 0.05) > 0.5) updateRoute();
     minimap.race = bigMap.race = goals.nav(); // a timed race's way along the roads (world/goals.ts)
     minimap.facing = helis.heli ? helis.heli.s.yaw : driving || riding ? car.yaw : bikes.mounted ? bikes.ridden?.yaw ?? null : horses.mounted >= 0 ? (horses.ridden?.yaw ?? 0) + Math.PI : null; // your arrow: the way your car, bike or horse points
-    minimap.draw(player.x, player.z, player.feet - (endHouse?.floorAt(player.x, player.z) ?? brickHouse?.floorAt(player.x, player.z) ?? terrain.height(player.x, player.z)), minimap.heading(camera), weapon.enabled ? blips : blips.filter((b) => b.kind !== 'item'), shapes, [...(rules.portals ? portalMarks : []), ...helis.padMarks()], bigMap.waypoint, bigMap.route, inside);
+    minimap.draw(player.x, player.z, player.feet - (endHouse?.floorAt(player.x, player.z) ?? brickHouse?.floorAt(player.x, player.z) ?? keet?.floorAt(player.x, player.z) ?? terrain.height(player.x, player.z)), minimap.heading(camera), weapon.enabled ? blips : blips.filter((b) => b.kind !== 'item'), shapes, [...(rules.portals ? portalMarks : []), ...helis.padMarks()], bigMap.waypoint, bigMap.route, inside);
   }
   horizon.position.x = camera.position.x;
   horizon.position.z = camera.position.z;
@@ -4145,6 +4150,12 @@ let villageAfter: Promise<unknown> = Promise.resolve();
 let endHouse: WalkIn | null = null;
 /** The brick house on Kapellenhoek, to walk into the same way, once its model is in. */
 let brickHouse: WalkIn | null = null;
+/** The café at the church, to walk into for everyone, no code (world/keet.ts), once the town's model is in. */
+let keet: WalkIn | null = null;
+/** The café's floors once its rooms are in: indoors there (makeIndoors). */
+let keetFloors: Prism[] = [];
+/** Until the zombies follow players into the café (package Z): its doors stay shut during a Zombies game at the church. */
+const keetShut = () => games.zombies && games.view.zombies?.place === 'church';
 /** Resolved once play has begun (loaded). */
 let playBegun = () => {};
 const playing = new Promise<void>((r) => (playBegun = r));
@@ -4271,6 +4282,7 @@ async function buildVillage(): Promise<void> {
   const brickModel = models.find((m) => m.userData.landmark === 'kapellenhoek_home');
   if (brickModel) brickHouse = await loadWalkIn(renderer, { id: 'kapellenhoek_home', model: brickModel, village: 'outline', open: () => homeLocks.isOpen('kapellenhoek_home'), clock: sharedClock, prepare: precompile, viewer: () => camera.position }).catch(() => null);
   brickHouse?.clearPlot(data); // its garden lies level, not on the relief: the village's covers there give way
+  keet = await loadKeet(renderer, models.find((m) => m.userData.landmark === 'town'), sharedClock, precompile, () => camera.position); // the café at the church (world/keet.ts)
   // Their ground over the village's covers and streets, and each one's own surfaces one over another cut (world/modelGround.ts).
   // The cuts are worked out in a worker while the page goes on building (world/groundCutter.ts).
   const cutter = new GroundCutter();
@@ -4366,7 +4378,7 @@ async function buildVillage(): Promise<void> {
   }
   // The end house's own walls, floors and doors take the place of its plain block once its inside has come (until then
   // the plain block stands, and its doors, windows and lawn are the shell's).
-  const villageBlocks = cafePrisms(churchPrisms(data.prisms ?? [], churchAccess), cafeAccess).filter((p) => (!endHouse?.replaces(p) || endHouse.standIn(p)) && !brickHouse?.replaces(p));
+  const villageBlocks = cafePrisms(churchPrisms(data.prisms ?? [], churchAccess), cafeAccess).filter((p) => (!endHouse?.replaces(p) || endHouse.standIn(p)) && !brickHouse?.replaces(p) && !keet?.replaces(p));
   const drawnBlocks = new Set([...(kept.prisms ?? []), ...churchAccess.prisms, ...cafeAccess.prisms]);
   const firstBlock = world.addPrisms(villageBlocks, (p) => !drawnBlocks.has(p)); // the rest: a model stands for it
   helis.settle(); // the church's helicopter onto its deck, now there (src/heliPilot.ts)
@@ -4386,6 +4398,17 @@ async function buildVillage(): Promise<void> {
     data.groundCuts.cells.push(...brickHouse.groundCuts.cells);
     data.groundCuts.tris.push(...brickHouse.groundCuts.tris);
   }
+  if (keet) { // the café at the church: its shell's lump stands in until its rooms come, in idle time once playing
+    keet.install(world, doors, glass);
+    scene.add(keet.group);
+    data.groundCuts.cells.push(...keet.groundCuts.cells);
+    data.groundCuts.tris.push(...keet.groundCuts.tris);
+    keetRooms(keet, { world, doors, glass, prepare: precompile, after: playing, done: (names, floors) => {
+      for (const n of names) roomNames.add(n);
+      keetFloors = floors;
+      indoorsAt = makeIndoors([...house.prisms, ...insides.prisms(), ...keetFloors, ...(house.surroundings?.prisms ?? [])], [...roomNames]);
+    } });
+  }
   // The smoke: the long house on the square's west side (the chimney by its gable on the square) and a house on
   // the lane to the north-east, both in sight on arriving at the church; their tops measured on the town's model.
   // Thicker than at home: against the pale sky over the square the thin puffs were hard to see.
@@ -4402,7 +4425,7 @@ async function buildVillage(): Promise<void> {
   await Promise.all([modelsCompiled, precompile(aside)]);
   fresh.forEach((o, i) => homes[i].add(o));
   // Each model's blocks for walking into (the town's; the streets' went into the village data above).
-  for (const m of models) world.addPrisms((m.userData.blocks as Prism[] | undefined) ?? []);
+  for (const m of models) world.addPrisms(((m.userData.blocks as Prism[] | undefined) ?? []).filter((p) => !keet?.replaces(p))); // the café's wall strips give way to its walls
   // Their roofs as drawn, a little a frame once play has begun, the nearest to you first (world/modelRoofs.ts); not the
   // school's play tower (its own ladder, platform, little roof and slide).
   const towerBox = boxAround(playTower.prisms().flatMap((p) => p.p[0]), 1);
@@ -4831,6 +4854,7 @@ if (import.meta.env.DEV) {
       loadVillage,
       endHouse: () => endHouse,
       brickHouse: () => brickHouse,
+      keet: () => keet,
       countryside: () => countryside,
       portals,
       roadLife,

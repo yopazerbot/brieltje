@@ -1063,6 +1063,9 @@ const en = {
   'place.square': 'Church square',
   'place.horses': 'Horses',
   'place.horsesSub': 'the meadow across the road',
+  'place.keet': 'In de Oude Keet',
+  'place.keetSub': 'Café by the church',
+  'keet.shutZombies': 'The café is closed during Zombies.',
 
   // ---- The furniture planner
   'spawn.clown': 'Clown',
@@ -2260,6 +2263,9 @@ const nl = {
   'place.square': 'Kerkplein',
   'place.horses': 'Paarden',
   'place.horsesSub': 'de weide aan de overkant van de straat',
+  'place.keet': 'In de Oude Keet',
+  'place.keetSub': 'Café aan de kerk',
+  'keet.shutZombies': 'Het café is dicht tijdens Zombies.',
 
   // ---- The furniture planner
   'spawn.clown': 'Clown',
@@ -2599,6 +2605,9 @@ const PLACES_NL: Record<string, string> = {
   'side path (right)': 'zijpad (rechts)', driveway: 'oprit', Driveway: 'Oprit', 'front path': 'tuinpad vooraan', 'stepping slab': 'stapsteen',
   planting: 'beplanting', Garden: 'Tuin', street: 'straat', 'play tower': 'speeltoren',
   'church-roof': 'Dakloop', 'church-pad': 'Landingsdek', 'church-pad-net': 'Landingsdek', 'church-pad-rail': 'Landingsdek',
+  // the café at the church (tools/keet.py)
+  'front room': 'voorste zaal', 'bar room': 'gelagzaal', 'behind the bar': 'achter de toog', 'back corridor': 'gang',
+  "toilets' corridor": 'gang naar de toiletten', 'toilet 1': 'toilet 1', 'toilet 2': 'toilet 2',
 };
 /** The church's blocks (shared/church.json) are named by id: their English names. */
 const PLACES_EN: Record<string, string> = {
@@ -2625,11 +2634,14 @@ export function placeName(name: string): string {
 const DOORS_NL: Record<string, string> = {
   'sliding door': 'schuifdeur', 'outside door': 'buitendeur', 'front door': 'voordeur',
   'garage door': 'garagepoort', 'side door': 'zijdeur', 'back door': 'achterdeur', 'store door': 'bergingsdeur',
+  // the café at the church (tools/keet.py): its rooms' names are English, so its "door to" names are here whole
+  'bar gate': 'klapdeurtje van de toog', 'toilet door': 'toiletdeur', 'door to the bar room': 'deur naar de gelagzaal',
+  'door to the back corridor': 'deur naar de gang', "door to the toilets' corridor": 'deur naar de toiletten',
 };
 export function doorName(name: string): string {
   if (current === 'en') return name;
   const to = /^door to (.+)$/.exec(name);
-  if (to) return `deur naar ${to[1]}`; // the room's own name, as the house data writes it
+  if (to && !DOORS_NL[name]) return `deur naar ${to[1]}`; // the room's own name, as the house data writes it
   const own = insideDoors[name] ?? DOORS_NL[name];
   if (import.meta.env.DEV && !own) console.warn(`i18n: no Dutch name for the door "${name}"`);
   return own ?? name;

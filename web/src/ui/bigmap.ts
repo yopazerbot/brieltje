@@ -85,6 +85,7 @@ const PLACES: Place[] = [
   { name: 'place.school', sub: 'Smetlede', x: 476, z: -818, color: '#69f0ae', portal: portal('school') },
   { name: 'place.molenhoek', sub: 'Smetlede', x: 758, z: -709.5, color: '#ff8a80', portal: portal('molenhoek') },
   { name: 'place.square', sub: 'Smetlede', x: 533, z: -768, color: '#9aa0a8', small: true },
+  { name: 'place.keet', sub: 'place.keetSub', x: 540, z: -716, color: '#8a5a3a', small: true }, // the café at the church (world/keet.ts)
   { name: 'place.football', sub: 'place.footballSub', x: FC.centre[0], z: FC.centre[1], color: '#e53935', portal: portal('football') },
   { name: 'place.horses', sub: 'place.horsesSub', x: herd.reduce((a, p) => a + p[0], 0) / herd.length, z: herd.reduce((a, p) => a + p[1], 0) / herd.length, color: '#8a5a3a', small: true },
 ];
