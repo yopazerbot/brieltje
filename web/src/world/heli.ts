@@ -188,6 +188,9 @@ function shadowProxy(root: THREE.Object3D): void {
   });
   const merged = parts.length ? mergeGeometries(parts) : null;
   if (!merged) return;
+  // With normals its shadow pass uses the depth program every other caster has (made at the start); without them it
+  // needed one of its own, made at its first shadow on High (a 15 to 90 ms stall in the landing).
+  merged.computeVertexNormals();
   const proxy = new THREE.Mesh(merged, SHADOW_ONLY);
   proxy.name = 'ShadowProxy';
   proxy.castShadow = true;
@@ -953,12 +956,8 @@ export class Heli {
   }
 
   /** Dev and the warm-up: every part drawn (the discs, the blades, the far copy too) so their shaders are made before play. */
-  warm(on: boolean, at: { x: number; y: number; z: number } | null = null): void {
+  warm(on: boolean): void {
     this.warmOn = on;
-    // Drawn 8 m from `at` (where play begins) while warming, so its shadow is cast there too and the shadow pass's
-    // programs are made now, not at its first landing far off (a machine 600 m away is in no shadow).
-    if (on && at) this.group.position.set(at.x + 8 - this.s.x, at.y - this.s.y, at.z + 8 - this.s.z);
-    else this.group.position.set(0, 0, 0);
     if (on) {
       this.noise.warm(); // its sound's nodes made once too
       this.discMat.opacity = this.tailMat.opacity = 0.01;

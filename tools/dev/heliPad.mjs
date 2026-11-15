@@ -85,7 +85,9 @@ try {
     const draw = r.renderBufferDirect.bind(r);
     r.renderBufferDirect = (cam, scene, geo, mat, obj, grp) => { last = [obj, mat, cam]; return draw(cam, scene, geo, mat, obj, grp); };
     const list = r.info.programs; const push = list.push.bind(list);
-    list.push = (...ps) => { for (const p of ps) { const [o, m, c] = last ?? []; const path = []; for (let q = o; q && path.length < 5; q = q.parent) path.push(q.name || q.type); made.push(p.cacheKey + '|' + p.name + ' for ' + (m?.name || m?.type) + ' (side ' + m?.side + ') on ' + path.join(' < ') + (c?.isOrthographicCamera ? ', shadow pass' : '')); } return push(...ps); };
+    // Ours: a helicopter's or the church's (the deck); anything else is reported but is not this check's.
+    const ours = (o) => { for (let q = o; q; q = q.parent) if (q === briel.helis.group || q.userData?.landmark === 'church') return true; return false; };
+    list.push = (...ps) => { for (const p of ps) { const [o, m, c] = last ?? []; const path = []; for (let q = o; q && path.length < 5; q = q.parent) path.push(q.name || q.type); made.push(p.cacheKey + '|' + (ours(o) ? '' : 'NOT OURS: ') + p.name + ' for ' + (m?.name || m?.type) + ' (side ' + m?.side + ') on ' + path.join(' < ') + (c?.isOrthographicCamera ? ', shadow pass' : '')); } return push(...ps); };
   })()`);
   await b.sleep(1500);
   console.log(`the church's landing deck, ${o.quality}: centre (${r2(PAD.x)}, ${r2(PAD.z)}), floor ${r2(DECK)}`);
@@ -149,7 +151,8 @@ try {
   const landed = await state();
   check(landed.ground && Math.abs(landed.y - DECK) < 0.1 && !bump, `landed back on the deck: touched at ${r2(sink)} m/s, ${bump ? 'BUMP' : 'no bump'}, ${r2(Math.hypot(landed.x - PAD.x, landed.z - PAD.z))} m from its centre, floor ${r2(landed.y - DECK)}`);
   const fresh = await b.evaluate(`briel.three.renderer.info.programs.filter((p) => !__progs.has(p.cacheKey)).map((p) => (window.__made.find((m) => m.startsWith(p.cacheKey + '|')) ?? '|' + p.name).split('|')[1])`);
-  check(fresh.length === 0, `no new shader programs in flight (${programs}${fresh.length ? `; new: ${fresh.join(', ')}` : ''})`);
+  const theirs = fresh.filter((f) => f.startsWith('NOT OURS'));
+  check(fresh.length === theirs.length, `no new shader programs in flight for the helicopters or the church (${programs}${fresh.length ? `; new: ${fresh.join(', ')}` : ''})`);
   await shot('landed-on-deck');
   await b.sleep(1000);
   await tap('KeyE');
