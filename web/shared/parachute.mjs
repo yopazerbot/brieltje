@@ -44,6 +44,8 @@ export const DROP = {
   // A jump from the helicopter (src/heliPilot.ts; alone only): the canopy opens by itself after a short free fall,
   // or at once under DROP.openAt; the machine's speed comes along, within the drop's own limits.
   jumpFree: 1.2, // s of free fall after a jump before the canopy opens by itself (or at DROP.openAt, whichever first)
+  jumpClear: 0.4, // s after a jump before even a low one opens (at DROP.openAt): clear of the machine first ...
+  jumpClearMin: 0, // m: ... where it is this high or more (worked out below: under it the canopy opens at once)
   jumpSink: 7, // m/s: the most of the machine's sink a jump takes along (its sink at full down)
   jumpPush: 1.5, // m/s: the step out, sideways away from the cabin
   jumpDrop: 2, // m/s: and down: you drop out of the door, clear of the machine as it levels
@@ -93,14 +95,15 @@ export function dropWant(s, input) {
 
 /**
  * One step of a drop, `dt` s, after `s.t` (seconds since it began) and `s.air` are current: opens the canopy when
- * asked (`input.open`, from DROP.minFall on) or by itself at DROP.openAt (after a jump also at `s.openAfter` s
- * into it: jumpOpen), and moves the velocity `s.vx, s.vz` (m/s
+ * asked (`input.open`, from DROP.minFall on) or by itself at DROP.openAt (after a jump from `s.openSoon` s on), and
+ * after a jump also at `s.openAfter` s into it (jumpStart); and moves the velocity `s.vx, s.vz` (m/s
  * across, world) and `s.vy` (m/s, negative down) towards where it wants to go for the facing `yaw` (as a camera's:
  * 0 looks along -z). The free fall picks up speed as a falling body does (gravity against the air's drag); the
  * opening canopy brakes it eased in and out, with no jolt; under the canopy the speeds follow the keys gently.
  */
 export function dropStep(s, input, yaw, dt) {
-  if (s.open === null && ((input.open && s.t >= DROP.minFall) || s.air <= DROP.openAt || (typeof s.openAfter === 'number' && s.t >= s.openAfter))) s.open = 0;
+  const soon = typeof s.openSoon === 'number' ? s.openSoon : 0;
+  if (s.open === null && ((input.open && s.t >= DROP.minFall) || (s.air <= DROP.openAt && s.t >= soon) || (typeof s.openAfter === 'number' && s.t >= s.openAfter))) s.open = 0;
   else if (s.open !== null) s.open += dt;
   const want = dropWant(s, input);
   const fx = -Math.sin(yaw), fz = -Math.cos(yaw); // forward
@@ -134,10 +137,10 @@ export function dropStep(s, input, yaw, dt) {
  * the touchdown (`landing`, m/s) and how high it was when the canopy began to open (`openedAt`, m; null:
  * never). `openAt`: open by hand this many seconds in (else by itself). A jump (`jump`): from the helicopter,
  * starting at `forward` m/s along where it faces and `down` m/s down (jumpStart), the canopy by itself after
- * DROP.jumpFree.
+ * DROP.jumpFree, and low down after `soon` s (jumpStart's openSoon for the height, unless given).
  */
-export function fly(dt = 1 / 60, { height = DROP.height, input = {}, openAt = Infinity, turn = 0, jump = false, forward = 0, down: down0 = 0 } = {}) {
-  const s = { t: 0, open: null, vx: 0, vz: -forward, vy: -down0, air: height, ...(jump ? { openAfter: DROP.jumpFree } : {}) };
+export function fly(dt = 1 / 60, { height = DROP.height, input = {}, openAt = Infinity, turn = 0, jump = false, forward = 0, down: down0 = 0, soon = undefined } = {}) {
+  const s = { t: 0, open: null, vx: 0, vz: -forward, vy: -down0, air: height, ...(jump ? { openAfter: DROP.jumpFree, openSoon: soon ?? jumpStart(0, 0, 0, [0, 0], height).openSoon } : {}) };
   let yaw = 0, x = 0, z = 0, down = 0, across = 0, landing = 0, openedAt = null;
   const path = [];
   while (s.air > 0 && s.t < 200) {
@@ -170,34 +173,38 @@ DROP.time = +nominal.time.toFixed(2);
 
 // The lowest jump: from there, with the fastest the jump takes along (DROP.across forward, DROP.jumpSink down), the
 // canopy opening at once has braked the fall to within 1 m/s of its sink before the flare, so the touchdown is a
-// canopy's. Rounded up to the metre.
+// canopy's; and the lowest from which it may wait DROP.jumpClear first (clear of the machine) and still do so.
+// Rounded up to the metre.
 {
-  const braked = (h) => {
-    const f = fly(1 / 60, { height: h, jump: true, forward: DROP.across, down: DROP.jumpSink });
+  const braked = (h, soon) => {
+    const f = fly(1 / 60, { height: h, jump: true, forward: DROP.across, down: DROP.jumpSink, soon });
     const flare = f.path.find((p) => p.y < DROP.flareAt);
     const i = f.path.indexOf(flare);
     const prev = f.path[i - 1];
     return !!prev && (prev.y - flare.y) / (flare.t - prev.t) <= DROP.sink + 1;
   };
   let h = 4;
-  while (!braked(h) && h < 60) h += 1;
+  while (!braked(h, 0) && h < 60) h += 1;
   DROP.jumpMin = h;
+  while (!braked(h, DROP.jumpClear) && h < 60) h += 1;
+  DROP.jumpClearMin = h;
 }
 
 /**
  * A jump from the helicopter (src/heliPilot.ts): the drop's start from the machine's speed over the ground (`vx`,
  * `vz`) and its climb (`vy`, negative down), with a step out sideways (`push`: a unit vector across, away from the
  * cabin, at DROP.jumpPush, and down at least DROP.jumpDrop): never up, at most DROP.jumpSink down and DROP.across across, so a jump keeps to every
- * limit a drop has. `openAfter`: the canopy opens by itself this many seconds in (or at DROP.openAt over the
- * ground, whichever comes first: a jump low down opens at once).
+ * limit a drop has. `openAfter`: the canopy opens by itself this many seconds in, or at DROP.openAt over the ground,
+ * whichever comes first: a jump low down opens after `openSoon` (DROP.jumpClear where `air`, the height over the floor
+ * below, is DROP.jumpClearMin or more: clear of the machine first; at once lower down).
  */
-export function jumpStart(vx, vz, vy, push = [0, 0]) {
+export function jumpStart(vx, vz, vy, push = [0, 0], air = Infinity) {
   const fin = (v) => (typeof v === 'number' && Number.isFinite(v) ? v : 0);
   let ax = fin(vx) + fin(push[0]) * DROP.jumpPush;
   let az = fin(vz) + fin(push[1]) * DROP.jumpPush;
   const n = Math.hypot(ax, az);
   if (n > DROP.across) [ax, az] = [(ax * DROP.across) / n, (az * DROP.across) / n];
-  return { vx: ax, vz: az, vy: -Math.min(DROP.jumpSink, Math.max(DROP.jumpDrop, -fin(vy))), openAfter: DROP.jumpFree };
+  return { vx: ax, vz: az, vy: -Math.min(DROP.jumpSink, Math.max(DROP.jumpDrop, -fin(vy))), openAfter: DROP.jumpFree, openSoon: air >= DROP.jumpClearMin ? DROP.jumpClear : 0 };
 }
 
 /**

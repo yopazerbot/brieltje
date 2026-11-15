@@ -136,7 +136,7 @@ export class HeliPilot {
    */
   private jump(m: Heli): boolean {
     const j = heliJump(m.s, HELIS.size);
-    const v = jumpStart(m.s.vx, m.s.vz, m.s.vy, j.push);
+    const v = jumpStart(m.s.vx, m.s.vz, m.s.vy, j.push, m.s.h);
     this.fov = m.fovScale;
     m.jumpedFrom();
     this.heli = null;
@@ -213,7 +213,7 @@ export class HeliPilot {
     if (!m) return near ? (why ? t(why as 'prompt.heliGame') : t('prompt.heli', { use: key('use', mode) })) : '';
     const s = m.s;
     if (s.down > 0) return t('prompt.heliDown', { n: Math.ceil(s.down) });
-    if (this.landHint > 0) return t('prompt.heliLow');
+    if (this.landHint > 0) return t('prompt.heliLow', { n: DROP.jumpMin });
     if (!s.engine && s.ground) return t('prompt.heliStart', { up });
     if (s.engine && s.rotor < HELI.LIFT_RPM) return t('prompt.heliSpinning', { up });
     if (s.atCeiling) return t('prompt.heliCeiling');

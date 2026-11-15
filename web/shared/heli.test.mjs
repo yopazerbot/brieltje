@@ -467,7 +467,7 @@ test('a jump clears the machine: never through the cabin, the skids, the boom, t
     assert.ok(j.y <= s.y + 1e-9, 'no higher than the skids');
     const v = jumpStart(s.vx, s.vz, s.vy, j.push);
     const keep = awayKeep(s);
-    const p = { x: j.x, feet: j.y, z: j.z, t: 0, open: null, vx: v.vx, vz: v.vz, vy: v.vy, air: 80, openAfter: v.openAfter };
+    const p = { x: j.x, feet: j.y, z: j.z, t: 0, open: null, vx: v.vx, vz: v.vz, vy: v.vy, air: 80, openAfter: v.openAfter, openSoon: v.openSoon };
     const yaw = s.yaw, y0 = s.y;
     jumps++;
     for (let t = 0; t < 4; t += DTJ) {
