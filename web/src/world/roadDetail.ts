@@ -175,6 +175,10 @@ const PROFILES: Record<string, Profile> = {
   // The same past open fields on the run's + side (Oud-Smetlede's stretches with no house or drive on that side): the
   // road surface beside the slabs there is the rough verge of the lanes in the fields; the - side keeps its pavers.
   concrete_verge: { ...OUTER, apron: 'gravel', apronTint: VERGE_EARTH, apronMinus: { m: 'pavers', tint: OUTER.apronTint! } },
+  // The same verge on the run's - side only, and on both sides (Blekte's stretches through the fields; tools/road_detail.py
+  // open_sides tells them apart station by station).
+  concrete_verge_minus: { ...OUTER, apronMinus: { m: 'gravel', tint: VERGE_EARTH } },
+  concrete_verge_both: { ...OUTER, apron: 'gravel', apronTint: VERGE_EARTH },
   // The other streets: asphalt, setts and kerbs where the GRB has a pavement.
   asphalt: {
     road: 'asphalt', tint: '#595b5e', gutter: { w: 0.3, tint: SETTS }, kerb: { h: 0.1, tint: KERB_TINT }, walk: { m: 'pavers', tint: PAVERS },

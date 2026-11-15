@@ -78,7 +78,10 @@ CX, CZ, TILE = 4.45, -3.0, 200  # the browser's tiles (web/src/world/tiles.ts)
 
 # Who gives way to whom where streets meet: a street's carriageway stops at those before it.
 PRIORITY = ["Kapellenhoek", "Smetlededorp", "Molenhoek", "Briel", "Kapelleweg", "Kerkhofstraat", "Stefaan Glorieuxstraat",
-            "Schildekensstraat", "Serskampstraat", "Oud-Smetlede", "Diepestraat", "Klinkaard", "Blekte", "Wolfgat"]
+            "Schildekensstraat", "Serskampstraat", "Oud-Smetlede", "Diepestraat", "Wolfgat"]
+# A lane that gives way to every named street it meets, after those PRIORITY lists, before the unnamed and the loose
+# ones (Blekte gives way to Klinkaard at its end; Klinkaard keeps its place among the others, as before).
+GIVES_WAY = {"Blekte"}
 
 # Each street's profile (web/src/world/roadDetail.ts, PROFILES), from the Street View tour. Narrow stretches of
 # Briel (under NARROW m of carriageway) are its old lanes; other streets not named here are asphalt.
@@ -92,6 +95,20 @@ PRIORITY = ["Kapellenhoek", "Smetlededorp", "Molenhoek", "Briel", "Kapelleweg", 
 PROFILES = {"Kapellenhoek": "kh", "Kapelleweg": "kw", "Briel": "briel", "Kerkhofstraat": "kerkhof", "Smetlededorp": "asphalt",
             "Schildekensstraat": "concrete", "Serskampstraat": "concrete", "Oud-Smetlede": "concrete", "Blekte": "concrete",
             "Stefaan Glorieuxstraat": "concrete"}
+# A street's centre line split at a point (model metres): Klinkaard's piece by Molenhoek's far end was measured from
+# Blekte's junction before the map reached its piece north of it; joined on to that, every station along it would shift a
+# few centimetres and the junction there would be measured anew. Split there, it stays as it was.
+SPLIT_AT = {"Klinkaard": [(1855.12, 281.84)]}
+# Streets whose open stretches are told apart side by side (`open_sides`): where a side has no house within HOUSE_REACH m
+# and no drive at the road's edge for OPEN_MIN m along it, the road surface beside the slabs there is the rough verge
+# (profiles concrete_verge, concrete_verge_minus, concrete_verge_both); pavers stay where houses and drives meet the road.
+VERGE_STREETS = {"Blekte"}
+VERGE_PROFILES = {(True, False): "concrete_verge", (False, True): "concrete_verge_minus", (True, True): "concrete_verge_both"}
+HOUSE_REACH, DRIVE_REACH, OPEN_MIN = 30.0, 3.0, 20.0
+# Streets kept clear of the buildings beside them: a station's carriageway and apron stop BUILDING_GAP short of the first
+# building a ray from it meets (the register's line of a lane runs close by a shed now and then).
+CLEAR_OF_BUILDINGS = {"Blekte", "Blekte~loose"}
+BUILDING_GAP = 0.3
 # Paved in the register (VERH 12: partly fixed, partly loose) but a track of sand and gravel on the walk.
 LOOSE_NAMES = {"Bredenweg"}
 # Loose in the register (VERH 2) but light concrete on the photo (Wegsegment OIDN): the lane from Schildekensstraat to
@@ -258,6 +275,10 @@ class Rays:
             k = kinds.get(props.get("LBLTYPE"))
             if k:
                 self.lines[k].append(line)
+        # The buildings' walls (data/neighbours.json, model), for the streets kept clear of them (CLEAR_OF_BUILDINGS).
+        nb = json.loads((ROOT / "data" / "neighbours.json").read_text(encoding="utf-8"))
+        self.lines["house"] = [Polygon(b["p"]).exterior for b in nb["buildings"] if len(b["p"]) > 2]
+        self.houses = [Polygon(b["p"]).buffer(0) for b in nb["buildings"] if len(b["p"]) > 2]
         self.trees = {k: STRtree(v) for k, v in self.lines.items()}
 
     def first(self, kind, p, n, side, start=0.3, reach=REACH):
@@ -328,10 +349,15 @@ def centre_lines(road):
         u = unary_union(lines)
         merged = linemerge(u) if u.geom_type == "MultiLineString" else u
         for part in getattr(merged, "geoms", [merged]):
-            out.append((name, part))
+            # Split where SPLIT_AT says: the stations along each piece stay where they were before it was joined on to.
+            cuts = sorted(d for x, z in SPLIT_AT.get(name, ()) for d in [part.project(Point(x, z))]
+                          if Point(x, z).distance(part) < 0.05 and 1.0 < d < part.length - 1.0)
+            for d0, d1 in zip([0.0] + cuts, cuts + [part.length]):
+                out.append((name, substring(part, d0, d1) if cuts else part))
     # Kapellenhoek from the church square: its stretches are measured from there.
     out = [(n, LineString(l.coords[::-1]) if n == "Kapellenhoek" and Point(l.coords[0]).distance(Point(619.8, -747.8)) > Point(l.coords[-1]).distance(Point(619.8, -747.8)) else l) for n, l in out]
-    rank = lambda n: PRIORITY.index(n) if n in PRIORITY else len(PRIORITY) + (2 if n.endswith(LOOSE) else 1 if n.startswith("nvt") else 0)
+    rank = lambda n: (PRIORITY.index(n) if n in PRIORITY else len(PRIORITY) + 0.5 if n in GIVES_WAY
+                      else len(PRIORITY) + (2 if n.endswith(LOOSE) else 1 if n.startswith("nvt") else 0))
     return sorted(out, key=lambda nl: (rank(nl[0]), -nl[1].length))
 
 
@@ -389,8 +415,15 @@ def measure(name, line, rays, pavings, corridor, smetlede, photo=None):
     good = [i for i in range(len(pts)) if on[i] and wa[i] is not None and wb[i] is not None]
     if len(good) < 3:
         return []
-    wa_s = median([wa[i] for i in good])
-    wb_s = median([wb[i] for i in good])
+    if name in SPLIT_AT:
+        # Each unbroken stretch on its own: a stretch added later (Klinkaard's by Blekte) leaves the one before as it was.
+        stretches = runs_of([{"i": i} for i in good])  # (a stretch under three stations gives no run anyway)
+        good = [s["i"] for stretch in stretches for s in stretch]
+        wa_s = [v for stretch in stretches for v in median([wa[s["i"]] for s in stretch])]
+        wb_s = [v for stretch in stretches for v in median([wb[s["i"]] for s in stretch])]
+    else:
+        wa_s = median([wa[i] for i in good])
+        wb_s = median([wb[i] for i in good])
     stations = []
     for j, i in enumerate(good):
         p, n = pts[i], ns[i]
@@ -413,11 +446,23 @@ def measure(name, line, rays, pavings, corridor, smetlede, photo=None):
             q = Point(p.x + n[0] * side * (reach + 0.5), p.y + n[1] * side * (reach + 0.5))
             st["low"][si] = pavings.contains(q) or (rays.covers.contains(q) and out > reach + 1.2)
         stations.append(st)
-    verges(stations, photo)
+    verges(stations, photo, name in SPLIT_AT)
+    if name in CLEAR_OF_BUILDINGS:
+        for st in stations:
+            p, n = Point(st["x"], st["z"]), st["n"]
+            for si, side in ((0, 1), (1, -1)):
+                hit = rays.first("house", p, n, side, start=0.0)
+                if hit is None:
+                    continue
+                room = hit - BUILDING_GAP
+                st["w"][si] = round(max(0.5, min(st["w"][si], room)), 2) if st["w"][si] > room else st["w"][si]
+                kerb = KERB if st["kerb"][si] else 0.0
+                if st["w"][si] + kerb + st["walk"][si] > room:
+                    st["walk"][si] = round(max(0.0, room - st["w"][si] - kerb), 2)
     return stations
 
 
-def verges(stations, photo):
+def verges(stations, photo, by_stretch=False):
     """Each kerbed side's pavement: grass where the photo shows green along most of five stations (a drive across
     a verge stays grass round it; a tree's shadow on a pavement stays paving), and its width smoothed along the
     street (the GRB's back line wanders, and a zigzag of a few decimetres reads as a cheap edge)."""
@@ -436,7 +481,10 @@ def verges(stations, photo):
         for k, st in enumerate(stations):
             if g[k] is None:
                 continue
-            near = sorted(v for v in g[max(0, k - 2):k + 3] if v is not None)
+            window = range(max(0, k - 2), min(len(g), k + 3))
+            if by_stretch:  # within the unbroken stretch only (SPLIT_AT: as `measure`)
+                window = [j for j in window if stations[j]["i"] - st["i"] == j - k]
+            near = sorted(g[j] for j in window if g[j] is not None)
             if near[len(near) // 2] > GREEN:
                 st["walk"][si] = 0.0
                 st["low"][si] = False
@@ -779,6 +827,39 @@ def hash_xz(x, z):
     return (h & 0xFFFF) / 0xFFFF
 
 
+def open_sides(run, houses, pavings):
+    """Each station's sides (st["open"]: + side, - side) open where neither a house stands within HOUSE_REACH m (a strip a
+    station long, out from the road) nor a drive or forecourt within DRIVE_REACH m of the road's surface; an open stretch
+    shorter than OPEN_MIN m counts as closed."""
+    tree = STRtree(houses)
+    flags = ([], [])
+    for st in run:
+        x, z, n = st["x"], st["z"], st["n"]
+        t = (n[1], -n[0])  # along the line (the normal is the line's direction turned right)
+        for si, side in ((0, 1), (1, -1)):
+            at = lambda a, o: (x + t[0] * a + n[0] * side * o, z + t[1] * a + n[1] * side * o)
+            strip = Polygon([at(-STEP, 0), at(STEP, 0), at(STEP, HOUSE_REACH), at(-STEP, HOUSE_REACH)])
+            house = any(houses[i].intersects(strip) for i in tree.query(strip))
+            reach = outer(st, si) + DRIVE_REACH
+            drive = pavings.intersects(Polygon([at(-STEP, 0), at(STEP, 0), at(STEP, reach), at(-STEP, reach)]))
+            flags[si].append(not house and not drive)
+    need = round(OPEN_MIN / STEP)
+    for f in flags:
+        k = 0
+        while k < len(f):
+            if not f[k]:
+                k += 1
+                continue
+            j = k
+            while j < len(f) and f[j]:
+                j += 1
+            if j - k < need:
+                f[k:j] = [False] * (j - k)
+            k = j
+    for k, st in enumerate(run):
+        st["open"] = (flags[0][k], flags[1][k])
+
+
 def pack(name, profile, run):
     k = [(1 if st["kerb"][0] else 0) | (2 if st["kerb"][1] else 0) | (4 if st["low"][0] else 0) | (8 if st["low"][1] else 0) for st in run]
     return {"name": name, "pf": profile, "s0": round(run[0]["s"], 1), "p": [round(v, 2) for st in run for v in (st["x"], st["z"])],
@@ -799,6 +880,8 @@ def profile_runs(name, run):
         for street, (x0, z0, x1, z1), p in AREAS:
             if street == name and x0 <= st["x"] <= x1 and z0 <= st["z"] <= z1:
                 return p
+        if name in VERGE_STREETS and st.get("open") in VERGE_PROFILES:
+            return VERGE_PROFILES[st["open"]]
         for street, s0, s1, p in STRETCHES:
             if street == name and s0 <= st["s"] <= s1:
                 return p
@@ -835,9 +918,22 @@ def main():
         stations = measure(name, line, rays, pavings, corridor, smetlede, photo)
         if stations:
             streets.append((name, None, stations))
-            half = sorted(min(st["w"]) for st in stations)[len(stations) // 2]
-            centres.append((line.buffer(half + 0.2, cap_style="flat"), name))
+            if name in SPLIT_AT:
+                # Each unbroken stretch's own width over its share of the line (cut halfway between stretches): one
+                # added later leaves the zone round the one before as it was.
+                parts = runs_of(stations)
+                cuts = [0.0] + [(a[-1]["s"] + b[0]["s"]) / 2 for a, b in zip(parts, parts[1:])] + [line.length]
+                for part, s0, s1 in zip(parts, cuts, cuts[1:]):
+                    half = sorted(min(st["w"]) for st in part)[len(part) // 2]
+                    piece = line if (s0, s1) == (0.0, line.length) else substring(line, s0, s1)
+                    centres.append((piece.buffer(half + 0.2, cap_style="flat"), name))
+            else:
+                half = sorted(min(st["w"]) for st in stations)[len(stations) // 2]
+                centres.append((line.buffer(half + 0.2, cap_style="flat"), name))
     kept = clip(streets, centres)
+    for name, _, run in kept:
+        if name in VERGE_STREETS:
+            open_sides(run, rays.houses, pavings)
     runs, named = [], []
     for name, _, run in kept:
         for profile, part in profile_runs(name, run):
@@ -886,7 +982,8 @@ def debug(out, road):
             d.polygon(ring(h), fill=(236, 240, 228))
     pal = {"kh": (200, 60, 60), "kh_dash": (240, 120, 0), "kw": (60, 140, 60), "briel": (60, 60, 200), "lane": (140, 60, 200),
            "kerkhof": (20, 20, 20), "asphalt": (90, 90, 90), "concrete": (230, 170, 40), "concrete_red": (200, 90, 70), "lane_asphalt": (120, 120, 120), "lane_loose": (180, 160, 120),
-           "lane_verge": (140, 125, 100), "concrete_verge": (200, 150, 60)}
+           "lane_verge": (140, 125, 100), "concrete_verge": (200, 150, 60), "concrete_verge_minus": (200, 150, 60),
+           "concrete_verge_both": (170, 130, 50)}
     for r in out["runs"]:
         p, w, q = r["p"], r["w"], r["q"]
         n = len(p) // 2
