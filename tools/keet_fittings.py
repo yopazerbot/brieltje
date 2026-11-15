@@ -40,8 +40,8 @@ class Fit:
         rooms = api.rooms
         # The ceiling's beams (tools/keet.py: every 0.9 m from 0.45 m in, 12 cm wide, 14 cm deep).
         self.beams = []
-        for name in ("front room", "bar room"):
-            u0, v0, u1, v1 = rooms[name]
+        for u, v in ((2.5, 4.0), (4.0, 12.0)):  # the front room and the bar room, found by a point in each
+            u0, v0, u1, v1 = self.room(u, v)
             v = v0 + .45
             while v + .06 < v1:
                 self.beams.append((u0, u1, v))
@@ -53,6 +53,10 @@ class Fit:
             if u0 <= u <= u1 and abs(v - bv) < .075:
                 return 2.61
         return 2.75
+
+    def room(self, u, v):
+        """The rectangle (u0, v0, u1, v1) of the room round (u, v), whatever its name in tools/keet.py."""
+        return self.api.rooms[min(self.api.rooms, key=lambda n: _away(self.api.rooms[n], u, v))]
 
     def solid(self, u0, v0, u1, v1, y0, y1):
         """A block that stops walkers, shots and zombies, named after the room it stands in: standing on it is still
@@ -512,7 +516,7 @@ def toilets(f):
         api.box(cu + .12, .83, vb - .09, .05, .02, .03, NICKEL)  # the flush button
         api.lathe(cu, 0, vb - .37, [(.12, 0), (.1, .06), (.1, .22), (.18, .36), (.19, .39), (.13, .4), (0, .33)], PORCELAIN, 8)
         api.lathe(cu, 0, vb - .37, [(.19, .405), (.185, .42), (.13, .42), (.12, .41)], DARK, 8)
-        u0, _, u1, _ = api.rooms["toilet 1" if side > 2 else "toilet 2"]
+        u0, _, u1, _ = f.room(cu, 16.5)
         f.solid(u0, vb - .56, u1, vb + .01, 0, .83)  # wall to wall: no slot of 0.37 m beside the bowl
         bu = side + sign * .12
         api.lathe(bu, .72, 15.9, [(0, 0), (.08, 0), (.18, .1), (.2, .14), (.16, .15), (0, .11)], PORCELAIN, 8)
