@@ -28,6 +28,7 @@ so the area fetched before stays exactly as it was.
 """
 import io
 import json
+import os
 import sys
 import time
 import urllib.error
@@ -37,7 +38,7 @@ from pathlib import Path
 from PIL import Image
 
 ROOT = Path(__file__).resolve().parents[1]
-GEO = ROOT / "source" / "geo"
+GEO = Path(os.environ.get("BRIELTJE_GEO") or ROOT / "source" / "geo")
 EXTENT = (118300, 183600, 119500, 185600)  # x0, y0, x1, y1: 1.2 by 2 km
 # Side strips and a southern row, in whole orthophoto tiles; complete downloads must cover one rectangle.
 STRIPS = {

@@ -36,6 +36,7 @@ Writes web/src/data/roads.json and a check image data/debug/roads.png. Run from 
 import hashlib
 import json
 import math
+import os
 import re
 from pathlib import Path
 
@@ -446,7 +447,7 @@ def roadside(road, buildings_list, buildings, pavings, hedges, area):
     return boxes, bikes
 
 
-GEO = ROOT / "source" / "geo"
+GEO = Path(os.environ.get("BRIELTJE_GEO") or ROOT / "source" / "geo")
 # Signs that a model draws itself already, so the register's are left out there (model x, z; sign codes; within m):
 MODELLED = [
     ((CHURCH[0], CHURCH[1]), ("E9a",), 30),  # tools/school.py: the parking signs for disabled drivers in the bed against the nave

@@ -34,6 +34,7 @@ Writes data/neighbours.json and a check image data/debug/neighbours.png. What th
 """
 import json
 import math
+import os
 import sys
 from pathlib import Path
 
@@ -51,8 +52,8 @@ from shapely.strtree import STRtree
 from geodata import EXTENT, STRIPS, LAYERS
 
 ROOT = Path(__file__).resolve().parents[1]
-GEO = ROOT / "source" / "geo"
-OUT = ROOT / "data" / "neighbours.json"
+GEO = Path(os.environ.get("BRIELTJE_GEO") or ROOT / "source" / "geo")
+OUT =ROOT / "data" / "neighbours.json"
 DEBUG = ROOT / "data" / "debug" / "neighbours.png"
 
 PLOT = "1061/00D000"
