@@ -113,6 +113,15 @@ for (const wind of [[0, 0], [4.5, 0]]) {
   });
   rows.push(['full turn at 30 m/s', `${r1(t)} s, radius ${r1((maxX - minX + maxZ - minZ) / 4)} m, bank ${deg(bank)} deg, height within ${r2(dy)} m`]);
 }
+// The nose goes only where it is turned: sideways alone, forward in the strongest crosswind, backwards in a light one.
+for (const [what, input, wind, secs] of [['D alone 8 s', { side: 1 }, [0, 0], 8], ['W 8 s, 4.5 m/s crosswind', { fwd: 1 }, [4.5, 0], 8], ['S 20 s, 2 m/s crosswind', { fwd: -1 }, [2, 0], 20]]) {
+  const env = flat(wind);
+  const s = hovering(40);
+  const yaw0 = s.yaw, x0 = s.x, z0 = s.z;
+  run(s, secs, () => input, env);
+  const off = (Math.atan2(s.x - x0, -(s.z - z0)) * 180) / Math.PI; // the track's angle off the nose's line (the nose faces -z)
+  rows.push([what, `nose turned ${deg(s.yaw - yaw0)} deg; ${r1(Math.hypot(s.vx, s.vz))} m/s; went ${r1(Math.hypot(s.x - x0, s.z - z0))} m, ${r1(s.x - x0)} m across the nose's line${input.side ? '' : ` (track ${r1(input.fwd > 0 ? off : 180 - Math.abs(off))} deg off it)`}`]);
+}
 // A landing from 30 m on full down.
 {
   const s = hovering(30);

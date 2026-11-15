@@ -52,8 +52,6 @@ export const HELI = {
   YAW_BLEND0: 12, // m/s: from here the turn becomes a banked one ...
   YAW_BLEND1: 25, // m/s: ... and by here it is one
   YAW_RESP: 6, // 1/s: how fast the turn follows the key (the tail rotor)
-  VANE: 0.04, // rad/s per m/s of sideslip: the tail pulls the nose into the flight path ...
-  VANE_FROM: 8, // m/s: ... from this speed through the air
   GE_GAIN: 0.18, // ground effect: this much more thrust on the floor ...
   GE_HEIGHT: 5.2, // m: ... fading out by one rotor radius over it ...
   GE_FADE: 15, // m/s: ... and with speed
@@ -70,7 +68,8 @@ export const HELI = {
   SLOPE_SLIDE: 0.21, // rad (12 degrees): resting on more than this, it slides downhill
   SLOPE_MAX: 0.35, // rad (20 degrees): on more than this it does not settle
   DOWN_TIME: 6, // s on the floor after a bump before it can start again
-  DOWN_SINK: 4, // m/s: after a bump in the air it sinks to the floor at least this fast (at most 3 s from any height)
+  DOWN_SINK: 4, // m/s: after a bump in the air it sinks to the floor at least this fast (a third of its height a second, up to SINK_CAP: about 10 s from 60 m)
+  REST: 0.5, // s still (anywhere: on a floor, or resting on its boom or cabin) before the time down counts
   STRIKES: 3, // rotor strikes ...
   STRIKE_WINDOW: 3, // s: ... inside this long, or one faster than STRIKE_HARD, are a bump
   STRIKE_HARD: 6, // m/s
@@ -88,7 +87,9 @@ export const HELI = {
 };
 
 /** Where the skids rest on the ground: the model's x (right) and z (back) of the four contact points (heli.md section 5). */
-export const SKIDS = [[-1, -1.3], [1, -1.3], [-1, 1.3], [1, 1.3]];
+export const SKIDS = [[-0.95, -2.11], [0.95, -2.11], [-0.95, 0.71], [0.95, 0.71]];
+const SKID_LENGTH = SKIDS[2][1] - SKIDS[0][1]; // the flat run of the skids, front to back
+const SKID_TRACK = SKIDS[1][0] - SKIDS[0][0];
 
 /** What happened in a step, or'ed into `s.ev` (the caller clears it each frame): for the sound and the shake. */
 export const EV = { SETTLE: 1, BOUNCE: 2, BUMP: 4, START: 8, STOP: 16, LIFTOFF: 32, CEILING: 64, EDGE: 128 };
@@ -111,7 +112,7 @@ export function heliStart(at = { x: 0, y: 0, z: 0, yaw: 0 }) {
     x, y, z, vx: 0, vy: 0, vz: 0, yaw, pitch: 0, roll: 0, pitchRate: 0, rollRate: 0, yawRate: 0,
     rotor: 0, coll: 0, engine: false, ground: true, down: 0,
     // Its memory: the height and the spot it holds, how long the start and stop keys are held.
-    holdY: y, holdX: x, holdZ: z, holding: false, heightHeld: true, startHeld: 0, stopHeld: 0,
+    holdY: y, holdX: x, holdZ: z, holding: false, heightHeld: true, startHeld: 0, stopHeld: 0, still: 0,
     // For the instruments, the sound and the camera: height over the floor below, the floor, how hard it shakes,
     // the thrust (g), what happened (EV) and how hard (m/s), at the edge or the ceiling.
     h: 0, floor: y, shake: 0, thrust: 0, ev: 0, hit: 0, atEdge: false, atCeiling: false,
@@ -131,7 +132,7 @@ export function heliPlace(s, x, y, z, yaw, rotor = s.rotor) {
 /**
  * A bump (something hit hard: a wall, a tree, the ground; `speed` m/s): nobody is hurt and nothing breaks. The machine
  * stops, levels, its engine cuts out and it is down for DOWN_TIME once on the floor; in the air it first sinks there
- * by itself (DOWN_SINK, at most 3 s). The caller shows the sparks and plays the clang.
+ * by itself (at least DOWN_SINK, a third of its height a second). The caller shows the sparks and plays the clang.
  */
 export function heliBump(s, speed = 0) {
   Object.assign(s, { vx: 0, vz: 0, vy: Math.min(0, s.vy * 0.2), pitchRate: 0, rollRate: 0, yawRate: 0, engine: false, down: HELI.DOWN_TIME, holding: false });
@@ -180,14 +181,15 @@ export function heliStep(s, input, env, dt) {
   s.h = h;
 
   // The engine: started by holding up on the ground, stopped by holding down there (or by a bump).
-  if (!s.engine && s.ground && !down && liftIn > 0.3) {
+  const resting = s.ground || s.still > H.REST; // on a floor, or at rest on its boom or cabin
+  if (!s.engine && resting && !down && liftIn > 0.3) {
     s.startHeld += dt;
     if (s.startHeld >= H.START_HOLD) {
       s.engine = true;
       s.ev |= EV.START;
     }
   } else s.startHeld = 0;
-  if (s.engine && s.ground && liftIn < -0.3) {
+  if (s.engine && resting && liftIn < -0.3) {
     s.stopHeld += dt;
     if (s.stopHeld >= H.STOP_HOLD) {
       s.engine = false;
@@ -228,8 +230,9 @@ export function heliStep(s, input, env, dt) {
       }
     } else want = clamp(H.HOLD_GAIN * (s.holdY - s.y), -H.SINK, H.CLIMB_MAX);
     want = Math.max(want, -(0.8 + 0.5 * h)); // near a floor: a soft touchdown
-    // Still too fast to land: it skims a metre over the floor until it has slowed.
-    if (!down && Math.hypot(s.vx, s.vz) > H.LAND_SKID * 0.7) want = Math.max(want, H.HOLD_GAIN * 2 * (1 - h));
+    // Still too fast to land: it skims a metre over the floor (more as its lean lowers the skids' ends) until it has slowed.
+    const skim = 1.2 + -SKIDS[0][1] * Math.abs(Math.sin(s.pitch)) + (SKID_TRACK / 2) * Math.abs(Math.sin(s.roll));
+    if (!down && Math.hypot(s.vx, s.vz) > H.LAND_SKID * 0.7) want = Math.max(want, H.HOLD_GAIN * 2 * (skim - h));
     needUp = Math.max(G, G + H.VS_RESP * (want - vA) + dragV);
     const need = (G + (s.heightHeld || liftIn !== 0 ? H.VS_RESP : 2 * H.VS_RESP) * (want - vA) + dragV) / Math.max(0.3, cosTilt);
     lever = perLever > 1e-6 ? clamp((need / perLever - H.LEVER_LOW) / (1 - H.LEVER_LOW), 0, 1) : 0;
@@ -293,7 +296,7 @@ export function heliStep(s, input, env, dt) {
   }
   // On the skids it turns only with the rotor at speed (light on them).
   if (s.ground && s.rotor < H.LIFT_RPM) yawCmd = 0;
-  if (!s.ground && air > H.VANE_FROM) yawCmd += -H.VANE * wA * Math.min(1, (air - H.VANE_FROM) / 4);
+  // The nose goes only where the player turns it: no pull into the airflow (sideways flies sideways, a crosswind leans it).
   s.yawRate += (yawCmd - s.yawRate) * ease(H.YAW_RESP, dt);
   s.yaw = wrap(s.yaw + s.yawRate * dt);
   if (!s.ground) {
@@ -358,8 +361,10 @@ export function heliStep(s, input, env, dt) {
   // A little shudder in the translational-lift band (15 to 50 km/h): felt in the camera and the sound.
   const band = smooth(H.ETL_V0 - 1.5, H.ETL_V0 + 1.5, air) * (1 - smooth(H.ETL_V1 - 2, H.ETL_V1 + 2, air));
   s.shake = s.ground ? 0 : 0.3 * band * smooth(0.2, 0.5, s.coll);
-  // The time down counts on a floor, or resting low and still on something the skids don't stand on (a kerb under the cabin).
-  if (s.down > 0 && (s.ground || (h < 3 && Math.abs(s.vy) < 0.3))) s.down = Math.max(0, s.down - dt);
+  // The time down counts once it has come to rest, wherever: on a floor, or on its boom or cabin on a roof or a wall's
+  // top (the page's walls hold it there), so a bump never leaves it hanging.
+  s.still = Math.hypot(s.vx, s.vz) < 0.3 && Math.abs(s.vy) < 0.3 ? s.still + dt : 0;
+  if (s.down > 0 && (s.ground || s.still > H.REST)) s.down = Math.max(0, s.down - dt);
 
   // Never a broken state: anything not finite puts it level and still where it was holding.
   for (const k of ['x', 'y', 'z', 'vx', 'vy', 'vz', 'yaw', 'pitch', 'roll', 'pitchRate', 'rollRate', 'yawRate', 'rotor', 'coll']) {
@@ -394,8 +399,8 @@ function contact(s, groundAt, lift, dt) {
     return;
   }
   // The floor's plane under the skids (front left, front right, rear left, rear right).
-  const pitchG = Math.atan2((g[2] + g[3] - g[0] - g[1]) / 2, 2.6);
-  const rollG = Math.atan2((g[0] + g[2] - g[1] - g[3]) / 2, 2);
+  const pitchG = Math.atan2((g[2] + g[3] - g[0] - g[1]) / 2, SKID_LENGTH);
+  const rollG = Math.atan2((g[0] + g[2] - g[1] - g[3]) / 2, SKID_TRACK);
   const slope = Math.acos(clamp(Math.cos(pitchG) * Math.cos(rollG), -1, 1));
   if (minC < 0) s.y -= minC; // out of the floor
   const sink = -s.vy;

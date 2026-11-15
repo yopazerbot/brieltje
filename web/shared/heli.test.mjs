@@ -252,3 +252,44 @@ test('heliPlace sets it down still; a running rotor keeps the engine on', () => 
   heliPlace(s, 10, 5, -3, 1, 1);
   assert.deepEqual([s.x, s.y, s.z, s.yaw, s.vx, s.vy, s.ground, s.engine], [10, 5, -3, 1, 0, 0, true, true]);
 });
+
+test('bumped and come to rest on its boom or cabin (held up by the page), the time down runs out and it starts again', () => {
+  for (const rest of [2.5, 9]) {
+    const s = hovering(rest + 3);
+    heliBump(s, 8);
+    // The page's walls: the boom or the cabin lies on something at `rest` that the skids don't stand on.
+    const hold = () => {
+      if (s.y < rest) {
+        s.y = rest;
+        s.vy = Math.max(0, s.vy);
+      }
+    };
+    let t = 0;
+    for (; t < 30 && s.down > 0; t += DT) {
+      heliFly(s, {}, flat(), DT);
+      hold();
+    }
+    assert.ok(s.down === 0 && t < HELI.DOWN_TIME + 4, `down ${s.down} after ${t} s resting ${rest} m up`);
+    assert.equal(s.ground, false); // not on a floor: the skids hang over the garden
+    fly(s, HELI.START_HOLD + 0.2, { lift: 1 }, flat(), hold);
+    assert.ok(s.engine, `starts again resting ${rest} m up`);
+  }
+});
+
+test('the nose goes only where it is turned: sideways flies sideways, a crosswind leans it but never turns it', () => {
+  const cases = [
+    { input: { side: 1 }, wind: [0, 0], secs: 8 },
+    { input: { side: -1 }, wind: [0, 0], secs: 8 },
+    { input: { fwd: 1 }, wind: [4.5, 0], secs: 8 }, // the strongest wind world/wind.ts blows, straight across the nose
+    { input: { fwd: -1 }, wind: [2, 0], secs: 20 },
+  ];
+  for (const c of cases) {
+    const env = flat({ wind: c.wind });
+    const s = hovering(40, env);
+    const yaw0 = s.yaw, x0 = s.x;
+    fly(s, c.secs, c.input, env);
+    assert.ok(Math.abs(s.yaw - yaw0) < 0.01, `${JSON.stringify(c)}: the nose turned ${s.yaw - yaw0} rad`);
+    if (c.input.fwd) assert.ok(Math.abs(s.x - x0) < 2, `${JSON.stringify(c)}: blown ${s.x - x0} m off its line`);
+    if (c.input.side) assert.ok(Math.abs(Math.hypot(s.vx, s.vz) - HELI.V_SLOW) < 1, `${JSON.stringify(c)}: ${Math.hypot(s.vx, s.vz)} m/s sideways`);
+  }
+});
