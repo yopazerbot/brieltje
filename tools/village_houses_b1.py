@@ -651,7 +651,85 @@ def farm():
     h.export()
 
 
-HOUSES = {"vh_farm": farm}
+# ======================================================================================================================
+# 02. x -143.6, z -1092.0: a two-storey brick house of the 1930s, clipped gables, its side to the junction clad in black.
+def gable_house():
+    h = House("vh_gable_house", [-145.35, -1101.26], ([-142.85, -1084.6], [-136.42, -1089.34]), -3.09, {
+        "vh_brick": {"texture": "nb_brick", "tint": "#7a4a3c", "normalScale": .55},
+        # The game's vertical slats, drawn four times as wide (a rib every quarter metre), tinted from the wood's
+        # brown to a neutral black.
+        "vh_clad": {"texture": "cladding", "tint": "#2c3a52", "stretch": (4, 1), "normalScale": .8},
+        "vh_roof": {"texture": "roof_tiles", "tint": "#4c2e26", "normalScale": .3},
+        "vh_paving": {"texture": "pavers", "tint": "#a29d94"},
+        "vh_trim": TRIM, "vh_stone": STONE, "vh_glass": GLASS, "vh_frames_small": SMALL, "vh_metal_small": METAL,
+    })
+    # u along the street front (u +4: the side to the junction), d from the front (0) to the back (12.5).
+    lift = h.base
+    R, E, D = 11.5 + lift, 6.3 + lift, 12.5
+    k = (R - E) / (D / 2)
+    main = lambda d: R - k * abs(d - D / 2)
+    ov, vg = .3, 4.11  # eaves overhang; the verge's u
+    Hh = R - 1.5  # where the clipped hips meet the gables
+    uR = vg - 1.2  # the ridge's ends
+    dA, dB = D / 2 - (R - Hh) / k, D / 2 + (R - Hh) / k
+    hip_at = lambda u: Hh + (R - Hh) * (vg - abs(u)) / (vg - uR)  # the hip's height over the gable's line
+    cap = hip_at(3.99)
+    dc = D / 2 - (R - cap) / k
+    floor, frame, lint = .08, "#3b443f", "#b9b4aa"
+    gy = h.ground(-.45, -.2)
+    win = lambda s, y, w, hh: Opening(s, y, w, hh, frame=frame, lintel=lint, transom=.72 if hh > 1.2 else None, cols=2 if w > .95 else 1)
+    # The street front, in two planes as the data's (the door's half 0.47 m back).
+    h.wall((-3.99, .44), (.4, .47), main(.45) - .06,
+           [Opening(3.54, floor, 1.0, 2.2, "door", door="#c9cbc6", frame=frame, panels="glazed", step=(gy, .45), reveal=.2),
+            win(1.44, .75, 1.1, 1.7), win(1.44, 3.55, 1.0, 1.5), win(3.54, 3.55, .85, 1.5)])
+    h.wall((.4, .47), (.41, -.02), main(.2) - .06)
+    h.wall((.41, -.02), (3.99, 0), main(0) - .06, [win(1.84, .75, 1.1, 1.7), win(1.84, 3.55, 1.0, 1.5)])
+    # The other side: brick, two small windows.
+    side = [(12.02 - d, y) for d, y in ((.44, main(.44) - .06), (dc, cap - .06), (D - dc, cap - .06), (12.02, main(12.02) - .06))]
+    h.wall((-3.99, 12.02), (-3.99, .44), side, [win(12.02 - 4.0, 1.2, .8, 1.0), win(12.02 - 8.2, 4.0, .8, 1.0)])
+    # The back, and the flat-roofed wing behind it.
+    wing = 5.28 + lift
+    h.wall((3.9, 11.94), (-3.99, 12.02), main(12.0) - .06, [win(3.9 + 2.3, .9, 1.1, 1.3), win(3.9 + 2.3, 3.55, 1.0, 1.2)], out=(0, 1))
+    h.wall((-.63, 11.94), (-.5, 14.97), wing)
+    h.wall((-.5, 14.97), (3.88, 14.89), wing, [win(2.2, .9, 1.2, 1.3), win(2.2, 3.4, 1.0, 1.2)])
+    h.poly("vh_trim", [(u, d, wing - .02) for u, d in ((-.5, 12.0), (3.86, 12.0), (3.86, 14.87), (-.5, 14.95))], (0, 0, 1), "#3a3a3a")
+    for a, b in (((-.5, 14.95), (3.86, 14.87)), ((3.86, 14.87), (3.86, 12.0)), ((-.5, 12.0), (-.5, 14.95))):
+        h.seg("vh_stone", a, b, .3, wing - .02, wing + .06, "#a19d95")
+    # The side to the junction: black profiled sheets from the ground to the ridge, a rib every quarter metre.
+    a, b = Vector((3.99, 0)), Vector((3.88, 14.89))
+    L = (b - a).length
+    sd = lambda d: d * L / 14.89
+    clad = [(sd(0), main(0) - .06), (sd(dc), cap - .06), (sd(D - dc), cap - .06), (sd(11.94), main(11.94) - .06), (sd(11.95), wing + .06), (L, wing + .06)]
+    h.wall(tuple(a), tuple(b), clad, mesh="vh_clad")
+    # The roof: steep dark red-brown tiles, eaves front and back, both gable tops clipped by a small hip.
+    ef, eb = main(-ov), main(D + ov)
+    h.roof([(-vg, -ov, ef), (vg, -ov, ef), (vg, dA, Hh), (uR, D / 2, R), (-uR, D / 2, R), (-vg, dA, Hh)], free=(0, 1, 5), edge="#5a3a30", board=.2, under="#6d4b3e")
+    h.roof([(vg, D + ov, eb), (-vg, D + ov, eb), (-vg, dB, Hh), (-uR, D / 2, R), (uR, D / 2, R), (vg, dB, Hh)], free=(0, 1, 5), edge="#5a3a30", board=.2, under="#6d4b3e")
+    for s in (-1, 1):
+        h.roof([(s * vg, dA, Hh), (s * vg, dB, Hh), (s * uR, D / 2, R)], free=(0,), edge="#5a3a30", board=.2, under="#6d4b3e")
+        h.rod("vh_roof", (s * uR, D / 2, R + .03), (s * vg, dA, Hh + .03), .1, 6)
+        h.rod("vh_roof", (s * uR, D / 2, R + .03), (s * vg, dB, Hh + .03), .1, 6)
+    h.rod("vh_roof", (-uR, D / 2, R + .03), (uR, D / 2, R + .03), .12, 6)
+    tile = "#4f3229"
+    h.tile_ends((-vg, -ov, ef), (vg, -ov, ef), (0, -1, 0), tile)
+    h.tile_ends((vg, D + ov, eb), (-vg, D + ov, eb), (0, 1, 0), tile)
+    h.gutter((-vg, -ov, ef - .2), (vg, -ov, ef - .2), (0, -1, 0), "#6e6f6c", down=[(-3.85, -.4, h.ground(-3.85, -.4))])
+    h.gutter((-vg, D + ov, eb - .2), (vg, D + ov, eb - .2), (0, 1, 0), "#6e6f6c", down=[(-3.85, D + .4, h.ground(-3.85, D + .4))])
+    h.chimney(-1.6, 7.3, .55, .75, main(7.3) - .3, R + .9, "vh_brick", pots=[(0, 0)])
+    # A small tiled canopy over the door on two timber brackets.
+    cy, cu0, cu1 = 2.55, -1.25, .35
+    h.roof([(cu0, -.25, cy), (cu1, -.25, cy), (cu1, .47, cy + .32), (cu0, .47, cy + .32)], free=(0, 1, 3), edge="#5a3a30", board=.12, thick=.08, under="#6d4b3e")
+    for u in (cu0 + .12, cu1 - .12):
+        h.box("vh_frames_small", u - .04, u + .04, -.15, .47, cy - .5, cy - .02, "#5b4634")
+    # The front garden: a path of pavers from the door to the pavement, one brick pier beside it.
+    h.pave([(-.98, -.02), (.08, -.02), (.08, -7.1), (-.98, -7.1)])
+    py = h.ground(.4, -6.6)
+    h.box("vh_brick", .2, .6, -6.8, -6.4, py - .1, py + 1.1)
+    h.box("vh_stone", .16, .64, -6.84, -6.36, py + 1.1, py + 1.18, "#a19d95")
+    h.export()
+
+
+HOUSES = {"vh_farm": farm, "vh_gable_house": gable_house}
 for _name, _build in HOUSES.items():
     if not ONLY or _name in ONLY:
         _build()
