@@ -6,7 +6,8 @@
 //   in the zombies' grid); starting at the bungalow is the same game from its side.
 // - In Smetlede: a circle of `radius` m round `center` (a little off the portal, round its square or
 //   its stretch of street), each point pulled in to stay 2 m inside the map's edge. The village's own
-//   blocks, hedges and fences are the zombies' walls there, its buildings shut.
+//   blocks, hedges and fences are the zombies' walls there, its buildings shut, and they walk round its trees' trunks
+//   (at home round the ring's: shared/trees.mjs zombieTrunks).
 // - `sparrenhof`: the café at the edge of the wood, a circle as in Smetlede. The horde comes out deep among the
 //   trees (`woods`) and walks out between their trunks; the café's outside stairs and roofs, and the tree huts in the
 //   wood round it, are in the zombies' grid.
@@ -74,12 +75,11 @@ export function arenaPrisms(prisms, edge) {
  * What the zombies' grid takes at a place in Smetlede (`village`: village.json's prisms and trees; `church` and `cafe`:
  * shared/church.mjs and shared/sparrenhof.mjs): the village's blocks round its edge, with the church's and the café's
  * own in place of their plain ones, and where the grid is finer with every floor (the church tower, the café's stairs
- * to its roofs); in a wood (`woods`) the trees' trunks too, which the zombies walk between. The same on the page
- * (alone) and on the server (together).
+ * to its roofs); and the trees' trunks, which the zombies walk round (since 15 Nov 2026 at every place, not only in a
+ * wood). The same on the page (alone) and on the server (together): `village` as village.json has it.
  */
 export function villageGround(a, edge, village, church, cafe) {
-  let prisms = cafePrisms(churchPrisms(village.prisms ?? [], church), cafe);
-  if (a.woods) prisms = prisms.concat(woodTrunks(village.trees ?? [], cafe, edge));
+  const prisms = cafePrisms(churchPrisms(village.prisms ?? [], church), cafe).concat(woodTrunks(village.trees ?? [], cafe, edge));
   const areas = a.id === 'church' ? [church.area] : a.id === 'sparrenhof' ? (cafe.areas ?? [cafe.area]) : [];
   return { prisms: arenaPrisms(prisms, edge), areas };
 }

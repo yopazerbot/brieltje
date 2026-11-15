@@ -45,6 +45,7 @@ import { boxesOverlap, boxPoints, clearOfPortals, indoorBlocks, makeIndoors, mak
 import { bikeFields, bruteEntry, carFields, horseFields, playerFields, PROTO, TICK_MS } from '../shared/wire.mjs';
 import { startingWeapons } from '../shared/loadout.mjs';
 import { houseAreas, makeNav, MAX_ADMIN_WAVE } from '../shared/zombies.mjs';
+import { zombieTrunks } from '../shared/trees.mjs';
 import { LOOT } from '../shared/loot.mjs';
 import { stallBox, stallSpot } from '../shared/stall.mjs';
 import { cycleTime, DEFAULT_CHOICE, isChoice, newCycle, runOf, seasonCycle, skipCycle, SPEEDS, winterAt, withSpeed } from '../shared/moods.mjs';
@@ -211,7 +212,8 @@ const INDOORS = makeIndoors([...HOUSE.prisms, ...(HOUSE.surroundings?.prisms ?? 
  * so their glass keeps the page's numbers, then the surroundings' and the two portal streets': none
  * of the village's lie in the party area), with every floor of the house and the bungalow in a finer
  * grid of their own (HOUSE_AREAS) and their doors, open during the game as at any time together. The
- * cars are added at each start, where they stand then (nobody drives during the game).
+ * cars are added at each start, where they stand then (nobody drives during the game), and the ring's
+ * tree trunks round the edge (shared/trees.mjs zombieTrunks, as the page alone).
  */
 const ZOMBIE_PRISMS = [...HOUSE.prisms, ...(HOUSE.surroundings?.prisms ?? []), ...Object.values(houseData('homestreet.json').clusters).flatMap((c) => c.blocks ?? [])];
 const HOUSE_AREAS = houseAreas(HOUSE.prisms);
@@ -756,7 +758,7 @@ export class Game {
     const village = arena.center ? villageGroundOf(arena, edge) : null;
     const nav = village
       ? makeNav({ prisms: village.prisms, height, base: HOUSE.ground, edge, boxes, areas: village.areas, doors: [], shut: true, panes: 0 })
-      : makeNav({ prisms: ZOMBIE_PRISMS, height, base: HOUSE.ground, edge, boxes, areas: HOUSE_AREAS, doors: HOUSE.doors, shut: false, panes: HOUSE.prisms.length });
+      : makeNav({ prisms: [...ZOMBIE_PRISMS, ...zombieTrunks(HOUSE.surroundings?.trees ?? [], edge)], height, base: HOUSE.ground, edge, boxes, areas: HOUSE_AREAS, doors: HOUSE.doors, shut: false, panes: HOUSE.prisms.length });
     if (!arena.center) nav.setPanes(this.broken);
     return {
       nav, edge, spots: arenaSpots(arena, nav.spawnSpots(), VILLAGE, CAFE), home: arenaHome(arena), doors: arena.center ? [] : HOUSE.doors,

@@ -1,6 +1,7 @@
 // Types for sparrenhof.mjs (the café Sparrenhof's blocks and stairs, the tree huts, and the wood round it).
 import type { Prism } from '../src/world/houseData';
 import type { Area, Spot } from './zombies.mjs';
+import type { TreeSpot } from './trees.mjs';
 
 type Point = { x: number; y: number; z: number };
 type Stair = { id: string; foot: Point; top: Point; risers: number; rise: number; going: number };
@@ -27,7 +28,7 @@ export interface Cafe {
 }
 export function makeCafe(data: unknown, ground: number, huts?: unknown): Cafe;
 export function cafePrisms(prisms: Prism[], cafe: Cafe): Prism[];
-export function woodTrunks(trees: { x: number; z: number }[], cafe: Cafe, box: { minX: number; maxX: number; minZ: number; maxZ: number }): Prism[];
+export function woodTrunks(trees: readonly TreeSpot[], cafe: Cafe, box: { minX: number; maxX: number; minZ: number; maxZ: number }): Prism[];
 export const WOOD_DEPTH: number;
 export const HUT_KEEP: number;
 export function woodSpots(spots: Spot[], prisms: Prism[], cafe: Cafe): (Spot & { wood: true })[];

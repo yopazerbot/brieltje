@@ -12,6 +12,8 @@
 // - The wood: the trunks of the village's trees as thin blocks the zombies walk round, and the spots deep among them
 //   where the horde comes out (not near a hut).
 
+import { zombieTrunks } from './trees.mjs';
+
 /**
  * The café's data placed on the ground (`ground`: the game's height of the ground at its origin), with the tree huts
  * in the wood round it (`huts`: tools/tree_huts.py writes tree_huts.json, its heights measured from the same origin):
@@ -84,29 +86,13 @@ export function cafePrisms(prisms, cafe) {
   return [...prisms.filter((p) => p.lm !== 'sparrenhof' && p.lm !== 'tree_huts' && !replaced(p)), ...cafe.prisms];
 }
 
-/** m: a trunk's half width for the zombies (a player bumps into 0.35: main.ts `trunks`) */
-const TRUNK = 0.3;
-/** m: a trunk's block reaches this high, over the highest floor in the wood (the tree huts): never a step for the zombies */
-const TRUNK_TOP = 12;
-
 /**
- * The trunks of the trees (village.json's) within `box` (minX, maxX, minZ, maxZ; 2 m more) as blocks on the ground:
- * zombies walk between them. Not those on the café's open ground, which the page drops (world/streetModel.ts
- * clearOpenGround: inside or within 1.5 m of its rings).
+ * The trunks of the trees (village.json's) within `box` (minX, maxX, minZ, maxZ; 2 m more) as blocks the zombies walk
+ * between (shared/trees.mjs zombieTrunks: as wide as each drawn trunk, never a step). Not those on the café's open
+ * ground, which the page drops (world/streetModel.ts clearOpenGround: inside or within 1.5 m of its rings).
  */
 export function woodTrunks(trees, cafe, box) {
-  const out = [];
-  for (const t of trees) {
-    if (t.x < box.minX - 2 || t.x > box.maxX + 2 || t.z < box.minZ - 2 || t.z > box.maxZ + 2) continue;
-    if (cafe.clear.some((ring) => near(ring, t.x, t.z, 1.5))) continue;
-    const ring = [];
-    for (let k = 0; k < 8; k++) {
-      const a = ((k + 0.5) / 8) * Math.PI * 2;
-      ring.push([Math.round((t.x + Math.cos(a) * TRUNK) * 1000) / 1000, Math.round((t.z + Math.sin(a) * TRUNK) * 1000) / 1000]);
-    }
-    out.push({ m: 'oak', n: 'trunk', d: 1, y0: -0.3, y1: TRUNK_TOP, p: [ring] });
-  }
-  return out;
+  return zombieTrunks(trees.filter((t) => !cafe.clear.some((ring) => near(ring, t.x, t.z, 1.5))), box);
 }
 
 /** m: how far in among the trees a spot must lie (every way round it still wood), and off the café's open ground */

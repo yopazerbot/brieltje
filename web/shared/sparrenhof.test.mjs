@@ -90,12 +90,13 @@ test("the café's own blocks stand in for its plain open-data block, every other
   assert.ok(cafe.prisms.every((p) => p.y1 > p.y0 && p.p.flat().flat().every(Number.isFinite)));
 });
 
-test('the other places keep the same grid as before', () => {
+test('the other places keep the same blocks as before, with the trees\' trunks (15 Nov 2026: at every place)', () => {
   for (const id of ['church', 'molenhoek', 'molenhoek_mid', 'molenhoek_end']) {
     const a = arenaOf(id);
     const e = arenaEdge(a, bounds);
     const g = villageGround(a, e, village, church, cafe);
-    assert.deepEqual(g.prisms, arenaPrisms(churchPrisms(village.prisms, church), e), id);
+    assert.deepEqual(g.prisms.filter((p) => p.n !== 'trunk'), arenaPrisms(churchPrisms(village.prisms, church), e), id);
+    assert.ok(g.prisms.some((p) => p.n === 'trunk'), `${id}: trunks`);
     assert.deepEqual(g.areas, id === 'church' ? [church.area] : [], id);
     const s = [{ x: 0, z: 0, node: 1 }];
     assert.equal(arenaSpots(a, s, village, cafe), s);

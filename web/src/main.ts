@@ -142,7 +142,7 @@ import { Crash } from './world/crash';
 import { TyreSpray } from './world/tyreSpray';
 import { clearOpenGround, fitStreetModel, loadStreetModel } from './world/streetModel';
 import { TrunkBlocks } from './world/trunkBlocks';
-import type { TreeSpot } from '../shared/trees.mjs';
+import { type TreeSpot, zombieTrunks } from '../shared/trees.mjs';
 import { claimModelGround, claimModelGroundSoon } from './world/modelGround';
 import { GroundCutter, releaseGroundClaims } from './world/groundCutter';
 import { bakeLight, setBakeDetail } from './world/bakedLight';
@@ -1942,6 +1942,8 @@ function respawnAtArena(a: Arena): void {
  * the roof terrace are the zombies' too. In Smetlede the village comes in first (on a first visit it
  * takes a moment); its blocks, hedges and fences round the portal are the zombies' walls.
  */
+/** The village's trees as village.json has them, as the server reads them: the zombies' trunks alone (startSolo). */
+let villageTrees: VillageData['trees'] | null = null;
 async function startSolo(id: string): Promise<void> {
   if (me || solo || soloStarting) return;
   const arena = arenaOf(id);
@@ -1955,13 +1957,14 @@ async function startSolo(id: string): Promise<void> {
       if (village !== 'ready') hud.announce('Smetlede', t('travel.village'));
       await loadVillage();
       data = (await import('./data/village.json')).default as unknown as VillageData;
-      ground = villageGround(arena, edge, data, churchAccess, cafeAccess); // the café's stairs and the wood's trunks too
+      // The café's stairs and the trees' trunks too, from the trees as the server has them (before the models thin them out).
+      ground = villageGround(arena, edge, { ...data, trees: villageTrees ?? data.trees }, churchAccess, cafeAccess);
       prisms = ground.prisms;
     } finally {
       soloStarting = false;
     }
     if (me || solo) return; // joined a game together meanwhile
-  } else prisms = [...insides.housePrisms(house.prisms), ...(house.surroundings?.prisms ?? []), ...homeStreet.blocks];
+  } else prisms = [...insides.housePrisms(house.prisms), ...(house.surroundings?.prisms ?? []), ...homeStreet.blocks, ...zombieTrunks(house.surroundings?.trees ?? [], edge)];
   prepareZombies();
   getOut(false);
   getOffHorse(false);
@@ -4140,6 +4143,7 @@ async function buildVillage(): Promise<void> {
   // A frame between the big steps: built all at once, it stopped the game for a second just after it began.
   const between = () => new Promise((r) => setTimeout(r, 0));
   const data = (await import('./data/village.json')).default as unknown as VillageData;
+  villageTrees ??= [...data.trees]; // before the football ground's join and the models' open ground takes some
   if (!noFootball) fcGround.addToVillage(data); // the football ground's car park, lane and trees
   wearLonePatches(data); // light patches away from the buildings: worn ground (world/yards.ts)
   undergrowth.addWoods(data.prisms, data.trees);

@@ -4,6 +4,7 @@ import type { Bounds } from './bounds.mjs';
 import type { Prism } from '../src/world/houseData';
 import type { Church } from './church.mjs';
 import type { Cafe } from './sparrenhof.mjs';
+import type { TreeSpot } from './trees.mjs';
 import type { Area, Spot } from './zombies.mjs';
 
 export interface Arena {
@@ -23,5 +24,5 @@ export function portalOf(a: Arena): { id: string; name: string; x: number; z: nu
 export function arenaEdge(a: Arena, edges: { map: Bounds; party: Bounds }): Bounds;
 export function arenaHome(a: Arena): { x: number; z: number };
 export function arenaPrisms<P extends { p: number[][][] }>(prisms: P[], edge: Bounds): P[];
-export function villageGround(a: Arena, edge: Bounds, village: { prisms?: Prism[]; trees?: { x: number; z: number }[] }, church: Church, cafe: Cafe): { prisms: Prism[]; areas: Area[] };
+export function villageGround(a: Arena, edge: Bounds, village: { prisms?: Prism[]; trees?: TreeSpot[] }, church: Church, cafe: Cafe): { prisms: Prism[]; areas: Area[] };
 export function arenaSpots(a: Arena, spots: Spot[], village: { prisms?: Prism[] }, cafe: Cafe): Spot[];
