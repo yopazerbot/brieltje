@@ -81,13 +81,28 @@ export async function addModelRoofs(world: World, roots: THREE.Object3D[], groun
   });
   const left = roots.map((_, i) => i);
   const far = (i: number, at: { x: number; z: number }) => Math.hypot(spots[i].x - at.x, spots[i].z - at.z);
+  // Kept from model to model (no fresh arrays and fields each time: less for the garbage collector to do mid-play).
+  const tris: number[] = [];
+  const chunk = new Float32Array(CHUNK * 9);
+  const own = new RoofField();
+  const feed = async (field: RoofField) => {
+    let added = 0;
+    for (let i = 0; i < tris.length; i += CHUNK * 9) {
+      const n = Math.min(CHUNK * 9, tris.length - i);
+      for (let k = 0; k < n; k++) chunk[k] = tris[i + k];
+      added += field.add(chunk.subarray(0, n), Infinity);
+      if (due()) await rest();
+    }
+    return added;
+  };
   while (left.length) {
     // The nearest model to the player now (a landing, a respawn or a travel onto one gets its roof first).
     const at = near();
     if (at) left.sort((i, j) => far(i, at) - far(j, at));
     const r = left.shift()!;
-    // Its roof's triangles as drawn: corners where they stand, those that face up over the ground.
-    const tris: number[] = [];
+    // Its roof's triangles as drawn: corners where they stand, those that face up over the ground; and their box.
+    tris.length = 0;
+    let x0 = Infinity, z0 = Infinity, x1 = -Infinity, z1 = -Infinity;
     for (const mesh of roofMeshes(roots[r])) {
       const pos = mesh.geometry.attributes.position as THREE.BufferAttribute;
       const w = new Float32Array(pos.count * 3);
@@ -126,31 +141,25 @@ export async function addModelRoofs(world: World, roots: THREE.Object3D[], groun
         const floor = ground + terrain.height(mx, mz);
         if ((roofy ? high < floor + ROOF_ABOVE : low < floor + ABOVE) || leaveOut(mx, mz)) continue;
         tris.push(w[i * 3], w[i * 3 + 1], w[i * 3 + 2], w[j * 3], w[j * 3 + 1], w[j * 3 + 2], w[l * 3], w[l * 3 + 1], w[l * 3 + 2]);
+        x0 = Math.min(x0, w[i * 3], w[j * 3], w[l * 3]);
+        x1 = Math.max(x1, w[i * 3], w[j * 3], w[l * 3]);
+        z0 = Math.min(z0, w[i * 3 + 2], w[j * 3 + 2], w[l * 3 + 2]);
+        z1 = Math.max(z1, w[i * 3 + 2], w[j * 3 + 2], w[l * 3 + 2]);
       }
     }
     if (!tris.length) continue;
     // Into the world's roofs as drawn, as slabs: what is solid under a point is asked when it is asked (World.roofHere:
     // the building under that point), so nothing is cut to the walls here.
-    for (let i = 0; i < tris.length; i += CHUNK * 9) {
-      kept += world.roofs.add(tris.slice(i, i + CHUNK * 9), Infinity);
-      if (due()) await rest();
-    }
+    kept += await feed(world.roofs);
     // The blocks it stands for, capped at the lowest of its own roof over them (World.roofOver: looked at every metre
     // inside each and at its corners).
-    const own = new RoofField();
-    for (let i = 0; i < tris.length; i += CHUNK * 9) {
-      own.add(tris.slice(i, i + CHUNK * 9), Infinity);
-      if (due()) await rest();
-    }
+    own.clear();
+    await feed(own);
     // The blocks under its roof's box.
-    let x0 = Infinity, z0 = Infinity, x1 = -Infinity, z1 = -Infinity;
-    for (let i = 0; i < tris.length; i += 3) {
-      x0 = Math.min(x0, tris[i]);
-      x1 = Math.max(x1, tris[i]);
-      z0 = Math.min(z0, tris[i + 2]);
-      z1 = Math.max(z1, tris[i + 2]);
-    }
-    for (const k of world.modelledIn(x0, z0, x1, z1)) {
+    if (due()) await rest();
+    const blocks = world.modelledIn(x0, z0, x1, z1);
+    if (due()) await rest();
+    for (const k of blocks) {
       if (world.blockPoints(k).some((p) => keepBlocks(...p))) continue; // a left-out building's (a private home's)
       // A metre-wide column at a time; capped once all are looked at, so it never moves twice.
       let low = Infinity;

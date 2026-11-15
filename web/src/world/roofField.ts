@@ -104,6 +104,14 @@ export class RoofField {
   gx = 0;
   gz = 0;
 
+  /** Empty again, its arrays kept for the next fill (world/modelRoofs.ts: a model's own roof, one after the other). */
+  clear(): void {
+    this.n = 0;
+    this.groups = 0;
+    this.cells.clear();
+    this.walls.fill(0);
+  }
+
   /** Triangles kept. */
   get count(): number {
     return this.n;
