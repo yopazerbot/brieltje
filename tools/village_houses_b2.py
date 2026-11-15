@@ -493,7 +493,61 @@ def red_villa():
     h.export()
 
 
-HOUSES = {"vh_fermette": fermette, "vh_red_villa": red_villa}
+# ======================================================================================================================
+# 07. x 342.7, z -838.9: an old worker's house of red brick straight on the pavement, two storeys, shallow arches of
+# pale brick over its openings, a grey painted foot, its free gable in grey render.
+def terrace():
+    h = House("vh_terrace", [348.25, -841.08], ([344.76, -833.44], [337.16, -836.76]), 2.08, {
+        "vh_brick": {"texture": "nb_brick", "tint": "#8e5442", "normalScale": .55},  # the warm end of nb_red's range
+        "vh_render": {"texture": "plaster", "tint": "#8b8983", "normalScale": .9},
+        "vh_roof": {"texture": "roof_tiles", "tint": "#44484f", "normalScale": .3},
+        "vh_trim": TRIM, "vh_stone": STONE, "vh_glass": GLASS, "vh_frames_small": SMALL, "vh_metal_small": METAL,
+    })
+    # u along the street front to the east (the free gable), d from the front (0) to the back (8.4).
+    lift = h.base
+    E, RG, dB = 5.96 + lift, 9.33 + lift, 8.4
+    k = (RG - E) / (dB / 2)
+    ov = .25
+    roof = Roof([(-4.2, -ov), (4.19, -ov), (4.36, dB + ov), (-3.86, dB + ov)],
+                [eave((0, -ov), (0, 1), E - k * ov, k), eave((0, dB + ov), (0, -1), E - k * ov, k)], under="#e4e2dc", edge="#e9e8e3", board=.22)
+    roofs = [roof]
+    white, buff, grey = "#f2f1ec", "#c9b07c", "#7f7d79"
+    foot = [(.9, "vh_trim", grey)]
+    gy = lambda u, d: h.ground(u, d)
+    g0 = gy(-.6, -.2)
+    fl = g0 + .17
+
+    def wall(a, b, ops=(), arches=True, **kw):
+        W, N, T = h.wall(a, b, kw.pop("top", None) or top_over(roofs, a, b), ops, bands=kw.pop("bands", foot), **kw)
+        for o in ops:
+            if o.kind == "window":
+                shutter_box(h, W, N, T, o, white)
+            if arches and o.kind in ("window", "door"):
+                seg_arch(h, W, N, T, o.s - o.w / 2 - .08, o.s + o.w / 2 + .08, o.y + o.h, .13, .24, "vh_stone", buff)
+        return W, N, T
+
+    win = lambda s, y, w=1.0, hh=1.5: Opening(s, y, w, hh, frame=white, reveal=.16, cols=2 if w > 1.1 else 1, transom=.7 if hh > 1.45 else None)
+    # The street front, from the west: a window, the door, a wider window; three windows over them.
+    door = Opening(3.55, fl, .95, 2.15, "door", door="#efeeea", frame=white, panels="glazed", reveal=.16, sill=False, step=(g0, .3))
+    W, N, T = wall((-4.15, 0), (4.15, 0), [win(1.55, 1.0), door, win(6.3, 1.0, 1.3), win(1.55, 3.65, .85, 1.45), win(3.55, 3.65, .85, 1.45), win(6.3, 3.65, .85, 1.45)])
+    h.wbox(W, N, T, "vh_stone", 0, 8.3, 3.38, 3.5, -.03, 0, buff)  # a band of pale brick under the upper sills
+    h.wbox(W, N, T, "vh_stone", 0, 8.3, 3.08, 3.14, -.02, 0, buff)
+    # The free gable to the east: grey render to the ridge, a small window high in it.
+    Wr, Nr, Tr = h.wall((4.15, 0), (4.29, 8.4), top_over(roofs, (4.15, 0), (4.29, 8.4)),
+                        [Opening(4.2, 6.6 + lift, .6, .6, frame=white, reveal=.14, sill=False)], mesh="vh_render", bands=[(.35, "vh_trim", "#6c6a66")])
+    # The west gable toward the neighbour: brick, one small window upstairs; the back to the garden.
+    wall((-3.83, 8.41), (-4.15, 0), [win(3.0, 3.8, .7, 1.0)], arches=False)
+    wall((4.29, 8.4), (-3.83, 8.41), [win(2.0, 1.0, 1.2, 1.3), Opening(5.0, gy(-.8, 8.6) + .17, .9, 2.1, "door", door="#efeeea", frame=white, panels="glazed", reveal=.16, sill=False),
+                                      win(6.6, 1.1, .8, 1.0), win(2.0, 3.7, 1.0, 1.3), win(6.0, 3.7, 1.0, 1.3)], arches=False, out=(0, 1))
+    draw_roofs(h, roofs)
+    ye = E - k * ov - .22
+    h.gutter((-4.2, -ov, ye), (4.19, -ov, ye), (0, -1, 0), white, down=[(-4.07, -.08, gy(-4.07, -.08))])
+    h.gutter((4.36, dB + ov, ye), (-3.86, dB + ov, ye), (0, 1, 0), "#8f918f", down=[(4.2, 8.5, gy(4.2, 8.5))])
+    h.chimney(3.55, dB / 2, .5, .6, RG - .6, RG + .85, "vh_brick", pots=[(0, 0)])
+    h.export()
+
+
+HOUSES = {"vh_fermette": fermette, "vh_red_villa": red_villa, "vh_terrace": terrace}
 for _name, _build in HOUSES.items():
     if not ONLY or _name in ONLY:
         _build()
