@@ -17,14 +17,18 @@ export { Houses, isBrick, stable } from './houseKeys';
 
 /**
  * Shades of each brick within its kind (sRGB, for the generated brick texture), as Flemish streets have
- * them: red, orange-red, deep red and purple-brown reds; brown and red-brown; yellow and buff; white-painted.
+ * them: red, warmer red, deep red and purple-brown reds; brown and red-brown; yellow and buff; white-painted.
+ * Weathered and muted, not fresh: a sunlit red wall about half as bright as the road beside it, as on the
+ * street (compared by eye with pictures of the village's streets, nothing taken from them). Every house
+ * that picks from this table changes with it: the open-data houses, the ring round the home, their
+ * chimneys, plinths, lintels and garden walls. The hand-built streets keep their own colours.
  */
 const SHADES: Record<string, string[]> = {
-  nb_red: ['#b5644c', '#c0714f', '#a4523e', '#94503f', '#b86a55', '#9c4c3c'],
-  nb_brown: ['#8e5a44', '#7a4c3b', '#9a6549', '#6f4a3e', '#85543f'],
-  nb_yellow: ['#d4b88f', '#c9a66f', '#dcc39c', '#c2a27e', '#d0ad7c'],
+  nb_red: ['#88564c', '#905e4e', '#7a4c42', '#6e4844', '#8c5e52', '#74463c'],
+  nb_brown: ['#704e40', '#60443a', '#7c5846', '#58403a', '#6a4a3c'],
+  nb_yellow: ['#c2a682', '#b0946c', '#cab593', '#ad9476', '#bb9e74'],
   nb_white: ['#f2eee6', '#ece6da', '#f4f1ea'],
-  nb_grey: ['#a39c93', '#8f8a85', '#b0a99f', '#9a958e'],
+  nb_grey: ['#8f8982', '#7d7873', '#9a948b', '#878279'],
   nb_dark: ['#4b4a49', '#3f3e3e'],
 };
 /** Cream and off-white render (sRGB). */
