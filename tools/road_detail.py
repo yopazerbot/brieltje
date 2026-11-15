@@ -115,9 +115,13 @@ STRETCHES = [("Kapellenhoek", 0.0, 165.0, "kh_dash"),
 #   pavers on one side, the run's + side, grey pavers across the road (red on the pictures at x 94, 22 and -51, grey
 #   at x 167 and 288; on the orthophoto that side's pavement west of the junction is redder than east of it);
 # - Serskampstraat from its junction with Schildekensstraat to x -330: the same red footpath where it has one (red at
-#   x -122 and -140).
+#   x -122 and -140);
+# - Serskampstraat's bend at x -483, z -789: asphalt, and its leg south of it to the map's edge a narrow asphalt lane
+#   between the fields.
 AREAS = [("Schildekensstraat", (-400.0, -1400.0, 102.0, -950.0), "concrete_red"),
-         ("Serskampstraat", (-330.0, -1200.0, -60.0, -860.0), "concrete_red")]
+         ("Serskampstraat", (-330.0, -1200.0, -60.0, -860.0), "concrete_red"),
+         ("Serskampstraat", (-505.0, -812.0, -461.0, -772.0), "asphalt"),
+         ("Serskampstraat", (-700.0, -786.0, -340.0, -250.0), "lane_asphalt")]
 # Lanes without a road surface in the village data, drawn on their GRB centre line with a street's profile: name:
 # (profile, half its width, the earth either side, the street it leaves, metres left off where it leaves it and at its
 # other end). Meulewegel, from Molenhoek to Kapelleweg, rebuilt as Kapelleweg's last stretch: two pale concrete strips
@@ -131,7 +135,8 @@ PATHS = {"Smetledekouterwegel": ("path_tiles", 1.0), "Pastorijwegel": ("path_pav
 # crossing, from the GRB's bottom edge to the west to just past the gate. Ends in model metres along x.
 SCHOOL_PLATEAU = {"street": "Smetlededorp", "x": (442.9, 481.5), "red": (469.5, 480.0), "zebra": 474.8}
 # The give-way lines: where a street meets one with priority and the sign says so (data/kapellenhoek.json's props).
-GIVE_WAY = [{"street": "Kapelleweg", "at": (614.6, -404.6)}]
+GIVE_WAY = [{"street": "Kapelleweg", "at": (614.6, -404.6)},
+            {"street": "Rampsande", "at": (-487.8, -786.8)}]  # where it meets Serskampstraat's bend (the pictures of 15 Nov 2026)
 
 
 class Photo:
