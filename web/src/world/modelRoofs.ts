@@ -58,6 +58,8 @@ function roofMeshes(root: THREE.Object3D): THREE.Mesh[] {
 
 /** Metres: a triangle with some corners over a building and some not is halved until its sides are this short. */
 const SPLIT = 1.5;
+/** How many times a triangle is halved at most (a 20 m roof face down to pieces of about 1.3 m). */
+const DEPTH = 8;
 
 /** A model's roof triangles once found: their corners (x, y, z three times each) and the building under each corner. */
 interface Found {
@@ -181,20 +183,53 @@ export async function addModelRoofs(world: World, roots: THREE.Object3D[], groun
         tri.length = under.length = 0;
         await tick();
       }
-      let solid = Infinity;
-      let all = true;
-      for (let c = 0; c < 3; c++) {
-        const b = found.b[t + c];
-        const top = b >= 0 ? world.blockTopOf(b) : NaN;
-        if (Number.isFinite(top)) solid = Math.min(solid, top);
-        else all = false;
-      }
-      for (let c = 0; c < 9; c++) tri.push(found.c[t * 3 + c]);
-      under.push(all ? solid : Infinity);
+      // A block switched off by its cap (a lid stacked on the house, often wider than it, out to the eaves): the
+      // building under that corner is asked again (the house block, or none past its walls).
+      const b = [0, 1, 2].map((c) => {
+        const k = found.b[t + c];
+        return k >= 0 && !Number.isFinite(world.blockTopOf(k)) ? world.buildingAt(found.c[(t + c) * 3], found.c[(t + c) * 3 + 2], BUILDING) : k;
+      });
+      settle(world, found.c.slice(t * 3, t * 3 + 9), b, 0, tri, under);
     }
     if (under.length) kept += world.roofs.add(tri, under);
   }
   return kept;
+}
+
+/**
+ * A roof triangle (`c`, `b` as in keep) into `tri` and `under`: solid down to the lowest top of the buildings under its
+ * corners where any stands over one, else an open slab. One whose corners or middles stand over different buildings, or
+ * over a building and past it (a lid that reached out to the eaves was switched off; a lower annex under the house's
+ * roof), is halved again, as keep does, so the solid follows the walls and each block's top.
+ */
+function settle(world: World, c: number[], b: number[], depth: number, tri: number[], under: number[]): void {
+  const tops = b.map((k) => (k >= 0 ? world.blockTopOf(k) : NaN));
+  const len = (p: number, q: number) => Math.hypot(c[p * 3] - c[q * 3], c[p * 3 + 2] - c[q * 3 + 2]);
+  const sides = [len(0, 1), len(1, 2), len(2, 0)];
+  const longest = Math.max(...sides);
+  // Each piece over one building (or none): its corners and, for one larger than SPLIT, its middles tell.
+  let split = b[0] !== b[1] || b[1] !== b[2];
+  if (!split && longest > SPLIT && depth < DEPTH) {
+    const s = sides.indexOf(longest);
+    const middles = [[(c[s * 3] + c[((s + 1) % 3) * 3]) / 2, (c[s * 3 + 2] + c[((s + 1) % 3) * 3 + 2]) / 2], [(c[0] + c[3] + c[6]) / 3, (c[2] + c[5] + c[8]) / 3]];
+    split = middles.some(([x, z]) => world.buildingAt(x, z, BUILDING) !== b[0]);
+  }
+  if (split && longest > SPLIT && depth < DEPTH) {
+    const s = sides.indexOf(longest);
+    const [p, q, r] = [s, (s + 1) % 3, (s + 2) % 3];
+    const m = [0, 1, 2].map((k) => (c[p * 3 + k] + c[q * 3 + k]) / 2);
+    const mb = world.buildingAt(m[0], m[2], BUILDING);
+    const at = (v: number) => c.slice(v * 3, v * 3 + 3);
+    settle(world, [...at(p), ...m, ...at(r)], [b[p], mb, b[r]], depth + 1, tri, under);
+    settle(world, [...m, ...at(q), ...at(r)], [mb, b[q], b[r]], depth + 1, tri, under);
+    return;
+  }
+  tri.push(...c);
+  // Solid down to the lowest of the buildings under any of its corners: what of it stands past the walls stops nobody and
+  // lifts nobody there (World.roofBlocks, World.roofOut: only where a wall stands under it), and none of the building
+  // under it is left open to stand in.
+  const found = tops.filter((y) => Number.isFinite(y));
+  under.push(found.length ? Math.min(...found) : Infinity);
 }
 
 /**
@@ -209,13 +244,14 @@ function keep(found: Found, lowest: Map<number, number>, world: World, c: number
   const longest = Math.max(...sides);
   const over = b.map((k) => k >= 0);
   let mixed = over[0] !== over[1] || over[1] !== over[2];
-  if (!mixed && over[0] && longest > 2 * SPLIT && depth < 6) {
-    // All corners over buildings, but a passage or a yard between them under it: its middles tell.
+  if (!mixed && longest > 2 * SPLIT && depth < DEPTH) {
+    // All corners over buildings, but a passage or a yard between them under it; or none, but a building under its
+    // middle (a big roof face whose corners all stand out at the eaves, past the walls): its middles tell.
     const s = sides.indexOf(longest);
     const middles = [[(c[s * 3] + c[((s + 1) % 3) * 3]) / 2, (c[s * 3 + 2] + c[((s + 1) % 3) * 3 + 2]) / 2], [(c[0] + c[3] + c[6]) / 3, (c[2] + c[5] + c[8]) / 3]];
-    mixed = middles.some(([x, z]) => found.ask(x, z) < 0);
+    mixed = middles.some(([x, z]) => found.ask(x, z) >= 0 !== over[0]);
   }
-  if (mixed && longest > SPLIT && depth < 6) {
+  if (mixed && longest > SPLIT && depth < DEPTH) {
     const s = sides.indexOf(longest);
     const [p, q, r] = [s, (s + 1) % 3, (s + 2) % 3];
     const m = [0, 1, 2].map((k) => (c[p * 3 + k] + c[q * 3 + k]) / 2);
