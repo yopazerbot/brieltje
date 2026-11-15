@@ -118,6 +118,83 @@ export function stepRun(run, route, from, to, by, nowMs) {
   return { run: { ...run, next: run.next + 1, last: nowMs }, event: 'checkpoint' };
 }
 
+/** The offer of a race (after getting in or on, or by the walking start): on screen this long (ms). */
+export const OFFER_MS = 8000;
+/** On foot the walking route is offered this close to its start (m), once a visit: again after going this far away. */
+export const OFFER_NEAR = 15;
+export const OFFER_AWAY = 40;
+/** After a finish the gate stays this long with the result, then the race is over (ms). */
+export const DONE_MS = 4000;
+
+/**
+ * A race asked for (Yoshi, 15 Nov 2026: a route's rings show only once you start it). `armed`: the route's id or null;
+ * `done`: after a finish, when it ends (ms), else 0; `by`: how you moved last frame; `offer`: the route offered, with
+ * `offerLeft` ms of it still to show; `visit`: the walking start was offered on this visit; `at`: last frame's place.
+ */
+export const newRace = () => ({ armed: null, done: 0, by: null, offer: null, offerLeft: 0, visit: false, at: null });
+
+/** The route the race key starts now: the car's or the bike's in it or on it, on foot the walking one on a visit to its start. */
+export function startable(race, routes, by) {
+  if (by === 'car' || by === 'bike') return routes.find((r) => r.by === by) ?? null;
+  if (by === 'foot' && race.visit) return routes.find((r) => r.by === 'foot') ?? null;
+  return null;
+}
+
+/**
+ * One frame of asking for a race. `me`: { x, z, by } (by null as a passenger, on a horse, flying or down); `pressed`:
+ * the race key this frame; `shownMs`: how long the offer was on screen since the last frame (it counts down only then).
+ * Returns the race after it and what happened: 'armed' (the key), 'stopped' with `why` 'key' (the key again) or 'left'
+ * (moving another way than the route asks, or a hop: a trip, a respawn, a teleport), 'ended' (a finish shown long
+ * enough), or null. Getting in a car or on a bike offers its route; on foot near the walking start, that one.
+ */
+export function stepRace(race, routes, me, pressed, nowMs, shownMs = 0) {
+  const r = { ...race };
+  let event = null, why;
+  const foot = routes.find((x) => x.by === 'foot');
+  const dFoot = foot ? Math.hypot(me.x - foot.gate[0], me.z - foot.gate[1]) : Infinity;
+  if (dFoot > OFFER_AWAY) r.visit = false;
+  const hop = !!r.at && !!me.by && !(Math.hypot(me.x - r.at.x, me.z - r.at.z) <= (STEP_MAX[me.by] ?? 5));
+  r.at = { x: me.x, z: me.z };
+  const offer = (route) => {
+    r.offer = route ? route.id : null;
+    r.offerLeft = route ? OFFER_MS : 0;
+  };
+  if (me.by !== r.by && (me.by === 'car' || me.by === 'bike') && !r.armed) offer(startable(r, routes, me.by));
+  if (me.by === 'foot' && dFoot < OFFER_NEAR && !r.visit) {
+    r.visit = true;
+    if (!r.armed) offer(foot);
+  }
+  r.by = me.by;
+  const armed = routes.find((x) => x.id === r.armed) ?? null;
+  if (armed && (me.by !== armed.by || hop)) {
+    [r.armed, r.done, event, why] = [null, 0, 'stopped', 'left'];
+  } else if (armed && r.done && nowMs >= r.done) {
+    [r.armed, r.done, event] = [null, 0, 'ended'];
+    offer(startable(r, routes, me.by)); // the key starts another go
+  }
+  // An offer for a way you no longer move goes; one on screen counts down.
+  if (r.offer && (r.armed || routes.find((x) => x.id === r.offer)?.by !== me.by)) offer(null);
+  if (r.offer && (r.offerLeft -= Math.max(0, shownMs)) <= 0) offer(null);
+  if (pressed) {
+    if (r.armed && !r.done) {
+      [r.armed, event, why] = [null, 'stopped', 'key'];
+    } else {
+      const s = startable(r, routes, me.by);
+      if (s) {
+        [r.armed, r.done, event] = [s.id, 0, 'armed'];
+        offer(null);
+      }
+    }
+  }
+  return why ? { race: r, event, why } : { race: r, event };
+}
+
+/** A run of the armed route finished: the gate stays DONE_MS with the result. */
+export const finishRace = (race, nowMs) => ({ ...race, done: nowMs + DONE_MS });
+
+/** A run stopped on its own (the wrong way, too long without a checkpoint): the race is over too. */
+export const dropRace = (race) => ({ ...race, armed: null, done: 0 });
+
 /** A time as m:ss.d (`0:23.4`), with a decimal comma when `comma` (`1:07,4`). */
 export function formatTime(ms, comma = false) {
   const tenths = Math.max(0, Math.floor((Number.isFinite(ms) ? ms : 0) / 100));

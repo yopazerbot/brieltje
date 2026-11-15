@@ -1,6 +1,9 @@
 import * as THREE from 'three';
-import { bestKey, formatTime, readBest, readFound, writeBest, writeFound, type By } from '../../shared/goals.mjs';
+import { bestKey, dropRace, finishRace, formatTime, newRace, readBest, readFound, stepRace, writeBest, writeFound, type By, type Race } from '../../shared/goals.mjs';
 import { dist, lang, onLang, plural, t } from '../i18n';
+import { typing } from '../keys';
+import { seat } from '../seat';
+import { key, type Control } from '../shortcuts';
 import { GoalsHud } from '../ui/goalsHud';
 import { GNOME_IDS, Gnomes, SPOTS } from './gnomes';
 import type { Particles } from './particles';
@@ -18,6 +21,10 @@ const BEST_KEY = 'briel.routes';
 /** The first-time toast, this long after play begins (s) */
 const INTRO_AFTER = 8;
 const BEST_KEYS = ROUTE_LIST.map(bestKey);
+/** The line says the race stopped this long (ms) */
+const NOTICE_MS = 3000;
+/** The race key on the keyboard, by its place (src/shortcuts.ts `race`: K on AZERTY and QWERTY) */
+const RACE_KEY = 'KeyK';
 
 export interface Me {
   x: number;
@@ -71,12 +78,27 @@ export class Goals {
   private counted = true;
   /** Warm-up frames behind the start screen: drawn, but nothing is found, run or shown in the line */
   private warm = false;
+  /** The race asked for, and the offer (shared/goals.mjs stepRace): no ring shows before the race key */
+  race: Race = newRace();
+  /** The race key (K), the controller's button (main.ts press) or a tap on the line, since the last frame */
+  private hit = false;
+  /** The offer was in the prompt this frame (main.ts prompt): it counts down only then */
+  private shown = false;
+  /** Until when the line says the race stopped (ms) */
+  private notice = 0;
+  /** How you play, for the key in the texts (main.ts prompt) */
+  private mode: Control = 'kbm';
 
   constructor(private o: GoalsOptions) {
     this.gnomes = new Gnomes(o.ground, o.floor, o.particles, o.low);
     this.routes = new Routes(o.ground);
     this.group.add(this.gnomes.group, this.routes.group);
-    this.hud = new GoalsHud(document.getElementById('hud')!);
+    this.hud = new GoalsHud(document.getElementById('hud')!, () => this.press());
+    // The race key, as the ping's V (ui/tactics.ts): not while typing, nor in a split-screen seat with its own controller.
+    window.addEventListener('keydown', (e) => {
+      if (e.code !== RACE_KEY || e.repeat || e.ctrlKey || e.altKey || e.metaKey || typing(e) || (seat && seat.pad >= 0)) return;
+      this.hit = true;
+    });
     const kept = readFound(load(FOUND_KEY), GNOME_IDS);
     this.list = kept.found;
     this.told = kept.told;
@@ -148,12 +170,30 @@ export class Goals {
       this.counted = this.group.visible;
       this.showCount();
     }
+    const pressed = this.hit && me.on && !this.warm;
+    const shownMs = this.shown ? dt * 1000 : 0;
+    this.hit = this.shown = false;
     if (!this.group.visible) {
-      // A game, the start screen or watching: no run goes on through it.
+      // A game, the start screen or watching: no run goes on through it, no race is asked for, nothing is offered.
       this.routes.stop();
+      this.race = { ...dropRace(this.race), offer: null, offerLeft: 0 };
+      this.routes.armed = null;
+      this.routes.showGates(this.look);
       this.hud.set('', '', null);
       return;
     }
+    const now = performance.now();
+    const step = stepRace(this.race, ROUTE_LIST, me, pressed, now, shownMs);
+    this.race = step.race;
+    if (step.event === 'stopped') {
+      // Out of the car, off the bike, down or away through a portal during a run: the toast, as before. The key, or
+      // before the gate: the line says so.
+      const r = this.routes.stop();
+      if (r && step.why === 'left') this.report(r);
+      else this.notice = now + NOTICE_MS;
+    }
+    this.routes.armed = this.race.armed;
+    this.routes.canStart = !!this.race.armed && !this.race.done;
     camera.getWorldPosition(this.look);
     this.routes.showGates(this.look);
     if (!me.on || this.warm) {
@@ -173,8 +213,33 @@ export class Goals {
     }
     const i = this.gnomes.near(me.x, me.z, me.feet);
     if (i >= 0) this.find(i, me);
-    this.report(this.routes.update(me, performance.now()));
+    const run = this.routes.update(me, now);
+    // A finish: the gate stays a while with the result; a run stopped on its own (the wrong way, two minutes without a
+    // checkpoint) ends the race too.
+    if (run?.event === 'finish') this.race = finishRace(this.race, now);
+    else if (run?.event === 'stop') this.race = dropRace(this.race);
+    this.routes.armed = this.race.armed;
+    this.routes.canStart = !!this.race.armed && !this.race.done;
+    this.report(run);
     this.line(camera, me);
+  }
+
+  /** The controller's race button (main.ts: the D-pad's right), as the K key and a tap on the line. */
+  press(): void {
+    this.hit = true;
+  }
+
+  /**
+   * The game's one-line prompt (main.ts): `text` as it is, or when it says nothing the race on offer with its key
+   * ("K  Start the timed route: Round Briel by car"). The offer counts down only while it shows here.
+   */
+  prompt(text: string, mode: Control): string {
+    this.mode = mode;
+    const route = this.race.offer ? ROUTE_LIST.find((r) => r.id === this.race.offer) : undefined;
+    if (text || !route || !this.enabled || !this.group.visible) return text;
+    this.shown = true;
+    const name = this.routeName(route.id);
+    return mode === 'touch' ? t('route.offerTouch', { route: name }) : t('route.offer', { key: key('race', mode), route: name });
   }
 
   private find(i: number, me: Me): void {
@@ -216,7 +281,17 @@ export class Goals {
     return by === 'bike' ? t('route.by.bike') : by === 'car' ? t('route.by.car') : t('route.by.foot');
   }
 
-  /** The line at the top: the run's clock and the next point, or the gate you stand by. */
+  /** The arrow's turn towards (x, z): turning left is a positive yaw; on screen it turns clockwise for a point to the right. */
+  private turn(camera: THREE.Camera, me: Me, x: number, z: number): number {
+    camera.getWorldDirection(this.look);
+    return Math.atan2(-this.look.x, -this.look.z) - Math.atan2(-(x - me.x), -(z - me.z));
+  }
+
+  /**
+   * The line at the top: the run's clock and the next point; with a race asked for, the way to its gate; else the race
+   * on offer (a tap on it starts it with touch controls), or for a moment that the race stopped. Tappable only while it
+   * offers or shows a race.
+   */
   private line(camera: THREE.Camera, me: Me): void {
     const run = this.routes.run;
     const target = this.routes.target();
@@ -224,26 +299,34 @@ export class Goals {
       const clock = formatTime(performance.now() - run.t0, lang() === 'nl');
       const step = target.finish ? t('route.toFinish') : t('route.next', { n: target.n, total: target.total });
       const d = Math.hypot(target.x - me.x, target.z - me.z);
-      camera.getWorldDirection(this.look);
-      const view = Math.atan2(-this.look.x, -this.look.z);
-      const toward = Math.atan2(-(target.x - me.x), -(target.z - me.z));
-      // Turning left is a positive yaw; on screen the arrow turns clockwise for a point to the right.
-      this.hud.set(clock, `${step} · ${dist(d)}`, view - toward);
+      this.hud.set(clock, `${step} · ${dist(d)}`, this.turn(camera, me, target.x, target.z), true);
       return;
     }
-    const gate = this.routes.nearGate(me.x, me.z);
-    if (!gate) {
+    const armed = ROUTE_LIST.find((r) => r.id === this.race.armed);
+    // A small screen (touch controls, a split-screen seat): the short way of saying it, between the wordmark and the map.
+    const narrow = document.body.classList.contains('touch') || document.body.classList.contains('compact');
+    if (armed && !this.race.done) {
+      const [gx, gz] = armed.gate;
+      const d = Math.hypot(gx - me.x, gz - me.z);
+      const how = d < 15 ? (narrow ? t('route.startShort') : t('route.start', { by: this.byName(armed.by) })) : t('route.toStart');
+      this.hud.set('', `${this.routeName(armed.id)} · ${how} · ${dist(d)}`, this.turn(camera, me, gx, gz), true);
+      return;
+    }
+    if (performance.now() < this.notice) {
+      this.hud.set('', t('route.stopped'), null);
+      return;
+    }
+    // On offer, or a finish's result showing: the route, how to start it with touch controls, and your best.
+    const offered = ROUTE_LIST.find((r) => r.id === this.race.offer) ?? armed;
+    if (!offered) {
       this.hud.set('', '', null);
       return;
     }
-    const by = this.byName(gate.by);
-    // A small screen (touch controls, a split-screen seat): the short way of saying it, between the wordmark and the map.
-    const narrow = document.body.classList.contains('touch') || document.body.classList.contains('compact');
-    const how = me.by === gate.by ? (narrow ? t('route.startShort') : t('route.start', { by })) : t(narrow ? 'route.needShort' : 'route.need', { by });
-    const best = this.routes.best[bestKey(gate)];
-    const parts = [this.routeName(gate.id), how];
+    const parts = [this.routeName(offered.id)];
+    if (this.mode === 'touch') parts.push(t('route.offerTap'));
+    const best = this.routes.best[bestKey(offered)];
     if (best !== undefined) parts.push(t('route.best', { time: formatTime(best, lang() === 'nl') }));
-    this.hud.set('', parts.join(' · '), null);
+    this.hud.set('', parts.join(' · '), null, true);
   }
 
   /** For the big map: found gnomes and, once the village is in, the routes' start gates. Empty while hidden. */
@@ -266,6 +349,8 @@ export class Goals {
     this.told = false;
     this.routes.best = {};
     this.routes.stop();
+    this.race = newRace();
+    this.routes.armed = null;
     save(FOUND_KEY, writeFound([], false));
     save(BEST_KEY, writeBest({}));
     this.gnomes.setFound([]);

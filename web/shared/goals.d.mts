@@ -44,3 +44,29 @@ export function stepRun(
   nowMs: number,
 ): { run: Run | null; event: RunEvent; time?: number };
 export function formatTime(ms: number, comma?: boolean): string;
+
+export interface Race {
+  armed: string | null;
+  done: number;
+  by: By | null;
+  offer: string | null;
+  offerLeft: number;
+  visit: boolean;
+  at: { x: number; z: number } | null;
+}
+export const OFFER_MS: number;
+export const OFFER_NEAR: number;
+export const OFFER_AWAY: number;
+export const DONE_MS: number;
+export function newRace(): Race;
+export function startable(race: Race, routes: readonly Route[], by: By | null): Route | null;
+export function stepRace(
+  race: Race,
+  routes: readonly Route[],
+  me: { x: number; z: number; by: By | null },
+  pressed: boolean,
+  nowMs: number,
+  shownMs?: number,
+): { race: Race; event: 'armed' | 'stopped' | 'ended' | null; why?: 'key' | 'left' };
+export function finishRace(race: Race, nowMs: number): Race;
+export function dropRace(race: Race): Race;

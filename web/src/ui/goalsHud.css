@@ -19,6 +19,5 @@ body.touch #goal-line span, body.compact #goal-line span {
   min-width: 0; display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; line-clamp: 2; overflow: hidden;
 }
 body.touch #goal-line b, body.touch #goal-line i, body.compact #goal-line b, body.compact #goal-line i { font-size: 14px; flex: none; }
-body.touch:has(#goal-line:not([hidden])) #hud-top { top: 60px; }
-/* A split-screen seat: its name top left is narrower than the wordmark. */
+body.touch:has(#goal-line:not([hidden])) #hud-top { top: 60px; }/* A split-screen seat: its name top left is narrower than the wordmark. */
 body.compact #goal-line { left: 200px; max-width: calc(100% - 350px); }

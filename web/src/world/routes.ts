@@ -6,13 +6,13 @@ import { bestKey, cleanTime, pointsOf, stepRun, type By, type Route, type Run } 
  * Timed routes (shared/routes.json, the rules in shared/goals.mjs): a start gate for each, an upright ring of light, and
  * while a run is on the next checkpoint as a bright ring and the one after it faint. Through the gate the right way,
  * moving as the route asks, and the clock runs; the gate again is the finish. Plain colours, no light, no texture.
+ * Nothing shows until a race is asked for (world/goals.ts sets `armed`, Yoshi 15 Nov 2026): then that route's gate and,
+ * before the start, its first checkpoint faint.
  */
 
 export const ROUTE_LIST: readonly Route[] = ROUTES.routes as Route[];
 /** A gate is drawn within this distance of the camera. */
 const GATE_SHOW = 300;
-/** The line about a gate shows this close to it. */
-const GATE_NEAR = 15;
 /** The ring as drawn (m): smaller than the pass radius, so it stays clear of the houses by the road. */
 const drawnRadius = (route: Route) => Math.min(route.radius, route.by === 'car' ? 4 : 2.5);
 
@@ -28,6 +28,10 @@ export interface RunResult {
 export class Routes {
   readonly group = new THREE.Group();
   run: Run | null = null;
+  /** The route of the race asked for (its gate and rings show), or null: none shows */
+  armed: string | null = null;
+  /** A run of the armed route may start (false while a finish's result shows) */
+  canStart = false;
   /** Best times by bestKey(route), in ms */
   best: Record<string, number> = {};
   private gates: THREE.Mesh[] = [];
@@ -82,27 +86,17 @@ export class Routes {
     this.settle();
   }
 
-  /** The route whose gate is within 15 m of (x, z), when no run is on; null before the village is in. */
-  nearGate(x: number, z: number): Route | null {
-    if (!this.villageIn) return null;
-    let best: Route | null = null, d = GATE_NEAR;
-    for (const r of ROUTE_LIST) {
-      const e = Math.hypot(r.gate[0] - x, r.gate[1] - z);
-      if (e < d) [best, d] = [r, e];
-    }
-    return best;
-  }
-
   route(): Route | null {
     return this.run ? ROUTE_LIST.find((r) => r.id === this.run!.id) ?? null : null;
   }
 
-  /** The gates within 300 m of the camera: each frame the group is shown, playing or not (a menu, the warm-up). */
+  /** The armed route's gate within 300 m of the camera: each frame the group is shown, playing or not (a menu, the warm-up). */
   showGates(camera: THREE.Vector3): void {
     for (let i = 0; i < ROUTE_LIST.length; i++) {
       const [gx, gz] = ROUTE_LIST[i].gate;
-      this.gates[i].visible = this.warm || (this.villageIn && Math.hypot(gx - camera.x, gz - camera.z) < GATE_SHOW);
+      this.gates[i].visible = this.warm || (this.villageIn && this.armed === ROUTE_LIST[i].id && Math.hypot(gx - camera.x, gz - camera.z) < GATE_SHOW);
     }
+    this.showRings(this.route());
   }
 
   /** Not playing and no run on: the next step starts afresh (no hop from where you were before a trip or a respawn). */
@@ -163,14 +157,13 @@ export class Routes {
         if (newBest) this.best[key] = kept;
         out = { event: 'finish', route, time, before, newBest };
       } else if (r.event) out = { event: r.event, route };
-    } else {
-      for (const route of ROUTE_LIST) {
-        const r = stepRun(null, route, from, me, me.by, nowMs);
-        if (r.event === 'start') {
-          this.run = r.run;
-          out = { event: 'start', route };
-          break;
-        }
+    } else if (this.canStart) {
+      // Only the race asked for starts at its gate.
+      const route = ROUTE_LIST.find((x) => x.id === this.armed);
+      const r = route ? stepRun(null, route, from, me, me.by, nowMs) : null;
+      if (route && r?.event === 'start') {
+        this.run = r.run;
+        out = { event: 'start', route };
       }
     }
     this.showRings(this.route());
@@ -186,17 +179,27 @@ export class Routes {
     return { x, z, n: this.run.next + 1, total: route.checkpoints.length, finish: this.run.next >= pts.length - 1 };
   }
 
-  private showRings(route: Route | null): void {
+  private showRings(running: Route | null): void {
     if (this.warm) return;
-    const key = route && this.run ? `${route.id}:${this.run.next}` : '';
+    // Before the start of the race asked for: its first checkpoint faint, the gate (showGates) the bright one.
+    const waiting = !running && this.canStart && this.villageIn ? ROUTE_LIST.find((x) => x.id === this.armed) ?? null : null;
+    const route = running ?? waiting;
+    const key = running && this.run ? `${running.id}:${this.run.next}` : waiting ? `${waiting.id}:wait` : '';
     if (key === this.ringKey) return;
     this.ringKey = key;
-    if (!route || !this.run) {
+    if (!route || (running && !this.run)) {
       this.next.visible = this.after.visible = false;
       return;
     }
     const pts = [route.gate, ...pointsOf(route)];
-    const k = this.run.next + 1; // pts[k] is the next point, pts[k - 1] the one before
+    const k = running && this.run ? this.run.next + 1 : 0; // pts[k] is the next point, pts[k - 1] the one before
+    if (!running) {
+      this.next.visible = false;
+      this.after.material = this.faint.get(route.id)!;
+      this.after.visible = true;
+      this.stand(this.after, route, pts[1][0], pts[1][1], pts[0][0], pts[0][1]);
+      return;
+    }
     const place = (o: THREE.Mesh, j: number, faint: boolean) => {
       if (j >= pts.length) {
         o.visible = false;

@@ -2,11 +2,14 @@
 // one page load: every gnome, gate and checkpoint dropped onto (on the ground, not in a hedge, a wall or a pond) and
 // walked from to a road (a search over 0.5 m cells); a picture of every gnome and gate; finding g01 and g10, kept after a
 // reload; the walking route walked; a run stopped by a teleport; the two gnomes on a floor climbed to; solo Zombies
-// hiding it all. --ride: also the bike route ridden and the car route driven, by a simple autopilot along the roads
+// hiding it all. A route's rings show only once its race is asked for (the race key K, the D-pad's right, a tap on the
+// line at the top): `race` checks no ring before, the offer on getting in a car or on a bike, the key starting and
+// stopping it, getting out, a passenger, the controller and (--phone) the tap, and the Controls tab's row.
+// --ride: also the bike route ridden and the car route driven, by a simple autopilot along the roads
 // (it keeps behind the traffic, backs off and finds a way round when stuck; --trace prints where it is every 5 s).
 //
 //   node tools/dev/goals.mjs --url http://localhost:5200/ --port 9920 [--quality high] [--phone] [--shots <folder>]
-//                            [--only spots,reach,shots,find,foot,line,climb,warm,zombies,bike,car] [--ride] [--trace]
+//                            [--only spots,reach,shots,find,foot,line,race,climb,warm,zombies,bike,car] [--ride] [--trace]
 //                            [--size 667x375]
 //
 // Prints one line per check and a summary; exits 1 when any check failed.
@@ -19,7 +22,7 @@ import { launch, options, startGame } from './cdp.mjs';
 const o = options({ url: 'http://localhost:5200/', port: '9920', quality: 'high', phone: false, shots: '', only: '', ride: false, trace: false, size: '' });
 const ROUTES = JSON.parse(readFileSync(new URL('../../web/shared/routes.json', import.meta.url))).routes;
 const ROADS = JSON.parse(readFileSync(new URL('../../web/src/data/roads.json', import.meta.url)));
-const all = ['spots', 'reach', 'shots', 'find', 'foot', 'line', 'climb', 'warm', 'zombies', ...(o.ride ? ['bike', 'car'] : [])];
+const all = ['spots', 'reach', 'shots', 'find', 'foot', 'line', 'race', 'climb', 'warm', 'zombies', ...(o.ride ? ['bike', 'car'] : [])];
 const only = new Set(o.only ? o.only.split(',') : all);
 if (o.shots) mkdirSync(o.shots, { recursive: true });
 
@@ -33,6 +36,20 @@ const shot = async (name) => o.shots && b.screenshot(join(o.shots, `${name}.png`
 const js = (v) => JSON.stringify(v);
 const toast = () => b.evaluate("document.getElementById('toast')?.textContent ?? ''", false);
 const line = () => b.evaluate("(() => { const l = document.getElementById('goal-line'); return l && !l.hidden ? l.textContent : ''; })()", false);
+const prompt = () => b.evaluate("document.getElementById('prompt')?.textContent ?? ''", false);
+/** What of the routes is drawn: each gate, the next ring, the one after it; and the race asked for. */
+const rings = () => b.evaluate("JSON.stringify((() => { const r = briel.goals.routes; return { gates: r.gates.map((o) => o.visible), next: r.next.visible, after: r.after.visible, armed: briel.goals.race.armed, offer: briel.goals.race.offer }; })())", false).then(JSON.parse);
+const noRing = (r) => !r.gates.some(Boolean) && !r.next && !r.after;
+/** A real key press (Input.dispatchKeyEvent: the dev hooks do not reach every listener), then two frames. */
+async function tapKey(code) {
+  for (const type of ['keyDown', 'keyUp']) await b.send('Input.dispatchKeyEvent', { type, code, key: code.slice(3).toLowerCase(), windowsVirtualKeyCode: code.charCodeAt(3) });
+  await b.evaluate('__g.frame()');
+}
+const raceKey = () => tapKey('KeyK');
+/** The offer in the prompt as you play: the key first, or with touch controls the tap on the line at the top. */
+const wanted = (lang, route) => o.phone
+  ? (lang === 'nl' ? `Tik op de balk bovenaan om de race te starten: ${route}` : `Tap the line at the top to start the timed route: ${route}`)
+  : (lang === 'nl' ? `K: de race starten · ${route}` : `K  Start the timed route: ${route}`);
 
 /** The helpers in the page (window.__g), again after a reload. */
 async function helpers() {
@@ -219,6 +236,8 @@ try {
       await shot(`gnome_${s.id}`);
       console.log(`shot gnome_${s.id}${seen ? '' : ' (no clear viewpoint: from the east)'}`);
     }
+    // The gates show only with a race asked for: here the warm-up's way of drawing them all (it stops nothing).
+    await b.evaluate('briel.goals.warming(true)', false);
     for (const r of ROUTES) {
       const [gx, gz] = r.gate, [fx, fz] = r.checkpoints[0];
       const len = Math.hypot(fx - gx, fz - gz), d = r.radius * 2.2 + 4;
@@ -229,6 +248,7 @@ try {
       await shot(`gate_${r.id}`);
       console.log(`shot gate_${r.id}`);
     }
+    await b.evaluate('briel.goals.warming(false)', false);
     await b.evaluate('briel.goals.reset()', false);
   }
 
@@ -286,11 +306,21 @@ try {
     const len = Math.hypot(fx - gx, fz - gz);
     const sx = gx - ((fx - gx) / len) * 6, sz = gz - ((fz - gz) / len) * 6;
     const sg = await b.evaluate(`briel.world.groundAt(${sx}, ${sz}, briel.world.groundAt(${sx}, ${sz}, 60, 0).y + 0.6, 0).y`, false);
+    // From 6 m before the gate, 4 m up and back, so the square shows in the picture.
     await b.evaluate(`briel.teleport(${sx}, ${sz}, ${sg}, ${Math.atan2(-(gx - sx), -(gz - sz))}, 0)`, false);
     await b.sleep(1500);
     await shot('foot_gate_line');
     const near = await line();
-    check('the line by the gate', near.includes('Church square on foot'), near);
+    const offered = await prompt();
+    const before = await rings();
+    check('no ring on the church square before the race', noRing(before), js(before));
+    check('the walking race offered by its start', near.includes('Church square on foot') && offered.includes(wanted('en', 'Church square on foot')) && before.offer === 'foot', `line "${near}", prompt "${offered}"`);
+    await raceKey();
+    await b.sleep(800);
+    const after = await rings();
+    const toGate = await line();
+    await shot('foot_gate_armed');
+    check('the key: the gate and the first checkpoint show, the line points to the gate', after.armed === 'foot' && after.gates[ROUTES.indexOf(r)] && after.after && !after.next && /Go through the gate|To the start/.test(toGate) && !(await prompt()).includes('Start the timed route'), `${js(after)} line "${toGate}"`);
     const lines = [];
     let ok = true;
     const pts = [r.gate, ...r.checkpoints, r.gate];
@@ -312,18 +342,27 @@ try {
     check('foot route walked', ok && /\d:\d\d\.\d/.test(finish) && best.includes('foot@1'), `toast "${finish}", stored ${best}`);
     check('checkpoints counted', lines.some((l) => l.includes('Checkpoint 6 of 6')) && lines.some((l) => l.includes('To the finish')), '');
     await shot('foot_finish');
-    // A run stopped by a teleport 100 m away.
+    // After the result has shown a few seconds the rings go.
+    const fin = await rings();
+    await b.sleep(4600);
+    const gone = await rings();
+    check('after a finish the gate stays a while, then goes', fin.armed === 'foot' && fin.gates.some(Boolean) && noRing(gone) && gone.armed === null, `${js(fin)} then ${js(gone)}`);
+    // A run stopped by a teleport 100 m away (the race asked for again first).
     await b.evaluate(`briel.teleport(${sx}, ${sz}, ${sg}, ${Math.atan2(-(gx - sx), -(gz - sz))}, 0)`, false);
+    await b.evaluate('__g.frame()');
+    await raceKey();
     await b.evaluate(`__g.walkTo(${fx}, ${fz}, 2)`);
     const running = await b.evaluate('!!briel.goals.run()', false);
     await b.evaluate(`briel.teleport(${gx + 100}, ${gz}, briel.world.groundAt(${gx + 100}, ${gz}, 60, 0).y)`, false);
     await b.evaluate('__g.frame()');
     await b.sleep(200);
     const stopped = await toast();
-    check('a teleport stops the run', running && stopped.includes('Route stopped') && !(await b.evaluate('!!briel.goals.run()', false)), `running before ${running}, toast "${stopped}"`);
+    const off = await rings();
+    check('a teleport stops the run', running && stopped.includes('Route stopped') && !(await b.evaluate('!!briel.goals.run()', false)) && noRing(off) && off.armed === null, `running before ${running}, toast "${stopped}", ${js(off)}`);
     // A hop across the gate (a teleport 6 m before it to 6 m past it) starts no clock.
     await b.evaluate(`briel.teleport(${sx}, ${sz}, ${sg}, 0, 0)`, false);
     await b.evaluate('__g.frame()');
+    await raceKey();
     const px = gx + ((fx - gx) / len) * 6, pz = gz + ((fz - gz) / len) * 6;
     await b.evaluate(`briel.teleport(${px}, ${pz}, briel.world.groundAt(${px}, ${pz}, 60, 0).y, 0, 0)`, false);
     await b.evaluate('__g.frame()');
@@ -348,6 +387,11 @@ try {
       const g = await clear();
       await shot(`line_gate_${lang}`);
       check(`line by the gate clear (${lang})`, !g.map && !g.brand, `${await line()} ${js(g)}`);
+      await raceKey();
+      await b.sleep(300);
+      const armed = await clear();
+      await shot(`line_armed_${lang}`);
+      check(`line to the gate clear (${lang})`, !armed.map && !armed.brand, `${await line()} ${js(armed)}`);
       await b.evaluate(`__g.walkTo(${gx}, ${gz}, 0.8)`);
       await b.evaluate(`__g.walkTo(${(gx + fx) / 2}, ${(gz + fz) / 2}, 1)`);
       await b.sleep(400);
@@ -358,6 +402,137 @@ try {
       await b.evaluate('__g.frame()');
     }
     await b.evaluate("briel.i18n.setLang('en')", false);
+  }
+
+  if (only.has('race')) {
+    // A race starts only when asked for, and its rings show only then (Yoshi, 15 Nov 2026).
+    await b.evaluate('briel.goals.reset()', false);
+    const clear = () => b.evaluate(`(() => { const r = (id) => document.getElementById(id)?.getBoundingClientRect(); const l = r('goal-line'), m = r('minimap'); const hit = (a, c) => a && c && c.width && a.left < c.right && c.left < a.right && a.top < c.bottom && c.top < a.bottom; return JSON.stringify({ map: hit(l, m), right: Math.round(l.right), mapLeft: Math.round(m.left), lines: Math.round(l.height) }); })()`, false).then(JSON.parse);
+    const seenAt = [];
+    for (const r of ROUTES) {
+      const [gx, gz] = r.gate, [fx, fz] = r.checkpoints[0];
+      const len = Math.hypot(fx - gx, fz - gz);
+      const px = gx - ((fx - gx) / len) * 12, pz = gz - ((fz - gz) / len) * 12;
+      await b.evaluate(`briel.player.flying = false; briel.teleport(${px}, ${pz}, briel.world.groundAt(${px}, ${pz}, 60, 0).y, ${Math.atan2(-(gx - px), -(gz - pz))}, 0)`, false);
+      await b.sleep(800);
+      const seen = await rings();
+      if (!noRing(seen)) seenAt.push(`${r.id}: ${js(seen)}`);
+    }
+    check('no ring at any gate before a race', !seenAt.length, seenAt.join('; '));
+    const inCar = async () => {
+      await b.evaluate("briel.travel('house')", false);
+      await b.sleep(2500);
+      await b.evaluate('briel.getIn()', false);
+      await b.waitFor('briel.driving()', 15000);
+    };
+    const out = async () => {
+      await b.evaluate('briel.getOut()', false);
+      await b.sleep(400);
+    };
+    // The offer in a car, after its keys (5 s): in English and Dutch.
+    for (const [lang, want] of [['en', wanted('en', 'Round Briel by car')], ['nl', wanted('nl', 'Toertje Briel met de auto')]]) {
+      await b.evaluate(`briel.i18n.setLang(${js(lang)})`, false);
+      await inCar();
+      await b.sleep(800);
+      const first = await prompt();
+      await b.sleep(5600);
+      const offer = await prompt();
+      await shot(`offer_car_${lang}`);
+      check(`the offer in a car (${lang})`, offer.includes(want) && !first.includes(want) && (await rings()).offer === 'car', `first "${first}", then "${offer}", line "${await line()}"`);
+      await out();
+    }
+    await b.evaluate("briel.i18n.setLang('en')", false);
+    await inCar();
+    await raceKey();
+    await b.sleep(500);
+    const armed = await rings();
+    const toGate = await line();
+    const arrow = await b.evaluate("!document.querySelector('#goal-line i').hidden", false);
+    await shot('race_car_armed');
+    check('the key arms the car race: its gate and first ring, the line to the gate', armed.armed === 'car' && armed.gates[ROUTES.findIndex((x) => x.id === 'car')] && armed.after && !armed.next && toGate.includes('Round Briel by car') && toGate.includes('To the start') && arrow, `${js(armed)} line "${toGate}" arrow ${arrow}`);
+    await raceKey();
+    const stopped = await rings();
+    check('the key again stops it: the rings go, the line says so', stopped.armed === null && noRing(stopped) && (await line()).includes('Route stopped'), `${js(stopped)} line "${await line()}"`);
+    await raceKey();
+    const again = (await rings()).armed;
+    await out();
+    const left = await rings();
+    check('getting out stops it', again === 'car' && left.armed === null && noRing(left), `${again} then ${js(left)}`);
+    // A passenger: main.ts gives goals.update no way of moving (by null) then; faked here in a car of your own.
+    await b.evaluate("(() => { if (window.__asP) return; window.__asP = { on: false }; const u = briel.goals.update; briel.goals.update = function (dt, c, me) { return u.call(this, dt, c, window.__asP.on ? { ...me, by: null } : me); }; })()", false);
+    await b.evaluate('window.__asP.on = true', false);
+    await inCar();
+    await b.sleep(6500);
+    const pOffer = await prompt();
+    await raceKey();
+    const p = await rings();
+    check('no offer to a passenger, and the key does nothing', !pOffer.includes('Start the timed route') && p.offer === null && p.armed === null && noRing(p), `prompt "${pOffer}", ${js(p)}`);
+    await b.evaluate('window.__asP.on = false', false);
+    await out();
+    // The controller: the D-pad's right, on a fake pad.
+    await b.evaluate(`(() => { const btn = () => ({ pressed: false, touched: false, value: 0 }); const pad = { id: 'Xbox Wireless Controller (STANDARD GAMEPAD Vendor: 045e Product: 0b13)', index: 0, connected: true, mapping: 'standard', timestamp: 1, axes: [0, 0, 0, 0], buttons: Array.from({ length: 17 }, btn), vibrationActuator: null }; window.__pad = pad; navigator.getGamepads = () => [pad, null, null, null]; })()`, false);
+    const padPress = async (i) => {
+      await b.evaluate(`(() => { const k = window.__pad.buttons[${i}]; k.pressed = true; k.value = 1; window.__pad.timestamp++; })()`, false);
+      await b.sleep(140);
+      await b.evaluate(`(() => { const k = window.__pad.buttons[${i}]; k.pressed = false; k.value = 0; window.__pad.timestamp++; })()`, false);
+      await b.sleep(160);
+    };
+    await inCar();
+    await padPress(15);
+    const padOn = (await rings()).armed;
+    await b.sleep(6500);
+    await padPress(15);
+    const padOff = (await rings()).armed;
+    check('the D-pad right starts and stops it', padOn === 'car' && padOff === null, `${padOn} then ${padOff}`);
+    await out();
+    await b.evaluate('navigator.getGamepads = () => [null, null, null, null]', false);
+    // On a bike: the offer in both languages, the key, the key again.
+    for (const [lang, want] of [['en', wanted('en', 'Village loop by bike')], ['nl', wanted('nl', 'Dorpsronde met de fiets')]]) {
+      await b.evaluate(`briel.i18n.setLang(${js(lang)})`, false);
+      await b.evaluate("briel.travel('church')", false);
+      await b.sleep(2500);
+      await b.evaluate("briel.teleport(533, -769, briel.world.groundAt(533, -769, 60, 0).y, Math.PI / 2, 0); briel.getOnBike('church1')", false);
+      await b.sleep(6400);
+      const offer = await prompt();
+      await shot(`offer_bike_${lang}`);
+      check(`the offer on a bike (${lang})`, offer.includes(want), `prompt "${offer}", line "${await line()}"`);
+      if (lang === 'en') {
+        await raceKey();
+        const on = await rings();
+        await raceKey();
+        const off = await rings();
+        check('on a bike the key starts and stops it', on.armed === 'bike' && on.gates[ROUTES.findIndex((x) => x.id === 'bike')] && off.armed === null && noRing(off), `${js(on)} then ${js(off)}`);
+      }
+      await b.evaluate('briel.getOffBike()', false);
+      await b.sleep(400);
+    }
+    await b.evaluate("briel.i18n.setLang('en')", false);
+    // The Controls tab: a row in English and Dutch, the key as you play.
+    const rows = JSON.parse(await b.evaluate(`(async () => { const s = await import('/src/shortcuts.ts'); const out = {}; for (const l of ['en', 'nl']) { briel.i18n.setLang(l); for (const c of ['kbm', 'pad', 'touch']) out[l + ' ' + c] = s.controlGroups(c, false).flatMap((g) => g.rows).find(([a]) => a.includes(l === 'en' ? 'timed route' : 'race tegen de klok')) ?? null; } briel.i18n.setLang('en'); return JSON.stringify(out); })()`));
+    const want = { 'en kbm': 'K', 'en pad': 'D-pad right', 'en touch': 'Tap the line at the top', 'nl kbm': 'K', 'nl pad': 'D-pad rechts', 'nl touch': 'Tik op de balk bovenaan' };
+    check('the Controls tab has the row', Object.entries(want).every(([k, v]) => rows[k]?.[1] === v), js(rows));
+    if (o.phone) {
+      // Touch controls: a tap on the line at the top, while it offers the race; it stays clear of the minimap.
+      await inCar();
+      await b.sleep(300);
+      const tapLine = async () => {
+        const at = JSON.parse(await b.evaluate("JSON.stringify((() => { const r = document.getElementById('goal-line').getBoundingClientRect(); return [r.left + r.width / 2, r.top + r.height / 2]; })())", false));
+        await b.send('Input.dispatchTouchEvent', { type: 'touchStart', touchPoints: [{ x: at[0], y: at[1] }] });
+        await b.send('Input.dispatchTouchEvent', { type: 'touchEnd', touchPoints: [] });
+        await b.evaluate('__g.frame()');
+      };
+      const offerLine = await line();
+      const g0 = await clear();
+      await shot('race_touch_offer');
+      await tapLine();
+      const on = await rings();
+      const g1 = await clear();
+      await shot('race_touch_armed');
+      await tapLine();
+      const off = await rings();
+      check('touch: a tap on the line starts and stops it, clear of the minimap', offerLine.includes('Tap here to start') && on.armed === 'car' && off.armed === null && !g0.map && !g1.map, `line "${offerLine}" ${js(g0)} ${js(on)} ${js(g1)} ${js(off)}`);
+      await out();
+    }
   }
 
   if (only.has('climb')) {
@@ -414,15 +589,26 @@ try {
   if (only.has('zombies')) {
     await b.evaluate("briel.travel('church')", false);
     await b.sleep(3000);
+    // By the walking start with its race asked for: the game ends it, and offers nothing while it goes on.
+    const fr = ROUTES.find((x) => x.id === 'foot');
+    await b.evaluate(`briel.teleport(${fr.gate[0] + 8}, ${fr.gate[1]}, briel.world.groundAt(${fr.gate[0] + 8}, ${fr.gate[1]}, 60, 0).y)`, false);
+    await b.sleep(600);
+    await raceKey();
+    const armedBefore = (await rings()).armed;
     const before = await b.evaluate('briel.goals.group.visible', false);
     await b.evaluate('briel.zombiesSolo.start()', false);
     await b.sleep(2500);
     const during = await b.evaluate("briel.goals.group.visible || !document.getElementById('goal-line').hidden || briel.goals.marks().length > 0", false);
+    await raceKey();
+    const zr = await rings();
+    const zp = await prompt();
     await shot('zombies_hidden');
     await b.evaluate('briel.zombiesSolo.stop()', false);
     await b.sleep(3000);
     const after = await b.evaluate('briel.goals.group.visible', false);
+    const ar = await rings();
     check('hidden during solo Zombies', before && !during && after, `before ${before}, during ${during}, after ${after}`);
+    check('solo Zombies ends the race and offers none', armedBefore === 'foot' && zr.armed === null && zr.offer === null && !zp.includes('Start the timed route') && ar.armed === null && noRing(ar), `before ${armedBefore}, during ${js(zr)} prompt "${zp}", after ${js(ar)}`);
   }
 
   for (const kind of ['bike', 'car']) {
@@ -476,6 +662,10 @@ try {
       await b.waitFor('briel.driving()', 15000);
       await b.evaluate(`(() => { const car = briel.currentCar(); const [x, z] = ${js(path[0])}, [nx, nz] = ${js(path[3])}; const g = briel.world.groundAt(x, z, 50, 0.3); car.place(x, g.y, z, Math.atan2(-(nx - x), -(nz - z))); })()`, false);
     }
+    // The race asked for (after the car's move to the start of the path: a hop ends a race).
+    await b.evaluate('__g.frame()');
+    await raceKey();
+    check(`${kind} race asked for`, (await rings()).armed === kind, js(await rings()));
     // The autopilot: every frame the vehicle's own input, steering at a point 5 m ahead on the path.
     await b.evaluate(`(() => {
       const kind = ${js(kind)};

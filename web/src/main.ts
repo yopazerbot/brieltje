@@ -3859,7 +3859,7 @@ renderer.setAnimationLoop((now: number) => {
     hud.setRing(helping ? (helping.start ? (now - helping.start) / helping.ms : 0) : null);
     if (pad) prompt = ''; // the list says it all
     else if (!stallAim && (!inCar || onBike) && portalNear(player.x, player.z) && (onHorse || onBike || !rules.portals || games.fenced)) prompt = t(onHorse ? 'prompt.horsePortal' : onBike ? 'prompt.bikePortal' : games.fenced ? 'prompt.portalGame' : 'prompt.portalsOff');
-    hud.setPrompt(prompt);
+    hud.setPrompt(goals.prompt(prompt, mode)); // when it says nothing else: a timed route's race on offer (world/goals.ts)
     const armed = action && !dead && !inCar;
     hud.setWeapon(armed, dead || inCar ? '' : weapon.status);
     hud.setSlots(armed ? weapon.slots : null);
@@ -4042,6 +4042,7 @@ renderer.setAnimationLoop((now: number) => {
   townBoard.update(camera.position);
   // The footballs: walked into on foot (alone here; together the server does it too, and leads).
   const onFoot = combat.alive && !driving && !riding && !bikes.mounted && horses.mounted < 0 && !player.flying && player.chute === null;
+  if (frame.speedStep > 0) goals.press(); // the controller's race button: the D-pad's right, free while playing (K and a tap: world/goals.ts)
   goals.update(dt, camera, { x: player.x, z: player.z, feet: player.feet, yaw: player.yaw, by: driving ? 'car' : bikes.mounted ? 'bike' : onFoot ? 'foot' : null, on: goals.group.visible && !menu.open && !trip && combat.alive && !player.flying && player.chute === null });
   football.update(dt, camera.position, onFoot ? { x: player.x, z: player.z, feet: player.feet, name: me?.username ?? '' } : null, net.connected);
   // The others, after the horses and bikes: a rider sits in the saddle where it is drawn this frame.

@@ -82,6 +82,8 @@ const TABLE = {
   ping: { kbm: place('KeyV') },
   scores: { kbm: () => t('key.hold', { key: 'Tab' }), pad: () => (hasTouchpad() ? t('key.holdTouchpad') : t('key.hold', { key: btn('select') })) },
   sound: { kbm: named('Shift+M') },
+  /** A timed route's race, started and stopped (world/goals.ts): K is free on foot, in a car and on a bike, as the D-pad's right. */
+  race: { kbm: place('KeyK'), pad: say('key.dpadRight'), touch: say('tctl.raceHow') },
 } satisfies Record<string, Entry>;
 
 export type Action = keyof typeof TABLE;
@@ -184,6 +186,7 @@ function padOrKeyGroups(control: 'kbm' | 'pad', action: boolean): Group[] {
         [t('ctl.sound'), kbm ? t('key.soundKbm', { key: k('sound') }) : t('key.soundPad')],
         // A football (world/football.ts): Use next to it; in Explore a click too, as for doors.
         [t('ctl.kick'), t('ctl.kickHow', { use: action ? k('use') : t('key.or', { a: k('click'), b: k('use') }), run: k('sprint') })],
+        [t('ctl.race'), k('race')],
       ],
     },
   );
@@ -228,6 +231,7 @@ function touchGroups(action: boolean): Group[] {
       rows: [
         [t('ctl.menu'), k('menu')], [t('tctl.bigMap'), k('map')], [t('ctl.kick'), t('ctl.kickHow', { use: k('use'), run: k('sprint') })],
         [t('tctl.soundFull'), t('tctl.soundFullHow')], [t('tctl.best'), t('tctl.bestHow')],
+        [t('ctl.race'), k('race')],
       ],
     },
   );

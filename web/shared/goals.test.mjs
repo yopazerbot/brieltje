@@ -7,7 +7,7 @@ import { loadBounds } from './bounds.mjs';
 import { homeAt, inEndGarden } from './homes.mjs';
 import { PORTALS } from './portals.mjs';
 import { noShoot } from './zones.mjs';
-import { formatTime, passes, pointsOf, readBest, readFound, stepRun, TIMEOUT_MS, writeBest, writeFound } from './goals.mjs';
+import { DONE_MS, dropRace, finishRace, formatTime, newRace, OFFER_AWAY, OFFER_MS, passes, pointsOf, readBest, readFound, startable, stepRace, stepRun, TIMEOUT_MS, writeBest, writeFound } from './goals.mjs';
 
 const read = (path) => JSON.parse(readFileSync(new URL(path, import.meta.url)));
 const GNOMES = read('./gnomes.json');
@@ -176,4 +176,123 @@ test('formatTime: m:ss.d, a comma in Dutch', () => {
   assert.equal(formatTime(0), '0:00.0');
   assert.equal(formatTime(3600000), '60:00.0');
   assert.equal(formatTime(NaN), '0:00.0');
+});
+
+// A race asked for: the rings show only once the race key is pressed (src/world/goals.ts draws what `armed` says).
+const CAR = ROUTES.find((r) => r.by === 'car');
+const FOOT = ROUTES.find((r) => r.by === 'foot');
+/** Frames of stepRace in a row: each [me, pressed, ms, shownMs]; returns the race after them and the events. */
+function frames(steps, race = newRace()) {
+  const events = [];
+  for (const [me, pressed = false, ms = 0, shown = 16] of steps) {
+    const r = stepRace(race, ROUTES, me, pressed, ms, shown);
+    race = r.race;
+    if (r.event) events.push(r.why ? `${r.event}:${r.why}` : r.event);
+  }
+  return { race, events };
+}
+
+test('a race: nothing armed until the key, an offer on getting in, armed by the key in the car', () => {
+  const at = { x: 0, z: 0 };
+  let { race, events } = frames([[{ ...at, by: 'foot' }], [{ ...at, by: 'car' }]]);
+  assert.equal(race.armed, null, 'nothing armed, so nothing is shown');
+  assert.equal(race.offer, CAR.id, 'getting in offers the car route');
+  assert.deepEqual(events, []);
+  ({ race, events } = frames([[{ ...at, by: 'car' }, true, 100]], race));
+  assert.equal(race.armed, CAR.id);
+  assert.equal(race.offer, null);
+  assert.deepEqual(events, ['armed']);
+  // A passenger is offered nothing, and the key does nothing for one.
+  ({ race, events } = frames([[{ ...at, by: null }], [{ ...at, by: null }, true]]));
+  assert.equal(race.offer, null);
+  assert.equal(race.armed, null);
+  assert.deepEqual(events, []);
+});
+
+test('a race: the offer counts down only while on screen, and goes on getting out', () => {
+  const at = { x: 0, z: 0 };
+  let { race } = frames([[{ ...at, by: 'car' }, false, 0, 0], [{ ...at, by: 'car' }, false, 5000, 0]]);
+  assert.equal(race.offer, CAR.id, 'not shown yet (the car keys show first): still offered');
+  ({ race } = frames([[{ ...at, by: 'car' }, false, 6000, OFFER_MS - 1]], race));
+  assert.equal(race.offer, CAR.id);
+  ({ race } = frames([[{ ...at, by: 'car' }, false, 6100, 2]], race));
+  assert.equal(race.offer, null, 'shown long enough');
+  // The key still starts it in the car, without an offer on screen.
+  ({ race } = frames([[{ ...at, by: 'car' }, true, 7000]], race));
+  assert.equal(race.armed, CAR.id);
+  ({ race } = frames([[{ ...at, by: 'foot' }], [{ ...at, by: 'car' }]]));
+  ({ race } = frames([[{ ...at, by: 'foot' }]], race));
+  assert.equal(race.offer, null, 'out of the car: no car offer');
+});
+
+test('a race: started at the gate only once armed, and only the armed route', () => {
+  const [gx, gz] = CAR.gate, [fx, fz] = CAR.checkpoints[0];
+  const len = Math.hypot(fx - gx, fz - gz), ux = (fx - gx) / len, uz = (fz - gz) / len;
+  const before = { x: gx - ux * 10, z: gz - uz * 10 }, past = { x: gx + ux * 2, z: gz + uz * 2 };
+  // Through the gate the right way: stepRun starts a run; goals.ts asks it only for the armed route.
+  assert.equal(stepRun(null, CAR, before, past, 'car', 0).event, 'start');
+  assert.equal(startable(newRace(), ROUTES, 'car'), CAR);
+  assert.equal(startable(newRace(), ROUTES, 'foot'), null, 'on foot only on a visit to the walking start');
+  assert.equal(startable(newRace(), ROUTES, null), null);
+});
+
+test('a race: the key again stops it, before or during the run', () => {
+  const at = { x: 0, z: 0 };
+  const { race, events } = frames([[{ ...at, by: 'bike' }], [{ ...at, by: 'bike' }, true, 10], [{ ...at, by: 'bike' }, true, 20]]);
+  assert.equal(race.armed, null);
+  assert.deepEqual(events, ['armed', 'stopped:key']);
+  assert.equal(race.offer, null, 'no new offer after you stopped it yourself');
+});
+
+test('a race: getting out, getting down or a hop stops it', () => {
+  const at = { x: 0, z: 0 };
+  let { race, events } = frames([[{ ...at, by: 'car' }, true], [{ ...at, by: 'foot' }]]);
+  assert.equal(race.armed, null);
+  assert.deepEqual(events, ['armed', 'stopped:left']);
+  ({ race, events } = frames([[{ ...at, by: 'bike' }, true], [{ ...at, by: null }]]));
+  assert.deepEqual(events, ['armed', 'stopped:left'], 'down, or as a passenger');
+  ({ race, events } = frames([[{ ...at, by: 'car' }, true], [{ x: 300, z: 0, by: 'car' }]]));
+  assert.deepEqual(events, ['armed', 'stopped:left'], 'a trip through a portal');
+  ({ race, events } = frames([[{ ...at, by: 'car' }, true], [{ x: 15, z: 0, by: 'car' }]]));
+  assert.equal(race.armed, CAR.id, 'driving on at speed is no hop');
+  assert.equal(dropRace(race).armed, null, 'a run stopped on its own ends the race');
+});
+
+test('a race: after a finish the gate stays a while, then it ends and the route is offered again', () => {
+  const at = { x: 0, z: 0, by: 'car' };
+  const { race } = frames([[at, true, 0]]);
+  const done = finishRace(race, 1000);
+  let r = frames([[at, false, 1000 + DONE_MS - 1]], done);
+  assert.equal(r.race.armed, CAR.id, 'still shown with the result');
+  r = frames([[at, false, 1000 + DONE_MS]], r.race);
+  assert.equal(r.race.armed, null);
+  assert.deepEqual(r.events, ['ended']);
+  assert.equal(r.race.offer, CAR.id, 'the key starts another go');
+  // During the result, the key starts a new go at once.
+  r = frames([[at, true, 1500]], done);
+  assert.equal(r.race.armed, CAR.id);
+  assert.equal(r.race.done, 0);
+  assert.deepEqual(r.events, ['armed']);
+});
+
+test('a race: the walking route offered on foot by its start, once a visit', () => {
+  const [gx, gz] = FOOT.gate;
+  const near = { x: gx + 10, z: gz, by: 'foot' }, far = { x: gx + OFFER_AWAY + 5, z: gz, by: 'foot' };
+  const walk = (from, to, n) => Array.from({ length: n + 1 }, (_, i) => [{ x: from.x + ((to.x - from.x) * i) / n, z: from.z + ((to.z - from.z) * i) / n, by: 'foot' }]);
+  let { race } = frames([[far], ...walk(far, near, 40)]);
+  assert.equal(race.offer, FOOT.id);
+  assert.ok(race.visit);
+  ({ race } = frames([[near, false, 0, OFFER_MS]], race));
+  assert.equal(race.offer, null, 'shown long enough');
+  ({ race } = frames([...walk(near, { x: gx + 30, z: gz }, 20), ...walk({ x: gx + 30, z: gz }, near, 20)], race));
+  assert.equal(race.offer, null, 'not again on the same visit (never 40 m away)');
+  ({ race } = frames([...walk(near, far, 40), ...walk(far, near, 40)], race));
+  assert.equal(race.offer, FOOT.id, 'again after going 40 m away');
+  // The key starts it there; in a car next to it, the car's offer is for the car.
+  assert.equal(frames([[near, true]], race).race.armed, FOOT.id);
+  const inCar = frames([[{ ...near, by: 'car' }]], race).race;
+  assert.equal(inCar.offer, CAR.id);
+  assert.equal(frames([[{ ...near, by: 'car' }, true]], inCar).race.armed, CAR.id);
+  // Far from the start on foot the key does nothing.
+  assert.equal(frames([[far, true]]).race.armed, null);
 });
