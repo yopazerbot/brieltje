@@ -1,11 +1,14 @@
 import * as THREE from 'three';
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 import { ARENAS } from '../../shared/arenas.mjs';
+import { cleanTime, formatTime } from '../../shared/goals.mjs';
 import { lang, onLang, t, type PlainKey } from '../i18n';
 import { api, type ZombieRun } from '../net/client';
 import type { World } from './collision';
 import type { Prism } from './houseData';
 import { mood } from './mood';
+import { ROUTE_LIST } from './routes';
+import { menu } from '../start';
 
 /**
  * The village notice board on the church square (Yoshi, 8 Nov 2026: "an in-game highscore board properly embedded
@@ -17,11 +20,18 @@ import { mood } from './mood';
  * paving where people walk, clear of the cars' way through the square, the parking bays, the shop's doors and its
  * open porch, turned to the square and the church's portal.
  *
- * The list is drawn on a canvas (1024 x 768, mipmaps, anisotropy) only when it or the language changes. It is
- * fetched when you come within NEAR m, at most once every REFRESH_MS, never from afar; the server keeps the
- * board 15 s itself. Offline or on a failed fetch it keeps the last list, or says there is nothing yet.
- * Player names are untrusted: they are drawn as text on the canvas (never HTML), without control or direction
- * characters, cut to the name length and to the column.
+ * Since 15 Nov 2026 (Yoshi: "klassement moet alles tonen, ook de races enzo") it pages through the boards in turn, a
+ * page every PAGE_MS while someone is within NEAR m: Zombies, the best times of each timed route, the gnomes found, the
+ * party games won (GET /api/boards); a board with no rows yet is left out, Zombies never. From afar it rests on Zombies.
+ * The title band names the page and says which of how many it is. The fights' totals stay off it (together only).
+ *
+ * The page is drawn on a canvas (1024 x 768, mipmaps, anisotropy) only when it turns, its list or the language
+ * changes: one upload to the graphics chip then, never each frame. The lists are fetched together when you come
+ * within NEAR m, at most once every REFRESH_MS, never from afar; the server keeps them 15 s itself. Offline or on a
+ * failed fetch it keeps the last lists, or says there is nothing yet. Everything from the server is checked before use:
+ * player names are untrusted and drawn as text on the canvas (never HTML), without control or direction characters,
+ * cut to the name length and to the column; times are times the game keeps, counts whole numbers in range, route ids
+ * those of the page's own list (never drawn as they came).
  *
  * Draw calls: two (the board, one material with its baked shade in the vertex colours as the square's furniture
  * has; the glass with the list). No real-time shadow, as the town's models. At dusk and at night the list lights
@@ -34,6 +44,8 @@ export const BOARD_AT = { x: 549.0, z: -761.0, face: [-0.8, -0.6] as [number, nu
 /** Fetch the list within this many metres, at most once a REFRESH_MS. */
 const NEAR = 40;
 const REFRESH_MS = 60_000;
+/** A page stays this long (ms) while someone is within NEAR m. */
+const PAGE_MS = 12_000;
 /** Beyond this the board isn't drawn (the village's own small things go at about this distance). */
 const DRAW = 260;
 /** Use is offered within this many metres of the glass, looking roughly at it. */
@@ -68,6 +80,58 @@ function count(v: unknown): number {
 
 const PLACES: string[] = ARENAS.map((a) => a.id);
 const placeName = (id: string) => (PLACES.includes(id) ? t(`portal.${id}` as PlainKey) : '');
+const routeName = (id: string) => (id === 'bike' ? t('route.bike') : id === 'car' ? t('route.car') : t('route.foot'));
+/** A day as the server writes it (YYYY-MM-DD), else ''. */
+const day = (v: unknown) => (typeof v === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(v) ? v : '');
+const rec = (v: unknown): Record<string, unknown> => (v && typeof v === 'object' && !Array.isArray(v) ? (v as Record<string, unknown>) : {});
+const listOf = (v: unknown): Record<string, unknown>[] => (Array.isArray(v) ? v.slice(0, ROWS).map(rec) : []);
+
+/** The boards of GET /api/boards as the board draws them: checked, each row a name and its numbers. */
+interface Lists {
+  races: Map<string, { name: string; ms: number; at: string }[]>;
+  gnomes: { name: string; n: number; at: string }[];
+  games: { name: string; wins: number }[];
+  total: number;
+}
+
+/** GET /api/boards checked: only the page's own routes, only rows with a drawable name and numbers in range. */
+function readLists(raw: unknown): Lists {
+  const o = rec(raw);
+  const byRoute = rec(o.races);
+  const races = new Map<string, { name: string; ms: number; at: string }[]>();
+  for (const r of ROUTE_LIST) {
+    const list = Object.hasOwn(byRoute, r.id) ? listOf(byRoute[r.id]) : [];
+    races.set(r.id, list.flatMap((v) => {
+      const name = drawableName(typeof v.username === 'string' ? v.username : '');
+      const ms = cleanTime(v.ms);
+      return name && ms !== null ? [{ name, ms, at: day(v.at) }] : [];
+    }));
+  }
+  const total = Math.min(count(o.gnomeTotal), 200);
+  const gnomes = listOf(o.gnomes).flatMap((v) => {
+    const name = drawableName(typeof v.username === 'string' ? v.username : '');
+    const n = count(v.n);
+    return name && n > 0 && (!total || n <= total) ? [{ name, n, at: day(v.at) }] : [];
+  });
+  const games = listOf(o.games).flatMap((v) => {
+    const name = drawableName(typeof v.username === 'string' ? v.username : '');
+    const wins = count(v.wins);
+    return name && wins > 0 ? [{ name, wins }] : [];
+  });
+  return { races, gnomes, games, total };
+}
+
+/** A column of a page: where, how aligned, its head, and the font and colour of its cells. */
+interface Col {
+  x: number;
+  align: CanvasTextAlign;
+  head: string;
+  font: string;
+  color: string;
+}
+
+/** A page of the board: Zombies, a route's times (by its id in the page's own list), the gnomes, the party games. */
+type Page = 'zombies' | 'gnomes' | 'games' | `race:${string}`;
 
 const FONT = '"Alegreya Sans", system-ui, sans-serif';
 /** The brand's heading face (src/brand.css) for the title and the column heads. */
@@ -87,11 +151,19 @@ export class TownBoard {
   private readonly texture: THREE.CanvasTexture;
   private readonly display: THREE.MeshStandardMaterial;
   private rows: ZombieRun[] | null = null;
+  /** The other boards (GET /api/boards), checked; null before the first answer */
+  private lists: Lists | null = null;
   private failed = false;
   private fetchedAt = -Infinity;
+  private boardsAt = -Infinity;
   private fetching = false;
   private updated = '';
   private dirty = true;
+  /** The page shown, and since when (performance.now) while someone is near */
+  private page: Page = 'zombies';
+  private pageSince = 0;
+  /** The pages drawn and redrawn, for the check (tools/dev): how often the canvas went to the graphics chip */
+  draws = 0;
   private readonly ground: number;
   private readonly yaw: number;
 
@@ -162,10 +234,42 @@ export class TownBoard {
     const d = Math.hypot(eye.x - BOARD_AT.x, eye.z - BOARD_AT.z);
     this.group.visible = this.group.children.length > 0 && d < DRAW;
     if (!this.group.visible) return;
-    if (d < NEAR && !this.fetching && performance.now() - this.fetchedAt > REFRESH_MS) void this.fetch();
+    const now = performance.now();
+    // The other boards and the turning pages only once play has begun (the start screen's warm-up near the square
+    // fetches the Zombies list only, as before).
+    const playing = !menu.onStartScreen;
+    const scoresDue = now - this.fetchedAt > REFRESH_MS;
+    const boardsDue = playing && now - this.boardsAt > REFRESH_MS;
+    if (d < NEAR && !this.fetching && (scoresDue || boardsDue)) void this.fetch(scoresDue, boardsDue);
     // A little by day too, so the paper reads white in the board's shade; by night it is lit from behind.
     this.display.emissiveIntensity = 0.12 + 0.24 * Math.min(1, Math.max(0, mood.night));
+    // The pages turn only while someone is near; from afar it rests on Zombies.
+    if (d >= NEAR || !playing) {
+      this.pageSince = now;
+      if (this.page !== 'zombies') this.turnTo('zombies');
+    } else if (now - this.pageSince > PAGE_MS) {
+      this.pageSince = now;
+      const pages = this.pages();
+      this.turnTo(pages[(pages.indexOf(this.page) + 1) % pages.length]);
+    }
     if (this.dirty) this.draw();
+  }
+
+  /** The pages there are now: Zombies always; each other board once it has a row. */
+  private pages(): Page[] {
+    const out: Page[] = ['zombies'];
+    const l = this.lists;
+    if (!l) return out;
+    for (const r of ROUTE_LIST) if (l.races.get(r.id)?.length) out.push(`race:${r.id}`);
+    if (l.gnomes.length) out.push('gnomes');
+    if (l.games.length) out.push('games');
+    return out;
+  }
+
+  private turnTo(page: Page): void {
+    if (page === this.page) return;
+    this.page = page;
+    this.dirty = true;
   }
 
   /** Close to the glass and in front of it: the use key opens the menu's board (main.ts). */
@@ -177,21 +281,25 @@ export class TownBoard {
     return front > 0 && front < REACH && Math.abs(dx * -BOARD_AT.face[1] + dz * BOARD_AT.face[0]) < 1.4;
   }
 
-  private async fetch(): Promise<void> {
+  private async fetch(withScores: boolean, withBoards: boolean): Promise<void> {
     this.fetching = true;
-    this.fetchedAt = performance.now();
+    const now = performance.now();
+    if (withScores) this.fetchedAt = now;
+    if (withBoards) this.boardsAt = now;
     // Drawn again (and sent to the graphics chip again) only when what it shows changed: the list, or whether it came.
-    const was = `${this.failed}|${JSON.stringify(this.rows)}`;
-    try {
-      const { rows } = await api.scores();
+    const shown = () => `${this.failed}|${JSON.stringify(this.rows)}|${JSON.stringify(this.lists && [...this.lists.races, this.lists.gnomes, this.lists.games])}`;
+    const was = shown();
+    // The lists due, together; each keeps its last answer when its fetch fails.
+    const [scores, boards] = await Promise.allSettled([withScores ? api.scores() : null, withBoards ? api.boards() : null]);
+    this.fetching = false;
+    if (withScores && scores.status === 'fulfilled' && scores.value) {
+      const { rows } = scores.value;
       this.rows = Array.isArray(rows) ? rows.slice(0, ROWS) : [];
-      this.failed = false;
-    } catch {
-      this.failed = true; // keep the last list, if there is one
-    } finally {
-      this.fetching = false;
     }
-    if (`${this.failed}|${JSON.stringify(this.rows)}` === was) return;
+    if (withBoards && boards.status === 'fulfilled' && boards.value) this.lists = readLists(boards.value);
+    if (withScores) this.failed = scores.status === 'rejected';
+    if (!this.pages().includes(this.page)) this.turnTo('zombies');
+    if (shown() === was) return;
     // The time the list last changed.
     if (!this.failed) this.updated = new Date().toLocaleTimeString(lang() === 'nl' ? 'nl-BE' : 'en-GB', { hour: '2-digit', minute: '2-digit' });
     this.dirty = true;
@@ -206,10 +314,57 @@ export class TownBoard {
     return `${chars.join('')}…`;
   }
 
-  /** The poster behind the glass. */
+  /**
+   * The page as drawn: its title and sub-line, where the names end, its columns and rows (a name and a text per
+   * column), and what it says with no rows.
+   */
+  private sheet(): { title: string; sub: string; nameEnd: number; cols: Col[]; rows: { name: string; cells: string[] }[]; empty: string } {
+    const comma = lang() === 'nl';
+    const page = this.page;
+    const l = this.lists;
+    const red = '#9b2d24', grey = '#4f544d';
+    if (page.startsWith('race:') && l) {
+      const id = page.slice(5);
+      return {
+        title: t('board.page.race', { route: routeName(id) }), sub: t('board.sub.race'), nameEnd: 600,
+        cols: [{ x: 760, align: 'right', head: t('lb.time'), font: `800 40px ${FONT}`, color: red }, { x: 800, align: 'left', head: t('lb.date'), font: `500 30px ${FONT}`, color: grey }],
+        rows: (l.races.get(id) ?? []).map((r) => ({ name: r.name, cells: [formatTime(r.ms, comma), r.at] })), empty: '',
+      };
+    }
+    if (page === 'gnomes' && l) {
+      return {
+        title: t('board.page.gnomes'), sub: t('board.sub.gnomes'), nameEnd: 560,
+        cols: [{ x: 760, align: 'right', head: t('lb.found'), font: `800 40px ${FONT}`, color: red }, { x: 800, align: 'left', head: t('lb.date'), font: `500 30px ${FONT}`, color: grey }],
+        rows: l.gnomes.map((r) => ({ name: r.name, cells: [l.total ? t('lb.count', { n: r.n, total: l.total }) : String(r.n), r.at] })), empty: '',
+      };
+    }
+    if (page === 'games' && l) {
+      return {
+        title: t('board.page.games'), sub: t('board.sub.games'), nameEnd: 760,
+        cols: [{ x: W - 70, align: 'right', head: t('lb.won'), font: `800 40px ${FONT}`, color: red }],
+        rows: l.games.map((r) => ({ name: r.name, cells: [String(r.wins)] })), empty: '',
+      };
+    }
+    // Zombies: the best runs, as before.
+    return {
+      title: t('board.title'), sub: t('board.sub'), nameEnd: 510,
+      cols: [
+        { x: 610, align: 'right', head: t('lb.wave'), font: `800 40px ${FONT}`, color: red },
+        { x: 762, align: 'right', head: t('lb.beaten'), font: `500 34px ${FONT}`, color: INK },
+        { x: 796, align: 'left', head: t('lb.place'), font: `500 30px ${FONT}`, color: grey },
+      ],
+      rows: (this.rows ?? []).map((r) => ({ name: drawableName(r.username) || '?', cells: [String(count(r.wave)), String(count(r.kills)), placeName(String(r.place))] })),
+      empty: this.rows === null ? t(this.failed ? 'board.offline' : 'board.loading') : t('board.empty'),
+    };
+  }
+
+  /** The poster behind the glass: the page shown. */
   private draw(): void {
     this.dirty = false;
+    this.draws++;
     const g = this.g;
+    const sheet = this.sheet();
+    const pages = this.pages();
     g.save();
     g.textBaseline = 'middle';
     // The paper, with a faint edge.
@@ -218,41 +373,48 @@ export class TownBoard {
     g.strokeStyle = '#cfc8b6';
     g.lineWidth = 6;
     g.strokeRect(3, 3, W - 6, H - 6);
-    // The band with the title.
+    // The band with the title, and on the right which page of how many.
     g.fillStyle = BAND;
     g.fillRect(0, 0, W, 100);
     g.fillStyle = STRIPE;
     g.fillRect(0, 96, W, 6);
+    let titleMax = W - 96;
+    if (pages.length > 1) {
+      g.fillStyle = '#c3c9e2';
+      g.font = `600 34px ${TITLE_FONT}`;
+      g.textAlign = 'right';
+      const of = t('board.pageOf', { n: Math.max(1, pages.indexOf(this.page) + 1), total: pages.length });
+      g.fillText(of, W - 44, 52);
+      titleMax -= g.measureText(of).width + 30;
+    }
     g.fillStyle = CHALK;
     g.font = `600 58px ${TITLE_FONT}`;
     g.textAlign = 'left';
-    g.fillText(this.fit(t('board.title'), W - 96), 44, 52);
+    g.fillText(this.fit(sheet.title, titleMax), 44, 52);
     g.fillStyle = '#5b5f58';
     g.font = `500 28px ${FONT}`;
-    g.fillText(this.fit(t('board.sub'), W - 88), 44, 130);
+    g.fillText(this.fit(sheet.sub, W - 88), 44, 130);
     // The columns.
-    const COL = { rank: 70, name: 116, wave: 610, beaten: 762, place: 796 };
+    const COL = { rank: 70, name: 116 };
     const top = 186; // the first row's upper edge
     const step = 54;
     g.fillStyle = '#7a7d74';
     g.font = `600 21px ${TITLE_FONT}`;
     g.textAlign = 'left';
     g.fillText(t('lb.player').toUpperCase(), COL.name, top - 20);
-    g.textAlign = 'right';
-    g.fillText(t('lb.wave').toUpperCase(), COL.wave, top - 20);
-    g.fillText(t('lb.beaten').toUpperCase(), COL.beaten, top - 20);
-    g.textAlign = 'left';
-    g.fillText(t('lb.place').toUpperCase(), COL.place, top - 20);
+    for (const c of sheet.cols) {
+      g.textAlign = c.align;
+      g.fillText(c.head.toUpperCase(), c.x, top - 20);
+    }
     g.fillStyle = INK;
     g.fillRect(40, top - 5, W - 80, 3);
-    const rows = this.rows ?? [];
+    const rows = sheet.rows;
     if (!rows.length) {
       // Nothing yet, or no answer (yet): one friendly line in the middle.
       g.fillStyle = '#4a4f4a';
       g.font = `500 38px ${FONT}`;
       g.textAlign = 'center';
-      const text = this.rows === null ? t(this.failed ? 'board.offline' : 'board.loading') : t('board.empty');
-      this.wrap(text, W / 2, top + 250, W - 200, 50);
+      this.wrap(sheet.empty, W / 2, top + 250, W - 200, 50);
     }
     for (const [i, r] of rows.entries()) {
       const y = top + step * (i + 0.5);
@@ -274,17 +436,15 @@ export class TownBoard {
       g.textAlign = 'left';
       g.fillStyle = INK;
       g.font = `800 40px ${FONT}`;
-      g.fillText(this.fit(drawableName(r.username) || '?', COL.wave - 100 - COL.name), COL.name, y);
-      g.textAlign = 'right';
-      g.fillStyle = '#9b2d24';
-      g.fillText(String(count(r.wave)), COL.wave, y);
-      g.fillStyle = INK;
-      g.font = `500 34px ${FONT}`;
-      g.fillText(String(count(r.kills)), COL.beaten, y);
-      g.textAlign = 'left';
-      g.fillStyle = '#4f544d';
-      g.font = `500 30px ${FONT}`;
-      g.fillText(this.fit(placeName(String(r.place)), W - 44 - COL.place), COL.place, y);
+      g.fillText(this.fit(r.name, sheet.nameEnd - COL.name), COL.name, y);
+      sheet.cols.forEach((c, k) => {
+        g.textAlign = c.align;
+        g.fillStyle = c.color;
+        g.font = c.font;
+        // A left-aligned column reaches the paper's edge; a right-aligned one starts after the column before it.
+        const room = c.align === 'left' ? W - 44 - c.x : c.x - (k ? sheet.cols[k - 1].x + 20 : sheet.nameEnd + 10);
+        g.fillText(this.fit(r.cells[k] ?? '', room), c.x, y);
+      });
       if (i < rows.length - 1) {
         g.fillStyle = RULE;
         g.fillRect(40, y + step / 2 - 1, W - 80, 2);
