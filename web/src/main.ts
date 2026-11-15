@@ -62,6 +62,7 @@ import { Avatars } from './net/avatars';
 import type { Body } from './net/swat';
 import { Parachutes } from './world/parachutes';
 import { DropView } from './world/dropView';
+import { CarPeople } from './world/carPeople';
 import { DROP, dropFrom, dropStart, HOME_DROP } from '../shared/parachute.mjs';
 import { netClock } from './net/track';
 import { PROTO, readBike, readBrute, readCar, readHorse, readPlayer, readZombie, type Tick } from '../shared/wire.mjs';
@@ -374,10 +375,12 @@ async function getEverythingReady(at: Portal | null, zombiesStart: boolean): Pro
     }
   }
   goals.warming(true); // the routes' rings and the golden gnome drawn once too (world/goals.ts)
+  carPeople.warming(true); // and your figure seated, with the lighter glass (world/carPeople.ts)
   try {
     await warm.frames(views, renderer.info, () => glassProbe.midSet, until, (done) => getReady(0.85 + (0.15 * done) / views.length, () => t('load.ready')));
   } finally {
     goals.warming(false);
+    carPeople.warming(false);
     // Back as it was: the camera in your eyes (as the drop begins), the warm-up's parachute taken away (given no figure,
     // world/parachutes.ts lets it go) and you where you stood, unless something else placed you meanwhile. Play begins
     // from there (begin in loaded).
@@ -894,6 +897,8 @@ let wantCar = false; // asked the server to get in, waiting for its answer
 // The bikes (world/bike.ts): against the main house, at the bungalow, in racks by the village's portals.
 const bikes = new Bikes(world, trunks, () => avatars.figure(me?.username ?? '', myColour()));
 scene.add(bikes.group);
+const carPeople = new CarPeople((c) => avatars.figure(me?.username ?? '', c)); // who sits in the Teslas (world/carPeople.ts)
+scene.add(carPeople.group);
 let bikeWanted: string | null = null; // asked the server for this bike
 // What knocks the street's loose things about: the cars and bikes being ridden (yours and the others', as drawn), and you on foot.
 // One list and one record per mover, kept from frame to frame (no new objects every frame).
@@ -1341,7 +1346,7 @@ function dropPrompt(mode: 'kbm' | 'pad' | 'touch'): string {
   const [dive, open] = mode === 'touch' ? [t('touch.dive'), t('touch.open')] : [key('down', mode), key('jump', mode)];
   return t('prompt.fall', { move, dive, open });
 }
-avatars.seatOf = (name) => horses.seat(name) ?? bikes.seat(name); // a rider sits in the saddle as their horse (or bike) is drawn
+avatars.seatOf = (name) => carPeople.seat(name) ?? horses.seat(name) ?? bikes.seat(name); // a rider sits in the saddle as their horse (or bike, or car) is drawn
 const chat = new Chat();
 chat.paused = () => menu.open; // T and Enter belong to the menu while it is open
 const combat = new Combat();
@@ -2826,6 +2831,7 @@ net.onMessage = (m: ServerMsg) => {
         getOut(false); // the server took it back (you died or respawned), or someone was quicker
       }
       if (!mine) c.setPose(m.car);
+      else c.passenger = m.car.passenger ?? null; // who rides along with you (the ticks skip the car you drive)
       break;
     }
     case 'teslas': // one was placed, moved or taken away (and whoever sat in a car taken away got out first, in a 'car')
@@ -3872,6 +3878,7 @@ renderer.setAnimationLoop((now: number) => {
   }
   netClock.frame(now); // the time the others are drawn at (net/track.ts)
   for (const c of cars) c.update(dt, driving && c === car, camera.position);
+  carPeople.update(dt, cars, driving || riding ? { car, passenger: riding } : null, myColour(), camera); // seated as the cars are drawn
   const cycling = driving || riding ? null : bikes.ridden;
   speedometer.update(!menu.open && combat.alive ? (driving || riding ? car.speed : cycling?.speed ?? null) : null, cycling ? BIKES_DATA.maxSpeed : car.spec.maxSpeed);
   combat.tick(dt);
@@ -4628,6 +4635,7 @@ if (import.meta.env.DEV) {
       cats,
       car,
       cars,
+      carPeople,
       currentCar: () => car,
       teslas: { fits: teslaFits, placed: placedCars },
       getIn,

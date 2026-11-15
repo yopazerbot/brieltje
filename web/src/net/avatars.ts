@@ -619,16 +619,19 @@ export class Avatars {
       // The ground under them: for jumps and falls, and for their shadow patch (only near enough to see).
       const ground = this.groundAt && !t.d && far < 80 ? this.groundAt(x, z, y) : y;
       // On a horse: in its saddle as it is drawn (it bounces and rocks), facing its way.
-      const seat = alive && !t.d && this.seatOf ? this.seatOf(name) : null;
+      const seat = alive && this.seatOf ? this.seatOf(name) : null;
       if (seat?.root) a.root.position.set(seat.root.x, seat.root.y, seat.root.z); // on a bike: leaning with it
       else if (seat) a.root.position.set(seat.x, seat.y - SEAT_HIP, seat.z);
       else a.root.position.set(x + a.push.x, y, z + a.push.y);
       // On a bike the figure faces the bike's way and leans with it, hands on the bars (no gun).
       const cycling = seat?.bike ?? null;
       a.root.rotation.set(cycling ? seat!.pitch ?? 0 : 0, cycling ? seat!.yaw + Math.PI : yaw, cycling ? seat!.roll ?? 0 : 0, 'YXZ');
+      if (seat?.quat) a.root.quaternion.copy(seat.quat); // in a car: with it, leaning back in the seat
+      const sitting = seat?.car ?? null;
       a.body.animate(dt, {
-        speed: a.speed, forward: a.forward, side: a.side, armed: t.armed && !cycling, aim: t.aim, alive, crouch: t.c && !seat, flying: t.flying,
-        pitch, weapon: t.w as WeaponId, yaw: cycling ? seat!.yaw + Math.PI : yaw, air: Math.max(0, y - ground), vy: a.vy, seat: seat ? seat.yaw + Math.PI : null, far, bike: cycling,
+        speed: a.speed, forward: a.forward, side: a.side, armed: t.armed && !cycling && !sitting, aim: t.aim, alive, crouch: t.c && !seat, flying: t.flying,
+        pitch: sitting ? seat!.pitch ?? 0 : pitch, weapon: t.w as WeaponId, yaw: cycling || sitting ? seat!.yaw + Math.PI : yaw, air: Math.max(0, y - ground), vy: a.vy,
+        seat: seat ? seat.yaw + Math.PI : null, far, bike: cycling, car: sitting,
       });
       this.onFigure(name, a.root, a.body, a.color, !!t.chute && alive && !t.d, !!t.open, ground === y && far >= 80 ? 99 : Math.max(0, y - ground), dt); // far off the ground isn't looked up: not flaring
 
@@ -644,8 +647,9 @@ export class Avatars {
       }
       if (step && alive && !t.flying && !t.d && !seat && a.speed > 0.6 && a.root.visible) this.onStep(name, a.root.position, a.speed);
 
-      // Just respawned: blink while they can't be hurt (not under a parachute: it shows why). In the car only their name shows, above it.
-      a.body.root.visible = !t.d && (!(t.safe && alive && !t.chute) || Math.floor(now / 120) % 2 === 0) && name !== this.hidden;
+      // Just respawned: blink while they can't be hurt (not under a parachute: it shows why). In a car in their seat (world/carPeople.ts) while
+      // its full model shows, else only their name, above it.
+      a.body.root.visible = (!t.d || !!sitting) && (!(t.safe && alive && !t.chute) || Math.floor(now / 120) % 2 === 0) && name !== this.hidden;
       a.tag.visible = alive && this.showNames && name !== this.hidden;
       // A sniper rifle aimed your way: its scope catches the light, a fair warning from 12 m out. It
       // is drawn in the world, so a wall between you hides it.
