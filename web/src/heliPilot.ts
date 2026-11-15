@@ -134,11 +134,15 @@ export class HeliPilot {
    * the rotor's disc (shared/heli.mjs heliJump), with the machine's speed within the drop's limits; the machine flies
    * itself away and home.
    */
+  /** The machine you last jumped out of: its pad is where a jump cut short puts you (leaveNow) */
+  private jumpedOff: Heli | null = null;
+
   private jump(m: Heli): boolean {
     const j = heliJump(m.s, HELIS.size);
     const v = jumpStart(m.s.vx, m.s.vz, m.s.vy, j.push, m.s.h);
     this.fov = m.fovScale;
     m.jumpedFrom();
+    this.jumpedOff = m;
     this.heli = null;
     this.jumper.start({ x: j.x, z: j.z, feet: j.y, yaw: m.s.yaw, side: j.side }, v);
     return true;
@@ -156,7 +160,7 @@ export class HeliPilot {
     const fall = this.jumper.at();
     if (fall) {
       const y = this.world.groundAt(fall.x, fall.z, fall.feet, 0).y;
-      const pad = this.machines[0];
+      const pad = this.jumpedOff ?? this.machines[0];
       const spot = homeAt(fall.x, fall.z, y) !== null || inEndGarden(fall.x, fall.z, y) ? (pad.exitSpot() ?? { x: pad.park.x + 3, y: pad.s.y, z: pad.park.z }) : { x: fall.x, y, z: fall.z };
       this.placePlayer(spot.x, spot.z, spot.y, pad.s.yaw);
     }

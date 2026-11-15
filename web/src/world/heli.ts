@@ -712,6 +712,7 @@ export class Heli {
    * pilot's code puts it back on its pad.
    */
   jumpedFrom(): void {
+    // (The seated figures' branch clears the pilot's seat here: seats[0] = null.)
     this.flown = false;
     this.away = 0;
     this.leaving = false;
