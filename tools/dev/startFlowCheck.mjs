@@ -1,8 +1,8 @@
 // The start screen end to end, headless (tools/dev/cdp.mjs): every way from opening the page to playing, through the
 // three steps (who, alone or together, the game), with the keyboard and mouse, a controller (a fake one in the page)
 // or touch, then "Play again as before" after a reload. After each start it watches the first seconds of play:
-// the mode and the place, no parachute in Zombies, no weapon in Explore, the guns chosen in Action and Paintball (step 3's
-// chips), no card opening by itself, the game bar, and no console errors.
+// the mode and the place, no parachute in Zombies, no weapon in Explore, all four guns in Action and Paintball and the
+// pistol only in Zombies (no guns row anywhere), no card opening by itself, the game bar, and no console errors.
 //
 //   ADMIN_PASSWORD=... node tools/dev/startFlowCheck.mjs --url http://localhost:5580/ --api http://localhost:8810
 //          [--only zombies-house,explore-church] [--shots <folder>] [--port 10240] [--list]
@@ -68,7 +68,7 @@ async function padPress(b, i) {
   await b.evaluate(`(() => { const k = window.__pad.buttons[${i}]; k.pressed = false; k.value = 0; window.__pad.timestamp++; })()`, false);
   await sleep(160);
 }
-const active = (b) => b.evaluate("(() => { const e = document.activeElement; return e ? (e.id || e.dataset.mp || e.dataset.play || e.dataset.startMode || (e.dataset.gun && `gun-${e.dataset.gun}`) || e.tagName) : null; })()", false);
+const active = (b) => b.evaluate("(() => { const e = document.activeElement; return e ? (e.id || e.dataset.mp || e.dataset.play || e.dataset.startMode || e.tagName) : null; })()", false);
 
 async function open(b, url, phone) {
   if (phone) {
@@ -90,30 +90,6 @@ async function tap(b, sel) {
   await b.send('Input.dispatchTouchEvent', { type: 'touchStart', touchPoints: [{ x: r.x, y: r.y }] });
   await b.send('Input.dispatchTouchEvent', { type: 'touchEnd', touchPoints: [] });
   await sleep(200);
-}
-/** Step 3's gun chips set to `guns`: the ones not wanted put back first, then the wanted ones picked. */
-async function setGuns(b, guns, touch) {
-  const now = await b.evaluate("[...document.querySelectorAll('#guns-start .gun-chip')].map((e) => [e.dataset.gun, e.getAttribute('aria-pressed') === 'true'])", false);
-  if (!now.length) throw new Error('no gun chips on step 3');
-  const todo = [...now.filter(([w, on]) => on && !guns.includes(w)), ...now.filter(([w, on]) => !on && guns.includes(w))].map(([w]) => w);
-  for (const w of todo) await (touch ? tap(b, `#guns-start [data-gun=${w}]`) : click(b, `#guns-start [data-gun=${w}]`));
-  const after = await b.evaluate("[...document.querySelectorAll('#guns-start .gun-chip[aria-pressed=true]')].map((e) => e.dataset.gun).sort().join()", false);
-  if (after !== [...guns].sort().join()) throw new Error(`the chips show ${after || 'none'}, not ${guns.join()}`);
-}
-/** With the controller on step 3: the D-pad up from the Controller button to the last chip, ✕ toggles it, down again. */
-async function padGuns(b) {
-  let f = await active(b);
-  for (let i = 0; i < 8 && !String(f).startsWith('gun-'); i++) {
-    await padPress(b, 12);
-    f = await active(b);
-  }
-  if (!String(f).startsWith('gun-')) throw new Error(`D-pad up never reached the chips (focus on ${f})`);
-  await padPress(b, 0);
-  for (let i = 0; i < 8 && f !== 'choose-pad'; i++) {
-    await padPress(b, 13);
-    f = await active(b);
-  }
-  return f;
 }
 async function waitStep(b, n, ms = 15000) {
   await b.waitFor(`Number(document.getElementById('start-panel').dataset.step) === ${n}`, ms);
@@ -156,7 +132,6 @@ async function walkSteps(b, c) {
   } else {
     await (c.tap ? tap(b, `#mode-start [data-play=${c.mode}]`) : click(b, `#mode-start [data-play=${c.mode}]`));
     if (c.place) await setValue(b, 'spawn', c.place);
-    if (c.guns) await setGuns(b, c.guns, c.tap);
   }
 }
 
@@ -208,7 +183,6 @@ async function start(b, c) {
   if (c.input === 'pad') {
     const f = await active(b);
     if (f !== 'choose-pad') throw new Error(`step 3's focus is on ${f}, not the Controller button`);
-    if (c.padGuns && (await padGuns(b)) !== 'choose-pad') throw new Error(`D-pad down from the chips never reached the Controller button (focus on ${await active(b)})`);
     await padPress(b, 0);
   } else if (c.tap) await tap(b, `#choose-${c.input}`);
   else await click(b, `#choose-${c.input}`);
@@ -230,7 +204,7 @@ async function watch(b, c, seconds = 9) {
         paint: document.body.classList.contains('paintball'),
         adminTab: !document.getElementById('tab-admin').classList.contains('hidden'),
         acct: [...document.querySelectorAll('.acct-manage')].some((e) => !e.classList.contains('hidden')),
-        owned: [...briel.weapon.owned].sort(), guns: briel.guns(), stored: JSON.parse(localStorage.getItem('briel.loadout') ?? 'null'),
+        owned: [...briel.weapon.owned].sort(), stored: localStorage.getItem('briel.loadout'), row: !!document.querySelector('#guns-start, #guns-pause, .gun-pick, .gun-chip'),
         // Any card open over the game but the controls card (the start's own): nothing is to open by itself.
         dialog: [...document.querySelectorAll('[role=dialog]')].filter((e) => e.id !== 'controls-card' && e.getClientRects().length > 0 && getComputedStyle(e).visibility !== 'hidden').map((e) => e.id || e.className).join(','),
         focus: document.activeElement ? (document.activeElement.id || document.activeElement.tagName) : null };
@@ -282,15 +256,16 @@ function judge(c, s) {
   if (dialogs.length) bad.push(`a card showed during play: ${dialogs.join(', ')}`);
   const foci = [...new Set(s.map((x) => x.focus))];
   if (foci.length > 1) bad.push(`the focus moved during play: ${foci.join(' > ')}`);
-  // In Action and Paintball the guns in hand are the pistol, the bazooka (alone, or the admin's) and the pick; together
-  // the server holds that pick.
+  // In Action and Paintball every gun is in hand: the pistol, the rifle, the shotgun, the sniper rifle, and the bazooka
+  // alone or for the admin (together the server's 'weapons' on joining); in a Zombies game the pistol only (a room's
+  // owner waits in it before its game: roomTogether looks once the game began). No guns row is on the page, and the old
+  // stored pick is gone.
   if (c.mode === 'action' || c.mode === 'paintball') {
-    const pick = last.stored ?? ['rifle'];
-    if (c.guns && [...pick].sort().join() !== [...c.guns].sort().join()) bad.push(`the stored pick is ${pick.join('+')}, not ${c.guns.join('+')}`);
-    const want = ['pistol', ...(c.mp === 'solo' || c.who === 'admin' ? ['bazooka'] : []), ...pick].sort().join('+');
+    const want = ['pistol', 'rifle', 'shotgun', 'sniper', ...(c.mp === 'solo' || c.who === 'admin' ? ['bazooka'] : [])].sort().join('+');
     if (last.owned.join('+') !== want) bad.push(`guns in hand ${last.owned.join('+')}, not ${want}`);
-    if (c.mp === 'multi' && [...(last.guns.server ?? [])].sort().join() !== [...pick].sort().join()) bad.push(`the server holds ${(last.guns.server ?? ['nothing']).join('+')}, not ${pick.join('+')}`);
-  }
+  } else if (c.mode === 'zombies' && last.kind === 'zombies' && last.owned.join('+') !== 'pistol') bad.push(`guns in hand in Zombies ${last.owned.join('+')}, not the pistol only`);
+  if (last.row) bad.push('a guns row on the page');
+  if (last.stored !== null) bad.push(`the old pick is still stored (${last.stored})`);
   if (c.lang && last.lang !== c.lang) bad.push(`page in ${last.lang}, not ${c.lang}`);
   // A guest never gets an account's or the admin's options; an account its own, the admin the admin's tab.
   const role = c.who === 'admin' ? 'admin' : ['login', 'cookie', 'phone'].includes(c.who) ? 'player' : 'guest';
@@ -378,12 +353,17 @@ async function soloAfterwards(b) {
   await b.waitFor('!briel.zombiesSolo.state()', 40000).catch(() => bad.push('the game did not end after you went down'));
   const end = await state();
   const home = zombiesStart('house');
+  // Zombies over: every gun again (alone the bazooka too).
+  const allGuns = 'bazooka+pistol+rifle+shotgun+sniper';
+  const ownedNow = () => b.evaluate('[...briel.weapon.owned].sort().join("+")', false);
+  if ((await ownedNow()) !== allGuns) bad.push(`after the game the guns in hand are ${await ownedNow()}, not ${allGuns}`);
   if (!end.alive) bad.push('still down after the end');
   if (Math.hypot(end.x - home.x, end.z - home.z) > home.r) bad.push('not back at the start after the end');
   await noDrop('after the end', 2000);
   // Zombies again from the Play tab, then stopped from it: where you stand, on your feet.
   await b.evaluate("document.getElementById('zombies-place').value = 'house'; document.getElementById('zombies-btn').click()", false);
   await b.waitFor("briel.zombiesSolo.state()?.arena.id === 'house'", 20000).catch(() => bad.push('the Play tab did not start Zombies'));
+  if ((await ownedNow()) !== 'pistol') bad.push(`Zombies began with ${await ownedNow()} in hand, not the pistol only`);
   await noDrop('Zombies from the Play tab', 2000);
   await b.evaluate("document.getElementById('zombies-btn').click()", false);
   await sleep(500);
@@ -391,6 +371,7 @@ async function soloAfterwards(b) {
   if (stopped.solo) bad.push('the Play tab did not stop Zombies');
   if (stopped.kind === 'zombies') bad.push('the Zombies bar stayed after stopping');
   await noDrop('after stopping', 1500);
+  if ((await ownedNow()) !== allGuns) bad.push(`after stopping Zombies the guns in hand are ${await ownedNow()}, not ${allGuns}`);
   // Explore from the Play tab: no weapon.
   await b.evaluate("document.querySelector('#pause-panel [data-play=explore], [data-play=explore]').click()", false);
   await sleep(300);
@@ -434,6 +415,10 @@ async function roomTogether(place) {
         // Both in: the owner starts the game from the Together tab, as its hint says.
         await browsers[0].evaluate("document.getElementById('room-start').click()", false);
         await browsers[0].waitFor("briel.games.view.kind === 'zombies'", 15000);
+        // The owner had every gun while waiting in the room; with the game begun, the pistol only.
+        await browsers[0].sleep(1500);
+        const guns = await browsers[0].evaluate('[...briel.weapon.owned].sort().join("+")', false);
+        if (guns !== 'pistol') out[0].first = `${out[0].first === 'ok' ? '' : `${out[0].first}; `}with the game begun the owner holds ${guns}, not the pistol only`;
       }
       const s = await watch(b, c, 8);
       if (o.shots) await b.screenshot(join(o.shots, `${c.name}.png`));
@@ -462,14 +447,15 @@ const cases = [
   { name: 'explore-football', who: 'guest', mp: 'solo', mode: 'explore', place: 'football', input: 'kbm', again: false },
   { name: 'paintball-house', who: 'guest', mp: 'solo', mode: 'paintball', place: 'house', input: 'kbm' },
   { name: 'action-school', who: 'guest', mp: 'solo', mode: 'action', place: 'school', input: 'kbm' },
-  // The guns chosen on step 3: by mouse, by finger on a phone held sideways, and with only a controller.
-  { name: 'action-church-guns', who: 'guest', mp: 'solo', mode: 'action', place: 'church', input: 'kbm', guns: ['shotgun', 'sniper'] },
-  { name: 'touch-paintball-guns', who: 'guest', mp: 'solo', mode: 'paintball', place: 'church', input: 'touch', tap: true, guns: ['shotgun', 'sniper'], again: false },
-  { name: 'pad-action-guns', who: 'guest', mp: 'solo', mode: 'action', place: 'church', input: 'pad', padGuns: true, before: async (b) => {
-    // Action picked before (else a first visit's controller lands on Zombies), and the first choice of guns, the rifle.
-    await js(b, "localStorage.setItem('briel.startMode', 'action'); localStorage.setItem('briel.playMode', 'action'); localStorage.removeItem('briel.loadout');");
-    await open(b, o.url, false);
-  }, after: async (b, s) => ([...(s.at(-1).stored ?? [])].sort().join() === 'rifle,sniper' ? [] : [`the controller's pick is ${(s.at(-1).stored ?? []).join('+')}, not rifle+sniper`]) },
+  // All four guns from the start: with the mouse, by finger on a phone held sideways, and with only a controller, each
+  // with a pick from before kept on the device (it is removed, and changes nothing).
+  ...[['action-church-guns', 'action', 'kbm'], ['touch-paintball-guns', 'paintball', 'touch'], ['pad-action-guns', 'action', 'pad']].map(([name, mode, input]) => ({
+    name, who: 'guest', mp: 'solo', mode, place: 'church', input, tap: input === 'touch', again: input !== 'touch', before: async (b) => {
+      // Action or Paintball picked before (else a first visit's controller lands on Zombies), and an old pick of one gun.
+      await js(b, `localStorage.setItem('briel.startMode', '${mode}'); localStorage.setItem('briel.playMode', '${mode}'); localStorage.setItem('briel.loadout', '["sniper"]');`);
+      await open(b, o.url, false);
+    },
+  })),
   { name: 'zombies-church-nl', who: 'guest', mp: 'solo', mode: 'zombies', place: 'church', input: 'kbm', lang: 'nl', again: false },
   { name: 'zombies-sparrenhof-low', who: 'guest', mp: 'solo', mode: 'zombies', place: 'sparrenhof', input: 'kbm', again: false, before: async (b) => {
     await b.evaluate("localStorage.setItem('briel.graphics', 'low')", false); // the Low preset (src/graphics.ts)
