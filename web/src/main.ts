@@ -150,6 +150,7 @@ import { bakeLight, setBakeDetail } from './world/bakedLight';
 import { setWindowDetail, setWindowNight } from './world/windows';
 import { wet, WetMirror, wetOnModel } from './world/wetGround';
 import { glass as glassLook, GlassProbe, glassOnModel } from './world/glassLook';
+import { trackVillageHouse, VILLAGE_HOUSES } from './world/villageHouses';
 import { mood } from './world/mood';
 import { loadWalkIn, type WalkIn } from './world/walkIn';
 import { Insides, type InsidePack } from './world/insides';
@@ -4170,7 +4171,7 @@ async function buildVillage(): Promise<void> {
   const town = import.meta.env.DEV && location.search.includes('notown')
     ? Promise.reject(new Error('left out'))
     : import('./world/townCentre').then(({ loadTown }) => loadTown(renderer, (x, z) => house.ground + terrain.height(x, z)));
-  const models = (await Promise.all([loadChurch().catch(() => null), loadModel('/models/school.glb').catch(() => null), loadModel('/models/dormer_house.glb').catch(() => null), loadModel('/models/sparrenhof.glb').catch(() => null), loadModel('/models/tree_huts.glb').catch(() => null), loadModel('/models/kouter_house.glb').catch(() => null), (noFootball ? Promise.resolve(null) : loadModel('/models/football.glb').catch(() => null)), town.catch(() => null)])).filter(
+  const models = (await Promise.all([loadChurch().catch(() => null), loadModel('/models/school.glb').catch(() => null), loadModel('/models/dormer_house.glb').catch(() => null), loadModel('/models/sparrenhof.glb').catch(() => null), loadModel('/models/tree_huts.glb').catch(() => null), loadModel('/models/kouter_house.glb').catch(() => null), ...VILLAGE_HOUSES.map(([n]) => loadModel(`/models/${n}.glb`).catch(() => null)), (noFootball ? Promise.resolve(null) : loadModel('/models/football.glb').catch(() => null)), town.catch(() => null)])).filter(
     (m): m is THREE.Object3D => m !== null,
   );
   const fcModel = models.find((m) => m.userData.landmark === 'football');
@@ -4266,7 +4267,7 @@ async function buildVillage(): Promise<void> {
   await bakes;
   for (const m of models) {
     tiles.group.add(m); // a caster for the village's ground shading, a target for shots
-    tiles.track(m, undefined, String(m.userData.landmark).startsWith('molenhoek_end') || m.userData.landmark === 'kouter_house' ? 350 : Infinity);
+    if (!trackVillageHouse(tiles, m)) tiles.track(m, undefined, String(m.userData.landmark).startsWith('molenhoek_end') || m.userData.landmark === 'kouter_house' ? 350 : Infinity);
   }
   // The end house's own walls, floors and doors take the place of its plain block once its inside has come (until then
   // the plain block stands, and its doors, windows and lawn are the shell's).

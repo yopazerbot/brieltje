@@ -141,6 +141,8 @@ const MODEL_PARTS: [RegExp, SnowLook][] = [
   [/^caf_fittings$/, {}], // its metal roofs, the terrace's tables, the posts
   [/^kouter_(roof|gravel|paving|stone)$/, {}], // the house on the Kouter, which has no bake
   [/^kouter_leaves$/, { amount: 0.9, steep: true }],
+  [/^vh_(roof|paving|gravel|stone)$/, {}], // the hand-made houses among the generated ones (world/villageHouses.ts)
+  [/^vh_hedge$/, { amount: 0.9, steep: true }],
   [/_hs_slab$/, { amount: 0.85 }], // the terraces of the houses at home
   [/_hs_trim$/, {}], // their flat roofs' decks, copings and sills
 ];

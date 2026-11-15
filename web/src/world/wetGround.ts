@@ -225,6 +225,7 @@ const MODEL_PARTS: [RegExp, WetLook][] = [
   [/^school_yard$/, {}], // the playground
   [/^caf_slabs$/, {}], // the café's path of slabs
   [/^kouter_(gravel|paving)$/, { dark: 0.65 }], // the house on the Kouter's
+  [/^vh_(paving|gravel)$/, { dark: 0.65 }], // the hand-made houses' yards and paths (world/villageHouses.ts)
   [/_hs_slab$/, {}], // the terraces of the houses at home
 ];
 
