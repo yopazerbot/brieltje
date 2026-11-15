@@ -239,7 +239,15 @@ const KNOWN_DOORS = new Set([...HOUSE.doors, ...['molenhoek_end', 'kapellenhoek_
 /** Is `id` one of the doors of the game? */
 export const knownDoor = (id) => KNOWN_DOORS.has(id);
 // Which of the code-locked homes a pane belongs to (shared/homes.mjs, server/homeGate.mjs).
-const PANE_HOME = makePaneHomes({ prisms: HOUSE.prisms, doors: HOUSE.doors });
+// A walked-into house's ranges only as far as its real panes go: its shell's windows, its shell's and its inside's door
+// glass (the inside's only with the private data on this server). A number past them is no pane: it would only fill the
+// broken list.
+const glassLeaves = (doors) => doors.reduce((n, d) => n + d.panels.filter((p) => p.glass).length, 0);
+export const WALK_IN_PANES = Object.fromEntries(['molenhoek_end', 'kapellenhoek_home'].map((id) => {
+  const shell = houseData(`${id}_shell.json`);
+  return [id, { windows: shell.panes.length, doorGlass: glassLeaves(shell.doors) + glassLeaves(packFor(id)?.doors ?? []) }];
+}));
+const PANE_HOME = makePaneHomes({ prisms: HOUSE.prisms, doors: HOUSE.doors, walkIns: WALK_IN_PANES });
 /**
  * The cars parked along the village's streets (src/data/roads.json, drawn by src/world/traffic.ts):
  * each a block of its model's size, as the page makes it (the sizes are in public/models/traffic.glb).

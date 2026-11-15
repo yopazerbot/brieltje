@@ -179,9 +179,11 @@ const WINDOW_REACH = 0.7;
  * at all. `prisms` and `doors`: the house data (the shell, and the insides once they are there). A window is the home's
  * whose bands, at the window's heights, it stands in or within WINDOW_REACH of; door glass is its door's home. The ranges
  * of a walked-into house (WALK_INS: its windows and its door glass) are all that house's: nothing else adds panes there
- * (src/world/walkIn.ts).
+ * (src/world/walkIn.ts). `walkIns`: { [home]: { windows, doorGlass } }, how many of each a walked-into house really has (its
+ * shell's panes; its shell's and its inside's glass leaves): only those numbers of its ranges are a pane. Without it (the
+ * page) the whole ranges.
  */
-export function makePaneHomes({ prisms, doors }) {
+export function makePaneHomes({ prisms, doors, walkIns = null }) {
   const table = new Map();
   for (const p of prisms) {
     if (p.m !== 'glass' || !Number.isInteger(p.glass) || !p.p?.[0]?.length) continue;
@@ -201,10 +203,12 @@ export function makePaneHomes({ prisms, doors }) {
       if (panel.glass && Number.isInteger(panel.glassNo)) table.set(panel.glassNo, homeOfDoor(d.id));
     }
   }
-  const ranges = Object.entries(WALK_INS);
+  const ranges = Object.entries(WALK_INS).map(([id, r]) => [id, r, walkIns?.[id] ?? { windows: r.size, doorGlass: r.size }]);
   const walkedInto = (i) => {
     if (!Number.isInteger(i)) return null;
-    for (const [id, r] of ranges) if ((i >= r.glass && i < r.glass + r.size) || (i >= r.doorGlass && i < r.doorGlass + r.size)) return id;
+    for (const [id, r, n] of ranges) {
+      if ((i >= r.glass && i < r.glass + Math.min(r.size, n.windows)) || (i >= r.doorGlass && i < r.doorGlass + Math.min(r.size, n.doorGlass))) return id;
+    }
     return null;
   };
   const home = (i) => table.get(i) ?? walkedInto(i);
