@@ -174,16 +174,19 @@ export class Loot {
     return true;
   }
 
-  /** Check placement with the same rules on a disposable copy of the inventories and placed objects. */
-  preview(kind, name, player, at, now) {
+  /**
+   * Check placement with the same rules on a disposable copy of the inventories and placed objects. `hidden`: (x, y, z) =>
+   * true where the player may not put anything (inside a home they may not see into: server/homeGate.mjs), as for placing.
+   */
+  preview(kind, name, player, at, now, hidden = null) {
     const probe = new Loot(this.nav, this.rand);
     const kit = this.kits.get(name) ?? { ammo: [], scope: false, claymores: 0, stakes: 0, turrets: 0, armor: 0, nades: 0 };
     probe.kits.set(name, { ...kit, ammo: [...kit.ammo] });
     probe.mines = new Map(this.mines);
     probe.rows = new Map(this.rows);
     probe.turrets = new Map(this.turrets);
-    const result = kind === 'stakes' ? probe.placeStakes(name, player, at)
-      : kind === 'turret' ? probe.placeTurret(name, player, at, now) : probe.place(name, player, at, now);
+    const result = kind === 'stakes' ? probe.placeStakes(name, player, at, hidden)
+      : kind === 'turret' ? probe.placeTurret(name, player, at, now, hidden) : probe.place(name, player, at, now, hidden);
     return { ok: !result.why, why: result.why, a: result.row?.a, b: result.row?.b };
   }
 
@@ -301,15 +304,15 @@ export class Loot {
    * Player `name`, standing at `p`, places a claymore at `at` ({ x, y, z, yaw }: facing where they
    * look). On a floor the zombies walk (not in a wall, a hedge, a car or the air) near their feet, not
    * on another one. Returns { mine } or { why }: 'none' (none carried), 'max' (LOOT.placed down
-   * already) or 'spot'.
+   * already) or 'spot'. `hidden`: see spot.
    */
-  place(name, p, at, now) {
+  place(name, p, at, now, hidden = null) {
     const k = this.kit(name);
     if (k.claymores < 1) return { why: 'none' };
     let down = 0;
     for (const m of this.mines.values()) if (m.owner === name) down++;
     if (down >= LOOT.placed) return { why: 'max' };
-    const s = this.spot(p, at);
+    const s = this.spot(p, at, hidden);
     if (!s) return { why: 'spot' };
     for (const m of this.mines.values()) if (Math.hypot(m.x - s.x, m.z - s.z) < LOOT.apart) return { why: 'spot' };
     k.claymores--;
@@ -321,15 +324,18 @@ export class Loot {
   /**
    * Where a player at `p` may put something at `at` ({ x, y, z, yaw }): within reach of their feet, on a
    * floor the zombies walk (not in a wall, a hedge, a car or the air). { x, y (the floor's), z, yaw, node }, or null.
+   * `hidden`: (x, y, z) => true where this player may put nothing (a home they may not see into): asked of the spot as it
+   * ends up (on its floor), before anything else is looked at there, so the answer is the one for no room.
    */
-  spot(p, at) {
+  spot(p, at, hidden = null) {
     const { x, y, z, yaw } = at ?? {};
     if (![x, y, z, yaw].every((v) => typeof v === 'number' && Number.isFinite(v))) return null;
     if (Math.hypot(x - p.x, z - p.z) > LOOT.placeReach || Math.abs(y - p.y) > LOOT.placeRise) return null;
+    if (hidden?.(x, y, z)) return null; // where it is asked for: nothing of the grid there is looked at
     const node = this.nav.locate(x, y + 0.3, z, 0.1);
     if (node < 0) return null;
     const fy = this.nav.y(node, x, z);
-    if (Math.abs(fy - y) > 0.4) return null;
+    if (Math.abs(fy - y) > 0.4 || hidden?.(x, fy, z)) return null; // and on the floor it lands on
     return { x, y: fy, z, yaw: Math.round(Math.atan2(Math.sin(yaw), Math.cos(yaw)) * 1000) / 1000, node };
   }
 
@@ -337,15 +343,16 @@ export class Loot {
    * Player `name`, standing at `p`, plants a row of the stakes they carry at `at` ({ x, y, z, yaw }:
    * across where they look, the stakes leaning that way). Its middle stands as a claymore would, not on
    * another row's; from there it goes on stake by stake to each side, LOOT.stakeHalf at most, as far as
-   * a zombie could walk along it at that height (a doorway takes as many as fit). { row } or { why } as place.
+   * a zombie could walk along it at that height (a doorway takes as many as fit), and never into a place `hidden` (see
+   * spot): the row ends before it. { row } or { why } as place.
    */
-  placeStakes(name, p, at) {
+  placeStakes(name, p, at, hidden = null) {
     const k = this.kit(name);
     if (k.stakes < 1) return { why: 'none' };
     let down = 0;
     for (const r of this.rows.values()) if (r.owner === name) down++;
     if (down >= LOOT.stakesPlaced || this.rows.size >= LOOT.stakesAll) return { why: 'max' };
-    const s = this.spot(p, at);
+    const s = this.spot(p, at, hidden);
     if (!s) return { why: 'spot' };
     for (const r of this.rows.values()) if (Math.hypot(r.x - s.x, r.z - s.z) < LOOT.stakesApart) return { why: 'spot' };
     const ux = Math.cos(s.yaw), uz = -Math.sin(s.yaw); // along the row (the game's yaw: forward is -z at 0)
@@ -353,6 +360,7 @@ export class Loot {
       let d = 0;
       for (let t = LOOT.stakeGap; t <= LOOT.stakeHalf + 1e-6; t += LOOT.stakeGap) {
         const x = s.x + ux * t * dir, z = s.z + uz * t * dir;
+        if (hidden?.(x, s.y, z)) break; // not into a home the player may not see into (nothing there is looked at)
         const end = this.nav.walk(s.node, s.x, s.z, x, z);
         if (end < 0 || Math.abs(this.nav.y(end, x, z) - s.y) > 0.35) break;
         d = t;
@@ -371,12 +379,12 @@ export class Loot {
    * claymore could stand, a metre from another turret. One up per player (`max`), LOOT.turretsAll in
    * all (`all`). { turret } or { why }: 'none', 'max', 'all' or 'spot'.
    */
-  placeTurret(name, p, at, now) {
+  placeTurret(name, p, at, now, hidden = null) {
     const k = this.kit(name);
     if (k.turrets < 1) return { why: 'none' };
     for (const t of this.turrets.values()) if (t.owner === name) return { why: 'max' };
     if (this.turrets.size >= LOOT.turretsAll) return { why: 'all' };
-    const s = this.spot(p, at);
+    const s = this.spot(p, at, hidden);
     if (!s) return { why: 'spot' };
     for (const t of this.turrets.values()) if (Math.hypot(t.x - s.x, t.z - s.z) < 1) return { why: 'spot' };
     k.turrets--;

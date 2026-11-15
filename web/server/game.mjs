@@ -1127,8 +1127,8 @@ export class Game {
       if (!['claymore', 'stakes', 'turret'].includes(m.kind) || !Number.isSafeInteger(m.id) || m.id < 0 || m.id > 1000000000) return;
       if (![m.x, m.y, m.z, m.yaw].every((v) => typeof v === 'number' && Number.isFinite(v))) return;
       player.lastPreview = now;
-      // Inside a home they may not see into: the same answer as for no room, whatever is in there (no oracle through the wall).
-      const result = this.gate.hidesAt(m.x, m.z, m.y, player) ? { ok: false, why: 'spot' } : game.loot.preview(m.kind, name, player.state, m, now);
+      // Inside a home they may not see into, asked for or landed on: the answer for no room (the same rule as placing).
+      const result = game.loot.preview(m.kind, name, player.state, m, now, game.hiddenFor(player));
       this.send(player.ws, { t: 'placement', id: m.id, ...result });
     } else if (m.t === 'revive') {
       // Helping a downed teammate up, or letting go (server/zombies.mjs help: the time on the server's clock).

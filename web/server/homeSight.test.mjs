@@ -4,6 +4,7 @@ import { Game } from './game.mjs';
 import { readFileSync } from 'node:fs';
 import { distanceToHome, HOMES, homeAt } from '../shared/homes.mjs';
 import { KICK, PITCHES } from '../shared/ball.mjs';
+import { Loot, LOOT } from '../shared/loot.mjs';
 import { PROTO } from '../shared/wire.mjs';
 
 // A player inside a code-locked home is out of sight for everyone without that home's right (server/homeGate.mjs
@@ -482,11 +483,41 @@ for (const h of HOMES) {
     assert.deepEqual(seen.mines, []);
     assert.equal(game.lootFor(z, owner).items.length, 2);
     assert.equal(game.lootInside({ items: [z.items[1]], mines: [], stakes: [], turrets: [], lulls: [] }), false);
-    // The preview through the wall: the same answer as no room.
-    Object.defineProperty(game.modes, 'zombies', { value: { loot: { preview: () => ({ ok: true }) } } });
-    other.lastPreview = 0;
-    game.handle('other', other, JSON.stringify({ t: 'placement', kind: 'claymore', id: 1, x: inside.x, y: inside.y, z: inside.z, yaw: 0 }));
-    assert.equal(other.got.find((m) => m.t === 'placement')?.ok, false);
+    // Placing and its preview: the rule is asked of the spot where it lands (on its floor), and a row of stakes never
+    // reaches in. A flat floor everywhere (a stand-in for the zombies' grid) that lies 0.25 m under what is asked for.
+    const top = h.bands[h.bands.length - 1];
+    let ask = null; // a spot over the home's top band: not inside as asked
+    for (let x = top.box[0]; x <= top.box[2] && !ask; x += 0.25) {
+      for (let z = top.box[1]; z <= top.box[3] && !ask; z += 0.25) if (homeAt(x, z, top.y1 - 0.15) === h.id) ask = { x, y: top.y1 + 0.1, z, yaw: 0 };
+    }
+    assert.equal(homeAt(ask.x, ask.z, ask.y), null);
+    assert.equal(homeAt(ask.x, ask.z, top.y1 - 0.15), h.id, 'where it lands');
+    const flat = (dy) => ({ locate: () => 0, y: (n, x, z) => ask.y - dy, walk: () => 0 });
+    const hidden = (x, y, z) => game.gate.hidesAt(x, z, y, other);
+    const stand = { x: ask.x + 0.5, y: ask.y, z: ask.z };
+    const loot = new Loot(flat(0.25));
+    Object.assign(loot.kit('other'), { claymores: 1, stakes: 1, turrets: 1 });
+    assert.equal(loot.place('other', stand, ask, Date.now(), hidden).why, 'spot', 'a claymore snapped inside');
+    assert.equal(loot.placeStakes('other', stand, ask, hidden).why, 'spot', 'stakes snapped inside');
+    assert.equal(loot.placeTurret('other', stand, ask, Date.now(), hidden).why, 'spot', 'a turret snapped inside');
+    for (const kind of ['claymore', 'stakes', 'turret']) assert.equal(loot.preview(kind, 'other', stand, ask, Date.now(), hidden).ok, false, `the ${kind}'s preview`);
+    assert.equal(Object.values(loot.kit('other')).filter((v) => v === 1).length, 3, 'nothing used up');
+    // The owner (with the right) may: the same request lands.
+    const own = new Loot(flat(0.25));
+    own.kit('owner').claymores = 1;
+    assert.ok(own.place('owner', stand, ask, Date.now(), (x, y, z) => game.gate.hidesAt(x, z, y, owner)).mine, 'with the right it lands');
+    // A row by the wall, along it towards the inside: it ends before the band.
+    const wall = besideWall(h, inside);
+    const toward = Math.sign(inside.x - wall.x); // +1: the band is towards +x
+    const by = { x: wall.x + toward * 0.75, y: wall.y, z: wall.z }; // a quarter metre outside the band's edge
+    assert.equal(homeAt(by.x, by.z, by.y), null);
+    const rows = new Loot({ locate: () => 0, y: () => by.y, walk: () => 0 });
+    rows.kit('other').stakes = 1;
+    const row = rows.placeStakes('other', by, { x: by.x, y: by.y, z: by.z, yaw: toward > 0 ? 0 : Math.PI }, hidden).row;
+    assert.ok(row, 'planted outside');
+    const ux = Math.cos(row.yaw);
+    for (const t of [row.a, row.b]) assert.equal(homeAt(row.x + ux * t, row.z, row.y), null, `its end at ${t} stays outside`);
+    assert.ok(Math.min(Math.abs(row.a), Math.abs(row.b)) < LOOT.stakeHalf, 'cut short on the home\'s side');
   });
 
   test(`${h.id}: a strongman who walks in is named gone in the next tick of a page without the right, and is back whole when out`, () => {

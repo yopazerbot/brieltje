@@ -271,6 +271,11 @@ export class ZombieGame {
    * server has them, of use to them, and they fight (forged pickups and duplicates: taken once, by
    * one). Their page gets what they have now; everyone sees it gone.
    */
+  /** Where player `p` may put nothing (shared/loot.mjs spot): inside a home they may not see into (server/homeGate.mjs). */
+  hiddenFor(p) {
+    return (x, y, z) => this.game.gate.hidesAt(x, z, y, p);
+  }
+
   take(name, p, m, now) {
     const g = this.game;
     if (now < (p.nextItem || 0)) return;
@@ -400,8 +405,8 @@ export class ZombieGame {
     p.nextMine = now + 400;
     if (!p.alive || !p.state?.armed || g.inCar(name) || g.calm(p) || this.horde.phase === 'over') return;
     const s = p.state;
-    // Inside a home they may not see into: no room, whatever is in there (no oracle through the wall).
-    const r = g.gate.hidesAt(m.x, m.z, m.y, p) ? { why: 'spot' } : this.loot.place(name, { x: s.x, y: s.y, z: s.z }, { x: m.x, y: m.y, z: m.z, yaw: m.yaw }, now);
+    // Inside a home they may not see into, where it is asked for or where it lands: no room, whatever is in there.
+    const r = this.loot.place(name, { x: s.x, y: s.y, z: s.z }, { x: m.x, y: m.y, z: m.z, yaw: m.yaw }, now, this.hiddenFor(p));
     if (!r.mine) {
       const why = { none: ['zMineNone', 'You have no claymore.'], max: ['zMineMax', 'You have two down already.'], spot: ['zMineSpot', 'No room for it there.'] }[r.why];
       return g.send(p.ws, { t: 'system', text: why[1], code: why[0] });
@@ -420,7 +425,7 @@ export class ZombieGame {
     p.nextStakes = now + 400;
     if (!p.alive || !p.state?.armed || g.inCar(name) || g.calm(p) || this.horde.phase === 'over') return;
     const s = p.state;
-    const r = g.gate.hidesAt(m.x, m.z, m.y, p) ? { why: 'spot' } : this.loot.placeStakes(name, { x: s.x, y: s.y, z: s.z }, { x: m.x, y: m.y, z: m.z, yaw: m.yaw });
+    const r = this.loot.placeStakes(name, { x: s.x, y: s.y, z: s.z }, { x: m.x, y: m.y, z: m.z, yaw: m.yaw }, this.hiddenFor(p));
     if (!r.row) {
       const why = { none: ['zStakesNone', 'You have no stakes.'], max: ['zStakesMax', 'Enough stakes are down already.'], spot: ['zStakesSpot', 'No room for them there.'] }[r.why];
       return g.send(p.ws, { t: 'system', text: why[1], code: why[0] });
@@ -439,7 +444,7 @@ export class ZombieGame {
     p.nextTurret = now + 400;
     if (!p.alive || !p.state?.armed || g.inCar(name) || g.calm(p) || this.horde.phase === 'over') return;
     const s = p.state;
-    const r = g.gate.hidesAt(m.x, m.z, m.y, p) ? { why: 'spot' } : this.loot.placeTurret(name, { x: s.x, y: s.y, z: s.z }, { x: m.x, y: m.y, z: m.z, yaw: m.yaw }, now);
+    const r = this.loot.placeTurret(name, { x: s.x, y: s.y, z: s.z }, { x: m.x, y: m.y, z: m.z, yaw: m.yaw }, now, this.hiddenFor(p));
     if (!r.turret) {
       const why = { none: ['zTurretNone', 'You have no turret.'], max: ['zTurretMax', 'Your turret is still going.'], all: ['zTurretAll', 'Enough turrets are up already.'], spot: ['zMineSpot', 'No room for it there.'] }[r.why];
       return g.send(p.ws, { t: 'system', text: why[1], code: why[0] });
