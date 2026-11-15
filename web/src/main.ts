@@ -4305,19 +4305,29 @@ async function buildVillage(): Promise<void> {
   // Seen from the portal the stretch is a long row of houses down the road: its tiles are drawn within 350 m (the haze
   // hides a third at that distance) and their small details (frames, glass, posts, lamps) within 100 m, which keeps
   // its cost within the 1 ms allowed. The road detail (world/roadDetail.ts) the same way.
-  const far = (m: { key: string }) => Number(m.key.split(',')[0]) >= 5;
+  const far = (m: { key: string }) => {
+    const [i, j] = m.key.split(',').map(Number);
+    return i >= 5 && j < 0;
+  };
   // The way to the Sparrenhof and the wood round it (tiles from x 304 and z 297 on, north of the ring) the same way: a set
   // of its own, as it lies across the line from the house to the church, and mostly trees, drawn within 350 m.
   const northwest = (m: { key: string }) => {
     const [i, j] = m.key.split(',').map(Number);
-    return i >= 2 && j >= 2;
+    return i >= 2 && i < 5 && j >= 2;
+  };
+  // Blekte, from Kapellenhoek and Oud-Smetlede out to Klinkaard (tile columns from x 904 on, rows from z -103 on), the same
+  // way; Molenhoek's far stretch keeps the rows south of it.
+  const west = (m: { key: string }) => {
+    const [i, j] = m.key.split(',').map(Number);
+    return i >= 5 && j >= 0;
   };
   // What the village adds to the scene from here on is drawn once its shaders are compiled (below).
   const before = new Set([...scene.children, ...tiles.group.children]);
   for (const set of [made, roads.tiles]) {
-    tiles.addSet(set.filter((m) => !far(m) && !northwest(m)), false);
+    tiles.addSet(set.filter((m) => !far(m) && !northwest(m) && !west(m)), false);
     if (set.some(far)) tiles.addSet(set.filter(far), false, 100, 350);
     if (set.some(northwest)) tiles.addSet(set.filter(northwest), false, 100, 350);
+    if (set.some(west)) tiles.addSet(set.filter(west), false, 100, 350);
   }
   world.addPrisms(roads.blocks);
   await modelsCut;
@@ -4397,7 +4407,7 @@ async function buildVillage(): Promise<void> {
   tiles.showAll(); // the frame between may have hidden the far tiles again
   for (const m of models) m.visible = true;
   // Molenhoek's far stretch (the area east of the village, x 880 on) has a shaded area of its own.
-  const farPts = (data.area ?? []).filter(([x]) => x > 880);
+  const farPts = (data.area ?? []).filter(([x, z]) => x > 880 && z < -150); // not Blekte's, north of it
   if (farPts.length > 2) {
     const [x0, x1] = [Math.min(...farPts.map((p) => p[0])), Math.max(...farPts.map((p) => p[0]))];
     const [z0, z1] = [Math.min(...farPts.map((p) => p[1])), Math.max(...farPts.map((p) => p[1]))];
