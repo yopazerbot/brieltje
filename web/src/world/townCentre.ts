@@ -18,7 +18,8 @@ import { sharedTexture } from './houseMeshes';
  * shaded without them.
  *
  * Draw calls: six near (brick, render, roof tiles, trim, glass, and the bus shelter's clear glass, drawn
- * see-through after the rest), three far. Within FAR m of the
+ * see-through after the rest), two more for the café's door leaves and ground-floor glass (drawn only from 60 m off,
+ * world/keet.ts), three far. Within FAR m of the
  * square (230, from the model) the full copy is drawn; beyond it a simple copy of the same volumes,
  * the windows as dark patches; beyond the village's draw distance nothing (the tiles hide it).
  *
@@ -87,6 +88,9 @@ export async function loadTown(renderer: THREE.WebGLRenderer, ground: (x: number
     const name = mesh.name;
     const key = name.replace(/^(near|far)_/, '');
     const mat = shared.get(name) ?? material(key, (mesh.material as THREE.Material).userData, renderer);
+    // The café's ground-floor door leaves and window glass (tools/town/town.py `walkin`): near it the walk-in
+    // (world/walkIn.ts) draws its own doors and panes in their place.
+    if (name.startsWith('near_shut_')) mat.userData.shut = true;
     shared.set(name, mat);
     (mesh.material as THREE.Material).dispose();
     mesh.material = mat;

@@ -58,7 +58,10 @@ Output: one GLB. The near copy, one mesh per material:
   town_roof) and the colour per vertex carries the tint and the baked light;
 - near_trim: frames, doors, shutters, gutters, downpipes, sills' fronts, ridge tiles, fittings, coloured per vertex;
 - near_glass: the panes (dark and glossy, net curtains lighter), coloured per vertex;
-- near_clear: clear glass you see through (the bus shelter by the chip shop), drawn see-through by the game.
+- near_clear: clear glass you see through (the bus shelter by the chip shop), drawn see-through by the game;
+- near_shut_trim, near_shut_glass: for a house you walk into (houses.json `walkin`: the café by the church tower), the
+  leaves of its ground-floor doors and the glass of its ground-floor windows, apart from the rest, so the game hides them
+  near the house, where the walk-in (web/src/world/walkIn.ts) shows its own doors and panes in their place.
 The far copy (far_brick, far_render, far_roof): the same volumes without openings, the windows as dark
 patches, for beyond `far` metres from the middle.
 """
@@ -164,6 +167,10 @@ MATS = {
     "trim": (None, "#ffffff", 0.55, 1.0),
     "glass": (None, "#20262a", 0.08, 1.0),
     "clear": (None, "#cfdde6", 0.05, 1.0),   # clear glass you see through (the bus shelter's): drawn see-through by the game
+    # A house you walk into (houses.json `walkin`): the leaves of its ground-floor doors and the glass of its ground-floor
+    # windows, apart, as the walk-in (web/src/world/walkIn.ts) shows its own doors and panes there near it
+    "shut_trim": (None, "#ffffff", 0.55, 1.0),
+    "shut_glass": (None, "#20262a", 0.08, 1.0),
 }
 # The mean linear colour of each game texture: a surface's colour per vertex is its wanted colour divided by
 # this, so the textured surface comes out in the colour named in houses.json (measured on the WebP files).
@@ -190,7 +197,7 @@ def make_material(name, tex, mean, rough, nscale):
 
 for lod in ("near", "far"):
     for name, (tex, mean, rough, nscale) in MATS.items():
-        if lod == "far" and name in ("trim", "glass", "clear"):
+        if lod == "far" and name in ("trim", "glass", "clear", "shut_trim", "shut_glass"):
             continue
         key = (lod, name)
         MAT[key] = make_material(f"{lod}_{name}", tex, mean, rough, nscale)
@@ -414,6 +421,10 @@ def build_opening(F, h, fs, wallkey, wallcol, rng):
     w = s1 - s0
     N = ("near", "trim")
     GL = ("near", "glass")
+    # A house you walk into: its ground floor's window glass and door leaves in meshes of their own (see MATS).
+    shut = bool(fs.get("walkin")) and h.storey == 0
+    if shut:
+        GL = ("near", "shut_glass")
     if h.kind == "c":
         # The bay: its sides, ceiling and back wall in the wall's surface, the back in shade.
         dd = fs.get("bay_depth", 2.5)
@@ -479,12 +490,16 @@ def build_opening(F, h, fs, wallkey, wallcol, rng):
     if h.kind in "dD":
         # Doorstep of blue stone, then the leaf.
         F.box(("near", "render"), s0 - 0.08, s1 + 0.08, y0 - 0.25, y0, -depth, 0.28, fs.get("step", "#5c5f62"))
-        door(F, h, fs, depth, frame)
+        door(F, h, fs, depth, frame, shut)
         return
     if h.kind in "gG":
         garage(F, h, fs, depth)
         return
-    if h.kind == "r":
+    if h.kind == "r" and fs.get("roller_up"):
+        # The roller shutter rolled up: its box at the head stays, the window's frame and glass show below it.
+        sc = fs.get("roller", "#e9e9e6")
+        F.box(N, s0, s1, y1 - 0.2, y1, -depth + 0.02, -depth + 0.1, shade(sc, 0.95))
+    elif h.kind == "r":
         # A window behind a closed roller shutter: the frame, the slatted shutter and its box at the head.
         sc = fs.get("roller", "#e9e9e6")
         F.box(N, s0, s1, y0, y1, -depth + 0.02, -depth + 0.06, sc)
@@ -575,8 +590,10 @@ def build_opening(F, h, fs, wallkey, wallcol, rng):
                 F.box(N, a + 0.03, b - 0.03, y - 0.012, y + 0.012, 0.035, 0.045, shade(sc, 0.75))
 
 
-def door(F, h, fs, depth, frame):
+def door(F, h, fs, depth, frame, shut=False):
+    """`shut`: a house you walk into; the leaves (and their glass) go into meshes of their own (see MATS)."""
     N = ("near", "trim")
+    LEAF, LEAF_GLASS = (("near", "shut_trim"), ("near", "shut_glass")) if shut else (N, ("near", "glass"))
     s0, s1, y0, y1 = h.s0, h.s1, h.y0, h.y1
     c = fs.get("door", "#4a3426")
     fd = -depth + 0.02
@@ -606,15 +623,15 @@ def door(F, h, fs, depth, frame):
             F.box(N, cx - 0.09, cx + 0.09, cy, cy + 0.07, fd - 0.04, fd - 0.03, frame)
     for i in range(leaves):
         a, b = s0 + fw + lw * i, s0 + fw + lw * (i + 1)
-        F.box(N, a + 0.005, b - 0.005, y0, top, fd - 0.08, fd - 0.03, c)
+        F.box(LEAF, a + 0.005, b - 0.005, y0, top, fd - 0.08, fd - 0.03, c)
         if fs.get("door_glass", True):
-            F.flat(("near", "glass"), a + 0.14, b - 0.14, y0 + (top - y0) * 0.55, top - 0.14, fd - 0.025, "#2a3034")
-            F.box(N, a + 0.1, b - 0.1, y0 + 0.18, y0 + (top - y0) * 0.45, fd - 0.03, fd - 0.015, shade(c, 0.85))
+            F.flat(LEAF_GLASS, a + 0.14, b - 0.14, y0 + (top - y0) * 0.55, top - 0.14, fd - 0.025, "#2a3034")
+            F.box(LEAF, a + 0.1, b - 0.1, y0 + 0.18, y0 + (top - y0) * 0.45, fd - 0.03, fd - 0.015, shade(c, 0.85))
         else:
             for (q0, q1) in ((0.12, 0.45), (0.55, 0.9)):
-                F.box(N, a + 0.1, b - 0.1, y0 + (top - y0) * q0, y0 + (top - y0) * q1, fd - 0.03, fd - 0.015, shade(c, 0.85))
+                F.box(LEAF, a + 0.1, b - 0.1, y0 + (top - y0) * q0, y0 + (top - y0) * q1, fd - 0.03, fd - 0.015, shade(c, 0.85))
         hs = b - 0.1 if i == 0 else a + 0.1
-        F.box(N, hs - 0.02, hs + 0.02, y0 + 1.0, y0 + 1.25, fd - 0.03, fd + 0.01, "#9a9c9e")
+        F.box(LEAF, hs - 0.02, hs + 0.02, y0 + 1.0, y0 + 1.25, fd - 0.03, fd + 0.01, "#9a9c9e")
 
 
 def garage(F, h, fs, depth):
@@ -1113,6 +1130,8 @@ for b in SPEC["houses"]:
             fs = dict(b.get("style", {}))
             fs.update(vol.get("style", {}))
             fs.update(vol.get("faces", {}).get(str(i), {}))
+            if b.get("walkin"):
+                fs["walkin"] = True
             if shape == "gable" and i in (1, 3) and "gablewall" in vol and "wall" not in vol.get("faces", {}).get(str(i), {}):
                 fs["wall"] = vol["gablewall"]
             st = vol.get("stepped")
@@ -1518,7 +1537,7 @@ def bake():
     cache = {}
     count = 0
     for key, bm in BM.items():
-        if key[0] != "near" or key[1] in ("glass", "clear"):
+        if key[0] != "near" or key[1] in ("glass", "clear", "shut_glass"):
             continue
         lay = bm.loops.layers.float_color["Color"]
         for f in bm.faces:
