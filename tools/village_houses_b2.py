@@ -547,7 +547,93 @@ def terrace():
     h.export()
 
 
-HOUSES = {"vh_fermette": fermette, "vh_red_villa": red_villa, "vh_terrace": terrace}
+# ======================================================================================================================
+# 08. x 588.0, z -890.2: a two-storey brick house of the 1960s under a hipped roof with white boxed eaves, its garage
+# in the front, a low fence of white concrete posts, a path and a drive of grey pavers.
+def fork_house():
+    h = House("vh_fork_house", [587.91, -898.3], ([596.83, -890.35], [587.91, -898.3]), 3.31, {
+        "vh_brick": {"texture": "nb_brick", "tint": "#8c5444", "normalScale": .55},  # the warm end of nb_red's range
+        "vh_roof": {"texture": "roof_tiles", "tint": "#3a3c40", "normalScale": .3},
+        "vh_paving": {"texture": "pavers", "tint": "#9b9993"},
+        "vh_hedge": {"texture": "hedge", "tint": "#86a064"},
+        "vh_trim": TRIM, "vh_stone": STONE, "vh_glass": GLASS, "vh_frames_small": SMALL, "vh_metal_small": METAL,
+    })
+    # u along the front to the south-west (left to right seen from the street), d from the front (0) to the back.
+    lift = h.base
+    E, RG, ov = 6.3 + lift, 11.1 + lift, .5
+    uL, uR, dB, dX = -5.97, 5.97, 9.97, 13.4
+    k = (RG - E) / (dB / 2)
+    white, frame = "#f1f0eb", "#f4f3ef"
+    roof = Roof([(uL - ov, -ov), (uR + ov, -ov), (uR + ov, dB + ov), (uL - ov, dB + ov)],
+                [eave((0, -ov), (0, 1), E - k * ov, k), eave((0, dB + ov), (0, -1), E - k * ov, k),
+                 eave((uL - ov, 0), (1, 0), E - k * ov, k), eave((uR + ov, 0), (-1, 0), E - k * ov, k)], under=white, edge=white, board=.3)
+    roofs = [roof]
+    flat = 3.25 + lift
+    gy = lambda u, d: h.ground(u, d)
+    g0 = gy(.1, -.3)
+    fl = g0 + .16
+    foot = [(.25, "vh_trim", "#6a6764")]
+
+    def wall(a, b, ops=(), **kw):
+        W, N, T = h.wall(a, b, kw.pop("top", None) or top_over(roofs, a, b), ops, bands=kw.pop("bands", foot), **kw)
+        for o in ops:
+            if o.kind == "window":
+                shutter_box(h, W, N, T, o, white)
+        return W, N, T
+
+    win = lambda s, y, w, hh, cols=None: Opening(s, y, w, hh, frame=frame, reveal=.14, cols=cols or (3 if w > 2.1 else 2 if w > 1.1 else 1))
+    # --- the front: the three-part window, the door with a glazed strip, the garage; three windows upstairs ---------
+    up = win(10.0, 3.75, 2.2, 1.3)
+    ops = [win(2.4, 1.0, 2.4, 1.4), Opening(6.1, fl, 1.0, 2.2, "door", door="#f2f1ec", frame=frame, panels="glazed", reveal=.14, sill=False, step=(g0, .4)),
+           Opening(6.85, fl, .4, 2.2, frame=frame, reveal=.14, sill=False),
+           Opening(10.0, gy(4.03, -.3) + .02, 2.5, 2.1, "garage", door="#f0efea", reveal=.16, sill=False),
+           win(2.4, 3.75, 1.8, 1.3), win(6.1, 3.75, 1.2, 1.3), up]
+    W, N, T = wall((uL, 0), (uR, 0), ops)
+    lamp(h, W, N, T, 5.45, fl + 1.85)
+    h.wbox(W, N, T, "vh_trim", up.s - up.w / 2 + .02, up.s + up.w / 2 - .02, up.y + .45, up.y + up.h - .2, up.reveal - .07, up.reveal - .05, "#e4e2dc")  # a blind half down
+    for y in (.93, 3.68):  # a course of bricks standing out under the sills of each floor
+        h.wbox(W, N, T, "vh_brick", 0, uR - uL, y - .07, y, -.03, 0)
+    h.wbox(W, N, T, "vh_trim", 8.65, 11.35, 2.3, 2.45, -.02, 0, "#9b9893")  # the garage's concrete lintel
+    # --- the sides, split where the flat-roofed back rooms begin ------------------------------------------------------
+    wall((uR, 0), (5.98, 7.45), [win(3.7, 1.0, 1.2, 1.3), win(3.7, 3.75, 1.2, 1.3)])
+    wall((5.98, 7.45), (5.977, dB))
+    wall((5.977, dB), (5.97, 13.28), [win(1.9, 1.1, .8, 1.0)], top=flat)
+    wall((-5.99, 13.46), (-5.978, dB), [win(1.7, 1.0, 1.0, 1.3)], top=flat)
+    wall((-5.978, dB), (uL, 0), [win(5.0, 1.0, 1.2, 1.3), win(5.0, 3.75, 1.2, 1.3)])
+    wall((uR, dB), (uL, dB), [win(3.0, 3.75, 1.4, 1.3), win(8.6, 3.75, 1.0, 1.0)], bottom=flat - .12, bands=(), out=(0, 1))
+    wall((5.97, 13.28), (4.05, 13.31), top=flat)
+    wall((4.05, 13.31), (-5.99, 13.46), [Opening(3.2, fl, 3.0, 2.1, frame="#3b3d3e", reveal=.14, cols=2, sill=False), win(7.6, 1.0, 1.2, 1.3)], top=flat)
+    ring = [(5.97, dB), (5.97, 13.28), (4.05, 13.31), (-5.99, 13.46), (-5.99, dB)]
+    h.poly("vh_stone", [(u, d, flat - .02) for u, d in ring], (0, 0, 1), "#3a3a3a")  # takes the snow
+    for a, b in zip(ring[:4], ring[1:]):
+        h.seg("vh_stone", a, b, .28, flat, flat + .07, "#b3b0a9")
+    draw_roofs(h, roofs)
+    ye = E - k * ov - .3
+    for a, b, out, pipes in (((uL - ov, -ov), (uR + ov, -ov), (0, -1, 0), [(uL + .08, -.08)]), ((uR + ov, -ov), (uR + ov, dB + ov), (1, 0, 0), []),
+                             ((uR + ov, dB + ov), (uL - ov, dB + ov), (0, 1, 0), []), ((uL - ov, dB + ov), (uL - ov, -ov), (-1, 0, 0), [(uL - .08, dB - .1)])):
+        h.gutter((*a, ye), (*b, ye), out, white, down=[(u, d, gy(u, d)) for u, d in pipes])
+    h.chimney(-.28, 5.26, .5, .5, roof.height(-.28, 5.26) - .4, 12.0 + lift, "vh_brick", pots=[(0, 0)])
+    # --- the front garden: a path and a drive of grey pavers to the street's paving (its edge from the data), a low
+    # fence of white concrete posts and one rail along the pavement, shrubs behind it ------------------------------------
+    edge = [(588.043, -903.0), (611.29, -880.14)]
+    e = lambda u: edge_at(h, edge, u=u)
+    h.pave([(-.45, -.02), (.7, -.02), e(.7), e(-.45)], cell=1.0)
+    h.pave([(2.65, -.02), (5.6, -.02), e(5.6), e(2.65)], cell=1.0)
+    fy = lambda u: e(u)[1] + .3
+    posts = [-6.3, -4.4, -2.5, -.6]
+    for u in posts:
+        g = gy(u, fy(u))
+        h.box("vh_trim", u - .06, u + .06, fy(u) - .06, fy(u) + .06, g - .1, g + .66, white)
+    for a, b in zip(posts, posts[1:]):  # one rail between the posts' tops; each bay stops a player
+        ga, gb = gy(a, fy(a)), gy(b, fy(b))
+        h.seg("vh_trim", (a + .06, fy(a)), (b - .06, fy(b)), .07, min(ga, gb) + .5, max(ga, gb) + .62, white)
+        h.seg_block("concrete", (a - .06, fy(a)), (b + .06, fy(b)), .14, min(ga, gb) - .1, max(ga, gb) + .66)
+    for u, d, r in ((-5.4, -1.7, .45), (-3.9, -2.1, .4), (-2.3, -1.6, .5), (-1.2, -2.2, .35), (2.0, -.9, .35), (-4.6, -.8, .3)):
+        h.blob("vh_hedge", u, d, gy(u, d) + r * .7, (r, r, r * .9), rings=3, steps=6)
+    h.export()
+
+
+HOUSES = {"vh_fermette": fermette, "vh_red_villa": red_villa, "vh_terrace": terrace, "vh_fork_house": fork_house}
 for _name, _build in HOUSES.items():
     if not ONLY or _name in ONLY:
         _build()
