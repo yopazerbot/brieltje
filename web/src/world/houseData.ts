@@ -99,6 +99,8 @@ export interface FixtureSpec {
   z: number;
   yaw: number;
   size: [number, number, number];
+  /** A colour of its own for the whole piece ('#1d1d1d': a catalogue piece in black) */
+  color?: string;
 }
 
 /** A fixed model in the house (web/public/models/<model>.glb), its front facing +z before the turn. */

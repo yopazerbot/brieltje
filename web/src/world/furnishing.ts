@@ -1384,8 +1384,10 @@ export function fixtureGroup(list: FixtureSpec[], look: (m: THREE.Material) => T
       const byShow = new Map<Show, THREE.BufferGeometry[]>();
       for (const f of site) {
         at.makeRotationY(f.yaw).setPosition(f.x, f.y, f.z);
+        const tint = f.color ? new THREE.Color(f.color) : null; // a colour of its own (FixtureSpec.color)
         for (const g of parts(f.item, f.size)) {
           const kind = kindOf(g);
+          if (tint && (kind === 'solid' || kind === 'cloth')) paint(g, tint); // the woven and latticed parts keep their own
           const bucket = (kind === 'solid' ? 'parts' : kind) + (NO_SHADOW.has(f.item) ? ' decor' : '');
           if (!buckets.has(bucket)) buckets.set(bucket, []);
           buckets.get(bucket)!.push(g.applyMatrix4(at));
