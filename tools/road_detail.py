@@ -138,7 +138,8 @@ PATHS = {"Smetledekouterwegel": ("path_tiles", 1.0), "Pastorijwegel": ("path_pav
 SCHOOL_PLATEAU = {"street": "Smetlededorp", "x": (442.9, 481.5), "red": (469.5, 480.0), "zebra": 474.8}
 # The give-way lines: where a street meets one with priority and the sign says so (data/kapellenhoek.json's props).
 GIVE_WAY = [{"street": "Kapelleweg", "at": (614.6, -404.6)},
-            {"street": "Rampsande", "at": (-487.8, -786.8)},  # where it meets Serskampstraat's bend (the pictures of 15 Nov 2026)
+            # Where it meets Serskampstraat's bend (the pictures of 15 Nov 2026): across the whole asphalt mouth, the apron too.
+            {"street": "Rampsande", "at": (-487.8, -786.8), "apron": True},
             {"street": "Blekte", "at": (1855.1, 281.8)}]  # where it meets Klinkaard (the pictures of 2024)
 
 
@@ -679,7 +680,9 @@ def give_way(kept):
             ux, uz = st["x"] - inward["x"], st["z"] - inward["z"]
             n = math.hypot(ux, uz)
             # The widths as seen facing the junction (+ side first): at a run's first station that is against the run.
-            w = st["w"] if st is run[-1] else st["w"][::-1]
+            # With `apron`, out over the apron where there is no kerb (drawn in the carriageway's surface there).
+            w = [st["w"][i] + (st["walk"][i] if g.get("apron") and not st["kerb"][i] else 0.0) for i in (0, 1)]
+            w = w if st is run[-1] else w[::-1]
             out.append({"x": round(st["x"], 2), "z": round(st["z"], 2), "u": [round(ux / n, 3), round(uz / n, 3)], "w": [round(w[0], 2), round(w[1], 2)]})
     return out
 

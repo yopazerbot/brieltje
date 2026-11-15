@@ -1136,7 +1136,13 @@ class Builder {
     const back = 3;
     const f = new Frame([t.x, t.z, t.x - t.u[0] * back, t.z - t.u[1] * back], 0);
     const lift = () => this.road;
-    for (let o = -t.w[1] + 0.3; o + 0.5 < t.w[0] - 0.2; o += 0.75) {
+    // Half a metre wide, 0.75 m apart, as many as fit 0.25 m in from either edge, the row centred between them.
+    const lo = -t.w[1] + 0.25;
+    const hi = t.w[0] - 0.25;
+    const n = Math.max(1, Math.floor((hi - lo - 0.5) / 0.75) + 1);
+    const first = (lo + hi) / 2 - ((n - 1) * 0.75 + 0.5) / 2;
+    for (let i = 0; i < n; i++) {
+      const o = first + i * 0.75;
       // The base along the give-way line, the point 0.6 m back towards the driver.
       this.flat(f, [[0.4, -o], [0.4, -(o + 0.5)], [1.0, -(o + 0.25)]], '#e2e1db', lift);
     }
