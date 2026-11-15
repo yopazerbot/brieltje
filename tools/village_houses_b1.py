@@ -817,7 +817,76 @@ def arch_villa():
     h.export()
 
 
-HOUSES = {"vh_farm": farm, "vh_gable_house": gable_house, "vh_arch_villa": arch_villa}
+# ======================================================================================================================
+# 04. x 39.7, z -1050.1: a long white rendered bungalow of the 1960s under a low hipped roof, a covered corner.
+def white_bungalow():
+    h = House("vh_white_bungalow", [42.9, -1047.67], ([39.62, -1061.58], [46.82, -1057.85]), -2.91, {
+        "vh_render": {"texture": "plaster", "tint": "#ebe7df", "normalScale": .35},
+        "vh_roof": {"texture": "roof_tiles", "tint": "#5e3e33", "normalScale": .3},
+        "vh_paving": {"texture": "pavers", "tint": "#a29e96"},
+        "vh_trim": TRIM, "vh_stone": STONE, "vh_glass": GLASS, "vh_frames_small": SMALL, "vh_metal_small": METAL,
+    })
+    # u across the house (u +4: the side seen on arriving), d from the end on the street (0) to the far end (20.1).
+    lift = h.base
+    R, E = 5.8 + lift, 3.0
+    uL, uR_, d0, d1, ov = -5.26, 4.05, 0.0, 20.14, .5
+    uc = (uL + uR_) / 2
+    k = (R - E) / ((uR_ - uL) / 2)
+    ye = E - k * ov
+    rh = (uR_ - uL) / 2 + ov
+    floor, frame, white = .32, "#2f3134", "#f2f1ec"
+    foot = [(max(.3, floor), "vh_trim", "#8a8884")]
+    plane = lambda u, d: min(ye + k * (u - (uL - ov)), ye + k * ((uR_ + ov) - u), ye + k * (d - (d0 - ov)), ye + k * ((d1 + ov) - d))
+    M = "vh_render"
+    slide = lambda s: Opening(s, floor, 3.0, 2.1, frame=frame, cols=2, sill=False, reveal=.14)
+    win = lambda s, w=1.6, hh=1.3: Opening(s, floor + .8, w, hh, frame=frame, cols=2 if w > 1 else 1, reveal=.14)
+    # The end on the street and the long side seen on arriving: a sliding window each side of their corner.
+    h.wall((4.05, 0), (-4.05, 0), plane(0, 0) - .06, [slide(1.8), win(6.0)], mesh=M, bands=foot)
+    h.wall((4.05, 20.14), (4.05, 0), plane(4.05, 10) - .06, [slide(20.14 - 2.05), win(20.14 - 8.0), win(20.14 - 12.5), win(20.14 - 16.5)], mesh=M, bands=foot)
+    # The other long side: the door under the roof's covered corner, the garage at the far end.
+    gy = h.ground(-4.6, 6.2)
+    dcorner = (plane(-4.05, 5) - ye) / k - ov  # where the end's slope reaches the side's
+    h.wall((-4.05, 0), (-4.05, 10.75), [(0, plane(-4.05, 0) - .06), (dcorner, plane(-4.05, 5) - .06), (10.75, plane(-4.05, 5) - .06)],
+           [win(2.5), Opening(6.2, floor, 1.0, 2.1, "door", door="#d9d8d2", frame=frame, panels="glazed", step=(gy, .45), reveal=.14),
+            Opening(7.15, floor + .1, .4, 1.9, frame=frame, sill=False, reveal=.14), win(9.4, .6, .6)], mesh=M, bands=foot)
+    h.wall((-4.05, 10.75), (-5.26, 10.84), [(0, plane(-4.05, 10) - .06), (1.21, plane(-5.26, 10) - .06)], mesh=M, bands=foot)
+    gg = h.ground(-5.6, 17.6)
+    h.wall((-5.26, 10.84), (-5.15, 20.12), plane(-5.2, 15) - .06, [win(2.4), Opening(6.8, gg + .02, 2.5, 2.1, "garage", door=white, reveal=.12, sill=False)], mesh=M, bands=foot)
+    h.wall((-5.15, 20.12), (4.05, 20.14), plane(0, 20.14) - .06, [win(6.9)], mesh=M, bands=foot)
+    # The roof: hipped on all four sides, brown-red concrete tiles, a white fascia, a white chimney with a flat cap.
+    ra, rb = d0 - ov + rh, d1 + ov - rh
+    U0, U1, D0, D1 = uL - ov, uR_ + ov, d0 - ov, d1 + ov
+    h.roof([(U1, D0, ye), (U1, D1, ye), (uc, rb, R), (uc, ra, R)], free=(0,), edge=white, board=.3, under=white)
+    h.roof([(U0, D1, ye), (U0, D0, ye), (uc, ra, R), (uc, rb, R)], free=(0,), edge=white, board=.3, under=white)
+    h.roof([(U0, D0, ye), (U1, D0, ye), (uc, ra, R)], free=(0,), edge=white, board=.3, under=white)
+    h.roof([(U1, D1, ye), (U0, D1, ye), (uc, rb, R)], free=(0,), edge=white, board=.3, under=white)
+    h.rod("vh_roof", (uc, ra, R + .02), (uc, rb, R + .02), .11, 6)
+    for c in ((U0, D0), (U1, D0)):
+        h.rod("vh_roof", (uc, ra, R + .02), (*c, ye + .02), .09, 6)
+    for c in ((U0, D1), (U1, D1)):
+        h.rod("vh_roof", (uc, rb, R + .02), (*c, ye + .02), .09, 6)
+    tile = "#5c3d32"
+    for a, b, out in (((U0, D0), (U1, D0), (0, -1, 0)), ((U1, D0), (U1, D1), (1, 0, 0)), ((U1, D1), (U0, D1), (0, 1, 0)), ((U0, D1), (U0, D0), (-1, 0, 0))):
+        h.tile_ends((*a, ye), (*b, ye), out, tile)
+        h.gutter((*a, ye - .3), (*b, ye - .3), out, white)
+    for u, d in ((U1 - .15, D0 + .15), (U1 - .15, D1 - .15), (U0 + .15, D1 - .15)):
+        h.box("vh_frames_small", u - .045, u + .045, d - .045, d + .045, h.ground(u, d) - .05, ye - .4, white)
+    h.chimney(uc, 13.0, .5, .7, R - .6, R + .85, "vh_render", cap="#c9c7c0")
+    for d in (.15, 5.4):  # slim white posts under the covered corner
+        h.box("vh_trim", -5.2, -5.08, d - .06, d + .06, h.ground(-5.14, d) - .1, plane(-5.14, d) - .14, white)
+    # The way in: pavers under the covered corner and down to the street.
+    h.pave([(-4.03, 10.72), (-5.32, 10.72), (-5.32, -.3), (-5.42, -4.6), (-4.42, -4.6), (-4.42, -.02), (-4.03, -.02)])
+    # A fence of horizontal timber slats at the side, from the house to the hedge.
+    fy = h.ground(6.0, 18.6)
+    for i in range(6):
+        y = fy + .12 + i * .19
+        h.box("vh_frames_small", 4.12, 7.8, 18.56, 18.64, y, y + .15, "#8a6a4c")
+    for u in (4.2, 6.0, 7.75):
+        h.box("vh_frames_small", u - .045, u + .045, 18.53, 18.67, h.ground(u, 18.6) - .1, fy + 1.25, "#6f553e")
+    h.export()
+
+
+HOUSES = {"vh_farm": farm, "vh_gable_house": gable_house, "vh_arch_villa": arch_villa, "vh_white_bungalow": white_bungalow}
 for _name, _build in HOUSES.items():
     if not ONLY or _name in ONLY:
         _build()
