@@ -17,7 +17,9 @@
 // meadow). A touchdown under LAND_SOFT settles, under LAND_HARD bounces once, harder is a bump: no fire, nobody
 // hurt; the machine is set down level, the engine stops and it flies again after DOWN_TIME.
 
-/** Every number of the flight in one place (heli-flight.md section 4; the changes from it are in DECISIONS.md). */
+import { homeAt, inEndGarden } from './homes.mjs';
+
+/** Every number of the flight in one place (why they are what they are: DECISIONS.md, the helicopter's rows). */
 export const HELI = {
   ROTOR_R: 5.2, // m: the main rotor's radius
   ROTOR_Y: 3.2, // m: its hub over the ground under it (the model's origin)
@@ -32,7 +34,7 @@ export const HELI = {
   TILT: 0.5, // rad (29 degrees): the most lean for speed
   BANK: 0.75, // rad (43 degrees): the most bank in a turn at speed
   ATT_FREQ: 4.5, // rad/s: how fast pitch and roll follow their targets (a damped spring)
-  ATT_DAMP: 0.9, // its damping (1: no overshoot)
+  ATT_DAMP: 1, // its damping (1: no overshoot: the swing back past level after a turn)
   DRAG_FWD: 0.0019, // 1/m: drag along the nose, with the square of the speed through the air
   DRAG_SIDE: 0.006, // 1/m: sideways
   DRAG_UP: 0.02, // 1/m: up and down (the disc's own drag)
@@ -51,7 +53,9 @@ export const HELI = {
   YAW_FAST: 0.45, // rad/s: the most at speed (less when the bank can't hold it: BANK)
   YAW_BLEND0: 12, // m/s: from here the turn becomes a banked one ...
   YAW_BLEND1: 25, // m/s: ... and by here it is one
-  YAW_RESP: 6, // 1/s: how fast the turn follows the key (the tail rotor)
+  YAW_RESP: 6, // 1/s: how fast the turn follows the key (the tail rotor) ...
+  YAW_STOP: 18, // 1/s: ... and how firmly it stops when the key is let go (the nose coasts on about 4 degrees from a hover turn)
+  TURN_SLOW: 0.35, // a held turn at speed asks for this much less speed (a full circle at cruise about 120 m across, not 300)
   GE_GAIN: 0.18, // ground effect: this much more thrust on the floor ...
   GE_HEIGHT: 5.2, // m: ... fading out by one rotor radius over it ...
   GE_FADE: 15, // m/s: ... and with speed
@@ -69,16 +73,18 @@ export const HELI = {
   SLOPE_MAX: 0.35, // rad (20 degrees): on more than this it does not settle
   DOWN_TIME: 6, // s on the floor after a bump before it can start again
   DOWN_SINK: 4, // m/s: after a bump in the air it sinks to the floor at least this fast (a third of its height a second, up to SINK_CAP: about 10 s from 60 m)
-  REST: 0.5, // s still (anywhere: on a floor, or resting on its boom or cabin) before the time down counts
+  REST: 0.5, // s still while the page holds it up (resting on its boom or cabin), before that counts as at rest
+  RIDGE: 0.3, // m: a floor under the hub this far over the skids' plane (a roof's ridge through the cabin floor): no settling
   STRIKES: 3, // rotor strikes ...
   STRIKE_WINDOW: 3, // s: ... inside this long, or one faster than STRIKE_HARD, are a bump
   STRIKE_HARD: 6, // m/s
   BODY_HARD: 4, // m/s: the fuselage into a wall faster than this is a bump
   STEP_UP: 0.6, // m: a skid finds a floor up to this over it
-  CAM_DIST: 14, // m: the chase camera behind the hub ...
+  CAM_DIST: 11.5, // m: the chase camera behind the hub (14 before 15 Nov: the machine a twentieth of the screen) ...
   CAM_SPEED: 0.08, // s: ... and this much further per m/s
-  CAM_UP: 2, // m: it looks at this over the origin
-  CAM_PITCH: 0.3, // rad: down from behind
+  CAM_UP: 2.6, // m: it looks at this over the origin
+  CAM_SIDE: 1.2, // m: and stands this far to the right, so the livery shows, not only the tail fin
+  CAM_PITCH: 0.26, // rad: down from behind (the ground ahead stays in view)
   CAM_FOLLOW: 3, // 1/s: how fast it comes round behind the nose
   CAM_LAND: [12, 0.6], // m, rad: low and slow, nearer and steeper
   MAGNET_R: 4, // m: within this of a pad's centre ...
@@ -86,7 +92,7 @@ export const HELI = {
   MAGNET_V: 1, // m/s: ... the hover drifts to the centre at this
 };
 
-/** Where the skids rest on the ground: the model's x (right) and z (back) of the four contact points (heli.md section 5). */
+/** Where the skids rest on the ground: the model's x (right) and z (back) of the four contact points (docs/helicopter/README.md). */
 export const SKIDS = [[-0.95, -2.11], [0.95, -2.11], [-0.95, 0.71], [0.95, 0.71]];
 const SKID_LENGTH = SKIDS[2][1] - SKIDS[0][1]; // the flat run of the skids, front to back
 const SKID_TRACK = SKIDS[1][0] - SKIDS[0][0];
@@ -112,7 +118,7 @@ export function heliStart(at = { x: 0, y: 0, z: 0, yaw: 0 }) {
     x, y, z, vx: 0, vy: 0, vz: 0, yaw, pitch: 0, roll: 0, pitchRate: 0, rollRate: 0, yawRate: 0,
     rotor: 0, coll: 0, engine: false, ground: true, down: 0,
     // Its memory: the height and the spot it holds, how long the start and stop keys are held.
-    holdY: y, holdX: x, holdZ: z, holding: false, heightHeld: true, startHeld: 0, stopHeld: 0, still: 0,
+    holdY: y, holdX: x, holdZ: z, holding: false, heightHeld: true, startHeld: 0, stopHeld: 0, still: 0, held: false,
     // For the instruments, the sound and the camera: height over the floor below, the floor, how hard it shakes,
     // the thrust (g), what happened (EV) and how hard (m/s), at the edge or the ceiling.
     h: 0, floor: y, shake: 0, thrust: 0, ev: 0, hit: 0, atEdge: false, atCeiling: false,
@@ -125,7 +131,7 @@ export function heliStart(at = { x: 0, y: 0, z: 0, yaw: 0 }) {
  */
 export function heliPlace(s, x, y, z, yaw, rotor = s.rotor) {
   Object.assign(s, { x, y, z, yaw, vx: 0, vy: 0, vz: 0, pitch: 0, roll: 0, pitchRate: 0, rollRate: 0, yawRate: 0, ground: true, down: 0,
-    holdY: y, holdX: x, holdZ: z, holding: false, heightHeld: true, rotor, engine: rotor >= HELI.LIFT_RPM, coll: 0, floor: y, h: 0 });
+    holdY: y, holdX: x, holdZ: z, holding: false, heightHeld: true, held: false, still: 0, rotor, engine: rotor >= HELI.LIFT_RPM, coll: 0, floor: y, h: 0 });
   return s;
 }
 
@@ -181,7 +187,7 @@ export function heliStep(s, input, env, dt) {
   s.h = h;
 
   // The engine: started by holding up on the ground, stopped by holding down there (or by a bump).
-  const resting = s.ground || s.still > H.REST; // on a floor, or at rest on its boom or cabin
+  const resting = s.ground || s.still > H.REST; // on a floor, or at rest on its boom or cabin (never a hover: `still` counts only while held)
   if (!s.engine && resting && !down && liftIn > 0.3) {
     s.startHeld += dt;
     if (s.startHeld >= H.START_HOLD) {
@@ -242,11 +248,15 @@ export function heliStep(s, input, env, dt) {
   s.thrust = T / G;
 
   // The turn: a turn rate at a hover, a banked turn at speed.
+  // At a hover the turn key turns it on the spot; moving, no faster than the bank can carry the speed it has (so W with
+  // a turn key from a hover flies a widening curve), and at speed a banked turn, the nose following the bank.
   const blend = smooth(H.YAW_BLEND0, H.YAW_BLEND1, air);
-  const fast = Math.min(H.YAW_FAST, (G * Math.tan(H.BANK * 0.9)) / Math.max(1, air));
-  let yawCmd = -turnIn * (H.YAW_SLOW + (fast - H.YAW_SLOW) * blend);
+  const ground = Math.hypot(s.vx, s.vz);
+  const carried = (G * Math.tan(H.BANK * 0.9)) / Math.max(1, ground);
+  let yawCmd = -turnIn * Math.min(H.YAW_SLOW, carried, H.YAW_SLOW + (H.YAW_FAST - H.YAW_SLOW) * blend);
   // The speed over the ground it asks for, in its own frame.
-  let tu = fwdIn > 0 ? fwdIn * H.V_TOP : fwdIn * H.V_SLOW;
+  // A held turn at speed asks for less speed, so the circle is tighter and the bank holds it.
+  let tu = (fwdIn > 0 ? fwdIn * H.V_TOP : fwdIn * H.V_SLOW) * (1 - H.TURN_SLOW * Math.abs(turnIn) * blend);
   let tw = sideIn * H.V_SLOW;
   let tx = fx * tu + rx * tw;
   let tz = fz * tu + rz * tw;
@@ -277,8 +287,12 @@ export function heliStep(s, input, env, dt) {
   // What it takes: the speed's error, the target turning with the nose, and the drag at this speed.
   const dU = -(H.DRAG_LIN * uA + H.DRAG_FWD * uA * Math.abs(uA));
   const dW = -(H.DRAG_LIN * wA + H.DRAG_SIDE * wA * Math.abs(wA));
-  const ffx = s.yawRate * (-tu * rx + tw * fx);
-  const ffz = s.yawRate * (-tu * rz + tw * fz);
+  // The turn carries the speed it has (not the speed asked for) round with the nose: from a hover W with a turn key
+  // flies a widening curve, not a pirouette on the bank.
+  const u = s.vx * fx + s.vz * fz, w = s.vx * rx + s.vz * rz;
+  const turning = down ? 0 : yawCmd;
+  const ffx = turning * (-u * rx + w * fx);
+  const ffz = turning * (-u * rz + w * fz);
   const wantX = H.SPEED_GAIN * (tx - s.vx) + ffx - (fx * dU + rx * dW);
   const wantZ = H.SPEED_GAIN * (tz - s.vz) + ffz - (fz * dU + rz * dW);
   // Close over a floor it leans less, so the skids stay clear of it while it lifts off and lands.
@@ -297,7 +311,14 @@ export function heliStep(s, input, env, dt) {
   // On the skids it turns only with the rotor at speed (light on them).
   if (s.ground && s.rotor < H.LIFT_RPM) yawCmd = 0;
   // The nose goes only where the player turns it: no pull into the airflow (sideways flies sideways, a crosswind leans it).
-  s.yawRate += (yawCmd - s.yawRate) * ease(H.YAW_RESP, dt);
+  // At speed the nose follows the bank it has (a co-ordinated turn: no slip to swing back from when you let go).
+  // Only while turning or unwinding a turn: flying sideways or leaning into a crosswind turns nothing.
+  const fwdSpeed = Math.max(0, u);
+  const coord = -(G * Math.tan(s.roll)) / Math.max(5, fwdSpeed);
+  const inTurn = Math.abs(yawCmd) > 1e-3 || Math.abs(s.yawRate) > 0.005;
+  const aim = s.ground || !inTurn ? yawCmd : yawCmd + (coord - yawCmd) * smooth(H.YAW_BLEND0, H.YAW_BLEND1, fwdSpeed);
+  const stopping = Math.abs(aim) < Math.abs(s.yawRate) - 1e-6;
+  s.yawRate += (aim - s.yawRate) * ease(stopping ? H.YAW_STOP : H.YAW_RESP, dt);
   s.yaw = wrap(s.yaw + s.yawRate * dt);
   if (!s.ground) {
     const w2 = H.ATT_FREQ * H.ATT_FREQ;
@@ -331,8 +352,8 @@ export function heliStep(s, input, env, dt) {
         s.ev |= EV.EDGE;
       }
     }
-    if (d < 0) {
-      // Outside (the edge moved in round it): back in, gently.
+    if (d < 0 && !s.ground) {
+      // Outside (the edge moved in round it): back in, gently; standing (its pad outside a game's fence) it stays.
       s.vx += edge.nx * Math.min(2, -d) * dt * 4;
       s.vz += edge.nz * Math.min(2, -d) * dt * 4;
     }
@@ -356,14 +377,15 @@ export function heliStep(s, input, env, dt) {
     s.ev |= EV.CEILING;
   }
 
-  contact(s, groundAt, lift, dt);
+  contact(s, groundAt, lift, dt, floor);
 
   // A little shudder in the translational-lift band (15 to 50 km/h): felt in the camera and the sound.
   const band = smooth(H.ETL_V0 - 1.5, H.ETL_V0 + 1.5, air) * (1 - smooth(H.ETL_V1 - 2, H.ETL_V1 + 2, air));
   s.shake = s.ground ? 0 : 0.3 * band * smooth(0.2, 0.5, s.coll);
   // The time down counts once it has come to rest, wherever: on a floor, or on its boom or cabin on a roof or a wall's
-  // top (the page's walls hold it there), so a bump never leaves it hanging.
-  s.still = Math.hypot(s.vx, s.vz) < 0.3 && Math.abs(s.vy) < 0.3 ? s.still + dt : 0;
+  // top, so a bump never leaves it hanging. `held`: the page's walls hold it up there (world/heli.ts); a steady hover
+  // is never at rest.
+  s.still = s.held && Math.hypot(s.vx, s.vz) < 0.3 && Math.abs(s.vy) < 0.3 ? s.still + dt : 0;
   if (s.down > 0 && (s.ground || s.still > H.REST)) s.down = Math.max(0, s.down - dt);
 
   // Never a broken state: anything not finite puts it level and still where it was holding.
@@ -378,8 +400,21 @@ export function heliStep(s, input, env, dt) {
  * eased to it), the touchdown by its sink speed, the slide down a slope, friction. `lift` is the thrust's upward pull
  * less gravity (m/s2): above zero it lifts off.
  */
-function contact(s, groundAt, lift, dt) {
+function contact(s, groundAt, lift, dt, floor) {
   const H = HELI;
+  // The floor under the hub over the skids' level there (a roof's ridge between them): it holds the cabin up, and the
+  // machine doesn't settle on it.
+  if (floor - s.y > H.RIDGE) {
+    s.y = floor - H.RIDGE;
+    s.vy = Math.max(s.engine ? 0.5 : 0, s.vy);
+    if (s.engine) {
+      s.holdY = Math.max(s.holdY, s.y + 0.6);
+      s.heightHeld = true;
+    }
+    if (s.ground) s.ev |= EV.LIFTOFF;
+    s.ground = false;
+    return;
+  }
   const fx = -Math.sin(s.yaw), fz = -Math.cos(s.yaw);
   const rx = -fz, rz = fx;
   const sp = Math.sin(s.pitch), sr = Math.sin(s.roll);
@@ -404,9 +439,19 @@ function contact(s, groundAt, lift, dt) {
   const slope = Math.acos(clamp(Math.cos(pitchG) * Math.cos(rollG), -1, 1));
   if (minC < 0) s.y -= minC; // out of the floor
   const sink = -s.vy;
-  if (slope > H.SLOPE_MAX) {
-    // Half on and half off (or on a steep roof): it does not settle; the lever holds it there or lifts it off.
-    s.vy = Math.max(0, s.vy);
+  // The floor under the hub against the skids' plane there: a roof's ridge through the cabin floor.
+  const front = (g[0] + g[1]) / 2, rear = (g[2] + g[3]) / 2;
+  const planeAtHub = rear + (front - rear) * (SKIDS[2][1] / SKID_LENGTH);
+  const ridge = floor - planeAtHub > H.RIDGE;
+  if (slope > H.SLOPE_MAX || ridge) {
+    // Half on and half off, a steep roof, or a ridge under the cabin: it does not settle. Over a ridge the cabin stays
+    // clear of it; flying, it holds off a little (it doesn't hang against the tiles) until it is moved or lifted off.
+    if (ridge) s.y = Math.max(s.y, floor - 0.25);
+    s.vy = Math.max(s.engine ? 0.5 : 0, s.vy);
+    if (s.engine) {
+      s.holdY = Math.max(s.holdY, s.y + 0.6);
+      s.heightHeld = true;
+    }
     if (wasGround) s.ev |= EV.LIFTOFF;
     s.ground = false;
     return;
@@ -474,4 +519,28 @@ export function heliFly(s, input, env, dt) {
   const steps = Math.min(240, Math.max(1, Math.ceil(dt * 120)));
   for (let i = 0; i < steps; i++) heliStep(s, input, env, dt / steps);
   return s;
+}
+
+/**
+ * Where you stand after getting out (the page's exit; shared so a test can sweep it): by a step (the model's Step_L and
+ * Step_R, `steps` as [x right, z back]), then behind them, then before and behind the machine, on the floor it stands on
+ * (within 0.5 m) and free (`free(x, z, feet)`: room for a person there); with no room beside it, on that same floor at
+ * the hub. Never lower than that floor (no dropping through a roof it stands on), and never inside a private home or the
+ * end house's fenced garden (shared/homes.mjs, the homes' own data: a new home there is covered too). Null when there
+ * is no such place: the pilot stays aboard. The floor it stands on: its skids' floor, or resting on its boom or cabin,
+ * the floor under its hub.
+ */
+export function heliExit(s, steps, ground, free) {
+  const stand = s.ground ? s.y : s.floor;
+  const fx = -Math.sin(s.yaw), fz = -Math.cos(s.yaw);
+  const rx = -fz, rz = fx;
+  const outside = (x, y, z) => homeAt(x, z, y) === null && !inEndGarden(x, z, y);
+  const local = [...steps.map(([x, z]) => [x + Math.sign(x) * 0.15, z]), ...steps.map(([x, z]) => [x + Math.sign(x) * 0.15, z + 1.4]), [0, -4], [0, 8]];
+  for (const [x, z] of local) {
+    const px = s.x + rx * x - fx * z, pz = s.z + rz * x - fz * z;
+    const g = num(ground(px, pz, stand + 0.5));
+    if (Math.abs(g - stand) > 0.5 || !outside(px, g, pz) || !free(px, pz, g)) continue;
+    return { x: px, y: g, z: pz };
+  }
+  return outside(s.x, stand, s.z) ? { x: s.x, y: stand, z: s.z } : null;
 }

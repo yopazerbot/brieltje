@@ -113,6 +113,37 @@ for (const wind of [[0, 0], [4.5, 0]]) {
   });
   rows.push(['full turn at 30 m/s', `${r1(t)} s, radius ${r1((maxX - minX + maxZ - minZ) / 4)} m, bank ${deg(bank)} deg, height within ${r2(dy)} m`]);
 }
+// Turning with the keys (the review's measures): W with a turn key from a hover, a full circle at cruise, the nose's
+// coast after a hover turn, the bank's swing back past level after a turn at speed.
+{
+  const curve = (s, input, secs, until) => {
+    let turned = 0, last = s.yaw, bank = 0, top = 0, minX = Infinity, maxX = -Infinity, minZ = Infinity, maxZ = -Infinity;
+    const t = run(s, secs, () => input, flat(), (q) => {
+      turned += Math.atan2(Math.sin(q.yaw - last), Math.cos(q.yaw - last));
+      last = q.yaw;
+      bank = Math.max(bank, Math.abs(q.roll));
+      top = Math.max(top, Math.hypot(q.vx, q.vz));
+      [minX, maxX, minZ, maxZ] = [Math.min(minX, q.x), Math.max(maxX, q.x), Math.min(minZ, q.z), Math.max(maxZ, q.z)];
+      return until?.(turned);
+    });
+    return { t, r: (maxX - minX + maxZ - minZ) / 4, bank, top, turned };
+  };
+  const a = curve(hovering(40), { fwd: 1, turn: 1 }, 10);
+  rows.push(['W + turn key from a hover, 10 s', `${r1((Math.abs(a.turned) * 180) / Math.PI / a.t)} deg/s on average, up to ${r1(a.top)} m/s, bank ${deg(a.bank)} deg, ${r1(a.r)} m across half`]);
+  const c0 = hovering(40);
+  run(c0, 30, () => ({ fwd: 1 }), flat());
+  const c = curve(c0, { fwd: 1, turn: 1 }, 90, (turned) => Math.abs(turned) >= 2 * Math.PI);
+  rows.push(['full circle at cruise (W + turn)', `${r1(c.t)} s, radius ${r1(c.r)} m, bank ${deg(c.bank)} deg, speed down to ${r1((2 * Math.PI * c.r) / c.t)} m/s`]);
+  const h = hovering(40);
+  run(h, 2, () => ({ turn: 1 }), flat());
+  const y0 = h.yaw;
+  run(h, 3, () => ({}), flat());
+  rows.push(['hover turn, let go', `the nose coasts ${deg(Math.abs(Math.atan2(Math.sin(h.yaw - y0), Math.cos(h.yaw - y0))))} deg`]);
+  const sideOf = Math.sign(c0.roll) || 1;
+  let past = 0;
+  run(c0, 6, () => ({ fwd: 1 }), flat(), (q) => void (past = Math.max(past, -sideOf * q.roll)));
+  rows.push(['turn at cruise, let go', `the bank goes ${deg(past)} deg past level`]);
+}
 // The nose goes only where it is turned: sideways alone, forward in the strongest crosswind, backwards in a light one.
 for (const [what, input, wind, secs] of [['D alone 8 s', { side: 1 }, [0, 0], 8], ['W 8 s, 4.5 m/s crosswind', { fwd: 1 }, [4.5, 0], 8], ['S 20 s, 2 m/s crosswind', { fwd: -1 }, [2, 0], 20]]) {
   const env = flat(wind);

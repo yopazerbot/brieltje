@@ -2,7 +2,8 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
-import { EV, HELI, SKIDS, heliBump, heliFly, heliPlace, heliStart } from './heli.mjs';
+import { EV, HELI, SKIDS, heliBump, heliExit, heliFly, heliPlace, heliStart } from './heli.mjs';
+import { END_GARDEN, HOMES, homeAt, inEndGarden } from './homes.mjs';
 
 const DATA = JSON.parse(readFileSync(new URL('./heli.json', import.meta.url), 'utf8'));
 const DT = 1 / 60;
@@ -259,7 +260,8 @@ test('bumped and come to rest on its boom or cabin (held up by the page), the ti
     heliBump(s, 8);
     // The page's walls: the boom or the cabin lies on something at `rest` that the skids don't stand on.
     const hold = () => {
-      if (s.y < rest) {
+      s.held = s.y < rest;
+      if (s.held) {
         s.y = rest;
         s.vy = Math.max(0, s.vy);
       }
@@ -291,5 +293,146 @@ test('the nose goes only where it is turned: sideways flies sideways, a crosswin
     assert.ok(Math.abs(s.yaw - yaw0) < 0.01, `${JSON.stringify(c)}: the nose turned ${s.yaw - yaw0} rad`);
     if (c.input.fwd) assert.ok(Math.abs(s.x - x0) < 2, `${JSON.stringify(c)}: blown ${s.x - x0} m off its line`);
     if (c.input.side) assert.ok(Math.abs(Math.hypot(s.vx, s.vz) - HELI.V_SLOW) < 1, `${JSON.stringify(c)}: ${Math.hypot(s.vx, s.vz)} m/s sideways`);
+  }
+});
+
+test('a steady hover is never at rest: no getting out, no start or stop from a hover', () => {
+  const s = hovering(40);
+  fly(s, 5, {}, flat(), (q) => {
+    assert.equal(q.still, 0);
+    assert.equal(q.ground, false);
+  });
+  fly(s, 3, { lift: -0.2 }, flat()); // a gentle sink: still no stopping the engine in the air
+  assert.ok(s.engine);
+});
+
+/** A turn's numbers: the radius of the path, its time, the most bank. */
+function circle(s, input, secs, until) {
+  let turned = 0, last = s.yaw, bank = 0, minX = Infinity, maxX = -Infinity, minZ = Infinity, maxZ = -Infinity, top = 0;
+  const t = fly(s, secs, input, flat(), (q) => {
+    turned += Math.atan2(Math.sin(q.yaw - last), Math.cos(q.yaw - last));
+    last = q.yaw;
+    bank = Math.max(bank, Math.abs(q.roll));
+    top = Math.max(top, speed(q));
+    [minX, maxX, minZ, maxZ] = [Math.min(minX, q.x), Math.max(maxX, q.x), Math.min(minZ, q.z), Math.max(maxZ, q.z)];
+    return until?.(turned);
+  });
+  return { t, r: (maxX - minX + maxZ - minZ) / 4, bank, top, turned };
+}
+
+test('W with a turn key from a hover flies a widening curve, not a pirouette; a full circle at cruise is about 120 m across', () => {
+  const pir = circle(hovering(40), { fwd: 1, turn: 1 }, 10);
+  assert.ok(pir.top > 20, `it gathers speed in the curve: ${pir.top} m/s`);
+  assert.ok(pir.r > 20, `a curve, not a pirouette: radius ${pir.r} m`);
+  const s = hovering(40);
+  fly(s, 30, { fwd: 1 });
+  const c = circle(s, { fwd: 1, turn: 1 }, 90, (turned) => Math.abs(turned) >= 2 * Math.PI);
+  assert.ok(c.r > 90 && c.r < 160, `a full circle at cruise: radius ${c.r} m`);
+});
+
+test('after a turn the nose stops within 5 degrees and the bank comes back level without swinging past it by more than 4 (it was 8)', () => {
+  const s = hovering(40);
+  fly(s, 2, { turn: 1 });
+  const yaw0 = s.yaw;
+  fly(s, 3, {});
+  const coast = Math.abs(Math.atan2(Math.sin(s.yaw - yaw0), Math.cos(s.yaw - yaw0)));
+  assert.ok(coast < (5 * Math.PI) / 180, `the nose coasted ${(coast * 180) / Math.PI} degrees`);
+  const q = hovering(40);
+  fly(q, 30, { fwd: 1 });
+  fly(q, 10, { fwd: 1, turn: 1 });
+  const side = Math.sign(q.roll);
+  let past = 0;
+  fly(q, 8, { fwd: 1 }, flat(), (p) => void (past = Math.max(past, -side * p.roll)));
+  assert.ok(past < (4 * Math.PI) / 180, `the bank swung ${(past * 180) / Math.PI} degrees past level`);
+});
+
+test('a ridge under the cabin or a roof too steep: it does not settle, and flying it holds off the tiles', () => {
+  // A ridge along z through the hub, 1 m over the eaves either side: the skids at x +-0.95 stand lower than the hub.
+  const ridge = (x, z, top) => Math.min(top, 1 - Math.abs(x) * 0.6);
+  const env = flat({ ground: ridge });
+  const s = hovering(4, env);
+  let lowest = Infinity;
+  fly(s, 6, { lift: -1 }, env, (q) => {
+    lowest = Math.min(lowest, q.y + 0.3 - ridge(q.x, q.z, 99)); // the cabin floor over the ridge
+  });
+  assert.equal(s.ground, false);
+  assert.ok(lowest > -0.05, `the ridge reached ${-lowest} m into the cabin`);
+  // A 40 degree roof: no settling, it holds off rather than hang against it.
+  const steep = (x, z, top) => Math.min(top, 3 + x * Math.tan(0.7));
+  const env2 = flat({ ground: steep });
+  const r = hovering(9, env2);
+  fly(r, 6, { lift: -1 }, env2);
+  fly(r, 3, {}, env2);
+  assert.equal(r.ground, false);
+});
+
+test("standing outside the edge (its pad outside a game's fence), running down, it stays where it stands", () => {
+  const s = heliStart({ x: 0, y: 0, z: 0, yaw: Math.PI });
+  heliPlace(s, 0, 0, 0, Math.PI, 1);
+  s.engine = false;
+  const env = flat({ edge: { x: 20, z: 0, nx: 1, nz: 0 } }); // the edge 20 m off, inwards along +x: it stands outside
+  fly(s, 4, {}, env);
+  assert.ok(Math.hypot(s.x, s.z) < 0.01, `it slid ${Math.hypot(s.x, s.z)} m`);
+  assert.equal(s.ground, true);
+});
+
+/** Inside a ring (as shared/homes.mjs). */
+function inRing(x, z, ring) {
+  let hit = false;
+  for (let i = 0, j = ring.length - 1; i < ring.length; j = i++) {
+    const [xi, zi] = ring[i];
+    const [xj, zj] = ring[j];
+    if (zi > z !== zj > z && x < ((xj - xi) * (z - zi)) / (zj - zi) + xi) hit = !hit;
+  }
+  return hit;
+}
+
+test('getting out never puts you inside a private home or its fenced garden, nor lower than the floor it stands on', () => {
+  // A fourth home, as the one being added on Kapellenhoek will be: the rule comes from the homes' data, not a list.
+  const ring = [[300, 300], [312, 300], [312, 310], [300, 310]];
+  const fourth = { id: 'test_fourth', bands: [{ y0: -5, y1: 2.6, ring, box: [300, 300, 312, 310] }, { y0: 2.6, y1: 5.6, ring, box: [300, 300, 312, 310] }], box: [300, 300, 312, 310] };
+  HOMES.push(fourth);
+  try {
+    // A world built from the homes' data: in a home's rings its roof (over its top band), round it the ground, the end
+    // house's garden at its lawn.
+    const ground = (x, z, top) => {
+      for (const h of HOMES) {
+        if (h.bands.some((b) => inRing(x, z, b.ring))) {
+          const roof = Math.max(...h.bands.map((b) => b.y1)) + 0.2;
+          return roof <= top ? roof : Math.min(top, h.bands[0].y0 + 5);
+        }
+      }
+      if (inRing(x, z, END_GARDEN.ring)) return END_GARDEN.y;
+      const near = HOMES.find((h) => x > h.box[0] - 30 && x < h.box[2] + 30 && z > h.box[1] - 30 && z < h.box[3] + 30);
+      return near ? Math.max(0, near.bands[0].y0 + 5) : 0;
+    };
+    let tries = 0, outs = 0;
+    for (const h of HOMES) {
+      const [x0, z0, x1, z1] = h.box;
+      for (let x = x0 - 12; x <= x1 + 12; x += 1.5) {
+        for (let z = z0 - 12; z <= z1 + 12; z += 1.5) {
+          for (let k = 0; k < 8; k++) {
+            const y = ground(x, z, 1e9);
+            for (const held of [false, true]) {
+              // Standing on its skids there, or resting on its boom with the floor under its hub lower (the ground).
+              const s = { ...heliStart({ x, y, z, yaw: (k * Math.PI) / 4 }), ground: !held, floor: held ? ground(x, z, y - 1) : y, y: held ? y + 0.5 : y };
+              const stand = s.ground ? s.y : s.floor;
+              for (const room of [true, false]) {
+                tries++;
+                const at = heliExit(s, DATA.size.steps, ground, () => room);
+                if (!at) continue;
+                outs++;
+                assert.equal(homeAt(at.x, at.z, at.y), null, `inside ${homeAt(at.x, at.z, at.y)} from ${x}, ${z}, ${y}`);
+                assert.equal(inEndGarden(at.x, at.z, at.y), false, `in the end house's garden from ${x}, ${z}, ${y}`);
+                assert.ok(at.y >= stand - 0.5 && at.y <= stand + 0.5, `${at.y} against the floor it stands on, ${stand}`);
+              }
+            }
+          }
+        }
+      }
+    }
+    assert.ok(outs > tries * 0.5, `most placements still let you out: ${outs} of ${tries}`);
+  } finally {
+    HOMES.splice(HOMES.indexOf(fourth), 1);
   }
 });

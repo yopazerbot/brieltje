@@ -6,12 +6,12 @@ export const HELI: {
   DRAG_FWD: number; DRAG_SIDE: number; DRAG_UP: number; DRAG_LIN: number;
   V_TOP: number; V_SLOW: number; V_CAP: number; CLIMB_MAX: number; SINK: number; SINK_CAP: number;
   VS_RESP: number; HOLD_GAIN: number; SPEED_GAIN: number; POS_GAIN: number;
-  YAW_SLOW: number; YAW_FAST: number; YAW_BLEND0: number; YAW_BLEND1: number; YAW_RESP: number;
+  YAW_SLOW: number; YAW_FAST: number; YAW_BLEND0: number; YAW_BLEND1: number; YAW_RESP: number; YAW_STOP: number; TURN_SLOW: number;
   GE_GAIN: number; GE_HEIGHT: number; GE_FADE: number; ETL_GAIN: number; ETL_V0: number; ETL_V1: number;
   WIND_PUSH: number; CEIL_FADE: number; EDGE_PAD: number;
   LAND_SOFT: number; LAND_HARD: number; LAND_SKID: number; LAND_TILT: number; SLOPE_SLIDE: number; SLOPE_MAX: number;
-  DOWN_TIME: number; DOWN_SINK: number; REST: number; STRIKES: number; STRIKE_WINDOW: number; STRIKE_HARD: number; BODY_HARD: number; STEP_UP: number;
-  CAM_DIST: number; CAM_SPEED: number; CAM_UP: number; CAM_PITCH: number; CAM_FOLLOW: number; CAM_LAND: [number, number];
+  DOWN_TIME: number; DOWN_SINK: number; REST: number; RIDGE: number; STRIKES: number; STRIKE_WINDOW: number; STRIKE_HARD: number; BODY_HARD: number; STEP_UP: number;
+  CAM_DIST: number; CAM_SPEED: number; CAM_UP: number; CAM_SIDE: number; CAM_PITCH: number; CAM_FOLLOW: number; CAM_LAND: [number, number];
   MAGNET_R: number; MAGNET_H: number; MAGNET_V: number;
 };
 
@@ -42,6 +42,8 @@ export interface HeliState {
   holdY: number; holdX: number; holdZ: number; holding: boolean; heightHeld: boolean; startHeld: number; stopHeld: number;
   /** s it has been at rest (the time down counts from REST) */
   still: number;
+  /** the page's walls hold it up this step (resting on its boom or cabin): set by world/heli.ts */
+  held: boolean;
   /** m over the floor below */
   h: number;
   floor: number;
@@ -78,3 +80,5 @@ export function heliPlace(s: HeliState, x: number, y: number, z: number, yaw: nu
 export function heliBump(s: HeliState, speed?: number): HeliState;
 export function heliStep(s: HeliState, input: HeliInput, env: HeliEnv, dt: number): HeliState;
 export function heliFly(s: HeliState, input: HeliInput, env: HeliEnv, dt: number): HeliState;
+/** Where you stand after getting out, or null (stay aboard): see heli.mjs. */
+export function heliExit(s: HeliState, steps: [number, number][], ground: (x: number, z: number, top: number) => number, free: (x: number, z: number, feet: number) => boolean): { x: number; y: number; z: number } | null;
