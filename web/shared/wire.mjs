@@ -6,7 +6,7 @@
 //   p   players    [name, age, x, y, z, yaw, pitch, flags, weapon]
 //   c   cars       [id, age, x, y, z, yaw, steer, driver, passenger]
 //   h   horses     [i, age, x, z, yaw, speed, jump, rider, parked (0 or 1)]
-//   k   bikes      [id, age, x, y, z, yaw, rider]
+//   k   bikes      [id, age, x, y, z, yaw, rider, lie]
 //   b   strongmen  [id, x, z, yaw, speed, act, hp]
 //   z   zombies    [id, x, z, yaw, state, hp, y]  (the Zombies game: state = act + 4 * kind, see zombieEntry)
 // `age`: how long before `st` that state was where it says (ms). A player's state carries the time
@@ -58,9 +58,13 @@ export function horseFields(h) {
   return [r2(h.x), r2(h.z), angle(h.yaw), r2(n(h.speed)), r2(n(h.jump)), h.rider ?? null, h.parked ? 1 : 0];
 }
 
-/** A bike (src/world/bike.ts) without its id and age: [x, y, z, yaw, rider]. How it leans, steers and pedals each page works out from how it moves. */
+/**
+ * A bike (src/world/bike.ts) without its id and age: [x, y, z, yaw, rider, lie]. How it leans, steers and pedals each page
+ * works out from how it moves. `lie`: knocked over by a car (shared/bikeKnock.mjs), 1 or -1 the side it lies on, 0 standing;
+ * last, so a page from before it reads the rest.
+ */
 export function bikeFields(k) {
-  return [r2(k.x), r2(k.y), r2(k.z), angle(k.yaw), k.rider ?? null];
+  return [r2(k.x), r2(k.y), r2(k.z), angle(k.yaw), k.rider ?? null, k.lie === 1 || k.lie === -1 ? k.lie : 0];
 }
 
 /** A strongman: [id, x, z, yaw, speed, act, hp]. */
@@ -100,7 +104,7 @@ export function readHorse(e) {
 }
 
 export function readBike(e) {
-  return { id: String(e[0]), age: n(e[1]), x: n(e[2]), y: n(e[3]), z: n(e[4]), yaw: n(e[5]), rider: typeof e[6] === 'string' ? e[6] : null };
+  return { id: String(e[0]), age: n(e[1]), x: n(e[2]), y: n(e[3]), z: n(e[4]), yaw: n(e[5]), rider: typeof e[6] === 'string' ? e[6] : null, lie: e[7] === 1 || e[7] === -1 ? e[7] : 0 };
 }
 
 export function readZombie(e) {

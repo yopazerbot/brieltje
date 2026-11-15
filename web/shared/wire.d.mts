@@ -77,6 +77,8 @@ export interface BikeSample {
   z: number;
   yaw: number;
   rider: string | null;
+  /** Knocked over by a car (shared/bikeKnock.mjs): 1 lying on its right side, -1 on its left, 0 standing */
+  lie: number;
 }
 
 export interface BruteSample {
