@@ -41,7 +41,7 @@ import { defaultLayout, housePacks, packFor } from './insides.mjs';
 import { HomeGate } from './homeGate.mjs';
 import { noShoot } from '../shared/zones.mjs';
 import { buildVillagers, villagerHittable, VILLAGER_DOWN_S, VILLAGER_HIT_MAX, VILLAGER_HIT_MS, VILLAGER_PAINT_S, VILLAGER_RANGE, VILLAGER_SHOT_MAX } from '../shared/villagers.mjs';
-import { boxesOverlap, boxPoints, clearOfPortals, makeIndoors, makeSolids } from '../shared/parking.mjs';
+import { boxesOverlap, boxPoints, clearOfPortals, indoorBlocks, makeIndoors, makeSolids } from '../shared/parking.mjs';
 import { bikeFields, bruteEntry, carFields, horseFields, playerFields, PROTO, TICK_MS } from '../shared/wire.mjs';
 import { startingWeapons } from '../shared/loadout.mjs';
 import { houseAreas, makeNav, MAX_ADMIN_WAVE } from '../shared/zombies.mjs';
@@ -405,6 +405,7 @@ export class Game {
     this.bikeHits = new BikeHits(this, {
       bikes: BIKES, solids: SOLIDS, indoors: INDOORS, parked: PARKED, dips: [...(HOUSE.dips ?? []), ...(VILLAGE.dips ?? [])],
       ground: (x, z) => HOUSE.ground + TERRAIN.height(x, z), area: AREA, map: BOUNDS.map, carSpec, mono,
+      inside: indoorBlocks([...HOUSE.prisms, ...(HOUSE.surroundings?.prisms ?? [])], HOUSE.rooms.map((r) => r.name)),
     });
     // Horses: on their walks until someone rides one; left where they are got off (until a restart).
     this.horses = HORSES.herd.map((_, i) => ({ i, x: 0, z: 0, yaw: 0, speed: 0, rider: null, parked: false }));
@@ -913,10 +914,10 @@ export class Game {
       if (drop) this.dropCheck(player, now); // on the ground, or not coming down: the drop ends
       this.stampState(player, m.ct);
       if (driving) {
-        const before = { x: car.x, y: car.y, z: car.z, yaw: car.yaw, at: this.carAt[car.id] ?? 0 };
+        const before = { x: car.x, y: car.y, z: car.z, yaw: car.yaw };
         Object.assign(car, { x: next.x, y: next.y, z: next.z, yaw: next.yaw, s: next.s });
         this.carAt[car.id] = player.stamp;
-        this.bikeHits.strike(name, player, car, before, now); // a free bike in its way is knocked aside (no message of its own)
+        this.bikeHits.strike(name, player, car, before); // a free bike in its way is knocked aside (no message of its own)
       }
       if (horse) {
         Object.assign(horse, { x: next.x, z: next.z, yaw: num(m.hy, -100, 100), speed: num(m.hs, -2, HORSES.gallop), jump: num(m.hj, 0, HORSES.jump.height) });
@@ -2390,7 +2391,7 @@ export class Game {
       else if (p.drop) this.dropCheck(p, now); // or not coming down
     }
     this.modes.tick(now, TICK_MS);
-    this.bikeHits.home(now); // a knocked bike left lying goes back to its spot
+    this.bikeHits.home(); // a knocked bike left lying goes back to its spot
     this.pings(); // the watch views too, when nobody plays (they would fall silent)
     if (!this.players.size) return;
     this.fenceAll();
