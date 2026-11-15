@@ -357,3 +357,20 @@ function inside2d(x, z, ring) {
   }
   return c;
 }
+
+test('a helicopter standing inside a home (a pose its pilot reported) is in no welcome or tick of a page without the right', () => {
+  const { game, grants, player } = setup();
+  const h = HOMES[3];
+  const { inside, outside } = spots(h);
+  const other = player('other', outside);
+  const owner = player('owner', outside);
+  grants.add(`k-owner|${h.id}`);
+  const heli = [...game.helis.machines.values()][0];
+  assert.ok(heli, 'a helicopter in the game');
+  Object.assign(heli, { x: inside.x, y: inside.y, z: inside.z });
+  assert.ok(!game.welcome(other, 'other', '#888', Date.now()).helis.some((e) => e.id === heli.id), 'the welcome');
+  assert.ok(game.welcome(owner, 'owner', '#888', Date.now()).helis.some((e) => e.id === heli.id));
+  game.snapshot(Date.now());
+  assert.ok(!entries(other, 'e').some((e) => e[0] === heli.id), 'the ticks');
+  assert.ok(entries(owner, 'e').some((e) => e[0] === heli.id));
+});

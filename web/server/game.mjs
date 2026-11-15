@@ -635,7 +635,7 @@ export class Game {
       t: 'welcome', proto: PROTO, you: name, role: player.role, color, doors: this.doorsFor(player), doorDir: this.doorDirFor(player), broken: this.brokenFor(player), cracked: this.crackedFor(player), homes: HOMES.filter((h) => player.role !== 'admin' && this.homes?.granted(player.key, h.id)).map((h) => h.id), accountHomes: HOMES.filter((h) => player.role === 'player' && this.homes?.byAccount?.(player.key, h.id)).map((h) => h.id), players: this.roster(),
       time: now, cats: this.catsDown.map((until) => Math.max(0, until - now)), ...this.villagersView(now), clowns: this.clownList(now, player), furniture: this.furnitureFor(player), rules: this.rules,
       scores: this.scoreList(), limit: KILL_LIMIT, items: this.items.map((it) => now >= it.until), round: this.roundOver ? { winner: this.roundOver.winner, ms: this.roundOver.until - now } : null,
-      cars: Object.values(this.cars).filter((c) => this.seenBy(player, 'car', c)), horses: this.horses.filter((h) => this.seenBy(player, 'horse', h)), bikes: Object.values(this.bikes).filter((k) => this.seenBy(player, 'bike', k)), helis: this.helis.view(), mode: this.modes.view(now), mood: this.mood, moodCycle: this.moodView(now),
+      cars: Object.values(this.cars).filter((c) => this.seenBy(player, 'car', c)), horses: this.horses.filter((h) => this.seenBy(player, 'horse', h)), bikes: Object.values(this.bikes).filter((k) => this.seenBy(player, 'bike', k)), helis: this.helis.view().filter((e) => this.seenBy(player, 'heli', e)), mode: this.modes.view(now), mood: this.mood, moodCycle: this.moodView(now),
       room: this.roomView(),
     };
   }
