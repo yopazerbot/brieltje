@@ -17,14 +17,6 @@ const GNOMES = [
   { id: 'g1', x: 15, z: -6, y: null },
   { id: 'roof', x: 15, z: 36, y: 6 },
 ];
-/** A wall across the third leg (from (30, 30) back to (0, 30)), at x 14 to 16, only where `wall.on`. */
-const wall = { on: false };
-const lineFree = (cx, cz, yaw, halfL) => {
-  if (!wall.on) return true;
-  const fx = -Math.sin(yaw), fz = -Math.cos(yaw);
-  const ax = cx - fx * halfL, bx = cx + fx * halfL, az = cz - fz * halfL, bz = cz + fz * halfL;
-  return !(Math.min(ax, bx) <= 16 && Math.max(ax, bx) >= 14 && Math.max(az, bz) > 25);
-};
 
 function setup({ role = 'player', store: extra = {} } = {}) {
   const writes = [];
@@ -56,7 +48,7 @@ function setup({ role = 'player', store: extra = {} } = {}) {
     ...extra,
   };
   const g = new GoalTracker({
-    routes: [SQUARE, CARRT], gnomes: GNOMES, reach: 1.5, ground: () => 0, lineFree, pace: PACE, top: TOP, store, clock: () => clock.t,
+    routes: [SQUARE, CARRT], gnomes: GNOMES, reach: 1.5, ground: () => 0, pace: PACE, top: TOP, store, clock: () => clock.t,
     tell: (name, m) => told.push({ name, ...m }), changed: () => changed++, onBoard: (r) => r === 'player' || r === 'admin',
   });
   const me = { x: -6, y: 0, z: 0 };
@@ -226,18 +218,17 @@ test('flying (the flag: no way of moving) and 10 m up without it: no time', asyn
   assert.equal(races(s.writes).length, 1);
 });
 
-test('a step through a block stops the run', async () => {
+test('a shortcut (as through a wall: the server checks no walls for players) still gets no time under the floor', async () => {
+  // The square's diagonal cut short: gate, first corner, straight across to the last corner over the second (within its
+  // radius), back to the gate. At the budget's most (4.5 m/s) it is under the floor; at a run it counts, as any line does.
+  const cut = [[-0.5, 0], [30, 0], [28.6, 28.6], [0, 30], [0, 0], [-6, 0]];
   const s = setup();
   await s.joined();
-  wall.on = true;
-  try {
-    s.step(-5.9, 0);
-    s.lap(4);
-    await s.flush();
-    assert.deepEqual(races(s.writes), []);
-  } finally {
-    wall.on = false;
-  }
+  s.step(-5.9, 0);
+  for (const [x, z] of cut) s.go(x, z, 4.5);
+  await s.flush();
+  assert.deepEqual(races(s.writes), [], 'under the floor');
+  assert.ok(s.g.floor.sq > 0);
 });
 
 test('a burst after a 2 s stall starts nothing; a state the game cut starts nothing', async () => {

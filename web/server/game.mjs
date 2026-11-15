@@ -437,7 +437,7 @@ export class Game {
     this.host = room ? null : new Host(this); // the host's controls for a LAN night (server/host.mjs), in the open world
     // The timed routes and the gnomes, timed and noted by the server from its own positions (server/goals.mjs), in the open world.
     this.goals = room ? null : new GoalTracker({
-      ...GOALS, ground: (x, z) => HOUSE.ground + TERRAIN.height(x, z), lineFree: (...a) => SOLIDS.boxFree(...a), pace: GOAL_PACE, top: GOAL_TOP,
+      ...GOALS, ground: (x, z) => HOUSE.ground + TERRAIN.height(x, z), pace: GOAL_PACE, top: GOAL_TOP,
       store: () => this.auth?.store, clock: mono, tell: (name, m) => this.players.has(name) && this.send(this.players.get(name).ws, m), changed: () => this.hub?.scored(), onBoard,
     });
     this.zombieBests = Object.create(null); // place id -> the best wave ever in the Zombies game there (loadRules, saveZombieBest)

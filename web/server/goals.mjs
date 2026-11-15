@@ -13,8 +13,12 @@
 //  5. the pace: a step longer than the normal budget for that way stops the run (the admin's fast walking never sets a
 //     time); a finish faster than the route's shortest line at the top speed of that way is refused;
 //  6. on the ground: feet more than ABOVE_MAX m over the ground stop the run;
-//  7. no walls: the step's line must be clear of the village's blocks (the page's collision, shared/parking.mjs);
-//  8. the time is the server's monotonic clock at the arrival of the two states, in whole ms.
+//  7. the time is the server's monotonic clock at the arrival of the two states, in whole ms.
+//
+// The plan had one more: the step's line clear of the village's blocks (shared/parking.mjs). It stopped an honest walk
+// by the page round the walking route (between its second and third checkpoints the page lets you through where the
+// server's blocks do not), so it is left out: as before, the server checks no walls for players. A line through the
+// houses is still held by the budget and the shortest time (rule 5).
 //
 // The boards (server/store.mjs) are for accounts and the admin's reserved names; tonight's tables (the host's big screen)
 // hold every name that played, guests too, in memory until the host resets the evening or the server restarts.
@@ -33,10 +37,6 @@ const MAX_GNOMES = 200;
 export const START_GAP_MS = 200;
 /** Feet more than this over the ground (m) stop a run: flying without the flag, a helicopter. */
 export const ABOVE_MAX = 3;
-/** The step's line checked against the blocks: this wide (half, m), this high over the feet (m). */
-const LINE_HALF_W = 0.05;
-const LINE_Y0 = 0.5;
-const LINE_Y1 = 1.5;
 /** A gnome is found when the step's line comes this much closer than the page's reach (m), the feet this near its height. */
 const GNOME_SLACK = 0.5;
 const GNOME_DY = 2;
@@ -89,16 +89,14 @@ export function shortest(route) {
 export class GoalTracker {
   /**
    * `pace`: the game's speed budget per way of moving (m/s, with its room for jitter); `top`: the real top speed of each
-   * way (m/s, for the shortest time); `ground(x, z)`: the ground's height; `lineFree(cx, cz, yaw, halfL, halfW, y0, y1)`:
-   * a box clear of the blocks; `store()`: the store; `clock()`: ms, monotonic; `tell(name, message)`; `changed()`;
-   * `onBoard(role)`: whether that role is on the all-time boards.
+   * way (m/s, for the shortest time); `ground(x, z)`: the ground's height; `store()`: the store; `clock()`: ms, monotonic;
+   * `tell(name, message)`; `changed()`; `onBoard(role)`: whether that role is on the all-time boards.
    */
-  constructor({ routes, gnomes, reach, ground, lineFree, pace, top, store, clock, tell, changed, onBoard }) {
+  constructor({ routes, gnomes, reach, ground, pace, top, store, clock, tell, changed, onBoard }) {
     this.routes = routes.map((r) => ({ ...r, key: bestKey(r) }));
     this.gnomes = gnomes;
     this.reach = reach + GNOME_SLACK;
     this.ground = ground;
-    this.lineFree = lineFree;
     this.store = typeof store === 'function' ? store : () => store;
     this.clock = clock;
     this.tell = tell;
@@ -161,22 +159,18 @@ export class GoalTracker {
       p.budget = Math.max(0, p.budget - step);
     }
     if (seek) this.seek(name, p, prev, next);
-    this.race(name, p, prev, next, by, step, fast, gapMs, cut);
+    this.race(name, p, prev, next, by, fast, gapMs, cut);
   }
 
-  /** Rules 6 and 7: on the ground, and the step's line clear of the blocks. */
-  fair(prev, next, step) {
-    if (next.y - this.ground(next.x, next.z) > ABOVE_MAX) return false;
-    if (step < 0.01) return true;
-    const yaw = Math.atan2(-(next.x - prev.x), -(next.z - prev.z));
-    const lo = Math.min(prev.y, next.y), hi = Math.max(prev.y, next.y);
-    return this.lineFree((prev.x + next.x) / 2, (prev.z + next.z) / 2, yaw, step / 2, LINE_HALF_W, lo + LINE_Y0, hi + LINE_Y1);
+  /** Rule 6: on the ground. */
+  grounded(next) {
+    return next.y - this.ground(next.x, next.z) <= ABOVE_MAX;
   }
 
-  race(name, p, prev, next, by, step, fast, gapMs, cut) {
+  race(name, p, prev, next, by, fast, gapMs, cut) {
     if (p.run) {
       const route = p.route;
-      if (by !== route.by || fast || !this.fair(prev, next, step)) {
+      if (by !== route.by || fast || !this.grounded(next)) {
         p.run = null;
         return;
       }
@@ -190,7 +184,7 @@ export class GoalTracker {
     for (const route of this.byWay[by]) {
       // Most steps are nowhere near a gate: nothing more is worked out for them.
       if (!passes(prev.x, prev.z, next.x, next.z, route.gate[0], route.gate[1], route.radius)) continue;
-      if (!this.fair(prev, next, step)) continue;
+      if (!this.grounded(next)) continue;
       const r = stepRun(null, route, prev, next, by, this.clock(), this.stepMax[by]);
       if (r.event === 'start') {
         p.run = r.run;
