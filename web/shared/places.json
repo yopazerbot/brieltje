@@ -31,14 +31,14 @@
   {
    "id": "street:blekte",
    "name": "Blekte",
-   "sub": "Oud-Smetlede",
-   "x": 724.27,
-   "z": 474.82,
-   "yaw": 1.337,
+   "sub": "Smetlede",
+   "x": 1010.17,
+   "z": -36.95,
+   "yaw": 1.579,
    "car": [
-    723.71,
-    477.2,
-    1.337
+    1010.19,
+    -35.0,
+    1.579
    ],
    "village": true
   },
@@ -176,6 +176,20 @@
     429.7,
     -659.83,
     2.164
+   ],
+   "village": true
+  },
+  {
+   "id": "street:klinkaard",
+   "name": "Klinkaard",
+   "sub": "Smetlede",
+   "x": 1857.53,
+   "z": 278.76,
+   "yaw": -0.094,
+   "car": [
+    1856.73,
+    278.69,
+    -0.094
    ],
    "village": true
   },
@@ -460,13 +474,13 @@
    "id": "street:vrommensweide",
    "name": "Vrommensweide",
    "sub": "Smetlede",
-   "x": 1711.81,
-   "z": -318.27,
-   "yaw": -0.383,
+   "x": 1350.33,
+   "z": 121.51,
+   "yaw": 2.638,
    "car": [
-    1710.7,
-    -318.72,
-    -0.383
+    1350.64,
+    121.67,
+    2.638
    ],
    "village": true
   },
