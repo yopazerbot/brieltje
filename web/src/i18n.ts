@@ -2606,8 +2606,8 @@ const PLACES_NL: Record<string, string> = {
   planting: 'beplanting', Garden: 'Tuin', street: 'straat', 'play tower': 'speeltoren',
   'church-roof': 'Dakloop', 'church-pad': 'Landingsdek', 'church-pad-net': 'Landingsdek', 'church-pad-rail': 'Landingsdek',
   // the café at the church (tools/keet.py)
-  'front room': 'voorste zaal', 'bar room': 'gelagzaal', 'behind the bar': 'achter de toog', 'back corridor': 'gang',
-  "toilets' corridor": 'gang naar de toiletten', 'toilet 1': 'toilet 1', 'toilet 2': 'toilet 2',
+  'front room': 'voorste zaal', 'bar room': 'gelagzaal', 'behind the bar': 'achter de toog', 'back hall': 'gang',
+  toilets: 'toiletten', 'toilet 1': 'toilet 1', 'toilet 2': 'toilet 2',
 };
 /** The church's blocks (shared/church.json) are named by id: their English names. */
 const PLACES_EN: Record<string, string> = {
@@ -2636,7 +2636,7 @@ const DOORS_NL: Record<string, string> = {
   'garage door': 'garagepoort', 'side door': 'zijdeur', 'back door': 'achterdeur', 'store door': 'bergingsdeur',
   // the café at the church (tools/keet.py): its rooms' names are English, so its "door to" names are here whole
   'bar gate': 'klapdeurtje van de toog', 'toilet door': 'toiletdeur', 'door to the bar room': 'deur naar de gelagzaal',
-  'door to the back corridor': 'deur naar de gang', "door to the toilets' corridor": 'deur naar de toiletten',
+  'door to the back hall': 'deur naar de gang', 'door to the toilets': 'deur naar de toiletten',
 };
 export function doorName(name: string): string {
   if (current === 'en') return name;

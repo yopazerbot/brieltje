@@ -157,7 +157,7 @@ import { glass as glassLook, GlassProbe, glassOnModel } from './world/glassLook'
 import { trackVillageHouse, VILLAGE_HOUSES } from './world/villageHouses';
 import { mood } from './world/mood';
 import { loadWalkIn, type WalkIn } from './world/walkIn';
-import { holdKeetShut, isKeetDoor, keetRooms, loadKeet } from './world/keet';
+import { holdKeetShut, isKeetDoor, isKeetPane, keetDoorway, keetRooms, loadKeet } from './world/keet';
 import { Insides, type InsidePack } from './world/insides';
 import { CAR_REACH, CAR_SLOW, findPortal, PORTALS, portalNear, REACH, type Portal } from '../shared/portals.mjs';
 import { noShoot } from '../shared/zones.mjs';
@@ -815,7 +815,7 @@ let curtainsAt = -1e9;
 doors.refresh();
 glass.locked = (i) => {
   const home = homeLocks.homeOfPane(i);
-  return home ? !homeLocks.isOpen(home) : !me;
+  return home ? !homeLocks.isOpen(home) : !me && !isKeetPane(i); // the café's panes break alone as together (world/keet.ts)
 };
 const effects = new Effects(scene, new Decals(scene), (x, z, y) => world.groundAt(x, z, y, 0).y);
 looseProps.attach(scene, world, effects.particles); // the street's bins, bikes, letterboxes and posts that cars knock over (world/looseProps.ts)
@@ -3657,7 +3657,7 @@ renderer.setAnimationLoop((now: number) => {
       net.send({ t: 'revive', name: helping.name, on: false });
       helping = null;
     }
-    const target = inCar || onHorse || tagWho || downed ? null : doors.lookedAt(camera);
+    const target = inCar || onHorse || tagWho || downed ? null : doors.lookedAt(camera) ?? keetDoorway(camera, doors); // an open café door: its doorway (world/keet.ts)
     // A football within reach (world/football.ts): Use kicks it where you look, harder on the run; a click too where it
     // doesn't shoot (Explore, the school grounds). Before the cars and horses; a door you look at goes first.
     const ball = inCar || onHorse || tagWho || downed || target || dead || player.flying || player.chute !== null ? null : football.near(player.x, player.feet, player.z);

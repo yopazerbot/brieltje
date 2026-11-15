@@ -18,6 +18,8 @@ export interface KeetPrism {
 }
 export interface Keet {
   outline: [number, number][];
+  /** Whether (x, z) lies inside the café's outline */
+  contains(x: number, z: number): boolean;
   floor: number;
   doors: KeetDoor[];
   prisms: KeetPrism[];

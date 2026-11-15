@@ -9,6 +9,7 @@ import { dirname, join } from 'node:path';
 import test from 'node:test';
 import { fileURLToPath } from 'node:url';
 import { WALK_IN_FILES } from './insideData.mjs';
+import { makeKeet } from './keet.mjs';
 import { brickInside, brickShell, endShell, HAVE_PRIVATE, inside, endInside, shell, SKIP } from './testData.mjs';
 
 const REPO = join(dirname(fileURLToPath(import.meta.url)), '..', '..');
@@ -40,8 +41,14 @@ test('no file of the old full data, of the inside, or of the tools that made the
   assert.deepEqual(files.filter((f) => f.startsWith('web/.private/') || f.startsWith('private-src/') || f.startsWith('source/') || f.startsWith('images/')), []);
 });
 
+// The café at the church (tools/keet.py, world/keet.ts) is public on purpose: everyone walks in, no code. Its rooms file has
+// the shape of a home's pack (`rooms`, `parts`, `fixtures`), as walkIn.ts reads both alike. It is the one data file allowed
+// those keys, by name; what it holds is checked instead (the test after this one).
+const PUBLIC_ROOMS = 'web/src/data/keet_rooms.json';
+
 test('the data files hold no rooms or fixtures of a home', { skip: NO_GIT }, () => {
   for (const f of files.filter((n) => /^(web\/src\/data|web\/shared|data)\/[^/]+\.json$/.test(n))) {
+    if (f === PUBLIC_ROOMS) continue; // the public café's, checked below
     const s = text(f);
     if (s === null) continue;
     let json;
@@ -53,6 +60,20 @@ test('the data files hold no rooms or fixtures of a home', { skip: NO_GIT }, () 
     if (Array.isArray(json)) continue;
     for (const key of ['rooms', 'fixtures', 'parts', 'innerFace', 'roofPanels', 'replaces']) assert.equal(key in json, false, `${f} has "${key}"`);
   }
+});
+
+test("the public café's rooms file is the café's alone: its doors keet-, its panes 8000 to 8003, no name of a home's", { skip: NO_GIT }, () => {
+  assert.ok(files.includes(PUBLIC_ROOMS), PUBLIC_ROOMS);
+  const rooms = JSON.parse(text(PUBLIC_ROOMS));
+  const cafeShell = JSON.parse(text('web/src/data/keet_shell.json'));
+  for (const d of [...cafeShell.doors, ...rooms.doors]) assert.match(d.id, /^keet-[a-z0-9]{1,12}$/, d.id);
+  for (const p of rooms.prisms) assert.equal(p.glass, undefined, "its panes are the shell's, numbered by shared/keet.mjs");
+  assert.deepEqual(makeKeet(cafeShell, rooms).panes, [8000, 8001, 8002, 8003]);
+  if (!HAVE_PRIVATE) return; // without web/.private/ there are no homes' names to compare with
+  const { names } = insideWords();
+  const homeRooms = new Set([...endInside.rooms, ...brickInside.rooms, ...[inside.house, inside.bungalow].flatMap((h) => (h.rooms ?? []).map((r) => r.name))]);
+  for (const r of rooms.rooms) assert.ok(!names.has(r) && !homeRooms.has(r), `the café's room "${r}" is named as a home's`);
+  for (const d of rooms.doors) assert.ok(!names.has(d.name), `the café's door "${d.name}" is named as a home's`);
 });
 
 test('the sealed files are sealed: nothing under web/private/ but .enc files and the manifest', { skip: NO_GIT }, () => {

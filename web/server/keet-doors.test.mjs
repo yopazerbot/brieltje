@@ -2,6 +2,7 @@ import assert from 'node:assert/strict';
 import test from 'node:test';
 import { Game } from './game.mjs';
 import { homeOfDoor } from '../shared/homes.mjs';
+import { arenaOf, portalOf } from '../shared/arenas.mjs';
 
 // The café at the church on the game server: public doors and panes, apart from the code-locked homes' (shared/keet.mjs).
 function setup() {
@@ -101,4 +102,29 @@ test('a Zombies game somewhere else leaves the café as it is', () => {
   assert.equal(game.keetClosed(), false);
   assert.equal(game.doors['keet-front'], true);
   game.modes.start('free', 'root');
+});
+
+test('coming back during Zombies at the church to a spot inside the shut café: they start where the place lets you out', () => {
+  const { game, player } = setup();
+  game.auth = { session: () => null, log: () => {}, addressOf: () => '127.0.0.1' };
+  const ws = () => ({ readyState: 1, OPEN: 1, send() {}, on() {}, close() {} });
+  player('root', 548, -760, 'admin').score = { kills: 0, deaths: 0, points: 0 }; // as join gives one (the welcome lists it)
+  game.modes.start('zombies', 'root', 'church');
+  assert.ok(game.keetClosed());
+  const inside = { x: 541.3, y: 6.071, z: -720 }; // the front room
+  game.lastPos.set('back', inside);
+  game.join(ws(), { username: 'back', role: 'guest', key: 'k-back' }, { headers: {}, socket: {} });
+  const [x, z] = portalOf(arenaOf('church')).out;
+  const s = game.players.get('back').state;
+  assert.deepEqual([s.x, s.z], [x, z], 'not in the café: at the church place\'s start');
+  assert.deepEqual([game.keetOut(inside).x, game.keetOut(inside).z], [x, z]);
+  assert.equal(game.keetOut({ x: 545, y: 6, z: -740 }).z, -740);
+  // Outside the café the last position holds; after the game the café is a place like any other.
+  game.lastPos.set('near', { x: 545, y: 6, z: -740 });
+  game.join(ws(), { username: 'near', role: 'guest', key: 'k-near' }, { headers: {}, socket: {} });
+  assert.deepEqual([game.players.get('near').state.x, game.players.get('near').state.z], [545, -740]);
+  game.modes.start('free', 'root');
+  game.lastPos.set('later', inside);
+  game.join(ws(), { username: 'later', role: 'guest', key: 'k-later' }, { headers: {}, socket: {} });
+  assert.deepEqual([game.players.get('later').state.x, game.players.get('later').state.z], [inside.x, inside.z]);
 });

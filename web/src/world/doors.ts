@@ -321,6 +321,11 @@ export class Doors {
     this.place(entry.door);
   }
 
+  /** Whether door `id` is open (or opening); false for a door not here. */
+  isOpen(id: string): boolean {
+    return this.doors.find((d) => d.spec.id === id)?.target === 1;
+  }
+
   /** Open or close a door because another player did (`dir`: the way a double-action door swings). */
   set(id: string, open: boolean, dir?: number): void {
     const door = this.doors.find((d) => d.spec.id === id);

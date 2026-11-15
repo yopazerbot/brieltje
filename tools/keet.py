@@ -6,8 +6,8 @@ writes two public data files, the same bytes for the same input:
 - web/src/data/keet_shell.json: what world/walkIn.ts reads of a house to walk into (its frame, outline and floor, the
   front and back doors, the four windows' panes, the ground cut out under it, its dip, and `solids`: the house as a lump
   for walking into until the rooms come, the shut upstairs and the roof);
-- web/src/data/keet_rooms.json: the rooms (an `EndInside` of world/walkIn.ts, its `rooms`, `parts` and `fixtures` named
-  `roomNames`, `shapes` and `pieces`): walls, panelling, floors, ceiling and
+- web/src/data/keet_rooms.json: the rooms (an `EndInside` of world/walkIn.ts, as the homes' packs are, but public on
+  purpose: web/shared/publicClean.test.mjs allows this one file and checks it): walls, panelling, floors, ceiling and
   beams as blocks, the inner doors, and what tools/keet_fittings.py adds when it is there (the fittings: package B).
 
 The café is public: everyone walks in, without a code. Its rooms are not a home's inside and are in no homes list
@@ -90,7 +90,9 @@ WIDTH = local(*P[2])[0]  # outside, along the front
 DEPTH = (local(*P[0])[1] + local(*P[3])[1]) / 2  # outside, front to back
 if abs(WIDTH - 5.73) > .05 or abs(DEPTH - 17.44) > .05:
     raise SystemExit(f"the café's outline is {WIDTH:.2f} x {DEPTH:.2f} m now; the data changed, review the rooms")
-FLOOR_RELIEF = terrain(*HOUSE["floor_at"]) + HOUSE.get("floor_lift", 0.05)  # tools/town/town.py: the model's floor
+# The model's floor (tools/town/town.py): the ground at `floor_at` and a margin of 5 cm over it (`floor_lift`), so 6.071 m
+# in the game's heights, not the bare ground's 6.02.
+FLOOR_RELIEF = terrain(*HOUSE["floor_at"]) + HOUSE.get("floor_lift", 0.05)
 FLOOR = FLOOR_RELIEF + GROUND  # in the game's heights
 EAVES, RIDGE = VOL["eaves"], VOL["ridge"]
 
@@ -153,15 +155,15 @@ ROOMS = {  # u0, v0, u1, v1: the inside faces (Yoshi's rough sketch, fitted to t
     "front room": (WALL, WALL, UI, 7.55),
     "bar room": (2.80, 7.67, UI, VI),
     "behind the bar": (WALL, 7.67, 2.20, 11.70),
-    "back corridor": (WALL, 11.80, 2.70, 13.20),
-    "toilets' corridor": (WALL, 13.30, 2.70, 14.60),
+    "back hall": (WALL, 11.80, 2.70, 13.20),
+    "toilets": (WALL, 13.30, 2.70, 14.60),
     "toilet 1": (1.55, 14.70, 2.70, VI),
     "toilet 2": (WALL, 14.70, 1.45, VI),
 }
 COUNTER = (2.20, 7.67, 2.80, 10.85, 1.10)
 LOOK = {  # the floors' surfaces and tints (world/walkIn.ts SURFACES)
     "front room": ("cement", None), "behind the bar": ("cement", None), "bar room": ("wood", "#5c4330"),
-    "back corridor": ("tile", "#8f8a80"), "toilets' corridor": ("tile", "#8f8a80"), "toilet 1": ("tile", "#8f8a80"), "toilet 2": ("tile", "#8f8a80"),
+    "back hall": ("tile", "#8f8a80"), "toilets": ("tile", "#8f8a80"), "toilet 1": ("tile", "#8f8a80"), "toilet 2": ("tile", "#8f8a80"),
 }
 WALL_C, CEIL_C, BEAM_C, PANEL_C, RAIL_C, TILE_C, COUNTER_C = "#d9c9a0", "#d2c296", "#3b2616", "#4a2e1c", "#3a2416", "#e6e2d6", "#3b2616"
 INNER_DOOR_C, GATE_C = "#4a2e1c", "#3a2416"
@@ -176,11 +178,11 @@ DOORS = [
          at=7.61, hinge="s1", swing=-1.6, color=INNER_DOOR_C, open=True),
     dict(id="keet-gate", name="bar gate", fixed="u", w0=2.72, w1=2.78, s0=10.85, s1=11.70, y0=.05, y1=1.05,
          at=2.75, hinge="s1", swing=1.6, color=GATE_C, both=True, thickness=.04, handle=False),
-    dict(id="keet-corridor", name="door to the back corridor", fixed="u", w0=2.70, w1=2.80, s0=12.05, s1=12.95, y0=0, y1=2.05,
+    dict(id="keet-corridor", name="door to the back hall", fixed="u", w0=2.70, w1=2.80, s0=12.05, s1=12.95, y0=0, y1=2.05,
          at=2.75, hinge="s1", swing=-1.6, color=INNER_DOOR_C),
     dict(id="keet-back", name="back door", fixed="u", w0=0, w1=WALL, s0=FACE0 - BACK_DOOR["s1"], s1=FACE0 - BACK_DOOR["s0"],
          y0=BACK_DOOR["y0"], y1=BACK_DOOR["y1"], at=.175, hinge="s1", swing=1.6, outside=-1, color=BACK_DOOR["fs"].get("door", "#5a3a2a"), shell=True),
-    dict(id="keet-toilets", name="door to the toilets' corridor", fixed="u", w0=2.70, w1=2.80, s0=13.50, s1=14.40, y0=0, y1=2.05,
+    dict(id="keet-toilets", name="door to the toilets", fixed="u", w0=2.70, w1=2.80, s0=13.50, s1=14.40, y0=0, y1=2.05,
          at=2.75, hinge="s0", swing=1.6, color=INNER_DOOR_C),
     dict(id="keet-toilet1", name="toilet door", fixed="v", w0=14.60, w1=14.70, s0=1.68, s1=2.58, y0=0, y1=2.05,
          at=14.65, hinge="s1", swing=-1.6, color=INNER_DOOR_C),
@@ -196,7 +198,7 @@ FANLIGHT = dict(fixed="v", w0=0, w1=WALL, s0=FRONT_DOOR["s0"], s1=FRONT_DOOR["s1
 
 
 def rect(o, w0=None, w1=None):
-    """An opening's or door's box in the plan: (u0, v0, u1, v1)."""
+    """An opening's or door's box seen from above: (u0, v0, u1, v1)."""
     a, b = (o["w0"] if w0 is None else w0), (o["w1"] if w1 is None else w1)
     return (a, o["s0"], b, o["s1"]) if o["fixed"] == "u" else (o["s0"], a, o["s1"], b)
 
@@ -260,14 +262,14 @@ for name, (u0, v0, u1, v1) in ROOMS.items():
         u1 = 2.80
     B.add(m, u0, v0, u1, v1, BELOW, 0, c, n=name)
 # Under the inner doors: the floor of the room the door opens into (the front and back doors' sills are the walls').
-for d, room in (("keet-mid", "bar room"), ("keet-corridor", "back corridor"), ("keet-toilets", "toilets' corridor"), ("keet-toilet1", "toilet 1"), ("keet-toilet2", "toilet 2")):
+for d, room in (("keet-mid", "bar room"), ("keet-corridor", "back hall"), ("keet-toilets", "toilets"), ("keet-toilet1", "toilet 1"), ("keet-toilet2", "toilet 2")):
     door = next(x for x in DOORS if x["id"] == d)
     u0, v0, u1, v1 = rect(door)
     m, c = LOOK[room]
     B.add(m, u0, v0, u1, v1, BELOW, 0, c, n=room)
 # The back door: its sill (the wall's), then one step down inside, and the floor.
 BD = next(x for x in DOORS if x["id"] == "keet-back")
-B.add("concrete", WALL, BD["s0"], WALL + .28, BD["s1"], BELOW, round(SILL / 2, 3), "#8f8a80", n="back corridor")
+B.add("concrete", WALL, BD["s0"], WALL + .28, BD["s1"], BELOW, round(SILL / 2, 3), "#8f8a80", n="back hall")
 # The front door's stone step outside, as the model draws it (tools/town/town.py: the doorstep).
 B.add("concrete", FRONT_DOOR["s0"] - .08, -.28, FRONT_DOOR["s1"] + .08, 0, BELOW, FRONT_DOOR["y0"], "#5c5f62", draw=False)
 
@@ -314,7 +316,7 @@ lining("front room", ("u0", "u1", "v0", "v1"), PANEL, "oak", PANEL_C, RAIL_C)
 # The bar room's west side is the counter's back and the way behind the bar as far as the partition.
 lining("bar room", (("u0", 11.70, VI), "u1", "v0", "v1"), PANEL, "oak", PANEL_C, RAIL_C)
 lining("behind the bar", ("u0", "v0", "v1"), PANEL, "oak", PANEL_C, RAIL_C)
-for name in ("back corridor", "toilets' corridor", "toilet 1", "toilet 2"):
+for name in ("back hall", "toilets", "toilet 1", "toilet 2"):
     lining(name, ("u0", "u1", "v0", "v1"), DADO, "bath", TILE_C, depth=.01)
 
 # The fanlight over the front door: fixed glass, as the model's (walked into as glass; its picture is the model's).
@@ -436,6 +438,7 @@ def box3(it):
 failed = []
 walked = [it for it in B.items if it["walk"]]
 for d in DOORS:
+    # The opening and 5 cm either side of its wall, from 2 cm over its threshold to 2 cm under its head.
     hole = as3(rect(d, d["w0"] - .05, d["w1"] + .05), d["y0"] + .02, d["y1"] - .02)
     hit = [it for it in walked if overlap(hole, box3(it))]
     if hit:
@@ -599,13 +602,12 @@ shell = r3({
     "solids": solids,
 })
 shell["frame"]["a"] = round(a, 6)
-# An `EndInside` of world/walkIn.ts under keys of its own (web/src/world/keet.ts names them back): the privacy scan
-# (web/shared/publicClean.test.mjs) holds that no tracked data file carries a home's `rooms`, `parts` or `fixtures`.
+# An `EndInside` of world/walkIn.ts, the public café's (web/shared/publicClean.test.mjs allows this file by name).
 rooms = r3({
-    "roomNames": list(ROOMS),
+    "rooms": list(ROOMS),
     "prisms": [prism(it) for it in B.items],
-    "shapes": API.parts,
-    "pieces": API.fixtures,
+    "parts": API.parts,
+    "fixtures": API.fixtures,
     "props": API.props,
     "doors": [door_spec(d) for d in DOORS if not d.get("shell")],
 })

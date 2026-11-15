@@ -10,7 +10,7 @@ export const PUBLIC_WALK_INS = { keet: { glass: 8000, doorGlass: 8500, size: 500
 export const KEET_DOOR = /^keet-[a-z0-9]{1,12}$/;
 
 /**
- * The café in the world, from its two files: `outline` and `floor` (the game's heights), `doors` (world coordinates and
+ * The café in the world, from its two files: `outline`, `contains(x, z)` and `floor` (the game's heights), `doors` (world coordinates and
  * heights, as world/walkIn.ts places them), `prisms` (the walked-into blocks in the world, the panes as `m: 'glass'` with
  * their numbers), `area` (the outline's box and a metre round it), `doorIds`, `panes` (the pane numbers that exist:
  * windows and door glass), `publicPane(i)` (whether `i` is one of them) and `spots` (each room's middle, by name).
@@ -44,7 +44,7 @@ export function makeKeet(shell, rooms) {
   const xs = shell.outline.map((q) => q[0]);
   const zs = shell.outline.map((q) => q[1]);
   const middle = (r) => [r.reduce((t, q) => t + q[0], 0) / r.length, r.reduce((t, q) => t + q[1], 0) / r.length];
-  const spots = rooms.roomNames.map((name) => {
+  const spots = rooms.rooms.map((name) => {
     const f = rooms.prisms.find((b) => b.n === name && Math.abs(b.y1) < 1e-6);
     const [x, z] = toWorld(middle(f.p[0]));
     return { name, x, z, y: floor };
@@ -52,8 +52,20 @@ export function makeKeet(shell, rooms) {
   const panes = [...windows.map((w) => w.glass), ...doorGlass];
   const paneSet = new Set(panes);
   if (panes.length > range.size || doorGlass.length > range.size) throw new Error('the café has more panes than its range');
+  const ring = shell.outline;
+  /** Whether (x, z) lies inside the café's outline. */
+  const contains = (x, z) => {
+    let hit = false;
+    for (let i = 0, j = ring.length - 1; i < ring.length; j = i++) {
+      const [xi, zi] = ring[i];
+      const [xj, zj] = ring[j];
+      if (zi > z !== zj > z && x < ((xj - xi) * (z - zi)) / (zj - zi) + xi) hit = !hit;
+    }
+    return hit;
+  };
   return {
     outline: shell.outline,
+    contains,
     floor,
     doors,
     prisms,
