@@ -104,6 +104,10 @@ const cellOf = (v: number) => Math.floor(v / CELL);
 const ROOF_LOW = 1.3;
 /** Metres: a roof's solid stops a walker only when it reaches more than this into the top of the body (a brush of the hair does not). */
 const HEAD_ROOM = 0.15;
+/** Metres: a walker steps onto a drawn roof up to this more than its own step (an eave by a terrace, 6 cm over a step). */
+const ROOF_STEP = 0.1;
+/** Rise per metre (10 degrees) from which a step on a roof counts as going up it (World.roofClimb). */
+const UP_ALONG = 0.18;
 /** Metres over its ground under which a block that stood higher is never capped (World.capBlock): it stays a wall. */
 const CAP_LOW = 2.0;
 /** Metres over its ground from which a block is a building a roof's solid reaches down to (World.roofHere). */
@@ -460,7 +464,7 @@ export class World {
    */
   roofBlocks(x: number, z: number, feet: number, stepUp: number, height: number): boolean {
     const r = this.roofs;
-    return this.roofHere(x, z) && !r.open && r.top > feet + stepUp && r.bottom < feet + height - HEAD_ROOM && (r.closed || this.walled(x, z, r.bottom));
+    return this.roofHere(x, z) && !r.open && r.top > feet + stepUp + ROOF_STEP && r.bottom < feet + height - HEAD_ROOM && (r.closed || this.walled(x, z, r.bottom));
   }
 
   /**
@@ -525,13 +529,18 @@ export class World {
 
   /**
    * What part of a step (dx, dz) from (x, z) a body standing on a roof takes: full pace along and down and up to 35
-   * degrees, less and less up to 60, none steeper (world/roofField.ts climb). 1 off the roofs.
+   * degrees, less and less up to 60, none steeper (world/roofField.ts climb). A step that goes up the roof (within 60
+   * degrees of straight up it) is cut by the roof's own steepest slope, not by its own rise: no zigzag up a steep roof.
+   * One more across it is cut by its own rise, so along it (in a valley, round a ridge) stays free. 1 off the roofs.
    */
   roofClimb(x: number, z: number, dx: number, dz: number): number {
     const d = Math.hypot(dx, dz);
     const r = this.roofs;
     if (d < 1e-9 || !r.sample(x, z, this.roofLow(x, z))) return 1;
-    return climb((r.gx * dx + r.gz * dz) / d);
+    const rise = (r.gx * dx + r.gz * dz) / d;
+    const steepest = Math.hypot(r.gx, r.gz);
+    // Up the roof: rising more than UP_ALONG, within 60 degrees of straight up it (a zigzag's legs are 45 off).
+    return rise > UP_ALONG && rise > 0.5 * steepest ? climb(steepest) : climb(rise);
   }
 
   /**
@@ -543,7 +552,9 @@ export class World {
     let moved = 0;
     if (this.roofBlocks(pos.x, pos.z, feet, stepUp, height)) return false; // inside one already: lifted out, not pushed
     for (const [dx, dz] of SIDES) {
-      while (moved < PUSH && this.roofBlocks(pos.x + dx * radius, pos.z + dz * radius, feet, stepUp + 0.5, height)) {
+      while (moved < PUSH && this.roofBlocks(pos.x + dx * radius, pos.z + dz * radius, feet, stepUp + 0.5 - ROOF_STEP, height)) { // a step and a half, as ever
+        // Never with its middle into a block (a lower block beside a valley between roofs): there it stays.
+        if (this.touching(pos.x - dx * 0.02, pos.z - dz * 0.02, feet + stepUp, feet + height, 0) !== null) break;
         pos.x -= dx * 0.02;
         pos.z -= dz * 0.02;
         moved += 0.02;
