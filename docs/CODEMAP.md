@@ -138,6 +138,7 @@ file's opening comment; run it again after adding, moving or removing a module.
 - `web/src/world/gunSurface.ts`: The guns' surfaces: darker in the seams, worn on the hard edges, a fine grain all over.
 - `web/src/world/hedgeCards.ts`: Leaves sticking out of the clipped hedges on Medium and up: sprigs of the leaf cards (world/leafCards.ts) all over their sides and along their tops, so a...
 - `web/src/world/heli.ts`: The helicopters (shared/heli.json; the flight is shared/heli.mjs): a light twin with a shrouded tail rotor, by the main house for now.
+- `web/src/world/heliJump.test.mjs`: The homes' access control on the page, from above and from the side: a jump from the helicopter (src/heliPilot.ts), a new way to arrive from above at a...
 - `web/src/world/heliPads.ts`: The helicopters' landing pads (shared/heli.json pads): each machine's home and the church's platform.
 - `web/src/world/heliSound.ts`: The helicopter's sound, made in code (nothing to download), from where the machine is (world/heli.ts).
 - `web/src/world/herds.ts`: Cows and sheep in the meadows round the house (our own models, tools/cattle.py; where they graze: tools/countryside.py).
@@ -440,6 +441,7 @@ file's opening comment; run it again after adding, moving or removing a module.
 - `tools/kapellenhoek_home.py`: Home 4, the fourth private home, on Kapellenhoek: its outside and its levelled plot.
 - `tools/kapellenhoek_survey.py`: The street Kapellenhoek from the church square to past its junction with Briel, and the first stretch of Kapelleweg: the survey, and the plan...
 - `tools/keet.py`: The café at the church (In de Oude Keet, the name on its sign board): the public shell and the bare rooms to walk into.
+- `tools/keet_fittings.py`: The fittings of the café at the church (code id keet): a Belgian brown café, dark wood, brass and old enamel.
 - `tools/kouter_house.py`: Build the southern house and its front garden from the public model outline and street-side references.
 - `tools/ktx2.py`: GPU-compressed copies (KTX2, Basis Universal) of every surface texture in web/public/textures/.
 - `tools/model_3.py`: Build the Tesla Model 3 (Highland facelift, 2024+, Deep Blue Metallic) for the game in Blender, from its real sizes.
