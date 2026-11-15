@@ -452,6 +452,20 @@ for name, (u0, v0, u1, v1) in ROOMS.items():
     if not any(it["n"] == name and abs(it["box"][5]) < 1e-6 and it["box"][0] <= u0 + 1e-6 and it["box"][1] <= v0 + 1e-6
                and it["box"][2] >= u1 - 1e-6 and it["box"][3] >= v1 - 1e-6 for it in walked):
         failed.append(f"{name}: no floor block covers it")
+# Nothing to stand on without room for the body (web/src/player.ts HEIGHT) under the ceiling: the walking code steps
+# up and lands without asking for headroom, and a head in the ceiling throws the body into a wall. A top between
+# CEIL - BODY and the ceiling needs a block over it low enough that a body high enough to step onto it (feet within
+# STEP of the top) already meets that block. Glass counts as walked into (world/walkIn.ts adds every `glassfix` block).
+BODY, STEP = 1.8, .5  # web/src/player.ts HEIGHT, STEP_UP
+stands = [it for it in B.items if it["walk"] or it["m"] == "glassfix"]
+for it in stands:
+    u0, v0, u1, v1, y0, y1 = it["box"]
+    if not CEIL - BODY + 1e-3 < y1 < CEIL - 1e-3:
+        continue
+    # The ceiling itself is no such block: a body pushed up into it is thrown out sideways.
+    if not any(c is not it and y1 - 1e-6 <= c["box"][4] <= min(y1 + BODY - STEP, CEIL - .05) and c["box"][0] <= u0 + 1e-6 and c["box"][1] <= v0 + 1e-6
+               and c["box"][2] >= u1 - 1e-6 and c["box"][3] >= v1 - 1e-6 for c in stands):
+        failed.append(f"{[round(x, 3) for x in it['box']]}: a top {CEIL - y1:.2f} m under the ceiling with nothing over it: no room for a body there")
 drawn = [it for it in B.items if it["draw"] and it["m"] != "glassfix"]
 TRIS = 12 * len(drawn) + sum(part_triangles(p) for p in API.parts)
 

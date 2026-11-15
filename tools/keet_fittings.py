@@ -5,7 +5,8 @@ drawn in the inside's one mesh (world/walkIn.ts part()); `api.solid` adds what s
 
 The frame: u along the front from the west corner (0 to 5.73 m), v into the building (0 to 17.44 m), heights over the
 floor. In the frame's own words west is u = 0 and south is the back (v grows). The doors' leaves and their sweeps are kept
-free (tools/keet.py checks the doorways).
+free (tools/keet.py checks the doorways). Nothing whose top is over 0.95 m can be stood on: under the 2.75 m ceiling
+a body of 1.8 m has no room there (tools/keet.py checks it too).
 
 No lettering anywhere: no names, no brands, no numbers. The clock and the dart board carry ticks only, the pictures are
 blank or three flat bands, the enamel plates a plain field with a stripe. Bottles and glasses are plain shapes.
@@ -164,6 +165,9 @@ def counter(f):
     u0, v0, u1, v1, h = 2.20, 7.67, 2.80, 10.85, 1.10
     api.box((u0 + u1 + .03) / 2, h, (v0 + v1) / 2, u1 - u0 + .07, .04, v1 - v0, TOP, 0, "oak")  # 5 cm over the front
     f.solid(u0, v0, u1 + .05, v1, 0, h + .04)  # over the plain block: its top, and a room's name to stand on
+    # Nobody stands on it: on 1.14 m a head is in the ceiling. A block from 2.0 m up meets a body before its feet
+    # are high enough to step on (tools/keet.py checks every top between 0.95 m and the ceiling).
+    f.solid(u0, v0, u1 + .05, v1, 2.0, 2.75)
     # The front: a kick board, a top rail, four stiles and three fields between (the panels seem sunk between them).
     api.box(u1 + .01, 0, (v0 + v1) / 2, .02, .12, v1 - v0, DARK)
     api.box(u1 + .01, .98, (v0 + v1) / 2, .02, .12, v1 - v0, WOOD, 0, "oak")
@@ -381,7 +385,7 @@ def front_room(f):
     api.rod((su, 2.17, 7.45), (su, 2.17, 7.58), .06, IRON, 10)
     f.disc("v", 7.55, -.006, su, 2.17, .1, NICKEL, 8)
     f.solid(su - .3, 6.75, su + .3, 7.55, 0, .9)
-    f.solid(su - .08, 7.28, su + .08, 7.55, .9, 2.26)
+    f.solid(su - .08, 7.28, su + .08, 7.55, .9, 2.75)  # the pipe, up to the ceiling: no top to stand on
     # A coal scuttle beside it.
     api.lathe(2.95, 0, 7.25, [(0, 0), (.13, 0), (.15, .28), (.13, .32), (0, .29)], IRON, 8)
     api.rod((2.81, .3, 7.25), (2.95, .42, 7.25), .008, BRASS, 6)
