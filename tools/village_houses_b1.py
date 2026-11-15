@@ -11,8 +11,11 @@ A house is named by its spot in the model's metres, never by an address. Its kin
 compared with street-level pictures by eye; nothing was copied, traced or sampled from them, and nothing personal is
 modelled (no number, name, text, letterbox or window dressing). Materials are the game's own textures by name and
 tint (`texture`, `tint` in the material's extras: docs/CREDITS.md) or flat colours per corner; no image is in a file.
-Mesh names follow world/villageHouses.ts: `vh_glass` gets a room behind it (world/glassLook.ts), `vh_roof`,
-`vh_paving`, `vh_stone` take the snow and the wet, the `_small` meshes are drawn within 120 m.
+Mesh names follow world/villageHouses.ts: `vh_glass` gets a room behind it (world/glassLook.ts); `vh_roof`, `vh_stone`
+(sills, steps, copings, and the flat and low roofs), `vh_paving` and `vh_gravel` take the snow (world/snowCover.ts);
+`vh_paving` and `vh_gravel` the wet (world/wetGround.ts); the `_small` meshes are drawn within 120 m. What stands on
+the plot and should stop a player (piers, gates, fences, posts) goes into the root's `blocks`, over the ground at
+the origin (`blocksOnGround`), for walking into; the server holds the village's own blocks, not these.
 """
 import json
 import math
@@ -150,6 +153,8 @@ class House:
         self.ring = [self.local(p) for p in self.outline]
         self.meshes = meshes
         self.faces = defaultdict(list)
+        self.replaces = [self.outline]
+        self.blocks = []
         lows = [self.ground(*p) for p in self.ring]
         us, ds = [p[0] for p in self.ring], [p[1] for p in self.ring]
         lows += [self.ground(min(us) + (max(us) - min(us)) * i / 6, min(ds) + (max(ds) - min(ds)) * j / 6)
@@ -431,14 +436,20 @@ class House:
             self.poly("vh_trim", pts, out, color)
 
     def gutter(self, a, b, out, color="#e8e8e4", down=()):
-        """A gutter hung under an eaves edge (a to b, 3D at the board's foot), and downpipes at the points `down`."""
+        """A gutter hung under an eaves edge (a to b, 3D at the board's foot), and downpipes at the points `down` (u, d,
+        ground): each stands against the wall there and bends out under the eaves to the gutter's nearest point."""
         o = Vector((out[0], out[1])).normalized()
         a2, b2 = Vector((a[0], a[1])) + o * .07, Vector((b[0], b[1])) + o * .07
         y = min(a[2], b[2])
         self.seg("vh_frames_small", tuple(a2), tuple(b2), .13, y - .11, y + .02, color)
         for u, d, g in down:
             p = Vector((u, d))
-            self.box("vh_frames_small", p.x - .045, p.x + .045, p.y - .045, p.y + .045, g - .05, y - .1, color)
+            t = (b2 - a2).normalized()
+            q = a2 + t * max(0, min((b2 - a2).length, (p - a2).dot(t)))  # the outlet under the gutter
+            self.box("vh_frames_small", q.x - .04, q.x + .04, q.y - .04, q.y + .04, y - .4, y - .1, color)
+            if (q - p).length > .05:
+                self.seg("vh_frames_small", tuple(q), tuple(p), .08, y - .46, y - .38, color)
+            self.box("vh_frames_small", p.x - .045, p.x + .045, p.y - .045, p.y + .045, g - .05, y - .4, color)
 
     def pave(self, ring, mesh="vh_paving", lift=.035, cell=1.0):
         """Ground of pavers inside a plan ring, on the ground's slope, in cells a metre across."""
@@ -453,6 +464,26 @@ class House:
                 if len(poly) >= 3 and abs(area(poly)) > 1e-4:
                     self.poly(mesh, [(u, d, self.ground(u, d) + lift) for u, d in poly], (0, 0, 1))
 
+    # --- standing in -------------------------------------------------------------------------------------------
+    def replace_roof(self, first):
+        """Hide one more data roof (found by its first corner): one whose middle lies outside the wall block."""
+        for r in VILLAGE["roofs"]:
+            ring = r["p"][0] if isinstance(r["p"][0][0], list) else r["p"]
+            if abs(ring[0][0] - first[0]) < .02 and abs(ring[0][1] - first[1]) < .02:
+                self.replaces.append(ring)
+                return
+        raise ValueError(f"{self.name}: no data roof starts at {first}; the data changed, review the house")
+
+    def block(self, m, ring, y0, y1):
+        """Something drawn here that stops a player (a pier, a gate, a fence): a ring on the plan, heights as ours."""
+        pts = [self.world(u, d) for u, d in ring]
+        self.blocks.append({"m": m, "p": [[[round(p.x, 3), round(p.y, 3)] for p in pts]], "y0": round(y0, 3), "y1": round(y1, 3)})
+
+    def seg_block(self, m, a, b, width, y0, y1):
+        t = Vector((b[0] - a[0], b[1] - a[1])).normalized()
+        n = Vector((t.y, -t.x)) * (width / 2)
+        self.block(m, [(a[0] + n.x, a[1] + n.y), (b[0] + n.x, b[1] + n.y), (b[0] - n.x, b[1] - n.y), (a[0] - n.x, a[1] - n.y)], y0, y1)
+
     def chimney(self, u, d, w, l, y0, y1, mesh, color=None, pots=(), cap="#8f8c86"):
         self.box(mesh, u - w / 2, u + w / 2, d - l / 2, d + l / 2, y0, y1, color)
         self.box("vh_stone", u - w / 2 - .05, u + w / 2 + .05, d - l / 2 - .05, d + l / 2 + .05, y1, y1 + .08, cap)
@@ -466,7 +497,10 @@ class House:
         bpy.context.collection.objects.link(root)
         root["origin"] = [round(self.origin.x, 4), round(self.origin.y, 4)]
         root["landmark"] = self.name
-        root["replaces"] = [self.outline]
+        root["replaces"] = self.replaces
+        if self.blocks:  # read by main.ts loadModel: heights over the ground at the origin
+            root["blocks"] = self.blocks
+            root["blocksOnGround"] = True
         for k, v in (extra or {}).items():
             root[k] = v
         triangles = 0
@@ -594,8 +628,8 @@ def farm():
     h.tile_ends((verge(-.35), -.35, y0), (E, -.35, y0), (0, -1, 0), tile)
     h.tile_ends((-5.45, de, yb), (E, de, yb), (0, 1, 0), tile)
     h.gutter((verge(-.35) + .1, -.35, y0 - .14), (E - .1, -.35, y0 - .14), (0, -1, 0),
-             down=[(-6.25, -.42, h.ground(-6.25, -.42)), (6.5, -.42, h.ground(6.5, -.42))])
-    # The lean-to's corrugated sheets, from under the tiles' eaves to over its own back wall.
+             down=[(-6.25, -.08, h.ground(-6.25, -.08)), (6.5, -.08, h.ground(6.5, -.08))])
+    # The lean-to's corrugated sheets, from under the tiles' eaves to over its own back wall (in vh_stone: they take the snow).
     top = lambda u: 4.41 + (u + 5.31) / 8.74 * .71 - .05  # along the main back wall
     bot = lambda u: 8.07 + (u - 3.46) / 8.65 * .53 + .3  # beyond the lean-to's back wall
     u, w = -5.45, .18
@@ -604,14 +638,15 @@ def farm():
         u1 = min(u + w, 3.68)
         um = (u + u1) / 2
         for p, q, lp, lq in ((u, um, 0, .035), (um, u1, .035, 0)):
-            h.poly("vh_trim", [(p, top(p), lean(top(p)) + lp), (q, top(q), lean(top(q)) + lq), (q, bot(q), lean(bot(q)) + lq), (p, bot(p), lean(bot(p)) + lp)], (0, 0, 1), sheet)
+            h.poly("vh_stone", [(p, top(p), lean(top(p)) + lp), (q, top(q), lean(top(q)) + lq), (q, bot(q), lean(bot(q)) + lq), (p, bot(p), lean(bot(p)) + lp)], (0, 0, 1), sheet)
         u = u1
     h.poly("vh_trim", [(-5.45, top(-5.45), lean(top(-5.45)) - .03), (3.68, top(3.68), lean(top(3.68)) - .03), (3.68, bot(3.68), lean(bot(3.68)) - .03), (-5.45, bot(-5.45), lean(bot(-5.45)) - .03)], (0, 0, -1), "#7a7a76")
-    h.poly("vh_trim", [(-5.45, bot(-5.45), lean(bot(-5.45)) - .03), (3.68, bot(3.68), lean(bot(3.68)) - .03), (3.68, bot(3.68), lean(bot(3.68)) + .035), (-5.45, bot(-5.45), lean(bot(-5.45)) + .035)], (0, 1, 0), sheet)
-    # The yard: grey concrete pavers from the house to the gate, between this house and the brick one beside it.
-    h.pave([(-6.78, -.02), (6.75, -.02), (6.75, -5.4), (1.4, -5.9), (.85, -5.4), (-7.62, -3.1)])
-    # The gate at the yard's mouth: two black piers with flat caps, a double gate of flat bars and scrolls standing
-    # open a quarter, into the yard. Drawn only: nobody is shut out.
+    h.poly("vh_stone", [(-5.45, bot(-5.45), lean(bot(-5.45)) - .03), (3.68, bot(3.68), lean(bot(3.68)) - .03), (3.68, bot(3.68), lean(bot(3.68)) + .035), (-5.45, bot(-5.45), lean(bot(-5.45)) + .035)], (0, 1, 0), sheet)
+    # The yard: grey concrete pavers from the house to the gate, between this house and the brick one beside it, and on
+    # at its far end to the door of the small garage there.
+    h.pave([(-6.78, -.02), (6.75, -.02), (6.9, -1.75), (8.62, -2.02), (7.66, -5.16), (6.75, -5.4), (1.4, -5.9), (.85, -5.4), (-7.62, -3.1)])
+    # The gate at the yard's mouth: two black piers with flat caps, a double gate of plain flat bars standing open a
+    # quarter, into the yard. The piers and the open leaves stop a player; the way between them stays open.
     p1, p2 = Vector((-6.72, 0)), Vector((-7.72, -3.22))
     g = (p2 - p1).normalized()
     c1, c2 = p1 + g * .3, p2 - g * .3
@@ -619,6 +654,7 @@ def farm():
         gy = h.ground(c.x, c.y)
         h.box("vh_trim", c.x - .225, c.x + .225, c.y - .225, c.y + .225, gy - .1, gy + 1.52, "#1c1c1c")
         h.box("vh_trim", c.x - .26, c.x + .26, c.y - .26, c.y + .26, gy + 1.52, gy + 1.6, "#1c1c1c")
+        h.block("nb_dark", [(c.x - .225, c.y - .225), (c.x + .225, c.y - .225), (c.x + .225, c.y + .225), (c.x - .225, c.y + .225)], gy - .1, gy + 1.6)
     span = (c2 - c1).length - .5
     leaf = span / 2
     inward = Vector((-g.y, g.x))  # toward the yard (u up)
@@ -640,14 +676,11 @@ def farm():
         bar(0, .55, leaf, .55, .025)
         bar(.02, .05, .02, 1.3, .045)
         bar(leaf - .02, .05, leaf - .02, 1.3, .045)
-        for k in range(1, 9):
-            s = leaf * k / 9
-            bar(s, .08, s, .55, .02)
-        for k in range(2):  # two scrolls a leaf
-            cx, cy, rr = leaf * (.28 + .44 * k), .9, .16
-            pts = [(cx + rr * math.cos(a) * (1 - a / 12), cy + rr * math.sin(a) * (1 - a / 12)) for a in [i * math.pi / 3 for i in range(8)]]
-            for (sa, ya), (sb, yb2) in zip(pts, pts[1:]):
-                bar(sa, ya, sb, yb2, .02)
+        for k in range(1, 10):  # plain uprights, a hand apart, through the middle rail
+            s = leaf * k / 10
+            bar(s, .08, s, 1.25, .02)
+        end = hinge + dirv * leaf
+        h.seg_block("steel", tuple(hinge), tuple(end), .08, gy - .1, gy + 1.3)
     h.export()
 
 
@@ -655,10 +688,10 @@ def farm():
 # 02. x -143.6, z -1092.0: a two-storey brick house of the 1930s, clipped gables, its side to the junction clad in black.
 def gable_house():
     h = House("vh_gable_house", [-145.35, -1101.26], ([-142.85, -1084.6], [-136.42, -1089.34]), -3.09, {
-        "vh_brick": {"texture": "nb_brick", "tint": "#7a4a3c", "normalScale": .55},
+        "vh_brick": {"texture": "nb_brick", "tint": "#6c483c", "normalScale": .55},  # in the range of facadeLook.ts SHADES
         # The game's vertical slats, drawn four times as wide (a rib every quarter metre), tinted from the wood's
         # brown to a neutral black.
-        "vh_clad": {"texture": "cladding", "tint": "#2c3a52", "stretch": (4, 1), "normalScale": .8},
+        "vh_clad": {"texture": "cladding", "tint": "#3b4a64", "stretch": (4, 1), "normalScale": .8},
         "vh_roof": {"texture": "roof_tiles", "tint": "#4c2e26", "normalScale": .3},
         "vh_paving": {"texture": "pavers", "tint": "#a29d94"},
         "vh_trim": TRIM, "vh_stone": STONE, "vh_glass": GLASS, "vh_frames_small": SMALL, "vh_metal_small": METAL,
@@ -692,7 +725,7 @@ def gable_house():
     h.wall((3.9, 11.94), (-3.99, 12.02), main(12.0) - .06, [win(3.9 + 2.3, .9, 1.1, 1.3), win(3.9 + 2.3, 3.55, 1.0, 1.2)], out=(0, 1))
     h.wall((-.63, 11.94), (-.5, 14.97), wing)
     h.wall((-.5, 14.97), (3.88, 14.89), wing, [win(2.2, .9, 1.2, 1.3), win(2.2, 3.4, 1.0, 1.2)])
-    h.poly("vh_trim", [(u, d, wing - .02) for u, d in ((-.5, 12.0), (3.86, 12.0), (3.86, 14.87), (-.5, 14.95))], (0, 0, 1), "#3a3a3a")
+    h.poly("vh_stone", [(u, d, wing - .02) for u, d in ((-.5, 12.0), (3.86, 12.0), (3.86, 14.87), (-.5, 14.95))], (0, 0, 1), "#3a3a3a")  # takes the snow
     for a, b in (((-.5, 14.95), (3.86, 14.87)), ((3.86, 14.87), (3.86, 12.0)), ((-.5, 12.0), (-.5, 14.95))):
         h.seg("vh_stone", a, b, .3, wing - .02, wing + .06, "#a19d95")
     # The side to the junction: black profiled sheets from the ground to the ridge, a rib every quarter metre.
@@ -713,8 +746,8 @@ def gable_house():
     tile = "#4f3229"
     h.tile_ends((-vg, -ov, ef), (vg, -ov, ef), (0, -1, 0), tile)
     h.tile_ends((vg, D + ov, eb), (-vg, D + ov, eb), (0, 1, 0), tile)
-    h.gutter((-vg, -ov, ef - .2), (vg, -ov, ef - .2), (0, -1, 0), "#6e6f6c", down=[(-3.85, -.4, h.ground(-3.85, -.4))])
-    h.gutter((-vg, D + ov, eb - .2), (vg, D + ov, eb - .2), (0, 1, 0), "#6e6f6c", down=[(-3.85, D + .4, h.ground(-3.85, D + .4))])
+    h.gutter((-vg, -ov, ef - .2), (vg, -ov, ef - .2), (0, -1, 0), "#6e6f6c", down=[(-3.85, -.08, h.ground(-3.85, -.08))])
+    h.gutter((-vg, D + ov, eb - .2), (vg, D + ov, eb - .2), (0, 1, 0), "#6e6f6c", down=[(-3.85, 12.1, h.ground(-3.85, 12.1))])
     h.chimney(-1.6, 7.3, .55, .75, main(7.3) - .3, R + .9, "vh_brick", pots=[(0, 0)])
     # A small tiled canopy over the door on two timber brackets.
     cy, cu0, cu1 = 2.55, -1.25, .35
@@ -722,10 +755,11 @@ def gable_house():
     for u in (cu0 + .12, cu1 - .12):
         h.box("vh_frames_small", u - .04, u + .04, -.15, .47, cy - .5, cy - .02, "#5b4634")
     # The front garden: a path of pavers from the door to the pavement, one brick pier beside it.
-    h.pave([(-.98, -.02), (.08, -.02), (.08, -7.1), (-.98, -7.1)])
+    h.pave([(-.98, -.02), (.08, -.02), (.08, -7.48), (-.98, -7.48)])  # to the street's paving
     py = h.ground(.4, -6.6)
     h.box("vh_brick", .2, .6, -6.8, -6.4, py - .1, py + 1.1)
     h.box("vh_stone", .16, .64, -6.84, -6.36, py + 1.1, py + 1.18, "#a19d95")
+    h.block("nb_red", [(.2, -6.8), (.6, -6.8), (.6, -6.4), (.2, -6.4)], py - .1, py + 1.18)
     h.export()
 
 
@@ -739,6 +773,8 @@ def arch_villa():
         "vh_hedge": {"texture": "hedge", "tint": "#8eab68"},
         "vh_trim": TRIM, "vh_stone": STONE, "vh_glass": GLASS, "vh_frames_small": SMALL, "vh_metal_small": METAL,
     })
+    # The data's lean-to roof at the back reaches past the wall block: its middle lies just outside it, so it goes too.
+    h.replace_roof([-44.01, -1080.43])
     # u along the street gable (u -5: the drive's side), d from the gable (0) to the back (16.8).
     lift = h.base
     R, E = 8.4 + lift, 4.5 + lift
@@ -786,7 +822,7 @@ def arch_villa():
     h.wall((-7.96, 16.82), (-.69, 16.7), annex, [Opening(2.2, 1.2, 1.2, 1.1, frame=frame), Opening(5.4, floor + .1, .9, 2.1, "door", door="#6b4a35", frame=frame, panels="glazed", reveal=.12)], bands=foot)
     h.wall((-.69, 16.7), (-.69, 12.89), annex, [Opening(1.8, 1.2, 1.2, 1.1, frame=frame)], bands=foot)
     ring = [(-5.11, 9.65), (-8.07, 9.64), (-7.96, 16.82), (-.69, 16.7), (-.69, 12.92), (-5.11, 12.92)]
-    h.poly("vh_trim", [(u, d, annex - .02) for u, d in ring], (0, 0, 1), "#3a3a3a")
+    h.poly("vh_stone", [(u, d, annex - .02) for u, d in ring], (0, 0, 1), "#3a3a3a")  # takes the snow
     for a, b in zip(ring[:5], ring[1:5]):
         h.seg("vh_stone", a, b, .28, annex, annex + .07, "#b3b0a9")
     # The roofs: dark grey concrete tiles, white verge and gutter boards.
@@ -803,17 +839,19 @@ def arch_villa():
     h.tile_ends((3.25 + ov, 4.43, yn), (3.25 + ov, -.25, yn), (1, 0, 0), tile)
     h.tile_ends((-5.13 - ov, 4.05, yw), (-5.13 - ov, 13.22, yw), (-1, 0, 0), tile)
     h.tile_ends((5.13 + ov, 13.22, yw), (5.13 + ov, 4.05, yw), (1, 0, 0), tile)
-    h.gutter((-3.25 - ov, -.25, yn - .22), (-3.25 - ov, 4.43, yn - .22), (-1, 0, 0), white, down=[(-3.62, .1, h.ground(-3.62, .1))])
-    h.gutter((3.25 + ov, -.25, yn - .22), (3.25 + ov, 4.43, yn - .22), (1, 0, 0), white, down=[(3.62, .1, h.ground(3.62, .1))])
+    h.gutter((-3.25 - ov, -.25, yn - .22), (-3.25 - ov, 4.43, yn - .22), (-1, 0, 0), white, down=[(-3.32, .3, h.ground(-3.32, .3))])
+    h.gutter((3.25 + ov, -.25, yn - .22), (3.25 + ov, 4.43, yn - .22), (1, 0, 0), white, down=[(3.32, .3, h.ground(3.32, .3))])
     h.gutter((-5.13 - ov, 4.05, yw - .22), (-5.13 - ov, 13.22, yw - .22), (-1, 0, 0), white)
-    h.gutter((5.13 + ov, 4.05, yw - .22), (5.13 + ov, 13.22, yw - .22), (1, 0, 0), white, down=[(5.5, 12.8, h.ground(5.5, 12.8))])
+    h.gutter((5.13 + ov, 4.05, yw - .22), (5.13 + ov, 13.22, yw - .22), (1, 0, 0), white, down=[(5.21, 12.6, h.ground(5.21, 12.6))])
     h.box("vh_trim", 4.95, 5.07, 4.38, 4.5, h.ground(5, 4.44) - .1, wide(5.0) - .1, white)  # a slim post at the porch's corner
+    h.block("steel", [(4.95, 4.38), (5.07, 4.38), (5.07, 4.5), (4.95, 4.5)], h.ground(5, 4.44) - .1, wide(5.0) - .1)
     h.chimney(-2.0, 10.4, .6, .6, wide(2.0) - .4, R + .7, "vh_brick", pots=[(-.14, 0), (.14, 0)])
     # The front garden: lawn, three low clipped shrubs, a drive of grey pavers to the side, a path to the door.
     for u, d in ((-2.6, -1.4), (2.6, -1.4), (4.6, -.9)):
         h.blob("vh_hedge", u, d, h.ground(u, d) + .25, (.45, .4, .38))
-    h.pave([(-7.75, 9.5), (-5.25, 9.5), (-5.25, -9.0), (-7.75, -9.0)])
-    h.pave([(3.3, 6.75), (4.6, 6.75), (4.6, -9.0), (3.3, -9.0)])
+    # Both run to the street's paving, whose edge lies askew to the house (measured in the game).
+    h.pave([(-7.75, 9.5), (-5.25, 9.5), (-5.25, -11.94), (-7.75, -11.16)])
+    h.pave([(3.3, 6.75), (4.6, 6.75), (4.6, -15.04), (3.3, -14.61)])
     h.export()
 
 
@@ -822,7 +860,7 @@ def arch_villa():
 def white_bungalow():
     h = House("vh_white_bungalow", [42.9, -1047.67], ([39.62, -1061.58], [46.82, -1057.85]), -2.91, {
         "vh_render": {"texture": "plaster", "tint": "#ebe7df", "normalScale": .35},
-        "vh_roof": {"texture": "roof_tiles", "tint": "#5e3e33", "normalScale": .3},
+        "vh_roof": {"texture": "roof_tiles", "tint": "#52352b", "normalScale": .3},
         "vh_paving": {"texture": "pavers", "tint": "#a29e96"},
         "vh_trim": TRIM, "vh_stone": STONE, "vh_glass": GLASS, "vh_frames_small": SMALL, "vh_metal_small": METAL,
     })
@@ -835,23 +873,32 @@ def white_bungalow():
     ye = E - k * ov
     rh = (uR_ - uL) / 2 + ov
     floor, frame, white = .32, "#2f3134", "#f2f1ec"
-    foot = [(max(.3, floor), "vh_trim", "#8a8884")]
+    foot = [(max(.3, floor), "vh_trim", "#77756f")]
     plane = lambda u, d: min(ye + k * (u - (uL - ov)), ye + k * ((uR_ + ov) - u), ye + k * (d - (d0 - ov)), ye + k * ((d1 + ov) - d))
     M = "vh_render"
     slide = lambda s: Opening(s, floor, 3.0, 2.1, frame=frame, cols=2, sill=False, reveal=.14)
     win = lambda s, w=1.6, hh=1.3: Opening(s, floor + .8, w, hh, frame=frame, cols=2 if w > 1 else 1, reveal=.14)
     # The end on the street and the long side seen on arriving: a sliding window each side of their corner.
     h.wall((4.05, 0), (-4.05, 0), plane(0, 0) - .06, [slide(1.8), win(6.0)], mesh=M, bands=foot)
-    h.wall((4.05, 20.14), (4.05, 0), plane(4.05, 10) - .06, [slide(20.14 - 2.05), win(20.14 - 8.0), win(20.14 - 12.5), win(20.14 - 16.5)], mesh=M, bands=foot)
-    # The other long side: the door under the roof's covered corner, the garage at the far end.
+    # On the same side, at the far end, the garage: a grey door set back in the wall under a lintel, the drive to it.
+    gg = h.ground(4.6, 17.75)
+    Ws, Ns, Ts = h.wall((4.05, 20.14), (4.05, 0), plane(4.05, 10) - .06,
+                        [slide(20.14 - 2.05), win(20.14 - 8.0), win(20.14 - 12.2),
+                         Opening(20.14 - 17.75, gg + .02, 2.5, 2.1, "garage", door="#a3a5a2", reveal=.22, sill=False, lintel="#8f8d88"),
+                         Opening(20.14 - 14.6, 2.2, .3, .15, "vent", reveal=.06, sill=False)], mesh=M, bands=foot)
+    lamp = lambda W, N, T, s, y: (h.wbox(W, N, T, "vh_metal_small", s - .07, s + .07, y, y + .22, -.12, 0, "#2f3134"),
+                                  h.wbox(W, N, T, "vh_metal_small", s - .055, s + .055, y + .03, y + .17, -.125, -.12, "#d8d4c8"))
+    lamp(Ws, Ns, Ts, 20.14 - 15.95, 2.0)
+    # The other long side: the door under the roof's covered corner.
     gy = h.ground(-4.6, 6.2)
     dcorner = (plane(-4.05, 5) - ye) / k - ov  # where the end's slope reaches the side's
-    h.wall((-4.05, 0), (-4.05, 10.75), [(0, plane(-4.05, 0) - .06), (dcorner, plane(-4.05, 5) - .06), (10.75, plane(-4.05, 5) - .06)],
+    Wd, Nd, Td = h.wall((-4.05, 0), (-4.05, 10.75), [(0, plane(-4.05, 0) - .06), (dcorner, plane(-4.05, 5) - .06), (10.75, plane(-4.05, 5) - .06)],
            [win(2.5), Opening(6.2, floor, 1.0, 2.1, "door", door="#d9d8d2", frame=frame, panels="glazed", step=(gy, .45), reveal=.14),
             Opening(7.15, floor + .1, .4, 1.9, frame=frame, sill=False, reveal=.14), win(9.4, .6, .6)], mesh=M, bands=foot)
     h.wall((-4.05, 10.75), (-5.26, 10.84), [(0, plane(-4.05, 10) - .06), (1.21, plane(-5.26, 10) - .06)], mesh=M, bands=foot)
-    gg = h.ground(-5.6, 17.6)
-    h.wall((-5.26, 10.84), (-5.15, 20.12), plane(-5.2, 15) - .06, [win(2.4), Opening(6.8, gg + .02, 2.5, 2.1, "garage", door=white, reveal=.12, sill=False)], mesh=M, bands=foot)
+    lamp(Wd, Nd, Td, 5.45, 2.05)  # a wall lamp beside the door
+    h.wall((-5.26, 10.84), (-5.15, 20.12), plane(-5.2, 15) - .06,
+           [win(2.4), win(6.8, .6, .6), Opening(8.2, 2.2, .3, .15, "vent", reveal=.06, sill=False)], mesh=M, bands=foot)
     h.wall((-5.15, 20.12), (4.05, 20.14), plane(0, 20.14) - .06, [win(6.9)], mesh=M, bands=foot)
     # The roof: hipped on all four sides, brown-red concrete tiles, a white fascia, a white chimney with a flat cap.
     ra, rb = d0 - ov + rh, d1 + ov - rh
@@ -868,21 +915,24 @@ def white_bungalow():
     tile = "#5c3d32"
     for a, b, out in (((U0, D0), (U1, D0), (0, -1, 0)), ((U1, D0), (U1, D1), (1, 0, 0)), ((U1, D1), (U0, D1), (0, 1, 0)), ((U0, D1), (U0, D0), (-1, 0, 0))):
         h.tile_ends((*a, ye), (*b, ye), out, tile)
-        h.gutter((*a, ye - .3), (*b, ye - .3), out, white)
-    for u, d in ((U1 - .15, D0 + .15), (U1 - .15, D1 - .15), (U0 + .15, D1 - .15)):
-        h.box("vh_frames_small", u - .045, u + .045, d - .045, d + .045, h.ground(u, d) - .05, ye - .4, white)
+        pipes = {(0, -1, 0): [(4.12, .12)], (0, 1, 0): [(4.12, 20.06), (-5.22, 20.06)]}.get(out, [])
+        h.gutter((*a, ye - .3), (*b, ye - .3), out, white, down=[(u, d, h.ground(u, d)) for u, d in pipes])
     h.chimney(uc, 13.0, .5, .7, R - .6, R + .85, "vh_render", cap="#c9c7c0")
     for d in (.15, 5.4):  # slim white posts under the covered corner
         h.box("vh_trim", -5.2, -5.08, d - .06, d + .06, h.ground(-5.14, d) - .1, plane(-5.14, d) - .14, white)
-    # The way in: pavers under the covered corner and down to the street.
-    h.pave([(-4.03, 10.72), (-5.32, 10.72), (-5.32, -.3), (-5.42, -4.6), (-4.42, -4.6), (-4.42, -.02), (-4.03, -.02)])
-    # A fence of horizontal timber slats at the side, from the house to the hedge.
-    fy = h.ground(6.0, 18.6)
+        h.block("steel", [(-5.2, d - .06), (-5.08, d - .06), (-5.08, d + .06), (-5.2, d + .06)], h.ground(-5.14, d) - .1, plane(-5.14, d) - .14)
+    # The way in: pavers under the covered corner and down to the street's paving (its edge measured in the game).
+    h.pave([(-4.03, 10.72), (-5.32, 10.72), (-5.32, -.3), (-5.42, -5.02), (-4.42, -5.02), (-4.42, -.02), (-4.03, -.02)])
+    # The drive: grey pavers from the street's paving to the garage, between the house and the hedge.
+    h.pave([(4.45, 19.1), (7.35, 19.1), (7.35, -5.12), (4.45, -5.12)])
+    # A fence of horizontal timber slats beyond the drive, from the far corner to the hedge: the back garden behind it.
+    fy = h.ground(5.6, 20.45)
     for i in range(6):
         y = fy + .12 + i * .19
-        h.box("vh_frames_small", 4.12, 7.8, 18.56, 18.64, y, y + .15, "#8a6a4c")
-    for u in (4.2, 6.0, 7.75):
-        h.box("vh_frames_small", u - .045, u + .045, 18.53, 18.67, h.ground(u, 18.6) - .1, fy + 1.25, "#6f553e")
+        h.box("vh_frames_small", 4.12, 7.15, 20.41, 20.49, y, y + .15, "#8a6a4c")
+    for u in (4.2, 5.65, 7.1):
+        h.box("vh_frames_small", u - .045, u + .045, 20.38, 20.52, h.ground(u, 20.45) - .1, fy + 1.25, "#6f553e")
+    h.block("old_wood", [(4.12, 20.38), (7.15, 20.38), (7.15, 20.52), (4.12, 20.52)], fy - .1, fy + 1.25)
     h.export()
 
 
