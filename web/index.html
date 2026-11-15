@@ -465,6 +465,8 @@
                 <div class="col">
                   <h2 data-i18n="tog.title">Playing together</h2>
                   <p id="mp-note" class="note"></p>
+                  <!-- Log out, back to the start screen: two presses (src/ui/menuLogout.ts, src/start.ts). -->
+                  <button id="menu-logout" class="mini hidden" type="button">Log out</button>
                   <!-- Alone: your name to join as a guest, or an account. Together: who is online (src/main.ts), your team in the teams game. -->
                   <div id="mp-join-here" class="hidden">
                     <!-- Logged in to an account while playing alone (src/start.ts): together under it in one click. -->
@@ -538,8 +540,6 @@
                     </div>
                   </div>
                   <button id="mp-leave" class="mini hidden" type="button" data-i18n="tog.leave">Leave, play alone</button>
-                  <!-- Log out, back to the start screen: two presses (src/ui/menuLogout.ts, src/start.ts). -->
-                  <button id="menu-logout" class="mini hidden" type="button">Log out</button>
                 </div>
                 <div class="col hidden" id="scores-col">
                   <h2 data-i18n="tog.scores">Scores</h2>

@@ -1,6 +1,6 @@
 /**
  * Log out from the game (Yoshi, 15 Nov 2026: "Geef mensen mogelijkheid zich af te melden in het menu, wat hen
- * opnieuw naar het startscherm brengt."): a button at the foot of the menu's Together tab, for anyone with a session
+ * opnieuw naar het startscherm brengt."): a button in the menu's Together tab, under who you play as, for anyone with a session
  * (an account, or a guest's name). It sits on a page of the menu, not in its header, so the controller reaches it
  * too (src/ui/padNav.ts walks the open page only).
  *

@@ -1253,8 +1253,8 @@ body.touch .not-touch, body.touch [data-hide-on~="touch"] { display: none; }
 #mp-join-here .mp-row { margin-bottom: 4px; }
 #team-pick { margin-top: 18px; }
 #mp-leave { margin-top: 10px; }
-/* Log out from the game (src/ui/menuLogout.ts): on its own line under the rest; asking for the second press, in the warning's colour. */
-#menu-logout { display: block; margin-top: 10px; }
+/* Log out from the game (src/ui/menuLogout.ts): on its own line under who you play as; asking for the second press, in the warning's colour. */
+#menu-logout { display: block; margin: 0 0 12px; }
 #menu-logout.sure { color: var(--dusk); background: var(--bad); }
 #leaderboard table { margin-top: 10px; font-size: 14px; }
 #leaderboard td:not(:first-child), #leaderboard th:not(:first-child) { text-align: right; }
