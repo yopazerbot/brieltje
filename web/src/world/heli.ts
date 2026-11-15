@@ -509,7 +509,11 @@ export class Heli {
       s.z = was.z;
       s.vx *= -0.3;
       s.vz *= -0.3;
-      if (!this.free(s.x, s.z)) s.y = Math.max(s.y, was.y); // stuck (it sank into something): not further down
+      if (!this.free(s.x, s.z)) {
+        // It sank onto something its skids don't stand on (a kerb, a low wall under the cabin): it rests on it.
+        s.y = Math.max(s.y, was.y);
+        s.vy = Math.max(0, s.vy);
+      }
     }
     if (impact > 0.5) this.contact(vx, vz, impact);
     if (impact > HELI.BODY_HARD && s.down <= 0) heliBump(s, impact);

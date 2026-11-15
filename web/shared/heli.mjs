@@ -358,7 +358,8 @@ export function heliStep(s, input, env, dt) {
   // A little shudder in the translational-lift band (15 to 50 km/h): felt in the camera and the sound.
   const band = smooth(H.ETL_V0 - 1.5, H.ETL_V0 + 1.5, air) * (1 - smooth(H.ETL_V1 - 2, H.ETL_V1 + 2, air));
   s.shake = s.ground ? 0 : 0.3 * band * smooth(0.2, 0.5, s.coll);
-  if (s.down > 0 && s.ground) s.down = Math.max(0, s.down - dt);
+  // The time down counts on a floor, or resting low and still on something the skids don't stand on (a kerb under the cabin).
+  if (s.down > 0 && (s.ground || (h < 3 && Math.abs(s.vy) < 0.3))) s.down = Math.max(0, s.down - dt);
 
   // Never a broken state: anything not finite puts it level and still where it was holding.
   for (const k of ['x', 'y', 'z', 'vx', 'vy', 'vz', 'yaw', 'pitch', 'roll', 'pitchRate', 'rollRate', 'yawRate', 'rotor', 'coll']) {
