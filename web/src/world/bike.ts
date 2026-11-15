@@ -210,6 +210,8 @@ class Bike {
   fall: Falling | null = null;
   /** m it is up in the air, thrown */
   hop = 0;
+  /** Lying: the ground's slope across it (Bikes.across), for the place it was worked out at */
+  readonly side = { x: NaN, z: NaN, yaw: NaN, v: 0 };
   /** When it was last knocked (Bikes' clock, s) */
   knockedAt = -Infinity;
   /** Together: when the page guessed a knock the server has not answered yet (s), 0 for none; and how it stood before */
@@ -859,10 +861,13 @@ export class Bikes {
   /** A lying bike: the slope of the ground across it (rad, rising to its right lessens a lean to the right), when drawn. */
   private across(k: Bike): number {
     if (!k.shown) return 0;
+    const c = k.side;
+    if (c.x === k.x && c.z === k.z && c.yaw === k.yaw) return c.v; // it lies still: worked out once where it lies
     const [fx, fz] = k.forward;
     const right = this.world.groundAt(k.x - fz * 0.4, k.z + fx * 0.4, k.y + 0.3, 0.3).y;
     const left = this.world.groundAt(k.x + fz * 0.4, k.z - fx * 0.4, k.y + 0.3, 0.3).y;
-    return clamp(-Math.atan2(right - left, 0.8), -0.4, 0.4);
+    Object.assign(c, { x: k.x, z: k.z, yaw: k.yaw, v: clamp(-Math.atan2(right - left, 0.8), -0.4, 0.4) });
+    return c.v;
   }
 
   private hide(k: Bike): void {
