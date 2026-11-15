@@ -107,7 +107,15 @@ export async function launch({ port = 9340, width = 1600, height = 900, swiftsha
       // gone already
     }
     proc.kill();
-    setTimeout(() => rmSync(profile, { recursive: true, force: true }), 1500).unref?.();
+    // The profile stays locked (EPERM, EBUSY on Windows) until the browser is quite gone: try again later, never throw.
+    const remove = (tries) => {
+      try {
+        rmSync(profile, { recursive: true, force: true });
+      } catch {
+        if (tries > 1) setTimeout(() => remove(tries - 1), 1500).unref?.();
+      }
+    };
+    setTimeout(() => remove(10), 1500).unref?.();
   };
   return { send, evaluate, waitFor, sleep, screenshot, close, logs, listeners, pid: proc.pid };
 }
