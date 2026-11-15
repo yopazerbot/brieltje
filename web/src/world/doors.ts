@@ -22,6 +22,8 @@ interface Panel {
   slide: THREE.Vector2;
   /** Swinging leaf: radians when fully open, hinged at a (0: not swinging) */
   swing: number;
+  /** Rising leaf: metres up when fully open (0: not rising) */
+  lift: number;
   width: number;
   key: string;
   /** Its glass is shot out: you can step through the empty frame */
@@ -217,7 +219,7 @@ export class Doors {
         if (m.isMesh) m.material = look(m.material as THREE.Material);
       });
       parent.add(mesh);
-      const panel: Panel = { mesh, a, b, normal, offset: p.offset, thickness: p.thickness, slide: new THREE.Vector2(...(p.slide ?? [0, 0])), swing: p.swing ?? 0, width, key: `${spec.id}-${i}`, broken: false };
+      const panel: Panel = { mesh, a, b, normal, offset: p.offset, thickness: p.thickness, slide: new THREE.Vector2(...(p.slide ?? [0, 0])), swing: p.swing ?? 0, lift: p.lift ?? 0, width, key: `${spec.id}-${i}`, broken: false };
       door.panels.push(panel);
       const pane = mesh.userData.pane as THREE.Mesh | undefined;
       if (pane) {
@@ -244,7 +246,8 @@ export class Doors {
       const n = normal.clone().multiplyScalar(p.offset);
       const a = p.a.clone().add(n).add(shift);
       const b = a.clone().addScaledVector(dir, p.width);
-      p.mesh.position.set(a.x, door.spec.y0, a.y);
+      const up = p.lift * t; // a door that opens upwards
+      p.mesh.position.set(a.x, door.spec.y0 + up, a.y);
       p.mesh.rotation.y = -Math.atan2(dir.y, dir.x);
       // Collision outline of the panel where it is now (none once its glass is gone).
       if (p.broken) {
@@ -254,7 +257,7 @@ export class Doors {
       const h = normal.clone().multiplyScalar(p.thickness / 2);
       this.world.setMoving(p.key, [
         [a.x - h.x, a.y - h.y], [b.x - h.x, b.y - h.y], [b.x + h.x, b.y + h.y], [a.x + h.x, a.y + h.y],
-      ], door.spec.y0, door.spec.y1);
+      ], door.spec.y0 + up, door.spec.y1 + up);
     }
   }
 

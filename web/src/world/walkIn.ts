@@ -558,9 +558,7 @@ export async function loadWalkIn(renderer: THREE.WebGLRenderer, spec: WalkInSpec
     y1: d.y1 + floor,
     panels: d.panels.map((p) => ({ ...p, a: toWorld(p.a), b: toWorld(p.b), ...(p.slide ? { slide: turn(p.slide) } : {}), ...(p.glass ? { glassNo: glassNo++ } : {}) })),
   }));
-  // The brick house's garage door never opens (no car drives in): it stays put, whoever has the right.
-  const shutDoor = (d: DoorSpec): DoorSpec => (d.id === 'kh-home-garage' ? { ...d, panels: d.panels.map(({ slide: _s, swing: _w, ...p }) => p) } : d);
-  const doorSpecs = inFrame(data.doors).map(shutDoor);
+  const doorSpecs = inFrame(data.doors);
   // The shell's solids (the brick house): those that fill the inside stand in until it comes; the roofs' slabs stay.
   // A lump fills the inside: it starts below the roofs and covers the middle of the upper floor (the wing's and the
   // main roof's slabs do neither).
