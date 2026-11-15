@@ -1,9 +1,10 @@
 // An audit of the whole map for collision bugs, in the real game on a running dev server, in one page load: where
 // what is drawn and what stops you disagree. Each class prints its count and its three worst spots; --json writes
-// every spot. Exits 1 when a class that should be zero is not (`trees` and `spots` always; more with --strict).
+// every spot. Exits 1 when a class that should be zero is not (`trees`, `roofs`, `spots` and `drops` always; more
+// with --strict).
 //
 //   node tools/dev/collide.mjs --url http://localhost:5200/ --port 9800 [--quality high] [--json out.json]
-//        [--only trees,walls,sides,roofs,ground,spots,drops] [--strict walls,sides,roofs,ground,drops]
+//        [--only trees,walls,sides,roofs,ground,spots,drops] [--strict walls,sides,ground]
 //        [--compare before.json] [--shots <folder>] [--sample 13]
 //
 // The classes:
@@ -21,13 +22,16 @@
 //   drawn within 0.6 m outside or 1.2 m inside (an invisible wall), where a player reaches. Things drawn only near
 //   the eye (parked cars, bale rows) are looked at again from 7 m.
 // - roofs: per roof of the data, the highest drawn surface against the floor a falling player lands on: over 0.5 m
-//   either way (sunk into the roof, or standing on air). The buildings with hand-made blocks are listed apart.
+//   either way (sunk into the roof, or standing on air on a block or a roof). The buildings with hand-made blocks and
+//   the private homes are listed apart, and so are blocks a model stands for with nothing of it drawn over them (the
+//   models' outlines). Also: a body put in 300 narrow places on roofs (against something higher, in a valley) must
+//   stand free on what is drawn and walk away (`wedged`).
 // - ground: a ray down every 4 m of the walkable map: drawn ground more than 0.75 m off the floor, and holes.
 // - spots: spawns, portals and their pads, places, gnomes, route gates and checkpoints, the Zombies places' homes and
 //   stalls, pick-ups, bikes and parked cars: free for a body (or a car), no trunk within 0.3 m; with --compare, the
 //   floor under each as in that earlier run.
 // - drops: 60 real parachute drops over the church square and Molenhoek, hands off: the feet within 0.5 m of the
-//   highest drawn surface where they land.
+//   highest drawn surface where they land (a landing on the ground under the eaves, free there, is fine).
 //
 // What the probes need (learnt the hard way): three is imported from the page's own module, every tile is shown
 // and kept so (tiles.update emptied on this page), skinned meshes, `ignoreRay`, vehicles, hidden materials and all
@@ -42,7 +46,7 @@ import { launch, options, startGame } from './cdp.mjs';
 const o = options({ url: 'http://localhost:5200/', port: '9800', quality: 'high', json: '', only: '', strict: '', compare: '', shots: '', sample: '13' });
 const ALL = ['trees', 'walls', 'sides', 'roofs', 'ground', 'spots', 'drops'];
 const only = new Set(o.only ? o.only.split(',') : ALL);
-const strict = new Set(['trees', 'spots', ...(o.strict ? o.strict.split(',') : [])]);
+const strict = new Set(['trees', 'roofs', 'spots', 'drops', ...(o.strict ? o.strict.split(',') : [])]);
 const read = (p) => JSON.parse(readFileSync(new URL(`../../web/${p}`, import.meta.url), 'utf8'));
 if (o.shots) mkdirSync(o.shots, { recursive: true });
 
@@ -68,6 +72,12 @@ async function setup() {
   }
   tiles.showAll();
   for (const t of tiles.tracked) t.object.visible = true;
+  // Every LOD at its near level, as the collision has it (world/modelRoofs.ts), wherever the camera is now.
+  scene.traverse((o) => {
+    if (!o.isLOD) return;
+    o.autoUpdate = false;
+    o.levels.forEach((l, i) => (l.object.visible = i === 0));
+  });
   scene.updateMatrixWorld(true);
   const shownUp = (o) => {
     for (let p = o; p; p = p.parent) if (!p.visible && !p.userData.detail && !(p.parent && p.parent.isLOD)) return false;
@@ -205,11 +215,20 @@ async function setup() {
     const n = Math.ceil(dist / 0.08);
     let edge = false;
     let closest = Infinity;
+    const roofIn = (x, z) => !!W.roofBlocks?.(x, z, feet, STEP_UP, H);
     for (let i = 0; i < n; i++) {
+      const was = { x: pos.x, z: pos.z };
       pos.x += (dx * dist) / n;
       pos.z += (dz * dist) / n;
       W.resolve(pos, feet, R, STEP_UP, H);
       if (W.keepIn(pos, R)) edge = true;
+      // A drawn roof beside: pushed off; ahead: along it on x or z, else stay (world/roofField.ts, as Player.update).
+      W.roofPush?.(pos, feet, R, STEP_UP, H);
+      if (roofIn(pos.x, pos.z) && !roofIn(was.x, was.z)) {
+        if (!roofIn(pos.x, was.z)) pos.z = was.z;
+        else if (!roofIn(was.x, pos.z)) pos.x = was.x;
+        else Object.assign(pos, was);
+      }
       feet = W.groundAt(pos.x, pos.z, feet, STEP_UP).y; // up a step, down a step, or the fall done at once
       if (near) closest = Math.min(closest, Math.hypot(pos.x - near[0], pos.z - near[1]));
     }
@@ -626,10 +645,16 @@ async function sidesNear(rows) {
   return { looked: done.size, rows: left };
 }
 
-/** Roofs: per roof of the data, the highest drawn surface against the floor from above, every 1.5 m inside it. */
+/**
+ * Roofs: per roof of the data, the highest drawn surface against the floor from above, every 1.5 m inside it. A floor
+ * on air counts where it is a block's top or a roof's (the bare ground off by more is the ground's class); where only
+ * the ground is drawn under such a floor the row is `bare`: a block a model stands for with nothing of the model there
+ * (the models' outlines, not their roofs). The private homes (the bungalow, the end house at Molenhoek) are `own`.
+ */
 function roofs(list) {
   const { W, cast } = window.__c;
   const SKIP = /hedge\||steel|foliage|leaves|loose-|\|cut/;
+  const end = briel.endHouse?.();
   const inside = (x, z, ring) => {
     let hit = false;
     for (let i = 0, j = ring.length - 1; i < ring.length; j = i++) {
@@ -642,10 +667,11 @@ function roofs(list) {
   for (const r of list) {
     const xs = r.p.map((q) => q[0]), zs = r.p.map((q) => q[1]);
     const box = [Math.min(...xs), Math.min(...zs), Math.max(...xs), Math.max(...zs)];
-    let sunk = 0, air = 0, n = 0, deep = 0, high = 0, at = null;
+    let sunk = 0, air = 0, bare = 0, n = 0, deep = 0, high = 0, at = null;
     for (let x = box[0] + 0.4; x < box[2]; x += 1.5) for (let z = box[1] + 0.4; z < box[3]; z += 1.5) {
       if (!inside(x, z, r.p)) continue;
-      const floor = W.groundAt(x, z, 1e6, 0).y;
+      const g = W.groundAt(x, z, 1e6, 0);
+      const floor = g.y;
       const top = cast(x, floor + 30, z, 0, -1, 0, 60, SKIP)[0];
       if (!top) continue;
       n++;
@@ -654,14 +680,89 @@ function roofs(list) {
         sunk++;
         if (d > deep) [deep, at] = [d, [x, z]];
       }
-      if (d < -0.5) {
+      if (d < -0.5 && floor > W.baseAt(x, z) + 0.3 && g.mat !== 'car') { // a parked car is drawn only near the eye
         air++;
+        if (Math.abs(top.y - W.baseAt(x, z)) < 1.5) bare++; // the ground, a yard or a terrace: nothing of a building
         if (-d > high) high = -d;
       }
     }
-    if (sunk >= 3 || air >= 3) out.push({ x: +((box[0] + box[2]) / 2).toFixed(1), z: +((box[1] + box[3]) / 2).toFixed(1), set: r.set, lm: r.lm ?? '', samples: n, sunk, air, deepest: +deep.toFixed(2), highest: +high.toFixed(2), at: at && at.map((v) => +v.toFixed(1)) });
+    const cx = (box[0] + box[2]) / 2, cz = (box[1] + box[3]) / 2;
+    const own = r.own || (end && [[cx, cz], ...r.p.map(([x, z]) => [x + (cx - x) * 0.3, z + (cz - z) * 0.3])].some(([x, z]) => end.contains(x, z)) ? 'end house' : '');
+    if (sunk >= 3 || air >= 3) out.push({ x: +cx.toFixed(1), z: +cz.toFixed(1), set: r.set, lm: r.lm ?? '', own, samples: n, sunk, air, bare: sunk === 0 && air > 0 && bare === air, deepest: +deep.toFixed(2), highest: +high.toFixed(2), at: at && at.map((v) => +v.toFixed(1)) });
   }
   return out;
+}
+
+/**
+ * Roofs' narrow places, as the trees' gaps: a body put on a roof where something rises more than a metre within 0.6 m
+ * (a wall, a higher roof, a chimney, a dormer) or in a valley (higher on two opposite sides), let settle, must stand
+ * free on the roof and walk away one way or another. One spot per roof, at most `max`.
+ */
+function roofWedges(list, max) {
+  const { W, cast } = window.__c;
+  if (!W.roofs) return { tested: 0, steps: 0, wedges: [] }; // a build from before the roofs were solid
+  const p = briel.player;
+  const keep = { x: p.x, z: p.z, feet: p.feet, yaw: p.yaw, flying: p.flying };
+  p.flying = false;
+  const put = (x, z, feet, yaw = 0) => {
+    p.vx = p.vy = p.vz = 0;
+    briel.teleport(x, z, feet, yaw, 0);
+  };
+  const inside = (x, z, ring) => {
+    let hit = false;
+    for (let i = 0, j = ring.length - 1; i < ring.length; j = i++) {
+      const [xi, zi] = ring[i], [xj, zj] = ring[j];
+      if (zi > z !== zj > z && x < ((xj - xi) * (z - zi)) / (zj - zi) + xi) hit = !hit;
+    }
+    return hit;
+  };
+  const topAt = (x, z) => W.groundAt(x, z, 1e6, 0).y;
+  // Free: no block in the body's height within 0.2 m, its middle not under a roof's solid.
+  const free = (x, z, feet) => W.touching(x, z, feet + 0.5, feet + 1.8, 0.2) === null && !W.roofs.blocks(x, z, feet, 0.5, 1.8);
+  const settle = () => {
+    for (let i = 0; i < 180 && (i < 20 || p.feet > p.ground.y + 0.01); i++) briel.press({}, 1 / 60);
+  };
+  const spots = [];
+  for (const r of list) {
+    if (spots.length >= max || r.own) continue;
+    const xs = r.p.map((q) => q[0]), zs = r.p.map((q) => q[1]);
+    let found = null;
+    for (let x = Math.min(...xs) + 0.4; x < Math.max(...xs) && !found; x += 0.75) for (let z = Math.min(...zs) + 0.4; z < Math.max(...zs) && !found; z += 0.75) {
+      if (!inside(x, z, r.p) || !W.roofs.sample(x, z)) continue;
+      const t = W.roofs.top;
+      const around = [0, 1, 2, 3, 4, 5, 6, 7].map((k) => topAt(x + Math.cos((k * Math.PI) / 4) * 0.6, z + Math.sin((k * Math.PI) / 4) * 0.6) - t);
+      const step = around.some((d) => d > 1.0);
+      const valley = [0, 1, 2, 3].some((k) => around[k] > 0.3 && around[k + 4] > 0.3);
+      if (step || valley) found = { x, z, t, kind: step ? 'step' : 'valley' };
+    }
+    if (found) spots.push(found);
+  }
+  const wedges = [];
+  for (const s of spots) {
+    put(s.x, s.z, s.t);
+    settle(); // settled, or down from where it was pushed
+    // Pressed in: walk out, each way in turn for half a second, until free.
+    for (let k = 0; k < 4 && !free(p.x, p.z, p.feet); k++) {
+      p.yaw = (k * Math.PI) / 2;
+      for (let i = 0; i < 30; i++) briel.press({ moveY: 1 }, 1 / 60);
+      settle();
+    }
+    const at = { x: p.x, z: p.z, feet: p.feet };
+    // Away from it: one of four ways at least half a metre.
+    let moved = 0;
+    for (let k = 0; k < 4 && moved < 0.5; k++) {
+      put(at.x, at.z, at.feet, (k * Math.PI) / 2);
+      for (let i = 0; i < 30; i++) briel.press({ moveY: 1 }, 1 / 60);
+      moved = Math.max(moved, Math.hypot(p.x - at.x, p.z - at.z));
+    }
+    // On what is drawn there: the first surface down from the head within half a metre of the feet.
+    const under = cast(at.x, at.feet + 1.7, at.z, 0, -1, 0, 4, /hedge\||steel|foliage|leaves|loose-|\|cut/)[0];
+    const onRoof = !!under && Math.abs(under.y - at.feet) < 0.5;
+    if (!free(at.x, at.z, at.feet) || moved < 0.5 || !onRoof) wedges.push({ x: +s.x.toFixed(2), z: +s.z.toFixed(2), kind: s.kind, ended: [+at.x.toFixed(2), +at.feet.toFixed(2), +at.z.toFixed(2)], free: free(at.x, at.z, at.feet), moved: +moved.toFixed(2), onRoof });
+  }
+  put(keep.x, keep.z, keep.feet, keep.yaw);
+  p.flying = keep.flying;
+  return { tested: spots.length, steps: spots.filter((s) => s.kind === 'step').length, wedges };
 }
 
 /** Ground: a ray down every 4 m of the walkable map; gaps over 0.75 m and holes. */
@@ -714,7 +815,10 @@ function spots(list) {
   });
 }
 
-/** Drops: real parachute drops, hands off; where the feet end against the highest drawn surface there. */
+/**
+ * Drops: real parachute drops, hands off; where the feet end against the highest drawn surface there. A landing on the
+ * ground with a roof over the head (under the eaves, a porch), the body free there, is `under`: that is a fine place.
+ */
 function drops(centres) {
   const { W, cast } = window.__c;
   const p = briel.player;
@@ -727,7 +831,10 @@ function drops(centres) {
     while (p.chute !== null && n++ < 6000) briel.press({}, 1 / 60);
     const top = cast(p.x, p.feet + 40, p.z, 0, -1, 0, 80, SKIP)[0];
     const off = top ? top.y - p.feet : null;
-    rows.push({ x: +p.x.toFixed(2), feet: +p.feet.toFixed(2), z: +p.z.toFixed(2), over: +(p.feet - W.baseAt(p.x, p.z)).toFixed(2), off: off === null ? null : +off.toFixed(2), cls: top?.cls ?? '', on: p.ground.mat ?? p.ground.name ?? '' });
+    const over = p.feet - W.baseAt(p.x, p.z);
+    const free = W.touching(p.x, p.z, p.feet + 0.5, p.feet + 1.8, 0.2) === null && !W.roofBlocks?.(p.x, p.z, p.feet, 0.5, 1.8);
+    const under = off !== null && off > 1.8 && over < 0.3 && free;
+    rows.push({ x: +p.x.toFixed(2), feet: +p.feet.toFixed(2), z: +p.z.toFixed(2), over: +over.toFixed(2), off: off === null ? null : +off.toFixed(2), under, cls: top?.cls ?? '', on: p.ground.mat ?? p.ground.name ?? '' });
   }
   return rows;
 }
@@ -800,13 +907,17 @@ try {
   if (only.has('roofs')) {
     const village = read('src/data/village.json');
     const ring = read('src/data/house_shell.json').surroundings;
-    const list = [...village.roofs.map((r) => ({ p: r.p, lm: r.lm, set: 'village' })), ...(ring.roofs ?? []).map((r) => ({ p: r.p, lm: r.lm, set: 'ring' }))];
+    // The bungalow's roof (the ring's roof over a room) is a private home's: its own blocks, as the church's.
+    const list = [...village.roofs.map((r) => ({ p: r.p, lm: r.lm, set: 'village' })), ...(ring.roofs ?? []).map((r) => ({ p: r.p, lm: r.lm, set: 'ring', own: r.ceiling ? 'bungalow' : '' }))];
     const rows = await run(roofs, list);
     const OWN = /church|sparrenhof|tree_huts|play|town_board|private/;
-    const own = rows.filter((r) => OWN.test(r.lm));
-    const rest = rows.filter((r) => !OWN.test(r.lm)).sort((a, c) => Math.max(c.deepest, c.highest) - Math.max(a.deepest, a.highest));
+    const own = rows.filter((r) => OWN.test(r.lm) || r.own);
+    const bare = rows.filter((r) => !own.includes(r) && r.bare);
+    const rest = rows.filter((r) => !own.includes(r) && !r.bare).sort((a, c) => Math.max(c.deepest, c.highest) - Math.max(a.deepest, a.highest));
     const sunk = rest.filter((r) => r.sunk >= 3).length, air = rest.filter((r) => r.air >= 3).length;
-    record('roofs', rest.length, `${sunk} of ${list.length} roofs sunk into, ${air} with floors on air; apart (own blocks): ${own.length}`, rest, { rows: rest, own });
+    const w = await run(roofWedges, list.map((r) => ({ ...r, own: r.own || OWN.test(r.lm ?? '') })), 300);
+    const worst = [...rest, ...w.wedges.map((x) => ({ ...x, what: 'wedged' }))];
+    record('roofs', rest.length + w.wedges.length, `${sunk} of ${list.length} roofs sunk into, ${air} with floors on air; wedged ${w.wedges.length} of ${w.tested} narrow spots (${w.steps} against something higher); apart: own blocks ${own.length}, blocks with nothing of their model drawn ${bare.length}`, worst, { rows: rest, own, bare, wedges: w.wedges, narrow: w.tested });
   }
   if (only.has('ground')) {
     const r = await run(ground);
@@ -825,8 +936,9 @@ try {
   }
   if (only.has('drops')) {
     const rows = await run(drops, [[505, -790], [735, -725]]);
-    const wrong = rows.filter((r) => r.off === null || Math.abs(r.off) > 0.5).sort((a, c) => Math.abs(c.off ?? 99) - Math.abs(a.off ?? 99));
-    record('drops', wrong.length, `${wrong.length} of ${rows.length} landings more than 0.5 m off the drawn surface (${wrong.filter((r) => r.off > 0.5).length} sunk, ${wrong.filter((r) => r.off < -0.5).length} on air)`, wrong, { rows: wrong });
+    const wrong = rows.filter((r) => !r.under && (r.off === null || Math.abs(r.off) > 0.5)).sort((a, c) => Math.abs(c.off ?? 99) - Math.abs(a.off ?? 99));
+    const under = rows.filter((r) => r.under).length;
+    record('drops', wrong.length, `${wrong.length} of ${rows.length} landings more than 0.5 m off the drawn surface (${wrong.filter((r) => r.off > 0.5).length} sunk, ${wrong.filter((r) => r.off < -0.5).length} on air); ${under} on the ground under eaves`, wrong, { rows: wrong, under });
   }
 
   if (o.shots) {
