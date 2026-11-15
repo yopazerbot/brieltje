@@ -957,7 +957,9 @@ def keep_before(buildings, trees, bounds, roads):
         rest = LineString(b["path"]).difference(area)
         for seg in getattr(rest, "geoms", [rest]):
             if seg.geom_type == "LineString" and seg.length >= 3:
-                more_lines.append({**b, "path": [[round(x, 2), round(z, 2)] for x, z in seg.coords]})
+                piece = {**b, "path": [[round(x, 2), round(z, 2)] for x, z in seg.coords]}
+                if json.dumps(piece) not in known:  # kept already (a line crossing the outline of an earlier run)
+                    more_lines.append(piece)
     old_trees = before_data["trees"]
     grid = {}
     for t in old_trees:
