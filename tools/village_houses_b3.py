@@ -237,7 +237,161 @@ def old_farm():
     h.export()
 
 
-HOUSES = {"vh_old_farm": old_farm}
+# ======================================================================================================================
+# 10. x 695.0, z 418.9: a dark brick house of the 1970s hard by the pavement, two storeys under a dark roof hipped to
+# the north, wide windows with concrete lintels, roller shutters, a planted bed in front; and joined to its south side,
+# where the data has one long low wing, a narrow house of lighter brick reaching nearer the street, its eaves along
+# it, a white garage door of diagonal boards, and a low shed behind it.
+def diagonal_door(h, W, N, T, o, color="#f2f1ec", lines="#cfd0cc"):
+    """A garage door of boards laid on the slant, in herringbone either side of its middle."""
+    s0, s1, y0, y1, r = o.s - o.w / 2, o.s + o.w / 2, o.y, o.y + o.h, o.reveal
+    h.wbox(W, N, T, "vh_trim", s0, s1, y0, y1, r - .04, r, color)
+    dep = r - .046
+    for half, sgn in (((s0 + .04, o.s - .02), 1), ((o.s + .02, s1 - .04), -1)):
+        a, b = half
+        step = .3
+        k = -1.0
+        while k < 2.2:
+            # a strip from the half's edge up across it at 45 degrees
+            pts = []
+            for t in (0.0, 1.0):
+                x = a + (b - a) * t if sgn > 0 else b - (b - a) * t
+                y = y0 + .05 + k * (y1 - y0 - .1) / 2 + (b - a) * t
+                pts.append((x, y))
+            (xa, ya), (xb, yb) = pts
+            # clip the strip to the door
+            lo, hi = y0 + .04, y1 - .04
+            if yb < lo or ya > hi:
+                k += step
+                continue
+            if ya < lo:
+                xa, ya = xa + (xb - xa) * (lo - ya) / (yb - ya), lo
+            if yb > hi:
+                xb, yb = xa + (xb - xa) * (hi - ya) / (yb - ya), hi
+            w = .018
+            h.poly("vh_frames_small", [W(xa, ya - w, dep), W(xb, yb - w, dep), W(xb, yb + w, dep), W(xa, ya + w, dep)], N, lines)
+            k += step
+    h.wbox(W, N, T, "vh_frames_small", o.s - .02, o.s + .02, y0, y1, dep - .002, dep + .004, lines)
+
+
+def seventies():
+    h = House("vh_seventies", [684.6, 411.32], ([687.51, 416.89], [686.41, 425.51]), -4.47, {
+        "vh_brick": {"texture": "nb_brick", "tint": "#5c3f37", "normalScale": .55},  # dark purple-brown, nb_brown's dark end
+        "vh_brick2": {"texture": "nb_brick", "tint": "#8c5e52", "normalScale": .55},  # the narrow house: nb_red's light end
+        "vh_roof": {"texture": "roof_tiles", "tint": "#35373b", "normalScale": .3},
+        "vh_paving": {"texture": "pavers", "tint": "#8f8c86"},
+        "vh_trim": TRIM, "vh_stone": STONE, "vh_glass": GLASS, "vh_frames_small": SMALL, "vh_metal_small": METAL,
+    })
+    # u along the street front to the north, d from the dark house's front (0) to the back. The wall block found by the
+    # corner is the data's long wing (the narrow house and the shed); the dark house's own block is the second.
+    h.also_replaces([699.89, 427.25])
+    h.replace_roof([687.51, 416.89])
+    lift = h.base
+    gy = lambda u, d: h.ground(u, d)
+    white, lint, foot_c = "#f2f1ec", "#aaa59b", "#55524e"
+    # The dark house: u -4.34 to 4.34, d 0 to 10.1; eaves 6.3 along the street and the back, hipped to the north,
+    # a plain gable to the south against the narrow house; a flat-roofed back room to d 13.6.
+    E, RG, D, ov = 6.3 + lift, 10.1 + lift, 10.1, .4
+    k = (RG - E) / (D / 2)
+    main = Roof([(-4.34, -ov), (4.34 + ov, -ov), (4.34 + ov, D + ov), (-4.34, D + ov)],
+                [eave((0, -ov), (0, 1), E - k * ov, k), eave((0, D + ov), (0, -1), E - k * ov, k), eave((4.34 + ov, 0), (-1, 0), E - k * ov, k * 1.4)],
+                under=white, edge=white, board=.28)
+    # The narrow house: u -9.58 to -4.34, d -3.59 to 10, its ridge along the street.
+    NE, NR, n0, n1, no = 5.4 + lift, 9.0 + lift, -3.59, 10.0, .35
+    kn = (NR - NE) / ((n1 - n0) / 2)
+    narrow = Roof([(-9.58 - no, n0 - no), (-4.34, n0 - no), (-4.34, n1 + no), (-9.58 - no, n1 + no)],
+                  [eave((0, n0 - no), (0, 1), NE - kn * no, kn), eave((0, n1 + no), (0, -1), NE - kn * no, kn)], under=white, edge="#3a3b3e", board=.22)
+    # The shed behind it: u -8.1 to -4.3, d 10 to 24.4, its ridge away from the street.
+    SE, SR = 2.6 + lift, 4.6 + lift
+    ks = (SR - SE) / 1.9
+    shed = Roof([(-8.1 - .3, 10.0), (-4.25, 10.0), (-4.25, 24.41 + .3), (-8.1 - .3, 24.41 + .3)],
+                [eave((-8.1 - .3, 0), (1, 0), SE - ks * .3, ks), eave((-4.3, 0), (-1, 0), SE, ks)], under=white, edge="#3a3b3e", board=.18)
+    roofs = [main, narrow, shed]
+    FL = 3.1 + lift
+    back = [(-4.32, 10.11), (4.25, 10.09), (4.24, 10.59), (4.36, 13.59), (-4.31, 13.55)]
+    flat_at = over(back, FL + .07)
+    foot = [(.3, "vh_trim", foot_c)]
+
+    def wall(a, b, ops=(), **kw):
+        top = kw.pop("top", None)
+        W, N, T = h.wall(a, b, top if top is not None else top_over(roofs, a, b, also=[flat_at]), ops, bands=kw.pop("bands", foot), **kw)
+        for o in ops:
+            if o.kind == "window":
+                shutter_box(h, W, N, T, o, white)
+                if kw.get("mesh", "vh_brick") == "vh_brick":
+                    h.wbox(W, N, T, "vh_stone", o.s - o.w / 2 - .1, o.s + o.w / 2 + .1, o.y + o.h, o.y + o.h + .18, -.02, 0, lint)
+        return W, N, T
+
+    win = lambda s, y, w, hh: Opening(s, y, w, hh, frame=white, reveal=.14, cols=3 if w > 2.0 else 2 if w > 1.0 else 1)
+    # --- the dark house's street front: two wide windows, two over them, roller shutters half down on two -----------
+    g0 = gy(0, -.3)
+    downs = [win(2.25, g0 + .85, 2.4, 1.4), win(6.45, g0 + .85, 2.4, 1.4)]
+    ups = [win(2.25, 3.65, 1.9, 1.3), win(6.45, 3.65, 1.9, 1.3)]
+    W, N, T = wall((-4.34, 0), (4.34, 0), downs + ups, out=(0, -1))
+    blind(h, W, N, T, ups[0], .5)
+    blind(h, W, N, T, ups[1], .4)
+    # --- its north side: the front door set back under the house, windows; the back room ---------------------------------
+    gd = gy(5.0, 1.4)
+    fl = gd + .18
+    door = Opening(1.5, fl, 1.0, 2.2, "door", door="#4a3a2e", frame="#3b3d3e", panels="glazed", reveal=.55, sill=False, step=(gd, .4))
+    nops = [door, win(4.6, fl + .75, 1.4, 1.3), win(8.2, fl + .75, 1.0, 1.3), win(1.5, 3.65, 1.0, 1.2), win(5.6, 3.65, 1.4, 1.2)]
+    W, N, T = wall((4.34, 0), (4.24, 10.59), nops, out=(1, 0))
+    lamp(h, W, N, T, door.s + .75, fl + 1.9)
+    wall((4.24, 10.59), (4.36, 13.59), [win(1.5, fl + .75, 1.0, 1.2)], top=FL, out=(1, 0))
+    wall((4.36, 13.59), (-4.31, 13.55), [Opening(3.0, gy(1.4, 13.8) + .05, 2.6, 2.15, frame=white, reveal=.14, cols=2, sill=False), win(6.6, fl + .75, 1.2, 1.2)], top=FL, out=(0, 1))
+    wall((4.25, 10.09), (-4.32, 10.11), [win(2.4, 3.65, 1.2, 1.2), win(6.2, 3.65, 1.2, 1.2)], bottom=FL - .1, bands=(), out=(0, 1))
+    flat_roof(h, back, FL)
+    # --- the narrow house: its front with the garage door and a door, two windows over them; its south gable ---------
+    gn = gy(-7.9, -3.9)
+    fn = gn + .15
+    garage = Opening(1.65, gn + .02, 2.4, 2.1, "leaf", reveal=.16, sill=False)
+    nd = Opening(4.0, fn, .95, 2.15, "door", door="#f3f2ee", frame=white, panels="glazed", reveal=.16, sill=False, step=(gn, .3))
+    nops = [garage, nd, win(1.65, 3.4, 1.4, 1.2), win(4.0, 3.4, .9, 1.2)]
+    W, N, T = wall((-9.5, -3.59), (-4.34, -3.56), nops, mesh="vh_brick2", out=(0, -1))
+    diagonal_door(h, W, N, T, garage)
+    h.wbox(W, N, T, "vh_stone", garage.s - 1.32, garage.s + 1.32, gn + 2.12, gn + 2.3, -.02, 0, lint)
+    wall((-9.58, 10), (-9.5, -3.59), [win(4.0, fn + .8, 1.2, 1.2), win(4.0, 3.4, 1.0, 1.1), win(9.0, 3.4, 1.0, 1.1)], mesh="vh_brick2", out=(-1, 0))
+    wall((-9.58, 10), (-8.11, 10.02), mesh="vh_brick2", out=(0, 1))
+    # Where the two houses meet: the narrow house's north wall before the dark one, and above the dark one's roof the
+    # one that stands higher there.
+    cut = 3.44  # d where the two roofs are as high
+    hi = lambda d: max(narrow.height(-4.34, d), main.height(-4.34, d)) - .06
+    lo = lambda d: min(narrow.height(-4.34, d), main.height(-4.34, d)) - .25
+    h.wall((-4.34, n0), (-4.34, cut), [(d - n0, hi(d)) for d in (n0, 0, 3.2, cut)],
+           [win(1.8, fn + .8, .8, 1.1)], mesh="vh_brick2", bottom=[(0, h.foot), (3.59 - .001, h.foot), (3.59, lo(0)), (cut - n0, lo(cut))], out=(1, 0), bands=foot)
+    h.wall((-4.34, cut), (-4.34, D), [(0, hi(cut)), (5.05 - cut, hi(5.05)), (D - cut, hi(D))], bottom=[(0, lo(cut)), (D - cut, lo(D))], out=(-1, 0))
+    h.wall((-8.11, 10.02), (-4.34, 10.1), top_over([narrow], (-8.11, 10.02), (-4.34, 10.1)), mesh="vh_brick2",
+           bottom=[(0, SE - .2), (1.9, SR - .2), (3.77, SE - .2)], out=(0, 1))
+    # --- the shed: low walls of the narrow house's brick, a small window and a door ----------------------------------------
+    sw = lambda a, b, ops=(), **kw: wall(a, b, ops, top=top_over([shed], a, b), mesh="vh_brick2", **kw)
+    sw((-8.11, 10.02), (-8.1, 16.91), [Opening(3.4, gy(-8.6, 13.4) + .05, .9, 1.95, "door", door="#6c6a64", frame="#5a5854", reveal=.12, sill=False)], out=(-1, 0))
+    sw((-8.1, 16.91), (-7.87, 24.22), [win(3.6, 1.3, .7, .6)], out=(-1, 0))
+    sw((-7.87, 24.22), (-4.29, 24.41), out=(0, 1))
+    sw((-4.29, 24.41), (-4.31, 13.55), out=(1, 0))
+    h.wall((-4.31, 13.55), (-4.32, 10.11), FL, bottom=SE - .1, out=(-1, 0))
+    draw_roofs(h, roofs)
+    # Gutters and downpipes; a chimney on the dark house.
+    ye = E - k * ov - .3
+    h.gutter((-4.34, -ov, ye), (4.34 + ov, -ov, ye), (0, -1, 0), white, down=[(4.26, -.08, gy(4.26, -.08))])
+    h.gutter((4.34 + ov, D + ov, ye), (-4.34, D + ov, ye), (0, 1, 0), white)
+    yn = NE - kn * no - .24
+    h.gutter((-9.58 - no, n0 - no, yn), (-4.34, n0 - no, yn), (0, -1, 0), white, down=[(-9.42, n0 - .08, gy(-9.42, n0 - .08))])
+    h.chimney(1.2, D / 2 + 1.2, .55, .55, main.height(1.2, D / 2 + 1.2) - .4, RG + .7, "vh_brick")
+    # --- before the houses: a planted bed with a low concrete edge and two clipped shrubs; pavers to the street's edge ----
+    edge = lambda u: (u, round(-3.93 + .2398 * (u - 4.37), 4))  # the street's paving begins here (its edge in the data)
+    bed = [(-4.3, -1.75), (4.3, -1.75), (4.3, -.03), (-4.3, -.03)]
+    for a, b in zip(bed, bed[1:] + bed[:1]):
+        ga = min(gy(*a), gy(*b))
+        h.seg("vh_stone", a, b, .1, ga - .1, max(gy(*a), gy(*b)) + .15, "#a7a49d")
+    h.poly("vh_trim", [(u, d, gy(u, d) + .09) for u, d in ((-4.25, -1.7), (4.25, -1.7), (4.25, -.08), (-4.25, -.08))], (0, 0, 1), "#3e3329")
+    for u, d, r in ((-2.4, -.9, .38), (3.1, -.85, .42)):
+        h.blob("vh_trim", u, d, gy(u, d) + .5 - r * .9, (r, r, r * .9), rings=4, steps=9, color="#506b40")  # (nine meshes at most)
+    h.pave([(-9.5, -3.61), (-4.34, -3.58), (-4.34, -1.8), (4.35, -1.8), (4.37, -3.93), edge(-9.5)], cell=1.2)
+    h.pave([(4.37, -.02), (5.7, -.02), (5.7, 2.4), (4.36, 2.4)], cell=1.2)  # the path to the door
+    h.export()
+
+
+HOUSES = {"vh_old_farm": old_farm, "vh_seventies": seventies}
 for _name, _build in HOUSES.items():
     if not ONLY or _name in ONLY:
         _build()
