@@ -113,6 +113,8 @@ const SETTS = '#8d8b86';
 const KERB_TINT = '#b6b8b8';
 const PAVERS = '#aaa8a3';
 const EARTH = '#8c7f6a';
+/** A rough verge of earth and gravel where the road surface of the open data runs on beside a lane in the fields. */
+const VERGE_EARTH = '#7a725f';
 /** The worn verge's colour where the earth at the road's edge runs out into the grass. */
 const VERGE = new THREE.Color('#6d7148');
 /** What gathers along a street's edges: silt and earth in the gutter, against the kerb and at the pavement's back. */
@@ -174,6 +176,9 @@ const PROFILES: Record<string, Profile> = {
     shoulder: { w: 0.35, tint: EARTH }, gullies: 25, manholes: 50, wear: 0.1,
   },
   lane_asphalt: { road: 'asphalt', tint: '#5e6062', shoulder: { w: 0.35, tint: EARTH }, wear: 0.08 },
+  // The same lane out in the fields (Serskampstraat's south leg past its houses): the road surface the open data has
+  // beside the asphalt is a rough verge of earth and gravel, so the lane reads as narrow as it is between the grass.
+  lane_verge: { road: 'asphalt', tint: '#5e6062', apron: 'gravel', apronTint: VERGE_EARTH, shoulder: { w: 0.35, tint: EARTH }, wear: 0.08 },
   lane_loose: { road: 'gravel', tint: '#b2a690', shoulder: { w: 0.3, tint: EARTH }, wear: 0.12 },
   // The footpaths.
   path_tiles: { road: 'tiles', tint: '#b3b0a8', wear: 0, path: true },
