@@ -2,6 +2,7 @@ import * as THREE from 'three';
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 import * as SkeletonUtils from 'three/addons/utils/SkeletonUtils.js';
 import CATS from '../../shared/cats.json';
+import { catWalk } from '../../shared/cats.mjs';
 import { sound } from '../sound';
 import { hitBoxMaterial } from './hitBox';
 
@@ -17,8 +18,6 @@ const HEIGHT = 0.42; // m
 const HIT = new THREE.SphereGeometry(0.28, 8, 6);
 const hitMaterial = hitBoxMaterial;
 
-type Point = [number, number];
-
 interface Cat {
   group: THREE.Group;
   mixer: THREE.AnimationMixer;
@@ -28,27 +27,6 @@ interface Cat {
   /** Dead until this time (s on the shared clock) */
   deadUntil: number;
   meowIn: number;
-}
-
-/** Where a cat is at time t on its loop: walking between corners, pausing at each. */
-function onLoop(loop: Point[], t: number): { x: number; z: number; heading: number; walking: boolean } {
-  const legs = loop.map((p, i) => {
-    const q = loop[(i + 1) % loop.length];
-    return { from: p, to: q, time: Math.hypot(q[0] - p[0], q[1] - p[1]) / CATS.speed };
-  });
-  const cycle = legs.reduce((s, l) => s + l.time + CATS.pause, 0);
-  let u = ((t % cycle) + cycle) % cycle;
-  for (const l of legs) {
-    const heading = Math.atan2(l.to[0] - l.from[0], l.to[1] - l.from[1]);
-    if (u < CATS.pause) return { x: l.from[0], z: l.from[1], heading, walking: false };
-    u -= CATS.pause;
-    if (u < l.time) {
-      const f = u / l.time;
-      return { x: l.from[0] + (l.to[0] - l.from[0]) * f, z: l.from[1] + (l.to[1] - l.from[1]) * f, heading, walking: true };
-    }
-    u -= l.time;
-  }
-  return { x: loop[0][0], z: loop[0][1], heading: 0, walking: false };
 }
 
 /** A meow made in code: a gliding buzzy tone through a vowel-like filter. */
@@ -187,7 +165,7 @@ export class Cats {
         c.mixer.update(dt);
         return;
       }
-      const p = onLoop(CATS.cats[i] as Point[], now + i * 7);
+      const p = catWalk(CATS, i, now); // its loop on the shared clock, as the server works it out (shared/cats.mjs)
       c.group.position.set(p.x, this.floorAt(p.x, p.z), p.z);
       c.group.rotation.y = p.heading;
       this.play(c, p.walking ? 'Walk' : 'Idle');

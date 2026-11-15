@@ -291,6 +291,7 @@ for (const h of HOMES) {
     grants.add(`k-owner|${h.id}`);
     grants.add(`k-friend|${h.id}`);
     owner.nextCat = 0;
+    game.catInReach = () => true; // the cats walk round the main house: their reach has its own test (catReach.test.mjs)
     game.handle('owner', owner, JSON.stringify({ t: 'cat', i: 0, w: 'rifle' }));
     assert.equal(other.got.find((m) => m.t === 'cat')?.by, '', 'a cat');
     assert.equal(friend.got.find((m) => m.t === 'cat')?.by, 'owner');
@@ -557,6 +558,7 @@ test('a page from before the out-of-sight notices gets no event whose doer it ma
   const now = player('now', outside);
   grants.add(`k-owner|${h.id}`);
   owner.nextCat = 0;
+  game.catInReach = () => true; // the cats walk round the main house: their reach has its own test (catReach.test.mjs)
   game.handle('owner', owner, JSON.stringify({ t: 'cat', i: 0, w: 'rifle' }));
   assert.equal(old.got.filter((m) => m.t === 'cat').length, 0);
   assert.equal(now.got.find((m) => m.t === 'cat')?.by, '');

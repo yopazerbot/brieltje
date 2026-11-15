@@ -43,6 +43,7 @@ import { mergeHouse } from '../shared/insideData.mjs';
 import { defaultLayout, housePacks, packFor } from './insides.mjs';
 import { HomeGate } from './homeGate.mjs';
 import { noShoot } from '../shared/zones.mjs';
+import { catWithin } from '../shared/cats.mjs';
 import { buildVillagers, villagerHittable, VILLAGER_DOWN_S, VILLAGER_HIT_MAX, VILLAGER_HIT_MS, VILLAGER_PAINT_S, VILLAGER_RANGE, VILLAGER_SHOT_MAX } from '../shared/villagers.mjs';
 import { boxesOverlap, boxPoints, clearOfPortals, indoorBlocks, makeIndoors, makeSolids } from '../shared/parking.mjs';
 import { bikeFields, bruteEntry, carFields, heliFields, horseFields, playerFields, PROTO, TICK_MS } from '../shared/wire.mjs';
@@ -1240,9 +1241,10 @@ export class Game {
       } else return;
       this.sendClowns(now);
     } else if (m.t === 'cat' && Number.isInteger(m.i) && m.i >= 0 && m.i < CATS.cats.length) {
-      // Just for fun: no points. At most one cat every 300 ms per player.
+      // Just for fun: no points. At most one cat every 300 ms per player, and only one within reach (catInReach).
       if (now < this.catsDown[m.i] || !player.alive || !player.state?.armed || now < (player.nextCat || 0)) return;
       player.nextCat = now + 300;
+      if (!this.catInReach(player, m, now)) return;
       this.catsDown[m.i] = now + CATS.respawnSeconds * 1000;
       this.broadcastEvent({ t: 'cat', i: m.i, by: name, ms: CATS.respawnSeconds * 1000, w: m.w === 'grenade' ? 'grenade' : player.state.w }, null, name, name); // cats never walk into a home (homeSight.test.mjs)
     } else if (m.t === 'vil' && Array.isArray(m.ids)) {
@@ -2287,7 +2289,7 @@ export class Game {
     // Inside a home: to those who may see in; the thrower's name only to those who could see them throw (`act`).
     this.broadcastEvent({ t: 'blast', by: name, w, x: at.x, y: at.y, z: at.z }, at, name, w === 'grenade' ? name : undefined, act?.home ?? null);
     const shooter = this.players.get(name);
-    if (shooter) shooter.lastBlast = { x: at.x, z: at.z, at: now, w }; // for the villagers its page says it caught (villagersHit)
+    if (shooter) shooter.lastBlast = { x: at.x, y: at.y, z: at.z, at: now, w }; // for the villagers and cats its page says it caught (villagersHit, catInReach)
     if (!shooter || this.roundOver) return;
     // Zombies caught in it lose health (server/zombies.mjs), as the strongmen do.
     this.modes.zombies?.blast(name, at, radius, bruteDamage(w, WEAPONS), w, now); // on its floor (at.y)
@@ -2377,6 +2379,24 @@ export class Game {
     }
     if (!ids.length) return;
     this.broadcastEvent({ t: 'vil', ids, by: name, w, paint, ms: (paint ? VILLAGER_PAINT_S : VILLAGER_DOWN_S) * 1000 }, null, name, name); // villagers never walk into a home (homeSight.test.mjs)
+  }
+
+  /**
+   * Whether the cat a page says it hit (`m.i`, a number of the list) was within reach (hit forgery: before, a walker
+   * anywhere on the map felled any cat). The cats walk on the shared clock (shared/cats.mjs), so the server works out
+   * itself where it is now, on the server's ground, and takes nothing of that from the page. Within the guns' reach of
+   * where the server has the shooter, as for the villagers (VILLAGER_RANGE and the slack), counted in three dimensions so
+   * the height counts too; or, for a blast the page names, within that blast's radius (and the slack) of the one the
+   * server set off for this player itself no longer than BLAST_MS ago (villagersHit's rule: a rocket's may land further
+   * from where the shooter is by then).
+   */
+  catInReach(player, m, now) {
+    const floor = (x, z) => HOUSE.ground + TERRAIN.height(x, z);
+    const s = player.state;
+    if (catWithin(CATS, m.i, now / 1000, s.x, s.y, s.z, VILLAGER_RANGE, floor)) return true;
+    const b = player.lastBlast;
+    const blast = (m.w === 'grenade' || m.w === 'bazooka') && !!b && b.w === m.w && now - b.at >= 0 && now - b.at < BLAST_MS;
+    return blast && catWithin(CATS, m.i, now / 1000, b.x, b.y, b.z, (m.w === 'grenade' ? GRENADE : WEAPONS.bazooka.rocket).radius, floor);
   }
 
   /** For a page that joins: the villagers that are down and those with paint on them, with the ms each has left. */
