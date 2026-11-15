@@ -25,5 +25,6 @@
     "heli": { "at": [545.4, 29.6, -710.2], "yaw": 2.29, "pitch": 0.1, "roll": -0.2 } },
   "square-dusk": { "position": [530, 6.4, -778], "target": [546, 13, -740], "fov": 56, "mood": "night", "season": "2026-10-15",
     "render": { "mood": "dusk", "exposure": 1.2 } },
+  "kapellenhoek": { "position": [595.7, 5.5, -344.3], "target": [613, 7.2, -356.4], "fov": 52, "season": "2026-10-15", "people": false },
   "street-night": { "position": [570, 8.6, -762], "target": [525.3, 6.6, -767.5], "fov": 52, "mood": "night", "render": { "wet": true, "puddles": 0.05, "exposure": 0.9, "clear": 10 } }
 }

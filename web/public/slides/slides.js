@@ -3,7 +3,7 @@
 // over the church square, the square at dusk, the house,
 // a wet street at night, the church square with its board, the bungalow, the tree huts by the café
 // Sparrenhof at dusk, the school's playground, Molenhoek in the rain, the café by day and a parachute
-// over the town at dusk (tools/still/, Blender), day and dusk, night or rain taking turns. Any element with
+// over the town at dusk, a brick house on Kapellenhoek (tools/still/, Blender), day and dusk, night or rain taking turns. Any element with
 // data-slides becomes one; class "bg" fills the window behind the page, class "hero" is a band at
 // the top. Back, pause and next buttons and a dot per slide go into the element, or into
 // [data-slides-controls] when the page has one (a footer, so they never cover the page on a phone).
@@ -27,6 +27,7 @@
     { src: '/start/street-rain', focus: '50% 50%', nl: 'Molenhoek in de regen', en: 'Molenhoek in the rain' },
     { src: '/start/sparrenhof', focus: '50% 50%', nl: 'Café Sparrenhof aan het bos', en: 'Café Sparrenhof by the wood' },
     { src: '/start/parachute', focus: '68% 50%', nl: 'Met de parachute boven Smetlede', en: 'By parachute over Smetlede' },
+    { src: '/start/kapellenhoek', focus: '66% 50%', nl: 'Een bakstenen huis in Kapellenhoek', en: 'A brick house on Kapellenhoek' },
   ];
   const WORDS = {
     nl: { prev: 'Vorige', next: 'Volgende', pause: 'Pauzeren', play: 'Afspelen', go: 'Naar beeld {n}: {c}', label: 'Beelden uit het spel' },
