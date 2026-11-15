@@ -13,7 +13,7 @@ const SPRINT_FACTOR = 2.5; // sprint speed = walking speed x this
 const GRAVITY = 9.81;      // m/s2
 const JUMP_HEIGHT = 0.5;   // m
 const RISE = 4;            // m/s: lifted out of a roof that came in round you
-const LIFT_AT_ONCE = 1.0;  // m: up onto a roof at once up to this (a jump onto an edge), at RISE from more
+const LIFT_MAX = 0.3;      // m: up onto a drawn roof at most this in one frame, however you got there
 const STUMBLE = 0.7;       // s a hard landing shakes you
 
 /**
@@ -81,6 +81,10 @@ export class Player {
    * move keys steer it, the dive key (crouch) dives, jump opens the canopy. No jumping, flying or crouching.
    */
   chute: number | null = null;
+  /** Where a jump from a drawn roof left it, until you land: up its slope the jump goes no faster than walking. */
+  private jumpFrom: { x: number; z: number } | null = null;
+  /** What is left of this frame's LIFT_MAX. */
+  private liftLeft = LIFT_MAX;
   /** Seconds since your canopy began to open, or null (on your feet, or still in the free fall) */
   canopy: number | null = null;
   /** Your feet over the ground under you (m): for opening the canopy by itself and for the flare */
@@ -143,7 +147,7 @@ export class Player {
 
   /** Put the player somewhere directly, camera included (used by the dev test hook). */
   place(x: number, z: number, feet: number, yaw: number, pitch: number): void {
-    Object.assign(this, { x, z, feet, yaw, pitch, vx: 0, vz: 0, vy: 0, eyeY: feet + EYE, flying: false, chute: null, canopy: null, dip: -1, stumble: 0, water: null, wetHere: null, ride: null, towerHint: null, glide: 0 });
+    Object.assign(this, { x, z, feet, yaw, pitch, vx: 0, vz: 0, vy: 0, eyeY: feet + EYE, flying: false, chute: null, canopy: null, dip: -1, stumble: 0, water: null, wetHere: null, ride: null, towerHint: null, glide: 0, jumpFrom: null });
   }
 
   /** Going down the play tower's slide: how fast (m/s along it); 0 off it. */
@@ -170,6 +174,7 @@ export class Player {
   }
 
   update(dt: number, input: FrameInput, camera: THREE.PerspectiveCamera): void {
+    this.liftLeft = LIFT_MAX;
     // A drop keeps to the clock, not to the frames: the server ends it after DROP.maxMs whatever the page
     // does, so slow frames (the village loading behind it, a slow phone) must not stretch it. Steps of at most 0.5 s.
     const wall = performance.now();
@@ -228,8 +233,11 @@ export class Player {
       let sx = (this.vx * dt) / steps;
       let sz = (this.vz * dt) / steps;
       // Up a roof slower the steeper it is: full pace to 35 degrees, none from 60 (down and along free; world/roofField.ts).
-      if (this.chute === null && !this.flying && this.ground.mat === 'roof' && this.feet <= this.ground.y + 0.01) {
-        const k = this.world.roofClimb(pos.x, pos.z, sx, sz);
+      // A jump from a roof keeps to the slope it left: no faster up it than walking.
+      const onRoof = this.chute === null && !this.flying && this.ground.mat === 'roof' && this.feet <= this.ground.y + 0.01;
+      if (onRoof || (this.jumpFrom && this.chute === null && !this.flying)) {
+        const at = onRoof || !this.jumpFrom ? pos : this.jumpFrom;
+        const k = this.world.roofClimb(at.x, at.z, sx, sz);
         sx *= k;
         sz *= k;
       }
@@ -239,7 +247,7 @@ export class Player {
       if (this.world.keepIn(pos, RADIUS)) this.atEdge = true;
       // A drawn roof rising beside you (a gable over a lower roof, a chimney, a dormer, a low eave) pushes you off as a
       // wall does; one ahead stops you: along it on x or z, else stay. From a spot inside one (put or landed there) every
-      // way is open, and the feet go up onto it (World.groundAt): nobody is stuck between roofs.
+      // way is open, and the feet go up onto it (World.roofOut, in vertical): nobody is stuck between roofs.
       this.world.roofPush(pos, this.feet, RADIUS, STEP_UP, HEIGHT);
       const roofIn = (x: number, z: number) => this.world.roofBlocks(x, z, this.feet, STEP_UP, HEIGHT);
       if (roofIn(pos.x, pos.z) && !roofIn(was.x, was.z)) {
@@ -249,8 +257,7 @@ export class Player {
       }
       this.ground = this.world.groundAt(pos.x, pos.z, this.feet, STEP_UP);
       this.wetHere = this.chute === null ? wetGround(pos.x, pos.z, this.ground) : null; // a pond's floor, or afloat
-      // Step up; out of a roof that came in round you (world/modelRoofs.ts) at RISE, not in one jolt.
-      if (this.ground.y > this.feet && this.vy <= 0) this.feet = this.lifted(this.ground.y, dt / steps);
+      if (this.ground.y > this.feet && this.vy <= 0) this.feet = this.lifted(this.ground.y); // step up
     }
     this.x = pos.x;
     this.z = pos.z;
@@ -431,17 +438,22 @@ export class Player {
   }
 
   /** Jumping, falling, and Minecraft-style flying (hold jump to rise, C or Circle to sink). */
-  /**
-   * Feet going up to `floor`: a step at once, but out of a roof the feet are inside (it came in round you after you
-   * stood there: world/modelRoofs.ts fills the models' roofs once play has begun) at RISE m/s.
-   */
-  private lifted(floor: number, dt: number): number {
-    return floor - this.feet <= LIFT_AT_ONCE || this.ground.mat !== 'roof' ? floor : this.feet + Math.min(floor - this.feet, RISE * dt);
+  /** Feet going up to `floor`: a block's step at once, onto a drawn roof at most what is left of LIFT_MAX this frame. */
+  private lifted(floor: number): number {
+    if (floor <= this.feet || this.ground.mat !== 'roof') return floor;
+    const y = Math.min(floor, this.feet + this.liftLeft);
+    this.liftLeft -= y - this.feet;
+    return y;
   }
 
   private vertical(dt: number, input: FrameInput): void {
-    if (!this.flying && this.vy <= 0 && this.ground.mat === 'roof' && this.ground.y - this.feet > LIFT_AT_ONCE) {
-      this.feet = this.lifted(this.ground.y, dt); // still on the way up out of a roof
+    // Feet inside a roof's solid that walls stand under (a model's roof came in round you after you stood there:
+    // world/modelRoofs.ts; or you were put there): up out of it at RISE. Under a roof with no wall you stay on your floor.
+    const out = this.flying ? null : this.world.roofOut(this.x, this.z, this.feet, STEP_UP);
+    if (out !== null) {
+      this.feet = Math.min(out, this.feet + Math.min(this.liftLeft, RISE * dt));
+      this.liftLeft = 0;
+      this.vy = 0;
       return;
     }
     const grounded = !this.flying && this.vy <= 0 && this.feet <= this.ground.y + 0.001;
@@ -452,6 +464,7 @@ export class Player {
       } else if (grounded && !this.water?.swimming && !this.stooped) { // no jumping into the play tower's roof
         // Wading: the water holds you back, lower the deeper it is. Afloat there is nothing to jump off.
         this.vy = Math.sqrt(2 * GRAVITY * JUMP_HEIGHT * (this.water ? Math.max(0.3, 1 - this.water.depth / FLOAT) : 1));
+        this.jumpFrom = this.ground.mat === 'roof' ? { x: this.x, z: this.z } : null;
       }
       this.lastJumpPress = this.clock;
     }
@@ -463,7 +476,8 @@ export class Player {
     } else {
       // Walking down stairs: stay on the steps. Only a real drop makes you fall.
       if (this.vy === 0 && this.feet - this.ground.y <= STEP_UP) {
-        this.feet = this.ground.y;
+        this.feet = this.lifted(this.ground.y);
+        this.jumpFrom = null;
         return;
       }
       this.vy -= GRAVITY * dt;
@@ -486,7 +500,8 @@ export class Player {
       this.vy = Math.min(this.vy, 0);
     }
     if (next <= this.ground.y) {
-      next = this.ground.y;
+      next = this.lifted(this.ground.y);
+      this.jumpFrom = null;
       if (this.vy < -2.5) {
         this.onLand(-this.vy);
         this.landed(-this.vy);
