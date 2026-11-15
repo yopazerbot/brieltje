@@ -10,6 +10,8 @@
 // the figure with its parachute is put at `drop.figure` ([x, feet, z]) facing `drop.heading`, so the picture
 // doesn't depend on how the flight went. The camera is the view's own position and target; `house` (null in views.json)
 // is the start screen's own camera (export_scene.js), with the player put by the road in front of the house.
+// A view with `heli` has the helicopter in the air in it (below). A view with `season` ('2026-10-15') is exported as on
+// that day (world/season.ts), so a picture kept all year shows no Sinterklaas, Sint-Maarten or Christmas lights.
 import { existsSync, mkdirSync, readFileSync, statSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { launch, options, startGame } from '../dev/cdp.mjs';
@@ -45,6 +47,7 @@ try {
   await b.evaluate(`briel.player.flying = true; briel.teleport(${px}, ${pz}, ${py - 1.6}, ${yaw}, ${pitch}); briel.player.flying = true`, false);
   // The view's weather, sunny when it names none (Auto could be anything at that moment).
   await b.evaluate(`briel.three.weather.setSolo(${JSON.stringify(view?.mood ?? 'sunny')})`, false);
+  if (view?.season) await b.evaluate(`briel.season.fake(${JSON.stringify(view.season)})`, false);
   await b.sleep(12000); // the tiles round the view, and a mood picked by hand blends in over 8 s (world/weather.ts)
   // The leaf cards come in once their pictures are painted, in idle slices after play has begun.
   await b.evaluate("import('/src/world/leafCards.ts').then((m) => { window.stillCards = m.cardsShown; })");
@@ -67,6 +70,30 @@ try {
       return g.children.length;
     })()`);
     if (!moved) throw new Error('the drop was over before the canopy had been open long enough, or its figure was not found');
+  }
+  if (view?.heli) {
+    // The helicopter in the air (world/heli.ts): the game stops between two frames, the machine is put at `heli.at`
+    // ([x, y, z], y its skids' height) facing `heli.yaw` (0: nose to -z), nose down by `pitch` and banked by `roll`
+    // (radians, > 0 to the right), its rotor at full speed so the blur discs show instead of the blades. Its soft blob
+    // under it and its shadow's stand-in (a copy of its shape that only casts) stay out: Cycles casts the real shadow.
+    const h = view.heli;
+    const put = await b.evaluate(`(() => {
+      const m = briel.helis.machines[0];
+      if (!m || !m.ready) return null;
+      briel.three.renderer.setAnimationLoop(null);
+      m.place(${h.at[0]}, ${h.at[1]}, ${h.at[2]}, ${h.yaw}, 1);
+      Object.assign(m.s, { ground: false, pitch: ${h.pitch ?? 0}, roll: ${h.roll ?? 0}, coll: 0.5, floor: ${h.at[1]} - 30 });
+      const eye = briel.three.scene.position.clone().fromArray(${JSON.stringify(at.position)});
+      m.update(0, eye);
+      m.pose();
+      m.shadow.visible = false;
+      let proxies = 0;
+      m.group.traverse((o) => { if (o.name === 'ShadowProxy') { o.visible = false; proxies++; } });
+      m.group.updateMatrixWorld(true);
+      return { proxies, disc: m.discMat.opacity };
+    })()`);
+    if (!put) throw new Error('the helicopter was not ready');
+    console.log('helicopter put', JSON.stringify(put));
   }
   await b.evaluate(`window.stillView = ${view ? JSON.stringify({ position: view.position, target: view.target, fov: view.fov, render: view.render }) : 'null'}`, false);
   console.log(await b.evaluate(readFileSync(new URL('./export_scene.js', import.meta.url), 'utf8')));

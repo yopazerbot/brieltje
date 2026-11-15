@@ -7,6 +7,9 @@
    For one of the slideshow's views: node tools/still/export_view.mjs <view> <dir> --url <dev server>.
 2. Render (Blender 5, no window):
      blender -b -P tools/still/render_still.py -- <dir with the two files> <out.png> [width] [samples] [exposure] [--mood m]
+   To choose a framing, STILL_CAMS=<cams.json> renders several cameras from one export (small and quick: width 640,
+   32 samples), each as <out>_<name>.png; the list is [{ name, position, target, fov }] in game metres.
+   The masters are rendered at 3840 and encoded down (step 3).
 3. tools/.venv/Scripts/python.exe tools/still/encode_still.py <out.png> web/public/start
 
 The sky is the same photo as in the game (Poly Haven, CC0) at 8k when source/ has it; its sun lights
@@ -673,6 +676,56 @@ if LOOK and (MOOD == "rain" or VIEW.get("wet")):  # `wet` (views.json render): a
         n += 1
     print(f"wet: {n} materials")
 
+# The helicopter's rotor blur (world/heli.ts discMaterial): a ring drawn by a few shader lines of its own, which glTF
+# can't carry, so it came in as a flat grey ring. The same sums here from the disc's own coordinates (its plane: the
+# two widest axes of its mesh; its radius: half their width): see-through near the hub, darker towards the tips, four
+# faint sweeps, a thin rim; a dark, lit surface, so the sky gives it the faint sheen a turning rotor has.
+discs = [o for o in scene.objects if o.type == "MESH" and o.name.split(".")[0] in ("RotorDisc", "TailDisc")]
+for o in discs:
+    if not o.material_slots or not o.material_slots[0].material:
+        continue
+    opacity = float(o.material_slots[0].material.get("opacity", 0.55))
+    co = np.array([vt.co[:] for vt in o.data.vertices])
+    width = co.max(axis=0) - co.min(axis=0)
+    ax = sorted(np.argsort(width)[1:].tolist())  # the disc's plane
+    outer = float(width[ax].max()) / 2
+    mat = bpy.data.materials.new(f"rotor_blur_{o.name}")
+    mat.use_nodes = True
+    nt = mat.node_tree
+    nt.nodes.clear()
+    tc = nt.nodes.new("ShaderNodeTexCoord")
+    sp = nt.nodes.new("ShaderNodeSeparateXYZ")
+    nt.links.new(tc.outputs["Object"], sp.inputs[0])
+    u = node_math(nt, "DIVIDE", sp.outputs[ax[0]], outer)
+    v = node_math(nt, "DIVIDE", sp.outputs[ax[1]], outer)
+    r = node_math(nt, "SQRT", node_math(nt, "ADD", node_math(nt, "MULTIPLY", u, u), node_math(nt, "MULTIPLY", v, v)))
+
+    def step(lo, hi):
+        n = nt.nodes.new("ShaderNodeMapRange")
+        n.interpolation_type = "SMOOTHSTEP"
+        nt.links.new(r, n.inputs["Value"])
+        n.inputs["From Min"].default_value, n.inputs["From Max"].default_value = lo, hi
+        return n.outputs["Result"]
+
+    sweep = node_math(nt, "MULTIPLY_ADD", node_math(nt, "SINE", node_math(nt, "MULTIPLY", node_math(nt, "ARCTAN2", v, u), 4.0)), 0.2, 0.8)
+    edge = node_math(nt, "SUBTRACT", 1.0, step(0.96, 1.0))
+    a = node_math(nt, "MULTIPLY", node_math(nt, "MULTIPLY", node_math(nt, "MULTIPLY_ADD", step(0.1, 0.8), 0.55, 0.45), sweep), edge)
+    a = node_math(nt, "MULTIPLY", a, opacity)
+    a = node_math(nt, "ADD", a, node_math(nt, "MULTIPLY", node_math(nt, "SUBTRACT", step(0.88, 0.93), step(0.96, 1.0)), 0.3 * opacity))
+    # Diffuse only: a blur of thin blades, not a pane, so no sky mirrored in it at a grazing angle.
+    body = nt.nodes.new("ShaderNodeBsdfDiffuse")
+    body.inputs["Color"].default_value = (0.008, 0.009, 0.011, 1.0)  # #16181b in linear light
+    clear = nt.nodes.new("ShaderNodeBsdfTransparent")
+    mix = nt.nodes.new("ShaderNodeMixShader")
+    nt.links.new(node_math(nt, "MINIMUM", a, 1.0), mix.inputs["Fac"])
+    nt.links.new(clear.outputs[0], mix.inputs[1])
+    nt.links.new(body.outputs[0], mix.inputs[2])
+    out = nt.nodes.new("ShaderNodeOutputMaterial")
+    nt.links.new(mix.outputs[0], out.inputs["Surface"])
+    o.material_slots[0].material = mat
+if discs:
+    print(f"rotor blur: {len(discs)} discs")
+
 # --- Camera and render.
 cam = next(o for o in scene.objects if o.type == "CAMERA")
 scene.camera = cam
@@ -851,5 +904,19 @@ scene.render.image_settings.file_format = "PNG"
 scene.render.image_settings.color_depth = "16"
 scene.render.filepath = str(OUT)
 print(f"rendering {scene.render.resolution_x}x{scene.render.resolution_y}, {SAMPLES} samples, {len(scene.objects)} objects")
-bpy.ops.render.render(write_still=True)
-print("wrote", OUT)
+cams = os.environ.get("STILL_CAMS")
+if cams:
+    # Candidates for a view from one export (the area round it is loaded): a JSON list of { name, position, target,
+    # fov } in game metres, each rendered as <out>_<name>.png; the view's camera itself is not rendered.
+    for c in json.loads(Path(cams).read_text(encoding="utf-8")):
+        cam.location = g2b(c["position"])
+        cam.rotation_mode = "XYZ"  # the importer leaves it on a quaternion, which aim() doesn't set
+        aim(cam, g2b(c["target"]))
+        cam.data.sensor_fit = "VERTICAL"
+        cam.data.angle_y = math.radians(c["fov"])
+        scene.render.filepath = str(OUT.with_name(f"{OUT.stem}_{c['name']}.png"))
+        bpy.ops.render.render(write_still=True)
+        print("wrote", scene.render.filepath)
+else:
+    bpy.ops.render.render(write_still=True)
+    print("wrote", OUT)

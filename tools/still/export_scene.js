@@ -4,7 +4,7 @@
 // sky's turn, the weather, the street lamps). The camera is the start screen's, or `window.stillView`
 // ({ position, target, fov, render }: the slideshow's views in views.json, with the player moved near the
 // view first so the area round it is loaded). The game's texture files are
-// noted per material (glTF extras) instead of embedded. The portals, anything drawn by a shader of
+// noted per material (glTF extras) instead of embedded. The portals, the weapons lying ready to pick up, anything drawn by a shader of
 // its own (smoke, butterflies, soft ground patches) instanced birds and flies, and surfaces drawn from behind only stay out: glTF can't carry them, and Cycles
 // shades the ground itself. The leaf-card trees go in as they are, their painted atlas embedded (the game's High
 // preset: export_view.mjs), and the villagers as plain meshes in the pose they have.
@@ -176,6 +176,9 @@
   scene.traverse((o) => {
     if (!(o.isMesh || o.isInstancedMesh) || !o.visible) return;
     for (let p = o; p; p = p.parent) if (!p.visible) return;
+    // The weapons lying ready to be picked up (world/pickups.ts) stay out, as the portals do: a gun floating over a
+    // ring is a game marker, not part of the place. Hidden mesh by mesh: the game shows their group again every frame.
+    for (let p = o; p; p = p.parent) if (p === briel.pickups?.group) { o.visible = false; unseen.push(o); return; }
     const mats = Array.isArray(o.material) ? o.material : [o.material];
     if (mats.every((m) => m && m.visible === false)) { o.visible = false; unseen.push(o); return; } // hit spheres and the like: drawn nowhere
     if (mats.some((m) => m && m.isShaderMaterial)) { o.visible = false; unseen.push(o); return; }
