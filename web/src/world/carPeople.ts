@@ -1,4 +1,4 @@
-/** The people in the Teslas: the driver and the passenger seated in their car as it is drawn (you among them). */
+/** The people in the Teslas: the driver and the passenger seated in their car as it is drawn (you among them), and a car with someone in it drawn with lighter dark glass. */
 import * as THREE from 'three';
 import type { Car } from './car';
 import type { Seat } from '../net/avatars';
@@ -38,6 +38,8 @@ const HEAD_EASE = 6;
 const KNEES = [0.26, 0.14];
 /** m from the passenger's seat's middle to each wrist, over the thighs */
 const LAP_SIDE = 0.12;
+/** The dark glass (roof, rear doors, rear glass) of a car with someone in it: lighter than an empty car's 0.96, so they show. */
+export const GLASS_LIT = 0.82;
 /** Closer than this to your own figure's head (m), the camera (pushed in by a wall) would be inside it: not drawn. */
 const TOO_CLOSE = 1;
 
@@ -56,6 +58,9 @@ interface Occupied {
   /** The heads' turn, eased */
   look: number;
   places: [Place, Place];
+  /** Its dark glass (the full model's, not the far copy's), and whether it is the lighter one now */
+  glass: THREE.Mesh[] | null;
+  lit: boolean;
   /** Figures without a player, for the checks */
   dummies: [Body | null, Body | null];
 }
@@ -83,6 +88,15 @@ function place(i: number): Place {
 function farCopy(o: THREE.Object3D): boolean {
   for (let p: THREE.Object3D | null = o; p; p = p.parent) if (p.name === 'Far') return true;
   return false;
+}
+
+/** The car's full model's dark glass (null before the model is in). */
+function darkGlass(car: Car): THREE.Mesh[] | null {
+  const list: THREE.Mesh[] = [];
+  car.group.traverse((o) => {
+    if (o instanceof THREE.Mesh && o.userData.part === 'GlassDark' && !farCopy(o)) list.push(o);
+  });
+  return list.length ? list : null;
 }
 
 /** Both seats of a cabin drawn in frame `m` (the model's frame in the world), the wheel turned by `turn`, the heads by `look`. */
@@ -152,8 +166,12 @@ export class CarPeople {
   private ownSwat = false;
   /** The car and seat your figure sits in this frame */
   private ownIn: { car: Car; seat: number } | null = null;
+  /** The lighter dark glass (one for every car) and the dark one it stands in for */
+  private litGlass: THREE.Material | null = null;
+  private dark: THREE.Material | null = null;
   private warm = false;
   private warmPlaces: [Place, Place] = [place(0), place(1)];
+  private warmGlass: THREE.Mesh | null = null;
   private pose: Pose = {
     speed: 0, forward: 0, side: 0, armed: false, alive: true, crouch: false, flying: false, pitch: 0, weapon: 'pistol',
     yaw: 0, air: 0, vy: 0, seat: 0, far: 0, car: null,
@@ -164,7 +182,8 @@ export class CarPeople {
 
   /**
    * Every frame, after the cars are placed and before the others are posed (net/avatars.ts tick): each car's seats where
-   * its full model is drawn, your figure in yours (`mine`: the car you are in, and whether in the passenger seat).
+   * its full model is drawn, your figure in yours (`mine`: the car you are in, and whether in the passenger seat), the
+   * lighter glass on the cars with someone in them.
    */
   update(dt: number, cars: readonly Car[], mine: { car: Car; passenger: boolean } | null, colour: string, camera: THREE.Camera): void {
     const eye = camera.position;
@@ -186,11 +205,12 @@ export class CarPeople {
         if (o) o.ok = false;
         continue;
       }
-      o ??= { car, cabin, ok: false, look: 0, places: [place(0), place(1)], dummies: [null, null] };
+      o ??= { car, cabin, ok: false, look: 0, places: [place(0), place(1)], glass: null, lit: false, dummies: [null, null] };
       this.occupied.set(car, o);
       o.ok = true;
       o.look += (HEAD_TURN * car.wheelTurn - o.look) * (1 - Math.exp(-dt * HEAD_EASE));
       seatPlaces(o.places, cabin, frame, car.yaw, car.wheelTurn, o.look);
+      if (someone !== o.lit) this.light(o, someone);
       const r = o.places[0].seat.root;
       const far = eye.distanceTo(_v.set(r.x, r.y, r.z));
       for (let i = 0; i < 2; i++) {
@@ -202,7 +222,7 @@ export class CarPeople {
         ownFar = far;
         this.ownIn = { car, seat: mine.passenger ? 1 : 0 };
       }
-      if (!someone) this.occupied.delete(car); // empty again
+      if (!someone && !o.lit) this.occupied.delete(car); // empty again, its glass dark again
     }
     for (const o of this.occupied.values()) {
       if (!o.ok) for (const d of o.dummies) if (d) d.root.visible = false;
@@ -211,6 +231,11 @@ export class CarPeople {
     // Your own figure: in your seat; behind the start screen in the air in front of the camera (warming).
     if (!ownAt) this.ownIn = null;
     if (this.warm && !ownAt) {
+      for (const car of cars) {
+        if (this.litGlass) break;
+        const glass = darkGlass(car);
+        if (glass) this.makeLit(glass[0]);
+      }
       camera.getWorldDirection(_w).setY(0).normalize();
       const yaw = Math.atan2(_w.x, _w.z); // facing the camera
       _m.makeRotationY(yaw).setPosition(_v.copy(eye).addScaledVector(_w, 4).add(_s.set(0, -1.2, 0)));
@@ -218,6 +243,7 @@ export class CarPeople {
       seatPlaces(this.warmPlaces, cabin, _m, yaw, 0, 0);
       ownAt = this.warmPlaces[0];
       ownFar = 4;
+      this.warmSquare(_m);
     }
     if (ownAt) {
       if (!this.own || colour !== this.ownColour || (!this.ownSwat && hasSwat())) this.build(colour);
@@ -236,9 +262,10 @@ export class CarPeople {
     return null;
   }
 
-  /** The warm-up frames behind the start screen (main.ts): your figure seated and drawn once, so it is not new in play. */
+  /** The warm-up frames behind the start screen (main.ts): your figure seated and the lighter glass drawn once, so neither is new in play. */
   warming(on: boolean): void {
     this.warm = on;
+    if (!on && this.warmGlass) this.warmGlass.visible = false;
   }
 
   /** For the checks: a figure without a player in a car's seat (0 the driver's, 1 the passenger's) in `colour`, or none (null). */
@@ -248,7 +275,7 @@ export class CarPeople {
     if (!cabin) return;
     if (!o) {
       if (colour === null) return;
-      o = { car, cabin, ok: false, look: 0, places: [place(0), place(1)], dummies: [null, null] };
+      o = { car, cabin, ok: false, look: 0, places: [place(0), place(1)], glass: null, lit: false, dummies: [null, null] };
       this.occupied.set(car, o);
     }
     drop(o.dummies[seat]);
@@ -359,5 +386,35 @@ export class CarPeople {
     this.ownColour = colour;
     this.ownSwat = hasSwat();
     this.group.add(this.own.root);
+  }
+
+  /** The car's dark glass swapped for the lighter one while someone is in it, and back. */
+  private light(o: Occupied, on: boolean): void {
+    o.glass ??= darkGlass(o.car);
+    if (!o.glass) return;
+    if (!this.litGlass) this.makeLit(o.glass[0]);
+    for (const m of o.glass) m.material = on ? this.litGlass! : this.dark!;
+    o.lit = on;
+  }
+
+  /** The lighter glass, once for every car: a copy of the dark glass, the same shader program, only its opacity differs. */
+  private makeLit(dark: THREE.Mesh): void {
+    this.dark = dark.material as THREE.Material;
+    this.litGlass = this.dark.clone();
+    this.litGlass.opacity = GLASS_LIT;
+  }
+
+  /** Behind the start screen: a small square of the lighter glass beside your seated figure. */
+  private warmSquare(frame: THREE.Matrix4): void {
+    if (!this.warmGlass) {
+      if (!this.litGlass) return;
+      this.warmGlass = new THREE.Mesh(new THREE.PlaneGeometry(0.1, 0.1), this.litGlass);
+      this.warmGlass.userData.ignoreRay = true;
+      this.warmGlass.renderOrder = 1;
+      this.group.add(this.warmGlass);
+    }
+    this.warmGlass.position.set(0.3, 1.2, 0).applyMatrix4(frame);
+    this.warmGlass.quaternion.setFromRotationMatrix(frame);
+    this.warmGlass.visible = true;
   }
 }
