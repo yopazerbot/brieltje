@@ -1,4 +1,6 @@
+import type * as THREE from 'three';
 import type { Level, Prism, Room } from '../world/houseData';
+import { cameraHeading } from './viewHeading';
 import { dist, placeName } from '../i18n';
 import { compactHud } from './compact';
 
@@ -69,6 +71,18 @@ export class Minimap {
   private h = 0;
   /** A timed race's way, set before each draw (main.ts from world/goals.ts), or null */
   race: RaceWay | null = null;
+  /**
+   * Which way the car, bike or horse you are on points (a yaw, as draw's `yaw`), set before each draw, or
+   * null on foot: your arrow then points up. Looking round from a car, the plan turns with the view and
+   * the arrow shows the car's way on it.
+   */
+  facing: number | null = null;
+  private drawnYaw = NaN;
+
+  /** The plan's turn for this draw: the way `camera` (the one that draws the frame) looks, flat on the ground (ui/viewHeading.ts). */
+  heading(camera: THREE.Camera): number {
+    return (this.drawnYaw = cameraHeading(camera, this.drawnYaw));
+  }
 
   constructor(private prisms: Prism[], private levels: Level[], private rooms: Room[]) {
     this.canvas.width = this.canvas.height = FULL * devicePixelRatio;
@@ -178,7 +192,7 @@ export class Minimap {
     g.clip();
     g.fillStyle = 'rgba(12, 14, 18, 0.75)';
     g.fillRect(0, 0, SIZE, SIZE);
-    // Turn the plan so that where you look is up.
+    // Turn the plan so that where you look is up (`yaw`: the view's heading, ui/viewHeading.ts).
     g.translate(SIZE / 2, SIZE / 2);
     g.rotate(yaw);
     const ground = this.groundPiece(x, z);
@@ -396,20 +410,24 @@ export class Minimap {
       g.restore();
     }
     g.restore();
-    // You: an arrow in the middle, pointing up (where you look), with a dark edge: the roads and the
-    // church square are white on the map, and a white arrow on them was gone.
+    // You: an arrow in the middle, pointing up (where you look), or the way your car, bike or horse points,
+    // with a dark edge: the roads and the church square are white on the map, and a white arrow on them was gone.
+    g.save();
+    g.translate(SIZE / 2, SIZE / 2);
+    if (this.facing !== null) g.rotate(yaw - this.facing);
     g.fillStyle = '#ffffff';
     g.beginPath();
-    g.moveTo(SIZE / 2, SIZE / 2 - 7);
-    g.lineTo(SIZE / 2 + 5, SIZE / 2 + 5);
-    g.lineTo(SIZE / 2, SIZE / 2 + 2);
-    g.lineTo(SIZE / 2 - 5, SIZE / 2 + 5);
+    g.moveTo(0, -7);
+    g.lineTo(5, 5);
+    g.lineTo(0, 2);
+    g.lineTo(-5, 5);
     g.closePath();
     g.strokeStyle = 'rgba(12, 14, 18, 0.9)';
     g.lineWidth = 2.5;
     g.lineJoin = 'round';
     g.stroke();
     g.fill();
+    g.restore();
     g.strokeStyle = 'rgba(255, 255, 255, 0.35)';
     g.lineWidth = 1.5;
     g.beginPath();

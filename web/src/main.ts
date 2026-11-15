@@ -4020,7 +4020,8 @@ renderer.setAnimationLoop((now: number) => {
     if (bigMap.waypoint && Math.hypot(bigMap.waypoint.x - player.x, bigMap.waypoint.z - player.z) < 6) bigMap.waypoint = bigMap.route = null;
     if (bigMap.waypoint && (routeTimer += 0.05) > 0.5) updateRoute();
     minimap.race = bigMap.race = goals.nav(); // a timed race's way along the roads (world/goals.ts)
-    minimap.draw(player.x, player.z, player.feet - (endHouse?.floorAt(player.x, player.z) ?? terrain.height(player.x, player.z)), player.yaw, weapon.enabled ? blips : blips.filter((b) => b.kind !== 'item'), shapes, rules.portals ? portalMarks : [], bigMap.waypoint, bigMap.route, inside);
+    minimap.facing = driving || riding ? car.yaw : bikes.mounted ? bikes.ridden?.yaw ?? null : horses.mounted >= 0 ? (horses.ridden?.yaw ?? 0) + Math.PI : null; // your arrow: the way your car, bike or horse points
+    minimap.draw(player.x, player.z, player.feet - (endHouse?.floorAt(player.x, player.z) ?? terrain.height(player.x, player.z)), minimap.heading(camera), weapon.enabled ? blips : blips.filter((b) => b.kind !== 'item'), shapes, rules.portals ? portalMarks : [], bigMap.waypoint, bigMap.route, inside);
   }
   horizon.position.x = camera.position.x;
   horizon.position.z = camera.position.z;
