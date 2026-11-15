@@ -222,10 +222,21 @@ export class Player {
     const steps = Math.max(1, Math.ceil(dist / 0.08));
     const pos = { x: this.x, z: this.z };
     for (let i = 0; i < steps; i++) {
+      const was = { x: pos.x, z: pos.z };
       pos.x += (this.vx * dt) / steps;
       pos.z += (this.vz * dt) / steps;
       this.world.resolve(pos, this.feet, RADIUS, STEP_UP, HEIGHT);
       if (this.world.keepIn(pos, RADIUS)) this.atEdge = true;
+      // A drawn roof rising beside you (a gable over a lower roof, a chimney, a dormer, a low eave) pushes you off as a
+      // wall does; one ahead stops you: along it on x or z, else stay. From a spot inside one (put or landed there) every
+      // way is open, and the feet go up onto it (World.groundAt): nobody is stuck between roofs.
+      this.world.roofPush(pos, this.feet, RADIUS, STEP_UP, HEIGHT);
+      const roofIn = (x: number, z: number) => this.world.roofBlocks(x, z, this.feet, STEP_UP, HEIGHT);
+      if (roofIn(pos.x, pos.z) && !roofIn(was.x, was.z)) {
+        if (!roofIn(pos.x, was.z)) pos.z = was.z;
+        else if (!roofIn(was.x, pos.z)) pos.x = was.x;
+        else Object.assign(pos, was);
+      }
       this.ground = this.world.groundAt(pos.x, pos.z, this.feet, STEP_UP);
       this.wetHere = this.chute === null ? wetGround(pos.x, pos.z, this.ground) : null; // a pond's floor, or afloat
       if (this.ground.y > this.feet && this.vy <= 0) this.feet = this.ground.y; // step up

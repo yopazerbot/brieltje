@@ -23,6 +23,7 @@ import { pointInside } from './houseKeys';
 import { flatEdgeSides } from './housePlan';
 import { bandedWalls, chimney, flatEdge, openingTrim, roofEdges, roofExtras, roofFrame, type OpeningContext, type RoofEdges, type SolarArray } from './houseTrim';
 import { houseStyle } from './houseStyle';
+import type { RoofField } from './roofField';
 import { snowy } from './snowCover';
 
 /**
@@ -568,9 +569,11 @@ type Pole = NonNullable<Surroundings['poles']>[number];
  * One tile of the surroundings, as pieces for the batches (world/tiles.ts): its blocks (walls,
  * ground covers, hedges, fences) merged per material, and its roofs, windows, posts, lamps,
  * panels and trees. `poles` is the whole list of poles (a tile's cables reach poles in the next
- * one); `detail` says where trees get their full crowns (round the house and the church).
+ * one); `detail` says where trees get their full crowns (round the house and the church). Each roof's slopes and
+ * chimney top, as drawn, go to `roofs` (world/roofField.ts: a floor from above, solid down to its eaves); not the
+ * bungalow's (its own blocks and inside) nor a landmark's (the church's roof walk is hand-made).
  */
-export function buildTile(data: TileData, poles: Pole[], renderer: THREE.WebGLRenderer, ground: number, detail: (x: number, z: number) => boolean): Piece[] {
+export function buildTile(data: TileData, poles: Pole[], renderer: THREE.WebGLRenderer, ground: number, detail: (x: number, z: number) => boolean, roofs?: RoofField): Piece[] {
   // Geometry per material, merged at the end: blocks, roofs and gables together.
   const parts = new Map<THREE.Material, { geos: THREE.BufferGeometry[]; tag: string; shadow: boolean; order?: number; small?: boolean }>();
   const put = (mat: THREE.Material, g: THREE.BufferGeometry, tag: string, shadow = true, order?: number, small?: boolean) => {
@@ -631,6 +634,8 @@ export function buildTile(data: TileData, poles: Pole[], renderer: THREE.WebGLRe
       free: (x, z) => !houses.wallsAt(x, z).some((w) => w.p.y1 > r.y - 1.5),
     };
     const g = roof(r, edges);
+    const solid = roofs && !r.ceiling && !r.lm;
+    if (solid) roofs.add(g.roof.attributes.position.array, r.y, g.roof.index?.array);
     if (g.gutters) gutterGeos.push(g.gutters);
     if (r.ceiling) put(material(`tiles|${tint}|${side}`, () => tintedMaterial('roof_tiles', tint, renderer, side)), g.roof, 'nb_roof');
     else {
@@ -654,6 +659,11 @@ export function buildTile(data: TileData, poles: Pole[], renderer: THREE.WebGLRe
     if (ch) {
       // The stack in the walls' brick and shade, as a wall; its cap and pots with the frames.
       const { stack, parts: cap } = chimney(r, roofFrame(r), ch);
+      if (solid) {
+        // Its top: solid down to the eaves, a small column on the ridge.
+        const [a, b, c, d] = stack.p[0];
+        roofs.add([a[0], stack.y1, a[1], b[0], stack.y1, b[1], c[0], stack.y1, c[1], a[0], stack.y1, a[1], c[0], stack.y1, c[1], d[0], stack.y1, d[1]], r.y);
+      }
       const { material: mat, tag } = blockMaterial(r.wall!, renderer);
       put(renderable(mat), walls(r.wall!, key, prismGeometry(stack)), tag);
       for (const part of cap) put(frameMat, part, 'alu', false, undefined, true);

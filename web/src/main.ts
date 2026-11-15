@@ -145,6 +145,8 @@ import { Crash } from './world/crash';
 import { TyreSpray } from './world/tyreSpray';
 import { clearOpenGround, cutOut, fitStreetModel, loadStreetModel } from './world/streetModel';
 import { TrunkBlocks } from './world/trunkBlocks';
+import { RoofField } from './world/roofField';
+import { addModelRoofs, privateHomes, villageRoofs } from './world/modelRoofs';
 import { type TreeSpot, zombieTrunks } from '../shared/trees.mjs';
 import { claimModelGround, claimModelGroundSoon } from './world/modelGround';
 import { GroundCutter, releaseGroundClaims } from './world/groundCutter';
@@ -518,7 +520,8 @@ const detail = (x: number, z: number) => detailAt.some(([cx, cz]) => Math.hypot(
 if (house.surroundings) wearLonePatches(house.surroundings); // light patches away from the buildings: worn ground (world/yards.ts)
 const ringData = withoutModelled(house.surroundings ?? { roofs: [], trees: [] });
 if (ringData.kept !== house.surroundings) ringData.kept.unfiltered = house.surroundings; // roofs look behind them there (world/roofPlan.ts)
-const ringTiles = (s: typeof ringData.kept) => [...splitTiles(withRoadDetail(s))].map(([key, t]) => ({ key, pieces: buildTile(t, poles, renderer, house.ground, detail) }));
+const drawnRoofs = new RoofField(); // the roofs as the tiles draw them: the world's floor from above, solid under (world/roofField.ts)
+const ringTiles = (s: typeof ringData.kept) => [...splitTiles(withRoadDetail(s))].map(([key, t]) => ({ key, pieces: buildTile(t, poles, renderer, house.ground, detail, drawnRoofs) }));
 // The streets in detail (world/roadDetail.ts) in place of the plain road surface: the ring's now, the village's with it.
 // One surface per spot (world/groundLayers.ts): the house's and the bungalow's own ground claimed first
 // (world/modelGround.ts), then the ring's covers, then the streets built (cut under both) and the covers last.
@@ -745,9 +748,12 @@ const churchAccess = makeChurch(CHURCH_DATA, house.ground + terrain.height(...CH
 const cafeAccess = makeCafe(CAFE_DATA, house.ground + terrain.height(...CAFE_DATA.origin as [number, number]), HUTS_DATA); // the café's blocks and stairs to its roofs, and the tree huts
 // The Sparrenhof's forecourt, terrace and café stand where the open data has wood: no ferns or logs on them, nor under the tree huts.
 undergrowth.addBare([...cafeAccess.clear, ...cafeAccess.outlines, ...cafeAccess.huts.map((h) => h.footprint)].map((ring) => [ring as [number, number][]]));
-const world = new World(house.prisms, house.ground);
-world.addPrisms(house.surroundings?.prisms ?? []);
+const world = new World(house.prisms, house.ground, drawnRoofs);
+const ringModelled = new Set(ringData.removed.prisms ?? []); // not drawn: our models round home stand for them
+world.addPrisms(house.surroundings?.prisms ?? [], (p) => ringModelled.has(p));
 world.addPrisms(homeStreet.blocks);
+// Their roofs as drawn, once they are in (world/modelRoofs.ts); not over the main house or the bungalow.
+void homeStreet.ready.then(() => addModelRoofs(world, [homeStreet.group], house.ground, privateHomes(house.prisms, house.surroundings?.roofs ?? []), () => new Promise((r) => setTimeout(r, 0))));
 world.addPrisms(ringRoads.blocks); // the pavements, a few centimetres up
 const playTower = new PlayTower(TOWER, house.ground); // the school's play tower: its platform, ladder and slide (world/playground.ts)
 world.addPrisms(playTower.prisms());
@@ -4317,7 +4323,7 @@ async function buildVillage(): Promise<void> {
   for (let i = 0; i < villageTiles.length; i++) {
     const [key, t] = villageTiles[i];
     await cuts[i];
-    made.push({ key, pieces: buildTile(t, poles, renderer, house.ground, detail) });
+    made.push({ key, pieces: buildTile(t, poles, renderer, house.ground, detail, drawnRoofs) });
     await new Promise((r) => setTimeout(r, 0)); // one tile at a time, between frames
   }
   const roads = await roadsJob;
@@ -4361,7 +4367,8 @@ async function buildVillage(): Promise<void> {
   // The end house's own walls, floors and doors take the place of its plain block once its inside has come (until then
   // the plain block stands, and its doors, windows and lawn are the shell's).
   const villageBlocks = cafePrisms(churchPrisms(data.prisms ?? [], churchAccess), cafeAccess).filter((p) => (!endHouse?.replaces(p) || endHouse.standIn(p)) && !brickHouse?.replaces(p));
-  const firstBlock = world.addPrisms(villageBlocks);
+  const drawnBlocks = new Set([...(kept.prisms ?? []), ...churchAccess.prisms, ...cafeAccess.prisms]);
+  const firstBlock = world.addPrisms(villageBlocks, (p) => !drawnBlocks.has(p)); // the rest: a model stands for it
   if (endHouse) {
     endHouse.holdStandIns(villageBlocks.flatMap((p, i) => (endHouse!.standIn(p) ? [firstBlock + i] : [])));
     endHouse.install(world, doors, glass);
@@ -4393,8 +4400,10 @@ async function buildVillage(): Promise<void> {
   aside.add(...fresh);
   await Promise.all([modelsCompiled, precompile(aside)]);
   fresh.forEach((o, i) => homes[i].add(o));
-  // Each model's blocks for walking into (the town's; the streets' went into the village data above).
-  for (const m of models) world.addPrisms((m.userData.blocks as Prism[] | undefined) ?? []);
+  // Each model's blocks for walking into (the town's; the streets' went into the village data above), not drawn themselves.
+  for (const m of models) world.addPrisms((m.userData.blocks as Prism[] | undefined) ?? [], () => true);
+  // Their roofs as drawn, a little a frame once play has begun (world/modelRoofs.ts).
+  void playing.then(() => villageRoofs(world, models, house.ground, endHouse, between));
   world.addDips(data.dips);
   addDips(data.dips);
   groundCuts.cells.push(...data.groundCuts.cells);

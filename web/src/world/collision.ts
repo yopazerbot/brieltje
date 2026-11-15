@@ -1,5 +1,6 @@
 import type { Bounds } from '../../shared/bounds.mjs';
 import type { Prism, Ring } from './houseData';
+import { RoofField } from './roofField';
 import { terrain } from './terrain';
 
 interface Solid {
@@ -17,6 +18,8 @@ interface Solid {
   mat?: string;
   /** Never a floor or a ceiling: a tree's trunk (shared/trees.mjs), which stops you but nobody stands on */
   noFloor?: boolean;
+  /** Not drawn: a model of ours stands for it, so its top goes no higher than the model's drawn roof (World.hi) */
+  modelled?: boolean;
   minX: number;
   minZ: number;
   maxX: number;
@@ -91,6 +94,13 @@ const hopOver = (p: Prism): number => (p.m === 'fence' && p.y1 - p.y0 <= FENCE_L
 
 const CELL = 16;
 const cellOf = (v: number) => Math.floor(v / CELL);
+/**
+ * Metres over the ground: a drawn roof lower than this is air (world/roofField.ts), so no car, bike, horse, villager or
+ * walker goes up an eave that comes down by the ground (a house in a dip, a shed's back on a bank).
+ */
+const ROOF_LOW = 1.0;
+/** The four sides a body's edge is tried on against a roof (World.roofPush). */
+const SIDES = [[1, 0], [-1, 0], [0, 1], [0, -1]] as const;
 const cellKey = (i: number, j: number) => (i + 32768) * 65536 + (j + 32768);
 
 /**
@@ -125,13 +135,19 @@ export class World {
   bounds: Bounds | null = null;
   ceiling = Infinity;
 
-  /** `prisms`: the house's blocks (their numbers are the house data's: broken windows use them). */
-  constructor(prisms: Prism[], private baseGround: number) {
+  /**
+   * `prisms`: the house's blocks (their numbers are the house data's: broken windows use them). `roofs`: the drawn roofs
+   * (world/roofField.ts), a floor from above and solid under, filled as the tiles and models come.
+   */
+  constructor(prisms: Prism[], private baseGround: number, readonly roofs = new RoofField()) {
     this.addPrisms(prisms);
   }
 
-  /** More blocks after the ones there are (the surroundings, the village); returns the first one's number. */
-  addPrisms(prisms: Prism[]): number {
+  /**
+   * More blocks after the ones there are (the surroundings, the village); returns the first one's number. `modelled`:
+   * those not drawn because a model of ours stands for them (their tops go no higher than its drawn roof).
+   */
+  addPrisms(prisms: Prism[], modelled?: (p: Prism) => boolean): number {
     const first = this.solids.length;
     for (const p of prisms) {
       let minX = Infinity, maxX = -Infinity, minZ = Infinity, maxZ = -Infinity;
@@ -142,7 +158,7 @@ export class World {
         maxZ = Math.max(maxZ, z);
       }
       const index = this.solids.length;
-      this.solids.push({ y0: p.y0, y1: hopOver(p), lift: !!p.d, rings: p.p, name: p.n, mat: p.m, key: p.k, noFloor: p.n === 'trunk', minX, maxX, minZ, maxZ });
+      this.solids.push({ y0: p.y0, y1: hopOver(p), lift: !!p.d, rings: p.p, name: p.n, mat: p.m, key: p.k, noFloor: p.n === 'trunk', modelled: modelled?.(p), minX, maxX, minZ, maxZ });
       if (p.m === 'glass' && Number.isInteger(p.glass)) this.panes.set(p.glass!, index);
       for (let i = cellOf(minX); i <= cellOf(maxX); i++) {
         for (let j = cellOf(minZ); j <= cellOf(maxZ); j++) {
@@ -188,7 +204,26 @@ export class World {
   }
 
   private hi(s: Solid, x: number, z: number): number {
-    return s.lift ? s.y1 + terrain.height(x, z) : s.y1;
+    const top = s.lift ? s.y1 + terrain.height(x, z) : s.y1;
+    // A block a model stands for: no higher than the model's roof drawn over it (else a floor on air over the roof).
+    return s.modelled && this.roofs.sample(x, z, this.roofLow(x, z)) && this.roofs.top < top ? this.roofs.top : top;
+  }
+
+  /** The lowest a drawn roof counts from at (x, z): ROOF_LOW over the ground (an eave by the ground is no ramp up). */
+  private roofLow(x: number, z: number): number {
+    return this.baseGround + terrain.height(x, z) + ROOF_LOW;
+  }
+
+  /** The highest top of a block at (x, z) no higher than y (the building under a model's roof: world/modelRoofs.ts), or -Infinity. */
+  blockTop(x: number, z: number, y: number): number {
+    let best = -Infinity;
+    for (const k of this.at(x, z)) {
+      const s = this.solids[k];
+      if (s.off || s.noFloor || x < s.minX || x > s.maxX || z < s.minZ || z > s.maxZ) continue;
+      const top = s.lift ? s.y1 + terrain.height(x, z) : s.y1; // as it stands, under any roof
+      if (top <= y && top > best && inside(x, z, s.rings)) best = top;
+    }
+    return best;
   }
 
   /** Switch a block (by its number in the house data) off or back on: broken windows. */
@@ -234,6 +269,9 @@ export class World {
         if (best === null || under < best) best = under;
       }
     }
+    // Under a roof: its underside (an overhang's, or the eaves where walls stand under it).
+    const r = this.roofs;
+    if (r.sample(x, z, this.roofLow(x, z)) && r.bottom >= fromY - 0.02 && r.bottom <= toY && (best === null || r.bottom < best)) best = r.bottom;
     return best;
   }
 
@@ -303,12 +341,45 @@ export class World {
         g.mat = s.mat;
       }
     }
+    // A drawn roof (world/roofField.ts): within a step, or the way out for feet inside it.
+    const roof = this.roofs.floor(x, z, feet, stepUp, this.roofLow(x, z));
+    if (roof !== null && roof > g.y) {
+      g.y = roof;
+      g.name = undefined;
+      g.mat = 'roof';
+    }
     return g;
   }
 
   /**
+   * Whether a drawn roof stops a body (feet to feet + height) whose middle walks to (x, z): a roof more than a step up
+   * with its solid in the body's height (a gable rising over a lower roof, a dormer, a chimney, a low eave). Slopes,
+   * ridges and valleys are walked. world/roofField.ts.
+   */
+  roofBlocks(x: number, z: number, feet: number, stepUp: number, height: number): boolean {
+    return this.roofs.blocks(x, z, feet, stepUp, height, this.roofLow(x, z));
+  }
+
+  /**
+   * Push a circle (the body) off the sides of drawn roofs rising more than a step and a half beside it, as `resolve`
+   * does off blocks: its edge, tried on four sides, backs off until clear (at most the radius). True when it pushed.
+   */
+  roofPush(pos: { x: number; z: number }, feet: number, radius: number, stepUp: number, height: number): boolean {
+    const r = this.roofs;
+    let pushed = false;
+    for (const [dx, dz] of SIDES) {
+      for (let k = 0; k < 4 && r.blocks(pos.x + dx * radius, pos.z + dz * radius, feet, stepUp + 0.5, height, this.roofLow(pos.x + dx * radius, pos.z + dz * radius)); k++) {
+        pos.x -= (dx * radius) / 4;
+        pos.z -= (dz * radius) / 4;
+        pushed = true;
+      }
+    }
+    return pushed;
+  }
+
+  /**
    * A small ball (radius r) moving from a to b: the block it runs into (its number in the
-   * house data; -1 the ground, -2 a moving part) and the outward side it hits, or null.
+   * house data; -1 the ground, -2 a moving part, -3 a drawn roof) and the outward side it hits, or null.
    * A top counts when the ball came from above, an underside from below, otherwise the
    * side of the outline nearest to where it came from.
    */
@@ -336,6 +407,19 @@ export class World {
     for (const i of this.near(b.x - r, b.z - r, b.x + r, b.z + r)) {
       const hit = test(this.solids[i], i);
       if (hit) return hit;
+    }
+    // A drawn roof (-3): its slope from above, its underside from below, else the way the ball came.
+    const roof = this.roofs;
+    if (roof.sample(b.x, b.z, this.roofLow(b.x, b.z)) && b.y - r < roof.top && b.y + r > roof.bottom) {
+      const { top, bottom, gx, gz } = roof;
+      if (a.y - r >= top + gx * (a.x - b.x) + gz * (a.z - b.z) - 1e-4) {
+        const n = Math.hypot(gx, 1, gz);
+        return { index: -3, nx: -gx / n, ny: 1 / n, nz: -gz / n };
+      }
+      if (a.y + r <= bottom + 1e-4) return { index: -3, nx: 0, ny: -1, nz: 0 };
+      const d = Math.hypot(a.x - b.x, a.z - b.z);
+      if (d > 1e-6) return { index: -3, nx: (a.x - b.x) / d, ny: 0, nz: (a.z - b.z) / d };
+      return { index: -3, nx: 0, ny: 1, nz: 0 };
     }
     if (fixedOnly) return null; // the street's loose things (world/looseProps.ts): not trapped in the car that hit them
     for (const s of this.moving.values()) {
