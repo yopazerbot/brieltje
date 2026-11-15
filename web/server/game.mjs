@@ -1263,6 +1263,7 @@ export class Game {
       player.nextCar = now + 300;
       // No driving in the Zombies game: a car is out of the zombies' reach, and nobody runs them over at a family game.
       if (m.op === 'in' && this.modes.zombies) return this.send(player.ws, { t: 'system', text: 'No driving during Zombies.', code: 'zNoCar' });
+      if (m.op === 'in' && this.fightRefused(player, 'car', Object.hasOwn(this.cars, m.id) ? this.cars[m.id] : null, now)) return;
       if (m.op === 'in' && Object.hasOwn(this.cars, m.id)) this.enterCar(name, player, this.cars[m.id]);
       else if (m.op === 'out') this.releaseCar(name);
     } else if (m.t === 'tesla') {
@@ -1279,6 +1280,7 @@ export class Game {
       if (now < (player.nextCar || 0)) return;
       player.nextCar = now + 300;
       if (m.op === 'on' && this.modes.zombies) return this.send(player.ws, { t: 'system', text: 'No cycling during Zombies.', code: 'zNoBike' });
+      if (m.op === 'on' && this.fightRefused(player, 'bike', typeof m.id === 'string' && Object.hasOwn(this.bikes, m.id) ? this.bikes[m.id] : null, now)) return;
       if (m.op === 'on' && typeof m.id === 'string' && Object.hasOwn(this.bikes, m.id)) this.mountBike(name, player, this.bikes[m.id], now);
       else if (m.op === 'off') this.releaseBike(name);
     } else if (m.t === 'heli') {
@@ -1515,6 +1517,22 @@ export class Game {
     if (!inEndGarden(st.x, st.z, st.y) || this.gate.may(p, 'molenhoek_end')) return;
     this.putOut(p, st, 'molenhoek_end', now);
     this.send(p.ws, { t: 'unstuck', x: st.x, z: st.z });
+  }
+
+  /**
+   * Hit, or hitting someone, in the last HURT_CALM_MS: no getting into a car (either seat) or onto a bike, where no shot
+   * reaches them (inCar). Against damage avoidance: before, a driver got out, hit someone twice and was back in the seat
+   * 0.42 s later. The helicopter's rule (server/helis.mjs board) on its clock (hurtAt, and hitAt for hitting), with its
+   * message code; the page is told the thing as it is too, so it stops waiting. A thing in a home they may not see into:
+   * refused without a word, as enterCar and mountBike keep it. Horses stay as they are (riding and shooting is allowed).
+   */
+  fightRefused(p, kind, thing, now) {
+    if (now - Math.max(p.hurtAt ?? -Infinity, p.hitAt ?? -Infinity) >= HURT_CALM_MS) return false;
+    if (thing && this.seenBy(p, kind, thing)) {
+      this.send(p.ws, { t: 'system', text: 'Not right after a fight. Wait a few seconds.', code: 'heliFight' });
+      this.tellThing(p, kind, thing);
+    }
+    return true;
   }
 
   /** Get in, when the player stands next to it, is alive and in no car yet: at the wheel if nobody drives, else in the passenger seat if it's free. */
@@ -2477,6 +2495,7 @@ export class Game {
     if (!target.alive) return;
     target.hp = Math.max(0, target.hp - amount);
     target.hurtAt = now; // no parachute out of a fight (manualDrop)
+    if (shooter && shooter !== target) shooter.hitAt = now; // nor a seat right after hitting someone (fightRefused)
     if (target.hp > 0) return this.send(target.ws, { t: 'hurt', hp: target.hp, by: name });
 
     target.alive = false;

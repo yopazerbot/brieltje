@@ -2,7 +2,8 @@
 // a third player with a gun and a walker, and the admin for the party games. Every forged message from a seat must
 // change nothing: a passenger's own position (pinned to the car), hits on and from the car, a grenade's blast at it,
 // a pickup, a cat, a clown and villagers from a seat, a forged leap after getting out. Honest play still works: the
-// passenger rides along, gets out beside the car and back in. The treasure hunt's coins from a car: none (on foot:
+// passenger rides along, gets out beside the car and back in. Out, two hits and back in at once: refused, either seat,
+// for 10 s after hitting or being hit (the page told why). The treasure hunt's coins from a car: none (on foot:
 // counted); tag from a car: none, being tagged in it: yes. A car standing inside a code-locked home: no guest gets in.
 //
 //   ADMIN_PASSWORD=... node tools/dev/car_seats_ws_check.mjs --api http://localhost:8310
@@ -249,6 +250,45 @@ for (let i = 0; i < 50; i++) {
   await sleep(300);
   const c = carSeen(), r = seen(pa);
   ok('   the passenger rides along', Math.hypot(c.x - start.x, c.z - start.z) > 15 && Math.hypot(r.x - c.x, r.z - c.z) < 0.05, `the car went ${Math.hypot(c.x - start.x, c.z - start.z).toFixed(1)} m, the passenger ${Math.hypot(r.x - c.x, r.z - c.z).toFixed(2)} m from it`);
+}
+
+// 5b. Out, two hits, back in 0.42 s later (damage avoidance): no seat within 10 s of hitting or of being hit, the page
+// told why (the helicopter's code); the passenger's seat the same. Ten seconds on, both get in again.
+{
+  dr.send({ t: 'car', op: 'out' });
+  pa.send({ t: 'car', op: 'out' });
+  await sleep(300);
+  dr.sync();
+  pa.sync();
+  for (let i = 0; i < 6; i++) {
+    for (const c of [dr, pa, gun]) c.state();
+    await sleep(50);
+  }
+  const g = gun.log.length, d = dr.log.length, p = pa.log.length;
+  dr.send({ t: 'hit', target: gun.name, w: 'pistol', body: 1, head: 0 });
+  await sleep(250);
+  dr.send({ t: 'hit', target: gun.name, w: 'pistol', body: 1, head: 0 });
+  await sleep(170);
+  dr.send({ t: 'car', op: 'in', id: 'tesla' });
+  await sleep(400);
+  const hits = gun.log.slice(g).filter((x) => x.t === 'hurt').length;
+  ok('5b. out, two hits, back in 0.42 s later: refused, and told why', hits === 2 && carSeen()?.driver !== dr.name && since(dr, d, (x) => x.t === 'system' && x.code === 'heliFight'), `${hits} hits landed; at the wheel: ${carSeen()?.driver}`);
+  gun.send({ t: 'hit', target: pa.name, w: 'pistol', body: 1, head: 0 });
+  await sleep(300);
+  pa.send({ t: 'car', op: 'in', id: 'tesla' });
+  await sleep(400);
+  ok('   hit beside the car: not into the passenger\'s seat either', since(pa, p, (x) => x.t === 'hurt') && carSeen()?.passenger !== pa.name && since(pa, p, (x) => x.t === 'system' && x.code === 'heliFight'));
+  for (let i = 0; i < 205; i++) { // ten seconds on
+    for (const c of [dr, pa, gun]) c.state();
+    await sleep(50);
+  }
+  dr.send({ t: 'car', op: 'in', id: 'tesla' });
+  await sleep(350);
+  pa.send({ t: 'car', op: 'in', id: 'tesla' });
+  await sleep(400);
+  ok('   control: ten seconds on, both get in again', carSeen()?.driver === dr.name && carSeen()?.passenger === pa.name, JSON.stringify({ driver: carSeen()?.driver, passenger: carSeen()?.passenger }));
+  Object.assign(dr, carSeen() ? { x: carSeen().x, y: carSeen().y, z: carSeen().z } : {});
+  Object.assign(pa, { x: dr.x, y: dr.y, z: dr.z });
 }
 
 // 6. The treasure hunt: nobody collects from the car; on foot the same coin counts.

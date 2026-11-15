@@ -178,6 +178,7 @@ test('getting off by dying, leaving or respawning leaves the bike where it is', 
   game.npcDamage('anna', anna, 1000, Date.now(), 'a strongman');
   assert.equal(game.bikes.house.rider, null);
   anna.alive = true;
+  anna.hurtAt = Date.now() - 10_000; // ten seconds on: no bike right after being hit (game.mjs fightRefused)
   ask('anna', anna, { t: 'bike', op: 'on', id: 'house' });
   assert.equal(game.bikes.house.rider, 'anna');
   game.releaseBike('anna');
