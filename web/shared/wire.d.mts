@@ -15,6 +15,8 @@ export interface Tick {
   c?: Entry[];
   h?: Entry[];
   k?: Entry[];
+  /** The helicopters (server/helis.mjs) */
+  e?: Entry[];
   b?: Entry[];
   z?: Entry[];
 }
@@ -81,6 +83,24 @@ export interface BikeSample {
   lie: number;
 }
 
+export interface HeliSample {
+  id: string;
+  age: number;
+  x: number;
+  y: number;
+  z: number;
+  yaw: number;
+  /** Pitch and roll (rad) */
+  p: number;
+  r: number;
+  /** The rotor's speed, 0 to 1 */
+  n: number;
+  /** At rest, the pilot's word (only for how it looks): 0 or 1 */
+  g: number;
+  /** Who sits in each of the four seats (seat 0 flies) */
+  seats: (string | null)[];
+}
+
 export interface BruteSample {
   id: number;
   x: number;
@@ -113,4 +133,6 @@ export function readPlayer(e: Entry): PlayerSample;
 export function readCar(e: Entry): CarSample;
 export function readHorse(e: Entry): HorseSample;
 export function readBike(e: Entry): BikeSample;
+export function heliFields(h: { x: number; y: number; z: number; yaw: number; p?: number; r?: number; n?: number; g?: number; seats?: (string | null)[] }): Entry;
+export function readHeli(e: Entry): HeliSample;
 export function readBrute(e: Entry): BruteSample;

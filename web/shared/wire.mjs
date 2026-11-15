@@ -7,6 +7,7 @@
 //   c   cars       [id, age, x, y, z, yaw, steer, driver, passenger]
 //   h   horses     [i, age, x, z, yaw, speed, jump, rider, parked (0 or 1)]
 //   k   bikes      [id, age, x, y, z, yaw, rider, lie]
+//   e   helicopters [id, age, x, y, z, yaw, pitch, roll, rotor, rest, pilot, seat 1, seat 2, seat 3]  (server/helis.mjs)
 //   b   strongmen  [id, x, z, yaw, speed, act, hp]
 //   z   zombies    [id, x, z, yaw, state, hp, y]  (the Zombies game: state = act + 4 * kind, see zombieEntry)
 // `age`: how long before `st` that state was where it says (ms). A player's state carries the time
@@ -67,6 +68,17 @@ export function bikeFields(k) {
   return [r2(k.x), r2(k.y), r2(k.z), angle(k.yaw), k.rider ?? null, k.lie === 1 || k.lie === -1 ? k.lie : 0];
 }
 
+/**
+ * A helicopter (server/helis.mjs) without its id and age: [x, y, z, yaw, pitch, roll, rotor, rest, s0, s1, s2, s3]. Pitch
+ * and roll to the milliradian, the rotor's speed (0 to 1) to the hundredth, `rest` 0 or 1, then who sits in each of the
+ * four seats (seat 0 flies), a name or null.
+ */
+export function heliFields(h) {
+  const s = Array.isArray(h.seats) ? h.seats : [];
+  const who = (i) => (typeof s[i] === 'string' ? s[i] : null);
+  return [r2(n(h.x)), r2(n(h.y)), r2(n(h.z)), angle(n(h.yaw)), r3(n(h.p)), r3(n(h.r)), r2(n(h.n)), h.g ? 1 : 0, who(0), who(1), who(2), who(3)];
+}
+
 /** A strongman: [id, x, z, yaw, speed, act, hp]. */
 export function bruteEntry(id, b) {
   return [id, r2(b.x), r2(b.z), angle(b.yaw), r2(b.speed), b.act, b.hp];
@@ -105,6 +117,15 @@ export function readHorse(e) {
 
 export function readBike(e) {
   return { id: String(e[0]), age: n(e[1]), x: n(e[2]), y: n(e[3]), z: n(e[4]), yaw: n(e[5]), rider: typeof e[6] === 'string' ? e[6] : null, lie: e[7] === 1 || e[7] === -1 ? e[7] : 0 };
+}
+
+/** A helicopter entry: every number through `n`, every seat a name or null (anything else reads as empty). */
+export function readHeli(e) {
+  const who = (v) => (typeof v === 'string' ? v : null);
+  return {
+    id: String(e[0]), age: n(e[1]), x: n(e[2]), y: n(e[3]), z: n(e[4]), yaw: n(e[5]), p: n(e[6]), r: n(e[7]), n: n(e[8]), g: e[9] === 1 ? 1 : 0,
+    seats: [who(e[10]), who(e[11]), who(e[12]), who(e[13])],
+  };
 }
 
 export function readZombie(e) {
