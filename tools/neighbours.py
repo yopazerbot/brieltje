@@ -108,6 +108,10 @@ NEWER = {7305773: {"shape": "hip", "eaves": 3.4, "ridge": 8.0}, 9422468: {"shape
 CANOPY = {"hoofdgebouw": 14.0, "bijgebouw": 11.0}
 STEEPEST = 1.75      # rise per metre: no roof here is steeper than 60 degrees (the church's spire is its own)
 SHED_AREA = 20.0     # m²: below this a building is a shed or a hut, one storey, whatever the GRB calls it
+TRACK_CLEAR = 2.0    # m either side of a way of the road register (a track, a path) that a new tree keeps clear of
+# New plot lines (and the fences and hedges on them) stop short of the game's edge: within the shapes tools/bounds.py makes
+# it of (STREET either side of a road, BUILDING round a building), less EDGE_SPARE.
+EDGE_STREET, EDGE_BUILDING, EDGE_SPARE = 50.0, 40.0, 2.0
 
 
 def under_trees(poly, sample, limit, outside, kind):
@@ -439,8 +443,29 @@ def football_window(plot):
 # Kapellenhoek round to Oud-Smetlede, its two short arms at the fork and its arm west to Klinkaard, whose last stretch
 # lies in the strip `w3` (tools/geodata.py). Every paved piece of the road register with the name on either side (not
 # its earth track, not a footpath), STREET_SIDE either side, and the gardens of the houses along it, as for the
-# Sparrenhof; the crossing street at its end stays out past that band.
+# Sparrenhof; the crossing street at its end stays out past that band. BLEKTE_MOUTHS: a street that leaves the one Blekte
+# meets at its end, within that band: the region takes only its mouth, MOUTH metres either side of the crossing street's
+# centre line (Speurtstraat leaves Klinkaard 45 m north of Blekte's end, and would be a stub that ends in the grass).
 BLEKTE = "Blekte"
+BLEKTE_MOUTHS = {"Speurtstraat": "Klinkaard"}
+MOUTH = 8.0
+
+
+def blekte_mouths():
+    """Where the streets of BLEKTE_MOUTHS lie past their mouth, with STREET_SIDE round them (Lambert 72): out of the
+    region and of its road surface."""
+    named = lambda name: unary_union([LineString([p[:2] for p in f["geometry"]["coordinates"]]) for f in features("Wegsegment")
+                                      if f.get("geometry") and f["geometry"]["type"] == "LineString"
+                                      and name in (f["properties"].get("LSTRNM"), f["properties"].get("RSTRNM"))])
+    cuts = []
+    for street, across in BLEKTE_MOUTHS.items():
+        own, main = named(street), named(across)
+        if own.is_empty or main.is_empty:
+            continue
+        keep = main.buffer(MOUTH, 16)
+        # Square at the mouth: the band stays on its own side of the crossing street.
+        cuts.append(own.difference(keep).buffer(STREET_SIDE + 5, 16, cap_style="flat").difference(keep))
+    return unary_union(cuts) if cuts else Polygon()
 
 
 def blekte(plot):
@@ -458,13 +483,14 @@ def blekte(plot):
         lines.append(LineString([p[:2] for p in geometry["coordinates"]]))
     if not lines:
         return Polygon()
-    corridor = unary_union([line.buffer(STREET_SIDE, 16) for line in lines])
+    mouths = blekte_mouths()
+    corridor = unary_union([line.buffer(STREET_SIDE, 16) for line in lines]).difference(mouths)
     gardens = [p.buffer(15, 8) for f in features("GBG") for p in polygons(f["geometry"])
                if corridor.contains(p.centroid) and not old.contains(p.centroid)]
     joined = unary_union([old, corridor, *gardens])
     connected = next((p for p in getattr(joined, "geoms", [joined])
                       if p.geom_type == "Polygon" and p.contains(plot.centroid)), Polygon())
-    return connected.difference(old)
+    return connected.difference(old).difference(mouths)
 
 
 def east(plot):
@@ -740,7 +766,11 @@ def main():
     # tree rows) one per 7 m and 5 m tall or more, up to 1700 in all. Then the village: within
     # 160 m of the church as near the plot (up to 260 more), the rest of the zone as the outer
     # ring (up to 1400 more).
-    keep_out = prep(unary_union([p.buffer(1.5) for p in footprints] + [plot, roads.buffer(0.5)]))
+    # Off every way of the road register too, its tracks and paths among them (TRACK_CLEAR either side of the line; the
+    # road surface covers only the paved roads). Only new trees take it: what the file has stays (keep_before).
+    ways = [LineString([p[:2] for p in f["geometry"]["coordinates"]]).buffer(TRACK_CLEAR) for f in features("Wegsegment")
+            if f.get("geometry") and f["geometry"]["type"] == "LineString"]
+    keep_out = prep(unary_union([p.buffer(1.5) for p in footprints] + [plot, roads.buffer(0.5)] + ways))
     trees = []
     near = {}  # 8 m grid square -> trees in it, for the spacing check
 
@@ -819,7 +849,7 @@ def main():
     # Without the football ground's own lane and car park (it lays them itself, world/footballGround.ts).
     reach_ground = (ground.buffer(20).difference(unary_union([area_before, northwest, southern]).buffer(20)).difference(football_paved())
                     if in_ground else None)
-    reach_lane = (lane.buffer(20).difference(unary_union([area_before, northwest, southern, ground]).buffer(20))
+    reach_lane = (lane.buffer(20).difference(unary_union([area_before, northwest, southern, ground]).buffer(20)).difference(blekte_mouths())
                   if in_lane else None)
     for poly in getattr(roads, "geoms", [roads]):
         pieces = [poly.intersection(reach) for reach in (reach_old, reach_band, reach_east, reach_northwest, reach_south, reach_ground,
@@ -877,7 +907,17 @@ def main():
     # The area as an outline (model, to 2 m): the big map fills it and mutes what lies outside.
     outline = [[round(x, 1), round(z, 1)] for x, z in model(area.simplify(2.0)).exterior.coords[:-1]]
     if "--fresh" not in sys.argv:
-        buildings, tree_out, bounds, road_out = keep_before(buildings, tree_out, bounds, road_out)
+        # The shapes the game's edge is made of (tools/bounds.py), a little inside: the roads of the register as
+        # tools/streets.py keeps them (15 m in from the area) and the buildings, within the area.
+        paved = [LineString([p[:2] for p in f["geometry"]["coordinates"]]) for f in features("Wegsegment")
+                 if f.get("geometry") and f["geometry"]["type"] == "LineString"
+                 and f["properties"].get("LBLMORF", "") != "aardeweg" and not f["properties"].get("LBLMORF", "").startswith("wandel")]
+        inner = area.buffer(-15)
+        limit = unary_union([line.intersection(inner).buffer(EDGE_STREET - EDGE_SPARE, 8) for line in paved if line.intersects(inner)]
+                            + [p.buffer(EDGE_BUILDING - EDGE_SPARE, 8) for p in footprints]).intersection(area.buffer(-3 - EDGE_SPARE))
+        if OUT.exists():
+            outline = keep_edge(json.loads(OUT.read_text(encoding="utf-8"))["area"], outline, 1)
+        buildings, tree_out, bounds, road_out = keep_before(buildings, tree_out, bounds, road_out, model(limit), Polygon(outline))
     OUT.write_text(json.dumps({
         "_source": "GRB and DHM Vlaanderen II (Digitaal Vlaanderen, open data); laser scan 2013-2015",
         "plot": plot_ring, "buildings": buildings, "roads": road_out, "trees": tree_out,
@@ -930,7 +970,22 @@ def main():
     img.save(DEBUG)
 
 
-def keep_before(buildings, trees, bounds, roads):
+def keep_edge(old_ring, new_ring, nd, width=6.0, around=60.0):
+    """An outline that grew, kept as it was where it hardly moved: only where it moved by a piece WIDTH metres across or
+    more (the map grew or shrank there) the new one, AROUND metres round that; elsewhere the old one, point for point (a
+    new rounding of the whole would shift it by a metre or two in places where nothing changed). Rings of [x, z]."""
+    old, new = Polygon(old_ring).buffer(0), Polygon(new_ring).buffer(0)
+    diff = new.symmetric_difference(old)
+    moved = [p for p in getattr(diff, "geoms", [diff]) if p.geom_type == "Polygon" and not p.buffer(-width / 2).is_empty]
+    if not moved:
+        return old_ring
+    near = unary_union(moved).buffer(around, 16)
+    u = unary_union([old.difference(near), new.intersection(near)])
+    u = max(getattr(u, "geoms", [u]), key=lambda g: g.area)
+    return [[round(x, nd), round(z, nd)] for x, z in u.exterior.coords[:-1]]
+
+
+def keep_before(buildings, trees, bounds, roads, limit=None, inside=None):
     """What data/neighbours.json already holds stays as it is: a map that grows must not repaint the village.
 
     The roof fit and the trees come out a little differently on another machine: other builds of GEOS and numpy move a
@@ -955,6 +1010,10 @@ def keep_before(buildings, trees, bounds, roads):
         if json.dumps(b) in known:
             continue
         rest = LineString(b["path"]).difference(area)
+        if limit is not None:  # inside the game's edge: nothing drawn past it
+            rest = rest.intersection(limit)
+        if inside is not None:  # and inside the outline as written (not in a sliver its rounding leaves out)
+            rest = rest.intersection(inside)
         for seg in getattr(rest, "geoms", [rest]):
             if seg.geom_type == "LineString" and seg.length >= 3:
                 piece = {**b, "path": [[round(x, 2), round(z, 2)] for x, z in seg.coords]}
@@ -966,7 +1025,9 @@ def keep_before(buildings, trees, bounds, roads):
         grid.setdefault((int(t["x"] // 8), int(t["z"] // 8)), []).append(t)
     clear = lambda t: all(math.dist((t["x"], t["z"]), (o["x"], o["z"])) >= 4.0 for di in (-1, 0, 1) for dj in (-1, 0, 1)
                           for o in grid.get((int(t["x"] // 8) + di, int(t["z"] // 8) + dj), ()))
-    added = [t for t in trees if not old_area.contains(Point(t["x"], t["z"])) and clear(t)]
+    within = prep(inside) if inside is not None else None
+    added = [t for t in trees if not old_area.contains(Point(t["x"], t["z"])) and clear(t)
+             and (within is None or within.contains(Point(t["x"], t["z"])))]
     old_roads = before_data["roads"]
     paved = unary_union([Polygon(r[0], r[1:]).buffer(0) for r in old_roads])
     more_roads = [r for r in roads if r not in old_roads and Polygon(r[0], r[1:]).buffer(0).intersection(paved).area < 1.0]
