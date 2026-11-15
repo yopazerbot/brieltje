@@ -2616,18 +2616,19 @@ const PLACES_EN: Record<string, string> = {
 /**
  * The names of a home's inside rooms, floors and doors in Dutch come with its inside (the pack, world/insides.ts), not with
  * this file: the repository does not hold them. Added once a home's inside is installed. A pack whose rooms are named in
- * Dutch brings their English names too (`en`).
+ * Dutch brings their English names too (`en`), kept by home: two homes may have a room of the same Dutch name.
  */
 const insidePlaces: Record<string, string> = {};
 const insideDoors: Record<string, string> = {};
-const insideEnglish: Record<string, string> = {};
-export function addInsideNames(names: { places?: Record<string, string>; doors?: Record<string, string>; en?: Record<string, string> } | undefined): void {
+const insideEnglish = new Map<string, Record<string, string>>();
+export function addInsideNames(names: { places?: Record<string, string>; doors?: Record<string, string>; en?: Record<string, string> } | undefined, home = ''): void {
   Object.assign(insidePlaces, names?.places);
   Object.assign(insideDoors, names?.doors);
-  Object.assign(insideEnglish, names?.en);
+  if (names?.en) insideEnglish.set(home, { ...insideEnglish.get(home), ...names.en });
 }
-export function placeName(name: string): string {
-  if (current === 'en') return insideEnglish[name] ?? PLACES_EN[name] ?? name;
+/** `home`: the home this name is in (where the player stands), for a room's English name. */
+export function placeName(name: string, home: string | null = null): string {
+  if (current === 'en') return (home ? insideEnglish.get(home)?.[name] : undefined) ?? PLACES_EN[name] ?? name;
   const old = / \(old house\)$/.exec(name);
   if (old) return `${placeName(name.slice(0, old.index))} (bungalow)`;
   return insidePlaces[name] ?? PLACES_NL[name] ?? name;

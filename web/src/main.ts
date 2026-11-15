@@ -3949,7 +3949,8 @@ renderer.setAnimationLoop((now: number) => {
     const street = !indoors && (driving || riding || !surface || surface === 'street') ? streetAt(at.x, at.z) : undefined;
     // The hamlet under the floor's name: the nearest portal's (Briel by the house and the bungalow, Smetlede in the village).
     const area = PORTALS.reduce((a, b) => (Math.hypot(b.x - at.x, b.z - at.z) < Math.hypot(a.x - at.x, a.z - at.z) ? b : a)).sub;
-    hud.setPlace(indoors ? placeName(levelName(player.feet)) : t('place.outside'), street ?? (surface && surface !== 'street' ? placeName(surface) : undefined), area);
+    const homeHere = indoors ? homeAt(player.x, player.z, player.feet + 0.1) : null; // a room's English name is its home's
+    hud.setPlace(indoors ? placeName(levelName(player.feet), homeHere) : t('place.outside'), street ?? (surface && surface !== 'street' ? placeName(surface, homeHere) : undefined), area);
     // Real-time lighting brightens rooms itself, so the eyes need to adapt only a little.
     const wanted = (indoors ? 1.05 : 0.9) * weather.exposure; // white walls since 30 Oct: less brightening; the weather's eyes (world/weather.ts)
     exposure += (wanted - exposure) * (1 - Math.exp(-dt * 1.5));

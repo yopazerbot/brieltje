@@ -721,7 +721,7 @@ export async function loadWalkIn(renderer: THREE.WebGLRenderer, spec: WalkInSpec
       glass.add(doors.add(specs.filter((d) => !outside(d)), inDoors, look), (i, gone) => doors.setBroken(i, gone));
       inDoors.traverse((o) => (o.castShadow = false)); // inside, nothing takes the sun's shadow
       rooms.push(...pack.rooms);
-      addInsideNames(pack.names);
+      addInsideNames(pack.names, spec.id); // its rooms' English names: for this home only
     },
     contains,
     inPlot: (x, z) => outlined && inside(x, z, data.plot),
