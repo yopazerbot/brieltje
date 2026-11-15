@@ -52,6 +52,7 @@ import { arenaEdge, arenaHome, arenaSpots, ARENAS, portalOf, villageGround } fro
 import { churchPrisms, makeChurch } from '../shared/church.mjs';
 import { cafePrisms, makeCafe } from '../shared/sparrenhof.mjs';
 import { DROP, dropFrom, HOME_DROP } from '../shared/parachute.mjs';
+import { BikeHits } from './bikeHits.mjs';
 import { Football } from './football.mjs';
 import { blastPoint } from './grenade.mjs';
 import { Host } from './host.mjs';
@@ -398,8 +399,13 @@ export class Game {
     this.cars = Object.fromEntries(Object.entries(CARS.cars).map(([id, c]) => [id, { id, ...c.park, s: 0, driver: null, passenger: null }]));
     this.placing = 0; // placed Teslas on their way into the database (they count towards the most)
     // Bikes: back at their racks at each start; one rider each.
-    this.bikes = Object.fromEntries(Object.entries(BIKES.bikes).map(([id, k]) => [id, { id, ...k.park, rider: null }]));
+    this.bikes = Object.fromEntries(Object.entries(BIKES.bikes).map(([id, k]) => [id, { id, ...k.park, rider: null, lie: 0 }]));
     this.bikeAt = {}; // bike id -> when its pose was taken (the server's clock, ms)
+    // A car driven into a free bike knocks it over or throws it aside (server/bikeHits.mjs), with the server's own world.
+    this.bikeHits = new BikeHits(this, {
+      bikes: BIKES, solids: SOLIDS, indoors: INDOORS, parked: PARKED, dips: [...(HOUSE.dips ?? []), ...(VILLAGE.dips ?? [])],
+      ground: (x, z) => HOUSE.ground + TERRAIN.height(x, z), area: AREA, map: BOUNDS.map, carSpec, mono,
+    });
     // Horses: on their walks until someone rides one; left where they are got off (until a restart).
     this.horses = HORSES.herd.map((_, i) => ({ i, x: 0, z: 0, yaw: 0, speed: 0, rider: null, parked: false }));
     this.modes = new Modes(this); // hide and seek, tag, treasure hunt, the teams, Zombies (the admin starts them)
@@ -907,8 +913,10 @@ export class Game {
       if (drop) this.dropCheck(player, now); // on the ground, or not coming down: the drop ends
       this.stampState(player, m.ct);
       if (driving) {
+        const before = { x: car.x, y: car.y, z: car.z, yaw: car.yaw, at: this.carAt[car.id] ?? 0 };
         Object.assign(car, { x: next.x, y: next.y, z: next.z, yaw: next.yaw, s: next.s });
         this.carAt[car.id] = player.stamp;
+        this.bikeHits.strike(name, player, car, before, now); // a free bike in its way is knocked aside (no message of its own)
       }
       if (horse) {
         Object.assign(horse, { x: next.x, z: next.z, yaw: num(m.hy, -100, 100), speed: num(m.hs, -2, HORSES.gallop), jump: num(m.hj, 0, HORSES.jump.height) });
@@ -1413,6 +1421,7 @@ export class Game {
     const near = Math.hypot(BIKES.length, BIKES.width) / 2 + BIKES.reach + 0.5;
     if (Math.hypot(st.x - bike.x, st.z - bike.z) > near || Math.abs(st.y - bike.y) > 1.5) return this.send(p.ws, { t: 'bike', bike });
     bike.rider = name;
+    this.bikeHits.mounted(bike); // a lying one stands up
     this.broadcast({ t: 'bike', bike });
   }
 
@@ -2381,6 +2390,7 @@ export class Game {
       else if (p.drop) this.dropCheck(p, now); // or not coming down
     }
     this.modes.tick(now, TICK_MS);
+    this.bikeHits.home(now); // a knocked bike left lying goes back to its spot
     this.pings(); // the watch views too, when nobody plays (they would fall silent)
     if (!this.players.size) return;
     this.fenceAll();
