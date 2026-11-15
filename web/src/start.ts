@@ -31,6 +31,7 @@ import { Menu } from './ui/menu';
 import { AccountCard } from './ui/account';
 import { KeepRun } from './ui/keepRun';
 import { MenuLogout } from './ui/menuLogout';
+import { scrubFurniture } from './world/furnitureStore';
 import { PadNav } from './ui/padNav';
 import { PadStart } from './ui/padStart';
 import { StartFlow, type ZombieStart } from './ui/startFlow';
@@ -226,6 +227,7 @@ function showAccountText(): void {
 function setSession(account: Me | null, message: (() => string) | null = null, fromLogin = false): void {
   session = account;
   if (!account) me = null;
+  if (!account) scrubFurniture(); // the session ended (logged out, here or elsewhere, another tab took over, expired)
   accountMsg = message;
   accountMsgCalm = false;
   menu.setAccount(account?.username ?? null);
@@ -288,8 +290,12 @@ function logoutForSure(): Promise<void> {
   try {
     localStorage.setItem(LOGOUT, '1');
   } catch {}
+  scrubFurniture();
   return api.logout().then(logoutDone).catch(() => {});
 }
+// Nothing of a code-locked home's inside stays in this browser's storage (src/world/furnitureStore.ts): cleaned on every
+// page load, here, before the world exists, and whenever the session ends (logoutForSure above, setSession).
+scrubFurniture();
 
 /** A join on its way to the server: a second click (Join twice, or Join then a start button) waits for it instead of sending another. */
 let joining: Promise<boolean> | null = null;

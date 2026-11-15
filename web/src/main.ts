@@ -102,6 +102,7 @@ import { SunShadow } from './world/sunShadow';
 import { groundPiece, groundPieceCoarse, groundPieces, groundSkirt, pieceOf, PIECE, terrain, type GroundCuts } from './world/terrain';
 import { SHADOW_LAYER, splitTiles, Tiles } from './world/tiles';
 import { Furnishing, buildFixtures, footprint, type Piece } from './world/furnishing';
+import { AloneFurniture } from './world/furnitureStore';
 import { findThing, thingNames, type Thing } from './spawn';
 import { Doors } from './world/doors';
 import { Glass } from './world/glass';
@@ -982,7 +983,6 @@ const homeArea = new THREE.Box3().setFromObject(built.group).expandByScalar(20);
 furnishing.homeArea = (x, z) => x >= homeArea.min.x && x <= homeArea.max.x && z >= homeArea.min.z && z <= homeArea.max.z;
 scene.add(furnishing.away);
 tiles.track(home, new THREE.Box3().setFromObject(built.group));
-const LOCAL_FURNITURE = 'briel.furniture';
 let localId = -1;
 // Pieces inside a home are neither drawn nor in the way until the home is open to this page (the starting layout is private
 // data too: it comes with each home's inside, see seedLocalFurniture).
@@ -990,52 +990,25 @@ furnishing.visible = (p) => {
   const h = homeAt(p.x, p.z, p.y);
   return !h || homeLocks.isOpen(h);
 };
-/** The starting layout of the homes that are open, as pieces with local ids. */
-const startLayout = (): Piece[] => {
-  let id = -1;
-  return insides.layout().flatMap((l) => l.pieces.map(([item, x, y, z, yaw]) => ({ id: id--, item: String(item), x: Number(x), y: Number(y), z: Number(z), yaw: Number(yaw) })));
-};
-const LOCAL_RESTORE = 'briel.furnitureRestore';
-function loadLocalFurniture(): void {
-  try {
-    const saved = localStorage.getItem(LOCAL_FURNITURE);
-    const list = saved === null ? startLayout() : (JSON.parse(saved) as Piece[]);
-    furnishing.setAll(list);
-    localId = Math.min(-1, ...list.map((p) => p.id)) - 1;
-  } catch {
-    furnishing.setAll([]);
-  }
+// Alone, the furniture is this browser's; nothing of a code-locked home's inside is stored (world/furnitureStore.ts).
+const aloneFurniture = new AloneFurniture();
+function setLocalFurniture(list: Piece[]): void {
+  furnishing.setAll(list);
+  localId = Math.min(-1, ...list.map((p) => p.id)) - 1;
 }
-/**
- * Playing alone, a home's starting pieces go in once its inside has come, the first time or when the layout asks for them
- * again (its "restore" number, over any changes inside that home). A browser that kept its furniture from before keeps it.
- */
+function loadLocalFurniture(): void {
+  setLocalFurniture(aloneFurniture.load(insides.layout()));
+}
+/** Playing alone, a home's starting pieces go in once a visit, when its inside has come. */
 function seedLocalFurniture(pack: InsidePack): void {
   if (net.connected) return;
-  const layout = insides.layout().find((l) => l.id === pack.id);
-  if (!layout || !layout.pieces.length) return;
-  try {
-    const key = `${LOCAL_RESTORE}.${pack.id}`;
-    const restore = String(layout.layoutRestore);
-    const done = localStorage.getItem(key) ?? localStorage.getItem(LOCAL_RESTORE); // the global key: written before the homes were split
-    if (localStorage.getItem(LOCAL_FURNITURE) !== null && done === restore) return;
-    const kept = [...furnishing.pieces.values()].filter((p) => homeAt(p.x, p.z, p.y) !== pack.id);
-    let id = Math.min(-1, ...kept.map((p) => p.id)) - 1;
-    const start = startLayout().filter((p) => homeAt(p.x, p.z, p.y) === pack.id).map((p) => ({ ...p, id: id-- }));
-    furnishing.setAll([...kept, ...start]);
-    localId = id;
-    localStorage.setItem(key, restore);
-    saveLocalFurniture();
-  } catch {
-    // private window: the furniture lasts for this visit
-  }
+  const list = aloneFurniture.seedHome(pack.id, insides.layout(), [...furnishing.pieces.values()]);
+  if (!list) return;
+  setLocalFurniture(list);
+  saveLocalFurniture();
 }
 function saveLocalFurniture(): void {
-  try {
-    localStorage.setItem(LOCAL_FURNITURE, JSON.stringify([...furnishing.pieces.values()]));
-  } catch {
-    // private window: the furniture lasts for this visit
-  }
+  aloneFurniture.save([...furnishing.pieces.values()]);
 }
 loadLocalFurniture();
 /** A new piece of furniture (spawned with /name): the server's together, this browser's alone. */
@@ -1203,8 +1176,7 @@ loadLocalCars();
 document.getElementById('resetfurn-btn')!.addEventListener('click', () => {
   if (net.connected) net.send({ t: 'furn', op: 'reset' });
   else {
-    furnishing.setAll(startLayout());
-    localId = -1 - startLayout().length;
+    setLocalFurniture(aloneFurniture.reset(insides.layout()));
     clowns.setAll(CLOWN_DEFAULTS); // and the characters spawned go
     for (const c of placedCars()) removePlaced(c); // and the Teslas (the four of the game stay)
     saveLocalFurniture();
