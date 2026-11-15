@@ -561,7 +561,7 @@ const undergrowth = new Undergrowth(groundShade.uniforms);
 undergrowth.addWoods(house.surroundings?.prisms, house.surroundings?.trees);
 scene.add(undergrowth.group);
 // Blades of grass round the eye on Medium and up (world/grassTufts.ts).
-const grassTufts = new GrassTufts(groundShade.uniforms, grassMat, () => [built.group, hedgeLumps, doors.group, tiles.group]);
+const grassTufts = new GrassTufts(groundShade.uniforms, grassMat, () => [built.group, hedgeLumps, doors.group, tiles.group, helis.pads]);
 scene.add(grassTufts.group);
 // The fields' rows (world/fields.ts) from the start: their large shader is compiled while loading. Added when the
 // countryside came, the fields waited for it, and the game stopped for up to two seconds just after it began.
@@ -1989,6 +1989,7 @@ async function startSolo(id: string): Promise<void> {
     if (me || solo) return; // joined a game together meanwhile
   } else prisms = [...insides.housePrisms(house.prisms), ...(house.surroundings?.prisms ?? []), ...homeStreet.blocks, ...zombieTrunks(house.surroundings?.trees ?? [], edge)];
   prepareZombies();
+  helis.leaveNow(true); // flying: the machine back on its pad, never inside the game's fence
   getOut(false);
   getOffHorse(false);
   getOffBike(false);
@@ -2399,6 +2400,7 @@ function getOffBike(tell = true): void {
  */
 function respawnAt(i: number, at?: { x?: number; z?: number; y?: number; fx?: number; fz?: number }): void {
   helis.leaveNow();
+  helis.tidy(); // a machine left where nobody can reach it goes back to its pad
   getOut(false);
   getOffHorse(false);
   getOffBike(false);
@@ -4061,7 +4063,7 @@ renderer.setAnimationLoop((now: number) => {
     if (bigMap.waypoint && Math.hypot(bigMap.waypoint.x - player.x, bigMap.waypoint.z - player.z) < 6) bigMap.waypoint = bigMap.route = null;
     if (bigMap.waypoint && (routeTimer += 0.05) > 0.5) updateRoute();
     minimap.race = bigMap.race = goals.nav(); // a timed race's way along the roads (world/goals.ts)
-    minimap.facing = driving || riding ? car.yaw : bikes.mounted ? bikes.ridden?.yaw ?? null : horses.mounted >= 0 ? (horses.ridden?.yaw ?? 0) + Math.PI : null; // your arrow: the way your car, bike or horse points
+    minimap.facing = helis.heli ? helis.heli.s.yaw : driving || riding ? car.yaw : bikes.mounted ? bikes.ridden?.yaw ?? null : horses.mounted >= 0 ? (horses.ridden?.yaw ?? 0) + Math.PI : null; // your arrow: the way your car, bike or horse points
     minimap.draw(player.x, player.z, player.feet - (endHouse?.floorAt(player.x, player.z) ?? terrain.height(player.x, player.z)), minimap.heading(camera), weapon.enabled ? blips : blips.filter((b) => b.kind !== 'item'), shapes, [...(rules.portals ? portalMarks : []), ...helis.padMarks()], bigMap.waypoint, bigMap.route, inside);
   }
   horizon.position.x = camera.position.x;
@@ -4713,6 +4715,10 @@ if (import.meta.env.DEV) {
       driving: () => driving,
       /** The helicopters (src/heliPilot.ts): helis.dev.put('church', 1), helis.dev.deck(), helis.dev.state(). */
       helis,
+      /** Back at outside spawn point `i`, as after a fall (a check for the helicopter's set-down and return). */
+      respawn: (i = 0) => respawnAt(OUTSIDE_SPAWNS[i] ?? OUTSIDE_SPAWNS[0]),
+      /** Your arrow's way on the minimap (null: on foot) and the plan's turn last drawn. */
+      minimapFacing: () => ({ facing: minimap.facing, heading: (minimap as unknown as { drawnYaw: number }).drawnYaw }),
       furnishing,
       feedback,
       /** Seconds played towards the feedback card, and what holds it back. */

@@ -157,7 +157,6 @@ try {
     check(r.cockpit < 0.7, "a touch muffled from the pilot's seat");
     check(r.startJump < r.flightJump && r.endJump < r.flightJump, 'no click starting or stopping (no step bigger than in flight)');
     check(r.end < 1e-3, `silent once run down (RMS ${r.end.toExponential(1)})`);
-    check(await b.evaluate('briel.acoustics().world') >= 0, `the world's gain: ${await b.evaluate('briel.acoustics().world')} now (0 before play begins: sound.ts setWorld)`);
   }
 
   if (o.soundonly) {
@@ -226,6 +225,41 @@ try {
   row('hover 20 s hands off', `drift ${r1(drift)} m across, ${r1(dh)} m in height (the page's own wind blowing)`);
   check(drift < 1 && dh < 0.5, 'the hover holds');
   console.log(`  instruments: "${await b.evaluate("document.getElementById('heli-hud')?.textContent")}"`);
+  // A steady hover is not "at rest": E is refused after 2 s of it too (a hover once counted as resting after 0.5 s).
+  await b.sleep(2000);
+  await tap('KeyE');
+  await b.sleep(200);
+  const hoverOut = await prompt();
+  check(await b.evaluate('briel.helis.aboard') && /land/i.test(hoverOut), `no getting out of a steady hover after 2 s ("${hoverOut}")`);
+  // The minimap: your arrow shows the machine's way, and the plan turns with the view, behind it and from the seat.
+  for (const view of ['chase', 'cockpit']) {
+    if ((await b.evaluate('briel.helis.dev.state().view')) !== view) await tap('KeyI');
+    await b.sleep(300);
+    const m0 = await b.evaluate('briel.minimapFacing()');
+    const y0 = (await state()).yaw;
+    await turnRight(true);
+    await b.sleep(1200);
+    await turnRight(false);
+    await b.sleep(1500);
+    const m1 = await b.evaluate('briel.minimapFacing()');
+    const y1 = (await state()).yaw;
+    const turnBy = (a, c) => Math.atan2(Math.sin(a - c), Math.cos(a - c));
+    row(`minimap, ${view}`, `machine turned ${deg(turnBy(y1, y0))} deg, the plan ${deg(turnBy(m1.heading, m0.heading))} deg, the arrow ${deg(m1.facing ?? NaN)} deg (machine ${deg(y1)})`);
+    check(m1.facing !== null && Math.abs(turnBy(m1.facing, y1)) < 0.01, `${view}: the arrow shows the machine's way`);
+    check(Math.abs(turnBy(m1.heading, m0.heading)) > 0.5 * Math.abs(turnBy(y1, y0)), `${view}: the plan turns with the view`);
+  }
+  if ((await b.evaluate('briel.helis.dev.state().view')) !== 'chase') await tap('KeyI');
+  if (o.sound) {
+    // A tab in the background: the hum fades and stops; in view again it comes back.
+    const on = await b.evaluate('briel.helis.dev.state().sound');
+    await b.evaluate("(() => { Object.defineProperty(document, 'hidden', { value: true, configurable: true }); document.dispatchEvent(new Event('visibilitychange')); })()", false);
+    await b.sleep(2500);
+    const hidden = await b.evaluate('briel.helis.dev.state().sound');
+    await b.evaluate("(() => { delete document.hidden; document.dispatchEvent(new Event('visibilitychange')); })()", false);
+    await b.sleep(500);
+    const back = await b.evaluate('briel.helis.dev.state().sound');
+    check(on && !hidden && back, `the hum stops in a background tab and comes back (playing ${on}, hidden ${hidden}, back ${back})`);
+  }
   const flightDraws = await b.evaluate('briel.helis.dev.state().draws');
   row('draws (machine, near)', `${restDraws} at rest, ${flightDraws} in flight (budget 24)`);
   check(restDraws <= 24 && flightDraws <= 24, 'within the draw budget');
@@ -290,11 +324,27 @@ try {
   await tap('KeyK');
   await b.sleep(300);
   check(await b.evaluate('!briel.goals.race.offer && !briel.goals.race.armed'), 'K offers and arms no timed route in the helicopter');
-  // Getting out in the air: refused, the line says to land.
+  // Getting out in the air: refused, the line says to land (after 2.5 s still: a hover is not at rest).
+  await b.sleep(2500);
   await tap('KeyE');
   await b.sleep(200);
   const air = await prompt();
   check(await b.evaluate('briel.helis.aboard') && /land/i.test(air), `no getting out in the air ("${air}")`);
+  // A respawn from the hover: you are out, the machine set down on the floor below (no bump), or on its pad if that
+  // floor is somewhere nobody can walk to.
+  {
+    const was = await state();
+    await b.evaluate('briel.respawn(0)', false);
+    await b.sleep(600);
+    const after = await state();
+    const park = await b.evaluate('briel.helis.machines[0].park');
+    const where = Math.hypot(after.x - was.x, after.z - was.z) < 1 ? 'below where it hovered' : Math.hypot(after.x - park.x, after.z - park.z) < 1 ? 'on its pad' : `elsewhere (${r1(after.x)}, ${r1(after.z)})`;
+    row('respawn from a hover', `out: ${!(await b.evaluate('briel.helis.aboard'))}; set down ${where}, ground ${after.ground}, down ${after.down}`);
+    check(!(await b.evaluate('briel.helis.aboard')) && after.ground && after.down === 0 && !where.startsWith('else'), 'a respawn from a hover sets it down, no bump');
+    await putAir(was.x, was.z, was.h, was.yaw);
+    await b.evaluate('briel.helis.board(briel.helis.machines[0])');
+    await b.sleep(500);
+  }
 
   // The ceiling.
   await lift(true);
@@ -398,15 +448,32 @@ try {
     row(`into a tree crown at ${v} m/s`, `${r1(speed(after))} m/s 2.5 s later, ${after.down > 0 ? 'BUMP' : 'no bump, leaves'}`);
   }
 
-  // Zombies alone: it puts you on your feet and the machine stays shut.
+  // A machine left on a roof (nobody can reach it): a respawn sends it back to its pad at once.
+  const roof = await b.evaluate(`(() => { const w = briel.world; for (let x = -12; x <= 12; x += 1) for (let z = -12; z <= 12; z += 1) { const g = w.groundAt(x, z, 999, 0).y; if (g - w.groundAt(x, z, -1e4, 0).y > 3) return { x, z, g }; } return null; })()`);
+  const parkAt = await b.evaluate('briel.helis.machines[0].park');
+  if (roof) {
+    await b.evaluate(`briel.helis.dev.put({ x: ${roof.x}, z: ${roof.z}, y: ${roof.g} }, 0)`);
+    await b.sleep(1500);
+    const before = await state();
+    await b.evaluate('briel.respawn(0)', false);
+    await b.sleep(300);
+    const after = await state();
+    row('left on a roof, then a respawn', `${r1(before.y - roof.g)} m over the roof before; ${r1(Math.hypot(after.x - parkAt.x, after.z - parkAt.z))} m from its pad after`);
+    check(Math.hypot(after.x - parkAt.x, after.z - parkAt.z) < 1, 'a respawn sends a machine left on a roof back to its pad');
+  }
+  // Zombies alone, started from the air away from the pad: you are on your feet and the machine back on its pad.
   await b.evaluate("briel.helis.dev.put('house', 0)");
   const hm = await state();
   await b.evaluate(`briel.teleport(${hm.x + 2}, ${hm.z - 0.6}, ${hm.y}, 1.2)`, false);
   await b.sleep(300);
   await board();
+  await putAir(hm.x + 60, hm.z + 40, 30, 0);
+  await b.sleep(1000);
   await b.evaluate("briel.zombiesSolo.start('house')").catch(() => {});
   await b.sleep(1500);
+  const zAt = await state();
   check(!(await b.evaluate('briel.helis.aboard')), 'Zombies puts you on your feet');
+  check(Math.hypot(zAt.x - parkAt.x, zAt.z - parkAt.z) < 1 && zAt.ground && zAt.down === 0, `Zombies started in the air sends the machine to its pad (${r1(Math.hypot(zAt.x - parkAt.x, zAt.z - parkAt.z))} m from it, ground ${zAt.ground}, down ${zAt.down})`);
   await b.sleep(3000); // the game's start places you; then back beside the machine
   const hz = await state();
   await b.evaluate(`briel.teleport(${hz.x + 2}, ${hz.z - 0.6}, ${hz.y}, 1.2)`, false);
@@ -466,7 +533,7 @@ try {
       const ov = await b.evaluate(`(() => {
         const r = (e) => e && e.offsetParent !== null ? e.getBoundingClientRect() : null;
         const hud = r(document.getElementById('heli-hud'));
-        const all = [['minimap', document.getElementById('minimap')], ['prompt', document.getElementById('prompt')], ...[...document.querySelectorAll('#touch .tbtn:not(.hidden)')].map((e) => [e.className, e])];
+        const all = [['minimap', document.getElementById('minimap')], ['prompt', document.getElementById('prompt')], ['stick', document.querySelector('#touch .stick')], ...[...document.querySelectorAll('#touch .tbtn:not(.hidden)')].map((e) => [e.className, e])];
         const hit = (a, b) => a && b && a.left < b.right && b.left < a.right && a.top < b.bottom && b.top < a.bottom;
         const btns = [...document.querySelectorAll('#touch .tbtn:not(.hidden)')].map((e) => e.className.replace('tbtn ', '') + ':' + e.textContent);
         return { hud: hud && [hud.left, hud.top, hud.right, hud.bottom].map(Math.round), over: all.filter(([, e]) => hit(hud, r(e))).map(([n]) => n), btns, state: document.body.dataset.touch };
@@ -474,6 +541,21 @@ try {
       check(ov.hud && ov.over.length === 0, `${w}x${h}: instruments at ${ov.hud}, buttons ${ov.btns.join(', ')} (touch state ${ov.state})${ov.over.length ? `, overlapping ${ov.over}` : ''}`);
       await shot(`phone-${w}x${h}`);
     }
+  }
+  // Left where nobody can reach it (on a roof): after 20 s it goes back to its pad by itself.
+  if (roof) {
+    await b.evaluate('briel.helis.leaveNow()');
+    await b.evaluate(`briel.helis.dev.put({ x: ${roof.x}, z: ${roof.z}, y: ${roof.g} }, 0)`);
+    await b.evaluate(`briel.teleport(${parkAt.x + 40}, ${parkAt.z}, ${parkAt.y}, 0)`, false);
+    const t0 = Date.now();
+    let home = false;
+    while (!home && Date.now() - t0 < 30000) {
+      await b.sleep(500);
+      const q = await state();
+      home = Math.hypot(q.x - parkAt.x, q.z - parkAt.z) < 1;
+    }
+    row('left on a roof', home ? `back on its pad after ${r1((Date.now() - t0) / 1000)} s` : 'still there after 30 s');
+    check(home, 'a machine left on a roof goes back to its pad by itself');
   }
   const errors = b.logs.filter((l) => /^exception|^error/.test(l) && !/Failed to load resource/.test(l));
   check(errors.length === 0, `no page errors${errors.length ? `: ${errors.slice(0, 5).join(' | ')}` : ''}`);

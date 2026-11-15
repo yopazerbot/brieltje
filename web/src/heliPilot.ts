@@ -21,12 +21,14 @@ import { groundPads, PADS, testDeck } from './world/heliPads';
  * △ in and out. Touch: the stick flies it, a drag on the right turns it, the Up and Down buttons, View, Use.
  *
  * You may get out on a floor, or within 1.5 m of one and slow. Alone only for now: together the server will decide
- * who flies which machine (heli-server.md); until then the prompt says so. Not during a game (Zombies, a party game):
+ * who flies which machine (not built yet); until then the prompt says so. Not during a game (Zombies, a party game):
  * a game starting puts you on your feet.
  */
 export class HeliPilot {
   readonly group = new THREE.Group();
   readonly machines: Heli[];
+  /** The pads' paving, painted rings and letters (the grass keeps off them: main.ts grassTufts) */
+  readonly pads: THREE.Object3D;
   /** The machine you fly, or null */
   heli: Heli | null = null;
   private hud: HeliHud;
@@ -34,7 +36,10 @@ export class HeliPilot {
   /** s the flying keys still show (after the lift-off), the "land first" and "no room" lines */
   private hint = 0;
   private landHint = 0;
+  /** The flying keys show once a session, at the first lift-off */
   private shownKeys = false;
+  /** The line under the machine, not over it (#prompt.heli-low, ui/heliHud.css) */
+  private low = false;
 
   constructor(
     private world: World,
@@ -53,7 +58,8 @@ export class HeliPilot {
       m.place(m.park.x, g, m.park.z, m.park.yaw);
       this.group.add(m.group);
     }
-    this.group.add(groundPads((x, z) => world.groundAt(x, z, 50, 0).y));
+    this.pads = groundPads((x, z) => world.groundAt(x, z, 50, 0).y);
+    this.group.add(this.pads);
     this.hud = new HeliHud(hudParent);
   }
 
@@ -75,7 +81,6 @@ export class HeliPilot {
     this.heli = m;
     this.turnIn = 0;
     this.hint = 0;
-    this.shownKeys = false;
     m.enter();
   }
 
@@ -86,7 +91,8 @@ export class HeliPilot {
 
   /**
    * Out, if it is at rest (on a floor, or on its boom or cabin on something) or nearly on a floor; flying, a line says
-   * to land. At rest you always get out: by a door with room, else on the floor below its hub.
+   * to land. You stand by a step with room, else at its hub, on the floor it stands on (world/heli.ts exitSpot); where
+   * that would be inside a private home or a fenced garden, you stay aboard and the line says to land elsewhere.
    */
   leave(cameraAt: THREE.Vector3): boolean {
     const m = this.heli;
@@ -95,7 +101,11 @@ export class HeliPilot {
       this.landHint = 2.5;
       return false;
     }
-    const at = m.exitSpot() ?? { x: m.s.x, y: this.world.groundAt(m.s.x, m.s.z, m.s.y - 0.5, 0).y, z: m.s.z };
+    const at = m.exitSpot();
+    if (!at) {
+      this.landHint = 2.5;
+      return false;
+    }
     m.leave();
     this.heli = null;
     this.placePlayer(at.x, at.z, at.y, Math.atan2(cameraAt.x - m.s.x, cameraAt.z - m.s.z));
@@ -104,18 +114,23 @@ export class HeliPilot {
 
   /**
    * Out at once wherever it is (a respawn, a trip from the chat, joining others): the machine is set down on the floor
-   * below, or with `home` on its own pad (a game starting: never inside a game's fence); you stand where you were, on
-   * the floor below you.
+   * below (no bump), or with `home` on its own pad (a game starting: never inside a game's fence); you stand by it as on
+   * getting out, else at its hub on its floor (with `home`, where you were, on the floor below you).
    */
   leaveNow(home = false): void {
     const m = this.heli;
     if (!m) return;
     const x = m.s.x, y = m.s.y, z = m.s.z, yaw = m.s.yaw;
-    const at = home ? null : m.exitSpot();
     m.leave(home);
     this.heli = null;
+    const at = home ? null : (m.exitSpot() ?? { x: m.s.x, y: m.s.y, z: m.s.z });
     if (at) this.placePlayer(at.x, at.z, at.y, yaw);
     else this.placePlayer(x, z, this.world.groundAt(x, z, y + 0.5, 0).y, yaw);
+  }
+
+  /** A respawn, a game starting: every machine left where nobody can reach it back on its pad at once. */
+  tidy(): void {
+    for (const m of this.machines) if (m.stranded) m.sendHome();
   }
 
   /**
@@ -138,7 +153,7 @@ export class HeliPilot {
     const hit = m.fly(dt, { fwd: ex.fwd, side: ex.side, turn: Math.abs(this.turnIn) < 0.01 ? 0 : this.turnIn, lift }, others);
     if (m.s.ev & EV.LIFTOFF && !this.shownKeys) {
       this.shownKeys = true;
-      this.hint = 5; // the flying keys, for the first seconds in the air
+      this.hint = 5; // the flying keys, for the first seconds in the air (once a session)
     }
     if (m.view === 'cockpit') m.cockpit(camera, dt, look[1]);
     else m.chase(camera, dt, -look[1]);
@@ -168,6 +183,11 @@ export class HeliPilot {
   update(dt: number, camera: THREE.Camera, shown: boolean): void {
     for (const m of this.machines) m.update(dt, camera.position);
     const m = this.heli;
+    // Aboard, the line goes to the bottom of the screen, clear of the machine in the middle (its own element only).
+    if (this.low !== !!m) {
+      this.low = !!m;
+      document.getElementById('prompt')?.classList.toggle('heli-low', this.low);
+    }
     if (this.painting) return; // laid out and drawn unseen until play begins (prepaint)
     this.hud.update(shown && m ? { speed: Math.hypot(m.s.vx, m.s.vz), height: m.s.h, climb: m.s.vy, pitch: m.s.pitch, roll: m.s.roll, rotor: m.s.rotor, liftAt: HELI.LIFT_RPM } : null);
   }

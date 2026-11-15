@@ -6,7 +6,7 @@ import type { World } from './collision';
  * The helicopters' landing pads (shared/heli.json pads): each machine's home and the church's platform. Listed for
  * the minimap's rings while you fly, the landing magnet (shared/heli.mjs env.pad) and the dev tools. A pad on the
  * ground is drawn here: a 10 m disc of pale pavers 3 cm over the meadow, a yellow circle 5 m across and a white "H",
- * thin geometry with no texture. The church's platform is the church's own model (heli-pad.md); until it is in, a
+ * thin geometry with no texture. The church's platform will be the church's own model (not built yet); until it is in, a
  * dev hook puts a plain test deck of its size where it will be (testDeck).
  */
 export interface Pad {

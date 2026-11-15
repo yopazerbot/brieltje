@@ -2,9 +2,10 @@ import * as THREE from 'three';
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
 import HELIS from '../../shared/heli.json';
-import { EV, HELI, heliBump, heliPlace, heliStart, heliStep, type HeliEnv, type HeliInput, type HeliState } from '../../shared/heli.mjs';
+import { EV, HELI, heliBump, heliExit, heliPlace, heliStart, heliStep, type HeliEnv, type HeliInput, type HeliState } from '../../shared/heli.mjs';
 import type { CrashHit, Obstacle } from './car';
 import type { World } from './collision';
+import { homeAt, inEndGarden } from '../../shared/homes.mjs';
 import { HeliSound } from './heliSound';
 import { padNear } from './heliPads';
 import { mood } from './mood';
@@ -42,6 +43,8 @@ const MODEL = '/models/helicopter.glb';
 /** The player's system asks for less motion: no shudder, no wider view at speed. */
 const CALM = typeof matchMedia === 'function' && matchMedia('(prefers-reduced-motion: reduce)').matches;
 const DRAW = 400; // m from the eye: further off it isn't drawn
+/** s a machine left where nobody can reach it waits before it goes back to its pad. */
+const LOST_AFTER = 20;
 const DETAIL = 40; // m: the small parts go further off
 const FAR = 90; // m: the simple copy from here (FAR_LOW on Low and phones)
 const FAR_LOW = 45;
@@ -133,8 +136,11 @@ type DiscMaterial = THREE.MeshBasicMaterial & { userData: { phase: { value: numb
  * shader lines: radius and angle from the position, no texture). The main disc lies in its local XZ plane, the tail's
  * in its local YZ plane (docs/helicopter/README.md): two programs. `opacity` follows the rotor's speed.
  */
+/** The blur discs' colour in daylight; unlit, it is darkened with the light (Heli.update), so at night it is no paler than the sky. */
+const DISC = new THREE.Color('#16181b');
+
 function discMaterial(plane: 'xz' | 'yz', outer: number): DiscMaterial {
-  const m = new THREE.MeshBasicMaterial({ color: '#16181b', transparent: true, opacity: 0, depthWrite: false, side: THREE.DoubleSide });
+  const m = new THREE.MeshBasicMaterial({ color: DISC, transparent: true, opacity: 0, depthWrite: false, side: THREE.DoubleSide });
   const phase = { value: 0 };
   m.userData.phase = phase;
   m.onBeforeCompile = (shader) => {
@@ -154,6 +160,40 @@ function discMaterial(plane: 'xz' | 'yz', outer: number): DiscMaterial {
   };
   m.customProgramCacheKey = () => `heli-disc-${plane}`;
   return m as DiscMaterial;
+}
+
+/** The shadow's stand-in writes nothing in the views (no colour, no depth): only its shadow shows. */
+const SHADOW_ONLY = new THREE.MeshBasicMaterial({ colorWrite: false, depthWrite: false });
+
+/**
+ * The near model's shadow in one draw: its casters (the paint, the glass, the trim) merged, positions only, into one
+ * mesh that casts the shadow and shows nothing itself; the parts cast none. Not on a layer of its own: three's shadow
+ * pass tests the layers of the view's camera, not the light's, so a shadow-only layer would cast in reflections only.
+ */
+function shadowProxy(root: THREE.Object3D): void {
+  root.updateMatrixWorld(true);
+  const inv = root.matrixWorld.clone().invert();
+  const parts: THREE.BufferGeometry[] = [];
+  root.traverse((o) => {
+    if (!(o instanceof THREE.Mesh) || !o.castShadow || o instanceof THREE.InstancedMesh) return;
+    o.castShadow = false;
+    if (!o.visible || !o.geometry.getAttribute('position')) return; // emptied by the merge (it only holds children)
+    const src = o.geometry;
+    const g = new THREE.BufferGeometry();
+    const pos = src.getAttribute('position');
+    g.setAttribute('position', new THREE.Float32BufferAttribute(Array.from({ length: pos.count * 3 }, (_, i) => pos.getComponent(Math.floor(i / 3), i % 3)), 3));
+    g.setIndex(src.index ? Array.from(src.index.array) : Array.from({ length: pos.count }, (_, i) => i));
+    g.applyMatrix4(new THREE.Matrix4().multiplyMatrices(inv, o.matrixWorld));
+    parts.push(g);
+  });
+  const merged = parts.length ? mergeGeometries(parts) : null;
+  if (!merged) return;
+  const proxy = new THREE.Mesh(merged, SHADOW_ONLY);
+  proxy.name = 'ShadowProxy';
+  proxy.castShadow = true;
+  proxy.userData.ignoreRay = true;
+  proxy.raycast = () => {};
+  root.add(proxy);
 }
 
 /** A placeholder material by the model's name, swapped for the game's (dress). */
@@ -456,6 +496,7 @@ export class Heli {
       }
     });
     prep(scene);
+    shadowProxy(scene);
     this.near = scene;
     this.body.add(scene);
     for (const [d, mat] of [[this.disc, this.discMat], [this.tailDisc, this.tailMat]] as const) {
@@ -520,9 +561,36 @@ export class Heli {
     return [at(-w, c.z0), at(w, c.z0), at(w, c.z1), at(b.halfX, c.z1), at(b.halfX, b.z1), at(-b.halfX, b.z1), at(-b.halfX, c.z1), at(-w, c.z1)];
   }
 
-  /** At rest anywhere: on a floor, or resting on its boom or cabin (a roof's edge, a wall's top) with the time down run. */
+  /** At rest: on a floor, or resting on its boom or cabin (a roof's edge, a wall's top) held up there. Never a hover. */
   get atRest(): boolean {
     return this.s.ground || this.s.still > HELI.REST;
+  }
+
+  /**
+   * Left where nobody can walk to it (main.ts can't reach it with the use key): at rest but not on a pad nor on open
+   * ground, so on a roof, a wall's top, a deck, in water, or in a private home's garden.
+   */
+  get stranded(): boolean {
+    const s = this.s;
+    if (this.flown || this.pilot || !this.atRest) return false;
+    if (HELIS.pads.some((p) => Math.hypot(s.x - p.x, s.z - p.z) < 3 && Math.abs(s.y - p.y) < 1.5)) return false;
+    if (!s.ground) return true;
+    const bare = this.world.groundAt(s.x, s.z, -1e4, 0).y; // the land itself, under anything built
+    const water = waterLevel(s.x, s.z);
+    return Math.abs(s.y - bare) > 1.2 || (water !== null && water > s.y - 0.3) || homeAt(s.x, s.z, s.y + 1) !== null || inEndGarden(s.x, s.z, s.y);
+  }
+
+  /** s it has been stranded (world/heli.ts update): after LOST_AFTER it goes back to its pad by itself. */
+  private lost = 0;
+
+  /** Back on its pad (its rotor running down there, so it sounds as it comes back). Not while someone stands there. */
+  sendHome(eye: THREE.Vector3 | null = null): boolean {
+    const p = this.park;
+    if (eye && Math.hypot(eye.x - p.x, eye.z - p.z) < 7) return false;
+    this.lost = 0;
+    this.place(p.x, this.world.groundAt(p.x, p.z, p.y + 2, 0).y, p.z, p.yaw, Math.max(this.s.rotor, 0.8));
+    this.s.engine = false;
+    return true;
   }
 
   /** Whether you may get out now: at rest on anything, or within 1.5 m of a floor and slow. */
@@ -531,25 +599,14 @@ export class Heli {
   }
 
   /**
-   * Where you stand after getting out: beside the pilot's step (the right) or the left one, then behind them, then in
-   * front, on the floor it stands on (within 0.5 m) and free; resting on its boom or cabin over a lower floor, the floor
-   * below those spots. Null when there is no room at all (main.ts then sets you under the hub, on the floor below).
+   * Where you stand after getting out (shared/heli.mjs heliExit): by a step, behind it, before or behind the machine, on
+   * the floor it stands on and free; else at the hub on that floor. Never lower than that floor, never inside a private
+   * home or the end house's garden. Null: nowhere (you stay aboard).
    */
   exitSpot(): { x: number; y: number; z: number } | null {
-    const s = this.s;
-    const [fx, fz] = this.forward;
-    const [rx, rz] = [-fz, fx];
-    const local = [...this.steps.map(([x, z]) => [x + Math.sign(x) * 0.15, z]), ...this.steps.map(([x, z]) => [x + Math.sign(x) * 0.15, z + 1.4]), [0, -4]];
-    for (const below of [false, true]) {
-      for (const [x, z] of local) {
-        const p = { x: s.x + rx * x - fx * z, z: s.z + rz * x - fz * z };
-        const g = this.world.groundAt(p.x, p.z, s.y + 0.5, 0).y;
-        if (!below && Math.abs(g - s.floor) > 0.5) continue;
-        if (this.world.boxFree(p.x, p.z, 0, 0.3, 0.3, g + 0.4, g + 1.8, this.key)) return { x: p.x, y: g, z: p.z };
-      }
-      if (s.ground) break; // on a floor: only that floor
-    }
-    return null;
+    const ground = (x: number, z: number, top: number) => this.world.groundAt(x, z, top, 0).y;
+    const free = (x: number, z: number, feet: number) => this.world.boxFree(x, z, 0, 0.3, 0.3, feet + 0.4, feet + 1.8, this.key);
+    return heliExit(this.s, this.steps, ground, free);
   }
 
   /** You got in: the camera starts behind it. */
@@ -563,8 +620,9 @@ export class Heli {
   }
 
   /**
-   * You got out: the engine stops and the rotor runs down. Just over a floor it is set down on it; resting on its boom
-   * or cabin it stays where it rests. `home`: back on its own pad (a game starting).
+   * You got out: the engine stops and the rotor runs down. Off a floor (just over one, or hovering when you are taken
+   * out: a respawn, a join) it is set down on the floor below, without a bump; resting on its boom or cabin it stays
+   * where it rests. `home`: back on its own pad (a game starting).
    */
   leave(home = false): void {
     this.flown = false;
@@ -641,6 +699,7 @@ export class Heli {
   /** After a step from `was`: against a wall it stops on that axis and bounces back a little; hard, a bump. */
   private walls(was: { x: number; y: number; z: number }): number {
     const s = this.s;
+    s.held = false;
     // Up into a slab or a roof's underside over the rotor's head: the climb stops.
     const over = this.world.ceilingAbove(s.x, s.z, 1, was.y + SIZE.cabin.y1, s.y + SIZE.rotor.y + 0.4);
     if (over !== null && s.y + SIZE.rotor.y + 0.4 > over) {
@@ -670,6 +729,7 @@ export class Heli {
         s.y = Math.max(s.y, was.y);
         s.vy = Math.max(0, s.vy);
         if (Math.hypot(s.vx, s.vz) < 0.5) s.vx = s.vz = 0;
+        s.held = true;
       }
     }
     if (impact > 0.5) this.contact(vx, vz, impact);
@@ -792,7 +852,7 @@ export class Heli {
   }
 
   /**
-   * The camera behind it: from CAM_DIST behind (further with speed), CAM_PITCH down, following the nose and, at
+   * The camera behind it: from CAM_DIST behind (further with speed) and CAM_SIDE to the right, CAM_PITCH down, following the nose and, at
    * speed, the way it flies; looking up a little in a climb and down in a descent, so the landing spot comes into
    * view by itself. The horizon stays level (the machine is seen banking). Low and slow it comes nearer and steeper.
    * Walls and the tower pull it in; pulled in close it rises to look down on the machine. `tilt` (rad) from the mouse
@@ -816,10 +876,11 @@ export class Heli {
     let pitch = HELI.CAM_PITCH * (1 - this.camLand) + landPitch * this.camLand + climb + this.camTilt;
     const target = { x: s.x, y: s.y + HELI.CAM_UP, z: s.z };
     const h = this.camHeading;
+    const side = HELI.CAM_SIDE * (1 - this.camLand); // a little to its right: its side and livery show, not only the fin
     const at = (p: number) => ({
-      x: target.x + Math.sin(h) * Math.cos(p) * dist,
+      x: target.x + Math.sin(h) * Math.cos(p) * dist + Math.cos(h) * side,
       y: target.y + Math.sin(p) * dist,
-      z: target.z + Math.cos(h) * Math.cos(p) * dist,
+      z: target.z + Math.cos(h) * Math.cos(p) * dist - Math.sin(h) * side,
     });
     let want = at(pitch);
     let k = this.world.clearance(target, want, this.key);
@@ -879,6 +940,9 @@ export class Heli {
   update(dt: number, eye: THREE.Vector3): void {
     const s = this.s;
     if (!this.flown && dt > 0 && (s.rotor > 0 || !s.ground)) this.fly(dt, {});
+    // Left where nobody can reach it: back on its pad after a while.
+    this.lost = this.stranded ? this.lost + dt : 0;
+    if (this.lost > LOST_AFTER) this.sendHome(eye);
     const away = Math.hypot(s.x - eye.x, s.z - eye.z, s.y - eye.y);
     this.group.visible = this.ready && (away < DRAW || this.warmOn);
     const farOn = !!this.far && !this.warmOn && away > (lowDetail ? FAR_LOW : FAR) && !this.flown;
@@ -916,6 +980,10 @@ export class Heli {
       this.discMat.visible = this.tailMat.visible = blur > 0.01;
     }
     this.discMat.userData.phase.value = (this.discMat.userData.phase.value + dt * 3) % (Math.PI * 2);
+    // The discs follow the light (they are unlit): at night a faint dark blur, never a pale one against the sky.
+    const light = 1 - 0.9 * mood.night;
+    this.discMat.color.copy(DISC).multiplyScalar(light);
+    this.tailMat.color.copy(DISC).multiplyScalar(light);
     // The lamps glow brighter as it darkens (never over the cars' light bars).
     (SHARED.Lamp as THREE.MeshStandardMaterial).emissiveIntensity = 0.6 + 1.4 * mood.night;
     // The shadow on the floor below, bigger and fainter the higher it is.
