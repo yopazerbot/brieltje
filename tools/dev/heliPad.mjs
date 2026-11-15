@@ -6,14 +6,19 @@
 // can reach it, the machine back on its deck by itself; Zombies at the church starting while it stands there (no
 // boarding, it stays) and while you fly it (you on your feet, it on its deck); no page errors. --out: pictures.
 //
+// Every shader program made after the start is named with the object that made it. Then: let down at eight headings
+// (it lands on its skids, along the deck); two machines and one pad (held off over the other; a game starting and a
+// machine left on a roof put each on its own pad, the other one first).
+//
 //   node tools/dev/heliPad.mjs --url http://localhost:5200/ --port 9800 [--quality low|medium|high] [--out <folder>] [--swiftshader]
+//        [--start church|house: where play begins (the church: the start's warm-up sees the square's shadows)]
 import { mkdirSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { makeChurch } from '../../web/shared/church.mjs';
 import { makeTerrain } from '../../web/shared/terrain.mjs';
 import { launch, options, startGame } from './cdp.mjs';
 
-const o = options({ url: 'http://localhost:5200/', port: '9800', quality: 'medium', out: '', swiftshader: false });
+const o = options({ url: 'http://localhost:5200/', port: '9800', quality: 'medium', out: '', swiftshader: false, start: 'church' });
 const read = (p) => JSON.parse(readFileSync(new URL(`../../web/${p}`, import.meta.url), 'utf8'));
 const DATA = read('shared/church.json');
 const terrain = makeTerrain(read('shared/terrain.json'));
@@ -71,9 +76,17 @@ const record = () => b.evaluate(`(() => { const r = window.__prec = []; const go
 const recorded = () => b.evaluate('(() => { const r = window.__prec; window.__prec = null; return r; })()');
 
 try {
-  await b.send('Page.addScriptToEvaluateOnNewDocument', { source: `localStorage.setItem('briel.graphics','${o.quality}');localStorage.setItem('briel.lang','en');localStorage.setItem('briel.spawn','house');localStorage.setItem('briel.playMode','explore');localStorage.setItem('briel.feedback','later');` });
+  await b.send('Page.addScriptToEvaluateOnNewDocument', { source: `localStorage.setItem('briel.graphics','${o.quality}');localStorage.setItem('briel.lang','en');localStorage.setItem('briel.spawn','${o.start}');localStorage.setItem('briel.playMode','explore');localStorage.setItem('briel.feedback','later');` });
   await startGame(b, o.url, { village: true });
   await b.evaluate("document.getElementById('cc-close')?.click()", false);
+  // Every shader program made from here on, with the object and material that made it (the last one drawn).
+  await b.evaluate(`(() => {
+    const r = briel.three.renderer; const made = window.__made = []; let last = null;
+    const draw = r.renderBufferDirect.bind(r);
+    r.renderBufferDirect = (cam, scene, geo, mat, obj, grp) => { last = [obj, mat, cam]; return draw(cam, scene, geo, mat, obj, grp); };
+    const list = r.info.programs; const push = list.push.bind(list);
+    list.push = (...ps) => { for (const p of ps) { const [o, m, c] = last ?? []; const path = []; for (let q = o; q && path.length < 5; q = q.parent) path.push(q.name || q.type); made.push(p.cacheKey + '|' + p.name + ' for ' + (m?.name || m?.type) + ' (side ' + m?.side + ') on ' + path.join(' < ') + (c?.isOrthographicCamera ? ', shadow pass' : '')); } return push(...ps); };
+  })()`);
   await b.sleep(1500);
   console.log(`the church's landing deck, ${o.quality}: centre (${r2(PAD.x)}, ${r2(PAD.z)}), floor ${r2(DECK)}`);
   I = await b.evaluate("briel.helis.machines.findIndex((m) => m.spec.id === 'church')");
@@ -135,7 +148,7 @@ try {
   const bump = frames.some((f) => f[3] & 4);
   const landed = await state();
   check(landed.ground && Math.abs(landed.y - DECK) < 0.1 && !bump, `landed back on the deck: touched at ${r2(sink)} m/s, ${bump ? 'BUMP' : 'no bump'}, ${r2(Math.hypot(landed.x - PAD.x, landed.z - PAD.z))} m from its centre, floor ${r2(landed.y - DECK)}`);
-  const fresh = await b.evaluate('briel.three.renderer.info.programs.filter((p) => !__progs.has(p.cacheKey)).map((p) => p.name)');
+  const fresh = await b.evaluate(`briel.three.renderer.info.programs.filter((p) => !__progs.has(p.cacheKey)).map((p) => (window.__made.find((m) => m.startsWith(p.cacheKey + '|')) ?? '|' + p.name).split('|')[1])`);
   check(fresh.length === 0, `no new shader programs in flight (${programs}${fresh.length ? `; new: ${fresh.join(', ')}` : ''})`);
   await shot('landed-on-deck');
   await b.sleep(1000);
@@ -144,6 +157,22 @@ try {
   const out = await b.evaluate('({ aboard: briel.helis.aboard, x: briel.player.x, z: briel.player.z, feet: briel.player.feet })');
   const ol = local(out.x, out.z);
   check(!out.aboard && Math.abs(out.feet - DECK) < 0.05 && ol.x > 8 && ol.x < 14 && Math.abs(ol.y) < 5, `out on the deck at (${r2(ol.x)}, ${r2(ol.y)}), feet ${r2(out.feet - DECK)}`);
+
+  // Let down at eight headings from 4 m over the pad, C held: the pad turns the nose along the deck, the skids land.
+  for (let k = 0; k < 8; k++) {
+    await b.evaluate(`(() => { const m = ${M()}; briel.helis.leaveNow(); m.place(m.park.x, m.park.y, m.park.z, m.park.yaw + ${k} * Math.PI / 4, 1); Object.assign(m.s, { y: m.park.y + 4, holdY: m.park.y + 4, ground: false, heightHeld: true, coll: 0.5 }); briel.helis.board(m); })()`);
+    await b.sleep(300);
+    await key('keyDown', 'KeyC');
+    await until(`${M()}.s.ground`, 15);
+    await b.sleep(1500);
+    await key('keyUp', 'KeyC');
+    await b.sleep(500);
+    const q = await b.evaluate(`(() => { const s = ${M()}.s; return { y: s.y, ground: s.ground, yaw: s.yaw, still: s.still }; })()`);
+    const off = Math.abs(Math.atan2(Math.sin(2 * (q.yaw - church.anchors.padYaw)), Math.cos(2 * (q.yaw - church.anchors.padYaw)))) / 2;
+    check(q.ground && Math.abs(q.y - DECK) < 0.05 && off < 0.09, `let down turned ${k * 45} degrees: on its skids ${r2(q.y - DECK)} m over the deck, ${r2((off * 180) / Math.PI)} degrees off its line`);
+    if (k === 2) await shot('landed-turned-90');
+  }
+  await b.evaluate('briel.helis.leaveNow()');
 
   // A bump into the tower, from beside the roof walk; then, left there, it goes back to its deck.
   await b.sleep(400);
@@ -189,6 +218,41 @@ try {
   const za = await state();
   check(!(await b.evaluate('briel.helis.aboard')) && Math.hypot(za.x - PAD.x, za.z - PAD.z) < 0.5 && Math.abs(za.y - DECK) < 0.05 && za.ground, `Zombies started while flying it: you on your feet, it on its deck (${r2(Math.hypot(za.x - PAD.x, za.z - PAD.z))} m from the centre)`);
   await b.evaluate('briel.zombiesSolo.stop()').catch(() => {});
+  await b.sleep(1500);
+
+  // Two machines, one pad. The house's machine (0) parked on the church's deck: the church's, flown from the square,
+  // can't be set down on top of it (held off, never at rest up there).
+  const HOUSE = await b.evaluate('briel.helis.machines[0].park');
+  const both = () => b.evaluate(`[0, ${I}].map((i) => { const s = briel.helis.machines[i].s; return { x: s.x, y: s.y, z: s.z, ground: s.ground, down: s.down }; })`);
+  const onPad = (q, p) => Math.hypot(q.x - p.x, q.z - p.z) < 0.5 && Math.abs(q.y - p.y) < 0.5 && q.ground && q.down === 0;
+  await b.evaluate(`briel.helis.dev.put({ x: 536, z: -764.5, yaw: 0 }, 0, ${I})`);
+  await b.evaluate(`briel.helis.dev.put('church', 0, 0)`);
+  await b.evaluate(`(() => { const m = ${M()}; m.place(${PAD.x}, ${DECK}, ${PAD.z}, m.park.yaw, 1); Object.assign(m.s, { y: ${DECK + 7}, holdY: ${DECK + 7}, ground: false, heightHeld: true, coll: 0.5 }); briel.helis.board(m); })()`);
+  await key('keyDown', 'KeyC');
+  await b.sleep(7000);
+  const held = await state();
+  await tap('KeyE');
+  await b.sleep(300);
+  const stillIn = await b.evaluate('briel.helis.aboard');
+  await key('keyUp', 'KeyC');
+  check(!held.ground && held.y - DECK > 3 && stillIn, `let down onto the other machine: held off ${r2(held.y - DECK)} m over the deck, no getting out up there`);
+  // Zombies started while flying it, the other machine on its pad: that one goes to its own pad first, no bump.
+  await b.evaluate(`(() => { const m = ${M()}; m.place(536, ${church.point([0, -25, 0]).y + 30}, -764.5, 0, 1); Object.assign(m.s, { ground: false, holdY: m.s.y, heightHeld: true, coll: 0.5 }); })()`);
+  await b.evaluate("briel.zombiesSolo.start('church')").catch(() => {});
+  await b.sleep(2500);
+  let [h0, h1] = await both();
+  check(onPad(h1, { x: PAD.x, y: DECK, z: PAD.z }) && onPad(h0, HOUSE), `a game starting: the house's machine back on its own pad, the church's on its deck (${r2(Math.hypot(h0.x - HOUSE.x, h0.z - HOUSE.z))} and ${r2(Math.hypot(h1.x - PAD.x, h1.z - PAD.z))} m off)`);
+  await b.evaluate('briel.zombiesSolo.stop()').catch(() => {});
+  await b.sleep(25000);
+  [h0, h1] = await both();
+  check(onPad(h1, { x: PAD.x, y: DECK, z: PAD.z }) && onPad(h0, HOUSE), '25 s later both are still where they belong (no bump, no flight home)');
+  // The church's machine left on a roof, the house's on the church's deck: after 20 s each is on its own pad.
+  await b.evaluate(`briel.helis.dev.put('church', 0, 0)`);
+  const naveRoof = at(-6.5, 3.6, 0);
+  await b.evaluate(`(() => { const p = ${JSON.stringify(naveRoof)}; const g = briel.world.groundAt(p.x, p.z, 999, 0).y; briel.helis.dev.put({ x: p.x, y: g, z: p.z, yaw: 0 }, 0, ${I}); })()`);
+  await b.evaluate(`briel.teleport(${at(0, -40).x}, ${at(0, -40).z}, ${church.point([0, -40, 0]).y}, 0)`, false);
+  const swapped = await until(`(() => { const a = briel.helis.machines[0].s, c = ${M()}.s; return Math.hypot(a.x - ${HOUSE.x}, a.z - ${HOUSE.z}) < 0.5 && Math.hypot(c.x - ${PAD.x}, c.z - ${PAD.z}) < 0.5 && Math.abs(c.y - ${DECK}) < 0.05; })()`, 40);
+  check(swapped, 'left on a roof while the other stood on its deck: after 20 s the other went to its own pad and it to its deck');
 
   const errors = b.logs.filter((l) => /^exception|^error/.test(l) && !/Failed to load resource/.test(l));
   check(errors.length === 0, `no page errors${errors.length ? `: ${errors.slice(0, 5).join(' | ')}` : ''}`);
