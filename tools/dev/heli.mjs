@@ -2,8 +2,7 @@
 // running dev server, flown by real key events (and a fake controller, and touch with --phone). It prints the numbers
 // of set manoeuvres: getting in, the rotor's run-up and the lift-off, a climb to 100 m, a hover held for 20 s, the way
 // down, a dash to top speed and the stop, a full turn at cruise, the ceiling, the game's edge, landings on the meadow
-// and on a 6 by 10 m deck where the church's platform will be (a test deck through a dev hook until the church has
-// one), bumps into a wall and into a tree crown at 5 and 20 m/s and how long until it flies again, getting out on the
+// and on the church's 6 by 10 m landing deck (its own machine set aside for it), bumps into a wall and into a tree crown at 5 and 20 m/s and how long until it flies again, getting out on the
 // ground and not in the air; and that the timed routes, Zombies, the cars, the bikes and the horses are left as they
 // were. It checks the shader programs don't change after the take-off and that no page error came. With --out, the
 // pictures (chase in a hover, a dash, a turn, the landing by the church's tower, the cockpit, the instruments in
@@ -384,9 +383,11 @@ try {
   await b.sleep(9000);
   check(!(await b.evaluate('briel.helis.dev.state().sound')) && (await S('s.rotor')) === 0, 'the rotor ran down and nothing plays any more');
 
-  // The church's platform: a test deck (until the church has its own), a landing from 12 m over it after a sidestep.
+  // The church's landing deck (the church's own, with the village), a landing from 12 m over it after a sidestep; the
+  // church's own machine waits on the square below meanwhile (tools/dev/heliPad.mjs flies that one from its deck).
   if (phone) await b.send('Input.dispatchTouchEvent', { type: 'touchCancel', touchPoints: [] }).catch(() => {}); // no button left held from before (none may be)
-  await b.evaluate('briel.helis.dev.deck()');
+  await b.waitFor("briel.village() === 'ready'", 240000);
+  await b.evaluate("briel.helis.dev.put({ x: 536, z: -764.5, yaw: 0 }, 0, 1)");
   const pad = await b.evaluate("briel.helis.dev.put('church', 1)");
   await b.evaluate(`briel.teleport(${pad.x}, ${pad.z}, ${pad.y}, 0)`, false);
   await b.evaluate('briel.helis.board(briel.helis.machines[0])');

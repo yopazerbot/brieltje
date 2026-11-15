@@ -6,8 +6,9 @@ import type { World } from './collision';
  * The helicopters' landing pads (shared/heli.json pads): each machine's home and the church's platform. Listed for
  * the minimap's rings while you fly, the landing magnet (shared/heli.mjs env.pad) and the dev tools. A pad on the
  * ground is drawn here: a 10 m disc of pale pavers 3 cm over the meadow, a yellow circle 5 m across and a white "H",
- * thin geometry with no texture. The church's platform will be the church's own model (not built yet); until it is in, a
- * dev hook puts a plain test deck of its size where it will be (testDeck).
+ * thin geometry with no texture. The church's platform is the church's own model (tools/church.py draws it, its deck,
+ * nets and rails are the church's blocks: tools/church_access.py); the dev hook testDeck is kept as a fallback for a
+ * page without the village.
  */
 export interface Pad {
   id: string;
@@ -17,7 +18,7 @@ export interface Pad {
   yaw: number;
 }
 
-/** The pads that are there: a `planned` one (the church's, until its platform is built) has no ring and no pull yet. */
+/** The pads that are there: a `planned` one (nothing built there yet) has no ring and no pull. */
 export const PADS: Pad[] = HELIS.pads.filter((p) => !('planned' in p && p.planned)).map((p) => ({ id: p.id, x: p.x, y: p.y, z: p.z, yaw: p.yaw }));
 
 /** The nearest pad within `reach` m on the plan, or null. */
@@ -73,9 +74,9 @@ export function groundPads(groundY: (x: number, z: number) => number): THREE.Gro
 }
 
 /**
- * Dev: a plain deck of the church platform's size (6 by 10 m, across the church's axis) at its planned place and
- * height, solid for walking and landing, drawn as a grey slab; null when there is no such pad. Its block stays
- * until the page reloads.
+ * Dev, a fallback for a page without the village (the church's own deck comes with it): a plain deck of the church
+ * platform's size (6 by 10 m, across the church's axis) at its place and height, solid for walking and landing, drawn
+ * as a grey slab; null when there is no such pad. Its block stays until the page reloads.
  */
 export function testDeck(world: World, scene: THREE.Object3D): THREE.Mesh | null {
   const spec = HELIS.pads.find((p) => p.id === 'church');

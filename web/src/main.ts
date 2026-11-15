@@ -4369,6 +4369,7 @@ async function buildVillage(): Promise<void> {
   const villageBlocks = cafePrisms(churchPrisms(data.prisms ?? [], churchAccess), cafeAccess).filter((p) => (!endHouse?.replaces(p) || endHouse.standIn(p)) && !brickHouse?.replaces(p));
   const drawnBlocks = new Set([...(kept.prisms ?? []), ...churchAccess.prisms, ...cafeAccess.prisms]);
   const firstBlock = world.addPrisms(villageBlocks, (p) => !drawnBlocks.has(p)); // the rest: a model stands for it
+  helis.settle(); // the church's helicopter onto its deck, now there (src/heliPilot.ts)
   if (endHouse) {
     endHouse.holdStandIns(villageBlocks.flatMap((p, i) => (endHouse!.standIn(p) ? [firstBlock + i] : [])));
     endHouse.install(world, doors, glass);

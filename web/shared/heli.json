@@ -23,10 +23,11 @@
     "chalk": { "paint": "#fbf6ea", "paintB": "#141d3a", "paintC": "#f7b928" }
   },
   "machines": [
-    { "id": "house", "paint": "evening", "park": { "x": -32, "y": -0.1, "z": -8, "yaw": 3.142 } }
+    { "id": "house", "paint": "evening", "park": { "x": -32, "y": -0.1, "z": -8, "yaw": 3.142 } },
+    { "id": "church", "paint": "sun", "park": { "x": 512.54, "y": 18.59, "z": -750.51, "yaw": -0.617 } }
   ],
   "pads": [
     { "id": "house", "x": -32, "y": -0.1, "z": -8, "yaw": 3.142, "marked": true },
-    { "id": "church", "x": 512.54, "y": 18.59, "z": -750.51, "yaw": -0.617, "w": 6, "l": 10, "planned": true }
+    { "id": "church", "x": 512.54, "y": 18.59, "z": -750.51, "yaw": -0.617, "w": 6, "l": 10 }
   ]
 }

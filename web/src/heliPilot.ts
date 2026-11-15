@@ -128,6 +128,11 @@ export class HeliPilot {
     else this.placePlayer(x, z, this.world.groundAt(x, z, y + 0.5, 0).y, yaw);
   }
 
+  /** The village's blocks are in (main.ts): a machine still on its spot set on its floor there (the church's deck comes with them). */
+  settle(): void {
+    for (const m of this.machines) if (!m.flown && Math.hypot(m.s.x - m.park.x, m.s.z - m.park.z) < 1) m.place(m.park.x, this.world.groundAt(m.park.x, m.park.z, m.park.y + 2, 0).y, m.park.z, m.park.yaw);
+  }
+
   /** A respawn, a game starting: every machine left where nobody can reach it back on its pad at once. */
   tidy(): void {
     for (const m of this.machines) if (m.stranded) m.sendHome();
