@@ -46,6 +46,11 @@ for (const [name] of VILLAGE_HOUSES) {
     assert.ok(Array.isArray(replaces) && replaces.length > 0, 'its root has `replaces`');
     const outline = replaces[0];
     assert.ok((village.prisms ?? []).some((p) => same(p.p[0], outline)), 'its first `replaces` ring is the outline of a wall block in village.json');
+    // A house's front corner can be a corner of the street's paving too: a ring of the road would hide the street.
+    for (const ring of replaces) {
+      const block = (village.prisms ?? []).find((p) => same(p.p[0], ring));
+      assert.ok(!block || !/^(road|pave|concrete|gravel)/.test(block.m), `a \`replaces\` ring is a ${block?.m} block, not a house's`);
+    }
     // main.ts withoutLandmarks hides a data roof when the average of its corners lies inside a `replaces` ring. Any
     // roof with a corner inside the house's outline, or its middle within 1 m of it, belongs to the house: it must go.
     const near = (p) => inside(outline, p) || outline.some((q, i) => {
