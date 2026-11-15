@@ -60,6 +60,11 @@ export interface Pose {
   far: number;
   /** On a bike (world/bike.ts, with `seat`): where the feet go (the pedals) and the hands (the grips), left then right, in the world */
   bike?: { pedals: [THREE.Vector3, THREE.Vector3]; grips: [THREE.Vector3, THREE.Vector3] } | null;
+  /**
+   * In a car's seat (world/carPeople.ts, with `seat`): where the ankles and the wrists go, left then right, in the world;
+   * how far the head turns (rad, to the left); how far apart the knees go (m)
+   */
+  car?: { feet: [THREE.Vector3, THREE.Vector3]; hands: [THREE.Vector3, THREE.Vector3]; head: number; knees: number } | null;
 }
 
 export interface Body {
@@ -715,6 +720,7 @@ export function buildSwat(name: string, color: string, outfit: Outfit, hitMateri
 
       // Lower body: hips down (crouching, landing), legs reaching their feet (or tucked, hanging, in
       // the stirrups). Standing, walking and running the clips' legs are left as they are.
+      const sitting = riding && p.car ? p.car : null; // in a car's seat
       if (ikLegs && deathW < 0.99 && (crouchW > 0.005 || airW > 0.005 || flyW > 0.005 || riding || dip > 0)) {
         const live = 1 - deathW;
         for (const l of legs) worldPos(l.ankle, l.planted);
@@ -739,13 +745,15 @@ export function buildSwat(name: string, color: string, outfit: Outfit, hitMateri
           l.target.copy(l.planted);
           if (cycling) {
             l.target.copy(cycling.pedals[l.sign < 0 ? 0 : 1]); // on the pedals, going round with them
+          } else if (sitting) {
+            l.target.copy(sitting.feet[l.sign < 0 ? 0 : 1]); // on the car's floor
           } else if (ride) {
             l.target.copy(worldPos(hips, v)).addScaledVector(UP, -0.6).addScaledVector(right, l.sign * 0.27).addScaledVector(fwd, 0.1);
           } else {
             l.target.addScaledVector(UP, tuck).addScaledVector(fwd, airW * 0.05 - trail);
           }
-          // The knees forward and out (in the stirrups wide; on a bike forward and up, over the pedals).
-          worldPos(hips, pole).addScaledVector(fwd, 0.8).addScaledVector(right, l.sign * (0.12 + ride * (cycling ? 0.04 : 0.3))).addScaledVector(UP, cycling ? 0.4 : -0.3);
+          // The knees forward and out (in the stirrups wide; on a bike forward and up, over the pedals; in a car as wide as the seat says).
+          worldPos(hips, pole).addScaledVector(fwd, 0.8).addScaledVector(right, l.sign * (sitting ? sitting.knees : 0.12 + ride * (cycling ? 0.04 : 0.3))).addScaledVector(UP, cycling || sitting ? 0.4 : -0.3);
           reach(l.upper, l.lower, l.ankle, l.target, pole);
           // The foot (hung from the root) follows its ankle when the ankle moved.
           v.copy(l.target).sub(l.planted);
@@ -765,6 +773,11 @@ export function buildSwat(name: string, color: string, outfit: Outfit, hitMateri
         rotateWorld(neck, UP, twist * 0.15);
         rotateWorld(head, UP, twist * 0.15);
       }
+      if (sitting && Math.abs(sitting.head) > 1e-3) {
+        // In a car: the head turns a little into the corner.
+        rotateWorld(neck, UP, sitting.head * 0.4);
+        rotateWorld(head, UP, sitting.head * 0.6);
+      }
       const pitch = Math.max(-1.2, Math.min(1.2, p.pitch)) * (1 - deathW);
       if (Math.abs(pitch) > 0.005 || aimW > 0.01) {
         side.set(0, 0, -1).applyQuaternion(rootQ).setY(0).normalize().cross(UP).normalize();
@@ -778,6 +791,7 @@ export function buildSwat(name: string, color: string, outfit: Outfit, hitMateri
       }
       spine[0].updateMatrixWorld(true); // the upper body (arms and head with it) as turned
 
+      if (figure) (figure as THREE.SkinnedMesh).castShadow = !sitting; // in a car, the car casts the shadow
       // The body's hit box goes down with the hips.
       const low = 1 - 0.25 * crouchW;
       hitBody.scale.y = low;
@@ -793,9 +807,10 @@ export function buildSwat(name: string, color: string, outfit: Outfit, hitMateri
       }
       flashTime -= dt;
       for (const g of guns.values()) (g.userData.flash as THREE.Object3D).visible = g === shownGun && flashTime > 0;
-      if (p.bike && riding && !shownGun) {
-        // On a bike: both hands on the grips, the elbows bent down and a little out.
-        for (const [arm, grip, s] of [[arms.l, p.bike.grips[0], -1], [arms.r, p.bike.grips[1], 1]] as const) {
+      const grips = riding && !shownGun ? p.bike?.grips ?? sitting?.hands : undefined;
+      if (grips) {
+        // On a bike: both hands on the grips, the elbows bent down and a little out (in a car on the wheel, or the lap).
+        for (const [arm, grip, s] of [[arms.l, grips[0], -1], [arms.r, grips[1], 1]] as const) {
           worldPos(arm.upper, pole).addScaledVector(UP, -0.45).addScaledVector(right, s * 0.3).addScaledVector(fwd, -0.15);
           reach(arm.upper, arm.lower, arm.wrist, grip, pole);
         }

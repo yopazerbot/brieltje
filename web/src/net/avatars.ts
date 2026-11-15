@@ -327,6 +327,9 @@ export interface Seat {
   roll?: number;
   pitch?: number;
   bike?: { pedals: [THREE.Vector3, THREE.Vector3]; grips: [THREE.Vector3, THREE.Vector3] };
+  /** In a car (world/carPeople.ts, with `root`): the root's turn in the world (the car's, the seat's lean back), the head's nod that undoes the lean (`pitch`), and where the feet and hands go */
+  car?: { feet: [THREE.Vector3, THREE.Vector3]; hands: [THREE.Vector3, THREE.Vector3]; head: number; knees: number };
+  quat?: THREE.Quaternion;
 }
 
 let glintMap: THREE.CanvasTexture | null = null;

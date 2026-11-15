@@ -351,6 +351,10 @@ export class Car {
   yaw: number;
   /** Front wheel angle (rad) */
   steer = 0;
+  /** How far the wheel is turned: 1 full left, -1 full right (world/carPeople.ts: the driver's hands go round with it). */
+  get wheelTurn(): number {
+    return this.steer / STEER;
+  }
   /** m/s along its heading (negative backwards) */
   speed = 0;
   /** Someone else at the wheel (multiplayer), or null */
@@ -527,6 +531,13 @@ export class Car {
     const dx = x - this.x;
     const dz = z - this.z;
     return Math.hypot(Math.max(0, Math.abs(dx * fx + dz * fz) - this.halfL), Math.max(0, Math.abs(-dx * fz + dz * fx) - this.halfW));
+  }
+
+  /** The model's own frame as drawn this frame (on its springs), or null while its full model isn't shown: where its people sit (world/carPeople.ts). */
+  cabin(out: THREE.Matrix4): THREE.Matrix4 | null {
+    if (!this.near || this.farOn || !this.group.visible) return null;
+    this.body.updateWorldMatrix(true, false);
+    return out.makeTranslation(0, -ROLL_H, 0).premultiply(this.body.matrixWorld);
   }
 
   /** Where you stand after getting out: by your door (the driver's on the left, the passenger's on the right), else the other side, behind or in front. */
