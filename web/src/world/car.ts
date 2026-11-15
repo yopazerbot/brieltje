@@ -590,7 +590,14 @@ export class Car {
   }
 
   /** Where it was at the server's time `t` (a tick: someone else drives it, or it stands). */
+  /** Out of this page's sight (driven into a home's garage it may not see into): not drawn until a state comes */
+  away = false;
+
   sample(t: number, s: CarSample): void {
+    if (this.away) {
+      this.away = false;
+      this.track.clear(); // back at the door: from there, no slide from where it was last seen
+    }
     this.driver = s.driver;
     this.passenger = s.passenger;
     this.track.push(t, [s.x, s.y, s.z, s.yaw, s.s], null, false, !s.driver);
@@ -885,7 +892,7 @@ export class Car {
    */
   update(dt: number, local: boolean, eye?: THREE.Vector3): void {
     const away = eye ? (this.x - eye.x) ** 2 + (this.z - eye.z) ** 2 : 0;
-    this.group.visible = this.ready && away < DRAW * DRAW;
+    this.group.visible = this.ready && !this.away && away < DRAW * DRAW;
     // Far off, the simple copy instead of the full model (a little nearer again before it swaps back).
     const farOn = !!this.far && away > (this.farOn ? FAR_IN * FAR_IN : FAR_OUT * FAR_OUT);
     if (farOn !== this.farOn && this.far && this.near) {

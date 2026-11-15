@@ -340,7 +340,7 @@ export class Net {
     // the first, and the second's welcome would reset the player).
     clearTimeout(this.retryTimer);
     // The room's id is no secret (anyone playing together sees the list) and grants nothing on its own: the session is the cookie.
-    const url = `${location.protocol === 'https:' ? 'wss' : 'ws'}://${location.host}/ws?v=${PROTO}${this.room ? `&room=${encodeURIComponent(this.room)}` : ''}${watch ? '&watch=1' : ''}`;
+    const url = `${location.protocol === 'https:' ? 'wss' : 'ws'}://${location.host}/ws?v=${PROTO}&sight=1${this.room ? `&room=${encodeURIComponent(this.room)}` : ''}${watch ? '&watch=1' : ''}`;
     this.rtt = null;
     // In the split screen, the seat in the subprotocol (src/seat.ts), never in the URL.
     const ws = new WebSocket(url, seatProtocols);

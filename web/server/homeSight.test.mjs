@@ -26,14 +26,14 @@ function spots(h) {
 }
 
 function setup() {
-  const game = new Game({ session: () => null, store: { addStats: async () => {} } }, []);
+  const game = new Game({ session: () => null, sessions: { has: () => true }, store: { addStats: async () => {} } }, []);
   const grants = new Set(); // `${key}|${home}`
   game.homes = { granted: (key, id) => grants.has(`${key}|${id}`) };
   game.stats = () => {};
   const player = (name, at, role = 'player') => {
     const now = Date.now();
     const p = {
-      key: `k-${name}`, role, got: [], raw: [], proto: PROTO, full: true, slot: 0, sentKey: '', fresh: true, warp: 0, stamp: 0,
+      key: `k-${name}`, role, got: [], raw: [], proto: PROTO, sight: true, full: true, slot: 0, sentKey: '', fresh: true, warp: 0, stamp: 0,
       ws: { readyState: 1, OPEN: 1, send(d) { p.raw.push(String(d)); p.got.push(JSON.parse(d)); } },
       alive: true, protectedUntil: 0, drop: null, hp: 100, score: { kills: 0, deaths: 0, points: 0 }, color: '#888',
       state: { ...at, yaw: 0, pitch: 0, armed: true, flying: false, w: 'rifle', c: false },
@@ -373,4 +373,156 @@ test('a helicopter standing inside a home (a pose its pilot reported) is in no w
   game.snapshot(Date.now());
   assert.ok(!entries(other, 'e').some((e) => e[0] === heli.id), 'the ticks');
   assert.ok(entries(owner, 'e').some((e) => e[0] === heli.id));
+});
+
+// ---------------------------------------------------------------- the security review's cases (blasts, mounts, Zombies, `g`)
+
+/** A point just outside home `h`'s ground floor, 1 m past its edge from the inside spot along -x (or +x). */
+function besideWall(h, inside) {
+  for (const dir of [-1, 1]) {
+    for (let d = 0.25; d < 12; d += 0.25) {
+      if (homeAt(inside.x + dir * d, inside.z, inside.y) === null) return { x: inside.x + dir * (d + 1), y: inside.y, z: inside.z, inX: inside.x + dir * (d - 0.4) };
+    }
+  }
+  throw new Error(`no wall near the spot in ${h.id}`);
+}
+
+for (const h of HOMES) {
+  test(`${h.id}: a grenade or rocket from inside spares an outsider, even when the thrower stepped out before the bang`, (t) => {
+    const { game, grants, player } = setup();
+    const { inside, outside } = spots(h);
+    const owner = player('owner', { ...inside });
+    const other = player('other', { ...outside });
+    grants.add(`k-owner|${h.id}`);
+    game.modes.friends = () => false;
+    game.handle('owner', owner, JSON.stringify({ t: 'nade', x: inside.x, y: inside.y + 1.5, z: inside.z, vx: 1, vy: 1, vz: 1 }));
+    assert.equal(other.got.filter((m) => m.t === 'nade').length, 0, 'the throw unseen');
+    Object.assign(owner.state, { x: outside.x + 1, z: outside.z + 1 }); // out during the fuse
+    owner.thrown[0].at -= 3000;
+    game.handle('owner', owner, JSON.stringify({ t: 'boom', x: other.state.x, y: other.state.y + 0.9, z: other.state.z }));
+    assert.equal(other.hp, 100, 'the grenade');
+    assert.equal(other.got.find((m) => m.t === 'blast')?.by, '', 'told of the blast where it is, not by whom');
+    // A rocket the same way.
+    Object.assign(owner.state, inside, { w: 'bazooka' });
+    owner.weapons.add('bazooka');
+    owner.nextRocket = 0;
+    t.mock.timers.enable({ apis: ['setTimeout'] }); // the rocket's flight
+    game.handle('owner', owner, JSON.stringify({ t: 'rocket', tx: other.state.x, ty: other.state.y + 0.9, tz: other.state.z }));
+    Object.assign(owner.state, { x: outside.x + 1, z: outside.z + 1 });
+    t.mock.timers.tick(5000);
+    assert.equal(other.hp, 100, 'the rocket');
+    assert.equal(other.got.filter((m) => m.t === 'blast').length, 2, 'both went off, beside them');
+  });
+
+  test(`${h.id}: a target out of sight at the throw, or at the bang, is spared; a blast behind a home's wall hurts nobody outside`, () => {
+    const { game, player } = setup();
+    const { inside, outside } = spots(h);
+    const thrower = player('thrower', { ...outside });
+    const target = player('target', { ...inside }); // inside at the throw (no right)
+    game.modes.friends = () => false;
+    game.handle('thrower', thrower, JSON.stringify({ t: 'nade', x: outside.x, y: outside.y + 1.5, z: outside.z, vx: 1, vy: 1, vz: 1 }));
+    Object.assign(target.state, { x: outside.x + 1.5, z: outside.z }); // out before the bang
+    thrower.thrown[0].at -= 3000;
+    game.handle('thrower', thrower, JSON.stringify({ t: 'boom', x: target.state.x, y: target.state.y + 0.9, z: target.state.z }));
+    assert.equal(target.hp, 100, 'unseen at the throw');
+    // The reverse: seen at the throw, inside at the bang.
+    thrower.nades = [0, 0];
+    game.handle('thrower', thrower, JSON.stringify({ t: 'nade', x: outside.x, y: outside.y + 1.5, z: outside.z, vx: 1, vy: 1, vz: 1 }));
+    Object.assign(target.state, inside);
+    thrower.thrown[0].at -= 3000;
+    game.blast('thrower', { x: inside.x, y: inside.y + 0.9, z: inside.z }, 'grenade', new Set(), thrower.thrown[0].act);
+    assert.equal(target.hp, 100, 'unseen at the bang');
+    // Both outside by the wall, the blast just inside it: neither told nor hurt.
+    const by = besideWall(h, inside);
+    const near = player('near', { x: by.x, y: by.y, z: by.z });
+    player('ref', { ...outside });
+    const at = { x: by.inX, y: by.y + 0.9, z: by.z }; // 40 cm inside the band, 1.4 m from them
+    assert.equal(homeAt(at.x, at.z, at.y), h.id, 'the blast inside');
+    game.blast('ref', at, 'bazooka');
+    assert.equal(near.hp, 100, 'behind the wall');
+    assert.ok(!near.got.some((m) => m.t === 'blast'), 'and not told');
+  });
+
+  test(`${h.id}: nobody gets on a horse, bike or car left inside through the wall`, () => {
+    const { game, grants, player } = setup();
+    const { inside } = spots(h);
+    const owner = player('owner', { ...inside });
+    grants.add(`k-owner|${h.id}`);
+    const by = besideWall(h, inside);
+    const other = player('other', { x: by.x, y: by.y, z: by.z });
+    const horse = game.horses[0];
+    Object.assign(horse, { x: inside.x, z: inside.z, rider: 'owner', parked: false });
+    game.releaseHorse('owner');
+    assert.equal(owner.alive, true);
+    game.bikes = { k9: { id: 'k9', ...inside, yaw: 0, rider: null } };
+    game.cars = { c9: { id: 'c9', ...inside, yaw: 0, s: 0, driver: null, passenger: null } };
+    for (const [x, z] of [[by.x, by.z], [inside.x, inside.z]]) {
+      Object.assign(other.state, { x, z }); // by the wall, and a forged place right at it
+      other.got.length = 0;
+      game.mountHorse('other', other, horse, Date.now());
+      game.mountBike('other', other, game.bikes.k9, Date.now());
+      game.enterCar('other', other, game.cars.c9);
+      assert.equal(horse.rider, null);
+      assert.equal(game.bikes.k9.rider, null);
+      assert.equal(game.cars.c9.driver, null);
+      assert.equal(other.got.length, 0, 'not a word');
+    }
+  });
+
+  test(`${h.id}: Zombies: nothing lying inside in the view of a page without the right, no preview or placing through the wall`, () => {
+    const { game, grants, player } = setup();
+    const { inside, outside } = spots(h);
+    const other = player('other', { ...outside });
+    const owner = player('owner', { ...outside });
+    grants.add(`k-owner|${h.id}`);
+    const z = { items: [[1, 'ammo', inside.x, inside.y, inside.z], [2, 'ammo', outside.x, outside.y, outside.z]], mines: [[3, inside.x, inside.y, inside.z, 0, 'owner']], stakes: [], turrets: [], lulls: [] };
+    assert.equal(game.lootInside(z), true);
+    const seen = game.lootFor(z, other);
+    assert.deepEqual(seen.items.map((e) => e[0]), [2]);
+    assert.deepEqual(seen.mines, []);
+    assert.equal(game.lootFor(z, owner).items.length, 2);
+    assert.equal(game.lootInside({ items: [z.items[1]], mines: [], stakes: [], turrets: [], lulls: [] }), false);
+    // The preview through the wall: the same answer as no room.
+    Object.defineProperty(game.modes, 'zombies', { value: { loot: { preview: () => ({ ok: true }) } } });
+    other.lastPreview = 0;
+    game.handle('other', other, JSON.stringify({ t: 'placement', kind: 'claymore', id: 1, x: inside.x, y: inside.y, z: inside.z, yaw: 0 }));
+    assert.equal(other.got.find((m) => m.t === 'placement')?.ok, false);
+  });
+
+  test(`${h.id}: a strongman who walks in is named gone in the next tick of a page without the right, and is back whole when out`, () => {
+    const { game, grants, player } = setup();
+    const { inside, outside } = spots(h);
+    const other = player('other', { ...outside });
+    player('owner', { ...outside });
+    grants.add(`k-owner|${h.id}`);
+    game.clowns = new Map([[7, game.character(7, outside.x + 2, outside.y, outside.z + 2, 'strongman')]]);
+    game.snapshot(Date.now());
+    game.snapshot(Date.now());
+    Object.assign(game.clowns.get(7).brain, { x: inside.x, y: inside.y, z: inside.z });
+    other.got.length = 0;
+    game.snapshot(Date.now());
+    game.snapshot(Date.now());
+    const gone = other.got.filter((m) => m.t === 's' && m.g);
+    assert.deepEqual(gone.map((m) => m.g.b), [[7]], 'once');
+    Object.assign(game.clowns.get(7).brain, { x: outside.x + 2, y: outside.y, z: outside.z + 2 });
+    other.got.length = 0;
+    game.snapshot(Date.now());
+    game.snapshot(Date.now());
+    assert.ok(other.got.some((m) => m.t === 's' && (m.b ?? []).some((e) => e[0] === 7)), 'back');
+  });
+}
+
+test('a page from before the out-of-sight notices gets no event whose doer it may not see (no empty name in its feed)', () => {
+  const { game, grants, player } = setup();
+  const h = HOMES[3];
+  const { inside, outside } = spots(h);
+  const owner = player('owner', inside);
+  const old = player('old', outside);
+  old.sight = false;
+  const now = player('now', outside);
+  grants.add(`k-owner|${h.id}`);
+  owner.nextCat = 0;
+  game.handle('owner', owner, JSON.stringify({ t: 'cat', i: 0, w: 'rifle' }));
+  assert.equal(old.got.filter((m) => m.t === 'cat').length, 0);
+  assert.equal(now.got.find((m) => m.t === 'cat')?.by, '');
 });

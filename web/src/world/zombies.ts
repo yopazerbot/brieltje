@@ -830,6 +830,11 @@ export class Zombies {
     for (const id of [...this.zs.keys()]) this.remove(id);
   }
 
+  /** Gone out of this page's sight (into a home it may not see into, the server's tick says): gone at once; back as new. */
+  outOfSight(ids: number[]): void {
+    for (const id of ids) this.remove(id);
+  }
+
   private remove(id: number): void {
     const z = this.zs.get(id);
     if (!z) return;

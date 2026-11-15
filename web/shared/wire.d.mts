@@ -21,6 +21,8 @@ export interface Tick {
   z?: Entry[];
   /** Players gone out of this page's sight since its last tick (inside a home it has no right to): their figures go */
   o?: string[];
+  /** Things gone out of this page's sight (into a home it may not see into), by list: cars, horses, bikes, helicopters, strongmen, zombies */
+  g?: { c?: string[]; h?: number[]; k?: string[]; e?: number[]; b?: number[]; z?: number[] };
 }
 
 export interface PlayerSample {

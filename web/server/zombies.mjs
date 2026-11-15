@@ -43,6 +43,7 @@ import { Loot, LOOT } from '../shared/loot.mjs';
 import { sold, Stall } from '../shared/stall.mjs';
 import { zombieEntry } from '../shared/wire.mjs';
 import { arenaOf } from '../shared/arenas.mjs';
+import { homeAt } from '../shared/homes.mjs';
 
 export const DONE_MS = 15_000;
 /** ms after the last parachute is down before a wave may come (tick: the break holds while anyone drops) */
@@ -254,7 +255,7 @@ export class ZombieGame {
     if (shots.length) g.broadcast({ t: 'zfire', s: shots.map(({ turret: t, id }) => [t.id, id, t.rounds]) });
     for (const { turret: t, id } of shots) this.damage(id, LOOT.turretDamage, t.owner, 'turret', now);
     for (const { mine: m, ids } of booms) {
-      g.broadcast({ t: 'zboom', id: m.id, x: m.x, y: m.y, z: m.z, yaw: m.yaw, by: m.owner });
+      g.broadcastHome({ t: 'zboom', id: m.id, x: m.x, y: m.y, z: m.z, yaw: m.yaw, by: m.owner }, homeAt(m.x, m.z, m.y)); // inside a home: only with its right
       for (const id of ids) this.damage(id, LOOT.damage, m.owner, 'claymore', now);
       changed = true;
     }
@@ -275,6 +276,8 @@ export class ZombieGame {
     if (now < (p.nextItem || 0)) return;
     p.nextItem = now + 250;
     if (!Number.isInteger(m.id) || !p.alive || !p.state?.armed || g.inCar(name) || this.horde.phase === 'over') return;
+    const it = this.loot.items.get(m.id);
+    if (it && g.gate.hidesAt(it.x, it.z, it.y, p)) return; // lying inside a home they may not see into: not through its wall
     const s = p.state;
     const got = this.loot.take(name, { x: s.x, y: s.y, z: s.z, w: s.w, hp: p.hp, guns: [...(p.weapons ?? [])] }, m.id, now);
     if (!got) return;
@@ -397,7 +400,8 @@ export class ZombieGame {
     p.nextMine = now + 400;
     if (!p.alive || !p.state?.armed || g.inCar(name) || g.calm(p) || this.horde.phase === 'over') return;
     const s = p.state;
-    const r = this.loot.place(name, { x: s.x, y: s.y, z: s.z }, { x: m.x, y: m.y, z: m.z, yaw: m.yaw }, now);
+    // Inside a home they may not see into: no room, whatever is in there (no oracle through the wall).
+    const r = g.gate.hidesAt(m.x, m.z, m.y, p) ? { why: 'spot' } : this.loot.place(name, { x: s.x, y: s.y, z: s.z }, { x: m.x, y: m.y, z: m.z, yaw: m.yaw }, now);
     if (!r.mine) {
       const why = { none: ['zMineNone', 'You have no claymore.'], max: ['zMineMax', 'You have two down already.'], spot: ['zMineSpot', 'No room for it there.'] }[r.why];
       return g.send(p.ws, { t: 'system', text: why[1], code: why[0] });
@@ -416,7 +420,7 @@ export class ZombieGame {
     p.nextStakes = now + 400;
     if (!p.alive || !p.state?.armed || g.inCar(name) || g.calm(p) || this.horde.phase === 'over') return;
     const s = p.state;
-    const r = this.loot.placeStakes(name, { x: s.x, y: s.y, z: s.z }, { x: m.x, y: m.y, z: m.z, yaw: m.yaw });
+    const r = g.gate.hidesAt(m.x, m.z, m.y, p) ? { why: 'spot' } : this.loot.placeStakes(name, { x: s.x, y: s.y, z: s.z }, { x: m.x, y: m.y, z: m.z, yaw: m.yaw });
     if (!r.row) {
       const why = { none: ['zStakesNone', 'You have no stakes.'], max: ['zStakesMax', 'Enough stakes are down already.'], spot: ['zStakesSpot', 'No room for them there.'] }[r.why];
       return g.send(p.ws, { t: 'system', text: why[1], code: why[0] });
@@ -435,7 +439,7 @@ export class ZombieGame {
     p.nextTurret = now + 400;
     if (!p.alive || !p.state?.armed || g.inCar(name) || g.calm(p) || this.horde.phase === 'over') return;
     const s = p.state;
-    const r = this.loot.placeTurret(name, { x: s.x, y: s.y, z: s.z }, { x: m.x, y: m.y, z: m.z, yaw: m.yaw }, now);
+    const r = g.gate.hidesAt(m.x, m.z, m.y, p) ? { why: 'spot' } : this.loot.placeTurret(name, { x: s.x, y: s.y, z: s.z }, { x: m.x, y: m.y, z: m.z, yaw: m.yaw }, now);
     if (!r.turret) {
       const why = { none: ['zTurretNone', 'You have no turret.'], max: ['zTurretMax', 'Your turret is still going.'], all: ['zTurretAll', 'Enough turrets are up already.'], spot: ['zMineSpot', 'No room for it there.'] }[r.why];
       return g.send(p.ws, { t: 'system', text: why[1], code: why[0] });
@@ -548,7 +552,11 @@ export class ZombieGame {
     this.fell.delete(name);
     Object.assign(q, { alive: true, hp: REVIVE_HP, respawnAt: 0, protectedUntil: now + 2000 });
     this.down.delete(name);
-    this.game.broadcast({ t: 'revived', name, by, hp: REVIVE_HP, ...(at ? { x: at.x, y: at.y, z: at.z } : {}) });
+    // Helped up inside a home: the place only to those who may see in; the others learn only that it happened.
+    const msg = { t: 'revived', name, by, hp: REVIVE_HP };
+    const home = at ? homeAt(at.x, at.z, at.y) : null;
+    if (at) this.game.broadcastHome({ ...msg, x: at.x, y: at.y, z: at.z }, home);
+    if (!at || home) for (const [, q] of this.game.players) if (!at || !this.game.gate.may(q, home)) this.game.send(q.ws, msg);
     this.modes.say(`${by} helped ${name} up.`, 'zRevived', { name: by, target: name });
     this.modes.send();
   }

@@ -262,6 +262,8 @@ class Bike {
   readonly grips: [THREE.Vector3, THREE.Vector3] = [new THREE.Vector3(), new THREE.Vector3()];
   readonly pedals: [THREE.Vector3, THREE.Vector3] = [new THREE.Vector3(), new THREE.Vector3()];
   shown = false;
+  /** Out of this page's sight (ridden into, or left in, a home it may not see into): not drawn until a state comes */
+  away = false;
 
   constructor(readonly id: string, readonly spec: Spec, readonly index: number) {
     ({ x: this.x, y: this.y, z: this.z, yaw: this.yaw } = spec.park);
@@ -452,10 +454,22 @@ export class Bikes {
   }
 
   /** A tick's bikes (shared/wire.mjs): where each was at the server's time. */
+  /** Bikes gone out of this page's sight (ridden into, or left in, a home it may not see into): not drawn until a state comes. */
+  outOfSight(ids: string[]): void {
+    for (const id of ids) {
+      const k = this.byId.get(id);
+      if (k && k.id !== this.mounted) k.away = true;
+    }
+  }
+
   receive(list: BikeSample[], st: number, me: string): void {
     for (const s of list) {
       const k = this.byId.get(s.id);
       if (!k || (k.id === this.mounted && s.rider === me)) continue;
+      if (k.away) {
+        k.away = false;
+        this.put(k, s.x, s.y, s.z, s.yaw, s.lie); // back at the door: from there, no slide from where it was last seen
+      }
       k.rider = s.rider;
       if (s.rider) this.standUp(k);
       else if (k.guess) {
@@ -815,7 +829,7 @@ export class Bikes {
       }
       if (!mine && !k.rider) k.speed *= Math.exp(-dt * 4); // standing: settles at once
       this.feel(k, dt, mine);
-      k.shown = (k.x - eye.x) ** 2 + (k.z - eye.z) ** 2 < DRAW * DRAW;
+      k.shown = !k.away && (k.x - eye.x) ** 2 + (k.z - eye.z) ** 2 < DRAW * DRAW;
       if (k.shown) {
         this.place(k);
         k.noise.update({ x: k.x, y: k.y, z: k.z, speed: Math.abs(k.speed), coasting: !k.pedalling && !!k.rider, rough: k.rough }, dt);

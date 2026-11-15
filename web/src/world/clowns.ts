@@ -49,6 +49,8 @@ interface Clown {
   track?: Track<null>;
   /** When his throw or stomp began, and when he let go (s, local clock) */
   actAt: number;
+  /** Out of this page's sight (a strongman gone into a home it may not see into): not drawn, not hit, until a state comes */
+  away?: boolean;
   releasedAt: number;
   bar?: { sprite: THREE.Sprite; ctx: CanvasRenderingContext2D; texture: THREE.CanvasTexture; hp: number };
   kind: Kind;
@@ -312,6 +314,10 @@ export class Clowns {
       const c = this.clowns.get(v.id);
       if (!c?.brain) continue;
       seen.add(v.id);
+      if (c.away) {
+        c.away = false;
+        c.track = undefined; // back at the door: from there, no slide from where he was last seen
+      }
       if (!c.track) {
         c.track = new Track<null>([false, false, true, false], 4, [0, 1]); // a jump of 4 m: back at his spot
         Object.assign(c.brain, { x: v.x, z: v.z, yaw: v.yaw }); // first word: be there
@@ -321,6 +327,14 @@ export class Clowns {
       c.track.push(st, [v.x, v.z, v.yaw, v.speed], null);
     }
     for (const c of this.clowns.values()) if (c.track && !seen.has(c.spec.id)) c.track.hold(st);
+  }
+
+  /** Strongmen gone out of this page's sight (the server's tick): gone at once, until a state of theirs comes again. */
+  outOfSight(ids: number[]): void {
+    for (const id of ids) {
+      const c = this.clowns.get(id);
+      if (c?.brain) c.away = true;
+    }
   }
 
   /** Playing alone: the strongmen fight here, going for you (`me`) if you fight. */
@@ -415,6 +429,10 @@ export class Clowns {
       const k = KINDS[c.kind];
       const dead = now < c.deadUntil;
       const since = CLOWNS.respawnSeconds - (c.deadUntil - now);
+      if (c.away) {
+        c.group.visible = c.hit.visible = false;
+        continue;
+      }
       c.hit.visible = !dead;
       if (c.bar) this.drawBar(c, dead);
       if (c.brain && !dead) {

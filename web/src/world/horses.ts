@@ -226,6 +226,19 @@ export class Horses {
     }
   }
 
+  /**
+   * Horses gone out of this page's sight (ridden into, or left in, a home it may not see into): back on their walks, as a
+   * page that joins then sees them (its welcome leaves them out), until a state of theirs comes again.
+   */
+  outOfSight(ids: number[]): void {
+    for (const i of ids) {
+      const h = this.horses[i];
+      if (!h || i === this.mounted) continue;
+      h.state = { ...h.state, rider: null, parked: false, speed: 0, jump: 0 };
+      h.track.clear();
+    }
+  }
+
   /** Back to their walks (playing alone). */
   reset(): void {
     for (const h of this.horses) h.state = { ...h.state, rider: null, parked: false, speed: 0, jump: 0 };

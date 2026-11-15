@@ -3141,10 +3141,25 @@ net.onMessage = (m: ServerMsg) => {
  * strongmen, each state with its time on the server's clock; they are drawn a little behind it
  * (net/track.ts). The car you drive is yours: its states from the server are left out.
  */
+/** Things gone into a home this page may not see into (the tick's `g`, by list): each taken away, until a state comes. */
+function goneOutOfSight(g: NonNullable<Tick['g']>): void {
+  const ids = <T,>(list: unknown, ok: (v: unknown) => v is T): T[] => (Array.isArray(list) ? list.filter(ok) : []);
+  const num = (v: unknown): v is number => typeof v === 'number';
+  const str = (v: unknown): v is string => typeof v === 'string';
+  for (const id of ids(g.c, str)) {
+    const c = carById(id);
+    if (c && !(driving && c === car)) c.away = true;
+  }
+  horses.outOfSight(ids(g.h, num));
+  bikes.outOfSight(ids(g.k, str));
+  clowns.outOfSight(ids(g.b, num));
+  zombies.outOfSight(ids(g.z, num));
+}
 function onTick(m: Tick): void {
   const self = me?.username ?? '';
   netClock.tick(m.st, performance.now());
   if (m.o) avatars.outOfSight(m.o.filter((n) => typeof n === 'string')); // gone into a home this page may not see into
+  if (m.g) goneOutOfSight(m.g); // the cars, horses, bikes, strongmen and zombies gone in likewise
   avatars.receive((m.p ?? []).map(readPlayer), m.st, self);
   for (const e of m.c ?? []) {
     const s = readCar(e);

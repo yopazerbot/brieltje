@@ -141,7 +141,11 @@ export class Modes {
   }
 
   send() {
-    this.game.broadcast({ t: 'mode', mode: this.view() });
+    const mode = this.view();
+    // Zombies with something lying inside a home: each page its own view (game.mjs lootFor); else one for all, as before.
+    if (!mode.zombies || !this.game.lootInside?.(mode.zombies)) return this.game.broadcast({ t: 'mode', mode });
+    for (const p of this.game.players.values()) this.game.send(p.ws, { t: 'mode', mode: { ...mode, zombies: this.game.lootFor(mode.zombies, p) } });
+    for (const w of this.game.watchers ?? []) this.game.send(w.ws, { t: 'mode', mode });
   }
 
   /**

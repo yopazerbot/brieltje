@@ -101,7 +101,7 @@ export class BikeHits {
       this.knocks.set(bike.id, { at: now, home: home ?? now + this.homeMs });
       recent.push(now);
       g.bikeAt[bike.id] = now;
-      g.broadcast({ t: 'bike', bike, knock: { ms: rest.ms, v: Math.round(rest.v * 10) / 10 } });
+      g.broadcastThing({ t: 'bike', bike, knock: { ms: rest.ms, v: Math.round(rest.v * 10) / 10 } }, 'bike', bike); // inside a home: only to those who may see in (Game.homeOf)
     }
   }
 
@@ -196,7 +196,7 @@ export class BikeHits {
       this.knocks.delete(id);
       Object.assign(bike, { x: park.x, y: park.y, z: park.z, yaw: park.yaw, lie: 0 });
       this.game.bikeAt[id] = now;
-      this.game.broadcast({ t: 'bike', bike, home: true });
+      this.game.broadcastThing({ t: 'bike', bike, home: true }, 'bike', bike);
     }
   }
 
