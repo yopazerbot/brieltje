@@ -53,7 +53,7 @@ from geodata import EXTENT, STRIPS, LAYERS
 
 ROOT = Path(__file__).resolve().parents[1]
 GEO = Path(os.environ.get("BRIELTJE_GEO") or ROOT / "source" / "geo")
-OUT =ROOT / "data" / "neighbours.json"
+OUT = ROOT / "data" / "neighbours.json"
 DEBUG = ROOT / "data" / "debug" / "neighbours.png"
 
 PLOT = "1061/00D000"
