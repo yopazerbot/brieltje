@@ -10,8 +10,15 @@ import { Game } from './game.mjs';
 const ALL = ['pistol', 'rifle', 'shotgun', 'sniper'];
 const sorted = (set) => [...set].sort();
 
+/** Each test's game: its ticks stop when the test ends (a fixture's stand-in pages and Zombies game can't tick). */
+const games = [];
+test.afterEach(() => {
+  for (const g of games.splice(0)) for (const t of g.timers) clearInterval(t);
+});
+
 function setup() {
   const game = new Game({ session: () => null, store: { addStats: async () => {} } }, []);
+  games.push(game);
   const sent = [];
   game.broadcast = () => {};
   game.send = (ws, m) => sent.push({ to: ws.name, ...m });
@@ -140,4 +147,26 @@ test('a page joining is told its guns by the server: all four (in a Zombies game
   };
   assert.deepEqual([...join('anna').list].sort(), [...ALL].sort());
   assert.deepEqual([...game.players.get('anna').weapons].sort(), [...ALL].sort(), 'what it is told is what the server holds');
+});
+
+test('a rocket from anyone but the admin is dropped, with all four guns in hand or in Zombies; the admin\'s flies', () => {
+  const { game, player } = setup();
+  const rockets = [];
+  game.broadcast = (m) => m.t === 'rocket' && rockets.push(m.name);
+  const anna = player('anna');
+  const boss = player('boss', 'admin');
+  const fire = (name, p) => {
+    p.state.w = 'bazooka'; // a page claiming it holds one
+    p.nextRocket = 0;
+    game.handle(name, p, JSON.stringify({ t: 'rocket', tx: 20, ty: 1, tz: 20 }));
+  };
+  fire('anna', anna);
+  assert.deepEqual(rockets, [], 'all four guns, no bazooka: dropped');
+  fire('boss', boss);
+  assert.deepEqual(rockets, ['boss'], 'the admin\'s bazooka: it flies (the check is real)');
+  game.modes.state = { kind: 'zombies', phase: 'playing', z: { stop() {}, blast() {} } };
+  game.pistolsOnly();
+  fire('anna', anna);
+  fire('boss', boss);
+  assert.deepEqual(rockets, ['boss'], 'in Zombies nobody holds one, the admin neither');
 });

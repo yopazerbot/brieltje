@@ -251,6 +251,51 @@ test('an assault rifle: one player takes it, the server counts their hits with i
   assert.deepEqual([...a.weapons], ['pistol']);
 });
 
+test('beaten zombies leave no rifle while every fighter holds one (the server\'s own record); one without, and they do', () => {
+  const { z, a, b } = fixture();
+  let seed = 7;
+  z.loot.rand = () => ((seed = (seed * 1664525 + 1013904223) >>> 0) / 2 ** 32);
+  z.horde.toSpawn = 0;
+  z.horde.bigs = 0;
+  /** Kinds left by `n` zombies, each the wave's last (one always falls). */
+  const kinds = (n) => {
+    const out = Object.create(null);
+    for (let i = 0; i < n; i++) {
+      z.loot.items.clear();
+      z.loot.dropped = false;
+      const id = 1000 + i;
+      z.horde.zombies.set(id, { id, kind: 0, x: 5, y: 0, z: 0, yaw: 0, hp: 0, act: 'down' });
+      z.beat(id, 'a', 'pistol');
+      for (const it of z.loot.items.values()) out[it.kind] = (out[it.kind] ?? 0) + 1;
+      z.horde.zombies.delete(id);
+    }
+    return out;
+  };
+  a.weapons = new Set(['pistol', 'rifle']);
+  b.weapons = new Set(['pistol', 'rifle']);
+  const held = kinds(3000);
+  assert.equal(held.rifle, undefined, 'both hold one: none falls');
+  assert.ok(Math.abs(held.ammo / 3000 - 0.3) < 0.03, `ammo has its old share: ${held.ammo / 3000}`);
+  b.weapons = new Set(['pistol']);
+  const lacking = kinds(3000);
+  assert.ok(lacking.rifle > 3000 * 0.03, `b holds none: rifles fall (${lacking.rifle} of 3000)`);
+});
+
+test('a reconnect during a Zombies game comes back with the pistol only, whatever was found before', () => {
+  const { game, z } = fixture();
+  game.auth = { session: () => null, log: () => {}, addressOf: () => '127.0.0.1' };
+  z.edge = makeBounds([[-40, -40], [40, -40], [40, 40], [-40, 40]]);
+  const ws = () => Object.assign([], { readyState: 1, OPEN: 1, on() {}, close() {} });
+  const session = { username: 'cara', role: 'player', key: 'k-cara' };
+  game.join(ws(), session, { headers: {}, socket: {} });
+  const cara = game.players.get('cara');
+  cara.weapons.add('rifle'); // found during the game
+  const again = ws();
+  game.join(again, session, { headers: {}, socket: {} }); // the same session on a new connection
+  assert.deepEqual([...game.players.get('cara').weapons], ['pistol']);
+  assert.deepEqual(again.filter((m) => m.t === 'weapons').at(-1).list, ['pistol']);
+});
+
 test('the rifle never appears outside Zombies: no item to take, no gift, the guns as they were', () => {
   const { game, z, a, say, gifts } = fixture();
   const it = z.loot.put('rifle', 0, 0, 0, Date.now());

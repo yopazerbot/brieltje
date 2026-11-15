@@ -196,9 +196,11 @@ export class Loot {
    * Zombie `z` was beaten: what it leaves where it fell (a list, often empty). `last`: the wave's last.
    * A big one leaves a bundle of stakes and a turret as well, either side of its reward (all where it
    * stood). `fighters`: who plays now; when every one of them has a scope, no scope falls (it would lie
-   * there for nobody: walking over it did nothing).
+   * there for nobody: walking over it did nothing). `rifled`: every one of them carries a rifle (the caller
+   * knows their guns): then no rifle falls either, and its share goes back to the ammo pack, so the other
+   * kinds keep theirs.
    */
-  drop(z, now, last = false, fighters = []) {
+  drop(z, now, last = false, fighters = [], rifled = false) {
     const out = [];
     // `side` m to its right, `ahead` m in front of it (a zombie walks along sin, cos of its yaw).
     const leave = (kind, side, ahead = 0) => {
@@ -214,7 +216,10 @@ export class Loot {
     const p = big ? LOOT.bigChance : z.kind === RUNNER ? LOOT.runnerChance : LOOT.chance;
     if (!(this.rand() < p) && !(last && !this.dropped)) return out;
     const scoped = fighters.length > 0 && fighters.every((n) => this.kits.get(n)?.scope);
-    const weights = LOOT.weights.filter(([k]) => !(k === 'scope' && scoped));
+    const rifle = LOOT.weights.find(([k]) => k === 'rifle')?.[1] ?? 0;
+    const weights = LOOT.weights
+      .filter(([k]) => !(k === 'scope' && scoped) && !(k === 'rifle' && rifled))
+      .map(([k, w]) => [k, k === 'ammo' && rifled ? w + rifle : w]);
     let r = this.rand() * weights.reduce((sum, [, w]) => sum + w, 0);
     let kind = weights[0][0];
     for (const [k, w] of weights) {

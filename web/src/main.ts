@@ -1889,7 +1889,7 @@ function zombieResult(id: number, res: 'down' | 'hurt' | null, w: string, head =
   zombies.beaten(id, { x: player.x, z: player.z, w });
   // Maybe a reward where it fell (the wave's last leaves one when none fell yet).
   const z = solo?.horde.zombies.get(id);
-  if (solo && z) solo.loot.drop(z, performance.now(), solo.horde.left === 0, [SOLO_ME]);
+  if (solo && z) solo.loot.drop(z, performance.now(), solo.horde.left === 0, [SOLO_ME], weapon.owned.has('rifle')); // no rifle falls while you carry one
   if (solo && z) {
     solo.stall.earn(SOLO_ME, z.kind); // its coins (ui/stall.ts)
     stallChip.set(solo.stall.view(SOLO_ME));

@@ -132,6 +132,35 @@ test('an assault rifle: out of ammo\'s share, about one drop in seventeen, over 
   assert.ok(Math.abs(rifles / fell - 0.06) < 0.01, `the rifle: ${rifles} of ${fell}`);
 });
 
+test('no rifle falls while every fighter carries one: its share is the ammo pack\'s again; one fighter without, and it falls', () => {
+  const sum = LOOT.weights.reduce((s, [, w]) => s + w, 0);
+  assert.ok(Math.abs(sum - 1) < 1e-9, `the weights sum to ${sum}`);
+  const weight = (k) => LOOT.weights.find(([kind]) => kind === k)[1];
+  /** The share of each kind over many seeds, the wave's last zombie each time (one always falls). */
+  const shares = (rifled) => {
+    const count = Object.create(null);
+    let n = 0;
+    for (let seed = 1; seed <= 20; seed++) {
+      const loot = new Loot(nav, seeded(seed));
+      for (let i = 0; i < 2000; i++) {
+        loot.items.clear();
+        loot.dropped = false;
+        const [it] = loot.drop({ x: 0, y: 0, z: 0, yaw: 0, kind: 0 }, 0, true, ['a', 'b'], rifled);
+        count[it.kind] = (count[it.kind] ?? 0) + 1;
+        n++;
+      }
+    }
+    return Object.fromEntries(Object.entries(count).map(([k, c]) => [k, c / n]));
+  };
+  const all = shares(true);
+  assert.equal(all.rifle, undefined, 'every fighter carries a rifle: none falls');
+  assert.ok(Math.abs(all.ammo - (weight('ammo') + weight('rifle'))) < 0.01, `ammo ${all.ammo}: its old share (0.30) back`);
+  for (const k of ['claymore', 'nades', 'medkit', 'scope', 'armor', 'lull', 'gun']) assert.ok(Math.abs(all[k] - weight(k)) < 0.01, `${k} keeps its share: ${all[k]}`);
+  const some = shares(false);
+  assert.ok(Math.abs(some.rifle - weight('rifle')) < 0.01, `one fighter without: the rifle falls, ${some.rifle}`);
+  assert.ok(Math.abs(some.ammo - weight('ammo')) < 0.01);
+});
+
 test('an assault rifle: yours when you carry none; refused while you carry one, or when nothing is said, and it stays', () => {
   const loot = new Loot(nav, seeded());
   const r = loot.put('rifle', 0, 0, 0, 0);

@@ -658,7 +658,9 @@ export class ZombieGame {
       this.tell(by);
     }
     const fighters = [...this.game.players].filter(([, p]) => p.state?.armed).map(([n]) => n);
-    if (z) this.loot.drop(z, Date.now(), this.horde.left === 0, fighters);
+    // Every fighter carries a rifle (the server's own record of their guns): no rifle falls for nobody.
+    const rifled = fighters.length > 0 && fighters.every((n) => this.game.players.get(n)?.weapons?.has('rifle'));
+    if (z) this.loot.drop(z, Date.now(), this.horde.left === 0, fighters, rifled);
     this.modes.send();
   }
 

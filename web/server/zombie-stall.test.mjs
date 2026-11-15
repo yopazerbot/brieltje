@@ -512,3 +512,19 @@ test('13. two games at once: the open world\'s at the house and a room\'s at the
     }
   }
 });
+
+test('14. the assault rifle is no stall ware: a zbuy naming it is refused, costs nothing and gives no gun; the crate sells', () => {
+  const f = fixture();
+  const { z, a, say } = f;
+  z.stall.coins.set('a', 5000);
+  const before = snap(f, 'a');
+  for (const k of ['rifle', 'Rifle', 'assault rifle']) {
+    say('a', { t: 'zbuy', k });
+    assert.equal(snap(f, 'a'), before, `k ${k}`);
+  }
+  assert.equal(a.weapons.has('rifle'), false);
+  assert.equal(f.of(a, 'zgift').length, 0);
+  say('a', { t: 'zbuy', k: 'gun' }); // the stall itself is open: its own gun sells
+  assert.equal(f.of(a, 'zgift').length, 1);
+  assert.ok(z.stall.of('a') < 5000);
+});
