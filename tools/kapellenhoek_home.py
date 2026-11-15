@@ -424,7 +424,7 @@ class Home:
                 x += .15
             p = leaf(s0 + fw, s1 - fw, d - .025, False)
             p["handle"] = False
-            p["lift"] = 2.05  # it opens upwards, into the wall over the opening (doors.ts lift): room to walk under it
+            p["lift"] = 2.05  # it rolls up into its head (doors.ts lift): room to walk under it, nothing above the roof
             self.doors.append({"id": o.door[0], "name": o.door[1], "level": "gf", "y0": round(y0, 3), "y1": round(y1 - fw, 3), "panels": [p]})
         elif o.kind == "slide":
             frame(s0, s1, y0 - fw, y1, d0=r - .14)

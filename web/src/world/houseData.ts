@@ -57,7 +57,7 @@ export interface DoorPanel {
   glassNo?: number;
   /** How far the panel moves when the door is fully open (x, z); none for a fixed panel */
   slide?: [number, number];
-  /** How far the panel rises when the door is fully open (m): a door that opens upwards (a garage door) */
+  /** How much of the panel rolls up into its head when the door is fully open (m): a roller door (a garage door); its top stays put */
   lift?: number;
   /** Swinging leaf: hinged at a, turns this many radians when fully open (sign: which side) */
   swing?: number;

@@ -22,7 +22,7 @@ interface Panel {
   slide: THREE.Vector2;
   /** Swinging leaf: radians when fully open, hinged at a (0: not swinging) */
   swing: number;
-  /** Rising leaf: metres up when fully open (0: not rising) */
+  /** Rolling leaf: metres of it rolled up into its head when fully open (0: not rolling); its top stays put */
   lift: number;
   width: number;
   key: string;
@@ -246,8 +246,10 @@ export class Doors {
       const n = normal.clone().multiplyScalar(p.offset);
       const a = p.a.clone().add(n).add(shift);
       const b = a.clone().addScaledVector(dir, p.width);
-      const up = p.lift * t; // a door that opens upwards
+      // A door that rolls up (a garage door): its bottom rises, its top stays in its head (never above the roof).
+      const up = p.lift * t;
       p.mesh.position.set(a.x, door.spec.y0 + up, a.y);
+      if (p.lift) p.mesh.scale.y = 1 - up / (door.spec.y1 - door.spec.y0);
       p.mesh.rotation.y = -Math.atan2(dir.y, dir.x);
       // Collision outline of the panel where it is now (none once its glass is gone).
       if (p.broken) {
@@ -257,7 +259,7 @@ export class Doors {
       const h = normal.clone().multiplyScalar(p.thickness / 2);
       this.world.setMoving(p.key, [
         [a.x - h.x, a.y - h.y], [b.x - h.x, b.y - h.y], [b.x + h.x, b.y + h.y], [a.x + h.x, a.y + h.y],
-      ], door.spec.y0 + up, door.spec.y1 + up);
+      ], door.spec.y0 + up, p.lift ? door.spec.y1 : door.spec.y1 + up);
     }
   }
 
