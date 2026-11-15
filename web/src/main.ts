@@ -383,6 +383,22 @@ async function getEverythingReady(at: Portal | null, zombiesStart: boolean): Pro
         if (behind) dropView.update(5, camera, player, parachutes.has('', ownFigure));
       }));
     }
+    // Under the open canopy where the drop comes down (hands off it glides about 1.2 m for each metre it sinks) and 40 m
+    // over the helicopter's pad (a jump from it), from behind and looking ahead and down as the canopy's view does: your
+    // figure and the ground round there in the sun's shadow map, whose programs a drop or a jump otherwise builds in play.
+    // Only the views that build one (measured): 19 m up on Medium and over (the figure enters the map from about 27 m),
+    // 6 m on Low (from 9 m: its map is smaller); the pad on Medium and Low.
+    const pad = helis.machines[0]?.park;
+    const under: [number, number, number, number][] = [quality === 'low' ? 6 : 19].map((up) => [x + Math.sin(yaw) * up * 1.2, z + Math.cos(yaw) * up * 1.2, up, yaw]);
+    if (pad && quality !== 'high' && quality !== 'ultra') under.push([pad.x, pad.z, 40, pad.yaw]);
+    for (const [ux, uz, up, uyaw] of under) {
+      views.push(ours(() => {
+        player.place(ux, uz, groundY(ux, uz) + up, uyaw, -0.32);
+        Object.assign(player, { chute: 8, canopy: 4 });
+        player.update(0, NO_INPUT, camera);
+        dropView.update(5, camera, player, parachutes.has('', ownFigure));
+      }));
+    }
   }
   goals.warming(true); // the routes' rings and the golden gnome drawn once too (world/goals.ts)
   carPeople.warming(true); // and your figure seated, with the lighter glass (world/carPeople.ts)
