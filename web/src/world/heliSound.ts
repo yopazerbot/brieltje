@@ -1,25 +1,24 @@
 import { sound } from '../sound';
 
 /**
- * The helicopter's sound, all made in code (nothing to download), from where the machine is (world/heli.ts):
+ * The helicopter's sound, made in code (nothing to download), from where the machine is (world/heli.ts). Simple and
+ * subtle (Yoshi: "Ook simpel maar goed subtiel geluid tijdens vliegen heli"): it sits under the game, never over it.
+ * Three layers, each following the rotor's speed, so the run-up and the run-down are the same sound rising and falling:
  *
- * - the blade slap: short bursts of low noise at the blade-pass rate, four blades at 395 rpm (26 a second at full
- *   speed, slower as the rotor runs up or down), louder with the lever and in a descent, and a little louder from the
- *   side the blades come towards you (the machine's right);
- * - the rotor's low rumble under it;
- * - the two turbines: thin notes near 3.2 and 5.1 kHz times the rotor's speed, quiet, and a rising whoosh at the start;
- * - the shrouded tail rotor: three detuned notes round 590 Hz, a soft chord rather than a siren;
- * - the wind over the cabin with the speed through the air;
- * - one-shots: a thump on a touchdown or a bump against something, a clang for a bump, a rattle for a rotor strike.
+ * - the rotor's pulse: low noise opened softly once per blade pass (four blades at 395 rpm: 26 a second at full speed),
+ *   a rounded swell rather than a slap, with a little more body as the lever comes up (climbing, pulling up);
+ * - the bed: the turbines and the air through the rotor, a quiet steady rush, low-passed under 1.2 kHz;
+ * - the air over the cabin, a little more of it the faster it flies.
  *
- * Through the world's sounds (sound.at): silent before play begins and muffled while you are indoors, as every other
- * sound from out of doors. The loop starts when the rotor first turns and stops when it has run down, so nothing is
- * left playing after you get out. The same graph plays into an OfflineAudioContext for checks without ears (the dev
- * build's brielHeliSound.render, tools/dev/heli.mjs).
+ * All through one lowpass: open from behind, more closed from the pilot's seat (a touch muffled inside). Every level
+ * and pitch eases to its new value, so nothing steps or clicks when you press or let go, start, stop or get out.
+ * Through the world's sounds (sound.at): silent before play begins, muffled indoors, the game's volume and mute. It
+ * stops once the rotor has run down. Another player's machine (later) is the same class at its own place: the panner's
+ * distance makes it quieter with range, nothing else needed. Bumps keep their one-shots (a thump, a dull clang).
  */
 
 let noise: AudioBuffer | null = null;
-/** Two seconds of white noise, made once per sample rate (seeded, so an offline render is the same each time). */
+/** Two seconds of white noise, made once per sample rate (seeded: an offline render is the same each time). */
 function noiseBuffer(c: BaseAudioContext): AudioBuffer {
   if (noise?.sampleRate === c.sampleRate) return noise;
   noise = c.createBuffer(1, c.sampleRate * 2, c.sampleRate);
@@ -35,6 +34,13 @@ function noiseBuffer(c: BaseAudioContext): AudioBuffer {
 /** The blade-pass rate at full rotor speed: four blades at 395 rpm (Hz). */
 export const BLADE_HZ = (4 * 395) / 60;
 
+/**
+ * The three numbers to make it louder or softer (at the reference distance, before the game's volume): the pulse at a
+ * hover, the bed at full rotor speed, and the air at top speed. Together they peak near 0.09, half the first version's,
+ * with an RMS under the music's at its default.
+ */
+export const LEVELS = { pulse: 0.18, bed: 0.06, air: 0.07 };
+
 /** What the machine is doing this frame, for its sound. */
 export interface HeliNoise {
   x: number;
@@ -48,33 +54,23 @@ export interface HeliNoise {
   sink: number;
   /** m/s through the air */
   air: number;
-  /** -1 to 1: from the advancing side (the machine's right, 1) or the retreating side (-1), as the listener sees it */
-  side: number;
-  /** 0 to 1: just started (the whoosh) */
-  start: number;
+  /** heard from the pilot's seat (a touch muffled) rather than from behind */
+  inside: boolean;
 }
 
 interface Loop {
-  at: AudioNode;
+  out: AudioNode;
   pos: PannerNode | null;
   sources: AudioScheduledSourceNode[];
-  pulse: OscillatorNode;
-  slap: GainNode;
-  slapDepth: GainNode;
-  rumble: GainNode;
-  turbine: OscillatorNode;
-  turbine2: OscillatorNode;
-  turbineGain: GainNode;
-  tails: OscillatorNode[];
-  tailGain: GainNode;
-  windBand: BiquadFilterNode;
-  wind: GainNode;
-  whoosh: GainNode;
-  whooshBand: BiquadFilterNode;
+  lfo: OscillatorNode;
+  pulse: GainNode;
+  pulseDepth: GainNode;
+  pulseTone: BiquadFilterNode;
+  bed: GainNode;
+  air: GainNode;
+  airBand: BiquadFilterNode;
+  muffle: BiquadFilterNode;
 }
-
-/** The loudest the loop gets at its reference distance (the blade slap at a full lever in a descent): kept under the car's thump. */
-export const LOOP_MAX = 0.35;
 
 /** The loop's nodes into `out` on any audio context (live: a spot in the world; offline: the destination). */
 function buildLoop(c: BaseAudioContext, out: AudioNode): Loop {
@@ -86,86 +82,60 @@ function buildLoop(c: BaseAudioContext, out: AudioNode): Loop {
     g.gain.value = v;
     return g;
   };
-  const filter = (type: BiquadFilterType, f: number, q = 1) => {
+  const filter = (type: BiquadFilterType, f: number, q = 0.7) => {
     const b = c.createBiquadFilter();
     b.type = type;
     b.frequency.value = f;
     b.Q.value = q;
     return b;
   };
-  const osc = (type: OscillatorType, f: number) => {
-    const o = c.createOscillator();
-    o.type = type;
-    o.frequency.value = f;
-    return o;
-  };
-  // The slap: low noise through a gain opened once per blade pass by a sharp pulse (a sawtooth shaped to a spike).
-  const slap = gain(0);
-  const slapDepth = gain(0);
-  const pulse = osc('sawtooth', BLADE_HZ);
+  // Everything through one lowpass: open from behind, closed a little from the cockpit; nothing above 3 kHz anyway.
+  const muffle = filter('lowpass', 1600, 0.5);
+  muffle.connect(filter('lowpass', 1600, 0.5)).connect(out); // two in a row: steep above it
+  // The pulse: low noise through a gain that a sine at the blade-pass rate swells and eases, squared (a rounded swell,
+  // no edge to click on). Its gain is 0 + depth x (0..1).
+  const pulse = gain(0);
+  const pulseDepth = gain(0);
+  const lfo = c.createOscillator();
+  lfo.frequency.value = BLADE_HZ;
   const shape = c.createWaveShaper();
   const curve = new Float32Array(256);
-  for (let i = 0; i < curve.length; i++) curve[i] = (i / (curve.length - 1)) ** 4; // -1..1 in: a burst over the top sixth of each ramp
+  for (let i = 0; i < curve.length; i++) curve[i] = (i / (curve.length - 1)) ** 2; // the sine's -1..1 as 0..1, squared
   shape.curve = curve;
-  pulse.connect(shape).connect(slapDepth).connect(slap.gain);
-  src.connect(filter('lowpass', 420, 0.9)).connect(filter('peaking', 110, 1.2)).connect(slap).connect(out);
-  // The rumble under it.
-  const rumble = gain(0);
-  src.connect(filter('lowpass', 140, 0.7)).connect(rumble).connect(out);
-  // The turbines.
-  const turbineGain = gain(0);
-  const turbine = osc('sine', 3200);
-  const turbine2 = osc('sine', 5100);
-  const tb = filter('bandpass', 4000, 0.7);
-  turbine.connect(tb);
-  turbine2.connect(gain(0.6)).connect(tb);
-  tb.connect(turbineGain).connect(out);
-  // The tail rotor: three notes a little apart.
-  const tailGain = gain(0);
-  const tails = [0.988, 1, 1.013].map((k) => {
-    const o = osc('triangle', 590 * k);
-    o.connect(tailGain);
-    return o;
-  });
-  tailGain.connect(filter('lowpass', 1400, 0.6)).connect(out);
-  // The wind and the start's whoosh.
-  const windBand = filter('bandpass', 700, 0.6);
-  const wind = gain(0);
-  src.connect(windBand).connect(wind).connect(out);
-  const whooshBand = filter('bandpass', 900, 1.4);
-  const whoosh = gain(0);
-  src.connect(whooshBand).connect(whoosh).connect(out);
-  const sources = [src, pulse, turbine, turbine2, ...tails];
+  lfo.connect(shape).connect(pulseDepth).connect(pulse.gain);
+  const pulseTone = filter('lowpass', 220, 0.8);
+  src.connect(pulseTone).connect(pulse).connect(muffle);
+  // The bed: the turbines and the rotor's air, a steady rush under 1.2 kHz.
+  const bed = gain(0);
+  src.connect(filter('lowpass', 1200, 0.5)).connect(filter('highpass', 90, 0.5)).connect(bed).connect(muffle);
+  // The air over the cabin with the speed.
+  const airBand = filter('bandpass', 600, 0.6);
+  const air = gain(0);
+  src.connect(airBand).connect(air).connect(muffle);
+  const sources = [src, lfo];
   for (const s of sources) s.start();
-  return { at: out, pos: null, sources, pulse, slap, slapDepth, rumble, turbine, turbine2, turbineGain, tails, tailGain, windBand, wind, whoosh, whooshBand };
+  return { out, pos: null, sources, lfo, pulse, pulseDepth, pulseTone, bed, air, airBand, muffle };
 }
 
-/** The loop's levels for what the machine does, from time `t` (each eases in over a short moment). */
+/** The loop's levels for what the machine does, from time `t`; every one eases in (no steps, no clicks). */
 function setLoop(a: Loop, n: HeliNoise, t: number): void {
-  const r = Math.max(0, Math.min(1.05, n.rotor));
-  const on = r > 0.02 ? 1 : 0;
-  a.pulse.frequency.setTargetAtTime(Math.max(0.5, BLADE_HZ * r), t, 0.05);
-  // Louder with the lever and in a descent (the blades cut through their own wake), and from the advancing side.
-  const load = 0.35 + 0.45 * Math.min(1, n.coll) + 0.2 * Math.min(1, Math.max(0, n.sink) / 6);
-  const side = 1 + 0.18 * Math.max(-1, Math.min(1, n.side));
-  const slap = 0.55 * r * r * load * side;
-  a.slapDepth.gain.setTargetAtTime(slap * on, t, 0.08);
-  a.rumble.gain.setTargetAtTime(0.025 * r * r * on, t, 0.1);
-  a.turbine.frequency.setTargetAtTime(3200 * Math.max(0.2, r), t, 0.1);
-  a.turbine2.frequency.setTargetAtTime(5100 * Math.max(0.2, r), t, 0.1);
-  a.turbineGain.gain.setTargetAtTime(0.004 * Math.min(1, r * 1.5) * on, t, 0.2);
-  a.tails.forEach((o, i) => o.frequency.setTargetAtTime(590 * [0.988, 1, 1.013][i] * Math.max(0.1, r), t, 0.08));
-  a.tailGain.gain.setTargetAtTime(0.005 * r * on, t, 0.15);
+  const r = Math.max(0, Math.min(1, n.rotor));
+  const lever = Math.max(0, Math.min(1, n.coll));
+  a.lfo.frequency.setTargetAtTime(Math.max(0.5, BLADE_HZ * r), t, 0.15);
+  // The pulse: from nothing at rest to its level at speed; a little more body with the lever up and in a descent.
+  const body = 0.75 + 0.45 * lever + 0.15 * Math.min(1, Math.max(0, n.sink) / 6);
+  a.pulseDepth.gain.setTargetAtTime(LEVELS.pulse * r * r * body, t, 0.25);
+  a.pulseTone.frequency.setTargetAtTime(160 + 120 * lever, t, 0.3);
+  a.bed.gain.setTargetAtTime(LEVELS.bed * r * r * (0.85 + 0.3 * lever), t, 0.3);
   const v = Math.max(0, n.air);
-  a.windBand.frequency.setTargetAtTime(500 + v * 16, t, 0.2);
-  a.wind.gain.setTargetAtTime(0.06 * Math.min(1, (v / 50) ** 2), t, 0.2);
-  a.whooshBand.frequency.setTargetAtTime(500 + 2500 * r, t, 0.2);
-  a.whoosh.gain.setTargetAtTime(0.03 * Math.max(0, Math.min(1, n.start)), t, 0.2);
+  a.airBand.frequency.setTargetAtTime(450 + v * 10, t, 0.4);
+  a.air.gain.setTargetAtTime(LEVELS.air * Math.min(1, (v / 47) ** 2), t, 0.4);
+  a.muffle.frequency.setTargetAtTime(n.inside ? 700 : 1600, t, 0.2);
 }
 
 function stopLoop(a: Loop): void {
   for (const s of a.sources) s.stop();
-  a.at.disconnect();
+  a.out.disconnect();
 }
 
 export class HeliSound {
@@ -179,7 +149,7 @@ export class HeliSound {
   update(n: HeliNoise): void {
     if (!this.loop && n.rotor < 0.02) return;
     if (this.loop && n.rotor < 0.005) {
-      stopLoop(this.loop); // run down: quiet, and nothing left playing
+      stopLoop(this.loop); // run down: its levels are at nothing already, so the stop doesn't click
       this.loop = null;
       return;
     }
@@ -206,7 +176,7 @@ export class HeliSound {
     if (c && at && strength > 0) oneShot(c, at, 'thump', strength, c.currentTime);
   }
 
-  /** A bump's clang. */
+  /** A bump's clang (dull, under 3 kHz). */
   clang(x: number, y: number, z: number): void {
     const c = sound.context();
     const at = sound.at(x, y + 1, z, 4);
@@ -235,7 +205,7 @@ function oneShot(c: BaseAudioContext, out: AudioNode, kind: 'thump' | 'clang' | 
     o.frequency.exponentialRampToValueAtTime(36, t + 0.2);
     const g = c.createGain();
     g.gain.setValueAtTime(0.0001, t);
-    g.gain.exponentialRampToValueAtTime(0.04 + 0.3 * loud, t + 0.012);
+    g.gain.exponentialRampToValueAtTime(0.03 + 0.2 * loud, t + 0.012);
     g.gain.exponentialRampToValueAtTime(0.0001, t + 0.32);
     o.connect(g).connect(out);
     o.start(t);
@@ -243,31 +213,33 @@ function oneShot(c: BaseAudioContext, out: AudioNode, kind: 'thump' | 'clang' | 
     return;
   }
   if (kind === 'clang') {
-    // Struck metal: a few notes that don't fit a scale, ringing out.
-    for (const [f, v, d] of [[523, 0.07, 0.9], [1347, 0.05, 0.6], [2290, 0.03, 0.4], [3110, 0.02, 0.3]]) {
+    // Struck metal, dull: a few notes that don't fit a scale, ringing out, all under 3 kHz.
+    for (const [f, v, d] of [[523, 0.05, 0.8], [1347, 0.03, 0.5], [2290, 0.015, 0.3]]) {
       const o = c.createOscillator();
       o.frequency.value = f;
       const g = c.createGain();
-      g.gain.setValueAtTime(v, t);
+      g.gain.setValueAtTime(0.0001, t);
+      g.gain.exponentialRampToValueAtTime(v, t + 0.005);
       g.gain.exponentialRampToValueAtTime(0.0001, t + d);
       o.connect(g).connect(out);
       o.start(t);
       o.stop(t + d + 0.02);
     }
   }
-  // The rattle (and the clang's knock): short bursts of bright noise.
+  // The rattle (and the clang's knock): short bursts of noise, each rising and falling (no clicks).
   const src = c.createBufferSource();
   src.buffer = noiseBuffer(c);
   const band = c.createBiquadFilter();
   band.type = 'bandpass';
-  band.frequency.value = kind === 'rattle' ? 2400 : 900;
+  band.frequency.value = kind === 'rattle' ? 1800 : 800;
   band.Q.value = 1.2;
   const g = c.createGain();
   g.gain.setValueAtTime(0, t);
   const n = kind === 'rattle' ? 6 : 1;
   for (let i = 0; i < n; i++) {
-    g.gain.setValueAtTime(kind === 'rattle' ? 0.08 : 0.12, t + i * 0.045);
-    g.gain.setTargetAtTime(0, t + i * 0.045 + 0.005, 0.012);
+    const at = t + i * 0.045;
+    g.gain.setTargetAtTime(kind === 'rattle' ? 0.05 : 0.07, at, 0.003);
+    g.gain.setTargetAtTime(0, at + 0.012, 0.01);
   }
   src.connect(band).connect(g).connect(out);
   src.start(t);
@@ -276,12 +248,22 @@ function oneShot(c: BaseAudioContext, out: AudioNode, kind: 'thump' | 'clang' | 
 
 /**
  * Dev build, for checks without ears: the loop rendered offline for `seconds` while `script(t)` says what the machine
- * does (default: a start-up, a hover, a climb, a dash, a descent and a shut-down), with a touchdown thump and a clang.
+ * does (default: a run-up, a hover, a climb, top speed, a descent and a run-down). With `above`, only what lies above
+ * that many hertz (four highpasses in a row after it: 48 dB an octave), to measure what is left up there.
  */
-export async function render(seconds = 30, rate = 48000, script?: (t: number) => HeliNoise): Promise<{ buffer: AudioBuffer; rotor: Float32Array }> {
+export async function render(seconds = 30, rate = 48000, script?: (t: number) => HeliNoise, above = 0): Promise<{ buffer: AudioBuffer; rotor: Float32Array }> {
   const c = new OfflineAudioContext(1, Math.ceil(seconds * rate), rate);
-  const out = c.createGain();
-  out.connect(c.destination);
+  let out: AudioNode = c.destination;
+  if (above > 0) {
+    for (let i = 0; i < 4; i++) {
+      const h = c.createBiquadFilter();
+      h.type = 'highpass';
+      h.frequency.value = above;
+      h.Q.value = 0.7;
+      h.connect(out);
+      out = h;
+    }
+  }
   const loop = buildLoop(c, out);
   const plan = script ?? defaultScript;
   const step = 0.05;
@@ -291,18 +273,15 @@ export async function render(seconds = 30, rate = 48000, script?: (t: number) =>
     rotor[i] = n.rotor;
     setLoop(loop, n, i * step);
   }
-  oneShot(c, out, 'thump', 2, seconds * 0.5);
-  oneShot(c, out, 'clang', 1, seconds * 0.55);
-  oneShot(c, out, 'rattle', 1, seconds * 0.6);
   for (const s of loop.sources) s.stop(seconds);
   return { buffer: await c.startRendering(), rotor };
 }
 
-/** The default script: up from still over 6 s, a hover, a climb, a dash, a descent, a shut-down over 8 s. */
+/** The default script: up from still over 6 s, a hover, a climb, top speed, a descent, a run-down over 8 s. */
 function defaultScript(t: number): HeliNoise {
   const rotor = t < 6 ? t / 6 : t < 22 ? 1 : Math.max(0, 1 - (t - 22) / 8);
-  const coll = t < 6 ? 0 : t < 10 ? 0.55 : t < 13 ? 0.9 : t < 17 ? 0.6 : t < 21 ? 0.3 : 0;
-  return { x: 0, y: 0, z: 0, rotor, coll, sink: t > 17 && t < 21 ? 6 : 0, air: t > 13 && t < 17 ? 45 : 0, side: Math.sin(t), start: t < 6 ? 1 - t / 6 : 0 };
+  const coll = t < 6 ? 0 : t < 10 ? 0.55 : t < 13 ? 0.9 : t < 17 ? 0.7 : t < 21 ? 0.3 : 0;
+  return { x: 0, y: 0, z: 0, rotor, coll, sink: t > 17 && t < 21 ? 6 : 0, air: t > 13 && t < 17 ? 47 : 0, inside: false };
 }
 
-if (import.meta.env.DEV) Object.assign(window, { brielHeliSound: { render, BLADE_HZ, LOOP_MAX } });
+if (import.meta.env.DEV) Object.assign(window, { brielHeliSound: { render, BLADE_HZ, LEVELS } });
