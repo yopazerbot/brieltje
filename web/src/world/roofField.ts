@@ -7,7 +7,9 @@
  * Each triangle that faces up (slopes up to about 78 degrees) is kept with its plane: a question takes the highest
  * triangle over the point, exact on every slope, ridge, valley and step between two roofs (a grid of heights would round
  * those off). Under that surface it is solid down to `under` (the eaves: the walls' blocks take over below them), and
- * under an overhang a slab of SLAB metres, so walking under the eaves, a porch or a car port stays free.
+ * elsewhere a slab of SLAB metres. A slab is open: a floor from above, but it never stops a walker from the side (an
+ * overhang, an open shelter, a canopy, a porch roof: you walk under it and your head passes, as when roofs were drawn
+ * only); only a roof with a building under it stops you.
  *
  * The triangles of each batch (a roof, a model's mesh) are kept in groups of GROUP metres, each with its box, and the
  * groups are found through squares of CELL metres: a question looks at a few boxes and a few triangles.
@@ -38,6 +40,35 @@ export function facesUp(x0: number, y0: number, z0: number, x1: number, y1: numb
   return Math.abs(det) > 1e-6 && (both || det < 0) && Math.abs(det) >= UP * Math.hypot(ay * bz - az * by, det, ax * by - ay * bx);
 }
 
+/** Degrees: a roof is walked up at full pace up to CLIMB_EASY, slower and slower up to CLIMB_MAX, not at all steeper. */
+export const CLIMB_EASY = 35;
+export const CLIMB_MAX = 60;
+
+/**
+ * What part of a step up a roof is taken, by the rise per metre of the step (`rise`: the slope along the way walked):
+ * 1 up to CLIMB_EASY, falling to 0 at CLIMB_MAX. Down and along (rise 0 or less) always 1.
+ */
+export function climb(rise: number): number {
+  if (!(rise > 0)) return 1;
+  const a = (Math.atan(rise) * 180) / Math.PI;
+  return a <= CLIMB_EASY ? 1 : a >= CLIMB_MAX - 1e-6 ? 0 : (CLIMB_MAX - a) / (CLIMB_MAX - CLIMB_EASY);
+}
+
+/** A box round points on the plan (x, z), `margin` metres more each way: [min x, min z, max x, max z]. */
+export function boxAround(points: readonly (readonly [number, number])[], margin: number): [number, number, number, number] {
+  let x0 = Infinity, z0 = Infinity, x1 = -Infinity, z1 = -Infinity;
+  for (const [x, z] of points) {
+    x0 = Math.min(x0, x);
+    z0 = Math.min(z0, z);
+    x1 = Math.max(x1, x);
+    z1 = Math.max(z1, z);
+  }
+  return [x0 - margin, z0 - margin, x1 + margin, z1 + margin];
+}
+
+/** Whether (x, z) lies in one of the boxes. */
+export const inBoxes = (boxes: readonly (readonly number[])[], x: number, z: number): boolean => boxes.some((b) => x >= b[0] && z >= b[1] && x <= b[2] && z <= b[3]);
+
 const cellOf = (v: number) => Math.floor(v / CELL);
 const keyOf = (i: number, j: number) => (i + 32768) * 65536 + (j + 32768);
 
@@ -58,9 +89,13 @@ export class RoofField {
   private range = new Int32Array(2 * 1024);
   private groups = 0;
   private cells = new Map<number, number[]>();
-  /** After a `sample` that found a roof: the drawn surface there, the bottom of what is solid under it, its slope. */
+  /**
+   * After a `sample` that found a roof: the drawn surface there, the bottom of what is solid under it, whether that is
+   * only an open slab (no building under it), its slope (rise per metre along x and z).
+   */
   top = 0;
   bottom = 0;
+  open = false;
   gx = 0;
   gz = 0;
 
@@ -200,7 +235,11 @@ export class RoofField {
     }
     if (at < 0 || best < low) return false;
     this.top = best;
-    this.bottom = Math.min(best - SLAB, t[at + 9]);
+    const bottom = Math.min(best - SLAB, t[at + 9]);
+    this.open = bottom >= best - SLAB - 1e-4;
+    // Never down past `low` (a metre over the ground, as the world asks): the walls' blocks stand there, and nothing on
+    // the ground is ever inside a roof (a triangle over buildings on a slope reaches the lowest one's top).
+    this.bottom = Math.max(bottom, Math.min(low, best - SLAB));
     this.gx = t[at + 7];
     this.gz = t[at + 8];
     return true;
@@ -216,13 +255,18 @@ export class RoofField {
     return this.top <= feet + stepUp || feet >= this.bottom ? this.top : null;
   }
 
+  /** The slope of the roof at (x, z) in degrees (0 flat), or null where none is drawn (at `low` or higher). */
+  slope(x: number, z: number, low = -Infinity): number | null {
+    return this.sample(x, z, low) ? (Math.atan(Math.hypot(this.gx, this.gz)) * 180) / Math.PI : null;
+  }
+
   /**
-   * Whether a roof stops a body (feet to feet + height) walking to (x, z): its surface more than a step over the feet,
-   * and what is solid under it reaching down into the body's height. (A body already inside, put there, is let out:
+   * Whether a roof stops a body (feet to feet + height) walking to (x, z): a building's roof (not an open slab) with its
+   * surface more than a step over the feet, and what is solid under it reaching down into the body's height. (A body already inside, put there, is let out:
    * the player walks freely from such a spot, and `floor` lifts feet inside it onto the roof.)
    */
   blocks(x: number, z: number, feet: number, stepUp: number, height: number, low = -Infinity): boolean {
     if (!this.sample(x, z, low)) return false;
-    return this.top > feet + stepUp && this.bottom < feet + height;
+    return !this.open && this.top > feet + stepUp && this.bottom < feet + height;
   }
 }
