@@ -25,7 +25,7 @@ const call = async (method, path, body, cookie = '') => {
 const login = await call('POST', '/api/login', { username: 'admin', password });
 const cookie = login.r.headers.getSetCookie().map((c) => c.split(';')[0]).join('; ');
 const codes = {};
-for (const id of ['house', 'bungalow', 'molenhoek_end']) codes[id] = (await call('POST', `/api/admin/homes/${id}/code`, {}, cookie)).data.code;
+for (const id of ['house', 'bungalow', 'molenhoek_end', 'kapellenhoek_home']) codes[id] = (await call('POST', `/api/admin/homes/${id}/code`, {}, cookie)).data.code;
 
 const b = await launch({ port: Number(o.port) });
 const ok = (name, pass, extra = '') => console.log(`${pass ? 'ok  ' : 'FAIL'} ${name} ${extra}`);
@@ -56,7 +56,7 @@ try {
     ok('the page logged in as the admin', login2 === 200, String(login2));
     await b.evaluate('briel.homeLocks.setAdmin(true)', false);
     await b.sleep(4000);
-    ok('the admin has all three insides', (await ev('briel.insides.packs.size')) === 3, String(await ev('briel.insides.packs.size')));
+    ok('the admin has all four insides', (await ev('briel.insides.packs.size')) === 4, String(await ev('briel.insides.packs.size')));
     await shot('admin-house-inside', ...centroid(rooms[0].p[0]), levelFloor[rooms[0].level] + 0.05, 0.6, 0.0);
     const errs = b.logs.filter((l) => /^(error|exception)/.test(l));
     ok('no console errors', errs.length === 0, errs.slice(0, 5).join(' | '));
@@ -86,6 +86,30 @@ try {
   await b.sleep(3000);
   await shot('end-house-outside', endShell.centre[0] + 3, endShell.centre[1] + 14, endShell.frame.floor - 0.1, 3.0, 0.05);
   await shot('end-house-inside', endShell.centre[0], endShell.centre[1], endShell.frame.floor + 0.1, 0.5, 0.0);
+  // 4b. The brick house on Kapellenhoek: locked from outside (curtains, the lining), then a picture in every room of
+  // both floors (from its pack's floors: the pictures are numbered, no room is named here).
+  const brickShell = JSON.parse(readFileSync(new URL('../../web/src/data/kapellenhoek_home_shell.json', import.meta.url), 'utf8'));
+  const bf = brickShell.frame;
+  const brickWorld = ([x, z]) => [bf.o[0] + x * Math.cos(bf.a) + z * Math.sin(bf.a), bf.o[1] - x * Math.sin(bf.a) + z * Math.cos(bf.a)];
+  const [hx, hz] = brickShell.centre;
+  const out = [(brickShell.outline[0][0] + brickShell.outline[1][0]) / 2, (brickShell.outline[0][1] + brickShell.outline[1][1]) / 2]; // the front's middle
+  const look = Math.atan2(-(hx - out[0]), -(hz - out[1])); // towards the house
+  const away = [out[0] + (out[0] - hx) * 1.1, out[1] + (out[1] - hz) * 1.1];
+  ok('brick house: no inside before its code', (await ev("briel.insides.packs.has('kapellenhoek_home')")) === false);
+  await shot('brick-locked-front', away[0], away[1], bf.floor - 0.3, look, 0.02);
+  ok('brick house unlocked', (await ev(`briel.homeLocks.unlock('kapellenhoek_home', ${JSON.stringify(codes.kapellenhoek_home)})`)) === '');
+  await b.sleep(3000);
+  ok('brick house inside installed', (await ev("briel.insides.packs.has('kapellenhoek_home')")) === true);
+  await shot('brick-open-front', away[0], away[1], bf.floor - 0.3, look, 0.02);
+  const brickPack = await packOf('kapellenhoek_home');
+  const floors = brickPack.prisms.filter((p) => p.n && brickPack.rooms.includes(p.n) && ['wood', 'tile', 'concrete'].includes(p.m) && p.y1 - p.y0 > 0.05);
+  let k = 0;
+  for (const p of floors) {
+    const [x, z] = brickWorld(centroid(p.p[0]));
+    k++;
+    await shot(`brick-room-${p.y1 > 1 ? 'f1' : 'gf'}-${k}`, x, z, bf.floor + p.y1 + 0.02, (k * 1.3) % (Math.PI * 2), -0.05);
+  }
+  ok('brick house: a picture in every room', k >= 15, String(k));
   // 5. The Zombies game alone starts at the house (its grid is built from the shell and the installed insides).
   await b.evaluate("briel.zombiesSolo.start('house')", false);
   await b.sleep(4000);

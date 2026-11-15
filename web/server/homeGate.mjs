@@ -1,4 +1,4 @@
-// The game server's side of the three homes that open only with a code (shared/homes.mjs, server/homes.mjs).
+// The game server's side of the homes that open only with a code (shared/homes.mjs, server/homes.mjs).
 // A player may open a home's doors, break its panes and stand inside its footprint only with the grant of the code
 // (typed in this session, 8 hours) or as the admin. Everything here is decided by the server from the messages' numbers
 // and the player's position; the page's own lock (src/world/homeLocks.ts) only spares an honest player the refusals.
@@ -9,7 +9,7 @@
 //   without the right; they stay where they were (or, when they were inside already, such as after a revoked code,
 //   they are put out in front of it, where its portal brings you out: the page does the same, so both agree);
 // - the server's own moves (respawn, joining) never put such a player inside (mayStand).
-import { homeAt, homeOfDoor } from '../shared/homes.mjs';
+import { findHome, homeAt, homeOfDoor } from '../shared/homes.mjs';
 import { PORTALS } from '../shared/portals.mjs';
 
 // A home's inside is its bands: a ring for each floor, for that floor's heights (shared/homes.mjs).
@@ -64,9 +64,9 @@ export class HomeGate {
     return { home, put: false };
   }
 
-  /** Where the home's portal brings you out: in front of it, outside every band. */
+  /** Where the home's portal brings you out, or, for a home without a portal, its own `out` spot: in front of it, outside every band. */
   outOf(home) {
-    return PORTALS.find((p) => p.id === home).out;
+    return PORTALS.find((p) => p.id === home)?.out ?? findHome(home).out;
   }
 
   /** True when the page may be told again that home `id` is shut to it (at most every TELL_MS). */

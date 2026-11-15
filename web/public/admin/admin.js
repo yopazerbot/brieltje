@@ -1181,8 +1181,8 @@
     }));
   }
 
-  // ---- the three code-locked homes (server/homes.mjs): a code for each, shown once
-  const HOME_NAMES = { house: 'Main house (Briel)', bungalow: 'Bungalow', molenhoek_end: 'End house (Molenhoek)' };
+  // ---- the code-locked homes (server/homes.mjs): a code for each, shown once
+  const HOME_NAMES = { house: 'Main house (Briel)', bungalow: 'Bungalow', molenhoek_end: 'End house (Molenhoek)', kapellenhoek_home: 'Brick house (Kapellenhoek)' };
   async function loadHomes() {
     const r = await fetch('/api/admin/homes').catch(() => null);
     if (!r || !r.ok) return;

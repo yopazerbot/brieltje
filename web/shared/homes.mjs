@@ -1,12 +1,12 @@
-// The three homes that open only with an access code (Yoshi, 6 Nov 2026): the main house, the bungalow and the end
-// house at Molenhoek. They are fixed here, in code. The admin only makes and revokes their codes (server/homes.mjs);
-// nothing about where they are comes from the admin page.
+// The homes that open only with an access code (Yoshi, 6 Nov 2026): the main house, the bungalow, the end house at
+// Molenhoek and the brick house on Kapellenhoek (15 Nov 2026). They are fixed here, in code. The admin only makes and
+// revokes their codes (server/homes.mjs); nothing about where they are comes from the admin page.
 //
 // What belongs to a home is worked out from the game's own data, never listed by hand:
-// - its DOORS by id: `house-out-`, `bungalow-out-` and `mh-end-` in the shell; the doors of an inside are named by its pack,
-//   which the server and the page register once they hold it (registerDoors; shared/homes.test.mjs checks every id);
-// - its PANES (the breakable glass) by their number: the house's own blocks by where the window stands, the end
-//   house's windows by their range, the glass in door leaves by the door they are in (makePaneHomes);
+// - its DOORS by id: `house-out-`, `bungalow-out-`, `mh-end-` and `kh-home-` in the shell; the doors of an inside are named by
+//   its pack, which the server and the page register once they hold it (registerDoors; shared/homes.test.mjs checks every id);
+// - its PANES (the breakable glass) by their number: the house's own blocks by where the window stands, the walked-into
+//   houses' windows and door glass by their ranges (WALK_INS), the glass in door leaves by the door they are in (makePaneHomes);
 // - its INSIDE by BANDS: a ring in model coordinates (metres, x and z) for a range of heights (y0 up to y1, the game's
 //   own heights, as the house data and the players' positions use them), one band for each floor. Whoever has no right
 //   to a home stays out of its bands (the server holds them back, the page does not let them walk in).
@@ -19,6 +19,7 @@
 /** @typedef {[number, number]} Pt */
 
 const END_FLOOR = 9.468; // the end house's ground floor, in the game's heights (frame.floor in molenhoek_end_shell.json)
+const KH_FLOOR = 3.45; // the brick house's ground floor, in the game's heights (frame.floor in kapellenhoek_home_shell.json)
 const BANDS = {
   house: [
     { y0: -5, y1: 2.6, ring: [[0.2, 0.2], [1.99, 0.2], [1.99, -2.52], [3.12, -2.52], [3.12, 0.2], [8.82, 0.2], [8.82, 11.82], [4.54, 11.82], [4.54, 10.64], [0.2, 10.64]] }, // ground floor (floor 0, ceiling 2.7)
@@ -32,6 +33,21 @@ const BANDS = {
   molenhoek_end: [
     { y0: END_FLOOR - 3, y1: END_FLOOR + 5.8, ring: [[1503.07, -360.74], [1510.47, -358.94], [1508.52, -351.24], [1503.87, -348.64], [1500.32, -349.49]] }, // both floors (0 and 2.9), under the roof (5.88)
   ],
+  // The ground floor's footprint (the garage wing and the flat-roofed back part in it, the covered terrace in the back left
+  // corner left out), and the two-storey block over it. Its own frame: the front's left end [613.14, -361.86], along the
+  // front [-0.26634, 0.96384], into the house [0.96384, 0.26634]; both rings 20 cm in from the outer faces.
+  kapellenhoek_home: [
+    { y0: KH_FLOOR - 3, y1: KH_FLOOR + 2.6, ring: [[613.28, -361.61], [609.14, -346.62], [619.8, -343.67], [622.62, -353.87], [620.24, -354.52], [621.57, -359.32]] }, // ground floor (0), under the flat roofs (3.1) and the wing's eaves (3.5)
+    { y0: KH_FLOOR + 2.6, y1: KH_FLOOR + 5.45, ring: [[613.28, -361.61], [610.21, -350.52], [618.5, -348.23], [621.57, -359.32]] }, // 1st floor (2.9), under its ceiling slab (5.4 to 5.65) and the roof
+  ],
+};
+
+/**
+ * Where a home without a portal puts out whoever stands in it without the right (a revoked code): [x, z, yaw], on open
+ * ground in front of it, outside every band (shared/homes.test.mjs). The other homes use their portal's `out`.
+ */
+const OUT = {
+  kapellenhoek_home: [607.15, -355.21, -1.84], // on the drive, facing the house
 };
 
 // The end house's garden: fenced all round, so that the only way in is through the house (src/world/walkIn.ts: the lawn,
@@ -48,11 +64,12 @@ function boxOf(ring) {
   return [Math.min(...xs), Math.min(...zs), Math.max(...xs), Math.max(...zs)];
 }
 
-/** The homes: `{ id, bands: [{ ring, y0, y1, box }], box: [minX, minZ, maxX, maxZ] }`. */
+/** The homes: `{ id, bands: [{ ring, y0, y1, box }], box: [minX, minZ, maxX, maxZ], out? }` (`out`: see OUT). */
 export const HOMES = Object.entries(BANDS).map(([id, bands]) => {
   const full = bands.map((b) => ({ ...b, box: boxOf(b.ring) }));
   const boxes = full.map((b) => b.box);
-  return { id, bands: full, box: [Math.min(...boxes.map((b) => b[0])), Math.min(...boxes.map((b) => b[1])), Math.max(...boxes.map((b) => b[2])), Math.max(...boxes.map((b) => b[3]))] };
+  const box = [Math.min(...boxes.map((b) => b[0])), Math.min(...boxes.map((b) => b[1])), Math.max(...boxes.map((b) => b[2])), Math.max(...boxes.map((b) => b[3]))];
+  return { id, bands: full, box, ...(OUT[id] ? { out: OUT[id] } : {}) };
 });
 
 export const findHome = (id, list = HOMES) => (typeof id === 'string' && HOME_ID.test(id) ? list.find((h) => h.id === id) ?? null : null);
@@ -115,7 +132,8 @@ export function distanceToHome(id, x, z, y0 = -Infinity, y1 = Infinity) {
 
 /**
  * The doors of the inside of a home are named by the private data only (the page and the server register them once they
- * hold it, registerDoors). The shell's own are `house-out-N` and `bungalow-out-N`, the end house's all `mh-end-...`.
+ * hold it, registerDoors). The shell's own are `house-out-N` and `bungalow-out-N`, the end house's all `mh-end-...`, the
+ * brick house's all `kh-home-...`.
  */
 const DOOR_HOMES = new Map();
 /** Name the doors of home `home`'s inside (the ids in its pack). */
@@ -129,29 +147,39 @@ export function homeOfDoor(id) {
   if (id.startsWith('house-out-')) return 'house';
   if (id.startsWith('bungalow-out-')) return 'bungalow';
   if (id.startsWith('mh-end-')) return 'molenhoek_end';
+  if (id.startsWith('kh-home-')) return 'kapellenhoek_home';
   return DOOR_HOMES.get(id) ?? null;
 }
 
 /**
  * The numbers of breakable panes (the `glass` message): the shell's blocks from 0, the end house's windows from
- * WALK_IN_GLASS, the door glass from DOOR_GLASS, the end house's door glass from END_DOOR_GLASS, then the insides'
- * panes and door glass from 5000 (their packs' numbers). Every pane block carries its number in `glass`, every glass
- * leaf of a door its number in `glassNo`.
+ * WALK_IN_GLASS, the door glass from DOOR_GLASS, the end house's door glass from END_DOOR_GLASS, the insides' panes and
+ * door glass from 5000 (their packs' numbers), the brick house's windows from 6000 and its door glass from 7000. Every
+ * pane block carries its number in `glass`, every glass leaf of a door its number in `glassNo`.
  */
 export const WALK_IN_GLASS = 2000;
 export const DOOR_GLASS = 3000;
 export const END_DOOR_GLASS = 4000;
 /** One past the highest pane number (the server's limit) */
-export const PANE_LIMIT = 6000;
+export const PANE_LIMIT = 8000;
+/**
+ * The houses walked into (src/world/walkIn.ts): their windows' numbers from `glass` (the shell's panes in order), their door
+ * glass from `doorGlass` (the shell's doors first, then the pack's, in order), each range `size` long. The same on the page
+ * and the server.
+ */
+export const WALK_INS = {
+  molenhoek_end: { glass: WALK_IN_GLASS, doorGlass: END_DOOR_GLASS, size: 1000 },
+  kapellenhoek_home: { glass: 6000, doorGlass: 7000, size: 1000 },
+};
 /** m outside a home's ring where a window of the house data still counts as the home's (the wall's thickness) */
 const WINDOW_REACH = 0.7;
 
 /**
  * Which home a pane belongs to, for every pane number: (i) => home id or null; `.has(i)` says whether the number is a pane
  * at all. `prisms` and `doors`: the house data (the shell, and the insides once they are there). A window is the home's
- * whose bands, at the window's heights, it stands in or within WINDOW_REACH of; door glass is its door's home. The end
- * house's windows (WALK_IN_GLASS up to DOOR_GLASS) and its door glass (END_DOOR_GLASS up to 5000) are all the end house's:
- * nothing else adds panes (src/world/walkIn.ts).
+ * whose bands, at the window's heights, it stands in or within WINDOW_REACH of; door glass is its door's home. The ranges
+ * of a walked-into house (WALK_INS: its windows and its door glass) are all that house's: nothing else adds panes there
+ * (src/world/walkIn.ts).
  */
 export function makePaneHomes({ prisms, doors }) {
   const table = new Map();
@@ -173,9 +201,14 @@ export function makePaneHomes({ prisms, doors }) {
       if (panel.glass && Number.isInteger(panel.glassNo)) table.set(panel.glassNo, homeOfDoor(d.id));
     }
   }
-  const end = (i) => Number.isInteger(i) && ((i >= WALK_IN_GLASS && i < DOOR_GLASS) || (i >= END_DOOR_GLASS && i < 5000));
-  const home = (i) => table.get(i) ?? (end(i) ? 'molenhoek_end' : null);
-  home.has = (i) => table.has(i) || end(i);
+  const ranges = Object.entries(WALK_INS);
+  const walkedInto = (i) => {
+    if (!Number.isInteger(i)) return null;
+    for (const [id, r] of ranges) if ((i >= r.glass && i < r.glass + r.size) || (i >= r.doorGlass && i < r.doorGlass + r.size)) return id;
+    return null;
+  };
+  const home = (i) => table.get(i) ?? walkedInto(i);
+  home.has = (i) => table.has(i) || walkedInto(i) !== null;
   return home;
 }
 

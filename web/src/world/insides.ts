@@ -1,5 +1,5 @@
 import * as THREE from 'three';
-import { registerDoors } from '../../shared/homes.mjs';
+import { registerDoors, WALK_INS } from '../../shared/homes.mjs';
 import { addInsideNames } from '../i18n';
 import { seatHeaders } from '../seat';
 import type { BigMap } from '../ui/bigmap';
@@ -52,8 +52,8 @@ export interface InsideDeps {
   keyed: Map<string, THREE.Object3D>;
   /** The roofs of the surroundings (for the colour under a roof panel) */
   roofs: { ceiling?: string }[];
-  /** The end house, once the village has loaded it */
-  endHouse: () => WalkIn | null;
+  /** A house walked into (world/walkIn.ts) by its home id, once the village has loaded it */
+  walkIn: (id: string) => WalkIn | null;
   /** An inside has been installed (main.ts: indoors tests, the room names, the starting furniture alone) */
   installed: (pack: InsidePack) => void;
 }
@@ -62,8 +62,10 @@ export interface InsideDeps {
 export class Insides {
   private packs = new Map<string, InsidePack | EndInside & { id: string }>();
   private asked = new Set<string>();
-  private pendingEnd: (EndInside & { id: string }) | null = null;
-  private endDone = false;
+  /** The walked-into houses' packs that came before their house was in, by home id */
+  private pending = new Map<string, EndInside & { id: string }>();
+  /** The walked-into houses that are in */
+  private ready = new Set<string>();
 
   constructor(private deps: InsideDeps) {}
 
@@ -120,18 +122,20 @@ export class Insides {
     this.install(got);
   }
 
-  /** The village has loaded the end house: its inside goes in if it came before. */
-  endReady(): void {
-    this.endDone = true;
-    if (this.pendingEnd) this.installEnd(this.pendingEnd);
-    this.pendingEnd = null;
+  /** The village has loaded the walked-into house `id`: its inside goes in if it came before. */
+  walkInReady(id: string): void {
+    this.ready.add(id);
+    const pack = this.pending.get(id);
+    if (pack) this.installWalkIn(pack);
+    this.pending.delete(id);
   }
 
   private install(pack: InsidePack): void {
-    if (pack.id === 'molenhoek_end') {
-      this.packs.set(pack.id, pack as unknown as EndInside & { id: string });
-      if (this.endDone) this.installEnd(pack as unknown as EndInside & { id: string });
-      else this.pendingEnd = pack as unknown as EndInside & { id: string };
+    if (Object.hasOwn(WALK_INS, pack.id)) {
+      const own = pack as unknown as EndInside & { id: string };
+      this.packs.set(pack.id, own);
+      if (this.ready.has(pack.id)) this.installWalkIn(own);
+      else this.pending.set(pack.id, own);
       this.deps.installed(pack);
       return;
     }
@@ -160,10 +164,10 @@ export class Insides {
     d.installed(pack);
   }
 
-  private installEnd(pack: EndInside & { id: string }): void {
-    const end = this.deps.endHouse();
-    if (!end) return;
-    end.addInside(pack, this.deps.world, this.deps.doors, this.deps.glass);
+  private installWalkIn(pack: EndInside & { id: string }): void {
+    const house = this.deps.walkIn(pack.id);
+    if (!house) return;
+    house.addInside(pack, this.deps.world, this.deps.doors, this.deps.glass);
   }
 }
 

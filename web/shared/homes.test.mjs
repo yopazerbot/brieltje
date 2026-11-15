@@ -1,8 +1,8 @@
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import test from 'node:test';
-import { barrierHeights, DOOR_GLASS, distanceToHome, END_DOOR_GLASS, findHome, HOMES, homeAt, homeOfDoor, inEndGarden, makePaneHomes, PANE_LIMIT, WALK_IN_GLASS } from './homes.mjs';
-import { end, HAVE_PRIVATE, house, packs, pickupsInside, SKIP, spawnsInside } from './testData.mjs';
+import { barrierHeights, DOOR_GLASS, distanceToHome, END_DOOR_GLASS, findHome, HOMES, homeAt, homeOfDoor, inEndGarden, makePaneHomes, PANE_LIMIT, WALK_IN_GLASS, WALK_INS } from './homes.mjs';
+import { brick, brickInside, end, HAVE_PRIVATE, house, packs, pickupsInside, SKIP, spawnsInside } from './testData.mjs';
 import { loadBounds } from './bounds.mjs';
 import { makeSolids } from './parking.mjs';
 import { PORTALS } from './portals.mjs';
@@ -14,10 +14,17 @@ const pickups = read('./pickups.json');
 const places = read('./places.json').places;
 const terrain = makeTerrain(read('./terrain.json'));
 
-// The end house's doors and outline: the doors are in its own frame (src/world/walkIn.ts toWorld), its heights above its floor.
-const { o, a, floor } = end.frame;
-const toWorld = ([x, z]) => [o[0] + x * Math.cos(a) + z * Math.sin(a), o[1] - x * Math.sin(a) + z * Math.cos(a)];
-const wallPoints = (d) => d.panels.flatMap((p) => (d.id.startsWith('mh-end-') ? [toWorld(p.a), toWorld(p.b)] : [p.a, p.b]));
+// The walked-into houses' doors and outlines: the doors are in each one's own frame (src/world/walkIn.ts toWorld), their
+// heights above its floor.
+const frameOf = (data) => {
+  const { o, a, floor } = data.frame;
+  return { floor, toWorld: ([x, z]) => [o[0] + x * Math.cos(a) + z * Math.sin(a), o[1] - x * Math.sin(a) + z * Math.cos(a)] };
+};
+const { floor, toWorld } = frameOf(end);
+const { floor: brickFloor, toWorld: brickWorld } = frameOf(brick);
+const wallPoints = (d) => d.panels.flatMap((p) => (d.id.startsWith('mh-end-') ? [toWorld(p.a), toWorld(p.b)] : d.id.startsWith('kh-home-') ? [brickWorld(p.a), brickWorld(p.b)] : [p.a, p.b]));
+/** A point of the brick house in its floor coordinates (u along the front, v into the house), in the world. */
+const brickAt = (u, v) => [613.14 + u * -0.26634 + v * 0.96384, -361.86 + u * 0.96384 + v * 0.26634];
 
 /** Whether any height holds the point inside a home (a person flying over it, or standing under it). */
 const anyHeight = (x, z) => {
@@ -57,9 +64,9 @@ function samples(ring, margin = 0.45) {
 /** Points over a polygon, its edges and corners too. */
 const outlinePoints = (ring) => [...ring, ...samples(ring, 0)];
 
-test('three homes, with a few bands each', () => {
-  assert.deepEqual(HOMES.map((h) => h.id), ['house', 'bungalow', 'molenhoek_end']);
-  assert.deepEqual(HOMES.map((h) => h.bands.length), [3, 2, 1]);
+test('four homes, with a few bands each', () => {
+  assert.deepEqual(HOMES.map((h) => h.id), ['house', 'bungalow', 'molenhoek_end', 'kapellenhoek_home']);
+  assert.deepEqual(HOMES.map((h) => h.bands.length), [3, 2, 1, 2]);
   for (const h of HOMES) for (const b of h.bands) assert.ok(b.ring.length >= 4 && b.ring.length <= 12 && b.y1 > b.y0, h.id);
   assert.equal(findHome('bungalow')?.id, 'bungalow');
   assert.equal(findHome('home-01'), null);
@@ -67,8 +74,8 @@ test('three homes, with a few bands each', () => {
 });
 
 test('every door of the data belongs to a home, exactly', { skip: SKIP }, () => {
-  const owners = { house: [], bungalow: [], molenhoek_end: [] };
-  for (const d of [...house.doors, ...end.doors]) {
+  const owners = { house: [], bungalow: [], molenhoek_end: [], kapellenhoek_home: [] };
+  for (const d of [...house.doors, ...end.doors, ...brick.doors]) {
     const home = homeOfDoor(d.id);
     assert.ok(home, `${d.id} has no home`);
     owners[home].push(d.id);
@@ -76,15 +83,17 @@ test('every door of the data belongs to a home, exactly', { skip: SKIP }, () => 
   const ids = (home) => (packs.find((p) => p.id === home)?.doors ?? []).map((d) => d.id);
   assert.deepEqual(owners.bungalow, [...house.doors.filter((d) => d.id.startsWith('bungalow-out-')).map((d) => d.id), ...ids('bungalow')]);
   assert.deepEqual(owners.molenhoek_end, end.doors.map((d) => d.id));
+  assert.deepEqual(owners.kapellenhoek_home, brick.doors.map((d) => d.id));
+  assert.ok(brick.doors.length > 10, 'the shell\'s outside doors and the pack\'s inside ones');
   assert.deepEqual(owners.house, [...house.doors.filter((d) => d.id.startsWith('house-out-')).map((d) => d.id), ...ids('house')]);
   assert.ok(owners.house.length > 15);
-  for (const id of ['', 'nope', 'door-x', 'house-out', 'mh-end', null, undefined, 7, {}]) assert.equal(homeOfDoor(id), null, String(id));
+  for (const id of ['', 'nope', 'door-x', 'house-out', 'mh-end', 'kh-home', 'kh-hom-x', null, undefined, 7, {}]) assert.equal(homeOfDoor(id), null, String(id));
 });
 
 test('each home\'s doors lie on a band\'s ring or inside it, at their own heights', () => {
-  for (const d of [...house.doors, ...end.doors]) {
+  for (const d of [...house.doors, ...end.doors, ...brick.doors]) {
     const home = homeOfDoor(d.id);
-    const [y0, y1] = d.id.startsWith('mh-end-') ? [d.y0 + floor, d.y1 + floor] : [d.y0, d.y1];
+    const [y0, y1] = d.id.startsWith('mh-end-') ? [d.y0 + floor, d.y1 + floor] : d.id.startsWith('kh-home-') ? [d.y0 + brickFloor, d.y1 + brickFloor] : [d.y0, d.y1];
     const far = Math.min(...wallPoints(d).map(([x, z]) => distanceToHome(home, x, z, y0 + 0.1, y1 - 0.1)));
     assert.ok(far <= 0.5, `${d.id} is ${far.toFixed(2)} m from the ${home}`);
   }
@@ -119,6 +128,19 @@ test('rooms of every floor are inside their home, sampled all over, standing and
       n++;
     }
   }
+  // The brick house: the floors of its rooms (the pack's, in its own frame), both floors, the garage too.
+  let brickRooms = 0;
+  for (const p of brickInside.prisms) {
+    if (!brickInside.rooms.includes(p.n) || !['wood', 'tile', 'concrete'].includes(p.m) || p.y1 - p.y0 < 0.05) continue;
+    brickRooms++;
+    for (const [x, z] of samples(p.p[0].map(brickWorld))) {
+      for (const dy of [0.05, 1, 1.8]) {
+        assert.equal(homeAt(x, z, brickFloor + p.y1 + dy), 'kapellenhoek_home', `brick ${p.n} ${x},${z} +${dy}`);
+        n++;
+      }
+    }
+  }
+  assert.ok(brickRooms >= 15, `${brickRooms} rooms of the brick house`);
   assert.ok(n > 3000, `${n} samples`);
 });
 
@@ -143,6 +165,25 @@ test('outside stays free: the roof terrace and its stair, the carport, terraces,
   // The end house's roof, and above every home (drops start at 170 m and fly over them).
   for (const [x, z] of outlinePoints(end.outline)) for (const dy of [6.1, 20, 170]) assert.equal(homeAt(x, z, floor + dy), null, `end roof ${dy}`);
   for (const h of HOMES) for (const b of h.bands) for (const [x, z] of outlinePoints(b.ring)) assert.equal(homeAt(x, z, 170), null, `${h.id} at 170 m`);
+  // The brick house (floor coordinates: u along the front, v into the house, heights above its floor): the covered
+  // terrace in its back corner, the drive and the path in front, the garden behind and beside it, at the ground's heights.
+  const grid = (u0, u1, v0, v1) => {
+    const out = [];
+    for (let u = u0; u <= u1 + 1e-9; u += 0.25) for (let v = v0; v <= v1 + 1e-9; v += 0.25) out.push(brickAt(u, v));
+    return out;
+  };
+  const outside = [
+    ['terrace', grid(0, 4.98, 9.02, 11.6)],
+    ['drive and path', grid(-1, 17, -8, -0.02)],
+    ['garden', grid(-1, 17, 11.5, 20)],
+    ['left side', grid(-4, -0.02, -1, 12)],
+    ['wing side', grid(15.98, 19, -1, 12)],
+  ];
+  for (const [name, pts] of outside) for (const [x, z] of pts) for (const dy of [-0.4, 0, 1, 1.75]) assert.equal(homeAt(x, z, brickFloor + dy), null, `brick ${name} ${x},${z} +${dy}`);
+  // Its roofs: on the main roof (from its eaves at 5.65), the flat roof at the back (3.1), the wing's (from its eaves at
+  // 3.5), and a metre over each: the bands end below them.
+  const roofs = [['main roof', grid(0, 11.91, 0, 9), 5.65], ['flat roof', grid(4.98, 11.67, 9, 11.47), 3.1], ['wing roof', grid(11.92, 15.96, 0, 11.47), 3.5]];
+  for (const [name, pts, y] of roofs) for (const [x, z] of pts) for (const dy of [0, 0.5, 1, 30]) assert.equal(homeAt(x, z, brickFloor + y + dy), null, `brick ${name} ${x},${z} +${y + dy}`);
 });
 
 test('start places, pickups, portals and travel places are outside, at any height; the private ones are inside their home', () => {
@@ -164,12 +205,28 @@ test('start places, pickups, portals and travel places are outside, at any heigh
   assert.equal(homeAt(NaN, NaN, NaN), null);
 });
 
-test('every home has a portal that brings you out outside it', () => {
+test('every home has a portal or a spot of its own that brings you out outside it', () => {
   for (const h of HOMES) {
     const p = PORTALS.find((q) => q.id === h.id);
-    assert.ok(p, h.id);
-    assert.equal(anyHeight(p.out[0], p.out[1]), null, h.id);
+    assert.ok(p || h.out, h.id);
+    const out = p?.out ?? h.out;
+    assert.equal(anyHeight(out[0], out[1]), null, h.id);
   }
+  // The brick house has no portal: its spot is on its drive, open ground inside the game's edge, a few metres in front.
+  const h = findHome('kapellenhoek_home');
+  assert.equal(PORTALS.some((q) => q.id === h.id), false);
+  const [x, z, yaw] = h.out;
+  const edge = loadBounds(read('./bounds.json'));
+  assert.ok(edge.map.inside(x, z), 'inside the game\'s edge (a game whose own edge leaves it out puts you back inside that, Game.putOut)');
+  const d = distanceToHome(h.id, x, z);
+  assert.ok(d > 3 && d < 6, `${d.toFixed(2)} m from the house`);
+  const village = JSON.parse(readFileSync(new URL('../src/data/village.json', import.meta.url), 'utf8'));
+  const near = village.prisms.filter((p) => p.d === undefined && p.p?.[0]?.some(([px, pz]) => Math.hypot(px - x, pz - z) < 12));
+  const blocks = makeSolids(near.filter((p) => !(p.y1 - p.y0 > 5 && inPoly(...brickAt(8, 5), p.p[0]))), (px, pz) => terrain.height(px, pz)); // not the village's own block of the house, which the walk-in replaces
+  assert.ok(blocks.boxFree(x, z, 0, 0.8, 0.8, 0.1, 1.9), 'nothing within 80 cm');
+  const [fx, fz] = brickAt(8, 5); // it faces the house: the camera looks along (-sin yaw, -cos yaw)
+  const toHouse = Math.atan2(-(fx - x), -(fz - z));
+  assert.ok(Math.abs(Math.atan2(Math.sin(yaw - toHouse), Math.cos(yaw - toHouse))) < 0.3, 'facing the house');
 });
 
 test('panes: windows by where they stand, the end house by range, door glass by its door', () => {
@@ -189,6 +246,14 @@ test('panes: windows by where they stand, the end house by range, door glass by 
   for (let i = WALK_IN_GLASS; i < WALK_IN_GLASS + end.panes.length; i++) assert.equal(pane(i), 'molenhoek_end');
   assert.equal(pane(END_DOOR_GLASS), 'molenhoek_end');
   assert.equal(pane(4999), 'molenhoek_end');
+  // The brick house: its windows and its door glass, by range; nothing past them is a pane.
+  const k = WALK_INS.kapellenhoek_home;
+  assert.ok(brick.panes.length > 10 && brick.panes.length < k.size, `${brick.panes.length} windows`);
+  for (let i = k.glass; i < k.glass + brick.panes.length; i++) assert.equal(pane(i), 'kapellenhoek_home');
+  for (const i of [k.doorGlass, k.doorGlass + k.size - 1, k.glass + k.size - 1]) assert.equal(pane(i), 'kapellenhoek_home', String(i));
+  assert.equal(PANE_LIMIT, k.doorGlass + k.size);
+  assert.equal(pane(5999), null, 'the insides\' own range ends where the brick house begins');
+  for (const bad of [8000, 8001, 1e9]) assert.equal(pane.has(bad), false, String(bad));
   // Door glass: the number each leaf carries, in its door's home.
   let leaves = 0;
   for (const d of house.doors) {

@@ -1,9 +1,9 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import { Game } from './game.mjs';
-import { homeAt, homeOfDoor } from '../shared/homes.mjs';
+import { findHome, homeAt, homeOfDoor, WALK_INS } from '../shared/homes.mjs';
 import { PORTALS } from '../shared/portals.mjs';
-import { house, HAVE_PRIVATE, packs, SKIP } from '../shared/testData.mjs';
+import { brick, house, HAVE_PRIVATE, packs, SKIP } from '../shared/testData.mjs';
 
 // The game server's side of the three code-locked homes (server/homeGate.mjs): doors, panes and standing inside.
 function setup() {
@@ -262,6 +262,103 @@ test('the end house\'s garden: the server puts a player without the code outside
   send('rate', rate, { t: 'unstuck' });
   assert.equal(rate.state.x, 1512, 'a second ask within a second is ignored');
   assert.ok(game);
+});
+
+test('the brick house on Kapellenhoek: doors, panes and standing inside only with its right; put out on its own spot', () => {
+  const { game, sent, grants, player, send, step } = setup();
+  const H = 'kapellenhoek_home';
+  const at = (u, v) => [613.14 + u * -0.26634 + v * 0.96384, -361.86 + u * 0.96384 + v * 0.26634]; // its floor coordinates
+  const F = brick.frame.floor;
+  const out = findHome(H).out;
+  const a = player('a', out[0], out[1]);
+  const b = player('b', out[0], out[1]);
+  a.state.y = b.state.y = F - 0.4;
+  // Its doors: the shell's (and the pack's) are known, refused without the right and told to nobody.
+  const door = (p, name, id) => {
+    p.nextDoor = 0;
+    send(name, p, { t: 'door', id, open: true, dir: 1 });
+  };
+  const ids = brick.doors.map((d) => d.id);
+  assert.ok(ids.includes('kh-home-front') && ids.includes('kh-home-terrace'), ids.join());
+  for (const id of ids) door(a, 'a', id);
+  assert.deepEqual(Object.keys(game.doors), [], 'not applied');
+  assert.equal(b.got.length, 0, 'not told');
+  // Its glass: a window and a door's glass, refused without the right.
+  const k = WALK_INS[H];
+  for (const i of [k.glass, k.glass + 3, k.doorGlass]) {
+    a.nextGlass = 0;
+    send('a', a, { t: 'glass', i });
+  }
+  assert.deepEqual(game.brokenFor(a), [], 'nothing broken');
+  // Walking in from just outside: the front door, the garage door, the side's sliding door, the terrace glass, the back
+  // door, and a window upstairs (a ladder, a jump, flying).
+  const walks = [[8, -0.5, 8, 0.6, 0], [13.5, -0.5, 13.5, 0.6, 0.05], [-0.5, 4.2, 0.6, 4.2, 0], [2.9, 9.6, 2.9, 8.5, 0], [10.2, 12, 10.2, 11, 0], [-0.6, 4, 0.6, 4, 2.95], [10, 9.6, 10, 8.4, 2.95]];
+  for (const [u0, v0, u, v, dy] of walks) {
+    const [x0, z0] = at(u0, v0);
+    Object.assign(a.state, { x: x0, z: z0, y: F + dy });
+    a.nextHomeTell = 0;
+    const [x, z] = at(u, v);
+    step('a', a, x, z, F + dy);
+    assert.deepEqual([a.state.x, a.state.z], [x0, z0], `held at ${u},${v} +${dy}`);
+    assert.deepEqual(sent.at(-1), { t: 'homelock', id: H });
+  }
+  // Free: on the main roof, the flat roof, the wing's roof, the covered terrace.
+  for (const [u, v, dy] of [[8, 4, 5.7], [8, 10, 3.12], [14, 5, 3.6], [2, 10.5, 0]]) {
+    const [x, z] = at(u, v);
+    Object.assign(a.state, { x: x + 0.5, z, y: F + dy });
+    step('a', a, x, z, F + dy);
+    assert.deepEqual([a.state.x, a.state.z], [x, z], `free at ${u},${v} +${dy}`);
+  }
+  // With the right: its doors open (and only its own are told to its holders), standing inside is free.
+  grants.add(`k-a|${H}`);
+  grants.add(`k-b|house`);
+  door(a, 'a', 'kh-home-front');
+  assert.equal(game.doors['kh-home-front'], true);
+  assert.equal(b.got.filter((m) => m.t === 'door').length, 0, 'the right to another home brings none of its door states');
+  const [ix, iz] = at(8, 0.6);
+  const [sx, sz] = at(8, -0.5);
+  Object.assign(a.state, { x: sx, z: sz, y: F });
+  step('a', a, ix, iz, F);
+  assert.deepEqual([a.state.x, a.state.z], [ix, iz]);
+  // Revoked while inside: put out on the house's own spot, on the ground, as the page does.
+  grants.delete(`k-a|${H}`);
+  a.nextHomeTell = 0;
+  step('a', a, ix + 0.1, iz, F);
+  assert.deepEqual([a.state.x, a.state.z], [out[0], out[1]]);
+  assert.equal(homeAt(a.state.x, a.state.z, a.state.y), null);
+  assert.ok(game.gate.mayStand(a, ix, F, iz) === false && game.gate.mayStand(a, out[0], F, out[1]) === true);
+});
+
+test('the brick house\'s inside doors and their glass reach only those with its right', { skip: SKIP }, () => {
+  const { game, grants, player, send } = setup();
+  const H = 'kapellenhoek_home';
+  const pack = packs.find((p) => p.id === H);
+  assert.ok(pack && pack.doors.length > 5);
+  const a = player('a', 0, 30); // no right
+  const c = player('c', 0, 30); // the brick house's right
+  const admin = player('root', 0, 30, 'admin');
+  grants.add(`k-c|${H}`);
+  const glassy = brick.doors.findIndex((d) => !d.panels.some((p) => p.outside) && d.panels.some((p) => p.glass));
+  assert.ok(glassy >= 0, 'an inside door with glass');
+  // Its number: the shell's door glass first, then the pack's (src/world/walkIn.ts).
+  let n = WALK_INS[H].doorGlass;
+  let pane = -1;
+  brick.doors.forEach((d, i) => d.panels.forEach((p) => {
+    if (!p.glass) return;
+    if (i === glassy && pane < 0) pane = n;
+    n++;
+  }));
+  for (const d of pack.doors) {
+    c.nextDoor = 0;
+    send('c', c, { t: 'door', id: d.id, open: true, dir: 1 });
+  }
+  send('c', c, { t: 'glass', i: pane });
+  assert.ok(game.broken.has(pane));
+  assert.deepEqual(a.got, [], 'nothing about the inside reaches a session without the right');
+  assert.equal(admin.got.filter((m) => m.t === 'door').length, pack.doors.length);
+  assert.deepEqual(Object.keys(game.doorsFor(a)), []);
+  assert.deepEqual(game.brokenFor(a), []);
+  assert.deepEqual(game.brokenFor(c), [pane]);
 });
 
 test('door ids like toString and hasOwnProperty are no doors: no prototype to hit, and the welcome still serialises', () => {

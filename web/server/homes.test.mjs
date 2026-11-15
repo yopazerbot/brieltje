@@ -79,7 +79,7 @@ test('the admin makes a code; it opens the home, and a wrong one does not', asyn
   assert.match(good.res.headers['Cache-Control'], /no-store.*private.*no-transform/);
   assert.equal(bad.res.data.inside, undefined, 'a wrong code gets no inside');
   const list = (await call('GET', '/api/admin/homes', undefined, { admin: true })).res.data;
-  assert.deepEqual(list.rows.map((r) => r.id), ['house', 'bungalow', 'molenhoek_end']);
+  assert.deepEqual(list.rows.map((r) => r.id), ['house', 'bungalow', 'molenhoek_end', 'kapellenhoek_home']);
   const row = list.rows.find((r) => r.id === H1);
   assert.deepEqual([row.unlocks, row.fails, row.hasCode, row.enabled], [1, 1, true, true]);
   assert.ok(!JSON.stringify(list).includes(code.replace('-', '')), 'the code is not in the list');
@@ -93,6 +93,7 @@ test('a home that has no code, an unknown id, off, revoked, expired: all the sam
   assert.deepEqual([a.status, a.data], [403, { error: 'Wrong code', code: 'home_denied' }]);
   assert.deepEqual(await refused('../../etc/passwd', code, 'u2'), a);
   assert.deepEqual(await refused('bungalow', code, 'u3'), a, 'a home without a code of its own');
+  assert.deepEqual(await refused('kapellenhoek_home', code, 'u3b'), a, 'the fourth home, without a code of its own');
   await call('POST', `/api/admin/homes/${H1}`, { enabled: false }, { admin: true });
   assert.deepEqual(await refused(H1, code, 'u4'), a);
   await call('POST', `/api/admin/homes/${H1}`, { enabled: true, expiresAt: '2000-01-01' }, { admin: true });
@@ -114,6 +115,13 @@ test('guessing is slowed per sender, and one sender cannot shut the owner out', 
   assert.equal(slow.status, 429, 'even the right code from a sender who has been guessing');
   assert.equal(slow.data.code, 'home_slow');
   assert.equal((await call('POST', '/api/home/unlock', { id: H1, code }, { who: 'owner' })).res.status, 200);
+  // The fourth home: the same limits, counted for it.
+  const four = (await call('POST', '/api/admin/homes/kapellenhoek_home/code', {}, { admin: true })).res.data.code;
+  const tries = [];
+  for (let i = 0; i < 10; i++) tries.push((await call('POST', '/api/home/unlock', { id: 'kapellenhoek_home', code: 'BBBBB-BBBBB' }, { who: 'thief4' })).res.status);
+  assert.deepEqual(tries, [403, 403, 403, 403, 403, 403, 403, 403, 429, 429]);
+  assert.equal((await call('POST', '/api/home/unlock', { id: 'kapellenhoek_home', code: four }, { who: 'thief4' })).res.status, 429);
+  assert.equal((await call('POST', '/api/home/unlock', { id: 'kapellenhoek_home', code: four }, { who: 'owner4' })).res.status, 200);
 });
 
 test('the admin needs no code, nobody else gets in without one', async () => {
@@ -187,9 +195,9 @@ test("past a home's budget, a player with an account waits in a lane a flood wit
   await homes.flush();
 });
 
-test('the admin routes only know the three homes', async () => {
+test('the admin routes only know the four homes', async () => {
   const { call } = setup();
-  for (const id of ['molenhoek_end', 'bungalow', 'house']) assert.equal((await call('POST', `/api/admin/homes/${id}/code`, {}, { admin: true })).res.status, 200, id);
+  for (const id of ['kapellenhoek_home', 'molenhoek_end', 'bungalow', 'house']) assert.equal((await call('POST', `/api/admin/homes/${id}/code`, {}, { admin: true })).res.status, 200, id);
   assert.equal((await call('POST', '/api/admin/homes/home-01/code', {}, { admin: true })).res.status, 404);
   assert.equal((await call('POST', '/api/admin/homes/x/code', {}, { admin: true })).res.status, 404);
 });

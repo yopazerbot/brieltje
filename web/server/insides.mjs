@@ -1,11 +1,11 @@
-// The insides of the three locked homes, from the private data (server/privateData.mjs), for the game server and the
+// The insides of the locked homes, from the private data (server/privateData.mjs), for the game server and the
 // unlock call. Without them (no key, a plain clone, CI) the homes have a shell only: no inside, so nothing to walk in, and
 // they stay locked. That is logged once, without a name of any file.
 //
 // Nothing here goes to a page except through `pack` (the unlock call and GET /api/home/:id/inside, checked for the right
 // there) and `furniture` of the layout (the game server filters it per recipient).
 import { privateData } from './privateData.mjs';
-import { PACK_IDS, packOf } from '../shared/insideData.mjs';
+import { PACK_IDS, packOf, WALK_IN_FILES } from '../shared/insideData.mjs';
 import { homeAt } from '../shared/homes.mjs';
 
 function readJson(name) {
@@ -20,7 +20,7 @@ function readJson(name) {
 }
 
 const inside = readJson('house_inside.json');
-const endInside = readJson('molenhoek_end_inside.json');
+const walkIns = Object.fromEntries(Object.entries(WALK_IN_FILES).map(([id, name]) => [id, readJson(name)]));
 
 /** The starting layout of the furniture ({ version, restore, pieces: [item, x, y, z, yaw][] }), or null. */
 const extras = readJson('extras.json'); // { layout, spawns, pickups }
@@ -31,7 +31,7 @@ export const defaultLayout = extras?.layout ?? null;
  * page playing alone, which keeps its furniture itself) and the layout's restore number.
  */
 const PACKS = new Map(PACK_IDS.flatMap((id) => {
-  const pack = packOf(id, inside, endInside);
+  const pack = packOf(id, inside, walkIns);
   if (!pack) return [];
   const furniture = (defaultLayout?.pieces ?? []).filter(([, x, y, z]) => homeAt(x, z, y) === id);
   return [[id, { ...pack, furniture, layoutRestore: defaultLayout?.restore ?? 0 }]];

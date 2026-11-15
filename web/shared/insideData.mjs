@@ -1,23 +1,28 @@
-// The homes' data in two parts: the public shell (src/data/house_shell.json, molenhoek_end_shell.json) and the private
-// inside (web/.private/house_inside.json, molenhoek_end_inside.json, opened by server/privateData.mjs). This module puts
-// them together and cuts out one home's inside for the page. It holds no data of its own.
+// The homes' data in two parts: the public shell (src/data/house_shell.json and the walked-into houses' shells) and the
+// private inside (web/.private/house_inside.json and the walked-into houses' files, WALK_IN_FILES, opened by
+// server/privateData.mjs). This module puts them together and cuts out one home's inside for the page. It holds no data of
+// its own.
 //
 // An inside "pack" is one home's inside, as the unlock call and GET /api/home/:id/inside answer it:
 //   { id, prisms, rooms?, doors, fixtures, props, panels?, names?, replaces? } for the main house and the bungalow, and
-//   the end house's whole inside file (without its source note) for 'molenhoek_end'.
+//   a walked-into house's whole inside file (without its source note) for the others.
 // `replaces`: keys (`k`) of shell blocks the pack's own blocks stand in for (a holed slab for a solid one).
 
+/** The houses walked into (src/world/walkIn.ts): each one's inside file in the private data. */
+export const WALK_IN_FILES = { molenhoek_end: 'molenhoek_end_inside.json', kapellenhoek_home: 'kapellenhoek_home_inside.json' };
+
 /** The home ids that have a pack. */
-export const PACK_IDS = ['house', 'bungalow', 'molenhoek_end'];
+export const PACK_IDS = ['house', 'bungalow', ...Object.keys(WALK_IN_FILES)];
 
 /**
- * One home's pack from the inside files (`inside`: house_inside.json, `end`: molenhoek_end_inside.json; either may be
- * null), or null when its inside is not there.
+ * One home's pack from the inside files (`inside`: house_inside.json; `walkIns`: { [id]: that house's inside file };
+ * any may be null or missing), or null when its inside is not there.
  */
-export function packOf(id, inside, end) {
-  if (id === 'molenhoek_end') {
-    if (!end) return null;
-    const { _source, ...rest } = end; // the note about where it was made stays on the server
+export function packOf(id, inside, walkIns) {
+  if (Object.hasOwn(WALK_IN_FILES, id)) {
+    const file = walkIns?.[id];
+    if (!file) return null;
+    const { _source, ...rest } = file; // the note about where it was made stays on the server
     return { id, ...rest };
   }
   const part = id === 'house' || id === 'bungalow' ? inside?.[id] : null;

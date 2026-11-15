@@ -3,7 +3,7 @@
 import { existsSync, readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { registerDoors } from './homes.mjs';
-import { mergeHouse, packOf } from './insideData.mjs';
+import { mergeHouse, PACK_IDS, packOf, WALK_IN_FILES } from './insideData.mjs';
 
 const WEB = fileURLToPath(new URL('..', import.meta.url));
 const readJson = (path) => JSON.parse(readFileSync(path, 'utf8'));
@@ -14,19 +14,25 @@ const privateFile = (name) => {
 
 export const shell = readJson(`${WEB}src/data/house_shell.json`);
 export const endShell = readJson(`${WEB}src/data/molenhoek_end_shell.json`);
+export const brickShell = readJson(`${WEB}src/data/kapellenhoek_home_shell.json`);
 export const inside = privateFile('house_inside.json');
-export const endInside = privateFile('molenhoek_end_inside.json');
-export const HAVE_PRIVATE = !!(inside && endInside);
+export const endInside = privateFile(WALK_IN_FILES.molenhoek_end);
+export const brickInside = privateFile(WALK_IN_FILES.kapellenhoek_home);
+export const HAVE_PRIVATE = !!(inside && endInside && brickInside);
 export const SKIP = HAVE_PRIVATE ? false : 'web/.private/ is absent (cloud clone or CI): this check needs the private inside';
 
 /** The packs as a page gets them. */
-export const packs = ['house', 'bungalow', 'molenhoek_end'].map((id) => packOf(id, inside, endInside)).filter(Boolean);
+export const packs = PACK_IDS.map((id) => packOf(id, inside, { molenhoek_end: endInside, kapellenhoek_home: brickInside })).filter(Boolean);
 for (const p of packs) registerDoors(p.id, p.doors.map((d) => d.id));
 
 /** The shell with the main house's and the bungalow's insides (the server's house data). */
-export const house = mergeHouse(shell, packs.filter((p) => p.id !== 'molenhoek_end'));
-/** The end house: the shell, and its inside's doors, rooms and fixtures when there. */
-export const end = { ...endShell, doors: [...endShell.doors, ...(endInside?.doors ?? [])], rooms: endInside?.rooms ?? [] };
+export const house = mergeHouse(shell, packs.filter((p) => !Object.hasOwn(WALK_IN_FILES, p.id)));
+/** A walked-into house: the shell, and its inside's doors and rooms when there. */
+const walkIn = (s, i) => ({ ...s, doors: [...s.doors, ...(i?.doors ?? [])], rooms: i?.rooms ?? [] });
+/** The end house. */
+export const end = walkIn(endShell, endInside);
+/** The brick house on Kapellenhoek. */
+export const brick = walkIn(brickShell, brickInside);
 /** What the private files hold besides the packs (spawns and pickups inside the homes). */
 const extras = privateFile('extras.json');
 export const spawnsInside = extras?.spawns ?? [];

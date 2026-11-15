@@ -33,6 +33,8 @@ export interface PetSpec {
   loop: [number, number][];
   /** The floor's height under its round; the lying spot's height when left out */
   floor?: number;
+  /** Its pace on its round, m/s (SPEED when left out) */
+  speed?: number;
 }
 
 export interface Pets {
@@ -76,7 +78,7 @@ function route(s: PetSpec): { pts: THREE.Vector3[]; lens: number[]; total: numbe
 
 /** Where a pet is at time t on the shared clock: its state, place and heading. */
 function at(s: PetSpec, r: ReturnType<typeof route>, t: number, offset: number, out: THREE.Vector3): { state: State; heading: number } {
-  const walk = Math.min(r.total / SPEED, CYCLE * 0.4);
+  const walk = Math.min(r.total / (s.speed ?? SPEED), CYCLE * 0.4);
   const busy = 2 + 1 + walk + 1 + 2; // up (sit, stand), walk, stand, sit
   let u = ((t + offset * CYCLE) % CYCLE + CYCLE) % CYCLE - (CYCLE - busy);
   out.set(s.rest[0], s.rest[1], s.rest[2]);
@@ -177,7 +179,7 @@ export function addPets(parent: THREE.Object3D, pets: PetSpec[], clock: () => nu
         holder.add(group);
         const mixer = new THREE.AnimationMixer(body);
         const actions = new Map([...clips].map(([n, c]) => [n, mixer.clipAction(c)]));
-        actions.get('Walk')?.setEffectiveTimeScale(SPEED / (pace * spec.scale)); // the feet keep pace with the ground
+        actions.get('Walk')?.setEffectiveTimeScale((spec.speed ?? SPEED) / (pace * spec.scale)); // the feet keep pace with the ground
         list.push({
           spec, group, mixer, actions, current: '', route: route(spec), offset: phase(i, spec), geometry,
           head: body.getObjectByName('Head'), tail: body.getObjectByName('Tail1'), look: { yaw: 0, pitch: 0, wag: 0 },

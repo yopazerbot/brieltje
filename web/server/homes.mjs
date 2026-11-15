@@ -1,4 +1,4 @@
-// The three homes that open only with a code (Yoshi, 6 Nov 2026; shared/homes.mjs): the main house, the bungalow and the
+// The homes that open only with a code (Yoshi, 6 Nov 2026; shared/homes.mjs): the main house, the bungalow and the
 // end house at Molenhoek. A home's code is made here (admin page's Homes tab), shown once and kept only as a scrypt hash.
 // A right code makes a grant for the session that typed it, 8 hours; the game server lets only a session with a grant (or
 // the admin) open the home's doors, break its panes and stand inside it (server/homeGate.mjs).

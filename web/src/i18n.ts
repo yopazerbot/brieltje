@@ -2545,6 +2545,7 @@ export function placeName(name: string): string {
 /** The doors (the house data): "door to <room>" and the named ones; after "E: " in the prompt, so lower case. */
 const DOORS_NL: Record<string, string> = {
   'sliding door': 'schuifdeur', 'outside door': 'buitendeur', 'front door': 'voordeur',
+  'garage door': 'garagepoort', 'side door': 'zijdeur', 'back door': 'achterdeur', 'store door': 'bergingsdeur',
 };
 export function doorName(name: string): string {
   if (current === 'en') return name;

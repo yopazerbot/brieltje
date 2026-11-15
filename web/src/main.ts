@@ -143,7 +143,7 @@ import { RoadLife } from './world/roadLife';
 import { looseProps, type Mover } from './world/looseProps';
 import { Crash } from './world/crash';
 import { TyreSpray } from './world/tyreSpray';
-import { clearOpenGround, fitStreetModel, loadStreetModel } from './world/streetModel';
+import { clearOpenGround, cutOut, fitStreetModel, loadStreetModel } from './world/streetModel';
 import { TrunkBlocks } from './world/trunkBlocks';
 import { type TreeSpot, zombieTrunks } from '../shared/trees.mjs';
 import { claimModelGround, claimModelGroundSoon } from './world/modelGround';
@@ -882,6 +882,7 @@ const horses = new Horses(world);
 scene.add(horses.group);
 let horseWanted = -1; // asked the server for this horse
 let clockOffset = 0; // the shared clock minus this page's (s), for the herds in the meadows
+const sharedClock = () => performance.now() / 1000 + clockOffset; // and a home's pets (world/pets.ts)
 let countryside: import('./world/countryside').Countryside | null = null;
 horses.onDust = (at) => effects.impact(at, new THREE.Vector3(0, 1, 0), 'cat'); // a little dust at a gallop
 // The cars (the Tesla on our driveway, the Model 3 at the bungalow, a Model Y and a Model 3 by the
@@ -987,7 +988,7 @@ const bigMap = new BigMap(document.getElementById('map-mount')!, house.prisms, h
 const insides = new Insides({
   renderer, home, scene, world, doors, glass, locks: homeLocks, minimap, bigMap, keyed: keyedMeshes,
   roofs: house.surroundings?.roofs ?? [],
-  endHouse: () => endHouse,
+  walkIn: (id) => (id === 'molenhoek_end' ? endHouse : id === 'kapellenhoek_home' ? brickHouse : null),
   installed: (pack) => insideInstalled(pack),
 });
 homeLocks.onOpen = (id, pack) => void insides.open(id, pack);
@@ -1511,7 +1512,12 @@ function putOutside(): void {
   }
   if (!home || homeLocks.isOpen(home)) return;
   const to = PORTALS.find((p) => p.id === home);
-  if (to) arrive(to, null);
+  if (to) return arrive(to, null);
+  const out = findHome(home)?.out; // a home without a portal: its own spot in front of it, as the server's (server/homeGate.mjs)
+  if (out) {
+    player.place(out[0], out[1], groundY(out[0], out[1]), out[2], 0);
+    player.update(0, NO_INPUT, camera);
+  }
 }
 /**
  * Alone or together: joining with the PIN and the admin's login work on the start screen, before
@@ -3216,7 +3222,7 @@ menu.onGraphics = (next) => {
 };
 
 function levelName(feet: number): string {
-  const own = endHouse?.level(player.x, player.z, feet); // the end house at Molenhoek: its own floors, at its own height
+  const own = endHouse?.level(player.x, player.z, feet) ?? brickHouse?.level(player.x, player.z, feet); // a walked-into house: its own floors, at its own height
   if (own) return own;
   let name = house.levels[0].name;
   for (const lv of house.levels) if (feet >= lv.floor - 0.3) name = lv.name;
@@ -4064,7 +4070,7 @@ renderer.setAnimationLoop((now: number) => {
     if (bigMap.waypoint && (routeTimer += 0.05) > 0.5) updateRoute();
     minimap.race = bigMap.race = goals.nav(); // a timed race's way along the roads (world/goals.ts)
     minimap.facing = helis.heli ? helis.heli.s.yaw : driving || riding ? car.yaw : bikes.mounted ? bikes.ridden?.yaw ?? null : horses.mounted >= 0 ? (horses.ridden?.yaw ?? 0) + Math.PI : null; // your arrow: the way your car, bike or horse points
-    minimap.draw(player.x, player.z, player.feet - (endHouse?.floorAt(player.x, player.z) ?? terrain.height(player.x, player.z)), minimap.heading(camera), weapon.enabled ? blips : blips.filter((b) => b.kind !== 'item'), shapes, [...(rules.portals ? portalMarks : []), ...helis.padMarks()], bigMap.waypoint, bigMap.route, inside);
+    minimap.draw(player.x, player.z, player.feet - (endHouse?.floorAt(player.x, player.z) ?? brickHouse?.floorAt(player.x, player.z) ?? terrain.height(player.x, player.z)), minimap.heading(camera), weapon.enabled ? blips : blips.filter((b) => b.kind !== 'item'), shapes, [...(rules.portals ? portalMarks : []), ...helis.padMarks()], bigMap.waypoint, bigMap.route, inside);
   }
   horizon.position.x = camera.position.x;
   horizon.position.z = camera.position.z;
@@ -4110,6 +4116,8 @@ let villageJob: Promise<void> | null = null;
 let villageAfter: Promise<unknown> = Promise.resolve();
 /** The end house of the new terrace at Molenhoek, to walk into (world/walkIn.ts), once its street model is in. */
 let endHouse: WalkIn | null = null;
+/** The brick house on Kapellenhoek, to walk into the same way, once its model is in. */
+let brickHouse: WalkIn | null = null;
 /** Resolved once play has begun (loaded). */
 let playBegun = () => {};
 const playing = new Promise<void>((r) => (playBegun = r));
@@ -4225,11 +4233,17 @@ async function buildVillage(): Promise<void> {
     const street = await job;
     if (street) {
       fitStreetModel(data, street, first);
+      // Home 4's model stands where the street model had a house of its own: that one's triangles go (world/streetModel.ts cutOut).
+      const home4 = street.userData.landmark === 'kapellenhoek' ? models.find((m) => m.userData.landmark === 'kapellenhoek_home') : undefined;
+      for (const ring of (home4?.userData.replaces as [number, number][][] | undefined) ?? []) cutOut(street, ring, 0.9);
       models.push(street);
-      if (street.userData.landmark === 'molenhoek_end3') endHouse = await loadWalkIn(renderer, street).catch(() => null);
+      if (street.userData.landmark === 'molenhoek_end3') endHouse = await loadWalkIn(renderer, { id: 'molenhoek_end', model: street, village: 'molenhoek_end3', open: () => homeLocks.isOpen('molenhoek_end'), clock: sharedClock, prepare: precompile }).catch(() => null);
     }
     await between();
   }
+  const brickModel = models.find((m) => m.userData.landmark === 'kapellenhoek_home');
+  if (brickModel) brickHouse = await loadWalkIn(renderer, { id: 'kapellenhoek_home', model: brickModel, village: 'outline', open: () => homeLocks.isOpen('kapellenhoek_home'), clock: sharedClock, prepare: precompile }).catch(() => null);
+  brickHouse?.clearPlot(data); // its garden lies level, not on the relief: the village's covers there give way
   // Their ground over the village's covers and streets, and each one's own surfaces one over another cut (world/modelGround.ts).
   // The cuts are worked out in a worker while the page goes on building (world/groundCutter.ts).
   const cutter = new GroundCutter();
@@ -4315,16 +4329,23 @@ async function buildVillage(): Promise<void> {
   }
   // The end house's own walls, floors and doors take the place of its plain block once its inside has come (until then
   // the plain block stands, and its doors, windows and lawn are the shell's).
-  const villageBlocks = cafePrisms(churchPrisms(data.prisms ?? [], churchAccess), cafeAccess).filter((p) => !endHouse?.replaces(p) || endHouse.standIn(p));
+  const villageBlocks = cafePrisms(churchPrisms(data.prisms ?? [], churchAccess), cafeAccess).filter((p) => (!endHouse?.replaces(p) || endHouse.standIn(p)) && !brickHouse?.replaces(p));
   const firstBlock = world.addPrisms(villageBlocks);
   if (endHouse) {
     endHouse.holdStandIns(villageBlocks.flatMap((p, i) => (endHouse!.standIn(p) ? [firstBlock + i] : [])));
     endHouse.install(world, doors, glass);
     scene.add(endHouse.group, endHouse.lawn(grassMat)); // its garden's lawn lies at its floor's level
-    insides.endReady(); // its inside, if it came before the village
+    insides.walkInReady('molenhoek_end'); // its inside, if it came before the village
 
     data.groundCuts.cells.push(...endHouse.groundCuts.cells); // the ground cut out under it, with the ponds' below
     data.groundCuts.tris.push(...endHouse.groundCuts.tris);
+  }
+  if (brickHouse) { // the brick house on Kapellenhoek: its shell's solids stand in until its inside comes
+    brickHouse.install(world, doors, glass);
+    scene.add(brickHouse.group, brickHouse.lawn(grassMat));
+    insides.walkInReady('kapellenhoek_home');
+    data.groundCuts.cells.push(...brickHouse.groundCuts.cells);
+    data.groundCuts.tris.push(...brickHouse.groundCuts.tris);
   }
   // The smoke: the long house on the square's west side (the chimney by its gable on the square) and a house on
   // the lane to the north-east, both in sight on arriving at the church; their tops measured on the town's model.
@@ -4758,6 +4779,7 @@ if (import.meta.env.DEV) {
       village: () => village,
       loadVillage,
       endHouse: () => endHouse,
+      brickHouse: () => brickHouse,
       countryside: () => countryside,
       portals,
       roadLife,

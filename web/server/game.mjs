@@ -222,14 +222,14 @@ const bestKey = (id) => (id === 'house' ? 'zombies_best' : 'zombies_best_' + id)
 /** The house data's doors: whether each stands open before anyone touched it (the page's default too). */
 const DOOR_OPEN = Object.assign(Object.create(null), Object.fromEntries(HOUSE.doors.map((d) => [d.id, !!d.open])));
 /**
- * Every door a page can swing: the house data's (the shell's and the insides' of the main house and the bungalow), the end
- * house's shell and its inside when the private data holds it. The village has no doors. A `door` message for any other id
- * is ignored, so nobody can fill the door table with made-up ids (it is never larger than this list).
+ * Every door a page can swing: the house data's (the shell's and the insides' of the main house and the bungalow), the
+ * walked-into houses' shells and their insides when the private data holds them. The village has no doors. A `door` message
+ * for any other id is ignored, so nobody can fill the door table with made-up ids (it is never larger than this list).
  */
-const KNOWN_DOORS = new Set([...HOUSE.doors, ...houseData('molenhoek_end_shell.json').doors, ...(packFor('molenhoek_end')?.doors ?? [])].map((d) => d.id));
+const KNOWN_DOORS = new Set([...HOUSE.doors, ...['molenhoek_end', 'kapellenhoek_home'].flatMap((id) => [...houseData(`${id}_shell.json`).doors, ...(packFor(id)?.doors ?? [])])].map((d) => d.id));
 /** Is `id` one of the doors of the game? */
 export const knownDoor = (id) => KNOWN_DOORS.has(id);
-// Which of the three code-locked homes a pane belongs to (shared/homes.mjs, server/homeGate.mjs).
+// Which of the code-locked homes a pane belongs to (shared/homes.mjs, server/homeGate.mjs).
 const PANE_HOME = makePaneHomes({ prisms: HOUSE.prisms, doors: HOUSE.doors });
 /**
  * The cars parked along the village's streets (src/data/roads.json, drawn by src/world/traffic.ts):
@@ -344,7 +344,7 @@ export const DOOR_ID = /^[A-Za-z0-9.-]{1,40}$/;
 const onBoard = (role) => role === 'player' || role === 'admin';
 
 export class Game {
-  /** The three code-locked homes' gate (server/homeGate.mjs), made on first use. */
+  /** The code-locked homes' gate (server/homeGate.mjs), made on first use. */
   get gate() {
     return (this._gate ??= new HomeGate({ homes: () => this.homes, paneHome: PANE_HOME }));
   }
@@ -899,7 +899,7 @@ export class Game {
       // The edge of the game: a position outside it (only a changed page sends one) is put back just inside.
       // The ceiling too, but in a drop the one it started under (it starts over the flying ceiling).
       this.fenceIn(next, prev, drop ? player.drop.top : -Infinity);
-      // The inside of the three code-locked homes (server/homeGate.mjs): never taken for a player without the right
+      // The inside of the code-locked homes (server/homeGate.mjs): never taken for a player without the right
       // (an open door of somebody else's is no way in); the page is told, and shuts the home to itself.
       const barred = this.gate.keepOut(player, prev, next);
       if (barred) {
@@ -967,7 +967,7 @@ export class Game {
       // flood would slam doors on every page). Pressing E as fast as one can stays under it.
       if (now < (player.nextDoor || 0)) return;
       player.nextDoor = now + 200;
-      if (!this.gate.door(player, m.id)) return; // one of the three code-locked homes' doors, and no right to it
+      if (!this.gate.door(player, m.id)) return; // one of the code-locked homes' doors, and no right to it
       this.doors[m.id] = !!m.open;
       if (m.dir === 1 || m.dir === -1) this.doorDir[m.id] = m.dir;
       this.broadcastHome({ t: 'door', id: m.id, open: !!m.open, dir: this.doorDir[m.id] ?? 1, by: name }, homeOfDoor(m.id), name); // an inside door's state goes only to those with the right

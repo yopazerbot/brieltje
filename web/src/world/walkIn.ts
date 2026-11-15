@@ -5,17 +5,19 @@ import type { World } from './collision';
 import type { Doors } from './doors';
 import { fixtureGroup } from './furnishing';
 import type { Glass } from './glass';
-import type { DipSpec, DoorSpec, FixtureSpec, Prism, Ring } from './houseData';
+import type { DipSpec, DoorSpec, FixtureSpec, Prism, Ring, VillageData } from './houseData';
 import { prismGeometry, surfaceMaterial } from './houseMeshes';
 import { clearGlass } from './glassLook';
 import { hitBoxMaterial } from './hitBox';
 import type { GroundCuts } from './terrain';
-import { END_DOOR_GLASS } from '../../shared/homes.mjs';
+import { ITEMS } from './furnishing';
+import { addPets, type PetSpec, type Pets } from './pets';
+import { bandsOf, WALK_INS } from '../../shared/homes.mjs';
 
 /**
- * A street model's house you can walk into: the end house of the new terrace at Molenhoek. Its outside
- * (src/data/molenhoek_end_shell.json) is public; its inside (an `EndInside`) is private data that arrives
- * with the home's right (world/insides.ts) and is added with `addInside`. Its
+ * A house you can walk into: the end house of the new terrace at Molenhoek (in its street model), and the brick house on
+ * Kapellenhoek (a model of its own). Each one's outside (src/data/<id>_shell.json) is public; its inside (an `EndInside`)
+ * is private data that arrives with the home's right (world/insides.ts) and is added with `addInside`. Its
  * walls, floors, ceilings, stair and fittings are blocks (one mesh per surface, the
  * plain-coloured ones in one with their colour per vertex), its furniture the catalogue's pieces or
  * simple shapes in that style, its doors the house's door system and its windows breakable panes.
@@ -28,16 +30,50 @@ import { END_DOOR_GLASS } from '../../shared/homes.mjs';
  * walls through the roof: the inside's surfaces take no direct sun (sunless), only the sky's and
  * the room's light, which world/indoorLight.ts makes warmer and stronger indoors.
  *
- * Its floor stands about 16 cm above the pavement in front, with a stone step at the front door. The
+ * The end house's floor stands about 16 cm above the pavement in front, with a stone step at the front door. The
  * ground is cut out under the house and its garden, as for a pond, and a dip sets the ground for
  * walking there at the lawn's height, so the floors are what you stand on. The garden's lawn lies at
  * the floor's level, inside its fences, above the relief at the back, where it falls away (the street
  * model has the fences on gravel boards that take up the step, its terrace and its shed), drawn in
- * the ground's own material, which takes its look from where it lies.
+ * the ground's own material, which takes its look from where it lies. The brick house's plot is levelled the same way.
+ *
+ * What stands in for its inside until the inside comes: the end house keeps the village's plain block of it; the brick
+ * house has its shell's `solids` (the house as lumps, and the slabs under its roofs). Those of the lumps that fill the
+ * inside go when the inside comes, whose own walls, floors, ceilings and roof slabs close the house again; the roof
+ * slabs stay. While the home is locked a plain dark lining stands just inside its outer walls, so a pane without a
+ * curtain shows no sky through the empty house.
  */
 const NEAR = 60;
-/** The windows' numbers for breaking them: after the house's own blocks (fewer than 2000), before the doors' glass (3000). */
-export const WALK_IN_GLASS = 2000;
+/** The end house's windows' numbers for breaking them (shared/homes.mjs WALK_INS). */
+export const WALK_IN_GLASS = WALK_INS.molenhoek_end.glass;
+/** A shell's solids from this high above the floor on are its roofs' slabs: they stay when the inside comes. */
+const ROOF_SLABS = 3.3;
+
+/** The shells, by home id (fetched with the village, never before). */
+const SHELLS: Record<string, () => Promise<{ default: unknown }>> = {
+  molenhoek_end: () => import('../data/molenhoek_end_shell.json'),
+  kapellenhoek_home: () => import('../data/kapellenhoek_home_shell.json'),
+};
+
+/** Which house to walk into, and how. */
+export interface WalkInSpec {
+  /** The home's id (shared/homes.mjs) */
+  id: 'molenhoek_end' | 'kapellenhoek_home';
+  /** The model whose `shut` meshes (its panes and outside doors) stand in the openings from afar; null: none */
+  model: THREE.Object3D | null;
+  /**
+   * The village's blocks of the house: 'molenhoek_end3' (the end house: the street model's plain block, which stands in
+   * until the inside comes, and its plot's covers), or 'outline' (every block inside the shell's outline goes; the
+   * shell's solids stand in)
+   */
+  village: 'molenhoek_end3' | 'outline';
+  /** Whether the home is open to this player (src/world/homeLocks.ts): the lining shows only while it is not */
+  open: () => boolean;
+  /** Seconds on the shared clock (the same for every player), for its pets' rounds (world/pets.ts) */
+  clock: () => number;
+  /** Compiles a new part's shaders before it shows (main.ts precompile) */
+  prepare?: (o: THREE.Object3D) => Promise<unknown>;
+}
 
 interface Block {
   m: string;
@@ -61,6 +97,8 @@ export interface EndInside {
   props: { model: string; x: number; y: number; z: number; yaw: number }[];
   /** The inside doors (and the outside ones the shell does not have), in the house's own frame */
   doors: DoorSpec[];
+  /** Pets that live there (world/pets.ts), in the house's own frame */
+  pets?: PetSpec[];
 }
 
 /** The public shell. */
@@ -78,6 +116,8 @@ interface Shell {
   lawn: { p: [number, number][]; y: number };
   /** The house's plot: the village's ground covers, hedges and fences in it give way to the garden */
   plot: [number, number][];
+  /** The house as lumps for walking into until its inside comes, and its roofs' slabs (world x, z; the game's heights) */
+  solids?: { p: Ring[]; y0: number; y1: number }[];
 }
 
 /** Patterns of the plain mesh (see patterns()). */
@@ -312,6 +352,8 @@ export interface WalkIn {
   install(world: World, doors: Doors, glass: Glass): void;
   /** The village's plain blocks of the house (their numbers in the world) that the inside's walls take the place of */
   holdStandIns(indices: number[]): void;
+  /** The brick house: the village's ground covers in its plot give way (before the village's tiles are built), as its garden lies level */
+  clearPlot(village: VillageData): void;
   /** Its inside has come: its walls and floors for walking into, furniture, inner doors */
   addInside(pack: EndInside, world: World, doors: Doors, glass: Glass): void;
   /** Whether (x, z) lies inside it */
@@ -339,6 +381,8 @@ function edgeDistance(x: number, z: number, ring: [number, number][]): number {
   return best;
 }
 
+const middleOf = (r: Ring): [number, number] => [r.reduce((t, q) => t + q[0], 0) / r.length, r.reduce((t, q) => t + q[1], 0) / r.length];
+
 function inside(x: number, z: number, ring: [number, number][]): boolean {
   let hit = false;
   for (let i = 0, j = ring.length - 1; i < ring.length; j = i++) {
@@ -349,13 +393,64 @@ function inside(x: number, z: number, ring: [number, number][]): boolean {
   return hit;
 }
 
+/** A ring moved inwards by `d` (each edge along its normal; the rings here are simple, with square corners). */
+function insetRing(ring: [number, number][], d: number): [number, number][] {
+  let area = 0;
+  for (let i = 0, j = ring.length - 1; i < ring.length; j = i++) area += ring[j][0] * ring[i][1] - ring[i][0] * ring[j][1];
+  const s = area > 0 ? 1 : -1;
+  const n = ring.length;
+  const lines = ring.map((p, i) => {
+    const q = ring[(i + 1) % n];
+    const L = Math.hypot(q[0] - p[0], q[1] - p[1]) || 1;
+    const nx = (-(q[1] - p[1]) / L) * s;
+    const nz = ((q[0] - p[0]) / L) * s;
+    return { p: [p[0] + nx * d, p[1] + nz * d], t: [(q[0] - p[0]) / L, (q[1] - p[1]) / L] };
+  });
+  return lines.map((b, i) => {
+    const a = lines[(i + n - 1) % n];
+    const den = a.t[0] * b.t[1] - a.t[1] * b.t[0];
+    if (Math.abs(den) < 1e-9) return [b.p[0], b.p[1]] as [number, number];
+    const k = ((b.p[0] - a.p[0]) * b.t[1] - (b.p[1] - a.p[1]) * b.t[0]) / den;
+    return [a.p[0] + a.t[0] * k, a.p[1] + a.t[1] * k] as [number, number];
+  });
+}
+
 /**
- * The end house, once its street model is in (`model` is molenhoek_end3). Its shell is public: the outside doors, the
+ * The plain dark lining of a locked home: walls just inside its outer ones and a lid under each floor's ceiling, from its
+ * bands (shared/homes.mjs, 20 cm inside the outer faces) moved in to 45 cm. World coordinates. Drawn unlit, from inside.
+ */
+function lining(id: string, floor: number): THREE.Mesh {
+  const pos: number[] = [];
+  for (const b of bandsOf(id)) {
+    const ring = insetRing(b.ring as [number, number][], 0.25);
+    const y0 = Math.max(b.y0, floor - 0.05);
+    const y1 = Math.min(b.y1, y0 + 2.75);
+    for (let i = 0; i < ring.length; i++) {
+      const [ax, az] = ring[i];
+      const [bx, bz] = ring[(i + 1) % ring.length];
+      pos.push(ax, y0, az, bx, y0, bz, bx, y1, bz, ax, y0, az, bx, y1, bz, ax, y1, az);
+    }
+    const lid = new THREE.ShapeGeometry(new THREE.Shape(ring.map(([x, z]) => new THREE.Vector2(x, -z)))).rotateX(-Math.PI / 2).translate(0, y1, 0);
+    const p = lid.toNonIndexed().attributes.position;
+    for (let i = 0; i < p.count; i++) pos.push(p.getX(i), p.getY(i), p.getZ(i));
+  }
+  const g = new THREE.BufferGeometry().setAttribute('position', new THREE.Float32BufferAttribute(pos, 3));
+  const mesh = new THREE.Mesh(g, new THREE.MeshBasicMaterial({ color: '#17171a', side: THREE.DoubleSide }));
+  mesh.name = 'walk-in lining';
+  mesh.userData.ignoreRay = true;
+  mesh.raycast = () => {};
+  return mesh;
+}
+
+/**
+ * A house to walk into, once the village is in (`spec`: which, its model). Its shell is public: the outside doors, the
  * windows, the lawn, the ground cut out under it. Its inside (walls, floors, furniture, inner doors) comes later with
  * the home's right (`addInside`, see world/insides.ts), and is not in the repository.
  */
-export async function loadWalkIn(renderer: THREE.WebGLRenderer, model: THREE.Object3D): Promise<WalkIn> {
-  const data = (await import('../data/molenhoek_end_shell.json')).default as unknown as Shell;
+export async function loadWalkIn(renderer: THREE.WebGLRenderer, spec: WalkInSpec): Promise<WalkIn> {
+  const data = (await SHELLS[spec.id]()).default as Shell;
+  const model = spec.model;
+  const range = WALK_INS[spec.id];
   const { o, a, floor } = data.frame;
   const c = Math.cos(a);
   const s = Math.sin(a);
@@ -423,16 +518,16 @@ export async function loadWalkIn(renderer: THREE.WebGLRenderer, model: THREE.Obj
   local.add(glassAll);
   paneGeos.forEach((geo, i) => {
     const pane = new THREE.Mesh(geo, hitBoxMaterial); // unseen: a stand-in for shots
-    pane.userData.glassIndex = WALK_IN_GLASS + i;
-    panes.set(WALK_IN_GLASS + i, pane);
+    pane.userData.glassIndex = range.glass + i;
+    panes.set(range.glass + i, pane);
     local.add(pane);
   });
 
   // Far off, the model's own panes and front door in the openings; near, none.
-  model.updateMatrixWorld(true);
+  model?.updateMatrixWorld(true);
   const centre = new THREE.Vector3(cx, floor, cz);
   const shut: THREE.Mesh[] = [];
-  model.traverse((obj) => {
+  model?.traverse((obj) => {
     const mesh = obj as THREE.Mesh;
     if (mesh.isMesh && (mesh.material as THREE.Material).userData.shut) shut.push(mesh);
   });
@@ -451,15 +546,28 @@ export async function loadWalkIn(renderer: THREE.WebGLRenderer, model: THREE.Obj
     m, y0: b.y0 + floor, y1: b.y1 + floor, p: b.p.map((r) => r.map((q) => toWorld(q))), ...(n ? { n } : {}),
   });
   const paneBlocks = data.panes.map((p) => world(p, 'glass'));
-  // Door glass counts from END_DOOR_GLASS: the shell's doors first, then the inside's (the same on every computer).
-  let glassNo = END_DOOR_GLASS;
+  // Door glass counts from the house's own number (shared/homes.mjs WALK_INS): the shell's doors first, then the
+  // inside's (the same on every computer).
+  let glassNo = range.doorGlass;
   const inFrame = (list: DoorSpec[]): DoorSpec[] => list.map((d) => ({
     ...d,
     y0: d.y0 + floor,
     y1: d.y1 + floor,
     panels: d.panels.map((p) => ({ ...p, a: toWorld(p.a), b: toWorld(p.b), ...(p.slide ? { slide: turn(p.slide) } : {}), ...(p.glass ? { glassNo: glassNo++ } : {}) })),
   }));
-  const doorSpecs = inFrame(data.doors);
+  // The brick house's garage door never opens (no car drives in): it stays put, whoever has the right.
+  const shutDoor = (d: DoorSpec): DoorSpec => (d.id === 'kh-home-garage' ? { ...d, panels: d.panels.map(({ slide: _s, swing: _w, ...p }) => p) } : d);
+  const doorSpecs = inFrame(data.doors).map(shutDoor);
+  // The shell's solids (the brick house): those that fill the inside stand in until it comes; the roofs' slabs stay.
+  // A lump fills the inside: it starts below the roofs and covers the middle of the upper floor (the wing's and the
+  // main roof's slabs do neither).
+  const solids = (data.solids ?? []).map((b) => ({ m: 'nb_red', y0: b.y0, y1: b.y1, p: b.p }) as Prism);
+  const top = bandsOf(spec.id).at(-1)?.ring ?? [];
+  const mid: [number, number] = [top.reduce((t, q) => t + q[0], 0) / (top.length || 1), top.reduce((t, q) => t + q[1], 0) / (top.length || 1)];
+  const fills = solids.map((b) => b.y0 < floor + ROOF_SLABS && inside(mid[0], mid[1], b.p[0]));
+  let firstSolid = -1;
+  const liner = spec.village === 'outline' ? lining(spec.id, floor) : null;
+  if (liner) near.add(liner);
 
   const outline = data.outline;
   // What is drawn first: from outside the street model's walls, so their depth turns away the inside behind them
@@ -478,7 +586,13 @@ export async function loadWalkIn(renderer: THREE.WebGLRenderer, model: THREE.Obj
     }
     // Seen through the glass front door from the street: closer than 3 m only, the hall's doors looked open from further off.
     inDoors.visible = now || edgeDistance(eye.x, eye.z, outline) < 15;
+    if (liner) liner.visible = !spec.open();
+    const t = performance.now();
+    if (pets) pets.update(Math.min(0.1, (t - petsAt) / 1000)); // drawn near only: its pets move only then
+    petsAt = t;
   };
+  let pets: Pets | null = null;
+  let petsAt = performance.now();
   const mine = (p: Prism) => {
     const r = p.p[0];
     const mx = r.reduce((t, q) => t + q[0], 0) / r.length;
@@ -498,22 +612,32 @@ export async function loadWalkIn(renderer: THREE.WebGLRenderer, model: THREE.Obj
   let standIns: number[] = [];
   const look = (m: THREE.Material) => (m.transparent ? onePass(m) : sunless(m));
   const outside = (d: DoorSpec) => d.panels.some((p) => p.outside);
+  const outlined = spec.village === 'outline';
   return {
     group: lod,
     rooms,
     groundCuts: data.groundCuts,
-    replaces: (p) => p.lm === 'molenhoek_end3' && (p.d === undefined ? mine(p) : inPlot(p)),
-    standIn: (p) => p.lm === 'molenhoek_end3' && p.d === undefined && mine(p),
+    // The brick house: every block of the village (or of the street model it stood in) inside its outline.
+    replaces: (p) => (outlined ? p.d === undefined && mine(p) : p.lm === 'molenhoek_end3' && (p.d === undefined ? mine(p) : inPlot(p))),
+    standIn: (p) => !outlined && p.lm === 'molenhoek_end3' && p.d === undefined && mine(p),
     holdStandIns(indices) {
       standIns = indices;
     },
+    clearPlot(village) {
+      if (!outlined) return; // the end house's covers are marked by world/streetModel.ts
+      // A cover with its middle or a corner in the plot: the garden lies at the floor's level, not on the relief.
+      village.prisms = (village.prisms ?? []).filter(
+        (p) => p.d === undefined || /hedge|fence/.test(p.m) || !(inside(...middleOf(p.p[0]), data.plot) || p.p[0].some(([x, z]) => inside(x, z, data.plot))),
+      );
+    },
     install(w, doors, glass) {
       w.addDips([data.dip]);
+      if (solids.length) firstSolid = w.addPrisms(solids);
       const first = w.addPrisms(paneBlocks);
       glass.add(panes, (i, gone) => {
-        w.setSolid(first + i - WALK_IN_GLASS, !gone);
-        if (gone) broken.add(i - WALK_IN_GLASS);
-        else broken.delete(i - WALK_IN_GLASS);
+        w.setSolid(first + i - range.glass, !gone);
+        if (gone) broken.add(i - range.glass);
+        else broken.delete(i - range.glass);
         drawGlass();
       });
       glass.add(doors.add(doorSpecs, outDoors, look), (i, gone) => doors.setBroken(i, gone));
@@ -535,10 +659,13 @@ export async function loadWalkIn(renderer: THREE.WebGLRenderer, model: THREE.Obj
       plain.geometry = early.geometry = mergeGeometries(solid);
       drawGlass();
 
-      // Furniture: the catalogue's pieces, in the house's own frame.
-      // No shadows from them: the sun's would fall only inside, where it is not drawn (see sunless).
-      const pieces = fixtureGroup(pack.fixtures, (m) => sunless(m), false);
+      // Furniture: the catalogue's pieces, in the house's own frame (the brick house's only of the kinds the catalogue has:
+      // one not there yet is left out). No shadows from them: the sun's would fall only inside, where it is not drawn (see sunless).
+      const known = new Set(ITEMS.map((item) => item.id));
+      const pieces = fixtureGroup(outlined ? pack.fixtures.filter((f) => known.has(f.item)) : pack.fixtures, (m) => sunless(m), false);
       if (pieces) local.add(pieces);
+      // Its pets (their model is fetched only now, with the inside).
+      if (pack.pets?.length) pets = addPets(local, pack.pets, spec.clock, () => eye, { look: (m) => sunless(m), prepare: spec.prepare });
 
       // The toilets (our own model, tools/toilet.py), glossy, into the plain mesh once they come.
       if (pack.props.length) {
@@ -564,6 +691,7 @@ export async function loadWalkIn(renderer: THREE.WebGLRenderer, model: THREE.Obj
       blocks.push(...pack.prisms.filter((b) => b.m === 'glassfix').map((b) => world(b, 'glass')));
       w.addPrisms(blocks);
       for (const i of standIns) w.setSolid(i, false);
+      if (firstSolid >= 0) fills.forEach((fill, i) => fill && w.setSolid(firstSolid + i, false));
       const specs = inFrame(pack.doors);
       glass.add(doors.add(specs.filter(outside), outDoors, look), (i, gone) => doors.setBroken(i, gone));
       glass.add(doors.add(specs.filter((d) => !outside(d)), inDoors, look), (i, gone) => doors.setBroken(i, gone));

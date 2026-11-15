@@ -1,16 +1,16 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import { DOOR_ID, Game, knownDoor } from './game.mjs';
-import { end, house, SKIP } from '../shared/testData.mjs';
+import { brick, end, house, SKIP } from '../shared/testData.mjs';
 
 test('every door id of the shell is one the server takes in a door message', () => {
-  const ids = [...house.doors, ...end.doors].map((d) => d.id);
+  const ids = [...house.doors, ...end.doors, ...brick.doors].map((d) => d.id);
   assert.ok(ids.length >= 10);
   for (const id of ids) assert.match(id, DOOR_ID, id);
 });
 
 test('and the inside\'s door ids too (dots, 31 characters, capitals were refused once)', { skip: SKIP }, () => {
-  const ids = [...house.doors, ...end.doors].map((d) => d.id);
+  const ids = [...house.doors, ...end.doors, ...brick.doors].map((d) => d.id);
   assert.ok(ids.length > 40);
   for (const id of ids) assert.match(id, DOOR_ID, id);
   assert.ok(ids.some((id) => /[.A-Z]/.test(id) || id.length > 30), 'the data still has an id of the kinds that were once refused');
@@ -21,8 +21,8 @@ test('and nothing else gets through: no empty, long, spaced or special ids', () 
 });
 
 test('only the doors of the game: every real one is known, a made-up one is not', () => {
-  for (const d of [...house.doors, ...end.doors]) assert.ok(knownDoor(d.id), d.id);
-  for (const id of ['house-out-0', 'house-out-99', 'mh-end-x', 'some-door', 'toString', 'constructor']) assert.ok(!knownDoor(id), id);
+  for (const d of [...house.doors, ...end.doors, ...brick.doors]) assert.ok(knownDoor(d.id), d.id);
+  for (const id of ['house-out-0', 'house-out-99', 'mh-end-x', 'kh-home-x', 'kh-home-in-999', 'some-door', 'toString', 'constructor']) assert.ok(!knownDoor(id), id);
 });
 
 test('a flood of made-up door ids never reaches the table, and the real doors keep working', () => {
@@ -42,7 +42,7 @@ test('a flood of made-up door ids never reaches the table, and the real doors ke
   for (let i = 0; i < 300; i++) door(`jam-${i}`);
   assert.equal(Object.keys(game.doors).length, 0, 'none of them kept');
   assert.equal(told.length, 0, 'and none sent on');
-  const real = [...house.doors, ...end.doors].map((d) => d.id);
+  const real = [...house.doors, ...end.doors, ...brick.doors].map((d) => d.id);
   for (const id of real) door(id);
   assert.deepEqual(Object.keys(game.doors).sort(), [...real].sort(), 'every real door still opens');
 });

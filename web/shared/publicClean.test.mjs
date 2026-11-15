@@ -4,11 +4,12 @@
 // room names of the homes and for the words that give the source away (the last test), with a list of the uses that stay.
 import assert from 'node:assert/strict';
 import { execFileSync } from 'node:child_process';
-import { readFileSync } from 'node:fs';
+import { existsSync, readdirSync, readFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import test from 'node:test';
 import { fileURLToPath } from 'node:url';
-import { endShell, HAVE_PRIVATE, inside, endInside, shell, SKIP } from './testData.mjs';
+import { WALK_IN_FILES } from './insideData.mjs';
+import { brickInside, brickShell, endShell, HAVE_PRIVATE, inside, endInside, shell, SKIP } from './testData.mjs';
 
 const REPO = join(dirname(fileURLToPath(import.meta.url)), '..', '..');
 let files = null;
@@ -63,12 +64,13 @@ test('the sealed files are sealed: nothing under web/private/ but .enc files and
   const manifest = JSON.parse(text('web/private/manifest.json'));
   for (const [name, entry] of Object.entries(manifest)) assert.deepEqual(Object.keys(entry), ['key'], name);
   for (const f of sealed.filter((n) => n.endsWith('.enc'))) assert.equal((readFileSync(join(REPO, f)).length - 64) % 16384, 0, `${f} is padded`);
-  for (const name of ['extras.json', 'house_inside.json', 'molenhoek_end_inside.json']) {
+  for (const name of ['extras.json', 'house_inside.json', ...Object.values(WALK_IN_FILES)]) {
     assert.ok(sealedNames.includes(name), `${name} is sealed`);
   }
 });
 
-test('none of the inside\'s door ids or names is in a tracked data or code file', { skip: NO_GIT || SKIP }, () => {
+/** The insides' door ids and the names of their rooms and doors, from web/.private/ (none of them may be public). */
+function insideWords() {
   const ids = new Set();
   const names = new Set();
   for (const home of [inside.house, inside.bungalow]) {
@@ -76,13 +78,20 @@ test('none of the inside\'s door ids or names is in a tracked data or code file'
     (home.rooms ?? []).forEach((r) => names.add(r.name));
     home.prisms.forEach((p) => p.n && !p.k && names.add(p.n));
   }
-  endInside.doors.forEach((d) => ids.add(d.id));
-  endInside.rooms.forEach((r) => names.add(r));
+  for (const walkIn of [endInside, brickInside]) {
+    walkIn.doors.forEach((d) => ids.add(d.id));
+    walkIn.rooms.forEach((r) => names.add(r));
+  }
   for (const home of [inside.house, inside.bungalow]) for (const name of [...Object.keys(home.names?.places ?? {}), ...Object.keys(home.names?.doors ?? {})]) names.add(name);
-  assert.ok(ids.size > 30 && names.size > 15, `${ids.size} ids, ${names.size} names`);
   // Names that are plain words the outside needs as well (a floor is a floor) are not an inside's.
   for (const common of ['ground floor', '1st floor', '2nd floor', 'Garden']) names.delete(common);
-  for (const d of [...shell.doors, ...endShell.doors]) names.delete(d.name); // the names of outside doors are the shell's own
+  for (const d of [...shell.doors, ...endShell.doors, ...brickShell.doors]) names.delete(d.name); // the names of outside doors are the shell's own
+  return { ids, names };
+}
+
+test('none of the inside\'s door ids or names is in a tracked data or code file', { skip: NO_GIT || SKIP }, () => {
+  const { ids, names } = insideWords();
+  assert.ok(ids.size > 30 && names.size > 15, `${ids.size} ids, ${names.size} names`);
   const hits = [];
   for (const f of files) {
     if (f.startsWith('web/private/') || PROSE.test(f) || /\.(png|jpe?g|webp|ktx2|glb|gltf|hdr|woff2?|wasm|br|ico|svg|lock)$/.test(f) || f.endsWith('package-lock.json')) continue;
@@ -110,6 +119,34 @@ test('none of the inside\'s door ids or names is in a tracked data or code file'
   }
   assert.deepEqual(hits.slice(0, 10), []);
   assert.ok(HAVE_PRIVATE);
+});
+
+// What the build gives to every visitor (web/dist, after `npm run build`): none of the insides' door ids, no name of a
+// walked-into house's rooms, no inside file's name, in any file (the bundle, the pages, the models: read byte for byte).
+const DIST = join(REPO, 'web', 'dist');
+const NO_DIST = existsSync(DIST) ? false : 'web/dist is absent: run `npm run build` first';
+test('the build holds nothing of an inside: door ids, room names, the inside files\' names', { skip: NO_DIST || SKIP }, () => {
+  const { ids } = insideWords();
+  const rooms = new Set([...endInside.rooms, ...brickInside.rooms]);
+  for (const d of [...shell.doors, ...endShell.doors, ...brickShell.doors]) rooms.delete(d.name);
+  const files = [];
+  const walk = (dir) => {
+    for (const e of readdirSync(dir, { withFileTypes: true })) {
+      if (e.isDirectory()) walk(join(dir, e.name));
+      else files.push(join(dir, e.name));
+    }
+  };
+  walk(DIST);
+  assert.ok(files.length > 20, `${files.length} files in web/dist`);
+  const hits = [];
+  for (const f of files) {
+    const s = readFileSync(f).toString('latin1');
+    for (const id of ids) if (s.includes(`"${id}"`) || s.includes(`'${id}'`) || s.includes(`\`${id}\``)) hits.push(`${f}: door id ${id}`);
+    if (s.includes('kh-home-in-')) hits.push(`${f}: an inside door's id`);
+    for (const n of rooms) if (s.includes(`"${n}"`) || s.includes(`'${n}'`)) hits.push(`${f}: room ${n}`);
+    for (const name of [...Object.values(WALK_IN_FILES), 'house_inside.json']) if (s.includes(name.replace(/\.json$/, ''))) hits.push(`${f}: ${name}`);
+  }
+  assert.deepEqual(hits.slice(0, 10), []);
 });
 
 // Prose and code: no word of a home's inside (the rooms, the fittings) and no word that gives the source of the main house away.
