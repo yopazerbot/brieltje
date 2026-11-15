@@ -8,8 +8,9 @@ floor. In the frame's own words west is u = 0 and south is the back (v grows). T
 free (tools/keet.py checks the doorways). Nothing whose top is over 0.95 m can be stood on: under the 2.75 m ceiling
 a body of 1.8 m has no room there (tools/keet.py checks it too).
 
-No lettering anywhere: no names, no brands, no numbers. The clock and the dart board carry ticks only, the pictures are
-blank or three flat bands, the enamel plates a plain field with a stripe. Bottles and glasses are plain shapes.
+No lettering, numbers or marks anywhere. The clock and the dart board carry ticks only, the pictures are one muted
+field or three flat bands, the enamel plates plain shapes (an oval with a stripe, a lozenge) in no arms' colours.
+Bottles and glasses are plain shapes.
 """
 import math
 
@@ -87,12 +88,13 @@ class Fit:
         for k in range(m):
             self.rect(axis, at, depth, c, y, 2 * r, h, k * math.pi / m, color)
 
-    def framed(self, axis, at, sign, c, y, w, h, bands=None):
-        """A picture: a dark frame, a blank cream field or three flat bands of colour (a plain landscape)."""
+    def framed(self, axis, at, sign, c, y, w, h, bands="#7f8a76"):
+        """A picture: a dark frame round one plain field of a muted colour (`bands` a colour) or three flat bands of
+        colour (a plain landscape). Not cream: on the cream wall that read as an empty frame."""
         self.rect(axis, at, sign * .025, c, y, w, h, 0, DARK)
         fw, fh = w - .08, h - .08
-        if bands is None:
-            self.rect(axis, at, sign * .03, c, y, fw, fh, 0, CREAM)
+        if isinstance(bands, str):
+            self.rect(axis, at, sign * .03, c, y, fw, fh, 0, bands)
             return
         for k, col in enumerate(bands):
             bh = fh * (.45, .3, .25)[k]
@@ -168,20 +170,17 @@ def counter(f):
     # Nobody stands on it: on 1.14 m a head is in the ceiling. A block from 2.0 m up meets a body before its feet
     # are high enough to step on (tools/keet.py checks every top between 0.95 m and the ceiling).
     f.solid(u0, v0, u1 + .05, v1, 2.0, 2.75)
-    # The front: a kick board, a top rail, four stiles and three fields between (the panels seem sunk between them).
-    api.box(u1 + .01, 0, (v0 + v1) / 2, .02, .12, v1 - v0, DARK)
-    api.box(u1 + .01, .98, (v0 + v1) / 2, .02, .12, v1 - v0, WOOD, 0, "oak")
+    # The front: a kick board, a top rail and four stiles 3 cm proud of the block, its face the three sunk panels
+    # between them (a thin field on the face shimmered on Low).
+    api.box(u1 + .015, 0, (v0 + v1) / 2, .03, .12, v1 - v0, DARK)
+    api.box(u1 + .015, .98, (v0 + v1) / 2, .03, .12, v1 - v0, WOOD, 0, "oak")
     stiles = [v0 + .05, v0 + (v1 - v0) / 3, v0 + 2 * (v1 - v0) / 3, v1 - .05]
     for s in stiles:
-        api.box(u1 + .01, .12, s, .02, .86, .1, WOOD, 0, "oak")
-    for a, b in zip(stiles, stiles[1:]):
-        api.box(u1 + .005, .2, (a + b) / 2, .01, .7, b - a - .22, DARK, 0, "oak")
-    # Its end by the gate: one field.
-    api.box((u0 + u1) / 2, .12, v1 + .005, u1 - u0 - .12, .86, .01, DARK, 0, "oak")
+        api.box(u1 + .015, .12, s, .03, .86, .1, WOOD, 0, "oak")
     # The foot rail, 0.20 m up and 0.12 m out from the front, on four brackets.
     api.rod((u1 + .12, .2, v0 + .06), (u1 + .12, .2, v1 - .04), .025, BRASS, 8)
     for v in (v0 + .25, v0 + 1.25, v0 + 2.25, v1 - .2):
-        api.rod((u1 + .02, .3, v), (u1 + .12, .2, v), .012, BRASS, 6)
+        api.rod((u1 + .03, .3, v), (u1 + .12, .2, v), .012, BRASS, 6)
     top = h + .04
     # The tap column (the bartender pulls from behind, towards -u): a brass post, a cross bar, three plain taps with
     # white handles, a drip tray under them.
@@ -419,11 +418,8 @@ def front_room(f):
         f.rect("v", wd, -.008, 1.0, 1.85, w + .03, h + .03, 0, WHITE)
         f.rect("v", wd, -.012, 1.0, 1.85, w, h, 0, BLUE)
     f.rect("v", wd, -.016, 1.0, 1.85, .44, .035, 0, WHITE)
-    f.rect("v", wd, -.008, 3.5, 1.93, .43, .31, 0, WHITE)  # a shield in dull red
-    f.rect("v", wd, -.008, 3.5, 1.78, .3, .3, math.pi / 4, WHITE)
-    f.rect("v", wd, -.012, 3.5, 1.93, .4, .28, 0, RED)
-    f.rect("v", wd, -.012, 3.5, 1.78, .278, .278, math.pi / 4, RED)
-    f.rect("v", wd, -.016, 3.5, 1.97, .4, .035, 0, WHITE)
+    f.rect("v", wd, -.008, 3.5, 1.85, .37, .37, math.pi / 4, "#c9a24a")  # a lozenge: dark green in an ochre rim
+    f.rect("v", wd, -.012, 3.5, 1.85, .33, .33, math.pi / 4, ENAMEL)
     # --- net half-curtains on brass rails, 4 cm inside the glass ---
     for w in api.windows:
         if w["fixed"] == "v":
@@ -495,7 +491,7 @@ def bar_room(f):
     f.framed("u", ue, -1, 11.3, 1.8, .7, .5, BANDS[1])
     f.framed("u", ue, -1, 12.58, 1.75, .4, .3)
     f.framed("u", 2.80, 1, 15.3, 1.68, .5, .4, BANDS[2])
-    f.framed("u", 2.80, 1, 16.4, 1.65, .4, .3)
+    f.framed("u", 2.80, 1, 16.4, 1.65, .4, .3, "#8a6a52")
     # --- a shelf over them along the partition, five plain jugs and tankards ---
     api.box(2.89, 2.02, 15.8, .18, .03, 2.3, WOOD, 0, "oak")
     for v in (14.85, 16.75):
