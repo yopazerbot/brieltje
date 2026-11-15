@@ -94,6 +94,8 @@ interface Profile {
   apronTint?: string;
   kerb?: { h: number; tint: string };
   walk?: { m: Surface; tint: string };
+  /** The pavement on the run's - side where it differs from the + side's (`walk`) */
+  walkMinus?: { m: Surface; tint: string };
   /** Where no kerb: gravel or earth between the road and the grass, this wide */
   shoulder?: { w: number; tint: string };
   /** A dashed white centre line */
@@ -120,6 +122,17 @@ const KERBSTONE = 1;
 const KH: Profile = {
   road: 'concrete', tint: '#b2afa7', slab: 5, centreJoint: true, cracks: 0.2, gutter: { w: 0.32, tint: SETTS }, kerb: { h: 0.11, tint: KERB_TINT },
   walk: { m: 'pavers', tint: PAVERS }, shoulder: { w: 0.4, tint: '#a19a8d' }, gullies: 24, manholes: 45, wear: 0.34,
+};
+/**
+ * The outer streets in concrete (PROFILES.concrete). Mid grey slabs, as worn as Kapellenhoek's; the road surface
+ * the open data has beyond the carriageway where there is no kerb (the apron: forecourts, the strip in front of the
+ * gardens) in darker grey pavers, so the street reads as wide as its slabs and not as the whole apron; the
+ * pavements in a darker grey than the road and the kerbs in a lighter one (the street-level pictures of 15 Nov 2026,
+ * compared by eye; nothing taken from them).
+ */
+const OUTER: Profile = {
+  road: 'concrete', tint: '#9d998f', slab: 5, centreJoint: true, cracks: 0.3, gutter: { w: 0.32, tint: SETTS }, kerb: { h: 0.1, tint: '#a3a5a5' },
+  walk: { m: 'pavers', tint: '#8e8c88' }, apron: 'pavers', apronTint: '#8b8985', shoulder: { w: 0.4, tint: '#857f72' }, gullies: 25, manholes: 50, wear: 0.34,
 };
 const PROFILES: Record<string, Profile> = {
   // Kapellenhoek: pale worn concrete slabs, setts, kerbs and pavers where houses stand, gravel where they don't;
@@ -149,15 +162,12 @@ const PROFILES: Record<string, Profile> = {
   // The outer streets in concrete (the second Street View walk, 8 Nov 2026: Schildekensstraat, Serskampstraat,
   // Oud-Smetlede, Blekte, Stefaan Glorieuxstraat): grey slabs with a joint across every five metres and one
   // down the middle, a little stained; setts in the gutter and a kerb where the GRB has a pavement, pavers on it or
-  // the grass the photo shows; earth and gravel at the edge where the grass comes up to the slabs. The road surface the
-  // open data has beyond the carriageway where there is no kerb (the apron: forecourts, the strip in front of the
-  // gardens) in darker grey pavers, so the street reads as wide as its slabs and not as the whole apron. Mid grey slabs,
-  // as worn as Kapellenhoek's; the pavements in a darker grey than the road and the kerbs in a lighter one (the
-  // street-level pictures of 15 Nov 2026, compared by eye; nothing taken from them).
-  concrete: {
-    road: 'concrete', tint: '#9d998f', slab: 5, centreJoint: true, cracks: 0.3, gutter: { w: 0.32, tint: SETTS }, kerb: { h: 0.1, tint: '#a3a5a5' },
-    walk: { m: 'pavers', tint: '#8e8c88' }, apron: 'pavers', apronTint: '#8b8985', shoulder: { w: 0.4, tint: '#857f72' }, gullies: 25, manholes: 50, wear: 0.34,
-  },
+  // the grass the photo shows; earth and gravel at the edge where the grass comes up to the slabs.
+  concrete: OUTER,
+  // The same with a footpath of red-brown pavers on one side, the run's + side (Schildekensstraat west of the junction
+  // with its lane, Serskampstraat by its junction with Schildekensstraat; the pictures show grey pavers across the road).
+  // A dull brick red as bright as the grey pavers: in the sun as light against the road as they are on the pictures.
+  concrete_red: { ...OUTER, walk: { m: 'pavers', tint: '#ad877c' }, walkMinus: OUTER.walk },
   // The other streets: asphalt, setts and kerbs where the GRB has a pavement.
   asphalt: {
     road: 'asphalt', tint: '#595b5e', gutter: { w: 0.3, tint: SETTS }, kerb: { h: 0.1, tint: KERB_TINT }, walk: { m: 'pavers', tint: PAVERS },
@@ -796,7 +806,8 @@ class Builder {
           // The pavement: sloping a little towards the road, down to the drive or the grass at its back.
           const p0 = (k: number) => sign * (w(k) + KERB);
           const p1 = (k: number) => sign * (w(k) + KERB + Math.max(0, q(k)));
-          const walkTint = new THREE.Color(pf.walk!.tint);
+          const walk = (side === 1 && pf.walkMinus) || pf.walk!;
+          const walkTint = new THREE.Color(walk.tint);
           const inner = (k: number) => road + h(k) - 0.005;
           const outer = (k: number) => road + Math.max(0.025, h(k) - 0.04);
           const walkLift = (k: number, o: number) => inner(k) + (outer(k) - inner(k)) * Math.min(1, Math.max(0, (Math.abs(o) - (w(k) + KERB)) / Math.max(0.05, q(k))));
@@ -808,12 +819,12 @@ class Builder {
               continue;
             }
             // Its pavers a little different every few steps, and dirty along its back, where the gardens' earth washes on.
-            this.as(RANK.pavement, () => this.strip(f, ka, kb, side === 0 ? p0 : p1, side === 0 ? p1 : p0, pf.walk!.m, walkLift, (k, o, out) => {
+            this.as(RANK.pavement, () => this.strip(f, ka, kb, side === 0 ? p0 : p1, side === 0 ? p1 : p0, walk.m, walkLift, (k, o, out) => {
               const back = Math.max(0, q(k) - (Math.abs(o) - (w(k) + KERB)));
               const muck = Math.exp(-((back / 0.22) ** 2)) * (0.4 + 0.6 * wave(f.s[k], 4, seed + side * 17 + 2));
               return out.copy(walkTint).multiplyScalar((0.93 + 0.1 * wave(f.s[k], 6, seed + side)) * (0.96 + 0.08 * hash(k, Math.round(o * 3), seed)) * (1 - 0.24 * muck)).lerp(SILT, 0.3 * muck);
             }, [0, 0.18, 0.82, 1], 1, 'pave_light'));
-            this.riser(f, ka, kb, p1, () => this.ground, outer, pf.walk!.tint, true);
+            this.riser(f, ka, kb, p1, () => this.ground, outer, walk.tint, true);
             for (let c = ka; c < kb; c += 8) this.block(f, c, Math.min(kb, c + 8), side === 0 ? t0 : p1, side === 0 ? p1 : t0, h(c) - 0.02);
           }
           // Cast-iron gullies in the gutter.

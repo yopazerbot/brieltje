@@ -108,6 +108,16 @@ LOOSE = "~loose"  # marks a street's pieces with a loose surface (Wegsegment)
 # Kapellenhoek's centre line starts at the church square.
 STRETCHES = [("Kapellenhoek", 0.0, 165.0, "kh_dash"),
              ("Kapelleweg", 10.0, 72.0, "kw_path")]  # Kapelleweg's from its junction with Oordegemkouter
+# Stretches by where they lie, for streets with more than one centre line (each counts its metres from its own first
+# end): (street, (x0, z0, x1, z1) in model metres, profile); the first that holds a station wins, before STRETCHES.
+# From the street-level pictures of 15 Nov 2026 (compared by eye, nothing taken from them) and the orthophoto:
+# - Schildekensstraat west of its junction with the lane at x 102 to the football ground: a footpath of red-brown
+#   pavers on one side, the run's + side, grey pavers across the road (red on the pictures at x 94, 22 and -51, grey
+#   at x 167 and 288; on the orthophoto that side's pavement west of the junction is redder than east of it);
+# - Serskampstraat from its junction with Schildekensstraat to x -330: the same red footpath where it has one (red at
+#   x -122 and -140).
+AREAS = [("Schildekensstraat", (-400.0, -1400.0, 102.0, -950.0), "concrete_red"),
+         ("Serskampstraat", (-330.0, -1200.0, -60.0, -860.0), "concrete_red")]
 # Lanes without a road surface in the village data, drawn on their GRB centre line with a street's profile: name:
 # (profile, half its width, the earth either side, the street it leaves, metres left off where it leaves it and at its
 # other end). Meulewegel, from Molenhoek to Kapelleweg, rebuilt as Kapelleweg's last stretch: two pale concrete strips
@@ -767,6 +777,9 @@ def profile_runs(name, run):
         base = "lane"
 
     def pf(st):
+        for street, (x0, z0, x1, z1), p in AREAS:
+            if street == name and x0 <= st["x"] <= x1 and z0 <= st["z"] <= z1:
+                return p
         for street, s0, s1, p in STRETCHES:
             if street == name and s0 <= st["s"] <= s1:
                 return p
@@ -853,7 +866,7 @@ def debug(out, road):
         for h in f["r"][1:]:
             d.polygon(ring(h), fill=(236, 240, 228))
     pal = {"kh": (200, 60, 60), "kh_dash": (240, 120, 0), "kw": (60, 140, 60), "briel": (60, 60, 200), "lane": (140, 60, 200),
-           "kerkhof": (20, 20, 20), "asphalt": (90, 90, 90), "concrete": (230, 170, 40), "lane_asphalt": (120, 120, 120), "lane_loose": (180, 160, 120)}
+           "kerkhof": (20, 20, 20), "asphalt": (90, 90, 90), "concrete": (230, 170, 40), "concrete_red": (200, 90, 70), "lane_asphalt": (120, 120, 120), "lane_loose": (180, 160, 120)}
     for r in out["runs"]:
         p, w, q = r["p"], r["w"], r["q"]
         n = len(p) // 2
