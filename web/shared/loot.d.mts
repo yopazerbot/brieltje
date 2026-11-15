@@ -2,7 +2,7 @@
 
 import type { Nav, Zombie } from './zombies.mjs';
 
-export type LootKind = 'ammo' | 'scope' | 'claymore' | 'stakes' | 'turret' | 'medkit' | 'armor' | 'nades' | 'lull' | 'gun';
+export type LootKind = 'ammo' | 'scope' | 'claymore' | 'stakes' | 'turret' | 'medkit' | 'armor' | 'nades' | 'lull' | 'gun' | 'rifle';
 
 export const LOOT: {
   chance: number;

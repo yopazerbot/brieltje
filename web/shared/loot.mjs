@@ -33,6 +33,8 @@
 //   it (LOOT.lullRise up or down) walks at LOOT.lullSlow of its pace (a big one LOOT.lullBigSlow), and
 //   for LOOT.lullHold after. LOOT.lullsAll play at once at most (the oldest stops).
 // - A supply crate: one of LOOT.guns you lack, at random. Lost when you go down, as every found gun.
+// - An assault rifle (the game's automatic rifle): yours, unless you carry one already (it stays for a
+//   teammate, as a crate does when you carry every gun). Lost when you go down, as every found gun.
 //
 // Who has what is a kit per player name (kits), kept for the game, a dropped connection included.
 
@@ -44,7 +46,7 @@ export const LOOT = {
   runnerChance: 0.1,
   bigChance: 1,
   /** Which reward, by weight */
-  weights: [['ammo', 0.3], ['claymore', 0.16], ['nades', 0.13], ['medkit', 0.12], ['scope', 0.09], ['armor', 0.08], ['lull', 0.07], ['gun', 0.05]],
+  weights: [['ammo', 0.24], ['claymore', 0.16], ['nades', 0.13], ['medkit', 0.12], ['scope', 0.09], ['armor', 0.08], ['lull', 0.07], ['gun', 0.05], ['rifle', 0.06]],
   /** At most this many lying at once; ms each lies before it is gone */
   lying: 6,
   life: 45000,
@@ -239,7 +241,7 @@ export class Loot {
    * the guns they carry), takes item `id`: what they got ({ kind, w, heal, kit }) or null (no such
    * item, too far, or nothing in it for them: a second scope, a claymore, stakes, a turret, spare
    * grenades or a vest over what they can carry, a first-aid kit while they miss little, a supply
-   * crate with every gun in it carried already; it stays for someone else).
+   * crate with every gun in it carried already, a rifle while they carry one; it stays for someone else).
    */
   take(name, p, id, now) {
     const it = this.items.get(id);
@@ -266,6 +268,7 @@ export class Loot {
     if (kind === 'medkit' && !(Number.isFinite(p.hp) && LOOT.health - p.hp >= LOOT.healMin)) return null;
     const lacking = kind === 'gun' && Array.isArray(p.guns) ? LOOT.guns.filter((g) => !p.guns.includes(g)) : [];
     if (kind === 'gun' && !lacking.length) return null;
+    if (kind === 'rifle' && !(Array.isArray(p.guns) && !p.guns.includes('rifle'))) return null;
     let w;
     let heal;
     if (kind === 'scope') k.scope = true;
@@ -276,6 +279,7 @@ export class Loot {
     else if (kind === 'nades') k.nades = Math.min(LOOT.nadesCarry, k.nades + LOOT.nades);
     else if (kind === 'medkit') heal = Math.min(LOOT.heal, LOOT.health - p.hp);
     else if (kind === 'gun') w = lacking[Math.min(lacking.length - 1, Math.floor(this.rand() * lacking.length))];
+    else if (kind === 'rifle') w = 'rifle';
     else if (kind === 'lull') {
       // It plays where it lay, not where its taker goes; the oldest stops when too many play.
       while (this.lulls.size >= LOOT.lullsAll) this.lulls.delete(this.lulls.keys().next().value);

@@ -1684,6 +1684,10 @@ function gift(kind: string, w: string | undefined, k: Kit, hp?: number): void {
     weapon.give(w as WeaponId);
     rewards.pickup('gun', here);
     hud.announce(t('loot.gun'), t('loot.gunSub', { w: weaponName(w) }));
+  } else if (kind === 'rifle' && w === 'rifle') {
+    weapon.give('rifle');
+    rewards.pickup('rifle', here);
+    hud.announce(t(paintball.on ? 'paint.rifle' : 'loot.rifle'), t('loot.rifleSub'));
   } else if (kind === 'armor') hud.announce(t('loot.armor'), t('loot.armorSub', { n: LOOT.armor }));
   else if (kind === 'nades') hud.announce(t(paintball.on ? 'loot.nadesPaint' : 'loot.nades'), t('loot.nadesSub', { n: LOOT.nades, key: key('grenade', menu.mode ?? 'kbm') }));
   else if (kind === 'lull') hud.announce(t('loot.lull'), t('loot.lullSub', { n: LOOT.lullMs / 1000 }));
@@ -3917,7 +3921,7 @@ renderer.setAnimationLoop((now: number) => {
     .map((p) => ({ ...p, y: avatars.position(p.name)?.y ?? player.feet })) : [];
   if (games.zombies && games.view.phase === 'break') {
     for (const [, kind, x, y, z] of games.view.zombies?.items ?? []) {
-      if (Math.hypot(x - player.x, z - player.z) < 45) teammates.push({ name: kind === 'claymore' ? mineName() : t(kind === 'nades' && paintball.on ? 'loot.nadesPaint' : LOOT_LABELS[kind]), x, y: y - 1.2, z, color: '' });
+      if (Math.hypot(x - player.x, z - player.z) < 45) teammates.push({ name: kind === 'claymore' ? mineName() : t(kind === 'nades' && paintball.on ? 'loot.nadesPaint' : kind === 'rifle' && paintball.on ? 'paint.rifle' : LOOT_LABELS[kind]), x, y: y - 1.2, z, color: '' });
     }
   }
   tactics.update(camera, !menu.open && combat.alive && cooperative, teammates, net.connected);

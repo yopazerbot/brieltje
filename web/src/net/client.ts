@@ -136,7 +136,7 @@ export type ServerMsg =
   | { t: 'zdown'; id: number; by: string; w: string; double?: boolean }
   | { t: 'zgone'; ids: number[] }
   | { t: 'revive'; op: 'start' | 'stop'; name?: string; by?: string; ms?: number }
-  | { t: 'zgift'; kind: 'ammo' | 'scope' | 'claymore' | 'stakes' | 'turret' | 'medkit' | 'armor' | 'nades' | 'lull' | 'gun' | 'placed' | 'kit'; w?: string; hp?: number; kit: { ammo: string[]; scope: boolean; claymores: number; stakes?: number; turrets?: number; armor?: number; nades?: number } }
+  | { t: 'zgift'; kind: 'ammo' | 'scope' | 'claymore' | 'stakes' | 'turret' | 'medkit' | 'armor' | 'nades' | 'lull' | 'gun' | 'rifle' | 'placed' | 'kit'; w?: string; hp?: number; kit: { ammo: string[]; scope: boolean; claymores: number; stakes?: number; turrets?: number; armor?: number; nades?: number } }
   /** Your own coins in the Zombies game and what you bought at the stall (to you alone; ui/stall.ts checks them) */
   | { t: 'zcoins'; c: unknown; n: unknown }
   | { t: 'zboom'; id: number; x: number; y: number; z: number; yaw: number; by: string }

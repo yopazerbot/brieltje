@@ -218,3 +218,54 @@ test('spare grenades: counted on the server, one throw and one blast each, never
   assert.equal(a.thrown.length, 0);
   assert.equal(z.loot.kit('a').nades, 3);
 });
+
+test('an assault rifle: one player takes it, the server counts their hits with it; the other has none; a holder cannot take a second', () => {
+  const { game, z, a, b, say, gifts } = fixture();
+  const it = z.loot.put('rifle', 0.2, 0, 0, Date.now());
+  say('a', { t: 'zitem', id: it.id });
+  say('b', { t: 'zitem', id: it.id }); // within reach too, but it is a's now
+  assert.deepEqual(gifts(a).map((g) => [g.kind, g.w]), [['rifle', 'rifle']]);
+  assert.equal(gifts(b).length, 0);
+  assert.ok(a.weapons.has('rifle'));
+  assert.equal(b.weapons.has('rifle'), false);
+  // A hit with it counts for a, and not for b, who holds none.
+  z.horde.zombies.set(1, { id: 1, kind: 0, x: 5, y: 0, z: 0, yaw: 0, hp: 500, act: 'walk' });
+  const shoot = (p, name) => {
+    p.state.w = 'rifle';
+    p.nextZombie = 0;
+    say(name, { t: 'zhit', w: 'rifle', hits: [[1, 1, 0]] });
+  };
+  shoot(b, 'b');
+  assert.equal(z.horde.zombies.get(1).hp, 500, 'b holds no rifle: no hit');
+  shoot(a, 'a');
+  assert.ok(z.horde.zombies.get(1).hp < 500, 'a\'s rifle hit counts');
+  // A second rifle: refused for a, and it stays; b takes it.
+  const two = z.loot.put('rifle', 0, 0, 0, Date.now());
+  say('a', { t: 'zitem', id: two.id });
+  assert.ok(z.loot.items.has(two.id), 'a carries one: it stays');
+  assert.equal(gifts(a).length, 1);
+  say('b', { t: 'zitem', id: two.id });
+  assert.ok(b.weapons.has('rifle'));
+  // Down: gone with every found gun.
+  game.respawn('a', a, Date.now());
+  assert.deepEqual([...a.weapons], ['pistol']);
+});
+
+test('the rifle never appears outside Zombies: no item to take, no gift, the guns as they were', () => {
+  const { game, z, a, say, gifts } = fixture();
+  const it = z.loot.put('rifle', 0, 0, 0, Date.now());
+  game.modes.state = { kind: 'free' };
+  say('a', { t: 'zitem', id: it.id });
+  assert.equal(gifts(a).length, 0);
+  assert.deepEqual([...a.weapons], ['pistol']);
+});
+
+test('a page joining while a Zombies game runs is told the pistol only, and the server holds just that', () => {
+  const { game, z } = fixture();
+  game.auth = { session: () => null, log: () => {}, addressOf: () => '127.0.0.1' };
+  z.edge = makeBounds([[-40, -40], [40, -40], [40, 40], [-40, 40]]); // the open field's edge (the fixture's grid has none)
+  const ws = Object.assign([], { readyState: 1, OPEN: 1, on() {}, close() {} });
+  game.join(ws, { username: 'late', role: 'player', key: 'k-late' }, { headers: {}, socket: {} });
+  assert.deepEqual(ws.filter((m) => m.t === 'weapons').at(-1).list, ['pistol']);
+  assert.deepEqual([...game.players.get('late').weapons], ['pistol']);
+});

@@ -4,6 +4,7 @@ import type { LootKind } from '../../shared/loot.mjs';
 import { LOOT } from '../../shared/loot.mjs';
 import { paintball } from '../paintball';
 import { sound } from '../sound';
+import { gunModel, gunsReady } from '../weapon';
 import type { Ring } from './houseData';
 
 /**
@@ -20,16 +21,20 @@ import type { Ring } from './houseData';
  * each shot) and flashes; its eye goes from green to amber to blinking red as its rounds run out, and
  * when they are out it is gone in a puff. Four draws a turret, five as it flashes.
  * The five newer rewards' signs: a white first-aid kit with a red cross, a dark blue vest with two
- * straps, three grenades, a little wooden music box with a crank, a big crate with two white bands.
+ * straps, three grenades, a little wooden music box with a crank, a big crate with two white bands; and the
+ * assault rifle, the game's own rifle model as the guns lying on the map are drawn (world/pickups.ts).
  * A music box taken opens where it lay and plays its tune; glowing dots on the ground mark the circle
  * it slows the zombies in (all of them one instanced draw).
  */
 
 const COLORS: Record<LootKind, string> = {
   ammo: '#f2c14e', scope: '#5fd3f3', claymore: '#ff7a45', stakes: '#9be36b', turret: '#c58cff',
-  nades: '#d7e05a', medkit: '#ff5d73', armor: '#4f8dff', lull: '#ff8ad8', gun: '#ffffff',
+  nades: '#d7e05a', medkit: '#ff5d73', armor: '#4f8dff', lull: '#ff8ad8', gun: '#ffffff', rifle: '#ff3a2e',
 };
 const REACH = 1.0; // m: the page asks for one this close (the server allows LOOT.reach)
+/** Whether the guns' models are in (weapon.ts): until then a rifle's sign is the built one, and swaps when they come. */
+let gunsIn = false;
+void gunsReady.then((ok) => (gunsIn = ok));
 
 const ringGeo = new THREE.RingGeometry(0.3, 0.4, 32).rotateX(-Math.PI / 2);
 const beamGeo = new THREE.CylinderGeometry(0.05, 0.12, 1.8, 10, 1, true).translate(0, 0.9, 0);
@@ -135,6 +140,40 @@ function woodSound(at: THREE.Vector3, kind: 'knock' | 'tip' | 'burst'): void {
     o.connect(og).connect(dest);
     o.start(t);
     o.stop(t + 0.13);
+  }
+}
+
+/** Steel made in code: a rifle's bolt pulled back and let go, two hard clicks with a ring in them. */
+function rackSound(at: THREE.Vector3): void {
+  const ctx = sound.context();
+  const dest = sound.at(at.x, at.y + 0.8, at.z, 2);
+  if (!ctx || !dest) return;
+  const t0 = ctx.currentTime;
+  for (const [i, f] of [[0, 2600], [1, 3400]]) {
+    const t = t0 + i * 0.16;
+    const buf = ctx.createBuffer(1, Math.ceil(ctx.sampleRate * 0.05), ctx.sampleRate);
+    const data = buf.getChannelData(0);
+    for (let n = 0; n < data.length; n++) data[n] = (Math.random() * 2 - 1) * Math.pow(1 - n / data.length, 6);
+    const click = ctx.createBufferSource();
+    click.buffer = buf;
+    const band = ctx.createBiquadFilter();
+    band.type = 'bandpass';
+    band.frequency.value = f;
+    band.Q.value = 2.5;
+    const g = ctx.createGain();
+    g.gain.value = 0.45;
+    click.connect(band).connect(g).connect(dest);
+    click.start(t);
+    // The ring of the steel: a high note dying fast.
+    const o = ctx.createOscillator();
+    o.type = 'triangle';
+    o.frequency.setValueAtTime(f * 0.5, t);
+    const og = ctx.createGain();
+    og.gain.setValueAtTime(0.08, t);
+    og.gain.exponentialRampToValueAtTime(0.0001, t + 0.09);
+    o.connect(og).connect(dest);
+    o.start(t);
+    o.stop(t + 0.1);
   }
 }
 
@@ -324,6 +363,18 @@ function sign(kind: LootKind): THREE.Group {
     crate.add(new THREE.Mesh(boxGeo, mats.box), new THREE.Mesh(crateBandGeo, mats.white));
     crate.scale.setScalar(1.4);
     g.add(crate);
+  } else if (kind === 'rifle') {
+    // The rifle itself, as on the map; the loaded model takes the built one's place once it is in.
+    const gun = new THREE.Group();
+    gun.add(gunModel('rifle'));
+    if (!gunsIn) {
+      void gunsReady.then((ok) => {
+        if (!ok) return;
+        gun.clear().add(gunModel('rifle'));
+        gun.traverse((o) => (o.userData.ignoreRay = true));
+      });
+    }
+    g.add(gun);
   } else {
     const m = mineModel(paintball.on).g;
     m.position.y = -0.12;
@@ -420,9 +471,10 @@ export class Rewards {
     this.dotMesh.computeBoundingSphere();
   }
 
-  /** You took a first-aid kit (two notes going up) or opened a supply crate (a knock on wood), at `at`. */
-  pickup(kind: 'medkit' | 'gun', at: THREE.Vector3): void {
+  /** You took a first-aid kit (two notes going up), opened a supply crate (a knock on wood) or took the rifle (its bolt racked), at `at`. */
+  pickup(kind: 'medkit' | 'gun' | 'rifle', at: THREE.Vector3): void {
     if (kind === 'gun') return woodSound(at, 'knock');
+    if (kind === 'rifle') return rackSound(at);
     const ctx = sound.context();
     const dest = sound.out();
     if (!ctx || !dest) return;

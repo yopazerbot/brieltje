@@ -287,7 +287,7 @@ export class ZombieGame {
     const g = this.game;
     // What is in it is the server's: health back on its own count, a gun into the guns it checks each hit with.
     if (got.kind === 'medkit') p.hp = Math.min(LOOT.health, p.hp + got.heal);
-    else if (got.kind === 'gun') p.weapons.add(got.w);
+    else if (got.kind === 'gun' || got.kind === 'rifle') p.weapons.add(got.w);
     g.send(p.ws, { t: 'zgift', kind: got.kind, w: got.w, kit: got.kit, ...(got.kind === 'medkit' ? { hp: p.hp } : {}) });
   }
 

@@ -4,7 +4,7 @@ import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import { makeBounds } from './bounds.mjs';
 import { Loot, LOOT } from './loot.mjs';
-import { BIG, Horde, makeNav } from './zombies.mjs';
+import { BIG, Horde, makeNav, RUNNER } from './zombies.mjs';
 
 const nav = makeNav({ prisms: [], height: () => 0, edge: makeBounds([[-40, -40], [40, -40], [40, 40], [-40, 40]]) });
 const seeded = (seed = 17) => () => {
@@ -108,6 +108,44 @@ test('a supply crate: one gun you lack, refused when you have them all', () => {
     const w = loot.take('a', { ...at(), guns: ['pistol', 'sniper'] }, d.id, 1).w;
     assert.ok(w === 'rifle' || w === 'shotgun', w);
   }
+});
+
+test('an assault rifle: out of ammo\'s share, about one drop in seventeen, over many seeds', () => {
+  const weight = (k) => LOOT.weights.find(([kind]) => kind === k)?.[1];
+  assert.equal(weight('rifle'), 0.06);
+  assert.equal(weight('ammo'), 0.24);
+  for (const k of ['claymore', 'nades', 'medkit', 'scope', 'armor', 'lull', 'gun']) assert.ok(weight(k) > 0, `${k} keeps its share`);
+  // Real drops (not the wave's last), regular zombies and runners: the rifle's part of what fell.
+  let fell = 0;
+  let rifles = 0;
+  for (let seed = 1; seed <= 40; seed++) {
+    const loot = new Loot(nav, seeded(seed));
+    for (let i = 0; i < 5000; i++) {
+      loot.items.clear();
+      for (const it of loot.drop({ x: 0, y: 0, z: 0, yaw: 0, kind: i % 5 ? 0 : RUNNER }, 0)) {
+        fell++;
+        if (it.kind === 'rifle') rifles++;
+      }
+    }
+  }
+  assert.ok(fell > 10000, `${fell} fell`);
+  assert.ok(Math.abs(rifles / fell - 0.06) < 0.01, `the rifle: ${rifles} of ${fell}`);
+});
+
+test('an assault rifle: yours when you carry none; refused while you carry one, or when nothing is said, and it stays', () => {
+  const loot = new Loot(nav, seeded());
+  const r = loot.put('rifle', 0, 0, 0, 0);
+  assert.equal(loot.take('a', { ...at(), guns: ['pistol', 'rifle'] }, r.id, 1), null, 'one carried already');
+  assert.equal(loot.take('a', { ...at(), guns: ['pistol', 'rifle', 'shotgun', 'sniper'] }, r.id, 1), null);
+  assert.equal(loot.take('a', { ...at(), guns: undefined }, r.id, 1), null, 'nothing said: nothing given');
+  assert.equal(loot.take('a', { ...at(), guns: 'pistol' }, r.id, 1), null);
+  assert.ok(loot.items.has(r.id), 'it stays for a teammate');
+  const got = loot.take('b', { ...at(), guns: ['pistol', 'shotgun'] }, r.id, 1);
+  assert.equal(got.kind, 'rifle');
+  assert.equal(got.w, 'rifle');
+  assert.equal(loot.items.has(r.id), false, 'taken once');
+  assert.deepEqual(loot.kit('b').ammo, [], 'not mistaken for an ammo pack');
+  assert.equal(loot.take('a', { ...at(), guns: ['pistol'] }, r.id, 1), null, 'gone');
 });
 
 test('a music box plays where it lay and slows the zombies near it, for its time', () => {
