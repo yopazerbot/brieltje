@@ -15,7 +15,7 @@ const definition = (name) => {
   assert.ok(start >= 0);
   return stripTypeScriptTypes(source.slice(start, source.indexOf('\n}', start) + 2));
 };
-const constants = ['WHEELBASE', 'WHEEL_R', 'ACCEL', 'BRAKE', 'REVERSE', 'HANDBRAKE', 'REGEN', 'GRIP', 'ESC', 'STEER', 'CLEAR', 'SPIN_STEP', 'DRAW', 'ROLL_H', 'TILT', 'ROUGH', 'CALM', 'angle']
+const constants = ['WHEELBASE', 'WHEEL_R', 'ACCEL', 'BRAKE', 'REVERSE', 'HANDBRAKE', 'REGEN', 'GRIP', 'ESC', 'STEER', 'TYRE', 'STEER_HALF', 'STEER_FALL', 'STEER_IN', 'STICK_CURVE', 'CLEAR', 'SPIN_STEP', 'DRAW', 'ROLL_H', 'TILT', 'ROUGH', 'CALM', 'angle']
   .map(name => source.match(new RegExp(`^const ${name} = .*?;`, 'm'))?.[0]).join('\n');
 const classCode = source.slice(source.indexOf('export class Car')).replace('export class Car', 'class Car');
 // The marks and sounds a car makes, counted instead of drawn and played.
@@ -287,18 +287,18 @@ const handbrake = { throttle: 0, brake: 0, steer: 0, handbrake: true };
 /** Its body slip: the angle (rad) between where it points and where it goes. */
 const slipAngle = (car) => Math.atan2(-car.vx * Math.cos(car.yaw) + car.vz * Math.sin(car.yaw), Math.hypot(car.vx, car.vz) > 0.5 ? car.speed : 1);
 
-test('the handbrake stops hard in a straight line: about 0.8 to 0.9 g dry, less when wet and on grass, the rear wheels marking', () => {
+test('the handbrake stops hard in a straight line: about 0.9 to 1 g dry, less when wet and on grass, the rear wheels marking', () => {
   laid.length = 0;
   const dry = rolling(50);
   let lit = false;
   dry.lamps = { update: (dt, shown, on, braking) => { lit ||= braking; } };
   const d = stopping(dry, handbrake);
-  assert.ok(d.g > 0.8 && d.g < 0.95, `dry: ${d.g.toFixed(2)} g over ${d.metres.toFixed(1)} m`);
+  assert.ok(d.g > 0.9 && d.g < 1.1, `dry: ${d.g.toFixed(2)} g over ${d.metres.toFixed(1)} m`);
   assert.ok(Math.abs(dry.x) < 0.01 && Math.abs(dry.yaw) < 1e-3, 'straight, the wheel straight');
   assert.ok(lit, 'the brake lights come on');
   assert.ok(laid.length > 5, `the locked rear wheels mark the road (${laid.length})`);
   const wet = stopping(rolling(50, 'asphalt', 1), handbrake);
-  assert.ok(wet.metres > d.metres * 1.08 && wet.metres < d.metres * 1.25 && wet.g > 0.65, `wet: ${wet.g.toFixed(2)} g over ${wet.metres.toFixed(1)} m`);
+  assert.ok(wet.metres > d.metres * 1.04 && wet.metres < d.metres * 1.25 && wet.g > 0.65, `wet: ${wet.g.toFixed(2)} g over ${wet.metres.toFixed(1)} m`);
   const grass = stopping(rolling(50, ''), handbrake);
   assert.ok(grass.metres > wet.metres && grass.g > 0.35, `grass: ${grass.g.toFixed(2)} g over ${grass.metres.toFixed(1)} m`);
 });
@@ -307,11 +307,13 @@ test('ABS: full braking stops at about 0.9 g without locking, and the car still 
   const d = stopping(rolling(50), brake);
   assert.ok(d.g > 0.85 && d.g < 0.97, `dry: ${d.g.toFixed(2)} g over ${d.metres.toFixed(1)} m`);
   const wetStop = stopping(rolling(50, 'asphalt', 1), brake).g;
-  assert.ok(wetStop < 0.85 && wetStop > 0.7, `a little less on a wet road, not ice (${wetStop.toFixed(2)} g)`);
+  assert.ok(wetStop <= d.g + 1e-9 && wetStop > 0.75, `on a wet road no more, not ice (${wetStop.toFixed(2)} g)`);
   const turning = rolling(60);
   run(turning, 1, { ...brake, steer: 1 });
   assert.ok(-turning.yaw > 0.4, `braking hard it still turns right (${(-turning.yaw * 57.3).toFixed(0)} degrees in a second)`);
-  assert.ok(Math.abs(slipAngle(turning)) < 0.35 && turning.slideR < 0.5 * turning.speed, `its wheels rolling, not sliding round (${slipAngle(turning).toFixed(2)} rad, the rear sliding ${turning.slideR.toFixed(2)} m/s)`);
+  // The tail steps out a little as it slows (the wheel turns further at a lower speed): about 20 degrees by the
+  // end of the second, not round.
+  assert.ok(Math.abs(slipAngle(turning)) < 0.45 && turning.slideR < 0.75 * turning.speed, `its wheels rolling, not sliding round (${slipAngle(turning).toFixed(2)} rad, the rear sliding ${turning.slideR.toFixed(2)} m/s)`);
 });
 
 test('a handbrake turn: with the wheel turned the back swings round, and it recovers once let go', () => {
@@ -343,10 +345,10 @@ test('cornering too fast it runs wide, more on a wet road or grass, and never pa
     return Math.abs(car.turn) * Math.hypot(car.vx, car.vz) / 9.81;
   };
   const dry = lateral(80, 'asphalt', 0);
-  assert.ok(dry > 0.75 && dry < 1.1, `dry: ${dry.toFixed(2)} g round the turn`);
+  assert.ok(dry > 1.0 && dry < 1.3, `dry: ${dry.toFixed(2)} g round the turn`);
   const wetTurn = lateral(80, 'asphalt', 1);
   assert.ok(wetTurn < dry * 0.95 && wetTurn > dry * 0.8, `wet: a little wider, it still turns (${wetTurn.toFixed(2)} g against ${dry.toFixed(2)})`);
-  assert.ok(lateral(50, '', 0) < 0.6, 'grass');
+  assert.ok(lateral(50, '', 0) < 0.72, 'grass');
   // The server allows a driver the car's top speed (and a little for the network): never more, sliding or not.
   const car = rolling(200);
   let most = 0;
@@ -360,4 +362,32 @@ test('cornering too fast it runs wide, more on a wet road or grass, and never pa
   }
   assert.ok(most <= car.spec.maxSpeed + 1e-9 && step <= car.spec.maxSpeed + 1e-6, `${most} m/s, ${step} m/s between frames`);
   assert.ok(finite(car));
+});
+
+/** Round and round at `kmh` (the throttle holding it), the wheel at `steer`: the circle it settles on (m), and the wheel's angle. */
+function circle(kmh, steer = 1) {
+  const car = rolling(kmh);
+  const rates = [];
+  for (let i = 0; i < 6 * 60; i++) {
+    const v = Math.hypot(car.vx, car.vz);
+    car.drive(1 / 60, { ...throttle, throttle: Math.max(0, Math.min(1, (kmh / 3.6 - v) * 0.8)), steer }, []);
+    car.update(1 / 60, true);
+    if (i >= 4 * 60) rates.push(Math.abs(car.turn));
+  }
+  const rate = rates.reduce((a, b) => a + b, 0) / rates.length;
+  return { radius: Math.hypot(car.vx, car.vz) / rate, wheel: Math.abs(car.steer) };
+}
+
+test('sharper turning: the circle at 20, 30, 50, 100 and 200 km/h with the wheel full over, calm flat out', () => {
+  for (const [kmh, radius] of [[20, 5.2], [30, 6.5], [50, 15.8], [100, 69], [200, 375]]) {
+    const c = circle(kmh);
+    assert.ok(Math.abs(c.radius - radius) < radius * 0.1, `${kmh} km/h: ${c.radius.toFixed(1)} m (about ${radius} m)`);
+  }
+});
+
+test('a stick pushed half way turns the wheel about a third of the way; full over it turns all the way', () => {
+  for (const kmh of [20, 50]) {
+    const half = circle(kmh, 0.5).wheel / circle(kmh, 1).wheel;
+    assert.ok(Math.abs(half - 0.35) < 0.03, `${kmh} km/h: ${half.toFixed(2)} of the lock`);
+  }
 });

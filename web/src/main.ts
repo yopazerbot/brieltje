@@ -3567,7 +3567,7 @@ renderer.setAnimationLoop((now: number) => {
     if (driving) {
       // At the wheel: W/S or R2/L2, steer with A/D or the left stick, Space or Cross for the handbrake.
       const [turn, tilt] = player.look(dt, frame);
-      const hit = car.drive(dt, { throttle: frame.throttle, brake: frame.brake, steer: frame.moveX, handbrake: frame.jumpHeld }, avatars.obstacles());
+      const hit = car.drive(dt, { throttle: frame.throttle, brake: frame.brake, steer: frame.steer, handbrake: frame.jumpHeld }, avatars.obstacles());
       if (hit > 2.5) {
         car.bump(hit);
         rumble(Math.min(1, hit / 10), 0.6, 140);

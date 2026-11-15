@@ -106,6 +106,13 @@ const REGEN = 1;        // m/s2: off the pedal, the motor slows the car (as a Te
 const GRIP = 12;        // how fast sideways sliding dies out at a crawl (1/s)
 const ESC = 6;          // 1/s: how fast the stability control brings a sliding car back (not while the handbrake is on)
 const STEER = 0.62;     // rad, the front wheels at full lock (less at speed, see step())
+// The feel of the drive (15 Nov 2026, DECISIONS.md), the numbers to tune it by, with BRAKE, STEER, REGEN,
+// HANDBRAKE and ESC above.
+const TYRE = 1.2;         // the tyres' grip on the ground, times (1: as before 15 Nov): sharper corners, shorter stops
+const STEER_HALF = 11.5;  // m/s where the lock at speed is down to half (higher: more lock in town)
+const STEER_FALL = 2.2;   // how fast the lock falls beyond that (higher: calmer flat out)
+const STEER_IN = 12;      // 1/s: how fast the wheel turns in
+const STICK_CURVE = 1.5;  // a stick's push to the wheel, softer round the middle (1: straight); keys are full or nothing
 const CLEAR = 0.3;      // m: lower things (kerbs, paving, a step) don't stop the car
 const SPIN_STEP = 0.3;  // rad: the most a wheel turns per frame on screen (faster, the spokes seem to stand or run back)
 const DRAW = 250;       // m from the eye: further off a car isn't drawn (about 30 draw calls each; the village's parked cars go at 200 m)
@@ -636,18 +643,20 @@ export class Car {
       if (this.pedal < 0.05 && this.brakePedal < 0.05) brake += REGEN * Math.min(1, Math.max(0, (speed - 1) / 3)) * MASS;
     }
 
-    // Full lock at a crawl (4.3 m turning radius), about 9 m at 36 km/h, 24 m at 72 km/h: sharp in
-    // the village streets, not twitchy flat out. The wheel turns in over about a fifth of a second and comes
-    // back to the middle a little faster, faster still at speed, as a car's wheel centres itself.
-    const lock = STEER / (1 + (speed / 9) ** 1.6);
-    const want = -Math.max(-1, Math.min(1, input.steer || 0)) * lock;
+    // Full lock at a crawl (4.3 m turning radius), about 5 m at 20 km/h, 6.5 m at 30 km/h and 16 m at 50 km/h:
+    // sharp in the village streets, not twitchy flat out. The wheel turns in over about a twelfth of a second and
+    // comes back to the middle a little faster, faster still at speed, as a car's wheel centres itself. A stick
+    // pushed part way turns the wheel less than in proportion (STICK_CURVE), so small corrections stay small.
+    const lock = STEER / (1 + (speed / STEER_HALF) ** STEER_FALL);
+    const sx = Math.max(-1, Math.min(1, input.steer || 0));
+    const want = -Math.sign(sx) * Math.abs(sx) ** STICK_CURVE * lock;
     const out = Math.abs(want) > Math.abs(this.steer) && want * this.steer >= 0;
-    this.steer += (want - this.steer) * (1 - Math.exp(-dt * (out ? 9 : Math.min(16, 10 + speed * 0.2))));
+    this.steer += (want - this.steer) * (1 - Math.exp(-dt * (out ? STEER_IN : Math.min(18, 12 + speed * 0.2))));
     const delta = -this.steer; // to the right
 
     // The tyres on what is under them (front wheels, rear wheels).
-    const muF = (this.grip[0] + this.grip[1]) / 2;
-    const muR = (this.grip[2] + this.grip[3]) / 2;
+    const muF = (TYRE * (this.grip[0] + this.grip[1])) / 2;
+    const muR = (TYRE * (this.grip[2] + this.grip[3])) / 2;
     const t = tyreForces({ u, s: side, r: this.turn, delta, drive, brake, locked: hb, muF, muR, ax: this.ax });
     // At a crawl the tyres can't slide: the car simply follows its front wheels (the sideways slide dies
     // out), blended into the tyres' own pushing and turning by 5 m/s.

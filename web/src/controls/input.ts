@@ -81,6 +81,11 @@ export interface FrameInput {
   throttle: number;
   /** Driving: brake, then reverse (S or Down, or L2), 0..1 */
   brake: number;
+  /**
+   * Driving: the wheel, -1 left .. 1 right (A/D, the left stick, the touch stick): moveX before it is scaled to
+   * length 1 with moveY, so W + A still turns the wheel all the way.
+   */
+  steer: number;
   anyPadButton: boolean;
 }
 
@@ -88,7 +93,7 @@ export const NO_INPUT: FrameInput = {
   moveX: 0, moveY: 0, lookX: 0, lookY: 0, mouseX: 0, mouseY: 0, sprint: false,
   jumpPressed: false, jumpHeld: false, downHeld: false, clickPressed: false, usePressed: false, useHeld: false, aimHeld: false, steadyHeld: false, reloadPressed: false, reloadHeld: false,
   menuPressed: false, fpsPressed: false, confirmPressed: false, squarePressed: false, scopePressed: false, speedStep: 0, tabStep: 0, navX: 0, navY: 0, scoreHeld: false, mapPressed: false, fireHeld: false, weaponSlot: 0, weaponCycle: 0, throwPressed: false, throwHeld: false, deletePressed: false, anyPadButton: false,
-  throttle: 0, brake: 0,
+  throttle: 0, brake: 0, steer: 0,
 };
 
 /** Radial dead zone, rescaled so movement starts smoothly just outside it. */
@@ -313,6 +318,7 @@ export class Input {
     }
 
     this.touch?.into(out);
+    out.steer = Math.max(-1, Math.min(1, out.moveX));
     const mag = Math.hypot(out.moveX, out.moveY);
     if (mag > 1) {
       out.moveX /= mag;
