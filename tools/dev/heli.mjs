@@ -3,18 +3,23 @@
 // of set manoeuvres: getting in, the rotor's run-up and the lift-off, a climb to 100 m, a hover held for 20 s, the way
 // down, a dash to top speed and the stop, a full turn at cruise, the ceiling, the game's edge, landings on the meadow
 // and on the church's 6 by 10 m landing deck (its own machine set aside for it), bumps into a wall and into a tree crown at 5 and 20 m/s and how long until it flies again, getting out on the
-// ground and not in the air; and that the timed routes, Zombies, the cars, the bikes and the horses are left as they
-// were. It checks the shader programs don't change after the take-off and that no page error came. With --out, the
+// ground and not too low in the air, and the jump (E higher up: the parachute opens by itself) from 20, 40, 80 and
+// 118 m at a hover and at speed, with what happens to the machine after it, the camera's handover, the frame times and
+// what a respawn, /parachute, /spawn, chat travel, a portal and Zombies do during one; and that the timed routes,
+// Zombies, the cars, the bikes and the horses are left as they were. With --join <port> (a throwaway server on this
+// computer, its API on that port; the dev server started with API_PORT set to it): joining others in the middle of a
+// jump, and the first states the page sends. It checks the shader programs don't change after the take-off and that no page error came. With --out, the
 // pictures (chase in a hover, a dash, a turn, the landing by the church's tower, the cockpit, the instruments in
 // English and Dutch). With --sound, the sound by numbers (as tools/dev/music.mjs): the blade slap's rate against the
 // rotor's speed, the peak, the RMS, clipped samples, and that nothing plays after getting out.
 //
-//   node tools/dev/heli.mjs --url http://localhost:5274/ --port 9681 [--out <folder>] [--quality low|high] [--phone] [--pad] [--sound [--soundonly]] [--swiftshader]
+//   node tools/dev/heli.mjs --url http://localhost:5274/ --port 9681 [--out <folder>] [--quality low|high] [--phone] [--pad] [--sound [--soundonly]] [--swiftshader] [--join 8231] [--jumponly]
 import { mkdirSync } from 'node:fs';
 import { join } from 'node:path';
 import { launch, options, startGame } from './cdp.mjs';
 
-const o = options({ url: 'http://localhost:5274/', port: '9681', out: '', quality: 'medium', phone: false, pad: false, sound: false, soundonly: false, swiftshader: false, lang: 'en' });
+const o = options({ url: 'http://localhost:5274/', port: '9681', out: '', quality: 'medium', phone: false, pad: false, sound: false, soundonly: false, swiftshader: false, lang: 'en', join: '', jumponly: false });
+const jumpOnly = !!o.jumponly && o.jumponly !== 'false';
 const phone = !!o.phone && o.phone !== 'false';
 const b = await launch({ port: Number(o.port), width: 1280, height: 720, swiftshader: !!o.swiftshader && o.swiftshader !== 'false' });
 let failed = false;
@@ -204,6 +209,223 @@ try {
     else if (on) await down('ArrowRight');
     else await up('ArrowRight');
   };
+  /** The use key, button or touch button: in, out, or the jump. */
+  const use = async () => {
+    if (phone) {
+      await touchBtn('t-use', true);
+      await b.sleep(80);
+      await touchBtn('t-use', false);
+    } else if (o.pad) {
+      await b.evaluate('(() => { const x = __pad.buttons[3]; x.value = 1; x.pressed = true; })()', false);
+      await b.sleep(80);
+      await b.evaluate('(() => { const x = __pad.buttons[3]; x.value = 0; x.pressed = false; })()', false);
+    } else await tap('KeyE');
+  };
+  const homes = (expr) => b.evaluate(`import('/shared/homes.mjs').then((h) => { const p = briel.player; return ${expr}; })`);
+
+  /**
+   * The jump: aboard over the house's meadow (the heading with the most room), at `h` m over the floor (Infinity: up
+   * against the ceiling) and at `kmh` (full forward until then), then the use key. Every frame in the page from the
+   * key on: you, the camera, the machine, the frame's time. With `wait`, until you are down; `during` runs 2 s in.
+   */
+  const jumpFrom = async (h, kmh, { wait = true, during = null } = {}) => {
+    await b.evaluate('briel.helis.leaveNow()');
+    const pad = await b.evaluate("briel.helis.dev.put('house', 1)");
+    const yaw = await b.evaluate(`(() => { const e = briel.world.bounds; let best = 0, yaw = 0; for (let k = 0; k < 16; k++) { const a = (k / 16) * Math.PI * 2; let least = Infinity; for (let d = 0; d <= 1500; d += 50) least = Math.min(least, e.depth(${pad.x} - Math.sin(a) * d, ${pad.z} - Math.cos(a) * d)); if (least > best) { best = least; yaw = a; } } return yaw; })()`);
+    await b.evaluate(`briel.teleport(${pad.x + 2}, ${pad.z - 0.6}, ${pad.y}, 1.2)`, false);
+    await b.sleep(300);
+    await board();
+    await putAir(pad.x, pad.z, Number.isFinite(h) ? h : 100, yaw);
+    if (!Number.isFinite(h)) {
+      await lift(true);
+      await until((q) => q.h > 110 && Math.abs(q.vy) < 0.3, 20, 200);
+      await lift(false);
+    }
+    await b.sleep(1500);
+    if (kmh > 0) {
+      await forward(1);
+      await until((q) => speed(q) * 3.6 >= kmh - 3, 40, 50);
+    }
+    const before = await state();
+    const programs0 = await b.evaluate('briel.three.renderer.info.programs.length');
+    await b.evaluate(`(() => {
+      const r = window.__jrec = { frames: [], at: performance.now() };
+      const c = window.__cam ??= briel.three.scene.children.find((x) => x.isPerspectiveCamera);
+      let last = performance.now();
+      const go = () => {
+        if (window.__jrec !== r) return;
+        const now = performance.now(), p = briel.player, m = briel.helis.machines[0];
+        r.frames.push([now - r.at, now - last, p.x, p.feet, p.z, p.chute, p.canopy, c.position.x, c.position.y, c.position.z, m.s.x, m.s.y, m.s.z, m.away, briel.helis.aboard ? 1 : 0, briel.world.groundAt(p.x, p.z, p.feet, 0).y, m.s.yaw, m.s.roll, m.s.pitch]);
+        last = now;
+        requestAnimationFrame(go);
+      };
+      requestAnimationFrame(go);
+    })()`, false);
+    if (!kmh) await b.sleep(1600); // the frames before it, flying as before: the same window without a jump
+    await use();
+    if (kmh > 0) await forward(0);
+    const tag = `${Number.isFinite(h) ? h : 'ceiling'}-${kmh}`;
+    await b.sleep(120);
+    await shot(`jump-${tag}`);
+    if (during) {
+      await b.sleep(1900);
+      await during();
+    }
+    if (wait) {
+      const t0 = Date.now();
+      let shotOpen = false;
+      while (Date.now() - t0 < 45000) {
+        await b.sleep(250);
+        const p = await b.evaluate('({ chute: briel.player.chute, canopy: briel.player.canopy })');
+        if (!shotOpen && p.canopy !== null && p.canopy > 2.5) {
+          shotOpen = true;
+          await shot(`jump-${tag}-canopy`);
+        }
+        if (p.chute === null) break;
+      }
+      await b.sleep(700);
+      await shot(`jump-${tag}-landed`);
+      // Wait for the machine to be home (at the latest AWAY.latest after the jump).
+      for (let i = 0; i < 40 && (await b.evaluate('briel.helis.machines[0].away')) !== null; i++) await b.sleep(250);
+    }
+    const rec = await b.evaluate('(() => { const r = window.__jrec; window.__jrec = null; return r.frames; })()');
+    const programs = (await b.evaluate('briel.three.renderer.info.programs.length')) - programs0;
+    // The closest the player came to the machine in its first 4 s away (shared/heli.mjs heliGap, in the page).
+    const closest = await b.evaluate(`Promise.all([import('/shared/heli.mjs'), import('/shared/heli.json')]).then(([m, d]) => { let g = Infinity; for (const f of ${JSON.stringify(rec.filter((f) => f[13] !== null && f[13] < 4))}) g = Math.min(g, m.heliGap({ x: f[10], y: f[11], z: f[12], yaw: f[16], roll: f[17], pitch: f[18] }, (d.default ?? d).size, f[2], f[3], f[4])); return g; })`);
+    const k = rec.findIndex((f) => f[5] !== null);
+    const start = rec[k] ?? rec[0];
+    const open = rec.find((f) => f[6] !== null) ?? null;
+    const land = rec.findIndex((f, i) => i > k && f[5] === null);
+    const landSpeed = land > 1 ? (rec[land - 2][3] - rec[land - 1][3]) / Math.max(1e-3, rec[land - 1][1] / 1000) : NaN;
+    // The camera's handover: its largest move in one frame over the first 0.6 s, less what you moved that frame.
+    let snap = 0;
+    for (let i = Math.max(1, k); i < rec.length && rec[i][0] - start[0] < 600; i++) {
+      const a = rec[i - 1], c = rec[i];
+      snap = Math.max(snap, Math.hypot(c[7] - a[7], c[8] - a[8], c[9] - a[9]) - Math.hypot(c[2] - a[2], c[3] - a[3], c[4] - a[4]) - Math.hypot(c[10] - a[10], c[11] - a[11], c[12] - a[12]) * (i === k ? 1 : 0));
+    }
+    const longest = Math.max(...rec.filter((f) => f[0] - start[0] < 1500 && f[0] >= start[0] - 50).map((f) => f[1]));
+    const calm = Math.max(0, ...rec.filter((f, i) => i > 1 && f[0] < start[0] - 100).map((f) => f[1]));
+    const home = rec.find((f, i) => i > k && f[13] === null) ?? null;
+    return { h, kmh, before, start, open, land: land > 0 ? rec[land] : null, landSpeed, snap, longest, calm, home, closest, k, programs };
+  };
+
+  /** The jumps: heights and speeds, what follows, over the private homes, and what interrupts one. */
+  const jumps = async () => {
+    const jumpMin = await b.evaluate("import('/shared/parachute.mjs').then((m) => m.DROP.jumpMin)");
+    row('lowest jump', `${jumpMin} m over the floor below`);
+    const parkAt = await b.evaluate('briel.helis.machines[0].park');
+    const longest = [];
+    for (const [h, kmh] of [[20, 0], [40, 0], [80, 0], [Infinity, 0], [80, 169], [40, 80]]) {
+      const j = await jumpFrom(h, kmh);
+      const fall = j.open ? (j.open[0] - j.start[0]) / 1000 : NaN;
+      const clock = j.open ? j.open[5] : NaN; // the drop's own clock when it opened
+      const air0 = j.start[3] - j.start[15];
+      const openAir = j.open ? j.open[3] - j.open[15] : NaN;
+      const down = j.land ? (j.land[0] - j.start[0]) / 1000 : NaN;
+      row(`jump ${Number.isFinite(h) ? `${h} m` : 'at the ceiling'}, ${Math.round(speed(j.before) * 3.6)} km/h`, `from ${r1(air0)} m: free fall ${r1(fall)} s (the drop's clock ${r1(clock)} s, ${r1(air0 - openAir)} m), open at ${r1(openAir)} m; down after ${r1(down)} s at ${r1(j.landSpeed)} m/s, ${r1(j.land ? Math.hypot(j.land[2] - j.start[2], j.land[4] - j.start[4]) : NaN)} m on; machine home ${j.home ? r1((j.home[0] - j.start[0]) / 1000) + ' s' : '-'} after; closest ${r1(j.closest)} m off it; camera step ${r1(j.snap)} m; longest frame ${r1(j.longest)} ms`);
+      longest.push(`${r1(j.longest)}${j.calm ? ` (${r1(j.calm)} before)` : ''}`);
+      check(j.k >= 0 && !(await b.evaluate('briel.helis.aboard')), `jump ${Number.isFinite(h) ? h : 'ceiling'} m ${kmh} km/h: out, in the drop`);
+      check(!!j.open && (air0 <= 45.5 ? clock < 0.15 : clock > 0.9 && clock < 1.5 && air0 - openAir <= 15), `the canopy opened by itself (${r1(clock)} s in by the drop's clock, ${r1(fall)} s on the wall)`);
+      check(!!j.land && j.landSpeed < 3, `landed under the canopy (${r1(j.landSpeed)} m/s)`);
+      check(j.closest > 0.1, `clear of the machine (${r1(j.closest)} m at the closest)`);
+      check(j.snap < 3, `no camera snap at the jump (${r1(j.snap)} m in a frame beyond your own move)`);
+      check(j.programs <= 0, `no new shader programs from the jump on (${j.programs})`);
+      const after = await state();
+      check(!!j.home || Math.hypot(after.x - parkAt.x, after.z - parkAt.z) < 1, `the machine is back on its pad (${j.home ? r1((j.home[0] - j.start[0]) / 1000) + ' s after' : 'after the recording'})`);
+      const inside = await homes('h.homeAt(p.x, p.z, p.feet)');
+      check(inside === null, `landed outside every private home (${inside})`);
+    }
+    row('longest frame 1.5 s from each jump', `${longest.join(', ')} ms (in brackets: the longest in the 1.5 s flying before it; the graphics chip shared with other work)`);
+    // Over each private home and the end house's garden, low: hands off, and steering at its middle.
+    for (const [name, x, z] of [['the main house', 4.5, 6], ['the bungalow', 84, 190], ['the end house', 1505.5, -354], ['its garden', 1512, -353]]) {
+      for (const steer of [false, true]) {
+        await b.evaluate('briel.helis.leaveNow()');
+        await b.evaluate(`briel.helis.dev.put({ x: ${x}, z: ${z}, y: 40 }, 1)`);
+        await putAir(x, z, 22, 0);
+        await b.evaluate('briel.helis.board(briel.helis.machines[0])');
+        await b.sleep(800);
+        await use();
+        const t0 = Date.now();
+        let worst = null;
+        while (Date.now() - t0 < 30000) {
+          if (steer) await b.evaluate(`(() => { const p = briel.player; if (p.chute !== null) p.yaw = Math.atan2(-(${x} - p.x), -(${z} - p.z)); })()`, false);
+          if (steer && !phone && !o.pad) await down('KeyW');
+          await b.sleep(100);
+          const q = await homes('({ chute: p.chute, home: h.homeAt(p.x, p.z, p.feet), x: p.x, z: p.z, feet: p.feet })');
+          if (q.home) worst = q;
+          if (q.chute === null) break;
+        }
+        if (steer && !phone && !o.pad) await up('KeyW');
+        await b.sleep(300);
+        const end = await homes('({ home: h.homeAt(p.x, p.z, p.feet), garden: h.inEndGarden(p.x, p.z, p.feet), x: p.x, z: p.z, feet: p.feet })');
+        row(`jump over ${name}${steer ? ', steered at it' : ''}`, `down at ${r1(end.x)}, ${r1(end.z)}, ${r1(end.feet)}; in a home ${end.home ?? 'no'}, in the garden ${end.garden}`);
+        check(!end.home && !end.garden && !worst, `a jump over ${name} ends outside it${worst ? ` (inside at ${r1(worst.x)}, ${r1(worst.z)}, ${r1(worst.feet)})` : ''}`);
+      }
+    }
+    // Interrupted: each leaves you in one state (not seated, not dropping twice) and the machine on its pad.
+    const consistent = async (what) => {
+      await b.sleep(800);
+      const q = await b.evaluate('({ aboard: briel.helis.aboard, chute: briel.player.chute, jumped: briel.player.jumped, away: briel.helis.machines[0].away })');
+      const m = await state();
+      const onPad = Math.hypot(m.x - parkAt.x, m.z - parkAt.z) < 1;
+      row(`during a jump: ${what}`, `aboard ${q.aboard}, in a drop ${q.chute !== null}${q.jumped ? ' (the jump)' : ''}, machine ${onPad ? 'on its pad' : q.away !== null ? 'flying home' : 'elsewhere'}`);
+      return { ...q, onPad };
+    };
+    let q;
+    await jumpFrom(80, 0, { wait: false, during: () => b.evaluate('briel.respawn(0)', false) });
+    q = await consistent('a respawn');
+    check(!q.aboard && !q.jumped && q.onPad, 'a respawn: on your feet, the machine home');
+    await jumpFrom(80, 0, { wait: false, during: () => b.evaluate("briel.command('/parachute')", false) });
+    q = await consistent('/parachute');
+    check(!q.aboard && q.jumped && q.chute !== null, '/parachute: refused, the same jump goes on');
+    await jumpFrom(80, 0, { wait: false, during: () => b.evaluate("briel.command('/spawn chair')", false) });
+    q = await consistent('/spawn chair');
+    check(!q.aboard && q.jumped, '/spawn: the jump goes on');
+    await jumpFrom(80, 0, { wait: false, during: () => b.evaluate("briel.travel('kerk', 'chat')", false) });
+    await b.sleep(4000);
+    q = await consistent('chat travel to the church');
+    check(!q.aboard && !q.jumped && q.onPad, 'chat travel: on your feet there, the machine home');
+    await jumpFrom(80, 0, { wait: false, during: () => b.evaluate("briel.travel('kerk', 'portal')", false) });
+    await b.sleep(4000);
+    q = await consistent('a portal to the church');
+    check(!q.aboard && !q.jumped && (q.onPad || q.away !== null), 'a portal: on your feet there, the machine home or on its way');
+    await jumpFrom(80, 0, { wait: false, during: () => b.evaluate("briel.zombiesSolo.start('house')", false).catch(() => {}) });
+    await b.sleep(2500);
+    q = await consistent('Zombies alone starts');
+    check(!q.aboard && !q.jumped && q.onPad, 'Zombies: in the game, the machine home');
+    await b.evaluate('briel.zombiesSolo.stop()').catch(() => {});
+    await b.sleep(1500);
+    if (o.join) {
+      // Joining others in the middle of a jump: the jump ends on the floor below, and the page's first states say so.
+      await jumpFrom(80, 0, { wait: false });
+      await b.sleep(2500);
+      const res = await b.evaluate(`(async () => {
+        const sent = window.__sent = [];
+        const send = WebSocket.prototype.send;
+        WebSocket.prototype.send = function (d) { try { const m = JSON.parse(d); if (m.t === 'state' && sent.length < 12) sent.push(m); } catch {} return send.call(this, d); };
+        const p = briel.player;
+        const was = { feet: p.feet, ground: briel.world.groundAt(p.x, p.z, p.feet, 0).y, chute: p.chute, jumped: p.jumped };
+        const { api } = await import('/src/net/client.ts');
+        const { setAccount } = await import('/src/start.ts');
+        const me = await api.join('jumpcheck' + Math.floor(Math.random() * 1000), true);
+        setAccount(me);
+        return { was, name: me.username };
+      })()`);
+      await b.sleep(5000);
+      const after = await b.evaluate('({ aboard: briel.helis.aboard, chute: briel.player.chute, jumped: briel.player.jumped, x: briel.player.x, z: briel.player.z, feet: briel.player.feet, ground: briel.world.groundAt(briel.player.x, briel.player.z, briel.player.feet + 0.1, 0).y, sent: window.__sent })');
+      const ys = after.sent.map((m) => m.y);
+      row('joining in the middle of a jump', `as ${res.name}, from ${r1(res.was.feet - res.was.ground)} m up (jump ${res.was.jumped}): aboard ${after.aboard}, in a drop ${after.chute !== null}, feet ${r1(after.feet - after.ground)} m over the floor; first states' y ${ys.map((v) => r1(v)).join(', ')} (floor ${r1(after.ground)}), with the parachute flag ${after.sent.filter((m) => m.pc).length}`);
+      check(res.was.jumped && !after.aboard && !after.jumped && after.sent.length > 0 && after.sent.every((m) => !m.pc && Math.abs(m.y - after.ground) < 2), 'a session never begins in a jump: the first states are on the floor, no parachute flag');
+      await b.evaluate("import('/src/start.ts').then((m) => m.setAccount(null))").catch(() => {});
+    }
+    const errors = b.logs.filter((l) => /^exception|^error/.test(l) && !/Failed to load resource/.test(l));
+    check(errors.length === 0, `no page errors in the jumps${errors.length ? `: ${errors.slice(0, 5).join(' | ')}` : ''}`);
+  };
+  if (jumpOnly) {
+    await jumps();
+    throw 'done';
+  }
+
   const restDraws = await b.evaluate('briel.helis.dev.state().draws');
   await lift(true);
   const spin = await until((s) => !s.ground, 15);
@@ -224,12 +446,6 @@ try {
   row('hover 20 s hands off', `drift ${r1(drift)} m across, ${r1(dh)} m in height (the page's own wind blowing)`);
   check(drift < 1 && dh < 0.5, 'the hover holds');
   console.log(`  instruments: "${await b.evaluate("document.getElementById('heli-hud')?.textContent")}"`);
-  // A steady hover is not "at rest": E is refused after 2 s of it too (a hover once counted as resting after 0.5 s).
-  await b.sleep(2000);
-  await tap('KeyE');
-  await b.sleep(200);
-  const hoverOut = await prompt();
-  check(await b.evaluate('briel.helis.aboard') && /land/i.test(hoverOut), `no getting out of a steady hover after 2 s ("${hoverOut}")`);
   // The minimap: your arrow shows the machine's way, and the plan turns with the view, behind it and from the seat.
   for (const view of ['chase', 'cockpit']) {
     if ((await b.evaluate('briel.helis.dev.state().view')) !== view) await tap('KeyI');
@@ -323,12 +539,18 @@ try {
   await tap('KeyK');
   await b.sleep(300);
   check(await b.evaluate('!briel.goals.race.offer && !briel.goals.race.armed'), 'K offers and arms no timed route in the helicopter');
-  // Getting out in the air: refused, the line says to land (after 2.5 s still: a hover is not at rest).
-  await b.sleep(2500);
-  await tap('KeyE');
-  await b.sleep(200);
-  const air = await prompt();
-  check(await b.evaluate('briel.helis.aboard') && /land/i.test(air), `no getting out in the air ("${air}")`);
+  // Getting out low in the air: refused, the line says to fly higher (to jump) or to land (after 2.5 s still: a hover
+  // is not at rest). Higher up the same key jumps (below).
+  {
+    const at = await state();
+    await putAir(at.x, at.z, 6, at.yaw);
+    await b.sleep(2500);
+    await tap('KeyE');
+    await b.sleep(200);
+    const air = await prompt();
+    check(await b.evaluate('briel.helis.aboard') && /land/i.test(air), `no getting out or jumping 6 m up ("${air}")`);
+    await putAir(at.x, at.z, at.h, at.yaw);
+  }
   // A respawn from the hover: you are out, the machine set down on the floor below (no bump), or on its pad if that
   // floor is somewhere nobody can walk to.
   {
@@ -561,11 +783,14 @@ try {
     row('left on a roof', home ? `back on its pad after ${r1((Date.now() - t0) / 1000)} s` : 'still there after 30 s');
     check(home, 'a machine left on a roof goes back to its pad by itself');
   }
+  await jumps();
   const errors = b.logs.filter((l) => /^exception|^error/.test(l) && !/Failed to load resource/.test(l));
   check(errors.length === 0, `no page errors${errors.length ? `: ${errors.slice(0, 5).join(' | ')}` : ''}`);
 } catch (e) {
-  console.error(e);
-  failed = true;
+  if (e !== 'done') {
+    console.error(e);
+    failed = true;
+  }
 } finally {
   b.close();
 }
