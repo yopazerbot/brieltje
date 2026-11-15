@@ -10,8 +10,9 @@
 // 118 m at a hover and at speed, with what happens to the machine after it, the camera's handover, the frame times and
 // what a respawn, /parachute, /spawn, chat travel, a portal and Zombies do during one; and that the timed routes,
 // Zombies, the cars, the bikes and the horses are left as they were. With --join <port> (a throwaway server on this
-// computer, its API on that port; the dev server started with API_PORT set to it): joining others in the middle of a
-// jump, and the first states the page sends. It checks the shader programs don't change after the take-off and that no page error came. With --out, the
+// computer, its API on that port; the dev server started with API_PORT set to it, and fresh: after an edit to the
+// page's code, Vite hands the check another copy of src/start.ts and the join goes nowhere): joining others in the middle
+// of a jump, and the first states the page sends. It checks the shader programs don't change after the take-off and that no page error came. With --out, the
 // pictures (chase in a hover, a dash, a turn, the landing by the church's tower, the cockpit, the instruments in
 // English and Dutch). With --sound, the sound by numbers (as tools/dev/music.mjs): the blade slap's rate against the
 // rotor's speed, the peak, the RMS, clipped samples, and that nothing plays after getting out.
@@ -232,7 +233,7 @@ try {
       await b.evaluate('(() => { __pad.axes[2] = 0; __pad.axes[3] = 0; })()', false);
     } else {
       // A drag on the right side of the screen (controls/touch.ts: a dragged pixel looks as 1.6 of the mouse's).
-      const at = await b.evaluate('[innerWidth * 0.72, innerHeight * 0.45]');
+      const at = await b.evaluate('[innerWidth * 0.8, innerHeight * 0.4]');
       await b.send('Input.dispatchTouchEvent', { type: 'touchStart', touchPoints: [{ x: at[0], y: at[1], id: 9 }] });
       const n = 12;
       for (let i = 1; i <= n; i++) {
@@ -343,6 +344,7 @@ try {
       await touchStick(1, 0, 2000);
       await b.sleep(400);
       t1 = await state();
+      await b.sleep(1200); // the stick's touch gone and the turn stopped before the drag
       row('touch stick right 2 s', `${deg(-turnBy(t1.yaw, t0.yaw))} deg, ${r1(speed(t1))} m/s`);
       check(-turnBy(t1.yaw, t0.yaw) > 1.2 && speed(t1) < 2, 'the touch stick pushed sideways turns it (no sideways flight)');
       t0 = await state();
