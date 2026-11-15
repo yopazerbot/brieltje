@@ -1,10 +1,10 @@
 // An audit of the whole map for collision bugs, in the real game on a running dev server, in one page load: where
 // what is drawn and what stops you disagree. Each class prints its count and its three worst spots; --json writes
-// every spot. Exits 1 when a class that should be zero is not (`trees`, `roofs`, `spots` and `drops` always; more
-// with --strict).
+// every spot. Exits 1 when a class that should be zero is not (`trees`, `roofs`, `about`, `spots` and `drops` always;
+// more with --strict). What a relaxed rule lets pass is printed under its class as `excused`, every run.
 //
 //   node tools/dev/collide.mjs --url http://localhost:5200/ --port 9800 [--quality high] [--json out.json]
-//        [--only trees,walls,sides,roofs,ground,spots,drops] [--strict walls,sides,ground]
+//        [--only trees,walls,sides,roofs,about,ground,spots,drops] [--strict walls,sides,ground]
 //        [--compare before.json] [--shots <folder>] [--sample 13]
 //
 // The classes:
@@ -26,6 +26,8 @@
 //   the private homes are listed apart, and so are blocks a model stands for with nothing of it drawn over them (the
 //   models' outlines). Also: a body put in 300 narrow places on roofs (against something higher, in a valley) must
 //   stand free on what is drawn and walk away (`wedged`).
+// - about: on every block a model stands for that its roof capped, a body walked from up to eight spots four ways:
+//   no step over 0.3 m in a frame, never ending inside a block, never a second or more inside one.
 // - ground: a ray down every 4 m of the walkable map: drawn ground more than 0.75 m off the floor, and holes.
 // - spots: spawns, portals and their pads, places, gnomes, route gates and checkpoints, the Zombies places' homes and
 //   stalls, pick-ups, bikes and parked cars: free for a body (or a car), no trunk within 0.3 m; with --compare, the
@@ -44,9 +46,9 @@ import { ARENAS } from '../../web/shared/arenas.mjs';
 import { launch, options, startGame } from './cdp.mjs';
 
 const o = options({ url: 'http://localhost:5200/', port: '9800', quality: 'high', json: '', only: '', strict: '', compare: '', shots: '', sample: '13' });
-const ALL = ['trees', 'walls', 'sides', 'roofs', 'ground', 'spots', 'drops'];
+const ALL = ['trees', 'walls', 'sides', 'roofs', 'about', 'ground', 'spots', 'drops'];
 const only = new Set(o.only ? o.only.split(',') : ALL);
-const strict = new Set(['trees', 'roofs', 'spots', 'drops', ...(o.strict ? o.strict.split(',') : [])]);
+const strict = new Set(['trees', 'roofs', 'about', 'spots', 'drops', ...(o.strict ? o.strict.split(',') : [])]);
 const read = (p) => JSON.parse(readFileSync(new URL(`../../web/${p}`, import.meta.url), 'utf8'));
 if (o.shots) mkdirSync(o.shots, { recursive: true });
 
@@ -218,8 +220,10 @@ async function setup() {
     const roofIn = (x, z) => !!W.roofBlocks?.(x, z, feet, STEP_UP, H);
     for (let i = 0; i < n; i++) {
       const was = { x: pos.x, z: pos.z };
-      pos.x += (dx * dist) / n;
-      pos.z += (dz * dist) / n;
+      // Up a roof slower the steeper (as Player.update): none from 60 degrees.
+      const k = W.roofClimb && W.groundAt(pos.x, pos.z, feet, 0).mat === 'roof' ? W.roofClimb(pos.x, pos.z, dx, dz) : 1;
+      pos.x += (dx * dist * k) / n;
+      pos.z += (dz * dist * k) / n;
       W.resolve(pos, feet, R, STEP_UP, H);
       if (W.keepIn(pos, R)) edge = true;
       // A drawn roof beside: pushed off; ahead: along it on x or z, else stay (world/roofField.ts, as Player.update).
@@ -664,6 +668,7 @@ function roofs(list) {
     return hit;
   };
   const out = [];
+  const excused = [];
   for (const r of list) {
     const xs = r.p.map((q) => q[0]), zs = r.p.map((q) => q[1]);
     const box = [Math.min(...xs), Math.min(...zs), Math.max(...xs), Math.max(...zs)];
@@ -680,7 +685,11 @@ function roofs(list) {
         sunk++;
         if (d > deep) [deep, at] = [d, [x, z]];
       }
-      if (d < -0.5 && floor > W.baseAt(x, z) + 0.3 && g.mat !== 'car') { // a parked car is drawn only near the eye
+      // Excused, and said so on every run: a floor on a parked car (drawn only near the eye), the bare ground off the drawn
+      // ground (the ground's class).
+      if (d < -0.5 && g.mat === 'car') excused.push({ why: 'a parked car', x: +x.toFixed(1), z: +z.toFixed(1), off: +d.toFixed(2) });
+      else if (d < -0.5 && floor <= W.baseAt(x, z) + 0.3) excused.push({ why: 'the bare ground', x: +x.toFixed(1), z: +z.toFixed(1), off: +d.toFixed(2) });
+      if (d < -0.5 && floor > W.baseAt(x, z) + 0.3 && g.mat !== 'car') {
         air++;
         if (Math.abs(top.y - W.baseAt(x, z)) < 1.5) bare++; // the ground, a yard or a terrace: nothing of a building
         if (-d > high) high = -d;
@@ -690,7 +699,7 @@ function roofs(list) {
     const own = r.own || (end && [[cx, cz], ...r.p.map(([x, z]) => [x + (cx - x) * 0.3, z + (cz - z) * 0.3])].some(([x, z]) => end.contains(x, z)) ? 'end house' : '');
     if (sunk >= 3 || air >= 3) out.push({ x: +cx.toFixed(1), z: +cz.toFixed(1), set: r.set, lm: r.lm ?? '', own, samples: n, sunk, air, bare: sunk === 0 && air > 0 && bare === air, deepest: +deep.toFixed(2), highest: +high.toFixed(2), at: at && at.map((v) => +v.toFixed(1)) });
   }
-  return out;
+  return { rows: out, excused };
 }
 
 /**
@@ -763,6 +772,63 @@ function roofWedges(list, max) {
   put(keep.x, keep.z, keep.feet, keep.yaw);
   p.flying = keep.flying;
   return { tested: spots.length, steps: spots.filter((s) => s.kind === 'step').length, wedges };
+}
+
+/**
+ * The walk-about: on every block a model stands for that its roof capped (World.capBlock), up to eight spots a body
+ * stands on from above (the capped top or the roof over it), each walked from four ways for 2.5 s by the real player.
+ * Counted: a step over 0.3 m in one frame (thrown), a walk that ends inside a block, a second or more inside one (stuck).
+ */
+function walkAbout() {
+  const { W } = window.__c;
+  const p = briel.player;
+  const keep = { x: p.x, z: p.z, feet: p.feet, yaw: p.yaw, flying: p.flying };
+  const inRing = (x, z, ring) => {
+    let hit = false;
+    for (let i = 0, j = ring.length - 1; i < ring.length; j = i++) {
+      const [xi, zi] = ring[i], [xj, zj] = ring[j];
+      if (zi > z !== zj > z && x < ((xj - xi) * (z - zi)) / (zj - zi) + xi) hit = !hit;
+    }
+    return hit;
+  };
+  const inBlock = () => W.touching(p.x, p.z, p.feet + 0.55, p.feet + 1.75, 0) !== null;
+  const out = { blocks: 0, starts: 0, walks: 0, thrown: 0, inside: 0, stuck: 0, biggest: 0, ex: [] };
+  for (const s of W.solids) {
+    if (s.cap === undefined || s.off) continue;
+    out.blocks++;
+    const pts = [];
+    for (let x = s.minX + 0.2; x < s.maxX; x += 0.5) for (let z = s.minZ + 0.2; z < s.maxZ; z += 0.5) {
+      if (inRing(x, z, s.rings[0])) pts.push([x, z, W.groundAt(x, z, 1e6, 0).y]);
+    }
+    const pick = pts.length <= 8 ? pts : Array.from({ length: 8 }, (_, k) => pts[Math.floor(((k + 0.5) * pts.length) / 8)]);
+    for (const [x, z, top] of pick) {
+      out.starts++;
+      for (let k = 0; k < 4; k++) {
+        p.vx = p.vy = p.vz = 0;
+        p.flying = false;
+        briel.teleport(x, z, top, (k * Math.PI) / 2, 0);
+        out.walks++;
+        let big = 0, run = 0, longest = 0, where = null;
+        for (let f = 0; f < 150; f++) {
+          const was = { x: p.x, z: p.z, feet: p.feet };
+          briel.press({ moveY: 1 }, 1 / 60);
+          const d = Math.hypot(p.x - was.x, p.z - was.z);
+          if (d > big) [big, where] = [d, { from: [+was.x.toFixed(2), +was.feet.toFixed(2), +was.z.toFixed(2)], to: [+p.x.toFixed(2), +p.feet.toFixed(2), +p.z.toFixed(2)] }];
+          run = inBlock() ? run + 1 : 0;
+          longest = Math.max(longest, run);
+        }
+        const ended = inBlock();
+        if (big > 0.3) out.thrown++;
+        if (ended) out.inside++;
+        if (longest >= 60) out.stuck++;
+        out.biggest = Math.max(out.biggest, +big.toFixed(2));
+        if ((big > 0.3 || ended || longest >= 60) && out.ex.length < 20) out.ex.push({ block: s.mat, start: [+x.toFixed(2), +top.toFixed(2), +z.toFixed(2)], way: k, step: +big.toFixed(2), ...where, framesInside: longest, ended });
+      }
+    }
+  }
+  briel.teleport(keep.x, keep.z, keep.feet, keep.yaw, 0);
+  p.flying = keep.flying;
+  return out;
 }
 
 /** Ground: a ray down every 4 m of the walkable map; gaps over 0.75 m and holes. */
@@ -849,6 +915,12 @@ function record(name, count, line, worst, extra = {}) {
   for (const w of worst.slice(0, 3)) console.log(`             ${JSON.stringify(w)}`);
 }
 
+/** What a relaxed rule let pass: its count and its first rows, printed under the class. */
+function excuse(line, rows) {
+  console.log(`     excused: ${line}`);
+  for (const w of rows.slice(0, 3)) console.log(`             ${JSON.stringify(w)}`);
+}
+
 /** The spots of the game that must stay free, from the shared files. */
 function spotList() {
   const out = [];
@@ -880,6 +952,13 @@ try {
   await startGame(b, o.url, { village: true });
   if (o.quality) await b.evaluate(`briel.three.applyQuality(${JSON.stringify(o.quality)})`, false);
   await b.sleep(2000);
+  // The models' roofs come a little a frame once play has begun (world/modelRoofs.ts): wait till they are all in.
+  for (let last = -1, same = 0, i = 0; same < 4 && i < 240; i++) {
+    const n = await b.evaluate('briel.world.roofs?.count ?? 0');
+    same = n === last ? same + 1 : 0;
+    last = n;
+    await b.sleep(500);
+  }
   const s = await run(setup);
   console.log(`${secs()}: ${s.targets} drawn meshes, ${s.trunks} drawn trunks (${s.conifers} conifers), ${s.solids} blocks; left out ${JSON.stringify(s.skipped)}`);
   const f = await run(flood);
@@ -909,7 +988,7 @@ try {
     const ring = read('src/data/house_shell.json').surroundings;
     // The bungalow's roof (the ring's roof over a room) is a private home's: its own blocks, as the church's.
     const list = [...village.roofs.map((r) => ({ p: r.p, lm: r.lm, set: 'village' })), ...(ring.roofs ?? []).map((r) => ({ p: r.p, lm: r.lm, set: 'ring', own: r.ceiling ? 'bungalow' : '' }))];
-    const rows = await run(roofs, list);
+    const { rows, excused } = await run(roofs, list);
     const OWN = /church|sparrenhof|tree_huts|play|town_board|private/;
     const own = rows.filter((r) => OWN.test(r.lm) || r.own);
     const bare = rows.filter((r) => !own.includes(r) && r.bare);
@@ -917,7 +996,18 @@ try {
     const sunk = rest.filter((r) => r.sunk >= 3).length, air = rest.filter((r) => r.air >= 3).length;
     const w = await run(roofWedges, list.map((r) => ({ ...r, own: r.own || OWN.test(r.lm ?? '') })), 300);
     const worst = [...rest, ...w.wedges.map((x) => ({ ...x, what: 'wedged' }))];
-    record('roofs', rest.length + w.wedges.length, `${sunk} of ${list.length} roofs sunk into, ${air} with floors on air; wedged ${w.wedges.length} of ${w.tested} narrow spots (${w.steps} against something higher); apart: own blocks ${own.length}, blocks with nothing of their model drawn ${bare.length}`, worst, { rows: rest, own, bare, wedges: w.wedges, narrow: w.tested });
+    record('roofs', rest.length + w.wedges.length, `${sunk} of ${list.length} roofs sunk into, ${air} with floors on air; wedged ${w.wedges.length} of ${w.tested} narrow spots (${w.steps} against something higher); apart: own blocks ${own.length}, blocks with nothing of their model drawn ${bare.length}`, worst, { rows: rest, own, bare, wedges: w.wedges, narrow: w.tested, excused });
+    // What the relaxed rules let pass, every run, so a fault hiding behind one shows.
+    for (const why of new Set(excused.map((e) => e.why))) {
+      const these = excused.filter((e) => e.why === why);
+      excuse(`${these.length} floor samples on air over ${why}`, these);
+    }
+    excuse(`${own.length} roofs apart as own blocks (the church, the private homes)`, own);
+    excuse(`${bare.length} roofs apart: blocks a model stands for with nothing of it drawn over them`, bare);
+  }
+  if (only.has('about')) {
+    const r = await run(walkAbout);
+    record('about', r.thrown + r.inside + r.stuck, `${r.walks} walks of 2.5 s from ${r.starts} spots on ${r.blocks} capped blocks: ${r.thrown} with a step over 0.3 m in a frame (biggest ${r.biggest} m), ${r.inside} ended inside a block, ${r.stuck} stuck a second or more`, r.ex, r);
   }
   if (only.has('ground')) {
     const r = await run(ground);
@@ -939,6 +1029,7 @@ try {
     const wrong = rows.filter((r) => !r.under && (r.off === null || Math.abs(r.off) > 0.5)).sort((a, c) => Math.abs(c.off ?? 99) - Math.abs(a.off ?? 99));
     const under = rows.filter((r) => r.under).length;
     record('drops', wrong.length, `${wrong.length} of ${rows.length} landings more than 0.5 m off the drawn surface (${wrong.filter((r) => r.off > 0.5).length} sunk, ${wrong.filter((r) => r.off < -0.5).length} on air); ${under} on the ground under eaves`, wrong, { rows: wrong, under });
+    excuse(`${under} landings on the ground under eaves, free there`, rows.filter((r) => r.under));
   }
 
   if (o.shots) {
