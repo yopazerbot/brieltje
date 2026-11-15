@@ -327,10 +327,12 @@ export interface Seat {
   roll?: number;
   pitch?: number;
   bike?: { pedals: [THREE.Vector3, THREE.Vector3]; grips: [THREE.Vector3, THREE.Vector3] };
-  /** In a car (world/carPeople.ts, with `root`): the root's turn in the world (the car's, the seat's lean back), the head's nod that undoes the lean (`pitch`), and where the feet and hands go */
+  /** In a car (world/carPeople.ts, with `root`): the root's turn in the world (the car's, the seat's lean back), the head's nod that undoes the lean (`pitch`), where the feet and hands go, and how many lines up the name goes */
   car?: { feet: [THREE.Vector3, THREE.Vector3]; hands: [THREE.Vector3, THREE.Vector3]; head: number; knees: number };
   quat?: THREE.Quaternion;
+  tagUp?: number;
 }
+const _tagQ = new THREE.Quaternion();
 
 let glintMap: THREE.CanvasTexture | null = null;
 let glintMat: THREE.SpriteMaterial | null = null;
@@ -679,7 +681,9 @@ export class Avatars {
       const size = Math.min(10, Math.max(1, far / 4.5));
       const low = (a.body.crouched ?? 0) * 0.42;
       a.tag.scale.set(0.9 * size * a.tag.userData.width, 0.225 * size, 1);
-      a.tag.position.y = 1.9 + 0.12 * size - low;
+      // In a car one name over each seat, the passenger's a line higher; straight up, not leaning back with the seat.
+      a.tag.position.set(0, 1.9 + 0.12 * size - low + (seat?.tagUp ?? 0) * 0.26 * size, 0);
+      if (seat?.quat) a.tag.position.applyQuaternion(_tagQ.copy(seat.quat).invert());
       const label = a.marks[1] as THREE.Sprite | undefined;
       if (label) {
         label.scale.set(0.8 * size * label.material.userData.width, 0.2 * size, 1);

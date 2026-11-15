@@ -77,7 +77,7 @@ const _w = new THREE.Vector3();
 function place(i: number): Place {
   return {
     seat: {
-      x: 0, y: 0, z: 0, yaw: 0, pitch: 0, root: { x: 0, y: 0, z: 0 }, quat: new THREE.Quaternion(),
+      x: 0, y: 0, z: 0, yaw: 0, pitch: 0, root: { x: 0, y: 0, z: 0 }, quat: new THREE.Quaternion(), tagUp: i,
       car: { feet: [new THREE.Vector3(), new THREE.Vector3()], hands: [new THREE.Vector3(), new THREE.Vector3()], head: 0, knees: KNEES[i] },
     },
     head: new THREE.Vector3(),
