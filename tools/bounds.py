@@ -43,6 +43,7 @@ import json
 import math
 import re
 import subprocess
+import sys
 from pathlib import Path
 
 from PIL import Image, ImageDraw
@@ -174,6 +175,20 @@ def outline(shapes, area, keep, extra=(), join=JOIN, smooth=SMOOTH):
     return orient(Polygon(u.exterior), 1.0)
 
 
+def keep_edge(old, new, width=6.0, around=60.0):
+    """The edge as it was where it hardly moved: the new one only AROUND metres round where it moved by a piece WIDTH
+    metres across or more (the map grew or shrank there), the old one, point for point, elsewhere. Rounded anew as a
+    whole, an edge that grows in one place shifts by a metre here and there all round. `--fresh` makes it anew."""
+    diff = new.symmetric_difference(old)
+    moved = [p for p in getattr(diff, "geoms", [diff]) if p.geom_type == "Polygon" and not p.buffer(-width / 2).is_empty]
+    if not moved:
+        return orient(old, 1.0)
+    near = unary_union(moved).buffer(around, 16)
+    u = unary_union([old.difference(near), new.intersection(near)])
+    u = max(getattr(u, "geoms", [u]), key=lambda g: g.area)
+    return orient(Polygon(u.exterior), 1.0)
+
+
 def graph_path(streets, a, b):
     """The shortest way along the road graph between the points nearest to a and b."""
     import heapq
@@ -248,6 +263,8 @@ def main():
     whole += [b.buffer(AROUND, 8) for b in footprints]
     whole += football_ground()
     big = outline(shapes, area, home, whole)
+    if OUT.exists() and "--fresh" not in sys.argv:
+        big = keep_edge(Polygon(read(OUT)["map"]), big)
     check(big, named, INSIDE, "map")
     # Every building with a garden round it: its corners AROUND in (less what simplifying may take).
     corners = [("building", x, z, True) for b in footprints for x, z in b.exterior.coords]
