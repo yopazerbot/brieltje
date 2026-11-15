@@ -135,10 +135,13 @@ export function carTime(pts, { top }) {
 }
 
 /**
- * The fastest honest time of each route (ms), a little under the model's (`slack`: the models are simple), and the
- * tightest line's length. `models`: { height, bike: { pedal, max }, car: { top } }.
+ * The fastest honest time of each route (ms) and the tightest line's length. `slack`: on foot a little under the
+ * model's (a runner can take nearly that line on the page, and the times have the network's play); by bike the model's
+ * own (no corner slows it, and a bike can't take the line through the houses: the honest best clear of them is 5 % over
+ * it); by car well under (the point model is rough, the car's route counts for tonight only). `models`: { height,
+ * bike: { pedal, max }, car: { top } }.
  */
-export function floors(routes, models, slack = { foot: 0.97, bike: 0.97, car: 0.9 }) {
+export function floors(routes, models, slack = { foot: 0.97, bike: 1, car: 0.9 }) {
   const out = {};
   for (const r of routes) {
     const cut = cutPath(r);

@@ -44,7 +44,7 @@ test('each floor: the tightest line at the page\'s top, a little under; every ho
   const routes = readGoals().routes;
   const f = floors(routes, MODELS);
   // The floors as built (ms) from today's layouts.
-  assert.deepEqual(Object.fromEntries(Object.entries(f).map(([id, v]) => [id, Math.round(v.ms / 100) / 10])), { foot: 26.4, bike: 73.3, car: 39.8 });
+  assert.deepEqual(Object.fromEntries(Object.entries(f).map(([id, v]) => [id, Math.round(v.ms / 100) / 10])), { foot: 26.4, bike: 75.6, car: 39.8 });
   // Along the road register (the sat-nav's line), at the page's own top: over the floor, for each way.
   const net = makeRoads(json('../src/data/streets.json').graph);
   for (const r of routes) {
