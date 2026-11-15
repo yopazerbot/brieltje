@@ -56,12 +56,14 @@ function roofMeshes(root: THREE.Object3D): THREE.Mesh[] {
 }
 
 /** Metres: a triangle with some corners over a building and some not is halved until its sides are this short. */
-const SPLIT = 1.0;
+const SPLIT = 1.5;
 
 /** A model's roof triangles once found: their corners (x, y, z three times each) and the building under each corner. */
 interface Found {
   c: number[];
   b: number[];
+  /** The building at a spot (World.buildingAt), asked once per small square */
+  ask: (x: number, z: number) => number;
 }
 
 /**
@@ -87,20 +89,37 @@ export async function addModelRoofs(world: World, roots: THREE.Object3D[], groun
     if (at) left.sort((i, j) => far(i, at) - far(j, at));
     const r = left.shift()!;
     const root = roots[r];
-    const found: Found = { c: [], b: [] };
+    // The building at a spot, asked once per 25 cm square (the models' meshes share their corners' spots).
+    const asked = new Map<number, number>();
+    const ask = (x: number, z: number) => {
+      const key = (Math.round(x * 4) + 40000) * 80000 + Math.round(z * 4) + 40000;
+      let b = asked.get(key);
+      if (b === undefined) asked.set(key, (b = world.buildingAt(x, z, BUILDING)));
+      return b;
+    };
+    const found: Found = { c: [], b: [], ask };
     const lowest = new Map<number, number>(); // the lowest roof corner over each block the model stands for
     // First pass: each mesh's corners where they stand, its roof triangles, the buildings under their corners.
     for (const mesh of roofMeshes(root)) {
       const pos = mesh.geometry.attributes.position as THREE.BufferAttribute;
       const w = new Float32Array(pos.count * 3);
+      const e = mesh.matrixWorld.elements;
+      const src = pos.array;
+      const plain = !pos.normalized && !(pos as unknown as THREE.InterleavedBufferAttribute).isInterleavedBufferAttribute && pos.itemSize === 3;
       for (let i = 0; i < pos.count; i++) {
-        a.fromBufferAttribute(pos, i).applyMatrix4(mesh.matrixWorld).toArray(w, i * 3);
-        if (i % (CHUNK * 8) === 0) await tick();
+        if (plain) {
+          // The matrix by hand, on the array itself (the slow way below for packed or quantised corners).
+          const x = src[i * 3], y = src[i * 3 + 1], z = src[i * 3 + 2];
+          w[i * 3] = e[0] * x + e[4] * y + e[8] * z + e[12];
+          w[i * 3 + 1] = e[1] * x + e[5] * y + e[9] * z + e[13];
+          w[i * 3 + 2] = e[2] * x + e[6] * y + e[10] * z + e[14];
+        } else a.fromBufferAttribute(pos, i).applyMatrix4(mesh.matrixWorld).toArray(w, i * 3);
+        if (i % (CHUNK * 16) === 0) await tick();
       }
       const building = new Int32Array(pos.count).fill(-2); // -2: not asked yet
-      const buildingOf = (v: number) => (building[v] === -2 ? (building[v] = world.buildingAt(w[v * 3], w[v * 3 + 2], BUILDING)) : building[v]);
-      const index = mesh.geometry.index;
-      const corners = index ? index.count : pos.count;
+      const buildingOf = (v: number) => (building[v] === -2 ? (building[v] = ask(w[v * 3], w[v * 3 + 2])) : building[v]);
+      const index = mesh.geometry.index?.array;
+      const corners = index ? index.length : pos.count;
       // Drawn from one side: only what faces up from above (not a soffit, a ceiling); a mirrored mesh turns its faces.
       const mats = (Array.isArray(mesh.material) ? mesh.material : [mesh.material]) as THREE.Material[];
       const both = mats.some((m) => m.side === THREE.DoubleSide);
@@ -109,10 +128,10 @@ export async function addModelRoofs(world: World, roots: THREE.Object3D[], groun
       const roofy = [mesh.name, mesh.userData.material, ...mats.map((m) => m.name)].some((n) => typeof n === 'string' && ROOFS.test(n));
       const turned = mesh.matrixWorld.determinant() < 0;
       for (let k = 0; k + 2 < corners; k += 3) {
-        if (k % (CHUNK * 3) === 0) await tick();
-        const i = index ? index.getX(k) : k;
-        const j = index ? index.getX(turned ? k + 2 : k + 1) : turned ? k + 2 : k + 1;
-        const l = index ? index.getX(turned ? k + 1 : k + 2) : turned ? k + 1 : k + 2;
+        if (k % (CHUNK * 12) === 0) await tick();
+        const i = index ? index[k] : k;
+        const j = index ? index[turned ? k + 2 : k + 1] : turned ? k + 2 : k + 1;
+        const l = index ? index[turned ? k + 1 : k + 2] : turned ? k + 1 : k + 2;
         if (!facesUp(w[i * 3], w[i * 3 + 1], w[i * 3 + 2], w[j * 3], w[j * 3 + 1], w[j * 3 + 2], w[l * 3], w[l * 3 + 1], w[l * 3 + 2], both)) continue;
         const low = Math.min(w[i * 3 + 1], w[j * 3 + 1], w[l * 3 + 1]);
         const high = Math.max(w[i * 3 + 1], w[j * 3 + 1], w[l * 3 + 1]);
@@ -174,15 +193,15 @@ function keep(found: Found, lowest: Map<number, number>, world: World, c: number
   let mixed = over[0] !== over[1] || over[1] !== over[2];
   if (!mixed && over[0] && longest > 2 * SPLIT && depth < 6) {
     // All corners over buildings, but a passage or a yard between them under it: its middles tell.
-    const mid = (p: number, q: number) => [(c[p * 3] + c[q * 3]) / 2, (c[p * 3 + 2] + c[q * 3 + 2]) / 2];
-    const middles = [mid(0, 1), mid(1, 2), mid(2, 0), [(c[0] + c[3] + c[6]) / 3, (c[2] + c[5] + c[8]) / 3]];
-    mixed = middles.some(([x, z]) => world.buildingAt(x, z, BUILDING) < 0);
+    const s = sides.indexOf(longest);
+    const middles = [[(c[s * 3] + c[((s + 1) % 3) * 3]) / 2, (c[s * 3 + 2] + c[((s + 1) % 3) * 3 + 2]) / 2], [(c[0] + c[3] + c[6]) / 3, (c[2] + c[5] + c[8]) / 3]];
+    mixed = middles.some(([x, z]) => found.ask(x, z) < 0);
   }
   if (mixed && longest > SPLIT && depth < 6) {
     const s = sides.indexOf(longest);
     const [p, q, r] = [s, (s + 1) % 3, (s + 2) % 3];
     const m = [0, 1, 2].map((k) => (c[p * 3 + k] + c[q * 3 + k]) / 2);
-    const mb = world.buildingAt(m[0], m[2], BUILDING);
+    const mb = found.ask(m[0], m[2]);
     const at = (v: number) => c.slice(v * 3, v * 3 + 3);
     keep(found, lowest, world, [...at(p), ...m, ...at(r)], [b[p], mb, b[r]], depth + 1);
     keep(found, lowest, world, [...m, ...at(q), ...at(r)], [mb, b[q], b[r]], depth + 1);

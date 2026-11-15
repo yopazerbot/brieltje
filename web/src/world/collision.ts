@@ -253,12 +253,12 @@ export class World {
     return [(s.minX + s.maxX) / 2, (s.minZ + s.maxZ) / 2];
   }
 
-  /** Cap block `index` (capBlock) at the lowest of `roof` (a model's own) over it, looked at every half metre inside it. */
+  /** Cap block `index` (capBlock) at the lowest of `roof` (a model's own) over it, looked at every metre inside it. */
   capUnder(roof: RoofField, index: number): void {
     const s = this.solids[index];
     let low = Infinity;
-    for (let x = s.minX + 0.25; x < s.maxX; x += 0.5) {
-      for (let z = s.minZ + 0.25; z < s.maxZ; z += 0.5) {
+    for (let x = s.minX + 0.5; x < s.maxX; x += 1) {
+      for (let z = s.minZ + 0.5; z < s.maxZ; z += 1) {
         if (inside(x, z, s.rings) && roof.sample(x, z, this.roofLow(x, z))) low = Math.min(low, roof.top);
       }
     }
@@ -415,7 +415,8 @@ export class World {
    * ridges and valleys are walked. world/roofField.ts.
    */
   roofBlocks(x: number, z: number, feet: number, stepUp: number, height: number): boolean {
-    return this.roofs.blocks(x, z, feet, stepUp, height, this.roofLow(x, z)) && this.walled(x, z, this.roofs.bottom);
+    const r = this.roofs;
+    return r.blocks(x, z, feet, stepUp, height, this.roofLow(x, z)) && (r.closed || this.walled(x, z, r.bottom));
   }
 
   /**
@@ -462,7 +463,7 @@ export class World {
     if (this.roofBlocks(pos.x, pos.z, feet, stepUp, height)) return false; // inside one already: lifted out, not pushed
     for (const [dx, dz] of SIDES) {
       const sx = pos.x + dx * radius, sz = pos.z + dz * radius;
-      while (moved < PUSH && r.blocks(pos.x + dx * radius, pos.z + dz * radius, feet, stepUp + 0.5, height, this.roofLow(sx, sz)) && this.walled(pos.x + dx * radius, pos.z + dz * radius, r.bottom)) {
+      while (moved < PUSH && r.blocks(pos.x + dx * radius, pos.z + dz * radius, feet, stepUp + 0.5, height, this.roofLow(sx, sz)) && (r.closed || this.walled(pos.x + dx * radius, pos.z + dz * radius, r.bottom))) {
         pos.x -= dx * 0.02;
         pos.z -= dz * 0.02;
         moved += 0.02;

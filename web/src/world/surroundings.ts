@@ -662,7 +662,7 @@ export function buildTile(data: TileData, poles: Pole[], renderer: THREE.WebGLRe
       if (solid) {
         // Its top: solid down to the eaves, a small column on the ridge.
         const [a, b, c, d] = stack.p[0];
-        roofs.add([a[0], stack.y1, a[1], b[0], stack.y1, b[1], c[0], stack.y1, c[1], a[0], stack.y1, a[1], c[0], stack.y1, c[1], d[0], stack.y1, d[1]], r.y);
+        roofs.add([a[0], stack.y1, a[1], b[0], stack.y1, b[1], c[0], stack.y1, c[1], a[0], stack.y1, a[1], c[0], stack.y1, c[1], d[0], stack.y1, d[1]], r.y, null, true);
       }
       const { material: mat, tag } = blockMaterial(r.wall!, renderer);
       put(renderable(mat), walls(r.wall!, key, prismGeometry(stack)), tag);

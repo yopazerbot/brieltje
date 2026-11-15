@@ -84,6 +84,8 @@ export class RoofField {
   /** The triangles, STRIDE floats each. */
   private t = new Float32Array(STRIDE * 4096);
   private n = 0;
+  /** Per triangle: 1 when it is solid whatever stands under it (a chimney's top: World.roofBlocks asks no wall under it). */
+  private walls = new Uint8Array(4096);
   /** The groups: their boxes (min x, min z, max x, max z) and their triangles (first, end). */
   private box = new Float32Array(4 * 1024);
   private range = new Int32Array(2 * 1024);
@@ -96,6 +98,7 @@ export class RoofField {
   top = 0;
   bottom = 0;
   open = false;
+  closed = false;
   gx = 0;
   gz = 0;
 
@@ -108,28 +111,29 @@ export class RoofField {
   get bytes(): number {
     let entries = 0;
     for (const list of this.cells.values()) entries += list.length;
-    return this.n * STRIDE * 4 + this.groups * 24 + entries * 4 + this.cells.size * 40;
+    return this.n * (STRIDE * 4 + 1) + this.groups * 24 + entries * 4 + this.cells.size * 40;
   }
 
   /**
    * One batch of triangles as drawn (x, y, z of three corners each, world metres; `index`, if given, picks the corners),
    * under each of which it is solid down to `under` (the roof's eaves, per triangle if a list; Infinity: a slab only).
-   * Those facing sideways (walls, gables) are left out. Returns how many were kept.
+   * Those facing sideways (walls, gables) are left out. `closed`: solid whatever stands under it (a chimney's top).
+   * Returns how many were kept.
    */
-  add(pos: ArrayLike<number>, under: number | ArrayLike<number>, index?: ArrayLike<number> | null): number {
+  add(pos: ArrayLike<number>, under: number | ArrayLike<number>, index?: ArrayLike<number> | null, closed = false): number {
     const corners = index ? index.length : Math.floor(pos.length / 3);
     const first = this.n;
     for (let k = 0; k + 2 < corners; k += 3) {
       const a = (index ? index[k] : k) * 3;
       const b = (index ? index[k + 1] : k + 1) * 3;
       const c = (index ? index[k + 2] : k + 2) * 3;
-      this.one(pos[a], pos[a + 1], pos[a + 2], pos[b], pos[b + 1], pos[b + 2], pos[c], pos[c + 1], pos[c + 2], typeof under === 'number' ? under : under[k / 3]);
+      this.one(pos[a], pos[a + 1], pos[a + 2], pos[b], pos[b + 1], pos[b + 2], pos[c], pos[c + 1], pos[c + 2], typeof under === 'number' ? under : under[k / 3], closed);
     }
     if (this.n > first) this.group(first, this.n);
     return this.n - first;
   }
 
-  private one(x0: number, y0: number, z0: number, x1: number, y1: number, z1: number, x2: number, y2: number, z2: number, under: number): void {
+  private one(x0: number, y0: number, z0: number, x1: number, y1: number, z1: number, x2: number, y2: number, z2: number, under: number, closed: boolean): void {
     if (!facesUp(x0, y0, z0, x1, y1, z1, x2, y2, z2)) return;
     const ax = x1 - x0, ay = y1 - y0, az = z1 - z0;
     const bx = x2 - x0, by = y2 - y0, bz = z2 - z0;
@@ -149,6 +153,12 @@ export class RoofField {
     t[o + 7] = ay * m00 + by * m10;
     t[o + 8] = ay * m01 + by * m11;
     t[o + 9] = under;
+    if (this.walls.length <= this.n) {
+      const more = new Uint8Array(this.walls.length * 2);
+      more.set(this.walls);
+      this.walls = more;
+    }
+    this.walls[this.n - 1] = closed ? 1 : 0;
   }
 
   /** Triangles first..end-1 sorted into groups by where their middles lie, each group's box into the index. */
@@ -171,7 +181,11 @@ export class RoofField {
     }
     order.sort((p, q) => p.key - q.key || p.i - q.i);
     const copy = t.slice(first * STRIDE, end * STRIDE);
-    order.forEach((e, k) => t.set(copy.subarray((e.i - first) * STRIDE, (e.i - first + 1) * STRIDE), (first + k) * STRIDE));
+    const walls = this.walls.slice(first, end);
+    order.forEach((e, k) => {
+      t.set(copy.subarray((e.i - first) * STRIDE, (e.i - first + 1) * STRIDE), (first + k) * STRIDE);
+      this.walls[first + k] = walls[e.i - first];
+    });
     for (let k = 0; k < order.length; ) {
       let m = k;
       let x0 = Infinity, z0 = Infinity, x1 = -Infinity, z1 = -Infinity;
@@ -237,6 +251,7 @@ export class RoofField {
     this.top = best;
     const bottom = Math.min(best - SLAB, t[at + 9]);
     this.open = bottom >= best - SLAB - 1e-4;
+    this.closed = this.walls[at / STRIDE] === 1;
     // Never down past `low` (a metre over the ground, as the world asks): the walls' blocks stand there, and nothing on
     // the ground is ever inside a roof (a triangle over buildings on a slope reaches the lowest one's top).
     this.bottom = Math.max(bottom, Math.min(low, best - SLAB));

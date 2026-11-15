@@ -112,9 +112,10 @@ test('an eave by the ground is air below the lowest a roof counts from: no ramp 
 
 test('the highest drawn surface counts: a chimney on the ridge, a higher roof over a lower one', () => {
   const { f } = gable();
-  // A chimney top 1 m over the ridge, 60 cm square.
-  f.add(quad([7, 8, 3.7], [7.6, 8, 3.7], [7.6, 8, 4.3], [7, 8, 4.3]), EAVES);
-  assert.ok(f.sample(7.3, 4) && Math.abs(f.top - 8) < 1e-6);
+  // A chimney top 1 m over the ridge, 60 cm square: solid whatever stands under it.
+  f.add(quad([7, 8, 3.7], [7.6, 8, 3.7], [7.6, 8, 4.3], [7, 8, 4.3]), EAVES, null, true);
+  assert.ok(f.sample(7.3, 4) && Math.abs(f.top - 8) < 1e-6 && f.closed);
+  assert.ok(f.sample(6, 4) && !f.closed, 'the roof beside it asks for a wall under it');
   assert.equal(f.blocks(7.3, 4, RIDGE - 0.05, 0.5, 1.8), true, 'its side stops a body on the ridge');
   assert.ok(f.sample(6, 4) && Math.abs(f.top - RIDGE) < 1e-4, 'beside it the ridge');
 });
