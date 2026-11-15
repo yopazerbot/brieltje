@@ -3,8 +3,13 @@
 //
 //   node tools/dev/carshots.mjs <outFolder> --url http://localhost:5251/ --port 9451
 //     [--quality high|medium|low] [--mood sunny|overcast|rain|dusk|night|snow] [--lights] [--phone]
-//     [--views all|shape|few|far|<name,name>] [--paint "#c4c7cc"] [--stats] [--eval "<script run before the pictures>"]
+//     [--views all|shape|few|far|people|<name,name>] [--paint "#c4c7cc"] [--stats] [--eval "<script run before the pictures>"]
+//     [--people none|driver|both] [--steer <-1..1>] [--glass <opacity>]
 //
+// --people: figures without a player in the seats (world/carPeople.ts), the driver in blue, the passenger in red.
+// --steer: the wheel turned (1 full left). --glass: every window of both cars at this opacity (to see the figures' fit).
+// The views `chase` (as the camera behind the car you drive) and `pavement` (as someone on foot beside it), `top`, and
+// the set `people`: eight ways round 45 degrees apart (dir000 .. dir315), top, chase and pavement.
 // --lights: both cars as if someone sits in them (headlights and tail lights at night). --paint: one colour for both
 // (grey shows the shape best). --stats: meshes and triangles drawn per car, by material, into stats.json. Pictures are
 // named my_<view>.png and m3_<view>.png. Pass your own --port: the default collides with other checks.
@@ -12,7 +17,7 @@ import { mkdirSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { launch, options, startGame } from './cdp.mjs';
 
-const o = options({ url: 'http://localhost:5173/', port: '9350', quality: 'high', mood: 'sunny', views: 'all', lights: false, paint: '', stats: false, phone: false, eval: '' });
+const o = options({ url: 'http://localhost:5173/', port: '9350', quality: 'high', mood: 'sunny', views: 'all', lights: false, paint: '', stats: false, phone: false, eval: '', people: 'none', steer: '0', glass: '' });
 const out = o._[0];
 if (!out) {
   console.error('usage: node tools/dev/carshots.mjs <outFolder> --url <dev server> --port <debugging port> [options]');
@@ -28,8 +33,14 @@ const ALL = [
   ['cabin', 75, 3.6, 1.8, 1.05, 30], ['low3q', 45, 5.5, 0.4, 0.55, 30], ['wheel', 0, 0, 0, 0, 30],
   // From 75 m, narrowed to the size of the near views: what a car looks like far off.
   ['far', 8, 75, 3, 0.7, 3],
+  // The people inside: as the camera behind the car you drive, as someone on the pavement beside it, from right above.
+  ['chase', 180, 6.3, 2.8, 1.4, 60], ['pavement', 110, 4.5, 1.65, 1.1, 45], ['top', 0, 0, 0, 0, 30],
+  ...[0, 45, 90, 135, 180, 225, 270, 315].map((d) => [`dir${String(d).padStart(3, '0')}`, d, 4.8, 1.5, 0.9, 35]),
 ];
-const SETS = { all: ALL.filter(([n]) => n !== 'far'), shape: ['front3q', 'rear3q', 'side', 'front', 'rear', 'high'], few: ['front3q', 'rear3q'], far: ['front3q', 'far'] };
+const SETS = {
+  all: ALL.filter(([n]) => n !== 'far' && !/^(dir|chase|pavement|top)/.test(n)), shape: ['front3q', 'rear3q', 'side', 'front', 'rear', 'high'], few: ['front3q', 'rear3q'], far: ['front3q', 'far'],
+  people: [0, 45, 90, 135, 180, 225, 270, 315].map((d) => `dir${String(d).padStart(3, '0')}`).concat(['top', 'chase', 'pavement']),
+};
 const pick = SETS[o.views] ?? o.views.split(',');
 const views = ALL.filter(([n]) => (Array.isArray(pick) ? pick.map((p) => (typeof p === 'string' ? p : p[0])) : []).includes(n));
 
@@ -81,6 +92,16 @@ try {
   })()`, false));
   if (o.paint) await b.evaluate(`for (const c of briel.cars.slice(0, 2)) { c.paint.color.set(${JSON.stringify(o.paint)}); c.paint.metalness = 0.3; }`, false);
   if (o.lights) await b.evaluate("briel.cars[0].driver = 'Check'; briel.cars[1].driver = 'Check'", false);
+  await b.evaluate('briel.player.chute = briel.player.canopy = null', false); // a start that began with a drop: its parachute out of the pictures
+  if (o.people !== 'none') {
+    await b.evaluate(`for (const c of briel.cars.slice(0, 2)) { briel.carPeople.dummy(c, 0, '#2f6fd8'); if (${o.people === 'both'}) briel.carPeople.dummy(c, 1, '#d8452f'); }`, false);
+  }
+  if (Number(o.steer)) await b.evaluate(`for (const c of briel.cars.slice(0, 2)) c.steer = 0.62 * ${Number(o.steer)}`, false);
+  if (o.glass) {
+    // Every window at one opacity, the lighter glass of a car with someone in it too (made once the figures sit).
+    await b.sleep(500);
+    await b.evaluate(`for (const c of briel.cars.slice(0, 2)) c.group.traverse((m) => { if (m.isMesh && /^Glass/.test(m.userData.part ?? '')) m.material.opacity = ${Number(o.glass)}; })`, false);
+  }
   if (o.eval) await b.evaluate(o.eval, false); // a change to try out first, e.g. a material's setting  await b.evaluate(`__look(${cars[0].x + 6}, ${cars[0].y + 2}, ${cars[0].z}, ${cars[0].x}, ${cars[0].y}, ${cars[0].z})`, false);
   await b.evaluate("(() => { const st = document.createElement('style'); st.textContent = '#hud, #credit, #sound-btn, #map-btn, #touch { visibility: hidden !important; }'; document.head.appendChild(st); })()", false);
   await b.sleep(20000); // the mood blends in; the tiles round the spot load; the start's parachute is packed away
@@ -119,6 +140,10 @@ try {
         const wx = c.x + ux * 1.45, wz = c.z + uz * 1.45;
         const sx = -uz, sz = ux;
         await b.evaluate(`__look(${wx + sx * 3.2 + ux * 1.2}, ${c.y + 0.6}, ${wz + sz * 3.2 + uz * 1.2}, ${wx + sx * 0.9}, ${c.y + 0.36}, ${wz + sz * 0.9}, ${fov})`, false);
+      } else if (name === 'top') {
+        // Straight down from 7 m, the car lying across the picture, its nose to the left.
+        const sx = -uz, sz = ux;
+        await b.evaluate(`__look(${c.x + sx * 0.02}, ${c.y + 7}, ${c.z + sz * 0.02}, ${c.x}, ${c.y}, ${c.z}, ${fov})`, false);
       } else {
         // The car's nose points along (ux, uz); turn from it by the view's angle.
         const a = (deg * Math.PI) / 180;
