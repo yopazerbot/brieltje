@@ -29,6 +29,9 @@ import { Pairing } from './server/pairing.mjs';
 import { ARENAS } from './shared/arenas.mjs';
 import { Feedback } from './server/feedback.mjs';
 import { Game } from './server/game.mjs';
+import { Boards } from './server/boards.mjs';
+import { readGoals } from './server/goals.mjs';
+import { bestKey } from './shared/goals.mjs';
 import { Homes } from './server/homes.mjs';
 import { packFor } from './server/insides.mjs';
 import { HOMES } from './shared/homes.mjs';
@@ -98,6 +101,10 @@ const store = await openStore();
 // under each of its reserved names, which only the admin password logs in under (server/auth.mjs RESERVED).
 store.boardNames = [...RESERVED];
 await store.zombieBestForAccountsOnly(); // a run saved as its account was deleted (no foreign key any more) goes
+// The boards of the routes, the gnomes and the party games (server/goals.mjs): rows of no account, of an old layout or an unknown gnome go.
+const GOALS = readGoals();
+const goalRoutes = GOALS.routes.map((r) => ({ id: r.id, key: bestKey(r) }));
+await store.boardsForAccountsOnly(goalRoutes.map((r) => r.key), GOALS.gnomes.map((g) => g.id));
 const auth = new Auth(store, SECURE);
 await auth.loadSessions();
 const game = new Game(auth);
@@ -126,7 +133,7 @@ const originOf = (req) => {
 };
 // The board of best Zombies runs (accounts only): public, kept a little while per place.
 const boards = new Map(); // place ('' for all) -> { at, rows }
-rooms.onScore = () => boards.clear();
+rooms.onScore = () => (boards.clear(), goalBoards.clear());
 async function board(place) {
   const cached = boards.get(place);
   if (cached && Date.now() - cached.at < 15_000) return cached.rows;
@@ -136,6 +143,11 @@ async function board(place) {
   boards.set(place, { at: Date.now(), rows });
   return rows;
 }
+// The boards of the timed routes, the gnomes and the party games (server/boards.mjs): public, your own lines, the admin's removal.
+const goalBoards = new Boards(store, {
+  routes: goalRoutes, gnomeTotal: GOALS.gnomes.length, json: (...a) => json(...a), readJson: (req) => body(req),
+  known: async (name) => RESERVED.has(name) || !!(await store.getAccount(name)), log: (event, req, extra) => auth.log(event, req, extra),
+});
 
 // The forms count a sender per IPv6 /56 (formBucketOf): one household can't fill their caps for everyone.
 const formKey = (req) => formBucketOf(clientIp(req));
@@ -151,7 +163,7 @@ const homes = new Homes(store, { list: HOMES, json: (...a) => json(...a), readJs
   who: (key) => { const s = auth.sessions.get(key); return s && s.expires >= Date.now() ? s : null; },
   keysOf: (name) => [...auth.sessions].filter(([, s]) => s.username === name && s.role === 'player' && s.expires >= Date.now()).map(([k]) => k) });
 await homes.load(); // before the first player joins: their welcome says which homes their account opens
-accounts.onGone = (name) => homes.dropAccount(name); // a deleted account's access goes with it
+accounts.onGone = (name) => (homes.dropAccount(name), rooms.scored()); // a deleted account's access goes with it, and its rows from the boards' caches
 game.homes = homes;
 homes.onGrant = (key, id) => rooms.homeGranted(key, id); // the state of the inside to the page that just got the right, wherever it plays
 // The admin page's live view hears of new log lines, changed sign-ups, feedback and the game night.
@@ -248,6 +260,9 @@ async function api(req, res, url) {
   // How much the game is played (server/stats.mjs): the page's beacon, and the admin's numbers and log.
   if ((path === '/api/stats/beacon' || path === '/api/admin/stats' || path === '/api/admin/audit' || path === '/api/admin/live')
     && await stats.handle(req, res, url, auth.panelAdmin(req))) return;
+  // The boards of the routes, the gnomes and the party games (server/boards.mjs): public, the session's own lines, the panel's removal.
+  if ((path === '/api/boards' || path === '/api/boards/mine' || path === '/api/admin/boards')
+    && await goalBoards.handle(req, res, url, path === '/api/admin/boards' ? auth.panelSession(req) : null, auth.session(req))) return;
 
   if (path === '/api/login' && method === 'POST') {
     const b = await body(req);

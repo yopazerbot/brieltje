@@ -48,6 +48,29 @@ test('runs and totals under every reserved name stay on the boards; a name witho
   }
 });
 
+test('the boards of the routes, the gnomes and the party games: every reserved name and accounts, never another name', async () => {
+  const { store, done } = await fileStore();
+  try {
+    await store.createAccount({ username: 'anna', email: 'anna@example.org', pass: 'x' });
+    for (const name of [...RESERVED, 'anna']) {
+      assert.equal(await store.saveRaceTime(name, 'foot@1', 40_000), true, name);
+      assert.equal(await store.saveGnome(name, 'g01'), true, name);
+      assert.equal(await store.addGameWin(name, 'tag'), true, name);
+    }
+    assert.equal(await store.saveRaceTime('bob', 'foot@1', 30_000), false);
+    assert.equal(await store.saveGnome('bob', 'g01'), false);
+    assert.equal(await store.addGameWin('bob', 'tag'), false);
+    const want = [...RESERVED, 'anna'].sort();
+    assert.deepEqual((await store.raceBoard('foot@1', 20)).map((r) => r.username).sort(), want);
+    assert.deepEqual((await store.gnomeBoard(20)).map((r) => r.username).sort(), want);
+    assert.deepEqual((await store.gameBoard(20)).map((r) => r.username).sort(), want);
+    await store.boardsForAccountsOnly(['foot@1'], ['g01']);
+    assert.deepEqual((await store.raceBoard('foot@1', 20)).map((r) => r.username).sort(), want, 'kept at start');
+  } finally {
+    await done();
+  }
+});
+
 test('the game adds to the boards for the admin and accounts only, never a guest', () => {
   const added = [];
   const runs = [];

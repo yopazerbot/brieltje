@@ -18,6 +18,14 @@ const MAX_LOG = 500;
  */
 const boardNames = (store) => (Array.isArray(store.boardNames) ? store.boardNames : []);
 const NAMED = ['join_ok', 'mp_join', 'solo_start', 'login_ok']; // the login log's lines with a player's (or the admin's) name
+/** The party games on the board of games won (server/host.mjs gameOver), each a column. */
+export const GAME_KINDS = ['hide', 'tag', 'treasure', 'teams'];
+/** One account's wins per party game, and their sum, from rows of { kind, wins }. */
+const winsOf = (rows) => {
+  const out = { wins: 0, hide: 0, tag: 0, treasure: 0, teams: 0 };
+  for (const r of rows) if (GAME_KINDS.includes(r.kind)) (out[r.kind] += r.wins), (out.wins += r.wins);
+  return out;
+};
 
 /** Replace a file. On Windows a virus scanner can hold a file it just saw written for a moment: try again for up to a second. */
 async function replace(from, to) {
@@ -35,7 +43,7 @@ async function replace(from, to) {
 export class FileStore {
   constructor(file) {
     this.file = file;
-    this.data = { audit: [], sessions: [], stats: {}, meta: {}, furniture: [], cars: [], interest: [], interestId: 0, daily: {}, feedback: [], feedbackId: 0, gamenight: [], gamenightId: 0, visits: null, accounts: [], zombieBest: [], homeGrants: [] };
+    this.data = { audit: [], sessions: [], stats: {}, meta: {}, furniture: [], cars: [], interest: [], interestId: 0, daily: {}, feedback: [], feedbackId: 0, gamenight: [], gamenightId: 0, visits: null, accounts: [], zombieBest: [], homeGrants: [], raceBest: [], gnomeFound: [], gameWins: [] };
   }
   async init() {
     await mkdir(resolve(this.file, '..'), { recursive: true });
@@ -50,6 +58,7 @@ export class FileStore {
     delete this.data.stats[`u:${a.username}`]; // a new account starts at nothing
     this.data.zombieBest = this.data.zombieBest.filter((r) => r.username !== a.username); // nor any run left under the name
     this.data.homeGrants = this.data.homeGrants.filter((r) => r.username !== a.username); // nor a home's access
+    this.dropScores(a.username); // nor a time, a gnome or a game won
     await this.save();
     return true;
   }
@@ -70,8 +79,15 @@ export class FileStore {
     this.data.zombieBest = this.data.zombieBest.filter((r) => r.username !== username);
     this.data.homeGrants = this.data.homeGrants.filter((r) => r.username !== username); // its access to the homes goes with it
     delete this.data.stats[`u:${username}`];
+    this.dropScores(username); // its route times, gnomes and games won
     await this.save();
     return this.data.accounts.length < before;
+  }
+  /** A name's rows on the boards of the routes, the gnomes and the party games, out (not saved yet). */
+  dropScores(username) {
+    this.data.raceBest = this.data.raceBest.filter((r) => r.username !== username);
+    this.data.gnomeFound = this.data.gnomeFound.filter((r) => r.username !== username);
+    this.data.gameWins = this.data.gameWins.filter((r) => r.username !== username);
   }
   // ---- Accounts' lasting access to the code-locked homes (server/homes.mjs): one row per account and home, made with
   // the home's code of generation `gen`. Only accounts that exist: a row is never written for a name without one.
@@ -141,6 +157,104 @@ export class FileStore {
       rows = [...best.values()];
     }
     return rows.sort(better).slice(0, limit).map(({ username, place: p, wave, kills, team, at }) => ({ username, place: p, wave, kills, team, at }));
+  }
+  // ---- The boards of the timed routes, the gnomes and the party games (server/goals.mjs, server/boards.mjs): accounts and
+  // the admin's reserved names only, in lists (never objects keyed by name), gone with the account.
+  /** The names on the boards: every account's and the admin's reserved names. */
+  boardSet() {
+    const names = new Set(this.data.accounts.map((r) => r.username));
+    for (const n of boardNames(this)) names.add(n);
+    return names;
+  }
+  /** A finish on route `route` (its key, "foot@1"): kept when it beats that name's best there. Whether it was kept. */
+  async saveRaceTime(username, route, ms) {
+    if (!this.boardSet().has(username)) return false;
+    const old = this.data.raceBest.find((r) => r.username === username && r.route === route);
+    if (old && old.ms <= ms) return false;
+    const at = new Date().toISOString();
+    if (old) Object.assign(old, { ms, at });
+    else this.data.raceBest.push({ username, route, ms, at });
+    await this.save();
+    return true;
+  }
+  /** The best `limit` times on a route: the quickest first, at the same time the earlier one. */
+  async raceBoard(route, limit) {
+    const names = this.boardSet();
+    return this.data.raceBest
+      .filter((r) => r.route === route && names.has(r.username))
+      .sort((a, b) => a.ms - b.ms || (a.at < b.at ? -1 : a.at > b.at ? 1 : 0))
+      .slice(0, limit)
+      .map(({ username, ms, at }) => ({ username, ms, at }));
+  }
+  async racesOf(username) {
+    return this.data.raceBest.filter((r) => r.username === username).map(({ route, ms }) => ({ route, ms }));
+  }
+  /** Where a time of `ms` stands on the route's board: one more than the names quicker than it. */
+  async racePlace(route, ms) {
+    const names = this.boardSet();
+    return 1 + this.data.raceBest.filter((r) => r.route === route && names.has(r.username) && r.ms < ms).length;
+  }
+  /** A gnome found: kept once per name. Whether it is new. */
+  async saveGnome(username, gnome) {
+    if (!this.boardSet().has(username) || this.data.gnomeFound.some((r) => r.username === username && r.gnome === gnome)) return false;
+    this.data.gnomeFound.push({ username, gnome, at: new Date().toISOString() });
+    await this.save();
+    return true;
+  }
+  async gnomesOf(username) {
+    return this.data.gnomeFound.filter((r) => r.username === username).map((r) => r.gnome);
+  }
+  /** Who found the most gnomes, `at` the last find: the most first, at as many the one who got there first. */
+  async gnomeBoard(limit) {
+    const names = this.boardSet();
+    const by = new Map();
+    for (const r of this.data.gnomeFound) {
+      if (!names.has(r.username)) continue;
+      const row = by.get(r.username) ?? { username: r.username, n: 0, at: r.at };
+      row.n++;
+      if (r.at > row.at) row.at = r.at;
+      by.set(r.username, row);
+    }
+    return [...by.values()].sort((a, b) => b.n - a.n || (a.at < b.at ? -1 : a.at > b.at ? 1 : 0)).slice(0, limit);
+  }
+  /** A party game won (GAME_KINDS). Whether it was counted. */
+  async addGameWin(username, kind) {
+    if (!GAME_KINDS.includes(kind) || !this.boardSet().has(username)) return false;
+    const row = this.data.gameWins.find((r) => r.username === username && r.kind === kind);
+    if (row) row.wins++;
+    else this.data.gameWins.push({ username, kind, wins: 1 });
+    await this.save();
+    return true;
+  }
+  /** Who won the most party games: { username, wins, hide, tag, treasure, teams }, the most first. */
+  async gameBoard(limit) {
+    const names = this.boardSet();
+    const by = new Map();
+    for (const r of this.data.gameWins) if (names.has(r.username)) by.set(r.username, [...(by.get(r.username) ?? []), r]);
+    return [...by].map(([username, rows]) => ({ username, ...winsOf(rows) })).sort((a, b) => b.wins - a.wins || (a.username < b.username ? -1 : 1)).slice(0, limit);
+  }
+  async gamesOf(username) {
+    return winsOf(this.data.gameWins.filter((r) => r.username === username));
+  }
+  /** The admin removes a name's rows from one board ('race': one route's, or every route's; 'gnomes'; 'games'). How many went. */
+  async removeScores(username, board, route = null) {
+    const list = { race: 'raceBest', gnomes: 'gnomeFound', games: 'gameWins' }[board];
+    if (!list) return 0;
+    const before = this.data[list].length;
+    this.data[list] = this.data[list].filter((r) => r.username !== username || (board === 'race' && route !== null && r.route !== route));
+    const n = before - this.data[list].length;
+    if (n) await this.save();
+    return n;
+  }
+  /** At start: rows of no account and no reserved name, of an old layout (a route key not in `routeKeys`), of an unknown gnome, go. */
+  async boardsForAccountsOnly(routeKeys, gnomeIds) {
+    const names = this.boardSet();
+    const routes = new Set(routeKeys), gnomes = new Set(gnomeIds);
+    const before = this.data.raceBest.length + this.data.gnomeFound.length + this.data.gameWins.length;
+    this.data.raceBest = this.data.raceBest.filter((r) => names.has(r.username) && routes.has(r.route));
+    this.data.gnomeFound = this.data.gnomeFound.filter((r) => names.has(r.username) && gnomes.has(r.gnome));
+    this.data.gameWins = this.data.gameWins.filter((r) => names.has(r.username) && GAME_KINDS.includes(r.kind));
+    if (this.data.raceBest.length + this.data.gnomeFound.length + this.data.gameWins.length < before) await this.save();
   }
   /** One write at a time, via a temporary file, so overlapping saves can't mix up the file. */
   save() {
@@ -400,6 +514,9 @@ export class FileStore {
   }
 }
 
+/** The rows of accounts and of the reserved names ($1) only. */
+const WHO = '(username in (select username from accounts) or username = any($1::text[]))';
+
 class PgStore {
   constructor(url) {
     this.url = url;
@@ -471,6 +588,29 @@ class PgStore {
       -- The admin's runs count too (Yoshi, 8 Nov 2026), and the admin has no account: no tie to accounts; an
       -- account's runs are deleted with it (deleteAccount, pruneAccounts).
       alter table zombie_best drop constraint if exists zombie_best_username_fkey;
+      -- The boards of the timed routes, the gnomes and the party games (server/goals.mjs): as zombie_best, no tie to
+      -- accounts (the admin's reserved names count too); deleted with the account (deleteAccount, pruneAccounts).
+      -- route: the route's key with its layout ("foot@1"), so a new layout starts fresh.
+      create table if not exists race_best (
+        username text not null,
+        route text not null,
+        ms integer not null,
+        at timestamptz not null default now(),
+        primary key (username, route)
+      );
+      create index if not exists race_best_board on race_best (route, ms, at);
+      create table if not exists gnome_found (
+        username text not null,
+        gnome text not null,
+        at timestamptz not null default now(),
+        primary key (username, gnome)
+      );
+      create table if not exists game_wins (
+        username text not null,
+        kind text not null,
+        wins integer not null default 0,
+        primary key (username, kind)
+      );
       -- An account's lasting access to a code-locked home (server/homes.mjs), made with the code of generation gen:
       -- tied to the account, so it goes when the account goes.
       create table if not exists home_grants (
@@ -595,8 +735,13 @@ class PgStore {
       await this.pool.query('delete from stats where username = $1', [a.username]); // a new account starts at nothing
       await this.pool.query('delete from zombie_best where username = $1', [a.username]); // nor any run left under the name
       await this.pool.query('delete from home_grants where username = $1', [a.username]); // nor a home's access
+      await this.dropScores([a.username]); // nor a time, a gnome or a game won
     }
     return r.rowCount === 1;
+  }
+  /** These names' rows on the boards of the routes, the gnomes and the party games, out. */
+  async dropScores(names) {
+    for (const table of ['race_best', 'gnome_found', 'game_wins']) await this.pool.query(`delete from ${table} where username = any($1::text[])`, [names]);
   }
   async getAccount(username) {
     const r = await this.pool.query('select username, email, pass, created, seen, disabled from accounts where username = $1', [username]);
@@ -616,6 +761,7 @@ class PgStore {
     await this.pool.query('delete from stats where username = $1', [username]);
     await this.pool.query('delete from zombie_best where username = $1', [username]); // its best runs go with it
     await this.pool.query('delete from home_grants where username = $1', [username]); // and its access to the homes (the key would too)
+    await this.dropScores([username]); // its route times, gnomes and games won
     const r = await this.pool.query('delete from accounts where username = $1', [username]);
     return r.rowCount === 1;
   }
@@ -649,6 +795,7 @@ class PgStore {
       await this.pool.query('delete from stats where username = any($1)', [gone]);
       await this.pool.query('delete from zombie_best where username = any($1)', [gone]);
       await this.pool.query('delete from home_grants where username = any($1)', [gone]); // gone with the accounts already (the key)
+      await this.dropScores(gone);
     }
     return gone;
   }
@@ -678,6 +825,78 @@ class PgStore {
         `select * from (select distinct on (username) username, place, wave, kills, team, at from zombie_best where ${who}
          order by username, wave desc, kills desc, at asc) best order by wave desc, kills desc, at asc limit $2`, [boardNames(this), limit]);
     return r.rows;
+  }
+  // ---- The boards of the timed routes, the gnomes and the party games (server/goals.mjs, server/boards.mjs). `who`: an
+  // account's or a reserved name's rows only, whatever a race with a deletion left in a table ($1: the reserved names).
+  /** Only a better time replaces the best one; a name of no account and not reserved keeps nothing. */
+  async saveRaceTime(username, route, ms) {
+    const r = await this.pool.query(
+      `insert into race_best (username, route, ms) select $1, $2, $3 where exists (select 1 from accounts where username = $1) or $1 = any($4::text[])
+       on conflict (username, route) do update set ms = $3, at = now() where race_best.ms > $3`,
+      [username, route, ms, boardNames(this)]);
+    return r.rowCount === 1;
+  }
+  async raceBoard(route, limit) {
+    const r = await this.pool.query(
+      `select username, ms, at from race_best where route = $2 and ${WHO} order by ms asc, at asc limit $3`, [boardNames(this), route, limit]);
+    return r.rows;
+  }
+  async racesOf(username) {
+    const r = await this.pool.query('select route, ms from race_best where username = $1', [username]);
+    return r.rows;
+  }
+  async racePlace(route, ms) {
+    const r = await this.pool.query(`select count(*)::int as n from race_best where route = $2 and ms < $3 and ${WHO}`, [boardNames(this), route, ms]);
+    return r.rows[0].n + 1;
+  }
+  /** Once per name and gnome (the primary key decides). Whether it is new. */
+  async saveGnome(username, gnome) {
+    const r = await this.pool.query(
+      `insert into gnome_found (username, gnome) select $1, $2 where exists (select 1 from accounts where username = $1) or $1 = any($3::text[])
+       on conflict (username, gnome) do nothing`,
+      [username, gnome, boardNames(this)]);
+    return r.rowCount === 1;
+  }
+  async gnomesOf(username) {
+    const r = await this.pool.query('select gnome from gnome_found where username = $1', [username]);
+    return r.rows.map((x) => x.gnome);
+  }
+  async gnomeBoard(limit) {
+    const r = await this.pool.query(
+      `select username, count(*)::int as n, max(at) as at from gnome_found where ${WHO} group by username order by n desc, max(at) asc limit $2`, [boardNames(this), limit]);
+    return r.rows;
+  }
+  async addGameWin(username, kind) {
+    if (!GAME_KINDS.includes(kind)) return false;
+    const r = await this.pool.query(
+      `insert into game_wins (username, kind, wins) select $1, $2, 1 where exists (select 1 from accounts where username = $1) or $1 = any($3::text[])
+       on conflict (username, kind) do update set wins = game_wins.wins + 1`,
+      [username, kind, boardNames(this)]);
+    return r.rowCount === 1;
+  }
+  async gameBoard(limit) {
+    const r = await this.pool.query(
+      `select username, sum(wins)::int as wins, ${GAME_KINDS.map((k) => `coalesce(sum(wins) filter (where kind = '${k}'), 0)::int as ${k}`).join(', ')}
+       from game_wins where ${WHO} and kind = any($3::text[]) group by username order by wins desc, username asc limit $2`, [boardNames(this), limit, GAME_KINDS]);
+    return r.rows;
+  }
+  async gamesOf(username) {
+    const r = await this.pool.query('select kind, wins from game_wins where username = $1', [username]);
+    return winsOf(r.rows);
+  }
+  async removeScores(username, board, route = null) {
+    const table = { race: 'race_best', gnomes: 'gnome_found', games: 'game_wins' }[board];
+    if (!table) return 0;
+    const r = board === 'race' && route !== null
+      ? await this.pool.query('delete from race_best where username = $1 and route = $2', [username, route])
+      : await this.pool.query(`delete from ${table} where username = $1`, [username]);
+    return r.rowCount;
+  }
+  async boardsForAccountsOnly(routeKeys, gnomeIds) {
+    const gone = 'username not in (select username from accounts) and username <> all($1::text[])';
+    await this.pool.query(`delete from race_best where (${gone}) or route <> all($2::text[])`, [boardNames(this), routeKeys]);
+    await this.pool.query(`delete from gnome_found where (${gone}) or gnome <> all($2::text[])`, [boardNames(this), gnomeIds]);
+    await this.pool.query(`delete from game_wins where (${gone}) or kind <> all($2::text[])`, [boardNames(this), GAME_KINDS]);
   }
   async log(e) {
     await this.pool.query('insert into audit_log (time_be, event, username, ip, detail) values ($1, $2, $3, $4, $5)',
