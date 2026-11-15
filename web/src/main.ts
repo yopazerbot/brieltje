@@ -4332,7 +4332,7 @@ async function buildVillage(): Promise<void> {
   const kept = withoutLandmarks(data, models.map((m) => m.userData.landmark as string), models.flatMap((m) => (m.userData.replaces as Ring[] | undefined) ?? []));
   kept.unfiltered = data; // the roofs look behind them in the whole village, with the houses our models stand in for (world/roofPlan.ts)
   const drawn = withRoadDetail(kept);
-  drawn.prisms?.push(...(await villagePlots(kept, drawn, models, house.ground))); // paths, drives and strips (world/villagePlots.ts): drawn only
+  drawn.prisms?.push(...(await villagePlots(kept, drawn, models, house.ground, between))); // paths and drives (world/villagePlots.ts): drawn only
   // One surface per spot (world/groundLayers.ts): the covers claimed, then the streets in detail built (cut under the
   // models' ground), then the covers' tiles (cut under both).
   claimCovers(drawn.prisms ?? [], house.ground);
