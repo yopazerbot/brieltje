@@ -183,12 +183,12 @@
    "id": "street:klinkaard",
    "name": "Klinkaard",
    "sub": "Smetlede",
-   "x": 1857.53,
-   "z": 278.76,
+   "x": 1861.04,
+   "z": 253.08,
    "yaw": -0.094,
    "car": [
-    1856.73,
-    278.69,
+    1859.24,
+    252.91,
     -0.094
    ],
    "village": true
@@ -474,13 +474,13 @@
    "id": "street:vrommensweide",
    "name": "Vrommensweide",
    "sub": "Smetlede",
-   "x": 1350.33,
-   "z": 121.51,
-   "yaw": 2.638,
+   "x": 1711.81,
+   "z": -318.27,
+   "yaw": -0.383,
    "car": [
-    1350.64,
-    121.67,
-    2.638
+    1710.7,
+    -318.72,
+    -0.383
    ],
    "village": true
   },
