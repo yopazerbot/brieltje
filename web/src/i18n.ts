@@ -2598,6 +2598,11 @@ const PLACES_NL: Record<string, string> = {
   'back terrace (uncovered)': 'terras achteraan (niet overdekt)', 'path along the outbuilding': 'pad langs het bijgebouw',
   'side path (right)': 'zijpad (rechts)', driveway: 'oprit', Driveway: 'Oprit', 'front path': 'tuinpad vooraan', 'stepping slab': 'stapsteen',
   planting: 'beplanting', Garden: 'Tuin', street: 'straat', 'play tower': 'speeltoren',
+  'church-roof': 'Dakloop', 'church-pad': 'Landingsdek', 'church-pad-net': 'Landingsdek', 'church-pad-rail': 'Landingsdek',
+};
+/** The church's blocks (shared/church.json) are named by id: their English names. */
+const PLACES_EN: Record<string, string> = {
+  'church-roof': 'Roof walk', 'church-pad': 'Landing deck', 'church-pad-net': 'Landing deck', 'church-pad-rail': 'Landing deck',
 };
 /**
  * The names of a home's inside rooms, floors and doors in Dutch come with its inside (the pack, world/insides.ts), not with
@@ -2610,7 +2615,7 @@ export function addInsideNames(names: { places?: Record<string, string>; doors?:
   Object.assign(insideDoors, names?.doors);
 }
 export function placeName(name: string): string {
-  if (current === 'en') return name;
+  if (current === 'en') return PLACES_EN[name] ?? name;
   const old = / \(old house\)$/.exec(name);
   if (old) return `${placeName(name.slice(0, old.index))} (bungalow)`;
   return insidePlaces[name] ?? PLACES_NL[name] ?? name;
