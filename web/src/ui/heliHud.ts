@@ -97,9 +97,9 @@ export class HeliHud {
       this.bar.setAttribute('aria-label', `${t('hud.rotor')}: ${Math.round(r.rotor * 100)} %`);
       this.horizon.setAttribute('aria-label', t('hud.horizon'));
     }
-    // The horizon: the roll turns it the other way, the nose down lifts it (to a degree, as the eye sees it).
+    // The horizon: the roll turns it the other way, the nose down lifts it (more ground shows), as in a real one.
     const roll = Math.round((-r.roll * 180) / Math.PI);
-    const shift = Math.round(Math.max(-16, Math.min(16, (r.pitch * 180) / Math.PI * 0.6)));
+    const shift = Math.round(Math.max(-16, Math.min(16, -(r.pitch * 180) / Math.PI * 0.6)));
     const h = `${roll}:${shift}`;
     if (h !== this.lastHorizon) {
       this.lastHorizon = h;
