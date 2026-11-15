@@ -302,7 +302,7 @@ export class Bikes {
   /** Together (joined a server): the server's word on a knock is the last; alone the page's */
   private together = false;
   /** The car at the wheel in the last frame `struck` saw: its block's key and place */
-  private lastCar: { key: string; x: number; z: number; yaw: number } | null = null;
+  private lastCar: { key: string; x: number; z: number; yaw: number; at: number } | null = null;
   /** ms a knocked bike lies unused before it goes back to its spot, alone (shared/bikeKnock.mjs; the dev tools shorten it) */
   homeMs = KNOCK_HOME_MS;
 
@@ -460,8 +460,9 @@ export class Bikes {
   struck(car: { id: string; x: number; y: number; z: number; yaw: number; spec: { length: number; width: number } }, dt: number, indoors: (x: number, z: number) => boolean): number {
     const key = `car-${car.id}`;
     const last = this.lastCar;
-    this.lastCar = { key, x: car.x, z: car.z, yaw: car.yaw };
-    if (!last || last.key !== key || !(dt > 0)) return 0;
+    this.lastCar = { key, x: car.x, z: car.z, yaw: car.yaw, at: this.clock };
+    // Not the last frame's (got in again, another car): no drive to sweep yet. (One frame moves the clock 0.25 s at most.)
+    if (!last || last.key !== key || !(dt > 0) || this.clock - last.at > 0.3) return 0;
     const dx = car.x - last.x;
     const dz = car.z - last.z;
     const d = Math.hypot(dx, dz);
