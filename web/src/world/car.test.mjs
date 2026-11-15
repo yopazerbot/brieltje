@@ -6,6 +6,7 @@ import * as THREE from 'three';
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 import { CarBody, groundPlane, PITCH_MAX, ROLL_MAX, skid } from './carBody.ts';
 import * as grip from './carGrip.ts';
+import { KNOCK } from '../../shared/bikeKnock.mjs';
 
 // Run the actual animation and movement code without the browser-only sound/texture imports.
 const source = readFileSync(new URL('./car.ts', import.meta.url), 'utf8');
@@ -23,9 +24,9 @@ const laid = [];
 const skidMarks = { lay: (...a) => laid.push(a) };
 // The weather the tyres feel (world/mood.ts), set by the tests.
 const mood = { wet: 0, snow: 0 };
-const Car = new Function('THREE', 'netClock', 'CarBody', 'groundPlane', 'skid', 'PITCH_MAX', 'ROLL_MAX', 'skidMarks', 'G', 'MASS', 'surfaceGrip', 'tyreForces', 'YAW_INERTIA', 'mood',
+const Car = new Function('THREE', 'netClock', 'CarBody', 'groundPlane', 'skid', 'PITCH_MAX', 'ROLL_MAX', 'skidMarks', 'G', 'MASS', 'surfaceGrip', 'tyreForces', 'YAW_INERTIA', 'mood', 'KNOCK',
   stripTypeScriptTypes(`${constants}\n${classCode}`, { mode: 'transform' }) + '\nreturn Car;')(THREE, { time: 0 }, CarBody, groundPlane, skid, PITCH_MAX, ROLL_MAX, skidMarks,
-  grip.G, grip.MASS, grip.surfaceGrip, grip.tyreForces, grip.YAW_INERTIA, mood);
+  grip.G, grip.MASS, grip.surfaceGrip, grip.tyreForces, grip.YAW_INERTIA, mood, KNOCK);
 
 function vehicle(spec = specs.cars.tesla, groundAt = () => ({ y: 0, name: 'street', mat: 'asphalt' })) {
   return Object.assign(Object.create(Car.prototype), {
@@ -486,4 +487,32 @@ test('a stick pushed half way turns the wheel about a third of the way; full ove
     const half = circle(kmh, 0.5).wheel / circle(kmh, 1).wheel;
     assert.ok(Math.abs(half - 0.35) < 0.03, `${kmh} km/h: ${half.toFixed(2)} of the lock`);
   }
+});
+
+// A bike knocked aside (world/bike.ts struck, shared/bikeKnock.mjs): the car drives on, a little slower, with a bump.
+test('knocking a bike costs the car 3 % of its speed (at least 0.3 m/s) and a thump; it keeps its way and drives on', () => {
+  for (const [kmh, want] of [[100, 97], [40, 38.8], [8, 8 - 0.3 * 3.6], [0.5, 0]]) {
+    const car = vehicle();
+    car.noise.owner = car;
+    const v = kmh / 3.6;
+    Object.assign(car, { vx: 0.6 * v, vz: -0.8 * v, speed: v });
+    car.nudge(v);
+    const after = Math.hypot(car.vx, car.vz) * 3.6;
+    assert.ok(Math.abs(after - want) < 0.01, `${kmh} km/h: ${after.toFixed(2)} km/h after, ${want} wanted`);
+    if (after > 0) assert.ok(Math.abs(car.vx / car.vz - 0.6 / -0.8) < 1e-9, 'the same way');
+    assert.ok(Math.abs(car.speed * 3.6 - after) < 0.01, 'its speed along itself goes down with it');
+    assert.equal(car.thumps.length, 1, 'a thump');
+    assert.ok(finite(car));
+  }
+  const still = vehicle();
+  still.noise.owner = still;
+  still.nudge(0);
+  assert.equal(Math.hypot(still.vx, still.vz), 0, 'standing: nothing to lose');
+  // It drives on afterwards: the next frames at the wheel are a car's frames as before.
+  const car = vehicle();
+  run(car, 2, throttle);
+  const before = Math.hypot(car.vx, car.vz);
+  car.nudge(before);
+  run(car, 0.5, throttle);
+  assert.ok(Math.hypot(car.vx, car.vz) > before * 0.97, 'it pulls on');
 });
