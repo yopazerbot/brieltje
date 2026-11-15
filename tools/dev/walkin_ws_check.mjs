@@ -8,7 +8,9 @@
 //   ADMIN_PASSWORD=... node tools/dev/walkin_ws_check.mjs --api http://localhost:8457 [--home kapellenhoek_home]
 //
 // The password comes from the environment and is never printed; nor is the code. Each run needs a fresh server (the
-// limits per sender are in its memory), on your own port, with the private data (web/.private/ on this PC).
+// limits per sender are in its memory) started on an empty web/.data (delete it first: the names Alice and Bob joined
+// under stay taken for the day, and the home's code from an earlier run would still stand), on your own port, with the
+// private data (web/.private/ on this PC).
 import { readFileSync } from 'node:fs';
 import WebSocket from '../../web/node_modules/ws/wrapper.mjs';
 import { findHome, homeAt, WALK_INS } from '../../web/shared/homes.mjs';
