@@ -11,8 +11,8 @@
 //
 // The cars (shared/car.json: the Tesla and the Model 3 at home, a Model Y and a Model 3 by the
 // church): one of each for everyone. One player at a time drives a car and one more can ride
-// along as the passenger; the driver's position updates are the car's, so they (and the
-// passenger, who moves with it) may move at the car's speed. A car stays where they leave it
+// along as the passenger; the driver's position updates are the car's, so they may move at the
+// car's speed, and the passenger is where the car is (server/carSeats.mjs). A car stays where they leave it
 // and is back in its parking spot when the server restarts.
 //
 // The bikes (shared/bike.json: one against the main house, one at the bungalow, racks by the
@@ -57,6 +57,7 @@ import { churchPrisms, makeChurch } from '../shared/church.mjs';
 import { cafePrisms, makeCafe } from '../shared/sparrenhof.mjs';
 import { DROP, dropFrom, HOME_DROP } from '../shared/parachute.mjs';
 import { BikeHits } from './bikeHits.mjs';
+import { CarSeats, SEAT_REFUSED } from './carSeats.mjs';
 import { Football } from './football.mjs';
 import { GoalTracker, readGoals } from './goals.mjs';
 import { blastPoint } from './grenade.mjs';
@@ -377,6 +378,11 @@ export class Game {
   /** The helicopters (server/helis.mjs): their seats, poses and flights home, made on first use. */
   get helis() {
     return (this._helis ??= new Helis(this, { ground: (x, z) => HOUSE.ground + TERRAIN.height(x, z), mono, calmMs: HURT_CALM_MS }));
+  }
+
+  /** The cars' seats (server/carSeats.mjs): passengers pinned to the car, getting out beside it, the refused set. */
+  get carSeats() {
+    return (this._carSeats ??= new CarSeats(this, { spec: carSpec, free: (x, z, y0, y1) => SOLIDS.boxFree(x, z, 0, 0.3, 0.3, y0, y1) }));
   }
 
   /**
@@ -885,6 +891,8 @@ export class Game {
     if (this.room && ROOM_REFUSED.has(m.t)) return;
     // Aboard a helicopter: out of every fight and game, no other vehicle, no trip (server/helis.mjs).
     if (HELI_REFUSED.has(m.t) && this.helis.of(name)) return;
+    // In a car's seat or on a bike's saddle: nothing taken, collected, tagged, hurt or opened from it (server/carSeats.mjs).
+    if (SEAT_REFUSED.has(m.t) && this.carSeats.seated(name)) return;
 
     if (m.t === 'state') {
       const prev = player.state;
@@ -911,6 +919,7 @@ export class Game {
       // The page says it landed (not before its first messages from the sky can have come), or the drop took too long.
       if (player.drop && (!this.dropping(player, now) || (!m.pc && now - player.drop.from > DROP.graceMs))) this.landed(player, now);
       if (heli && !flyer) this.helis.pin(heli, next);
+      if (inCar && !driving) this.carSeats.pin(car, next); // a car's passenger: where the car is, never their own position
       // Never faster than anyone can move: a movement budget refills at MAX_SPEED (the car's
       // speed for its driver; at most half a second's worth stored) and each update spends it,
       // however often updates come. A faked jump only gets as far as running would; a lagging
@@ -923,7 +932,8 @@ export class Game {
       // On a bike only while the server has them riding one, never on a page's say (a forged ride state is no speed-hack).
       // In a helicopter the flight's own caps (shared/heli.mjs HELI), the admin's too; going up has a budget of its own (climb).
       const speed = heli ? HELI_SPEED : inCar ? CAR_SPEED : horse ? HORSE_SPEED : bike ? BIKE_SPEED : player.role === 'admin' ? ADMIN_SPEED : drop ? DROP_SPEED : RUN_SPEED;
-      const vspeed = heli ? HELI_DOWN : inCar || horse || player.role === 'admin' ? speed : MAX_SPEED;
+      // A car goes up and down no faster than a walker may (it was the car's 67 m/s: a forged driver lifted it onto roofs).
+      const vspeed = heli ? HELI_DOWN : horse || player.role === 'admin' ? speed : MAX_SPEED;
       const secs = (now - player.movedAt) / 1000;
       const budget = Math.min(speed * 0.5 + 0.5, player.budget + speed * secs);
       const vbudget = Math.min(vspeed * 0.5 + 0.5, (player.vbudget ?? 0.5) + vspeed * secs);
@@ -974,6 +984,7 @@ export class Game {
       if (drop) this.dropCheck(player, now); // on the ground, or not coming down: the drop ends
       this.stampState(player, m.ct);
       if (driving) {
+        this.carSeats.carry(car, prev, next, now); // never into a home the passenger may not enter; the passenger goes along
         const before = { x: car.x, y: car.y, z: car.z, yaw: car.yaw };
         Object.assign(car, { x: next.x, y: next.y, z: next.z, yaw: next.yaw, s: next.s });
         this.carAt[car.id] = player.stamp;
@@ -1449,6 +1460,7 @@ export class Game {
   releaseCar(name) {
     const car = this.carOf(name);
     if (!car) return;
+    this.carSeats.out(name, car); // beside the car, on foot, the budgets started again (server/carSeats.mjs)
     if (car.driver === name) {
       car.driver = null;
       car.s = 0;
@@ -2124,7 +2136,7 @@ export class Game {
       if (target === shooter || cover.has(targetName) || !target.alive || !target.state?.armed || now < target.protectedUntil) continue;
       if (this.modes.friends(name, targetName)) continue; // the same team
       if (this.calm(target)) continue; // on the school grounds
-      if (this.helis.of(targetName)) continue; // in a helicopter: out of every fight (server/helis.mjs)
+      if (this.inCar(targetName)) continue; // in a car, on a bike or in a helicopter: out of every fight, as for bullets (hit)
       const s = target.state;
       const d = Math.hypot(s.x - at.x, s.y + (s.c ? 0.65 : 0.9) - at.y, s.z - at.z); // from the middle of the body (lower crouching)
       if (d < radius) this.damage(name, shooter, targetName, target, Math.round(damage * (1 - d / radius)), false, w, now);
