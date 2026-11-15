@@ -446,8 +446,10 @@ def red_villa():
     light = Opening(.8, fl + 2.0, 1.0, .45, frame=frame, reveal=.2, cols=2, sill=False)
     Wf, Nf, Tf = wall((2.64, 0), (-2.64, 0), [door, light, win(3.8), win(3.8, 4.5), win(.8, 4.5)])
     lamp(h, Wf, Nf, Tf, door.s + .78, fl + 1.75)
-    for i in range(4):  # four stone steps up to the door
+    for i in range(4):  # four stone steps up to the door, each one a step a player walks up (blocks in the model)
         h.wbox(Wf, Nf, Tf, "vh_stone", door.s - .75, door.s + .72, gd - .3, fl - .155 * i, -.3 * (i + 1), 0, "#a7a49d")
+        su0, su1 = 2.64 - (door.s + .72), 2.64 - (door.s - .75)
+        h.block("concrete", [(su0, -.3 * (i + 1)), (su1, -.3 * (i + 1)), (su1, 0), (su0, 0)], gd - .3, fl - .155 * i)
     # A small tiled canopy on two plain iron struts.
     cy = fl + 2.6
     u0c, u1c = 2.64 - .8 - .85, 2.62
