@@ -181,6 +181,7 @@ On 3 November, the village gained a custom brick dormer house and six outdoor Ac
 
 ## Next
 
+0. **Queued by Yoshi on 15 Nov, for after the work now running** ("Schedule this for later"): a custom Blender model of Santa Claus on the church square, and a really good Christmas tree there round Christmas, which stays for the Christmas period ("It should be a very nice render so research some reference visual first"). Today the square's tree is built in code (`web/src/world/christmas.ts`) and Sinterklaas is a Blender model (`tools/sinterklaas.py`). Order: a Fable research of reference pictures first, then a plan, then Opus builders in Blender (Santa; the tree), then a Fable review. Open, Yoshi's to say: whether Santa stands there only in the Christmas period or all year.
 1. Try the LAN night's tools with real people: real phones and laptops on a venue's network, 30 browsers at once, and how the zombies' waves feel with that many (they scale with the players already).
 2. The houses of the street models at the street's level everywhere, as the end house at Molenhoek is now.
 3. The Blender light bake (light bouncing between walls) as the default, once it is denoised.
