@@ -113,6 +113,8 @@ PAINT = {  # vertex colours of the fittings (sRGB)
     "gilt": "#a8843f", "dark": "#2a2624", "white": "#e9e5dc", "board": "#ddd8cc", "cream": "#e4dcc2",
     "brown": "#58402f", "antenna": "#76797b", "granite": "#8e8b85", "marble": "#cbc8c0", "pier": "#b3b2ac",
     "corpus": "#e3d8c6", "cloth": "#efebe2", "rock": "#4d4640", "iron": "#1f1f21",
+    # The landing deck: pale as the meadow's pad (world/heliPads.ts), its yellow ring and white H, the windsock.
+    "deck": "#b9b2a5", "ring": "#f2c230", "letter": "#f3f1ea", "sock": "#e8692c",
 }
 M = {}
 
@@ -198,6 +200,11 @@ fit_nt = M["church_fittings"].node_tree
 attr = fit_nt.nodes.new("ShaderNodeVertexColor")
 attr.layer_name = "Color"
 fit_nt.links.new(attr.outputs["Color"], fit_nt.nodes["Principled BSDF"].inputs["Base Color"])
+# The landing deck's lamps: green, glowing (the game turns them up at night: main.ts loadChurch). "fittings" in the
+# name keeps them out of the light layout (tools/bake/lightmap_uv.py).
+M["church_fittings_glow"] = principled("church_fittings_glow", srgb("#1d5a2c"), 0.4)
+M["church_fittings_glow"].node_tree.nodes["Principled BSDF"].inputs["Emission Color"].default_value = (*srgb("#46e070"), 1)
+M["church_fittings_glow"].node_tree.nodes["Principled BSDF"].inputs["Emission Strength"].default_value = 2.0
 
 PARTS = {k: [] for k in M}   # objects per material, joined at the end
 
@@ -1068,8 +1075,93 @@ for sg in (1, -1):
 # server and zombie collision: no invisible ramp or client-only way onto the roof.
 for p in ACCESS["visible"]:
     mat = "church_stone" if p["m"] == "concrete" else "church_fittings"
-    paint = None if mat == "church_stone" else "wood" if p["m"] == "stair" else "metal"
-    add(plan_prism(p["n"], p["p"][0], p["y0"], p["y1"], mat, paint), mat)
+    paint = None if mat == "church_stone" else "wood" if p["m"] == "stair" else "deck" if p["n"] == "church-pad" else "metal"
+    solid = add(plan_prism(p["n"], p["p"][0], p["y0"], p["y1"], mat, paint), mat)
+    if p["n"] == "church-pad":
+        PAD_DECK = solid
+
+
+# The landing deck's marking, inlaid in its top (no paint lying on it to flicker from afar), its frame on the roof, its
+# lamps and its windsock: drawn only, none of it a block (the deck, nets and rails above are).
+def ring_prism(name, c, r0, r1, z0, z1, mat, paint=None, seg=40):
+    bm = bmesh.new()
+    rings = [[bm.verts.new((c[0] + r * math.cos(2 * math.pi * k / seg), c[1] + r * math.sin(2 * math.pi * k / seg), z))
+              for k in range(seg)] for r, z in ((r0, z0), (r1, z0), (r1, z1), (r0, z1))]
+    for a, b in zip(rings, rings[1:] + rings[:1]):
+        for k in range(seg):
+            bm.faces.new((a[k], a[(k + 1) % seg], b[(k + 1) % seg], b[k]))
+    return to_object(bm, name, mat, paint)
+
+
+PAD = ACCESS["pad"]
+PX, PY, PZ = PAD["centre"]
+PX0, PX1, PHW = PX - PAD["size"][0] / 2, PX + PAD["size"][0] / 2, PAD["size"][1] / 2
+NET_Y, NET_DROP = PAD["net"]
+
+
+R_MARK, SEG = PAD["circle"], 40
+H_BARS = [(PX + sx * 0.65 - 0.14, -1.1, PX + sx * 0.65 + 0.14, 1.1) for sx in (-1, 1)] + [(PX - 0.51, -0.13, PX + 0.51, 0.13)]
+
+
+def flat(name, quads, z, paint):
+    """Flat faces facing up at height z (each a counter-clockwise outline seen from above)."""
+    bm = bmesh.new()
+    for q in quads:
+        bm.faces.new([bm.verts.new((x, y, z)) for x, y in q])
+    bmesh.ops.remove_doubles(bm, verts=bm.verts[:], dist=1e-5)
+    return to_object(bm, name, "church_fittings", paint, recalc=False)
+
+
+# The yellow ring (as the meadow's pad: 4.6 to 5 m across) and the white H, its legs along the machine's way (y): cut
+# 3 cm into the deck, their tops laid in its holes at its level.
+cutters = [ring_prism("pad_ring", (PX, 0), R_MARK - 0.2, R_MARK, PZ - 0.03, PZ + 0.01, "church_fittings", "deck", SEG)]
+cutters += [box("pad_h", x0, y0, PZ - 0.03, x1, y1, PZ + 0.01, "church_fittings", "deck") for x0, y0, x1, y1 in H_BARS]
+boolean(PAD_DECK, cutters, "DIFFERENCE")
+arc = [(math.cos(2 * math.pi * k / SEG), math.sin(2 * math.pi * k / SEG)) for k in range(SEG + 1)]
+add(flat("pad_ring", [[(PX + r * a[0], r * a[1]) for r, a in ((R_MARK - 0.2, arc[k]), (R_MARK, arc[k]), (R_MARK, arc[k + 1]), (R_MARK - 0.2, arc[k + 1]))]
+                      for k in range(SEG)], PZ, "ring"), "church_fittings")
+add(flat("pad_h", [[(x0, y0), (x1, y0), (x1, y1), (x0, y1)] for x0, y0, x1, y1 in H_BARS], PZ, "letter"), "church_fittings")
+# The frame: a fascia round the deck's rim, cross beams under it (on to the nets), each on a saddle astride the ridge,
+# and a raking strut a side from each beam down to a shoe on the slates at the choir's eaves.
+SLOPE = (RIDGE - CH_E) / CH_HW
+roof_z = lambda y: RIDGE - SLOPE * abs(y)
+for a, b in (((PX0 - .03, -PHW - .06), (PX0 - .03, PHW + .06)), ((PX1 + .03, -PHW - .06), (PX1 + .03, PHW + .06)),
+             ((PX0 - .06, -PHW - .03), (PX1 + .06, -PHW - .03)), ((PX0 - .06, PHW + .03), (PX1 + .06, PHW + .03))):
+    add(oriented_box("pad_fascia", (*a, PZ - 0.36), (*b, PZ - 0.36), 0.06, 0.35, (0, 0, 1), "church_fittings", "metal"), "church_fittings")
+for x in (PX0 - .03, PX1 + .03):
+    add(box("pad_saddle", x - 0.1, -0.32, roof_z(0.32) - 0.02, x + 0.1, 0.32, PZ - 0.35, "church_fittings", "metal"), "church_fittings")
+for x in (9.0, 10.65, 12.3, 13.9):
+    add(box("pad_beam", x - 0.05, -PHW, PZ - 0.30, x + 0.05, PHW, PZ - 0.15, "church_fittings", "metal"), "church_fittings")
+    add(box("pad_saddle", x - 0.12, -0.32, roof_z(0.32) - 0.02, x + 0.12, 0.32, PZ - 0.30, "church_fittings", "metal"), "church_fittings")
+    for sg in (-1, 1):
+        # Brackets under the nets, out from the fascia.
+        add(box("pad_bracket", x - 0.04, min(sg * PHW, sg * NET_Y), PZ - NET_DROP - 0.14, x + 0.04, max(sg * PHW, sg * NET_Y),
+                PZ - NET_DROP - 0.05, "church_fittings", "metal"), "church_fittings")
+        foot = (x - 0.05, sg * (CH_HW - 0.05), roof_z(CH_HW - 0.05) + 0.06)
+        add(oriented_box("pad_strut", foot, (x - 0.05, sg * (PHW - 0.05), PZ - 0.34), 0.1, 0.1, (1, 0, 0), "church_fittings", "metal"),
+            "church_fittings")
+        y0, y1 = sg * (CH_HW - 0.3), sg * (CH_HW + 0.12)
+        add(oriented_box("pad_shoe", (x, y0, roof_z(y0)), (x, y1, roof_z(y1)), 0.22, 0.06, (0, sg, 1), "church_fittings", "metal"),
+            "church_fittings")
+# The lamps round the deck's edge, low domes.
+for x, y in PAD["lights"]:
+    add(sphere("pad_lamp", (x, y, PZ + 0.03), 0.07, "church_fittings_glow", None, 8, 4), "church_fittings_glow")
+# The windsock at the north-west corner of the net, blowing the way the game's wind does (world/wind.ts DIR), drooped.
+SX, SY = PAD["sock"]
+cy, sy = math.cos(ACCESS["yaw"]), math.sin(ACCESS["yaw"])
+wind = Vector((cy * -0.998 - sy * 0.057, -sy * -0.998 - cy * 0.057, 0))
+top = Vector((SX, SY, PZ + 2.2))
+add(cylinder("sock_mast", (SX, SY, PZ - NET_DROP - 0.05), top, 0.03, "church_fittings", "white", 6), "church_fittings")
+along = (wind.normalized() * math.cos(math.radians(18)) + Vector((0, 0, -math.sin(math.radians(18))))).normalized()
+for k, paint in enumerate(("sock", "white", "sock")):
+    p0, p1 = top + along * (0.4 * k), top + along * (0.4 * (k + 1))
+    r0, r1 = 0.17 - 0.03 * k, 0.14 - 0.03 * k
+    pts = []
+    for p, r in ((p0, r0), (p1, r1)):
+        u = along.orthogonal().normalized()
+        w = along.cross(u)
+        pts += [p + (u * math.cos(2 * math.pi * i / 10) + w * math.sin(2 * math.pi * i / 10)) * r for i in range(10)]
+    add(hull("sock", pts, "church_fittings", paint), "church_fittings")
 
 # ---------------------------------------------------------------- UVs, join per material, export
 def metre_uvs(obj, scale=1.0):
@@ -1098,12 +1190,12 @@ for g, f, s0, z0, pw, ph in GLASS_UV:
 
 final = {}
 for mat, objs in PARTS.items():
-    if mat in ("church_glass", "church_fittings"):
+    if mat in ("church_glass", "church_fittings", "church_fittings_glow"):
         obj = join(objs, mat)
     else:
         obj = join(objs, mat)
         metre_uvs(obj, SLATE_TILE if mat == "church_slate" else 1.0)
-    obj.data.set_sharp_from_angle(angle=math.radians(30))
+    obj.data.set_sharp_from_angle(angle=math.radians(80 if mat == "church_fittings_glow" else 30))  # the lamps' domes smooth
     final[mat] = obj
 
 tris = 0
@@ -1268,6 +1360,10 @@ if PREVIEW:
     shoot("church_square_sw", (-11.5, -30.5, 1.6), 72, 9, 920, 1920, 1080, cy=700)
     shoot("church_square_se", (13.5, -29.5, 1.6), 118, 6, 1050, 1920, 1080, cy=760)
     shoot("church_tower", (-11.5, -19.0, 1.6), 104, 18, 1000, 1080, 1440, cy=980)
+    # The landing deck: from the air to the south-east, from the roof walk's last bay, from the ground east of the choir.
+    shoot("pad_air", (25.0, -22.0, 30.0), 122.5, -33.5, 900, 960, 640)
+    shoot("pad_walk", (6.0, 0.0, 14.3), 0, -12, 560, 960, 640)
+    shoot("pad_east", (40.0, 6.0, 1.6), 191, 22, 900, 960, 640)
     if CAMERAS:
         for c in json.load(open(CAMERAS)):
             shoot(c["name"], c["pos"], c["yaw"], c.get("pitch", 0.0), c["f_px"], c["w"], c["h"], c.get("cx"), c.get("cy"),

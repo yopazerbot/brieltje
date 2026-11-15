@@ -4504,6 +4504,14 @@ async function loadChurch(): Promise<THREE.Object3D> {
     m.color.multiplyScalar(0.5);
     m.roughness = 0.92; // weathered slate: less of the bright sky in it
   }
+  // The landing deck's green lamps (tools/church.py) glow as the night comes, as the other lamps do; far under the
+  // half-float limit.
+  const lamps = root.getObjectByName('church_fittings_glow') as THREE.Mesh | undefined;
+  if (lamps) {
+    const glow = lamps.material as THREE.MeshStandardMaterial;
+    lamps.castShadow = false;
+    lamps.onBeforeRender = () => void (glow.emissiveIntensity = 0.15 + 2.6 * mood.night);
+  }
   root.userData.landmark = 'church';
   // Its origin on the church's axis at ground level (Lambert 72 119018.72, 184084.24), turned so
   // its length runs 6.4 degrees north of grid east; walls and plinth reach 1.2 m down for the slope.

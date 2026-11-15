@@ -16,6 +16,10 @@ OUT = ROOT / "web/shared/church.json"
 CX = -15.93
 FLOOR, ROOF = 0.30, 12.70
 COUNT, TURN = 84, math.tau / 24
+# The landing deck at the roof walk's end: x from the walk's end to short of the choir's cross, half its width in y;
+# the nets along its long sides reach out to NET_Y, NET_DROP under the deck.
+PAD_X0, PAD_X1, PAD_HW = 8.0, 14.0, 5.0
+NET_Y, NET_DROP = 6.5, 0.30
 
 
 def build():
@@ -115,6 +119,8 @@ def build():
     for a, b in zip(coords, coords[1:]):
         if max(a[0], b[0]) < -13.4:
             continue  # clear doorway back into the tower
+        if min(a[0], b[0]) > PAD_X0 - .01:
+            continue  # the walk's end opens onto the landing deck
         line = LineString([a, b])
         rail = line.buffer(.035, cap_style="square", join_style="mitre")
         add(visible, rail, ROOF, ROOF+.60, "steel", "church-cover")
@@ -122,10 +128,35 @@ def build():
         for k in range(math.ceil(line.length/2)+1):
             p = line.interpolate(min(line.length, k*2))
             add(visible, Point(p).buffer(.035, cap_style="square"), ROOF, ROOF+1.05, "steel", "church-rail")
+
+    # The helicopters' landing deck at the walk's end (shared/heli.json's church pad): steel across the church's axis at
+    # the walk's level, so the walk meets it as a T and the cross on the choir's gable stays clear. Along its long sides
+    # a net a step lower with a low edge the tail passes over; along its ends two rails on posts, the walk arriving
+    # through a gap in the west one. Its marking, lamps, windsock and frame are drawn only (tools/church.py, from "pad").
+    add(visible, box(PAD_X0, -PAD_HW, PAD_X1, PAD_HW), ROOF-.15, ROOF, "steel", "church-pad")
+    for sg in (-1, 1):
+        a, b = sorted((sg * PAD_HW, sg * NET_Y))
+        add(visible, box(PAD_X0, a, PAD_X1, b), ROOF-NET_DROP-.05, ROOF-NET_DROP, "steel", "church-pad-net")
+        edge = LineString([(PAD_X0, sg*PAD_HW), (PAD_X0, sg*NET_Y), (PAD_X1, sg*NET_Y), (PAD_X1, sg*PAD_HW)])
+        add(visible, edge.buffer(.035, cap_style="square", join_style="mitre"), ROOF-NET_DROP, ROOF+.25,
+            "steel", "church-pad-net")
+    for line in (LineString([(PAD_X1, -PAD_HW), (PAD_X1, PAD_HW)]),
+                 LineString([(PAD_X0, -PAD_HW), (PAD_X0, -1.10)]), LineString([(PAD_X0, 1.10), (PAD_X0, PAD_HW)])):
+        rail = line.buffer(.035, cap_style="square", join_style="mitre")
+        for lo, hi in ((.45, .55), (1.0, 1.05)):
+            add(visible, rail, ROOF+lo, ROOF+hi, "steel", "church-pad-rail")
+        for k in range(math.ceil(line.length/2)+1):
+            p = line.interpolate(min(line.length, k*2))
+            add(visible, Point(p).buffer(.035, cap_style="square"), ROOF, ROOF+1.05, "steel", "church-pad-rail")
+    cx = (PAD_X0 + PAD_X1) / 2
+    lights = [(x, sg * (PAD_HW - .12)) for sg in (-1, 1) for x in (PAD_X0 + .12, cx - 1, cx + 1, PAD_X1 - .12)]
+    lights += [(PAD_X1 - .12, y) for y in (-2.5, 0, 2.5)] + [(PAD_X0 + .12, y) for y in (-2.5, 2.5)]
+    pad = {"centre": [cx, 0, ROOF], "size": [PAD_X1 - PAD_X0, 2 * PAD_HW], "circle": 2.5, "net": [NET_Y, NET_DROP],
+           "lights": [[round(x, 3), round(y, 3)] for x, y in lights], "sock": [PAD_X0, NET_Y]}
     return {"_source": "tools/church_access.py: a fictional maintenance route inside the church model",
             "origin": [521.51, -744.15], "yaw": 2.525, "cuts": cuts, "body": body, "visible": visible,
-            "anchors": {"entry": [-19.8, 0, 0], "stairs": anchors, "roof": [-6.5, 0, ROOF]},
-            "area": [-21.5, -9.5, 15.6, 9.5]}
+            "anchors": {"entry": [-19.8, 0, 0], "stairs": anchors, "roof": [-6.5, 0, ROOF], "pad": [cx, 0, ROOF]},
+            "pad": pad, "area": [-21.5, -9.5, 15.6, 9.5]}
 
 
 def main():

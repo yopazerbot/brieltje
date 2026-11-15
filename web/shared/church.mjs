@@ -12,8 +12,10 @@ export function makeChurch(data, ground) {
   const corners = [[x0,z0],[x0,z1],[x1,z0],[x1,z1]].map(point);
   const area = { minX: Math.min(...corners.map((p) => p.x)), maxX: Math.max(...corners.map((p) => p.x)),
     minZ: Math.min(...corners.map((p) => p.z)), maxZ: Math.max(...corners.map((p) => p.z)) };
+  // The landing deck's middle and the way a machine parked there faces (across the church's axis, nose to the square).
+  const padYaw = Math.atan2(Math.sin(data.yaw - Math.PI), Math.cos(data.yaw - Math.PI));
   return { prisms, area, point, anchors: { entry: point(data.anchors.entry), roof: point(data.anchors.roof),
-    stairs: data.anchors.stairs.map(point) } };
+    stairs: data.anchors.stairs.map(point), pad: point(data.anchors.pad), padYaw } };
 }
 
 /** The solid open-data church is replaced as a whole, for walking, shots and zombie navigation. */

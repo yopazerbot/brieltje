@@ -5,7 +5,7 @@ export interface Church {
   area: Area;
   point(p: number[]): { x: number; y: number; z: number };
   anchors: { entry: { x: number; y: number; z: number }; roof: { x: number; y: number; z: number };
-    stairs: { x: number; y: number; z: number }[] };
+    stairs: { x: number; y: number; z: number }[]; pad: { x: number; y: number; z: number }; padYaw: number };
 }
 export function makeChurch(data: unknown, ground: number): Church;
 export function churchPrisms(prisms: Prism[], church: Church): Prism[];
