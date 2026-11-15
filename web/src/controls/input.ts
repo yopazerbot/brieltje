@@ -335,7 +335,9 @@ export class Input {
     const trigger = (b: number) => (p ? p.buttons[b]?.value ?? 0 : 0);
     const held = (b: number) => (p?.buttons[b]?.pressed ? 1 : 0);
     const one = (v: number) => Math.max(-1, Math.min(1, v));
-    const turn = (k('KeyD') ? 1 : 0) - (k('KeyA') ? 1 : 0) + held(BTN.r1) - held(BTN.l1) + touchX;
+    // The touch stick turns by how far sideways the thumb is (finer near the middle) and less while it is mostly forward.
+    const touchTurn = touchX * Math.abs(touchX) * (1 - 0.5 * Math.min(1, Math.abs(this.touch ? out.moveY : 0)));
+    const turn = (k('KeyD') ? 1 : 0) - (k('KeyA') ? 1 : 0) + held(BTN.r1) - held(BTN.l1) + touchTurn;
     const side = (k('ArrowRight') ? 1 : 0) - (k('ArrowLeft') ? 1 : 0) + padX;
     this.heli = { fwd: one(out.moveY), side: one(side), turn: one(turn), triggers: trigger(BTN.r2) - trigger(BTN.l2), view: this.keyView };
     this.keyView = false;

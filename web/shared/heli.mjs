@@ -49,7 +49,8 @@ export const HELI = {
   HOLD_GAIN: 1.2, // 1/s: how firmly it holds its height with the keys let go
   SPEED_GAIN: 0.9, // 1/s: how fast its speed follows the stick
   POS_GAIN: 0.6, // 1/s: how firmly it holds the spot where it came to a stop
-  YAW_SLOW: 1.4, // rad/s: the turn at a hover at full turn
+  YAW_SLOW: 1.4, // rad/s: the turn at a hover at full turn (the turn key alone: on the spot) ...
+  YAW_GO: 0.85, // rad/s: ... and with forward or back held full from a hover (picking up speed: a widening curve)
   YAW_FAST: 0.45, // rad/s: the most at speed (less when the bank can't hold it: BANK)
   YAW_BLEND0: 12, // m/s: from here the turn becomes a banked one ...
   YAW_BLEND1: 25, // m/s: ... and by here it is one
@@ -253,7 +254,9 @@ export function heliStep(s, input, env, dt) {
   const blend = smooth(H.YAW_BLEND0, H.YAW_BLEND1, air);
   const ground = Math.hypot(s.vx, s.vz);
   const carried = (G * Math.tan(H.BANK * 0.9)) / Math.max(1, ground);
-  let yawCmd = -turnIn * Math.min(H.YAW_SLOW, carried, H.YAW_SLOW + (H.YAW_FAST - H.YAW_SLOW) * blend);
+  // Asking for speed from a hover (forward or back held) it turns less: a widening curve, not a spin on the spot.
+  const going = Math.abs(fwdIn) * (1 - blend);
+  let yawCmd = -turnIn * Math.min(H.YAW_SLOW - (H.YAW_SLOW - H.YAW_GO) * going, carried, H.YAW_SLOW + (H.YAW_FAST - H.YAW_SLOW) * blend);
   // The speed over the ground it asks for, in its own frame.
   // A held turn at speed asks for less speed, so the circle is tighter and the bank holds it.
   let tu = (fwdIn > 0 ? fwdIn * H.V_TOP : fwdIn * H.V_SLOW) * (1 - H.TURN_SLOW * Math.abs(turnIn) * blend);

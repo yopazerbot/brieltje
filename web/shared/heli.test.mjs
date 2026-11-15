@@ -502,3 +502,21 @@ test('after a jump the machine eases to a hover while it climbs away; it keeps i
   assert.ok(AWAY.home > AWAY.keep && AWAY.latest > AWAY.home);
   assert.ok(DROP.jumpMin < 20);
 });
+
+test('from a hover the turn key alone turns on the spot; with forward held it flies a widening curve (a quarter turn in about 2 s)', () => {
+  const run = (input) => {
+    const s = hovering(60);
+    let turned = 0, prev = s.yaw, at2 = 0;
+    fly(s, 6, input, flat(), (q, t) => {
+      turned += Math.atan2(Math.sin(q.yaw - prev), Math.cos(q.yaw - prev));
+      prev = q.yaw;
+      if (t < 2) at2 = turned;
+    });
+    return { at2: Math.abs(at2), turned: Math.abs(turned), speed: speed(s) };
+  };
+  const spot = run({ turn: -1 });
+  const curve = run({ fwd: 1, turn: -1 });
+  assert.ok(spot.at2 > 2.2 && spot.speed < 0.5, `alone: ${spot.at2} rad in 2 s at ${spot.speed} m/s`);
+  assert.ok(curve.at2 > 1.2 && curve.at2 < 1.9, `with forward: ${curve.at2} rad in 2 s (a quarter turn is 1.57)`);
+  assert.ok(curve.speed > 20, `and it picks up speed: ${curve.speed} m/s`);
+});

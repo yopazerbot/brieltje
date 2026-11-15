@@ -6,7 +6,7 @@ export const HELI: {
   DRAG_FWD: number; DRAG_SIDE: number; DRAG_UP: number; DRAG_LIN: number;
   V_TOP: number; V_SLOW: number; V_CAP: number; CLIMB_MAX: number; SINK: number; SINK_CAP: number;
   VS_RESP: number; HOLD_GAIN: number; SPEED_GAIN: number; POS_GAIN: number;
-  YAW_SLOW: number; YAW_FAST: number; YAW_BLEND0: number; YAW_BLEND1: number; YAW_RESP: number; YAW_STOP: number; TURN_SLOW: number;
+  YAW_SLOW: number; YAW_GO: number; YAW_FAST: number; YAW_BLEND0: number; YAW_BLEND1: number; YAW_RESP: number; YAW_STOP: number; TURN_SLOW: number;
   GE_GAIN: number; GE_HEIGHT: number; GE_FADE: number; ETL_GAIN: number; ETL_V0: number; ETL_V1: number;
   WIND_PUSH: number; CEIL_FADE: number; EDGE_PAD: number;
   LAND_SOFT: number; LAND_HARD: number; LAND_SKID: number; LAND_TILT: number; SLOPE_SLIDE: number; SLOPE_MAX: number;
