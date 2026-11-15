@@ -64,6 +64,7 @@ DEBUG = ROOT / "data" / "debug" / "street.png"
 CELL = 0.4
 X0 = Z0 = X1 = Z1 = NX = NZ = 0
 HALF_M = max(1, round(0.5 / CELL))  # cells in half a metre: the size of the clean-ups and the hedge window
+HEDGE_CLEAR = 0.9  # m a hedge stops short of a building (the village draws a hedge about 0.7 m thick)
 
 
 def grid(area):
@@ -695,11 +696,16 @@ def build(area, plot, roads_l72, to_model, nb, mine, grow_fields=True):
 
     # Hedges along the plot lines between gardens, and along the plots' road side.
     hedges = []
+    # A hedge stops HEDGE_CLEAR short of a building: a plot line often runs up to a wall, and a hedge half its width
+    # thick along it would stand in the wall there.
+    clear = buildings.buffer(HEDGE_CLEAR)
     for k, line in enumerate(nb.get("boundaries", [])):
         if not mine(line):
             continue
-        for seg, h in hedge_runs(LineString(line["path"]), ras, veg):
-            hedges.append({"b": k, "path": coords(seg), "h": h})
+        free = LineString(line["path"]).difference(clear)
+        for piece in parts_of(free, "LineString"):
+            for seg, h in hedge_runs(piece, ras, veg):
+                hedges.append({"b": k, "path": coords(seg), "h": h})
     fronts = unary_union([p.exterior for p in homes]).intersection(road.buffer(4)).difference(road.buffer(0.3)).difference(buildings.buffer(0.5)).difference(ours)
     for line in parts_of(linemerge(fronts) if fronts.geom_type == "MultiLineString" else fronts, "LineString"):
         if line.length < 3:
