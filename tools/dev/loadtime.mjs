@@ -14,10 +14,14 @@
 // (50 by default: three frames of a 60 Hz screen), and up to 40 of them are listed with their time into play.
 // Where the page marks them (briel:ready, briel:warm, briel:play), the click to play is split into its parts: the
 // world, the rest that comes before play, and the warm-up frames behind the start screen.
+// --trace out.json: a browser trace (style, layout, paint, the compositor, the GPU process and the GPU programs it
+// builds; what a CPU profile doesn't show) from the warm-up's start to --traceafter seconds into play (2 by default),
+// saved for DevTools' Performance panel; the moment play begins is marked in it as 'loadtime:play'.
+// tools/dev/traceframes.mjs reads it.
 import { writeFileSync } from 'node:fs';
 import { launch, options } from './cdp.mjs';
 
-const o = options({ rounds: '1', port: '9940', spawn: 'church', play: 'action', gfx: '', phone: false, throttle: '1', after: '10', wait: '6', prof: '', profafter: '0', top: '30', swiftshader: false, slow: '50' });
+const o = options({ rounds: '1', port: '9940', spawn: 'church', play: 'action', gfx: '', phone: false, throttle: '1', after: '10', wait: '6', prof: '', profafter: '0', top: '30', swiftshader: false, slow: '50', trace: '', traceafter: '2' });
 const SLOW = Number(o.slow);
 const urls = o._;
 if (!urls.length) throw new Error('give one or more URLs');
@@ -55,18 +59,40 @@ async function once(url, round) {
       let last = performance.now();
       const f = (t) => { window.__frames.push([t, t - last]); last = t; requestAnimationFrame(f); };
       requestAnimationFrame(f);
-      new MutationObserver(() => { if (!window.__play && ov.classList.contains('hidden')) window.__play = performance.now(); }).observe(ov, { attributes: true });
+      new MutationObserver(() => { if (!window.__play && ov.classList.contains('hidden')) { window.__play = performance.now(); performance.mark('loadtime:play'); } }).observe(ov, { attributes: true });
       const n = document.getElementById('nick');
       if (n && !n.value) { n.value = 'Check'; n.dispatchEvent(new Event('input', { bubbles: true })); }
       document.querySelector('#mode-start [data-play=${o.play}]')?.click();
       window.__click = performance.now();
       document.querySelector('${button}').click();
     })()`, false);
+    const traceFile = o.trace ? `${o.trace.replace(/\.json$/, '')}${urls.length > 1 || Number(o.rounds) > 1 ? `-${round}-${urls.indexOf(url)}` : ''}.json` : '';
+    if (traceFile) {
+      // From the warm-up's start (the long frames come after it), looked for often so it isn't missed.
+      const t0 = Date.now();
+      while (!(await b.evaluate("performance.getEntriesByName('briel:warm').length > 0 || !!window.__play", false)) && Date.now() - t0 < 300000) await b.sleep(50);
+      await b.send('Tracing.start', { transferMode: 'ReturnAsStream', traceConfig: { includedCategories: ['devtools.timeline', 'blink.user_timing', 'cc', 'gpu', 'viz', 'disabled-by-default-devtools.timeline', 'disabled-by-default-devtools.timeline.frame', 'toplevel', 'disabled-by-default-skia.shaders'] } });
+    }
     await b.waitFor(`!!window.__play && ${hidden}`, 300000);
+    if (traceFile) {
+      await b.sleep(Number(o.traceafter) * 1000);
+      const done = new Promise((res) => b.listeners.push((m) => m.method === 'Tracing.tracingComplete' && res(m.params.stream)));
+      await b.send('Tracing.end');
+      const stream = await done;
+      const parts = [];
+      for (;;) {
+        const r = await b.send('IO.read', { handle: stream, size: 1 << 20 });
+        parts.push(r.base64Encoded ? Buffer.from(r.data, 'base64').toString() : r.data);
+        if (r.eof) break;
+      }
+      await b.send('IO.close', { handle: stream });
+      writeFileSync(traceFile, parts.join(''));
+      console.log(`  trace ${traceFile}`);
+    }
     let profile;
     if (o.prof && Number(o.profafter) > 0) await b.sleep(Number(o.profafter) * 1000);
     if (o.prof) profile = (await b.send('Profiler.stop')).profile;
-    await b.sleep(Math.max(0, Number(o.after) * 1000 + 300 - (o.prof ? Number(o.profafter) * 1000 : 0)));
+    await b.sleep(Math.max(0, Number(o.after) * 1000 + 300 - (o.prof ? Number(o.profafter) * 1000 : 0) - (traceFile ? Number(o.traceafter) * 1000 + 500 : 0)));
     const r = await b.evaluate(`(() => {
       const play = window.__play, end = play + ${Number(o.after) * 1000};
       const after = window.__frames.filter(([t]) => t > play && t <= end).map(([, d]) => d);
