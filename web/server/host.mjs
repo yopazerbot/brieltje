@@ -130,6 +130,7 @@ export class Host {
     else if (code === 'zOver' || code === 'zOverBest') extra = Math.floor((args.n ?? 0) / POINTS.wavesPer);
     winners = winners.filter((n) => typeof n === 'string' && present.has(n));
     this.award(here, winners, extra);
+    if (['hide', 'tag', 'treasure', 'teams'].includes(state.kind)) this.game.partyWon?.(state.kind, winners); // the all-time board of party games won
     this.history.push({ kind: state.kind, at: Date.now(), winners });
     if (this.history.length > 50) this.history.shift();
   }
@@ -145,7 +146,7 @@ export class Host {
   board() {
     const players = Object.entries(this.scores).map(([name, s]) => ({ name, ...s, team: this.teamIdOf(name), here: this.game.players.has(name) })).sort((a, b) => b.points - a.points || b.wins - a.wins);
     const teams = EVENING_TEAMS.slice(0, this.teamCount).map((t, i) => ({ ...t, points: this.teamPoints[i], players: Object.keys(this.teams).filter((n) => this.teams[n] === i) }));
-    return { players, teams, games: this.history.length };
+    return { players, teams, games: this.history.length, ...this.game.goals?.tonight() }; // tonight's route times and gnomes (server/goals.mjs)
   }
 
   teamIdOf(name) {
@@ -295,6 +296,7 @@ export class Host {
         this.scores = table();
         this.teamPoints = [0, 0, 0, 0];
         this.history = [];
+        this.game.goals?.resetTonight();
         return { ok: true };
       default:
         return { error: 'Unknown action', code: 'badOp' };

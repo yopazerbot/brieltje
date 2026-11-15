@@ -58,6 +58,7 @@ import { cafePrisms, makeCafe } from '../shared/sparrenhof.mjs';
 import { DROP, dropFrom, HOME_DROP } from '../shared/parachute.mjs';
 import { BikeHits } from './bikeHits.mjs';
 import { Football } from './football.mjs';
+import { GoalTracker, readGoals } from './goals.mjs';
 import { blastPoint } from './grenade.mjs';
 import { HELI_DOWN, HELI_SPEED, Helis } from './helis.mjs';
 import { Host } from './host.mjs';
@@ -308,6 +309,10 @@ const DROP_RISE = { max: 0.6, rate: 0.5 };
 const CAR_SPEED = Math.max(...Object.values(CARS.cars).map((c) => c.maxSpeed)) * 1.2; // m/s in a car, with room for network jitter
 const HORSE_SPEED = HORSES.gallop * 1.3; // m/s on horseback
 const BIKE_SPEED = BIKES.maxSpeed * 1.3; // m/s on a bike: its top speed (downhill), with room for network jitter
+/** The timed routes and the gnomes the server notes itself (server/goals.mjs): the budgets above per way, each way's real top speed. */
+const GOALS = readGoals();
+const GOAL_PACE = { foot: RUN_SPEED, bike: BIKE_SPEED, car: CAR_SPEED };
+const GOAL_TOP = { foot: RUN_SPEED / 1.3, bike: BIKES.maxSpeed, car: Math.max(...Object.values(CARS.cars).map((c) => c.maxSpeed)) };
 const TRAVEL_MS = 1500; // at most one trip through the portals this often
 const TRAVEL_SLACK = 3; // m: the server's idea of where you are may lag a little behind yours
 
@@ -430,6 +435,11 @@ export class Game {
     this.horses = HORSES.herd.map((_, i) => ({ i, x: 0, z: 0, yaw: 0, speed: 0, rider: null, parked: false }));
     this.modes = new Modes(this); // hide and seek, tag, treasure hunt, the teams, Zombies (the admin starts them)
     this.host = room ? null : new Host(this); // the host's controls for a LAN night (server/host.mjs), in the open world
+    // The timed routes and the gnomes, timed and noted by the server from its own positions (server/goals.mjs), in the open world.
+    this.goals = room ? null : new GoalTracker({
+      ...GOALS, ground: (x, z) => HOUSE.ground + TERRAIN.height(x, z), lineFree: (...a) => SOLIDS.boxFree(...a), pace: GOAL_PACE, top: GOAL_TOP,
+      store: () => this.auth?.store, clock: mono, tell: (name, m) => this.players.has(name) && this.send(this.players.get(name).ws, m), changed: () => this.hub?.scored(), onBoard,
+    });
     this.zombieBests = Object.create(null); // place id -> the best wave ever in the Zombies game there (loadRules, saveZombieBest)
     // The ticks (see snapshot): their count, and what each car, horse and strongman looked like in the
     // last one, kept here so the objects sent in 'car' and 'horse' messages stay as they are.
@@ -649,6 +659,7 @@ export class Game {
     // In a room without a game on: at the place's start, on the ground (a game on puts them in itself: zombies.mjs join).
     if (this.room && !this.modes.zombies) this.gather([name], this.room.arena);
     this.broadcast({ t: 'scores', list: this.scoreList() }, name);
+    this.goals?.joined(name, player.role);
 
     ws.on('message', (raw) => this.receive(name, player, raw));
     ws.on('close', () => {
@@ -656,6 +667,7 @@ export class Game {
         this.helis.release(name, Date.now(), true); // aboard: their last place is on the ground under the machine, not in the sky
         if (player.state) this.lastPos.set(name, { x: player.state.x, y: player.state.y, z: player.state.z });
         this.players.delete(name);
+        this.goals?.left(name);
         this.releaseCar(name);
         this.releaseHorse(name);
         this.releaseBike(name);
@@ -947,6 +959,9 @@ export class Game {
       // The pilot's machine: never under the server's floor, never with its cabin in a code-locked home (whoever flies).
       if (flyer) this.helis.pose(heli, prev, next);
       player.state = next;
+      // The routes and the gnomes (server/goals.mjs), from this step as the server has it, and the way of moving by its own lists.
+      const free = player.alive && !next.flying && !drop && !this.modes.active && !this.host?.holds(player);
+      this.goals?.moved(name, prev, next, !free ? null : driving ? 'car' : bike ? 'bike' : !inCar && !horse ? 'foot' : null, { gapMs: secs * 1000, cut: across > step, seek: free });
       if (drop) this.dropCheck(player, now); // on the ground, or not coming down: the drop ends
       this.stampState(player, m.ct);
       if (driving) {
@@ -2637,6 +2652,16 @@ export class Game {
       this.auth.store.saveZombieRun(name, place, wave, beaten[name] ?? 0, names.length)
         .then((better) => better && this.hub?.scored())
         .catch((e) => console.error('zombie run failed', String(e)));
+    }
+  }
+
+  /** A party game won (server/host.mjs gameOver: hide and seek, tag, the treasure hunt, the teams): one more win for each account in `winners`. */
+  partyWon(kind, winners) {
+    for (const name of new Set(winners)) {
+      if (typeof name !== 'string' || !onBoard(this.roles.get(name))) continue;
+      this.auth.store?.addGameWin?.(name, kind)
+        ?.then((added) => added && this.hub?.scored())
+        .catch((e) => console.error('game win failed', String(e)));
     }
   }
 
