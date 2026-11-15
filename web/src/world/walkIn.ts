@@ -14,6 +14,7 @@ import { ITEMS } from './furnishing';
 import { addPets, type PetSpec, type Pets } from './pets';
 import { bandsOf, WALK_INS } from '../../shared/homes.mjs';
 import { PUBLIC_WALK_INS } from '../../shared/keet.mjs';
+import { addInsideNames } from '../i18n';
 
 /**
  * A house you can walk into: the end house of the new terrace at Molenhoek (in its street model), and the brick house on
@@ -103,6 +104,8 @@ export interface EndInside {
   doors: DoorSpec[];
   /** Pets that live there (world/pets.ts), in the house's own frame */
   pets?: PetSpec[];
+  /** Its rooms' names in the other language (i18n.ts addInsideNames: the repository holds none) */
+  names?: { places?: Record<string, string>; doors?: Record<string, string>; en?: Record<string, string> };
 }
 
 /** The public shell. */
@@ -718,6 +721,7 @@ export async function loadWalkIn(renderer: THREE.WebGLRenderer, spec: WalkInSpec
       glass.add(doors.add(specs.filter((d) => !outside(d)), inDoors, look), (i, gone) => doors.setBroken(i, gone));
       inDoors.traverse((o) => (o.castShadow = false)); // inside, nothing takes the sun's shadow
       rooms.push(...pack.rooms);
+      addInsideNames(pack.names);
     },
     contains,
     inPlot: (x, z) => outlined && inside(x, z, data.plot),
