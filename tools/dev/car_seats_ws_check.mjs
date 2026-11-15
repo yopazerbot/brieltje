@@ -3,13 +3,14 @@
 // change nothing: a passenger's own position (pinned to the car), hits on and from the car, a grenade's blast at it,
 // a pickup, a cat, a clown and villagers from a seat, a forged leap after getting out. Honest play still works: the
 // passenger rides along, gets out beside the car and back in. The treasure hunt's coins from a car: none (on foot:
-// counted); tag from a car: none, being tagged in it: yes.
+// counted); tag from a car: none, being tagged in it: yes. A car standing inside a code-locked home: no guest gets in.
 //
 //   ADMIN_PASSWORD=... node tools/dev/car_seats_ws_check.mjs --api http://localhost:8310
 import WebSocket from '../../web/node_modules/ws/wrapper.mjs';
 import { readCar, readPlayer } from '../../web/shared/wire.mjs';
 import CARS from '../../web/shared/car.json' with { type: 'json' };
 import PICKUPS from '../../web/shared/pickups.json' with { type: 'json' };
+import { homeAt } from '../../web/shared/homes.mjs';
 import { localOnly, options } from './cdp.mjs';
 
 const o = options({ api: 'http://localhost:8310' });
@@ -329,6 +330,37 @@ for (let i = 0; i < 50; i++) {
   }
   admin.send({ t: 'mode', kind: 'free' });
   await sleep(400);
+}
+
+// 8. A car standing inside a code-locked home (the admin, who may enter every home, drives it in, as a code's holder with a
+// changed page could): a guest within reach outside can't get in, so no way in through it.
+{
+  for (const c of [dr, pa]) c.send({ t: 'car', op: 'out' });
+  await sleep(400);
+  // A point inside the main house with an outside point 2.5 m east of it (the guest's spot).
+  let inside = null;
+  for (let x = 8.8; x > 0 && !inside; x -= 0.25) for (let z = -2; z < 11.5 && !inside; z += 0.25) if (homeAt(x, z, -0.05) === 'house' && homeAt(x + 2.5, z, -0.05) === null && homeAt(x + 1, z, -0.05) === 'house') inside = { x, z };
+  ok('8. a point inside the main house by its east wall', !!inside, JSON.stringify(inside));
+  const car = carSeen();
+  admin.sync();
+  await admin.walk(car.x - 1.5, car.z);
+  admin.send({ t: 'car', op: 'in', id: 'tesla' });
+  await sleep(400);
+  Object.assign(admin, { x: car.x, y: car.y, z: car.z });
+  await admin.walk(inside.x, inside.z); // at the wheel: the car goes along (round the house's east side)
+  await sleep(400);
+  const parked = carSeen();
+  ok('   the admin drove the car into the house', homeAt(parked.x, parked.z, parked.y) === 'house', JSON.stringify({ x: parked.x, z: parked.z }));
+  admin.send({ t: 'car', op: 'out' });
+  await sleep(400);
+  wa.sync();
+  await wa.walk(inside.x + 2.5, inside.z);
+  const n = wa.log.length;
+  wa.send({ t: 'car', op: 'in', id: 'tesla' });
+  await sleep(500);
+  const got = [...wa.log.slice(n)].reverse().find((m) => m.t === 'car' && m.car.id === 'tesla')?.car;
+  const w = seen(wa);
+  ok('   a guest outside within reach: not let in', !!got && got.driver !== wa.name && got.passenger !== wa.name && homeAt(w.x, w.z, w.y) === null, `${Math.hypot(w.x - parked.x, w.z - parked.z).toFixed(1)} m from the car, told ${JSON.stringify({ driver: got?.driver, passenger: got?.passenger })}`);
 }
 
 clearInterval(keepAlive);
