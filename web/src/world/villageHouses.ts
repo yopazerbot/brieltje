@@ -22,6 +22,7 @@ export const VILLAGE_HOUSES: readonly (readonly [name: string, reach: number])[]
   ['vh_fork_house', Infinity], // x 588.0, z -890.2: a brick house of the 1960s under a hipped roof, its garage in front
   ['vh_old_farm', 350], // x 677.6, z 308.9: an old brick farm, its house, barn and wing on the way to the Sparrenhof (tools/village_houses_b3.py)
   ['vh_seventies', 350], // x 695.0, z 418.9: a dark brick house of the 1970s and the narrow house joined to it
+  ['vh_hedge_bungalow', 350], // x 695.4, z 590.7: a low bungalow of the 1970s behind a beech hedge
   ['kapellenhoek_home', 350], // x 616.5, z -352.6: home 4, the brick house on Kapellenhoek (tools/kapellenhoek_home.py, world/walkIn.ts)
 ];
 

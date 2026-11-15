@@ -391,7 +391,82 @@ def seventies():
     h.export()
 
 
-HOUSES = {"vh_old_farm": old_farm, "vh_seventies": seventies}
+# ======================================================================================================================
+# 11. x 695.4, z 590.7: a long low bungalow of the 1970s in orange-red brick, end-on to the street, its wide grey roof
+# hipped toward the street with a white fascia, a sliding window in the end wall; set back behind a clipped beech
+# hedge with a gap for the gravel drive, which runs along its side to the garage at the back.
+def hedge_bungalow():
+    h = House("vh_hedge_bungalow", [707.36, 581.63], ([707.36, 581.63], [709.9, 591.79]), -3.94, {
+        "vh_brick": {"texture": "nb_brick", "tint": "#905e4e", "normalScale": .55},  # nb_red's most orange
+        "vh_roof": {"texture": "roof_tiles", "tint": "#3f4144", "normalScale": .3},
+        "vh_gravel": {"texture": "gravel", "tint": "#5e5c58"},
+        "vh_hedge": {"texture": "hedge", "tint": "#7a6a45"},  # beech keeps its brown leaves
+        "vh_trim": TRIM, "vh_stone": STONE, "vh_glass": GLASS, "vh_frames_small": SMALL, "vh_metal_small": METAL,
+    })
+    # u along the end wall to the south (the drive's side), d from the end wall (0) away from the street.
+    lift = h.base
+    gy = lambda u, d: h.ground(u, d)
+    white, pale = "#f2f1ec", "#c9ccc8"
+    E, RG, W2, ov, D = 2.9 + lift, 6.5 + lift, 5.24, .45, 21.78
+    k = (RG - E) / W2
+    roof = Roof([(-W2 - ov, -ov), (W2 + ov, -ov), (W2 + ov, D + .3), (-W2 - ov, D + .3)],
+                [eave((-W2 - ov, 0), (1, 0), E - k * ov, k), eave((W2 + ov, 0), (-1, 0), E - k * ov, k), eave((0, -ov), (0, 1), E - k * ov, k)],
+                under=white, edge=white, board=.25)
+    roofs = [roof]
+    foot = [(.25, "vh_trim", "#77736d")]
+    g0 = gy(0, -.3)
+    fl = g0 + .15
+
+    def wall(a, b, ops=(), **kw):
+        top = kw.pop("top", None)
+        return h.wall(a, b, top if top is not None else top_over(roofs, a, b), ops, bands=kw.pop("bands", foot), **kw)
+
+    win = lambda s, w=1.8, hh=1.3, y=None: Opening(s, fl + .75 if y is None else y, w, hh, frame=white, reveal=.14, cols=2 if w > 1.0 else 1)
+    # --- the end wall to the street: a sliding window from the floor, a white panel over it to the eaves ---------------
+    slide = Opening(3.6, fl, 2.8, 2.0, frame=pale, reveal=.14, cols=2, sill=False)
+    W, N, T = wall((-W2, 0), (W2, 0), [slide], out=(0, -1))
+    h.wbox(W, N, T, "vh_trim", slide.s - slide.w / 2, slide.s + slide.w / 2, fl + 2.0, E - .02, -.02, .05, white)
+    h.wbox(W, N, T, "vh_stone", slide.s - slide.w / 2 - .05, slide.s + slide.w / 2 + .05, fl - .06, fl, -.08, .14, "#a8a59f")
+    # --- the long sides: windows; the garage at the back of the drive's side -------------------------------------------
+    gg = gy(6.0, 17.4)
+    wall((W2, 0), (5.1, 19.71), [win(3.0), win(8.0), win(12.6, 1.2, 1.1), Opening(17.4, gg + .02, 2.5, 2.1, "garage", door="#f1f0eb", reveal=.14, sill=False)], out=(1, 0))
+    wall((-5.25, 19.52), (-W2, 0), [win(4.5), win(10.0), win(15.5, 1.2, 1.1)], out=(-1, 0))
+    # --- the back: a glazed door and windows, a room reaching out under the roof; the gable over them -------------------
+    wall((5.1, 19.71), (.08, 19.62), [Opening(1.6, fl, .95, 2.1, "door", door="#f1f0eb", frame=white, panels="glazed", reveal=.14, sill=False), win(3.6, 1.2, 1.1)], out=(0, 1))
+    wall((.08, 19.62), (.03, 21.66), out=(1, 0))
+    wall((.03, 21.66), (-3.86, 21.78), [win(1.95, 1.8, 1.3)], out=(0, 1))
+    wall((-3.86, 21.78), (-3.88, 19.54), out=(-1, 0))
+    wall((-3.88, 19.54), (-5.25, 19.52), out=(0, 1))
+    gab = top_over(roofs, (W2, 21.7), (-W2, 21.7))
+    h.wall((W2, 21.7), (-W2, 21.7), gab, bottom=E - .35, out=(0, 1))
+    for u in (5.0, -5.15):  # posts under the gable's corners, where the back is open under the roof
+        g = gy(u, 21.6)
+        h.box("vh_trim", u - .08, u + .08, 21.52, 21.68, g - .1, E - .3, white)
+        h.block("concrete", [(u - .08, 21.52), (u + .08, 21.52), (u + .08, 21.68), (u - .08, 21.68)], g - .1, E - .3)
+    draw_roofs(h, roofs)
+    ye = E - k * ov - .27
+    h.gutter((W2 + ov, -ov, ye), (W2 + ov, D + .3, ye), (1, 0, 0), white, down=[(W2 + .08, .2, gy(W2, .2)), (W2 + .08, 19.5, gy(W2, 19.5))])
+    h.gutter((-W2 - ov, D + .3, ye), (-W2 - ov, -ov, ye), (-1, 0, 0), white, down=[(-W2 - .08, .2, gy(-W2, .2))])
+    h.gutter((-W2 - ov, -ov, ye), (W2 + ov, -ov, ye), (0, -1, 0), white)
+    h.chimney(-2.6, 4.2, .5, .5, roof.height(-2.6, 4.2) - .4, roof.height(-2.6, 4.2) + .75, "vh_brick")
+    # --- the hedge along the street with the drive's gap, dark gravel before it and up the drive --------------------------
+    edge = lambda u: (u, round(-6.83 + (u - 23.87) * .02167, 4))  # the street's paving begins here (its edge in the data)
+    hd, ht = -5.5, 1.3
+    a, b = (-9.6, hd), (5.55, hd)
+    L = math.dist(a, b)
+    n = int(L / 2.5) + 1
+    for i in range(n):  # in lengths, each on its own ground, each a block
+        p = (a[0] + (b[0] - a[0]) * i / n, hd)
+        q = (a[0] + (b[0] - a[0]) * (i + 1) / n, hd)
+        g = min(gy(*p), gy(*q))
+        h.seg("vh_hedge", p, q, .7, g - .15, g + ht - .1)
+        h.seg("vh_hedge", p, q, .56, g + ht - .1, g + ht)
+        h.seg_block("nb_hedge", p, q, .7, g - .15, g + ht)
+    h.pave([edge(-9.6), edge(9.3), (9.3, 18.9), (5.32, 18.9), (5.32, -.02), (5.6, -.02), (5.6, hd - .36), (-9.6, hd - .36)], mesh="vh_gravel", lift=.03, cell=1.5)
+    h.export()
+
+
+HOUSES = {"vh_old_farm": old_farm, "vh_seventies": seventies, "vh_hedge_bungalow": hedge_bungalow}
 for _name, _build in HOUSES.items():
     if not ONLY or _name in ONLY:
         _build()
