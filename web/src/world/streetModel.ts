@@ -165,6 +165,47 @@ function streetGroundUnbaked(scene: THREE.Object3D, ground: number, street: [num
 }
 
 /**
+ * A house of the street model that a model of its own replaces (home 4 on Kapellenhoek, tools/kapellenhoek_home.py):
+ * every triangle of the street model whose three corners lie inside `ring` or within `margin` metres of it is dropped
+ * from its meshes, when the page loads (the file and its baked light stay as they are; the triangles left keep their
+ * light layout). A mesh's box is asked first, and each corner once. Before the bake's textures are applied.
+ */
+export function cutOut(model: THREE.Object3D, ring: [number, number][], margin: number): number {
+  model.updateMatrixWorld(true);
+  const [x0, z0, x1, z1] = boxOf(ring);
+  const area = new THREE.Box3(new THREE.Vector3(x0 - margin, -Infinity, z0 - margin), new THREE.Vector3(x1 + margin, Infinity, z1 + margin));
+  const v = new THREE.Vector3();
+  const box = new THREE.Box3();
+  let dropped = 0;
+  model.traverse((o) => {
+    const mesh = o as THREE.Mesh;
+    if (!mesh.isMesh) return;
+    const g = mesh.geometry;
+    if (!g.boundingBox) g.computeBoundingBox();
+    if (!box.copy(g.boundingBox!).applyMatrix4(mesh.matrixWorld).intersectsBox(area)) return;
+    const pos = g.attributes.position;
+    const index = g.index ? Array.from(g.index.array) : Array.from({ length: pos.count }, (_, i) => i);
+    const within = new Int8Array(pos.count).fill(-1); // -1 not asked yet, 0 out, 1 in
+    const asked = (i: number) => {
+      if (within[i] < 0) {
+        v.fromBufferAttribute(pos, i).applyMatrix4(mesh.matrixWorld);
+        within[i] = area.containsPoint(v) && near(ring, v.x, v.z, margin) ? 1 : 0;
+      }
+      return within[i] === 1;
+    };
+    const kept: number[] = [];
+    for (let t = 0; t + 2 < index.length; t += 3) {
+      if (asked(index[t]) && asked(index[t + 1]) && asked(index[t + 2])) dropped++;
+      else kept.push(index[t], index[t + 1], index[t + 2]);
+    }
+    if (kept.length === index.length) return;
+    g.setIndex(kept);
+    g.boundingSphere = null;
+  });
+  return dropped;
+}
+
+/**
  * A model's open ground (its root's `clear`: rings on the plan, such as the café Sparrenhof's forecourt and terrace):
  * the village's trees standing in it, or with their trunk within 1.5 m of it, give way. In place, as fitStreetModel.
  */
