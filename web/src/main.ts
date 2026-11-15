@@ -383,11 +383,13 @@ async function getEverythingReady(at: Portal | null, zombiesStart: boolean): Pro
   }
   goals.warming(true); // the routes' rings and the golden gnome drawn once too (world/goals.ts)
   carPeople.warming(true); // and your figure seated, with the lighter glass (world/carPeople.ts)
+  helis.warm(true); // and the helicopter with its blur, blades and far copy, its shadows' programs too (src/heliPilot.ts)
   try {
     await warm.frames(views, renderer.info, () => glassProbe.midSet, until, (done) => getReady(0.85 + (0.15 * done) / views.length, () => t('load.ready')));
   } finally {
     goals.warming(false);
     carPeople.warming(false);
+    helis.warm(false);
     // Back as it was: the camera in your eyes (as the drop begins), the warm-up's parachute taken away (given no figure,
     // world/parachutes.ts lets it go) and you where you stood, unless something else placed you meanwhile. Play begins
     // from there (begin in loaded).
