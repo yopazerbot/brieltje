@@ -273,13 +273,25 @@ function loaded(): void {
     }
     getReady(1);
     setTimeout(() => {
+      prepaint(false);
       menu.ready(); // the bar full for a moment, then play
       playBegun();
     }, 150);
   };
   // Everything else first, then a few frames drawn from where play begins, whatever the start (getEverythingReady).
+  prepaint(true);
   void getEverythingReady(at, zombiesStart).then(begin, begin);
   setTimeout(() => rules.parachute !== false && void parachutes.load(), 1200); // and the parachute, if the start didn't bring it in
+}
+/**
+ * Until play: the HUD and the controls card drawn unseen behind the start screen (style.css, body.prepaint), inert so
+ * nothing in them takes a click or the focus. Their first drawing made the browser build GPU programs (the card's soft
+ * shadow, the HUD's icons) while the GPU process waited: 15 to 90 ms, in the first frames of play.
+ */
+function prepaint(on: boolean): void {
+  document.body.classList.toggle('prepaint', on);
+  for (const id of ['hud', 'controls-card']) $(id).inert = on;
+  controlsCard.prepaint(menu.startingMode, weapon.enabled, on);
 }
 /**
  * Before play begins, at every start (Yoshi, 14 Nov 2026: "take a bit longer to load but have a smooth start instead";

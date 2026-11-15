@@ -49,6 +49,17 @@ export class ControlsCard {
     }, 1000);
   }
 
+  /**
+   * Before play, unseen behind the start screen (main.ts prepaint, style.css body.prepaint): laid out and drawn as it
+   * will open, so its first drawing (the GPU programs for its soft shadow, which depend on its size) is paid there.
+   * `on` false hides it again, unless it opened meanwhile.
+   */
+  prepaint(control: Control, action: boolean, on: boolean): void {
+    if (this.open) return;
+    if (on) this.fill(control, action);
+    this.root.classList.toggle('hidden', !on);
+  }
+
   close(): void {
     if (!this.open) return;
     this.open = false;

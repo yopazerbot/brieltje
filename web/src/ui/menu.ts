@@ -89,6 +89,10 @@ export class Menu {
   private chosen: HTMLButtonElement | null = null;
   private starting = false; // pressed, waiting for beforeStart (joining a game together)
   private loadText: () => string = () => '';
+  /** The way of playing that the first start's play will begin with, once the world is in (ready). */
+  get startingMode(): ControlMode {
+    return this.chosenMode;
+  }
   /** The tab showing (or showing next time the pause menu opens). */
   private current = 'map';
 
