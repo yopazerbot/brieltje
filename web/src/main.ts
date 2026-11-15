@@ -15,7 +15,7 @@ import { Hud } from './ui/hud';
 import { Speedometer } from './ui/speedometer';
 import { HeliPilot } from './heliPilot';
 import { heliModel, setHeliDetail } from './world/heli';
-import { fillScreen, input, me, menu, onAccount, onSession, sessionAdmin, setAccount, startIntent } from './start';
+import { fillScreen, input, joinPending, me, menu, onAccount, onSession, sessionAdmin, setAccount, startIntent } from './start';
 import { TouchControls } from './controls/touch';
 import { Games, type ModeView } from './ui/games';
 import { CLOWN_DEFAULTS, Clowns, KINDS, type Kind } from './world/clowns';
@@ -1522,6 +1522,7 @@ function followAccount(account: Me | null): void {
   // The main house, the bungalow and the end house open only with their codes, alone and together (src/world/homeLocks.ts).
   // The admin needs none; a new session (joining, another account) starts locked, as the server has no grant for it. A Zombies game alone stops.
   if (account) stopSolo();
+  if (account) helis.leaveNow(); // the helicopter flies alone only (for now), whatever the socket's state
   // The admin sees every inside, playing together and playing alone (the session is the admin's then: the server
   // gives a home's inside to an admin session, and to no other without the code).
   homeLocks.setAdmin(account?.role === 'admin' || (!account && sessionAdmin()));
@@ -2683,6 +2684,7 @@ net.onMessage = (m: ServerMsg) => {
     case 'welcome':
       // Started somewhere else than the street: the server moves us there before our first update.
       welcomed = true;
+      helis.leaveNow(); // the helicopter flies alone only (for now): out of it, the machine set down below
       hostNotice.freeze(false); // the server says so again if everyone is still frozen
       eveningTeam = null;
       watching = !!watch && m.watch === true; // a watcher: the server sends everyone, takes nothing (src/watch.ts)
@@ -3661,7 +3663,7 @@ renderer.setAnimationLoop((now: number) => {
     const seatFree = carTaken && !car.passenger;
     // The helicopter (src/heliPilot.ts): E or Triangle beside it gets you in, alone and outside a game; out on a floor.
     const nearHeli = !inCar && !onHorse && !dead && !nearCar && nearHorse < 0 && !nearBike && !target ? helis.near(player.x, player.z, player.feet) : null;
-    const heliWhy = helis.why(games.fenced || games.zombies, net.connected);
+    const heliWhy = helis.why(games.fenced || games.zombies, !!me || joinPending() || net.connected); // together, or on the way there: alone only for now
     if (helis.aboard && frame.usePressed) helis.leave(camera.position);
     else if (nearHeli && !heliWhy && frame.usePressed) {
       player.flying = false;

@@ -299,6 +299,8 @@ scrubFurniture();
 
 /** A join on its way to the server: a second click (Join twice, or Join then a start button) waits for it instead of sending another. */
 let joining: Promise<boolean> | null = null;
+/** A join is on its way (src/heliPilot.ts: no boarding the helicopter then, as it flies alone only for now). */
+export const joinPending = (): boolean => joining !== null;
 /** The server's refusals of a guest's name: on the start screen, back to step 1 where the name is. */
 const NAME_CODES = /^name/;
 /**
