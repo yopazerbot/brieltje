@@ -140,6 +140,21 @@ function stopLoop(a: Loop): void {
 
 export class HeliSound {
   private loop: Loop | null = null;
+  /**
+   * A tab in the background draws no frames, so nothing would turn the loop down: it fades out over about a second
+   * and stops, as the music does; in view again the next frame starts it as things are then.
+   */
+  private hide = (): void => {
+    const a = this.loop;
+    const c = sound.context();
+    if (!document.hidden || !a || !c) return;
+    this.loop = null;
+    setLoop(a, { x: 0, y: 0, z: 0, rotor: 0, coll: 0, sink: 0, air: 0, inside: false }, c.currentTime);
+    setTimeout(() => stopLoop(a), 2000);
+  };
+  constructor() {
+    if (typeof document !== 'undefined') document.addEventListener('visibilitychange', this.hide);
+  }
   /** Dev build: whether its loop runs now (nothing may be left playing after getting out). */
   get playing(): boolean {
     return !!this.loop;
@@ -147,7 +162,7 @@ export class HeliSound {
 
   /** Every frame the machine is in the game. */
   update(n: HeliNoise): void {
-    if (!this.loop && n.rotor < 0.02) return;
+    if ((!this.loop && n.rotor < 0.02) || document.hidden) return;
     if (this.loop && n.rotor < 0.005) {
       stopLoop(this.loop); // run down: its levels are at nothing already, so the stop doesn't click
       this.loop = null;
@@ -205,6 +220,7 @@ export class HeliSound {
   dispose(): void {
     if (this.loop) stopLoop(this.loop);
     this.loop = null;
+    if (typeof document !== 'undefined') document.removeEventListener('visibilitychange', this.hide);
   }
 }
 
