@@ -10,29 +10,6 @@
 /** The long guns everyone carries outside the Zombies game, besides the pistol */
 const LONG_GUNS = ['rifle', 'shotgun', 'sniper'];
 
-export const LOADOUT = {
-  /** The guns that can be chosen, in the picker's order */
-  choices: ['rifle', 'shotgun', 'sniper'],
-  /** How many of them at most */
-  most: 2,
-  /** What a player gets who never chose */
-  first: ['rifle'],
-};
-
-/**
- * A choice as it may be used, whatever was sent: the known guns only, each once, in the order given,
- * LOADOUT.most at most. Anything else (not a list, other things in it) gives what is left, down to nothing.
- */
-export function cleanPick(list) {
-  if (!Array.isArray(list)) return [];
-  const out = [];
-  for (const w of list.slice(0, 8)) {
-    if (typeof w === 'string' && LOADOUT.choices.includes(w) && !out.includes(w)) out.push(w);
-    if (out.length >= LOADOUT.most) break;
-  }
-  return out;
-}
-
 /** The guns a player has coming into play: the pistol, the long guns and `extra` (the admin's); in Zombies the pistol only. */
 export function startingWeapons(extra = [], zombies = false) {
   return zombies ? ['pistol'] : ['pistol', ...LONG_GUNS, ...extra];

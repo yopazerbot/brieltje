@@ -2254,6 +2254,12 @@ function adminWeapons(): WeaponId[] {
 function startGuns(): WeaponId[] {
   return startingWeapons(adminWeapons(), games.zombies).filter((w) => w !== 'pistol') as WeaponId[];
 }
+// The choice of guns this device kept while the guns were picked (until 15 Nov 2026): nothing reads it now.
+try {
+  localStorage.removeItem('briel.loadout');
+} catch {
+  // no storage
+}
 /** The coins and the stall in Zombies (ui/stall.ts, world/stall.ts, shared/stall.mjs): together the server decides each purchase. */
 const stallChip = new StallChip();
 const marketStall = new MarketStall(world, (x, z) => house.ground + terrain.height(x, z), (root) => precompile(root));
