@@ -20,6 +20,9 @@
 // may move at a bike's speed while (and only while) they ride one. Like a car, a bike keeps its
 // rider out of the fighting. Each bike stays where it is left until the server restarts.
 //
+// The helicopters (server/helis.mjs): a pilot and three passengers each; the pilot's state is the machine's pose, held
+// to the flight's caps and kept out of the code-locked homes; everyone aboard is out of every fight and game.
+//
 // More Teslas are spawned with /tesla (at most PLACED.max, see placeCar): each is a car like
 // the others, kept in the database where it was put, gone with the furniture's clear or reset.
 //
@@ -42,7 +45,7 @@ import { HomeGate } from './homeGate.mjs';
 import { noShoot } from '../shared/zones.mjs';
 import { buildVillagers, villagerHittable, VILLAGER_DOWN_S, VILLAGER_HIT_MAX, VILLAGER_HIT_MS, VILLAGER_PAINT_S, VILLAGER_RANGE, VILLAGER_SHOT_MAX } from '../shared/villagers.mjs';
 import { boxesOverlap, boxPoints, clearOfPortals, indoorBlocks, makeIndoors, makeSolids } from '../shared/parking.mjs';
-import { bikeFields, bruteEntry, carFields, horseFields, playerFields, PROTO, TICK_MS } from '../shared/wire.mjs';
+import { bikeFields, bruteEntry, carFields, heliFields, horseFields, playerFields, PROTO, TICK_MS } from '../shared/wire.mjs';
 import { startingWeapons } from '../shared/loadout.mjs';
 import { houseAreas, makeNav, MAX_ADMIN_WAVE } from '../shared/zombies.mjs';
 import { zombieTrunks } from '../shared/trees.mjs';
@@ -56,6 +59,7 @@ import { DROP, dropFrom, HOME_DROP } from '../shared/parachute.mjs';
 import { BikeHits } from './bikeHits.mjs';
 import { Football } from './football.mjs';
 import { blastPoint } from './grenade.mjs';
+import { HELI_DOWN, HELI_SPEED, Helis } from './helis.mjs';
 import { Host } from './host.mjs';
 import { monitor } from './monitor.mjs';
 import { words } from './words.mjs';
@@ -264,7 +268,7 @@ const LAYOUT_RESTORE = String(defaultLayout?.restore ?? 0);
  * House rules the admin sets in the settings, with their defaults. `paintball` (child-friendly for
  * everyone) only changes what the pages show: Action as Paintball, with the same hits and scores.
  */
-const RULES = { flying: true, spawn: false, names: true, maxPlayers: MAX_PLAYERS, guests: true, portals: true, travel: true, paintball: false, parachute: true };
+const RULES = { flying: true, spawn: false, names: true, maxPlayers: MAX_PLAYERS, guests: true, portals: true, travel: true, paintball: false, parachute: true, heli: true };
 /**
  * Spawning with /name (Yoshi, 2 Nov 2026: everyone may, unless the admin has it off, as it is at first):
  * how far from where the server has you a thing may appear (m), and how many each player may have out
@@ -335,7 +339,15 @@ const pieceHome = (f) => (f ? homeAt(f.x, f.z, f.y) : null);
  * rules and weather, a new round, and anything that takes a player away from the room's place (start
  * places, the parachute, trips). The admin's other powers work in a room as anywhere.
  */
-const ROOM_REFUSED = new Set(['furn', 'tesla', 'clown', 'rules', 'mood', 'moodskip', 'moodspeed', 'newround', 'spawn', 'chute', 'travel', 'team', 'tag', 'coin']);
+const ROOM_REFUSED = new Set(['furn', 'tesla', 'clown', 'rules', 'mood', 'moodskip', 'moodspeed', 'newround', 'spawn', 'chute', 'travel', 'team', 'tag', 'coin', 'heli']);
+/**
+ * What nobody sends from a helicopter's seat (server/helis.mjs): every fighting and taking message, every other vehicle,
+ * every trip. Aboard is out of every fight and game. Let through: state heli chat pong rally team mode rules mood
+ * moodskip moodspeed newround zwave kick repair travel (travel answers with its refusal). server/helis.test.mjs fails
+ * when a type Game.handle reads is in neither list.
+ */
+export const HELI_REFUSED = new Set(['hit', 'rocket', 'nade', 'boom', 'shot', 'crack', 'vil', 'cat', 'clownhit', 'zhit', 'zitem', 'zbuy', 'revive', 'pickup', 'coin', 'tag', 'kickball',
+  'glass', 'door', 'furn', 'tesla', 'clown', 'claymore', 'turret', 'stakes', 'placement', 'car', 'horse', 'bike', 'bell', 'spawn', 'chute', 'unstuck']);
 
 /** The ids a `door` message may carry: the house data's and the end house's door ids (letters, digits, dots and dashes), at most 40 characters. */
 export const DOOR_ID = /^[A-Za-z0-9.-]{1,40}$/;
@@ -347,6 +359,11 @@ export class Game {
   /** The code-locked homes' gate (server/homeGate.mjs), made on first use. */
   get gate() {
     return (this._gate ??= new HomeGate({ homes: () => this.homes, paneHome: PANE_HOME }));
+  }
+
+  /** The helicopters (server/helis.mjs): their seats, poses and flights home, made on first use. */
+  get helis() {
+    return (this._helis ??= new Helis(this, { ground: (x, z) => HOUSE.ground + TERRAIN.height(x, z), mono, calmMs: HURT_CALM_MS }));
   }
 
   /**
@@ -541,6 +558,7 @@ export class Game {
     const old = this.players.get(name);
     if (old) old.ws.close(4000, 'Logged in somewhere else');
     this.releaseCar(name); // the replaced connection was driving
+    this.helis.release(name, Date.now(), true); // or aboard: on the ground under the machine
     this.releaseHorse(name);
     this.releaseBike(name);
     const used = new Set([...this.players.values()].map((p) => p.color));
@@ -591,7 +609,7 @@ export class Game {
       t: 'welcome', proto: PROTO, you: name, role: player.role, color, doors: this.doorsFor(player), doorDir: this.doorDirFor(player), broken: this.brokenFor(player), cracked: this.crackedFor(player), homes: HOMES.filter((h) => player.role !== 'admin' && this.homes?.granted(player.key, h.id)).map((h) => h.id), accountHomes: HOMES.filter((h) => player.role === 'player' && this.homes?.byAccount?.(player.key, h.id)).map((h) => h.id), players: this.roster(),
       time: now, cats: this.catsDown.map((until) => Math.max(0, until - now)), ...this.villagersView(now), clowns: this.clownList(now), furniture: this.furnitureFor(player), rules: this.rules,
       scores: this.scoreList(), limit: KILL_LIMIT, items: this.items.map((it) => now >= it.until), round: this.roundOver ? { winner: this.roundOver.winner, ms: this.roundOver.until - now } : null,
-      cars: Object.values(this.cars), horses: this.horses, bikes: Object.values(this.bikes), mode: this.modes.view(now), mood: this.mood, moodCycle: this.moodView(now),
+      cars: Object.values(this.cars), horses: this.horses, bikes: Object.values(this.bikes), helis: this.helis.view(), mode: this.modes.view(now), mood: this.mood, moodCycle: this.moodView(now),
       room: this.roomView(),
     };
   }
@@ -635,6 +653,7 @@ export class Game {
     ws.on('message', (raw) => this.receive(name, player, raw));
     ws.on('close', () => {
       if (this.players.get(name) === player) {
+        this.helis.release(name, Date.now(), true); // aboard: their last place is on the ground under the machine, not in the sky
         if (player.state) this.lastPos.set(name, { x: player.state.x, y: player.state.y, z: player.state.z });
         this.players.delete(name);
         this.releaseCar(name);
@@ -716,6 +735,7 @@ export class Game {
     const zombies = this.modes.zombies;
     target.respawnAt = zombies ? Infinity : now + RESPAWN_MS;
     this.releaseCar(targetName);
+    this.helis.release(targetName, now);
     this.releaseHorse(targetName);
     this.releaseBike(targetName);
     target.score.deaths++;
@@ -842,6 +862,8 @@ export class Game {
     if ((this.modes.noShooting || this.host?.holds(player)) && ['hit', 'rocket', 'nade', 'boom', 'shot', 'crack', 'vil'].includes(m.t)) return; // no fighting during a party game or a freeze
     // A room changes nothing of the open world and holds its players at its place (server/rooms.mjs).
     if (this.room && ROOM_REFUSED.has(m.t)) return;
+    // Aboard a helicopter: out of every fight and game, no other vehicle, no trip (server/helis.mjs).
+    if (HELI_REFUSED.has(m.t) && this.helis.of(name)) return;
 
     if (m.t === 'state') {
       const prev = player.state;
@@ -851,19 +873,23 @@ export class Game {
       const inCar = !!car;
       const horse = this.horseOf(name);
       const bike = car || horse ? null : this.bikeOf(name);
+      // In a helicopter (server/helis.mjs): the pilot's state is the machine's pose; a passenger's own position is never taken.
+      const heli = this.helis.of(name);
+      const flyer = heli?.seats[0] === name;
       const next = {
         ...where(m),
         // No flying in the Zombies game: hovering over the zombies would be out of their reach for good.
-        yaw: num(m.yaw, -100, 100), pitch: num(m.pitch, -2, 2), armed: !!m.armed, flying: !!m.flying && this.rules.flying && !inCar && !bike && !this.modes.zombies,
+        yaw: num(m.yaw, -100, 100), pitch: num(m.pitch, -2, 2), armed: !!m.armed, flying: !!m.flying && this.rules.flying && !inCar && !bike && !heli && !this.modes.zombies,
         // `a`: the gun at their eye. Only how the figure looks to the others (it aims, a sniper's scope glints); nothing is decided by it.
-        a: !!m.a && !!m.armed && !inCar && !bike,
-        w: player.weapons.has(m.w) ? m.w : 'pistol', c: !!m.c && !inCar && !bike, d: inCar, s: driving ? num(m.s, -1, 1) : 0, bk: !!bike,
+        a: !!m.a && !!m.armed && !inCar && !bike && !heli,
+        w: player.weapons.has(m.w) ? m.w : 'pistol', c: !!m.c && !inCar && !bike && !heli, d: inCar || !!heli, s: driving ? num(m.s, -1, 1) : 0, bk: !!bike,
         // In a drop, and its canopy out: only while the server has them dropping (a page can't claim one, see drop).
         chute: !!m.pc && this.dropping(player, now),
         open: !!m.pc && !!m.po && this.dropping(player, now),
       };
       // The page says it landed (not before its first messages from the sky can have come), or the drop took too long.
       if (player.drop && (!this.dropping(player, now) || (!m.pc && now - player.drop.from > DROP.graceMs))) this.landed(player, now);
+      if (heli && !flyer) this.helis.pin(heli, next);
       // Never faster than anyone can move: a movement budget refills at MAX_SPEED (the car's
       // speed for its driver; at most half a second's worth stored) and each update spends it,
       // however often updates come. A faked jump only gets as far as running would; a lagging
@@ -874,8 +900,9 @@ export class Game {
       // up next to nothing (stepping onto a roof's edge): nobody climbs in a drop.
       const drop = this.dropping(player, now);
       // On a bike only while the server has them riding one, never on a page's say (a forged ride state is no speed-hack).
-      const speed = inCar ? CAR_SPEED : horse ? HORSE_SPEED : bike ? BIKE_SPEED : player.role === 'admin' ? ADMIN_SPEED : drop ? DROP_SPEED : RUN_SPEED;
-      const vspeed = inCar || horse || player.role === 'admin' ? speed : MAX_SPEED;
+      // In a helicopter the flight's own caps (shared/heli.mjs HELI), the admin's too; going up has a budget of its own (climb).
+      const speed = heli ? HELI_SPEED : inCar ? CAR_SPEED : horse ? HORSE_SPEED : bike ? BIKE_SPEED : player.role === 'admin' ? ADMIN_SPEED : drop ? DROP_SPEED : RUN_SPEED;
+      const vspeed = heli ? HELI_DOWN : inCar || horse || player.role === 'admin' ? speed : MAX_SPEED;
       const secs = (now - player.movedAt) / 1000;
       const budget = Math.min(speed * 0.5 + 0.5, player.budget + speed * secs);
       const vbudget = Math.min(vspeed * 0.5 + 0.5, (player.vbudget ?? 0.5) + vspeed * secs);
@@ -887,6 +914,11 @@ export class Game {
         dy = Math.min(dy, rise);
         player.drop.rise = rise - dy;
         next.y = prev.y + dy;
+      }
+      if (flyer) {
+        dy = this.helis.climb(player, dy, secs);
+        next.y = prev.y + dy;
+        next.yaw = this.helis.turn(player, heli, next.yaw, secs);
       }
       const across = Math.hypot(dx, dz);
       const step = Math.min(across, budget);
@@ -912,6 +944,8 @@ export class Game {
       if (fell) Object.assign(next, fell);
       // Frozen by the host: where they stood (looking round is still theirs; a fall still comes down).
       if (this.host?.holds(player)) Object.assign(next, { x: prev.x, z: prev.z });
+      // The pilot's machine: never under the server's floor, never with its cabin in a code-locked home (whoever flies).
+      if (flyer) this.helis.pose(heli, prev, next);
       player.state = next;
       if (drop) this.dropCheck(player, now); // on the ground, or not coming down: the drop ends
       this.stampState(player, m.ct);
@@ -921,6 +955,7 @@ export class Game {
         this.carAt[car.id] = player.stamp;
         this.bikeHits.strike(name, player, car, before); // a free bike in its way is knocked aside (no message of its own)
       }
+      if (flyer) this.helis.moved(name, player, heli, next, m, where(m), now); // the machine and everyone aboard go along
       if (horse) {
         Object.assign(horse, { x: next.x, z: next.z, yaw: num(m.hy, -100, 100), speed: num(m.hs, -2, HORSES.gallop), jump: num(m.hj, 0, HORSES.jump.height) });
         this.horseAt[horse.i] = player.stamp;
@@ -1136,6 +1171,11 @@ export class Game {
       if (m.op === 'on' && this.modes.zombies) return this.send(player.ws, { t: 'system', text: 'No cycling during Zombies.', code: 'zNoBike' });
       if (m.op === 'on' && typeof m.id === 'string' && Object.hasOwn(this.bikes, m.id)) this.mountBike(name, player, this.bikes[m.id], now);
       else if (m.op === 'off') this.releaseBike(name);
+    } else if (m.t === 'heli') {
+      // A helicopter (server/helis.mjs: in, out, take the stick): at most three a second, shared with the cars, horses and bikes.
+      if (now < (player.nextCar || 0)) return;
+      player.nextCar = now + 300;
+      this.helis.ask(name, player, m, now);
     } else if (m.t === 'bell') {
       // A bike's bell: only from its rider, at most every BELL_MS. The others ring it where the server has
       // that bike (the message carries no place of its own), so nobody rings it from somewhere else.
@@ -1227,7 +1267,7 @@ export class Game {
     p.spawned = true;
     // Refused: the page goes back to where the server has the player, so both agree.
     const no = () => this.send(p.ws, { t: 'spawn', ok: false, x: st.x, z: st.z });
-    if (now - p.joinTime > 90_000 || !p.alive || this.carOf(name) || this.horseOf(name) || this.bikeOf(name) || (!this.rules.portals && p.role !== 'admin')) return no();
+    if (now - p.joinTime > 90_000 || !p.alive || this.carOf(name) || this.horseOf(name) || this.bikeOf(name) || this.helis.of(name) || (!this.rules.portals && p.role !== 'admin')) return no();
     if (Math.hypot(st.x - p.joinedAt.x, st.z - p.joinedAt.z) > 30) return no();
     const [x, z, yaw] = to.out;
     if (!this.fence().inside(x, z)) return no(); // a game in the house: only a start near it
@@ -1267,7 +1307,7 @@ export class Game {
     if (!st) return;
     const no = (code, args = {}) => this.send(p.ws, { t: 'chute', ok: false, code, args });
     if (!this.rules.parachute) return no('chuteOff');
-    if (!p.alive || this.carOf(name) || this.horseOf(name) || this.bikeOf(name) || this.dropping(p, now) || this.modes.active) return no('chuteNotNow');
+    if (!p.alive || this.carOf(name) || this.horseOf(name) || this.bikeOf(name) || this.helis.of(name) || this.dropping(p, now) || this.modes.active) return no('chuteNotNow');
     if (now - (p.hurtAt ?? -Infinity) < HURT_CALM_MS) return no('chuteFight');
     if (now < (p.nextChute ?? 0)) return no('chuteWait', { s: Math.ceil((p.nextChute - now) / 1000) });
     if (INDOORS(st.x, st.z)) return no('chuteIndoors'); // go outside first
@@ -1289,7 +1329,7 @@ export class Game {
     if (p.spawned || !st) return;
     p.spawned = true;
     const { x, z, yaw } = HOME_DROP;
-    if (!this.rules.parachute || this.modes.zombies || now - p.joinTime > 90_000 || !p.alive || this.carOf(name) || this.horseOf(name) || this.bikeOf(name)) return;
+    if (!this.rules.parachute || this.modes.zombies || now - p.joinTime > 90_000 || !p.alive || this.carOf(name) || this.horseOf(name) || this.bikeOf(name) || this.helis.of(name)) return;
     if (Math.hypot(st.x - x, st.z - z) > 30 || !this.fence().inside(x, z)) return;
     const from = this.dropFrom(x, z, yaw); // behind the start, along the lane: without steering it lands there
     Object.assign(st, { x: from.x, y: HOUSE.ground + TERRAIN.height(x, z) + DROP.height, z: from.z });
@@ -1313,6 +1353,7 @@ export class Game {
     if (car && car.driver !== name) return no('Only the driver can take the car through.', 'travelDriverOnly');
     if (this.horseOf(name)) return no('Get off the horse first.', 'travelHorse');
     if (this.bikeOf(name)) return no('Get off the bike first.', 'travelBike');
+    if (this.helis.of(name)) return no('Get out of the helicopter first.', 'travelHeli');
     if (!chat) {
       const on = portalNear(st.x, st.z, (car ? CAR_REACH : REACH) + TRAVEL_SLACK);
       if (!on || on === to) return no();
@@ -1360,7 +1401,7 @@ export class Game {
    */
   unstuck(name, p, now) {
     const st = p.state;
-    if (!st || !p.alive || st.flying || this.dropping(p, now) || this.carOf(name) || this.horseOf(name) || this.bikeOf(name)) return;
+    if (!st || !p.alive || st.flying || this.dropping(p, now) || this.carOf(name) || this.horseOf(name) || this.bikeOf(name) || this.helis.of(name)) return;
     if (!inEndGarden(st.x, st.z, st.y) || this.gate.may(p, 'molenhoek_end')) return;
     this.putOut(p, st, 'molenhoek_end', now);
     this.send(p.ws, { t: 'unstuck', x: st.x, z: st.z });
@@ -1369,7 +1410,7 @@ export class Game {
   /** Get in, when the player stands next to it, is alive and in no car yet: at the wheel if nobody drives, else in the passenger seat if it's free. */
   enterCar(name, p, car) {
     const st = p.state;
-    if (this.carOf(name) || this.bikeOf(name) || !p.alive || !st) return this.send(p.ws, { t: 'car', car });
+    if (this.carOf(name) || this.bikeOf(name) || this.helis.of(name) || !p.alive || !st) return this.send(p.ws, { t: 'car', car });
     // Close to its outline: the middle of the car plus its half diagonal and the reach.
     const spec = carSpec(car);
     const near = Math.hypot(spec.length, spec.width) / 2 + CARS.reach + 0.5;
@@ -1394,7 +1435,7 @@ export class Game {
   /** Get on a horse nobody rides, when the player stands next to it, is alive and in no car. */
   mountHorse(name, p, horse, now) {
     const st = p.state;
-    if (horse.rider || this.carOf(name) || this.horseOf(name) || this.bikeOf(name) || !p.alive || !st) return this.send(p.ws, { t: 'horse', horse });
+    if (horse.rider || this.carOf(name) || this.horseOf(name) || this.bikeOf(name) || this.helis.of(name) || !p.alive || !st) return this.send(p.ws, { t: 'horse', horse });
     const at = horse.parked ? horse : horseOnLoop(horse.i, now / 1000);
     if (Math.hypot(st.x - at.x, st.z - at.z) > HORSES.reach + 1) return this.send(p.ws, { t: 'horse', horse });
     Object.assign(horse, { x: at.x, z: at.z, yaw: horse.parked ? horse.yaw : at.heading, speed: 0, rider: name, parked: false });
@@ -1420,7 +1461,7 @@ export class Game {
    */
   mountBike(name, p, bike, now) {
     const st = p.state;
-    if (bike.rider || this.carOf(name) || this.horseOf(name) || this.bikeOf(name) || !p.alive || !st || st.flying || this.dropping(p, now)) return this.send(p.ws, { t: 'bike', bike });
+    if (bike.rider || this.carOf(name) || this.horseOf(name) || this.bikeOf(name) || this.helis.of(name) || !p.alive || !st || st.flying || this.dropping(p, now)) return this.send(p.ws, { t: 'bike', bike });
     const near = Math.hypot(BIKES.length, BIKES.width) / 2 + BIKES.reach + 0.5;
     if (Math.hypot(st.x - bike.x, st.z - bike.z) > near || Math.abs(st.y - bike.y) > 1.5) return this.send(p.ws, { t: 'bike', bike });
     bike.rider = name;
@@ -1489,6 +1530,7 @@ export class Game {
       if (!s) continue;
       if (fence.inside(s.x, s.z)) continue;
       this.releaseCar(name);
+      this.helis.release(name, Date.now());
       this.releaseHorse(name);
       this.releaseBike(name);
       this.fenceIn(s, null, this.dropping(p, Date.now()) ? p.drop.top : -Infinity);
@@ -1501,14 +1543,14 @@ export class Game {
     return Object.values(this.cars).find((c) => c.driver === name || c.passenger === name) ?? null;
   }
 
-  /** In a car or on a bike: out of reach of shots, and no firing from it. */
+  /** In a car, on a bike or in a helicopter: out of reach of shots, and no firing from it. */
   inCar(name) {
-    return !!this.carOf(name) || !!this.bikeOf(name);
+    return !!this.carOf(name) || !!this.bikeOf(name) || !!this.helis.of(name);
   }
 
-  /** On their own feet: not driving, riding along or on a horse (who may kick a football). */
+  /** On their own feet: not driving, riding along, on a horse or in a helicopter (who may kick a football). */
   onFoot(name) {
-    return !this.carOf(name) && !this.horseOf(name);
+    return !this.carOf(name) && !this.horseOf(name) && !this.helis.of(name);
   }
 
   /** `ms`: how long they stay out (server/auth.mjs: ten minutes; the host's kick for the evening, longer). */
@@ -1601,7 +1643,7 @@ export class Game {
     if (!changed.length) return;
     for (const k of changed) this.rules[k] = m[k];
     await this.auth.store.setMeta('rules', JSON.stringify(this.rules));
-    const label = { flying: 'flying', spawn: 'spawning things with /name', names: 'names above players', guests: 'guests joining', portals: 'the portals', travel: 'travelling from the chat', paintball: 'child-friendly for everyone', parachute: 'arriving by parachute' };
+    const label = { flying: 'flying', spawn: 'spawning things with /name', names: 'names above players', guests: 'guests joining', portals: 'the portals', travel: 'travelling from the chat', paintball: 'child-friendly for everyone', parachute: 'arriving by parachute', heli: 'the helicopter' };
     const text = changed.map((k) => (k === 'maxPlayers' ? `the limit to ${this.rules[k]} players` : `${label[k]} ${this.rules[k] ? 'on' : 'off'}`)).join(', ');
     this.auth.log('rules', null, { username: by, detail: text });
     this.broadcast({ t: 'rules', rules: this.rules });
@@ -2058,6 +2100,7 @@ export class Game {
       if (target === shooter || cover.has(targetName) || !target.alive || !target.state?.armed || now < target.protectedUntil) continue;
       if (this.modes.friends(name, targetName)) continue; // the same team
       if (this.calm(target)) continue; // on the school grounds
+      if (this.helis.of(targetName)) continue; // in a helicopter: out of every fight (server/helis.mjs)
       const s = target.state;
       const d = Math.hypot(s.x - at.x, s.y + (s.c ? 0.65 : 0.9) - at.y, s.z - at.z); // from the middle of the body (lower crouching)
       if (d < radius) this.damage(name, shooter, targetName, target, Math.round(damage * (1 - d / radius)), false, w, now);
@@ -2192,6 +2235,7 @@ export class Game {
     target.alive = false;
     target.respawnAt = now + RESPAWN_MS;
     this.releaseCar(targetName);
+    this.helis.release(targetName, now);
     this.releaseHorse(targetName);
     this.releaseBike(targetName);
     target.score.deaths++;
@@ -2218,6 +2262,7 @@ export class Game {
    */
   respawn(name, p, now, at = null, drop = false, fence = this.fence()) {
     this.releaseCar(name);
+    this.helis.release(name, now);
     this.releaseHorse(name);
     this.releaseBike(name);
     p.hp = HEALTH;
@@ -2394,6 +2439,7 @@ export class Game {
     }
     this.modes.tick(now, TICK_MS);
     this.bikeHits.home(); // a knocked bike left lying goes back to its spot
+    this.helis.tick(now); // a game or the rule off empties the helicopters; one left without a pilot goes home (server/helis.mjs)
     this.pings(); // the watch views too, when nobody plays (they would fall silent)
     if (!this.players.size) return;
     this.fenceAll();
@@ -2448,7 +2494,7 @@ export class Game {
       p.sentKey = fields;
     }
     // Cars, horses and strongmen: when their driver or rider sent something new, when they changed, in their turn.
-    const things = { c: [], h: [], k: [], b: [], z: [] };
+    const things = { c: [], h: [], k: [], e: [], b: [], z: [] };
     const sent = new Map();
     const add = (list, key, slot, fields, json, fresh) => {
       things[list].push({ json, due: fresh || fields !== this.sent.get(key) || slot % KEYFRAME === turn });
@@ -2465,6 +2511,10 @@ export class Game {
     Object.values(this.bikes).forEach((k, i) => {
       const f = JSON.stringify(bikeFields(k));
       add('k', `k${k.id}`, i + 9, f, entry(k.id, this.bikeAt[k.id] ?? 0, f), !!this.players.get(k.rider)?.fresh);
+    });
+    [...this.helis.machines.values()].forEach((h, i) => {
+      const f = JSON.stringify(heliFields(h));
+      add('e', `e${h.id}`, i + 13, f, entry(h.id, this.helis.at[h.id] ?? 0, f), !!this.players.get(h.seats[0])?.fresh);
     });
     // The strongmen every other tick (ten a second is plenty for their walk), keeping what was sent until then.
     const brutes = turn % 2 === 0;
@@ -2495,7 +2545,7 @@ export class Game {
     const join = (list, all) => list.filter((e) => all || e.due).map((e) => e.json).join(',');
     const part = (k, text) => (text ? `,"${k}":[${text}]` : '');
     // The strongmen's list goes with every other tick even when empty: one left out of it stood still. The zombies' too, while the game runs.
-    const rest = (all) => part('c', join(things.c, all)) + part('h', join(things.h, all)) + part('k', join(things.k, all)) + (brutes || all ? `,"b":[${join(things.b, all)}]` : '')
+    const rest = (all) => part('c', join(things.c, all)) + part('h', join(things.h, all)) + part('k', join(things.k, all)) + part('e', join(things.e, all)) + (brutes || all ? `,"b":[${join(things.b, all)}]` : '')
       + (zombies && (brutes || all) ? `,"z":[${join(things.z, all)}]` : '');
     const changed = rest(false);
     let everything = null;
