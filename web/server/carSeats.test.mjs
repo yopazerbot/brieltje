@@ -318,6 +318,75 @@ test('tag: nobody tags from a car; someone in a car can still be tagged (a car i
   assert.equal(game.modes.state.it, 'pam', 'tagged in the car');
 });
 
+/** A point inside home `h` (its first band, in the middle of its heights), deep enough that a car's doors are inside too. */
+function insideOf(h) {
+  const band = h.bands[0];
+  const y = band.y0 + Math.min(1, (band.y1 - band.y0) / 2);
+  let best = null;
+  for (let x = h.box[0]; x <= h.box[2]; x += 0.25) {
+    for (let z = h.box[1]; z <= h.box[3]; z += 0.25) {
+      if (homeAt(x, z, y) !== h.id) continue;
+      const room = [[1.5, 0], [-1.5, 0], [0, 1.5], [0, -1.5]].filter(([dx, dz]) => homeAt(x + dx, z + dz, y) === h.id).length;
+      if (!best || room > best.room) best = { x, y, z, room };
+    }
+  }
+  return best;
+}
+
+test('a car standing inside a code-locked home: nobody without the right gets in, and getting out there puts them out of it', () => {
+  for (const h of HOMES) {
+    const s = setup();
+    const { game, car, send, put, sent } = s;
+    const at = insideOf(h);
+    assert.ok(at, `${h.id}: a point inside`);
+    put({ x: at.x, y: at.y, z: at.z, yaw: 0 }); // left there by a code's holder with a changed page
+    // A guest within reach (on the server's positions) asks to get in: refused, and told the car as it is.
+    const gus = s.player('gus', { x: at.x + 1, y: at.y, z: at.z }, 'guest');
+    send('gus', gus, { t: 'car', op: 'in', id: 'tesla' });
+    assert.equal(game.carOf('gus'), null, `${h.id}: no way in through the car`);
+    assert.equal(sent.get('gus').at(-1)?.t, 'car');
+    // The admin (who may enter every home) gets in as ever.
+    const ada = s.player('ada', { x: at.x - 1, y: at.y, z: at.z }, 'admin');
+    send('ada', ada, { t: 'car', op: 'in', id: 'tesla' });
+    assert.equal(car.driver, 'ada', `${h.id}: the admin gets in`);
+    // Seated there anyhow (in before the car was in the home): out at the centre, where no wall-free door is found.
+    car.passenger = 'gus';
+    Object.assign(gus.state, { x: car.x, y: car.y, z: car.z });
+    game.carSeats.free = () => false; // walls at every door: the fallback, the car's centre
+    send('gus', gus, { t: 'car', op: 'out' });
+    assert.equal(game.carOf('gus'), null);
+    assert.notEqual(homeAt(gus.state.x, gus.state.z, gus.state.y), h.id, `${h.id}: put out of the home at once`);
+    assert.equal(gus.budget, 0.5);
+    // The admin getting out there stays at the centre (their right).
+    send('ada', ada, { t: 'car', op: 'out' });
+    assert.equal(homeAt(ada.state.x, ada.state.z, ada.state.y), h.id, `${h.id}: the admin may stand there`);
+  }
+});
+
+test('the gnomes: a passenger carried over one finds nothing; the driver finds it as before', () => {
+  const s = setup();
+  const { game, car, state, put } = s;
+  const [dan, pam] = crew(s);
+  const finds = [];
+  game.goals.found = (name, p, id) => finds.push([name, id]);
+  for (const n of ['dan', 'pam']) game.goals.joined(n, 'player');
+  const g = game.goals.gnomes.find((q) => homeAt(q.x, q.z, 0) === null);
+  const gy = game.goals.gnomeY[game.goals.gnomes.indexOf(g)];
+  put({ x: g.x, y: gy, z: g.z + 4, yaw: 0 });
+  // Both send a state where they are (the tracker's first step is no step), then the driver drives over the gnome
+  // while the passenger sends states as the car carries them, and the car stands on it a while.
+  state('dan', dan);
+  state('pam', pam);
+  for (let i = 0; i < 8; i++) {
+    state('dan', dan, { x: g.x, y: gy, z: g.z + 4 - Math.min(i, 4) });
+    state('pam', pam);
+  }
+  for (let i = 0; i < 5; i++) state('pam', pam);
+  assert.ok(Math.hypot(car.x - g.x, car.z - g.z) < 1, 'the car stands on the gnome');
+  assert.deepEqual(finds.filter(([n]) => n === 'pam'), [], 'the passenger finds nothing');
+  assert.deepEqual([...new Set(finds.filter(([n]) => n === 'dan').map(([, id]) => id))], [g.id], 'the driver finds it (the rule unchanged)');
+});
+
 test('every type Game.handle reads is sorted: refused from a seat or let through', () => {
   const start = GAME_SRC.indexOf('  handle(name, player, raw) {');
   const end = GAME_SRC.indexOf('\n  }\n', start);

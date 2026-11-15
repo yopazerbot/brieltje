@@ -978,13 +978,13 @@ export class Game {
       // The pilot's machine: never under the server's floor, never with its cabin in a code-locked home (whoever flies).
       if (flyer) this.helis.pose(heli, prev, next);
       player.state = next;
+      if (driving) this.carSeats.carry(car, prev, next, now); // never into a home the passenger may not enter; the passenger goes along
       // The routes and the gnomes (server/goals.mjs), from this step as the server has it, and the way of moving by its own lists.
       const free = player.alive && !next.flying && !drop && !heli && !this.modes.active && !this.host?.holds(player); // nor from a helicopter's seat
-      this.goals?.moved(name, prev, next, !free ? null : driving ? 'car' : bike ? 'bike' : !inCar && !horse ? 'foot' : null, { gapMs: secs * 1000, seek: free });
+      this.goals?.moved(name, prev, next, !free ? null : driving ? 'car' : bike ? 'bike' : !inCar && !horse ? 'foot' : null, { gapMs: secs * 1000, seek: free && !(inCar && !driving) }); // a car's passenger finds no gnome
       if (drop) this.dropCheck(player, now); // on the ground, or not coming down: the drop ends
       this.stampState(player, m.ct);
       if (driving) {
-        this.carSeats.carry(car, prev, next, now); // never into a home the passenger may not enter; the passenger goes along
         const before = { x: car.x, y: car.y, z: car.z, yaw: car.yaw };
         Object.assign(car, { x: next.x, y: next.y, z: next.z, yaw: next.yaw, s: next.s });
         this.carAt[car.id] = player.stamp;
@@ -1450,6 +1450,7 @@ export class Game {
     const spec = carSpec(car);
     const near = Math.hypot(spec.length, spec.width) / 2 + CARS.reach + 0.5;
     if (Math.hypot(st.x - car.x, st.z - car.z) > near || Math.abs(st.y - car.y) > 1.5) return this.send(p.ws, { t: 'car', car });
+    if (!this.gate.mayStand(p, car.x, car.y, car.z)) return this.send(p.ws, { t: 'car', car }); // a car in a home they may not enter: no way in through it
     if (!car.driver) car.driver = name;
     else if (!car.passenger) car.passenger = name;
     else return this.send(p.ws, { t: 'car', car });

@@ -10,14 +10,16 @@
 //   home they have no right to (as the passenger's own steps were before), whoever drives;
 // - leaping out: on getting out (and on a death, a respawn, a game's gathering, the car taken away; a disconnect leaves them
 //   at the car's centre for a reconnect) the server puts them beside the car by the page's own rule (their door, else the other side, behind, in front), never into a wall
-//   the server knows, a code-locked home without the right or outside the edge; else at the car's centre. Their movement
-//   budgets start again from there;
+//   the server knows, a code-locked home without the right or outside the edge; else at the car's centre, and a centre in
+//   such a home puts them out of it (Game.putOut). Their movement budgets start again from there; nobody gets into a car
+//   standing where they may not stand (Game.enterCar);
 // - taking and hurting from a seat or a saddle: one early gate in Game.handle drops SEAT_REFUSED from a car or a bike
 //   (pickups, coins, tags, cats, villagers, clowns, the football, the Zombies game's things, every shot and blast, doors).
 //   Being tagged in a car stays possible: the party games' rules ("whoever is it tags someone else") hold, and a car is no
 //   hiding place. Hits and blasts agree: nobody in a car, on a bike or in a helicopter is hurt by either (Game.inCar).
 // Every other type is let through (SEAT_ALLOWED), each with its own checks; server/carSeats.test.mjs fails when a type
 // Game.handle reads is in neither list.
+import { homeAt } from '../shared/homes.mjs';
 
 /** What nobody sends from a car's seat or a bike's saddle: everything that takes, collects, tags, hurts, shoots or opens. */
 export const SEAT_REFUSED = new Set([
@@ -102,13 +104,19 @@ export class CarSeats {
 
   /**
    * `name` leaves `car` (Game.releaseCar, before the seat is emptied): out beside it (exitSpot), on foot, the movement
-   * budgets started again there, so nothing stored lets them leap. A connection already gone has no state to move.
+   * budgets started again there, so nothing stored lets them leap. A connection already gone has no state to move. Where
+   * they end up is asked of the homes once more: the car's centre (the fallback) may lie in a code-locked home they have
+   * no right to (a car left there by a code's holder), and then they are put out of it at once (Game.putOut), as a walker
+   * whose right ended would be.
    */
   out(name, car) {
-    const p = this.game.players.get(name);
+    const g = this.game;
+    const p = g.players.get(name);
     if (!p?.state) return;
     Object.assign(p.state, this.exitSpot(p, car, car.passenger === name), { d: false, s: 0 });
     p.budget = p.vbudget = 0.5;
     p.movedAt = Date.now();
+    const home = homeAt(p.state.x, p.state.z, p.state.y);
+    if (home && !g.gate.may(p, home)) g.putOut(p, p.state, home, p.movedAt);
   }
 }
