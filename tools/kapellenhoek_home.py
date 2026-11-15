@@ -204,9 +204,10 @@ def profile(points):
 
 class Opening:
     """A hole in a wall: s its middle along the wall, y its bottom, w by h (over the floor).
-    kind: window, door, garage, slide (sliding glass doors), glazing (fixed glass to the floor)."""
+    kind: window, door, garage, slide (sliding glass doors: leaf `move` slides, the others are fixed), glazing (fixed
+    glass to the floor)."""
 
-    def __init__(self, name, s, y, w, h, kind="window", cols=2, rows=3, reveal=.16, sill=True, lintel=True, top=0.0, leaves=2, door=None):
+    def __init__(self, name, s, y, w, h, kind="window", cols=2, rows=3, reveal=.16, sill=True, lintel=True, top=0.0, leaves=2, door=None, move=None):
         self.__dict__.update(locals())
         del self.__dict__["self"]
 
@@ -374,6 +375,8 @@ class Home:
             if glass:
                 panel["frame"] = .07
                 panel["colorOut"] = color_
+                if not slide:
+                    panel["handle"] = False  # a fixed leaf: no handle
             else:
                 panel["handle"] = swing != 0
             return panel
@@ -430,7 +433,7 @@ class Home:
             for c in range(k):
                 sa = s0 + fw + lw * c - (.03 if c else 0)
                 sb = s0 + fw + lw * (c + 1) + (.03 if c < k - 1 else 0)
-                moving = c == k // 2 if k > 2 else c == k - 1
+                moving = c == o.move if o.move is not None else (c == k // 2 if k > 2 else c == k - 1)
                 d = r - .03 if moving else r - .1  # the moving leaf runs in front of the fixed one(s)
                 self.wbox(W, N3, T3, "vh_doors", sa, sb, y0, y0 + .09, d - .05, d, FRAME)
                 self.wbox(W, N3, T3, "vh_doors", sa, sb, y1 - fw - .07, y1 - fw, d - .05, d, FRAME)
@@ -613,10 +616,11 @@ h.wall("left", (0, 0), (0, VM), (-1, 0), [(0, roof_under(0)), (VR, roof_under(VR
        [Opening("side-glass", (3.30 + 5.10) / 2, 0, 1.8, 2.2, "glazing", cols=1, rows=1, sill=False)])
 # The right gable upstairs, over the wing's roof.
 h.wall("right-f1", (UMU, 0), (UMU, VM), (1, 0), [(0, roof_under(0)), (VR, roof_under(VR)), (VM, roof_under(VM))], bottom=3.3)
-# The back: on the terrace three sliding glass leaves; upstairs five windows; over the rear part's flat roof.
+# The back: on the terrace three glass leaves, only the right-hand one (seen from inside) sliding; upstairs five windows;
+# over the rear part's flat roof.
 back = [win(f"back-f1-{i + 1}", u, 3.86, 4.97) for i, u in enumerate(BACK_F1)]
 h.wall("back-terrace", (0, VM), (UR, VM), (0, 1), EAVE - .02,
-       [Opening("terrace-door", (.95 + 4.95) / 2, 0, 4.0, 2.3, "slide", leaves=3, sill=False, lintel=False, door=("kh-home-terrace", "sliding door"))]
+       [Opening("terrace-door", (.95 + 4.95) / 2, 0, 4.0, 2.3, "slide", leaves=3, move=2, sill=False, lintel=False, door=("kh-home-terrace", "sliding door"))]
        + [o for o in back if o.s < UR])
 h.wall("back", (UR, VM), (UMU, VM), (0, 1), EAVE - .02, [Opening(o.name, o.s - UR, o.y, o.w, o.h) for o in back if o.s > UR], bottom=FLAT - .2)
 # --- the rear part (flat roof) and the terrace ---------------------------------------------------------------------
