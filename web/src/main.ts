@@ -2005,24 +2005,10 @@ async function startSolo(id: string): Promise<void> {
   soloView(true);
   showSoloButton();
 }
-/**
- * Alone, the Zombies game darkens as it goes on: dusk from wave 4, night from wave 6 (your torch comes on by
- * itself, world/torch.ts), and your own weather again when it ends. Said once as it turns. Together the
- * weather is the admin's for everyone, so the game leaves it alone there.
- */
-function nightWave(wave: number): void {
-  const want = wave >= 6 ? 'night' : wave >= 4 ? 'dusk' : null;
-  if (want === nightMood) return;
-  nightMood = want;
-  weather.setGame(want);
-  if (want) chat.system(() => t(want === 'night' ? (torch ? 'z.night' : 'z.nightDark') : 'z.dusk')); // no torch on a phone
-}
-let nightMood: 'dusk' | 'night' | null = null;
 
 /** Stop it (the button again, the end screen over, or playing together): the zombies go, you're back up. */
 function stopSolo(): void {
   if (!solo) return;
-  nightWave(0);
   const wasDown = !combat.alive;
   const arena = solo.arena;
   solo = null;
@@ -2072,7 +2058,6 @@ function soloWave(wave: number): void {
     if (e.type !== 'wave') continue; // the old zombies go with the next look at the horde (zombies.follow)
     solo.loot.wave();
     chat.system(() => t(e.bigs > 1 ? 'srv.zWaveBigs' : e.big ? 'srv.zWaveBig' : 'srv.zWave', { n: e.wave, count: e.count }));
-    nightWave(e.wave);
   }
   soloView(true);
 }
@@ -2090,7 +2075,6 @@ function soloTick(dt: number): void {
     if (e.type === 'wave') {
       solo.loot.wave();
       chat.system(() => t(e.bigs > 1 ? 'srv.zWaveBigs' : e.big ? 'srv.zWaveBig' : 'srv.zWave', { n: e.wave, count: e.count }));
-      nightWave(e.wave);
     }
     else if (e.type === 'cleared') {
       chat.system(() => t('srv.zCleared', { n: e.wave }));
