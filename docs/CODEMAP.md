@@ -322,6 +322,7 @@ file's opening comment; run it again after adding, moving or removing a module.
 - `web/server/rooms.mjs`: Zombies rooms (Yoshi, 7 Nov 2026): a player with an account opens a room for Zombies at one of the places (shared/arenas.mjs).
 - `web/server/rooms.test.mjs`: Zombies rooms (server/rooms.mjs): who may open one, one each, at most four, a game of their own that changes nothing of the open world, and closed once empty.
 - `web/server/seats.test.mjs`: Split screen (/splitscreen): four seats in one browser, each with a session cookie of its own (server/auth.mjs seatOf).
+- `web/server/socketError.test.mjs`: A message over the socket's size limit (game.mjs: maxPayload) makes the library emit 'error' on that socket.
 - `web/server/stats.mjs`: How popular the game is, for the admin page (web/public/admin/), counted without cookies and without keeping anything about a person.
 - `web/server/store.mjs`: Sessions, furniture and the spawned Teslas, fighting stats, the login log, the interest page's sign-ups (server/interest.mjs), the daily totals of how much...
 - `web/server/tracer.test.mjs`: A shot may carry where its tracer goes (tx, ty, tz), for the others' picture only, and a state may say the gun is at the eye (a).
