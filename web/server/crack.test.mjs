@@ -17,7 +17,7 @@ function setup() {
   const player = (name, role = 'admin') => {
     const now = Date.now();
     const p = {
-      ws: { name }, key: `k-${name}`, role, alive: true, protectedUntil: 0, drop: null, warp: 0, stamp: 0, unfired: true, cameAt: now,
+      ws: { name }, key: `k-${name}`, role, alive: true, protectedUntil: 0, drop: null, warp: 0, stamp: 0,
       state: { x: 5, y: 0, z: 5, yaw: 0, pitch: 0, armed: true, flying: false, w: 'pistol', c: false },
       weapons: new Set(['pistol']), nades: [0, 0], window: now, msgs: 0, states: 0, others: 0, budget: 0.5, vbudget: 0.5, movedAt: now,
       hp: 100, score: { kills: 0, deaths: 0, points: 0 }, thrown: [],

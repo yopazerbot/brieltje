@@ -10,4 +10,4 @@ export const LOADOUT: {
 };
 
 export function cleanPick(list: unknown): string[];
-export function startingWeapons(pick: unknown, extra?: string[], zombies?: boolean): string[];
+export function startingWeapons(extra?: string[], zombies?: boolean): string[];

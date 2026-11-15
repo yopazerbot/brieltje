@@ -173,7 +173,7 @@ export class Modes {
       const zombies = this.state.kind === 'zombies';
       if (zombies) this.state.z.stop();
       this.state = { kind: 'free' };
-      if (zombies) this.game.gunsBack?.(); // the guns they chose, back
+      if (zombies) this.game.gunsBack?.(); // every gun, back
       if (teams) this.game.teamsChanged(this.names(), false);
       this.send();
       this.say(`${by} stopped the game`, 'gameStopped', { name: by });
@@ -412,7 +412,7 @@ export class Modes {
       const teams = s.kind === 'teams';
       if (s.kind === 'zombies') s.z.stop();
       this.state = { kind: 'free' };
-      if (s.kind === 'zombies') this.game.gunsBack?.(); // the guns they chose, back
+      if (s.kind === 'zombies') this.game.gunsBack?.(); // every gun, back
       if (teams) {
         this.game.teamsChanged(this.names(), false);
         this.game.freshRound(); // the kills of the teams game would end the next round at once
