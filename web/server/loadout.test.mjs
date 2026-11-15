@@ -19,6 +19,7 @@ test.afterEach(() => {
 function setup() {
   const game = new Game({ session: () => null, store: { addStats: async () => {} } }, []);
   games.push(game);
+  game.gate.insideOf = () => null; // (5, 0, 5) lies in the main house's footprint: this test is about guns, not homes (server/homeGate.mjs)
   const sent = [];
   game.broadcast = () => {};
   game.send = (ws, m) => sent.push({ to: ws.name, ...m });

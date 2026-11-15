@@ -373,6 +373,8 @@ interface Avatar {
   /** Respawned or through a portal: hidden until a state from their new place (its teleport counter then) comes, or a moment has passed */
   hiddenWarp: number | null;
   hiddenAt: number;
+  /** Out of sight (inside a home this page has no right to, the server says): not drawn, not hit, until a state comes */
+  away?: boolean;
   /** Their part in a party game, its ring and its word (see Role) */
   role: Role | null;
   marks: THREE.Object3D[];
@@ -533,12 +535,26 @@ export class Avatars {
       if (s.name === self) continue;
       const a = this.avatars.get(s.name);
       if (!a) continue;
-      // The server moved them (respawn, portal): jump there instead of sliding across the map.
-      const warped = !!a.latest && s.warp !== a.latest.warp;
+      // The server moved them (respawn, portal), or they come back in sight: jump there instead of sliding across the map.
+      const warped = (!!a.latest && s.warp !== a.latest.warp) || !!a.away;
+      a.away = false;
       a.track.push(st - s.age, [s.x, s.y, s.z, s.yaw, s.pitch], s, warped);
       if (warped) a.killed = false; // back in the game
       if (a.hiddenWarp !== null && (s.warp !== a.hiddenWarp || now - a.hiddenAt > 1500)) a.hiddenWarp = null;
       a.latest = s;
+    }
+  }
+
+  /**
+   * Players gone out of sight (the server's tick says so: they went into a home this page may not see into): their
+   * figures, name tags and shadows go at once, until a state of theirs comes again.
+   */
+  outOfSight(names: string[]): void {
+    for (const name of names) {
+      const a = this.avatars.get(name);
+      if (!a) continue;
+      a.away = true;
+      a.root.visible = false;
     }
   }
 
@@ -578,7 +594,7 @@ export class Avatars {
   canBeHit(name: string): boolean {
     const a = this.avatars.get(name);
     const s = a?.latest;
-    return !!s && s.armed && s.alive && !a.killed && !s.safe && !s.d && !s.bike;
+    return !!s && s.armed && s.alive && !a.killed && !s.safe && !s.d && !s.bike && !a.away;
   }
 
   /** Players on foot, for the car to stop against. */
@@ -598,7 +614,7 @@ export class Avatars {
     const walkers: Avatar[] = [];
     let patches = 0;
     for (const [name, a] of this.avatars) {
-      if (!a.track.at(netClock.time, p) || !a.track.shown) continue;
+      if (a.away || !a.track.at(netClock.time, p) || !a.track.shown) continue;
       const t = a.track.shown;
       const [x, y, z, yaw, pitch] = p;
       if (a.hiddenWarp === null) a.root.visible = true;

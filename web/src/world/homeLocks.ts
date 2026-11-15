@@ -134,8 +134,16 @@ export class HomeLocks {
     this.deps.relocked();
   }
 
+  /** Every home closed for standing in, code or not (hide and seek, tag: the server holds the same, homeGate shut). */
+  private closed = false;
+  setClosed(on: boolean): void {
+    if (this.closed === on) return;
+    this.closed = on;
+    this.sync();
+  }
+
   private sync(): void {
-    for (const h of HOMES) h.bands.forEach((b, i) => this.deps.barrier(`${h.id}-${i}`, this.isOpen(h.id) ? null : b.ring, b.y0, b.y1));
+    for (const h of HOMES) h.bands.forEach((b, i) => this.deps.barrier(`${h.id}-${i}`, this.isOpen(h.id) && !this.closed ? null : b.ring, b.y0, b.y1));
     this.deps.changed();
   }
 }

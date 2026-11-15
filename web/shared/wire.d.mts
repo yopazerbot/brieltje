@@ -19,6 +19,8 @@ export interface Tick {
   e?: Entry[];
   b?: Entry[];
   z?: Entry[];
+  /** Players gone out of this page's sight since its last tick (inside a home it has no right to): their figures go */
+  o?: string[];
 }
 
 export interface PlayerSample {

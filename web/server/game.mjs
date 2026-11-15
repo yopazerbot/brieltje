@@ -372,7 +372,7 @@ const onBoard = (role) => role === 'player' || role === 'admin';
 export class Game {
   /** The code-locked homes' gate (server/homeGate.mjs), made on first use. */
   get gate() {
-    return (this._gate ??= new HomeGate({ homes: () => this.homes, paneHome: PANE_HOME }));
+    return (this._gate ??= new HomeGate({ homes: () => this.homes, paneHome: PANE_HOME, shut: () => ['hide', 'tag'].includes(this.modes?.state.kind) })); // hide and seek, tag: no hiding inside a home
   }
 
   /** The helicopters (server/helis.mjs): their seats, poses and flights home, made on first use. */
@@ -634,7 +634,7 @@ export class Game {
       t: 'welcome', proto: PROTO, you: name, role: player.role, color, doors: this.doorsFor(player), doorDir: this.doorDirFor(player), broken: this.brokenFor(player), cracked: this.crackedFor(player), homes: HOMES.filter((h) => player.role !== 'admin' && this.homes?.granted(player.key, h.id)).map((h) => h.id), accountHomes: HOMES.filter((h) => player.role === 'player' && this.homes?.byAccount?.(player.key, h.id)).map((h) => h.id), players: this.roster(),
       time: now, cats: this.catsDown.map((until) => Math.max(0, until - now)), ...this.villagersView(now), clowns: this.clownList(now), furniture: this.furnitureFor(player), rules: this.rules,
       scores: this.scoreList(), limit: KILL_LIMIT, items: this.items.map((it) => now >= it.until), round: this.roundOver ? { winner: this.roundOver.winner, ms: this.roundOver.until - now } : null,
-      cars: Object.values(this.cars), horses: this.horses, bikes: Object.values(this.bikes), helis: this.helis.view(), mode: this.modes.view(now), mood: this.mood, moodCycle: this.moodView(now),
+      cars: Object.values(this.cars).filter((c) => !this.gate.hidesAt(c.x, c.z, c.y, player)), horses: this.horses, bikes: Object.values(this.bikes).filter((k) => !this.gate.hidesAt(k.x, k.z, k.y, player)), helis: this.helis.view(), mode: this.modes.view(now), mood: this.mood, moodCycle: this.moodView(now),
       room: this.roomView(),
     };
   }
@@ -767,7 +767,7 @@ export class Game {
     this.releaseBike(targetName);
     target.score.deaths++;
     target.weapons = loadout(target, !!this.modes.zombies); // dropped what they picked up
-    this.broadcast({ t: 'kill', killer: by, victim: targetName, head: false, w: by === 'a strongman' ? 'strongman' : 'zombie' });
+    this.broadcastFrom({ t: 'kill', killer: by, victim: targetName, head: false, w: by === 'a strongman' ? 'strongman' : 'zombie' }, target); // not to those it is hidden from (homeGate.hides)
     this.stats(targetName, { deaths: 1 });
     this.broadcast({ t: 'scores', list: this.scoreList() });
     zombies?.downed(targetName);
@@ -967,7 +967,8 @@ export class Game {
       const barred = this.gate.keepOut(player, prev, next);
       if (barred) {
         if (barred.put) this.putOut(player, next, barred.home, now);
-        if (this.gate.tell(player, now)) this.send(player.ws, { t: 'homelock', id: barred.home });
+        // Told only when it has no right: a home shut for a game (hide and seek, tag) keeps the right it has.
+        if (!this.gate.may(player, barred.home) && this.gate.tell(player, now)) this.send(player.ws, { t: 'homelock', id: barred.home });
       }
       // Down in the Zombies game: they lie where they went down (server/zombies.mjs fell), whatever a
       // changed page says (state spoofing while down: crawling somewhere to be helped up there).
@@ -1007,7 +1008,7 @@ export class Game {
       player.lastRally = now;
       for (const [who, other] of this.players) {
         if (!other.state?.armed) continue;
-        if (!this.modes.friends(name, who)) continue;
+        if (!this.modes.friends(name, who) || this.gate.hides(player, other)) continue; // not a place they may not see
         this.send(other.ws, { t: 'rally', name, x: state.x, y: state.y, z: state.z });
       }
     } else if (m.t === 'kickball') {
@@ -1085,7 +1086,7 @@ export class Game {
       // changed page could else draw streaks from anywhere and make players far from it flinch.
       let from = where(m);
       if (Math.hypot(from.x - s.x, from.y - s.y - 1.5, from.z - s.z) > 3) from = { x: s.x, y: s.y + 1.5, z: s.z };
-      this.broadcast({ t: 'shot', name, w, ...from, ...shown }, name);
+      this.broadcastFrom({ t: 'shot', name, w, ...from, ...shown }, player, name); // from inside a home: only to those who may see in
       this.modes.zombies?.noise?.(name, player, w, now); // gunfire draws the zombies (shared/zombies.mjs noise): from where the server has the shooter
     } else if (m.t === 'furn') {
       if (now < (player.nextFurn || 0)) return;
@@ -1217,7 +1218,7 @@ export class Game {
       const bike = this.bikeOf(name);
       if (!bike || now < (player.nextBell || 0)) return;
       player.nextBell = now + BELL_MS;
-      this.broadcast({ t: 'bell', id: bike.id }, name);
+      this.broadcastHome({ t: 'bell', id: bike.id }, homeAt(bike.x, bike.z, bike.y), name);
     } else if (m.t === 'rocket') {
       this.rocket(name, player, m, now);
     } else if (m.t === 'nade') {
@@ -1503,7 +1504,7 @@ export class Game {
     if (Math.hypot(st.x - bike.x, st.z - bike.z) > near || Math.abs(st.y - bike.y) > 1.5) return this.send(p.ws, { t: 'bike', bike });
     bike.rider = name;
     this.bikeHits.mounted(bike); // a lying one stands up
-    this.broadcast({ t: 'bike', bike });
+    this.broadcastHome({ t: 'bike', bike }, homeAt(bike.x, bike.z, bike.y));
   }
 
   /** The rider got off, left, died or respawned: the bike stays where it is, on its stand. */
@@ -1511,7 +1512,7 @@ export class Game {
     const bike = this.bikeOf(name);
     if (!bike) return;
     bike.rider = null;
-    this.broadcast({ t: 'bike', bike });
+    this.broadcastHome({ t: 'bike', bike }, homeAt(bike.x, bike.z, bike.y)); // left inside a home: only those who may see in
   }
 
   /** The bike a player rides, if any. */
@@ -1823,6 +1824,12 @@ export class Game {
     if (!home) return this.broadcast(msg, except);
     const data = JSON.stringify(msg);
     for (const [name, p] of this.players) if (name !== except && p.ws.readyState === p.ws.OPEN && this.gate.may(p, home)) p.ws.send(data);
+    for (const w of this.watchers) if (w.ws.readyState === w.ws.OPEN) w.ws.send(data); // the admin's watch views (every right)
+  }
+
+  /** `msg` about where `p` is (a shot, a throw, a rally): to those who may see them there (homeGate.hides), except `except`. */
+  broadcastFrom(msg, p, except) {
+    this.broadcastHome(msg, this.gate.insideOf(p), except);
   }
 
   /** The door states a player may be told: no inside door of a home they have no right to. */
@@ -2021,6 +2028,7 @@ export class Game {
     if (spec.rocket) return; // rockets hurt through their blast (see rocket)
     if (!target || target === shooter || this.roundOver || !shooter.weapons.has(w) || shooter.state?.w !== w) return;
     if (this.modes.friends(name, targetName)) return; // the same team
+    if (!this.gate.mayHurt(shooter, target)) return; // one of them inside a home the other may not see into
     if (this.inCar(targetName) || this.inCar(name)) return; // in the car: out of reach, and no shooting from it
     if (body + head < 1 || body + head > spec.pellets) return;
     if (!shooter.alive || !target.alive || !shooter.state?.armed || !target.state?.armed) return;
@@ -2074,7 +2082,7 @@ export class Game {
       to = { x: from.x + (to.x - from.x) * k, y: from.y + (to.y - from.y) * k, z: from.z + (to.z - from.z) * k };
       dist = spec.rocket.range;
     }
-    this.broadcast({ t: 'rocket', name, x: from.x, y: from.y, z: from.z, tx: to.x, ty: to.y, tz: to.z }, name);
+    this.broadcastFrom({ t: 'rocket', name, x: from.x, y: from.y, z: from.z, tx: to.x, ty: to.y, tz: to.z }, shooter, name);
     setTimeout(() => this.blast(name, to), (dist / spec.rocket.speed) * 1000);
   }
 
@@ -2099,7 +2107,7 @@ export class Game {
     const vh = typeof m.vx === 'number' && typeof m.vz === 'number' ? Math.hypot(v('vx'), v('vz')) : undefined;
     p.thrown.push({ at: now, x: s.x, y: s.y + 1.5, z: s.z, vh });
     if (p.thrown.length > GRENADE.carry + LOOT.nadesCarry) p.thrown.shift();
-    this.broadcast({ t: 'nade', name, ...from, vx: v('vx'), vy: v('vy'), vz: v('vz') }, name);
+    this.broadcastFrom({ t: 'nade', name, ...from, vx: v('vx'), vy: v('vy'), vz: v('vz') }, p, name);
   }
 
   /**
@@ -2120,7 +2128,7 @@ export class Game {
     const { radius, damage } = w === 'grenade' ? GRENADE : WEAPONS.bazooka.rocket;
     const now = Date.now();
     // The thrower's browser has set off its own grenade already.
-    this.broadcast({ t: 'blast', by: name, w, x: at.x, y: at.y, z: at.z }, w === 'grenade' ? name : undefined);
+    this.broadcastHome({ t: 'blast', by: name, w, x: at.x, y: at.y, z: at.z }, homeAt(at.x, at.z, at.y), w === 'grenade' ? name : undefined); // inside a home: to those who may see in
     const shooter = this.players.get(name);
     if (shooter) shooter.lastBlast = { x: at.x, z: at.z, at: now, w }; // for the villagers its page says it caught (villagersHit)
     if (!shooter || this.roundOver) return;
@@ -2136,6 +2144,7 @@ export class Game {
     for (const [targetName, target] of [...this.players]) {
       if (target === shooter || cover.has(targetName) || !target.alive || !target.state?.armed || now < target.protectedUntil) continue;
       if (this.modes.friends(name, targetName)) continue; // the same team
+      if (!this.gate.mayHurt(shooter, target)) continue; // one of them inside a home the other may not see into
       if (this.calm(target)) continue; // on the school grounds
       if (this.inCar(targetName)) continue; // in a car, on a bike or in a helicopter: out of every fight, as for bullets (hit)
       const s = target.state;
@@ -2279,7 +2288,7 @@ export class Game {
     shooter.score.kills++;
     shooter.score.points += POINTS.kill + (head ? POINTS.headshot : 0);
     target.weapons = loadout(target, !!this.modes.zombies); // dropped what they picked up
-    this.broadcast({ t: 'kill', killer: name, victim: targetName, head, w });
+    this.broadcastFrom({ t: 'kill', killer: name, victim: targetName, head, w }, this.gate.insideOf(target) ? target : shooter); // not to those it is hidden from
     this.stats(name, { kills: 1, headshots: head ? 1 : 0 });
     this.stats(targetName, { deaths: 1 });
     this.broadcast({ t: 'scores', list: this.scoreList() });
@@ -2523,31 +2532,32 @@ export class Game {
     const st = mono();
     const turn = this.tickNo++ % KEYFRAME;
     const entry = (id, at, fields) => `[${JSON.stringify(id)},${Math.min(999, Math.max(0, Math.round(st - at)))},${fields.slice(1)}`;
+    // Each entry with the home it is inside (homeGate): out of the ticks of a page without that home's right.
     const players = [];
     for (const [name, p] of this.players) {
       if (!p.state) continue;
       const fields = JSON.stringify(playerFields(p.state, p.alive, now < p.protectedUntil, p.warp));
-      players.push({ name, json: entry(name, p.stamp, fields), due: p.fresh || fields !== p.sentKey || p.slot === turn });
+      players.push({ name, home: this.gate.insideOf(p), json: entry(name, p.stamp, fields), due: p.fresh || fields !== p.sentKey || p.slot === turn });
       p.sentKey = fields;
     }
     // Cars, horses and strongmen: when their driver or rider sent something new, when they changed, in their turn.
     const things = { c: [], h: [], k: [], e: [], b: [], z: [] };
     const sent = new Map();
-    const add = (list, key, slot, fields, json, fresh) => {
-      things[list].push({ json, due: fresh || fields !== this.sent.get(key) || slot % KEYFRAME === turn });
+    const add = (list, key, slot, fields, json, fresh, home = null) => {
+      things[list].push({ json, home, due: fresh || fields !== this.sent.get(key) || slot % KEYFRAME === turn });
       sent.set(key, fields);
     };
     Object.values(this.cars).forEach((c, i) => {
       const f = JSON.stringify(carFields(c));
-      add('c', `c${c.id}`, i, f, entry(c.id, this.carAt[c.id] ?? 0, f), !!this.players.get(c.driver)?.fresh);
+      add('c', `c${c.id}`, i, f, entry(c.id, this.carAt[c.id] ?? 0, f), !!this.players.get(c.driver)?.fresh, homeAt(c.x, c.z, c.y));
     });
     for (const h of this.horses) {
       const f = JSON.stringify(horseFields(h));
-      add('h', `h${h.i}`, h.i + 5, f, entry(h.i, this.horseAt[h.i], f), !!this.players.get(h.rider)?.fresh);
+      add('h', `h${h.i}`, h.i + 5, f, entry(h.i, this.horseAt[h.i], f), !!this.players.get(h.rider)?.fresh, h.rider ? this.gate.insideOf(this.players.get(h.rider)) : null);
     }
     Object.values(this.bikes).forEach((k, i) => {
       const f = JSON.stringify(bikeFields(k));
-      add('k', `k${k.id}`, i + 9, f, entry(k.id, this.bikeAt[k.id] ?? 0, f), !!this.players.get(k.rider)?.fresh);
+      add('k', `k${k.id}`, i + 9, f, entry(k.id, this.bikeAt[k.id] ?? 0, f), !!this.players.get(k.rider)?.fresh, homeAt(k.x, k.z, k.y));
     });
     [...this.helis.machines.values()].forEach((h, i) => {
       const f = JSON.stringify(heliFields(h));
@@ -2570,20 +2580,23 @@ export class Game {
     for (const e of zombies ?? []) {
       const key = `z${e[0]}`;
       const json = JSON.stringify(e);
-      if (brutes) add('z', key, e[0] * 2, json, json, false);
+      const home = homeAt(e[1], e[2], e[6]); // [id, x, z, yaw, state, hp, y] (shared/wire.mjs zombieEntry)
+      if (brutes) add('z', key, e[0] * 2, json, json, false, home);
       else {
-        things.z.push({ json, due: false });
+        things.z.push({ json, home, due: false });
         if (this.sent.has(key)) sent.set(key, this.sent.get(key));
       }
     }
     this.sent = sent;
     for (const p of this.players.values()) p.fresh = false;
 
-    const join = (list, all) => list.filter((e) => all || e.due).map((e) => e.json).join(',');
+    const join = (list, all, sees = null) => list.filter((e) => (all || e.due) && (!sees || !e.home || sees(e.home))).map((e) => e.json).join(',');
     const part = (k, text) => (text ? `,"${k}":[${text}]` : '');
     // The strongmen's list goes with every other tick even when empty: one left out of it stood still. The zombies' too, while the game runs.
-    const rest = (all) => part('c', join(things.c, all)) + part('h', join(things.h, all)) + part('k', join(things.k, all)) + part('e', join(things.e, all)) + (brutes || all ? `,"b":[${join(things.b, all)}]` : '')
-      + (zombies && (brutes || all) ? `,"z":[${join(things.z, all)}]` : '');
+    const rest = (all, sees = null) => part('c', join(things.c, all, sees)) + part('h', join(things.h, all, sees)) + part('k', join(things.k, all, sees)) + part('e', join(things.e, all, sees)) + (brutes || all ? `,"b":[${join(things.b, all)}]` : '')
+      + (zombies && (brutes || all) ? `,"z":[${join(things.z, all, sees)}]` : '');
+    // Inside a home (homeGate.hides): only for those with its right. Shared when nothing is inside one, as before.
+    const inside = players.some((e) => e.home) || Object.values(things).some((list) => list.some((e) => e.home));
     const changed = rest(false);
     let everything = null;
     let old = false;
@@ -2595,9 +2608,18 @@ export class Game {
       if (p.ws.readyState !== p.ws.OPEN) continue;
       const all = p.full;
       p.full = false;
+      const may = new Map();
+      const sees = (home) => (may.has(home) ? may.get(home) : may.set(home, this.gate.may(p, home)).get(home));
+      // The players out of sight now: those newly so are named once (`o`: the page takes their figure away, they
+      // vanish at the door); one back in sight is sent whole at once, wherever it is in its turn.
+      const unseen = new Set(players.filter((e) => e.name !== name && e.home && !sees(e.home)).map((e) => e.name));
+      const was = p.unseen ?? new Set();
+      const gone = [...unseen].filter((n) => !was.has(n));
+      p.unseen = unseen;
+      const others = players.filter((e) => e.name !== name && !unseen.has(e.name) && (all || e.due || was.has(e.name))).map((e) => e.json).join(',');
       if (all) everything ??= rest(true);
-      const others = join(players.filter((e) => e.name !== name), all);
-      const tick = `{"t":"s","st":${st}${part('p', others)}${all ? everything : changed}}`;
+      const own = inside ? rest(all, sees) : all ? everything : changed;
+      const tick = `{"t":"s","st":${st}${part('p', others)}${own}${gone.length ? `,"o":${JSON.stringify(gone)}` : ''}}`;
       monitor.out(tick.length);
       p.ws.send(tick);
     }
@@ -2623,8 +2645,9 @@ export class Game {
     send({ t: 'brutes', list: this.bruteList() });
     if (this.players.size < 2) return;
     const states = [];
-    for (const [name, p] of this.players) if (p.state) states.push({ name, ...p.state, alive: p.alive, safe: now < p.protectedUntil });
-    send({ t: 'states', players: states, cars: Object.values(this.cars), horses: this.horses });
+    // Nobody inside a home (homeGate.hides): this one list goes to every old page alike.
+    for (const [name, p] of this.players) if (p.state && !this.gate.insideOf(p)) states.push({ name, ...p.state, alive: p.alive, safe: now < p.protectedUntil });
+    send({ t: 'states', players: states, cars: Object.values(this.cars).filter((c) => !homeAt(c.x, c.z, c.y)), horses: this.horses });
   }
 
   /**

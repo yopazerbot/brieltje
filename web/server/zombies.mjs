@@ -597,6 +597,7 @@ export class ZombieGame {
       if (pierce > 1 && body + head !== 1) return; // one bullet through each
       const z = this.horde.zombies.get(id);
       if (!z || z.act === 'down') continue; // gone or down already (another player's shot came first): no harm in that
+      if (g.gate.hidesAt(z.x, z.z, z.y ?? 0, p)) continue; // inside a home this player may not see into (server/homeGate.mjs)
       const d = Math.hypot(z.x - p.state.x, z.z - p.state.z);
       if (d > MAX_RANGE) continue;
       hits.push({ id, amount: body * spec.body + head * spec.head, z, d, legs });

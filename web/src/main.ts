@@ -2656,6 +2656,7 @@ let teamsMenu = false;
 function followGame(view: ModeView): void {
   const before = games.view;
   games.set(view);
+  homeLocks.setClosed(view.kind === 'hide' || view.kind === 'tag'); // no hiding inside a home (server/homeGate.mjs shut)
   // Together too, the hint where they come out of a wood (the Sparrenhof), once as the game starts.
   if (view.kind === 'zombies' && before.kind !== 'zombies' && arenaOf(view.zombies?.place).woods) chat.system(() => t('z.woods'));
   rooms.setPlaying(view.kind === 'zombies' && view.phase !== 'done');
@@ -3143,6 +3144,7 @@ net.onMessage = (m: ServerMsg) => {
 function onTick(m: Tick): void {
   const self = me?.username ?? '';
   netClock.tick(m.st, performance.now());
+  if (m.o) avatars.outOfSight(m.o.filter((n) => typeof n === 'string')); // gone into a home this page may not see into
   avatars.receive((m.p ?? []).map(readPlayer), m.st, self);
   for (const e of m.c ?? []) {
     const s = readCar(e);
