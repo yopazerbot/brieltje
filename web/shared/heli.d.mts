@@ -2,7 +2,7 @@
 
 export const HELI: {
   ROTOR_R: number; ROTOR_Y: number; SPOOL_UP: number; SPOOL_DOWN: number; LIFT_RPM: number; START_HOLD: number; STOP_HOLD: number;
-  THRUST_MAX: number; COLL_RATE: number; TILT: number; BANK: number; ATT_FREQ: number; ATT_DAMP: number;
+  THRUST_MAX: number; COLL_RATE: number; LEVER_LOW: number; TILT: number; BANK: number; ATT_FREQ: number; ATT_DAMP: number;
   DRAG_FWD: number; DRAG_SIDE: number; DRAG_UP: number; DRAG_LIN: number;
   V_TOP: number; V_SLOW: number; V_CAP: number; CLIMB_MAX: number; SINK: number; SINK_CAP: number;
   VS_RESP: number; HOLD_GAIN: number; SPEED_GAIN: number; POS_GAIN: number;
@@ -39,7 +39,7 @@ export interface HeliState {
   ground: boolean;
   /** s left before it can start again after a bump */
   down: number;
-  holdY: number; holdX: number; holdZ: number; holding: boolean; startHeld: number; stopHeld: number;
+  holdY: number; holdX: number; holdZ: number; holding: boolean; heightHeld: boolean; startHeld: number; stopHeld: number;
   /** m over the floor below */
   h: number;
   floor: number;

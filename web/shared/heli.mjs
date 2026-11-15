@@ -27,7 +27,8 @@ export const HELI = {
   START_HOLD: 0.4, // s the up key is held on the ground to start the engine
   STOP_HOLD: 1.5, // s the down key is held on the ground to stop it
   THRUST_MAX: 1.45, // g: the rotor's thrust with the lever full up, at full speed, out of ground effect
-  COLL_RATE: 1.2, // 1/s: the fastest the lever moves (full travel in under a second)
+  COLL_RATE: 2, // 1/s: the fastest the lever moves (full travel in half a second)
+  LEVER_LOW: 0.2, // the thrust (of the most) with the lever all the way down: it stops a climb at 0.7 g
   TILT: 0.5, // rad (29 degrees): the most lean for speed
   BANK: 0.75, // rad (43 degrees): the most bank in a turn at speed
   ATT_FREQ: 4.5, // rad/s: how fast pitch and roll follow their targets (a damped spring)
@@ -110,7 +111,7 @@ export function heliStart(at = { x: 0, y: 0, z: 0, yaw: 0 }) {
     x, y, z, vx: 0, vy: 0, vz: 0, yaw, pitch: 0, roll: 0, pitchRate: 0, rollRate: 0, yawRate: 0,
     rotor: 0, coll: 0, engine: false, ground: true, down: 0,
     // Its memory: the height and the spot it holds, how long the start and stop keys are held.
-    holdY: y, holdX: x, holdZ: z, holding: false, startHeld: 0, stopHeld: 0,
+    holdY: y, holdX: x, holdZ: z, holding: false, heightHeld: true, startHeld: 0, stopHeld: 0,
     // For the instruments, the sound and the camera: height over the floor below, the floor, how hard it shakes,
     // the thrust (g), what happened (EV) and how hard (m/s), at the edge or the ceiling.
     h: 0, floor: y, shake: 0, thrust: 0, ev: 0, hit: 0, atEdge: false, atCeiling: false,
@@ -123,7 +124,7 @@ export function heliStart(at = { x: 0, y: 0, z: 0, yaw: 0 }) {
  */
 export function heliPlace(s, x, y, z, yaw, rotor = s.rotor) {
   Object.assign(s, { x, y, z, yaw, vx: 0, vy: 0, vz: 0, pitch: 0, roll: 0, pitchRate: 0, rollRate: 0, yawRate: 0, ground: true, down: 0,
-    holdY: y, holdX: x, holdZ: z, holding: false, rotor, engine: rotor >= HELI.LIFT_RPM, coll: 0, floor: y, h: 0 });
+    holdY: y, holdX: x, holdZ: z, holding: false, heightHeld: true, rotor, engine: rotor >= HELI.LIFT_RPM, coll: 0, floor: y, h: 0 });
   return s;
 }
 
@@ -214,20 +215,27 @@ export function heliStep(s, input, env, dt) {
     if (down) want = -Math.max(H.DOWN_SINK, h / 3);
     else if (liftIn > 0.05) {
       want = liftIn * H.CLIMB_MAX;
-      s.holdY = s.y + Math.max(0, s.vy) / H.VS_RESP; // where it will stop when the key is let go
+      s.heightHeld = false;
     } else if (liftIn < -0.05) {
       want = liftIn * H.SINK;
-      s.holdY = s.y + Math.min(0, s.vy) / H.VS_RESP;
+      s.heightHeld = false;
+    } else if (!s.heightHeld) {
+      // Let go: the climb or the sink stops first (twice as firmly), then it holds the height where it stopped (no bobbing back).
+      want = 0;
+      if (Math.abs(vA) < 0.3) {
+        s.heightHeld = true;
+        s.holdY = s.y;
+      }
     } else want = clamp(H.HOLD_GAIN * (s.holdY - s.y), -H.SINK, H.CLIMB_MAX);
     want = Math.max(want, -(0.8 + 0.5 * h)); // near a floor: a soft touchdown
     // Still too fast to land: it skims a metre over the floor until it has slowed.
     if (!down && Math.hypot(s.vx, s.vz) > H.LAND_SKID * 0.7) want = Math.max(want, H.HOLD_GAIN * 2 * (1 - h));
     needUp = Math.max(G, G + H.VS_RESP * (want - vA) + dragV);
-    const need = (G + H.VS_RESP * (want - vA) + dragV) / Math.max(0.3, cosTilt);
-    lever = perLever > 1e-6 ? clamp((need / perLever - 0.31) / 0.69, 0, 1) : 0;
+    const need = (G + (s.heightHeld || liftIn !== 0 ? H.VS_RESP : 2 * H.VS_RESP) * (want - vA) + dragV) / Math.max(0.3, cosTilt);
+    lever = perLever > 1e-6 ? clamp((need / perLever - H.LEVER_LOW) / (1 - H.LEVER_LOW), 0, 1) : 0;
   }
   s.coll = clamp(s.coll + clamp(lever - s.coll, -H.COLL_RATE * dt, H.COLL_RATE * dt), 0, 1);
-  const T = perLever * (0.31 + 0.69 * s.coll);
+  const T = perLever * (H.LEVER_LOW + (1 - H.LEVER_LOW) * s.coll);
   s.thrust = T / G;
 
   // The turn: a turn rate at a hover, a banked turn at speed.
@@ -431,6 +439,7 @@ function contact(s, groundAt, lift, dt) {
   s.roll += (rollG - s.roll) * k;
   s.pitchRate = s.rollRate = 0;
   s.holdY = s.y;
+  s.heightHeld = true;
   s.holdX = s.x;
   s.holdZ = s.z;
   const weight = clamp(-lift / G, 0, 1);

@@ -63,6 +63,17 @@ for (const wind of [[0, 0], [4.5, 0]]) {
   const tUp = run(s, 40, () => ({ lift: 1 }), flat(), (q) => ((best = Math.max(best, q.vy)), q.y >= 60));
   const tDown = run(s, 40, () => ({ lift: -1 }), flat(), (q) => ((sink = Math.max(sink, -q.vy)), q.y <= 30));
   rows.push(['climb 30 to 60 m and back', `up in ${r1(tUp)} s (${r1(best)} m/s, cap ${HELI.CLIMB_MAX}); down in ${r1(tDown)} s (${r1(sink)} m/s)`]);
+  // Letting go of up at the full climb, and of down at the full sink: how far it goes on before it holds.
+  const on = [];
+  for (const lift of [1, -1]) {
+    const q = hovering(60);
+    run(q, 4, () => ({ lift }), flat());
+    const y0 = q.y;
+    let most = 0;
+    run(q, 8, () => ({}), flat(), (p) => void (most = Math.max(most, Math.abs(p.y - y0))));
+    on.push(`${lift > 0 ? 'up' : 'down'} ${r1(most)} m (held ${r1(Math.abs(q.y - y0))} m on)`);
+  }
+  rows.push(['let go of up / down', `goes on ${on.join(', ')}`]);
 }
 // A dash to top speed on full forward, then let go to a stop.
 {
