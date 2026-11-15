@@ -15,7 +15,7 @@
   const SLIDES = [
     { src: '/start/town', focus: '72% 50%', nl: 'Smetlede: de kerk en de school', en: 'Smetlede: the church and the school' },
     { src: '/start/football', focus: '66% 50%', nl: 'FC Smetlede: training onder de schijnwerpers', en: 'FC Smetlede: training under the floodlights' },
-    { src: '/start/heli-church', focus: '70% 40%', nl: 'Smetlede: de helikopter boven het kerkplein', en: 'Smetlede: the helicopter over the church square' },
+    { src: '/start/heli-church', focus: '77% 45%', nl: 'Smetlede: de helikopter boven het kerkplein', en: 'Smetlede: the helicopter over the church square' },
     { src: '/start/square-dusk', focus: '72% 50%', nl: 'Smetlede: het kerkplein in de schemering', en: 'Smetlede: the church square at dusk' },
     { src: '/start/house', focus: '58% 45%', nl: 'Het nieuwe huis', en: 'The new house' },
     { src: '/start/street-night', focus: '60% 50%', nl: 'Smetlede bij nacht, na de regen', en: 'Smetlede at night, after the rain' },
