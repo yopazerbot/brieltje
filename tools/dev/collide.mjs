@@ -1,10 +1,10 @@
 // An audit of the whole map for collision bugs, in the real game on a running dev server, in one page load: where
 // what is drawn and what stops you disagree. Each class prints its count and its three worst spots; --json writes
-// every spot. Exits 1 when a class that should be zero is not (`trees`, `roofs`, `about`, `spots` and `drops` always;
+// every spot. Exits 1 when a class that should be zero is not (`trees`, `roofs`, `about`, `inside`, `spots`, `drops` always;
 // more with --strict). What a relaxed rule lets pass is printed under its class as `excused`, every run.
 //
 //   node tools/dev/collide.mjs --url http://localhost:5200/ --port 9800 [--quality high] [--json out.json]
-//        [--only trees,walls,sides,roofs,about,ground,spots,drops] [--strict walls,sides,ground]
+//        [--only trees,walls,sides,roofs,about,inside,ground,spots,drops] [--strict walls,sides,ground]
 //        [--compare before.json] [--shots <folder>] [--sample 13]
 //
 // The classes:
@@ -28,6 +28,8 @@
 //   stand free on what is drawn and walk away (`wedged`).
 // - about: on every block a model stands for that its roof capped, a body walked from up to eight spots four ways:
 //   no step over 0.3 m in a frame, never ending inside a block, never a second or more inside one.
+// - inside: every 0.5 m of those blocks (not those switched off) under a drawn roof: a metre or more of room between
+//   the floor there and the roof's solid (or its slab) is room for a body inside the drawn building.
 // - ground: a ray down every 4 m of the walkable map: drawn ground more than 0.75 m off the floor, and holes.
 // - spots: spawns, portals and their pads, places, gnomes, route gates and checkpoints, the Zombies places' homes and
 //   stalls, pick-ups, bikes and parked cars: free for a body (or a car), no trunk within 0.3 m; with --compare, the
@@ -46,9 +48,9 @@ import { ARENAS } from '../../web/shared/arenas.mjs';
 import { launch, options, startGame } from './cdp.mjs';
 
 const o = options({ url: 'http://localhost:5200/', port: '9800', quality: 'high', json: '', only: '', strict: '', compare: '', shots: '', sample: '13' });
-const ALL = ['trees', 'walls', 'sides', 'roofs', 'about', 'ground', 'spots', 'drops'];
+const ALL = ['trees', 'walls', 'sides', 'roofs', 'about', 'inside', 'ground', 'spots', 'drops'];
 const only = new Set(o.only ? o.only.split(',') : ALL);
-const strict = new Set(['trees', 'roofs', 'about', 'spots', 'drops', ...(o.strict ? o.strict.split(',') : [])]);
+const strict = new Set(['trees', 'roofs', 'about', 'inside', 'spots', 'drops', ...(o.strict ? o.strict.split(',') : [])]);
 const read = (p) => JSON.parse(readFileSync(new URL(`../../web/${p}`, import.meta.url), 'utf8'));
 if (o.shots) mkdirSync(o.shots, { recursive: true });
 
@@ -681,7 +683,8 @@ function roofs(list) {
       if (!top) continue;
       n++;
       const d = top.y - floor; // +: drawn over the floor (sunk in), -: the floor over what is drawn (on air)
-      if (d > 0.5) {
+      if (d > 0.5 && top.y < W.roofLow(x, z)) excused.push({ why: 'a roof under ROOF_LOW over the ground (air: no ramp up an eave)', x: +x.toFixed(1), z: +z.toFixed(1), off: +d.toFixed(2) });
+      else if (d > 0.5) {
         sunk++;
         if (d > deep) [deep, at] = [d, [x, z]];
       }
@@ -831,6 +834,54 @@ function walkAbout() {
   return out;
 }
 
+/**
+ * Inside: every 0.5 m of every block a model stands for that its roof capped (not switched off), under a drawn roof: the
+ * room between the floor under the roof's solid (or under its slab, when it is open) and that solid. A metre or more is
+ * room for a body inside the drawn building, under its roof.
+ */
+function insideRoofs() {
+  const { W } = window.__c;
+  const inRing = (x, z, ring) => {
+    let hit = false;
+    for (let i = 0, j = ring.length - 1; i < ring.length; j = i++) {
+      const [xi, zi] = ring[i], [xj, zj] = ring[j];
+      if (zi > z !== zj > z && x < ((xj - xi) * (z - zi)) / (zj - zi) + xi) hit = !hit;
+    }
+    return hit;
+  };
+  const r = W.roofs;
+  const out = { blocks: 0, points: 0, rows: [], open: 0 };
+  for (const s of W.solids) {
+    // Not a block switched off (a lid wider than the walls: past them is under the eaves, outside).
+    if (!s.modelled || s.cap === undefined || s.off) continue;
+    out.blocks++;
+    let worst = null, n = 0;
+    for (let x = s.minX + 0.25; x < s.maxX; x += 0.5) for (let z = s.minZ + 0.25; z < s.maxZ; z += 0.5) {
+      if (!inRing(x, z, s.rings[0]) || !W.roofHere(x, z)) continue; // as the game asks (World.roofHere)
+      out.points++;
+      const top = r.top, under = r.open ? top - 0.1 : r.bottom, open = r.open;
+      // The floor under it: a block capped at the solid's bottom counts, and so does one up to the roof itself (a flat
+      // roof capped at its own height: its thin solid looks open, but the block fills the room).
+      let floor = W.groundAt(x, z, under + 0.02, 0).y;
+      for (const k of W.at(x, z)) {
+        const q = W.solids[k];
+        if (q.off || q.noFloor || !inRing(x, z, q.rings[0])) continue;
+        const y = W.hi(q, x, z);
+        if (y <= top + 0.02 && y > floor) floor = y;
+      }
+      const room = under - floor;
+      // A block reaching up through it (capped a little over the roof) fills it.
+      if (room < 1 || W.touching(x, z, floor + 0.1, under - 0.05, 0) !== null) continue;
+      n++;
+      if (open) out.open++;
+      if (!worst || room > worst.room) worst = { x: +x.toFixed(2), z: +z.toFixed(2), feet: +floor.toFixed(2), roof: +top.toFixed(2), room: +room.toFixed(2), open, block: s.mat };
+    }
+    if (worst) out.rows.push({ ...worst, points: n });
+  }
+  out.rows.sort((a, c) => c.points - a.points);
+  return out;
+}
+
 /** Ground: a ray down every 4 m of the walkable map; gaps over 0.75 m and holes. */
 function ground() {
   const { W, cast } = window.__c;
@@ -952,8 +1003,8 @@ try {
   await startGame(b, o.url, { village: true });
   if (o.quality) await b.evaluate(`briel.three.applyQuality(${JSON.stringify(o.quality)})`, false);
   await b.sleep(2000);
-  // The models' roofs come a little a frame once play has begun (world/modelRoofs.ts): wait till they are all in.
-  for (let last = -1, same = 0, i = 0; same < 4 && i < 240; i++) {
+  // The models' roofs come a little a frame once play has begun (world/modelRoofs.ts): wait till they are all in (6 s without a change: one model's first pass adds none).
+  for (let last = -1, same = 0, i = 0; same < 12 && i < 400; i++) {
     const n = await b.evaluate('briel.world.roofs?.count ?? 0');
     same = n === last ? same + 1 : 0;
     last = n;
@@ -1000,7 +1051,7 @@ try {
     // What the relaxed rules let pass, every run, so a fault hiding behind one shows.
     for (const why of new Set(excused.map((e) => e.why))) {
       const these = excused.filter((e) => e.why === why);
-      excuse(`${these.length} floor samples on air over ${why}`, these);
+      excuse(`${these.length} floor samples ${these[0].off > 0 ? "sunk into" : "on air over"} ${why}`, these);
     }
     excuse(`${own.length} roofs apart as own blocks (the church, the private homes)`, own);
     excuse(`${bare.length} roofs apart: blocks a model stands for with nothing of it drawn over them`, bare);
@@ -1008,6 +1059,11 @@ try {
   if (only.has('about')) {
     const r = await run(walkAbout);
     record('about', r.thrown + r.inside + r.stuck, `${r.walks} walks of 2.5 s from ${r.starts} spots on ${r.blocks} capped blocks: ${r.thrown} with a step over 0.3 m in a frame (biggest ${r.biggest} m), ${r.inside} ended inside a block, ${r.stuck} stuck a second or more`, r.ex, r);
+  }
+  if (only.has('inside')) {
+    const r = await run(insideRoofs);
+    const pts = r.rows.reduce((a, w) => a + w.points, 0);
+    record('inside', r.rows.length, `${r.rows.length} of ${r.blocks} capped blocks with room for a body under the drawn roof (${pts} of ${r.points} points, ${r.open} under an open slab)`, r.rows, r);
   }
   if (only.has('ground')) {
     const r = await run(ground);
