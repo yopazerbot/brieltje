@@ -17,6 +17,8 @@ export interface Arena {
   radius?: number;
   /** At the edge of a wood: the horde comes out from among its trees (shared/sparrenhof.mjs) */
   woods?: boolean;
+  /** In Smetlede: a ring (world x, z) added to the circle (the café at the church and round it) */
+  also?: [number, number][];
 }
 
 export const ARENAS: Arena[];
