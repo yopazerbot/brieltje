@@ -308,6 +308,7 @@ file's opening comment; run it again after adding, moving or removing a module.
 - `web/server/goals.test.mjs`: The server's own timing of the routes and noting of the gnomes (server/goals.mjs), on a fake clock and a fake store: every rule a page could try to get round.
 - `web/server/grenade.mjs`: Where a thrown grenade may go off (server/game.mjs boom).
 - `web/server/grenade.test.mjs`: Tests for grenade, e.g. "a blast point within an honest throw stays where the browser says".
+- `web/server/hallWatch.test.mjs`: The hall screen's watch views (src/watch.ts, admin/watch) in the Zombies duel's rooms (server/rooms.mjs upgrade, server/game.mjs watcher): only the admin's...
 - `web/server/helis.mjs`: The helicopters in the shared house (shared/heli.json: the machines and their pads; shared/heli.mjs: the flight).
 - `web/server/helis.test.mjs`: The helicopters in the shared house (server/helis.mjs): the server owns the machines and their four seats, holds every pose a pilot's page reports to the...
 - `web/server/holsterFight.test.mjs`: Holstering out of a fight (game.mjs state, inFight): an unarmed player (Explore) can't be hit, a rule kept for honest play.
