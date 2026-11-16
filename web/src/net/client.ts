@@ -102,6 +102,8 @@ export interface Rules {
   paintball?: boolean;
   /** Arriving by parachute: respawns on open ground, the start places and /parachute (shared/parachute.mjs); missing from an older server */
   parachute?: boolean;
+  /** Players may fly the helicopters (server/helis.mjs); missing from an older server */
+  heli?: boolean;
 }
 
 import type { ModeView } from '../ui/games';
@@ -126,6 +128,8 @@ export type ServerMsg =
       accountHomes?: string[];
       players: { name: string; color: string; role: string }[]; scores: Score[]; limit: number; round: { winner: string; ms: number } | null; items: boolean[];
       time: number; cats: number[]; vils?: [number, number][]; vilPaint?: [number, string, number][]; clowns?: ClownSpec[]; furniture: Piece[]; rules?: Rules; cars?: CarState[]; horses?: HorseState[]; bikes?: BikeState[]; mode?: ModeView;
+      /** The helicopters as the server has them (server/helis.mjs view), checked as they arrive (src/heliPilot.ts heliView) */
+      helis?: unknown[];
       /**
        * The weather and time of day for everyone (shared/moods.mjs), and the cycle Auto follows with the server's time;
        * missing from an older server. Checked where they are used (world/weather.ts).
@@ -136,6 +140,11 @@ export type ServerMsg =
   /** The admin changed the weather for everyone (`op`: set, skip or speed; `by`: who, a name for textContent only), with the cycle */
   | { t: 'mood'; mood: unknown; by?: string; op?: unknown; cycle?: unknown; time?: unknown }
   | { t: 'car'; car: CarState }
+  /**
+   * A helicopter (server/helis.mjs): someone got in or out, your answer, `home` it went back to its pad, `fix` the
+   * server put your step back (to its pilot alone). Checked as it arrives (src/heliPilot.ts heliView).
+   */
+  | { t: 'heli'; heli: unknown; home?: unknown; fix?: unknown }
   /** The spawned Teslas, after one was spawned, moved or taken away (each with its kind) */
   | { t: 'teslas'; list: CarState[] }
   | { t: 'rules'; rules: Rules }

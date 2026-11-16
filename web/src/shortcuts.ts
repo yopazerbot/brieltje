@@ -212,7 +212,7 @@ function heliGroup(k: (a: Action) => string): Group {
     rows: [
       [t('ctl.heliIn'), k('use')], [t('ctl.heliStart'), t('key.hold', { key: k('heliUp') })], [t('ctl.heliFly'), k('heliMove')], [t('ctl.heliTurn'), k('heliTurn')],
       [t('ctl.heliSide'), k('heliSide')], [t('ctl.heliUp'), k('heliUp')], [t('ctl.heliDown'), k('heliDown')], [t('ctl.heliView'), k('heliView')],
-      [t('ctl.heliLook'), k('heliLook')],
+      [t('ctl.heliLook'), k('heliLook')], [t('ctl.heliRide'), k('use')], [t('ctl.heliTake'), k('heliUp')],
     ].filter(([, v]) => v !== '') as [string, string][],
   };
 }

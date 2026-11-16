@@ -2,7 +2,8 @@ import * as THREE from 'three';
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
 import HELIS from '../../shared/heli.json';
-import { AWAY, awayInput, awayKeep, EV, HELI, heliBump, heliExit, heliPlace, heliStart, heliStep, type HeliEnv, type HeliInput, type HeliState } from '../../shared/heli.mjs';
+import { AWAY, awayInput, awayKeep, EV, HELI, heliBump, heliExit, heliHover, heliPlace, heliStart, heliStep, type HeliEnv, type HeliInput, type HeliState } from '../../shared/heli.mjs';
+import { netClock, Track } from '../net/track';
 import type { CrashHit, Obstacle } from './car';
 import type { World } from './collision';
 import { homeAt, inEndGarden } from '../../shared/homes.mjs';
@@ -29,6 +30,22 @@ import { windAt } from './wind';
  */
 
 export type HeliSpec = (typeof HELIS.machines)[number];
+/**
+ * A machine as the server has it (server/helis.mjs pub; a tick's entry through shared/wire.mjs readHeli): where, its
+ * heading, pitch and roll (rad), rotor (0 to 1), `g` 1 at rest, and who sits in its four seats (seat 0 flies).
+ */
+export interface HeliView {
+  id: string;
+  x: number;
+  y: number;
+  z: number;
+  yaw: number;
+  p: number;
+  r: number;
+  n: number;
+  g: number;
+  seats: (string | null)[];
+}
 /** A tree from the world's list: its foot, its height and its crown's radius. */
 export interface Crown {
   x: number;
@@ -65,6 +82,10 @@ const angle = (a: number) => Math.atan2(Math.sin(a), Math.cos(a));
 const LOOK_BACK = 2;
 /** The pilot's head: rad up, down (a landing spot below stays in view: it isn't eased back) and to each side */
 const HEAD = { up: 0.7, down: 1.05, yaw: 1.92 };
+/** A passenger's view from their own seat: the eye this far over the seat's hip point (m), and at most 100 degrees to either side */
+const SEAT_EYE = 0.76;
+const SEAT_YAW = (100 * Math.PI) / 180;
+const _eye = new THREE.Vector3();
 const _seat = new THREE.Quaternion();
 const _head = new THREE.Quaternion();
 const _euler = new THREE.Euler(0, 0, 0, 'YXZ');
@@ -383,10 +404,21 @@ export class Heli {
   readonly s: HeliState;
   /** Where it stands when nobody flies it */
   readonly park: { x: number; y: number; z: number; yaw: number };
-  /** Someone else flies it (later, together), or null */
+  /** Someone else flies it (together: seat 0 as the server has it), or null */
   pilot: string | null = null;
   /** You fly it */
   flown = false;
+  /**
+   * Together (src/heliPilot.ts): the server's. Unless you fly it, it is drawn where the ticks say, a little behind the
+   * server's clock (net/track.ts, as a car someone else drives): it neither falls nor goes home by itself here.
+   */
+  remote = false;
+  /** You ride along in it (a passenger seat, together) */
+  riding = false;
+  /** At rest as the server has it (its `g`) */
+  private rest = true;
+  private track = new Track<number>([false, false, false, true, false, false, false], 30); // x, y, z, yaw, pitch, roll, rotor; the data: at rest
+  private got = [0, 0, 0, 0, 0, 0, 0];
   /** s since you jumped out of it (it flies itself home: shared/heli.mjs AWAY), or null */
   away: number | null = null;
   /** After a jump and watched too long: flying off, away from `from` (the eye) and up through the ceiling (AWAY) */
@@ -674,9 +706,17 @@ export class Heli {
   /** You got in: the camera starts behind it. */
   enter(name = ''): void {
     this.flown = true;
+    this.riding = false;
     this.away = null;
     this.leaving = false;
     this.seats[0] = name;
+    this.track.clear(); // together: its states from before are not drawn again once you get out
+    this.ride();
+  }
+
+  /** In a passenger seat (together), or at the stick: the camera starts behind it. */
+  ride(): void {
+    if (!this.flown) this.riding = true;
     this.camHeading = this.s.yaw;
     this.camTilt = 0;
     this.lookPitch = 0;
@@ -714,7 +754,9 @@ export class Heli {
    */
   leave(home = false): void {
     this.flown = false;
+    this.riding = false;
     this.seats[0] = null;
+    this.track.clear(); // together: the server's next states start from here
     const s = this.s;
     const rotor = s.rotor;
     if (home && this.sendHome()) s.rotor = rotor; // its own pad (another machine there going to its own first)
@@ -757,6 +799,83 @@ export class Heli {
     this.leaving = false;
     heliPlace(this.s, x, y, z, yaw, rotor);
     this.camHeading = yaw;
+    this.pose();
+  }
+
+  /** Together, out of it with nothing changed: it stays where it is and the server's next states move it. */
+  release(): void {
+    if (this.flown) this.track.clear(); // its states from before you took the stick are not drawn again
+    this.flown = false;
+    this.riding = false;
+  }
+
+  /** Who sits in its seats, from the server (a name, null for an empty seat); seat 0 flies it. */
+  setSeats(seats: readonly (string | null)[]): void {
+    for (let i = 0; i < this.seats.length; i++) this.seats[i] = seats[i] ?? null;
+    this.pilot = this.seats[0];
+  }
+
+  /** Together: the floor the page has under a machine the server has at rest at height `y` (its skids on the page's own meadow, deck or roof). */
+  private settled(x: number, y: number, z: number): number {
+    const f = this.world.groundAt(x, z, y + 1, 0).y;
+    return Math.abs(f - y) < 1 ? f : y;
+  }
+
+  /** A tick (together): where it was at the server's time `t`, and who sits in it. The machine you fly keeps its own flight. */
+  sample(t: number, v: HeliView): void {
+    this.setSeats(v.seats);
+    this.rest = v.g === 1;
+    if (this.flown) return;
+    this.track.push(t, [v.x, v.y, v.z, v.yaw, v.p, v.r, v.n], v.g, false, !v.seats[0]);
+  }
+
+  /** There at once, as the server has it (joining, a flight home): at rest on the page's floor, else hanging there. */
+  snap(v: HeliView): void {
+    this.setSeats(v.seats);
+    this.rest = v.g === 1;
+    if (this.flown) return;
+    this.track.clear();
+    this.away = null;
+    this.leaving = false;
+    if (v.g === 1) heliPlace(this.s, v.x, this.settled(v.x, v.y, v.z), v.z, v.yaw, v.seats[0] ? v.n : 0);
+    else heliHover(this.s, v.x, v.y, v.z, v.yaw);
+    this.camHeading = v.yaw;
+    this.pose();
+  }
+
+  /** Your flight from the server's pose (taking the stick, or the server put your step back): at rest standing there, else a steady hover. */
+  takeOver(v: HeliView): void {
+    if (v.g === 1) heliPlace(this.s, v.x, this.settled(v.x, v.y, v.z), v.z, v.yaw, this.s.rotor);
+    else heliHover(this.s, v.x, v.y, v.z, v.yaw);
+    this.pose();
+  }
+
+  /**
+   * A frame of a machine somebody else flies, or nobody (together): its pose from the track; at rest as the server says,
+   * its floor the page's (the shadow, the height for the sound and the camera), its speed from how it moved. The rotor
+   * as its pilot has it; without one it runs down at rest and keeps turning while it hangs in the air.
+   */
+  private follow(dt: number): void {
+    const s = this.s;
+    if (this.track.at(netClock.time, this.got)) {
+      const [x, y0, z, yaw, pitch, roll, rotor] = this.got;
+      const rest = (this.track.shown ?? (this.rest ? 1 : 0)) === 1;
+      const y = rest ? this.settled(x, y0, z) : y0;
+      if (Math.hypot(x - s.x, y - s.y, z - s.z) > 30) s.vx = s.vy = s.vz = 0; // back on its pad, or just in sight: no speed from the jump
+      else if (dt > 0) {
+        const k = 1 - Math.exp(-dt * 8);
+        s.vx += ((x - s.x) / dt - s.vx) * k;
+        s.vy += ((y - s.y) / dt - s.vy) * k;
+        s.vz += ((z - s.z) / dt - s.vz) * k;
+      }
+      Object.assign(s, { x, y, z, yaw, pitch, roll, ground: rest });
+      if (this.pilot) s.rotor = rotor;
+    } else s.vx = s.vy = s.vz = 0;
+    if (!this.pilot) s.rotor = s.ground ? Math.max(0, s.rotor - Math.max(0, dt) / HELI.SPOOL_DOWN) : 1;
+    s.floor = this.world.groundAt(s.x, s.z, s.y + HELI.STEP_UP, 0).y;
+    s.h = Math.max(0, s.y - s.floor);
+    s.coll = s.ground ? 0 : 0.5;
+    s.engine = s.rotor > 0 && (!s.ground || !!this.pilot);
     this.pose();
   }
 
@@ -1028,16 +1147,20 @@ export class Heli {
   /**
    * The view from the pilot's seat (Eye_Pilot), turning and leaning with the machine; `tilt` and `pan` turn the head, up to
    * 40 degrees up, 60 down and 110 to each side (out of the side windows, down at a landing spot). Turned to the side it
-   * comes back ahead by itself; looking down it stays (a landing from the seat with a still mouse).
+   * comes back ahead by itself; looking down it stays (a landing from the seat with a still mouse). With `seat` (1 to 3,
+   * a passenger together) from that seat instead: SEAT_EYE over its hip point, at most SEAT_YAW to either side.
    */
-  cockpit(camera: THREE.PerspectiveCamera, dt: number, tilt: number, pan = 0): void {
+  cockpit(camera: THREE.PerspectiveCamera, dt: number, tilt: number, pan = 0, seat = 0): void {
     const d = Math.min(Math.max(dt, 0), 0.1);
+    const side = seat > 0 ? SEAT_YAW : HEAD.yaw;
     this.lookPitch = Math.max(-HEAD.down, Math.min(HEAD.up, this.lookPitch + tilt));
     const back = this.lookRound(d, pan, tilt);
-    this.lookYaw = Math.max(-HEAD.yaw, Math.min(HEAD.yaw, this.lookYaw));
+    this.lookYaw = Math.max(-side, Math.min(side, this.lookYaw));
     this.lookYaw -= this.lookYaw * back;
     this.body.updateMatrixWorld(true);
-    camera.position.copy(this.eye).applyMatrix4(this.body.matrixWorld);
+    const hip = seat > 0 ? this.seatAt[seat] : undefined;
+    const at = hip ? _eye.set(hip.x, hip.y + SEAT_EYE, hip.z) : this.eye;
+    camera.position.copy(at).applyMatrix4(this.body.matrixWorld);
     const s = this.s;
     // The head turns in the cabin: the machine's lean, then the look.
     _seat.setFromEuler(_euler.set(CALM ? 0 : -s.pitch, s.yaw, CALM ? 0 : -s.roll, 'YXZ'));
@@ -1070,14 +1193,17 @@ export class Heli {
    */
   update(dt: number, eye: THREE.Vector3): void {
     const s = this.s;
-    if (this.away !== null && dt > 0) this.away += dt;
-    if (!this.flown && dt > 0 && (s.rotor > 0 || !s.ground)) this.fly(dt, this.away === null ? {} : this.leaving ? this.flyOff(eye) : awayInput(this.away, this.keep));
-    // Left where nobody can reach it: back on its pad after a while.
-    this.lost = this.stranded ? this.lost + dt : 0;
-    if (this.lost > LOST_AFTER) this.sendHome(eye);
+    if (this.remote && !this.flown) this.follow(dt); // together: where the server has it (it decides the flights home)
+    else {
+      if (this.away !== null && dt > 0) this.away += dt;
+      if (!this.flown && dt > 0 && (s.rotor > 0 || !s.ground)) this.fly(dt, this.away === null ? {} : this.leaving ? this.flyOff(eye) : awayInput(this.away, this.keep));
+      // Left where nobody can reach it: back on its pad after a while.
+      this.lost = this.stranded ? this.lost + dt : 0;
+      if (this.lost > LOST_AFTER) this.sendHome(eye);
+    }
     const away = Math.hypot(s.x - eye.x, s.z - eye.z, s.y - eye.y);
     this.group.visible = this.ready && (away < (this.leaving ? AWAY.far : DRAW) || this.warmOn);
-    const farOn = !!this.far && !this.warmOn && away > (lowDetail ? FAR_LOW : FAR) && !this.flown;
+    const farOn = !!this.far && !this.warmOn && away > (lowDetail ? FAR_LOW : FAR) && !this.flown && !this.riding;
     if (this.far && this.near) {
       this.far.visible = farOn || this.warmOn;
       this.near.visible = !farOn;
@@ -1128,7 +1254,7 @@ export class Heli {
     // Its block: nobody walks through a machine that stands; while it flies it is no wall.
     this.world.setMoving(this.key, this.ready && s.ground ? this.footprint() : null, s.y, s.y + SIZE.boom.y1);
     // Its sound (world/heliSound.ts), a touch muffled from the pilot's seat.
-    this.noise.update({ x: s.x, y: s.y, z: s.z, rotor: this.group.visible ? r : 0, coll: s.coll, sink: -s.vy, air: Math.hypot(s.vx, s.vz), inside: this.flown && this.view === 'cockpit' });
+    this.noise.update({ x: s.x, y: s.y, z: s.z, rotor: this.group.visible ? r : 0, coll: s.coll, sink: -s.vy, air: Math.hypot(s.vx, s.vz), inside: (this.flown || this.riding) && this.view === 'cockpit' });
   }
 
   /** Dev: whether its sound loop is running. */

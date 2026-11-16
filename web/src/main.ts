@@ -13,7 +13,7 @@ import { FAR_PHONE, gpuName, guessFromName, loadMode, ORDER, pickQuality, PRESET
 import { HEIGHT as BODY_HEIGHT, Player, STEP_UP } from './player';
 import { Hud } from './ui/hud';
 import { Speedometer } from './ui/speedometer';
-import { HeliPilot } from './heliPilot';
+import { HeliPilot, heliView } from './heliPilot';
 import { heliModel, setHeliDetail } from './world/heli';
 import { fillScreen, input, joinPending, me, menu, onAccount, onSession, sessionAdmin, setAccount, startIntent } from './start';
 import { TouchControls } from './controls/touch';
@@ -68,7 +68,7 @@ import { CarPeople } from './world/carPeople';
 import { HeliPeople } from './world/heliPeople';
 import { DROP, dropFrom, dropStart, HOME_DROP } from '../shared/parachute.mjs';
 import { netClock } from './net/track';
-import { PROTO, readBike, readBrute, readCar, readHorse, readPlayer, readZombie, type Tick } from '../shared/wire.mjs';
+import { PROTO, readBike, readBrute, readCar, readHeli, readHorse, readPlayer, readZombie, type Tick } from '../shared/wire.mjs';
 import { sound } from './sound';
 import { music } from './music';
 import { footstep, surfaceOf } from './footsteps';
@@ -1331,6 +1331,7 @@ window.addEventListener('keydown', (e) => {
 
 // ---- Multiplayer: join on the start screen; the players (16 at once unless the admin allows fewer) share the house.
 const net = new Net();
+helis.send = (m) => net.send(m); // together the server decides who sits in the helicopters (src/heliPilot.ts)
 // ?diag: the connection, worked out again every second (ui/diag.ts).
 let netSeen = { ...net.counts, at: performance.now() };
 addDiag(() => {
@@ -1452,7 +1453,7 @@ function showOnline(): void {
 
 const $ = (id: string) => document.getElementById(id)!;
 /** House rules in multiplayer, set by the admin in the settings; alone everything is allowed. */
-const ANYTHING_GOES: Rules = { flying: true, spawn: true, names: true, maxPlayers: 16, guests: true, portals: true, travel: true, paintball: false, parachute: true };
+const ANYTHING_GOES: Rules = { flying: true, spawn: true, names: true, maxPlayers: 16, guests: true, portals: true, travel: true, paintball: false, parachute: true, heli: true };
 let rules = ANYTHING_GOES;
 const flyBox = $('set-flying') as HTMLInputElement;
 const spawnBox = $('set-spawn') as HTMLInputElement;
@@ -1463,6 +1464,7 @@ const portalsBox = $('set-portals') as HTMLInputElement;
 const travelBox = $('set-travel') as HTMLInputElement;
 const paintballBox = $('set-paintball') as HTMLInputElement;
 const parachuteBox = $('set-parachute') as HTMLInputElement;
+const heliBox = $('set-heli') as HTMLInputElement;
 // The admin can move extremely fast (Yoshi): their own choice, kept on this device; the server lets an admin that fast.
 const turboBox = $('set-turbo') as HTMLInputElement;
 try {
@@ -1495,6 +1497,7 @@ function applyRules(next: Rules): void {
   travelBox.checked = next.travel ?? true;
   paintballBox.checked = next.paintball ?? false;
   parachuteBox.checked = next.parachute ?? true;
+  heliBox.checked = next.heli ?? true;
   menu.setChildSafe(next.paintball ?? false); // child-friendly for everyone: Action plays as Paintball
   maxSlider.value = String(next.maxPlayers ?? 16);
   $('set-max-value').textContent = maxSlider.value;
@@ -1528,6 +1531,7 @@ ruleSwitch(portalsBox, 'portals');
 ruleSwitch(travelBox, 'travel');
 ruleSwitch(paintballBox, 'paintball');
 ruleSwitch(parachuteBox, 'parachute');
+ruleSwitch(heliBox, 'heli');
 maxSlider.addEventListener('input', () => ($('set-max-value').textContent = maxSlider.value));
 maxSlider.addEventListener('change', () => net.send({ t: 'rules', maxPlayers: Number(maxSlider.value) }));
 let wasTogether = false; // playing with the others until this account change
@@ -1562,7 +1566,7 @@ function followAccount(account: Me | null): void {
   // The main house, the bungalow and the end house open only with their codes, alone and together (src/world/homeLocks.ts).
   // The admin needs none; a new session (joining, another account) starts locked, as the server has no grant for it. A Zombies game alone stops.
   if (account) stopSolo();
-  if (account) helis.leaveNow(); // the helicopter flies alone only (for now), whatever the socket's state
+  if (account) helis.leaveNow(); // a new session: out of the helicopter (together the server's welcome says who sits where)
   // The admin sees every inside, playing together and playing alone (the session is the admin's then: the server
   // gives a home's inside to an admin session, and to no other without the code).
   homeLocks.setAdmin(account?.role === 'admin' || (!account && sessionAdmin()));
@@ -1600,6 +1604,7 @@ function followAccount(account: Me | null): void {
     avatars.clear();
     online.clear();
     for (const c of cars) c.driver = c.passenger = null; // alone, the cars are yours
+    helis.apart(); // and the helicopters (src/heliPilot.ts)
     horses.reset(); // and the horses back on their walks
     bikes.reset(); // and the bikes nobody else rides now
     combat.me = '';
@@ -2483,6 +2488,7 @@ async function travel(to: Destination, via: 'portal' | 'chat'): Promise<void> {
     return;
   }
   if (via === 'chat') {
+    if (helis.together && helis.aboard) return chat.system(() => t('srv.travelHeli')); // together the server refuses it too
     helis.leaveNow(); // the helicopter stays (set down where it was)
     if (riding) getOut(); // the driver keeps the car
     if (horses.mounted >= 0) getOffHorse();
@@ -2679,6 +2685,7 @@ net.onStatus = (text) => {
   netText = text;
   netStatus.textContent = text();
   games.setOffline(!net.connected && !!me); // the game's bar greys and stops while the connection is down
+  if (!net.connected) helis.apart(); // the helicopters the page's own again until the next welcome (src/heliPilot.ts)
   zombieWaveControl.update(games.view, waveAllowed());
   followMood();
 };
@@ -2731,7 +2738,7 @@ net.onMessage = (m: ServerMsg) => {
     case 'welcome':
       // Started somewhere else than the street: the server moves us there before our first update.
       welcomed = true;
-      helis.leaveNow(); // the helicopter flies alone only (for now): out of it, the machine set down below
+      helis.leaveNow(); // flying alone: out of it, the machine set down below (the server's machines follow below)
       hostNotice.freeze(false); // the server says so again if everyone is still frozen
       eveningTeam = null;
       watching = !!watch && m.watch === true; // a watcher: the server sends everyone, takes nothing (src/watch.ts)
@@ -2794,6 +2801,7 @@ net.onMessage = (m: ServerMsg) => {
       for (const s of m.cars ?? []) carById(s.id)?.setPose(s, true);
       horses.setAll(m.horses ?? [], m.you);
       bikes.setAll(m.bikes ?? [], m.you, true);
+      helis.join((m.helis ?? []).map(heliView).filter((v) => v !== null), m.you); // where the server has them, and who sits in them
       {
         const [n, max] = [m.players.length, rules.maxPlayers ?? 16];
         chat.system(() => t('chat.joinedAs', { name: m.you, n, max }));
@@ -2898,6 +2906,11 @@ net.onMessage = (m: ServerMsg) => {
       }
       if (!mine) c.setPose(m.car);
       else c.passenger = m.car.passenger ?? null; // who rides along with you (the ticks skip the car you drive)
+      break;
+    }
+    case 'heli': { // a helicopter (src/heliPilot.ts): who sits in it, your answer, back on its pad, your step put back
+      const v = heliView(m.heli);
+      if (v && helis.fromServer(v, { home: m.home === 1, fix: m.fix === 1 })) chat.system(() => t('srv.heliHome'));
       break;
     }
     case 'teslas': // one was placed, moved or taken away (and whoever sat in a car taken away got out first, in a 'car')
@@ -3201,6 +3214,10 @@ function onTick(m: Tick): void {
     const s = readCar(e);
     const c = carById(s.id);
     if (c && !(driving && c === car)) c.sample(m.st - s.age, s);
+  }
+  for (const e of m.e ?? []) {
+    const v = readHeli(e);
+    helis.fromServer(v, { tick: true, t: m.st - v.age }); // the one you fly keeps its own pose
   }
   horses.receive((m.h ?? []).map(readHorse), m.st, self);
   bikes.receive((m.k ?? []).map(readBike), m.st, self);
@@ -3574,16 +3591,17 @@ renderer.setAnimationLoop((now: number) => {
     // Dead: the view sinks to the floor; you can look around but not move or shoot.
     const dead = !combat.alive;
     player.down += ((dead ? 1 : 0) - player.down) * (1 - Math.exp(-dt * 5));
-    if (helis.aboard && (games.fenced || games.zombies)) helis.leaveNow(true); // a game puts everyone on their feet, the machine back on its pad
+    if (helis.aboard && !helis.together && (games.fenced || games.zombies)) helis.leaveNow(true); // alone a game puts you on your feet, the machine back on its pad (together the server does)
     if (helis.aboard) {
-      // In the helicopter (src/heliPilot.ts): it flies as you walk, turns as you look and rises as you fly on foot.
-      const hit = helis.fly(dt, frame, frame === polled ? input.heli : null, player.look(dt, frame), camera, avatars.obstacles());
+      // In the helicopter (src/heliPilot.ts): it flies as you walk, turns as you look and rises as you fly on foot; riding along (together) it takes you.
+      const hit = helis.piloting ? helis.fly(dt, frame, frame === polled ? input.heli : null, player.look(dt, frame), camera, avatars.obstacles())
+        : (helis.rideFrame(dt, frame, frame === polled ? input.heli : null, player.look(dt, frame), camera), 0);
       if (hit > 2.5) {
         rumble(Math.min(1, hit / 10), 0.6, 140);
         shake = Math.max(shake, Math.min(0.4, hit / 25));
       }
       const h = helis.heli!;
-      player.place(h.s.x, h.s.z, h.s.y, h.s.yaw, player.pitch);
+      player.place(h.s.x, h.s.z, h.s.y, helis.piloting ? h.s.yaw : helis.facing[0], helis.piloting ? player.pitch : helis.facing[1]);
       player.ground = world.groundAt(h.s.x, h.s.z, h.s.y + 0.1, 0.3);
     } else if (driving) {
       // At the wheel: W/S or R2/L2, steer with A/D or the left stick, Space or Cross for the handbrake.
@@ -3729,13 +3747,14 @@ renderer.setAnimationLoop((now: number) => {
     const nearBoard = !inCar && !onHorse && !dead && !nearCar && nearHorse < 0 && !nearBike && !target && !nearSint && !games.zombies && townBoard.near(player.x, player.z, player.feet);
     const carTaken = !!car.driver && car.driver !== me?.username;
     const seatFree = carTaken && !car.passenger;
-    // The helicopter (src/heliPilot.ts): E or Triangle beside it gets you in, alone and outside a game; out on a floor.
-    const nearHeli = !inCar && !onHorse && !dead && !nearCar && nearHorse < 0 && !nearBike && !target ? helis.near(player.x, player.z, player.feet) : null;
-    const heliWhy = helis.why(games.fenced || games.zombies, !!me || joinPending() || net.connected); // together, or on the way there: alone only for now
+    // The helicopter (src/heliPilot.ts): E or Triangle beside it gets you in (together the server says which seat), outside a game; out on a floor.
+    // On the way to the others (an account, a join pending, the welcome not come yet) nobody boards.
+    const nearHeli = !inCar && !onHorse && !dead && !nearCar && nearHorse < 0 && !nearBike && !target && (helis.together || !(me || joinPending() || net.connected)) ? helis.near(player.x, player.z, player.feet) : null;
+    const heliWhy = helis.why(games.fenced || games.zombies, rules.heli === false);
     if (helis.aboard && frame.usePressed) helis.leave(camera.position);
     else if (nearHeli && !heliWhy && frame.usePressed) {
       player.flying = false;
-      helis.board(nearHeli);
+      helis.ask(nearHeli);
     } else if ((driving || riding) && frame.usePressed) getOut();
     else if (onHorse && frame.usePressed) getOffHorse();
     else if (onBike && frame.usePressed) getOffBike();
@@ -3944,18 +3963,18 @@ renderer.setAnimationLoop((now: number) => {
     // Tell the others where you are: 20 times a second while anything changes, and once more when
     // it stops (so they see you stand where you stopped), then about three times a second. Each
     // carries this page's time for it (`ct`), so the others draw it at an even pace (shared/wire.mjs).
-    if (net.connected && !trip?.answer && !watching) { // a watch view has no player of its own (src/watch.ts)
+    if (net.connected && !trip?.answer && !watching && !helis.hush) { // a watch view has no player of its own (src/watch.ts); none while a helicopter's seat is asked for
       const r = horses.ridden;
       const k = bikes.ridden;
       const cm = (v: number) => Math.round(v * 100) / 100;
       const mrad = (v: number) => Math.round(v * 1000) / 1000;
-      const where = driving || riding
+      const where = helis.stateFields() ?? (driving || riding // in a helicopter: its pose at the stick, its place riding along (src/heliPilot.ts)
         ? { x: cm(car.x), y: cm(car.y), z: cm(car.z), yaw: mrad(car.yaw), pitch: 0, flying: false, c: false, d: true, s: cm(car.steer) }
         : r
           ? { x: cm(r.x), y: cm(r.y + r.jump + 1.64), z: cm(r.z), yaw: mrad(player.yaw), pitch: mrad(player.pitch), flying: false, c: true, hy: mrad(r.yaw), hs: cm(r.speed), hj: cm(r.jump) } // seated in the saddle
           : k
             ? { x: cm(k.x), y: cm(k.y), z: cm(k.z), yaw: mrad(k.yaw), pitch: mrad(player.pitch), flying: false, c: false } // on the bike: its place and its way
-          : { x: cm(player.x), y: cm(player.feet), z: cm(player.z), yaw: mrad(player.yaw), pitch: mrad(player.pitch), flying: player.flying, c: player.crouching, ...(player.chute !== null ? { pc: 1, ...(player.canopy !== null ? { po: 1 } : {}) } : {}) };
+          : { x: cm(player.x), y: cm(player.feet), z: cm(player.z), yaw: mrad(player.yaw), pitch: mrad(player.pitch), flying: player.flying, c: player.crouching, ...(player.chute !== null ? { pc: 1, ...(player.canopy !== null ? { po: 1 } : {}) } : {}) });
       const state = { t: 'state', ...where, armed: weapon.enabled, w: weapon.current, ...(weapon.enabled && weapon.aimAmount > 0.6 ? { a: 1 } : {}) }; // `a`: the gun at your eye, for how the others see you
       const key = JSON.stringify(state);
       const changed = key !== sent.key;
@@ -3987,7 +4006,7 @@ renderer.setAnimationLoop((now: number) => {
   for (const c of cars) c.update(dt, driving && c === car, camera.position);
   carPeople.update(dt, cars, driving || riding ? { car, passenger: riding } : null, myColour(), camera); // seated as the cars are drawn
   helis.update(dt, camera, !menu.open && combat.alive); // the helicopters and, flying, their instruments
-  heliPeople.update(dt, helis.machines, helis.heli ? { heli: helis.heli, seat: Math.max(0, helis.heli.seats.indexOf(me?.username ?? '')) } : null, myColour(), camera); // seated as the machines are drawn
+  heliPeople.update(dt, helis.machines, helis.heli ? { heli: helis.heli, seat: helis.seat ?? 0 } : null, myColour(), camera); // seated as the machines are drawn
   const cycling = driving || riding ? null : bikes.ridden;
   speedometer.update(!menu.open && combat.alive ? (driving || riding ? car.speed : cycling?.speed ?? null) : null, cycling ? BIKES_DATA.maxSpeed : car.spec.maxSpeed);
   combat.tick(dt);
