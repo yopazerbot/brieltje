@@ -645,3 +645,16 @@ test('a helicopter wreck: left alone by the machines\' own returns until its tim
   const told = s.sent.get('kim').find((m) => m.t === 'heli');
   assert.equal(told?.heli?.id, h.id, 'kim\'s page is told the machine as it is');
 });
+
+test('the host\'s freeze: a hit on a vehicle is refused as every other shot', () => {
+  const s = setup();
+  const ann = s.shooter('ann');
+  s.game.host.frozen = true;
+  s.at(200);
+  s.vhit('ann', ann);
+  assert.equal(s.hp(), CAR_HP, 'frozen: nothing taken off');
+  s.game.host.frozen = false;
+  s.at(200);
+  s.vhit('ann', ann);
+  assert.equal(s.hp(), CAR_HP - WEAPONS.rifle.body, 'let go: the hit counts');
+});

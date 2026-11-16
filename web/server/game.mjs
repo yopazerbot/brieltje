@@ -961,7 +961,7 @@ export class Game {
     }
     if (!m || typeof m !== 'object') return;
     if (m.t === 'state' ? ++player.states > 30 : ++player.others > 40) return;
-    if ((this.modes.noShooting || this.host?.holds(player)) && ['hit', 'rocket', 'nade', 'boom', 'shot', 'crack', 'vil'].includes(m.t)) return; // no fighting during a party game or a freeze
+    if ((this.modes.noShooting || this.host?.holds(player)) && ['hit', 'vhit', 'rocket', 'nade', 'boom', 'shot', 'crack', 'vil'].includes(m.t)) return; // no fighting during a party game or a freeze
     // A room changes nothing of the open world and holds its players at its place (server/rooms.mjs).
     if (this.room && ROOM_REFUSED.has(m.t)) return;
     if (this.room?.duel && (m.t === 'mode' || m.t === 'zwave')) return; // a duel room's game is the host's alone (server/duel.mjs)
