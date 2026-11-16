@@ -105,7 +105,13 @@ test('in the zombies\' grid at the church (keetPrisms): the café\'s own blocks 
   assert.ok(gone.length >= 1 && gone.every((p) => p.d === undefined && keet.contains(...mid(p))), `${gone.length} plain blocks of the café go`);
   assert.ok(village.filter((p) => p.d !== undefined && p.p[0].some(([x, z]) => keet.contains(x, z))).every((p) => out.includes(p)), 'the paving under it stays');
   assert.equal(out.length, village.length - gone.length + keet.prisms.length);
-  assert.ok(keet.prisms.every((p) => out.includes(p)));
+  // Its blocks as they are, but the seats: over a zombie's step (0.5 m), so they walk round the chairs.
+  const seats = keet.prisms.filter((p) => !out.includes(p));
+  assert.ok(seats.length >= 17 && seats.every((p) => p.m === 'c' && p.y1 - keet.floor >= 0.3 && p.y1 - keet.floor <= 0.5), `${seats.length} seats`);
+  const raised = out.slice(village.length - gone.length).filter((p) => !keet.prisms.includes(p));
+  assert.equal(raised.length, seats.length);
+  assert.ok(raised.every((p) => p.y1 - keet.floor > 0.5 && p.y1 - keet.floor < 0.6 && p.m === 'c'));
+  assert.ok(out.every((p) => !keet.contains(...mid(p)) || p.d !== undefined || p.m !== 'c' || p.y1 - keet.floor < 0.3 || p.y1 - keet.floor > 0.5), 'no seat a zombie steps on');
 });
 
 test('its relief for the zombies\' grid (keetRelief): never over the floor inside, as it was outside', () => {

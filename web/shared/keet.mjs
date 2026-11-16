@@ -81,15 +81,22 @@ export function makeKeet(shell, rooms) {
  * The village's blocks with the café's own in place of its plain ones, for the zombies' grid at the church (as
  * shared/sparrenhof.mjs cafePrisms does for the Sparrenhof): a standing block (not draped on the ground) whose middle lies
  * in the café's outline goes, as world/walkIn.ts replaces it on the page; the café's walked-into blocks come in. Its
- * windows come in as plain glass (seen through, never walked through: their sills are over a step).
+ * windows come in as plain glass (seen through, never walked through: their sills are over a step). A piece of furniture
+ * low enough to be a step for a zombie (a chair's seat: its top 0.3 to 0.5 m over the floor, shared/zombies.mjs LOW and
+ * STEP) is a little higher here, SEAT m, so they walk round the chairs as round the tables, never over them; a player
+ * standing on one is reached from beside it as on a table (Horde.reachOf).
  */
 export function keetPrisms(prisms, keet) {
   const mine = (p) => {
     const r = p.p[0];
     return keet.contains(r.reduce((t, q) => t + q[0], 0) / r.length, r.reduce((t, q) => t + q[1], 0) / r.length);
   };
-  return [...prisms.filter((p) => p.d !== undefined || !mine(p)), ...keet.prisms];
+  const seat = (p) => p.m === 'c' && Math.abs(p.y0 - keet.floor) < 0.01 && p.y1 - keet.floor >= 0.3 && p.y1 - keet.floor <= 0.5;
+  const own = keet.prisms.map((p) => (seat(p) ? { ...p, y1: keet.floor + SEAT } : p));
+  return [...prisms.filter((p) => p.d !== undefined || !mine(p)), ...own];
 }
+/** m: a seat's top in the zombies' grid (keetPrisms), just over their step */
+const SEAT = 0.55;
 
 /**
  * The relief (`height`, over `base`: the bare ground's height on it) for the zombies' grid round the café: inside its

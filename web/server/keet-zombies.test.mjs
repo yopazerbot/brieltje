@@ -282,7 +282,7 @@ test('a wave at the church: zombies reach a player in a toilet behind two shut d
   }
   assert.ok(swipeAt >= 0 && swipeAt < 8000 + 90000, `a swipe in the toilet after ${swipeAt} ms`);
   assert.ok(shoved.has('keet-toilet2') && shoved.has('keet-toilets'), `doors shoved: ${[...shoved]}`);
-  assert.ok(worst < 0.5, `inside the café no zombie walks higher than a chair: ${worst.toFixed(2)} m`);
+  assert.ok(worst < 0.4, `inside the café no zombie walks on a chair or higher (the back door's steps aside): ${worst.toFixed(2)} m`);
   assert.ok(outAt >= 0 && outAt - swipeAt < 60000, `out of the café after the player within ${outAt - swipeAt} ms`);
   t.diagnostic(`first swipe in the toilet ${swipeAt} ms after the start (the first break is ${8000} ms); all out ${outAt - swipeAt} ms after; doors shoved ${[...shoved].join(' ')}`);
 });
