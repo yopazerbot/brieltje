@@ -5,6 +5,7 @@ file's opening comment; run it again after adding, moving or removing a module.
 
 ## web/src
 
+- `web/src/aoReach.ts`: How far the ambient occlusion (GTAO, High and Ultra) reaches: in full up to fadeFrom metres from the eye, gone at fadeTo, and not worked out at all past it.
 - `web/src/bloom.ts`: A soft glow round bright light: the street lamps and the lit windows at night, the sun's glints on cars and water, muzzle flashes, the portals.
 - `web/src/controls/aimAssist.test.mjs`: Tests for aimAssist, e.g. "range: full to 25 m, fading out to nothing at 60 m".
 - `web/src/controls/aimAssist.ts`: A subtle aim assist for controller players, against zombies only (Yoshi: "maybe a subtle aim assist for controller players?").

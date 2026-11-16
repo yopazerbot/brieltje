@@ -6,6 +6,7 @@ import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 import { SMAAPass } from 'three/addons/postprocessing/SMAAPass.js';
 import { gradedOutput } from './grade';
 import { BloomPass } from './bloom';
+import { aoReach } from './aoReach';
 import { AimAssist } from './controls/aimAssist';
 import { NO_INPUT } from './controls/input';
 import { onPadLabels } from './controls/padFamily';
@@ -617,6 +618,7 @@ composer.addPass(new RenderPass(scene, camera));
 const ao = new GTAOPass(scene, camera, window.innerWidth, window.innerHeight);
 ao.updateGtaoMaterial({ radius: 0.6, distanceExponent: 1.5, thickness: 1.5, scale: 1.2, samples: 12 });
 ao.blendIntensity = 0.9;
+aoReach(ao, 150, 300); // none far off, where the depth is too coarse for it and it speckled the land (src/aoReach.ts)
 // The ambient occlusion reads the depth the scene was just drawn with, and works the surfaces' normals out from it.
 // It used to draw the whole scene a second time for its own depth and normals (about 400 draw calls and 1.4 million
 // triangles on High, about a quarter of the frame on a weak graphics chip). This depth is also the true one: a wire
