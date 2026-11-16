@@ -686,6 +686,7 @@ function placeShadow(): void {
 function applyQuality(q: Quality): void {
   quality = q;
   preset = PRESETS[q];
+  keetLife.setLights(!phone && q !== 'low'); // the café's two lights: Medium and up only (world/keet.ts)
   ao.enabled = preset.ao !== 'off';
   smaa.enabled = preset.smaa;
   sun.castShadow = preset.shadowMap > 0;
@@ -721,9 +722,9 @@ function applyQuality(q: Quality): void {
   dynScale = 1;
   resize();
 }
+// The café's light (world/keet.ts): its two real lights are in the scene on Medium and up only (applyQuality), never on a phone.
+const keetLife = new KeetLife(scene, indoorLight);
 applyQuality(quality);
-// The café's light (world/keet.ts): its two real lights made now, before any shader is compiled; none on Low or a phone.
-const keetLife = new KeetLife(scene, indoorLight, !phone && quality !== 'low');
 
 let slowTime = 0;
 let fastTime = 0;
@@ -4021,7 +4022,7 @@ renderer.setAnimationLoop((now: number) => {
   sound.listen(camera);
   roomSound.update(dt, inside, player.ground.name, camera.position);
   weather.update(dt, camera.position, inside); // the rain round the eye (none indoors), the street lamps
-  keetLife.update(dt, camera.position, mood.night, !phone && quality !== 'low', () => villagers.states().some((v) => v.what === 'cafe' && v.mode !== 'down')); // the café's light and sounds (world/keet.ts)
+  keetLife.update(dt, camera.position, mood.night, !phone && quality !== 'low'); // the café's light and sounds (world/keet.ts)
   setWindowNight(mood.night); // lights in about half of the village's rooms at night (world/windows.ts)
   player.lookScale = camera.fov / weapon.baseFov; // slower turning while zoomed in (not faster for the car's wider view)
   glass.update(dt);
@@ -4455,11 +4456,12 @@ async function buildVillage(): Promise<void> {
   if (keet) { // the café at the church: its shell's lump stands in until its rooms come, in idle time once playing
     keet.install(world, doors, glass);
     scene.add(keet.group);
-    void keetLife.attach(keet, scene, (x, z, from) => world.groundAt(x, z, from, 0).y);
+    void keetLife.attach(keet, scene, (x, z, from) => world.groundAt(x, z, from, 0).y, villagers);
     data.groundCuts.cells.push(...keet.groundCuts.cells);
     data.groundCuts.tris.push(...keet.groundCuts.tris);
     keetRooms(keet, { world, doors, glass, prepare: precompile, after: playing, done: (names, floors, whole) => {
       minimap.addBuilding(whole.prisms as Prism[], whole.floor, whole.contains); // its own floor on the minimap while in it
+      keetLife.roomsIn(); // its sounds made in idle time
       for (const n of names) roomNames.add(n);
       keetFloors = floors;
       indoorsAt = makeIndoors([...house.prisms, ...insides.prisms(), ...keetFloors, ...(house.surroundings?.prisms ?? [])], [...roomNames]);

@@ -670,6 +670,12 @@ export class Villagers {
     return out;
   }
 
+  /** Whether any of the café's people (shared/villagers.mjs, `cafe`) is out and shown now: the café's murmur (world/keet.ts). */
+  cafeIn(): boolean {
+    for (const v of this.order) if (v.def.what === 'cafe' && v.fade > 0 && !v.away && v.downAt < 0) return true;
+    return false;
+  }
+
   /** Where villager `id` stands (its feet), or null when it isn't near. */
   where(id: number): THREE.Vector3 | null {
     const v = this.active.get(id);
