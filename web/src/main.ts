@@ -82,6 +82,7 @@ import { GUN_PAINT, paintball, setPaintball, weaponName as shownWeapon } from '.
 import { VILLAGER_HIT_MAX, VILLAGER_HIT_MS, VILLAGER_PAINT_S, VILLAGER_SHOT_MAX } from '../shared/villagers.mjs';
 import { Decals } from './world/decals';
 import { Effects, type Spot } from './world/effects';
+import { VehicleWear } from './world/vehicleWear';
 import { GRENADE, Grenades } from './world/grenades';
 import { Pickups } from './world/pickups';
 import { Goals } from './world/goals';
@@ -958,6 +959,19 @@ const helis = new HeliPilot(world, heliCrowns, (x, z) => treesLeftOut.has(treeKe
 }, at: () => (player.jumped ? { x: player.x, z: player.z, feet: player.feet } : null) });
 scene.add(helis.group);
 helis.chuteRule = () => rules.parachute !== false; // together, the jump only with the admin's parachute rule on
+// Cars and helicopters taking damage in a team match (world/vehicleWear.ts; the rules: server/vehicleDamage.mjs).
+const vehicleWear = new VehicleWear(effects, (k, id) => {
+  if (k === 'car') {
+    const c = carById(id);
+    return c ? { group: c.group, x: c.x, y: c.y, z: c.z, yaw: c.yaw, riders: [c.driver, c.passenger] } : null;
+  }
+  const h = helis.machines.find((q) => q.spec.id === id);
+  return h ? { group: h.group, x: h.s.x, y: h.s.y, z: h.s.z, yaw: h.s.yaw, riders: [...h.seats] } : null;
+}, document.getElementById('hud')!);
+vehicleWear.live = () => net.connected && games.active && !games.peaceful && !games.zombies;
+vehicleWear.friendly = (name) => name === me?.username || games.friend(name);
+vehicleWear.send = (msg) => net.send(msg);
+vehicleWear.onHit = () => combat.hitMarker(false);
 let bikeWanted: string | null = null; // asked the server for this bike
 // What knocks the street's loose things about: the cars and bikes being ridden (yours and the others', as drawn), and you on foot.
 // One list and one record per mover, kept from frame to frame (no new objects every frame).
@@ -1260,6 +1274,7 @@ const HOLE_SIZE: Partial<Record<WeaponId, number>> = { pistol: 0.9, rifle: 1, sh
 weapon.onImpact = (point, normal, material, on, w) => {
   effects.shot(point, normal, material, on, HOLE_SIZE[w] ?? 1);
   looseProps.shot(point, normal, on); // a post rings, a bin rocks
+  vehicleWear.shot(on, w); // a car or a helicopter in a team match: the server is told
 };
 weapon.onPaintball = (from, to, paint) => effects.paintShot(from, to, paint);
 weapon.onEject = (w) => effects.casing(camera, w, weapon.aimAmount);
@@ -1711,7 +1726,7 @@ function hitAngle(by: string): number | null {
   if (!at) return null;
   return Math.atan2(-(at.x - player.x), -(at.z - player.z)) - player.yaw;
 }
-const weaponName = (w: string) => (w === 'grenade' || w in SPECS ? shownWeapon(w as WeaponId | 'grenade') : w === 'claymore' ? mineName() : w === 'turret' ? t('loot.turret') : '');
+const weaponName = (w: string) => (w === 'grenade' || w in SPECS ? shownWeapon(w as WeaponId | 'grenade') : w === 'claymore' ? mineName() : w === 'turret' ? t('loot.turret') : w === 'wreck' ? t(paintball.on ? 'veh.feedPaint' : 'veh.feed') : '');
 /** A claymore's name, or in paintball a paint mine's. */
 const mineName = () => t(paintball.on ? 'loot.paintMine' : 'loot.claymore');
 
@@ -2818,6 +2833,7 @@ net.onMessage = (m: ServerMsg) => {
       horses.setAll(m.horses ?? [], m.you);
       bikes.setAll(m.bikes ?? [], m.you, true);
       helis.join((m.helis ?? []).map(heliView).filter((v) => v !== null), m.you); // where the server has them, and who sits in them
+      vehicleWear.reset(m.vdmg); // those damaged in a team match
       {
         const [n, max] = [m.players.length, rules.maxPlayers ?? 16];
         chat.system(() => t('chat.joinedAs', { name: m.you, n, max }));
@@ -2849,7 +2865,11 @@ net.onMessage = (m: ServerMsg) => {
     }
     case 'blast':
       if (m.w === 'grenade') grenades.landed(m.by);
-      explode(new THREE.Vector3(m.x, m.y, m.z), m.by === me?.username, m.w === 'grenade' ? 'grenade' : 'bazooka');
+      // 'wreck': a destroyed car or helicopter (server/vehicleDamage.mjs), a grenade's size; nothing of it is this page's to tell.
+      explode(new THREE.Vector3(m.x, m.y, m.z), m.by === me?.username && m.w !== 'wreck', m.w === 'grenade' || m.w === 'wreck' ? 'grenade' : 'bazooka');
+      break;
+    case 'vdmg':
+      if (vehicleWear.set(m) === me?.username) combat.hitMarker(true); // you brought it down
       break;
     case 'nade': {
       const from = new THREE.Vector3(m.x, m.y, m.z);
@@ -4028,6 +4048,7 @@ renderer.setAnimationLoop((now: number) => {
   carPeople.update(dt, cars, driving || riding ? { car, passenger: riding } : null, myColour(), camera); // seated as the cars are drawn
   helis.update(dt, camera, !menu.open && combat.alive); // the helicopters and, flying, their instruments
   heliPeople.update(dt, helis.machines, helis.heli ? { heli: helis.heli, seat: helis.seat ?? 0 } : null, myColour(), camera); // seated as the machines are drawn
+  vehicleWear.update(dt, camera.position, driving || riding ? { k: 'car', id: car.id } : helis.heli ? { k: 'heli', id: helis.heli.spec.id } : null); // smoke, fire, wrecks, your vehicle's health
   const cycling = driving || riding ? null : bikes.ridden;
   speedometer.update(!menu.open && combat.alive ? (driving || riding ? car.speed : cycling?.speed ?? null) : null, cycling ? BIKES_DATA.maxSpeed : car.spec.maxSpeed);
   combat.tick(dt);
@@ -4921,6 +4942,8 @@ if (import.meta.env.DEV) {
       /** Where the ears are for the echo, the echo's send and the walls' cutoff now (world/acoustics.ts). */
       acoustics: () => ({ room: roomSound.room, ...sound.echoState(), walls: sound.wallsCutoff(), ctx: sound.context()?.state ?? null, world: sound.worldLevel() }),
       bells: roadLife.bells,
+      /** A car's or helicopter's damage as the server would tell it (world/vehicleWear.ts): vehicleWear.set({ k: 'car', id: 'tesla', hp: 30, st: 1 }). */
+      vehicleWear,
       tiles,
       home,
       homeStreet,

@@ -411,6 +411,40 @@ export class Effects {
     });
   }
 
+  /**
+   * A damaged car's or helicopter's smoke (world/vehicleWear.ts): one puff rising from `at`, carried by the breeze.
+   * `dark` 0 to 1: grey from a hurt engine to black over a fire. No light: the shared particles only.
+   */
+  vehicleSmoke(at: THREE.Vector3, dark: number, size = 1): void {
+    const wind = windAt(at.x, at.z);
+    this.throw(at, UP, 1, 0.9, 0.35, (s) => {
+      s.vx += wind.x * 0.6;
+      s.vz += wind.z * 0.6;
+      Object.assign(s, { life: 2.4 + Math.random() * 1.8, size0: 0.45 * size, size1: (2.6 + 1.6 * dark) * size, alpha: 0.45 + 0.35 * dark, cell: PARTICLE.puff, drag: 1.2, gravity: -1.1, spin: (Math.random() - 0.5) * 0.8 });
+      s.c0.set(dark > 0.5 ? '#26221f' : '#6d6862');
+      s.c1.set(dark > 0.5 ? '#4f4a45' : '#a29d96');
+    });
+  }
+
+  /** A burning vehicle's flame licking up from `at` (world/vehicleWear.ts): short, additive, its colour far under 65504. */
+  vehicleFlame(at: THREE.Vector3, size = 1): void {
+    this.throw(at, UP, 1, 1.6, 0.25, (s) => {
+      const hot = 0.8 + Math.random() * 0.4;
+      Object.assign(s, { life: 0.4 + Math.random() * 0.35, size0: 0.85 * size, size1: 0.2 * size, alpha: 0.9, cell: PARTICLE.puff, drag: 2, gravity: -3, spin: (Math.random() - 0.5) * 4 });
+      s.c0.setRGB(3 * hot, 1.4 * hot, 0.35 * hot);
+      s.c1.setRGB(1.2, 0.25, 0.04);
+    }, true);
+  }
+
+  /** The child-friendly look: a blob of paint dripping off a "hit" vehicle (world/vehicleWear.ts), in `color`. */
+  paintDrip(at: THREE.Vector3, color: THREE.Color): void {
+    this.throw(at, UP, 1, 0.6, 0.6, (s) => {
+      Object.assign(s, { life: 0.7 + Math.random() * 0.4, size0: 0.14, size1: 0.1, alpha: 1, cell: PARTICLE.chip, drag: 0.4, gravity: 9.8, spin: (Math.random() - 0.5) * 6 });
+      s.c0.copy(color);
+      s.c1.copy(color);
+    });
+  }
+
   /** A bazooka rocket from `from` to `to` with a smoke trail (in paintball the cannon's paint ball); `onArrive` when it gets there. */
   rocket(from: THREE.Vector3, to: THREE.Vector3, speed: number, onArrive?: () => void): void {
     const mesh = new THREE.Group();

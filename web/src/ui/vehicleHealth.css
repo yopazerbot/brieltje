@@ -1,0 +1,25 @@
+/* The health of the car or helicopter you sit in, during a team match (world/vehicleWear.ts): small, over the bottom middle. */
+#vehicle-health {
+  position: absolute;
+  left: 50%;
+  bottom: calc(92px + env(safe-area-inset-bottom, 0px));
+  transform: translateX(-50%);
+  min-width: 150px;
+  padding: 6px 10px 7px;
+  border-radius: 10px;
+  background: rgba(22, 32, 42, 0.78);
+  color: var(--ink);
+  font-size: 13px;
+  font-weight: 700;
+  text-align: center;
+  pointer-events: none;
+}
+#vehicle-health[hidden] { display: none; }
+.vh-track { height: 5px; margin-top: 5px; overflow: hidden; border-radius: 3px; background: rgba(245, 239, 228, 0.16); }
+.vh-track i { display: block; height: 100%; background: #7bd389; transform-origin: left; transition: transform 0.2s linear, background 0.2s; }
+#vehicle-health.smoke .vh-track i { background: #f0b44c; }
+#vehicle-health.fire .vh-track i { background: #ef5b4c; }
+#vehicle-health.fire .vh-label { animation: vh-blink 0.8s steps(2, start) infinite; }
+@keyframes vh-blink { to { visibility: hidden; } }
+/* On a phone the touch controls hold the bottom: the bar goes to the top, under the scores. */
+body.touch #vehicle-health { top: calc(56px + env(safe-area-inset-top, 0px)); bottom: auto; min-width: 120px; font-size: 12px; }

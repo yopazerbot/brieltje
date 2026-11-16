@@ -118,6 +118,18 @@ import type { BikeState } from '../world/bike';
  */
 type Coded = { code?: unknown; args?: unknown };
 
+/** A vehicle's damage as the server tells it (server/vehicleDamage.mjs). */
+export interface VehicleDamageMsg {
+  k: unknown;
+  id: unknown;
+  hp: unknown;
+  st: unknown;
+  by?: unknown;
+  x?: unknown;
+  y?: unknown;
+  z?: unknown;
+}
+
 export type ServerMsg =
   | {
       /** `proto`: the server's protocol (shared/wire.mjs); a different one means this page is out of date (or the server is) */
@@ -136,6 +148,8 @@ export type ServerMsg =
        */
       mood?: unknown;
       moodCycle?: { cycle?: unknown; time?: unknown };
+      /** The cars and helicopters not whole now in a team match (server/vehicleDamage.mjs view), as `vdmg` tells them */
+      vdmg?: VehicleDamageMsg[];
     }
   /** The admin changed the weather for everyone (`op`: set, skip or speed; `by`: who, a name for textContent only), with the cycle */
   | { t: 'mood'; mood: unknown; by?: string; op?: unknown; cycle?: unknown; time?: unknown }
@@ -147,6 +161,12 @@ export type ServerMsg =
   | { t: 'heli'; heli: unknown; home?: unknown; fix?: unknown }
   /** The spawned Teslas, after one was spawned, moved or taken away (each with its kind) */
   | { t: 'teslas'; list: CarState[] }
+  /**
+   * A car or a helicopter took damage in a team match (server/vehicleDamage.mjs): `hp` in whole percent, `st` its stage
+   * (0 whole, 1 smoke, 2 fire, 3 wreck, 4 gone); on its destruction `by` (a name, for textContent only) and where. Checked as
+   * it arrives (world/vehicleWear.ts).
+   */
+  | ({ t: 'vdmg' } & VehicleDamageMsg)
   | { t: 'rules'; rules: Rules }
   | ({ t: 'travel'; name: string; to: string; ok: boolean; car?: string | null; text?: string } & Coded)
   /** A code-locked home is shut to this player (server/homeGate.mjs): they stood inside it, or tried to walk in, without the right. */
