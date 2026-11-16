@@ -63,6 +63,7 @@ import { Football } from './football.mjs';
 import { GoalTracker, readGoals } from './goals.mjs';
 import { blastPoint } from './grenade.mjs';
 import { HELI_DOWN, HELI_SPEED, Helis } from './helis.mjs';
+import { VehicleDamage } from './vehicleDamage.mjs';
 import { Host } from './host.mjs';
 import { monitor } from './monitor.mjs';
 import { words } from './words.mjs';
@@ -380,7 +381,7 @@ const ROOM_REFUSED = new Set(['furn', 'tesla', 'clown', 'rules', 'mood', 'moodsk
  * when a type Game.handle reads is in neither list.
  */
 export const HELI_REFUSED = new Set(['hit', 'rocket', 'nade', 'boom', 'shot', 'crack', 'vil', 'cat', 'clownhit', 'zhit', 'zitem', 'zbuy', 'revive', 'pickup', 'coin', 'tag', 'kickball',
-  'glass', 'door', 'furn', 'tesla', 'clown', 'claymore', 'turret', 'stakes', 'placement', 'car', 'horse', 'bike', 'bell', 'spawn', 'chute', 'unstuck']);
+  'glass', 'door', 'furn', 'tesla', 'clown', 'claymore', 'turret', 'stakes', 'placement', 'car', 'horse', 'bike', 'bell', 'spawn', 'chute', 'unstuck', 'vhit']);
 
 /** The ids a `door` message may carry: the house data's and the end house's door ids (letters, digits, dots and dashes), at most 40 characters. */
 export const DOOR_ID = /^[A-Za-z0-9.-]{1,40}$/;
@@ -397,6 +398,11 @@ export class Game {
   /** The helicopters (server/helis.mjs): their seats, poses and flights home, made on first use. */
   get helis() {
     return (this._helis ??= new Helis(this, { ground: (x, z) => HOUSE.ground + TERRAIN.height(x, z), mono, calmMs: HURT_CALM_MS }));
+  }
+
+  /** Cars and helicopters taking damage in a team match (server/vehicleDamage.mjs), made on first use. */
+  get vehicleDamage() {
+    return (this._vehicleDamage ??= new VehicleDamage(this, { weapons: WEAPONS, grenade: GRENADE, cars: CARS, carSpec, heli: shared('heli.json').size, maxRange: MAX_HIT_RANGE, mono }));
   }
 
   /** The cars' seats (server/carSeats.mjs): passengers pinned to the car, getting out beside it, the refused set. */
@@ -681,7 +687,7 @@ export class Game {
       time: now, cats: this.catsDown.map((until) => Math.max(0, until - now)), ...this.villagersView(now), clowns: this.clownList(now, player), furniture: this.furnitureFor(player), rules: this.shownRules(),
       scores: this.scoreList(), limit: KILL_LIMIT, items: this.items.map((it) => now >= it.until), round: this.roundOver ? { winner: this.roundOver.winner, ms: this.roundOver.until - now } : null,
       cars: Object.values(this.cars).filter((c) => this.seenBy(player, 'car', c)), horses: this.horses.filter((h) => this.seenBy(player, 'horse', h)), bikes: Object.values(this.bikes).filter((k) => this.seenBy(player, 'bike', k)), helis: this.helis.view().filter((e) => this.seenBy(player, 'heli', e)), mode: this.modeFor(player, now), mood: this.mood, moodCycle: this.moodView(now),
-      room: this.roomView(),
+      room: this.roomView(), vdmg: this.vehicleDamage.view(player),
     };
   }
 
@@ -1281,6 +1287,7 @@ export class Game {
       // No driving in the Zombies game: a car is out of the zombies' reach, and nobody runs them over at a family game.
       if (m.op === 'in' && this.modes.zombies) return this.send(player.ws, { t: 'system', text: 'No driving during Zombies.', code: 'zNoCar' });
       if (m.op === 'in' && this.fightRefused(player, 'car', Object.hasOwn(this.cars, m.id) ? this.cars[m.id] : null, now)) return;
+      if (m.op === 'in' && Object.hasOwn(this.cars, m.id) && this.vehicleDamage.out('car', m.id)) return this.tellThing(player, 'car', this.cars[m.id]); // a wreck: nobody gets in
       if (m.op === 'in' && Object.hasOwn(this.cars, m.id)) this.enterCar(name, player, this.cars[m.id]);
       else if (m.op === 'out') this.releaseCar(name);
     } else if (m.t === 'tesla') {
@@ -1304,6 +1311,7 @@ export class Game {
       // A helicopter (server/helis.mjs: in, out, take the stick, jump): at most three a second, shared with the cars, horses and bikes.
       if (now < (player.nextCar || 0)) return;
       player.nextCar = now + 300;
+      if (m.op === 'in' && this.vehicleDamage.out('heli', m.id)) return; // a wreck: nobody gets in
       this.helis.ask(name, player, m, now);
     } else if (m.t === 'bell') {
       // A bike's bell: only from its rider, at most every BELL_MS. The others ring it where the server has
@@ -1321,6 +1329,8 @@ export class Game {
     } else if (m.t === 'hit' && typeof m.target === 'string' && Object.hasOwn(WEAPONS, m.w)) {
       const count = (v) => (Number.isInteger(v) && v >= 0 ? v : 0);
       this.hit(name, player, m.target, m.w, count(m.body), count(m.head), now);
+    } else if (m.t === 'vhit') {
+      this.vehicleDamage.hit(name, player, m, now); // a shot met a car or a helicopter (server/vehicleDamage.mjs checks it all)
     } else if (m.t === 'mode' && this.room && (m.kind === 'zombies' || m.kind === 'free')) {
       // In a room only Zombies, at the room's place. Anyone in it may start a game when none is on; stopping
       // one that runs is for players with an account and the admin (a guest can't end it for everyone).
@@ -2379,7 +2389,7 @@ export class Game {
 
   /** A rocket's or grenade's blast: everyone near it is hurt by distance, the shooter spared. */
   blast(name, at, w = 'bazooka', cover = new Set(), act = null) {
-    const { radius, damage } = w === 'grenade' ? GRENADE : WEAPONS.bazooka.rocket;
+    const { radius, damage } = w === 'grenade' || w === 'wreck' ? GRENADE : WEAPONS.bazooka.rocket; // 'wreck': a destroyed vehicle's (server/vehicleDamage.mjs)
     const now = Date.now();
     // The thrower's browser has set off its own grenade already.
     // Inside a home: to those who may see in; the thrower's name only to those who could see them throw (`act`).
@@ -2387,6 +2397,7 @@ export class Game {
     const shooter = this.players.get(name);
     if (shooter) shooter.lastBlast = { x: at.x, y: at.y, z: at.z, at: now, w }; // for the villagers and cats its page says it caught (villagersHit, catInReach)
     if (!shooter || this.roundOver) return;
+    this.vehicleDamage.blast(name, at, w, now); // cars and helicopters in a team match (server/vehicleDamage.mjs)
     // Zombies caught in it lose health (server/zombies.mjs), as the strongmen do.
     this.modes.zombies?.blast(name, at, radius, bruteDamage(w, WEAPONS), w, now); // on its floor (at.y)
     // Strongmen caught in it lose health too (less at the edge of the blast; they're big). Not during
@@ -2805,6 +2816,7 @@ export class Game {
     }
     this.modes.tick(now, TICK_MS);
     this.bikeHits.home(); // a knocked bike left lying goes back to its spot
+    this.vehicleDamage.tick(now); // a burning vehicle burns down, a wreck goes and comes back (server/vehicleDamage.mjs)
     this.helis.tick(now); // a game or the rule off empties the helicopters; one left without a pilot goes home (server/helis.mjs)
     this.pings(); // the watch views too, when nobody plays (they would fall silent)
     if (!this.players.size) return;

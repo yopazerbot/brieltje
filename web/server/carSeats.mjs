@@ -23,7 +23,7 @@ import { homeAt } from '../shared/homes.mjs';
 
 /** What nobody sends from a car's seat or a bike's saddle: everything that takes, collects, tags, hurts, shoots or opens. */
 export const SEAT_REFUSED = new Set([
-  'hit', 'rocket', 'nade', 'boom', 'shot', 'crack', 'glass', 'vil', 'cat', 'clownhit',
+  'hit', 'vhit', 'rocket', 'nade', 'boom', 'shot', 'crack', 'glass', 'vil', 'cat', 'clownhit',
   'zhit', 'zitem', 'zbuy', 'revive', 'claymore', 'turret', 'stakes', 'placement',
   'pickup', 'coin', 'tag', 'kickball', 'door',
 ]);

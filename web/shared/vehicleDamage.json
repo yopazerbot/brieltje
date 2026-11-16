@@ -1,0 +1,11 @@
+{
+  "_note": "Cars and helicopters taking damage in a team-against-team match (server/vehicleDamage.mjs; the page's look: src/world/vehicleWear.ts). A bullet takes the weapon's own body damage (shared/weapons.json, a head counts as the body); a rocket's or a grenade's blast takes its damage times `blast`, less with the distance to the vehicle's box. Below `smoke` of its health it smokes, below `fire` it burns and loses `burn` of its full health a second; at zero it is a wreck for wreckMs, then gone for goneMs, then back whole at its parking place. A destroyed vehicle's blast hurts like a grenade's (shared/grenade.json). aimSlack: radians over the vehicle's own size that a shot's aim may be off (the server's facing check).",
+  "health": { "car": 800, "heli": 700 },
+  "smoke": 0.5,
+  "fire": 0.2,
+  "burn": 0.01,
+  "blast": { "bazooka": 4, "grenade": 2.3 },
+  "wreckMs": 20000,
+  "goneMs": 30000,
+  "aimSlack": 0.35
+}
