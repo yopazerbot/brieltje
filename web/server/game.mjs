@@ -2665,10 +2665,12 @@ export class Game {
     [...names].sort(() => Math.random() - 0.5).forEach((name, k) => {
       const p = this.players.get(name);
       if (!p) return;
-      // `keep`: someone alive in a fight (inFight) is moved, not healed: 'hp' keeps the health (the Zombies game
-      // starting), 'fight' the whole fight, no spawn protection either (back in a room by a reconnect: join). Before,
-      // both healed a player mid-fight.
-      const held = keep && p.alive && this.inFight(p, now) ? { hp: p.hp, protectedUntil: p.protectedUntil, backAt: p.backAt } : null;
+      // `keep`: someone alive in a fight is moved, not healed: 'hp' keeps the health (the Zombies game starting) after a
+      // fight with a player (inPlayerFight: a strongman's or a zombie's hit is healed, as a respawn would), 'fight' the
+      // whole fight, no spawn protection either (back in a room by a reconnect: join, on inFight). Before, both healed a
+      // player mid-fight.
+      const fighting = keep === 'hp' ? this.inPlayerFight(p, now) : keep && this.inFight(p, now);
+      const held = keep && p.alive && fighting ? { hp: p.hp, protectedUntil: p.protectedUntil, backAt: p.backAt } : null;
       this.respawn(name, p, now, spots.length ? spots[k % spots.length] : null, drop, fence);
       if (!held) return;
       p.hp = held.hp;

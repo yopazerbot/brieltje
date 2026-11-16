@@ -64,3 +64,31 @@ test('a respawn clears the grenades still in the air: none holds the one back, n
   s.send(a, { t: 'boom', x: b.state.x - 2, y: b.state.y + 0.9, z: b.state.z, cover: [] });
   assert.equal(b.hp, hp, 'a bang told after the respawn hurts nobody');
 });
+
+test('the Zombies start keeps the health of a player in a fight with a player, and heals a strongman\'s hit', () => {
+  const s = setup();
+  const { game } = s;
+  const a = s.player('ann', 0);
+  const b = s.player('bob', 6);
+  const c = s.player('cas', -6);
+  assert.ok(s.hit(b, a), 'A is hit by B');
+  game.bruteHits({ x: c.state.x, y: c.state.y, z: c.state.z }, 3, 20, s.now());
+  assert.ok(c.hp < 100, 'C is hit by a strongman');
+  assert.ok(game.inFight(c, s.now()) && !game.inPlayerFight(c, s.now()));
+  const hpA = a.hp;
+  s.at(1_000);
+  game.gather(['ann', 'cas'], null, false, 'hp');
+  assert.equal(a.hp, hpA, 'A: moved, not healed');
+  assert.equal(c.hp, 100, 'C: healed, as a respawn');
+});
+
+test('a reconnect into a room keeps the whole fight on inFight, a strongman\'s hit too (as before)', () => {
+  const s = setup();
+  const { game } = s;
+  const c = s.player('cas', -6);
+  game.bruteHits({ x: c.state.x, y: c.state.y, z: c.state.z }, 3, 20, s.now());
+  const hp = c.hp;
+  assert.ok(hp < 100);
+  game.gather(['cas'], null, false, 'fight');
+  assert.equal(c.hp, hp, 'not healed');
+});
