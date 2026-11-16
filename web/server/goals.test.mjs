@@ -586,7 +586,7 @@ test('in the game: a page\'s own race and gnome messages are ignored', async () 
     await s.flush();
     assert.deepEqual(s.writes, []);
     assert.deepEqual(s.game.goals.tonight().gnomes, []);
-    assert.deepEqual(s.told, []);
+    assert.deepEqual(s.told.filter((m) => m.t !== 'ping'), []); // the game's own ping may fall in a slow run
   } finally {
     s.game.close();
   }
