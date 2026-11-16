@@ -20,11 +20,12 @@
 //    nothing. Zombies started in the air puts Pilot and RiderC out and the machine home.
 // 4. Only on its own (--phases 4): the watcher's frame time with the four aboard hanging 12 m over the house's pad, and
 //    with it parked empty there, each against the same view without it (briel.bench, alternated), on Medium and Low.
-// Every flight's cuts and refusals are read from the server's own log when it prints them (a temporary counter while
-// measuring; --log <file>). No page errors. Pictures with --out.
+// The boarders stand at four places round the cabin, two by the rear skids: someone standing there once threw a seated
+// pilot's machine 2 m up (world/heli.ts env, shared/heli.mjs heliHeads); phase 1 checks it stays down. No page errors.
+// Pictures with --out.
 //
 //   ADMIN_PASSWORD=... node tools/dev/heli_mp.mjs --url http://localhost:5737/ --api http://localhost:8613 \
-//     --ports 9731,9732,9733,9734,9735,9736,9737 [--phases 1,2,3 | 4] [--out <folder>] [--log <server log>]
+//     --ports 9731,9732,9733,9734,9735,9736,9737 [--phases 1,2,3 | 4] [--out <folder>]
 //
 // It takes about ten minutes (six pages load, three flights, the 20 s waits).
 import { mkdirSync, readFileSync } from 'node:fs';
@@ -33,7 +34,7 @@ import WebSocket from '../../web/node_modules/ws/wrapper.mjs';
 import { PORTALS } from '../../web/shared/portals.mjs';
 import { launch, localOnly, options } from './cdp.mjs';
 
-const o = options({ url: 'http://localhost:5737/', api: 'http://localhost:8613', ports: '9731,9732,9733,9734,9735,9736,9737', phases: '1,2,3', out: '', log: '' });
+const o = options({ url: 'http://localhost:5737/', api: 'http://localhost:8613', ports: '9731,9732,9733,9734,9735,9736,9737', phases: '1,2,3', out: '' });
 localOnly(o.url, '--url');
 localOnly(o.api); // it logs in as the admin, changes rules and starts games: a throwaway server on this computer only
 const password = process.env.ADMIN_PASSWORD;
@@ -176,14 +177,8 @@ const touch = async (b, cls) => {
   await b.send('Input.dispatchTouchEvent', { type: 'touchEnd', touchPoints: [] });
   return true;
 };
-/**
- * Use: E, or the phone's Use button. A text field that holds the focus would take the key as a letter (src/keys.ts
- * typing): it is let go first and noted (`__blurred`, printed at the end).
- */
-const use = async (b) => {
-  await b.evaluate("(() => { const a = document.activeElement; if (a instanceof HTMLInputElement || a instanceof HTMLTextAreaElement || a instanceof HTMLSelectElement) { (window.__blurred ??= []).push((a.id || a.tagName) + ' ' + (a.closest('[id]')?.id ?? '')); a.blur(); } })()");
-  return b.phone ? touch(b, 't-use') : tap(b, 'KeyE');
-};
+/** Use: E, or the phone's Use button. */
+const use = (b) => (b.phone ? touch(b, 't-use') : tap(b, 'KeyE'));
 const me = (b) => b.evaluate('briel.combat.me');
 const aboard = (b) => b.evaluate('({ aboard: briel.helis.aboard, seat: briel.helis.seat, id: briel.helis.heli?.spec.id ?? null, piloting: briel.helis.piloting })');
 const seatsOn = (b, id) => b.evaluate(`[...__M('${id}').seats]`);
@@ -310,26 +305,6 @@ const seen = (b, name) => b.evaluate(`(() => {
 })()`);
 /** Errors a page logged (none expected). */
 const errors = (b) => b.logs.filter((l) => /^(error|exception)/.test(l) && !/Failed to load resource|WebSocket/.test(l));
-const heliLog = () => {
-  if (!o.log) return null;
-  const lines = readFileSync(o.log, 'utf8').split('\n').filter((l) => l.startsWith('TMPHELI'));
-  const by = {};
-  for (const l of lines) {
-    const k = l.split(' ').slice(1, 2).join(' ');
-    by[k] = (by[k] ?? 0) + 1;
-  }
-  return { lines, by };
-};
-let logFrom = 0;
-/** The server's cuts and refusals since the last call (the temporary counter's lines), but for the boardings refused on purpose. */
-const cuts = (what, allow = () => false) => {
-  const l = heliLog();
-  if (!l) return row(what, 'no server log given (--log)');
-  const fresh = l.lines.slice(logFrom);
-  logFrom = l.lines.length;
-  const bad = fresh.filter((x) => !allow(x));
-  ok(`${what}: the server cut or refused nothing`, bad.length === 0, bad.length ? bad.slice(0, 6).join(' | ') : `(${fresh.length - bad.length} refused on purpose)`);
-};
 
 const tag = Math.random().toString(36).slice(2, 5);
 try {
@@ -346,11 +321,21 @@ try {
   await Promise.all(pages.map((b) => b.waitFor("briel.village() === 'ready'", 240000)));
   const programs = {};
   for (const b of crew) programs[b.who] = await b.evaluate('(window.__progs = new Set(briel.three.renderer.info.programs.map((p) => p.id))).size');
-  cuts('before anything');
 
   if (phases.has(1)) {
     console.log('-- 1. four aboard the house\'s machine, a fifth refused; two crews, each to the other\'s pad');
-    for (const [i, b] of crew.entries()) ok(`${b.who} boards: seat ${i}`, await board(b, 'house', i, i), JSON.stringify(await aboard(b)));
+    for (const [i, b] of crew.entries()) {
+      if (i === 2) {
+        // Someone by the rear skid of a machine with its pilot seated: it stays where it stands, on every page.
+        const before = await machine(P, 'house');
+        await besideIt(B, 'house', 2);
+        await sleep(2000);
+        const on = await Promise.all([P, A, B].map((q) => machine(q, 'house')));
+        const line = await prompt(B);
+        ok('a boarder by the rear skid lifts nothing', on.every((m) => m.ground && Math.abs(m.y - before.y) < 0.05) && /Ride along/.test(line), `${on.map((m) => r2(m.y - before.y)).join(', ')} m, "${line}"`);
+      }
+      ok(`${b.who} boards: seat ${i}`, await board(b, 'house', i, i), JSON.stringify(await aboard(b)));
+    }
     const want = crew.map((b) => names[b.who]);
     for (const b of pages) ok(`${b.who} sees the four in their seats`, JSON.stringify(await seatsOn(b, 'house')) === JSON.stringify(want), JSON.stringify(await seatsOn(b, 'house')));
     await besideIt(Q, 'house', 0);
@@ -374,7 +359,7 @@ try {
     await shot(A, '1_four_aboard_riderA');
     await shot(C, '1_four_aboard_riderC_phone');
     for (const b of crew) {
-      const fresh = await b.evaluate('briel.three.renderer.info.programs.filter((p) => !__progs.has(p.id)).map((p) => p.name).join(", ")');
+      const fresh = await b.evaluate('briel.three.renderer.info.programs.filter((p) => !__progs.has(p.id)).map((p) => p.name || p.cacheKey.slice(0, 60)).join(" | ")');
       ok(`${b.who}: no new shader program at boarding`, fresh === '', fresh);
     }
 
@@ -383,14 +368,13 @@ try {
     await sleep(6000);
     ok('the fifth flies the church\'s machine', await board(Q, 'church', 0, 0), JSON.stringify(await aboard(Q)));
     ok('Watcher rides along in it', await board(W, 'church', 1, 1), JSON.stringify(await aboard(W)));
-    cuts('boarding', (l) => l.includes('boardno'));
 
     await record(pages, true);
     let progs = false;
     const flights = Promise.all([
       fly(P, PARK.church, CRUISE.house, { during: async (t) => {
         if (t > 8 && !progs && (progs = true)) for (const b of crew) {
-          const fresh = await b.evaluate('briel.three.renderer.info.programs.filter((p) => !__progs.has(p.id)).map((p) => p.name).join(", ")');
+          const fresh = await b.evaluate('briel.three.renderer.info.programs.filter((p) => !__progs.has(p.id)).map((p) => p.name || p.cacheKey.slice(0, 60)).join(" | ")');
           ok(`${b.who}: no new shader program at the take-off`, fresh === '', fresh);
         }
         if (t > 14 && t < 14.6) await Promise.all([shot(A, '1_cruise_riderA'), shot(W, '1_cruise_watcher')]);
@@ -413,7 +397,6 @@ try {
       const sm = smoothness(recs[A.who].house);
       row('RiderA\'s machine frame to frame', `${sm.n} frames of ${r2(sm.frame)} ms: worst ${r2(sm.jump)} m off its way, back ${r2(sm.back)} m; the worst ${sm.worst}`);
     }
-    cuts('two crews flying at once');
     for (const b of pages) {
       const h = await machine(b, 'house'), c = await machine(b, 'church');
       ok(`${b.who}: each machine on the other's pad`, Math.hypot(h.x - PARK.church.x, h.z - PARK.church.z) < 3 && Math.hypot(c.x - PARK.house.x, c.z - PARK.house.z) < 3, `house (${r2(h.x)}, ${r2(h.z)}), church (${r2(c.x)}, ${r2(c.z)})`);
@@ -471,7 +454,6 @@ try {
       const t = await C.evaluate("({ layout: document.body.dataset.touch, use: !!document.querySelector('#touch .t-use') })");
       ok('RiderC (a phone): the helicopter\'s touch layout', t.layout === 'heli' && t.use, JSON.stringify(t));
     }
-    cuts('boarding on the deck');
     await record(pages, true);
     const over = { x: PARK.house.x, z: PARK.house.z };
     const slow = { done: new Set() };
@@ -529,7 +511,6 @@ try {
       const slowPart = smoothness(part(w, m250, m0 + 1500));
       row('Watcher while the pilot had 250 ms frames (far off)', `${slowPart.n} frames: worst ${r2(slowPart.jump)} m off its way, back ${r2(slowPart.back)} m`);
     }
-    cuts('a flight with 30 Hz and 250 ms frames at the stick');
     await sleep(1500);
     for (const n of crew.map((b) => names[b.who])) {
       const s = await seen(W, n);
@@ -562,7 +543,6 @@ try {
     }
     admin.send({ t: 'mode', kind: 'free' });
     await sleep(3000);
-    cuts('a game starting in the air');
   }
 
   if (phases.has(3)) {
@@ -619,7 +599,6 @@ try {
       const p = await b.evaluate('({ feet: briel.player.feet, ground: briel.world.groundAt(briel.player.x, briel.player.z, briel.player.feet + 0.2, 0).y })');
       ok(`${b.who}: on the ground after the fall`, Math.abs(p.feet - p.ground) < 0.3, JSON.stringify(p));
     }
-    cuts('the stick taken and two pages gone');
     // The admin's rule off.
     admin.send({ t: 'rules', heli: false });
     await sleep(800);
@@ -647,7 +626,6 @@ try {
     }
     admin.send({ t: 'mode', kind: 'free' });
     await sleep(2000);
-    cuts('Zombies starting in the air');
   }
 
   if (phases.has(4) && phases.size === 1) {
@@ -689,10 +667,6 @@ try {
     for (const [i, b] of crew.entries()) await b.evaluate(`briel.teleport(${GARDEN.x + 3 + i}, ${GARDEN.z + 4}, ${PARK.house.y + 0.5}, 0)`, false);
     await sleep(9000); // its rotor run down
     await cost([], false, 'parked empty on its pad');
-  }
-  for (const b of pages) {
-    const f = await b.evaluate('window.__blurred ?? []').catch(() => []);
-    if (f.length) row(`${b.who}: a text field held the focus before Use`, JSON.stringify(f));
   }
   for (const b of pages) ok(`${b.who}: no page errors`, errors(b).length === 0, JSON.stringify(errors(b).slice(-3)));
 } catch (e) {
