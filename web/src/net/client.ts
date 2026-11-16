@@ -363,6 +363,8 @@ export class Net {
   readonly counts = { bytesIn: 0, msgsIn: 0, bytesOut: 0, msgsOut: 0 };
   private ws: WebSocket | null = null;
   private stopped = false;
+  /** The server ended this connection for good (4000 to 4002: elsewhere, removed, session ended); cleared by connect() */
+  private over = false;
   private retry = 1000;
   /** How many may play, from the server's last 'full' message */
   private fullAt = 0;
@@ -381,6 +383,7 @@ export class Net {
 
   connect(): void {
     this.stopped = false;
+    this.over = false;
     // A retry still waiting is replaced by this connection: never two sockets at once (the server would close
     // the first, and the second's welcome would reset the player).
     clearTimeout(this.retryTimer);
@@ -436,6 +439,7 @@ export class Net {
       if (this.ws !== ws) return;
       this.ws = null;
       if (this.stopped || e.code === 4000 || e.code === 4001 || e.code === 4002) {
+        this.over = true;
         const why = ({ 4000: 'net.elsewhere', 4001: 'net.removed', 4002: 'net.ended' } as const)[e.code as 4000 | 4001 | 4002];
         this.onStatus(() => (why ? t(why) : ''));
         if (!this.stopped && why) this.onEnded(() => t(why));
@@ -443,6 +447,7 @@ export class Net {
       }
       // The room is gone (4004): straight back to the open world.
       if (e.code === 4004) {
+        if (watch) watch.duel = ''; // a watch view's duel room closed: the open world (src/watch.ts)
         if (this.room) {
           this.room = null;
           this.onRoomGone('gone');
@@ -477,6 +482,11 @@ export class Net {
       this.retryTimer = window.setTimeout(() => !this.stopped && this.connect(), this.retry);
       this.retry = Math.min(15000, this.retry * 2);
     };
+  }
+
+  /** Stopped, or ended by the server for good: nothing may connect it again but a new start (a watch view's move, main.ts). */
+  get ended(): boolean {
+    return this.stopped || this.over;
   }
 
   disconnect(): void {
