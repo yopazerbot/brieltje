@@ -3101,6 +3101,7 @@ net.onMessage = (m: ServerMsg) => {
       break;
     case 'system':
       chat.system(() => serverText(m.code, m.args, m.text));
+      helis.refused(m.code); // a helicopter's seat refused: states go out again at once (src/heliPilot.ts hush)
       if (m.code === 'zRunners') runnersComing(false); // the game's first runners: the banner too
       break;
     case 'spawn':

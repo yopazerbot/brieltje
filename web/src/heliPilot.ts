@@ -3,6 +3,7 @@ import HELIS from '../shared/heli.json';
 import { AWAY, EV, HELI, heliBump, heliJump } from '../shared/heli.mjs';
 import { homeAt, inEndGarden } from '../shared/homes.mjs';
 import { DROP, jumpStart } from '../shared/parachute.mjs';
+import { heliOf } from '../shared/wire.mjs';
 import type { FrameInput, Input } from './controls/input';
 import { t } from './i18n';
 import { key, type Control } from './shortcuts';
@@ -13,22 +14,24 @@ import { Heli, type Crown, type HeliView } from './world/heli';
 import { groundPads, PADS, testDeck } from './world/heliPads';
 
 const _dir = new THREE.Vector3();
+/** ms: the server lets one helicopter, car, horse or bike message through every 300 ms (server/game.mjs); a margin over it */
+const GATE_MS = 350;
+/** ms: the longest no state goes out after an ask (hush), whatever the answer */
+const HUSH_MS = 1500;
+/** ms: after a quiet spell, states go out at least this long before the next one may begin */
+const HUSH_GAP_MS = 250;
+/** The refusals the server says in the chat (`system` codes, server/helis.mjs board) */
+const REFUSALS = new Set(['zNoHeli', 'gameNoHeli', 'heliOff', 'heliFight']);
 
 /**
- * A machine in a server message (`heli`, `welcome.helis`), checked as it arrives: a string id, finite numbers (else 0),
- * angles within a turn, the rotor 0 to 1, four seats each a name or null. Names reach the screen only through the
- * figures' name tags (textContent). Null when it isn't one.
+ * A machine in a server message (`heli`, `welcome.helis`), checked as it arrives: a string id, then as a tick's entry
+ * is (shared/wire.mjs heliOf: finite numbers within reach, the rotor 0 to 1, four seats each a name or null). Names
+ * reach the screen only through the figures' name tags (textContent). Null when it isn't one.
  */
 export function heliView(v: unknown): HeliView | null {
   if (!v || typeof v !== 'object') return null;
   const o = v as Record<string, unknown>;
-  if (typeof o.id !== 'string') return null;
-  const n = (k: string, lo = -1e5, hi = 1e5) => (typeof o[k] === 'number' && Number.isFinite(o[k]) ? Math.max(lo, Math.min(hi, o[k] as number)) : 0);
-  const seats = Array.isArray(o.seats) ? o.seats : [];
-  return {
-    id: o.id, x: n('x'), y: n('y'), z: n('z'), yaw: n('yaw', -10, 10), p: n('p', -1, 1), r: n('r', -1, 1), n: n('n', 0, 1), g: o.g === 1 ? 1 : 0,
-    seats: [0, 1, 2, 3].map((i) => (typeof seats[i] === 'string' ? (seats[i] as string) : null)),
-  };
+  return typeof o.id === 'string' ? heliOf(o.id, o) : null;
 }
 
 /**
@@ -72,9 +75,15 @@ export class HeliPilot {
   private you = '';
   /** When you last asked the server for a seat in each machine (performance.now() ms): its word starts the boarding */
   private asked = new Map<string, number>();
-  private flyAsked = 0;
   private outSent = 0;
+  /** When the page last sent `in`, `fly` or `out` (the server lets one through every 300 ms, shared with the cars: GATE_MS) */
+  private lastSent = -Infinity;
   private hushUntil = 0;
+  private hushEnded = -Infinity;
+  /** What a quiet spell waits for: the machine asked to board (its id), or the stick of it ('fly:' + id) */
+  private pending: string | null = null;
+  /** The machines the server has (its welcome): a Zombies room has none, and none is offered there */
+  private served = new Set<string>();
   private upWas = false;
   /** The machine the server last put you out of, and when: a flight home just after it gets a line (srv.heliHome) */
   private putOutOf: { id: string; at: number } | null = null;
@@ -136,12 +145,34 @@ export class HeliPilot {
     return this.heli?.fovScale ?? this.fov;
   }
   /**
-   * Together, from asking for a seat or the stick until the server's word (at most 1.5 s): no state goes out (main.ts).
-   * One sent meanwhile reaches the server after it seated you, and would be taken as the pilot's: the machine would
-   * move to where you stood and turn to where you looked.
+   * Together, from asking for a seat or the stick until the server answers (seated, refused) and never longer than
+   * HUSH_MS: no state goes out (main.ts). One sent meanwhile reaches the server after it seated you, and would be taken
+   * as the pilot's: the machine would move to where you stood and turn to where you looked. A spell is never renewed:
+   * a new one starts only once states have gone out again (quiet).
    */
   get hush(): boolean {
-    return performance.now() < this.hushUntil;
+    if (this.hushUntil && performance.now() >= this.hushUntil) this.unhush(this.hushUntil);
+    return this.hushUntil > 0;
+  }
+
+  /** A quiet spell for `what`, if none is on and states have gone out since the last one: false when not now. */
+  private quiet(what: string, now: number): boolean {
+    if (this.hush || now - this.hushEnded < HUSH_GAP_MS || now - this.lastSent < GATE_MS) return false;
+    this.hushUntil = now + HUSH_MS;
+    this.pending = what;
+    this.lastSent = now;
+    return true;
+  }
+
+  private unhush(at = performance.now()): void {
+    if (this.hushUntil) this.hushEnded = at;
+    this.hushUntil = 0;
+    this.pending = null;
+  }
+
+  /** A refusal in the chat (`system` with a code): the zombies, a game, the rule off, a fight. The quiet spell ends. */
+  refused(code: unknown): void {
+    if (this.pending && typeof code === 'string' && REFUSALS.has(code)) this.unhush();
   }
 
   /**
@@ -151,6 +182,7 @@ export class HeliPilot {
   near(x: number, z: number, feet: number): Heli | null {
     for (const m of this.machines) {
       if (m.distanceTo(x, z) >= HELIS.reach || Math.abs(feet - m.s.y) >= 1 || m.away !== null) continue;
+      if (this.together && !this.served.has(m.spec.id)) continue; // not the server's here (a Zombies room has none)
       if (this.together ? Math.hypot(m.s.vx, m.s.vy, m.s.vz) < 2 : !m.pilot) return m;
     }
     return null;
@@ -162,7 +194,7 @@ export class HeliPilot {
     this.seat = 0;
     this.turnIn = 0;
     this.hint = 0;
-    this.hushUntil = 0;
+    this.unhush();
     m.enter(this.together ? this.you : '');
   }
 
@@ -170,7 +202,7 @@ export class HeliPilot {
   ride(m: Heli, seat: number): void {
     this.heli = m;
     this.seat = seat;
-    this.hushUntil = 0;
+    this.unhush();
     this.upWas = true; // a key still held from boarding takes nothing
     m.ride();
     if (!this.shownRide) {
@@ -179,14 +211,16 @@ export class HeliPilot {
     }
   }
 
-  /** Use beside machine `m`: alone straight in; together the server is asked (its answer, a `heli` message, starts it: fromServer). */
+  /**
+   * Use beside machine `m`: alone straight in; together the server is asked (its answer, a `heli` message, starts it:
+   * fromServer). Not while an ask waits for its answer, nor within the server's gate after the last one.
+   */
   ask(m: Heli): void {
     if (!this.together) return this.board(m);
     const now = performance.now();
     const id = m.spec.id;
-    if (now - (this.asked.get(id) ?? -Infinity) < 1000 || !m.seats.includes(null)) return;
+    if (!m.seats.includes(null) || !this.quiet(id, now)) return;
     this.asked.set(id, now);
-    this.hushUntil = now + 1500;
     this.send({ t: 'heli', op: 'in', id });
   }
 
@@ -203,6 +237,8 @@ export class HeliPilot {
     this.together = true;
     this.you = you;
     this.asked.clear();
+    this.unhush();
+    this.served = new Set(list.map((q) => q.id));
     for (const m of this.machines) {
       m.remote = true;
       const v = list.find((q) => q.id === m.spec.id);
@@ -219,6 +255,8 @@ export class HeliPilot {
   apart(): void {
     if (!this.together) return;
     this.together = false;
+    this.unhush();
+    this.served.clear();
     for (const m of this.machines) m.remote = false;
     this.leaveNow(); // as alone: the machine set down below, you beside it
     for (const m of this.machines) {
@@ -238,6 +276,10 @@ export class HeliPilot {
     if (!m || !this.together) return false;
     const now = performance.now();
     const mine = this.you ? v.seats.indexOf(this.you) : -1;
+    // The server's answer to an ask it refused: the machine as it is, to you alone, no seat changed and you in none
+    // (a refused stick: you still in yours). The quiet spell ends at once (a seat given ends it in board or ride).
+    const same = m.seats.every((n, i) => n === v.seats[i]);
+    if (!tick && !home && same && (this.pending === v.id ? mine < 0 : this.pending === `fly:${v.id}` && mine !== 0)) this.unhush();
     if (this.heli === m && mine < 0) {
       this.putOutOf = { id: v.id, at: now };
       this.out(); // the server put you out (nobody at the stick for too long, a game, the rule off, a respawn): from where it was
@@ -262,11 +304,14 @@ export class HeliPilot {
     return went;
   }
 
-  /** Out of a seat you did not ask for: at most once a second (the server's gate is shared with the cars). */
+  /**
+   * Out of a seat you did not ask for, or one the server still gives you after you left: at most once a second, never
+   * within the server's gate after the last ask (it would be dropped); the next message or tick that names you tries again.
+   */
   private giveBack(): void {
     const now = performance.now();
-    if (now - this.outSent < 1000) return;
-    this.outSent = now;
+    if (now - this.outSent < 1000 || now - this.lastSent < GATE_MS) return;
+    this.outSent = this.lastSent = now;
     this.send({ t: 'heli', op: 'out' });
   }
 
@@ -305,11 +350,13 @@ export class HeliPilot {
    * to land. You stand by a step with room, else at its hub, on the floor it stands on (world/heli.ts exitSpot); where
    * that would be inside a private home or a fenced garden, you stay aboard and the line says to land elsewhere.
    * Together only at rest, at the stick or riding along (the server leaves it where it is: no step down to send first),
-   * and no jump yet: in the air the line says to land first. The server is told.
+   * and no jump yet: in the air the line says to land first. The server is told; not within its gate after the ask
+   * that seated you (a second tap that quick is let go: the `out` would be dropped, you on foot here and seated there).
    */
   leave(cameraAt: THREE.Vector3): boolean {
     const m = this.heli;
     if (!m) return false;
+    if (this.together && performance.now() - this.lastSent < GATE_MS) return false;
     if (this.together ? !m.atRest : !m.canLeave) {
       if (!this.together && !m.s.ground && m.s.h >= DROP.jumpMin) return this.jump(m);
       this.landHint = 2.5; // too low for the canopy: higher, or land (together: land first)
@@ -325,7 +372,7 @@ export class HeliPilot {
     this.heli = null;
     this.seat = null;
     if (this.together) {
-      this.outSent = performance.now();
+      this.outSent = this.lastSent = performance.now();
       this.send({ t: 'heli', op: 'out' });
     }
     this.placePlayer(at.x, at.z, at.y, Math.atan2(cameraAt.x - m.s.x, cameraAt.z - m.s.z));
@@ -434,11 +481,7 @@ export class HeliPilot {
     if (ex.view || frame.scopePressed) m.switchView();
     const up = frame.jumpHeld || ex.triggers > 0.5;
     const now = performance.now();
-    if (up && !this.upWas && !m.pilot && now - this.flyAsked > 500) {
-      this.flyAsked = now;
-      this.hushUntil = now + 1500;
-      this.send({ t: 'heli', op: 'fly' });
-    }
+    if (up && !this.upWas && !m.pilot && this.quiet(`fly:${m.spec.id}`, now)) this.send({ t: 'heli', op: 'fly' });
     this.upWas = up;
     if (m.view === 'cockpit') m.cockpit(camera, dt, look[1], look[0], this.seat ?? 1);
     else m.chase(camera, dt, -look[1], look[0]);
