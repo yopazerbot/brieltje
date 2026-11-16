@@ -302,7 +302,8 @@ def seventies():
     # The narrow house: u -9.58 to -4.34, d -3.59 to 10, its ridge along the street.
     NE, NR, n0, n1, no = 5.4 + lift, 9.0 + lift, -3.59, 10.0, .35
     kn = (NR - NE) / ((n1 - n0) / 2)
-    narrow = Roof([(-9.58 - no, n0 - no), (-4.34, n0 - no), (-4.34, n1 + no), (-9.58 - no, n1 + no)],
+    # (no overhang at the back: it ends on the back wall's line, where the shed's roof begins)
+    narrow = Roof([(-9.58 - no, n0 - no), (-4.34, n0 - no), (-4.34, 10.1), (-9.58 - no, 9.993)],
                   [eave((0, n0 - no), (0, 1), NE - kn * no, kn), eave((0, n1 + no), (0, -1), NE - kn * no, kn)], under=white, edge="#3a3b3e", board=.22)
     # The shed behind it: u -8.1 to -4.3, d 10 to 24.4, its ridge away from the street.
     SE, SR = 3.0 + lift, 4.9 + lift  # (the ground rises toward its end: its eaves stay over a head)
