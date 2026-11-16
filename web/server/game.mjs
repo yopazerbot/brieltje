@@ -955,10 +955,17 @@ export class Game {
       // In a helicopter (server/helis.mjs): the pilot's state is the machine's pose; a passenger's own position is never taken.
       const heli = this.helis.of(name);
       const flyer = heli?.seats[0] === name;
+      // Holstering (armed false: Explore) counts only once HURT_CALM_MS have passed since the last fight, hitting or being
+      // hit (inFight): until then the server keeps them armed, as everyone sees them, and tells them once. Before, one state
+      // with armed false made a player unhittable at once, and the next armed them to hit again (damage avoidance). Dead or
+      // down, the page's word as before: nobody hits them then; and a respawn (backAt) starts out of the fight.
+      const kept = !m.armed && wasArmed && player.alive && this.inFight(player, now) && Math.max(player.hurtAt ?? -Infinity, player.hitAt ?? -Infinity) > (player.backAt ?? -Infinity);
+      if (kept && !player.keptArmed) this.send(player.ws, { t: 'system', text: 'Still in the fight for a few seconds: you can be hit until then.', code: 'holsterFight' });
+      player.keptArmed = kept;
       const next = {
         ...where(m),
         // No flying in the Zombies game: hovering over the zombies would be out of their reach for good.
-        yaw: num(m.yaw, -100, 100), pitch: num(m.pitch, -2, 2), armed: !!m.armed, flying: !!m.flying && this.rules.flying && !inCar && !bike && !heli && !this.modes.zombies,
+        yaw: num(m.yaw, -100, 100), pitch: num(m.pitch, -2, 2), armed: !!m.armed || kept, flying: !!m.flying && this.rules.flying && !inCar && !bike && !heli && !this.modes.zombies,
         // `a`: the gun at their eye. Only how the figure looks to the others (it aims, a sniper's scope glints); nothing is decided by it.
         a: !!m.a && !!m.armed && !inCar && !bike && !heli,
         w: player.weapons.has(m.w) ? m.w : 'pistol', c: !!m.c && !inCar && !bike && !heli, d: inCar || !!heli, s: driving ? num(m.s, -1, 1) : 0, bk: !!bike,
@@ -1516,12 +1523,17 @@ export class Game {
    * refused without a word, as enterCar and mountBike keep it. Horses stay as they are (riding and shooting is allowed).
    */
   fightRefused(p, kind, thing, now) {
-    if (now - Math.max(p.hurtAt ?? -Infinity, p.hitAt ?? -Infinity) >= HURT_CALM_MS) return false;
+    if (!this.inFight(p, now)) return false;
     if (thing && this.seenBy(p, kind, thing)) {
       this.send(p.ws, { t: 'system', text: 'Not right after a fight. Wait a few seconds.', code: 'heliFight' });
       this.tellThing(p, kind, thing);
     }
     return true;
+  }
+
+  /** Hit, or hitting someone, in the last HURT_CALM_MS: the one clock for the seats (fightRefused) and for holstering (state). */
+  inFight(p, now) {
+    return now - Math.max(p.hurtAt ?? -Infinity, p.hitAt ?? -Infinity) < HURT_CALM_MS;
   }
 
   /** Get in, when the player stands next to it, is alive and in no car yet: at the wheel if nobody drives, else in the passenger seat if it's free. */
@@ -2525,6 +2537,7 @@ export class Game {
     p.weapons = loadout(p, !!this.modes.zombies);
     p.nades.fill(0);
     p.protectedUntil = now + PROTECT_MS;
+    p.backAt = now; // out of the fight before it: holstering counts at once (state)
     let spawn = at?.spawn;
     if (!at) {
       // At the player's team's house in the teams game, else round the house; away from the others.

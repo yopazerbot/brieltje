@@ -1,6 +1,7 @@
 // The guns everyone holds, against a throwaway game server (a build of this branch), as the server has them: two
 // guests and the admin join and are told their guns (all four; the admin the bazooka too); a hit with each of the four
-// counts, before and after a death; an old page's 'loadout' changes nothing and is not answered; in a Zombies game a
+// counts, before and after a death; an old page's 'loadout' changes nothing and is not answered; a player who holsters
+// right after a hit is still hit back, and only 10 s after the last fight is out of reach; in a Zombies game a
 // hit with the rifle is dropped (the pistol only) while the pistol's counts; when it ends everyone is told all four again
 // and the hits count again.
 //
@@ -56,6 +57,11 @@ const connect = async (name, cookie) => {
     const at = seen.players.get(name) ?? { x: 4.5, y: -0.1, z: 19 };
     me.send({ t: 'state', ...at, yaw: 0, pitch: 0, armed: true, w });
   };
+  /** Unarmed (Explore), where the server has them. */
+  me.holster = () => {
+    const at = seen.players.get(name) ?? { x: 4.5, y: -0.1, z: 19 };
+    me.send({ t: 'state', ...at, yaw: 0, pitch: 0, armed: false, w: 'pistol' });
+  };
   me.weapons = () => log.filter((m) => m.t === 'weapons');
   return me;
 };
@@ -104,6 +110,37 @@ for (const w of [['sniper'], ['bazooka'], 'rifle', null, Array(300).fill('shotgu
 await sleep(800);
 ok('an old page\'s \'loadout\' is not answered, and the connection stays', alice.weapons().length === answers && alice.ws.readyState === WebSocket.OPEN);
 await hitsWithEach('after an old \'loadout\'');
+
+// Holstering out of a fight (server/game.mjs state, inFight). Before, Alice hit Bob, sent one state unarmed, Bob's hit on
+// her was dropped and she armed again to hit. Now she stays armed for 10 s after the last fight (hitting or being hit).
+const hurtIn = (c, from) => c.log.slice(from).some((m) => m.t === 'hurt' || (m.t === 'kill' && m.victim === c.name));
+for (const c of [alice, bob]) c.hold('pistol');
+await sleep(300);
+const holsterFrom = alice.log.length;
+const bobFrom = bob.log.length;
+alice.send({ t: 'hit', target: bob.name, w: 'pistol', body: 1, head: 0 });
+await sleep(150);
+ok('holstering: Alice\'s hit on Bob counts', hurtIn(bob, bobFrom));
+alice.holster();
+await sleep(300);
+let mark = alice.log.length;
+bob.send({ t: 'hit', target: alice.name, w: 'pistol', body: 1, head: 0 });
+await sleep(400);
+ok('holstered 0.15 s after her hit: Bob\'s hit on her counts', hurtIn(alice, mark));
+ok('she is told why, with its code', alice.log.slice(holsterFrom).filter((m) => m.t === 'system' && m.code === 'holsterFight').length === 1);
+// Unarmed states as a page sends them (three a second at least) until 10 s after the last fight (Bob's hit), and a little.
+const bobScores = bob.log.length;
+for (let i = 0; i < 35; i++) {
+  alice.holster();
+  await sleep(300);
+}
+mark = alice.log.length;
+bob.send({ t: 'hit', target: alice.name, w: 'pistol', body: 1, head: 0 });
+await sleep(400);
+ok('10 s after the last fight her holster counts: Bob\'s hit is dropped', !hurtIn(alice, mark));
+ok('everyone is told she is out of the fight', bob.log.slice(bobScores).some((m) => m.t === 'scores' && m.list?.find((s) => s.name === alice.name)?.armed === false));
+for (const c of [alice, bob]) c.hold('pistol');
+await sleep(300);
 
 // The Zombies game: down to the pistol. A rifle's hit on a zombie is dropped, a pistol's counts.
 admin.send({ t: 'mode', kind: 'zombies', place: 'house' });
