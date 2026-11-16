@@ -2,7 +2,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
-import { AWAY, EV, HELI, SKIDS, awayInput, awayKeep, heliBump, heliExit, heliFly, heliGap, heliJump, heliPlace, heliStart, heliToBody, heliToWorld } from './heli.mjs';
+import { AWAY, EV, HELI, SKIDS, awayInput, awayKeep, heliBump, heliExit, heliFly, heliGap, heliHover, heliJump, heliPlace, heliStart, heliToBody, heliToWorld } from './heli.mjs';
 import { DROP, dropStep, jumpStart } from './parachute.mjs';
 import { END_GARDEN, HOMES, homeAt, inEndGarden } from './homes.mjs';
 
@@ -253,6 +253,23 @@ test('heliPlace sets it down still; a running rotor keeps the engine on', () => 
   const s = hovering(30);
   heliPlace(s, 10, 5, -3, 1, 1);
   assert.deepEqual([s.x, s.y, s.z, s.yaw, s.vx, s.vy, s.ground, s.engine], [10, 5, -3, 1, 0, 0, true, true]);
+});
+
+test('heliHover: two seconds hands off from it stay within 1 m across and 1 m in height, in still air and in a wind', () => {
+  for (const [y, wind] of [[30, [0, 0]], [8, [0, 0]], [60, [4.5, -2]]]) {
+    const s = heliStart({ x: 0, y: 0, z: 0, yaw: 0 });
+    Object.assign(s, { vx: 20, vy: -5, vz: 7, pitch: 0.4, roll: -0.3, rotor: 0.2, engine: false, ground: true });
+    heliHover(s, 12, y, -4, 0.7);
+    assert.deepEqual([s.x, s.y, s.z, s.yaw, s.vx, s.vy, s.vz, s.ground, s.engine, s.rotor], [12, y, -4, 0.7, 0, 0, 0, false, true, 1]);
+    let far = 0, off = 0;
+    fly(s, 2, {}, flat({ wind }), (q) => {
+      far = Math.max(far, Math.hypot(q.x - 12, q.z + 4));
+      off = Math.max(off, Math.abs(q.y - y));
+    });
+    assert.ok(finite(s) && !s.ground, `${y} m`);
+    assert.ok(far < 1, `${y} m up, wind ${wind}: ${far.toFixed(2)} m across`);
+    assert.ok(off < 1, `${y} m up, wind ${wind}: ${off.toFixed(2)} m in height`);
+  }
 });
 
 test('bumped and come to rest on its boom or cabin (held up by the page), the time down runs out and it starts again', () => {

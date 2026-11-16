@@ -137,6 +137,18 @@ export function heliPlace(s, x, y, z, yaw, rotor = s.rotor) {
 }
 
 /**
+ * A steady hover at (x, y, z) facing `yaw`: still, level, the rotor at full speed and the engine on, holding that spot
+ * and that height, the lever where a hover keeps it. Together, a passenger who takes the stick of a machine hanging in
+ * the air, or a pilot whose step the server put back (src/heliPilot.ts), flies on from there.
+ */
+export function heliHover(s, x, y, z, yaw) {
+  const coll = clamp((1 / HELI.THRUST_MAX - HELI.LEVER_LOW) / (1 - HELI.LEVER_LOW), 0, 1);
+  Object.assign(s, { x, y, z, yaw, vx: 0, vy: 0, vz: 0, pitch: 0, roll: 0, pitchRate: 0, rollRate: 0, yawRate: 0, ground: false, down: 0,
+    holdY: y, holdX: x, holdZ: z, holding: true, heightHeld: true, held: false, still: 0, startHeld: 0, stopHeld: 0, rotor: 1, engine: true, coll });
+  return s;
+}
+
+/**
  * A bump (something hit hard: a wall, a tree, the ground; `speed` m/s): nobody is hurt and nothing breaks. The machine
  * stops, levels, its engine cuts out and it is down for DOWN_TIME once on the floor; in the air it first sinks there
  * by itself (at least DOWN_SINK, a third of its height a second). The caller shows the sparks and plays the clang.

@@ -78,6 +78,8 @@ export interface HeliEnv {
 
 export function heliStart(at?: { x?: number; y?: number; z?: number; yaw?: number }): HeliState;
 export function heliPlace(s: HeliState, x: number, y: number, z: number, yaw: number, rotor?: number): HeliState;
+/** A steady hover at (x, y, z) facing `yaw`: still, the rotor at full speed, the engine on, holding the spot and the height. */
+export function heliHover(s: HeliState, x: number, y: number, z: number, yaw: number): HeliState;
 export function heliBump(s: HeliState, speed?: number): HeliState;
 export function heliStep(s: HeliState, input: HeliInput, env: HeliEnv, dt: number): HeliState;
 export function heliFly(s: HeliState, input: HeliInput, env: HeliEnv, dt: number): HeliState;
