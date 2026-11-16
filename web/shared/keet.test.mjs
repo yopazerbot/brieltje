@@ -3,7 +3,8 @@ import { readFileSync } from 'node:fs';
 import test from 'node:test';
 import { DOOR_GLASS, END_DOOR_GLASS, findHome, HOMES, homeAt, homeOfDoor, makePaneHomes, PANE_LIMIT, WALK_IN_GLASS, WALK_INS } from './homes.mjs';
 import { PACK_IDS, WALK_IN_FILES } from './insideData.mjs';
-import { KEET_DOOR, makeKeet, PUBLIC_WALK_INS } from './keet.mjs';
+import { KEET_DOOR, keetPrisms, keetRelief, makeKeet, PUBLIC_WALK_INS } from './keet.mjs';
+import { arenaOf } from './arenas.mjs';
 import { HAVE_PRIVATE, house, packs } from './testData.mjs';
 
 // The café at the church is public and the homes are locked: nothing of the one may ever be taken for the other (a confused
@@ -94,4 +95,31 @@ test('the café\'s blocks: walls and floors in the world, its windows as glass w
   const front = keet.doors.find((d) => d.id === 'keet-front');
   assert.ok(Math.abs(front.y0 - keet.floor - 0.05) < 1e-9);
   assert.ok(keet.doors.find((d) => d.id === 'keet-mid').open, 'the door to the bar room stands open at the start');
+});
+
+test('in the zombies\' grid at the church (keetPrisms): the café\'s own blocks in place of its plain ones, and nothing else', () => {
+  const village = read('village.json').prisms;
+  const mid = (p) => [p.p[0].reduce((t, q) => t + q[0], 0) / p.p[0].length, p.p[0].reduce((t, q) => t + q[1], 0) / p.p[0].length];
+  const out = keetPrisms(village, keet);
+  const gone = village.filter((p) => !out.includes(p));
+  assert.ok(gone.length >= 1 && gone.every((p) => p.d === undefined && keet.contains(...mid(p))), `${gone.length} plain blocks of the café go`);
+  assert.ok(village.filter((p) => p.d !== undefined && p.p[0].some(([x, z]) => keet.contains(x, z))).every((p) => out.includes(p)), 'the paving under it stays');
+  assert.equal(out.length, village.length - gone.length + keet.prisms.length);
+  assert.ok(keet.prisms.every((p) => out.includes(p)));
+});
+
+test('its relief for the zombies\' grid (keetRelief): never over the floor inside, as it was outside', () => {
+  const base = -0.1;
+  const height = (x, z) => 6.4 - base + (z + 720) * 0.01; // over the floor everywhere round here
+  const cut = keetRelief(height, keet, base);
+  for (const s of keet.spots) assert.ok(Math.abs(cut(s.x, s.z) + base - keet.floor) < 1e-9, s.name);
+  for (const [x, z] of [[545, -716], [534, -716], [540, -728], [540, -705]]) assert.equal(cut(x, z), height(x, z), `${x}, ${z}`);
+});
+
+test('the church place\'s box round the café is in the café\'s own frame (shared/arenas.mjs)', () => {
+  const box = arenaOf('church').also;
+  const { o, a } = shell.frame;
+  const at = (u, v) => [o[0] + u * Math.cos(a) + v * Math.sin(a), o[1] - u * Math.sin(a) + v * Math.cos(a)];
+  const want = [at(-4.5, 2), at(10.5, 2), at(10.5, 21), at(-4.5, 21)];
+  for (let i = 0; i < 4; i++) assert.ok(Math.hypot(box[i][0] - want[i][0], box[i][1] - want[i][1]) < 0.02, `${box[i]} against ${want[i]}`);
 });
