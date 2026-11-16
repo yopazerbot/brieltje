@@ -334,32 +334,34 @@ def standard_brick(size=1024, seed=17):
 
 
 def mixed_brick(size=1024, seed=71):
-    """Home 4's rustic brick (tools/kapellenhoek_home.py), in its own colours, untinted: red and red-brown bricks,
-    a quarter washed near white with lime, a quarter half washed in patches, wide pale joints. The neighbours'
-    brick's format and tile (21 x 5 cm in running bond, 1.76 m), with joints of 1.3 cm."""
+    """Home 4's rustic brick (tools/kapellenhoek_home.py), in its own colours, untinted: muted red, red-brown and
+    pinkish bricks, about a fifth washed near white with lime and a quarter washed in patches, wide pale joints.
+    21 x 5 cm bricks with 1.3 cm joints in running bond, 16 across and 56 courses up a tile of 3.52 m, so the
+    random mix repeats only every 3.5 m; the noise cells divide the tile, so it has no seam."""
     rng = np.random.default_rng(seed)
-    px = size / 1.76
+    cols, courses = 16, 56
     yy, xx = np.mgrid[0:size, 0:size].astype(np.float32)
-    course_h, brick_w, joint = 0.065 * px * (1.76 / 1.755), 0.22 * px, 0.013 * px
+    course_h, brick_w = size / courses, size / cols
+    joint = 0.013 * size / 3.52
     course = np.floor(yy / course_h).astype(int)
     shift = (course % 2) * (brick_w / 2)
-    col = np.floor(((xx + shift) % size) / brick_w).astype(int)
+    col = np.floor(((xx + shift) % size) / brick_w).astype(int) % cols
     is_brick = ((yy % course_h) < (course_h - joint)) & (((xx + shift) % brick_w) < (brick_w - joint))
-    reds = np.array([[150, 70, 55], [165, 84, 64], [135, 60, 48], [120, 64, 52], [146, 90, 74], [176, 96, 70], [110, 52, 44]]) / 255
-    washed = np.array([[222, 212, 202], [208, 198, 190], [228, 222, 214]]) / 255
-    n = 28 * 16
-    pick = rng.random(n)  # per brick: red (< .5), half washed (< .75) or washed
-    red = reds[rng.integers(0, len(reds), n)] * (0.92 + 0.16 * rng.random(n))[:, None]
-    white = washed[rng.integers(0, len(washed), n)] * (0.95 + 0.06 * rng.random(n))[:, None]
-    cover = np.where(pick < .5, 0.0, np.where(pick < .75, .35 + .3 * rng.random(n), 1.0))  # how much of it is washed
-    k = course * 16 + col
-    mottle = 0.6 * value_noise((size, size), 20, rng) + 0.4 * value_noise((size, size), 5, rng)
-    smear = 0.65 * value_noise((size, size), 9, rng) + 0.35 * value_noise((size, size), 3, rng)
+    reds = np.array([[160, 96, 82], [150, 88, 76], [170, 108, 92], [140, 86, 74], [156, 104, 90], [134, 84, 74], [166, 100, 84]]) / 255
+    washed = np.array([[218, 206, 196], [206, 195, 186], [226, 216, 206]]) / 255
+    n = courses * cols
+    pick = rng.random(n)  # per brick: red (< .55), washed in patches (< .8) or washed
+    red = reds[rng.integers(0, len(reds), n)] * (0.95 + 0.1 * rng.random(n))[:, None]
+    white = washed[rng.integers(0, len(washed), n)] * (0.96 + 0.05 * rng.random(n))[:, None]
+    cover = np.where(pick < .55, 0.0, np.where(pick < .8, .45 + .3 * rng.random(n), 1.0))  # how much of it is washed
+    k = course * cols + col
+    mottle = 0.6 * value_noise((size, size), 32, rng) + 0.4 * value_noise((size, size), 8, rng)
+    smear = 0.65 * value_noise((size, size), 16, rng) + 0.35 * value_noise((size, size), 4, rng)
     # The lime lies in patches: where the smear noise is under the brick's cover; a washed brick keeps a little red.
     lime = np.clip((cover[k] * 1.25 - smear) * 4, 0, 1) * np.where(cover[k] >= 1, .9, 1)
     color = red[k] * (1 - lime[..., None]) + white[k] * lime[..., None]
-    color = color * (1 - 0.12 * mottle[..., None])
-    mortar = np.array([0.84, 0.82, 0.78]) * (0.93 + 0.1 * value_noise((size, size), 4, rng))[..., None]
+    color = color * (1 - 0.08 * mottle[..., None])
+    mortar = np.array([0.84, 0.82, 0.78]) * (0.94 + 0.08 * value_noise((size, size), 4, rng))[..., None]
     color = np.where(is_brick[..., None], color, mortar)
     albedo = Image.fromarray((np.clip(color, 0, 1) * 255).astype(np.uint8))
     normal = normal_map(is_brick.astype(np.float32) + 0.15 * mottle, 2.5)
@@ -486,7 +488,7 @@ def generated(sizes):
 SURFACES = {"nb_brick": (standard_brick, 1.76, 1024), "roof_tiles": (roof_tiles, 1.2, 1024),
             "floor_tile": (large_tile, 4.8, 2048), "cladding": (slats, 1.8, 1024), "asphalt": (asphalt, 2.0, 1024),
             "road_concrete": (road_concrete, 2.0, 1024, 512), "clinker": (clinker, 2.2, 1024),
-            "mixed_brick": (mixed_brick, 1.76, 1024, 512)}
+            "mixed_brick": (mixed_brick, 3.52, 1024, 512)}
 
 
 def surface(name, sizes):
