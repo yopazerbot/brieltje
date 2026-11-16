@@ -8,6 +8,7 @@
 
 import { DONE_MS as ZOMBIES_DONE_MS, RECONNECT_MS as ZOMBIES_RECONNECT_MS, ZombieGame } from './zombies.mjs';
 import { arenaOf, portalOf } from '../shared/arenas.mjs';
+import { BACK_MS, FLAG_COLORS, FLAG_MS, FLAG_TEAMS, FlagGame, SAFE_MS, SUDDEN_MS } from './flags.mjs';
 
 const HIDE_MS = 30_000; // the seeker counts with eyes shut
 const SEEK_MS = 180_000;
@@ -25,7 +26,9 @@ const GRACE_MS = 15_000; // a seeker or "it" whose connection drops has this lon
 export const TEAM_GOAL = 25; // kills of the other team that win the teams game
 export const TEAM_NAMES = { house: 'House', bungalow: 'Bungalow' };
 export const TEAM_COLORS = { house: '#4fa3e0', bungalow: '#ff9f43' };
-export const KINDS = { hide: 'Hide and seek', tag: 'Tag', treasure: 'Treasure hunt', teams: 'House against bungalow', zombies: 'Zombies' };
+export const KINDS = { hide: 'Hide and seek', tag: 'Tag', treasure: 'Treasure hunt', teams: 'House against bungalow', zombies: 'Zombies', flag: 'Steal the flag' };
+/** Steal the flag's teams in the chat's English (server/flags.mjs). */
+const FLAG_NAMES = { blue: 'Blue', red: 'Red' };
 /**
  * A look the host's programme gives a game (server/host.mjs entry), for as long as it is played and its result shows:
  * 'paint', child-friendly for everyone whatever the house rule says; 'real', the house rule's child-friendly off (a
@@ -59,7 +62,7 @@ export class Modes {
    * zombies only (see noShooting and friends).
    */
   get peaceful() {
-    return this.active && this.state.kind !== 'teams';
+    return this.active && this.state.kind !== 'teams' && this.state.kind !== 'flag';
   }
 
   /** No shots, grenades or rockets at all (hide and seek, tag, the treasure hunt). */
@@ -73,11 +76,41 @@ export class Modes {
   }
 
   /**
-   * A match of team against team is on: the teams game now (the flag game will add itself). Asked by what only
-   * happens in such a match (cars and helicopters taking damage).
+   * A match of team against team is on: the teams game or Steal the flag. Asked by what only happens in such a match
+   * (cars and helicopters taking damage).
    */
   get teamMatch() {
-    return this.state.kind === 'teams' && this.state.phase === 'playing';
+    return (this.state.kind === 'teams' || this.state.kind === 'flag') && this.state.phase === 'playing';
+  }
+
+  /** A game of two teams (the teams game or Steal the flag), its result showing too: the teams' score counts, not the kill limit. */
+  get teamGame() {
+    return this.state.kind === 'teams' || this.state.kind === 'flag';
+  }
+
+  /** Steal the flag being played (not once its result shows): its rules (server/flags.mjs), or null. */
+  get flag() {
+    return this.state.kind === 'flag' && this.state.phase !== 'done' ? this.state.f : null;
+  }
+
+  /** ms down before coming back: Steal the flag's own, else null (game.mjs keeps its own). */
+  get backMs() {
+    return this.flag ? BACK_MS : null;
+  }
+
+  /** ms of protection after coming back: Steal the flag's own, else null. */
+  get safeMs() {
+    return this.flag ? SAFE_MS : null;
+  }
+
+  /** Where a player comes back in Steal the flag: at their base (game.mjs respawn), else null. */
+  baseSpot(name) {
+    return this.flag?.baseSpot(name) ?? null;
+  }
+
+  /** The team whose flag `name` carries in Steal the flag, or null: no portal, trip from the chat or helicopter seat then. */
+  carrying(name) {
+    return this.flag?.carrying(name) ?? null;
   }
 
   /** The look of the game being played (see LOOKS), or null: the house rule. */
@@ -91,9 +124,9 @@ export class Modes {
   }
 
 
-  /** In the teams game: the player's team ('house' or 'bungalow'), else null. */
+  /** In the teams game: the player's team ('house' or 'bungalow'); in Steal the flag 'blue' or 'red'; else null. */
   teamOf(name) {
-    return this.state.kind === 'teams' ? this.state.teams[name] ?? null : null;
+    return this.teamGame ? this.state.teams[name] ?? null : null;
   }
 
   /** Two players on the same team: they can't hurt each other. In Zombies everyone is on one team. */
@@ -103,11 +136,12 @@ export class Modes {
     return !!t && t === this.teamOf(b);
   }
 
-  /** The team with fewer players here now (the house when even). */
+  /** The team with fewer players here now (the house when even; in Steal the flag blue when even). */
   smaller() {
-    const n = { house: 0, bungalow: 0 };
+    const [a, b] = this.state.kind === 'flag' ? FLAG_TEAMS : ['house', 'bungalow'];
+    const n = { [a]: 0, [b]: 0 };
     for (const t of Object.values(this.here(this.state.teams))) n[t]++;
-    return n.bungalow < n.house ? 'bungalow' : 'house';
+    return n[b] < n[a] ? b : a;
   }
 
   /** Of a table by player names, the players here now (those away keep their part for when they're back). */
@@ -124,9 +158,12 @@ export class Modes {
   choose(name, team) {
     const s = this.state;
     const p = this.game.players.get(name);
-    if (s.kind !== 'teams' || s.phase !== 'playing' || !p || typeof team !== 'string' || !Object.hasOwn(TEAM_NAMES, team) || s.teams[name] === team) return;
+    const names = s.kind === 'flag' ? FLAG_NAMES : TEAM_NAMES;
+    if (!this.teamGame || s.phase !== 'playing' || !p || typeof team !== 'string' || !Object.hasOwn(names, team) || s.teams[name] === team) return;
     // The host's teams for the evening (server/host.mjs): only the host moves a player.
     if (this.game.host?.sideOf(name)) return this.game.send(p.ws, { t: 'system', text: 'The host picks the teams tonight', code: 'hostTeams' });
+    // Steal the flag: nobody switches with a flag in hand (it would be their own team's then).
+    if (s.f?.carrying(name)) return this.game.send(p.ws, { t: 'system', text: 'Not while you carry the flag', code: 'flagSwitch' });
     const now = Date.now();
     const since = now - (s.switched[name] ?? -Infinity);
     if (!p.alive && since < 1000) return;
@@ -135,14 +172,15 @@ export class Modes {
     }
     s.teams[name] = team;
     s.switched[name] = now;
-    this.say(`${name} joined team ${TEAM_NAMES[team]}`, 'teamJoined', { name, team });
+    this.say(`${name} joined team ${names[team]}`, 'teamJoined', { name, team });
     this.game.teamsChanged([name], p.alive);
     this.send();
   }
 
-  /** A kill in the teams game: a point for the killer's team, unless it was their own. */
+  /** A kill in the teams game: a point for the killer's team, unless it was their own. In Steal the flag a tag, for the tie. */
   scored(killer, victim) {
     const s = this.state;
+    if (s.kind === 'flag' && s.phase === 'playing') return s.f.tagged(killer, victim);
     if (s.kind !== 'teams' || s.phase !== 'playing') return;
     const team = s.teams[killer];
     if (!team || team === s.teams[victim]) return;
@@ -160,7 +198,8 @@ export class Modes {
       seekers: s.seekers ? [...s.seekers].filter((n) => this.game.players.has(n)) : undefined, it: s.it, times: s.times, coins: s.coins, counts: s.counts,
       result: s.result, resultCode: s.resultCode, resultArgs: s.resultArgs,
       teams: s.teams && this.here(s.teams), score: s.score, goal: s.kind === 'teams' ? s.goal ?? TEAM_GOAL : undefined,
-      colors: s.kind === 'teams' ? s.colors ?? TEAM_COLORS : undefined, // the teams' colours, for the big screen (admin/scores)
+      colors: s.kind === 'teams' ? s.colors ?? TEAM_COLORS : s.kind === 'flag' ? FLAG_COLORS : undefined, // the teams' colours, for the big screen (admin/scores)
+      flag: s.kind === 'flag' ? s.f.view(now) : undefined, // Steal the flag: the field, each flag, the tags (server/flags.mjs)
       look: s.look ?? undefined, // the host's look for this game (LOOKS), for the host page
       // Zombies: the wave, how many are left, who stands, everyone's count and the best ever; the break's countdown.
       ...(s.kind === 'zombies' ? { zombies: s.z.view(now), ms: s.phase === 'done' ? Math.max(0, s.until - now) : s.z.ms(now) } : {}),
@@ -206,9 +245,10 @@ export class Modes {
     const ms = (fixed) => (opts.minutes ? opts.minutes * 60_000 : fixed);
     if (kind === 'free') {
       if (!this.active) return;
-      const teams = this.state.kind === 'teams';
+      const teams = this.teamGame;
       const zombies = this.state.kind === 'zombies';
       if (zombies) this.state.z.stop();
+      if (this.state.kind === 'flag') this.state.f.unpark(now); // its parked vehicles go
       this.state = { kind: 'free' };
       if (zombies) this.game.gunsBack?.(); // every gun, back
       if (teams) this.game.teamsChanged(this.names(), false);
@@ -220,8 +260,9 @@ export class Modes {
     if (!Object.hasOwn(KINDS, kind)) return;
     const names = this.names();
     if (names.length < 2 && kind !== 'treasure' && kind !== 'zombies') return this.say(`${KINDS[kind]} needs at least two players`, 'needTwo', { kind });
-    const fromTeams = this.state.kind === 'teams' && kind !== 'teams';
+    const fromTeams = this.teamGame && kind !== this.state.kind;
     if (this.state.kind === 'zombies') this.state.z.stop(); // straight from a Zombies game to another game: its zombies go
+    if (this.state.kind === 'flag') this.state.f.unpark(now); // straight from Steal the flag: its parked vehicles go
     if (kind === 'hide') {
       // `players`: who took part, so someone back after a dropped connection plays on as before (see join).
       const seeker = this.pick(names);
@@ -240,6 +281,22 @@ export class Modes {
       this.state = { kind, phase: 'playing', until: now + ms(TEAMS_MS), teams, score: { house: 0, bungalow: 0 }, switched: byName(), goal, colors: sides ? this.game.host.sideColors() : null };
       this.say(`${by} started House against bungalow: first team to ${goal} kills. Switch teams in the menu.`, 'teamsStarted', { name: by, n: goal });
       this.game.roundOver = null; // the teams' score counts now
+      this.game.teamsChanged(names);
+    } else if (kind === 'flag') {
+      // Blue against red (server/flags.mjs): the host's two teams when there are two (the house's side blue), else
+      // everyone split as evenly as can be. `place`: the field, 'compact' or 'village' (anything else: compact). Everyone
+      // starts at their base; the village field's vehicles park.
+      const teams = byName();
+      const sides = this.game.host?.sides(names);
+      for (const n of [...names].sort(() => Math.random() - 0.5)) {
+        const count = Object.values(teams).filter((t) => t === 'blue').length;
+        teams[n] = sides?.[n] ? (sides[n] === 'house' ? 'blue' : 'red') : count <= Object.keys(teams).length - count ? 'blue' : 'red';
+      }
+      const f = new FlagGame(this.game, place, teams, LOOKS.includes(opts.look) ? opts.look : null, now);
+      this.state = { kind, phase: 'playing', until: now + ms(FLAG_MS), teams, score: f.score, switched: byName(), f };
+      this.say(`${by} started Steal the flag: blue at the church, red at ${f.field.id === 'village' ? 'the Sparrenhof' : 'Molenhoek'}. Bring their flag to your base.`, 'flagStarted', { name: by, place: f.field.red });
+      this.game.roundOver = null; // the teams' score counts now
+      f.park(now);
       this.game.teamsChanged(names);
     } else if (kind === 'zombies') {
       // Everyone at the place first (home, or a portal in Smetlede), then the horde: its grid takes the cars
@@ -270,7 +327,7 @@ export class Modes {
       this.say(`${by} started a treasure hunt: ${COINS} coins in and around the house`, 'huntStarted', { name: by, n: COINS });
     }
     this.state.look = LOOKS.includes(opts.look) ? opts.look : null;
-    if (kind !== 'teams' && kind !== 'zombies') this.game.gather(names); // played at the house: everyone there, spread out
+    if (kind !== 'teams' && kind !== 'zombies' && kind !== 'flag') this.game.gather(names); // played at the house: everyone there, spread out
     // Straight from the teams game to another one: everyone back in their own colours, and the
     // fighting scores start again.
     if (fromTeams) {
@@ -350,6 +407,13 @@ export class Modes {
       if (!back) s.teams[name] = this.game.host?.sideOf(name) ?? this.smaller();
       this.game.teamsChanged([name], !back);
     }
+    if (s.kind === 'flag' && s.phase === 'playing') {
+      // Late: the host's side (blue for the house's, red for the bungalow's), else the smaller team, at its base.
+      const back = name in s.teams;
+      const side = this.game.host?.sideOf(name);
+      if (!back) s.teams[name] = side ? (side === 'house' ? 'blue' : 'red') : this.smaller();
+      this.game.teamsChanged([name], !back);
+    }
     if (s.kind === 'hide') {
       if (!s.players.has(name)) s.seekers.add(name);
       s.players.add(name);
@@ -394,6 +458,9 @@ export class Modes {
     } else if (s.kind === 'zombies') {
       s.z.leave(name, player, now);
       if (!this.names().length) s.emptyUntil = now + ZOMBIES_RECONNECT_MS;
+    } else if (s.kind === 'flag') {
+      const ev = s.f.release(name, now); // a flag they carried falls where they were
+      if (ev) this.flagEvents([ev]);
     }
     this.send();
   }
@@ -425,6 +492,54 @@ export class Modes {
     return false;
   }
 
+  /**
+   * Steal the flag, every tick (server/flags.mjs): the flags followed from where the players are, a line and a sound on
+   * every page for each event, and the clock. Level when time is up: SUDDEN_MS more where the next capture wins; still
+   * level, the most tags; still level, a draw.
+   */
+  flagTick(now) {
+    const s = this.state;
+    const f = s.f;
+    const events = f.step(now);
+    if (events.length) this.flagEvents(events);
+    const captured = events.some((e) => e.ev === 'captured');
+    const { blue, red } = f.score;
+    if (f.sudden && captured) return this.flagOver('flagSudden');
+    if (now < s.until) {
+      if (events.length) this.send();
+      return;
+    }
+    if (!f.sudden && blue === red) {
+      f.sudden = true;
+      s.until = now + SUDDEN_MS;
+      this.say(`Time's up at ${blue} to ${red}: sudden death, the next capture wins (5 minutes)`, 'flagSuddenStart', { blue, red });
+      return this.send();
+    }
+    this.flagOver(blue !== red ? 'flagTime' : 'flagTags');
+  }
+
+  /**
+   * Steal the flag is over: `why` 'flagTime' (more captures when time was up), 'flagSudden' (the capture in sudden
+   * death) or 'flagTags' (level after sudden death: the most tags, else a draw).
+   */
+  flagOver(why) {
+    const f = this.state.f;
+    const { blue, red } = f.score;
+    const tags = f.tags;
+    if (why === 'flagTags' && tags.blue === tags.red) return this.finish(`A draw: ${blue} to ${red} in captures and ${tags.blue} to ${tags.red} in tags`, 'flagDraw', { blue, red, a: tags.blue, b: tags.red });
+    const team = why === 'flagTags' ? (tags.blue > tags.red ? 'blue' : 'red') : blue > red ? 'blue' : 'red';
+    if (why === 'flagTags') return this.finish(`Team ${FLAG_NAMES[team]} wins on tags, ${tags.blue} to ${tags.red} (captures ${blue} to ${red})`, 'flagTagsWon', { team, blue, red, a: tags.blue, b: tags.red });
+    this.finish(`Team ${FLAG_NAMES[team]} wins, ${blue} to ${red}`, 'flagWon', { team, blue, red });
+  }
+
+  /**
+   * Flag events (server/flags.mjs step) for every page: the HUD's short line and its sound (`flag`), never a card. `team`
+   * is the flag's, `name` who did it ('' for a flag home by itself).
+   */
+  flagEvents(events) {
+    for (const e of events) this.game.broadcast({ t: 'flag', ev: e.ev, team: e.team, name: e.name });
+  }
+
   /** Every tick: the clock, and the time "it" has been it (while there). */
   tick(now, dt) {
     const s = this.state;
@@ -445,10 +560,12 @@ export class Modes {
       s.z.tick(now, dt);
       return;
     }
+    if (s.kind === 'flag' && s.phase === 'playing') return this.flagTick(now);
     if (now < s.until) return;
     if (s.phase === 'done') {
-      const teams = s.kind === 'teams';
+      const teams = s.kind === 'teams' || s.kind === 'flag';
       if (s.kind === 'zombies') s.z.stop();
+      if (s.kind === 'flag') s.f.unpark(now); // its parked vehicles go once its result has shown
       this.state = { kind: 'free' };
       if (s.kind === 'zombies') this.game.gunsBack?.(); // every gun, back
       if (teams) {

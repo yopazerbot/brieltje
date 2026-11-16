@@ -24,6 +24,7 @@ import { words } from './words.mjs';
 import { KINDS, LOOKS } from './modes.mjs';
 import { ARENAS } from '../shared/arenas.mjs';
 import { DUEL_KINDS } from './duel.mjs';
+import { FIELDS } from '../shared/flagFields.mjs';
 
 // The first two are the evening's blue and red (Yoshi, 16 Nov 2026: "team blue vs team red").
 export const EVENING_TEAMS = [
@@ -141,7 +142,7 @@ export class Host {
     else if (code === 'foundAll') winners = [...(state.seekers ?? [])];
     else if (code === 'seekerLeft') winners = here.filter((n) => !state.seekers?.has(n));
     else if (code === 'tagWon') winners = [args.name];
-    else if (code === 'teamWon' || code === 'teamsTime') winners = Object.keys(state.teams ?? {}).filter((n) => state.teams[n] === args.team);
+    else if (code === 'teamWon' || code === 'teamsTime' || code === 'flagWon' || code === 'flagTagsWon') winners = Object.keys(state.teams ?? {}).filter((n) => state.teams[n] === args.team);
     else if (code === 'zOver' || code === 'zOverBest') extra = this.wavePoints(args.n);
     winners = winners.filter((n) => typeof n === 'string' && present.has(n));
     this.award(here, winners, extra);
@@ -332,7 +333,7 @@ export class Host {
     if (!none && !LOOKS.includes(e.look)) return null;
     // The Zombies duel (server/duel.mjs): its warm-up (with its minutes) or its final, always at Sparrenhof.
     if (e.kind === 'duel') return DUEL_KINDS.includes(e.duel) ? { kind: 'duel', duel: e.duel, place: 'sparrenhof', minutes: e.duel === 'warmup' ? int(e.minutes, 1, 30) : null, goal: null, look: none ? null : e.look } : null;
-    const place = typeof e.place === 'string' && PLACES.has(e.place) ? e.place : 'house';
+    const place = e.kind === 'flag' ? (Object.hasOwn(FIELDS, e.place) ? e.place : 'compact') : typeof e.place === 'string' && PLACES.has(e.place) ? e.place : 'house'; // Steal the flag: its field
     return { kind: e.kind, place, minutes: int(e.minutes, 1, 30), goal: e.kind === 'teams' ? int(e.goal, 5, 100) : null, look: none ? null : e.look };
   }
 
@@ -373,6 +374,18 @@ export class Host {
       for (const n of names) if (n in this.teams) s.teams[n] = this.teams[n] === 0 ? 'house' : 'bungalow';
       s.colors = this.sideColors(); // played by the host's teams from now on: blue and red
       this.game.teamsChanged(names);
+      this.game.modes.send();
+    }
+    // Steal the flag being played: the host's move counts there too (blue for the first team, red for the second), a flag
+    // in the hand of one moved dropping where they stood.
+    if (s.kind === 'flag' && s.phase === 'playing' && this.teamCount === 2) {
+      const moved = names.filter((n) => n in this.teams && s.teams[n] !== (this.teams[n] === 0 ? 'blue' : 'red'));
+      for (const n of moved) {
+        const ev = s.f.release(n, Date.now());
+        if (ev) this.game.modes.flagEvents([ev]);
+        s.teams[n] = this.teams[n] === 0 ? 'blue' : 'red';
+      }
+      this.game.teamsChanged(moved);
       this.game.modes.send();
     }
     this.game.broadcast({ t: 'eveningteams', count: this.teamCount, teams: Object.fromEntries(Object.entries(this.teams).map(([n, i]) => [n, EVENING_TEAMS[i].id])) });

@@ -537,7 +537,7 @@ export class Game {
   copyWorldFrom(main) {
     for (const [id, f] of main.furniture) this.furniture.set(id, f);
     this.furnitureEdited = main.furnitureEdited;
-    for (const [id, c] of Object.entries(main.cars)) if (c.kind) this.cars[id] = { ...c, driver: null, passenger: null };
+    for (const [id, c] of Object.entries(main.cars)) if (c.kind && !c.flag) this.cars[id] = { ...c, driver: null, passenger: null }; // not Steal the flag's (server/flags.mjs)
     this.rules = { ...main.rules, maxPlayers: this.room.max };
     this.mood = main.mood;
     this.moodCycle = main.moodCycle;
@@ -1100,7 +1100,7 @@ export class Game {
     } else if (m.t === 'rally') {
       const state = player.state;
       if (!player.alive || !state?.armed || now - (player.lastRally ?? 0) < 3000) return;
-      if (!['zombies', 'teams'].includes(this.modes.state.kind) || this.modes.state.phase === 'done') return;
+      if (!['zombies', 'teams', 'flag'].includes(this.modes.state.kind) || this.modes.state.phase === 'done') return;
       player.lastRally = now;
       for (const [who, other] of this.players) {
         if (!other.state?.armed) continue;
@@ -1316,6 +1316,7 @@ export class Game {
         const h = this.helis.machines.get(m.id);
         return h ? this.tellThing(player, 'heli', this.helis.pub(h)) : undefined;
       }
+      if ((m.op === 'in' || m.op === 'fly') && this.flagNoHeli(name, player, m.id)) return; // Steal the flag (server/flags.mjs)
       this.helis.ask(name, player, m, now);
     } else if (m.t === 'bell') {
       // A bike's bell: only from its rider, at most every BELL_MS. The others ring it where the server has
@@ -1411,7 +1412,7 @@ export class Game {
     // Refused: the page goes back to where the server has the player, so both agree.
     const no = () => this.send(p.ws, { t: 'spawn', ok: false, x: st.x, z: st.z });
     // Back in a fight by a reconnect (join): no start place (a drop out of reach, or the school grounds), as a trip.
-    if (this.inFight(p, now)) return no();
+    if (this.inFight(p, now) || this.modes.carrying?.(name)) return no(); // nor with Steal the flag's flag in hand
     if (now - p.joinTime > 90_000 || !p.alive || this.carOf(name) || this.horseOf(name) || this.bikeOf(name) || this.helis.of(name) || (!this.rules.portals && p.role !== 'admin')) return no();
     if (Math.hypot(st.x - p.joinedAt.x, st.z - p.joinedAt.z) > 30) return no();
     const [x, z, yaw] = to.out;
@@ -1493,6 +1494,8 @@ export class Game {
     const no = (text = '', code = undefined) => this.send(p.ws, { t: 'travel', name, to: id, ok: false, text, code });
     if (!to || !st || !p.alive || now < (p.nextTravel || 0) || (to.street && !chat)) return no();
     if (this.fenced()) return no("You can't travel during the game.", 'travelGame'); // everyone stays near the house (see fence)
+    // Steal the flag (server/flags.mjs): the flag goes the way it is carried, never through a portal or from the chat.
+    if (this.modes.carrying?.(name)) return chat ? no('Not with the flag: carry it home.', 'flagTravel') : no('No portal with the flag: carry it home.', 'flagPortal');
     if (chat && !this.rules.travel && p.role !== 'admin') return no('The admin has turned travelling from the chat off. Walk to a portal.', 'travelChatOff');
     if (!chat && !this.rules.portals) return no('The admin has turned the portals off.', 'travelPortalsOff');
     const car = this.carOf(name);
@@ -1697,7 +1700,23 @@ export class Game {
    */
   fenced() {
     if (this.room) return true; // a room always keeps its players at its place, between games too
-    return this.modes.active && this.modes.state.phase !== 'done';
+    return this.modes.active && this.modes.state.phase !== 'done' && !this.modes.flag; // Steal the flag has its field instead (fence)
+  }
+
+  /**
+   * Steal the flag refuses a helicopter seat (server/flags.mjs): to the carrier always, and to everyone unless the
+   * village field is played with the look 'real' (a machine at each base then). Says why and tells the page the machine
+   * as it is, so it stops waiting. True when refused.
+   */
+  flagNoHeli(name, p, id) {
+    const f = this.modes.flag;
+    if (!f) return false;
+    const carrier = !!f.carrying(name);
+    if (!carrier && f.field.id === 'village' && f.look === 'real') return false;
+    this.send(p.ws, carrier ? { t: 'system', text: 'No helicopter with the flag: carry it home.', code: 'flagHeli' } : { t: 'system', text: 'No helicopter during a game.', code: 'gameNoHeli' });
+    const h = typeof id === 'string' ? this.helis.machines.get(id) : null;
+    if (h) this.send(p.ws, { t: 'heli', heli: this.helis.pub(h) });
+    return true;
   }
 
   /**
@@ -1706,6 +1725,7 @@ export class Game {
    */
   fence() {
     if (this.room) return this.modes.zombies?.edge ?? this.room.edge;
+    if (this.modes.flag) return this.modes.flag.edge; // Steal the flag's field (shared/flagFields.mjs)
     return this.fenced() ? (this.modes.zombies?.edge ?? BOUNDS.party) : BOUNDS.map;
   }
 
@@ -2186,6 +2206,7 @@ export class Game {
     const admin = player.role === 'admin';
     const store = this.auth.store;
     const placed = typeof m.id === 'string' && Object.hasOwn(this.cars, m.id) && this.cars[m.id].kind ? this.cars[m.id] : null;
+    if (placed?.flag) return; // Steal the flag's (server/flags.mjs): never moved or taken away, never stored
     if (m.op === 'del') {
       if (!placed) return;
       if (!admin && this.owners.get(`t${placed.id}`) !== player.key) return no(['spawnNotYours', 'You can only take away what you spawned yourself.']);
@@ -2216,7 +2237,7 @@ export class Game {
       await store.updateCar(Number(placed.id.slice(1)), { ...spot, by: name });
       return;
     }
-    if (this.placedList().length + this.placing >= PLACED.max) return no(['teslaFull', `${PLACED.max} Teslas is the most.`]);
+    if (this.placedList().filter((c) => !c.flag).length + this.placing >= PLACED.max) return no(['teslaFull', `${PLACED.max} Teslas is the most.`]);
     this.placing++;
     let row;
     try {
@@ -2597,7 +2618,7 @@ export class Game {
     if (target.hp > 0) return this.send(target.ws, { t: 'hurt', hp: target.hp, by: name });
 
     target.alive = false;
-    target.respawnAt = now + RESPAWN_MS;
+    target.respawnAt = now + (this.modes.backMs ?? RESPAWN_MS); // Steal the flag: a little longer (server/flags.mjs)
     this.releaseCar(targetName);
     this.helis.release(targetName, now);
     this.releaseHorse(targetName);
@@ -2612,7 +2633,7 @@ export class Game {
     this.stats(targetName, { deaths: 1 });
     this.broadcast({ t: 'scores', list: this.scoreList() });
     this.modes.scored(name, targetName);
-    if (shooter.score.kills >= KILL_LIMIT && this.modes.state.kind !== 'teams') { // in the teams game the teams' score counts
+    if (shooter.score.kills >= KILL_LIMIT && !this.modes.teamGame) { // in the teams game and Steal the flag the teams' score counts
       this.roundOver = { winner: name, until: now + ROUND_BREAK_MS };
       this.host?.roundWon(name);
       this.broadcast({ t: 'round', winner: name, ms: ROUND_BREAK_MS });
@@ -2634,9 +2655,12 @@ export class Game {
     p.alive = true;
     p.weapons = loadout(p, !!this.modes.zombies);
     p.nades.fill(0);
-    p.protectedUntil = now + PROTECT_MS;
+    p.protectedUntil = now + (this.modes.safeMs ?? PROTECT_MS);
     p.backAt = now; // out of the fight before it: holstering counts at once (state)
     p.thrown = []; // and its grenades still in the air with it: they neither hold the holster nor go off for the one back
+    // Steal the flag: always at the player's own base, on the ground (server/flags.mjs).
+    const base = at ? null : this.modes.baseSpot?.(name);
+    if (base) [at, drop] = [base, false];
     let spawn = at?.spawn;
     if (!at) {
       // At the player's team's house in the teams game, else round the house; away from the others.
