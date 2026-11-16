@@ -158,7 +158,7 @@ import { glass as glassLook, GlassProbe, glassOnModel } from './world/glassLook'
 import { trackVillageHouse, VILLAGE_HOUSES } from './world/villageHouses';
 import { mood } from './world/mood';
 import { loadWalkIn, type WalkIn } from './world/walkIn';
-import { isKeetPane, keetDoorway, keetForZombies, keetRooms, loadKeet } from './world/keet';
+import { isKeetPane, keetDoorway, keetForZombies, KeetLife, keetRooms, loadKeet } from './world/keet';
 import { Insides, type InsidePack } from './world/insides';
 import { CAR_REACH, CAR_SLOW, findPortal, PORTALS, portalNear, REACH, type Portal } from '../shared/portals.mjs';
 import { noShoot } from '../shared/zones.mjs';
@@ -722,6 +722,8 @@ function applyQuality(q: Quality): void {
   resize();
 }
 applyQuality(quality);
+// The café's light (world/keet.ts): its two real lights made now, before any shader is compiled; none on Low or a phone.
+const keetLife = new KeetLife(scene, indoorLight, !phone && quality !== 'low');
 
 let slowTime = 0;
 let fastTime = 0;
@@ -4019,6 +4021,7 @@ renderer.setAnimationLoop((now: number) => {
   sound.listen(camera);
   roomSound.update(dt, inside, player.ground.name, camera.position);
   weather.update(dt, camera.position, inside); // the rain round the eye (none indoors), the street lamps
+  keetLife.update(dt, camera.position, mood.night, !phone && quality !== 'low'); // the café's light (world/keet.ts)
   setWindowNight(mood.night); // lights in about half of the village's rooms at night (world/windows.ts)
   player.lookScale = camera.fov / weapon.baseFov; // slower turning while zoomed in (not faster for the car's wider view)
   glass.update(dt);
@@ -4452,6 +4455,7 @@ async function buildVillage(): Promise<void> {
   if (keet) { // the café at the church: its shell's lump stands in until its rooms come, in idle time once playing
     keet.install(world, doors, glass);
     scene.add(keet.group);
+    void keetLife.attach(keet, scene, (x, z, from) => world.groundAt(x, z, from, 0).y);
     data.groundCuts.cells.push(...keet.groundCuts.cells);
     data.groundCuts.tris.push(...keet.groundCuts.tris);
     keetRooms(keet, { world, doors, glass, prepare: precompile, after: playing, done: (names, floors) => {

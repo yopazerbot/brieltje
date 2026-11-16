@@ -4,7 +4,8 @@ import type { Doors } from './doors';
 import type { Glass } from './glass';
 import { groundLayers, RANK } from './groundLayers';
 import type { Prism } from './houseData';
-import { loadWalkIn, type EndInside, type WalkIn } from './walkIn';
+import type { IndoorLight } from './indoorLight';
+import { lampGlow, loadWalkIn, type EndInside, type WalkIn } from './walkIn';
 import { makeKeet, PUBLIC_WALK_INS, type Keet, type KeetDoor } from '../../shared/keet.mjs';
 
 /**
@@ -116,3 +117,129 @@ export function keetDoorway(camera: THREE.Camera, doors: Doors): { id: string; n
   const { id, name } = best.d;
   return { id, name, open: true, locked: false, home: null, toggle: () => { doors.set(id, false); doors.onToggle(id, false, 1); } };
 }
+
+/** The café's fill light indoors: warmer than a home's, and dimmer (world/indoorLight.ts setPlace). */
+const FILL = new THREE.Color('#f3d9b0');
+const FILL_SCALE = 0.75;
+/** The lamps' glow (world/walkIn.ts lampGlow): by day, and how much more at night. Far under what half floats hold. */
+const GLOW_DAY = 1.5;
+const GLOW_NIGHT = 3;
+/** The two real lights (Medium and up, not on phones): over the bar and over the pool table, in the café's frame (u, height, v). */
+const LAMPS: [number, number, number][] = [[2.5, 1.9, 9.25], [2.5, 1.7, 4.4]];
+const LAMP_COLOR = '#ffc58a';
+/** cd by day and at night, and how far each reaches (m) */
+const LAMP_DAY = 3;
+const LAMP_NIGHT = 6;
+const LAMP_REACH = 6.5;
+/** The panes' warm glow seen from the square at night, and the patch of light on the paving before the front window */
+const PANE_GLOW = new THREE.Color('#ffb46a');
+const PANE_NIGHT = 0.28;
+const PATCH_NIGHT = 0.55;
+
+/**
+ * The café's life (package C): its light by day and by night. Indoors its fill is warm and dim, its bulbs and opal
+ * shades glow (more at night), and on Medium and up two lights without shadows hang over the bar and the pool table,
+ * lit only while you are inside. At night its panes glow warm from the square, and on Medium and up a soft warm patch
+ * lies on the paving before the front window. No full-screen effect, nothing per lamp on Low or a phone.
+ *
+ * The two lights are made with the game and stay in the scene for good, as the torch (world/torch.ts): a light added
+ * later makes every lit shader compile again. Outside the café they have no strength.
+ */
+export class KeetLife {
+  private lights: THREE.PointLight[] = [];
+  private keet: WalkIn | null = null;
+  private frame: { o: number[]; a: number; floor: number } | null = null;
+  private glass: THREE.MeshStandardMaterial | null = null;
+  private patch: THREE.Mesh | null = null;
+  private lit = 0;
+  /** Whether the eye was inside the café's outline at the last update */
+  inside = false;
+
+  /** `real`: whether to make the two real lights (Medium and up at the start, never on a phone). */
+  constructor(scene: THREE.Scene, private fill: IndoorLight, real: boolean) {
+    if (!real) return;
+    for (let i = 0; i < LAMPS.length; i++) {
+      const l = new THREE.PointLight(LAMP_COLOR, 0, LAMP_REACH, 2);
+      l.castShadow = false;
+      l.name = 'café lamp';
+      scene.add(l);
+      this.lights.push(l);
+    }
+  }
+
+  /** The café's world position of (u, height over its floor, v) in its own frame. */
+  private at(u: number, h: number, v: number, out = new THREE.Vector3()): THREE.Vector3 {
+    const { o, a, floor } = this.frame!;
+    const c = Math.cos(a), s = Math.sin(a);
+    return out.set(o[0] + u * c + v * s, floor + h, o[1] - u * s + v * c);
+  }
+
+  /** The café's walk-in is in (main.ts): its frame, its glass, and the patch of light before it (`ground`: the height there). */
+  async attach(keet: WalkIn, scene: THREE.Scene, ground: (x: number, z: number, from: number) => number): Promise<void> {
+    const shell = (await import('../data/keet_shell.json')).default as unknown as { frame: { o: number[]; a: number; floor: number } };
+    this.keet = keet;
+    this.frame = shell.frame;
+    LAMPS.forEach(([u, h, v], i) => this.lights[i] && this.at(u, h, v, this.lights[i].position));
+    // The café's own glass (world/walkIn.ts: one mesh of all its panes, its material its own): it glows at night.
+    keet.group.traverse((o) => {
+      const m = (o as THREE.Mesh).material as THREE.MeshPhysicalMaterial | undefined;
+      if ((o as THREE.Mesh).isMesh && m?.isMeshPhysicalMaterial && m.vertexColors && m.transparent) this.glass = m;
+    });
+    // The patch: 2.5 m along the front, 2 m out onto the square, before the front window (u 1.21 to 3.13), brightest at the wall.
+    const c = document.createElement('canvas');
+    c.width = c.height = 64;
+    const g = c.getContext('2d')!;
+    const img = g.createImageData(64, 64);
+    for (let y = 0; y < 64; y++) {
+      for (let x = 0; x < 64; x++) {
+        const across = Math.sin((Math.PI * (x + 0.5)) / 64) ** 1.5;
+        const out = (1 - (y + 0.5) / 64) ** 2; // y 0 at the wall
+        const k = Math.round(255 * across * out);
+        img.data.set([k, k, k, 255], (y * 64 + x) * 4);
+      }
+    }
+    g.putImageData(img, 0, 0);
+    const map = new THREE.CanvasTexture(c);
+    map.colorSpace = THREE.SRGBColorSpace;
+    const pos: number[] = [];
+    const uv: number[] = [];
+    const p = new THREE.Vector3();
+    for (const [du, dv, tu, tv] of [[0, 0, 0, 0], [1, 0, 1, 0], [1, 1, 1, 1], [0, 0, 0, 0], [1, 1, 1, 1], [0, 1, 0, 1]]) {
+      this.at(2.17 - 1.25 + 2.5 * du, 0, -0.05 - 2 * dv, p);
+      p.y = ground(p.x, p.z, this.frame.floor + 0.5) + 0.03;
+      pos.push(p.x, p.y, p.z);
+      uv.push(tu, tv);
+    }
+    const geo = new THREE.BufferGeometry();
+    geo.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3));
+    geo.setAttribute('uv', new THREE.Float32BufferAttribute(uv, 2));
+    const mat = new THREE.MeshBasicMaterial({ map, color: PANE_GLOW, transparent: true, blending: THREE.AdditiveBlending, depthWrite: false, side: THREE.DoubleSide, polygonOffset: true, polygonOffsetFactor: -2, polygonOffsetUnits: -2 });
+    mat.opacity = 0;
+    this.patch = new THREE.Mesh(geo, mat);
+    this.patch.name = 'café window light';
+    this.patch.userData.ignoreRay = true;
+    this.patch.renderOrder = 3;
+    this.patch.visible = false;
+    this.patch.frustumCulled = false;
+    scene.add(this.patch);
+  }
+
+  /** Each frame: the eye, the night (0 to 1, world/mood.ts), and whether this preset may have the lights and the patch (Medium and up, no phone). */
+  update(dt: number, eye: THREE.Vector3, night: number, fine: boolean): void {
+    if (!this.frame) return;
+    const inside = !!this.keet?.contains(eye.x, eye.z) && eye.y < this.frame.floor + 4;
+    this.inside = inside;
+    this.fill.setPlace(inside ? FILL : null, FILL_SCALE);
+    lampGlow.value = GLOW_DAY + (GLOW_NIGHT - GLOW_DAY) * night;
+    this.lit += ((inside && fine ? 1 : 0) - this.lit) * (1 - Math.exp(-dt * 3));
+    if (this.lit < 0.01 && !(inside && fine)) this.lit = 0;
+    const cd = this.lit * (LAMP_DAY + (LAMP_NIGHT - LAMP_DAY) * night);
+    for (const l of this.lights) l.intensity = cd;
+    if (this.glass) this.glass.emissive.copy(PANE_GLOW).multiplyScalar(inside ? 0 : PANE_NIGHT * night);
+    if (this.patch) {
+      this.patch.visible = fine && night > 0.02;
+      (this.patch.material as THREE.MeshBasicMaterial).opacity = PATCH_NIGHT * night;
+    }
+  }
+}
+
