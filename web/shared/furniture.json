@@ -62,6 +62,7 @@
     { "id": "wirependants", "name": "Rail with five wire pendants", "size": [1.5, 0.3, 2.47] },
     { "id": "sideboard220", "name": "Sideboard 220 (pale oak)", "size": [2.2, 0.45, 0.85] },
     { "id": "steelshelf", "name": "Open shelf unit (black steel)", "size": [0.8, 0.35, 1.8] },
-    { "id": "ovaltable150", "name": "Oval table 150 x 100 (pale oak)", "size": [1.5, 1.0, 0.75] }
+    { "id": "ovaltable150", "name": "Oval table 150 x 100 (pale oak)", "size": [1.5, 1.0, 0.75] },
+    { "id": "dartboard", "name": "Dart board on the wall", "size": [0.45, 0.04, 1.955] }
   ]
 }

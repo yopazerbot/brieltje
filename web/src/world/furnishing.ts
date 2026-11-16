@@ -6,6 +6,7 @@ import CATALOGUE from '../../shared/furniture.json';
 import type { World } from './collision';
 import type { FixtureSpec } from './houseData';
 import { mood } from './mood';
+import { drawDartboard } from './dartboard';
 import { drawCode, drawDesktop, drawLlama, drawPainting, drawPrint, drawRide, washTexture } from './screens';
 
 /**
@@ -152,6 +153,27 @@ function model(name: string, x = 0, y = 0, z = 0, ry = 0, s = 1): Part[] | null 
 }
 
 type Part = THREE.BufferGeometry;
+
+/**
+ * A model kept inside its piece's w x d footprint: the parts that reach out of it (a palm's fronds) are drawn in
+ * towards the middle, all by one factor so the crown keeps its round shape; the parts within it (the pot) stay.
+ */
+function inBox(parts: Part[], w: number, d: number): Part[] {
+  const reach = parts.map((g) => {
+    const p = g.attributes.position;
+    let x = 0;
+    let z = 0;
+    for (let i = 0; i < p.count; i++) {
+      x = Math.max(x, Math.abs(p.getX(i)));
+      z = Math.max(z, Math.abs(p.getZ(i)));
+    }
+    return Math.min(1, w / 2 / x, d / 2 / z);
+  });
+  const s = Math.min(...reach);
+  if (s >= 1) return parts;
+  reach.forEach((r, i) => r < 1 && parts[i].scale(s, 1, s));
+  return parts;
+}
 
 function coloured(g: THREE.BufferGeometry, color: string): Part {
   const geo = g.index ? g.toNonIndexed() : g;
@@ -819,6 +841,9 @@ function parts(id: string, [w, d, h]: [number, number, number]): Part[] {
     }
     case 'llama':
       return []; // only the picture itself (an extra)
+    case 'dartboard':
+      // A dart board on the wall, w across, its top at h (the bull at h - w / 2); its face is the 'dartboard' extra.
+      return [coloured(new THREE.CylinderGeometry(w / 2, w / 2, d, 40).rotateX(Math.PI / 2).translate(0, h - w / 2, 0), '#161616')];
     case 'painting': {
       // A canvas on the wall, w wide, its top at h; the paint is the 'painting' extra.
       const ch = w * 1.3;
@@ -899,7 +924,7 @@ function parts(id: string, [w, d, h]: [number, number, number]): Part[] {
       // The kentia palm in its ribbed brass pot, the ficus in its
       // silver pot; tools/interior.py.
       const grown = model(id === 'plant' ? 'Kentia' : 'Ficus');
-      if (grown) return grown;
+      if (grown) return inBox(grown, w, d);
       const p = [cyl(0.15, 0.19, 0.32, 0, 0, 0, C.pot, 16)];
       for (let i = 0; i < 7; i++) {
         const a = i * 2.4;
@@ -1134,7 +1159,7 @@ function bubble(r: number): THREE.BufferGeometry {
 }
 
 /** Screens, light strips, lamps and glass on a piece, in its own frame (front +z): what they show, size, where, turn. */
-type Show = 'ride' | 'desktop' | 'code' | 'off' | 'print' | 'glow' | 'wash' | 'lamp' | 'glass' | 'painting' | 'mirror' | 'llama';
+type Show = 'ride' | 'desktop' | 'code' | 'off' | 'print' | 'glow' | 'wash' | 'lamp' | 'glass' | 'painting' | 'mirror' | 'llama' | 'dartboard';
 interface Extra { show: Show; w: number; h: number; x: number; y: number; z: number; ry?: number; geo?: () => THREE.BufferGeometry }
 
 function extras(id: string, [w, d, h]: [number, number, number]): Extra[] {
@@ -1175,6 +1200,8 @@ function extras(id: string, [w, d, h]: [number, number, number]): Extra[] {
       return [{ show: 'painting', w: w - 0.004, h: w * 1.3 - 0.004, x: 0, y: h - (w * 1.3) / 2, z: d / 2 + 0.001 }];
     case 'llama':
       return [{ show: 'llama', w, h: w * 1.3, x: 0, y: h - (w * 1.3) / 2, z: d / 2 + 0.001 }];
+    case 'dartboard':
+      return [{ show: 'dartboard', w, h: w, x: 0, y: h - w / 2, z: d / 2 + 0.001, geo: () => new THREE.CircleGeometry(w / 2, 48) }];
     case 'dresser':
       return [{ show: 'mirror', w: 0, h: 0, x: -0.18, y: 1.5, z: -d / 2 + 0.008, geo: () => new THREE.ShapeGeometry(pebble(0.28, 0.44), 40) }];
     case 'tracklight':
@@ -1224,6 +1251,7 @@ function showMaterials(): Record<Show, THREE.Material> {
     painting: new THREE.MeshStandardMaterial({ map: canvasTexture(256, 332, drawPainting), roughness: 0.85 }),
     mirror: new THREE.MeshStandardMaterial({ color: '#d4d6d6', roughness: 0.3, metalness: 0.5 }), // a pale, soft reflection rather than the blue sky
     llama: new THREE.MeshStandardMaterial({ map: canvasTexture(200, 260, drawLlama), roughness: 0.8, alphaTest: 0.5 }),
+    dartboard: new THREE.MeshStandardMaterial({ map: canvasTexture(512, 512, drawDartboard), roughness: 0.85 }),
   };
   return shows;
 }
@@ -1419,9 +1447,9 @@ export function fixtureGroup(list: FixtureSpec[], look: (m: THREE.Material) => T
 }
 const HANGING = new Set(['pendants', 'globes', 'rattandome', 'tracklight', 'domeblack', 'wirependants']);
 // Fixtures you walk under, past or over: lamps, things on walls and ceilings, cushions on the seat, toys.
-const NO_BLOCK = new Set([...HANGING, 'islandlamps', 'domelamp', 'speaker', 'relief', 'painting', 'llama', 'cubeshelves', 'wallshelf', 'cushion', 'cushiongrey', 'books', 'traintrack']);
+const NO_BLOCK = new Set([...HANGING, 'islandlamps', 'domelamp', 'speaker', 'relief', 'painting', 'llama', 'dartboard', 'cubeshelves', 'wallshelf', 'cushion', 'cushiongrey', 'books', 'traintrack']);
 // Fixtures flat on a wall, the ceiling, the seat or the floor: their shadows would hardly show.
-const NO_SHADOW = new Set(['speaker', 'relief', 'painting', 'llama', 'cubeshelves', 'wallshelf', 'cushion', 'cushiongrey', 'books', 'traintrack']);
+const NO_SHADOW = new Set(['speaker', 'relief', 'painting', 'llama', 'dartboard', 'cubeshelves', 'wallshelf', 'cushion', 'cushiongrey', 'books', 'traintrack']);
 
 /** The outline of a piece on the floor (for collision and the minimap). */
 export function footprint(p: Piece): [number, number][] {
