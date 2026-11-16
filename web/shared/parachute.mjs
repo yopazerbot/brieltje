@@ -41,7 +41,7 @@ export const DROP = {
   flareAt: 3, // m over the ground: the flare slows the landing
   flareGlide: 1.5, // forward in the flare
   flareSink: 1.2, // down in the flare
-  // A jump from the helicopter (src/heliPilot.ts; alone only): the canopy opens by itself after a short free fall,
+  // A jump from the helicopter (src/heliPilot.ts; together the server starts it: server/helis.mjs chute): the canopy opens by itself after a short free fall,
   // or at once under DROP.openAt; the machine's speed comes along, within the drop's own limits.
   jumpFree: 1.2, // s of free fall after a jump before the canopy opens by itself (or at DROP.openAt, whichever first)
   jumpClear: 0.4, // s after a jump before even a low one opens (at DROP.openAt): clear of the machine first ...

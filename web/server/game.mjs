@@ -1301,7 +1301,7 @@ export class Game {
       if (m.op === 'on' && typeof m.id === 'string' && Object.hasOwn(this.bikes, m.id)) this.mountBike(name, player, this.bikes[m.id], now);
       else if (m.op === 'off') this.releaseBike(name);
     } else if (m.t === 'heli') {
-      // A helicopter (server/helis.mjs: in, out, take the stick): at most three a second, shared with the cars, horses and bikes.
+      // A helicopter (server/helis.mjs: in, out, take the stick, jump): at most three a second, shared with the cars, horses and bikes.
       if (now < (player.nextCar || 0)) return;
       player.nextCar = now + 300;
       this.helis.ask(name, player, m, now);
