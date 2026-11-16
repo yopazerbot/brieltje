@@ -2397,7 +2397,7 @@ export class Game {
     const shooter = this.players.get(name);
     if (shooter) shooter.lastBlast = { x: at.x, y: at.y, z: at.z, at: now, w }; // for the villagers and cats its page says it caught (villagersHit, catInReach)
     if (!shooter || this.roundOver) return;
-    this.vehicleDamage.blast(name, at, w, now); // cars and helicopters in a team match (server/vehicleDamage.mjs)
+    this.vehicleDamage.blast(name, at, w, now, act); // cars and helicopters in a team match (server/vehicleDamage.mjs)
     // Zombies caught in it lose health (server/zombies.mjs), as the strongmen do.
     this.modes.zombies?.blast(name, at, radius, bruteDamage(w, WEAPONS), w, now); // on its floor (at.y)
     // Strongmen caught in it lose health too (less at the edge of the blast; they're big). Not during

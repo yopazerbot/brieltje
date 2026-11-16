@@ -9,15 +9,23 @@
 //   of its own, its pellet count, the vehicle within MAX_HIT_RANGE of where the server has them and in front of their
 //   eyes (their yaw and pitch, within the vehicle's own size and aimSlack), and a vehicle they may see (not in a home
 //   they may not see into). Against hit forgery: a page can at most send a hit its own player could have shot;
-//   against flooding: one hit per gun's delay (70% of it, for jitter, as for players), on top of the message guard;
+//   against flooding: the one clock of a player's hits (Game.hit's nextHit, 70% of the gun's delay), so one shot counts
+//   once, on a player or on a vehicle, never on both; on top of the message guard;
 // - a blast: the server's own rocket or grenade blast (Game.blast), by distance to the vehicle's box;
-// - friendly fire: nobody damages a vehicle a teammate (or they themselves) sits in; an empty one anyone may.
+// - friendly fire: nobody damages a vehicle a teammate (or they themselves) sits in; an empty one anyone may;
+// - the school grounds stay free of shooting: no damage at all while the vehicle or the shooter is on them (shot, blast,
+//   and no burning there either);
+// - the code-locked homes (server/homeGate.mjs): nobody damages a vehicle with someone in it they could not hurt
+//   (gate.mayHurt, as Game.hit; for a blast Game.mayBlast), and a destroyed vehicle's riders go down only when a hit on
+//   them could have counted (Game.hit's gates: armed, out of spawn protection, off the school grounds, mayHurt), else
+//   they get out alive. Who destroyed it is told only to those who may see that player (Game.broadcastEvent).
 // Stages: smoke under `smoke`, fire under `fire` (it then burns down by itself), at zero a wreck: everyone in it is put
 // out and down, the kill the last attacker's (Game.damage, scored as any kill), and a blast like a grenade's round it
 // (Game.blast, 'wreck'). A helicopter in the air falls. The wreck lies wreckMs, then is gone goneMs (at its parking
 // place already, not drawn, nobody gets in), then it is back whole. The page shows it (src/world/vehicleWear.ts), as
 // paint in the child-friendly look; the rules and numbers are the same.
 import { readFileSync } from 'node:fs';
+import { noShoot } from '../shared/zones.mjs';
 
 const shared = (file) => JSON.parse(readFileSync(new URL(`../shared/${file}`, import.meta.url), 'utf8'));
 export const VEHICLE = shared('vehicleDamage.json');
@@ -117,6 +125,20 @@ export class VehicleDamage {
     return this.riders(kind, v).every((r) => r !== name && !this.game.modes.friends(name, r));
   }
 
+  /** On the school grounds (shared/zones.mjs): its middle there. Nothing damages it there, and it doesn't burn. */
+  calm(kind, v) {
+    const mid = this.middle(kind, v);
+    return noShoot(mid.x, mid.z);
+  }
+
+  /** Someone in it that `p` could not hurt (one of them inside a home the other may not see into, homeGate.mayHurt). */
+  hidden(p, kind, v) {
+    return this.riders(kind, v).some((n) => {
+      const q = this.game.players.get(n);
+      return !!q && !this.game.gate.mayHurt(p, q);
+    });
+  }
+
   /**
    * A `vhit` from a shooter's page: `m.kind` ('car' or 'heli'), `m.id`, `m.w` the gun, `m.n` the pellets that met it.
    * Every check a hit on a player has, the vehicle's own place for the range and the aim (see the file's head).
@@ -129,11 +151,11 @@ export class VehicleDamage {
     if (spec.rocket || !Number.isInteger(m.n) || m.n < 1 || m.n > spec.pellets) return; // a rocket hurts through its blast
     const s = p.state;
     if (!s || !p.alive || !s.armed || !p.weapons?.has(m.w) || s.w !== m.w || g.inCar(name) || g.calm(p)) return;
-    if (now < (p.nextVHit || 0)) return;
+    if (now < (p.nextHit || 0)) return; // the one clock of all hits (Game.hit): a shot counts once, on a player or a vehicle
     const v = this.vehicle(m.kind, m.id);
     if (!v || this.out(m.kind, m.id) || !g.seenBy(p, m.kind, v) || !this.mayDamage(name, m.kind, v)) return;
-    if (!this.aimedAt(p, m.kind, v)) return;
-    p.nextVHit = now + spec.delay * 700; // 70% of the fire delay, for network jitter (Game.hit's rule)
+    if (this.calm(m.kind, v) || this.hidden(p, m.kind, v) || !this.aimedAt(p, m.kind, v)) return;
+    p.nextHit = now + spec.delay * 700; // 70% of the fire delay, for network jitter (Game.hit's rule)
     p.protectedUntil = 0; // shooting ends your own spawn protection
     this.harm(m.kind, m.id, v, m.n * spec.body, name, m.w, now);
   }
@@ -161,14 +183,17 @@ export class VehicleDamage {
    * is within its radius loses its blast damage times VEHICLE.blast, less with the distance. A destroyed vehicle's own
    * blast ('wreck') sets off the others as a grenade's would.
    */
-  blast(name, at, w, now) {
-    if (!this.live || this.game.roundOver) return;
+  blast(name, at, w, now, act = null) {
+    const g = this.game;
+    const shooter = g.players.get(name);
+    if (!this.live || g.roundOver || !shooter || g.calm(shooter)) return;
     const base = w === 'bazooka' ? this.weapons.bazooka.rocket : this.grenade;
     const k = VEHICLE.blast[w === 'bazooka' ? 'bazooka' : 'grenade'];
     for (const kind of KINDS) {
       const list = kind === 'car' ? Object.values(this.game.cars) : [...this.game.helis.machines.values()];
       for (const v of list) {
-        if (this.out(kind, v.id) || !this.mayDamage(name, kind, v)) continue;
+        if (this.out(kind, v.id) || !this.mayDamage(name, kind, v) || this.calm(kind, v) || !g.seenBy(shooter, kind, v)) continue;
+        if (this.riders(kind, v).some((n) => g.players.has(n) && !g.mayBlast(shooter, g.players.get(n), n, at, act))) continue; // someone in it out of the blast's sight
         const d = this.reach(kind, v, at.x, at.y, at.z);
         if (d < base.radius) this.harm(kind, v.id, v, Math.round(base.damage * k * (1 - d / base.radius)), name, w, now);
       }
@@ -211,7 +236,7 @@ export class VehicleDamage {
     const shooter = r.by ? g.players.get(r.by) : null;
     for (const n of this.riders(r.kind, v)) {
       const q = g.players.get(n);
-      if (shooter && q?.alive && n !== r.by && !g.modes.friends(r.by, n)) g.damage(r.by, shooter, n, q, q.hp, false, 'wreck', now);
+      if (this.downed(shooter, r.by, q, n, now)) g.damage(r.by, shooter, n, q, q.hp, false, 'wreck', now);
       else if (r.kind === 'car') g.releaseCar(n);
       else g.helis.putOut(n, now);
     }
@@ -223,8 +248,40 @@ export class VehicleDamage {
       g.helis.at[v.id] = this.mono();
     }
     const mid = this.middle(r.kind, v);
-    this.tell(r, v, { by: r.by ?? '', x: Math.round(mid.x * 100) / 100, y: Math.round(mid.y * 100) / 100, z: Math.round(mid.z * 100) / 100 });
-    if (r.by) g.blast(r.by, { x: mid.x, y: mid.y, z: mid.z }, 'wreck');
+    const at = { x: Math.round(mid.x * 100) / 100, y: Math.round(mid.y * 100) / 100, z: Math.round(mid.z * 100) / 100 };
+    this.wrecked(r, v, { t: 'vdmg', k: r.kind, id: r.id, hp: 0, st: r.st, by: r.by ?? '', ...at });
+    if (r.by) g.blast(r.by, at, 'wreck');
+  }
+
+  /**
+   * Its destruction, to everyone who may see the vehicle where it is (Game.broadcastThing), so every page has it as a
+   * wreck; who did it only to those who may see that player (Game.broadcastEvent's rule: one inside a home they may not
+   * see into is '' to them), so the message never tells who is inside a home. The admin's watch views get it whole.
+   */
+  wrecked(r, v, msg) {
+    const g = this.game;
+    const doer = r.by ? g.players.get(r.by) : null;
+    if (!doer || !g.gate.insideOf(doer)) return g.broadcastThing(msg, r.kind, v);
+    const home = g.homeOf(r.kind, v);
+    const full = JSON.stringify(msg);
+    const blind = JSON.stringify({ ...msg, by: '' });
+    for (const q of g.players.values()) {
+      if (q.ws.readyState !== q.ws.OPEN || (home && !g.gate.may(q, home))) continue;
+      q.ws.send(g.gate.hides(doer, q) ? blind : full);
+    }
+    for (const w of g.watchers) if (w.ws.readyState === w.ws.OPEN) w.ws.send(full);
+  }
+
+  /**
+   * Whether rider `q` (`n`) goes down with the wreck, the kill `by`'s: only when a hit of theirs on them could have counted
+   * (Game.hit's gates): the attacker still here and off the school grounds, the rider alive, armed, not their teammate,
+   * out of spawn protection and off the school grounds, neither out of the other's sight (homeGate.mayHurt).
+   */
+  downed(shooter, by, q, n, now) {
+    const g = this.game;
+    if (!shooter || !q?.alive || !q.state?.armed || n === by || g.modes.friends(by, n)) return false;
+    if (now < (q.protectedUntil || 0) || g.calm(q) || g.calm(shooter)) return false;
+    return g.gate.mayHurt(shooter, q);
   }
 
   /** Everyone who may see it is told its health and stage (`extra` on its destruction: who, and where it went up). */
@@ -266,7 +323,7 @@ export class VehicleDamage {
         continue;
       }
       if (r.fall) this.fall(r, v, dt);
-      if (r.st === STAGE.fire) {
+      if (r.st === STAGE.fire && !this.calm(r.kind, v)) {
         r.hp -= r.max * VEHICLE.burn * dt;
         this.staged(r, v, now);
       } else if (r.st === STAGE.wreck && now >= r.until) {

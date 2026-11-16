@@ -24,18 +24,20 @@ function setup({ teams = true } = {}) {
   for (const t of game.timers) clearInterval(t);
   const told = [];
   const sent = new Map();
+  const wire = new Map(); // what each player's socket got straight (Game.broadcastEvent's per-player sends)
   game.broadcast = (m, except) => told.push(structuredClone({ ...m, except }));
   game.send = (ws, m) => sent.get(ws.name)?.push(structuredClone(m));
   game.stampState = () => {};
   const car = game.cars.tesla;
   const player = (name, at, team = 'house') => {
     const p = {
-      ws: { name, readyState: 1, OPEN: 1, send: () => {} }, key: `k-${name}`, role: 'player', alive: true, protectedUntil: 0, drop: null, warp: 0, stamp: 0,
+      ws: { name, readyState: 1, OPEN: 1, send: (d) => wire.get(name)?.push(JSON.parse(d)) }, key: `k-${name}`, role: 'player', alive: true, protectedUntil: 0, drop: null, warp: 0, stamp: 0,
       state: { x: at.x, y: at.y, z: at.z, yaw: at.yaw ?? 0, pitch: at.pitch ?? 0, armed: true, flying: false, w: 'rifle', c: false },
       weapons: new Set(['pistol', 'rifle', 'shotgun', 'sniper', 'bazooka']), nades: [0, 0], thrown: [], window: clock, msgs: 0, states: 0, others: 0, budget: 0.5, vbudget: 0.5, movedAt: clock,
       hp: 100, score: { kills: 0, deaths: 0, points: 0 }, proto: 2,
     };
     sent.set(name, []);
+    wire.set(name, []);
     game.players.set(name, p);
     if (teams) game.modes.state.teams[name] = team;
     return p;
@@ -68,7 +70,7 @@ function setup({ teams = true } = {}) {
     }
   };
   game.vehicleDamage.tick(clock);
-  return { game, told, sent, car, player, shooter, send, vhit, volley, hp, stage, ticks, at, now: () => clock };
+  return { game, told, sent, wire, car, player, shooter, send, vhit, volley, hp, stage, ticks, at, now: () => clock };
 }
 
 const vdmg = (told) => told.filter((m) => m.t === 'vdmg');
@@ -389,4 +391,116 @@ test('a page that joins is told every vehicle not whole', () => {
   s.volley('ann', ann, 18);
   const w = s.game.welcome(ann, 'ann', '#fff', s.now());
   assert.deepEqual(w.vdmg, [{ k: 'car', id: 'tesla', hp: Math.ceil((s.hp() / CAR_HP) * 100), st: STAGE.smoke }]);
+});
+
+/** A stand-in for the homes' gate: `inside` stands in a home nobody else may see into (homeGate.mjs's rules on it). */
+function gateWith(game, inside) {
+  const hides = (a, b) => a === inside && b !== inside;
+  game._gate = {
+    insideOf: (p) => (p === inside ? 'home4' : null), may: (p) => p === inside, hides, mayHurt: (a, b) => !hides(a, b) && !hides(b, a),
+    mayStand: () => true, granted: () => false,
+  };
+}
+
+test('the attack: one shot claimed twice, on a player and on a vehicle, counts once (the one clock of all hits)', () => {
+  const s = setup();
+  const ann = s.shooter('ann', 'bungalow');
+  const kim = s.player('kim', { x: s.car.x + 4, y: s.car.y, z: s.car.z + 5 }, 'house');
+  s.at(500);
+  s.send('ann', ann, { t: 'hit', target: 'kim', w: 'rifle', body: 1, head: 0 });
+  assert.equal(kim.hp, 100 - WEAPONS.rifle.body, 'the hit on kim counted');
+  s.vhit('ann', ann);
+  assert.equal(s.hp(), CAR_HP, 'the same shot on the car: refused');
+  s.at(500);
+  s.vhit('ann', ann);
+  assert.equal(s.hp(), CAR_HP - WEAPONS.rifle.body, 'the next shot on the car counted');
+  s.send('ann', ann, { t: 'hit', target: 'kim', w: 'rifle', body: 1, head: 0 });
+  assert.equal(kim.hp, 100 - WEAPONS.rifle.body, 'that shot on kim too: refused');
+});
+
+test('the school grounds stay free of shooting: no damage to a vehicle on them, nor from a shooter on them, and no burning there', () => {
+  const s = setup();
+  const model3 = s.game.cars.model3;
+  Object.assign(model3, { x: 470, z: -815, yaw: 0 }); // in the middle of the school grounds
+  const ann = s.player('ann', { x: 470, y: model3.y, z: -770 }, 'bungalow'); // outside them, looking along -z at it
+  for (let i = 0; i < 3; i++) {
+    s.at(500);
+    s.send('ann', ann, { t: 'vhit', kind: 'car', id: 'model3', w: 'rifle', n: 1 });
+  }
+  s.game.blast('ann', { x: model3.x, y: model3.y + 0.5, z: model3.z }, 'bazooka');
+  assert.equal(s.hp('car', 'model3'), CAR_HP, 'a vehicle on the school grounds');
+  // A shooter on them, the Tesla outside: nothing either, by shot or blast.
+  const bob = s.player('bob', { x: 470, y: s.car.y, z: -815 }, 'bungalow');
+  Object.assign(s.car, { x: 470, z: -760 });
+  bob.state.yaw = Math.PI; // facing +z, at the car
+  s.at(500);
+  s.vhit('bob', bob);
+  s.game.blast('bob', { x: s.car.x, y: s.car.y + 0.8, z: s.car.z }, 'bazooka');
+  assert.equal(s.hp(), CAR_HP, 'a shooter on the school grounds');
+  // A burning car driven onto them stops burning there.
+  Object.assign(ann.state, { x: 470, z: -740, yaw: 0 });
+  while (s.stage() !== STAGE.fire) s.volley('ann', ann, 1);
+  Object.assign(s.car, { x: 470, z: -815 });
+  s.game.vehicleDamage.tick(s.now());
+  const left = s.hp();
+  s.ticks(5000);
+  assert.equal(s.hp(), left, 'no burning on the school grounds');
+});
+
+test('a destroyed car\'s rider goes down only when a hit on them could have counted: else out alive', () => {
+  const s = setup();
+  const ann = s.shooter('ann', 'bungalow');
+  while (s.stage() !== STAGE.fire) s.volley('ann', ann, 1);
+  // Kim (a foe of ann's) in spawn protection gets into the burning car; it burns out.
+  const kim = s.player('kim', { x: s.car.x + 1.5, y: s.car.y, z: s.car.z }, 'house');
+  s.send('kim', kim, { t: 'car', op: 'in', id: 'tesla' });
+  assert.equal(s.car.driver, 'kim');
+  kim.protectedUntil = s.now() + 60_000;
+  s.ticks(30_000, 500);
+  assert.equal(s.stage(), STAGE.wreck);
+  assert.equal(s.car.driver, null, 'put out');
+  assert.equal(kim.alive, true, 'in spawn protection: alive');
+  assert.equal(ann.score.kills, 0);
+  // Unarmed (Explore): alive too.
+  const s2 = setup();
+  const ann2 = s2.shooter('ann', 'bungalow');
+  while (s2.stage() !== STAGE.fire) s2.volley('ann', ann2, 1);
+  const lou = s2.player('lou', { x: s2.car.x + 1.5, y: s2.car.y, z: s2.car.z }, 'house');
+  s2.send('lou', lou, { t: 'car', op: 'in', id: 'tesla' });
+  lou.state.armed = false;
+  s2.ticks(30_000, 500);
+  assert.equal(s2.stage(), STAGE.wreck);
+  assert.equal(lou.alive, true, 'unarmed: alive');
+});
+
+test('the homes: no damage to a vehicle with someone in it the shooter could not hurt; its riders out alive; who did it hidden', () => {
+  const s = setup();
+  const ann = s.shooter('ann', 'bungalow');
+  const kim = s.player('kim', { x: s.car.x + 1.5, y: s.car.y, z: s.car.z }, 'house');
+  s.send('kim', kim, { t: 'car', op: 'in', id: 'tesla' });
+  assert.equal(s.car.driver, 'kim');
+  gateWith(s.game, ann); // ann stands inside a home kim may not see into
+  s.volley('ann', ann, 3);
+  s.game.blast('ann', { x: s.car.x, y: s.car.y + 0.8, z: s.car.z }, 'bazooka');
+  assert.equal(s.hp(), CAR_HP, 'kim is out of ann\'s reach: nor is the car she sits in');
+  // Empty, the car may be damaged from there (nobody is hurt by it); kim gets in once it burns: she gets out alive.
+  delete s.game._gate;
+  s.send('kim', kim, { t: 'car', op: 'out' });
+  while (s.stage() !== STAGE.fire) s.volley('ann', ann, 1);
+  s.send('kim', kim, { t: 'car', op: 'in', id: 'tesla' });
+  assert.equal(s.car.driver, 'kim');
+  gateWith(s.game, ann);
+  s.player('tom', { x: s.car.x + 60, y: s.car.y, z: s.car.z }, 'house');
+  s.ticks(30_000, 500);
+  assert.equal(s.stage(), STAGE.wreck);
+  assert.equal(kim.alive, true, 'out of ann\'s sight: alive');
+  assert.equal(s.car.driver, null);
+  // Its destruction told to tom and kim without ann's name (she is inside a home they may not see into).
+  for (const n of ['tom', 'kim']) {
+    const m = s.wire.get(n).find((q) => q.t === 'vdmg' && q.st === STAGE.wreck);
+    assert.ok(m, `${n} is told it went up`);
+    assert.equal(m.by, '', `${n} is not told who`);
+  }
+  assert.equal(s.wire.get('ann').find((q) => q.t === 'vdmg' && q.st === STAGE.wreck)?.by, 'ann');
+  assert.equal(s.told.filter((m) => m.t === 'vdmg' && m.st === STAGE.wreck).length, 0, 'not broadcast with the name to all');
 });
