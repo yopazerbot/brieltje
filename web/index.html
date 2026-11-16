@@ -86,6 +86,8 @@
       <!-- Messages for the middle of the top: on a desktop each keeps its own place (the box has
            display: contents); with touch controls they stack under each other, clear of the buttons. -->
       <div id="hud-top">
+        <!-- The host's Zombies duel (src/ui/duelLine.ts): each team's wave, under the game's bar. -->
+        <div id="duel-line" class="hidden"></div>
         <div id="net-status"></div>
         <div id="banner" class="hidden"><b id="banner-title"></b><small id="banner-sub"></small></div>
         <div id="scoreboard" class="hidden"><h2 data-i18n="score.title">Scoreboard</h2><p id="score-goal"></p><table id="score-table"></table></div>

@@ -10,7 +10,7 @@
 // browser (localStorage, keys briel.host.*), a convenience only.
 (() => {
   const $ = (id) => document.getElementById(id);
-  const KINDS = { hide: 'Hide and seek', tag: 'Tag', treasure: 'Treasure hunt', teams: 'House against bungalow', zombies: 'Zombies' };
+  const KINDS = { hide: 'Hide and seek', tag: 'Tag', treasure: 'Treasure hunt', teams: 'House against bungalow', zombies: 'Zombies', duel: 'Zombies duel' };
   const PLACES = { house: 'The house', bungalow: 'The bungalow', church: 'The church square', molenhoek: 'Molenhoek', molenhoek_mid: 'Molenhoek, middle', molenhoek_end: 'Molenhoek, end', sparrenhof: 'Sparrenhof' };
   const TEAM_NAMES = { blue: 'Blue', red: 'Red', green: 'Green', purple: 'Purple' };
   // A game's look while it runs (server/modes.mjs LOOKS); none is the house rule.
@@ -212,7 +212,13 @@
       const extra = m.kind === 'teams' && m.score ? ` · House ${m.score.house} – ${m.score.bungalow} Bungalow (to ${m.goal})` : m.kind === 'zombies' && m.zombies ? ` · wave ${m.zombies.wave ?? ''}` : '';
       now.replaceChildren(el('b', { text: KINDS[m.kind] ?? m.kind }), el('span', { text: `${m.phase === 'done' ? ' · over' : ''}${m.ms ? ` · ${clock(m.ms)} left` : ''}${extra}${m.look ? ` · ${LOOKS[m.look] ?? m.look}` : ''}` }), m.result ? el('p', { class: 'muted', text: m.result }) : null);
     }
-    $('stop').disabled = m.kind === 'free';
+    // The Zombies duel (server/duel.mjs): both rooms' waves; Stop ends both at once.
+    if (v.duel && !v.countdown) {
+      const d = v.duel;
+      const sides = d.sides.map((x) => `${TEAM_NAMES[x.team]} ${x.out ? 'out at ' : ''}wave ${x.wave}${x.best > x.wave ? ` (best ${x.best})` : ''}, ${x.beaten} beaten, ${x.players} in`).join(' · ');
+      now.replaceChildren(el('b', { text: `Zombies duel, ${d.kind === 'final' ? 'final' : 'warm-up'}` }), el('span', { text: `${d.phase === 'done' ? ' · over' : ''}${d.ms ? ` · ${clock(d.ms)}${d.phase === 'done' ? '' : ' left'}` : ''}` }), el('p', { class: 'muted', text: d.winner ? `${d.winner === 'draw' ? 'A draw' : `${TEAM_NAMES[d.winner]} wins`} · ${sides}` : sides }));
+    }
+    $('stop').disabled = m.kind === 'free' && !v.duel;
     $('cancel').hidden = !v.countdown;
 
     // Programme.
@@ -391,7 +397,7 @@
   // ------------------------------------------------------------------ helpers and controls
 
   const clock = (ms) => `${Math.floor(ms / 60000)}:${String(Math.floor((ms % 60000) / 1000)).padStart(2, '0')}`;
-  const describe = (e) => `${KINDS[e.kind]}${e.kind === 'zombies' ? ` at ${PLACES[e.place] ?? e.place}` : ''}${e.minutes ? `, ${e.minutes} min` : ''}${e.goal ? `, to ${e.goal}` : ''}`;
+  const describe = (e) => `${KINDS[e.kind]}${e.kind === 'duel' ? (e.duel === 'final' ? ', final' : ', warm-up') : ''}${e.kind === 'zombies' ? ` at ${PLACES[e.place] ?? e.place}` : ''}${e.minutes ? `, ${e.minutes} min` : ''}${e.goal ? `, to ${e.goal}` : ''}`;
   const setProgramme = (list) => act({ op: 'programme', list });
   const moveEntry = (i, d) => {
     const list = [...v.programme];
@@ -402,13 +408,15 @@
     const kind = $('g-kind').value;
     const minutes = Number($('g-minutes').value) || undefined;
     const goal = kind === 'teams' ? Number($('g-goal').value) || undefined : undefined;
-    return { kind, place: kind === 'zombies' ? $('g-place').value : 'house', minutes: kind === 'zombies' ? undefined : minutes, goal, look: $('g-look').value || null };
+    const duel = kind === 'duel' ? $('g-duel').value : undefined;
+    return { kind, place: kind === 'zombies' ? $('g-place').value : 'house', minutes: kind === 'zombies' || duel === 'final' ? undefined : minutes, goal, look: $('g-look').value || null, duel };
   };
   const showFields = () => {
     const kind = $('g-kind').value;
     $('g-place-label').hidden = kind !== 'zombies';
     $('g-goal-label').hidden = kind !== 'teams';
-    $('g-minutes').disabled = kind === 'zombies';
+    $('g-minutes').disabled = kind === 'zombies' || (kind === 'duel' && $('g-duel').value === 'final');
+    $('g-duel-label').hidden = kind !== 'duel';
   };
   function announce(text) {
     act({ op: 'announce', text, secs: Number($('announce-secs').value) }, `Announced: ${text}`);
@@ -420,6 +428,7 @@
   $('g-place').replaceChildren(...Object.entries(PLACES).map(([k, n]) => el('option', { value: k, text: n })));
   $('g-look').replaceChildren(...Object.entries(LOOKS).map(([k, n]) => el('option', { value: k, text: n })));
   $('g-kind').addEventListener('change', showFields);
+  $('g-duel').addEventListener('change', showFields);
   showFields();
 
   const doorsToggle = () => act({ op: 'lock', on: !v.locked }, v.locked ? 'Doors open' : 'Doors locked: newcomers wait at the door');

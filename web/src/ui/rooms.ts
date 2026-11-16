@@ -23,7 +23,7 @@ export interface RoomsHooks {
 
 export class Rooms {
   /** The room this page plays in, from the server's welcome; null in the open world. */
-  current: { id: string; owner: string; place: string } | null = null;
+  current: { id: string; owner: string; place: string; duel?: 'blue' | 'red' } | null = null;
   private list: RoomEntry[] = [];
   private playing = false;
   private note: (() => string) | null = null;
@@ -44,12 +44,14 @@ export class Rooms {
   }
 
   /** Where this page plays, from the server's welcome (null: the open world). */
-  setCurrent(room: { id: string; owner: string; place: string } | null | undefined): void {
+  setCurrent(room: { id: string; owner: string; place: string; duel?: 'blue' | 'red' } | null | undefined): void {
     const was = this.current?.id ?? null;
     this.current = room ?? null;
     if (this.current && this.current.id !== was) {
       const r = this.current;
-      this.hooks.say(() => t('room.joined', { name: r.owner, place: placeName(r.place) }));
+      // The host's Zombies duel (server/duel.mjs): the server put this page in its team's room.
+      if (r.duel) this.hooks.say(() => t('duel.joined', { team: t(r.duel === 'red' ? 'eteam.red' : 'eteam.blue'), place: placeName(r.place) }));
+      else this.hooks.say(() => t('room.joined', { name: r.owner, place: placeName(r.place) }));
     }
     this.draw();
   }
@@ -112,10 +114,11 @@ export class Rooms {
     $('room-out').classList.toggle('hidden', !!here);
     if (here) {
       const place = placeName(here.place);
-      $('room-in').textContent = here.owner === me?.username ? t('room.inMine', { place }) : t('room.in', { name: here.owner, place });
-      // Anyone starts a game; only accounts and the admin stop one (server/game.mjs 'mode').
-      $('room-start').classList.toggle('hidden', this.playing);
-      $('room-stop').classList.toggle('hidden', !this.playing || me?.role === 'guest');
+      $('room-in').textContent = here.duel ? t('duel.in', { team: t(here.duel === 'red' ? 'eteam.red' : 'eteam.blue'), place }) : here.owner === me?.username ? t('room.inMine', { place }) : t('room.in', { name: here.owner, place });
+      // Anyone starts a game; only accounts and the admin stop one (server/game.mjs 'mode'). A duel room's is the host's.
+      $('room-start').classList.toggle('hidden', this.playing || !!here.duel);
+      $('room-stop').classList.toggle('hidden', !this.playing || me?.role === 'guest' || !!here.duel);
+      $('room-leave').classList.toggle('hidden', !!here.duel);
     }
     const canOpen = me?.role === 'player' || me?.role === 'admin';
     $('room-open').classList.toggle('hidden', !canOpen);

@@ -135,7 +135,7 @@ export type ServerMsg =
       /** `proto`: the server's protocol (shared/wire.mjs); a different one means this page is out of date (or the server is) */
       /** `room`: the Zombies room this connection is in (server/rooms.mjs), null or missing in the open world */
       /** `watch`: this connection watches (src/watch.ts, the admin only): no player of its own */
-      t: 'welcome'; watch?: boolean; cracked?: [number, number, number, number][]; proto?: number; you: string; role: string; color: string; room?: { id: string; owner: string; place: string } | null; doors: Record<string, boolean>; doorDir?: Record<string, number>; broken: number[]; homes?: string[];
+      t: 'welcome'; watch?: boolean; cracked?: [number, number, number, number][]; proto?: number; you: string; role: string; color: string; room?: { id: string; owner: string; place: string; duel?: 'blue' | 'red' } | null; doors: Record<string, boolean>; doorDir?: Record<string, number>; broken: number[]; homes?: string[];
       /** Of `homes`, those this player's account opens for good (server/homes.mjs byAccount) */
       accountHomes?: string[];
       players: { name: string; color: string; role: string }[]; scores: Score[]; limit: number; round: { winner: string; ms: number } | null; items: boolean[];
@@ -261,7 +261,19 @@ export type ServerMsg =
   | { t: 'freeze'; on: boolean; text?: string }
   | { t: 'eveningteams'; count: number; teams: Record<string, string> }
   /** The room asked for isn't there (any more): the connection closes, the page goes back to the open world */
-  | { t: 'roomgone' };
+  | { t: 'roomgone' }
+  /** The host's Zombies duel (server/duel.mjs): the live line, or null when it is over */
+  | { t: 'duel'; duel: DuelView | null };
+
+/** The Zombies duel's live line (server/duel.mjs view): each team's wave, the clock, the winner at the end. */
+export interface DuelView {
+  kind: 'warmup' | 'final';
+  phase: 'playing' | 'done';
+  /** ms left: the warm-up's clock, or the result's time on screen (0 in the final while it is played) */
+  ms: number;
+  sides: { team: 'blue' | 'red'; wave: number; beaten: number; best: number; out: boolean; players: number }[];
+  winner?: 'blue' | 'red' | 'draw';
+}
 
 /** An answer that wasn't ok: the server's English text, and its code and parameters when it sent them. */
 export class ApiError extends Error {

@@ -58,6 +58,7 @@ const HOUSE_SPAWNS = spawns.flatMap((s, i) => (s.team === 'house' ? [i] : []));
 const OUTSIDE_SPAWNS = HOUSE_SPAWNS.filter((i) => spawns[i].outside);
 import { api, errorText, Net, type Me, type Rules, type ServerMsg } from './net/client';
 import { Rooms } from './ui/rooms';
+import { DuelLine } from './ui/duelLine';
 import { PadNav } from './ui/padNav';
 import { StallChip } from './ui/stall';
 import { MarketStall } from './world/stall';
@@ -810,7 +811,7 @@ const killsOf = new Map<string, number>();
 onWatch((o) => watchView?.set(o.target, o.mode));
 let eveningTeam: keyof typeof EVENING_TEAMS | null = null;
 const EVENING_TEAMS = { blue: 'eteam.blue', red: 'eteam.red', green: 'eteam.green', purple: 'eteam.purple' } as const;
-const GAME_NAMES = { hide: 'game.hide', tag: 'game.tag', treasure: 'game.treasure', teams: 'game.teams', zombies: 'game.zombies' } as const;
+const GAME_NAMES = { hide: 'game.hide', tag: 'game.tag', treasure: 'game.treasure', teams: 'game.teams', zombies: 'game.zombies', duel: 'game.duel' } as const;
 const speedometer = new Speedometer(document.getElementById('hud')!);
 const doors = new Doors(house.doors, world, (name) => surfaceMaterial(name, renderer));
 home.add(doors.group);
@@ -819,6 +820,7 @@ groundShade.warm(renderer, scene, sun, [built.group, hedgeLumps, doors.group, ti
 // Party games the admin starts (multiplayer): hide and seek, tag, treasure hunt.
 const games = new Games();
 scene.add(games.group);
+const duelLine = new DuelLine(); // the host's Zombies duel: each team's wave (server/duel.mjs)
 loadProps(house.props ?? [], scene, world);
 // Built-in furniture (it comes with a home's inside data): drawn like the other pieces, not movable.
 const fixtures = buildFixtures(house.fixtures ?? [], world);
@@ -1617,6 +1619,7 @@ function followAccount(account: Me | null): void {
   weapon.setAdminWeapons(!account || account.role === 'admin');
   leaderboard.show(!!account); // the best Zombies runs for everyone to see; the fights' totals together only
   rooms.follow(account);
+  if (!account) duelLine.set(null);
   $('game-admin').classList.toggle('hidden', account?.role !== 'admin');
   if (!account) {
     followGame({ kind: 'free' }); // with its clean-up: the server's zombies, rewards and Zombies kit go too
@@ -2818,6 +2821,7 @@ net.onMessage = (m: ServerMsg) => {
       games.me = m.you;
       games.guest = m.role === 'guest';
       rooms.setCurrent(m.room); // the open world, or a Zombies room (src/ui/rooms.ts)
+      duelLine.set(null); // the server sends the duel's line after the welcome when one is on
       followGame(m.mode ?? { kind: 'free' });
       applyRules(m.rules ?? ANYTHING_GOES);
       showOnline(); // again, with this place's limit (a room holds fewer than the open world)
@@ -3218,6 +3222,9 @@ net.onMessage = (m: ServerMsg) => {
       }
       break;
     }
+    case 'duel': // the host's Zombies duel: its live line (server/duel.mjs)
+      duelLine.set(m.duel);
+      break;
     case 'kicked':
       // Said at the top too: leaving drops the connection before its close could say it, and the
       // message under the join fields is out of sight while playing.
@@ -3773,6 +3780,7 @@ renderer.setAnimationLoop((now: number) => {
     const stallAim = action && !watching && !dead && !inCar && !onHorse && !tagWho && !downed && !target && !ball && games.zombies ? marketStall.aim(player.x, player.feet, player.z, player.yaw) : null;
     if (stallAim && stallAim !== 'shut' && frame.usePressed && buyAtStall(stallAim)) frame.usePressed = false;
     games.update(dt, player.x, player.feet, player.z, key('use', mode));
+    duelLine.update();
     // The cars: E or Triangle next to one gets you in (unless two are in it already), and out again.
     if (!inCar && !wantCar) car = cars.reduce((a, b) => (b.distanceTo(player.x, player.z) < a.distanceTo(player.x, player.z) ? b : a));
     // Not during the Zombies game (getIn and mountHorse say why if tried anyway).
@@ -4890,6 +4898,7 @@ if (import.meta.env.DEV) {
       /** November and December on this page only: briel.season.fake('2026-12-01') pretends that day, fake(null) is today again (world/season.ts). */
       season: { fake: (day: string | null) => fakeDay(day), now: () => seasonNow() },
       zombiesSolo: { start: startSolo, stop: stopSolo, state: () => solo },
+      duelLine, // the Zombies duel's live line (src/ui/duelLine.ts): set(view) for a picture without a server
       /** Zombies' rewards: those lying and the claymores down, and what you have. */
       rewards,
       kit: () => kit,

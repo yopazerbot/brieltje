@@ -548,6 +548,15 @@ body.touch #modebar, body.touch #hud-top { left: 280px; right: 160px; }
   background: var(--panel); border-bottom: 3px solid var(--accent);
 }
 #modebar.show { display: block; }
+/* The Zombies duel's live line (src/ui/duelLine.ts): small, under the bar; with touch controls it stacks in #hud-top. */
+#duel-line {
+  position: absolute; left: 50%; top: 62px; transform: translateX(-50%); max-width: calc(100vw - 480px); padding: 4px 12px;
+  font-size: 14px; font-weight: 700; letter-spacing: 0.02em; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+  background: var(--panel); border-left: 3px solid #4fa3e0; border-right: 3px solid #e5484d;
+}
+#duel-line.hidden { display: none; }
+#duel-line.done { font-size: 17px; padding: 6px 14px; color: var(--lamp, #ffd36b); }
+body.touch #duel-line { font-size: 12px; padding: 3px 10px; max-width: 100%; }
 /* The connection is down: the game may be over on the server, so the bar greys and its clock stops. */
 #modebar.stale { opacity: 0.5; }
 /* Above the chat's lines in the HUD; the touch buttons (outside the HUD) stay usable. */
