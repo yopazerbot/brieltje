@@ -639,7 +639,7 @@ for u0, u1, y0, y1 in ((SW0, SW0 + .05, SWB, SWT), (SW1 - .05, SW1, SWB, SWT), (
     h.box("vh_frames_small", u0, u1, -.045, 0, y0, y1, FRAME)
 h.box("vh_stone", SW0 - .04, SW1 + .04, -.06, 0, SWB - .045, SWB, SILL)
 h.box("vh_soldier", SW0 - .06, SW1 + .06, -.01, 0, SWT, SWT + .215)
-# Over the front door a wall lantern: a bracket, an anthracite cap and frosted glass (just the fitting, unlit).
+# Over the front door a wall lantern: a bracket, an anthracite cap and frosted glass (its glass glows at night: world/uplights.ts).
 LU = (6.37 + 7.35) / 2
 h.box("vh_metal_small", LU - .04, LU + .04, -.1, 0, 2.88, 2.94, FRAME)
 h.box("vh_metal_small", LU - .08, LU + .08, -.26, -.1, 2.71, 2.73, FRAME)
@@ -791,6 +791,26 @@ h.block("concrete", [(6.1, -.8), (7.62, -.8), (7.62, -.4), (6.1, -.4)], -.4, -.0
 SOIL = "#4b3d31"
 h.surface("vh_trim", [(.3, -.9), (5.85, -.9), (5.85, -.05), (.3, -.05)], lambda u, v: g(u, v) + .03, color=SOIL)
 h.surface("vh_trim", [(7.75, -.75), (11.95, -.75), (11.95, -.05), (7.75, -.05)], lambda u, v: paved_h(u, v) + .02, color=SOIL)
+# Two young, airy trees in the bed (birches, about 2.4 m), one before the second window left of the door, one between
+# the last window and the garage; the game draws them as its own trees (`trees`, game heights). Before each, a small
+# dark spotlight sunk in the soil that shines up into its leaves at night (`uplights`, world/uplights.ts), and the wall
+# lantern's glass for its glow (`lantern`).
+# The game keeps a crown 15 cm off the wall (world/treeSpacing.ts): each trunk stands far enough out for a crown about
+# 1.1 m across.
+bed_l = lambda u, v: g(u, v) + (.03 if v > -.9 else 0)  # the soil strip left of the door, the ground beyond it
+bed_r = lambda u, v: paved_h(u, v) + (.02 if v > -.75 else 0)  # right of it: the soil strip, the paving beyond it
+YOUNG = [(3.2, -.85, bed_l), (11.1, -.72, bed_r)]
+young_trees, uplights = [], []
+for u, v, bed in YOUNG:
+    x, z = wpt(u, v)
+    young_trees.append({"x": x, "z": z, "y": round(F + bed(u, v), 3), "h": 2.4, "r": .9, "k": 1})
+    su, sv = u + .05, v - .28
+    foot = bed(su, sv)
+    h.prism("vh_metal_small", [(su + .075 * math.cos(k * math.pi / 4), sv + .075 * math.sin(k * math.pi / 4)) for k in range(8)], foot - .02, foot + .025, "#2a2d30")
+    sx, sz = wpt(su, sv)
+    uplights.append({"at": [sx, round(F + foot + .03, 3), sz], "tree": [x, z], "h": 2.4, "r": .6})
+lx, lz = wpt(LU, -.18)
+lantern = [lx, round(F + 2.825, 3), lz]
 
 # The garden's edge: dark sleepers, 45 cm over the lawn (or a little over the higher ground beyond), a 1.8 m hedge
 # on the back one; on the right a low kerb of them over the lower ground beside, where the passage leads out.
@@ -989,4 +1009,7 @@ h.export({
     "blocks": h.blocks,
     "blocksOnGround": True,
     "clear": [[wpt(u, v) for u, v in PLOT]],
+    "trees": young_trees,
+    "uplights": uplights,
+    "lantern": lantern,
 })

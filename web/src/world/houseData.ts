@@ -193,8 +193,8 @@ export interface Opening {
 
 export interface Surroundings {
   roofs: RoofSpec[];
-  /** Tree at (x, z) standing at y: height h, crown radius r */
-  trees: { x: number; z: number; y: number; h: number; r: number }[];
+  /** Tree at (x, z) standing at y: height h, crown radius r; k its kind on Medium and up when chosen (world/cardTrees.ts Kind) */
+  trees: { x: number; z: number; y: number; h: number; r: number; k?: number }[];
   openings?: Opening[];
   /** Fence posts: x, z and height */
   posts?: [number, number, number][];

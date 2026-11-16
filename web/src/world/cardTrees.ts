@@ -543,6 +543,8 @@ export interface TreeSpot {
   z: number;
   h: number;
   r: number;
+  /** Its kind when the data chooses it (a model's own trees, e.g. home 4's young birches), else by place */
+  k?: number;
 }
 
 /** A number 0 to 1 from the tree's place and `n`, the same every time. */
@@ -556,6 +558,7 @@ const SPRUCE_WOOD: [number, number, number] = [638, 942, 320];
 
 /** Which kind a tree is: `wood` if it stands in a wood of the open data. */
 export function treeKind(t: TreeSpot, wood: boolean): Kind {
+  if (t.k !== undefined && t.k >= 0 && t.k < KINDS) return t.k as Kind;
   const roll = spotHash(t.x, t.z, 11);
   if (wood && Math.hypot(t.x - SPRUCE_WOOD[0], t.z - SPRUCE_WOOD[1]) < SPRUCE_WOOD[2]) {
     return roll < 0.86 ? Kind.Spruce : roll < 0.95 ? Kind.Birch : Kind.Broad;

@@ -157,6 +157,7 @@ import { wet, WetMirror, wetOnModel } from './world/wetGround';
 import { glass as glassLook, GlassProbe, glassOnModel } from './world/glassLook';
 import { trackVillageHouse, VILLAGE_HOUSES } from './world/villageHouses';
 import { mood } from './world/mood';
+import { Uplights } from './world/uplights';
 import { loadWalkIn, type WalkIn } from './world/walkIn';
 import { isKeetPane, keetDoorway, keetForZombies, KeetLife, keetRooms, loadKeet } from './world/keet';
 import { Insides, type InsidePack } from './world/insides';
@@ -929,6 +930,8 @@ const cars = Object.entries(CARS.cars).map(([id, spec]) => new Car(world, trunks
 for (const c of cars) scene.add(c.group);
 scene.add(skidMarks.mesh); // the tyre marks every car leaves when it slides (world/skidMarks.ts)
 scene.add(carLights.group); // the cars' headlights and tail lights at night (world/carLights.ts)
+const uplights = new Uplights();
+scene.add(uplights.group); // home 4's trees lit from below, and its door's lantern, at night (world/uplights.ts)
 let car = cars[0];
 const carById = (id: string) => cars.find((c) => c.id === id);
 let driving = false;
@@ -4031,6 +4034,7 @@ renderer.setAnimationLoop((now: number) => {
   weather.update(dt, camera.position, inside); // the rain round the eye (none indoors), the street lamps
   keetLife.update(dt, camera.position, mood.night, !phone && quality !== 'low'); // the café's light and sounds (world/keet.ts)
   setWindowNight(mood.night); // lights in about half of the village's rooms at night (world/windows.ts)
+  uplights.update(mood.night); // home 4's trees lit from below at night (world/uplights.ts)
   player.lookScale = camera.fov / weapon.baseFov; // slower turning while zoomed in (not faster for the car's wider view)
   glass.update(dt);
   // The curtains follow the locks and the panes that come later (a door's glass, the end house): looked at every second and a half.
@@ -4374,6 +4378,8 @@ async function buildVillage(): Promise<void> {
   const modelsCompiled = bakes.then(() => Promise.all(models.map((m) => precompile(m))));
   streetBakes = playing.then(() => Promise.all(models.filter(later).map((m) => bakeLight(m, renderer, Infinity, precompile))));
   for (const m of models) clearOpenGround(data, m.userData.clear as [number, number][][] | undefined); // their forecourts free of trees
+  for (const m of models) data.trees.push(...((m.userData.trees as VillageData['trees'] | undefined) ?? [])); // their own trees (home 4's young birches), drawn as the village's
+  if (brickModel) uplights.add(brickModel); // their spotlights and the door's lantern at night (world/uplights.ts)
   const kept = withoutLandmarks(data, models.map((m) => m.userData.landmark as string), models.flatMap((m) => (m.userData.replaces as Ring[] | undefined) ?? []));
   kept.unfiltered = data; // the roofs look behind them in the whole village, with the houses our models stand in for (world/roofPlan.ts)
   const drawn = withRoadDetail(kept);
@@ -4624,6 +4630,7 @@ async function loadModel(url: string): Promise<THREE.Object3D> {
   scene.userData.landmark = root.userData.landmark;
   scene.userData.replaces = root.userData.replaces;
   scene.userData.clear = root.userData.clear; // open ground the village's trees give way on (clearOpenGround)
+  for (const k of ['trees', 'uplights', 'lantern']) scene.userData[k] = root.userData[k]; // its own trees and their lights (world/uplights.ts)
   // Blocks measured from the origin's ground (`blocksOnGround`: tools/sparrenhof.py) go up with it.
   const lift = root.userData.blocksOnGround ? scene.position.y : 0;
   scene.userData.blocks = ((root.userData.blocks as Prism[] | undefined) ?? []).map((p) => ({ ...p, y0: p.y0 + lift, y1: p.y1 + lift }));
