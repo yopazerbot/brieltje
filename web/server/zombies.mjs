@@ -68,8 +68,9 @@ export class ZombieGame {
    * A new game for the players `names` at `arena` (shared/arenas.mjs: home, or a portal in Smetlede;
    * gathered there by modes.start). Its `edge` holds while it runs (game.fence).
    * `opts` from the Zombies duel (server/duel.mjs), else none: `dice` ({ places, mix(wave), drops(wave) }, the same seed
-   * in both rooms: the same zombies in each wave and the same drops), and `duel` ({ final, over(z, now), downed(z, name) }):
-   * in the final nobody comes back (not at the wave's end, not helped up); a game over goes to the duel, not to finish.
+   * in both rooms: the same zombies in each wave and the same dice for what they leave), and `duel` ({ final, over(z, now),
+   * downed(z, name) }): in the final nobody comes back (not at the wave's end, not helped up, not as someone new once the
+   * first wave began); a game over goes to the duel, not to finish.
    */
   constructor(game, modes, names, now, arena = arenaOf('house'), opts = {}) {
     this.game = game;
@@ -485,16 +486,27 @@ export class ZombieGame {
     for (const r of [...this.helping.keys()]) this.letGo(r, 'stop');
     this.fell.clear();
     const wave = this.horde.wave;
+    this.keep(now);
+    if (this.duel) return this.duel.over(this, now); // one room of the Zombies duel: the duel goes on (server/duel.mjs)
+    this.modes.finish(`The zombies caught everyone at wave ${wave}.${this.record ? " That's a new best ever!" : ''}`, this.record ? 'zOverBest' : 'zOver', { n: wave, best: this.best?.wave ?? 0 });
+  }
+
+  /**
+   * The run is over: the best wave ever at the place (kept) and the board of best runs (accounts only, never a chosen
+   * wave: game.zombieRun). Once a run: everyone caught (over), or a duel's run that ended otherwise (server/duel.mjs end:
+   * its clock, the host's stop, the final won).
+   */
+  keep(now) {
+    if (this.kept) return;
+    this.kept = true;
+    const wave = this.horde.wave;
     const names = [...this.players].filter((n) => this.game.players.has(n) || this.horde.beaten[n]);
     if (!this.custom && (!this.best || wave > this.best.wave)) {
       this.best = { wave, names: names.slice(0, 16), at: new Date(now).toISOString().slice(0, 10) };
       this.record = true;
       this.game.saveZombieBest(this.arena.id, this.best);
     }
-    // The board of best runs: accounts only, never a chosen wave (game.zombieRun).
     if (!this.custom) this.game.zombieRun?.(this.arena.id, names, wave, this.horde.beaten);
-    if (this.duel) return this.duel.over(this, now); // one room of the Zombies duel: the duel goes on (server/duel.mjs)
-    this.modes.finish(`The zombies caught everyone at wave ${wave}.${this.record ? " That's a new best ever!" : ''}`, this.record ? 'zOverBest' : 'zOver', { n: wave, best: this.best?.wave ?? 0 });
   }
 
   /**
@@ -718,6 +730,9 @@ export class ZombieGame {
 
   /** Someone joined: they take part; down when they left, they wait for the wave as before (no coming back early by reconnecting). */
   join(name, p) {
+    // The duel's final: someone new once the first wave began comes in out, as the others who are down (no fresh life
+    // under a new name).
+    const late = !!this.duel?.final && this.horde.wave >= 1 && !this.players.has(name) && !!p;
     this.players.add(name);
     if (this.away.get(name)?.key !== p?.key) this.away.delete(name);
     // Coins belong to a session, not a name: another session under a name that left starts at 0.
@@ -728,6 +743,12 @@ export class ZombieGame {
     if (p?.state && !this.edge.inside(p.state.x, p.state.z) && !this.down.has(name)) this.game.gather([name], this.arena);
     if (p && this.loot.kits.has(name)) this.game.send(p.ws, { t: 'zgift', kind: 'kit', kit: this.loot.kit(name) }); // back: what they had
     if (p) this.tell(name, p); // and their coins (0 when none: never the last game's)
+    if (late) {
+      const s = p.state;
+      if (s) this.fell.set(name, { x: s.x, y: s.y, z: s.z }); // where the place's start put them: they stay there
+      this.down.add(name);
+      this.duel.downed?.(this, name);
+    }
     if (this.down.has(name) && (this.horde.phase === 'wave' || this.duel?.final) && p) { // the duel's final: down for good
       p.alive = false;
       p.hp = 0;

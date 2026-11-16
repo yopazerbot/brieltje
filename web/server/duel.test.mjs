@@ -26,8 +26,10 @@ function setup() {
   };
   const main = quiet(new Game(auth));
   const made = [];
+  const runs = []; // the runs a duel room put on the board (game.zombieRun)
   const rooms = new Rooms(main, (room) => {
     const g = quiet(new Game(auth, undefined, room));
+    g.zombieRun = (place, names, wave) => runs.push({ team: room.duel, place, wave });
     made.push(g);
     return g;
   });
@@ -56,7 +58,7 @@ function setup() {
     for (const n of [...blue, ...red]) join(main, n);
     assert.deepEqual(rooms.duel.start(e, 'admin'), { ok: true });
     for (const n of [...blue, ...red]) {
-      assert.equal(main.players.get(n).ws.closed, 4004, `${n} is moved out of the open world`);
+      assert.equal(main.players.get(n).ws.closed, 4006, `${n} is moved out of the open world (the duel's own close)`);
       leave(n);
       join(rooms.duel.route({ username: n, role: 'player', key: `k-${n}` }), n);
     }
@@ -71,7 +73,7 @@ function setup() {
     Date.now = real;
     for (const g of [main, ...made]) g.close();
   };
-  return { main, rooms, made, join, leave, teams, begin, tick, stop, now: () => clock, set: (t) => (clock = t) };
+  return { main, rooms, made, runs, join, leave, teams, begin, tick, stop, now: () => clock, set: (t) => (clock = t) };
 }
 
 /** Everyone who fights in side `s`'s room down, as zombies would leave them (game.mjs npcDamage). */
@@ -99,7 +101,7 @@ test('one seed: the same dice in both rooms, a wave of its own for each, another
   assert.ok(take(dice(1), 1000).every((v) => v >= 0 && v < 1));
 });
 
-test('same seed, the same waves and zombie mix in both rooms whatever else was thrown, and the same drops', () => {
+test('same seed, the same waves and zombie mix in both rooms whatever else was thrown, and the same drop dice', () => {
   const env = setup();
   try {
     const { blue, red } = env.begin(['ann', 'bob'], ['cas', 'dee']);
@@ -374,7 +376,7 @@ test('a late joiner and a reconnect land in their room; a page never picks its d
     env.main.host.teams.cas = 1;
     const p = env.main.players.get('cas');
     env.tick();
-    assert.equal(p.ws.closed, 4004);
+    assert.equal(p.ws.closed, 4006);
     assert.equal(d.route({ username: 'cas' }), red.game);
     // The host moving someone later moves nobody between rooms.
     env.main.host.teams.ann = 1;
@@ -384,14 +386,18 @@ test('a late joiner and a reconnect land in their room; a page never picks its d
     for (const g of [env.main, blue.game, red.game]) g.upgrade = (_q, _s, _h, gone) => calls.push([g === env.main ? 'main' : g.room.duel, !!gone]);
     const ask = (who, q) => {
       env.main.auth.session = () => ({ username: who, role: 'player', key: `k-${who}` });
-      env.rooms.upgrade({ url: `/ws?v=2${q}`, headers: {} }, {}, null);
+      env.rooms.upgrade({ url: `/ws?v=2${q}`, headers: { origin: 'http://brieltje.test', host: 'brieltje.test' } }, {}, null);
     };
     ask('ann', `&room=${red.id}`);
     ask('ann', '');
     ask('nina', `&room=${blue.id}`);
     ask('nina', '');
     ask('ann', '&watch=1');
-    assert.deepEqual(calls, [['blue', false], ['blue', false], ['main', true], ['main', false], ['main', false]]);
+    // Another site's socket (cross-site WebSocket hijacking): never routed, refused by the open world's own checks.
+    env.main.auth.session = () => ({ username: 'ann', role: 'player', key: 'k-ann' });
+    env.rooms.upgrade({ url: '/ws?v=2', headers: { origin: 'https://evil.test', host: 'brieltje.test' } }, {}, null);
+    env.rooms.upgrade({ url: '/ws?v=2', headers: { host: 'brieltje.test' } }, {}, null);
+    assert.deepEqual(calls, [['blue', false], ['blue', false], ['main', true], ['main', false], ['main', false], ['main', false], ['main', false]]);
   } finally {
     env.stop();
   }
@@ -466,4 +472,133 @@ test('a Horde and Loot without the duel\'s dice throw as before', () => {
   assert.equal(h.mix, h.rand);
   const l = new Loot(null, Math.random);
   assert.equal(l.drops, l.rand);
+});
+
+test('final: both out, the team out second wins when its mark passed the first\'s; else the first', () => {
+  for (const [second, won] of [[{ wave: 5, beaten: 11 }, 'red'], [{ wave: 5, beaten: 10 }, 'blue'], [{ wave: 4, beaten: 99 }, 'blue']]) {
+    const env = setup();
+    try {
+      const { st, blue, red } = env.begin(['ann'], ['bob'], { duel: 'final' });
+      at(blue, 5, 10);
+      wipe(env, blue);
+      env.set(env.now() + 100); // within the same quarter second: no tick in between
+      at(red, second.wave, second.beaten);
+      wipe(env, red);
+      assert.equal(st.winner, won, JSON.stringify(second));
+    } finally {
+      env.stop();
+    }
+  }
+});
+
+test('final: out at the same moment, the higher mark wins; the same mark is a draw, a point for playing to all', () => {
+  for (const [b, r, won] of [[[6, 1], [5, 40], 'blue'], [[5, 3], [5, 4], 'red'], [[5, 7], [5, 7], 'draw']]) {
+    const env = setup();
+    try {
+      const { st, blue, red } = env.begin(['ann'], ['bob'], { duel: 'final' });
+      at(blue, ...b);
+      at(red, ...r);
+      blue.out = { wave: b[0], beaten: b[1] };
+      red.out = { wave: r[0], beaten: r[1] };
+      blue.outAt = red.outAt = env.now();
+      env.rooms.duel.check(env.now());
+      assert.equal(st.winner, won);
+      if (won === 'draw') {
+        const sc = env.main.host.scores;
+        assert.equal(sc.ann.points, 1 + 1, 'played, and a point for five waves');
+        assert.equal(sc.bob.points, 1 + 1);
+        assert.ok(blue.game.players.get('ann').ws.got.some((m) => m.code === 'duelDraw'));
+      }
+    } finally {
+      env.stop();
+    }
+  }
+});
+
+test('final: someone new once the first wave began comes in out; in the warm-up they play', () => {
+  for (const kind of ['final', 'warmup']) {
+    const env = setup();
+    try {
+      const { blue } = env.begin(['ann'], ['bob'], { duel: kind });
+      at(blue, 2);
+      env.main.host.teams.cas = 0;
+      const cas = env.join(blue.game, 'cas');
+      if (kind === 'final') {
+        assert.equal(cas.alive, false, 'no fresh life under a new name');
+        assert.equal(cas.respawnAt, Infinity);
+        assert.ok(cas.ws.got.some((m) => m.code === 'duelDown'));
+        blue.z.horde.toSpawn = 0;
+        blue.z.horde.zombies.clear();
+        blue.z.tick(env.now(), 50); // the wave beaten: still out
+        assert.equal(cas.alive, false);
+      } else assert.equal(cas.alive, true, 'the warm-up: in at once');
+    } finally {
+      env.stop();
+    }
+  }
+  const env = setup();
+  try {
+    const { blue } = env.begin(['ann'], ['bob'], { duel: 'final' });
+    env.main.host.teams.dee = 0;
+    assert.equal(env.join(blue.game, 'dee').alive, true, 'before the first wave: in, as everyone');
+  } finally {
+    env.stop();
+  }
+});
+
+test('a crate\'s gun comes from the wave\'s drop dice, whatever was thrown for places', () => {
+  const pick = (extra) => {
+    const places = dice(5);
+    for (let i = 0; i < extra; i++) places();
+    const l = new Loot(null, places, (w) => dice(100 + w));
+    l.wave(3);
+    return Array.from({ length: 6 }, () => l.give('ann', { x: 0, y: 0, z: 0, w: 'pistol', hp: 100, guns: ['pistol'] }, 'gun', 0)?.w).join(',');
+  };
+  assert.equal(pick(0), pick(13));
+});
+
+test('the look holds while a team is out and through the result, until everyone is back', () => {
+  const env = setup();
+  try {
+    env.main.rules.paintball = true; // the house rule: child-friendly; the final's look: real
+    const { st, blue, red } = env.begin(['ann'], ['bob'], { duel: 'final', look: 'real' });
+    at(red, 3);
+    wipe(env, red);
+    assert.equal(red.game.modes.state.kind, 'free');
+    assert.equal(red.game.shownRules().paintball, false, 'out: still the duel\'s look');
+    assert.equal(red.game.players.get('bob').ws.got.filter((m) => m.t === 'rules').at(-1).rules.paintball, false);
+    at(blue, 4);
+    env.tick();
+    assert.equal(st.phase, 'done');
+    for (const s of [blue, red]) assert.equal(s.game.shownRules().paintball, false, 'in the result too');
+    assert.equal(env.main.shownRules().paintball, true, 'the open world keeps the house rule');
+  } finally {
+    env.stop();
+  }
+});
+
+test('a duel run reaches the boards however it ends: caught, the clock, the host\'s stop, the final won', () => {
+  const env = setup();
+  try {
+    const { blue, red } = env.begin(['ann'], ['bob'], { duel: 'warmup', minutes: 10 });
+    at(blue, 3);
+    wipe(env, blue); // caught: kept, and a new run
+    at(blue, 2);
+    at(red, 4);
+    env.rooms.duel.stop('admin');
+    assert.deepEqual(env.runs.map((r) => [r.team, r.place, r.wave]).sort(), [['blue', 'sparrenhof', 2], ['blue', 'sparrenhof', 3], ['red', 'sparrenhof', 4]]);
+  } finally {
+    env.stop();
+  }
+  const fin = setup();
+  try {
+    const { blue, red } = fin.begin(['ann'], ['bob'], { duel: 'final' });
+    at(red, 2, 3);
+    wipe(fin, red);
+    at(blue, 3);
+    fin.tick(); // blue passed: won
+    assert.deepEqual(fin.runs.map((r) => [r.team, r.wave]).sort(), [['blue', 3], ['red', 2]]);
+  } finally {
+    fin.stop();
+  }
 });

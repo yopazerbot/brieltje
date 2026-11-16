@@ -293,7 +293,7 @@ export class Loot {
     else if (kind === 'armor') k.armor = LOOT.armor;
     else if (kind === 'nades') k.nades = Math.min(LOOT.nadesCarry, k.nades + LOOT.nades);
     else if (kind === 'medkit') heal = Math.min(LOOT.heal, LOOT.health - p.hp);
-    else if (kind === 'gun') w = lacking[Math.min(lacking.length - 1, Math.floor(this.rand() * lacking.length))];
+    else if (kind === 'gun') w = lacking[Math.min(lacking.length - 1, Math.floor(this.drops() * lacking.length))]; // the wave's drop dice (the duel: both rooms)
     else if (kind === 'rifle') w = 'rifle';
     else if (kind === 'lull') {
       // It plays where it lay, not where its taker goes; the oldest stops when too many play.

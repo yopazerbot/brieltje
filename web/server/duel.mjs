@@ -9,15 +9,17 @@
 //   the server, on any connection (route), and pulled out of the open world or a players' room (pull). Anything else a
 //   page asks for is refused as before (a room id not in the list: told it is gone).
 // - Fair: one seed for both rooms (duelDice): wave n's k-th zombie is the same zombie in both (its kind, runner or not,
-//   its speed), and the k-th zombie beaten in wave n leaves the same. The horde scales with the players who fight in
+//   its speed), and what beaten zombies leave comes from the same dice per wave (not the same drops: which zombie
+//   falls when is the play). The horde scales with the players who fight in
 //   the room, as every Zombies game does (shared/zombies.mjs waveSize, aliveCap). Both rooms' first wave comes at the
 //   same moment, GATHER_MS after the start plus the usual first break.
 // - `warmup`: the item's minutes (WARMUP_MINUTES). Who is down comes back when the wave is beaten, as always; a team
 //   caught whole starts again at wave 1, its best run counting. Highest wave wins, then the most zombies beaten (of
 //   that run).
-// - `final`: nobody comes back (not at the wave's end, not helped up, not by reconnecting). When one team is caught, its
-//   room has no zombies any more (free to walk about, nobody hurts anyone in it), and the other must pass its mark (its
-//   wave, then its zombies beaten) to win: it wins the moment it does, and loses if it is caught first.
+// - `final`: nobody comes back (not at the wave's end, not helped up, not by reconnecting, not as someone new once the
+//   first wave began). When one team is caught, its room has no zombies any more (free to walk about, nobody hurts
+//   anyone in it), and the other must pass its mark (its wave, then its zombies beaten) to win: it wins the moment it
+//   does, and loses if it is caught first (both out: check). The duel's look holds in both rooms to the end.
 // - The host's stop ends both at once, ranked as the warm-up.
 // - The end: the result on every page for RESULT_MS (the live line and a chat line), then both rooms close and
 //   everyone is back in the open world where they stood, with what they carried (back).
@@ -40,7 +42,6 @@ export const RESULT_MS = 10_000;
 export const GATHER_MS = 5_000; // the rooms fill (every page moves) before both breaks run
 const TICK_MS = 250;
 const RESEND_MS = 5_000; // the live line again at least this often (the page counts the warm-up's clock down itself)
-const WAVES_PER_POINT = 3;
 
 /**
  * Test only: a shorter minute for the warm-up's clock (tools/dev/duel_ws_check.mjs), from the server's own environment.
@@ -151,6 +152,7 @@ export class Duel {
     const sides = {};
     for (const t of SIDES) {
       const { id, game } = this.hub.hostRoom(t, arena, DUEL_PLAYERS);
+      game.room.look = LOOKS.includes(e.look) ? e.look : null; // to the duel's end: out, and in its result (game.mjs shownRules)
       sides[t] = { team: t, id, game, z: null, runs: 0, best: { wave: 0, beaten: 0 }, out: null, outAt: 0, players: new Set() };
     }
     this.state = {
@@ -213,6 +215,7 @@ export class Duel {
     s.out = mark;
     s.outAt = now;
     s.best = best(s.best, mark);
+    s.z?.keep(now); // its run on the boards (kept once: over() did when they were caught)
     const g = s.game;
     if (g.modes.state.kind === 'zombies') g.modes.state.z?.stop();
     g.modes.state = { kind: 'free' };
@@ -232,12 +235,20 @@ export class Duel {
     if (p) s.game.send(p.ws, { t: 'system', text: "You're out for this final. Your team plays on.", code: 'duelDown' });
   }
 
-  /** The final: one team out, the other past its mark (it wins), or caught first (the first out wins). */
+  /**
+   * The final: one team out, the other past its mark (it wins), or caught too. Both out: the team out second wins if its
+   * mark passes the first's (it passed it, and was caught within the same quarter second), else the first wins; out at
+   * the same moment, the higher mark wins and the same mark is a draw.
+   */
   check(now) {
     const st = this.state;
     if (!st || st.kind !== 'final' || st.phase !== 'playing') return;
     const [a, b] = SIDES.map((t) => st.sides[t]);
-    if (a.out && b.out) return this.end(a.outAt <= b.outAt ? 'blue' : 'red', now);
+    if (a.out && b.out) {
+      if (a.outAt === b.outAt) return this.end(passes(a.out, b.out) ? a.team : passes(b.out, a.out) ? b.team : 'draw', now);
+      const [first, second] = a.outAt < b.outAt ? [a, b] : [b, a];
+      return this.end(passes(second.out, first.out) ? second.team : first.team, now);
+    }
     const out = a.out ? a : b.out ? b : null;
     if (!out) return;
     const on = out === a ? b : a;
@@ -274,6 +285,7 @@ export class Duel {
     for (const t of SIDES) {
       const s = st.sides[t];
       for (const n of s.game.players.keys()) s.players.add(n);
+      if (!s.out) s.z?.keep(now); // the run on the boards, ended by the clock, the host's stop or the final won
       if (s.game.modes.state.kind === 'zombies') {
         s.game.modes.state.z?.stop();
         s.game.modes.state = { kind: 'free' };
@@ -293,7 +305,7 @@ export class Duel {
       for (const t of SIDES) {
         const names = [...st.sides[t].players];
         if (winner === t) won.push(...names);
-        h.award(names, winner === t ? names : [], Math.floor(marks[t].wave / WAVES_PER_POINT));
+        h.award(names, winner === t ? names : [], h.wavePoints(marks[t].wave));
       }
       h.history.push({ kind: 'duel', at: now, winners: won });
       if (h.history.length > 50) h.history.shift();
@@ -325,7 +337,7 @@ export class Duel {
 
   /**
    * Everyone on a team who plays anywhere else (the open world, a players' room) is moved: their connection there ends
-   * (4004, as a room closing), their page connects again at once and route() puts it in their team's room. Their place
+   * (4006, the duel's own close), their page connects again at once and route() puts it in their team's room. Their place
    * in the open world is kept by its leaving (game.mjs lastPos), the guns they carried here (back), their seat in a car
    * or a helicopter given up as on any leaving.
    */
@@ -339,7 +351,7 @@ export class Duel {
         if (p.pulled || !this.sideOf(name)) continue;
         p.pulled = true;
         if (g === this.hub.main && p.weapons) this.carried.set(name, { key: p.key, weapons: [...p.weapons] });
-        p.ws.close(4004, 'To the Zombies duel');
+        p.ws.close(4006, 'To the Zombies duel'); // src/net/client.ts: again at once, no "room closed" line
       }
     }
   }

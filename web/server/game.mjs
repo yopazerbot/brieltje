@@ -1870,7 +1870,7 @@ export class Game {
    * host's game being played (server/modes.mjs LOOKS). Only what is sent changes: the stored rules stay as they are.
    */
   shownRules() {
-    const look = this.modes.look;
+    const look = this.modes.look ?? this.room?.look ?? null; // a duel room's look holds to its end, out or in its result (server/duel.mjs)
     return look ? { ...this.rules, paintball: look === 'paint' } : this.rules;
   }
 

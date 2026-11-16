@@ -143,12 +143,20 @@ export class Rooms {
   /**
    * The WebSocket: `room` in the address picks a room; without it, the open world. While the host's Zombies duel is on,
    * a player on one of its teams goes to their team's host room whatever the address says (server/duel.mjs route): a
-   * page never picks a duel room. A watch view (the admin's) is never moved.
+   * page never picks a duel room. A watch view (the admin's) is never moved. The route runs only after the same-origin
+   * check (cross-site WebSocket hijacking: another site's socket is refused by game.upgrade before any session is read).
    */
   upgrade(req, socket, head) {
     const q = new URL(req.url, 'http://local').searchParams;
     const id = q.get('room');
-    const duel = this.duel.on && q.get('watch') !== '1' ? this.duel.route(this.main.auth.session(req)) : null;
+    let from = '';
+    try {
+      from = new URL(String(req.headers.origin || '')).host;
+    } catch {
+      // no or invalid Origin header: game.upgrade refuses it
+    }
+    const same = !!from && from === req.headers.host;
+    const duel = this.duel.on && same && q.get('watch') !== '1' ? this.duel.route(this.main.auth.session(req)) : null;
     if (duel) return duel.upgrade(req, socket, head); // the same checks of origin and session there
     if (id === null) return this.main.upgrade(req, socket, head);
     const room = ROOM_ID.test(id) ? this.rooms.get(id) : null;

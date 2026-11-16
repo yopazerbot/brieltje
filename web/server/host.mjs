@@ -126,6 +126,11 @@ export class Host {
     }
   }
 
+  /** The evening's points for reaching `wave` in Zombies: one per POINTS.wavesPer (the Zombies duel too, server/duel.mjs). */
+  wavePoints(wave) {
+    return Math.floor((wave ?? 0) / POINTS.wavesPer);
+  }
+
   /** A party game ended (server/modes.mjs finish): its players' points, from how it ended. */
   gameOver(state, code, args = {}) {
     const here = [...this.game.players.keys()];
@@ -137,7 +142,7 @@ export class Host {
     else if (code === 'seekerLeft') winners = here.filter((n) => !state.seekers?.has(n));
     else if (code === 'tagWon') winners = [args.name];
     else if (code === 'teamWon' || code === 'teamsTime') winners = Object.keys(state.teams ?? {}).filter((n) => state.teams[n] === args.team);
-    else if (code === 'zOver' || code === 'zOverBest') extra = Math.floor((args.n ?? 0) / POINTS.wavesPer);
+    else if (code === 'zOver' || code === 'zOverBest') extra = this.wavePoints(args.n);
     winners = winners.filter((n) => typeof n === 'string' && present.has(n));
     this.award(here, winners, extra);
     if (['hide', 'tag', 'treasure', 'teams'].includes(state.kind)) this.game.partyWon?.(state.kind, winners); // the all-time board of party games won
@@ -344,7 +349,7 @@ export class Host {
       this.countdown = null;
       if (!duel) return this.game.modes.start(e.kind, by, e.place, { minutes: e.minutes, goal: e.goal, look: e.look });
       const r = duel.start(e, by);
-      if (r.error) this.game.broadcast({ t: 'system', text: `The Zombies duel could not start: ${r.error}`, code: 'duelCant' });
+      if (r.error) this.game.broadcast({ t: 'system', text: `The Zombies duel could not start: ${r.error}`, code: r.code, args: r.args }); // its reason, in the page's language
     }, COUNTDOWN_MS);
     timer.unref?.();
     this.countdown = { kind: e.kind, until, timer };

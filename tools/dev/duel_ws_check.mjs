@@ -62,7 +62,7 @@ class Page {
       this.closes.push(code);
       this.pos = null;
       if (this.stopped || ws !== this.ws) return;
-      if (code === 4004) {
+      if (code === 4004 || code === 4006) { // a room gone, or moved into the duel (src/net/client.ts)
         this.room = '';
         return this.connect();
       }
@@ -154,7 +154,7 @@ if (load) {
     seen.add(s.at);
     console.log(`${String(Math.round((Date.now() - t0) / 1000)).padStart(4)}  ${String(s.players).padStart(7)}  ${String(s.tickMs).padStart(6)}  ${String(s.tickMaxMs).padStart(9)}  ${String(s.cpu).padStart(4)}  ${String(s.loop).padStart(5)}  ${String(s.lagMs).padStart(5)}  ${String(s.kbOutPerSec).padStart(7)}  ${v.duel?.sides.map((x) => `${x.team} ${x.wave}`).join(' ')}`);
   }
-  const dropped = pages.filter((p) => p.closes.some((c) => c !== 4004 && c !== 1005));
+  const dropped = pages.filter((p) => p.closes.some((c) => c !== 4004 && c !== 4006 && c !== 1005));
   ok('no connection dropped', !dropped.length, dropped.map((p) => `${p.name}:${p.closes}`).join(' '));
   await act({ op: 'stop' });
   await sleep(11_000);
@@ -165,6 +165,7 @@ if (load) {
 ok('the host starts a warm-up',!!(await act({ op: 'start', kind: 'duel', duel: 'warmup', minutes: Number(o.minutes) || 1, look: 'paint' }))?.ok);
 await sleep(10_500); // the countdown
 ok('everyone is moved into their team\'s room', await until(() => pages.every((p) => p.where === teamOf.get(p)), 10_000), pages.map((p) => `${p.name}:${p.where}`).join(' '));
+ok('moved with the duel\'s own close (4006: no "room closed" line), never told a room is gone', pages.every((p) => p.closes[0] === 4006 && !p.of('roomgone').length), pages.map((p) => p.closes.join('/')).join(' '));
 ok('no page joined the other team\'s room', pages.every((p) => p.welcomes.every((w) => !w?.duel || w.duel === teamOf.get(p))));
 ok('the live line reaches every page', await until(() => pages.every((p) => p.line?.sides?.length === 2 && p.line.kind === 'warmup'), 5000));
 ok('the look holds in both rooms (paint)', pages.every((p) => p.of('rules').at(-1)?.rules?.paintball === true || p.of('welcome').at(-1)?.rules?.paintball === true));
@@ -201,6 +202,13 @@ ok('a final starts', !!(await act({ op: 'start', kind: 'duel', duel: 'final', lo
 await sleep(10_500);
 ok('everyone in their room again', await until(() => pages.every((p) => p.where === teamOf.get(p)), 10_000));
 ok('the final\'s line', await until(() => pages.every((p) => p.line?.kind === 'final'), 5000));
+// Someone new once the first wave began: in their team's room, out (no fresh life under a new name).
+ok('the first wave of the final began', await until(() => blue[0].line?.sides.every((x) => x.wave >= 1), 60_000, 500));
+await call('POST', '/api/lockouts', {}, adminCookie);
+const late = await guest(`d${tag}late`);
+pages.push(late);
+ok('a newcomer in the final is moved into a team\'s room', await until(() => late.where === 'blue' || late.where === 'red', 8000), late.where);
+ok('and comes in out, told it is for good', await until(() => late.of('kill').some((m) => m.victim === late.name) && late.of('system').some((m) => m.code === 'duelDown'), 5000));
 const first = await until(() => blue[0].line?.sides.some((x) => x.out), 240_000, 1000);
 ok('one team is caught first', first, JSON.stringify(blue[0].line));
 const out = blue[0].line?.sides.find((x) => x.out)?.team;
@@ -209,8 +217,10 @@ ok('its pages are told they are out, the others what to pass', outPages.every((p
 ok('the downed are told it is for good', pages.some((p) => p.of('system').some((m) => m.code === 'duelDown')));
 const done = await until(() => pages.every((p) => p.line?.phase === 'done'), 240_000, 1000);
 ok('the final ends', done, JSON.stringify(blue[0].line));
-ok('caught second without passing the mark: the team out first wins', blue[0].line?.winner === out, JSON.stringify(blue[0].line));
+const [m1, m2] = blue[0].line?.sides ?? [];
+const level = m1 && m2 && m1.wave === m2.wave && m1.beaten === m2.beaten;
+ok('caught second without passing the mark: the team out first wins (or a draw: the same mark at the same moment)', blue[0].line?.winner === out || (level && blue[0].line?.winner === 'draw'), JSON.stringify(blue[0].line));
 ok('then everyone is back in the open world', await until(() => pages.every((p) => p.where === 'world'), 15_000));
-const dropped = pages.filter((p) => p.closes.some((c) => c !== 4004 && c !== 1005 && c !== 1006));
+const dropped = pages.filter((p) => p.closes.some((c) => c !== 4004 && c !== 4006 && c !== 1005 && c !== 1006));
 ok('no connection dropped by the server', !dropped.length, dropped.map((p) => `${p.name}:${p.closes}`).join(' '));
 await finish();

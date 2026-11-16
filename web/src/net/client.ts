@@ -449,6 +449,13 @@ export class Net {
         this.connect();
         return;
       }
+      // Moved by the server into the host's Zombies duel (4006, server/duel.mjs): connect again at once; the server puts this
+      // page in its team's room, and the duel's own line says so (not "the room was closed").
+      if (e.code === 4006) {
+        this.room = null;
+        this.connect();
+        return;
+      }
       // A room full (4003): back to the open world at once, never waiting for a place there.
       if (e.code === 4003 && this.room) {
         this.room = null;
