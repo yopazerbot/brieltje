@@ -2528,7 +2528,7 @@ async function travel(to: Destination, via: 'portal' | 'chat'): Promise<void> {
     }
     // Molenhoek's and Kapellenhoek's baked light, if it is still coming (buildVillage); never more than a few seconds.
     if (to.village) await Promise.race([streetBakes, new Promise((r) => setTimeout(r, 6000))]);
-    if (!net.connected) await new Promise((r) => setTimeout(r, 180)); // the flash at its brightest
+    await new Promise((r) => setTimeout(r, 180)); // the flash at its brightest (together too: the answer came before it)
     ready = true;
   } catch (e) {
     console.error('travel failed', e);
