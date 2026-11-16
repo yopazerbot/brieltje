@@ -54,11 +54,12 @@ function setup({ teams = true } = {}) {
   /** A shooter 15 m behind the Tesla's back, looking along -z at it. */
   const shooter = (name, team = 'bungalow') => player(name, { x: car.x, y: car.y, z: car.z + 15 }, team);
   const vhit = (name, p, m = {}) => send(name, p, { t: 'vhit', kind: 'car', id: 'tesla', w: 'rifle', n: 1, ...m });
-  /** `k` rifle hits, each after the gun's delay. */
+  /** `k` rifle hits, each after the gun's delay, the game's tick after each (it tells the health). */
   const volley = (name, p, k, m = {}) => {
     for (let i = 0; i < k; i++) {
       at(110);
       vhit(name, p, m);
+      game.vehicleDamage.tick(clock);
     }
   };
   const hp = (kind = 'car', id = 'tesla') => game.vehicleDamage.recs.get(`${kind}:${id}`)?.hp ?? VEHICLE.health[kind];
@@ -111,6 +112,7 @@ test('an honest hit takes the gun\'s own damage, whatever number the page adds',
   s.at(1000);
   s.vhit('ann', ann, { w: 'shotgun', n: 8 });
   assert.equal(s.hp(), CAR_HP - WEAPONS.rifle.body - 8 * WEAPONS.shotgun.body);
+  s.game.vehicleDamage.tick(s.now()); // told on the tick
   const msg = vdmg(s.told).at(-1);
   assert.deepEqual([msg.k, msg.id, msg.hp, msg.st], ['car', 'tesla', Math.ceil((s.hp() / CAR_HP) * 100), STAGE.whole]);
 });
@@ -523,4 +525,123 @@ test('the homes: a shooter inside a locked home destroys a car outside: no name 
     assert.equal(kim.hp, 100, 'kim, 2 m from it, not hurt through the gate');
     assert.equal(s.wire.get('ann').find((m) => m.t === 'vdmg' && m.st === STAGE.wreck)?.by, 'ann', 'ann herself is told');
   }
+});
+
+test('gone: the car goes to its parking place only once it is clear; back whole only from there', () => {
+  const s = setup();
+  const park = CARS.cars.tesla.park;
+  Object.assign(s.car, { x: park.x + 8, z: park.z + 4, yaw: 1 }); // driven off and left
+  const ann = s.player('ann', { x: s.car.x, y: s.car.y, z: s.car.z + 15 }, 'bungalow');
+  while (s.stage() !== STAGE.wreck) s.volley('ann', ann, 1);
+  const lies = { x: s.car.x, z: s.car.z };
+  const kim = s.player('kim', { x: park.x + 0.4, y: park.y, z: park.z - 1 }, 'house'); // standing on its parking place
+  s.ticks(VEHICLE.wreckMs + 500);
+  assert.equal(s.stage(), STAGE.gone);
+  assert.deepEqual([s.car.x, s.car.z], [lies.x, lies.z], 'kim on its spot: it waits where it lay (not drawn, nothing to bump into)');
+  s.ticks(VEHICLE.goneMs + 2000);
+  assert.equal(s.stage(), STAGE.gone, 'not back whole while it is not home');
+  kim.state.x = park.x + 6; // she steps off
+  s.ticks(200);
+  assert.deepEqual([s.car.x, s.car.z], [park.x, park.z], 'home once clear');
+  assert.equal(s.game.vehicleDamage.recs.size, 0, 'and whole, its time being up');
+  // Another car on its spot holds it too.
+  const s2 = setup();
+  Object.assign(s2.car, { x: park.x + 8, z: park.z + 4 });
+  const bob = s2.player('bob', { x: s2.car.x, y: s2.car.y, z: s2.car.z + 15 }, 'bungalow');
+  while (s2.stage() !== STAGE.wreck) s2.volley('bob', bob, 1);
+  Object.assign(s2.game.cars.model3, { x: park.x, y: park.y, z: park.z + 1, yaw: 0 });
+  s2.ticks(VEHICLE.wreckMs + 1000);
+  assert.ok(Math.hypot(s2.car.x - park.x, s2.car.z - park.z) > 5, 'the Model 3 on its spot: it waits');
+});
+
+test('the match ends with a wreck waiting for its spot: whole where it lies', () => {
+  const s = setup();
+  const park = CARS.cars.tesla.park;
+  Object.assign(s.car, { x: park.x + 8, z: park.z + 4 });
+  const ann = s.player('ann', { x: s.car.x, y: s.car.y, z: s.car.z + 15 }, 'bungalow');
+  while (s.stage() !== STAGE.wreck) s.volley('ann', ann, 1);
+  s.player('kim', { x: park.x, y: park.y, z: park.z }, 'house');
+  s.ticks(VEHICLE.wreckMs + 500);
+  s.game.modes.state = { kind: 'free' };
+  s.ticks(100);
+  assert.equal(s.game.vehicleDamage.recs.size, 0);
+  assert.ok(Math.hypot(s.car.x - park.x, s.car.z - park.z) > 5, 'not onto kim');
+  assert.deepEqual(vdmg(s.told).at(-1), { t: 'vdmg', k: 'car', id: 'tesla', hp: 100, st: STAGE.whole, except: undefined });
+});
+
+test('the health is told at most once a tick for each vehicle, however many hits came in between', () => {
+  const s = setup();
+  const ann = s.shooter('ann', 'bungalow');
+  const bob = s.player('bob', { x: s.car.x + 2, y: s.car.y, z: s.car.z + 15 }, 'bungalow');
+  const before = vdmg(s.told).length;
+  for (let i = 0; i < 3; i++) {
+    s.at(110);
+    s.vhit('ann', ann);
+    s.vhit('bob', bob);
+  }
+  assert.equal(vdmg(s.told).length, before, 'nothing before the tick');
+  s.game.vehicleDamage.tick(s.now());
+  const told = vdmg(s.told).slice(before);
+  assert.equal(told.length, 1, 'one message for six hits');
+  assert.equal(told[0].hp, Math.ceil(((CAR_HP - 6 * WEAPONS.rifle.body) / CAR_HP) * 100));
+  s.game.vehicleDamage.tick(s.now() + 50);
+  assert.equal(vdmg(s.told).length, before + 1, 'nothing new: nothing told');
+});
+
+test('a rider\'s kill: the attacker inside a locked home at the hit, outside at the end: no name to those without its code', () => {
+  const s = setup();
+  const ann = s.shooter('ann', 'bungalow');
+  const kim = s.player('kim', { x: s.car.x + 1.5, y: s.car.y, z: s.car.z }, 'house'); // has the home's code
+  const lou = s.player('lou', { x: s.car.x + 40, y: s.car.y, z: s.car.z }, 'house'); // has not
+  // ann inside the home: kim may see in, lou not.
+  const gate = (inside) => {
+    const may = (p) => p === ann || p === kim;
+    const hides = (a, b) => a === inside && !may(b);
+    s.game._gate = { insideOf: (p) => (p === inside ? 'home4' : null), may, hides, mayHurt: (a, b) => !hides(a, b) && !hides(b, a), mayStand: () => true, granted: () => false };
+  };
+  gate(ann);
+  s.send('kim', kim, { t: 'car', op: 'in', id: 'tesla' });
+  assert.equal(s.car.driver, 'kim');
+  while (s.stage() !== STAGE.fire) s.volley('ann', ann, 1); // from inside the home, kim in the car
+  gate(null); // ann walks out
+  const from = { lou: s.wire.get('lou').length, told: s.told.length };
+  s.ticks(30_000, 500);
+  assert.equal(s.stage(), STAGE.wreck);
+  assert.equal(kim.alive, false, 'kim could see ann at the hit: down');
+  assert.equal(ann.score.kills, 1);
+  const toLou = [...s.wire.get('lou').slice(from.lou), ...s.told.slice(from.told)];
+  const kill = toLou.find((m) => m.t === 'kill');
+  assert.ok(kill && kill.victim === 'kim', 'lou is told kim is down');
+  assert.ok(!toLou.some((m) => (m.t === 'kill' || m.t === 'vdmg' || m.t === 'blast') && JSON.stringify(m).includes('"ann"')), 'but not by whom');
+  assert.equal(s.wire.get('kim').find((m) => m.t === 'kill')?.killer, 'ann', 'kim herself, who could see in, is told');
+  assert.ok(lou);
+});
+
+test('a helicopter wreck: left alone by the machines\' own returns until its time; boarding it is refused out loud', () => {
+  const s = setup();
+  const h = s.game.helis.machines.get(HELI.machines[0].id);
+  const park = HELI.machines[0].park;
+  const floor = s.game.helis.floor(h.x + 20, h.z);
+  Object.assign(h, { x: h.x + 20, y: floor + 30, g: 0, n: 1 });
+  const ann = s.player('ann', { x: h.x, y: floor, z: h.z + 30 }, 'bungalow');
+  const mid = s.game.vehicleDamage.middle('heli', h);
+  ann.state.pitch = Math.atan2(mid.y - (floor + 1.6), Math.hypot(mid.x - ann.state.x, mid.z - ann.state.z));
+  while (s.stage('heli', h.id) !== STAGE.wreck) {
+    s.at(110);
+    s.send('ann', ann, { t: 'vhit', kind: 'heli', id: h.id, w: 'rifle', n: 1 });
+  }
+  // The teams game sends every machine home on its tick (Helis.clear); the wreck stays where it falls and lies.
+  for (let t = 0; t < VEHICLE.wreckMs - 1000; t += 100) {
+    s.at(100);
+    s.game.vehicleDamage.tick(s.now());
+    s.game.helis.tick(s.now());
+  }
+  assert.ok(Math.hypot(h.x - park.x, h.z - park.z) > 10, 'not taken to its pad before its 20 s');
+  assert.ok(Math.abs(h.y - floor) < 1e-6, 'it fell');
+  const kim = s.player('kim', { x: h.x + 1.5, y: h.y, z: h.z }, 'house');
+  s.sent.get('kim').length = 0;
+  s.send('kim', kim, { t: 'heli', op: 'in', id: h.id });
+  assert.deepEqual(h.seats, [null, null, null, null]);
+  const told = s.sent.get('kim').find((m) => m.t === 'heli');
+  assert.equal(told?.heli?.id, h.id, 'kim\'s page is told the machine as it is');
 });

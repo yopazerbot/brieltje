@@ -1312,7 +1312,10 @@ export class Game {
       // A helicopter (server/helis.mjs: in, out, take the stick, jump): at most three a second, shared with the cars, horses and bikes.
       if (now < (player.nextCar || 0)) return;
       player.nextCar = now + 300;
-      if (m.op === 'in' && this.vehicleDamage.out('heli', m.id)) return; // a wreck: nobody gets in
+      if (m.op === 'in' && this.vehicleDamage.out('heli', m.id)) { // a wreck: nobody gets in, and the page is told it as it is
+        const h = this.helis.machines.get(m.id);
+        return h ? this.tellThing(player, 'heli', this.helis.pub(h)) : undefined;
+      }
       this.helis.ask(name, player, m, now);
     } else if (m.t === 'bell') {
       // A bike's bell: only from its rider, at most every BELL_MS. The others ring it where the server has
@@ -2580,8 +2583,12 @@ export class Game {
     if (p.state) p.state.chute = p.state.open = false;
   }
 
-  /** Take `amount` health from a target; a kill scores for the shooter (and can end the round). */
-  damage(name, shooter, targetName, target, amount, head, w, now) {
+  /**
+   * Take `amount` health from a target; a kill scores for the shooter (and can end the round). `tellKill(msg)`: who is told
+   * of the kill instead of everyone who may see where it happened (a destroyed vehicle's rider: the attacker's name kept
+   * from those they were hidden from at the hit, server/vehicleDamage.mjs).
+   */
+  damage(name, shooter, targetName, target, amount, head, w, now, tellKill = null) {
     if (!target.alive) return;
     target.hp = Math.max(0, target.hp - amount);
     target.hurtAt = now; // no parachute out of a fight (manualDrop)
@@ -2599,7 +2606,8 @@ export class Game {
     shooter.score.kills++;
     shooter.score.points += POINTS.kill + (head ? POINTS.headshot : 0);
     target.weapons = loadout(target, !!this.modes.zombies); // dropped what they picked up
-    this.broadcastFrom({ t: 'kill', killer: name, victim: targetName, head, w }, this.gate.insideOf(target) ? target : shooter); // not to those it is hidden from
+    if (tellKill) tellKill({ t: 'kill', killer: name, victim: targetName, head, w });
+    else this.broadcastFrom({ t: 'kill', killer: name, victim: targetName, head, w }, this.gate.insideOf(target) ? target : shooter); // not to those it is hidden from
     this.stats(name, { kills: 1, headshots: head ? 1 : 0 });
     this.stats(targetName, { deaths: 1 });
     this.broadcast({ t: 'scores', list: this.scoreList() });

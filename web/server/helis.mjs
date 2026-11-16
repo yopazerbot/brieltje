@@ -413,6 +413,7 @@ export class Helis {
     const g = this.game;
     if (g.fenced() || !g.rules.heli) return this.clear(now);
     for (const h of this.machines.values()) {
+      if (g.vehicleDamage.out('heli', h.id)) continue; // a wreck falls, lies and goes home on its own clock (server/vehicleDamage.mjs)
       const s = this.inner.get(h.id);
       const empty = h.seats.every((n) => !n);
       if (!h.seats[0] && this.high(h) && now - (s.noPilotAt ?? now) >= PILOTLESS_MS) {
@@ -431,6 +432,7 @@ export class Helis {
   /** Everyone out and every machine not on its pad home, at once (a game starts, the rule goes off). */
   clear(now) {
     for (const h of this.machines.values()) {
+      if (this.game.vehicleDamage.out('heli', h.id)) continue; // a wreck: its own clock (server/vehicleDamage.mjs)
       for (const n of h.seats) if (n) this.putOut(n, now);
       if (!this.atPad(h)) this.home(h, now, true);
     }

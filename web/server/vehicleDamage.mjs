@@ -25,6 +25,7 @@
 // place already, not drawn, nobody gets in), then it is back whole. The page shows it (src/world/vehicleWear.ts), as
 // paint in the child-friendly look; the rules and numbers are the same.
 import { readFileSync } from 'node:fs';
+import { boxesOverlap } from '../shared/parking.mjs';
 import { noShoot } from '../shared/zones.mjs';
 
 const shared = (file) => JSON.parse(readFileSync(new URL(`../shared/${file}`, import.meta.url), 'utf8'));
@@ -215,7 +216,10 @@ export class VehicleDamage {
     this.staged(r, v, now);
   }
 
-  /** The stage its health is at; at zero it is destroyed. Told when its health (in whole percent) or its stage changed. */
+  /**
+   * The stage its health is at; at zero it is destroyed. When its health (in whole percent) or its stage changed it is
+   * told on the next tick, once however many hits came in between (tick: at most one `vdmg` a tick for each vehicle).
+   */
   staged(r, v, now) {
     if (r.hp <= 0) return this.destroy(r, v, now);
     const st = r.hp < r.max * VEHICLE.fire ? STAGE.fire : r.hp < r.max * VEHICLE.smoke ? STAGE.smoke : STAGE.whole;
@@ -223,7 +227,7 @@ export class VehicleDamage {
     if (st === r.st && pct === r.pct) return;
     r.st = st;
     r.pct = pct;
-    this.tell(r, v);
+    r.dirty = true;
   }
 
   /**
@@ -242,7 +246,7 @@ export class VehicleDamage {
     const at = { x: Math.round(mid.x * 100) / 100, y: Math.round(mid.y * 100) / 100, z: Math.round(mid.z * 100) / 100 };
     for (const n of this.riders(r.kind, v)) {
       const q = g.players.get(n);
-      if (this.downed(shooter, r, q, n, at, now)) g.damage(r.by, shooter, n, q, q.hp, false, 'wreck', now);
+      if (this.downed(shooter, r, q, n, at, now)) g.damage(r.by, shooter, n, q, q.hp, false, 'wreck', now, (msg) => this.named(r, msg, 'killer', g.gate.insideOf(q)));
       else if (r.kind === 'car') g.releaseCar(n);
       else g.helis.putOut(n, now);
     }
@@ -253,24 +257,24 @@ export class VehicleDamage {
       if (!v.g) r.fall = { v: 0 };
       g.helis.at[v.id] = this.mono();
     }
-    this.wrecked(r, v, { t: 'vdmg', k: r.kind, id: r.id, hp: 0, st: r.st, by: r.by ?? '', ...at });
+    r.dirty = false; // this one says it all
+    this.named(r, { t: 'vdmg', k: r.kind, id: r.id, hp: 0, st: r.st, by: r.by ?? '', ...at }, 'by', g.homeOf(r.kind, v));
     if (r.by) g.blast(r.by, at, 'wreck', new Set(), r.act); // its blast with the act of the hit that did it (Game.mayBlast)
   }
 
   /**
-   * Its destruction, to everyone who may see the vehicle where it is (Game.broadcastThing), so every page has it as a
-   * wreck; who did it only to those who may see that player, now and when they dealt the hit (Game.broadcastEvent's and
-   * Game.mayBlast's rules: inside a home they may not see into, or out of their sight then, it is '' to them), so the
-   * message never tells who is inside a home. The admin's watch views get it whole.
+   * A message naming the last attacker in `field` (the destruction's `by`, a rider's kill's `killer`), to everyone who may
+   * see `home` (null: everyone), the name blanked ('') for those the attacker is hidden from now or was at the hit
+   * (Game.broadcastEvent's and Game.mayBlast's rules with the hit's act: inside a home they may not see into, or out of
+   * their sight then), so no message tells who is or was inside a home. The admin's watch views get it whole.
    */
-  wrecked(r, v, msg) {
+  named(r, msg, field, home) {
     const g = this.game;
     const doer = r.by ? g.players.get(r.by) : null;
     const act = r.act;
-    if (!act && (!doer || !g.gate.insideOf(doer))) return g.broadcastThing(msg, r.kind, v);
-    const home = g.homeOf(r.kind, v);
+    if (!act && (!doer || !g.gate.insideOf(doer))) return g.broadcastHome(msg, home);
     const full = JSON.stringify(msg);
-    const blind = JSON.stringify({ ...msg, by: '' });
+    const blind = JSON.stringify({ ...msg, [field]: '' });
     for (const [n, q] of g.players) {
       if (q.ws.readyState !== q.ws.OPEN || (home && !g.gate.may(q, home))) continue;
       const hidden = (doer && g.gate.hides(doer, q)) || (act?.home && !g.gate.may(q, act.home)) || !!act?.unseen?.has(n);
@@ -298,16 +302,39 @@ export class VehicleDamage {
     this.game.broadcastThing({ t: 'vdmg', k: r.kind, id: r.id, hp: r.pct, st: r.st, ...extra }, r.kind, v);
   }
 
-  /** Back on its parking place, still and empty (a placed Tesla has none here: it stays where it lies). */
-  home(r, v) {
+  /**
+   * Back on its parking place, still and empty, when that place is clear: nobody on foot standing there and no other car
+   * on it (a helicopter: Helis.home's own rule, nobody within 6 m of its pad). True when it went (or has no parking place:
+   * a spawned Tesla stays where it lies); false: it waits, and the next tick tries again. `force` (the match is over):
+   * a place not clear leaves it whole where it lies.
+   */
+  home(r, v, force = false) {
     const g = this.game;
-    if (r.kind === 'heli') return g.helis.park(v, Date.now());
-    for (const n of this.riders('car', v)) g.releaseCar(n);
+    if (r.kind === 'heli') return g.helis.home(v, Date.now()) || force;
     const park = this.cars.cars[r.id]?.park;
+    if (park && !this.clear(v, park)) return force;
+    for (const n of this.riders('car', v)) g.releaseCar(n);
     if (park) Object.assign(v, { x: park.x, y: park.y, z: park.z, yaw: park.yaw });
     v.s = 0;
     g.carAt[r.id] = this.mono();
     g.broadcastThing({ t: 'car', car: v }, 'car', v);
+    return true;
+  }
+
+  /** Car `v`'s parking place `park` is clear: no player on foot within its outline and 30 cm, no other car over it. */
+  clear(v, park) {
+    const g = this.game;
+    const s = this.carSpec(v);
+    const box = { x: park.x, z: park.z, yaw: park.yaw, halfL: s.length / 2 + 0.3, halfW: s.width / 2 + 0.3 };
+    for (const [n, p] of g.players) {
+      if (p.state && !g.inCar(n) && Math.abs(p.state.y - park.y) < 2.5 && boxesOverlap(box, { x: p.state.x, z: p.state.z, yaw: 0, halfL: 0.35, halfW: 0.35 })) return false;
+    }
+    for (const c of Object.values(g.cars)) {
+      if (c === v) continue;
+      const o = this.carSpec(c);
+      if (Math.abs(c.y - park.y) < 2.5 && boxesOverlap(box, { x: c.x, z: c.z, yaw: c.yaw, halfL: o.length / 2, halfW: o.width / 2 })) return false;
+    }
+    return true;
   }
 
   /**
@@ -326,7 +353,7 @@ export class VehicleDamage {
         continue;
       }
       if (!live) {
-        if (r.st >= STAGE.wreck) this.home(r, v);
+        if (r.st >= STAGE.wreck && !r.homed) this.home(r, v, true);
         this.recs.delete(key);
         this.tell({ ...r, pct: 100, st: STAGE.whole }, v);
         continue;
@@ -336,14 +363,23 @@ export class VehicleDamage {
         r.hp -= r.max * VEHICLE.burn * dt;
         this.staged(r, v, now);
       } else if (r.st === STAGE.wreck && now >= r.until) {
+        // Gone: off its spot (the page draws it nowhere, with nothing to bump into) and to its parking place once clear.
         r.st = STAGE.gone;
         r.until = now + VEHICLE.goneMs;
         r.fall = null;
-        this.home(r, v);
+        r.homed = this.home(r, v);
+        r.dirty = true;
+      } else if (r.st === STAGE.gone) {
+        if (!r.homed) r.homed = this.home(r, v);
+        if (r.homed && now >= r.until) { // back whole only on its parking place, and not before its time
+          this.recs.delete(key);
+          this.tell({ ...r, pct: 100, st: STAGE.whole }, v);
+          continue;
+        }
+      }
+      if (r.dirty && this.recs.has(key)) {
+        r.dirty = false;
         this.tell(r, v);
-      } else if (r.st === STAGE.gone && now >= r.until) {
-        this.recs.delete(key);
-        this.tell({ ...r, pct: 100, st: STAGE.whole }, v);
       }
     }
   }
