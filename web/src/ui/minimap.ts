@@ -3,6 +3,7 @@ import type { Level, Prism, Room } from '../world/houseData';
 import { cameraHeading } from './viewHeading';
 import { dist, placeName } from '../i18n';
 import { compactHud } from './compact';
+import { flagMark } from './flagHud';
 
 /**
  * Minimap, top right: the plan of the floor you are on, cut at 1.2 m above
@@ -41,7 +42,9 @@ export interface Blip {
   z: number;
   y: number;
   color: string;
-  kind: 'player' | 'cat' | 'item' | 'coin' | 'zombie' | 'stall';
+  kind: 'player' | 'cat' | 'item' | 'coin' | 'zombie' | 'stall' | 'flag';
+  /** A flag (Steal the flag) carried by someone: a white ring behind it */
+  carried?: boolean;
 }
 
 /** The Zombies stall on a map (here and ui/bigmap.ts): a small awning, red and cream stripes over a dark table, `s` px wide. */
@@ -252,13 +255,20 @@ export class Minimap {
       g.fill();
     }
     for (const b of blips) {
-      const bx = (b.x - x) * SCALE;
-      const bz = (b.z - z) * SCALE;
+      let bx = (b.x - x) * SCALE;
+      let bz = (b.z - z) * SCALE;
       const other = this.levelAt(b.y).id !== lv.id;
+      if (b.kind === 'flag') {
+        // Steal the flag's flags always show: one beyond the minimap's edge sits on its rim, in its direction.
+        const d = Math.hypot(bx, bz);
+        const rim = SIZE / 2 - 12;
+        if (d > rim) [bx, bz] = [(bx / d) * rim, (bz / d) * rim];
+      }
       g.save();
       g.translate(bx, bz);
       g.rotate(-yaw);
-      if (b.kind === 'item') {
+      if (b.kind === 'flag') flagMark(g, 0, 5, 12, b.color, !!b.carried);
+      else if (b.kind === 'item') {
         g.fillStyle = other ? 'rgba(242, 179, 61, 0.35)' : '#f2b33d';
         g.beginPath();
         g.moveTo(0, -4);

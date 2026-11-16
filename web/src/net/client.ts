@@ -250,6 +250,7 @@ export type ServerMsg =
   | { t: 'bike'; bike: BikeState; knock?: { ms: number; v: number }; home?: boolean }
   /** A rider rang the bell of bike `id` (rung where that bike is drawn) */
   | { t: 'bell'; id: string }
+  | { t: 'flag'; ev: 'taken' | 'dropped' | 'returned' | 'captured'; team: 'blue' | 'red'; name: string }
   | { t: 'chat'; from: string; color: string; text: string }
   | { t: 'door'; id: string; open: boolean; dir?: number; by: string }
   | { t: 'weapons'; list: string[] }

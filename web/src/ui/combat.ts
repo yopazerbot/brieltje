@@ -105,7 +105,7 @@ export class Combat {
     this.alive = false;
     this.hp = 0;
     this.flash = 1;
-    this.respawnLeft = RESPAWN_S;
+    this.respawnLeft = this.respawnSeconds;
     this.killer = killer;
     this.drawTitles();
     $('death').dataset.head = head ? '1' : '';
@@ -279,10 +279,20 @@ export class Combat {
     this.drawBoard();
   }
 
+  /** Seconds down before coming back (the death screen's countdown): Steal the flag waits 5 (server/flags.mjs). */
+  respawnSeconds = RESPAWN_S;
+  private flag: { b: number; r: number } | null = null;
+
+  /** Steal the flag's captures for the scoreboard's heading, or null outside it. */
+  setFlag(score: { b: number; r: number } | null): void {
+    this.flag = score;
+    this.drawBoard();
+  }
+
   private drawBoard(): void {
     if (this.zombies) return this.drawZombies(this.zombies);
     const tm = this.teams;
-    $('score-goal').textContent = tm
+    $('score-goal').textContent = this.flag ? t('flag.boardGoal', this.flag) : tm
       ? t(paintball.on ? 'paint.teamsGoal' : 'combat.teamsGoal', { n: tm.goal, h: tm.score.house, b: tm.score.bungalow })
       : t(paintball.on ? 'paint.goal' : 'combat.goal', { n: this.limit });
     const head = document.createElement('tr');

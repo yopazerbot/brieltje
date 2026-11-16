@@ -3,6 +3,7 @@ import { lang, listOf, onLang, plural, serverText, t } from '../i18n';
 import { paintball } from '../paintball';
 import { keepRun } from '../start';
 import type { LootKind } from '../../shared/loot.mjs';
+import type { FlagGameView, FlagHud, FlagTeam } from './flagHud';
 
 /**
  * Games in multiplayer (the admin starts them, the server keeps them): hide and seek, tag, a
@@ -14,7 +15,7 @@ import type { LootKind } from '../../shared/loot.mjs';
 
 export type Team = 'house' | 'bungalow';
 const TEAM_NAMES = { house: 'team.house', bungalow: 'team.bungalow' } as const;
-const TITLES: Partial<Record<string, 'game.hide' | 'game.tag' | 'game.treasure' | 'game.teams' | 'game.zombies'>> = { hide: 'game.hide', tag: 'game.tag', treasure: 'game.treasure', teams: 'game.teams', zombies: 'game.zombies' };
+const TITLES: Partial<Record<string, 'game.hide' | 'game.tag' | 'game.treasure' | 'game.teams' | 'game.zombies' | 'game.flag'>> = { hide: 'game.hide', tag: 'game.tag', treasure: 'game.treasure', teams: 'game.teams', zombies: 'game.zombies', flag: 'game.flag' };
 
 /** The Zombies game in a mode's view (server/zombies.mjs view). */
 export interface ZombiesView {
@@ -52,7 +53,7 @@ export interface ZombiesView {
 }
 
 export interface ModeView {
-  kind: 'free' | 'hide' | 'tag' | 'treasure' | 'teams' | 'zombies';
+  kind: 'free' | 'hide' | 'tag' | 'treasure' | 'teams' | 'zombies' | 'flag';
   phase?: 'hiding' | 'seeking' | 'playing' | 'break' | 'wave' | 'done';
   ms?: number;
   /** The game's name in English (this page names it by `kind`) */
@@ -66,10 +67,14 @@ export interface ModeView {
   result?: string;
   resultCode?: unknown;
   resultArgs?: unknown;
-  teams?: Record<string, Team>;
-  score?: Record<Team, number>;
+  teams?: Record<string, Team | FlagTeam>;
+  score?: Record<string, number>;
   goal?: number;
   zombies?: ZombiesView;
+  /** Steal the flag: its field and flags (server/flags.mjs view) */
+  flag?: FlagGameView;
+  /** The host's look for this game (server/modes.mjs LOOKS) */
+  look?: 'paint' | 'real';
 }
 
 // Coins as big as a hand (0.35 m), turning and bobbing at chest height, each with a glint that keeps
@@ -128,6 +133,9 @@ export class Games {
   /** The connection is down: the bar greyed, its clock stopped at `frozen` ms (see setOffline) */
   private offline = false;
   private frozen = 0;
+
+  /** Steal the flag's bar and flags on screen (ui/flagHud.ts), set by main.ts */
+  flagHud: FlagHud | null = null;
 
   constructor() {
     document.querySelectorAll<HTMLButtonElement>('#team-choice [data-team]').forEach((b) =>
@@ -201,16 +209,23 @@ export class Games {
 
   /** The menu's choice of team, while the teams game runs; for an explorer, how to take part. */
   private showTeams(): void {
-    const playing = this.view.kind === 'teams' && this.view.phase === 'playing';
+    const flag = this.view.kind === 'flag';
+    const playing = (this.view.kind === 'teams' || flag) && this.view.phase === 'playing';
     document.getElementById('team-pick')!.classList.toggle('hidden', !playing);
     document.getElementById('team-explore')!.classList.toggle('hidden', !playing || !this.exploring);
     if (playing) {
       const teams = Object.values(this.view.teams ?? {});
+      // Steal the flag: blue at the church, red at Molenhoek or the Sparrenhof (its field).
+      const redAt = this.view.flag?.field === 'village' ? 'portal.sparrenhof' : 'portal.molenhoek';
       document.querySelectorAll<HTMLButtonElement>('#team-choice [data-team]').forEach((b) => {
-        const team = b.dataset.team as Team;
+        const team = b.dataset.team as Team | FlagTeam;
+        const ours = flag === (team === 'blue' || team === 'red');
+        b.classList.toggle('hidden', !ours);
+        if (!ours) return;
         const n = teams.filter((x) => x === team).length;
+        const place = team === 'house' ? t('games.atHouse') : team === 'bungalow' ? t('games.atBungalow') : team === 'blue' ? t('portal.church') : t(redAt);
         b.classList.toggle('selected', this.team === team);
-        b.querySelector('span')!.textContent = plural(n, 'games.teamCount.one', 'games.teamCount.other', { n, place: t(team === 'house' ? 'games.atHouse' : 'games.atBungalow') });
+        b.querySelector('span')!.textContent = plural(n, 'games.teamCount.one', 'games.teamCount.other', { n, place });
       });
     }
   }
@@ -225,12 +240,28 @@ export class Games {
    * near the two houses (shared/bounds.json `party`) and nobody travels. The server holds to it too.
    */
   get fenced(): boolean {
-    return this.active && this.view.phase !== 'done';
+    return this.active && this.view.phase !== 'done' && !this.flagOn; // Steal the flag: its field is the edge (main.ts)
   }
 
   /** A party game is on: no fighting (the teams game is a fight, and Zombies one against the zombies). */
   get peaceful(): boolean {
-    return this.active && this.view.kind !== 'teams' && this.view.kind !== 'zombies';
+    return this.active && this.view.kind !== 'teams' && this.view.kind !== 'zombies' && this.view.kind !== 'flag';
+  }
+
+  /** Steal the flag is played (not once its result shows). */
+  get flagOn(): boolean {
+    return this.view.kind === 'flag' && this.view.phase !== 'done' && !!this.view.flag;
+  }
+
+  /** You carry a flag in Steal the flag: no portal, trip from the chat or helicopter seat (the server refuses them too). */
+  get carrying(): boolean {
+    const f = this.flagOn ? this.view.flag : undefined;
+    return !!f && (f.flags.blue.by === this.me || f.flags.red.by === this.me);
+  }
+
+  /** Steal the flag refuses you a helicopter seat: carrying, or anything but the village field played for real. */
+  get flagNoHeli(): boolean {
+    return this.flagOn && (this.carrying || this.view.flag?.field !== 'village' || this.view.look !== 'real');
   }
 
   /** The Zombies game is played (not once its end screen shows): no cars, horses or flying, the houses shut. */
@@ -248,9 +279,9 @@ export class Games {
     return this.zombies && !!this.view.zombies?.down.includes(name);
   }
 
-  /** Your team in the teams game. */
-  get team(): Team | null {
-    return this.view.kind === 'teams' ? this.view.teams?.[this.me] ?? null : null;
+  /** Your team in the teams game, or in Steal the flag. */
+  get team(): Team | FlagTeam | null {
+    return this.view.kind === 'teams' || this.view.kind === 'flag' ? this.view.teams?.[this.me] ?? null : null;
   }
 
   /** On your team: not to be shot. */
@@ -342,9 +373,11 @@ export class Games {
       const seekers = v.seekers ?? [];
       if (v.phase === 'hiding') text += this.seeker ? t('games.youSeekHide') : plural(seekers.length, 'games.hide.one', 'games.hide.other', { names: listOf(seekers) });
       else text += this.seeker ? t('games.youSeek', { use }) : t('games.stayHidden');
+    } else if (v.kind === 'flag') {
+      text = this.flagHud?.bar(title, left, v.score, v.flag, this.team === 'blue' || this.team === 'red' ? this.team : null) ?? title;
     } else if (v.kind === 'teams') {
       const s = v.score ?? { house: 0, bungalow: 0 };
-      text += t('games.teamsLine', { h: s.house, b: s.bungalow, goal: v.goal ?? '', team: this.team ? t(TEAM_NAMES[this.team]) : '–' });
+      text += t('games.teamsLine', { h: s.house, b: s.bungalow, goal: v.goal ?? '', team: this.team === 'house' || this.team === 'bungalow' ? t(TEAM_NAMES[this.team]) : '–' });
     } else if (v.kind === 'tag') {
       const mine = Math.round(v.times?.[this.me] ?? 0);
       text += v.it === this.me ? t('games.youreIt', { n: mine, use }) : t('games.isIt', { name: v.it ?? '', n: mine });

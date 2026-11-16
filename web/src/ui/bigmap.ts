@@ -8,6 +8,7 @@ import { dist, onLang, t, type PlainKey } from '../i18n';
 import { moveKeys, typing } from '../keys';
 import { key, type Control } from '../shortcuts';
 import { RACE_EDGE, RACE_LINE, stallMark, type RaceWay } from './minimap';
+import { flagMark } from './flagHud';
 
 /**
  * The big map: the whole area at once, north up, drawn from the same data as the world (roads,
@@ -73,7 +74,9 @@ export interface Mark {
   color: string;
   name?: string;
   yaw?: number;
-  kind: 'player' | 'car' | 'horse' | 'coin' | 'stall';
+  kind: 'player' | 'car' | 'horse' | 'coin' | 'stall' | 'flag';
+  /** A flag (Steal the flag) carried by someone: a white ring behind it */
+  carried?: boolean;
 }
 
 const portal = (id: string) => PORTALS.find((p) => p.id === id);
@@ -330,6 +333,8 @@ export class BigMap {
         g.restore();
       } else if (m.kind === 'stall') {
         stallMark(g, x, y, 14); // the Zombies stall (ui/minimap.ts draws it the same)
+      } else if (m.kind === 'flag') {
+        flagMark(g, x, y + 6, 18, m.color, !!m.carried); // Steal the flag's (ui/flagHud.ts)
       } else {
         g.beginPath();
         g.arc(x, y, m.kind === 'horse' || m.kind === 'coin' ? 3.5 : 5.5, 0, Math.PI * 2); // a hunt's coin: small and gold

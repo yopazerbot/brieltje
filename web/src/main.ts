@@ -19,6 +19,9 @@ import { heliModel, setHeliDetail } from './world/heli';
 import { fillScreen, input, joinPending, me, menu, onAccount, onSession, sessionAdmin, setAccount, startIntent } from './start';
 import { TouchControls } from './controls/touch';
 import { Games, type ModeView } from './ui/games';
+import { FlagHud } from './ui/flagHud';
+import { FlagWorld } from './world/flags';
+import { fieldEdge, fieldOf } from '../shared/flagFields.mjs';
 import { CLOWN_DEFAULTS, Clowns, KINDS, type Kind } from './world/clowns';
 import { bruteDamage, hurtBy } from '../shared/brutes.mjs';
 import { prepareShotRaycasts } from './world/shotRaycast';
@@ -821,6 +824,10 @@ groundShade.warm(renderer, scene, sun, [built.group, hedgeLumps, doors.group, ti
 const games = new Games();
 scene.add(games.group);
 const duelLine = new DuelLine(); // the host's Zombies duel: each team's wave (server/duel.mjs)
+// Steal the flag (server/flags.mjs): its stands and flags in the world, its bar, flags and lines on screen.
+const flagWorld = new FlagWorld();
+scene.add(flagWorld.group);
+games.flagHud = new FlagHud(document.getElementById('modebar')!);
 loadProps(house.props ?? [], scene, world);
 // Built-in furniture (it comes with a home's inside data): drawn like the other pieces, not movable.
 const fixtures = buildFixtures(house.fixtures ?? [], world);
@@ -1681,7 +1688,7 @@ function showAdminParts(): void {
 document.querySelectorAll<HTMLButtonElement>('[data-game]').forEach((b) =>
   b.addEventListener('click', () => {
     stopAsk.classList.toggle('hidden', b.dataset.game !== 'free' || !games.active);
-    if (b.dataset.game !== 'free') net.send({ t: 'mode', kind: b.dataset.game, ...(b.dataset.game === 'zombies' ? { place: ($('zombies-place-admin') as HTMLSelectElement).value } : {}) });
+    if (b.dataset.game !== 'free') net.send({ t: 'mode', kind: b.dataset.game, ...(b.dataset.game === 'zombies' ? { place: ($('zombies-place-admin') as HTMLSelectElement).value } : b.dataset.field ? { place: b.dataset.field } : {}) });
   }),
 );
 $('stop-yes').addEventListener('click', () => {
@@ -2013,6 +2020,25 @@ function soloBest(a: Arena): number {
 }
 /** The edge of the Zombies game at place `id` (shared/arenas.mjs), worked out once a place. */
 const arenaEdges = new Map<string, Bounds>();
+/** Where a player is drawn now and which way they face (yourself too), for a flag on their back; null when not drawn. */
+function flagCarrier(name: string): { x: number; y: number; z: number; yaw: number } | null {
+  if (name === me?.username) {
+    const ride = driving || riding ? car : bikes.mounted ? bikes.ridden : null;
+    return ride ? { x: ride.x, y: ride.y, z: ride.z, yaw: ride.yaw } : { x: player.x, y: player.feet, z: player.z, yaw: player.yaw };
+  }
+  const v = avatars.view(name);
+  if (v) return { x: v.at.x, y: v.at.y, z: v.at.z, yaw: v.yaw };
+  const at = avatars.position(name); // drawn, but not looked about yet: facing north
+  return at ? { x: at.x, y: at.y, z: at.z, yaw: 0 } : null;
+}
+/** Steal the flag's field edge (shared/flagFields.mjs), worked out once per field. */
+const flagEdges = new Map<string, Bounds>();
+function flagEdge(id: string | undefined): Bounds {
+  const field = fieldOf(id);
+  let e = flagEdges.get(field.id);
+  if (!e) flagEdges.set(field.id, (e = fieldEdge(field, edges)));
+  return e;
+}
 function edgeOf(id: string | undefined): Bounds {
   const a = arenaOf(id);
   let e = arenaEdges.get(a.id);
@@ -2740,7 +2766,17 @@ function followGame(view: ModeView): void {
   zombieWaveControl.update(view, net.connected && me?.role === 'admin');
   for (const name of online.keys()) avatars.setRole(name, games.roleOf(name));
   const teams = games.view.kind === 'teams' && games.view.phase === 'playing';
-  combat.setTeams(teams ? { goal: games.view.goal ?? 25, score: games.view.score ?? { house: 0, bungalow: 0 } } : null);
+  combat.setTeams(teams ? { goal: games.view.goal ?? 25, score: { house: games.view.score?.house ?? 0, bungalow: games.view.score?.bungalow ?? 0 } } : null);
+  // Steal the flag (world/flags.ts, ui/flagHud.ts): its flags, its parked bikes, its longer wait when down, its heading.
+  const flag = games.view.kind === 'flag' ? games.view.flag ?? null : null;
+  flagWorld.set(flag);
+  bikes.setGameBikes(flag?.vehicles?.bikes ?? []);
+  combat.respawnSeconds = games.flagOn ? 5 : 3;
+  combat.setFlag(games.flagOn ? { b: games.view.score?.blue ?? 0, r: games.view.score?.red ?? 0 } : null);
+  if (games.flagOn && !(before.kind === 'flag' && before.phase === 'playing')) {
+    teamsMenu = true;
+    if (!weapon.enabled) chat.system(() => t('games.teamsExplore'));
+  }
   // Zombies: the scoreboard (Tab) shows everyone's zombies beaten and times down, as the end screen does.
   combat.setZombies(games.view.kind === 'zombies' ? games.view.zombies ?? null : null);
   if (teams && !(before.kind === 'teams' && before.phase === 'playing')) {
@@ -2928,6 +2964,9 @@ net.onMessage = (m: ServerMsg) => {
     }
     case 'bell':
       bikes.ring(m.id);
+      break;
+    case 'flag': // Steal the flag: taken, dropped, returned or captured (server/flags.mjs): a line and a sound
+      games.flagHud?.event(m, me?.username ?? '', games.team === 'blue' || games.team === 'red' ? games.team : null);
       break;
     case 'car': {
       const c = carById(m.car.id);
@@ -3322,7 +3361,7 @@ bigMap.onWaypoint = updateRoute;
  * show only their icons, and "switch teams in the menu" should lead straight there.
  */
 function openMenu(tab?: string): void {
-  if (!tab && teamsMenu && games.view.kind === 'teams' && games.view.phase === 'playing') {
+  if (!tab && teamsMenu && (games.view.kind === 'teams' || games.view.kind === 'flag') && games.view.phase === 'playing') {
     tab = 'together';
     teamsMenu = false;
   }
@@ -3547,7 +3586,7 @@ renderer.setAnimationLoop((now: number) => {
   // The edge of the game: round the two houses while a game in the house runs (the map shows it at
   // once). Caught outside it (the game began while you were away), you get out of the car or off the
   // horse, and walking puts you in.
-  const fence = games.fenced ? (games.view.kind === 'zombies' ? edgeOf(games.view.zombies?.place) : edges.party) : edges.map;
+  const fence = games.flagOn ? flagEdge(games.view.flag?.field) : games.fenced ? (games.view.kind === 'zombies' ? edgeOf(games.view.zombies?.place) : edges.party) : edges.map;
   if (world.bounds !== fence) {
     world.bounds = fence;
     bigMap.setEdge(fence.ring);
@@ -3720,7 +3759,7 @@ renderer.setAnimationLoop((now: number) => {
     // The portals: on a pad (or stopped on one in the car) the list of places opens, and takes the
     // number keys, the wheel or D-pad and E. Not on horseback, nor from the passenger seat.
     const mode = menu.mode ?? 'kbm';
-    let pad = !rules.portals || trip || dead || riding || onHorse || onBike || helis.aboard || games.fenced ? null
+    let pad = !rules.portals || trip || dead || riding || onHorse || onBike || helis.aboard || games.fenced || games.carrying ? null
       : driving ? (Math.abs(car.speed) < CAR_SLOW ? portalNear(car.x, car.z, CAR_REACH) : null)
       : portalNear(player.x, player.z);
     if (pad && !driving && Math.abs(player.feet - portals.groundOf(pad)) > 1.5) pad = null; // flying over it
@@ -3781,6 +3820,10 @@ renderer.setAnimationLoop((now: number) => {
     if (stallAim && stallAim !== 'shut' && frame.usePressed && buyAtStall(stallAim)) frame.usePressed = false;
     games.update(dt, player.x, player.feet, player.z, key('use', mode));
     duelLine.update();
+    // Steal the flag: the flags where the server has them, a carried one on its carrier as drawn now; its line and chips.
+    games.flagHud?.tickGround(games.flagOn ? games.view.flag ?? null : null, dt);
+    flagWorld.update(dt, flagCarrier);
+    games.flagHud?.update(games.flagOn ? games.view.flag ?? null : null, me?.username ?? '');
     // The cars: E or Triangle next to one gets you in (unless two are in it already), and out again.
     // A wreck or one gone in a team match (world/vehicleWear.ts) is none: no "get in", and the bike's and horse's prompts free.
     const carAway = (c: Car) => (vehicleWear.out('car', c.id) ? Infinity : c.distanceTo(player.x, player.z));
@@ -3801,7 +3844,7 @@ renderer.setAnimationLoop((now: number) => {
     // The helicopter (src/heliPilot.ts): E or Triangle beside it gets you in (together the server says which seat), outside a game; out on a floor.
     // On the way to the others (an account, a join pending, the welcome not come yet) nobody boards.
     const nearHeli = !inCar && !onHorse && !dead && !nearCar && nearHorse < 0 && !nearBike && !target && (helis.together || !(me || joinPending() || net.connected)) ? helis.near(player.x, player.z, player.feet, (m) => !vehicleWear.out('heli', m.spec.id)) : null;
-    const heliWhy = helis.why(games.fenced || games.zombies, rules.heli === false);
+    const heliWhy = games.carrying ? 'prompt.flagHeli' : helis.why(games.fenced || games.zombies || games.flagNoHeli, rules.heli === false);
     if (helis.aboard && frame.usePressed) helis.leave(camera.position);
     else if (nearHeli && !heliWhy && frame.usePressed) {
       player.flying = false;
@@ -3959,7 +4002,7 @@ renderer.setAnimationLoop((now: number) => {
     if (downed) prompt = helping?.start ? t('prompt.reviving', { name: downed }) : t('prompt.revive', { use, name: downed });
     hud.setRing(helping ? (helping.start ? (now - helping.start) / helping.ms : 0) : null);
     if (pad) prompt = ''; // the list says it all
-    else if (!stallAim && (!inCar || onBike) && portalNear(player.x, player.z) && (onHorse || onBike || !rules.portals || games.fenced)) prompt = t(onHorse ? 'prompt.horsePortal' : onBike ? 'prompt.bikePortal' : games.fenced ? 'prompt.portalGame' : 'prompt.portalsOff');
+    else if (!stallAim && (!inCar || onBike) && portalNear(player.x, player.z) && (onHorse || onBike || !rules.portals || games.fenced || games.carrying)) prompt = t(onHorse ? 'prompt.horsePortal' : onBike ? 'prompt.bikePortal' : games.fenced ? 'prompt.portalGame' : games.carrying ? 'prompt.flagPortal' : 'prompt.portalsOff');
     hud.setPrompt(goals.prompt(prompt, mode)); // when it says nothing else: a timed route's race on offer (world/goals.ts)
     const armed = action && !dead && !inCar;
     hud.setWeapon(armed, dead || inCar ? '' : weapon.status);
@@ -4116,7 +4159,7 @@ renderer.setAnimationLoop((now: number) => {
   }
   tactics.placement(placing, placeAt, player.yaw, placeOK, placementResult?.why,
     placementResult?.a !== undefined && placementResult?.b !== undefined ? [placementResult.a, placementResult.b] : undefined);
-  const cooperative = games.zombies || games.view.kind === 'teams';
+  const cooperative = games.zombies || games.view.kind === 'teams' || games.view.kind === 'flag';
   const teammates = cooperative && !games.hideOthers ? avatars.marks().filter((p) => games.zombies || games.friend(p.name))
     .map((p) => ({ ...p, y: avatars.position(p.name)?.y ?? player.feet })) : [];
   if (games.zombies && games.view.phase === 'break') {
@@ -4193,6 +4236,7 @@ renderer.setAnimationLoop((now: number) => {
       ...games.coinSpots().map((c) => ({ ...c, color: '#f2c14e', kind: 'coin' as const })), // the hunt's coins left
       ...zombies.blips().map((z) => ({ ...z, color: z.big ? '#4f7a3a' : '#8fb070', kind: 'zombie' as const })), // the Zombies game's, small dots
       ...stallOnMap().map((s) => ({ ...s, y: player.feet, color: '', kind: 'stall' as const })),
+      ...flagWorld.marks(flagCarrier).map((f) => ({ ...f, y: player.feet, kind: 'flag' as const })), // Steal the flag's, on every floor
     ];
     const shapes = [...furnishing.pieces.values()].filter((p) => !p.item.startsWith('rug')).map((p) => ({ ring: footprint(p), y: p.y }));
     for (const c of cars) if (c.ready && !c.taken) shapes.push({ ring: c.footprint(), y: c.y }); // gone: a wreck taken away (world/vehicleWear.ts)
@@ -4223,6 +4267,7 @@ renderer.setAnimationLoop((now: number) => {
       ...games.coinSpots().map((c) => ({ x: c.x, z: c.z, color: '#f2c14e', kind: 'coin' as const })),
       ...goals.marks(),
       ...stallOnMap().map((s) => ({ ...s, color: '#d0382e', name: t('stall.map'), kind: 'stall' as const })),
+      ...flagWorld.marks(flagCarrier).map((f) => ({ x: f.x, z: f.z, color: f.color, carried: f.carried, name: f.name, kind: 'flag' as const })), // Steal the flag's, the carrier named
     ];
     bigMap.tick(mapYou(), marks);
   } else if (!menu.onStartScreen) composer.render(dt); // the menu's Map tab covers most of the screen: the world isn't drawn behind it
@@ -4978,6 +5023,7 @@ if (import.meta.env.DEV) {
       chat,
       bigMap,
       games,
+      flagWorld, // Steal the flag's stands and flags (world/flags.ts)
       teleport(x: number, z: number, feet: number, yaw = player.yaw, pitch = 0) {
         player.place(x, z, feet, yaw, pitch);
         player.update(0, idle, camera);

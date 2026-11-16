@@ -2,6 +2,7 @@ import * as THREE from 'three';
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
 import BIKES from '../../shared/bike.json';
+import { FLAG_BIKES } from '../../shared/flagFields.mjs';
 import { answerGuess, bendShare, clearSpot, fallEnd, KNOCK, KNOCK_HOME_MS, knockBike, sweptHit, tumblePose, type Bend, type Fall } from '../../shared/bikeKnock.mjs';
 import { boxesOverlap, boxPoints } from '../../shared/parking.mjs';
 import type { BikeSample } from '../../shared/wire.mjs';
@@ -334,7 +335,9 @@ export class Bikes {
 
   /** `figure`: your own figure, as the others see it (net/avatars.ts figure). */
   constructor(private world: World, private trees: Obstacle[], private figure: () => Body) {
-    this.bikes = Object.entries(BIKES.bikes).map(([id, spec], i) => new Bike(id, spec, i));
+    // Steal the flag's bikes too (shared/flagFields.mjs), in their team's colour: out of the game until its game parks them.
+    const game = Object.entries(FLAG_BIKES).map(([id, k]) => [id, { paint: k.team === 'blue' ? '#1f4f8f' : '#9a1c22', village: true, park: k.park }] as const);
+    this.bikes = [...Object.entries(BIKES.bikes), ...game].map(([id, spec], i) => new Bike(id, spec, i));
     for (const k of this.bikes) this.byId.set(k.id, k);
     this.group.add(this.ownRoot);
     this.ownRoot.rotation.order = 'YXZ';
@@ -359,7 +362,27 @@ export class Bikes {
 
   /** The village's bikes are in the game (main.ts, once the village has loaded). */
   villageReady(): void {
-    for (const k of this.bikes) k.ready = true;
+    this.villageIn = true;
+    for (const k of this.bikes) k.ready = !Object.hasOwn(FLAG_BIKES, k.id) || this.parked.has(k.id);
+  }
+
+  private villageIn = false;
+  /** Steal the flag's bikes parked now (server/flags.mjs): only those are in the game. */
+  private parked = new Set<string>();
+
+  /** Steal the flag's bikes in the game (`ids`, from its view), the others out and back on their spots. */
+  setGameBikes(ids: readonly string[]): void {
+    this.parked = new Set(ids);
+    for (const k of this.bikes) {
+      if (!Object.hasOwn(FLAG_BIKES, k.id)) continue;
+      const ready = this.villageIn && this.parked.has(k.id);
+      if (ready === k.ready) continue;
+      k.ready = ready;
+      if (!ready && k.id !== this.mounted) {
+        k.rider = null;
+        this.put(k, k.park.x, k.park.y, k.park.z, k.park.yaw, 0);
+      }
+    }
   }
 
   /** The bike you ride: where it is and how fast it goes. */
