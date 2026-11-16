@@ -48,7 +48,8 @@
       automatic: 'Automatisch', action: 'Actie', away: 'weg', behind: 'Achter', eyes: 'Ogen', views: 'Beelden', rotate: 'Elke 20 s wisselen',
       fullScreen: 'Volledig scherm (F)', host: 'Host', gate: 'Log eerst in op de', gateLink: 'beheerpagina', gateTail: ', en kom dan terug.',
       notAdmin: 'Alleen de beheerder kan meekijken. Log in op de beheerpagina.', hint: 'H: bediening', noTeam: 'Zonder team',
-      keys: '1–4 beeld · ← → speler · ↑ ↓ team · E achter/ogen · A actie volgen · 0 automatisch · Z één beeld groot · N aantal beelden · H bediening · F volledig scherm · L taal',
+      keys: '{d14} beeld · ← → speler · ↑ ↓ team · E achter/ogen · A actie volgen · {d0} automatisch · Z één beeld groot · N aantal beelden · H bediening · F volledig scherm · L taal',
+      inside: 'Binnen in een huis', wonScore: '{team} wint! {a}–{b}', wonTags: '{team} wint op tikken, {a}–{b}', drawScore: 'Gelijkspel, {a}–{b}',
     },
     en: {
       free: 'Free play', hide: 'Hide and seek', tag: 'Tag', treasure: 'Treasure hunt', teams: 'House against bungalow', zombies: 'Zombies',
@@ -62,7 +63,8 @@
       automatic: 'Automatic', action: 'Action', away: 'away', behind: 'Behind', eyes: 'Eyes', views: 'Views', rotate: 'Switch players every 20 s',
       fullScreen: 'Full screen (F)', host: 'Host', gate: 'Log in on the', gateLink: 'admin page', gateTail: ' first, then come back here.',
       notAdmin: 'Only the admin can watch. Log in on the admin page.', hint: 'H: controls', noTeam: 'No team',
-      keys: '1–4 view · ← → player · ↑ ↓ team · E behind/eyes · A follow the action · 0 automatic · Z one view big · N number of views · H controls · F full screen · L language',
+      keys: '{d14} view · ← → player · ↑ ↓ team · E behind/eyes · A follow the action · {d0} automatic · Z one view big · N number of views · H controls · F full screen · L language',
+      inside: 'Inside a home', wonScore: '{team} wins! {a}–{b}', wonTags: '{team} wins on tags, {a}–{b}', drawScore: 'A draw, {a}–{b}',
     },
   };
   let lang = store.get('lang', null);
@@ -81,6 +83,7 @@
   const COLOURS = { blue: '#4fa3e0', red: '#e5484d', green: '#5cc28a', purple: '#c77dff', house: '#4fa3e0', bungalow: '#ff9f43' };
   const TEAM_ORDER = ['blue', 'house', 'red', 'bungalow', 'green', 'purple'];
   const HOLD_MS = 6000; // "follow the action": a view keeps whom it shows at least this long
+  const AUTO_MS = 15_000; // automatic: a view keeps its player at least this long, longer unless the players rotate
   const colour = (c, d = '#8a93b8') => (typeof c === 'string' && /^#[0-9a-f]{6}$/i.test(c) ? c : d);
   const num = (n) => (Number.isFinite(n) ? n : 0);
 
@@ -97,6 +100,7 @@
   const frames = [];
   const shown = []; // whom each view shows now
   const held = []; // per view following the action: { who, since }
+  const kept = []; // per view on automatic: { who, since, rotation }
   const acted = new Map(); // name -> when they last fought, scored or went down (performance.now())
   const counts = new Map(); // name -> their counts at the last read
 
@@ -112,6 +116,11 @@
   };
   const pick = (i) => (picks[i] ??= { target: '', mode: 'behind', follow: false });
   const here = (n) => players.some((p) => p.name === n);
+  const playerOf = (n) => players.find((p) => p.name === n);
+  // Inside a private home (the host's view says so; the server shows a watch view nobody there): never the picture,
+  // a card instead, and never picked by automatic or "follow the action".
+  const inside = (n) => playerOf(n)?.inside === true;
+  const visible = (n) => here(n) && !inside(n);
 
   // ------------------------------------------------------------------ whom each view shows
 
@@ -120,7 +129,20 @@
     const flags = host?.mode?.kind === 'flag' ? host.mode.flag?.flags ?? {} : {};
     const carriers = Object.values(flags).filter((f) => f?.at === 'carried' && typeof f.by === 'string').map((f) => f.by);
     const recent = [...acted.entries()].sort((a, b) => b[1] - a[1]).map(([n]) => n);
-    return [...new Set([...carriers, ...recent])].filter(here);
+    return [...new Set([...carriers, ...recent])].filter(visible);
+  }
+
+  /**
+   * In the Zombies duel, the room the k-th view on automatic watches: half on blue, half on red (1, 3: blue first); a
+   * room that is out or has nobody to show, the other. '' when no duel is on.
+   */
+  function sideFor(k) {
+    const d = host?.duel;
+    if (!d || !Array.isArray(d.sides)) return '';
+    const open = (team) => d.sides.some((x) => x.team === team && !x.out) && players.some((p) => p.duel === team && !p.inside);
+    const want = k % 2 === 0 ? 'blue' : 'red';
+    const other = want === 'blue' ? 'red' : 'blue';
+    return open(want) || !open(other) ? want : other;
   }
 
   /** The best players in turn, for the views on automatic. */
@@ -129,8 +151,10 @@
   }
 
   /**
-   * Whom every view shows: its own pick while that player is here; else, following the action, whoever did something
-   * last (not one another view shows, and held at least HOLD_MS); else the best players in turn (not twice).
+   * Whom every view shows: its own pick while that player is here (inside a home: the card); else, following the action,
+   * whoever did something last (not one another view shows, and held at least HOLD_MS); else, automatic, the best
+   * players in turn (not twice), each kept at least AUTO_MS and until the players rotate, and in the Zombies duel on its
+   * own room (sideFor), so a view does not jump between the rooms (each jump is a new connection, a blank).
    */
   function decide() {
     const now = performance.now();
@@ -145,18 +169,28 @@
       const p = pick(i);
       if (!p.follow) continue;
       const h = held[i];
-      let who = h && here(h.who) && !taken.has(h.who) && now - h.since < HOLD_MS ? h.who : list.find((n) => !taken.has(n)) ?? '';
-      if (!who && h && here(h.who) && !taken.has(h.who)) who = h.who; // nobody new: stay
+      let who = h && visible(h.who) && !taken.has(h.who) && now - h.since < HOLD_MS ? h.who : list.find((n) => !taken.has(n)) ?? '';
+      if (!who && h && visible(h.who) && !taken.has(h.who)) who = h.who; // nobody new: stay
       if (who && who !== h?.who) held[i] = { who, since: now };
       shown[i] = who;
       if (who) taken.add(who);
     }
-    const free = bestList().filter((n) => !taken.has(n));
+    const best = bestList();
     let k = 0;
     for (let i = 0; i < views; i++) {
       if (shown[i]) continue;
-      shown[i] = free.length ? free[(k + rotation) % free.length] : '';
-      k++;
+      const side = sideFor(k++);
+      const fits = (n) => visible(n) && !taken.has(n) && (!side || playerOf(n)?.duel === side);
+      const c = kept[i];
+      let who = c && fits(c.who) && (now - c.since < AUTO_MS || c.rotation === rotation) ? c.who : '';
+      if (!who) {
+        let free = best.filter(fits);
+        if (!free.length) free = best.filter((n) => visible(n) && !taken.has(n)); // nobody there: anyone
+        who = free.length ? free[(i + rotation) % free.length] : '';
+      }
+      if (who !== c?.who) kept[i] = { who, since: now, rotation };
+      shown[i] = who;
+      if (who) taken.add(who);
     }
   }
 
@@ -166,6 +200,9 @@
     frames.forEach((f, i) => {
       const who = shown[i] ?? '';
       const duel = players.find((p) => p.name === who)?.duel ?? '';
+      // Inside a private home: a calm card over the view, with their name (the view itself shows nobody inside).
+      f.card.hidden = !(who && inside(who));
+      f.cardName.textContent = f.card.hidden ? '' : who;
       try {
         f.frame.contentWindow?.postMessage({ briel: 'watch', target: who, mode: pick(i).mode, duel }, location.origin);
       } catch {
@@ -182,6 +219,7 @@
     $('tiles').className = 'tiles';
     frames.length = 0;
     held.length = 0;
+    kept.length = 0;
     selected = Math.min(selected, views - 1);
     const tiles = [];
     for (let i = 0; i < views; i++) {
@@ -193,9 +231,12 @@
         el('button', { type: 'button', 'data-mode': 'behind', on: { click: () => choose(i, { mode: 'behind' }) } }),
         el('button', { type: 'button', 'data-mode': 'eyes', on: { click: () => choose(i, { mode: 'eyes' }) } }));
       const note = el('div', { class: 'note' });
+      const cardName = el('span');
+      const cardWord = el('b', { text: t('inside') });
+      const card = el('div', { class: 'card', hidden: true }, cardWord, cardName);
       const badge = el('span', { class: 'num', text: String(i + 1) });
-      const tile = el('section', { class: 'tile', on: { click: () => select(i) } }, frame, note, el('div', { class: 'controls' }, badge, who, mode));
-      frames.push({ frame, who, mode, note, tile });
+      const tile = el('section', { class: 'tile', on: { click: () => select(i) } }, frame, card, note, el('div', { class: 'controls' }, badge, who, mode));
+      frames.push({ frame, who, mode, note, tile, card, cardName, cardWord });
       tiles.push(tile);
     }
     $('tiles').replaceChildren(...tiles);
@@ -305,11 +346,11 @@
       const g = gameTeams && typeof gameTeams[p.name] === 'string' ? gameTeams[p.name] : null;
       const team = g ?? (typeof p.team === 'string' ? p.team : null);
       const c = g ? colour(mode.colors?.[g], COLOURS[g]) : colour(evening.get(team), COLOURS[team]);
-      list.push({ name: p.name, team: sideName(team, mode), colour: c, duel: '', kills: num(p.kills), deaths: num(p.deaths), beaten: 0 });
+      list.push({ name: p.name, team: sideName(team, mode), colour: c, duel: '', kills: num(p.kills), deaths: num(p.deaths), beaten: 0, inside: p.inside === true });
     }
     for (const p of Array.isArray(v.inDuel) ? v.inDuel : []) {
       if (typeof p.name !== 'string' || (p.side !== 'blue' && p.side !== 'red')) continue;
-      list.push({ name: p.name, team: p.side, colour: COLOURS[p.side], duel: p.side, kills: num(p.kills), deaths: num(p.deaths), beaten: num(p.beaten) });
+      list.push({ name: p.name, team: p.side, colour: COLOURS[p.side], duel: p.side, kills: num(p.kills), deaths: num(p.deaths), beaten: num(p.beaten), inside: p.inside === true });
     }
     const rank = (team) => (team ? (TEAM_ORDER.indexOf(team) + 1 || 99) : 100);
     return list.sort((a, b) => rank(a.team) - rank(b.team) || a.name.localeCompare(b.name));
@@ -357,6 +398,16 @@
       return { title: t('next', { game: t(v.countdown.kind) }), sub: t('starts'), clock: clock(left(v.countdown.ms)), teams: evening() };
     }
     const playing = m.phase !== 'done';
+    /** The game's end: who won (or the draw) with the final score, from the server's result (modes.mjs finish). */
+    const result = (left, right) => {
+      const a = m.resultArgs && typeof m.resultArgs === 'object' ? m.resultArgs : {};
+      const team = typeof a.team === 'string' ? t(sideName(a.team, m)) : '';
+      const score = { a: num(a[left] ?? m.score?.[left]), b: num(a[right] ?? m.score?.[right]) };
+      if (m.resultCode === 'flagTagsWon' && team) return t('wonTags', { team, a: num(a.a), b: num(a.b) });
+      if ((m.resultCode === 'flagWon' || m.resultCode === 'teamWon' || m.resultCode === 'teamsTime') && team) return t('wonScore', { team, ...score });
+      if (m.resultCode === 'flagDraw' || m.resultCode === 'teamsDraw') return t('drawScore', score);
+      return t('over');
+    };
     if (m.kind === 'flag' && m.flag) {
       const f = m.flag;
       const line = (team) => {
@@ -366,14 +417,14 @@
         return t('flagHome');
       };
       return {
-        title: t('flag'), sub: !playing ? t('over') : f.sudden ? t('sudden') : t(f.field === 'village' ? 'village' : 'compact'),
+        title: t('flag'), sub: !playing ? result('blue', 'red') : f.sudden ? t('sudden') : t(f.field === 'village' ? 'village' : 'compact'),
         clock: playing ? clock(left(m.ms)) : '',
         teams: ['blue', 'red'].map((team) => ({ id: team, score: num(m.score?.[team]), line: line(team), carried: f.flags?.[team]?.at === 'carried' })),
       };
     }
     if (m.kind === 'teams') {
       return {
-        title: t('teams'), sub: playing ? t('goal', { n: num(m.goal) }) : t('over'), clock: playing ? clock(left(m.ms)) : '',
+        title: t('teams'), sub: playing ? t('goal', { n: num(m.goal) }) : result('house', 'bungalow'), clock: playing ? clock(left(m.ms)) : '',
         teams: ['house', 'bungalow'].map((team) => ({ id: sideName(team, m), colour: colour(m.colors?.[team], COLOURS[team]), score: num(m.score?.[team]) })),
       };
     }
@@ -426,16 +477,31 @@
 
   // ------------------------------------------------------------------ the page's own words
 
+  // The number keys go by where they sit (KeyboardEvent.code), so they work on AZERTY too, Shift or not; the help shows
+  // them as this keyboard has them (its layout, where the browser gives it), else both ways.
+  let digitLabels = { d14: '1–4 (AZERTY & é " \')', d0: '0 (AZERTY à)' };
+  try {
+    navigator.keyboard?.getLayoutMap?.().then((map) => {
+      const k = (code) => map.get(code) ?? '';
+      const top = ['Digit1', 'Digit2', 'Digit3', 'Digit4'].map(k);
+      digitLabels = top.join('') === '1234' ? { d14: '1–4', d0: '0' } : { d14: `${top.join(' ')} (1–4)`, d0: `${k('Digit0')} (0)` };
+      words();
+    }).catch(() => {});
+  } catch {
+    // no layout from this browser: both ways
+  }
+
   function words() {
     document.documentElement.lang = lang;
     $('full').textContent = t('fullScreen');
     $('host-link').textContent = t('host');
     $('rotate-label').textContent = t('rotate');
     $('views-label').textContent = t('views');
-    $('keys').textContent = t('keys');
+    $('keys').textContent = t('keys', digitLabels);
     $('hint').textContent = t('hint');
     $('gate-text').replaceChildren(document.createTextNode(`${t('gate')} `), el('a', { href: '/admin/', text: t('gateLink') }), document.createTextNode(t('gateTail')));
     for (const f of frames) if (f.note.textContent) f.note.textContent = t('notAdmin');
+    for (const f of frames) f.cardWord.textContent = t('inside');
     drawn = '';
     controls();
     hall();
@@ -518,14 +584,15 @@
     const k = e.key.length === 1 ? e.key.toLowerCase() : e.key;
     const once = !e.repeat;
     let used = true;
-    if (/^[1-4]$/.test(k)) select(Number(k) - 1);
+    const digit = /^(Digit|Numpad)([0-4])$/.exec(e.code)?.[2]; // by place: AZERTY's & é " ' à too
+    if (digit && digit !== '0') select(Number(digit) - 1);
     else if (k === 'ArrowRight') step(1);
     else if (k === 'ArrowLeft') step(-1);
     else if (k === 'ArrowDown') step(1, true);
     else if (k === 'ArrowUp') step(-1, true);
     else if (k === 'e' && once) choose(selected, { mode: pick(selected).mode === 'eyes' ? 'behind' : 'eyes' });
     else if (k === 'a' && once) choose(selected, { follow: !pick(selected).follow, target: '' });
-    else if (k === '0' && once) choose(selected, { target: '', follow: false });
+    else if (digit === '0' && once) choose(selected, { target: '', follow: false });
     else if (k === 'z' && once) {
       solo = !solo && views > 1;
       layout();

@@ -108,6 +108,13 @@ body.steer .tiles .tile .controls { bottom: 84px; }
   background: rgba(13, 20, 48, 0.8); border: 1px solid rgba(220, 228, 255, 0.14); border-radius: 999px;
 }
 .controls select option, .controls select optgroup { color: #11151b; }
+/* A view's player inside a private home: a calm card over the whole view instead of the picture (watch.js tell). */
+.card {
+  position: absolute; inset: 0; z-index: 1; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 1vh;
+  text-align: center; font-family: var(--display); color: var(--chalk); background: linear-gradient(180deg, var(--raised), var(--night));
+}
+.card b { font-size: clamp(18px, 4.4vh, 52px); font-weight: 700; color: var(--soft); }
+.card span { font-size: clamp(22px, 6vh, 72px); font-weight: 700; }
 .note { position: absolute; inset: 0; display: grid; place-content: center; padding: 20px; text-align: center; font-family: var(--display); font-size: 20px; pointer-events: none; }
 .note:empty { display: none; }
 .gate { position: fixed; inset: 0; z-index: 9; display: grid; place-content: center; text-align: center; font-size: 20px; background: var(--night); }
