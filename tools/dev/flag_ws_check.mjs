@@ -97,6 +97,8 @@ for (const n of names) {
   const at = players[n].at;
   ok(`${n} starts at the ${team(n)} base`, !!at && Math.hypot(at.x - sx, at.z - sz) < 15, at ? `${at.x}, ${at.z}` : 'no respawn');
 }
+const roster = players[names[0]].of('colors').at(-1)?.list ?? [];
+ok('everyone in their team\'s colour on every page', names.every((n) => roster.find((c) => c.name === n)?.color === { blue: '#4fa3e0', red: '#e5484d' }[team(n)]), JSON.stringify(roster.map((c) => [c.name, c.color])));
 // Nobody claims a flag, or switches under the host's teams.
 const [r1, r2] = red.map((n) => players[n]);
 const [b1] = blue.map((n) => players[n]);
@@ -107,17 +109,13 @@ await sleep(600);
 ok('a forged capture or take changes nothing', !flagEvents(b1).length && lastMode(b1)?.score?.red === 0);
 ok('switching team is refused under the host\'s teams', r1.of('system').some((m) => m.code === 'hostTeams') && team(r1.name) === 'red');
 
-// The admin on blue's stand brings a red player: on the stand, they take the flag (the server's own positions).
+// The admin on blue's stand brings a red player: on the stand, they take the flag (the server's own positions). Nobody
+// travels during the game, the admin neither: the admin is fast, and walks there.
 const [bx, bz, by] = FIELDS.compact.bases.blue.stand;
-admin.send({ t: 'travel', to: 'church', via: 'chat' });
-await sleep(600);
-const church = admin.of('travel').at(-1);
-ok('the admin travels to the church', !!church?.ok);
-state(admin, { x: 536.3, y: by, z: -771.6 });
-await sleep(150);
-for (let i = 1; i <= 6; i++) {
-  state(admin, { x: 536.3 + ((bx - 536.3) * i) / 6, y: by, z: -771.6 + ((bz + 771.6) * i) / 6 });
-  await sleep(120);
+const from = admin.at;
+for (let i = 1; i <= 40; i++) {
+  state(admin, { x: from.x + ((bx - from.x) * i) / 40, y: from.y + ((by - from.y) * i) / 40, z: from.z + ((bz - from.z) * i) / 40 });
+  await sleep(100);
 }
 await act({ op: 'bring', name: r1.name });
 await sleep(900);
@@ -127,7 +125,10 @@ ok('the mode says who carries it', lastMode(b1)?.flag?.flags.blue.by === r1.name
 r1.send({ t: 'travel', to: 'molenhoek', via: 'chat' });
 r1.send({ t: 'heli', op: 'in', id: 'church' });
 await sleep(700);
-ok('the carrier is refused a trip from the chat, with a line', r1.of('travel').some((m) => !m.ok && m.code === 'flagTravel'));
+ok('the carrier is refused a trip from the chat, with a line', r1.of('travel').some((m) => !m.ok && m.code === 'flagNoTravel'));
+b1.send({ t: 'travel', to: 'molenhoek', via: 'chat' });
+await sleep(400);
+ok('so is anyone else: nobody travels during the game', b1.of('travel').some((m) => !m.ok && m.code === 'flagNoTravel'));
 ok('the carrier is refused a helicopter seat, with a line', r1.of('system').some((m) => m.code === 'flagHeli'));
 // Home on foot, in honest steps: a capture, with red's own flag home.
 const [rx, rz, ry] = FIELDS.compact.bases.red.stand;
