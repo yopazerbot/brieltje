@@ -47,7 +47,8 @@ try {
   await startGame(b, o.url, { phone });
   await b.evaluate("document.getElementById('cc-close')?.click()", false);
   await b.evaluate(`(() => {
-    window.__m = () => briel.helis.machines[0];
+    window.__mi = 0; // the machine looked at: 0 the house's, 1 the church's
+    window.__m = () => briel.helis.machines[__mi];
     window.__own = () => !!briel.heliPeople.own?.root.visible;
     window.__programs = () => briel.three.renderer.info.programs.length;
     window.__frames = [];
@@ -215,6 +216,52 @@ try {
   await b.sleep(800);
   check(await b.evaluate('!briel.heliPeople.occupied.has(__m())'), 'all out: the machine empty again');
 
+  // Every way out of the pilot's seat empties it, in both machines (the house's and the church's): getting out, the
+  // jump (pictured: the empty seat once the machine is home), a respawn (as after a death), a game gathering everyone
+  // (the machine home). The pilot from outside and from the chase view in each.
+  const seatState = (what) => b.evaluate(`(async () => { await new Promise((r) => setTimeout(r, 400)); return JSON.stringify({ what: ${JSON.stringify(what)}, aboard: briel.helis.aboard, seat: __m().seats[0], own: !!briel.heliPeople.own?.root.visible, seated: briel.heliPeople.occupied.has(__m()) }); })()`).then(JSON.parse);
+  const empty = (r) => check(!r.aboard && r.seat === null && !r.own && !r.seated, `machine ${mi}: ${r.what}: the pilot's seat empty, no figure in it`, JSON.stringify(r));
+  const boardIt = async () => {
+    await b.evaluate(`(() => { const m = __m(); briel.teleport(m.s.x + Math.cos(m.s.yaw) * 2.2, m.s.z - Math.sin(m.s.yaw) * 2.2, m.s.y, m.s.yaw); })()`, false);
+    await b.sleep(1200);
+    await b.evaluate('briel.helis.board(__m())', false);
+    await b.sleep(800);
+    return b.evaluate("__m().seats[0] === '' && !!briel.heliPeople.own?.root.visible");
+  };
+  let mi = 0;
+  for (mi of [0, 1]) {
+    await b.evaluate(`window.__mi = ${mi}`, false);
+    if (mi === 1) await b.sleep(8000); // the church's square comes in
+    check(await boardIt(), `machine ${mi}: in, your figure in the pilot's seat`);
+    await b.evaluate(`__look(${JSON.stringify(VIEWS.right[0])}, ${JSON.stringify(VIEWS.right[1])}, 38)`, false);
+    await b.sleep(600);
+    await shot(`m${mi}_pilot_outside`);
+    await b.evaluate('__look(null)', false);
+    await b.sleep(1200);
+    await shot(`m${mi}_pilot_chase`);
+    await b.evaluate('briel.helis.leave(briel.three.scene.position.clone())', false);
+    empty(await seatState('getting out'));
+    // The jump: lifted 40 m in one step (as if flown there), then the use key's way out in the air.
+    check(await boardIt(), `machine ${mi}: in again`);
+    await b.evaluate('(() => { const m = __m(); m.s.y += 40; m.s.h = 40; m.s.ground = false; m.s.engine = true; m.s.rotor = 1; briel.helis.leave(briel.three.scene.position.clone()); })()', false);
+    empty(await seatState('the jump'));
+    await b.sleep(1500);
+    await b.evaluate('briel.helis.leaveNow()', false); // the drop ended: the machine back on its pad
+    await b.sleep(1500);
+    await b.evaluate(`__look(${JSON.stringify(VIEWS.right[0])}, ${JSON.stringify(VIEWS.right[1])}, 38)`, false);
+    await b.sleep(600);
+    await shot(`m${mi}_empty_after_jump`);
+    await b.evaluate('__look(null)', false);
+    check(await boardIt(), `machine ${mi}: in again after the jump`);
+    await b.evaluate('briel.respawn(0)', false);
+    empty(await seatState('a respawn'));
+    await b.evaluate(`window.__mi = ${mi}`, false);
+    check(await boardIt(), `machine ${mi}: in again after the respawn`);
+    await b.evaluate('briel.helis.leaveNow(true)', false);
+    empty(await seatState('a game gathering everyone (the machine home)'));
+  }
+  await b.evaluate('window.__mi = 0', false);
+
   if (o.bench) {
     // 15 m from the machine, from its front-right, a little above, the whole machine in view.
     const time = () => b.evaluate(`(async () => {
@@ -276,14 +323,10 @@ try {
       }
       console.log(`${q}: median of the medians, empty ${median(rows.off).toFixed(3)} ms, four aboard ${median(rows.on).toFixed(3)} ms`);
     }
-    // A second machine 14 m to the right of the first (a dev copy: never in heli.json), eight aboard against none.
+    // The church's machine put down 14 m to the right of the house's (a dev hook), eight aboard against none.
     await b.evaluate(`(() => {
       const a = __m();
-      const M = a.constructor;
-      const two = new M(briel.world, briel.helis.dev.crowns(), { ...a.spec, id: 'bench2', paint: 'sun', park: { x: a.s.x + Math.cos(a.s.yaw) * 14, y: a.s.y, z: a.s.z - Math.sin(a.s.yaw) * 14, yaw: a.s.yaw } });
-      two.place(two.park.x, a.s.y, two.park.z, two.park.yaw);
-      briel.helis.machines.push(two);
-      briel.helis.group.add(two.group);
+      briel.helis.dev.put({ x: a.s.x + Math.cos(a.s.yaw) * 14, z: a.s.z - Math.sin(a.s.yaw) * 14, y: a.s.y, yaw: a.s.yaw }, 0, 1);
     })()`, false);
     await b.waitFor('briel.helis.machines[1].ready', 30000);
     await b.evaluate(`__look([16, 5, -15], [7, 1.4, -0.5], 55)`, false);
