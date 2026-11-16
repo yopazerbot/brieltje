@@ -1069,7 +1069,6 @@ const en = {
   'place.horsesSub': 'the meadow across the road',
   'place.keet': 'In de Oude Keet',
   'place.keetSub': 'Café by the church',
-  'keet.shutZombies': 'The café is closed during Zombies.',
 
   // ---- The furniture planner
   'spawn.clown': 'Clown',
@@ -2274,7 +2273,6 @@ const nl = {
   'place.horsesSub': 'de weide aan de overkant van de straat',
   'place.keet': 'In de Oude Keet',
   'place.keetSub': 'Café aan de kerk',
-  'keet.shutZombies': 'Het café is dicht tijdens Zombies.',
 
   // ---- The furniture planner
   'spawn.clown': 'Clown',

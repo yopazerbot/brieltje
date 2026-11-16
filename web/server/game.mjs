@@ -641,7 +641,6 @@ export class Game {
     let at = old?.state ?? this.lastPos.get(name) ?? SPAWNS[0];
     if (!this.fence().inside(at.x, at.z)) at = SPAWNS[0];
     if (!this.gate.mayStand(player, at.x, at.y, at.z)) at = SPAWNS[0]; // last seen inside a home whose code this session has not typed
-    at = this.keetOut(at); // not back inside the café while it is shut for Zombies at the church
     player.state = { x: at.x, y: at.y, z: at.z, yaw: 0, pitch: 0, armed: false, flying: false, w: 'pistol', c: false };
     player.joinedAt = { x: at.x, z: at.z }; // a start place is only taken from here (see spawn)
     player.movedAt = now;
@@ -827,33 +826,6 @@ export class Game {
   }
 
   /**
-   * The café at the church during a Zombies game there (package Z removes this, once the zombies follow players inside):
-   * its doors stay shut for everyone. Whether such a game runs; `starting`: one starts now, so every café door shuts and
-   * every page is told (a door message for one is ignored meanwhile, see `door`). The server keeps no walls for walkers, so
-   * this holds for honest pages, as every wall of the game does; and a door message is taken from anywhere on the map (no
-   * reach check), as for every door of the game.
-   */
-  keetClosed(starting = false) {
-    if (starting) {
-      for (const id of KEET.doorIds) {
-        this.doors[id] = false;
-        this.broadcast({ t: 'door', id, open: false, dir: this.doorDir[id] ?? 1, by: '' });
-      }
-    }
-    return this.modes.state.kind === 'zombies' && this.modes.state.z?.arena?.id === 'church';
-  }
-
-  /**
-   * With keetClosed (package Z removes this too): a place inside the shut café, as someone's last position on coming back,
-   * becomes the church place's start (where its portal lets you out), as no zombie could reach them in there.
-   */
-  keetOut(at) {
-    if (!this.keetClosed() || !KEET.contains(at.x, at.z)) return at;
-    const [x, z] = portalOf(this.modes.state.z.arena).out;
-    return { x, y: HOUSE.ground + TERRAIN.height(x, z), z };
-  }
-
-  /**
    * What the zombies walk on for a new game at `arena` (shared/arenas.mjs; server/zombies.mjs): at home
    * the grid over the party area with every floor of the two houses and their doors, with whether each
    * stands open now (a zombie shoves a shut one open: zombieDoor); in Smetlede the grid over its circle
@@ -863,7 +835,6 @@ export class Game {
    * edge. About 40 ms at home, 5 in the village.
    */
   zombieGround(arena) {
-    if (arena.id === 'church') this.keetClosed(true);
     const edge = arenaEdge(arena, BOUNDS);
     const boxes = Object.values(this.cars).filter((c) => edge.inside(c.x, c.z)).map((c) => {
       const s = carSpec(c);
@@ -1128,7 +1099,6 @@ export class Game {
       // flood would slam doors on every page). Pressing E as fast as one can stays under it.
       if (now < (player.nextDoor || 0)) return;
       player.nextDoor = now + 200;
-      if (KEET.doorIds.has(m.id) && this.keetClosed()) return; // the café is shut during Zombies at the church (until package Z)
       if (!this.gate.door(player, m.id)) return; // one of the code-locked homes' doors, and no right to it
       this.doors[m.id] = !!m.open;
       if (m.dir === 1 || m.dir === -1) this.doorDir[m.id] = m.dir;

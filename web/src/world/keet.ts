@@ -5,7 +5,7 @@ import type { Glass } from './glass';
 import { groundLayers, RANK } from './groundLayers';
 import type { Prism } from './houseData';
 import { loadWalkIn, type EndInside, type WalkIn } from './walkIn';
-import { KEET_DOOR, makeKeet, PUBLIC_WALK_INS, type Keet, type KeetDoor } from '../../shared/keet.mjs';
+import { makeKeet, PUBLIC_WALK_INS, type Keet, type KeetDoor } from '../../shared/keet.mjs';
 
 /**
  * The café at the church (In de Oude Keet, the name on its sign board): a house everyone walks into, without a code. It is
@@ -14,12 +14,10 @@ import { KEET_DOOR, makeKeet, PUBLIC_WALK_INS, type Keet, type KeetDoor } from '
  * playing, never before its first frame (the church square, in sight of it, is where most players start). No lock, no
  * lining, no home: shared/keet.mjs keeps its door ids and pane numbers apart from every home's.
  *
- * Until the zombies follow players inside (package Z), its doors stay shut during a Zombies game at the church: the
- * server ignores them then (server/game.mjs keetClosed), and this page neither sends nor swings them.
+ * During a Zombies game at the church its doors work as ever, and the zombies follow players in (shared/arenas.mjs
+ * villageGround): a shut door one of them shoves open, on every page.
  */
 
-/** The ids of the café's doors (the shell's, then the rooms'), as they come. */
-const ids = new Set<string>();
 /** The café's window panes' numbers (shared/keet.mjs), once its shell is in. */
 const panes = new Set<number>();
 /** Whether pane `i` is one of the café's: public, it breaks alone as together (main.ts glass.locked). */
@@ -29,7 +27,6 @@ export const isKeetPane = (i: number): boolean => panes.has(i);
 export async function loadKeet(renderer: THREE.WebGLRenderer, town: THREE.Object3D | undefined, clock: () => number, prepare: (o: THREE.Object3D) => Promise<unknown>, viewer: () => THREE.Vector3): Promise<WalkIn | null> {
   if (!town) return null;
   const shell = (await import('../data/keet_shell.json')).default as unknown as { doors: { id: string }[]; outline: [number, number][]; panes: unknown[] };
-  for (const d of shell.doors) ids.add(d.id);
   openings = makeKeet(shell, { rooms: [], prisms: [], parts: [], fixtures: [], props: [], doors: [] }).doors;
   shell.panes.forEach((_, i) => panes.add(PUBLIC_WALK_INS.keet.glass + i));
   // Its outline claimed as a model's ground (world/groundLayers.ts), before the village's covers and the streets in detail
@@ -60,7 +57,6 @@ export function keetRooms(keet: WalkIn, deps: { world: World; doors: Doors; glas
       if ((o as THREE.Mesh).isMesh && !(o as THREE.Mesh).geometry.getAttribute('position')) empty.add(o);
     });
     keet.addInside(pack, deps.world, deps.doors, deps.glass);
-    for (const d of pack.doors) ids.add(d.id);
     // What is new to draw (the rooms' mesh, the inner doors): out of sight while its shaders compile on a stand-in.
     const fresh: THREE.Mesh[] = [];
     keet.group.traverse((o) => {
@@ -83,9 +79,6 @@ export function keetRooms(keet: WalkIn, deps: { world: World; doors: Doors; glas
     deps.done(pack.rooms, keetData.prisms.filter((p) => p.n) as unknown as Prism[]);
   }).catch(() => undefined); // no rooms: the café stays a lump with its doors and windows
 }
-
-/** Whether a door is the café's. */
-export const isKeetDoor = (id: string): boolean => KEET_DOOR.test(id);
 
 /** The café as the zombies' grid takes it alone at the church (shared/keet.mjs), from its two public files, as the server reads them. */
 export async function keetForZombies(): Promise<Keet> {
@@ -122,14 +115,4 @@ export function keetDoorway(camera: THREE.Camera, doors: Doors): { id: string; n
   if (!best) return null;
   const { id, name } = best.d;
   return { id, name, open: true, locked: false, home: null, toggle: () => { doors.set(id, false); doors.onToggle(id, false, 1); } };
-}
-
-let held = false;
-/**
- * Until package Z: during a Zombies game at the church (`shut`), the café's doors stay shut. As the game starts they shut
- * on this page too (alone there is no server to say so); the door prompt says why and sends nothing (main.ts).
- */
-export function holdKeetShut(shut: boolean, doors: Doors): void {
-  if (shut && !held) for (const id of ids) doors.set(id, false);
-  held = shut;
 }

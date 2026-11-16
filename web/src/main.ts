@@ -158,7 +158,7 @@ import { glass as glassLook, GlassProbe, glassOnModel } from './world/glassLook'
 import { trackVillageHouse, VILLAGE_HOUSES } from './world/villageHouses';
 import { mood } from './world/mood';
 import { loadWalkIn, type WalkIn } from './world/walkIn';
-import { holdKeetShut, isKeetDoor, isKeetPane, keetDoorway, keetForZombies, keetRooms, loadKeet } from './world/keet';
+import { isKeetPane, keetDoorway, keetForZombies, keetRooms, loadKeet } from './world/keet';
 import { Insides, type InsidePack } from './world/insides';
 import { CAR_REACH, CAR_SLOW, findPortal, PORTALS, portalNear, REACH, type Portal } from '../shared/portals.mjs';
 import { noShoot } from '../shared/zones.mjs';
@@ -3695,11 +3695,8 @@ renderer.setAnimationLoop((now: number) => {
       football.kick(ball, player.yaw, player.pitch, me?.username ?? '', net.connected ? (msg) => net.send(msg) : null);
       frame.usePressed = frame.clickPressed = false;
     }
-    holdKeetShut(keetShut(), doors); // the café's doors during a Zombies game at the church (world/keet.ts)
     if (target && (frame.usePressed || (!action && frame.clickPressed))) {
-      if (keetShut() && isKeetDoor(target.id)) {
-        frame.usePressed = false; // shut for the game: nothing swings, nothing is sent
-      } else if (target.home) {
+      if (target.home) {
         // A locked home (src/world/homeLocks.ts): the door asks for its code.
         frame.usePressed = false;
         const home = findHome(target.home);
@@ -3863,7 +3860,6 @@ renderer.setAnimationLoop((now: number) => {
     const speed = (v: number) => Math.round(Math.abs(v) * 3.6);
     const carLabel = carName(car.kind ?? car.id, car.spec.name);
     let prompt = target ? t(target.home ? 'home.door' : target.locked ? 'prompt.locked' : target.open ? 'prompt.close' : 'prompt.open', { key: doorKey, door: doorName(target.name) }) : '';
-    if (target && keetShut() && isKeetDoor(target.id)) prompt = t('keet.shutZombies');
     if (target && homeLocks.accountDoor(target.id)) prompt += `  ·  ${t('home.byAccount')}`; // a home the account opens for good
     // The car's speed and keys for the first few seconds in it only (Yoshi, as on a horse).
     if (driving) prompt = carHint <= 0 ? '' : mode === 'touch' ? t('prompt.drivingTouch', { speed: speed(car.speed), use }) : t('prompt.driving', { speed: speed(car.speed), brake: key('brake', mode), hb: key('handbrake', mode), use });
@@ -4186,8 +4182,6 @@ let brickHouse: WalkIn | null = null;
 let keet: WalkIn | null = null;
 /** The café's floors once its rooms are in: indoors there (makeIndoors). */
 let keetFloors: Prism[] = [];
-/** Until the zombies follow players into the café (package Z): its doors stay shut during a Zombies game at the church. */
-const keetShut = () => games.zombies && games.view.zombies?.place === 'church';
 /** Resolved once play has begun (loaded). */
 let playBegun = () => {};
 const playing = new Promise<void>((r) => (playBegun = r));

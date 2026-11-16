@@ -2,7 +2,6 @@ import assert from 'node:assert/strict';
 import test from 'node:test';
 import { Game } from './game.mjs';
 import { homeOfDoor } from '../shared/homes.mjs';
-import { arenaOf, portalOf } from '../shared/arenas.mjs';
 
 // The café at the church on the game server: public doors and panes, apart from the code-locked homes' (shared/keet.mjs).
 function setup() {
@@ -68,63 +67,51 @@ test('a guest breaks a café window and everyone is told; a home\'s pane and a n
   assert.ok(game.cracked.has(8003));
 });
 
-test('during a Zombies game at the church the café\'s doors are shut for everyone, and open again after it', () => {
-  const { game, player, door, send } = setup();
-  const admin = player('root', 548, -760, 'admin');
+test('during a Zombies game at the church the café\'s doors work as ever: nothing shuts at the start, everyone is told', () => {
+  const { game, player, door } = setup();
+  player('root', 548, -760, 'admin');
   const guest = player('guest', 545, -755);
+  const other = player('other', 545, -740, 'player');
   door('guest', guest, 'keet-front');
-  door('guest', guest, 'keet-back');
   assert.equal(game.doors['keet-front'], true);
-  guest.got.length = 0;
+  other.got.length = 0;
   game.modes.start('zombies', 'root', 'church');
   assert.equal(game.modes.state.kind, 'zombies');
-  assert.ok(game.keetClosed());
-  const shut = guest.got.filter((m) => m.t === 'door' && m.id.startsWith('keet-'));
-  assert.equal(shut.length, 8, 'every page is told every café door shuts');
-  assert.ok(shut.every((m) => m.open === false));
-  assert.equal(game.doors['keet-front'], false);
-  door('guest', guest, 'keet-front');
-  door('root', admin, 'keet-back');
-  assert.equal(game.doors['keet-front'], false, 'ignored while the game runs');
-  assert.equal(game.doors['keet-back'], false);
-  send('root', admin, { t: 'mode', kind: 'free' }); // the admin stops it
-  assert.equal(game.modes.state.kind, 'free');
-  door('guest', guest, 'keet-front');
-  assert.equal(game.doors['keet-front'], true, 'after the game the café opens again');
-});
-
-test('a Zombies game somewhere else leaves the café as it is', () => {
-  const { game, player, door } = setup();
-  player('root', 0, 30, 'admin');
-  const guest = player('guest', 540, -716);
-  door('guest', guest, 'keet-front');
-  game.modes.start('zombies', 'root', 'house');
-  assert.equal(game.keetClosed(), false);
+  assert.ok(!other.got.some((m) => m.t === 'door'), 'no café door shuts as the game starts');
   assert.equal(game.doors['keet-front'], true);
+  door('guest', guest, 'keet-back');
+  door('guest', guest, 'keet-front', false);
+  assert.equal(game.doors['keet-back'], true);
+  assert.equal(game.doors['keet-front'], false);
+  assert.deepEqual(other.got.filter((m) => m.t === 'door').map((m) => [m.id, m.open, m.by]), [['keet-back', true, 'guest'], ['keet-front', false, 'guest']]);
+  // Five a second at most, as for every door: a page slamming a café door shut to trap the zombies is held to it.
+  guest.nextDoor = 0;
+  for (let i = 0; i < 50; i++) send(game, guest, i);
+  assert.equal(other.got.filter((m) => m.t === 'door').length - 2, 1, 'fifty door messages at once: one taken');
   game.modes.start('free', 'root');
 });
 
-test('coming back during Zombies at the church to a spot inside the shut café: they start where the place lets you out', () => {
+/** A page's door message for the café's front door, open or shut by turns (`i`), straight to the server. */
+function send(game, p, i) {
+  game.handle('guest', p, JSON.stringify({ t: 'door', id: 'keet-front', open: i % 2 === 0, dir: 1 }));
+}
+
+test('coming back during Zombies at the church to a spot inside the café: they come back there, inside the place\'s edge', () => {
   const { game, player } = setup();
   game.auth = { session: () => null, log: () => {}, addressOf: () => '127.0.0.1' };
   const ws = () => ({ readyState: 1, OPEN: 1, send() {}, on() {}, close() {} });
   player('root', 548, -760, 'admin').score = { kills: 0, deaths: 0, points: 0 }; // as join gives one (the welcome lists it)
   game.modes.start('zombies', 'root', 'church');
-  assert.ok(game.keetClosed());
-  const inside = { x: 541.3, y: 6.071, z: -720 }; // the front room
-  game.lastPos.set('back', inside);
-  game.join(ws(), { username: 'back', role: 'guest', key: 'k-back' }, { headers: {}, socket: {} });
-  const [x, z] = portalOf(arenaOf('church')).out;
-  const s = game.players.get('back').state;
-  assert.deepEqual([s.x, s.z], [x, z], 'not in the café: at the church place\'s start');
-  assert.deepEqual([game.keetOut(inside).x, game.keetOut(inside).z], [x, z]);
-  assert.equal(game.keetOut({ x: 545, y: 6, z: -740 }).z, -740);
-  // Outside the café the last position holds; after the game the café is a place like any other.
-  game.lastPos.set('near', { x: 545, y: 6, z: -740 });
-  game.join(ws(), { username: 'near', role: 'guest', key: 'k-near' }, { headers: {}, socket: {} });
-  assert.deepEqual([game.players.get('near').state.x, game.players.get('near').state.z], [545, -740]);
+  for (const [name, at] of [['front', { x: 541.3, y: 6.071, z: -720 }], ['toilet', { x: 536.74, y: 6.071, z: -709.25 }]]) {
+    game.lastPos.set(name, at);
+    game.join(ws(), { username: name, role: 'guest', key: `k-${name}` }, { headers: {}, socket: {} });
+    const s = game.players.get(name).state;
+    assert.deepEqual([s.x, s.z], [at.x, at.z], name);
+  }
+  // Past the back street, out of the place: at its start as before.
+  game.lastPos.set('far', { x: 537, y: 6.5, z: -690 });
+  game.join(ws(), { username: 'far', role: 'guest', key: 'k-far' }, { headers: {}, socket: {} });
+  const far = game.players.get('far').state;
+  assert.ok(far.z !== -690, 'outside the edge: not where they were');
   game.modes.start('free', 'root');
-  game.lastPos.set('later', inside);
-  game.join(ws(), { username: 'later', role: 'guest', key: 'k-later' }, { headers: {}, socket: {} });
-  assert.deepEqual([game.players.get('later').state.x, game.players.get('later').state.z], [inside.x, inside.z]);
 });
