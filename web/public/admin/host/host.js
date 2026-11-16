@@ -10,7 +10,9 @@
 // browser (localStorage, keys briel.host.*), a convenience only.
 (() => {
   const $ = (id) => document.getElementById(id);
-  const KINDS = { hide: 'Hide and seek', tag: 'Tag', treasure: 'Treasure hunt', teams: 'House against bungalow', zombies: 'Zombies', duel: 'Zombies duel' };
+  const KINDS = { hide: 'Hide and seek', tag: 'Tag', treasure: 'Treasure hunt', teams: 'House against bungalow', zombies: 'Zombies', duel: 'Zombies duel', flag: 'Steal the flag' };
+  // Steal the flag's fields (shared/flagFields.mjs): blue always at the church.
+  const FIELDS = { compact: 'Compact: church and Molenhoek', village: 'Village: church and Sparrenhof' };
   const PLACES = { house: 'The house', bungalow: 'The bungalow', church: 'The church square', molenhoek: 'Molenhoek', molenhoek_mid: 'Molenhoek, middle', molenhoek_end: 'Molenhoek, end', sparrenhof: 'Sparrenhof' };
   const TEAM_NAMES = { blue: 'Blue', red: 'Red', green: 'Green', purple: 'Purple' };
   // A game's look while it runs (server/modes.mjs LOOKS); none is the house rule.
@@ -209,7 +211,7 @@
     if (v.countdown) now.replaceChildren(el('b', { text: `${KINDS[v.countdown.kind]} starts in ${Math.ceil(v.countdown.ms / 1000)} s` }));
     else if (m.kind === 'free') now.replaceChildren(el('b', { text: 'Free play' }), el('span', { class: 'muted', text: ' · first to 10 kills wins a round' }));
     else {
-      const extra = m.kind === 'teams' && m.score ? ` · House ${m.score.house} – ${m.score.bungalow} Bungalow (to ${m.goal})` : m.kind === 'zombies' && m.zombies ? ` · wave ${m.zombies.wave ?? ''}` : '';
+      const extra = m.kind === 'teams' && m.score ? ` · House ${m.score.house} – ${m.score.bungalow} Bungalow (to ${m.goal})` : m.kind === 'zombies' && m.zombies ? ` · wave ${m.zombies.wave ?? ''}` : m.kind === 'flag' && m.score ? ` · Blue ${m.score.blue} – ${m.score.red} Red${m.flag?.sudden ? ' · sudden death' : ''}` : '';
       now.replaceChildren(el('b', { text: KINDS[m.kind] ?? m.kind }), el('span', { text: `${m.phase === 'done' ? ' · over' : ''}${m.ms ? ` · ${clock(m.ms)} left` : ''}${extra}${m.look ? ` · ${LOOKS[m.look] ?? m.look}` : ''}` }), m.result ? el('p', { class: 'muted', text: m.result }) : null);
     }
     // The Zombies duel (server/duel.mjs): both rooms' waves; Stop ends both at once.
@@ -397,7 +399,7 @@
   // ------------------------------------------------------------------ helpers and controls
 
   const clock = (ms) => `${Math.floor(ms / 60000)}:${String(Math.floor((ms % 60000) / 1000)).padStart(2, '0')}`;
-  const describe = (e) => `${KINDS[e.kind]}${e.kind === 'duel' ? (e.duel === 'final' ? ', final' : ', warm-up') : ''}${e.kind === 'zombies' ? ` at ${PLACES[e.place] ?? e.place}` : ''}${e.minutes ? `, ${e.minutes} min` : ''}${e.goal ? `, to ${e.goal}` : ''}`;
+  const describe = (e) => `${KINDS[e.kind]}${e.kind === 'duel' ? (e.duel === 'final' ? ', final' : ', warm-up') : ''}${e.kind === 'zombies' ? ` at ${PLACES[e.place] ?? e.place}` : ''}${e.kind === 'flag' ? `, ${FIELDS[e.place] ?? e.place}` : ''}${e.minutes ? `, ${e.minutes} min` : ''}${e.goal ? `, to ${e.goal}` : ''}`;
   const setProgramme = (list) => act({ op: 'programme', list });
   const moveEntry = (i, d) => {
     const list = [...v.programme];
@@ -409,11 +411,12 @@
     const minutes = Number($('g-minutes').value) || undefined;
     const goal = kind === 'teams' ? Number($('g-goal').value) || undefined : undefined;
     const duel = kind === 'duel' ? $('g-duel').value : undefined;
-    return { kind, place: kind === 'zombies' ? $('g-place').value : 'house', minutes: kind === 'zombies' || duel === 'final' ? undefined : minutes, goal, look: $('g-look').value || null, duel };
+    return { kind, place: kind === 'zombies' ? $('g-place').value : kind === 'flag' ? $('g-field').value : 'house', minutes: kind === 'zombies' || duel === 'final' ? undefined : minutes, goal, look: $('g-look').value || null, duel };
   };
   const showFields = () => {
     const kind = $('g-kind').value;
     $('g-place-label').hidden = kind !== 'zombies';
+    $('g-field-label').hidden = kind !== 'flag';
     $('g-goal-label').hidden = kind !== 'teams';
     $('g-minutes').disabled = kind === 'zombies' || (kind === 'duel' && $('g-duel').value === 'final');
     $('g-duel-label').hidden = kind !== 'duel';
@@ -427,6 +430,7 @@
   $('g-kind').replaceChildren(...Object.entries(KINDS).map(([k, n]) => el('option', { value: k, text: n })));
   $('g-place').replaceChildren(...Object.entries(PLACES).map(([k, n]) => el('option', { value: k, text: n })));
   $('g-look').replaceChildren(...Object.entries(LOOKS).map(([k, n]) => el('option', { value: k, text: n })));
+  $('g-field').replaceChildren(...Object.entries(FIELDS).map(([k, n]) => el('option', { value: k, text: n })));
   $('g-kind').addEventListener('change', showFields);
   $('g-duel').addEventListener('change', showFields);
   showFields();
