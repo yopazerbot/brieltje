@@ -1486,9 +1486,12 @@ export class Game {
     if (this.horseOf(name)) return no('Get off the horse first.', 'travelHorse');
     if (this.bikeOf(name)) return no('Get off the bike first.', 'travelBike');
     if (this.helis.of(name)) return no('Get out of the helicopter first.', 'travelHeli');
-    // From the chat: not right after a fight (inFight), as the seats and /parachute (it was a way out of reach, the school
-    // grounds' spot among them). A portal walked onto stays as it was.
-    if (chat && this.inFight(p, now)) return no('Not right after a fight. Wait a few seconds.', 'heliFight');
+    // Not right after a fight (inFight), as the seats and /parachute: from the chat, and from a portal walked onto too
+    // (Yoshi, 16 Nov 2026: both were a way out of a fight, the school grounds' spot among them). A driver takes the
+    // passenger along, so the trip waits for the passenger's fight as well (no escape by being driven through).
+    if (this.inFight(p, now)) return chat ? no('Not right after a fight. Wait a few seconds.', 'heliFight') : no('Not right after a fight: the portal waits a few seconds.', 'portalFight');
+    const passenger = car?.passenger ? this.players.get(car.passenger) : null;
+    if (passenger && this.inFight(passenger, now)) return no('Your passenger was just in a fight. Wait a few seconds.', 'portalFightRider');
     if (!chat) {
       const on = portalNear(st.x, st.z, (car ? CAR_REACH : REACH) + TRAVEL_SLACK);
       if (!on || on === to) return no();
@@ -1560,7 +1563,7 @@ export class Game {
 
   /**
    * Hit (by anyone, a strongman or a zombie too), or hitting someone, in the last HURT_CALM_MS: the one clock for the
-   * seats (fightRefused), /parachute, the start places (spawn, homeDrop), trips from the chat (travel) and a reconnect
+   * seats (fightRefused), /parachute, the start places (spawn, homeDrop), trips from the chat or a portal (travel) and a reconnect
    * (join). Holstering has its own, players only (inPlayerFight).
    */
   inFight(p, now) {
