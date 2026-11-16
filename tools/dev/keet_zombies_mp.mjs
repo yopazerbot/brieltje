@@ -3,7 +3,8 @@
 // church and picks waves 2, 3 and 4 (afresh for each half: anyone down is back up). Alice (keyboard and mouse,
 // --preset) and Bob (a phone held sideways, Low) go in and out of the café: each wave one of them inside (toilet 2, the
 // bar room, the front room), the other on the square, the lane or the back street with the gun put away (no fighter:
-// the zombies go for the one inside), and halfway through they swap. Once swiped, the one inside puts the gun away too,
+// the zombies go for the one inside), and halfway through they swap. Once reached (a swipe, or a zombie swiping within
+// 1.6 m: their health does not come back between halves), the one inside puts the gun away too,
 // so the game is never over for want of a fighter. The check proves that all six halves are played and in each a
 // zombie reaches the one inside, that a door a zombie shoves open swings on both pages, that neither page ever shows a
 // zombie in a wall or a piece of furniture of the café or on a chair, and that nobody is told the zombies can't reach
@@ -164,15 +165,25 @@ try {
       let pictured = false;
       let read = rootLog.length;
       let after = Infinity; // a few seconds more once swiped (the pages see the zombies inside), then the swap
+      let tick = 0;
       while (Date.now() - t0 < (Number(o.secs) * 1000) / 2 && Date.now() < after && running()) {
-        await sleep(400);
-        await look('alice');
-        await look('bob');
-        if (!hurt && (await pages[inner].evaluate('briel.combat.hp')) < hp0) {
+        await sleep(150);
+        if (++tick % 3 === 0) {
+          await look('alice');
+          await look('bob');
+        }
+        // Reached: health lost, or a zombie swiping within 1.6 m (as soon as its swipe starts: the health of the one inside
+        // does not come back between halves, so it should take as few swipes as can be).
+        const reach = await pages[inner].evaluate(`(() => {
+          const p = briel.player;
+          const near = briel.zombies.states().some((z) => !z.down && z.act === 'attack' && Math.hypot(z.x - p.x, z.z - p.z) < 1.6);
+          return { hp: briel.combat.hp, near };
+        })()`);
+        if (!hurt && (reach.hp < hp0 || reach.near)) {
           hurt = true;
           after = Date.now() + 2500;
           // Neither shoots back, so the one inside would go down in the end, and with every fighter down the game is
-          // over. Once swiped, the gun is put away: with no fighter nobody is swiped and the game goes on (the next
+          // over. Once reached, the gun is put away: with no fighter nobody is swiped and the game goes on (the next
           // half's wave brings anyone down back up).
           await pages[inner].evaluate('briel.weapon.setEnabled(false)', false);
           hurtInside[inner]++;
@@ -196,7 +207,7 @@ try {
       const last = new Map();
       for (const m of rootLog) if (m.t === 's') for (const e of m.p ?? []) last.set(e[0], readPlayer(e));
       for (const [n, p] of last) if (n.endsWith(tag)) console.log(`  the server has ${n} at ${p.x.toFixed(1)}, ${p.y.toFixed(2)}, ${p.z.toFixed(1)}${keet.contains(p.x, p.z) ? ' (in the café)' : ''}, armed ${p.armed}, up ${p.alive}`);
-      console.log(`wave ${w + 1}, ${inner} inside: ${hurt ? 'reached and swiped' : 'not reached'} in ${((Date.now() - t0) / 1000).toFixed(0)} s (the game: ${mode?.kind} ${mode?.phase ?? ''}, wave ${mode?.zombies?.wave}, ${mode?.zombies?.left} left, ${mode?.zombies?.standing} of ${mode?.zombies?.fighters} fighters standing)`);
+      console.log(`wave ${w + 1}, ${inner} inside: ${hurt ? 'reached (a swipe, or one swiping within 1.6 m)' : 'not reached'} in ${((Date.now() - t0) / 1000).toFixed(0)} s (the game: ${mode?.kind} ${mode?.phase ?? ''}, wave ${mode?.zombies?.wave}, ${mode?.zombies?.left} left, ${mode?.zombies?.standing} of ${mode?.zombies?.fighters} fighters standing)`);
       if (o.out) await pages[outer].screenshot(join(o.out, `mp-wave${w + 1}-${outer}-outside.png`));
     }
   }
