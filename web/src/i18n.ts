@@ -1976,7 +1976,7 @@ const nl = {
   'veh.fire': 'Hij brandt: stap uit!',
   'veh.paint': 'Vol verf: stap uit!',
   'veh.feed': 'Ontploffend voertuig',
-  'veh.feedPaint': 'Verfbom',
+  'veh.feedPaint': 'Verfplons',
   'hud.heli': 'De instrumenten van de helikopter',
   'hud.height': 'Hoogte boven de grond',
   'hud.climb': 'Stijgen',
