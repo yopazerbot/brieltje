@@ -147,6 +147,48 @@ test('honest play as before: out of any fight the holster counts at once; dead o
   assert.deepEqual(s.said(a), [], 'and never told');
 });
 
+test('a strongman\'s or a zombie\'s hit holds no holster: Explore near them is safe at once, as before', () => {
+  const s = setup();
+  const { game } = s;
+  const a = s.player('ann', 0);
+  game.bruteHits({ x: a.state.x, y: a.state.y, z: a.state.z }, 3, 20, s.now());
+  game.zombieHurt('ann', a, 10, false, s.now());
+  assert.ok(a.hp < 100, 'hurt by both');
+  s.state(a, false);
+  assert.equal(a.state.armed, false, 'Explore counts at once');
+  assert.deepEqual(s.said(a), []);
+  assert.ok(game.inFight(a, s.now()), 'the seats and /parachute still wait, as before (hurtAt)');
+});
+
+test('a grenade thrown armed holds the holster until it goes off, and its bang is the thrower\'s hit', () => {
+  // Before: throw armed, Explore 150 ms later, the bang 3 s later hurt B and B's answer was dropped (a free grenade).
+  const s = setup();
+  const a = s.player('ann', 0);
+  const b = s.player('bob', 6);
+  s.send(a, { t: 'nade', x: a.state.x, y: a.state.y + 1.5, z: a.state.z, vx: 4, vy: 3, vz: 0 });
+  s.at(150);
+  s.state(a, false);
+  assert.equal(a.state.armed, true, 'held while the grenade is live');
+  s.at(2_800);
+  s.state(a, false);
+  assert.equal(a.state.armed, true);
+  const hp = b.hp;
+  s.send(a, { t: 'boom', x: b.state.x - 3, y: b.state.y + 0.9, z: b.state.z, cover: [] });
+  assert.ok(b.hp < hp, 'the bang hurts B');
+  s.state(a, false);
+  assert.equal(a.state.armed, true, 'and holds her 10 s from then');
+  assert.ok(s.hit(b, a), 'B\'s answer counts');
+});
+
+test('a grenade that hurts nobody holds the holster no longer than it can go off', () => {
+  const s = setup();
+  const a = s.player('ann', 0);
+  s.send(a, { t: 'nade', x: a.state.x, y: a.state.y + 1.5, z: a.state.z, vx: 4, vy: 3, vz: 0 });
+  s.at(6_100); // past the fuse and the 3 s a bang may still be told
+  s.state(a, false);
+  assert.equal(a.state.armed, false);
+});
+
 test('a page that stays in Action while dead (as an honest one does) may holster at once after its respawn', () => {
   const s = setup();
   const { game } = s;

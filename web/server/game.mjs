@@ -651,7 +651,7 @@ export class Game {
     this.fights.delete(name);
     const back = fight && this.inFight(fight, now) ? fight : null;
     if (back) {
-      Object.assign(player, { hurtAt: back.hurtAt, hitAt: back.hitAt });
+      Object.assign(player, { hurtAt: back.hurtAt, hurtByPlayerAt: back.hurtByPlayerAt, hitAt: back.hitAt });
       if (back.alive) {
         Object.assign(player, { hp: back.hp, protectedUntil: 0 });
         player.state.armed = back.armed;
@@ -974,11 +974,12 @@ export class Game {
       // In a helicopter (server/helis.mjs): the pilot's state is the machine's pose; a passenger's own position is never taken.
       const heli = this.helis.of(name);
       const flyer = heli?.seats[0] === name;
-      // Holstering (armed false: Explore) counts only once HURT_CALM_MS have passed since the last fight, hitting or being
-      // hit (inFight): until then the server keeps them armed, as everyone sees them, and tells them once. Before, one state
-      // with armed false made a player unhittable at once, and the next armed them to hit again (damage avoidance). Dead or
-      // down, the page's word as before: nobody hits them then; and a respawn (backAt) starts out of the fight.
-      const kept = !m.armed && wasArmed && player.alive && this.inFight(player, now) && Math.max(player.hurtAt ?? -Infinity, player.hitAt ?? -Infinity) > (player.backAt ?? -Infinity);
+      // Holstering (armed false: Explore) counts only once HURT_CALM_MS have passed since the last fight with a player,
+      // hitting or being hit, and once their grenades have gone off (inPlayerFight): until then the server keeps them armed,
+      // as everyone sees them, and tells them once. Before, one state with armed false made a player unhittable at once,
+      // and the next armed them to hit again (damage avoidance). Dead or down, the page's word as before: nobody hits them
+      // then; and a respawn (backAt) starts out of the fight. A strongman's or a zombie's hit holds nobody.
+      const kept = !m.armed && wasArmed && player.alive && this.inPlayerFight(player, now);
       if (kept && !player.keptArmed) this.send(player.ws, { t: 'system', text: 'Still in the fight for a few seconds: you can be hit until then.', code: 'holsterFight' });
       player.keptArmed = kept;
       const next = {
@@ -1555,9 +1556,20 @@ export class Game {
     return now - Math.max(p.hurtAt ?? -Infinity, p.hitAt ?? -Infinity) < HURT_CALM_MS;
   }
 
+  /**
+   * What holds a holster (state): hit by a player (hurtByPlayerAt) or hitting one (hitAt) in the last HURT_CALM_MS since
+   * the last respawn (backAt), or a grenade of theirs not gone off yet (its bang is then their hit). Not a strongman's or
+   * a zombie's hit: Explore near them stays safe at once.
+   */
+  inPlayerFight(p, now) {
+    const back = p.backAt ?? -Infinity;
+    const at = Math.max(p.hurtByPlayerAt ?? -Infinity, p.hitAt ?? -Infinity);
+    return (now - at < HURT_CALM_MS && at > back) || p.thrown.some((g) => g.at > back && now - g.at < (GRENADE.fuse + 3) * 1000);
+  }
+
   /** What of a fight a connection leaves behind (join, its close): the clocks, and the health and arms while alive. */
   fightOf(p) {
-    return { hurtAt: p.hurtAt, hitAt: p.hitAt, hp: p.hp, alive: p.alive, armed: !!p.state?.armed };
+    return { hurtAt: p.hurtAt, hurtByPlayerAt: p.hurtByPlayerAt, hitAt: p.hitAt, hp: p.hp, alive: p.alive, armed: !!p.state?.armed };
   }
 
   /** Get in, when the player stands next to it, is alive and in no car yet: at the wheel if nobody drives, else in the passenger seat if it's free. */
@@ -2520,6 +2532,7 @@ export class Game {
     if (!target.alive) return;
     target.hp = Math.max(0, target.hp - amount);
     target.hurtAt = now; // no parachute out of a fight (manualDrop)
+    target.hurtByPlayerAt = now; // and no holster at once (inPlayerFight: a player's hit, not a strongman's or a zombie's)
     if (shooter && shooter !== target) shooter.hitAt = now; // nor a seat right after hitting someone (fightRefused)
     if (target.hp > 0) return this.send(target.ws, { t: 'hurt', hp: target.hp, by: name });
 
