@@ -1,5 +1,5 @@
 <!doctype html>
-<html lang="en">
+<html lang="nl">
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
@@ -9,23 +9,36 @@
   <link rel="stylesheet" href="/brand.css" />
   <link rel="stylesheet" href="/admin/watch/watch.css" />
 </head>
-<!-- The admin's watch page (src/watch.ts): one player, or up to four side by side, each view a copy of the game that
-     follows its player, behind them or through their eyes. For a projector or a TV: F for full screen, the controls
-     hide when the mouse is still. Admin only: the views connect with the admin's session from /admin. -->
+<!-- The admin's watch page (src/watch.ts), the hall screen of a LAN night: a bar across the top with the game, its clock
+     and the teams' scores, over one view or up to four side by side, each a copy of the game that follows its player,
+     behind them or through their eyes. Steered from the keyboard (watch.js KEYS); H shows the controls. For a projector
+     or a TV: F for full screen. Admin only: the views connect with the admin's session from /admin. -->
 <body class="watch-page">
+  <header class="hall" id="hall" aria-live="off">
+    <div class="side" id="h-left"></div>
+    <div class="mid">
+      <div class="h-title" id="h-title"></div>
+      <div class="h-clock" id="h-clock"></div>
+      <div class="h-sub" id="h-sub"></div>
+    </div>
+    <div class="side right" id="h-right"></div>
+  </header>
+  <main id="tiles"></main>
   <div class="bar" id="bar">
     <a class="logo" href="/admin/host/" title="Back to the host screen"><img src="/brand/logo-row.svg" alt="Brieltje" width="157" height="32" /></a>
-    <span class="seg" id="layout" role="group" aria-label="Views">
+    <span class="label" id="views-label"></span>
+    <span class="seg" id="layout" role="group" aria-labelledby="views-label">
       <button type="button" data-n="1">1</button><button type="button" data-n="2">2</button><button type="button" data-n="3">3</button><button type="button" data-n="4">4</button>
     </span>
-    <label class="check"><input type="checkbox" id="rotate" /> Switch players every 20 s</label>
+    <label class="check"><input type="checkbox" id="rotate" /> <span id="rotate-label"></span></label>
     <span class="grow"></span>
-    <button class="pill" type="button" id="full">Full screen (F)</button>
-    <a class="pill ghost" href="/admin/host/">Host</a>
+    <button class="pill" type="button" id="full"></button>
+    <a class="pill ghost" href="/admin/host/" id="host-link"></a>
+    <div class="keys" id="keys"></div>
   </div>
-  <main id="tiles"></main>
+  <div class="hint" id="hint"></div>
   <div class="gate" id="gate" hidden>
-    <p>Log in on the <a href="/admin/">admin page</a> first, then come back here.</p>
+    <p id="gate-text"></p>
   </div>
   <script src="/admin/watch/watch.js"></script>
 </body>
