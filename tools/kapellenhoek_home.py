@@ -43,11 +43,14 @@ SIZES = json.loads((ROOT / "web/public/textures/sizes.json").read_text(encoding=
 GROUND = json.loads((ROOT / "web/src/data/house_shell.json").read_text(encoding="utf-8"))["ground"]  # the game's flat ground (-0.1)
 
 # --- the looks: one constant each, so a colour changes in one line --------------------------------------------------
-BRICK = "#985545"  # the brick's tint: a mixed red-brown brick (nb_brick's own joints stay pale)
-ROOF = "#3a3632"  # dark brown-grey concrete tiles
-FRAME = "#33363a"  # anthracite window and door frames
-STONE = "#7f877e"  # grey-green stone lintels and sills
-WOOD = "#6e4a32"  # the front door, the garage door and the back doors: warm brown boards
+BRICK = "#ecc0b2"  # the brick's tint: a rustic mixed red brick, lime-smeared, that reads pinkish grey-red from afar
+SOLDIER = "#d99c8a"  # the soldier courses over the openings: the same brick on end, a little redder
+ROOF = "#2f3235"  # anthracite flat ceramic tiles
+FRAME = "#33363a"  # anthracite window and door frames, the front door and the garage door
+SILL = "#55585c"  # thin anthracite-grey sills
+GUTTER = "#3c3f43"  # the anthracite gutters along the eaves (the downpipes stay zinc)
+STONE = "#7f877e"  # grey stone: thresholds
+WOOD = "#6e4a32"  # the back doors: warm brown boards
 FASCIA = "#4a3528"  # the terrace canopy's timber
 ZINC = "#6f7477"  # gutters and downpipes
 SLEEPER = "#2e2925"  # the dark sleepers at the garden's edge
@@ -205,9 +208,11 @@ def profile(points):
 class Opening:
     """A hole in a wall: s its middle along the wall, y its bottom, w by h (over the floor).
     kind: window, door, garage, slide (sliding glass doors: leaf `move` slides, the others are fixed), glazing (fixed
-    glass to the floor)."""
+    glass to the floor). leaf: a door's colour; WOOD gives brown boards, any other a smooth leaf (a garage door in
+    sections); peep: a small four-pane window high in a door's leaf (drawn only: it is shut glass from afar)."""
 
-    def __init__(self, name, s, y, w, h, kind="window", cols=2, rows=3, reveal=.16, sill=True, lintel=True, top=0.0, leaves=2, door=None, move=None):
+    def __init__(self, name, s, y, w, h, kind="window", cols=2, rows=3, reveal=.16, sill=True, lintel=True, top=0.0, leaves=2, door=None, move=None,
+                 leaf=WOOD, peep=False):
         self.__dict__.update(locals())
         del self.__dict__["self"]
 
@@ -393,7 +398,7 @@ class Home:
                 y = y0 + o.h * c / o.rows
                 self.wbox(W, N3, T3, fr, s0 + fw, s1 - fw, y - .02, y + .02, r - .06, r, FRAME)
             if o.sill and o.kind == "window":
-                self.wbox(W, N3, T3, "vh_stone", s0 - .05, s1 + .05, y0 - .07, y0, -.05, r, STONE)
+                self.wbox(W, N3, T3, "vh_stone", s0 - .04, s1 + .04, y0 - .045, y0, -.045, r, SILL)
         elif o.kind == "door":
             ylo, yhi = y0, y1 - o.top
             if o.top:  # a glazed top light in three panes
@@ -405,24 +410,40 @@ class Home:
                 self.wbox(W, N3, T3, fr, s0 + fw, s1 - fw, yhi - .03, yhi + .03, r - .07, r, FRAME)
             frame(s0, s1, y0 - fw, y1, d0=r - .06)
             d = r + .02
-            self.wbox(W, N3, T3, "vh_doors", s0 + fw, s1 - fw, ylo, yhi - .03, d - .05, d, WOOD)
-            x = s0 + fw + .12
-            while x < s1 - fw - .05:  # the boards' joints
-                self.poly("vh_doors", [W(x - .006, ylo + .03, d - .052), W(x + .006, ylo + .03, d - .052), W(x + .006, yhi - .06, d - .052), W(x - .006, yhi - .06, d - .052)], N3, "#3e2a1d")
-                x += .12
-            self.wbox(W, N3, T3, "vh_metal_small", s1 - fw - .14, s1 - fw - .1, ylo + .95, ylo + 1.15, d - .1, d - .05, "#2a2b2c")
+            self.wbox(W, N3, T3, "vh_doors", s0 + fw, s1 - fw, ylo, yhi - .03, d - .05, d, o.leaf)
+            if o.leaf == WOOD:
+                x = s0 + fw + .12
+                while x < s1 - fw - .05:  # the boards' joints
+                    self.poly("vh_doors", [W(x - .006, ylo + .03, d - .052), W(x + .006, ylo + .03, d - .052), W(x + .006, yhi - .06, d - .052), W(x - .006, yhi - .06, d - .052)], N3, "#3e2a1d")
+                    x += .12
+                self.wbox(W, N3, T3, "vh_metal_small", s1 - fw - .14, s1 - fw - .1, ylo + .95, ylo + 1.15, d - .1, d - .05, "#2a2b2c")
+            else:  # a smooth leaf with a long bar handle on two posts
+                hb0, hb1 = s1 - fw - .48, s1 - fw - .1
+                self.wbox(W, N3, T3, "vh_doors", hb0, hb1, ylo + .98, ylo + 1.01, d - .1, d - .075, "#8a8d90")
+                for x in (hb0 + .03, hb1 - .03):
+                    self.wbox(W, N3, T3, "vh_doors", x - .012, x + .012, ylo + .983, ylo + 1.007, d - .075, d - .05, "#8a8d90")
+            if o.peep:  # a small window high in the leaf, four panes
+                pm, pw, pb, ph = (s0 + s1) / 2, .36, ylo + 1.3, .36
+                self.poly("vh_doors", [W(pm - pw / 2, pb, d - .054), W(pm + pw / 2, pb, d - .054), W(pm + pw / 2, pb + ph, d - .054), W(pm - pw / 2, pb + ph, d - .054)], N3, "#2b3236")
+                self.wbox(W, N3, T3, "vh_doors", pm - .015, pm + .015, pb, pb + ph, d - .062, d - .05, o.leaf)
+                self.wbox(W, N3, T3, "vh_doors", pm - pw / 2, pm + pw / 2, pb + ph / 2 - .015, pb + ph / 2 + .015, d - .062, d - .05, o.leaf)
             self.wbox(W, N3, T3, "vh_stone", s0 - .03, s1 + .03, y0 - .04, y0, -.04, r, STONE)
             self.doors.append({"id": o.door[0], "name": o.door[1], "level": "gf", "y0": round(ylo, 3), "y1": round(yhi, 3),
-                               "panels": [leaf(s0 + fw, s1 - fw, d - .025, False, swing=1.6)]})
+                               "panels": [leaf(s0 + fw, s1 - fw, d - .025, False, swing=1.6, color_=o.leaf)]})
         elif o.kind == "garage":
             frame(s0, s1, y0 - fw, y1, d0=r - .06)
             d = r + .02
-            self.wbox(W, N3, T3, "vh_doors", s0 + fw, s1 - fw, y0, y1 - fw, d - .05, d, WOOD)
-            x = s0 + fw + .15
-            while x < s1 - fw - .05:
-                self.poly("vh_doors", [W(x - .007, y0 + .03, d - .052), W(x + .007, y0 + .03, d - .052), W(x + .007, y1 - fw - .03, d - .052), W(x - .007, y1 - fw - .03, d - .052)], N3, "#3e2a1d")
-                x += .15
-            p = leaf(s0 + fw, s1 - fw, d - .025, False)
+            self.wbox(W, N3, T3, "vh_doors", s0 + fw, s1 - fw, y0, y1 - fw, d - .05, d, o.leaf)
+            if o.leaf == WOOD:  # boards
+                x = s0 + fw + .15
+                while x < s1 - fw - .05:
+                    self.poly("vh_doors", [W(x - .007, y0 + .03, d - .052), W(x + .007, y0 + .03, d - .052), W(x + .007, y1 - fw - .03, d - .052), W(x - .007, y1 - fw - .03, d - .052)], N3, "#3e2a1d")
+                    x += .15
+            else:  # a sectional door: four smooth sections with a fine dark joint between them
+                for k in (1, 2, 3):
+                    y = y0 + (y1 - fw - y0) * k / 4
+                    self.poly("vh_doors", [W(s0 + fw + .02, y - .008, d - .052), W(s1 - fw - .02, y - .008, d - .052), W(s1 - fw - .02, y + .008, d - .052), W(s0 + fw + .02, y + .008, d - .052)], N3, "#1f2225")
+            p = leaf(s0 + fw, s1 - fw, d - .025, False, color_=o.leaf)
             p["handle"] = False
             p["lift"] = 2.05  # it rolls up into its head (doors.ts lift): room to walk under it, nothing above the roof
             self.doors.append({"id": o.door[0], "name": o.door[1], "level": "gf", "y0": round(y0, 3), "y1": round(y1 - fw, 3), "panels": [p]})
@@ -445,8 +466,8 @@ class Home:
             self.doors.append({"id": o.door[0], "name": o.door[1], "level": "gf", "y0": round(y0, 3), "y1": round(y1 - fw, 3), "panels": panels})
             if o.sill:
                 self.wbox(W, N3, T3, "vh_stone", s0 - .03, s1 + .03, y0 - .04, y0, -.04, r, STONE)
-        if o.lintel:
-            self.wbox(W, N3, T3, "vh_stone", s0 - .1, s1 + .1, y1, y1 + .16, -.02, 0, STONE)
+        if o.lintel:  # a soldier course: the wall's brick on end over the opening, a centimetre proud
+            self.wbox(W, N3, T3, "vh_soldier", s0 - .06, s1 + .06, y1, y1 + .215, -.01, 0)
 
     # --- roofs -----------------------------------------------------------------------------------------------------
     def roof(self, pts, free=(), under="#3a3937", edge="#2c2b29", thick=.14, board=None):
@@ -469,7 +490,7 @@ class Home:
         o = Vector((out[0], out[1])).normalized()
         a2, b2 = Vector((a[0], a[1])) + o * .07, Vector((b[0], b[1])) + o * .07
         y = min(a[2], b[2])
-        self.seg("vh_frames_small", tuple(a2), tuple(b2), .13, y - .11, y + .02, ZINC)
+        self.seg("vh_frames_small", tuple(a2), tuple(b2), .13, y - .11, y + .02, GUTTER)
         for u, d, foot in down:
             p = Vector((u, d))
             t = (b2 - a2).normalized()
@@ -555,7 +576,7 @@ class Home:
                     v = nrm.cross(u)
                     for k in poly.loop_indices:
                         p = mesh.vertices[mesh.loops[k].vertex_index].co
-                        uv.data[k].uv = (round(p.dot(u), 4), round(p.dot(v), 4))
+                        uv.data[k].uv = (round(p.dot(v), 4), round(p.dot(u), 4)) if spec.get("turn") else (round(p.dot(u), 4), round(p.dot(v), 4))
             elif any(c for _, c in polygons):
                 colors = mesh.color_attributes.new(name="Color", type="FLOAT_COLOR", domain="CORNER")
                 node = mat.node_tree.nodes.new("ShaderNodeVertexColor")
@@ -580,6 +601,7 @@ class Home:
 # ======================================================================================================================
 MESHES = {
     "vh_brick": {"texture": "nb_brick", "tint": BRICK, "normalScale": .7},
+    "vh_soldier": {"texture": "nb_brick", "tint": SOLDIER, "normalScale": .7, "turn": True},  # its bricks on end
     "vh_roof": {"texture": "roof_tiles", "tint": ROOF, "normalScale": .35},
     "vh_paving": {"texture": "pavers", "tint": "#76746f"},
     "vh_gravel": {"texture": "terrace", "tint": "#d2d0ca"},  # the terrace's large pale slabs (wet and snow as gravel)
@@ -601,17 +623,28 @@ FRONT_GF = [1.07, 3.12, 8.13, 9.94]
 FRONT_F1 = [1.07, 3.12, 6.37, 8.13, 9.94]
 BACK_F1 = [1.04, 2.64, 5.39, 6.97, 10.06]
 win = lambda name, u0, sill, head, **kw: Opening(name, u0 + .475, sill, .95, head - sill, **kw)
-front = [win(f"front-gf-{i + 1}", u, 1.03, 2.16) for i, u in enumerate(FRONT_GF)]
-front += [win(f"front-f1-{i + 1}", u, 3.86, 4.97) for i, u in enumerate(FRONT_F1)]
-front.append(Opening("front-door", (6.37 + 7.35) / 2, 0, .98, 2.2, "door", reveal=.18, top=.25, door=("kh-home-front", "front door")))
+# The front's windows have a cross of bars: four panes each.
+front = [win(f"front-gf-{i + 1}", u, 1.03, 2.16, rows=2) for i, u in enumerate(FRONT_GF)]
+front += [win(f"front-f1-{i + 1}", u, 3.86, 4.97, rows=2) for i, u in enumerate(FRONT_F1)]
+front.append(Opening("front-door", (6.37 + 7.35) / 2, 0, .98, 2.2, "door", reveal=.18, top=.25, door=("kh-home-front", "front door"), leaf=FRAME, peep=True))
 h.wall("front", (0, 0), (UMU, 0), (0, -1), EAVE - .02, front)
 h.wall("wing-front", (UMU, 0), (UL, 0), (0, -1), WEAVE - .02,
-       [Opening("garage-door", (12.32 + 14.83) / 2 - UMU, 0, 2.51, 2.2, "garage", reveal=.18, door=("kh-home-garage", "garage door"))])
-# A small timber panel left of the front door: vertical slats on a dark back.
-h.box("vh_trim", 5.07, 5.93, -.03, 0, 1.0, 1.9, "#2b2420")
-for i in range(7):
-    s = 5.11 + i * .12
-    h.box("vh_trim", s, s + .08, -.06, -.03, 1.0, 1.9, WOOD)
+       [Opening("garage-door", (12.32 + 14.83) / 2 - UMU, 0, 2.51, 2.2, "garage", reveal=.18, door=("kh-home-garage", "garage door"), leaf=FRAME)])
+# Left of the front door a small window, drawn on the wall only (no opening: the inside has none there): dark glass in
+# an anthracite frame, a thin sill under it and a soldier course over it, as on the others.
+SW0, SW1, SWB, SWT = 5.52, 5.92, 1.55, 2.2
+h.box("vh_metal_small", SW0 + .05, SW1 - .05, -.025, -.005, SWB + .05, SWT - .05, "#252b30")
+for u0, u1, y0, y1 in ((SW0, SW0 + .05, SWB, SWT), (SW1 - .05, SW1, SWB, SWT), (SW0 + .05, SW1 - .05, SWB, SWB + .05), (SW0 + .05, SW1 - .05, SWT - .05, SWT)):
+    h.box("vh_frames_small", u0, u1, -.045, 0, y0, y1, FRAME)
+h.box("vh_stone", SW0 - .04, SW1 + .04, -.06, 0, SWB - .045, SWB, SILL)
+h.box("vh_soldier", SW0 - .06, SW1 + .06, -.01, 0, SWT, SWT + .215)
+# Over the front door a wall lantern: a bracket, an anthracite cap and frosted glass (just the fitting, unlit).
+LU = (6.37 + 7.35) / 2
+h.box("vh_metal_small", LU - .04, LU + .04, -.1, 0, 2.88, 2.94, FRAME)
+h.box("vh_metal_small", LU - .08, LU + .08, -.26, -.1, 2.71, 2.73, FRAME)
+h.box("vh_frames_small", LU - .065, LU + .065, -.245, -.115, 2.73, 2.92, "#e9e2cf")
+h.prism("vh_metal_small", [(LU - .1, -.28), (LU + .1, -.28), (LU + .1, -.08), (LU - .1, -.08)], 2.92, 2.96, FRAME)
+h.box("vh_metal_small", LU - .03, LU + .03, -.21, -.15, 2.96, 3.0, FRAME)
 # The left gable: a tall fixed glazed opening to the side garden (it does not open), no window upstairs.
 h.wall("left", (0, 0), (0, VM), (-1, 0), [(0, roof_under(0)), (VR, roof_under(VR)), (VM, roof_under(VM))],
        [Opening("side-glass", (3.30 + 5.10) / 2, 0, 1.8, 2.2, "glazing", cols=1, rows=1, sill=False)])
@@ -655,6 +688,14 @@ ye = EAVE - OVER * PITCH
 h.roof([(-.05, -OVER, ye), (UMU + .05, -OVER, ye), (UMU + .05, VR, RIDGE), (-.05, VR, RIDGE)], free=(0, 1, 3), board=.22)
 h.roof([(-.05, VM + OVER, ye), (UMU + .05, VM + OVER, ye), (UMU + .05, VR, RIDGE), (-.05, VR, RIDGE)], free=(0, 1, 3), board=.22)
 h.rod("vh_roof", (-.06, VR, RIDGE + .02), (UMU + .06, VR, RIDGE + .02), .1, 6)
+# A roof window in the front slope, over the second window upstairs: drawn on the tiles only (no opening).
+RW0, RW1, RV0, RV1 = 3.13, 4.07, 2.0, 2.9
+lift = lambda u, v, up: (u, v - up * PITCH / math.hypot(1, PITCH), main_roof(v) + up / math.hypot(1, PITCH))  # up: off the slope
+rw = [(RW0, RV0), (RW1, RV0), (RW1, RV1), (RW0, RV1)]
+h.poly("vh_frames_small", [lift(u, v, .09) for u, v in rw], (0, -PITCH, 1), FRAME)
+for (ua, va), (ub, vb) in zip(rw, rw[1:] + rw[:1]):
+    h.poly("vh_frames_small", [lift(ua, va, 0), lift(ub, vb, 0), lift(ub, vb, .09), lift(ua, va, .09)], ((ua + ub) / 2 - (RW0 + RW1) / 2, (va + vb) / 2 - (RV0 + RV1) / 2, 0), FRAME)
+h.poly("vh_frames_small", [lift(u, v, .095) for u, v in [(RW0 + .07, RV0 + .08), (RW1 - .07, RV0 + .08), (RW1 - .07, RV1 - .07), (RW0 + .07, RV1 - .07)]], (0, -PITCH, 1), "#22272b")
 # The verges' dark boards on the gables, a little proud.
 for u, out in ((-.05, -1), (UMU + .05, 1)):
     for v0, v1 in ((-OVER, VR), (VR, VM + OVER)):
@@ -732,9 +773,15 @@ for k in range(int(round((0 - STREET_V) / .35))):
             continue
         cu, cv = sum(p[0] for p in piece) / len(piece), sum(p[1] for p in piece) / len(piece)
         h.block("pave_grey", [(round(u, 3), round(v, 3)) for u, v in piece], min(g(cu, cv), paved_h(cu, cv)) - .4, paved_h(cu, cv))
-# The front door's step.
+# The front door's two low steps of grey concrete.
 h.box("vh_stone", 6.25, 7.47, -.4, 0, -.2, -.02, "#9a9890")
 h.block("concrete", [(6.25, -.4), (7.47, -.4), (7.47, 0), (6.25, 0)], -.4, -.02)
+h.box("vh_stone", 6.1, 7.62, -.8, -.4, -.2, -.085, "#9a9890")
+h.block("concrete", [(6.1, -.8), (7.62, -.8), (7.62, -.4), (6.1, -.4)], -.4, -.085)
+# A strip of bare planting soil along the front either side of the door.
+SOIL = "#4b3d31"
+h.surface("vh_trim", [(.3, -.9), (5.85, -.9), (5.85, -.05), (.3, -.05)], lambda u, v: g(u, v) + .03, color=SOIL)
+h.surface("vh_trim", [(7.75, -.75), (11.95, -.75), (11.95, -.05), (7.75, -.05)], lambda u, v: paved_h(u, v) + .02, color=SOIL)
 
 # The garden's edge: dark sleepers, 45 cm over the lawn (or a little over the higher ground beyond), a 1.8 m hedge
 # on the back one; on the right a low kerb of them over the lower ground beside, where the passage leads out.
