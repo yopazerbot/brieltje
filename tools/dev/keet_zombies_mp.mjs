@@ -1,11 +1,13 @@
 // Zombies at the church together, in two pages, through a dev server whose proxy points at a throwaway game server
 // (API_PORT=<server port> npx vite --port <n>): the admin (a socket of this script, not playing) starts Zombies at the
-// church and picks waves 2, 3 and 4 (afresh for each half: anyone down is back up). Alice (keyboard and mouse, --preset) and Bob (a phone held sideways, Low) go in and
-// out of the café: each wave one of them inside (toilet 2, the bar room, the front room), the other on the square, the
-// lane or the back street with the gun put away (no fighter: the zombies go for the one inside), and halfway through
-// they swap. The check proves that a zombie reaches the one inside, that
-// a door a zombie shoves open swings on both pages, that neither page ever shows a zombie in a wall or a piece of
-// furniture of the café or on a chair, and that nobody is told the zombies can't reach them; it takes pictures.
+// church and picks waves 2, 3 and 4 (afresh for each half: anyone down is back up). Alice (keyboard and mouse,
+// --preset) and Bob (a phone held sideways, Low) go in and out of the café: each wave one of them inside (toilet 2, the
+// bar room, the front room), the other on the square, the lane or the back street with the gun put away (no fighter:
+// the zombies go for the one inside), and halfway through they swap. Once swiped, the one inside puts the gun away too,
+// so the game is never over for want of a fighter. The check proves that all six halves are played and in each a
+// zombie reaches the one inside, that a door a zombie shoves open swings on both pages, that neither page ever shows a
+// zombie in a wall or a piece of furniture of the café or on a chair, and that nobody is told the zombies can't reach
+// them; it takes pictures.
 //
 //   ADMIN_PASSWORD=... node tools/dev/keet_zombies_mp.mjs --url http://localhost:5437/ --api http://localhost:8437
 //        --ports 9862,9863 [--preset high] [--out <folder>] [--secs 240]
@@ -141,13 +143,14 @@ try {
   const swung = [];
   const hurtInside = { alice: 0, bob: 0 };
   let halves = 0;
+  let ended = '';
   const running = () => rootLog.filter((m) => m.t === 'mode').at(-1)?.mode?.kind === 'zombies';
-  for (let w = 0; w < 3 && running(); w++) {
+  for (let w = 0; w < 3; w++) {
     for (const [inner, outer] of [['alice', 'bob'], ['bob', 'alice']]) {
-      // Two players who never shoot back go down in the end (a big one's pound): with nobody standing the game is over.
+      // Every half must be played: the game must still run (see below how it is kept alive).
       if (!running()) {
-        console.log(`the game ended in wave ${WAVES[w]}: both went down`);
-        break;
+        ended ||= `the game ended before wave ${WAVES[w]}, ${inner} inside`;
+        continue;
       }
       halves++;
       // The one outside has the gun put away: no fighter, so the zombies go for the one inside (they take the nearest).
@@ -168,8 +171,10 @@ try {
         if (!hurt && (await pages[inner].evaluate('briel.combat.hp')) < hp0) {
           hurt = true;
           after = Date.now() + 2500;
-          // The other one armed again: should the one inside go down, the game goes on (with nobody standing it ends).
-          await pages[outer].evaluate('briel.weapon.setEnabled(true)', false);
+          // Neither shoots back, so the one inside would go down in the end, and with every fighter down the game is
+          // over. Once swiped, the gun is put away: with no fighter nobody is swiped and the game goes on (the next
+          // half's wave brings anyone down back up).
+          await pages[inner].evaluate('briel.weapon.setEnabled(false)', false);
           hurtInside[inner]++;
           if (o.out && !pictured) {
             await pages[inner].screenshot(join(o.out, `mp-wave${w + 1}-${inner}-inside.png`));
@@ -185,7 +190,7 @@ try {
           }
         }
       }
-      if (!hurt && !running()) halves--; // the game ended during this half: not counted
+      if (!running()) ended ||= `the game ended during wave ${WAVES[w]}, ${inner} inside`;
       const mode = rootLog.filter((m) => m.t === 'mode').at(-1)?.mode;
       // Where the server has the two now, and whether it counts them armed and up.
       const last = new Map();
@@ -195,7 +200,8 @@ try {
       if (o.out) await pages[outer].screenshot(join(o.out, `mp-wave${w + 1}-${outer}-outside.png`));
     }
   }
-  ok('the one inside was reached in every half played', halves >= 3 && hurtInside.alice + hurtInside.bob === halves, `${JSON.stringify(hurtInside)} in ${halves} halves`);
+  ok('all six halves played (the game ran to the end)', halves === 6 && !ended, ended || `${halves} halves`);
+  ok('the one inside was reached in every half', hurtInside.alice + hurtInside.bob === 6, `${JSON.stringify(hurtInside)} of 6`);
   ok('a door a zombie shoved swings on both pages', swung.length > 0 && swung.every(([, a, b]) => a && b), `${swung.length} shoves: ${[...new Set(swung.map((s) => s[0]))].join(' ')}`);
   for (const who of ['alice', 'bob']) {
     ok(`${who}'s page: zombies seen in the café`, seen[who].inside > 0, `${seen[who].inside} positions`);
