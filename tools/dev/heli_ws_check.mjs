@@ -5,7 +5,8 @@
 // pilot flies to each of the code-locked homes and into it from the side and from above: no tick ever shows the cabin
 // inside one. Then the pilot vanishes in the air: the machine hangs still, a passenger takes the stick; with nobody at
 // it the others are put out after 20 s and the machine goes home. The admin's rule off in flight, and a game starting
-// with the machine in the air, empty it and send it home; a guest just hit can't board for 10 s.
+// with the machine in the air, empty it and send it home; a guest just hit can't board for 10 s, nor the guest who hit
+// them (nor jump by /parachute).
 //
 //   ADMIN_PASSWORD=... node tools/dev/heli_ws_check.mjs --api http://localhost:8460
 //
@@ -308,7 +309,16 @@ await sleep(300);
 ok('the hit landed', r3.log.some((m) => m.t === 'hurt'));
 await r3.ask({ op: 'in', id: ID });
 ok('just hit: boarding refused with its code', r3.log.some((m) => m.t === 'system' && m.code === 'heliFight') && !admin.seats().includes(r3.name));
-await sleep(10_000);
+// The one who hit: before, only being hit counted, and a hitter was back in the unhittable seat 0.6 s later.
+await walker.ask({ op: 'in', id: ID });
+ok('just hit someone: boarding refused with its code', walker.log.some((m) => m.t === 'system' && m.code === 'heliFight') && !admin.seats().includes(walker.name), JSON.stringify(admin.seats()));
+admin.send({ t: 'rules', parachute: true });
+await sleep(300);
+walker.send({ t: 'chute' });
+await sleep(300);
+ok('just hit someone: no /parachute either', walker.log.some((m) => m.t === 'chute' && m.ok === false && m.code === 'chuteFight') && !walker.log.some((m) => m.t === 'spawn' && m.drop), JSON.stringify(walker.log.filter((m) => m.t === 'chute').at(-1)));
+admin.send({ t: 'rules', parachute: false });
+await sleep(9_400);
 await r3.ask({ op: 'in', id: ID });
 ok('10 s later: in', admin.seats()[0] === r3.name, JSON.stringify(admin.seats()));
 await r3.ask({ op: 'out' });

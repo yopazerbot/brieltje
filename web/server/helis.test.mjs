@@ -115,6 +115,48 @@ test('an honest machine never turns faster than the turn budget refills (heliSte
   assert.ok(most < HELI_TURN / 1.9, 'the server allows twice that');
 });
 
+test('the attack: out of the machine, a hit on someone, back in 0.6 s later: refused, at the stick and beside it', () => {
+  // Before, boarding asked only "was I hit" (hurtAt): a player hit someone and was back in the unhittable seat at once
+  // (damage avoidance). Now hitting counts too, on the clock of the cars and bikes (game.mjs fightRefused), 10 s.
+  const s = setup();
+  const { game, h, local, player, ask, send, sent } = s;
+  const IN = { t: 'heli', op: 'in', id: ID };
+  const pia = player('pia');
+  const foe = player('foe', local(8, 6));
+  const hit = () => {
+    pia.nextHit = 0;
+    const hp = foe.hp;
+    send('pia', pia, { t: 'hit', target: 'foe', w: 'pistol', body: 1, head: 0 });
+    assert.ok(foe.hp < hp, 'the hit counted');
+  };
+  ask('pia', pia, IN);
+  assert.equal(h.seats[0], 'pia');
+  ask('pia', pia, { t: 'heli', op: 'out' });
+  Object.assign(pia.state, local(1.5, -0.4));
+  hit();
+  s.at(600);
+  ask('pia', pia, IN);
+  assert.equal(game.helis.of('pia'), null, 'not back at the stick');
+  assert.equal(sent.get('pia').at(-2).code, 'heliFight');
+  // Somebody else at the stick: no passenger's seat right after a hit either.
+  const bo = player('bo', local(1.5, -0.7));
+  ask('bo', bo, IN);
+  assert.equal(h.seats[0], 'bo');
+  s.at(5_000);
+  hit();
+  s.at(600);
+  ask('pia', pia, IN);
+  assert.deepEqual(h.seats, ['bo', null, null, null], 'no seat beside the pilot');
+  assert.equal(sent.get('pia').at(-2).code, 'heliFight');
+  // The one she hit may not board either; 10 s after her last hit she may.
+  Object.assign(foe.state, local(1.5, -1.0));
+  ask('foe', foe, IN);
+  assert.equal(game.helis.of('foe'), null);
+  s.at(9_500);
+  ask('pia', pia, IN);
+  assert.deepEqual(h.seats, ['bo', 'pia', null, null]);
+});
+
 test('boarding: within reach of the cabin on the server\'s positions, alive, on foot, not hit, not frozen, a still machine', () => {
   const s = setup();
   const { game, h, local, player, ask, sent, told } = s;

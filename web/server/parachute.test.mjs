@@ -234,6 +234,7 @@ test('no /parachute with the rule off, dead, in a game, just after a hit, indoor
     ['chuteNotNow', {}, (p) => ({ ...p, alive: false }), false],
     ['chuteNotNow', {}, (p) => p, true], // a game of the menu (Zombies, a party game)
     ['chuteFight', {}, (p) => ({ ...p, hurtAt: now - 5000 }), false],
+    ['chuteFight', {}, (p) => ({ ...p, hitAt: now - 5000 }), false], // hitting someone counts too (it didn't: a hit and away)
     ['chuteIndoors', {}, (p) => ({ ...p, state: { ...p.state, x: 2.5, y: -0.1, z: 5 } }), false], // inside the house's footprint
     ['chuteNotNow', {}, (p) => ({ ...p, drop: { from: now - 1000, until: now + 9000 } }), false],
   ];

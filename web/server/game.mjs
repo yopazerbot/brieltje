@@ -1405,7 +1405,7 @@ export class Game {
   /**
    * /parachute in the chat (Yoshi): a skydive from high over where the player stands, flown freely from there. The
    * server decides it: the admin's rule on, alive, on foot, outdoors, not in a drop already, no game of the menu going
-   * on (Zombies or a party game: a drop is out of every fight), not hit in the last HURT_CALM_MS (no escaping a fight
+   * on (Zombies or a party game: a drop is out of every fight), not hit nor hitting in the last HURT_CALM_MS (no escaping a fight
    * in the air, where nobody can be hurt), inside the game's edge, and at most once every CHUTE_MS. A refusal says
    * why with a code the page translates. It starts behind them facing their way (hands off, it lands where they
    * stand), or straight over them near the edge.
@@ -1416,7 +1416,7 @@ export class Game {
     const no = (code, args = {}) => this.send(p.ws, { t: 'chute', ok: false, code, args });
     if (!this.rules.parachute) return no('chuteOff');
     if (!p.alive || this.carOf(name) || this.horseOf(name) || this.bikeOf(name) || this.helis.of(name) || this.dropping(p, now) || this.modes.active) return no('chuteNotNow');
-    if (now - (p.hurtAt ?? -Infinity) < HURT_CALM_MS) return no('chuteFight');
+    if (this.inFight(p, now)) return no('chuteFight'); // hit or hitting someone (it was being hit only: a hit and away)
     if (now < (p.nextChute ?? 0)) return no('chuteWait', { s: Math.ceil((p.nextChute - now) / 1000) });
     if (INDOORS(st.x, st.z)) return no('chuteIndoors'); // go outside first
     if (!this.fence().inside(st.x, st.z)) return no('chuteNotNow');
@@ -1531,7 +1531,7 @@ export class Game {
     return true;
   }
 
-  /** Hit, or hitting someone, in the last HURT_CALM_MS: the one clock for the seats (fightRefused) and for holstering (state). */
+  /** Hit, or hitting someone, in the last HURT_CALM_MS: the one clock for the seats (fightRefused), /parachute and holstering (state). */
   inFight(p, now) {
     return now - Math.max(p.hurtAt ?? -Infinity, p.hitAt ?? -Infinity) < HURT_CALM_MS;
   }

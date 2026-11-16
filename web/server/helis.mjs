@@ -73,7 +73,7 @@ const NEEDED = [
 export class Helis {
   /**
    * `game`: the Game (server/game.mjs). `ground(x, z)`: the server's floor (the relief); `mono()`: the ticks' clock;
-   * `calmMs`: how long after being hit nobody boards (no escaping a fight, as with /parachute).
+   * `calmMs`: how long after being hit or hitting someone nobody boards (no escaping a fight, as with /parachute).
    */
   constructor(game, { ground, mono, calmMs }) {
     this.game = game;
@@ -196,7 +196,7 @@ export class Helis {
   }
 
   /**
-   * Boarding, in this order: a known id; no Zombies, no game, no room; the admin's rule on; not hit in the last calmMs;
+   * Boarding, in this order: a known id; no Zombies, no game, no room; the admin's rule on; not hit nor hitting in the last calmMs;
    * then (silently) alive, in no car and on no horse, bike or machine, not flying, not in a drop, not held by the host;
    * the machine not moving; close to its cabin on the server's positions; a free seat, seat 0 first. Every refusal
    * tells the asker alone the machine as it is, so its page stops waiting.
@@ -213,7 +213,9 @@ export class Helis {
     if (g.modes.zombies) return no('zNoHeli', 'No flying during Zombies.');
     if (g.fenced()) return no('gameNoHeli', 'No helicopter during a game.');
     if (!g.rules.heli) return no('heliOff', 'The admin has turned the helicopter off.');
-    if (now - (p.hurtAt ?? -Infinity) < this.calmMs) return no('heliFight', "You can't get in right after being hit.");
+    // Hit, or hitting someone (game.mjs fightRefused's clock): before, only being hit counted, and a player out of the
+    // machine hit someone and was back in its unhittable seat 0.6 s later (damage avoidance).
+    if (now - Math.max(p.hurtAt ?? -Infinity, p.hitAt ?? -Infinity) < this.calmMs) return no('heliFight', 'Not right after a fight. Wait a few seconds.');
     const st = p.state;
     if (!p.alive || !st || g.carOf(name) || g.horseOf(name) || g.bikeOf(name) || this.of(name) || st.flying || g.dropping(p, now) || g.host?.holds(p)) return no();
     if (!this.slow(h, now)) return no();
