@@ -58,7 +58,7 @@ export function heliView(v: unknown): HeliView | null {
  * nobody flies it. Getting out on foot only once it is at rest. In the air over DROP.jumpMin the use key, pilot or
  * passenger, asks the server to jump (`jump`), and nothing starts before it answers: its `heli` message takes you out of
  * the seat and its `spawn` with `sy` starts the drop where it has the machine (jumpTold), the canopy opening by itself
- * as alone; lower down the line says to fly higher or land. No longer named in your seat, you are out (on your feet
+ * as alone; lower down the line says to fly higher or land, and with the admin's parachute rule off to land first. No longer named in your seat, you are out (on your feet
  * beside it, or where it was in the air: you fall, unharmed).
  */
 export class HeliPilot {
@@ -90,8 +90,12 @@ export class HeliPilot {
   private upWas = false;
   /** The machine the server last put you out of, and when: a flight home just after it gets a line (srv.heliHome) */
   private putOutOf: { id: string; at: number } | null = null;
-  /** Together, the machine you were last out of in the air, and when: a jump's speed comes from it (jumpTold) */
-  private leftFrom: { m: Heli; at: number } | null = null;
+  /** Together, the machine you were last out of, when, and the camera's place and turn just before: a jump's speed and its first view (jumpTold) */
+  private leftFrom: { m: Heli; at: number; eye: THREE.Vector3 | null; look: THREE.Quaternion | null } | null = null;
+  /** The camera (update): its place before the server puts you out */
+  private cam: THREE.Camera | null = null;
+  /** Together: whether the admin's parachute rule is on (main.ts); off, the use key in the air asks no jump and the line says to land first */
+  chuteRule: () => boolean = () => true;
   /** s the passenger's line in the air still shows (the first time aloft in a session) */
   private airHint = 0;
   private shownAir = false;
@@ -290,7 +294,9 @@ export class HeliPilot {
     if (!tick && !home && same && (this.pending === v.id ? mine < 0 : this.pending === `fly:${v.id}` && mine !== 0)) this.unhush();
     if (this.heli === m && mine < 0) {
       this.putOutOf = { id: v.id, at: now };
-      this.leftFrom = { m, at: now };
+      // Where the camera was (behind the machine, or in your seat) before out() puts it in your eyes: a jump's drop is
+      // filmed from there (jumpTold), as alone.
+      this.leftFrom = { m, at: now, eye: this.cam?.position.clone() ?? null, look: this.cam?.quaternion.clone() ?? null };
       if (this.pending === 'jump') this.unhush(); // the answer to a jump: a `spawn` follows when it gave a parachute
       this.out(); // the server put you out (nobody at the stick for too long, a game, the rule off, a respawn): from where it was
     }
@@ -368,8 +374,8 @@ export class HeliPilot {
     if (!m) return false;
     if (this.together && performance.now() - this.lastSent < GATE_MS) return false;
     if (this.together ? !m.atRest : !m.canLeave) {
-      if (!m.s.ground && m.s.h >= DROP.jumpMin) return this.together ? this.askJump() : this.jump(m);
-      this.landHint = 2.5; // too low for the canopy: higher, or land
+      if (!m.s.ground && m.s.h >= DROP.jumpMin && (!this.together || this.chuteRule())) return this.together ? this.askJump() : this.jump(m);
+      this.landHint = 2.5; // too low for the canopy: higher, or land (together with the parachute rule off: land first)
       return false;
     }
     const at = m.exitSpot();
@@ -424,12 +430,18 @@ export class HeliPilot {
    * a step out sideways, the canopy opening by itself), from the machine you were just out of. Facing `yaw`.
    */
   jumpTold(x: number, y: number, z: number, yaw: number): void {
-    const left = this.leftFrom && performance.now() - this.leftFrom.at < 3000 ? this.leftFrom.m : null;
+    const from = this.leftFrom && performance.now() - this.leftFrom.at < 3000 ? this.leftFrom : null;
     this.leftFrom = null;
+    const left = from?.m ?? null;
     const j = left ? heliJump(left.s, HELIS.size) : null;
     const s = left?.s;
     const v = jumpStart(s?.vx ?? 0, s?.vz ?? 0, s?.vy ?? 0, j?.push ?? [0, 0], y - this.world.groundAt(x, z, y, 0).y);
     if (left) this.fov = left.fovScale;
+    // The camera back where it was before the server put you out (out() set it in your eyes): the handover starts there.
+    if (from?.eye && from.look && this.cam) {
+      this.cam.position.copy(from.eye);
+      this.cam.quaternion.copy(from.look);
+    }
     this.jumper.start({ x, z, feet: y, yaw, side: j?.side ?? 1 }, v);
   }
 
@@ -522,7 +534,7 @@ export class HeliPilot {
     else m.chase(camera, dt, -look[1], look[0]);
     camera.getWorldDirection(_dir);
     this.facing = [Math.atan2(-_dir.x, -_dir.z), Math.asin(Math.max(-1, Math.min(1, _dir.y)))];
-    if (!this.shownAir && !m.s.ground && m.s.h >= DROP.jumpMin) {
+    if (!this.shownAir && !m.s.ground && m.s.h >= DROP.jumpMin && this.chuteRule()) {
       this.shownAir = true;
       this.airHint = 5; // the passenger's line in the air (the jump), once a session
     }
@@ -546,13 +558,13 @@ export class HeliPilot {
     if (!this.piloting) {
       if (this.landHint > 0) return t('prompt.heliWait');
       if (!m.pilot) return t('prompt.heliTake', { up });
-      if (this.airHint > 0 && mode !== 'touch') return t('prompt.heliPassengerAir', { use, view: key('heliView', mode) });
+      if (this.airHint > 0 && mode !== 'touch' && this.chuteRule()) return t('prompt.heliPassengerAir', { use, view: key('heliView', mode) });
       if (this.rideHint > 0 && mode !== 'touch') return t('prompt.heliPassenger', { use, view: key('heliView', mode) });
       return '';
     }
     const s = m.s;
     if (s.down > 0) return t('prompt.heliDown', { n: Math.ceil(s.down) });
-    if (this.landHint > 0) return t('prompt.heliLow', { n: DROP.jumpMin });
+    if (this.landHint > 0) return this.together && !this.chuteRule() ? t('prompt.heliLand') : t('prompt.heliLow', { n: DROP.jumpMin });
     if (!s.engine && s.ground) return t('prompt.heliStart', { up });
     if (s.engine && s.rotor < HELI.LIFT_RPM) return t('prompt.heliSpinning', { up });
     if (s.atCeiling) return t('prompt.heliCeiling');
@@ -564,6 +576,7 @@ export class HeliPilot {
 
   /** Every frame: the machines (the one you fly and those standing or running down) and the instruments (`shown`: playing, not in the menu). */
   update(dt: number, camera: THREE.Camera, shown: boolean): void {
+    this.cam = camera;
     for (const m of this.machines) m.update(dt, camera.position);
     // After a jump: back on its pad once out of your sight; watched too long, it flies off first (AWAY), never vanishing
     // while drawn near. The view's width eases back.

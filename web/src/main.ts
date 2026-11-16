@@ -949,6 +949,7 @@ const helis = new HeliPilot(world, heliCrowns, (x, z) => treesLeftOut.has(treeKe
   dropView.handover(camera, at.x, at.feet, at.z, at.side);
 }, at: () => (player.jumped ? { x: player.x, z: player.z, feet: player.feet } : null) });
 scene.add(helis.group);
+helis.chuteRule = () => rules.parachute !== false; // together, the jump only with the admin's parachute rule on
 let bikeWanted: string | null = null; // asked the server for this bike
 // What knocks the street's loose things about: the cars and bikes being ridden (yours and the others', as drawn), and you on foot.
 // One list and one record per mover, kept from frame to frame (no new objects every frame).
@@ -3107,7 +3108,10 @@ net.onMessage = (m: ServerMsg) => {
     case 'spawn':
       if (m.ok) {
         // The start place (or the house's start), by parachute: up over where the server has us land.
-        if (m.drop && typeof m.sy === 'number' && typeof m.sx === 'number' && typeof m.sz === 'number') helis.jumpTold(m.sx, m.sy, m.sz, m.yaw ?? player.yaw); // a jump from a helicopter (src/heliPilot.ts)
+        if (m.drop && typeof m.sy === 'number' && typeof m.sx === 'number' && typeof m.sz === 'number') {
+          void parachutes.load(); // the rule may have been switched on since the start
+          helis.jumpTold(m.sx, m.sy, m.sz, m.yaw ?? player.yaw); // a jump from a helicopter (src/heliPilot.ts)
+        }
         else if (m.drop && player.chute === null) beginDrop({ x: m.x, z: m.z, yaw: m.yaw ?? player.yaw, sx: m.sx, sz: m.sz });
         break;
       }
