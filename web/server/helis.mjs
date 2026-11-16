@@ -217,8 +217,9 @@ export class Helis {
     if (g.fenced()) return no('gameNoHeli', 'No helicopter during a game.');
     if (!g.rules.heli) return no('heliOff', 'The admin has turned the helicopter off.');
     // Hit, or hitting someone (game.mjs fightRefused's clock): before, only being hit counted, and a player out of the
-    // machine hit someone and was back in its unhittable seat 0.6 s later (damage avoidance).
-    if (now - Math.max(p.hurtAt ?? -Infinity, p.hitAt ?? -Infinity) < this.calmMs) return no('heliFight', 'Not right after a fight. Wait a few seconds.');
+    // machine hit someone and was back in its unhittable seat 0.6 s later (damage avoidance). A grenade of theirs that can
+    // still go off counts too (game.mjs nadeLive): thrown, then aboard before its bang.
+    if (now - Math.max(p.hurtAt ?? -Infinity, p.hitAt ?? -Infinity) < this.calmMs || g.nadeLive(p, now)) return no('heliFight', 'Not right after a fight. Wait a few seconds.');
     const st = p.state;
     if (!p.alive || !st || g.carOf(name) || g.horseOf(name) || g.bikeOf(name) || this.of(name) || st.flying || g.dropping(p, now) || g.host?.holds(p)) return no();
     if (!this.slow(h, now)) return no();

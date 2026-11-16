@@ -158,6 +158,26 @@ test('the attack: out of the machine, a hit on someone, back in 0.6 s later: ref
   assert.deepEqual(h.seats, ['bo', 'pia', null, null]);
 });
 
+test('a grenade thrown, then aboard 0.3 s later: refused until it can no longer go off', () => {
+  // As a portal's trip (portalFight.test.mjs): the bang came after boarding, from a seat nobody can hit.
+  const s = setup();
+  const { h, player, ask, send, sent } = s;
+  const IN = { t: 'heli', op: 'in', id: ID };
+  const pia = player('pia');
+  send('pia', pia, { t: 'nade', x: pia.state.x, y: pia.state.y + 1.5, z: pia.state.z, vx: 4, vy: 3, vz: 0 });
+  assert.equal(pia.thrown.length, 1, 'thrown');
+  s.at(300);
+  ask('pia', pia, IN);
+  assert.deepEqual(h.seats, [null, null, null, null], 'not aboard');
+  assert.equal(sent.get('pia').at(-2).code, 'heliFight');
+  s.at(5_600); // 5.9 s after the throw: a bang may still be told
+  ask('pia', pia, IN);
+  assert.equal(h.seats[0], null);
+  s.at(100); // 6 s: it can't go off any more
+  ask('pia', pia, IN);
+  assert.equal(h.seats[0], 'pia', 'aboard');
+});
+
 test('boarding: within reach of the cabin on the server\'s positions, alive, on foot, not hit, not frozen, a still machine', () => {
   const s = setup();
   const { game, h, local, player, ask, sent, told } = s;
