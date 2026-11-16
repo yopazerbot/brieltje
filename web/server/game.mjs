@@ -548,7 +548,7 @@ export class Game {
 
   /** What a page in a room is told about it: its id, who opened it, its place. Null in the open world. */
   roomView() {
-    return this.room ? { id: this.room.id, owner: this.room.owner, place: this.room.arena.id } : null;
+    return this.room ? { id: this.room.id, owner: this.room.owner, place: this.room.arena.id, ...(this.room.duel ? { duel: this.room.duel } : {}) } : null;
   }
 
   /**
@@ -964,6 +964,7 @@ export class Game {
     if ((this.modes.noShooting || this.host?.holds(player)) && ['hit', 'rocket', 'nade', 'boom', 'shot', 'crack', 'vil'].includes(m.t)) return; // no fighting during a party game or a freeze
     // A room changes nothing of the open world and holds its players at its place (server/rooms.mjs).
     if (this.room && ROOM_REFUSED.has(m.t)) return;
+    if (this.room?.duel && (m.t === 'mode' || m.t === 'zwave')) return; // a duel room's game is the host's alone (server/duel.mjs)
     // Aboard a helicopter: out of every fight and game, no other vehicle, no trip (server/helis.mjs).
     if (HELI_REFUSED.has(m.t) && this.helis.of(name)) return;
     // In a car's seat or on a bike's saddle: nothing taken, collected, tagged, hurt or opened from it (server/carSeats.mjs).

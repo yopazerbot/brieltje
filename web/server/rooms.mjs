@@ -11,11 +11,14 @@
 // - Empty for EMPTY_MS: closed (a page that was in it and comes back is told, and goes back to the open world).
 // - One name in one place: joining a room ends that name's connection in the open world or another room.
 // - Kicks reach every place; the admin's player list shows where each one is.
+// - Host rooms (hostRoom): the Zombies duel's two (server/duel.mjs), opened by the host only. Not in the list, not
+//   joinable by their id, not counted in MAX_ROOMS, up to DUEL_PLAYERS each; the server alone puts a page in one (upgrade).
 
 import { randomBytes } from 'node:crypto';
 import { readFileSync } from 'node:fs';
 import { ARENAS, arenaEdge } from '../shared/arenas.mjs';
 import { loadBounds } from '../shared/bounds.mjs';
+import { Duel } from './duel.mjs';
 
 export const ROOM_PLAYERS = 8;
 export const MAX_ROOMS = 4;
@@ -31,12 +34,35 @@ export class Rooms {
     this.rooms = new Map(); // id -> { id, owner, arena, game, created, emptySince }
     this.onScore = null; // server.mjs: the board changed (its cache goes)
     main.hub = this;
+    this.duel = new Duel(this); // the host's Zombies duel and its two host rooms (server/duel.mjs)
     setInterval(() => this.sweep(), 10_000).unref();
   }
 
-  /** The open world and every room. */
+  /** The open world and every room (the duel's host rooms too). */
   games() {
-    return [this.main, ...[...this.rooms.values()].map((r) => r.game)];
+    return [this.main, ...[...this.rooms.values()].map((r) => r.game), ...this.duel.games()];
+  }
+
+  /**
+   * A host room (server/duel.mjs) for `owner` (its team) at `arena`, for up to `max`: a game of its own as a players'
+   * room, never in this.rooms (so not in the list, not joinable by its id, not counted in MAX_ROOMS, not swept).
+   */
+  hostRoom(owner, arena, max) {
+    let id;
+    do id = randomBytes(9).toString('base64url');
+    while (this.rooms.has(id));
+    const room = { id, owner, arena, edge: arenaEdge(arena, BOUNDS), max, duel: owner };
+    const game = this.make(room);
+    game.hub = this;
+    game.copyWorldFrom(this.main);
+    this.main.auth.log('room_opened', null, { username: owner, detail: `duel ${arena.id} (${id})` });
+    return { id, game };
+  }
+
+  /** A host room is done: its players go back to the open world (their pages connect there again). */
+  dropHostRoom(id, game) {
+    game.close();
+    this.main.auth.log('room_closed', null, { username: game.room?.owner ?? '', detail: `duel (${id})` });
   }
 
   /** Where `name` plays right now, or null. */
@@ -63,6 +89,7 @@ export class Rooms {
       const p = g.players.get(name);
       if (p) p.ws.close(4000, 'Logged in somewhere else');
     }
+    this.duel.joined(name, game);
   }
 
   /** A better Zombies run was kept (server/game.mjs zombieRun). */
@@ -113,9 +140,16 @@ export class Rooms {
     return { rooms: [...this.rooms.values()].sort((a, b) => a.created - b.created).map((r) => this.entry(r, viewer)), max: MAX_ROOMS };
   }
 
-  /** The WebSocket: `room` in the address picks a room; without it, the open world. */
+  /**
+   * The WebSocket: `room` in the address picks a room; without it, the open world. While the host's Zombies duel is on,
+   * a player on one of its teams goes to their team's host room whatever the address says (server/duel.mjs route): a
+   * page never picks a duel room. A watch view (the admin's) is never moved.
+   */
   upgrade(req, socket, head) {
-    const id = new URL(req.url, 'http://local').searchParams.get('room');
+    const q = new URL(req.url, 'http://local').searchParams;
+    const id = q.get('room');
+    const duel = this.duel.on && q.get('watch') !== '1' ? this.duel.route(this.main.auth.session(req)) : null;
+    if (duel) return duel.upgrade(req, socket, head); // the same checks of origin and session there
     if (id === null) return this.main.upgrade(req, socket, head);
     const room = ROOM_ID.test(id) ? this.rooms.get(id) : null;
     if (!room) return this.main.upgrade(req, socket, head, true); // told it is gone (after the same checks)
@@ -131,15 +165,16 @@ export class Rooms {
   roster() {
     const list = this.main.roster().map((p) => ({ ...p, room: null }));
     for (const r of this.rooms.values()) list.push(...r.game.roster().map((p) => ({ ...p, room: `${r.owner} · ${r.arena.id}` })));
+    for (const g of this.duel.games()) list.push(...g.roster().map((p) => ({ ...p, room: `duel ${g.room.duel} · ${g.room.arena.id}` })));
     return list;
   }
 
   /** The admin changed the open world's rules: every room takes them (its own limit kept) and its players hear it. */
   rulesChanged(rules, notice) {
-    for (const r of this.rooms.values()) {
-      r.game.rules = { ...rules, maxPlayers: ROOM_PLAYERS };
-      r.game.broadcast({ t: 'rules', rules: r.game.rules });
-      r.game.broadcast(notice);
+    for (const g of [...[...this.rooms.values()].map((r) => r.game), ...this.duel.games()]) {
+      g.rules = { ...rules, maxPlayers: g.room.max };
+      g.broadcast({ t: 'rules', rules: g.shownRules() }); // with the look of a duel's game (server/modes.mjs LOOKS)
+      g.broadcast(notice);
     }
   }
 
@@ -160,7 +195,7 @@ export class Rooms {
 
   /** The admin's scoreboard (server/stats.mjs): the open world's. */
   board(now) {
-    return this.main.board(now);
+    return { ...this.main.board(now), duel: this.duel.view(now) };
   }
 
   /** A code-locked home opened for session `key` (server/homes.mjs): every place hears of it. */

@@ -23,6 +23,7 @@
 import { words } from './words.mjs';
 import { KINDS, LOOKS } from './modes.mjs';
 import { ARENAS } from '../shared/arenas.mjs';
+import { DUEL_KINDS } from './duel.mjs';
 
 // The first two are the evening's blue and red (Yoshi, 16 Nov 2026: "team blue vs team red").
 export const EVENING_TEAMS = [
@@ -164,7 +165,7 @@ export class Host {
 
   smallestTeam() {
     const n = Array(this.teamCount).fill(0);
-    for (const name of this.game.players.keys()) if (name in this.teams && this.teams[name] < this.teamCount) n[this.teams[name]]++;
+    for (const name of this.game.hub?.games().flatMap((g) => [...g.players.keys()]) ?? this.game.players.keys()) if (name in this.teams && this.teams[name] < this.teamCount) n[this.teams[name]]++; // in the rooms too (the Zombies duel)
     return n.indexOf(Math.min(...n));
   }
 
@@ -183,6 +184,7 @@ export class Host {
       teams: { count: this.teamCount, list: EVENING_TEAMS },
       programme: this.programme, next: this.nextIndex, countdown: this.countdown ? { kind: this.countdown.kind, ms: Math.max(0, this.countdown.until - now) } : null,
       mode: this.game.modes.view(now), board: this.board(), kinds: KINDS, places: [...PLACES],
+      duel: this.game.hub?.duel?.view(now) ?? null, // the Zombies duel (server/duel.mjs)
     };
   }
 
@@ -283,7 +285,9 @@ export class Host {
         const e = this.programme[this.nextIndex];
         if (!e) return { error: 'The programme is done', code: 'programmeDone' };
         this.nextIndex++;
-        return this.startIn(e, by);
+        const r = this.startIn(e, by);
+        if (r.error) this.nextIndex--; // not started (the Zombies duel without its two teams): still the next one
+        return r;
       }
       case 'start': {
         const e = this.entry(b);
@@ -296,6 +300,7 @@ export class Host {
         g.broadcast({ t: 'announce', text: '', ms: 0 });
         return { ok: true };
       case 'stop':
+        g.hub?.duel?.stop(by); // the Zombies duel: both rooms at once
         g.modes.start('free', by);
         return { ok: true };
       case 'rewind':
@@ -317,24 +322,33 @@ export class Host {
    * its look: 'paint', 'real' or none (missing, null or ''). Any other look refuses the whole game.
    */
   entry(e) {
-    if (!e || typeof e !== 'object' || typeof e.kind !== 'string' || !Object.hasOwn(KINDS, e.kind)) return null;
+    if (!e || typeof e !== 'object' || typeof e.kind !== 'string' || !(Object.hasOwn(KINDS, e.kind) || e.kind === 'duel')) return null;
     const none = e.look === undefined || e.look === null || e.look === '';
     if (!none && !LOOKS.includes(e.look)) return null;
+    // The Zombies duel (server/duel.mjs): its warm-up (with its minutes) or its final, always at Sparrenhof.
+    if (e.kind === 'duel') return DUEL_KINDS.includes(e.duel) ? { kind: 'duel', duel: e.duel, place: 'sparrenhof', minutes: e.duel === 'warmup' ? int(e.minutes, 1, 30) : null, goal: null, look: none ? null : e.look } : null;
     const place = typeof e.place === 'string' && PLACES.has(e.place) ? e.place : 'house';
     return { kind: e.kind, place, minutes: int(e.minutes, 1, 30), goal: e.kind === 'teams' ? int(e.goal, 5, 100) : null, look: none ? null : e.look };
   }
 
   /** The game starts in ten seconds: everyone sees the countdown. */
   startIn(e, by) {
+    const duel = e.kind === 'duel' ? this.game.hub?.duel : null;
+    if (e.kind === 'duel') {
+      const why = duel ? duel.cannot() : { error: 'No rooms here', code: 'duelTeams' };
+      if (why) return why;
+    }
     if (this.countdown) clearTimeout(this.countdown.timer);
     const until = Date.now() + COUNTDOWN_MS;
     const timer = setTimeout(() => {
       this.countdown = null;
-      this.game.modes.start(e.kind, by, e.place, { minutes: e.minutes, goal: e.goal, look: e.look });
+      if (!duel) return this.game.modes.start(e.kind, by, e.place, { minutes: e.minutes, goal: e.goal, look: e.look });
+      const r = duel.start(e, by);
+      if (r.error) this.game.broadcast({ t: 'system', text: `The Zombies duel could not start: ${r.error}`, code: 'duelCant' });
     }, COUNTDOWN_MS);
     timer.unref?.();
     this.countdown = { kind: e.kind, until, timer };
-    this.game.broadcast({ t: 'announce', code: 'nextGame', args: { kind: e.kind }, text: `Next: ${KINDS[e.kind]}`, ms: COUNTDOWN_MS, count: true });
+    this.game.broadcast({ t: 'announce', code: 'nextGame', args: { kind: e.kind }, text: `Next: ${KINDS[e.kind] ?? 'Zombies duel'}`, ms: COUNTDOWN_MS, count: true });
     return { ok: true };
   }
 

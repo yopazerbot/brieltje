@@ -98,7 +98,7 @@ export class Modes {
 
   /** Two players on the same team: they can't hurt each other. In Zombies everyone is on one team. */
   friends(a, b) {
-    if (this.state.kind === 'zombies') return true;
+    if (this.state.kind === 'zombies' || this.game.room?.duel) return true; // a duel room is one team (server/duel.mjs)
     const t = this.teamOf(a);
     return !!t && t === this.teamOf(b);
   }

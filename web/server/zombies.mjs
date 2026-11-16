@@ -67,8 +67,11 @@ export class ZombieGame {
   /**
    * A new game for the players `names` at `arena` (shared/arenas.mjs: home, or a portal in Smetlede;
    * gathered there by modes.start). Its `edge` holds while it runs (game.fence).
+   * `opts` from the Zombies duel (server/duel.mjs), else none: `dice` ({ places, mix(wave), drops(wave) }, the same seed
+   * in both rooms: the same zombies in each wave and the same drops), and `duel` ({ final, over(z, now), downed(z, name) }):
+   * in the final nobody comes back (not at the wave's end, not helped up); a game over goes to the duel, not to finish.
    */
-  constructor(game, modes, names, now, arena = arenaOf('house')) {
+  constructor(game, modes, names, now, arena = arenaOf('house'), opts = {}) {
     this.game = game;
     this.modes = modes;
     this.arena = arena;
@@ -76,9 +79,12 @@ export class ZombieGame {
     this.edge = edge;
     /** Where the place's stall stands ({ x, y, z }; shared/stall.mjs STALL_SPOTS), or null: nothing is sold then */
     this.stallAt = stall ?? null;
-    this.horde = new Horde(nav, spots, { home, doors, doorOpen });
+    const dice = opts.dice ?? null;
+    /** The Zombies duel this game is one room's part of (server/duel.mjs), or null */
+    this.duel = opts.duel ?? null;
+    this.horde = new Horde(nav, spots, { home, doors, doorOpen, ...(dice ? { rand: dice.places, mix: dice.mix } : {}) });
     /** The rewards: what lies where, the claymores down, who has what */
-    this.loot = new Loot(nav);
+    this.loot = new Loot(nav, dice?.places ?? Math.random, dice?.drops ?? null);
     /** Coins and the stall (shared/stall.mjs): per player name for the game, a dropped connection included */
     this.stall = new Stall();
     /** Player name -> the session (p.key) its coins belong to: another session under the name starts at 0 (join) */
@@ -176,7 +182,7 @@ export class ZombieGame {
   }
 
   waveStarted(e) {
-    this.loot.wave();
+    this.loot.wave(e.wave);
     this.waveFighters = new Set([...this.game.players].filter(([n, p]) => this.fights(n, p)).map(([n]) => n));
     const code = e.bigs > 1 ? 'zWaveBigs' : e.big ? 'zWaveBig' : 'zWave';
     const more = e.bigs > 1 ? ' Big ones are with them!' : e.big ? ' A big one is with them!' : '';
@@ -234,7 +240,7 @@ export class ZombieGame {
         }
       } else if (e.type === 'cleared') {
         const paid = this.bonus(e.wave); // before revive: who is down now gets the down share
-        this.revive();
+        if (!this.duel?.final) this.revive(); // the duel's final: nobody comes back
         const s = Math.round(e.ms / 1000); // the break the horde set (shared/zombies.mjs breakAfter)
         this.modes.say(`Wave ${e.wave} beaten! The next one comes in ${s} seconds.`, 'zCleared', { n: e.wave, s });
         this.paid(paid); // each one's bonus line after the wave's own
@@ -487,6 +493,7 @@ export class ZombieGame {
     }
     // The board of best runs: accounts only, never a chosen wave (game.zombieRun).
     if (!this.custom) this.game.zombieRun?.(this.arena.id, names, wave, this.horde.beaten);
+    if (this.duel) return this.duel.over(this, now); // one room of the Zombies duel: the duel goes on (server/duel.mjs)
     this.modes.finish(`The zombies caught everyone at wave ${wave}.${this.record ? " That's a new best ever!" : ''}`, this.record ? 'zOverBest' : 'zOver', { n: wave, best: this.best?.wave ?? 0 });
   }
 
@@ -502,6 +509,7 @@ export class ZombieGame {
     if (now < (p.nextRevive || 0)) return;
     p.nextRevive = now + 250;
     if (m.on !== true) return this.letGo(name, 'stop');
+    if (this.duel?.final) return; // the duel's final: nobody is helped up
     const target = typeof m.name === 'string' ? m.name : '';
     const q = g.players.get(target);
     if (!q || target === name || q.alive || !this.down.has(target) || this.perchedOut.has(target) || this.horde.phase === 'over') return;
@@ -592,6 +600,7 @@ export class ZombieGame {
     const s = this.game.players.get(name)?.state;
     if (s && !this.fell.has(name)) this.fell.set(name, { x: s.x, y: s.y, z: s.z });
     this.downs[name] = (this.downs[name] ?? 0) + 1;
+    this.duel?.downed?.(this, name);
     this.modes.send();
   }
 
@@ -719,7 +728,7 @@ export class ZombieGame {
     if (p?.state && !this.edge.inside(p.state.x, p.state.z) && !this.down.has(name)) this.game.gather([name], this.arena);
     if (p && this.loot.kits.has(name)) this.game.send(p.ws, { t: 'zgift', kind: 'kit', kit: this.loot.kit(name) }); // back: what they had
     if (p) this.tell(name, p); // and their coins (0 when none: never the last game's)
-    if (this.down.has(name) && this.horde.phase === 'wave' && p) {
+    if (this.down.has(name) && (this.horde.phase === 'wave' || this.duel?.final) && p) { // the duel's final: down for good
       p.alive = false;
       p.hp = 0;
       p.respawnAt = Infinity;
