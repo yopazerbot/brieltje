@@ -123,13 +123,25 @@ export function readBike(e) {
   return { id: String(e[0]), age: n(e[1]), x: n(e[2]), y: n(e[3]), z: n(e[4]), yaw: n(e[5]), rider: typeof e[6] === 'string' ? e[6] : null, lie: e[7] === 1 || e[7] === -1 ? e[7] : 0 };
 }
 
-/** A helicopter entry: every number through `n`, every seat a name or null (anything else reads as empty). */
-export function readHeli(e) {
-  const who = (v) => (typeof v === 'string' ? v : null);
+/**
+ * A helicopter as a page takes it from the server, whichever way it came (a tick's entry: readHeli; a `heli` message
+ * or the welcome: src/heliPilot.ts heliView): every number finite (else 0) and within reach, the place within 100 km,
+ * the heading within ±10 rad, pitch and roll within ±1 rad, the rotor 0 to 1, `g` (at rest) 0 or 1, four seats each a
+ * name or null (anything else reads as empty). The server's own values pass unchanged.
+ */
+export function heliOf(id, v) {
+  const c = (x, lo, hi) => Math.max(lo, Math.min(hi, n(x)));
+  const seats = Array.isArray(v.seats) ? v.seats : [];
+  const who = (s) => (typeof s === 'string' ? s : null);
   return {
-    id: String(e[0]), age: n(e[1]), x: n(e[2]), y: n(e[3]), z: n(e[4]), yaw: n(e[5]), p: n(e[6]), r: n(e[7]), n: n(e[8]), g: e[9] === 1 ? 1 : 0,
-    seats: [who(e[10]), who(e[11]), who(e[12]), who(e[13])],
+    id, x: c(v.x, -1e5, 1e5), y: c(v.y, -1e5, 1e5), z: c(v.z, -1e5, 1e5), yaw: c(v.yaw, -10, 10), p: c(v.p, -1, 1), r: c(v.r, -1, 1), n: c(v.n, 0, 1), g: v.g === 1 ? 1 : 0,
+    seats: [who(seats[0]), who(seats[1]), who(seats[2]), who(seats[3])],
   };
+}
+
+/** A helicopter entry, checked as heliOf checks it; `age` through `n`. */
+export function readHeli(e) {
+  return { age: n(e[1]), ...heliOf(String(e[0]), { x: e[2], y: e[3], z: e[4], yaw: e[5], p: e[6], r: e[7], n: e[8], g: e[9], seats: e.slice(10, 14) }) };
 }
 
 export function readZombie(e) {

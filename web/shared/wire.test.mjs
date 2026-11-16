@@ -1,7 +1,7 @@
 // The `aim` flag in a player's state (shared/wire.mjs): the gun at their eye, for how the others see them.
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
-import { bikeFields, FLAG, heliFields, playerFields, readBike, readHeli, readPlayer } from './wire.mjs';
+import { bikeFields, FLAG, heliFields, heliOf, playerFields, readBike, readHeli, readPlayer } from './wire.mjs';
 
 const state = { x: 1, y: 2, z: 3, yaw: 0.5, pitch: 0.1, armed: true, flying: false, w: 'sniper', c: false };
 
@@ -45,4 +45,14 @@ test('a helicopter travels in the tick and comes out again; a hostile entry read
   const hostile = readHeli(['house', '9', 'x', {}, [], null, '1', true, NaN, '1', { name: 'a' }, ['b'], 7, '<b>']);
   assert.deepEqual(hostile, { id: 'house', age: 0, x: 0, y: 0, z: 0, yaw: 0, p: 0, r: 0, n: 0, g: 0, seats: [null, null, null, '<b>'] });
   assert.deepEqual(readHeli(['house', 0]).seats, [null, null, null, null], 'a short entry: empty seats');
+});
+
+test('a helicopter with huge numbers is held within reach, in a tick and in a message alike', () => {
+  const big = readHeli(['house', 5, 1e300, -1e308, 1e300, 1e300, 1e300, -1e300, 1e300, 1, 'p', null, null, null]);
+  assert.deepEqual(big, { id: 'house', age: 5, x: 1e5, y: -1e5, z: 1e5, yaw: 10, p: 1, r: -1, n: 1, g: 1, seats: ['p', null, null, null] });
+  const msg = heliOf('church', { x: -1e300, y: 7, z: Infinity, yaw: -1e9, p: 0.3, r: -2, n: -4, g: true, seats: 'abcd' });
+  assert.deepEqual(msg, { id: 'church', x: -1e5, y: 7, z: 0, yaw: -10, p: 0.3, r: -1, n: 0, g: 0, seats: [null, null, null, null] });
+  // The server's own values pass unchanged.
+  const h = { x: 512.54, y: 18.59, z: -750.51, yaw: -0.617, p: 0.9, r: -0.9, n: 1, g: 1, seats: ['a', 'b', null, 'c'] };
+  assert.deepEqual(heliOf('church', h), { id: 'church', ...h });
 });

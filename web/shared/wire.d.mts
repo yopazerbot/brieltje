@@ -139,4 +139,6 @@ export function readHorse(e: Entry): HorseSample;
 export function readBike(e: Entry): BikeSample;
 export function heliFields(h: { x: number; y: number; z: number; yaw: number; p?: number; r?: number; n?: number; g?: number; seats?: (string | null)[] }): Entry;
 export function readHeli(e: Entry): HeliSample;
+/** A helicopter from the server, held within reach (places, angles, rotor), its seats names or null. */
+export function heliOf(id: string, v: { x?: unknown; y?: unknown; z?: unknown; yaw?: unknown; p?: unknown; r?: unknown; n?: unknown; g?: unknown; seats?: unknown }): Omit<HeliSample, 'age'>;
 export function readBrute(e: Entry): BruteSample;
