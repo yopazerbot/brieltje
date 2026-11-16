@@ -213,7 +213,7 @@ export class Modes {
       // where they stand now. Every pane whole again for everyone: a fresh house for the game (the zombies
       // come in through a broken one).
       const arena = arenaOf(place);
-      this.game.gather(names, arena); // everyone at the place, on the ground: no parachute in Zombies (the first wave comes after 8 s)
+      this.game.gather(names, arena, false, 'hp'); // everyone at the place, on the ground: no parachute in Zombies (the first wave comes after 8 s); mid-fight not healed
       this.game.pistolsOnly?.(); // and with the pistol only: the other guns are found on the map
       this.game.roundOver = null;
       this.game.broken.clear();

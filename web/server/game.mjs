@@ -718,7 +718,7 @@ export class Game {
   /** The rest of joining (join): this player's messages and their leaving. */
   joined(ws, name, player) {
     // In a room without a game on: at the place's start, on the ground (a game on puts them in itself: zombies.mjs join).
-    if (this.room && !this.modes.zombies) this.gather([name], this.room.arena);
+    if (this.room && !this.modes.zombies) this.gather([name], this.room.arena, false, 'fight'); // back in a fight: moved, not healed
     this.broadcast({ t: 'scores', list: this.scoreList() }, name);
     this.goals?.joined(name, player.role);
 
@@ -1395,6 +1395,8 @@ export class Game {
     p.spawned = true;
     // Refused: the page goes back to where the server has the player, so both agree.
     const no = () => this.send(p.ws, { t: 'spawn', ok: false, x: st.x, z: st.z });
+    // Back in a fight by a reconnect (join): no start place (a drop out of reach, or the school grounds), as a trip.
+    if (this.inFight(p, now)) return no();
     if (now - p.joinTime > 90_000 || !p.alive || this.carOf(name) || this.horseOf(name) || this.bikeOf(name) || this.helis.of(name) || (!this.rules.portals && p.role !== 'admin')) return no();
     if (Math.hypot(st.x - p.joinedAt.x, st.z - p.joinedAt.z) > 30) return no();
     const [x, z, yaw] = to.out;
@@ -1458,6 +1460,7 @@ export class Game {
     p.spawned = true;
     const { x, z, yaw } = HOME_DROP;
     if (!this.rules.parachute || this.modes.zombies || now - p.joinTime > 90_000 || !p.alive || this.carOf(name) || this.horseOf(name) || this.bikeOf(name) || this.helis.of(name)) return;
+    if (this.inFight(p, now)) return; // back in a fight by a reconnect (join): no drop, where nobody can be hurt
     if (Math.hypot(st.x - x, st.z - z) > 30 || !this.fence().inside(x, z)) return;
     const from = this.dropFrom(x, z, yaw); // behind the start, along the lane: without steering it lands there
     Object.assign(st, { x: from.x, y: HOUSE.ground + TERRAIN.height(x, z) + DROP.height, z: from.z });
@@ -1482,6 +1485,9 @@ export class Game {
     if (this.horseOf(name)) return no('Get off the horse first.', 'travelHorse');
     if (this.bikeOf(name)) return no('Get off the bike first.', 'travelBike');
     if (this.helis.of(name)) return no('Get out of the helicopter first.', 'travelHeli');
+    // From the chat: not right after a fight (inFight), as the seats and /parachute (it was a way out of reach, the school
+    // grounds' spot among them). A portal walked onto stays as it was.
+    if (chat && this.inFight(p, now)) return no('Not right after a fight. Wait a few seconds.', 'heliFight');
     if (!chat) {
       const on = portalNear(st.x, st.z, (car ? CAR_REACH : REACH) + TRAVEL_SLACK);
       if (!on || on === to) return no();
@@ -1551,7 +1557,11 @@ export class Game {
     return true;
   }
 
-  /** Hit, or hitting someone, in the last HURT_CALM_MS: the one clock for the seats (fightRefused), /parachute and holstering (state). */
+  /**
+   * Hit (by anyone, a strongman or a zombie too), or hitting someone, in the last HURT_CALM_MS: the one clock for the
+   * seats (fightRefused), /parachute, the start places (spawn, homeDrop), trips from the chat (travel) and a reconnect
+   * (join). Holstering has its own, players only (inPlayerFight).
+   */
   inFight(p, now) {
     return now - Math.max(p.hurtAt ?? -Infinity, p.hitAt ?? -Infinity) < HURT_CALM_MS;
   }
@@ -2626,7 +2636,7 @@ export class Game {
    * dropFrom). The edge keeps it there however it is steered (fenceIn: the game's fence is that edge as long
    * as the game runs). Zombies doesn't use it (Yoshi, 7 Nov 2026: no parachute drops in Zombies).
    */
-  gather(names, arena = null, drop = false) {
+  gather(names, arena = null, drop = false, keep = null) {
     const now = Date.now();
     // The places to spread round: the house's outside start places, or, for Zombies started at another
     // portal (the bungalow's has no outside start places), where you come out of it, facing it.
@@ -2649,7 +2659,16 @@ export class Game {
     }
     [...names].sort(() => Math.random() - 0.5).forEach((name, k) => {
       const p = this.players.get(name);
-      if (p) this.respawn(name, p, now, spots.length ? spots[k % spots.length] : null, drop, fence);
+      if (!p) return;
+      // `keep`: someone alive in a fight (inFight) is moved, not healed: 'hp' keeps the health (the Zombies game
+      // starting), 'fight' the whole fight, no spawn protection either (back in a room by a reconnect: join). Before,
+      // both healed a player mid-fight.
+      const held = keep && p.alive && this.inFight(p, now) ? { hp: p.hp, protectedUntil: p.protectedUntil, backAt: p.backAt } : null;
+      this.respawn(name, p, now, spots.length ? spots[k % spots.length] : null, drop, fence);
+      if (!held) return;
+      p.hp = held.hp;
+      if (keep === 'fight') Object.assign(p, { protectedUntil: held.protectedUntil, backAt: held.backAt });
+      if (p.hp < HEALTH) this.send(p.ws, { t: 'hurt', hp: p.hp, by: '' }); // its page, back at full health by the respawn, told
     });
   }
 

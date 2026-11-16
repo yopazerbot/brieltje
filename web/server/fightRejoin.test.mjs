@@ -1,6 +1,12 @@
 import assert from 'node:assert/strict';
+import { readFileSync } from 'node:fs';
 import test from 'node:test';
+import { arenaEdge, arenaOf } from '../shared/arenas.mjs';
+import { loadBounds } from '../shared/bounds.mjs';
+import { noShoot } from '../shared/zones.mjs';
 import { Game } from './game.mjs';
+
+const BOUNDS = loadBounds(JSON.parse(readFileSync(new URL('../shared/bounds.json', import.meta.url), 'utf8')));
 
 // Out of a fight by reconnecting (game.mjs join, fights): a page in a fight dropped its socket and joined again, and
 // came back with full health, spawn protection, unarmed and without its fight clocks: unhittable at once, healed, and
@@ -8,10 +14,10 @@ import { Game } from './game.mjs';
 // them for the rest of its 10 s: the clocks, the health, no spawn protection, armed as they were. Outside that time,
 // or dead when they left, joining is as before.
 
-function setup() {
+function setup(room = null) {
   let clock = 1_800_000_000_000;
   Date.now = () => clock;
-  const game = new Game({ session: () => null, store: { addStats: async () => {}, setMeta: async () => {} }, log: () => {} }, []);
+  const game = new Game({ session: () => null, store: { addStats: async () => {}, setMeta: async () => {} }, log: () => {} }, [], room);
   for (const t of game.timers) clearInterval(t);
   game.auth = { ...game.auth, session: () => null, log: () => {}, addressOf: () => '127.0.0.1' };
   const sent = new Map();
@@ -133,4 +139,71 @@ test('outside the fight, or 10 s after it, joining is as before; dead when they 
   s.state(bob, false);
   assert.equal(bob.state.armed, false);
   assert.ok(game.inFight(bob, s.now()), 'no seat or parachute straight after');
+});
+
+test('back in a fight by a reconnect: no start place and no start drop (out of reach, or onto the school grounds)', () => {
+  // Before: after the restored join the page sent {t:'spawn', to:'home'} and got a protected drop (parachute on), or
+  // {t:'spawn', to:'school'} and stood on the school grounds where nobody shoots (parachute off).
+  const s = setup();
+  const { game } = s;
+  const ann = s.join('ann');
+  let bob = s.join('bob');
+  s.ready(ann, bob);
+  s.hit(ann, bob);
+  s.at(1_000);
+  s.drop('bob');
+  bob = s.join('bob');
+  game.rules.parachute = true;
+  s.send(bob, { t: 'spawn', to: 'home' });
+  assert.equal(game.dropping(bob, s.now()), false, 'no drop from the house\'s start');
+  assert.ok(s.hit(ann, bob), 'and hit');
+  s.drop('bob');
+  bob = s.join('bob');
+  game.rules.parachute = false;
+  s.send(bob, { t: 'spawn', to: 'school' });
+  assert.equal(noShoot(bob.state.x, bob.state.z), null, 'not onto the school grounds');
+  assert.deepEqual(s.sent.get('bob').filter((m) => m.t === 'spawn').map((m) => m.ok), [false], 'refused: the page goes back to where the server has him');
+  // Out of any fight, a fresh join may still pick both (as before).
+  const cas = s.join('cas');
+  s.send(cas, { t: 'spawn', to: 'school' });
+  assert.ok(noShoot(cas.state.x, cas.state.z), 'a fresh join starts at the school');
+  game.rules.parachute = true;
+  const dee = s.join('dee');
+  s.send(dee, { t: 'spawn', to: 'home' });
+  assert.equal(game.dropping(dee, s.now()), true, 'and drops from the house\'s start');
+});
+
+test('in a room: back in a fight by a reconnect, moved to its place but not healed or protected', () => {
+  const arena = arenaOf('church');
+  const s = setup({ id: 'r1', owner: 'ann', arena, edge: arenaEdge(arena, BOUNDS), max: 6 });
+  const ann = s.join('ann');
+  let bob = s.join('bob');
+  s.ready(ann, bob);
+  s.hit(ann, bob);
+  const hp = bob.hp;
+  s.at(1_000);
+  s.drop('bob');
+  bob = s.join('bob');
+  assert.equal(bob.hp, hp, 'not healed by the room\'s gathering');
+  assert.equal(bob.protectedUntil, 0, 'no spawn protection');
+  assert.equal(s.sent.get('bob').filter((m) => m.t === 'hurt').at(-1)?.hp, hp, 'his page told, after the gathering');
+  assert.ok(s.hit(ann, bob));
+});
+
+test('the Zombies game starting mid-fight gathers everyone but heals nobody in a fight', () => {
+  const s = setup();
+  const { game } = s;
+  const ann = s.join('ann');
+  const bob = s.join('bob');
+  const cas = s.join('cas');
+  s.ready(ann, bob, cas);
+  s.hit(ann, bob);
+  const hp = bob.hp;
+  cas.hp = 50; // hurt long ago, out of any fight: healed by the gathering as before
+  s.at(1_000);
+  game.modes.start('zombies', 'admin', 'house');
+  assert.equal(bob.hp, hp, 'in a fight: the health kept');
+  assert.equal(cas.hp, 100, 'out of one: healed');
+  assert.equal(s.sent.get('bob').filter((m) => m.t === 'hurt').at(-1)?.hp, hp);
+  game.modes.start('free', 'admin');
 });

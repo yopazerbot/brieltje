@@ -189,6 +189,26 @@ test('a grenade that hurts nobody holds the holster no longer than it can go off
   assert.equal(a.state.armed, false);
 });
 
+test('a trip from the chat waits for the fight\'s 10 s, with the seats\' line', () => {
+  // Before: 1 s after a fight, a chat trip to the school grounds (where nobody shoots) was taken.
+  const s = setup();
+  const { game } = s;
+  const a = s.player('ann', 0);
+  const b = s.player('bob', 6);
+  assert.ok(s.hit(b, a));
+  s.at(1_000);
+  const at = { x: a.state.x, z: a.state.z };
+  const told = [];
+  const send = game.send;
+  game.send = (ws, m) => (m.t === 'travel' && told.push(m), send(ws, m));
+  s.send(a, { t: 'travel', to: 'school', via: 'chat' });
+  assert.deepEqual([a.state.x, a.state.z], [at.x, at.z], 'not taken');
+  assert.deepEqual(told.map((m) => [m.ok, m.code]), [[false, 'heliFight']]);
+  s.at(9_100);
+  s.send(a, { t: 'travel', to: 'school', via: 'chat' });
+  assert.ok(Math.hypot(a.state.x - at.x, a.state.z - at.z) > 100, '10 s on: the trip is taken');
+});
+
 test('a page that stays in Action while dead (as an honest one does) may holster at once after its respawn', () => {
   const s = setup();
   const { game } = s;
