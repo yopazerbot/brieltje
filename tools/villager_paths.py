@@ -21,7 +21,9 @@ The villagers (web/src/world/villagers.ts, our own models from tools/villagers.p
   `bnext`: per line, where it may go on from its end: [line, point] pairs (another street's lane
   within BIKE_JOIN m going a way that doesn't double back; a dead end turns round onto the other side).
 - `seats`: [x, z, facing, height] places to sit: the benches of the church square, the chip shop and the
-  bus shelter (tools/town/houses.json). Facing is the game's heading (atan2 of the way they look).
+  bus shelter (tools/town/houses.json). Facing is the game's heading (atan2 of the way they look). Two chairs in
+  the café at the church (web/src/data/keet_shell.json's frame) carry a fifth number, 1.
+- `stands`: [x, z, facing] someone standing there all the time: behind the café's bar.
 - `hubs`: [x, z, radius, kind] busier places: 0 the church square, 1 the school, 2 the café Sparrenhof, 3 FC Smetlede's
   car park by the gate to its ground (its training and spectators are world/footballLife.ts's, inside the fence);
   `hubspots`, per hub, the spots there people stand about on (x, z, ...): public paving off the carriageways and the
@@ -386,6 +388,32 @@ for f in TOWN["fittings"]:
     for sx, sz in spots:
         seats.append([round(sx, 2), round(sz, 2), round(face, 3), h])
 
+# The café at the church (web/src/data/keet_shell.json, its fittings from tools/keet_fittings.py): two chairs taken,
+# one at the round table and one at the first wall table, and someone behind the bar facing the room. In the café's
+# frame (u along its front to the east, v into it); a seat's fifth number 1 marks it as the café's.
+KEET = json.loads((ROOT / "web/src/data/keet_shell.json").read_text(encoding="utf-8"))["frame"]
+
+
+def keet_at(u, v):
+    c, s = math.cos(KEET["a"]), math.sin(KEET["a"])
+    return KEET["o"][0] + u * c + v * s, KEET["o"][1] - u * s + v * c
+
+
+def keet_face(du, dv):
+    x0, z0 = keet_at(0, 0)
+    x1, z1 = keet_at(du, dv)
+    return math.atan2(x1 - x0, z1 - z0)
+
+
+KEET_CHAIR = 0.46  # m: the café chair's seat (tools/keet_fittings.py chair)
+for u, v, du, dv in ((3.95, 16.77, 0, -1), (4.83, 10.54, 0, 1)):
+    x, z = keet_at(u, v)
+    seats.append([round(x, 2), round(z, 2), round(keet_face(du, dv), 3), KEET_CHAIR, 1])
+stands = []
+for u, v, du, dv in ((1.5, 9.3, 1, 0),):
+    x, z = keet_at(u, v)
+    stands.append([round(x, 2), round(z, 2), round(keet_face(du, dv), 3)])
+
 # Where people may stand about at the busy places: a grid of spots on public paving (the village's road surface,
 # pavements and squares), off every carriageway and more than ROUTE_CLEAR m from the traffic's routes (cars cross the
 # church square), clear of walls and private homes. The game keeps those free of its own models' blocks too.
@@ -424,6 +452,7 @@ data = {
     "bkind": bkind,
     "bnext": bnext,
     "seats": seats,
+    "stands": stands,
     "hubs": [list(h) for h in HUBS],
     "hubspots": hubspots,
 }
@@ -432,4 +461,4 @@ total = sum(LineString(p).length for p in walks)
 btotal = sum(LineString(p).length for p in bikes)
 print(f"{OUT.relative_to(ROOT)}: {len(walks)} walks ({total / 1000:.1f} km, {sum(len(p) for p in walks)} points), {len(links)} links "
       f"({sum(1 for l in links if l[4])} over a road), {len(bikes)} bike lines ({btotal / 1000:.1f} km, {sum(1 for k in bkind if k == 0)} cycle lanes), "
-      f"{len(seats)} seats, {len(HUBS)} hubs with {[len(h) // 2 for h in hubspots]} spots; {OUT.stat().st_size // 1024} KB")
+      f"{len(seats)} seats, {len(stands)} standing, {len(HUBS)} hubs with {[len(h) // 2 for h in hubspots]} spots; {OUT.stat().st_size // 1024} KB")

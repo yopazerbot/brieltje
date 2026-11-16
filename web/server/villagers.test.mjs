@@ -7,6 +7,7 @@ import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { buildVillagers, villagerHittable, villagerPose, VKIND, HUB_PEOPLE, VILLAGER_DOWN_S, VILLAGER_HIT_MAX, VILLAGER_HIT_MS, VILLAGER_SHOT_MAX } from '../shared/villagers.mjs';
 import { noShoot } from '../shared/zones.mjs';
+import { makeKeet } from '../shared/keet.mjs';
 import { Game } from './game.mjs';
 
 const data = JSON.parse(readFileSync(new URL('../src/data/villagers.json', import.meta.url), 'utf8'));
@@ -40,6 +41,24 @@ test('nobody jumps: a villager moves no faster than it walks (but for the step t
       villagerPose(set, i, 1.7e9 + k * 3.1 + 0.1, b);
       if (a.here && b.here) assert.ok(Math.hypot(a.x - b.x, a.z - b.z) < d.pace * 0.1 + 1, `villager ${i} (${d.what})`);
     }
+  }
+});
+
+test('in the café at the church: two grown-ups on its chairs and one behind its bar, there all the time, as any grown-up a target in Action', () => {
+  const keet = makeKeet(JSON.parse(readFileSync(new URL('../src/data/keet_shell.json', import.meta.url), 'utf8')), { rooms: [], prisms: [], parts: [], fixtures: [], props: [], doors: [] });
+  const cafe = set.list.filter((d) => d.what === 'cafe');
+  assert.equal(cafe.length, 3);
+  assert.deepEqual(cafe.map((d) => d.role).sort(), ['sit', 'sit', 'stand']);
+  const p = pose();
+  for (const d of cafe) {
+    assert.ok([VKIND.man, VKIND.woman].includes(d.kind), `a grown-up with nothing in hand: ${d.kind}`);
+    assert.ok(d.shootable && !d.gone && d.rank === 0);
+    for (let k = 0; k < 50; k++) {
+      villagerPose(set, d.id, 1.7e9 + k * 97.3, p);
+      assert.ok(p.here && p.speed === 0, 'there, still');
+      assert.ok(keet.contains(p.x, p.z), 'inside the café');
+    }
+    assert.ok(villagerHittable(set, d.id, 1.7e9, p.x + 3, p.z, 10), 'a target from beside it');
   }
 });
 

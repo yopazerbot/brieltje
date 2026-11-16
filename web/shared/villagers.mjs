@@ -6,7 +6,8 @@
 //
 // A walker goes up and down a way of its own along the pavements (turning round at its ends, stopping now and
 // then), with a dog, a child or a friend beside it; a cyclist rides a way one way and comes round again; a
-// sitter is on its bench for a while and away for a while; a few stand about on each busy place.
+// sitter is on its bench for a while and away for a while; a few stand about on each busy place; in the café at the
+// church two sit and one stands behind the bar, there all the time.
 //
 // Only whole numbers go into the dice and only + - * / and square roots into the places, so two machines get
 // the same answer.
@@ -349,14 +350,16 @@ export function buildVillagers(data) {
 
   // ---- one on each bench, there for a while and away for a while
   const seats = [];
-  data.seats.forEach(([x, z, face], i) => {
+  data.seats.forEach(([x, z, face, , cafe], i) => {
     const r = dice(SEED + 900001 + Math.imul(i + 1, 4409));
-    const d = add([MAN, WOMAN, ELDER, ELDER, TEEN][Math.floor(r() * 5)], 'sit', 'sit', r(), 1);
+    // A chair in the café at the church (its fifth number 1): a grown-up with nothing in hand (no elder's stick), there
+    // all the time, in rain and at night.
+    const d = cafe === 1 ? add([MAN, WOMAN][Math.floor(r() * 2)], 'sit', 'cafe', 0, 1) : add([MAN, WOMAN, ELDER, ELDER, TEEN][Math.floor(r() * 5)], 'sit', 'sit', r(), 1);
     d.seat = i;
     d.face = face;
-    d.on = 60 + r() * 90;
-    d.period = d.on + 40 + r() * 80;
-    d.phase = r() * d.period;
+    d.on = cafe === 1 ? 1 : 60 + r() * 90;
+    d.period = cafe === 1 ? 1 : d.on + 40 + r() * 80;
+    d.phase = cafe === 1 ? 0 : r() * d.period;
     d.pts = [x, z];
     d.cx = x;
     d.cz = z;
@@ -378,6 +381,15 @@ export function buildVillagers(data) {
       d.r = rad + 8;
       d.gone = true;
     }
+  });
+  // ---- someone standing on a spot of its own all the time (behind the café's bar), facing one way: a grown-up
+  (data.stands ?? []).forEach(([x, z, face], i) => {
+    const r = dice(SEED + 1700003 + Math.imul(i + 1, 5153));
+    const d = add([MAN, WOMAN][Math.floor(r() * 2)], 'stand', 'cafe', 0, 1);
+    d.face = face;
+    d.pts = [x, z];
+    d.cx = x;
+    d.cz = z;
   });
   // Whoever walks beside someone is where that one is.
   for (const d of list) {
@@ -466,6 +478,12 @@ export function villagerPose(set, i, t, out) {
     out.yaw = d.face;
     out.sit = true;
     out.here = mod(t + d.phase, d.period) < d.on;
+    return out;
+  }
+  if (d.role === 'stand') {
+    out.x = d.pts[0];
+    out.z = d.pts[1];
+    out.yaw = d.face;
     return out;
   }
   if (d.gone) {

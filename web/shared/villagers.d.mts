@@ -15,8 +15,10 @@ export interface VillagerPaths {
   bikes: number[][];
   bkind: number[];
   bnext: number[][][];
-  /** x, z, facing, seat height */
+  /** x, z, facing, seat height, and 1 for a chair in the café at the church */
   seats: number[][];
+  /** x, z, facing: someone standing there all the time (behind the café's bar) */
+  stands?: number[][];
   /** x, z, radius, kind */
   hubs: number[][];
   hubspots: number[][];
@@ -26,8 +28,8 @@ export interface VillagerPaths {
 export interface VillagerDef {
   id: number;
   kind: number;
-  role: 'walk' | 'ride' | 'sit' | 'hub' | 'follow';
-  /** What it is out for: walker, elder, teen, jog, family, dog, chat, cyclist, sit, hub */
+  role: 'walk' | 'ride' | 'sit' | 'hub' | 'follow' | 'stand';
+  /** What it is out for: walker, elder, teen, jog, family, dog, chat, cyclist, sit, hub, cafe (in the café at the church) */
   what: string;
   /** 0 to 1: when fewer are out (night, rain, a slow device), those with the lowest stay */
   rank: number;
