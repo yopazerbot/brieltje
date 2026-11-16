@@ -78,6 +78,11 @@ export interface HeliEnv {
 
 export function heliStart(at?: { x?: number; y?: number; z?: number; yaw?: number }): HeliState;
 export function heliPlace(s: HeliState, x: number, y: number, z: number, yaw: number, rotor?: number): HeliState;
+/** m: over a person the floor is this far above theirs; a head counts for a skid at most HEAD_GIVE under it. */
+export const HEAD_TOP: number;
+export const HEAD_GIVE: number;
+/** The floor at (x, z) for a step looking under `top`, a head over anyone within reach where the skid is at it or above it. */
+export function heliHeads(floor: number, top: number, x: number, z: number, people: readonly { x: number; z: number; r: number }[]): number;
 /** A steady hover at (x, y, z) facing `yaw`: still, the rotor at full speed, the engine on, holding the spot and the height. */
 export function heliHover(s: HeliState, x: number, y: number, z: number, yaw: number): HeliState;
 export function heliBump(s: HeliState, speed?: number): HeliState;

@@ -2,7 +2,7 @@ import * as THREE from 'three';
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
 import HELIS from '../../shared/heli.json';
-import { AWAY, awayInput, awayKeep, EV, HELI, heliBump, heliExit, heliHover, heliPlace, heliStart, heliStep, type HeliEnv, type HeliInput, type HeliState } from '../../shared/heli.mjs';
+import { AWAY, awayInput, awayKeep, EV, HELI, heliBump, heliExit, heliHeads, heliHover, heliPlace, heliStart, heliStep, type HeliEnv, type HeliInput, type HeliState } from '../../shared/heli.mjs';
 import { netClock, Track } from '../net/track';
 import type { CrashHit, Obstacle } from './car';
 import type { World } from './collision';
@@ -886,9 +886,9 @@ export class Heli {
       let y = this.world.groundAt(x, z, top, 0).y;
       const water = waterLevel(x, z);
       if (water !== null && water > y && water <= top) y = water;
-      // Nobody is landed on: over a person the floor is just above their head.
-      for (const o of others) if (Math.hypot(o.x - x, o.z - z) < o.r + 0.4) y += 2.1;
-      return y;
+      // Nobody is landed on: over a person the floor is just above their head, where the skid is above it already
+      // (shared/heli.mjs heliHeads: walking up to a machine never lifts it).
+      return heliHeads(y, top, x, z, others);
     };
     const edge = this.world.bounds?.nearest(this.s.x, this.s.z, HELI.EDGE_PAD) ?? null;
     const pad = padNear(this.s.x, this.s.z, HELI.MAGNET_R + 1);

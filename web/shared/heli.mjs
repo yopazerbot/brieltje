@@ -136,6 +136,25 @@ export function heliPlace(s, x, y, z, yaw, rotor = s.rotor) {
   return s;
 }
 
+/** m: over a person the floor is this far above the floor they stand on (just over their head). */
+export const HEAD_TOP = 2.1;
+/** m: a head counts as a floor for a skid at most this far under it (one step's sink at SINK_CAP is 0.12 m). */
+export const HEAD_GIVE = 0.15;
+
+/**
+ * The floor at (x, z) for a step that looks for floors under `top` (a skid's or the hub's height plus STEP_UP), with
+ * people standing round: `floor` the floor there, `people` [{x, z, r}]. Nobody is landed on: over a person within reach
+ * the floor is just above their head, so a machine coming down on them stops over their heads and rests there. But a
+ * head counts only where the skid is already at it or above it: a person walking up to a machine that stands, or that
+ * hovers lower than their head, never lifts it or bumps it. Several people are one head high, not stacked.
+ */
+export function heliHeads(floor, top, x, z, people) {
+  const head = floor + HEAD_TOP;
+  if (head > top - HELI.STEP_UP + HEAD_GIVE) return floor;
+  for (const o of people) if (Math.hypot(o.x - x, o.z - z) < o.r + 0.4) return head;
+  return floor;
+}
+
 /**
  * A steady hover at (x, y, z) facing `yaw`: still, level, the rotor at full speed and the engine on, holding that spot
  * and that height, the lever where a hover keeps it. Together, a passenger who takes the stick of a machine hanging in

@@ -2,7 +2,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
-import { AWAY, EV, HELI, SKIDS, awayInput, awayKeep, heliBump, heliExit, heliFly, heliGap, heliHover, heliJump, heliPlace, heliStart, heliToBody, heliToWorld } from './heli.mjs';
+import { AWAY, EV, HELI, SKIDS, awayInput, awayKeep, heliBump, heliExit, HEAD_GIVE, HEAD_TOP, heliFly, heliGap, heliHeads, heliHover, heliJump, heliPlace, heliStart, heliToBody, heliToWorld } from './heli.mjs';
 import { DROP, dropStep, jumpStart } from './parachute.mjs';
 import { END_GARDEN, HOMES, homeAt, inEndGarden } from './homes.mjs';
 
@@ -253,6 +253,48 @@ test('heliPlace sets it down still; a running rotor keeps the engine on', () => 
   const s = hovering(30);
   heliPlace(s, 10, 5, -3, 1, 1);
   assert.deepEqual([s.x, s.y, s.z, s.yaw, s.vx, s.vy, s.ground, s.engine], [10, 5, -3, 1, 0, 0, true, true]);
+});
+
+test('people round it: nobody walking up lifts or bumps a machine; one coming down on them rests over their heads', () => {
+  const people = (...at) => at.map(([x, z]) => ({ x, z, r: 0.3 }));
+  const env = (who) => flat({ ground: (x, z, top) => heliHeads(0, top, x, z, who) });
+  const watch = (s, secs, input, who) => {
+    let hi = -Infinity, lo = Infinity, bump = false;
+    fly(s, secs, input, env(who), (q) => {
+      hi = Math.max(hi, q.y);
+      lo = Math.min(lo, q.y);
+      bump ||= !!(q.ev & EV.BUMP);
+    });
+    return { hi, lo, bump };
+  };
+  // Standing on its pad (engine off, then running), someone 1.5 m right of the hub and 0.4 m behind it: 0.63 m from the
+  // rear skid. It stays down (it went 2.1 m up, rotor still, until they stepped away, then dropped and bumped).
+  for (const rotor of [0, 1]) {
+    const s = heliPlace(heliStart(), 0, 0, 0, 0, rotor);
+    const w = watch(s, 2, {}, people([1.5, 0.4]));
+    assert.ok(w.hi < 0.01 && s.ground && !w.bump, `rotor ${rotor}: up to ${w.hi.toFixed(2)} m`);
+    const v = watch(s, 2, {}, people());
+    assert.ok(v.hi < 0.01 && !v.bump, `rotor ${rotor}, they step away: up to ${v.hi.toFixed(2)} m, bump ${v.bump}`);
+  }
+  // Hovering 1.2 m up, lower than a head: people walk up under each skid. It holds its height.
+  {
+    const s = hovering(1.2);
+    const w = watch(s, 3, {}, people([0.95, 0.71], [-0.95, 0.71], [0.95, -2.11], [-0.95, -2.11]));
+    assert.ok(w.hi < 1.4 && !w.bump, `a low hover with people under it: up to ${w.hi.toFixed(2)} m`);
+  }
+  // Coming down on two people (under both rear skids) with full down: it stops over their heads, one head high, not
+  // two, without a bump (half on heads and half on the ground it holds off there and does not settle).
+  {
+    const s = hovering(12);
+    const w = watch(s, 8, { lift: -1 }, people([0.95, 0.71], [-0.95, 0.71]));
+    assert.ok(w.lo > HEAD_TOP - HEAD_GIVE && s.y < HEAD_TOP + 0.3 && !w.bump, `came down to ${w.lo.toFixed(2)} m, stays at ${s.y.toFixed(2)}, bump ${w.bump}`);
+  }
+  // Four under its four skids: it comes to rest on their heads.
+  {
+    const s = hovering(12);
+    const w = watch(s, 8, { lift: -1 }, people([0.95, 0.71], [-0.95, 0.71], [0.95, -2.11], [-0.95, -2.11]));
+    assert.ok(w.lo > HEAD_TOP - HEAD_GIVE && s.ground && !w.bump, `came down to ${w.lo.toFixed(2)} m, ground ${s.ground}, bump ${w.bump}`);
+  }
 });
 
 test('heliHover: two seconds hands off from it stay within 1 m across and 1 m in height, in still air and in a wind', () => {
