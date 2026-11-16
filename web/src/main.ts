@@ -811,7 +811,7 @@ const hostNotice = new HostNotice();
 const watchView = watch ? new WatchView() : null;
 let watching = false;
 const killsOf = new Map<string, number>();
-onWatch((o) => watchView?.set(o.target, o.mode));
+onWatch((o) => watchView?.set(o.target, o.mode), () => welcomed && (net.switchTo(null), true)); // a player in a duel's room: this view connects there
 let eveningTeam: keyof typeof EVENING_TEAMS | null = null;
 const EVENING_TEAMS = { blue: 'eteam.blue', red: 'eteam.red', green: 'eteam.green', purple: 'eteam.purple' } as const;
 const GAME_NAMES = { hide: 'game.hide', tag: 'game.tag', treasure: 'game.treasure', teams: 'game.teams', zombies: 'game.zombies', duel: 'game.duel' } as const;

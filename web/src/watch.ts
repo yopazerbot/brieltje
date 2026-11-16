@@ -20,6 +20,11 @@ export interface Watch {
   tile: number;
   /** How many frames the page shows (1 to 4): their views share the graphics chip */
   views: number;
+  /**
+   * The Zombies duel's room this frame watches ('blue' or 'red'), or '' for the open world: the connection asks for it by
+   * its side (src/net/client.ts, server/rooms.mjs upgrade), only the admin's session is let in. Set by the watch page.
+   */
+  duel: '' | 'blue' | 'red';
 }
 
 export type WatchMode = 'behind' | 'eyes';
@@ -27,6 +32,8 @@ export interface WatchOrder {
   /** The player to follow, or '' for none yet */
   target: string;
   mode: WatchMode;
+  /** Where that player plays: a duel team's room, or '' for the open world */
+  duel: '' | 'blue' | 'red';
 }
 
 function detect(): Watch | null {
@@ -47,7 +54,7 @@ function detect(): Watch | null {
   const tile = Number(d.tile);
   const views = Number(d.views);
   if (!Number.isInteger(views) || views < 1 || views > 4 || !Number.isInteger(tile) || tile < 1 || tile > views) return null;
-  return { tile, views };
+  return { tile, views, duel: '' };
 }
 
 export const watch: Watch | null = detect();
@@ -62,14 +69,25 @@ export function tellWatchPage(state: 'ready' | 'notAdmin' | 'ended'): void {
   }
 }
 
-/** Whom to follow: from the watch page around this frame, and only from it. */
-export function onWatch(f: (order: WatchOrder) => void): void {
+/**
+ * Whom to follow: from the watch page around this frame, and only from it. `moved`: the player is in another place (the
+ * open world or a duel team's room) than this frame watches; the connection goes there (watch.duel says where) and it
+ * says true, or false when it can't yet (not connected the first time): then the next order (each second) asks again.
+ */
+export function onWatch(f: (order: WatchOrder) => void, moved?: () => boolean): void {
   if (!watch) return;
+  const w = watch;
   addEventListener('message', (e) => {
     if (e.origin !== location.origin || e.source !== window.parent) return;
-    const m = e.data as { briel?: unknown; target?: unknown; mode?: unknown } | null;
+    const m = e.data as { briel?: unknown; target?: unknown; mode?: unknown; duel?: unknown } | null;
     if (!m || m.briel !== 'watch') return;
-    f({ target: typeof m.target === 'string' ? m.target.slice(0, 20) : '', mode: m.mode === 'eyes' ? 'eyes' : 'behind' });
+    const duel = m.duel === 'blue' || m.duel === 'red' ? m.duel : '';
+    f({ target: typeof m.target === 'string' ? m.target.slice(0, 20) : '', mode: m.mode === 'eyes' ? 'eyes' : 'behind', duel });
+    if (duel !== w.duel) {
+      const was = w.duel;
+      w.duel = duel;
+      if (!moved?.()) w.duel = was;
+    }
   });
 }
 

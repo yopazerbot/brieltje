@@ -156,6 +156,10 @@ export class Rooms {
       // no or invalid Origin header: game.upgrade refuses it
     }
     const same = !!from && from === req.headers.host;
+    // A watch view of the admin's hall screen asks for a duel team's room by its side (`duel=blue|red`, never its id):
+    // that room's game.upgrade lets in the admin's session only, as the open world's does. No duel on: the open world.
+    const side = q.get('watch') === '1' && this.duel.on ? q.get('duel') : null;
+    if (side === 'blue' || side === 'red') return this.duel.state.sides[side].game.upgrade(req, socket, head);
     const duel = this.duel.on && same && q.get('watch') !== '1' ? this.duel.route(this.main.auth.session(req)) : null;
     if (duel) return duel.upgrade(req, socket, head); // the same checks of origin and session there
     if (id === null) return this.main.upgrade(req, socket, head);

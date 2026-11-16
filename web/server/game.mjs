@@ -527,6 +527,7 @@ export class Game {
     for (const t of this.timers) clearInterval(t);
     if (this.modes.state.kind === 'zombies') this.modes.state.z.stop();
     for (const p of this.players.values()) p.ws.close(4004, 'The room was closed');
+    for (const w of this.watchers) w.ws.close(4004, 'The room was closed'); // a watch view in a duel's room: back to the open world
     this.wss.close();
   }
 
@@ -574,11 +575,12 @@ export class Game {
         ws.close(4004, 'No such room');
       });
     }
-    // A watch view (src/watch.ts): the admin's session only, in the open world, a few at once. It sees every player
-    // (a wallhack, so nobody else may), and is never a player.
+    // A watch view (src/watch.ts): the admin's session only, in the open world or a Zombies duel's host room (the
+    // hall screen, server/rooms.mjs upgrade), a few at once; never in a players' room. It sees every player (a
+    // wallhack, so nobody else may), and is never a player.
     if (new URL(req.url, 'http://local').searchParams.get('watch') === '1') {
       const v = Number(new URL(req.url, 'http://local').searchParams.get('v'));
-      if (session.role !== 'admin' || this.room || this.watchers.size >= MAX_WATCHERS || !(v >= PROTO)) {
+      if (session.role !== 'admin' || (this.room && !this.room.duel) || this.watchers.size >= MAX_WATCHERS || !(v >= PROTO)) {
         socket.write('HTTP/1.1 403 Forbidden\r\n\r\n');
         return socket.destroy();
       }

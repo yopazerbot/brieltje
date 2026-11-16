@@ -23,7 +23,7 @@
 import { words } from './words.mjs';
 import { KINDS, LOOKS } from './modes.mjs';
 import { ARENAS } from '../shared/arenas.mjs';
-import { DUEL_KINDS } from './duel.mjs';
+import { DUEL_KINDS, SIDES as DUEL_SIDES } from './duel.mjs';
 import { FIELDS } from '../shared/flagFields.mjs';
 
 // The first two are the evening's blue and red (Yoshi, 16 Nov 2026: "team blue vs team red").
@@ -191,7 +191,24 @@ export class Host {
       programme: this.programme, next: this.nextIndex, countdown: this.countdown ? { kind: this.countdown.kind, ms: Math.max(0, this.countdown.until - now) } : null,
       mode: this.game.modes.view(now), board: this.board(), kinds: KINDS, places: [...PLACES],
       duel: this.game.hub?.duel?.view(now) ?? null, // the Zombies duel (server/duel.mjs)
+      inDuel: this.inDuel(), // who plays in its rooms: the hall screen follows them there (admin/watch)
     };
+  }
+
+  /**
+   * Everyone in the Zombies duel's two rooms (server/duel.mjs): their side, standing or down, and their counts (the hall
+   * screen's "follow the action" watches them change). For the admin only, as the rest of this view.
+   */
+  inDuel() {
+    const st = this.game.hub?.duel?.state;
+    if (!st) return [];
+    return DUEL_SIDES.flatMap((side) => {
+      const g = st.sides[side].game;
+      const z = g.modes.state.kind === 'zombies' ? g.modes.state.z : null;
+      return [...g.players.entries()].map(([name, p]) => ({
+        name, side, alive: p.alive, kills: p.score.kills, deaths: p.score.deaths, beaten: z?.horde.beaten[name] ?? 0,
+      }));
+    });
   }
 
   // ------------------------------------------------------------------ what the host does
