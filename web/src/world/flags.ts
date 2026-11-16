@@ -67,6 +67,15 @@ const plinthMat = new THREE.MeshStandardMaterial({ color: '#bdb8ad', roughness: 
 const bandGeo = new THREE.CylinderGeometry(0.635, 0.66, 0.09, 24).translate(0, PLINTH_H - 0.08, 0);
 const ringGeo = new THREE.RingGeometry(RING_IN, RING_OUT, 56).rotateX(-Math.PI / 2);
 const columnGeo = (h: number, r: number) => new THREE.CylinderGeometry(r, r, h, 16, 1, true).translate(0, h / 2, 0);
+const baseColumnGeo = columnGeo(COLUMN, 0.3);
+const droppedColumnGeo = columnGeo(COLUMN_DROPPED, 0.22);
+/** Each team's stand materials, made once and shared by every field's stands (a field change makes no new ones). */
+const teamMats = (color: string) => ({
+  band: new THREE.MeshStandardMaterial({ color, roughness: 0.6 }),
+  ring: new THREE.MeshBasicMaterial({ color, transparent: true, opacity: 0.8, depthWrite: false, polygonOffset: true, polygonOffsetFactor: -2 }),
+  column: new THREE.MeshBasicMaterial({ color, alphaMap: fade, transparent: true, opacity: 0.35, depthWrite: false, side: THREE.DoubleSide }),
+});
+const standMats: Record<FlagTeam, ReturnType<typeof teamMats>> = { blue: teamMats(FLAG_COLORS.blue), red: teamMats(FLAG_COLORS.red) };
 
 /** One flag: its staff and its waving cloth (a geometry of its own: its points move every frame). */
 class Flag {
@@ -83,7 +92,7 @@ class Flag {
     this.rest = (geo.attributes.position.array as Float32Array).slice();
     this.cloth = new THREE.Mesh(geo, new THREE.MeshStandardMaterial({ map: clothTexture(color), side: THREE.DoubleSide, roughness: 0.8 }));
     this.cloth.castShadow = true;
-    this.column = new THREE.Mesh(columnGeo(COLUMN_DROPPED, 0.22), new THREE.MeshBasicMaterial({ color, alphaMap: fade, transparent: true, opacity: 0.5, depthWrite: false, side: THREE.DoubleSide }));
+    this.column = new THREE.Mesh(droppedColumnGeo, new THREE.MeshBasicMaterial({ color, alphaMap: fade, transparent: true, opacity: 0.5, depthWrite: false, side: THREE.DoubleSide }));
     this.column.visible = false;
     this.root.add(staff, knob, this.cloth);
     for (const m of [staff, knob, this.cloth, this.column]) {
@@ -135,31 +144,35 @@ export class FlagWorld {
     if (view.field !== this.field) this.build(view.field);
   }
 
-  /** The two stands of `fieldId` (shared/flagFields.mjs). */
+  /**
+   * The two stands, made once with shared geometries and materials, put where `fieldId` has them (shared/flagFields.mjs):
+   * a change of field moves them, nothing is made or left behind.
+   */
   private build(fieldId: string): void {
-    for (const s of this.stands.values()) s.removeFromParent();
-    this.stands.clear();
     this.field = fieldId;
     const field = fieldOf(fieldId);
     for (const team of TEAMS) {
+      let stand = this.stands.get(team);
+      if (!stand) {
+        stand = new THREE.Group();
+        const mats = standMats[team];
+        const plinth = new THREE.Mesh(plinthGeo, plinthMat);
+        plinth.castShadow = plinth.receiveShadow = true;
+        const band = new THREE.Mesh(bandGeo, mats.band);
+        const ring = new THREE.Mesh(ringGeo, mats.ring);
+        ring.position.y = 0.04;
+        const column = new THREE.Mesh(baseColumnGeo, mats.column);
+        column.position.y = PLINTH_H;
+        stand.add(plinth, band, ring, column);
+        stand.traverse((o) => {
+          o.userData.ignoreRay = true;
+          (o as THREE.Mesh).raycast = () => {};
+        });
+        this.stands.set(team, stand);
+        this.group.add(stand);
+      }
       const [x, z, y] = field.bases[team].stand;
-      const color = FLAG_COLORS[team];
-      const stand = new THREE.Group();
       stand.position.set(x, y, z);
-      const plinth = new THREE.Mesh(plinthGeo, plinthMat);
-      plinth.castShadow = plinth.receiveShadow = true;
-      const band = new THREE.Mesh(bandGeo, new THREE.MeshStandardMaterial({ color, roughness: 0.6 }));
-      const ring = new THREE.Mesh(ringGeo, new THREE.MeshBasicMaterial({ color, transparent: true, opacity: 0.8, depthWrite: false, polygonOffset: true, polygonOffsetFactor: -2 }));
-      ring.position.y = 0.04;
-      const column = new THREE.Mesh(columnGeo(COLUMN, 0.3), new THREE.MeshBasicMaterial({ color, alphaMap: fade, transparent: true, opacity: 0.35, depthWrite: false, side: THREE.DoubleSide }));
-      column.position.y = PLINTH_H;
-      stand.add(plinth, band, ring, column);
-      stand.traverse((o) => {
-        o.userData.ignoreRay = true;
-        (o as THREE.Mesh).raycast = () => {};
-      });
-      this.stands.set(team, stand);
-      this.group.add(stand);
     }
   }
 
@@ -186,9 +199,9 @@ export class FlagWorld {
         this.last.delete(team);
       } else if (f.at === 'ground') {
         root.visible = true;
-        root.position.set(f.x, f.y, f.z);
+        root.position.set(f.x ?? 0, f.y ?? 0, f.z ?? 0);
         root.rotation.set(0.35, 0.8, 0, 'YXZ'); // leaning where it fell
-        flag.column.position.set(f.x, f.y, f.z);
+        flag.column.position.copy(root.position);
         this.last.delete(team);
       } else {
         const at = f.by ? where(f.by) : null;
@@ -218,7 +231,7 @@ export class FlagWorld {
       if (f.at === 'carried') {
         const at = f.by ? where(f.by) : null;
         if (at) out.push({ x: at.x, y: at.y, z: at.z, color: FLAG_COLORS[team], carried: true, name: f.by });
-      } else if (f.at === 'ground') out.push({ x: f.x, y: f.y, z: f.z, color: FLAG_COLORS[team], carried: false });
+      } else if (f.at === 'ground') out.push({ x: f.x ?? 0, y: f.y ?? 0, z: f.z ?? 0, color: FLAG_COLORS[team], carried: false });
       else {
         const [x, z, y] = field.bases[team].stand;
         out.push({ x, y, z, color: FLAG_COLORS[team], carried: false });

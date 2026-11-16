@@ -12,11 +12,11 @@ import { FLAG_COLORS } from '../../shared/flagFields.mjs';
 export type FlagTeam = 'blue' | 'red';
 export interface FlagState {
   at: 'home' | 'carried' | 'ground';
-  /** Who carries it */
+  /** Who carries it (then no place: the pages draw it on the carrier, where they may see them) */
   by?: string;
-  x: number;
-  y: number;
-  z: number;
+  x?: number;
+  y?: number;
+  z?: number;
   /** On the ground: ms until it goes home by itself */
   ms?: number;
 }
@@ -30,7 +30,9 @@ export interface FlagGameView {
   vehicles?: { bikes: string[] };
 }
 export interface FlagEvent {
-  ev: 'taken' | 'dropped' | 'returned' | 'captured';
+  ev: 'taken' | 'dropped' | 'returned' | 'captured' | 'safe';
+  /** 'safe': carried where nobody fights ('zone') or into a private home ('home'), so it went home */
+  why?: 'zone' | 'home';
   /** The flag's team */
   team: FlagTeam;
   /** Who did it ('' for a flag home by itself) */
@@ -145,6 +147,7 @@ export class FlagHud {
     const text = e.ev === 'taken' ? (you ? t('flag.takenYou', { flag }) : t('flag.taken', { name: e.name, flag }))
       : e.ev === 'dropped' ? t('flag.dropped', { name: e.name, flag })
       : e.ev === 'returned' ? (e.name ? t('flag.returned', { name: e.name, flag }) : t(`flag.homeAgain.${e.team}`))
+      : e.ev === 'safe' ? t(e.why === 'home' ? 'flag.safeHome' : 'flag.safeZone', { name: e.name, flag })
       : t('flag.captured', { name: e.name, flag, team: t(`eteam.${other(e.team)}`) });
     this.line.textContent = text;
     this.line.style.setProperty('--team', FLAG_COLORS[e.ev === 'captured' ? other(e.team) : e.team]);
@@ -164,7 +167,7 @@ export class FlagHud {
     const base = good ? 523.25 : 392; // C5 or G4
     const notes: [number, number, number][] = ev === 'taken' ? [[base, 0, 0.12], [base * 1.5, 0.12, 0.2]]
       : ev === 'dropped' ? [[base * 1.2, 0, 0.12], [base * 0.8, 0.12, 0.22]]
-      : ev === 'returned' ? [[base, 0, 0.1], [base * 1.25, 0.09, 0.1], [base * 1.5, 0.18, 0.25]]
+      : ev === 'returned' || ev === 'safe' ? [[base, 0, 0.1], [base * 1.25, 0.09, 0.1], [base * 1.5, 0.18, 0.25]]
       : [[base, 0, 0.12], [base * 1.25, 0.12, 0.12], [base * 1.5, 0.24, 0.12], [base * 2, 0.36, 0.45]];
     for (const [f, at, len] of notes) {
       const o = ctx.createOscillator();

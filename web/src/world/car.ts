@@ -65,6 +65,8 @@ export interface CarState {
   passenger?: string | null;
   /** A spawned Tesla: its kind (shared/car.json: placed) */
   kind?: string;
+  /** One of Steal the flag's parked cars (server/flags.mjs): there only while it is played */
+  flag?: boolean;
 }
 
 export interface DriveInput {

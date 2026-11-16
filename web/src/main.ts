@@ -1134,6 +1134,8 @@ let indoorsAt = makeIndoors([...house.prisms, ...(house.surroundings?.prisms ?? 
 // The echo of where you are and the walls between you and the sounds of out of doors (world/acoustics.ts).
 const roomSound = (acoustics.now = new Acoustics({ ...CHURCH_DATA, ground: churchAccess.point([0, 0, 0]).y }, (x, z, y) => indoorsAt(x, z, y)));
 const placedCars = () => cars.filter((c) => c.kind);
+/** The ids of Steal the flag's parked cars seen so far (addPlaced): not counted as spawned Teslas. */
+const fieldCars = new Set<string>();
 /** A placed Tesla taken away: if you sit in it, you get out first. */
 function removePlaced(c: Car): void {
   if (c === car && (driving || riding)) getOut(false);
@@ -1147,7 +1149,9 @@ function removePlaced(c: Car): void {
 /** A placed Tesla into the game (drawn, solid, drivable); null for an unknown kind or one too many. */
 function addPlaced(st: CarState): Car | null {
   const spec = placedSpec(st.kind ?? '', st);
-  if (!spec || placedCars().length >= PLACED_MAX) return null;
+  // Steal the flag's cars (server/flags.mjs, `flag`) don't count against the spawned Teslas' most, as on the server.
+  if (st.flag) fieldCars.add(st.id);
+  if (!spec || (!st.flag && placedCars().filter((c) => !fieldCars.has(c.id)).length >= PLACED_MAX)) return null;
   const c = new Car(world, trunks, st.id, spec, st.kind);
   cars.push(c);
   scene.add(c.group);
@@ -1520,7 +1524,7 @@ turboBox.addEventListener('change', () => {
 function applyRules(next: Rules): void {
   rules = next;
   // No flying in the Zombies game (out of their reach for good; the server holds to it too).
-  player.canFly = next.flying && !games.zombies;
+  player.canFly = next.flying && !games.zombies && !games.flagOn; // nor in Steal the flag
   if (!player.canFly) player.flying = false;
   flyBox.checked = next.flying;
   spawnBox.checked = next.spawn ?? false;
@@ -2719,6 +2723,7 @@ function removeThing(): void {
 /** Why you can't go somewhere from the chat or the menu's list now (the server refuses too), or null. */
 function travelBlock(): (() => string) | null {
   if (games.fenced) return () => t('srv.travelGame');
+  if (games.flagOn) return () => t('srv.flagNoTravel'); // Steal the flag: nobody travels while it is played
   if (!rules.travel && me?.role !== 'admin') return () => t('srv.travelChatOff');
   if (!combat.alive) return () => t('chat.notDown');
   return null;
@@ -3623,7 +3628,7 @@ renderer.setAnimationLoop((now: number) => {
   marketStall.show(games.zombies ? stallSpot(games.view.zombies?.place) : null, games.view.phase === 'break'); // the stall at the Zombies place (world/stall.ts)
   // The Zombies game: the clowns and strongmen stand aside, nobody flies, and whoever is down waits for the wave.
   clowns.paused = games.standAside || !!solo; // alone too (Yoshi: "Strongmen should stay out of zombie")
-  player.canFly = rules.flying && !games.zombies;
+  player.canFly = rules.flying && !games.zombies && !games.flagOn;
   if (!player.canFly) player.flying = false;
   combat.waiting = games.view.kind !== 'zombies' ? null : games.zombies && !solo ? () => (helpedBy ? t('z.helping', { name: helpedBy }) : t('z.downWait')) : () => '';
   if (menu.open) {
@@ -3759,7 +3764,7 @@ renderer.setAnimationLoop((now: number) => {
     // The portals: on a pad (or stopped on one in the car) the list of places opens, and takes the
     // number keys, the wheel or D-pad and E. Not on horseback, nor from the passenger seat.
     const mode = menu.mode ?? 'kbm';
-    let pad = !rules.portals || trip || dead || riding || onHorse || onBike || helis.aboard || games.fenced || games.carrying ? null
+    let pad = !rules.portals || trip || dead || riding || onHorse || onBike || helis.aboard || games.fenced || games.flagOn ? null
       : driving ? (Math.abs(car.speed) < CAR_SLOW ? portalNear(car.x, car.z, CAR_REACH) : null)
       : portalNear(player.x, player.z);
     if (pad && !driving && Math.abs(player.feet - portals.groundOf(pad)) > 1.5) pad = null; // flying over it
@@ -4002,7 +4007,7 @@ renderer.setAnimationLoop((now: number) => {
     if (downed) prompt = helping?.start ? t('prompt.reviving', { name: downed }) : t('prompt.revive', { use, name: downed });
     hud.setRing(helping ? (helping.start ? (now - helping.start) / helping.ms : 0) : null);
     if (pad) prompt = ''; // the list says it all
-    else if (!stallAim && (!inCar || onBike) && portalNear(player.x, player.z) && (onHorse || onBike || !rules.portals || games.fenced || games.carrying)) prompt = t(onHorse ? 'prompt.horsePortal' : onBike ? 'prompt.bikePortal' : games.fenced ? 'prompt.portalGame' : games.carrying ? 'prompt.flagPortal' : 'prompt.portalsOff');
+    else if (!stallAim && (!inCar || onBike) && portalNear(player.x, player.z) && (onHorse || onBike || !rules.portals || games.fenced || games.flagOn)) prompt = t(onHorse ? 'prompt.horsePortal' : onBike ? 'prompt.bikePortal' : games.fenced ? 'prompt.portalGame' : games.flagOn ? 'prompt.flagPortal' : 'prompt.portalsOff');
     hud.setPrompt(goals.prompt(prompt, mode)); // when it says nothing else: a timed route's race on offer (world/goals.ts)
     const armed = action && !dead && !inCar;
     hud.setWeapon(armed, dead || inCar ? '' : weapon.status);
