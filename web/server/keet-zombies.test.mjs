@@ -6,6 +6,7 @@ import { arenaEdge, arenaOf, ARENAS, portalOf, villageGround } from '../shared/a
 import { loadBounds } from '../shared/bounds.mjs';
 import { makeChurch } from '../shared/church.mjs';
 import { makeKeet } from '../shared/keet.mjs';
+import { Loot } from '../shared/loot.mjs';
 import { makeCafe } from '../shared/sparrenhof.mjs';
 import { stallBox } from '../shared/stall.mjs';
 import { makeTerrain } from '../shared/terrain.mjs';
@@ -285,6 +286,30 @@ test('a wave at the church: zombies reach a player in a toilet behind two shut d
   assert.ok(worst < 0.4, `inside the café no zombie walks on a chair or higher (the back door's steps aside): ${worst.toFixed(2)} m`);
   assert.ok(outAt >= 0 && outAt - swipeAt < 60000, `out of the café after the player within ${outAt - swipeAt} ms`);
   t.diagnostic(`first swipe in the toilet ${swipeAt} ms after the start (the first break is ${8000} ms); all out ${outAt - swipeAt} ms after; doors shoved ${[...shoved].join(' ')}`);
+});
+
+test('claymores, stakes and turrets in the café: on its floor only, a doorway too, and none of them shuts a way', () => {
+  const loot = new Loot(church0.nav);
+  const regions = () => keet.spots.map((s) => church0.nav.region(church0.nav.seed(s.x, s.y, s.z).node)).join();
+  const before = regions();
+  const kit = loot.kit('p');
+  Object.assign(kit, { claymores: 2, stakes: 3, turrets: 1 });
+  const [dx, dz] = W(4.73, 0.6); // the front doorway, just inside its leaf
+  const me = { x: W(4.73, 1.8)[0], y: F, z: W(4.73, 1.8)[1] };
+  const at = (x, z, y = F) => ({ x, y, z, yaw: 0 });
+  assert.ok(loot.place('p', me, at(dx, dz), 0).mine, 'a claymore in the front doorway');
+  const along = -Math.atan2(Math.cos(a) === 0 ? 1 : -Math.sin(a), Math.cos(a)); // the game's yaw along the front wall
+  const row = loot.placeStakes('p', me, { ...at(...W(4.73, 0.15), F + 0.05), yaw: along }, null).row;
+  assert.ok(row, 'a row of stakes in it');
+  assert.ok(row.b - row.a <= 0.94, `no wider than the doorway: ${(row.b - row.a).toFixed(2)} m`);
+  assert.ok(loot.placeTurret('p', me, at(...W(4.2, 2.5)), 0).turret, 'a turret in the front room');
+  // Not in a wall, not on the counter, not in the air over the pool table.
+  Object.assign(kit, { claymores: 2 });
+  for (const [u, v, y, what] of [[2.75, 9.5, F + 1.1, 'on the counter'], [5.58, 2.2, F, 'in the east wall'], [2.5, 4.4, F + 1.5, 'over the pool table']]) {
+    const [x, z] = W(u, v);
+    assert.equal(loot.spot({ x: x - 0.5, y: F, z }, at(x, z, y)), null, what);
+  }
+  assert.equal(regions(), before, 'every room as joined as before');
 });
 
 test('the other places\' grids are as they were', () => {
