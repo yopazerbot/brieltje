@@ -138,7 +138,8 @@ def old_farm():
     # The house: u -8.29 to 0.24, d 0 to 8.96, its ridge along the street.
     E, RG, D, ov = 6.4 + lift, 10.1 + lift, 8.96, .3
     k = (RG - E) / (D / 2)
-    house = Roof([(-8.29 - ov, -ov), (.36, -ov), (.36, D + ov), (-8.29 - ov, D + ov)],
+    # (its verge over the barn ends on its gable's wall, u 0.24: past it the barn's roof would be cut away under it)
+    house = Roof([(-8.29 - ov, -ov), (.24, -ov), (.24, D + ov), (-8.29 - ov, D + ov)],
                  [eave((0, -ov), (0, 1), E - k * ov, k), eave((0, D + ov), (0, -1), E - k * ov, k)], under="#cfccc5", edge="#232426", board=.2)
     # The barn and the link beside the house under one roof, u 0.24 to 8.29, d 0 to 7.73; lower.
     EB, RB, DB = 4.4 + lift, 8.0 + lift, 7.73
@@ -216,17 +217,19 @@ def old_farm():
     h.wall((2.886, 17.5), (6.82, 17.5), top_over([wing], (2.886, 17.5), (6.82, 17.5)), bottom=FL - .1, out=(0, -1))
     # The barn's back over the flat roof.
     h.wall((3.1, 7.01), (8.29, 7.01), top_over([barn], (3.1, 7.01), (8.29, 7.01)), bottom=FL - .1, out=(0, 1))
+    # ... and the link's side over the flat roof, where the barn's back wall steps out to the link's.
+    h.wall((3.1, 7.01), (3.1, 7.74), top_over([barn], (3.1, 7.01), (3.1, 7.74)), bottom=FL - .1, out=(1, 0))
     flat_roof(h, flat, FL)
     draw_roofs(h, roofs)
     # Gutters and downpipes on the street front, the house's back and the barn.
-    for R, kk, EE, u0, u1, dd, out, pipes in ((house, k, E, -8.29 - ov, .36, -ov, (0, -1, 0), [(-8.15, -.08), (.12, -.08)]),
+    for R, kk, EE, u0, u1, dd, out, pipes in ((house, k, E, -8.29 - ov, .24, -ov, (0, -1, 0), [(-8.15, -.08), (.12, -.08)]),
                                               (house, k, E, -8.29 - ov, .16, D + ov, (0, 1, 0), [(-8.15, D + .08)]),
-                                              (barn, kb, EB, .36, 8.29 + .25, -ov, (0, -1, 0), [(8.17, -.08)])):
+                                              (barn, kb, EB, .24, 8.29 + .25, -ov, (0, -1, 0), [(8.17, -.08)])):
         ye = EE - kk * ov - .22
         h.gutter((u0, dd, ye), (u1, dd, ye), out, "#6b6e6c", down=[(u, d, gy(u, d)) for u, d in pipes])
     tile = "#202123"
-    h.tile_ends((-8.29 - ov, -ov, E - k * ov), (.36, -ov, E - k * ov), (0, -1, 0), tile)
-    h.tile_ends((.36, -ov, EB - kb * ov), (8.54, -ov, EB - kb * ov), (0, -1, 0), tile)
+    h.tile_ends((-8.29 - ov, -ov, E - k * ov), (.24, -ov, E - k * ov), (0, -1, 0), tile)
+    h.tile_ends((.24, -ov, EB - kb * ov), (8.54, -ov, EB - kb * ov), (0, -1, 0), tile)
     h.chimney(-7.3, D / 2, .55, .7, RG - .8, RG + .9, "vh_brick")
     # --- the garden beyond the barn: the low wall with its railing along the street's edge, two conifers ------------------
     railing_wall(h, [(8.42, -.22), (9.6, -.25), (20.4, .55)], [3.0, 6.0, 9.0], "#a5a29b", "#1b1b1b")
