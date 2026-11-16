@@ -75,7 +75,7 @@ const HURT_CALM_MS = 10_000;
 // The most the admin can allow at once (every player's moves go to every other one). 32 for a LAN night (Yoshi, 11 Nov 2026:
 // about 30 people; tools/dev/crowd.mjs measures what a full house costs the server).
 const MAX_PLAYERS = 32;
-/** The most watch views at once (src/watch.ts: the admin's watch page shows up to four, a second screen four more). */
+/** The most watch views at once, the open world and the duel's rooms together (src/watch.ts: the admin's watch page shows up to four, a second screen four more). */
 const MAX_WATCHERS = 8;
 const KEYFRAME = 20; // ticks: everything goes to every page at least this often (once a second), moved or not
 const OLD_EVERY = 2; // ticks: pages from before protocol 2 get the full states every other tick (ten a second, as before)
@@ -580,7 +580,8 @@ export class Game {
     // wallhack, so nobody else may), and is never a player.
     if (new URL(req.url, 'http://local').searchParams.get('watch') === '1') {
       const v = Number(new URL(req.url, 'http://local').searchParams.get('v'));
-      if (session.role !== 'admin' || (this.room && !this.room.duel) || this.watchers.size >= MAX_WATCHERS || !(v >= PROTO)) {
+      const watching = this.hub ? this.hub.games().reduce((n, g) => n + g.watchers.size, 0) : this.watchers.size; // all places together
+      if (session.role !== 'admin' || (this.room && !this.room.duel) || watching >= MAX_WATCHERS || !(v >= PROTO)) {
         socket.write('HTTP/1.1 403 Forbidden\r\n\r\n');
         return socket.destroy();
       }

@@ -141,6 +141,14 @@ const watchAt = (cookie, q, headers = { Cookie: cookie, Origin: o.api }) => new 
 });
 const wb = await watchAt(admin, '&duel=blue');
 const wr = await watchAt(admin, '&duel=red');
+// Eight in all, the open world and the duel's rooms together: two in the rooms, the first one (w) and five more in the
+// open world, then none.
+const six = [];
+for (let i = 0; i < 5; i++) six.push(await watchAt(admin, ''));
+const ninth = [await watchAt(admin, ''), await watchAt(admin, '&duel=blue')];
+ok('eight watch views at most in all (the open world and the duel rooms together)', six.every((c) => !c.refused) && ninth.every((c) => c.refused), [...six, ...ninth].map((c) => (c.refused ? 'x' : '.')).join(''));
+for (const c of six) c.ws.close();
+await sleep(400);
 const wbw = wb.of('welcome')[0];
 ok("the admin watches blue's room: told so, with blue's player", wbw?.watch === true && wbw.room?.duel === 'blue' && wbw.players.some((p) => p.name === blueOne) && !wbw.players.some((p) => p.name === redOne));
 ok("and red's room", wr.of('welcome')[0]?.room?.duel === 'red' && wr.of('welcome')[0].players.some((p) => p.name === redOne));

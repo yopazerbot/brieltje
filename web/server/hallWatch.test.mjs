@@ -190,6 +190,24 @@ test("the duel's end closes its rooms' watchers (4004: back to the open world); 
   }
 });
 
+test('eight watch views at most in all: the open world and both duel rooms together', () => {
+  const env = setup();
+  try {
+    env.begin(['ann'], ['bob']);
+    const got = [];
+    for (let i = 0; i < 4; i++) got.push(env.ask(env.admin, '&watch=1'));
+    for (let i = 0; i < 2; i++) got.push(env.ask(env.admin, '&watch=1&duel=blue'));
+    for (let i = 0; i < 2; i++) got.push(env.ask(env.admin, '&watch=1&duel=red'));
+    assert.ok(got.every((w) => w !== 'refused'), 'eight are let in');
+    assert.equal(env.ask(env.admin, '&watch=1&duel=red'), 'refused', 'a ninth in a duel room');
+    assert.equal(env.ask(env.admin, '&watch=1'), 'refused', 'a ninth in the open world');
+    got[0].close(1000);
+    assert.notEqual(env.ask(env.admin, '&watch=1&duel=blue'), 'refused', 'one gone: one more');
+  } finally {
+    env.stop();
+  }
+});
+
 test("the host's view says who stands inside a private home (the hall screen shows a card for them), nothing more", () => {
   const env = setup();
   try {
