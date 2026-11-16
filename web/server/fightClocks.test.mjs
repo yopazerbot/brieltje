@@ -92,3 +92,24 @@ test('a reconnect into a room keeps the whole fight on inFight, a strongman\'s h
   game.gather(['cas'], null, false, 'fight');
   assert.equal(c.hp, hp, 'not healed');
 });
+
+test('during Zombies a thrown grenade holds no holster; outside Zombies it still does', () => {
+  const s = setup();
+  const { game } = s;
+  const a = s.player('ann', 0);
+  game.modes.state = { kind: 'zombies', phase: 'wave', z: { stop: () => {}, spareNade: () => false } };
+  s.nade(a);
+  assert.equal(a.thrown.length, 1, 'thrown');
+  s.at(150);
+  s.state(a, false);
+  assert.equal(a.state.armed, false, 'Explore at once');
+  // Out of Zombies, as before (holsterFight.test.mjs): the grenade holds the holster until it can go off.
+  game.modes.state = { kind: 'free' };
+  const b = s.player('bob', 6);
+  s.state(b, true);
+  s.at(16_000); // a grenade back
+  s.nade(b);
+  s.at(150);
+  s.state(b, false);
+  assert.equal(b.state.armed, true, 'held');
+});
