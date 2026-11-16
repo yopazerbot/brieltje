@@ -283,6 +283,7 @@ def seventies():
         "vh_brick2": {"texture": "nb_brick", "tint": "#8c5e52", "normalScale": .55},  # the narrow house: nb_red's light end
         "vh_roof": {"texture": "roof_tiles", "tint": "#35373b", "normalScale": .3},
         "vh_paving": {"texture": "pavers", "tint": "#8f8c86"},
+        "vh_hedge": {"texture": "hedge", "tint": "#7f9c5c"},
         "vh_trim": TRIM, "vh_stone": STONE, "vh_glass": GLASS, "vh_frames_small": SMALL, "vh_metal_small": METAL,
     })
     # u along the street front to the north, d from the dark house's front (0) to the back. The wall block found by the
@@ -389,7 +390,7 @@ def seventies():
         h.seg("vh_stone", a, b, .1, ga - .1, max(gy(*a), gy(*b)) + .15, "#a7a49d")
     h.poly("vh_trim", [(u, d, gy(u, d) + .09) for u, d in ((-4.25, -1.7), (4.25, -1.7), (4.25, -.08), (-4.25, -.08))], (0, 0, 1), "#3e3329")
     for u, d, r in ((-2.4, -.9, .38), (3.1, -.85, .42)):
-        h.blob("vh_trim", u, d, gy(u, d) + .5 - r * .9, (r, r, r * .9), rings=4, steps=9, color="#506b40")  # (nine meshes at most)
+        h.blob("vh_hedge", u, d, gy(u, d) + .5 - r * .9, (r, r, r * .9), rings=4, steps=9)
     h.pave([(-9.5, -3.61), (-4.34, -3.58), (-4.34, -1.8), (4.35, -1.8), (4.37, -3.93), edge(-9.5)], cell=1.2)
     h.pave([(4.37, -.02), (5.7, -.02), (5.7, 2.4), (4.36, 2.4)], cell=1.2)  # the path to the door
     h.export()
