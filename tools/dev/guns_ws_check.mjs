@@ -1,7 +1,8 @@
 // The guns everyone holds, against a throwaway game server (a build of this branch), as the server has them: two
 // guests and the admin join and are told their guns (all four; the admin the bazooka too); a hit with each of the four
 // counts, before and after a death; an old page's 'loadout' changes nothing and is not answered; a player who holsters
-// right after a hit is still hit back, and only 10 s after the last fight is out of reach; in a Zombies game a
+// right after a hit is still hit back, and only 10 s after the last fight is out of reach; one who drops the connection
+// in a fight and comes back is not healed, is hit at once and gets no car seat; in a Zombies game a
 // hit with the rifle is dropped (the pistol only) while the pistol's counts; when it ends everyone is told all four again
 // and the hits count again.
 //
@@ -69,12 +70,14 @@ const connect = async (name, cookie) => {
 const guest = async (name) => {
   const j = await call('POST', '/api/join', { name: `${name}${process.pid % 10000}`, age: true });
   if (!j.data?.username) throw new Error(`join ${name}: ${j.r.status} ${j.data?.code ?? ''}`);
-  return connect(j.data.username, cookieOf(j.r));
+  const me = await connect(j.data.username, cookieOf(j.r));
+  me.cookie = cookieOf(j.r); // to come back on (a reconnect)
+  return me;
 };
 
 const admin = await connect('admin', cookieOf((await call('POST', '/api/login', { username: 'admin', password })).r));
 const alice = await guest('Alice');
-const bob = await guest('Bob');
+let bob = await guest('Bob');
 ok('a guest joining is told all four', sorted(alice.weapons().at(-1)?.list) === ALL, sorted(alice.weapons().at(-1)?.list));
 ok('the admin joining is told all four and the bazooka', sorted(admin.weapons().at(-1)?.list) === `bazooka+${ALL}`, sorted(admin.weapons().at(-1)?.list));
 // A respawn by parachute would keep Bob in the air (calm) until his page lands him: this check has no page, so no drops.
@@ -141,6 +144,26 @@ ok('10 s after the last fight her holster counts: Bob\'s hit is dropped', !hurtI
 ok('everyone is told she is out of the fight', bob.log.slice(bobScores).some((m) => m.t === 'scores' && m.list?.find((s) => s.name === alice.name)?.armed === false));
 for (const c of [alice, bob]) c.hold('pistol');
 await sleep(300);
+
+// Out of a fight by reconnecting (server/game.mjs join, fights). Before, Bob hit, dropped his socket and joined again,
+// and came back healed, protected and unarmed: unhittable at once, free to take a seat. Now the fight waits for him.
+alice.send({ t: 'hit', target: bob.name, w: 'pistol', body: 1, head: 0 });
+await sleep(300);
+const bobHp = [...bob.log].reverse().find((m) => m.t === 'hurt')?.hp;
+await sleep(700);
+bob.ws.close();
+await sleep(100);
+bob = await connect(bob.name, bob.cookie); // 1 s after the hit, the same session
+ok('back 1 s after a hit: told the same health, not healed', bobHp < 100 && bob.log.some((m) => m.t === 'hurt' && m.hp === bobHp), `${bobHp} / ${JSON.stringify(bob.log.filter((m) => m.t === 'hurt'))}`);
+mark = bob.log.length;
+alice.send({ t: 'hit', target: bob.name, w: 'pistol', body: 1, head: 0 });
+await sleep(400);
+ok('back from a fight: hit at once (no spawn protection, still armed)', hurtIn(bob, mark));
+bob.send({ t: 'car', op: 'in', id: 'tesla' });
+await sleep(400);
+ok('back from a fight: no car seat', bob.log.some((m) => m.t === 'system' && m.code === 'heliFight'));
+for (const c of [alice, bob]) c.hold('pistol');
+await sleep(10_500); // out of that fight before the Zombies game
 
 // The Zombies game: down to the pistol. A rifle's hit on a zombie is dropped, a pistol's counts.
 admin.send({ t: 'mode', kind: 'zombies', place: 'house' });

@@ -446,6 +446,7 @@ export class Game {
     this.roundOver = null; // { winner, until } during the break after a round
     this.items = PICKUPS.map(() => ({ until: 0 })); // weapons lying around: taken until
     this.lastPos = new Map(); // username -> last position, so a reconnect is checked against it
+    this.fights = new Map(); // username -> a fight a dropped connection left (fightOf), for the rest of its HURT_CALM_MS (join)
     this.catsDown = CATS.cats.map(() => 0); // cat index -> down until
     this.vilDown = new Map(); // villager number -> down until
     this.vilPaint = new Map(); // villager number -> { until, w }: paint on its clothes, from which gun
@@ -642,6 +643,20 @@ export class Game {
     if (!this.fence().inside(at.x, at.z)) at = SPAWNS[0];
     if (!this.gate.mayStand(player, at.x, at.y, at.z)) at = SPAWNS[0]; // last seen inside a home whose code this session has not typed
     player.state = { x: at.x, y: at.y, z: at.z, yaw: 0, pitch: 0, armed: false, flying: false, w: 'pistol', c: false };
+    // A fight left by a dropped connection (or by the tab this one replaces) goes on for the rest of its HURT_CALM_MS: its
+    // clocks (the seats, the helicopter, /parachute, holstering); alive, its health, no spawn protection, and armed as it
+    // was (holstering then as for anyone: state). Before, a page in a fight closed its socket and came straight back
+    // healed and unhittable (damage avoidance by reconnect). Dead: back as today, as after a respawn (backAt).
+    const fight = old ? this.fightOf(old) : this.fights.get(name);
+    this.fights.delete(name);
+    const back = fight && this.inFight(fight, now) ? fight : null;
+    if (back) {
+      Object.assign(player, { hurtAt: back.hurtAt, hitAt: back.hitAt });
+      if (back.alive) {
+        Object.assign(player, { hp: back.hp, protectedUntil: 0 });
+        player.state.armed = back.armed;
+      } else player.backAt = now;
+    }
     player.joinedAt = { x: at.x, z: at.z }; // a start place is only taken from here (see spawn)
     player.movedAt = now;
     player.budget = player.vbudget = 0.5;
@@ -652,6 +667,7 @@ export class Game {
 
     this.send(ws, this.welcome(player, name, color, now));
     this.send(ws, { t: 'weapons', list: [...player.weapons] }); // the guns the server hands them (shared/loadout.mjs)
+    if (back?.alive && player.hp < HEALTH) this.send(ws, { t: 'hurt', hp: player.hp, by: '' }); // back from a fight: its health
     this.broadcast({ t: 'join', name, color }, name);
     this.host?.joined(name, player);
     this.modes.join(name);
@@ -711,6 +727,9 @@ export class Game {
       if (this.players.get(name) === player) {
         this.helis.release(name, Date.now(), true); // aboard: their last place is on the ground under the machine, not in the sky
         if (player.state) this.lastPos.set(name, { x: player.state.x, y: player.state.y, z: player.state.z });
+        const now = Date.now();
+        for (const [n, f] of this.fights) if (!this.inFight(f, now)) this.fights.delete(n); // run out: forgotten
+        if (this.inFight(player, now)) this.fights.set(name, this.fightOf(player)); // in a fight: it waits for them (join)
         this.players.delete(name);
         this.goals?.left(name);
         this.releaseCar(name);
@@ -1534,6 +1553,11 @@ export class Game {
   /** Hit, or hitting someone, in the last HURT_CALM_MS: the one clock for the seats (fightRefused), /parachute and holstering (state). */
   inFight(p, now) {
     return now - Math.max(p.hurtAt ?? -Infinity, p.hitAt ?? -Infinity) < HURT_CALM_MS;
+  }
+
+  /** What of a fight a connection leaves behind (join, its close): the clocks, and the health and arms while alive. */
+  fightOf(p) {
+    return { hurtAt: p.hurtAt, hitAt: p.hitAt, hp: p.hp, alive: p.alive, armed: !!p.state?.armed };
   }
 
   /** Get in, when the player stands next to it, is alive and in no car yet: at the wheel if nobody drives, else in the passenger seat if it's free. */
