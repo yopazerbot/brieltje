@@ -109,6 +109,28 @@ def railing_wall(h, pts, piers, coping, metal, wall_h=.6, top=1.2):
         h.block("nb_red", ring, g - .1, g + top + .17)
 
 
+def beech(h, pts, height, half, mesh="vh_hedge", step=.5):
+    """A clipped hedge along a plan polyline: a core `half` m either side of the line, a row of rounded tufts along its
+    top (nine sides, four rings, as the second package's hedges) and a rounded end at each end. Every length of at most
+    2.5 m is one block on its own ground."""
+    gy = lambda p: h.ground(*p)
+    for a, b in zip(pts, pts[1:]):
+        L = math.dist(a, b)
+        n = int(L / 2.5) + 1
+        for i in range(n):
+            p = (a[0] + (b[0] - a[0]) * i / n, a[1] + (b[1] - a[1]) * i / n)
+            q = (a[0] + (b[0] - a[0]) * (i + 1) / n, a[1] + (b[1] - a[1]) * (i + 1) / n)
+            g = min(gy(p), gy(q))
+            h.seg(mesh, p, q, 2 * half - .1, g - .15, g + height - .3)
+            h.seg_block("nb_hedge", p, q, 2 * half, g - .15, g + height)
+        k = max(1, round(L / step))
+        for i in range(k + 1):
+            c = (a[0] + (b[0] - a[0]) * i / k, a[1] + (b[1] - a[1]) * i / k)
+            h.blob(mesh, c[0], c[1], gy(c) + height - .3, (.36, half + .02, .3), rings=4, steps=9)
+    for c in (pts[0], pts[-1]):
+        h.blob(mesh, c[0], c[1], gy(c) + (height - .15) / 2 - .05, (half, half, (height + .15) / 2 - .05), rings=4, steps=9)
+
+
 def cone(h, u, d, y0, y1, r, mesh="vh_hedge", sides=9):
     """A clipped conifer: a cone of `sides` faces from its foot at y0 to its tip at y1."""
     ring = [(u + r * math.cos(math.tau * i / sides), d + r * math.sin(math.tau * i / sides)) for i in range(sides)]
@@ -454,20 +476,13 @@ def hedge_bungalow():
     h.gutter((-W2 - ov, D + .3, ye), (-W2 - ov, -ov, ye), (-1, 0, 0), white, down=[(-W2 - .08, .2, gy(-W2, .2))])
     h.gutter((-W2 - ov, -ov, ye), (W2 + ov, -ov, ye), (0, -1, 0), white)
     h.chimney(-2.6, 4.2, .5, .5, roof.height(-2.6, 4.2) - .4, roof.height(-2.6, 4.2) + .75, "vh_brick")
-    # --- the hedge along the street with the drive's gap, dark gravel before it and up the drive --------------------------
+    # --- the hedge along the street with the drive's gap, the dark gravel drive --------------------------------------------
+    # The hedge stands on the line of the data's short hedge there (u -4.57 to -1.3, 0.8 m high, drawn by the village on
+    # the relief, which a model cannot hide): that one stands inside this one, its block inside this one's blocks. Past
+    # it the line bends a little, to keep off the street's paving.
     edge = lambda u: (u, round(-6.83 + (u - 23.87) * .02167, 4))  # the street's paving begins here (its edge in the data)
-    hd, ht = -5.5, 1.3
-    a, b = (-9.6, hd), (5.55, hd)
-    L = math.dist(a, b)
-    n = int(L / 2.5) + 1
-    for i in range(n):  # in lengths, each on its own ground, each a block
-        p = (a[0] + (b[0] - a[0]) * i / n, hd)
-        q = (a[0] + (b[0] - a[0]) * (i + 1) / n, hd)
-        g = min(gy(*p), gy(*q))
-        h.seg("vh_hedge", p, q, .7, g - .15, g + ht - .1)
-        h.seg("vh_hedge", p, q, .56, g + ht - .1, g + ht)
-        h.seg_block("nb_hedge", p, q, .7, g - .15, g + ht)
-    h.pave([edge(-9.6), edge(9.3), (9.3, 18.9), (5.32, 18.9), (5.32, -.02), (5.6, -.02), (5.6, hd - .36), (-9.6, hd - .36)], mesh="vh_gravel", lift=.03, cell=1.5)
+    beech(h, [(-9.6, -7.08), (-1.0, -7.08), (5.55, -6.8)], 1.3, .4)
+    h.pave([edge(5.6), edge(9.3), (9.3, 18.9), (5.32, 18.9), (5.32, -.02), (5.6, -.02)], mesh="vh_gravel", lift=.03, cell=1.5)
     h.export()
 
 
