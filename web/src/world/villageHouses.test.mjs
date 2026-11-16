@@ -46,25 +46,33 @@ for (const [name] of VILLAGE_HOUSES) {
     assert.ok(Array.isArray(replaces) && replaces.length > 0, 'its root has `replaces`');
     const outline = replaces[0];
     assert.ok((village.prisms ?? []).some((p) => same(p.p[0], outline)), 'its first `replaces` ring is the outline of a wall block in village.json');
-    // A house's front corner can be a corner of the street's paving too: a ring of the road would hide the street.
+    // Every `replaces` ring is a house's wall block (`nb_*`) or a data roof. A house's front corner can be a corner of
+    // the street's paving too: found by it, a ring of the road would hide the street.
+    const walls = [];
     for (const ring of replaces) {
       const block = (village.prisms ?? []).find((p) => same(p.p[0], ring));
-      assert.ok(!block || !/^(road|pave|concrete|gravel)/.test(block.m), `a \`replaces\` ring is a ${block?.m} block, not a house's`);
+      if (block) {
+        assert.match(block.m, /^nb_/, `a \`replaces\` ring is a ${block.m} block, not a house's wall block`);
+        walls.push(ring);
+      } else assert.ok(village.roofs.some((r) => same(roofRing(r), ring)), 'a `replaces` ring is neither a wall block nor a roof of the data');
     }
     // main.ts withoutLandmarks hides a data roof when the average of its corners lies inside a `replaces` ring. Any
-    // roof with a corner inside the house's outline, or its middle within 1 m of it, belongs to the house: it must go.
-    const near = (p) => inside(outline, p) || outline.some((q, i) => {
-      const r = outline[(i + 1) % outline.length];
-      const dx = r[0] - q[0], dz = r[1] - q[1];
-      const t = Math.max(0, Math.min(1, ((p[0] - q[0]) * dx + (p[1] - q[1]) * dz) / (dx * dx + dz * dz || 1)));
-      return Math.hypot(q[0] + dx * t - p[0], q[1] + dz * t - p[1]) < 1;
-    });
-    const left = village.roofs.filter((r) => {
-      const ring = roofRing(r);
-      const over = ring.some((p) => inside(outline, p)) || near(middle(ring));
-      return over && !replaces.some((rep) => inside(rep, middle(ring)));
-    });
-    assert.deepEqual(left.map((r) => roofRing(r)[0]), [], 'a data roof over the house would still be drawn');
+    // roof with a corner inside one of the house's wall blocks, or its middle within 1 m of one, belongs to the house:
+    // it must go.
+    for (const wall of walls) {
+      const near = (p) => inside(wall, p) || wall.some((q, i) => {
+        const r = wall[(i + 1) % wall.length];
+        const dx = r[0] - q[0], dz = r[1] - q[1];
+        const t = Math.max(0, Math.min(1, ((p[0] - q[0]) * dx + (p[1] - q[1]) * dz) / (dx * dx + dz * dz || 1)));
+        return Math.hypot(q[0] + dx * t - p[0], q[1] + dz * t - p[1]) < 1;
+      });
+      const left = village.roofs.filter((r) => {
+        const ring = roofRing(r);
+        const over = ring.some((p) => inside(wall, p)) || near(middle(ring));
+        return over && !replaces.some((rep) => inside(rep, middle(ring)));
+      });
+      assert.deepEqual(left.map((r) => roofRing(r)[0]), [], 'a data roof over the house would still be drawn');
+    }
   });
 
   test(`${name}: its blocks are rings on the plan with a height`, () => {
