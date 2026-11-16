@@ -1120,14 +1120,19 @@ function doorOf(spec) {
  * The game's waves and zombies. `nav`: the grid (makeNav); `spots`: where they come out
  * (nav.spawnSpots); `home`: where they go when nobody fights. Together, `doors` (the house data's)
  * and `doorOpen(id)` (whether one stands open now): a zombie shoves a closed one open ('door' event).
+ * `rand`: the dice for where they come out. `mix(wave)`: a dice of its own for each wave's zombies (which kind,
+ * runner or not, how fast): the Zombies duel (server/duel.mjs) gives both rooms the same, so wave n's k-th zombie
+ * is the same zombie in both, wherever the players stand. Without it, `rand` throws for them too, as always.
  */
 export class Horde {
-  constructor(nav, spots, { home = { x: 4.5, z: 6 }, rand = Math.random, doors = [], doorOpen = () => true } = {}) {
+  constructor(nav, spots, { home = { x: 4.5, z: 6 }, rand = Math.random, mix = null, doors = [], doorOpen = () => true } = {}) {
     this.nav = nav;
     this.spots = spots;
     this.home = home;
     this.homeNode = nav.locate(home.x, nav.ground(home.x, home.z), home.z);
     this.rand = rand;
+    this.mixOf = mix;
+    this.mix = rand;
     this.doors = doors.map(doorOf).filter((d) => d.leaves.length);
     this.doorOpen = doorOpen;
     /** Door id -> when a zombie last shoved it (it counts as open for ZOMBIE.shoveMs) */
@@ -1285,6 +1290,7 @@ export class Horde {
     this.phase = 'wave';
     this.fieldAt = -Infinity; // a field (and the spots' distances) for the wave's first zombies
     this.wave++;
+    if (this.mixOf) this.mix = this.mixOf(this.wave);
     this.players = Math.max(1, players);
     this.toSpawn = waveSize(this.wave, this.players);
     this.runners = runnersOf(this.wave, this.toSpawn);
@@ -1383,15 +1389,15 @@ export class Horde {
       this.nextSpawn = now + 500;
       return;
     }
-    const run = !big && this.runners > 0 && this.rand() < this.runners / Math.max(1, this.toSpawn);
+    const run = !big && this.runners > 0 && this.mix() < this.runners / Math.max(1, this.toSpawn);
     if (big) this.bigs--;
     else {
       this.toSpawn--;
       if (run) this.runners--;
     }
-    const s = zombieStats(this.wave, big, this.rand(), run);
+    const s = zombieStats(this.wave, big, this.mix(), run);
     const id = this.nextId++;
-    const kind = big ? BIG : run ? RUNNER : WALKERS[Math.floor(this.rand() * WALKERS.length)];
+    const kind = big ? BIG : run ? RUNNER : WALKERS[Math.floor(this.mix() * WALKERS.length)];
     const yaw = Math.atan2(this.home.x - at.x, this.home.z - at.z);
     this.zombies.set(id, {
       id, kind, x: at.x, y: this.nav.y(at.node, at.x, at.z), z: at.z, node: at.node, yaw, speed: 0, top: s.speed, hp: s.hp, max: s.hp, damage: s.damage,

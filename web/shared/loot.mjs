@@ -129,10 +129,16 @@ const stakesOf = (a, b) => Math.round((b - a) / LOOT.stakeGap) + 1;
 const standing = (r) => Math.max(1, Math.ceil(stakesOf(r.a, r.b) * (1 - r.wear / LOOT.hold)));
 
 export class Loot {
-  /** `nav`: the zombies' grid (shared/zombies.mjs makeNav): where a claymore may stand, and what its blast can't go through. */
-  constructor(nav, rand = Math.random) {
+  /**
+   * `nav`: the zombies' grid (shared/zombies.mjs makeNav): where a claymore may stand, and what its blast can't go through.
+   * `drops(wave)`: a dice of its own for what each wave's beaten zombies leave (the Zombies duel, server/duel.mjs: the
+   * same in both rooms, the k-th zombie beaten in wave n leaving the same in both); without it, `rand` throws.
+   */
+  constructor(nav, rand = Math.random, drops = null) {
     this.nav = nav;
     this.rand = rand;
+    this.dropsOf = drops;
+    this.drops = rand;
     /** id -> { id, kind, x, y, z, until } */
     this.items = new Map();
     /** id -> { id, owner, x, y, z, yaw, armedAt } */
@@ -190,9 +196,10 @@ export class Loot {
     return { ok: !result.why, why: result.why, a: result.row?.a, b: result.row?.b };
   }
 
-  /** A new wave began. */
-  wave() {
+  /** Wave `n` began. */
+  wave(n) {
     this.dropped = false;
+    if (this.dropsOf && n >= 1) this.drops = this.dropsOf(n);
   }
 
   /**
@@ -217,13 +224,13 @@ export class Loot {
     }
     if (this.items.size >= LOOT.lying + (big ? 2 : 0)) return out;
     const p = big ? LOOT.bigChance : z.kind === RUNNER ? LOOT.runnerChance : LOOT.chance;
-    if (!(this.rand() < p) && !(last && !this.dropped)) return out;
+    if (!(this.drops() < p) && !(last && !this.dropped)) return out;
     const scoped = fighters.length > 0 && fighters.every((n) => this.kits.get(n)?.scope);
     const rifle = LOOT.weights.find(([k]) => k === 'rifle')?.[1] ?? 0;
     const weights = LOOT.weights
       .filter(([k]) => !(k === 'scope' && scoped) && !(k === 'rifle' && rifled))
       .map(([k, w]) => [k, k === 'ammo' && rifled ? w + rifle : w]);
-    let r = this.rand() * weights.reduce((sum, [, w]) => sum + w, 0);
+    let r = this.drops() * weights.reduce((sum, [, w]) => sum + w, 0);
     let kind = weights[0][0];
     for (const [k, w] of weights) {
       if (r < w) {
