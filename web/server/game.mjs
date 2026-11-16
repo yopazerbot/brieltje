@@ -1017,7 +1017,8 @@ export class Game {
       const dx = next.x - prev.x, dz = next.z - prev.z;
       let dy = next.y - prev.y;
       // (Not in its first moments: a state from before the page knew of the drop, on the ground, can still come.)
-      if (drop && dy > 0 && player.role !== 'admin' && now - player.drop.from > DROP.graceMs) {
+      // A jump from a helicopter (server/helis.mjs chute) starts where the page already is: held from its first state.
+      if (drop && dy > 0 && player.role !== 'admin' && (player.drop.jump || now - player.drop.from > DROP.graceMs)) {
         const rise = Math.min(DROP_RISE.max, player.drop.rise + DROP_RISE.rate * secs);
         dy = Math.min(dy, rise);
         player.drop.rise = rise - dy;

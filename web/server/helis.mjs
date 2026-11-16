@@ -13,7 +13,10 @@
 // - carrying someone into a code-locked home: a machine is never inside one, whoever flies it (five points of the
 //   cabin at three heights against homeAt, every step; a breach puts the step back), code or no code, the admin too;
 // - kidnapping: `out` is always granted, any seat, any height; a machine with nobody at the stick high up for
-//   PILOTLESS_MS puts everyone out and goes home;
+//   PILOTLESS_MS puts everyone out (by parachute, high enough) and goes home; only the server puts anyone out;
+// - a parachute from nowhere: a `jump` gives a drop only out of a seat the server gave, at DROP.jumpMin or more over
+//   the server's floor and off the pad, from the machine's own pose (the message carries no position), the drop's
+//   budgets from its first state (chute);
 // - fighting from a seat or being hit in one: Game.inCar answers for a machine, one early gate in Game.handle drops
 //   every fighting and taking message from a seat, and Game.blast skips those aboard;
 // - flooding and replay: one 300 ms gate shared with the cars, horses and bikes; every op acts on the present state,
@@ -24,7 +27,7 @@
 import { readFileSync } from 'node:fs';
 import { HELI } from '../shared/heli.mjs';
 import { homeAt } from '../shared/homes.mjs';
-import { HOME_DROP } from '../shared/parachute.mjs';
+import { DROP, HOME_DROP } from '../shared/parachute.mjs';
 import { PORTALS } from '../shared/portals.mjs';
 import { STALL_SPOTS } from '../shared/stall.mjs';
 
@@ -252,9 +255,38 @@ export class Helis {
     this.release(name, now);
   }
 
-  /** A jump with a parachute: package D gives it its drop. Until then a plain `out`, in this one place. */
+  /**
+   * A jump with a parachute (the use key in the air, pilot or passenger): the seat is emptied as on `out`, always; a
+   * drop starts only where chute allows it, else it was a plain `out`. The message carries no position: the drop
+   * starts where the server has the machine. A second jump finds no seat and changes nothing.
+   */
   jump(name, p, now) {
-    this.out(name, now);
+    const h = this.of(name);
+    if (!h) return;
+    this.release(name, now);
+    this.chute(p, h, now);
+  }
+
+  /**
+   * After `p` left `h` (a jump, or put out by the server): a drop from where the machine is, when the admin's parachute
+   * rule is on, no game holds, the player is alive, the machine is not on its pad and its height over the server's
+   * own floor is DROP.jumpMin or more (the solo jump's lowest, shared/parachute.mjs). The `heli` message that emptied
+   * the seat has gone out first; then the jumper alone is told where the drop starts (`sy`: its height, the server's).
+   * Its budgets hold from the first state (`jump`: no rise in the first moments either, game.mjs's state). True when
+   * it started; lower down they fall as a walker (nobody is hurt by a fall).
+   */
+  chute(p, h, now) {
+    const g = this.game;
+    const st = p?.state;
+    if (!st || !p.alive || !g.rules.parachute || g.fenced() || this.atPad(h) || h.y - this.floor(h.x, h.z) < DROP.jumpMin) return false;
+    Object.assign(st, { x: h.x, y: h.y, z: h.z, flying: false, d: false }); // where release put them: the machine's place
+    p.budget = p.vbudget = 0.5;
+    p.movedAt = now;
+    g.startDrop(p, now);
+    p.drop.jump = true;
+    const cm = (v) => Math.round(v * 100) / 100;
+    g.send(p.ws, { t: 'spawn', ok: true, drop: 1, x: cm(h.x), z: cm(h.z), yaw: Math.round(h.yaw * 1000) / 1000, sx: cm(h.x), sz: cm(h.z), sy: cm(h.y) });
+    return true;
   }
 
   /** From a passenger seat to the stick, when nobody flies it: alive, not held by the host, no game, the rule on. */
@@ -295,9 +327,15 @@ export class Helis {
     this.tell(h);
   }
 
-  /** The server puts a player out (nobody at the stick for too long, a game starting, the rule off). Package D gives it a parachute. */
-  putOut(name, now) {
+  /**
+   * The server puts a player out (nobody at the stick for too long, a game starting, the rule off): high enough with
+   * a parachute, as a jump (chute); `told`: everyone it gave one, for one line in the chat (srv.heliOut).
+   */
+  putOut(name, now, told = null) {
+    const h = this.of(name);
     this.release(name, now);
+    const p = this.game.players.get(name);
+    if (h && p && this.chute(p, h, now)) told?.push(p);
   }
 
   /** A passenger's state: their own position is never taken, they are where the machine is (looking round stays theirs). */
@@ -374,7 +412,9 @@ export class Helis {
       const s = this.inner.get(h.id);
       const empty = h.seats.every((n) => !n);
       if (!h.seats[0] && this.high(h) && now - (s.noPilotAt ?? now) >= PILOTLESS_MS) {
-        for (const n of h.seats) if (n) this.putOut(n, now);
+        const told = [];
+        for (const n of h.seats) if (n) this.putOut(n, now, told);
+        for (const p of told) g.send(p.ws, { t: 'system', text: 'Nobody was flying. Everyone floats down.', code: 'heliOut' });
         this.home(h, now);
       } else if (empty && !this.atPad(h)) {
         const idle = now - (s.emptyAt ?? now);

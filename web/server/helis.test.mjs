@@ -3,6 +3,7 @@ import { readFileSync } from 'node:fs';
 import test from 'node:test';
 import { HELI, heliStart, heliStep } from '../shared/heli.mjs';
 import { HOMES, homeAt } from '../shared/homes.mjs';
+import { DROP } from '../shared/parachute.mjs';
 import { makeTerrain } from '../shared/terrain.mjs';
 import { heliFields, readHeli } from '../shared/wire.mjs';
 import { Game, HELI_REFUSED } from './game.mjs';
@@ -459,8 +460,9 @@ test('out is always granted: on the ground and at 80 m, from any seat; afterward
   ask('bo', bo, { t: 'heli', op: 'out' });
   assert.equal(game.helis.of('bo'), null, 'out at 80 m, as a passenger');
   assert.ok(Math.abs(bo.state.y - h.y) < 1e-9, 'where the machine is');
-  ask('pia', pia, { t: 'heli', op: 'jump' });
-  assert.equal(game.helis.of('pia'), null, 'and as the pilot (a jump is an out until package D)');
+  ask('pia', pia, { t: 'heli', op: 'out' });
+  assert.equal(game.helis.of('pia'), null, 'and as the pilot');
+  assert.equal(pia.drop, null, 'an out is no jump: no parachute');
   // A forged 60 m step half a second later: running pace.
   const x0 = pia.state.x;
   state('pia', pia, { x: x0 + 60 }, 500);
@@ -510,7 +512,8 @@ test('a pilot whose connection closes high up: the machine hangs still; after 20
   at(1000);
   game.helis.tick(now());
   assert.equal(game.helis.of('bo'), null, 'the passenger is out');
-  assert.ok(Math.abs(bo.state.y - high.y) < 1e-9, 'where the machine was (package D gives the parachute)');
+  assert.ok(Math.abs(bo.state.y - high.y) < 1e-9, 'where the machine was');
+  assert.ok(game.dropping(bo, now()), 'by parachute');
   assert.deepEqual([h.x, h.y, h.z], [PARK.x, PARK.y, PARK.z], 'home');
   assert.equal(s.told.at(-1).home, 1);
 });
@@ -785,4 +788,205 @@ test('nobody lands on a parked machine: a step onto the other\'s cabin is put ba
   assert.ok(h.y >= ch.y + 6 - 1e-9, `held off at ${h.y - ch.y} m over it`);
   state('pia', pia, { x: ch.x + 4, y: ch.y + 5, z: ch.z, yaw: ch.yaw }, 1000);
   assert.ok(Math.abs(h.x - (ch.x + 4)) < 1e-9, 'beside it the step is taken');
+});
+
+// The jump together (package D): the use key in the air, pilot or passenger, asks `jump`; the seat is emptied as on
+// `out`, and a drop starts only from the machine's own pose, DROP.jumpMin or more over the server's floor, off the pad,
+// with the parachute rule on and the jumper alive. The message carries no position.
+
+const DROP_SPEED = DROP.across * 1.3; // m/s across in a drop (game.mjs)
+const JUMP = { t: 'heli', op: 'jump' };
+const spawns = (s, name) => s.sent.get(name).filter((m) => m.t === 'spawn');
+
+/** `names` aboard (seat 0 first), the machine `up` m over the server's floor at (-60, -60). */
+function aloft(s, names, up) {
+  const ps = crew(s, names);
+  s.put({ x: -60, y: floor(-60, -60) + up, z: -60, yaw: 0.4 });
+  return ps;
+}
+
+test('a jump on the ground or on its pad: a plain out, no drop, no spawn', () => {
+  const s = setup();
+  const { game, h, ask } = s;
+  const [pia] = crew(s, ['pia']);
+  ask('pia', pia, JUMP);
+  assert.equal(game.helis.of('pia'), null, 'out');
+  assert.equal(pia.drop, null);
+  assert.equal(spawns(s, 'pia').length, 0);
+  assert.equal(h.seats[0], null);
+  // At 80 m, but where its pad is (a test pad at that height): a plain out too.
+  const t = setup();
+  const [bo] = crew(t, ['bo']);
+  const y = floor(PARK.x, PARK.z) + 80;
+  t.game.helis.inner.get(ID).park = { ...PARK, y };
+  t.put({ x: PARK.x, y, z: PARK.z });
+  assert.equal(t.game.helis.atPad(t.h), true);
+  t.ask('bo', bo, JUMP);
+  assert.deepEqual([t.game.helis.of('bo'), bo.drop, spawns(t, 'bo').length], [null, null, 0], 'no drop at a pad');
+});
+
+test('the lowest jump is the solo jump\'s DROP.jumpMin over the server\'s floor: under it an out, over it a drop from the machine', () => {
+  const low = setup();
+  const [pia] = aloft(low, ['pia', 'bo'], DROP.jumpMin - 1);
+  low.ask('pia', pia, JUMP);
+  assert.deepEqual([low.game.helis.of('pia'), pia.drop, spawns(low, 'pia').length], [null, null, 0], 'a metre too low: out');
+  const s = setup();
+  const { game, h, ask, told } = s;
+  const order = [];
+  const [b, d] = [game.broadcast, game.send];
+  game.broadcast = (m, e) => (order.push(`all:${m.t}`), b(m, e));
+  game.send = (ws, m) => (order.push(`${ws.name}:${m.t}`), d(ws, m));
+  const [, cas] = aloft(s, ['bo', 'cas'], DROP.jumpMin + 1);
+  order.length = 0;
+  ask('cas', cas, JUMP);
+  assert.equal(game.helis.of('cas'), null, 'out of the seat');
+  assert.ok(cas.drop && game.dropping(cas, s.now()), 'a drop');
+  assert.ok(Math.abs(cas.drop.top - (h.y + 0.5)) < 1e-9, 'its ceiling 0.5 m over the machine');
+  const sp = spawns(s, 'cas');
+  assert.equal(sp.length, 1);
+  const r = (v) => Math.round(v * 100) / 100;
+  assert.deepEqual([sp[0].ok, sp[0].drop, sp[0].sx, sp[0].sy, sp[0].sz, sp[0].x, sp[0].z], [true, 1, r(h.x), r(h.y), r(h.z), r(h.x), r(h.z)]);
+  assert.deepEqual([cas.state.x, cas.state.y, cas.state.z], [h.x, h.y, h.z], 'the drop starts where the machine is');
+  assert.equal(spawns(s, 'bo').length, 0, 'to the jumper only');
+  assert.ok(!told.some((m) => m.t === 'spawn'), 'nobody else is told');
+  assert.deepEqual(order, ['all:heli', 'cas:spawn'], 'the seat first, then the drop');
+  assert.deepEqual(h.seats, ['bo', null, null, null]);
+});
+
+test('no drop with the parachute rule off, nor for a dead player: a plain out at any height', () => {
+  const s = setup();
+  const [pia, bo] = aloft(s, ['pia', 'bo'], 90);
+  s.game.rules.parachute = false;
+  s.ask('bo', bo, JUMP);
+  assert.deepEqual([s.game.helis.of('bo'), bo.drop, spawns(s, 'bo').length], [null, null, 0], 'rule off');
+  s.game.rules.parachute = true;
+  pia.alive = false;
+  s.ask('pia', pia, JUMP);
+  assert.deepEqual([s.game.helis.of('pia'), pia.drop, spawns(s, 'pia').length], [null, null, 0], 'dead');
+});
+
+test('a jump twice, a replay, and a jump from someone not aboard change nothing', () => {
+  const s = setup();
+  const { game, h, ask, told } = s;
+  const [pia, bo] = aloft(s, ['pia', 'bo'], 60);
+  ask('bo', bo, JUMP);
+  const drop = bo.drop;
+  const n = told.length;
+  ask('bo', bo, JUMP);
+  assert.equal(told.length, n, 'nothing told');
+  assert.equal(bo.drop, drop, 'the same drop');
+  assert.equal(spawns(s, 'bo').length, 1, 'one spawn');
+  const eve = s.player('eve', s.local(1.5, -0.4));
+  ask('eve', eve, JUMP);
+  assert.deepEqual([eve.drop, spawns(s, 'eve').length, told.length], [null, 0, n], 'not aboard: nothing');
+  // Within the 300 ms gate a jump is never read (the gate shared with the cars).
+  s.send('pia', pia, JUMP); // pia's boarding was read just now
+  assert.equal(game.helis.of('pia'), h, 'the pilot still flies');
+});
+
+test('after a jump the drop\'s own budgets from its first state: never up past its allowance, across at the skydive\'s pace, no hover, no hit', () => {
+  const s = setup();
+  const { game, state, ask } = s;
+  const [pia] = aloft(s, ['pia'], 60);
+  ask('pia', pia, JUMP);
+  const y0 = pia.state.y, x0 = pia.state.x;
+  // A burst of forged climbs at once: at most the drop's 0.6 m in all.
+  for (let i = 0; i < 10; i++) state('pia', pia, { y: pia.state.y + 5, pc: 1 }, 0);
+  assert.ok(pia.state.y - y0 <= 0.6 + 1e-9, `${(pia.state.y - y0).toFixed(2)} m up at once`);
+  // A second of them: the 0.6 m and its refill of 0.5 m/s, never the flight's climb (in the drop's first moments neither).
+  for (let i = 0; i < 20; i++) state('pia', pia, { y: pia.state.y + 5, pc: 1 }, 50);
+  assert.ok(pia.state.y - y0 <= 0.6 + 0.5 + 1e-9, `${(pia.state.y - y0).toFixed(2)} m up in 1 s`);
+  // Across: 60 m a state asked, for 2 s: at most DROP_SPEED a second and its 8.3 m stored.
+  const t0 = s.now() - 1000;
+  for (let i = 0; i < 40; i++) {
+    state('pia', pia, { x: pia.state.x + 60, y: pia.state.y - 0.5, pc: 1 }, 50);
+    const t = (s.now() - t0) / 1000;
+    assert.ok(pia.state.x - x0 <= DROP_SPEED * t + 8.3 + 1e-9, `${(pia.state.x - x0).toFixed(1)} m across at ${t.toFixed(2)} s`);
+  }
+  // A hit on the jumper does not land (calm); the same shot at someone beside them on foot does.
+  const foe = s.player('foe', { x: pia.state.x + 4, y: pia.state.y, z: pia.state.z });
+  const eve = s.player('eve', { x: pia.state.x + 8, y: pia.state.y, z: pia.state.z });
+  s.send('foe', foe, { t: 'hit', target: 'pia', w: 'pistol', body: 1, head: 0 });
+  assert.equal(pia.hp, 100, 'no hit in a drop');
+  foe.nextHit = 0;
+  s.send('foe', foe, { t: 'hit', target: 'eve', w: 'pistol', body: 1, head: 0 });
+  assert.ok(eve.hp < 100, 'the control: the same shot lands outside a drop');
+  // A forged hover: the drop ends by the end of the next stretch dropCheck measures (DROP.hoverMs each).
+  for (let i = 0; i < (2 * DROP.hoverMs) / 50 && pia.drop; i++) state('pia', pia, { pc: 1 }, 50);
+  assert.equal(pia.drop, null, 'nobody hovers');
+  assert.equal(game.dropping(pia, s.now()), false);
+});
+
+test('a jumper steered into each code-locked home from above is stopped at its bands', () => {
+  for (const home of HOMES) {
+    for (const [bi, band] of home.bands.entries()) {
+      const target = insidePoint(home, band);
+      const s = setup();
+      const { game, state, ask, put } = s;
+      game.homes = { granted: () => false };
+      const [pia] = crew(s, ['pia']);
+      const top = Math.max(...home.bands.map((q) => q.y1));
+      const y = Math.max(top, floor(target.x, target.z)) + DROP.jumpMin + 8;
+      put({ x: target.x, y, z: target.z, yaw: 0 });
+      ask('pia', pia, JUMP);
+      assert.ok(pia.drop, `${home.id}/${bi}: a drop`);
+      for (let i = 0; i < 200; i++) {
+        state('pia', pia, { x: target.x, y: pia.state.y - 0.5, z: target.z, pc: 1 }, 50);
+        assert.equal(homeAt(pia.state.x, pia.state.z, pia.state.y), null, `${home.id}/${bi}: never inside (${pia.state.y.toFixed(2)})`);
+      }
+    }
+  }
+});
+
+test('the pilot jumps at 60 m with two aboard: the machine stays, a passenger may fly it; nobody does and after 20 s both float down', () => {
+  for (const takes of [true, false]) {
+    const s = setup();
+    const { game, h, ask, state, at, now, sent } = s;
+    const [pia, bo, cas] = aloft(s, ['pia', 'bo', 'cas'], 60);
+    const pose = [h.x, h.y, h.z, h.yaw];
+    ask('pia', pia, JUMP);
+    assert.ok(pia.drop, 'the pilot has a drop');
+    assert.deepEqual(h.seats, [null, 'bo', 'cas', null], 'the passengers keep their seats');
+    state('bo', bo, { x: h.x + 20, y: h.y + 5 }, 200);
+    assert.deepEqual([h.x, h.y, h.z, h.yaw], pose, 'no pilot, no motion');
+    if (takes) {
+      ask('bo', bo, { t: 'heli', op: 'fly' });
+      assert.equal(h.seats[0], 'bo', 'bo takes the stick');
+      state('bo', bo, { x: h.x + 2, y: h.y, z: h.z, yaw: h.yaw }, 200);
+      assert.ok(Math.abs(h.x - (pose[0] + 2)) < 1e-9, 'and flies it');
+      at(PILOTLESS_MS + 1000);
+      game.helis.tick(now());
+      assert.deepEqual(h.seats, ['bo', null, 'cas', null], 'with a pilot nobody is put out');
+      continue;
+    }
+    at(PILOTLESS_MS - 700);
+    game.helis.tick(now());
+    assert.deepEqual(h.seats, [null, 'bo', 'cas', null], 'not yet');
+    at(500);
+    game.helis.tick(now());
+    for (const p of [bo, cas]) {
+      assert.ok(game.dropping(p, now()), 'by parachute');
+      assert.ok(Math.abs(p.state.y - pose[1]) < 1e-9, 'from where it hung');
+    }
+    for (const n of ['bo', 'cas']) {
+      assert.equal(spawns(s, n).at(-1).sy, Math.round(pose[1] * 100) / 100);
+      assert.equal(sent.get(n).filter((m) => m.t === 'system' && m.code === 'heliOut').length, 1, 'one line in the chat');
+    }
+    assert.equal(sent.get('pia').filter((m) => m.code === 'heliOut').length, 0, 'not for the one who jumped');
+    assert.deepEqual([h.x, h.y, h.z, h.seats.every((n) => !n)], [PARK.x, PARK.y, PARK.z, true], 'home, empty');
+  }
+});
+
+test('the helicopter rule switched off at 60 m: everyone aboard floats down', () => {
+  const s = setup();
+  const { game, h, now } = s;
+  const ps = aloft(s, ['pia', 'bo', 'cas'], 60);
+  const y = h.y;
+  game.rules.heli = false;
+  game.helis.tick(now());
+  for (const p of ps) {
+    assert.ok(game.dropping(p, now()), 'a drop');
+    assert.ok(Math.abs(p.state.y - y) < 1e-9);
+  }
+  assert.deepEqual([h.x, h.z], [PARK.x, PARK.z], 'and it is home');
 });
