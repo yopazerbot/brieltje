@@ -43,11 +43,11 @@ SIZES = json.loads((ROOT / "web/public/textures/sizes.json").read_text(encoding=
 GROUND = json.loads((ROOT / "web/src/data/house_shell.json").read_text(encoding="utf-8"))["ground"]  # the game's flat ground (-0.1)
 
 # --- the looks: one constant each, so a colour changes in one line --------------------------------------------------
-BRICK = "#ecc0b2"  # the brick's tint: a rustic mixed red brick, lime-smeared, that reads pinkish grey-red from afar
-SOLDIER = "#d99c8a"  # the soldier courses over the openings: the same brick on end, a little redder
-ROOF = "#2f3235"  # anthracite flat ceramic tiles
-FRAME = "#33363a"  # anthracite window and door frames, the front door and the garage door
-SILL = "#55585c"  # thin anthracite-grey sills
+BRICK = "#ffffff"  # the brick (mixed_brick, tools/textures.py) in its own colours: red, red-brown and lime-washed
+SOLDIER = "#f4d6cb"  # the soldier courses over the openings: the same brick on end, a little redder
+ROOF = "#3e4144"  # anthracite flat ceramic tiles
+FRAME = "#565b60"  # mid anthracite-grey window and door frames, the front door and the garage door
+SILL = "#5d6267"  # thin anthracite-grey sills
 GUTTER = "#3c3f43"  # the anthracite gutters along the eaves (the downpipes stay zinc)
 STONE = "#7f877e"  # grey stone: thresholds
 WOOD = "#6e4a32"  # the back doors: warm brown boards
@@ -600,15 +600,16 @@ class Home:
 
 # ======================================================================================================================
 MESHES = {
-    "vh_brick": {"texture": "nb_brick", "tint": BRICK, "normalScale": .7},
-    "vh_soldier": {"texture": "nb_brick", "tint": SOLDIER, "normalScale": .7, "turn": True},  # its bricks on end
-    "vh_roof": {"texture": "roof_tiles", "tint": ROOF, "normalScale": .35},
+    "vh_brick": {"texture": "mixed_brick", "tint": BRICK, "normalScale": .7},
+    "vh_soldier": {"texture": "mixed_brick", "tint": SOLDIER, "normalScale": .7, "turn": True},  # its bricks on end
+    "vh_roof": {"texture": "roof_tiles", "tint": ROOF, "normalScale": .9},
     "vh_paving": {"texture": "pavers", "tint": "#76746f"},
     "vh_gravel": {"texture": "terrace", "tint": "#d2d0ca"},  # the terrace's large pale slabs (wet and snow as gravel)
     "vh_hedge": {"texture": "hedge", "tint": "#7f9a6c", "normalScale": .8},
     "vh_trim": {"tint": "#ffffff", "rough": .82},
     "vh_stone": {"tint": "#ffffff", "rough": .9},
     "vh_glass": {"tint": "#46514f", "rough": .2, "metal": .2, "shut": True},
+    "vh_roof_glass": {"tint": "#ffffff", "rough": .08, "metal": .5},  # the roof window's glass: drawn, not one of the panes
     "vh_doors": {"tint": "#ffffff", "rough": .6, "shut": True},
     "vh_frames_small": {"tint": "#ffffff", "rough": .6},
     "vh_metal_small": {"tint": "#ffffff", "rough": .45, "metal": .4},
@@ -688,14 +689,22 @@ ye = EAVE - OVER * PITCH
 h.roof([(-.05, -OVER, ye), (UMU + .05, -OVER, ye), (UMU + .05, VR, RIDGE), (-.05, VR, RIDGE)], free=(0, 1, 3), board=.22)
 h.roof([(-.05, VM + OVER, ye), (UMU + .05, VM + OVER, ye), (UMU + .05, VR, RIDGE), (-.05, VR, RIDGE)], free=(0, 1, 3), board=.22)
 h.rod("vh_roof", (-.06, VR, RIDGE + .02), (UMU + .06, VR, RIDGE + .02), .1, 6)
-# A roof window in the front slope, over the second window upstairs: drawn on the tiles only (no opening).
-RW0, RW1, RV0, RV1 = 3.13, 4.07, 2.0, 2.9
-lift = lambda u, v, up: (u, v - up * PITCH / math.hypot(1, PITCH), main_roof(v) + up / math.hypot(1, PITCH))  # up: off the slope
+# A roof window in the front slope, centred over the second window upstairs: drawn on the tiles only (no opening).
+# About 1.1 m wide and 1.0 m up the slope; its grey frame stands 7 cm proud of the tiles, the glass 3 cm below it.
+SL = math.hypot(1, PITCH)  # metres of slope per metre of v
+RW0, RW1, RV0, RV1 = 3.05, 4.15, 2.1, 2.1 + 1.0 / SL
+lift = lambda u, v, up: (u, v - up * PITCH / SL, main_roof(v) + up / SL)  # up: off the slope
 rw = [(RW0, RV0), (RW1, RV0), (RW1, RV1), (RW0, RV1)]
-h.poly("vh_frames_small", [lift(u, v, .09) for u, v in rw], (0, -PITCH, 1), FRAME)
-for (ua, va), (ub, vb) in zip(rw, rw[1:] + rw[:1]):
-    h.poly("vh_frames_small", [lift(ua, va, 0), lift(ub, vb, 0), lift(ub, vb, .09), lift(ua, va, .09)], ((ua + ub) / 2 - (RW0 + RW1) / 2, (va + vb) / 2 - (RV0 + RV1) / 2, 0), FRAME)
-h.poly("vh_frames_small", [lift(u, v, .095) for u, v in [(RW0 + .07, RV0 + .08), (RW1 - .07, RV0 + .08), (RW1 - .07, RV1 - .07), (RW0 + .07, RV1 - .07)]], (0, -PITCH, 1), "#22272b")
+rin = [(RW0 + .08, RV0 + .08 / SL), (RW1 - .08, RV0 + .08 / SL), (RW1 - .08, RV1 - .08 / SL), (RW0 + .08, RV1 - .08 / SL)]
+RC = ((RW0 + RW1) / 2, (RV0 + RV1) / 2)
+for k in range(4):
+    (ua, va), (ub, vb) = rw[k], rw[(k + 1) % 4]
+    (ia, ja), (ib, jb) = rin[k], rin[(k + 1) % 4]
+    side = ((ua + ub) / 2 - RC[0], (va + vb) / 2 - RC[1], 0)
+    h.poly("vh_frames_small", [lift(ua, va, 0), lift(ub, vb, 0), lift(ub, vb, .07), lift(ua, va, .07)], side, FRAME)  # its outer side
+    h.poly("vh_frames_small", [lift(ua, va, .07), lift(ub, vb, .07), lift(ib, jb, .07), lift(ia, ja, .07)], (0, -PITCH, 1), FRAME)  # its top
+    h.poly("vh_frames_small", [lift(ia, ja, .04), lift(ib, jb, .04), lift(ib, jb, .07), lift(ia, ja, .07)], (-side[0], -side[1], 0), FRAME)  # down to the glass
+h.poly("vh_roof_glass", [lift(u, v, .04) for u, v in rin], (0, -PITCH, 1), "#1b2125")
 # The verges' dark boards on the gables, a little proud.
 for u, out in ((-.05, -1), (UMU + .05, 1)):
     for v0, v1 in ((-OVER, VR), (VR, VM + OVER)):
