@@ -2589,6 +2589,7 @@ export class Game {
     p.nades.fill(0);
     p.protectedUntil = now + PROTECT_MS;
     p.backAt = now; // out of the fight before it: holstering counts at once (state)
+    p.thrown = []; // and its grenades still in the air with it: they neither hold the holster nor go off for the one back
     let spawn = at?.spawn;
     if (!at) {
       // At the player's team's house in the teams game, else round the house; away from the others.
