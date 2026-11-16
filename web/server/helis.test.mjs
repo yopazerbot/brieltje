@@ -499,7 +499,7 @@ test('a pilot whose connection closes high up: the machine hangs still; after 20
   const [pia, bo] = crew(s, ['pia', 'bo']);
   pia.ws = { name: 'pia', on: (ev, fn) => (handlers[ev] = fn) };
   game.joined(pia.ws, 'pia', pia);
-  const high = { x: -60, y: floor(-60, -60) + 60, z: -60 };
+  const high = { x: -60, y: floor(-60, -60) + 60, z: -60, g: 0 };
   put(high);
   handlers.close();
   assert.equal(game.players.has('pia'), false);
@@ -801,7 +801,7 @@ const spawns = (s, name) => s.sent.get(name).filter((m) => m.t === 'spawn');
 /** `names` aboard (seat 0 first), the machine `up` m over the server's floor at (-60, -60). */
 function aloft(s, names, up) {
   const ps = crew(s, names);
-  s.put({ x: -60, y: floor(-60, -60) + up, z: -60, yaw: 0.4 });
+  s.put({ x: -60, y: floor(-60, -60) + up, z: -60, yaw: 0.4, g: 0 }); // in the air: its pilot's rest flag off
   return ps;
 }
 
@@ -814,15 +814,33 @@ test('a jump on the ground or on its pad: a plain out, no drop, no spawn', () =>
   assert.equal(pia.drop, null);
   assert.equal(spawns(s, 'pia').length, 0);
   assert.equal(h.seats[0], null);
-  // At 80 m, but where its pad is (a test pad at that height): a plain out too.
-  const t = setup();
-  const [bo] = crew(t, ['bo']);
-  const y = floor(PARK.x, PARK.z) + 80;
-  t.game.helis.inner.get(ID).park = { ...PARK, y };
-  t.put({ x: PARK.x, y, z: PARK.z });
-  assert.equal(t.game.helis.atPad(t.h), true);
-  t.ask('bo', bo, JUMP);
-  assert.deepEqual([t.game.helis.of('bo'), bo.drop, spawns(t, 'bo').length], [null, null, 0], 'no drop at a pad');
+});
+
+test('no drop from another pad (the church\'s deck, 12.8 m over the server\'s floor) nor from a machine at rest on a high roof', () => {
+  const church = DATA.pads.find((q) => q.id === 'church');
+  assert.ok(church.y - floor(church.x, church.z) >= DROP.jumpMin, 'the deck is higher than the lowest jump');
+  // The house's machine at rest on the church's deck: a passenger's jump, a forged one with the rest flag off, and the
+  // honest passengers put out after 20 s without a pilot.
+  for (const g of [1, 0]) {
+    const s = setup();
+    const [pia, bo, cas] = crew(s, ['pia', 'bo', 'cas']);
+    s.put({ x: church.x, y: church.y, z: church.z, yaw: church.yaw, g });
+    assert.equal(s.game.helis.onPad(s.h), true);
+    s.ask('bo', bo, JUMP);
+    assert.deepEqual([s.game.helis.of('bo'), bo.drop, spawns(s, 'bo').length], [null, null, 0], `on the deck, rest flag ${g}: a plain out`);
+    s.ask('pia', pia, { t: 'heli', op: 'out' });
+    s.at(PILOTLESS_MS + 1000);
+    s.game.helis.tick(s.now());
+    assert.deepEqual([s.game.helis.of('cas'), cas.drop], [null, null], `on the deck, rest flag ${g}: put out after 20 s, on foot`);
+  }
+  // At rest 30 m over the server's floor (a roof the server doesn't know): a jump is a plain out; in the air it is a drop.
+  for (const [g, drop] of [[1, false], [0, true]]) {
+    const s = setup();
+    const [, bo] = crew(s, ['pia', 'bo']);
+    s.put({ x: -60, y: floor(-60, -60) + 30, z: -60, g });
+    s.ask('bo', bo, JUMP);
+    assert.equal(!!bo.drop, drop, `30 m up, rest flag ${g}`);
+  }
 });
 
 test('the lowest jump is the solo jump\'s DROP.jumpMin over the server\'s floor: under it an out, over it a drop from the machine', () => {
@@ -927,7 +945,7 @@ test('a jumper steered into each code-locked home from above is stopped at its b
       const [pia] = crew(s, ['pia']);
       const top = Math.max(...home.bands.map((q) => q.y1));
       const y = Math.max(top, floor(target.x, target.z)) + DROP.jumpMin + 8;
-      put({ x: target.x, y, z: target.z, yaw: 0 });
+      put({ x: target.x, y, z: target.z, yaw: 0, g: 0 });
       ask('pia', pia, JUMP);
       assert.ok(pia.drop, `${home.id}/${bi}: a drop`);
       for (let i = 0; i < 200; i++) {

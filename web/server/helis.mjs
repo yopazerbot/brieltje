@@ -15,8 +15,8 @@
 // - kidnapping: `out` is always granted, any seat, any height; a machine with nobody at the stick high up for
 //   PILOTLESS_MS puts everyone out (by parachute, high enough) and goes home; only the server puts anyone out;
 // - a parachute from nowhere: a `jump` gives a drop only out of a seat the server gave, at DROP.jumpMin or more over
-//   the server's floor and off the pad, from the machine's own pose (the message carries no position), the drop's
-//   budgets from its first state (chute);
+//   the server's floor, in the air (not at rest) and on no pad, from the machine's own pose (the message carries no
+//   position), the drop's budgets from its first state (chute);
 // - fighting from a seat or being hit in one: Game.inCar answers for a machine, one early gate in Game.handle drops
 //   every fighting and taking message from a seat, and Game.blast skips those aboard;
 // - flooding and replay: one 300 ms gate shared with the cars, horses and bikes; every op acts on the present state,
@@ -269,8 +269,9 @@ export class Helis {
 
   /**
    * After `p` left `h` (a jump, or put out by the server): a drop from where the machine is, when the admin's parachute
-   * rule is on, no game holds, the player is alive, the machine is not on its pad and its height over the server's
-   * own floor is DROP.jumpMin or more (the solo jump's lowest, shared/parachute.mjs). The `heli` message that emptied
+   * rule is on, no game holds, the player is alive, the machine is in the air (its pilot's rest flag off) and on no
+   * pad, and its height over the server's own floor is DROP.jumpMin or more (the solo jump's lowest,
+   * shared/parachute.mjs). The `heli` message that emptied
    * the seat has gone out first; then the jumper alone is told where the drop starts (`sy`: its height, the server's).
    * Its budgets hold from the first state (`jump`: no rise in the first moments either, game.mjs's state). True when
    * it started; lower down they fall as a walker (nobody is hurt by a fall).
@@ -278,7 +279,9 @@ export class Helis {
   chute(p, h, now) {
     const g = this.game;
     const st = p?.state;
-    if (!st || !p.alive || !g.rules.parachute || g.fenced() || this.atPad(h) || h.y - this.floor(h.x, h.z) < DROP.jumpMin) return false;
+    // On any built pad (the church's deck stands 12.8 m over the server's floor), or at rest anywhere (a roof the
+    // server doesn't know): no parachute, whatever the height.
+    if (!st || !p.alive || !g.rules.parachute || g.fenced() || this.onPad(h) || h.g === 1 || h.y - this.floor(h.x, h.z) < DROP.jumpMin) return false;
     Object.assign(st, { x: h.x, y: h.y, z: h.z, flying: false, d: false }); // where release put them: the machine's place
     p.budget = p.vbudget = 0.5;
     p.movedAt = now;
