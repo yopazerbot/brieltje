@@ -489,6 +489,7 @@ file's opening comment; run it again after adding, moving or removing a module.
 - `tools/tree_huts.py`: Build the tree huts in the wood round the café Sparrenhof in Blender: shooting bases for the Zombies game.
 - `tools/village_houses_b1.py`: Hand-made houses among the generated ones, package B1: four houses in the north-west of the village.
 - `tools/village_houses_b2.py`: Hand-made houses among the generated ones, package B2: four houses in the east of the village.
+- `tools/village_houses_b3.py`: Hand-made houses among the generated ones, package B3: four houses out east, on the way to the Sparrenhof and past the end of Molenhoek.
 - `tools/village_houses_kit.py`: The toolkit of the hand-made village houses: House, Opening, the ground, the export to .glb.
 - `tools/villager_paths.py`: Where the villagers walk and cycle in Explore: web/src/data/villagers.json.
 - `tools/villagers.py`: Build the villagers for Explore in Blender: generic, invented people and a dog, rigged and animated.
