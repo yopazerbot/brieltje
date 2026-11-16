@@ -102,6 +102,48 @@ export class Minimap {
     this.build();
   }
 
+  /** A building of its own (the café at the church): its floor's picture, where it lies, and whether a spot is in it */
+  private building: { plan: HTMLCanvasElement; minX: number; minZ: number; contains: (x: number, z: number) => boolean } | null = null;
+
+  /**
+   * A building walked into apart from the house (the café at the church, world/keet.ts): one floor's picture of its own,
+   * from its blocks in the world (`floor` its height), cut 1.2 m above that floor as a level of the house is. Its rooms'
+   * floors and its walls and glass; doors are gaps, furniture (`c`) is left out. Drawn in place of the house's picture
+   * while you are in it (`contains`).
+   */
+  addBuilding(prisms: Prism[], floor: number, contains: (x: number, z: number) => boolean): void {
+    const pad = 4;
+    const xs = prisms.flatMap((p) => p.p[0].map((v) => v[0]));
+    const zs = prisms.flatMap((p) => p.p[0].map((v) => v[1]));
+    const minX = Math.min(...xs) - pad;
+    const minZ = Math.min(...zs) - pad;
+    const plan = document.createElement('canvas');
+    plan.width = Math.ceil((Math.max(...xs) + pad - minX) * SCALE);
+    plan.height = Math.ceil((Math.max(...zs) + pad - minZ) * SCALE);
+    const g = plan.getContext('2d')!;
+    const path = (rings: [number, number][][]) => {
+      g.beginPath();
+      for (const r of rings) {
+        r.forEach(([x, z], i) => (i ? g.lineTo : g.moveTo).call(g, (x - minX) * SCALE, (z - minZ) * SCALE));
+        g.closePath();
+      }
+    };
+    const cut = floor + CUT;
+    g.fillStyle = 'rgba(232, 222, 205, 0.85)';
+    for (const p of prisms) {
+      if (!p.n || p.m === 'c' || Math.abs(p.y1 - floor) > 0.05) continue; // a room's floor
+      path(p.p);
+      g.fill('evenodd');
+    }
+    for (const p of prisms) {
+      if (p.m === 'c' || p.y0 > cut || p.y1 < cut) continue;
+      g.fillStyle = p.m === 'glass' ? 'rgba(120, 190, 230, 0.9)' : 'rgba(25, 26, 30, 0.95)';
+      path(p.p);
+      g.fill('evenodd');
+    }
+    this.building = { plan, minX, minZ, contains };
+  }
+
   private build(): void {
     const { prisms, rooms, levels, w, h } = this;
     for (const lv of levels) {
@@ -197,7 +239,9 @@ export class Minimap {
     g.rotate(yaw);
     const ground = this.groundPiece(x, z);
     if (ground) g.drawImage(ground, -(x - this.groundAt.x + GROUND / 2) * SCALE, -(z - this.groundAt.z + GROUND / 2) * SCALE, GROUND * SCALE, GROUND * SCALE);
-    g.drawImage(this.plans.get(lv.id)!, -(x - this.minX) * SCALE, -(z - this.minZ) * SCALE);
+    const building = this.building?.contains(x, z) ? this.building : null; // the café at the church: its own floor
+    if (building) g.drawImage(building.plan, -(x - building.minX) * SCALE, -(z - building.minZ) * SCALE);
+    else g.drawImage(this.plans.get(lv.id)!, -(x - this.minX) * SCALE, -(z - this.minZ) * SCALE);
     // Furniture outlines on this floor.
     g.fillStyle = 'rgba(160, 120, 80, 0.85)';
     for (const s of shapes) {

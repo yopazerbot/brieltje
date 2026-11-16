@@ -44,9 +44,9 @@ export async function loadKeet(renderer: THREE.WebGLRenderer, town: THREE.Object
 /**
  * The café's rooms, after `after` (the game playing) and in the browser's idle time: their walls, floors and doors go in,
  * their new meshes hidden until their shaders are compiled (`prepare`), so walking in never waits for a compile.
- * `done`: the rooms' names and their floors in the world (for what counts as indoors).
+ * `done`: the rooms' names and their floors in the world (for what counts as indoors), and the café as a whole (the minimap's floor).
  */
-export function keetRooms(keet: WalkIn, deps: { world: World; doors: Doors; glass: Glass; prepare: (o: THREE.Object3D) => Promise<unknown>; after: Promise<unknown>; done: (rooms: string[], floors: Prism[]) => void }): void {
+export function keetRooms(keet: WalkIn, deps: { world: World; doors: Doors; glass: Glass; prepare: (o: THREE.Object3D) => Promise<unknown>; after: Promise<unknown>; done: (rooms: string[], floors: Prism[], keet: Keet) => void }): void {
   const idle = () => new Promise<void>((r) => ('requestIdleCallback' in window ? requestIdleCallback(() => r(), { timeout: 3000 }) : setTimeout(r, 300)));
   void deps.after.then(async () => {
     const [rooms, shell] = await Promise.all([import('../data/keet_rooms.json'), import('../data/keet_shell.json')]);
@@ -78,7 +78,7 @@ export function keetRooms(keet: WalkIn, deps: { world: World; doors: Doors; glas
     for (const m of fresh) m.visible = true;
     const keetData = makeKeet(shell.default, pack);
     openings = keetData.doors;
-    deps.done(pack.rooms, keetData.prisms.filter((p) => p.n) as unknown as Prism[]);
+    deps.done(pack.rooms, keetData.prisms.filter((p) => p.n) as unknown as Prism[], keetData);
   }).catch(() => undefined); // no rooms: the café stays a lump with its doors and windows
 }
 

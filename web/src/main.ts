@@ -4458,7 +4458,8 @@ async function buildVillage(): Promise<void> {
     void keetLife.attach(keet, scene, (x, z, from) => world.groundAt(x, z, from, 0).y);
     data.groundCuts.cells.push(...keet.groundCuts.cells);
     data.groundCuts.tris.push(...keet.groundCuts.tris);
-    keetRooms(keet, { world, doors, glass, prepare: precompile, after: playing, done: (names, floors) => {
+    keetRooms(keet, { world, doors, glass, prepare: precompile, after: playing, done: (names, floors, whole) => {
+      minimap.addBuilding(whole.prisms as Prism[], whole.floor, whole.contains); // its own floor on the minimap while in it
       for (const n of names) roomNames.add(n);
       keetFloors = floors;
       indoorsAt = makeIndoors([...house.prisms, ...insides.prisms(), ...keetFloors, ...(house.surroundings?.prisms ?? [])], [...roomNames]);
