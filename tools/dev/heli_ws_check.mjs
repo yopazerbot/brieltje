@@ -6,7 +6,9 @@
 // inside one. Then the pilot vanishes in the air: the machine hangs still, a passenger takes the stick; with nobody at
 // it the others are put out after 20 s and the machine goes home. The admin's rule off in flight, and a game starting
 // with the machine in the air, empty it and send it home; a guest just hit can't board for 10 s, nor the guest who hit
-// them (nor jump by /parachute).
+// them (nor jump by /parachute). Last the jump together: on the pad a plain out; at 60 m a passenger's jump gives a drop
+// from the server's pose (a `spawn` with `sy`, to the jumper alone) and the others see its canopy; the pilot's leaves the
+// machine hanging where it was; a second jump does nothing.
 //
 //   ADMIN_PASSWORD=... node tools/dev/heli_ws_check.mjs --api http://localhost:8460
 //
@@ -15,7 +17,7 @@ import { readFileSync } from 'node:fs';
 import WebSocket from '../../web/node_modules/ws/wrapper.mjs';
 import { HOMES, homeAt } from '../../web/shared/homes.mjs';
 import { makeTerrain } from '../../web/shared/terrain.mjs';
-import { readHeli } from '../../web/shared/wire.mjs';
+import { readHeli, readPlayer } from '../../web/shared/wire.mjs';
 import { localOnly, options } from './cdp.mjs';
 
 const o = options({ api: 'http://localhost:8460' });
@@ -56,11 +58,14 @@ const inHome = (h) => {
 const connect = async (name, cookie) => {
   const log = [];
   const ws = new WebSocket(`ws://${host}/ws?v=2`, { headers: { Cookie: cookie, Origin: o.api } });
-  const me = { name, ws, log, heli: null, poses: [], players: new Map(), onFix: null };
+  const me = { name, ws, log, heli: null, poses: [], players: new Map(), flags: new Map(), onFix: null };
   ws.on('message', (d) => {
     const m = JSON.parse(String(d));
     if (m.t === 's') {
-      for (const p of m.p ?? []) me.players.set(p[0], { x: p[2], y: p[3], z: p[4] });
+      for (const p of m.p ?? []) {
+        me.players.set(p[0], { x: p[2], y: p[3], z: p[4] });
+        me.flags.set(p[0], readPlayer(p));
+      }
       for (const e of m.e ?? []) {
         const h = readHeli(e);
         if (h.id !== ID) continue;
@@ -322,6 +327,42 @@ await sleep(9_400);
 await r3.ask({ op: 'in', id: ID });
 ok('10 s later: in', admin.seats()[0] === r3.name, JSON.stringify(admin.seats()));
 await r3.ask({ op: 'out' });
+// 12. The jump together: a passenger at 60 m gets a drop from the machine's pose, the others see the canopy; then the
+// pilot jumps and the machine hangs where it was. On its pad a jump is a plain out.
+admin.send({ t: 'rules', parachute: true });
+await sleep(300);
+Object.assign(pose, { x: PARK.x, y: PARK.y, z: PARK.z, yaw: PARK.yaw });
+await allBoard([r3, r2]);
+let marks = [admin, r2, r3, walker].map((c) => c.log.length);
+await r2.ask({ op: 'jump' });
+ok('a jump on the pad: a plain out, no drop', !admin.seats().includes(r2.name) && !r2.log.slice(marks[1]).some((m) => m.t === 'spawn'));
+await walkTo(r2, beside(1));
+await r2.ask({ op: 'in', id: ID });
+await flyTo({ x: PARK.x, y: floor(PARK.x, PARK.z) + 60, z: PARK.z }, 0, r3);
+marks = [admin, r2, r3, walker].map((c) => c.log.length);
+const machine = { ...admin.heli };
+await r2.ask({ op: 'jump' });
+const sp = r2.log.slice(marks[1]).find((m) => m.t === 'spawn' && m.drop);
+ok('a passenger\'s jump at 60 m: a spawn with sy, where the server has the machine', !!sp && typeof sp.sy === 'number' && Math.abs(sp.sy - machine.y) < 0.05 && Math.hypot(sp.sx - machine.x, sp.sz - machine.z) < 0.05, JSON.stringify(sp));
+ok('only the jumper is told', [admin, r3, walker].every((c, i) => !c.log.slice(marks[[0, 2, 3][i]]).some((m) => m.t === 'spawn')));
+const fall = sp ? { x: sp.sx, y: sp.sy, z: sp.sz } : { ...machine };
+for (let i = 0; i < 40; i++) {
+  fall.y -= 0.3;
+  fall.x += 0.2;
+  r2.send({ t: 'state', ...fall, yaw: 0, pitch: 0, armed: false, w: 'pistol', pc: 1, ...(i > 24 ? { po: 1 } : {}) });
+  await sleep(50);
+}
+await sleep(300);
+const seenJumper = [admin, r3, walker].map((c) => c.flags.get(r2.name));
+ok('the others see the jumper with the chute and its canopy, where it falls', seenJumper.every((f) => f && f.chute && f.open && dist(f, fall) < 0.5), JSON.stringify(seenJumper.map((f) => f && [f.chute, f.open, dist(f, fall).toFixed(2)])));
+const hangs = { ...admin.heli };
+marks = [admin, r2, r3, walker].map((c) => c.log.length);
+await r3.ask({ op: 'jump' });
+await sleep(500);
+const sp3 = r3.log.slice(marks[2]).find((m) => m.t === 'spawn' && m.drop);
+ok('the pilot\'s jump: a spawn with sy, the machine empty where it hung', !!sp3 && Math.abs(sp3.sy - hangs.y) < 0.05 && dist(admin.heli, hangs) < 0.05 && admin.heli.seats.every((n) => !n), JSON.stringify(sp3));
+await r3.ask({ op: 'jump' });
+ok('a second jump: nothing', r3.log.slice(marks[2]).filter((m) => m.t === 'spawn').length === 1);
 
 admin.send({ t: 'rules', parachute: rules.parachute, heli: rules.heli ?? true }); // the server's rules as they were
 await sleep(300);

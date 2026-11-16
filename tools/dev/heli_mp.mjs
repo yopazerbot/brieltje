@@ -20,6 +20,11 @@
 //    nothing. Zombies started in the air puts Pilot and RiderC out and the machine home.
 // 4. Only on its own (--phases 4): the watcher's frame time with the four aboard hanging 12 m over the house's pad, and
 //    with it parked empty there, each against the same view without it (briel.bench, alternated), on Medium and Low.
+// 5. The jump together (--phases 5 on its own takes three pages): Pilot, RiderC (the phone) and RiderA aboard, 60 m
+//    over the house's pad; RiderA's line in the air says Use jumps, the phone's shows no keys. RiderC jumps by the Use
+//    button (the page sends no position): the canopy opens by itself, Pilot and RiderA see it, and RiderC lands where
+//    the server and both pages have it (1 m). Then Pilot jumps by E: the machine hangs where it was, RiderA takes the
+//    stick and lands it on its pad.
 // The boarders stand at four places round the cabin, two by the rear skids: someone standing there once threw a seated
 // pilot's machine 2 m up (world/heli.ts env, shared/heli.mjs heliHeads); phase 1 checks it stays down. No page errors.
 // Pictures with --out.
@@ -308,13 +313,14 @@ const errors = (b) => b.logs.filter((l) => /^(error|exception)/.test(l) && !/Fai
 
 const tag = Math.random().toString(36).slice(2, 5);
 try {
+  const solo5 = phases.size === 1 && phases.has(5); // the jump together on its own: three pages
   const P = await page(ports[0], `Pilot${tag}`);
   const A = await page(ports[1], `RiderA${tag}`);
-  const B = await page(ports[2], `RiderB${tag}`);
+  const B = solo5 ? null : await page(ports[2], `RiderB${tag}`);
   const C = await page(ports[3], `RiderC${tag}`, { phone: true });
-  const Q = await page(ports[4], `Fifth${tag}`);
-  const W = await page(ports[5], `Watcher${tag}`, { spawn: 'church', quality: 'medium' });
-  const crew = [P, A, B, C];
+  const Q = solo5 ? null : await page(ports[4], `Fifth${tag}`);
+  const W = solo5 ? null : await page(ports[5], `Watcher${tag}`, { spawn: 'church', quality: 'medium' });
+  const crew = [P, A, B, C].filter(Boolean);
   const names = {};
   for (const b of pages) names[b.who] = await me(b);
   console.log('names:', JSON.stringify(names));
@@ -667,6 +673,84 @@ try {
     for (const [i, b] of crew.entries()) await b.evaluate(`briel.teleport(${GARDEN.x + 3 + i}, ${GARDEN.z + 4}, ${PARK.house.y + 0.5}, 0)`, false);
     await sleep(9000); // its rotor run down
     await cost([], false, 'parked empty on its pad');
+  }
+
+  if (phases.has(5)) {
+    console.log('-- 5. the jump together: RiderC (the phone) jumps by its Use button, then the pilot by E; RiderA takes the stick');
+    admin.send({ t: 'rules', parachute: true });
+    await sleep(800);
+    const three = [P, A, C];
+    /** How page `b` draws `name`: where its figure is, under a parachute or not, its canopy out or not. */
+    const figure = (b, name) => b.evaluate(`(() => {
+      const k = [...briel.avatars.avatars.keys()].find((q) => q.toLowerCase() === '${name}'.toLowerCase());
+      if (!k) return null;
+      const p = briel.avatars.avatars.get(k).root.getWorldPosition(new (briel.avatars.avatars.get(k).root.position.constructor)());
+      const f = briel.parachutes.flights.get(k);
+      return { x: p.x, y: p.y, z: p.z, chute: !!f && f.phase !== 'land', open: !!f && f.openT !== null };
+    })()`);
+    const own = (b) => b.evaluate('({ x: briel.player.x, z: briel.player.z, feet: briel.player.feet, chute: briel.player.chute, canopy: briel.player.canopy, aboard: briel.helis.aboard })');
+    ok('Pilot boards: seat 0', await board(P, 'house', 0, 0));
+    ok('RiderC boards (the phone): seat 1', await board(C, 'house', 1, 1));
+    ok('RiderA boards: seat 2', await board(A, 'house', 2, 2));
+    const h0 = await machine(P, 'house');
+    const lines = new Set();
+    const t = await fly(P, h0, h0.y + 60, { hover: true, secs: 60, during: async () => lines.add(await prompt(A)) });
+    ok('up 60 m over the pad', t > 0, `${t.toFixed(1)} s`);
+    ok('RiderA\'s line in the air says Use jumps', [...lines].some((l) => /Jump/.test(l)), JSON.stringify([...lines]));
+    ok('RiderC\'s (the phone) shows no keys', !/Jump/.test(await prompt(C)), `"${await prompt(C)}"`);
+    await C.evaluate('window.__sent.length = 0', false);
+    await use(C);
+    await sleep(600);
+    ok('the phone\'s Use asks the jump, with no position', JSON.stringify(await C.evaluate('window.__sent')) === JSON.stringify([{ t: 'heli', op: 'jump' }]), JSON.stringify(await C.evaluate('window.__sent')));
+    const c0 = await own(C);
+    ok('RiderC is out and in a drop from where the server had the machine', !c0.aboard && c0.chute !== null, JSON.stringify(c0));
+    await sleep(2500);
+    for (const b of [P, A]) {
+      const f = await figure(b, names[C.who]);
+      ok(`${b.who} sees RiderC under an open canopy`, !!f && f.chute && f.open, JSON.stringify(f));
+    }
+    ok('RiderC\'s own canopy is out (by itself)', (await own(C)).canopy !== null);
+    await shot(A, '5_riderC_canopy_from_riderA');
+    let c1 = null;
+    for (let i = 0; i < 120; i++) {
+      await sleep(500);
+      c1 = await own(C);
+      if (c1.chute === null) break;
+    }
+    ok('RiderC lands', c1?.chute === null, JSON.stringify(c1));
+    await sleep(1500);
+    const sv = server(names[C.who]);
+    ok('the server has RiderC where it landed (1 m)', !!sv && Math.hypot(sv.x - c1.x, sv.z - c1.z) < 1, sv && `${r2(Math.hypot(sv.x - c1.x, sv.z - c1.z))} m`);
+    for (const b of [P, A]) {
+      const f = await figure(b, names[C.who]);
+      ok(`${b.who} sees RiderC land where RiderC's page has it (1 m)`, !!f && Math.hypot(f.x - c1.x, f.z - c1.z) < 1, f && `${r2(Math.hypot(f.x - c1.x, f.z - c1.z))} m`);
+    }
+    // The pilot jumps: the machine hangs where it was; RiderA takes the stick and flies it home.
+    const hang = await machine(A, 'house');
+    await tap(P, 'KeyE');
+    await sleep(1500);
+    const p0 = await own(P);
+    ok('the pilot is out and in a drop', !p0.aboard && p0.chute !== null, JSON.stringify(p0));
+    await stopPilot(P);
+    const m1 = await machine(A, 'house');
+    ok('RiderA: the machine hangs where it was, nobody at the stick', Math.hypot(m1.x - hang.x, m1.y - hang.y, m1.z - hang.z) < 1 && (await seatsOn(A, 'house'))[0] === null, `${r2(Math.hypot(m1.x - hang.x, m1.y - hang.y, m1.z - hang.z))} m`);
+    ok('RiderA\'s line: nobody flies', /Nobody is flying/.test(await prompt(A)), `"${await prompt(A)}"`);
+    await tap(A, 'Space');
+    await sleep(1500);
+    const a = await aboard(A);
+    ok('RiderA takes the stick', a.aboard && a.seat === 0 && a.piloting, JSON.stringify(a));
+    ok('and flies it down onto its pad', (await fly(A, PARK.house, hang.y, { secs: 90 })) > 0);
+    await use(A);
+    let p1 = null;
+    for (let i = 0; i < 120; i++) {
+      await sleep(500);
+      p1 = await own(P);
+      if (p1.chute === null) break;
+    }
+    ok('the pilot lands', p1?.chute === null, JSON.stringify(p1));
+    for (const b of three) ok(`${b.who}: nobody aboard`, !(await aboard(b)).aboard);
+    admin.send({ t: 'rules', parachute: false });
+    await sleep(800);
   }
   for (const b of pages) ok(`${b.who}: no page errors`, errors(b).length === 0, JSON.stringify(errors(b).slice(-3)));
 } catch (e) {
