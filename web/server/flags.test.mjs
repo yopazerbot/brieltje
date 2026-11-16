@@ -5,6 +5,7 @@ import { BACK_MS, CAPTURE, FLAG_MS, RETURN_MS, SAFE_MS, SUDDEN_MS, TOUCH } from 
 import { FIELDS, fieldOf } from '../shared/flagFields.mjs';
 import { NO_SHOOT, noShoot } from '../shared/zones.mjs';
 import { PORTALS, REACH } from '../shared/portals.mjs';
+import { HOMES, homeAt } from '../shared/homes.mjs';
 
 // Steal the flag (server/flags.mjs, driven from server/modes.mjs): blue at the church against red at Molenhoek or the
 // Sparrenhof. Every flag event is the server's, from where it has the players: no message takes, drops or scores a flag.
@@ -325,7 +326,7 @@ test('the tie: still level after sudden death, most tags; still level, a draw', 
 
 test('the carrier is refused a portal, a trip from the chat and a helicopter seat, each with a line saying why', () => {
   const s = four('village', { look: 'real' });
-  const [r, r2] = s.red;
+  const [r] = s.red;
   s.game.rules.portals = s.game.rules.travel = true;
   s.onStand(r, 'blue');
   s.tick();
@@ -334,12 +335,157 @@ test('the carrier is refused a portal, a trip from the chat and a helicopter sea
   s.msg(r, { t: 'travel', to: 'sparrenhof' });
   s.msg(r, { t: 'travel', to: 'sparrenhof', via: 'chat' });
   s.msg(r, { t: 'heli', op: 'in', id: 'church' });
-  assert.deepEqual(s.lines(r), ['flagPortal', 'flagTravel', 'flagHeli']);
+  assert.deepEqual(s.lines(r), ['flagNoTravel', 'flagNoTravel', 'flagHeli']);
   assert.equal(s.flag().flags.blue.by, r, 'still carried, nowhere else');
-  // Not the carrier: the portal and the chat take them (the house rules on), the helicopter's own checks follow.
-  s.put(r2, church.x, church.z, 4.7);
-  s.msg(r2, { t: 'travel', to: 'sparrenhof' });
-  assert.ok(s.out.some((m) => m.t === 'travel' && m.name === r2 && m.ok), 'a non-carrier travels');
+});
+
+test('nobody travels while it is played: a portal, the chat and a start place refused for a non-carrier in both fields; the teams game as before', () => {
+  for (const field of ['compact', 'village']) {
+    const s = four(field);
+    const [b] = s.blue;
+    s.game.rules.portals = s.game.rules.travel = true;
+    const church = PORTALS.find((p) => p.id === 'church');
+    s.put(b, church.x, church.z, 4.7);
+    s.msg(b, { t: 'travel', to: field === 'village' ? 'sparrenhof' : 'molenhoek' });
+    s.msg(b, { t: 'travel', to: 'molenhoek', via: 'chat' });
+    const p = s.game.players.get(b);
+    Object.assign(p, { spawned: false, joinedAt: { x: p.state.x, z: p.state.z }, joinTime: s.now() });
+    s.msg(b, { t: 'spawn', to: 'church' });
+    assert.deepEqual(s.lines(b), ['flagNoTravel', 'flagNoTravel', 'flagNoTravel'], field);
+    assert.ok(!s.out.some((m) => m.t === 'travel' && m.ok), `${field}: nobody went anywhere`);
+    assert.equal(s.sent.get(b).filter((m) => m.t === 'spawn' && m.ok === false).length, 1, 'the start place refused');
+  }
+  const t = setup();
+  t.join('ann');
+  t.join('bob');
+  t.game.modes.start('teams', 'admin');
+  t.msg('ann', { t: 'travel', to: 'church', via: 'chat' });
+  assert.deepEqual(t.lines('ann'), ['travelGame'], 'the teams game: its own refusal, as before');
+});
+
+test('everyone in their team\'s colour: figures, scoreboard, kill feed and name tags (the roster\'s colours)', () => {
+  const s = four();
+  const colors = s.out.filter((m) => m.t === 'colors').at(-1).list;
+  for (const n of [...s.blue, ...s.red]) {
+    const team = s.blue.includes(n) ? 'blue' : 'red';
+    assert.equal(colors.find((c) => c.name === n)?.color, { blue: '#4fa3e0', red: '#e5484d' }[team], n);
+    assert.equal(s.game.colorOf(n, s.game.players.get(n)), { blue: '#4fa3e0', red: '#e5484d' }[team]);
+  }
+  const scores = s.game.scoreList();
+  assert.ok(scores.every((r) => r.color === (s.blue.includes(r.name) ? '#4fa3e0' : '#e5484d')), 'the scoreboard too');
+  s.game.modes.start('free', 'admin');
+  const after = s.out.filter((m) => m.t === 'colors').at(-1).list;
+  assert.ok(after.every((c) => c.color !== '#4fa3e0' || !s.blue.includes(c.name) || c.color === s.game.players.get(c.name).color), 'own colours back after it');
+});
+
+test('logging in again drops the flag where the old connection was, no fresh start with it', () => {
+  const s = four();
+  const [r] = s.red;
+  s.onStand(r, 'blue');
+  s.tick();
+  s.put(r, 600, -740, 6);
+  s.tick();
+  s.join(r); // the same name from another tab: the old socket closes, its close skips leave
+  assert.equal(s.flag().flags.blue.at, 'ground');
+  assert.deepEqual([s.flag().flags.blue.x, s.flag().flags.blue.z], [600, -740]);
+  assert.ok(s.events().includes(`dropped:blue:${r}`));
+  s.tick();
+  assert.notEqual(s.flag().flags.blue.by, r, 'not straight back: they would carry it with a reconnect\'s fresh protection');
+  assert.ok(s.game.players.get(r).protectedUntil <= s.now() + 5000);
+  s.at(5000);
+  s.tick();
+  assert.equal(s.flag().flags.blue.by, r, 'after REGRAB_MS (past any protection) it is theirs again by touch');
+});
+
+test('no flying while it is played, whatever the house rule says', () => {
+  const s = four();
+  s.game.rules.flying = true;
+  const [b] = s.blue;
+  const st = s.game.players.get(b).state;
+  s.msg(b, { t: 'state', x: st.x, y: st.y, z: st.z, yaw: 0, pitch: 0, armed: true, w: 'pistol', flying: true });
+  assert.equal(s.game.players.get(b).state.flying, false);
+  s.game.modes.start('free', 'admin');
+  s.msg(b, { t: 'state', x: st.x, y: st.y, z: st.z, yaw: 0, pitch: 0, armed: true, w: 'pistol', flying: true });
+  assert.equal(s.game.players.get(b).state.flying, true, 'free play: the house rule');
+});
+
+/** A point inside the first private home's first band, at that band's height (shared/homes.mjs). */
+function insideHome() {
+  const band = HOMES[0].bands[0];
+  const x = band.ring.reduce((a, p) => a + p[0], 0) / band.ring.length;
+  const z = band.ring.reduce((a, p) => a + p[1], 0) / band.ring.length;
+  const y = band.y0 + 0.5;
+  assert.ok(homeAt(x, z, y), 'a point inside a home');
+  return [x, y, z];
+}
+
+test('safe places (village field): carried onto the school grounds or into a private home, the flag goes home at once with a line', () => {
+  const s = four('village');
+  const [r, r2] = s.red;
+  s.onStand(r, 'blue');
+  s.tick();
+  s.put(r, 470, -815, 4.4); // the school's playground (shared/zones.mjs)
+  assert.ok(noShoot(470, -815));
+  s.tick();
+  assert.equal(s.flag().flags.blue.at, 'home');
+  assert.ok(s.out.some((m) => m.t === 'flag' && m.ev === 'safe' && m.why === 'zone' && m.name === r), 'every page told why');
+  s.onStand(r2, 'blue');
+  s.tick();
+  assert.equal(s.flag().flags.blue.by, r2);
+  const [hx, hy, hz] = insideHome();
+  s.put(r2, hx, hz, hy);
+  s.tick();
+  assert.equal(s.flag().flags.blue.at, 'home');
+  assert.ok(s.out.some((m) => m.t === 'flag' && m.ev === 'safe' && m.why === 'home' && m.name === r2));
+});
+
+test('a flag\'s place inside a private home is never sent: a carrier\'s place never, and one falling inside goes home', () => {
+  const s = four('village');
+  const [r] = s.red;
+  s.onStand(r, 'blue');
+  s.tick();
+  const carried = s.game.modes.view().flag.flags.blue;
+  assert.deepEqual(Object.keys(carried).sort(), ['at', 'by'], 'carried: who, never where');
+  // Down on the very step into a home (the place it would fall): home instead of lying there.
+  const [hx, hy, hz] = insideHome();
+  s.put(r, hx, hz, hy);
+  s.game.players.get(r).alive = false;
+  s.tick();
+  const f = s.game.modes.view().flag.flags.blue;
+  assert.equal(f.at, 'home');
+  assert.ok(!s.out.filter((m) => m.t === 'mode' && m.mode.flag).some((m) => Object.values(m.mode.flag.flags).some((g) => g.at === 'ground' && homeAt(g.x, g.z, g.y))), 'no mode ever carried a place in a home');
+});
+
+test('moved by the server, the carrier is told why the flag dropped', () => {
+  const s = four();
+  const [r] = s.red;
+  s.onStand(r, 'blue');
+  s.tick();
+  s.put(r, 615, -745, 6);
+  s.tick();
+  s.game.respawn(r, s.game.players.get(r), s.now());
+  s.tick();
+  assert.ok(s.lines(r).includes('flagMoved'));
+});
+
+test('a field car that is a wreck when the game ends: every page told it is whole before it goes', () => {
+  const s = four('village');
+  const id = Object.values(s.game.cars).find((c) => c.flag).id;
+  s.game.vehicleDamage.recs.set(`car:${id}`, { kind: 'car', id, hp: 0, max: 100, st: 3, pct: 0 });
+  s.game.modes.start('free', 'admin');
+  assert.ok(s.out.some((m) => m.t === 'vdmg' && m.id === id && m.st === 0 && m.hp === 100));
+  assert.ok(!s.game.vehicleDamage.recs.has(`car:${id}`));
+});
+
+test('someone in the house\'s helicopter as the game starts: red still gets it at the Sparrenhof', () => {
+  const s = setup();
+  for (const n of ['ann', 'bob', 'cid', 'dee']) s.join(n);
+  const h = s.game.helis.machines.get('house');
+  h.seats[0] = 'ann';
+  s.game.modes.start('flag', 'admin', 'village', { look: 'real' });
+  assert.ok(!h.seats.includes('ann'), 'out of it first');
+  const spot = FIELDS.village.vehicles.heli;
+  assert.deepEqual([h.x, h.z], [spot.x, spot.z]);
 });
 
 test('helicopters: none in the compact field or with the look paint, for anyone', () => {

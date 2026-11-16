@@ -28,6 +28,9 @@
 
 import { readFileSync } from 'node:fs';
 import { loadBounds } from '../shared/bounds.mjs';
+import { homeAt } from '../shared/homes.mjs';
+import { noShoot } from '../shared/zones.mjs';
+import { STAGE } from './vehicleDamage.mjs';
 import { FIELDS, FLAG_COLORS, FLAG_TEAMS, fieldEdge, fieldOf } from '../shared/flagFields.mjs';
 
 export { FIELDS, FLAG_COLORS, FLAG_TEAMS };
@@ -44,6 +47,8 @@ export const RETURN_MS = 30_000;
 export const BACK_MS = 5000;
 /** ms of protection when back (ends at your first shot: game.mjs). */
 export const SAFE_MS = 3000;
+/** ms before whoever dropped a flag may pick it up again (past a reconnect's spawn protection). */
+export const REGRAB_MS = 5000;
 /** m across from a flag (on its stand or on the ground) to a player's middle for a touch. */
 export const TOUCH = 1.6;
 /** m across from your own stand for a capture on foot or on a bike, and in a car (its middle). */
@@ -56,6 +61,8 @@ export const STAND_KEEP = 14;
 export const STAND_LOW = 8;
 
 const other = (team) => (team === 'blue' ? 'red' : 'blue');
+/** 'zone' in a place nobody fights in (shared/zones.mjs), 'home' inside a private home (shared/homes.mjs), else null. */
+const safeAt = (x, y, z) => (noShoot(x, z) ? 'zone' : homeAt(x, z, y) ? 'home' : null);
 const round = (v) => Math.round(v * 100) / 100;
 
 export class FlagGame {
@@ -134,7 +141,16 @@ export class FlagGame {
         continue;
       }
       if (p.warp !== f.warp) { // moved by the server (a respawn, a gathering, the host's bring): where they stood before
+        this.game.send(p.ws, { t: 'system', text: 'You were moved, so the flag dropped where you stood.', code: 'flagMoved' });
         events.push(this.drop(team, now));
+        continue;
+      }
+      // Into a place nobody fights in (the school grounds) or a private home: no hiding with it. Home at once.
+      const safe = safeAt(st.x, st.y, st.z);
+      if (safe) {
+        const name = f.by;
+        this.flags[team] = this.homeFlag(team);
+        events.push({ ev: 'safe', team, name, why: safe });
         continue;
       }
       if (!p.alive || this.teams[f.by] === team || !this.teams[f.by]) { // down (where they fell), or no longer on the other team
@@ -167,7 +183,9 @@ export class FlagGame {
         events.push({ ev: 'returned', team: mine, name });
       }
       // The other team's flag, on its stand or on the ground: yours to carry (one flag a player; the enemy's only).
-      if ((enemy.at === 'home' || enemy.at === 'ground') && this.near(st, enemy.x, enemy.y, enemy.z, TOUCH)) {
+      // Not straight back by whoever dropped it (logging in again where it fell, with a reconnect's fresh protection).
+      const regrab = enemy.at === 'ground' && enemy.dropper === name && now - enemy.since < REGRAB_MS;
+      if ((enemy.at === 'home' || enemy.at === 'ground') && !regrab && this.near(st, enemy.x, enemy.y, enemy.z, TOUCH)) {
         Object.assign(enemy, { at: 'carried', by: name, since: now, warp: p.warp, x: round(st.x), y: round(st.y), z: round(st.z) });
         events.push({ ev: 'taken', team: theirs, name });
       }
@@ -217,7 +235,13 @@ export class FlagGame {
   drop(team, now) {
     const f = this.flags[team];
     const name = f.by;
-    Object.assign(f, { at: 'ground', by: null, since: now });
+    // Never left lying where nobody fights or inside a private home (pages that may not see in would be told where).
+    const safe = safeAt(f.x, f.y, f.z);
+    if (safe) {
+      this.flags[team] = this.homeFlag(team);
+      return { ev: 'safe', team, name, why: safe };
+    }
+    Object.assign(f, { at: 'ground', by: null, since: now, dropper: name });
     return { ev: 'dropped', team, name };
   }
 
@@ -241,7 +265,8 @@ export class FlagGame {
     const flags = {};
     for (const t of FLAG_TEAMS) {
       const f = this.flags[t];
-      flags[t] = { at: f.at, ...(f.by ? { by: f.by } : {}), x: f.x, y: f.y, z: f.z, ...(f.at === 'ground' ? { ms: Math.max(0, RETURN_MS - (now - f.since)) } : {}) };
+      // Carried: only who carries it (the pages draw it on their figure, where they may see them); never its place.
+      flags[t] = f.at === 'carried' ? { at: f.at, by: f.by } : { at: f.at, x: f.x, y: f.y, z: f.z, ...(f.at === 'ground' ? { ms: Math.max(0, RETURN_MS - (now - f.since)) } : {}) };
     }
     return { field: this.field.id, flags, tags: { ...this.tags }, sudden: this.sudden, vehicles: this.vehicles.bikes.length ? { bikes: [...this.vehicles.bikes] } : undefined };
   }
@@ -293,6 +318,9 @@ export class FlagGame {
       if (!c?.flag) continue;
       if (c.driver) g.releaseCar(c.driver);
       if (c.passenger) g.releaseCar(c.passenger);
+      // Damaged or a wreck (server/vehicleDamage.mjs): every page told it is whole before it goes, so the same car parked
+      // by the next game is no wreck on any page (the record would be dropped without a word once the car is gone).
+      if (g.vehicleDamage?.recs?.delete(`car:${id}`)) g.broadcastThing({ t: 'vdmg', k: 'car', id, hp: 100, st: STAGE.whole }, 'car', c);
       delete g.cars[id];
       delete g.carAt[id];
     }

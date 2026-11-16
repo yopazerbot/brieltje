@@ -113,6 +113,17 @@ export class Modes {
     return this.flag?.carrying(name) ?? null;
   }
 
+  /**
+   * Steal the flag: a flag `name` carries falls where the server had them (leaving, or a new connection replacing theirs:
+   * game.mjs join, whose old socket's close skips leave). Every page told; `send` false when the caller sends the mode.
+   */
+  dropFlag(name, now = Date.now(), send = true) {
+    const ev = this.flag?.release(name, now);
+    if (!ev) return;
+    this.flagEvents([ev]);
+    if (send) this.send();
+  }
+
   /** The look of the game being played (see LOOKS), or null: the house rule. */
   get look() {
     return this.active ? this.state.look ?? null : null;
@@ -293,11 +304,13 @@ export class Modes {
         teams[n] = sides?.[n] ? (sides[n] === 'house' ? 'blue' : 'red') : count <= Object.keys(teams).length - count ? 'blue' : 'red';
       }
       const f = new FlagGame(this.game, place, teams, LOOKS.includes(opts.look) ? opts.look : null, now);
-      this.state = { kind, phase: 'playing', until: now + ms(FLAG_MS), teams, score: f.score, switched: byName(), f };
+      // `colors`: everyone dressed in their team's colour, on every page, the scoreboard, the kill feed and the name tags
+      // (game.mjs colorOf, through teamColor).
+      this.state = { kind, phase: 'playing', until: now + ms(FLAG_MS), teams, score: f.score, switched: byName(), f, colors: FLAG_COLORS };
       this.say(`${by} started Steal the flag: blue at the church, red at ${f.field.id === 'village' ? 'the Sparrenhof' : 'Molenhoek'}. Bring their flag to your base.`, 'flagStarted', { name: by, place: f.field.red });
       this.game.roundOver = null; // the teams' score counts now
+      this.game.teamsChanged(names); // everyone at their base, out of every seat first: a machine someone sat in parks too
       f.park(now);
-      this.game.teamsChanged(names);
     } else if (kind === 'zombies') {
       // Everyone at the place first (home, or a portal in Smetlede), then the horde: its grid takes the cars
       // where they stand now. Every pane whole again for everyone: a fresh house for the game (the zombies
@@ -459,8 +472,7 @@ export class Modes {
       s.z.leave(name, player, now);
       if (!this.names().length) s.emptyUntil = now + ZOMBIES_RECONNECT_MS;
     } else if (s.kind === 'flag') {
-      const ev = s.f.release(name, now); // a flag they carried falls where they were
-      if (ev) this.flagEvents([ev]);
+      this.dropFlag(name, now, false); // a flag they carried falls where they were
     }
     this.send();
   }
@@ -534,10 +546,11 @@ export class Modes {
 
   /**
    * Flag events (server/flags.mjs step) for every page: the HUD's short line and its sound (`flag`), never a card. `team`
-   * is the flag's, `name` who did it ('' for a flag home by itself).
+   * is the flag's, `name` who did it ('' for a flag home by itself); `why` for 'safe' (sent home: carried into a 'zone'
+   * where nobody fights, or a private 'home'; never where).
    */
   flagEvents(events) {
-    for (const e of events) this.game.broadcast({ t: 'flag', ev: e.ev, team: e.team, name: e.name });
+    for (const e of events) this.game.broadcast({ t: 'flag', ev: e.ev, team: e.team, name: e.name, ...(e.why ? { why: e.why } : {}) });
   }
 
   /** Every tick: the clock, and the time "it" has been it (while there). */
