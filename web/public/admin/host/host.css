@@ -159,6 +159,11 @@
 .programme li.next::before { color: var(--night); background: var(--sun); }
 .programme li.next > span:first-child { font-weight: 700; }
 .programme .acts { display: flex; gap: 4px; }
+.programme select.look { padding: 3px 10px; font-size: 14px; border-radius: 999px; }
+/* With its look a game's row can grow too wide: its look and buttons go below the name when the name needs the room. */
+.programme li:not(.empty) { flex-wrap: wrap; }
+.programme li:not(.empty) > span:first-child { flex: 1 1 12em; }
+.programme li:not(.empty) select.look { margin-left: auto; }
 .programme .acts .btn { padding: 3px 9px; }
 .team-totals { display: flex; flex-wrap: wrap; gap: 10px; margin-bottom: 10px; }
 .team-total { display: inline-flex; align-items: center; gap: 8px; padding: 6px 14px; border-radius: 999px; font-family: var(--display); font-size: 18px; background: var(--raised); box-shadow: 0 3px 0 var(--edge); }

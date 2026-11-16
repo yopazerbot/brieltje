@@ -26,6 +26,13 @@ export const TEAM_GOAL = 25; // kills of the other team that win the teams game
 export const TEAM_NAMES = { house: 'House', bungalow: 'Bungalow' };
 export const TEAM_COLORS = { house: '#4fa3e0', bungalow: '#ff9f43' };
 export const KINDS = { hide: 'Hide and seek', tag: 'Tag', treasure: 'Treasure hunt', teams: 'House against bungalow', zombies: 'Zombies' };
+/**
+ * A look the host's programme gives a game (server/host.mjs entry), for as long as it is played and its result shows:
+ * 'paint', child-friendly for everyone whatever the house rule says; 'real', the house rule's child-friendly off (a
+ * player's own choice of Paintball still holds on their page). None: the house rule. The stored rule is never touched
+ * (game.mjs shownRules).
+ */
+export const LOOKS = ['paint', 'real'];
 
 // Where coins can lie: round the house, outside (the main house is shut without its code, so no coin lies in its rooms).
 const OUTSIDE = [[2.2, -0.05, 15.6], [6.5, -0.05, -1.4], [4.5, -0.05, -8], [8.5, -0.05, -15], [0.6, -0.05, -12], [10.8, -0.05, 6], [-1.6, -0.05, 4], [5.9, 3.06, -1.6], [9.9, -0.05, 12.5], [10.2, -0.05, 16], [9.5, -0.05, 2], [0.5, -0.05, 14], [5, -0.05, -4.5], [0.85, -0.05, -9.5], [4.5, -0.1, 19]];
@@ -63,6 +70,24 @@ export class Modes {
   /** The Zombies game being played (not once its result shows), or null. */
   get zombies() {
     return this.state.kind === 'zombies' && this.state.phase !== 'done' ? this.state.z : null;
+  }
+
+  /**
+   * A match of team against team is on: the teams game now (the flag game will add itself). Asked by what only
+   * happens in such a match (cars and helicopters taking damage).
+   */
+  get teamMatch() {
+    return this.state.kind === 'teams' && this.state.phase === 'playing';
+  }
+
+  /** The look of the game being played (see LOOKS), or null: the house rule. */
+  get look() {
+    return this.active ? this.state.look ?? null : null;
+  }
+
+  /** A team's colour in the teams game: blue and red when the host's two teams play it (server/host.mjs), else its own. */
+  teamColor(team) {
+    return (this.state.colors ?? TEAM_COLORS)[team];
   }
 
 
@@ -135,12 +160,19 @@ export class Modes {
       seekers: s.seekers ? [...s.seekers].filter((n) => this.game.players.has(n)) : undefined, it: s.it, times: s.times, coins: s.coins, counts: s.counts,
       result: s.result, resultCode: s.resultCode, resultArgs: s.resultArgs,
       teams: s.teams && this.here(s.teams), score: s.score, goal: s.kind === 'teams' ? s.goal ?? TEAM_GOAL : undefined,
+      colors: s.kind === 'teams' ? s.colors ?? TEAM_COLORS : undefined, // the teams' colours, for the big screen (admin/scores)
+      look: s.look ?? undefined, // the host's look for this game (LOOKS), for the host page
       // Zombies: the wave, how many are left, who stands, everyone's count and the best ever; the break's countdown.
       ...(s.kind === 'zombies' ? { zombies: s.z.view(now), ms: s.phase === 'done' ? Math.max(0, s.until - now) : s.z.ms(now) } : {}),
     };
   }
 
   send() {
+    // Every change of game comes through here: a new look (or none) tells every page the rules it now plays by.
+    if (this.look !== (this.shownLook ?? null)) {
+      this.shownLook = this.look;
+      this.game.lookChanged?.();
+    }
     const mode = this.view();
     // Zombies with something lying inside a home: each page its own view (game.mjs lootFor); else one for all, as before.
     if (!mode.zombies || !this.game.lootInside?.(mode.zombies)) return this.game.broadcast({ t: 'mode', mode });
@@ -166,7 +198,8 @@ export class Modes {
 
   /**
    * The admin starts a game (or 'free' to stop one); Zombies at `place` (shared/arenas.mjs). `opts` from the host's
-   * programme (server/host.mjs, checked there): `minutes`, how long it lasts (not Zombies), `goal`, the teams' kills to win.
+   * programme (server/host.mjs, checked there): `minutes`, how long it lasts (not Zombies), `goal`, the teams' kills to win,
+   * `look`, see LOOKS (checked again here). A game started otherwise (the menu, another one over it) has no look.
    */
   start(kind, by, place = 'house', opts = {}) {
     const now = Date.now();
@@ -204,7 +237,7 @@ export class Modes {
         teams[n] = sides?.[n] ?? (count <= Object.keys(teams).length - count ? 'house' : 'bungalow');
       }
       const goal = opts.goal ?? TEAM_GOAL;
-      this.state = { kind, phase: 'playing', until: now + ms(TEAMS_MS), teams, score: { house: 0, bungalow: 0 }, switched: byName(), goal };
+      this.state = { kind, phase: 'playing', until: now + ms(TEAMS_MS), teams, score: { house: 0, bungalow: 0 }, switched: byName(), goal, colors: sides ? this.game.host.sideColors() : null };
       this.say(`${by} started House against bungalow: first team to ${goal} kills. Switch teams in the menu.`, 'teamsStarted', { name: by, n: goal });
       this.game.roundOver = null; // the teams' score counts now
       this.game.teamsChanged(names);
@@ -236,6 +269,7 @@ export class Modes {
       this.state = { kind, phase: 'playing', until: now + ms(HUNT_MS), coins, counts: byName(names.map((n) => [n, 0])) };
       this.say(`${by} started a treasure hunt: ${COINS} coins in and around the house`, 'huntStarted', { name: by, n: COINS });
     }
+    this.state.look = LOOKS.includes(opts.look) ? opts.look : null;
     if (kind !== 'teams' && kind !== 'zombies') this.game.gather(names); // played at the house: everyone there, spread out
     // Straight from the teams game to another one: everyone back in their own colours, and the
     // fighting scores start again.

@@ -22,7 +22,7 @@
       gate: 'Log eerst in op de beheerpagina.', gateLink: 'Naar de beheerpagina', out: 'uit',
       zombies: 'Zombies', wave: 'golf {n}', break: 'pauze', zleft: 'nog {n} zombies', zbeaten: 'Zombies verslagen', zbest: 'Beste ooit: golf {n}', down: 'neer',
       tonight: 'Vanavond', game: 'Het spel', games: '{n} spellen gespeeld', games1: '1 spel gespeeld', won: 'Winst', played: 'Spellen', noGames: 'Nog geen spellen gespeeld vanavond',
-      blue: 'Blauw', orange: 'Oranje', green: 'Groen', purple: 'Paars',
+      blue: 'Blauw', red: 'Rood', green: 'Groen', purple: 'Paars',
       allTime: 'Aller tijden', racesTonight: 'Races vanavond', gnomesTonight: 'Kabouters vanavond', gamesWon: 'Gewonnen groepsspelletjes',
       nobody: 'Nog niemand', foot: 'Het kerkplein te voet', bike: 'Dorpsronde met de fiets', car: 'Toertje Briel met de auto',
       bestRuns: 'Zombies: beste rondes', gnomesFound: 'Gevonden kabouters', carTonight: 'Telt alleen voor vanavond',
@@ -39,7 +39,7 @@
       gate: 'Log in on the admin page first.', gateLink: 'To the admin page', out: 'out',
       zombies: 'Zombies', wave: 'wave {n}', break: 'break', zleft: '{n} zombies left', zbeaten: 'Zombies beaten', zbest: 'Best ever: wave {n}', down: 'down',
       tonight: 'Tonight', game: 'The game', games: '{n} games played', games1: '1 game played', won: 'Wins', played: 'Games', noGames: 'No games played yet tonight',
-      blue: 'Blue', orange: 'Orange', green: 'Green', purple: 'Purple',
+      blue: 'Blue', red: 'Red', green: 'Green', purple: 'Purple',
       allTime: 'All-time', racesTonight: 'Races tonight', gnomesTonight: 'Gnomes tonight', gamesWon: 'Party games won',
       nobody: 'Nobody yet', foot: 'Church square on foot', bike: 'Village loop by bike', car: 'Round Briel by car',
       bestRuns: 'Zombies: best runs', gnomesFound: 'Gnomes found', carTonight: 'Counts for tonight only',
@@ -76,7 +76,7 @@
   } catch {
     // storage blocked
   }
-  const TEAM_COLOURS = { blue: '#4fa3e0', orange: '#ff9f43', green: '#5cc28a', purple: '#c77dff' };
+  const TEAM_COLOURS = { blue: '#4fa3e0', red: '#e5484d', green: '#5cc28a', purple: '#c77dff' };
   let boardAt = 0;
   let playing = { together: [], alone: [] };
 
@@ -372,6 +372,8 @@
   /** House against bungalow: two sides, their score towards the goal, and who plays where. */
   function teams(mode, players) {
     const box = el('div', 'teams');
+    // In the server's colours: blue and red when the host's two teams for the evening play it (server/modes.mjs).
+    for (const key of ['house', 'bungalow']) if (mode.colors?.[key]) box.style.setProperty(`--${key}`, colour(mode.colors[key]));
     const side = (key) => {
       const s = el('div', `team ${key}`);
       s.append(el('h2', '', t(key)), el('div', 'score', String(mode.score?.[key] ?? 0)));

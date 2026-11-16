@@ -10,20 +10,24 @@
 //   one player or everyone to where the host stands, muting a player, the chat off, a word filter (server/words.mjs),
 //   and a kick for the whole evening besides the kick of ten minutes.
 // - Teams for the evening: none, or 2 to 4, shuffled as evenly as can be, a player moved by hand (only the host moves
-//   anyone; a newcomer joins the smallest). With two, House against bungalow is played by them.
-// - The programme: the evening's games in order, each with its own length (and goal for the teams game); Next starts
-//   the next one after a countdown of ten seconds, as does starting one straight away.
+//   anyone; a newcomer joins the smallest). With two (blue and red), House against bungalow is played by them, in
+//   their colours (blue plays at the house, red at the bungalow).
+// - The programme: the evening's games in order, each with its own length (and goal for the teams game) and its look
+//   (server/modes.mjs LOOKS: 'paint', child-friendly for everyone while it runs; 'real', the house rule's child-friendly
+//   off for it, a player's own Paintball kept; or none, the house rule); Next starts the next one after a countdown of
+//   ten seconds, as does starting one straight away.
 // - The evening's scoreboard: every game played gives a point to each who took part and three more to its winners; in
 //   Zombies everyone also gets a point for every three waves; a won round of free play counts as a game. A team's total
 //   is what its players scored while on it. Kept in memory: a restart begins a new evening.
 
 import { words } from './words.mjs';
-import { KINDS } from './modes.mjs';
+import { KINDS, LOOKS } from './modes.mjs';
 import { ARENAS } from '../shared/arenas.mjs';
 
+// The first two are the evening's blue and red (Yoshi, 16 Nov 2026: "team blue vs team red").
 export const EVENING_TEAMS = [
   { id: 'blue', color: '#4fa3e0' },
-  { id: 'orange', color: '#ff9f43' },
+  { id: 'red', color: '#e5484d' },
   { id: 'green', color: '#5cc28a' },
   { id: 'purple', color: '#c77dff' },
 ];
@@ -50,7 +54,7 @@ export class Host {
     this.chatOff = false;
     this.teamCount = 0;
     this.teams = table(); // name -> index into EVENING_TEAMS
-    this.programme = []; // { kind, place, minutes, goal }
+    this.programme = []; // { kind, place, minutes, goal, look }
     this.nextIndex = 0;
     this.countdown = null; // { kind, until, timer }
     this.scores = table(); // name -> { points, wins, played }
@@ -100,6 +104,11 @@ export class Host {
 
   sideOf(name) {
     return this.teamCount === 2 && name in this.teams ? (this.teams[name] === 0 ? 'house' : 'bungalow') : null;
+  }
+
+  /** The teams game played by the host's two teams: its sides in their colours (blue at the house, red at the bungalow). */
+  sideColors() {
+    return { house: EVENING_TEAMS[0].color, bungalow: EVENING_TEAMS[1].color };
   }
 
   // ------------------------------------------------------------------ the evening's scores
@@ -303,11 +312,16 @@ export class Host {
     }
   }
 
-  /** A game from the host: a known kind, at a known place, its length in minutes and the teams' goal within reason. */
+  /**
+   * A game from the host: a known kind, at a known place, its length in minutes and the teams' goal within reason, and
+   * its look: 'paint', 'real' or none (missing, null or ''). Any other look refuses the whole game.
+   */
   entry(e) {
     if (!e || typeof e !== 'object' || typeof e.kind !== 'string' || !Object.hasOwn(KINDS, e.kind)) return null;
+    const none = e.look === undefined || e.look === null || e.look === '';
+    if (!none && !LOOKS.includes(e.look)) return null;
     const place = typeof e.place === 'string' && PLACES.has(e.place) ? e.place : 'house';
-    return { kind: e.kind, place, minutes: int(e.minutes, 1, 30), goal: e.kind === 'teams' ? int(e.goal, 5, 100) : null };
+    return { kind: e.kind, place, minutes: int(e.minutes, 1, 30), goal: e.kind === 'teams' ? int(e.goal, 5, 100) : null, look: none ? null : e.look };
   }
 
   /** The game starts in ten seconds: everyone sees the countdown. */
@@ -316,7 +330,7 @@ export class Host {
     const until = Date.now() + COUNTDOWN_MS;
     const timer = setTimeout(() => {
       this.countdown = null;
-      this.game.modes.start(e.kind, by, e.place, { minutes: e.minutes, goal: e.goal });
+      this.game.modes.start(e.kind, by, e.place, { minutes: e.minutes, goal: e.goal, look: e.look });
     }, COUNTDOWN_MS);
     timer.unref?.();
     this.countdown = { kind: e.kind, until, timer };
@@ -338,6 +352,7 @@ export class Host {
     const s = this.game.modes.state;
     if (s.kind === 'teams' && s.phase === 'playing' && this.teamCount === 2) {
       for (const n of names) if (n in this.teams) s.teams[n] = this.teams[n] === 0 ? 'house' : 'bungalow';
+      s.colors = this.sideColors(); // played by the host's teams from now on: blue and red
       this.game.teamsChanged(names);
       this.game.modes.send();
     }

@@ -12,7 +12,9 @@
   const $ = (id) => document.getElementById(id);
   const KINDS = { hide: 'Hide and seek', tag: 'Tag', treasure: 'Treasure hunt', teams: 'House against bungalow', zombies: 'Zombies' };
   const PLACES = { house: 'The house', bungalow: 'The bungalow', church: 'The church square', molenhoek: 'Molenhoek', molenhoek_mid: 'Molenhoek, middle', molenhoek_end: 'Molenhoek, end', sparrenhof: 'Sparrenhof' };
-  const TEAM_NAMES = { blue: 'Blue', orange: 'Orange', green: 'Green', purple: 'Purple' };
+  const TEAM_NAMES = { blue: 'Blue', red: 'Red', green: 'Green', purple: 'Purple' };
+  // A game's look while it runs (server/modes.mjs LOOKS); none is the house rule.
+  const LOOKS = { '': 'House rule', paint: 'Paint', real: 'Real' };
   // Ready announcements, in Dutch: the players' language at a local night. The last ones sent come first.
   const READY = ['Eten is klaar!', 'Pauze: 10 minuten', 'Volgend spel over 5 minuten', 'Laatste spel van de avond!'];
   const store = {
@@ -208,7 +210,7 @@
     else if (m.kind === 'free') now.replaceChildren(el('b', { text: 'Free play' }), el('span', { class: 'muted', text: ' · first to 10 kills wins a round' }));
     else {
       const extra = m.kind === 'teams' && m.score ? ` · House ${m.score.house} – ${m.score.bungalow} Bungalow (to ${m.goal})` : m.kind === 'zombies' && m.zombies ? ` · wave ${m.zombies.wave ?? ''}` : '';
-      now.replaceChildren(el('b', { text: KINDS[m.kind] ?? m.kind }), el('span', { text: `${m.phase === 'done' ? ' · over' : ''}${m.ms ? ` · ${clock(m.ms)} left` : ''}${extra}` }), m.result ? el('p', { class: 'muted', text: m.result }) : null);
+      now.replaceChildren(el('b', { text: KINDS[m.kind] ?? m.kind }), el('span', { text: `${m.phase === 'done' ? ' · over' : ''}${m.ms ? ` · ${clock(m.ms)} left` : ''}${extra}${m.look ? ` · ${LOOKS[m.look] ?? m.look}` : ''}` }), m.result ? el('p', { class: 'muted', text: m.result }) : null);
     }
     $('stop').disabled = m.kind === 'free';
     $('cancel').hidden = !v.countdown;
@@ -217,6 +219,8 @@
     if (stale('programme', [v.programme, v.next])) {
       $('programme').replaceChildren(...(v.programme.length ? v.programme.map((e, i) => el('li', { class: i < v.next ? 'done' : i === v.next ? 'next' : '' },
         el('span', { text: describe(e) }),
+        el('select', { class: 'look', 'aria-label': `Look of game ${i + 1}`, title: 'Its look while it runs. Paint: child-friendly for everyone. Real: the house rule’s child-friendly off, a player’s own Paintball kept.', on: { change: (ev) => setProgramme(v.programme.map((x, k) => (k === i ? { ...x, look: ev.target.value || null } : x))) } },
+          ...Object.entries(LOOKS).map(([k, n]) => el('option', { value: k, selected: (e.look ?? '') === k, text: n }))),
         el('span', { class: 'acts' },
           el('button', { class: 'btn ghost small', type: 'button', title: 'Earlier', 'aria-label': 'Earlier', text: '↑', disabled: i === 0, on: { click: () => moveEntry(i, -1) } }),
           el('button', { class: 'btn ghost small', type: 'button', title: 'Later', 'aria-label': 'Later', text: '↓', disabled: i === v.programme.length - 1, on: { click: () => moveEntry(i, 1) } }),
@@ -225,7 +229,7 @@
         ))) : [el('li', { class: 'empty', text: 'Nothing planned yet. Add games below.' })]));
     }
     const nxt = v.programme[v.next];
-    $('next').textContent = nxt ? `▶ Next: ${describe(nxt)}` : v.programme.length ? 'Programme done' : 'Plan the evening below';
+    $('next').textContent = nxt ? `▶ Next: ${describe(nxt)}${nxt.look ? ` · ${LOOKS[nxt.look]}` : ''}` : v.programme.length ? 'Programme done' : 'Plan the evening below';
     $('next').disabled = !nxt || !!v.countdown;
 
     // Tonight.
@@ -398,7 +402,7 @@
     const kind = $('g-kind').value;
     const minutes = Number($('g-minutes').value) || undefined;
     const goal = kind === 'teams' ? Number($('g-goal').value) || undefined : undefined;
-    return { kind, place: kind === 'zombies' ? $('g-place').value : 'house', minutes: kind === 'zombies' ? undefined : minutes, goal };
+    return { kind, place: kind === 'zombies' ? $('g-place').value : 'house', minutes: kind === 'zombies' ? undefined : minutes, goal, look: $('g-look').value || null };
   };
   const showFields = () => {
     const kind = $('g-kind').value;
@@ -414,6 +418,7 @@
 
   $('g-kind').replaceChildren(...Object.entries(KINDS).map(([k, n]) => el('option', { value: k, text: n })));
   $('g-place').replaceChildren(...Object.entries(PLACES).map(([k, n]) => el('option', { value: k, text: n })));
+  $('g-look').replaceChildren(...Object.entries(LOOKS).map(([k, n]) => el('option', { value: k, text: n })));
   $('g-kind').addEventListener('change', showFields);
   showFields();
 

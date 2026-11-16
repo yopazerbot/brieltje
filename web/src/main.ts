@@ -806,7 +806,7 @@ let watching = false;
 const killsOf = new Map<string, number>();
 onWatch((o) => watchView?.set(o.target, o.mode));
 let eveningTeam: keyof typeof EVENING_TEAMS | null = null;
-const EVENING_TEAMS = { blue: 'eteam.blue', orange: 'eteam.orange', green: 'eteam.green', purple: 'eteam.purple' } as const;
+const EVENING_TEAMS = { blue: 'eteam.blue', red: 'eteam.red', green: 'eteam.green', purple: 'eteam.purple' } as const;
 const GAME_NAMES = { hide: 'game.hide', tag: 'game.tag', treasure: 'game.treasure', teams: 'game.teams', zombies: 'game.zombies' } as const;
 const speedometer = new Speedometer(document.getElementById('hud')!);
 const doors = new Doors(house.doors, world, (name) => surfaceMaterial(name, renderer));

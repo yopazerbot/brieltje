@@ -33,7 +33,7 @@
 import { randomInt } from 'node:crypto';
 import { readFileSync } from 'node:fs';
 import { WebSocketServer } from 'ws';
-import { Modes, TEAM_COLORS } from './modes.mjs';
+import { Modes } from './modes.mjs';
 import { bruteDamage, hurtBy, newBrute, stepBrute } from '../shared/brutes.mjs';
 import { makeTerrain } from '../shared/terrain.mjs';
 import { loadBounds } from '../shared/bounds.mjs';
@@ -678,7 +678,7 @@ export class Game {
   welcome(player, name, color, now) {
     return {
       t: 'welcome', proto: PROTO, you: name, role: player.role, color, doors: this.doorsFor(player), doorDir: this.doorDirFor(player), broken: this.brokenFor(player), cracked: this.crackedFor(player), homes: HOMES.filter((h) => player.role !== 'admin' && this.homes?.granted(player.key, h.id)).map((h) => h.id), accountHomes: HOMES.filter((h) => player.role === 'player' && this.homes?.byAccount?.(player.key, h.id)).map((h) => h.id), players: this.roster(),
-      time: now, cats: this.catsDown.map((until) => Math.max(0, until - now)), ...this.villagersView(now), clowns: this.clownList(now, player), furniture: this.furnitureFor(player), rules: this.rules,
+      time: now, cats: this.catsDown.map((until) => Math.max(0, until - now)), ...this.villagersView(now), clowns: this.clownList(now, player), furniture: this.furnitureFor(player), rules: this.shownRules(),
       scores: this.scoreList(), limit: KILL_LIMIT, items: this.items.map((it) => now >= it.until), round: this.roundOver ? { winner: this.roundOver.winner, ms: this.roundOver.until - now } : null,
       cars: Object.values(this.cars).filter((c) => this.seenBy(player, 'car', c)), horses: this.horses.filter((h) => this.seenBy(player, 'horse', h)), bikes: Object.values(this.bikes).filter((k) => this.seenBy(player, 'bike', k)), helis: this.helis.view().filter((e) => this.seenBy(player, 'heli', e)), mode: this.modeFor(player, now), mood: this.mood, moodCycle: this.moodView(now),
       room: this.roomView(),
@@ -1840,12 +1840,26 @@ export class Game {
     const label = { flying: 'flying', spawn: 'spawning things with /name', names: 'names above players', guests: 'guests joining', portals: 'the portals', travel: 'travelling from the chat', paintball: 'child-friendly for everyone', parachute: 'arriving by parachute', heli: 'the helicopter' };
     const text = changed.map((k) => (k === 'maxPlayers' ? `the limit to ${this.rules[k]} players` : `${label[k]} ${this.rules[k] ? 'on' : 'off'}`)).join(', ');
     this.auth.log('rules', null, { username: by, detail: text });
-    this.broadcast({ t: 'rules', rules: this.rules });
+    this.broadcast({ t: 'rules', rules: this.shownRules() });
     // With the rules that changed and their new values (checked by ruleOk), for the page to word in its language.
     const args = { name: by, ...Object.fromEntries(changed.map((k) => [k, this.rules[k]])) };
     this.broadcast({ t: 'system', text: `${by} turned ${text}`, code: 'rules', args });
     // "For everyone" means the rooms too (server/rooms.mjs): each takes the new rules, keeping its own limit.
     if (!this.room) this.hub?.rulesChanged(this.rules, { t: 'system', text: `${by} turned ${text}`, code: 'rules', args });
+  }
+
+  /**
+   * The rules as the pages play by them: the house rules, with child-friendly for everyone set by the look of the
+   * host's game being played (server/modes.mjs LOOKS). Only what is sent changes: the stored rules stay as they are.
+   */
+  shownRules() {
+    const look = this.modes.look;
+    return look ? { ...this.rules, paintball: look === 'paint' } : this.rules;
+  }
+
+  /** A game with a look began or ended (modes.send): every page takes the rules it now plays by. Nothing stored. */
+  lookChanged() {
+    this.broadcast({ t: 'rules', rules: this.shownRules() });
   }
 
   /**
@@ -2442,7 +2456,7 @@ export class Game {
     const blast = (m.w === 'grenade' || m.w === 'bazooka') && !!b && b.w === m.w && now - b.at >= 0 && now - b.at < BLAST_MS;
     const w = blast ? b.w : player.state.w;
     if (!Object.hasOwn(WEAPONS, w) && w !== 'grenade') return;
-    const paint = !!this.rules.paintball;
+    const paint = !!this.shownRules().paintball;
     // From where: the blast's own place and radius, or the player's place and the gun's reach.
     const [fx, fz, reach] = blast ? [b.x, b.z, (w === 'grenade' ? GRENADE : WEAPONS.bazooka.rocket).radius] : [player.state.x, player.state.z, VILLAGER_RANGE];
     const ids = [];
@@ -2723,7 +2737,7 @@ export class Game {
   /** A player's colour: in the teams game their team's (their outfit with it), else their own. */
   colorOf(name, p) {
     const team = this.modes.teamOf(name);
-    return team ? TEAM_COLORS[team] : p.color;
+    return team ? this.modes.teamColor(team) : p.color;
   }
 
   /**

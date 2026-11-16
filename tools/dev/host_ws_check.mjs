@@ -1,8 +1,9 @@
 // The LAN night host's controls (server/host.mjs) against a throwaway game server (a build of this branch on this
 // computer): the doors locked and a newcomer let in, an announcement, a freeze that holds players and stops their
 // shots, bringing players to the host, muting, the chat off, the word filter on chat and on names, the evening's teams
-// and their sides in the teams game, the programme with its countdown and a game's own length, the evening's
-// scoreboard, a kick for the evening, and every action refused to anyone but the admin (a forged host action).
+// and their sides in the teams game (in blue and red), the programme with its countdown, a game's own length and its
+// look (child-friendly while it runs, the house rule back after), the evening's scoreboard, a kick for the evening, and
+// every action refused to anyone but the admin (a forged host action).
 //
 //   ADMIN_PASSWORD=... node tools/dev/host_ws_check.mjs --api http://localhost:8231
 import WebSocket from '../../web/node_modules/ws/wrapper.mjs';
@@ -158,10 +159,14 @@ ok('each player is told their team', bob.of('eveningteams').at(-1)?.teams?.bob =
 const other = sides.bob === 'blue' ? 1 : 0;
 await act({ op: 'move', name: 'bob', team: other });
 v = await view();
-ok('the host moves a player', v.players.find((p) => p.name === 'bob').team === (other ? 'orange' : 'blue'));
-await act({ op: 'programme', list: [{ kind: 'teams', minutes: 2, goal: 7 }, { kind: 'tag', minutes: 1 }, { kind: 'nonsense' }] });
+ok('the host moves a player', v.players.find((p) => p.name === 'bob').team === (other ? 'red' : 'blue'));
+ok('the evening\'s first two teams are blue and red', v.teams.list.slice(0, 2).map((t) => t.id).join() === 'blue,red', JSON.stringify(v.teams.list));
+await act({ op: 'programme', list: [{ kind: 'teams', minutes: 2, goal: 7, look: 'paint' }, { kind: 'tag', minutes: 1 }, { kind: 'nonsense' }, { kind: 'hide', look: 'gore' }] });
 v = await view();
-ok('the programme keeps the known games only', v.programme.length === 2 && v.programme[0].goal === 7);
+ok('the programme keeps the known games and looks only', v.programme.length === 2 && v.programme[0].goal === 7 && v.programme[0].look === 'paint' && v.programme[1].look === null, JSON.stringify(v.programme));
+ok('a game with an unknown look is refused', (await act({ op: 'start', kind: 'tag', look: 'gore' })).r.status === 400);
+const houseRule = bob.of('welcome')[0]?.rules?.paintball;
+ok('the house rule: not child-friendly (as this check expects)', houseRule === false, String(houseRule));
 const t0 = Date.now();
 await act({ op: 'next' });
 await sleep(300);
@@ -173,11 +178,25 @@ const mine = Object.fromEntries((await view()).players.filter((p) => p.team).map
 const sideOk = mode && Object.entries(mode.teams ?? {}).every(([n, s]) => !mine[n] || (mine[n] === 'blue') === (s === 'house'));
 ok('after ten seconds the teams game starts, with the evening\'s teams as its sides', mode?.kind === 'teams' && sideOk, JSON.stringify(mode?.teams));
 ok('with the programme\'s goal and length', mode?.goal === 7 && mode.ms > 100_000 && mode.ms <= 120_000 - (Date.now() - t0 - 10_500) + 1000, `${mode?.goal} ${mode?.ms}`);
+ok('its look, paint: every page told child-friendly', bob.of('rules').at(-1)?.rules?.paintball === true && mode?.look === 'paint', JSON.stringify(bob.of('rules').at(-1)));
+const late = await connect('cid', cid.cookie);
+ok('a page joining now is told the same', late.of('welcome').at(-1)?.rules?.paintball === true);
+const redSide = Object.keys(mode.teams).find((n) => mode.teams[n] === 'bungalow');
+const colours = bob.of('colors').at(-1)?.list ?? [];
+ok('the host\'s teams play in blue and red (the bungalow side red, not orange)', mode.colors?.bungalow === v.teams.list[1].color && colours.find((p) => p.name === redSide)?.color === v.teams.list[1].color, `${JSON.stringify(mode.colors)} ${redSide}`);
 bob.send({ t: 'team', team: mode.teams.bob === 'house' ? 'bungalow' : 'house' });
 await sleep(300);
 ok('a player can\'t switch the host\'s teams', bob.of('system').some((m) => m.code === 'hostTeams'));
+bob.send({ t: 'rules', paintball: false });
+await sleep(300);
+ok('a player can\'t turn the look off (a forged rules message)', bob.of('rules').at(-1)?.rules?.paintball === true);
 await act({ op: 'stop' });
 await sleep(300);
+ok('stopped early: the house rule back on every page', bob.of('rules').at(-1)?.rules?.paintball === false);
+late.ws.close();
+await sleep(300);
+const after = await connect('cid', cid.cookie);
+ok('and the stored house rule untouched', after.of('welcome').at(-1)?.rules?.paintball === houseRule);
 
 // The evening's scoreboard: a stopped game gives nothing; a game of tag of one minute, played out, gives its points.
 v = await view();
@@ -201,7 +220,7 @@ await sleep(500);
 ok('kicked for the evening: out', lateComer.closed === 4001, String(lateComer.closed));
 ok('and refused when trying again', (await join('dee')).error !== undefined);
 
-for (const c of [admin, annBack, bob, cid2]) c.ws.close();
+for (const c of [admin, annBack, bob, cid2, after]) c.ws.close();
 await act({ op: 'teams', count: 0 });
 await act({ op: 'words', list: [] });
 console.log(failed ? `${failed} FAILED` : 'all passed');
