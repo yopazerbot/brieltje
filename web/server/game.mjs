@@ -1574,7 +1574,7 @@ export class Game {
   inPlayerFight(p, now) {
     const back = p.backAt ?? -Infinity;
     const at = Math.max(p.hurtByPlayerAt ?? -Infinity, p.hitAt ?? -Infinity);
-    return (now - at < HURT_CALM_MS && at > back) || p.thrown.some((g) => g.at > back && now - g.at < (GRENADE.fuse + 3) * 1000);
+    return (now - at < HURT_CALM_MS && at > back) || (p.thrown ?? []).some((g) => g.at > back && now - g.at < (GRENADE.fuse + 3) * 1000);
   }
 
   /** What of a fight a connection leaves behind (join, its close): the clocks, and the health and arms while alive. */
