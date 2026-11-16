@@ -126,7 +126,7 @@ test('alone and together alike: both sides build the trunks from the same data w
   assert.match(server, /zombieTrunks\(HOUSE\.surroundings\?\.trees \?\? \[\], edge\)/);
   assert.match(page, /villageGround\(arena, edge, \{ \.\.\.data, trees: villageTrees \?\? data\.trees \}/);
   assert.match(page, /villageTrees \?\?= \[\.\.\.data\.trees\];\s*\/\/[^\n]*\n\s*if \(!noFootball\) fcGround\.addToVillage\(data\)/);
-  assert.match(server, /villageGround\(arena, edge, VILLAGE, CHURCH, CAFE\)/);
+  assert.match(server, /villageGround\(arena, edge, VILLAGE, CHURCH, CAFE, KEET\)/);
   for (const a of ARENAS.filter((q) => q.center)) {
     const edge = arenaEdge(a, bounds);
     const trunks = villageGround(a, edge, village, church, cafe).prisms.filter((p) => p.n === 'trunk');

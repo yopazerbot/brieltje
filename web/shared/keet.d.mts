@@ -30,3 +30,7 @@ export interface Keet {
   spots: { name: string; x: number; z: number; y: number }[];
 }
 export function makeKeet(shell: unknown, rooms: unknown): Keet;
+/** The village's blocks with the café's own in place of its plain ones (the zombies' grid at the church) */
+/** The relief for the zombies' grid round the café: inside its outline never above its floor */
+export function keetRelief(height: (x: number, z: number) => number, keet: Keet, base: number): (x: number, z: number) => number;
+export function keetPrisms<P extends { p: number[][][]; d?: unknown }>(prisms: P[], keet: Keet): (P | KeetPrism)[];

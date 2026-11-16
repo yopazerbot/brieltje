@@ -5,7 +5,7 @@ import type { Glass } from './glass';
 import { groundLayers, RANK } from './groundLayers';
 import type { Prism } from './houseData';
 import { loadWalkIn, type EndInside, type WalkIn } from './walkIn';
-import { KEET_DOOR, makeKeet, PUBLIC_WALK_INS, type KeetDoor } from '../../shared/keet.mjs';
+import { KEET_DOOR, makeKeet, PUBLIC_WALK_INS, type Keet, type KeetDoor } from '../../shared/keet.mjs';
 
 /**
  * The café at the church (In de Oude Keet, the name on its sign board): a house everyone walks into, without a code. It is
@@ -86,6 +86,12 @@ export function keetRooms(keet: WalkIn, deps: { world: World; doors: Doors; glas
 
 /** Whether a door is the café's. */
 export const isKeetDoor = (id: string): boolean => KEET_DOOR.test(id);
+
+/** The café as the zombies' grid takes it alone at the church (shared/keet.mjs), from its two public files, as the server reads them. */
+export async function keetForZombies(): Promise<Keet> {
+  const [shell, rooms] = await Promise.all([import('../data/keet_shell.json'), import('../data/keet_rooms.json')]);
+  return makeKeet(shell.default, rooms.default);
+}
 
 /** The café's doors in the world, where their leaves stand shut (shared/keet.mjs): their openings. */
 let openings: KeetDoor[] = [];

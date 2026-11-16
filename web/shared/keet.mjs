@@ -76,3 +76,30 @@ export function makeKeet(shell, rooms) {
     spots,
   };
 }
+
+/**
+ * The village's blocks with the café's own in place of its plain ones, for the zombies' grid at the church (as
+ * shared/sparrenhof.mjs cafePrisms does for the Sparrenhof): a standing block (not draped on the ground) whose middle lies
+ * in the café's outline goes, as world/walkIn.ts replaces it on the page; the café's walked-into blocks come in. Its
+ * windows come in as plain glass (seen through, never walked through: their sills are over a step).
+ */
+export function keetPrisms(prisms, keet) {
+  const mine = (p) => {
+    const r = p.p[0];
+    return keet.contains(r.reduce((t, q) => t + q[0], 0) / r.length, r.reduce((t, q) => t + q[1], 0) / r.length);
+  };
+  return [...prisms.filter((p) => p.d !== undefined || !mine(p)), ...keet.prisms];
+}
+
+/**
+ * The relief (`height`, over `base`: the bare ground's height on it) for the zombies' grid round the café: inside its
+ * outline never above its floor. The lane's ground rises under the back of the house to 0.35 m over the floor; the page
+ * cuts it there (its floors are walked, world/keet.ts), and so does the grid, or a zombie would walk that high in the air.
+ */
+export function keetRelief(height, keet, base) {
+  const top = keet.floor - base;
+  return (x, z) => {
+    const h = height(x, z);
+    return h > top && keet.contains(x, z) ? top : h;
+  };
+}

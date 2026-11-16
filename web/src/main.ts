@@ -158,7 +158,7 @@ import { glass as glassLook, GlassProbe, glassOnModel } from './world/glassLook'
 import { trackVillageHouse, VILLAGE_HOUSES } from './world/villageHouses';
 import { mood } from './world/mood';
 import { loadWalkIn, type WalkIn } from './world/walkIn';
-import { holdKeetShut, isKeetDoor, isKeetPane, keetDoorway, keetRooms, loadKeet } from './world/keet';
+import { holdKeetShut, isKeetDoor, isKeetPane, keetDoorway, keetForZombies, keetRooms, loadKeet } from './world/keet';
 import { Insides, type InsidePack } from './world/insides';
 import { CAR_REACH, CAR_SLOW, findPortal, PORTALS, portalNear, REACH, type Portal } from '../shared/portals.mjs';
 import { noShoot } from '../shared/zones.mjs';
@@ -2018,8 +2018,10 @@ async function startSolo(id: string): Promise<void> {
       if (village !== 'ready') hud.announce('Smetlede', t('travel.village'));
       await loadVillage();
       data = (await import('./data/village.json')).default as unknown as VillageData;
-      // The café's stairs and the trees' trunks too, from the trees as the server has them (before the models thin them out).
-      ground = villageGround(arena, edge, { ...data, trees: villageTrees ?? data.trees }, churchAccess, cafeAccess);
+      // The café's stairs and the trees' trunks too, from the trees as the server has them (before the models thin them out);
+      // at the church the café there, its rooms and doors (world/keet.ts).
+      const keetGround = arena.id === 'church' ? await keetForZombies() : null;
+      ground = villageGround(arena, edge, { ...data, trees: villageTrees ?? data.trees }, churchAccess, cafeAccess, keetGround);
       prisms = ground.prisms;
     } finally {
       soloStarting = false;
@@ -2035,9 +2037,10 @@ async function startSolo(id: string): Promise<void> {
   const stallSeat = stallSpot(arena.id); // the place's stall (shared/stall.mjs, world/stall.ts): zombies walk round it
   if (stallSeat) boxes.push(stallBox(arena.id)!);
   const nav = ground
-    ? makeNav({ prisms, height: (x, z) => terrain.height(x, z), base: house.ground, edge, boxes, areas: ground.areas, doors: [], shut: true, panes: 0 })
+    ? makeNav({ prisms, height: ground.relief((x, z) => terrain.height(x, z), house.ground), base: house.ground, edge, boxes, areas: ground.areas, doors: ground.doors, shut: false, panes: 0 })
     : makeNav({ prisms, height: (x, z) => terrain.height(x, z), base: house.ground, edge, boxes, areas: houseAreas(insides.housePrisms(house.prisms)), doors: insides.houseDoors(house.doors), shut: true, panes: insides.housePrisms(house.prisms).length });
-  const horde = new Horde(nav, data ? arenaSpots(arena, nav.spawnSpots(), data, cafeAccess) : nav.spawnSpots(), { home: arenaHome(arena) });
+  // The café's doors at the church (none elsewhere): a zombie shoves a shut one open on this page, as the server does together.
+  const horde = new Horde(nav, data ? arenaSpots(arena, nav.spawnSpots(), data, cafeAccess) : nav.spawnSpots(), { home: arenaHome(arena), doors: ground?.doors ?? [], doorOpen: (id) => doors.isOpen(id) });
   horde.start(performance.now());
   const stallAt = stallSeat ? { x: stallSeat.x, y: house.ground + terrain.height(stallSeat.x, stallSeat.z), z: stallSeat.z } : null;
   solo = { horde, loot: new Loot(nav), stall: new Stall(), stallAt, arena, endAt: 0, best: soloBest(arena), record: false, custom: false, key: '' };
@@ -2134,6 +2137,7 @@ function soloTick(dt: number): void {
       soloZombieHurt(combat.hp, false, undefined, true);
     }
     else if (e.type === 'swipe') soloZombieHurt(e.damage, h.zombies.get(e.id)?.kind === BIG_ZOMBIE, h.zombies.get(e.id));
+    else if (e.type === 'door') doors.set(e.id, true, e.dir); // a zombie shoved a café door open (as the server's 'door')
     else if (e.type === 'over') {
       solo.endAt = now + 15000;
       solo.record = soloRecord(solo, e.wave); // never with a chosen wave

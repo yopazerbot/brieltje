@@ -136,7 +136,7 @@ const CAFE = makeCafe(CAFE_DATA, HOUSE.ground + TERRAIN.height(...CAFE_DATA.orig
 /** A Zombies place's village ground (its blocks, hedges, trunks and areas): the same every game, made once per place. */
 const villageGrounds = new Map();
 const villageGroundOf = (arena, edge) => {
-  if (!villageGrounds.has(arena.id)) villageGrounds.set(arena.id, villageGround(arena, edge, VILLAGE, CHURCH, CAFE));
+  if (!villageGrounds.has(arena.id)) villageGrounds.set(arena.id, villageGround(arena, edge, VILLAGE, CHURCH, CAFE, KEET));
   return villageGrounds.get(arena.id);
 };
 /** The least time between two starts or stops of a game in one room (any player in it). */
@@ -857,7 +857,8 @@ export class Game {
    * What the zombies walk on for a new game at `arena` (shared/arenas.mjs; server/zombies.mjs): at home
    * the grid over the party area with every floor of the two houses and their doors, with whether each
    * stands open now (a zombie shoves a shut one open: zombieDoor); in Smetlede the grid over its circle
-   * with the village's blocks, hedges and fences, the buildings shut. The cars where they stand now,
+   * with the village's blocks, hedges and fences, the buildings shut but the café at the church (its rooms and
+   * doors, shared/arenas.mjs villageGround: a shut one a zombie shoves open too). The cars where they stand now,
    * the places over the open ground where zombies come out, where they go when nobody fights, and the
    * edge. About 40 ms at home, 5 in the village.
    */
@@ -874,11 +875,11 @@ export class Game {
     // The village's part never changes per place: made once (a start no longer walks all the blocks again).
     const village = arena.center ? villageGroundOf(arena, edge) : null;
     const nav = village
-      ? makeNav({ prisms: village.prisms, height, base: HOUSE.ground, edge, boxes, areas: village.areas, doors: [], shut: true, panes: 0 })
+      ? makeNav({ prisms: village.prisms, height: village.relief(height, HOUSE.ground), base: HOUSE.ground, edge, boxes, areas: village.areas, doors: village.doors, shut: false, panes: 0 })
       : makeNav({ prisms: [...ZOMBIE_PRISMS, ...zombieTrunks(HOUSE.surroundings?.trees ?? [], edge)], height, base: HOUSE.ground, edge, boxes, areas: HOUSE_AREAS, doors: HOUSE.doors, shut: false, panes: HOUSE.prisms.length });
     if (!arena.center) nav.setPanes(this.broken);
     return {
-      nav, edge, spots: arenaSpots(arena, nav.spawnSpots(), VILLAGE, CAFE), home: arenaHome(arena), doors: arena.center ? [] : HOUSE.doors,
+      nav, edge, spots: arenaSpots(arena, nav.spawnSpots(), VILLAGE, CAFE), home: arenaHome(arena), doors: village ? village.doors : HOUSE.doors,
       doorOpen: (id) => this.doors[id] ?? DOOR_OPEN[id] ?? true,
       stall: spot ? { x: spot.x, y: HOUSE.ground + TERRAIN.height(spot.x, spot.z), z: spot.z } : null,
     };
@@ -886,7 +887,7 @@ export class Game {
 
   /**
    * A zombie shoved door `id` open (shared/zombies.mjs): for every page, as a player's toggle is. Only
-   * the house data's doors; the horde shoves one door at most once in 1.5 s.
+   * the house data's doors and the café's (DOOR_OPEN); the horde shoves one door at most once in 1.5 s.
    */
   zombieDoor(id, dir) {
     if (!Object.hasOwn(DOOR_OPEN, id)) return;

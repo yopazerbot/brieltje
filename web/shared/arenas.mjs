@@ -16,6 +16,7 @@
 
 import { makeBounds } from './bounds.mjs';
 import { churchPrisms } from './church.mjs';
+import { keetPrisms, keetRelief } from './keet.mjs';
 import { PORTALS } from './portals.mjs';
 import { cafePrisms, woodSpots, woodTrunks } from './sparrenhof.mjs';
 
@@ -77,11 +78,32 @@ export function arenaPrisms(prisms, edge) {
  * own in place of their plain ones, and where the grid is finer with every floor (the church tower, the café's stairs
  * to its roofs); and the trees' trunks, which the zombies walk round (since 15 Nov 2026 at every place, not only in a
  * wood). The same on the page (alone) and on the server (together): `village` as village.json has it.
+ * At the church also the café there (`keet`: shared/keet.mjs makeKeet; since 16 Nov 2026 the zombies follow players
+ * in): its rooms' blocks in place of its plain one, its area as fine as the tower's, its `doors` (a shut one a
+ * zombie shoves open) and `relief(height, base)`, the relief for the grid (cut to its floor inside, keetRelief). At
+ * every other place `doors` is empty and `relief` gives `height` back.
  */
-export function villageGround(a, edge, village, church, cafe) {
-  const prisms = cafePrisms(churchPrisms(village.prisms ?? [], church), cafe).concat(woodTrunks(village.trees ?? [], cafe, edge));
-  const areas = a.id === 'church' ? [church.area] : a.id === 'sparrenhof' ? (cafe.areas ?? [cafe.area]) : [];
-  return { prisms: arenaPrisms(prisms, edge), areas };
+export function villageGround(a, edge, village, church, cafe, keet = null) {
+  const here = a.id === 'church' && keet ? keet : null;
+  const own = cafePrisms(churchPrisms(village.prisms ?? [], church), cafe);
+  const prisms = (here ? keetPrisms(own, here) : own).concat(woodTrunks(village.trees ?? [], cafe, edge));
+  const areas = a.id === 'church' ? (here ? [apart(church.area, here.area), here.area] : [church.area]) : a.id === 'sparrenhof' ? (cafe.areas ?? [cafe.area]) : [];
+  const relief = (height, base) => (here ? keetRelief(height, here, base) : height);
+  return { prisms: arenaPrisms(prisms, edge), areas, doors: here ? here.doors : [], relief };
+}
+
+/**
+ * Box `a` cut back where it overlaps box `b`, on the side that loses least, to the zombies' grid's half-metre lines:
+ * two fine areas may not overlap (shared/zombies.mjs makeNav joins none across them). The church's box reaches over the
+ * café's front, 4 m past the church's own blocks.
+ */
+function apart(a, b) {
+  if (a.maxX <= b.minX || b.maxX <= a.minX || a.maxZ <= b.minZ || b.maxZ <= a.minZ) return a;
+  const lo = (v) => Math.floor(v * 2) / 2;
+  const hi = (v) => Math.ceil(v * 2) / 2;
+  const cuts = [{ ...a, maxX: lo(b.minX) }, { ...a, minX: hi(b.maxX) }, { ...a, maxZ: lo(b.minZ) }, { ...a, minZ: hi(b.maxZ) }];
+  const size = (c) => Math.max(0, c.maxX - c.minX) * Math.max(0, c.maxZ - c.minZ);
+  return cuts.reduce((p, q) => (size(q) > size(p) ? q : p));
 }
 
 /** Where the horde comes out (nav.spawnSpots): in a wood (`woods`) deep among its trees, while there are enough such spots. */
