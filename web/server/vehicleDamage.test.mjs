@@ -504,3 +504,23 @@ test('the homes: no damage to a vehicle with someone in it the shooter could not
   assert.equal(s.wire.get('ann').find((q) => q.t === 'vdmg' && q.st === STAGE.wreck)?.by, 'ann');
   assert.equal(s.told.filter((m) => m.t === 'vdmg' && m.st === STAGE.wreck).length, 0, 'not broadcast with the name to all');
 });
+
+test('the homes: a shooter inside a locked home destroys a car outside: no name to those without its code, nobody hurt through the gate', () => {
+  for (const leaves of [false, true]) {
+    const s = setup();
+    const ann = s.shooter('ann', 'bungalow');
+    const kim = s.player('kim', { x: s.car.x + 3, y: s.car.y, z: s.car.z }, 'house'); // beside the car, no code
+    gateWith(s.game, ann); // ann inside a home kim may not see into
+    while (s.stage() !== STAGE.fire) s.volley('ann', ann, 1); // the empty car may be damaged from there
+    // `leaves`: ann walks out of the home before it burns out; what she did from inside stays hidden.
+    if (leaves) s.game._gate = { ...s.game._gate, insideOf: () => null, hides: () => false, mayHurt: () => true, may: (p) => p === ann };
+    const told = s.told.length;
+    s.ticks(30_000, 500);
+    assert.equal(s.stage(), STAGE.wreck);
+    const toKim = [...s.wire.get('kim'), ...s.told.slice(told)];
+    assert.ok(toKim.some((m) => m.t === 'vdmg' && m.st === STAGE.wreck), 'kim is told it went up');
+    assert.ok(!toKim.some((m) => JSON.stringify(m).includes('"ann"')), `no message to kim names ann (${leaves ? 'left the home' : 'inside'})`);
+    assert.equal(kim.hp, 100, 'kim, 2 m from it, not hurt through the gate');
+    assert.equal(s.wire.get('ann').find((m) => m.t === 'vdmg' && m.st === STAGE.wreck)?.by, 'ann', 'ann herself is told');
+  }
+});

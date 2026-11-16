@@ -157,7 +157,7 @@ export class VehicleDamage {
     if (this.calm(m.kind, v) || this.hidden(p, m.kind, v) || !this.aimedAt(p, m.kind, v)) return;
     p.nextHit = now + spec.delay * 700; // 70% of the fire delay, for network jitter (Game.hit's rule)
     p.protectedUntil = 0; // shooting ends your own spawn protection
-    this.harm(m.kind, m.id, v, m.n * spec.body, name, m.w, now);
+    this.harm(m.kind, m.id, v, m.n * spec.body, name, m.w, now, g.sight(p)); // who could see whom at the shot (Game.sight)
   }
 
   /**
@@ -195,19 +195,23 @@ export class VehicleDamage {
         if (this.out(kind, v.id) || !this.mayDamage(name, kind, v) || this.calm(kind, v) || !g.seenBy(shooter, kind, v)) continue;
         if (this.riders(kind, v).some((n) => g.players.has(n) && !g.mayBlast(shooter, g.players.get(n), n, at, act))) continue; // someone in it out of the blast's sight
         const d = this.reach(kind, v, at.x, at.y, at.z);
-        if (d < base.radius) this.harm(kind, v.id, v, Math.round(base.damage * k * (1 - d / base.radius)), name, w, now);
+        if (d < base.radius) this.harm(kind, v.id, v, Math.round(base.damage * k * (1 - d / base.radius)), name, w, now, act);
       }
     }
   }
 
-  /** `amount` off vehicle `v`, by `name` with `w`: the stages it passes, and everyone told. */
-  harm(kind, id, v, amount, name, w, now) {
+  /**
+   * `amount` off vehicle `v`, by `name` with `w`: the stages it passes, and everyone told. `act`: who could see whom when it
+   * was done (Game.sight: the home the attacker stood in, the players out of their sight), kept for its destruction.
+   */
+  harm(kind, id, v, amount, name, w, now, act = null) {
     if (amount <= 0) return;
     const r = this.rec(kind, id);
     if (r.st >= STAGE.wreck) return;
     r.hp = Math.max(0, r.hp - amount);
     r.by = name;
     r.w = w;
+    r.act = act;
     this.staged(r, v, now);
   }
 
@@ -234,9 +238,11 @@ export class VehicleDamage {
     r.st = STAGE.wreck;
     r.until = now + VEHICLE.wreckMs;
     const shooter = r.by ? g.players.get(r.by) : null;
+    const mid = this.middle(r.kind, v);
+    const at = { x: Math.round(mid.x * 100) / 100, y: Math.round(mid.y * 100) / 100, z: Math.round(mid.z * 100) / 100 };
     for (const n of this.riders(r.kind, v)) {
       const q = g.players.get(n);
-      if (this.downed(shooter, r.by, q, n, now)) g.damage(r.by, shooter, n, q, q.hp, false, 'wreck', now);
+      if (this.downed(shooter, r, q, n, at, now)) g.damage(r.by, shooter, n, q, q.hp, false, 'wreck', now);
       else if (r.kind === 'car') g.releaseCar(n);
       else g.helis.putOut(n, now);
     }
@@ -247,27 +253,28 @@ export class VehicleDamage {
       if (!v.g) r.fall = { v: 0 };
       g.helis.at[v.id] = this.mono();
     }
-    const mid = this.middle(r.kind, v);
-    const at = { x: Math.round(mid.x * 100) / 100, y: Math.round(mid.y * 100) / 100, z: Math.round(mid.z * 100) / 100 };
     this.wrecked(r, v, { t: 'vdmg', k: r.kind, id: r.id, hp: 0, st: r.st, by: r.by ?? '', ...at });
-    if (r.by) g.blast(r.by, at, 'wreck');
+    if (r.by) g.blast(r.by, at, 'wreck', new Set(), r.act); // its blast with the act of the hit that did it (Game.mayBlast)
   }
 
   /**
    * Its destruction, to everyone who may see the vehicle where it is (Game.broadcastThing), so every page has it as a
-   * wreck; who did it only to those who may see that player (Game.broadcastEvent's rule: one inside a home they may not
-   * see into is '' to them), so the message never tells who is inside a home. The admin's watch views get it whole.
+   * wreck; who did it only to those who may see that player, now and when they dealt the hit (Game.broadcastEvent's and
+   * Game.mayBlast's rules: inside a home they may not see into, or out of their sight then, it is '' to them), so the
+   * message never tells who is inside a home. The admin's watch views get it whole.
    */
   wrecked(r, v, msg) {
     const g = this.game;
     const doer = r.by ? g.players.get(r.by) : null;
-    if (!doer || !g.gate.insideOf(doer)) return g.broadcastThing(msg, r.kind, v);
+    const act = r.act;
+    if (!act && (!doer || !g.gate.insideOf(doer))) return g.broadcastThing(msg, r.kind, v);
     const home = g.homeOf(r.kind, v);
     const full = JSON.stringify(msg);
     const blind = JSON.stringify({ ...msg, by: '' });
-    for (const q of g.players.values()) {
+    for (const [n, q] of g.players) {
       if (q.ws.readyState !== q.ws.OPEN || (home && !g.gate.may(q, home))) continue;
-      q.ws.send(g.gate.hides(doer, q) ? blind : full);
+      const hidden = (doer && g.gate.hides(doer, q)) || (act?.home && !g.gate.may(q, act.home)) || !!act?.unseen?.has(n);
+      q.ws.send(hidden ? blind : full);
     }
     for (const w of g.watchers) if (w.ws.readyState === w.ws.OPEN) w.ws.send(full);
   }
@@ -275,13 +282,15 @@ export class VehicleDamage {
   /**
    * Whether rider `q` (`n`) goes down with the wreck, the kill `by`'s: only when a hit of theirs on them could have counted
    * (Game.hit's gates): the attacker still here and off the school grounds, the rider alive, armed, not their teammate,
-   * out of spawn protection and off the school grounds, neither out of the other's sight (homeGate.mayHurt).
+   * out of spawn protection and off the school grounds, neither out of the other's sight now nor when the hit was dealt
+   * (Game.mayBlast with the hit's act, as a grenade's blast: homeGate.mayHurt, the home it came from, the unseen).
    */
-  downed(shooter, by, q, n, now) {
+  downed(shooter, r, q, n, at, now) {
     const g = this.game;
+    const by = r.by;
     if (!shooter || !q?.alive || !q.state?.armed || n === by || g.modes.friends(by, n)) return false;
     if (now < (q.protectedUntil || 0) || g.calm(q) || g.calm(shooter)) return false;
-    return g.gate.mayHurt(shooter, q);
+    return g.mayBlast(shooter, q, n, at, r.act);
   }
 
   /** Everyone who may see it is told its health and stage (`extra` on its destruction: who, and where it went up). */
