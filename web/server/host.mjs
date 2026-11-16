@@ -183,6 +183,7 @@ export class Host {
     const players = [...this.game.players.entries()].map(([name, p]) => ({
       name, role: p.role, team: this.teamIdOf(name), muted: this.muted.has(name), alive: p.alive, ping: p.rttAvg === null ? null : Math.round(p.rttAvg),
       points: this.scores[name]?.points ?? 0, kills: p.score.kills, deaths: p.score.deaths,
+      inside: !!this.game.gate.insideOf(p), // inside a private home: the hall screen shows a card, never the picture
     }));
     return {
       players, max: this.game.rules.maxPlayers, most: this.game.most, locked: this.locked, knocking: [...this.knocking.keys()],
@@ -206,7 +207,7 @@ export class Host {
       const g = st.sides[side].game;
       const z = g.modes.state.kind === 'zombies' ? g.modes.state.z : null;
       return [...g.players.entries()].map(([name, p]) => ({
-        name, side, alive: p.alive, kills: p.score.kills, deaths: p.score.deaths, beaten: z?.horde.beaten[name] ?? 0,
+        name, side, alive: p.alive, kills: p.score.kills, deaths: p.score.deaths, beaten: z?.horde.beaten[name] ?? 0, inside: !!g.gate.insideOf(p),
       }));
     });
   }

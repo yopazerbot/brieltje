@@ -275,12 +275,11 @@ export class VehicleDamage {
     if (!act && (!doer || !g.gate.insideOf(doer))) return g.broadcastHome(msg, home);
     const full = JSON.stringify(msg);
     const blind = JSON.stringify({ ...msg, [field]: '' });
-    for (const [n, q] of g.players) {
+    for (const [n, q] of g.audience()) { // the watch views as a page without any home's right (game.mjs watcher)
       if (q.ws.readyState !== q.ws.OPEN || (home && !g.gate.may(q, home))) continue;
       const hidden = (doer && g.gate.hides(doer, q)) || (act?.home && !g.gate.may(q, act.home)) || !!act?.unseen?.has(n);
       q.ws.send(hidden ? blind : full);
     }
-    for (const w of g.watchers) if (w.ws.readyState === w.ws.OPEN) w.ws.send(full);
   }
 
   /**

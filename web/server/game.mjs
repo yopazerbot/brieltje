@@ -695,12 +695,13 @@ export class Game {
   }
 
   /**
-   * A watch view of the admin's watch page connected (src/watch.ts): the world as the admin may see it, then every
-   * broadcast and every tick with all the players in it. Nothing it sends is taken but its answer to the ping (at most
+   * A watch view of the admin's watch page connected (src/watch.ts): the world as someone without any home's code sees
+   * it (it goes on a beamer in a hall: no private home's inside, nobody inside one; homeGate.may), then every broadcast
+   * and every tick as such a page gets them. Nothing it sends is taken but its answer to the ping (at most
    * thirty messages a second are even read); it goes on its close or when it falls silent (pings).
    */
   watcher(ws, session) {
-    const w = { ws, key: session.key, role: 'admin', full: true, heard: mono(), pingN: 0, pingAt: 0, pingNext: mono() + 500, rtt: null, msgs: 0, window: 0 };
+    const w = { ws, key: session.key, role: 'admin', watch: true, proto: PROTO, sight: true, full: true, heard: mono(), pingN: 0, pingAt: 0, pingNext: mono() + 500, rtt: null, msgs: 0, window: 0 };
     this.watchers.add(w);
     this.send(ws, { ...this.welcome(w, '', '', Date.now()), watch: true, role: 'watcher' });
     ws.on('message', (raw) => {
@@ -911,9 +912,7 @@ export class Game {
   /** Every page its list of the spawned figures, as it may see them (one spawned inside a home: only with its right). */
   sendClowns(now) {
     if (![...this.clowns.values()].some((c) => this.homeOf('clown', c))) return this.broadcast({ t: 'clowns', list: this.clownList(now) });
-    for (const p of this.players.values()) if (p.ws.readyState === p.ws.OPEN) p.ws.send(JSON.stringify({ t: 'clowns', list: this.clownList(now, p) }));
-    const all = JSON.stringify({ t: 'clowns', list: this.clownList(now) });
-    for (const w of this.watchers) if (w.ws.readyState === w.ws.OPEN) w.ws.send(all);
+    for (const [, p] of this.audience()) if (p.ws.readyState === p.ws.OPEN) p.ws.send(JSON.stringify({ t: 'clowns', list: this.clownList(now, p) }));
   }
 
   roster() {
@@ -2043,7 +2042,12 @@ export class Game {
     if (!home) return this.broadcast(msg, except);
     const data = JSON.stringify(msg);
     for (const [name, p] of this.players) if (name !== except && p.ws.readyState === p.ws.OPEN && this.gate.may(p, home)) p.ws.send(data);
-    for (const w of this.watchers) if (w.ws.readyState === w.ws.OPEN) w.ws.send(data); // the admin's watch views (every right)
+    // Not to the watch views: they have no home's right (homeGate.may).
+  }
+
+  /** The players and the watch views (named ''), for what each gets as it may see it: a watch view has no home's right. */
+  audience() {
+    return this.watchers.size ? [...this.players, ...[...this.watchers].map((w) => ['', w])] : this.players;
   }
 
   /** `msg` about where `p` is (a shot, a throw, a rally): to those who may see them there (homeGate.hides), except `except`. */
@@ -2081,13 +2085,12 @@ export class Game {
     if (!home && !from && !this.gate.insideOf(doer)) return this.broadcast(msg, except); // the usual case: nothing to hide
     const full = JSON.stringify(msg);
     let blind = null;
-    for (const [name, p] of this.players) {
+    for (const [name, p] of this.audience()) {
       if (name === except || p.ws.readyState !== p.ws.OPEN || (home && !this.gate.may(p, home))) continue;
       const hidden = (doer && this.gate.hides(doer, p)) || (from && !this.gate.may(p, from));
       if (hidden && !p.sight) continue;
       p.ws.send(hidden ? (blind ??= JSON.stringify({ ...msg, by: '' })) : full);
     }
-    for (const w of this.watchers) if (w.ws.readyState === w.ws.OPEN) w.ws.send(full);
   }
 
   /** The game's view (modes.mjs) as `viewer` may see it: in Zombies no item, mine, row of stakes, turret or music box inside a home they may not see into. */
@@ -2193,9 +2196,7 @@ export class Game {
   sendPlaced() {
     const list = this.placedList();
     if (!list.some((c) => this.homeOf('car', c))) return this.broadcast({ t: 'teslas', list });
-    for (const p of this.players.values()) if (p.ws.readyState === p.ws.OPEN) p.ws.send(JSON.stringify({ t: 'teslas', list: list.filter((c) => this.seenBy(p, 'car', c)) }));
-    const all = JSON.stringify({ t: 'teslas', list });
-    for (const w of this.watchers) if (w.ws.readyState === w.ws.OPEN) w.ws.send(all);
+    for (const [, p] of this.audience()) if (p.ws.readyState === p.ws.OPEN) p.ws.send(JSON.stringify({ t: 'teslas', list: list.filter((c) => this.seenBy(p, 'car', c)) }));
   }
 
   /**
@@ -2707,8 +2708,7 @@ export class Game {
     if (!homes.length) return this.broadcast(msg);
     const bare = JSON.stringify({ t: 'respawn', name, spawn });
     const full = JSON.stringify(msg);
-    for (const [n, q] of this.players) if (q.ws.readyState === q.ws.OPEN) q.ws.send(n === name || homes.every((h) => this.gate.may(q, h)) ? full : bare);
-    for (const w of this.watchers) if (w.ws.readyState === w.ws.OPEN) w.ws.send(full);
+    for (const [n, q] of this.audience()) if (q.ws.readyState === q.ws.OPEN) q.ws.send(n === name || homes.every((h) => this.gate.may(q, h)) ? full : bare);
   }
 
   /**
@@ -2977,7 +2977,7 @@ export class Game {
     let everything = null;
     let prevKeys = null;
     let old = false;
-    for (const [name, p] of this.players) {
+    for (const [name, p] of this.audience()) { // the watch views too, as a page without any home's right
       if (p.proto < PROTO) {
         old = true;
         continue;
@@ -3029,16 +3029,6 @@ export class Game {
       const tick = `{"t":"s","st":${st}${part('p', others)}${own}${gone.length ? `,"o":${JSON.stringify(gone)}` : ''}${g}}`;
       monitor.out(tick.length);
       p.ws.send(tick);
-    }
-    // The watch views: everyone.
-    for (const w of this.watchers) {
-      if (w.ws.readyState !== w.ws.OPEN) continue;
-      const all = w.full;
-      w.full = false;
-      if (all) everything ??= rest(true);
-      const tick = `{"t":"s","st":${st}${part('p', join(players, all))}${all ? everything : changed}}`;
-      monitor.out(tick.length);
-      w.ws.send(tick);
     }
     this.prevThings = things; // what a page in the shared lists had (its keys only looked at when something goes out of sight)
     if (old && turn % OLD_EVERY === 0) this.oldStates(now);

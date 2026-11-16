@@ -1,6 +1,7 @@
 import { HOMES, homeOfDoor, makePaneHomes } from '../../shared/homes.mjs';
 import { t } from '../i18n';
 import { seatHeaders } from '../seat';
+import { watch } from '../watch';
 
 /**
  * The page's side of the three homes that open only with a code (shared/homes.mjs, server/homes.mjs): the main house,
@@ -75,8 +76,9 @@ export class HomeLocks {
     return this.paneHome(i);
   }
 
-  /** The admin needs no codes. */
+  /** The admin needs no codes. A view of the hall screen (src/watch.ts) is never the admin here: it goes on a beamer. */
   setAdmin(on: boolean): void {
+    if (watch) on = false;
     if (this.admin === on) return;
     this.admin = on;
     this.sync();
@@ -106,6 +108,7 @@ export class HomeLocks {
    * typed; `byAccount`: those the account opens for good.
    */
   grant(ids: string[], byAccount: string[] = []): void {
+    if (watch) return; // a view of the hall screen opens no home (the server grants it none either: homeGate.may)
     let any = false;
     const added: string[] = [];
     for (const h of HOMES) {

@@ -182,7 +182,7 @@ test('hide and seek and tag: nobody stands inside a home, with its code or not, 
 
 // ---------------------------------------------------------------- every kind of thing with a place (Game.homeOf)
 // Each kind that can stand inside a home: out of the welcome, the ticks and every message of a page without its right.
-// Each kind that can never be inside one: a test that says so. The admin's watch view sees everything (broadcastHome).
+// Each kind that can never be inside one: a test that says so. The admin's watch view sees as a page without any right.
 
 const json = (p) => JSON.parse(readFileSync(new URL(p, import.meta.url), 'utf8'));
 const TERRAIN = makeTerrain(json('../shared/terrain.json'));
@@ -678,3 +678,43 @@ test('`g` never names a thing the page never had: a strongman spawned inside', (
   game.snapshot(Date.now());
   assert.ok(!other.got.some((m) => m.t === 's' && m.g), JSON.stringify(other.got.filter((m) => m.g).map((m) => m.g)));
 });
+
+// ---------------------------------------------------------------- the hall screen's watch views (game.mjs watcher)
+// A watch view goes on a beamer in a hall: it sees the homes as someone without any code, admin's session or not, and
+// even when that session typed a home's code (homeGate.may).
+for (const h of HOMES) {
+  test(`${h.id}: a watch view of the hall screen sees nobody inside, no door or pane in it, no place of theirs`, () => {
+    const { game, grants, player, named } = setup();
+    const { inside, outside } = spots(h);
+    const owner = player('owner', inside);
+    player('other', outside);
+    grants.add(`k-owner|${h.id}`);
+    grants.add(`k-admin|${h.id}`); // the admin's own session typed the code too
+    const w = { got: [], raw: [], readyState: 1, OPEN: 1, send(d) { w.raw.push(String(d)); w.got.push(JSON.parse(d)); }, on() {} };
+    game.watcher(w, { key: 'k-admin', role: 'admin' });
+    const welcome = w.got.find((m) => m.t === 'welcome');
+    assert.equal(welcome.watch, true);
+    assert.deepEqual(welcome.homes, [], 'no home granted to it');
+    assert.ok(Object.keys(welcome.doors).every((id) => game.gate.door({ role: 'player', key: 'nobody' }, id)), 'no door of a home');
+    game.snapshot(Date.now());
+    assert.equal(named(w, 'owner'), false, 'the insider is not in its ticks');
+    assert.equal(named(w, 'other'), true, 'the one outside is');
+    assert.deepEqual(w.got.filter((m) => m.t === 's')[0].o, ['owner'], 'told the insider is out of sight');
+    for (let i = 0; i < 5; i++) {
+      owner.fresh = true;
+      owner.state.x += 0.01;
+      game.snapshot(Date.now());
+    }
+    assert.equal(named(w, 'owner'), false);
+    // A shot from inside, a door and a pane of the home: nothing reaches it.
+    owner.nextShot = 0;
+    game.handle('owner', owner, JSON.stringify({ t: 'shot', w: 'rifle', ...inside }));
+    game.broadcastHome({ t: 'door', id: 'x', open: true }, h.id);
+    assert.ok(!w.got.some((m) => m.t === 'shot' || m.t === 'door'));
+    assert.ok(!w.got.some((m) => m.t === 'respawn' && m.name === 'owner' && 'x' in m), 'no place of theirs in a message');
+    // Out of the house: back in its next tick.
+    Object.assign(owner.state, outside);
+    game.snapshot(Date.now());
+    assert.equal(named(w, 'owner'), true);
+  });
+}

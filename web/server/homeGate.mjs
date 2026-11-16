@@ -32,8 +32,12 @@ export class HomeGate {
     this.shut = shut;
   }
 
-  /** May this player use home `id` (open its doors, break its panes, be inside)? */
+  /**
+   * May this player use home `id` (open its doors, break its panes, be inside)? A watch view of the admin's hall screen
+   * (server/game.mjs watcher) never: it goes on a beamer, so it sees the homes as someone without any code.
+   */
   may(player, id) {
+    if (player.watch) return false;
     return player.role === 'admin' || !!this.homes()?.granted(player.key, id);
   }
 

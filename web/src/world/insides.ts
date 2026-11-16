@@ -2,6 +2,7 @@ import * as THREE from 'three';
 import { registerDoors, WALK_INS } from '../../shared/homes.mjs';
 import { addInsideNames } from '../i18n';
 import { seatHeaders } from '../seat';
+import { watch } from '../watch';
 import type { BigMap } from '../ui/bigmap';
 import type { Minimap } from '../ui/minimap';
 import type { World } from './collision';
@@ -100,6 +101,7 @@ export class Insides {
 
   /** Home `id` is open to this page: install the pack it came with, or fetch it (the session has the right, or is the admin's). */
   async open(id: string, pack: unknown): Promise<void> {
+    if (watch) return; // a view of the hall screen never loads a private inside (it goes on a beamer)
     if (this.packs.has(id)) return;
     let got = pack as InsidePack | null;
     if (!got) {

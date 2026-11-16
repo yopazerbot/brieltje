@@ -6,6 +6,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { Game } from './game.mjs';
 import { Rooms } from './rooms.mjs';
+import { HOMES, homeAt } from '../shared/homes.mjs';
 
 const real = Date.now;
 const SITE = { origin: 'http://brieltje.test', host: 'brieltje.test' };
@@ -184,6 +185,26 @@ test("the duel's end closes its rooms' watchers (4004: back to the open world); 
     const again = env.ask(env.admin, '&watch=1&duel=red');
     assert.notEqual(again, 'refused');
     assert.equal(env.main.watchers.size, 1);
+  } finally {
+    env.stop();
+  }
+});
+
+test("the host's view says who stands inside a private home (the hall screen shows a card for them), nothing more", () => {
+  const env = setup();
+  try {
+    env.join(env.main, 'ann');
+    const h = HOMES[0];
+    const b = h.bands[0];
+    const y = b.y0 + 0.05;
+    let spot = null;
+    for (let x = b.box[0]; x <= b.box[2] && !spot; x += 0.25) for (let z = b.box[1]; z <= b.box[3] && !spot; z += 0.25) if (homeAt(x, z, y) === h.id) spot = { x, z };
+    assert.ok(spot);
+    const ann = () => env.main.host.view().players.find((p) => p.name === 'ann');
+    assert.equal(ann().inside, false);
+    Object.assign(env.main.players.get('ann').state, { x: spot.x, y, z: spot.z });
+    assert.equal(ann().inside, true);
+    assert.ok(!JSON.stringify(env.main.host.view().players).includes(h.id), 'not which home');
   } finally {
     env.stop();
   }

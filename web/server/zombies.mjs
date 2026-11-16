@@ -264,11 +264,10 @@ export class ZombieGame {
       const fire = shots.map(({ turret: t, id }) => [t.id, id, t.rounds, homeAt(t.x, t.z, t.y)]);
       if (!fire.some((f) => f[3])) g.broadcast({ t: 'zfire', s: fire.map((f) => f.slice(0, 3)) });
       else {
-        for (const [, q] of g.players) {
+        for (const [, q] of g.audience()) { // the watch views as a page without any home's right
           const s = fire.filter((f) => !f[3] || g.gate.may(q, f[3])).map((f) => f.slice(0, 3));
           if (s.length) g.send(q.ws, { t: 'zfire', s });
         }
-        for (const w of g.watchers) g.send(w.ws, { t: 'zfire', s: fire.map((f) => f.slice(0, 3)) });
       }
     }
     for (const { turret: t, id } of shots) this.damage(id, LOOT.turretDamage, t.owner, 'turret', now);
@@ -593,8 +592,8 @@ export class ZombieGame {
     const home = at ? homeAt(at.x, at.z, at.y) : null;
     if (!at) this.game.broadcast(msg);
     else {
-      this.game.broadcastHome({ ...msg, x: at.x, y: at.y, z: at.z }, home); // the watch views too
-      if (home) for (const [, q] of this.game.players) if (!this.game.gate.may(q, home)) this.game.send(q.ws, msg);
+      this.game.broadcastHome({ ...msg, x: at.x, y: at.y, z: at.z }, home);
+      if (home) for (const [, q] of this.game.audience()) if (!this.game.gate.may(q, home)) this.game.send(q.ws, msg); // the watch views too
     }
     this.modes.say(`${by} helped ${name} up.`, 'zRevived', { name: by, target: name });
     this.modes.send();

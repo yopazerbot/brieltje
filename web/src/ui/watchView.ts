@@ -6,8 +6,8 @@ import { t } from '../i18n';
 /**
  * A view of the admin's watch page (src/watch.ts): the camera follows one player, behind them (over their shoulder, a
  * few metres back, further when they drive) or through their eyes (their figure not drawn), eased so it glides instead
- * of jerking with every step. Their name and score in the corner, in their colour. With nobody chosen (or the one
- * chosen gone) it follows the first player there is. Everything shown is put in with textContent.
+ * of jerking with every step. Their name and score in the corner, in their colour. With nobody chosen it follows the
+ * first player there is; the one chosen out of sight (inside a private home) or gone: the camera stays put. Everything shown is put in with textContent.
  */
 export class WatchView {
   target = '';
@@ -41,7 +41,9 @@ export class WatchView {
     clearance?: (a: { x: number; y: number; z: number }, b: { x: number; y: number; z: number }) => number): THREE.Vector3 | null {
     const names = avatars.names();
     // The one chosen while they are here; else whoever was followed, else the first player there is.
-    if (this.target && names.includes(this.target)) this.following = this.target;
+    // A player the page named but out of sight (inside a private home: the server leaves them out of a watch view's
+    // ticks) or gone: nobody else instead; the camera stays where it was, outside, until the page names another.
+    if (this.target) this.following = this.target;
     else if (!names.includes(this.following)) this.following = names[0] ?? '';
     const v = this.following ? avatars.view(this.following) : null;
     this.tag.classList.toggle('hidden', !v);
