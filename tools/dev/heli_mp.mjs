@@ -24,7 +24,8 @@
 //    over the house's pad; RiderA's line in the air says Use jumps, the phone's shows no keys. RiderC jumps by the Use
 //    button (the page sends no position): the canopy opens by itself, Pilot and RiderA see it, and RiderC lands where
 //    the server and both pages have it (1 m). Then Pilot jumps by E: the machine hangs where it was, RiderA takes the
-//    stick and lands it on its pad.
+//    stick; with the parachute rule off his E in the air asks nothing and the line says to land first; he lands it on
+//    its pad. The jumpers' cameras ease from where they were (no snap into the eyes); pictures with --out.
 // The boarders stand at four places round the cabin, two by the rear skids: someone standing there once threw a seated
 // pilot's machine 2 m up (world/heli.ts env, shared/heli.mjs heliHeads); phase 1 checks it stays down. No page errors.
 // Pictures with --out.
@@ -698,13 +699,23 @@ try {
     ok('up 60 m over the pad', t > 0, `${t.toFixed(1)} s`);
     ok('RiderA\'s line in the air says Use jumps', [...lines].some((l) => /Jump/.test(l)), JSON.stringify([...lines]));
     ok('RiderC\'s (the phone) shows no keys', !/Jump/.test(await prompt(C)), `"${await prompt(C)}"`);
+    /** The camera's place every frame for `n` frames from now: its largest step from one frame to the next (a snap into the eyes is metres). */
+    const filmCam = (b, n = 90) => b.evaluate(`(() => { window.__cams = []; const c = briel.three.composer.passes.find((q) => q.camera?.isPerspectiveCamera).camera;
+      const f = () => { window.__cams.push([c.position.x, c.position.y, c.position.z]); if (window.__cams.length < ${n}) requestAnimationFrame(f); }; requestAnimationFrame(f); })()`, false);
+    const camStep = (b) => b.evaluate('(() => { let most = 0; const v = window.__cams; for (let i = 1; i < v.length; i++) most = Math.max(most, Math.hypot(v[i][0] - v[i - 1][0], v[i][1] - v[i - 1][1], v[i][2] - v[i - 1][2])); return { most, frames: v.length }; })()');
     await C.evaluate('window.__sent.length = 0', false);
+    await filmCam(C);
     await use(C);
-    await sleep(600);
+    await sleep(250);
+    await shot(C, '5_riderC_just_jumped');
+    await sleep(350);
     ok('the phone\'s Use asks the jump, with no position', JSON.stringify(await C.evaluate('window.__sent')) === JSON.stringify([{ t: 'heli', op: 'jump' }]), JSON.stringify(await C.evaluate('window.__sent')));
     const c0 = await own(C);
     ok('RiderC is out and in a drop from where the server had the machine', !c0.aboard && c0.chute !== null, JSON.stringify(c0));
-    await sleep(2500);
+    await sleep(1500);
+    const cc = await camStep(C);
+    ok('RiderC\'s camera eases from where it was, no snap into the eyes (largest step a frame under 2 m)', cc.most < 2, `${r2(cc.most)} m over ${cc.frames} frames`);
+    await sleep(1000);
     for (const b of [P, A]) {
       const f = await figure(b, names[C.who]);
       ok(`${b.who} sees RiderC under an open canopy`, !!f && f.chute && f.open, JSON.stringify(f));
@@ -727,10 +738,15 @@ try {
     }
     // The pilot jumps: the machine hangs where it was; RiderA takes the stick and flies it home.
     const hang = await machine(A, 'house');
+    await filmCam(P);
     await tap(P, 'KeyE');
-    await sleep(1500);
+    await sleep(250);
+    await shot(P, '5_pilot_just_jumped');
+    await sleep(1250);
     const p0 = await own(P);
     ok('the pilot is out and in a drop', !p0.aboard && p0.chute !== null, JSON.stringify(p0));
+    const pc = await camStep(P);
+    ok('the pilot\'s camera eases from the chase view, no snap (largest step a frame under 2 m)', pc.most < 2, `${r2(pc.most)} m over ${pc.frames} frames`);
     await stopPilot(P);
     const m1 = await machine(A, 'house');
     ok('RiderA: the machine hangs where it was, nobody at the stick', Math.hypot(m1.x - hang.x, m1.y - hang.y, m1.z - hang.z) < 1 && (await seatsOn(A, 'house'))[0] === null, `${r2(Math.hypot(m1.x - hang.x, m1.y - hang.y, m1.z - hang.z))} m`);
@@ -739,6 +755,17 @@ try {
     await sleep(1500);
     const a = await aboard(A);
     ok('RiderA takes the stick', a.aboard && a.seat === 0 && a.piloting, JSON.stringify(a));
+    // The admin's parachute rule off: E in the air asks nothing, the line says to land first.
+    admin.send({ t: 'rules', parachute: false });
+    await sleep(1000);
+    await A.evaluate('window.__sent.length = 0', false);
+    await tap(A, 'KeyE');
+    await sleep(300);
+    const offLine = await prompt(A);
+    await sleep(900);
+    ok('the parachute rule off: E in the air sends no jump, still aboard, the line says land first', (await A.evaluate('window.__sent.length')) === 0 && (await aboard(A)).aboard && /Land first/.test(offLine), `"${offLine}"`);
+    admin.send({ t: 'rules', parachute: true });
+    await sleep(800);
     ok('and flies it down onto its pad', (await fly(A, PARK.house, hang.y, { secs: 90 })) > 0);
     await use(A);
     let p1 = null;
