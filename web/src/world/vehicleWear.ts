@@ -26,7 +26,7 @@ import '../ui/vehicleHealth.css';
  * `modes.teamMatch` (server/modes.mjs), the same rule: one of these kinds, while its phase is 'playing'. A new team game
  * adds its kind here (and is not `peaceful` in ui/games.ts, or nobody fires at all).
  */
-export const TEAM_MATCH_KINDS: ReadonlySet<string> = new Set(['teams']);
+export const TEAM_MATCH_KINDS: ReadonlySet<string> = new Set(['teams', 'flag']);
 export const teamMatch = (view: { kind: string; phase?: string }): boolean => TEAM_MATCH_KINDS.has(view.kind) && view.phase === 'playing';
 
 /** The stages the server tells (server/vehicleDamage.mjs STAGE). */
