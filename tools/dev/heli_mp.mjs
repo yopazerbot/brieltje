@@ -18,11 +18,13 @@
 //    RiderA's, the pilot's: the machine hangs still, the line says nobody flies; after 20 s the two left aboard are put
 //    out and it is on its pad, with a line in the chat. The admin's rule off: the line beside it says so and Use asks
 //    nothing. Zombies started in the air puts Pilot and RiderC out and the machine home.
+// 4. Only on its own (--phases 4): the watcher's frame time with the four aboard hanging 12 m over the house's pad, and
+//    with it parked empty there, each against the same view without it (briel.bench, alternated), on Medium and Low.
 // Every flight's cuts and refusals are read from the server's own log when it prints them (a temporary counter while
 // measuring; --log <file>). No page errors. Pictures with --out.
 //
 //   ADMIN_PASSWORD=... node tools/dev/heli_mp.mjs --url http://localhost:5737/ --api http://localhost:8613 \
-//     --ports 9731,9732,9733,9734,9735,9736,9737 [--phases 1,2,3] [--out <folder>] [--log <server log>]
+//     --ports 9731,9732,9733,9734,9735,9736,9737 [--phases 1,2,3 | 4] [--out <folder>] [--log <server log>]
 //
 // It takes about ten minutes (six pages load, three flights, the 20 s waits).
 import { mkdirSync, readFileSync } from 'node:fs';
@@ -174,7 +176,14 @@ const touch = async (b, cls) => {
   await b.send('Input.dispatchTouchEvent', { type: 'touchEnd', touchPoints: [] });
   return true;
 };
-const use = (b) => (b.phone ? touch(b, 't-use') : tap(b, 'KeyE'));
+/**
+ * Use: E, or the phone's Use button. A text field that holds the focus would take the key as a letter (src/keys.ts
+ * typing): it is let go first and noted (`__blurred`, printed at the end).
+ */
+const use = async (b) => {
+  await b.evaluate("(() => { const a = document.activeElement; if (a instanceof HTMLInputElement || a instanceof HTMLTextAreaElement || a instanceof HTMLSelectElement) { (window.__blurred ??= []).push((a.id || a.tagName) + ' ' + (a.closest('[id]')?.id ?? '')); a.blur(); } })()");
+  return b.phone ? touch(b, 't-use') : tap(b, 'KeyE');
+};
 const me = (b) => b.evaluate('briel.combat.me');
 const aboard = (b) => b.evaluate('({ aboard: briel.helis.aboard, seat: briel.helis.seat, id: briel.helis.heli?.spec.id ?? null, piloting: briel.helis.piloting })');
 const seatsOn = (b, id) => b.evaluate(`[...__M('${id}').seats]`);
@@ -562,6 +571,7 @@ try {
     for (const [i, b] of crew.entries()) ok(`${b.who} boards the house's machine: seat ${i}`, await board(b, 'house', i, i), JSON.stringify(await aboard(b)));
     await use(P);
     await sleep(1200);
+    if ((await aboard(P)).aboard) console.log('     the pilot is still aboard:', await diag(P, 'house'), JSON.stringify(await P.evaluate("({ rest: __M('house').atRest, exit: __M('house').exitSpot(), active: document.activeElement?.tagName + '#' + (document.activeElement?.id ?? ''), menu: briel.askState() })")));
     ok('the pilot gets out on the ground', !(await aboard(P)).aboard);
     const line = await prompt(A);
     ok('RiderA\'s line: nobody flies, the up key flies it', /Nobody is flying/.test(line), `"${line}"`);
@@ -638,6 +648,51 @@ try {
     admin.send({ t: 'mode', kind: 'free' });
     await sleep(2000);
     cuts('Zombies starting in the air');
+  }
+
+  if (phases.has(4) && phases.size === 1) {
+    // The cost of a full machine drawn from the server (four aboard, hanging 12 m over the house's pad) and of the same
+    // machine parked empty there (what a watcher had before), each against the same view without it (the machine and
+    // the figures in it hidden for the frames measured): briel.bench, alternated, the chip shared with other agents.
+    console.log('-- 4. frame time with a full machine in view, on Medium and Low (the watcher, 37 m off)');
+    const med = (v) => [...v].sort((a, b) => a - b)[Math.floor(v.length / 2)];
+    const view = async (aloft) => W.evaluate(`(() => { const x = ${GARDEN.x}, z = ${GARDEN.z}, m = __M('house'), dx = m.s.x - x, dz = m.s.z - z; briel.teleport(x, z, ${PARK.house.y}, Math.atan2(-dx, -dz), Math.atan2(${aloft ? 13 : 1} - 1.6, Math.hypot(dx, dz))); })()`, false);
+    const hide = (names, on) => W.evaluate(`(() => { __M('house').group.visible = ${!on}; for (const n of ${JSON.stringify(names)}) { const k = [...briel.avatars.avatars.keys()].find((q) => q.toLowerCase() === n); if (k) briel.avatars.avatars.get(k).root.visible = ${!on}; } })()`, false);
+    const cost = async (names, aloft, what) => {
+      for (const q of ['medium', 'low']) {
+        await W.evaluate(`(briel.three.holdQuality(true), briel.three.applyQuality('${q}'))`, false);
+        await view(aloft);
+        await sleep(1500);
+        await W.evaluate('briel.bench(60)'); // warm-up
+        const a = [], b = [];
+        for (let i = 0; i < 6; i++) {
+          a.push((await W.evaluate('briel.bench(90)')).msPerFrame);
+          await hide(names, true);
+          b.push((await W.evaluate('briel.bench(90)')).msPerFrame);
+          await hide(names, false);
+        }
+        const draws = await W.evaluate("(briel.three.renderer.render(briel.three.scene, briel.three.composer.passes.find((q) => q.camera?.isPerspectiveCamera).camera), { heli: __M('house').draws(), calls: briel.three.renderer.info.render.calls })");
+        row(`${what}, ${q}`, `${r2(med(a))} ms with it against ${r2(med(b))} ms without (+${r2(med(a) - med(b))}), six pairs; the machine ${draws.heli} draws`);
+      }
+      await W.evaluate("(briel.three.applyQuality('medium'), briel.three.holdQuality(false))", false);
+    };
+    for (const [i, b] of crew.entries()) ok(`${b.who} boards: seat ${i}`, await board(b, 'house', i, i));
+    const h0 = await machine(P, 'house');
+    ok('up 12 m over the pad', (await fly(P, h0, h0.y + 12, { hover: true, secs: 40 })) > 0);
+    await cost(crew.map((b) => names[b.who]), true, 'four aboard, hanging 12 m up');
+    row('the flown machine on the pilot\'s page', `${await P.evaluate("__M('house').draws()")} draws`);
+    await P.evaluate(`window.__ap = ${JSON.stringify({ x: PARK.house.x, z: PARK.house.z, cruise: PARK.house.y + 12 })}`);
+    for (let i = 0; i < 60 && !(await machine(P, 'house')).ground; i++) await sleep(500);
+    await stopPilot(P);
+    for (const b of crew) await use(b);
+    await sleep(2000);
+    for (const [i, b] of crew.entries()) await b.evaluate(`briel.teleport(${GARDEN.x + 3 + i}, ${GARDEN.z + 4}, ${PARK.house.y + 0.5}, 0)`, false);
+    await sleep(9000); // its rotor run down
+    await cost([], false, 'parked empty on its pad');
+  }
+  for (const b of pages) {
+    const f = await b.evaluate('window.__blurred ?? []').catch(() => []);
+    if (f.length) row(`${b.who}: a text field held the focus before Use`, JSON.stringify(f));
   }
   for (const b of pages) ok(`${b.who}: no page errors`, errors(b).length === 0, JSON.stringify(errors(b).slice(-3)));
 } catch (e) {
