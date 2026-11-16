@@ -1834,7 +1834,13 @@ export class Game {
   /** The admin changed rules in the settings: store them and tell everyone. */
   async setRules(m, by) {
     const changed = Object.keys(RULES).filter((k) => ruleOk(k, m[k]) && m[k] !== this.rules[k]);
-    if (!changed.length) return;
+    if (!changed.length) {
+      // Nothing to store. Under a game's look the admin's box shows the look, not the house rule, so a click there can
+      // ask for what is already stored: send the rules as played back, and the box springs back instead of lying.
+      const p = this.players.get(by);
+      if (p && this.modes.look) this.send(p.ws, { t: 'rules', rules: this.shownRules() });
+      return;
+    }
     for (const k of changed) this.rules[k] = m[k];
     await this.auth.store.setMeta('rules', JSON.stringify(this.rules));
     const label = { flying: 'flying', spawn: 'spawning things with /name', names: 'names above players', guests: 'guests joining', portals: 'the portals', travel: 'travelling from the chat', paintball: 'child-friendly for everyone', parachute: 'arriving by parachute', heli: 'the helicopter' };

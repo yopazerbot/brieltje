@@ -106,6 +106,20 @@ test('the house rule changed while a look holds: stored, the look still shown', 
   assert.equal(s.told()?.paintball, true, 'the game still in paint');
 });
 
+test('the admin\'s box under a look: asking for what is stored stores nothing and sends the played rules back', async () => {
+  const s = setup();
+  s.join('ann');
+  s.join('admin', 'admin');
+  s.host({ kind: 'tag', look: 'paint' });
+  const back = [];
+  s.game.send = (ws, m) => ws.name === 'admin' && back.push(structuredClone(m));
+  const before = s.stored.length;
+  // The box shows the look (ticked); unticking it asks for the stored value (off).
+  await s.game.setRules({ paintball: false }, 'admin');
+  assert.equal(s.stored.length, before, 'nothing stored');
+  assert.equal(back.filter((m) => m.t === 'rules').at(-1)?.rules.paintball, true, 'the box is told the look again');
+});
+
 test('a look must be one of the three: anything else refuses the game', () => {
   const s = setup();
   const h = s.game.host;
