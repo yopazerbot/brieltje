@@ -38,6 +38,7 @@ export const ZOMBIE: {
   straight: number;
   fieldReach: number;
   fieldEvery: number;
+  lostMs: number;
   spawnMin: number;
   spawnBest: number;
   spawnFar: number;

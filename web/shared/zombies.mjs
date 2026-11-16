@@ -75,6 +75,8 @@ export const ZOMBIE = {
   fieldReach: 110,
   /** ms between two distance fields */
   fieldEvery: 500,
+  /** ms a zombie may be past every field (no way to the players) before it comes out afresh where the field reaches (Horde.rehome) */
+  lostMs: 6000,
   /** m: a zombie comes out at least this far from every player, best from about `spawnBest` to `spawnFar`, never past `spawnMax` (unless nowhere nearer will do), out of sight */
   spawnMin: 13,
   spawnBest: 15,
@@ -1236,15 +1238,32 @@ export class Horde {
       // (they can't be settled: the search would go on to its end), who head for the players straight.
       const up = [];
       const srcs = targets.length ? targets : [this.home];
+      let standing = 0;
       for (const z of this.zombies.values()) {
         if (z.act === 'down') continue;
+        standing++;
         let crow = Infinity;
         for (const p of srcs) crow = Math.min(crow, Math.hypot(p.x - z.x, p.z - z.z));
         if (crow < ZOMBIE.fieldReach - 5) up.push(z.node);
       }
+      // With a zombie to come out before the next field (one still to come, room under the cap) or one to bring back
+      // (rehome), it waits for the places where they may come out too, so pick() knows which of them the way from the
+      // players reaches: those up to spawnMax, and once pick() looks further (three looks found nothing) those as far
+      // as it looks.
+      const due = (this.toSpawn || this.bigs) && standing < this.cap && now + ZOMBIE.fieldEvery >= this.nextSpawn;
+      const placing = this.phase === 'wave' && (due || this.lostDue(now));
+      if (placing) {
+        this.measureSpots(targets);
+        const joined = this.joinedRegions(targets);
+        const far = this.starved >= 3 || this.lostDue(now) ? ZOMBIE.fieldReach - 15 : ZOMBIE.spawnMax;
+        for (let i = 0; i < this.spots.length; i++) {
+          const d = this.spotD[i];
+          if (d >= ZOMBIE.spawnMin + 1 && d <= far && joined.has(this.nav.region(this.spots[i].node))) up.push(this.spots[i].node);
+        }
+      }
       this.nav.field(from.length ? from : [this.homeNode], up);
-      if (this.phase === 'wave' && (this.toSpawn || this.bigs)) this.measureSpots(targets);
       this.perched(now, targets, ev);
+      if (this.phase === 'wave' && targets.length) this.rehome(now, targets, ev);
     }
     if (this.phase === 'wave') this.spawn(now, targets, ev);
     this.move(now, dt, targets, ev);
@@ -1392,8 +1411,33 @@ export class Horde {
    * weighted: most from spawnBest to spawnFar m away, fewer further; a side round the players that
    * had fewer of this wave's zombies weighs more (they come from all round at once), and the last
    * few spots hardly at all (never the same one twice in a row). With nobody fighting, round the house.
+   * Only where the last distance field reaches (a zombie that comes out there has its way to the players; past the
+   * field it would walk at them as the crow flies and stand against a wall): the rule without that only after twenty
+   * looks found nothing (10 s; by then the look goes past spawnMax and into sight too, see `fair`). `again`: for one
+   * brought back (rehome), which leaves the count of looks as it is.
    */
-  pick(targets) {
+  pick(targets, again = false) {
+    for (const way of this.starved >= 20 ? [true, false] : [true]) {
+      const at = this.pickWith(targets, way, again);
+      if (at) return at;
+    }
+    if (!again) this.starved++;
+    return null;
+  }
+
+  /** The regions of the players' floors (where each can be got at), or the house's with nobody fighting. */
+  joinedRegions(targets) {
+    const joined = new Set();
+    for (const p of targets) {
+      const s = this.seeds.get(p.name);
+      if (s) joined.add(this.nav.region(s.node));
+    }
+    if (!joined.size) joined.add(this.nav.region(this.homeNode));
+    return joined;
+  }
+
+  /** One look for pick(): `way`, only spots the last field reaches. */
+  pickWith(targets, way, again) {
     const nav = this.nav;
     const from = targets.length ? targets : [this.home];
     let mx = 0, mz = 0;
@@ -1403,12 +1447,7 @@ export class Horde {
     }
     mx /= from.length;
     mz /= from.length;
-    const joined = new Set();
-    for (const p of targets) {
-      const s = this.seeds.get(p.name);
-      if (s) joined.add(nav.region(s.node));
-    }
-    if (!joined.size) joined.add(nav.region(this.homeNode));
+    const joined = this.joinedRegions(targets);
     const { spawnMin: lo, spawnBest: best, spawnFar: far, spawnMax: max } = ZOMBIE;
     const weight = new Float64Array(this.spots.length);
     let total = 0;
@@ -1416,6 +1455,7 @@ export class Horde {
       const s = this.spots[i];
       const d = this.spotD[i];
       if (d < lo + 1 || d >= ZOMBIE.fieldReach - 15 || !joined.has(nav.region(s.node))) continue;
+      if (way && nav.distance(s.node) === Infinity) continue;
       // Past spawnMax only as a last resort (far ones take long to come, and the field must reach them):
       // more so after a few looks found nothing nearer out of everyone's sight.
       if (d > max) {
@@ -1453,18 +1493,56 @@ export class Horde {
         return true;
       };
       if (!fair(s.x, s.z)) continue;
-      this.starved = 0;
-      this.sides[side(s.x, s.z, mx, mz)]++;
-      this.recent.push(s);
-      if (this.recent.length > 4) this.recent.shift();
+      if (!again) {
+        this.starved = 0;
+        this.sides[side(s.x, s.z, mx, mz)]++;
+        this.recent.push(s);
+        if (this.recent.length > 4) this.recent.shift();
+      }
       for (let k = 0; k < 6; k++) {
         const x = s.x + (this.rand() - 0.5), z = s.z + (this.rand() - 0.5);
         if (nav.locate(x, nav.ground(x, z), z) === s.node && fair(x, z)) return { x, z, node: s.node };
       }
       return { x: s.x, z: s.z, node: s.node };
     }
-    this.starved++;
     return null;
+  }
+
+  /** Whether a zombie has had no way to the players for ZOMBIE.lostMs (rehome may bring it back). */
+  lostDue(now) {
+    for (const z of this.zombies.values()) if (z.act !== 'down' && z.lostAt !== undefined && now - z.lostAt >= ZOMBIE.lostMs) return true;
+    return false;
+  }
+
+  /**
+   * After each distance field in a wave: a zombie the field did not reach (it has no way to the players: it came out
+   * where the way round is longer than the field, or its player went where it can't follow) for ZOMBIE.lostMs, and out
+   * of every fighter's sight (as a place to come out must be: pick's rule), goes, and the same zombie (its kind, health
+   * and pace) comes out afresh where pick() finds a place the field reaches: a 'gone' and a 'spawn'. A wave never
+   * waits on a zombie that can't come. Those that can't be brought back now wait for the next field.
+   */
+  rehome(now, targets, ev) {
+    const { spawnMax: max } = ZOMBIE;
+    for (const z of [...this.zombies.values()]) {
+      if (z.act === 'down' || this.nav.distance(z.node) < Infinity) {
+        delete z.lostAt;
+        continue;
+      }
+      z.lostAt ??= now;
+      if (now - z.lostAt < ZOMBIE.lostMs) continue;
+      if (targets.some((p) => Math.hypot(p.x - z.x, p.z - z.z) < max + 10 && this.nav.clear(z.x, z.z, p.x, p.z, true))) continue;
+      const at = this.pick(targets, true);
+      if (!at) continue;
+      const id = this.nextId++;
+      const yaw = Math.atan2(this.home.x - at.x, this.home.z - at.z);
+      this.zombies.delete(z.id);
+      this.zombies.set(id, {
+        id, kind: z.kind, x: at.x, y: this.nav.y(at.node, at.x, at.z), z: at.z, node: at.node, yaw, speed: 0, top: z.top, hp: z.hp, max: z.max, damage: z.damage,
+        act: 'walk', actAt: now, until: 0, struck: false, next: now + 800, downAt: 0, target: null, ...(z.lame ? { lame: true } : {}),
+      });
+      this.rehomed = (this.rehomed ?? 0) + 1;
+      ev.push({ type: 'gone', ids: [z.id] }, { type: 'spawn', id });
+    }
   }
 
   /** Every zombie that is up: a step towards the nearest player, or a swipe at them. */
