@@ -21,6 +21,14 @@ import '../ui/vehicleHealth.css';
  * marker; the server decides whether it counts.
  */
 
+/**
+ * The games that are a team-against-team match, where vehicles take damage: the page's copy of the server's
+ * `modes.teamMatch` (server/modes.mjs), the same rule: one of these kinds, while its phase is 'playing'. A new team game
+ * adds its kind here (and is not `peaceful` in ui/games.ts, or nobody fires at all).
+ */
+export const TEAM_MATCH_KINDS: ReadonlySet<string> = new Set(['teams']);
+export const teamMatch = (view: { kind: string; phase?: string }): boolean => TEAM_MATCH_KINDS.has(view.kind) && view.phase === 'playing';
+
 /** The stages the server tells (server/vehicleDamage.mjs STAGE). */
 export const STAGE = { whole: 0, smoke: 1, fire: 2, wreck: 3, gone: 4 } as const;
 type Kind = 'car' | 'heli';
@@ -33,6 +41,8 @@ export interface WearTarget {
   z: number;
   yaw: number;
   riders: (string | null)[];
+  /** Taken away (gone) or back: the vehicle's own flag (Car.taken, Heli.taken) */
+  setGone: (on: boolean) => void;
 }
 
 interface Wear {
@@ -251,6 +261,7 @@ export class VehicleWear {
   private dress(w: Wear, wreck: boolean): void {
     const v = this.find(w.k, w.id);
     if (!v) return;
+    v.setGone(wreck && w.st === STAGE.gone); // gone: not drawn, no block to bump into, no way in, not on the maps
     v.group.traverse((o) => {
       if (!(o instanceof THREE.Mesh) || Array.isArray(o.material)) return;
       const mat = o.material as THREE.Material;
@@ -287,10 +298,7 @@ export class VehicleWear {
       w.since += dt;
       const v = this.find(w.k, w.id);
       if (!v) continue;
-      if (w.st === STAGE.gone) {
-        v.group.visible = false;
-        continue;
-      }
+      if (w.st === STAGE.gone) continue; // not drawn (Car.taken, Heli.taken)
       if (reswap && w.st === STAGE.wreck) this.dress(w, true);
       if (!v.group.visible || (v.x - eye.x) ** 2 + (v.z - eye.z) ** 2 > FAR * FAR) continue;
       const at = this.engine(w, v);
@@ -339,6 +347,11 @@ export class VehicleWear {
   }
 
   /** The stage of a vehicle as this page has it (tests, the dev hook). */
+  /** A wreck or gone: no "get in" beside it (main.ts), the server would refuse. */
+  out(k: Kind, id: string): boolean {
+    return this.stageOf(k, id) >= STAGE.wreck;
+  }
+
   stageOf(k: Kind, id: string): number {
     return this.wear.get(`${k}:${id}`)?.st ?? STAGE.whole;
   }

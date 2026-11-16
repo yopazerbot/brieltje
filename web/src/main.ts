@@ -83,7 +83,7 @@ import { GUN_PAINT, paintball, setPaintball, weaponName as shownWeapon } from '.
 import { VILLAGER_HIT_MAX, VILLAGER_HIT_MS, VILLAGER_PAINT_S, VILLAGER_SHOT_MAX } from '../shared/villagers.mjs';
 import { Decals } from './world/decals';
 import { Effects, type Spot } from './world/effects';
-import { VehicleWear } from './world/vehicleWear';
+import { teamMatch, VehicleWear } from './world/vehicleWear';
 import { GRENADE, Grenades } from './world/grenades';
 import { Pickups } from './world/pickups';
 import { Goals } from './world/goals';
@@ -965,12 +965,12 @@ helis.chuteRule = () => rules.parachute !== false; // together, the jump only wi
 const vehicleWear = new VehicleWear(effects, (k, id) => {
   if (k === 'car') {
     const c = carById(id);
-    return c ? { group: c.group, x: c.x, y: c.y, z: c.z, yaw: c.yaw, riders: [c.driver, c.passenger] } : null;
+    return c ? { group: c.group, x: c.x, y: c.y, z: c.z, yaw: c.yaw, riders: [c.driver, c.passenger], setGone: (on) => (c.taken = on) } : null;
   }
   const h = helis.machines.find((q) => q.spec.id === id);
-  return h ? { group: h.group, x: h.s.x, y: h.s.y, z: h.s.z, yaw: h.s.yaw, riders: [...h.seats] } : null;
+  return h ? { group: h.group, x: h.s.x, y: h.s.y, z: h.s.z, yaw: h.s.yaw, riders: [...h.seats], setGone: (on) => (h.taken = on) } : null;
 }, document.getElementById('hud')!);
-vehicleWear.live = () => net.connected && games.active && !games.peaceful && !games.zombies;
+vehicleWear.live = () => net.connected && teamMatch(games.view); // the server's own rule (modes.teamMatch)
 vehicleWear.friendly = (name) => name === me?.username || games.friend(name);
 vehicleWear.send = (msg) => net.send(msg);
 vehicleWear.onHit = () => combat.hitMarker(false);
@@ -3782,9 +3782,11 @@ renderer.setAnimationLoop((now: number) => {
     games.update(dt, player.x, player.feet, player.z, key('use', mode));
     duelLine.update();
     // The cars: E or Triangle next to one gets you in (unless two are in it already), and out again.
-    if (!inCar && !wantCar) car = cars.reduce((a, b) => (b.distanceTo(player.x, player.z) < a.distanceTo(player.x, player.z) ? b : a));
+    // A wreck or one gone in a team match (world/vehicleWear.ts) is none: no "get in", and the bike's and horse's prompts free.
+    const carAway = (c: Car) => (vehicleWear.out('car', c.id) ? Infinity : c.distanceTo(player.x, player.z));
+    if (!inCar && !wantCar) car = cars.reduce((a, b) => (carAway(b) < carAway(a) ? b : a));
     // Not during the Zombies game (getIn and mountHorse say why if tried anyway).
-    const nearCar = !inCar && !onHorse && !dead && !games.zombies && car.distanceTo(player.x, player.z) < CARS.reach && Math.abs(player.feet - car.y) < 1;
+    const nearCar = !inCar && !onHorse && !dead && !games.zombies && carAway(car) < CARS.reach && Math.abs(player.feet - car.y) < 1;
     // The horses: E next to one gets you on it, and off again.
     const nearHorse = !inCar && !onHorse && !dead && !nearCar && !games.zombies && horseWanted < 0 ? horses.nearest(player.x, player.z) : -1;
     // The bikes: E next to one gets you on it, and off again.
@@ -3798,7 +3800,7 @@ renderer.setAnimationLoop((now: number) => {
     const seatFree = carTaken && !car.passenger;
     // The helicopter (src/heliPilot.ts): E or Triangle beside it gets you in (together the server says which seat), outside a game; out on a floor.
     // On the way to the others (an account, a join pending, the welcome not come yet) nobody boards.
-    const nearHeli = !inCar && !onHorse && !dead && !nearCar && nearHorse < 0 && !nearBike && !target && (helis.together || !(me || joinPending() || net.connected)) ? helis.near(player.x, player.z, player.feet) : null;
+    const nearHeli = !inCar && !onHorse && !dead && !nearCar && nearHorse < 0 && !nearBike && !target && (helis.together || !(me || joinPending() || net.connected)) ? helis.near(player.x, player.z, player.feet, (m) => !vehicleWear.out('heli', m.spec.id)) : null;
     const heliWhy = helis.why(games.fenced || games.zombies, rules.heli === false);
     if (helis.aboard && frame.usePressed) helis.leave(camera.position);
     else if (nearHeli && !heliWhy && frame.usePressed) {
@@ -4193,8 +4195,8 @@ renderer.setAnimationLoop((now: number) => {
       ...stallOnMap().map((s) => ({ ...s, y: player.feet, color: '', kind: 'stall' as const })),
     ];
     const shapes = [...furnishing.pieces.values()].filter((p) => !p.item.startsWith('rug')).map((p) => ({ ring: footprint(p), y: p.y }));
-    for (const c of cars) if (c.ready) shapes.push({ ring: c.footprint(), y: c.y });
-    for (const h of helis.machines) shapes.push({ ring: h.footprint(), y: h.s.y });
+    for (const c of cars) if (c.ready && !c.taken) shapes.push({ ring: c.footprint(), y: c.y }); // gone: a wreck taken away (world/vehicleWear.ts)
+    for (const h of helis.machines) if (!h.taken) shapes.push({ ring: h.footprint(), y: h.s.y });
     // The floor by the height above the ground there (the village stands 5 m higher than the plot).
     // A waypoint from the big map is done when you reach it.
     if (bigMap.waypoint && Math.hypot(bigMap.waypoint.x - player.x, bigMap.waypoint.z - player.z) < 6) bigMap.waypoint = bigMap.route = null;
@@ -4215,7 +4217,7 @@ renderer.setAnimationLoop((now: number) => {
   if (!menu.open) adaptQuality(dt, now); // before drawing (see there)
   if (bigMap.open) {
     const marks: Mark[] = [
-      ...cars.filter((c) => c.ready).map((c) => ({ x: c.x, z: c.z, yaw: c.yaw, color: c.spec.paint, kind: 'car' as const })),
+      ...cars.filter((c) => c.ready && !c.taken).map((c) => ({ x: c.x, z: c.z, yaw: c.yaw, color: c.spec.paint, kind: 'car' as const })),
       ...horses.blips().map((h) => ({ ...h, color: '#8a5a3a', kind: 'horse' as const })),
       ...(games.hideOthers ? [] : avatars.marks().map((a) => ({ ...a, kind: 'player' as const }))),
       ...games.coinSpots().map((c) => ({ x: c.x, z: c.z, color: '#f2c14e', kind: 'coin' as const })),

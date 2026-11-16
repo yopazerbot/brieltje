@@ -189,11 +189,12 @@ export class HeliPilot {
 
   /**
    * The machine within reach of someone standing at (x, z) with their feet at `feet`, or null. Alone one nobody flies;
-   * together one standing or hanging still (the server boards nobody into a machine on the move).
+   * together one standing or hanging still (the server boards nobody into a machine on the move). Never one gone (a wreck
+   * taken away, Heli.taken), nor one `ok` refuses (main.ts: a wreck).
    */
-  near(x: number, z: number, feet: number): Heli | null {
+  near(x: number, z: number, feet: number, ok: (m: Heli) => boolean = () => true): Heli | null {
     for (const m of this.machines) {
-      if (m.distanceTo(x, z) >= HELIS.reach || Math.abs(feet - m.s.y) >= 1 || m.away !== null) continue;
+      if (m.distanceTo(x, z) >= HELIS.reach || Math.abs(feet - m.s.y) >= 1 || m.away !== null || m.taken || !ok(m)) continue;
       if (this.together && !this.served.has(m.spec.id)) continue; // not the server's here (a Zombies room has none)
       if (this.together ? Math.hypot(m.s.vx, m.s.vy, m.s.vz) < 2 : !m.pilot) return m;
     }

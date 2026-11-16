@@ -592,6 +592,8 @@ export class Car {
   /** Where it was at the server's time `t` (a tick: someone else drives it, or it stands). */
   /** Out of this page's sight (driven into a home's garage it may not see into): not drawn until a state comes */
   away = false;
+  /** A wreck taken away in a team match (world/vehicleWear.ts): not drawn, nothing to walk or drive into, until it is back */
+  taken = false;
 
   sample(t: number, s: CarSample): void {
     if (this.away) {
@@ -892,7 +894,7 @@ export class Car {
    */
   update(dt: number, local: boolean, eye?: THREE.Vector3): void {
     const away = eye ? (this.x - eye.x) ** 2 + (this.z - eye.z) ** 2 : 0;
-    this.group.visible = this.ready && !this.away && away < DRAW * DRAW;
+    this.group.visible = this.ready && !this.away && !this.taken && away < DRAW * DRAW;
     // Far off, the simple copy instead of the full model (a little nearer again before it swaps back).
     const farOn = !!this.far && away > (this.farOn ? FAR_IN * FAR_IN : FAR_OUT * FAR_OUT);
     if (farOn !== this.farOn && this.far && this.near) {
@@ -945,7 +947,7 @@ export class Car {
     // Its lights: the brake lights as by day, and at night while someone drives it the headlights and tail lights.
     this.lamps.update(dt, this.group.visible, local || this.driver !== null, this.braking, this.taillight, this.body, this.group);
     if (this.barLine) this.barLine.color.copy(this.lamps.bar.emissive); // the light bar's line, lit with the bar
-    this.world.setMoving(this.key, this.footprint(), this.y, this.y + this.spec.height);
+    this.world.setMoving(this.key, this.taken ? null : this.footprint(), this.y, this.y + this.spec.height);
   }
 
   /**

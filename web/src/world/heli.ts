@@ -421,6 +421,8 @@ export class Heli {
   private got = [0, 0, 0, 0, 0, 0, 0];
   /** s since you jumped out of it (it flies itself home: shared/heli.mjs AWAY), or null */
   away: number | null = null;
+  /** A wreck taken away in a team match (world/vehicleWear.ts): not drawn, nothing to walk or fly into, until it is back */
+  taken = false;
   /** After a jump and watched too long: flying off, away from `from` (the eye) and up through the ceiling (AWAY) */
   leaving = false;
   private from = new THREE.Vector3();
@@ -1202,7 +1204,7 @@ export class Heli {
       if (this.lost > LOST_AFTER) this.sendHome(eye);
     }
     const away = Math.hypot(s.x - eye.x, s.z - eye.z, s.y - eye.y);
-    this.group.visible = this.ready && (away < (this.leaving ? AWAY.far : DRAW) || this.warmOn);
+    this.group.visible = this.ready && !this.taken && (away < (this.leaving ? AWAY.far : DRAW) || this.warmOn);
     const farOn = !!this.far && !this.warmOn && away > (lowDetail ? FAR_LOW : FAR) && !this.flown && !this.riding;
     if (this.far && this.near) {
       this.far.visible = farOn || this.warmOn;
@@ -1252,7 +1254,7 @@ export class Heli {
     (this.shadow.material as THREE.MeshBasicMaterial).opacity = 0.55 * Math.max(0.12, 1 - h / 60);
     this.shadow.visible = h < 120;
     // Its block: nobody walks through a machine that stands; while it flies it is no wall.
-    this.world.setMoving(this.key, this.ready && s.ground ? this.footprint() : null, s.y, s.y + SIZE.boom.y1);
+    this.world.setMoving(this.key, this.ready && s.ground && !this.taken ? this.footprint() : null, s.y, s.y + SIZE.boom.y1);
     // Its sound (world/heliSound.ts), a touch muffled from the pilot's seat.
     this.noise.update({ x: s.x, y: s.y, z: s.z, rotor: this.group.visible ? r : 0, coll: s.coll, sink: -s.vy, air: Math.hypot(s.vx, s.vz), inside: (this.flown || this.riding) && this.view === 'cockpit' });
   }
