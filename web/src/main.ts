@@ -3107,7 +3107,8 @@ net.onMessage = (m: ServerMsg) => {
     case 'spawn':
       if (m.ok) {
         // The start place (or the house's start), by parachute: up over where the server has us land.
-        if (m.drop && player.chute === null) beginDrop({ x: m.x, z: m.z, yaw: m.yaw ?? player.yaw, sx: m.sx, sz: m.sz });
+        if (m.drop && typeof m.sy === 'number' && typeof m.sx === 'number' && typeof m.sz === 'number') helis.jumpTold(m.sx, m.sy, m.sz, m.yaw ?? player.yaw); // a jump from a helicopter (src/heliPilot.ts)
+        else if (m.drop && player.chute === null) beginDrop({ x: m.x, z: m.z, yaw: m.yaw ?? player.yaw, sx: m.sx, sz: m.sz });
         break;
       }
       // The start place was refused (the admin turned the portals off): back to where the server has us.

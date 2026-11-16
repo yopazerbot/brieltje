@@ -157,8 +157,11 @@ export type ServerMsg =
   | { t: 'unstuck'; x: number; z: number }
   /** The start place picked on the start screen was refused (portals off): where the server has you. */
   | { t: 'spawn'; ok: false; x: number; z: number }
-  /** Taken: by parachute onto (x, z), coming in facing `yaw` (the start place's, or the house's start: HOME_DROP), starting over (sx, sz) */
-  | { t: 'spawn'; ok: true; drop?: 1; x: number; z: number; yaw?: number; sx?: number; sz?: number }
+  /**
+   * Taken: by parachute onto (x, z), coming in facing `yaw` (the start place's, or the house's start: HOME_DROP), starting over (sx, sz);
+   * with `sy`, a jump from a helicopter (server/helis.mjs chute) starting at (sx, sy, sz), where the server has the machine
+   */
+  | { t: 'spawn'; ok: true; drop?: 1; x: number; z: number; yaw?: number; sx?: number; sz?: number; sy?: number }
   /** /parachute refused (server/game.mjs manualDrop): why, as a code the page translates */
   | ({ t: 'chute'; ok: false } & Coded)
   | { t: 'mode'; mode: ModeView }
