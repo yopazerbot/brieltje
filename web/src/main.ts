@@ -2501,11 +2501,26 @@ async function travel(to: Destination, via: 'portal' | 'chat'): Promise<void> {
   const from = portalNear(driving ? car.x : player.x, driving ? car.z : player.z, via === 'chat' ? 60 : CAR_REACH);
   if (from === to) return;
   trip = { to };
+  // Together the server's yes comes first: a refused trip (a fight, say) shows no flash, no announcement and loads
+  // nothing. Until you arrive your position isn't sent (trip.answer), so a village still loading can't pull you back.
+  let ok = true;
+  if (net.connected) {
+    ok = await new Promise<boolean>((resolve) => {
+      trip!.answer = resolve;
+      net.send({ t: 'travel', to: to.id, via });
+      setTimeout(() => resolve(false), 3000);
+    });
+  }
+  if (!ok) {
+    trip = null;
+    return;
+  }
   warp.style.setProperty('--warp', to.color);
   warp.classList.add('on');
   portals.pulse(player.x, player.feet, player.z, to.color, 'here');
   // Whatever happens on the way (the village failing to load, say), the flash goes and you can travel
-  // again: once it stayed on screen for good.
+  // again: once it stayed on screen for good. Together the server has you there already, so you arrive all the same.
+  let ready = false;
   try {
     if (to.village && village !== 'ready') {
       hud.announce('Smetlede', t('travel.village'));
@@ -2513,23 +2528,15 @@ async function travel(to: Destination, via: 'portal' | 'chat'): Promise<void> {
     }
     // Molenhoek's and Kapellenhoek's baked light, if it is still coming (buildVillage); never more than a few seconds.
     if (to.village) await Promise.race([streetBakes, new Promise((r) => setTimeout(r, 6000))]);
-    let ok = true;
-    if (net.connected) {
-      ok = await new Promise<boolean>((resolve) => {
-        trip!.answer = resolve;
-        net.send({ t: 'travel', to: to.id, via });
-        setTimeout(() => resolve(false), 3000);
-      });
-    } else {
-      await new Promise((r) => setTimeout(r, 180)); // the flash at its brightest
-    }
-    if (ok && combat.alive) arrive(to, from);
+    if (!net.connected) await new Promise((r) => setTimeout(r, 180)); // the flash at its brightest
+    ready = true;
   } catch (e) {
     console.error('travel failed', e);
   } finally {
     trip = null;
     warp.classList.remove('on');
   }
+  if ((ready || net.connected) && combat.alive) arrive(to, from);
 }
 /** Out of portal `to`: in front of it looking at the place, or the car on its road. */
 function arrive(to: Destination, from: Portal | null): void {
