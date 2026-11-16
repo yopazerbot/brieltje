@@ -7,7 +7,7 @@ web-sized versions for the walkthrough.
   genuanceerd" (light beige, blended) per the reference key, long format of about
   29 x 5 cm with thin recessed joints (size from a site photo)
 - The neighbours' brick (standard 21 x 5 cm format) and roof tiles are generated
-  too, in neutral light tones: the game tints them per house
+  too, in neutral light tones: the game tints them per house; home 4's mixed brick in its own colours
 - The floor tiles (grey stone-look, 60 x 120 cm) and the
   wood cladding (vertical slats) are generated too
 - Web copies (WebP) go to web/public/textures/, the sky to web/public/env/, and
@@ -333,6 +333,40 @@ def standard_brick(size=1024, seed=17):
     return albedo, normal, rough
 
 
+def mixed_brick(size=1024, seed=71):
+    """Home 4's rustic brick (tools/kapellenhoek_home.py), in its own colours, untinted: red and red-brown bricks,
+    a quarter washed near white with lime, a quarter half washed in patches, wide pale joints. The neighbours'
+    brick's format and tile (21 x 5 cm in running bond, 1.76 m), with joints of 1.3 cm."""
+    rng = np.random.default_rng(seed)
+    px = size / 1.76
+    yy, xx = np.mgrid[0:size, 0:size].astype(np.float32)
+    course_h, brick_w, joint = 0.065 * px * (1.76 / 1.755), 0.22 * px, 0.013 * px
+    course = np.floor(yy / course_h).astype(int)
+    shift = (course % 2) * (brick_w / 2)
+    col = np.floor(((xx + shift) % size) / brick_w).astype(int)
+    is_brick = ((yy % course_h) < (course_h - joint)) & (((xx + shift) % brick_w) < (brick_w - joint))
+    reds = np.array([[150, 70, 55], [165, 84, 64], [135, 60, 48], [120, 64, 52], [146, 90, 74], [176, 96, 70], [110, 52, 44]]) / 255
+    washed = np.array([[222, 212, 202], [208, 198, 190], [228, 222, 214]]) / 255
+    n = 28 * 16
+    pick = rng.random(n)  # per brick: red (< .5), half washed (< .75) or washed
+    red = reds[rng.integers(0, len(reds), n)] * (0.92 + 0.16 * rng.random(n))[:, None]
+    white = washed[rng.integers(0, len(washed), n)] * (0.95 + 0.06 * rng.random(n))[:, None]
+    cover = np.where(pick < .5, 0.0, np.where(pick < .75, .35 + .3 * rng.random(n), 1.0))  # how much of it is washed
+    k = course * 16 + col
+    mottle = 0.6 * value_noise((size, size), 20, rng) + 0.4 * value_noise((size, size), 5, rng)
+    smear = 0.65 * value_noise((size, size), 9, rng) + 0.35 * value_noise((size, size), 3, rng)
+    # The lime lies in patches: where the smear noise is under the brick's cover; a washed brick keeps a little red.
+    lime = np.clip((cover[k] * 1.25 - smear) * 4, 0, 1) * np.where(cover[k] >= 1, .9, 1)
+    color = red[k] * (1 - lime[..., None]) + white[k] * lime[..., None]
+    color = color * (1 - 0.12 * mottle[..., None])
+    mortar = np.array([0.84, 0.82, 0.78]) * (0.93 + 0.1 * value_noise((size, size), 4, rng))[..., None]
+    color = np.where(is_brick[..., None], color, mortar)
+    albedo = Image.fromarray((np.clip(color, 0, 1) * 255).astype(np.uint8))
+    normal = normal_map(is_brick.astype(np.float32) + 0.15 * mottle, 2.5)
+    rough = Image.fromarray((np.where(is_brick, 0.85 + 0.1 * mottle, 0.97) * 255).astype(np.uint8))
+    return albedo, normal, rough
+
+
 def roof_tiles(size=1024, seed=29):
     """Interlocking roof tiles with a rounded roll (as on most Flemish roofs), light grey so the
     game can tint them clay red, anthracite or brown. Tile = 1.2 m: 4 tiles of 30 cm across,
@@ -451,7 +485,8 @@ def generated(sizes):
 # a fourth number is the normal map's size where 1024 would only add download (the road's fine grit).
 SURFACES = {"nb_brick": (standard_brick, 1.76, 1024), "roof_tiles": (roof_tiles, 1.2, 1024),
             "floor_tile": (large_tile, 4.8, 2048), "cladding": (slats, 1.8, 1024), "asphalt": (asphalt, 2.0, 1024),
-            "road_concrete": (road_concrete, 2.0, 1024, 512), "clinker": (clinker, 2.2, 1024)}
+            "road_concrete": (road_concrete, 2.0, 1024, 512), "clinker": (clinker, 2.2, 1024),
+            "mixed_brick": (mixed_brick, 1.76, 1024, 512)}
 
 
 def surface(name, sizes):

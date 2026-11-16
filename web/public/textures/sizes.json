@@ -21,5 +21,6 @@
  "cladding": 1.8,
  "asphalt": 2.0,
  "road_concrete": 2.0,
- "clinker": 2.2
+ "clinker": 2.2,
+ "mixed_brick": 1.76
 }
