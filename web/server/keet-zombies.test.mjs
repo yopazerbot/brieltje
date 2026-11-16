@@ -179,6 +179,17 @@ test('the church place\'s edge goes round the café, the lane, the canopy\'s yar
   assert.ok(edge.inside(541, -764), 'the stall');
   assert.ok(edge.inside(536.3, -771.6), 'the portal\'s way out');
   assert.ok(!edge.inside(...W(2.9, 22)), 'past the back street: out');
+  // Not the neighbour's lean-to and terrace west of the canopy's yard (no floor of the zombies' there); the yard itself
+  // is in, and every 0.5 m of it is in the zombies' reach.
+  for (const [u, v] of [[-3.75, 4], [-3.75, 7], [-3.75, 10.5], [-3, 14]]) assert.ok(!edge.inside(...W(u, v)), `the lean-to at u ${u}, v ${v}: out`);
+  const h = horde(church0);
+  for (let u = -1.9; u <= -0.3; u += 0.5) {
+    for (let v = 9.6; v <= 17; v += 0.5) {
+      const [x, z] = W(u, v);
+      assert.ok(edge.inside(x, z), `the yard at u ${u.toFixed(1)}, v ${v.toFixed(1)}: in`);
+      assert.equal(h.reachOf({ name: 'p', x, y: house.ground + height(x, z), z })?.ok, true, `the yard at u ${u.toFixed(1)}, v ${v.toFixed(1)}: in reach`);
+    }
+  }
   const ring = edge.ring;
   assert.ok(ring.length > 40, 'the circle and the café\'s box');
   for (const [x, z] of ring) assert.ok(bounds.map.depth(x, z) >= 2 - 1e-6, `${x}, ${z}: 2 m inside the map's edge`);

@@ -33,8 +33,9 @@ export const ARENAS = [
   { id: 'house', home: [4.5, 18] },
   { id: 'bungalow', home: [97, 172] },
   // `also`: the café on the square, the lane beside it, the canopy's yard and the back street behind (16 Nov 2026: the
-  // zombies follow players into the café, shared/keet.mjs), added to the circle.
-  { id: 'church', center: [548, -768], radius: 48, also: keetBox(-4.5, 10.5, 2.0, 21.0) },
+  // zombies follow players into the café, shared/keet.mjs), added to the circle. Its west side stops short of the
+  // neighbour's lean-to and terrace (from u -3 west), where the zombies' grid has no floor.
+  { id: 'church', center: [548, -768], radius: 48, also: keetBox(-2.5, 10.5, 2.0, 21.0) },
   { id: 'molenhoek', center: [758, -712], radius: 48 },
   { id: 'molenhoek_mid', center: [1062, -567], radius: 48 },
   { id: 'molenhoek_end', center: [1510, -363], radius: 48 },

@@ -126,6 +126,6 @@ test('the church place\'s box round the café is in the café\'s own frame (shar
   const box = arenaOf('church').also;
   const { o, a } = shell.frame;
   const at = (u, v) => [o[0] + u * Math.cos(a) + v * Math.sin(a), o[1] - u * Math.sin(a) + v * Math.cos(a)];
-  const want = [at(-4.5, 2), at(10.5, 2), at(10.5, 21), at(-4.5, 21)];
+  const want = [at(-2.5, 2), at(10.5, 2), at(10.5, 21), at(-2.5, 21)];
   for (let i = 0; i < 4; i++) assert.ok(Math.hypot(box[i][0] - want[i][0], box[i][1] - want[i][1]) < 0.02, `${box[i]} against ${want[i]}`);
 });
