@@ -111,6 +111,8 @@ interface V {
   ground: number;
   gx: number;
   gz: number;
+  /** When its ground was last looked up (this page's villager clock, s): a still one looks again now and then */
+  groundAt: number;
   speed: number;
   /** As the shared clock has it now: sitting, standing with its friend, on a carriageway */
   sit: boolean;
@@ -783,13 +785,14 @@ export class Villagers {
     const kind = def.kind;
     const v: V = {
       id: def.id, def, kind, x: p.x, y: 0, z: p.z, yaw: p.yaw, scale: kind === DOG ? 0.72 + r() * 0.36 : kind === CHILD ? 0.9 + r() * 0.18 : 0.95 + r() * 0.1, ground: 0, gx: p.x, gz: p.z,
-      speed: p.speed, sit: p.sit, talk: p.talk, road: p.road, placed: false, still: 0,
+      speed: p.speed, sit: p.sit, talk: p.talk, road: p.road, placed: false, still: 0, groundAt: this.clock + (def.id % 20) * 0.1,
       clip: kind === BIKE ? 'Ride' : p.sit ? 'Sit' : 'Idle', time: r() * 4, from: '', fromTime: 0, blend: 1, once: '', onceEnd: 0, fade: 0, pal, flags: 0, waved: -1e9,
       holdUntil: 0, avoid: 0, dodgeUntil: 0, dodgeX: 0, dodgeZ: 0, downAt: -1, fallX: 0, fallZ: 1, away: false, hopAt: -1e9, topWas: null, drawn: false, dist: 0,
     };
     this.dress(v);
     if (def.jog) v.flags &= ~(BAG | SCARF | UMB);
     if (def.lead) v.flags &= ~BAG;
+    if (def.what === 'cafe') v.flags &= ~(BAG | UMB); // the café's people hold nothing
     v.ground = this.ground(p.x, p.z, null);
     v.y = p.sit ? v.ground + ((this.set!.seats[def.seat]?.[3] ?? 0.45) - 0.45) : v.ground;
     const paint = this.paints.get(def.id);
@@ -1145,6 +1148,13 @@ export class Villagers {
       v.ground = this.ground(v.x, v.z, v.ground);
       v.gx = v.x;
       v.gz = v.z;
+      v.groundAt = this.clock;
+    } else if ((v.sit || v.speed < 0.05) && this.clock - v.groundAt > 2) {
+      // Still (a sitter, someone standing): looked up again every two seconds, as when it came, for a floor that came
+      // in after it (the café's rooms, built in idle time once playing: before them it stood on the ground beneath).
+      // Only ever up: one that walked onto something higher stays on it.
+      v.ground = Math.max(v.ground, this.ground(v.x, v.z, null));
+      v.groundAt = this.clock;
     }
     // A sitter is on its seat: the Sit clip sits on 45 cm, so it goes up or down by the seat's own height.
     const want = v.sit ? v.ground + ((this.set!.seats[v.def.seat]?.[3] ?? 0.45) - 0.45) : v.ground;
@@ -1202,7 +1212,7 @@ export class Villagers {
   private umbrellas(): void {
     const up = this.raining;
     for (const v of this.order) {
-      const can = (v.kind === MAN || v.kind === WOMAN || v.kind === TEEN) && !v.def.jog && !v.def.lead && !v.sit;
+      const can = (v.kind === MAN || v.kind === WOMAN || v.kind === TEEN) && !v.def.jog && !v.def.lead && !v.sit && v.def.what !== 'cafe';
       if (up && can) v.flags |= UMB;
       else v.flags &= ~UMB;
     }
