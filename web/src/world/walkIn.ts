@@ -224,8 +224,10 @@ function patterns(shader: THREE.WebGLProgramParametersWithUniforms): void {
   shader.fragmentShader = shader.fragmentShader
     .replace('#include <common>', '#include <common>\nvarying vec2 vLook;\nvarying vec2 vTileUv;\nuniform float lampGlow;')
     .replace('#include <roughnessmap_fragment>', '#include <roughnessmap_fragment>\nroughnessFactor = vLook.y;')
-    // A lit lamp (the café's bulbs and opal shades, `look` below zero: no pattern): it glows in its own colour.
-    .replace('#include <emissivemap_fragment>', '#include <emissivemap_fragment>\nif (vLook.x < -0.5) totalEmissiveRadiance += diffuseColor.rgb * lampGlow;')
+    // A lit lamp (the café's bulbs and opal shades, `look` below zero: no pattern): it glows in its own colour, most
+    // where it faces you and less towards its edges, as lit opal glass does; a shade (-2) at a third of a bulb's, so
+    // one close by keeps its shape instead of burning flat white.
+    .replace('#include <emissivemap_fragment>', '#include <emissivemap_fragment>\nif (vLook.x < -0.5) totalEmissiveRadiance += diffuseColor.rgb * lampGlow * (vLook.x < -1.5 ? 0.33 : 1.0) * (0.35 + 0.65 * abs(dot(normal, normalize(vViewPosition))));')
     .replace(
       '#include <map_fragment>',
       `#include <map_fragment>
@@ -295,11 +297,11 @@ function painted(g: THREE.BufferGeometry, hex: string, look: [number, number] = 
  * only the café's lamp parts have the `look` that reads it (`LAMPS`); a home has none, so it looks as it did.
  */
 export const lampGlow = { value: 1.5 };
-/** The café's lamp parts by their colour (tools/keet_fittings.py BULB and OPAL): lit. */
-const LAMPS = new Set(['#ffd9a0', '#efe6cf']);
-const lit = (g: THREE.BufferGeometry): THREE.BufferGeometry => {
+/** The café's lamp parts by their colour (tools/keet_fittings.py BULB and OPAL), lit: a bulb's `look` -1, a shade's -2. */
+const LAMPS = new Map([['#ffd9a0', -1], ['#efe6cf', -2]]);
+const lit = (g: THREE.BufferGeometry, look: number): THREE.BufferGeometry => {
   const looks = g.getAttribute('look') as THREE.BufferAttribute | undefined;
-  if (looks) for (let i = 0; i < looks.count; i++) looks.setX(i, -1);
+  if (looks) for (let i = 0; i < looks.count; i++) looks.setX(i, look);
   return g;
 };
 
@@ -695,7 +697,10 @@ export async function loadWalkIn(renderer: THREE.WebGLRenderer, spec: WalkInSpec
         solid.push(painted(g, b.c ?? spec.tint, [spec.pattern, spec.rough]));
       }
       const lamps = spec.id === 'keet'; // the café's bulbs and shades glow
-      for (const p of pack.parts) solid.push(lamps && p.some((v) => typeof v === 'string' && LAMPS.has(v.toLowerCase())) ? lit(part(p)) : part(p));
+      for (const p of pack.parts) {
+        const look = lamps ? p.map((v) => (typeof v === 'string' ? LAMPS.get(v.toLowerCase()) : undefined)).find((v) => v !== undefined) : undefined;
+        solid.push(look !== undefined ? lit(part(p), look) : part(p));
+      }
       plain.geometry.dispose();
       plain.geometry = early.geometry = mergeGeometries(solid);
       drawGlass();

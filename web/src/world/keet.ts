@@ -124,7 +124,7 @@ const FILL = new THREE.Color('#f3d9b0');
 const FILL_SCALE = 0.75;
 /** The lamps' glow (world/walkIn.ts lampGlow): by day, and how much more at night. Far under what half floats hold. */
 const GLOW_DAY = 1.5;
-const GLOW_NIGHT = 3;
+const GLOW_NIGHT = 2;
 /** The two real lights (Medium and up, not on phones): over the bar and over the pool table, in the café's frame (u, height, v). */
 const LAMPS: [number, number, number][] = [[2.5, 1.9, 9.25], [2.5, 1.7, 4.4]];
 const LAMP_COLOR = '#ffc58a';
