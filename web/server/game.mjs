@@ -1564,10 +1564,17 @@ export class Game {
   /**
    * Hit (by anyone, a strongman or a zombie too), or hitting someone, in the last HURT_CALM_MS: the one clock for the
    * seats (fightRefused), /parachute, the start places (spawn, homeDrop), trips from the chat or a portal (travel) and a reconnect
-   * (join). Holstering has its own, players only (inPlayerFight).
+   * (join). A grenade of theirs that can still go off counts too (nadeLive): thrown on a portal's pad, its bang came
+   * after the trip, from where nobody shoots. Holstering has its own, players only (inPlayerFight).
    */
   inFight(p, now) {
-    return now - Math.max(p.hurtAt ?? -Infinity, p.hitAt ?? -Infinity) < HURT_CALM_MS;
+    return now - Math.max(p.hurtAt ?? -Infinity, p.hitAt ?? -Infinity) < HURT_CALM_MS || this.nadeLive(p, now);
+  }
+
+  /** A grenade thrown since the last respawn that may still go off (boom takes it up to GRENADE.fuse + 3 s on). */
+  nadeLive(p, now) {
+    const back = p.backAt ?? -Infinity;
+    return (p.thrown ?? []).some((g) => g.at > back && now - g.at < (GRENADE.fuse + 3) * 1000);
   }
 
   /**
@@ -1578,7 +1585,7 @@ export class Game {
   inPlayerFight(p, now) {
     const back = p.backAt ?? -Infinity;
     const at = Math.max(p.hurtByPlayerAt ?? -Infinity, p.hitAt ?? -Infinity);
-    return (now - at < HURT_CALM_MS && at > back) || (!this.modes.zombies && (p.thrown ?? []).some((g) => g.at > back && now - g.at < (GRENADE.fuse + 3) * 1000));
+    return (now - at < HURT_CALM_MS && at > back) || (!this.modes.zombies && this.nadeLive(p, now));
   }
 
   /** What of a fight a connection leaves behind (join, its close): the clocks, and the health and arms while alive. */

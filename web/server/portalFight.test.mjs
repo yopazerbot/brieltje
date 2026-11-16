@@ -124,3 +124,49 @@ test('a driver takes the car through: refused while the passenger is in a fight,
   assert.deepEqual([car.x, car.z], BUNGALOW.car.slice(0, 2));
   assert.deepEqual([pia.state.x, pia.state.z], BUNGALOW.car.slice(0, 2), 'the passenger comes along');
 });
+
+test('a grenade in the air is a fight too: thrown on the pad, no trip until it can no longer go off', () => {
+  // The review's probe: throw on the home's pad, pick the school 0.3 s later, the bang 2.8 s on hurts B while the
+  // thrower stands where nobody shoots.
+  const s = setup();
+  const a = s.player('ann', 0);
+  s.onPad(a);
+  s.send(a, { t: 'nade', x: a.state.x, y: a.state.y + 1.5, z: a.state.z, vx: 4, vy: 3, vz: 0 });
+  assert.equal(a.thrown.length, 1, 'thrown');
+  s.at(300);
+  s.send(a, { t: 'travel', to: 'school', via: 'portal' });
+  s.send(a, { t: 'travel', to: 'school', via: 'chat' });
+  assert.deepEqual(s.answers(a), [[false, 'portalFight'], [false, 'heliFight']], 'neither a portal nor the chat');
+  assert.deepEqual([a.state.x, a.state.z], [HOME.x, HOME.z]);
+  s.at(5_600); // 5.9 s after the throw: a bang may still be told
+  s.send(a, { t: 'travel', to: 'school', via: 'portal' });
+  assert.deepEqual(s.answers(a).at(-1), [false, 'portalFight']);
+  s.at(100); // 6 s: it can't go off any more
+  s.send(a, { t: 'travel', to: 'school', via: 'portal' });
+  assert.deepEqual(s.answers(a).at(-1), [true, null]);
+});
+
+test('a passenger\'s grenade holds the car\'s trip; a grenade holds the seats and /parachute as a hit does', () => {
+  const s = setup();
+  const { car, game } = s;
+  const dan = s.player('dan', -1.5);
+  const pia = s.player('pia', 1.5);
+  s.send(pia, { t: 'nade', x: pia.state.x, y: pia.state.y + 1.5, z: pia.state.z, vx: 4, vy: 3, vz: 0 });
+  Object.assign(car, { x: HOME.x, z: HOME.z, driver: 'dan', passenger: 'pia', s: 0 });
+  Object.assign(dan.state, { x: HOME.x, z: HOME.z });
+  Object.assign(pia.state, { x: HOME.x, z: HOME.z });
+  s.at(300);
+  s.send(dan, { t: 'travel', to: 'bungalow', via: 'portal' });
+  assert.deepEqual(s.answers(dan), [[false, 'portalFightRider']]);
+  // On foot by the car: a grenade thrown, then a seat or a parachute 0.3 s later: refused.
+  const cas = s.player('cas', 6);
+  game.rules.parachute = true;
+  s.send(cas, { t: 'nade', x: cas.state.x, y: cas.state.y + 1.5, z: cas.state.z, vx: 4, vy: 3, vz: 0 });
+  s.at(300);
+  assert.ok(game.fightRefused(cas, 'car', null, Date.now()), 'no seat');
+  const told = [];
+  const send = game.send;
+  game.send = (ws, m) => (m.t === 'chute' && told.push(m.code), send(ws, m));
+  game.manualDrop('cas', cas, Date.now());
+  assert.deepEqual(told, ['chuteFight'], 'no parachute');
+});
