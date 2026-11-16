@@ -5,6 +5,7 @@ import type { Glass } from './glass';
 import { groundLayers, RANK } from './groundLayers';
 import type { Prism } from './houseData';
 import type { IndoorLight } from './indoorLight';
+import { sound } from '../sound';
 import { lampGlow, loadWalkIn, type EndInside, type WalkIn } from './walkIn';
 import { makeKeet, PUBLIC_WALK_INS, type Keet, type KeetDoor } from '../../shared/keet.mjs';
 
@@ -136,6 +137,202 @@ const PANE_GLOW = new THREE.Color('#ffb46a');
 const PANE_NIGHT = 0.28;
 const PATCH_NIGHT = 0.55;
 
+/** The wall clock (u, height, v: on the dividing wall, the bar room's side) and the stove (the front room's), and how far each is heard (m). */
+const CLOCK: [number, number, number] = [3.4, 2.05, 7.72];
+const STOVE: [number, number, number] = [2.3, 0.4, 7.2];
+const CLOCK_REACH = 4;
+const STOVE_REACH = 3;
+/** Their levels: soft, under the wind's (world/ambience.ts) */
+const TICK = 0.05;
+const CRACKLE = 0.06;
+const MURMUR = 0.05;
+/** The murmur's share in the front room and the toilets, the bar room's being 1 */
+const MURMUR_FAR = 0.3;
+
+/** A small fixed random sequence (as world/acoustics.ts), so the sounds are the same each time. */
+function seeded(seed: number): () => number {
+  let a = seed >>> 0;
+  return () => {
+    a = (a + 0x6d2b79f5) >>> 0;
+    let t = a;
+    t = Math.imul(t ^ (t >>> 15), t | 1);
+    t ^= t + Math.imul(t ^ (t >>> 7), t | 61);
+    return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+  };
+}
+
+/** The ends of a loop faded into each other over `n` samples, so it has no seam. */
+function seamless(d: Float32Array, n: number): void {
+  for (let i = 0; i < n; i++) {
+    const k = i / n;
+    d[i] = d[i] * k + d[d.length - n + i] * (1 - k);
+  }
+}
+
+/** Two seconds of a wall clock: a tick and a slightly lower tock, a second apart. */
+function clockTicks(rate: number): Float32Array<ArrayBuffer> {
+  const d = new Float32Array(rate * 2);
+  const rnd = seeded(71);
+  [[0, 2600], [1, 2150]].forEach(([at, f]) => {
+    const start = Math.round(at * rate);
+    for (let i = 0; i < rate * 0.03; i++) {
+      const t = i / rate;
+      d[start + i] += (rnd() * 2 - 1) * Math.exp(-t / 0.0012) * 0.6 + Math.sin(2 * Math.PI * f * t) * Math.exp(-t / 0.005) * 0.5;
+    }
+  });
+  return d;
+}
+
+/** Six seconds of a stove: a faint low roar and the pops and ticks of burning wood, now here, now there. */
+function stoveFire(rate: number): Float32Array<ArrayBuffer> {
+  const d = new Float32Array(rate * 6);
+  const rnd = seeded(29);
+  let low = 0;
+  for (let i = 0; i < d.length; i++) {
+    low = (low + 0.02 * (rnd() * 2 - 1)) / 1.02;
+    d[i] = low * 0.9;
+  }
+  for (let k = 0; k < 40; k++) {
+    const start = Math.floor(rnd() * (d.length - rate * 0.02));
+    const amp = 0.15 + 0.85 * rnd() ** 2;
+    const len = 0.002 + 0.006 * rnd();
+    for (let i = 0; i < rate * 0.02; i++) d[start + i] += (rnd() * 2 - 1) * amp * Math.exp(-i / rate / len);
+  }
+  seamless(d, Math.floor(rate * 0.3));
+  return d;
+}
+
+/**
+ * Ten seconds of a few voices talking, without words: each a buzz at a voice's pitch, rising and falling, cut into
+ * syllables and phrases with pauses between; through a low-pass filter afterwards, so no word could ever be heard.
+ */
+function voices(rate: number): Float32Array<ArrayBuffer> {
+  const d = new Float32Array(rate * 10);
+  [[118, 3], [162, 11], [208, 17]].forEach(([f0, seed], v) => {
+    const rnd = seeded(seed);
+    // Phrases: talking for 1.2 to 3.4 s, quiet for 0.6 to 2.6 s.
+    const talk: [number, number][] = [];
+    for (let t = rnd() * 2; t < 10; ) {
+      const len = 1.2 + rnd() * 2.2;
+      talk.push([t, Math.min(10, t + len)]);
+      t += len + 0.6 + rnd() * 2;
+    }
+    let phase = 0;
+    const p1 = rnd() * 6, p2 = rnd() * 6, p3 = rnd() * 6;
+    for (let i = 0; i < d.length; i++) {
+      const t = i / rate;
+      const on = talk.find(([a, b]) => t >= a && t < b);
+      if (!on) continue;
+      const edge = Math.min(1, (t - on[0]) / 0.08, (on[1] - t) / 0.12);
+      const syl = Math.max(0, Math.sin(2 * Math.PI * (4.2 + v * 0.4) * t + 1.3 * Math.sin(2 * Math.PI * 0.9 * t + p3))) ** 1.5;
+      const f = f0 * (1 + 0.09 * Math.sin(2 * Math.PI * 0.6 * t + p1) + 0.04 * Math.sin(2 * Math.PI * 2.1 * t + p2));
+      phase += (2 * Math.PI * f) / rate;
+      let s = 0;
+      for (let k = 1; k <= 8; k++) s += (Math.sin(phase * k) / k) * (1 + 1.5 * Math.exp(-(((k * f - 650) / 380) ** 2)));
+      d[i] += s * syl * edge * 0.18;
+    }
+  });
+  seamless(d, Math.floor(rate * 0.5));
+  return d;
+}
+
+/**
+ * The café's quiet sounds, made in code (no files): a wall clock's tick near the clock, a faint crackle by the stove,
+ * and a murmur of voices without words while its villagers are there (never in Zombies, when they are gone), in the bar
+ * room and faintly elsewhere. Only while you are inside its outline, and with the game's sound on; its rooms take the
+ * short echo a home's rooms have (world/acoustics.ts: they are rooms).
+ */
+class KeetSounds {
+  private ctx: AudioContext | null = null;
+  private buffers: Record<'tick' | 'stove' | 'murmur', AudioBuffer> | null = null;
+  private live: { sources: AudioBufferSourceNode[]; tick: GainNode; stove: GainNode; murmur: GainNode } | null = null;
+  private peopleAt = 0;
+  private people = false;
+  private readonly spot = new THREE.Vector3();
+
+  update(dt: number, inside: boolean, ear: THREE.Vector3, frame: { o: number[]; a: number; floor: number }, people: () => boolean): void {
+    const active = navigator.userActivation?.hasBeenActive ?? true;
+    const c = inside && active ? sound.context() : null;
+    if (!c || c !== this.ctx) this.stop();
+    if (!c) return;
+    if (c !== this.ctx) {
+      this.ctx = c;
+      this.buffers = null;
+    }
+    const { o, a, floor } = frame;
+    const cs = Math.cos(a), sn = Math.sin(a);
+    const at = ([u, h, v]: [number, number, number]) => this.spot.set(o[0] + u * cs + v * sn, floor + h, o[1] - u * sn + v * cs);
+    if (!this.live) this.start(c, at);
+    if (!this.live) return;
+    this.peopleAt -= dt;
+    if (this.peopleAt <= 0) {
+      this.peopleAt = 1;
+      this.people = people();
+    }
+    // The ear in the café's frame: the bar room and behind the bar lie beyond the dividing wall (v 7.67).
+    const dx = ear.x - o[0], dz = ear.z - o[1];
+    const v = dx * sn + dz * cs;
+    const near = (p: [number, number, number], reach: number) => Math.max(0, 1 - at(p).distanceTo(ear) / reach);
+    const t = c.currentTime;
+    this.live.tick.gain.setTargetAtTime(TICK * near(CLOCK, CLOCK_REACH), t, 0.15);
+    this.live.stove.gain.setTargetAtTime(CRACKLE * near(STOVE, STOVE_REACH), t, 0.15);
+    this.live.murmur.gain.setTargetAtTime(this.people ? MURMUR * (v > 7.6 && v < 17.2 ? 1 : MURMUR_FAR) : 0, t, 0.6);
+  }
+
+  private start(c: AudioContext, at: (p: [number, number, number]) => THREE.Vector3): void {
+    if (!this.buffers) {
+      const make = (data: Float32Array<ArrayBuffer>, rate: number) => {
+        const b = c.createBuffer(1, data.length, rate);
+        b.copyToChannel(data, 0);
+        return b;
+      };
+      // The voices at a low rate: they are low-passed anyway, and are made a quarter as fast.
+      this.buffers = { tick: make(clockTicks(c.sampleRate), c.sampleRate), stove: make(stoveFire(c.sampleRate), c.sampleRate), murmur: make(voices(16000), 16000) };
+    }
+    const out = sound.out();
+    const clock = at(CLOCK);
+    const tickAt = sound.at(clock.x, clock.y, clock.z, CLOCK_REACH);
+    const stove = at(STOVE);
+    const stoveAt = sound.at(stove.x, stove.y, stove.z, STOVE_REACH);
+    if (!out || !tickAt || !stoveAt) return;
+    const loop = (buffer: AudioBuffer, to: AudioNode, filter?: BiquadFilterNode): [AudioBufferSourceNode, GainNode] => {
+      const src = c.createBufferSource();
+      src.buffer = buffer;
+      src.loop = true;
+      const g = c.createGain();
+      g.gain.value = 0;
+      (filter ? src.connect(filter) : src).connect(g).connect(to);
+      src.start();
+      return [src, g];
+    };
+    const stoveLow = c.createBiquadFilter();
+    stoveLow.type = 'lowpass';
+    stoveLow.frequency.value = 2200;
+    const voiceLow = c.createBiquadFilter();
+    voiceLow.type = 'lowpass';
+    voiceLow.frequency.value = 850;
+    const [s1, tick] = loop(this.buffers.tick, tickAt);
+    const [s2, stoveG] = loop(this.buffers.stove, stoveAt, stoveLow);
+    const [s3, murmur] = loop(this.buffers.murmur, out, voiceLow);
+    this.live = { sources: [s1, s2, s3], tick, stove: stoveG, murmur };
+  }
+
+  /** Everything faded out and stopped: out of the café, or the sound switched off. */
+  private stop(): void {
+    if (!this.live || !this.ctx) {
+      this.live = null;
+      return;
+    }
+    const t = this.ctx.currentTime;
+    for (const g of [this.live.tick, this.live.stove, this.live.murmur]) g.gain.setTargetAtTime(0, t, 0.08);
+    for (const s of this.live.sources) {
+      s.stop(t + 0.5);
+      s.onended = () => s.disconnect();
+    }
+    this.live = null;
+  }
+}
+
 /**
  * The café's life (package C): its light by day and by night. Indoors its fill is warm and dim, its bulbs and opal
  * shades glow (more at night), and on Medium and up two lights without shadows hang over the bar and the pool table,
@@ -152,6 +349,7 @@ export class KeetLife {
   private glass: THREE.MeshStandardMaterial | null = null;
   private patch: THREE.Mesh | null = null;
   private lit = 0;
+  private sounds = new KeetSounds();
   /** Whether the eye was inside the café's outline at the last update */
   inside = false;
 
@@ -225,10 +423,11 @@ export class KeetLife {
   }
 
   /** Each frame: the eye, the night (0 to 1, world/mood.ts), and whether this preset may have the lights and the patch (Medium and up, no phone). */
-  update(dt: number, eye: THREE.Vector3, night: number, fine: boolean): void {
+  update(dt: number, eye: THREE.Vector3, night: number, fine: boolean, people: () => boolean): void {
     if (!this.frame) return;
     const inside = !!this.keet?.contains(eye.x, eye.z) && eye.y < this.frame.floor + 4;
     this.inside = inside;
+    this.sounds.update(dt, inside, eye, this.frame, people);
     this.fill.setPlace(inside ? FILL : null, FILL_SCALE);
     lampGlow.value = GLOW_DAY + (GLOW_NIGHT - GLOW_DAY) * night;
     this.lit += ((inside && fine ? 1 : 0) - this.lit) * (1 - Math.exp(-dt * 3));

@@ -4021,7 +4021,7 @@ renderer.setAnimationLoop((now: number) => {
   sound.listen(camera);
   roomSound.update(dt, inside, player.ground.name, camera.position);
   weather.update(dt, camera.position, inside); // the rain round the eye (none indoors), the street lamps
-  keetLife.update(dt, camera.position, mood.night, !phone && quality !== 'low'); // the café's light (world/keet.ts)
+  keetLife.update(dt, camera.position, mood.night, !phone && quality !== 'low', () => villagers.states().some((v) => v.what === 'cafe' && v.mode !== 'down')); // the café's light and sounds (world/keet.ts)
   setWindowNight(mood.night); // lights in about half of the village's rooms at night (world/windows.ts)
   player.lookScale = camera.fov / weapon.baseFov; // slower turning while zoomed in (not faster for the car's wider view)
   glass.update(dt);
@@ -4912,6 +4912,7 @@ if (import.meta.env.DEV) {
       endHouse: () => endHouse,
       brickHouse: () => brickHouse,
       keet: () => keet,
+      keetLife, // the café's light and sounds (world/keet.ts)
       countryside: () => countryside,
       portals,
       roadLife,
