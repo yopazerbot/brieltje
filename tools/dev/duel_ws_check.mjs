@@ -50,6 +50,7 @@ class Page {
       const m = JSON.parse(String(d));
       if (m.t === 'ping') return this.send({ t: 'pong', n: m.n });
       if (m.t === 's' || m.t === 'z') return; // the ticks: not kept
+      m.at_ = Date.now(); // when it came (which team was out first, when both go out between two looks)
       this.log.push(m);
       if (m.t === 'welcome') {
         this.welcomes.push(m.room ?? null);
@@ -211,7 +212,8 @@ ok('a newcomer in the final is moved into a team\'s room', await until(() => lat
 ok('and comes in out, told it is for good', await until(() => late.of('kill').some((m) => m.victim === late.name) && late.of('system').some((m) => m.code === 'duelDown'), 5000));
 const first = await until(() => blue[0].line?.sides.some((x) => x.out), 240_000, 1000);
 ok('one team is caught first', first, JSON.stringify(blue[0].line));
-const out = blue[0].line?.sides.find((x) => x.out)?.team;
+const outAt = (team) => Math.min(...(team === 'blue' ? blue : red).map((p) => p.of('system').find((m) => m.code === 'duelOutUs')?.at_ ?? Infinity));
+const out = outAt('blue') <= outAt('red') ? 'blue' : 'red'; // the team told first that it is out
 const outPages = out === 'blue' ? blue : red;
 ok('its pages are told they are out, the others what to pass', outPages.every((p) => p.of('system').some((m) => m.code === 'duelOutUs')) && (out === 'blue' ? red : blue).every((p) => p.of('system').some((m) => m.code === 'duelOutThem')));
 ok('the downed are told it is for good', pages.some((p) => p.of('system').some((m) => m.code === 'duelDown')));

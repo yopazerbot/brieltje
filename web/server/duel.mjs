@@ -31,6 +31,7 @@ import { randomInt } from 'node:crypto';
 import { ZombieGame } from './zombies.mjs';
 import { ZOMBIE } from '../shared/zombies.mjs';
 import { arenaOf } from '../shared/arenas.mjs';
+import { homeAt } from '../shared/homes.mjs';
 import { LOOKS } from './modes.mjs';
 
 export const DUEL_PLAYERS = 20; // in each host room
@@ -41,6 +42,10 @@ export const WARMUP_MINUTES = 10;
 export const RESULT_MS = 10_000;
 export const GATHER_MS = 5_000; // the rooms fill (every page moves) before both breaks run
 const TICK_MS = 250;
+/** m above the relief, out of a home's floors, that counts as in the air when the duel takes someone (pull: aloft) */
+const AIR = 3;
+/** Rings round the place they left (m, spots): where a way back on the ground is looked for (back) */
+const RINGS = [[0, 1], [1.6, 6], [3.2, 10], [4.8, 14], [8, 16], [12, 20]];
 const RESEND_MS = 5_000; // the live line again at least this often (the page counts the warm-up's clock down itself)
 
 /**
@@ -350,7 +355,7 @@ export class Duel {
       for (const [name, p] of g.players) {
         if (p.pulled || !this.sideOf(name)) continue;
         p.pulled = true;
-        if (g === this.hub.main && p.weapons) this.carried.set(name, { key: p.key, weapons: [...p.weapons] });
+        if (g === this.hub.main) this.carried.set(name, { key: p.key, weapons: p.weapons ? [...p.weapons] : null, aloft: this.aloft(g, name, p) });
         p.ws.close(4006, 'To the Zombies duel'); // src/net/client.ts: again at once, no "room closed" line
       }
     }
@@ -378,12 +383,51 @@ export class Duel {
     });
   }
 
-  /** `name` (player `p`) is back in the open world after a duel: where it had them, with the guns they carried (`c`). */
+  /**
+   * Whether player `p` (`name`, in the open world `g`) was anywhere but on their own feet on a floor when the duel took
+   * them: down, flying, in a drop or a parachute, in a car, on a bike or a horse, in a helicopter, or up in the air (more
+   * than AIR over the relief and not on a floor of a home). Their place is then no place to come back to (back).
+   */
+  aloft(g, name, p) {
+    const s = p.state;
+    if (!s || !p.alive || s.flying || s.chute || g.dropping(p, Date.now()) || !g.onFoot(name) || g.bikeOf(name)) return true;
+    return s.y - g.helis.floor(s.x, s.z) > AIR && !homeAt(s.x, s.z, s.y);
+  }
+
+  /**
+   * A place on the ground near (x, z) for player `p` in the open world `g`, the server's own tests for a respawn there
+   * (gather, bring): inside the edge that holds, no wall within a metre (game.free, which also keeps out of the
+   * buildings' blocks), never inside a home they may not enter (gate.mayStand), clear of the cars. Under where they were
+   * first, then rings round it; null when none (their usual spawn then).
+   */
+  groundNear(g, p, x, z) {
+    const fence = g.fence();
+    const cars = Object.values(g.cars);
+    for (const [r, n] of RINGS) {
+      for (let k = 0; k < n; k++) {
+        const px = +(x + r * Math.sin((k / n) * Math.PI * 2)).toFixed(2);
+        const pz = +(z + r * Math.cos((k / n) * Math.PI * 2)).toFixed(2);
+        const py = g.helis.floor(px, pz);
+        if (fence.inside(px, pz) && g.free(px, pz) && g.gate.mayStand(p, px, py, pz) && cars.every((c) => Math.hypot(px - c.x, pz - c.z) > 3)) return { x: px, y: py, z: pz };
+      }
+    }
+    return null;
+  }
+
+  /**
+   * `name` (player `p`) is back in the open world after a duel, with the guns they carried (`c`): where it had them when
+   * they stood there on their own feet (a floor of a home they may enter included: join checked that); when they were
+   * aloft (a drop, flying, in the air, in a seat, down) on the ground under that place or the nearest open ground to
+   * it, else at their usual spawn. Never left hanging in the air, nor over a home they may not enter.
+   */
   back(name, p, c) {
     const g = this.hub.main;
     if (g.players.get(name) !== p || !p.state) return; // gone again already
+    const now = Date.now();
     const { x, y, z } = p.state;
-    g.respawn(name, p, Date.now(), { spawn: 0, x: +x.toFixed(2), y, z: +z.toFixed(2), face: [x, z + 1] });
+    const at = c.aloft === false ? { x: +x.toFixed(2), y, z: +z.toFixed(2) } : this.groundNear(g, p, x, z);
+    if (at) g.respawn(name, p, now, { spawn: 0, ...at, face: [at.x, at.z + 1] });
+    else g.respawn(name, p, now); // nowhere near: the usual spawn (respawn's own pick, never into a home without its right)
     if (c.weapons && c.key === p.key && !g.modes.zombies) {
       p.weapons = new Set(c.weapons);
       g.send(p.ws, { t: 'weapons', list: [...p.weapons] });

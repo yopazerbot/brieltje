@@ -8,6 +8,7 @@ import { MAX_ROOMS, Rooms } from './rooms.mjs';
 import { DUEL_PLAYERS, GATHER_MS, RESULT_MS, dice, duelDice, markOf, minuteMs, passes } from './duel.mjs';
 import { Horde, waveSize, ZOMBIE } from '../shared/zombies.mjs';
 import { Loot } from '../shared/loot.mjs';
+import { homeAt } from '../shared/homes.mjs';
 
 const real = Date.now;
 
@@ -600,5 +601,154 @@ test('a duel run reaches the boards however it ends: caught, the clock, the host
     assert.deepEqual(fin.runs.map((r) => [r.team, r.wave]).sort(), [['blue', 3], ['red', 2]]);
   } finally {
     fin.stop();
+  }
+});
+
+// Back in the open world from a place that was no place to come back to (a load test found players hanging in the air):
+// `how` puts ann somewhere in the open world before the duel takes her; the duel is stopped, the result shown, and she
+// connects to the open world again. Returns her player there and the respawn her page was told.
+async function tripFrom(how) {
+  const env = setup();
+  const { main, rooms } = env;
+  env.teams(['ann'], ['bob']);
+  const ann = env.join(main, 'ann');
+  env.join(main, 'bob');
+  how(env, ann);
+  rooms.duel.start({ duel: 'warmup', minutes: 10 }, 'admin');
+  assert.equal(ann.ws.closed, 4006);
+  for (const n of ['ann', 'bob']) {
+    env.leave(n);
+    env.join(rooms.duel.route({ username: n }), n);
+  }
+  rooms.duel.stop('admin');
+  env.tick(RESULT_MS + 300);
+  assert.equal(rooms.duel.on, false);
+  const back = env.join(main, 'ann');
+  await new Promise(setImmediate);
+  const told = back.ws.got.filter((m) => m.t === 'respawn' && m.name === 'ann').at(-1);
+  return { env, back, told };
+}
+
+/** On the ground, alive, out of every wall, never inside a home without its right, and her page told so. */
+function onGround(env, p, told) {
+  const { x, y, z } = p.state;
+  assert.equal(p.alive, true);
+  assert.ok(Math.abs(y - env.main.helis.floor(x, z)) < 0.01, `on the ground, not at ${y.toFixed(2)} over ${env.main.helis.floor(x, z).toFixed(2)}`);
+  assert.ok(env.main.free(x, z), 'no wall within a metre');
+  assert.ok(env.main.gate.mayStand(p, x, y, z), 'not inside a home she may not enter');
+  assert.equal(homeAt(x, z, y), null);
+  assert.ok(told && Math.abs(told.x - x) < 0.01 && Math.abs(told.z - z) < 0.01 && Math.abs(told.y - y) < 0.01, `her page told: ${JSON.stringify(told)}`);
+}
+
+const OPEN = { x: 4.5, z: 19 }; // the street's start place in front of the house: open public ground
+const HOUSE_IN = { x: 3.7, z: 4.1 }; // inside the main house
+
+test('back from a parachute drop high up: on the ground under where she was', async () => {
+  const { env, back, told } = await tripFrom((env, p) => {
+    assert.ok(env.main.free(OPEN.x, OPEN.z));
+    Object.assign(p.state, { x: OPEN.x, y: env.main.helis.floor(OPEN.x, OPEN.z) + 120, z: OPEN.z, chute: true });
+    env.main.startDrop(p, env.now());
+  });
+  try {
+    onGround(env, back, told);
+    assert.ok(Math.hypot(back.state.x - OPEN.x, back.state.z - OPEN.z) < 0.01, 'right under it');
+    assert.equal(back.drop ?? null, null, 'no drop carried over');
+  } finally {
+    env.stop();
+  }
+});
+
+test('back from flying over a home she may not enter: on open ground beside it, never on or in it', async () => {
+  const { env, back, told } = await tripFrom((env, p) => {
+    assert.equal(homeAt(HOUSE_IN.x, HOUSE_IN.z, env.main.helis.floor(HOUSE_IN.x, HOUSE_IN.z) + 0.1), 'house');
+    Object.assign(p.state, { x: HOUSE_IN.x, y: env.main.helis.floor(HOUSE_IN.x, HOUSE_IN.z) + 40, z: HOUSE_IN.z, flying: true });
+  });
+  try {
+    onGround(env, back, told);
+    assert.ok(Math.hypot(back.state.x - HOUSE_IN.x, back.state.z - HOUSE_IN.z) < 20, 'the nearest open ground');
+  } finally {
+    env.stop();
+  }
+});
+
+test('back from up in the air without a flag (falling, off a roof): on the ground', async () => {
+  const { env, back, told } = await tripFrom((env, p) => Object.assign(p.state, { x: OPEN.x, y: env.main.helis.floor(OPEN.x, OPEN.z) + 30, z: OPEN.z }));
+  try {
+    onGround(env, back, told);
+  } finally {
+    env.stop();
+  }
+});
+
+test('back from a car seat: on the ground clear of the cars', async () => {
+  const { env, back, told } = await tripFrom((env, p) => {
+    const c = Object.values(env.main.cars)[0];
+    c.driver = 'ann';
+    Object.assign(p.state, { x: c.x, y: env.main.helis.floor(c.x, c.z) + 0.5, z: c.z });
+  });
+  try {
+    onGround(env, back, told);
+    assert.equal(env.main.carOf('ann'), null);
+    assert.ok(Object.values(env.main.cars).every((c) => Math.hypot(back.state.x - c.x, back.state.z - c.z) > 3));
+  } finally {
+    env.stop();
+  }
+});
+
+test('back from a helicopter in the air: on the ground, out of it', async () => {
+  const { env, back, told } = await tripFrom((env, p) => {
+    const h = [...env.main.helis.machines.values()][0];
+    h.seats[0] = 'ann';
+    h.y = env.main.helis.floor(h.x, h.z) + 60;
+    Object.assign(p.state, { x: h.x, y: h.y, z: h.z });
+  });
+  try {
+    onGround(env, back, told);
+    assert.equal(env.main.helis.of('ann'), null);
+  } finally {
+    env.stop();
+  }
+});
+
+test('back after being down when the duel took her: up, on the ground', async () => {
+  const { env, back, told } = await tripFrom((env, p) => {
+    Object.assign(p.state, { x: OPEN.x, y: env.main.helis.floor(OPEN.x, OPEN.z) + 8, z: OPEN.z });
+    Object.assign(p, { alive: false, hp: 0, respawnAt: Infinity });
+  });
+  try {
+    onGround(env, back, told);
+  } finally {
+    env.stop();
+  }
+});
+
+test('back inside a home she may enter, on its floor: right where she stood', async () => {
+  let y0 = 0;
+  const { env, back, told } = await tripFrom((env, p) => {
+    env.main.homes = { granted: (key, id) => key === 'k-ann' && id === 'house' };
+    y0 = env.main.helis.floor(HOUSE_IN.x, HOUSE_IN.z) + 0.05;
+    Object.assign(p.state, { x: HOUSE_IN.x, y: y0, z: HOUSE_IN.z });
+  });
+  try {
+    assert.equal(back.alive, true);
+    assert.ok(Math.hypot(back.state.x - HOUSE_IN.x, back.state.z - HOUSE_IN.z) < 0.01 && Math.abs(back.state.y - y0) < 0.01, JSON.stringify(back.state));
+    assert.equal(homeAt(back.state.x, back.state.z, back.state.y), 'house');
+    assert.ok(told && Math.abs(told.x - HOUSE_IN.x) < 0.01);
+  } finally {
+    env.stop();
+  }
+});
+
+test('back from the air with no open ground near: her usual spawn', async () => {
+  const { env, back, told } = await tripFrom((env, p) => {
+    Object.assign(p.state, { x: OPEN.x, y: env.main.helis.floor(OPEN.x, OPEN.z) + 50, z: OPEN.z, flying: true });
+    env.main.free = () => false; // nowhere free round there
+  });
+  try {
+    assert.equal(back.alive, true);
+    assert.ok(told && told.x === undefined && Number.isInteger(told.spawn), `a spawn point: ${JSON.stringify(told)}`);
+    assert.ok(env.main.gate.mayStand(back, back.state.x, back.state.y, back.state.z));
+  } finally {
+    env.stop();
   }
 });
