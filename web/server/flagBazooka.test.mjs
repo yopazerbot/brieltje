@@ -333,7 +333,7 @@ test('the holder may carry the flag, and may not fire from a car or a helicopter
   assert.equal(s.arms().racks.blue.left, ROCKETS, 'none counted');
 });
 
-test('no rocket from the school grounds, none counted (village field)', () => {
+test('the school grounds are open in the flag game: a rocket from there leaves and counts (village field)', () => {
   const s = game('village');
   const [b1] = s.blue;
   s.take(b1, 'blue');
@@ -341,8 +341,8 @@ test('no rocket from the school grounds, none counted (village field)', () => {
   assert.ok(noShoot(x, z));
   s.put(b1, x, z, s.game.players.get(b1).state.y);
   s.msg(b1, { t: 'rocket', tx: x + 20, ty: 5, tz: z });
-  assert.equal(s.fired(), 0);
-  assert.equal(s.arms().racks.blue.left, ROCKETS);
+  assert.equal(s.fired(), 1, 'Yoshi, 17 Nov 2026: "School zone ok to shoot in team v team"');
+  assert.equal(s.arms().racks.blue.left, ROCKETS - 1);
 });
 
 test('a rocket brings down a flying helicopter: health off the first, the second destroys it, its riders out and down, the kill the shooter\'s', (t) => {

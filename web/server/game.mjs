@@ -43,7 +43,7 @@ import { mergeHouse } from '../shared/insideData.mjs';
 import { defaultLayout, housePacks, packFor } from './insides.mjs';
 import { HomeGate } from './homeGate.mjs';
 import { noShoot } from '../shared/zones.mjs';
-import { catWithin } from '../shared/cats.mjs';
+import { catWalk, catWithin } from '../shared/cats.mjs';
 import { buildVillagers, villagerHittable, VILLAGER_DOWN_S, VILLAGER_HIT_MAX, VILLAGER_HIT_MS, VILLAGER_PAINT_S, VILLAGER_RANGE, VILLAGER_SHOT_MAX } from '../shared/villagers.mjs';
 import { boxesOverlap, boxPoints, clearOfPortals, indoorBlocks, makeIndoors, makeSolids } from '../shared/parking.mjs';
 import { bikeFields, bruteEntry, carFields, heliFields, horseFields, playerFields, PROTO, TICK_MS } from '../shared/wire.mjs';
@@ -1172,7 +1172,7 @@ export class Game {
     } else if (m.t === 'shot') {
       // Every page plays each shot (a gunshot, smoke): only from someone who can fire, at most at the
       // weapon's rate (70% of its delay, as for hits). A page could otherwise send forty a second.
-      if (this.calm(player)) return; // the school grounds (shared/zones.mjs)
+      if (this.fightCalm(player)) return; // the school grounds (shared/zones.mjs), open in a team match
       const w = player.weapons.has(m.w) ? m.w : 'pistol';
       if (!player.alive || !player.state?.armed || this.inCar(name) || now < (player.nextShot || 0)) return;
       player.nextShot = now + WEAPONS[w].delay * 700;
@@ -1274,6 +1274,9 @@ export class Game {
       // Just for fun: no points. At most one cat every 300 ms per player, and only one within reach (catInReach).
       if (now < this.catsDown[m.i] || !player.alive || !player.state?.armed || now < (player.nextCat || 0)) return;
       player.nextCat = now + 300;
+      // Never a cat on the school grounds, nor from there, in a team match too (shared/zones.mjs, the raw zone).
+      const cat = catWalk(CATS, m.i, now / 1000);
+      if (this.calm(player) || noShoot(cat.x, cat.z)) return;
       if (!this.catInReach(player, m, now)) return;
       this.catsDown[m.i] = now + CATS.respawnSeconds * 1000;
       this.broadcastEvent({ t: 'cat', i: m.i, by: name, ms: CATS.respawnSeconds * 1000, w: m.w === 'grenade' ? 'grenade' : player.state.w }, null, name, name); // cats never walk into a home (homeSight.test.mjs)
@@ -2337,7 +2340,7 @@ export class Game {
     const a = shooter.state;
     const b = target.state;
     if (Math.hypot(a.x - b.x, a.y - b.y, a.z - b.z) > MAX_HIT_RANGE) return;
-    if (this.calm(shooter) || this.calm(target)) return; // nobody shoots on the school grounds, in or out
+    if (this.fightCalm(shooter) || this.fightCalm(target)) return; // nobody shoots on the school grounds, in or out (but in a team match)
     shooter.nextHit = now + spec.delay * 700; // 70% of the fire delay, for network jitter
     shooter.protectedUntil = 0; // shooting ends your own spawn protection
     this.damage(name, shooter, targetName, target, body * spec.body + head * spec.head, head > 0, w, now);
@@ -2368,7 +2371,7 @@ export class Game {
     const spec = WEAPONS.bazooka;
     if (!shooter.weapons.has('bazooka') || shooter.state?.w !== 'bazooka' || !shooter.alive || this.roundOver) return;
     if (this.inCar(name)) return; // no firing from the car (as in hit)
-    if (this.calm(shooter)) return;
+    if (this.fightCalm(shooter)) return;
     if (now < (shooter.nextRocket || 0)) return;
     if (this.modes.flag && !this.modes.flag.arms.fire(name, shooter, now)) return; // Steal the flag: only the rack's launcher, its rockets (server/flagBazooka.mjs)
     shooter.nextRocket = now + spec.reload * 800; // one rocket per load, with room for network jitter
@@ -2395,7 +2398,7 @@ export class Game {
    * the others see it fly from the throw.
    */
   throwNade(name, p, m, now) {
-    if (!p.alive || !p.state?.armed || this.roundOver || this.inCar(name) || this.calm(p)) return; // none from the car or the school grounds
+    if (!p.alive || !p.state?.armed || this.roundOver || this.inCar(name) || this.fightCalm(p)) return; // none from the car or the school grounds (but in a team match)
     const slot = p.nades.findIndex((t) => now >= t);
     // None back: in Zombies a spare from extra grenades, on the server's count (server/zombies.mjs spareNade).
     if (slot < 0 && !this.modes.zombies?.spareNade(name, p, now)) return;
@@ -2450,7 +2453,7 @@ export class Game {
       if (target === shooter || cover.has(targetName) || !target.alive || !target.state?.armed || now < target.protectedUntil) continue;
       if (this.modes.friends(name, targetName)) continue; // the same team
       if (!this.mayBlast(shooter, target, targetName, at, act)) continue; // out of sight, at the throw or now, or behind a home's wall
-      if (this.calm(target)) continue; // on the school grounds
+      if (this.fightCalm(target)) continue; // on the school grounds (but in a team match)
       if (this.inCar(targetName)) continue; // in a car, on a bike or in a helicopter: out of every fight, as for bullets (hit)
       const s = target.state;
       const d = Math.hypot(s.x - at.x, s.y + (s.c ? 0.65 : 0.9) - at.y, s.z - at.z); // from the middle of the body (lower crouching)
@@ -2558,6 +2561,17 @@ export class Game {
   /** Whether a player stands where nobody shoots (the school grounds, shared/zones.mjs). */
   calm(p) {
     return !!(p?.state && noShoot(p.state.x, p.state.z)) || this.dropping(p, Date.now());
+  }
+
+  /**
+   * `calm` for a fight between players: a shot, a hit, a grenade, a rocket, a blast on a player, a vehicle's damage
+   * (server/vehicleDamage.mjs). In a team match (modes.teamMatch: the teams game or Steal the flag being played) the
+   * school grounds are open for it (Yoshi, 17 Nov 2026: "School zone ok to shoot in team v team"); a drop still protects.
+   * Outside a team match the same as `calm`. The villagers', the cats', the strongmen's, the zombies' and the panes'
+   * gates stay on `calm`, the raw zone: nobody and nothing else is hurt there, ever.
+   */
+  fightCalm(p) {
+    return this.modes.teamMatch ? this.dropping(p, Date.now()) : this.calm(p);
   }
 
   /**

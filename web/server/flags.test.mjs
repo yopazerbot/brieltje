@@ -419,16 +419,25 @@ function insideHome() {
   return [x, y, z];
 }
 
-test('safe places (village field): carried onto the school grounds or into a private home, the flag goes home at once with a line', () => {
+test('safe places (village field): the school grounds are open (the carrier keeps it, a flag dropped there lies there); into a private home, the flag goes home at once with a line', () => {
   const s = four('village');
+  const [b] = s.blue;
   const [r, r2] = s.red;
   s.onStand(r, 'blue');
   s.tick();
   s.put(r, 470, -815, 4.4); // the school's playground (shared/zones.mjs)
   assert.ok(noShoot(470, -815));
   s.tick();
+  assert.equal(s.flag().flags.blue.by, r, 'carried on, on the school grounds (Yoshi, 17 Nov 2026: "School zone ok to shoot in team v team")');
+  assert.ok(!s.out.some((m) => m.t === 'flag' && m.ev === 'safe'), 'no safe event');
+  s.game.damage(b, s.game.players.get(b), r, s.game.players.get(r), 500, false, 'rifle', s.now());
+  s.tick();
+  assert.equal(s.flag().flags.blue.at, 'ground', 'down on the school grounds: it lies there');
+  s.at(RETURN_MS);
+  s.tick();
   assert.equal(s.flag().flags.blue.at, 'home');
-  assert.ok(s.out.some((m) => m.t === 'flag' && m.ev === 'safe' && m.why === 'zone' && m.name === r), 'every page told why');
+  s.at(BACK_MS);
+  s.game.tick();
   s.onStand(r2, 'blue');
   s.tick();
   assert.equal(s.flag().flags.blue.by, r2);

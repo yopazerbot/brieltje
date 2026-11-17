@@ -14,7 +14,8 @@
 // - a blast: the server's own rocket or grenade blast (Game.blast), by distance to the vehicle's box;
 // - friendly fire: nobody damages a vehicle a teammate (or they themselves) sits in; an empty one anyone may;
 // - the school grounds stay free of shooting: no damage at all while the vehicle or the shooter is on them (shot, blast,
-//   and no burning there either);
+//   and no burning there either), except in a team match (Yoshi, 17 Nov 2026: "School zone ok to shoot in team v team"),
+//   which is when damage counts at all (Game.fightCalm);
 // - the code-locked homes (server/homeGate.mjs): nobody damages a vehicle with someone in it they could not hurt
 //   (gate.mayHurt, as Game.hit; for a blast Game.mayBlast), and a destroyed vehicle's riders go down only when a hit on
 //   them could have counted (Game.hit's gates: armed, out of spawn protection, off the school grounds, mayHurt), else
@@ -126,8 +127,12 @@ export class VehicleDamage {
     return this.riders(kind, v).every((r) => r !== name && !this.game.modes.friends(name, r));
   }
 
-  /** On the school grounds (shared/zones.mjs): its middle there. Nothing damages it there, and it doesn't burn. */
+  /**
+   * On the school grounds (shared/zones.mjs): its middle there. Nothing damages it there, and it doesn't burn; but in a
+   * team match the grounds are open (Game.fightCalm; Yoshi, 17 Nov 2026: "School zone ok to shoot in team v team").
+   */
   calm(kind, v) {
+    if (this.game.modes?.teamMatch) return false;
     const mid = this.middle(kind, v);
     return noShoot(mid.x, mid.z);
   }
@@ -151,7 +156,7 @@ export class VehicleDamage {
     const spec = this.weapons[m.w];
     if (spec.rocket || !Number.isInteger(m.n) || m.n < 1 || m.n > spec.pellets) return; // a rocket hurts through its blast
     const s = p.state;
-    if (!s || !p.alive || !s.armed || !p.weapons?.has(m.w) || s.w !== m.w || g.inCar(name) || g.calm(p)) return;
+    if (!s || !p.alive || !s.armed || !p.weapons?.has(m.w) || s.w !== m.w || g.inCar(name) || g.fightCalm(p)) return;
     if (now < (p.nextHit || 0)) return; // the one clock of all hits (Game.hit): a shot counts once, on a player or a vehicle
     const v = this.vehicle(m.kind, m.id);
     if (!v || this.out(m.kind, m.id) || !g.seenBy(p, m.kind, v) || !this.mayDamage(name, m.kind, v)) return;
@@ -187,7 +192,7 @@ export class VehicleDamage {
   blast(name, at, w, now, act = null) {
     const g = this.game;
     const shooter = g.players.get(name);
-    if (!this.live || g.roundOver || !shooter || g.calm(shooter)) return;
+    if (!this.live || g.roundOver || !shooter || g.fightCalm(shooter)) return;
     const base = w === 'bazooka' ? this.weapons.bazooka.rocket : this.grenade;
     const k = VEHICLE.blast[w === 'bazooka' ? 'bazooka' : 'grenade'];
     for (const kind of KINDS) {
@@ -292,7 +297,7 @@ export class VehicleDamage {
     const g = this.game;
     const by = r.by;
     if (!shooter || !q?.alive || !q.state?.armed || n === by || g.modes.friends(by, n)) return false;
-    if (now < (q.protectedUntil || 0) || g.calm(q) || g.calm(shooter)) return false;
+    if (now < (q.protectedUntil || 0) || g.fightCalm(q) || g.fightCalm(shooter)) return false;
     return g.mayBlast(shooter, q, n, at, r.act);
   }
 

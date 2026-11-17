@@ -420,33 +420,31 @@ test('the attack: one shot claimed twice, on a player and on a vehicle, counts o
   assert.equal(kim.hp, 100 - WEAPONS.rifle.body, 'that shot on kim too: refused');
 });
 
-test('the school grounds stay free of shooting: no damage to a vehicle on them, nor from a shooter on them, and no burning there', () => {
+test('the school grounds are open in a team match (the only time vehicles take damage): a vehicle on them, a shooter on them, burning there', () => {
+  // Yoshi, 17 Nov 2026: "School zone ok to shoot in team v team" (Game.fightCalm).
   const s = setup();
   const model3 = s.game.cars.model3;
   Object.assign(model3, { x: 470, z: -815, yaw: 0 }); // in the middle of the school grounds
   const ann = s.player('ann', { x: 470, y: model3.y, z: -770 }, 'bungalow'); // outside them, looking along -z at it
-  for (let i = 0; i < 3; i++) {
-    s.at(500);
-    s.send('ann', ann, { t: 'vhit', kind: 'car', id: 'model3', w: 'rifle', n: 1 });
-  }
-  s.game.blast('ann', { x: model3.x, y: model3.y + 0.5, z: model3.z }, 'bazooka');
-  assert.equal(s.hp('car', 'model3'), CAR_HP, 'a vehicle on the school grounds');
-  // A shooter on them, the Tesla outside: nothing either, by shot or blast.
+  s.at(500);
+  s.send('ann', ann, { t: 'vhit', kind: 'car', id: 'model3', w: 'rifle', n: 1 });
+  assert.ok(s.hp('car', 'model3') < CAR_HP, 'a vehicle on the school grounds');
+  // A shooter on them, the Tesla outside.
   const bob = s.player('bob', { x: 470, y: s.car.y, z: -815 }, 'bungalow');
   Object.assign(s.car, { x: 470, z: -760 });
   bob.state.yaw = Math.PI; // facing +z, at the car
   s.at(500);
   s.vhit('bob', bob);
-  s.game.blast('bob', { x: s.car.x, y: s.car.y + 0.8, z: s.car.z }, 'bazooka');
-  assert.equal(s.hp(), CAR_HP, 'a shooter on the school grounds');
-  // A burning car driven onto them stops burning there.
+  assert.ok(s.hp() < CAR_HP, 'a shooter on the school grounds');
+  // A burning car driven onto them burns on.
   Object.assign(ann.state, { x: 470, z: -740, yaw: 0 });
+  Object.assign(s.car, { x: 470, z: -760 });
   while (s.stage() !== STAGE.fire) s.volley('ann', ann, 1);
   Object.assign(s.car, { x: 470, z: -815 });
   s.game.vehicleDamage.tick(s.now());
   const left = s.hp();
-  s.ticks(5000);
-  assert.equal(s.hp(), left, 'no burning on the school grounds');
+  s.ticks(2000);
+  assert.ok(s.hp() < left, 'it burns there too');
 });
 
 test('a destroyed car\'s rider goes down only when a hit on them could have counted: else out alive', () => {

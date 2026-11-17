@@ -981,6 +981,8 @@ const vehicleWear = new VehicleWear(effects, (k, id) => {
   return h ? { group: h.group, x: h.s.x, y: h.s.y, z: h.s.z, yaw: h.s.yaw, riders: [...h.seats], setGone: (on) => (h.taken = on) } : null;
 }, document.getElementById('hud')!);
 vehicleWear.live = () => net.connected && teamMatch(games.view); // the server's own rule (modes.teamMatch)
+/** No shooting here (the school grounds, shared/zones.mjs), but in a team match together (server: Game.fightCalm). */
+const schoolCalm = (x: number, z: number): boolean => !!noShoot(x, z) && !(net.connected && teamMatch(games.view));
 vehicleWear.friendly = (name) => name === me?.username || games.friend(name);
 vehicleWear.send = (msg) => net.send(msg);
 vehicleWear.onHit = () => combat.hitMarker(false);
@@ -3822,7 +3824,7 @@ renderer.setAnimationLoop((now: number) => {
     // A football within reach (world/football.ts): Use kicks it where you look, harder on the run; a click too where it
     // doesn't shoot (Explore, the school grounds). Before the cars and horses; a door you look at goes first.
     const ball = inCar || onHorse || tagWho || downed || target || dead || player.flying || player.chute !== null ? null : football.near(player.x, player.feet, player.z);
-    if (ball && (frame.usePressed || ((!action || !!noShoot(player.x, player.z)) && frame.clickPressed))) {
+    if (ball && (frame.usePressed || ((!action || schoolCalm(player.x, player.z)) && frame.clickPressed))) {
       football.kick(ball, player.yaw, player.pitch, me?.username ?? '', net.connected ? (msg) => net.send(msg) : null);
       frame.usePressed = frame.clickPressed = false;
     }
@@ -3917,9 +3919,9 @@ renderer.setAnimationLoop((now: number) => {
       weapon.rest = resting ? 0.6 : 1;
       weapon.spreadMul = player.crouching ? 0.6 : player.flying || player.feet > player.ground.y + 0.05 ? 2 : frame.sprint && moving ? 1.8 : moving ? (weapon.current === 'rifle' ? 1.1 : weapon.current === 'sniper' ? 1.8 : 1.25) : 1;
     }
-    // The school grounds: no shooting or throwing (shared/zones.mjs; the server refuses too). Said on
-    // the way in and whenever you try.
-    const school = action && !!noShoot(player.x, player.z);
+    // The school grounds: no shooting or throwing (shared/zones.mjs; the server refuses too), but in a team match. Said
+    // on the way in and whenever you try.
+    const school = action && schoolCalm(player.x, player.z);
     if (school && !wasCalm) calmHint = 4;
     if (school && (frame.clickPressed || frame.throwPressed)) calmHint = 2;
     wasCalm = school;
@@ -4024,7 +4026,7 @@ renderer.setAnimationLoop((now: number) => {
     else if (nearBoard) prompt = t('prompt.board', { use });
     else if (player.towerHint && !inCar && !onHorse) prompt = towerPrompt(player.towerHint, mode); // the play tower's ladder
     if (helis.aboard || nearHeli) prompt = helis.line(mode, nearHeli, heliWhy); // the helicopter: in it what to do, beside it how to get in
-    if (ball && !tagWho && !driving && !riding) prompt = t('prompt.kick', { key: key(action && !noShoot(player.x, player.z) ? 'use' : 'click', mode), run: key('sprint', mode) });
+    if (ball && !tagWho && !driving && !riding) prompt = t('prompt.kick', { key: key(action && !schoolCalm(player.x, player.z) ? 'use' : 'click', mode), run: key('sprint', mode) });
     if (stallAim) prompt = stallAim === 'shut' ? t('srv.zStallShut') : stallChip.line(stallAim, mode);
     if (downed) prompt = helping?.start ? t('prompt.reviving', { name: downed }) : t('prompt.revive', { use, name: downed });
     hud.setRing(helping ? (helping.start ? (now - helping.start) / helping.ms : 0) : null);

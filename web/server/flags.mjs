@@ -30,7 +30,6 @@
 import { readFileSync } from 'node:fs';
 import { loadBounds } from '../shared/bounds.mjs';
 import { homeAt } from '../shared/homes.mjs';
-import { noShoot } from '../shared/zones.mjs';
 import { STAGE } from './vehicleDamage.mjs';
 import { FlagBazooka } from './flagBazooka.mjs';
 import { FIELDS, FLAG_COLORS, FLAG_TEAMS, fieldEdge, fieldOf } from '../shared/flagFields.mjs';
@@ -63,8 +62,12 @@ export const STAND_KEEP = 14;
 export const STAND_LOW = 8;
 
 const other = (team) => (team === 'blue' ? 'red' : 'blue');
-/** 'zone' in a place nobody fights in (shared/zones.mjs), 'home' inside a private home (shared/homes.mjs), else null. */
-const safeAt = (x, y, z) => (noShoot(x, z) ? 'zone' : homeAt(x, z, y) ? 'home' : null);
+/**
+ * 'home' inside a private home (shared/homes.mjs), else null. The school grounds are no hiding place in this game: it is
+ * a team match, and they are open to its fight there (Yoshi, 17 Nov 2026: "School zone ok to shoot in team v team"), so
+ * the carrier keeps the flag on them and a flag dropped there lies there.
+ */
+const safeAt = (x, y, z) => (homeAt(x, z, y) ? 'home' : null);
 const round = (v) => Math.round(v * 100) / 100;
 
 export class FlagGame {
@@ -149,7 +152,7 @@ export class FlagGame {
         events.push(this.drop(team, now));
         continue;
       }
-      // Into a place nobody fights in (the school grounds) or a private home: no hiding with it. Home at once.
+      // Into a private home: no hiding with it. Home at once.
       const safe = safeAt(st.x, st.y, st.z);
       if (safe) {
         const name = f.by;
@@ -239,7 +242,7 @@ export class FlagGame {
   drop(team, now) {
     const f = this.flags[team];
     const name = f.by;
-    // Never left lying where nobody fights or inside a private home (pages that may not see in would be told where).
+    // Never left lying inside a private home (pages that may not see in would be told where).
     const safe = safeAt(f.x, f.y, f.z);
     if (safe) {
       this.flags[team] = this.homeFlag(team);
