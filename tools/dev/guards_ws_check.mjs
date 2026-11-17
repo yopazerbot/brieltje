@@ -81,6 +81,11 @@ const run = Math.random().toString(36).slice(2, 6);
 const g1 = await guest(`ga${run}`);
 const g2 = await guest(`gb${run}`);
 ok('two guests and the admin are in', !!g1.of('welcome').length && !!g2.of('welcome').length && !!admin.of('welcome').length);
+// The teams are the host's alone: the two guests on opposite teams by the host page's own ops (a random deal could put
+// both on one team, and leave a base without a visitor).
+await act({ op: 'teams', count: 2 });
+await act({ op: 'move', name: g1.name, team: 0 });
+await act({ op: 'move', name: g2.name, team: 1 });
 
 // Only the admin, only sound values.
 const asGuest = await call('POST', '/api/host', { op: 'guards', team: 'blue', count: 6, skill: 'hard' }, guestCookie);
@@ -158,6 +163,7 @@ for (const field of ['compact', 'village']) {
 await act({ op: 'guards', team: 'blue', count: 0, skill: 'normal' });
 await sleep(250);
 await act({ op: 'guards', team: 'red', count: 0, skill: 'normal' });
+await act({ op: 'teams', count: 0 });
 for (const c of [admin, g1, g2]) c.ws.close();
 await sleep(300);
 console.log(failed ? `${failed} FAILED` : 'all ok');
