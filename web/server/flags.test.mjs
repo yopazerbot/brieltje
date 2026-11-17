@@ -659,6 +659,39 @@ test('a reconnecting player keeps their team', () => {
   assert.equal(s.game.modes.state.teams[r], 'red');
 });
 
+test('the host moves a player during the game: at once, the flag and the bazooka dropped, at the new base, protected, in the new colour', () => {
+  const s = four();
+  const [r] = s.red;
+  const h = s.game.host;
+  // The red player takes blue's flag and red's bazooka is theirs.
+  s.onStand(r, 'blue');
+  s.tick();
+  assert.equal(s.flag().carrying(r), 'blue');
+  const rack = s.flag().arms.racks.red;
+  Object.assign(rack, { at: 'held', by: r, left: 2, until: 0, next: s.now() + 9000 });
+  s.game.players.get(r).weapons.add('bazooka');
+  const st = s.game.players.get(r).state;
+  const was = { x: st.x, z: st.z };
+  assert.deepEqual(h.act('host', { op: 'move', name: r, team: 0 }), { ok: true });
+  assert.equal(s.game.modes.state.teams[r], 'blue', 'on blue at once');
+  assert.equal(s.flag().carrying(r), null, 'the flag left their hands');
+  assert.notEqual(s.flag().flags.blue.at, 'carried');
+  assert.equal(rack.at, 'rack', 'the launcher back on the red rack at once');
+  assert.equal(rack.next, undefined, 'its reload clock gone with it');
+  assert.equal(s.game.players.get(r).weapons.has('bazooka'), false);
+  const [bx, bz] = s.stand('blue');
+  assert.ok(Math.hypot(st.x - bx, st.z - bz) < 30 && Math.hypot(st.x - was.x, st.z - was.z) > 1, 'at the blue base');
+  assert.ok(s.game.players.get(r).protectedUntil > s.now(), 'protected');
+  const roster = s.out.filter((m) => m.t === 'colors').at(-1).list;
+  assert.equal(roster.find((p) => p.name === r)?.color, s.game.modes.teamColor('blue'), 'every page told the new colour');
+  // Forged values: refused, nothing changes.
+  for (const b of [{ op: 'move', name: r, team: 2 }, { op: 'move', name: r, team: -1 }, { op: 'move', name: r, team: '1' }, { op: 'move', name: 'nobody', team: 1 }, { op: 'move', name: r, team: 0.5 }]) {
+    s.at(200);
+    assert.ok(h.act('host', b).error, JSON.stringify(b));
+  }
+  assert.equal(s.game.modes.state.teams[r], 'blue');
+});
+
 test('taking or returning a flag ends spawn protection, as a first shot does', () => {
   const s = four();
   const [b] = s.blue;
@@ -681,6 +714,85 @@ test('taking or returning a flag ends spawn protection, as a first shot does', (
   s.tick();
   assert.equal(s.flag().flags.blue.at, 'home');
   assert.equal(B.protectedUntil, 0, 'returned: protected no longer');
+});
+
+test('the host swaps the sides: flags home, launchers on their racks, bases, racks, start places, vehicles and helicopters traded; scores and clock carry on', () => {
+  for (const field of ['compact', 'village']) {
+    const s = four(field);
+    const h = s.game.host;
+    const [b] = s.blue;
+    const [r] = s.red;
+    s.game.rules.heli = true;
+    // Red carries blue's flag, blue holds its launcher, a red player sits in red's helicopter; a capture already scored.
+    s.flag().score.red = 2;
+    s.flag().tags.blue = 3;
+    const until = s.game.modes.state.until;
+    s.onStand(r, 'blue');
+    s.tick();
+    assert.equal(s.flag().carrying(r), 'blue');
+    const rack = s.flag().arms.racks.blue;
+    Object.assign(rack, { at: 'held', by: b, left: 1, until: 0, next: s.now() + 5000 });
+    const house = s.game.helis.machines.get('house');
+    const [r2] = s.red.filter((n) => n !== r);
+    s.at(20_000);
+    s.put(r2, house.x + 1.4, house.z, house.y);
+    s.msg(r2, { t: 'heli', op: 'in', id: 'house' });
+    assert.equal(s.game.helis.of(r2), house);
+    s.out.length = 0;
+    assert.deepEqual(h.act('host', { op: 'swap' }), { ok: true });
+    const f = s.flag();
+    assert.equal(f.swapped, true);
+    assert.deepEqual([f.flags.blue.at, f.flags.red.at], ['home', 'home'], 'both flags home');
+    assert.deepEqual([f.flags.blue.x, f.flags.blue.z], [s.f.bases.red.stand[0], s.f.bases.red.stand[1]], 'blue\'s flag on the stand at red\'s old base');
+    assert.equal(rack.at, 'rack', 'the launcher back on its rack at once');
+    assert.equal(rack.next, undefined, 'its reload clock gone with it');
+    assert.deepEqual(f.arms.spot('blue'), s.f.bases.red.rack, 'blue\'s rack at red\'s old base');
+    assert.equal(s.game.helis.of(r2), null, 'put out of the helicopter');
+    assert.equal(f.owner('heli', 'house'), 'blue', 'the machine at red\'s old base is blue\'s now');
+    assert.equal(f.owner('heli', 'church'), 'red');
+    for (const n of s.blue) {
+      const st = s.game.players.get(n).state;
+      const [x, z] = s.f.bases.red.stand;
+      assert.ok(Math.hypot(st.x - x, st.z - z) < 25, `${field}: ${n} at blue's new base`);
+      assert.ok(s.game.players.get(n).protectedUntil - s.now() === SAFE_MS, 'protected');
+    }
+    assert.equal(f.score.red, 2, 'the score carries on');
+    assert.equal(f.tags.blue, 3);
+    assert.equal(s.game.modes.state.until, until, 'the clock carries on');
+    assert.ok(s.out.some((m) => m.t === 'flag' && m.ev === 'swapped'), 'every page told: a line and a sound');
+    const view = s.game.modes.view().flag;
+    assert.equal(view.swapped, true, 'part of the game\'s view: a page joining later sees it');
+    if (field === 'village') {
+      const car = s.game.cars.fb1;
+      assert.equal(car.kind, 'modelY-red', 'the cars at the church are red\'s now, in red');
+      assert.equal(f.owner('car', 'fb1'), 'red');
+    }
+    // A capture at blue's new stand counts for blue.
+    s.onStand(b, 'blue'); // the church's stand
+    s.tick();
+    assert.equal(f.carrying(b), 'red', 'red\'s flag stands at the church now');
+    // Again within 10 s: refused; after it, back as it was.
+    s.at(2000);
+    assert.equal(h.act('host', { op: 'swap' }).code, 'tooFast');
+    s.at(10_000);
+    assert.deepEqual(h.act('host', { op: 'swap' }), { ok: true });
+    assert.equal(f.swapped, false);
+    // Never automatic: the clock running out, sudden death, the end, none swap.
+    const s2 = four(field, { minutes: 1 });
+    for (let i = 0; i < 20; i++) s2.tick(5000);
+    assert.equal(s2.flag().swapped, false);
+  }
+});
+
+test('swap: only while Steal the flag is played', () => {
+  const s = setup();
+  for (const n of ['ann', 'bob', 'cid', 'dee']) s.join(n);
+  assert.equal(s.game.host.act('host', { op: 'swap' }).code, 'noFlagGame', 'free play');
+  s.game.modes.start('teams', 'admin');
+  assert.equal(s.game.host.act('host', { op: 'swap' }).code, 'noFlagGame', 'the teams game');
+  s.game.modes.start('flag', 'admin', 'compact');
+  s.game.modes.finish('over', 'flagDraw', { blue: 0, red: 0, a: 0, b: 0 });
+  assert.equal(s.game.host.act('host', { op: 'swap' }).code, 'noFlagGame', 'its result showing');
 });
 
 test('the field\'s vehicles take no damage from their own team, empty or not; the other team always may', () => {

@@ -34,7 +34,7 @@ export interface FlagGameView {
   racks?: Record<FlagTeam, { at: 'rack' | 'out'; ms?: number }>;
 }
 export interface FlagEvent {
-  ev: 'taken' | 'dropped' | 'returned' | 'captured' | 'safe';
+  ev: 'taken' | 'dropped' | 'returned' | 'captured' | 'safe' | 'swapped';
   /** 'safe': carried where nobody fights ('zone') or into a private home ('home'), so it went home */
   why?: 'zone' | 'home';
   /** The flag's team */
@@ -146,6 +146,7 @@ export class FlagHud {
   /** An event from the server: its line for a few seconds and its sound. `mine`: your team, for which sound. */
   event(e: FlagEvent, me: string, mine: FlagTeam | null): void {
     if (!TEAMS.includes(e.team)) return;
+    if (e.ev === 'swapped') return this.swapped();
     const flag = t(`flag.of.${e.team}`);
     const you = e.name === me;
     const text = e.ev === 'taken' ? (you ? t('flag.takenYou', { flag }) : t('flag.taken', { name: e.name, flag }))
@@ -189,6 +190,34 @@ export class FlagHud {
       o.connect(g).connect(out);
       o.start(t0 + at);
       o.stop(t0 + at + len + 0.03);
+    }
+  }
+
+  /**
+   * The host swapped the sides (server/flags.mjs swap): one short line on every screen and a sound made in code, two
+   * sweeps crossing (one up, one down), as the bases trade.
+   */
+  private swapped(): void {
+    this.line.textContent = t('flag.swapped');
+    this.line.style.setProperty('--team', '#ffffff');
+    this.lineUntil = performance.now() + LINE_MS;
+    this.line.classList.add('show');
+    const ctx = sound.context();
+    const out = sound.out();
+    if (!ctx || !out) return;
+    const t0 = ctx.currentTime;
+    for (const [from, to] of [[392, 784], [784, 392]] as const) {
+      const o = ctx.createOscillator();
+      o.type = 'triangle';
+      o.frequency.setValueAtTime(from, t0);
+      o.frequency.exponentialRampToValueAtTime(to, t0 + 0.45);
+      const g = ctx.createGain();
+      g.gain.setValueAtTime(0.0001, t0);
+      g.gain.exponentialRampToValueAtTime(0.14, t0 + 0.03);
+      g.gain.exponentialRampToValueAtTime(0.0001, t0 + 0.5);
+      o.connect(g).connect(out);
+      o.start(t0);
+      o.stop(t0 + 0.55);
     }
   }
 

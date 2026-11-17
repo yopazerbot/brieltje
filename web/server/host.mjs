@@ -346,6 +346,8 @@ export class Host {
         g.hub?.duel?.stop(by); // the Zombies duel: both rooms at once
         g.modes.start('free', by);
         return { ok: true };
+      case 'swap': // Steal the flag's sides, only at the host's request (server/modes.mjs swapSides: its game, its clock)
+        return g.modes.swapSides(now);
       case 'rewind':
         this.nextIndex = Math.max(0, Math.min(this.programme.length, int(b.index, 0, 20) ?? 0));
         return { ok: true };
@@ -422,6 +424,7 @@ export class Host {
       for (const n of moved) {
         const ev = s.f.release(n, Date.now());
         if (ev) this.game.modes.flagEvents([ev]);
+        s.f.arms.rack(n); // a launcher in their hands back on its rack at once
         s.teams[n] = this.teams[n] === 0 ? 'blue' : 'red';
       }
       this.game.teamsChanged(moved);

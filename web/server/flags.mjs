@@ -5,7 +5,7 @@
 //
 // - Blue against red: the host's two evening teams when there are two (server/host.mjs), else everyone dealt evenly at
 //   random (and that deal becomes the host's). Only the host moves a player (Yoshi, 17 Nov 2026: "team switches should
-//   only be done by the admin").
+//   only be done by the admin"), and only the host swaps the sides (swap).
 // - Each team's flag stands on its stand at its base. Walk into the other team's flag to take it; bring it to your own
 //   stand to score, but only while your own flag is home.
 // - The carrier may drive or ride a bike; no portal, no trip from the chat, no helicopter seat (game.mjs asks
@@ -25,9 +25,10 @@
 // - teleporting with the flag: a carrier is refused portals, trips from the chat and helicopter seats (game.mjs), and
 //   any move the server makes (its `warp` counter: a respawn, a gathering, the host's bring, being put out of a home)
 //   drops the flag where the carrier stood before it;
-// - team switching to score (privilege escalation): no player switches team (Modes.choose refuses every ask), the
-//   host's move is a fresh start at the new base (the flag drops first), and a capture counts for the carrier's team as
-//   it is at that tick, only with that team's own flag home;
+// - team switching to score, and swapping sides (privilege escalation): no player switches team (Modes.choose refuses
+//   every ask), the host's move is a fresh start at the new base (the flag and the launcher drop first), the host's
+//   swap is checked there (admin only, this game played, SWAP_MS), and a capture counts for the carrier's team as it is
+//   at that tick, only with that team's own flag home;
 // - protected touches: taking or returning a flag ends spawn protection, so nobody carries one protected.
 // Nothing here is stored or logged.
 
@@ -63,6 +64,8 @@ export const CAPTURE = 2.2;
 export const CAPTURE_CAR = 4.5;
 /** m in height between a player's feet and a flag's foot for a touch or a capture. */
 export const HIGH = 2.2;
+/** ms at least between two swaps of the sides (the host's, never automatic: swap). */
+export const SWAP_MS = 10_000;
 /** m across from a stand and m over the ground: a helicopter nearer and lower is sent back to its spot (keepStandsFree). */
 export const STAND_KEEP = 14;
 export const STAND_LOW = 8;
@@ -97,6 +100,7 @@ export class FlagGame {
     this.vehicles = { cars: [], bikes: [], helis: [], off: [] };
     /** The sides swapped (the host's `swap`): blue plays from red's base and red from blue's. */
     this.swapped = false;
+    this.swapAt = -Infinity;
     /** Each team's bazooka on its rack (server/flagBazooka.mjs) */
     this.arms = new FlagBazooka(game, this);
   }
@@ -429,7 +433,31 @@ export class FlagGame {
     this.vehicles = { cars: [], bikes: [], helis: [], off: [] };
   }
 
-}
+  // ------------------------------------------------------------------ swapping sides
+
+  /**
+   * The host swaps the sides (server/host.mjs `swap`; Yoshi, 17 Nov 2026: "Swapping sides only at request of the
+   * admin"): never automatic, only while the game is played (Modes.swapSides), at most once in SWAP_MS. Both flags home;
+   * every launcher back on its rack; blue and red trade bases, stands, racks, start places, vehicles and helicopters
+   * (whoever sits in one is put out first, every machine whole on its spot at the base, the cars in the colour of the
+   * team now there); everyone at their team's new base, protected for SAFE_MS (game.mjs teamsChanged, respawn). The
+   * scores, the tags and the clock carry on. Returns the event for every page, or { error, code }.
+   */
+  swap(now) {
+    if (now - this.swapAt < SWAP_MS) return { error: 'Wait a few seconds before swapping again', code: 'tooFast' };
+    const g = this.game;
+    this.swapAt = now;
+    this.swapped = !this.swapped;
+    for (const t of FLAG_TEAMS) this.flags[t] = this.homeFlag(t);
+    this.arms.rack();
+    // The field's vehicles stay at their bases, which change hands: every seat emptied, every machine back on its spot.
+    for (const heli of this.vehicles.helis) {
+      const h = g.helis?.machines.get(heli.id);
+      if (!h) continue;
+      for (const n of h.seats) if (n) g.helis.putOut(n, now);
+      this.whole(h);
+      g.helis.park(h, now);
+    }
     const v = this.field.vehicles;
     for (const id of this.vehicles.cars) {
       const c = g.cars[id];

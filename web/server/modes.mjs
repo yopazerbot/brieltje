@@ -140,6 +140,21 @@ export class Modes {
     if (send) this.send();
   }
 
+  /**
+   * The host swaps the sides of Steal the flag being played (server/host.mjs `swap`, server/flags.mjs swap): only then,
+   * at most once in SWAP_MS, never by itself. Every page gets a short line and a sound, and the game's view with the
+   * swapped bases. { ok } or { error, code }.
+   */
+  swapSides(now = Date.now()) {
+    const s = this.state;
+    if (s.kind !== 'flag' || s.phase !== 'playing') return { error: 'Only while Steal the flag is played', code: 'noFlagGame' };
+    const ev = s.f.swap(now);
+    if (ev.error) return ev;
+    this.flagEvents([ev]);
+    this.send();
+    return { ok: true };
+  }
+
   /** The look of the game being played (see LOOKS), or null: the house rule. */
   get look() {
     return this.active ? this.state.look ?? null : null;

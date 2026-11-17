@@ -62,6 +62,23 @@ export class FlagBazooka {
     return FLAG_TEAMS.some((t) => this.racks[t].at === 'held' && this.racks[t].by === name);
   }
 
+  /**
+   * Every launcher held (`name` given: only the one `name` holds) back on its rack at once, its reload clock gone with
+   * it, out of the holder's hands: the host moved them to the other team, or swapped the sides (server/flags.mjs swap).
+   */
+  rack(name = null) {
+    for (const team of FLAG_TEAMS) {
+      const r = this.racks[team];
+      if (r.at !== 'held' || (name !== null && r.by !== name)) continue;
+      const by = r.by;
+      const p = this.game.players.get(by);
+      Object.assign(r, { at: 'rack', by: null, left: 0, until: 0 });
+      delete r.next; // the launcher's own reload clock, if it keeps one
+      this.dirty = true;
+      if (p) this.arm(by, p, false);
+    }
+  }
+
   /** The launcher of `team` is away from its holder: back on the rack `ms` from now. */
   away(team, now, ms) {
     Object.assign(this.racks[team], { at: 'away', by: null, left: 0, until: now + ms });
