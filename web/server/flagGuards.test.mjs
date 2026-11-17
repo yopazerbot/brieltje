@@ -423,7 +423,12 @@ test('a guard shoots an opponent\'s car within reach through the vehicles\' own 
   s.run(SAFE_MS + 100);
   const g = s.game.players.get(guardName('blue', 1));
   g.walk.wait = Infinity;
-  const car = s.game.cars.fb1;
+  // Red's own car (a team's own car takes no damage from that team: server/vehicleDamage.mjs mayDamage), driven to
+  // where blue's first one stands, by the blue guard's round.
+  const car = s.game.cars.fr1;
+  const at = s.game.cars.fb1;
+  Object.assign(car, { x: at.x, y: at.y, z: at.z, yaw: at.yaw });
+  Object.assign(at, { x: at.x + 30 });
   const p = s.game.players.get(s.red);
   // The guard 8 m from the car, where it sees its middle.
   const nav = s.guards.rounds.blue.nav;
@@ -440,7 +445,7 @@ test('a guard shoots an opponent\'s car within reach through the vehicles\' own 
   Object.assign(p.state, { x: car.x, y: car.y, z: car.z, armed: true });
   g.state.yaw = Math.atan2(-(car.x - spot.x), -(car.z - spot.z)); // looking its way
   s.run(3000);
-  const r = s.game.vehicleDamage.recs.get('car:fb1');
+  const r = s.game.vehicleDamage.recs.get('car:fr1');
   assert.ok(r && r.hp < r.max, 'the car took damage');
   assert.equal(p.alive, true, 'its driver out of a bullet\'s reach');
   // A teammate's car: never.
@@ -540,25 +545,24 @@ for (const field of ['compact', 'village']) {
         for (const h of low) assert.ok(Math.hypot(p.x - h.x, p.z - h.z) >= 7.5, `off the parked helicopter ${h.id}`);
       }
     }
-    // The bases swapped mid-game (the game's own baseOf): the rounds made again round the new stands, the guards there.
+    // The host swaps the sides (FlagGame.swap: its baseOf answers the new bases, and it calls moved()): the rounds made
+    // again round the new stands, the guards there, each round with waypoints enough to walk.
     const f = g.modes.state.f;
-    const swapped = { blue: s.f.bases.red, red: s.f.bases.blue };
-    f.baseOf = (t) => swapped[t];
-    s.tick();
-    for (const [n, q] of s.guards.guards) {
-      const [sx, sz] = swapped[q.guard.team].stand;
-      assert.ok(Math.hypot(q.state.x - sx, q.state.z - sz) <= RING, `${n} on its new round`);
+    for (const k of [0, 1]) {
+      assert.ok(!f.swap(s.now() + k * 20_000).error);
+      s.tick();
+      for (const team of ['blue', 'red']) {
+        const base = f.baseOf(team);
+        const r = s.guards.rounds[team];
+        assert.deepEqual(r.stand, base.stand.slice(0, 2), `${team}: round its stand as the game has it now`);
+        assert.ok(r.points.length >= 5 && r.links.every((l) => l.length), `${team}: ${r.points.length} waypoints round the stand, each joined`);
+        for (const p of r.points) assert.ok(Math.hypot(p.x - base.stand[0], p.z - base.stand[1]) <= RING);
+      }
+      for (const [n, q] of s.guards.guards) {
+        const [sx, sz] = f.baseOf(q.guard.team).stand;
+        assert.ok(Math.hypot(q.state.x - sx, q.state.z - sz) <= RING, `${n} on its new round`);
+      }
     }
-    // Stands moved (as a later change of shared/flagFields.mjs will): rounds round them, on open ground, by moved().
-    const moved = { compact: { blue: [528.1, -765.4], red: [755.95, -722.2] }, village: { blue: [528.1, -765.4], red: [641.5, 946.5] } }[field];
-    f.baseOf = (t) => ({ ...s.f.bases[t], stand: [...moved[t], s.f.bases[t].stand[2]] });
-    s.guards.moved(s.now());
-    for (const team of ['blue', 'red']) {
-      const r = s.guards.rounds[team];
-      assert.ok(r.points.length >= 4 && r.links.every((l) => l.length), `${team}: ${r.points.length} waypoints round the moved stand, each joined`);
-      for (const p of r.points) assert.ok(Math.hypot(p.x - moved[team][0], p.z - moved[team][1]) <= RING);
-    }
-    for (const [n, q] of s.guards.guards) assert.ok(Math.hypot(q.state.x - moved[q.guard.team][0], q.state.z - moved[q.guard.team][1]) <= RING, n);
   });
 }
 

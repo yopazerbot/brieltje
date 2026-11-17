@@ -106,7 +106,7 @@ export class FlagGame {
   }
 
   /** The base `team` plays from now: its own, or with the sides swapped the other team's (shared/flagFields.mjs baseOf). */
-  base(team) {
+  baseOf(team) {
     return baseOf(this.field, team, this.swapped);
   }
 
@@ -129,7 +129,7 @@ export class FlagGame {
   }
 
   homeFlag(team) {
-    const s = this.base(team).stand;
+    const s = this.baseOf(team).stand;
     return { at: 'home', by: null, x: s[0], y: s[2], z: s[1], since: 0, warp: 0 };
   }
 
@@ -146,7 +146,7 @@ export class FlagGame {
   baseSpot(name) {
     const team = this.teams[name];
     if (!team) return null;
-    const base = this.base(team);
+    const base = this.baseOf(team);
     const others = [...this.game.players].filter(([n, o]) => n !== name && o.alive && o.state).map(([, o]) => o.state);
     const ranked = base.spawns.map(([x, z, y]) => ({ x, z, y, d: others.length ? Math.min(...others.map((o) => Math.hypot(o.x - x, o.z - z))) : Math.random() }))
       .sort((a, b) => b.d - a.d);
@@ -242,7 +242,7 @@ export class FlagGame {
       const p = g.players.get(f.by);
       const mine = this.teams[f.by];
       if (!p?.alive || !p.state || mine !== other(team) || this.flags[mine].at !== 'home') continue;
-      const s = this.base(mine).stand;
+      const s = this.baseOf(mine).stand;
       const reach = g.carOf?.(f.by) ? CAPTURE_CAR : CAPTURE;
       if (!this.near(p.state, s[0], s[2], s[1], reach)) continue;
       this.score[mine]++;
@@ -480,7 +480,8 @@ export class FlagGame {
       g.bikeAt[id] = 0;
       g.broadcastThing({ t: 'bike', bike: k }, 'bike', k);
     }
-    g.teamsChanged([...g.players.keys()]); // everyone at their base, out of every seat, protected (game.mjs respawn)
+    g.teamsChanged([...g.players].filter(([, p]) => !p.guard).map(([n]) => n)); // everyone at their base, out of every seat, protected (game.mjs respawn)
+    g.flagGuards?.moved?.(now); // the guards' rounds round the stands as they are now (server/flagGuards.mjs)
     return { ev: 'swapped', team: 'blue', name: '' };
   }
 }
