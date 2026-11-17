@@ -354,6 +354,7 @@ file's opening comment; run it again after adding, moving or removing a module.
 - `web/server/room-respawn.test.mjs`: Back up in a Zombies room (server/rooms.mjs): whoever is down when a game ends, or after any fall there, comes back at the room's place, on the ground,...
 - `web/server/rooms.mjs`: Zombies rooms (Yoshi, 7 Nov 2026): a player with an account opens a room for Zombies at one of the places (shared/arenas.mjs).
 - `web/server/rooms.test.mjs`: Zombies rooms (server/rooms.mjs): who may open one, one each, at most four, a game of their own that changes nothing of the open world, and closed once empty.
+- `web/server/schoolFight.test.mjs`: The school grounds in a team match (Yoshi, 17 Nov 2026: "School zone ok to shoot in team v team"): while the teams game or Steal the flag is played...
 - `web/server/seats.test.mjs`: Split screen (/splitscreen): four seats in one browser, each with a session cookie of its own (server/auth.mjs seatOf).
 - `web/server/socketError.test.mjs`: A message over the socket's size limit (game.mjs: maxPayload) makes the library emit 'error' on that socket.
 - `web/server/stats.mjs`: How popular the game is, for the admin page (web/public/admin/), counted without cookies and without keeping anything about a person.
