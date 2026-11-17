@@ -30,6 +30,8 @@ const ADMIN_WEAPONS = Object.keys(WEAPONS).filter((w) => WEAPONS[w].admin);
 
 /** Rockets in a launcher taken from the rack. */
 export const ROCKETS = 3;
+/** Between two rockets of one launcher: the bazooka's reload, with room for network jitter (as game.mjs rocket). */
+const RELOAD_MS = WEAPONS.bazooka.reload * 800;
 /** ms after its last rocket before a fresh launcher is on the rack. */
 export const FIRED_MS = 45_000;
 /** ms after its holder went down, left or changed team before it is back on the rack. */
@@ -93,15 +95,14 @@ export class FlagBazooka {
       const [x, z, y] = this.spot(team);
       for (const name of names) {
         const p = g.players.get(name);
-        if (teams[name] !== team || !p.state?.armed || !this.flags.canTouch(name, p, now)) continue;
+        if (teams[name] !== team || !p.state?.armed || g.bikeOf?.(name) || !this.flags.canTouch(name, p, now)) continue; // on foot: a flag may be taken from a bike, the launcher not
         const st = p.state;
         if (Math.hypot(st.x - x, st.z - z) > TAKE || Math.abs(st.y - y) > HIGH) continue;
-        Object.assign(r, { at: 'held', by: name, left: ROCKETS, until: 0 });
+        Object.assign(r, { at: 'held', by: name, left: ROCKETS, until: 0, next: 0 });
         this.dirty = true;
-        this.arm(name, p, true);
-        // Their team (its members only: the other team gets no line) hears who has it; the holder how many rockets.
+        // Their team (its members only: the other team gets no line) hears who has it; the holder how many rockets (arm).
         for (const [n, q] of g.players) if (teams[n] === team) g.send(q.ws, { t: 'fbz', ev: 'taken', team, name, n: ROCKETS });
-        g.send(p.ws, { t: 'fbz', ev: 'left', n: ROCKETS });
+        this.arm(name, p, true);
         break;
       }
     }
@@ -118,6 +119,9 @@ export class FlagBazooka {
     if (on) p.weapons.add('bazooka');
     else p.weapons.delete('bazooka');
     this.game.send(p.ws, { t: 'weapons', list: [...p.weapons] });
+    // Back in a holder's hands after a new connection: their page is told the rockets left again.
+    const r = on ? FLAG_TEAMS.map((t) => this.racks[t]).find((k) => k.at === 'held' && k.by === name) : null;
+    if (r) this.game.send(p.ws, { t: 'fbz', ev: 'left', n: r.left });
   }
 
   /**
@@ -130,6 +134,10 @@ export class FlagBazooka {
     const team = this.flags.teams[name];
     const r = team ? this.racks[team] : null;
     if (!r || r.at !== 'held' || r.by !== name || r.left < 1) return false;
+    // The reload is kept with the launcher, not only with the player's connection (game.mjs nextRocket): a holder who
+    // reconnects gets a fresh player record, and would fire all three at once (fire-rate forgery).
+    if (now < (r.next || 0)) return false;
+    r.next = now + RELOAD_MS;
     r.left--;
     this.game.send(p.ws, { t: 'fbz', ev: 'left', n: r.left });
     if (r.left === 0) {

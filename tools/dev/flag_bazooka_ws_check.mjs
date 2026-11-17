@@ -120,7 +120,7 @@ const t0 = Date.now();
 await walk(r2, bx, by, bz);
 await sleep(800);
 console.log(`     red's walk to blue's rack took ${((Date.now() - t0) / 1000).toFixed(0)} s`);
-ok('red at blue\'s rack: refused', !weapons(r2).includes('bazooka') && !r2.of('fbz').length && lastMode(b1)?.flag?.racks?.blue?.at === 'rack');
+ok('red at blue\'s rack: refused', !weapons(r2).includes('bazooka') && !r2.of('fbz').length && lastMode(b1)?.flag?.racks?.blue?.at === 'rack', JSON.stringify([weapons(r2), r2.of('fbz'), lastMode(b1)?.flag?.racks]));
 state(r2, { x: bx + 12, y: by, z: bz }); // out of the way
 await sleep(300);
 
@@ -130,7 +130,7 @@ await sleep(800);
 ok('blue walks into its rack: the launcher', weapons(b1).includes('bazooka') && b1.of('fbz').some((m) => m.ev === 'taken' && m.name === b1.name), JSON.stringify(b1.of('fbz')));
 ok('three rockets', b1.of('fbz').filter((m) => m.ev === 'left').at(-1)?.n === 3);
 ok('their teammate gets the line', b2.of('fbz').some((m) => m.ev === 'taken' && m.name === b1.name && m.team === 'blue'));
-ok('the other team gets none', !r1.of('fbz').length && !r2.of('fbz').length);
+ok('the other team gets none', !r1.of('fbz').length && !r2.of('fbz').length, JSON.stringify([r1.of('fbz'), r2.of('fbz')]));
 ok('the rack is out on every page', lastMode(r1)?.flag?.racks?.blue?.at === 'out');
 // Three rockets, the reload between them; a fourth refused.
 b1.w = 'bazooka';

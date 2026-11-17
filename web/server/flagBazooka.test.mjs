@@ -218,6 +218,44 @@ test('three rockets, the reload between them, then the launcher is gone and a fo
   assert.equal(s.arms().racks.blue.by, b2, 'a fresh one, taken');
 });
 
+test('a holder who reconnects keeps the reload and is told the rockets left: no three rockets at once', () => {
+  const s = game();
+  const [b1] = s.blue;
+  s.take(b1, 'blue');
+  let p = s.game.players.get(b1);
+  s.put(b1, p.state.x + 10, p.state.z, p.state.y);
+  const shoot = () => s.msg(b1, { t: 'rocket', tx: p.state.x + 30, ty: p.state.y, tz: p.state.z });
+  shoot();
+  assert.equal(s.fired(), 1);
+  // A new connection under the same name: a fresh player record, its own reload clock empty.
+  const was = { ...p.state };
+  s.at(200);
+  s.join(b1);
+  p = s.game.players.get(b1);
+  s.tick();
+  assert.equal(p.weapons.has('bazooka'), true, 'still the holder');
+  assert.deepEqual(s.fbz(b1).filter((m) => m.ev === 'left').map((m) => m.n), [2], 'the new page told what is left');
+  s.msg(b1, { t: 'state', ...was, w: 'bazooka', armed: true });
+  shoot();
+  assert.equal(s.fired(), 1, 'the launcher is still reloading');
+  s.at(3000);
+  shoot();
+  assert.equal(s.fired(), 2);
+});
+
+test('take: not from a bike', () => {
+  const s = game();
+  const [b1] = s.blue;
+  const real = s.game.bikeOf;
+  s.game.bikeOf = (n) => (n === b1 ? { id: 'x' } : real.call(s.game, n));
+  s.toRack(b1, 'blue');
+  s.tick();
+  assert.equal(s.arms().racks.blue.at, 'rack');
+  s.game.bikeOf = real;
+  s.tick();
+  assert.equal(s.arms().racks.blue.by, b1);
+});
+
 test('a page that claims the bazooka without holding it, or fires the other team\'s, is refused', () => {
   const s = game();
   const [b1] = s.blue;
