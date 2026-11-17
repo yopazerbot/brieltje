@@ -119,7 +119,7 @@ export class FlagGame {
   /** Whether player `name` (`p`) may touch a flag now: alive, on foot or on a bike, not in a car, a helicopter or a drop. */
   canTouch(name, p, now) {
     const g = this.game;
-    return !!p && p.alive && !!p.state && !g.carOf?.(name) && !g.helis?.of(name) && !g.horseOf?.(name) && !g.dropping?.(p, now) && !p.state.flying;
+    return !!p && !p.guard && p.alive && !!p.state && !g.carOf?.(name) && !g.helis?.of(name) && !g.horseOf?.(name) && !g.dropping?.(p, now) && !p.state.flying;
   }
 
   near(st, x, y, z, reach) {

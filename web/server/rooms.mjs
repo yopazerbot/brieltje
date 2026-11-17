@@ -78,7 +78,7 @@ export class Rooms {
 
   /** Everyone playing together, in the open world and the rooms. */
   count() {
-    return this.games().reduce((n, g) => n + g.players.size, 0);
+    return this.games().reduce((n, g) => n + g.players.size - (g.flagGuards?.size ?? 0), 0); // not Steal the flag's guards (server/flagGuards.mjs)
   }
 
   /** `name` connected to `game`: their connection anywhere else ends (another tab, or the place they came from). */
@@ -175,7 +175,7 @@ export class Rooms {
 
   /** Who plays where, for the admin. */
   roster() {
-    const list = this.main.roster().map((p) => ({ ...p, room: null }));
+    const list = this.main.roster().filter((p) => p.role !== 'guard').map((p) => ({ ...p, room: null })); // the people, not Steal the flag's guards
     for (const r of this.rooms.values()) list.push(...r.game.roster().map((p) => ({ ...p, room: `${r.owner} · ${r.arena.id}` })));
     for (const g of this.duel.games()) list.push(...g.roster().map((p) => ({ ...p, room: `duel ${g.room.duel} · ${g.room.arena.id}` })));
     return list;

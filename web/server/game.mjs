@@ -65,6 +65,7 @@ import { blastPoint } from './grenade.mjs';
 import { HELI_DOWN, HELI_SPEED, Helis } from './helis.mjs';
 import { VehicleDamage } from './vehicleDamage.mjs';
 import { Host } from './host.mjs';
+import { FlagGuards } from './flagGuards.mjs';
 import { monitor } from './monitor.mjs';
 import { words } from './words.mjs';
 import { makeKeet } from '../shared/keet.mjs';
@@ -486,6 +487,7 @@ export class Game {
     this.horseHomes = new Map(); // a parked horse's index: the home it was left in (homeOf)
     this.modes = new Modes(this); // hide and seek, tag, treasure hunt, the teams, Zombies (the admin starts them)
     this.host = room ? null : new Host(this); // the host's controls for a LAN night (server/host.mjs), in the open world
+    this.flagGuards = room ? null : new FlagGuards(this); // the host's guards in Steal the flag (server/flagGuards.mjs)
     // The timed routes and the gnomes, timed and noted by the server from its own positions (server/goals.mjs), in the open world.
     this.goals = room ? null : new GoalTracker({
       ...GOALS, ground: (x, z) => HOUSE.ground + TERRAIN.height(x, z), lineFree: (...a) => SOLIDS.boxFree(...a),
@@ -511,7 +513,7 @@ export class Game {
       // kicked, expired): close those connections within a second.
       setInterval(() => {
         for (const [name, p] of this.players) {
-          if (!this.auth.sessions.has(p.key)) p.ws.close(4002, 'Session ended');
+          if (!p.guard && !this.auth.sessions.has(p.key)) p.ws.close(4002, 'Session ended'); // a guard has no session or socket (server/flagGuards.mjs)
         }
         // A watch view (src/watch.ts) too: only while its session lasts and is still the admin's (a logout, a new
         // admin password, the other admin sessions logged out from the admin page).
@@ -615,7 +617,7 @@ export class Game {
    */
   full(role = 'guest') {
     if (this.room) return this.players.size >= this.room.max; // a room holds its few, the admin included
-    return this.players.size >= (role === 'admin' ? MAX_PLAYERS : this.rules.maxPlayers);
+    return this.players.size - (this.flagGuards?.size ?? 0) >= (role === 'admin' ? MAX_PLAYERS : this.rules.maxPlayers); // guards (server/flagGuards.mjs) take no place
   }
 
   join(ws, session, req, proto = 1) {
@@ -1791,6 +1793,7 @@ export class Game {
   /** `ms`: how long they stay out (server/auth.mjs: ten minutes; the host's kick for the evening, longer). */
   async kick(target, by, ms) {
     const p = this.players.get(target);
+    if (p?.guard) return; // a guard (server/flagGuards.mjs): no session, browser or address; the host page sets how many
     // Memory first, so they are out right away; with the browser, address and cookies of their connection.
     const ended = this.auth.kick(target, p ? { devices: [p.device], addresses: [p.address] } : {}, ms);
     this.auth.log('kick', null, { username: target, detail: `by ${by}${ms ? ' for the evening' : ''}` });
@@ -2633,16 +2636,17 @@ export class Game {
     this.helis.release(targetName, now);
     this.releaseHorse(targetName);
     this.releaseBike(targetName);
-    target.score.deaths++;
-    shooter.score.kills++;
-    shooter.score.points += POINTS.kill + (head ? POINTS.headshot : 0);
+    const real = !target.guard && !shooter.guard; // a tag by or of a flag game's guard counts for nothing (server/flagGuards.mjs)
+    if (real) target.score.deaths++;
+    if (real) shooter.score.kills++;
+    if (real) shooter.score.points += POINTS.kill + (head ? POINTS.headshot : 0);
     target.weapons = loadout(target, !!this.modes.zombies); // dropped what they picked up
     if (tellKill) tellKill({ t: 'kill', killer: name, victim: targetName, head, w });
     else this.broadcastFrom({ t: 'kill', killer: name, victim: targetName, head, w }, this.gate.insideOf(target) ? target : shooter); // not to those it is hidden from
-    this.stats(name, { kills: 1, headshots: head ? 1 : 0 });
-    this.stats(targetName, { deaths: 1 });
+    if (real) this.stats(name, { kills: 1, headshots: head ? 1 : 0 });
+    if (real) this.stats(targetName, { deaths: 1 });
     this.broadcast({ t: 'scores', list: this.scoreList() });
-    this.modes.scored(name, targetName);
+    if (real) this.modes.scored(name, targetName);
     if (shooter.score.kills >= KILL_LIMIT && !this.modes.teamGame) { // in the teams game and Steal the flag the teams' score counts
       this.roundOver = { winner: name, until: now + ROUND_BREAK_MS };
       this.host?.roundWon(name);
@@ -2857,6 +2861,7 @@ export class Game {
       else if (p.drop) this.dropCheck(p, now); // or not coming down
     }
     this.modes.tick(now, TICK_MS);
+    this.flagGuards?.tick(now); // Steal the flag's guards walk, look and shoot (server/flagGuards.mjs)
     this.bikeHits.home(); // a knocked bike left lying goes back to its spot
     this.vehicleDamage.tick(now); // a burning vehicle burns down, a wreck goes and comes back (server/vehicleDamage.mjs)
     this.helis.tick(now); // a game or the rule off empties the helicopters; one left without a pilot goes home (server/helis.mjs)

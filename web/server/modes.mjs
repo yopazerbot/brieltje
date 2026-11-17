@@ -151,7 +151,7 @@ export class Modes {
   smaller() {
     const [a, b] = this.state.kind === 'flag' ? FLAG_TEAMS : ['house', 'bungalow'];
     const n = { [a]: 0, [b]: 0 };
-    for (const t of Object.values(this.here(this.state.teams))) n[t]++;
+    for (const [p, t] of Object.entries(this.here(this.state.teams))) if (!this.game.flagGuards?.has(p)) n[t]++; // the players, not the guards
     return n[b] < n[a] ? b : a;
   }
 
@@ -251,6 +251,7 @@ export class Modes {
    * `look`, see LOOKS (checked again here). A game started otherwise (the menu, another one over it) has no look.
    */
   start(kind, by, place = 'house', opts = {}) {
+    this.game.flagGuards?.clear(); // Steal the flag's guards go with any change of game (server/flagGuards.mjs)
     const now = Date.now();
     const ms = (fixed) => (opts.minutes ? opts.minutes * 60_000 : fixed);
     if (kind === 'free') {
@@ -399,6 +400,7 @@ export class Modes {
 
   /** The game is over: its result (as for `say`) shows in the bar for a while and goes in the chat. */
   finish(result, code, args) {
+    this.game.flagGuards?.clear(); // the guards go before the evening's points are given out (server/flagGuards.mjs)
     const long = this.state.kind === 'zombies'; // the end screen: the wave, everyone's zombies and the best ever
     this.game.host?.gameOver(this.state, code, args); // the evening's scoreboard (server/host.mjs)
     this.state = { ...this.state, phase: 'done', until: Date.now() + (long ? ZOMBIES_DONE_MS : DONE_MS), result, resultCode: code, resultArgs: args };

@@ -180,7 +180,7 @@ export class Host {
   view() {
     const now = Date.now();
     for (const [n, k] of this.knocking) if (now - k.at > KNOCK_MS || this.game.players.has(n)) this.knocking.delete(n);
-    const players = [...this.game.players.entries()].map(([name, p]) => ({
+    const players = [...this.game.players.entries()].filter(([, p]) => !p.guard).map(([name, p]) => ({ // the people (the guards: `guards`)
       name, role: p.role, team: this.teamIdOf(name), muted: this.muted.has(name), alive: p.alive, ping: p.rttAvg === null ? null : Math.round(p.rttAvg),
       points: this.scores[name]?.points ?? 0, kills: p.score.kills, deaths: p.score.deaths,
       inside: !!this.game.gate.insideOf(p), // inside a private home: the hall screen shows a card, never the picture
@@ -193,6 +193,7 @@ export class Host {
       mode: this.game.modes.view(now), board: this.board(), kinds: KINDS, places: [...PLACES],
       duel: this.game.hub?.duel?.view(now) ?? null, // the Zombies duel (server/duel.mjs)
       inDuel: this.inDuel(), // who plays in its rooms: the hall screen follows them there (admin/watch)
+      guards: this.game.flagGuards?.view() ?? null, // Steal the flag's guards, per team (server/flagGuards.mjs)
     };
   }
 
@@ -222,7 +223,7 @@ export class Host {
     this.actions.push(now);
     const op = str(b?.op, 20);
     const name = str(b?.name, 20);
-    const known = (n) => this.game.players.has(n);
+    const known = (n) => this.game.players.has(n) && !this.game.players.get(n).guard; // a guard (server/flagGuards.mjs) is no one to mute, move or kick
     const g = this.game;
     switch (op) {
       case 'lock':
@@ -336,6 +337,8 @@ export class Host {
         this.history = [];
         this.game.goals?.resetTonight();
         return { ok: true };
+      case 'guards': // Steal the flag's guards, a test tool: { team, count, skill }, each checked there (server/flagGuards.mjs set)
+        return g.flagGuards?.set(b, now) ?? { error: 'Out of range', code: 'badValue' };
       default:
         return { error: 'Unknown action', code: 'badOp' };
     }
@@ -380,7 +383,7 @@ export class Host {
   shuffle() {
     this.teams = table();
     if (!this.teamCount) return this.teamsMoved([]);
-    const names = [...this.game.players.entries()].filter(([, p]) => p.role !== 'admin').map(([n]) => n).sort(() => Math.random() - 0.5);
+    const names = [...this.game.players.entries()].filter(([, p]) => p.role !== 'admin' && !p.guard).map(([n]) => n).sort(() => Math.random() - 0.5);
     names.forEach((n, i) => (this.teams[n] = i % this.teamCount));
     this.teamsMoved(names);
   }
