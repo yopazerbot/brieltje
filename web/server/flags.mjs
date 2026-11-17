@@ -13,7 +13,8 @@
 //   base to bring the other team's down (server/flagBazooka.mjs). Down, leaving the game or moved by the server (a respawn, the host bringing them): the flag drops where
 //   they were. A teammate of the carrier picks it up by touch; the flag's own team touching it sends it home at once;
 //   left alone for RETURN_MS it goes home by itself.
-// - Down: back at your own base after BACK_MS, protected for SAFE_MS (ends at your first shot, as always).
+// - Down: back at your own base after BACK_MS, protected for SAFE_MS (ends at your first shot, as always, and when you
+//   take or return a flag).
 // - The clock: the programme's minutes (12 by default). Most captures wins; level, SUDDEN_MS of sudden death where the
 //   next capture wins; still level, most tags; still level, a draw.
 //
@@ -26,7 +27,8 @@
 //   drops the flag where the carrier stood before it;
 // - team switching to score (privilege escalation): no player switches team (Modes.choose refuses every ask), the
 //   host's move is a fresh start at the new base (the flag drops first), and a capture counts for the carrier's team as
-//   it is at that tick, only with that team's own flag home.
+//   it is at that tick, only with that team's own flag home;
+// - protected touches: taking or returning a flag ends spawn protection, so nobody carries one protected.
 // Nothing here is stored or logged.
 
 import { readFileSync } from 'node:fs';
@@ -217,6 +219,7 @@ export class FlagGame {
       if (own.at === 'ground' && this.near(st, own.x, own.y, own.z, TOUCH)) {
         this.flags[mine] = this.homeFlag(mine);
         events.push({ ev: 'returned', team: mine, name });
+        p.protectedUntil = 0; // touching a flag ends your spawn protection, as a first shot does
       }
       // The other team's flag, on its stand or on the ground: yours to carry (one flag a player; the enemy's only).
       // Not straight back by whoever dropped it (logging in again where it fell, with a reconnect's fresh protection).
@@ -224,6 +227,7 @@ export class FlagGame {
       if ((enemy.at === 'home' || enemy.at === 'ground') && !regrab && this.near(st, enemy.x, enemy.y, enemy.z, TOUCH)) {
         Object.assign(enemy, { at: 'carried', by: name, since: now, warp: p.warp, x: round(st.x), y: round(st.y), z: round(st.z) });
         events.push({ ev: 'taken', team: theirs, name });
+        p.protectedUntil = 0; // nobody carries a flag protected
       }
     }
     this.keepStandsFree(now);

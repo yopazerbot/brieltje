@@ -659,6 +659,30 @@ test('a reconnecting player keeps their team', () => {
   assert.equal(s.game.modes.state.teams[r], 'red');
 });
 
+test('taking or returning a flag ends spawn protection, as a first shot does', () => {
+  const s = four();
+  const [b] = s.blue;
+  const [r] = s.red;
+  const R = s.game.players.get(r);
+  R.protectedUntil = s.now() + 60_000;
+  s.onStand(r, 'blue');
+  s.tick();
+  assert.equal(s.flag().carrying(r), 'blue');
+  assert.equal(R.protectedUntil, 0, 'taken: protected no longer');
+  // Down far from its stand: blue's own player, freshly back and protected, returns it by touch.
+  s.put(r, 600, -740, 6);
+  s.tick();
+  s.game.damage(b, s.game.players.get(b), r, R, 500, false, 'rifle', s.now());
+  s.tick();
+  assert.equal(s.flag().flags.blue.at, 'ground');
+  const B = s.game.players.get(b);
+  B.protectedUntil = s.now() + 60_000;
+  s.put(b, 600.4, -740, 6);
+  s.tick();
+  assert.equal(s.flag().flags.blue.at, 'home');
+  assert.equal(B.protectedUntil, 0, 'returned: protected no longer');
+});
+
 test('the field\'s vehicles take no damage from their own team, empty or not; the other team always may', () => {
   const s = four('village');
   const [b] = s.blue;
