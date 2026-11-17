@@ -22,7 +22,7 @@
 //   is what its players scored while on it. Kept in memory: a restart begins a new evening.
 
 import { words } from './words.mjs';
-import { KINDS, LOOKS } from './modes.mjs';
+import { KINDS, LOOKS, shuffled } from './modes.mjs';
 import { ARENAS } from '../shared/arenas.mjs';
 import { DUEL_KINDS, SIDES as DUEL_SIDES } from './duel.mjs';
 import { FIELDS } from '../shared/flagFields.mjs';
@@ -399,12 +399,15 @@ export class Host {
     return { ok: true };
   }
 
-  /** Everyone here on a team, as evenly as can be, in random order (the host not counted). */
+  /** Everyone here on a team, as evenly as can be, in random order, the extra ones on any team (the host not counted). */
   shuffle() {
     this.teams = table();
     if (!this.teamCount) return this.teamsMoved([]);
-    const names = [...this.game.players.entries()].filter(([, p]) => p.role !== 'admin' && !p.guard).map(([n]) => n).sort(() => Math.random() - 0.5);
-    names.forEach((n, i) => (this.teams[n] = i % this.teamCount));
+    // Every order as likely (Fisher-Yates), the first card to a random team: the extra players land on any team, not
+    // always the first (Yoshi, 17 Nov 2026: "Make sure the ctf is fair").
+    const names = shuffled([...this.game.players.entries()].filter(([, p]) => p.role !== 'admin' && !p.guard).map(([n]) => n));
+    const off = Math.floor(Math.random() * this.teamCount);
+    names.forEach((n, i) => (this.teams[n] = (i + off) % this.teamCount));
     this.teamsMoved(names);
   }
 

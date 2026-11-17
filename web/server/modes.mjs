@@ -44,8 +44,8 @@ const OUTSIDE = [[2.2, -0.05, 15.6], [6.5, -0.05, -1.4], [4.5, -0.05, -8], [8.5,
  * or "__proto__" (both fit the name rules) scores like anyone else.
  */
 const byName = (entries = []) => Object.assign(Object.create(null), Object.fromEntries(entries));
-/** `list` in a random order (Fisher-Yates: every order as likely). */
-const shuffled = (list) => {
+/** `list` in a random order (Fisher-Yates: every order as likely). Also the host's shuffle (server/host.mjs). */
+export const shuffled = (list) => {
   const a = [...list];
   for (let i = a.length - 1; i > 0; i--) {
     const j = Math.floor(Math.random() * (i + 1));

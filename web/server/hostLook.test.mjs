@@ -197,3 +197,31 @@ test('teamMatch: only while the teams game is played', () => {
   m.finish('over', 'teamsDraw', { house: 0, bungalow: 0 });
   assert.equal(m.teamMatch, false, 'not once its result shows');
 });
+
+test('the host\'s shuffle: as even as can be, and the extra player lands on either team, not always the first', () => {
+  const extra = [0, 0];
+  for (let i = 0; i < 60; i++) {
+    const s = setup();
+    s.join('admin', 'admin');
+    for (const n of ['ann', 'bob', 'cid']) s.join(n);
+    s.game.host.act('admin', { op: 'teams', count: 2 });
+    const t = s.game.host.teams;
+    const n0 = ['ann', 'bob', 'cid'].filter((n) => t[n] === 0).length;
+    assert.ok(n0 === 1 || n0 === 2, 'two and one');
+    assert.equal('admin' in t, false, 'the host not counted');
+    extra[n0 === 2 ? 0 : 1]++;
+  }
+  assert.ok(extra[0] > 5 && extra[1] > 5, `the extra player on each team: ${extra}`);
+  // Four teams, five players: the one extra on any of them.
+  const seen = new Set();
+  for (let i = 0; i < 80; i++) {
+    const s = setup();
+    for (const n of ['ann', 'bob', 'cid', 'dee', 'eve']) s.join(n);
+    s.game.host.act('admin', { op: 'teams', count: 4 });
+    const counts = [0, 0, 0, 0];
+    for (const v of Object.values(s.game.host.teams)) counts[v]++;
+    assert.deepEqual([...counts].sort(), [1, 1, 1, 2]);
+    seen.add(counts.indexOf(2));
+  }
+  assert.equal(seen.size, 4, 'each team gets the extra one at times');
+});
