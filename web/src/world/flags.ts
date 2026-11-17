@@ -39,7 +39,7 @@ function fadeTexture(): THREE.Texture {
   return new THREE.CanvasTexture(c);
 }
 
-/** The cloth's face: the team's colour with a white disc and a thin white edge at the staff. */
+/** The cloth's face: the team's colour with a white ring in it, a white edge all round and a wider one at the staff. */
 function clothTexture(color: string): THREE.Texture {
   const c = document.createElement('canvas');
   c.width = 128;
@@ -49,6 +49,7 @@ function clothTexture(color: string): THREE.Texture {
   g.fillRect(0, 0, 128, 84); // the white edge round it, 4 px of 84 (about 4 cm)
   g.fillStyle = color;
   g.fillRect(8, 4, 120 - 4, 84 - 8);
+  g.fillStyle = '#fbf6ea'; // the white disc
   g.beginPath();
   g.arc(68, 42, 22, 0, Math.PI * 2);
   g.fill();
