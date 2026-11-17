@@ -22,7 +22,7 @@ import { Games, type ModeView } from './ui/games';
 import { FlagHud } from './ui/flagHud';
 import { FlagWorld } from './world/flags';
 import { FlagRacks } from './world/flagRack';
-import { fieldEdge, fieldOf } from '../shared/flagFields.mjs';
+import { fieldEdge, fieldOf, vehicleTeam } from '../shared/flagFields.mjs';
 import { CLOWN_DEFAULTS, Clowns, KINDS, type Kind } from './world/clowns';
 import { bruteDamage, hurtBy } from '../shared/brutes.mjs';
 import { prepareShotRaycasts } from './world/shotRaycast';
@@ -984,6 +984,10 @@ vehicleWear.live = () => net.connected && teamMatch(games.view); // the server's
 /** No shooting here (the school grounds, shared/zones.mjs), but in a team match together (server: Game.fightCalm). */
 const schoolCalm = (x: number, z: number): boolean => !!noShoot(x, z) && !(net.connected && teamMatch(games.view));
 vehicleWear.friendly = (name) => name === me?.username || games.friend(name);
+vehicleWear.ownTeam = (kind, id) => {
+  const f = games.flagOn ? games.view.flag : null;
+  return !!f && vehicleTeam(fieldOf(f.field), kind, id, !!f.swapped) === games.team;
+};
 vehicleWear.send = (msg) => net.send(msg);
 vehicleWear.onHit = () => combat.hitMarker(false);
 let bikeWanted: string | null = null; // asked the server for this bike

@@ -128,6 +128,17 @@ export function baseOf(field, team, swapped = false) {
   return field.bases[swapped ? (team === 'blue' ? 'red' : 'blue') : team];
 }
 
+/**
+ * The team a vehicle of `field` belongs to (`swapped`: with the sides swapped), or null: each team's helicopter (`heli`)
+ * and the cars the game parks at its base (ids `fb1`.., `fr1`..). Its own team does it no damage (server/vehicleDamage.mjs
+ * mayDamage; the page marks no hit on it, src/world/vehicleWear.ts).
+ */
+export function vehicleTeam(field, kind, id, swapped = false) {
+  const side = kind === 'heli' ? FLAG_TEAMS.find((t) => field.heli?.[t]?.id === id) ?? null
+    : kind === 'car' && typeof id === 'string' && /^f[br]\d+$/.test(id) ? (id[1] === 'b' ? 'blue' : 'red') : null;
+  return side && swapped ? (side === 'blue' ? 'red' : 'blue') : side;
+}
+
 /** The field `id`, or the compact one (an unknown or forged id). */
 export function fieldOf(id) {
   return typeof id === 'string' && Object.hasOwn(FIELDS, id) ? FIELDS[id] : FIELDS.compact;

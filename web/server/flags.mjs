@@ -37,7 +37,7 @@ import { loadBounds } from '../shared/bounds.mjs';
 import { homeAt } from '../shared/homes.mjs';
 import { STAGE } from './vehicleDamage.mjs';
 import { FlagBazooka } from './flagBazooka.mjs';
-import { FIELDS, FLAG_COLORS, FLAG_TEAMS, baseOf, fieldEdge, fieldOf } from '../shared/flagFields.mjs';
+import { FIELDS, FLAG_COLORS, FLAG_TEAMS, baseOf, fieldEdge, fieldOf, vehicleTeam } from '../shared/flagFields.mjs';
 
 export { FIELDS, FLAG_COLORS, FLAG_TEAMS };
 const BOUNDS = loadBounds(JSON.parse(readFileSync(new URL('../shared/bounds.json', import.meta.url), 'utf8')));
@@ -120,12 +120,8 @@ export class FlagGame {
    * (they trade with the bases when the sides swap). Its own team does it no damage (server/vehicleDamage.mjs mayDamage).
    */
   owner(kind, id) {
-    if (kind === 'heli') {
-      for (const side of FLAG_TEAMS) if (this.field.heli?.[side]?.id === id) return this.sideOf(side);
-      return null;
-    }
-    if (kind === 'car' && this.vehicles.cars.includes(id)) return this.sideOf(id[1] === 'b' ? 'blue' : 'red');
-    return null;
+    if (kind === 'car' && !this.vehicles.cars.includes(id)) return null;
+    return vehicleTeam(this.field, kind, id, this.swapped);
   }
 
   homeFlag(team) {

@@ -36,5 +36,6 @@ export const FLAG_COLORS: Record<FlagTeam, string>;
 export const FIELDS: Record<'compact' | 'village', FlagField>;
 export function fieldOf(id: unknown): FlagField;
 export function baseOf(field: FlagField, team: FlagTeam, swapped?: boolean): FlagBase;
+export function vehicleTeam(field: FlagField, kind: string, id: string, swapped?: boolean): FlagTeam | null;
 export const FLAG_BIKES: Record<string, { team: FlagTeam; park: { x: number; y: number; z: number; yaw: number } }>;
 export function fieldEdge(field: FlagField, edges: { map: Bounds }): Bounds;

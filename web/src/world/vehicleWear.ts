@@ -130,6 +130,8 @@ export class VehicleWear {
   live: () => boolean = () => false;
   /** Whether you may damage it: nobody of your team (nor you) sits in it (main.ts asks games.friend). */
   friendly: (name: string) => boolean = () => false;
+  /** One of your own team's vehicles in Steal the flag (shared/flagFields.mjs vehicleTeam): the server takes no hit on it */
+  ownTeam: (kind: Kind, id: string) => boolean = () => false;
   /** Tell the server (net.send). */
   send: (msg: Record<string, unknown>) => void = () => {};
   /** Your shot met it: the hit marker. */
@@ -169,7 +171,7 @@ export class VehicleWear {
     const key = `${who.k}:${who.id}`;
     if ((this.wear.get(key)?.st ?? 0) >= STAGE.wreck) return;
     const v = this.find(who.k, who.id);
-    if (!v || v.riders.some((n) => n !== null && this.friendly(n))) return;
+    if (!v || v.riders.some((n) => n !== null && this.friendly(n)) || this.ownTeam(who.k, who.id)) return;
     const e = this.pending.get(key) ?? { ...who, w, n: 0 };
     e.n++;
     this.pending.set(key, e);
