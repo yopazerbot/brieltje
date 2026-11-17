@@ -213,3 +213,7 @@
 .host input[type="search"] { padding: 8px 14px; font: inherit; font-size: 15px; color: var(--chalk); background: rgba(13, 20, 48, 0.6); border: 1px solid var(--brand-line, rgba(220, 228, 255, 0.14)); border-radius: 999px; outline-offset: 2px; }
 .board tbody tr:first-child td[colspan] { color: var(--soft); font-family: inherit; font-weight: 500; }
 @media (min-width: 1151px) { .people { max-height: 62vh; overflow-y: auto; padding-right: 4px; } }
+/* Steal the flag's guards, a test tool (guards.js) */
+.guards { display: grid; gap: 8px; margin-top: 6px; }
+.guard-row { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 14px; }
+.guard-row label { display: flex; align-items: center; gap: 6px; font-size: 14px; color: var(--soft); }

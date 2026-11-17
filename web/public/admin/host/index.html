@@ -95,6 +95,12 @@
           <button class="btn ghost" type="button" id="stop">Stop the game</button>
           <button class="btn ghost" type="button" id="cancel" hidden>Call off the countdown</button>
         </div>
+        <!-- Steal the flag's guards, a test tool (server/flagGuards.mjs, guards.js) -->
+        <details class="add" id="guards-box">
+          <summary>Guards for Steal the flag <small class="muted">(test tool)</small></summary>
+          <p class="muted small">Computer guards that walk round their own base and shoot at the other team. For testing with a few friends. Their tags count for nothing. They come in once Steal the flag is played and go when it ends.</p>
+          <div class="guards" id="guards"></div>
+        </details>
         <h2>Programme</h2>
         <ol class="programme" id="programme"></ol>
         <div class="row"><button class="btn" type="button" id="next"></button></div>
@@ -139,5 +145,6 @@
   <div class="menu-pop" id="menu-pop" role="menu" hidden></div>
 </main>
 <script src="/admin/host/host.js"></script>
+<script src="/admin/host/guards.js"></script>
 </body>
 </html>

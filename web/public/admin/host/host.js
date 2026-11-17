@@ -138,6 +138,7 @@
     $('signin').hidden = true;
     $('app').hidden = false;
     render();
+    document.dispatchEvent(new CustomEvent('hostview', { detail: v })); // the guards' part (guards.js)
   }
 
   // ------------------------------------------------------------------ the server's verdict
