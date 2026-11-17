@@ -1,15 +1,18 @@
 // Steal the flag (server/flags.mjs) against a throwaway game server (a build of this branch on this computer): four
 // guests, two a side by the host's evening teams, and the admin. The game starts from the menu's message and from the
 // host's programme; every flag event comes from where the server has the players, never from a message: a forged
-// capture and a team switch are refused; the admin brings a red player onto blue's stand and the flag is taken; the
-// carrier is refused a trip from the chat and a helicopter seat; the carrier walks home and scores; a carrier who leaves
-// drops it, blue touches it and it is home; a late joiner gets a team at its base; the village field parks its cars,
-// bikes and (look 'real') red's helicopter, and takes them away when it is over.
+// capture and a team switch are refused (Yoshi, 17 Nov 2026: the teams are the host's alone); the admin brings a red
+// player onto blue's stand and the flag is taken; the carrier is refused a trip from the chat and a helicopter seat; the
+// carrier walks home and scores; a carrier who leaves drops it, blue touches it and it is home; a late joiner gets a team
+// at its base; a guest's host actions are refused; the host swaps the sides (flags home, everyone at the other base,
+// every page told, the swapped view for a page joining later, a second swap within 10 s refused) and moves a player to
+// the other team mid-game; the village field parks its cars, bikes and helicopters, takes the village's own vehicles by
+// the bases out of play, and puts it all back when it is over.
 //
 //   ADMIN_PASSWORD=... node tools/dev/flag_ws_check.mjs --api http://localhost:8473
 import WebSocket from '../../web/node_modules/ws/wrapper.mjs';
 import { localOnly, options } from './cdp.mjs';
-import { FIELDS } from '../../web/shared/flagFields.mjs';
+import { FIELDS, baseOf } from '../../web/shared/flagFields.mjs';
 
 const o = options({ api: 'http://localhost:8473' });
 localOnly(o.api); // it logs in as the admin and starts games: a throwaway server on this computer only
@@ -34,7 +37,7 @@ const act = async (b) => call('POST', '/api/host', b, adminCookie);
 const connect = async (name, cookie) => {
   const log = [];
   const ws = new WebSocket(`ws://${host}/ws?v=2`, { headers: { Cookie: cookie, Origin: o.api } });
-  const c = { name, ws, log, at: null, send: (m) => ws.readyState === 1 && ws.send(JSON.stringify(m)), of: (t) => log.filter((m) => m.t === t) };
+  const c = { name, ws, log, at: null, cookie, send: (m) => ws.readyState === 1 && ws.send(JSON.stringify(m)), of: (t) => log.filter((m) => m.t === t) };
   ws.on('message', (d) => {
     const m = JSON.parse(String(d));
     log.push(m);
@@ -95,7 +98,7 @@ ok('two a side, as the host\'s evening teams (the first blue)', blue.length === 
 for (const n of names) {
   const [sx, sz] = FIELDS.compact.bases[team(n)].stand;
   const at = players[n].at;
-  ok(`${n} starts at the ${team(n)} base`, !!at && Math.hypot(at.x - sx, at.z - sz) < 15, at ? `${at.x}, ${at.z}` : 'no respawn');
+  ok(`${n} starts at the ${team(n)} base`, !!at && Math.hypot(at.x - sx, at.z - sz) < 25 && Math.hypot(at.x - sx, at.z - sz) > 11, at ? `${at.x}, ${at.z}` : 'no respawn');
 }
 const roster = players[names[0]].of('colors').at(-1)?.list ?? [];
 ok('everyone in their team\'s colour on every page', names.every((n) => roster.find((c) => c.name === n)?.color === { blue: '#4fa3e0', red: '#e5484d' }[team(n)]), JSON.stringify(roster.map((c) => [c.name, c.color])));
@@ -107,7 +110,7 @@ r1.send({ t: 'flag', op: 'take', team: 'blue' });
 r1.send({ t: 'team', team: 'blue' });
 await sleep(600);
 ok('a forged capture or take changes nothing', !flagEvents(b1).length && lastMode(b1)?.score?.red === 0);
-ok('switching team is refused under the host\'s teams', r1.of('system').some((m) => m.code === 'hostTeams') && team(r1.name) === 'red');
+ok('switching team is refused: the host sets the teams', r1.of('system').some((m) => m.code === 'hostOnlyTeams') && team(r1.name) === 'red');
 
 // The admin on blue's stand brings a red player: on the stand, they take the flag (the server's own positions). Nobody
 // travels during the game, the admin neither: the admin is fast, and walks there.
@@ -169,7 +172,43 @@ const late = await guest(`fle${run}`);
 await sleep(900);
 const lt = lastMode(late)?.teams?.[late.name];
 const [lx, lz] = lt ? FIELDS.compact.bases[lt].stand : [0, 0];
-ok('a late joiner gets a team and starts at its base', !!lt && !!late.at && Math.hypot(late.at.x - lx, late.at.z - lz) < 15, `${lt} ${JSON.stringify(late.at)}`);
+ok('a late joiner gets a team and starts at its base', !!lt && !!late.at && Math.hypot(late.at.x - lx, late.at.z - lz) < 25, `${lt} ${JSON.stringify(late.at)}`);
+
+// The host's actions are the admin's alone: a guest's swap, move or teams is refused (privilege escalation).
+for (const b of [{ op: 'swap' }, { op: 'move', name: r1.name, team: 0 }, { op: 'teams', count: 2 }, { op: 'shuffle' }]) {
+  const g = await call('POST', '/api/host', b, r1.cookie);
+  ok(`a guest's ${b.op} is refused`, g.r.status === 403, String(g.r.status));
+}
+ok('nothing changed by them', team(r1.name) === 'red' && !lastMode(b1)?.flag?.swapped);
+// The host swaps the sides: both flags home, everyone at the other base, a line and a sound on every page.
+const before = lastMode(b1)?.score;
+const sw = await act({ op: 'swap' });
+await sleep(900);
+ok('the host swaps the sides', sw.r.ok && lastMode(b1)?.flag?.swapped === true, JSON.stringify(sw.data));
+ok('every page told: the swap event', [...names.filter((n) => n !== r2.name), 'admin'].every((n) => (n === 'admin' ? admin : players[n]).of('flag').some((m) => m.ev === 'swapped')));
+ok('both flags home, the score carries on', lastMode(b1)?.flag?.flags.blue.at === 'home' && lastMode(b1)?.flag?.flags.red.at === 'home' && JSON.stringify(lastMode(b1)?.score) === JSON.stringify(before));
+for (const n of names.filter((x) => x !== r2.name)) {
+  const [sx, sz] = baseOf(FIELDS.compact, team(n), true).stand;
+  const at = players[n].at;
+  ok(`${n} (${team(n)}) at the other base now`, !!at && Math.hypot(at.x - sx, at.z - sz) < 25, at ? `${at.x}, ${at.z}` : 'none');
+}
+const again = await act({ op: 'swap' });
+ok('a second swap within 10 s is refused', again.r.status === 400 && again.data?.code === 'tooFast', JSON.stringify(again.data));
+const late2 = await guest(`flf${run}`);
+await sleep(900);
+ok('a page joining after the swap sees the swapped bases', lastMode(late2)?.flag?.swapped === true);
+// The host moves a red player to blue mid-game: at once, at blue's base (swapped: the field's red one), in blue.
+const mv = await act({ op: 'move', name: r1.name, team: 0 });
+await sleep(900);
+const [mx, mz] = baseOf(FIELDS.compact, 'blue', true).stand;
+ok('the host moves a player to the other team at once', mv.r.ok && team(r1.name) === 'blue' && !!r1.at && Math.hypot(r1.at.x - mx, r1.at.z - mz) < 25, `${team(r1.name)} ${JSON.stringify(r1.at)}`);
+const roster2 = players[names[0]].of('colors').at(-1)?.list ?? [];
+ok('in blue on every page', roster2.find((c) => c.name === r1.name)?.color === '#4fa3e0');
+for (const b of [{ op: 'move', name: r1.name, team: 5 }, { op: 'move', name: r1.name, team: '1' }, { op: 'move', name: 'nobody', team: 1 }]) {
+  const f = await act(b);
+  ok(`a forged move is refused: ${JSON.stringify(b)}`, f.r.status === 400);
+}
+late2.ws.close();
 admin.send({ t: 'mode', kind: 'free' });
 await sleep(800);
 ok('stopped: free play again', lastMode(b1)?.kind === 'free');
@@ -182,6 +221,9 @@ ok('the village field from the programme, 15 minutes, look real', vv?.kind === '
 const teslas = b1.of('teslas').at(-1)?.list ?? [];
 ok('its cars parked: three a side, in the team\'s colour', teslas.filter((c) => c.flag && c.kind === 'modelY-blue').length === 3 && teslas.filter((c) => c.flag && c.kind === 'modelY-red').length === 3);
 ok('its bikes parked: nine a side', (vv.flag?.vehicles?.bikes ?? []).length === 18);
+ok('the village\'s own bikes by the bases out of play', JSON.stringify([...(vv.flag?.vehicles?.off ?? [])].sort()) === JSON.stringify([...FIELDS.village.off.bikes].sort()));
+const held = b1.of('vdmg').filter((m) => m.k === 'car' && FIELDS.village.off.cars.includes(m.id) && m.st === 4);
+ok('the church\'s Teslas out of play (gone for every page)', new Set(held.map((m) => m.id)).size === FIELDS.village.off.cars.length, JSON.stringify(held));
 const heliSpot = FIELDS.village.heli.red;
 const heli = b1.of('heli').filter((m) => m.heli?.id === heliSpot.id).at(-1)?.heli;
 ok('red\'s helicopter set down at the Sparrenhof', !!heli && Math.hypot(heli.x - heliSpot.x, heli.z - heliSpot.z) < 1, heli ? `${heli.x}, ${heli.z}` : 'none');
@@ -190,6 +232,7 @@ await sleep(800);
 const after = b1.of('teslas').at(-1)?.list ?? [];
 const home = b1.of('heli').filter((m) => m.heli?.id === heliSpot.id).at(-1)?.heli;
 ok('stopped: its cars gone, the helicopter back on its own pad', !after.some((c) => c.flag) && !!home && Math.hypot(home.x - heliSpot.x, home.z - heliSpot.z) > 100);
+ok('the church\'s Teslas back, whole', FIELDS.village.off.cars.every((id) => b1.of('vdmg').filter((m) => m.k === 'car' && m.id === id).at(-1)?.st === 0));
 
 for (const c of [admin, late, ...Object.values(players)]) c.ws.close();
 await act({ op: 'teams', count: 0 });

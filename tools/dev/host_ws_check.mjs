@@ -186,7 +186,7 @@ const colours = bob.of('colors').at(-1)?.list ?? [];
 ok('the host\'s teams play in blue and red (the bungalow side red, not orange)', mode.colors?.bungalow === v.teams.list[1].color && colours.find((p) => p.name === redSide)?.color === v.teams.list[1].color, `${JSON.stringify(mode.colors)} ${redSide}`);
 bob.send({ t: 'team', team: mode.teams.bob === 'house' ? 'bungalow' : 'house' });
 await sleep(300);
-ok('a player can\'t switch the host\'s teams', bob.of('system').some((m) => m.code === 'hostTeams'));
+ok("a player can't switch the host's teams", bob.of('system').some((m) => m.code === 'hostOnlyTeams'));
 bob.send({ t: 'rules', paintball: false });
 await sleep(300);
 ok('a player can\'t turn the look off (a forged rules message)', bob.of('rules').at(-1)?.rules?.paintball === true);

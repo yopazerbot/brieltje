@@ -1,10 +1,12 @@
 // Steal the flag's helicopters and bazookas (server/flags.mjs park, server/flagBazooka.mjs) against a throwaway game
 // server (a build of this branch on this computer): four guests, two a side by the host's evening teams, and the admin.
-// The compact field from the host's programme in the paint look: both machines at their spots (blue the church's on its
-// deck, red the house's on Molenhoek's road), a red player walks to red's and gets a seat; a red player walks to blue's
-// rack and gets nothing; a blue player walks into it and gets the launcher, their teammate a line, red none; three
-// rockets go, a fourth is refused, the launcher is out of their hands and back on the rack 45 s later; the admin's own
-// bazooka is out of their hands during the game and back after it; then the village field's machines at theirs.
+// The compact field from the host's programme in the paint look: both machines at their spots on the ground (blue the
+// church's west of the church, red the house's on Molenhoek's road), a red player walks to red's and gets a seat; a red
+// player walks to blue's rack and gets nothing; a blue player's shot at blue's own empty machine does nothing, a red
+// player's counts; a blue player walks into the rack and gets the launcher, their teammate a line, red none; three
+// rockets go, a fourth is refused, the launcher is out of their hands and back on the rack 45 s later; taken again, the
+// host's swap puts it back on its rack at once; the admin's own bazooka is out of their hands during the game and back
+// after it; then the village field's machines at theirs.
 //
 //   ADMIN_PASSWORD=... node tools/dev/flag_bazooka_ws_check.mjs --api http://localhost:8473
 import WebSocket from '../../web/node_modules/ws/wrapper.mjs';
@@ -101,7 +103,8 @@ ok('the admin\'s own bazooka is out of their hands', !weapons(admin).includes('b
 const church = heliAt(b1, 'church');
 const house = heliAt(b1, 'house');
 const spot = FIELDS.compact.heli.red;
-ok('blue\'s helicopter on the church\'s deck', !!church && Math.hypot(church.x - PADS.church.x, church.z - PADS.church.z) < 1, church ? `${church.x}, ${church.z}` : 'none');
+const bspot = FIELDS.compact.heli.blue;
+ok('blue\'s helicopter on the ground west of the church', !!church && Math.hypot(church.x - bspot.x, church.z - bspot.z) < 0.5, church ? `${church.x}, ${church.z}` : 'none');
 ok('red\'s helicopter on Molenhoek\'s road by its base', !!house && Math.hypot(house.x - spot.x, house.z - spot.z) < 0.5, house ? `${house.x}, ${house.y}, ${house.z}` : 'none');
 
 // Red walks to its machine and gets in: a seat in the compact field, paint look.
@@ -117,12 +120,34 @@ await sleep(500);
 // Red walks to blue's rack (the whole field, about a minute): nothing.
 const [bx, bz, by] = FIELDS.compact.bases.blue.rack;
 const t0 = Date.now();
+// Clear of red's own rack on the way (walking into it would rightly give red its own launcher).
+const [rrx, rrz, rry] = FIELDS.compact.bases.red.rack;
+await walk(r2, rrx, rry, rrz - 7);
 await walk(r2, bx, by, bz);
 await sleep(800);
 console.log(`     red's walk to blue's rack took ${((Date.now() - t0) / 1000).toFixed(0)} s`);
-ok('red at blue\'s rack: refused', !weapons(r2).includes('bazooka') && !r2.of('fbz').length && lastMode(b1)?.flag?.racks?.blue?.at === 'rack', JSON.stringify([weapons(r2), r2.of('fbz'), lastMode(b1)?.flag?.racks]));
+ok('red at blue\'s rack: refused', !weapons(r2).includes('bazooka') && !r2.of('fbz').some((m) => m.team === 'blue') && lastMode(b1)?.flag?.racks?.blue?.at === 'rack', JSON.stringify([weapons(r2), r2.of('fbz'), lastMode(b1)?.flag?.racks]));
 state(r2, { x: bx + 12, y: by, z: bz }); // out of the way
 await sleep(300);
+
+// Blue's own empty machine takes no damage from blue; red's shot at it counts (server/vehicleDamage.mjs mayDamage).
+const aim = async (c, hx, hz) => {
+  const yaw = Math.atan2(-(hx - c.at.x), -(hz - c.at.z));
+  c.send({ t: 'state', x: +c.at.x.toFixed(2), y: +c.at.y.toFixed(2), z: +c.at.z.toFixed(2), yaw: +yaw.toFixed(3), pitch: 0, armed: true, w: 'pistol' });
+  await sleep(200);
+  c.send({ t: 'vhit', kind: 'heli', id: 'church', w: 'pistol', n: 1 });
+  await sleep(700);
+};
+const vdmg = () => b2.of('vdmg').filter((m) => m.k === 'heli' && m.id === 'church').length;
+await walk(b2, bspot.x + 9, bspot.y, bspot.z);
+const v0 = vdmg();
+await aim(b2, bspot.x, bspot.z + 1);
+ok('blue\'s shot at its own empty helicopter: no damage', vdmg() === v0, String(vdmg() - v0));
+await walk(r2, bspot.x + 9, bspot.y, bspot.z + 3);
+await aim(r2, bspot.x, bspot.z + 1);
+ok('red\'s shot at it: damage', vdmg() > v0, String(vdmg() - v0));
+await walk(r2, bx + 12, by, bz);
+await walk(b2, bx + 6, by, bz + 4);
 
 // Blue walks into its rack.
 await walk(b1, bx + 0.3, by, bz);
@@ -130,7 +155,7 @@ await sleep(800);
 ok('blue walks into its rack: the launcher', weapons(b1).includes('bazooka') && b1.of('fbz').some((m) => m.ev === 'taken' && m.name === b1.name), JSON.stringify(b1.of('fbz')));
 ok('three rockets', b1.of('fbz').filter((m) => m.ev === 'left').at(-1)?.n === 3);
 ok('their teammate gets the line', b2.of('fbz').some((m) => m.ev === 'taken' && m.name === b1.name && m.team === 'blue'));
-ok('the other team gets none', !r1.of('fbz').length && !r2.of('fbz').length, JSON.stringify([r1.of('fbz'), r2.of('fbz')]));
+ok('the other team gets none', !r1.of('fbz').some((m) => m.team === 'blue') && !r2.of('fbz').some((m) => m.team === 'blue'), JSON.stringify([r1.of('fbz'), r2.of('fbz')]));
 ok('the rack is out on every page', lastMode(r1)?.flag?.racks?.blue?.at === 'out');
 // Three rockets, the reload between them; a fourth refused.
 b1.w = 'bazooka';
@@ -150,6 +175,13 @@ b1.w = 'pistol';
 state(b1, { ...b1.at, x: b1.at.x + 10 }); // off the rack
 await sleep((away?.ms ?? 45_000) + 1500);
 ok('back on the rack after 45 s', lastMode(b2)?.flag?.racks?.blue?.at === 'rack', JSON.stringify(lastMode(b2)?.flag?.racks));
+// Taken again, then the host swaps the sides: back on its rack at once (at blue's new base), out of their hands.
+await walk(b2, bx + 0.3, by, bz);
+await sleep(800);
+ok('blue takes it again', weapons(b2).includes('bazooka'));
+const sw = await act({ op: 'swap' });
+await sleep(900);
+ok('the swap puts it back on its rack at once', sw.r.ok && !weapons(b2).includes('bazooka') && lastMode(b1)?.flag?.racks?.blue?.at === 'rack' && lastMode(b1)?.flag?.swapped === true, JSON.stringify(lastMode(b1)?.flag?.racks));
 
 await act({ op: 'stop' });
 await sleep(800);
@@ -157,6 +189,8 @@ ok('stopped: the racks gone', !lastMode(b1)?.flag?.racks);
 ok('the admin\'s own bazooka is back', weapons(admin).includes('bazooka'), JSON.stringify(weapons(admin)));
 const home = heliAt(b1, 'house');
 ok('red\'s machine back on the house\'s pad', !!home && Math.hypot(home.x - spot.x, home.z - spot.z) > 100);
+const deck = heliAt(b1, 'church');
+ok('blue\'s back on the church\'s deck', !!deck && Math.hypot(deck.x - PADS.church.x, deck.z - PADS.church.z) < 1);
 
 // The village field, no look: both machines at theirs.
 await act({ op: 'start', kind: 'flag', place: 'village', minutes: 15 });
@@ -164,7 +198,8 @@ await sleep(11_500);
 const vspot = FIELDS.village.heli.red;
 const vh = heliAt(b1, 'house');
 const vc = heliAt(b1, 'church');
-ok('village field: red\'s at the Sparrenhof, blue\'s on the church\'s deck', !!vh && Math.hypot(vh.x - vspot.x, vh.z - vspot.z) < 0.5 && !!vc && Math.hypot(vc.x - PADS.church.x, vc.z - PADS.church.z) < 1);
+const vb = FIELDS.village.heli.blue;
+ok('village field: red\'s at the Sparrenhof, blue\'s on the ground west of the church', !!vh && Math.hypot(vh.x - vspot.x, vh.z - vspot.z) < 0.5 && !!vc && Math.hypot(vc.x - vb.x, vc.z - vb.z) < 0.5);
 await act({ op: 'stop' });
 await sleep(800);
 
