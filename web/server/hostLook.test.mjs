@@ -225,3 +225,24 @@ test('the host\'s shuffle: as even as can be, and the extra player lands on eith
   }
   assert.equal(seen.size, 4, 'each team gets the extra one at times');
 });
+
+test('the host\'s move with three or four teams tonight during a team game: refused in plain words, nothing changes', () => {
+  for (const kind of ['teams', 'flag']) {
+    const s = setup();
+    for (const n of ['ann', 'bob', 'cid', 'dee', 'eve', 'fay']) s.join(n);
+    const h = s.game.host;
+    h.act('admin', { op: 'teams', count: 3 });
+    s.game.modes.start(kind, 'admin', 'compact');
+    const before = { teams: { ...h.teams }, game: { ...s.game.modes.state.teams } };
+    const who = 'ann';
+    const r = h.act('admin', { op: 'move', name: who, team: (h.teams[who] + 1) % 3 });
+    assert.equal(r.code, 'twoTeams', kind);
+    assert.equal(r.error, 'This game plays in two teams: set two teams tonight to move players during it.');
+    assert.deepEqual({ ...h.teams }, before.teams, 'tonight\'s teams as they were');
+    assert.deepEqual({ ...s.game.modes.state.teams }, before.game, 'the game\'s as they were');
+    // Out of a game the move works as ever.
+    s.game.modes.start('free', 'admin');
+    s.at(1000);
+    assert.deepEqual(h.act('admin', { op: 'move', name: who, team: (h.teams[who] + 1) % 3 }), { ok: true });
+  }
+});

@@ -313,6 +313,8 @@ export class Host {
       case 'move': {
         const team = int(b.team, 0, this.teamCount - 1);
         if (!known(name) || team === null) return { error: 'Out of range', code: 'badValue' };
+        // A team game being played has two sides: with three or four teams tonight a move would change nothing in it.
+        if (this.teamCount !== 2 && g.modes.teamGame && g.modes.state.phase === 'playing') return { error: 'This game plays in two teams: set two teams tonight to move players during it.', code: 'twoTeams' };
         this.teams[name] = team;
         this.teamsMoved([name]);
         return { ok: true };
