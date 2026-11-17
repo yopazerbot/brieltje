@@ -1,5 +1,5 @@
 import * as THREE from 'three';
-import { t } from '../i18n';
+import { playerName, t } from '../i18n';
 import { paintball } from '../paintball';
 import { compactHud } from './compact';
 
@@ -88,7 +88,7 @@ export class Tactics {
       point.project(camera);
       const behind = point.z > 1;
       list.push({
-        text: `${behind ? '↶ ' : '◆ '}${p.name} · ${Math.round(distance)} m`,
+        text: `${behind ? '↶ ' : '◆ '}${playerName(p.name)} · ${Math.round(distance)} m`,
         x: Math.max(12, Math.min(88, (behind ? -point.x : point.x) * 50 + 50)),
         y: behind ? 80 : Math.max(16, Math.min(80, -point.y * 50 + 50)),
         d: distance,

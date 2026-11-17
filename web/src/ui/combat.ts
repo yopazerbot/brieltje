@@ -1,7 +1,7 @@
 import type { Score } from '../net/client';
 import { anyPaint, onPaintball, paintball } from '../paintball';
 import { sound } from '../sound';
-import { onLang, t } from '../i18n';
+import { onLang, playerName, t } from '../i18n';
 import { LOOT } from '../../shared/loot.mjs';
 
 /**
@@ -129,7 +129,8 @@ export class Combat {
    * "X splattered a strongman" for the game's own figures, with the weapon after it.
    */
   kill(killer: string, victim: string, head: boolean, weapon = ''): void {
-    const color = (n: string) => this.scores.find((s) => s.name === n)?.color ?? '';
+    const color = (n: string) => this.scores.find((s) => s.name === n || playerName(s.name) === n)?.color ?? ''; // a guard's name comes in the page's language
+    victim = playerName(victim);
     const line = document.createElement('div');
     line.className = 'kf';
     if (killer === this.me || victim === this.me) line.classList.add('me');
@@ -310,7 +311,7 @@ export class Combat {
         if (!s.alive) tr.classList.add('dead');
         const name = document.createElement('td');
         name.className = 'name';
-        name.append(span(s.name, '', s.color));
+        name.append(span(playerName(s.name), '', s.color));
         if (!s.armed) name.append(span(t('combat.exploring'), 'exploring'));
         else if (!s.alive) name.append(span(t(paintball.on ? 'paint.out' : 'combat.dead'), 'exploring'));
         const cells = [s.kills, s.deaths, s.points].map((n) => {
@@ -343,7 +344,7 @@ export class Combat {
         if (down.has(s.name)) tr.classList.add('dead');
         const name = document.createElement('td');
         name.className = 'name';
-        name.append(span(s.name, '', s.color));
+        name.append(span(playerName(s.name), '', s.color));
         if (!s.armed) name.append(span(t('combat.exploring'), 'exploring'));
         else if (down.has(s.name)) name.append(span(t(paintball.on ? 'paint.out' : 'z.down'), 'exploring'));
         const cells = [z.beaten[s.name] ?? 0, z.downs[s.name] ?? 0].map((n) => {

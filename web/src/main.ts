@@ -178,7 +178,7 @@ import { churchPrisms, makeChurch } from '../shared/church.mjs';
 import CAFE_DATA from '../shared/sparrenhof.json';
 import HUTS_DATA from '../shared/tree_huts.json';
 import { cafePrisms, makeCafe } from '../shared/sparrenhof.mjs';
-import { carName, doorName, lang, onLang, placeName, portalName, serverText, setLang, t, whoName } from './i18n';
+import { carName, doorName, isGuard, lang, onLang, placeName, portalName, serverText, setLang, t, whoName } from './i18n';
 import { seat, tellHost } from './seat';
 import { gather, pace, playBegins, StartWarm } from './startWarm';
 import { onWatch, watch } from './watch';
@@ -1456,12 +1456,13 @@ const onlineBox = document.getElementById('online')!;
 const online = new Map<string, string>(); // name -> colour
 /** Who is online: in the HUD, and in the menu's Together tab with a dot in each player's colour. Names are text, never HTML. */
 function showOnline(): void {
+  const here = new Map([...online].filter(([n]) => !isGuard(n))); // the people: a flag game's guards are not online
   onlineBox.replaceChildren();
   const list = document.getElementById('tog-players')!;
   list.replaceChildren();
-  document.getElementById('tog-online')!.classList.toggle('hidden', !me || online.size === 0);
-  if (!me || online.size === 0) return;
-  const count = t('online.count', { n: online.size, max: rules.maxPlayers ?? 16 });
+  document.getElementById('tog-online')!.classList.toggle('hidden', !me || here.size === 0);
+  if (!me || here.size === 0) return;
+  const count = t('online.count', { n: here.size, max: rules.maxPlayers ?? 16 });
   const title = document.createElement('div');
   title.textContent = count;
   onlineBox.append(title);
@@ -1470,7 +1471,7 @@ function showOnline(): void {
   // the menu's Together tab lists everyone.
   const HUD_NAMES = 4;
   let shown = 0;
-  for (const [name, color] of [...online].sort(([a], [b]) => Number(b === me?.username) - Number(a === me?.username))) {
+  for (const [name, color] of [...here].sort(([a], [b]) => Number(b === me?.username) - Number(a === me?.username))) {
     const label = name === me.username ? t('online.you', { name }) : name;
     if (shown < HUD_NAMES) {
       const row = document.createElement('div');
@@ -1479,7 +1480,7 @@ function showOnline(): void {
       onlineBox.append(row);
     } else if (shown === HUD_NAMES) {
       const more = document.createElement('div');
-      more.textContent = t('online.more', { n: online.size - HUD_NAMES });
+      more.textContent = t('online.more', { n: here.size - HUD_NAMES });
       onlineBox.append(more);
     }
     shown++;
@@ -2937,13 +2938,13 @@ net.onMessage = (m: ServerMsg) => {
       avatars.setRole(m.name, games.roleOf(m.name));
       online.set(m.name, m.color);
       showOnline();
-      chat.system(() => t('chat.joined', { name: m.name }));
+      if (!isGuard(m.name)) chat.system(() => t('chat.joined', { name: m.name })); // a flag game's guard comes without a line
       break;
     case 'leave':
       avatars.remove(m.name);
       online.delete(m.name);
       showOnline();
-      chat.system(() => t('chat.left', { name: m.name }));
+      if (!isGuard(m.name)) chat.system(() => t('chat.left', { name: m.name }));
       break;
     case 's':
       onTick(m);

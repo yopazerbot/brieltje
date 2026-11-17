@@ -856,6 +856,8 @@ const en = {
   'char.strongman': 'a strongman',
   'char.zombie': 'a zombie',
   'char.bigZombie': 'a big zombie',
+  'char.guardBlue': 'Blue guard {n}',
+  'char.guardRed': 'Red guard {n}',
   'combat.killedBy': 'Killed by {name}',
   'combat.headshot': 'Headshot · ',
   'combat.headshotTag': 'HEADSHOT',
@@ -2155,6 +2157,8 @@ const nl = {
   'char.strongman': 'een krachtpatser',
   'char.zombie': 'een zombie',
   'char.bigZombie': 'een grote zombie',
+  'char.guardBlue': 'Blauwe bewaker {n}',
+  'char.guardRed': 'Rode bewaker {n}',
   'combat.killedBy': 'Gedood door {name}',
   'combat.headshot': 'Headshot · ',
   'combat.headshotTag': 'HEADSHOT',
@@ -2914,7 +2918,17 @@ export function portalNames(p: { id: string; name: string }): string[] {
 export function whoName(name: string): string {
   // Player names are 2 to 20 letters, digits, - or _ (server/auth.mjs): never one of these.
   const own: Record<string, PlainKey> = { 'a strongman': 'char.strongman', 'a clown': 'char.clown', 'a cat': 'char.cat', 'a zombie': 'char.zombie', 'a big zombie': 'char.bigZombie' };
-  return Object.hasOwn(own, name) ? t(own[name]) : name;
+  return Object.hasOwn(own, name) ? t(own[name]) : playerName(name);
+}
+
+/** Steal the flag's guards (server/flagGuards.mjs): "Blue guard 1" ... "Red guard 6", never a player's name. */
+const GUARD = /^(Blue|Red) guard ([1-6])$/;
+export const isGuard = (name: string): boolean => GUARD.test(name);
+
+/** A name on screen: a player's as it is, a guard's in the page's language ("Blauwe bewaker 1"). */
+export function playerName(name: string): string {
+  const g = GUARD.exec(name);
+  return g ? t(g[1] === 'Blue' ? 'char.guardBlue' : 'char.guardRed', { n: Number(g[2]) }) : name;
 }
 
 // ---- Messages from the server

@@ -8,7 +8,7 @@ import { gunsReady } from '../weapon';
 import { muzzleFlash } from '../world/effects';
 import { hitBoxMaterial } from '../world/hitBox';
 import { buildSwat, hasSwat, SEAT_HIP, swatReady, type Body, type Outfit as SwatOutfit } from './swat';
-import { onLang, t } from '../i18n';
+import { onLang, playerName, t } from '../i18n';
 
 /**
  * A player's part in a party game, shown on their figure for everyone: "it" in tag, a seeker in hide
@@ -476,7 +476,7 @@ export class Avatars {
     const body = this.figure(name, color);
     const root = new THREE.Group();
     root.userData.figure = true; // paintball's paint sticks on the body inside the hit boxes (weapon.ts)
-    const tag = nameTag(name, color);
+    const tag = nameTag(playerName(name), color); // a guard's in the page's language (src/i18n.ts)
     tag.position.y = 2.0;
     root.add(body.root, tag);
     root.visible = false;
