@@ -52,9 +52,9 @@ export class FlagBazooka {
     this.over = false;
   }
 
-  /** The rack's spot of `team`: [x, z, y]. */
+  /** The rack's spot of `team`: [x, z, y], at the base the team has now (sides swapped: the other one's). */
   spot(team) {
-    return this.flags.field.bases[team].rack;
+    return this.flags.base(team).rack;
   }
 
   /** Whether `name` holds their team's launcher now, rockets or not. */

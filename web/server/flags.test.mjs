@@ -74,7 +74,7 @@ test('the game starts: two even teams, everyone at their own base, a fight betwe
     const [sx, sz] = s.stand(team);
     for (const n of team === 'blue' ? s.blue : s.red) {
       const st = s.game.players.get(n).state;
-      assert.ok(Math.hypot(st.x - sx, st.z - sz) < 15, `${n} starts at the ${team} base`);
+      assert.ok(Math.hypot(st.x - sx, st.z - sz) < 25, `${n} starts at the ${team} base`);
     }
   }
   assert.equal(s.game.modes.friends(s.blue[0], s.blue[1]), true);
@@ -192,7 +192,7 @@ test('drop: the carrier down drops it where they fell; a teammate picks it up by
   s.game.tick();
   assert.equal(victim.alive, true);
   const [rx, rz] = s.stand('red');
-  assert.ok(Math.hypot(victim.state.x - rx, victim.state.z - rz) < 15, 'back at red\'s base');
+  assert.ok(Math.hypot(victim.state.x - rx, victim.state.z - rz) < 25, 'back at red\'s base');
   assert.ok(victim.protectedUntil - Date.now() === SAFE_MS, 'protected for SAFE_MS');
   // The teammate picks it up.
   s.put(r2, 600.5, -740, 6);
@@ -514,7 +514,7 @@ test('helicopters in both fields and every look: anyone but the carrier boards',
   }
 });
 
-test('each team\'s helicopter at its spot in both fields and every look, whole; back on its own pad afterwards', () => {
+test('each team\'s helicopter at its spot on the ground in both fields and every look, whole; back on its own pad afterwards', () => {
   for (const field of ['compact', 'village']) {
     for (const look of [undefined, 'paint', 'real']) {
       const pre = setup();
@@ -528,27 +528,34 @@ test('each team\'s helicopter at its spot in both fields and every look, whole; 
       pre.game.vehicleDamage.recs.set('heli:house', { kind: 'heli', id: 'house', hp: 0, max: 700, st: 3, pct: 0 });
       pre.game.modes.start('flag', 'admin', field, { look });
       const spot = FIELDS[field].heli.red;
-      assert.deepEqual([church.x, church.y, church.z], [pads.church.x, pads.church.y, pads.church.z], `${field}, ${look}: blue's on the church's deck`);
+      const blue = FIELDS[field].heli.blue;
+      assert.deepEqual([church.x, church.y, church.z, church.yaw], [blue.x, blue.y, blue.z, blue.yaw], `${field}, ${look}: blue's on the ground west of the church`);
       assert.deepEqual([house.x, house.y, house.z, house.yaw], [spot.x, spot.y, spot.z, spot.yaw], `${field}, ${look}: red's at its spot`);
       assert.ok(!pre.game.vehicleDamage.out('heli', 'house'), 'whole');
       assert.ok(pre.out.some((m) => m.t === 'vdmg' && m.id === 'house' && m.st === 0 && m.hp === 100), 'every page told it is whole');
       pre.game.modes.start('free', 'admin');
       assert.deepEqual([house.x, house.y, house.z], [pads.house.x, pads.house.y, pads.house.z], 'back on its own pad');
+      assert.deepEqual([church.x, church.y, church.z], [pads.church.x, pads.church.y, pads.church.z], 'blue\'s back on the church\'s deck');
       assert.deepEqual(pre.game.helis.inner.get('house').park, pads.house);
+      assert.deepEqual(pre.game.helis.inner.get('church').park, pads.church);
     }
   }
 });
 
-test('the compact field\'s red helicopter: inside the edge, more than 14 m from either stand, off the start places', () => {
-  const spot = FIELDS.compact.heli.red;
-  const s = four('compact');
-  assert.ok(s.flag().edge.inside(spot.x, spot.z));
-  for (const team of ['blue', 'red']) {
-    const [x, z] = FIELDS.compact.bases[team].stand;
-    assert.ok(Math.hypot(spot.x - x, spot.z - z) > 14 + 5.2, `${team}: the rotor clear of the 14 m round the stand`);
-    for (const [sx, sz] of FIELDS.compact.bases[team].spawns) assert.ok(Math.hypot(spot.x - sx, spot.z - sz) > 8, 'clear of the start places');
+test('both fields\' helicopters: inside the edge with room round them, more than 14 m from either stand, off the start places', () => {
+  for (const field of ['compact', 'village']) {
+    const s = four(field);
+    for (const side of ['blue', 'red']) {
+      const spot = FIELDS[field].heli[side];
+      assert.ok(s.flag().edge.depth(spot.x, spot.z) > 6, `${field}, ${side}: well inside the edge`);
+      for (const team of ['blue', 'red']) {
+        const [x, z] = FIELDS[field].bases[team].stand;
+        assert.ok(Math.hypot(spot.x - x, spot.z - z) > 14 + 5.2, `${field}, ${side}: the rotor clear of the 14 m round the ${team} stand`);
+        for (const [sx, sz] of FIELDS[field].bases[team].spawns) assert.ok(Math.hypot(spot.x - sx, spot.z - sz) > 8, 'clear of the start places');
+      }
+      assert.equal(noShoot(spot.x, spot.z), null);
+    }
   }
-  assert.equal(noShoot(spot.x, spot.z), null);
 });
 
 test('the field\'s edge holds a helicopter as it holds a walker: its pilot\'s step past it is put back inside', () => {
@@ -581,7 +588,7 @@ test('a late joiner gets a team (the smaller one) and starts at its base', () =>
   assert.ok(team === 'blue' || team === 'red');
   const st = s.game.players.get('eve').state;
   const [x, z] = s.stand(team);
-  assert.ok(Math.hypot(st.x - x, st.z - z) < 15);
+  assert.ok(Math.hypot(st.x - x, st.z - z) < 25);
   s.join('fay');
   assert.notEqual(s.game.modes.state.teams.fay, team, 'the other, now smaller, team');
 });
@@ -650,6 +657,42 @@ test('a reconnecting player keeps their team', () => {
   s.tick();
   s.join(r);
   assert.equal(s.game.modes.state.teams[r], 'red');
+});
+
+test('the village\'s own vehicles by a base are out of play for the game, and back after it', () => {
+  for (const field of ['compact', 'village']) {
+    const s = setup();
+    for (const n of ['ann', 'bob', 'cid', 'dee']) s.join(n);
+    s.game.bikes.church1.rider = null;
+    s.game.modes.start('flag', 'admin', field);
+    const off = FIELDS[field].off;
+    for (const id of off.cars) assert.ok(s.game.vehicleDamage.out('car', id), `${field}: ${id} out of play (nobody gets in)`);
+    for (const id of off.bikes) assert.equal(s.game.bikes[id], undefined, `${field}: bike ${id} out of play`);
+    assert.deepEqual(s.game.modes.view().flag.vehicles.off.sort(), [...off.bikes].sort(), 'every page told which bikes');
+    s.msg('ann', { t: 'bike', op: 'on', id: off.bikes[0] });
+    assert.equal(s.game.bikeOf?.('ann') ?? null, null, 'nobody rides one');
+    s.game.modes.start('free', 'admin');
+    s.game.vehicleDamage.tick(s.now());
+    for (const id of off.cars) assert.ok(!s.game.vehicleDamage.out('car', id), `${field}: ${id} back`);
+    for (const id of off.bikes) assert.ok(s.game.bikes[id], `${field}: bike ${id} back`);
+  }
+});
+
+test('both teams alike on each field: start places 12 m or more off, the same spread; racks 6 m off; the same bikes and cars', () => {
+  const mean = (a) => a.reduce((x, y) => x + y, 0) / a.length;
+  for (const field of Object.values(FIELDS)) {
+    const d = {};
+    for (const team of ['blue', 'red']) {
+      const { stand, spawns, rack } = field.bases[team];
+      d[team] = spawns.map(([x, z]) => Math.hypot(x - stand[0], z - stand[1]));
+      assert.ok(Math.min(...d[team]) >= 12, `${field.id}, ${team}: no start place nearer than 12 m`);
+      assert.ok(Math.abs(Math.hypot(rack[0] - stand[0], rack[1] - stand[1]) - 6) < 0.05, `${field.id}, ${team}: the rack 6 m off`);
+      assert.equal(field.vehicles[team].bikes.length, field.vehicles.blue.bikes.length);
+      assert.equal(field.vehicles[team].cars.length, field.vehicles.blue.cars.length);
+    }
+    assert.ok(Math.abs(mean(d.blue) - mean(d.red)) < 1.5, `${field.id}: mean ${mean(d.blue)} and ${mean(d.red)}`);
+    assert.ok(Math.abs(Math.max(...d.blue) - Math.max(...d.red)) < 2.5 && Math.abs(Math.min(...d.blue) - Math.min(...d.red)) < 1, `${field.id}: min and max alike`);
+  }
 });
 
 test('no message from a page takes, drops or scores a flag', () => {
@@ -730,14 +773,17 @@ test('no helicopter at a base: one low near a stand goes back to its spot, whoev
   assert.deepEqual([h.x, h.z], [bx, bz]);
 });
 
-test('the fields: red\'s compact base 150 to 250 m from the church, the school\'s grounds outside the field, no start on a portal', () => {
+test('the fields: red\'s compact base 150 to 250 m from the church, the same room behind both stands, no start on a portal or the school grounds', () => {
   const s = four();
   const edge = s.flag().edge;
   const [bx, bz] = FIELDS.compact.bases.blue.stand;
   const [rx, rz] = FIELDS.compact.bases.red.stand;
   const d = Math.hypot(rx - bx, rz - bz);
   assert.ok(d >= 150 && d <= 250, `${d} m`);
-  for (const zone of NO_SHOOT) for (const [x, z] of zone.poly) assert.equal(edge.inside(x, z), false, 'the school stays out of the field');
+  // Each end of the band as far past its team's stand (the school's grounds partly inside: open in a team match).
+  const { from, to } = FIELDS.compact.edge;
+  assert.ok(Math.abs(Math.hypot(from[0] - bx, from[1] - bz) - Math.hypot(to[0] - rx, to[1] - rz)) < 0.5, 'the same room behind each base');
+  assert.ok(NO_SHOOT[0].poly.some(([x, z]) => edge.inside(x, z)), 'part of the school grounds in the field');
   for (const field of Object.values(FIELDS)) {
     for (const team of ['blue', 'red']) {
       const base = field.bases[team];

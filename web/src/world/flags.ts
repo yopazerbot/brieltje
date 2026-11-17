@@ -1,5 +1,5 @@
 import * as THREE from 'three';
-import { FLAG_COLORS, fieldOf } from '../../shared/flagFields.mjs';
+import { FLAG_COLORS, baseOf, fieldOf } from '../../shared/flagFields.mjs';
 import type { FlagGameView, FlagTeam } from '../ui/flagHud';
 
 /**
@@ -8,7 +8,10 @@ import type { FlagGameView, FlagTeam } from '../ui/flagHud';
  * tall soft column of the team's colour that shows the base from far off), and each flag: a staff with a cloth in the
  * team's colour and a white disc, waving. Home it stands in its plinth, carried it rides on the carrier's back, dropped
  * it leans in the ground with a shorter column over it. Our own shapes; nothing to download. A few draw calls; the
- * columns are unlit and faint (no light, nothing near the half-float limit), on every preset.
+ * columns are unlit and faint (no light, nothing near the half-float limit), on every preset. Each column has a thin
+ * white core and each cloth a white edge (Yoshi, 17 Nov 2026: "Make sure the ctf is fair"): the red reads against
+ * Molenhoek's brick and its red cycle lane, the blue against the sky. With the sides swapped each stand is at its
+ * team's new base (shared/flagFields.mjs baseOf).
  */
 
 const TEAMS: FlagTeam[] = ['blue', 'red'];
@@ -42,10 +45,10 @@ function clothTexture(color: string): THREE.Texture {
   c.width = 128;
   c.height = 84;
   const g = c.getContext('2d')!;
-  g.fillStyle = color;
-  g.fillRect(0, 0, 128, 84);
   g.fillStyle = '#fbf6ea';
-  g.fillRect(0, 0, 8, 84);
+  g.fillRect(0, 0, 128, 84); // the white edge round it, 4 px of 84 (about 4 cm)
+  g.fillStyle = color;
+  g.fillRect(8, 4, 120 - 4, 84 - 8);
   g.beginPath();
   g.arc(68, 42, 22, 0, Math.PI * 2);
   g.fill();
@@ -69,6 +72,10 @@ const ringGeo = new THREE.RingGeometry(RING_IN, RING_OUT, 56).rotateX(-Math.PI /
 const columnGeo = (h: number, r: number) => new THREE.CylinderGeometry(r, r, h, 16, 1, true).translate(0, h / 2, 0);
 const baseColumnGeo = columnGeo(COLUMN, 0.3);
 const droppedColumnGeo = columnGeo(COLUMN_DROPPED, 0.22);
+// The columns' white core: a thin column inside each, as faint, that edges the colour from far off (sky or brick).
+const baseCoreGeo = columnGeo(COLUMN, 0.07);
+const droppedCoreGeo = columnGeo(COLUMN_DROPPED, 0.06);
+const coreMat = new THREE.MeshBasicMaterial({ color: '#ffffff', alphaMap: fade, transparent: true, opacity: 0.5, depthWrite: false });
 /** Each team's stand materials, made once and shared by every field's stands (a field change makes no new ones). */
 const teamMats = (color: string) => ({
   band: new THREE.MeshStandardMaterial({ color, roughness: 0.6 }),
@@ -93,9 +100,11 @@ class Flag {
     this.cloth = new THREE.Mesh(geo, new THREE.MeshStandardMaterial({ map: clothTexture(color), side: THREE.DoubleSide, roughness: 0.8 }));
     this.cloth.castShadow = true;
     this.column = new THREE.Mesh(droppedColumnGeo, new THREE.MeshBasicMaterial({ color, alphaMap: fade, transparent: true, opacity: 0.5, depthWrite: false, side: THREE.DoubleSide }));
+    const core = new THREE.Mesh(droppedCoreGeo, coreMat);
+    this.column.add(core);
     this.column.visible = false;
     this.root.add(staff, knob, this.cloth);
-    for (const m of [staff, knob, this.cloth, this.column]) {
+    for (const m of [staff, knob, this.cloth, this.column, core]) {
       m.userData.ignoreRay = true; // shots go through
       m.raycast = () => {};
     }
@@ -121,6 +130,8 @@ export class FlagWorld {
   private stands = new Map<FlagTeam, THREE.Group>();
   private flags = new Map<FlagTeam, Flag>();
   private field = '';
+  /** The sides swapped as the stands were last put */
+  private swapped = false;
   private view: FlagGameView | null = null;
   private time = 0;
   /** Each carrier's last place, for the cloth to stream as they go */
@@ -141,15 +152,17 @@ export class FlagWorld {
     this.view = view;
     this.group.visible = !!view;
     if (!view) return;
-    if (view.field !== this.field) this.build(view.field);
+    if (view.field !== this.field || !!view.swapped !== this.swapped) this.build(view.field, !!view.swapped);
   }
 
   /**
-   * The two stands, made once with shared geometries and materials, put where `fieldId` has them (shared/flagFields.mjs):
-   * a change of field moves them, nothing is made or left behind.
+   * The two stands, made once with shared geometries and materials, put where `fieldId` has them (shared/flagFields.mjs),
+   * each at its team's base (`swapped`: the other one's): a change of field or of sides moves them, nothing is made or
+   * left behind.
    */
-  private build(fieldId: string): void {
+  private build(fieldId: string, swapped: boolean): void {
     this.field = fieldId;
+    this.swapped = swapped;
     const field = fieldOf(fieldId);
     for (const team of TEAMS) {
       let stand = this.stands.get(team);
@@ -163,6 +176,7 @@ export class FlagWorld {
         ring.position.y = 0.04;
         const column = new THREE.Mesh(baseColumnGeo, mats.column);
         column.position.y = PLINTH_H;
+        column.add(new THREE.Mesh(baseCoreGeo, coreMat));
         stand.add(plinth, band, ring, column);
         stand.traverse((o) => {
           o.userData.ignoreRay = true;
@@ -171,7 +185,7 @@ export class FlagWorld {
         this.stands.set(team, stand);
         this.group.add(stand);
       }
-      const [x, z, y] = field.bases[team].stand;
+      const [x, z, y] = baseOf(field, team, swapped).stand;
       stand.position.set(x, y, z);
     }
   }
@@ -192,7 +206,7 @@ export class FlagWorld {
       let speed = 0;
       flag.column.visible = f.at === 'ground';
       if (f.at === 'home') {
-        const [x, z, y] = field.bases[team].stand;
+        const [x, z, y] = baseOf(field, team, !!v.swapped).stand;
         root.visible = true;
         root.position.set(x, y + PLINTH_H - 0.05, z);
         root.rotation.set(0, this.time * 0.15, 0); // turning slowly in the wind
@@ -233,7 +247,7 @@ export class FlagWorld {
         if (at) out.push({ x: at.x, y: at.y, z: at.z, color: FLAG_COLORS[team], carried: true, name: f.by });
       } else if (f.at === 'ground') out.push({ x: f.x ?? 0, y: f.y ?? 0, z: f.z ?? 0, color: FLAG_COLORS[team], carried: false });
       else {
-        const [x, z, y] = field.bases[team].stand;
+        const [x, z, y] = baseOf(field, team, !!v.swapped).stand;
         out.push({ x, y, z, color: FLAG_COLORS[team], carried: false });
       }
     }

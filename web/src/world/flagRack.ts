@@ -1,6 +1,6 @@
 import * as THREE from 'three';
 import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
-import { FLAG_COLORS, fieldOf } from '../../shared/flagFields.mjs';
+import { FLAG_COLORS, baseOf, fieldOf } from '../../shared/flagFields.mjs';
 import { GUN_PAINT, onPaintball, paintball } from '../paintball';
 import type { FlagGameView, FlagTeam } from '../ui/flagHud';
 
@@ -129,7 +129,7 @@ export class FlagRacks {
     onPaintball((on) => this.racks.forEach((r) => r.paint(on)));
   }
 
-  /** The game's view (null: no flag game, or it is over): each rack where its field has it, the launcher on it or not. */
+  /** The game's view (null: no flag game, or it is over): each rack at its team's base now (sides swapped too), the launcher on it or not. */
   set(view: FlagGameView | null): void {
     this.view = view?.racks ? view : null;
     this.group.visible = !!this.view;
@@ -138,7 +138,7 @@ export class FlagRacks {
       const state = this.view?.racks?.[team];
       rack.root.visible = !!state;
       if (!state || !this.view) continue;
-      const [x, z, y, yaw] = fieldOf(this.view.field).bases[team].rack;
+      const [x, z, y, yaw] = baseOf(fieldOf(this.view.field), team, !!this.view.swapped).rack;
       rack.root.position.set(x, y, z);
       rack.root.rotation.set(0, yaw, 0);
       rack.launcher.visible = state.at === 'rack';
@@ -165,7 +165,7 @@ export class FlagRacks {
   marks(team: FlagTeam | null): { x: number; y: number; z: number; color: string; away: boolean }[] {
     const v = this.view;
     if (!v?.racks || !team) return [];
-    const [x, z, y] = fieldOf(v.field).bases[team].rack;
+    const [x, z, y] = baseOf(fieldOf(v.field), team, !!v.swapped).rack;
     return [{ x, y, z, color: FLAG_COLORS[team], away: v.racks[team].at !== 'rack' }];
   }
 }

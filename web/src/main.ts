@@ -2787,7 +2787,7 @@ function followGame(view: ModeView): void {
   flagWorld.set(flag);
   flagRacks.set(games.flagOn ? flag : null);
   if (!games.flagOn) weapon.rocketsLeft = null; // the rack's launcher is the game's only (the admin's own counts none)
-  bikes.setGameBikes(flag?.vehicles?.bikes ?? []);
+  bikes.setGameBikes(flag?.vehicles?.bikes ?? [], flag?.vehicles?.off ?? [], !!flag?.swapped);
   combat.respawnSeconds = games.flagOn ? 5 : 3;
   combat.setFlag(games.flagOn ? { b: games.view.score?.blue ?? 0, r: games.view.score?.red ?? 0 } : null);
   if (games.flagOn && !(before.kind === 'flag' && before.phase === 'playing')) {

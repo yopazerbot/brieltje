@@ -30,6 +30,8 @@ export interface Obstacle {
   x: number;
   z: number;
   r: number;
+  /** Waited for without a honk (a helicopter set down on the road for a game: nobody to honk at) */
+  quiet?: boolean;
 }
 
 /** A player's car (car.ts), for the traffic to stop behind. */
@@ -124,6 +126,8 @@ interface Mover {
   waited: number;
   /** Honks when it has waited this long */
   honkAt: number;
+  /** It waits for something quiet (Obstacle.quiet), or behind a car that does: no honk */
+  quiet: boolean;
   key: string;
   solid: boolean;
   /** Where it is now, for the others to stop behind */
@@ -389,7 +393,7 @@ export class Traffic {
         group.visible = false;
         this.group.add(group);
         this.movers.push({
-          route, phase, model, group, body, wheels, front, tail, parts: meshes, far: false, leg: -1, s: 0, v: 0, spin: 0, hidden: true, gap: Infinity, blocker: null, id: this.movers.length, waited: 0, honkAt: 3,
+          route, phase, model, group, body, wheels, front, tail, parts: meshes, far: false, leg: -1, s: 0, v: 0, spin: 0, hidden: true, gap: Infinity, blocker: null, id: this.movers.length, waited: 0, honkAt: 3, quiet: false,
           key: `traffic-${this.movers.length}`, solid: false, x: 0, z: 0, yaw: 0, audio: null, brake: false, slot: carLights.reserve(),
         });
       }
@@ -567,6 +571,7 @@ export class Traffic {
     const half = c.model.width / 2;
     let gap = Infinity;
     let who: Mover | null = null;
+    let quiet = false;
     for (let k = 1; k <= LOOK && gap === Infinity; k++) {
       const ahead = pointAt(leg, c.s + k * 2.5, this.p);
       for (const o of circles) {
@@ -578,6 +583,7 @@ export class Traffic {
           if (g < gap) {
             gap = g;
             who = o.own ?? null;
+            quiet = !!o.quiet || !!o.own?.quiet;
           }
         }
       }
@@ -585,6 +591,7 @@ export class Traffic {
     // Two cars of the traffic in each other's way at a junction: the one with the lower number goes.
     if (who && who.blocker === c && c.id < who.id) gap = Infinity;
     c.blocker = gap < Infinity ? who : null;
+    c.quiet = gap < Infinity && quiet;
     if (gap < Infinity) {
       const room = Math.sqrt(2 * STOP * 0.6 * Math.max(0, gap - 2));
       want = Math.min(want, room < 0.5 ? 0 : room);
@@ -599,7 +606,7 @@ export class Traffic {
       c.waited += dt;
       if (c.waited > c.honkAt) {
         c.honkAt += 10;
-        if (Math.hypot(c.x - eye.x, c.z - eye.z) < 120) honk(c.x, this.roadAt(c.x, c.z) + 0.8, c.z);
+        if (!c.quiet && Math.hypot(c.x - eye.x, c.z - eye.z) < 120) honk(c.x, this.roadAt(c.x, c.z) + 0.8, c.z);
       }
     } else if (c.v > 1) {
       c.waited = 0;

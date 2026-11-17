@@ -26,8 +26,10 @@ export interface FlagGameView {
   flags: Record<FlagTeam, FlagState>;
   tags: Record<FlagTeam, number>;
   sudden: boolean;
-  /** The village field's parked bikes (ids from shared/flagFields.mjs) */
-  vehicles?: { bikes: string[] };
+  /** The sides swapped by the host: blue plays from red's base and red from blue's (shared/flagFields.mjs baseOf) */
+  swapped?: boolean;
+  /** The field's parked bikes (ids from shared/flagFields.mjs), and the village's own bikes out of play (`off`) */
+  vehicles?: { bikes: string[]; off?: string[] };
   /** Each team's bazooka rack (server/flagBazooka.mjs): on it, or out (held, or away with `ms` until it is back) */
   racks?: Record<FlagTeam, { at: 'rack' | 'out'; ms?: number }>;
 }

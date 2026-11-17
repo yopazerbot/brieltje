@@ -25,6 +25,8 @@ export interface FlagField {
   bases: Record<FlagTeam, FlagBase>;
   edge: { from: [number, number]; to: [number, number]; half: number } | null;
   vehicles?: Record<FlagTeam, FlagVehicles>;
+  /** The village's own vehicles out of play while the game runs (shared/car.json and bike.json ids) */
+  off?: { cars: string[]; bikes: string[] };
   /** Each team's helicopter (shared/heli.json's id): on its own pad, or set down at x, y, z, yaw for the game */
   heli: Record<FlagTeam, { id: string; x?: number; y?: number; z?: number; yaw?: number }>;
 }
@@ -33,5 +35,6 @@ export const FLAG_TEAMS: FlagTeam[];
 export const FLAG_COLORS: Record<FlagTeam, string>;
 export const FIELDS: Record<'compact' | 'village', FlagField>;
 export function fieldOf(id: unknown): FlagField;
+export function baseOf(field: FlagField, team: FlagTeam, swapped?: boolean): FlagBase;
 export const FLAG_BIKES: Record<string, { team: FlagTeam; park: { x: number; y: number; z: number; yaw: number } }>;
 export function fieldEdge(field: FlagField, edges: { map: Bounds }): Bounds;

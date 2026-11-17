@@ -137,6 +137,20 @@ export class VehicleDamage {
     return noShoot(mid.x, mid.z);
   }
 
+  /**
+   * Out of play for a game (Steal the flag: a vehicle by a base that only one team has, server/flags.mjs park): its
+   * riders put out, back on its parking place, and gone (drawn nowhere, nothing to bump into, nobody gets in: `out`)
+   * until no team match is on, when it is whole again as any wreck is (tick).
+   */
+  hold(kind, id) {
+    const v = this.vehicle(kind, id);
+    if (!v) return;
+    const r = this.rec(kind, id);
+    Object.assign(r, { hp: r.max, pct: 100, st: STAGE.gone, until: Infinity, fall: null, by: null, w: null, dirty: false });
+    r.homed = this.home(r, v, true);
+    this.tell(r, v);
+  }
+
   /** Someone in it that `p` could not hurt (one of them inside a home the other may not see into, homeGate.mayHurt). */
   hidden(p, kind, v) {
     return this.riders(kind, v).some((n) => {

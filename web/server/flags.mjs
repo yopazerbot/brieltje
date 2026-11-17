@@ -3,7 +3,9 @@
 // driven from server/modes.mjs (kind 'flag'). The fields, the stands, the start places and the parked vehicles are in
 // shared/flagFields.mjs (the page draws the same).
 //
-// - Blue against red: the host's two evening teams when there are two (server/host.mjs), else everyone split evenly.
+// - Blue against red: the host's two evening teams when there are two (server/host.mjs), else everyone dealt evenly at
+//   random (and that deal becomes the host's). Only the host moves a player (Yoshi, 17 Nov 2026: "team switches should
+//   only be done by the admin").
 // - Each team's flag stands on its stand at its base. Walk into the other team's flag to take it; bring it to your own
 //   stand to score, but only while your own flag is home.
 // - The carrier may drive or ride a bike; no portal, no trip from the chat, no helicopter seat (game.mjs asks
@@ -22,8 +24,8 @@
 // - teleporting with the flag: a carrier is refused portals, trips from the chat and helicopter seats (game.mjs), and
 //   any move the server makes (its `warp` counter: a respawn, a gathering, the host's bring, being put out of a home)
 //   drops the flag where the carrier stood before it;
-// - team switching to score: a carrier can't switch teams (Modes.choose), a switch is a fresh start at the new base
-//   (the flag drops first), the host's teams can't be switched at all, and a capture counts for the carrier's team as
+// - team switching to score (privilege escalation): no player switches team (Modes.choose refuses every ask), the
+//   host's move is a fresh start at the new base (the flag drops first), and a capture counts for the carrier's team as
 //   it is at that tick, only with that team's own flag home.
 // Nothing here is stored or logged.
 
@@ -32,10 +34,12 @@ import { loadBounds } from '../shared/bounds.mjs';
 import { homeAt } from '../shared/homes.mjs';
 import { STAGE } from './vehicleDamage.mjs';
 import { FlagBazooka } from './flagBazooka.mjs';
-import { FIELDS, FLAG_COLORS, FLAG_TEAMS, fieldEdge, fieldOf } from '../shared/flagFields.mjs';
+import { FIELDS, FLAG_COLORS, FLAG_TEAMS, baseOf, fieldEdge, fieldOf } from '../shared/flagFields.mjs';
 
 export { FIELDS, FLAG_COLORS, FLAG_TEAMS };
 const BOUNDS = loadBounds(JSON.parse(readFileSync(new URL('../shared/bounds.json', import.meta.url), 'utf8')));
+/** The village's own bikes (their parking places): one out of play for a game is back there after it. */
+const BIKES = JSON.parse(readFileSync(new URL('../shared/bike.json', import.meta.url), 'utf8')).bikes;
 /** Each field's edge, worked out once (game.mjs fence while the game is played). */
 const EDGES = Object.fromEntries(Object.values(FIELDS).map((f) => [f.id, fieldEdge(f, BOUNDS)]));
 /** ms: the default clock. */
@@ -88,13 +92,25 @@ export class FlagGame {
     /** team -> its flag: at 'home', 'carried' (by a name) or on the 'ground' (since when) */
     this.flags = Object.fromEntries(FLAG_TEAMS.map((t) => [t, this.homeFlag(t)]));
     this.started = now;
-    this.vehicles = { cars: [], bikes: [], helis: [] };
+    this.vehicles = { cars: [], bikes: [], helis: [], off: [] };
+    /** The sides swapped (the host's `swap`): blue plays from red's base and red from blue's. */
+    this.swapped = false;
     /** Each team's bazooka on its rack (server/flagBazooka.mjs) */
     this.arms = new FlagBazooka(game, this);
   }
 
+  /** The base `team` plays from now: its own, or with the sides swapped the other team's (shared/flagFields.mjs baseOf). */
+  base(team) {
+    return baseOf(this.field, team, this.swapped);
+  }
+
+  /** The team playing from the base the field gives `side` (blue's or red's) now. */
+  sideOf(side) {
+    return this.swapped ? other(side) : side;
+  }
+
   homeFlag(team) {
-    const s = this.field.bases[team].stand;
+    const s = this.base(team).stand;
     return { at: 'home', by: null, x: s[0], y: s[2], z: s[1], since: 0, warp: 0 };
   }
 
@@ -111,7 +127,7 @@ export class FlagGame {
   baseSpot(name) {
     const team = this.teams[name];
     if (!team) return null;
-    const base = this.field.bases[team];
+    const base = this.base(team);
     const others = [...this.game.players].filter(([n, o]) => n !== name && o.alive && o.state).map(([, o]) => o.state);
     const ranked = base.spawns.map(([x, z, y]) => ({ x, z, y, d: others.length ? Math.min(...others.map((o) => Math.hypot(o.x - x, o.z - z))) : Math.random() }))
       .sort((a, b) => b.d - a.d);
@@ -205,7 +221,7 @@ export class FlagGame {
       const p = g.players.get(f.by);
       const mine = this.teams[f.by];
       if (!p?.alive || !p.state || mine !== other(team) || this.flags[mine].at !== 'home') continue;
-      const s = this.field.bases[mine].stand;
+      const s = this.base(mine).stand;
       const reach = g.carOf?.(f.by) ? CAPTURE_CAR : CAPTURE;
       if (!this.near(p.state, s[0], s[2], s[1], reach)) continue;
       this.score[mine]++;
@@ -227,7 +243,7 @@ export class FlagGame {
     for (const h of helis.machines.values()) {
       if (this.game.vehicleDamage?.out?.('heli', h.id)) continue; // a wreck lies where it fell (server/vehicleDamage.mjs)
       const low = h.y - helis.floor(h.x, h.z) < STAND_LOW;
-      if (!low || !FLAG_TEAMS.some((t) => Math.hypot(h.x - this.field.bases[t].stand[0], h.z - this.field.bases[t].stand[1]) < STAND_KEEP)) continue;
+      if (!low || !FLAG_TEAMS.some((t) => Math.hypot(h.x - this.field.bases[t].stand[0], h.z - this.field.bases[t].stand[1]) < STAND_KEEP)) continue; // both stands, swapped or not
       const aboard = h.seats.filter(Boolean);
       for (const n of aboard) helis.putOut(n, now);
       for (const n of aboard) {
@@ -275,21 +291,28 @@ export class FlagGame {
       // Carried: only who carries it (the pages draw it on their figure, where they may see them); never its place.
       flags[t] = f.at === 'carried' ? { at: f.at, by: f.by } : { at: f.at, x: f.x, y: f.y, z: f.z, ...(f.at === 'ground' ? { ms: Math.max(0, RETURN_MS - (now - f.since)) } : {}) };
     }
-    return { field: this.field.id, flags, tags: { ...this.tags }, sudden: this.sudden, vehicles: this.vehicles.bikes.length ? { bikes: [...this.vehicles.bikes] } : undefined, racks: this.arms.over ? undefined : this.arms.view(now) };
+    // `swapped`: the sides traded bases (every page draws the stands, the racks and the marks there; a page joining
+    // later too). `vehicles`: the field's bikes parked, and the village's own bikes out of play for the game (`off`).
+    const v = this.vehicles;
+    return {
+      field: this.field.id, flags, tags: { ...this.tags }, sudden: this.sudden, swapped: this.swapped || undefined,
+      vehicles: v.bikes.length || v.off.length ? { bikes: [...v.bikes], off: [...v.off] } : undefined, racks: this.arms.over ? undefined : this.arms.view(now),
+    };
   }
 
   // ------------------------------------------------------------------ the parked vehicles
 
   /**
    * The field's vehicles at each base, for as long as the game runs (shared/flagFields.mjs): in both fields and every
-   * look a helicopter for each team (blue the church's on its deck, red the house's set down near its base), whole and
-   * on its spot whatever it was before (a wreck, flown off); in the village field cars in the team's colour (the placed
-   * Teslas' list, never stored) and bikes (the field's own ids, drawn by every page from the same file).
+   * look a helicopter for each team, set down on the ground near its base, whole and on its spot whatever it was before
+   * (a wreck, flown off); cars in the team's colour (the placed Teslas' list, never stored) and bikes (the field's own
+   * ids, drawn by every page from the same file); and the village's own vehicles by a base that only one team would
+   * have (`off`: the church's Teslas, the bikes on the racks by the stands) out of play until the game is over.
    */
   park(now) {
     const g = this.game;
-    for (const team of FLAG_TEAMS) {
-      const spot = this.field.heli?.[team];
+    for (const side of FLAG_TEAMS) {
+      const spot = this.field.heli?.[side];
       const h = spot && g.helis?.machines.get(spot.id);
       const inner = h && g.helis.inner.get(spot.id);
       if (!h || !inner) continue;
@@ -300,21 +323,29 @@ export class FlagGame {
       g.helis.park(h, now);
     }
     const v = this.field.vehicles;
-    if (!v) return;
-    for (const team of FLAG_TEAMS) {
-      for (const [i, c] of (v[team].cars ?? []).entries()) {
-        const id = `f${team[0]}${i + 1}`;
+    for (const side of FLAG_TEAMS) {
+      for (const [i, c] of (v?.[side].cars ?? []).entries()) {
+        const id = `f${side[0]}${i + 1}`;
         if (Object.hasOwn(g.cars, id)) continue;
         g.cars[id] = { id, kind: c.kind, x: c.x, y: c.y, z: c.z, yaw: c.yaw, s: 0, driver: null, passenger: null, by: '', flag: true };
         g.carAt[id] = 0;
         this.vehicles.cars.push(id);
       }
-      for (const k of v[team].bikes ?? []) {
+      for (const k of v?.[side].bikes ?? []) {
         if (Object.hasOwn(g.bikes, k.id)) continue;
         g.bikes[k.id] = { id: k.id, x: k.x, y: k.y, z: k.z, yaw: k.yaw, rider: null, lie: 0 };
         g.bikeAt[k.id] = 0;
         this.vehicles.bikes.push(k.id);
       }
+    }
+    for (const id of this.field.off?.cars ?? []) g.vehicleDamage?.hold('car', id); // gone until the match is over (server/vehicleDamage.mjs)
+    for (const id of this.field.off?.bikes ?? []) {
+      const k = g.bikes[id];
+      if (!k || this.vehicles.off.includes(id)) continue;
+      if (k.rider) g.releaseBike(k.rider);
+      delete g.bikes[id];
+      delete g.bikeAt[id];
+      this.vehicles.off.push(id);
     }
     if (this.vehicles.cars.length) g.sendPlaced();
     for (const id of this.vehicles.bikes) g.broadcastThing({ t: 'bike', bike: g.bikes[id] }, 'bike', g.bikes[id]);
@@ -328,9 +359,16 @@ export class FlagGame {
     if (this.game.vehicleDamage?.recs?.delete(`heli:${h.id}`)) this.game.broadcastThing({ t: 'vdmg', k: 'heli', id: h.id, hp: 100, st: STAGE.whole }, 'heli', h);
   }
 
+  /** Car `id` whole again: its damage forgotten and every page told (a car the field parks, or one held out of play). */
+  wholeCar(id) {
+    const c = this.game.cars[id];
+    if (c && this.game.vehicleDamage?.recs?.delete(`car:${id}`)) this.game.broadcastThing({ t: 'vdmg', k: 'car', id, hp: 100, st: STAGE.whole }, 'car', c);
+  }
+
   /**
    * The game is over: the field's vehicles go (whoever sits in one gets out first), the helicopters back to their own
-   * pads, whole; the bazookas out of everyone's hands (server/flagBazooka.mjs end).
+   * pads, whole; the village's own vehicles held out of play back, whole; the bazookas out of everyone's hands
+   * (server/flagBazooka.mjs end).
    */
   unpark(now) {
     const g = this.game;
@@ -342,7 +380,7 @@ export class FlagGame {
       if (c.passenger) g.releaseCar(c.passenger);
       // Damaged or a wreck (server/vehicleDamage.mjs): every page told it is whole before it goes, so the same car parked
       // by the next game is no wreck on any page (the record would be dropped without a word once the car is gone).
-      if (g.vehicleDamage?.recs?.delete(`car:${id}`)) g.broadcastThing({ t: 'vdmg', k: 'car', id, hp: 100, st: STAGE.whole }, 'car', c);
+      this.wholeCar(id);
       delete g.cars[id];
       delete g.carAt[id];
     }
@@ -362,6 +400,42 @@ export class FlagGame {
       this.whole(h);
       g.helis.park(h, now);
     }
-    this.vehicles = { cars: [], bikes: [], helis: [] };
+    // Straight into another team match the held cars would stay gone (vehicleDamage lets go only once none is on).
+    for (const id of this.field.off?.cars ?? []) this.wholeCar(id);
+    for (const id of this.vehicles.off) {
+      const park = BIKES[id]?.park;
+      if (!park || Object.hasOwn(g.bikes, id)) continue;
+      g.bikes[id] = { id, ...park, rider: null, lie: 0 };
+      g.bikeAt[id] = 0;
+      g.broadcastThing({ t: 'bike', bike: g.bikes[id] }, 'bike', g.bikes[id]);
+    }
+    this.vehicles = { cars: [], bikes: [], helis: [], off: [] };
+  }
+
+}
+    const v = this.field.vehicles;
+    for (const id of this.vehicles.cars) {
+      const c = g.cars[id];
+      const side = id[1] === 'b' ? 'blue' : 'red';
+      const spot = v?.[side].cars[Number(id.slice(2)) - 1];
+      if (!c || !spot) continue;
+      if (c.driver) g.releaseCar(c.driver);
+      if (c.passenger) g.releaseCar(c.passenger);
+      this.wholeCar(id);
+      Object.assign(c, { x: spot.x, y: spot.y, z: spot.z, yaw: spot.yaw, s: 0, kind: spot.kind.replace(/-(blue|red)$/, `-${this.sideOf(side)}`) });
+      g.carAt[id] = 0;
+    }
+    if (this.vehicles.cars.length) g.sendPlaced();
+    for (const id of this.vehicles.bikes) {
+      const k = g.bikes[id];
+      const spot = FLAG_TEAMS.map((side) => v?.[side].bikes.find((b) => b.id === id)).find(Boolean);
+      if (!k || !spot) continue;
+      if (k.rider) g.releaseBike(k.rider);
+      Object.assign(k, { x: spot.x, y: spot.y, z: spot.z, yaw: spot.yaw, lie: 0 });
+      g.bikeAt[id] = 0;
+      g.broadcastThing({ t: 'bike', bike: k }, 'bike', k);
+    }
+    g.teamsChanged([...g.players.keys()]); // everyone at their base, out of every seat, protected (game.mjs respawn)
+    return { ev: 'swapped', team: 'blue', name: '' };
   }
 }

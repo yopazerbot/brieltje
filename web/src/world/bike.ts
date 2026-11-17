@@ -123,6 +123,9 @@ const HALF_W = BIKES.width / 2;
 const DRAW = 160; // m from the eye: further off a bike isn't drawn
 const SPIN_STEP = 0.3; // rad: the most a wheel turns per frame on screen (faster, the spokes seem to stand)
 const CAM_PITCH = 0.24;
+/** Steal the flag's bikes, in their team's colour (shared/flagFields.mjs) */
+const BLUE_PAINT = '#1f4f8f';
+const RED_PAINT = '#9a1c22';
 // A bike on its side rests on its bars and a pedal, its middle this far up (m), and is lifted with its lean past a ridden one's.
 const LIE_LIFT = 0.2;
 const LIFT_FROM = Math.cos(0.6);
@@ -336,7 +339,7 @@ export class Bikes {
   /** `figure`: your own figure, as the others see it (net/avatars.ts figure). */
   constructor(private world: World, private trees: Obstacle[], private figure: () => Body) {
     // Steal the flag's bikes too (shared/flagFields.mjs), in their team's colour: out of the game until its game parks them.
-    const game = Object.entries(FLAG_BIKES).map(([id, k]) => [id, { paint: k.team === 'blue' ? '#1f4f8f' : '#9a1c22', village: true, park: k.park }] as const);
+    const game = Object.entries(FLAG_BIKES).map(([id, k]) => [id, { paint: k.team === 'blue' ? BLUE_PAINT : RED_PAINT, village: true, park: k.park }] as const);
     this.bikes = [...Object.entries(BIKES.bikes), ...game].map(([id, spec], i) => new Bike(id, spec, i));
     for (const k of this.bikes) this.byId.set(k.id, k);
     this.group.add(this.ownRoot);
@@ -363,19 +366,39 @@ export class Bikes {
   /** The village's bikes are in the game (main.ts, once the village has loaded). */
   villageReady(): void {
     this.villageIn = true;
-    for (const k of this.bikes) k.ready = !Object.hasOwn(FLAG_BIKES, k.id) || this.parked.has(k.id);
+    for (const k of this.bikes) k.ready = Object.hasOwn(FLAG_BIKES, k.id) ? this.parked.has(k.id) : !this.off.has(k.id);
   }
 
   private villageIn = false;
   /** Steal the flag's bikes parked now (server/flags.mjs): only those are in the game. */
   private parked = new Set<string>();
+  /** The village's own bikes out of play while Steal the flag runs, now and as last set (to bring them back) */
+  private off = new Set<string>();
+  private offBefore = new Set<string>();
+  /** The sides of Steal the flag swapped: its bikes in the other team's colour */
+  private swapped = false;
 
-  /** Steal the flag's bikes in the game (`ids`, from its view), the others out and back on their spots. */
-  setGameBikes(ids: readonly string[]): void {
+  /**
+   * Steal the flag's bikes in the game (`ids`, from its view), the others out and back on their spots; the village's own
+   * bikes out of play for it (`off`) out too; `swapped`: the sides swapped, each bike in the colour of the team now at
+   * its base.
+   */
+  setGameBikes(ids: readonly string[], off: readonly string[] = [], swapped = false): void {
     this.parked = new Set(ids);
+    this.off = new Set(off);
+    if (swapped !== this.swapped) {
+      this.swapped = swapped;
+      for (const k of this.bikes) {
+        const spec = FLAG_BIKES[k.id];
+        if (!spec) continue;
+        k.paint.set((spec.team === 'blue') !== swapped ? BLUE_PAINT : RED_PAINT);
+        for (const p of ['FramePaint', 'ForkPaint'] as const) this.meshes[p]?.setColorAt(k.index, k.paint);
+      }
+      for (const p of ['FramePaint', 'ForkPaint'] as const) if (this.meshes[p]?.instanceColor) this.meshes[p]!.instanceColor!.needsUpdate = true;
+    }
     for (const k of this.bikes) {
-      if (!Object.hasOwn(FLAG_BIKES, k.id)) continue;
-      const ready = this.villageIn && this.parked.has(k.id);
+      if (!Object.hasOwn(FLAG_BIKES, k.id) && !this.off.has(k.id) && !this.offBefore.has(k.id)) continue;
+      const ready = this.villageIn && (Object.hasOwn(FLAG_BIKES, k.id) ? this.parked.has(k.id) : !this.off.has(k.id));
       if (ready === k.ready) continue;
       k.ready = ready;
       if (!ready && k.id !== this.mounted) {
@@ -383,6 +406,7 @@ export class Bikes {
         this.put(k, k.park.x, k.park.y, k.park.z, k.park.yaw, 0);
       }
     }
+    this.offBefore = new Set(this.off);
   }
 
   /** The bike you ride: where it is and how fast it goes. */
