@@ -562,6 +562,39 @@ for (const field of ['compact', 'village']) {
   });
 }
 
+test('a guard never takes the bazooka from its rack, and shoots an enemy helicopter with an opponent aboard', () => {
+  const s = setup('village');
+  s.set('blue', 1);
+  s.tick();
+  s.run(SAFE_MS + 100);
+  const g = s.game.players.get(guardName('blue', 1));
+  const f = s.game.modes.state.f;
+  g.walk.wait = Infinity;
+  g.lookAt = Infinity;
+  const [rx, rz, ry] = s.f.bases.blue.rack;
+  Object.assign(g.state, { x: rx, y: ry, z: rz });
+  for (let k = 0; k < 20; k++) s.tick();
+  assert.equal(f.arms.racks.blue.at, 'rack', 'still on its rack');
+  assert.equal(g.weapons.has('bazooka'), false);
+  // Red's machine hovering low within the guard's sight, a red player at the stick: further than 14 m from the stands
+  // (FlagGame.keepStandsFree sends one nearer home).
+  g.lookAt = 0;
+  const [h] = [...s.game.helis.machines.values()].filter((m) => m.id === s.f.heli.red.id);
+  const nav = s.guards.rounds.blue.nav;
+  const [sx, sz] = s.f.bases.blue.stand;
+  let spot = null;
+  for (let a = 0; a < 63 && !spot; a++) {
+    const x = sx + Math.cos(a / 10) * 20, z = sz + Math.sin(a / 10) * 20;
+    if (nav.walkable(x, z) && Math.hypot(x - rx, z - rz) < 30 && nav.reach(rx, ry + 1.6, rz, x, nav.ground(x, z) + 4, z)) spot = { x, z, y: nav.ground(x, z) + 2.5 };
+  }
+  Object.assign(h, spot);
+  h.seats[0] = s.red;
+  g.state.yaw = Math.atan2(-(spot.x - rx), -(spot.z - rz));
+  s.run(3000);
+  const r = s.game.vehicleDamage.recs.get(`heli:${h.id}`);
+  assert.ok(r && r.hp < r.max, 'the helicopter took damage');
+});
+
 test('the strongmen leave the guards alone: no target, no stomp or rock on one, no death on the board if one goes down', () => {
   const s = setup();
   const { g } = oneGuard(s);
