@@ -283,8 +283,8 @@ test('a guard does not shoot an opponent it cannot see, further than it sees, pr
     stand(s, p, x, z);
     if (why === 'protected') p.protectedUntil = s.now() + 60_000;
     if (why === 'calm') {
-      const calm = s.game.calm.bind(s.game);
-      s.game.calm = (q) => q === p || calm(q); // the predicate a player's shot asks (the school grounds, a drop)
+      const calm = s.game.fightCalm.bind(s.game);
+      s.game.fightCalm = (q) => q === p || calm(q); // the predicate a player's shot asks (the school grounds outside a team match, a drop)
     }
     if (why === 'home') {
       const inside = s.game.gate.insideOf.bind(s.game.gate);
@@ -299,16 +299,48 @@ test('a guard does not shoot an opponent it cannot see, further than it sees, pr
   }
 });
 
-test('a guard calm itself (Game.calm says so) fires no shot at all', () => {
+test('a guard calm itself (Game.fightCalm says so) fires no shot at all', () => {
+  const s = setup();
+  const { g, x, z } = oneGuard(s);
+  const p = s.game.players.get(s.red);
+  stand(s, p, x, z);
+  const calm = s.game.fightCalm.bind(s.game);
+  s.game.fightCalm = (q) => q === g || calm(q);
+  s.run(3000);
+  assert.equal(p.hp, 100);
+  assert.equal(s.out.filter((m) => m.t === 'shot').length, 0);
+});
+
+test('the school grounds in the flag game (a team match): a guard aims at and hits an opponent on them (Game.fightCalm); its round never goes onto them', () => {
+  // Yoshi, 17 Nov 2026: "School zone ok to shoot in team v team". The guard asks the fight's rule (Game.fightCalm), not
+  // the raw zone (Game.calm): here the raw zone says the opponent stands on the grounds (the grid round the church, which
+  // the guard sees by, ends short of them), and the guard shoots all the same, as a player may in a team match.
   const s = setup();
   const { g, x, z } = oneGuard(s);
   const p = s.game.players.get(s.red);
   stand(s, p, x, z);
   const calm = s.game.calm.bind(s.game);
-  s.game.calm = (q) => q === g || calm(q);
-  s.run(3000);
-  assert.equal(p.hp, 100);
-  assert.equal(s.out.filter((m) => m.t === 'shot').length, 0);
+  s.game.calm = (q) => q === p || q === g || calm(q); // both on the grounds, as the raw zone has it
+  assert.equal(s.game.fightCalm(p), false, 'open in the team match');
+  s.run(2500);
+  assert.ok(p.hp < 100 || !p.alive, 'aimed at and hit');
+  assert.ok(s.out.some((m) => m.t === 'shot' && m.name === guardName('blue', 1)), 'shots fired');
+  // Outside a team match (its result showing) the same guard holds its fire.
+  s.game.modes.finish('over', 'flagDraw', { blue: 0, red: 0, a: 0, b: 0 });
+  assert.equal(s.game.fightCalm(p), true);
+  // Its rounds, both teams, both fields and both orientations: never a waypoint on the grounds.
+  for (const field of ['compact', 'village']) {
+    const t = setup(field);
+    t.set('blue', 1);
+    t.set('red', 1);
+    t.tick();
+    const f = t.game.modes.state.f;
+    for (const k of [0, 1]) {
+      if (k) f.swap(t.now());
+      t.tick();
+      for (const team of ['blue', 'red']) for (const q of t.guards.rounds[team].points) assert.equal(noShoot(q.x, q.z), null, `${field}: a waypoint on the grounds`);
+    }
+  }
 });
 
 test('a guard is tagged by the other team only, through the hit path, and is back on its round 5 s later, protected', () => {

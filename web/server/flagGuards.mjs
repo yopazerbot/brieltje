@@ -26,7 +26,7 @@
 //   turret's or a zombie's: houses, walls and hedges stop it, glass doesn't), or an opponent's car or helicopter;
 // - after its skill's reaction time, shoots the rifle at the rifle's own fire rate, magazine and reload, missing by its
 //   skill's chance; a hit goes through Game.hit (or VehicleDamage.hit for a vehicle) like a player's would, so every
-//   gate holds: the fire-rate clock, spawn protection, teammates, Game.calm (the school grounds, a drop), the homes'
+//   gate holds: the fire-rate clock, spawn protection, teammates, Game.fightCalm (the school grounds outside a team match, a drop), the homes'
 //   sight (homeGate.mayHurt), seats, the round's end, the host's freeze (checked here first: Host.holds).
 // - down: back at its base after the game's BACK_MS, on its round, with SAFE_MS of protection (Game.respawn).
 //
@@ -451,7 +451,7 @@ export class FlagGuards {
     const round = this.roundOf(rec.guard.team);
     const nav = round.nav;
     const s = rec.state;
-    if (g.calm(rec)) return null;
+    if (g.fightCalm(rec)) return null;
     let best = null;
     const now = Date.now();
     const consider = (kind, id) => {
@@ -471,7 +471,7 @@ export class FlagGuards {
 
   /**
    * Where the guard may aim at target `kind` `id` now (a player's chest, a vehicle's middle), or null when it may not:
-   * an opponent, alive, armed, out of spawn protection, on foot, not calm (Game.calm), inside no home and in sight of the
+   * an opponent, alive, armed, out of spawn protection, on foot, not calm (Game.fightCalm), inside no home and in sight of the
    * guard as the homes see it (homeGate.mayHurt); a vehicle not out, with an opponent in it, none the guard may not hurt
    * (VehicleDamage hidden and mayDamage), not calm, not in a home's bands. Asked at each look and again before every aim
    * and every shot: a player who steps into a home between two looks is not followed, shot at or traced there.
@@ -484,7 +484,7 @@ export class FlagGuards {
     let at = null;
     if (kind === 'player') {
       const q = g.players.get(id);
-      if (!q || q.guard || teams[id] !== enemy || !q.alive || !q.state?.armed || now < q.protectedUntil || g.inCar(id) || g.calm(q) || g.gate.insideOf(q) || !g.gate.mayHurt(rec, q)) return null;
+      if (!q || q.guard || teams[id] !== enemy || !q.alive || !q.state?.armed || now < q.protectedUntil || g.inCar(id) || g.fightCalm(q) || g.gate.insideOf(q) || !g.gate.mayHurt(rec, q)) return null;
       at = { x: q.state.x, y: q.state.y + (q.state.c ? 0.7 : 1.1), z: q.state.z };
     } else {
       const vd = g.vehicleDamage;
@@ -517,7 +517,7 @@ export class FlagGuards {
     this.fresh(rec);
     if (now < rec.fireAt || now < rec.nextShot) return;
     if (now < rec.reloadUntil) return;
-    if (g.calm(rec) || g.host?.holds(rec)) return; // the predicate a player's shot asks (Game.calm), and the host's freeze
+    if (g.fightCalm(rec) || g.host?.holds(rec)) return; // the predicate a player's shot asks (Game.fightCalm: the school grounds open in a team match), and the host's freeze
     rec.nextShot = now + RIFLE.delay * 1000;
     if (--rec.mag <= 0) [rec.mag, rec.reloadUntil] = [RIFLE.mag, now + RIFLE.reload * 1000];
     const sk = this.skill(rec);
