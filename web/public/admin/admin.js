@@ -12,6 +12,7 @@
 // Game night: the night's place, date and time, and its registrations (server/gamenight.mjs).
 // Feedback: players' stars and comments (server/feedback.mjs) with their name, address and time.
 // Logins: the login log. Online now.
+// Above the tabs: the game night control panel, links to every page of the night (drawNight).
 // Everything a visitor typed or a server log holds is shown with textContent, never as HTML.
 (() => {
   const $ = (id) => document.getElementById(id);
@@ -122,12 +123,14 @@
     if (!r || r.status === 401 || r.status === 403) {
       $('login').hidden = false;
       $('app').hidden = true;
+      $('night').hidden = true;
       $('logout').hidden = true;
       $('pass').focus();
       return;
     }
     $('login').hidden = true;
     $('app').hidden = false;
+    $('night').hidden = false;
     $('logout').hidden = false;
     selectTab(tabFromHash() ?? (TABS.includes(saved.get('tab')) ? saved.get('tab') : 'overview'), 'replace');
     // Each part on its own, so one that fails doesn't keep the others from loading.
@@ -646,7 +649,41 @@
     document.querySelector('.now').classList.toggle('on', n > 0);
     $('online-badge').hidden = !n;
     $('online-badge').textContent = String(n);
+    drawNight();
   }
+
+  // ---- the game night control panel (index.html #night): links to the night's pages, and a status line from what the
+  // panel already has (the live stream's players, /api/admin/gamenight). Everything goes in as text.
+  function drawNight() {
+    const { together, alone } = playing;
+    const n = together.length + alone.length;
+    const parts = [n ? `${count(n, 'player')} online now (${fmt(together.length)} together)` : 'Nobody is playing right now'];
+    if (night.event) {
+      const e = night.event;
+      const all = night.entries;
+      const players = all.reduce((a, x) => a + (x.players || 0), 0);
+      const watchers = all.reduce((a, x) => a + (x.watchers || 0), 0);
+      parts.push(`${count(all.length, 'registration')}: ${count(players, 'player')}, ${count(watchers, 'spectator')}`);
+      parts.push(e.open === false ? 'Sign-ups closed' : 'Sign-ups open');
+      const time = (v) => (/^\d{2}:\d{2}$/.test(v || '') ? v : '');
+      const when = [/^\d{4}-\d{2}-\d{2}$/.test(e.date || '') ? dayLong(e.date) : '', time(e.from) && time(e.until) ? `${e.from}–${e.until}` : time(e.from)].filter(Boolean).join(', ');
+      if (when) parts.push(when);
+      if (e.place) parts.push(String(e.place));
+    }
+    parts.push(`Players join on ${location.host}`);
+    $('night-status').replaceChildren(...parts.map((p) => el('span', '', p)));
+  }
+  // A tab of the panel: opened here, and scrolled to, below the control panel.
+  for (const a of document.querySelectorAll('#night [data-jump]')) {
+    a.addEventListener('click', (ev) => {
+      ev.preventDefault();
+      openTab(a.dataset.jump, 'push');
+      $('app').scrollIntoView({ behavior: 'smooth', block: 'start' });
+    });
+  }
+  // Folded or open, remembered in this browser (a convenience): out of the way on the days without a game night.
+  if (saved.get('night') === 'closed') $('night').open = false;
+  $('night').addEventListener('toggle', () => saved.set('night', $('night').open ? 'open' : 'closed'));
 
   // ---- the tooltip: hover with a mouse, a tap on a phone (until the next tap elsewhere), or keyboard focus
   function hover(target, content) {
@@ -860,6 +897,7 @@
     const open = night.event?.open !== false;
     $('gn-state').textContent = open ? 'Open' : 'Closed';
     $('gn-state').classList.toggle('closed', !open);
+    drawNight();
     $('gn-empty').hidden = all.length > 0;
     $('gn-clear').hidden = !all.length;
     $('gn-rows').dataset.total = String(all.length);
