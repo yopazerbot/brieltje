@@ -21,7 +21,6 @@ const COIN_REACH = 1.3; // m, picking up a coin
 const NO_TAG_BACK_MS = 3000;
 const COINS = 15;
 const TEAMS_MS = 600_000;
-const SWITCH_MS = 15_000; // at most one team switch this often
 const GRACE_MS = 15_000; // a seeker or "it" whose connection drops has this long to come back
 export const TEAM_GOAL = 25; // kills of the other team that win the teams game
 export const TEAM_NAMES = { house: 'House', bungalow: 'Bungalow' };
@@ -45,6 +44,23 @@ const OUTSIDE = [[2.2, -0.05, 15.6], [6.5, -0.05, -1.4], [4.5, -0.05, -8], [8.5,
  * or "__proto__" (both fit the name rules) scores like anyone else.
  */
 const byName = (entries = []) => Object.assign(Object.create(null), Object.fromEntries(entries));
+/** `list` in a random order (Fisher-Yates: every order as likely). */
+const shuffled = (list) => {
+  const a = [...list];
+  for (let i = a.length - 1; i > 0; i--) {
+    const j = Math.floor(Math.random() * (i + 1));
+    [a[i], a[j]] = [a[j], a[i]];
+  }
+  return a;
+};
+/**
+ * Everyone in `names` dealt to the two teams `pair` as evenly as can be, in a random order, the first card to a random
+ * team: with an odd number either team may get the extra player (Yoshi, 17 Nov 2026: "Make sure the ctf is fair").
+ */
+const deal = (names, pair) => {
+  const first = Math.random() < 0.5 ? 0 : 1;
+  return byName(shuffled(names).map((n, i) => [n, pair[(i + first) % 2]]));
+};
 
 export class Modes {
   constructor(game) {
@@ -147,12 +163,12 @@ export class Modes {
     return !!t && t === this.teamOf(b);
   }
 
-  /** The team with fewer players here now (the house when even; in Steal the flag blue when even). */
+  /** The team with fewer players here now; level, either at random (never one team always). */
   smaller() {
     const [a, b] = this.state.kind === 'flag' ? FLAG_TEAMS : ['house', 'bungalow'];
     const n = { [a]: 0, [b]: 0 };
     for (const [p, t] of Object.entries(this.here(this.state.teams))) if (!this.game.flagGuards?.has(p)) n[t]++; // the players, not the guards
-    return n[b] < n[a] ? b : a;
+    return n[a] === n[b] ? this.pick([a, b]) : n[b] < n[a] ? b : a;
   }
 
   /** Of a table by player names, the players here now (those away keep their part for when they're back). */
@@ -161,31 +177,18 @@ export class Modes {
   }
 
   /**
-   * A player picks a team. Waiting to respawn: they will at its house. Alive: they start again
-   * there at once, but only at full health and once in SWITCH_MS (a switch must not heal anyone
-   * or bring them back early). Waiting, at most one switch a second: each one is a line in
-   * everyone's chat, and a page sending forty a second would flood it.
+   * A player asks to switch team (a page's message): refused in every team game, waiting to come back or playing, its
+   * result showing too (Yoshi, 17 Nov 2026: "team switches should only be done by the admin, also team assignment is
+   * admin only"). Only the host moves a player (server/host.mjs `move`). Privilege escalation and score forgery by
+   * switching to the winning side: no message from a page changes a team. One answer a second at most.
    */
-  choose(name, team) {
-    const s = this.state;
+  choose(name) {
     const p = this.game.players.get(name);
-    const names = s.kind === 'flag' ? FLAG_NAMES : TEAM_NAMES;
-    if (!this.teamGame || s.phase !== 'playing' || !p || typeof team !== 'string' || !Object.hasOwn(names, team) || s.teams[name] === team) return;
-    // The host's teams for the evening (server/host.mjs): only the host moves a player.
-    if (this.game.host?.sideOf(name)) return this.game.send(p.ws, { t: 'system', text: 'The host picks the teams tonight', code: 'hostTeams' });
-    // Steal the flag: nobody switches with a flag in hand (it would be their own team's then).
-    if (s.f?.carrying(name)) return this.game.send(p.ws, { t: 'system', text: 'Not while you carry the flag', code: 'flagSwitch' });
+    if (!this.teamGame || !p) return;
     const now = Date.now();
-    const since = now - (s.switched[name] ?? -Infinity);
-    if (!p.alive && since < 1000) return;
-    if (p.alive && (p.hp < this.game.fullHealth || since < SWITCH_MS)) {
-      return this.game.send(p.ws, { t: 'system', text: 'Switch teams at full health (at most every 15 seconds), or while you wait to come back', code: 'teamWait' });
-    }
-    s.teams[name] = team;
-    s.switched[name] = now;
-    this.say(`${name} joined team ${names[team]}`, 'teamJoined', { name, team });
-    this.game.teamsChanged([name], p.alive);
-    this.send();
+    if (now - (p.teamAsked ?? -Infinity) < 1000) return;
+    p.teamAsked = now;
+    this.game.send(p.ws, { t: 'system', text: 'Teams are set by the host.', code: 'hostOnlyTeams' });
   }
 
   /** A kill in the teams game: a point for the killer's team, unless it was their own. In Steal the flag a tag, for the tie. */
@@ -280,33 +283,29 @@ export class Modes {
       this.state = { kind, phase: 'hiding', until: now + HIDE_MS, seekers: new Set([seeker]), first: seeker, players: new Set(names), seekMs: ms(SEEK_MS) };
       this.say(`${by} started hide and seek: ${seeker} seeks. Hide! (30 seconds)`, 'hideStarted', { name: by, seeker });
     } else if (kind === 'teams') {
-      // Everyone on a team, the teams as even as can be (in random order); each starts at its house. With the host's two
-      // teams for the evening (server/host.mjs), those.
-      const teams = byName();
+      // Everyone on a team, each starting at its house: the host's two teams for the evening (server/host.mjs); without
+      // them everyone dealt as evenly as can be, at random, and those become the host's two teams (moved from the host
+      // page only).
       const sides = this.game.host?.sides(names);
-      for (const n of [...names].sort(() => Math.random() - 0.5)) {
-        const count = Object.values(teams).filter((t) => t === 'house').length;
-        teams[n] = sides?.[n] ?? (count <= Object.keys(teams).length - count ? 'house' : 'bungalow');
-      }
+      const teams = sides ? byName(names.map((n) => [n, sides[n]])) : deal(names, ['house', 'bungalow']);
+      if (!sides) this.game.host?.adopt?.(teams, ['house', 'bungalow']);
       const goal = opts.goal ?? TEAM_GOAL;
-      this.state = { kind, phase: 'playing', until: now + ms(TEAMS_MS), teams, score: { house: 0, bungalow: 0 }, switched: byName(), goal, colors: sides ? this.game.host.sideColors() : null };
-      this.say(`${by} started House against bungalow: first team to ${goal} kills. Switch teams in the menu.`, 'teamsStarted', { name: by, n: goal });
+      this.state = { kind, phase: 'playing', until: now + ms(TEAMS_MS), teams, score: { house: 0, bungalow: 0 }, goal, colors: this.game.host ? this.game.host.sideColors() : null };
+      this.say(`${by} started House against bungalow: first team to ${goal} kills. The host sets the teams.`, 'teamsStarted', { name: by, n: goal });
       this.game.roundOver = null; // the teams' score counts now
       this.game.teamsChanged(names);
     } else if (kind === 'flag') {
-      // Blue against red (server/flags.mjs): the host's two teams when there are two (the house's side blue), else
-      // everyone split as evenly as can be. `place`: the field, 'compact' or 'village' (anything else: compact). Everyone
-      // starts at their base; the village field's vehicles park.
-      const teams = byName();
+      // Blue against red (server/flags.mjs): the host's two teams when there are two (the first blue), else everyone
+      // dealt as evenly as can be, at random, and those become the host's two teams (moved from the host page only).
+      // `place`: the field, 'compact' or 'village' (anything else: compact). Everyone starts at their base; the
+      // field's vehicles park.
       const sides = this.game.host?.sides(names);
-      for (const n of [...names].sort(() => Math.random() - 0.5)) {
-        const count = Object.values(teams).filter((t) => t === 'blue').length;
-        teams[n] = sides?.[n] ? (sides[n] === 'house' ? 'blue' : 'red') : count <= Object.keys(teams).length - count ? 'blue' : 'red';
-      }
+      const teams = sides ? byName(names.map((n) => [n, sides[n] === 'house' ? 'blue' : 'red'])) : deal(names, FLAG_TEAMS);
+      if (!sides) this.game.host?.adopt?.(teams, FLAG_TEAMS);
       const f = new FlagGame(this.game, place, teams, LOOKS.includes(opts.look) ? opts.look : null, now);
       // `colors`: everyone dressed in their team's colour, on every page, the scoreboard, the kill feed and the name tags
       // (game.mjs colorOf, through teamColor).
-      this.state = { kind, phase: 'playing', until: now + ms(FLAG_MS), teams, score: f.score, switched: byName(), f, colors: FLAG_COLORS };
+      this.state = { kind, phase: 'playing', until: now + ms(FLAG_MS), teams, score: f.score, f, colors: FLAG_COLORS };
       this.say(`${by} started Steal the flag: blue at the church, red at ${f.field.id === 'village' ? 'the Sparrenhof' : 'Molenhoek'}. Bring their flag to your base.`, 'flagStarted', { name: by, place: f.field.red });
       this.game.roundOver = null; // the teams' score counts now
       this.game.teamsChanged(names); // everyone at their base, out of every seat first: a machine someone sat in parks too
@@ -422,7 +421,8 @@ export class Modes {
       this.game.teamsChanged([name], !back);
     }
     if (s.kind === 'flag' && s.phase === 'playing') {
-      // Late: the host's side (blue for the house's, red for the bungalow's), else the smaller team, at its base.
+      // Late: the host's side (blue for the house's, red for the bungalow's), else the smaller team (level: either at
+      // random), at its base. Back after a dropped connection: their team as before.
       const back = name in s.teams;
       const side = this.game.host?.sideOf(name);
       if (!back) s.teams[name] = side ? (side === 'house' ? 'blue' : 'red') : this.smaller();

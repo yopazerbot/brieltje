@@ -160,19 +160,28 @@ test('the evening teams: blue and red first, four in all; they play the teams ga
   assert.equal(m.teamMatch, false);
 });
 
-test('without the host\'s teams the teams game is as it was: the house blue, the bungalow orange', () => {
+test('without the host\'s teams the teams game deals everyone evenly, and the deal becomes the host\'s two teams, in blue and red', () => {
   const s = setup();
   for (const n of ['ann', 'bob', 'cid', 'dee']) s.join(n);
   s.game.modes.start('teams', 'admin');
   const m = s.game.modes;
+  const h = s.game.host;
   assert.equal(m.teamMatch, true);
+  assert.equal(h.teamCount, 2, 'the deal is tonight\'s two teams: the host page shows and moves them');
+  for (const n of ['ann', 'bob', 'cid', 'dee']) assert.equal(h.teams[n], m.state.teams[n] === 'house' ? 0 : 1);
   const b = Object.keys(m.state.teams).find((n) => m.state.teams[n] === 'bungalow');
-  assert.equal(s.game.colorOf(b, s.game.players.get(b)), TEAM_COLORS.bungalow);
-  assert.deepEqual(m.view().colors, TEAM_COLORS);
-  // The host makes two teams mid-game: they take over the sides, in blue and red.
+  assert.equal(s.game.colorOf(b, s.game.players.get(b)), EVENING_TEAMS[1].color, 'red, as on the host page');
+  assert.notEqual(EVENING_TEAMS[1].color, TEAM_COLORS.bungalow);
+  // The host moves one mid-game: on the other side at once.
   s.join('admin', 'admin');
-  s.game.host.act('admin', { op: 'teams', count: 2 });
-  assert.equal(m.teamColor('bungalow'), EVENING_TEAMS[1].color);
+  assert.deepEqual(h.act('admin', { op: 'move', name: b, team: 0 }), { ok: true });
+  assert.equal(m.state.teams[b], 'house');
+  // Three or four teams tonight stay as they are; the game deals its own two.
+  const t = setup();
+  for (const n of ['ann', 'bob', 'cid', 'dee', 'eve', 'fay']) t.join(n);
+  t.game.host.act('admin', { op: 'teams', count: 3 });
+  t.game.modes.start('teams', 'admin');
+  assert.equal(t.game.host.teamCount, 3);
 });
 
 test('teamMatch: only while the teams game is played', () => {

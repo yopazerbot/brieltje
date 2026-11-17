@@ -138,9 +138,9 @@ export class Games {
   flagHud: FlagHud | null = null;
 
   constructor() {
-    document.querySelectorAll<HTMLButtonElement>('#team-choice [data-team]').forEach((b) =>
-      b.addEventListener('click', () => this.onSend({ t: 'team', team: b.dataset.team })),
-    );
+    // The teams are the host's alone (Yoshi, 17 Nov 2026: "team switches should only be done by the admin"): the menu
+    // shows them, its buttons switch nothing (the server refuses a switch too, server/modes.mjs choose).
+    document.querySelectorAll<HTMLButtonElement>('#team-choice [data-team]').forEach((b) => (b.disabled = true));
     onLang(() => this.showTeams()); // the bar and the blindfold follow each frame
   }
 
@@ -207,7 +207,7 @@ export class Games {
     return null;
   }
 
-  /** The menu's choice of team, while the teams game runs; for an explorer, how to take part. */
+  /** The menu's teams (your own marked; the host sets them), while a team game runs; for an explorer, how to take part. */
   private showTeams(): void {
     const flag = this.view.kind === 'flag';
     const playing = (this.view.kind === 'teams' || flag) && this.view.phase === 'playing';

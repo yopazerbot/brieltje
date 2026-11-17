@@ -577,31 +577,70 @@ test('a late joiner gets a team (the smaller one) and starts at its base', () =>
   assert.notEqual(s.game.modes.state.teams.fay, team, 'the other, now smaller, team');
 });
 
-test('switching teams: refused while carrying, refused under the host\'s teams, else a fresh start at the new base', () => {
+test('no player switches team in a team game: waiting or playing, a forged team, the host teams or not', () => {
+  for (const kind of ['flag', 'teams']) {
+    const s = setup();
+    for (const n of ['ann', 'bob', 'cid', 'dee']) s.join(n);
+    s.game.modes.start(kind, 'admin', 'compact');
+    const t = s.game.modes.state.teams;
+    const before = { ...t };
+    const sides = kind === 'flag' ? ['blue', 'red'] : ['house', 'bungalow'];
+    for (const n of ['ann', 'bob', 'cid', 'dee']) {
+      s.at(20_000);
+      s.msg(n, { t: 'team', team: sides.find((x) => x !== t[n]) }); // alive, at full health, long after the start
+      assert.ok(s.lines(n).includes('hostOnlyTeams'), `${kind}: ${n} told the host sets the teams`);
+    }
+    // Waiting to come back, and forged values.
+    const p = s.game.players.get('ann');
+    p.alive = false;
+    p.respawnAt = Infinity;
+    s.at(2000);
+    for (const team of [sides.find((x) => x !== t.ann), 'green', '__proto__', 7, null]) s.msg('ann', { t: 'team', team });
+    assert.deepEqual({ ...s.game.modes.state.teams }, before, `${kind}: every team as dealt`);
+    // At most one answer a second (a page sending forty a second floods only itself, and not even that).
+    s.at(1000);
+    const n = s.lines('ann').filter((c) => c === 'hostOnlyTeams').length;
+    for (let i = 0; i < 40; i++) s.msg('ann', { t: 'team', team: sides[0] });
+    assert.equal(s.lines('ann').filter((c) => c === 'hostOnlyTeams').length, n + 1);
+  }
+});
+
+test('the teams are dealt evenly at random: an odd player goes to either team, and the deal becomes the host teams', () => {
+  const seen = { blue: 0, red: 0 };
+  for (let i = 0; i < 40; i++) {
+    const s = setup();
+    for (const n of ['ann', 'bob', 'cid']) s.join(n);
+    s.game.modes.start('flag', 'admin', 'compact');
+    const t = Object.values(s.game.modes.state.teams);
+    const blue = t.filter((x) => x === 'blue').length;
+    assert.ok(blue === 1 || blue === 2, 'as even as can be');
+    seen[blue === 2 ? 'blue' : 'red']++;
+    const h = s.game.host;
+    assert.equal(h.teamCount, 2, 'the deal is the two host teams now');
+    for (const n of ['ann', 'bob', 'cid']) assert.equal(h.teams[n], s.game.modes.state.teams[n] === 'blue' ? 0 : 1);
+  }
+  assert.ok(seen.blue > 0 && seen.red > 0, `either team gets the odd player: ${JSON.stringify(seen)}`);
+  // A late joiner with the teams level: either team, at random.
+  const late = { blue: 0, red: 0 };
+  for (let i = 0; i < 40; i++) {
+    const s = setup();
+    for (const n of ['ann', 'bob', 'cid', 'dee']) s.join(n);
+    s.game.modes.start('flag', 'admin', 'compact');
+    s.join('eve');
+    late[s.game.modes.state.teams.eve]++;
+    s.join('fay');
+    assert.notEqual(s.game.modes.state.teams.fay, s.game.modes.state.teams.eve, 'the next one to the smaller team');
+  }
+  assert.ok(late.blue > 0 && late.red > 0, `level: either team for a late joiner: ${JSON.stringify(late)}`);
+});
+
+test('a reconnecting player keeps their team', () => {
   const s = four();
-  const [r, r2] = s.red;
-  s.onStand(r, 'blue');
+  const [r] = s.red;
+  s.leave(r);
   s.tick();
-  s.msg(r, { t: 'team', team: 'blue' });
+  s.join(r);
   assert.equal(s.game.modes.state.teams[r], 'red');
-  assert.ok(s.lines(r).includes('flagSwitch'));
-  s.at(20_000);
-  s.msg(r2, { t: 'team', team: 'blue' });
-  assert.equal(s.game.modes.state.teams[r2], 'blue');
-  const st = s.game.players.get(r2).state;
-  const [bx, bz] = s.stand('blue');
-  assert.ok(Math.hypot(st.x - bx, st.z - bz) < 15, 'moved to the blue base');
-  // The host's teams: nobody switches.
-  const h = setup();
-  for (const n of ['ann', 'bob', 'cid', 'dee']) h.join(n);
-  h.game.host.act('host', { op: 'teams', count: 2 });
-  h.game.modes.start('flag', 'admin', 'compact');
-  const t = h.game.modes.state.teams;
-  for (const n of ['ann', 'bob', 'cid', 'dee']) assert.equal(t[n], h.game.host.teams[n] === 0 ? 'blue' : 'red', 'the host\'s first team is blue');
-  const who = 'ann';
-  h.at(20_000);
-  h.msg(who, { t: 'team', team: t[who] === 'blue' ? 'red' : 'blue' });
-  assert.ok(h.lines(who).includes('hostTeams'));
 });
 
 test('no message from a page takes, drops or scores a flag', () => {

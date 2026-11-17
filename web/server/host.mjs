@@ -10,8 +10,9 @@
 //   one player or everyone to where the host stands, muting a player, the chat off, a word filter (server/words.mjs),
 //   and a kick for the whole evening besides the kick of ten minutes.
 // - Teams for the evening: none, or 2 to 4, shuffled as evenly as can be, a player moved by hand (only the host moves
-//   anyone; a newcomer joins the smallest). With two (blue and red), House against bungalow is played by them, in
-//   their colours (blue plays at the house, red at the bungalow).
+//   anyone, also during a game: at once; a newcomer joins the smallest, level at random). With two (blue and red),
+//   House against bungalow and Steal the flag are played by them, in their colours (blue plays at the house, red at the
+//   bungalow). A team game started without them deals everyone evenly at random, and that deal becomes the two (adopt).
 // - The programme: the evening's games in order, each with its own length (and goal for the teams game) and its look
 //   (server/modes.mjs LOOKS: 'paint', child-friendly for everyone while it runs; 'real', the house rule's child-friendly
 //   off for it, a player's own Paintball kept; or none, the house rule); Next starts the next one after a countdown of
@@ -169,10 +170,27 @@ export class Host {
     return name in this.teams && this.teams[name] < this.teamCount ? EVENING_TEAMS[this.teams[name]].id : null;
   }
 
+  /** The team with the fewest players here; level, one of those at random (never the first team always). */
   smallestTeam() {
     const n = Array(this.teamCount).fill(0);
     for (const name of this.game.hub?.games().flatMap((g) => [...g.players.keys()]) ?? this.game.players.keys()) if (name in this.teams && this.teams[name] < this.teamCount) n[this.teams[name]]++; // in the rooms too (the Zombies duel)
-    return n.indexOf(Math.min(...n));
+    const least = n.map((c, i) => [c, i]).filter(([c]) => c === Math.min(...n));
+    return least[Math.floor(Math.random() * least.length)][1];
+  }
+
+  /**
+   * A team game started without tonight's two teams (server/modes.mjs start; Yoshi, 17 Nov 2026: "team assignment is
+   * admin only"): the game's even, random deal (`dealt`: name -> one of `pair`) becomes tonight's two teams, so the host
+   * page shows them and moves a player as for teams it made (`move`). The host not counted, as in shuffle. With three
+   * or four teams tonight nothing changes here (the game deals its own two).
+   */
+  adopt(dealt, pair) {
+    if (this.teamCount !== 0) return;
+    this.teamCount = 2;
+    this.teamPoints = [0, 0, 0, 0];
+    this.teams = table();
+    for (const [n, side] of Object.entries(dealt)) if (this.game.players.get(n)?.role !== 'admin') this.teams[n] = pair.indexOf(side);
+    this.tellTeams();
   }
 
   // ------------------------------------------------------------------ what the host page shows
@@ -409,6 +427,11 @@ export class Host {
       this.game.teamsChanged(moved);
       this.game.modes.send();
     }
+    this.tellTeams();
+  }
+
+  /** Every page told tonight's teams. */
+  tellTeams() {
     this.game.broadcast({ t: 'eveningteams', count: this.teamCount, teams: Object.fromEntries(Object.entries(this.teams).map(([n, i]) => [n, EVENING_TEAMS[i].id])) });
   }
 }
