@@ -501,6 +501,28 @@ test('a base without a round gets no guards, says so once, and the pages are not
   assert.equal(s.out.filter((m) => m.t === 'colors' || m.t === 'mode').length, 0, 'no colours or game sent over and over');
 });
 
+test('the admin pages: guards marked on the live board, never on the evening\'s, and the host\'s bring leaves them on their round', () => {
+  const s = setup();
+  const admin = s.join('admin', 'admin');
+  Object.assign(admin.state, { x: 600, y: 0, z: -740 });
+  s.set('blue', 2);
+  s.tick();
+  const board = s.game.board();
+  const rows = board.players.filter((p) => / guard /.test(p.name));
+  assert.equal(rows.length, 2);
+  assert.ok(rows.every((p) => p.guard === true), 'marked as guards');
+  assert.ok(board.players.filter((p) => !/ guard /.test(p.name)).every((p) => p.guard === undefined));
+  assert.equal(board.evening.players.some((p) => / guard /.test(p.name)), false, 'not on the evening\'s board');
+  const g = s.game.players.get(guardName('blue', 1));
+  const at = { x: g.state.x, z: g.state.z, warp: g.warp };
+  assert.deepEqual(s.game.host.act('admin', { op: 'bring', name: '*' }), { ok: true });
+  assert.equal(g.warp, at.warp, 'not brought');
+  assert.ok(Math.hypot(g.state.x - 600, g.state.z + 740) > 10);
+  assert.ok(Math.hypot(s.game.players.get(s.red).state.x - 600, s.game.players.get(s.red).state.z + 740) < 5, 'the players are');
+  s.game.host.act('admin', { op: 'bring', name: guardName('blue', 1) });
+  assert.equal(g.warp, at.warp, 'nor on its own');
+});
+
 test('the strongmen leave the guards alone: no target, no stomp or rock on one, no death on the board if one goes down', () => {
   const s = setup();
   const { g } = oneGuard(s);

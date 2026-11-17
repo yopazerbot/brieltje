@@ -7,7 +7,6 @@
   const TEAMS = { blue: { name: 'Blue', color: '#4fa3e0' }, red: { name: 'Red', color: '#e5484d' } };
   const SKILLS = { easy: 'Easy', normal: 'Normal', hard: 'Hard' };
   let drawn = '';
-  let note = '';
 
   const el = (tag, props = {}, ...kids) => {
     const e = document.createElement(tag);
@@ -20,17 +19,20 @@
     return e;
   };
 
+  /** What the last change did: a line of its own under the rows, written at once (the rows wait while a select has focus). */
+  const note = el('p', { class: 'muted small', role: 'status' });
+  const rowsBox = el('div', { class: 'guards' });
+
   async function send(team) {
     const count = Number($(`guards-${team}-count`).value);
     const skill = $(`guards-${team}-skill`).value;
     try {
       const r = await fetch('/api/host', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ op: 'guards', team, count, skill }) });
       const data = await r.json().catch(() => ({}));
-      note = r.ok ? `${TEAMS[team].name}: ${count} guard${count === 1 ? '' : 's'}, ${SKILLS[skill].toLowerCase()}` : data.error || `Refused (${r.status})`;
+      note.textContent = r.ok ? `${TEAMS[team].name}: ${count} guard${count === 1 ? '' : 's'}, ${SKILLS[skill].toLowerCase()}` : data.error || `Refused (${r.status})`;
     } catch {
-      note = 'No answer from the server';
+      note.textContent = 'No answer from the server';
     }
-    drawn = '';
   }
 
   function draw(v) {
@@ -41,8 +43,9 @@
       box.replaceChildren(el('p', { class: 'muted small', text: 'Not available here.' }));
       return;
     }
-    const key = JSON.stringify([g, note]);
-    if (key === drawn || box.contains(document.activeElement)) return;
+    if (!box.contains(rowsBox)) box.replaceChildren(rowsBox, note);
+    const key = JSON.stringify(g);
+    if (key === drawn || rowsBox.contains(document.activeElement)) return;
     drawn = key;
     const rows = Object.entries(TEAMS).map(([team, t]) => {
       const s = g[team];
@@ -55,7 +58,7 @@
       label.style.color = t.color;
       return el('div', { class: 'guard-row' }, label, el('label', {}, 'Guards ', count), el('label', {}, 'Skill ', skill), el('small', { class: 'muted', text: state }));
     });
-    box.replaceChildren(...rows, note ? el('p', { class: 'muted small', role: 'status', text: note }) : null);
+    rowsBox.replaceChildren(...rows);
   }
 
   document.addEventListener('hostview', (e) => draw(e.detail));

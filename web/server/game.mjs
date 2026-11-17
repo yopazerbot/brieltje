@@ -935,6 +935,7 @@ export class Game {
   scoreList() {
     return [...this.players.entries()].map(([name, p]) => ({
       name, color: this.colorOf(name, p), kills: p.score.kills, deaths: p.score.deaths, points: p.score.points, alive: p.alive, armed: !!p.state?.armed,
+      ...(p.guard ? { guard: true } : {}), // a flag game's guard (server/flagGuards.mjs), marked as one on the big screen
     }));
   }
 
@@ -2776,7 +2777,7 @@ export class Game {
   bring(by, who) {
     const me = this.players.get(by)?.state;
     if (!me) return false;
-    const names = who === '*' ? [...this.players.keys()].filter((n) => n !== by) : this.players.has(who) && who !== by ? [who] : [];
+    const names = (who === '*' ? [...this.players.keys()].filter((n) => n !== by) : this.players.has(who) && who !== by ? [who] : []).filter((n) => !this.players.get(n).guard); // never a flag game's guards
     const fence = this.fence();
     const now = Date.now();
     names.forEach((name, k) => {

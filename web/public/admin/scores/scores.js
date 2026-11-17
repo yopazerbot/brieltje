@@ -20,7 +20,7 @@
       emptyBig: 'Nog niemand speelt samen', emptySub: 'Open {host}, kies Samen en typ je naam.',
       join: 'Speel mee op ', count: '{a} samen · {b} alleen', live: 'Live', retry: 'Opnieuw verbinden…', full: 'Volledig scherm (F)',
       gate: 'Log eerst in op de beheerpagina.', gateLink: 'Naar de beheerpagina', out: 'uit',
-      zombies: 'Zombies', wave: 'golf {n}', break: 'pauze', zleft: 'nog {n} zombies', zbeaten: 'Zombies verslagen', zbest: 'Beste ooit: golf {n}', down: 'neer',
+      zombies: 'Zombies', wave: 'golf {n}', break: 'pauze', zleft: 'nog {n} zombies', zbeaten: 'Zombies verslagen', zbest: 'Beste ooit: golf {n}', down: 'neer', guard: 'bewaker',
       tonight: 'Vanavond', game: 'Het spel', games: '{n} spellen gespeeld', games1: '1 spel gespeeld', won: 'Winst', played: 'Spellen', noGames: 'Nog geen spellen gespeeld vanavond',
       blue: 'Blauw', red: 'Rood', green: 'Groen', purple: 'Paars',
       allTime: 'Aller tijden', racesTonight: 'Races vanavond', gnomesTonight: 'Kabouters vanavond', gamesWon: 'Gewonnen groepsspelletjes',
@@ -37,7 +37,7 @@
       emptyBig: "Nobody's playing together yet", emptySub: 'Open {host}, choose Together and type your name.',
       join: 'Play along at ', count: '{a} together · {b} alone', live: 'Live', retry: 'Reconnecting…', full: 'Full screen (F)',
       gate: 'Log in on the admin page first.', gateLink: 'To the admin page', out: 'out',
-      zombies: 'Zombies', wave: 'wave {n}', break: 'break', zleft: '{n} zombies left', zbeaten: 'Zombies beaten', zbest: 'Best ever: wave {n}', down: 'down',
+      zombies: 'Zombies', wave: 'wave {n}', break: 'break', zleft: '{n} zombies left', zbeaten: 'Zombies beaten', zbest: 'Best ever: wave {n}', down: 'down', guard: 'guard',
       tonight: 'Tonight', game: 'The game', games: '{n} games played', games1: '1 game played', won: 'Wins', played: 'Games', noGames: 'No games played yet tonight',
       blue: 'Blue', red: 'Red', green: 'Green', purple: 'Purple',
       allTime: 'All-time', racesTonight: 'Races tonight', gnomesTonight: 'Gnomes tonight', gamesWon: 'Party games won',
@@ -88,6 +88,7 @@
     dot.style.background = colour(p.color);
     const name = el('div', 'name', p.name);
     if (opts.note) name.append(el('small', '', opts.note));
+    if (p.guard) name.append(el('small', '', t('guard'))); // a Steal the flag guard (server/flagGuards.mjs): counts for nothing
     r.append(el('div', 'rank', rank ? String(rank) : ''), dot, name);
     for (let i = 0; i < 3; i++) r.append(el('div', `num${i > 0 ? ' dim' : ''}`, nums[i] === undefined ? '' : String(nums[i])));
     if (opts.bar !== undefined) {
