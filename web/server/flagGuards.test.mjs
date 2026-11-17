@@ -444,3 +444,29 @@ test('a guard shoots an opponent\'s car within reach through the vehicles\' own 
   s.run(2000);
   assert.equal(s.game.vehicleDamage.recs.get('car:fb2'), undefined);
 });
+
+test('the strongmen leave the guards alone: no target, no stomp or rock on one, no death on the board if one goes down', () => {
+  const s = setup();
+  const { g } = oneGuard(s);
+  const p = s.game.players.get(s.red);
+  stand(s, p, g.state.x + 1, g.state.z);
+  g.lookAt = Infinity;
+  const at = { x: g.state.x, y: g.state.y, z: g.state.z };
+  s.game.bruteHits(at, 3, 20, s.now());
+  assert.equal(g.hp, 100, 'a stomp or a rock passes a guard by');
+  assert.ok(p.hp < 100, 'and still hurts a player beside it');
+  // A strongman right by the guard picks no target (only the guard is armed and near).
+  p.state.armed = false;
+  s.game.clowns.clear();
+  s.game.clowns.set(99, s.game.character(99, g.state.x + 2, g.state.y, g.state.z, 'strongman'));
+  for (let k = 0; k < 200; k++) {
+    s.at(50);
+    s.game.stepBrutes(s.now());
+  }
+  assert.equal(g.hp, 100, 'never a strongman\'s target');
+  // Downed by one anyway (Game.npcDamage): nothing counts.
+  s.game.npcDamage(guardName('blue', 1), g, 500, s.now());
+  assert.equal(g.alive, false);
+  assert.equal(g.score.deaths, 0);
+  assert.deepEqual(s.added, []);
+});

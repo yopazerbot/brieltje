@@ -773,7 +773,7 @@ export class Game {
     if (this.modes.state.kind === 'zombies') return; // they stand aside during the Zombies game (the pages hide them)
     const fighting = !this.roundOver && !this.modes.peaceful;
     const targets = fighting
-      ? [...this.players].filter(([n, p]) => p.alive && p.state?.armed && !this.inCar(n) && now >= p.protectedUntil && !this.gate.insideOf(p)).map(([name, p]) => ({ name, p, x: p.state.x, y: p.state.y, z: p.state.z }))
+      ? [...this.players].filter(([n, p]) => !p.guard && p.alive && p.state?.armed && !this.inCar(n) && now >= p.protectedUntil && !this.gate.insideOf(p)).map(([name, p]) => ({ name, p, x: p.state.x, y: p.state.y, z: p.state.z }))
       : [];
     for (const c of this.clowns.values()) {
       if (!c.brain) continue;
@@ -806,7 +806,7 @@ export class Game {
     if (this.roundOver || this.modes.peaceful) return;
     const land = homeAt(at.x, at.z, at.y);
     for (const [name, p] of this.players) {
-      if (!p.alive || !p.state?.armed || this.inCar(name) || now < p.protectedUntil) continue;
+      if (p.guard || !p.alive || !p.state?.armed || this.inCar(name) || now < p.protectedUntil) continue; // never a flag game's guard (server/flagGuards.mjs)
       if ((from && !this.gate.may(p, from)) || (land && !this.gate.may(p, land))) continue;
       const inside = this.gate.insideOf(p);
       if (inside && inside !== from) continue;
@@ -838,10 +838,10 @@ export class Game {
     this.helis.release(targetName, now);
     this.releaseHorse(targetName);
     this.releaseBike(targetName);
-    target.score.deaths++;
+    if (!target.guard) target.score.deaths++; // a flag game's guard counts for nothing (server/flagGuards.mjs)
     target.weapons = loadout(target, !!this.modes.zombies); // dropped what they picked up
     this.broadcastFrom({ t: 'kill', killer: by, victim: targetName, head: false, w: by === 'a strongman' ? 'strongman' : 'zombie' }, target); // not to those it is hidden from (homeGate.hides)
-    this.stats(targetName, { deaths: 1 });
+    if (!target.guard) this.stats(targetName, { deaths: 1 });
     this.broadcast({ t: 'scores', list: this.scoreList() });
     zombies?.downed(targetName);
   }
