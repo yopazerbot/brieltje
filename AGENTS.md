@@ -84,12 +84,12 @@ In these files:
 
 The local agents all run on the same Windows PC. It has one graphics chip.
 
-- **Ports.** Leave 5173 and 8080 free for Yoshi and the merger. Pick your own: Vite in 5200 to 5999 (`npx vite --port <n> --strictPort`), the server in 8100 to 8999 (`PORT=<n> node server.mjs`). The dev server's proxy always points at 8080. Test multiplayer against a build on your own port instead: `npm run build`, then start `server.mjs`.
+- **Ports.** Leave 5173 and 8080 free for Yoshi and the merger. Pick your own: Vite in 5200 to 5999 (`npx vite --port <n> --strictPort`), the server in 8100 to 8999 (`PORT=<n> node server.mjs`, which needs an `ADMIN_PASSWORD`). The dev server's proxy points at 8080 unless you start it with `API_PORT=<port>`. Test multiplayer against a build on your own port instead: `npm run build`, then start `server.mjs`.
 - **Processes.** Write down the process ID of every server, browser and Blender you start. Stop them all before you report. Never stop a process you didn't start. Other agents' servers look just like yours, so never kill by name (`taskkill /IM node.exe`, `pkill node`).
 - **The graphics chip.** Other agents' browsers and Blender renders use it too, so frame times wander. To measure a change, run with and without it in one session, alternating A, B, A, B. Run a warm-up `briel.bench()` first: the first run includes shader compiles. Report the numbers and say the chip was shared. Numbers from different sessions can't be compared.
 - **Heavy jobs.** Blender renders and long bakes slow everyone down. Run them only when the task needs them. Keep preview renders small.
 - **Test data.** Each worktree has its own `web/.data/` (git-ignored). Use a throwaway `ADMIN_PASSWORD`, generated in the shell, never printed or written down. Delete your test users afterwards. Never use `DATABASE_URL` or any other Railway variable on this PC.
-- **Scratch files** go in a temp folder outside the repository.
+- **Scratch files** go in a temp folder outside the repository, with a name of your own: agents of one session share a scratch folder and overwrite each other's files there.
 
 ## Windows and the shell (local agents)
 
@@ -119,7 +119,7 @@ These come from CONTRIBUTING.md, plus a few that only agents need. A change that
 - Never describe where the main house's data comes from: not its origin, not its maker, not the kind of document. That holds for code, comments, commit messages, pull requests, docs, file names and text in the game. Write "the main house", "the starting layout", "the reference images" or "private source files". The merger checks every merge for words that give the source away.
 - The merger pushes only `main`, only to `origin`. A cloud worker pushes only its own branch. Nobody pushes any other branch.
 
-**Content.** Families and children play this game. Keep everything suitable for them. The school grounds stay free of shooting.
+**Content.** Families and children play this game. Keep everything suitable for them. The school grounds stay free of shooting, except between players during a team match (Yoshi, 17 Nov 2026); villagers, children and animals there are never a target.
 
 **Assets.**
 
