@@ -65,6 +65,7 @@
   let log = [];
   let feedback = [];
   let night = { event: null, entries: [] }; // the game night: its details and registrations
+  let hostNow = null; // the host page's view (what is played now, the programme), for the control panel's status line
   let tab = 'overview';
   let period = Object.hasOwn(PERIODS, saved.get('period') ?? '') ? saved.get('period') : 'today';
   let metric = Object.hasOwn(METRICS, saved.get('hours') ?? '') ? saved.get('hours') : 'players';
@@ -143,6 +144,7 @@
     }
     loadSignups();
     loadGamenight();
+    loadHost();
     loadFeedback();
     loadLog();
     connect();
@@ -654,10 +656,39 @@
 
   // ---- the game night control panel (index.html #night): links to the night's pages, and a status line from what the
   // panel already has (the live stream's players, /api/admin/gamenight). Everything goes in as text.
+  const GAMES = { hide: 'Hide and seek', tag: 'Tag', treasure: 'Treasure hunt', teams: 'House against bungalow', zombies: 'Zombies', duel: 'Zombies duel', flag: 'Steal the flag' };
+  const gameName = (kind) => (Object.hasOwn(GAMES, kind) ? GAMES[kind] : 'a game');
+  const clock = (ms) => `${Math.floor(ms / 60000)}:${String(Math.floor(ms / 1000) % 60).padStart(2, '0')}`;
+  /** What is played now and what comes next, from the host page's own view (hostNow), or nothing when it is not known. */
+  function nowPlaying() {
+    const h = hostNow;
+    if (!h) return [];
+    const out = [];
+    const d = h.duel;
+    const m = h.mode;
+    if (d && d.phase !== 'done') out.push(`Now: Zombies duel, ${d.kind === 'final' ? 'final' : 'warm-up'}${d.ms ? ` · ${clock(d.ms)} left` : ''}`);
+    else if (m && m.kind !== 'free') out.push(`Now: ${gameName(m.kind)}${m.phase === 'done' ? ' · over' : m.ms ? ` · ${clock(m.ms)} left` : ''}`);
+    else out.push('Now: free play');
+    if (h.countdown) out.push(`Starting now: ${gameName(h.countdown.kind)}`);
+    else {
+      const next = Array.isArray(h.programme) ? h.programme[h.next] : null;
+      if (next) out.push(`Next on the programme: ${gameName(next.kind)}`);
+    }
+    return out;
+  }
+  /** The host page's view (the game's admin session, which the panel's login also opens); left out when it is refused. */
+  async function loadHost() {
+    if ($('night').hidden || !$('night').open || document.hidden) return;
+    const r = await fetch('/api/host').catch(() => null);
+    hostNow = r?.ok ? await r.json().catch(() => null) : null;
+    drawNight();
+  }
+  setInterval(loadHost, 10_000);
+
   function drawNight() {
     const { together, alone } = playing;
     const n = together.length + alone.length;
-    const parts = [n ? `${count(n, 'player')} online now (${fmt(together.length)} together)` : 'Nobody is playing right now'];
+    const parts = [...nowPlaying(), n ? `${count(n, 'player')} online now (${fmt(together.length)} together)` : 'Nobody is playing right now'];
     if (night.event) {
       const e = night.event;
       const all = night.entries;
