@@ -82,8 +82,11 @@ const run = Math.random().toString(36).slice(2, 6); // a guest's name is kept fo
 const names = ['a', 'b', 'c', 'd'].map((k) => `fl${k}${run}`);
 const players = Object.fromEntries(await Promise.all(names.map(async (n) => [n, await guest(n)])));
 await act({ op: 'teams', count: 2 });
+// The admin on blue (the host puts them there: level teams no longer default to blue), so the admin walking onto blue's
+// stand never takes blue's flag.
+await act({ op: 'move', name: 'admin', team: 0 });
 await sleep(500);
-const sides = admin.of('eveningteams').at(-1)?.teams ?? {};
+const sides = Object.fromEntries(Object.entries(admin.of('eveningteams').at(-1)?.teams ?? {}).filter(([n]) => n !== 'admin'));
 ok('four guests and the admin are in', names.every((n) => players[n].of('welcome').length) && !!admin.of('welcome').length);
 
 // Started from the menu (the admin's message): the compact field.

@@ -91,7 +91,8 @@ const connect = async (cookie, watch = false) => {
 };
 const guest = async (name, watch = false) => connect(cookieOf((await call('POST', '/api/join', { name, age: true })).r), watch);
 
-const admin = await connect(cookieOf((await call('POST', '/api/login', { username: 'admin', password })).r));
+const adminCookie = cookieOf((await call('POST', '/api/login', { username: 'admin', password })).r);
+const admin = await connect(adminCookie);
 admin.send({ t: 'rules', parachute: false }); // the teams game's gathering by parachute would take long
 const run = String(Date.now() % 100000); // guest names stay taken for their session's life: new ones each run
 const gun = await guest(`Shooter${run}`, true);
@@ -131,7 +132,8 @@ try {
   const mode = () => [...admin.log].reverse().find((m) => m.t === 'mode')?.mode;
   let teams = mode()?.teams ?? {};
   if (teams[gun.name] === teams[dr.name]) {
-    dr.send({ t: 'team', team: teams[gun.name] === 'house' ? 'bungalow' : 'house' });
+    // The teams are the host's alone: the host moves the driver to the other side (the game's deal is tonight's two teams).
+    await call('POST', '/api/host', { op: 'move', name: dr.name, team: teams[gun.name] === 'house' ? 1 : 0 }, adminCookie);
     await sleep(500);
     teams = mode()?.teams ?? {};
   }
