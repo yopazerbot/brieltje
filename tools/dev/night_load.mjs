@@ -164,7 +164,7 @@ async function main() {
   const { localOnly, options } = await import('./cdp.mjs');
   const { makeTerrain } = await import('../../web/shared/terrain.mjs');
   const { makeRoads } = await import('../../web/shared/roadPath.mjs');
-  const { FIELDS } = await import('../../web/shared/flagFields.mjs');
+  const { FIELDS, baseOf } = await import('../../web/shared/flagFields.mjs');
   const { noShoot } = await import('../../web/shared/zones.mjs');
   const { FLAG } = await import('../../web/shared/wire.mjs');
   const { DROP } = await import('../../web/shared/parachute.mjs');
@@ -754,7 +754,7 @@ async function main() {
       const p = this.pos;
       const home = [p.x, p.z];
       if (this.mode.kind === 'flag' && this.team) {
-        const [ex, ez] = FIELDS[this.mode.flag?.field ?? 'village'].bases[other(this.team)].stand;
+        const [ex, ez] = baseOf(FIELDS[this.mode.flag?.field ?? 'village'], other(this.team), !!this.mode.flag?.swapped).stand; // the sides swapped too
         return [[p.x + (ex - p.x) * 0.5, p.z + (ez - p.z) * 0.5], home];
       }
       const far = NEAR.filter(([x, z]) => Math.hypot(x - p.x, z - p.z) > 150);
@@ -923,8 +923,8 @@ async function main() {
       const p = this.pos;
       const f = this.mode.flag;
       const field = FIELDS[f.field] ?? FIELDS.compact;
-      const mine = field.bases[this.team].stand;
-      const theirs = field.bases[other(this.team)].stand;
+      const mine = baseOf(field, this.team, !!f.swapped).stand; // the bases as the game has them (the host's swap)
+      const theirs = baseOf(field, other(this.team), !!f.swapped).stand;
       const own = f.flags?.[this.team] ?? {};
       const enemyFlag = f.flags?.[other(this.team)] ?? {};
       const carrying = enemyFlag.by === this.name || this.carrying === other(this.team);
