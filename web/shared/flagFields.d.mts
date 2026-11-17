@@ -9,6 +9,8 @@ export interface FlagBase {
   stand: [number, number, number];
   /** Where its players start and come back: x, z, y */
   spawns: [number, number, number][];
+  /** The team's bazooka rack (server/flagBazooka.mjs): x, z, y (the ground), yaw (its front to the stand) */
+  rack: [number, number, number, number];
 }
 
 export interface FlagVehicles {
@@ -22,7 +24,9 @@ export interface FlagField {
   red: string;
   bases: Record<FlagTeam, FlagBase>;
   edge: { from: [number, number]; to: [number, number]; half: number } | null;
-  vehicles?: Record<FlagTeam, FlagVehicles> & { heli: { id: string; x: number; y: number; z: number; yaw: number } };
+  vehicles?: Record<FlagTeam, FlagVehicles>;
+  /** Each team's helicopter (shared/heli.json's id): on its own pad, or set down at x, y, z, yaw for the game */
+  heli: Record<FlagTeam, { id: string; x?: number; y?: number; z?: number; yaw?: number }>;
 }
 
 export const FLAG_TEAMS: FlagTeam[];

@@ -923,9 +923,14 @@ export class Weapon {
     this.show();
   }
 
+  /** Steal the flag's bazooka from the rack (server/flagBazooka.mjs): the rockets it has left, as the server counts; null otherwise. */
+  rocketsLeft: number | null = null;
+
   get status(): string {
     if (!this.enabled) return '';
-    return this.reloading > 0 ? t(paintball.on ? 'paint.refilling' : 'weapon.reloading') : `${this.ammo[this.current]} / ${this.magOf(this.current)}`;
+    if (this.reloading > 0) return t(paintball.on ? 'paint.refilling' : 'weapon.reloading');
+    if (this.current === 'bazooka' && this.rocketsLeft !== null) return t(paintball.on ? 'fbz.ammoPaint' : 'fbz.ammo', { n: this.rocketsLeft });
+    return `${this.ammo[this.current]} / ${this.magOf(this.current)}`;
   }
 
   /** For the weapon list on screen. */

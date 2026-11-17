@@ -4,6 +4,7 @@ import { cameraHeading } from './viewHeading';
 import { dist, placeName } from '../i18n';
 import { compactHud } from './compact';
 import { flagMark } from './flagHud';
+import { rackMark } from '../world/flagRack';
 
 /**
  * Minimap, top right: the plan of the floor you are on, cut at 1.2 m above
@@ -42,9 +43,11 @@ export interface Blip {
   z: number;
   y: number;
   color: string;
-  kind: 'player' | 'cat' | 'item' | 'coin' | 'zombie' | 'stall' | 'flag';
+  kind: 'player' | 'cat' | 'item' | 'coin' | 'zombie' | 'stall' | 'flag' | 'rack';
   /** A flag (Steal the flag) carried by someone: a white ring behind it */
   carried?: boolean;
+  /** Your team's bazooka rack (Steal the flag) while its launcher is out: faint */
+  away?: boolean;
 }
 
 /** The Zombies stall on a map (here and ui/bigmap.ts): a small awning, red and cream stripes over a dark table, `s` px wide. */
@@ -268,6 +271,7 @@ export class Minimap {
       g.translate(bx, bz);
       g.rotate(-yaw);
       if (b.kind === 'flag') flagMark(g, 0, 5, 12, b.color, !!b.carried);
+      else if (b.kind === 'rack') rackMark(g, 0, 0, 12, b.color, !!b.away); // Steal the flag: your team's bazooka (world/flagRack.ts)
       else if (b.kind === 'item') {
         g.fillStyle = other ? 'rgba(242, 179, 61, 0.35)' : '#f2b33d';
         g.beginPath();

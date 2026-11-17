@@ -28,6 +28,8 @@ export interface FlagGameView {
   sudden: boolean;
   /** The village field's parked bikes (ids from shared/flagFields.mjs) */
   vehicles?: { bikes: string[] };
+  /** Each team's bazooka rack (server/flagBazooka.mjs): on it, or out (held, or away with `ms` until it is back) */
+  racks?: Record<FlagTeam, { at: 'rack' | 'out'; ms?: number }>;
 }
 export interface FlagEvent {
   ev: 'taken' | 'dropped' | 'returned' | 'captured' | 'safe';
@@ -156,6 +158,36 @@ export class FlagHud {
     // Good news for your team rings bright, bad news low; nobody's team (watching): the bright one.
     const good = !mine || (e.ev === 'taken' || e.ev === 'captured' ? e.team !== mine : e.team === mine);
     this.play(e.ev, good);
+  }
+
+  /**
+   * Your team's bazooka was taken from its rack (server/flagBazooka.mjs, sent to its team only): a line in the team's
+   * colour and a short metallic clack, made in code. `paint`: the child-friendly look's paint cannon. Names as text only.
+   */
+  bazooka(name: string, me: string, team: FlagTeam, paint: boolean, rockets: number): void {
+    const you = name === me;
+    this.line.textContent = you ? t(paint ? 'fbz.takenYouPaint' : 'fbz.takenYou', { n: rockets }) : t(paint ? 'fbz.takenPaint' : 'fbz.taken', { name });
+    this.line.style.setProperty('--team', FLAG_COLORS[team]);
+    this.lineUntil = performance.now() + LINE_MS;
+    this.line.classList.add('show');
+    const ctx = sound.context();
+    const out = sound.out();
+    if (!ctx || !out) return;
+    // Two dry clicks and a low thump: a launcher lifted off its rack and shouldered.
+    const t0 = ctx.currentTime;
+    for (const [f, at, len, type] of [[1400, 0, 0.04, 'square'], [900, 0.07, 0.04, 'square'], [130, 0.12, 0.22, 'triangle']] as const) {
+      const o = ctx.createOscillator();
+      o.type = type;
+      o.frequency.setValueAtTime(f, t0 + at);
+      o.frequency.exponentialRampToValueAtTime(f * 0.6, t0 + at + len);
+      const g = ctx.createGain();
+      g.gain.setValueAtTime(0.0001, t0 + at);
+      g.gain.exponentialRampToValueAtTime(type === 'square' ? 0.08 : 0.25, t0 + at + 0.005);
+      g.gain.exponentialRampToValueAtTime(0.0001, t0 + at + len);
+      o.connect(g).connect(out);
+      o.start(t0 + at);
+      o.stop(t0 + at + len + 0.03);
+    }
   }
 
   /** The event's sound, in code: a rising call when taken, a falling one when dropped, a chime home, a fanfare for a capture. */

@@ -251,6 +251,9 @@ export type ServerMsg =
   /** A rider rang the bell of bike `id` (rung where that bike is drawn) */
   | { t: 'bell'; id: string }
   | { t: 'flag'; ev: 'taken' | 'dropped' | 'returned' | 'captured' | 'safe'; team: 'blue' | 'red'; name: string; why?: 'zone' | 'home' }
+  // Steal the flag's bazooka (server/flagBazooka.mjs): to its team, who took it from the rack; to its holder, the rockets left
+  | { t: 'fbz'; ev: 'taken'; team: 'blue' | 'red'; name: string; n: number }
+  | { t: 'fbz'; ev: 'left'; n: number }
   | { t: 'chat'; from: string; color: string; text: string }
   | { t: 'door'; id: string; open: boolean; dir?: number; by: string }
   | { t: 'weapons'; list: string[] }

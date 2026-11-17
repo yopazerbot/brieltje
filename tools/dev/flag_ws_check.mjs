@@ -182,7 +182,7 @@ ok('the village field from the programme, 15 minutes, look real', vv?.kind === '
 const teslas = b1.of('teslas').at(-1)?.list ?? [];
 ok('its cars parked: three a side, in the team\'s colour', teslas.filter((c) => c.flag && c.kind === 'modelY-blue').length === 3 && teslas.filter((c) => c.flag && c.kind === 'modelY-red').length === 3);
 ok('its bikes parked: nine a side', (vv.flag?.vehicles?.bikes ?? []).length === 18);
-const heliSpot = FIELDS.village.vehicles.heli;
+const heliSpot = FIELDS.village.heli.red;
 const heli = b1.of('heli').filter((m) => m.heli?.id === heliSpot.id).at(-1)?.heli;
 ok('red\'s helicopter set down at the Sparrenhof', !!heli && Math.hypot(heli.x - heliSpot.x, heli.z - heliSpot.z) < 1, heli ? `${heli.x}, ${heli.z}` : 'none');
 await act({ op: 'stop' });

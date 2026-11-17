@@ -484,18 +484,85 @@ test('someone in the house\'s helicopter as the game starts: red still gets it a
   h.seats[0] = 'ann';
   s.game.modes.start('flag', 'admin', 'village', { look: 'real' });
   assert.ok(!h.seats.includes('ann'), 'out of it first');
-  const spot = FIELDS.village.vehicles.heli;
+  const spot = FIELDS.village.heli.red;
   assert.deepEqual([h.x, h.z], [spot.x, spot.z]);
 });
 
-test('helicopters: none in the compact field or with the look paint, for anyone', () => {
+test('helicopters in both fields and every look: anyone but the carrier boards', () => {
+  for (const field of ['compact', 'village']) {
+    for (const look of [undefined, 'paint', 'real']) {
+      const s = four(field, { look });
+      s.game.rules.heli = true;
+      const [b] = s.blue;
+      assert.equal(s.game.flagNoHeli(b, s.game.players.get(b), 'church'), false, `${field}, ${look}: not refused`);
+      const h = s.game.helis.machines.get('church');
+      s.at(20_000); // out of the start's fight clocks
+      s.put(b, h.x + 1.4, h.z, h.y);
+      s.msg(b, { t: 'heli', op: 'in', id: 'church' });
+      assert.equal(s.game.helis.of(b), h, `${field}, ${look}: blue boards the church's machine`);
+      assert.deepEqual(s.lines(b), []);
+    }
+  }
+});
+
+test('each team\'s helicopter at its spot in both fields and every look, whole; back on its own pad afterwards', () => {
+  for (const field of ['compact', 'village']) {
+    for (const look of [undefined, 'paint', 'real']) {
+      const pre = setup();
+      for (const n of ['ann', 'bob', 'cid', 'dee']) pre.join(n);
+      // Before the game: both machines flown off, and red's a wreck.
+      const church = pre.game.helis.machines.get('church');
+      const house = pre.game.helis.machines.get('house');
+      const pads = { church: { ...pre.game.helis.inner.get('church').park }, house: { ...pre.game.helis.inner.get('house').park } };
+      Object.assign(church, { x: 600, z: -700, y: 40 });
+      Object.assign(house, { x: 100, z: 50, y: 3 });
+      pre.game.vehicleDamage.recs.set('heli:house', { kind: 'heli', id: 'house', hp: 0, max: 700, st: 3, pct: 0 });
+      pre.game.modes.start('flag', 'admin', field, { look });
+      const spot = FIELDS[field].heli.red;
+      assert.deepEqual([church.x, church.y, church.z], [pads.church.x, pads.church.y, pads.church.z], `${field}, ${look}: blue's on the church's deck`);
+      assert.deepEqual([house.x, house.y, house.z, house.yaw], [spot.x, spot.y, spot.z, spot.yaw], `${field}, ${look}: red's at its spot`);
+      assert.ok(!pre.game.vehicleDamage.out('heli', 'house'), 'whole');
+      assert.ok(pre.out.some((m) => m.t === 'vdmg' && m.id === 'house' && m.st === 0 && m.hp === 100), 'every page told it is whole');
+      pre.game.modes.start('free', 'admin');
+      assert.deepEqual([house.x, house.y, house.z], [pads.house.x, pads.house.y, pads.house.z], 'back on its own pad');
+      assert.deepEqual(pre.game.helis.inner.get('house').park, pads.house);
+    }
+  }
+});
+
+test('the compact field\'s red helicopter: inside the edge, more than 14 m from either stand, off the start places', () => {
+  const spot = FIELDS.compact.heli.red;
   const s = four('compact');
-  const [b] = s.blue;
-  s.msg(b, { t: 'heli', op: 'in', id: 'church' });
-  assert.deepEqual(s.lines(b), ['gameNoHeli']);
-  assert.equal(s.game.flagNoHeli(b, s.game.players.get(b), 'church'), true);
-  const v = four('village', { look: 'real' });
-  assert.equal(v.game.flagNoHeli(v.blue[0], v.game.players.get(v.blue[0]), 'church'), false, 'village, real: the machines are for everyone but the carrier');
+  assert.ok(s.flag().edge.inside(spot.x, spot.z));
+  for (const team of ['blue', 'red']) {
+    const [x, z] = FIELDS.compact.bases[team].stand;
+    assert.ok(Math.hypot(spot.x - x, spot.z - z) > 14 + 5.2, `${team}: the rotor clear of the 14 m round the stand`);
+    for (const [sx, sz] of FIELDS.compact.bases[team].spawns) assert.ok(Math.hypot(spot.x - sx, spot.z - sz) > 8, 'clear of the start places');
+  }
+  assert.equal(noShoot(spot.x, spot.z), null);
+});
+
+test('the field\'s edge holds a helicopter as it holds a walker: its pilot\'s step past it is put back inside', () => {
+  const s = four('compact');
+  s.game.rules.heli = true;
+  const [r] = s.red;
+  const h = s.game.helis.machines.get('house');
+  s.at(20_000);
+  s.put(r, h.x + 1.4, h.z, h.y);
+  s.msg(r, { t: 'heli', op: 'in', id: 'house' });
+  assert.equal(s.game.helis.of(r), h);
+  const edge = s.flag().edge;
+  const z0 = h.z;
+  // Up and away to the north, over the gardens and out of the band, a step at a time within the flight's budgets.
+  for (let i = 0; i < 80; i++) {
+    s.at(100);
+    const st = s.game.players.get(r).state;
+    s.msg(r, { t: 'state', x: st.x, y: st.y + (i < 10 ? 1 : 0), z: st.z - 3, yaw: h.yaw, pitch: 0, armed: true, w: 'pistol', hp: 0, hr: 0, hn: 1, hg: 0 });
+  }
+  assert.ok(z0 - h.z > 15, `it flew: ${z0 - h.z} m`);
+  assert.ok(edge.inside(h.x, h.z), `the machine stays inside: ${h.x}, ${h.z}`);
+  assert.ok(!edge.inside(h.x, h.z - 3), 'held at the edge itself');
+  assert.ok(s.game.helis.of(r) === h, 'still flying it');
 });
 
 test('a late joiner gets a team (the smaller one) and starts at its base', () => {
@@ -573,17 +640,6 @@ test('the village field\'s parked cars stand where a car may stand, and its bike
   }
 });
 
-test('with the look real, red gets the house\'s helicopter at the Sparrenhof, back on its pad afterwards', () => {
-  const s = four('village', { look: 'real' });
-  const h = s.game.helis.machines.get('house');
-  const spot = FIELDS.village.vehicles.heli;
-  assert.deepEqual([h.x, h.z], [spot.x, spot.z]);
-  s.game.modes.start('free', 'admin');
-  assert.notDeepEqual([h.x, h.z], [spot.x, spot.z]);
-  const p = four('village', { look: 'paint' });
-  assert.notDeepEqual([p.game.helis.machines.get('house').x], [spot.x], 'paint: no helicopter moved');
-});
-
 test('helicopters in the village field played for real: anyone but the carrier flies, they take damage, the game keeps them flying', () => {
   const s = four('village', { look: 'real' });
   s.game.rules.heli = true;
@@ -599,7 +655,7 @@ test('helicopters in the village field played for real: anyone but the carrier f
   assert.equal(s.game.vehicleDamage.live, true, 'vehicles take damage (server/vehicleDamage.mjs)');
   // The red machine at the Sparrenhof is where the field put it, the carrier still refused (see above).
   const red = s.game.helis.machines.get('house');
-  assert.deepEqual([red.x, red.z], [FIELDS.village.vehicles.heli.x, FIELDS.village.vehicles.heli.z]);
+  assert.deepEqual([red.x, red.z], [FIELDS.village.heli.red.x, FIELDS.village.heli.red.z]);
 });
 
 test('no helicopter at a base: one low near a stand goes back to its spot, whoever is aboard put out and told', () => {
@@ -616,7 +672,7 @@ test('no helicopter at a base: one low near a stand goes back to its spot, whoev
   s.tick();
   assert.equal(s.game.helis.of(b), null, 'put out');
   assert.ok(s.lines(b).includes('flagHeliBase'));
-  const pad = FIELDS.village.vehicles.heli; // not the church's own spot moved: its pad
+  const pad = FIELDS.village.heli.red; // not the church's own spot moved: its pad
   assert.ok(Math.hypot(h.x - rx, h.z - rz) > 14, 'back on its own spot');
   assert.notDeepEqual([h.x, h.z], [pad.x, pad.z]);
   // High over a base is flying, not landing: left alone.

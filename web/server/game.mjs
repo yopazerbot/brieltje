@@ -1713,16 +1713,14 @@ export class Game {
   }
 
   /**
-   * Steal the flag refuses a helicopter seat (server/flags.mjs): to the carrier always, and to everyone unless the
-   * village field is played with the look 'real' (a machine at each base then). Says why and tells the page the machine
-   * as it is, so it stops waiting. True when refused.
+   * Steal the flag refuses a helicopter seat to the carrier (server/flags.mjs); everyone else may fly, in both fields and
+   * every look (a machine near each base). Says why and tells the page the machine as it is, so it stops waiting. True
+   * when refused.
    */
   flagNoHeli(name, p, id) {
     const f = this.modes.flag;
-    if (!f) return false;
-    const carrier = !!f.carrying(name);
-    if (!carrier && f.field.id === 'village' && f.look === 'real') return false;
-    this.send(p.ws, carrier ? { t: 'system', text: 'No helicopter with the flag: carry it home.', code: 'flagHeli' } : { t: 'system', text: 'No helicopter during a game.', code: 'gameNoHeli' });
+    if (!f?.carrying(name)) return false;
+    this.send(p.ws, { t: 'system', text: 'No helicopter with the flag: carry it home.', code: 'flagHeli' });
     const h = typeof id === 'string' ? this.helis.machines.get(id) : null;
     if (h) this.send(p.ws, { t: 'heli', heli: this.helis.pub(h) });
     return true;
@@ -2368,6 +2366,7 @@ export class Game {
     if (this.inCar(name)) return; // no firing from the car (as in hit)
     if (this.calm(shooter)) return;
     if (now < (shooter.nextRocket || 0)) return;
+    if (this.modes.flag && !this.modes.flag.arms.fire(name, shooter, now)) return; // Steal the flag: only the rack's launcher, its rockets (server/flagBazooka.mjs)
     shooter.nextRocket = now + spec.reload * 800; // one rocket per load, with room for network jitter
     shooter.protectedUntil = 0;
     const s = shooter.state;

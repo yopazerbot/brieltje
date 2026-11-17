@@ -512,12 +512,13 @@ export class Modes {
     const s = this.state;
     const f = s.f;
     const events = f.step(now);
+    const racks = f.arms.step(now); // each team's bazooka (server/flagBazooka.mjs): taken, away, back on its rack
     if (events.length) this.flagEvents(events);
     const captured = events.some((e) => e.ev === 'captured');
     const { blue, red } = f.score;
     if (f.sudden && captured) return this.flagOver('flagSudden');
     if (now < s.until) {
-      if (events.length) this.send();
+      if (events.length || racks) this.send();
       return;
     }
     if (!f.sudden && blue === red) {
@@ -535,6 +536,7 @@ export class Modes {
    */
   flagOver(why) {
     const f = this.state.f;
+    f.arms.end(); // the bazookas out of everyone's hands, the racks gone, the admin's own back (server/flagBazooka.mjs)
     const { blue, red } = f.score;
     const tags = f.tags;
     if (why === 'flagTags' && tags.blue === tags.red) return this.finish(`A draw: ${blue} to ${red} in captures and ${tags.blue} to ${tags.red} in tags`, 'flagDraw', { blue, red, a: tags.blue, b: tags.red });

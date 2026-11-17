@@ -259,9 +259,9 @@ export class Games {
     return !!f && (f.flags.blue.by === this.me || f.flags.red.by === this.me);
   }
 
-  /** Steal the flag refuses you a helicopter seat: carrying, or anything but the village field played for real. */
+  /** Steal the flag refuses you a helicopter seat while you carry a flag (each team has a machine by its base). */
   get flagNoHeli(): boolean {
-    return this.flagOn && (this.carrying || this.view.flag?.field !== 'village' || this.view.look !== 'real');
+    return this.flagOn && this.carrying;
   }
 
   /** The Zombies game is played (not once its end screen shows): no cars, horses or flying, the houses shut. */

@@ -9,6 +9,7 @@ import { moveKeys, typing } from '../keys';
 import { key, type Control } from '../shortcuts';
 import { RACE_EDGE, RACE_LINE, stallMark, type RaceWay } from './minimap';
 import { flagMark } from './flagHud';
+import { rackMark } from '../world/flagRack';
 
 /**
  * The big map: the whole area at once, north up, drawn from the same data as the world (roads,
@@ -74,9 +75,11 @@ export interface Mark {
   color: string;
   name?: string;
   yaw?: number;
-  kind: 'player' | 'car' | 'horse' | 'coin' | 'stall' | 'flag';
+  kind: 'player' | 'car' | 'horse' | 'coin' | 'stall' | 'flag' | 'rack';
   /** A flag (Steal the flag) carried by someone: a white ring behind it */
   carried?: boolean;
+  /** Your team's bazooka rack (Steal the flag) while its launcher is out: faint */
+  away?: boolean;
 }
 
 const portal = (id: string) => PORTALS.find((p) => p.id === id);
@@ -335,6 +338,8 @@ export class BigMap {
         stallMark(g, x, y, 14); // the Zombies stall (ui/minimap.ts draws it the same)
       } else if (m.kind === 'flag') {
         flagMark(g, x, y + 6, 18, m.color, !!m.carried); // Steal the flag's (ui/flagHud.ts)
+      } else if (m.kind === 'rack') {
+        rackMark(g, x, y, 18, m.color, !!m.away); // Steal the flag: your team's bazooka (world/flagRack.ts)
       } else {
         g.beginPath();
         g.arc(x, y, m.kind === 'horse' || m.kind === 'coin' ? 3.5 : 5.5, 0, Math.PI * 2); // a hunt's coin: small and gold

@@ -149,6 +149,19 @@ export class HeliPilot {
   get aboard(): boolean {
     return this.heli !== null;
   }
+  /**
+   * The machines standing on the ground, as circles the street's traffic stops for (world/traffic.ts): its cabin and its
+   * tail boom. One set down on a road (Steal the flag's red machine on Molenhoek) is driven up to, not through.
+   */
+  standing(): { x: number; z: number; r: number }[] {
+    const out: { x: number; z: number; r: number }[] = [];
+    for (const m of this.machines) {
+      if (!m.ready || m.taken || !m.s.ground) continue;
+      const fx = -Math.sin(m.s.yaw), fz = -Math.cos(m.s.yaw);
+      out.push({ x: m.s.x + fx * 0.7, z: m.s.z + fz * 0.7, r: 1.6 }, { x: m.s.x - fx * 4.4, z: m.s.z - fz * 4.4, r: 0.9 });
+    }
+    return out;
+  }
   /** At the stick (alone always; together in seat 0) */
   get piloting(): boolean {
     return this.heli !== null && (this.seat ?? 0) === 0;

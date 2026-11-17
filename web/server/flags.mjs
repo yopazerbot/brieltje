@@ -7,7 +7,8 @@
 // - Each team's flag stands on its stand at its base. Walk into the other team's flag to take it; bring it to your own
 //   stand to score, but only while your own flag is home.
 // - The carrier may drive or ride a bike; no portal, no trip from the chat, no helicopter seat (game.mjs asks
-//   `carrying`). Down, leaving the game or moved by the server (a respawn, the host bringing them): the flag drops where
+//   `carrying`). Everyone else may fly: each team has a helicopter near its base (park), and a bazooka on a rack at its
+//   base to bring the other team's down (server/flagBazooka.mjs). Down, leaving the game or moved by the server (a respawn, the host bringing them): the flag drops where
 //   they were. A teammate of the carrier picks it up by touch; the flag's own team touching it sends it home at once;
 //   left alone for RETURN_MS it goes home by itself.
 // - Down: back at your own base after BACK_MS, protected for SAFE_MS (ends at your first shot, as always).
@@ -31,6 +32,7 @@ import { loadBounds } from '../shared/bounds.mjs';
 import { homeAt } from '../shared/homes.mjs';
 import { noShoot } from '../shared/zones.mjs';
 import { STAGE } from './vehicleDamage.mjs';
+import { FlagBazooka } from './flagBazooka.mjs';
 import { FIELDS, FLAG_COLORS, FLAG_TEAMS, fieldEdge, fieldOf } from '../shared/flagFields.mjs';
 
 export { FIELDS, FLAG_COLORS, FLAG_TEAMS };
@@ -83,7 +85,9 @@ export class FlagGame {
     /** team -> its flag: at 'home', 'carried' (by a name) or on the 'ground' (since when) */
     this.flags = Object.fromEntries(FLAG_TEAMS.map((t) => [t, this.homeFlag(t)]));
     this.started = now;
-    this.vehicles = { cars: [], bikes: [], heli: null };
+    this.vehicles = { cars: [], bikes: [], helis: [] };
+    /** Each team's bazooka on its rack (server/flagBazooka.mjs) */
+    this.arms = new FlagBazooka(game, this);
   }
 
   homeFlag(team) {
@@ -268,19 +272,30 @@ export class FlagGame {
       // Carried: only who carries it (the pages draw it on their figure, where they may see them); never its place.
       flags[t] = f.at === 'carried' ? { at: f.at, by: f.by } : { at: f.at, x: f.x, y: f.y, z: f.z, ...(f.at === 'ground' ? { ms: Math.max(0, RETURN_MS - (now - f.since)) } : {}) };
     }
-    return { field: this.field.id, flags, tags: { ...this.tags }, sudden: this.sudden, vehicles: this.vehicles.bikes.length ? { bikes: [...this.vehicles.bikes] } : undefined };
+    return { field: this.field.id, flags, tags: { ...this.tags }, sudden: this.sudden, vehicles: this.vehicles.bikes.length ? { bikes: [...this.vehicles.bikes] } : undefined, racks: this.arms.over ? undefined : this.arms.view(now) };
   }
 
-  // ------------------------------------------------------------------ the parked vehicles (the village field)
+  // ------------------------------------------------------------------ the parked vehicles
 
   /**
-   * The village field's vehicles at each base, for as long as the game runs (shared/flagFields.mjs): cars in the
-   * team's colour (the placed Teslas' list, never stored), bikes (the field's own ids, drawn by every page from the same
-   * file), and with the look 'real' a helicopter for red at the Sparrenhof (the one from the house's pad, moved there
-   * for the game; blue has the church's, by its base).
+   * The field's vehicles at each base, for as long as the game runs (shared/flagFields.mjs): in both fields and every
+   * look a helicopter for each team (blue the church's on its deck, red the house's set down near its base), whole and
+   * on its spot whatever it was before (a wreck, flown off); in the village field cars in the team's colour (the placed
+   * Teslas' list, never stored) and bikes (the field's own ids, drawn by every page from the same file).
    */
   park(now) {
     const g = this.game;
+    for (const team of FLAG_TEAMS) {
+      const spot = this.field.heli?.[team];
+      const h = spot && g.helis?.machines.get(spot.id);
+      const inner = h && g.helis.inner.get(spot.id);
+      if (!h || !inner) continue;
+      for (const n of h.seats) if (n) g.helis.putOut(n, now);
+      this.whole(h);
+      this.vehicles.helis.push({ id: spot.id, park: inner.park });
+      if (typeof spot.x === 'number') inner.park = { x: spot.x, y: spot.y, z: spot.z, yaw: spot.yaw };
+      g.helis.park(h, now);
+    }
     const v = this.field.vehicles;
     if (!v) return;
     for (const team of FLAG_TEAMS) {
@@ -300,19 +315,23 @@ export class FlagGame {
     }
     if (this.vehicles.cars.length) g.sendPlaced();
     for (const id of this.vehicles.bikes) g.broadcastThing({ t: 'bike', bike: g.bikes[id] }, 'bike', g.bikes[id]);
-    const heli = this.look === 'real' ? v.heli : null;
-    const h = heli && g.helis?.machines.get(heli.id);
-    const inner = h && g.helis.inner.get(heli.id);
-    if (h && inner && !h.seats.some(Boolean)) {
-      this.vehicles.heli = { id: heli.id, park: inner.park };
-      inner.park = { x: heli.x, y: heli.y, z: heli.z, yaw: heli.yaw };
-      g.helis.park(h, now);
-    }
   }
 
-  /** The game is over: the field's vehicles go (whoever sits in one gets out first), the helicopter back to its own pad. */
+  /**
+   * Machine `h` whole again (server/vehicleDamage.mjs): its damage forgotten and every page told, so a wreck from before
+   * the game (or from the game, as it ends) is whole on its spot.
+   */
+  whole(h) {
+    if (this.game.vehicleDamage?.recs?.delete(`heli:${h.id}`)) this.game.broadcastThing({ t: 'vdmg', k: 'heli', id: h.id, hp: 100, st: STAGE.whole }, 'heli', h);
+  }
+
+  /**
+   * The game is over: the field's vehicles go (whoever sits in one gets out first), the helicopters back to their own
+   * pads, whole; the bazookas out of everyone's hands (server/flagBazooka.mjs end).
+   */
   unpark(now) {
     const g = this.game;
+    this.arms.end();
     for (const id of this.vehicles.cars) {
       const c = g.cars[id];
       if (!c?.flag) continue;
@@ -332,13 +351,14 @@ export class FlagGame {
       delete g.bikes[id];
       delete g.bikeAt[id];
     }
-    const heli = this.vehicles.heli;
-    const h = heli && g.helis?.machines.get(heli.id);
-    if (h) {
+    for (const heli of this.vehicles.helis) {
+      const h = g.helis?.machines.get(heli.id);
+      if (!h) continue;
       g.helis.inner.get(heli.id).park = heli.park;
       for (const n of h.seats) if (n) g.helis.putOut(n, now);
+      this.whole(h);
       g.helis.park(h, now);
     }
-    this.vehicles = { cars: [], bikes: [], heli: null };
+    this.vehicles = { cars: [], bikes: [], helis: [] };
   }
 }

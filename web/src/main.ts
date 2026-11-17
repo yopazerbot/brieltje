@@ -21,6 +21,7 @@ import { TouchControls } from './controls/touch';
 import { Games, type ModeView } from './ui/games';
 import { FlagHud } from './ui/flagHud';
 import { FlagWorld } from './world/flags';
+import { FlagRacks } from './world/flagRack';
 import { fieldEdge, fieldOf } from '../shared/flagFields.mjs';
 import { CLOWN_DEFAULTS, Clowns, KINDS, type Kind } from './world/clowns';
 import { bruteDamage, hurtBy } from '../shared/brutes.mjs';
@@ -827,6 +828,8 @@ const duelLine = new DuelLine(); // the host's Zombies duel: each team's wave (s
 // Steal the flag (server/flags.mjs): its stands and flags in the world, its bar, flags and lines on screen.
 const flagWorld = new FlagWorld();
 scene.add(flagWorld.group);
+const flagRacks = new FlagRacks(); // each team's bazooka rack (server/flagBazooka.mjs)
+scene.add(flagRacks.group);
 games.flagHud = new FlagHud(document.getElementById('modebar')!);
 loadProps(house.props ?? [], scene, world);
 // Built-in furniture (it comes with a home's inside data): drawn like the other pieces, not movable.
@@ -2383,9 +2386,13 @@ function fire(): void {
   else net.send({ t: 'shot', w: weapon.current, x: player.x, y: player.feet + 1.5, z: player.z, ...(shot.tracer ? { tx: Math.round(shot.tracer.x * 100) / 100, ty: Math.round(shot.tracer.y * 100) / 100, tz: Math.round(shot.tracer.z * 100) / 100 } : {}) }); // `tx`..: where a tracer goes, for the others to see
   life.scare(camera.getWorldPosition(new THREE.Vector3()));
 }
-/** The bazooka is the admin's, and anyone's playing alone. */
+/** The bazooka is the admin's, and anyone's playing alone; in Steal the flag nobody's but the rack's (server/flagBazooka.mjs). */
 function adminWeapons(): WeaponId[] {
-  return !me || me.role === 'admin' ? ['bazooka'] : [];
+  return (!me || me.role === 'admin') && !(games.flagOn && net.connected) ? ['bazooka'] : [];
+}
+/** Your team in Steal the flag while it is played, or null (its rack on your maps). */
+function flagTeam(): 'blue' | 'red' | null {
+  return games.flagOn && (games.team === 'blue' || games.team === 'red') ? games.team : null;
 }
 
 /**
@@ -2775,6 +2782,8 @@ function followGame(view: ModeView): void {
   // Steal the flag (world/flags.ts, ui/flagHud.ts): its flags, its parked bikes, its longer wait when down, its heading.
   const flag = games.view.kind === 'flag' ? games.view.flag ?? null : null;
   flagWorld.set(flag);
+  flagRacks.set(games.flagOn ? flag : null);
+  if (!games.flagOn) weapon.rocketsLeft = null; // the rack's launcher is the game's only (the admin's own counts none)
   bikes.setGameBikes(flag?.vehicles?.bikes ?? []);
   combat.respawnSeconds = games.flagOn ? 5 : 3;
   combat.setFlag(games.flagOn ? { b: games.view.score?.blue ?? 0, r: games.view.score?.red ?? 0 } : null);
@@ -2897,6 +2906,7 @@ net.onMessage = (m: ServerMsg) => {
     }
     case 'weapons':
       weapon.setOwned(m.list); // the guns the server has for you (on joining, and when a Zombies game is over)
+      if (!m.list.includes('bazooka')) weapon.rocketsLeft = null; // Steal the flag: the rack's launcher gone from your hands
       break;
     case 'mode':
       followGame(m.mode);
@@ -2972,6 +2982,16 @@ net.onMessage = (m: ServerMsg) => {
       break;
     case 'flag': // Steal the flag: taken, dropped, returned or captured (server/flags.mjs): a line and a sound
       games.flagHud?.event(m, me?.username ?? '', games.team === 'blue' || games.team === 'red' ? games.team : null);
+      break;
+    case 'fbz': // Steal the flag's bazooka (server/flagBazooka.mjs): your team's taken from its rack (a line, a sound), your rockets left
+      if (m.ev === 'left') weapon.rocketsLeft = m.n;
+      else {
+        if (m.name === me?.username) {
+          weapon.rocketsLeft = m.n;
+          weapon.give('bazooka');
+        }
+        games.flagHud?.bazooka(m.name, me?.username ?? '', m.team, paintball.on, m.n);
+      }
       break;
     case 'car': {
       const c = carById(m.car.id);
@@ -3828,6 +3848,7 @@ renderer.setAnimationLoop((now: number) => {
     // Steal the flag: the flags where the server has them, a carried one on its carrier as drawn now; its line and chips.
     games.flagHud?.tickGround(games.flagOn ? games.view.flag ?? null : null, dt);
     flagWorld.update(dt, flagCarrier);
+    flagRacks.update(dt);
     games.flagHud?.update(games.flagOn ? games.view.flag ?? null : null, me?.username ?? '');
     // The cars: E or Triangle next to one gets you in (unless two are in it already), and out again.
     // A wreck or one gone in a team match (world/vehicleWear.ts) is none: no "get in", and the bike's and horse's prompts free.
@@ -4225,7 +4246,7 @@ renderer.setAnimationLoop((now: number) => {
   countryside?.update(dt, camera);
   portals.update(dt, camera, renderer.domElement.height);
   // The traffic stops for people and for cars someone drives, never for a parked car (Yoshi: a Tesla on the drive held it up).
-  roadLife.update(dt, camera.position, [...avatars.obstacles(), { x: player.x, z: player.z, r: 0.35 }, ...villagers.obstacles()], cars.filter((c) => (driving && c === car) || !!c.driver));
+  roadLife.update(dt, camera.position, [...avatars.obstacles(), { x: player.x, z: player.z, r: 0.35 }, ...villagers.obstacles(), ...helis.standing()], cars.filter((c) => (driving && c === car) || !!c.driver));
   looseProps.low = phone || quality === 'low';
   looseProps.update(dt, camera);
   mapTimer += dt;
@@ -4242,6 +4263,7 @@ renderer.setAnimationLoop((now: number) => {
       ...zombies.blips().map((z) => ({ ...z, color: z.big ? '#4f7a3a' : '#8fb070', kind: 'zombie' as const })), // the Zombies game's, small dots
       ...stallOnMap().map((s) => ({ ...s, y: player.feet, color: '', kind: 'stall' as const })),
       ...flagWorld.marks(flagCarrier).map((f) => ({ ...f, y: player.feet, kind: 'flag' as const })), // Steal the flag's, on every floor
+      ...flagRacks.marks(flagTeam()).map((r) => ({ ...r, y: player.feet, kind: 'rack' as const })), // your team's bazooka
     ];
     const shapes = [...furnishing.pieces.values()].filter((p) => !p.item.startsWith('rug')).map((p) => ({ ring: footprint(p), y: p.y }));
     for (const c of cars) if (c.ready && !c.taken) shapes.push({ ring: c.footprint(), y: c.y }); // gone: a wreck taken away (world/vehicleWear.ts)
@@ -4273,6 +4295,7 @@ renderer.setAnimationLoop((now: number) => {
       ...goals.marks(),
       ...stallOnMap().map((s) => ({ ...s, color: '#d0382e', name: t('stall.map'), kind: 'stall' as const })),
       ...flagWorld.marks(flagCarrier).map((f) => ({ x: f.x, z: f.z, color: f.color, carried: f.carried, name: f.name, kind: 'flag' as const })), // Steal the flag's, the carrier named
+      ...flagRacks.marks(flagTeam()).map((r) => ({ x: r.x, z: r.z, color: r.color, away: r.away, name: t(paintball.on ? 'fbz.mapPaint' : 'fbz.map'), kind: 'rack' as const })), // your team's bazooka
     ];
     bigMap.tick(mapYou(), marks);
   } else if (!menu.onStartScreen) composer.render(dt); // the menu's Map tab covers most of the screen: the world isn't drawn behind it
