@@ -225,7 +225,9 @@ test('a guard shoots an opponent it sees with the rifle, through the server\'s h
   const t0 = s.now();
   s.run(400);
   assert.equal(p.hp, 100, 'not before its reaction time');
-  s.run(2000);
+  s.run(300);
+  assert.ok(Math.abs(g.state.yaw - Math.atan2(-(p.state.x - g.state.x), -(p.state.z - g.state.z))) < 0.3 && g.state.a, 'facing its target, the gun at the eye');
+  s.run(1700);
   assert.equal(p.alive, false, 'tagged');
   assert.ok(hurt.length >= 3);
   assert.deepEqual(hurt.slice(0, 3).map((h) => h[1]), [74, 48, 22], 'the rifle\'s body damage, 26 a hit');
@@ -236,7 +238,6 @@ test('a guard shoots an opponent it sees with the rifle, through the server\'s h
   assert.ok(hurt[1][0] - hurt[0][0] >= 100, 'the rifle\'s fire rate');
   const shots = s.out.filter((m) => m.t === 'shot' && m.name === guardName('blue', 1));
   assert.ok(shots.length >= 4 && shots.every((m) => m.w === 'rifle'), 'everyone hears its shots');
-  assert.ok(Math.abs(g.state.yaw - Math.atan2(-(p.state.x - g.state.x), -(p.state.z - g.state.z))) < 0.3, 'facing its target');
 });
 const LOOKMAX = 400;
 
@@ -443,6 +444,38 @@ test('a guard shoots an opponent\'s car within reach through the vehicles\' own 
   car.driver = null;
   s.run(2000);
   assert.equal(s.game.vehicleDamage.recs.get('car:fb2'), undefined);
+});
+
+test('a player who steps into a home between two looks gets no further shot, tracer or aim from the guard', () => {
+  const s = setup();
+  const { g, x, z } = oneGuard(s);
+  const p = s.game.players.get(s.red);
+  stand(s, p, x, z);
+  p.hp = 10_000; // standing through it all
+  s.run(1500);
+  const shots = () => s.out.filter((m) => m.t === 'shot' && m.name === guardName('blue', 1));
+  assert.ok(shots().length >= 3, 'shooting while they stand outside');
+  assert.ok(g.target && g.state.a);
+  // Into a home, before the guard's next look: from now on the guard may not see them (homeGate).
+  g.lookAt = Infinity;
+  const inside = s.game.gate.insideOf.bind(s.game.gate);
+  s.game.gate.insideOf = (q) => (q === p ? 'house' : inside(q));
+  const before = shots().length;
+  s.tick();
+  const yaw = g.state.yaw;
+  const pitch = g.state.pitch;
+  assert.equal(g.target, null, 'dropped at once');
+  assert.equal(g.state.a, false);
+  assert.equal(pitch, 0);
+  for (let k = 0; k < 40; k++) {
+    p.state.x += k % 2 ? 3 : -2; // walking about inside
+    p.state.z += 1;
+    s.tick();
+    assert.equal(g.state.yaw, yaw, 'its aim does not follow them');
+    assert.equal(g.state.pitch, pitch);
+  }
+  assert.equal(shots().length, before, 'not one more shot');
+  assert.ok(shots().every((m) => m.tx === undefined || !(Math.abs(m.tx - p.state.x) < 2 && Math.abs(m.tz - p.state.z) < 2)), 'no tracer ends where they stand now');
 });
 
 test('the strongmen leave the guards alone: no target, no stomp or rock on one, no death on the board if one goes down', () => {

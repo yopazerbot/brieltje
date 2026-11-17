@@ -327,7 +327,7 @@ export class FlagGuards {
     }
     if (rec.warp !== rec.mine) return this.place(name, rec, now); // moved by the server (the host's bring, a new round): back on its round
     if (g.host?.holds(rec) || g.roundOver) {
-      rec.target = null;
+      if (rec.target) this.drop(rec);
       return;
     }
     if (now >= rec.lookAt) {
@@ -335,6 +335,7 @@ export class FlagGuards {
       const seen = this.look(name, rec);
       const same = seen && rec.target && seen.kind === rec.target.kind && seen.id === rec.target.id;
       if (seen && !same) rec.fireAt = now + this.skill(rec).react;
+      if (!seen && rec.target) this.drop(rec);
       rec.target = seen;
     }
     if (rec.target) this.shoot(name, rec, now);
@@ -365,7 +366,7 @@ export class FlagGuards {
     const dx = p.x - s.x, dz = p.z - s.z;
     const d = Math.hypot(dx, dz);
     const stepM = WALK * dt;
-    s.yaw = yawTo(dx, dz);
+    s.yaw = w.yaw = yawTo(dx, dz);
     s.pitch = 0;
     if (d <= stepM) {
       Object.assign(s, { x: p.x, y: p.y, z: p.z });
@@ -409,51 +410,64 @@ export class FlagGuards {
     const round = this.roundOf(rec.guard.team);
     const nav = round.nav;
     const s = rec.state;
-    const enemy = rec.guard.team === 'blue' ? 'red' : 'blue';
-    const teams = this.f.teams;
     if (g.calm(rec)) return null;
     let best = null;
-    const consider = (kind, id, x, y, z) => {
-      const d = Math.hypot(x - s.x, y - (s.y + 1.6), z - s.z);
-      if (d > SEE || (best && d >= best.d)) return;
-      if (this.sees(rec, nav, x, y, z, d)) best = { kind, id, d, x, y, z };
-    };
     const now = Date.now();
-    for (const [n, q] of g.players) {
-      if (q.guard || teams[n] !== enemy || !q.alive || !q.state?.armed || now < q.protectedUntil || g.inCar(n) || g.calm(q) || g.gate.insideOf(q) || !g.gate.mayHurt(rec, q)) continue;
-      const qs = q.state;
-      consider('player', n, qs.x, qs.y + (qs.c ? 0.7 : 1.1), qs.z);
-    }
-    const vd = g.vehicleDamage;
-    if (vd.live) {
-      const vehicles = [...Object.values(g.cars).map((v) => ['car', v]), ...[...g.helis.machines.values()].map((v) => ['heli', v])];
-      for (const [kind, v] of vehicles) {
-        const riders = vd.riders(kind, v);
-        if (!riders.some((r) => teams[r] === enemy) || vd.out(kind, v.id) || !vd.mayDamage(name, kind, v) || vd.calm(kind, v) || vd.hidden(rec, kind, v)) continue;
-        const mid = vd.middle(kind, v);
-        consider(kind, v.id, mid.x, mid.y, mid.z);
-      }
+    const consider = (kind, id) => {
+      const at = this.fair(name, rec, kind, id, now);
+      if (!at) return;
+      const d = Math.hypot(at.x - s.x, at.y - (s.y + 1.6), at.z - s.z);
+      if (d > SEE || (best && d >= best.d)) return;
+      if (this.sees(rec, nav, at.x, at.y, at.z, d)) best = { kind, id, d };
+    };
+    for (const n of g.players.keys()) consider('player', n);
+    if (g.vehicleDamage.live) {
+      for (const v of Object.values(g.cars)) consider('car', v.id);
+      for (const v of g.helis.machines.values()) consider('heli', v.id);
     }
     return best;
   }
 
-  /** Where the target is now (its chest, a vehicle's middle), or null when it went. */
-  aimPoint(t) {
+  /**
+   * Where the guard may aim at target `kind` `id` now (a player's chest, a vehicle's middle), or null when it may not:
+   * an opponent, alive, armed, out of spawn protection, on foot, not calm (Game.calm), inside no home and in sight of the
+   * guard as the homes see it (homeGate.mayHurt); a vehicle not out, with an opponent in it, none the guard may not hurt
+   * (VehicleDamage hidden and mayDamage), not calm, not in a home's bands. Asked at each look and again before every aim
+   * and every shot: a player who steps into a home between two looks is not followed, shot at or traced there.
+   */
+  fair(name, rec, kind, id, now) {
     const g = this.game;
-    if (t.kind === 'player') {
-      const q = g.players.get(t.id);
-      return q?.alive && q.state ? { x: q.state.x, y: q.state.y + (q.state.c ? 0.7 : 1.1), z: q.state.z } : null;
+    const enemy = rec.guard.team === 'blue' ? 'red' : 'blue';
+    const teams = this.f.teams;
+    const s = rec.state;
+    let at = null;
+    if (kind === 'player') {
+      const q = g.players.get(id);
+      if (!q || q.guard || teams[id] !== enemy || !q.alive || !q.state?.armed || now < q.protectedUntil || g.inCar(id) || g.calm(q) || g.gate.insideOf(q) || !g.gate.mayHurt(rec, q)) return null;
+      at = { x: q.state.x, y: q.state.y + (q.state.c ? 0.7 : 1.1), z: q.state.z };
+    } else {
+      const vd = g.vehicleDamage;
+      const v = vd.vehicle(kind, id);
+      if (!v || !vd.live || !vd.riders(kind, v).some((r) => teams[r] === enemy) || vd.out(kind, id) || !vd.mayDamage(name, kind, v) || vd.calm(kind, v) || vd.hidden(rec, kind, v) || g.homeOf(kind, v)) return null;
+      at = vd.middle(kind, v);
     }
-    const v = g.vehicleDamage.vehicle(t.kind, t.id);
-    return v ? g.vehicleDamage.middle(t.kind, v) : null;
+    return Math.hypot(at.x - s.x, at.z - s.z) <= SEE + 5 ? at : null;
+  }
+
+  /** The target is no longer fair: dropped, the gun down, the view back along its round. */
+  drop(rec) {
+    const s = rec.state;
+    rec.target = null;
+    Object.assign(s, { a: false, pitch: 0, yaw: rec.walk.yaw ?? s.yaw });
+    this.moved(rec);
   }
 
   /** Facing the target; after the reaction time a shot at the rifle's rate, reloading when the magazine is empty. */
   shoot(name, rec, now) {
     const g = this.game;
     const s = rec.state;
-    const at = this.aimPoint(rec.target);
-    if (!at) return (rec.target = null);
+    const at = this.fair(name, rec, rec.target.kind, rec.target.id, now); // again before every aim and shot
+    if (!at) return this.drop(rec);
     const ex = s.x, ey = s.y + 1.6, ez = s.z;
     const flat = Math.hypot(at.x - ex, at.z - ez);
     s.yaw = yawTo(at.x - ex, at.z - ez);
@@ -473,7 +487,8 @@ export class FlagGuards {
     if (++rec.shots % 3 === 0) {
       const off = miss ? 0.6 + this.rand() : 0;
       const side = this.rand() < 0.5 ? -1 : 1;
-      Object.assign(shot, { tx: Math.round((at.x + Math.cos(s.yaw) * off * side) * 100) / 100, ty: Math.round((at.y + (miss ? (this.rand() - 0.3) * 0.8 : 0)) * 100) / 100, tz: Math.round((at.z - Math.sin(s.yaw) * off * side) * 100) / 100 });
+      const tracer = { tx: Math.round((at.x + Math.cos(s.yaw) * off * side) * 100) / 100, ty: Math.round((at.y + (miss ? (this.rand() - 0.3) * 0.8 : 0)) * 100) / 100, tz: Math.round((at.z - Math.sin(s.yaw) * off * side) * 100) / 100 };
+      if (!homeAt(tracer.tx, tracer.tz, tracer.ty)) Object.assign(shot, tracer); // never a streak ending inside a home
     }
     g.broadcastFrom(shot, rec, name);
     if (miss) return;
