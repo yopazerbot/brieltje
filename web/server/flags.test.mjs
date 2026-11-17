@@ -659,6 +659,28 @@ test('a reconnecting player keeps their team', () => {
   assert.equal(s.game.modes.state.teams[r], 'red');
 });
 
+test('the field\'s vehicles take no damage from their own team, empty or not; the other team always may', () => {
+  const s = four('village');
+  const [b] = s.blue;
+  const [r] = s.red;
+  const vd = s.game.vehicleDamage;
+  const hp = (kind, id) => vd.recs.get(`${kind}:${id}`)?.hp ?? Infinity;
+  for (const [kind, id, own] of [['car', 'fb1', 'blue'], ['car', 'fr1', 'red'], ['heli', 'church', 'blue'], ['heli', 'house', 'red']]) {
+    const v = vd.vehicle(kind, id);
+    assert.equal(s.flag().owner(kind, id), own);
+    const mine = own === 'blue' ? b : r;
+    const theirs = own === 'blue' ? r : b;
+    assert.equal(vd.mayDamage(mine, kind, v), false, `${id}: not by its own team, empty`);
+    assert.equal(vd.mayDamage(theirs, kind, v), true, `${id}: by the other team`);
+    s.game.blast(mine, { x: v.x, y: v.y + 0.8, z: v.z }, 'bazooka');
+    assert.equal(hp(kind, id), Infinity, `${id}: no damage from its own team's rocket`);
+    s.game.blast(theirs, { x: v.x, y: v.y + 0.8, z: v.z }, 'bazooka');
+    assert.ok(hp(kind, id) < Infinity, `${id}: the other team's rocket counts`);
+  }
+  // The village's own vehicles: as before (anyone may, a teammate aboard aside); the teams game: as before.
+  assert.equal(s.flag().owner('car', 'tesla'), null);
+});
+
 test('the village\'s own vehicles by a base are out of play for the game, and back after it', () => {
   for (const field of ['compact', 'village']) {
     const s = setup();

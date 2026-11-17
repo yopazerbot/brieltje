@@ -122,8 +122,14 @@ export class VehicleDamage {
     return r;
   }
 
-  /** Whether `name` may damage vehicle `v` now: never one they or a teammate sit in (Game.modes.friends). */
+  /**
+   * Whether `name` may damage vehicle `v` now: never one they or a teammate sit in (Game.modes.friends); in Steal the
+   * flag never one of their own team's, empty or not (server/flags.mjs owner: the field's cars and helicopters, which
+   * trade with the bases when the sides swap). The other team always may.
+   */
   mayDamage(name, kind, v) {
+    const team = this.game.modes?.flag?.owner?.(kind, v.id);
+    if (team && team === this.game.modes.teamOf(name)) return false;
     return this.riders(kind, v).every((r) => r !== name && !this.game.modes.friends(name, r));
   }
 

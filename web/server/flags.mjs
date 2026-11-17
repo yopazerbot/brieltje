@@ -109,6 +109,19 @@ export class FlagGame {
     return this.swapped ? other(side) : side;
   }
 
+  /**
+   * The team a vehicle of the field belongs to now, or null: each team's helicopter and the cars parked at its base
+   * (they trade with the bases when the sides swap). Its own team does it no damage (server/vehicleDamage.mjs mayDamage).
+   */
+  owner(kind, id) {
+    if (kind === 'heli') {
+      for (const side of FLAG_TEAMS) if (this.field.heli?.[side]?.id === id) return this.sideOf(side);
+      return null;
+    }
+    if (kind === 'car' && this.vehicles.cars.includes(id)) return this.sideOf(id[1] === 'b' ? 'blue' : 'red');
+    return null;
+  }
+
   homeFlag(team) {
     const s = this.base(team).stand;
     return { at: 'home', by: null, x: s[0], y: s[2], z: s[1], since: 0, warp: 0 };
