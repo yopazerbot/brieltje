@@ -36,7 +36,7 @@
 // logged.
 
 import { readFileSync } from 'node:fs';
-import { arenaOf } from '../shared/arenas.mjs';
+import { ARENAS } from '../shared/arenas.mjs';
 import { FLAG_COLORS, FLAG_TEAMS } from '../shared/flagFields.mjs';
 import { homeAt } from '../shared/homes.mjs';
 import { PORTALS } from '../shared/portals.mjs';
@@ -74,6 +74,9 @@ export const SET_MS = 200;
 const SPAWN_KEEP = 3;
 const PORTAL_KEEP = 5;
 const BIKE_KEEP = 1.3;
+/** m a waypoint and every stretch keep from a bazooka rack, and from a helicopter on its spot or low (its rotor and tail). */
+const RACK_KEEP = 2.5;
+const HELI_KEEP = 7.5;
 /** m the way between two waypoints keeps from the stand; the longest stretch. */
 const STAND_KEEP = 3;
 const LEG = 18;
@@ -219,6 +222,25 @@ export class FlagGuards {
 
   // ------------------------------------------------------------------ the rounds
 
+  /** Team `team`'s base in the game being played: the game's own when it has one (a swap of sides), else its field's. */
+  baseOf(team) {
+    return this.f.baseOf?.(team) ?? this.f.field.bases[team];
+  }
+
+  /**
+   * The bases moved (a swap of sides, a stand moved mid-game): each round worked out again round its stand as it is
+   * now, and every guard put on its new round (a respawn, as the players' own move). The tick also notices a stand
+   * that changed by itself; the swap may call this at once.
+   */
+  moved(now = Date.now()) {
+    if (!this.f) return;
+    this.rounds = {};
+    for (const [name, rec] of [...this.guards]) {
+      if (this.roundOf(rec.guard.team).points.length) this.place(name, rec, now);
+      else this.remove(name);
+    }
+  }
+
   /**
    * Team `team`'s round in the game being played: its waypoints ({ x, y, z, a: the angle round the stand }) and which
    * of them a straight walk joins (`links`, indexes), worked out once a game from that place's Zombies grid.
@@ -227,15 +249,23 @@ export class FlagGuards {
     if (this.rounds[team]) return this.rounds[team];
     const f = this.f;
     const field = f.field;
-    const base = field.bases[team];
+    // The stand as the game has it now (shared/flagFields.mjs, or the game's own when it swaps the bases), and the
+    // Zombies place round it (shared/arenas.mjs: the nearest whose middle it is near).
+    const base = this.baseOf(team);
     const [sx, sz] = base.stand;
-    const { nav } = this.game.zombieGround(arenaOf(team === 'blue' ? 'church' : field.red));
+    const arena = ARENAS.filter((a) => a.center).sort((a, b) => hyp(a.center[0], a.center[1], sx, sz) - hyp(b.center[0], b.center[1], sx, sz))[0];
+    const { nav } = this.game.zombieGround(arena);
     const edge = f.edge;
-    const bikes = Object.values(this.game.bikes).filter((k) => hyp(k.x, k.z, sx, sz) < RING + 10);
+    const g = this.game;
+    // What stands round the base now: the bikes, both racks, the helicopters standing low (a parked one).
+    const bikes = Object.values(g.bikes).filter((k) => hyp(k.x, k.z, sx, sz) < RING + 10);
+    const racks = FLAG_TEAMS.map((t) => this.baseOf(t).rack).filter(Boolean);
+    const helis = [...(g.helis?.machines?.values() ?? [])].filter((h) => g.helis.atPad?.(h) || h.y - g.helis.floor(h.x, h.z) < 2); // on its spot (a deck too) or low
     const open = (x, z) => {
       if (!edge.inside(x, z) || (edge.depth && edge.depth(x, z) < 1.5)) return false;
       if (noShoot(x, z) || homeAt(x, z, nav.ground(x, z)) || !nav.walkable(x, z)) return false;
-      return PORTALS.every((p) => hyp(p.x, p.z, x, z) >= PORTAL_KEEP) && bikes.every((k) => hyp(k.x, k.z, x, z) >= BIKE_KEEP);
+      return PORTALS.every((p) => hyp(p.x, p.z, x, z) >= PORTAL_KEEP) && bikes.every((k) => hyp(k.x, k.z, x, z) >= BIKE_KEEP)
+        && racks.every(([rx, rz]) => hyp(rx, rz, x, z) >= RACK_KEEP) && helis.every((h) => hyp(h.x, h.z, x, z) >= HELI_KEEP);
     };
     const spots = nav.spawnSpots().filter((s) => {
       const d = hyp(s.x, s.z, sx, sz);
@@ -288,7 +318,7 @@ export class FlagGuards {
       if (bestSize >= 8) break;
     }
     // No round at all (never seen at the three bases): no guards for this team this game, said once.
-    if (!best.points.length) console.log(JSON.stringify({ event: 'flag_guards_no_round', team, field: field.id }));
+    if (!best.points.length) console.log(JSON.stringify({ event: 'flag_guards_no_round', team, field: field.id, place: arena.id }));
     this.rounds[team] = best;
     return best;
   }
@@ -307,6 +337,8 @@ export class FlagGuards {
       this.clear();
       this.f = f;
     }
+    // A stand not where its round was made round (a swap of sides): rounds again, guards on them.
+    if (FLAG_TEAMS.some((t) => this.rounds[t] && (this.rounds[t].stand[0] !== this.baseOf(t).stand[0] || this.rounds[t].stand[1] !== this.baseOf(t).stand[1]))) this.moved(now);
     let changed = false;
     for (const team of FLAG_TEAMS) {
       const none = this.rounds[team] && !this.rounds[team].points.length; // tried this game, no round: not again
@@ -387,10 +419,10 @@ export class FlagGuards {
       s.z += (dz / d) * stepM;
       s.y = Math.round(round.nav.ground(s.x, s.z) * 100) / 100;
     }
-    this.moved(rec);
+    this.fresh(rec);
   }
 
-  moved(rec) {
+  fresh(rec) {
     rec.stamp = Math.max(mono(), rec.stamp + 1);
     rec.fresh = true;
     rec.movedAt = Date.now();
@@ -468,7 +500,7 @@ export class FlagGuards {
     const s = rec.state;
     rec.target = null;
     Object.assign(s, { a: false, pitch: 0, yaw: rec.walk.yaw ?? s.yaw });
-    this.moved(rec);
+    this.fresh(rec);
   }
 
   /** Facing the target; after the reaction time a shot at the rifle's rate, reloading when the magazine is empty. */
@@ -482,7 +514,7 @@ export class FlagGuards {
     s.yaw = yawTo(at.x - ex, at.z - ez);
     s.pitch = Math.atan2(at.y - ey, flat);
     s.a = true;
-    this.moved(rec);
+    this.fresh(rec);
     if (now < rec.fireAt || now < rec.nextShot) return;
     if (now < rec.reloadUntil) return;
     if (g.calm(rec) || g.host?.holds(rec)) return; // the predicate a player's shot asks (Game.calm), and the host's freeze

@@ -523,6 +523,45 @@ test('the admin pages: guards marked on the live board, never on the evening\'s,
   assert.equal(g.warp, at.warp, 'nor on its own');
 });
 
+for (const field of ['compact', 'village']) {
+  test(`${field}: the rounds come from the stands as the game has them, off the racks and the parked helicopters`, () => {
+    const s = setup(field);
+    s.set('blue', 3);
+    s.set('red', 3);
+    s.tick();
+    const g = s.game;
+    const low = [...g.helis.machines.values()].filter((h) => g.helis.atPad(h));
+    assert.ok(low.length >= 2, 'both teams\' machines parked');
+    for (const team of ['blue', 'red']) {
+      const r = s.guards.rounds[team];
+      assert.deepEqual(r.stand, s.f.bases[team].stand.slice(0, 2), 'its stand in shared/flagFields.mjs');
+      for (const p of r.points) {
+        for (const t of ['blue', 'red']) assert.ok(Math.hypot(p.x - s.f.bases[t].rack[0], p.z - s.f.bases[t].rack[1]) >= 2.5, 'off the rack');
+        for (const h of low) assert.ok(Math.hypot(p.x - h.x, p.z - h.z) >= 7.5, `off the parked helicopter ${h.id}`);
+      }
+    }
+    // The bases swapped mid-game (the game's own baseOf): the rounds made again round the new stands, the guards there.
+    const f = g.modes.state.f;
+    const swapped = { blue: s.f.bases.red, red: s.f.bases.blue };
+    f.baseOf = (t) => swapped[t];
+    s.tick();
+    for (const [n, q] of s.guards.guards) {
+      const [sx, sz] = swapped[q.guard.team].stand;
+      assert.ok(Math.hypot(q.state.x - sx, q.state.z - sz) <= RING, `${n} on its new round`);
+    }
+    // Stands moved (as a later change of shared/flagFields.mjs will): rounds round them, on open ground, by moved().
+    const moved = { compact: { blue: [528.1, -765.4], red: [755.95, -722.2] }, village: { blue: [528.1, -765.4], red: [641.5, 946.5] } }[field];
+    f.baseOf = (t) => ({ ...s.f.bases[t], stand: [...moved[t], s.f.bases[t].stand[2]] });
+    s.guards.moved(s.now());
+    for (const team of ['blue', 'red']) {
+      const r = s.guards.rounds[team];
+      assert.ok(r.points.length >= 4 && r.links.every((l) => l.length), `${team}: ${r.points.length} waypoints round the moved stand, each joined`);
+      for (const p of r.points) assert.ok(Math.hypot(p.x - moved[team][0], p.z - moved[team][1]) <= RING);
+    }
+    for (const [n, q] of s.guards.guards) assert.ok(Math.hypot(q.state.x - moved[q.guard.team][0], q.state.z - moved[q.guard.team][1]) <= RING, n);
+  });
+}
+
 test('the strongmen leave the guards alone: no target, no stomp or rock on one, no death on the board if one goes down', () => {
   const s = setup();
   const { g } = oneGuard(s);
