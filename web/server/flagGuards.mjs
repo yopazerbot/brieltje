@@ -171,12 +171,13 @@ export class FlagGuards {
     g.broadcast({ t: 'leave', name });
   }
 
+  /** Guard `i` of `team` comes in, on its round. False when it can't (no round at this base). */
   add(team, i, now) {
     const g = this.game;
     const name = guardName(team, i);
-    if (g.players.has(name)) return; // never: no username looks like this (NAME_RE)
+    if (g.players.has(name)) return false; // never: no username looks like this (NAME_RE)
     const round = this.roundOf(team);
-    if (!round.points.length) return;
+    if (!round.points.length) return false;
     const t = mono();
     const rec = {
       ws: STUB, key: null, role: 'guard', guard: { team, i }, color: FLAG_COLORS[team],
@@ -198,6 +199,7 @@ export class FlagGuards {
     g.broadcast({ t: 'join', name, color: g.colorOf(name, rec) });
     const count = Math.max(1, this.want[team].count);
     this.place(name, rec, now, Math.floor(((i - 1) * round.points.length) / count) % round.points.length);
+    return true;
   }
 
   /** Put guard `name` on waypoint `k` of its round (a respawn: health, protection, the gun), facing its stand. */
@@ -281,6 +283,8 @@ export class FlagGuards {
       };
       if (bestSize >= 8) break;
     }
+    // No round at all (never seen at the three bases): no guards for this team this game, said once.
+    if (!best.points.length) console.log(JSON.stringify({ event: 'flag_guards_no_round', team, field: field.id }));
     this.rounds[team] = best;
     return best;
   }
@@ -301,10 +305,11 @@ export class FlagGuards {
     }
     let changed = false;
     for (const team of FLAG_TEAMS) {
+      const none = this.rounds[team] && !this.rounds[team].points.length; // tried this game, no round: not again
       for (let i = 1; i <= GUARD_MAX; i++) {
         const name = guardName(team, i);
         const there = this.guards.has(name);
-        if (i <= this.want[team].count && !there) (this.add(team, i, now), (changed = true));
+        if (i <= this.want[team].count && !there && !none) changed = this.add(team, i, now) || changed;
         else if (i > this.want[team].count && there) (this.remove(name), (changed = true));
       }
     }

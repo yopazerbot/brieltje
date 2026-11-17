@@ -478,6 +478,24 @@ test('a player who steps into a home between two looks gets no further shot, tra
   assert.ok(shots().every((m) => m.tx === undefined || !(Math.abs(m.tx - p.state.x) < 2 && Math.abs(m.tz - p.state.z) < 2)), 'no tracer ends where they stand now');
 });
 
+test('a base without a round gets no guards, says so once, and the pages are not told anything every tick', (t) => {
+  const s = setup();
+  // A place whose grid has no open spot near the stand.
+  const ground = s.game.zombieGround.bind(s.game);
+  s.game.zombieGround = (arena) => {
+    const g = ground(arena);
+    return { ...g, nav: Object.assign(Object.create(Object.getPrototypeOf(g.nav)), g.nav, { spawnSpots: () => [] }) };
+  };
+  const logged = [];
+  t.mock.method(console, 'log', (line) => logged.push(String(line)));
+  s.set('blue', 3);
+  s.out.length = 0;
+  s.run(2000);
+  assert.equal(s.guards.size, 0);
+  assert.equal(logged.filter((l) => l.includes('flag_guards_no_round')).length, 1, 'one line');
+  assert.equal(s.out.filter((m) => m.t === 'colors' || m.t === 'mode').length, 0, 'no colours or game sent over and over');
+});
+
 test('the strongmen leave the guards alone: no target, no stomp or rock on one, no death on the board if one goes down', () => {
   const s = setup();
   const { g } = oneGuard(s);
