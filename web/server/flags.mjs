@@ -480,7 +480,9 @@ export class FlagGame {
       g.bikeAt[id] = 0;
       g.broadcastThing({ t: 'bike', bike: k }, 'bike', k);
     }
-    g.teamsChanged([...g.players].filter(([, p]) => !p.guard).map(([n]) => n)); // everyone at their base, out of every seat, protected (game.mjs respawn)
+    // Everyone standing at their base, out of every seat, protected (game.mjs respawn); the downed come back there on their
+    // own clock (never early). The guards make their rounds again (below).
+    g.teamsChanged([...g.players].filter(([, p]) => !p.guard && p.alive).map(([n]) => n));
     g.flagGuards?.moved?.(now); // the guards' rounds round the stands as they are now (server/flagGuards.mjs)
     return { ev: 'swapped', team: 'blue', name: '' };
   }

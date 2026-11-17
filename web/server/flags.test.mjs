@@ -784,6 +784,27 @@ test('the host swaps the sides: flags home, launchers on their racks, bases, rac
   }
 });
 
+test('swap: a downed player is not brought back early; they come back at their new base on their own clock', () => {
+  const s = four();
+  const [b] = s.blue;
+  const [r] = s.red;
+  const R = s.game.players.get(r);
+  s.put(r, 600, -740, 6);
+  s.tick();
+  s.game.damage(b, s.game.players.get(b), r, R, 500, false, 'rifle', s.now());
+  assert.equal(R.alive, false);
+  const back = R.respawnAt;
+  s.at(1000);
+  assert.deepEqual(s.game.host.act('host', { op: 'swap' }), { ok: true });
+  assert.equal(R.alive, false, 'still down after the swap');
+  assert.equal(R.respawnAt, back, 'their own clock');
+  s.at(back - s.now());
+  s.game.tick();
+  assert.equal(R.alive, true, 'back on their clock');
+  const [x, z] = s.f.bases.blue.stand; // red plays from the church now
+  assert.ok(Math.hypot(R.state.x - x, R.state.z - z) < 25, 'at their new base');
+});
+
 test('swap: only while Steal the flag is played', () => {
   const s = setup();
   for (const n of ['ann', 'bob', 'cid', 'dee']) s.join(n);
