@@ -138,15 +138,19 @@ test('guards come in a flag game only, in their team, named as no player can be;
   assert.deepEqual([...s.guards.guards.keys()].sort(), ['Blue guard 1', 'Red guard 1', 'Red guard 2']);
   assert.ok(s.out.some((m) => m.t === 'leave' && m.name === 'Blue guard 3'));
   assert.equal(s.game.modes.state.teams['Blue guard 3'], undefined);
-  // Stopped: gone, the setting kept for the next game.
+  // Stopped: gone, and set per game: the counts back to 0, the skills kept.
   s.game.modes.start('free', 'admin');
   assert.equal(s.guards.size, 0);
+  assert.deepEqual(s.guards.want, { blue: { count: 0, skill: 'normal' }, red: { count: 0, skill: 'normal' } });
   assert.equal([...s.game.players.keys()].filter((n) => / guard /.test(n)).length, 0);
   s.tick();
   assert.equal(s.guards.size, 0, 'never outside a flag game');
+  s.set('blue', 1);
+  s.set('red', 2);
   s.game.modes.start('teams', 'admin');
   s.tick();
   assert.equal(s.guards.size, 0, 'not in the teams game either');
+  assert.equal(s.guards.want.red.count, 2, 'set outside a flag game: kept for the next one');
   s.game.modes.start('flag', 'admin', 'village');
   s.tick();
   assert.equal(s.guards.size, 3, 'back in the next flag game');
@@ -157,6 +161,7 @@ test('guards come in a flag game only, in their team, named as no player can be;
   assert.equal(s.game.modes.state.phase, 'done');
   assert.equal(s.guards.size, 0);
   assert.equal(Object.keys(s.game.host.scores).filter((n) => / guard /.test(n)).length, 0, 'no evening points');
+  assert.equal(s.guards.want.blue.count + s.guards.want.red.count, 0, 'ended: the counts back to 0');
   s.run(11_000);
   assert.equal(s.guards.size, 0);
 });

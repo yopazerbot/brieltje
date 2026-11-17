@@ -1,7 +1,7 @@
 // Guards for Steal the flag, a test tool for the host (Yoshi, 17 Nov 2026: "Let me as admin spawn npc defenders for
 // each team that would walk around the base of a team and shoot at opponents. This to help test the team v team with a
 // few friends."). The host page (web/public/admin/host/) sets per team 0 to 6 guards and one skill; off by default, kept
-// in memory only, and settable before a game starts. They are there only while Steal the flag is played in the open
+// in memory only, settable before a game starts, and set per game: the counts go back to 0 when a flag game ends. They are there only while Steal the flag is played in the open
 // world (never in a Zombies room or the duel's), and gone when it ends, is stopped or the count is 0.
 //
 // A guard is an entry in Game.players (`guard`: { team, i }, role 'guard') with a stub socket that sends nothing and is
@@ -153,11 +153,15 @@ export class FlagGuards {
 
   // ------------------------------------------------------------------ coming and going
 
-  /** Every guard gone (the game ends, is stopped or another starts: server/modes.mjs). The settings stay. */
+  /**
+   * Every guard gone (the game ends, is stopped or another starts: server/modes.mjs). Set per game: after a flag game
+   * both counts are back to 0 (a test setting never carries into the next game unseen); the skills stay.
+   */
   clear() {
     const had = this.guards.size;
     for (const name of [...this.guards.keys()]) this.remove(name);
     if (had) this.game.broadcast({ t: 'scores', list: this.game.scoreList() }); // their rows off every scoreboard
+    if (this.f) for (const t of FLAG_TEAMS) this.want[t] = { ...this.want[t], count: 0 };
     this.f = null;
     this.rounds = {};
   }
