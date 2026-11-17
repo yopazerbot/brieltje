@@ -1881,6 +1881,7 @@ const youName = () => me?.username ?? t('char.you');
 /** A cat hit by a bullet, or caught in your blast (`w` 'grenade' or 'bazooka'). */
 function catHit(i: number, point: THREE.Vector3, w: string): void {
   effects.puff(point); // a cartoon puff (or paint), no blood
+  if (noShoot(player.x, player.z)) return; // not from the school grounds, in a team match too (the server refuses it)
   if (!cats.hit(i)) return;
   combat.hitMarker(true);
   combat.kill(youName(), t('char.cat'), false, weaponName(w));
@@ -1895,6 +1896,7 @@ weapon.onCatHit = (i, point) => catHit(i, point, weapon.current);
  */
 const villagerSent: { ids: number[]; w: string; next: number; waiting: boolean } = { ids: [], w: '', next: 0, waiting: false };
 function villagerHit(id: number, point: THREE.Vector3, w: string): void {
+  if (noShoot(player.x, player.z)) return; // not from the school grounds, in a team match too (the server refuses it)
   // Together, no more than the server will take in its next message (a blast's few, a shot's fewer): what it would
   // drop is not shown here either, so this page never shows a fall the others don't see.
   const blast = w === 'grenade' || w === 'bazooka';
@@ -1929,6 +1931,7 @@ weapon.onVillagerHit = (id, point, w) => villagerHit(id, point, w);
 /** A clown hit by your bullet or caught in your blast: it honks and falls over. `spot`: where paintball's paint sticks on him. */
 function clownHit(id: number, point: THREE.Vector3, w: string, spot?: Spot): void {
   effects.puff(point, spot); // the same cartoon puff
+  if (noShoot(player.x, player.z)) return; // not from the school grounds, in a team match too (the server refuses it)
   const result = clowns.hit(id, w, !net.connected); // a strongman takes many hits
   if (!result) return;
   combat.hitMarker(result === 'down');
