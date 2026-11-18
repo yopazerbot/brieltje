@@ -455,10 +455,9 @@ export class AssaultSupply {
       }
       const shots = [];
       const spent = [];
-      const fairUp = up.filter((u) => {
-        const n = names[u.id];
-        return [...loot.turrets.values()].some((t) => this.fair(t.owner, g.players.get(t.owner), n, g.players.get(n), now));
-      });
+      const owners = [];
+      for (const t of loot.turrets.values()) owners.push([t.owner, g.players.get(t.owner)]);
+      const fairUp = up.filter((u) => owners.some(([o, op]) => this.fair(o, op, names[u.id], g.players.get(names[u.id]), now)));
       loot.turretTick(now, fairUp, shots, spent);
       if (spent.length) changed = true;
       const fire = [];
