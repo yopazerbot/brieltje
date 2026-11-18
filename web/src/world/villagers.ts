@@ -9,10 +9,12 @@ import { buildVillagers, dice, rebuildHub, villagerPose, VILLAGER_DOWN_S, type V
 
 /**
  * Villagers: people walking and cycling round the village, in every mode (Yoshi, 7 Nov 2026: Action and
- * Paintball too), but gone during Zombies. Our own models (tools/villagers.py,
- * web/public/models/villagers.glb): a man, a woman, an older person with a stick, a teen, a child, a cyclist
- * on a city bike and a dog, invented and generic, each villager in colours of its own (clothes, skin, hair,
- * a bag, a cap, glasses, a scarf, an umbrella in the rain).
+ * Paintball too), but gone during Zombies. Sculpted public domain bodies, rigged, dressed for November and
+ * animated by tools/villagers.py (web/public/models/villagers.glb): a man, a woman, an older person with a stick,
+ * a teen, a child, a cyclist on a city bike and a dog, invented and generic, each villager in colours of its own
+ * (jacket, trousers, shoes, skin, hair, a beard, a bag, a knitted hat, glasses, a scarf, an umbrella in the rain).
+ * Each walks at its own pace (a walk or a stroll, some with their hands in their pockets) with its feet planted,
+ * stands about in three ways in turn, and two friends take turns talking.
  *
  * The same villagers for everyone (Yoshi, 14 Nov 2026): who there is and where each one is now follows from
  * a clock shared with the server (shared/villagers.mjs), as the cats do it, so every player sees the same
@@ -34,8 +36,9 @@ import { buildVillagers, dice, rebuildHub, villagerPose, VILLAGER_DOWN_S, type V
  * multiplayer the server decides (server/game.mjs).
  *
  * Cheap to draw, as world/zombies.ts does it: every clip of every kind is sampled into one picture of bone
- * matrices (half floats), and each kind is one instanced mesh skinned in its vertex shader, so seven kinds are
- * seven draws however many walk about, and a round patch on the ground under each is one more. Their colours
+ * matrices (half floats), and each kind is one instanced mesh skinned in its vertex shader, with a second one of
+ * far fewer triangles for those further off, so seven kinds are at most fourteen draws however many walk about,
+ * and a round patch on the ground under each is one more. Their colours
  * come from a small picture too (16 colours a villager). Only within reach of the player (fewer and nearer
  * on Low and on phones), and the model and the paths load the first time they are needed.
  */
@@ -73,6 +76,11 @@ export interface Extra {
 const TALL = [1.79, 1.67, 1.66, 1.71, 1.18, 1.75, 0.6];
 const PALETTE_ROWS = 128;
 const BLEND = 0.25; // s to change from one clip to the next
+/** The ways of standing about (tools/villagers.py idles), each a loop of IDLE_S seconds; the talk loop is as long. */
+const IDLES = ['Idle', 'Idle2', 'Idle3'];
+const IDLE_S = 8;
+/** Beyond this far (m) a villager is drawn with far fewer triangles: [desktop, phone or Low]. */
+const FAR_M = [26, 18];
 const FADE = 0.9; // s to fade in or out
 /** How far off they are drawn: [desktop, phone or Low]; and the share of them a phone or Low shows. */
 const REACH = [105, 65];
@@ -81,7 +89,7 @@ const CHEAP_SHARE = 0.6;
 const FALL = 0.45;
 const LIE = 1.7;
 
-const UMB = 1, BAG = 2, HAT = 4, SCARF = 8, SPECS = 16, HAIR_A = 32, HAIR_B = 64;
+const UMB = 1, BAG = 2, HAT = 4, SCARF = 8, SPECS = 16, HAIR_A = 32, HAIR_B = 64, BEARD = 128;
 
 type Mode = 'walk' | 'cross' | 'stand' | 'sit' | 'ride' | 'follow' | 'hub' | 'down';
 interface Clip {
@@ -122,6 +130,8 @@ interface V {
   placed: boolean;
   /** How long it has stood still (s) */
   still: number;
+  /** Walks with its hands in its pockets */
+  pk: boolean;
   /** Its clip, time, the clip it changes from and how far */
   clip: string;
   time: number;
@@ -161,12 +171,18 @@ const SKINS = ['#f3cfb3', '#eac0a0', '#e2b08d', '#d29e7b', '#c08463', '#a46c4c',
 const SKIN_W = [3, 4, 4, 3, 2, 2, 1.5, 1, 1];
 const HAIRS = ['#1f1a17', '#33261d', '#4b3424', '#6b4a2e', '#8f6a40', '#b8935c', '#d3b67c', '#8c3f22', '#2b2b2b'];
 const GREYS = ['#d9d6d0', '#bdbab4', '#a19d97', '#ece8e0', '#8a8680'];
-const TOPS = ['#2f4a6d', '#7a2e2e', '#3d5a3a', '#c9c3b5', '#3a3a3f', '#8a6d3b', '#5b6e8c', '#a3473a', '#e0ddd5', '#4f4a6e', '#2d6a6a', '#b58a3c', '#6b2f4f',
-  '#d5a021', '#9bb0c4', '#c46a4a', '#55606b', '#efe8d8'];
-const BOTTOMS = ['#2b2f38', '#3a3a3d', '#4a4f5c', '#2e3f5c', '#5a4a3a', '#7a7466', '#1f2227', '#3b4d6b', '#8c8676', '#4d3b30'];
-const SHOES = ['#2a2826', '#e8e6e0', '#4a3426', '#1c1c1e', '#6a6f78', '#8a2f2f', '#d8d4cc'];
-const ACCS = ['#7a3b24', '#2e3a4d', '#4a5a2e', '#8c2f2f', '#3b3b3b', '#c9a14a', '#2f6b8a', '#5a3a5c'];
-const ACC2S = ['#1f3f8a', '#b02a2a', '#2b6b3a', '#e3b21f', '#3a3a3a', '#7a3b8a', '#e8e4da', '#d0582a', '#2a8a8a'];
+// What people wear here in November: mostly dark and muted jackets and coats (navy, black, charcoal, olive, camel,
+// brown, burgundy, bottle green), now and then a brighter one; jeans, chinos and dark trousers; dark shoes, boots,
+// white trainers; knitted hats and scarves in wool colours.
+const TOPS = ['#1f2a3d', '#1c1c1e', '#34363b', '#4a4d52', '#4b5235', '#6d6450', '#a07c52', '#4a3428', '#5e2129', '#25402f', '#1f4550', '#33507a',
+  '#8e2a28', '#b08a2e', '#c8bba3', '#ddd5c4', '#5d6b7a', '#2b2d33'];
+const TOP_W = [4, 3, 3, 3, 3, 2, 3, 2, 2, 2, 2, 3, 1, 1, 2, 2, 2, 2];
+const BOTTOMS = ['#232c3d', '#3b4d6b', '#5e7493', '#1d1e21', '#3a3b3f', '#8a7f66', '#a89a7c', '#4d3b30', '#5f6165', '#4d4f3a'];
+const BOTTOM_W = [6, 5, 2, 5, 3, 2, 1, 1, 2, 1];
+const SHOES = ['#1c1b1a', '#3b2a20', '#5a3f2b', '#e6e3dd', '#6b6e74', '#252c3a', '#8a6440'];
+const SHOE_W = [6, 3, 2, 3, 1, 1, 1];
+const ACCS = ['#5b5e63', '#26304a', '#5e2430', '#b58b32', '#222224', '#d8cfbd', '#2f4a36', '#9b2c2c', '#5a3a26'];
+const ACC2S = ['#8c2f2f', '#2b3d6b', '#c9a14a', '#3a3a3a', '#6b4a7a', '#d8d2c4', '#2e6b5c', '#b5562f', '#7d7f84'];
 const FRAMES = ['#2f5f8a', '#8a2f2f', '#2e2e30', '#e0ddd5', '#3d6b45', '#6b6f75', '#c26a2a', '#1f3f6a'];
 const COATS = ['#2a2420', '#6b4a2a', '#c9a66b', '#e8dcc4', '#8a5a32', '#3a3a3c', '#b07a40', '#d8c8a8'];
 const PATCHES = ['#e8dcc4', '#f1ece2', '#c9a66b', '#2a2420', '#8a6a4a'];
@@ -218,12 +234,16 @@ attribute vec4 skinWeight;
 attribute vec4 aAnim;
 attribute vec4 aLook;
 uniform highp sampler2D uBones;
+uniform int uWrap;
+uniform int uRowW;
 flat varying float vSlot;
 flat varying float vRow;
 varying float vShade;
 varying float vFade;
 mat4 vBone(float bone, float row) {
-  ivec2 at = ivec2(int(bone) * 3, int(row));
+  // A frame's bones are uWrap frames to a line of the picture (so it stays under 2048 lines high).
+  int r = int(row + 0.5);
+  ivec2 at = ivec2(int(bone) * 3 + (r % uWrap) * uRowW, r / uWrap);
   vec4 a = texelFetch(uBones, at, 0);
   vec4 b = texelFetch(uBones, at + ivec2(1, 0), 0);
   vec4 c = texelFetch(uBones, at + ivec2(2, 0), 0);
@@ -245,10 +265,12 @@ vShade = uv.y;
 vFade = aLook.x;
 `;
 
-function villagerMaterial(bones: THREE.Texture, palette: THREE.Texture): THREE.MeshStandardMaterial {
+function villagerMaterial(bones: THREE.Texture, palette: THREE.Texture, wrap: number, rowW: number): THREE.MeshStandardMaterial {
   const m = new THREE.MeshStandardMaterial({ color: '#ffffff', roughness: 0.82, metalness: 0 });
   m.onBeforeCompile = (shader) => {
     shader.uniforms.uBones = { value: bones };
+    shader.uniforms.uWrap = { value: wrap };
+    shader.uniforms.uRowW = { value: rowW };
     shader.uniforms.uPal = { value: palette };
     shader.vertexShader = shader.vertexShader
       .replace('#include <common>', `#include <common>\n${VERT_PARS}`)
@@ -330,6 +352,8 @@ export class Villagers {
   private data: VillagerPaths | null = null;
   private set: VillagerSet | null = null;
   private kinds: Kind[] = [];
+  /** Each kind with far fewer triangles (tools/villagers.py far_mesh), for those beyond FAR_M; null for none. */
+  private fars: (Kind | null)[] = [];
   private boneTex: THREE.DataTexture | null = null;
   private palData = new Uint8Array(16 * PALETTE_ROWS * 4);
   private palTex: THREE.DataTexture;
@@ -426,16 +450,17 @@ export class Villagers {
       this.hubTried = this.set.hubs.map(() => -1e9);
       // Out of sight until their shaders are built: a frame is drawn before that now, and drawing them in it
       // (even none of them) made the game wait for the shader after all.
-      if (this.compile) for (const k of this.kinds) k.mesh.visible = false;
+      const lods = [...this.kinds, ...this.fars.filter((k): k is Kind => !!k)];
+      if (this.compile) for (const k of lods) k.mesh.visible = false;
       await frame();
       if (this.compile) {
         // Shown for the moment the shaders are gathered (nothing is drawn), then as they were.
         const was = this.group.visible;
         this.group.visible = true;
-        for (const k of this.kinds) k.mesh.visible = true;
+        for (const k of lods) k.mesh.visible = true;
         const done = this.compile(this.group);
         this.group.visible = was;
-        for (const k of this.kinds) k.mesh.visible = false;
+        for (const k of lods) k.mesh.visible = false;
         await done;
       }
       return true;
@@ -460,12 +485,15 @@ export class Villagers {
     });
     const rows: Float32Array[] = [];
     let width = 0;
-    const found: { mesh: THREE.SkinnedMesh; clips: Map<string, Clip> }[] = [];
+    const found: { mesh: THREE.SkinnedMesh; far: THREE.SkinnedMesh | null; clips: Map<string, Clip> }[] = [];
     for (const name of KINDS) {
       const root = scene.getObjectByName(`vil_${name}`);
       let mesh: THREE.SkinnedMesh | null = null;
+      let far: THREE.SkinnedMesh | null = null;
       root?.traverse((o) => {
-        if ((o as THREE.SkinnedMesh).isSkinnedMesh && !mesh) mesh = o as THREE.SkinnedMesh;
+        if (!(o as THREE.SkinnedMesh).isSkinnedMesh) return;
+        if (o.name.endsWith('_far')) far = o as THREE.SkinnedMesh;
+        else if (!mesh) mesh = o as THREE.SkinnedMesh;
       });
       if (!mesh) throw new Error(`villagers.glb: no vil_${name}`);
       const sk = mesh as THREE.SkinnedMesh;
@@ -499,20 +527,32 @@ export class Villagers {
         }
         action.stop();
       }
-      found.push({ mesh: sk, clips });
+      found.push({ mesh: sk, far, clips });
     }
-    const rowFloats = width * 4;
-    const out = new Uint16Array(rowFloats * rows.length);
-    rows.forEach((line, y) => {
-      for (let i = 0; i < line.length; i++) out[y * rowFloats + i] = THREE.DataUtils.toHalfFloat(line[i]);
+    // Several frames to a line of the picture when there are many (the walks, the standing loops): WebGL 2 only
+    // promises pictures 2048 high.
+    const wrap = Math.ceil(rows.length / 2048);
+    const lines = Math.ceil(rows.length / wrap);
+    const rowFloats = width * 4 * wrap;
+    const out = new Uint16Array(rowFloats * lines);
+    rows.forEach((line, r) => {
+      const at = Math.floor(r / wrap) * rowFloats + (r % wrap) * width * 4;
+      for (let i = 0; i < line.length; i++) out[at + i] = THREE.DataUtils.toHalfFloat(line[i]);
     });
-    this.boneTex = new THREE.DataTexture(out, width, rows.length, THREE.RGBAFormat, THREE.HalfFloatType);
+    this.boneTex = new THREE.DataTexture(out, width * wrap, lines, THREE.RGBAFormat, THREE.HalfFloatType);
     this.boneTex.minFilter = this.boneTex.magFilter = THREE.NearestFilter;
     this.boneTex.generateMipmaps = false;
     this.boneTex.needsUpdate = true;
-    found.forEach(({ mesh: src, clips }, k) => {
+    const material = villagerMaterial(this.boneTex, this.palTex, wrap, width);
+    const lod = (src: THREE.SkinnedMesh, k: number, clips: Map<string, Clip>, bones: THREE.Bone[], label: string): Kind => {
       const geo = new THREE.BufferGeometry();
-      for (const a of ['position', 'normal', 'uv', 'skinIndex', 'skinWeight']) if (src.geometry.attributes[a]) geo.setAttribute(a, src.geometry.attributes[a]);
+      for (const a of ['position', 'normal', 'uv', 'skinWeight']) if (src.geometry.attributes[a]) geo.setAttribute(a, src.geometry.attributes[a]);
+      // Its points name their bones by the near figure's order (the bone picture's), whatever order its own skin has.
+      const idx = src.geometry.attributes.skinIndex as THREE.BufferAttribute;
+      const map = src.skeleton.bones.map((b) => Math.max(0, bones.findIndex((n) => n.name === b.name)));
+      const ids = new Uint16Array(idx.count * 4);
+      for (let i = 0; i < idx.count; i++) for (let c = 0; c < 4; c++) ids[i * 4 + c] = map[idx.getComponent(i, c)] ?? 0;
+      geo.setAttribute('skinIndex', new THREE.BufferAttribute(ids, 4));
       geo.setIndex(src.geometry.index);
       const anim = new THREE.InstancedBufferAttribute(new Float32Array(ALL[k] * 4), 4).setUsage(THREE.DynamicDrawUsage);
       const look = new THREE.InstancedBufferAttribute(new Float32Array(ALL[k] * 4), 4).setUsage(THREE.DynamicDrawUsage);
@@ -520,16 +560,20 @@ export class Villagers {
       geo.setAttribute('aLook', look);
       // Its bounds hold any pose (a bike is long): a ball round the figure, made bigger.
       geo.boundingSphere = new THREE.Sphere(new THREE.Vector3(0, 0.8, 0), k === BIKE ? 1.5 : 1.3);
-      const mesh = new THREE.InstancedMesh(geo, villagerMaterial(this.boneTex!, this.palTex), ALL[k]);
+      const mesh = new THREE.InstancedMesh(geo, material, ALL[k]);
       mesh.count = 0;
       mesh.castShadow = false; // a patch on the ground instead
       mesh.receiveShadow = true;
       mesh.userData.ignoreRay = true;
       mesh.userData.noAO = true;
       mesh.raycast = () => {};
-      mesh.name = `villagers-${KINDS[k]}`;
+      mesh.name = `villagers-${KINDS[k]}${label}`;
       this.group.add(mesh);
-      this.kinds[k] = { mesh, clips, anim, look };
+      return { mesh, clips, anim, look };
+    };
+    found.forEach(({ mesh: src, far, clips }, k) => {
+      this.kinds[k] = lod(src, k, clips, src.skeleton.bones, '');
+      this.fars[k] = far ? lod(far, k, clips, src.skeleton.bones, '-far') : null;
     });
   }
 
@@ -602,7 +646,7 @@ export class Villagers {
   eachHand(fn: (id: number, x: number, y: number, z: number, yaw: number, tall: number, fade: number, speed: number) => void): void {
     if (this.shown <= 0) return;
     for (const v of this.order) {
-      if ((v.kind !== MAN && v.kind !== WOMAN && v.kind !== TEEN && v.kind !== CHILD) || v.sit || v.def.jog || v.def.lead || v.flags & UMB || v.away || v.downAt >= 0) continue;
+      if ((v.kind !== MAN && v.kind !== WOMAN && v.kind !== TEEN && v.kind !== CHILD) || v.sit || v.pk || v.def.jog || v.def.lead || v.flags & UMB || v.away || v.downAt >= 0) continue;
       fn(v.id, v.x, v.y, v.z, v.yaw, TALL[v.kind] * v.scale, Math.min(v.fade, this.shown), v.speed);
     }
   }
@@ -792,13 +836,15 @@ export class Villagers {
     const v: V = {
       id: def.id, def, kind, x: p.x, y: 0, z: p.z, yaw: p.yaw, scale: kind === DOG ? 0.72 + r() * 0.36 : kind === CHILD ? 0.9 + r() * 0.18 : 0.95 + r() * 0.1, ground: 0, gx: p.x, gz: p.z,
       speed: p.speed, sit: p.sit, talk: p.talk, road: p.road, placed: false, still: 0, groundAt: this.clock + (def.id % 20) * 0.1,
-      clip: kind === BIKE ? 'Ride' : p.sit ? 'Sit' : 'Idle', time: r() * 4, from: '', fromTime: 0, blend: 1, once: '', onceEnd: 0, fade: 0, pal, flags: 0, waved: -1e9,
-      holdUntil: 0, avoid: 0, dodgeUntil: 0, dodgeX: 0, dodgeZ: 0, downAt: -1, fallX: 0, fallZ: 1, away: false, hopAt: -1e9, topWas: null, drawn: false, dist: 0,
+      clip: kind === BIKE ? 'Ride' : p.sit ? 'Sit' : 'Idle', time: r() * IDLE_S, from: '', fromTime: 0, blend: 1, once: '', onceEnd: 0, fade: 0, pal, flags: 0, waved: -1e9,
+      holdUntil: 0, avoid: 0, dodgeUntil: 0, dodgeX: 0, dodgeZ: 0, downAt: -1, fallX: 0, fallZ: 1, away: false, hopAt: -1e9, topWas: null, drawn: false, dist: 0, pk: false,
     };
     this.dress(v);
     if (def.jog) v.flags &= ~(BAG | SCARF | UMB);
     if (def.lead) v.flags &= ~BAG;
     if (def.what === 'cafe') v.flags &= ~(BAG | UMB); // the café's people hold nothing
+    // Some walk with their hands in their pockets (not with a handbag, a lead or a child to hold).
+    v.pk = (kind === MAN || kind === WOMAN || kind === TEEN) && !def.jog && !def.lead && !def.guards && !(kind === WOMAN && v.flags & BAG) && r() < 0.4;
     v.ground = this.ground(p.x, p.z, null);
     v.y = p.sit ? v.ground + ((this.set!.seats[def.seat]?.[3] ?? 0.45) - 0.45) : v.ground;
     const paint = this.paints.get(def.id);
@@ -962,12 +1008,12 @@ export class Villagers {
     const skin = pickW(SKINS, SKIN_W);
     cols[0] = skin;
     cols[1] = k === ELDER ? pick(GREYS) : pick(HAIRS);
-    cols[2] = pick(TOPS);
-    cols[3] = pick(BOTTOMS);
-    cols[4] = pick(SHOES);
+    cols[2] = pickW(TOPS, TOP_W);
+    cols[3] = pickW(BOTTOMS, BOTTOM_W);
+    cols[4] = pickW(SHOES, SHOE_W);
     cols[5] = pick(ACCS);
     cols[6] = pick(ACC2S);
-    cols[7] = k === CHILD && chance(0.55) ? skin : cols[3];
+    cols[7] = cols[3]; // a child's trousers below the knee (the football kit's socks, world/footballLife.ts)
     cols[8] = pick(FRAMES);
     cols[9] = '#f1efe9';
     cols[10] = '#1d1b1a';
@@ -984,19 +1030,22 @@ export class Villagers {
       cols[5] = pick(COLLARS);
       f |= chance(0.6) ? HAIR_A : HAIR_B;
     } else {
-      if (k === WOMAN) f |= chance(0.5) ? HAIR_A : HAIR_B;
+      // Its hair: one of two styles a kind has (tools/villagers.py HAIRS: the man parted or cropped, the woman to the
+      // shoulders or short, a child long or short), and a beard for some grown-up men.
+      f |= chance(([0.6, 0.75, 0.5, 0.7, 0.5, 0.6] as const)[k]) ? HAIR_A : HAIR_B;
       const extras = ({
-        [MAN]: [[HAT, 0.2], [BAG, 0.3], [SPECS, 0.25], [SCARF, 0.15]],
-        [WOMAN]: [[BAG, 0.45], [SPECS, 0.2], [SCARF, 0.25]],
-        [ELDER]: [[HAT, 0.55], [SPECS, 0.6], [SCARF, 0.3]],
-        [TEEN]: [[BAG, 0.5], [HAT, 0.25]],
-        [CHILD]: [[HAT, 0.3], [BAG, 0.4]],
-        [BIKE]: [[HAT, 0.5], [BAG, 0.35]],
+        [MAN]: [[HAT, 0.3], [BAG, 0.3], [SPECS, 0.25], [SCARF, 0.3], [BEARD, 0.3]],
+        [WOMAN]: [[BAG, 0.45], [SPECS, 0.2], [SCARF, 0.45], [HAT, 0.2]],
+        [ELDER]: [[HAT, 0.55], [SPECS, 0.6], [SCARF, 0.45], [BEARD, 0.35]],
+        [TEEN]: [[BAG, 0.5], [HAT, 0.3], [SCARF, 0.12]],
+        [CHILD]: [[HAT, 0.5], [BAG, 0.4], [SCARF, 0.3]],
+        [BIKE]: [[HAT, 0.5], [BAG, 0.35], [SCARF, 0.2], [BEARD, 0.2]],
       } as Record<number, [number, number][]>)[k] ?? [];
       for (const [bit, p] of extras) if (chance(p)) f |= bit;
     }
     if (set) for (const [i, col] of Object.entries(set)) cols[Number(i)] = col;
-    v.flags = flags ?? f;
+    // Flags given for someone else's figure keep a head of hair: its own pick when they name none.
+    v.flags = flags === undefined ? f : flags & (HAIR_A | HAIR_B) ? flags : flags | (f & (HAIR_A | HAIR_B));
     const c = new THREE.Color();
     for (let i = 0; i < 16; i++) {
       c.set(cols[i]).convertSRGBToLinear();
@@ -1189,15 +1238,19 @@ export class Villagers {
     else if (v.once && !moving) want = v.once;
     else if (v.sit) want = 'Sit';
     else if (moving) {
-      if (v.kind === DOG || v.kind === CHILD || v.kind === ELDER) want = v.kind === CHILD && speed > 2 ? 'Jog' : 'Walk';
+      if (v.kind === DOG || v.kind === CHILD || v.kind === ELDER) want = v.kind === CHILD && speed > 2 ? 'Jog' : this.walkOf(v, k, '');
       else if (v.def.jog || speed > 2.3) want = 'Jog';
       else if (v.flags & UMB) want = 'WalkUmb';
       else if (v.def.lead) want = 'WalkLead';
-      else want = 'Walk';
+      else want = this.walkOf(v, k, v.pk ? 'Pk' : '');
     } else if (v.flags & UMB) want = 'WalkUmb';
     else if (v.kind === DOG && v.still > 4) want = 'Sit';
     else if (v.talk && v.kind !== CHILD) want = 'Talk';
-    else want = 'Idle';
+    else {
+      // Standing about: one way of standing for a loop of it, then (perhaps) another, each villager its own order.
+      const loop = Math.floor(v.time / IDLE_S);
+      want = IDLES[((Math.imul(v.id + 1, 2654435761) ^ Math.imul(loop + 7, 40503)) >>> 0) % IDLES.length];
+    }
     if (!k.clips.has(want)) want = k.clips.has('Idle') ? 'Idle' : 'Ride';
     if (want !== v.clip) {
       v.from = v.clip;
@@ -1207,11 +1260,37 @@ export class Villagers {
       if (want === 'Wave') v.time = 0;
     }
     const c = k.clips.get(v.clip);
-    if (c?.dist) {
+    if (v.clip === 'Talk') {
+      // Two friends take turns: the talk loop has one talking for its first half and listening for the other, on the
+      // shared clock, the one who follows half a loop later.
+      v.time = this.now + (v.def.role === 'follow' ? IDLE_S / 2 : 0);
+    } else if (c?.dist) {
       // Walking and riding go at the pace of the ground covered, so the feet (and wheels) don't slide; standing still it holds.
       v.time += (speed * dt / (c.dist * v.scale)) * c.duration;
     } else v.time += dt;
-    v.blend = Math.min(1, v.blend + dt / BLEND);
+    // From one way of standing to another slowly; anything else quickly.
+    const slow = IDLES.includes(v.clip) && IDLES.includes(v.from);
+    v.blend = Math.min(1, v.blend + dt / (slow ? 0.9 : BLEND));
+  }
+
+  /**
+   * The walk whose own pace is nearest this villager's (tools/villagers.py bakes a walk and a stroll: shorter, slower
+   * steps), so its feet keep to the ground without long slow strides; `style` 'Pk' for hands in the pockets.
+   */
+  private walkOf(v: V, k: Kind, style: string): string {
+    const pace = v.def.pace || 1.3;
+    let best = 'Walk';
+    let err = Infinity;
+    for (const name of ['Walk', 'Stroll']) {
+      const c = k.clips.get(name + style) ?? k.clips.get(name);
+      if (!c?.dist) continue;
+      const e = Math.abs(Math.log((c.dist * v.scale) / c.duration / pace));
+      if (e < err) {
+        err = e;
+        best = k.clips.has(name + style) ? name + style : name;
+      }
+    }
+    return best;
   }
 
   /** In the rain the umbrella is up (those who have one: the man, the woman, the teen walking). */
@@ -1235,16 +1314,25 @@ export class Villagers {
   private draw(eye: THREE.Vector3): void {
     this.umbrellas();
     const counts = this.kinds.map(() => 0);
+    const nears = this.kinds.map(() => 0);
+    const fars = this.kinds.map(() => 0);
+    const farFrom = FAR_M[this.cheap() ? 1 : 0];
+    // The near figure or, further off, the one with far fewer triangles; and its place in that mesh.
+    const pickLod = (kind: number, x: number, z: number): [Kind, number] => {
+      const far = this.fars[kind];
+      if (far && Math.hypot(x - eye.x, z - eye.z) > farFrom) return [far, fars[kind]++];
+      return [this.kinds[kind], nears[kind]++];
+    };
     let patches = 0;
     const lead = this.leashes.geometry.attributes.position as THREE.BufferAttribute;
     let leads = 0;
     for (const v of this.order) {
-      const k = this.kinds[v.kind];
       v.drawn = false;
-      if (!k || v.away) continue;
+      if (!this.kinds[v.kind] || v.away) continue;
       if (counts[v.kind] >= MAX[v.kind]) continue;
       v.drawn = true;
-      const i = counts[v.kind]++;
+      counts[v.kind]++;
+      const [k, i] = pickLod(v.kind, v.x, v.z);
       const fade = Math.min(v.fade, this.shown);
       _q.setFromAxisAngle(UP, v.yaw);
       let y = v.y;
@@ -1304,9 +1392,9 @@ export class Villagers {
       }
     }
     for (const e of this.extras?.() ?? []) {
-      const k = this.kinds[e.kind];
-      if (!k || counts[e.kind] >= ALL[e.kind]) continue;
-      const i = counts[e.kind]++;
+      if (!this.kinds[e.kind] || counts[e.kind] >= ALL[e.kind]) continue;
+      counts[e.kind]++;
+      const [k, i] = pickLod(e.kind, e.x, e.z);
       _m.compose(_v.set(e.x, e.y, e.z), _q.setFromAxisAngle(UP, e.yaw), _s.setScalar(e.scale));
       k.mesh.setMatrixAt(i, _m);
       const [rA, rB, mix] = this.rows(k.clips.get(e.clip), e.time);
@@ -1319,14 +1407,19 @@ export class Villagers {
         this.patches.setMatrixAt(patches++, _m);
       }
     }
-    this.kinds.forEach((k, kind) => {
-      k.mesh.count = Math.min(ALL[kind], counts[kind]);
+    const show = (k: Kind | null, n: number, kind: number) => {
+      if (!k) return;
+      k.mesh.count = Math.min(ALL[kind], n);
       k.mesh.visible = k.mesh.count > 0;
       if (!k.mesh.count) return;
       k.mesh.instanceMatrix.needsUpdate = true;
       k.anim.needsUpdate = true;
       k.look.needsUpdate = true;
       k.mesh.computeBoundingSphere();
+    };
+    this.kinds.forEach((k, kind) => {
+      show(k, nears[kind], kind);
+      show(this.fars[kind], fars[kind], kind);
     });
     this.patches.count = patches;
     this.patches.instanceMatrix.needsUpdate = true;
