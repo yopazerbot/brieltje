@@ -2486,18 +2486,15 @@ function buyAtStall(kind: StallKind): boolean {
  */
 let supplyWait = 0;
 const supplyWaits = new Map<string, number>();
-function supplyAim(): SupplyAim | null {
+function supplyAim(seat: boolean): SupplyAim | null {
   const a = games.assault;
   if (!a || !games.team) return null;
-  return assaultCamp.near(player.x, player.feet, player.z, games.team === a.def ? 'def' : 'att',
-    (id) => {
-      const h = helis.machines.find((q) => q.spec.id === id);
-      return h && !vehicleWear.out('heli', id) ? { x: h.s.x, y: h.s.y, z: h.s.z } : null;
-    },
-    (id) => {
-      const c = carById(id);
-      return c && !vehicleWear.out('car', id) ? { x: c.x, y: c.y, z: c.z, yaw: c.yaw, moving: !!c.driver || Math.abs(c.speed) > 0.2 } : null;
-    });
+  return assaultCamp.near(player.x, player.feet, player.z, games.team === a.def ? 'def' : 'att', seat, (kind, id) => {
+    if (vehicleWear.out(kind, id)) return null;
+    const m = kind === 'heli' ? helis.machines.find((q) => q.spec.id === id) : carById(id);
+    if (!m) return null;
+    return kind === 'heli' ? { d: (m as (typeof helis.machines)[number]).distanceTo(player.x, player.z), y: (m as (typeof helis.machines)[number]).s.y } : { d: (m as Car).distanceTo(player.x, player.z), y: (m as Car).y };
+  });
 }
 const SUPPLY_LINE = { ammo: 'asup.ammo', med: 'asup.med', bazooka: 'asup.bazooka', sniper: 'asup.sniper', claymore: 'asup.claymore', turret: 'asup.turret' } as const;
 const SUPPLY_PAINT = { ammo: 'asup.ammoPaint', bazooka: 'asup.bazookaPaint', claymore: 'asup.claymorePaint' } as const;
@@ -3941,13 +3938,6 @@ renderer.setAnimationLoop((now: number) => {
     // with too few coins, Use is left alone (a turret beside it); a ball in reach is kicked first, and its line shows.
     const stallAim = action && !watching && !dead && !inCar && !onHorse && !tagWho && !downed && !target && !ball && games.zombies ? marketStall.aim(player.x, player.feet, player.z, player.yaw) : null;
     if (stallAim && stallAim !== 'shut' && frame.usePressed && buyAtStall(stallAim)) frame.usePressed = false;
-    // Attack and defend: Use at a crate or vehicle of your side takes what it gives (the id only; the server checks the rest).
-    const supply = action && !watching && !dead && !inCar && !onHorse && !onBike && !tagWho && !downed && !target && !ball && net.connected ? supplyAim() : null;
-    if (supply && frame.usePressed && performance.now() > supplyWait) {
-      supplyWait = performance.now() + 400;
-      net.send({ t: 'asup', id: supply.id });
-      frame.usePressed = false;
-    }
     games.update(dt, player.x, player.feet, player.z, key('use', mode));
     duelLine.update();
     // Steal the flag: the flags where the server has them, a carried one on its carrier as drawn now; its line and chips.
@@ -3977,6 +3967,14 @@ renderer.setAnimationLoop((now: number) => {
     // On the way to the others (an account, a join pending, the welcome not come yet) nobody boards.
     const nearHeli = !inCar && !onHorse && !dead && !nearCar && nearHorse < 0 && !nearBike && !target && (helis.together || !(me || joinPending() || net.connected)) ? helis.near(player.x, player.z, player.feet, (m) => !vehicleWear.out('heli', m.spec.id)) : null;
     const heliWhy = games.carrying ? 'prompt.flagHeli' : helis.why(games.fenced || games.zombies || games.flagNoHeli, rules.heli === false);
+    // Attack and defend: Use at a crate or vehicle of your side takes what it gives (the id only; the server checks the
+    // rest). Getting in wins: by a car or a helicopter Use takes the seat, a step back it takes the ammo.
+    const supply = action && !watching && !dead && !inCar && !onHorse && !onBike && !tagWho && !downed && !target && !ball && net.connected ? supplyAim(nearCar || !!nearHeli) : null;
+    if (supply && frame.usePressed && performance.now() > supplyWait) {
+      supplyWait = performance.now() + 400;
+      net.send({ t: 'asup', id: supply.id });
+      frame.usePressed = false;
+    }
     if (helis.aboard && frame.usePressed) helis.leave(camera.position);
     else if (nearHeli && !heliWhy && frame.usePressed) {
       player.flying = false;

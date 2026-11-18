@@ -51,14 +51,19 @@ export const ASSAULT = Object.freeze({
   truckMin: 120,
   /** ms the spawn truck must stand still (nobody at the wheel, not moved) before it is a start place */
   truckStillMs: 2000,
-  /** ms a destroyed spawn truck lies as a wreck, then is gone, before it is back whole at its camp (60 s in all) */
-  truckWreckMs: 20_000,
+  /**
+   * ms a destroyed spawn truck is gone after its wreck before it is back whole at its camp: 60 s in all with the wreck's
+   * own 20 s (shared/vehicleDamage.json wreckMs)
+   */
   truckGoneMs: 40_000,
   /** m across from a crate's middle to a player's middle, and m up or down, for a take (a step more than the page's prompt) */
   reach: 2.4,
   rise: 1.8,
-  /** m from a vehicle's box (the parked helicopter, the spawn truck, the camp's supply truck) for ammo from it */
-  vehicleReach: 2.2,
+  /**
+   * m from a vehicle's box (the parked helicopter, the spawn truck, the camp's supply truck) for ammo from it. Further
+   * than a seat's reach (car.json and heli.json reach, 1.5 m): close by, Use gets you in; a step back, it gives ammo.
+   */
+  vehicleReach: 3,
   /** ms each player waits between two of a kind: ammo and grenades, the first-aid kit and the vest, a heavy weapon, a claymore or the turret */
   wait: Object.freeze({ ammo: 20_000, med: 60_000, heavy: 30_000, trap: 20_000 }),
   /** Heavy weapons (a bazooka or a sniper rifle) a team holds at most at once */

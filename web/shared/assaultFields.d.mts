@@ -29,7 +29,6 @@ export const ASSAULT: {
   readonly campHigh: number;
   readonly truckMin: number;
   readonly truckStillMs: number;
-  readonly truckWreckMs: number;
   readonly truckGoneMs: number;
   readonly reach: number;
   readonly rise: number;

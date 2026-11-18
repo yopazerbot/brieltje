@@ -35,7 +35,7 @@ export interface AssaultView {
   mines: [number, number, number, number, number, string][];
   turrets: [number, number, number, number, number, string][];
   /** The spawn truck: its car id, and whether it is a start place now */
-  truck: { id: string; spawn: boolean } | null;
+  truck: { id: string; spawn: boolean; still: boolean } | null;
 }
 
 /** A supply source you face: its id for the server (`asup`), what it gives. */
@@ -56,7 +56,10 @@ const C = {
 };
 /** m: the page offers a crate this close (the server allows ASSAULT.reach) */
 const NEAR = ASSAULT.reach - 0.4;
+/** m from a vehicle's outline: the page offers its ammo this close (the server allows ASSAULT.vehicleReach from its box) */
 const NEAR_VEHICLE = ASSAULT.vehicleReach - 0.3;
+/** The camp's supply truck's box round its middle, along the camp (as the server's, server/assaultSupply.mjs sources) */
+const SUPPLY_BOX = { hx: 1.4, hz: 3.4 };
 const SIGNS: Partial<Record<CrateKind, 'ammo' | 'medkit' | 'claymore' | 'turret'>> = { ammo: 'ammo', med: 'medkit', claymore: 'claymore', turret: 'turret' };
 
 /** A part with a colour on its vertices, moved by `m`: position, normal and colour only, not indexed (they all merge). */
@@ -205,7 +208,7 @@ export class AssaultCamp {
   private pool = new THREE.Mesh(new THREE.BufferGeometry(), poolMat);
   private key = '';
   private barriers: string[] = [];
-  private view: { field: string; def: FlagTeam } | null = null;
+  private view: { field: string; def: FlagTeam; still: boolean } | null = null;
 
   constructor(private world: World) {
     this.group.name = 'assault-camp';
@@ -229,7 +232,7 @@ export class AssaultCamp {
       if (this.key) this.clear();
       return;
     }
-    this.view = { field: field!, def: a!.def };
+    this.view = { field: field!, def: a!.def, still: !!a!.truck?.still };
     const key = `${field}:${a!.def}`;
     if (key !== this.key) this.build(field!, a!.def);
   }
@@ -297,11 +300,13 @@ export class AssaultCamp {
   }
 
   /**
-   * The supply you may use standing at (x, feet, z): a crate of your side within reach (the defenders' base for
-   * `side` 'def', the camp for 'att'), else your side's vehicle: the camp's supply truck, your helicopter on the ground
-   * (`heli`: its pose by id, null when flown off or not drawn) or the spawn truck standing (`car`). Null for none.
+   * The supply you may use standing at (x, feet, z), as the server will take it: a crate of your side within reach (the
+   * defenders' base for `side` 'def', the camp for 'att'), else, unless a seat is offered there (`seat`: by a car or a
+   * helicopter Use gets you in), your side's vehicle a step back from its outline: your helicopter on the ground, the
+   * camp's supply truck, the spawn truck standing still. `vehicle(kind, id)`: how far you are from that vehicle's outline
+   * and its height, or null (gone, flown off, not drawn). Null for none.
    */
-  near(x: number, feet: number, z: number, side: 'def' | 'att', heli: (id: string) => { x: number; y: number; z: number } | null, car: (id: string) => { x: number; y: number; z: number; yaw: number; moving: boolean } | null): SupplyAim | null {
+  near(x: number, feet: number, z: number, side: 'def' | 'att', seat: boolean, vehicle: (kind: 'heli' | 'car', id: string) => { d: number; y: number } | null): SupplyAim | null {
     const v = this.view;
     if (!v) return null;
     const f = fieldOf(v.field);
@@ -313,14 +318,16 @@ export class AssaultCamp {
       const d = Math.hypot(k.at[0] - x, k.at[1] - z);
       if (d < bestD && Math.abs(k.at[2] - feet) < ASSAULT.rise - 0.2) [best, bestD] = [{ id: `${side === 'def' ? 'd' : 'c'}${i}`, kind: k.kind }, d];
     });
-    if (best) return best;
-    const h = heli(f.heli[side === 'def' ? 'blue' : 'red'].id);
-    if (h && Math.hypot(h.x - x, h.z - z) < 3.6 + NEAR_VEHICLE && Math.abs(h.y - feet) < 1.5) return { id: side === 'def' ? 'hb' : 'hr', kind: 'ammo' };
+    if (best || seat) return best;
+    const h = vehicle('heli', f.heli[side === 'def' ? 'blue' : 'red'].id);
+    if (h && h.d <= NEAR_VEHICLE && Math.abs(h.y - feet) < 1.5) return { id: side === 'def' ? 'hb' : 'hr', kind: 'ammo' };
     if (side === 'def') return null;
-    const s = a.camp.supply;
-    if (Math.hypot(s[0] - x, s[1] - z) < 3.6 + NEAR_VEHICLE && Math.abs(s[2] - feet) < 1.5) return { id: 'cs', kind: 'ammo' };
-    const t = car(a.truck);
-    if (t && !t.moving && Math.hypot(t.x - x, t.z - z) < 3.6 + NEAR_VEHICLE && Math.abs(t.y - feet) < 1.5) return { id: 'tk', kind: 'ammo' };
+    const [sx, sz, sy] = a.camp.supply;
+    const c = Math.cos(a.camp.side), n = Math.sin(a.camp.side);
+    const lx = (x - sx) * c - (z - sz) * n, lz = (x - sx) * n + (z - sz) * c;
+    if (Math.hypot(Math.max(0, Math.abs(lx) - SUPPLY_BOX.hx), Math.max(0, Math.abs(lz) - SUPPLY_BOX.hz)) <= NEAR_VEHICLE && Math.abs(sy - feet) < 1.5) return { id: 'cs', kind: 'ammo' };
+    const t = v.still ? vehicle('car', a.truck) : null;
+    if (t && t.d <= NEAR_VEHICLE && Math.abs(t.y - feet) < 1.5) return { id: 'tk', kind: 'ammo' };
     return null;
   }
 }

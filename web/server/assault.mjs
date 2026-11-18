@@ -70,6 +70,8 @@ export class AssaultGame extends FlagGame {
     /** The spawn truck: where it was last, and since when it stands still there */
     this.truckAt = null;
     this.truckSince = now;
+    /** Whether the truck was a start place and stood still at the last tick (every page told when either changes) */
+    this.truckWas = 'false:false';
     this.arms = new AssaultArms(game, this);
     this.supply = new AssaultSupply(game, this);
   }
@@ -319,10 +321,11 @@ export class AssaultGame extends FlagGame {
     }
     const events = this.step(now);
     const traps = this.supply.step(now);
-    // The spawn truck became a start place, or stopped being one: every page's view (the attackers' line).
-    const spawn = !!this.truckSpawn(now);
-    const truck = spawn !== this.truckWas;
-    this.truckWas = spawn;
+    // The spawn truck became a start place or stopped being one, or stands still now (ammo from it) or not: every page's
+    // view (the attackers' line, the prompt by it).
+    const was = `${!!this.truckSpawn(now)}:${this.truckStill(now)}`;
+    const truck = was !== this.truckWas;
+    this.truckWas = was;
     if (events.length) modes.flagEvents(events);
     const cap = events.find((e) => e.ev === 'captured');
     if (cap) return this.roundOver(now, modes, cap.name);
@@ -422,7 +425,8 @@ export class AssaultGame extends FlagGame {
       mines: traps.mines,
       turrets: traps.turrets,
       // The spawn truck a start place now (its car id), for the attackers' line and the map.
-      truck: truck ? { id: truck.id, spawn: !!this.truckSpawn(now) } : null,
+      // `still`: standing long enough to give ammo (server/assaultSupply.mjs reaches), for the page's prompt by it.
+      truck: truck ? { id: truck.id, spawn: !!this.truckSpawn(now), still: this.truckStill(now) } : null,
     };
     return v;
   }
