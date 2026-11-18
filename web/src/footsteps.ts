@@ -13,7 +13,7 @@ export type Surface = 'wood' | 'tile' | 'stone' | 'grass' | 'metal' | 'water' | 
 
 const BY_MATERIAL: Record<string, Surface> = {
   floor_wood: 'wood', oak: 'wood', walnut: 'wood', stair: 'wood', cladding: 'wood',
-  floor_tile: 'tile', floor_bath: 'tile', terrazzo: 'tile', rust_tile: 'tile', pink_tile: 'tile',
+  floor_tile: 'tile', floor_bath: 'tile', terrazzo: 'tile', rust_tile: 'tile', pink_tile: 'tile', microcement: 'tile',
   ceramic: 'tile', stone: 'tile', pink: 'tile', terracotta: 'tile',
   concrete: 'stone', terrace: 'stone', paving: 'stone', roof: 'stone', road: 'stone', old_stone: 'stone', old_floor: 'tile', old_wood: 'wood',
   pave_light: 'stone', pave_warm: 'stone', pave_grey: 'stone', gravel: 'grass', track: 'grass', pool_water: 'tile',

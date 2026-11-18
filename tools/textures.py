@@ -8,8 +8,8 @@ web-sized versions for the walkthrough.
   29 x 5 cm with thin recessed joints (size from a site photo)
 - The neighbours' brick (standard 21 x 5 cm format) and roof tiles are generated
   too, in neutral light tones: the game tints them per house; home 4's mixed brick in its own colours
-- The floor tiles (grey stone-look, 60 x 120 cm) and the
-  wood cladding (vertical slats) are generated too
+- The floor tiles (grey stone-look, 60 x 120 cm), the
+  wood cladding (vertical slats), the terracotta wall tiles and micro-cement are generated too
 - Web copies (WebP) go to web/public/textures/, the sky to web/public/env/, and
   half-size copies for phones and tablets to web/public/textures/half/
 
@@ -290,16 +290,55 @@ def terrazzo(size=1024, seed=3):
 
 
 def rust_tile(size=1024, seed=5):
-    """Rust-red vertical strip tiles (shower walls). Tile = 0.6 m: 12 strips of 5 cm."""
+    """Terracotta wall tiles of 7.5 x 30 cm standing upright, stacked in straight rows, with 2 mm joints. Every
+    tile its own shade of rust red; a paler, pinkish glaze washes up from its foot, strong on some rows and faint
+    on others, so light bands run across the wall. A glossy glaze over a fine mottle. Tile = 1.20 m (16 tiles
+    across, 4 rows up)."""
     rng = np.random.default_rng(seed)
-    yy, xx = np.mgrid[0:size, 0:size]
-    strip = np.minimum(xx // (size // 12), 11).astype(int)
-    tone = rng.uniform(0.85, 1.12, 12)[strip]
-    base = np.stack([0.66 * tone, 0.36 * tone, 0.26 * tone], -1)
-    base *= (0.92 + 0.12 * value_noise((size, size), 20, rng))[..., None]
-    grout = ((xx % (size // 12)) < 3) | ((yy % (size // 4)) < 3)
-    base[grout] = [0.78, 0.74, 0.70]
-    return Image.fromarray((np.clip(base, 0, 1) * 255).astype(np.uint8))
+    px = size / 1.20
+    yy, xx = np.mgrid[0:size, 0:size].astype(np.float32)
+    tw, th = 0.075 * px, 0.30 * px
+    col = np.floor(xx / tw).astype(int)
+    row = np.floor(yy / th).astype(int)
+    ids = row * 16 + col
+    joint = 0.002 * px + 0.5
+    fx, fy = xx % tw, yy % th
+    is_tile = (fx > joint) & (fy > joint)
+    # Image rows run down the wall: fy is how far below the tile's top edge, so the foot is at fy = th.
+    down = fy / th
+    tone = rng.random(64)[ids][..., None]
+    red = np.array([0.64, 0.41, 0.33]) * (0.86 + 0.22 * tone) + (rng.random(64)[ids][..., None] - 0.5) * np.array([0.05, 0.02, 0.0])
+    wash_row = np.array([0.15, 0.85, 0.3, 0.7])[row % 4] * (0.6 + 0.8 * rng.random(64)[ids])
+    cloud = 0.55 * value_noise((size, size), 32, rng) + 0.45 * value_noise((size, size), 8, rng)
+    wash = np.clip(wash_row * (np.clip((down - 0.15) / 0.85, 0, 1) ** 1.2) * (0.3 + 1.1 * cloud) * 0.85, 0, 1)[..., None]
+    pale = np.array([0.86, 0.75, 0.70])
+    mottle = (0.94 + 0.10 * value_noise((size, size), 4, rng))[..., None]
+    color = (red * (1 - wash) + pale * wash) * mottle
+    # The glaze is thinner along the tile's edges: a touch darker there.
+    edge = np.minimum(np.minimum(fx, tw - fx), np.minimum(fy, th - fy)) / px
+    color *= (0.9 + 0.1 * np.clip(edge / 0.004, 0, 1))[..., None]
+    color = np.where(is_tile[..., None], color, np.array([0.50, 0.42, 0.37]))
+    height = np.where(is_tile, 1.0 - 0.15 * (1 - np.clip(edge / 0.003, 0, 1)) + 0.03 * cloud, 0.0)
+    rough = np.where(is_tile, 0.22 + 0.12 * cloud, 0.85)
+    return (Image.fromarray((np.clip(color, 0, 1) * 255).astype(np.uint8)), normal_map(height, 1.6),
+            Image.fromarray((np.clip(rough, 0, 1) * 255).astype(np.uint8)))
+
+
+def microcement(size=1024, seed=19):
+    """Micro-cement on walls and floors: a warm grey, softly clouded where the trowel went over it, with a fine
+    sandy grain; matt, a little smoother where it was pressed harder. Tile = 2.0 m."""
+    rng = np.random.default_rng(seed)
+    noise = lambda *cells: sum(w * value_noise((size, size), c, rng) for c, w in cells)
+    cloud = noise((256, 0.4), (128, 0.3), (64, 0.2), (32, 0.1))
+    sweep = noise((48, 0.6), (16, 0.4))
+    grain = noise((2, 0.6), (1, 0.4))
+    base = np.array([0.75, 0.725, 0.69])
+    shade = 1 + 0.16 * (cloud - 0.5) + 0.07 * (sweep - 0.5) + 0.05 * (grain - 0.5)
+    color = base * shade[..., None]
+    height = 0.6 * cloud + 0.3 * sweep + 0.1 * grain
+    rough = 0.62 + 0.12 * (sweep - 0.5) - 0.08 * (cloud - 0.5)
+    return (Image.fromarray((np.clip(color, 0, 1) * 255).astype(np.uint8)), normal_map(height, 3.0),
+            Image.fromarray((np.clip(rough, 0, 1) * 255).astype(np.uint8)))
 
 
 def normal_map(height, strength):
@@ -475,9 +514,7 @@ def generated(sizes):
     claustra.save(WEB / "claustra_color.webp", "WEBP", quality=88, method=6)
     sizes["brick"] = sizes["claustra"] = 1.8
     save_webp(terrazzo(), WEB / "terrazzo_color.webp", 1024)
-    save_webp(rust_tile(), WEB / "rust_tile_color.webp", 1024)
     sizes["terrazzo"] = 1.0
-    sizes["rust_tile"] = 0.6
     for name in SURFACES:
         surface(name, sizes)
 
@@ -488,7 +525,8 @@ def generated(sizes):
 SURFACES = {"nb_brick": (standard_brick, 1.76, 1024), "roof_tiles": (roof_tiles, 1.2, 1024),
             "floor_tile": (large_tile, 4.8, 2048), "cladding": (slats, 1.8, 1024), "asphalt": (asphalt, 2.0, 1024),
             "road_concrete": (road_concrete, 2.0, 1024, 512), "clinker": (clinker, 2.2, 1024),
-            "mixed_brick": (mixed_brick, 3.52, 1024, 512)}
+            "mixed_brick": (mixed_brick, 3.52, 1024, 512), "rust_tile": (rust_tile, 1.2, 1024),
+            "microcement": (microcement, 2.0, 1024, 512)}
 
 
 def surface(name, sizes):

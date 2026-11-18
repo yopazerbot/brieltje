@@ -18,7 +18,7 @@ const LOOK: Record<string, number> = {
   steel: HOLE.metal, rail: HOLE.metal, alu: HOLE.metal, alu_out: HOLE.metal, alu_in: HOLE.metal, brass: HOLE.metal, mirror: HOLE.metal, black_glass: HOLE.metal,
   oak: HOLE.wood, walnut: HOLE.wood, floor_wood: HOLE.wood, stair: HOLE.wood, cladding: HOLE.wood, old_wood: HOLE.wood,
   grass: HOLE.earth, hedge: HOLE.earth, nb_hedge: HOLE.earth, fence: HOLE.metal,
-  floor_tile: HOLE.tile, terrazzo: HOLE.tile, ceramic: HOLE.tile, rust_tile: HOLE.tile, pink_tile: HOLE.tile, floor_bath: HOLE.tile, stone: HOLE.tile, old_floor: HOLE.tile, nb_roof: HOLE.tile,
+  floor_tile: HOLE.tile, terrazzo: HOLE.tile, ceramic: HOLE.tile, rust_tile: HOLE.tile, pink_tile: HOLE.tile, microcement: HOLE.tile, floor_bath: HOLE.tile, stone: HOLE.tile, old_floor: HOLE.tile, nb_roof: HOLE.tile,
 };
 
 /** Offset of a cell in the sheet (texture coordinates, bottom-left of the cell). */

@@ -41,7 +41,7 @@ const KIND: Record<string, Kind> = {
   steel: 'sparks', rail: 'sparks', alu: 'sparks', alu_out: 'sparks', alu_in: 'sparks', brass: 'sparks', mirror: 'sparks', black_glass: 'sparks',
   oak: 'wood', walnut: 'wood', floor_wood: 'wood', stair: 'wood', cladding: 'wood', old_wood: 'wood',
   grass: 'earth', hedge: 'earth', nb_hedge: 'earth', cat: 'fur', nb_roof: 'chips', fence: 'sparks',
-  floor_tile: 'chips', terrazzo: 'chips', ceramic: 'chips', rust_tile: 'chips', pink_tile: 'chips', floor_bath: 'chips', stone: 'chips', old_floor: 'chips',
+  floor_tile: 'chips', terrazzo: 'chips', ceramic: 'chips', rust_tile: 'chips', pink_tile: 'chips', microcement: 'chips', floor_bath: 'chips', stone: 'chips', old_floor: 'chips',
 };
 
 /** Dust colour per surface (brick and plaster dust differ); others fall back to pale plaster. */

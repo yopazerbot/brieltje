@@ -92,7 +92,8 @@ const SPECS: Record<string, MatSpec> = {
   veneer: { tex: 'stair', tint: '#d7d6ff', normalScale: 0.4 }, // rosy wood veneer: the oak photo made pinker
   terracotta: { tint: '#b4624a', rough: 0.55 },
   terrazzo: { tex: 'terrazzo', colorOnly: true, rough: 0.35 },
-  rust_tile: { tex: 'rust_tile', colorOnly: true, rough: 0.3 },
+  rust_tile: { tex: 'rust_tile', normalScale: 0.8 }, // terracotta tiles, 7.5 x 30 cm upright, a paler glaze in bands
+  microcement: { tex: 'microcement', normalScale: 0.4 }, // warm grey micro-cement on walls and floors
   pink_tile: { tex: 'floor_bath', tint: '#ecd2c6', normalScale: 0.5 },
   pink: { tint: '#d9b6a7', rough: 0.6 },
   stone: { tint: '#ece8e1', rough: 0.35 },

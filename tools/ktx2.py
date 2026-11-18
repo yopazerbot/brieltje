@@ -60,8 +60,8 @@ MODES = {
                "-ktx2_zstandard_level", "18"],
 }
 # Normal maps of noise without a pattern (no joints or edges): ETC1S looks the same there in the game
-# and is four times smaller to download (these six: 5.0 MB as UASTC, 1.3 MB as ETC1S).
-NOISY_NORMALS = {"grass", "field", "road", "asphalt", "gravel", "hedge"}
+# and is four times smaller to download (the first six: 5.0 MB as UASTC, 1.3 MB as ETC1S; micro-cement: 77 KB, 7 KB).
+NOISY_NORMALS = {"grass", "field", "road", "asphalt", "gravel", "hedge", "microcement"}
 NOISY = ["-etc1s", "-quality", "100", "-normal_map", "-mip_renorm"]
 
 

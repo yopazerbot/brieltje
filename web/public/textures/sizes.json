@@ -14,7 +14,7 @@
  "brick": 1.8,
  "claustra": 1.8,
  "terrazzo": 1.0,
- "rust_tile": 0.6,
+ "rust_tile": 1.2,
  "nb_brick": 1.76,
  "roof_tiles": 1.2,
  "floor_tile": 4.8,
@@ -22,5 +22,6 @@
  "asphalt": 2.0,
  "road_concrete": 2.0,
  "clinker": 2.2,
- "mixed_brick": 3.52
+ "mixed_brick": 3.52,
+ "microcement": 2.0
 }
