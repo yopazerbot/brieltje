@@ -141,10 +141,34 @@ export class AssaultGame extends FlagGame {
     return spot ? { ...spot, face: [stand[0], stand[1]] } : null;
   }
 
-  /** Whether `name` may get into car `id` (game.mjs, before any seat): the spawn truck is the attackers' alone. */
+  /**
+   * Whether `name` may get into car `id` (game.mjs, before any seat): nobody in the break (everyone is placed again as
+   * round 2 starts, and nobody drives ahead to the other stand meanwhile); the spawn truck the attackers' alone.
+   */
   mayEnter(name, id) {
+    if (this.phase === 'break') return false;
     if (id !== this.field.assault.truck || !this.vehicles.cars.includes(id)) return true;
     return this.teams[name] === this.attacker();
+  }
+
+  /** Whether `name` may board a helicopter now: not in the break. */
+  mayFly() {
+    return this.phase !== 'break';
+  }
+
+  /**
+   * Why `name` may not take a seat in vehicle `kind` `id` now (game.mjs asks before any car or helicopter seat): a line's
+   * { code, text }, or null when they may.
+   */
+  refuseSeat(name, kind, id) {
+    if (this.phase === 'break') return { code: 'assaultBreakSeat', text: 'Not in the break: round 2 starts in a moment.' };
+    if (kind === 'car' && !this.mayEnter(name, id)) return { code: 'assaultTruck', text: 'Only the attackers drive the spawn truck.' };
+    return null;
+  }
+
+  /** A tag in the break counts for nothing (the tie-break counts the rounds' tags only). */
+  tagged(killer, victim) {
+    if (this.phase !== 'break') super.tagged(killer, victim);
   }
 
   /** The spawn truck's parking place at its camp (server/vehicleDamage.mjs home: a wreck goes back there), else null. */
@@ -343,9 +367,16 @@ export class AssaultGame extends FlagGame {
     modes.send();
   }
 
-  /** The second round begins on the break's clock. */
+  /**
+   * The second round begins on the break's clock: everyone placed again at their round-2 places and every vehicle back
+   * on its spot (whatever was moved in the break), the flag home, then the clock.
+   */
   secondRound(now, modes) {
     const s = modes.state;
+    this.unparkRound(now);
+    this.park(now);
+    const g = this.game;
+    g.teamsChanged([...g.players].filter(([, p]) => !p.guard && p.alive).map(([n]) => n));
     this.phase = 'live';
     this.round = 2;
     this.roundStart = now;

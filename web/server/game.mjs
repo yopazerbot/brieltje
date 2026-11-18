@@ -1223,7 +1223,7 @@ export class Game {
       // which side, the waits and the team's limits are the server's).
       this.modes.flag?.supply?.use(name, player, m, now);
     } else if (m.t === 'placement') {
-      const game = this.modes.zombies ?? (this.modes.flag?.supply?.loot && this.modes.flag.teams[name] === this.modes.flag.defender() ? this.modes.flag.supply : null); // Attack and defend: the defenders' traps
+      const game = this.modes.zombies ?? (this.modes.flag?.supply?.loot && this.modes.flag.phase === 'live' && this.modes.flag.teams[name] === this.modes.flag.defender() ? this.modes.flag.supply : null); // Attack and defend: the defenders' traps, not in its break
       if (!game || !player.alive || !player.state?.armed || this.inCar(name) || (this.modes.zombies ? this.calm(player) : this.fightCalm(player)) || now - (player.lastPreview ?? 0) < 150) return;
       if (!['claymore', 'stakes', 'turret'].includes(m.kind) || !Number.isSafeInteger(m.id) || m.id < 0 || m.id > 1000000000) return;
       if (![m.x, m.y, m.z, m.yaw].every((v) => typeof v === 'number' && Number.isFinite(v))) return;
@@ -1306,8 +1306,9 @@ export class Game {
       if (m.op === 'in' && this.modes.zombies) return this.send(player.ws, { t: 'system', text: 'No driving during Zombies.', code: 'zNoCar' });
       if (m.op === 'in' && this.fightRefused(player, 'car', Object.hasOwn(this.cars, m.id) ? this.cars[m.id] : null, now)) return;
       if (m.op === 'in' && Object.hasOwn(this.cars, m.id) && this.vehicleDamage.out('car', m.id)) return this.tellThing(player, 'car', this.cars[m.id]); // a wreck: nobody gets in
-      if (m.op === 'in' && Object.hasOwn(this.cars, m.id) && this.modes.flag?.mayEnter?.(name, m.id) === false) { // Attack and defend: the spawn truck is the attackers' (server/assault.mjs)
-        this.send(player.ws, { t: 'system', text: 'Only the attackers drive the spawn truck.', code: 'assaultTruck' });
+      const refused = m.op === 'in' && Object.hasOwn(this.cars, m.id) ? this.modes.flag?.refuseSeat?.(name, 'car', m.id) : null; // Attack and defend: the spawn truck the attackers', no seat in the break (server/assault.mjs)
+      if (refused) {
+        this.send(player.ws, { t: 'system', ...refused });
         return this.tellThing(player, 'car', this.cars[m.id]);
       }
       if (m.op === 'in' && Object.hasOwn(this.cars, m.id)) this.enterCar(name, player, this.cars[m.id]);
@@ -1737,8 +1738,9 @@ export class Game {
    */
   flagNoHeli(name, p, id) {
     const f = this.modes.flag;
-    if (!f?.carrying(name)) return false;
-    this.send(p.ws, { t: 'system', text: 'No helicopter with the flag: carry it home.', code: 'flagHeli' });
+    const refused = f?.refuseSeat?.(name, 'heli', id); // Attack and defend's break (server/assault.mjs)
+    if (!f?.carrying(name) && !refused) return false;
+    this.send(p.ws, { t: 'system', ...(refused ?? { text: 'No helicopter with the flag: carry it home.', code: 'flagHeli' }) });
     const h = typeof id === 'string' ? this.helis.machines.get(id) : null;
     if (h) this.send(p.ws, { t: 'heli', heli: this.helis.pub(h) });
     return true;

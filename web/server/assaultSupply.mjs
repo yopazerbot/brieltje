@@ -278,6 +278,7 @@ export class AssaultSupply {
     const s = this.table.get(m.id);
     const team = this.f.teams[name];
     if (!s || !team || p.guard || this.f.over || g.host?.holds(p)) return; // frozen by the host: nothing taken either
+    if (this.f.phase === 'break') return this.no(p, 'asupBreak', 'Not in the break: round 2 starts in a moment.');
     const side = team === this.def ? 'def' : 'att';
     if (s.side !== side) return this.no(p, 'asupSide', 'That is the other team\'s.');
     if (!this.f.canTouch(name, p, now) || g.bikeOf?.(name)) return this.no(p, 'asupFoot', 'On foot, to take from it.');
@@ -354,7 +355,7 @@ export class AssaultSupply {
     const g = this.game;
     if (now < (p.nextMine || 0)) return;
     p.nextMine = now + 400;
-    if (!this.loot || this.f.teams[name] !== this.def || !p.alive || !p.state?.armed || g.inCar(name) || g.fightCalm(p)) return;
+    if (!this.loot || this.f.phase === 'break' || this.f.teams[name] !== this.def || !p.alive || !p.state?.armed || g.inCar(name) || g.fightCalm(p)) return;
     const s = p.state;
     const r = this.loot.place(name, { x: s.x, y: s.y, z: s.z }, { x: m.x, y: m.y, z: m.z, yaw: m.yaw }, now, this.hiddenFor(p));
     if (!r.mine) {
@@ -370,7 +371,7 @@ export class AssaultSupply {
     const g = this.game;
     if (now < (p.nextTurret || 0)) return;
     p.nextTurret = now + 400;
-    if (!this.loot || this.f.teams[name] !== this.def || !p.alive || !p.state?.armed || g.inCar(name) || g.fightCalm(p)) return;
+    if (!this.loot || this.f.phase === 'break' || this.f.teams[name] !== this.def || !p.alive || !p.state?.armed || g.inCar(name) || g.fightCalm(p)) return;
     const s = p.state;
     const r = this.loot.placeTurret(name, { x: s.x, y: s.y, z: s.z }, { x: m.x, y: m.y, z: m.z, yaw: m.yaw }, now, this.hiddenFor(p));
     if (!r.turret) {
