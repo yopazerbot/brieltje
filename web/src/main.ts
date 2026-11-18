@@ -102,6 +102,7 @@ import { buildHedges, buildTile, dipMesh, onTreesLeftOut, setTreeDetail, treeKey
 import { neverCards, treesMayPaint, unpaintedOut } from './world/leafCards';
 import { setWaterDetail, waterLevel, wetGround } from './world/water';
 import { buildHorizon } from './world/horizon';
+import { FarTrees, patchFarLand, setArea as setFarArea } from './world/farLand';
 import { wearLonePatches, weatherYards } from './world/yards';
 import { detailModelPaving, detailPaving, pavingMeshes, planPaving, usePavingPlan } from './world/pavingDetail';
 import { Undergrowth } from './world/undergrowth';
@@ -584,6 +585,9 @@ scene.add(tiles.group, horizon);
 // direction is known (the real-time sun shadow only covers the house).
 const groundShade = new GroundShade(center, sunShadow.uniforms);
 groundShade.apply(grassMat, 0.35, true);
+// Farmland on the grass where the data has none: outside its area and beyond the draw distance (world/farLand.ts).
+patchFarLand(grassMat, renderer, () => tiles.drawDistance);
+scene.add(new FarTrees(renderer, house.ground).mesh); // and its tree lines stood up
 groundShade.addGrass(house.surroundings?.grass); // the gardens' stripes and the meadows
 // The garden's own paths, drive and planted borders too (not the terraces: one is on the roof).
 // The hard ones (all but the fields' soil and the borders' earth) take earth and green where they meet the grass.
@@ -4664,6 +4668,7 @@ async function buildVillage(): Promise<void> {
   tiles.showAll(); // every tile throws its shadow, however far the camera is now
   for (const m of models) m.visible = true;
   groundShade.addGrass(data.grass);
+  setFarArea(data.area); // outside it the grass shows the far land (world/farLand.ts)
   groundShade.bakeVillage(renderer, scene, sun, [tiles.group], house.ground, centre, 345, phone ? 1024 : 2048);
   await between();
   tiles.showAll(); // the frame between may have hidden the far tiles again
