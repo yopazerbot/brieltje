@@ -198,17 +198,16 @@ export class AssaultGame extends FlagGame {
   }
 
   /**
-   * The field's vehicles parked (server/flags.mjs park), each car in the colour of the team now on its side: the
-   * defenders' blue side's in theirs, the camp's (the spawn truck too) in the attackers'.
+   * A car the field parks on `side` (server/flags.mjs park asks): in the colour of the team now on that side, the
+   * defenders' on the blue side, the camp's (the spawn truck too) in the attackers'.
    */
+  carKind(side, kind) {
+    return kind.replace(/-(blue|red)$/, `-${this.sideOf(side)}`);
+  }
+
+  /** The field's vehicles parked (server/flags.mjs park), and the spawn truck's stillness clock started. */
   park(now) {
     super.park(now);
-    const g = this.game;
-    for (const id of this.vehicles.cars) {
-      const c = g.cars[id];
-      if (c) c.kind = c.kind.replace(/-(blue|red)$/, `-${this.sideOf(id[1] === 'b' ? 'blue' : 'red')}`);
-    }
-    if (this.vehicles.cars.length) g.sendPlaced();
     const t = this.truckCar();
     this.truckAt = t ? { x: t.x, z: t.z, yaw: t.yaw } : null;
     this.truckSince = now;
@@ -407,7 +406,7 @@ export class AssaultGame extends FlagGame {
     this.supply.end();
     const w = winner(this.results, this.tags);
     const name = (t) => (t === 'blue' ? 'Blue' : 'Red');
-    if (!w.team) return modes.finish(`A draw: ${w.why === 'tags' ? `${this.tags.blue} to ${this.tags.red} in tags` : 'level in every way'}`, 'assaultDraw', { a: this.tags.blue, b: this.tags.red });
+    if (!w.team) return modes.finish(`A draw: level in captures and in how far the flag got, ${this.tags.blue} to ${this.tags.red} in tags`, 'assaultDraw', { a: this.tags.blue, b: this.tags.red });
     const args = { team: w.team, a: w.a, b: w.b };
     if (w.why === 'time') return modes.finish(`Team ${name(w.team)} wins: the fastest capture, ${w.a} s against ${w.b} s`, 'assaultTime', args);
     if (w.why === 'only') return modes.finish(`Team ${name(w.team)} wins: the only capture, in ${w.a} s`, 'assaultOnly', args);
@@ -446,22 +445,22 @@ export function tenths(ms) {
 
 /**
  * The game's winner from the two rounds' `results` ({ att, ms, best }) and the teams' `tags` over both rounds:
- * { team, why: 'time' | 'only' | 'far' | 'tags', a, b } (a the winner's figure, b the other's), or { team: null, why }
- * for a draw. The rules, in order: a capture beats none; two captures, the shorter time to a tenth of a second; no
+ * { team, why: 'time' | 'only' | 'far' | 'tags', a, b } (a the winner's figure, b the other's), or { team: null, why:
+ * 'draw' }. The rules, in order: a capture beats none; two captures, the shorter time to a tenth of a second; no
  * capture, the further attempt to a whole per cent; then the most tags; then a draw.
  */
 export function winner(results, tags) {
   const by = Object.fromEntries(results.map((r) => [r.att, r]));
   const blue = by.blue ?? { ms: null, best: 0 };
   const red = by.red ?? { ms: null, best: 0 };
-  const level = (why) => {
-    if (tags.blue === tags.red) return { team: null, why };
+  const level = () => {
+    if (tags.blue === tags.red) return { team: null, why: 'draw' };
     const team = tags.blue > tags.red ? 'blue' : 'red';
     return { team, why: 'tags', a: tags[team], b: tags[other(team)] };
   };
   if (blue.ms !== null && red.ms !== null) {
     const [a, b] = [tenths(blue.ms), tenths(red.ms)];
-    if (a === b) return level('tags');
+    if (a === b) return level();
     const team = a < b ? 'blue' : 'red';
     return { team, why: 'time', a: Math.min(a, b), b: Math.max(a, b) };
   }
@@ -470,7 +469,7 @@ export function winner(results, tags) {
     return { team, why: 'only', a: tenths(by[team].ms), b: Math.floor(by[other(team)]?.best * 100 || 0) };
   }
   const [a, b] = [Math.floor(blue.best * 100), Math.floor(red.best * 100)];
-  if (a === b) return level('tags');
+  if (a === b) return level();
   const team = a > b ? 'blue' : 'red';
   return { team, why: 'far', a: Math.max(a, b), b: Math.min(a, b) };
 }

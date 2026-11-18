@@ -40,8 +40,6 @@ export const ASSAULT: {
   readonly claymoresRound: number;
   readonly claymoresTake: number;
   readonly turretsRound: number;
-  readonly turretRange: number;
-  readonly turretEvery: number;
   readonly turretDamage: number;
   readonly turretRounds: number;
   readonly turretMiss: number;

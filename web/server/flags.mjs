@@ -344,7 +344,7 @@ export class FlagGame {
       for (const [i, c] of (v?.[side].cars ?? []).entries()) {
         const id = `f${side[0]}${i + 1}`;
         if (Object.hasOwn(g.cars, id)) continue;
-        g.cars[id] = { id, kind: c.kind, x: c.x, y: c.y, z: c.z, yaw: c.yaw, s: 0, driver: null, passenger: null, by: '', flag: true };
+        g.cars[id] = { id, kind: this.carKind?.(side, c.kind) ?? c.kind, x: c.x, y: c.y, z: c.z, yaw: c.yaw, s: 0, driver: null, passenger: null, by: '', flag: true }; // Attack and defend paints them (server/assault.mjs carKind)
         g.carAt[id] = 0;
         this.vehicles.cars.push(id);
       }

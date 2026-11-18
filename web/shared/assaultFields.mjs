@@ -77,9 +77,10 @@ export const ASSAULT = Object.freeze({
   claymoresTake: 2,
   /** Turrets the defenders take in a round, all together */
   turretsRound: 2,
-  /** A turret against players: m it sees, ms between shots, health a hit takes, rounds in it, the chance a shot misses */
-  turretRange: 16,
-  turretEvery: 400,
+  /**
+   * A turret against players: health a hit takes, rounds in it, the chance a shot misses (it sees and fires as in
+   * Zombies: shared/loot.mjs turretRange, 16 m, and turretEvery, 300 ms)
+   */
   turretDamage: 8,
   turretRounds: 80,
   turretMiss: 0.35,
