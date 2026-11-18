@@ -100,7 +100,8 @@ export const WAIT_OF = Object.freeze({ ammo: 'ammo', med: 'med', bazooka: 'heavy
  * The camp, as offsets [across (to the right), along (to the front)] in metres from its flag, the front to the
  * defenders: two tents behind the flag, the supply truck (it gives ammo) between them, four crates in two pairs at the
  * front, four flood lamps at the corners, six start places round the flag; on the right the attackers' helicopter
- * (25 m off), the spawn truck's parking place (34 m) and the two cars (33 and 38 m).
+ * (25 m off), the spawn truck's parking place (34 m) and the two cars (24 and 27 m), side by side on its left, level
+ * with it: nothing stands before the truck's nose.
  */
 export const CAMP = Object.freeze({
   tents: [[-9, -5], [9, -5]],
@@ -110,7 +111,7 @@ export const CAMP = Object.freeze({
   spawns: [[-4, -2.5], [4, -2.5], [-6.5, 0.5], [6.5, 0.5], [-2.5, 2], [2.5, 2]],
   heli: [25, -3],
   truck: [30, 16],
-  cars: [[24, 23], [29, 24]],
+  cars: [[23, 15], [19, 15]],
 });
 /** The crates at the defenders' base, in a row from its first: who defends gets the traps too. */
 export const BASE_CRATES = Object.freeze(['ammo', 'med', 'bazooka', 'sniper', 'claymore', 'turret']);
@@ -176,10 +177,13 @@ const SPARRENHOF = {
   spawns: [[638.0, 958.5, -7.14], [636.0, 961.5, -7.18], [647.0, 962.5, -6.96], [637.5, 964.5, -7.12], [636.5, 967.5, -7.10], [641.5, 968.5, -6.99]],
   rack: [645.5, 946.5, -7.01, 1.5708],
 };
-/** The church's camp: its front to the church's stand (east). */
+/**
+ * The church's camp: its front to the church's stand (east). A meadow's wire fence crosses its right side, from 4 m right
+ * of the flag and 28 m ahead to 50 m right and 23 m ahead: the spawn truck meets it 9 m out.
+ */
 const CHURCH_CAMP = camp(138, -859, [CHURCH.stand[0] - 138, CHURCH.stand[1] + 859], {
   flag: 1.38, tents: [1.78, 1.11], supply: 1.39, crates: [1.6, 1.53, 1.19, 1.13], lamps: [1.94, 0.98, 1.94, 0.91],
-  spawns: [1.56, 1.28, 1.7, 1.19, 1.43, 1.31], heli: 0.66, truck: 0.51, cars: [0.65, 0.57],
+  spawns: [1.56, 1.28, 1.7, 1.19, 1.43, 1.31], heli: 0.66, truck: 0.51, cars: [0.66, 0.76],
 });
 /**
  * The Sparrenhof's camp: its front to the north (the stand is 18 degrees west of it): the field it stands in runs east to
@@ -187,7 +191,7 @@ const CHURCH_CAMP = camp(138, -859, [CHURCH.stand[0] - 138, CHURCH.stand[1] + 85
  */
 const SPARRENHOF_CAMP = camp(770, 558, [0, 1], {
   flag: -3.56, tents: [-3.37, -3.58], supply: -3.48, crates: [-3.51, -3.53, -3.58, -3.58], lamps: [-3.46, -3.65, -3.42, -3.55],
-  spawns: [-3.51, -3.52, -3.51, -3.55, -3.59, -3.54], heli: -3.8, truck: -3.8, cars: [-3.72, -3.69],
+  spawns: [-3.51, -3.52, -3.51, -3.55, -3.59, -3.54], heli: -3.8, truck: -3.8, cars: [-3.72, -3.75],
 });
 
 /** A camp as a Steal the flag base: its flag the stand, its start places; its bazooka crate where a rack would be. */
