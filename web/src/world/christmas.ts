@@ -1,4 +1,6 @@
 import * as THREE from 'three';
+import { buildMarket, type Market } from './christmasMarket';
+import { CHALETS, chaletRing, TABLES, tableRing } from './christmasMarketPlan';
 import type { World } from './collision';
 import { buildFir, FIR_H, firRadius, paintFir, seeded } from './firTree';
 import { mood } from './mood';
@@ -6,9 +8,9 @@ import { mood } from './mood';
 /**
  * Christmas in Smetlede (Yoshi), from the first Sunday of Advent until Epiphany (world/season.ts): strings of warm
  * white lights along the eaves of the houses round the church square and up the café's crow-stepped gable, on about
- * one house in four in the rest of the village (some in colours), and a Christmas tree on the square. Where the strings
- * hang comes from web/src/data/christmas.json (tools/christmas_lights.mjs); the same houses every year, picked by where
- * they are, never by who lives there.
+ * one house in four in the rest of the village (some in colours), a Christmas tree on the square, and a small Christmas
+ * market beside it. Where the strings hang comes from web/src/data/christmas.json (tools/christmas_lights.mjs); the
+ * same houses every year, picked by where they are, never by who lives there.
  *
  * No real lights, as the street lamps (world/streetLights.ts): every bulb, the tree's and the star's glow too, is a
  * small square turned to the eye and added onto the picture, all in one draw call with no texture. A far bulb is kept
@@ -22,7 +24,10 @@ import { mood } from './mood';
  * the parking bays, the bike rack, the portal and the street. It is solid for walking and driving in Explore; in a
  * game with weapons only for walking (the server, which decides the hits, doesn't know it is there, so shots pass
  * through as through branches), and in Zombies not at all (the zombies' paths don't know it).
-
+ *
+ * The market (world/christmasMarket.ts, its spots world/christmasMarketPlan.ts): four chalets and three standing
+ * tables between the long house's gable and the tree, only in Explore (main.ts `setMarket`): in every game, with
+ * weapons, Steal the flag or Zombies, it is gone, its blocks too. Its bulbs are a second draw of the same glows.
  * Local and for show: nothing goes over the network.
  */
 
@@ -33,6 +38,7 @@ const SOLID_R = 1.5; // m round the trunk that you can't walk into (the box and 
 const KEY = 'christmas-tree';
 /** The way the tree's star faces (radians from +x towards +z): the square and the street. */
 const STAR_FACE = -0.35;
+const MARKET_KEY = 'christmas-market';
 
 /** The strings of lights (tools/christmas_lights.mjs). */
 interface LightData {
@@ -45,6 +51,7 @@ interface LightData {
 const WARM = new THREE.Color(1.0, 0.68, 0.36); // warm white bulbs (linear)
 const COLOURS = [new THREE.Color(1.0, 0.12, 0.08), new THREE.Color(0.15, 0.85, 0.2), new THREE.Color(0.2, 0.35, 1.0), new THREE.Color(1.0, 0.6, 0.08)];
 const GOLD = new THREE.Color(1.0, 0.62, 0.2);
+const FLAME = new THREE.Color(1.0, 0.5, 0.18); // a candle in a lantern
 const SPACING = 0.3; // m between bulbs
 const HOOK = 1.2; // m between the hooks the string hangs from
 const SAG = 0.06; // m it sags between two hooks
@@ -140,6 +147,9 @@ export class Christmas {
   private bulbs: THREE.InstancedMesh | null = null;
   private tree = new THREE.Group();
   private starMat: THREE.MeshStandardMaterial | null = null;
+  private market: Market | null = null;
+  private marketWanted = true;
+  private marketSolid = false;
   private built = false;
   private villageIn = false;
   private on = false;
@@ -152,7 +162,7 @@ export class Christmas {
     this.group.visible = false;
   }
 
-  /** The village is in (main.ts): the lights and the tree are built the first time the season wants them. */
+  /** The village is in (main.ts): the lights, the tree and the market are built the first time the season wants them. */
   villageReady(): void {
     this.villageIn = true;
   }
@@ -160,7 +170,7 @@ export class Christmas {
   private async build(): Promise<void> {
     this.built = true;
     const data = (await import('../data/christmas.json')).default as unknown as LightData;
-    await paintFir(); // the fir's needles painted over two frames, before the tree takes them
+    await paintFir(); // the fir's needles painted over two frames, before the tree and the market take them
     const out: Bulb[] = [];
     const a = new THREE.Vector3();
     const b = new THREE.Vector3();
@@ -188,6 +198,12 @@ export class Christmas {
     });
     this.bulbs = bulbMesh(out, material);
     this.group.add(this.bulbs, this.tree);
+    // The market: its chalets and tables, and its bulbs and the tables' lanterns in a second draw of the same glows.
+    this.market = buildMarket(this.groundAt);
+    const lights: Bulb[] = this.market.bulbs.map((p) => ({ x: p.x, y: p.y, z: p.z, c: WARM, tw: 0, scale: 0.7 }));
+    for (const p of this.market.lanterns) lights.push({ x: p.x, y: p.y, z: p.z, c: FLAME, tw: 0, scale: 1.3 });
+    this.market.group.add(bulbMesh(lights, material));
+    this.group.add(this.market.group);
     void this.precompile(this.group);
   }
 
@@ -218,6 +234,11 @@ export class Christmas {
     out.push({ x, y: this.ground + fir.starAt.y, z, c: GOLD, tw: 0, scale: 6 }); // the star's glow
   }
 
+  /** Whether the market may stand: in Explore only (main.ts). */
+  setMarket(on: boolean): void {
+    this.marketWanted = on;
+  }
+
   /** How solid the tree is: 'full' in Explore (walking and cars), 'walk' in a game with weapons, 'off' in Zombies. */
   setSolid(how: 'full' | 'walk' | 'off'): void {
     this.wanted = how;
@@ -243,6 +264,19 @@ export class Christmas {
         this.world.setMoving(KEY, ring, this.ground - 0.3, this.ground + TREE_H, solid === 'walk');
       }
     }
+    // The market, in Explore only: shown, and its chalets and tables solid for walking and driving.
+    const market = on && this.marketWanted && !!this.market;
+    if (this.market) this.market.group.visible = market;
+    if (market !== this.marketSolid) {
+      this.marketSolid = market;
+      const keys = [...CHALETS.map((_, i) => `${MARKET_KEY}-${i}`), ...TABLES.map((_, i) => `${MARKET_KEY}-t${i}`)];
+      const rings = [...CHALETS.map(chaletRing), ...TABLES.map(tableRing)];
+      keys.forEach((key, i) => {
+        const ring = market ? rings[i] : null;
+        const ground = ring ? Math.min(...ring.map(([rx, rz]) => this.groundAt(rx, rz))) : 0;
+        this.world.setMoving(key, ring, ground - 0.3, ground + 3.2);
+      });
+    }
     if (!on) return;
     // Lit at night, at dusk and on dull or wet days; barely by day.
     const dim = Math.min(1, Math.max(mood.night, mood.overcast * 0.6, mood.wet * 0.55));
@@ -250,6 +284,7 @@ export class Christmas {
     this.uniforms.time.value += dt;
     this.uniforms.pixel.value = (2 * Math.tan(THREE.MathUtils.degToRad(camera.fov) / 2)) / Math.max(1, pixelsHigh);
     if (this.starMat) this.starMat.emissiveIntensity = 0.1 + 1.6 * dim;
+    this.market?.setGlow(Math.min(1, Math.max(mood.night, mood.overcast * 0.35, mood.wet * 0.3)));
   }
 
   /** Lit now (for the checks). */
