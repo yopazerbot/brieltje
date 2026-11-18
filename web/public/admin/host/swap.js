@@ -21,7 +21,7 @@
   };
   document.addEventListener('hostview', (e) => {
     const m = e.detail?.mode;
-    btn.hidden = !(m && m.kind === 'flag' && m.phase === 'playing');
+    btn.hidden = !(m && m.kind === 'flag' && m.phase === 'playing' && !m.flag?.assault); // Attack and defend swaps the roles itself
   });
   btn.addEventListener('click', async () => {
     if (busy) return;

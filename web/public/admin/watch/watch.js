@@ -50,6 +50,10 @@
       notAdmin: 'Alleen de beheerder kan meekijken. Log in op de beheerpagina.', hint: 'H: bediening', noTeam: 'Zonder team',
       keys: '{d14} beeld · ← → speler · ↑ ↓ team · E achter/ogen · A actie volgen · {d0} automatisch · Z één beeld groot · N aantal beelden · H bediening · F volledig scherm · L taal',
       inside: 'Binnen in een huis', wonScore: '{team} wint! {a}–{b}', wonTags: '{team} wint op tikken, {a}–{b}', drawScore: 'Gelijkspel, {a}–{b}',
+      // Attack and defend (server/assault.mjs).
+      assault: 'Aanvallen en verdedigen', aRound: 'Ronde {n} van 2 · {team} verdedigt {place}', aBreak: 'Pauze · ronde 2 aan de Sparrenhof', church: 'de kerk', sparrenhof: 'de Sparrenhof',
+      defends: 'verdedigt', attacks: 'valt aan · vlag op {n}%', inTime: 'in {s} s', got: '{n}% ver', aTime: '{team} wint! Snelste verovering: {a} s', aOnly: '{team} wint! Enige verovering: {a} s',
+      aFar: '{team} wint! Vlag het verst: {a}%', aTags: '{team} wint op tikken, {a}–{b}', aDraw: 'Gelijkspel',
     },
     en: {
       free: 'Free play', hide: 'Hide and seek', tag: 'Tag', treasure: 'Treasure hunt', teams: 'House against bungalow', zombies: 'Zombies',
@@ -65,6 +69,9 @@
       notAdmin: 'Only the admin can watch. Log in on the admin page.', hint: 'H: controls', noTeam: 'No team',
       keys: '{d14} view · ← → player · ↑ ↓ team · E behind/eyes · A follow the action · {d0} automatic · Z one view big · N number of views · H controls · F full screen · L language',
       inside: 'Inside a home', wonScore: '{team} wins! {a}–{b}', wonTags: '{team} wins on tags, {a}–{b}', drawScore: 'A draw, {a}–{b}',
+      assault: 'Attack and defend', aRound: 'Round {n} of 2 · {team} defends {place}', aBreak: 'Break · round 2 at the Sparrenhof', church: 'the church', sparrenhof: 'the Sparrenhof',
+      defends: 'defends', attacks: 'attacks · flag {n}% of the way', inTime: 'in {s} s', got: '{n}% of the way', aTime: '{team} wins! Fastest capture: {a} s', aOnly: '{team} wins! The only capture: {a} s',
+      aFar: '{team} wins! The flag got furthest: {a}%', aTags: '{team} wins on tags, {a}–{b}', aDraw: 'A draw',
     },
   };
   let lang = store.get('lang', null);
@@ -408,6 +415,25 @@
       if (m.resultCode === 'flagDraw' || m.resultCode === 'teamsDraw') return t('drawScore', score);
       return t('over');
     };
+    if (m.kind === 'flag' && m.flag?.assault) {
+      // Attack and defend: the round and who defends where, each team's part (its best round so far: a capture's time or
+      // how far it got), the clock; at the end who won and how.
+      const a = m.flag.assault;
+      const args = m.resultArgs && typeof m.resultArgs === 'object' ? m.resultArgs : {};
+      const winner = typeof args.team === 'string' ? t(sideName(args.team, m)) : '';
+      const end = { assaultTime: 'aTime', assaultOnly: 'aOnly', assaultFar: 'aFar', assaultTags: 'aTags' }[m.resultCode];
+      const sub = !playing ? (end && winner ? t(end, { team: winner, a: num(args.a), b: num(args.b) }) : m.resultCode === 'assaultDraw' ? t('aDraw') : t('over'))
+        : a.phase === 'break' ? t('aBreak') : t('aRound', { n: num(a.round), team: t(a.def), place: t(m.flag.field === 'assaultSparrenhof' ? 'sparrenhof' : 'church') });
+      const mine = (team) => (a.results ?? []).find((r) => r.def !== team);
+      const block = (team) => {
+        const r = mine(team);
+        const now = playing && a.phase !== 'break' ? (team === a.def ? t('defends') : t('attacks', { n: num(a.best) })) : '';
+        const done = r ? (r.ms === null ? t('got', { n: num(r.best) }) : t('inTime', { s: Math.round(num(r.ms) / 100) / 10 })) : '';
+        const carrier = team !== a.def && m.flag.flags?.[a.def]?.at === 'carried' ? t('flagBy', { name: String(m.flag.flags[a.def].by ?? '') }) : '';
+        return { id: team, score: r && r.ms !== null ? (Math.round(num(r.ms) / 100) / 10).toFixed(1) : '–', unit: 's', line: [carrier || now, done].filter(Boolean).join(' · '), carried: !!carrier };
+      };
+      return { title: t('assault'), sub, clock: playing ? clock(left(m.ms)) : '', teams: ['blue', 'red'].map(block) };
+    }
     if (m.kind === 'flag' && m.flag) {
       const f = m.flag;
       const line = (team) => {

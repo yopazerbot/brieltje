@@ -10,7 +10,7 @@
 // browser (localStorage, keys briel.host.*), a convenience only.
 (() => {
   const $ = (id) => document.getElementById(id);
-  const KINDS = { hide: 'Hide and seek', tag: 'Tag', treasure: 'Treasure hunt', teams: 'House against bungalow', zombies: 'Zombies', duel: 'Zombies duel', flag: 'Steal the flag' };
+  const KINDS = { hide: 'Hide and seek', tag: 'Tag', treasure: 'Treasure hunt', teams: 'House against bungalow', zombies: 'Zombies', duel: 'Zombies duel', flag: 'Steal the flag', assault: 'Attack and defend' };
   // Steal the flag's fields (shared/flagFields.mjs): blue always at the church.
   const FIELDS = { compact: 'Compact: church and Molenhoek', village: 'Village: church and Sparrenhof' };
   const PLACES = { house: 'The house', bungalow: 'The bungalow', church: 'The church square', molenhoek: 'Molenhoek', molenhoek_mid: 'Molenhoek, middle', molenhoek_end: 'Molenhoek, end', sparrenhof: 'Sparrenhof' };
@@ -166,7 +166,8 @@
     $('chip-doors').textContent = v.locked ? `🔒 Doors locked${v.knocking.length ? ` · ${v.knocking.length} waiting` : ''}` : '🔓 Doors open';
     $('chip-doors').className = `chip${v.locked ? ' warn' : ''}${v.knocking.length ? ' pulse' : ''}`;
     const m = v.mode;
-    $('chip-game').textContent = v.countdown ? `⏱ ${KINDS[v.countdown.kind]} in ${Math.ceil(v.countdown.ms / 1000)} s` : m.kind === 'free' ? '🎮 Free play' : `🎮 ${KINDS[m.kind]}${m.ms ? ` · ${clock(m.ms)}` : ''}`;
+    const title = m.flag?.assault ? KINDS.assault : KINDS[m.kind];
+    $('chip-game').textContent = v.countdown ? `⏱ ${KINDS[v.countdown.kind]} in ${Math.ceil(v.countdown.ms / 1000)} s` : m.kind === 'free' ? '🎮 Free play' : `🎮 ${title}${m.flag?.assault ? ` · round ${m.flag.assault.round}` : ''}${m.ms ? ` · ${clock(m.ms)}` : ''}`;
     $('chip-server').textContent = last ? `${LEVELS[worst].icon} Server: ${LEVELS[worst].word.toLowerCase()}` : '… Server';
     $('chip-server').className = `chip ${last ? LEVELS[worst].cls : ''}`;
 
@@ -212,8 +213,8 @@
     if (v.countdown) now.replaceChildren(el('b', { text: `${KINDS[v.countdown.kind]} starts in ${Math.ceil(v.countdown.ms / 1000)} s` }));
     else if (m.kind === 'free') now.replaceChildren(el('b', { text: 'Free play' }), el('span', { class: 'muted', text: ' · first to 10 kills wins a round' }));
     else {
-      const extra = m.kind === 'teams' && m.score ? ` · House ${m.score.house} – ${m.score.bungalow} Bungalow (to ${m.goal})` : m.kind === 'zombies' && m.zombies ? ` · wave ${m.zombies.wave ?? ''}` : m.kind === 'flag' && m.score ? ` · Blue ${m.score.blue} – ${m.score.red} Red${m.flag?.sudden ? ' · sudden death' : ''}` : '';
-      now.replaceChildren(el('b', { text: KINDS[m.kind] ?? m.kind }), el('span', { text: `${m.phase === 'done' ? ' · over' : ''}${m.ms ? ` · ${clock(m.ms)} left` : ''}${extra}${m.look ? ` · ${LOOKS[m.look] ?? m.look}` : ''}` }), m.result ? el('p', { class: 'muted', text: m.result }) : null);
+      const extra = m.flag?.assault ? assaultLine(m.flag.assault) : m.kind === 'teams' && m.score ? ` · House ${m.score.house} – ${m.score.bungalow} Bungalow (to ${m.goal})` : m.kind === 'zombies' && m.zombies ? ` · wave ${m.zombies.wave ?? ''}` : m.kind === 'flag' && m.score ? ` · Blue ${m.score.blue} – ${m.score.red} Red${m.flag?.sudden ? ' · sudden death' : ''}` : '';
+      now.replaceChildren(el('b', { text: title ?? m.kind }), el('span', { text: `${m.phase === 'done' ? ' · over' : ''}${m.ms ? ` · ${clock(m.ms)} left` : ''}${extra}${m.look ? ` · ${LOOKS[m.look] ?? m.look}` : ''}` }), m.result ? el('p', { class: 'muted', text: m.result }) : null);
     }
     // The Zombies duel (server/duel.mjs): both rooms' waves; Stop ends both at once.
     if (v.duel && !v.countdown) {
@@ -400,7 +401,17 @@
   // ------------------------------------------------------------------ helpers and controls
 
   const clock = (ms) => `${Math.floor(ms / 60000)}:${String(Math.floor((ms % 60000) / 1000)).padStart(2, '0')}`;
-  const describe = (e) => `${KINDS[e.kind]}${e.kind === 'duel' ? (e.duel === 'final' ? ', final' : ', warm-up') : ''}${e.kind === 'zombies' ? ` at ${PLACES[e.place] ?? e.place}` : ''}${e.kind === 'flag' ? `, ${FIELDS[e.place] ?? e.place}` : ''}${e.minutes ? `, ${e.minutes} min` : ''}${e.goal ? `, to ${e.goal}` : ''}`;
+  /**
+   * Attack and defend as it stands (server/assault.mjs view): the round or the break, who defends where, how far the flag
+   * got, and each round played (the capture's time, or how far it got).
+   */
+  const assaultLine = (a) => {
+    const where = a.round === 1 ? 'the church' : 'the Sparrenhof';
+    const done = a.results.map((r, i) => `round ${i + 1}: ${TEAM_NAMES[r.def === 'blue' ? 'red' : 'blue']} ${r.ms === null ? `got ${r.best}%` : `captured in ${(r.ms / 1000).toFixed(1)} s`}`);
+    const now = a.phase === 'break' ? 'break before round 2' : `round ${a.round} of 2, ${TEAM_NAMES[a.def]} defends ${where}, flag ${a.best}% of the way`;
+    return ` · ${[now, ...done].join(' · ')}`;
+  };
+  const describe = (e) => `${KINDS[e.kind]}${e.kind === 'assault' ? `, ${TEAM_NAMES[e.defend] ?? 'Blue'} defends the church first` : ''}${e.kind === 'duel' ? (e.duel === 'final' ? ', final' : ', warm-up') : ''}${e.kind === 'zombies' ? ` at ${PLACES[e.place] ?? e.place}` : ''}${e.kind === 'flag' ? `, ${FIELDS[e.place] ?? e.place}` : ''}${e.minutes ? `, ${e.minutes} min` : ''}${e.goal ? `, to ${e.goal}` : ''}`;
   const setProgramme = (list) => act({ op: 'programme', list });
   const moveEntry = (i, d) => {
     const list = [...v.programme];
@@ -412,12 +423,14 @@
     const minutes = Number($('g-minutes').value) || undefined;
     const goal = kind === 'teams' ? Number($('g-goal').value) || undefined : undefined;
     const duel = kind === 'duel' ? $('g-duel').value : undefined;
-    return { kind, place: kind === 'zombies' ? $('g-place').value : kind === 'flag' ? $('g-field').value : 'house', minutes: kind === 'zombies' || duel === 'final' ? undefined : minutes, goal, look: $('g-look').value || null, duel };
+    const defend = kind === 'assault' ? $('g-defend').value : undefined; // Attack and defend: who defends the church in round 1
+    return { kind, place: kind === 'zombies' ? $('g-place').value : kind === 'flag' ? $('g-field').value : kind === 'assault' ? 'assault' : 'house', minutes: kind === 'zombies' || duel === 'final' ? undefined : minutes, goal, look: $('g-look').value || null, duel, defend };
   };
   const showFields = () => {
     const kind = $('g-kind').value;
     $('g-place-label').hidden = kind !== 'zombies';
     $('g-field-label').hidden = kind !== 'flag';
+    $('g-defend-label').hidden = kind !== 'assault';
     $('g-goal-label').hidden = kind !== 'teams';
     $('g-minutes').disabled = kind === 'zombies' || (kind === 'duel' && $('g-duel').value === 'final');
     $('g-duel-label').hidden = kind !== 'duel';
