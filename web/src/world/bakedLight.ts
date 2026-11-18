@@ -13,9 +13,10 @@ import { halfSize, loadFile } from './textureFiles';
  * - the sun's shadow of everything round them (other houses, trees, the model itself): the real-time sun is
  *   dimmed by it, so the whole village has shadows, not only the 17 m round the main house.
  * - the sky's reflections dimmed where little sky is seen, so recesses don't shine.
- * - wear: dirt splashed up at the foot of walls, dust in corners and under sills and eaves, streaks where rain
- *   runs down. Patchy, with a little noise in the world's own coordinates on top, so no two walls look alike.
- *   No green: the wear page's G channel (algae and moss) isn't drawn (Yoshi: it made the houses ugly).
+ * - wear: dust in corners and under sills and eaves, streaks where rain runs down. Patchy, with a little noise
+ *   in the world's own coordinates on top, so no two walls look alike. No green: the wear page's G channel
+ *   (algae and moss) isn't drawn (Yoshi: it made the houses ugly). No dirt splashed up at the foot of the walls:
+ *   the wear pages are encoded without it (Yoshi, 18 Nov 2026: "Yes, remove it").
  *
  * Costs per pixel of a baked surface: four texture reads more than before (light, wear, noise twice; the sky's
  * even light is read once, as before); on Low two (no noise): measured on this PC's integrated chip at the

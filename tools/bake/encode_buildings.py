@@ -1,15 +1,20 @@
 """Turn the baked passes (tools/bake/bake_buildings.py) into the game's light and wear textures.
 
-  tools/.venv/Scripts/python.exe tools/bake/encode_buildings.py <work dir> web/public/baked
+  tools/.venv/Scripts/python.exe tools/bake/encode_buildings.py <work dir> web/public/baked [--wear-only] [--models a,b]
+
+`--wear-only` writes the wear pages alone and leaves the light pages and <model>.json as they are (the wear
+needs no new bake: a change to it is encoded again from the work dir of the bake that is in the game).
+`--models` encodes only those models (the light's `scale` is still worked out over every model in the work dir).
 
 Per page of a model:
 - <model>_<page>.webp, the light: RGB the light from the sky and the sun's bounce (irradiance / pi), scaled
   by `scale` in <model>.json and stored as the 4.4th root (the game decodes sRGB and squares it: many more
   steps in the dark); A how much of the sun the point sees (the game dims its real-time sun by it).
-- <model>_<page>_wear.webp (half the light's size), the wear: R grime (splashed dirt at the foot of walls, dust in corners and under
-  sills and eaves), G green (algae low on shaded walls, moss on roofs that get little sun), B where rain runs
-  down the walls (the game draws it as streaks). Patchy, from noise in the world's own coordinates, so two
-  houses side by side are never dirty in the same way.
+- <model>_<page>_wear.webp (half the light's size), the wear: R grime (dust in corners and under sills and
+  eaves; no dirt splashed up at the foot of the walls, Yoshi 18 Nov 2026: "Yes, remove it"), G green (algae
+  low on shaded walls, moss on roofs that get little sun; the game doesn't draw it), B where rain runs down
+  the walls (the game draws it as streaks). Patchy, from noise in the world's own coordinates, so two houses
+  side by side are never dirty in the same way.
 - Each also as KTX2 (Basis Universal, ETC1S, as tools/ktx2.py), which stays
   compressed on the graphics chip, and the same four at half size in half/ for phones and tablets.
 - <model>.json: the layout's id (the game uses the bake only if its model has the same), the pages, the
@@ -26,7 +31,10 @@ from pathlib import Path
 import numpy as np
 from PIL import Image
 
-WORK, DST = Path(sys.argv[1]), Path(sys.argv[2])
+args = sys.argv[1:]
+WEAR_ONLY = "--wear-only" in args
+ONLY = set(args[args.index("--models") + 1].split(",")) if "--models" in args else None
+WORK, DST = Path(args[0]), Path(args[1])
 DST.mkdir(parents=True, exist_ok=True)
 (DST / "half").mkdir(exist_ok=True)
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
@@ -130,30 +138,34 @@ def load(model, page, name):
 
 # One scale for every model: the same light is the same number everywhere.
 samples = []
-for model, ps in pages.items():
+for model, ps in ({} if WEAR_ONLY else pages).items():
     for p in ps:
         cover = load(model, p, "cover")[..., 0] > 0.5
         light = load(model, p, "sky") + load(model, p, "bounce")
         lum = light[cover] @ np.array([0.2126, 0.7152, 0.0722])
         samples.append(lum[:: max(1, lum.size // 200000)])
-scale = float(np.percentile(np.concatenate(samples), 99.7)) / 0.95
-print(f"scale {scale:.4f} (99.7th percentile of the light, near white)")
+if not WEAR_ONLY:
+    scale = float(np.percentile(np.concatenate(samples), 99.7)) / 0.95
+    print(f"scale {scale:.4f} (99.7th percentile of the light, near white)")
 
 for model, ps in pages.items():
+    if ONLY is not None and model not in ONLY:
+        continue
     out_pages = []
     for p in ps:
         cover = load(model, p, "cover")[..., 0] > 0.5
         size = cover.shape[0]
-        light = load(model, p, "sky") + load(model, p, "bounce")
         sun = load(model, p, "sun")[..., 0]
         rain = load(model, p, "rain")[..., 0]
         ao = load(model, p, "ao")[..., 0]
         pos = np.load(WORK / f"{model}_{p}_position.npy").astype(np.float64)
         nrm = load(model, p, "normal")
 
-        rgb = np.clip(light / scale, 0, 1) ** (1 / 4.4)
-        lightmap = fill_gaps(np.concatenate([rgb, sun[..., None]], axis=-1), cover)
-        save(Image.fromarray((lightmap * 255 + 0.5).astype(np.uint8), "RGBA"), f"{model}_{p}", LIGHT_KTX2, dict(quality=85, alpha_quality=90, method=6))
+        if not WEAR_ONLY:
+            light = load(model, p, "sky") + load(model, p, "bounce")
+            rgb = np.clip(light / scale, 0, 1) ** (1 / 4.4)
+            lightmap = fill_gaps(np.concatenate([rgb, sun[..., None]], axis=-1), cover)
+            save(Image.fromarray((lightmap * 255 + 0.5).astype(np.uint8), "RGBA"), f"{model}_{p}", LIGHT_KTX2, dict(quality=85, alpha_quality=90, method=6))
 
         # Wear, only where there is surface.
         idx = np.flatnonzero(cover.ravel())
@@ -165,10 +177,10 @@ for model, ps in pages.items():
         up = np.clip(N[:, 1], 0, 1)
         patch = fbm(P * 0.45)  # patches a couple of metres across
         fine = fbm(P * 2.2 + 5.1)
-        splash = np.exp(-np.clip(above, 0, None) / 0.45) * upright
+        # Dust in corners and where the rain doesn't reach; no splashed dirt at the foot of the walls (Yoshi).
         corner = np.clip((1 - A) * 1.6, 0, 1)
         sheltered = (1 - R) * upright
-        grime = np.clip((0.6 * splash + 0.35 * corner + 0.3 * sheltered) * (0.55 + 0.9 * patch) * (0.8 + 0.4 * fine), 0, 1)
+        grime = np.clip((0.35 * corner + 0.3 * sheltered) * (0.55 + 0.9 * patch) * (0.8 + 0.4 * fine), 0, 1)
         damp = R * (1 - S)
         green = (0.8 * np.exp(-np.clip(above, 0, None) / 0.9) * upright + 0.9 * up * (above > 2.0)) * damp
         green = np.clip(green * np.clip((patch - 0.35) * 2.5, 0, 1), 0, 1)
@@ -178,8 +190,10 @@ for model, ps in pages.items():
         wear = fill_gaps(wear.reshape(size, size, 3), cover)
         # Half the light's size: wear changes slowly, and the game adds its fine pattern from noise.
         save(Image.fromarray((wear * 255 + 0.5).astype(np.uint8), "RGB").resize((size // 2, size // 2), Image.Resampling.BOX), f"{model}_{p}_wear", WEAR_KTX2, dict(quality=85, method=6))
-        kb = sum((d / f"{model}_{p}{w}.ktx2").stat().st_size for d in (DST,) for w in ("", "_wear")) // 1024
+        kb = sum((DST / f"{model}_{p}{w}.ktx2").stat().st_size for w in ("_wear",) + (() if WEAR_ONLY else ("",))) // 1024
         print(f"{model} page {p}: {size}px, {cover.mean():.0%} covered, {kb} KB as KTX2; grime {grime.mean():.2f}, green {green.mean():.2f}, sun {S.mean():.2f}")
         out_pages.append(p)
+    if WEAR_ONLY:
+        continue
     t = info["targets"][model]
     (DST / f"{model}.json").write_text(json.dumps({"id": t["id"], "pages": len(out_pages), "size": t["size"], "scale": round(scale, 5)}), encoding="utf-8")
