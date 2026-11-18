@@ -103,6 +103,7 @@ import { neverCards, treesMayPaint, unpaintedOut } from './world/leafCards';
 import { setWaterDetail, waterLevel, wetGround } from './world/water';
 import { buildHorizon } from './world/horizon';
 import { wearLonePatches, weatherYards } from './world/yards';
+import { detailModelPaving, detailPaving, pavingMeshes, planPaving, usePavingPlan } from './world/pavingDetail';
 import { Undergrowth } from './world/undergrowth';
 import { GrassTufts } from './world/grassTufts';
 import { HostNotice } from './ui/hostNotice';
@@ -4471,6 +4472,7 @@ async function buildVillage(): Promise<void> {
   const modelsCut = await claimModelGroundSoon(models, house.ground, between, cutter);
   for (const m of models) snowOnModel(m); // their unbaked outdoor parts take the snow (world/snowCover.ts)
   for (const m of models) wetOnModel(m); // and their streets and yards the rain (world/wetGround.ts)
+  for (const m of models) detailModelPaving(m); // their paving without a visible repeat (world/pavingDetail.ts)
   for (const m of models) glassOnModel(m); // their windows mirror the street over a room (world/glassLook.ts)
   // The village's ground shading's shaders compile ahead of its bakes (world/groundShade.ts warm): the models' while
   // its tiles are built, then the tiles' and the ponds' once they are in.
@@ -4499,6 +4501,7 @@ async function buildVillage(): Promise<void> {
   const kept = withoutLandmarks(data, models.map((m) => m.userData.landmark as string), models.flatMap((m) => (m.userData.replaces as Ring[] | undefined) ?? []));
   kept.unfiltered = data; // the roofs look behind them in the whole village, with the houses our models stand in for (world/roofPlan.ts)
   const drawn = withRoadDetail(kept);
+  const pavingPlan = planPaving(kept.prisms ?? [], between); // the church square's use, iron and weeds (world/pavingDetail.ts)
   drawn.prisms?.push(...(await villagePlots(kept, drawn, models, house.ground, between))); // paths and drives (world/villagePlots.ts): drawn only
   // One surface per spot (world/groundLayers.ts): the covers claimed, then the streets in detail built (cut under the
   // models' ground), then the covers' tiles (cut under both).
@@ -4514,6 +4517,8 @@ async function buildVillage(): Promise<void> {
   await between();
   // The centre's clinkers (the church square and the main street) have a texture of their own, fetched with the village: shaded as the other ground covers.
   groundShade.apply(blockMaterial('pave_grey', renderer).material as THREE.MeshStandardMaterial, 1, false, true);
+  detailPaving(blockMaterial('pave_grey', renderer).material as THREE.MeshStandardMaterial, 'clinker');
+  detailPaving(blockMaterial('rd_tiles', renderer).material as THREE.MeshStandardMaterial, 'plain');
   const made: { key: string; pieces: ReturnType<typeof buildTile> }[] = [];
   const cuts = askTiles();
   for (let i = 0; i < villageTiles.length; i++) {
@@ -4546,6 +4551,11 @@ async function buildVillage(): Promise<void> {
   };
   // What the village adds to the scene from here on is drawn once its shaders are compiled (below).
   const before = new Set([...scene.children, ...tiles.group.children]);
+  const paving = await pavingPlan;
+  if (paving) {
+    usePavingPlan(paving);
+    scene.add(pavingMeshes(paving, (m) => groundShade.apply(m, 0.5)));
+  }
   for (const set of [made, roads.tiles]) {
     tiles.addSet(set.filter((m) => !far(m) && !northwest(m) && !west(m)), false);
     if (set.some(far)) tiles.addSet(set.filter(far), false, 100, 350);
