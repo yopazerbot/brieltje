@@ -587,7 +587,8 @@ const groundShade = new GroundShade(center, sunShadow.uniforms);
 groundShade.apply(grassMat, 0.35, true);
 // Farmland on the grass where the data has none: outside its area and beyond the draw distance (world/farLand.ts).
 patchFarLand(grassMat, renderer, () => tiles.drawDistance);
-scene.add(new FarTrees(renderer, house.ground).mesh); // and its tree lines stood up
+const farTrees = new FarTrees(renderer, house.ground); // and its tree lines stood up (Medium and up, applyQuality)
+scene.add(farTrees.mesh);
 groundShade.addGrass(house.surroundings?.grass); // the gardens' stripes and the meadows
 // The garden's own paths, drive and planted borders too (not the terraces: one is on the roof).
 // The hard ones (all but the fields' soil and the borders' earth) take earth and green where they meet the grass.
@@ -735,6 +736,7 @@ function applyQuality(q: Quality): void {
   setHeliDetail(q === 'low' || phone); // the helicopter's simple copy from nearer (world/heli.ts)
   tiles.drawDistance = phone ? Math.min(FAR_PHONE, preset.far) : preset.far;
   undergrowth.setQuality(q, phone);
+  farTrees.mesh.visible = q !== 'low' && !phone; // the far land's tree strips: some 250 000 vertices a frame
   grassTufts.setQuality(q, phone);
   dynScale = 1;
   resize();
