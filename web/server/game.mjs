@@ -640,7 +640,7 @@ export class Game {
       // The browser that joined (its guest cookie's id, kept with the session): what a kick keeps out
       // (server/auth.mjs). Never the cookie this connection happens to carry: that one proves nothing.
       device: session.device ?? null,
-      score, hp: HEALTH, alive: true, respawnAt: 0, protectedUntil: now + PROTECT_MS, nextHit: 0, weapons: loadout({ role: session.role }, !!this.modes.zombies), joinTime: now, spawned: false,
+      score, hp: HEALTH, alive: true, respawnAt: 0, protectedUntil: now + PROTECT_MS, nextHit: 0, weapons: this.loadout(name, { role: session.role }), joinTime: now, spawned: false,
       nades: Array(GRENADE.carry).fill(0), thrown: [],
       // The ticks: which the page reads, when its state was taken (`stamp`, the server's clock), whether
       // it sent one since the last tick, a counter of the server's moves (respawn, portal), the state
@@ -840,7 +840,7 @@ export class Game {
     this.releaseHorse(targetName);
     this.releaseBike(targetName);
     if (!target.guard) target.score.deaths++; // a flag game's guard counts for nothing (server/flagGuards.mjs)
-    target.weapons = loadout(target, !!this.modes.zombies); // dropped what they picked up
+    target.weapons = this.loadout(targetName, target); // dropped what they picked up
     this.broadcastFrom({ t: 'kill', killer: by, victim: targetName, head: false, w: by === 'a strongman' ? 'strongman' : 'zombie' }, target); // not to those it is hidden from (homeGate.hides)
     if (!target.guard) this.stats(targetName, { deaths: 1 });
     this.broadcast({ t: 'scores', list: this.scoreList() });
@@ -2670,7 +2670,7 @@ export class Game {
     if (real) target.score.deaths++;
     if (real) shooter.score.kills++;
     if (real) shooter.score.points += POINTS.kill + (head ? POINTS.headshot : 0);
-    target.weapons = loadout(target, !!this.modes.zombies); // dropped what they picked up
+    target.weapons = this.loadout(targetName, target); // dropped what they picked up
     if (tellKill) tellKill({ t: 'kill', killer: name, victim: targetName, head, w });
     else this.broadcastFrom({ t: 'kill', killer: name, victim: targetName, head, w }, this.gate.insideOf(target) ? target : shooter); // not to those it is hidden from
     if (real) this.stats(name, { kills: 1, headshots: head ? 1 : 0 });
@@ -2697,7 +2697,7 @@ export class Game {
     this.releaseBike(name);
     p.hp = HEALTH;
     p.alive = true;
-    p.weapons = loadout(p, !!this.modes.zombies);
+    p.weapons = this.loadout(name, p);
     p.nades.fill(0);
     p.protectedUntil = now + (this.modes.safeMs ?? PROTECT_MS);
     p.backAt = now; // out of the fight before it: holstering counts at once (state)
@@ -2820,6 +2820,25 @@ export class Game {
       this.respawn(name, p, now, { spawn: 0, x: +x.toFixed(2), y: me.y, z: +z.toFixed(2), face: [me.x, me.z] });
     });
     return true;
+  }
+
+  /**
+   * The guns `name` (`p`) has coming into play: the loadout, but in Attack and defend without a bazooka or a sniper rifle
+   * they don't hold from its crates (server/assaultSupply.mjs trim), from the first moment, not a tick later.
+   */
+  loadout(name, p) {
+    const list = loadout(p, !!this.modes.zombies);
+    this.modes.flag?.arms?.trim?.(name, list);
+    return list;
+  }
+
+  /**
+   * The bare ground at (x, z) (the relief) and whether a player may stand there: no wall, hedge or fence within a metre
+   * (groundMap), nothing solid at body height. For a start place the server picks (server/assault.mjs, by the truck).
+   */
+  standAt(x, z) {
+    const y = HOUSE.ground + TERRAIN.height(x, z);
+    return { y, ok: this.free(x, z) && SOLIDS.boxFree(x, z, 0, 0.35, 0.35, y + 0.3, y + 1.8) };
   }
 
   /** Health at the start and after a respawn. */

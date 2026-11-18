@@ -106,16 +106,30 @@ export class AssaultArms {
     for (const n of [...this.holders.keys()]) if (name === null || n === name) this.release(n, Date.now(), 0);
   }
 
-  /** Player `name`'s guns as they should be: a bazooka or a sniper rifle only when they hold one. */
+  /**
+   * The guns `name` comes into play with (Game.loadout: a join, a respawn, going down), `list` changed in place: no
+   * bazooka or sniper rifle but the one they hold. Before, the starting sniper and the admin's bazooka were theirs until
+   * the next tick (step), long enough for a shot.
+   */
+  trim(name, list) {
+    if (this.over) return;
+    const h = this.holders.get(name);
+    for (const w of HEAVY) if (h?.w !== w) list.delete(w);
+  }
+
+  /** Player `name`'s guns as they should be: a bazooka or a sniper rifle only when they hold one. Every tick: nothing made. */
   arm(name, p) {
-    if (!p.weapons) return;
-    const h = this.over ? null : this.holders.get(name);
-    const had = [...p.weapons].join();
+    if (!p.weapons || this.over) return;
+    const h = this.holders.get(name);
+    let changed = false;
     for (const w of HEAVY) {
-      if (h?.w === w) p.weapons.add(w);
-      else if (!this.over) p.weapons.delete(w);
+      const want = h?.w === w;
+      if (want === p.weapons.has(w)) continue;
+      if (want) p.weapons.add(w);
+      else p.weapons.delete(w);
+      changed = true;
     }
-    if ([...p.weapons].join() === had) return;
+    if (!changed) return;
     this.game.send(p.ws, { t: 'weapons', list: [...p.weapons] });
     if (h?.w === 'bazooka') this.game.send(p.ws, { t: 'fbz', ev: 'left', n: h.left });
   }
