@@ -859,7 +859,7 @@ test('the village\'s own vehicles by a base are out of play for the game, and ba
 
 test('both teams alike on each field: start places 12 m or more off, the same spread; racks 6 m off; the same bikes and cars', () => {
   const mean = (a) => a.reduce((x, y) => x + y, 0) / a.length;
-  for (const field of Object.values(FIELDS)) {
+  for (const field of Object.values(FIELDS).filter((f) => !f.assault)) { // Attack and defend's camps have rules of their own (server/assault.test.mjs)
     const d = {};
     for (const team of ['blue', 'red']) {
       const { stand, spawns, rack } = field.bases[team];

@@ -26,6 +26,7 @@
 // host's `swap`, server/flags.mjs) blue plays from red's base and red from blue's: `baseOf`.
 
 import { makeBounds } from './bounds.mjs';
+import { ASSAULT_FIELDS } from './assaultFields.mjs';
 
 export const FLAG_TEAMS = ['blue', 'red'];
 /** As the host's evening teams (server/host.mjs EVENING_TEAMS). */
@@ -118,6 +119,8 @@ export const FIELDS = {
      */
     heli: { blue: CHURCH_HELI, red: { id: 'house', x: 613.0, y: -7.3, z: 944.0, yaw: -1.5708 } },
   },
+  // Attack and defend's two fields, one a round (shared/assaultFields.mjs): blue's side the defenders', red's the camp.
+  ...ASSAULT_FIELDS,
 };
 
 /**

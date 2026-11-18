@@ -1,6 +1,7 @@
 // Types for flagFields.mjs (Steal the flag's fields, shared with the server).
 
 import type { Bounds } from './bounds.mjs';
+import type { AssaultCamp, CrateKind } from './assaultFields.mjs';
 
 export type FlagTeam = 'blue' | 'red';
 
@@ -18,8 +19,17 @@ export interface FlagVehicles {
   bikes: { id: string; x: number; y: number; z: number; yaw: number }[];
 }
 
+/** Attack and defend's own part of a field (shared/assaultFields.mjs) */
+export interface AssaultPart {
+  camp: AssaultCamp;
+  /** The spawn truck's car id */
+  truck: string;
+  /** The defenders' crates */
+  crates: { kind: CrateKind; at: [number, number, number] }[];
+}
+
 export interface FlagField {
-  id: 'compact' | 'village';
+  id: 'compact' | 'village' | 'assaultChurch' | 'assaultSparrenhof';
   /** The portal by red's base (src/i18n.ts portal.*) */
   red: string;
   bases: Record<FlagTeam, FlagBase>;
@@ -29,11 +39,13 @@ export interface FlagField {
   off?: { cars: string[]; bikes: string[] };
   /** Each team's helicopter (shared/heli.json's id): on its own pad, or set down at x, y, z, yaw for the game */
   heli: Record<FlagTeam, { id: string; x?: number; y?: number; z?: number; yaw?: number }>;
+  /** Attack and defend's fields only */
+  assault?: AssaultPart;
 }
 
 export const FLAG_TEAMS: FlagTeam[];
 export const FLAG_COLORS: Record<FlagTeam, string>;
-export const FIELDS: Record<'compact' | 'village', FlagField>;
+export const FIELDS: Record<FlagField['id'], FlagField>;
 export function fieldOf(id: unknown): FlagField;
 export function baseOf(field: FlagField, team: FlagTeam, swapped?: boolean): FlagBase;
 export function vehicleTeam(field: FlagField, kind: string, id: string, swapped?: boolean): FlagTeam | null;
