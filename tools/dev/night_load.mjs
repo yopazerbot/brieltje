@@ -34,6 +34,7 @@
 //   cd web && npm run build
 //   node tools/dev/night_load.mjs [--players 30] [--minutes 3] [--port 8611] [--watchers 4] [--seed 1]
 //        [--phases free,warmup,compact,village,final] [--lift-cap] [--json results.json] [--prof <folder>]
+// --phases assault: Attack and defend's two rounds (half the minutes each), the bots attacking from the camp or defending.
 // --prof: the server's processor profile (node --cpu-prof) into that folder, to find a slow path.
 import WebSocket from '../../web/node_modules/ws/wrapper.mjs';
 import { fork } from 'node:child_process';
@@ -1238,6 +1239,20 @@ async function main() {
     },
     compact: { label: 'Steal the flag, compact (paint)', run: () => flag('compact', 'paint') },
     village: { label: 'Steal the flag, village (real)', run: () => flag('village', 'real') },
+    // Attack and defend (server/assault.mjs): its two rounds in the phase's time, each half of it (at least a minute).
+    assault: {
+      label: 'Attack and defend, two rounds (real)',
+      run: async () => {
+        const half = Math.max(1, Math.round(PHASE_S / 120));
+        const r = await act({ op: 'start', kind: 'assault', defend: 'blue', look: 'real', minutes: half });
+        if (!r?.ok) console.log(`  attack and defend did not start: ${JSON.stringify(r)}`);
+        await sleep(11_000 + 2 * half * 60_000 + 25_000);
+        const v = await view();
+        if (v?.mode?.kind !== 'free' && v?.mode?.phase !== 'done') await act({ op: 'stop' });
+        await sleep(3000);
+        for (const b of bots) Object.assign(b, { flagRole: null, usedVehicle: false, lastVehicle: null });
+      },
+    },
     final: {
       label: 'Zombies duel, final (real)',
       run: async () => {
