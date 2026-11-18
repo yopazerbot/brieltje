@@ -498,6 +498,7 @@ file's opening comment; run it again after adding, moving or removing a module.
 - `tools/neighbours.py`: Neighbouring houses, the road and trees around the plot, from Flemish open data.
 - `tools/parachute/parachute.py`: Build the steerable parachute for arrivals by air: canopy, lines, risers, toggles, harness and pack, rigged and animated, as one GLB for three.js, with...
 - `tools/parachute/renders.py`: Review renders for tools/parachute/parachute.py, which imports this file (it is not run on its own).
+- `tools/people_assets.py`: Prepare the villagers' sculpted parts in tools/assets/people/ from two public domain (CC0) downloads.
 - `tools/places.py`: The streets you can go to from the chat (/location Kapellenhoek) and the menu's list: one spot on each.
 - `tools/private_data.mjs`: Seal the private data for the public repository.
 - `tools/road_detail.py`: The streets' surfaces in detail: carriageways in concrete slabs or asphalt, the gutters, kerbs and pavements beside them, the verges where there are none,...
