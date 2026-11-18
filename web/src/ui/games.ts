@@ -4,6 +4,7 @@ import { paintball } from '../paintball';
 import { keepRun } from '../start';
 import type { LootKind } from '../../shared/loot.mjs';
 import type { FlagGameView, FlagHud, FlagTeam } from './flagHud';
+import type { AssaultView } from '../world/assaultCamp';
 
 /**
  * Games in multiplayer (the admin starts them, the server keeps them): hide and seek, tag, a
@@ -15,7 +16,7 @@ import type { FlagGameView, FlagHud, FlagTeam } from './flagHud';
 
 export type Team = 'house' | 'bungalow';
 const TEAM_NAMES = { house: 'team.house', bungalow: 'team.bungalow' } as const;
-const TITLES: Partial<Record<string, 'game.hide' | 'game.tag' | 'game.treasure' | 'game.teams' | 'game.zombies' | 'game.flag'>> = { hide: 'game.hide', tag: 'game.tag', treasure: 'game.treasure', teams: 'game.teams', zombies: 'game.zombies', flag: 'game.flag' };
+const TITLES: Partial<Record<string, 'game.hide' | 'game.tag' | 'game.treasure' | 'game.teams' | 'game.zombies' | 'game.flag' | 'game.assault'>> = { hide: 'game.hide', tag: 'game.tag', treasure: 'game.treasure', teams: 'game.teams', zombies: 'game.zombies', flag: 'game.flag' };
 
 /** The Zombies game in a mode's view (server/zombies.mjs view). */
 export interface ZombiesView {
@@ -215,15 +216,18 @@ export class Games {
     document.getElementById('team-explore')!.classList.toggle('hidden', !playing || !this.exploring);
     if (playing) {
       const teams = Object.values(this.view.teams ?? {});
-      // Steal the flag: blue at the church, red at Molenhoek or the Sparrenhof (its field).
+      // Steal the flag: blue at the church, red at Molenhoek or the Sparrenhof (its field). Attack and defend: who defends
+      // this round starts at the base, the others in the camp.
       const redAt = this.view.flag?.field === 'village' ? 'portal.sparrenhof' : 'portal.molenhoek';
+      const a = this.assault;
       document.querySelectorAll<HTMLButtonElement>('#team-choice [data-team]').forEach((b) => {
         const team = b.dataset.team as Team | FlagTeam;
         const ours = flag === (team === 'blue' || team === 'red');
         b.classList.toggle('hidden', !ours);
         if (!ours) return;
         const n = teams.filter((x) => x === team).length;
-        const place = team === 'house' ? t('games.atHouse') : team === 'bungalow' ? t('games.atBungalow') : team === 'blue' ? t('portal.church') : t(redAt);
+        const place = a ? (team === a.def ? t(this.view.flag?.field === 'assaultSparrenhof' ? 'portal.sparrenhof' : 'portal.church') : t('assault.camp'))
+          : team === 'house' ? t('games.atHouse') : team === 'bungalow' ? t('games.atBungalow') : team === 'blue' ? t('portal.church') : t(redAt);
         b.classList.toggle('selected', this.team === team);
         b.querySelector('span')!.textContent = plural(n, 'games.teamCount.one', 'games.teamCount.other', { n, place });
       });
@@ -251,6 +255,17 @@ export class Games {
   /** Steal the flag is played (not once its result shows). */
   get flagOn(): boolean {
     return this.view.kind === 'flag' && this.view.phase !== 'done' && !!this.view.flag;
+  }
+
+  /** Attack and defend being played (server/assault.mjs: a flag game with its own part), or null. */
+  get assault(): AssaultView | null {
+    return this.flagOn ? this.view.flag?.assault ?? null : null;
+  }
+
+  /** Attack and defend: you defend this round, and may take, carry and place the defenders' traps (as in Zombies). */
+  get traps(): boolean {
+    const a = this.assault;
+    return !!a && this.team === a.def;
   }
 
   /** You carry a flag in Steal the flag: no portal, trip from the chat or helicopter seat (the server refuses them too). */
@@ -359,7 +374,7 @@ export class Games {
     this.zexplore.classList.toggle('show', this.zombies && this.exploring);
     this.showEnd();
     if (!this.active) return;
-    const titleKey = TITLES[v.kind];
+    const titleKey = v.kind === 'flag' && v.flag?.assault ? 'game.assault' : TITLES[v.kind];
     const title = titleKey ? t(titleKey) : v.title ?? '';
     let text = `${title} · ${clock(left)} · `;
     if (v.phase === 'done') text = `${title} · ${serverText(v.resultCode, v.resultArgs, v.result ?? '')}`;

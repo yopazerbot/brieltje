@@ -254,6 +254,9 @@ export type ServerMsg =
   // Steal the flag's bazooka (server/flagBazooka.mjs): to its team, who took it from the rack; to its holder, the rockets left
   | { t: 'fbz'; ev: 'taken'; team: 'blue' | 'red'; name: string; n: number }
   | { t: 'fbz'; ev: 'left'; n: number }
+  // Attack and defend (server/assaultSupply.mjs): what a crate gave you (its wait in ms; health after a first-aid kit; your kit), and the turrets' shots at players
+  | { t: 'asup'; kind: 'ammo' | 'med' | 'bazooka' | 'sniper' | 'claymore' | 'turret'; ms: number; hp?: number; kit?: { ammo: string[]; scope: boolean; claymores: number; stakes?: number; turrets?: number; armor?: number; nades?: number } }
+  | { t: 'afire'; s: [number, string, number][] }
   | { t: 'chat'; from: string; color: string; text: string }
   | { t: 'door'; id: string; open: boolean; dir?: number; by: string }
   | { t: 'weapons'; list: string[] }

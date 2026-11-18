@@ -3,6 +3,9 @@ import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
 import CARS from '../../shared/car.json';
 import { KNOCK } from '../../shared/bikeKnock.mjs';
+import { truckSpec } from '../../shared/assaultFields.mjs';
+import { FLAG_COLORS } from '../../shared/flagFields.mjs';
+import { truckModel } from './truck';
 import type { CarSample } from '../../shared/wire.mjs';
 import { netClock, Track } from '../net/track';
 import { CarBody, groundPlane, PITCH_MAX, ROLL_MAX, skid } from './carBody';
@@ -44,6 +47,9 @@ export const PLACED_MAX = CARS.placed.max;
 
 /** A placed Tesla's spec (its base car's model, size and speeds in its own paint), standing at `at`; null for a kind the catalogue doesn't know. */
 export function placedSpec(kind: string, at: { x: number; y: number; z: number; yaw: number }): CarSpec | null {
+  // Attack and defend's spawn truck (shared/assaultFields.mjs, world/truck.ts), in its team's colour: never a spawnable kind.
+  const truck = truckSpec(kind);
+  if (truck) return { ...truck, paint: FLAG_COLORS[kind === 'truck-blue' ? 'blue' : 'red'], village: false, park: { x: at.x, y: at.y, z: at.z, yaw: at.yaw } };
   if (!Object.hasOwn(CARS.placed.kinds, kind)) return null;
   const k = CARS.placed.kinds[kind as Kind];
   const base = CARS.cars[k.base as keyof typeof CARS.cars];
@@ -135,6 +141,7 @@ const CALM = typeof matchMedia === 'function' && matchMedia('(prefers-reduced-mo
 /** A model's scene, fetched and parsed once however many cars use it; each car gets its own copy (sharing the geometry). */
 const models = new Map<string, Promise<THREE.Group>>();
 function modelCopy(url: string): Promise<THREE.Group> {
+  if (url === 'proc:truck') return Promise.resolve(truckModel()); // built in code (world/truck.ts)
   let scene = models.get(url);
   if (!scene) models.set(url, (scene = new GLTFLoader().loadAsync(url).then((gltf) => gltf.scene)));
   return scene.then((s) => s.clone()); // the original keeps the model's material names (prepare reads them)

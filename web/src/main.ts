@@ -22,6 +22,8 @@ import { Games, type ModeView } from './ui/games';
 import { FlagHud } from './ui/flagHud';
 import { FlagWorld } from './world/flags';
 import { FlagRacks } from './world/flagRack';
+import { AssaultCamp, type SupplyAim } from './world/assaultCamp';
+import { WAIT_OF } from '../shared/assaultFields.mjs';
 import { fieldEdge, fieldOf, vehicleTeam } from '../shared/flagFields.mjs';
 import { CLOWN_DEFAULTS, Clowns, KINDS, type Kind } from './world/clowns';
 import { bruteDamage, hurtBy } from '../shared/brutes.mjs';
@@ -842,6 +844,9 @@ const flagWorld = new FlagWorld();
 scene.add(flagWorld.group);
 const flagRacks = new FlagRacks(); // each team's bazooka rack (server/flagBazooka.mjs)
 scene.add(flagRacks.group);
+// Attack and defend (server/assault.mjs): the attackers' camp and the defenders' crates (world/assaultCamp.ts).
+const assaultCamp = new AssaultCamp(world);
+scene.add(assaultCamp.group);
 games.flagHud = new FlagHud(document.getElementById('modebar')!);
 loadProps(house.props ?? [], scene, world);
 // Built-in furniture (it comes with a home's inside data): drawn like the other pieces, not movable.
@@ -2475,6 +2480,44 @@ function buyAtStall(kind: StallKind): boolean {
   return true;
 }
 
+/**
+ * Attack and defend's supplies (world/assaultCamp.ts; the server decides, server/assaultSupply.mjs): the crate or vehicle of
+ * your side you stand at, and each kind's wait as the server last told it (its `asup`: ms), for the prompt.
+ */
+let supplyWait = 0;
+const supplyWaits = new Map<string, number>();
+function supplyAim(): SupplyAim | null {
+  const a = games.assault;
+  if (!a || !games.team) return null;
+  return assaultCamp.near(player.x, player.feet, player.z, games.team === a.def ? 'def' : 'att',
+    (id) => {
+      const h = helis.machines.find((q) => q.spec.id === id);
+      return h && !vehicleWear.out('heli', id) ? { x: h.s.x, y: h.s.y, z: h.s.z } : null;
+    },
+    (id) => {
+      const c = carById(id);
+      return c && !vehicleWear.out('car', id) ? { x: c.x, y: c.y, z: c.z, yaw: c.yaw, moving: !!c.driver || Math.abs(c.speed) > 0.2 } : null;
+    });
+}
+const SUPPLY_LINE = { ammo: 'asup.ammo', med: 'asup.med', bazooka: 'asup.bazooka', sniper: 'asup.sniper', claymore: 'asup.claymore', turret: 'asup.turret' } as const;
+const SUPPLY_PAINT = { ammo: 'asup.ammoPaint', bazooka: 'asup.bazookaPaint', claymore: 'asup.claymorePaint' } as const;
+const SUPPLY_GOT = { ammo: 'asup.got.ammo', med: 'asup.got.med', bazooka: 'asup.got.bazooka', sniper: 'asup.got.sniper', claymore: 'asup.got.claymore', turret: 'asup.got.turret' } as const;
+const SUPPLY_GOT_PAINT = { ammo: 'asup.got.ammoPaint', bazooka: 'asup.got.bazookaPaint', claymore: 'asup.got.claymorePaint' } as const;
+/** The prompt at a supply: what Use takes, or how long until it gives again. */
+function supplyLine(aim: SupplyAim, use: string): string {
+  const k = aim.kind;
+  const paint = paintball.on && k in SUPPLY_PAINT;
+  const left = Math.ceil(((supplyWaits.get(WAIT_OF[k]) ?? 0) - performance.now()) / 1000);
+  if (left > 0) return t('asup.wait', { what: t(paint ? SUPPLY_GOT_PAINT[k as keyof typeof SUPPLY_GOT_PAINT] : SUPPLY_GOT[k]), n: left });
+  return t(paint ? SUPPLY_PAINT[k as keyof typeof SUPPLY_PAINT] : SUPPLY_LINE[k], { use });
+}
+/** A turret of the defenders' shot at `name` (server/assaultSupply.mjs): it turns there and flashes, its shot is heard near. */
+function assaultTurretShot(tid: number, name: string, rounds: number): void {
+  const feet = name === me?.username ? new THREE.Vector3(player.x, player.feet, player.z) : avatars.position(name);
+  const muzzle = rewards.fire(tid, feet ? feet.clone().setY(feet.y + 1.1) : null, rounds);
+  if (muzzle && camera.position.distanceTo(muzzle) <= 45) weapon.remoteShot(muzzle, 'rifle', 0.35);
+}
+
 /** Get in: alone right away; in multiplayer once the server says the car is yours. Not during the Zombies game (the server refuses too). */
 function getIn(): void {
   if (games.zombies) return chat.system(() => t('srv.zNoCar'));
@@ -2819,6 +2862,7 @@ function followGame(view: ModeView): void {
   const flag = games.view.kind === 'flag' ? games.view.flag ?? null : null;
   flagWorld.set(flag);
   flagRacks.set(games.flagOn ? flag : null);
+  assaultCamp.set(games.flagOn ? flag?.field ?? null : null, games.assault);
   if (!games.flagOn) weapon.rocketsLeft = null; // the rack's launcher is the game's only (the admin's own counts none)
   bikes.setGameBikes(flag?.vehicles?.bikes ?? [], flag?.vehicles?.off ?? [], !!flag?.swapped);
   combat.respawnSeconds = games.flagOn ? 5 : 3;
@@ -2842,11 +2886,11 @@ function followGame(view: ModeView): void {
   // The rewards lying and the claymores down, as the server has them; your rewards end with the game.
   if (!solo) {
     rewards.setItems(games.view.kind === 'zombies' ? games.view.zombies?.items ?? [] : []);
-    rewards.setMines(games.view.kind === 'zombies' ? games.view.zombies?.mines ?? [] : []);
+    rewards.setMines(games.view.kind === 'zombies' ? games.view.zombies?.mines ?? [] : games.assault?.mines ?? []); // Attack and defend: the defenders' (server/assaultSupply.mjs)
     rewards.setStakes(games.view.kind === 'zombies' ? games.view.zombies?.stakes ?? [] : []);
-    rewards.setTurrets(games.view.kind === 'zombies' ? games.view.zombies?.turrets ?? [] : [], games.view.kind !== 'zombies');
+    rewards.setTurrets(games.view.kind === 'zombies' ? games.view.zombies?.turrets ?? [] : games.assault?.turrets ?? [], games.view.kind !== 'zombies' && !games.assault);
     rewards.setLulls(games.view.kind === 'zombies' ? games.view.zombies?.lulls ?? [] : []);
-    if (games.view.kind !== 'zombies' && (kit.claymores || kit.stakes || kit.turrets || kit.scope || kit.ammo.length || kit.armor || kit.nades)) applyKit(NO_KIT);
+    if (games.view.kind !== 'zombies' && !games.assault && (kit.claymores || kit.stakes || kit.turrets || kit.scope || kit.ammo.length || kit.armor || kit.nades)) applyKit(NO_KIT);
   }
 }
 // Ended for good (another tab took over, the session ended, logged out elsewhere): back to playing alone, as after
@@ -3189,6 +3233,21 @@ net.onMessage = (m: ServerMsg) => {
     case 'zfire': // the turrets' shots this tick: [turret, zombie, rounds left] (the server hurts the zombies)
       for (const [tid, zid, rounds] of m.s) turretShot(tid, zid, rounds);
       break;
+    case 'afire': // Attack and defend: the defenders' turrets' shots this tick: [turret, player, rounds left]
+      for (const [tid, name, rounds] of m.s) assaultTurretShot(tid, name, rounds);
+      break;
+    case 'asup': { // Attack and defend: what a crate gave you (server/assaultSupply.mjs), its wait
+      supplyWaits.set(WAIT_OF[m.kind], performance.now() + m.ms);
+      if (m.kind === 'ammo') {
+        weapon.refill();
+        grenades.refill();
+      }
+      if (m.kind === 'med' && typeof m.hp === 'number') combat.hurt(m.hp);
+      if (m.kit) applyKit(m.kit);
+      const k = m.kind;
+      hud.announce(t(paintball.on && k in SUPPLY_GOT_PAINT ? SUPPLY_GOT_PAINT[k as keyof typeof SUPPLY_GOT_PAINT] : SUPPLY_GOT[k]), t('asup.again', { n: Math.round(m.ms / 1000) }));
+      break;
+    }
     case 'revived': // helped up where they lay, with part of their health
       if (m.name === me?.username) {
         helpedBy = null;
@@ -3882,12 +3941,20 @@ renderer.setAnimationLoop((now: number) => {
     // with too few coins, Use is left alone (a turret beside it); a ball in reach is kicked first, and its line shows.
     const stallAim = action && !watching && !dead && !inCar && !onHorse && !tagWho && !downed && !target && !ball && games.zombies ? marketStall.aim(player.x, player.feet, player.z, player.yaw) : null;
     if (stallAim && stallAim !== 'shut' && frame.usePressed && buyAtStall(stallAim)) frame.usePressed = false;
+    // Attack and defend: Use at a crate or vehicle of your side takes what it gives (the id only; the server checks the rest).
+    const supply = action && !watching && !dead && !inCar && !onHorse && !onBike && !tagWho && !downed && !target && !ball && net.connected ? supplyAim() : null;
+    if (supply && frame.usePressed && performance.now() > supplyWait) {
+      supplyWait = performance.now() + 400;
+      net.send({ t: 'asup', id: supply.id });
+      frame.usePressed = false;
+    }
     games.update(dt, player.x, player.feet, player.z, key('use', mode));
     duelLine.update();
     // Steal the flag: the flags where the server has them, a carried one on its carrier as drawn now; its line and chips.
     games.flagHud?.tickGround(games.flagOn ? games.view.flag ?? null : null, dt);
     flagWorld.update(dt, flagCarrier);
     flagRacks.update(dt);
+    assaultCamp.update();
     games.flagHud?.update(games.flagOn ? games.view.flag ?? null : null, me?.username ?? '');
     // The cars: E or Triangle next to one gets you in (unless two are in it already), and out again.
     // A wreck or one gone in a team match (world/vehicleWear.ts) is none: no "get in", and the bike's and horse's prompts free.
@@ -3977,7 +4044,7 @@ renderer.setAnimationLoop((now: number) => {
       } else stakeT = 0;
     } else stakeT = 0;
     // The Use key held with a turret in your pocket (Zombies), with nothing else to use (no door, nobody to help up): it sets it up.
-    if (action && !dead && !inCar && !calm && kit.turrets > 0 && games.zombies && !downed && !target && !tagWho) {
+    if (action && !dead && !inCar && !calm && kit.turrets > 0 && (games.zombies || games.traps) && !downed && !target && !tagWho) {
       if (frame.usePressed) useT = 1e-4;
       if (useT > 0 && frame.useHeld) {
         useT += dt;
@@ -3989,7 +4056,7 @@ renderer.setAnimationLoop((now: number) => {
     } else useT = 0;
     // The grenade key: a tap throws a grenade; with a claymore in your pocket (Zombies), held it places it.
     if (action && !dead && !inCar && !calm) {
-      if (kit.claymores > 0 && games.zombies) {
+      if (kit.claymores > 0 && (games.zombies || games.traps)) {
         if (frame.throwPressed) holdT = 1e-4;
         if (holdT > 0 && frame.throwHeld) {
           holdT += dt;
@@ -4064,6 +4131,7 @@ renderer.setAnimationLoop((now: number) => {
     if (helis.aboard || nearHeli) prompt = helis.line(mode, nearHeli, heliWhy); // the helicopter: in it what to do, beside it how to get in
     if (ball && !tagWho && !driving && !riding) prompt = t('prompt.kick', { key: key(action && !schoolCalm(player.x, player.z) ? 'use' : 'click', mode), run: key('sprint', mode) });
     if (stallAim) prompt = stallAim === 'shut' ? t('srv.zStallShut') : stallChip.line(stallAim, mode);
+    if (supply) prompt = supplyLine(supply, use);
     if (downed) prompt = helping?.start ? t('prompt.reviving', { name: downed }) : t('prompt.revive', { use, name: downed });
     hud.setRing(helping ? (helping.start ? (now - helping.start) / helping.ms : 0) : null);
     if (pad) prompt = ''; // the list says it all
@@ -4072,7 +4140,7 @@ renderer.setAnimationLoop((now: number) => {
     const armed = action && !dead && !inCar;
     hud.setWeapon(armed, dead || inCar ? '' : weapon.status);
     hud.setSlots(armed ? weapon.slots : null);
-    const pocket = games.zombies ? [
+    const pocket = games.zombies || games.traps || kit.armor ? [
       kit.nades ? t('loot.nadesCount', { n: kit.nades }) : '',
       kit.claymores ? t('loot.mines', { name: mineName(), n: kit.claymores, key: key('grenade', mode) }) : '',
       kit.stakes ? t('loot.stakesCount', { n: kit.stakes, key: key('reload', mode) }) : '',
@@ -4202,7 +4270,7 @@ renderer.setAnimationLoop((now: number) => {
   grenades.update(dt);
   pickups.update(dt, !net.connected);
   rewards.update(dt);
-  const placing = !menu.open && combat.alive && games.zombies
+  const placing = !menu.open && combat.alive && (games.zombies || games.traps)
     ? holdT > 0 ? 'claymore' : stakeT > 0 ? 'stakes' : useT > 0 ? 'turret' : null
     : null;
   const placeAt = placing ? spotAhead(placing === 'stakes' ? 1.3 : placing === 'turret' ? 1 : .9) : null;

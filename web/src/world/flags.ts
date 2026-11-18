@@ -1,5 +1,6 @@
 import * as THREE from 'three';
 import { FLAG_COLORS, baseOf, fieldOf } from '../../shared/flagFields.mjs';
+import { ASSAULT } from '../../shared/assaultFields.mjs';
 import type { FlagGameView, FlagTeam } from '../ui/flagHud';
 
 /**
@@ -179,6 +180,7 @@ export class FlagWorld {
         column.position.y = PLINTH_H;
         column.add(new THREE.Mesh(baseCoreGeo, coreMat));
         stand.add(plinth, band, ring, column);
+        stand.userData.ring = ring;
         stand.traverse((o) => {
           o.userData.ignoreRay = true;
           (o as THREE.Mesh).raycast = () => {};
@@ -188,6 +190,9 @@ export class FlagWorld {
       }
       const [x, z, y] = baseOf(field, team, swapped).stand;
       stand.position.set(x, y, z);
+      // Attack and defend's camp (shared/assaultFields.mjs): its ring as wide as the capture there.
+      const camp = field.assault?.camp.flag;
+      (stand.userData.ring as THREE.Mesh).scale.setScalar(camp && camp[0] === x && camp[1] === z ? ASSAULT.campR / RING_OUT : 1);
     }
   }
 

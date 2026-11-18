@@ -1,6 +1,7 @@
 import { t } from '../i18n';
 import { sound } from '../sound';
-import { FLAG_COLORS } from '../../shared/flagFields.mjs';
+import { FLAG_COLORS, fieldOf } from '../../shared/flagFields.mjs';
+import type { AssaultView } from '../world/assaultCamp';
 
 /**
  * Steal the flag on screen (server/flags.mjs decides, src/world/flags.ts draws the flags): the game's bar (the clock, both
@@ -22,7 +23,7 @@ export interface FlagState {
 }
 /** Steal the flag in a mode's view (server/flags.mjs view). */
 export interface FlagGameView {
-  field: 'compact' | 'village';
+  field: 'compact' | 'village' | 'assaultChurch' | 'assaultSparrenhof';
   flags: Record<FlagTeam, FlagState>;
   tags: Record<FlagTeam, number>;
   sudden: boolean;
@@ -32,6 +33,8 @@ export interface FlagGameView {
   vehicles?: { bikes: string[]; off?: string[] };
   /** Each team's bazooka rack (server/flagBazooka.mjs): on it, or out (held, or away with `ms` until it is back) */
   racks?: Record<FlagTeam, { at: 'rack' | 'out'; ms?: number }>;
+  /** Attack and defend (server/assault.mjs view): its round, roles, results, heavy weapons, traps and spawn truck */
+  assault?: AssaultView;
 }
 export interface FlagEvent {
   ev: 'taken' | 'dropped' | 'returned' | 'captured' | 'safe' | 'swapped';
@@ -105,6 +108,7 @@ export class FlagHud {
 
   /** The game's bar (games.ts): its name, the clock, both scores, sudden death, and your team. */
   bar(title: string, left: number, score: Record<string, number> | undefined, v: FlagGameView | undefined, mine: FlagTeam | null): string {
+    if (v?.assault) return this.assaultBar(title, left, v, v.assault, mine);
     const s = { blue: score?.blue ?? 0, red: score?.red ?? 0 };
     const parts = [title, clock(left), t('flag.score', { b: s.blue, r: s.red })];
     if (v?.sudden) parts.push(t('flag.sudden'));
@@ -113,20 +117,42 @@ export class FlagHud {
   }
 
   /**
+   * Attack and defend's bar (server/assault.mjs): its name, the round, the clock (the break's until round 2), your part in
+   * it (or who defends, watching), the rounds played (a capture's time, or how far the flag got), and for the attackers
+   * whether the spawn truck is a start place now.
+   */
+  private assaultBar(title: string, left: number, v: FlagGameView, a: AssaultView, mine: FlagTeam | null): string {
+    const place = t(fieldOf(v.field).red === 'church' ? 'portal.church' : 'portal.sparrenhof');
+    const parts = [title, a.phase === 'break' ? t('assault.break', { time: clock(left) }) : `${t('assault.round', { n: a.round })} · ${clock(left)}`];
+    if (a.phase !== 'break') {
+      if (!mine) parts.push(t('assault.defends', { team: t(`eteam.${a.def}`), place }));
+      else parts.push(t(mine === a.def ? 'assault.youDefend' : 'assault.youAttack', { place }));
+      if (a.best > 0) parts.push(t('assault.best', { n: a.best }));
+    }
+    a.results.forEach((r, i) => {
+      const team = t(`eteam.${r.def === 'blue' ? 'red' : 'blue'}`);
+      parts.push(r.ms === null ? t('assault.held', { n: i + 1, team, p: r.best }) : t('assault.time', { n: i + 1, team, s: Math.round(r.ms / 100) / 10 }));
+    });
+    if (mine && mine !== a.def && a.truck?.spawn && a.phase !== 'break') parts.push(t('assault.truckReady'));
+    return parts.join(' · ');
+  }
+
+  /**
    * Every frame while Steal the flag is on (`v`, or null to hide): each flag's chip, kept as it is unless something in it
-   * changed. `me`: your name (your own carry reads "you").
+   * changed. `me`: your name (your own carry reads "you"). In Attack and defend only the defenders' flag has one.
    */
   update(v: FlagGameView | null, me: string): void {
     const now = performance.now();
     this.root.classList.toggle('hidden', !v);
     this.line.classList.toggle('show', !!v && now < this.lineUntil);
     if (!v) return;
-    const key = JSON.stringify([v.flags.blue.at, v.flags.blue.by, Math.ceil((v.flags.blue.ms ?? 0) / 1000), v.flags.red.at, v.flags.red.by, Math.ceil((v.flags.red.ms ?? 0) / 1000), me, t('flag.home', { flag: '' })]);
+    const key = JSON.stringify([v.flags.blue.at, v.flags.blue.by, Math.ceil((v.flags.blue.ms ?? 0) / 1000), v.flags.red.at, v.flags.red.by, Math.ceil((v.flags.red.ms ?? 0) / 1000), me, t('flag.home', { flag: '' }), v.assault?.def]);
     if (key === this.key) return;
     this.key = key;
     for (const team of TEAMS) {
       const f = v.flags[team];
       const flag = t(`flag.chip.${team}`);
+      this.chips[team].hidden = !!v.assault && team !== v.assault.def; // the camp's own flag never moves
       this.chips[team].dataset.at = f.at;
       this.chips[team].textContent = f.at === 'home' ? t('flag.home', { flag })
         : f.at === 'carried' ? (f.by === me ? t('flag.carriedYou', { flag }) : t('flag.carried', { flag, name: f.by ?? '' }))
