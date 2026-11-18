@@ -122,6 +122,7 @@ import { loadEnvironment } from './world/environment';
 import { house, type DipSpec, type Prism, type Ring, type VillageData } from './world/houseData';
 import { loadProps } from './world/props';
 import { blockMaterial, buildHouseMeshes, claimCovers, grassMaterial, groundFamilies, setAnisotropy, surfaceMaterial, tintedMaterial } from './world/houseMeshes';
+import { useStreaks } from './world/rainStreaks';
 import { patchFields } from './world/fields';
 import { addDiag, startDiag } from './ui/diag';
 import { IndoorLight } from './world/indoorLight';
@@ -4776,7 +4777,8 @@ function gameTextures(root: THREE.Object3D): void {
   root.traverse((o) => {
     const mesh = o as THREE.Mesh;
     if (!mesh.isMesh) return;
-    const u = (mesh.material as THREE.Material).userData as { texture?: string; tint?: string; normalScale?: number };
+    const u = (mesh.material as THREE.Material).userData as { texture?: string; tint?: string; normalScale?: number; streaks?: boolean };
+    if (u.streaks) return useStreaks(mesh); // the rain's streaks under the sills (world/rainStreaks.ts)
     if (u.texture) {
       const m = tintedMaterial(u.texture, u.tint ?? '#ffffff', renderer);
       if (u.normalScale !== undefined) m.normalScale.setScalar(u.normalScale);

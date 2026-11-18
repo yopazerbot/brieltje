@@ -2,6 +2,7 @@ import * as THREE from 'three';
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 import type { Prism, Ring } from './houseData';
 import { sharedTexture } from './houseMeshes';
+import { useStreaks } from './rainStreaks';
 
 /**
  * The houses round Smetlede's church square and along the street to the school: our own Blender models
@@ -17,9 +18,9 @@ import { sharedTexture } from './houseMeshes';
  * normals are kept (as bytes): the ambient occlusion on High reads them, and took the houses for fully
  * shaded without them.
  *
- * Draw calls: six near (brick, render, roof tiles, trim, glass, and the bus shelter's clear glass, drawn
- * see-through after the rest), two more for the café's door leaves and ground-floor glass (drawn only from 60 m off,
- * world/keet.ts), three far. Within FAR m of the
+ * Draw calls: seven near (brick, render, roof tiles, trim, glass, the bus shelter's clear glass, drawn
+ * see-through after the rest, and the rain's streaks under the sills, world/rainStreaks.ts), two more for the
+ * café's door leaves and ground-floor glass (drawn only from 60 m off, world/keet.ts), three far. Within FAR m of the
  * square (230, from the model) the full copy is drawn; beyond it a simple copy of the same volumes,
  * the windows as dark patches; beyond the village's draw distance nothing (the tiles hide it).
  *
@@ -87,6 +88,13 @@ export async function loadTown(renderer: THREE.WebGLRenderer, ground: (x: number
     if (!mesh.isMesh) continue;
     const name = mesh.name;
     const key = name.replace(/^(near|far)_/, '');
+    if (key === 'streaks') {
+      // The rain's streaks under the sills, drawn over the walls (world/rainStreaks.ts).
+      (mesh.material as THREE.Material).dispose();
+      useStreaks(mesh, COLOR_SCALE);
+      near.add(mesh);
+      continue;
+    }
     const mat = shared.get(name) ?? material(key, (mesh.material as THREE.Material).userData, renderer);
     // The café's ground-floor door leaves and window glass (tools/town/town.py `walkin`): near it the walk-in
     // (world/walkIn.ts) draws its own doors and panes in their place.

@@ -49,8 +49,8 @@ corner with rays (mathutils' BVH: the houses, the ground and the neighbouring bu
 into the vertex colours, multiplied with each surface's own colour. The village has no real-time shadows, so
 this is what puts the shade under the eaves, in the window reveals and behind the chimneys. The walls' colour is
 a little uneven in soft patches (`mottle`), and each house's walls a shade of their own (`house_tone`), seeded by
-its id. No dirt at the foot of the walls, no green (Yoshi, 18 Nov 2026: "Do it all but not this: dirty band at
-the bottom of the wall, a bit of moss").
+its id. Weathering stops there (Yoshi, 18 Nov 2026: "Do it all but not this: dirty band at the bottom of the wall,
+a bit of moss"): faint streaks down from the sills, no dirt at the foot of the walls, no green.
 
 Frame: the game's axes (x, y up, z); origin on the ground at ORIGIN. The root node's extras carry the origin,
 the GRB outlines whose open-data blocks these houses replace (`replaces`), blocks for walking into for what
@@ -62,6 +62,8 @@ Output: one GLB. The near copy, one mesh per material:
 - near_trim: frames, doors, shutters, gutters, downpipes, sills' fronts, ridge tiles, fittings, coloured per vertex;
 - near_glass: the panes (dark and glossy, net curtains lighter), coloured per vertex;
 - near_clear: clear glass you see through (the bus shelter by the chip shop), drawn see-through by the game;
+- near_streaks: faint rain streaks down from the sills (`streaks`), a factor per corner that the game multiplies the
+  wall behind by (web/src/world/rainStreaks.ts);
 - near_shut_trim, near_shut_glass: for a house you walk into (houses.json `walkin`: the café by the church tower), the
   leaves of its ground-floor doors and the glass of its ground-floor windows, apart from the rest, so the game hides them
   near the house, where the walk-in (web/src/world/walkIn.ts) shows its own doors and panes in their place.
@@ -175,6 +177,10 @@ MATS = {
     # windows, apart, as the walk-in (web/src/world/walkIn.ts) shows its own doors and panes there near it
     "shut_trim": (None, "#ffffff", 0.55, 1.0),
     "shut_glass": (None, "#20262a", 0.08, 1.0),
+    # Rain streaks down from the sills: thin faces just off the wall whose colour per corner is how much they darken
+    # what lies behind them (1 at their edges, nothing), drawn by the game as a multiply over the wall
+    # (web/src/world/rainStreaks.ts). No light is baked into them.
+    "streaks": (None, "#ffffff", 1.0, 1.0),
 }
 # The mean linear colour of each game texture: a surface's colour per vertex is its wanted colour divided by
 # this, so the textured surface comes out in the colour named in houses.json (measured on the WebP files).
@@ -196,12 +202,14 @@ def make_material(name, tex, mean, rough, nscale):
     if tex:
         m["texture"], m["normalScale"] = tex, nscale
     m["roughness"] = rough
+    if name.endswith("streaks"):
+        m["streaks"] = True
     return m
 
 
 for lod in ("near", "far"):
     for name, (tex, mean, rough, nscale) in MATS.items():
-        if lod == "far" and name in ("trim", "glass", "clear", "shut_trim", "shut_glass"):
+        if lod == "far" and name in ("trim", "glass", "clear", "shut_trim", "shut_glass", "streaks"):
             continue
         key = (lod, name)
         MAT[key] = make_material(f"{lod}_{name}", tex, mean, rough, nscale)
@@ -723,6 +731,73 @@ def counter(F, c, bottom, wallcol):
 
 
 # ---------------------------------------------------------------- walls
+def streak_face(F, pts, ks):
+    """A face of the rain streaks through wall points (s, y) 12 mm out of the wall (in front of its bands and
+    patches): k at each corner is how much it darkens the wall there (1: not at all)."""
+    bm = BM[("near", "streaks")]
+    vs = [V(*F.p(s, y, 0.012)) for s, y in pts]
+    a, b, c = vs[0], vs[1], vs[2]
+    o = Vector((F.o[0], -F.o[1], 0))
+    if (b - a).cross(c - b).dot(o) < 0:
+        vs, ks = vs[::-1], ks[::-1]
+    f = bm.faces.new([bm.verts.new(v) for v in vs])
+    lay = bm.loops.layers.float_color["Color"]
+    for lp, k in zip(f.loops, ks):
+        lp[lay] = (k, k, k, 1.0)
+
+
+def streaks(F, holes, fs, wallcol, lowest):
+    """Faint streaks where rain runs off the windows' sills and down the wall: one from each end of the sill, as the
+    water drips off there, and a wash under its middle. Each fades out downwards; none reaches the foot of the wall
+    (`lowest`, m over the floor) or the head of an opening below it. Seeded by the window's place, so they stay.
+    Darker on a light wall: white paint in the sun lies well over the game's white, where its tone curve flattens a
+    multiply, and the grey of a streak shows most on it, as on a real whitewashed front."""
+    light = max(0.0, min(1.0, (sum(int(wallcol[i:i + 2], 16) for i in (1, 3, 5)) / 765 - 0.45) / 0.4))
+    for h in holes:
+        if h.kind not in "wWnoar" or h.y0 < 0.5:
+            continue
+        r = random.Random(f"streak:{F.a[0]:.2f}:{F.a[1]:.2f}:{h.s0:.2f}:{h.y0:.2f}")
+        sill = h.kind not in "dDgGs" and {**fs, **h.opt}.get("sill", "#8f8f8a") != "none"  # as build_opening has it
+        yt = h.y0 - (0.07 if sill else 0.0)  # under the sill, or the reveal's foot
+
+        def floor_of(a, b):
+            """How low a streak between a and b may run: not into an opening below it, nor over its lintel."""
+            lim = lowest
+            for g in holes:
+                if g is h or g.s1 + 0.1 < a or g.s0 - 0.1 > b:
+                    continue
+                if g.kind == "x" and g.y0 < yt:
+                    return yt  # no wall there
+                if g.y1 <= yt + 1e-6:
+                    lim = max(lim, g.y1 + 0.28)
+            return lim
+
+        for sc in (h.s0 - 0.03, h.s1 + 0.03):  # from the sill's ends
+            if r.random() > 0.85:
+                continue
+            wd = r.uniform(0.12, 0.2)
+            k = r.uniform(0.56, 0.68) - 0.22 * light  # at its middle, under the sill
+            L = min(r.uniform(0.5, 1.1), yt - floor_of(sc - wd / 2, sc + wd / 2))
+            if L < 0.25:
+                continue
+            ym, yb, km = yt - 0.4 * L, yt - L, 1 - (1 - k) * 0.55
+            top = [sc - wd * 0.3, sc, sc + wd * 0.3]
+            mid = [sc - wd * 0.45, sc, sc + wd * 0.45]
+            bot = [sc - wd / 2, sc, sc + wd / 2]
+            for i in range(2):
+                streak_face(F, [(top[i], yt), (top[i + 1], yt), (mid[i + 1], ym), (mid[i], ym)], [1.0 if i == 0 else k, k if i == 0 else 1.0, km if i == 0 else 1.0, 1.0 if i == 0 else km])
+                streak_face(F, [(mid[i], ym), (mid[i + 1], ym), (bot[i + 1], yb), (bot[i], yb)], [1.0 if i == 0 else km, km if i == 0 else 1.0, 1.0, 1.0])
+        if r.random() < 0.7 and h.s1 - h.s0 > 0.5:  # the wash under the sill's middle
+            k = r.uniform(0.78, 0.86) - 0.14 * light
+            a, b = h.s0 + 0.12, h.s1 - 0.12
+            L = min(r.uniform(0.2, 0.4), yt - floor_of(a, b))
+            if L >= 0.15:
+                cols = [h.s0 - 0.04, a, b, h.s1 + 0.04]
+                for i in range(3):
+                    kt = [1.0, k, k, 1.0]
+                    streak_face(F, [(cols[i], yt), (cols[i + 1], yt), (cols[i + 1], yt - L), (cols[i], yt - L)], [kt[i], kt[i + 1], 1.0, 1.0])
+
+
 def facade(F, length, top, holes, spec, fs, bottom, rng, far_key=None, far_col=None):
     """A wall from s = 0 to `length`, from `bottom` up to the line `top` ([(s, y)]), with its holes; below the
     plinth in the plinth's surface. Cut into cells for the baked light."""
@@ -774,6 +849,7 @@ def facade(F, length, top, holes, spec, fs, bottom, rng, far_key=None, far_col=N
             y += step
     for h in holes:
         build_opening(F, h, fs, key, wc, rng, min(ytop(h.s0), ytop(h.s1)) - h.y1)
+    streaks(F, holes, fs, wc, max(0.35, ph + 0.05))
     if fs.get("counter"):
         counter(F, fs["counter"], bottom, wc)
     if fs.get("poster"):  # a framed poster case on the wall, left blank
@@ -1527,7 +1603,7 @@ def bake():
             polys.append([off + v.index for v in f.verts])
 
     for key, bm in BM.items():
-        if key[0] == "near" and key[1] != "clear":  # clear glass casts no shade
+        if key[0] == "near" and key[1] not in ("clear", "streaks"):  # clear glass casts no shade, nor do the streaks
             bm.normal_update()
             bm.verts.ensure_lookup_table()
             bm.verts.index_update()
@@ -1590,7 +1666,7 @@ def bake():
     cache = {}
     count = 0
     for key, bm in BM.items():
-        if key[0] != "near" or key[1] in ("glass", "clear", "shut_glass"):
+        if key[0] != "near" or key[1] in ("glass", "clear", "shut_glass", "streaks"):
             continue
         lay = bm.loops.layers.float_color["Color"]
         for f in bm.faces:

@@ -182,6 +182,8 @@ class House:
         if facing is not None:
             if n[0] * facing[0] + n[1] * facing[1] + n[2] * facing[2] < 0:
                 pts = pts[::-1]
+                if isinstance(color, list):  # a value per corner (the streaks'): turned with them
+                    color = color[::-1]
         self.faces[mesh].append(([tuple(p) for p in pts], color))
 
     def box(self, mesh, u0, u1, d0, d1, y0, y1, color=None, bottom=False):
@@ -297,7 +299,63 @@ class House:
                     self.poly(m, [W(x, y) for x, y in rect], N, c)
         for o in openings:
             self.opening(o, W, N, T, mesh, color, bands)
+        self.streaks(openings, W, N, color or self.meshes.get(mesh, {}).get("tint", "#ffffff"), botf)
         return W, N, T
+
+    def streaks(self, openings, W, N, wallcol, bottom):
+        """Faint streaks where rain runs off the windows' sills and down the wall (as tools/town/town.py `streaks`):
+        one from each end of the sill and a wash under its middle, fading out downwards, into the mesh vh_streaks_small
+        that the game draws as a multiply over the wall (web/src/world/rainStreaks.ts). None reaches the foot of the
+        wall (`bottom`: its foot along it, or the ground) or the head of an opening below. Darker on a light wall,
+        where the game's tone curve flattens a multiply. Seeded by the house and the window's place, so they stay."""
+        h = wallcol.lstrip("#")
+        light = max(0.0, min(1.0, (sum(int(h[i:i + 2], 16) for i in (0, 2, 4)) / 765 - 0.45) / 0.4))
+        for o in openings:
+            if o.kind != "window" or o.w < .3:
+                continue
+            s0, s1 = o.s - o.w / 2, o.s + o.w / 2
+            yt = o.y - (.06 if o.sill else 0)
+            p = W(o.s, 0)
+            ground = self.ground(p[0], p[1])
+            if yt - ground < .9:
+                continue
+            r = random.Random(f"streak:{self.name}:{p[0]:.2f}:{p[1]:.2f}:{o.y:.2f}")
+
+            def floor_of(a, b):
+                lim = max(ground + .45, bottom(a) + .3, bottom(b) + .3)
+                for g in openings:
+                    if g is o or g.s + g.w / 2 + .1 < a or g.s - g.w / 2 - .1 > b:
+                        continue
+                    if g.y + g.h <= yt + 1e-6:
+                        lim = max(lim, g.y + g.h + .28)
+                return lim
+
+            def face(pts, ks):
+                self.poly("vh_streaks_small", [W(s, y, -.012) for s, y in pts], N, list(ks))
+
+            for sc in (s0 - .03, s1 + .03):  # from the sill's ends
+                if r.random() > .85:
+                    continue
+                wd = r.uniform(.12, .2)
+                k = r.uniform(.56, .68) - .22 * light
+                L = min(r.uniform(.5, 1.1), yt - floor_of(sc - wd / 2, sc + wd / 2))
+                if L < .25:
+                    continue
+                ym, yb, km = yt - .4 * L, yt - L, 1 - (1 - k) * .55
+                top = [sc - wd * .3, sc, sc + wd * .3]
+                mid = [sc - wd * .45, sc, sc + wd * .45]
+                bot = [sc - wd / 2, sc, sc + wd / 2]
+                for i in range(2):
+                    face([(top[i], yt), (top[i + 1], yt), (mid[i + 1], ym), (mid[i], ym)], [1.0 if i == 0 else k, k if i == 0 else 1.0, km if i == 0 else 1.0, 1.0 if i == 0 else km])
+                    face([(mid[i], ym), (mid[i + 1], ym), (bot[i + 1], yb), (bot[i], yb)], [1.0 if i == 0 else km, km if i == 0 else 1.0, 1.0, 1.0])
+            if r.random() < .7 and o.w > .5:  # the wash under the sill's middle
+                k = r.uniform(.78, .86) - .14 * light
+                a, b = s0 + .12, s1 - .12
+                L = min(r.uniform(.2, .4), yt - floor_of(a, b))
+                if L >= .15:
+                    cols, kt = [s0 - .04, a, b, s1 + .04], [1.0, k, k, 1.0]
+                    for i in range(3):
+                        face([(cols[i], yt), (cols[i + 1], yt), (cols[i + 1], yt - L), (cols[i], yt - L)], [kt[i], kt[i + 1], 1.0, 1.0])
 
     def wbox(self, W, N, T, mesh, s0, s1, y0, y1, d0, d1, color=None, back=False):
         """A box in a wall's own measures: s along it, y up, d into it (negative: in front of it)."""
@@ -501,7 +559,7 @@ class House:
         triangles = 0
         for name in sorted(self.faces):
             polygons = self.faces[name]
-            spec = self.meshes[name]
+            spec = self.meshes[name] if name in self.meshes else KIT_MESHES[name]
             texture, tint = spec.get("texture"), spec.get("tint", "#ffffff")
             mat = bpy.data.materials.new(name)
             rgb = linear(tint)
@@ -515,6 +573,8 @@ class House:
                 mat["texture"], mat["tint"] = texture, tint
                 if "normalScale" in spec:
                     mat["normalScale"] = spec["normalScale"]
+            if spec.get("streaks"):
+                mat["streaks"] = True  # drawn by the game as a multiply over the walls (web/src/world/rainStreaks.ts)
             mesh = bpy.data.meshes.new(name)
             verts, idx = [], []
             for pts, _ in polygons:
@@ -536,6 +596,12 @@ class House:
                     for k in poly.loop_indices:
                         p = mesh.vertices[mesh.loops[k].vertex_index].co
                         uv.data[k].uv = (round(p.dot(u) * su, 4), round(p.dot(v) * sv, 4))
+            elif spec.get("streaks"):
+                # How much each corner darkens the wall behind it (1: not at all), as it is: no colour space.
+                colors = mesh.color_attributes.new(name="Color", type="FLOAT_COLOR", domain="CORNER")
+                for poly, (_, ks) in zip(mesh.polygons, polygons):
+                    for k, li in zip(ks, poly.loop_indices):
+                        colors.data[li].color = (k, k, k, 1)
             elif any(c for _, c in polygons):
                 colors = mesh.color_attributes.new(name="Color", type="FLOAT_COLOR", domain="CORNER")
                 node = mat.node_tree.nodes.new("ShaderNodeVertexColor")
@@ -556,6 +622,9 @@ class House:
                                   export_vertex_color="MATERIAL", export_cameras=False, export_lights=False)
         print(f"{self.name}: {triangles} triangles, {len(self.faces)} meshes, {out.stat().st_size} bytes")
 
+
+# Meshes every house may have without naming them: the rain's streaks under the sills (House.streaks).
+KIT_MESHES = {"vh_streaks_small": {"tint": "#ffffff", "streaks": True}}
 
 GLASS = {"tint": "#46514f", "rough": .2, "metal": .2}
 TRIM = {"tint": "#ffffff", "rough": .82}
