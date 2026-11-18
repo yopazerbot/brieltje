@@ -14,7 +14,10 @@ import { groundNoise } from './groundNoise';
  *
  * Drawn in the fields' shader (no extra geometry or textures): stripes across the field's long side,
  * with a slope in the shading so furrows and rows catch the light. Where the rows get narrower than
- * a couple of pixels they fade into their average colour, so far fields don't shimmer. Along every
+ * a couple of pixels they fade into their average colour, so far fields don't shimmer. What stays from further
+ * off, from a roof or the air, is drawn at the scale of metres: the sprayer's tramlines in winter cereal and beet,
+ * the combine's swaths on stubble, the plough's lands and dead furrows, patches of damper and drier soil, and each
+ * field a shade of its own, so neighbouring fields of one crop don't merge into one patch. Along every
  * field's edge weeds and grass creep in, as the ground's shading says (world/groundShade.ts).
  *
  * It is the same for everyone and in every tile: it follows from the data and the field's place.
@@ -245,7 +248,41 @@ export function patchFields(material: THREE.MeshStandardMaterial): void {
             diffuseColor.rgb = mix(c, soil, 0.08 * (1.0 - own));
             fieldPlant = 1.0;
           }
+          // Seen from further off, from a roof or from the air, where the rows themselves have faded: what the tractor
+          // and the combine leave behind, metres apart, and patches of a few dozen metres (damper and drier soil, thicker
+          // and thinner growth). Lines narrower than a pixel keep only their share of it, so nothing shimmers.
+          float fieldLane = fract(sin(own * 311.7 + fieldHue * 17.0) * 4375.85); // one more number of the field's own
+          float fieldPx = max(fwidth(across), 1e-3); // metres a pixel, across the rows
+          diffuseColor.rgb *= mix(0.9, 1.07, texture2D(fieldNoise, vFieldXZ / 70.0 + own * 3.1).r);
+          if (fieldKind > 2.5 && fieldKind < 3.5 || fieldKind > 4.5 && fieldKind < 5.5) {
+            // Winter cereal and beet: tramlines, the pair of wheel tracks the sprayer follows, 1.8 m apart, every 18 to
+            // 27 m by the width of the farmer's boom; bare soil in them.
+            float tramStep = 18.0 + floor(fieldLane * 4.0) * 3.0;
+            float tramAt = abs(abs((fract(across / tramStep + own) - 0.5) * tramStep) - 0.9);
+            float track = min(clamp((0.25 + 0.5 * fieldPx - tramAt) / fieldPx, 0.0, 1.0), 0.5 / fieldPx);
+            diffuseColor.rgb = mix(diffuseColor.rgb, soil * 0.92, track * 0.85);
+            fieldPlant *= 1.0 - track * 0.8;
+          } else if (fieldKind > 1.5 && fieldKind < 2.5) {
+            // Stubble: the combine's swaths, a header's width apart (6 to 9 m), lighter and darker by turns.
+            float swath = 6.0 + fieldLane * 3.0;
+            float swathFade = clamp(1.0 - fieldPx * 3.0 / swath, 0.0, 1.0);
+            diffuseColor.rgb *= 1.0 + 0.07 * swathFade * sin((across / swath + own) * 6.2832);
+          } else if (fieldKind < 1.5) {
+            // Ploughed: the plough's lands, 20 to 30 m, each thrown its own way (lighter and darker by turns), a dead
+            // furrow between them.
+            float land = 20.0 + fieldLane * 10.0;
+            float landAt = across / land + own;
+            float furrow = abs(fract(landAt) - 0.5) * land;
+            float dead = min(clamp((0.35 + 0.5 * fieldPx - (land * 0.5 - furrow)) / fieldPx, 0.0, 1.0), 0.7 / fieldPx);
+            diffuseColor.rgb *= (mod(floor(landAt), 2.0) < 0.5 ? 0.95 : 1.04) * (1.0 - dead * 0.35);
+          }
           fieldAcross = normalize((viewMatrix * vec4(perp.x, 0.0, perp.y, 0.0)).xyz);
+        }
+        if (fieldKind > 0.5 && fieldKind < 8.5) {
+          // Each field a little lighter or darker, warmer or greener than its neighbours of the same crop, as fields are
+          // from the air (also with the rows off, on a phone).
+          float fieldTone = fract(sin(vRow.w * 127.0 * 41.3 + fieldCode * 7.1) * 2531.7);
+          diffuseColor.rgb *= mix(vec3(0.9, 0.92, 0.94), vec3(1.09, 1.06, 1.0), fieldTone);
         }
         // Weeds and grass along the edge, ragged (the ground's shading: world/groundShade.ts).
         float weeds = clamp(1.0 - gs.a * 2.0, 0.0, 1.0);
