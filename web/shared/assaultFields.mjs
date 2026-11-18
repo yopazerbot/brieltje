@@ -19,10 +19,10 @@
 // - the church: in the meadow west of the village, south of the farm track that crosses it (no house within 70 m, no
 //   tree within 35 m, nothing in between). Its flag is 401 m from the church's stand in a straight line, 472 m by the
 //   road (west out of the village, then along the farm track).
-// - the Sparrenhof: in the field at the hamlet's south-east end, between the fence on its north side and the hedge on
-//   its south side (the corner lamps 1.6 m and 7 m inside them), the meadow east of the fence for its vehicles. Its flag
-//   is 408 m from the Sparrenhof's stand in a straight line, 462 m by the road (down to the hamlet, then 50 m across the
-//   grass).
+// - the Sparrenhof: in the field at the hamlet's south-east end, between the fence on its north side and the fence and
+//   hedge on its south side (its capture ring 2 m inside the north fence, its corner lamps 1.6 m inside the south one),
+//   the meadow east of it for its vehicles. Its flag is 410 m from the Sparrenhof's stand in a straight line, 464 m by
+//   the road (down to the hamlet, then 50 m across the grass).
 // At a run that is a little over a minute, by car about 20 s. Neither camp is in or near a code-locked private home
 // (shared/homes.mjs: the nearest 688 m off) nor on the school grounds (shared/zones.mjs): both checked in
 // shared/assaultFields.test.mjs.
@@ -179,9 +179,9 @@ const CHURCH_CAMP = camp(138, -859, [CHURCH.stand[0] - 138, CHURCH.stand[1] + 85
  * The Sparrenhof's camp: its front to the north (the stand is 18 degrees west of it): the field it stands in runs east to
  * west, between a fence and a hedge.
  */
-const SPARRENHOF_CAMP = camp(770, 560, [0, 1], {
-  flag: -3.58, tents: [-3.41, -3.55], supply: -3.46, crates: [-3.48, -3.5, -3.58, -3.59], lamps: [-3.4, -3.64, -3.39, -3.58],
-  spawns: [-3.55, -3.53, -3.52, -3.57, -3.57, -3.55], heli: -3.8, truck: -3.77, cars: [-3.74, -3.72],
+const SPARRENHOF_CAMP = camp(770, 558, [0, 1], {
+  flag: -3.56, tents: [-3.37, -3.58], supply: -3.48, crates: [-3.51, -3.53, -3.58, -3.58], lamps: [-3.46, -3.65, -3.42, -3.55],
+  spawns: [-3.51, -3.52, -3.51, -3.55, -3.59, -3.54], heli: -3.8, truck: -3.8, cars: [-3.72, -3.69],
 });
 
 /** A camp as a Steal the flag base: its flag the stand, its start places; its bazooka crate where a rack would be. */
