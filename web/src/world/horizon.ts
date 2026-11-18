@@ -1,5 +1,9 @@
 import * as THREE from 'three';
+import { environment } from './environment';
+import { FAR_LAND_GLSL, farLandUniforms } from './farLand';
 import { terrain } from './terrain';
+// The haze as seen from the air (patched into every material's haze; the ring's shader below uses it too).
+import './airHaze';
 
 /**
  * The horizon beyond the data, as flat Flanders shows it: low tree lines one behind the other, a hedgerow,
@@ -11,8 +15,14 @@ import { terrain } from './terrain';
  * The lines are a few metres high at 900 m (a tree line of about 15 m a kilometre or two off), so they sit
  * low on the horizon instead of standing up as hills. Their colour is mixed with the haze's own colour (the
  * scene's fog, which follows the sky), more towards their foot, so they read as far off whatever the
- * sky; below them the ring is the haze's colour all the way down. Seen from the air the ring rises with
- * the eye (most of the way), so the tree lines stay on the horizon instead of sinking below it.
+ * sky; below them the ring is the haze's colour all the way down.
+ *
+ * Seen from the air the ring rises with the eye, so the tree lines stay on the horizon instead of sinking
+ * below it, and stands further out (1.9 km), behind the ground drawn round you. Its haze below the lines is
+ * then the land beyond the ground: the far land's farmland (world/farLand.ts) where the line of sight would
+ * meet the ground, behind as much haze as the air haze (world/airHaze.ts) puts there, turning towards the
+ * lines into the colour of the sky just above the horizon that way. Land and sky meet in one colour instead
+ * of at the edge of a pale wall. On the ground (below 8 m) all of this is off: the ring is as it was.
  *
  * One draw call. Its edges are soft (blended, not cut): one layer over a thin strip of the sky, about
  * what the old cut-out band cost.
@@ -22,6 +32,8 @@ const W = 2048;
 /** Canvas rows: half a metre each at the ring. */
 const H = 64;
 const RADIUS = 900;
+/** Metres: how far out the ring stands from about 150 m up (inside the camera's far plane, 2 km). */
+const FAR_OUT = 1900;
 /** Metres: the height of the drawn band (the canvas), and of the haze below it. */
 const BAND = H / 2;
 const FOOT = 600;
@@ -152,10 +164,59 @@ export function buildHorizon(center: THREE.Vector3, ground: number): THREE.Objec
   geometry.computeBoundingSphere();
   const material = new THREE.MeshBasicMaterial({ map, transparent: true, depthWrite: false, fog: true });
   const fallback = { value: new THREE.Color('#c9d1d6') };
+  // The sky as world/sky.ts shows it now (copied while the ring is drawn; until the sky is loaded its gain is 0: unused).
+  const blank = new THREE.Texture();
+  const skyNow = {
+    hzSky: { value: blank }, hzSky2: { value: blank }, hzTurn: { value: 0 }, hzTurn2: { value: 0 }, hzGain: { value: 0 }, hzGain2: { value: 0 }, hzMix2: { value: 0 },
+  };
   material.onBeforeCompile = (shader) => {
     shader.uniforms.horizonHaze = fallback;
+    Object.assign(shader.uniforms, skyNow, farLandUniforms);
+    shader.vertexShader = shader.vertexShader
+      .replace('#include <common>', `#include <common>
+        uniform sampler2D hzSky;
+        uniform sampler2D hzSky2;
+        uniform float hzTurn;
+        uniform float hzTurn2;
+        uniform float hzGain;
+        uniform float hzGain2;
+        uniform float hzMix2;
+        varying vec3 vHzWorld;
+        varying float vHzFoot;
+        varying vec3 vHzAbove;
+        // The sky photo a few degrees above the horizon round azimuth a, as world/sky.ts reads it (no drift: there its
+        // clouds stand still), averaged over some 20 degrees: the sky's light that way, not its single clouds.
+        vec3 hzPhoto(sampler2D photo, float a) {
+          vec3 sum = vec3(0.0);
+          for (int i = -2; i <= 2; i++) {
+            float u = (a + float(i) * 0.08) * RECIPROCAL_PI2 + 0.5;
+            sum += texture2D(photo, vec2(u, 0.5 + 0.012)).rgb + texture2D(photo, vec2(u, 0.5 + 0.025)).rgb;
+          }
+          return sum * 0.1;
+        }`)
+      .replace(
+        '#include <begin_vertex>',
+        `#include <begin_vertex>
+        vHzWorld = (modelMatrix * vec4(transformed, 1.0)).xyz;
+        vHzFoot = modelMatrix[3].y;
+        // Worked out at the ring's corners (every 2.8 degrees round), smooth in between.
+        vHzAbove = vec3(0.0);
+        if (hzGain + hzGain2 > 0.0) {
+          vec2 hzTo = vHzWorld.xz - cameraPosition.xz;
+          float hzA = atan(hzTo.y, hzTo.x);
+          vHzAbove = hzPhoto(hzSky, hzA + hzTurn) * hzGain;
+          if (hzMix2 > 0.0) vHzAbove = mix(vHzAbove, hzPhoto(hzSky2, hzA + hzTurn2) * hzGain2, hzMix2);
+        }`,
+      );
     shader.fragmentShader = shader.fragmentShader
-      .replace('#include <common>', '#include <common>\nuniform vec3 horizonHaze;')
+      .replace('#include <common>', `#include <common>
+        uniform vec3 horizonHaze;
+        uniform float hzGain;
+        uniform float hzGain2;
+        varying vec3 vHzWorld;
+        varying float vHzFoot;
+        varying vec3 vHzAbove;
+        ${FAR_LAND_GLSL}`)
       .replace(
         '#include <map_fragment>',
         `vec4 hzTexel = texture2D(map, vMapUv);
@@ -167,6 +228,26 @@ export function buildHorizon(center: THREE.Vector3, ground: number): THREE.Objec
         '#include <fog_fragment>',
         `#ifdef USE_FOG
         vec3 hzFog = fogColor;
+        #ifdef FOG_EXP2
+        // From the air the ring stands well out and its haze is the land beyond the drawn ground: where the line of
+        // sight through this point would meet the ground, as much of the land's colour as the haze lets through
+        // there (world/airHaze.ts), so it runs on from the ground in front without a seam. On the ground none.
+        float hzW = airHazeWeight();
+        if (hzW > 0.0) {
+          vec3 hzRay = vHzWorld - cameraPosition;
+          float hzDown = max(-hzRay.y / length(hzRay), 1e-4);
+          float hzLand = airHaze((cameraPosition.y - (${ground.toFixed(3)})) / hzDown, fogDensity) * hzW;
+          // And towards the tree lines the haze becomes the sky just above the horizon that way (vHzAbove): at the
+          // horizon land and sky meet in one colour, not at the edge of a pale wall.
+          vec3 hzAbove = vHzAbove;
+          float hzGroundY = ${ground.toFixed(3)};
+          float hzToSky = smoothstep(0.0, 1.0, (vHzWorld.y - hzGroundY) / max(vHzFoot - hzGroundY, 1.0)) * hzW * step(1e-4, hzGain + hzGain2);
+          // The land there: the far land's farmland (world/farLand.ts) where the line of sight meets the ground, lit
+          // about as the ground is (the haze's colour stands for the light of the sky).
+          vec2 hzAt = cameraPosition.xz + hzRay.xz * (cameraPosition.y - hzGroundY) / max(-hzRay.y, 1e-3);
+          hzFog = mix(mix(fogColor, hzAbove, hzToSky), farLandAt(hzAt) * fogColor * 3.2, hzLand);
+        }
+        #endif
         #else
         vec3 hzFog = horizonHaze;
         #endif
@@ -185,12 +266,28 @@ export function buildHorizon(center: THREE.Vector3, ground: number): THREE.Objec
   mesh.frustumCulled = false;
   mesh.userData.ignoreRay = true;
   mesh.raycast = () => {};
-  // Up in the air the ring rises with the eye, most of the way (a tree line some 4 km off sinks below the
-  // eye by only a quarter of what one at 900 m would): the lines stay on the horizon from a jump or a flight.
+  // Up in the air the ring rises with the eye: from 20 m up the tree lines stay a little over a degree below it, on
+  // the horizon, from a jump or a flight. And it stands further out as the eye climbs (1.9 km from 150 m, the same
+  // size to the eye), behind the ground drawn round you: its haze below the lines then carries on the land from where
+  // the ground ends (see the shader above) instead of standing as a pale wall 900 m out.
   mesh.onBeforeRender = (_r, _s, camera) => {
-    const y = base + Math.max(0, camera.position.y - base - 20) * 0.78;
-    if (mesh.position.y !== y) {
+    const sky = environment.sky?.uniforms;
+    if (sky) {
+      skyNow.hzSky.value = sky.sky.value;
+      skyNow.hzSky2.value = sky.sky2.value;
+      skyNow.hzTurn.value = sky.turn.value;
+      skyNow.hzTurn2.value = sky.turn2.value;
+      skyNow.hzGain.value = sky.gain.value;
+      skyNow.hzGain2.value = sky.gain2.value;
+      skyNow.hzMix2.value = sky.mix2.value;
+    }
+    const h = camera.position.y - base;
+    const t = Math.min(1, Math.max(0, (h - 20) / 130));
+    const scale = 1 + (FAR_OUT / RADIUS - 1) * t * t * (3 - 2 * t);
+    const y = camera.position.y - Math.min(h, 20) * scale;
+    if (mesh.position.y !== y || mesh.scale.x !== scale) {
       mesh.position.y = y;
+      mesh.scale.setScalar(scale);
       mesh.updateMatrixWorld();
     }
   };

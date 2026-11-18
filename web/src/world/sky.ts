@@ -77,7 +77,8 @@ interface SkyLayer {
 export class Sky {
   readonly mesh: THREE.Mesh;
   private drift = { value: 0 };
-  private uniforms: Record<'sky' | 'sky2', { value: THREE.Texture }> & Record<'turn' | 'gain' | 'turn2' | 'gain2' | 'mix2', { value: number }> &
+  /** What it shows (read by the horizon's ring, world/horizon.ts, to melt its haze into the sky just above it) */
+  readonly uniforms: Record<'sky' | 'sky2', { value: THREE.Texture }> & Record<'turn' | 'gain' | 'turn2' | 'gain2' | 'mix2', { value: number }> &
     Record<'sunDir' | 'sunDir2', { value: THREE.Vector3 }>;
 
   /**
