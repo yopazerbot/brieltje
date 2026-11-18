@@ -190,7 +190,10 @@ for (let i = 1; i <= 30; i++) {
 await sleep(800);
 const after = lastMode(admin);
 const r = after?.flag?.assault?.results?.[0];
-ok('into the camp: captured, round 1 over, its time on the server\'s clock', !!r && r.ms !== null && r.def === 'red' && Math.abs(r.ms - (Date.now() - t0)) < 30_000, JSON.stringify(after?.flag?.assault));
+// The time counts from the round's start (its first view came then) to the capture (the first view after it).
+const began = admin.of('mode').find((m) => m.mode?.flag?.assault?.round === 1)?._at ?? 0;
+const capturedAt = admin.of('mode').find((m) => m.mode?.flag?.assault?.results?.length)?._at ?? 0;
+ok('into the camp: captured, round 1 over, its time on the server\'s clock from the round\'s start', !!r && r.ms !== null && r.def === 'red' && Math.abs(r.ms - (capturedAt - began)) < 3000, JSON.stringify({ ms: r?.ms, seen: capturedAt - began, carried: Date.now() - t0 }));
 ok('every page told: the capture line and the flag event', names.every((n) => players[n].of('flag').some((m) => m.ev === 'captured' && m.name === 'admin')) && names.every((n) => players[n].of('system').some((m) => m.code === 'assaultCaptured')));
 ok('the break: the Sparrenhof, blue defends now', after?.flag?.assault?.phase === 'break' && after?.flag?.field === 'assaultSparrenhof' && after?.flag?.assault?.def === 'blue');
 const F2 = FIELDS.assaultSparrenhof;
