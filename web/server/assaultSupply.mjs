@@ -35,8 +35,8 @@
 import { readFileSync } from 'node:fs';
 import { LOOT, Loot } from '../shared/loot.mjs';
 import { arenaOf } from '../shared/arenas.mjs';
-import { ASSAULT, WAIT_OF } from '../shared/assaultFields.mjs';
-import { FLAG_TEAMS } from '../shared/flagFields.mjs';
+import { ASSAULT, ROUND_FIELDS, WAIT_OF } from '../shared/assaultFields.mjs';
+import { FIELDS, FLAG_TEAMS } from '../shared/flagFields.mjs';
 
 const WEAPONS = JSON.parse(readFileSync(new URL('../shared/weapons.json', import.meta.url), 'utf8'));
 /** The admin's own weapons (game.mjs ADMIN_WEAPONS): out of their hands while the game is played, back after it. */
@@ -178,6 +178,7 @@ export class AssaultSupply {
     this.f = f;
     /** name -> { ammo, med, heavy, trap }: when each wait ends */
     this.waits = new Map();
+    for (const id of ROUND_FIELDS) this.nav(FIELDS[id].red); // both rounds' grids now, at the start
     this.round(Date.now());
   }
 
@@ -188,11 +189,21 @@ export class AssaultSupply {
   round(now) {
     this.waits.clear();
     this.used = { claymores: 0, turrets: 0 };
-    const arena = arenaOf(this.f.field.red); // the defenders' place: the church's or the Sparrenhof's grid (shared/arenas.mjs)
-    const nav = this.game.zombieGround ? this.game.zombieGround(arena).nav : null;
+    const nav = this.nav(this.f.field.red);
     this.loot = nav ? new Loot(nav) : null;
     this.table = this.sources();
     this.at = now;
+  }
+
+  /**
+   * The Zombies grid of the defenders' place `id` (the church's or the Sparrenhof's, shared/arenas.mjs): where a trap may
+   * stand and what a turret sees through. Made once per game: both places at its start (some 50 ms each), never in its
+   * break, when 30 players are moved at once already.
+   */
+  nav(id) {
+    this.navs ??= new Map();
+    if (!this.navs.has(id)) this.navs.set(id, this.game.zombieGround ? this.game.zombieGround(arenaOf(id)).nav : null);
+    return this.navs.get(id);
   }
 
   /**
