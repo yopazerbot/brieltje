@@ -47,7 +47,10 @@ the height of the ground in the middle of its street front, and its walls reach 
 Light: ambient occlusion and the sun's shadow (the game's fixed late-afternoon sun) are worked out here per
 corner with rays (mathutils' BVH: the houses, the ground and the neighbouring buildings as blocks) and baked
 into the vertex colours, multiplied with each surface's own colour. The village has no real-time shadows, so
-this is what puts the shade under the eaves, in the window reveals and behind the chimneys.
+this is what puts the shade under the eaves, in the window reveals and behind the chimneys. The walls' colour is
+a little uneven in soft patches (`mottle`), and each house's walls a shade of their own (`house_tone`), seeded by
+its id. No dirt at the foot of the walls, no green (Yoshi, 18 Nov 2026: "Do it all but not this: dirty band at
+the bottom of the wall, a bit of moss").
 
 Frame: the game's axes (x, y up, z); origin on the ground at ORIGIN. The root node's extras carry the origin,
 the GRB outlines whose open-data blocks these houses replace (`replaces`), blocks for walking into for what
@@ -65,6 +68,7 @@ Output: one GLB. The near copy, one mesh per material:
 The far copy (far_brick, far_render, far_roof): the same volumes without openings, the windows as dark
 patches, for beyond `far` metres from the middle.
 """
+import functools
 import json
 import math
 import os
@@ -203,6 +207,7 @@ for lod in ("near", "far"):
         MAT[key] = make_material(f"{lod}_{name}", tex, mean, rough, nscale)
         bm = bmesh.new()
         bm.loops.layers.float_color.new("Color")
+        bm.faces.layers.int.new("soldier")  # 1: bricks on end (metre_uvs turns the texture a quarter round)
         BM[key] = bm
 
 
@@ -326,10 +331,28 @@ class Frame:
             face(key, [self.p(s0, y0, d), self.p(s1, y0, d), self.p(s1, y1, d), self.p(s0, y1, d)], self.out(), paint)
 
 
+# The house being built: its walls' own shade (see house_tone), set per house in the loop below.
+HOUSE_TONE = (1.0, 0.0)
+
+
+def house_tone(hid):
+    """A house's walls a shade lighter or darker and a touch warmer or cooler than houses.json names them, as no two
+    batches of brick or pots of paint are quite alike: (lightness factor, warmth), seeded by the house's id."""
+    r = random.Random(f"tone:{hid}")
+    return r.uniform(0.95, 1.045), r.uniform(-0.025, 0.025)
+
+
+def toned(h):
+    k, warm = HOUSE_TONE
+    c = [int(h[i:i + 2], 16) * k for i in (1, 3, 5)]
+    c = (c[0] * (1 + warm), c[1], c[2] * (1 - warm))
+    return "#%02x%02x%02x" % tuple(max(0, min(255, round(v))) for v in c)
+
+
 def surface(spec):
-    """'brick:#b06040' or 'render:#e8e4dc' -> (material, colour)."""
+    """'brick:#b06040' or 'render:#e8e4dc' -> (material, colour): a wall's, in its house's own shade."""
     m, c = spec.split(":")
-    return m, c
+    return m, toned(c)
 
 
 # ---------------------------------------------------------------- openings
@@ -407,8 +430,9 @@ def opening_heights(kind, s0, s1, f, storey, fs):
     return Hole(kind, s0, s1, f + sill, f + head, storey)
 
 
-def build_opening(F, h, fs, wallkey, wallcol, rng):
-    """Reveals, frame, glass, sill, lintel, door or garage door and shutters for one hole in a facade."""
+def build_opening(F, h, fs, wallkey, wallcol, rng, room=9.0):
+    """Reveals, frame, glass, sill, lintel, door or garage door and shutters for one hole in a facade. `room`: metres of
+    wall over the opening's head, below the eaves or the gable's edge."""
     if h.kind == "x":  # only a gap in the wall
         return
     depth = fs.get("depth", 0.14)
@@ -466,8 +490,13 @@ def build_opening(F, h, fs, wallkey, wallcol, rng):
     face(wallkey, [F.p(s0, y1, 0), F.p(s1, y1, 0), F.p(s1, y1, F_in), F.p(s0, y1, F_in)], (0, 0, -1), shade(wallcol, 0.9))
     if h.kind not in "dDgG":
         face(wallkey, [F.p(s0, y0, 0), F.p(s1, y0, 0), F.p(s1, y0, F_in), F.p(s0, y0, F_in)], (0, 0, 1), wallcol)
-    # Lintel: a course of bricks on end over the opening (brick walls), or a stone lintel.
+    # Lintel: a course of bricks on end over the opening (brick walls), or a stone lintel. A brick wall's opening with
+    # nothing else over its head gets the soldier course of most Flemish village houses, a shade darker than the wall
+    # (houses.json `soldier`: false leaves it out).
     lintel = fs.get("lintel")
+    if (not lintel and wallkey[1] == "brick" and fs.get("soldier", True) and h.kind in "wWndDorgG" and room > 0.3
+            and not (fs.get("surround") or fs.get("lintel_stone") or fs.get("beam"))):
+        lintel = shade(wallcol, 0.88)
     if lintel and h.kind != "s":
         if h.kind == "a":  # a segmental arch of bricks on end: a few short pieces round the head
             n = 7
@@ -482,7 +511,9 @@ def build_opening(F, h, fs, wallkey, wallcol, rng):
                 face(wallkey, [F.p(pts[0][0], pts[0][1], 0.012), F.p(pts[2][0], pts[2][1], 0.012),
                                F.p(pts[3][0], pts[3][1], 0.012), F.p(pts[1][0], pts[1][1], 0.012)], F.out(), lintel)
         else:
-            F.flat(wallkey, s0 - 0.06, s1 + 0.06, y1, y1 + 0.2, 0.008, lintel)
+            f = face(wallkey, [F.p(s0 - 0.06, y1, 0.008), F.p(s1 + 0.06, y1, 0.008), F.p(s1 + 0.06, y1 + 0.2, 0.008), F.p(s0 - 0.06, y1 + 0.2, 0.008)], F.out(), lintel)
+            if f is not None and wallkey[1] == "brick":
+                f[BM[wallkey].faces.layers.int["soldier"]] = 1  # the bricks stand on end
     # Sill: stone (blue stone or concrete) under windows, sloping out a little.
     if h.kind not in "dDgGs" and fs.get("sill", "#8f8f8a") != "none":
         sc = fs.get("sill", "#8f8f8a")
@@ -742,7 +773,7 @@ def facade(F, length, top, holes, spec, fs, bottom, rng, far_key=None, far_col=N
                 F.flat(key, xa, xb, y - 0.012, y + 0.012, 0.004, bc)
             y += step
     for h in holes:
-        build_opening(F, h, fs, key, wc, rng)
+        build_opening(F, h, fs, key, wc, rng, min(ytop(h.s0), ytop(h.s1)) - h.y1)
     if fs.get("counter"):
         counter(F, fs["counter"], bottom, wc)
     if fs.get("poster"):  # a framed poster case on the wall, left blank
@@ -1076,6 +1107,7 @@ solids = []      # [ring, height above the ground] for walking into (new things 
 replaces = []
 for b in SPEC["houses"]:
     rng = random.Random(b["id"])
+    HOUSE_TONE = house_tone(b["id"])
     for gi in b.get("grb", []):
         # houses.json names the GRB buildings by their place in data/neighbours.json, which moves when that file is
         # made again: a building far from the house's front is a stale index (it would hide another house).
@@ -1462,6 +1494,27 @@ for fit in FITTINGS:
 
 
 # ---------------------------------------------------------------- baked light: ambient occlusion and the sun
+@functools.lru_cache(maxsize=None)
+def lattice(i, j, k):
+    """A steady random number per corner of a 3D grid."""
+    return random.Random(i * 73856093 ^ j * 19349663 ^ k * 83492791).random()
+
+
+def mottle(p, cell=2.6, depth=0.035):
+    """A wall a few per cent lighter or darker in soft patches a few metres across (smooth value noise in the model's
+    own metres, so walls that meet agree at their corner): no wall reads as one flat colour. Not dirt: no band, no
+    green, only the unevenness of old brick and paint."""
+    x, y, z = p.x / cell, p.y / cell, p.z / cell
+    i, j, k = math.floor(x), math.floor(y), math.floor(z)
+    fx, fy, fz = (t * t * (3 - 2 * t) for t in (x - i, y - j, z - k))
+    v = 0.0
+    for di, wx in ((0, 1 - fx), (1, fx)):
+        for dj, wy in ((0, 1 - fy), (1, fy)):
+            for dk, wz in ((0, 1 - fz), (1, fz)):
+                v += wx * wy * wz * lattice(i + di, j + dj, k + dk)
+    return 1.0 + depth * (2 * v - 1)
+
+
 def bake():
     """Per corner: occlusion of the sky in 20 directions within 3 m, and the sun's shadow (3 rays to 120 m),
     multiplied into the colour. Occluders: everything near, the ground, the neighbouring buildings as blocks."""
@@ -1544,6 +1597,7 @@ def bake():
             n = f.normal
             if n.length < 0.5:
                 continue
+            uneven = key[1] in ("brick", "render") and abs(n.z) < 0.3  # a wall: its brick or paint not quite even
             t = n.orthogonal().normalized()
             b2 = n.cross(t)
             cen = f.calc_center_median()
@@ -1568,7 +1622,7 @@ def bake():
                         lit = 0.85 + 0.15 * vis / len(jit)
                     cache[kk] = ao * lit
                     count += 1
-                f_ = cache[kk]
+                f_ = cache[kk] * (mottle(p) if uneven else 1.0)
                 c = lp[lay]
                 lp[lay] = (c[0] * f_, c[1] * f_, c[2] * f_, 1.0)
     print(f"baked light at {count} points")
@@ -1578,8 +1632,14 @@ bake()
 
 
 # ---------------------------------------------------------------- UVs, objects, export
+# The town_brick texture's courses run along its width; at 0.736 to 0.796 m across a tile no course has a head joint
+# (measured on web/public/textures/town_brick_color.webp: 20 courses of 7 cm to a 1.4 m tile).
+SOLDIER_U0, SOLDIER_DU = 0.736, 0.06
+
+
 def metre_uvs(bm):
     uv = bm.loops.layers.uv.new("UVMap")
+    soldier = bm.faces.layers.int.get("soldier")
     for f in bm.faces:
         n = f.normal
         if abs(n.z) > 0.97:
@@ -1587,6 +1647,15 @@ def metre_uvs(bm):
         else:
             t = Vector((0, 0, 1)).cross(n).normalized()
             b = n.cross(t).normalized()
+        if soldier is not None and f[soldier]:
+            # Bricks on end: the texture turned a quarter round, its courses across the band (each a brick 7 cm wide),
+            # its height taken from a strip of one brick's length with no head joint in it.
+            low = min(v.co.z for v in f.verts)
+            high = max(v.co.z for v in f.verts)
+            for lp in f.loops:
+                p = lp.vert.co
+                lp[uv].uv = (SOLDIER_U0 + SOLDIER_DU * (p.z - low) / max(high - low, 1e-3), p.dot(t))
+            continue
         for lp in f.loops:
             p = lp.vert.co
             lp[uv].uv = (p.dot(t), p.dot(b))
