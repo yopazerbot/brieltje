@@ -66,6 +66,7 @@ import { HELI_DOWN, HELI_SPEED, Helis } from './helis.mjs';
 import { VehicleDamage } from './vehicleDamage.mjs';
 import { Host } from './host.mjs';
 import { FlagGuards } from './flagGuards.mjs';
+import { truckSpec } from '../shared/assaultFields.mjs';
 import { monitor } from './monitor.mjs';
 import { words } from './words.mjs';
 import { makeKeet } from '../shared/keet.mjs';
@@ -205,7 +206,7 @@ const CARS = shared('car.json'); // the cars: where each is parked, its size and
 /** The Teslas spawned with /tesla (shared/car.json): how many at most, the kinds (a car above in a paint of its own). */
 const PLACED = CARS.placed;
 /** A car's size and speeds: its own, or for a placed one its kind's base car's. */
-const carSpec = (car) => CARS.cars[car.id] ?? CARS.cars[PLACED.kinds[car.kind]?.base];
+const carSpec = (car) => CARS.cars[car.id] ?? CARS.cars[PLACED.kinds[car.kind]?.base] ?? truckSpec(car.kind); // Attack and defend's spawn truck (shared/assaultFields.mjs)
 const TESLA_MS = 400; // ms: at most one place, move or removal this often per player
 const BIKES = shared('bike.json'); // the bikes: where each stands, its size and top speed (src/world/bike.ts)
 const BELL_MS = 400; // ms: a rider's bell rings for the others at most this often
@@ -382,7 +383,7 @@ const ROOM_REFUSED = new Set(['furn', 'tesla', 'clown', 'rules', 'mood', 'moodsk
  * when a type Game.handle reads is in neither list.
  */
 export const HELI_REFUSED = new Set(['hit', 'rocket', 'nade', 'boom', 'shot', 'crack', 'vil', 'cat', 'clownhit', 'zhit', 'zitem', 'zbuy', 'revive', 'pickup', 'coin', 'tag', 'kickball',
-  'glass', 'door', 'furn', 'tesla', 'clown', 'claymore', 'turret', 'stakes', 'placement', 'car', 'horse', 'bike', 'bell', 'spawn', 'chute', 'unstuck', 'vhit']);
+  'glass', 'door', 'furn', 'tesla', 'clown', 'claymore', 'turret', 'stakes', 'placement', 'car', 'horse', 'bike', 'bell', 'spawn', 'chute', 'unstuck', 'vhit', 'asup']);
 
 /** The ids a `door` message may carry: the house data's and the end house's door ids (letters, digits, dots and dashes), at most 40 characters. */
 export const DOOR_ID = /^[A-Za-z0-9.-]{1,40}$/;
@@ -1206,17 +1207,24 @@ export class Game {
       // Buying at the stall between waves (server/zombies.mjs buy: the kind only; rate, who, break, coins, use).
       this.modes.zombies?.buy(name, player, m, now);
     } else if (m.t === 'claymore') {
-      // Placing a claymore (server/zombies.mjs place: carried, on a floor near the player, two down at most).
-      this.modes.zombies?.place(name, player, m, now);
+      // Placing a claymore (server/zombies.mjs place: carried, on a floor near the player, two down at most); in Attack and
+      // defend the defenders' (server/assaultSupply.mjs place, the same rules).
+      if (this.modes.zombies) this.modes.zombies.place(name, player, m, now);
+      else this.modes.flag?.supply?.place(name, player, m, now);
     } else if (m.t === 'stakes') {
       // Planting a row of stakes (server/zombies.mjs stakes: carried, on a floor near the player, as a claymore).
       this.modes.zombies?.stakes(name, player, m, now);
     } else if (m.t === 'turret') {
       // Setting up a turret (server/zombies.mjs turret: carried, on a floor near the player; it aims and shoots on the server).
-      this.modes.zombies?.turret(name, player, m, now);
+      if (this.modes.zombies) this.modes.zombies.turret(name, player, m, now);
+      else this.modes.flag?.supply?.turret(name, player, m, now); // Attack and defend's defenders (server/assaultSupply.mjs)
+    } else if (m.t === 'asup') {
+      // Use at one of Attack and defend's supply crates or vehicles (server/assaultSupply.mjs use: the id only; who, where,
+      // which side, the waits and the team's limits are the server's).
+      this.modes.flag?.supply?.use(name, player, m, now);
     } else if (m.t === 'placement') {
-      const game = this.modes.zombies;
-      if (!game || !player.alive || !player.state?.armed || this.inCar(name) || this.calm(player) || now - (player.lastPreview ?? 0) < 150) return;
+      const game = this.modes.zombies ?? (this.modes.flag?.supply?.loot && this.modes.flag.teams[name] === this.modes.flag.defender() ? this.modes.flag.supply : null); // Attack and defend: the defenders' traps
+      if (!game || !player.alive || !player.state?.armed || this.inCar(name) || (this.modes.zombies ? this.calm(player) : this.fightCalm(player)) || now - (player.lastPreview ?? 0) < 150) return;
       if (!['claymore', 'stakes', 'turret'].includes(m.kind) || !Number.isSafeInteger(m.id) || m.id < 0 || m.id > 1000000000) return;
       if (![m.x, m.y, m.z, m.yaw].every((v) => typeof v === 'number' && Number.isFinite(v))) return;
       player.lastPreview = now;
@@ -1298,6 +1306,10 @@ export class Game {
       if (m.op === 'in' && this.modes.zombies) return this.send(player.ws, { t: 'system', text: 'No driving during Zombies.', code: 'zNoCar' });
       if (m.op === 'in' && this.fightRefused(player, 'car', Object.hasOwn(this.cars, m.id) ? this.cars[m.id] : null, now)) return;
       if (m.op === 'in' && Object.hasOwn(this.cars, m.id) && this.vehicleDamage.out('car', m.id)) return this.tellThing(player, 'car', this.cars[m.id]); // a wreck: nobody gets in
+      if (m.op === 'in' && Object.hasOwn(this.cars, m.id) && this.modes.flag?.mayEnter?.(name, m.id) === false) { // Attack and defend: the spawn truck is the attackers' (server/assault.mjs)
+        this.send(player.ws, { t: 'system', text: 'Only the attackers drive the spawn truck.', code: 'assaultTruck' });
+        return this.tellThing(player, 'car', this.cars[m.id]);
+      }
       if (m.op === 'in' && Object.hasOwn(this.cars, m.id)) this.enterCar(name, player, this.cars[m.id]);
       else if (m.op === 'out') this.releaseCar(name);
     } else if (m.t === 'tesla') {
@@ -2639,6 +2651,7 @@ export class Game {
    */
   damage(name, shooter, targetName, target, amount, head, w, now, tellKill = null) {
     if (!target.alive) return;
+    if (this.modes.flag?.soak) amount = this.modes.flag.soak(targetName, target, amount); // Attack and defend: a vest takes it first (server/assaultSupply.mjs)
     target.hp = Math.max(0, target.hp - amount);
     target.hurtAt = now; // no parachute out of a fight (manualDrop)
     target.hurtByPlayerAt = now; // and no holster at once (inPlayerFight: a player's hit, not a strongman's or a zombie's)

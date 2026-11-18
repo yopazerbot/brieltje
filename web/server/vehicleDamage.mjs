@@ -335,7 +335,7 @@ export class VehicleDamage {
   home(r, v, force = false) {
     const g = this.game;
     if (r.kind === 'heli') return g.helis.home(v, Date.now()) || force;
-    const park = this.cars.cars[r.id]?.park;
+    const park = this.cars.cars[r.id]?.park ?? this.game.modes?.flag?.parkOf?.(r.kind, r.id); // Attack and defend's spawn truck: its camp (server/assault.mjs)
     if (park && !this.clear(v, park)) return force;
     for (const n of this.riders('car', v)) g.releaseCar(n);
     if (park) Object.assign(v, { x: park.x, y: park.y, z: park.z, yaw: park.yaw });
@@ -389,7 +389,7 @@ export class VehicleDamage {
       } else if (r.st === STAGE.wreck && now >= r.until) {
         // Gone: off its spot (the page draws it nowhere, with nothing to bump into) and to its parking place once clear.
         r.st = STAGE.gone;
-        r.until = now + VEHICLE.goneMs;
+        r.until = now + (this.game.modes?.flag?.goneMs?.(r.kind, r.id) ?? VEHICLE.goneMs); // the spawn truck: 60 s in all (server/assault.mjs)
         r.fall = null;
         r.homed = this.home(r, v);
         r.dirty = true;

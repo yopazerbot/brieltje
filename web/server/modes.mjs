@@ -9,6 +9,7 @@
 import { DONE_MS as ZOMBIES_DONE_MS, RECONNECT_MS as ZOMBIES_RECONNECT_MS, ZombieGame } from './zombies.mjs';
 import { arenaOf, portalOf } from '../shared/arenas.mjs';
 import { BACK_MS, FLAG_COLORS, FLAG_MS, FLAG_TEAMS, FlagGame, SAFE_MS, SUDDEN_MS } from './flags.mjs';
+import { AssaultGame } from './assault.mjs';
 
 const HIDE_MS = 30_000; // the seeker counts with eyes shut
 const SEEK_MS = 180_000;
@@ -28,6 +29,8 @@ export const TEAM_COLORS = { house: '#4fa3e0', bungalow: '#ff9f43' };
 export const KINDS = { hide: 'Hide and seek', tag: 'Tag', treasure: 'Treasure hunt', teams: 'House against bungalow', zombies: 'Zombies', flag: 'Steal the flag' };
 /** Steal the flag's teams in the chat's English (server/flags.mjs). */
 const FLAG_NAMES = { blue: 'Blue', red: 'Red' };
+/** Attack and defend's name in the chat's English (server/assault.mjs: kind 'flag', place 'assault'). */
+export const ASSAULT_TITLE = 'Attack and defend';
 /**
  * A look the host's programme gives a game (server/host.mjs entry), for as long as it is played and its result shows:
  * 'paint', child-friendly for everyone whatever the house rule says; 'real', the house rule's child-friendly off (a
@@ -148,6 +151,7 @@ export class Modes {
   swapSides(now = Date.now()) {
     const s = this.state;
     if (s.kind !== 'flag' || s.phase !== 'playing') return { error: 'Only while Steal the flag is played', code: 'noFlagGame' };
+    if (s.f.assault) return { error: 'Attack and defend swaps the roles itself, between its rounds', code: 'assaultNoSwap' }; // server/assault.mjs
     const ev = s.f.swap(now);
     if (ev.error) return ev;
     this.flagEvents([ev]);
@@ -223,7 +227,7 @@ export class Modes {
     const s = this.state;
     if (s.kind === 'free') return { kind: 'free' };
     return {
-      kind: s.kind, phase: s.phase, ms: Math.max(0, s.until - now), title: KINDS[s.kind],
+      kind: s.kind, phase: s.phase, ms: Math.max(0, s.until - now), title: s.f?.assault ? ASSAULT_TITLE : KINDS[s.kind],
       seekers: s.seekers ? [...s.seekers].filter((n) => this.game.players.has(n)) : undefined, it: s.it, times: s.times, coins: s.coins, counts: s.counts,
       result: s.result, resultCode: s.resultCode, resultArgs: s.resultArgs,
       teams: s.teams && this.here(s.teams), score: s.score, goal: s.kind === 'teams' ? s.goal ?? TEAM_GOAL : undefined,
@@ -317,11 +321,15 @@ export class Modes {
       const sides = this.game.host?.sides(names);
       const teams = sides ? byName(names.map((n) => [n, sides[n] === 'house' ? 'blue' : 'red'])) : deal(names, FLAG_TEAMS);
       if (!sides) this.game.host?.adopt?.(teams, FLAG_TEAMS);
-      const f = new FlagGame(this.game, place, teams, LOOKS.includes(opts.look) ? opts.look : null, now);
+      // `place` 'assault': Attack and defend (server/assault.mjs), two rounds of its own on its own fields; `opts.defend`
+      // the team defending the church first.
+      const look = LOOKS.includes(opts.look) ? opts.look : null;
+      const f = place === 'assault' ? new AssaultGame(this.game, teams, look, { defend: opts.defend, roundMs: opts.minutes ? opts.minutes * 60_000 : undefined }, now) : new FlagGame(this.game, place, teams, look, now);
       // `colors`: everyone dressed in their team's colour, on every page, the scoreboard, the kill feed and the name tags
       // (game.mjs colorOf, through teamColor).
-      this.state = { kind, phase: 'playing', until: now + ms(FLAG_MS), teams, score: f.score, f, colors: FLAG_COLORS };
-      this.say(`${by} started Steal the flag: blue at the church, red at ${f.field.id === 'village' ? 'the Sparrenhof' : 'Molenhoek'}. Bring their flag to your base.`, 'flagStarted', { name: by, place: f.field.red });
+      this.state = { kind, phase: 'playing', until: now + (f.assault ? f.roundMs : ms(FLAG_MS)), teams, score: f.score, f, colors: FLAG_COLORS };
+      if (f.assault) this.say(`${by} started Attack and defend: team ${f.defender() === 'blue' ? 'Blue' : 'Red'} defends the church, the other team attacks from its camp. Two rounds.`, 'assaultStarted', { name: by, team: f.defender() });
+      else this.say(`${by} started Steal the flag: blue at the church, red at ${f.field.id === 'village' ? 'the Sparrenhof' : 'Molenhoek'}. Bring their flag to your base.`, 'flagStarted', { name: by, place: f.field.red });
       this.game.roundOver = null; // the teams' score counts now
       this.game.teamsChanged(names); // everyone at their base, out of every seat first: a machine someone sat in parks too
       f.park(now);
@@ -528,6 +536,7 @@ export class Modes {
   flagTick(now) {
     const s = this.state;
     const f = s.f;
+    if (f.assault) return f.tick(now, this); // Attack and defend keeps its own rounds (server/assault.mjs)
     const events = f.step(now);
     const racks = f.arms.step(now); // each team's bazooka (server/flagBazooka.mjs): taken, away, back on its rack
     if (events.length) this.flagEvents(events);

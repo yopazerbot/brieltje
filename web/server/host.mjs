@@ -22,7 +22,7 @@
 //   is what its players scored while on it. Kept in memory: a restart begins a new evening.
 
 import { words } from './words.mjs';
-import { KINDS, LOOKS, shuffled } from './modes.mjs';
+import { ASSAULT_TITLE, KINDS, LOOKS, shuffled } from './modes.mjs';
 import { ARENAS } from '../shared/arenas.mjs';
 import { DUEL_KINDS, SIDES as DUEL_SIDES } from './duel.mjs';
 import { FIELDS } from '../shared/flagFields.mjs';
@@ -39,6 +39,10 @@ const KNOCK_MS = 30_000; // someone who tried to come in this recently is on the
 const EVENING_KICK_MS = 12 * 3600_000;
 const PLACES = new Set(ARENAS.map((a) => a.id));
 const POINTS = { played: 1, won: 3, wavesPer: 3 };
+/** Attack and defend's results with a winning team (server/assault.mjs final). */
+const ASSAULT_WON = new Set(['assaultTime', 'assaultOnly', 'assaultFar', 'assaultTags']);
+/** The teams that may defend the church first in Attack and defend: tonight's first two (blue, red). */
+const DEFENDERS = ['blue', 'red'];
 
 const str = (v, max) => (typeof v === 'string' ? v.replace(/[\u0000-\u001f]/g, ' ').trim().slice(0, max) : '');
 const int = (v, lo, hi) => (Number.isInteger(v) && v >= lo && v <= hi ? v : null);
@@ -143,7 +147,7 @@ export class Host {
     else if (code === 'foundAll') winners = [...(state.seekers ?? [])];
     else if (code === 'seekerLeft') winners = here.filter((n) => !state.seekers?.has(n));
     else if (code === 'tagWon') winners = [args.name];
-    else if (code === 'teamWon' || code === 'teamsTime' || code === 'flagWon' || code === 'flagTagsWon') winners = Object.keys(state.teams ?? {}).filter((n) => state.teams[n] === args.team);
+    else if (code === 'teamWon' || code === 'teamsTime' || code === 'flagWon' || code === 'flagTagsWon' || ASSAULT_WON.has(code)) winners = Object.keys(state.teams ?? {}).filter((n) => state.teams[n] === args.team);
     else if (code === 'zOver' || code === 'zOverBest') extra = this.wavePoints(args.n);
     winners = winners.filter((n) => typeof n === 'string' && present.has(n));
     this.award(here, winners, extra);
@@ -371,9 +375,15 @@ export class Host {
    * its look: 'paint', 'real' or none (missing, null or ''). Any other look refuses the whole game.
    */
   entry(e) {
-    if (!e || typeof e !== 'object' || typeof e.kind !== 'string' || !(Object.hasOwn(KINDS, e.kind) || e.kind === 'duel')) return null;
+    if (!e || typeof e !== 'object' || typeof e.kind !== 'string' || !(Object.hasOwn(KINDS, e.kind) || e.kind === 'duel' || e.kind === 'assault')) return null;
     const none = e.look === undefined || e.look === null || e.look === '';
     if (!none && !LOOKS.includes(e.look)) return null;
+    // Attack and defend (server/assault.mjs): who defends the church in round 1 (blue when not said; anything else refuses
+    // the game), each round's minutes (1 to 15; none: ten).
+    if (e.kind === 'assault') {
+      const defend = e.defend === undefined || e.defend === null || e.defend === '' ? 'blue' : DEFENDERS.includes(e.defend) ? e.defend : null;
+      return defend ? { kind: 'assault', place: 'assault', defend, minutes: int(e.minutes, 1, 15), goal: null, look: none ? null : e.look } : null;
+    }
     // The Zombies duel (server/duel.mjs): its warm-up (with its minutes) or its final, always at Sparrenhof.
     if (e.kind === 'duel') return DUEL_KINDS.includes(e.duel) ? { kind: 'duel', duel: e.duel, place: 'sparrenhof', minutes: e.duel === 'warmup' ? int(e.minutes, 1, 30) : null, goal: null, look: none ? null : e.look } : null;
     const place = e.kind === 'flag' ? (Object.hasOwn(FIELDS, e.place) ? e.place : 'compact') : typeof e.place === 'string' && PLACES.has(e.place) ? e.place : 'house'; // Steal the flag: its field
@@ -391,13 +401,13 @@ export class Host {
     const until = Date.now() + COUNTDOWN_MS;
     const timer = setTimeout(() => {
       this.countdown = null;
-      if (!duel) return this.game.modes.start(e.kind, by, e.place, { minutes: e.minutes, goal: e.goal, look: e.look });
+      if (!duel) return this.game.modes.start(e.kind === 'assault' ? 'flag' : e.kind, by, e.place, { minutes: e.minutes, goal: e.goal, look: e.look, defend: e.defend }); // Attack and defend: a flag game of its own
       const r = duel.start(e, by);
       if (r.error) this.game.broadcast({ t: 'system', text: `The Zombies duel could not start: ${r.error}`, code: r.code, args: r.args }); // its reason, in the page's language
     }, COUNTDOWN_MS);
     timer.unref?.();
     this.countdown = { kind: e.kind, until, timer };
-    this.game.broadcast({ t: 'announce', code: 'nextGame', args: { kind: e.kind }, text: `Next: ${KINDS[e.kind] ?? 'Zombies duel'}`, ms: COUNTDOWN_MS, count: true });
+    this.game.broadcast({ t: 'announce', code: 'nextGame', args: { kind: e.kind }, text: `Next: ${KINDS[e.kind] ?? (e.kind === 'assault' ? ASSAULT_TITLE : 'Zombies duel')}`, ms: COUNTDOWN_MS, count: true });
     return { ok: true };
   }
 
