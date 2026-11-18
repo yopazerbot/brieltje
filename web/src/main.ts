@@ -125,6 +125,7 @@ import { blockMaterial, buildHouseMeshes, claimCovers, grassMaterial, groundFami
 import { patchFields } from './world/fields';
 import { addDiag, startDiag } from './ui/diag';
 import { IndoorLight } from './world/indoorLight';
+import { gunIndoors } from './world/gunSurface';
 import { Weather } from './world/weather';
 import { Torch } from './world/torch';
 import { warmPasses } from './world/warmShaders';
@@ -4132,6 +4133,7 @@ renderer.setAnimationLoop((now: number) => {
     exposure += (wanted - exposure) * (1 - Math.exp(-dt * 1.5));
     renderer.toneMappingExposure = exposure;
     indoorLight.update(dt, indoors, 1);
+    gunIndoors(dt, indoors); // the guns mirror a room indoors, not the sky (world/gunSurface.ts)
   }
   netClock.frame(now); // the time the others are drawn at (net/track.ts)
   for (const c of cars) c.update(dt, driving && c === car, camera.position);

@@ -253,8 +253,8 @@ export const gunsReady: Promise<boolean> = new GLTFLoader().loadAsync('/models/w
               m.color.set('#4a6a7c');
               m.envMapIntensity = 1.5;
             }
+            gunSurface(m); // its finish, worn edges, darker seams, a fine grain (world/gunSurface.ts), before `toy` notes the real look
             if (ROLE[m.name]) toy(m, w, ROLE[m.name]);
-            gunSurface(m); // worn edges, darker seams, a fine grain (world/gunSurface.ts)
             // The red-dot sight: a window you look through, and a dot that shows in any light.
             if (m.name === 'Lens') m.depthWrite = false;
             if (m.name === 'RedDot') m.emissiveIntensity = 3;
