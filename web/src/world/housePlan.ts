@@ -1,10 +1,11 @@
 import type { Opening, Prism } from './houseData';
-import { BlockGrid, Houses, inside, isBrick, renderOf } from './houseKeys';
+import { BlockGrid, Houses, inside, isBrick, renderOf, stable } from './houseKeys';
 import { houseStyle, type PlinthKind } from './houseStyle';
 
 /**
- * Where the open-data houses' details go, in numbers only (world/houseTrim.ts builds them; world/housePlan.test.mjs
- * checks them over the committed data): the band at the foot of each house wall.
+ * Where the open-data houses' details go, in numbers only (world/houseTrim.ts and world/wallCut.ts build them;
+ * world/housePlan.test.mjs checks them over the committed data): the band at the foot of each house wall, and the
+ * windows and doors set back in their walls (planReveals).
  *
  * A plinth follows the ground along the wall, as real ones do: at every corner of the wall (and at points added where
  * the ground bends between corners) it stands its house's height above the ground there, so on a slope it slopes
@@ -232,3 +233,274 @@ export function planBases(prisms: Prism[], openings: Opening[], houses: Houses, 
   }
   return out;
 }
+
+// ---- Windows and doors set back in their walls ----
+
+/** A frame stands this far round its opening on every side (world/surroundings.ts `buildOpenings`): the hole is the frame's size. */
+export const FRAME = 0.05;
+/** From the wall's face back to the frame's face: 10 to 16 cm, by the house's key (the glass sits 8 mm in front of the frame). */
+const REVEAL_MIN = 0.1;
+const REVEAL_SPAN = 0.06;
+/** The least wall kept between a hole and the end of its wall face (a corner, or a bend in the outline). */
+const EDGE = 0.1;
+/** The least wall kept between two holes. */
+const GAP = 0.06;
+/** The least a hole keeps off the line where a plinth or damp base meets the wall above (two rows of faces meet there). */
+const ROW_GAP = 0.03;
+/** Of a sill's ends (one in the middle of a narrow window), the share that has a faint rain streak under it. */
+export const STREAK_SHARE = 0.7;
+
+/** A corner of a wall face along the ground: s metres along it, its place on the plan, the plinth's cut there (null: no band). */
+export interface FacePoint {
+  s: number;
+  x: number;
+  z: number;
+  cut: number | null;
+}
+
+/**
+ * A faint rain streak under a window's sill: centred s metres along the face and `half` wide each way at its top, the
+ * sill's underside, narrowing down to `bottom`; at the top of its middle the wall is `dark` darker (a share), at `mid`
+ * a little over half that, nothing at its edges.
+ */
+export interface Streak {
+  s: number;
+  half: number;
+  top: number;
+  mid: number;
+  bottom: number;
+  dark: number;
+}
+
+/**
+ * The hole in a wall face for an opening's frame: s0 to s1 along the face, y0 to y1 high, `depth` from the wall's face
+ * back to the frame's. `at`, `d` and `n`: its middle on the face's plan, the way along the face and the way it looks, for
+ * the frame to stand square in it.
+ */
+export interface Hole {
+  o: Opening;
+  s0: number;
+  s1: number;
+  y0: number;
+  y1: number;
+  depth: number;
+  streaks: Streak[];
+  at: [number, number];
+  d: [number, number];
+  n: [number, number];
+}
+
+/** One flat side of a wall block (sides of its outline in one line) with holes in it. */
+export interface WallFace {
+  wall: Prism;
+  /** Its corners along the ground, by s from 0 */
+  points: FacePoint[];
+  /** The block's foot and top */
+  foot: number;
+  top: number;
+  /** The way s runs (d x up = n) and the way the face looks */
+  d: [number, number];
+  n: [number, number];
+  holes: Hole[];
+}
+
+export interface RevealPlan {
+  /** The faces with holes, per wall block */
+  faces: Map<Prism, WallFace[]>;
+  /** Each opening that is set back, and its hole */
+  holes: Map<Opening, Hole>;
+}
+
+/** A face's points at s, linear between them: `f` of each (x, z or cut). Both rows of a face work their shared line out by this. */
+export function alongFace(points: FacePoint[], s: number, f: (p: FacePoint) => number): number {
+  const k = Math.max(0, points.findIndex((q, i) => i > 0 && s <= q.s) - 1);
+  const [p, q] = [points[k], points[Math.min(points.length - 1, k + 1)]];
+  const t = q.s - p.s > 1e-9 ? (s - p.s) / (q.s - p.s) : 0;
+  // At a point exactly its own value (a + (b - a) need not come out as b).
+  return t <= 0 ? f(p) : t >= 1 ? f(q) : f(p) + (f(q) - f(p)) * t;
+}
+
+/**
+ * An outline's runs of sides in line, by the number of their first side and how many: where a corner lies within a
+ * millimetre of the line through its two neighbours (a band's outline has points added along a side), its two sides are
+ * one run. Every side is in one run, so two openings on one face find the same.
+ */
+const runCache = new WeakMap<[number, number][], { first: number; count: number }[]>();
+
+function runsOf(ring: [number, number][]): { first: number; count: number }[] {
+  const n = ring.length;
+  const joined = ring.map((_, i) => {
+    const [a, b, c] = [ring[i], ring[(i + 1) % n], ring[(i + 2) % n]];
+    const l = Math.hypot(c[0] - a[0], c[1] - a[1]);
+    if (l < 1e-6) return false;
+    const off = Math.abs((b[0] - a[0]) * (c[1] - a[1]) - (b[1] - a[1]) * (c[0] - a[0])) / l;
+    const ahead = (b[0] - a[0]) * (c[0] - b[0]) + (b[1] - a[1]) * (c[1] - b[1]) >= 0;
+    return off < 0.001 && ahead; // side i and side i + 1 in line
+  });
+  const start = ring.findIndex((_, i) => !joined[(i - 1 + n) % n]); // a side that starts a run
+  if (start < 0) return [];
+  const out: { first: number; count: number }[] = [];
+  let i = start;
+  let seen = 0;
+  while (seen < n) {
+    let count = 1;
+    while (seen + count < n && joined[(i + count - 1) % n]) count++;
+    out.push({ first: i, count });
+    seen += count;
+    i = (i + count) % n;
+  }
+  return out;
+}
+
+/**
+ * The face of wall block `p` (drawn with outline `ring`: its base plan's when it has a band) that the point (x, z) lies
+ * on, made once per run of sides in line (runsOf); none on a run that bends by more than a millimetre over its length.
+ */
+function faceAt(p: Prism, ring: [number, number][], base: BasePlan | undefined, x: number, z: number, made: Map<number, WallFace>, groundAt: GroundAt): WallFace | null {
+  const n = ring.length;
+  let best = -1;
+  let dist = 0.05;
+  for (let i = 0; i < n; i++) {
+    const [ax, az] = ring[i];
+    const [bx, bz] = ring[(i + 1) % n];
+    const l2 = (bx - ax) ** 2 + (bz - az) ** 2;
+    if (l2 < 1e-6) continue;
+    const t = Math.max(0, Math.min(1, ((x - ax) * (bx - ax) + (z - az) * (bz - az)) / l2));
+    const d = Math.hypot(ax + (bx - ax) * t - x, az + (bz - az) * t - z);
+    if (d < dist) [best, dist] = [i, d];
+  }
+  if (best < 0) return null;
+  let runs = runCache.get(ring);
+  if (!runs) runCache.set(ring, (runs = runsOf(ring)));
+  const run = runs.find((r) => (best - r.first + n) % n < r.count);
+  if (!run) return null;
+  const { first, count } = run;
+  const known = made.get(first);
+  if (known) return known;
+  const verts: [number, number][] = [];
+  for (let k = 0, i = first; k <= count; k++, i = (i + 1) % n) verts.push(ring[i]);
+  // Along the run, from its first corner to its last; every corner within a millimetre of that line.
+  const [ax, az] = verts[0];
+  const [bx, bz] = verts[verts.length - 1];
+  const l = Math.hypot(bx - ax, bz - az);
+  if (l < 0.3) return null;
+  const [tx, tz] = [(bx - ax) / l, (bz - az) / l];
+  if (verts.some((v) => Math.abs((v[0] - ax) * -tz + (v[1] - az) * tx) >= 0.001)) return null;
+  // Outward: away from the inside of the outline.
+  let [nx, nz] = [-tz, tx];
+  const [mx, mz] = [(ring[best][0] + ring[(best + 1) % n][0]) / 2, (ring[best][1] + ring[(best + 1) % n][1]) / 2];
+  if (inside(p.p[0], mx + nx * 0.05, mz + nz * 0.05)) [nx, nz] = [-nx, -nz];
+  const [dx, dz] = [nz, -nx];
+  const s0 = Math.min(...verts.map(([vx, vz]) => vx * dx + vz * dz));
+  const points = verts
+    .map(([vx, vz]): FacePoint => ({ s: vx * dx + vz * dz - s0, x: vx, z: vz, cut: base ? cutAt(base, groundAt(vx, vz)) : null }))
+    .sort((u, v) => u.s - v.s);
+  // Repeated corners (a side of no length) would give two points at one s.
+  const kept = points.filter((q, i) => i === 0 || q.s - points[i - 1].s > 1e-4);
+  const face: WallFace = { wall: p, points: kept, foot: p.y0, top: p.y1, d: [dx, dz], n: [nx, nz], holes: [] };
+  made.set(first, face);
+  return face;
+}
+
+/**
+ * Whether a hole from s0 to s1 and y0 to y1 keeps off the line where a face's band meets the wall above: wholly above it,
+ * wholly below it, or (a door) across it from below the line to above it all the way.
+ */
+function clearOfCut(f: WallFace, s0: number, s1: number, y0: number, y1: number): boolean {
+  if (f.points[0].cut === null) return true;
+  const cut = (q: FacePoint) => q.cut!;
+  const cuts = [alongFace(f.points, s0, cut), alongFace(f.points, s1, cut), ...f.points.filter((q) => q.s > s0 && q.s < s1).map(cut)];
+  return cuts.every((c) => c <= y0 - ROW_GAP) || cuts.every((c) => c >= y1 + ROW_GAP) || cuts.every((c) => c >= y0 + ROW_GAP && c <= y1 - ROW_GAP);
+}
+
+/**
+ * The faint rain streaks under a window's sill (not under a garden door, which has none): one under each end of the
+ * sill of a window 70 cm wide or more (its hole), else one under its middle, on about seven in ten of those places; 18 to
+ * 28 cm wide, 50 to 120 cm long, stopping 5 cm over the band at the foot of the wall, 30 cm over the ground and 30 cm
+ * over an opening below (so short under most ground-floor windows, or none).
+ */
+function streaksUnder(f: WallFace, h: Hole, groundAt: GroundAt): Streak[] {
+  const o = h.o;
+  if (o.k !== 'w' || o.y[1] - o.y[0] >= 1.9) return [];
+  const at = (s: number, g: (p: FacePoint) => number) => alongFace(f.points, s, g);
+  const banded = f.points[0].cut !== null;
+  if (banded && Math.max(at(h.s0, (p) => p.cut!), at(h.s1, (p) => p.cut!)) > h.y0) return []; // a window in the band
+  const centres = h.s1 - h.s0 < 0.7 ? [(h.s0 + h.s1) / 2] : [h.s0 + 0.16, h.s1 - 0.16];
+  const out: Streak[] = [];
+  centres.forEach((s, k) => {
+    const r = (j: number) => stable(o.a[0], o.a[1], o.y[0], k, j, 97);
+    if (r(1) >= STREAK_SHARE) return;
+    const half = Math.min(0.09 + 0.05 * r(2), (h.s1 - h.s0) / 2 - 0.02);
+    let bottom = h.y0 - (0.5 + 0.7 * r(3));
+    for (const e of [s - half, s, s + half]) {
+      bottom = Math.max(bottom, Math.max(f.foot, groundAt(at(e, (p) => p.x), at(e, (p) => p.z))) + 0.3);
+      if (banded) bottom = Math.max(bottom, at(e, (p) => p.cut!) + 0.05);
+    }
+    for (const g of f.holes) if (g !== h && g.y1 < h.y0 && g.s0 < s + half + 0.05 && s - half - 0.05 < g.s1) bottom = Math.max(bottom, g.y1 + 0.3);
+    if (h.y0 - bottom < 0.2) return;
+    out.push({ s, half, top: h.y0, mid: h.y0 - 0.4 * (h.y0 - bottom), bottom, dark: 0.18 + 0.08 * r(4) });
+  });
+  return out;
+}
+
+/**
+ * The windows, doors and garage doors of a whole set that sit back in their walls, and the holes cut for them: an
+ * opening on a face of its wall block (within 2 cm of it), its frame 10 cm or more from the face's ends, 5 cm over the
+ * block's foot and 10 cm under its top, 6 cm or more from another hole, clear of the line where the wall's band meets
+ * the wall above (or a door across it), with the block's own inside behind it as deep as the frame sits plus 10 cm and
+ * no other wall block behind or in front of it. The rest stay on the wall's face, as they were. Each hole's frame sits
+ * back by its house's depth, and a window's sill gets its streaks.
+ */
+export function planReveals(openings: Opening[], houses: Houses, bases: Map<Prism, BasePlan>, groundAt: GroundAt): RevealPlan {
+  const made = new Map<Prism, Map<number, WallFace>>();
+  const holes = new Map<Opening, Hole>();
+  for (const o of openings) {
+    const nl = Math.hypot(o.n[0], o.n[1]) || 1;
+    const [onx, onz] = [o.n[0] / nl, o.n[1] / nl];
+    const [mx, mz] = [(o.a[0] + o.b[0]) / 2, (o.a[1] + o.b[1]) / 2];
+    const hit = houses.wallAt(mx - onx * 0.3, mz - onz * 0.3, (o.y[0] + o.y[1]) / 2);
+    if (!hit || hit.p.lm || hit.p.d) continue;
+    const p = hit.p;
+    const base = bases.get(p);
+    let mine = made.get(p);
+    if (!mine) made.set(p, (mine = new Map()));
+    const f = faceAt(p, base ? base.ring : p.p[0], base, mx, mz, mine, groundAt);
+    if (!f) continue;
+    const [dx, dz] = f.d;
+    const [nx, nz] = f.n;
+    const O = f.points[0];
+    const sOf = (v: [number, number]) => (v[0] - O.x) * dx + (v[1] - O.z) * dz;
+    const off = (v: [number, number]) => (v[0] - O.x) * nx + (v[1] - O.z) * nz;
+    if (Math.abs(off(o.a)) > 0.02 || Math.abs(off(o.b)) > 0.02 || onx * nx + onz * nz < 0.95) continue;
+    const s0 = Math.min(sOf(o.a), sOf(o.b)) - FRAME;
+    const s1 = Math.max(sOf(o.a), sOf(o.b)) + FRAME;
+    const [y0, y1] = [o.y[0] - FRAME, o.y[1] + FRAME];
+    if (s0 < EDGE || s1 > f.points[f.points.length - 1].s - EDGE || y0 < f.foot + 0.05 || y1 > f.top - EDGE) continue;
+    if (!clearOfCut(f, s0, s1, y0, y1)) continue;
+    if (f.holes.some((h) => h.s0 < s1 + GAP && s0 < h.s1 + GAP && h.y0 < y1 + GAP && y0 < h.y1 + GAP)) continue;
+    const depth = REVEAL_MIN + REVEAL_SPAN * stable(houses.keyOf(p), 83);
+    // The block's inside behind the hole, and nothing else behind or in front of it at its height.
+    const clear = [s0 + 0.02, s1 - 0.02].every((s) => {
+      const x = alongFace(f.points, s, (q) => q.x);
+      const z = alongFace(f.points, s, (q) => q.z);
+      const [bx, bz] = [x - nx * (depth + 0.1), z - nz * (depth + 0.1)];
+      if (!inside(p.p[0], bx, bz) || p.p.slice(1).some((r) => inside(r, bx, bz))) return false;
+      const overlaps = (q: Prism) => q.y0 < y1 && q.y1 > y0;
+      if (houses.wallsAt(bx, bz).some((w) => w.p !== p && overlaps(w.p))) return false;
+      return !houses.wallsAt(x + nx * 0.05, z + nz * 0.05).some((w) => overlaps(w.p));
+    });
+    if (!clear) continue;
+    const s = (s0 + s1) / 2;
+    const hole: Hole = { o, s0, s1, y0, y1, depth, streaks: [], at: [alongFace(f.points, s, (q) => q.x), alongFace(f.points, s, (q) => q.z)], d: f.d, n: f.n };
+    f.holes.push(hole);
+    holes.set(o, hole);
+  }
+  const faces = new Map<Prism, WallFace[]>();
+  for (const [p, mine] of made) {
+    const list = [...mine.values()].filter((f) => f.holes.length);
+    for (const f of list) for (const h of f.holes) h.streaks = streaksUnder(f, h, groundAt);
+    if (list.length) faces.set(p, list);
+  }
+  return { faces, holes };
+}
+

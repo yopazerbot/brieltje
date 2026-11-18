@@ -11,7 +11,7 @@ registerHooks({
   },
 });
 const { Houses, inside } = await import('./houseKeys.ts');
-const { planBases, planSteps, cutAt, isPlinthOf, area } = await import('./housePlan.ts');
+const { planBases, planSteps, cutAt, isPlinthOf, area, planReveals, alongFace, FRAME } = await import('./housePlan.ts');
 const { makeTerrain } = await import('../../shared/terrain.mjs');
 
 const read = (file) => JSON.parse(fs.readFileSync(new URL(file, import.meta.url), 'utf8'));
@@ -84,6 +84,51 @@ for (const [name, set] of Object.entries(sets)) {
       if (steps.length === 1) assert.ok(steps[0].top - steps[0].bottom <= 0.35 + 0.3, `${name}: one step ${(steps[0].top - steps[0].bottom).toFixed(2)} m high`);
     }
     assert.ok(flights > 0, `${name}: some doors get a flight`);
+  });
+
+  const reveals = planReveals(set.openings ?? [], houses, bases, groundAt);
+
+  test(`${name}: most windows and doors sit back in their walls, each hole on its face, clear of the others, with the wall behind it`, () => {
+    const all = (set.openings ?? []).length;
+    assert.ok(reveals.holes.size > 0.65 * all, `${name}: ${reveals.holes.size} of ${all} openings set back`);
+    let holes = 0;
+    for (const [p, faces] of reveals.faces) {
+      for (const f of faces) {
+        const end = f.points[f.points.length - 1].s;
+        for (const h of f.holes) {
+          holes++;
+          assert.equal(reveals.holes.get(h.o), h);
+          assert.ok(h.s0 >= 0.1 - 1e-9 && h.s1 <= end - 0.1 + 1e-9, `${name}: a hole ${h.s0.toFixed(2)} to ${h.s1.toFixed(2)} on a face ${end.toFixed(2)} long`);
+          assert.ok(h.y0 >= p.y0 + 0.05 - 1e-9 && h.y1 <= p.y1 - 0.1 + 1e-9, `${name}: a hole from ${h.y0.toFixed(2)} to ${h.y1.toFixed(2)} in a wall from ${p.y0} to ${p.y1}`);
+          assert.ok(h.depth >= 0.1 && h.depth <= 0.16, `${name}: a frame ${h.depth} m back`);
+          // The opening itself, with its frame round it, is the hole.
+          assert.ok(Math.abs(h.y1 - h.y0 - (h.o.y[1] - h.o.y[0]) - 2 * FRAME) < 1e-9);
+          for (const g of f.holes) if (g !== h) assert.ok(g.s1 + 0.06 <= h.s0 || h.s1 + 0.06 <= g.s0 || g.y1 + 0.06 <= h.y0 || h.y1 + 0.06 <= g.y0, `${name}: two holes closer than 6 cm`);
+          // The block's own inside behind each side of the hole, as deep as the frame sits and 10 cm more.
+          for (const s of [h.s0 + 0.02, h.s1 - 0.02]) {
+            const x = alongFace(f.points, s, (q) => q.x) - f.n[0] * (h.depth + 0.1);
+            const z = alongFace(f.points, s, (q) => q.z) - f.n[1] * (h.depth + 0.1);
+            assert.ok(inside(p.p[0], x, z), `${name}: no wall behind a hole at (${x.toFixed(1)}, ${z.toFixed(1)})`);
+          }
+          // A band's top keeps off the hole's edges.
+          if (f.points[0].cut !== null) {
+            for (const s of [h.s0, h.s1]) {
+              const c = alongFace(f.points, s, (q) => q.cut);
+              assert.ok(Math.abs(c - h.y0) >= 0.03 - 1e-9 && Math.abs(c - h.y1) >= 0.03 - 1e-9, `${name}: a band's top ${c.toFixed(2)} by a hole's edge`);
+            }
+          }
+          for (const k of h.streaks) {
+            assert.ok(k.s - k.half >= h.s0 && k.s + k.half <= h.s1, `${name}: a streak wider than its sill`);
+            assert.ok(k.top - k.bottom >= 0.2 - 1e-9 && k.top - k.bottom <= 1.2 + 1e-9 && k.mid < k.top && k.mid > k.bottom, `${name}: a streak from ${k.top.toFixed(2)} to ${k.bottom.toFixed(2)}`);
+            const x = alongFace(f.points, k.s, (q) => q.x);
+            const z = alongFace(f.points, k.s, (q) => q.z);
+            assert.ok(k.bottom >= groundAt(x, z) + 0.3 - 1e-9, `${name}: a streak down to the ground at (${x.toFixed(1)}, ${z.toFixed(1)})`);
+            if (f.points[0].cut !== null) assert.ok(k.bottom >= alongFace(f.points, k.s, (q) => q.cut) + 0.05 - 1e-9, `${name}: a streak into the band`);
+          }
+        }
+      }
+    }
+    assert.equal(holes, reveals.holes.size);
   });
 
   test(`${name}: no band is painted over a plinth the data has`, () => {

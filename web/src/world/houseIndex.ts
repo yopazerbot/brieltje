@@ -1,6 +1,6 @@
 import type { Prism, RoofSpec, Surroundings } from './houseData';
 import { BlockGrid, Houses } from './houseKeys';
-import { planBases, type BasePlan, type GroundAt } from './housePlan';
+import { planBases, planReveals, type BasePlan, type GroundAt, type RevealPlan } from './housePlan';
 import { chimneyRoofs } from './houseTrim';
 import { planRoofs } from './roofPlan';
 
@@ -21,6 +21,8 @@ export interface HouseIndex {
   bases: Map<Prism, BasePlan>;
   /** The flat roofs' lids (nb_roof blocks), to keep their edge trims out of each other */
   lids: BlockGrid;
+  /** The windows and doors set back in their walls, and the holes for them (world/housePlan.ts, world/wallCut.ts) */
+  reveals: RevealPlan;
   /** The data's single slopes to what is drawn in their place: halves joined, ramps turned, wedges closed (world/roofPlan.ts) */
   drawn: Map<RoofSpec, RoofSpec>;
   /** The house under a roof (a drawn one): both halves of a pair take the larger half's, so they look one roof */
@@ -65,12 +67,14 @@ export function houseIndex(set: Pick<Surroundings, 'roofs' | 'prisms' | 'opening
   };
   const pitched = new Set<number>();
   for (const r of roofs) if (r.shape !== 'shed' || r.closed || plan.partner.has(r)) pitched.add(keyOf(r));
+  const bases = planBases(prisms, set.openings ?? [], houses, groundAt);
   index = {
     houses,
     chimneys: chimneyRoofs(roofs, prisms, keyOf, (r) => plan.partner.get(r)),
     pitched,
-    bases: planBases(prisms, set.openings ?? [], houses, groundAt),
+    bases,
     lids,
+    reveals: planReveals(set.openings ?? [], houses, bases, groundAt),
     drawn: plan.drawn,
     keyOf,
   };

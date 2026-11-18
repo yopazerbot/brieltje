@@ -20,7 +20,8 @@ import { barkMaterial, cardsBuilt, enlist, leafCardMaterial, plainForBake, switc
 import { reflectionSkips } from './reflections';
 import { houseIndex } from './houseIndex';
 import { pointInside } from './houseKeys';
-import { flatEdgeSides } from './housePlan';
+import { flatEdgeSides, FRAME, type Hole } from './housePlan';
+import { cutWall } from './wallCut';
 import { bandedWalls, chimney, flatEdge, openingTrim, roofEdges, roofExtras, roofFrame, type OpeningContext, type RoofEdges, type SolarArray } from './houseTrim';
 import { houseStyle } from './houseStyle';
 import type { RoofField } from './roofField';
@@ -415,13 +416,15 @@ function slab(at: THREE.Vector3, d: THREE.Vector3, n: THREE.Vector3, w: number, 
 }
 
 /**
- * Windows, doors and garage doors on the neighbours' walls: a frame standing a few
- * centimetres proud of the brick, glass (or a door panel) in it, a centre bar on wide
+ * Windows, doors and garage doors on the neighbours' walls: a frame, glass (or a door panel) in it, a centre bar on wide
  * windows and a stone sill under each window; round them the house's lintels, doorsteps and shutters
- * (world/houseTrim.ts). `ground`: the flat ground's height, to tell the ground floor's windows from those
- * above. `pitched`: the keys of the houses with a pitched roof.
+ * (world/houseTrim.ts). Most sit back in a hole in their wall (`holes`: world/housePlan.ts `planReveals`, the hole
+ * itself world/wallCut.ts), their frame's face 10 to 16 cm behind the wall's, the sill reaching from the frame to 5 cm
+ * out of the wall and a stone threshold under a door; the rest stand a few centimetres proud of the brick, as they did.
+ * `ground`: the flat ground's height, to tell the ground floor's windows from those above. `pitched`: the keys of the
+ * houses with a pitched roof.
  */
-function buildOpenings(list: Opening[], ground: number, houses: Houses, pitched: Set<number>): Piece[] {
+function buildOpenings(list: Opening[], ground: number, houses: Houses, pitched: Set<number>, holes: Map<Opening, Hole>): Piece[] {
   const solid: THREE.BufferGeometry[] = [];
   const flat: THREE.BufferGeometry[] = [];
   const glass: THREE.BufferGeometry[] = [];
@@ -430,7 +433,7 @@ function buildOpenings(list: Opening[], ground: number, houses: Houses, pitched:
   list.forEach((o, i) => {
     const a = new THREE.Vector3(o.a[0], 0, o.a[1]);
     const b = new THREE.Vector3(o.b[0], 0, o.b[1]);
-    const w = a.distanceTo(b);
+    let w = a.distanceTo(b);
     const d = b.clone().sub(a).normalize();
     const n = new THREE.Vector3(o.n[0], 0, o.n[1]).normalize();
     // Keep the box's frame right-handed (d x up = n) whichever way the wall runs, so faces point out.
@@ -438,24 +441,43 @@ function buildOpenings(list: Opening[], ground: number, houses: Houses, pitched:
     const [y0, y1] = o.y;
     const h = y1 - y0;
     const mid = a.clone().add(b).multiplyScalar(0.5).setY((y0 + y1) / 2);
-    const out = (k: number) => mid.clone().addScaledVector(n, k);
+    const hole = holes.get(o);
+    if (hole) {
+      // Square in its hole: on the wall face's plane, along it.
+      d.set(hole.d[0], 0, hole.d[1]);
+      n.set(hole.n[0], 0, hole.n[1]);
+      mid.set(hole.at[0], mid.y, hole.at[1]);
+      w = hole.s1 - hole.s0 - 2 * FRAME;
+    }
+    // In a hole everything that stood on the wall's face moves back, the frame's face to the hole's depth.
+    const back = hole ? hole.depth + 0.045 : 0;
+    const out = (k: number) => mid.clone().addScaledVector(n, k - back);
     const frame = frameColour(o.f, houses.at(mid.x - n.x * 0.3, mid.z - n.z * 0.3)); // the house the wall belongs to
     solid.push(slab(out(0.02), d, n, w + 0.1, h + 0.1, 0.05, frame));
-    const round = openingTrim(o, d, n, w, mid, trim);
+    const round = openingTrim(o, d, n, w, mid, trim, back);
     solid.push(...round.solid);
     flat.push(...round.flat);
+    // A stone threshold in the hole under a door (bluestone, as the steps; concrete under a garage door), level with its
+    // foot and reaching 2 cm out of the wall.
+    const threshold = (colour: string) => {
+      if (hole) solid.push(slab(mid.clone().addScaledVector(n, (0.02 - hole.depth) / 2).setY(y0 - FRAME / 2), d, n, w + 2 * FRAME, FRAME, hole.depth + 0.02, new THREE.Color(colour)));
+    };
     if (o.k === 'w') {
       const upper = y0 - (ground + terrain.height(mid.x, mid.z)) > 2;
       glass.push(paneGeometry(out(0.053), d, n, w, h, paneLook(mid.x, mid.z, n.x, n.z, upper, i, h >= 1.9), mid.x + mid.y + mid.z * 1.7));
       if (w > 1.3) solid.push(slab(out(0.056), d, n, 0.06, h, 0.02, frame));
-      if (h < 1.9) solid.push(slab(out(0.06).setY(y0 - 0.075), d, n, w + 0.2, 0.05, 0.14, sill)); // not under garden doors
+      if (h >= 1.9) threshold('#6b7177'); // a garden door: no sill
+      else if (hole) solid.push(slab(mid.clone().addScaledVector(n, (0.05 - hole.depth) / 2).setY(y0 - 0.075), d, n, w + 0.2, 0.05, hole.depth + 0.05, sill)); // from the frame to 5 cm out
+      else solid.push(slab(out(0.06).setY(y0 - 0.075), d, n, w + 0.2, 0.05, 0.14, sill));
     } else if (o.k === 'd') {
+      threshold('#6b7177');
       const panel = new THREE.Color(o.c ?? '#6b4a32');
       solid.push(slab(out(0.05), d, n, w, h, 0.02, panel));
       glass.push(paneGeometry(out(0.067).setY(y0 + h * 0.72), d, n, w * 0.3, h * 0.35, { ...paneLook(mid.x, mid.z, n.x, n.z, false, i), cell: COVER.none, sill: h * 0.545 }, mid.x + mid.z * 1.7));
       solid.push(slab(out(0.07).addScaledVector(d, w * 0.38).setY(y0 + 1.05), d, n, 0.03, 0.18, 0.03, new THREE.Color('#9a9a96')));
     } else {
       // Garage door: horizontal sections with a groove between them.
+      threshold('#9d9a94');
       const panel = new THREE.Color(o.c ?? '#ece8df');
       const k = 5;
       for (let s = 0; s < k; s++) solid.push(slab(out(0.05).setY(y0 + (h * (s + 0.5)) / k), d, n, w, h / k - 0.02, 0.02, panel));
@@ -598,8 +620,12 @@ export function buildTile(data: TileData, poles: Pole[], renderer: THREE.WebGLRe
     const base = index.bases.get(p);
     const g = base ? bandedWalls(p, base, houses.keyOf(p), groundAt) : prismGeometry(p);
     fieldRows(g, p); // the fields' rows (world/fields.ts)
-    if (isBrick(p.m)) put(renderable(mat), base ? g : walls(p.m, houses.keyOf(p), g), tag);
-    else put(mat, coloured(mat) ? paint(g, tint) : g, tag, true, GROUND_COVERS.has(p.m) ? COVER_ORDER : undefined);
+    if (isBrick(p.m)) {
+      // Holes in its faces for the windows and doors that sit back in it (world/wallCut.ts).
+      const faces = index.reveals.faces.get(p);
+      const wall = base ? g : walls(p.m, houses.keyOf(p), g);
+      put(renderable(mat), faces ? cutWall(wall, faces) : wall, tag);
+    } else put(mat, coloured(mat) ? paint(g, tint) : g, tag, true, GROUND_COVERS.has(p.m) ? COVER_ORDER : undefined);
     if (p.m === 'nb_roof' && !p.lm) {
       // A flat roof: on many houses an edge trim in the house's trim colour (world/houseTrim.ts), found from a point
       // inside the lid (the middle of an L-shaped one is outside it) and the walls under it.
@@ -694,7 +720,7 @@ export function buildTile(data: TileData, poles: Pole[], renderer: THREE.WebGLRe
     out.push({ material: mat, geometry: geos.length > 1 ? mergeGeometries(geos) : geos[0], tag, shadow, order, small });
     if (geos.length > 1) geos.forEach((g) => g.dispose());
   }
-  if (data.openings?.length) out.push(...buildOpenings(data.openings, ground, houses, pitched));
+  if (data.openings?.length) out.push(...buildOpenings(data.openings, ground, houses, pitched, index.reveals.holes));
   if (data.poleIds.length || data.wires?.length) out.push(...buildLamps(poles, data.poleIds, data.wires ?? [], ground));
   if (data.solar?.length || madeSolar.length) out.push(...buildSolar([...(data.solar ?? []), ...madeSolar]));
   if (data.posts?.length) out.push(buildPosts(data.posts, ground));

@@ -566,9 +566,10 @@ export interface OpeningContext {
  * What goes round one window, door or garage door (world/surroundings.ts `buildOpenings` places the frame): a lintel
  * over it, a bluestone step under a door, leaf shutters beside a ground-floor window, a lowered roller shutter in front
  * of a window. `flat`: the parts lying flat on the wall, for the trims' mesh; `solid`: the steps, for the frames'. `d`,
- * `n`: the wall's direction (d x up = n) and its outside; `mid` the opening's middle.
+ * `n`: the wall's direction (d x up = n) and its outside; `mid` the opening's middle. `back`: how far the window sits
+ * back from the wall's face (world/housePlan.ts `planReveals`): the roller shutter goes with it, in front of the glass.
  */
-export function openingTrim(o: Opening, d: THREE.Vector3, n: THREE.Vector3, w: number, mid: THREE.Vector3, ctx: OpeningContext): { flat: THREE.BufferGeometry[]; solid: THREE.BufferGeometry[] } {
+export function openingTrim(o: Opening, d: THREE.Vector3, n: THREE.Vector3, w: number, mid: THREE.Vector3, ctx: OpeningContext, back = 0): { flat: THREE.BufferGeometry[]; solid: THREE.BufferGeometry[] } {
   // The wall block the opening is in (a house is often blocks stacked on each other: the one at its height).
   const [wx, wz] = [mid.x - n.x * 0.3, mid.z - n.z * 0.3];
   const house = ctx.houses.wallAt(wx, wz, mid.y);
@@ -610,7 +611,7 @@ export function openingTrim(o: Opening, d: THREE.Vector3, n: THREE.Vector3, w: n
       const reach = down * h;
       for (let top = y1; top > y1 - reach + 1e-3; top -= 0.17) {
         const strip = Math.min(0.16, top - (y1 - reach));
-        parts.push(face(out(0.075, top - strip / 2), d, n, w, strip, colour));
+        parts.push(face(out(0.075 - back, top - strip / 2), d, n, w, strip, colour));
       }
     }
   }
