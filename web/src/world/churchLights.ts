@@ -1,5 +1,4 @@
 import * as THREE from 'three';
-import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
 
 /**
  * The church floodlit at night (18 Nov 2026, Yoshi: the church was a dark block in the village's centre; churches in
@@ -10,11 +9,11 @@ import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
  * No real lights: twelve would cost every lit pixel of the world. The church's own surfaces are drawn a second time
  * (the same shapes, no copy) with a small shader that works out each fitting's light where it falls: the beam's cone,
  * the fall with the distance, the angle it meets the wall at, times the surface's own colour (its texture or its
- * painted colour), added onto what is drawn. A wall turned away from a fitting gets none of it. Five draw calls, one
- * per part of the model (the brick, the stone, the plaster trim, the slate, the fittings; not the glass, which stays
- * dark as it does on a lit church), only at night, and only the church's pixels pay: one texture read and a short
- * loop. Each fitting is a small round lens in the paving (one draw call for all), with a soft glow on it at night (one
- * more).
+ * painted colour), added onto what is drawn. A wall turned away from a fitting gets none of it. Four draw calls, one
+ * per part of the model (the brick, the stone, the plaster trim, the slate; not the glass, which stays dark as it does
+ * on a lit church), only at night, and only the church's pixels pay: one texture read and a short loop. The fittings
+ * themselves are not drawn (Yoshi, 18 Nov 2026, of their lenses glowing in the paving: "I don't want them, they look
+ * weird"): the light falls on the church from where they would stand, with no lens or glow on the ground.
  * Every value is far under what half floats hold. The same on every preset: the bloom (Medium and up) only softens it.
  */
 
@@ -117,44 +116,8 @@ const floodFragment = /* glsl */ `
     gl_FragColor = vec4(albedo * flood * (light * strength * seen * ${(1 / Math.PI).toFixed(5)}), 1.0);
   }`;
 
-/** A lens in the paving: a flat round cap in a dark rim, 0.3 m across, its top 2 cm over the ground. */
-function fittingGeometry(): THREE.BufferGeometry {
-  const g = new THREE.CylinderGeometry(0.15, 0.17, 0.12, 16, 1).translate(0, -0.04, 0);
-  const pos = g.attributes.position;
-  const colors = new Float32Array(pos.count * 3);
-  const lens = new THREE.Color('#d9dcd6').convertSRGBToLinear();
-  const rim = new THREE.Color('#3a3c3e').convertSRGBToLinear();
-  for (let i = 0; i < pos.count; i++) {
-    const top = pos.getY(i) > 0.01 && Math.hypot(pos.getX(i), pos.getZ(i)) < 0.12;
-    (top ? lens : rim).toArray(colors, i * 3);
-  }
-  g.setAttribute('color', new THREE.BufferAttribute(colors, 3));
-  return g;
-}
-
-const glowVertex = /* glsl */ `
-  varying vec2 vUv;
-  void main() {
-    vUv = uv - 0.5;
-    vec4 centre = modelViewMatrix * instanceMatrix * vec4(0.0, 0.0, 0.0, 1.0);
-    centre.z += 0.25; // a little towards the eye: not cut by the paving it sits in
-    centre.xy += position.xy * 0.55; // turned to the eye
-    gl_Position = projectionMatrix * centre;
-  }`;
-const glowFragment = /* glsl */ `
-  uniform vec3 flood;
-  uniform float strength;
-  varying vec2 vUv;
-  void main() {
-    float r = length(vUv) * 2.0;
-    float glow = (exp(-r * r * 16.0) * 2.2 + exp(-r * r * 3.5) * 0.25) * (1.0 - smoothstep(0.6, 1.0, r));
-    gl_FragColor = vec4(flood * glow * strength, 1.0);
-  }`;
-
 export class ChurchLights {
   readonly group = new THREE.Group();
-  /** The fittings themselves, there by day too. */
-  readonly fittings = new THREE.Group();
   private uniforms = {
     flood: { value: FLOOD.clone() },
     strength: { value: 0 },
@@ -167,12 +130,11 @@ export class ChurchLights {
   constructor() {
     this.group.name = 'church floodlights';
     this.group.visible = false;
-    this.fittings.name = 'church floodlight fittings';
   }
 
   /**
-   * The church's model, in its place in the world (main.ts loadChurch): its surfaces to light, and the fittings round
-   * it on the ground (`groundAt`: the ground's height at a point). `prepare` (main.ts precompile): the shaders are built
+   * The church's model, in its place in the world (main.ts loadChurch): its surfaces to light from the fittings' places
+   * round it on the ground (`groundAt`: the ground's height at a point). `prepare` (main.ts precompile): the shaders are built
    * now, in the background, so the first dusk doesn't wait for them.
    */
   attach(church: THREE.Object3D, groundAt: (x: number, z: number) => number, prepare?: (o: THREE.Object3D) => unknown): void {
@@ -230,39 +192,15 @@ export class ChurchLights {
       lit.matrixWorld.copy(mesh.matrixWorld);
       this.group.add(lit);
     });
-    // The fittings: lenses in the paving, and their glow at night.
-    const body = new THREE.Mesh(
-      mergeAt(fittingGeometry(), this.uniforms.lampAt.value),
-      new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.35, metalness: 0.4 }),
-    );
-    body.receiveShadow = true;
-    this.fittings.add(body);
-    const glows = new THREE.InstancedMesh(
-      new THREE.PlaneGeometry(1, 1),
-      new THREE.ShaderMaterial({
-        uniforms: { flood: this.uniforms.flood, strength: this.uniforms.strength },
-        vertexShader: glowVertex,
-        fragmentShader: glowFragment,
-        transparent: true,
-        depthWrite: false,
-        blending: THREE.AdditiveBlending,
-        fog: false,
-      }),
-      N,
-    );
-    const m = new THREE.Matrix4();
-    this.uniforms.lampAt.value.forEach((p, i) => glows.setMatrixAt(i, m.makeTranslation(p.x, p.y + 0.03, p.z)));
-    this.group.add(glows);
-    for (const o of [...this.group.children, body]) {
-      o.frustumCulled = o !== glows; // the glows are placed in the shader
+    for (const o of this.group.children) {
       o.raycast = () => {}; // never in the way of a shot
       o.userData.noAO = true;
       o.userData.ignoreRay = true;
-      if (o !== body) o.renderOrder = 60;
+      o.renderOrder = 60;
     }
     if (prepare) {
       this.group.visible = true;
-      void Promise.all([prepare(this.group), prepare(this.fittings)]).finally(() => (this.group.visible = this.on > 0.01));
+      void Promise.resolve(prepare(this.group)).finally(() => (this.group.visible = this.on > 0.01));
     }
   }
 
@@ -276,7 +214,3 @@ export class ChurchLights {
   }
 }
 
-/** One geometry with a copy of `g` at each point. */
-function mergeAt(g: THREE.BufferGeometry, points: THREE.Vector3[]): THREE.BufferGeometry {
-  return mergeGeometries(points.map((p) => g.clone().translate(p.x, p.y, p.z)));
-}

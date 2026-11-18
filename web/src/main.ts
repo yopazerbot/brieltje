@@ -968,7 +968,7 @@ scene.add(carLights.group); // the cars' headlights and tail lights at night (wo
 const uplights = new Uplights();
 scene.add(uplights.group); // home 4's trees lit from below, and its door's lantern, at night (world/uplights.ts)
 const churchLights = new ChurchLights();
-scene.add(churchLights.group, churchLights.fittings); // the church floodlit at night, once the village is in (world/churchLights.ts)
+scene.add(churchLights.group); // the church floodlit at night, once the village is in (world/churchLights.ts)
 let car = cars[0];
 const carById = (id: string) => cars.find((c) => c.id === id);
 let driving = false;
