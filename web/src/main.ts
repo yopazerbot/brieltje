@@ -167,6 +167,7 @@ import { glass as glassLook, GlassProbe, glassOnModel } from './world/glassLook'
 import { trackVillageHouse, VILLAGE_HOUSES } from './world/villageHouses';
 import { mood } from './world/mood';
 import { Uplights } from './world/uplights';
+import { ChurchLights } from './world/churchLights';
 import { loadWalkIn, type WalkIn } from './world/walkIn';
 import { isKeetPane, keetDoorway, keetForZombies, KeetLife, keetRooms, loadKeet } from './world/keet';
 import { Insides, type InsidePack } from './world/insides';
@@ -949,6 +950,8 @@ scene.add(skidMarks.mesh); // the tyre marks every car leaves when it slides (wo
 scene.add(carLights.group); // the cars' headlights and tail lights at night (world/carLights.ts)
 const uplights = new Uplights();
 scene.add(uplights.group); // home 4's trees lit from below, and its door's lantern, at night (world/uplights.ts)
+const churchLights = new ChurchLights();
+scene.add(churchLights.group, churchLights.fittings); // the church floodlit at night, once the village is in (world/churchLights.ts)
 let car = cars[0];
 const carById = (id: string) => cars.find((c) => c.id === id);
 let driving = false;
@@ -4150,6 +4153,7 @@ renderer.setAnimationLoop((now: number) => {
   keetLife.update(dt, camera.position, mood.night, !phone && quality !== 'low'); // the café's light and sounds (world/keet.ts)
   setWindowNight(mood.night); // lights in about half of the village's rooms at night (world/windows.ts)
   uplights.update(mood.night); // home 4's trees lit from below at night (world/uplights.ts)
+  churchLights.update(mood.night); // the church floodlit, with the street lamps (world/churchLights.ts)
   player.lookScale = camera.fov / weapon.baseFov; // slower turning while zoomed in (not faster for the car's wider view)
   glass.update(dt);
   // The curtains follow the locks and the panes that come later (a door's glass, the end house): looked at every second and a half.
@@ -4572,6 +4576,8 @@ async function buildVillage(): Promise<void> {
     tiles.group.add(m); // a caster for the village's ground shading, a target for shots
     if (!trackVillageHouse(tiles, m)) tiles.track(m, undefined, String(m.userData.landmark).startsWith('molenhoek_end') || m.userData.landmark === 'kouter_house' ? 350 : Infinity);
   }
+  const churchModel = models.find((m) => m.userData.landmark === 'church');
+  if (churchModel) churchLights.attach(churchModel, groundY, precompile); // its floodlights (world/churchLights.ts)
   // The end house's own walls, floors and doors take the place of its plain block once its inside has come (until then
   // the plain block stands, and its doors, windows and lawn are the shell's).
   const villageBlocks = cafePrisms(churchPrisms(data.prisms ?? [], churchAccess), cafeAccess).filter((p) => (!endHouse?.replaces(p) || endHouse.standIn(p)) && !brickHouse?.replaces(p) && !keet?.replaces(p));
