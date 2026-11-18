@@ -33,6 +33,7 @@ import { FootballLife } from './world/footballLife';
 import { Christmas } from './world/christmas';
 import { fakeDay, seasonNow } from './world/season';
 import { Sinterklaas } from './world/sinterklaas';
+import { Santa } from './world/santa';
 import { SintMaarten } from './world/sintmaarten';
 import { TownBoard } from './world/townBoard';
 import { BIG as BIG_ZOMBIE, bigOf, Horde, houseAreas, makeNav } from '../shared/zombies.mjs';
@@ -340,6 +341,7 @@ async function getEverythingReady(at: Portal | null, zombiesStart: boolean): Pro
     drop ? parachutes.load() : null,
     zombiesStart ? null : villagers.preload(),
     !zombiesStart && seasonNow().sinterklaas ? sinterklaas.prepare() : null,
+    !zombiesStart && seasonNow().santa && !weapon.enabled ? santa.prepare() : null,
     // The leaf cards' pictures, when the preset asks for them (world/leafCards.ts).
     treesMayPaint((textures) => {
       for (const t of textures) renderer.initTexture(t);
@@ -929,6 +931,9 @@ const sinterklaas = new Sinterklaas(world, (x, z) => house.ground + terrain.heig
 // November: Sint-Maarten on the square in the week up to the 11th, lanterns and carrots on his evenings (world/sintmaarten.ts).
 const sintMaarten = new SintMaarten(world, (x, z) => house.ground + terrain.height(x, z), (root) => precompile(root));
 scene.add(christmas.group, sinterklaas.group, sintMaarten.group);
+// From 7 December to 6 January: Santa, his sleigh and reindeer on the square, and at night his flight (world/santa.ts).
+const santa = new Santa(world, (x, z) => house.ground + terrain.height(x, z), (root) => precompile(root), () => quality === 'low' || phone);
+scene.add(santa.group);
 // The notice board on the church square with the best Zombies runs behind its glass (world/townBoard.ts); its blocks from the start, its model with the village.
 const townBoard = new TownBoard(world, (x, z) => house.ground + terrain.height(x, z));
 scene.add(townBoard.group);
@@ -2891,6 +2896,7 @@ net.onMessage = (m: ServerMsg) => {
         clowns.setClock(m.time);
         horses.setClock(m.time);
         life.setClock(m.time);
+        santa.setClock(m.time);
         clockOffset = m.time / 1000 - performance.now() / 1000;
         roadLife.setClock(m.time);
       }
@@ -3675,6 +3681,7 @@ renderer.setAnimationLoop((now: number) => {
   villagers.setActive(villagersOut);
   sinterklaas.setActive(villagersOut && seasonNow().sinterklaas); // the same rule
   sintMaarten.setActive(villagersOut && seasonNow().sintMaarten, seasonNow().sintMaartenEve);
+  santa.setActive(villagersOut && seasonNow().santa && !weapon.enabled && !games.active); // only in Explore (Yoshi)
   christmas.setSolid(games.zombies ? 'off' : weapon.enabled ? 'walk' : 'full'); // the tree, as the server knows the world
   marketStall.show(games.zombies ? stallSpot(games.view.zombies?.place) : null, games.view.phase === 'break'); // the stall at the Zombies place (world/stall.ts)
   // The Zombies game: the clowns and strongmen stand aside, nobody flies, and whoever is down waits for the wave.
@@ -4249,6 +4256,7 @@ renderer.setAnimationLoop((now: number) => {
   christmas.update(dt, seasonNow().christmas, camera, renderer.domElement.height);
   sinterklaas.update(dt, camera, driving || riding || horses.mounted >= 0 || bikes.mounted ? null : { x: player.x, z: player.z }, !menu.open, { w: window.innerWidth, h: window.innerHeight });
   sintMaarten.update(dt, camera, driving || riding || horses.mounted >= 0 || bikes.mounted ? null : { x: player.x, z: player.z }, !menu.open, { w: window.innerWidth, h: window.innerHeight }, villagers);
+  santa.update(dt, camera, driving || riding || horses.mounted >= 0 || bikes.mounted ? null : { x: player.x, z: player.z }, !menu.open, { w: window.innerWidth, h: window.innerHeight });
   townBoard.update(camera.position);
   // The footballs: walked into on foot (alone here; together the server does it too, and leads).
   const onFoot = combat.alive && !driving && !riding && !bikes.mounted && horses.mounted < 0 && !helis.aboard && !player.flying && player.chute === null;
@@ -5015,6 +5023,8 @@ if (import.meta.env.DEV) {
       christmas,
       sinterklaas,
       sintMaarten,
+      /** Santa in December (world/santa.ts): santa.fly() starts his flight in 3 s, dark or not; santa.state() what he does. */
+      santa: { fly: () => santa.fly(), state: () => santa.state() },
       townBoard,
       /** November and December on this page only: briel.season.fake('2026-12-01') pretends that day, fake(null) is today again (world/season.ts). */
       season: { fake: (day: string | null) => fakeDay(day), now: () => seasonNow() },

@@ -99,6 +99,11 @@ export function fakeDay(text: string | null): Season {
   return seasonNow();
 }
 
+/** The calendar day now: Brussels', or the one the dev build pretends (world/santa.ts picks his words by it). */
+export function dayNow(): Day {
+  return fake ?? brusselsDay(new Date());
+}
+
 /** What is on now; worked out again once a minute (the day can turn while playing). */
 export function seasonNow(): Season {
   const t = Date.now();
