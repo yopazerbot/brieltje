@@ -43,6 +43,8 @@ const POINTS = { played: 1, won: 3, wavesPer: 3 };
 const ASSAULT_WON = new Set(['assaultTime', 'assaultOnly', 'assaultFar', 'assaultTags']);
 /** The teams that may defend the church first in Attack and defend: tonight's first two (blue, red). */
 const DEFENDERS = ['blue', 'red'];
+/** Attack and defend's rounds last 1 to this many minutes each (two rounds and a break: an evening's slot). */
+export const ASSAULT_MINUTES = 15;
 
 const str = (v, max) => (typeof v === 'string' ? v.replace(/[\u0000-\u001f]/g, ' ').trim().slice(0, max) : '');
 const int = (v, lo, hi) => (Number.isInteger(v) && v >= lo && v <= hi ? v : null);
@@ -379,14 +381,17 @@ export class Host {
     const none = e.look === undefined || e.look === null || e.look === '';
     if (!none && !LOOKS.includes(e.look)) return null;
     // Attack and defend (server/assault.mjs): who defends the church in round 1 (blue when not said; anything else refuses
-    // the game), each round's minutes (1 to 15; none: ten).
+    // the game), each round's minutes (1 to ASSAULT_MINUTES, none: ten; more refuses the game).
     if (e.kind === 'assault') {
       const defend = e.defend === undefined || e.defend === null || e.defend === '' ? 'blue' : DEFENDERS.includes(e.defend) ? e.defend : null;
-      return defend ? { kind: 'assault', place: 'assault', defend, minutes: int(e.minutes, 1, 15), goal: null, look: none ? null : e.look } : null;
+      const given = !(e.minutes === undefined || e.minutes === null || e.minutes === '');
+      const minutes = given ? int(e.minutes, 1, ASSAULT_MINUTES) : null; // out of range refuses the game: the host is told, never a quiet 10
+      if (!defend || (given && minutes === null)) return null;
+      return { kind: 'assault', place: 'assault', defend, minutes, goal: null, look: none ? null : e.look };
     }
     // The Zombies duel (server/duel.mjs): its warm-up (with its minutes) or its final, always at Sparrenhof.
     if (e.kind === 'duel') return DUEL_KINDS.includes(e.duel) ? { kind: 'duel', duel: e.duel, place: 'sparrenhof', minutes: e.duel === 'warmup' ? int(e.minutes, 1, 30) : null, goal: null, look: none ? null : e.look } : null;
-    const place = e.kind === 'flag' ? (Object.hasOwn(FIELDS, e.place) ? e.place : 'compact') : typeof e.place === 'string' && PLACES.has(e.place) ? e.place : 'house'; // Steal the flag: its field
+    const place = e.kind === 'flag' ? (Object.hasOwn(FIELDS, e.place) && !FIELDS[e.place].assault ? e.place : 'compact') : typeof e.place === 'string' && PLACES.has(e.place) ? e.place : 'house'; // Steal the flag: its field
     return { kind: e.kind, place, minutes: int(e.minutes, 1, 30), goal: e.kind === 'teams' ? int(e.goal, 5, 100) : null, look: none ? null : e.look };
   }
 

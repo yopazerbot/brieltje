@@ -431,6 +431,7 @@
     $('g-place-label').hidden = kind !== 'zombies';
     $('g-field-label').hidden = kind !== 'flag';
     $('g-defend-label').hidden = kind !== 'assault';
+    $('g-minutes').max = kind === 'assault' ? '15' : '30'; // Attack and defend: each round's minutes
     $('g-goal-label').hidden = kind !== 'teams';
     $('g-minutes').disabled = kind === 'zombies' || (kind === 'duel' && $('g-duel').value === 'final');
     $('g-duel-label').hidden = kind !== 'duel';
@@ -477,11 +478,17 @@
   $('words-save').addEventListener('click', () => act({ op: 'words', list: $('words').value.split(/\s*\n\s*/).filter(Boolean) }, 'Words saved'));
   $('stop').addEventListener('click', () => act({ op: 'stop' }, 'Stopped'));
   $('cancel').addEventListener('click', () => act({ op: 'cancel' }, 'Called off'));
+  /** Attack and defend's rounds last 1 to 15 minutes each (server/host.mjs ASSAULT_MINUTES): more is said here, never dropped quietly. */
+  const tooLong = (e) => e.kind === 'assault' && e.minutes > 15 && (toast('Attack and defend: each round 1 to 15 minutes', true), true);
   $('game-form').addEventListener('submit', (e) => {
     e.preventDefault();
-    act({ op: 'start', ...formEntry() }, 'Starting in 10 seconds');
+    const entry = formEntry();
+    if (!tooLong(entry)) act({ op: 'start', ...entry }, 'Starting in 10 seconds');
   });
-  $('add').addEventListener('click', () => setProgramme([...(v?.programme ?? []), formEntry()]));
+  $('add').addEventListener('click', () => {
+    const entry = formEntry();
+    if (!tooLong(entry)) setProgramme([...(v?.programme ?? []), entry]);
+  });
   $('next').addEventListener('click', () => act({ op: 'next' }, 'Starting in 10 seconds'));
   twice($('reset'), 'Start a new evening', 'Sure? All points go', { op: 'reset' }, 'A new evening');
   // Keys: / to announce, Esc to close a menu.
