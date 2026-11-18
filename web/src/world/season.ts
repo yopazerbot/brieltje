@@ -12,6 +12,8 @@
  *   his arrival, up to and with 6 December; on the 7th he is gone.
  * - Christmas (world/christmas.ts): from the first Sunday of Advent (the fourth Sunday before Christmas, between
  *   27 November and 3 December) up to and with 6 January (Epiphany, Driekoningen).
+ * - Santa, de Kerstman (world/santa.ts): from 7 December, the day after Sinterklaas has gone, up to and with
+ *   6 January. So the two are never on the square together.
  *
  * The day is the one in Brussels (Europe/Brussels), wherever the player is, so everyone sees the same thing on the
  * same day. Local and for show: nothing is sent or stored. The dev build can pretend another day
@@ -24,6 +26,7 @@ export interface Season {
   sintMaartenEve: boolean;
   sinterklaas: boolean;
   christmas: boolean;
+  santa: boolean;
 }
 
 /** A calendar day: month 1 to 12. */
@@ -61,6 +64,7 @@ export function seasonOn({ y, m, d }: Day): Season {
     sintMaartenEve: m === 11 && d >= SINT_MAARTEN.from && d < SINT_MAARTEN.feast,
     sinterklaas: (m === 11 && d >= sinterklaasArrives(y)) || (m === 12 && d <= 6),
     christmas: (m === 1 && d <= 6) || (m === 12 && (am === 11 || d >= ad)) || (m === 11 && am === 11 && d >= ad),
+    santa: (m === 12 && d >= 7) || (m === 1 && d <= 6),
   };
 }
 

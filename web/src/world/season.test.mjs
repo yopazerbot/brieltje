@@ -2,7 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { brusselsDay, fakeDay, firstAdvent, parseDay, seasonNow, seasonOn, sinterklaasArrives } from './season.ts';
 
-const NONE = { sintMaarten: false, sintMaartenEve: false, sinterklaas: false, christmas: false };
+const NONE = { sintMaarten: false, sintMaartenEve: false, sinterklaas: false, christmas: false, santa: false };
 
 const on = (text) => seasonOn(parseDay(text));
 
@@ -75,6 +75,27 @@ test('Christmas from the first Sunday of Advent up to and with 6 January', () =>
   assert.deepEqual(on('2026-12-02'), { ...NONE, sinterklaas: true, christmas: true });
 });
 
+test('Santa from 7 December up to and with 6 January, never on the same day as Sinterklaas', () => {
+  assert.equal(on('2026-12-06').santa, false);
+  assert.deepEqual(on('2026-12-07'), { ...NONE, christmas: true, santa: true });
+  assert.equal(on('2026-12-25').santa, true);
+  assert.equal(on('2026-12-31').santa, true);
+  assert.equal(on('2027-01-01').santa, true);
+  assert.equal(on('2027-01-06').santa, true);
+  assert.equal(on('2027-01-07').santa, false);
+  assert.equal(on('2026-11-30').santa, false);
+  assert.equal(on('2026-07-15').santa, false);
+  for (let y = 2024; y < 2060; y++) {
+    for (const [m, days] of [[11, 30], [12, 31], [1, 31]]) {
+      for (let d = 1; d <= days; d++) {
+        const s = seasonOn({ y, m, d });
+        assert.ok(!(s.santa && s.sinterklaas), `${y}-${m}-${d}`);
+        assert.ok(!s.santa || s.christmas, `${y}-${m}-${d}: Santa only with the tree`);
+      }
+    }
+  }
+});
+
 test('the day is the one in Brussels', () => {
   // 23:30 UTC on 6 December is already the 7th in Brussels (UTC+1 in winter)
   assert.deepEqual(brusselsDay(new Date(Date.UTC(2026, 11, 6, 23, 30))), { y: 2026, m: 12, d: 7 });
@@ -84,7 +105,7 @@ test('the day is the one in Brussels', () => {
 test('a pretended day, and back to today', () => {
   assert.deepEqual(fakeDay('2026-12-01'), { ...NONE, sinterklaas: true, christmas: true });
   assert.deepEqual(fakeDay('2026-08-01'), NONE);
-  assert.deepEqual(fakeDay('2027-01-05T10:00'), { ...NONE, christmas: true });
+  assert.deepEqual(fakeDay('2027-01-05T10:00'), { ...NONE, christmas: true, santa: true });
   assert.deepEqual(fakeDay('2026-11-08'), { ...NONE, sintMaarten: true, sintMaartenEve: true });
   fakeDay(null);
   assert.deepEqual(seasonNow(), seasonOn(brusselsDay(new Date())));
