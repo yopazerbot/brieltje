@@ -23,7 +23,8 @@ import { mood } from './mood';
  * warm white bulbs wound round it and more on its branch tips. It stands in the open middle of the square, clear of
  * the parking bays, the bike rack, the portal and the street. It is solid for walking and driving in Explore; in a
  * game with weapons only for walking (the server, which decides the hits, doesn't know it is there, so shots pass
- * through as through branches), and in Zombies not at all (the zombies' paths don't know it).
+ * through as through branches), and in Zombies not at all (the zombies' paths don't know it). During Steal the flag and
+ * Attack and defend it is gone (setTree): their flag stands on the square a metre from its trunk.
  *
  * The market (world/christmasMarket.ts, its spots world/christmasMarketPlan.ts): four chalets and three standing
  * tables between the long house's gable and the tree, only in Explore (main.ts `setMarket`): in every game, with
@@ -146,6 +147,9 @@ export class Christmas {
   private uniforms = { size: { value: 0.16 }, pixel: { value: 0.001 }, time: { value: 0 }, strength: { value: 0 } };
   private bulbs: THREE.InstancedMesh | null = null;
   private tree = new THREE.Group();
+  /** The tree's own bulbs and star glow, a draw of their own so they go with the tree (setTree) */
+  private treeBulbs: THREE.InstancedMesh | null = null;
+  private treeWanted = true;
   private starMat: THREE.MeshStandardMaterial | null = null;
   private market: Market | null = null;
   private marketWanted = true;
@@ -186,7 +190,8 @@ export class Christmas {
       const coloured = (i * 7 + 3) % 5 === 0;
       string(a.set(x0, y0, z0), b.set(x1, y1, z1), coloured ? (k) => COLOURS[k % COLOURS.length] : () => WARM, out);
     });
-    this.buildTree(out);
+    const treeOut: Bulb[] = [];
+    this.buildTree(treeOut);
     const material = new THREE.ShaderMaterial({
       uniforms: this.uniforms,
       vertexShader: bulbVertex,
@@ -197,7 +202,8 @@ export class Christmas {
       fog: false,
     });
     this.bulbs = bulbMesh(out, material);
-    this.group.add(this.bulbs, this.tree);
+    this.treeBulbs = bulbMesh(treeOut, material);
+    this.group.add(this.bulbs, this.treeBulbs, this.tree);
     // The market: its chalets and tables, and its bulbs and the tables' lanterns in a second draw of the same glows.
     this.market = buildMarket(this.groundAt);
     const lights: Bulb[] = this.market.bulbs.map((p) => ({ x: p.x, y: p.y, z: p.z, c: WARM, tw: 0, scale: 0.7 }));
@@ -239,6 +245,14 @@ export class Christmas {
     this.marketWanted = on;
   }
 
+  /**
+   * Whether the tree stands (main.ts): not during Steal the flag or Attack and defend, whose flag stands at the church a
+   * metre from it (shared/flagFields.mjs); then it is gone, its bulbs and its block too.
+   */
+  setTree(on: boolean): void {
+    this.treeWanted = on;
+  }
+
   /** How solid the tree is: 'full' in Explore (walking and cars), 'walk' in a game with weapons, 'off' in Zombies. */
   setSolid(how: 'full' | 'walk' | 'off'): void {
     this.wanted = how;
@@ -253,7 +267,9 @@ export class Christmas {
     const on = season && !!this.bulbs;
     this.on = on;
     this.group.visible = on;
-    const solid = on ? this.wanted : 'off';
+    this.tree.visible = this.treeWanted;
+    if (this.treeBulbs) this.treeBulbs.visible = this.treeWanted;
+    const solid = on && this.treeWanted ? this.wanted : 'off';
     if (solid !== this.solid) {
       this.solid = solid;
       this.world.setMoving(KEY, null);

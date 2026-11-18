@@ -3740,6 +3740,7 @@ renderer.setAnimationLoop((now: number) => {
   santa.setActive(villagersOut && seasonNow().santa && !weapon.enabled && !games.active); // only in Explore (Yoshi)
   christmas.setSolid(games.zombies ? 'off' : weapon.enabled ? 'walk' : 'full'); // the tree, as the server knows the world
   christmas.setMarket(!weapon.enabled && !games.zombies && !games.flagOn); // the Christmas market only in Explore
+  christmas.setTree(!games.flagOn); // no tree in a flag game: the church's flag stands a metre from it (world/christmas.ts)
   marketStall.show(games.zombies ? stallSpot(games.view.zombies?.place) : null, games.view.phase === 'break'); // the stall at the Zombies place (world/stall.ts)
   // The Zombies game: the clowns and strongmen stand aside, nobody flies, and whoever is down waits for the wave.
   clowns.paused = games.standAside || !!solo; // alone too (Yoshi: "Strongmen should stay out of zombie")
