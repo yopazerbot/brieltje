@@ -106,6 +106,8 @@ export interface FixtureSpec {
 /** A fixed model in the house (web/public/models/<model>.glb), its front facing +z before the turn. */
 export interface PropSpec {
   model: string;
+  /** One piece of a model file that holds several (world/props.ts), by its name */
+  part?: string;
   x: number;
   y: number;
   z: number;
