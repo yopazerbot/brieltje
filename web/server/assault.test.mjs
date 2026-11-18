@@ -196,7 +196,7 @@ test('the winner: the fastest capture; one capture beats none; else the closest 
   assert.deepEqual(winner([{ att: 'red', ms: 200_000, best: 1 }, { att: 'blue', ms: null, best: 0.9 }], t0), { team: 'red', why: 'only', a: 200, b: 90 });
   assert.deepEqual(winner([{ att: 'red', ms: null, best: 0.41 }, { att: 'blue', ms: null, best: 0.42 }], t0), { team: 'blue', why: 'far', a: 42, b: 41 });
   assert.deepEqual(winner([{ att: 'red', ms: null, best: 0.415 }, { att: 'blue', ms: null, best: 0.419 }], { blue: 3, red: 5 }), { team: 'red', why: 'tags', a: 5, b: 3 });
-  assert.deepEqual(winner([{ att: 'red', ms: 100_040, best: 1 }, { att: 'blue', ms: 99_960, best: 1 }], { blue: 2, red: 2 }), { team: null, why: 'tags' });
+  assert.deepEqual(winner([{ att: 'red', ms: 100_040, best: 1 }, { att: 'blue', ms: 99_960, best: 1 }], { blue: 2, red: 2 }), { team: null, why: 'draw' });
 });
 
 test('a dropped flag: the defenders bring it home by touch; left alone it goes home by itself', () => {
@@ -252,7 +252,7 @@ test('the spawn truck: only the attackers get in; a start place when still, whol
   s.tick(ASSAULT.truckStillMs + 100);
   assert.equal(s.f().truckSpawn(s.now()), null, 'too near the flag');
   // 200 m off and still: the attackers come back beside it.
-  Object.assign(truck, { x: sx + 200, z: sz });
+  Object.assign(truck, far200(s)); // 200 m from the stand towards the camp, on the meadow's ground
   s.tick(100);
   assert.equal(s.f().truckSpawn(s.now()), null, 'just moved');
   s.tick(ASSAULT.truckStillMs + 100);
@@ -346,6 +346,15 @@ test('supplies: the right side, within reach, on foot, not too fast, the waits, 
   s.msg(a, { t: 'asup', id: med.id });
   assert.equal(s.lines(a).at(-1), 'asupFoot');
 });
+
+/** A spot 200 m from the defenders' stand towards the camp, on the ground the server knows there. */
+function far200(s) {
+  const [sx, sz] = s.f().baseOf(s.f().defender()).stand;
+  const [cx, cz] = s.f().camp;
+  const d = Math.hypot(cx - sx, cz - sz);
+  const x = sx + ((cx - sx) * 200) / d, z = sz + ((cz - sz) * 200) / d;
+  return { x, z, y: s.game.standAt(x, z).y };
+}
 
 /** Everything `name`'s page was sent. */
 function sent(s, name) {
@@ -479,10 +488,134 @@ test('the host: Attack and defend in the programme, who defends first checked; t
   assert.deepEqual(host.entry({ kind: 'assault', defend: 'red', minutes: 8 }), { kind: 'assault', place: 'assault', defend: 'red', minutes: 8, goal: null, look: null });
   assert.equal(host.entry({ kind: 'assault' }).defend, 'blue');
   for (const defend of ['green', '__proto__', 1, {}, ['red']]) assert.equal(host.entry({ kind: 'assault', defend }), null);
-  assert.equal(host.entry({ kind: 'assault', minutes: 99 }).minutes, null);
+  // Each round 1 to 15 minutes: more refuses the game (the host page says so), never a quiet ten.
+  assert.equal(host.entry({ kind: 'assault', minutes: 15 }).minutes, 15);
+  for (const minutes of [16, 30, 0, 2.5, '10']) assert.equal(host.entry({ kind: 'assault', minutes }), null, String(minutes));
+  assert.equal(host.entry({ kind: 'assault' }).minutes, null, 'none: the usual ten');
+  // Attack and defend's own fields are never a plain Steal the flag's.
+  assert.equal(host.entry({ kind: 'flag', place: 'assaultChurch' }).place, 'compact');
   s.game.modes.start('flag', 'admin', 'assault', { defend: 'blue' });
   assert.equal(s.game.modes.swapSides(s.now()).code, 'assaultNoSwap');
   // A player asking to switch team: refused as in every team game.
   s.msg('ann', { t: 'team', team: 'red' });
   assert.ok(s.lines('ann').includes('hostOnlyTeams'));
+});
+
+test('the break: no supplies, traps or seats, no tags counted; round 2 starts with everyone and everything in place again', () => {
+  const s = four('blue');
+  const g = s.game;
+  const [a, a2] = s.att();
+  const [d] = s.def();
+  s.onStand(a);
+  s.tick();
+  s.inCamp(a);
+  s.tick();
+  const f = s.f();
+  assert.equal(f.phase, 'break');
+  // Round 2's roles: red defends the Sparrenhof now, blue attacks from its camp.
+  const [def2] = s.blue.includes(d) ? s.red : s.blue; // whoever defends now
+  assert.equal(f.defender(), 'red');
+  const reds = s.red;
+  const blues = s.blue;
+  // A defender at a crate: refused, with a line; the traps too.
+  const crate = f.field.assault.crates.findIndex((k) => k.kind === 'ammo');
+  const at = f.field.assault.crates[crate].at;
+  s.put(reds[0], at[0] + 0.4, at[1], at[2]);
+  s.msg(reds[0], { t: 'asup', id: `d${crate}` });
+  assert.equal(s.lines(reds[0]).at(-1), 'asupBreak');
+  assert.equal(s.got(reds[0], 'asup').length, 0);
+  f.supply.loot.kit(reds[0]).claymores = 2;
+  f.supply.loot.kit(reds[0]).turrets = 1;
+  s.msg(reds[0], { t: 'claymore', x: at[0] + 1.3, y: at[2], z: at[1], yaw: 0 });
+  s.msg(reds[0], { t: 'turret', x: at[0] + 1.3, y: at[2], z: at[1] + 1.5, yaw: 0 });
+  assert.equal(f.supply.loot.mines.size + f.supply.loot.turrets.size, 0, 'no trap in the break');
+  s.msg(reds[0], { t: 'placement', id: 1, kind: 'claymore', x: at[0] + 1.3, y: at[2], z: at[1], yaw: 0 });
+  assert.equal(s.got(reds[0], 'placement').length, 0, 'no preview either');
+  // An attacker by the spawn truck, then by the attackers' helicopter: no seat, with a line.
+  const truck = g.cars.fr1;
+  s.put(blues[0], truck.x + 2.5, truck.z, truck.y);
+  s.msg(blues[0], { t: 'car', op: 'in', id: 'fr1' });
+  assert.equal(truck.driver, null);
+  assert.equal(s.lines(blues[0]).at(-1), 'assaultBreakSeat');
+  const h = g.helis.machines.get(f.field.heli.red.id);
+  s.put(blues[0], h.x + 2, h.z, h.y);
+  s.msg(blues[0], { t: 'heli', op: 'in', id: h.id });
+  assert.ok(!h.seats.includes(blues[0]));
+  assert.equal(s.lines(blues[0]).at(-1), 'assaultBreakSeat');
+  // A tag in the break counts for nothing.
+  const tags = { ...f.tags };
+  g.damage(reds[0], g.players.get(reds[0]), blues[1], g.players.get(blues[1]), 500, false, 'rifle', s.now());
+  assert.deepEqual(f.tags, tags);
+  // An attacker who walked off to the Sparrenhof's stand in the break, a car moved: round 2 puts both back.
+  const [sx, sz, sy] = f.baseOf('red').stand;
+  s.put(blues[0], sx + 3, sz, sy);
+  const car = g.cars.fr2;
+  const spot = [car.x, car.z];
+  Object.assign(car, { x: sx + 10, z: sz });
+  s.tick(ASSAULT.breakMs);
+  assert.equal(f.phase, 'live');
+  const st = g.players.get(blues[0]).state;
+  const [cx, cz] = f.camp;
+  assert.ok(Math.hypot(st.x - cx, st.z - cz) < 10, 'back in the camp as round 2 starts');
+  assert.ok(Math.hypot(g.cars.fr2.x - spot[0], g.cars.fr2.z - spot[1]) < 0.1, 'the car back on its spot');
+  s.tick();
+  assert.equal(f.flags.red.at, 'home', 'nobody took it at the first tick');
+  void def2;
+  void a2;
+});
+
+test('no heavy weapon for a moment after a respawn or a join: a forged sniper hit right after one is refused', () => {
+  const s = four('blue');
+  const g = s.game;
+  const [a] = s.att();
+  const [d] = s.def();
+  const pa = g.players.get(a);
+  g.respawn(a, pa, s.now());
+  assert.equal(pa.weapons.has('sniper'), false, 'at once, not a tick later');
+  // Their shot with the sniper rifle at a defender in the open, the moment they are back: nothing.
+  const pd = g.players.get(d);
+  pd.protectedUntil = 0;
+  Object.assign(pa.state, { w: 'sniper', armed: true, x: pd.state.x + 5, z: pd.state.z, y: pd.state.y });
+  pa.protectedUntil = 0;
+  const hp = pd.hp;
+  s.msg(a, { t: 'hit', target: d, w: 'sniper', body: 1, head: 0 });
+  assert.equal(pd.hp, hp);
+  // A newcomer joining mid-game: no sniper either; the admin no bazooka.
+  const late = s.join('eve');
+  assert.equal(late.weapons.has('sniper'), false);
+  const boss = s.join('admin', 'admin');
+  assert.equal(boss.weapons.has('bazooka'), false);
+  // After the game the sniper is everyone's again (a respawn gives it).
+  g.modes.start('free', 'admin');
+  g.respawn(a, pa, s.now());
+  assert.equal(pa.weapons.has('sniper'), true);
+});
+
+test('a plain Steal the flag never plays on the fields of Attack and defend: the compact field instead', () => {
+  const s = setup();
+  for (const n of ['ann', 'bob']) s.join(n);
+  s.game.modes.start('flag', 'admin', 'assaultChurch');
+  assert.equal(s.game.modes.state.f.assault, undefined);
+  assert.equal(s.game.modes.state.f.field.id, 'compact');
+});
+
+test('the start places by the truck stand on the ground with room round them; none such: the camp', () => {
+  const s = four('blue');
+  const g = s.game;
+  const [, a2] = s.att();
+  const truck = g.cars.fr1;
+  const [sx, sz] = s.f().baseOf('blue').stand;
+  Object.assign(truck, far200(s)); // 200 m from the stand towards the camp, on the meadow's ground
+  s.tick(100); // seen moved
+  s.tick(ASSAULT.truckStillMs + 100); // and still since
+  const spot = s.f().baseSpot(a2);
+  const ground = g.standAt(spot.x, spot.z);
+  assert.ok(Math.hypot(spot.x - truck.x, spot.z - truck.z) < 8 && ground.ok && Math.abs(spot.y - ground.y) < 0.01, JSON.stringify({ spot, ground }));
+  // Nowhere to stand round it (a wall everywhere, as the server knows it): the camp.
+  const standAt = g.standAt;
+  g.standAt = (x, z) => ({ y: standAt.call(g, x, z).y, ok: false });
+  const back = s.f().baseSpot(a2);
+  const [cx, cz] = s.f().camp;
+  assert.ok(Math.hypot(back.x - cx, back.z - cz) < 10, 'the camp');
+  g.standAt = standAt;
 });
