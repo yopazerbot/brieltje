@@ -791,15 +791,13 @@ h.block("concrete", [(6.1, -.8), (7.62, -.8), (7.62, -.4), (6.1, -.4)], -.4, -.0
 SOIL = "#4b3d31"
 h.surface("vh_trim", [(.3, -.9), (5.85, -.9), (5.85, -.05), (.3, -.05)], lambda u, v: g(u, v) + .03, color=SOIL)
 h.surface("vh_trim", [(7.75, -.75), (11.95, -.75), (11.95, -.05), (7.75, -.05)], lambda u, v: paved_h(u, v) + .02, color=SOIL)
-# Two young, airy trees in the bed (birches, about 2.4 m), one before the second window left of the door, one between
-# the last window and the garage; the game draws them as its own trees (`trees`, game heights). Before each, a small
-# dark spotlight sunk in the soil that shines up into its leaves at night (`uplights`, world/uplights.ts), and the wall
+# Two young, airy trees on the front lawn (birches, about 2.4 m; Yoshi, 18 Nov 2026: on the lawn, not in the bed
+# against the wall): one in the middle of the lawn left of the front path, one in the lawn between the path and the
+# drive, towards the drive. The game draws them as its own trees (`trees`, game heights). Before each, a small dark
+# spotlight sunk in the grass that shines up into its leaves at night (`uplights`, world/uplights.ts), and the wall
 # lantern's glass for its glow (`lantern`).
-# The game keeps a crown 15 cm off the wall (world/treeSpacing.ts): each trunk stands far enough out for a crown about
-# 1.1 m across.
-bed_l = lambda u, v: g(u, v) + (.03 if v > -.9 else 0)  # the soil strip left of the door, the ground beyond it
-bed_r = lambda u, v: paved_h(u, v) + (.02 if v > -.75 else 0)  # right of it: the soil strip, the paving beyond it
-YOUNG = [(3.2, -.85, bed_l), (11.1, -.72, bed_r)]
+lawn = lambda u, v: g(u, v)  # the front lawn lies on the relief
+YOUNG = [(2.8, -2.3, lawn), (10.3, -2.6, lawn)]
 young_trees, uplights = [], []
 for u, v, bed in YOUNG:
     x, z = wpt(u, v)
