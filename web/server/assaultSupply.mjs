@@ -61,6 +61,8 @@ export class AssaultArms {
     this.back = { blue: [], red: [] };
     this.over = false;
     this.dirty = false;
+    /** Players whose guns trim changed: their page is told on the next tick (arm) */
+    this.tell = new Set();
   }
 
   /** The heavy weapons `team` holds or has waiting to come back now. */
@@ -114,7 +116,7 @@ export class AssaultArms {
   trim(name, list) {
     if (this.over) return;
     const h = this.holders.get(name);
-    for (const w of HEAVY) if (h?.w !== w) list.delete(w);
+    for (const w of HEAVY) if (h?.w !== w && list.delete(w)) this.tell.add(name);
   }
 
   /** Player `name`'s guns as they should be: a bazooka or a sniper rifle only when they hold one. Every tick: nothing made. */
@@ -129,7 +131,10 @@ export class AssaultArms {
       else p.weapons.delete(w);
       changed = true;
     }
-    if (!changed) return;
+    // Trimmed at a respawn or a join (trim): its page, which starts from the usual guns, is told on this tick, after
+    // the respawn's own message.
+    if (!changed && !this.tell.delete(name)) return;
+    this.tell.delete(name);
     this.game.send(p.ws, { t: 'weapons', list: [...p.weapons] });
     if (h?.w === 'bazooka') this.game.send(p.ws, { t: 'fbz', ev: 'left', n: h.left });
   }

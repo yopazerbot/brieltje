@@ -572,6 +572,8 @@ test('no heavy weapon for a moment after a respawn or a join: a forged sniper hi
   const pa = g.players.get(a);
   g.respawn(a, pa, s.now());
   assert.equal(pa.weapons.has('sniper'), false, 'at once, not a tick later');
+  s.tick();
+  assert.equal(s.got(a, 'weapons').at(-1)?.list.includes('sniper'), false, 'and its page told, after the respawn');
   // Their shot with the sniper rifle at a defender in the open, the moment they are back: nothing.
   const pd = g.players.get(d);
   pd.protectedUntil = 0;
