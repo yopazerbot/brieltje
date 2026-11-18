@@ -1,6 +1,6 @@
 import type { Prism, RoofSpec, Surroundings } from './houseData';
 import { BlockGrid, Houses } from './houseKeys';
-import { planBases, planReveals, type BasePlan, type GroundAt, type RevealPlan } from './housePlan';
+import { planBases, planDownpipes, planReveals, type BasePlan, type Downpipe, type GroundAt, type RevealPlan } from './housePlan';
 import { chimneyRoofs } from './houseTrim';
 import { planRoofs } from './roofPlan';
 
@@ -23,6 +23,8 @@ export interface HouseIndex {
   lids: BlockGrid;
   /** The windows and doors set back in their walls, and the holes for them (world/housePlan.ts, world/wallCut.ts) */
   reveals: RevealPlan;
+  /** The flat roofs' downpipes (world/housePlan.ts) */
+  downpipes: Map<Prism, Downpipe>;
   /** The data's single slopes to what is drawn in their place: halves joined, ramps turned, wedges closed (world/roofPlan.ts) */
   drawn: Map<RoofSpec, RoofSpec>;
   /** The house under a roof (a drawn one): both halves of a pair take the larger half's, so they look one roof */
@@ -75,6 +77,7 @@ export function houseIndex(set: Pick<Surroundings, 'roofs' | 'prisms' | 'opening
     bases,
     lids,
     reveals: planReveals(set.openings ?? [], houses, bases, groundAt),
+    downpipes: planDownpipes(prisms, set.openings ?? [], houses, lids, groundAt),
     drawn: plan.drawn,
     keyOf,
   };

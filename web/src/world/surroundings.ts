@@ -20,7 +20,7 @@ import { barkMaterial, cardsBuilt, enlist, leafCardMaterial, plainForBake, switc
 import { reflectionSkips } from './reflections';
 import { houseIndex } from './houseIndex';
 import { pointInside } from './houseKeys';
-import { flatEdgeSides, FRAME, type Hole } from './housePlan';
+import { flatEdgeSides, FRAME, type Downpipe, type Hole } from './housePlan';
 import { cutWall } from './wallCut';
 import { bandedWalls, chimney, flatEdge, openingTrim, roofEdges, roofExtras, roofFrame, type OpeningContext, type RoofEdges, type SolarArray } from './houseTrim';
 import { houseStyle } from './houseStyle';
@@ -495,6 +495,26 @@ function buildOpenings(list: Opening[], ground: number, houses: Houses, pitched:
   return out;
 }
 
+/**
+ * A flat roof's downpipe (world/housePlan.ts `planDownpipes`), with the gutters: a spout out through the roof's edge into
+ * a hopper head, and the pipe from it down to the ground, in zinc grey.
+ */
+function downpipe(p: Downpipe): THREE.BufferGeometry {
+  const zinc = new THREE.Color('#8f9396');
+  const n = new THREE.Vector3(p.n[0], 0, p.n[1]);
+  const d = new THREE.Vector3(p.d[0], 0, p.d[1]);
+  if (d.clone().cross(new THREE.Vector3(0, 1, 0)).dot(n) < 0) d.negate(); // right-handed, so faces point out
+  const at = (out: number, y: number) => new THREE.Vector3(p.x + n.x * out, y, p.z + n.z * out);
+  const parts = [
+    slab(at(0, (p.bottom + p.top - 0.18) / 2), d, n, 0.08, p.top - 0.18 - p.bottom, 0.08, zinc),
+    slab(at(0, p.top - 0.1), d, n, 0.16, 0.16, 0.14, zinc),
+  ];
+  if (p.spout) parts.push(slab(at(-0.05, p.top + 0.03), d, n, 0.06, 0.06, 0.12, zinc));
+  const g = mergeGeometries(parts);
+  parts.forEach((x) => x.dispose());
+  return g;
+}
+
 const postGeo = new THREE.BoxGeometry(0.1, 1, 0.1).translate(0, 0.5, 0);
 
 /** Concrete posts along the garden fences: [x, z, height] each, standing on the ground. */
@@ -614,6 +634,8 @@ export function buildTile(data: TileData, poles: Pole[], renderer: THREE.WebGLRe
     const look = brickLook(m, key);
     return byteAttribute(paint(g, look.tint), 'facade', look.render);
   };
+  // Gutters and downpipes, from the roofs and the flat roofs' lids.
+  const gutterGeos: THREE.BufferGeometry[] = [];
   for (const p of data.prisms ?? []) {
     const { material: mat, tint, tag } = blockMaterial(p.m, renderer);
     // A house wall's base: a plinth or a damp base following the ground (world/housePlan.ts, world/houseTrim.ts).
@@ -633,6 +655,8 @@ export function buildTile(data: TileData, poles: Pole[], renderer: THREE.WebGLRe
       const house = at && houses.wallAt(at[0], at[1], p.y0 - 0.3);
       const style = house && houseStyle(house.key, house.m, brickLook(house.m, house.key).render === 1);
       if (style?.flatEdge) for (const e of flatEdge(p, new THREE.Color(style.trim), flatEdgeSides(p, index.lids, houses))) put(trimMat, e, 'alu', false, undefined, true);
+      const pipe = index.downpipes.get(p);
+      if (pipe) gutterGeos.push(downpipe(pipe));
     }
   }
 
@@ -640,7 +664,6 @@ export function buildTile(data: TileData, poles: Pole[], renderer: THREE.WebGLRe
   // over a room (the bungalow's) has a ceiling colour: then the outside (front faces) and the
   // underside (back faces) differ.
   const tiles = material('tiles', () => glazeable(Object.assign(tintedMaterial('roof_tiles', '#ffffff', renderer, THREE.DoubleSide), { vertexColors: true })));
-  const gutterGeos: THREE.BufferGeometry[] = [];
   // The house under a roof; each house's chimney on its largest roof that can carry one; the houses with a gable or hip
   // roof (leaf shutters go only on those): all for the whole set (world/houseIndex.ts).
   const { chimneys, pitched, keyOf } = index;

@@ -4,8 +4,8 @@ import { houseStyle, type PlinthKind } from './houseStyle';
 
 /**
  * Where the open-data houses' details go, in numbers only (world/houseTrim.ts and world/wallCut.ts build them;
- * world/housePlan.test.mjs checks them over the committed data): the band at the foot of each house wall, and the
- * windows and doors set back in their walls (planReveals).
+ * world/housePlan.test.mjs checks them over the committed data): the band at the foot of each house wall, the windows
+ * and doors set back in their walls (planReveals) and the downpipes of the flat roofs (planDownpipes).
  *
  * A plinth follows the ground along the wall, as real ones do: at every corner of the wall (and at points added where
  * the ground bends between corners) it stands its house's height above the ground there, so on a slope it slopes
@@ -504,3 +504,84 @@ export function planReveals(openings: Opening[], houses: Houses, bases: Map<Pris
   return { faces, holes };
 }
 
+// ---- Downpipes from the flat roofs ----
+
+/** Of the flat roofs on a house (12 m² or more), the share with a downpipe at a corner. */
+export const DOWNPIPE_SHARE = 0.85;
+
+/**
+ * A downpipe: its middle on the plan, the wall's outside (n) and the way along it (d), from `top` (the top of its head)
+ * down to `bottom`; `spout`: out through the roof's edge into its head (a wall flush with the edge), else the head
+ * stands under the roof reaching out over the wall.
+ */
+export interface Downpipe {
+  x: number;
+  z: number;
+  n: [number, number];
+  d: [number, number];
+  top: number;
+  bottom: number;
+  spout: boolean;
+}
+
+/**
+ * A downpipe for each flat roof's lid (an nb_roof block) on a house, on most of them: down a wall under one of the
+ * lid's free sides (flatEdgeSides), flush with it or set back up to 40 cm, 25 cm from one of the side's ends, 3 cm off
+ * the wall, from the roof's edge to the ground; not where an opening of the wall is within 30 cm, nor where anything
+ * stands in its way.
+ */
+export function planDownpipes(prisms: Prism[], openings: Opening[], houses: Houses, lids: BlockGrid, groundAt: GroundAt): Map<Prism, Downpipe> {
+  const near = new BlockGrid(); // the openings, as thin blocks, to find those round a point
+  const ofBlock = new Map<Prism, Opening>();
+  for (const o of openings) {
+    const q: Prism = { m: 'opening', y0: o.y[0], y1: o.y[1], p: [[o.a, o.b, [o.a[0] + 1e-3, o.a[1] + 1e-3]]] };
+    ofBlock.set(q, o);
+    near.add(q);
+  }
+  const out = new Map<Prism, Downpipe>();
+  for (const p of prisms) {
+    if (p.m !== 'nb_roof' || p.lm || p.d || area(p.p[0]) < 12) continue;
+    const ring = p.p[0];
+    const key = stable(ring[0][0], ring[0][1], 89);
+    if (key >= DOWNPIPE_SHARE) continue;
+    const sides = flatEdgeSides(p, lids, houses);
+    const places: { at: [number, number]; n: [number, number]; d: [number, number] }[] = [];
+    for (const i of sides) {
+      const [ax, az] = ring[i];
+      const [bx, bz] = ring[(i + 1) % ring.length];
+      const l = Math.hypot(bx - ax, bz - az);
+      if (l < 2) continue;
+      const [tx, tz] = [(bx - ax) / l, (bz - az) / l];
+      let n: [number, number] = [-tz, tx];
+      if (inside(ring, (ax + bx) / 2 + n[0] * 0.05, (az + bz) / 2 + n[1] * 0.05)) n = [tz, -tx];
+      places.push({ at: [ax + tx * 0.25, az + tz * 0.25], n, d: [tx, tz] }, { at: [bx - tx * 0.25, bz - tz * 0.25], n, d: [tx, tz] });
+    }
+    // Tried in an order of the lid's own.
+    places.sort((u, v) => stable(u.at[0], u.at[1], 89) - stable(v.at[0], v.at[1], 89));
+    for (const { at, n, d } of places) {
+      const ground = groundAt(at[0], at[1]);
+      const heights = [0.15, 0.5, 0.85].map((t) => ground + 0.3 + (p.y0 - 0.1 - ground - 0.3) * t);
+      // The wall under the edge, all the way down: flush with it, or set back under it by up to 40 cm.
+      const holds = (k: number) => heights.every((y) => houses.holds(at[0] - n[0] * k, at[1] - n[1] * k, y));
+      let inset = -1;
+      for (let k = 0.02; k <= 0.42 && inset < 0; k += 0.02) if (holds(k)) inset = k - 0.02;
+      if (inset < 0 || !holds(inset + 0.1)) continue;
+      // The pipe 3 cm off the wall; under a roof that reaches out over the wall its head stays under the edge.
+      const [x, z] = [at[0] + n[0] * (0.07 - inset), at[1] + n[1] * (0.07 - inset)];
+      const bottom = groundAt(x, z) - 0.05;
+      const top = inset > 0.03 ? p.y0 - 0.02 : p.y1 - 0.12;
+      if (top - bottom < 1.5 || houses.wallsAt(x, z).some((w) => w.p.y1 > bottom + 0.1)) continue;
+      if (lids.at(x, z).some((q) => q !== p && q.y1 > bottom + 0.1 && q.y0 < top)) continue;
+      const box: [number, number, number, number] = [x - 0.4, z - 0.4, x + 0.4, z + 0.4];
+      const busy = near.inBox(box).some((q) => {
+        const o = ofBlock.get(q)!;
+        const t = Math.max(0, Math.min(1, ((x - o.a[0]) * (o.b[0] - o.a[0]) + (z - o.a[1]) * (o.b[1] - o.a[1])) / ((o.b[0] - o.a[0]) ** 2 + (o.b[1] - o.a[1]) ** 2 || 1)));
+        return Math.hypot(o.a[0] + (o.b[0] - o.a[0]) * t - x, o.a[1] + (o.b[1] - o.a[1]) * t - z) < 0.3 + 0.07 && o.y[0] < top;
+      });
+      if (busy) continue;
+      out.set(p, { x, z, n, d, top, bottom, spout: inset <= 0.03 });
+      break;
+    }
+  }
+  return out;
+}

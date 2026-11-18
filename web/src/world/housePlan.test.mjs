@@ -10,8 +10,8 @@ registerHooks({
     return next(specifier, context);
   },
 });
-const { Houses, inside } = await import('./houseKeys.ts');
-const { planBases, planSteps, cutAt, isPlinthOf, area, planReveals, alongFace, FRAME } = await import('./housePlan.ts');
+const { Houses, BlockGrid, inside } = await import('./houseKeys.ts');
+const { planBases, planSteps, cutAt, isPlinthOf, area, planReveals, planDownpipes, alongFace, FRAME } = await import('./housePlan.ts');
 const { makeTerrain } = await import('../../shared/terrain.mjs');
 
 const read = (file) => JSON.parse(fs.readFileSync(new URL(file, import.meta.url), 'utf8'));
@@ -129,6 +129,18 @@ for (const [name, set] of Object.entries(sets)) {
       }
     }
     assert.equal(holes, reveals.holes.size);
+  });
+
+  test(`${name}: the flat roofs' downpipes stand against a wall and reach the ground`, () => {
+    const lids = new BlockGrid();
+    for (const p of prisms) if (p.m === 'nb_roof') lids.add(p);
+    const pipes = planDownpipes(prisms, set.openings ?? [], houses, lids, groundAt);
+    assert.ok(pipes.size > (name === 'village' ? 500 : 80), `${name}: ${pipes.size} downpipes`);
+    for (const [lid, d] of pipes) {
+      assert.ok(Math.abs(d.bottom - (groundAt(d.x, d.z) - 0.05)) < 1e-9 && d.top - d.bottom >= 1.5 && d.top <= lid.y1, `${name}: a downpipe from ${d.top.toFixed(2)} to ${d.bottom.toFixed(2)}`);
+      assert.ok(houses.holds(d.x - d.n[0] * 0.15, d.z - d.n[1] * 0.15, (d.top + d.bottom) / 2), `${name}: a downpipe off its wall at (${d.x.toFixed(1)}, ${d.z.toFixed(1)})`);
+      assert.ok(!houses.wallsAt(d.x, d.z).length, `${name}: a downpipe in a wall at (${d.x.toFixed(1)}, ${d.z.toFixed(1)})`);
+    }
   });
 
   test(`${name}: no band is painted over a plinth the data has`, () => {
