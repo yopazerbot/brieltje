@@ -12,7 +12,7 @@ import { SOUTH } from '../ui/bigmap';
 /**
  * The details that make an open-data house (world/surroundings.ts) read as a house and not a block, built in code from
  * each house's style (world/houseStyle.ts): a chimney on the ridge, verge boards along the gables and ridge tiles on
- * top, a plinth or a damp base at the foot of the walls, lintels over the openings, a bluestone step under each door,
+ * top, a plinth at the foot of the walls (where the house has one), lintels over the openings, a bluestone step under each door,
  * leaf shutters or lowered roller shutters at some windows.
  *
  * Everything rides in meshes the tiles already draw (world/tiles.ts merges by material): the chimneys and plinths in
@@ -25,8 +25,6 @@ const UP = new THREE.Vector3(0, 1, 0);
 const BRICK_MEAN = 0.56;
 /** A soldier course over an opening: the wall's tint times this (and the texture's mean, as it has none). */
 const SOLDIER = 0.78;
-/** A damp base: the bottom of the wall at this times its tint, back to its own at the cut. */
-const DAMP = 0.82;
 /** The roofs' overhang, as world/surroundings.ts draws them. */
 const OVERHANG = 0.3;
 
@@ -499,13 +497,13 @@ export function chimney(r: RoofSpec, f: RoofFrame, ch: NonNullable<HouseStyle['c
   return { stack, parts };
 }
 
-// ---- The foot of the walls: plinth or damp ----
+// ---- The foot of the walls: a plinth ----
 
 /**
  * A wall block cut in two along its base (world/housePlan.ts `planBases`): the cut runs its plan's height over the
  * ground at every point of the outline (which has points added where the ground bends), so the band follows the ground.
- * Below it the plinth's colour, or for a damp base the wall's own a little darker at the foot fading out up to the cut;
- * above it the wall's. The brick courses run on through (texture coordinates are heights in metres). The colour and
+ * Below it the plinth's colour; above it the wall's. A wall without a plinth has no band and no darker foot (no
+ * damp base: it read as dirt, Yoshi 18 Nov 2026). The brick courses run on through (texture coordinates are heights in metres). The colour and
  * render byte as world/facadeLook.ts's walls have them; `key` the wall's house.
  */
 export function bandedWalls(p: Prism, plan: BasePlan, key: number, groundAt: (x: number, z: number) => number): THREE.BufferGeometry {
@@ -528,19 +526,17 @@ export function bandedWalls(p: Prism, plan: BasePlan, key: number, groundAt: (x:
   const facade = new Uint8Array(pos.count);
   const byte = (c: THREE.Color) => [c.r, c.g, c.b].map((v) => Math.round(Math.min(1, v) * 255));
   const wall = byte(look.tint);
-  const damp = byte(look.tint.clone().multiplyScalar(DAMP));
   // A painted, cement or tarred plinth shows its colour (render shows the vertex colour at about the texture's mean).
-  const plinth = plan.kind === 'none' ? null
-    : byte(plan.colour ? new THREE.Color(plan.colour).multiplyScalar(1 / BRICK_MEAN) : look.tint.clone().multiplyScalar(PLINTH_BRICK_SHADE));
+  const plinth = byte(plan.colour ? new THREE.Color(plan.colour).multiplyScalar(1 / BRICK_MEAN) : look.tint.clone().multiplyScalar(PLINTH_BRICK_SHADE));
   const plinthRender = plan.render ? 255 : look.render * 255;
   for (let t = 0; t < pos.count; t += 3) {
     const below = row[t] < 2 && row[t + 1] < 2 && row[t + 2] < 2;
     for (let i = t; i < t + 3; i++) {
-      if (below && plinth) {
+      if (below) {
         colors.set(plinth, i * 3);
         facade[i] = plinthRender;
       } else {
-        colors.set(!plinth && row[i] === 0 ? damp : wall, i * 3);
+        colors.set(wall, i * 3);
         facade[i] = look.render * 255;
       }
     }

@@ -17,11 +17,11 @@ export const CHIMNEY_SHARE = 0.6;
 /** Of the chimneys, the share with one or two clay pots on top. */
 export const CHIMNEY_POTS = 1 / 3;
 
-// Plinths on brick houses: dark grey paint, grey cement, the same brick darker; the rest has none (a damp base).
+// Plinths on brick houses: dark grey paint, grey cement, the same brick darker; the rest has none (a plain wall).
 export const PLINTH_PAINT = 0.3;
 export const PLINTH_CEMENT = 0.2;
 export const PLINTH_BRICK = 0.25;
-/** Plinths on rendered and white houses: tarred, a dark grey; the rest has none (a damp base). */
+/** Plinths on rendered and white houses: tarred, a dark grey; the rest has none (a plain wall). */
 export const PLINTH_TAR = 0.5;
 const PAINT = '#343332';
 const CEMENT = '#8f8c86';

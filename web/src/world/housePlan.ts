@@ -15,8 +15,6 @@ import { houseStyle, type PlinthKind } from './houseStyle';
 
 export type GroundAt = (x: number, z: number) => number;
 
-/** Visible height of a damp base: the darker foot fades out this far above the ground. */
-export const DAMP_TOP = 0.7;
 /** The least a band may show above the ground anywhere along its wall, or the wall gets none. */
 const LEAST = 0.2;
 /** Metres a band stays under the bottom of a ground-floor window (whose stone sill reaches 10 cm under it). */
@@ -64,9 +62,9 @@ export function isPlinthOf(q: Prism, w: Prism): boolean {
 export interface BasePlan {
   /** The wall's outline with points added where the ground bends between its corners */
   ring: [number, number][];
-  /** The plinth (none: a damp base) */
-  kind: PlinthKind;
-  /** Its colour (sRGB), or null for the wall's own brick darker (and for a damp base) */
+  /** The plinth */
+  kind: Exclude<PlinthKind, 'none'>;
+  /** Its colour (sRGB), or null for the wall's own brick darker */
   colour: string | null;
   /** Whether the plinth is rendered (paint, cement, tar), else as the wall */
   render: boolean;
@@ -188,7 +186,7 @@ export function planSteps(o: Opening, houses: Houses, groundAt: GroundAt): StepB
 
 /**
  * The bases of the house walls of a whole set (the ring's or the village's): per wall block of a house (brick, 2.2 m
- * or more high, 12 m² or more, standing on the ground) a plinth of its house's style, or a damp base, following the
+ * or more high, 12 m² or more, standing on the ground) a plinth of its house's style, if it has one, following the
  * ground. None for a house standing on a plinth in the data, nor for a wall that stands off the ground somewhere, nor
  * where the ground floor's windows leave no room for one.
  */
@@ -220,16 +218,13 @@ export function planBases(prisms: Prism[], openings: Opening[], houses: Houses, 
     const ground = ring.map(([x, z]) => groundAt(x, z));
     if (ground.some((g) => w.y0 > g + 0.3)) continue; // off the ground somewhere (on a terrace, over a dip): plain
     const plinth = houseStyle(key, w.m, renderOf(w.m, key) === 1).plinth;
+    // No plinth: the wall goes down to the ground as it is. It used to darken towards the foot (a damp base), which
+    // read as dirt (Yoshi, 18 Nov 2026: "Do it all but not this: dirty band at the bottom of the wall").
+    if (plinth.kind === 'none') continue;
     const limit = Math.min((sill.get(w) ?? Infinity) - UNDER_SILL, w.y1 - 1);
-    const plan = (kind: PlinthKind, h: number): BasePlan => ({
-      ring, kind, h, floor: w.y0 + 0.05, limit,
-      colour: kind === 'none' ? null : plinth.colour, render: kind === 'none' ? false : plinth.render,
-    });
-    // A band must show LEAST everywhere; a damp base (a fade) 10 cm.
-    const fits = (b: BasePlan) => ground.every((g) => cutAt(b, g) - g >= (b.kind === 'none' ? 0.1 : LEAST));
-    let b = plan(plinth.kind, plinth.kind === 'none' ? DAMP_TOP : plinth.height);
-    if (!fits(b) && b.kind !== 'none') b = plan('none', DAMP_TOP); // no room under the sills: a damp base
-    if (fits(b)) out.set(w, b);
+    const b: BasePlan = { ring, kind: plinth.kind, h: plinth.height, floor: w.y0 + 0.05, limit, colour: plinth.colour, render: plinth.render };
+    // A band must show LEAST everywhere; where the sills leave no room for that, the wall stays plain.
+    if (ground.every((g) => cutAt(b, g) - g >= LEAST)) out.set(w, b);
   }
   return out;
 }

@@ -638,7 +638,7 @@ export function buildTile(data: TileData, poles: Pole[], renderer: THREE.WebGLRe
   const gutterGeos: THREE.BufferGeometry[] = [];
   for (const p of data.prisms ?? []) {
     const { material: mat, tint, tag } = blockMaterial(p.m, renderer);
-    // A house wall's base: a plinth or a damp base following the ground (world/housePlan.ts, world/houseTrim.ts).
+    // A house wall's base: a plinth following the ground, where the house has one (world/housePlan.ts, world/houseTrim.ts).
     const base = index.bases.get(p);
     const g = base ? bandedWalls(p, base, houses.keyOf(p), groundAt) : prismGeometry(p);
     fieldRows(g, p); // the fields' rows (world/fields.ts)
