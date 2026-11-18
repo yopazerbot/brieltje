@@ -72,7 +72,7 @@ function game(field = 'compact', opts = {}) {
 }
 
 test('the racks: 4 to 8 m from their stand, off the start places, the portals and the school grounds, inside the field', () => {
-  for (const field of Object.values(FIELDS)) {
+  for (const field of Object.values(FIELDS).filter((f) => !f.assault)) { // Attack and defend has no racks (server/assault.test.mjs)
     const s = game(field.id);
     const edge = s.game.modes.state.f.edge;
     for (const team of ['blue', 'red']) {
