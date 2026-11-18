@@ -8,7 +8,7 @@
 
 import { DONE_MS as ZOMBIES_DONE_MS, RECONNECT_MS as ZOMBIES_RECONNECT_MS, ZombieGame } from './zombies.mjs';
 import { arenaOf, portalOf } from '../shared/arenas.mjs';
-import { BACK_MS, FLAG_COLORS, FLAG_MS, FLAG_TEAMS, FlagGame, SAFE_MS, SUDDEN_MS } from './flags.mjs';
+import { BACK_MS, FIELDS, FLAG_COLORS, FLAG_MS, FLAG_TEAMS, FlagGame, SAFE_MS, SUDDEN_MS } from './flags.mjs';
 import { AssaultGame } from './assault.mjs';
 
 const HIDE_MS = 30_000; // the seeker counts with eyes shut
@@ -324,7 +324,9 @@ export class Modes {
       // `place` 'assault': Attack and defend (server/assault.mjs), two rounds of its own on its own fields; `opts.defend`
       // the team defending the church first.
       const look = LOOKS.includes(opts.look) ? opts.look : null;
-      const f = place === 'assault' ? new AssaultGame(this.game, teams, look, { defend: opts.defend, roundMs: opts.minutes ? opts.minutes * 60_000 : undefined }, now) : new FlagGame(this.game, place, teams, look, now);
+      // Attack and defend's own fields are never a plain Steal the flag's (no stand of the attackers to score at): compact.
+      const plain = FIELDS[place]?.assault ? 'compact' : place;
+      const f = place === 'assault' ? new AssaultGame(this.game, teams, look, { defend: opts.defend, roundMs: opts.minutes ? opts.minutes * 60_000 : undefined }, now) : new FlagGame(this.game, plain, teams, look, now);
       // `colors`: everyone dressed in their team's colour, on every page, the scoreboard, the kill feed and the name tags
       // (game.mjs colorOf, through teamColor).
       this.state = { kind, phase: 'playing', until: now + (f.assault ? f.roundMs : ms(FLAG_MS)), teams, score: f.score, f, colors: FLAG_COLORS };
