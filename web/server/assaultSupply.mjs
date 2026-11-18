@@ -449,6 +449,18 @@ export class AssaultSupply {
     return changed;
   }
 
+  /** Every tick: a vest is lost when its wearer goes down (as in Zombies); their page is told. */
+  fallen() {
+    if (!this.loot) return;
+    for (const [name, k] of this.loot.kits) {
+      if (!(k.armor > 0)) continue;
+      const p = this.game.players.get(name);
+      if (p && p.alive) continue;
+      k.armor = 0;
+      if (p) this.game.send(p.ws, { t: 'zgift', kind: 'kit', kit: this.loot.kit(name) });
+    }
+  }
+
   /** The traps for every page: the claymores down and the turrets up (as Zombies' view: shared/loot.mjs view). */
   view() {
     const v = this.loot ? this.loot.view() : { mines: [], turrets: [] };

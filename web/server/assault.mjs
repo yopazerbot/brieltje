@@ -286,6 +286,7 @@ export class AssaultGame extends FlagGame {
   tick(now, modes) {
     const s = modes.state;
     this.watchTruck(now);
+    this.supply.fallen();
     const armed = this.arms.step(now);
     if (this.phase === 'break') {
       if (now >= s.until) return this.secondRound(now, modes);
@@ -294,11 +295,15 @@ export class AssaultGame extends FlagGame {
     }
     const events = this.step(now);
     const traps = this.supply.step(now);
+    // The spawn truck became a start place, or stopped being one: every page's view (the attackers' line).
+    const spawn = !!this.truckSpawn(now);
+    const truck = spawn !== this.truckWas;
+    this.truckWas = spawn;
     if (events.length) modes.flagEvents(events);
     const cap = events.find((e) => e.ev === 'captured');
     if (cap) return this.roundOver(now, modes, cap.name);
     if (now >= s.until) return this.roundOver(now, modes, null);
-    if (events.length || armed || traps) modes.send();
+    if (events.length || armed || traps || truck) modes.send();
   }
 
   /** The round is over (`by` captured the flag, or the clock): its result kept, a line for everyone, the break or the end. */
@@ -316,14 +321,15 @@ export class AssaultGame extends FlagGame {
 
   /**
    * Between the rounds: the field becomes the Sparrenhof's and the roles swap (the other team defends). Every vehicle of
-   * the first round goes, the second's park; the flag home; the traps and the waits start again; everyone (the downed
-   * too, on their own clock) at their new places, protected; the heavy weapons stay with their holders.
+   * the first round goes, the second's park; the flag home; the traps, the heavy weapons and the waits start again (each
+   * round's teams with the same kit); everyone (the downed too, on their own clock) at their new places, protected.
    */
   breakTime(now, modes) {
     const s = modes.state;
     this.phase = 'break';
     s.until = now + ASSAULT.breakMs;
     this.unparkRound(now);
+    this.arms.rack(); // every heavy weapon back in its crate, its place free at once
     this.supply.end();
     this.field = fieldOf(ROUND_FIELDS[1]);
     this.swapped = !this.swapped;
@@ -346,7 +352,7 @@ export class AssaultGame extends FlagGame {
     this.best = 0;
     s.until = now + this.roundMs;
     for (const t of ['blue', 'red']) this.flags[t] = this.homeFlag(t);
-    modes.say(`Round 2: team ${this.attacker() === 'blue' ? 'Blue' : 'Red'} attacks, team ${this.defender() === 'blue' ? 'Blue' : 'Red'} defends the Sparrenhof`, 'assaultRound2', { a: this.attacker(), d: this.defender() });
+    modes.say(`Round 2: team ${this.defender() === 'blue' ? 'Blue' : 'Red'} defends the Sparrenhof, the others attack from their camp`, 'assaultRound2', { team: this.defender() });
     modes.send();
   }
 

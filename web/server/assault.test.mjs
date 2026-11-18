@@ -152,12 +152,23 @@ test('a capture: the attackers take the flag from the stand and carry it into th
 test('the break: the Sparrenhof, the roles swapped, everyone at the new places; then round 2 on its own clock', () => {
   const s = four('blue');
   const g = s.game;
-  const [a] = s.att();
+  const [a, a2] = s.att();
+  // The spawn truck: a start place once it has stood still a while, and every page told when it became one.
+  assert.equal(g.modes.view().flag.assault.truck.spawn, false, 'just parked');
+  const sends = s.out.filter((m) => m.t === 'mode').length;
+  s.tick(ASSAULT.truckStillMs + 100);
+  assert.equal(g.modes.view().flag.assault.truck.spawn, true);
+  assert.ok(s.out.filter((m) => m.t === 'mode').length > sends, 'every page told');
+  // A heavy weapon in round 1: back in its crate at the break (each round's teams with the same kit).
+  assert.equal(s.f().arms.give(a2, g.players.get(a2), 'red', 'sniper', s.now()), null);
   s.onStand(a);
   s.tick();
   s.inCamp(a);
   s.tick();
   assert.equal(s.f().phase, 'break');
+  s.tick();
+  assert.equal(s.f().arms.count('red', s.now()), 0);
+  assert.equal(g.players.get(a2).weapons.has('sniper'), false);
   assert.equal(s.f().field.id, 'assaultSparrenhof');
   assert.equal(s.f().defender(), 'red', 'the other team defends');
   const [sx, sz] = s.f().baseOf('red').stand;
