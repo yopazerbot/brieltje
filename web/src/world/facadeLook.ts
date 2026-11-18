@@ -47,6 +47,11 @@ export function brickLook(m: string, key: number): BrickLook {
   const render = renderOf(m, key);
   const tint = new THREE.Color(render ? pick(RENDER, stable(key, 3)) : pick(SHADES[m] ?? SHADES.nb_red, stable(key, 5)));
   tint.multiplyScalar(0.94 + 0.12 * stable(key, 7)); // and a little lighter or darker, house by house
+  // And a little warmer or cooler (up to 4 % more red and less blue, or the other way), as weathering and batches of
+  // brick or paint differ from house to house.
+  const warm = 0.08 * (stable(key, 9) - 0.5);
+  tint.r *= 1 + warm;
+  tint.b *= 1 - warm;
   return { tint, render };
 }
 
