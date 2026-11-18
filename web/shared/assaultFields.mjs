@@ -115,7 +115,7 @@ export const CAMP = Object.freeze({
 /** The crates at the defenders' base, in a row from its first: who defends gets the traps too. */
 export const BASE_CRATES = Object.freeze(['ammo', 'med', 'bazooka', 'sniper', 'claymore', 'turret']);
 
-/** The spawn truck (a car of its own, built in code: src/world/truck.ts): its size and speeds, as shared/car.json's cars. */
+/** The spawn truck (a car of its own, our Blender model: tools/camp.py, src/world/truck.ts): its size and speeds, as shared/car.json's cars. */
 export const TRUCK = Object.freeze({
   name: 'the spawn truck',
   model: 'proc:truck',

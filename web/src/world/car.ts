@@ -141,7 +141,7 @@ const CALM = typeof matchMedia === 'function' && matchMedia('(prefers-reduced-mo
 /** A model's scene, fetched and parsed once however many cars use it; each car gets its own copy (sharing the geometry). */
 const models = new Map<string, Promise<THREE.Group>>();
 function modelCopy(url: string): Promise<THREE.Group> {
-  if (url === 'proc:truck') return Promise.resolve(truckModel()); // built in code (world/truck.ts)
+  if (url === 'proc:truck') return truckModel(); // in the camp's models (world/truck.ts), a fresh copy each time
   let scene = models.get(url);
   if (!scene) models.set(url, (scene = new GLTFLoader().loadAsync(url).then((gltf) => gltf.scene)));
   return scene.then((s) => s.clone()); // the original keeps the model's material names (prepare reads them)
@@ -170,6 +170,8 @@ const MATERIALS: Record<string, THREE.Material> = {
   Screen: new THREE.MeshStandardMaterial({ color: '#0a0c10', roughness: 0.1, metalness: 0.2 }),
   Reflector: new THREE.MeshStandardMaterial({ color: '#8a0f12', roughness: 0.3 }),
   Plate: new THREE.MeshStandardMaterial({ color: '#e8e8e2', roughness: 0.5, ...shaded }),
+  // Matt army paint whose colour (olive, the dirt, the shade) is all on the corners: the spawn truck (world/truck.ts).
+  Drab: new THREE.MeshStandardMaterial({ color: '#ffffff', roughness: 0.85, metalness: 0.05, ...shaded }),
 };
 const taillight = () => new THREE.MeshStandardMaterial({ color: '#5a0a0d', roughness: 0.2, emissive: '#ff2020', emissiveIntensity: 0.5 });
 /**
@@ -196,7 +198,7 @@ function towardsEye(m: THREE.LineBasicMaterial): THREE.LineBasicMaterial {
   return m;
 }
 /** The parts that cast the car's shadow: the body, its glass and trim, the seats, the tyres. */
-const SHADOW_PARTS = new Set(['Paint', 'Glass', 'GlassDark', 'Trim', 'Interior', 'Tyre']);
+const SHADOW_PARTS = new Set(['Paint', 'Glass', 'GlassDark', 'Trim', 'Interior', 'Tyre', 'Drab']);
 /** m from the eye: further off a car shows its simple copy ("Far" in the model), nearer again its full model. */
 const FAR_OUT = 60;
 const FAR_IN = 50;
