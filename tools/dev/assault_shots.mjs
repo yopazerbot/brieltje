@@ -61,12 +61,30 @@ try {
   await b.waitFor('!!briel.combat.me', 60000);
   await b.waitFor("briel.village() === 'ready'", 240000);
   await b.evaluate("document.getElementById('cc-close')?.click()", false);
+  // December on this page (world/season.ts): the Christmas tree on the church square in free play, solid for walking.
+  const tree = "({ shown: briel.christmas.lit && briel.christmas.tree.visible, solid: briel.world.walkingBarriers.has('christmas-tree') || briel.world.moving.has('christmas-tree') })";
+  if (!o.phone) {
+    await b.evaluate("briel.season.fake('2026-12-10')", false);
+    await b.waitFor('briel.christmas.lit', 60000);
+    await sleep(500);
+    const before = await b.evaluate(tree);
+    console.log(`${before.shown && before.solid ? 'ok  ' : 'FAIL'} in free play the tree stands, solid: ${JSON.stringify(before)}`);
+  }
   await act({ op: 'teams', count: 2 });
   await act({ op: 'move', name: 'admin', team: 0 });
   await act({ op: 'move', name, team: 1 }); // the page on red: it defends the church first
   await act({ op: 'start', kind: 'assault', defend: 'red', minutes: 5 });
   await b.waitFor("briel.games.view.flag?.assault?.round === 1", 30000);
   await sleep(3000);
+  if (!o.phone) {
+    const during = await b.evaluate(tree);
+    console.log(`${!during.shown && !during.solid ? 'ok  ' : 'FAIL'} during the flag game no tree at the church's stand: ${JSON.stringify(during)}`);
+    await b.evaluate(`briel.teleport(${FIELDS.assaultChurch.bases.blue.stand[0] - 10}, ${FIELDS.assaultChurch.bases.blue.stand[1] - 6}, ${FIELDS.assaultChurch.bases.blue.stand[2]}, ${Math.atan2(-10, -6)}, 0.05)`, false);
+    await sleep(2000);
+    await b.screenshot(join(o.out, `church-stand-december-${tag}.png`));
+  }
+  // What the page sends (the Use checks below read it).
+  await b.evaluate(`(() => { window.__sent = []; const send = WebSocket.prototype.send; WebSocket.prototype.send = function (d) { try { const m = JSON.parse(d); if (m.t === 'car' || m.t === 'heli' || m.t === 'asup') window.__sent.push(m); } catch {} return send.call(this, d); }; })()`, false);
   const look = async (file, x, z, feet, yaw, pitch, fly = true) => {
     const put = `briel.teleport(${x}, ${z}, ${feet}, ${yaw}, ${pitch}); briel.player.flying = ${fly}`;
     await b.evaluate(put, false);
@@ -126,7 +144,66 @@ try {
   const crates2 = FIELDS.assaultSparrenhof.assault.crates;
   await look('sparrenhof-crates', crates2[2].at[0], crates2[2].at[1] + 6, crates2[2].at[2], 0, -0.2, false);
   console.log('bar:', await b.evaluate("document.getElementById('modebar')?.textContent"));
+  // Round 2: the page attacks from the Sparrenhof's camp. By the spawn truck and by the camp's helicopter Use gets you
+  // in; a step back the prompt offers ammo and Use takes it (the server's answer counts down).
+  if (!o.phone) {
+    await b.waitFor("briel.games.view.flag?.assault?.phase === 'live'", 40000);
+    await sleep(3000);
+    const press = async () => {
+      for (const type of ['keyDown', 'keyUp']) {
+        await b.send('Input.dispatchKeyEvent', { type, code: 'KeyE', key: 'e', windowsVirtualKeyCode: 69 });
+        await sleep(120);
+      }
+    };
+    /** A spot `d` m from the outline of the page's car or helicopter `id`, out from its middle at angle `a`. */
+    const spotAt = (kind, id, d, a) => b.evaluate(`(() => {
+      const m = '${kind}' === 'heli' ? briel.helis.machines.find((q) => q.spec.id === '${id}') : briel.cars.find((c) => c.id === '${id}');
+      const at = '${kind}' === 'heli' ? m.s : m;
+      for (let r = 0; r < 12; r += 0.02) {
+        const x = at.x + Math.cos(${a}) * r, z = at.z + Math.sin(${a}) * r;
+        if (m.distanceTo(x, z) >= ${d}) return { x, z, y: at.y };
+      }
+      return null;
+    })()`);
+    const stand = async (q) => {
+      // A short walk there for the server too (it holds a page to a run): 25 to 35 m from the camp.
+      await b.evaluate(`briel.teleport(${q.x}, ${q.z}, ${q.y}, 0, 0)`, false);
+      await sleep(9000);
+      await b.evaluate(`briel.teleport(${q.x}, ${q.z}, ${q.y}, 0, 0)`, false);
+      await sleep(600);
+    };
+    const sent = () => b.evaluate('window.__sent.map((m) => m.t + ":" + (m.op ?? m.id))');
+    const check = async (label, kind, id) => {
+      await stand(await spotAt(kind, id, 0.7, 0.3));
+      const promptNear = await b.evaluate("document.getElementById('prompt').textContent");
+      await b.evaluate('window.__sent.length = 0', false);
+      await press();
+      await sleep(800);
+      const sentNear = await sent();
+      console.log(`${sentNear.includes(kind + ':in') && !sentNear.some((m) => m.startsWith('asup')) ? 'ok  ' : 'FAIL'} by the ${label} Use gets you in (prompt "${promptNear}", sent ${JSON.stringify(sentNear)})`);
+      await b.screenshot(join(o.out, `use-${kind}-near-${tag}.png`));
+      await press(); // out again
+      await sleep(1500);
+      await stand(await spotAt(kind, id, 2.2, 0.3));
+      const promptBack = await b.evaluate("document.getElementById('prompt').textContent");
+      await b.screenshot(join(o.out, `use-${kind}-back-${tag}.png`));
+      await b.evaluate('window.__sent.length = 0', false);
+      await press();
+      await sleep(1000);
+      const sentBack = await sent();
+      const after = await b.evaluate("document.getElementById('prompt').textContent");
+      console.log(`${/ammo/i.test(promptBack) && sentBack.some((m) => m.startsWith('asup')) && /again in/i.test(after) ? 'ok  ' : 'FAIL'} a step back from the ${label} the prompt offers ammo and Use takes it ("${promptBack}", then "${after}", sent ${JSON.stringify(sentBack)})`);
+    };
+    await check('spawn truck', 'car', FIELDS.assaultSparrenhof.assault.truck);
+    await sleep(21000); // the ammo's wait, before the helicopter's
+    await check('helicopter', 'heli', FIELDS.assaultSparrenhof.heli.red.id);
+  }
   await act({ op: 'stop' });
+  if (!o.phone) {
+    await sleep(2500);
+    const after = await b.evaluate(tree);
+    console.log(`${after.shown && after.solid ? 'ok  ' : 'FAIL'} after the game the tree stands again: ${JSON.stringify(after)}`);
+  }
   await act({ op: 'teams', count: 0 });
 } finally {
   b.close();
