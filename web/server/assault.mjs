@@ -133,11 +133,18 @@ export class AssaultGame extends FlagGame {
     if (truck) {
       const c = Math.cos(truck.yaw), s = Math.sin(truck.yaw);
       const fence = g.fence();
-      const spots = TRUCK_SPOTS.map(([a, b]) => ({ x: round2(truck.x + a * c + b * s), z: round2(truck.z - a * s + b * c) }))
-        .filter((q) => fence.inside(q.x, q.z) && !homeAt(q.x, q.z, truck.y) && (!p || g.gate.mayStand(p, q.x, truck.y, q.z)));
+      // Each spot on the ground the server knows there (the relief), with room to stand (Game.standAt: no wall, hedge or
+      // fence within a metre, nothing solid at body height) and not much above or below the truck (a bank, a ditch);
+      // none such: the camp.
+      const spots = TRUCK_SPOTS.map(([a, b]) => {
+        const x = round2(truck.x + a * c + b * s), z = round2(truck.z - a * s + b * c);
+        const ground = g.standAt ? g.standAt(x, z) : { y: truck.y, ok: true };
+        return { x, z, y: round2(ground.y), ok: ground.ok };
+      }).filter((q) => q.ok && Math.abs(q.y - truck.y) < 1 && fence.inside(q.x, q.z) && !homeAt(q.x, q.z, q.y) && (!p || g.gate.mayStand(p, q.x, q.y, q.z)));
       const others = [...g.players].filter(([n, o]) => n !== name && o.alive && o.state).map(([, o]) => o.state);
-      const free = spots.sort((a, b) => Math.min(Infinity, ...others.map((o) => Math.hypot(o.x - b.x, o.z - b.z))) - Math.min(Infinity, ...others.map((o) => Math.hypot(o.x - a.x, o.z - a.z))));
-      if (free.length) return { spawn: 0, x: free[0].x, y: truck.y, z: free[0].z, face: [stand[0], stand[1]] };
+      const room = (q) => Math.min(Infinity, ...others.map((o) => Math.hypot(o.x - q.x, o.z - q.z)));
+      const free = spots.sort((a, b) => room(b) - room(a));
+      if (free.length) return { spawn: 0, x: free[0].x, y: free[0].y, z: free[0].z, face: [stand[0], stand[1]] };
     }
     const spot = super.baseSpot(name);
     return spot ? { ...spot, face: [stand[0], stand[1]] } : null;
