@@ -487,7 +487,10 @@ const en = {
 
   // ---- The admin's tab
   'adm.you': 'You',
-  'adm.turbo': 'Move extremely fast (15 times, walking and flying)',
+  'adm.turbo': 'Move extremely fast (15 times, walking and flying); key L',
+  'adm.turboOn': 'Turbo on',
+  'adm.turboOff': 'Turbo off',
+  'adm.turboKey': '15 times as fast · L turns it on or off',
   'adm.aloneNote': 'House rules, guests and party games are for playing together.',
   'adm.rules': 'House rules',
   'adm.flying': 'Flying allowed',
@@ -1794,7 +1797,10 @@ const nl = {
 
   // ---- The admin's tab
   'adm.you': 'Jij',
-  'adm.turbo': 'Extreem snel bewegen (15 keer zo snel, wandelen en vliegen)',
+  'adm.turbo': 'Extreem snel bewegen (15 keer zo snel, wandelen en vliegen); toets L',
+  'adm.turboOn': 'Turbo aan',
+  'adm.turboOff': 'Turbo uit',
+  'adm.turboKey': '15 keer zo snel · L zet hem aan of uit',
   'adm.aloneNote': 'Huisregels, gasten en partyspellen stel je in als je samen speelt.',
   'adm.rules': 'Huisregels',
   'adm.flying': 'Vliegen toegestaan',

@@ -1543,6 +1543,15 @@ turboBox.addEventListener('change', () => {
   }
   applyTurbo();
 });
+// L turns the admin's turbo on or off without the menu (Yoshi, 18 Nov 2026: "a dedicated letter"); L is free and on
+// the same place on AZERTY and QWERTY. Only for the admin: for anyone else the key does nothing.
+window.addEventListener('keydown', (e) => {
+  if (e.code !== 'KeyL' || e.repeat || e.ctrlKey || e.metaKey || e.altKey || typing(e)) return;
+  if (!(me?.role === 'admin' || (!me && sessionAdmin()))) return;
+  turboBox.checked = !turboBox.checked;
+  turboBox.dispatchEvent(new Event('change')); // kept on this device and applied, as a click on the box
+  hud.announce(t(turboBox.checked ? 'adm.turboOn' : 'adm.turboOff'), t('adm.turboKey'));
+});
 function applyRules(next: Rules): void {
   rules = next;
   // No flying in the Zombies game (out of their reach for good; the server holds to it too).
