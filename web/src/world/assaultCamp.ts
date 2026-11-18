@@ -5,17 +5,18 @@ import { FLAG_COLORS, fieldOf, type FlagTeam } from '../../shared/flagFields.mjs
 import type { World } from './collision';
 import { mood } from './mood';
 import { rewardSign } from './rewards';
-import { truckParts } from './truck';
+import { campModels, type CampModels, type CampProp } from './campModels';
 
 /**
  * Attack and defend's camps in the world (server/assault.mjs decides; shared/assaultFields.mjs has where): while a round
- * is played, the attackers' camp (two tents with roofs in their colour, the supply truck, four crates, four flood lamps on
- * tripods) and the six crates at the defenders' base. The camp's flag and its ring are Steal the flag's stand
- * (world/flags.ts). Made in code from boxes, with their colours on the vertices, merged per field: three draw calls in
- * all (the lit parts, the lamps' faces and, from dusk on, their pools of light). No real light, no texture; the lamps'
- * faces and pools stay far under the half floats' end. The tents and the trucks are walking barriers here (as the
- * Zombies stall, world/stall.ts); shots pass through, the server knows no camp. `near` says which crate or vehicle you
- * may use.
+ * is played, the attackers' camp (two army tents and the supply truck, our Blender models from tools/camp.py, with
+ * signal panels, flags and the truck's marks in the attackers' colour; four crates, four flood lamps on tripods) and the
+ * six crates at the defenders' base. The camp's flag and its ring are Steal the flag's stand (world/flags.ts). Everything
+ * carries its colour on the vertices and is merged per field: the tents and the truck in one mesh near and a simple one
+ * far off (a LOD at the camp's flag), the crates and lamps in a second, the lamps' faces and, from dusk on, their pools
+ * of light: four draw calls. No real light, no texture; the lamps' faces and pools stay far under the half floats' end.
+ * The tents and the truck are walking barriers here (as the Zombies stall, world/stall.ts); shots pass through, the
+ * server knows no camp. `near` says which crate or vehicle you may use.
  */
 
 /** The view's own part (server/assault.mjs view `assault`). */
@@ -47,7 +48,6 @@ export interface SupplyAim {
 const C = {
   wood: '#8a6a45',
   woodDark: '#5c4430',
-  canvas: '#efe6d0',
   pole: '#3a3d40',
   olive: '#5b6b45',
   white: '#f2f2ee',
@@ -61,6 +61,35 @@ const NEAR_VEHICLE = ASSAULT.vehicleReach - 0.3;
 /** The camp's supply truck's box round its middle, along the camp (as the server's, server/assaultSupply.mjs sources) */
 const SUPPLY_BOX = { hx: 1.4, hz: 3.4 };
 const SIGNS: Partial<Record<CrateKind, 'ammo' | 'medkit' | 'claymore' | 'turret'>> = { ammo: 'ammo', med: 'medkit', claymore: 'claymore', turret: 'turret' };
+/** A tent's half sizes on the ground (tools/camp.py: 5 m across, 6 m along), for its walking barrier */
+const TENT = { hx: 2.6, hz: 3.1 };
+/** m from the camp's flag where the tents and the truck change to their simple copies (and back a little nearer) */
+const FAR_AT = 140;
+
+/**
+ * A prop of the camp's models at `m` (its frame in the camp's), its team parts in `team`'s colour; `mirror` turns it
+ * left for right (a tent's rolled-up wall, the truck's open side, to the camp's middle). Its parts, indexed.
+ */
+function place(prop: CampProp, m: THREE.Matrix4, team: THREE.Color, mirror: boolean): THREE.BufferGeometry[] {
+  const at = mirror ? m.clone().multiply(new THREE.Matrix4().makeScale(-1, 1, 1)) : m;
+  return prop.parts.map(({ geometry, team: tinted }) => {
+    const g = geometry.clone();
+    if (mirror && g.index) {
+      const ix = g.index.array;
+      for (let i = 0; i < ix.length; i += 3) [ix[i + 1], ix[i + 2]] = [ix[i + 2], ix[i + 1]]; // the faces still face out
+    }
+    g.applyMatrix4(at);
+    if (tinted) {
+      const c = g.attributes.color.array as Float32Array;
+      for (let i = 0; i < c.length; i += 3) {
+        c[i] *= team.r;
+        c[i + 1] *= team.g;
+        c[i + 2] *= team.b;
+      }
+    }
+    return g;
+  });
+}
 
 /** A part with a colour on its vertices, moved by `m`: position, normal and colour only, not indexed (they all merge). */
 function part(geo: THREE.BufferGeometry, hex: string | THREE.Color, m?: THREE.Matrix4): THREE.BufferGeometry {
@@ -82,14 +111,6 @@ const at = (x: number, y: number, z: number, yaw: number) => new THREE.Matrix4()
 /** A box of w × h × d, its foot at (x, y, z) in a local frame `m`. */
 const box = (w: number, h: number, d: number, x: number, y: number, z: number, hex: string, m: THREE.Matrix4, rx = 0) =>
   part(new THREE.BoxGeometry(w, h, d), hex, new THREE.Matrix4().makeRotationX(rx).premultiply(new THREE.Matrix4().makeTranslation(x, y + h / 2, z)).premultiply(m));
-
-/** A triangle both ways round (a tent's gable end), in a local frame `m`. */
-function tri(a: number[], b: number[], c: number[], hex: string, m: THREE.Matrix4): THREE.BufferGeometry {
-  const g = new THREE.BufferGeometry();
-  g.setAttribute('position', new THREE.Float32BufferAttribute([...a, ...b, ...c, ...a, ...c, ...b], 3));
-  g.computeVertexNormals();
-  return part(g, hex, m);
-}
 
 /** One of the rewards' signs (world/rewards.ts), its colours baked, `fit` m across, on a crate's lid. */
 function sign(kind: 'ammo' | 'medkit' | 'claymore' | 'turret', fit: number, m: THREE.Matrix4): THREE.BufferGeometry | null {
@@ -132,29 +153,6 @@ function crate(kind: CrateKind, x: number, y: number, z: number, yaw: number, te
   return out;
 }
 
-/** A tent (a marquee) at (x, y, z), its ridge across `yaw`'s front: cream walls closed but at the front, a roof in `team`'s colour. */
-function tent(x: number, y: number, z: number, yaw: number, team: string): THREE.BufferGeometry[] {
-  const m = at(x, y, z, yaw);
-  const s = 2.25, eave = 2.0, ridge = 3.2;
-  const out: THREE.BufferGeometry[] = [];
-  for (const [px, pz] of [[-s, -s], [s, -s], [-s, s], [s, s]]) out.push(box(0.08, eave, 0.08, px, 0, pz, C.pole, m));
-  out.push(box(0.08, ridge, 0.08, -s, 0, 0, C.pole, m), box(0.08, ridge, 0.08, s, 0, 0, C.pole, m));
-  // Walls: the back and both ends to the eaves; the gable ends' triangles; the front open.
-  out.push(box(2 * s, eave - 0.1, 0.04, 0, 0.1, s, C.canvas, m));
-  for (const sx of [-s, s]) {
-    out.push(box(0.04, eave - 0.1, 2 * s, sx, 0.1, 0, C.canvas, m));
-    out.push(tri([sx, eave, -s], [sx, eave, s], [sx, ridge, 0], C.canvas, m));
-  }
-  // The roof: two slopes from the eaves to the ridge, with a white valance along the front's edge.
-  const run = Math.hypot(s, ridge - eave), tilt = Math.atan2(ridge - eave, s);
-  out.push(part(new THREE.BoxGeometry(2 * s + 0.3, 0.05, run + 0.15), team, new THREE.Matrix4().makeRotationX(tilt).premultiply(new THREE.Matrix4().makeTranslation(0, (eave + ridge) / 2, -s / 2)).premultiply(m)));
-  out.push(part(new THREE.BoxGeometry(2 * s + 0.3, 0.05, run + 0.15), team, new THREE.Matrix4().makeRotationX(-tilt).premultiply(new THREE.Matrix4().makeTranslation(0, (eave + ridge) / 2, s / 2)).premultiply(m)));
-  out.push(box(2 * s + 0.3, 0.25, 0.03, 0, eave - 0.27, -s - 0.08, C.white, m));
-  // A camp table and two crates' worth of boxes inside.
-  out.push(box(1.6, 0.05, 0.7, 0, 0.75, s - 0.7, C.woodDark, m), box(0.06, 0.75, 0.6, -0.7, 0, s - 0.7, C.woodDark, m), box(0.06, 0.75, 0.6, 0.7, 0, s - 0.7, C.woodDark, m));
-  return out;
-}
-
 /** A flood lamp on a tripod at (x, y, z), its head turned to `face` (the camp's flag): the lit parts and its face. */
 function lamp(x: number, y: number, z: number, face: [number, number]): { lit: THREE.BufferGeometry[]; face: THREE.BufferGeometry } {
   const yaw = Math.atan2(-(face[0] - x), -(face[1] - z));
@@ -168,12 +166,6 @@ function lamp(x: number, y: number, z: number, face: [number, number]): { lit: T
   lit.push(part(new THREE.BoxGeometry(0.7, 0.42, 0.22), C.dark, tilt));
   const faceGeo = part(new THREE.BoxGeometry(0.6, 0.32, 0.02), C.lamp, new THREE.Matrix4().makeTranslation(0, 0, -0.115).premultiply(tilt));
   return { lit, face: faceGeo };
-}
-
-/** The supply truck: the spawn truck's own shape (world/truck.ts) in olive, a white band in the team's colour's place. */
-function supplyTruck(x: number, y: number, z: number, yaw: number, team: string): THREE.BufferGeometry[] {
-  const colours: Record<string, string> = { Paint: C.olive, Trim: '#202224', Plate: team, Glass: '#101418', LightBar: '#e8e4d8', TailLight: '#7a1a1a', Tyre: '#141414', Rim: '#6a6e76', RimDark: '#303237' };
-  return truckParts().map(({ name, geometry }) => part(geometry, colours[name] ?? C.dark, at(x, y, z, yaw)));
 }
 
 /** The light's pool round each lamp from dusk on: a soft disc on the ground, added (one shader for all). */
@@ -191,6 +183,8 @@ function pools(spots: [number, number, number][]): THREE.BufferGeometry {
 }
 
 const litMat = new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.85, metalness: 0.05 });
+/** The tents and the truck: matt canvas and paint, both sides (a canvas is one sheet, seen from inside through the door) */
+const campMat = new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.92, metalness: 0, side: THREE.DoubleSide });
 const faceMat = new THREE.MeshBasicMaterial({ vertexColors: true, toneMapped: false });
 const poolMat = new THREE.ShaderMaterial({
   uniforms: { night: { value: 0 } },
@@ -206,6 +200,11 @@ export class AssaultCamp {
   private lit = new THREE.Mesh(new THREE.BufferGeometry(), litMat);
   private faces = new THREE.Mesh(new THREE.BufferGeometry(), faceMat);
   private pool = new THREE.Mesh(new THREE.BufferGeometry(), poolMat);
+  /** The tents and the supply truck, near and far, at the camp's flag (the renderer picks one by the eye's distance) */
+  private lod = new THREE.LOD();
+  private nearModels = new THREE.Mesh(new THREE.BufferGeometry(), campMat);
+  private farModels = new THREE.Mesh(new THREE.BufferGeometry(), campMat);
+  private models: CampModels | null = null;
   private key = '';
   private barriers: string[] = [];
   private view: { field: string; def: FlagTeam; still: boolean } | null = null;
@@ -214,13 +213,24 @@ export class AssaultCamp {
     this.group.name = 'assault-camp';
     this.group.visible = false;
     this.lit.castShadow = this.lit.receiveShadow = true;
+    this.nearModels.castShadow = this.nearModels.receiveShadow = true;
+    this.farModels.castShadow = true;
     for (const m of [this.lit, this.faces, this.pool]) {
-      m.userData.ignoreRay = true;
-      m.raycast = () => {};
       m.frustumCulled = false; // spread over the field and the base: one bound for both would be wide anyway
     }
+    for (const m of [this.lit, this.faces, this.pool, this.nearModels, this.farModels]) {
+      m.userData.ignoreRay = true;
+      m.raycast = () => {};
+    }
     this.pool.renderOrder = 2;
-    this.group.add(this.lit, this.faces, this.pool);
+    this.lod.addLevel(this.nearModels, 0, 0.08);
+    this.lod.addLevel(this.farModels, FAR_AT, 0.08);
+    this.group.add(this.lit, this.faces, this.pool, this.lod);
+    // The models come in once; a camp built before them gets them then.
+    void campModels().then((m) => {
+      this.models = m;
+      if (this.view && this.key) this.build(this.view.field, this.view.def);
+    }, () => {});
   }
 
   /** The game's view (`field`, the round's `assault` part), or null: no Attack and defend on. */
@@ -254,8 +264,7 @@ export class AssaultCamp {
     const attC = FLAG_COLORS[att], defC = FLAG_COLORS[def];
     const lit: THREE.BufferGeometry[] = [];
     const faces: THREE.BufferGeometry[] = [];
-    for (const [x, z, y] of c.tents) lit.push(...tent(x, y, z, c.yaw, attC));
-    lit.push(...supplyTruck(c.supply[0], c.supply[2], c.supply[1], c.side, attC));
+    this.placeModels(c, new THREE.Color(attC));
     for (const k of c.crates) lit.push(...crate(k.kind, k.at[0], k.at[2], k.at[1], c.yaw, attC));
     for (const [x, z, y] of c.lamps) {
       const l = lamp(x, y, z, [c.flag[0], c.flag[1]]);
@@ -275,8 +284,34 @@ export class AssaultCamp {
       const fx = -Math.sin(yaw), fz = -Math.cos(yaw), sx = -fz, sz = fx;
       return [[hz, hx], [hz, -hx], [-hz, -hx], [-hz, hx]].map(([u, v]) => [x + fx * u + sx * v, z + fz * u + sz * v] as [number, number]);
     };
-    c.tents.forEach(([x, z, y], i) => this.barrier(`acamp-tent${i}`, ring(x, z, c.yaw, 2.3, 2.3), y));
+    c.tents.forEach(([x, z, y], i) => this.barrier(`acamp-tent${i}`, ring(x, z, c.yaw, TENT.hx, TENT.hz), y));
     this.barrier('acamp-supply', ring(c.supply[0], c.supply[1], c.side, 1.3, 3.6), c.supply[2]);
+  }
+
+  /**
+   * The tents and the supply truck in the camp `c`, near and far, their team parts in `team`; empty until the models are
+   * in. Each tent's rolled-up wall and the truck's open side face the camp's flag (a tent on the other side mirrored).
+   */
+  private placeModels(c: NonNullable<ReturnType<typeof fieldOf>['assault']>['camp'], team: THREE.Color): void {
+    const near: THREE.BufferGeometry[] = [];
+    const far: THREE.BufferGeometry[] = [];
+    const [fx, fz, fy] = c.flag;
+    this.lod.position.set(fx, fy, fz);
+    if (this.models) {
+      const { tent, tentFar, supply, supplyFar } = this.models;
+      // `open`: the side the model has open, its own +x (1) or -x (-1); mirrored when the flag is on its other side.
+      const put = (near1: CampProp, far1: CampProp, [x, z, y]: number[], yaw: number, open: number) => {
+        const m = new THREE.Matrix4().makeRotationY(yaw).premultiply(new THREE.Matrix4().makeTranslation(x - fx, y - fy, z - fz));
+        const towards = (fx - x) * Math.cos(yaw) - (fz - z) * Math.sin(yaw); // the flag along the model's own +x
+        const mirror = towards * open < 0;
+        near.push(...place(near1, m, team, mirror));
+        far.push(...place(far1, m, team, mirror));
+      };
+      for (const t of c.tents) put(tent, tentFar, t, c.yaw, -1);
+      put(supply, supplyFar, c.supply, c.side, 1);
+    }
+    this.swap(this.nearModels, near);
+    this.swap(this.farModels, far);
   }
 
   private barrier(key: string, ring: [number, number][], y: number): void {
