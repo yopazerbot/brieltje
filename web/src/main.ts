@@ -107,6 +107,7 @@ import { setWaterDetail, waterLevel, wetGround } from './world/water';
 import { buildHorizon } from './world/horizon';
 import { FarTrees, patchFarLand, setArea as setFarArea } from './world/farLand';
 import { patchMeadowLook } from './world/meadowLook';
+import { modelTint } from './world/modelTints';
 import { wearLonePatches, weatherYards } from './world/yards';
 import { detailModelPaving, detailPaving, pavingMeshes, planPaving, usePavingPlan } from './world/pavingDetail';
 import { Undergrowth } from './world/undergrowth';
@@ -4874,7 +4875,7 @@ function gameTextures(root: THREE.Object3D): void {
     const u = (mesh.material as THREE.Material).userData as { texture?: string; tint?: string; normalScale?: number; streaks?: boolean };
     if (u.streaks) return useStreaks(mesh); // the rain's streaks under the sills (world/rainStreaks.ts)
     if (u.texture) {
-      const m = tintedMaterial(u.texture, u.tint ?? '#ffffff', renderer);
+      const m = tintedMaterial(u.texture, modelTint((mesh.material as THREE.Material).name, u.tint ?? '#ffffff'), renderer);
       if (u.normalScale !== undefined) m.normalScale.setScalar(u.normalScale);
       mesh.material = m;
     }

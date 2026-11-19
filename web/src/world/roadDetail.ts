@@ -124,7 +124,7 @@ const SILT = new THREE.Color('#6a6253');
 /** Metres: a kerbstone's length (the joints between them show). */
 const KERBSTONE = 1;
 const KH: Profile = {
-  road: 'concrete', tint: '#b2afa7', slab: 5, centreJoint: true, cracks: 0.2, gutter: { w: 0.32, tint: SETTS }, kerb: { h: 0.11, tint: KERB_TINT },
+  road: 'concrete', tint: '#9f9c95', slab: 5, centreJoint: true, cracks: 0.2, gutter: { w: 0.32, tint: SETTS }, kerb: { h: 0.11, tint: KERB_TINT },
   walk: { m: 'pavers', tint: PAVERS }, shoulder: { w: 0.4, tint: '#a19a8d' }, gullies: 24, manholes: 45, wear: 0.34,
 };
 /**
@@ -140,24 +140,25 @@ const OUTER: Profile = {
 };
 const PROFILES: Record<string, Profile> = {
   // Kapellenhoek: pale worn concrete slabs, setts, kerbs and pavers where houses stand, gravel where they don't;
-  // by the church square a dashed centre line.
+  // by the church square a dashed centre line. The pale concrete here, on Kapelleweg and in Briel is tinted so it
+  // reads at about two thirds of white in the sun (19 Nov 2026: a tenth darker; it came out near white).
   kh: KH,
   kh_dash: { ...KH, dash: true },
   // Kapelleweg: a narrow concrete lane between grass and gravel.
-  kw: { road: 'concrete', tint: '#b7b4ac', slab: 5, cracks: 0.3, shoulder: { w: 0.35, tint: EARTH }, wear: 0.2 },
+  kw: { road: 'concrete', tint: '#a3a09a', slab: 5, cracks: 0.3, shoulder: { w: 0.35, tint: EARTH }, wear: 0.2 },
   // Its last stretch, by the new terrace at Molenhoek's end: two pale concrete strips with dark clinkers between
   // them, the verge up to the gardens bare earth, not yet finished.
   kw_path: {
-    road: 'concrete', tint: '#c0bdb5', slab: 5, cracks: 0, middle: { w: 0.45, m: 'clinker', tint: '#4d4744' }, apron: 'gravel', apronTint: '#6f6a62',
+    road: 'concrete', tint: '#aba8a1', slab: 5, cracks: 0, middle: { w: 0.45, m: 'clinker', tint: '#4d4744' }, apron: 'gravel', apronTint: '#6f6a62',
     wear: 0.06,
   },
   // Briel: narrow concrete, widened with grey asphalt along both edges.
   briel: {
-    road: 'concrete', tint: '#b4b1a9', slab: 5, cracks: 0.25, core: 1.75, edge: '#78797b', gutter: { w: 0.3, tint: SETTS }, kerb: { h: 0.1, tint: KERB_TINT },
+    road: 'concrete', tint: '#a19e97', slab: 5, cracks: 0.25, core: 1.75, edge: '#78797b', gutter: { w: 0.3, tint: SETTS }, kerb: { h: 0.1, tint: KERB_TINT },
     walk: { m: 'pavers', tint: PAVERS }, shoulder: { w: 0.35, tint: EARTH }, wear: 0.26,
   },
   // Briel's old lanes (the lane by the house): cracked concrete, three metres, grass up to it.
-  lane: { road: 'concrete', tint: '#afaca4', slab: 7.5, cracks: 0.85, shoulder: { w: 0.3, tint: EARTH }, wear: 0.16 },
+  lane: { road: 'concrete', tint: '#9c9992', slab: 7.5, cracks: 0.85, shoulder: { w: 0.3, tint: EARTH }, wear: 0.16 },
   // Kerkhofstraat: dark asphalt between light setts (with or without a kerb), low kerbs, pavers.
   kerkhof: {
     road: 'asphalt', tint: '#56585b', gutter: { w: 0.45, tint: '#a3a19b' }, setts: true, apron: 'pavers', kerb: { h: 0.06, tint: KERB_TINT }, walk: { m: 'pavers', tint: PAVERS },
