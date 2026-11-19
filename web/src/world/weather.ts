@@ -87,6 +87,11 @@ interface Look {
   horizonFade: number;
   /** How much of the bake's contrast stays (1 all; world/bakedLight.ts) */
   contrast: number;
+  /**
+   * The bake's sky light as a factor of the sky photo's (1 but at night): the night's photo, dimmed to look like a
+   * night sky, would light the baked walls and roofs of the whole village almost black.
+   */
+  bakeFill: number;
   /** 0 to 1: wet ground, rain falling, night (street lamps on, birds asleep), overcast, snow falling */
   wet: number;
   rain: number;
@@ -97,8 +102,9 @@ interface Look {
   sunLow: number;
 }
 
-const look = (sky: SkyName, n: Omit<Look, 'sky' | 'sunColor' | 'hemiSky' | 'hemiGround' | 'fogTint'>, c: [string, string, string, string]): Look => ({
+const look = (sky: SkyName, n: Omit<Look, 'sky' | 'sunColor' | 'hemiSky' | 'hemiGround' | 'fogTint' | 'bakeFill'> & { bakeFill?: number }, c: [string, string, string, string]): Look => ({
   sky,
+  bakeFill: 1,
   ...n,
   sunColor: new THREE.Color(c[0]),
   hemiSky: new THREE.Color(c[1]),
@@ -113,7 +119,9 @@ const LOOKS: Record<Mood, Look> = {
   rain: look('overcast', { skyGain: 0.62, sun: 0, hemi: 0.8, inside: 0.8, exposure: 1.4, fog: 0.007, horizonFade: 0.9, contrast: 0.55, wet: 1, rain: 1, night: 0, overcast: 1, snow: 0, sunLow: 0 }, ['#ffffff', '#b9c0ca', '#6f6c66', '#e4e9ee']),
   // Dusk is worked out each frame between its golden start and its blue end (DUSK below).
   dusk: look('dusk', { skyGain: 1, sun: 0, hemi: 1, inside: 1, exposure: 1, fog: 0, horizonFade: 0, contrast: 1, wet: 0, rain: 0, night: 0, overcast: 0, snow: 0, sunLow: 1 }, ['#fff', '#fff', '#fff', '#fff']),
-  night: look('night', { skyGain: 1, sun: 0.42, hemi: 0.45, inside: 0.7, exposure: 2.0, fog: 0.003, horizonFade: 0.85, contrast: 0.8, wet: 0, rain: 0, night: 1, overcast: 0, snow: 0, sunLow: 0 }, ['#a9bdff', '#33415e', '#1d1c22', '#ffffff']),
+  // The night: the moon and a dim blue-grey light from the sky (the hemisphere, and the bake at three times the night
+  // photo's), enough to read walls, roofs, hedges and cars at 30 m (19 Nov 2026: outside the lamps' pools all was black).
+  night: look('night', { skyGain: 1, sun: 0.42, hemi: 1.8, inside: 0.7, exposure: 2.0, fog: 0.003, horizonFade: 0.85, contrast: 0.8, bakeFill: 3, wet: 0, rain: 0, night: 1, overcast: 0, snow: 0, sunLow: 0 }, ['#a9bdff', '#3d4b6a', '#2e2e38', '#ffffff']),
   snow: look('overcast', { skyGain: 0.82, sun: 0, hemi: 1, inside: 0.85, exposure: 1.05, fog: 0.0065, horizonFade: 0.9, contrast: 0.55, wet: 0, rain: 0, night: 0, overcast: 1, snow: 1, sunLow: 0 }, ['#ffffff', '#dde3ec', '#9a9ca2', '#eef2f8']),
 };
 
@@ -128,7 +136,7 @@ const DUSK = [
 ] as const;
 /** How far into dusk a dusk picked by hand holds. */
 const DUSK_HELD = 0.25;
-const NUMBERS = ['skyGain', 'sun', 'hemi', 'inside', 'exposure', 'fog', 'horizonFade', 'contrast', 'wet', 'rain', 'night', 'overcast', 'snow', 'sunLow'] as const;
+const NUMBERS = ['skyGain', 'sun', 'hemi', 'inside', 'exposure', 'fog', 'horizonFade', 'contrast', 'bakeFill', 'wet', 'rain', 'night', 'overcast', 'snow', 'sunLow'] as const;
 const COLOURS = ['sunColor', 'hemiSky', 'hemiGround', 'fogTint'] as const;
 
 /** `out` = a blended k of the way from a to b. */
@@ -464,7 +472,7 @@ export class Weather {
     }
     this.indoorLight.setOutside(l.hemiSky, l.hemiGround, l.hemi, light / lit.irradiance, l.inside);
     // The bakes under this sky: its light against the sunny sky's, the contrast round a typical wall's light.
-    bakeMood.value.x = light / sunny.irradiance;
+    bakeMood.value.x = (light / sunny.irradiance) * l.bakeFill;
     bakeMood.value.y = l.contrast;
     bakeMood.value.z = Math.PI * sunny.irradiance * 0.7;
   }
