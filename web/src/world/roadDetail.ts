@@ -718,6 +718,8 @@ class Builder {
     const tracks = (k: number) => (wide ? [wa(k) / 2 - 0.85, wa(k) / 2 + 0.85, -wb(k) / 2 - 0.85, -wb(k) / 2 + 0.85] : [(wa(k) - wb(k)) / 2 - 0.85, (wa(k) - wb(k)) / 2 + 0.85]);
     const base = new THREE.Color(pf.tint);
     const edgeTint = new THREE.Color(pf.edge ?? pf.tint);
+    /** A sealed crack in the slabs: half as light as the concrete (it was near black, and read as drawn on). */
+    const crackTint = `#${base.clone().multiplyScalar(0.5).getHexString()}`;
     const seed = hash(r.p[0], r.p[1]);
     /** The carriageway's colour at (k, o): its tint, darker in the wheel tracks and towards the edges, slowly changing along. */
     const shade = (tint: THREE.Color, slab: number) => (k: number, o: number, out: THREE.Color) => {
@@ -758,7 +760,7 @@ class Builder {
         // The joint across, sealed dark (across each concrete strip where the middle is another surface), and now
         // and then a crack sealed in black.
         if (k0 > 0) for (const [a, b] of mid ? halves : [[lo, hi]]) this.line(f, f.s[k0], a(k0), f.s[k0], b(k0), 0.04, '#64635f', flatLift);
-        if (hash(sAt, 7, seed) < (pf.cracks ?? 0)) this.crack(f, f.s[k0], f.s[k1], lo(k0), hi(k0), hash(sAt, 9, seed));
+        if (hash(sAt, 7, seed) < (pf.cracks ?? 0)) this.crack(f, f.s[k0], f.s[k1], lo(k0), hi(k0), hash(sAt, 9, seed), crackTint);
       }
       if (!mid && !core) this.asphaltWear(f, lo, hi, false, new THREE.Color('#55575a'), seed, true);
       if (halves.length > 1 && !mid) {
@@ -935,8 +937,9 @@ class Builder {
       return k;
     };
     const tone = (m: number) => `#${new THREE.Color().copy(tint).multiplyScalar(m).getHexString()}`;
-    // Darker than they are: the matte paint takes more of the sky's light than the grainy asphalt beside it.
-    const TAR = '#151516';
+    // The tar along a trench's cuts: darker than the asphalt, but weathered grey, not black (a black line in the paint
+    // read as drawn on).
+    const TAR = tone(0.28);
     // The seam, away from the street's ends (the junctions).
     if (wide && !inConcrete) {
       const seam = tone(0.42);
@@ -962,14 +965,17 @@ class Builder {
       this.as(RANK.carriageway + 0.2, () => this.strip(g, 0, 2, () => o0, () => o1, 'asphalt', lift,
         (k, o, out) => out.copy(shade).multiplyScalar(0.97 + 0.06 * hash(k, Math.round(o * 3), s)), [0, 0.5, 1]));
       const up = () => lift() + 0.002;
-      this.line(g, s, o0, s, o1, 0.03, TAR, up);
-      this.line(g, s + len, o0, s + len, o1, 0.03, TAR, up);
-      if (reach < 1) this.line(g, s, fromA ? o0 : o1, s + len, fromA ? o0 : o1, 0.03, TAR, up);
+      this.line(g, s, o0, s, o1, 0.022, TAR, up);
+      this.line(g, s + len, o0, s + len, o1, 0.022, TAR, up);
+      if (reach < 1) this.line(g, s, fromA ? o0 : o1, s + len, fromA ? o0 : o1, 0.022, TAR, up);
     }
     if (inConcrete) return;
-    // Long cracks along the street, sealed with tar.
+    // Long cracks along the street, sealed with tar: from a hairline to two centimetres wide, wandering in short kinks,
+    // a little darker than the asphalt (the sealant weathers grey), broken where it has worn off, a short branch now
+    // and then. Not one even black line: that read as painted on.
     for (let s = from + 6 + 20 * hash(seed, 11); s < to - 20; s += 14 + 30 * hash(s, 12, seed)) {
       const len = 4 + 10 * hash(s, 14, seed);
+      const shade = tone(0.3 + 0.08 * hash(s, 17, seed));
       let o = 0;
       let at = s;
       for (let i = 0; at < s + len; i++) {
@@ -977,9 +983,13 @@ class Builder {
         const [a, b] = [lo(k) + 0.3, hi(k) - 0.3];
         if (b - a < 1) break;
         if (i === 0) o = a + (b - a) * hash(s, 13, seed);
-        const next = at + 0.5 + 0.5 * hash(at, 15, seed);
-        const no = Math.max(a, Math.min(b, o + (hash(at, 16, seed) - 0.5) * 0.26));
-        this.line(f, at, o, next, no, 0.032, TAR, lift);
+        const next = at + 0.18 + 0.3 * hash(at, 15, seed);
+        const no = Math.max(a, Math.min(b, o + (hash(at, 16, seed) - 0.5) * 0.14));
+        if (hash(at, 19, seed) > 0.12) this.line(f, at, o, next, no, 0.007 + 0.014 * hash(at, 18, seed) ** 2, shade, lift);
+        if (hash(at, 20, seed) < 0.07) {
+          const side = hash(at, 23, seed) < 0.5 ? -1 : 1;
+          this.line(f, at, o, at + 0.12 + 0.25 * hash(at, 24, seed), Math.max(a, Math.min(b, o + side * (0.1 + 0.25 * hash(at, 25, seed)))), 0.006, shade, lift);
+        }
         at = next;
         o = no;
       }
@@ -988,21 +998,24 @@ class Builder {
     for (let s = from + 9; s < to - 9; s += 11) {
       if (hash(s, 21, seed) > 0.3) continue;
       const k = kAt(s);
-      this.crack(f, s, s + 2.4, lo(k), hi(k), hash(s, 22, seed));
+      this.crack(f, s, s + 2.4, lo(k), hi(k), hash(s, 22, seed), tone(0.3 + 0.08 * hash(s, 26, seed)));
     }
   }
 
-  /** A crack across part of a slab, sealed in black: a few wandering segments. */
-  crack(f: Frame, s0: number, s1: number, o0: number, o1: number, r: number): void {
+  /**
+   * A crack across part of a slab, sealed: a wandering line of short kinks, from a hairline to a centimetre and a half
+   * wide, in `tint` (a shade darker than the surface it lies on).
+   */
+  crack(f: Frame, s0: number, s1: number, o0: number, o1: number, r: number, tint: string): void {
     const lift = () => this.road;
     let s = s0 + (s1 - s0) * (0.2 + 0.6 * r);
     let o = o0 + 0.1;
-    const steps = 5;
+    const steps = 12;
     const run = (o1 - o0 - 0.2) / steps;
     for (let i = 0; i < steps; i++) {
-      const ns = Math.max(s0 + 0.2, Math.min(s1 - 0.2, s + (hash(r, i) - 0.5) * 0.9));
-      const no = o + run * (0.7 + 0.6 * hash(i, r));
-      this.line(f, s, o, ns, Math.min(o1 - 0.1, no), 0.02, '#363635', lift);
+      const ns = Math.max(s0 + 0.2, Math.min(s1 - 0.2, s + (hash(r, i) - 0.5) * 0.4));
+      const no = o + run * (0.6 + 0.8 * hash(i, r));
+      if (hash(r, i, 3) > 0.1) this.line(f, s, o, ns, Math.min(o1 - 0.1, no), 0.006 + 0.01 * hash(r, i, 5) ** 2, tint, lift);
       s = ns;
       o = no;
       if (o > o1 - 0.15) break;
