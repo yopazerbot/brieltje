@@ -5,6 +5,7 @@ import { sound } from '../sound';
 import { horizonReflection } from './car';
 import { boxSpots, carLights, pointsOf, spotsFrom, type LampSpots } from './carLights';
 import type { World } from './collision';
+import { CAST_LAYER } from './tiles';
 
 /**
  * The traffic on the village's roads and the cars parked on the drives (tools/roads.py writes the
@@ -25,7 +26,9 @@ import type { World } from './collision';
  *
  * Parked cars are instanced: per model the paint, the glass (near only) and the rest, near and far,
  * and the wheels of the near ones; only those within reach of the eye, refreshed a few times a second.
- * They are solid blocks. A moving car far off takes the simple model too, whose wheels are part of it.
+ * They are solid blocks. Their shadow in the sun's map comes from the simple model, near ones too,
+ * drawn only into that map (CAST_LAYER, as the trees' trunks and the posts: Medium and up). A moving
+ * car far off takes the simple model too, whose wheels are part of it.
  */
 
 /** Something a car stops for: a circle on the plan. */
@@ -334,6 +337,9 @@ export class Traffic {
   private parked: { kind: number; matrix: THREE.Matrix4; color: THREE.Color; x: number; z: number; wheels: THREE.Matrix4[]; patch: THREE.Matrix4 }[] = [];
   /** Per model, near and far (kind * 2 + far); the glass only near */
   private parkedMeshes: { paint: THREE.InstancedMesh; rest: THREE.InstancedMesh; glass: THREE.InstancedMesh | null }[] = [];
+  /** Per model, the parked cars' shadow: the simple model, only in the sun's map (not on Low and phones) */
+  private parkedCasters: THREE.InstancedMesh[] = [];
+  private casterMat = new THREE.MeshBasicMaterial();
   private parkedWheels: THREE.InstancedMesh | null = null;
   private parkedShadows: THREE.InstancedMesh | null = null;
   private wait = 0;
@@ -517,6 +523,18 @@ export class Traffic {
         return { paint, rest, glass };
       });
     });
+    this.casterMat.visible = this.fine;
+    this.parkedCasters = KINDS.map((kind, k) => {
+      const far = this.models.get(kind)!.far;
+      const shape = new THREE.BufferGeometry().setAttribute('position', merge([far.paint, far.rest]).getAttribute('position'));
+      const mesh = new THREE.InstancedMesh(shape, this.casterMat, count(k));
+      mesh.count = 0;
+      mesh.castShadow = true;
+      mesh.layers.set(CAST_LAYER);
+      mesh.userData.ignoreRay = true;
+      this.group.add(mesh);
+      return mesh;
+    });
     this.parkedWheels = new THREE.InstancedMesh(this.wheelGeo, this.rest, this.parked.length * 4 || 1);
     this.parkedWheels.userData.ignoreRay = true;
     this.parkedWheels.receiveShadow = true;
@@ -534,6 +552,7 @@ export class Traffic {
   /** The parked cars within reach of the eye into their instanced meshes: near ones in full, with wheels. */
   private refreshParked(eye: THREE.Vector3): void {
     const counts = this.parkedMeshes.map(() => 0);
+    const casts = this.parkedCasters.map(() => 0);
     let wheels = 0;
     let shadows = 0;
     for (const p of this.parked) {
@@ -547,6 +566,7 @@ export class Traffic {
       paint.setColorAt(i, p.color);
       rest.setMatrixAt(i, p.matrix);
       glass?.setMatrixAt(i, p.matrix);
+      this.parkedCasters[p.kind].setMatrixAt(casts[p.kind]++, p.matrix);
       if (near) for (const w of p.wheels) this.parkedWheels!.setMatrixAt(wheels++, w);
       if (this.shadows) this.parkedShadows!.setMatrixAt(shadows++, p.patch);
     }
@@ -563,6 +583,7 @@ export class Traffic {
       if (glass) show(glass, counts[k]);
       if (paint.instanceColor) paint.instanceColor.needsUpdate = true;
     });
+    this.parkedCasters.forEach((mesh, k) => show(mesh, casts[k]));
     show(this.parkedWheels!, wheels);
     show(this.parkedShadows!, shadows);
   }
@@ -593,6 +614,7 @@ export class Traffic {
     if (this.fine !== this.dressed) {
       // The graphics preset changed: clear-coated paint on Medium and up, plain on Low and phones.
       this.dressed = this.fine;
+      this.casterMat.visible = this.fine; // the parked cars' shadow: Medium and up, as the posts' (world/surroundings.ts)
       for (let k = 0; k < this.parkedMeshes.length; k += 2) this.parkedMeshes[k].paint.material = this.parkedPaint[this.fine ? 0 : 1];
       for (const c of this.movers) c.parts[0].material = c.paints[this.fine && !c.far ? 0 : 1];
     }
