@@ -26,7 +26,7 @@ a tyre with rounded shoulders and a five-spoke rim), which the game places, scal
 body's extras give its axles (y, m from the middle; the nose is at +y in Blender, -z in the game), track and
 wheel radius, length, width and height. Materials: Paint (white: the game tints it per car), Glass, Trim,
 Lamp, LampDark, Tail, Reverse, Plate, PlateBand, Tyre, Rim, RimDark, Interior, Chrome. With preview_dir it
-also renders a few small views there.
+also makes a few small preview pictures there.
 """
 import math
 import os
