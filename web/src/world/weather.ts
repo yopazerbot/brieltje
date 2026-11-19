@@ -194,6 +194,8 @@ export class Weather {
   private haze = new THREE.Color();
   private hazeB = new THREE.Color();
   private shadowOn = true;
+  /** The light on open ground now, as a luminance: the sun's (or the moon's), the hemisphere's and the sky photo's (for the lamps' pools) */
+  private groundFill = 1;
   /** The painted tree line on the horizon (world/horizon.ts), tinted towards the haze */
   horizon: THREE.Mesh | null = null;
   /** Called when the server's choice changes (null: playing alone) */
@@ -396,7 +398,7 @@ export class Weather {
     this.rain.update(dt, eye, indoors, this.now.skyGain * 1.1);
     this.snowfall.set(falling);
     this.snowfall.update(dt, eye, indoors, this.now.skyGain * 1.4, this.renderer);
-    this.lamps.set(this.now.night);
+    this.lamps.set(this.now.night, this.groundFill);
     this.lamps.update();
     // Its shadow map is not drawn under clouds, but one must exist: a new graphics preset throws the old one away
     // (main.ts applyQuality), and without one every surface that takes the shadow draws nothing. Drawn once then.
@@ -449,6 +451,9 @@ export class Weather {
       this.sunDir.copy(this.noonDir).lerp(this.duskDir, l.sunLow).normalize();
       this.sun.position.copy(this.sun.target.position).addScaledVector(this.sunDir, 60);
     }
+    // The light on open ground (outside: the hemisphere at 0.9 of its strength, the sky photo at 0.9; world/indoorLight.ts).
+    const lum = (c: THREE.Color) => 0.2126 * c.r + 0.7152 * c.g + 0.0722 * c.b;
+    this.groundFill = l.sun * lum(l.sunColor) * Math.max(this.sunDir.y, 0) + 0.9 * l.hemi * lum(l.hemiSky) + 0.9 * Math.PI * light;
     // Snow lying throws light back up: the hemisphere's lower half paler.
     if (this.lying > 0) l.hemiGround.lerp(SNOW_GROUND, this.lying * 0.7);
     const on = l.sun > 0.001;

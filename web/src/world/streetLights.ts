@@ -18,8 +18,10 @@ import { terrain } from './terrain';
  * screen), by more the farther it is: it shows over the paving, kerbs and the models' own ground that lie up to a few
  * decimetres over the relief. Each square lies once, whatever the lamps round it, and carries the three lamps that
  * light it most: where two pools meet their light adds up, as light does (discs one over another multiplied it, and
- * burnt the ground out). The light falls off as a lamp's does on the ground (the cosine cubed over the height: all of
- * it under the head, a third at the head's height out, little at twice that), with a soft edge.
+ * burnt the ground out). The light falls off mostly as a lamp's does on the ground (the cosine cubed over the height:
+ * all of it under the head, a third at the head's height out), with a wider share that carries it on along the street
+ * and fades to nothing at 2.6 times the height, with no edge to be seen (19 Nov 2026: the pools ended in a rim). How
+ * much it brightens is the lamp's light over the light already there (LAMP_GROUND), not a fixed factor.
  * The lamps' places come from the same list as the lamps (main.ts `poles`: the ring's at the start, the village's
  * added when it comes), read again when it grows.
  */
@@ -30,15 +32,20 @@ type Pole = NonNullable<Surroundings['poles']>[number];
 const LAMP = new THREE.Color(1.0, 0.66, 0.34);
 /**
  * The pools brighten what is drawn by a factor: the ground's own colour times the night's light on it, which is
- * blue (the moon and the night sky). Lit by the lamp it should take the lamp's colour, so the factor is the lamp's
- * colour over the night's: more for red than for blue.
+ * blue (the moon and the night sky; its colour here, at a brightness of one). Lit by the lamp it should take the
+ * lamp's colour, so the factor is the lamp's colour over the night's: more for red than for blue.
  */
-const NIGHT_LIGHT = new THREE.Color(0.66, 0.78, 1.0);
+const NIGHT_LIGHT = new THREE.Color(0.4, 0.54, 1.0).multiplyScalar(1 / (0.2126 * 0.4 + 0.7152 * 0.54 + 0.0722));
 const POOL_TINT = new THREE.Color(LAMP.r / NIGHT_LIGHT.r, LAMP.g / NIGHT_LIGHT.g, LAMP.b / NIGHT_LIGHT.b);
-/** How many times brighter the ground is right under a lamp at full night (red; the others by POOL_TINT). */
-const POOL_GAIN = 18;
-/** A pool reaches this many times the head's height from the foot; past it nothing is drawn. */
-const POOL_REACH = 1.8;
+/**
+ * The light of a lamp on the ground straight under it, at full night (in the lamp's colour). The pool's factor is
+ * this over the light that is there already (`set`): at night it brightens the paving several times, at dusk, with
+ * more of the sky's light about, by less; it never burns the paving out to one pale colour (18 Nov 2026: a fixed
+ * factor of 18 did, a pool 15 m across with no joints or texture left in it).
+ */
+const LAMP_GROUND = 1.8;
+/** A pool reaches this many times the head's height from the foot, fading softly all the way; past it nothing is drawn. */
+const POOL_REACH = 2.6;
 /** The sheet's squares (m): the relief's own spacing. */
 const CELL = 4;
 
@@ -109,23 +116,30 @@ const poolFragment = /* glsl */ `
     if (lamp.z <= 0.0) return 0.0;
     vec2 d = (vAt - lamp.xy) / lamp.z;
     float q = dot(d, d); // (distance over height) squared, from under the head
-    return pow(1.0 + q, -1.5) * (1.0 - smoothstep(${(POOL_REACH * 0.55).toFixed(2)}, ${POOL_REACH.toFixed(2)}, sqrt(q)));
+    float edge = q * q * ${(1 / POOL_REACH ** 4).toExponential(4)}; // (distance over reach) to the fourth
+    float fade = max(1.0 - edge, 0.0);
+    // Mostly the cosine cubed, with a wider share (a lamp's optics spread it along the street), fading to nothing at the reach.
+    return (0.7 * pow(1.0 + q, -1.5) + 0.3 * pow(1.0 + q * 0.25, -1.5)) * fade * fade;
   }
   void main() {
     float light = pool(vA) + pool(vB) + pool(vC);
     #ifdef FOG_EXP2
       light *= exp(-fogDensity * fogDensity * vFar * vFar); // what the haze hides of the ground hides its light too
     #endif
-    gl_FragColor = vec4(color * light * strength * ${POOL_GAIN.toFixed(1)}, 1.0);
+    gl_FragColor = vec4(color * light * strength, 1.0);
   }`;
 
 export class StreetLights {
   readonly group = new THREE.Group();
   private uniforms = { color: { value: LAMP.clone() }, strength: { value: 0 }, size: { value: 1.3 } };
+  /** The pools' factor: the lamp's light over the light already on the ground */
+  private poolStrength = { value: 0 };
   private glows: THREE.InstancedMesh | null = null;
   private pools: THREE.Mesh | null = null;
   private built = -1;
   private on = 0;
+  /** The ground's light from the sky and the moon (or the sun), as a luminance */
+  private fill = 1;
 
   /** `poles`: the list the lamps are built from (it grows when the village comes); `ground`: the ground's height where a pole has none. */
   constructor(private poles: Pole[], private ground: number) {
@@ -133,9 +147,10 @@ export class StreetLights {
     this.group.visible = false;
   }
 
-  /** How much they shine, 0 (day) to 1 (night). */
-  set(on: number): void {
+  /** How much they shine, 0 (day) to 1 (night); `fill`: the light already on open ground (a luminance, world/weather.ts). */
+  set(on: number, fill: number): void {
     this.on = on;
+    this.fill = Math.max(fill, 0.05);
   }
 
   update(): void {
@@ -145,6 +160,7 @@ export class StreetLights {
     this.group.visible = this.on > 0.01;
     if (!this.group.visible) return;
     this.uniforms.strength.value = this.on;
+    this.poolStrength.value = (this.on * LAMP_GROUND) / this.fill;
   }
 
   private build(): void {
@@ -161,7 +177,7 @@ export class StreetLights {
     // The pool brightens what is drawn there by a factor (what is there times one plus the pool): light falling on the
     // ground's own colour, so the paving's pattern and a dark lawn stay what they are, only lit.
     const poolMat = new THREE.ShaderMaterial({
-      uniforms: { ...THREE.UniformsUtils.clone(THREE.UniformsLib.fog), color: { value: POOL_TINT.clone() }, strength: this.uniforms.strength },
+      uniforms: { ...THREE.UniformsUtils.clone(THREE.UniformsLib.fog), color: { value: POOL_TINT.clone() }, strength: this.poolStrength },
       vertexShader: poolVertex,
       fragmentShader: poolFragment,
       transparent: true,
