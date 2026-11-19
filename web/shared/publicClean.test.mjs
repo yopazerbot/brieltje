@@ -8,6 +8,7 @@ import { existsSync, readdirSync, readFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import test from 'node:test';
 import { fileURLToPath } from 'node:url';
+import { brotliDecompressSync, gunzipSync } from 'node:zlib';
 import { WALK_IN_FILES } from './insideData.mjs';
 import { makeKeet } from './keet.mjs';
 import { brickInside, brickShell, endShell, HAVE_PRIVATE, inside, endInside, shell, SKIP } from './testData.mjs';
@@ -163,7 +164,10 @@ test('the build holds nothing of an inside: door ids, room names, the inside fil
   assert.ok(files.length > 20, `${files.length} files in web/dist`);
   const hits = [];
   for (const f of files) {
-    const s = readFileSync(f).toString('latin1');
+    // A compressed copy is read as what it unpacks to: its packed bytes spell short words by chance (a two-letter
+    // room name between quotes turned up in a .br whose own .js holds none), and would hide a real one.
+    const raw = readFileSync(f);
+    const s = (f.endsWith('.br') ? brotliDecompressSync(raw) : f.endsWith('.gz') ? gunzipSync(raw) : raw).toString('latin1');
     for (const id of ids) if (s.includes(`"${id}"`) || s.includes(`'${id}'`) || s.includes(`\`${id}\``)) hits.push(`${f}: door id ${id}`);
     if (s.includes('kh-home-in-')) hits.push(`${f}: an inside door's id`);
     for (const n of rooms) if (s.includes(`"${n}"`) || s.includes(`'${n}'`)) hits.push(`${f}: room ${n}`);
