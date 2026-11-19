@@ -198,6 +198,19 @@ function pickW<T>(list: readonly T[], w: readonly number[]): T {
 }
 const chance = (p: number) => rnd() < p;
 
+/**
+ * A colour into the palette picture as sRGB bytes (the picture is read as sRGB). `Color.set` gives it linear, as
+ * three.js works; the bytes go back to sRGB once. Before, they were made linear a second time: nearly all cloth black.
+ */
+const _pc = new THREE.Color();
+const _rgb = { r: 0, g: 0, b: 0 };
+function putSRGB(out: Uint8Array, o: number, color: THREE.ColorRepresentation): void {
+  _pc.set(color).getRGB(_rgb, THREE.SRGBColorSpace);
+  out[o] = Math.round(_rgb.r * 255);
+  out[o + 1] = Math.round(_rgb.g * 255);
+  out[o + 2] = Math.round(_rgb.b * 255);
+}
+
 /** A short cry made in code, cartoon style: a voice that jumps up and falls off ("oh!"). `soft`: a fright, not a fall. */
 function cry(x: number, y: number, z: number, kind: number, soft: boolean): void {
   const ctx = sound.context();
@@ -392,6 +405,9 @@ export class Villagers {
     this.palTex = new THREE.DataTexture(this.palData, 16, PALETTE_ROWS, THREE.RGBAFormat, THREE.UnsignedByteType);
     this.palTex.minFilter = this.palTex.magFilter = THREE.NearestFilter;
     this.palTex.generateMipmaps = false;
+    // It holds sRGB bytes and the chip makes them linear as it reads them: dark cloth keeps its shades (in linear
+    // bytes a navy and a black both fell to 0 to 3 of 255).
+    this.palTex.colorSpace = THREE.SRGBColorSpace;
     this.palTex.needsUpdate = true;
     for (let i = PALETTE_ROWS - 1; i >= 0; i--) this.palFree.push(i);
     // The dogs' leads: three segments each, sagging a little, one draw for all.
@@ -801,10 +817,7 @@ export class Villagers {
   private paintOn(v: V, color: string): void {
     const o = (v.pal * 16 + 2) * 4;
     if (!v.topWas) v.topWas = [this.palData[o], this.palData[o + 1], this.palData[o + 2]];
-    const c = new THREE.Color(color).convertSRGBToLinear();
-    this.palData[o] = Math.round(c.r * 255);
-    this.palData[o + 1] = Math.round(c.g * 255);
-    this.palData[o + 2] = Math.round(c.b * 255);
+    putSRGB(this.palData, o, color);
     this.palTex.needsUpdate = true;
   }
 
@@ -1046,13 +1059,9 @@ export class Villagers {
     if (set) for (const [i, col] of Object.entries(set)) cols[Number(i)] = col;
     // Flags given for someone else's figure keep a head of hair: its own pick when they name none.
     v.flags = flags === undefined ? f : flags & (HAIR_A | HAIR_B) ? flags : flags | (f & (HAIR_A | HAIR_B));
-    const c = new THREE.Color();
     for (let i = 0; i < 16; i++) {
-      c.set(cols[i]).convertSRGBToLinear();
       const o = (v.pal * 16 + i) * 4;
-      this.palData[o] = Math.round(c.r * 255);
-      this.palData[o + 1] = Math.round(c.g * 255);
-      this.palData[o + 2] = Math.round(c.b * 255);
+      putSRGB(this.palData, o, cols[i]);
       this.palData[o + 3] = 255;
     }
     this.palTex.needsUpdate = true;
