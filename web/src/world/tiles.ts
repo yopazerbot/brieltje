@@ -40,8 +40,10 @@ const DETAIL = 400;
 /** Metres: the full trees' reach (Piece `lod`); in practice the tile you are in and those whose edge you are near. */
 const TREES = 60;
 
-/** The layer of what only the sun's shadow camera sees (Piece `shadowOnly`; main.ts lets that camera see it). */
+/** The layer of what only the sun's shadow camera sees (Piece `shadowOnly`; world/sunShadow.ts lets its pass see it). */
 export const SHADOW_LAYER = 1;
+/** The layer of what only the sun's shadow pass draws, the reflections not either (Piece `castOnly`). */
+export const CAST_LAYER = 2;
 
 /** Where a point lies along the line from the house to the church (metres from the house). */
 export function axial(x: number, z: number): number {
@@ -114,6 +116,8 @@ export interface Piece {
   small?: boolean;
   /** Drawn only into the sun's shadow map (a lighter stand-in's shadow for something drawn without one): on SHADOW_LAYER */
   shadowOnly?: boolean;
+  /** Drawn only into the sun's shadow map, not in the reflections either (a trunk's or a post's shadow): on CAST_LAYER */
+  castOnly?: boolean;
   /** Instanced only: 'near' drawn within TREES metres, 'far' in the rest of the shown tiles (two versions of the same trees) */
   lod?: 'near' | 'far';
   /** Where it comes from, for the checks (tools/dev/groundOverlap.mjs): 'road' for the streets in detail, else the open data */
@@ -181,7 +185,7 @@ export class Tiles {
     const shapes = new Map<string, { piece: Piece; per: THREE.Matrix4[][] }>();
     order.forEach((tile, i) => {
       for (const p of tile.pieces) {
-        const key = `${p.material.uuid}|${p.shadow}|${p.small ?? false}|${p.lod ?? ''}|${p.shadowOnly ?? false}|${p.at ? p.geometry.uuid : ''}`;
+        const key = `${p.material.uuid}|${p.shadow}|${p.small ?? false}|${p.lod ?? ''}|${p.shadowOnly ?? false}|${p.castOnly ?? false}|${p.at ? p.geometry.uuid : ''}`;
         const into = p.at ? shapes : merged;
         let e = into.get(key);
         if (!e) into.set(key, (e = { piece: p, per: Array.from({ length: n }, () => []) }));
@@ -199,6 +203,7 @@ export class Tiles {
       mesh.castShadow = p.shadow;
       mesh.receiveShadow = true;
       if (p.shadowOnly) mesh.layers.set(SHADOW_LAYER);
+      else if (p.castOnly) mesh.layers.set(CAST_LAYER);
       mesh.renderOrder = p.order ?? 0;
       mesh.userData.material = p.tag;
       mesh.userData.set = this.sets.length; // 0: the ring, 1: the village

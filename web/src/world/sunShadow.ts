@@ -30,6 +30,30 @@ const FAR = 260; // 120 m past the middle: the ground down-sun of it, at a low s
 const BIAS_M = 0.0003 * (HOME_FAR - HOME_NEAR);
 const UP = new THREE.Vector3(0, 1, 0);
 
+/** Development only: ?noshadowcast leaves out the stand-ins' shadows (castLayers, world/streetModel.ts), to measure their cost. */
+export const castsStandIns = !(import.meta.env.DEV && new URLSearchParams(location.search).has('noshadowcast'));
+
+/**
+ * Let the sun's shadow pass draw the stand-ins on these layers (world/tiles.ts SHADOW_LAYER, CAST_LAYER: the near
+ * trees' lighter crowns, their trunks, the fence posts). three.js draws into a shadow map what the camera being drawn
+ * for sees (its layers), not what the shadow camera sees, so a stand-in on a layer of its own never reached the map:
+ * the trees had no shadow within its reach. That camera sees these layers for the shadow pass only.
+ */
+export function castLayers(renderer: THREE.WebGLRenderer, layers: number[]): void {
+  if (!castsStandIns) return;
+  const map = renderer.shadowMap;
+  const render = map.render.bind(map);
+  map.render = (lights, scene, camera) => {
+    const mask = camera.layers.mask;
+    for (const l of layers) camera.layers.enable(l);
+    try {
+      render(lights, scene, camera);
+    } finally {
+      camera.layers.mask = mask;
+    }
+  };
+}
+
 export class SunShadow {
   /**
    * For the ground's handover (world/groundShade.ts): world to the map's clip space (-1 to 1 inside it), and

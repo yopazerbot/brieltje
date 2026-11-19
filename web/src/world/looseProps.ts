@@ -5,6 +5,7 @@ import { knock, type Knock } from './propSound';
 import { compose, leanQuat, Pole, RigidBody, rotate, type PoleSpec, type Q, type RigidSpec, type RigidWorld, type V3 } from './rigid';
 import { PARTICLE } from './sprites';
 import { reflectionSkips } from './reflections';
+import { castsStandIns } from './sunShadow';
 
 /**
  * The loose things along the streets and in the gardens (Yoshi, 7 Nov 2026: "make the game feel even
@@ -15,8 +16,8 @@ import { reflectionSkips } from './reflections';
  * anyone through a wall or change what the server decides: each page has its own (nothing on the
  * wire), and after half a minute at rest, when nobody looks at the spot, each goes back to its place.
  *
- * Each kind is two instanced meshes: the ones where they stand (one draw call, no shadow, as they
- * were in the tiles) and the few that are moving or lie knocked over (their own shadow, from Medium).
+ * Each kind is two instanced meshes: the ones where they stand (one draw call) and the few that are
+ * moving or lie knocked over. Both throw the sun's shadow from Medium.
  * The signs' faces are one more, each face its part of the picture (world/roadside.ts).
  */
 
@@ -243,6 +244,8 @@ export class LooseProps {
       plane.setAttribute('uvRect', rects);
       const face = new THREE.InstancedMesh(plane, spec.faces, faces);
       face.name = `loose-${name}-faces`;
+      // Its shadow cut out by its own part of the picture too (facesMaterial); without that, no shadow.
+      face.customDepthMaterial = spec.faces.userData.depth as THREE.MeshDepthMaterial | undefined;
       face.userData.material = spec.tag;
       face.receiveShadow = true;
       kind.face = face;
@@ -654,6 +657,9 @@ export class LooseProps {
     for (const kind of this.kinds.values()) {
       const cap = this.low ? LIVE_LOW : LIVE;
       kind.live.castShadow = !this.low;
+      // Where they stand they throw the sun's shadow too from Medium, a few dozen thousand triangles in all.
+      kind.still.castShadow = !this.low && castsStandIns;
+      if (kind.face) kind.face.castShadow = kind.still.castShadow && !!kind.face.customDepthMaterial;
       // Fewer may move on Low: those over the number go back to their place.
       for (let i = cap; i < LIVE; i++) {
         const p = kind.slots[i];
@@ -714,14 +720,20 @@ export const looseProps = new LooseProps();
 
 /**
  * A material that shows a part of its picture per instance (the uvRect attribute: u, v, width, height),
- * for the signs' faces: one draw call for all of them.
+ * for the signs' faces: one draw call for all of them. Its shadow's material does the same (userData.depth: three's
+ * own would cut each face out by the whole picture), so a round sign throws a round shadow.
  */
 export function facesMaterial(material: THREE.MeshStandardMaterial): THREE.MeshStandardMaterial {
-  material.onBeforeCompile = (shader) => {
+  const rect = (shader: THREE.WebGLProgramParametersWithUniforms) => {
     shader.vertexShader = shader.vertexShader
       .replace('#include <common>', '#include <common>\nattribute vec4 uvRect;')
       .replace('#include <uv_vertex>', '#include <uv_vertex>\n#ifdef USE_MAP\n  vMapUv = uvRect.xy + uv * uvRect.zw;\n#endif');
   };
+  material.onBeforeCompile = rect;
   material.customProgramCacheKey = () => 'loose-faces';
+  const depth = new THREE.MeshDepthMaterial({ map: material.map, alphaTest: material.alphaTest, side: THREE.DoubleSide });
+  depth.onBeforeCompile = rect;
+  depth.customProgramCacheKey = () => 'loose-faces-depth';
+  material.userData.depth = depth;
   return material;
 }

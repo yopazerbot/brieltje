@@ -86,6 +86,8 @@ const trimMat = snowy(new THREE.MeshStandardMaterial({ vertexColors: true, rough
 // Opaque and glossy: from outside, windows mostly mirror the sky over what hangs behind them (world/windows.ts).
 const paneMat = paneMaterial();
 const postMat = new THREE.MeshStandardMaterial({ color: '#cfccc4', roughness: 0.9 });
+// The near posts' shadow (world/tiles.ts Piece `castOnly`): Medium and up only, as the trees' (setTreeDetail).
+const postCastMat = new THREE.MeshStandardMaterial();
 const lampMat = new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.45, metalness: 0.5 });
 const cableMat = new THREE.MeshStandardMaterial({ color: '#1d1e20', roughness: 0.6 });
 // Not in the ground's baked shade (world/groundShade.ts): a wire is thinner than a texel there, and its shadow came
@@ -517,10 +519,16 @@ function downpipe(p: Downpipe): THREE.BufferGeometry {
 
 const postGeo = new THREE.BoxGeometry(0.1, 1, 0.1).translate(0, 0.5, 0);
 
-/** Concrete posts along the garden fences: [x, z, height] each, standing on the ground. */
-function buildPosts(list: [number, number, number][], ground: number): Piece {
+/**
+ * Concrete posts along the garden fences: [x, z, height] each, standing on the ground. Those in the tiles round the eye
+ * throw the sun's shadow by a copy drawn only into its map (a post more costs the shadow pass a box, not the view).
+ */
+function buildPosts(list: [number, number, number][], ground: number): Piece[] {
   const at = list.map(([x, z, h]) => new THREE.Matrix4().makeScale(1, h, 1).setPosition(x, ground + terrain.height(x, z) - 0.05, z));
-  return { material: postMat, geometry: postGeo, tag: 'concrete', shadow: false, at, small: true };
+  return [
+    { material: postMat, geometry: postGeo, tag: 'concrete', shadow: false, at, small: true },
+    { material: postCastMat, geometry: postGeo, tag: 'concrete', shadow: true, at, lod: 'near', castOnly: true },
+  ];
 }
 
 /**
@@ -599,6 +607,7 @@ export function setTreeDetail(full: boolean): void {
   fullTrees = full;
   // The trees of leaf cards in full, today's smooth crowns on Low and phones (both are built; one of them is drawn).
   switchTrees(full);
+  postCastMat.visible = full; // the near posts' shadow: not on Low and phones, whose map stays on the house
   const s = treeShapes;
   if (s) {
     s.full.forEach((g, k) => shapeFrom(g, full ? s.rich[k] : s.simple[k]));
@@ -746,7 +755,7 @@ export function buildTile(data: TileData, poles: Pole[], renderer: THREE.WebGLRe
   if (data.openings?.length) out.push(...buildOpenings(data.openings, ground, houses, pitched, index.reveals.holes));
   if (data.poleIds.length || data.wires?.length) out.push(...buildLamps(poles, data.poleIds, data.wires ?? [], ground));
   if (data.solar?.length || madeSolar.length) out.push(...buildSolar([...(data.solar ?? []), ...madeSolar]));
-  if (data.posts?.length) out.push(buildPosts(data.posts, ground));
+  if (data.posts?.length) out.push(...buildPosts(data.posts, ground));
   if (data.trees.length) out.push(...buildTrees(data.trees, detail, data.prisms ?? []));
   // Medium and up: sprigs of leaves out of the hedges' sides and tops, in the tiles round the eye (world/hedgeCards.ts).
   if (cardsBuilt()) for (const h of hedgeCardPieces(data.prisms ?? [])) out.push({ ...h, tag: 'hedge', shadow: false, order: TREE_ORDER, lod: 'near' });
@@ -834,7 +843,8 @@ let cardShapes: { near: ReturnType<typeof cardCrown>[][]; far: ReturnType<typeof
  * (world/cardTrees.ts treeKind: in a wood of the open data or not, its height, its place), its crown fitted to the
  * tree and turned about the top of its trunk, so crown and trunk meet whichever way it leans. Each tree twice: in
  * the tiles round the eye the full crown, with its branches, throwing the lighter crown's cut-out shadow (world/tiles.ts
- * Piece `shadowOnly`); in the other tiles shown the lighter one, without a shadow (world/tiles.ts Piece `lod`).
+ * Piece `shadowOnly`) and the trunk's (`castOnly`); in the other tiles shown the lighter one, without a shadow
+ * (world/tiles.ts Piece `lod`): there the ground's bake has the smooth crowns' shadows.
  */
 function buildCardTrees(trees: Surroundings['trees'], share: Map<Surroundings['trees'][number], number>, prisms: NonNullable<Surroundings['prisms']>): Piece[] {
   cardShapes ??= {
@@ -903,6 +913,8 @@ function buildCardTrees(trees: Surroundings['trees'], share: Map<Surroundings['t
     out.push({ material: leaves, geometry: shapes.far[kind][variant].cards, tag: 'hedge', shadow: false, at, order: TREE_ORDER, lod: 'far' });
   }
   trunkAt.forEach((at, k) => at.length && out.push({ material: cardBarkMat, geometry: shapes.trunks[k], tag: 'hedge', shadow: false, at, order: TREE_ORDER }));
+  // The near trees' trunks throw the shadow too, by a copy drawn only into the sun's map (not the far ones' as well).
+  trunkAt.forEach((at, k) => at.length && out.push({ material: cardBarkMat, geometry: shapes.trunks[k], tag: 'hedge', shadow: true, at, lod: 'near', castOnly: true }));
   return out;
 }
 
