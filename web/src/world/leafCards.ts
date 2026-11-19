@@ -77,6 +77,22 @@ class Canvas {
   leaf(x: number, y: number, angle: number, length: number, width: number, outline: (u: number) => number, light: number, tint: number): void {
     const ca = Math.cos(angle);
     const sa = Math.sin(angle);
+    // A leaf that would run past the spray's square is drawn smaller, to fit inside it (or left out where it can't),
+    // as the leaves at a twig's end are: cut off by the square, the outermost leaves of a crown showed its cards'
+    // straight edges against the sky.
+    const pad = EDGE_FADE * TILE + width / 2 + 1;
+    let fit = 1;
+    for (const [px, py] of [[x + ca * length, y + sa * length], [x, y]]) {
+      for (const [p, o] of [[px, x], [py, y]]) {
+        if (p < pad) fit = Math.min(fit, (o - pad) / (o - p));
+        else if (p > TILE - pad) fit = Math.min(fit, (TILE - pad - o) / (p - o));
+      }
+    }
+    if (fit < 1) {
+      if (!(fit > 0.45)) return;
+      length *= fit;
+      width *= fit;
+    }
     const half = length / 2;
     const cx = x + ca * half;
     const cy = y + sa * half;
@@ -176,17 +192,19 @@ function* paintBroad(c: Canvas, rand: Rand): Steps {
     twigs.push(path(x, y, a + side * (0.65 + rand() * 0.4), TILE * (0.42 - i * 0.03), -side * 0.05));
   }
   for (const t of twigs) drawPath(c, t, t === main ? 6 : 3.5, 1.6);
+  // The leaves three quarters of the size they were and more of them: on a crown's cards (a metre or two across on a
+  // big tree) a leaf was 15 to 30 cm, twice an oak's or a lime's, and up close the crown read as a few big clumps.
   for (const t of twigs) {
-    const n = t === main ? 14 : 11;
+    const n = t === main ? 19 : 15;
     for (let i = 0; i < n; i++) {
-      const [x, y, a] = along(t, 0.15 + (0.85 * (i + rand() * 0.5)) / n);
+      const [x, y, a] = along(t, 0.12 + (0.88 * (i + rand() * 0.5)) / n);
       const side = i % 2 ? 1 : -1;
-      const len = 54 + rand() * 30;
+      const len = 40 + rand() * 23;
       const oak = rand() < 0.45;
       c.leaf(x, y, a + side * (0.55 + rand() * 0.5), len, len * (oak ? 0.62 : 0.58), oak ? lobed : ovate, 0.62 + rand() * 0.38, (rand() - 0.5) * 0.12);
     }
     const [x, y, a] = along(t, 1);
-    c.leaf(x, y, a + (rand() - 0.5) * 0.3, 66, 38, ovate, 0.75 + rand() * 0.25, 0);
+    c.leaf(x, y, a + (rand() - 0.5) * 0.3, 50, 29, ovate, 0.75 + rand() * 0.25, 0);
     yield;
   }
 }
@@ -774,11 +792,15 @@ export function leafCardMaterial(lean: number, flutter: number, turning: boolean
   const before = material.onBeforeCompile;
   material.onBeforeCompile = (shader, renderer) => {
     before.call(material, shader, renderer);
-    shader.fragmentShader = leafLight(shader.fragmentShader, through).replace(
-      '#include <normal_fragment_begin>',
-      // The same normal on both sides of a card: the crown's, not the card's face turned to the eye.
-      '#include <normal_fragment_begin>\n#ifdef DOUBLE_SIDED\nnormal *= faceDirection;\nnonPerturbedNormal = normal;\n#endif',
-    );
+    shader.fragmentShader = leafLight(shader.fragmentShader, through)
+      .replace(
+        '#include <normal_fragment_begin>',
+        // The same normal on both sides of a card: the crown's, not the card's face turned to the eye.
+        '#include <normal_fragment_begin>\n#ifdef DOUBLE_SIDED\nnormal *= faceDirection;\nnonPerturbedNormal = normal;\n#endif',
+      )
+      // A card closer than 30 cm to the eye (walking into a low crown or along a hedge) is left out: it would fill half
+      // the screen with one blurred spray.
+      .replace('#include <alphatest_fragment>', '#include <alphatest_fragment>\nif (vViewPosition.z < 0.3) discard;');
   };
   const key = material.customProgramCacheKey.bind(material);
   material.customProgramCacheKey = () => `${key()}|leafCards${through}`;
