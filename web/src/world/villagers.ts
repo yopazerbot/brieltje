@@ -167,20 +167,27 @@ interface V {
 }
 
 // ---- Colours (sRGB; the picture holds them linear). Slots as in tools/villagers.py.
-const SKINS = ['#f3cfb3', '#eac0a0', '#e2b08d', '#d29e7b', '#c08463', '#a46c4c', '#87553a', '#64402b', '#4b2f20'];
+const SKINS = ['#ebc5a8', '#e2b696', '#e2b08d', '#d29e7b', '#c08463', '#a46c4c', '#87553a', '#64402b', '#4b2f20'];
 const SKIN_W = [3, 4, 4, 3, 2, 2, 1.5, 1, 1];
 const HAIRS = ['#1f1a17', '#33261d', '#4b3424', '#6b4a2e', '#8f6a40', '#b8935c', '#d3b67c', '#8c3f22', '#2b2b2b'];
 const GREYS = ['#d9d6d0', '#bdbab4', '#a19d97', '#ece8e0', '#8a8680'];
 // What people wear here in November: mostly dark and muted jackets and coats (navy, black, charcoal, olive, camel,
 // brown, burgundy, bottle green), now and then a brighter one; jeans, chinos and dark trousers; dark shoes, boots,
-// white trainers; knitted hats and scarves in wool colours.
-const TOPS = ['#1f2a3d', '#1c1c1e', '#34363b', '#4a4d52', '#4b5235', '#6d6450', '#a07c52', '#4a3428', '#5e2129', '#25402f', '#1f4550', '#33507a',
-  '#8e2a28', '#b08a2e', '#c8bba3', '#ddd5c4', '#5d6b7a', '#2b2d33'];
-const TOP_W = [4, 3, 3, 3, 3, 2, 3, 2, 2, 2, 2, 3, 1, 1, 2, 2, 2, 2];
-const BOTTOMS = ['#232c3d', '#3b4d6b', '#5e7493', '#1d1e21', '#3a3b3f', '#8a7f66', '#a89a7c', '#4d3b30', '#5f6165', '#4d4f3a'];
-const BOTTOM_W = [6, 5, 2, 5, 3, 2, 1, 1, 2, 1];
+// white trainers; knitted hats and scarves in wool colours. Two people side by side should differ at a glance: the
+// darkest colours are a little lifted (pure black crushes to a flat shape in the sun), there is beige, grey, camel,
+// a red, rust or mustard jacket now and then, lighter jeans and chinos, and top and trousers seldom both dark (dress1).
+const TOPS = ['#26324a', '#26262a', '#383a40', '#4a4d52', '#4b5235', '#6d6450', '#a07c52', '#4a3428', '#6a2630', '#2a4a36', '#24505c', '#33507a',
+  '#9a2e2a', '#b08a2e', '#c8bba3', '#ddd5c4', '#5d6b7a', '#30333a', '#9da2a8', '#a4532f'];
+const TOP_W = [3, 2, 2, 3, 3, 2, 3, 2, 2, 2, 2, 3, 2, 2, 3, 2, 2, 1, 2, 1];
+const BOTTOMS = ['#28324a', '#3b4d6b', '#5e7493', '#25262a', '#3a3b3f', '#8a7f66', '#a89a7c', '#4d3b30', '#5f6165', '#4d4f3a'];
+const BOTTOM_W = [3, 5, 4, 3, 3, 3, 2, 1, 3, 1];
+/** Too dark to stand apart from another dark colour at a distance (sRGB luminance under 70 of 255). */
+const dark = (hex: string) => {
+  const n = parseInt(hex.slice(1), 16);
+  return 0.2126 * (n >> 16) + 0.7152 * ((n >> 8) & 255) + 0.0722 * (n & 255) < 70;
+};
 const SHOES = ['#1c1b1a', '#3b2a20', '#5a3f2b', '#e6e3dd', '#6b6e74', '#252c3a', '#8a6440'];
-const SHOE_W = [6, 3, 2, 3, 1, 1, 1];
+const SHOE_W = [5, 3, 2, 4, 1, 1, 1];
 const ACCS = ['#5b5e63', '#26304a', '#5e2430', '#b58b32', '#222224', '#d8cfbd', '#2f4a36', '#9b2c2c', '#5a3a26'];
 const ACC2S = ['#8c2f2f', '#2b3d6b', '#c9a14a', '#3a3a3a', '#6b4a7a', '#d8d2c4', '#2e6b5c', '#b5562f', '#7d7f84'];
 const FRAMES = ['#2f5f8a', '#8a2f2f', '#2e2e30', '#e0ddd5', '#3d6b45', '#6b6f75', '#c26a2a', '#1f3f6a'];
@@ -1023,6 +1030,8 @@ export class Villagers {
     cols[1] = k === ELDER ? pick(GREYS) : pick(HAIRS);
     cols[2] = pickW(TOPS, TOP_W);
     cols[3] = pickW(BOTTOMS, BOTTOM_W);
+    // A dark top over dark trousers reads as one black shape: throw again for the trousers, twice at most.
+    for (let i = 0; i < 2 && dark(cols[2]) && dark(cols[3]); i++) cols[3] = pickW(BOTTOMS, BOTTOM_W);
     cols[4] = pickW(SHOES, SHOE_W);
     cols[5] = pick(ACCS);
     cols[6] = pick(ACC2S);
