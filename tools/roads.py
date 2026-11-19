@@ -90,6 +90,7 @@ ROUTES = [
 PAINTS = ["#2b2d31", "#e8e9eb", "#8b8f94", "#4a4e54", "#1f3555", "#b5b8bc", "#7b1d1d", "#2f3d33", "#5b6470", "#eceeef"]
 PAINT_SHARE = [18, 17, 14, 12, 9, 9, 6, 4, 6, 5]  # roughly what drives round a Flemish village: greys, black and white
 KINDS = {"hatch": (4.25, 1.79), "estate": (4.69, 1.83), "van": (5.53, 2.03)}
+PARK_GAP = (0.8, 1.0)  # m at least between two cars on one drive: nose to tail, and side to side (room for a door)
 
 
 def hashed(*v):
@@ -304,22 +305,27 @@ def parked(pavings, buildings, road, hedges):
         near_wall = buildings.distance
         placed = []
         x0, z0, x1, z1 = poly.bounds
-        kind = pick([50, 40, 10], hashed("kind", round(c.x, 1), round(c.y, 1)))
-        length, width = list(KINDS.values())[kind]
-        cands = []
-        for xi in np.arange(x0, x1, 0.5):
-            for zi in np.arange(z0, z1, 0.5):
-                for ang in axes:
-                    b = car_box(xi, zi, ang, length + 0.2, width + 0.3)
-                    if not inner.contains(b) or b.intersects(blocked):
-                        continue
-                    cands.append((near_wall(Point(xi, zi)), xi, zi, ang))
-        cands.sort()
-        for d, xi, zi, ang in cands:
-            b = car_box(xi, zi, ang, length + 0.6, width + 0.6)
-            if any(b.intersects(p) for p in placed):
-                continue
-            placed.append(b)
+        # Each car's kind before it is fitted, so it is fitted at its own size (the second used to be fitted
+        # at the first's: an estate in a hatchback's room stood too close to the first car).
+        kinds = [pick([50, 40, 10], hashed("kind", round(c.x, 1), round(c.y, 1))),
+                 pick([55, 45], hashed("k2", round(c.x, 1), round(c.y, 1)))][:want]
+        for kind in kinds:
+            length, width = list(KINDS.values())[kind]
+            cands = []
+            for xi in np.arange(x0, x1, 0.5):
+                for zi in np.arange(z0, z1, 0.5):
+                    for ang in axes:
+                        b = car_box(xi, zi, ang, length + 0.2, width + 0.3)
+                        if not inner.contains(b) or b.intersects(blocked):
+                            continue
+                        cands.append((near_wall(Point(xi, zi)), xi, zi, ang))
+            cands.sort()
+            spot = next(((xi, zi, ang) for _, xi, zi, ang in cands
+                         if not any(car_box(xi, zi, ang, length + PARK_GAP[0], width + PARK_GAP[1]).intersects(p) for p in placed)), None)
+            if spot is None:
+                break
+            xi, zi, ang = spot
+            placed.append(car_box(xi, zi, ang, length + PARK_GAP[0], width + PARK_GAP[1]))
             # Nose towards the nearer building (parked forwards), as the game's yaw (0: nose along -z).
             nb = nearest_points(buildings, Point(xi, zi))[0]
             fx, fz = math.cos(ang), math.sin(ang)
@@ -329,9 +335,7 @@ def parked(pavings, buildings, road, hedges):
                 fx, fz = -fx, -fz  # reversed in
             yaw = math.atan2(-fx, -fz)
             paint = pick(PAINT_SHARE, hashed("paint", round(xi, 1), round(zi, 1)))
-            out.append([round(xi, 2), round(zi, 2), round(yaw, 3), kind if len(placed) == 1 else pick([55, 45], hashed("k2", xi)), paint])
-            if len(placed) >= want:
-                break
+            out.append([round(xi, 2), round(zi, 2), round(yaw, 3), kind, paint])
     return out
 
 
