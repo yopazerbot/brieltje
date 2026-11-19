@@ -5,6 +5,7 @@ import {
 } from '../../shared/moods.mjs';
 import { bakeMood } from './bakedLight';
 import { environment, loadSky, type SkyLook } from './environment';
+import { groundSkySun } from './groundShade';
 import type { IndoorLight } from './indoorLight';
 import { moodShown } from './mood';
 import { Rain } from './rain';
@@ -92,6 +93,11 @@ interface Look {
    * night sky, would light the baked walls and roofs of the whole village almost black.
    */
   bakeFill: number;
+  /**
+   * The sky photo's light outdoors, on the ground, the walls and in the bakes, as a factor (1 but in the sun): on a
+   * clear day the sun gives about three quarters of the light on open ground, so a shadow is a clear step darker.
+   */
+  fill: number;
   /** 0 to 1: wet ground, rain falling, night (street lamps on, birds asleep), overcast, snow falling */
   wet: number;
   rain: number;
@@ -102,9 +108,10 @@ interface Look {
   sunLow: number;
 }
 
-const look = (sky: SkyName, n: Omit<Look, 'sky' | 'sunColor' | 'hemiSky' | 'hemiGround' | 'fogTint' | 'bakeFill'> & { bakeFill?: number }, c: [string, string, string, string]): Look => ({
+const look = (sky: SkyName, n: Omit<Look, 'sky' | 'sunColor' | 'hemiSky' | 'hemiGround' | 'fogTint' | 'bakeFill' | 'fill'> & { bakeFill?: number; fill?: number }, c: [string, string, string, string]): Look => ({
   sky,
   bakeFill: 1,
+  fill: 1,
   ...n,
   sunColor: new THREE.Color(c[0]),
   hemiSky: new THREE.Color(c[1]),
@@ -114,7 +121,9 @@ const look = (sky: SkyName, n: Omit<Look, 'sky' | 'sunColor' | 'hemiSky' | 'hemi
 
 /** The moods' numbers. A new mood is a line here, its name in shared/moods.mjs and src/i18n.ts. */
 const LOOKS: Record<Mood, Look> = {
-  sunny: look('sunny', { skyGain: 1, sun: 3.2, hemi: 1, inside: 1, exposure: 1, fog: 0.0019, horizonFade: 0, contrast: 1, wet: 0, rain: 0, night: 0, overcast: 0, snow: 0, sunLow: 0 }, ['#fff1de', '#dfe9f5', '#b9a487', '#ffffff']),
+  // The sun about three quarters of the light on open ground (with world/groundShade.ts groundSkySun), the sky's a
+  // quarter: shadows read at eye level, sunlit ground as bright as before (19 Nov 2026: sun 3.2, the sky's full light).
+  sunny: look('sunny', { skyGain: 1, sun: 5, hemi: 1, inside: 1, exposure: 1, fog: 0.0019, horizonFade: 0, contrast: 1, fill: 0.72, wet: 0, rain: 0, night: 0, overcast: 0, snow: 0, sunLow: 0 }, ['#fff1de', '#dfe9f5', '#b9a487', '#ffffff']),
   overcast: look('overcast', { skyGain: 1, sun: 0, hemi: 1, inside: 0.85, exposure: 1.15, fog: 0.0032, horizonFade: 0.55, contrast: 0.6, wet: 0, rain: 0, night: 0, overcast: 1, snow: 0, sunLow: 0 }, ['#ffffff', '#d6dce4', '#8c897f', '#ffffff']),
   rain: look('overcast', { skyGain: 0.62, sun: 0, hemi: 0.8, inside: 0.8, exposure: 1.4, fog: 0.007, horizonFade: 0.9, contrast: 0.55, wet: 1, rain: 1, night: 0, overcast: 1, snow: 0, sunLow: 0 }, ['#ffffff', '#b9c0ca', '#6f6c66', '#e4e9ee']),
   // Dusk is worked out each frame between its golden start and its blue end (DUSK below).
@@ -136,7 +145,7 @@ const DUSK = [
 ] as const;
 /** How far into dusk a dusk picked by hand holds. */
 const DUSK_HELD = 0.25;
-const NUMBERS = ['skyGain', 'sun', 'hemi', 'inside', 'exposure', 'fog', 'horizonFade', 'contrast', 'bakeFill', 'wet', 'rain', 'night', 'overcast', 'snow', 'sunLow'] as const;
+const NUMBERS = ['skyGain', 'sun', 'hemi', 'inside', 'exposure', 'fog', 'horizonFade', 'contrast', 'bakeFill', 'fill', 'wet', 'rain', 'night', 'overcast', 'snow', 'sunLow'] as const;
 const COLOURS = ['sunColor', 'hemiSky', 'hemiGround', 'fogTint'] as const;
 
 /** `out` = a blended k of the way from a to b. */
@@ -460,9 +469,16 @@ export class Weather {
       this.sunDir.copy(this.noonDir).lerp(this.duskDir, l.sunLow).normalize();
       this.sun.position.copy(this.sun.target.position).addScaledVector(this.sunDir, 60);
     }
-    // The light on open ground (outside: the hemisphere at 0.9 of its strength, the sky photo at 0.9; world/indoorLight.ts).
+    // The light on open ground (outside: the hemisphere at 0.9 of its strength, the sky photo at 0.9 times `fill`; world/indoorLight.ts).
     const lum = (c: THREE.Color) => 0.2126 * c.r + 0.7152 * c.g + 0.0722 * c.b;
-    this.groundFill = l.sun * lum(l.sunColor) * Math.max(this.sunDir.y, 0) + 0.9 * l.hemi * lum(l.hemiSky) + 0.9 * Math.PI * light;
+    const fill = 0.9 * l.hemi * lum(l.hemiSky) + 0.9 * Math.PI * light * l.fill;
+    this.groundFill = l.sun * lum(l.sunColor) * Math.max(this.sunDir.y, 0) + fill;
+    // The sunny photo's own sun in the sky's light (world/groundShade.ts groundSkySun): its share of that fill, faded
+    // with the blend (not swapped with the light map halfway, or the shadows would jump). Only the noon sun's: the
+    // moon's in the night photo is left as it was.
+    const sunOf = (m: Look, s: SkyLook) => (m.sky === 'sunny' ? s.sun * m.skyGain : 0);
+    const skySun = sunOf(la, sa) + (sunOf(lb, sb) - sunOf(la, sa)) * p.k;
+    groundSkySun.value = fill > 0 ? Math.min(1, (0.9 * Math.PI * skySun * l.fill) / fill) : 0;
     // Snow lying throws light back up: the hemisphere's lower half paler.
     if (this.lying > 0) l.hemiGround.lerp(SNOW_GROUND, this.lying * 0.7);
     const on = l.sun > 0.001;
@@ -471,9 +487,9 @@ export class Weather {
       this.sun.shadow.autoUpdate = on;
       if (on) this.sun.shadow.needsUpdate = true;
     }
-    this.indoorLight.setOutside(l.hemiSky, l.hemiGround, l.hemi, light / lit.irradiance, l.inside);
+    this.indoorLight.setOutside(l.hemiSky, l.hemiGround, l.hemi, light / lit.irradiance, l.inside, l.fill);
     // The bakes under this sky: its light against the sunny sky's, the contrast round a typical wall's light.
-    bakeMood.value.x = (light / sunny.irradiance) * l.bakeFill;
+    bakeMood.value.x = (light / sunny.irradiance) * l.bakeFill * l.fill;
     bakeMood.value.y = l.contrast;
     bakeMood.value.z = Math.PI * sunny.irradiance * 0.7;
   }

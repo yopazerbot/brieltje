@@ -287,6 +287,14 @@ neutral.needsUpdate = true;
  */
 export const grassDetail = { value: matchMedia('(pointer: coarse)').matches ? 1 : 2 };
 
+/**
+ * The share of the open ground's sky light that is the sky photo's own sun (world/weather.ts, 0 to 1). The sky's
+ * light map holds the photo's sun as well as its sky, about two thirds of all it sends down on a sunny day, and no
+ * shadow dimmed it: under a tree or a post the ground lost only the directional sun, a third of its light, and the
+ * shadows hardly showed. The ground's shadow now dims that share too.
+ */
+export const groundSkySun = { value: 0 };
+
 export class GroundShade {
   /**
    * For the ground materials: the texture and where it lies (centre x, centre z, half size), and the coarse
@@ -396,6 +404,7 @@ export class GroundShade {
     material.onBeforeCompile = (shader) => {
       Object.assign(shader.uniforms, this.uniforms, this.live);
       shader.uniforms.grassDetail = grassDetail;
+      shader.uniforms.groundSkySun = groundSkySun;
       if (hard) shader.uniforms.groundGrain = { value: groundNoise() };
       shader.vertexShader = shader.vertexShader
         .replace('#include <common>', '#include <common>\nuniform vec3 groundArea;\nuniform vec3 groundAreaAll;\nuniform mat4 liveMatrix;\nvarying vec2 vGroundUv;\nvarying vec2 vGroundUvAll;\nvarying vec3 vGroundLive;' + (hard ? '\nvarying vec2 vGroundXZ;' : ''))
@@ -412,7 +421,7 @@ export class GroundShade {
       shader.fragmentShader = shader.fragmentShader
         .replace(
           '#include <common>',
-          '#include <common>\nuniform sampler2D groundShade;\nuniform sampler2D groundShadeAll;\nuniform sampler2D groundContact;\nuniform sampler2D groundContactAll;\nuniform float liveOn;\nuniform float grassDetail;\nvarying vec2 vGroundUv;\nvarying vec2 vGroundUvAll;\nvarying vec3 vGroundLive;' + (hard ? '\nuniform sampler2D groundGrain;\nvarying vec2 vGroundXZ;' : ''),
+          '#include <common>\nuniform sampler2D groundShade;\nuniform sampler2D groundShadeAll;\nuniform sampler2D groundContact;\nuniform sampler2D groundContactAll;\nuniform float liveOn;\nuniform float grassDetail;\nuniform float groundSkySun;\nvarying vec2 vGroundUv;\nvarying vec2 vGroundUvAll;\nvarying vec3 vGroundLive;' + (hard ? '\nuniform sampler2D groundGrain;\nvarying vec2 vGroundXZ;' : ''),
         )
         .replace(
           '#include <map_fragment>',
@@ -451,7 +460,13 @@ export class GroundShade {
           }
           reflectedLight.directDiffuse *= gsSun;
           reflectedLight.directSpecular *= gsSun;
-          reflectedLight.indirectDiffuse *= gs.g;
+          // The sky photo's sun in the sky's light (groundSkySun): the same shadow as the sun's, the real-time map's
+          // too (what is left of the sun's colour after its loop: the only directional light, the map applied).
+          float gsSkySun = gsSun;
+          #if NUM_DIR_LIGHTS > 0
+            gsSkySun *= dot(directLight.color, vec3(1.0)) / max(dot(directionalLights[0].color, vec3(1.0)), 1e-5);
+          #endif
+          reflectedLight.indirectDiffuse *= gs.g * mix(1.0, gsSkySun, groundSkySun);
           // What the sky's light hides; not what a wet street mirrors (world/wetGround.ts: the mirror has it already).
           reflectedLight.indirectSpecular *= mix(gs.g * ${sheen.toFixed(2)}, 1.0, wetMirrorW);`,
         );

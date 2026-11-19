@@ -29,7 +29,12 @@ export interface SkyLook {
   haze: THREE.Color;
   /** How much light it sends onto an upward-facing surface (the cosine-weighted mean of its upper half, luminance) */
   irradiance: number;
+  /** The part of it that comes from its sun (or moon): the few pixels far brighter than any sky (SUN_SPOT) */
+  sun: number;
 }
+
+/** Luminance above which a pixel of a sky photo is its sun or moon, not sky (the photos' brightest clouds are about 20). */
+const SUN_SPOT = 100;
 
 /** The sunny sky and the background drawn from it, once loaded (world/weather.ts swaps other skies in). */
 export const environment: { sunny: SkyLook | null; sky: Sky | null; sunDir: THREE.Vector3 | null } = { sunny: null, sky: null, sunDir: null };
@@ -91,12 +96,15 @@ export async function loadSky(renderer: THREE.WebGLRenderer, url: string, wanted
   // The light onto the ground: each row of the upper half by its height's cosine and its share of the sphere.
   let irr = 0;
   let weight = 0;
+  let sun = 0;
   for (let y = 0; y < h / 2; y++) {
     const a = (0.5 - (y + 0.5) / h) * Math.PI;
     const k = Math.sin(a) * Math.cos(a);
     for (let x = 0; x < w; x += 2) {
       const i = (y * w + x) * 4;
-      irr += (data[i] * 0.2126 + data[i + 1] * 0.7152 + data[i + 2] * 0.0722) * k;
+      const l = data[i] * 0.2126 + data[i + 1] * 0.7152 + data[i + 2] * 0.0722;
+      irr += l * k;
+      if (l > SUN_SPOT) sun += l * k;
       weight += k;
     }
   }
@@ -116,7 +124,7 @@ export async function loadSky(renderer: THREE.WebGLRenderer, url: string, wanted
   const env = pmrem.fromEquirectangular(source).texture;
   pmrem.dispose();
   if (source !== hdr) source.dispose();
-  return { photo: hdr, env, turn, bright, haze, irradiance: irr / Math.max(1e-6, weight) };
+  return { photo: hdr, env, turn, bright, haze, irradiance: irr / Math.max(1e-6, weight), sun: sun / Math.max(1e-6, weight) };
 }
 
 /** A float photo as half floats, in place. */

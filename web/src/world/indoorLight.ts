@@ -25,6 +25,8 @@ export class IndoorLight {
   /** The weather's: the hemisphere's and the sky photo's strength outside, and both indoors, as factors */
   private hemiOut = 1;
   private envOut = 1;
+  /** The sky photo's light outside only, as a factor (less in the sun: world/weather.ts `fill`); the rooms keep theirs */
+  private fillOut = 1;
   private inScale = 1;
   /** A place of its own (the café, world/keet.ts): its colour indoors and its strength as a factor of a home's, eased in */
   private place = 0;
@@ -40,12 +42,13 @@ export class IndoorLight {
   }
 
   /** The weather's outside light: the hemisphere's colours, its strength and the sky photo's as factors of the sunny day's, and indoors' as one. */
-  setOutside(sky: THREE.Color, ground: THREE.Color, hemi: number, env: number, inside: number): void {
+  setOutside(sky: THREE.Color, ground: THREE.Color, hemi: number, env: number, inside: number, fill = 1): void {
     this.sky.copy(sky);
     this.ground.copy(ground);
     this.hemiOut = hemi;
     this.envOut = env;
     this.inScale = inside;
+    this.fillOut = fill;
   }
 
   /**
@@ -73,6 +76,6 @@ export class IndoorLight {
     this.hemi.color.lerpColors(this.sky, skyIn, t);
     this.hemi.groundColor.lerpColors(this.ground, groundIn, t);
     this.hemi.intensity = (HEMI[0] * this.hemiOut + (inHemi * this.inScale - HEMI[0] * this.hemiOut) * t) * fill;
-    this.scene.environmentIntensity = (ENV[0] * this.envOut + (ENV[1] * this.envOut - ENV[0] * this.envOut) * t) * fill;
+    this.scene.environmentIntensity = (ENV[0] * this.envOut * this.fillOut + (ENV[1] * this.envOut - ENV[0] * this.envOut * this.fillOut) * t) * fill;
   }
 }
