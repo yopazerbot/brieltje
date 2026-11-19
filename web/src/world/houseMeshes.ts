@@ -7,6 +7,7 @@ import { rustle } from './wind';
 import sizes from '../../public/textures/sizes.json';
 import { textureNormalScale } from './surfaceFinish';
 import { loadTexture, textureReady } from './textureFiles';
+import { HEDGE_ROUGH, HEDGE_TILE, hedgeTexture } from './hedgeLeaves';
 import { snowy } from './snowCover';
 import { clearGlass } from './glassLook';
 import { claimOf, clipDiagonal, clipToBox, coverPieces, coverRank, groundLayers, markClaimed, RANK, takeCoverCuts, type CoverAsk, type Pt } from './groundLayers';
@@ -121,12 +122,14 @@ function texture(name: string, kind: 'color' | 'normal' | 'rough', renderer: THR
   const key = `${name}_${kind}_${rotate}`;
   let t = cache.get(key);
   if (!t) {
-    t = loadTexture(`${name}_${kind}`, kind === 'color', renderer);
+    // The hedges' leaves are painted in code (world/hedgeLeaves.ts), with no roughness picture.
+    const hedge = name === 'hedge' && kind !== 'rough';
+    t = hedge ? hedgeTexture(kind) : loadTexture(`${name}_${kind}`, kind === 'color', renderer);
     t.wrapS = t.wrapT = THREE.RepeatWrapping;
     t.anisotropy = Math.min(4, renderer.capabilities.getMaxAnisotropy());
     t.colorSpace = kind === 'color' ? THREE.SRGBColorSpace : THREE.NoColorSpace;
     // UVs are in metres; one texture tile covers TILE metres.
-    const s = 1 / (TILE[name] ?? 2);
+    const s = 1 / (hedge ? HEDGE_TILE : TILE[name] ?? 2);
     t.repeat.set(s, s);
     if (rotate) {
       t.center.set(0.5, 0.5);
@@ -223,7 +226,8 @@ export function tintedMaterial(tex: string, tint: string, renderer: THREE.WebGLR
   const mat = new THREE.MeshStandardMaterial({ color: tint, roughness: 1, side });
   mat.map = texture(tex, 'color', renderer);
   mat.normalMap = texture(tex, 'normal', renderer);
-  mat.roughnessMap = texture(tex, 'rough', renderer);
+  if (tex === 'hedge') mat.roughness = HEDGE_ROUGH;
+  else mat.roughnessMap = texture(tex, 'rough', renderer);
   mat.normalScale.setScalar(textureNormalScale(tex));
   return mat;
 }
@@ -253,7 +257,8 @@ function makeMaterial(name: string, renderer: THREE.WebGLRenderer): THREE.Materi
     mat.map = texture(name === 'claustra' ? 'claustra' : spec.tex, 'color', renderer, spec.rotate);
     if (!spec.colorOnly) {
       mat.normalMap = texture(spec.tex, 'normal', renderer, spec.rotate);
-      mat.roughnessMap = texture(spec.tex, 'rough', renderer, spec.rotate);
+      if (spec.tex === 'hedge') mat.roughness = HEDGE_ROUGH;
+      else mat.roughnessMap = texture(spec.tex, 'rough', renderer, spec.rotate);
       const n = spec.normalScale ?? textureNormalScale(spec.tex);
       mat.normalScale.set(n, n);
     }
