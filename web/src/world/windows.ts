@@ -227,6 +227,26 @@ export function setWindowDetail(on: boolean): void {
   }
 }
 
+/**
+ * Beyond the probe's reach (world/glassLook.ts: about 14 m from the eye) and on Low, the glass mirrors the sky's photo,
+ * whose band just over the horizon is its brightest: a window across the street, seen from the pavement, came out as a
+ * light grey panel on the wall. What a real one mirrors there is the street's other side (houses, hedges, trees), far
+ * darker than that sky. So the photo's light is dimmed where the mirrored ray runs level or down (fading out by about
+ * 17 degrees up, so the sky still shows in windows seen from below); near the eye the probe's own picture is left alone.
+ * A few operations per pixel of glass only.
+ */
+const OPPOSITE = /* glsl */ `
+#if defined( RE_IndirectSpecular )
+{
+  vec3 opP = cameraPosition + ( vec4( - vViewPosition, 0.0 ) * viewMatrix ).xyz;
+  vec3 opE = abs( opP - glassProbeAt ) / vec3( 18.0, 40.0, 18.0 );
+  float opFar = glassProbeOn > 0.5 ? smoothstep( 0.75, 1.0, max( max( opE.x, opE.z ), opE.y ) ) : 1.0;
+  vec3 opR = normalize( ( vec4( reflect( - geometryViewDir, geometryNormal ), 0.0 ) * viewMatrix ).xyz );
+  radiance *= 1.0 - 0.6 * opFar * ( 1.0 - smoothstep( 0.0, 0.3, opR.y ) );
+}
+#endif
+`;
+
 /** The glass's material: a standard one whose colour, gloss and reflectance come per window. */
 export function paneMaterial(): THREE.MeshStandardMaterial {
   const m = new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.05, metalness: 0, envMapIntensity: 1.6 });
@@ -342,8 +362,10 @@ export function paneMaterial(): THREE.MeshStandardMaterial {
           day = 0.45 + 0.4 * vPane.y;
           glow = 0.35 + 0.25 * vPane.y;
           #endif
-          // By day the room is lit through the window and seen through two panes: dim.
-          vec3 room = albedo * day * 0.3 * abs(vLook.w);
+          // By day the room is lit through the window and seen through two panes: dim. It is shaded here as if it lay on
+          // the glass, in the sun that falls on the wall: at 0.3 a window in the sun came out a light grey panel, far
+          // lighter than a real room seen from the street, which is a few times darker than the wall outside.
+          vec3 room = albedo * day * 0.12 * abs(vLook.w);
           vec3 sheer = vec3(0.38, 0.37, 0.35) * cover.b;
           vec3 cloth = vColor.rgb * 0.5 * cover.b; // seen through two panes
           // In the shade of the reveal along the top and the sides, as the glass sits back in the wall.
@@ -364,6 +386,8 @@ export function paneMaterial(): THREE.MeshStandardMaterial {
       // The sun's glint on glass seen at a slant can pass what half floats hold (65504): an iPhone stores infinity.
       .replace('#include <dithering_fragment>', 'gl_FragColor.rgb = min(gl_FragColor.rgb, vec3(60000.0));\n#include <dithering_fragment>');
     probeOn(shader); // the street round the eye in the glass, and the rain's drops (world/glassLook.ts)
+    // After the probe's part (probeOn puts it just before the same include, so this comes after it).
+    if (shader.uniforms.glassProbe) shader.fragmentShader = shader.fragmentShader.replace('#include <lights_fragment_end>', `${OPPOSITE}\n#include <lights_fragment_end>`);
   };
   return m;
 }
