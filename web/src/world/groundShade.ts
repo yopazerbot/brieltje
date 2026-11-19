@@ -227,7 +227,7 @@ function coverMaterial(rgb: string): THREE.ShaderMaterial {
 
 /** The gardens' stripes and the meadows into the cover image's fourth channel (a 1: a garden, its stripes worked out here). */
 /** The cover image's colours, kept for every bake (a disposed material's shader is compiled anew the next time). */
-const covers = { fields: coverMaterial('1.0, 0.0, 0.0'), tracks: coverMaterial('0.0, 1.0, 0.0'), roadEdges: coverMaterial('0.0, 0.45, 0.0'), water: coverMaterial('0.0, 0.0, 1.0') };
+const covers = { fields: coverMaterial('1.0, 0.0, 0.0'), tracks: coverMaterial('0.0, 1.0, 0.0'), roadEdges: coverMaterial('0.0, 0.45, 0.0'), streetEdges: coverMaterial('0.0, 0.62, 0.0'), water: coverMaterial('0.0, 0.0, 1.0') };
 
 const grassCover = new THREE.ShaderMaterial({
   vertexShader: `attribute vec4 grass;
@@ -243,6 +243,8 @@ const grassCover = new THREE.ShaderMaterial({
     void main() {
       float a = vGrass.w;
       if (a > 0.9) a = 0.5 + 0.5 * smoothstep(-0.35, 0.35, sin(dot(vXZ, vec2(-vGrass.y, vGrass.x)) / vGrass.z * 3.14159));
+      // A mown meadow: its swaths a little shorter and longer by turns, along the field.
+      else if (vGrass.z > 0.0) a *= 0.75 + 0.5 * smoothstep(-0.5, 0.5, sin(dot(vXZ, vec2(-vGrass.y, vGrass.x)) / vGrass.z * 3.14159));
       gl_FragColor = vec4(0.0, 0.0, 0.0, a);
     }`,
   blending: THREE.CustomBlending,
@@ -389,7 +391,29 @@ export class GroundShade {
       const a = (l.a * Math.PI) / 180;
       put(l.p, [Math.cos(a), Math.sin(a), l.w, 1]);
     }
-    for (const m of data.meadows) put(m.p, [0, 0, 1, m.k === 'fallow' ? 0.35 : 0.2]);
+    // Each meadow its own length of grass (grazed short or left longer: a shade of its own from far off), by a number
+    // from its middle (the same on every visit); six in ten mown in swaths of 3 m along their longest side.
+    for (const m of data.meadows) {
+      if (m.k === 'fallow') {
+        put(m.p, [0, 0, 0, 0.35]);
+        continue;
+      }
+      const ring = m.p[0];
+      let cx = 0;
+      let cz = 0;
+      let best = 0;
+      let dir: [number, number] = [1, 0];
+      ring.forEach(([x0, z0], i) => {
+        const [x1, z1] = ring[(i + 1) % ring.length];
+        const len = Math.hypot(x1 - x0, z1 - z0);
+        cx += x0 / ring.length;
+        cz += z0 / ring.length;
+        if (len > best) [best, dir] = [len, [(x1 - x0) / len, (z1 - z0) / len]];
+      });
+      const h = Math.abs(Math.sin(Math.round(cx / 10) * 12.9898 + Math.round(cz / 10) * 78.233) * 43758.5453) % 1;
+      const mown = (h * 7.31) % 1 < 0.6;
+      put(m.p, [dir[0], dir[1], mown ? 3 : 0, 0.15 + 0.1 * h]);
+    }
   }
 
   /**
@@ -611,9 +635,9 @@ export class GroundShade {
     const asCover = new Map<THREE.Material, THREE.ShaderMaterial>([[fields, covers.fields], [tracks, covers.tracks]]);
     // Reuse a gentler path margin for paved edges too. Grass grows unevenly beside roads and paving;
     // the existing lawn mask still keeps deliberately mown gardens neat. This is baked once.
-    for (const name of ['road', 'rd_concrete', 'rd_asphalt', 'rd_tiles', 'pave_light', 'pave_grey']) {
-      asCover.set(blockMaterial(name, renderer).material, covers.roadEdges);
-    }
+    for (const name of ['pave_light', 'pave_grey']) asCover.set(blockMaterial(name, renderer).material, covers.roadEdges);
+    // The streets' verges a little rougher than a garden path's edge: the mower passes them less often.
+    for (const name of ['road', 'rd_concrete', 'rd_asphalt', 'rd_tiles']) asCover.set(blockMaterial(name, renderer).material, covers.streetEdges);
     asCover.set(surfaceMaterial('paving', renderer), covers.roadEdges); // the main house's own drive and paths
     const waterCover = covers.water;
     // Nothing else is drawn: whatever shares a group with the casters (the furniture in the house's) is hidden too.

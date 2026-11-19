@@ -106,6 +106,7 @@ import { neverCards, treesMayPaint, unpaintedOut } from './world/leafCards';
 import { setWaterDetail, waterLevel, wetGround } from './world/water';
 import { buildHorizon } from './world/horizon';
 import { FarTrees, patchFarLand, setArea as setFarArea } from './world/farLand';
+import { patchMeadowLook } from './world/meadowLook';
 import { wearLonePatches, weatherYards } from './world/yards';
 import { detailModelPaving, detailPaving, pavingMeshes, planPaving, usePavingPlan } from './world/pavingDetail';
 import { Undergrowth } from './world/undergrowth';
@@ -591,6 +592,7 @@ const groundShade = new GroundShade(center, sunShadow.uniforms);
 groundShade.apply(grassMat, 0.35, true);
 // Farmland on the grass where the data has none: outside its area and beyond the draw distance (world/farLand.ts).
 patchFarLand(grassMat, renderer, () => tiles.drawDistance);
+patchMeadowLook(grassMat); // patches of drier and damper grass at the scale of a field (world/meadowLook.ts)
 const farTrees = new FarTrees(renderer, house.ground); // and its tree lines stood up (Medium and up, applyQuality)
 scene.add(farTrees.mesh);
 groundShade.addGrass(house.surroundings?.grass); // the gardens' stripes and the meadows
