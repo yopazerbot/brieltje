@@ -319,6 +319,7 @@ export class Weather {
   setQuality(quality: string, phone: boolean): void {
     this.rain.setCount(RAIN_COUNT[phone ? 'low' : quality] ?? RAIN_COUNT.medium);
     this.snowfall.setCount(SNOW_COUNT[phone ? 'low' : quality] ?? SNOW_COUNT.medium);
+    this.lamps.setQuality(quality, phone);
   }
 
   /** The cycle at this moment: alone the page's, together the server's on the server's clock. */
@@ -407,7 +408,7 @@ export class Weather {
     this.snowfall.set(falling);
     this.snowfall.update(dt, eye, indoors, this.now.skyGain * 1.4, this.renderer);
     this.lamps.set(this.now.night, this.groundFill);
-    this.lamps.update();
+    this.lamps.update(dt, eye, indoors);
     // Its shadow map is not drawn under clouds, but one must exist: a new graphics preset throws the old one away
     // (main.ts applyQuality), and without one every surface that takes the shadow draws nothing. Drawn once then.
     if (!this.sun.shadow.autoUpdate && !this.sun.shadow.map) this.sun.shadow.needsUpdate = this.renderer.shadowMap.needsUpdate = true;

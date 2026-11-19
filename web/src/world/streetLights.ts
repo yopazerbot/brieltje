@@ -1,6 +1,7 @@
 import * as THREE from 'three';
 import type { Surroundings } from './houseData';
 import { terrain } from './terrain';
+import { patchLampLight, setLampSpots, SLOTS, type LampSpot } from './lampLight';
 
 /**
  * The street lamps lit at night (world/weather.ts): a warm glow at each lamp's head and a pool of its light on the
@@ -23,13 +24,15 @@ import { terrain } from './terrain';
  * and fades to nothing at 2.6 times the height, with no edge to be seen (19 Nov 2026: the pools ended in a rim). How
  * much it brightens is the lamp's light over the light already there (LAMP_GROUND), not a fixed factor.
  * The lamps' places come from the same list as the lamps (main.ts `poles`: the ring's at the start, the village's
- * added when it comes), read again when it grows.
+ * added when it comes), read again when it grows. The same list feeds their light on walls, cars and people near
+ * them (world/lampLight.ts) on Medium and up.
  */
 
 type Pole = NonNullable<Surroundings['poles']>[number];
 
 /** Warm white of the lamps (linear, under the half floats' end by far). */
 const LAMP = new THREE.Color(1.0, 0.66, 0.34);
+patchLampLight(LAMP);
 /**
  * The pools brighten what is drawn by a factor: the ground's own colour times the night's light on it, which is
  * blue (the moon and the night sky; its colour here, at a brightness of one). Lit by the lamp it should take the
@@ -140,6 +143,11 @@ export class StreetLights {
   private on = 0;
   /** The ground's light from the sky and the moon (or the sun), as a luminance */
   private fill = 1;
+  /** The lamps' heads and strengths, for their light on what stands near them (world/lampLight.ts) */
+  private spots: LampSpot[] = [];
+  /** 0 to 1: how far the eye is indoors (eased); how many lamps light things at once (none on Low and phones) */
+  private inside = 0;
+  private slots = SLOTS;
 
   /** `poles`: the list the lamps are built from (it grows when the village comes); `ground`: the ground's height where a pole has none. */
   constructor(private poles: Pole[], private ground: number) {
@@ -153,11 +161,22 @@ export class StreetLights {
     this.fill = Math.max(fill, 0.05);
   }
 
-  update(): void {
+  /**
+   * Their light on what stands near them: the six nearest lamps on High and Ultra, four on Medium, none on Low or
+   * phones (each lit pixel near a lamp pays a little for each).
+   */
+  setQuality(quality: string, phone: boolean): void {
+    this.slots = phone || quality === 'low' ? 0 : quality === 'medium' ? 4 : SLOTS;
+  }
+
+  /** Each frame: `eye` where the lamps' light on things is worked out round, `indoors` (then none of it). */
+  update(dt: number, eye: THREE.Vector3, indoors: boolean): void {
     // Built as soon as the list grows, by day too: laying the pools takes some 40 ms, which goes unseen while the
     // village comes in and would stall the game a moment at dusk.
     if (this.built !== this.poles.length) this.build();
+    this.inside += ((indoors ? 1 : 0) - this.inside) * (1 - Math.exp(-dt * 1.5));
     this.group.visible = this.on > 0.01;
+    setLampSpots(this.spots, eye, this.group.visible && this.slots ? this.on * LAMP_GROUND * (1 - this.inside) : 0, this.slots);
     if (!this.group.visible) return;
     this.uniforms.strength.value = this.on;
     this.poolStrength.value = (this.on * LAMP_GROUND) / this.fill;
@@ -212,8 +231,10 @@ export class StreetLights {
     const lamps = this.poles.map((p) => {
       const head = headOf(p, this.ground);
       const h = Math.max(2.5, head.y - (this.ground + terrain.height(head.x, head.z)));
-      return { x: head.x, z: head.z, h };
+      return { x: head.x, z: head.z, h, y: head.y };
     });
+    // Their light on things near them: as strong as on the ground under them (the light there times the height squared).
+    this.spots = lamps.map((l) => ({ x: l.x, y: l.y, z: l.z, strength: l.h * l.h }));
     // Which lamps reach each square (by its corner's grid numbers).
     const cells = new Map<string, number[]>();
     lamps.forEach((l, k) => {
