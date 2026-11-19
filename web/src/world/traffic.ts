@@ -2,6 +2,7 @@ import * as THREE from 'three';
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
 import { sound } from '../sound';
+import { horizonReflection } from './car';
 import { boxSpots, carLights, pointsOf, spotsFrom, type LampSpots } from './carLights';
 import type { World } from './collision';
 
@@ -9,7 +10,9 @@ import type { World } from './collision';
  * The traffic on the village's roads and the cars parked on the drives (tools/roads.py writes the
  * routes and the spots to web/src/data/roads.json; the cars are our own Blender models,
  * tools/traffic_cars.py: a hatchback, an estate and a van, each with a simpler copy for seeing it
- * from afar, 137 KB for all of them).
+ * from afar, and one wheel, 420 KB for all of them). Up close a car has clear-coated paint (on Medium
+ * and up), dark glass that mirrors the sky with the seats just showing behind it, lamps, plates,
+ * mirrors and five-spoke wheels; the shade it casts on itself is in its corners' colours.
  *
  * The moving cars run on the server's shared clock, like the cats and the horses: each route has a
  * timetable (made here from its points and the highest speed at each: slower in bends, at junctions
@@ -20,9 +23,9 @@ import type { World } from './collision';
  * the village drive on past the edge of the map, where the haze hides them, and come back after a
  * wait. They are solid for walking and driving into, and bullets spark off them.
  *
- * Parked cars are instanced: per model the paint (with the glass) and the rest, near and far, and
- * the wheels of the near ones; only those within reach of the eye, refreshed a few times a second.
- * They are solid blocks. A moving car far off takes the simple model too, without its wheels.
+ * Parked cars are instanced: per model the paint, the glass (near only) and the rest, near and far,
+ * and the wheels of the near ones; only those within reach of the eye, refreshed a few times a second.
+ * They are solid blocks. A moving car far off takes the simple model too, whose wheels are part of it.
  */
 
 /** Something a car stops for: a circle on the plan. */
@@ -57,17 +60,19 @@ const LOOK = 12; // points ahead (2.5 m apart) where it looks for someone in its
 const CATCH_UP = 0.25; // at most this much faster than its timetable while it is behind
 const NEAR_SOLID = 90; // m from the eye: within this a moving car is a block in the collision world
 const NEAR_SOUND = 70; // m: its engine and tyres are heard within this
-const GLASS = 0.06; // the glass's share of the paint colour (it is in the paint mesh, so tinted dark)
+const GLASS = 0.06; // the far model's glass: its share of the paint colour (it is in the paint mesh, so tinted dark)
 
 interface Model {
   paint: THREE.BufferGeometry;
+  /** The windows, drawn see-through over the cabin (near only) */
+  glass: THREE.BufferGeometry;
   rest: THREE.BufferGeometry;
   tail: THREE.BufferGeometry;
   /** The headlights (they glow at night) */
   lamp: THREE.BufferGeometry;
   /** Where its headlights and tail lights are (world/carLights.ts) */
   spots: LampSpots;
-  /** Seen from afar: a third of the triangles, the tail lights in the rest, no wheels */
+  /** Seen from afar: a fifth of the triangles, the glass in the paint, the lamps and plain wheels in the rest */
   far: { paint: THREE.BufferGeometry; rest: THREE.BufferGeometry };
   axles: [number, number];
   track: number;
@@ -104,7 +109,9 @@ interface Mover {
   wheels: THREE.Object3D[];
   front: THREE.Object3D[];
   tail: THREE.MeshStandardMaterial;
-  /** Its paint, rest, tail light and headlight meshes */
+  /** Its paint: clear-coated (Medium and up) and plain (Low and phones) */
+  paints: [THREE.MeshPhysicalMaterial, THREE.MeshStandardMaterial];
+  /** Its paint, rest, tail light, headlight and glass meshes */
   parts: THREE.Mesh[];
   /** It brakes or stands waiting (its brake lights are on) */
   brake: boolean;
@@ -194,18 +201,60 @@ function speedAt(leg: Leg, s: number): number {
   return leg.v[i] + (leg.v[i + 1] - leg.v[i]) * Math.min(1, Math.max(0, f));
 }
 
-/** The geometry of one material's part of a model, with every vertex in `color` (linear). */
-function coloured(g: THREE.BufferGeometry, color: THREE.Color): THREE.BufferGeometry {
+/**
+ * The geometry of one material's part of a model, each vertex in `color` (linear) times the shade baked into
+ * the model's corners, and with the part's roughness and metalness (`finish`, see finished).
+ */
+function coloured(g: THREE.BufferGeometry, color: THREE.Color, finish: [number, number]): THREE.BufferGeometry {
   const out = g.index ? g.toNonIndexed() : g.clone();
+  const shade = out.attributes.color;
   for (const name of Object.keys(out.attributes)) if (name !== 'position' && name !== 'normal') out.deleteAttribute(name);
   const n = out.attributes.position.count;
   const c = new Float32Array(n * 3);
-  for (let i = 0; i < n; i++) c.set([color.r, color.g, color.b], i * 3);
+  const f = new Float32Array(n * 2);
+  for (let i = 0; i < n; i++) {
+    const s = shade ? shade.getX(i) : 1;
+    c.set([color.r * s, color.g * s, color.b * s], i * 3);
+    f.set(finish, i * 2);
+  }
   out.setAttribute('color', new THREE.BufferAttribute(c, 3));
+  out.setAttribute('finish', new THREE.BufferAttribute(f, 2));
   return out;
 }
 
 const merge = (list: THREE.BufferGeometry[]) => (list.length ? mergeGeometries(list) : new THREE.BufferGeometry());
+
+/**
+ * One material for many parts, each with its own roughness and metalness from the vertex attribute `finish`
+ * (the lamps glossy, the tyres matt, the rims metal), so they stay one draw call. Two lines more per pixel.
+ */
+function finished<T extends THREE.MeshStandardMaterial>(m: T): T {
+  m.onBeforeCompile = (shader) => {
+    shader.vertexShader = shader.vertexShader
+      .replace('#include <common>', '#include <common>\nattribute vec2 finish;\nvarying vec2 vFinish;')
+      .replace('#include <begin_vertex>', '#include <begin_vertex>\nvFinish = finish;');
+    shader.fragmentShader = shader.fragmentShader
+      .replace('#include <common>', '#include <common>\nvarying vec2 vFinish;')
+      .replace('#include <roughnessmap_fragment>', '#include <roughnessmap_fragment>\nroughnessFactor = vFinish.x;')
+      .replace('#include <metalnessmap_fragment>', '#include <metalnessmap_fragment>\nmetalnessFactor = vFinish.y;');
+  };
+  m.customProgramCacheKey = () => 'traffic-finish';
+  return m;
+}
+
+/** A car's paint: clear-coated, the sides mirroring the sky over a darker ground (world/car.ts), for Medium and up. */
+function coatedPaint(color: THREE.ColorRepresentation = '#ffffff'): THREE.MeshPhysicalMaterial {
+  const m = new THREE.MeshPhysicalMaterial({ vertexColors: true, color, roughness: 0.32, metalness: 0.3, clearcoat: 1, clearcoatRoughness: 0.05, envMapIntensity: 1.4 });
+  horizonReflection(m);
+  return m;
+}
+
+/** The paint for Low and phones, and for every car far off: one layer, a little glossier. */
+function plainPaint(color: THREE.ColorRepresentation = '#ffffff'): THREE.MeshStandardMaterial {
+  const m = new THREE.MeshStandardMaterial({ vertexColors: true, color, roughness: 0.25, metalness: 0.3, envMapIntensity: 1.3 });
+  horizonReflection(m);
+  return m;
+}
 
 /** The soft dark patch under a car (a blurred rectangle), shared by all of them. */
 function shadowMaterial(): THREE.MeshBasicMaterial {
@@ -269,15 +318,22 @@ export class Traffic {
   private offset = Date.now() / 1000 - performance.now() / 1000; // shared clock minus local, in seconds
   private models = new Map<Kind, Model>();
   private wheelGeo = new THREE.BufferGeometry();
-  private rest = new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.6, metalness: 0.1 });
+  private rest = finished(new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.6, metalness: 0.1 }));
   /** The moving cars' headlights: as the rest by day, glowing at night */
-  private lampMat = new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.6, metalness: 0.1, emissive: '#ffdcaa', emissiveIntensity: 0 });
+  private lampMat = finished(new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.6, metalness: 0.1, emissive: '#ffdcaa', emissiveIntensity: 0 }));
+  /** Tinted glass you can just see the cabin through, mirroring the sky (as the Teslas', world/car.ts) */
+  private glassMat = new THREE.MeshStandardMaterial({ color: '#07080a', roughness: 0.05, metalness: 0.3, transparent: true, opacity: 0.86, depthWrite: false, envMapIntensity: 1.6 });
+  /** The parked cars' paint: near in full (clear-coated or plain by the preset), far always plain */
+  private parkedPaint: [THREE.MeshPhysicalMaterial, THREE.MeshStandardMaterial] = [coatedPaint(), plainPaint()];
+  /** Clear-coated paint (Medium and up, not on phones): roadLife sets it each frame */
+  fine = true;
+  private dressed = true;
   private shadow = shadowMaterial();
   private plane = new THREE.PlaneGeometry(1, 1).rotateX(-Math.PI / 2);
   private movers: Mover[] = [];
   private parked: { kind: number; matrix: THREE.Matrix4; color: THREE.Color; x: number; z: number; wheels: THREE.Matrix4[]; patch: THREE.Matrix4 }[] = [];
-  /** Per model, near and far (kind * 2 + far) */
-  private parkedMeshes: { paint: THREE.InstancedMesh; rest: THREE.InstancedMesh }[] = [];
+  /** Per model, near and far (kind * 2 + far); the glass only near */
+  private parkedMeshes: { paint: THREE.InstancedMesh; rest: THREE.InstancedMesh; glass: THREE.InstancedMesh | null }[] = [];
   private parkedWheels: THREE.InstancedMesh | null = null;
   private parkedShadows: THREE.InstancedMesh | null = null;
   private wait = 0;
@@ -292,7 +348,9 @@ export class Traffic {
   /** Contact shadows under the cars (not on Low and phones) */
   shadows = true;
 
-  constructor(private world: World, private groundAt: (x: number, z: number) => number, private roadAt: (x: number, z: number) => number) {}
+  constructor(private world: World, private groundAt: (x: number, z: number) => number, private roadAt: (x: number, z: number) => number) {
+    horizonReflection(this.glassMat);
+  }
 
   /** Line up with the server's clock (ms since 1970), so all players see the cars in the same place. */
   setClock(serverMs: number): void {
@@ -306,7 +364,7 @@ export class Traffic {
   /** The models and the routes (fetched now), the parked cars and their blocks. */
   async load(data: RoadsData): Promise<void> {
     const gltf = await new GLTFLoader().loadAsync('/models/traffic.glb');
-    /** A node's parts by material, in vertex colours (the paint white, to be tinted). */
+    /** A node's parts by material, in vertex colours (the paint white, to be tinted) with their finish. */
     const partsOf = (name: string) => {
       const parts: Record<string, THREE.BufferGeometry[]> = {};
       const node = gltf.scene.getObjectByName(name);
@@ -317,23 +375,27 @@ export class Traffic {
         const mat = mesh.material as THREE.MeshStandardMaterial;
         const g = mesh.geometry.clone().applyMatrix4(mesh.matrixWorld);
         const color = mat.name === 'Paint' ? new THREE.Color(1, 1, 1) : mat.name === 'Glass' ? new THREE.Color(GLASS, GLASS, GLASS * 1.15) : mat.color.clone();
-        (parts[mat.name] ??= []).push(coloured(g, color));
+        (parts[mat.name] ??= []).push(coloured(g, color, [mat.roughness, mat.metalness]));
       });
-      return { node, pick: (...names: string[]) => merge(names.flatMap((n) => parts[n] ?? [])) };
+      const pick = (...names: string[]) => merge(names.flatMap((n) => parts[n] ?? []));
+      /** Every part but these */
+      const others = (...names: string[]) => pick(...Object.keys(parts).filter((n) => !names.includes(n)));
+      return { node, pick, others };
     };
-    this.wheelGeo = partsOf('wheel').pick('Tyre', 'Rim');
+    this.wheelGeo = partsOf('wheel').others();
     for (const kind of KINDS) {
-      const { node, pick } = partsOf(kind);
+      const { node, pick, others } = partsOf(kind);
       const far = partsOf(kind + '_far');
       if (!node) continue;
       const u = node.userData as { axles: number[]; track: number; wheel: number; length: number; width: number; height: number };
       this.models.set(kind, {
-        paint: pick('Paint', 'Glass'),
-        rest: pick('Trim', 'Plate'),
+        paint: pick('Paint'),
+        glass: pick('Glass'),
+        rest: others('Paint', 'Glass', 'Tail', 'Lamp'),
         tail: pick('Tail'),
         lamp: pick('Lamp'),
         spots: spotsFrom(pointsOf(pick('Lamp')), pointsOf(pick('Tail')), boxSpots(u.length, u.width)),
-        far: { paint: far.pick('Paint', 'Glass'), rest: far.pick('Trim', 'Lamp', 'Plate', 'Tail') },
+        far: { paint: far.pick('Paint', 'Glass'), rest: far.others('Paint', 'Glass') },
         axles: [-u.axles[0], -u.axles[1]], // the nose is at +y in Blender, -z here
         track: u.track,
         wheel: u.wheel,
@@ -357,9 +419,15 @@ export class Traffic {
         const body = new THREE.Group();
         group.add(body);
         body.rotation.order = 'YXZ';
-        const own = new THREE.MeshStandardMaterial({ vertexColors: true, color: paint, roughness: 0.35, metalness: 0.3 });
+        const paints: Mover['paints'] = [coatedPaint(paint), plainPaint(paint)];
         const tail = new THREE.MeshStandardMaterial({ color: '#7a1010', roughness: 0.3, emissive: '#ff2020', emissiveIntensity: 0.15 });
-        const meshes = [new THREE.Mesh(model.paint, own), new THREE.Mesh(model.rest, this.rest), new THREE.Mesh(model.tail, tail), new THREE.Mesh(model.lamp, this.lampMat)];
+        const meshes = [
+          new THREE.Mesh(model.paint, paints[this.fine ? 0 : 1]),
+          new THREE.Mesh(model.rest, this.rest),
+          new THREE.Mesh(model.tail, tail),
+          new THREE.Mesh(model.lamp, this.lampMat),
+          new THREE.Mesh(model.glass, this.glassMat),
+        ];
         for (const m of meshes) {
           m.castShadow = true;
           m.receiveShadow = true;
@@ -368,6 +436,8 @@ export class Traffic {
           body.add(m);
         }
         meshes[3].castShadow = false; // too small for a shadow of its own, and a draw call less there
+        meshes[4].castShadow = false; // the sun shines in through the windows
+        meshes[4].userData.material = 'black_glass';
         const wheels: THREE.Object3D[] = [];
         const front: THREE.Object3D[] = [];
         for (const [k, az] of model.axles.entries()) {
@@ -377,6 +447,8 @@ export class Traffic {
             pivot.rotation.order = 'YXZ';
             const w = new THREE.Mesh(this.wheelGeo, this.rest);
             w.scale.setScalar(model.wheel / 0.32);
+            if (side < 0) w.rotation.y = Math.PI; // the rim's face outwards
+            w.castShadow = true;
             w.userData.ignoreRay = true;
             pivot.add(w);
             body.add(pivot);
@@ -393,7 +465,7 @@ export class Traffic {
         group.visible = false;
         this.group.add(group);
         this.movers.push({
-          route, phase, model, group, body, wheels, front, tail, parts: meshes, far: false, leg: -1, s: 0, v: 0, spin: 0, hidden: true, gap: Infinity, blocker: null, id: this.movers.length, waited: 0, honkAt: 3, quiet: false,
+          route, phase, model, group, body, wheels, front, tail, paints, parts: meshes, far: false, leg: -1, s: 0, v: 0, spin: 0, hidden: true, gap: Infinity, blocker: null, id: this.movers.length, waited: 0, honkAt: 3, quiet: false,
           key: `traffic-${this.movers.length}`, solid: false, x: 0, z: 0, yaw: 0, audio: null, brake: false, slot: carLights.reserve(),
         });
       }
@@ -410,9 +482,10 @@ export class Traffic {
       const y = this.groundAt(x, z);
       q.setFromAxisAngle(up, yaw);
       const matrix = new THREE.Matrix4().compose(new THREE.Vector3(x, y, z), q, new THREE.Vector3(1, 1, 1));
+      const outwards = [new THREE.Quaternion().setFromAxisAngle(up, Math.PI), new THREE.Quaternion()]; // the rim's face outwards
       const wheels = model.axles.flatMap((az) => [-1, 1].map((side) => {
         const sc = model.wheel / 0.32;
-        return matrix.clone().multiply(m.compose(new THREE.Vector3((side * model.track) / 2, model.wheel, az), new THREE.Quaternion(), new THREE.Vector3(sc, sc, sc)));
+        return matrix.clone().multiply(m.compose(new THREE.Vector3((side * model.track) / 2, model.wheel, az), outwards[side < 0 ? 0 : 1], new THREE.Vector3(sc, sc, sc)));
       }));
       const patch = new THREE.Matrix4().compose(new THREE.Vector3(x, y + 0.03, z), q, new THREE.Vector3(model.width + 0.7, 1, model.length + 0.7));
       this.parked.push({ kind, matrix, color: new THREE.Color(PAINTS[paint]), x, z, wheels, patch });
@@ -425,25 +498,28 @@ export class Traffic {
       blocks.push({ m: 'car', y0: y + 0.2, y1: y + model.height - 0.05, p: [ring], n: 'Car' });
     }
     this.world.addPrisms(blocks);
-    const paintMat = new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.35, metalness: 0.3 });
     const count = (k: number) => Math.max(1, this.parked.filter((p) => p.kind === k).length);
     this.parkedMeshes = KINDS.flatMap((kind, k) => {
       const model = this.models.get(kind)!;
       return [model, model.far].map((g) => {
-        const paint = new THREE.InstancedMesh(g.paint, paintMat, count(k));
+        const near = g === model;
+        const paint = new THREE.InstancedMesh(g.paint, this.parkedPaint[near && this.fine ? 0 : 1], count(k));
         paint.instanceColor = new THREE.InstancedBufferAttribute(new Float32Array(count(k) * 3), 3);
-        const rest = new THREE.InstancedMesh(g === model ? merge([model.rest.clone(), model.tail.clone(), model.lamp.clone()]) : g.rest, this.rest, count(k));
-        for (const mesh of [paint, rest]) {
+        const rest = new THREE.InstancedMesh(near ? merge([model.rest.clone(), model.tail.clone(), model.lamp.clone()]) : g.rest, this.rest, count(k));
+        const glass = near ? new THREE.InstancedMesh(model.glass, this.glassMat, count(k)) : null;
+        for (const mesh of [paint, rest, glass]) {
+          if (!mesh) continue;
           mesh.count = 0;
           mesh.receiveShadow = true;
-          mesh.userData.material = 'steel';
+          mesh.userData.material = mesh === glass ? 'black_glass' : 'steel';
           this.group.add(mesh);
         }
-        return { paint, rest };
+        return { paint, rest, glass };
       });
     });
     this.parkedWheels = new THREE.InstancedMesh(this.wheelGeo, this.rest, this.parked.length * 4 || 1);
     this.parkedWheels.userData.ignoreRay = true;
+    this.parkedWheels.receiveShadow = true;
     this.parkedShadows = new THREE.InstancedMesh(this.plane, this.shadow, this.parked.length || 1);
     this.parkedShadows.userData.ignoreRay = true;
     this.parkedShadows.renderOrder = 2;
@@ -465,11 +541,12 @@ export class Traffic {
       if (d2 > this.reach ** 2) continue;
       const near = d2 < this.near ** 2;
       const k = p.kind * 2 + (near ? 0 : 1);
-      const { paint, rest } = this.parkedMeshes[k];
+      const { paint, rest, glass } = this.parkedMeshes[k];
       const i = counts[k]++;
       paint.setMatrixAt(i, p.matrix);
       paint.setColorAt(i, p.color);
       rest.setMatrixAt(i, p.matrix);
+      glass?.setMatrixAt(i, p.matrix);
       if (near) for (const w of p.wheels) this.parkedWheels!.setMatrixAt(wheels++, w);
       if (this.shadows) this.parkedShadows!.setMatrixAt(shadows++, p.patch);
     }
@@ -480,9 +557,10 @@ export class Traffic {
       mesh.instanceMatrix.needsUpdate = true;
       if (n) mesh.computeBoundingSphere();
     };
-    this.parkedMeshes.forEach(({ paint, rest }, k) => {
+    this.parkedMeshes.forEach(({ paint, rest, glass }, k) => {
       show(paint, counts[k]);
       show(rest, counts[k]);
+      if (glass) show(glass, counts[k]);
       if (paint.instanceColor) paint.instanceColor.needsUpdate = true;
     });
     show(this.parkedWheels!, wheels);
@@ -512,6 +590,12 @@ export class Traffic {
    * players; `cars`: the players' cars); the parked cars near the eye now and then.
    */
   update(dt: number, eye: THREE.Vector3, obstacles: Obstacle[], cars: OtherCar[], far: number): void {
+    if (this.fine !== this.dressed) {
+      // The graphics preset changed: clear-coated paint on Medium and up, plain on Low and phones.
+      this.dressed = this.fine;
+      for (let k = 0; k < this.parkedMeshes.length; k += 2) this.parkedMeshes[k].paint.material = this.parkedPaint[this.fine ? 0 : 1];
+      for (const c of this.movers) c.parts[0].material = c.paints[this.fine && !c.far ? 0 : 1];
+    }
     this.wait -= dt;
     if (this.parked.length && (this.wait <= 0 || eye.distanceToSquared(this.lastEye) > 400)) {
       this.wait = 0.4;
@@ -640,10 +724,12 @@ export class Traffic {
       if (far !== c.far) {
         c.far = far;
         c.parts[0].geometry = far ? c.model.far.paint : c.model.paint;
+        c.parts[0].material = c.paints[far || !this.fine ? 1 : 0];
         c.parts[1].geometry = far ? c.model.far.rest : c.model.rest;
         c.parts[2].visible = !far;
         c.parts[3].visible = !far; // the simple model has its headlights in the rest
-        for (const w of c.wheels) w.visible = !far;
+        c.parts[4].visible = !far; // and its glass in the paint
+        for (const w of c.wheels) w.visible = !far; // and plain wheels of its own
       }
       c.group.position.set(x, y, z);
       c.group.rotation.y = c.yaw;

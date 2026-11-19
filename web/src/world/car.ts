@@ -215,7 +215,7 @@ let fineDetail = true;
  * band between: the sky's light map (world/environment.ts) is bright all round, so without this a car's side
  * mirrored one even grey and looked matt. The band is as soft as the layer is rough. A few sums per pixel.
  */
-function horizonReflection(m: THREE.MeshStandardMaterial): void {
+export function horizonReflection(m: THREE.MeshStandardMaterial): void {
   m.onBeforeCompile = (shader) => {
     shader.fragmentShader = shader.fragmentShader.replace(
       '#include <envmap_physical_pars_fragment>',

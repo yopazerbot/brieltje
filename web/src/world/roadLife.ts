@@ -17,7 +17,8 @@ import { loadWheelieBins } from './wheelieBins';
  * is in; the bells ring from the start.
  *
  * On Low and on phones (a shorter draw distance) parked cars are drawn within 130 m instead of
- * 200 m, without the soft shadows under them, and every car in full only within 45 m (60 m).
+ * 200 m, without the soft shadows under them, with plain paint instead of clear-coated, and every car
+ * in full only within 45 m (60 m).
  */
 export class RoadLife {
   readonly group = new THREE.Group();
@@ -77,6 +78,7 @@ export class RoadLife {
     this.traffic.reach = low ? 130 : 200;
     this.traffic.near = low ? 45 : 60;
     this.traffic.shadows = !low;
+    this.traffic.fine = !low;
     this.traffic.update(dt, eye, obstacles, cars, this.tiles.drawDistance);
     this.bells.update(eye);
   }
